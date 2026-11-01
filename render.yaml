@@ -1,0 +1,22 @@
+# Despliegue en Render con un toque: https://render.com/deploy?repo=https://github.com/junior17281728jr-bot/Jarvis
+services:
+  - type: web
+    name: jarvis
+    runtime: node
+    buildCommand: npm install --omit=dev
+    startCommand: node --no-warnings src/server.js
+    healthCheckPath: /api/setup
+    autoDeployTrigger: commit
+    disk:
+      name: jarvis-datos
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: HOST
+        value: 0.0.0.0
+      - key: DB_PATH
+        value: /var/data/jarvis.db
+      - key: BACKUP_DIR
+        value: /var/data/backups
