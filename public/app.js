@@ -207,6 +207,25 @@ async function showAuth() {
 let ME = null;
 const views = {};
 
+// ---------- 🎯 ¿Qué buscas? (prioridad corto / largo plazo) ----------
+const FOCUS_OPTS = [['corto', '⚡', 'Ganar en semanas', 'Corto plazo'], ['medio', '⚖️', 'En unos meses', 'Medio plazo'], ['largo', '🌳', 'A largo plazo', '1 año o más']];
+const focusShell = () => `<section class="card focuscard" id="focuscard"><h2>🎯 ¿Qué buscas ahora?</h2><div class="note">Toca una opción y JARVIS se concentra en buscar lo mejor para ese plazo.</div><div class="fopts" id="fopts">${FOCUS_OPTS.map(([k, i, t, sub]) => `<button type="button" class="fopt" data-h="${k}"><span class="fi">${i}</span><b>${t}</b><span class="note">${sub}</span></button>`).join('')}</div><div id="fres" class="note" style="margin-top:10px">Cargando…</div></section>`;
+function focusPaint(f) {
+  document.querySelectorAll('.fopt').forEach(b => b.classList.toggle('on', b.dataset.h === f.horizon));
+  const el = $('#fres'); if (!el) return;
+  const rows = f.top.map((t, i) => `<a class="frow" href="#analisis/${esc(t.symbol)}">${coBadge(t.symbol, 34)}<div style="flex:1;min-width:0"><b>${i + 1}. ${esc(coName(t.symbol))}</b> <span class="note">${esc(t.symbol)}</span><div class="note">Terminó ganando <b>${Math.round(t.p * 10)} de cada 10 veces</b> ${esc(f.when)}${t.median != null ? ` · lo normal: ${t.median >= 0 ? '+' : ''}${Math.round(t.median * 100)}%` : ''}${t.bad != null ? ` · en un mal caso: ${Math.round(t.bad * 100)}%` : ''}</div></div><span class="note">${t.zone === 'recomendada' ? '✅ Te recomiendo' : t.zone === 'observacion' ? '👀 En observación' : '🔎 Explorando'}</span></a>`).join('');
+  el.innerHTML = `${f.searching ? '<div class="searching">🔎 JARVIS está buscando más opciones para esto ahora mismo… (unos minutos; te aviso en "Lo que pasó")</div>' : ''}
+    ${rows ? `<div style="margin:8px 0 4px"><b>Lo mejor si esperas ${esc(f.when.replace(/^en /, ""))}, según la historia real:</b></div>${rows}<div class="note" style="margin-top:6px">"Terminó ganando" = cuántas veces, en el pasado, quien compró y esperó ese tiempo terminó con más dinero. No es garantía.</div>` : '<div>Todavía no hay datos suficientes para este plazo. Toca el botón y JARVIS se pone a buscar.</div>'}`;
+}
+async function focusInit() {
+  if (!$('#focuscard')) return;
+  try { focusPaint(await api('/api/focus')); } catch (e) { $('#fres').textContent = e.message; }
+  document.querySelectorAll('.fopt').forEach(b => b.onclick = async () => {
+    $('#fres').textContent = 'Buscando…';
+    try { const f = await api('/api/focus', { method: 'POST', body: { horizon: b.dataset.h } }); focusPaint(f); if (MYBUDGET?.profile) MYBUDGET.profile.horizon = f.horizon; } catch (e) { $('#fres').textContent = e.message; }
+  });
+}
+
 views.inicio = async () => {
   const h = await api('/api/home');
   const greens = h.ranking.filter(c => c.light === 'verde'), alerts = h.activity.filter(a => a.important && Date.now() - Date.parse(a.ts) < 864e5).length;
@@ -218,6 +237,7 @@ views.inicio = async () => {
     <div class="sub">${best ? `${chanceDots(best.probBeat)}${patience(best.timing, best.light)} <a href="#analisis/${esc(best.symbol)}">Ver por qué ▸</a> · <a href="#mapa">Ver mi mapa ▸</a>` : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.'}</div>
     <div class="note" style="margin-top:4px">Tu dinero de práctica: <b class="${cls(h.account.returnPct)}">${usd(h.account.total)} (${pct(h.account.returnPct, 2)})</b> · ${alerts} aviso${alerts === 1 ? '' : 's'} hoy</div></div>
     <div class="pill">${h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>'}</div></section>
+  ${focusShell()}
 
   <section class="grid g4">
     <div class="card kpi" style="--c:var(--accent)"><div class="l">Tu dinero de práctica</div><div class="v">${usd(h.account.total)}</div><div class="s"><span class="${cls(h.account.returnPct)}">${pct(h.account.returnPct, 2)}</span> desde ${usd(h.account.start, 0)}${h.account.spy ? ` · el ${term('SPY', 'mercado')} hoy ${pct(h.account.spy.changePct, 2)}` : ''}</div></div>
@@ -251,7 +271,7 @@ views.inicio = async () => {
   ${footLine()}`;
 };
 views.inicio.after = () => {
-  bindOpp();
+  bindOpp(); focusInit();
   $('#ask').onsubmit = async e => {
     e.preventDefault();
     const q = $('#q').value.trim(); if (!q) return;
@@ -532,8 +552,22 @@ views.debate = async id => {
     </div></section>`;
 };
 
+// ---------- Tú vs la IA vs el mercado (dos carteras separadas) ----------
+function iaCompare(a, ia) {
+  const you = a.returnPct, iaR = ia?.returnPct ?? null, mk = ia?.market ?? a.compare?.market ?? null;
+  const box = (icon, title, sub, v, extra) => `<div class="pbox vs"><div class="l">${icon} <b>${title}</b></div><div class="note">${sub}</div><div class="v ${cls(v)}">${v != null ? pct(v * 100, 2) : '—'}</div>${extra || ''}</div>`;
+  return `<section class="card"><h2>¿Quién lo hace mejor? <span class="more note">dinero virtual, precios reales</span></h2>
+    <div class="mini3">${box('🧑', 'Tú', 'Tu cartera: decides tú', you, `<div class="note">${usd(a.total)}</div>`)}${box('🤖', 'La IA', 'Cartera de JARVIS: decide sola', iaR, ia ? `<div class="note">${usd(ia.total)}</div>` : '')}${box('📈', 'No hacer nada', 'Solo el mercado (SPY)', mk)}</div>
+    <div class="note" style="margin-top:8px">Son dos carteras <b>separadas</b>: lo que tú compras no cambia la de la IA, ni al revés. Así ves si las decisiones de JARVIS de verdad sirven.</div></section>
+  ${ia ? `<section class="card iacard"><h2>🤖 Cartera de la IA <span class="note" style="font-weight:600">· decide sola</span></h2>
+    <div class="grid g3" style="gap:10px;margin-top:8px"><div class="pbox"><div class="l">Valor</div><div class="v">${usd(ia.total)}</div><div class="note">empezó con ${usd(ia.start, 0)}</div></div><div class="pbox"><div class="l">Efectivo</div><div class="v">${usd(ia.cash)}</div></div><div class="pbox"><div class="l">Ganancia ya cerrada</div><div class="v ${cls(ia.realized)}">${usd(ia.realized)}</div><div class="note">${ia.closed} ${ia.closed === 1 ? 'operación cerrada' : 'operaciones cerradas'}</div></div></div>
+    <h3 style="margin-top:14px">Lo que tiene ahora</h3>${ia.positions.length ? `<div class="tablewrap"><table><tr><th>Acción</th><th class="r">Vale</th><th class="r">Ganancia</th></tr>${ia.positions.map(p => `<tr><td>${coCell(p.symbol)}</td><td class="r">${usd(p.value)}</td><td class="r ${cls(p.pnl)}">${usd(p.pnl)} <span class="note">${pct(p.pnlPct * 100)}</span></td></tr>`).join('')}</table></div>` : '<div class="empty">Todavía no ha comprado nada. Compra sola cuando el mercado está abierto y hay acciones en "Te recomiendo".</div>'}
+    <h3 style="margin-top:14px">Lo que decidió y por qué</h3>${ia.trades.length ? `<div class="iatl">${ia.trades.slice(0, 12).map(t => `<div class="iarow"><b class="${t.side === 'buy' ? 'good' : 'bad'}">${t.side === 'buy' ? 'Compró' : 'Vendió'} ${esc(t.symbol)}</b> · ${usd(t.usd)} · <span class="note">${esc(t.ts.slice(0, 10))}</span><div class="note">${esc(String(t.reason || '').replace(/^IA (compra|vende): /, ''))}</div></div>`).join('')}</div>` : '<div class="empty">Aún no ha hecho operaciones.</div>'}
+    <details class="note" style="margin-top:10px"><summary>Las reglas de la IA</summary><ul>${ia.rules.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details></section>` : ''}`;
+}
+
 views.bolsa = async () => {
-  const [a, r, wl] = await Promise.all([api('/api/account'), api('/api/ranking'), api('/api/watchlist')]);
+  const [a, r, wl, ia] = await Promise.all([api('/api/account'), api('/api/ranking'), api('/api/watchlist'), api('/api/ia').catch(() => null)]);
   const syms = [...new Set([...r.map(c => c.symbol), ...wl, ...a.positions.map(p => p.symbol)])];
   const B = a.budget || MYBUDGET || { usd: 100, emergency: true };
   return `<section class="card mymoney"><h2>Mi dinero <span class="more note">JARVIS calcula todo con este monto</span></h2>
@@ -542,7 +576,8 @@ views.bolsa = async () => {
     <div class="grid g3" style="gap:10px;margin-top:12px"><div class="pbox"><div class="l">"Sí, invierte" (${myStyle().verde * 100}%)</div><div class="v good">${usd(baseAmt('verde'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">"Invierte poco" (${myStyle().amarillo * 100}%)</div><div class="v warn">${usd(baseAmt('amarillo'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">Máximo con pruebas fuertes (${myStyle().max * 100}%)</div><div class="v">${usd(Math.round(B.usd * myStyle().max), 0)}</div><div class="note">solo si se cumplen las 5 condiciones</div></div></div>
     <div class="note" style="margin-top:8px">Porcentajes según tu estilo (${esc({ conservador: 'conservador', equilibrado: 'equilibrado', arriesgado: 'arriesgado' }[MYBUDGET?.profile?.style] || 'equilibrado')}). <a href="#perfil">Cambiar mi estilo ▸</a></div>
     <div class="row" style="margin-top:12px;gap:10px;align-items:center"><button type="button" class="btn ghost" id="breset">Empezar mi práctica con ${usd(B.usd, 0)}</button><span class="note">Tu cuenta de práctica empieza con ${usd(a.start, 0)}. Si la reinicias, la anterior queda guardada en el historial (no se borra).</span></div><div class="msg" id="bm"></div></section>
-  <div><h1>Mi cuenta virtual</h1><p class="sub">Dinero de mentira, precios reales. Operaciones de ${usd(a.limits.min, 0)} a ${usd(a.limits.max, 0)}, como harías tú. Mercado ${a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)'}.</p></div>
+  ${iaCompare(a, ia)}
+  <div><h1>🧑 Mi cartera virtual <span class="note" style="font-size:15px;font-weight:600">· aquí decides tú</span></h1><p class="sub">Dinero de mentira, precios reales. Operaciones de ${usd(a.limits.min, 0)} a ${usd(a.limits.max, 0)}, como harías tú. Mercado ${a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)'}.</p></div>
   <section class="grid g4">
     <div class="card kpi"><div class="l">Valor total</div><div class="v">${usd(a.total)}</div><div class="s"><span class="${cls(a.returnPct)}">${pct(a.returnPct * 100, 2)} desde ${usd(a.start, 0)}</span>${a.fx ? ` · ≈ ${rd(Math.round(a.total * a.fx.rate))}` : ''}</div></div>
     <div class="card kpi" style="--c:var(--accent2)"><div class="l">Efectivo</div><div class="v">${usd(a.cash)}</div><div class="s">Disponible para operar</div></div>
@@ -563,11 +598,6 @@ views.bolsa = async () => {
       <label>¿Alguien te propuso algo extremo? (opcional)<input id="aex" placeholder="Ej.: meter el 100% en Tesla"></label>
       <button class="btn">Analizar</button><div id="ares"></div></form></div>
   </section>
-  <section class="card"><h2>Tú vs JARVIS vs el mercado <span class="more note">desde ${esc(a.compare.since)}</span></h2>
-    <div class="mini3"><div class="pbox"><div class="l">Tú</div><div class="v ${cls(a.compare.you)}">${pct(a.compare.you * 100, 2)}</div></div>
-    <div class="pbox"><div class="l">Mejor estrategia de JARVIS</div><div class="v ${cls(a.compare.jarvisBest)}">${a.compare.jarvisBest != null ? pct(a.compare.jarvisBest * 100, 2) : '—'}</div></div>
-    <div class="pbox"><div class="l">Mercado (${term('SPY')})</div><div class="v ${cls(a.compare.market)}">${a.compare.market != null ? pct(a.compare.market * 100, 2) : '—'}</div></div></div>
-    <div class="note" style="margin-top:8px">Practica tú también: compara tus decisiones con las de JARVIS y con no hacer nada.${a.fx ? ` Tipo de cambio ${a.fx.rate.toFixed(2)} RD$/US$ (${esc(a.fx.source)}).` : ''}</div></section>
   <section class="card"><h2>Posiciones abiertas</h2>${a.positions.length ? `<div class="tablewrap"><table><tr><th>Acción</th><th class="r">Cantidad</th><th class="r">Costo promedio</th><th class="r">Precio</th><th class="r">Ganancia</th></tr>${a.positions.map(p => `<tr><td class="sym">${esc(p.symbol)}</td><td class="r">${p.qty.toFixed(5)}</td><td class="r">${usd(p.avgCost)}</td><td class="r">${usd(p.price)}</td><td class="r ${cls(p.pnl)}">${usd(p.pnl)} <span class="note">${pct(p.pnlPct * 100)}</span></td></tr>`).join('')}</table></div>` : '<div class="empty">Sin posiciones. Compra desde aquí o desde una recomendación.</div>'}</section>
   <section class="card"><h2>Historial de operaciones <a class="more" href="/api/export/operaciones">Exportar a Excel (CSV) ▸</a></h2>${a.closed.length ? `<div class="tablewrap"><table><tr><th>Acción</th><th>Entró</th><th>Salió</th><th class="r">Resultado</th></tr>${a.closed.slice().reverse().map(c => `<tr><td class="sym">${esc(c.symbol)}</td><td>${esc(c.openedAt.slice(0, 10))} a ${usd(c.entry)}</td><td>${esc(c.closedAt.slice(0, 10))} a ${usd(c.exit)}</td><td class="r ${cls(c.pnl)}">${usd(c.pnl)} (${pct(c.pnlPct * 100)})</td></tr>`).join('')}</table></div>` : '<div class="empty">Aún no hay operaciones cerradas.</div>'}</section>`;
 };
@@ -676,7 +706,7 @@ views.aprendizaje = async () => {
 
 views.estado = async () => {
   const s = await api('/api/status');
-  const NAMES = { loterias_resultados: 'Resultados de loterías', loterias_liquidar: 'Pagar jugadas', bolsa_precios: 'Precios en vivo', bolsa_historial: 'Historial de precios', copia: 'Copia de seguridad', resumen_diario: 'Resumen diario', fundamentales: 'Informes de empresas', noticias: 'Noticias', investigacion: 'Investigación', loterias_jugadas: 'Jugadas automáticas', prueba_en_vivo: 'Prueba en vivo', ranking: 'Ranking', debate: 'Debate', vigilancia_loterias: 'Vigilancia de trampas' };
+  const NAMES = { loterias_resultados: 'Resultados de loterías', loterias_liquidar: 'Pagar jugadas', bolsa_precios: 'Precios en vivo', bolsa_historial: 'Historial de precios', copia: 'Copia de seguridad', resumen_diario: 'Resumen diario', fundamentales: 'Informes de empresas', noticias: 'Noticias', investigacion: 'Investigación', loterias_jugadas: 'Jugadas automáticas', prueba_en_vivo: 'Prueba en vivo', cartera_ia: 'Cartera de la IA', explorar: 'Explorar nuevas acciones', ranking: 'Ranking', debate: 'Debate', vigilancia_loterias: 'Vigilancia de trampas' };
   return `<div><h1>Estado del sistema</h1><p class="sub">Último latido: ${timeAgo(s.heartbeat)} · Motor: ${s.motor.running ? `activo${s.motor.until ? ' hasta ' + new Date(s.motor.until).toLocaleString('es-DO') : ''}` : 'en pausa'}</p></div>
   <section class="grid g4">
     <div class="card kpi" style="--c:${s.ledger.ok ? 'var(--good)' : 'var(--bad)'}"><div class="l">Registro sellado</div><div class="v">${s.ledger.ok ? 'Intacto' : 'Alterado'}</div><div class="s">${s.ledger.checked} entradas verificadas</div></div>

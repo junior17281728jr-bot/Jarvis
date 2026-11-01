@@ -96,6 +96,14 @@ for (const [sym, back] of [['JPM', 60], ['MSFT', 45]]) {
   const b = bars.at(-back);
   const res = placeOrder(db, { accountId: acc.id, symbol: sym, side: 'buy', usd: 10, quote: { symbol: sym, price: b.close, as_of: b.ts + 'T15:00:00Z', source: 'demo' }, quoteUsable: { usable: true }, reason: 'ejemplo', now: new Date(b.ts + 'T15:00:00Z') }); if (!res.ok) console.log('demo:', res.reason);
 }
+// Cartera de la IA (decide sola) con algunas operaciones de ejemplo
+{ const { aiAccount } = await import('./motor/autopilot.js'); const ia = aiAccount(db);
+  for (const [sym, back, side] of [['NVDA', 80, 'buy'], ['MSFT', 70, 'buy'], ['KO', 50, 'buy'], ['KO', 20, 'sell']]) {
+    const bars = db.prepare("SELECT ts, close FROM stock_bars WHERE symbol = ? ORDER BY ts").all(sym), b = bars.at(-back);
+    const held = side === 'sell' ? db.prepare("SELECT SUM(CASE WHEN side='buy' THEN qty ELSE -qty END) q FROM trades WHERE account_id = ? AND symbol = ?").get(ia.id, sym).q : null;
+    const res = placeOrder(db, { accountId: ia.id, symbol: sym, side, usd: side === 'buy' ? 10 : undefined, qty: held ?? undefined, quote: { symbol: sym, price: b.close, as_of: b.ts + 'T15:00:00Z', source: 'demo' }, quoteUsable: { usable: true }, reason: side === 'buy' ? 'IA compra: está en "Te recomiendo" (conveniencia 74/100).' : 'IA vende: ya no la recomiendo.', limits: { minTradeUsd: 1, maxTradeUsd: 10, maxPerSymbolPct: 20, minCashPct: 10, maxLossPct: 30 }, now: new Date(b.ts + 'T15:00:00Z') });
+    if (!res.ok) console.log('demo IA:', res.reason);
+  } }
 startMotor(db, 72);
 db.close();
 console.log('Demo lista en', path, '— usuario: junior / demo-jarvis-2026');

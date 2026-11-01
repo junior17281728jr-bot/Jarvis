@@ -6,7 +6,7 @@ import { randomInt } from 'node:crypto';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, config } from './core/config.js';
-import { openDb, getSetting, setSetting, audit, nowIso } from './core/db.js';
+import { openDb, getSetting, setSetting, audit, nowIso, activity } from './core/db.js';
 import { createUser, login, logout, userFromToken, countUsers, changeOwnPassword, resetPassword, setActive, setDisplayName } from './core/auth.js';
 import { verifyLedger } from './core/ledger.js';
 import { recentErrors } from './core/jobs.js';
@@ -33,7 +33,8 @@ import { whatIf, monthlyGrade, emotionPause, fx } from './motor/insights.js';
 import { stockAnalysis, lotteryAnalysis, explainAnalysis, analysisHistory, fetchProfile } from './motor/analysis.js';
 import { historyList, performance, addReal, closeReal, realSummary } from './motor/track.js';
 import { sendPush } from './core/notify.js';
-import { mapView } from './motor/map.js';
+import { mapView, exploreStep } from './motor/map.js';
+import { aiView } from './motor/autopilot.js';
 import { getProfile, saveProfile, profileLine, STYLES, HORIZONS } from './motor/profile.js';
 import { getBudget, saveBudget, sizeFor, evidence, finder, bigBetCheck } from './motor/sizing.js';
 import { publicBrand, saveBrand, logoFile, manifest } from './core/brand.js';
@@ -269,6 +270,36 @@ route('POST', '/api/users/:id/password', async ({ req, user, p }) => { const b =
 route('POST', '/api/users/:id/active', async ({ req, user, p }) => { const b = await body(req); setActive(db, user.id, Number(p.id), !!b.active); return { ok: true }; }, { admin: true });
 route('POST', '/api/users', async ({ req }) => { const b = await body(req); const pw = String(b.password || '').trim() || autoPassword(); return { password: b.password ? undefined : pw, id: createUser(db, { username: b.username, password: pw, role: b.role === 'admin' ? 'admin' : 'user', displayName: b.displayName, dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
 
+
+// ---------- Cartera de la IA (decide sola) y búsqueda enfocada ----------
+route('GET', '/api/ia', () => aiView(db));
+const FOCUS_DAYS = { corto: [21, 63], medio: [126, 63], largo: [252, 126] };
+const FOCUS_TXT = { corto: 'en 1 mes', medio: 'en 6 meses', largo: 'en 1 año' };
+function focusTop(horizon) {
+  const [d, alt] = FOCUS_DAYS[horizon] || FOCUS_DAYS.medio;
+  return db.prepare("SELECT symbol, zone, light, conv, card FROM map_entries WHERE light != 'rojo' AND zone != 'descartada'").all().map(r => {
+    const c = JSON.parse(r.card || '{}'), h = c.timing?.h || {}, x = h[d] || h[alt];
+    return x?.p != null ? { symbol: r.symbol, zone: r.zone, light: r.light, conv: r.conv, p: x.p, median: x.median ?? null, bad: x.bad ?? null, days: h[d] ? d : alt } : null;
+  }).filter(Boolean).sort((a, b) => b.p - a.p || b.conv - a.conv).slice(0, 3);
+}
+let focusRun = null;
+route('GET', '/api/focus', ({ user }) => { const hz = getProfile(db, user.id).horizon; return { horizon: hz, when: FOCUS_TXT[hz], top: focusTop(hz), searching: !!focusRun, last: getSetting(db, 'global', 'focus.last', null) }; });
+route('POST', '/api/focus', async ({ req, user }) => {
+  const b = await body(req);
+  if (!HORIZONS[b.horizon]) throw new Error('Elige corto, medio o largo plazo.');
+  saveProfile(db, user.id, { horizon: b.horizon });
+  const last = getSetting(db, 'global', 'focus.last', null);
+  const recent = last && Date.now() - Date.parse(last.at) < 10 * 60e3;
+  if (!focusRun && !recent) {
+    setSetting(db, 'global', 'focus.last', { at: nowIso(), horizon: b.horizon, by: user.id });
+    activity(db, { agent: 'largo', type: 'explorar', userId: user.id, text: `🔎 Búsqueda enfocada: buscando las mejores opciones para ${FOCUS_TXT[b.horizon]}…` });
+    focusRun = exploreStep(db, cfg, { n: 4 }).then(() => {
+      const t = focusTop(b.horizon)[0];
+      activity(db, { agent: 'largo', type: 'explorar', important: true, userId: user.id, text: t ? `🔎 Búsqueda enfocada lista. Lo mejor para ${FOCUS_TXT[b.horizon]}: ${t.symbol} (terminó ganando ${Math.round(t.p * 10)} de cada 10 veces).` : '🔎 Búsqueda enfocada lista: todavía no hay datos suficientes.' });
+    }).catch(err => activity(db, { type: 'error', text: `Búsqueda enfocada falló: ${err.message}` })).finally(() => { focusRun = null; });
+  }
+  return { horizon: b.horizon, when: FOCUS_TXT[b.horizon], top: focusTop(b.horizon), searching: !!focusRun, recent };
+});
 route('GET', '/api/comments', ({ url }) => db.prepare('SELECT c.*, u.username FROM comments c JOIN users u ON u.id = c.user_id WHERE subject = ? ORDER BY ts').all(url.searchParams.get('subject') || ''));
 route('POST', '/api/comments', async ({ req, user }) => { const b = await body(req); const t = String(b.body || '').trim().slice(0, 1000); if (!t) throw new Error('El comentario está vacío.'); db.prepare('INSERT INTO comments (subject, user_id, ts, body) VALUES (?, ?, ?, ?)').run(String(b.subject).slice(0, 80), user.id, nowIso(), t); return { ok: true }; });
 
