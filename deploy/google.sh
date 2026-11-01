@@ -63,7 +63,11 @@ login_short() {
   echo "      Si al volver esta pantalla se desconectó, pega otra vez el MISMO comando: te vuelve a pedir el código."
   echo
   local code=""
-  while [ -z "$code" ]; do read -r -p "👉 3) Pega aquí el código y toca Intro: " code </dev/tty; code="${code//[[:space:]]/}"; done
+  local line="" more=""
+  while [ -z "$code" ]; do read -r -p "👉 3) Pega aquí el código y toca Intro: " line </dev/tty; code="${line//[[:space:]]/}"; done
+  # Si al pegar el código llegó partido en varias líneas, junta los pedazos
+  while IFS= read -r -t 2 more </dev/tty; do code+="${more//[[:space:]]/}"; done
+  echo "   Código recibido (${#code} letras). Revisando con Google…"
   echo "$code" > "$ST/in"
   t0=$SECONDS; while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - t0)) -lt 60 ]; do sleep 1; done
   ACC=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
