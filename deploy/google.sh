@@ -65,10 +65,19 @@ login_short() {
   gcloud config set project "$PROJECT" >/dev/null
   echo "✅ Listo, ya tengo permiso como $ACC"
 }
-if ! gcloud auth print-access-token >/dev/null 2>&1; then login_short; fi
+ACC0=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)
+if [ -z "$ACC0" ] || ! gcloud auth print-access-token >/dev/null 2>&1; then login_short; fi
 
 echo "== 2/4 Activando Compute Engine (la primera vez tarda 1 o 2 minutos)"
-gcloud services enable compute.googleapis.com
+if ! gcloud services enable compute.googleapis.com 2>"${TMPDIR:-/tmp}/jv-err"; then
+  cat "${TMPDIR:-/tmp}/jv-err"
+  if grep -qiE 'active account|credentials|auth login|reauth' "${TMPDIR:-/tmp}/jv-err"; then
+    login_short
+    gcloud services enable compute.googleapis.com
+  else
+    exit 1
+  fi
+fi
 
 echo "== 3/4 Preparando la instalación automática"
 TMP="$(mktemp)"
