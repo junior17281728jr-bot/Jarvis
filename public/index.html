@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>JARVIS</title>
+<meta name="theme-color" content="#070b14">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<script>try{const t=localStorage.getItem('jv-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<header class="top hide" id="top">
+  <a class="logo" href="#inicio"><span class="ring"><i></i></span>JARVIS</a>
+  <nav class="tabs" id="tabs">
+    <a href="#inicio">Inicio</a>
+    <a href="#mapa">Mapa</a>
+    <a href="#buscar">Buscar</a>
+    <a href="#recomendaciones">Recomendaciones</a>
+    <a href="#historial">Historial</a>
+    <a href="#bolsa">Mi cuenta</a>
+    <a href="#loterias">Loterías</a>
+    <a href="#aprendizaje">Aprendizaje</a>
+    <a href="#tv">Modo TV</a>
+    <a href="#estado">Estado</a>
+    <a href="#ajustes" id="nav-admin" class="hide">Ajustes</a>
+  </nav>
+  <div class="topright">
+    <span class="pill" id="sys-pill" title="Estado del sistema"><span class="status-dot" id="sys-dot"></span><span id="sys-text">…</span></span>
+    <button class="iconbtn" id="theme" title="Cambiar tema claro / oscuro" aria-label="Cambiar tema">Tema</button>
+    <button class="iconbtn" id="logout" title="Cerrar sesión">Salir</button>
+  </div>
+</header>
+<main id="app"><div class="center"><div class="muted">Cargando JARVIS…</div></div></main>
+<div id="tv-root"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

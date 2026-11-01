@@ -1,0 +1,15 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "description": "JARVIS: investigador autónomo de bolsa y loterías RD, con dinero virtual",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --no-warnings src/server.js",
+    "test": "node --no-warnings --test test/*.test.js",
+    "demo": "node --no-warnings src/demo.js"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

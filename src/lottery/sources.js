@@ -1,0 +1,83 @@
+// Lectura de resultados desde páginas públicas. Las loterías no tienen API pública.
+// Cada página se lee y se interpreta por separado; luego results.js compara las fuentes.
+// IMPORTANTE: los lectores se validan contra la página real en el servidor (estado "por validar" hasta entonces).
+import { recordObservation } from './results.js';
+
+export const SOURCES = {
+  'premios.do': {
+    leidsa: 'https://premios.do/resultados-leidsa',
+    nacional: 'https://premios.do/resultados-gana-mas',
+    'nacional-noche': 'https://premios.do/resultados-nacional-noche',
+    loteka: 'https://premios.do/resultados-loteka',
+    real: 'https://premios.do/resultados-real',
+  },
+  'nacionalloteria.com': {
+    leidsa: 'https://www.nacionalloteria.com/republica-dominicana/quiniela-leidsa.php',
+    nacional: 'https://www.nacionalloteria.com/republica-dominicana/gana-mas.php',
+    'nacional-noche': 'https://www.nacionalloteria.com/republica-dominicana/loteria-nacional.php',
+    loteka: 'https://www.nacionalloteria.com/republica-dominicana/quiniela-loteka.php',
+    real: 'https://www.nacionalloteria.com/republica-dominicana/quiniela-real.php',
+  },
+};
+
+const MONTHS = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+
+export function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ').trim();
+}
+
+/** Encuentra fechas y los tres números de dos dígitos que las siguen. */
+export function parseResults(text, { maxGap = 220 } = {}) {
+  const dateRe = new RegExp(
+    String.raw`(\d{4})-(\d{2})-(\d{2})` + '|' +
+    String.raw`(\d{1,2})[/-](\d{1,2})[/-](\d{4})` + '|' +
+    String.raw`(\d{1,2})\s+de\s+(${Object.keys(MONTHS).join('|')})(?:\s+de|,)?\s+(\d{4})`, 'gi');
+  const found = [];
+  let m;
+  while ((m = dateRe.exec(text))) {
+    let y, mo, d;
+    if (m[1]) [y, mo, d] = [m[1], m[2], m[3]].map(Number);
+    else if (m[4]) [d, mo, y] = [m[4], m[5], m[6]].map(Number);
+    else { d = Number(m[7]); mo = MONTHS[m[8].toLowerCase()]; y = Number(m[9]); }
+    if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) continue;
+    const after = text.slice(dateRe.lastIndex, dateRe.lastIndex + maxGap);
+    // Los números del sorteo: tokens aislados de exactamente 2 dígitos (evita horas como 8:55 y años)
+    const nums = [...after.matchAll(/(?<![\d:.,])(\d{2})(?![\d:.,])/g)].map(x => x[1]).slice(0, 3);
+    if (nums.length === 3) found.push({ date: `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`, nums });
+  }
+  const seen = new Set();
+  return found.filter(r => (seen.has(r.date) ? false : seen.add(r.date)));
+}
+
+export async function fetchSource(source, game, { fetchImpl = fetch, timeoutMs = 15000 } = {}) {
+  const url = SOURCES[source]?.[game];
+  if (!url) return { source, game, ok: false, error: 'sin página configurada' };
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(url, { signal: ctl.signal, headers: { 'User-Agent': 'Mozilla/5.0 (JARVIS investigacion personal)' } });
+    if (!res.ok) return { source, game, ok: false, error: `HTTP ${res.status}` };
+    const rows = parseResults(htmlToText(await res.text()));
+    return { source, game, ok: rows.length > 0, rows, error: rows.length ? null : 'no se encontraron resultados en la página' };
+  } catch (e) {
+    return { source, game, ok: false, error: e.name === 'AbortError' ? 'tiempo de espera agotado' : e.message };
+  } finally { clearTimeout(timer); }
+}
+
+/** Lee todas las fuentes de todas las loterías y registra lo encontrado (últimos `days` días). */
+export async function collectAll(db, { days = 7, fetchImpl, today } = {}) {
+  const report = [];
+  const min = new Date(Date.parse(today || new Date().toISOString().slice(0, 10)) - days * 864e5).toISOString().slice(0, 10);
+  for (const source of Object.keys(SOURCES)) {
+    for (const game of Object.keys(SOURCES[source])) {
+      const r = await fetchSource(source, game, { fetchImpl });
+      let saved = 0;
+      if (r.ok) for (const row of r.rows) if (row.date >= min) { recordObservation(db, { game, date: row.date, source, nums: row.nums }); saved++; }
+      report.push({ source, game, ok: r.ok, saved, error: r.error || null });
+    }
+  }
+  return report;
+}

@@ -1,0 +1,22 @@
+[Unit]
+Description=JARVIS - investigador autonomo (bolsa y loterias RD, dinero virtual)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jarvis
+WorkingDirectory=/opt/jarvis
+EnvironmentFile=/opt/jarvis/.env
+ExecStart=/usr/bin/node --no-warnings src/server.js
+Restart=always
+RestartSec=5
+# Permisos mínimos
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/jarvis
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
