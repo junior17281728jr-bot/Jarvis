@@ -707,7 +707,7 @@ views.aprendizaje = async () => {
 views.estado = async () => {
   const s = await api('/api/status');
   const NAMES = { loterias_resultados: 'Resultados de loterías', loterias_liquidar: 'Pagar jugadas', bolsa_precios: 'Precios en vivo', bolsa_historial: 'Historial de precios', copia: 'Copia de seguridad', resumen_diario: 'Resumen diario', fundamentales: 'Informes de empresas', noticias: 'Noticias', investigacion: 'Investigación', loterias_jugadas: 'Jugadas automáticas', prueba_en_vivo: 'Prueba en vivo', cartera_ia: 'Cartera de la IA', explorar: 'Explorar nuevas acciones', ranking: 'Ranking', debate: 'Debate', vigilancia_loterias: 'Vigilancia de trampas' };
-  return `<div><h1>Estado del sistema</h1><p class="sub">Último latido: ${timeAgo(s.heartbeat)} · Motor: ${s.motor.running ? `activo${s.motor.until ? ' hasta ' + new Date(s.motor.until).toLocaleString('es-DO') : ''}` : 'en pausa'}</p></div>
+  return `<div><h1>Estado del sistema</h1><p class="sub">Último latido: ${timeAgo(s.heartbeat)} · Motor: ${s.motor.running ? `activo${s.motor.until ? ' hasta ' + new Date(s.motor.until).toLocaleString('es-DO') : ''}` : 'en pausa'} · Versión: <b>${esc(s.version || '—')}</b></p></div>
   <section class="grid g4">
     <div class="card kpi" style="--c:${s.ledger.ok ? 'var(--good)' : 'var(--bad)'}"><div class="l">Registro sellado</div><div class="v">${s.ledger.ok ? 'Intacto' : 'Alterado'}</div><div class="s">${s.ledger.checked} entradas verificadas</div></div>
     <div class="card kpi"><div class="l">Gasto de IA</div><div class="v">${usd(s.ai.month, 2)}</div><div class="s">de ${usd(s.ai.monthCap, 0)} este mes · hoy ${usd(s.ai.day, 3)}</div></div>

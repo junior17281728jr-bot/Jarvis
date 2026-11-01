@@ -240,7 +240,7 @@ route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league
     'Datos de Yahoo son de respaldo no oficial; con claves de Alpaca la calidad mejora.',
   ] }));
 
-route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
+route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, version: (() => { try { return readFileSync(join(dirname(cfg.dbPath), 'version.txt'), 'utf8').trim().slice(0, 7); } catch { return null; } })(), publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
   sources: { alpaca: !!cfg.alpacaKey, openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey }, db: { bars: db.prepare('SELECT COUNT(*) n FROM stock_bars').get().n, draws: db.prepare('SELECT COUNT(*) n FROM lottery_draws').get().n, ledger: db.prepare('SELECT COUNT(*) n FROM ledger').get().n },
   dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) }));
 route('GET', '/api/summary', () => ({ text: dailySummary(db) }));
@@ -379,7 +379,7 @@ const server = createServer(async (req, res) => {
     if (!file.startsWith(PUBLIC)) return send(res, 403, { error: 'No permitido.' });
     let data;
     try { data = await readFile(file); } catch { file = join(PUBLIC, 'index.html'); data = await readFile(file); }
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': extname(file) === '.html' ? 'no-cache' : 'max-age=300', 'X-Content-Type-Options': 'nosniff' });
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
     res.end(data);
   } catch (e) {
     send(res, e.code && Number.isInteger(e.code) ? e.code : 400, { error: e.message || 'Error.' });
