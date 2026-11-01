@@ -33,10 +33,12 @@ systemctl restart jarvis
 curl -fsSL https://tailscale.com/install.sh | sh
 iptables -I INPUT -i tailscale0 -j ACCEPT || true
 (command -v netfilter-persistent && netfilter-persistent save) || true
+set +x  # la clave de Tailscale no se escribe en el registro
 if [ "$TS_AUTHKEY" != "PEGA_AQUI" ]; then
   tailscale up --authkey="$TS_AUTHKEY" --hostname=jarvis --ssh
   tailscale serve --bg 8080 || true
 fi
+set -x
 
 # Actualizaciones automáticas de seguridad del sistema
 apt-get install -y unattended-upgrades || true
