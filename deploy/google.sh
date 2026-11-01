@@ -9,6 +9,12 @@ ZONE="us-east1-b"
 
 if [[ "$KEY" != tskey-auth-* ]]; then echo "❌ Falta tu clave de Tailscale al final del comando (empieza con tskey-auth-)."; exit 1; fi
 
+# Cloud Shell olvida el permiso cada vez que se cierra la sesión: lo guardo en tu carpeta y lo reuso
+SAVED="$HOME/.jarvis-gcloud"
+if ! gcloud auth print-access-token >/dev/null 2>&1 && [ -d "$SAVED" ] && CLOUDSDK_CONFIG="$SAVED" gcloud auth print-access-token >/dev/null 2>&1; then
+  export CLOUDSDK_CONFIG="$SAVED"; echo "   (Uso el permiso de Google que ya me diste)"
+fi
+
 echo "== 1/4 Buscando tu proyecto"
 PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
 if [ -z "$PROJECT" ] || [ "$PROJECT" = "(unset)" ]; then
@@ -93,6 +99,10 @@ login_short() {
 }
 ACC0=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)
 if [ -z "$ACC0" ] || ! gcloud auth print-access-token >/dev/null 2>&1; then login_short; fi
+CFG=$(gcloud info --format='value(config.paths.global_config_dir)' 2>/dev/null || true)
+if [ -n "$CFG" ] && [ -d "$CFG" ] && [ "$CFG" != "$SAVED" ]; then
+  rm -rf "$SAVED.tmp"; cp -r "$CFG" "$SAVED.tmp" && chmod 700 "$SAVED.tmp" && rm -rf "$SAVED" && mv "$SAVED.tmp" "$SAVED" || true
+fi
 
 # Google exige una cuenta de pago conectada al proyecto, aunque lo gratis no se cobra
 BILLING_ON=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null || true)
