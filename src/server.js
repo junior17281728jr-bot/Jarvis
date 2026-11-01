@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { randomInt } from 'node:crypto';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, config } from './core/config.js';
@@ -73,6 +74,12 @@ const tradeLimits = user => { const b = getBudget(db, user.id).usd; return { min
 const routes = [];
 const route = (method, path, handler, { auth = true, admin = false } = {}) => routes.push({ method, re: new RegExp('^' + path.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), handler, auth, admin });
 
+/** Contraseña automática fácil de dictar: sin letras que se confunden (0/O, 1/l/I). */
+function autoPassword() {
+  const A = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const part = () => Array.from({ length: 4 }, () => A[randomInt(A.length)]).join('');
+  return `${part()}-${part()}-${part()}`;
+}
 /** Con enlace público (Tailscale Funnel), el primer usuario solo se crea desde tu red privada: nadie de internet puede adueñarse de JARVIS. */
 function setupAllowed(req) {
   if (process.env.SETUP_TAILNET_ONLY !== '1') return true;
@@ -258,9 +265,9 @@ route('GET', '/api/keys', () => keyStatus(cfg), { admin: true });
 route('POST', '/api/keys', async ({ req, user }) => { const b = await body(req); const r = saveKeys(cfg, b); audit(db, user.id, 'claves', { cambiadas: r.changed }); return r.status; }, { admin: true });
 route('GET', '/api/users', () => db.prepare('SELECT id, username, display_name, role, active, created_at, ai_daily_cap_usd, ai_monthly_cap_usd FROM users').all()
   .map(u => { const p = getProfile(db, u.id), b = getBudget(db, u.id); return { ...u, style: p.style, horizon: p.horizon, setup: p.setup, budget: b.usd, lastSeen: db.prepare('SELECT MAX(created_at) t FROM sessions WHERE user_id = ?').get(u.id).t }; }), { admin: true });
-route('POST', '/api/users/:id/password', async ({ req, user, p }) => { const b = await body(req); resetPassword(db, user.id, Number(p.id), b.password); return { ok: true }; }, { admin: true });
+route('POST', '/api/users/:id/password', async ({ req, user, p }) => { const b = await body(req); const pw = String(b.password || '').trim() || autoPassword(); resetPassword(db, user.id, Number(p.id), pw); return { ok: true, password: b.password ? undefined : pw }; }, { admin: true });
 route('POST', '/api/users/:id/active', async ({ req, user, p }) => { const b = await body(req); setActive(db, user.id, Number(p.id), !!b.active); return { ok: true }; }, { admin: true });
-route('POST', '/api/users', async ({ req }) => { const b = await body(req); return { id: createUser(db, { username: b.username, password: b.password, role: b.role === 'admin' ? 'admin' : 'user', displayName: b.displayName, dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
+route('POST', '/api/users', async ({ req }) => { const b = await body(req); const pw = String(b.password || '').trim() || autoPassword(); return { password: b.password ? undefined : pw, id: createUser(db, { username: b.username, password: pw, role: b.role === 'admin' ? 'admin' : 'user', displayName: b.displayName, dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
 
 route('GET', '/api/comments', ({ url }) => db.prepare('SELECT c.*, u.username FROM comments c JOIN users u ON u.id = c.user_id WHERE subject = ? ORDER BY ts').all(url.searchParams.get('subject') || ''));
 route('POST', '/api/comments', async ({ req, user }) => { const b = await body(req); const t = String(b.body || '').trim().slice(0, 1000); if (!t) throw new Error('El comentario está vacío.'); db.prepare('INSERT INTO comments (subject, user_id, ts, body) VALUES (?, ?, ?, ?)').run(String(b.subject).slice(0, 80), user.id, nowIso(), t); return { ok: true }; });
