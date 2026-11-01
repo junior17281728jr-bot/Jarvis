@@ -4,6 +4,7 @@
 # Usa solo lo del nivel gratis: e2-micro en us-east1 (Carolina del Sur), disco estándar de 30 GB.
 set -euo pipefail
 KEY="${1:-}"
+WANT_PROJECT="${2:-}"   # opcional: el proyecto exacto (por ejemplo, si lo hace un amigo con acceso a tu proyecto)
 REPO_RAW="https://raw.githubusercontent.com/junior17281728jr-bot/Jarvis/main"
 ZONE="us-east1-b"
 
@@ -16,7 +17,7 @@ if ! gcloud auth print-access-token >/dev/null 2>&1 && [ -d "$SAVED" ] && CLOUDS
 fi
 
 echo "== 1/4 Buscando tu proyecto"
-PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
+PROJECT="${WANT_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}"
 if [ -z "$PROJECT" ] || [ "$PROJECT" = "(unset)" ]; then
   PROJECT="$(gcloud projects list --format='value(projectId)' --limit=1 2>/dev/null || true)"
 fi
