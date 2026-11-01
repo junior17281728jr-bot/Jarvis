@@ -15,9 +15,13 @@ export function config() {
   const num = (k, d) => (e[k] !== undefined && e[k] !== '' ? Number(e[k]) : d);
   return {
     port: num('PORT', 8080),
-    host: e.HOST || '127.0.0.1',
-    dbPath: e.DB_PATH || resolve(process.cwd(), 'data/jarvis.db'),
-    backupDir: e.BACKUP_DIR || resolve(process.cwd(), 'data/backups'),
+    // En Railway escucha hacia afuera (Railway pone HTTPS delante) y guarda los datos en el volumen
+    host: e.HOST || (e.RAILWAY_ENVIRONMENT || e.RAILWAY_PROJECT_ID ? '0.0.0.0' : '127.0.0.1'),
+    dbPath: e.DB_PATH || (e.RAILWAY_VOLUME_MOUNT_PATH ? resolve(e.RAILWAY_VOLUME_MOUNT_PATH, 'jarvis.db') : resolve(process.cwd(), 'data/jarvis.db')),
+    backupDir: e.BACKUP_DIR || (e.RAILWAY_VOLUME_MOUNT_PATH ? resolve(e.RAILWAY_VOLUME_MOUNT_PATH, 'backups') : resolve(process.cwd(), 'data/backups')),
+    platform: e.RAILWAY_ENVIRONMENT || e.RAILWAY_PROJECT_ID ? 'railway' : 'servidor',
+    // Sin volumen en Railway, los datos se borran en cada actualización: la app avisa
+    persistent: !(e.RAILWAY_ENVIRONMENT || e.RAILWAY_PROJECT_ID) || !!e.RAILWAY_VOLUME_MOUNT_PATH || !!e.DB_PATH,
     // IA (las claves solo viven en .env, nunca en la base de datos ni en registros)
     openaiKey: e.OPENAI_API_KEY || '',
     openaiModel: e.OPENAI_MODEL || '', // vacío = JARVIS elige el más barato disponible

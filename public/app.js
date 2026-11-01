@@ -1145,7 +1145,8 @@ async function render() {
   window.scrollTo(0, 0);
 }
 async function pulse() {
-  try { const s = await api('/api/status'); const alive = s.heartbeat && Date.now() - Date.parse(s.heartbeat) < 20 * 60e3; $('#sys-dot').className = 'status-dot ' + (alive && s.ledger.ok ? 'on' : 'off'); $('#sys-text').textContent = alive ? (s.motor.running ? 'Trabajando' : 'En pausa') : 'Sin latido'; } catch { /* sin sesión */ }
+  try { const s = await api('/api/status');
+    if (s.storage && !s.storage.persistent && !document.getElementById('nopersist')) document.querySelector('main').insertAdjacentHTML('beforebegin', '<div id="nopersist" class="msg err" style="text-align:center;padding:10px;font-weight:700">⚠️ Falta el volumen en Railway: tus datos se borran en cada actualización. Agrega un volumen montado en /data.</div>'); const alive = s.heartbeat && Date.now() - Date.parse(s.heartbeat) < 20 * 60e3; $('#sys-dot').className = 'status-dot ' + (alive && s.ledger.ok ? 'on' : 'off'); $('#sys-text').textContent = alive ? (s.motor.running ? 'Trabajando' : 'En pausa') : 'Sin latido'; } catch { /* sin sesión */ }
 }
 async function boot() {
   await loadBrand();

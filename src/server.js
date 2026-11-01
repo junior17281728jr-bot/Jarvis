@@ -204,7 +204,7 @@ route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league
     'Datos de Yahoo son de respaldo no oficial; con claves de Alpaca la calidad mejora.',
   ] }));
 
-route('GET', '/api/status', () => ({ motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
+route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
   sources: { alpaca: !!cfg.alpacaKey, openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey }, db: { bars: db.prepare('SELECT COUNT(*) n FROM stock_bars').get().n, draws: db.prepare('SELECT COUNT(*) n FROM lottery_draws').get().n, ledger: db.prepare('SELECT COUNT(*) n FROM ledger').get().n },
   dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) }));
 route('GET', '/api/summary', () => ({ text: dailySummary(db) }));
