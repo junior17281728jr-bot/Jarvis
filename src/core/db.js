@@ -180,6 +180,11 @@ CREATE TABLE credit_requests (
 CREATE INDEX credit_requests_user ON credit_requests (user_id, status);
 `,
   },
+  {
+    id: 7,
+    name: 'usuarios_en_linea',
+    sql: `ALTER TABLE users ADD COLUMN last_seen_at TEXT;`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */

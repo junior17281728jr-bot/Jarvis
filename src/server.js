@@ -241,9 +241,10 @@ route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league
     'Datos de Yahoo son de respaldo no oficial; con claves de Alpaca la calidad mejora.',
   ] }));
 
-route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, version: (() => { try { return readFileSync(join(dirname(cfg.dbPath), 'version.txt'), 'utf8').trim().slice(0, 7); } catch { return null; } })(), publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
+const fullStatus = () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, version: (() => { try { return readFileSync(join(dirname(cfg.dbPath), 'version.txt'), 'utf8').trim().slice(0, 7); } catch { return null; } })(), publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
   sources: { alpaca: !!cfg.alpacaKey, openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey }, db: { bars: db.prepare('SELECT COUNT(*) n FROM stock_bars').get().n, draws: db.prepare('SELECT COUNT(*) n FROM lottery_draws').get().n, ledger: db.prepare('SELECT COUNT(*) n FROM ledger').get().n },
-  dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) }));
+  dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) });
+route('GET', '/api/status', ({ user }) => user.role === 'admin' ? fullStatus() : { motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), ledger: { ok: verifyLedger(db).ok }, storage: { persistent: true } });
 route('GET', '/api/summary', () => ({ text: dailySummary(db) }));
 
 route('POST', '/api/motor/:action', async ({ p, req }) => {
@@ -270,7 +271,7 @@ route('POST', '/api/settings', async ({ req, user }) => {
 route('GET', '/api/keys', () => keyStatus(cfg), { admin: true });
 route('POST', '/api/keys', async ({ req, user }) => { const b = await body(req); const r = saveKeys(cfg, b); audit(db, user.id, 'claves', { cambiadas: r.changed }); return r.status; }, { admin: true });
 route('GET', '/api/users', () => db.prepare('SELECT id, username, display_name, role, active, created_at, ai_daily_cap_usd, ai_monthly_cap_usd FROM users').all()
-  .map(u => { const p = getProfile(db, u.id), b = getBudget(db, u.id); return { ...u, style: p.style, horizon: p.horizon, setup: p.setup, budget: b.usd, lastSeen: db.prepare('SELECT MAX(created_at) t FROM sessions WHERE user_id = ?').get(u.id).t }; }), { admin: true });
+  .map(u => { const p = getProfile(db, u.id), b = getBudget(db, u.id); return { ...u, style: p.style, horizon: p.horizon, setup: p.setup, budget: b.usd, lastSeen: db.prepare('SELECT last_seen_at FROM users WHERE id = ?').get(u.id).last_seen_at || db.prepare('SELECT MAX(created_at) t FROM sessions WHERE user_id = ?').get(u.id).t }; }), { admin: true });
 route('POST', '/api/users/:id/password', async ({ req, user, p }) => { const b = await body(req); const pw = String(b.password || '').trim() || autoPassword(); resetPassword(db, user.id, Number(p.id), pw); return { ok: true, password: b.password ? undefined : pw }; }, { admin: true });
 route('POST', '/api/users/:id/active', async ({ req, user, p }) => { const b = await body(req); setActive(db, user.id, Number(p.id), !!b.active); return { ok: true }; }, { admin: true });
 route('POST', '/api/users', async ({ req }) => { const b = await body(req); const pw = String(b.password || '').trim() || autoPassword(); return { password: b.password ? undefined : pw, id: createUser(db, { username: b.username, password: pw, role: b.role === 'admin' ? 'admin' : 'user', displayName: b.displayName, dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
@@ -371,6 +372,10 @@ route('GET', '/api/real', ({ user }) => realSummary(db, user.id));
 route('POST', '/api/real', async ({ req, user }) => { const b = await body(req); return addReal(db, user.id, { ...b, amountUsd: Number(b.amountUsd), price: Number(b.price), stakeRd: Number(b.stakeRd), symbol: b.symbol ? String(b.symbol).toUpperCase() : undefined }); });
 route('POST', '/api/real/:id/close', async ({ req, user, p }) => { const b = await body(req); return closeReal(db, user.id, Number(p.id), { sellPrice: Number(b.sellPrice) }); });
 
+// ---------- En línea ----------
+const seenAt = new Map();
+function markSeen(id) { const now = Date.now(); if (now - (seenAt.get(id) || 0) < 60e3) return; seenAt.set(id, now); db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(new Date(now).toISOString(), id); }
+
 // ---------- Servidor ----------
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -379,6 +384,7 @@ const server = createServer(async (req, res) => {
       const r = routes.find(r => r.method === req.method && r.re.test(url.pathname));
       if (!r) return send(res, 404, { error: 'Ruta no encontrada.' });
       const user = userFromToken(db, tokenOf(req));
+      if (user) markSeen(user.id);
       if (r.auth && !user) return send(res, 401, { error: 'Inicia sesión.' });
       if (r.admin && user?.role !== 'admin') return send(res, 403, { error: 'Solo el administrador puede hacer esto.' });
       const out = await r.handler({ req, res, url, user, p: url.pathname.match(r.re).groups || {} });

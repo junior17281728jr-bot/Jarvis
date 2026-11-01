@@ -442,3 +442,4 @@ details.card>summary{cursor:pointer}
 .chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--panel2)}
 .chip.good{background:var(--good-bg);color:var(--good)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.bad{background:var(--bad-bg);color:var(--bad)}
 .pbase .bar{height:9px;border-radius:9px;background:var(--panel2);overflow:hidden}.pbase .bar span{display:block;height:100%}
+.onl{margin:8px 0 4px;padding:8px 12px;border-radius:10px;background:var(--panel2)}
