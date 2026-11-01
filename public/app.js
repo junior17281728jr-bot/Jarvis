@@ -183,7 +183,12 @@ async function showAuth() {
       <label class="chk" style="margin-top:8px"><input type="checkbox" id="rem" checked> Recordar mi usuario en este equipo</label>
       <div class="note" style="margin-top:4px">La contraseña la puede guardar tu iPhone (te lo ofrece al entrar) y después se pone sola con Face ID. Además, la sesión dura 30 días en este equipo.</div>
       <button class="btn" style="margin-top:10px">${needsSetup ? 'Crear y entrar' : 'Entrar'}</button>
-    </div><div class="msg err" id="am"></div></form></div>`;
+    </div><div class="msg err" id="am"></div>
+    ${needsSetup ? '' : `<div class="tvbox"><button type="button" class="linkbtn" id="tvopen">📺 Entrar con código (TV)</button>
+      <div id="tvform" class="hide"><div class="note" style="text-align:center">En tu celular abre JARVIS → <b>Mi perfil</b> → <b>Código para la TV</b>. Escribe aquí ese código (4 números y 2 letras).</div>
+      <input id="tvc" class="tvcode" maxlength="8" placeholder="1234 AB" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button type="button" class="btn" id="tvgo" style="width:100%">Entrar</button></div></div>`}
+    </form></div>`;
   const pick = u => {
     $('#u').value = u; $('#userbox').classList.add('hide'); $('#passbox').classList.remove('hide');
     const a = accs.find(x => x.u === u); $('#who').textContent = `Entrando como ${a?.name || u}`; $('#who').classList.remove('hide');
@@ -193,6 +198,11 @@ async function showAuth() {
   document.querySelectorAll('.acct-x').forEach(b => b.onclick = () => { forgetAccount(b.dataset.x); showAuth(); });
   if ($('#other')) $('#other').onclick = () => { $('#u').value = ''; $('#who').classList.add('hide'); $('#userbox').classList.remove('hide'); $('#passbox').classList.remove('hide'); document.querySelectorAll('.acct').forEach(b => b.classList.remove('on')); $('#u').focus(); };
   if (accs.length === 1) pick(accs[0].u);
+  if ($('#tvopen')) {
+    $('#tvopen').onclick = () => { $('#tvform').classList.toggle('hide'); $('#tvc').focus(); };
+    const tvGo = async () => { try { await api('/api/tvlogin', { method: 'POST', body: { code: $('#tvc').value } }); boot(); } catch (err) { $('#am').textContent = err.message; } };
+    $('#tvgo').onclick = tvGo; $('#tvc').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); tvGo(); } };
+  }
   $('#auth').onsubmit = async e => {
     e.preventDefault();
     try {
@@ -440,6 +450,8 @@ views.perfil = async () => {
   const p = d.profile, first = !p.setup;
   const card = (group, key, o) => `<button type="button" class="opt${(group === 'style' ? p.style : p.horizon) === key ? ' on' : ''}" data-g="${group}" data-k="${key}">${o.icon ? `<span class="oi">${o.icon}</span>` : ''}<b>${esc(o.label)}</b><span class="note">${esc(o.desc)}</span>${o.pct ? `<span class="note">"Sí, invierte" = ${Math.round(o.pct.verde * 100)}% de tu dinero</span>` : ''}</button>`;
   return `${first ? `<section class="card welcome"><div class="s10-h">Bienvenido${ME?.displayName ? ', ' + esc(ME.displayName) : ''}</div><div class="bp-v">Cuéntale a JARVIS cómo eres</div><p class="note">El núcleo (la investigación, el mapa y el historial) es el mismo para todos. Esto solo cambia cuánto te sugiere poner y en qué orden te muestra las opciones. Lo puedes cambiar cuando quieras.</p></section>` : `<div><h1>Mi perfil</h1><p class="sub">JARVIS se adapta a tu forma de invertir. Tu amigo tiene el suyo: cada uno ve lo mismo del núcleo, pero ordenado para sí.</p></div>`}
+  <section class="card tvcard"><h2>📺 Código para la TV</h2><p class="note">Para entrar rápido en la TV o en otro equipo sin escribir tu usuario ni contraseña. En la TV toca <b>"Entrar con código (TV)"</b> y escribe este código. Sirve <b>10 minutos</b> y <b>una sola vez</b>.</p>
+    <div id="tvshow"></div><button type="button" class="btn" id="tvnew">Crear código</button></section>
   <form id="pf" class="grid" style="gap:16px">
     <section class="card"><h2>Tu nombre</h2><label style="max-width:360px;margin-top:8px">Cómo quieres que te llame<input id="pn" maxlength="30" value="${esc(d.displayName || '')}"></label></section>
     <section class="card"><h2>¿Cómo eres con el riesgo?</h2><div class="opts" style="margin-top:10px">${Object.entries(d.styles).map(([k, o]) => card('style', k, o)).join('')}</div></section>
@@ -459,6 +471,14 @@ views.perfil = async () => {
     <button class="btn">Cambiar</button></form><div class="msg" id="pwm"></div></section>`;
 };
 views.perfil.after = () => {
+  let tvTick = null;
+  $('#tvnew').onclick = async () => {
+    try { const r = await api('/api/tvcode', { method: 'POST' }); clearInterval(tvTick);
+      const paint = () => { const s = Math.max(0, Math.round((Date.parse(r.expiresAt) - Date.now()) / 1000)); if (!$('#tvshow')) return clearInterval(tvTick);
+        $('#tvshow').innerHTML = s ? `<div class="tvbig">${esc(r.code)}</div><div class="note" style="text-align:center">Vence en ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}</div>` : '<div class="note">Venció. Crea otro.</div>'; if (!s) clearInterval(tvTick); };
+      paint(); tvTick = setInterval(paint, 1000); $('#tvnew').textContent = 'Crear otro código';
+    } catch (err) { $('#tvshow').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; }
+  };
   const sel = { style: null, horizon: null };
   document.querySelectorAll('.opt').forEach(b => {
     if (b.classList.contains('on')) sel[b.dataset.g] = b.dataset.k;

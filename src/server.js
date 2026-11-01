@@ -7,7 +7,7 @@ import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, config } from './core/config.js';
 import { openDb, getSetting, setSetting, audit, nowIso, activity } from './core/db.js';
-import { createUser, login, logout, userFromToken, countUsers, changeOwnPassword, resetPassword, setActive, setDisplayName } from './core/auth.js';
+import { createUser, login, logout, makeTvCode, loginWithTvCode, userFromToken, countUsers, changeOwnPassword, resetPassword, setActive, setDisplayName } from './core/auth.js';
 import { verifyLedger } from './core/ledger.js';
 import { recentErrors } from './core/jobs.js';
 import { runCycle, startMotor, pauseMotor, resumeMotor, stopMotor, motorState, taskStatus } from './motor/cycle.js';
@@ -106,6 +106,8 @@ route('POST', '/api/setup', async ({ req }) => {
   return login(db, b.username, b.password);
 }, { auth: false });
 route('POST', '/api/login', async ({ req }) => { const b = await body(req); return login(db, b.username, b.password); }, { auth: false });
+route('POST', '/api/tvcode', ({ user }) => makeTvCode(db, user.id));
+route('POST', '/api/tvlogin', async ({ req }) => { const b = await body(req); return loginWithTvCode(db, b.code); }, { auth: false });
 route('POST', '/api/logout', ({ req }) => { logout(db, tokenOf(req)); return { ok: true }; });
 route('GET', '/api/me', ({ user }) => ({ ...user, profile: getProfile(db, user.id) }));
 route('GET', '/api/profile', ({ user }) => { const p = getProfile(db, user.id), b = getBudget(db, user.id); return { profile: p, budget: b, displayName: user.displayName, styles: STYLES, horizons: HORIZONS, line: profileLine(p, b.usd) }; });

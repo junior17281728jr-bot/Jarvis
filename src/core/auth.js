@@ -1,5 +1,5 @@
 // Usuarios, contraseñas y sesiones. Cada usuario tiene sus datos privados y su propio tope de IA.
-import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { scryptSync, randomBytes, timingSafeEqual, randomInt } from 'node:crypto';
 import { nowIso, audit } from './db.js';
 
 export function hashPassword(pw) {
@@ -37,11 +37,43 @@ export function login(db, username, password) {
     throw new Error('Usuario o contraseña incorrectos.');
   }
   failures.delete(username);
+  return newSession(db, u, 'inicio_sesion');
+}
+function newSession(db, u, how) {
   const token = randomBytes(32).toString('hex');
   const exp = new Date(Date.now() + SESSION_DAYS * 864e5).toISOString();
   db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, u.id, nowIso(), exp);
-  audit(db, u.id, 'inicio_sesion');
+  audit(db, u.id, how);
   return { token, user: publicUser(u) };
+}
+
+// ---------- 📺 Código para la TV: 4 números + 2 letras, sirve 10 minutos y una sola vez ----------
+const TV_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // sin I ni O (se confunden con 1 y 0)
+const tvCodes = new Map(); // código -> { userId, expires }
+const tvFails = { n: 0, since: 0, until: 0 };
+const normCode = c => String(c || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+export function makeTvCode(db, userId) {
+  for (const [c, v] of tvCodes) if (v.userId === userId || v.expires < Date.now()) tvCodes.delete(c);
+  let code;
+  do { code = String(randomInt(0, 10000)).padStart(4, '0') + TV_LETTERS[randomInt(TV_LETTERS.length)] + TV_LETTERS[randomInt(TV_LETTERS.length)]; } while (tvCodes.has(code));
+  const expires = Date.now() + 10 * 60e3;
+  tvCodes.set(code, { userId, expires });
+  audit(db, userId, 'codigo_tv_creado');
+  return { code: `${code.slice(0, 4)} ${code.slice(4)}`, expiresAt: new Date(expires).toISOString() };
+}
+export function loginWithTvCode(db, code) {
+  const now = Date.now();
+  if (now < tvFails.until) throw new Error('Demasiados códigos equivocados. Espera 10 minutos y pide un código nuevo en tu celular.');
+  const c = normCode(code), v = tvCodes.get(c);
+  if (!v || v.expires < now) {
+    if (now - tvFails.since > 10 * 60e3) { tvFails.n = 0; tvFails.since = now; }
+    if (++tvFails.n >= 10) { tvFails.until = now + 10 * 60e3; tvFails.n = 0; }
+    throw new Error('Ese código no sirve o ya venció. Pide uno nuevo en tu celular (Mi perfil → Código para la TV).');
+  }
+  tvCodes.delete(c);
+  const u = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(v.userId);
+  if (!u) throw new Error('Ese usuario está desactivado.');
+  return newSession(db, u, 'inicio_sesion_tv');
 }
 
 export function userFromToken(db, token) {

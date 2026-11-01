@@ -443,3 +443,9 @@ details.card>summary{cursor:pointer}
 .chip.good{background:var(--good-bg);color:var(--good)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.bad{background:var(--bad-bg);color:var(--bad)}
 .pbase .bar{height:9px;border-radius:9px;background:var(--panel2);overflow:hidden}.pbase .bar span{display:block;height:100%}
 .onl{margin:8px 0 4px;padding:8px 12px;border-radius:10px;background:var(--panel2)}
+
+/* 📺 Código para la TV */
+.tvbox{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:10px}
+#tvform{display:grid;gap:10px}
+.tvcode{text-align:center;font-size:28px;letter-spacing:.25em;font-family:var(--mono);text-transform:uppercase}
+.tvbig{font-family:var(--mono);font-size:44px;font-weight:800;letter-spacing:.18em;text-align:center;margin:10px 0 2px;color:var(--accent)}
