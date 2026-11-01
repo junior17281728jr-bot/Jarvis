@@ -68,12 +68,22 @@ login_short() {
   # Si al pegar el código llegó partido en varias líneas, junta los pedazos
   while IFS= read -r -t 2 more </dev/tty; do code+="${more//[[:space:]]/}"; done
   echo "   Código recibido (${#code} letras). Revisando con Google…"
+  local asked answered t1=$SECONDS
+  answered=$(grep -aoiE '\((Y/n|y/N)\)' "$ST/log" 2>/dev/null | wc -l)
   echo "$code" > "$ST/in"
-  t0=$SECONDS; while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - t0)) -lt 60 ]; do sleep 1; done
-  ACC=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
+  # Si Google hace otra pregunta de sí/no después del código, se contesta "sí" sola
+  t0=$SECONDS
+  while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - t0)) -lt 120 ]; do
+    asked=$(grep -aoiE '\((Y/n|y/N)\)' "$ST/log" 2>/dev/null | wc -l)
+    if [ "$asked" -gt "$answered" ]; then echo Y > "$ST/in"; answered=$asked; fi
+    if [ $((SECONDS - t1)) -ge 15 ]; then echo "   …sigo esperando a Google"; t1=$SECONDS; fi
+    sleep 1
+  done
+  ACC=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)
   if [ -z "$ACC" ]; then
-    echo "❌ Google no aceptó el código. Pega otra vez el comando: te doy un enlace nuevo."
-    grep -a -i error "$ST/log" | tail -2 || true
+    echo "❌ Google no aceptó el código. Esto fue lo último que dijo Google (mándale captura a Claude):"
+    tr -d '\r' < "$ST/log" | grep -av '^[[:space:]]*$' | grep -av 'accounts.google.com' | tail -6 | sed 's/^/   | /' || true
+    cp "$ST/log" "$HOME/jarvis-permiso.log" 2>/dev/null || true
     kill "$pid" 2>/dev/null || true; rm -rf "$ST"; exit 1
   fi
   rm -rf "$ST"
