@@ -25,42 +25,54 @@ fi
 gcloud config set project "$PROJECT" >/dev/null
 echo "   Proyecto: $PROJECT"
 
-# Si la app de Google Cloud no dio permiso a la terminal, se pide con un enlace CORTO (fácil de tocar en el celular)
+# Si la app de Google Cloud no dio permiso a la terminal, se pide con un enlace CORTO (fácil de tocar en el celular).
+# El pedido de permiso queda vivo aparte: si la pantalla se desconecta al ir a Safari, pegar el MISMO comando
+# otra vez muestra el mismo enlace y pide el código, sin empezar de cero.
 login_short() {
+  local ST="$HOME/.jarvis-login"; mkdir -p "$ST"
+  local pid=""; [ -f "$ST/pid" ] && pid=$(cat "$ST/pid")
+  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$ST"/*; mkfifo "$ST/in"
+    # 'script' le da pantalla propia; el tubo 'in' se queda abierto para recibir el código cuando vuelvas
+    setsid nohup bash -c 'exec 3<>"$1/in"; exec script -qfec "gcloud auth login --no-launch-browser" /dev/null <&3 >"$1/log" 2>&1' _ "$ST" >/dev/null 2>&1 &
+    echo $! > "$ST/pid"; pid=$!
+  fi
   echo
   echo "== Google necesita que confirmes que eres tú (solo esta vez)"
-  coproc GL { gcloud auth login --no-launch-browser 2>&1; }
-  local gpid=$GL_PID
-  exec 5<&"${GL[0]}" 6>&"${GL[1]}"   # copias fijas: bash cierra las del coproc cuando termina
-  local buf="" chunk="" url="" sentY="" t0=$SECONDS rc=0
-  while [ -z "$url" ] && [ $((SECONDS - t0)) -lt 90 ]; do
-    chunk=""
-    if IFS= read -r -t 2 chunk <&5; then buf+="$chunk"$'\n'; else rc=$?; buf+="$chunk"; if [ "$rc" -le 128 ]; then break; fi; fi
-    if [[ -z "$sentY" && "$buf" == *"(Y/n)"* ]]; then echo "Y" >&6 || true; sentY=1; fi
-    url=$(grep -o 'https://accounts.google.com[^[:space:]]*' <<<"$buf" | head -1 || true)
+  local url="" t0=$SECONDS
+  while [ -z "$url" ] && [ $((SECONDS - t0)) -lt 90 ] && kill -0 "$pid" 2>/dev/null; do
+    if [ ! -f "$ST/y" ] && grep -q '(Y/n)' "$ST/log" 2>/dev/null; then echo Y > "$ST/in"; touch "$ST/y"; fi
+    url=$(grep -ao 'https://accounts.google.com[^[:space:]]*' "$ST/log" 2>/dev/null | head -1 || true)
+    [ -n "$url" ] || sleep 1
   done
-  if [ -z "$url" ]; then echo "❌ No pude pedir el permiso. Mándale una captura a Claude."; exit 1; fi
-  local enc short=""
-  enc=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=""))' "$url")
-  short=$(curl -fsS -m 10 "https://tinyurl.com/api-create.php?url=$enc" 2>/dev/null || true)
-  [[ "$short" == https://* ]] || short=$(curl -fsS -m 10 "https://is.gd/create.php?format=simple&url=$enc" 2>/dev/null || true)
-  [[ "$short" == https://* ]] || short="$url"
+  if [ -z "$url" ]; then echo "❌ No pude pedir el permiso. Mándale una captura a Claude:"; tail -5 "$ST/log" 2>/dev/null; rm -rf "$ST"; exit 1; fi
+  local short=""
+  if [ -f "$ST/short" ]; then short=$(cat "$ST/short"); else
+    local enc; enc=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=""))' "$url")
+    short=$(curl -fsS -m 10 "https://tinyurl.com/api-create.php?url=$enc" 2>/dev/null || true)
+    [[ "$short" == https://* ]] || short=$(curl -fsS -m 10 "https://is.gd/create.php?format=simple&url=$enc" 2>/dev/null || true)
+    [[ "$short" == https://* ]] || short="$url"
+    echo "$short" > "$ST/short"
+  fi
   echo
   echo "👉 1) Toca este enlace (o escríbelo en Safari):"
   echo
   echo "      $short"
   echo
   echo "👉 2) Elige tu Gmail y toca Permitir. Copia el código que te da Google."
+  echo "      Si al volver esta pantalla se desconectó, pega otra vez el MISMO comando: te vuelve a pedir el código."
   echo
   local code=""
-  read -r -p "👉 3) Pega aquí el código y toca Intro: " code </dev/tty
-  echo "$code" >&6 || true
-  exec 6>&-
-  cat <&5 || true
-  exec 5<&-
-  wait "$gpid" 2>/dev/null || true
+  while [ -z "$code" ]; do read -r -p "👉 3) Pega aquí el código y toca Intro: " code </dev/tty; code="${code//[[:space:]]/}"; done
+  echo "$code" > "$ST/in"
+  t0=$SECONDS; while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - t0)) -lt 60 ]; do sleep 1; done
   ACC=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
-  if [ -z "$ACC" ]; then echo "❌ No quedó la sesión abierta. Pega otra vez el comando y repite con un código nuevo."; exit 1; fi
+  if [ -z "$ACC" ]; then
+    echo "❌ Google no aceptó el código. Pega otra vez el comando: te doy un enlace nuevo."
+    grep -a -i error "$ST/log" | tail -2 || true
+    kill "$pid" 2>/dev/null || true; rm -rf "$ST"; exit 1
+  fi
+  rm -rf "$ST"
   gcloud config set account "$ACC" >/dev/null
   gcloud config set project "$PROJECT" >/dev/null
   echo "✅ Listo, ya tengo permiso como $ACC"
