@@ -94,6 +94,26 @@ login_short() {
 ACC0=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)
 if [ -z "$ACC0" ] || ! gcloud auth print-access-token >/dev/null 2>&1; then login_short; fi
 
+# Google exige una cuenta de pago conectada al proyecto, aunque lo gratis no se cobra
+BILLING_ON=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null || true)
+if [ "$BILLING_ON" != "True" ]; then
+  echo "== Conectando tu cuenta de pago al proyecto (lo gratis no se cobra)"
+  gcloud services enable cloudbilling.googleapis.com >/dev/null 2>&1 || true
+  BA=$(gcloud billing accounts list --filter=open=true --format='value(name)' --limit=1 2>/dev/null || true)
+  if [ -n "$BA" ]; then
+    gcloud billing projects link "$PROJECT" --billing-account="$BA" >/dev/null
+    echo "   ✅ Conectada"
+  else
+    echo
+    echo "❌ Tu Google Cloud todavía no tiene la prueba gratis activada."
+    echo "   1) Abre en Safari:  https://console.cloud.google.com/freetrial"
+    echo "   2) Toca 'Comenzar gratis' / 'Activar' y llena tus datos."
+    echo "      Pide una tarjeta solo para verificar que eres una persona: no te cobra."
+    echo "   3) Cuando termine, vuelve aquí y pega el MISMO comando otra vez."
+    exit 1
+  fi
+fi
+
 echo "== 2/4 Activando Compute Engine (la primera vez tarda 1 o 2 minutos)"
 if ! gcloud services enable compute.googleapis.com 2>"${TMPDIR:-/tmp}/jv-err"; then
   cat "${TMPDIR:-/tmp}/jv-err"
