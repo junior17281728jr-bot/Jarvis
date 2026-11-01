@@ -88,6 +88,10 @@ function setupAllowed(req) {
   if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip) || ip.toLowerCase().startsWith('fd7a:115c:a1e0')) return true; // http://jarvis:8080
   return false;
 }
+/** Si Tailscale pide permiso para el enlace público, el servidor guarda ese enlace de activación en funnel.log. */
+function funnelEnableLink() {
+  try { const m = readFileSync(join(dirname(cfg.dbPath), 'funnel.log'), 'utf8').match(/https:\/\/login\.tailscale\.com\/[^\s"'<>]+/); return m ? m[0] : null; } catch { return null; }
+}
 /** Enlace público para la TV o cualquier navegador (lo escribe el servidor cuando Tailscale Funnel queda activo). */
 function publicUrl() {
   try { const u = readFileSync(join(dirname(cfg.dbPath), 'public-url.txt'), 'utf8').trim(); return /^https:\/\/[\w.-]+$/.test(u) ? u : null; } catch { return null; }
@@ -236,7 +240,7 @@ route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league
     'Datos de Yahoo son de respaldo no oficial; con claves de Alpaca la calidad mejora.',
   ] }));
 
-route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, publicUrl: publicUrl(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
+route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
   sources: { alpaca: !!cfg.alpacaKey, openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey }, db: { bars: db.prepare('SELECT COUNT(*) n FROM stock_bars').get().n, draws: db.prepare('SELECT COUNT(*) n FROM lottery_draws').get().n, ledger: db.prepare('SELECT COUNT(*) n FROM ledger').get().n },
   dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) }));
 route('GET', '/api/summary', () => ({ text: dailySummary(db) }));
