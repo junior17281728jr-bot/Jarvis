@@ -1,6 +1,7 @@
 // Servidor de JARVIS: API + pantallas + ciclo automático. Sin dependencias externas.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, config } from './core/config.js';
@@ -72,9 +73,21 @@ const tradeLimits = user => { const b = getBudget(db, user.id).usd; return { min
 const routes = [];
 const route = (method, path, handler, { auth = true, admin = false } = {}) => routes.push({ method, re: new RegExp('^' + path.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), handler, auth, admin });
 
+/** Con enlace público (Tailscale Funnel), el primer usuario solo se crea desde tu red privada: nadie de internet puede adueñarse de JARVIS. */
+function setupAllowed(req) {
+  if (process.env.SETUP_TAILNET_ONLY !== '1') return true;
+  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(ip) || ip.toLowerCase().startsWith('fd7a:115c:a1e0')) return true; // http://jarvis:8080
+  return false;
+}
+/** Enlace público para la TV o cualquier navegador (lo escribe el servidor cuando Tailscale Funnel queda activo). */
+function publicUrl() {
+  try { const u = readFileSync(join(dirname(cfg.dbPath), 'public-url.txt'), 'utf8').trim(); return /^https:\/\/[\w.-]+$/.test(u) ? u : null; } catch { return null; }
+}
 route('GET', '/api/setup', () => ({ needsSetup: countUsers(db) === 0 }), { auth: false });
 route('POST', '/api/setup', async ({ req }) => {
   if (countUsers(db) > 0) throw Object.assign(new Error('JARVIS ya está configurado.'), { code: 403 });
+  if (!setupAllowed(req)) throw Object.assign(new Error('Por seguridad, el primer usuario se crea desde tu celular con Tailscale abierto: entra a http://jarvis:8080'), { code: 403 });
   const b = await body(req);
   createUser(db, { username: b.username, password: b.password, role: 'admin' });
   return login(db, b.username, b.password);
@@ -215,7 +228,7 @@ route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league
     'Datos de Yahoo son de respaldo no oficial; con claves de Alpaca la calidad mejora.',
   ] }));
 
-route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
+route('GET', '/api/status', () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, publicUrl: publicUrl(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
   sources: { alpaca: !!cfg.alpacaKey, openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey }, db: { bars: db.prepare('SELECT COUNT(*) n FROM stock_bars').get().n, draws: db.prepare('SELECT COUNT(*) n FROM lottery_draws').get().n, ledger: db.prepare('SELECT COUNT(*) n FROM ledger').get().n },
   dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) }));
 route('GET', '/api/summary', () => ({ text: dailySummary(db) }));
