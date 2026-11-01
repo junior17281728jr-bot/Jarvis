@@ -16,7 +16,9 @@ import { unlinkSync, existsSync } from 'node:fs';
 const path = process.argv[2] || 'data/demo.db';
 for (const f of [path, path + '-wal', path + '-shm']) if (existsSync(f)) unlinkSync(f);
 const db = openDb(path);
-createUser(db, { username: 'junior', password: 'demo-jarvis-2026', role: 'admin' });
+createUser(db, { username: 'junior', password: 'demo-jarvis-2026', role: 'admin', displayName: 'Junior' });
+createUser(db, { username: 'amigo', password: 'demo-jarvis-2026', displayName: 'Mi amigo' });
+{ const { saveProfile } = await import('./motor/profile.js'); saveProfile(db, 1, { style: 'equilibrado', horizon: 'medio' }); saveProfile(db, 2, { style: 'conservador', horizon: 'largo', interests: { loterias: false } }); }
 ensureAgents(db); seedAgenda(db);
 const syms = ['SPY', 'MSFT', 'AAPL', 'NVDA', 'AMZN', 'TSLA', 'KO', 'JPM'];
 const allBars = syms.map((s, i) => syntheticBars(900, { seed: i + 3, start: [580, 420, 210, 120, 180, 260, 62, 210][i], drift: [0.0004, 0.0007, 0.0005, 0.0012, 0.0006, 0.0002, 0.0002, 0.0005][i], vol: [0.01, 0.014, 0.015, 0.028, 0.018, 0.033, 0.009, 0.014][i], from: '2023-03-01' }));

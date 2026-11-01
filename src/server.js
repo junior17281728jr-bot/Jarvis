@@ -5,7 +5,7 @@ import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, config } from './core/config.js';
 import { openDb, getSetting, setSetting, audit, nowIso } from './core/db.js';
-import { createUser, login, logout, userFromToken, countUsers } from './core/auth.js';
+import { createUser, login, logout, userFromToken, countUsers, changeOwnPassword, resetPassword, setActive, setDisplayName } from './core/auth.js';
 import { verifyLedger } from './core/ledger.js';
 import { recentErrors } from './core/jobs.js';
 import { runCycle, startMotor, pauseMotor, resumeMotor, stopMotor, motorState, taskStatus } from './motor/cycle.js';
@@ -32,6 +32,7 @@ import { stockAnalysis, lotteryAnalysis, explainAnalysis, analysisHistory, fetch
 import { historyList, performance, addReal, closeReal, realSummary } from './motor/track.js';
 import { sendPush } from './core/notify.js';
 import { mapView } from './motor/map.js';
+import { getProfile, saveProfile, profileLine, STYLES, HORIZONS } from './motor/profile.js';
 import { getBudget, saveBudget, sizeFor, evidence, finder, bigBetCheck } from './motor/sizing.js';
 import { publicBrand, saveBrand, logoFile, manifest } from './core/brand.js';
 import { setTradingDays } from './stocks/market.js';
@@ -80,12 +81,22 @@ route('POST', '/api/setup', async ({ req }) => {
 }, { auth: false });
 route('POST', '/api/login', async ({ req }) => { const b = await body(req); return login(db, b.username, b.password); }, { auth: false });
 route('POST', '/api/logout', ({ req }) => { logout(db, tokenOf(req)); return { ok: true }; });
-route('GET', '/api/me', ({ user }) => user);
+route('GET', '/api/me', ({ user }) => ({ ...user, profile: getProfile(db, user.id) }));
+route('GET', '/api/profile', ({ user }) => { const p = getProfile(db, user.id), b = getBudget(db, user.id); return { profile: p, budget: b, displayName: user.displayName, styles: STYLES, horizons: HORIZONS, line: profileLine(p, b.usd) }; });
+route('POST', '/api/profile', async ({ req, user }) => {
+  const b = await body(req);
+  if (b.displayName !== undefined) setDisplayName(db, user.id, b.displayName);
+  const p = saveProfile(db, user.id, b);
+  if (b.budget) saveBudget(db, user.id, b.budget, { isAdmin: user.role === 'admin' });
+  audit(db, user.id, 'perfil', { style: p.style, horizon: p.horizon });
+  return { profile: p, line: profileLine(p, getBudget(db, user.id).usd) };
+});
+route('POST', '/api/me/password', async ({ req, user }) => { const b = await body(req); changeOwnPassword(db, user.id, b.current, b.next, tokenOf(req)); return { ok: true }; });
 route('GET', '/api/brand', () => publicBrand(db), { auth: false });
 route('POST', '/api/brand', async ({ req, user }) => { const b = await body(req); const out = saveBrand(db, b); audit(db, user.id, 'marca', Object.keys(b).filter(k => k !== 'logo').concat(b.logo ? ['logo'] : [])); return out; }, { admin: true });
 
 route('GET', '/api/home', ({ user }) => home(db, cfg, user));
-route('GET', '/api/activity', ({ url }) => db.prepare('SELECT * FROM activity WHERE id > ? ORDER BY id DESC LIMIT 60').all(Number(url.searchParams.get('after') || 0)));
+route('GET', '/api/activity', ({ url, user }) => db.prepare('SELECT * FROM activity WHERE id > ? AND (user_id IS NULL OR user_id = ?) ORDER BY id DESC LIMIT 60').all(Number(url.searchParams.get('after') || 0), user.id));
 route('GET', '/api/tv', ({ user }) => {
   const r = latestRanking(db);
   const lot = Object.keys(GAMES).map(g => { try { return pickOfTheDay(db, g); } catch { return null; } }).filter(Boolean);
@@ -97,7 +108,7 @@ route('GET', '/api/tv', ({ user }) => {
     lotteryLine: (() => { const s = liveMethodStats(db); const az = s.find(m => m.method === 'azar'); const better = s.filter(m => m.method !== 'azar' && az && m.n >= 30 && m.per100 > az.per100 + 10); return better.length ? `Loterías: ${better[0].method} va por encima del azar; falta confirmarlo.` : 'Loterías: ningún método le gana al azar todavía.'; })(),
     ranking: r.slice(0, 8).map(c => ({ symbol: c.symbol, light: c.light, confidence: c.confidence, probBeat: c.probBeat ?? null, score: c.score, why: c.reasons[0]?.text, price: c.price })),
     league: leagueTable(db), predictions: predictionStats(db), learning: st, lottery: lot, ai: aiSpend(db, cfg),
-    activity: db.prepare('SELECT * FROM activity ORDER BY id DESC LIMIT 40').all(),
+    activity: db.prepare('SELECT * FROM activity WHERE user_id IS NULL OR user_id = ? ORDER BY id DESC LIMIT 40').all(user.id),
     account: (() => { const acc = userAccount(user); const v = valuation(db, acc.id, s => getQuote(db, s)?.price); return { total: round(v.total, 2), start: v.start, returnPct: round(v.returnPct * 100, 2), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), positions: v.positions.length, fx: fx(db)?.rate ?? null }; })(),
     quotes: db.prepare('SELECT symbol, price, prev_close, kind, source, as_of FROM stock_quotes ORDER BY symbol').all().map(q => ({ ...q, changePct: q.prev_close ? round((q.price / q.prev_close - 1) * 100, 2) : null })),
     debate: (() => { const d = db.prepare('SELECT * FROM debates ORDER BY id DESC LIMIT 1').get(); return d ? { id: d.id, subject: d.subject, at: d.created_at, rounds: JSON.parse(d.rounds), verdict: JSON.parse(d.verdict) } : null; })(),
@@ -115,7 +126,7 @@ route('GET', '/api/tv', ({ user }) => {
 
 route('GET', '/api/ranking', () => latestRanking(db));
 route('GET', '/api/map', ({ user }) => { const v = mapView(db, { userId: user.id }); delete v.rows; return v; });
-route('GET', '/api/budget', ({ user }) => ({ ...getBudget(db, user.id), evidence: evidence(db), account: userAccount(user) }));
+route('GET', '/api/budget', ({ user }) => ({ ...getBudget(db, user.id), evidence: evidence(db), account: userAccount(user), profile: getProfile(db, user.id) }));
 route('POST', '/api/budget', async ({ req, user }) => { const b = await body(req); const out = saveBudget(db, user.id, b, { isAdmin: user.role === 'admin' }); audit(db, user.id, 'mi_dinero', { usd: out.usd }); return out; });
 route('POST', '/api/account/reset', async ({ user }) => {
   const old = userAccount(user), n = db.prepare('SELECT COUNT(*) n FROM accounts WHERE owner = ?').get(`user:${user.id}`).n;
@@ -128,7 +139,7 @@ route('POST', '/api/finder', async ({ req, user }) => {
   const b = await body(req), budget = getBudget(db, user.id);
   const q = { minP: Math.max(0, Math.min(1, Number(b.minP ?? 0))), maxP: Math.max(0, Math.min(1, Number(b.maxP ?? 1))), days: [5, 21, 63, 126, 252].includes(Number(b.days)) ? Number(b.days) : 252,
     metric: b.metric === 'mercado' ? 'mercado' : 'ganar', maxLossPct: b.maxLossPct != null && b.maxLossPct !== '' ? Number(b.maxLossPct) / 100 : null, amount: Math.max(1, Number(b.amount) || 10), onlyRec: !!b.onlyRec, kind: ['fondos', 'empresas'].includes(b.kind) ? b.kind : 'todas' };
-  const v = mapView(db, { userId: user.id }), res = finder(v.rows, q);
+  const v = mapView(db, { userId: user.id }), res = finder(v.rows.filter(r => r.wanted), q);
   const picks = res.matches.filter(r => r.zone === 'recomendada' || r.zone === 'observacion');
   const strip = r => ({ symbol: r.symbol, zone: r.zone, conv: r.conv, verdict: r.verdict, why: r.why, hold: r.hold, p: r.p, bad: r.bad, median: r.median, normalUsd: r.normalUsd, badUsd: r.badUsd, active: r.active, size: r.size });
   return { query: q, budget, ...res, matches: res.matches.map(strip), closest: res.closest.map(strip), bigBet: bigBetCheck({ amount: q.amount, budget, picks: picks.length ? picks : [], fund: { symbol: 'SPY' } }) };
@@ -232,8 +243,11 @@ route('POST', '/api/settings', async ({ req, user }) => {
 }, { admin: true });
 route('GET', '/api/keys', () => keyStatus(cfg), { admin: true });
 route('POST', '/api/keys', async ({ req, user }) => { const b = await body(req); const r = saveKeys(cfg, b); audit(db, user.id, 'claves', { cambiadas: r.changed }); return r.status; }, { admin: true });
-route('GET', '/api/users', () => db.prepare('SELECT id, username, role, created_at, ai_daily_cap_usd, ai_monthly_cap_usd FROM users').all(), { admin: true });
-route('POST', '/api/users', async ({ req }) => { const b = await body(req); return { id: createUser(db, { username: b.username, password: b.password, role: 'user', dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
+route('GET', '/api/users', () => db.prepare('SELECT id, username, display_name, role, active, created_at, ai_daily_cap_usd, ai_monthly_cap_usd FROM users').all()
+  .map(u => { const p = getProfile(db, u.id), b = getBudget(db, u.id); return { ...u, style: p.style, horizon: p.horizon, setup: p.setup, budget: b.usd, lastSeen: db.prepare('SELECT MAX(created_at) t FROM sessions WHERE user_id = ?').get(u.id).t }; }), { admin: true });
+route('POST', '/api/users/:id/password', async ({ req, user, p }) => { const b = await body(req); resetPassword(db, user.id, Number(p.id), b.password); return { ok: true }; }, { admin: true });
+route('POST', '/api/users/:id/active', async ({ req, user, p }) => { const b = await body(req); setActive(db, user.id, Number(p.id), !!b.active); return { ok: true }; }, { admin: true });
+route('POST', '/api/users', async ({ req }) => { const b = await body(req); return { id: createUser(db, { username: b.username, password: b.password, role: b.role === 'admin' ? 'admin' : 'user', displayName: b.displayName, dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
 
 route('GET', '/api/comments', ({ url }) => db.prepare('SELECT c.*, u.username FROM comments c JOIN users u ON u.id = c.user_id WHERE subject = ? ORDER BY ts').all(url.searchParams.get('subject') || ''));
 route('POST', '/api/comments', async ({ req, user }) => { const b = await body(req); const t = String(b.body || '').trim().slice(0, 1000); if (!t) throw new Error('El comentario está vacío.'); db.prepare('INSERT INTO comments (subject, user_id, ts, body) VALUES (?, ?, ?, ?)').run(String(b.subject).slice(0, 80), user.id, nowIso(), t); return { ok: true }; });
@@ -274,7 +288,7 @@ route('GET', '/api/analysis/stock/:symbol', async ({ p, user }) => {
   if (a.empty) return a;
   const budget = getBudget(db, user.id);
   const like = { light: a.light, probMethod: a.probMethod, timing: a.timing ? { recommended: a.timing.recommended, h: Object.fromEntries(a.timing.horizons.map(h => [h.days, { p: h.pProfit }])) } : null, projection: { personal: { lossChance: a.scenarios[1]?.lossChance } } };
-  return { ...a, budget, size: sizeFor(like, budget, evidence(db)), timeline: analysisHistory(db, `bolsa:${sym}`) };
+  return { ...a, budget, size: sizeFor(like, budget, evidence(db), getProfile(db, user.id).style), timeline: analysisHistory(db, `bolsa:${sym}`) };
 });
 route('GET', '/api/analysis/lottery/:game', ({ p }) => { const a = lotteryAnalysis(db, p.game); return a.empty ? a : { ...a, timeline: analysisHistory(db, `loteria:${p.game}`) }; });
 route('POST', '/api/analysis/:id/explain', ({ p, user }) => explainAnalysis(db, cfg, Number(p.id), { userId: user.id }));

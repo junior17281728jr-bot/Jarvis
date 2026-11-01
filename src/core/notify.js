@@ -19,13 +19,29 @@ export async function pushImportant(db, cfg, fetchImpl = fetch) {
   const evs = db.prepare('SELECT * FROM activity WHERE important = 1 AND id > ? ORDER BY id').all(last);
   if (!evs.length) return { sent: 0 };
   const maxId = evs.at(-1).id;
-  if (!cfg.ntfyTopic) { setSetting(db, 'global', 'notify.lastId', maxId); return { sent: 0, reason: 'sin tema' }; }
-  const alert = evs.some(e => ['trampa', 'alerta', 'error'].includes(e.type));
-  const r = await sendPush(cfg, {
-    title: alert ? 'JARVIS: revisar' : 'JARVIS: novedades',
-    message: evs.slice(-8).map(e => `• ${e.text}`).join('\n') + (evs.length > 8 ? `\n(+${evs.length - 8} más en la app)` : ''),
-    priority: alert ? 4 : 3, tags: [alert ? 'warning' : 'chart_with_upwards_trend'],
-  }, fetchImpl);
-  if (r.ok) setSetting(db, 'global', 'notify.lastId', maxId);
-  return { sent: r.ok ? evs.length : 0 };
+  // Lo general va al tema del administrador; lo personal (su dinero real) va solo al tema de esa persona
+  const groups = new Map();
+  const admins = new Set(db.prepare("SELECT id FROM users WHERE role = 'admin'").all().map(u => u.id));
+  for (const e of evs) {
+    let topic = cfg.ntfyTopic;
+    if (e.user_id != null) {
+      const p = getSetting(db, `user:${e.user_id}`, 'profile', {});
+      topic = p.ntfyTopic || (admins.has(e.user_id) ? cfg.ntfyTopic : '');
+    }
+    if (!topic) continue;
+    if (!groups.has(topic)) groups.set(topic, []);
+    groups.get(topic).push(e);
+  }
+  let sent = 0, okAll = true;
+  for (const [topic, list] of groups) {
+    const alert = list.some(e => ['trampa', 'alerta', 'error'].includes(e.type));
+    const r = await sendPush({ ...cfg, ntfyTopic: topic }, {
+      title: alert ? 'JARVIS: revisar' : 'JARVIS: novedades',
+      message: list.slice(-8).map(e => `• ${e.text}`).join('\n') + (list.length > 8 ? `\n(+${list.length - 8} más en la app)` : ''),
+      priority: alert ? 4 : 3, tags: [alert ? 'warning' : 'chart_with_upwards_trend'],
+    }, fetchImpl);
+    if (r.ok) sent += list.length; else okAll = false;
+  }
+  if (okAll) setSetting(db, 'global', 'notify.lastId', maxId);
+  return { sent };
 }

@@ -4,9 +4,10 @@
 import { getSetting, setSetting } from '../core/db.js';
 import { round, wilson } from '../core/util.js';
 import { HORIZONS } from '../stocks/timing.js';
+import { STYLES } from './profile.js';
 
 export const BASE_PCT = { verde: 0.10, amarillo: 0.05, rojo: 0 };
-const STRONG_PCT = 0.20, MIN_TICKET = 5;
+const MIN_TICKET = 5;
 
 export function getBudget(db, userId = null) {
   const g = getSetting(db, 'global', 'budget', { usd: 100, emergency: true });
@@ -22,8 +23,8 @@ export function saveBudget(db, userId, { usd, emergency }, { isAdmin = false } =
 }
 
 /** Monto base para una idea, según el veredicto y tu dinero. */
-export function baseAmount(light, budgetUsd = 100) {
-  const pct = BASE_PCT[light] ?? 0;
+export function baseAmount(light, budgetUsd = 100, style = 'equilibrado') {
+  const pct = (STYLES[style]?.pct ?? BASE_PCT)[light] ?? 0;
   if (!pct) return 0;
   return Math.max(MIN_TICKET, round(budgetUsd * pct, 0));
 }
@@ -40,8 +41,9 @@ export function evidence(db) {
  * la recomienda, su probabilidad ya está medida con casos reales, JARVIS acierta más que la suerte (con margen),
  * estuvo ganando 7 de cada 10 veces en el plazo recomendado y la chance de perder es baja.
  */
-export function sizeFor(card, budget, ev) {
-  const B = budget.usd, usd = baseAmount(card.light, B), pct = B ? usd / B : 0;
+export function sizeFor(card, budget, ev, style = 'equilibrado') {
+  const STRONG_PCT = STYLES[style]?.max ?? 0.20;
+  const B = budget.usd, usd = baseAmount(card.light, B, style), pct = B ? usd / B : 0;
   const t = card.timing, recDays = t?.recommended?.days, pAt = recDays ? (t.h?.[recDays]?.p ?? t.pProfit?.[recDays]) : null;
   const loss = card.projection?.personal?.lossChance;
   const checks = [
@@ -53,11 +55,11 @@ export function sizeFor(card, budget, ev) {
   ];
   const canMore = usd > 0 && checks.every(c => c.ok);
   const maxUsd = canMore ? Math.max(usd, round(B * STRONG_PCT, 0)) : usd;
-  const tooSmall = card.light !== 'rojo' && B * (BASE_PCT[card.light] || 0) < MIN_TICKET;
+  const P = STYLES[style]?.pct ?? BASE_PCT, tooSmall = card.light !== 'rojo' && B * (P[card.light] || 0) < MIN_TICKET;
   return {
     usd, pct: round(pct * 100, 1), maxUsd, maxPct: B ? round(maxUsd / B * 100, 1) : 0, canMore, checks,
     more: canMore ? `Sí puedes subir hasta US$${maxUsd} (${Math.round(STRONG_PCT * 100)}% de tu dinero): se cumplen las 5 pruebas.` : usd ? `No subas de US$${usd}: ${checks.filter(c => !c.ok).length} de 5 pruebas no se cumplen todavía.` : 'No pongas dinero en esta.',
-    note: tooSmall ? `El ${Math.round((BASE_PCT[card.light] || 0) * 100)}% de tu dinero es menos de US$${MIN_TICKET}; uso US$${MIN_TICKET}, que es lo mínimo práctico.` : null,
+    note: tooSmall ? `El ${Math.round((P[card.light] || 0) * 1000) / 10}% de tu dinero es menos de US$${MIN_TICKET}; uso US$${MIN_TICKET}, que es lo mínimo práctico.` : null,
   };
 }
 

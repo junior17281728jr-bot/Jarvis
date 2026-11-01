@@ -9,7 +9,8 @@ import { getBars } from '../stocks/market.js';
 import { universe, updateSymbol, BENCH } from '../stocks/collector.js';
 import { cardFor } from './recommend.js';
 import { recommendedAmount } from './track.js';
-import { getBudget, evidence, sizeFor } from './sizing.js';
+import { getBudget, evidence, sizeFor, baseAmount } from './sizing.js';
+import { getProfile, personalConv, wants, STYLES } from './profile.js';
 
 /** Empresas y fondos grandes de EE. UU. que el explorador va estudiando por turnos. */
 export const CANDIDATES = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'JPM', 'KO', 'JNJ', 'V', 'WMT', 'COST', 'XOM', 'AVGO', 'LLY', 'MA', 'UNH', 'HD', 'PG',
@@ -40,9 +41,9 @@ const NEED = {
 };
 
 /** Todo lo que la pantalla necesita decir de forma explícita: veredicto, por qué, qué falta y cuánto tiempo dejarla. */
-export function explain(card, { budgetUsd = 100 } = {}) {
+export function explain(card, { budgetUsd = 100, style = 'equilibrado' } = {}) {
   const zone = ZONES[card.light] || 'no_recomendada';
-  const amt = recommendedAmount(card.light, { budgetUsd });
+  const amt = baseAmount(card.light, budgetUsd, style);
   const contrib = Object.fromEntries((card.contributions || []).map(c => [c.factor, c.contribution]));
   const reasons = card.reasons || [];
   const favor = reasons.filter(r => (contrib[r.factor] ?? 0) > 0.5).sort((a, b) => contrib[b.factor] - contrib[a.factor]);
@@ -143,22 +144,23 @@ export async function exploreStep(db, cfg, { n = 3, fetchImpl = fetch, fetchBars
 
 /** Lo que muestra la pantalla Mapa. */
 export function mapView(db, { userId = null } = {}) {
-  const budget = getBudget(db, userId), ev = evidence(db);
+  const budget = getBudget(db, userId), ev = evidence(db), profile = userId ? getProfile(db, userId) : null, style = profile?.style || 'equilibrado';
   const U = new Set(universe(db));
   const rows = db.prepare('SELECT * FROM map_entries').all().map(r => {
     const card = r.card ? JSON.parse(r.card) : null;
-    return { symbol: r.symbol, zone: r.zone, conv: r.conv, since: r.since, checkedAt: r.checked_at, reds: r.reds, active: U.has(r.symbol), card, ...(card ? explain(card, { budgetUsd: budget.usd }) : {}), size: card ? sizeFor(card, budget, ev) : null, zoneNow: r.zone };
+    return { symbol: r.symbol, zone: r.zone, conv: r.conv, since: r.since, checkedAt: r.checked_at, reds: r.reds, active: U.has(r.symbol), card, ...(card ? explain(card, { budgetUsd: budget.usd, style }) : {}), size: card ? sizeFor(card, budget, ev, style) : null, myConv: card && profile ? personalConv(card, profile) : r.conv, wanted: !profile || wants(profile, r.symbol), zoneNow: r.zone };
   }).filter(r => r.card);
   const lastMove = new Map(db.prepare('SELECT symbol, from_zone, to_zone, ts FROM map_moves ORDER BY id').all().map(m => [m.symbol, m]));
   for (const r of rows) { r.zone = r.zoneNow; delete r.zoneNow; const m = lastMove.get(r.symbol); r.trend = m && m.from_zone ? ((RANK[m.to_zone] ?? 0) > (RANK[m.from_zone] ?? 0) ? 'sube' : (RANK[m.to_zone] ?? 0) < (RANK[m.from_zone] ?? 0) ? 'baja' : null) : null; }
-  const by = z => rows.filter(r => r.zone === z).sort((a, b) => b.conv - a.conv);
+  // Mismo núcleo para todos; el orden se adapta al estilo de cada persona y oculta lo que no le interesa
+  const by = z => rows.filter(r => r.zone === z && r.wanted).sort((a, b) => b.myConv - a.myConv);
   const zones = { recomendada: by('recomendada'), observacion: by('observacion'), no_recomendada: by('no_recomendada'), candidata: by('candidata'), descartada: by('descartada') };
   const order = [...zones.recomendada, ...zones.observacion, ...zones.no_recomendada];
   order.forEach((r, i) => { r.rank = i + 1; });
   const ex = getSetting(db, 'global', 'map.explore', null);
   const studied = rows.filter(r => !r.active).length + rows.filter(r => r.active).length;
   return {
-    budget, evidence: ev, rows,
+    budget, evidence: ev, rows, profile, styleLabel: STYLES[style].label,
     zones, best: zones.recomendada[0] || zones.observacion[0] || null,
     moves: db.prepare('SELECT * FROM map_moves ORDER BY id DESC LIMIT 40').all(),
     explore: { pool: CANDIDATES.length, studied, pending: CANDIDATES.filter(s => !rows.some(r => r.symbol === s)).length, lastAt: ex?.at || null, every: '6 horas', recheckDays: RECHECK_DAYS, maxActive: MAX_ACTIVE, redStreak: RED_STREAK },
@@ -183,7 +185,7 @@ export function watchRealPositions(db) {
       const key = `${r.id}:${kind}`;
       if (sent[key]) continue;
       sent[key] = nowIso();
-      activity(db, { agent: 'largo', type: 'alerta', important: true, text });
+      activity(db, { agent: 'largo', type: 'alerta', important: true, text, userId: r.user_id });
       out.push({ id: r.id, kind, text });
     }
   }

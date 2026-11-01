@@ -157,11 +157,22 @@ CREATE TRIGGER map_moves_no_update BEFORE UPDATE ON map_moves BEGIN SELECT RAISE
 CREATE TRIGGER map_moves_no_delete BEFORE DELETE ON map_moves BEGIN SELECT RAISE(ABORT, 'los movimientos del mapa no se pueden borrar'); END;
 `,
   },
+  {
+    id: 5,
+    name: 'usuarios_y_perfiles',
+    sql: `
+ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN display_name TEXT;
+ALTER TABLE activity ADD COLUMN user_id INTEGER;
+CREATE INDEX activity_user ON activity (user_id, id);
+`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */
-export function activity(db, { agent = null, type = 'info', text, progress = null, important = false }) {
-  db.prepare('INSERT INTO activity (ts, agent, type, text, progress, important) VALUES (?, ?, ?, ?, ?, ?)').run(new Date().toISOString(), agent, type, text, progress, important ? 1 : 0);
+/** Actividad: sin userId la ven todos (el núcleo central); con userId solo esa persona (por ejemplo, avisos de su dinero real). */
+export function activity(db, { agent = null, type = 'info', text, progress = null, important = false, userId = null }) {
+  db.prepare('INSERT INTO activity (ts, agent, type, text, progress, important, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(new Date().toISOString(), agent, type, text, progress, important ? 1 : 0, userId);
   db.prepare('DELETE FROM activity WHERE id <= (SELECT MAX(id) - 5000 FROM activity)').run();
 }
 

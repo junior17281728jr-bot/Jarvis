@@ -1,4 +1,4 @@
-import { mapDigest } from './map.js';
+import { mapDigest, mapView } from './map.js';
 import { getBudget } from './sizing.js';
 // Lo que se muestra: pantalla de inicio, estadísticas y resumen diario en lenguaje simple.
 import { getSetting } from '../core/db.js';
@@ -38,7 +38,8 @@ export function home(db, cfg, user) {
   const lot = playStats(db, { agent: 'loteria' });
   const azar = liveMethodStats(db).find(m => m.method === 'azar');
   const heartbeat = getSetting(db, 'global', 'motor.heartbeat', null);
-  return { budget: getBudget(db, user.id),
+  const mv = mapView(db, { userId: user.id }), mb = mv.best;
+  return { budget: getBudget(db, user.id), myBest: mb ? { symbol: mb.symbol, light: mb.card.light, probBeat: mb.card.probBeat, timing: mb.card.timing, reasons: mb.card.reasons } : null, styleLabel: mv.styleLabel,
     user: { username: user.username, role: user.role },
     system: { heartbeat, alive: heartbeat ? Date.now() - Date.parse(heartbeat) < 20 * 60e3 : false, motor: getSetting(db, 'global', 'motor.state', { running: false }) },
     ai: aiSpend(db, cfg),
@@ -59,7 +60,7 @@ export function home(db, cfg, user) {
     ],
     learning: strategiesSummary(db),
     lottery: { stats: lot, latest: latest(db), expectedQuinielaPer100: round(expectedReturn('quiniela') * 100, 1), randomLivePer100: azar?.per100 ?? null, effort: getSetting(db, 'global', 'lottery.effort', 'normal'), scan: getSetting(db, 'global', 'lottery.lastScan', null) },
-    activity: db.prepare('SELECT * FROM activity ORDER BY id DESC LIMIT 30').all(),
+    activity: db.prepare('SELECT * FROM activity WHERE user_id IS NULL OR user_id = ? ORDER BY id DESC LIMIT 30').all(user.id),
   };
 }
 

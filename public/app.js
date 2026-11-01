@@ -10,7 +10,9 @@ const timeAgo = iso => { if (!iso) return 'nunca'; const m = Math.round((Date.no
 const hhmm = iso => new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: false });
 const LIGHT = { verde: 'Sí, invierte', amarillo: 'Invierte poco', rojo: 'No inviertas', gris: 'Igual que el azar' };
 let MYBUDGET = null;
-const baseAmt = l => { const B = MYBUDGET?.usd ?? 100, p = { verde: 0.1, amarillo: 0.05 }[l] || 0; return p ? Math.max(5, Math.round(B * p)) : 0; };
+const STYLE_PCT = { conservador: { verde: 0.05, amarillo: 0.025, max: 0.1 }, equilibrado: { verde: 0.1, amarillo: 0.05, max: 0.2 }, arriesgado: { verde: 0.15, amarillo: 0.075, max: 0.25 } };
+const myStyle = () => STYLE_PCT[MYBUDGET?.profile?.style] || STYLE_PCT.equilibrado;
+const baseAmt = l => { const B = MYBUDGET?.usd ?? 100, p = myStyle()[l] || 0; return l === 'rojo' || !p ? 0 : Math.max(5, Math.round(B * p)); };
 const VERDICT = new Proxy({}, { get: (_, l) => (l === 'verde' ? `Sí, te recomiendo invertir ${usd(baseAmt('verde'), 0)}` : l === 'amarillo' ? `Invierte poco: ${usd(baseAmt('amarillo'), 0)}, con cuidado` : 'No te recomiendo invertir ahora') });
 const scaleProj = (r, amt) => (r ? { ...r, bad: r.bad * amt / 10, probable: r.probable * amt / 10, good: r.good * amt / 10 } : r);
 async function loadBudget() { try { MYBUDGET = await api('/api/budget'); } catch { MYBUDGET = null; } }
@@ -181,7 +183,7 @@ const views = {};
 views.inicio = async () => {
   const h = await api('/api/home');
   const greens = h.ranking.filter(c => c.light === 'verde'), alerts = h.activity.filter(a => a.important && Date.now() - Date.parse(a.ts) < 864e5).length;
-  const best = greens[0] || h.ranking.find(c => c.light === 'amarillo');
+  const best = h.myBest || greens[0] || h.ranking.find(c => c.light === 'amarillo');
   const p = h.predictions, leader = h.league[0];
   return `
   <section class="hero">${best ? coBadge(best.symbol, 64) : '<span class="cob idle" style="width:64px;height:64px;font-size:26px">⏸</span>'}<div style="flex:1;min-width:0"><div class="tag">Hoy en 10 segundos</div>
@@ -215,7 +217,7 @@ views.inicio = async () => {
       <div class="mini3">${['en_prueba', 'validada', 'no_validada'].map(s => `<div><div class="note">${STATUS[s]}</div><div style="font-size:24px;font-weight:800">${h.learning.byStatus[s] || 0}</div></div>`).join('')}</div>
       <div class="note" style="margin-top:8px">${h.learning.experiments} experimentos con datos bajo llave. ${h.rankingStats.resolved ? `Recomendaciones calificadas: ${h.rankingStats.hits} de ${h.rankingStats.resolved} acertadas.` : 'Las recomendaciones se califican a los 20 días de bolsa.'}</div></div>
     <div class="card"><h2>Liga de agentes <span class="more note">ganan monedas si ganan dinero</span></h2>${h.league.map(a => `<div class="w" style="margin-bottom:8px"><span>${esc(a.name)}</span><b>${a.coins}</b><div class="bar"><span style="width:${Math.max(4, Math.min(100, 50 + a.coins * 2))}%;background:linear-gradient(90deg,var(--violet),var(--accent))"></span></div></div>`).join('')}</div>
-    <div class="card"><h2>Loterías RD <a class="more" href="#loterias">Ver ▸</a></h2>
+    <div class="card${ME?.profile?.interests?.loterias === false ? ' hide' : ''}"><h2>Loterías RD <a class="more" href="#loterias">Ver ▸</a></h2>
       <div class="mini3"><div><div class="note">Jugadas</div><b style="font-size:22px">${h.lottery.stats.settled}</b></div><div><div class="note">De cada RD$100 volvieron</div><b style="font-size:22px" class="${h.lottery.stats.per100 != null && h.lottery.stats.per100 < 100 ? 'bad' : ''}">${h.lottery.stats.per100 != null ? rd(h.lottery.stats.per100) : '—'}</b></div><div><div class="note">Lo normal a largo plazo</div><b style="font-size:22px">${rd(h.lottery.expectedQuinielaPer100)}</b></div></div>
       <div class="note" style="margin-top:8px">${h.lottery.effort === 'bajo' ? 'Ningún método le gana al azar: esfuerzo reducido, prioridad a la bolsa.' : 'Probando métodos contra el azar en cada sorteo.'}</div></div>
   </section>
@@ -319,7 +321,7 @@ views.mapa = async () => {
   const worst = z.no_recomendada.slice().sort((x, y) => x.conv - y.conv)[0];
   const zname = k => (ZL[k] || ['', k])[1];
   const col = (k, list) => `<div class="mcol"><div class="mcol-h ${ZL[k][2]}">${ZL[k][0]} ${ZL[k][1]} <span class="note">(${list.length})</span></div>${list.length ? list.map(r => mapCard(r)).join('') : `<div class="empty">${k === 'recomendada' ? 'Hoy ninguna cumple. JARVIS sigue buscando.' : 'Ninguna.'}</div>`}</div>`;
-  return `<div><h1>Tu mapa de inversión</h1><p class="sub">Todas las empresas que JARVIS sigue, de la que más te conviene a la que menos. Las que no sirven no se olvidan: se revisan cada día y, si aparece una mejor, la reemplaza.</p></div>
+  return `<div><h1>Tu mapa de inversión</h1><p class="sub">Ordenado para tu estilo: <b>${esc(m.styleLabel || 'Equilibrado')}</b> (<a href="#perfil">cambiar</a>). Todas las empresas que JARVIS sigue, de la que más te conviene a la que menos. Las que no sirven no se olvidan: se revisan cada día y, si aparece una mejor, la reemplaza.</p></div>
   <section class="card explorer"><div class="ex-ic">🔭</div><div><b>Explorando sin parar</b><div class="note">Ya estudió <b>${e.studied}</b> de ${e.pool} empresas y fondos grandes de EE. UU.${e.pending ? ` · le faltan ${e.pending}` : ''} · busca más cada ${esc(e.every)}${e.lastAt ? ` (la última vez: ${timeAgo(e.lastAt)})` : ''}. Si una lleva ${e.redStreak} revisiones seguidas en "No te recomiendo" y aparece otra mejor, la cambia; la que sale se vuelve a revisar cada ${e.recheckDays} días.</div></div></section>
   ${b ? `<section class="card bestpick ${ZL[b.zone][2]}"><div class="s10-h">Tu mejor opción ahora</div><div class="bp">${coBadge(b.symbol, 72)}<div style="flex:1;min-width:0"><div class="bp-v">${esc(coName(b.symbol))}: ${esc(b.verdict)}</div>
     <ul class="bp-l">${b.why.map(w => `<li>${esc(w)}</li>`).join('')}<li>⏳ ${esc(b.hold)}</li>${b.size ? `<li><b>¿Puedo poner más?</b> ${esc(b.size.more)}</li>` : ''}${b.exitIf.map(w => `<li class="note">${esc(w)}</li>`).join('')}</ul></div>
@@ -384,6 +386,55 @@ views.buscar.after = () => {
     } catch (err) { $('#fres').innerHTML = `<div class="card msg err">${esc(err.message)}</div>`; }
   };
 };
+
+// ---------- Mi perfil: cada persona adapta JARVIS a su forma ----------
+views.perfil = async () => {
+  const d = await api('/api/profile');
+  const p = d.profile, first = !p.setup;
+  const card = (group, key, o) => `<button type="button" class="opt${(group === 'style' ? p.style : p.horizon) === key ? ' on' : ''}" data-g="${group}" data-k="${key}">${o.icon ? `<span class="oi">${o.icon}</span>` : ''}<b>${esc(o.label)}</b><span class="note">${esc(o.desc)}</span>${o.pct ? `<span class="note">"Sí, invierte" = ${Math.round(o.pct.verde * 100)}% de tu dinero</span>` : ''}</button>`;
+  return `${first ? `<section class="card welcome"><div class="s10-h">Bienvenido${ME?.displayName ? ', ' + esc(ME.displayName) : ''}</div><div class="bp-v">Cuéntale a JARVIS cómo eres</div><p class="note">El núcleo (la investigación, el mapa y el historial) es el mismo para todos. Esto solo cambia cuánto te sugiere poner y en qué orden te muestra las opciones. Lo puedes cambiar cuando quieras.</p></section>` : `<div><h1>Mi perfil</h1><p class="sub">JARVIS se adapta a tu forma de invertir. Tu amigo tiene el suyo: cada uno ve lo mismo del núcleo, pero ordenado para sí.</p></div>`}
+  <form id="pf" class="grid" style="gap:16px">
+    <section class="card"><h2>Tu nombre</h2><label style="max-width:360px;margin-top:8px">Cómo quieres que te llame<input id="pn" maxlength="30" value="${esc(d.displayName || '')}"></label></section>
+    <section class="card"><h2>¿Cómo eres con el riesgo?</h2><div class="opts" style="margin-top:10px">${Object.entries(d.styles).map(([k, o]) => card('style', k, o)).join('')}</div></section>
+    <section class="card"><h2>¿Cuánto tiempo puedes dejar el dinero?</h2><div class="opts" style="margin-top:10px">${Object.entries(d.horizons).map(([k, o]) => card('horizon', k, o)).join('')}</div></section>
+    <section class="card"><h2>¿Qué te interesa?</h2><div class="row" style="gap:16px;margin-top:10px">
+      ${[['empresas', 'Empresas (Apple, Microsoft…)'], ['fondos', 'Fondos (reparten el riesgo)'], ['loterias', 'Loterías RD']].map(([k, l]) => `<label class="chk"><input type="checkbox" data-int="${k}"${p.interests[k] ? ' checked' : ''}> ${l}</label>`).join('')}</div>
+      <div class="note" style="margin-top:6px">Lo que no te interese se oculta de tus pantallas. JARVIS lo sigue investigando para los demás.</div></section>
+    <section class="card"><h2>Tu dinero</h2><div class="row" style="gap:12px;align-items:flex-end;margin-top:8px"><label style="width:220px">Dinero para invertir (US$)<input id="pbu" type="number" min="10" step="1" value="${d.budget.usd}"></label><label class="chk" style="padding-bottom:10px"><input type="checkbox" id="pbe"${d.budget.emergency ? ' checked' : ''}> Tengo fondo de emergencia aparte</label></div></section>
+    <section class="card"><h2>Tus avisos al celular</h2><label style="max-width:420px;margin-top:8px">Tu tema secreto en la app ntfy (opcional)<input id="pt" maxlength="64" value="${esc(p.ntfyTopic || '')}" placeholder="${esc((ME?.username || 'yo') + '-jarvis-7k2p')}"></label>
+      <div class="note">Instala la app <b>ntfy</b>, suscríbete a ese nombre y te llegan tus avisos personales (por ejemplo, si tu inversión real cae 8%). Nadie más los ve.</div></section>
+    <section class="card summary10"><div class="s10-h">Así te va a recomendar JARVIS</div><div id="pline" style="font-size:16px;line-height:1.55">${esc(d.line)}</div></section>
+    <button class="btn" style="max-width:420px">${first ? 'Guardar y empezar' : 'Guardar mi perfil'}</button><div class="msg" id="pm"></div>
+  </form>
+  <section class="card"><h2>Cambiar mi contraseña</h2><form class="row" id="pwf" style="gap:12px;align-items:flex-end;margin-top:8px">
+    <label style="flex:1;min-width:200px">Contraseña actual<input id="pw0" type="password" autocomplete="current-password" required></label>
+    <label style="flex:1;min-width:200px">Contraseña nueva (10 o más)<input id="pw1" type="password" autocomplete="new-password" minlength="10" required></label>
+    <button class="btn">Cambiar</button></form><div class="msg" id="pwm"></div></section>`;
+};
+views.perfil.after = () => {
+  const sel = { style: null, horizon: null };
+  document.querySelectorAll('.opt').forEach(b => {
+    if (b.classList.contains('on')) sel[b.dataset.g] = b.dataset.k;
+    b.onclick = () => { sel[b.dataset.g] = b.dataset.k; document.querySelectorAll(`.opt[data-g="${b.dataset.g}"]`).forEach(x => x.classList.toggle('on', x === b)); };
+  });
+  $('#pf').onsubmit = async e => {
+    e.preventDefault();
+    const interests = {}; document.querySelectorAll('[data-int]').forEach(c => { interests[c.dataset.int] = c.checked; });
+    try {
+      const r = await api('/api/profile', { method: 'POST', body: { displayName: $('#pn').value, style: sel.style, horizon: sel.horizon, interests, ntfyTopic: $('#pt').value, budget: { usd: Number($('#pbu').value), emergency: $('#pbe').checked } } });
+      await loadBudget(); ME = await api('/api/me'); applyUser();
+      $('#pline').textContent = r.line; $('#pm').className = 'msg ok'; $('#pm').textContent = 'Guardado. JARVIS ya te muestra todo a tu manera.';
+      if (location.hash === '#perfil' && !window.__wasSetup) setTimeout(() => { location.hash = '#inicio'; }, 1200);
+    } catch (err) { $('#pm').className = 'msg err'; $('#pm').textContent = err.message; }
+  };
+  window.__wasSetup = !!MYBUDGET?.profile?.setup;
+  $('#pwf').onsubmit = async e => { e.preventDefault(); try { await api('/api/me/password', { method: 'POST', body: { current: $('#pw0').value, next: $('#pw1').value } }); $('#pwm').className = 'msg ok'; $('#pwm').textContent = 'Contraseña cambiada. Se cerraron tus otras sesiones.'; $('#pw0').value = $('#pw1').value = ''; } catch (err) { $('#pwm').className = 'msg err'; $('#pwm').textContent = err.message; } };
+};
+/** Muestra el nombre arriba y oculta lo que a esta persona no le interesa. */
+function applyUser() {
+  const chip = $('#mechip'); if (chip) chip.textContent = '👤 ' + (ME?.displayName || ME?.username || '');
+  const lot = document.querySelector('#tabs a[href="#loterias"]'); if (lot) lot.classList.toggle('hide', ME?.profile?.interests?.loterias === false);
+}
 
 views.recomendaciones = async () => {
   const r = await api('/api/ranking');
@@ -461,7 +512,8 @@ views.bolsa = async () => {
   return `<section class="card mymoney"><h2>Mi dinero <span class="more note">JARVIS calcula todo con este monto</span></h2>
     <form class="row" id="bf" style="align-items:flex-end;gap:12px;margin-top:10px"><label style="width:220px">¿Cuánto dinero tienes para invertir? (US$)<input id="bu" type="number" min="10" step="1" value="${B.usd}"></label>
       <label style="flex-direction:row;align-items:center;gap:8px;padding-bottom:10px"><input type="checkbox" id="be" style="width:auto"${B.emergency ? ' checked' : ''}> Ya tengo fondo de emergencia aparte</label><button class="btn">Guardar</button></form>
-    <div class="grid g3" style="gap:10px;margin-top:12px"><div class="pbox"><div class="l">"Sí, invierte" (10%)</div><div class="v good">${usd(Math.max(5, Math.round(B.usd * 0.1)), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">"Invierte poco" (5%)</div><div class="v warn">${usd(Math.max(5, Math.round(B.usd * 0.05)), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">Máximo con pruebas fuertes (20%)</div><div class="v">${usd(Math.round(B.usd * 0.2), 0)}</div><div class="note">solo si se cumplen las 5 pruebas</div></div></div>
+    <div class="grid g3" style="gap:10px;margin-top:12px"><div class="pbox"><div class="l">"Sí, invierte" (${myStyle().verde * 100}%)</div><div class="v good">${usd(baseAmt('verde'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">"Invierte poco" (${myStyle().amarillo * 100}%)</div><div class="v warn">${usd(baseAmt('amarillo'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">Máximo con pruebas fuertes (${myStyle().max * 100}%)</div><div class="v">${usd(Math.round(B.usd * myStyle().max), 0)}</div><div class="note">solo si se cumplen las 5 pruebas</div></div></div>
+    <div class="note" style="margin-top:8px">Porcentajes según tu estilo (${esc({ conservador: 'conservador', equilibrado: 'equilibrado', arriesgado: 'arriesgado' }[MYBUDGET?.profile?.style] || 'equilibrado')}). <a href="#perfil">Cambiar mi estilo ▸</a></div>
     <div class="row" style="margin-top:12px;gap:10px;align-items:center"><button type="button" class="btn ghost" id="breset">Empezar mi práctica con ${usd(B.usd, 0)}</button><span class="note">Tu cuenta de práctica empieza con ${usd(a.start, 0)}. Si la reinicias, la anterior queda guardada en el historial (no se borra).</span></div><div class="msg" id="bm"></div></section>
   <div><h1>Mi cuenta virtual</h1><p class="sub">Dinero de mentira, precios reales. Operaciones de ${usd(a.limits.min, 0)} a ${usd(a.limits.max, 0)}, como harías tú. Mercado ${a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)'}.</p></div>
   <section class="grid g4">
@@ -649,12 +701,14 @@ views.ajustes = async () => {
       <button class="btn" id="saveother">Guardar</button></div></div>
   </section>
   <section class="grid g2">
-    <div class="card"><h2>Avisos al celular</h2>${st.notify.on ? `<p>Activos (tema ${esc(st.notify.topic)}).</p><button class="btn ghost" id="ntest">Enviar aviso de prueba</button>` : `<ol class="note" style="padding-left:18px"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class="mono">jarvis-junior-7f3k9</span>, y suscríbete a ese tema en la app.</li><li>Ponlo en el servidor: <span class="mono">NTFY_TOPIC=…</span> en .env y reinicia JARVIS.</li></ol>`}<div class="msg" id="nm"></div></div>
+    <div class="card"><h2>Avisos al celular</h2>${st.notify.on ? `<p>Activos (tema ${esc(st.notify.topic)}).</p><button class="btn ghost" id="ntest">Enviar aviso de prueba</button>` : `<ol class="note" style="padding-left:18px"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class="mono">jarvis-junior-7f3k9</span>, y suscríbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves → Tema de avisos</b>. Para tus avisos personales, ponlo también en <a href="#perfil">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>`}<div class="msg" id="nm"></div></div>
     <div class="card"><h2>Copia fuera del servidor</h2>${st.offsite ? '<p class="good">Activa: cada copia diaria se cifra y se sube.</p>' : '<ol class="note" style="padding-left:18px"><li>En el servidor instala rclone y conecta tu Google Drive: <span class="mono">sudo apt install -y rclone && sudo -u jarvis rclone config</span></li><li>En .env pon <span class="mono">RCLONE_REMOTE=gdrive:</span> y una frase larga en <span class="mono">BACKUP_PASSPHRASE</span>. Guarda la frase en un lugar seguro: sin ella la copia no se puede abrir.</li><li>Reinicia JARVIS.</li></ol>'}</div>
   </section>
-  <section class="card"><h2>Usuarios</h2><div class="tablewrap"><table><tr><th>Usuario</th><th>Rol</th><th class="r">Tope IA día</th><th class="r">Tope IA mes</th></tr>${users.map(u => `<tr><td>${esc(u.username)}</td><td>${u.role === 'admin' ? 'Administrador' : 'Usuario'}</td><td class="r">${usd(u.ai_daily_cap_usd)}</td><td class="r">${usd(u.ai_monthly_cap_usd)}</td></tr>`).join('')}</table></div>
-    <form class="row" id="uf" style="margin-top:12px;align-items:flex-end"><label style="flex:1">Usuario de tu amigo<input id="nu" required></label><label style="flex:1">Contraseña (10+ caracteres)<input id="np" type="password" minlength="10" required></label><label style="width:130px">Tope IA mes US$<input id="nm" type="number" value="2" step="0.5"></label><button class="btn">Crear usuario</button></form>
-    <div class="note">Cada usuario tiene su propio dinero virtual, chat y memoria. La investigación y el ranking se comparten sin gastar doble.</div><div class="msg" id="um"></div></section>`;
+  <section class="card"><h2>Usuarios <span class="more note">cada uno con su perfil; todos usan el mismo núcleo</span></h2><div class="tablewrap"><table><tr><th>Persona</th><th>Estilo</th><th class="r">Su dinero</th><th>Última entrada</th><th>Estado</th><th></th></tr>${users.map(u => `<tr><td><b>${esc(u.display_name || u.username)}</b><div class="note">${esc(u.username)} · ${u.role === 'admin' ? 'Administrador' : 'Usuario'}</div></td><td>${u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>'}</td><td class="r">${usd(u.budget, 0)}</td><td class="note">${u.lastSeen ? timeAgo(u.lastSeen) : 'nunca'}</td><td>${u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>'}</td>
+      <td class="r" style="white-space:nowrap">${u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : `<button class="btn ghost sm" data-pw="${u.id}">Nueva contraseña</button> <button class="btn ghost sm" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Desactivar' : 'Activar'}</button>`}</td></tr>`).join('')}</table></div>
+    <h3 class="cs-h">Crear un usuario (por ejemplo, para tu amigo)</h3>
+    <form class="row" id="uf" style="align-items:flex-end;gap:10px"><label style="flex:1;min-width:160px">Su nombre<input id="nn" placeholder="Ricardo"></label><label style="flex:1;min-width:160px">Usuario para entrar<input id="nu" required placeholder="ricardo"></label><label style="flex:1;min-width:180px">Contraseña (10+ caracteres)<input id="np" type="password" minlength="10" required></label><label style="width:130px">Tope IA mes US$<input id="nm" type="number" value="2" step="0.5"></label><button class="btn">Crear usuario</button></form>
+    <div class="note" style="margin-top:6px">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qué le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigación se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class="msg" id="um"></div></section>`;
 };
 views.ajustes.after = () => {
   $('#kf').onsubmit = async e => { e.preventDefault(); const body = {};
@@ -682,7 +736,10 @@ views.ajustes.after = () => {
   $('#saveai').onclick = async () => { try { const en = {}; document.querySelectorAll('[data-ai]').forEach(c => en[c.dataset.ai] = c.checked); await api('/api/settings', { method: 'POST', body: { aiEnabled: en, prices: JSON.parse($('#prices').value) } }); m('IA guardada.'); } catch (e) { m(e.message, false); } };
   $('#saveother').onclick = async () => { try { await api('/api/settings', { method: 'POST', body: { universe: $('#univ').value.split(/[,\s]+/).filter(Boolean), payouts: JSON.parse($('#pay').value), allowSingleSource: $('#single').checked } }); m('Guardado.'); } catch (e) { m(e.message, false); } };
   if ($('#ntest')) $('#ntest').onclick = async () => { try { await api('/api/notify/test', { method: 'POST' }); $('#nm').className = 'msg ok'; $('#nm').textContent = 'Aviso enviado: revisa tu celular.'; } catch (e) { $('#nm').className = 'msg err'; $('#nm').textContent = e.message; } };
-  $('#uf').onsubmit = async e => { e.preventDefault(); try { await api('/api/users', { method: 'POST', body: { username: $('#nu').value, password: $('#np').value, monthlyCap: Number($('#nm').value), dailyCap: Number($('#nm').value) / 10 } }); $('#um').className = 'msg ok'; $('#um').textContent = 'Usuario creado.'; setTimeout(render, 900); } catch (err) { $('#um').className = 'msg err'; $('#um').textContent = err.message; } };
+  document.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => { try { await api(`/api/users/${b.dataset.act}/active`, { method: 'POST', body: { active: b.dataset.on === '1' } }); render(); } catch (err) { $('#um').className = 'msg err'; $('#um').textContent = err.message; } });
+  document.querySelectorAll('[data-pw]').forEach(b => b.onclick = () => { const td = b.parentElement; td.innerHTML = `<form class="row" style="gap:6px;justify-content:flex-end"><input type="password" minlength="10" placeholder="Nueva (10+)" style="width:150px" required><button class="btn sm">Guardar</button></form>`;
+    td.querySelector('form').onsubmit = async ev => { ev.preventDefault(); try { await api(`/api/users/${b.dataset.pw}/password`, { method: 'POST', body: { password: td.querySelector('input').value } }); td.innerHTML = '<span class="good">Contraseña cambiada</span>'; } catch (err) { td.insertAdjacentHTML('beforeend', `<div class="msg err">${esc(err.message)}</div>`); } }; });
+  $('#uf').onsubmit = async e => { e.preventDefault(); try { await api('/api/users', { method: 'POST', body: { displayName: $('#nn').value, username: $('#nu').value, password: $('#np').value, monthlyCap: Number($('#nm').value), dailyCap: Number($('#nm').value) / 10 } }); $('#um').className = 'msg ok'; $('#um').textContent = 'Usuario creado.'; setTimeout(render, 900); } catch (err) { $('#um').className = 'msg err'; $('#um').textContent = err.message; } };
 };
 
 // ---------- Gráficos adicionales ----------
@@ -754,9 +811,9 @@ function sizeCard(z, budget, lightName) {
     <div class="sz"><div><div class="note">Tu dinero para invertir</div><div class="sz-v">${usd(budget.usd, 0)}</div><a class="note" href="#bolsa">cambiar ▸</a></div>
     <div class="sz-arrow">→</div><div><div class="note">Te recomiendo poner</div><div class="sz-v ${z.usd ? 'good' : 'bad'}">${z.usd ? usd(z.usd, 0) : 'US$0'}</div><div class="note">${z.usd ? `${z.pct}% de tu dinero` : 'no inviertas en esta'}</div></div>
     <div class="sz-more ${z.canMore ? 'yes' : 'no'}"><b>¿Puedo poner más?</b><div>${esc(z.more)}</div></div></div>
-    ${z.usd ? `<details class="note" style="margin-top:10px"${z.canMore ? '' : ' open'}><summary>Las 5 pruebas para poner más (hasta 20% de tu dinero)</summary><div class="checks" style="margin-top:8px">${z.checks.map(c => `<div class="ck ${c.ok ? 'ok' : 'no'}">${c.ok ? '✓' : '✕'} ${esc(c.text)}</div>`).join('')}</div></details>` : ''}
+    ${z.usd ? `<details class="note" style="margin-top:10px"${z.canMore ? '' : ' open'}><summary>Las 5 pruebas para poner más (hasta ${myStyle().max * 100}% de tu dinero)</summary><div class="checks" style="margin-top:8px">${z.checks.map(c => `<div class="ck ${c.ok ? 'ok' : 'no'}">${c.ok ? '✓' : '✕'} ${esc(c.text)}</div>`).join('')}</div></details>` : ''}
     ${z.note ? `<div class="note" style="margin-top:6px">${esc(z.note)}</div>` : ''}
-    <div class="note" style="margin-top:8px">Regla: "Sí, invierte" = 10% de tu dinero por idea; "Invierte poco" = 5%; nunca más de 20% en una sola, y siempre guarda al menos 10% en efectivo. ¿Vas a poner mucho más? Usa <a href="#buscar">Buscar a mi medida</a> y JARVIS revisa tu apuesta.</div></section>`;
+    <div class="note" style="margin-top:8px">Regla según tu estilo: "Sí, invierte" = ${myStyle().verde * 100}% de tu dinero por idea; "Invierte poco" = ${myStyle().amarillo * 100}%; nunca más de ${myStyle().max * 100}% en una sola, y siempre guarda al menos 10% en efectivo. ¿Vas a poner mucho más? Usa <a href="#buscar">Buscar a mi medida</a> y JARVIS revisa tu apuesta.</div></section>`;
 }
 function timingCard(a) {
   const t = a.timing; if (!t) return '';
@@ -1152,6 +1209,8 @@ async function boot() {
   await loadBrand();
   try { ME = await api('/api/me'); } catch { return; }
   await loadBudget();
+  applyUser();
+  if (ME.profile && !ME.profile.setup && !location.hash.startsWith('#perfil')) location.hash = '#perfil';
   $('#top').classList.remove('hide');
   $('#nav-admin').classList.toggle('hide', ME.role !== 'admin');
   render(); pulse(); setInterval(pulse, 60000);
