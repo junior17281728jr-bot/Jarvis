@@ -5,6 +5,8 @@
 TS_AUTHKEY="PEGA_AQUI"
 REPO="junior17281728jr-bot/jarvis"
 
+# En Google Cloud este script corre en cada arranque: si ya se instaló, no hace nada
+[ -f /var/lib/jarvis/.instalado ] && exit 0
 exec > /var/log/jarvis-install.log 2>&1
 set -eux
 export DEBIAN_FRONTEND=noninteractive
@@ -43,4 +45,4 @@ set -x
 # Actualizaciones automáticas de seguridad del sistema
 apt-get install -y unattended-upgrades || true
 
-curl -fsS http://127.0.0.1:8080/api/setup && echo "JARVIS LISTO"
+curl -fsS http://127.0.0.1:8080/api/setup && touch /var/lib/jarvis/.instalado && echo "JARVIS LISTO"
