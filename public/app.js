@@ -765,7 +765,7 @@ views.ajustes = async () => {
   <section class="card"><h2>Usuarios <span class="more note">cada uno con su perfil; todos usan el mismo núcleo</span></h2><div class="tablewrap"><table><tr><th>Persona</th><th>Estilo</th><th class="r">Su dinero</th><th>Última entrada</th><th>Estado</th><th></th></tr>${users.map(u => `<tr><td><b>${esc(u.display_name || u.username)}</b><div class="note">${esc(u.username)} · ${u.role === 'admin' ? 'Administrador' : 'Usuario'}</div></td><td>${u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>'}</td><td class="r">${usd(u.budget, 0)}</td><td class="note">${u.lastSeen ? timeAgo(u.lastSeen) : 'nunca'}</td><td>${u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>'}</td>
       <td class="r" style="white-space:nowrap">${u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : `<button class="btn ghost sm" data-pw="${u.id}">Nueva contraseña</button> <button class="btn ghost sm" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Desactivar' : 'Activar'}</button>`}</td></tr>`).join('')}</table></div>
     <h3 class="cs-h">Crear un usuario (por ejemplo, para tu amigo)</h3>
-    <form class="row" id="uf" style="align-items:flex-end;gap:10px"><label style="flex:1;min-width:160px">Su nombre<input id="nn" placeholder="Ricardo"></label><label style="flex:1;min-width:160px">Usuario para entrar<input id="nu" required placeholder="ricardo"></label><label style="flex:1;min-width:180px">Contraseña (déjala vacía y JARVIS crea una)<input id="np" type="text" minlength="10" placeholder="automática" autocomplete="off"></label><label style="width:130px">Tope IA mes US$<input id="nm" type="number" value="2" step="0.5"></label><button class="btn">Crear usuario</button></form>
+    <form class="row" id="uf" style="align-items:flex-end;gap:10px"><label style="flex:1;min-width:160px">Su nombre<input id="nn" placeholder="Ricardo"></label><label style="flex:1;min-width:160px">Usuario para entrar<input id="nu" required placeholder="ricardo"></label><label style="flex:1;min-width:180px">Contraseña (déjala vacía y JARVIS crea una)<input id="np" type="text" minlength="10" placeholder="automática" autocomplete="off"></label><label style="width:150px">IA gratis al mes (US$)<input id="nm" type="number" value="2" step="0.5"></label><button class="btn">Crear usuario</button></form>
     <div class="note" style="margin-top:6px">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qué le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigación se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class="msg" id="um"></div></section>`;
 };
 views.ajustes.after = () => {
@@ -995,6 +995,78 @@ async function lotteryAnalysisView(game) {
   <section class="grid split">${narrativeBox(a)}${realtimeBox(a)}</section>
   <section class="card"><h2>Fuentes y pruebas</h2>${sourcesList(a.sources)}</section>`;
 }
+
+// ---------- ⚡ Potenciador de IA ----------
+function shrinkReceipt(file) {
+  return new Promise((ok, fail) => {
+    if (!/^image\//.test(file.type || 'image/')) return fail(new Error('Sube una foto o captura del comprobante.'));
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const draw = (max, q) => { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', q); };
+      let d = draw(1600, 0.82); if (d.length > 1.9e6) d = draw(1200, 0.72); if (d.length > 1.9e6) d = draw(900, 0.65);
+      URL.revokeObjectURL(url); d.length > 1.9e6 ? fail(new Error('La foto es muy pesada; prueba con una captura de pantalla.')) : ok(d);
+    };
+    img.onerror = () => fail(new Error('No pude leer esa foto. Prueba con una captura de pantalla.')); img.src = url;
+  });
+}
+const STATUS_CHIP = { pendiente: ['⏳ Esperando revisión', 'warn'], aprobada: ['✅ Aprobada', 'good'], rechazada: ['✕ No aprobada', 'bad'] };
+const monthName = iso => new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+views.potenciador = async () => {
+  const d = await api('/api/potenciador'), m = d.me;
+  const pctUsed = m.base ? Math.round(m.baseUsed / m.base * 100) : 0;
+  const reqRow = (r, admin) => `<div class="preq ${r.status}"><div class="preq-h"><b>${esc(admin ? r.who : r.pack_name)}</b><span class="chip ${STATUS_CHIP[r.status][1]}">${STATUS_CHIP[r.status][0]}</span></div>
+    <div class="note">${admin ? `${esc(r.pack_name)} · ` : ''}${esc(r.price)} → <b>${r.credits} créditos</b> · ${esc(new Date(r.created_at).toLocaleString('es-DO'))}${r.reference ? ` · Ref: ${esc(r.reference)}` : ''}</div>
+    ${r.note ? `<div class="note">“${esc(r.note)}”</div>` : ''}${r.admin_note ? `<div class="note">Respuesta: ${esc(r.admin_note)}</div>` : ''}
+    <a href="/api/potenciador/${r.id}/foto" target="_blank" rel="noopener"><img class="preq-img" src="/api/potenciador/${r.id}/foto" alt="Comprobante" loading="lazy"></a>
+    ${admin && r.status === 'pendiente' ? `<div class="row" style="gap:8px;margin-top:8px;align-items:center"><input class="pnote" data-id="${r.id}" placeholder="Nota (opcional)" style="flex:1;min-width:140px"><button class="btn sm" data-ok="${r.id}">Aprobar</button><button class="btn ghost sm" data-no="${r.id}">Rechazar</button></div>` : ''}</div>`;
+  const userPart = `
+  <section class="card"><h2>Tu IA este mes</h2>
+    <div class="pbase"><div class="row" style="justify-content:space-between"><span>IA gratis del mes</span><b>${m.baseLeft} de ${m.base} créditos</b></div><div class="bar" style="margin-top:6px"><span style="width:${100 - pctUsed}%;background:var(--accent)"></span></div><div class="note">Se renueva sola el ${esc(monthName(m.resetsAt))}.</div></div>
+    <div class="pbox" style="margin-top:10px"><div class="l">⚡ Créditos extra (Potenciador)</div><div class="v">${m.extra}</div><div class="note">No vencen. Se usan solo cuando se acaba la IA gratis del mes.</div></div>
+    <div class="note" style="margin-top:10px">La IA responde tus preguntas y hace los análisis con IA. <b>Si se te acaba, JARVIS sigue funcionando igual</b> (mapa, recomendaciones, historial, avisos): solo las respuestas de la IA esperan al mes siguiente o a un Potenciador.</div></section>
+  <section class="card"><h2>⚡ Activar un Potenciador</h2>
+    <form class="form" id="pf2">
+      <div><b>1. Elige un paquete</b><div class="packs" style="margin-top:8px">${d.packs.map((p, i) => `<label class="pack"><input type="radio" name="pack" value="${esc(p.id)}"${i === 0 ? ' checked' : ''}><span><b>${esc(p.name)}</b><span class="pk-price">${esc(p.price)}</span><span class="note">${p.credits} créditos extra</span></span></label>`).join('')}</div></div>
+      <div><b>2. Paga</b><div class="payinfo">${d.payInfo ? esc(d.payInfo).replace(/\n/g, '<br>') : 'El administrador todavía no puso cómo pagarle. Pregúntale directamente.'}</div></div>
+      <div><b>3. Sube la foto del comprobante</b><label class="btn ghost" style="cursor:pointer;margin-top:8px;display:inline-flex">📷 Elegir foto o captura<input id="prc" type="file" accept="image/*" hidden></label><div id="prcv" class="note" style="margin-top:6px"></div></div>
+      <label>Número de referencia (opcional)<input id="pref" maxlength="60" placeholder="Ej.: 123456789"></label>
+      <label>Nota para el administrador (opcional)<input id="pnt" maxlength="300"></label>
+      <button class="btn">Enviar solicitud</button><div class="msg" id="pmsg"></div>
+      <div class="note">El administrador revisa tu comprobante y aprueba. Te llega un aviso aquí cuando lo haga.</div>
+    </form></section>
+  <section class="card"><h2>Mis solicitudes</h2>${d.mine.length ? d.mine.map(r => reqRow(r, false)).join('') : '<div class="empty">Todavía no has pedido ningún Potenciador.</div>'}</section>`;
+  const adminPart = d.isAdmin ? `
+  <section class="card"><h2>Solicitudes de tus usuarios ${d.admin.requests.filter(r => r.status === 'pendiente').length ? `<span class="chip warn">${d.admin.requests.filter(r => r.status === 'pendiente').length} por revisar</span>` : ''}</h2>
+    <div class="note">Revisa que el pago te llegó de verdad antes de aprobar. Al aprobar, los créditos se le suman al momento.</div>
+    ${d.admin.requests.length ? d.admin.requests.map(r => reqRow(r, true)).join('') : '<div class="empty">No hay solicitudes todavía.</div>'}<div class="msg" id="amsg"></div></section>
+  <section class="card"><h2>Créditos de cada usuario</h2>${d.admin.users.length ? `<div class="tablewrap"><table><tr><th>Persona</th><th class="r">Gratis del mes</th><th class="r">Extra</th><th class="r">Regalar</th></tr>${d.admin.users.map(u => `<tr><td>${esc(u.name)}${u.pending ? ' <span class="chip warn">pidió</span>' : ''}</td><td class="r">${u.baseLeft}/${u.base}</td><td class="r"><b>${u.extra}</b></td><td class="r"><span class="row" style="gap:6px;justify-content:flex-end"><input type="number" class="gift" data-u="${u.id}" placeholder="50" style="width:80px"><button class="btn ghost sm" data-gift="${u.id}">Dar</button></span></td></tr>`).join('')}</table></div>` : '<div class="empty">Todavía no has creado usuarios.</div>'}
+    <div class="note">La IA gratis de cada mes es la que pusiste al crear el usuario ("IA gratis al mes") (1 crédito = 1 centavo de dólar de IA).</div></section>
+  <section class="card"><h2>Paquetes y forma de pago</h2><form class="form" id="pset">
+    ${[0, 1, 2].map(i => { const p = d.packs[i] || {}; return `<div class="grid g3" style="gap:8px"><label>Nombre<input data-pk="${i}" data-f="name" value="${esc(p.name || '')}" maxlength="40"></label><label>Precio<input data-pk="${i}" data-f="price" value="${esc(p.price || '')}" maxlength="20" placeholder="RD$300"></label><label>Créditos<input data-pk="${i}" data-f="credits" type="number" value="${p.credits || ''}"></label></div>`; }).join('')}
+    <label>Cómo te pagan (lo ven tus usuarios)<textarea id="ppay" rows="4" maxlength="600" placeholder="Ej.: Transferencia a mi cuenta del banco … a nombre de …">${esc(d.payInfo)}</textarea></label>
+    <button class="btn">Guardar</button><div class="msg" id="psm"></div></form></section>` : '';
+  return `<div><h1>⚡ Potenciador de IA</h1><p class="sub">${d.isAdmin ? 'Aquí apruebas los pagos de tus usuarios y decides los paquetes.' : 'Más respuestas de la IA cuando las necesites.'}</p></div>${d.isAdmin ? adminPart : userPart}`;
+};
+views.potenciador.after = () => {
+  let receipt = null;
+  if ($('#prc')) $('#prc').onchange = async e => { const f = e.target.files[0]; if (!f) return; $('#prcv').textContent = 'Preparando la foto…'; try { receipt = await shrinkReceipt(f); $('#prcv').innerHTML = `<img src="${receipt}" class="preq-img" alt="Vista previa"><div>✅ Foto lista</div>`; } catch (err) { receipt = null; $('#prcv').textContent = err.message; } };
+  if ($('#pf2')) $('#pf2').onsubmit = async e => {
+    e.preventDefault();
+    if (!receipt) { $('#pmsg').className = 'msg err'; $('#pmsg').textContent = 'Falta la foto del comprobante.'; return; }
+    try { await api('/api/potenciador', { method: 'POST', body: { packId: document.querySelector('input[name=pack]:checked')?.value, receipt, reference: $('#pref').value, note: $('#pnt').value } }); $('#pmsg').className = 'msg ok'; $('#pmsg').textContent = '¡Enviado! Te aviso cuando el administrador lo apruebe.'; setTimeout(render, 1400); }
+    catch (err) { $('#pmsg').className = 'msg err'; $('#pmsg').textContent = err.message; }
+  };
+  const decide = async (id, approve) => { try { await api(`/api/potenciador/${id}/decidir`, { method: 'POST', body: { approve, note: document.querySelector(`.pnote[data-id="${id}"]`)?.value || '' } }); render(); } catch (err) { $('#amsg').className = 'msg err'; $('#amsg').textContent = err.message; } };
+  document.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => decide(b.dataset.ok, true));
+  document.querySelectorAll('[data-no]').forEach(b => b.onclick = () => decide(b.dataset.no, false));
+  document.querySelectorAll('[data-gift]').forEach(b => b.onclick = async () => { const n = Number(document.querySelector(`.gift[data-u="${b.dataset.gift}"]`).value); try { await api('/api/potenciador/regalar', { method: 'POST', body: { userId: Number(b.dataset.gift), credits: n } }); render(); } catch (err) { alertMsg(err.message); } });
+  if ($('#pset')) $('#pset').onsubmit = async e => {
+    e.preventDefault();
+    const packs = [0, 1, 2].map(i => ({ name: document.querySelector(`[data-pk="${i}"][data-f=name]`).value, price: document.querySelector(`[data-pk="${i}"][data-f=price]`).value, credits: Number(document.querySelector(`[data-pk="${i}"][data-f=credits]`).value) })).filter(p => p.name || p.price || p.credits);
+    try { await api('/api/potenciador/ajustes', { method: 'POST', body: { packs, payInfo: $('#ppay').value } }); $('#psm').className = 'msg ok'; $('#psm').textContent = 'Guardado.'; } catch (err) { $('#psm').className = 'msg err'; $('#psm').textContent = err.message; }
+  };
+};
+function alertMsg(t) { const m = $('#amsg'); if (m) { m.className = 'msg err'; m.textContent = t; } }
 
 views.historial = async () => {
   const [perf, hist, real] = await Promise.all([api('/api/performance'), api('/api/history'), api('/api/real')]);

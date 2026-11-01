@@ -167,6 +167,19 @@ ALTER TABLE activity ADD COLUMN user_id INTEGER;
 CREATE INDEX activity_user ON activity (user_id, id);
 `,
   },
+  {
+    id: 6,
+    name: 'potenciador_ia',
+    sql: `
+ALTER TABLE users ADD COLUMN ai_extra_usd REAL NOT NULL DEFAULT 0;
+CREATE TABLE credit_requests (
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL,
+  pack_name TEXT NOT NULL, price TEXT NOT NULL, credits INTEGER NOT NULL, reference TEXT, note TEXT, receipt_ext TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendiente', decided_at TEXT, decided_by INTEGER, admin_note TEXT
+);
+CREATE INDEX credit_requests_user ON credit_requests (user_id, status);
+`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */

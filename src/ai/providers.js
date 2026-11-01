@@ -49,24 +49,39 @@ export function spent(db, { userId = null, sinceIso }) {
 const dayStart = () => new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').toISOString();
 const monthStart = () => new Date(new Date().toISOString().slice(0, 7) + '-01T00:00:00Z').toISOString();
 
-/** ¿Se puede gastar esto? Revisa el tope global (tu presupuesto) y el del usuario. */
+/** ¿Se puede gastar esto? Revisa el tope global (tu presupuesto) y el del usuario.
+ *  Si el usuario ya gastó su base gratis del mes, puede seguir con sus créditos extra (Potenciador). */
 export function budgetCheck(db, cfg, { userId = null, estUsd }) {
   const g = { day: spent(db, { sinceIso: dayStart() }), month: spent(db, { sinceIso: monthStart() }) };
-  if (g.month + estUsd > cfg.aiMonthlyCapUsd) return { ok: false, reason: `Se llegó al tope mensual de IA (US$${cfg.aiMonthlyCapUsd}). Modo ahorro: sigo con código y el modelo gratis.` };
-  if (g.day + estUsd > cfg.aiDailyCapUsd) return { ok: false, reason: `Se llegó al tope diario de IA (US$${cfg.aiDailyCapUsd}).` };
+  let extra = 0, overBase = false;
   if (userId != null) {
-    const u = db.prepare('SELECT ai_daily_cap_usd d, ai_monthly_cap_usd m FROM users WHERE id = ?').get(userId);
+    const u = db.prepare('SELECT ai_daily_cap_usd d, ai_monthly_cap_usd m, ai_extra_usd x FROM users WHERE id = ?').get(userId);
     if (u) {
-      if (spent(db, { userId, sinceIso: monthStart() }) + estUsd > u.m) return { ok: false, reason: 'Llegaste a tu tope mensual de IA.' };
-      if (spent(db, { userId, sinceIso: dayStart() }) + estUsd > u.d) return { ok: false, reason: 'Llegaste a tu tope diario de IA.' };
+      const month = spent(db, { userId, sinceIso: monthStart() });
+      extra = u.x || 0; overBase = month + estUsd > u.m;
+      if (overBase && month + estUsd > u.m + extra) return { ok: false, reason: 'Se acabó tu IA gratis de este mes. JARVIS sigue funcionando igual; para más respuestas de la IA, activa un Potenciador (menú ⚡ Potenciador) o espera al día 1.' };
+      if (!overBase && !(extra > 0) && spent(db, { userId, sinceIso: dayStart() }) + estUsd > u.d) return { ok: false, reason: 'Llegaste al límite de IA de hoy. Mañana se renueva, o activa un Potenciador (menú ⚡ Potenciador).' };
     }
   }
+  // Lo que paga el usuario con su Potenciador no cuenta contra el tope general del administrador
+  const room = overBase ? extra : 0;
+  if (g.month + estUsd > cfg.aiMonthlyCapUsd + room) return { ok: false, reason: `Se llegó al tope mensual de IA (US$${cfg.aiMonthlyCapUsd}). Modo ahorro: sigo con código y el modelo gratis.` };
+  if (g.day + estUsd > cfg.aiDailyCapUsd + room) return { ok: false, reason: `Se llegó al tope diario de IA (US$${cfg.aiDailyCapUsd}).` };
   return { ok: true };
 }
 
 function record(db, { userId, provider, model, task, inTok, outTok, ok }) {
   const p = priceFor(db, provider, model);
   const cost = (inTok * p.in + outTok * p.out) / 1e6;
+  // Si este gasto pasa la base gratis del mes, la parte que sobra se descuenta de los créditos extra
+  if (userId != null && cost > 0) {
+    const u = db.prepare('SELECT ai_monthly_cap_usd m FROM users WHERE id = ?').get(userId);
+    if (u) {
+      const before = spent(db, { userId, sinceIso: monthStart() });
+      const over = Math.max(0, before + cost - u.m) - Math.max(0, before - u.m);
+      if (over > 0) db.prepare('UPDATE users SET ai_extra_usd = MAX(0, ai_extra_usd - ?) WHERE id = ?').run(over, userId);
+    }
+  }
   db.prepare('INSERT INTO ai_usage (ts, user_id, provider, model, task, in_tokens, out_tokens, cost_usd, ok) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(nowIso(), userId ?? null, provider, model ?? 'desconocido', task, inTok ?? 0, outTok ?? 0, cost, ok ? 1 : 0);
   return cost;

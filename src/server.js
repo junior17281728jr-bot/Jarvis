@@ -35,6 +35,7 @@ import { historyList, performance, addReal, closeReal, realSummary } from './mot
 import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
 import { aiView } from './motor/autopilot.js';
+import { creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
 import { getProfile, saveProfile, profileLine, STYLES, HORIZONS } from './motor/profile.js';
 import { getBudget, saveBudget, sizeFor, evidence, finder, bigBetCheck } from './motor/sizing.js';
 import { publicBrand, saveBrand, logoFile, manifest } from './core/brand.js';
@@ -58,8 +59,8 @@ function send(res, code, body, headers = {}) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...headers });
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
-async function body(req) {
-  let s = ''; for await (const ch of req) { s += ch; if (s.length > 1e6) throw new Error('Petición demasiado grande.'); }
+async function body(req, max = 1e6) {
+  let s = ''; for await (const ch of req) { s += ch; if (s.length > max) throw new Error('Petición demasiado grande.'); }
   return s ? JSON.parse(s) : {};
 }
 const tokenOf = req => (req.headers.cookie || '').split(';').map(x => x.trim().split('=')).find(([k]) => k === 'jv')?.[1];
@@ -275,6 +276,23 @@ route('POST', '/api/users/:id/active', async ({ req, user, p }) => { const b = a
 route('POST', '/api/users', async ({ req }) => { const b = await body(req); const pw = String(b.password || '').trim() || autoPassword(); return { password: b.password ? undefined : pw, id: createUser(db, { username: b.username, password: pw, role: b.role === 'admin' ? 'admin' : 'user', displayName: b.displayName, dailyCap: Number(b.dailyCap || 0.1), monthlyCap: Number(b.monthlyCap || 2) }) }; }, { admin: true });
 
 
+
+// ---------- ⚡ Potenciador de IA ----------
+route('GET', '/api/potenciador', ({ user }) => {
+  const isAdmin = user.role === 'admin', st = creditSettings(db);
+  return { me: creditStatus(db, user.id), packs: st.packs, payInfo: st.payInfo, mine: listRequests(db, { userId: user.id }), isAdmin,
+    admin: isAdmin ? { requests: listRequests(db), users: db.prepare("SELECT id FROM users WHERE active = 1 AND role != 'admin'").all().map(u => ({ id: u.id, ...creditStatus(db, u.id), name: db.prepare('SELECT COALESCE(display_name, username) n FROM users WHERE id = ?').get(u.id).n })) } : null };
+});
+route('POST', '/api/potenciador', async ({ req, user }) => { const b = await body(req, 2.2e6); return createRequest(db, cfg, user, b); });
+route('GET', '/api/potenciador/:id/foto', ({ res, user, p }) => {
+  const f = receiptFile(db, cfg, Number(p.id));
+  if (!f || (user.role !== 'admin' && f.userId !== user.id)) throw Object.assign(new Error('No encontrado.'), { code: 404 });
+  res.writeHead(200, { 'Content-Type': f.type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+  res.end(f.buf);
+});
+route('POST', '/api/potenciador/:id/decidir', async ({ req, user, p }) => { const b = await body(req); return decideRequest(db, user, Number(p.id), { approve: !!b.approve, note: b.note }); }, { admin: true });
+route('POST', '/api/potenciador/ajustes', async ({ req }) => saveCreditSettings(db, await body(req)), { admin: true });
+route('POST', '/api/potenciador/regalar', async ({ req, user }) => { const b = await body(req); return grantCredits(db, user, Number(b.userId), Number(b.credits)); }, { admin: true });
 // ---------- Cartera de la IA (decide sola) y búsqueda enfocada ----------
 route('GET', '/api/ia', () => aiView(db));
 const FOCUS_DAYS = { corto: [21, 63], medio: [126, 63], largo: [252, 126] };

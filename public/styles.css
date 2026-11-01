@@ -427,3 +427,18 @@ details.card>summary{cursor:pointer}
 .pbox.vs .v{font-size:22px}
 .iarow{display:block;padding:8px 0;border-top:1px solid var(--line)}
 @media (max-width:520px){.fopt b{font-size:13px}}
+
+/* ⚡ Potenciador */
+.packs{display:grid;gap:8px}
+.pack{display:flex;flex-direction:row;text-align:left;gap:12px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);cursor:pointer}
+.pack input{width:auto}
+.pack>span{display:flex;flex-direction:column}
+.pack:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+.pk-price{font-size:18px;font-weight:800;color:var(--accent)}
+.payinfo{margin-top:6px;padding:10px 12px;border-radius:12px;background:var(--info-bg);line-height:1.5}
+.preq{padding:12px 0;border-top:1px solid var(--line)}
+.preq-h{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.preq-img{display:block;max-width:220px;max-height:260px;margin-top:8px;border-radius:10px;border:1px solid var(--line);object-fit:contain;background:#fff}
+.chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:var(--panel2)}
+.chip.good{background:var(--good-bg);color:var(--good)}.chip.warn{background:var(--warn-bg);color:var(--warn)}.chip.bad{background:var(--bad-bg);color:var(--bad)}
+.pbase .bar{height:9px;border-radius:9px;background:var(--panel2);overflow:hidden}.pbase .bar span{display:block;height:100%}
