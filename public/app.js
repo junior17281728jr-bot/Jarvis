@@ -159,20 +159,47 @@ function todoFor(lightName) {
 }
 
 // ---------- Autenticación ----------
+// Cuentas recordadas EN ESTE EQUIPO (solo el usuario, nunca la contraseña). La contraseña la guarda el
+// llavero del celular o del navegador si la persona quiere (Face ID / autocompletar).
+const ACC_KEY = 'jv.accounts';
+function savedAccounts() { try { const a = JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.u === 'string').slice(0, 8) : []; } catch { return []; } }
+function rememberAccount(u, name) { try { const a = savedAccounts().filter(x => x.u.toLowerCase() !== u.toLowerCase()); a.unshift({ u, name: name || u }); localStorage.setItem(ACC_KEY, JSON.stringify(a.slice(0, 8))); } catch { /* sin almacenamiento */ } }
+function forgetAccount(u) { try { localStorage.setItem(ACC_KEY, JSON.stringify(savedAccounts().filter(x => x.u !== u))); } catch { /* sin almacenamiento */ } }
+
 async function showAuth() {
   $('#top').classList.add('hide');
   const { needsSetup } = await fetch('/api/setup').then(r => r.json());
+  const accs = needsSetup ? [] : savedAccounts();
   app.innerHTML = `<div class="center"><form class="card auth form" id="auth">
     <div class="auth-brand">${brandMark(true)}<div class="logo">${brandName()}</div>${BRAND.tagline ? `<div class="note">${esc(BRAND.tagline)}</div>` : ''}${BRAND.owner ? `<div class="owner">Programa privado de ${esc(BRAND.owner)}</div>` : ''}</div>
-    <h1 style="text-align:center;font-size:20px">${needsSetup ? 'Crea tu cuenta de administrador' : 'Inicia sesión'}</h1>
+    <h1 style="text-align:center;font-size:20px">${needsSetup ? 'Crea tu cuenta de administrador' : accs.length ? '¿Quién entra?' : 'Inicia sesión'}</h1>
     ${needsSetup ? '<p class="note" style="text-align:center">Es la primera vez. Esta cuenta controla JARVIS y crea los usuarios de tus amigos.</p>' : ''}
-    <label>Usuario<input id="u" autocomplete="username" required></label>
-    <label>Contraseña<input id="p" type="password" autocomplete="${needsSetup ? 'new-password' : 'current-password'}" required minlength="${needsSetup ? 10 : 1}"></label>
-    <button class="btn">${needsSetup ? 'Crear y entrar' : 'Entrar'}</button><div class="msg err" id="am"></div></form></div>`;
+    ${accs.length ? `<div class="accts" id="accs">${accs.map(x => `<div class="acct-item"><button type="button" class="acct" data-u="${esc(x.u)}"><span class="acct-av">${esc((x.name || x.u).trim().charAt(0).toUpperCase())}</span><span class="acct-t"><b>${esc(x.name || x.u)}</b><span class="note">${esc(x.u)}</span></span></button><button type="button" class="acct-x" data-x="${esc(x.u)}" title="Olvidar esta cuenta en este equipo" aria-label="Olvidar ${esc(x.u)}">×</button></div>`).join('')}</div>
+      <button type="button" class="linkbtn" id="other">Entrar con otra cuenta</button>` : ''}
+    <div id="userbox"${accs.length ? ' class="hide"' : ''}><label>Usuario<input id="u" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label></div>
+    <div id="passbox"${accs.length ? ' class="hide"' : ''}>
+      <div id="who" class="note hide" style="text-align:center;margin-bottom:6px"></div>
+      <label>Contraseña<input id="p" name="password" type="password" autocomplete="${needsSetup ? 'new-password' : 'current-password'}" required minlength="${needsSetup ? 10 : 1}"></label>
+      <label class="chk" style="margin-top:8px"><input type="checkbox" id="rem" checked> Recordar mi usuario en este equipo</label>
+      <div class="note" style="margin-top:4px">La contraseña la puede guardar tu iPhone (te lo ofrece al entrar) y después se pone sola con Face ID. Además, la sesión dura 30 días en este equipo.</div>
+      <button class="btn" style="margin-top:10px">${needsSetup ? 'Crear y entrar' : 'Entrar'}</button>
+    </div><div class="msg err" id="am"></div></form></div>`;
+  const pick = u => {
+    $('#u').value = u; $('#userbox').classList.add('hide'); $('#passbox').classList.remove('hide');
+    const a = accs.find(x => x.u === u); $('#who').textContent = `Entrando como ${a?.name || u}`; $('#who').classList.remove('hide');
+    document.querySelectorAll('.acct').forEach(b => b.classList.toggle('on', b.dataset.u === u)); $('#p').focus();
+  };
+  document.querySelectorAll('.acct').forEach(b => b.onclick = () => pick(b.dataset.u));
+  document.querySelectorAll('.acct-x').forEach(b => b.onclick = () => { forgetAccount(b.dataset.x); showAuth(); });
+  if ($('#other')) $('#other').onclick = () => { $('#u').value = ''; $('#who').classList.add('hide'); $('#userbox').classList.remove('hide'); $('#passbox').classList.remove('hide'); document.querySelectorAll('.acct').forEach(b => b.classList.remove('on')); $('#u').focus(); };
+  if (accs.length === 1) pick(accs[0].u);
   $('#auth').onsubmit = async e => {
     e.preventDefault();
-    try { await api(needsSetup ? '/api/setup' : '/api/login', { method: 'POST', body: { username: $('#u').value, password: $('#p').value } }); boot(); }
-    catch (err) { $('#am').textContent = err.message; }
+    try {
+      const r = await api(needsSetup ? '/api/setup' : '/api/login', { method: 'POST', body: { username: $('#u').value.trim(), password: $('#p').value } });
+      if ($('#rem').checked) rememberAccount(r?.user?.username || $('#u').value.trim(), r?.user?.displayName); else forgetAccount($('#u').value.trim());
+      boot();
+    } catch (err) { $('#am').textContent = err.message; }
   };
 }
 

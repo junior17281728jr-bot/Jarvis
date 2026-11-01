@@ -405,3 +405,13 @@ details.card>summary{cursor:pointer}
 .chk{flex-direction:row!important;align-items:center;gap:8px;font-weight:600}.chk input{width:auto}
 .welcome{border:2px solid var(--accent)}
 @media (max-width:720px){.opts{grid-template-columns:1fr}.mechip{max-width:90px}#sys-text{display:none}}
+
+/* Cuentas recordadas en la pantalla de entrada */
+.accts{display:grid;gap:8px;margin:6px 0 2px}
+.acct-item{display:flex;align-items:center;gap:6px}
+.acct{flex:1;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--panel2);color:inherit;text-align:left;cursor:pointer;font:inherit}
+.acct.on{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent)}
+.acct-av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:18px;background:var(--accent);color:var(--panel);flex:none}
+.acct-t{display:flex;flex-direction:column;line-height:1.25}
+.acct-x{width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:var(--mute);font-size:22px;cursor:pointer}
+.linkbtn{background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;padding:6px 0;text-align:center;width:100%}
