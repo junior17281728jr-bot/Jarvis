@@ -46,19 +46,34 @@ export function sizeFor(card, budget, ev, style = 'equilibrado') {
   const B = budget.usd, usd = baseAmount(card.light, B, style), pct = B ? usd / B : 0;
   const t = card.timing, recDays = t?.recommended?.days, pAt = recDays ? (t.h?.[recDays]?.p ?? t.pProfit?.[recDays]) : null;
   const loss = card.projection?.personal?.lossChance;
+  const n10 = x => Math.round(x * 10);
   const checks = [
     { ok: card.light === 'verde', text: card.light === 'verde' ? 'JARVIS la recomienda.' : 'JARVIS no la recomienda con fuerza (no está en "Sí, invierte").' },
-    { ok: card.probMethod === 'calibrado', text: card.probMethod === 'calibrado' ? 'Su probabilidad ya está medida con casos reales.' : 'Su probabilidad todavía es una estimación inicial, sin casos reales suficientes.' },
-    { ok: ev.lo > 0.5, text: ev.n ? (ev.lo > 0.5 ? `JARVIS acierta más que la suerte (${Math.round(ev.hitRate * 100)}% en ${ev.n} casos).` : `JARVIS acierta ${Math.round((ev.hitRate || 0) * 100)}% en ${ev.n} casos: todavía no se distingue de lanzar una moneda.`) : 'JARVIS todavía no tiene recomendaciones calificadas.' },
-    { ok: pAt != null && pAt >= 0.7, text: pAt != null ? (pAt >= 0.7 ? `En el plazo recomendado estuvo ganando ${Math.round(pAt * 10)} de cada 10 veces.` : `En el plazo recomendado estuvo ganando solo ${Math.round(pAt * 10)} de cada 10 veces.`) : 'No tiene un plazo en el que haya ganado casi siempre.' },
-    { ok: loss != null && loss <= 0.25, text: loss != null ? (loss <= 0.25 ? `Chance de terminar perdiendo baja (${Math.round(loss * 100)} de cada 100).` : `Chance de terminar perdiendo: ${Math.round(loss * 100)} de cada 100 (alta para poner más).`) : 'Sin datos de pérdida.' },
+    { ok: card.probMethod === 'calibrado', text: card.probMethod === 'calibrado'
+      ? 'JARVIS ya comprobó con el tiempo que sus porcentajes aciertan.'
+      : 'JARVIS es nuevo: todavía no ha comprobado con el tiempo si sus porcentajes aciertan. Esto se arregla solo, con semanas de trabajo.' },
+    { ok: ev.lo > 0.5, text: !ev.n
+      ? 'JARVIS todavía no tiene recomendaciones terminadas para saber si acierta. Cada una tarda unas semanas en terminar.'
+      : ev.lo > 0.5 ? `JARVIS ha acertado ${n10(ev.hitRate)} de cada 10 en ${ev.n} recomendaciones ya terminadas: más que la suerte.`
+        : `JARVIS ha acertado ${n10(ev.hitRate || 0)} de cada 10 en ${ev.n} recomendaciones terminadas: todavía es casi como lanzar una moneda.` },
+    { ok: pAt != null && pAt >= 0.7, text: pAt == null
+      ? 'En el pasado, esta acción no tuvo un plazo en el que ganara casi siempre.'
+      : pAt >= 0.7 ? `En el pasado, esta acción terminó ganando ${n10(pAt)} de cada 10 veces si se dejaba el tiempo recomendado.`
+        : `En el pasado, esta acción terminó ganando solo ${n10(pAt)} de cada 10 veces en el tiempo recomendado.` },
+    { ok: loss != null && loss <= 0.25, text: loss == null ? 'No hay datos suficientes para medir el riesgo de perder.'
+      : loss <= 0.25 ? `Riesgo bajo: solo ${Math.round(loss * 100)} de cada 100 veces terminó perdiendo.`
+        : `Riesgo alto para poner más: ${Math.round(loss * 100)} de cada 100 veces terminó perdiendo.` },
   ];
   const canMore = usd > 0 && checks.every(c => c.ok);
   const maxUsd = canMore ? Math.max(usd, round(B * STRONG_PCT, 0)) : usd;
   const P = STYLES[style]?.pct ?? BASE_PCT, tooSmall = card.light !== 'rojo' && B * (P[card.light] || 0) < MIN_TICKET;
   return {
     usd, pct: round(pct * 100, 1), maxUsd, maxPct: B ? round(maxUsd / B * 100, 1) : 0, canMore, checks,
-    more: canMore ? `Sí puedes subir hasta US$${maxUsd} (${Math.round(STRONG_PCT * 100)}% de tu dinero): se cumplen las 5 pruebas.` : usd ? `No subas de US$${usd}: ${checks.filter(c => !c.ok).length} de 5 pruebas no se cumplen todavía.` : 'No pongas dinero en esta.',
+    more: canMore ? `Sí: puedes subir hasta US$${maxUsd} (${Math.round(STRONG_PCT * 100)}% de tu dinero), porque se cumplen las 5 condiciones.`
+      : usd ? (!ev.n || card.probMethod !== 'calibrado'
+        ? `No. Pon como máximo US$${usd}. JARVIS es nuevo y todavía no ha demostrado que acierta; cuando lo demuestre, te dirá si puedes poner más.`
+        : (k => `No. Pon como máximo US$${usd}. ${k === 1 ? 'Falta 1' : `Faltan ${k}`} de 5 condiciones para poner más (abajo ves ${k === 1 ? 'cuál' : 'cuáles'}).`)(checks.filter(c => !c.ok).length))
+      : 'No pongas dinero en esta.',
     note: tooSmall ? `El ${Math.round((P[card.light] || 0) * 1000) / 10}% de tu dinero es menos de US$${MIN_TICKET}; uso US$${MIN_TICKET}, que es lo mínimo práctico.` : null,
   };
 }

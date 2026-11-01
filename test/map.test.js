@@ -78,7 +78,7 @@ test('según TU dinero: 10% por idea, y solo propone poner más cuando las 5 pru
   const yes = sizeFor(strong, { usd: 1000 }, { n: 200, hits: 130, hitRate: 0.65, lo: 0.58 });
   assert.equal(yes.canMore, true); assert.equal(yes.maxUsd, 200);
   const no = sizeFor(strong, { usd: 1000 }, { n: 290, hits: 148, hitRate: 0.51, lo: 0.45 });
-  assert.equal(no.canMore, false); assert.equal(no.maxUsd, 100); assert.match(no.more, /No subas/);
+  assert.equal(no.canMore, false); assert.equal(no.maxUsd, 100); assert.match(no.more, /Pon como máximo/);
   assert.ok(no.checks.some(c => !c.ok && /moneda/.test(c.text)));
   // Buscador: pedir 8–10 de cada 10 cuando no existe -> lo dice claro y muestra lo más cercano
   const rows = [{ symbol: 'AAA', zone: 'recomendada', conv: 70, card: { timing: { h: { 252: { p: 0.62, bad: -0.1, median: 0.08 } } } } }, { symbol: 'BBB', zone: 'no_recomendada', conv: 20, card: { timing: { h: { 252: { p: 0.85, bad: -0.05, median: 0.12 } } } } }];
