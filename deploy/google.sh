@@ -25,6 +25,44 @@ fi
 gcloud config set project "$PROJECT" >/dev/null
 echo "   Proyecto: $PROJECT"
 
+# Si la app de Google Cloud no dio permiso a la terminal, se pide con un enlace CORTO (fácil de tocar en el celular)
+login_short() {
+  echo
+  echo "== Google necesita que confirmes que eres tú (solo esta vez)"
+  coproc GL { gcloud auth login --no-launch-browser 2>&1; }
+  local buf="" chunk="" url="" sentY="" t0=$SECONDS
+  while [ -z "$url" ] && [ $((SECONDS - t0)) -lt 90 ]; do
+    chunk=""
+    if IFS= read -r -t 2 chunk <&"${GL[0]}"; then buf+="$chunk"$'\n'; else rc=$?; buf+="$chunk"; [ $rc -le 128 ] && break; fi
+    if [[ -z "$sentY" && "$buf" == *"(Y/n)"* ]]; then echo "Y" >&"${GL[1]}"; sentY=1; fi
+    url=$(grep -o 'https://accounts.google.com[^[:space:]]*' <<<"$buf" | head -1 || true)
+  done
+  if [ -z "$url" ]; then echo "❌ No pude pedir el permiso. Mándale una captura a Claude."; exit 1; fi
+  local enc short=""
+  enc=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=""))' "$url")
+  short=$(curl -fsS -m 10 "https://tinyurl.com/api-create.php?url=$enc" 2>/dev/null || true)
+  [[ "$short" == https://* ]] || short=$(curl -fsS -m 10 "https://is.gd/create.php?format=simple&url=$enc" 2>/dev/null || true)
+  [[ "$short" == https://* ]] || short="$url"
+  echo
+  echo "👉 1) Toca este enlace (o escríbelo en Safari):"
+  echo
+  echo "      $short"
+  echo
+  echo "👉 2) Elige tu Gmail y toca Permitir. Copia el código que te da Google."
+  echo
+  local code=""
+  read -r -p "👉 3) Pega aquí el código y toca Intro: " code </dev/tty
+  echo "$code" >&"${GL[1]}"
+  cat <&"${GL[0]}" || true
+  wait "$GL_PID" 2>/dev/null || true
+  ACC=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
+  if [ -z "$ACC" ]; then echo "❌ No quedó la sesión abierta. Pega otra vez el comando y repite con un código nuevo."; exit 1; fi
+  gcloud config set account "$ACC" >/dev/null
+  gcloud config set project "$PROJECT" >/dev/null
+  echo "✅ Listo, ya tengo permiso como $ACC"
+}
+if ! gcloud auth print-access-token >/dev/null 2>&1; then login_short; fi
+
 echo "== 2/4 Activando Compute Engine (la primera vez tarda 1 o 2 minutos)"
 gcloud services enable compute.googleapis.com
 
