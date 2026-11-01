@@ -107,7 +107,7 @@ fi
 
 # Google exige una cuenta de pago conectada al proyecto, aunque lo gratis no se cobra
 BILLING_ON=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null || true)
-if [ "$BILLING_ON" != "True" ]; then
+if [ "$BILLING_ON" = "False" ] || { [ -z "$BILLING_ON" ] && [ -z "$WANT_PROJECT" ]; }; then
   echo "== Conectando tu cuenta de pago al proyecto (lo gratis no se cobra)"
   gcloud services enable cloudbilling.googleapis.com >/dev/null 2>&1 || true
   BA=$(gcloud billing accounts list --filter=open=true --format='value(name)' --limit=1 2>/dev/null || true)
@@ -128,6 +128,12 @@ fi
 echo "== 2/4 Activando Compute Engine (la primera vez tarda 1 o 2 minutos)"
 if ! gcloud services enable compute.googleapis.com 2>"${TMPDIR:-/tmp}/jv-err"; then
   cat "${TMPDIR:-/tmp}/jv-err"
+  if grep -qi 'billing' "${TMPDIR:-/tmp}/jv-err"; then
+    echo "❌ El proyecto $PROJECT no tiene la cuenta de pago conectada."
+    echo "   El dueño del proyecto debe activar la prueba gratis: https://console.cloud.google.com/freetrial"
+    echo "   y conectarla al proyecto: https://console.cloud.google.com/billing/linkedaccount?project=$PROJECT"
+    exit 1
+  fi
   if grep -qiE 'active account|credentials|auth login|reauth' "${TMPDIR:-/tmp}/jv-err"; then
     login_short
     gcloud services enable compute.googleapis.com
