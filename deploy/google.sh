@@ -30,11 +30,13 @@ login_short() {
   echo
   echo "== Google necesita que confirmes que eres tú (solo esta vez)"
   coproc GL { gcloud auth login --no-launch-browser 2>&1; }
-  local buf="" chunk="" url="" sentY="" t0=$SECONDS
+  local gpid=$GL_PID
+  exec 5<&"${GL[0]}" 6>&"${GL[1]}"   # copias fijas: bash cierra las del coproc cuando termina
+  local buf="" chunk="" url="" sentY="" t0=$SECONDS rc=0
   while [ -z "$url" ] && [ $((SECONDS - t0)) -lt 90 ]; do
     chunk=""
-    if IFS= read -r -t 2 chunk <&"${GL[0]}"; then buf+="$chunk"$'\n'; else rc=$?; buf+="$chunk"; [ $rc -le 128 ] && break; fi
-    if [[ -z "$sentY" && "$buf" == *"(Y/n)"* ]]; then echo "Y" >&"${GL[1]}"; sentY=1; fi
+    if IFS= read -r -t 2 chunk <&5; then buf+="$chunk"$'\n'; else rc=$?; buf+="$chunk"; if [ "$rc" -le 128 ]; then break; fi; fi
+    if [[ -z "$sentY" && "$buf" == *"(Y/n)"* ]]; then echo "Y" >&6 || true; sentY=1; fi
     url=$(grep -o 'https://accounts.google.com[^[:space:]]*' <<<"$buf" | head -1 || true)
   done
   if [ -z "$url" ]; then echo "❌ No pude pedir el permiso. Mándale una captura a Claude."; exit 1; fi
@@ -52,9 +54,11 @@ login_short() {
   echo
   local code=""
   read -r -p "👉 3) Pega aquí el código y toca Intro: " code </dev/tty
-  echo "$code" >&"${GL[1]}"
-  cat <&"${GL[0]}" || true
-  wait "$GL_PID" 2>/dev/null || true
+  echo "$code" >&6 || true
+  exec 6>&-
+  cat <&5 || true
+  exec 5<&-
+  wait "$gpid" 2>/dev/null || true
   ACC=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
   if [ -z "$ACC" ]; then echo "❌ No quedó la sesión abierta. Pega otra vez el comando y repite con un código nuevo."; exit 1; fi
   gcloud config set account "$ACC" >/dev/null
