@@ -111,7 +111,7 @@ test('lotería: su jugada de 3 números se paga número por número (RD$100 cada
   const pl = JSON.parse(db.prepare("SELECT payload FROM predictions WHERE module = 'loteria'").get().payload);
   assert.equal(pl.amountRd, 300); assert.equal(pl.perNumberRd, 100);
   assert.ok(pl.probHit > 0.08 && pl.probHit < 0.09);
-  for (const source of ['premios.do', 'nacionalloteria.com']) recordObservation(db, { game: 'real', date: '2026-11-02', source, nums: ['22', '50', '11'] });
+  for (const source of ['premios.do', 'nacionalloteria.com']) recordObservation(db, { game: 'real', date: '2026-11-02', source, nums: ['22', '50', '11'], fetchedAt: '2026-11-02T18:00:00.000Z' });
   assert.equal(resolveLotteryPicks(db), 1);
   const out = JSON.parse(db.prepare("SELECT outcome FROM predictions WHERE module = 'loteria'").get().outcome);
   // 22 en 1ra (x60) y 11 en 3ra (x4), RD$100 cada uno
@@ -157,4 +157,61 @@ test('IA: si un modelo no acepta el ajuste de pensamiento, se reintenta sin él'
   };
   const r = await complete(db, cfg, { task: 't', system: 's', prompt: 'p', fetchImpl });
   assert.equal(r.ok, true); assert.equal(bodies.length, 2); assert.equal(bodies[1].reasoning_effort, undefined);
+});
+
+test('lotería: un resultado "visto" antes de la hora del sorteo NO se guarda (era el de ayer mal fechado)', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { recordObservation } = await import('../src/lottery/results.js');
+  const db = od(':memory:');
+  // Real es a las 12:55 p. m. de RD (16:55 UTC). A las 9:25 a. m. no puede haber resultado de hoy.
+  const r = recordObservation(db, { game: 'real', date: '2026-11-02', source: 'premios.do', nums: ['01', '22', '74'], fetchedAt: '2026-11-02T13:25:00.000Z' });
+  assert.equal(r.skipped, 'antes_del_sorteo');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM lottery_observations').get().n, 0);
+  // Si la página repite los mismos números del día anterior, tampoco
+  recordObservation(db, { game: 'real', date: '2026-11-01', source: 'premios.do', nums: ['22', '74', '06'], fetchedAt: '2026-11-01T18:00:00.000Z' });
+  assert.equal(recordObservation(db, { game: 'real', date: '2026-11-02', source: 'premios.do', nums: ['22', '74', '06'], fetchedAt: '2026-11-02T18:00:00.000Z' }).skipped, 'igual_al_anterior');
+});
+
+test('lotería: el lector de páginas no confunde fechas, horas ni "sorteo #" con números del sorteo', async () => {
+  const { parseResults } = await import('../src/lottery/sources.js');
+  const rows = parseResults('Loteka 02-11-2026 Sorteo 01 7:55 PM 22 74 06 · 01-11-2026 Sorteo 00 7:55 PM 95 13 40');
+  assert.deepEqual(rows, [{ date: '2026-11-02', nums: ['22', '74', '06'] }, { date: '2026-11-01', nums: ['95', '13', '40'] }]);
+  const r2 = parseResults('Lunes 2 de noviembre de 2026 · 02/11 · 8:55 p. m. 15 48 63');
+  assert.deepEqual(r2[0].nums, ['15', '48', '63']);
+});
+
+test('lotería: la reparación quita resultados mal fechados y corrige lo que se pagó mal', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { repairLotteryData, reconcile } = await import('../src/lottery/results.js');
+  const { sealLotteryPick } = await import('../src/motor/track.js');
+  const db = od(':memory:');
+  sealLotteryPick(db, { game: 'loteka', date: '2026-11-01', numbers: ['95', '10', '20'], method: 'frecuentes', why: 'x' }, { stake: 100 });
+  // Dato malo de antes: guardado a las 9 a. m. (antes del sorteo de las 7:55 p. m.) y "pagado" como si hubiera ganado
+  for (const source of ['premios.do', 'nacionalloteria.com']) db.prepare('INSERT INTO lottery_observations (game, date, source, nums, fetched_at) VALUES (?, ?, ?, ?, ?)').run('loteka', '2026-11-01', source, JSON.stringify(['95', '13', '40']), '2026-11-01T13:00:00.000Z');
+  reconcile(db, 'loteka', '2026-11-01');
+  db.prepare("UPDATE predictions SET correct = 1, resolved_at = 'x', outcome = ? WHERE module = 'loteria'").run(JSON.stringify({ draw: ['95', '13', '40'], prizeRd: 6000 }));
+  const out = repairLotteryData(db);
+  assert.equal(out.badObservations, 2); assert.equal(out.picksFixed, 1);
+  const p = db.prepare("SELECT correct, outcome FROM predictions WHERE module = 'loteria'").get();
+  assert.equal(p.correct, null); assert.equal(p.outcome, null); // vuelve a esperar el resultado bueno
+  assert.equal(repairLotteryData(db).picksFixed, 0); // correrla otra vez no cambia nada
+});
+
+test('lotería: JARVIS apuesta mínimo RD$100 por número, nunca más del 5% de lo que le queda, y no juega sin dinero', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { smartStake } = await import('../src/motor/lottery-agent.js');
+  const db = od(':memory:');
+  const s = smartStake(db, 'frecuentes', 3);
+  assert.equal(s.perNumberRd, 100); assert.equal(s.totalRd, 300); assert.ok(!s.skip);
+  assert.ok(s.totalRd <= s.leftRd * 0.05 + 1e-9);
+  // Se gastó casi todo: no le alcanza para el mínimo → no juega
+  db.prepare("INSERT INTO predictions (module, agent, subject, payload, prob, sealed_at, ledger_hash) VALUES ('loteria','loteria','x',?,0.1,'2026-01-01','h')").run(JSON.stringify({ amountRd: s.leftRd - 200 }));
+  const s2 = smartStake(db, 'frecuentes', 3);
+  assert.ok(s2.skip); assert.match(s2.why, /No juega/);
+});
+
+test('lotería: texto real de premios.do (hoy sin resultado todavía) no inventa "01 22 74" para hoy', async () => {
+  const { parseResults } = await import('../src/lottery/sources.js');
+  const t = 'Loteka Lunes 02 de noviembre, 2026 7:50PM Avísame Loteka Domingo 01 de noviembre, 2026 7:50PM 22 74 06 Loteka Sábado 31 de octubre, 2026 7:50PM 95 11 99';
+  assert.deepEqual(parseResults(t), [{ date: '2026-11-01', nums: ['22', '74', '06'] }, { date: '2026-10-31', nums: ['95', '11', '99'] }]);
 });

@@ -2,6 +2,7 @@ import { baseAmount } from './sizing.js';
 // Historial y transparencia: cada recomendación (de JARVIS, de cada IA y de loterías) se sella ANTES del
 // resultado con su probabilidad, monto, ganancia posible y fuentes; luego se califica. Nada se borra ni se edita.
 import { nowIso, getSetting } from '../core/db.js';
+import { payableStatuses } from '../lottery/results.js';
 import { seal } from '../core/ledger.js';
 import { round, wilson, mean } from '../core/util.js';
 import { getBars } from '../stocks/market.js';
@@ -110,7 +111,7 @@ export function sealLotteryPick(db, pick, { stake = 100 } = {}) {
   // Juega VARIOS números en quiniela (cada uno es su propia apuesta, como en la banca): stake por número
   const nums = [...new Set(pick.numbers)];
   const probHit = 1 - Math.pow(1 - nums.length / 100, 3); // que salga al menos uno de sus números en los 3 premios
-  const payload = { game: pick.game, date: pick.date, numbers: nums, kind: 'quiniela', method: pick.method, why: pick.why, amountRd: stake * nums.length, perNumberRd: stake,
+  const payload = { game: pick.game, date: pick.date, numbers: nums, kind: 'quiniela', method: pick.method, why: pick.why, stakeWhy: pick.stakeWhy || null, amountRd: stake * nums.length, perNumberRd: stake,
     potentialRd: stake * P.q[0], probHit: round(probHit, 4), claim: `Sale al menos uno de ${nums.join(', ')} en el sorteo`, payouts: P };
   const s = seal(db, { kind: 'recomendacion_loteria', ref: subject, payload });
   db.prepare('INSERT INTO predictions (module, agent, subject, payload, prob, sealed_at, ledger_hash) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -124,7 +125,7 @@ export function resolveLotteryPicks(db) {
   for (const p of pend) {
     const pl = JSON.parse(p.payload);
     const d = db.prepare("SELECT nums, status FROM lottery_draws WHERE game = ? AND date = ? AND nums IS NOT NULL").get(pl.game, pl.date);
-    if (!d) continue;
+    if (!d || !payableStatuses(db).includes(d.status)) continue; // solo con resultado confirmado
     const draw = JSON.parse(d.nums), per = pl.perNumberRd ?? pl.amountRd; // las jugadas viejas eran de un solo número
     const prize = pl.numbers.reduce((s, x) => s + settleMultiplier('quiniela', [x], draw, pl.payouts || DEFAULT_PAYOUTS) * per, 0);
     db.prepare('UPDATE predictions SET resolved_at = ?, outcome = ?, correct = ? WHERE id = ?')

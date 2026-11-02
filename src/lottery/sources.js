@@ -36,14 +36,22 @@ export function parseResults(text, { maxGap = 220 } = {}) {
     String.raw`(\d{1,2})[/-](\d{1,2})[/-](\d{4})` + '|' +
     String.raw`(\d{1,2})\s+de\s+(${Object.keys(MONTHS).join('|')})(?:\s+de|,)?\s+(\d{4})`, 'gi');
   const found = [];
-  let m;
-  while ((m = dateRe.exec(text))) {
+  const all = [...text.matchAll(dateRe)];
+  for (let i = 0; i < all.length; i++) {
+    const m = all[i], end = m.index + m[0].length, stop = Math.min(end + maxGap, all[i + 1]?.index ?? Infinity);
     let y, mo, d;
     if (m[1]) [y, mo, d] = [m[1], m[2], m[3]].map(Number);
     else if (m[4]) [d, mo, y] = [m[4], m[5], m[6]].map(Number);
     else { d = Number(m[7]); mo = MONTHS[m[8].toLowerCase()]; y = Number(m[9]); }
     if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) continue;
-    const after = text.slice(dateRe.lastIndex, dateRe.lastIndex + maxGap);
+    // Se quitan fechas cortas (02-11), horas (8:55), "sorteo 123", años y "1 de noviembre" antes de buscar los números:
+    // si no, un "01" de una fecha se colaba como si fuera el primer número del sorteo.
+    const after = text.slice(end, stop) // solo hasta la próxima fecha: así no se mezclan los números de otro día
+      .replace(/\b\d{1,2}\s*[/.-]\s*\d{1,2}(\s*[/.-]\s*\d{2,4})?\b/g, ' ')
+      .replace(/\b\d{1,2}:\d{2}(\s*[ap]\.?\s*m\.?)?/gi, ' ')
+      .replace(/\b(sorteo|no\.?|n[úu]m(ero)?\.?|#|nro\.?)\s*:?\s*\d+/gi, ' ')
+      .replace(new RegExp(String.raw`\b\d{1,2}\s+de\s+(${Object.keys(MONTHS).join('|')})`, 'gi'), ' ')
+      .replace(/\b(19|20)\d{2}\b/g, ' ');
     // Los números del sorteo: tokens aislados de exactamente 2 dígitos (evita horas como 8:55 y años)
     const nums = [...after.matchAll(/(?<![\d:.,])(\d{2})(?![\d:.,])/g)].map(x => x[1]).slice(0, 3);
     if (nums.length === 3) found.push({ date: `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`, nums });
