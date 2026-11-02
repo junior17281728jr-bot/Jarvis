@@ -4,14 +4,15 @@ import { wilson, quantile, rng, round, mean, sd } from '../core/util.js';
 
 const clamp = (x, a = -1, b = 1) => Math.max(a, Math.min(b, x));
 export const RANKING_VERSION = 1;
-const WEIGHTS = { tendencia: 0.25, historial: 0.25, empresa: 0.25, riesgo: 0.15, polemicas: 0.10 };
+export const WEIGHTS = { tendencia: 0.25, historial: 0.25, empresa: 0.25, riesgo: 0.15, polemicas: 0.10 };
 
 /**
  * Puntúa una empresa con razones explícitas. Entrada:
  *  bars (diarias), bench (barras del SPY), facts (de la SEC), polemics (número de polémicas abiertas),
  *  track ({wins, losses, net}: historial real de JARVIS con esta empresa).
  */
-export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, track = { wins: 0, losses: 0, net: 0 } }) {
+export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, track = { wins: 0, losses: 0, net: 0 }, weights = WEIGHTS }) {
+  const W = { ...WEIGHTS, ...(weights || {}) };
   const reasons = [], factors = {};
   const ret = (b, n) => (b.length > n ? b[b.length - 1].close / b[b.length - 1 - n].close - 1 : null);
 
@@ -47,11 +48,11 @@ export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, tra
   reasons.push({ factor: 'polemicas', text: polemics ? `Hay ${polemics} ${polemics === 1 ? 'noticia grave' : 'noticias graves'} contra la empresa (demanda, fraude o investigación del gobierno).` : 'No encontré noticias graves contra la empresa (demandas, fraudes o investigaciones).', kind: 'dato' });
 
   const used = Object.keys(factors);
-  const wsum = used.reduce((s, k) => s + WEIGHTS[k], 0) || 1;
-  const contributions = used.map(k => ({ factor: k, weight: WEIGHTS[k] / wsum, value: factors[k], contribution: round((WEIGHTS[k] / wsum) * factors[k] * 100, 1) }));
+  const wsum = used.reduce((s, k) => s + W[k], 0) || 1;
+  const contributions = used.map(k => ({ factor: k, weight: W[k] / wsum, value: factors[k], contribution: round((W[k] / wsum) * factors[k] * 100, 1) }));
   const score = contributions.reduce((s, c) => s + c.contribution, 0) / 100;
   // Confianza: cuántos datos hay, cuánto historial real, si los factores apuntan al mismo lado y qué tan clara es la señal
-  const coverage = wsum;
+  const coverage = used.reduce((s, k) => s + WEIGHTS[k], 0); // cuántos datos hay (con los pesos base)
   const sample = Math.min(1, n / 20) * (track.wins >= track.losses ? 1 : 0.4);
   const signed = contributions.filter(c => Math.abs(c.value) > 0.05);
   const agreement = signed.length ? signed.filter(c => Math.sign(c.value) === Math.sign(score || 1)).length / signed.length : 0.5;

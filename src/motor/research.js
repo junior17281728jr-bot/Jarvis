@@ -7,6 +7,7 @@ import { FAMILIES, describe } from '../stocks/strategies.js';
 import { runStrategy, metrics, splitIndex } from '../stocks/backtest.js';
 import { getBars } from '../stocks/market.js';
 import { DEFAULT_AGENTS, researchSlots } from './league.js';
+import { regimes } from './contexts.js';
 
 export const STATUSES = ['en_desarrollo', 'en_prueba', 'en_evaluacion', 'validada', 'no_validada', 'en_revision', 'retirada'];
 export const CRITERIA = Object.freeze({ holdoutFrac: 0.3, trainMinT: 1.0, minTrades: 20, fdr: 0.1, liveMinTrades: 20, liveMinDays: 60 });
@@ -52,6 +53,8 @@ export function setStatus(db, strategyId, to, reason) {
 function pooledExcess(db, family, params, symbols, part, bench) {
   const benchBars = getBars(db, bench);
   const bRet = new Map(benchBars.map((b, i) => [b.ts, i ? b.close / benchBars[i - 1].close - 1 : 0]));
+  // Ideas "solo en tal situación del mercado": se miden solo en los días de esa situación
+  const reg = params.regimen ? regimes(benchBars) : null, inRegime = ts => { const r = reg.get(ts); return r && (r.trend === params.regimen || r.vol === params.regimen); };
   const excess = []; let trades = 0;
   for (const sym of symbols) {
     const bars = getBars(db, sym);
@@ -59,7 +62,7 @@ function pooledExcess(db, family, params, symbols, part, bench) {
     const split = splitIndex(bars, CRITERIA.holdoutFrac);
     const slice = part === 'train' ? bars.slice(0, split) : bars;
     const run = runStrategy(slice, family, params, { from: part === 'train' ? 1 : split });
-    run.curve.forEach((c, i) => { const br = bRet.get(c.ts); if (br != null) excess.push(run.daily[i] - br); });
+    run.curve.forEach((c, i) => { const br = bRet.get(c.ts); if (br != null && (!reg || inRegime(c.ts))) excess.push(run.daily[i] - br); });
     trades += metrics(run).trades;
   }
   const n = excess.length, m = n ? excess.reduce((a, b) => a + b, 0) / n : 0;

@@ -511,7 +511,7 @@ views.cuentas = async () => {
     ${flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', `${B.positions.length} ${B.positions.length === 1 ? 'acción' : 'acciones'}`], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', `${up ? '+' : ''}${usd(B.gain)} (${up ? '+' : ''}${B.returnPct}%)`]])}
     <div class="acct-mini"><span>✅ Ventas con ganancia: <b>${B.wins}</b></span><span>❌ Ventas con pérdida: <b>${B.losses}</b></span><span>💰 Ganado ya cobrado: <b class="${B.realized >= 0 ? 'good' : 'bad'}">${B.realized >= 0 ? '+' : ''}${usd(B.realized)}</b></span><span>⏳ Ganancia aún sin vender: <b class="${B.unrealized >= 0 ? 'good' : 'bad'}">${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}</b></span></div>
     <h3 class="cs-h">En qué lo tiene ahora</h3>
-    ${empty ? `<div class="answer">💤 Ahora todo está en efectivo. ${B.marketOpen ? 'Está buscando qué comprar.' : `La bolsa está cerrada; empieza a comprar cuando abra${B.nextOpen ? `: <b>${new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })}</b> (hora RD)` : ''}.`}</div>
+    ${empty ? `<div class="answer">💤 Ahora todo está en efectivo. ${B.regime === 'bajista' ? '🛡️ El mercado entero va bajando: espera a que mejore antes de comprar. ' : ''}${B.marketOpen ? 'Está buscando qué comprar.' : `La bolsa está cerrada; empieza a comprar cuando abra${B.nextOpen ? `: <b>${new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })}</b> (hora RD)` : ''}.`}</div>
       ${B.plan.length ? `<div class="note" style="margin:8px 0">Lo que compraría (está en "Te recomiendo"):</div><div class="plan">${B.plan.map(p => `<a class="pl" href="#analisis/${esc(p.symbol)}"><b>${esc(p.symbol)}</b><span>${usd(p.usd)}</span><small>conviene ${p.conv}/100</small></a>`).join('')}</div>` : '<div class="note">Todavía no hay empresas en "Te recomiendo".</div>'}`
     : `<div class="tablewrap"><table class="acct-t"><tr><th>Acción</th><th class="r">Invirtió</th><th class="r">Vale hoy</th><th class="r">Ganancia</th><th>Desde</th></tr>${B.positions.map(p => `<tr><td><a href="#analisis/${esc(p.symbol)}"><b>${esc(p.symbol)}</b></a></td><td class="r">${usd(p.invested)}</td><td class="r">${usd(p.value)}</td><td class="r ${p.pnl >= 0 ? 'good' : 'bad'}">${p.pnl >= 0 ? '+' : ''}${usd(p.pnl)} <span class="note">(${p.pnl >= 0 ? '+' : ''}${p.pnlPct}%)</span></td><td>${dt(p.since)}</td></tr>`).join('')}
       <tr class="tot"><td><b>Total</b></td><td class="r"><b>${usd(B.invested)}</b></td><td class="r"><b>${usd(B.valueNow)}</b></td><td class="r ${B.unrealized >= 0 ? 'good' : 'bad'}"><b>${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}</b></td><td></td></tr></table></div>`}
@@ -1598,7 +1598,7 @@ function tvAcct(c) {
   const el = $('#tvacct'); if (!el || !c) return;
   const B = c.bolsa, L = c.loteria, U = v => usd(v / (c.rate || FX));
   const box = (l, v, cls, sub) => `<div class="ab ${cls || ''}"><small>${l}</small><b>${v}</b>${sub ? `<i>${sub}</i>` : ''}</div>`;
-  const syms = B.positions.length ? B.positions.slice(0, 3).map(p => esc(p.symbol)).join(', ') + (B.positions.length > 3 ? '…' : '') : (B.marketOpen ? 'buscando qué comprar' : 'compra al abrir la bolsa');
+  const syms = B.positions.length ? B.positions.slice(0, 3).map(p => esc(p.symbol)).join(', ') + (B.positions.length > 3 ? '…' : '') : B.regime === 'bajista' ? 'esperando: mercado bajista' : (B.marketOpen ? 'buscando qué comprar' : 'compra al abrir la bolsa');
   el.innerHTML = `<div class="acols"><div><div class="ah">📈 Bolsa <span>empezó con ${usd(B.start, 0)} · ${syms}</span></div>
     <div class="agrid">${box('Invirtió', usd(B.invested), '', syms)}${box('Vale hoy', usd(B.valueNow), B.unrealized >= 0 ? 'up' : 'dn', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`)}${box('Efectivo', usd(B.cash), '', 'sin invertir')}${box('Tiene', usd(B.total), B.gain >= 0 ? 'up' : 'dn', `${B.gain >= 0 ? '+' : ''}${usd(B.gain)} (${B.returnPct}%)`)}</div></div>
     <div><div class="ah">🎱 Lotería <span>empezó con ${usd(L.startUsd, 0)} · ${L.plays} jugadas</span></div>
@@ -1685,7 +1685,9 @@ function tvThink(list) {
   window.__tvThoughts = list;
   if (tvThinkTimer) return;
   const step = () => { const L = window.__tvThoughts || [], t = L[tvThinkIdx++ % L.length]; const box = $('#tvthink'); if (!box || !t) { clearInterval(tvThinkTimer); tvThinkTimer = null; return; }
-    box.innerHTML = `<span class="tk ${t.kind}">${t.kind === 'loto' ? '🎱' : '📈'} ${t.kind === 'loto' ? 'Loterías' : esc(t.sym)}</span><span class="tt"></span>`;
+    const ICON = { bolsa: '📈', loto: '🎱', cuentas: '💼', idea: '🧪' }, TAG = { bolsa: 'Bolsa', loto: 'Lotería', cuentas: 'Mi dinero', idea: 'Investigando' };
+    const title = t.kind === 'bolsa' ? `Estoy revisando ${coName(t.sym)}${coName(t.sym) !== t.sym ? ` (${t.sym})` : ''}` : t.kind === 'loto' ? `Estoy revisando ${t.title}` : t.title;
+    box.innerHTML = `<div class="tkh"><span class="tk ${t.kind}">${ICON[t.kind] || '•'} ${TAG[t.kind] || ''}</span><b>${esc(title)}</b></div><span class="tt"></span>${t.verdict ? `<div class="tkv" style="color:${TVC[t.light] || '#fff'}">Mi voto: ${esc(t.verdict)}</div>` : ''}`;
     const tt = box.querySelector('.tt'); let n = 0; const ty = setInterval(() => { if (!tt.isConnected) return clearInterval(ty); tt.textContent = t.text.slice(0, n += 2); if (n >= t.text.length) clearInterval(ty); }, 24);
     tvAna(t); };
   step(); tvThinkTimer = setInterval(step, 9000);

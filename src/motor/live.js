@@ -8,6 +8,7 @@ import { ensureAccount, placeOrder, ledgerState, STRATEGY_LIMITS } from '../stoc
 import { settleCoins } from './league.js';
 import { setStatus, CRITERIA } from './research.js';
 import { round, mean } from '../core/util.js';
+import { regimes } from './contexts.js';
 
 const LIVE_LIMITS = { ...STRATEGY_LIMITS, maxTradeUsd: 100, minTradeUsd: 1 };
 
@@ -23,15 +24,17 @@ function closeOnBench(db, fromTs, toTs, bench = 'SPY') {
 
 export function liveStep(db, { symbols, now = new Date(), bench = 'SPY' }) {
   const today = nyParts(now).date, out = { signals: 0, orders: 0, coins: 0, cheats: 0 };
+  const benchBars = getBars(db, bench, { before: today }), reg = regimes(benchBars), lastReg = benchBars.length ? reg.get(benchBars.at(-1).ts) : null;
   for (const s of liveStrategies(db)) {
     const params = JSON.parse(s.params), fam = FAMILIES[s.family];
+    const regimeOk = !params.regimen || (lastReg && (lastReg.trend === params.regimen || lastReg.vol === params.regimen));
     const acc = ensureAccount(db, { owner: `strategy:${s.id}`, name: 'en_vivo', startCash: 1000 });
     for (const sym of symbols.filter(x => x !== bench)) {
       const bars = getBars(db, sym, { before: today });
       if (bars.length < 250) continue;
       const state = ledgerState(db, acc.id);
       const pos = state.positions[sym]?.qty > 0 ? 1 : 0;
-      const target = fam.target(bars, bars.length - 1, params, pos);
+      const target = regimeOk ? fam.target(bars, bars.length - 1, params, pos) : 0; // fuera de su situación: no tiene acciones
       const subject = `senal:${s.id}:${sym}:${today}`;
       let pred = db.prepare('SELECT * FROM predictions WHERE subject = ?').get(subject);
       if (!pred) {

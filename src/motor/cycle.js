@@ -23,7 +23,8 @@ import { resolveLotteryPicks, settleRealLottery, resolveMarketPredictions } from
 import { pushImportant, sendPush } from '../core/notify.js';
 import { offsiteBackup } from '../core/offsite.js';
 import { driveBackup, driveLegal } from '../core/drive.js';
-import { runContextScan } from './contexts.js';
+import { runContextScan, queuePistas } from './contexts.js';
+import { learnWeights } from './factor-learning.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { updateFx, updateCalendar } from './insights.js';
@@ -43,6 +44,7 @@ const TASKS = [
   ['bolsa_historial', 12 * 60 * MIN, false],
   ['copia', 24 * 60 * MIN, false],
   ['lecciones', 7 * 24 * 60 * MIN, false],
+  ['aprender_senales', 24 * 60 * MIN, false],
   ['drive', 24 * 60 * MIN, false, (now, cfg) => !!(cfg.driveUrl && cfg.driveToken)],
   ['avisos', 5 * MIN, false],
   ['tipo_cambio', 24 * 60 * MIN, false],
@@ -122,7 +124,8 @@ async function runTask(name, db, cfg, now, fetchImpl) {
       activity(db, { type: 'sistema', text: `Copia de seguridad verificada (${Math.round(b.bytes / 1024)} KB)${off.uploaded ? ', cifrada y subida fuera del servidor' : ''}. Registro sellado: ${v.ok ? 'intacto' : 'ALTERADO'}.`, important: !v.ok });
       return { ...b, ledger: v, offsite: off };
     }
-    case 'lecciones': return runContextScan(db, { symbols: syms, bench: BENCH });
+    case 'lecciones': { const r = runContextScan(db, { symbols: syms, bench: BENCH }); r.pistas = queuePistas(db); return r; }
+    case 'aprender_senales': return learnWeights(db);
     case 'drive': return runDrive(db, cfg, fetchImpl);
     case 'perfiles': { let n = 0; for (const s of syms) if (await fetchProfile(db, s, fetchImpl)) n++; return { profiles: n }; }
     case 'avisos': return { real: watchRealPositions(db), push: await pushImportant(db, cfg, fetchImpl) };

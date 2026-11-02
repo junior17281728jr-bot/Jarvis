@@ -67,7 +67,7 @@ export function contextScan(db, { symbols, bench = 'SPY', maxStrategies = 60 } =
   const sig = benjaminiHochberg(tests.map(t => t.p), 0.05);
   const findings = tests.filter((t, i) => sig.has(i) && t.mean > 0 && t.both)
     .sort((a, b) => b.t - a.t).slice(0, 25)
-    .map(t => ({ strategyId: t.strategyId, regla: describe(t.family, t.params), familia: t.family, tipo: t.kind, caso: t.what,
+    .map(t => ({ strategyId: t.strategyId, regla: describe(t.family, t.params), familia: t.family, params: t.params, tipo: t.kind, caso: t.what,
       donde: t.kind === 'accion' ? `en ${t.what}` : CONTEXT_LABEL[t.what], dias: t.n, extra_anual_pct: Math.round(t.mean * 252 * 1000) / 10, t: Math.round(t.t * 10) / 10 }));
   return { at: nowIso(), checkedStrategies: strats.length, comparisons: tests.length, findings };
 }
@@ -93,4 +93,17 @@ export function runContextScan(db, opts) {
   const nuevos = r.findings.filter(f => !prev.has(`${f.strategyId}:${f.caso}`));
   for (const f of nuevos.slice(0, 3)) activity(db, { agent: 'largo', type: 'leccion', important: true, text: `🔎 Pista: "${f.regla}" no sirve en general, pero ${f.donde} le ganó al mercado ${f.extra_anual_pct}% al año (${f.dias} días, en las dos mitades del tiempo). Es una pista para probar, no una idea aprobada.` });
   return { comparisons: r.comparisons, findings: r.findings.length, nuevos: nuevos.length };
+}
+
+/** Las pistas de "situación del mercado" pasan a la cola de ideas para examinarlas como idea nueva (mismo examen exigente). */
+export function queuePistas(db) {
+  const ctx = getSetting(db, 'global', 'lessons.contexts', null); if (!ctx?.findings?.length) return 0;
+  const st = db.prepare("INSERT OR IGNORE INTO agenda (module, family, title, params, created_at, source) VALUES ('bolsa', ?, ?, ?, ?, 'pista')");
+  let n = 0;
+  for (const f of ctx.findings.filter(x => x.tipo === 'regimen')) {
+    const params = { ...f.params, regimen: f.caso };
+    if (st.run(f.familia, describe(f.familia, params), JSON.stringify(params), nowIso()).changes) n++;
+  }
+  if (n) activity(db, { agent: 'largo', type: 'leccion', text: `🔎 ${n} pista(s) nuevas entraron a la cola de ideas: las voy a examinar solo en esa situación del mercado.` });
+  return n;
 }

@@ -586,3 +586,6 @@ html.is-phone .tv .body{grid-template-columns:1fr}
 .gt:hover,.gt:focus{border-color:var(--accent);transform:translateY(-1px)}.gt span{font-size:22px}.gt small{color:var(--mute);line-height:1.4}
 #tabs a{white-space:nowrap}
 html.legacy .top{max-width:100vw;overflow:hidden}
+.tv .tkh{display:flex;align-items:center;gap:.5vw;margin-bottom:.5vh}.tv .tkh b{font-size:1vw;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv .think .tk.cuentas{background:rgba(255,191,60,.18);color:#ffbf3c}.tv .think .tk.idea{background:rgba(169,139,255,.18);color:#a98bff}
+.tv .tkv{margin-top:.5vh;font-weight:800;font-size:.95vw}

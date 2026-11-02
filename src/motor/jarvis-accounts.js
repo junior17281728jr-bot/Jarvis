@@ -4,7 +4,7 @@
 // Todo sale de operaciones y jugadas selladas; nada se calcula "a ojo".
 import { valuation, ledgerState } from '../stocks/account.js';
 import { getQuote, marketOpen } from '../stocks/market.js';
-import { aiAccount } from './autopilot.js';
+import { aiAccount, marketRegime } from './autopilot.js';
 import { fx } from './insights.js';
 import { GAMES } from '../lottery/games.js';
 import { round } from '../core/util.js';
@@ -39,7 +39,8 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
     gain: round(v.total - acc.start_cash, 2), returnPct: round(v.returnPct * 100, 2), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), fees: round(v.fees || 0, 2),
     positions, closed, moves, wins: v.closed.filter(c => c.pnl > 0).length, losses: v.closed.filter(c => c.pnl <= 0).length,
     marketOpen: marketOpen(now), nextOpen: nextOpen(now), plan: positions.length < MAX_POSITIONS ? plan : [],
-    rules: 'Compra sola lo que está en "Te recomiendo" (10% del dinero por idea, máximo 8 a la vez, siempre deja 10% en efectivo). Vende si deja de recomendarla o si baja 8%. Solo opera con la bolsa abierta y precios actuales.',
+    regime: marketRegime(db),
+    rules: 'Compra sola lo que está en "Te recomiendo" (de 5% a 15% del dinero según el riesgo, máximo 8 a la vez, siempre deja 10% en efectivo). No compra si el mercado entero va bajando. Vende si deja de recomendarla, si baja 8% desde la compra o si baja 10% desde su punto más alto (asegura la ganancia). Solo opera con la bolsa abierta y precios actuales.',
   };
   // ---------- Lotería (su número de cada sorteo) ----------
   const startRd = Math.round(100 * rate);

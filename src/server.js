@@ -40,6 +40,7 @@ import { brainSummary, exportBrain, restoreBrain, brainFileInfo } from './core/b
 import { driveScript, newDriveToken, drivePing, driveLatest, driveLegal, queueLegalSync, DRIVE_URL_RE, DRIVE_KEEP } from './core/drive.js';
 import { buildMemory } from './core/memory.js';
 import { jarvisAccounts } from './motor/jarvis-accounts.js';
+import { describe } from './stocks/strategies.js';
 import { runDrive, programVersion } from './motor/cycle.js';
 import { legalDoc, acceptLegal, currentAcceptance, listAcceptances, signedText, LEGAL_VERSION } from './core/legal.js';
 import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
@@ -167,13 +168,29 @@ function tvThoughts(r, lot) {
   const out = [], verdict = { verde: 'Sí, invierte', amarillo: 'Invierte poco', rojo: 'No inviertas' };
   for (const c of r.slice(0, 6)) {
     const f = cardFacts(c);
-    out.push({ kind: 'bolsa', sym: c.symbol, light: c.light, text: `Analizando ${c.symbol} (US$${round(pval(c), 2)}): `
-      + (f.r6 != null ? `en 6 meses ${f.r6 >= 0 ? 'subió' : 'bajó'} ${Math.abs(f.r6)}%${f.mk6 != null ? ` contra ${f.mk6}% del mercado` : ''}. ` : '')
-      + (f.votes.length ? `A favor: ${f.yes.map(x => VOTE_TV[x.factor]).join(', ') || 'nada'}${f.no.length ? `; en contra: ${f.no.map(x => VOTE_TV[x.factor]).join(', ')}` : ''}. ` : '')
-      + (f.p10 != null ? `Le ganó al mercado ${f.p10} de cada 10 veces. ` : '') + `Mi voto: ${verdict[c.light] || '—'}.` });
+    out.push({ kind: 'bolsa', sym: c.symbol, light: c.light, verdict: verdict[c.light] || null,
+      text: `Cuesta US$${round(pval(c), 2)}. `
+      + (f.r6 != null ? `En 6 meses ${f.r6 >= 0 ? 'subió' : 'bajó'} ${Math.abs(f.r6)}%${f.mk6 != null ? `; el mercado, ${f.mk6}%` : ''}. ` : '')
+      + (f.votes.length ? `A favor: ${f.yes.map(x => VOTE_TV[x.factor]).join(', ') || 'nada'}${f.no.length ? `. En contra: ${f.no.map(x => VOTE_TV[x.factor]).join(', ')}` : ''}. ` : '')
+      + (f.p10 != null ? `De cada 10 veces parecidas, le ganó al mercado ${f.p10}.` : '') });
   }
-  for (const g of lot.slice(0, 3)) out.push({ kind: 'loto', text: `Revisando ${g.game}: ${g.verdict} Los métodos votan por ${g.top.join(', ')} (cada uno tiene 3 de 100 de salir).` });
+  for (const g of lot.slice(0, 3)) out.push({ kind: 'loto', title: g.game, text: `Para el sorteo del ${g.date}, los métodos votan por ${g.top.join(', ')}. ${g.verdict} Recuerda: cada número tiene 3 de 100 de salir.` });
+  // Lo que está haciendo con su dinero y con sus ideas
+  try { const a = jarvisAccounts(db), B = a.bolsa; out.push({ kind: 'cuentas', title: 'Mis US$100 de práctica', text: B.positions.length ? `Tengo ${B.positions.length} acciones (${B.positions.slice(0, 4).map(p => p.symbol).join(', ')}) y ${'US$' + B.cash.toFixed(2)} en efectivo. En total ${'US$' + B.total.toFixed(2)}: ${B.gain >= 0 ? 'gano' : 'pierdo'} ${'US$' + Math.abs(B.gain).toFixed(2)}.` : `Todo está en efectivo. ${B.marketOpen ? 'Estoy buscando qué comprar.' : `Cuando abra la bolsa compraré${B.plan.length ? ` ${B.plan.slice(0, 4).map(p => p.symbol).join(', ')}` : ' lo que esté en "Te recomiendo"'}.`}` }); } catch { /* sin cuenta */ }
+  const idea = db.prepare('SELECT l.to_status a, l.reason, s.family, s.params FROM strategy_status_log l JOIN strategies s ON s.id = l.strategy_id ORDER BY l.id DESC LIMIT 1').get();
+  if (idea) out.push({ kind: 'idea', title: 'Probando una idea', text: `${describe(idea.family, JSON.parse(idea.params))} → ${idea.reason}` });
+  const w = getSetting(db, 'global', 'ranking.learnedWeights', null);
+  if (w?.cases) out.push({ kind: 'idea', title: 'Aprendiendo de mis votos', text: `Revisé ${w.cases} votos que ya se decidieron para ver qué señales aciertan: ${Object.values(w.detail).filter(d => d.n).map(d => `${d.name} ${d.rawPct}%`).join(', ')}.` });
   return out;
+}
+// Los usuarios nunca ven qué empresa de IA hay detrás (solo el administrador)
+const PROVIDER_TXT = [[/[\w./-]*(openai|anthropic)[\w./-]*/gi, m => (/anthropic/i.test(m) ? 'IA 2' : 'la IA principal')], [/\bChatGPT\b/g, 'la IA principal'], [/\bGPT(-?\d[\w.]*)?( mini| nano)?\b/g, 'IA 1'], [/\bAnthropic\b/g, 'IA 2'], [/\bClaude( (Haiku|Sonnet|Opus)[\w .-]*)?\b/g, 'IA 2']];
+const PROVIDER_VAL = { openai: 'ia1', anthropic: 'ia2', ollama: 'ia3' };
+export function hideProviders(v) {
+  if (typeof v === 'string') return PROVIDER_TXT.reduce((t, [re, to]) => t.replace(re, to), v);
+  if (Array.isArray(v)) return v.map(hideProviders);
+  if (v && typeof v === 'object' && !(v instanceof Buffer)) { const o = {}; for (const [k, x] of Object.entries(v)) o[k] = (k === 'provider' || k === 'model') && typeof x === 'string' ? (PROVIDER_VAL[x] || 'ia') : hideProviders(x); return o; }
+  return v;
 }
 // Qué está haciendo cada agente y cuándo puede ganar o perder monedas (para que se entienda por qué el número no se mueve)
 function agentDoing(id) {
@@ -563,7 +580,7 @@ const server = createServer(async (req, res) => {
       const out = await r.handler({ req, res, url, user, p: url.pathname.match(r.re).groups || {} });
       if (res.writableEnded) return;
       if (out && out.token) return send(res, 200, { user: out.user, deviceToken: out.deviceToken }, { 'Set-Cookie': `jv=${out.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}${req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : ''}` });
-      return send(res, 200, out ?? { ok: true });
+      return send(res, 200, user && user.role !== 'admin' ? hideProviders(out ?? { ok: true }) : (out ?? { ok: true }));
     }
     if (url.pathname === '/brand/logo') {
       const f = logoFile(db);

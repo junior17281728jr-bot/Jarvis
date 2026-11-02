@@ -66,7 +66,8 @@ Object.assign(FAMILIES, {
   },
 });
 
+const REGIMEN = { alcista: 'solo cuando el mercado va subiendo', bajista: 'solo cuando el mercado va bajando', calma: 'solo con el mercado en calma', nervioso: 'solo con el mercado nervioso' };
 export function describe(family, params) {
   const f = FAMILIES[family];
-  return f ? `${f.label}: ${f.explain(params)}` : family;
+  return f ? `${f.label}: ${f.explain(params)}${params?.regimen ? ` (${REGIMEN[params.regimen] || params.regimen})` : ''}` : family;
 }

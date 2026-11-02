@@ -169,6 +169,8 @@ export function memoryData(db, { tasks = [], version = null } = {}) {
     loterias: Object.keys(SOURCES).map(k => `${k} (${Object.keys(SOURCES[k]).join(', ')})`),
     regla: 'Un resultado de lotería se paga solo si dos fuentes coinciden (o queda marcado "1 fuente").',
   };
+  const lw = getSetting(db, 'global', 'ranking.learnedWeights', null);
+  data.senales_aprendidas = lw ? { revisado: lw.at?.slice(0, 10), votos_revisados: lw.cases, detalle: Object.values(lw.detail) } : null;
   data.lecciones = lessons(data);
   return data;
 }
@@ -235,6 +237,7 @@ export function memoryMarkdown(d) {
   if (b.ideas_de_la_ia.length) out.push('### Empresas que propuso la IA', '', table(b.ideas_de_la_ia, [['Símbolo', 'simbolo'], ['Por qué', 'por_que_la_propuso'], ['Estado', 'estado']]), '');
   const cx = d.casos_especificos;
   out.push('### 🔎 Formas viejas que sí sirven en casos específicos', '', cx ? `Revisado ${cx.revisado}: ${cx.ideas_revisadas} ideas descartadas, ${cx.comparaciones} comparaciones (con corrección por comparaciones múltiples y exigiendo que funcione en las dos mitades del tiempo).` : '_(todavía no se ha hecho la revisión semanal)_', '', cx ? table(cx.pistas, [['Regla', 'regla'], ['Dónde sí sirve', 'donde'], ['Días', 'dias'], ['Extra/año %', 'extra_anual_pct'], ['t', 't']]) : '', '');
+  if (d.senales_aprendidas) out.push('### 🧠 Cuánto pesa cada señal (aprendido de los votos ya decididos)', '', table(d.senales_aprendidas.detalle, [['Señal', 'name'], ['Votos', 'n'], ['Acierto %', 'rawPct'], ['Peso base', 'base'], ['×', 'mult'], ['Peso actual', 'weight']]), '');
   out.push('## 🗳️ Votos y aciertos', '', table(d.votos.por_quien, [['Módulo', 'modulo'], ['Quién', 'quien'], ['Votos', 'votos'], ['Resueltos', 'resueltos'], ['Acierto %', 'acierto_pct']]), '', '### Acierto del ranking por mes', '', table(d.votos.ranking_por_mes, [['Mes', 'mes'], ['Resueltos', 'resueltos'], ['Acierto %', 'acierto_pct']]), '', '### Por semáforo', '', table(d.votos.ranking_por_semaforo, [['Semáforo', 'semaforo'], ['Resueltos', 'resueltos'], ['Acierto %', 'acierto_pct']]), '', '### Según la situación del mercado', '', table(cx?.votos_por_situacion || [], [['Situación', 'situacion'], ['Resueltos', 'resueltos'], ['Acierto %', 'acierto_pct']]), '');
   out.push('## 🪙 Monedas', '', table(d.monedas.por_agente, [['Agente', 'agente'], ['Monedas', 'monedas'], ['Ganadas', 'ganadas'], ['Perdidas', 'perdidas']]), '', '### Trampas', '', table(d.monedas.trampas_detectadas, [['Regla', 'regla'], ['Veces', 'veces'], ['Monedas quitadas', 'monedas_quitadas'], ['Ejemplo', 'ejemplo']]), '');
   out.push('## 🎱 Loterías', '', `Sorteos guardados: ${d.loterias.sorteos_guardados}${d.loterias.desde ? ` (desde ${d.loterias.desde})` : ''}`, '', table(d.loterias.metodos, [['Método', 'nombre'], ['Idea', 'idea'], ['Jugadas', 'jugadas'], ['Ganadas', 'ganadas'], ['Devuelve por cada RD$100', 'devuelve_por_cada_100']]), '');

@@ -12,6 +12,7 @@ import { available } from '../ai/providers.js';
 import { timeToProfit } from '../stocks/timing.js';
 import { getBudget } from './sizing.js';
 import { probBeat, calibrateLight, recommendedAmount, resolveMarketPredictions } from './track.js';
+import { learnedWeights } from './factor-learning.js';
 
 const HORIZON = 20;
 
@@ -28,7 +29,7 @@ export function cardFor(db, sym, benchBars) {
   if (bars.length < 130) return null;
   const pol = openPolemics(db, sym);
   const npol = pol.filter(p => p.polemic >= 2).length;
-  const raw = scoreSymbol({ symbol: sym, bars, bench: benchBars, facts: factsFor(db, sym), polemics: npol, track: trackRecord(db, sym) });
+  const raw = scoreSymbol({ symbol: sym, bars, bench: benchBars, facts: factsFor(db, sym), polemics: npol, track: trackRecord(db, sym), weights: learnedWeights(db) });
   const pb = probBeat(db, raw.score), card = calibrateLight(raw, pb, { polemics: npol });
   const q = getQuote(db, sym);
   card.probBeat = pb.p; card.probMethod = pb.method;

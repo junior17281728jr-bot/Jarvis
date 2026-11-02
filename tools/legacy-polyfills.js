@@ -25,6 +25,8 @@
   def(String.prototype, 'endsWith', function (s) { return this.slice(-s.length) === s; });
   def(String.prototype, 'repeat', function (n) { return new Array(n + 1).join(this); });
   def(String.prototype, 'padEnd', function (n, s) { s = s === undefined ? ' ' : String(s); var t = String(this); while (t.length < n) t += s; return t.slice(0, Math.max(n, String(this).length)); });
+  // isConnected (Chrome 54+): sin esto, el texto que se escribe letra por letra en la TV nunca aparecía
+  if (typeof Node !== 'undefined' && !('isConnected' in Node.prototype)) Object.defineProperty(Node.prototype, 'isConnected', { configurable: true, get: function () { var d = this.ownerDocument || document; return d.documentElement === this || d.documentElement.contains(this); } });
   def(Math, 'trunc', function (x) { return x < 0 ? Math.ceil(x) : Math.floor(x); });
   def(Number, 'isFinite', function (x) { return typeof x === 'number' && isFinite(x); });
   if (typeof NodeList !== 'undefined') def(NodeList.prototype, 'forEach', Array.prototype.forEach);

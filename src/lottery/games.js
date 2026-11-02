@@ -8,12 +8,12 @@ export const GAMES = {
   },
   nacional: {
     id: 'nacional', entity: 'Lotería Nacional', name: 'Nacional Gana Más', format: 'quiniela',
-    time: () => [14, 55], verified: false,
+    time: () => [14, 30], verified: true, // 2:30 p. m. (Lotería Nacional, sorteo vespertino; confirmado en elcaribe.com.do)
     sources: ['premios.do/resultados-gana-mas', 'nacionalloteria.com/gana-mas'],
   },
   'nacional-noche': {
     id: 'nacional-noche', entity: 'Lotería Nacional', name: 'Lotería Nacional (noche)', format: 'quiniela',
-    time: wd => (wd === 0 ? [18, 0] : [21, 0]), verified: false,
+    time: wd => (wd === 0 ? [18, 0] : [21, 0]), verified: true, // 9:00 p. m. (confirmado); domingos 6:00 p. m.
     sources: ['premios.do/resultados-nacional-noche', 'nacionalloteria.com/loteria-nacional'],
   },
   loteka: {
