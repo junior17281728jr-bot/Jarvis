@@ -39,7 +39,7 @@ import { aiView } from './motor/autopilot.js';
 import { brainSummary, exportBrain, restoreBrain, brainFileInfo } from './core/brain.js';
 import { driveScript, newDriveToken, drivePing, driveLatest, driveLegal, queueLegalSync, DRIVE_URL_RE, DRIVE_KEEP } from './core/drive.js';
 import { buildMemory } from './core/memory.js';
-import { jarvisAccounts } from './motor/jarvis-accounts.js';
+import { jarvisAccounts, nextOpen } from './motor/jarvis-accounts.js';
 import { describe } from './stocks/strategies.js';
 import { runDrive, programVersion } from './motor/cycle.js';
 import { legalDoc, acceptLegal, currentAcceptance, listAcceptances, signedText, LEGAL_VERSION } from './core/legal.js';
@@ -289,12 +289,47 @@ route('GET', '/api/account', ({ user }) => {
   const s0 = spy.find(b => b.ts >= since), s1 = spy.at(-1);
   const strat = db.prepare("SELECT a.id, s.family FROM accounts a JOIN strategies s ON a.owner = 'strategy:' || s.id").all()
     .map(x => { const vv = valuation(db, x.id, sym => getQuote(db, sym)?.price); return vv.returnPct; });
-  return { ...v, trades: db.prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY ts DESC LIMIT 100').all(acc.id), limits: tradeLimits(user), budget: getBudget(db, user.id), marketOpen: marketOpen(), fx: fx(db),
+  return { ...v, trades: db.prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY ts DESC LIMIT 100').all(acc.id), limits: tradeLimits(user), budget: getBudget(db, user.id), marketOpen: marketOpen(), nextOpen: nextOpen(), pending: pendingOf(user.id), fx: fx(db),
     compare: { you: v.returnPct, market: s0 && s1 ? s1.close / s0.close - 1 : null, jarvisBest: strat.length ? Math.max(...strat) : null, since } };
 });
+// Órdenes que se dejan listas con la bolsa cerrada: se ejecutan solas apenas abra (con el precio de ese momento)
+const pendKey = uid => [`user:${uid}`, 'orders.pending'];
+const pendingOf = uid => getSetting(db, ...pendKey(uid), []);
+function personalLimits(user) { return { minTradeUsd: tradeLimits(user).min, maxTradeUsd: tradeLimits(user).max, maxPerSymbolPct: 40, minCashPct: 10, maxLossPct: 30 }; }
+function runPendingOrders(now = new Date()) {
+  if (!marketOpen(now)) return 0;
+  let n = 0;
+  for (const u of db.prepare('SELECT id, username, display_name, role FROM users WHERE active = 1').all()) {
+    const list = pendingOf(u.id); if (!list.length) continue;
+    const user = { id: u.id, username: u.username, displayName: u.display_name, role: u.role }, acc = userAccount(user), left = [];
+    for (const o of list) {
+      const q = getQuote(db, o.symbol), qs = quoteStatus(q, now);
+      if (!qs.usable) { left.push(o); continue; } // todavía sin precio de hoy: espera a la próxima vuelta
+      const st = valuation(db, acc.id, s2 => getQuote(db, s2)?.price);
+      const qty = o.side === 'sell' ? (st.positions.find(p => p.symbol === o.symbol)?.qty || 0) : undefined;
+      const r = placeOrder(db, { accountId: acc.id, symbol: o.symbol, side: o.side, usd: o.side === 'buy' ? o.usd : undefined, qty, quote: q, quoteUsable: qs, reason: 'orden dejada lista (se hizo al abrir la bolsa)', limits: personalLimits(user), now });
+      activity(db, { type: 'operacion', userId: u.id, important: true, text: r.ok ? `✅ Se hizo tu orden: ${o.side === 'buy' ? 'compraste' : 'vendiste'} ${o.symbol} a ${'US$' + r.execPrice.toFixed(2)} (${'US$' + (r.qty * r.execPrice).toFixed(2)}).` : `⚠️ Tu orden de ${o.side === 'buy' ? 'compra' : 'venta'} de ${o.symbol} no se pudo hacer: ${r.reason}` });
+      n++;
+    }
+    setSetting(db, ...pendKey(u.id), left);
+  }
+  return n;
+}
+route('GET', '/api/orders/pending', ({ user }) => pendingOf(user.id));
+route('POST', '/api/orders/pending/:id/cancel', ({ user, p }) => { setSetting(db, ...pendKey(user.id), pendingOf(user.id).filter(o => o.id !== p.id)); return { ok: true }; });
 route('POST', '/api/order', async ({ req, user }) => {
   const b = await body(req);
   const acc = userAccount(user);
+  if (!marketOpen()) {
+    const symbol = String(b.symbol || '').toUpperCase();
+    if (!/^[A-Z.]{1,6}$/.test(symbol) || !['buy', 'sell'].includes(b.side)) throw new Error('Orden no válida.');
+    if (b.side === 'buy') { const lim = tradeLimits(user), usdv = Number(b.usd); if (!(usdv >= lim.min && usdv <= lim.max)) throw new Error(`El monto debe estar entre US$${lim.min} y US$${lim.max}.`); }
+    const list = pendingOf(user.id);
+    if (list.length >= 10) throw new Error('Ya tienes 10 órdenes esperando. Cancela alguna primero.');
+    const o = { id: Math.random().toString(36).slice(2, 10), symbol, side: b.side, usd: b.side === 'buy' ? Number(b.usd) : null, at: nowIso() };
+    setSetting(db, ...pendKey(user.id), [...list, o]);
+    return { queued: true, order: o, nextOpen: nextOpen() };
+  }
   if (b.side === 'buy' && !b.confirmEmotion) { const ep = emotionPause(db, acc.id); if (ep.pause) throw Object.assign(new Error(ep.text), { code: 409 }); }
   const q = getQuote(db, String(b.symbol || '').toUpperCase());
   const r = placeOrder(db, { accountId: acc.id, symbol: String(b.symbol).toUpperCase(), side: b.side, usd: b.side === 'buy' ? Number(b.usd) : undefined, qty: b.side === 'sell' ? Number(b.qty) : undefined, quote: q, quoteUsable: quoteStatus(q), reason: b.reason || 'manual', limits: { minTradeUsd: tradeLimits(user).min, maxTradeUsd: tradeLimits(user).max, maxPerSymbolPct: 40, minCashPct: 10, maxLossPct: 30 } });
@@ -613,7 +648,7 @@ server.listen(cfg.port, cfg.host, () => console.log(`JARVIS listo en http://${cf
 let busy = false;
 async function tick() {
   if (busy) return; busy = true;
-  try { await runCycle(db, cfg); } catch (e) { console.error('Ciclo:', e.message); } finally { busy = false; }
+  try { await runCycle(db, cfg); try { runPendingOrders(); } catch (e) { console.error('Órdenes:', e.message); } } catch (e) { console.error('Ciclo:', e.message); } finally { busy = false; }
   // Precalcula lo pesado (loterías) en segundo plano, para que la pantalla abra al instante
   const lc = cache.get('lottery'); if (lc && Date.now() - lc.t > 20 * 60e3) cache.delete('lottery');
   if (!cache.get('lottery')) setTimeout(() => { try { routes.find(r => r.method === 'GET' && r.re.test('/api/lottery')).handler({}); } catch { /* se calcula al abrir */ } }, 1000);

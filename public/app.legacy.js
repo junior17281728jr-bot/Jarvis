@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (578a44665074643f). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (cce5ad19987793e0). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -734,7 +734,7 @@ views.inicio = function () { return __awaiter(void 0, void 0, void 0, function (
                 greens = h.ranking.filter(function (c) { return c.light === 'verde'; }), alerts = h.activity.filter(function (a) { return a.important && Date.now() - Date.parse(a.ts) < 864e5; }).length;
                 best = h.myBest || greens[0] || h.ranking.find(function (c) { return c.light === 'amarillo'; });
                 p = h.predictions, leader = h.league[0];
-                return [2, "\n  <section class=\"hero\">".concat(best ? coBadge(best.symbol, 64) : '<span class="cob idle" style="width:64px;height:64px;font-size:26px">⏸</span>', "<div style=\"flex:1;min-width:0\"><div class=\"tag\">Hoy en 10 segundos</div>\n    <div class=\"big\">").concat(best ? "Te recomiendo: ".concat(esc(coName(best.symbol)), " \u2192 ").concat(best.light === 'verde' ? "invierte ".concat(usd(baseAmt('verde'), 0)) : "invierte poco (".concat(usd(baseAmt('amarillo'), 0), ")")) : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar', "</div>\n    <div class=\"sub\">").concat(best ? "".concat(chanceDots(best.probBeat)).concat(patience(best.timing, best.light), " <a href=\"#analisis/").concat(esc(best.symbol), "\">Ver por qu\u00E9 \u25B8</a> \u00B7 <a href=\"#mapa\">Ver mi mapa \u25B8</a>") : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.', "</div>\n    <div class=\"note\" style=\"margin-top:4px\">Tu dinero de pr\u00E1ctica: <b class=\"").concat(cls(h.account.returnPct), "\">").concat(usd(h.account.total), " (").concat(pct(h.account.returnPct, 2), ")</b> \u00B7 ").concat(alerts, " aviso").concat(alerts === 1 ? '' : 's', " hoy</div></div>\n    ").concat(best ? votesHtml(best.contributions) : '', "\n    <div class=\"pill\">").concat(h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>', "</div></section>\n  ").concat(confidenceCard(), "\n  <section class=\"card guide\"><h2>\uD83E\uDDED \u00BFQu\u00E9 hay en cada parte? <span class=\"more note\">toca para ir</span></h2><div class=\"gtiles\">").concat(__spreadArray([
+                return [2, "\n  <section class=\"hero\">".concat(best ? coBadge(best.symbol, 64) : '<span class="cob idle" style="width:64px;height:64px;font-size:26px">⏸</span>', "<div style=\"flex:1;min-width:0\"><div class=\"tag\">Hoy en 10 segundos</div>\n    <div class=\"big\">").concat(best ? "Te recomiendo: ".concat(esc(coName(best.symbol)), " \u2192 ").concat(best.light === 'verde' ? "invierte ".concat(usd(baseAmt('verde'), 0)) : "invierte poco (".concat(usd(baseAmt('amarillo'), 0), ")")) : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar', "</div>\n    <div class=\"sub\">").concat(best ? "".concat(chanceDots(best.probBeat)).concat(patience(best.timing, best.light), " <a href=\"#analisis/").concat(esc(best.symbol), "\">Ver por qu\u00E9 \u25B8</a> \u00B7 <a href=\"#mapa\">Ver mi mapa \u25B8</a> <a class=\"btn sm herobuy\" href=\"#bolsa\">\uD83D\uDCB5 Invertir (virtual)</a>") : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.', "</div>\n    <div class=\"note\" style=\"margin-top:4px\">Tu dinero de pr\u00E1ctica: <b class=\"").concat(cls(h.account.returnPct), "\">").concat(usd(h.account.total), " (").concat(pct(h.account.returnPct, 2), ")</b> \u00B7 ").concat(alerts, " aviso").concat(alerts === 1 ? '' : 's', " hoy</div></div>\n    ").concat(best ? votesHtml(best.contributions) : '', "\n    <div class=\"pill\">").concat(h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>', "</div></section>\n  ").concat(confidenceCard(), "\n  <section class=\"card guide\"><h2>\uD83E\uDDED \u00BFQu\u00E9 hay en cada parte? <span class=\"more note\">toca para ir</span></h2><div class=\"gtiles\">").concat(__spreadArray([
                         ['#cuentas', '💼', 'Cuentas de JARVIS', 'Su dinero virtual: en qué lo invirtió, cuánto ganó o perdió y con cuánto queda.'],
                         ['#mapa', '🗺️', 'Mapa', 'Todas las empresas por color: recomendadas, en observación y no recomendadas.'],
                         ['#recomendaciones', '⭐', 'Recomendaciones', 'Las mejores ideas de hoy, con su nota y por qué.'],
@@ -866,6 +866,21 @@ var flow = function (steps) { return "<div class=\"flow\">".concat(steps.map(fun
     var _b = __read(_a, 4), l = _b[0], v = _b[1], cls = _b[2], sub = _b[3];
     return "<div class=\"fl ".concat(cls || '', "\"><small>").concat(l, "</small><b>").concat(v, "</b>").concat(sub ? "<i>".concat(sub, "</i>") : '', "</div>");
 }).join('<span class="fla">→</span>'), "</div>"); };
+function iaStateHtml(B) {
+    var _a, _b, _c;
+    var L = B.lastStep, when = function (iso) { return new Date(iso).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' }); };
+    var SK = { 'sin precio actual': 'todavía no hay precio de hoy', 'mercado bajista': 'el mercado entero va bajando' };
+    var t;
+    if (!B.marketOpen)
+        t = "\uD83C\uDF19 <b>La bolsa est\u00E1 cerrada.</b> La IA revisa cada hora mientras la bolsa est\u00E1 abierta. ".concat(B.nextOpen ? "Pr\u00F3xima revisi\u00F3n: <b>".concat(when(B.nextOpen), "</b> (hora RD).") : '', " ").concat(B.regime === 'bajista' ? '🛡️ Ahora el mercado entero va bajando: si sigue así, esperará antes de comprar.' : B.plan.length ? "Al abrir piensa comprar: <b>".concat(B.plan.map(function (p) { return esc(p.symbol); }).join(', '), "</b>.") : '');
+    else
+        t = "\uD83D\uDFE2 <b>La bolsa est\u00E1 abierta y la IA est\u00E1 trabajando.</b> Revisa cada hora.";
+    if (L === null || L === void 0 ? void 0 : L.at)
+        t += "<br>\u00DAltima revisi\u00F3n: <b>".concat(timeAgo(L.at), "</b>: ").concat(((_a = L.bought) === null || _a === void 0 ? void 0 : _a.length) ? "compr\u00F3 ".concat(L.bought.map(esc).join(', ')) : 'no compró nada').concat(((_b = L.sold) === null || _b === void 0 ? void 0 : _b.length) ? ", vendi\u00F3 ".concat(L.sold.map(esc).join(', ')) : '').concat(((_c = L.skipped) === null || _c === void 0 ? void 0 : _c.length) ? " \u00B7 esper\u00F3 con ".concat(L.skipped.slice(0, 4).map(function (x) { return "".concat(esc(x.symbol === '*' ? 'todas' : x.symbol), " (").concat(esc(SK[x.why] || x.why), ")"); }).join(', ')) : '', ".");
+    else
+        t += '<br>Todavía no ha hecho su primera revisión con la bolsa abierta.';
+    return "<div class=\"iastate\">\uD83E\uDD16 <b>Qu\u00E9 est\u00E1 haciendo la IA ahora</b><br>".concat(t, "</div>");
+}
 views.cuentas = function () { return __awaiter(void 0, void 0, void 0, function () {
     var A, B, L, up, empty;
     return __generator(this, function (_a) {
@@ -877,7 +892,7 @@ views.cuentas = function () { return __awaiter(void 0, void 0, void 0, function 
                     FX = A.rate;
                 B = A.bolsa, L = A.loteria, up = B.gain >= 0;
                 empty = !B.positions.length;
-                return [2, "<div><h1>\uD83D\uDCBC Las cuentas de JARVIS</h1><p class=\"sub\">El dinero virtual que JARVIS maneja solo: cu\u00E1nto ten\u00EDa, en qu\u00E9 lo puso, cu\u00E1nto gan\u00F3 o perdi\u00F3 y con cu\u00E1nto queda. Todo sale de operaciones selladas con precios reales.</p></div>\n  <section class=\"card acct-card\"><h2>\uD83D\uDCC8 Bolsa <span class=\"more note\">empez\u00F3 el ".concat(dt(B.since), " con ").concat(usd(B.start), "</span></h2>\n    ").concat(flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', "".concat(B.positions.length, " ").concat(B.positions.length === 1 ? 'acción' : 'acciones')], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', "".concat(B.unrealized >= 0 ? '+' : '').concat(usd(B.unrealized))], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', "".concat(up ? '+' : '').concat(usd(B.gain), " (").concat(up ? '+' : '').concat(B.returnPct, "%)")]]), "\n    <div class=\"acct-mini\"><span>\u2705 Ventas con ganancia: <b>").concat(B.wins, "</b></span><span>\u274C Ventas con p\u00E9rdida: <b>").concat(B.losses, "</b></span><span>\uD83D\uDCB0 Ganado ya cobrado: <b class=\"").concat(B.realized >= 0 ? 'good' : 'bad', "\">").concat(B.realized >= 0 ? '+' : '').concat(usd(B.realized), "</b></span><span>\u23F3 Ganancia a\u00FAn sin vender: <b class=\"").concat(B.unrealized >= 0 ? 'good' : 'bad', "\">").concat(B.unrealized >= 0 ? '+' : '').concat(usd(B.unrealized), "</b></span></div>\n    <h3 class=\"cs-h\">En qu\u00E9 lo tiene ahora</h3>\n    ").concat(empty ? "<div class=\"answer\">\uD83D\uDCA4 Ahora todo est\u00E1 en efectivo. ".concat(B.regime === 'bajista' ? '🛡️ El mercado entero va bajando: espera a que mejore antes de comprar. ' : '').concat(B.marketOpen ? 'Está buscando qué comprar.' : "La bolsa est\u00E1 cerrada; empieza a comprar cuando abra".concat(B.nextOpen ? ": <b>".concat(new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' }), "</b> (hora RD)") : '', "."), "</div>\n      ").concat(B.plan.length ? "<div class=\"note\" style=\"margin:8px 0\">Lo que comprar\u00EDa (est\u00E1 en \"Te recomiendo\"):</div><div class=\"plan\">".concat(B.plan.map(function (p) { return "<a class=\"pl\" href=\"#analisis/".concat(esc(p.symbol), "\"><b>").concat(esc(p.symbol), "</b><span>").concat(usd(p.usd), "</span><small>conviene ").concat(p.conv, "/100</small></a>"); }).join(''), "</div>") : '<div class="note">Todavía no hay empresas en "Te recomiendo".</div>')
+                return [2, "<div><h1>\uD83D\uDCBC Las cuentas de JARVIS</h1><p class=\"sub\">El dinero virtual que JARVIS maneja solo: cu\u00E1nto ten\u00EDa, en qu\u00E9 lo puso, cu\u00E1nto gan\u00F3 o perdi\u00F3 y con cu\u00E1nto queda. Todo sale de operaciones selladas con precios reales.</p></div>\n  <section class=\"card acct-card\"><h2>\uD83D\uDCC8 Bolsa <span class=\"more note\">empez\u00F3 el ".concat(dt(B.since), " con ").concat(usd(B.start), "</span></h2>\n    ").concat(flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', "".concat(B.positions.length, " ").concat(B.positions.length === 1 ? 'acción' : 'acciones')], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', "".concat(B.unrealized >= 0 ? '+' : '').concat(usd(B.unrealized))], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', "".concat(up ? '+' : '').concat(usd(B.gain), " (").concat(up ? '+' : '').concat(B.returnPct, "%)")]]), "\n    ").concat(iaStateHtml(B), "\n    <div class=\"acct-mini\"><span>\u2705 Ventas con ganancia: <b>").concat(B.wins, "</b></span><span>\u274C Ventas con p\u00E9rdida: <b>").concat(B.losses, "</b></span><span>\uD83D\uDCB0 Ganado ya cobrado: <b class=\"").concat(B.realized >= 0 ? 'good' : 'bad', "\">").concat(B.realized >= 0 ? '+' : '').concat(usd(B.realized), "</b></span><span>\u23F3 Ganancia a\u00FAn sin vender: <b class=\"").concat(B.unrealized >= 0 ? 'good' : 'bad', "\">").concat(B.unrealized >= 0 ? '+' : '').concat(usd(B.unrealized), "</b></span></div>\n    <h3 class=\"cs-h\">En qu\u00E9 lo tiene ahora</h3>\n    ").concat(empty ? "<div class=\"answer\">\uD83D\uDCA4 Ahora todo est\u00E1 en efectivo. ".concat(B.regime === 'bajista' ? '🛡️ El mercado entero va bajando: espera a que mejore antes de comprar. ' : '').concat(B.marketOpen ? 'Está buscando qué comprar.' : "La bolsa est\u00E1 cerrada; empieza a comprar cuando abra".concat(B.nextOpen ? ": <b>".concat(new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' }), "</b> (hora RD)") : '', "."), "</div>\n      ").concat(B.plan.length ? "<div class=\"note\" style=\"margin:8px 0\">Lo que comprar\u00EDa (est\u00E1 en \"Te recomiendo\"):</div><div class=\"plan\">".concat(B.plan.map(function (p) { return "<a class=\"pl\" href=\"#analisis/".concat(esc(p.symbol), "\"><b>").concat(esc(p.symbol), "</b><span>").concat(usd(p.usd), "</span><small>conviene ").concat(p.conv, "/100</small></a>"); }).join(''), "</div>") : '<div class="note">Todavía no hay empresas en "Te recomiendo".</div>')
                         : "<div class=\"tablewrap\"><table class=\"acct-t\"><tr><th>Acci\u00F3n</th><th class=\"r\">Invirti\u00F3</th><th class=\"r\">Vale hoy</th><th class=\"r\">Ganancia</th><th>Desde</th></tr>".concat(B.positions.map(function (p) { return "<tr><td><a href=\"#analisis/".concat(esc(p.symbol), "\"><b>").concat(esc(p.symbol), "</b></a></td><td class=\"r\">").concat(usd(p.invested), "</td><td class=\"r\">").concat(usd(p.value), "</td><td class=\"r ").concat(p.pnl >= 0 ? 'good' : 'bad', "\">").concat(p.pnl >= 0 ? '+' : '').concat(usd(p.pnl), " <span class=\"note\">(").concat(p.pnl >= 0 ? '+' : '').concat(p.pnlPct, "%)</span></td><td>").concat(dt(p.since), "</td></tr>"); }).join(''), "\n      <tr class=\"tot\"><td><b>Total</b></td><td class=\"r\"><b>").concat(usd(B.invested), "</b></td><td class=\"r\"><b>").concat(usd(B.valueNow), "</b></td><td class=\"r ").concat(B.unrealized >= 0 ? 'good' : 'bad', "\"><b>").concat(B.unrealized >= 0 ? '+' : '').concat(usd(B.unrealized), "</b></td><td></td></tr></table></div>"), "\n    ").concat(B.closed.length ? "<h3 class=\"cs-h\">Lo que ya vendi\u00F3 (resultado final)</h3><div class=\"tablewrap\"><table class=\"acct-t\"><tr><th>Acci\u00F3n</th><th class=\"r\">Puso</th><th class=\"r\">Sac\u00F3</th><th class=\"r\">Resultado</th><th>Por qu\u00E9 vendi\u00F3</th></tr>".concat(B.closed.map(function (c) { return "<tr><td><b>".concat(esc(c.symbol), "</b><div class=\"note\">").concat(dt(c.openedAt), " \u2192 ").concat(dt(c.closedAt), "</div></td><td class=\"r\">").concat(usd(c.invested), "</td><td class=\"r\">").concat(usd(c.got), "</td><td class=\"r ").concat(c.pnl >= 0 ? 'good' : 'bad', "\"><b>").concat(c.pnl >= 0 ? '+' : '').concat(usd(c.pnl), "</b> <span class=\"note\">(").concat(c.pnlPct, "%)</span></td><td class=\"note\">").concat(esc(c.why), "</td></tr>"); }).join(''), "</table></div>") : '', "\n    ").concat(B.moves.length ? "<details style=\"margin-top:10px\"><summary class=\"note\">Todas sus compras y ventas (".concat(B.moves.length, ")</summary><div class=\"tablewrap\"><table class=\"acct-t\">").concat(B.moves.map(function (m) { return "<tr><td>".concat(dt(m.at), "</td><td><b class=\"").concat(m.side === 'buy' ? '' : 'warn', "\">").concat(m.side === 'buy' ? '🟢 Compró' : '🔴 Vendió', "</b> ").concat(esc(m.symbol), "</td><td class=\"r\">").concat(usd(m.usd), "</td><td class=\"note\">a ").concat(usd(m.price), " \u00B7 ").concat(esc(m.why), "</td></tr>"); }).join(''), "</table></div></details>") : '', "\n    <div class=\"note\" style=\"margin-top:10px\">\uD83D\uDCCB Reglas: ").concat(esc(B.rules), "</div></section>\n  <section class=\"card acct-card\"><h2>\uD83C\uDFB1 Loter\u00EDa <span class=\"more note\">su monedero: ").concat(usd(L.startUsd), " \u2248 ").concat(rdRaw(L.startRd), "</span></h2>\n    ").concat(flow([['Empezó con', rdu(L.startRd), '', ''], ['Jugó', rdu(L.playedRd), '', "".concat(L.plays, " jugadas")], ['Ganó (premios)', rdu(L.wonRd), L.wonRd > 0 ? 'good' : '', "".concat(L.hits, " ").concat(L.hits === 1 ? 'acierto' : 'aciertos', " de ").concat(L.settled)], ['Perdió', rdu(L.lostRd), L.lostRd > 0 ? 'bad' : '', "".concat(L.settled - L.hits, " sin premio")], ['Le queda', rdu(L.leftRd), L.leftRd >= L.startRd ? 'good' : 'bad', L.pendingRd ? "".concat(rdRaw(L.pendingRd), " esperando sorteo") : '']]), "\n    ").concat(L.byGame.length ? "<div class=\"tablewrap\"><table class=\"acct-t\"><tr><th>Loter\u00EDa</th><th class=\"r\">Jugadas</th><th class=\"r\">Aciertos</th><th class=\"r\">Jug\u00F3</th><th class=\"r\">Gan\u00F3</th><th class=\"r\">Resultado</th></tr>".concat(L.byGame.map(function (g) { return "<tr><td>".concat(esc(g.name), "</td><td class=\"r\">").concat(g.plays, "</td><td class=\"r\">").concat(g.hits, "</td><td class=\"r\">").concat(rdu(g.playedRd), "</td><td class=\"r\">").concat(rdu(g.wonRd), "</td><td class=\"r ").concat(g.wonRd - g.playedRd >= 0 ? 'good' : 'bad', "\">").concat(rdu(g.wonRd - g.playedRd, { sign: true }), "</td></tr>"); }).join(''), "</table></div>") : '', "\n    ").concat(L.brokeAt ? "<div class=\"answer bad\" style=\"margin-top:8px\">\u26A0\uFE0F Con este ritmo se habr\u00EDa quedado sin dinero el ".concat(esc(L.brokeAt), ".</div>") : '', "\n    <div class=\"note\" style=\"margin-top:8px\">").concat(esc(L.note), " <a href=\"#loterias\">Ver cada jugada y qu\u00E9 sali\u00F3 \u25B8</a></div></section>")];
         }
     });
@@ -1209,16 +1224,21 @@ function iaCompare(a, ia) {
     return "<section class=\"card\"><h2>\u00BFQui\u00E9n lo hace mejor? <span class=\"more note\">dinero virtual, precios reales</span></h2>\n    <div class=\"mini3\">".concat(box('🧑', 'Tú', 'Tu cartera: decides tú', you, "<div class=\"note\">".concat(usd(a.total), "</div>"))).concat(box('🤖', 'La IA', 'Cartera de JARVIS: decide sola', iaR, ia ? "<div class=\"note\">".concat(usd(ia.total), "</div>") : '')).concat(box('📈', 'No hacer nada', 'Solo el mercado (SPY)', mk), "</div>\n    <div class=\"note\" style=\"margin-top:8px\">Son dos carteras <b>separadas</b>: lo que t\u00FA compras no cambia la de la IA, ni al rev\u00E9s. As\u00ED ves si las decisiones de JARVIS de verdad sirven.</div></section>\n  ").concat(ia ? "<section class=\"card iacard\"><h2>\uD83E\uDD16 Cartera de la IA <span class=\"note\" style=\"font-weight:600\">\u00B7 decide sola</span></h2>\n    <div class=\"grid g3\" style=\"gap:10px;margin-top:8px\"><div class=\"pbox\"><div class=\"l\">Valor</div><div class=\"v\">".concat(usd(ia.total), "</div><div class=\"note\">empez\u00F3 con ").concat(usd(ia.start, 0), "</div></div><div class=\"pbox\"><div class=\"l\">Efectivo</div><div class=\"v\">").concat(usd(ia.cash), "</div></div><div class=\"pbox\"><div class=\"l\">Ganancia ya cerrada</div><div class=\"v ").concat(cls(ia.realized), "\">").concat(usd(ia.realized), "</div><div class=\"note\">").concat(ia.closed, " ").concat(ia.closed === 1 ? 'operación cerrada' : 'operaciones cerradas', "</div></div></div>\n    <h3 style=\"margin-top:14px\">Lo que tiene ahora</h3>").concat(ia.positions.length ? "<div class=\"tablewrap\"><table><tr><th>Acci\u00F3n</th><th class=\"r\">Vale</th><th class=\"r\">Ganancia</th></tr>".concat(ia.positions.map(function (p) { return "<tr><td>".concat(coCell(p.symbol), "</td><td class=\"r\">").concat(usd(p.value), "</td><td class=\"r ").concat(cls(p.pnl), "\">").concat(usd(p.pnl), " <span class=\"note\">").concat(pct(p.pnlPct * 100), "</span></td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Todavía no ha comprado nada. Compra sola cuando el mercado está abierto y hay acciones en "Te recomiendo".</div>', "\n    <h3 style=\"margin-top:14px\">Lo que decidi\u00F3 y por qu\u00E9</h3>").concat(ia.trades.length ? "<div class=\"iatl\">".concat(ia.trades.slice(0, 12).map(function (t) { return "<div class=\"iarow\"><b class=\"".concat(t.side === 'buy' ? 'good' : 'bad', "\">").concat(t.side === 'buy' ? 'Compró' : 'Vendió', " ").concat(esc(t.symbol), "</b> \u00B7 ").concat(usd(t.usd), " \u00B7 <span class=\"note\">").concat(esc(t.ts.slice(0, 10)), "</span><div class=\"note\">").concat(esc(String(t.reason || '').replace(/^IA (compra|vende): /, '')), "</div></div>"); }).join(''), "</div>") : '<div class="empty">Aún no ha hecho operaciones.</div>', "\n    <details class=\"note\" style=\"margin-top:10px\"><summary>Las reglas de la IA</summary><ul>").concat(ia.rules.map(function (x) { return "<li>".concat(esc(x), "</li>"); }).join(''), "</ul></details></section>") : '');
 }
 views.bolsa = function () { return __awaiter(void 0, void 0, void 0, function () {
-    var _a, a, r, wl, ia, syms, B;
-    var _b;
-    return __generator(this, function (_c) {
-        switch (_c.label) {
-            case 0: return [4, Promise.all([api('/api/account'), api('/api/ranking'), api('/api/watchlist'), api('/api/ia').catch(function () { return null; })])];
+    var _a, a, r, wl, ia, ct, syms, B, openTxt, picks;
+    var _b, _c;
+    return __generator(this, function (_d) {
+        switch (_d.label) {
+            case 0: return [4, Promise.all([api('/api/account'), api('/api/ranking'), api('/api/watchlist'), api('/api/ia').catch(function () { return null; }), api('/api/jarvis/cuentas').catch(function () { return null; })])];
             case 1:
-                _a = __read.apply(void 0, [_c.sent(), 4]), a = _a[0], r = _a[1], wl = _a[2], ia = _a[3];
+                _a = __read.apply(void 0, [_d.sent(), 5]), a = _a[0], r = _a[1], wl = _a[2], ia = _a[3], ct = _a[4];
                 syms = __spreadArray([], __read(new Set(__spreadArray(__spreadArray(__spreadArray([], __read(r.map(function (c) { return c.symbol; })), false), __read(wl), false), __read(a.positions.map(function (p) { return p.symbol; })), false))), false);
                 B = a.budget || MYBUDGET || { usd: 100, emergency: true };
-                return [2, "<section class=\"card mymoney\"><h2>Mi dinero <span class=\"more note\">JARVIS calcula todo con este monto</span></h2>\n    <form class=\"row\" id=\"bf\" style=\"align-items:flex-end;gap:12px;margin-top:10px\"><label style=\"width:220px\">\u00BFCu\u00E1nto dinero tienes para invertir? (US$)<input id=\"bu\" type=\"number\" min=\"10\" step=\"1\" value=\"".concat(B.usd, "\"></label>\n      <label style=\"flex-direction:row;align-items:center;gap:8px;padding-bottom:10px\"><input type=\"checkbox\" id=\"be\" style=\"width:auto\"").concat(B.emergency ? ' checked' : '', "> Ya tengo fondo de emergencia aparte</label><button class=\"btn\">Guardar</button></form>\n    <div class=\"grid g3\" style=\"gap:10px;margin-top:12px\"><div class=\"pbox\"><div class=\"l\">\"S\u00ED, invierte\" (").concat(myStyle().verde * 100, "%)</div><div class=\"v good\">").concat(usd(baseAmt('verde'), 0), "</div><div class=\"note\">por idea</div></div><div class=\"pbox\"><div class=\"l\">\"Invierte poco\" (").concat(myStyle().amarillo * 100, "%)</div><div class=\"v warn\">").concat(usd(baseAmt('amarillo'), 0), "</div><div class=\"note\">por idea</div></div><div class=\"pbox\"><div class=\"l\">M\u00E1ximo con pruebas fuertes (").concat(myStyle().max * 100, "%)</div><div class=\"v\">").concat(usd(Math.round(B.usd * myStyle().max), 0), "</div><div class=\"note\">solo si se cumplen las 5 condiciones</div></div></div>\n    <div class=\"note\" style=\"margin-top:8px\">Porcentajes seg\u00FAn tu estilo (").concat(esc({ conservador: 'conservador', equilibrado: 'equilibrado', arriesgado: 'arriesgado' }[(_b = MYBUDGET === null || MYBUDGET === void 0 ? void 0 : MYBUDGET.profile) === null || _b === void 0 ? void 0 : _b.style] || 'equilibrado'), "). <a href=\"#perfil\">Cambiar mi estilo \u25B8</a></div>\n    <div class=\"row\" style=\"margin-top:12px;gap:10px;align-items:center\"><button type=\"button\" class=\"btn ghost\" id=\"breset\">Empezar mi pr\u00E1ctica con ").concat(usd(B.usd, 0), "</button><span class=\"note\">Tu cuenta de pr\u00E1ctica empieza con ").concat(usd(a.start, 0), ". Si la reinicias, la anterior queda guardada en el historial (no se borra).</span></div><div class=\"msg\" id=\"bm\"></div></section>\n  ").concat(iaCompare(a, ia), "\n  <div><h1>\uD83E\uDDD1 Mi cartera virtual <span class=\"note\" style=\"font-size:15px;font-weight:600\">\u00B7 aqu\u00ED decides t\u00FA</span></h1><p class=\"sub\">Dinero de mentira, precios reales. Operaciones de ").concat(usd(a.limits.min, 0), " a ").concat(usd(a.limits.max, 0), ", como har\u00EDas t\u00FA. Mercado ").concat(a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)', ".</p></div>\n  <section class=\"grid g4\">\n    <div class=\"card kpi\"><div class=\"l\">Valor total</div><div class=\"v\">").concat(usd(a.total), "</div><div class=\"s\"><span class=\"").concat(cls(a.returnPct), "\">").concat(pct(a.returnPct * 100, 2), " desde ").concat(usd(a.start, 0), "</span>").concat(a.fx ? " \u00B7 \u2248 ".concat(rd(Math.round(a.total * a.fx.rate))) : '', "</div></div>\n    <div class=\"card kpi\" style=\"--c:#4c7dff\"><div class=\"l\">Efectivo</div><div class=\"v\">").concat(usd(a.cash), "</div><div class=\"s\">Disponible para operar</div></div>\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">Ganancia realizada</div><div class=\"v ").concat(cls(a.realized), "\">").concat(usd(a.realized), "</div><div class=\"s\">Operaciones cerradas: ").concat(a.closed.length, "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ffbf3c\"><div class=\"l\">No realizada</div><div class=\"v ").concat(cls(a.unrealized), "\">").concat(usd(a.unrealized), "</div><div class=\"s\">Provisional: cambia con el precio</div></div>\n  </section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Operar (virtual)</h2><form class=\"form\" id=\"of\">\n      <div class=\"grid g2\" style=\"gap:10px\"><label>Acci\u00F3n<select id=\"osym\">").concat(syms.map(function (s) { return "<option>".concat(esc(s), "</option>"); }).join(''), "</select></label>\n      <label>Operaci\u00F3n<select id=\"oside\"><option value=\"buy\">Comprar</option><option value=\"sell\">Vender</option></select></label></div>\n      <div class=\"grid g2\" style=\"gap:10px\"><label id=\"ousdl\">Monto (US$)<input id=\"ousd\" type=\"number\" min=\"").concat(a.limits.min, "\" max=\"").concat(a.limits.max, "\" step=\"0.5\" value=\"").concat(a.limits.max, "\"></label>\n      <label id=\"oqtyl\" class=\"hide\">Cantidad de acciones<input id=\"oqty\" type=\"number\" step=\"0.000001\" min=\"0\"></label></div>\n      <button class=\"btn\">Ejecutar</button><div class=\"msg\" id=\"om\"></div>\n      <div class=\"note\">Se usa el precio real m\u00E1s reciente. Si el precio no es actual o el mercado est\u00E1 cerrado, la operaci\u00F3n no se hace.</div></form></div>\n    <div class=\"card\"><h2>\u00BFCu\u00E1nto invertir?</h2><form class=\"form\" id=\"af\">\n      <div class=\"grid g2\" style=\"gap:10px\"><label>Dinero que piensas invertir (US$)<input id=\"aamt\" type=\"number\" min=\"1\" value=\"100\"></label><label>\u00BFEn cu\u00E1nto tiempo lo necesitas? (meses)<input id=\"ahz\" type=\"number\" min=\"1\" value=\"12\"></label></div>\n      <div class=\"grid g2\" style=\"gap:10px\"><label>Costos fijos (env\u00EDo desde RD, comisi\u00F3n) US$<input id=\"afee\" type=\"number\" min=\"0\" step=\"0.5\" value=\"0\"></label><label>\u00BFTienes fondo de emergencia?<select id=\"aem\"><option value=\"1\">S\u00ED</option><option value=\"0\">No</option></select></label></div>\n      <label>\u00BFAlguien te propuso algo extremo? (opcional)<input id=\"aex\" placeholder=\"Ej.: meter el 100% en Tesla\"></label>\n      <button class=\"btn\">Analizar</button><div id=\"ares\"></div></form></div>\n  </section>\n  <section class=\"card\"><h2>Posiciones abiertas</h2>").concat(a.positions.length ? "<div class=\"tablewrap\"><table><tr><th>Acci\u00F3n</th><th class=\"r\">Cantidad</th><th class=\"r\">Costo promedio</th><th class=\"r\">Precio</th><th class=\"r\">Ganancia</th></tr>".concat(a.positions.map(function (p) { return "<tr><td class=\"sym\">".concat(esc(p.symbol), "</td><td class=\"r\">").concat(p.qty.toFixed(5), "</td><td class=\"r\">").concat(usd(p.avgCost), "</td><td class=\"r\">").concat(usd(p.price), "</td><td class=\"r ").concat(cls(p.pnl), "\">").concat(usd(p.pnl), " <span class=\"note\">").concat(pct(p.pnlPct * 100), "</span></td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Sin posiciones. Compra desde aquí o desde una recomendación.</div>', "</section>\n  <section class=\"card\"><h2>Historial de operaciones <a class=\"more\" href=\"/api/export/operaciones\">Exportar a Excel (CSV) \u25B8</a></h2>").concat(a.closed.length ? "<div class=\"tablewrap\"><table><tr><th>Acci\u00F3n</th><th>Entr\u00F3</th><th>Sali\u00F3</th><th class=\"r\">Resultado</th></tr>".concat(a.closed.slice().reverse().map(function (c) { return "<tr><td class=\"sym\">".concat(esc(c.symbol), "</td><td>").concat(esc(c.openedAt.slice(0, 10)), " a ").concat(usd(c.entry), "</td><td>").concat(esc(c.closedAt.slice(0, 10)), " a ").concat(usd(c.exit), "</td><td class=\"r ").concat(cls(c.pnl), "\">").concat(usd(c.pnl), " (").concat(pct(c.pnlPct * 100), ")</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Aún no hay operaciones cerradas.</div>', "</section>")];
+                openTxt = a.marketOpen ? '<span class="good">🟢 La bolsa está abierta: las órdenes se hacen al momento.</span>' : "<span class=\"warn\">\uD83C\uDF19 La bolsa est\u00E1 cerrada".concat(a.nextOpen ? " \u00B7 abre ".concat(new Date(a.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' }), " (hora RD)") : '', "</span> \u00B7 Puedes dejar tus \u00F3rdenes listas y se hacen solas al abrir.");
+                picks = r.filter(function (c) { return c.light !== 'rojo'; }).slice(0, 6);
+                return [2, "<section class=\"card investnow\"><h2>\uD83D\uDCB5 Invertir con mi dinero de pr\u00E1ctica <span class=\"more note\">dinero virtual, precios reales</span></h2>\n    <div class=\"mkt\">".concat(openTxt, "</div>\n    ").concat(picks.length ? "<div class=\"qbuy\">".concat(picks.map(function (c) {
+                        var amt = Math.min(a.limits.max, Math.max(a.limits.min, baseAmt(c.light)));
+                        return "<div class=\"qb\"><div class=\"qb-h\">".concat(coBadge(c.symbol, 34), "<div><b>").concat(esc(coName(c.symbol)), "</b><div class=\"note\">").concat(esc(c.symbol), " \u00B7 ").concat(light(c.light), "</div></div></div>\n      <button type=\"button\" class=\"btn\" data-qbuy=\"").concat(esc(c.symbol), "\" data-amt=\"").concat(amt, "\">").concat(a.marketOpen ? 'Comprar' : 'Dejar lista la compra de', " ").concat(usd(amt, 0), "</button></div>");
+                    }).join(''), "</div>") : '<div class="note">Hoy JARVIS no recomienda comprar nada.</div>', "\n    <div class=\"msg\" id=\"qm\"></div>\n    ").concat(((_b = a.pending) === null || _b === void 0 ? void 0 : _b.length) ? "<h3 class=\"cs-h\">\u23F3 \u00D3rdenes listas para cuando abra la bolsa</h3><div class=\"pend\">".concat(a.pending.map(function (o) { return "<div class=\"pd\"><b>".concat(o.side === 'buy' ? '🟢 Comprar' : '🔴 Vender', " ").concat(esc(o.symbol), "</b>").concat(o.usd ? " \u00B7 ".concat(usd(o.usd, 0)) : ' · todo', "<button type=\"button\" class=\"btn ghost sm\" data-pcancel=\"").concat(esc(o.id), "\">Cancelar</button></div>"); }).join(''), "</div>") : '', "\n    <div class=\"note\" style=\"margin-top:8px\">\u00BFOtra empresa u otro monto? Usa <a href=\"#operar\">Operar (virtual)</a> m\u00E1s abajo. Para vender, toca \"Vender\" en tus posiciones.</div></section>\n  <section class=\"card mymoney\"><h2>Mi dinero <span class=\"more note\">JARVIS calcula todo con este monto</span></h2>\n    <form class=\"row\" id=\"bf\" style=\"align-items:flex-end;gap:12px;margin-top:10px\"><label style=\"width:220px\">\u00BFCu\u00E1nto dinero tienes para invertir? (US$)<input id=\"bu\" type=\"number\" min=\"10\" step=\"1\" value=\"").concat(B.usd, "\"></label>\n      <label style=\"flex-direction:row;align-items:center;gap:8px;padding-bottom:10px\"><input type=\"checkbox\" id=\"be\" style=\"width:auto\"").concat(B.emergency ? ' checked' : '', "> Ya tengo fondo de emergencia aparte</label><button class=\"btn\">Guardar</button></form>\n    <div class=\"grid g3\" style=\"gap:10px;margin-top:12px\"><div class=\"pbox\"><div class=\"l\">\"S\u00ED, invierte\" (").concat(myStyle().verde * 100, "%)</div><div class=\"v good\">").concat(usd(baseAmt('verde'), 0), "</div><div class=\"note\">por idea</div></div><div class=\"pbox\"><div class=\"l\">\"Invierte poco\" (").concat(myStyle().amarillo * 100, "%)</div><div class=\"v warn\">").concat(usd(baseAmt('amarillo'), 0), "</div><div class=\"note\">por idea</div></div><div class=\"pbox\"><div class=\"l\">M\u00E1ximo con pruebas fuertes (").concat(myStyle().max * 100, "%)</div><div class=\"v\">").concat(usd(Math.round(B.usd * myStyle().max), 0), "</div><div class=\"note\">solo si se cumplen las 5 condiciones</div></div></div>\n    <div class=\"note\" style=\"margin-top:8px\">Porcentajes seg\u00FAn tu estilo (").concat(esc({ conservador: 'conservador', equilibrado: 'equilibrado', arriesgado: 'arriesgado' }[(_c = MYBUDGET === null || MYBUDGET === void 0 ? void 0 : MYBUDGET.profile) === null || _c === void 0 ? void 0 : _c.style] || 'equilibrado'), "). <a href=\"#perfil\">Cambiar mi estilo \u25B8</a></div>\n    <div class=\"row\" style=\"margin-top:12px;gap:10px;align-items:center\"><button type=\"button\" class=\"btn ghost\" id=\"breset\">Empezar mi pr\u00E1ctica con ").concat(usd(B.usd, 0), "</button><span class=\"note\">Tu cuenta de pr\u00E1ctica empieza con ").concat(usd(a.start, 0), ". Si la reinicias, la anterior queda guardada en el historial (no se borra).</span></div><div class=\"msg\" id=\"bm\"></div></section>\n  ").concat(iaCompare(a, ia), "\n  ").concat(ct ? "<section class=\"card\"><h2>\uD83E\uDD16 La IA con sus US$100 <a class=\"more\" href=\"#cuentas\">Ver todas sus cuentas \u25B8</a></h2>".concat(iaStateHtml(ct.bolsa), "</section>") : '', "\n  <div><h1>\uD83E\uDDD1 Mi cartera virtual <span class=\"note\" style=\"font-size:15px;font-weight:600\">\u00B7 aqu\u00ED decides t\u00FA</span></h1><p class=\"sub\">Dinero de mentira, precios reales. Operaciones de ").concat(usd(a.limits.min, 0), " a ").concat(usd(a.limits.max, 0), ", como har\u00EDas t\u00FA. Mercado ").concat(a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)', ".</p></div>\n  <section class=\"grid g4\">\n    <div class=\"card kpi\"><div class=\"l\">Valor total</div><div class=\"v\">").concat(usd(a.total), "</div><div class=\"s\"><span class=\"").concat(cls(a.returnPct), "\">").concat(pct(a.returnPct * 100, 2), " desde ").concat(usd(a.start, 0), "</span>").concat(a.fx ? " \u00B7 \u2248 ".concat(rd(Math.round(a.total * a.fx.rate))) : '', "</div></div>\n    <div class=\"card kpi\" style=\"--c:#4c7dff\"><div class=\"l\">Efectivo</div><div class=\"v\">").concat(usd(a.cash), "</div><div class=\"s\">Disponible para operar</div></div>\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">Ganancia realizada</div><div class=\"v ").concat(cls(a.realized), "\">").concat(usd(a.realized), "</div><div class=\"s\">Operaciones cerradas: ").concat(a.closed.length, "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ffbf3c\"><div class=\"l\">No realizada</div><div class=\"v ").concat(cls(a.unrealized), "\">").concat(usd(a.unrealized), "</div><div class=\"s\">Provisional: cambia con el precio</div></div>\n  </section>\n  <section class=\"grid g2\">\n    <div class=\"card\" id=\"operar\"><h2>Operar (virtual)</h2><form class=\"form\" id=\"of\">\n      <div class=\"grid g2\" style=\"gap:10px\"><label>Acci\u00F3n<select id=\"osym\">").concat(syms.map(function (s) { return "<option>".concat(esc(s), "</option>"); }).join(''), "</select></label>\n      <label>Operaci\u00F3n<select id=\"oside\"><option value=\"buy\">Comprar</option><option value=\"sell\">Vender</option></select></label></div>\n      <div class=\"grid g2\" style=\"gap:10px\"><label id=\"ousdl\">Monto (US$)<input id=\"ousd\" type=\"number\" min=\"").concat(a.limits.min, "\" max=\"").concat(a.limits.max, "\" step=\"0.5\" value=\"").concat(a.limits.max, "\"></label>\n      <label id=\"oqtyl\" class=\"hide\">Cantidad de acciones<input id=\"oqty\" type=\"number\" step=\"0.000001\" min=\"0\"></label></div>\n      <button class=\"btn\">Ejecutar</button><div class=\"msg\" id=\"om\"></div>\n      <div class=\"note\">Se usa el precio real m\u00E1s reciente. Con la bolsa cerrada, la orden queda lista y se hace sola al abrir, con el precio de ese momento.</div></form></div>\n    <div class=\"card\"><h2>\u00BFCu\u00E1nto invertir?</h2><form class=\"form\" id=\"af\">\n      <div class=\"grid g2\" style=\"gap:10px\"><label>Dinero que piensas invertir (US$)<input id=\"aamt\" type=\"number\" min=\"1\" value=\"100\"></label><label>\u00BFEn cu\u00E1nto tiempo lo necesitas? (meses)<input id=\"ahz\" type=\"number\" min=\"1\" value=\"12\"></label></div>\n      <div class=\"grid g2\" style=\"gap:10px\"><label>Costos fijos (env\u00EDo desde RD, comisi\u00F3n) US$<input id=\"afee\" type=\"number\" min=\"0\" step=\"0.5\" value=\"0\"></label><label>\u00BFTienes fondo de emergencia?<select id=\"aem\"><option value=\"1\">S\u00ED</option><option value=\"0\">No</option></select></label></div>\n      <label>\u00BFAlguien te propuso algo extremo? (opcional)<input id=\"aex\" placeholder=\"Ej.: meter el 100% en Tesla\"></label>\n      <button class=\"btn\">Analizar</button><div id=\"ares\"></div></form></div>\n  </section>\n  <section class=\"card\"><h2>Posiciones abiertas</h2>").concat(a.positions.length ? "<div class=\"tablewrap\"><table><tr><th>Acci\u00F3n</th><th class=\"r\">Cantidad</th><th class=\"r\">Costo promedio</th><th class=\"r\">Precio</th><th class=\"r\">Ganancia</th><th></th></tr>".concat(a.positions.map(function (p) { return "<tr><td class=\"sym\">".concat(esc(p.symbol), "</td><td class=\"r\">").concat(p.qty.toFixed(5), "</td><td class=\"r\">").concat(usd(p.avgCost), "</td><td class=\"r\">").concat(usd(p.price), "</td><td class=\"r ").concat(cls(p.pnl), "\">").concat(usd(p.pnl), " <span class=\"note\">").concat(pct(p.pnlPct * 100), "</span></td><td class=\"r\"><button type=\"button\" class=\"btn ghost sm\" data-sell=\"").concat(esc(p.symbol), "\" data-qty=\"").concat(p.qty, "\">Vender</button></td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Sin posiciones. Compra desde aquí o desde una recomendación.</div>', "</section>\n  <section class=\"card\"><h2>Historial de operaciones <a class=\"more\" href=\"/api/export/operaciones\">Exportar a Excel (CSV) \u25B8</a></h2>").concat(a.closed.length ? "<div class=\"tablewrap\"><table><tr><th>Acci\u00F3n</th><th>Entr\u00F3</th><th>Sali\u00F3</th><th class=\"r\">Resultado</th></tr>".concat(a.closed.slice().reverse().map(function (c) { return "<tr><td class=\"sym\">".concat(esc(c.symbol), "</td><td>").concat(esc(c.openedAt.slice(0, 10)), " a ").concat(usd(c.entry), "</td><td>").concat(esc(c.closedAt.slice(0, 10)), " a ").concat(usd(c.exit), "</td><td class=\"r ").concat(cls(c.pnl), "\">").concat(usd(c.pnl), " (").concat(pct(c.pnlPct * 100), ")</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Aún no hay operaciones cerradas.</div>', "</section>")];
         }
     });
 }); };
@@ -1267,9 +1287,70 @@ views.bolsa.after = function () {
             case 3: return [2];
         }
     }); }); };
+    document.querySelectorAll('[data-qbuy]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
+        var sym, amt, r, err_11;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    sym = b.dataset.qbuy, amt = Number(b.dataset.amt);
+                    b.disabled = true;
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, , 4]);
+                    return [4, api('/api/order', { method: 'POST', body: { symbol: sym, side: 'buy', usd: amt, confirmEmotion: true } })];
+                case 2:
+                    r = _a.sent();
+                    $('#qm').className = 'msg ok';
+                    $('#qm').textContent = r.queued ? "Listo: la compra de ".concat(sym, " por ").concat(usd(amt, 0), " se har\u00E1 sola cuando abra la bolsa.") : "Hecho: compraste ".concat(r.qty, " ").concat(sym, " a ").concat(usd(r.execPrice), ".");
+                    setTimeout(render, 1600);
+                    return [3, 4];
+                case 3:
+                    err_11 = _a.sent();
+                    $('#qm').className = 'msg err';
+                    $('#qm').textContent = err_11.message;
+                    b.disabled = false;
+                    return [3, 4];
+                case 4: return [2];
+            }
+        });
+    }); }; });
+    document.querySelectorAll('[data-pcancel]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { return __generator(this, function (_a) {
+        switch (_a.label) {
+            case 0: return [4, api("/api/orders/pending/".concat(b.dataset.pcancel, "/cancel"), { method: 'POST' }).catch(function () { })];
+            case 1:
+                _a.sent();
+                render();
+                return [2];
+        }
+    }); }); }; });
+    document.querySelectorAll('[data-sell]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
+        var sym, qty, r, err_12;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    sym = b.dataset.sell, qty = Number(b.dataset.qty);
+                    if (!confirm("\u00BFVender todo ".concat(sym, "?")))
+                        return [2];
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, , 4]);
+                    return [4, api('/api/order', { method: 'POST', body: { symbol: sym, side: 'sell', qty: qty } })];
+                case 2:
+                    r = _a.sent();
+                    alert(r.queued ? "La venta de ".concat(sym, " se har\u00E1 sola cuando abra la bolsa.") : "Vendiste ".concat(sym, " a ").concat(usd(r.execPrice), "."));
+                    render();
+                    return [3, 4];
+                case 3:
+                    err_12 = _a.sent();
+                    alert(err_12.message);
+                    return [3, 4];
+                case 4: return [2];
+            }
+        });
+    }); }; });
     $('#oside').onchange = function () { var s = $('#oside').value === 'sell'; $('#ousdl').classList.toggle('hide', s); $('#oqtyl').classList.toggle('hide', !s); };
     $('#of').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var r, err_11;
+        var r, err_13;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1282,14 +1363,14 @@ views.bolsa.after = function () {
                     r = _a.sent();
                     window.__emo = false;
                     $('#om').className = 'msg ok';
-                    $('#om').textContent = "Hecho: ".concat(r.side === 'buy' ? 'compraste' : 'vendiste', " ").concat(r.qty, " ").concat(r.symbol, " a ").concat(usd(r.execPrice), " (precio observado ").concat(usd(r.observedPrice), ").");
+                    $('#om').textContent = r.queued ? "Listo: tu orden de ".concat(r.order.side === 'buy' ? 'compra' : 'venta', " de ").concat(r.order.symbol, " se har\u00E1 sola cuando abra la bolsa.") : "Hecho: ".concat(r.side === 'buy' ? 'compraste' : 'vendiste', " ").concat(r.qty, " ").concat(r.symbol, " a ").concat(usd(r.execPrice), " (precio observado ").concat(usd(r.observedPrice), ").");
                     setTimeout(render, 1500);
                     return [3, 4];
                 case 3:
-                    err_11 = _a.sent();
+                    err_13 = _a.sent();
                     $('#om').className = 'msg err';
-                    $('#om').textContent = err_11.message;
-                    if (/caliente|esperar/.test(err_11.message)) {
+                    $('#om').textContent = err_13.message;
+                    if (/caliente|esperar/.test(err_13.message)) {
                         $('#om').innerHTML += ' <button type="button" class="btn ghost" id="emo" style="padding:3px 10px">Entiendo, seguir igual</button>';
                         $('#emo').onclick = function () { window.__emo = true; $('#of').requestSubmit(); };
                     }
@@ -1376,7 +1457,7 @@ function loadJarvisLottery() {
 views.loterias.after = function () {
     loadJarvisLottery();
     if ($('#lplusb'))
-        $('#lplusb').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_12; return __generator(this, function (_a) {
+        $('#lplusb').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_14; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     $('#lplus').innerHTML = '<div class="note">Pensando…</div>';
@@ -1389,8 +1470,8 @@ views.loterias.after = function () {
                     $('#lplus').innerHTML = r.text ? "<div class=\"answer\">".concat(esc(r.text).replace(/\n/g, '<br>'), "</div>") : "<div class=\"msg err\">".concat(esc(r.error || 'La IA no respondió. Revisa en Ajustes → Claves que la clave de ChatGPT esté puesta.'), "</div>");
                     return [3, 4];
                 case 3:
-                    err_12 = _a.sent();
-                    $('#lplus').innerHTML = "<div class=\"msg err\">".concat(esc(err_12.message), "</div>");
+                    err_14 = _a.sent();
+                    $('#lplus').innerHTML = "<div class=\"msg err\">".concat(esc(err_14.message), "</div>");
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1410,7 +1491,7 @@ views.loterias.after = function () {
         var V = g.votes;
         $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo del ".concat(esc(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div></div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        ").concat(g.pick.stake ? "<div style=\"margin-top:8px\"><b>\uD83D\uDCB5 Cu\u00E1nto jugar: ".concat(rdu(g.pick.stake.suggested), "</b> <span class=\"note\">\u00B7 ").concat(esc(g.pick.stake.why), "</span></div>") : '', "<div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo del ").concat(esc(g.pick.date), " \u00B7 cierra ").concat(hhmm(g.pick.closesAt), " ").concat(g.timeVerified ? '' : '(horario por verificar)', "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(esc(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><table><tr><th>Prueba</th><th class=\"r\">Prob. de casualidad</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rdRaw(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rdRaw(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$ (m\u00EDnimo 100)<input id=\"ls\" type=\"number\" min=\"100\" step=\"25\" value=\"100\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
         $('#lf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var r, err_13;
+            var r, err_15;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1425,9 +1506,9 @@ views.loterias.after = function () {
                         $('#lm').textContent = "Sellada para el sorteo del ".concat(r.date, ". Huella: ").concat(r.hash.slice(0, 12), "\u2026");
                         return [3, 4];
                     case 3:
-                        err_13 = _a.sent();
+                        err_15 = _a.sent();
                         $('#lm').className = 'msg err';
-                        $('#lm').textContent = err_13.message;
+                        $('#lm').textContent = err_15.message;
                         return [3, 4];
                     case 4: return [2];
                 }
@@ -1556,7 +1637,7 @@ function loadDrive() {
                         m.textContent = t;
                     } };
                     $('#dcf').onsubmit = function (e) { return __awaiter(_this, void 0, void 0, function () {
-                        var r, err_14;
+                        var r, err_16;
                         var _a;
                         return __generator(this, function (_b) {
                             switch (_b.label) {
@@ -1573,15 +1654,15 @@ function loadDrive() {
                                     setTimeout(loadDrive, 2500);
                                     return [3, 4];
                                 case 3:
-                                    err_14 = _b.sent();
-                                    msg('#dcm', 'err', err_14.message);
+                                    err_16 = _b.sent();
+                                    msg('#dcm', 'err', err_16.message);
                                     return [3, 4];
                                 case 4: return [2];
                             }
                         });
                     }); };
                     if ($('#dnow'))
-                        $('#dnow').onclick = function () { return __awaiter(_this, void 0, void 0, function () { var r, err_15; return __generator(this, function (_a) {
+                        $('#dnow').onclick = function () { return __awaiter(_this, void 0, void 0, function () { var r, err_17; return __generator(this, function (_a) {
                             switch (_a.label) {
                                 case 0:
                                     msg('#dm', '', 'Subiendo…');
@@ -1595,8 +1676,8 @@ function loadDrive() {
                                     setTimeout(loadDrive, 1500);
                                     return [3, 4];
                                 case 3:
-                                    err_15 = _a.sent();
-                                    msg('#dm', 'err', err_15.message);
+                                    err_17 = _a.sent();
+                                    msg('#dm', 'err', err_17.message);
                                     return [3, 4];
                                 case 4: return [2];
                             }
@@ -1613,7 +1694,7 @@ function loadDrive() {
                         }); }); };
                     if ($('#drs'))
                         $('#drs').onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-                            var r, err_16;
+                            var r, err_18;
                             return __generator(this, function (_a) {
                                 switch (_a.label) {
                                     case 0:
@@ -1630,8 +1711,8 @@ function loadDrive() {
                                         setTimeout(function () { return location.reload(); }, 9000);
                                         return [3, 4];
                                     case 3:
-                                        err_16 = _a.sent();
-                                        msg('#drm', 'err', err_16.message);
+                                        err_18 = _a.sent();
+                                        msg('#drm', 'err', err_18.message);
                                         return [3, 4];
                                     case 4: return [2];
                                 }
@@ -1660,7 +1741,7 @@ views.ajustes.after = function () {
     $('#brf').onchange = function (e) { var f = e.target.files[0]; if (!f)
         return; var r = new FileReader(); r.onload = function () { restoreFile = r.result; $('#brn').textContent = "".concat(f.name, " \u00B7 ").concat((f.size / 1048576).toFixed(1), " MB"); }; r.readAsDataURL(f); };
     $('#bdl').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var res, j, blob, name, a_1, err_17;
+        var res, j, blob, name, a_1, err_19;
         var _a;
         return __generator(this, function (_b) {
             switch (_b.label) {
@@ -1691,16 +1772,16 @@ views.ajustes.after = function () {
                     $('#bdm').textContent = "Listo: ".concat(name, ". Gu\u00E1rdalo en tu Drive o correo, junto con tu frase en un lugar seguro.");
                     return [3, 7];
                 case 6:
-                    err_17 = _b.sent();
+                    err_19 = _b.sent();
                     $('#bdm').className = 'msg err';
-                    $('#bdm').textContent = err_17.message;
+                    $('#bdm').textContent = err_19.message;
                     return [3, 7];
                 case 7: return [2];
             }
         });
     }); };
     $('#brs').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var r, err_18;
+        var r, err_20;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1727,9 +1808,9 @@ views.ajustes.after = function () {
                     setTimeout(function () { return location.reload(); }, 9000);
                     return [3, 4];
                 case 3:
-                    err_18 = _a.sent();
+                    err_20 = _a.sent();
                     $('#brm').className = 'msg err';
-                    $('#brm').textContent = err_18.message;
+                    $('#brm').textContent = err_20.message;
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1739,7 +1820,7 @@ views.ajustes.after = function () {
     if ($('#showusers'))
         $('#showusers').onchange = function (e) { return api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(function () { }); };
     $('#kf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var body, err_19;
+        var body, err_21;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1766,9 +1847,9 @@ views.ajustes.after = function () {
                     setTimeout(render, 1000);
                     return [3, 4];
                 case 3:
-                    err_19 = _a.sent();
+                    err_21 = _a.sent();
                     $('#km').className = 'msg err';
-                    $('#km').textContent = err_19.message;
+                    $('#km').textContent = err_21.message;
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1951,7 +2032,7 @@ views.ajustes.after = function () {
                 case 3: return [2];
             }
         }); }); };
-    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_20; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_22; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1961,9 +2042,9 @@ views.ajustes.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_20 = _a.sent();
+                err_22 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_20.message;
+                $('#um').textContent = err_22.message;
                 return [3, 3];
             case 3: return [2];
         }
@@ -1971,7 +2052,7 @@ views.ajustes.after = function () {
     document.querySelectorAll('[data-pw]').forEach(function (b) { return b.onclick = function () {
         var td = b.parentElement;
         td.innerHTML = "<form class=\"row\" style=\"gap:6px;justify-content:flex-end\"><input type=\"text\" minlength=\"10\" placeholder=\"vac\u00EDa = autom\u00E1tica\" style=\"width:160px\" autocomplete=\"off\"><button class=\"btn sm\">Guardar</button></form>";
-        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_21; return __generator(this, function (_a) {
+        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_23; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     ev.preventDefault();
@@ -1984,15 +2065,15 @@ views.ajustes.after = function () {
                     td.innerHTML = r.password ? "<span class=\"good\">Nueva: <b style=\"font-family:ui-monospace,monospace;user-select:all\">".concat(esc(r.password), "</b></span><div class=\"note\">D\u00E1sela ahora; no se vuelve a mostrar.</div>") : '<span class="good">Contraseña cambiada</span>';
                     return [3, 4];
                 case 3:
-                    err_21 = _a.sent();
-                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_21.message), "</div>"));
+                    err_23 = _a.sent();
+                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_23.message), "</div>"));
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     }; });
     var showPw = function (who, pw) { return "<div class=\"msg ok\" style=\"font-size:16px;line-height:1.6\">Usuario <b>".concat(esc(who), "</b> listo. Su contrase\u00F1a es: <b style=\"font-family:ui-monospace,monospace;font-size:20px;user-select:all\">").concat(esc(pw), "</b><br><span class=\"note\">C\u00F3piala y d\u00E1sela ahora: no se vuelve a mostrar. \u00C9l la puede cambiar en Mi perfil.</span></div>"); };
-    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_22; return __generator(this, function (_a) {
+    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_24; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 e.preventDefault();
@@ -2014,9 +2095,9 @@ views.ajustes.after = function () {
                 }
                 return [3, 4];
             case 3:
-                err_22 = _a.sent();
+                err_24 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_22.message;
+                $('#um').textContent = err_24.message;
                 return [3, 4];
             case 4: return [2];
         }
@@ -2269,7 +2350,7 @@ views.potenciador.after = function () {
     }); }); }; });
     var receipt = null;
     if ($('#prc'))
-        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_23; return __generator(this, function (_a) {
+        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_25; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     f = e.target.files[0];
@@ -2285,16 +2366,16 @@ views.potenciador.after = function () {
                     $('#prcv').innerHTML = "<img src=\"".concat(receipt, "\" class=\"preq-img\" alt=\"Vista previa\"><div>\u2705 Foto lista</div>");
                     return [3, 4];
                 case 3:
-                    err_23 = _a.sent();
+                    err_25 = _a.sent();
                     receipt = null;
-                    $('#prcv').textContent = err_23.message;
+                    $('#prcv').textContent = err_25.message;
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     if ($('#pf2'))
         $('#pf2').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var err_24;
+            var err_26;
             var _a;
             return __generator(this, function (_b) {
                 switch (_b.label) {
@@ -2316,15 +2397,15 @@ views.potenciador.after = function () {
                         setTimeout(render, 1400);
                         return [3, 4];
                     case 3:
-                        err_24 = _b.sent();
+                        err_26 = _b.sent();
                         $('#pmsg').className = 'msg err';
-                        $('#pmsg').textContent = err_24.message;
+                        $('#pmsg').textContent = err_26.message;
                         return [3, 4];
                     case 4: return [2];
                 }
             });
         }); };
-    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_25; var _a; return __generator(this, function (_b) {
+    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_27; var _a; return __generator(this, function (_b) {
         switch (_b.label) {
             case 0:
                 _b.trys.push([0, 2, , 3]);
@@ -2334,16 +2415,16 @@ views.potenciador.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_25 = _b.sent();
+                err_27 = _b.sent();
                 $('#amsg').className = 'msg err';
-                $('#amsg').textContent = err_25.message;
+                $('#amsg').textContent = err_27.message;
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
     document.querySelectorAll('[data-ok]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.ok, true); }; });
     document.querySelectorAll('[data-no]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.no, false); }; });
-    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_26; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_28; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 n = Number(document.querySelector(".gift[data-u=\"".concat(b.dataset.gift, "\"]")).value);
@@ -2356,8 +2437,8 @@ views.potenciador.after = function () {
                 render();
                 return [3, 4];
             case 3:
-                err_26 = _a.sent();
-                alertMsg(err_26.message);
+                err_28 = _a.sent();
+                alertMsg(err_28.message);
                 return [3, 4];
             case 4: return [2];
         }
@@ -2377,7 +2458,7 @@ views.potenciador.after = function () {
         };
     if ($('#pset'))
         $('#pset').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var f, packs, accounts, err_27;
+            var f, packs, accounts, err_29;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -2395,9 +2476,9 @@ views.potenciador.after = function () {
                         $('#psm').textContent = 'Guardado.';
                         return [3, 4];
                     case 3:
-                        err_27 = _a.sent();
+                        err_29 = _a.sent();
                         $('#psm').className = 'msg err';
-                        $('#psm').textContent = err_27.message;
+                        $('#psm').textContent = err_29.message;
                         return [3, 4];
                     case 4: return [2];
                 }
@@ -2495,7 +2576,7 @@ views.historial.after = function () {
                 return __generator(this, function (_a) {
                     td = b.parentElement;
                     td.innerHTML = "<form class=\"ask\" style=\"max-width:260px\"><input type=\"number\" step=\"0.0001\" placeholder=\"Precio de venta\" required><button class=\"btn\">OK</button></form>";
-                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_28; return __generator(this, function (_a) {
+                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_30; return __generator(this, function (_a) {
                         switch (_a.label) {
                             case 0:
                                 e.preventDefault();
@@ -2508,8 +2589,8 @@ views.historial.after = function () {
                                 render();
                                 return [3, 4];
                             case 3:
-                                err_28 = _a.sent();
-                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_28.message), "</div>"));
+                                err_30 = _a.sent();
+                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_30.message), "</div>"));
                                 return [3, 4];
                             case 4: return [2];
                         }
@@ -2989,7 +3070,7 @@ function signForm(doc, d, id) {
 function bindSign(doc, id, done) {
     var _this = this;
     $("#".concat(id, "b")).onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-        var err_29;
+        var err_31;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -3002,9 +3083,9 @@ function bindSign(doc, id, done) {
                     setTimeout(done, 700);
                     return [3, 3];
                 case 2:
-                    err_29 = _a.sent();
+                    err_31 = _a.sent();
                     $("#".concat(id, "m")).className = 'msg err';
-                    $("#".concat(id, "m")).textContent = err_29.message;
+                    $("#".concat(id, "m")).textContent = err_31.message;
                     return [3, 3];
                 case 3: return [2];
             }

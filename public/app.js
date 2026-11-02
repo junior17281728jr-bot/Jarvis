@@ -350,7 +350,7 @@ views.inicio = async () => {
   return `
   <section class="hero">${best ? coBadge(best.symbol, 64) : '<span class="cob idle" style="width:64px;height:64px;font-size:26px">⏸</span>'}<div style="flex:1;min-width:0"><div class="tag">Hoy en 10 segundos</div>
     <div class="big">${best ? `Te recomiendo: ${esc(coName(best.symbol))} → ${best.light === 'verde' ? `invierte ${usd(baseAmt('verde'), 0)}` : `invierte poco (${usd(baseAmt('amarillo'), 0)})`}` : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar'}</div>
-    <div class="sub">${best ? `${chanceDots(best.probBeat)}${patience(best.timing, best.light)} <a href="#analisis/${esc(best.symbol)}">Ver por qué ▸</a> · <a href="#mapa">Ver mi mapa ▸</a>` : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.'}</div>
+    <div class="sub">${best ? `${chanceDots(best.probBeat)}${patience(best.timing, best.light)} <a href="#analisis/${esc(best.symbol)}">Ver por qué ▸</a> · <a href="#mapa">Ver mi mapa ▸</a> <a class="btn sm herobuy" href="#bolsa">💵 Invertir (virtual)</a>` : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.'}</div>
     <div class="note" style="margin-top:4px">Tu dinero de práctica: <b class="${cls(h.account.returnPct)}">${usd(h.account.total)} (${pct(h.account.returnPct, 2)})</b> · ${alerts} aviso${alerts === 1 ? '' : 's'} hoy</div></div>
     ${best ? votesHtml(best.contributions) : ''}
     <div class="pill">${h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>'}</div></section>
@@ -502,6 +502,16 @@ function mapCard(r, compact = false) {
 // ---------- 💼 Las cuentas de JARVIS ----------
 const dt = iso => iso ? new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'short' }) : '—';
 const flow = steps => `<div class="flow">${steps.map(([l, v, cls, sub]) => `<div class="fl ${cls || ''}"><small>${l}</small><b>${v}</b>${sub ? `<i>${sub}</i>` : ''}</div>`).join('<span class="fla">→</span>')}</div>`;
+function iaStateHtml(B) {
+  const L = B.lastStep, when = iso => new Date(iso).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+  const SK = { 'sin precio actual': 'todavía no hay precio de hoy', 'mercado bajista': 'el mercado entero va bajando' };
+  let t;
+  if (!B.marketOpen) t = `🌙 <b>La bolsa está cerrada.</b> La IA revisa cada hora mientras la bolsa está abierta. ${B.nextOpen ? `Próxima revisión: <b>${when(B.nextOpen)}</b> (hora RD).` : ''} ${B.regime === 'bajista' ? '🛡️ Ahora el mercado entero va bajando: si sigue así, esperará antes de comprar.' : B.plan.length ? `Al abrir piensa comprar: <b>${B.plan.map(p => esc(p.symbol)).join(', ')}</b>.` : ''}`;
+  else t = `🟢 <b>La bolsa está abierta y la IA está trabajando.</b> Revisa cada hora.`;
+  if (L?.at) t += `<br>Última revisión: <b>${timeAgo(L.at)}</b>: ${L.bought?.length ? `compró ${L.bought.map(esc).join(', ')}` : 'no compró nada'}${L.sold?.length ? `, vendió ${L.sold.map(esc).join(', ')}` : ''}${L.skipped?.length ? ` · esperó con ${L.skipped.slice(0, 4).map(x => `${esc(x.symbol === '*' ? 'todas' : x.symbol)} (${esc(SK[x.why] || x.why)})`).join(', ')}` : ''}.`;
+  else t += '<br>Todavía no ha hecho su primera revisión con la bolsa abierta.';
+  return `<div class="iastate">🤖 <b>Qué está haciendo la IA ahora</b><br>${t}</div>`;
+}
 views.cuentas = async () => {
   const A = await api('/api/jarvis/cuentas'); if (A.rate) FX = A.rate;
   const B = A.bolsa, L = A.loteria, up = B.gain >= 0;
@@ -509,6 +519,7 @@ views.cuentas = async () => {
   return `<div><h1>💼 Las cuentas de JARVIS</h1><p class="sub">El dinero virtual que JARVIS maneja solo: cuánto tenía, en qué lo puso, cuánto ganó o perdió y con cuánto queda. Todo sale de operaciones selladas con precios reales.</p></div>
   <section class="card acct-card"><h2>📈 Bolsa <span class="more note">empezó el ${dt(B.since)} con ${usd(B.start)}</span></h2>
     ${flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', `${B.positions.length} ${B.positions.length === 1 ? 'acción' : 'acciones'}`], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', `${up ? '+' : ''}${usd(B.gain)} (${up ? '+' : ''}${B.returnPct}%)`]])}
+    ${iaStateHtml(B)}
     <div class="acct-mini"><span>✅ Ventas con ganancia: <b>${B.wins}</b></span><span>❌ Ventas con pérdida: <b>${B.losses}</b></span><span>💰 Ganado ya cobrado: <b class="${B.realized >= 0 ? 'good' : 'bad'}">${B.realized >= 0 ? '+' : ''}${usd(B.realized)}</b></span><span>⏳ Ganancia aún sin vender: <b class="${B.unrealized >= 0 ? 'good' : 'bad'}">${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}</b></span></div>
     <h3 class="cs-h">En qué lo tiene ahora</h3>
     ${empty ? `<div class="answer">💤 Ahora todo está en efectivo. ${B.regime === 'bajista' ? '🛡️ El mercado entero va bajando: espera a que mejore antes de comprar. ' : ''}${B.marketOpen ? 'Está buscando qué comprar.' : `La bolsa está cerrada; empieza a comprar cuando abra${B.nextOpen ? `: <b>${new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })}</b> (hora RD)` : ''}.`}</div>
@@ -745,16 +756,26 @@ function iaCompare(a, ia) {
 }
 
 views.bolsa = async () => {
-  const [a, r, wl, ia] = await Promise.all([api('/api/account'), api('/api/ranking'), api('/api/watchlist'), api('/api/ia').catch(() => null)]);
+  const [a, r, wl, ia, ct] = await Promise.all([api('/api/account'), api('/api/ranking'), api('/api/watchlist'), api('/api/ia').catch(() => null), api('/api/jarvis/cuentas').catch(() => null)]);
   const syms = [...new Set([...r.map(c => c.symbol), ...wl, ...a.positions.map(p => p.symbol)])];
   const B = a.budget || MYBUDGET || { usd: 100, emergency: true };
-  return `<section class="card mymoney"><h2>Mi dinero <span class="more note">JARVIS calcula todo con este monto</span></h2>
+  const openTxt = a.marketOpen ? '<span class="good">🟢 La bolsa está abierta: las órdenes se hacen al momento.</span>' : `<span class="warn">🌙 La bolsa está cerrada${a.nextOpen ? ` · abre ${new Date(a.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })} (hora RD)` : ''}</span> · Puedes dejar tus órdenes listas y se hacen solas al abrir.`;
+  const picks = r.filter(c => c.light !== 'rojo').slice(0, 6);
+  return `<section class="card investnow"><h2>💵 Invertir con mi dinero de práctica <span class="more note">dinero virtual, precios reales</span></h2>
+    <div class="mkt">${openTxt}</div>
+    ${picks.length ? `<div class="qbuy">${picks.map(c => { const amt = Math.min(a.limits.max, Math.max(a.limits.min, baseAmt(c.light))); return `<div class="qb"><div class="qb-h">${coBadge(c.symbol, 34)}<div><b>${esc(coName(c.symbol))}</b><div class="note">${esc(c.symbol)} · ${light(c.light)}</div></div></div>
+      <button type="button" class="btn" data-qbuy="${esc(c.symbol)}" data-amt="${amt}">${a.marketOpen ? 'Comprar' : 'Dejar lista la compra de'} ${usd(amt, 0)}</button></div>`; }).join('')}</div>` : '<div class="note">Hoy JARVIS no recomienda comprar nada.</div>'}
+    <div class="msg" id="qm"></div>
+    ${a.pending?.length ? `<h3 class="cs-h">⏳ Órdenes listas para cuando abra la bolsa</h3><div class="pend">${a.pending.map(o => `<div class="pd"><b>${o.side === 'buy' ? '🟢 Comprar' : '🔴 Vender'} ${esc(o.symbol)}</b>${o.usd ? ` · ${usd(o.usd, 0)}` : ' · todo'}<button type="button" class="btn ghost sm" data-pcancel="${esc(o.id)}">Cancelar</button></div>`).join('')}</div>` : ''}
+    <div class="note" style="margin-top:8px">¿Otra empresa u otro monto? Usa <a href="#operar">Operar (virtual)</a> más abajo. Para vender, toca "Vender" en tus posiciones.</div></section>
+  <section class="card mymoney"><h2>Mi dinero <span class="more note">JARVIS calcula todo con este monto</span></h2>
     <form class="row" id="bf" style="align-items:flex-end;gap:12px;margin-top:10px"><label style="width:220px">¿Cuánto dinero tienes para invertir? (US$)<input id="bu" type="number" min="10" step="1" value="${B.usd}"></label>
       <label style="flex-direction:row;align-items:center;gap:8px;padding-bottom:10px"><input type="checkbox" id="be" style="width:auto"${B.emergency ? ' checked' : ''}> Ya tengo fondo de emergencia aparte</label><button class="btn">Guardar</button></form>
     <div class="grid g3" style="gap:10px;margin-top:12px"><div class="pbox"><div class="l">"Sí, invierte" (${myStyle().verde * 100}%)</div><div class="v good">${usd(baseAmt('verde'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">"Invierte poco" (${myStyle().amarillo * 100}%)</div><div class="v warn">${usd(baseAmt('amarillo'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">Máximo con pruebas fuertes (${myStyle().max * 100}%)</div><div class="v">${usd(Math.round(B.usd * myStyle().max), 0)}</div><div class="note">solo si se cumplen las 5 condiciones</div></div></div>
     <div class="note" style="margin-top:8px">Porcentajes según tu estilo (${esc({ conservador: 'conservador', equilibrado: 'equilibrado', arriesgado: 'arriesgado' }[MYBUDGET?.profile?.style] || 'equilibrado')}). <a href="#perfil">Cambiar mi estilo ▸</a></div>
     <div class="row" style="margin-top:12px;gap:10px;align-items:center"><button type="button" class="btn ghost" id="breset">Empezar mi práctica con ${usd(B.usd, 0)}</button><span class="note">Tu cuenta de práctica empieza con ${usd(a.start, 0)}. Si la reinicias, la anterior queda guardada en el historial (no se borra).</span></div><div class="msg" id="bm"></div></section>
   ${iaCompare(a, ia)}
+  ${ct ? `<section class="card"><h2>🤖 La IA con sus US$100 <a class="more" href="#cuentas">Ver todas sus cuentas ▸</a></h2>${iaStateHtml(ct.bolsa)}</section>` : ''}
   <div><h1>🧑 Mi cartera virtual <span class="note" style="font-size:15px;font-weight:600">· aquí decides tú</span></h1><p class="sub">Dinero de mentira, precios reales. Operaciones de ${usd(a.limits.min, 0)} a ${usd(a.limits.max, 0)}, como harías tú. Mercado ${a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)'}.</p></div>
   <section class="grid g4">
     <div class="card kpi"><div class="l">Valor total</div><div class="v">${usd(a.total)}</div><div class="s"><span class="${cls(a.returnPct)}">${pct(a.returnPct * 100, 2)} desde ${usd(a.start, 0)}</span>${a.fx ? ` · ≈ ${rd(Math.round(a.total * a.fx.rate))}` : ''}</div></div>
@@ -763,30 +784,39 @@ views.bolsa = async () => {
     <div class="card kpi" style="--c:var(--warn)"><div class="l">No realizada</div><div class="v ${cls(a.unrealized)}">${usd(a.unrealized)}</div><div class="s">Provisional: cambia con el precio</div></div>
   </section>
   <section class="grid g2">
-    <div class="card"><h2>Operar (virtual)</h2><form class="form" id="of">
+    <div class="card" id="operar"><h2>Operar (virtual)</h2><form class="form" id="of">
       <div class="grid g2" style="gap:10px"><label>Acción<select id="osym">${syms.map(s => `<option>${esc(s)}</option>`).join('')}</select></label>
       <label>Operación<select id="oside"><option value="buy">Comprar</option><option value="sell">Vender</option></select></label></div>
       <div class="grid g2" style="gap:10px"><label id="ousdl">Monto (US$)<input id="ousd" type="number" min="${a.limits.min}" max="${a.limits.max}" step="0.5" value="${a.limits.max}"></label>
       <label id="oqtyl" class="hide">Cantidad de acciones<input id="oqty" type="number" step="0.000001" min="0"></label></div>
       <button class="btn">Ejecutar</button><div class="msg" id="om"></div>
-      <div class="note">Se usa el precio real más reciente. Si el precio no es actual o el mercado está cerrado, la operación no se hace.</div></form></div>
+      <div class="note">Se usa el precio real más reciente. Con la bolsa cerrada, la orden queda lista y se hace sola al abrir, con el precio de ese momento.</div></form></div>
     <div class="card"><h2>¿Cuánto invertir?</h2><form class="form" id="af">
       <div class="grid g2" style="gap:10px"><label>Dinero que piensas invertir (US$)<input id="aamt" type="number" min="1" value="100"></label><label>¿En cuánto tiempo lo necesitas? (meses)<input id="ahz" type="number" min="1" value="12"></label></div>
       <div class="grid g2" style="gap:10px"><label>Costos fijos (envío desde RD, comisión) US$<input id="afee" type="number" min="0" step="0.5" value="0"></label><label>¿Tienes fondo de emergencia?<select id="aem"><option value="1">Sí</option><option value="0">No</option></select></label></div>
       <label>¿Alguien te propuso algo extremo? (opcional)<input id="aex" placeholder="Ej.: meter el 100% en Tesla"></label>
       <button class="btn">Analizar</button><div id="ares"></div></form></div>
   </section>
-  <section class="card"><h2>Posiciones abiertas</h2>${a.positions.length ? `<div class="tablewrap"><table><tr><th>Acción</th><th class="r">Cantidad</th><th class="r">Costo promedio</th><th class="r">Precio</th><th class="r">Ganancia</th></tr>${a.positions.map(p => `<tr><td class="sym">${esc(p.symbol)}</td><td class="r">${p.qty.toFixed(5)}</td><td class="r">${usd(p.avgCost)}</td><td class="r">${usd(p.price)}</td><td class="r ${cls(p.pnl)}">${usd(p.pnl)} <span class="note">${pct(p.pnlPct * 100)}</span></td></tr>`).join('')}</table></div>` : '<div class="empty">Sin posiciones. Compra desde aquí o desde una recomendación.</div>'}</section>
+  <section class="card"><h2>Posiciones abiertas</h2>${a.positions.length ? `<div class="tablewrap"><table><tr><th>Acción</th><th class="r">Cantidad</th><th class="r">Costo promedio</th><th class="r">Precio</th><th class="r">Ganancia</th><th></th></tr>${a.positions.map(p => `<tr><td class="sym">${esc(p.symbol)}</td><td class="r">${p.qty.toFixed(5)}</td><td class="r">${usd(p.avgCost)}</td><td class="r">${usd(p.price)}</td><td class="r ${cls(p.pnl)}">${usd(p.pnl)} <span class="note">${pct(p.pnlPct * 100)}</span></td><td class="r"><button type="button" class="btn ghost sm" data-sell="${esc(p.symbol)}" data-qty="${p.qty}">Vender</button></td></tr>`).join('')}</table></div>` : '<div class="empty">Sin posiciones. Compra desde aquí o desde una recomendación.</div>'}</section>
   <section class="card"><h2>Historial de operaciones <a class="more" href="/api/export/operaciones">Exportar a Excel (CSV) ▸</a></h2>${a.closed.length ? `<div class="tablewrap"><table><tr><th>Acción</th><th>Entró</th><th>Salió</th><th class="r">Resultado</th></tr>${a.closed.slice().reverse().map(c => `<tr><td class="sym">${esc(c.symbol)}</td><td>${esc(c.openedAt.slice(0, 10))} a ${usd(c.entry)}</td><td>${esc(c.closedAt.slice(0, 10))} a ${usd(c.exit)}</td><td class="r ${cls(c.pnl)}">${usd(c.pnl)} (${pct(c.pnlPct * 100)})</td></tr>`).join('')}</table></div>` : '<div class="empty">Aún no hay operaciones cerradas.</div>'}</section>`;
 };
 views.bolsa.after = () => {
   $('#bf').onsubmit = async e => { e.preventDefault(); try { await api('/api/budget', { method: 'POST', body: { usd: Number($('#bu').value), emergency: $('#be').checked } }); await loadBudget(); $('#bm').className = 'msg ok'; $('#bm').textContent = 'Guardado. Todos los montos ahora se calculan con tu dinero.'; setTimeout(render, 900); } catch (err) { $('#bm').className = 'msg err'; $('#bm').textContent = err.message; } };
   $('#breset').onclick = async () => { try { const r = await api('/api/account/reset', { method: 'POST' }); $('#bm').className = 'msg ok'; $('#bm').textContent = `Listo: practicas con ${usd(r.account.start_cash, 0)}. La cuenta anterior quedó guardada.`; setTimeout(render, 1100); } catch (err) { $('#bm').className = 'msg err'; $('#bm').textContent = err.message; } };
+  document.querySelectorAll('[data-qbuy]').forEach(b => b.onclick = async () => {
+    const sym = b.dataset.qbuy, amt = Number(b.dataset.amt); b.disabled = true;
+    try { const r = await api('/api/order', { method: 'POST', body: { symbol: sym, side: 'buy', usd: amt, confirmEmotion: true } });
+      $('#qm').className = 'msg ok'; $('#qm').textContent = r.queued ? `Listo: la compra de ${sym} por ${usd(amt, 0)} se hará sola cuando abra la bolsa.` : `Hecho: compraste ${r.qty} ${sym} a ${usd(r.execPrice)}.`; setTimeout(render, 1600);
+    } catch (err) { $('#qm').className = 'msg err'; $('#qm').textContent = err.message; b.disabled = false; } });
+  document.querySelectorAll('[data-pcancel]').forEach(b => b.onclick = async () => { await api(`/api/orders/pending/${b.dataset.pcancel}/cancel`, { method: 'POST' }).catch(() => {}); render(); });
+  document.querySelectorAll('[data-sell]').forEach(b => b.onclick = async () => {
+    const sym = b.dataset.sell, qty = Number(b.dataset.qty); if (!confirm(`¿Vender todo ${sym}?`)) return;
+    try { const r = await api('/api/order', { method: 'POST', body: { symbol: sym, side: 'sell', qty } }); alert(r.queued ? `La venta de ${sym} se hará sola cuando abra la bolsa.` : `Vendiste ${sym} a ${usd(r.execPrice)}.`); render(); } catch (err) { alert(err.message); } });
   $('#oside').onchange = () => { const s = $('#oside').value === 'sell'; $('#ousdl').classList.toggle('hide', s); $('#oqtyl').classList.toggle('hide', !s); };
   $('#of').onsubmit = async e => {
     e.preventDefault();
     try { const r = await api('/api/order', { method: 'POST', body: { symbol: $('#osym').value, side: $('#oside').value, usd: Number($('#ousd').value), qty: Number($('#oqty').value), confirmEmotion: !!window.__emo } }); window.__emo = false;
-      $('#om').className = 'msg ok'; $('#om').textContent = `Hecho: ${r.side === 'buy' ? 'compraste' : 'vendiste'} ${r.qty} ${r.symbol} a ${usd(r.execPrice)} (precio observado ${usd(r.observedPrice)}).`; setTimeout(render, 1500);
+      $('#om').className = 'msg ok'; $('#om').textContent = r.queued ? `Listo: tu orden de ${r.order.side === 'buy' ? 'compra' : 'venta'} de ${r.order.symbol} se hará sola cuando abra la bolsa.` : `Hecho: ${r.side === 'buy' ? 'compraste' : 'vendiste'} ${r.qty} ${r.symbol} a ${usd(r.execPrice)} (precio observado ${usd(r.observedPrice)}).`; setTimeout(render, 1500);
     } catch (err) { $('#om').className = 'msg err'; $('#om').textContent = err.message;
       if (/caliente|esperar/.test(err.message)) { $('#om').innerHTML += ' <button type="button" class="btn ghost" id="emo" style="padding:3px 10px">Entiendo, seguir igual</button>'; $('#emo').onclick = () => { window.__emo = true; $('#of').requestSubmit(); }; } }
   };
