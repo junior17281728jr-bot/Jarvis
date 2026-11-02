@@ -344,7 +344,7 @@ views.inicio.after = () => {
     e.preventDefault();
     const q = $('#q').value.trim(); if (!q) return;
     $('#ans').innerHTML = '<div class="answer muted">Pensando…</div>';
-    try { const r = await api('/api/ask', { method: 'POST', body: { question: q } }); $('#ans').innerHTML = `<div class="answer">${esc(r.answer)}${r.provider ? `<div class="note" style="margin-top:6px">Respondió: ${esc(r.provider)}</div>` : ''}</div>`;
+    try { const r = await api('/api/ask', { method: 'POST', body: { question: q } }); $('#ans').innerHTML = `<div class="answer">${esc(r.answer)}${r.provider && ME?.role === 'admin' ? `<div class="note" style="margin-top:6px">Respondió: ${esc(r.provider)}</div>` : ''}</div>`;
       if ($('#speak').checked && 'speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(r.answer); u.lang = 'es-ES'; speechSynthesis.cancel(); speechSynthesis.speak(u); } }
     catch (err) { $('#ans').innerHTML = `<div class="answer msg err">${esc(err.message)}</div>`; }
   };
@@ -613,8 +613,9 @@ views.empresa.after = async sym => {
 views.debate = async id => {
   const d = await api('/api/debate/' + id);
   const v = d.verdict, c = d.card;
-  const bubble = (m, side) => m.failed ? `<div class="bub"><b>${esc(m.who)}</b><p class="note">No respondió: ${esc(m.reason)}</p></div>` :
-    `<div class="bub ${side}"><div class="who">${esc(m.who)} <span class="note">· ${esc(m.label)}</span><span class="stance">${esc(m.stance.replace('_', ' '))}</span></div><p>${esc(m.text)}</p>
+  const aiWho = m => ME?.role === 'admin' ? m.who : `IA ${m.label || ''}`.trim();
+  const bubble = (m, side) => m.failed ? `<div class="bub"><b>${esc(aiWho(m))}</b><p class="note">${ME?.role === 'admin' ? `No respondió: ${esc(m.reason)}` : 'No respondió esta vez.'}</p></div>` :
+    `<div class="bub ${side}"><div class="who">${esc(aiWho(m))}${ME?.role === 'admin' ? ` <span class="note">· ${esc(m.label)}</span>` : ''}<span class="stance">${esc(m.stance.replace('_', ' '))}</span></div><p>${esc(m.text)}</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${(m.evidence || []).map(e => `<span class="tag ${e.kind === 'dato' ? 'dato' : 'opinion'}">${e.kind === 'dato' ? 'Dato' : 'Opinión IA'}</span>${e.source ? `<span class="src ok">${esc(e.source)}</span>` : ''}`).join(' ')}</div>
     ${m.evidence?.length ? `<details><summary>más ▸</summary>${m.evidence.map(e => `<div class="note">• ${esc(e.text)}</div>`).join('')}</details>` : ''}</div>`;
   return `<div><div class="note"><a href="#recomendaciones">Recomendaciones</a> › Debate</div><h1>${esc(d.subject)} <span class="muted" style="font-size:15px">· ${d.rounds.length} rondas · costo ${usd(d.cost_usd, 3)} · sellado ${esc(d.created_at.slice(0, 16).replace('T', ' '))}</span></h1></div>
@@ -993,7 +994,7 @@ function realtimeBox(a) {
     ${a.timeline?.length > 1 ? `<details><summary>Cómo evolucionó el análisis (${a.timeline.length} versiones selladas) ▸</summary><table style="margin-top:8px"><tr><th>Fecha</th><th>Semáforo</th><th class="r">Probabilidad</th><th class="r">Precio</th></tr>${a.timeline.map(t => `<tr><td>${esc(t.at.slice(0, 16).replace('T', ' '))}</td><td>${t.light ? light(t.light) : '—'}</td><td class="r">${t.probBeat != null ? Math.round(t.probBeat * 100) + '%' : '—'}</td><td class="r">${t.price ? usd(t.price) : '—'}</td></tr>`).join('')}</table></details>` : ''}</div>`;
 }
 function narrativeBox(a) {
-  return `<div class="card"><h2>Explicación del analista (IA) <span class="more note">usa solo los datos de este análisis</span></h2><div id="narr">${a.narrative ? `<div class="answer">${esc(a.narrative)}<div class="note" style="margin-top:6px">Escrita por ${esc(a.narrativeBy || 'IA')} · <span class="tag opinion">Opinión de IA</span> basada en los datos</div></div>` : `<button class="btn" id="explain" data-id="${a.id}">Explicármelo en palabras simples</button><div class="note" style="margin-top:6px">Usa la IA de pago una vez por análisis (centavos) y queda guardada.</div>`}</div></div>`;
+  return `<div class="card"><h2>Explicación del analista (IA) <span class="more note">usa solo los datos de este análisis</span></h2><div id="narr">${a.narrative ? `<div class="answer">${esc(a.narrative)}<div class="note" style="margin-top:6px">Escrita por ${esc(ME?.role === 'admin' ? (a.narrativeBy || 'IA') : 'la IA de JARVIS')} · <span class="tag opinion">Opinión de IA</span> basada en los datos</div></div>` : `<button class="btn" id="explain" data-id="${a.id}">Explicármelo en palabras simples</button><div class="note" style="margin-top:6px">Usa la IA de pago una vez por análisis (centavos) y queda guardada.</div>`}</div></div>`;
 }
 
 views.analisis = async arg => {
@@ -1052,7 +1053,7 @@ views.analisis = async arg => {
 views.analisis.after = () => {
   const b = $('#explain'); if (!b) return;
   b.onclick = async () => { b.disabled = true; b.textContent = 'Pensando…';
-    try { const r = await api(`/api/analysis/${b.dataset.id}/explain`, { method: 'POST' }); $('#narr').innerHTML = r.text ? `<div class="answer">${esc(r.text)}<div class="note" style="margin-top:6px">Escrita por ${esc(r.by)} · <span class="tag opinion">Opinión de IA</span></div></div>` : `<div class="msg err">${esc(r.error)}</div>`; }
+    try { const r = await api(`/api/analysis/${b.dataset.id}/explain`, { method: 'POST' }); $('#narr').innerHTML = r.text ? `<div class="answer">${esc(r.text)}<div class="note" style="margin-top:6px">Escrita por ${esc(ME?.role === 'admin' ? r.by : 'la IA de JARVIS')} · <span class="tag opinion">Opinión de IA</span></div></div>` : `<div class="msg err">${esc(r.error)}</div>`; }
     catch (e) { $('#narr').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; } };
 };
 
@@ -1107,6 +1108,7 @@ views.potenciador = async () => {
   const pctUsed = m.base ? Math.round(m.baseUsed / m.base * 100) : 0;
   const reqRow = (r, admin) => `<div class="preq ${r.status}"><div class="preq-h"><b>${esc(admin ? r.who : r.pack_name)}</b><span class="chip ${STATUS_CHIP[r.status][1]}">${STATUS_CHIP[r.status][0]}</span></div>
     <div class="note">${admin ? `${esc(r.pack_name)} · ` : ''}${esc(r.price)} → <b>${r.credits} créditos</b> · ${esc(new Date(r.created_at).toLocaleString('es-DO'))}${r.reference ? ` · Ref: ${esc(r.reference)}` : ''}</div>
+    ${r.payer_name ? `<div class="note">Pagó: <b>${esc(r.payer_name)}</b>${r.payer_bank ? ` desde ${esc(r.payer_bank)}` : ''}${r.kind === 'mensual' ? ' · <b>plan mensual</b>' : ''}</div>` : ''}
     ${r.note ? `<div class="note">“${esc(r.note)}”</div>` : ''}${r.admin_note ? `<div class="note">Respuesta: ${esc(r.admin_note)}</div>` : ''}
     <a href="/api/potenciador/${r.id}/foto" target="_blank" rel="noopener"><img class="preq-img" src="/api/potenciador/${r.id}/foto" alt="Comprobante" loading="lazy"></a>
     ${admin && r.status === 'pendiente' ? `<div class="row" style="gap:8px;margin-top:8px;align-items:center"><input class="pnote" data-id="${r.id}" placeholder="Nota (opcional)" style="flex:1;min-width:140px"><button class="btn sm" data-ok="${r.id}">Aprobar</button><button class="btn ghost sm" data-no="${r.id}">Rechazar</button></div>` : ''}</div>`;
@@ -1114,12 +1116,20 @@ views.potenciador = async () => {
   <section class="card"><h2>Tu IA este mes</h2>
     <div class="pbase"><div class="row" style="justify-content:space-between"><span>IA gratis del mes</span><b>${m.baseLeft} de ${m.base} créditos</b></div><div class="bar" style="margin-top:6px"><span style="width:${100 - pctUsed}%;background:var(--accent)"></span></div><div class="note">Se renueva sola el ${esc(monthName(m.resetsAt))}.</div></div>
     <div class="pbox" style="margin-top:10px"><div class="l">⚡ Créditos extra (Potenciador)</div><div class="v">${m.extra}</div><div class="note">No vencen. Se usan solo cuando se acaba la IA gratis del mes.</div></div>
+    ${m.plan ? `<div class="pbox" style="margin-top:10px"><div class="l">📅 ${esc(m.plan.name || 'Plan mensual')}</div><div class="v ${m.plan.active ? (m.plan.daysLeft <= 3 ? 'warn' : 'good') : 'bad'}">${m.plan.active ? `${m.plan.daysLeft} ${m.plan.daysLeft === 1 ? 'día' : 'días'}` : 'Vencido'}</div><div class="note">${m.plan.active ? `Vence el ${esc(new Date(m.plan.until).toLocaleDateString('es-DO', { day: 'numeric', month: 'long' }))}. Te aviso 3 días antes para que lo renueves.` : 'Renuévalo abajo para recibir los créditos del próximo mes. Lo que te sobró sigue ahí.'}</div></div>` : ''}
     <div class="note" style="margin-top:10px">La IA responde tus preguntas y hace los análisis con IA. <b>Si se te acaba, JARVIS sigue funcionando igual</b> (mapa, recomendaciones, historial, avisos): solo las respuestas de la IA esperan al mes siguiente o a un Potenciador.</div></section>
   <section class="card"><h2>⚡ Activar un Potenciador</h2>
     <form class="form" id="pf2">
-      <div><b>1. Elige un paquete</b><div class="packs" style="margin-top:8px">${d.packs.map((p, i) => `<label class="pack"><input type="radio" name="pack" value="${esc(p.id)}"${i === 0 ? ' checked' : ''}><span><b>${esc(p.name)}</b><span class="pk-price">${esc(p.price)}</span><span class="note">${p.credits} créditos extra</span></span></label>`).join('')}</div></div>
-      <div><b>2. Paga</b><div class="payinfo">${d.payInfo ? esc(d.payInfo).replace(/\n/g, '<br>') : 'El administrador todavía no puso cómo pagarle. Pregúntale directamente.'}</div></div>
-      <div><b>3. Sube la foto del comprobante</b><label class="btn ghost" style="cursor:pointer;margin-top:8px;display:inline-flex">📷 Elegir foto o captura<input id="prc" type="file" accept="image/*" hidden></label><div id="prcv" class="note" style="margin-top:6px"></div></div>
+      <div><b>1. Elige un paquete</b><div class="packs" style="margin-top:8px">${d.packs.map((p, i) => `<label class="pack"><input type="radio" name="pack" value="${esc(p.id)}"${i === 0 ? ' checked' : ''}><span><b>${esc(p.name)}</b><span class="pk-price">${esc(p.price)}</span><span class="note">${p.credits} créditos extra${p.kind === 'mensual' ? ` · <b>se renueva cada ${30} días</b>` : ' · pago de una vez'}</span></span></label>`).join('')}</div></div>
+      <div><b>2. Deposita o transfiere a una de estas cuentas</b>${d.accounts.length ? d.accounts.map(a => `<div class="bankacc"><div class="ba-h"><b>${esc(a.bank)}</b><span class="note">Cuenta de ${esc(a.type.toLowerCase())}</span></div>
+          <div class="ba-r"><span class="note">Número</span><b class="mono">${esc(a.number)}</b><button type="button" class="btn ghost sm" data-copy="${esc(a.number.replace(/\D/g, ''))}">Copiar</button></div>
+          <div class="ba-r"><span class="note">A nombre de</span><b>${esc(a.holder)}</b></div>
+          ${a.cedula ? `<div class="ba-r"><span class="note">Cédula / RNC</span><b class="mono">${esc(a.cedula)}</b><button type="button" class="btn ghost sm" data-copy="${esc(a.cedula.replace(/\D/g, ''))}">Copiar</button></div>` : ''}
+          ${a.note ? `<div class="note">${esc(a.note)}</div>` : ''}</div>`).join('') : ''}
+        ${d.payInfo ? `<div class="payinfo">${esc(d.payInfo).replace(/\n/g, '<br>')}</div>` : !d.accounts.length ? '<div class="payinfo">El administrador todavía no puso sus cuentas. Pregúntale directamente.</div>' : ''}</div>
+      <div><b>3. Dinos quién pagó</b><div class="grid g2" style="gap:10px;margin-top:6px"><label>A nombre de quién salió el pago<input id="ppn" maxlength="60" required placeholder="Ej.: Ricardo Pérez"></label>
+        <label>Desde qué banco pagaste<select id="ppb"><option value="">Elige…</option>${d.banks.map(b => `<option>${esc(b)}</option>`).join('')}</select></label></div></div>
+      <div><b>4. Sube la foto del comprobante (voucher o captura)</b><br><label class="btn ghost" style="cursor:pointer;margin-top:8px;display:inline-flex">📷 Elegir foto o captura<input id="prc" type="file" accept="image/*" hidden></label><div id="prcv" class="note" style="margin-top:6px"></div></div>
       <label>Número de referencia (opcional)<input id="pref" maxlength="60" placeholder="Ej.: 123456789"></label>
       <label>Nota para el administrador (opcional)<input id="pnt" maxlength="300"></label>
       <button class="btn">Enviar solicitud</button><div class="msg" id="pmsg"></div>
@@ -1132,19 +1142,25 @@ views.potenciador = async () => {
     ${d.admin.requests.length ? d.admin.requests.map(r => reqRow(r, true)).join('') : '<div class="empty">No hay solicitudes todavía.</div>'}<div class="msg" id="amsg"></div></section>
   <section class="card"><h2>Créditos de cada usuario</h2>${d.admin.users.length ? `<div class="tablewrap"><table><tr><th>Persona</th><th class="r">Gratis del mes</th><th class="r">Extra</th><th class="r">Regalar</th></tr>${d.admin.users.map(u => `<tr><td>${esc(u.name)}${u.pending ? ' <span class="chip warn">pidió</span>' : ''}</td><td class="r">${u.baseLeft}/${u.base}</td><td class="r"><b>${u.extra}</b></td><td class="r"><span class="row" style="gap:6px;justify-content:flex-end"><input type="number" class="gift" data-u="${u.id}" placeholder="50" style="width:80px"><button class="btn ghost sm" data-gift="${u.id}">Dar</button></span></td></tr>`).join('')}</table></div>` : '<div class="empty">Todavía no has creado usuarios.</div>'}
     <div class="note">La IA gratis de cada mes es la que pusiste al crear el usuario ("IA gratis al mes") (1 crédito = 1 centavo de dólar de IA).</div></section>
-  <section class="card"><h2>Paquetes y forma de pago</h2><form class="form" id="pset">
-    ${[0, 1, 2].map(i => { const p = d.packs[i] || {}; return `<div class="grid g3" style="gap:8px"><label>Nombre<input data-pk="${i}" data-f="name" value="${esc(p.name || '')}" maxlength="40"></label><label>Precio<input data-pk="${i}" data-f="price" value="${esc(p.price || '')}" maxlength="20" placeholder="RD$300"></label><label>Créditos<input data-pk="${i}" data-f="credits" type="number" value="${p.credits || ''}"></label></div>`; }).join('')}
-    <label>Cómo te pagan (lo ven tus usuarios)<textarea id="ppay" rows="4" maxlength="600" placeholder="Ej.: Transferencia a mi cuenta del banco … a nombre de …">${esc(d.payInfo)}</textarea></label>
+  <section class="card"><h2>Tus cuentas, paquetes y forma de pago</h2><form class="form" id="pset">
+    <h3>Tus cuentas de banco (las ven tus usuarios para pagarte)</h3>
+    ${[0, 1, 2].map(i => { const a = d.accounts[i] || {}; return `<div class="accrow"><div class="grid g3" style="gap:8px"><label>Banco<select data-ac="${i}" data-f="bank"><option value="">— ninguna —</option>${d.banks.map(b => `<option${a.bank === b ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label><label>Tipo<select data-ac="${i}" data-f="type"><option${a.type !== 'Corriente' ? ' selected' : ''}>Ahorros</option><option${a.type === 'Corriente' ? ' selected' : ''}>Corriente</option></select></label><label>Número de cuenta<input data-ac="${i}" data-f="number" value="${esc(a.number || '')}" inputmode="numeric" maxlength="30"></label></div>
+      <div class="grid g3" style="gap:8px;margin-top:6px"><label>A nombre de<input data-ac="${i}" data-f="holder" value="${esc(a.holder || '')}" maxlength="60"></label><label>Cédula o RNC<input data-ac="${i}" data-f="cedula" value="${esc(a.cedula || '')}" inputmode="numeric" maxlength="20"></label><label>Nota (opcional)<input data-ac="${i}" data-f="note" value="${esc(a.note || '')}" maxlength="80" placeholder="Ej.: también acepto depósito"></label></div></div>`; }).join('')}
+    <div class="note">Solo lo ven tus usuarios cuando van a pagar. Deja el banco en "ninguna" para quitar una cuenta.</div>
+    <h3 style="margin-top:12px">Paquetes</h3>
+    ${[0, 1, 2].map(i => { const p = d.packs[i] || {}; return `<div class="grid g4" style="gap:8px"><label>Nombre<input data-pk="${i}" data-f="name" value="${esc(p.name || '')}" maxlength="40"></label><label>Precio<input data-pk="${i}" data-f="price" value="${esc(p.price || '')}" maxlength="24" placeholder="RD$300"></label><label>Créditos<input data-pk="${i}" data-f="credits" type="number" value="${p.credits || ''}"></label><label>Tipo<select data-pk="${i}" data-f="kind"><option value="una_vez"${p.kind !== 'mensual' ? ' selected' : ''}>De una vez</option><option value="mensual"${p.kind === 'mensual' ? ' selected' : ''}>Plan mensual (se renueva)</option></select></label></div>`; }).join('')}
+    <label>Otras instrucciones de pago (opcional)<textarea id="ppay" rows="3" maxlength="600" placeholder="Ej.: Si depositas en efectivo, manda foto del recibo.">${esc(d.payInfo)}</textarea></label>
     <button class="btn">Guardar</button><div class="msg" id="psm"></div></form></section>` : '';
   return `<div><h1>⚡ Potenciador de IA</h1><p class="sub">${d.isAdmin ? 'Aquí apruebas los pagos de tus usuarios y decides los paquetes.' : 'Más respuestas de la IA cuando las necesites.'}</p></div>${d.isAdmin ? adminPart : userPart}`;
 };
 views.potenciador.after = () => {
+  document.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { const t = b.dataset.copy; try { await navigator.clipboard.writeText(t); } catch { const i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select(); try { document.execCommand('copy'); } catch { /* sin copiar */ } i.remove(); } b.textContent = '¡Copiado!'; setTimeout(() => { b.textContent = 'Copiar'; }, 1500); });
   let receipt = null;
   if ($('#prc')) $('#prc').onchange = async e => { const f = e.target.files[0]; if (!f) return; $('#prcv').textContent = 'Preparando la foto…'; try { receipt = await shrinkReceipt(f); $('#prcv').innerHTML = `<img src="${receipt}" class="preq-img" alt="Vista previa"><div>✅ Foto lista</div>`; } catch (err) { receipt = null; $('#prcv').textContent = err.message; } };
   if ($('#pf2')) $('#pf2').onsubmit = async e => {
     e.preventDefault();
     if (!receipt) { $('#pmsg').className = 'msg err'; $('#pmsg').textContent = 'Falta la foto del comprobante.'; return; }
-    try { await api('/api/potenciador', { method: 'POST', body: { packId: document.querySelector('input[name=pack]:checked')?.value, receipt, reference: $('#pref').value, note: $('#pnt').value } }); $('#pmsg').className = 'msg ok'; $('#pmsg').textContent = '¡Enviado! Te aviso cuando el administrador lo apruebe.'; setTimeout(render, 1400); }
+    try { await api('/api/potenciador', { method: 'POST', body: { packId: document.querySelector('input[name=pack]:checked')?.value, receipt, reference: $('#pref').value, note: $('#pnt').value, payerName: $('#ppn').value, payerBank: $('#ppb').value } }); $('#pmsg').className = 'msg ok'; $('#pmsg').textContent = '¡Enviado! Te aviso cuando el administrador lo apruebe.'; setTimeout(render, 1400); }
     catch (err) { $('#pmsg').className = 'msg err'; $('#pmsg').textContent = err.message; }
   };
   const decide = async (id, approve) => { try { await api(`/api/potenciador/${id}/decidir`, { method: 'POST', body: { approve, note: document.querySelector(`.pnote[data-id="${id}"]`)?.value || '' } }); render(); } catch (err) { $('#amsg').className = 'msg err'; $('#amsg').textContent = err.message; } };
@@ -1153,8 +1169,10 @@ views.potenciador.after = () => {
   document.querySelectorAll('[data-gift]').forEach(b => b.onclick = async () => { const n = Number(document.querySelector(`.gift[data-u="${b.dataset.gift}"]`).value); try { await api('/api/potenciador/regalar', { method: 'POST', body: { userId: Number(b.dataset.gift), credits: n } }); render(); } catch (err) { alertMsg(err.message); } });
   if ($('#pset')) $('#pset').onsubmit = async e => {
     e.preventDefault();
-    const packs = [0, 1, 2].map(i => ({ name: document.querySelector(`[data-pk="${i}"][data-f=name]`).value, price: document.querySelector(`[data-pk="${i}"][data-f=price]`).value, credits: Number(document.querySelector(`[data-pk="${i}"][data-f=credits]`).value) })).filter(p => p.name || p.price || p.credits);
-    try { await api('/api/potenciador/ajustes', { method: 'POST', body: { packs, payInfo: $('#ppay').value } }); $('#psm').className = 'msg ok'; $('#psm').textContent = 'Guardado.'; } catch (err) { $('#psm').className = 'msg err'; $('#psm').textContent = err.message; }
+    const f = (sel, i, k) => document.querySelector(`[${sel}="${i}"][data-f=${k}]`).value;
+    const packs = [0, 1, 2].map(i => ({ name: f('data-pk', i, 'name'), price: f('data-pk', i, 'price'), credits: Number(f('data-pk', i, 'credits')), kind: f('data-pk', i, 'kind') })).filter(p => p.name || p.price || p.credits);
+    const accounts = [0, 1, 2].map(i => ({ bank: f('data-ac', i, 'bank'), type: f('data-ac', i, 'type'), number: f('data-ac', i, 'number'), holder: f('data-ac', i, 'holder'), cedula: f('data-ac', i, 'cedula'), note: f('data-ac', i, 'note') })).filter(a => a.bank);
+    try { await api('/api/potenciador/ajustes', { method: 'POST', body: { packs, accounts, payInfo: $('#ppay').value } }); $('#psm').className = 'msg ok'; $('#psm').textContent = 'Guardado.'; } catch (err) { $('#psm').className = 'msg err'; $('#psm').textContent = err.message; }
   };
 };
 function alertMsg(t) { const m = $('#amsg'); if (m) { m.className = 'msg err'; m.textContent = t; } }
@@ -1324,11 +1342,11 @@ function tvDebate(d) {
       i = 0; tvDebTimer = setTimeout(next, 9000); return;
     }
     const m = msgs[i];
-    const typing = document.createElement('div'); typing.className = `bub-tv ${m.side} typing`; typing.innerHTML = `<b>${esc(m.who)}</b> está escribiendo <span class="dots"><i></i><i></i><i></i></span>`;
+    const typing = document.createElement('div'); typing.className = `bub-tv ${m.side} typing`; typing.innerHTML = `<b>${esc(ME?.role === 'admin' ? m.who : 'IA ' + (m.label || ''))}</b> está escribiendo <span class="dots"><i></i><i></i><i></i></span>`;
     chat.appendChild(typing);
     tvDebTimer = setTimeout(() => {
       typing.remove();
-      chat.insertAdjacentHTML('beforeend', `<div class="bub-tv ${m.side}"><div class="who"><b>${esc(m.who)}</b><span class="st ${m.stance}">${esc(m.stance.replace('_', ' '))}</span><span class="rd">ronda ${m.round}</span></div><p>${esc(m.text)}</p></div>`);
+      chat.insertAdjacentHTML('beforeend', `<div class="bub-tv ${m.side}"><div class="who"><b>${esc(ME?.role === 'admin' ? m.who : 'IA ' + (m.label || ''))}</b><span class="st ${m.stance}">${esc(m.stance.replace('_', ' '))}</span><span class="rd">ronda ${m.round}</span></div><p>${esc(m.text)}</p></div>`);
       while (chat.children.length > 4) chat.firstElementChild.remove();
       i++; tvDebTimer = setTimeout(next, 3800);
     }, 1500);

@@ -185,6 +185,18 @@ CREATE INDEX credit_requests_user ON credit_requests (user_id, status);
     name: 'usuarios_en_linea',
     sql: `ALTER TABLE users ADD COLUMN last_seen_at TEXT;`,
   },
+  {
+    id: 8,
+    name: 'pagos_y_plan_mensual',
+    sql: `
+ALTER TABLE credit_requests ADD COLUMN payer_name TEXT;
+ALTER TABLE credit_requests ADD COLUMN payer_bank TEXT;
+ALTER TABLE credit_requests ADD COLUMN kind TEXT NOT NULL DEFAULT 'una_vez';
+ALTER TABLE users ADD COLUMN plan_until TEXT;
+ALTER TABLE users ADD COLUMN plan_name TEXT;
+ALTER TABLE users ADD COLUMN plan_reminded TEXT;
+`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */

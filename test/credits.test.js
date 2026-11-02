@@ -29,10 +29,10 @@ test('potenciador: sin base ni créditos la IA se frena, pero con el mensaje cla
 test('potenciador: pedir con comprobante, aprobar y poder seguir usando la IA', () => {
   const { db, admin, user, spend } = setup();
   spend(0.02);
-  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, reference: '123', note: 'pagado' });
+  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, reference: '123', note: 'pagado', payerName: 'Ricardo', payerBank: 'Banco BHD' });
   assert.equal(listRequests(db, { status: 'pendiente' }).length, 1);
   assert.ok(receiptFile(db, cfg, id).buf.length > 0);
-  assert.throws(() => createRequest(db, cfg, user, { packId: 'p1', receipt: 'data:image/png;base64,AAAA' }), /válida/);
+  assert.throws(() => createRequest(db, cfg, user, { packId: 'p1', receipt: 'data:image/png;base64,AAAA', payerName: 'R', payerBank: 'Otro' }), /válida/);
   decideRequest(db, admin, id, { approve: true });
   assert.equal(creditStatus(db, user.id).extra, 200);
   assert.equal(budgetCheck(db, cfg, { userId: user.id, estUsd: 0.5 }).ok, true);
@@ -41,7 +41,7 @@ test('potenciador: pedir con comprobante, aprobar y poder seguir usando la IA', 
 
 test('potenciador: el gasto pasado de la base se descuenta de los créditos extra; rechazar no da créditos', async () => {
   const { db, admin, user } = setup();
-  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG });
+  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, payerName: 'R', payerBank: 'Otro' });
   decideRequest(db, admin, id, { approve: false, note: 'no llegó el pago' });
   assert.equal(creditStatus(db, user.id).extra, 0);
   grantCredits(db, admin, user.id, 100);
@@ -50,4 +50,21 @@ test('potenciador: el gasto pasado de la base se descuenta de los créditos extr
   const fake = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: 'hola' } }], usage: { prompt_tokens: 20000, completion_tokens: 20000 }, model: 'gpt-4o-mini', data: [{ id: 'gpt-4o-mini' }] }) });
   const r = await complete(db, { ...cfg, openaiKey: 'sk-test', openaiModel: 'gpt-4o-mini' }, { task: 'pregunta', userId: user.id, system: 's', prompt: 'p', prefer: 'paid', only: 'openai', fetchImpl: fake });
   if (r.ok) { const st = creditStatus(db, user.id); assert.ok(st.extra < 100 || st.baseLeft < st.base, 'algo se gastó'); }
+});
+
+test('potenciador: cuentas de banco del administrador, datos de quien paga y plan mensual con recordatorio', async () => {
+  const { saveCreditSettings, creditSettings, planReminders } = await import('../src/motor/credits.js');
+  const { db, admin, user } = setup();
+  saveCreditSettings(db, { accounts: [{ bank: 'Banco Popular', type: 'Ahorros', number: '812-345678-9', holder: 'Junior', cedula: '001-1234567-8' }] });
+  assert.equal(creditSettings(db).accounts[0].bank, 'Banco Popular');
+  assert.throws(() => saveCreditSettings(db, { accounts: [{ bank: 'Banco BHD', number: 'abc', holder: 'J' }] }), /solo lleva números/);
+  assert.throws(() => createRequest(db, cfg, user, { packId: 'p3', receipt: PNG, payerBank: 'Banco BHD' }), /a nombre de quién/);
+  const { id } = createRequest(db, cfg, user, { packId: 'p3', receipt: PNG, payerName: 'Ricardo P', payerBank: 'Banco BHD' });
+  assert.equal(listRequests(db)[0].payer_bank, 'Banco BHD');
+  decideRequest(db, admin, id, { approve: true });
+  const st = creditStatus(db, user.id);
+  assert.equal(st.plan.active, true); assert.ok(st.plan.daysLeft >= 29);
+  db.prepare('UPDATE users SET plan_until = ? WHERE id = ?').run(new Date(Date.now() + 2 * 864e5).toISOString(), user.id);
+  assert.equal(planReminders(db)[0].stage, 'pronto');
+  assert.equal(planReminders(db).length, 0, 'no repite el mismo aviso');
 });

@@ -292,7 +292,7 @@ route('POST', '/api/users', async ({ req }) => { const b = await body(req); cons
 // ---------- ⚡ Potenciador de IA ----------
 route('GET', '/api/potenciador', ({ user }) => {
   const isAdmin = user.role === 'admin', st = creditSettings(db);
-  return { me: creditStatus(db, user.id), packs: st.packs, payInfo: st.payInfo, mine: listRequests(db, { userId: user.id }), isAdmin,
+  return { me: creditStatus(db, user.id), packs: st.packs, payInfo: st.payInfo, accounts: st.accounts, banks: st.banks, mine: listRequests(db, { userId: user.id }), isAdmin,
     admin: isAdmin ? { requests: listRequests(db), users: db.prepare("SELECT id FROM users WHERE active = 1 AND role != 'admin'").all().map(u => ({ id: u.id, ...creditStatus(db, u.id), name: db.prepare('SELECT COALESCE(display_name, username) n FROM users WHERE id = ?').get(u.id).n })) } : null };
 });
 route('POST', '/api/potenciador', async ({ req, user }) => { const b = await body(req, 2.2e6); return createRequest(db, cfg, user, b); });

@@ -1,4 +1,4 @@
-/* Colores resueltos para navegadores viejos. Generado desde styles.css (0aa8875deb0d4a53). */
+/* Colores resueltos para navegadores viejos. Generado desde styles.css (d3fd25549b39291a). */
 /* JARVIS — sistema visual. Colores con significado fijo: verde=ganancia/seguro, amarillo=duda, rojo=pérdida/peligro, azul=información. */
 
 
@@ -442,3 +442,6 @@ details.card>summary{cursor:pointer}
 abbr.gl{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .glpop{position:fixed;left:12px;right:12px;bottom:16px;z-index:999;max-width:520px;margin:0 auto;padding:14px 16px;border-radius:14px;background:#0e1527;border:1px solid #38d6f5;box-shadow:0 10px 30px rgba(0,0,0,.4);display:grid;gap:6px;line-height:1.45}
 .aiideas{margin-top:10px;padding-top:8px;border-top:1px solid #1e2a44}.aiidea{padding:6px 0}
+.bankacc{margin-top:8px;padding:12px;border:1px solid #1e2a44;border-radius:14px;background:#111a2e;display:grid;gap:6px}
+.ba-h{display:flex;justify-content:space-between;gap:8px;align-items:center}.ba-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.ba-r>.note{min-width:96px}.mono{font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;letter-spacing:.04em}
+.accrow{padding:10px 0;border-top:1px solid #1e2a44}
