@@ -44,10 +44,21 @@ export function smartStake(db, method, count = 3) {
   return { perNumberRd: per, totalRd: per * count, leftRd, skip: false, why };
 }
 
-export function liveMethodStats(db) {
+export function liveMethodStats(db, game = null) {
   return db.prepare(`SELECT method, COUNT(*) n, SUM(stake) staked, SUM(COALESCE(prize,0)) paid, SUM(status = 'gano') wins
-    FROM lottery_plays WHERE agent = 'loteria' AND purpose = 'experimento' AND status != 'pending' GROUP BY method`).all()
+    FROM lottery_plays WHERE agent = 'loteria' AND purpose = 'experimento' AND status != 'pending'${game ? ' AND game = ?' : ''} GROUP BY method`).all(...(game ? [game] : []))
     .map(r => ({ ...r, per100: r.staked ? round(r.paid / r.staked * 100, 1) : null }));
+}
+
+/**
+ * 🎯 Récord de los métodos para UNA lotería: cada lotería tiene su propio historial, así que se mide
+ * qué método le va mejor a ESA lotería. Solo se usa cuando todos los métodos (y el azar) ya tienen
+ * 30+ jugadas reales en esa lotería; antes, con tan pocas, sería suerte, y se usa el récord de todas juntas.
+ */
+export function methodStatsFor(db, game) {
+  const own = liveMethodStats(db, game);
+  const enough = own.length >= Object.keys(METHODS).length && own.every(m => m.n >= 30) && own.some(m => m.method === 'azar');
+  return { stats: enough ? own : liveMethodStats(db), scope: enough ? 'loteria' : 'todas' };
 }
 
 export function activeMethods(db) {
@@ -92,7 +103,8 @@ export function autoPlays(db, { now = new Date() } = {}) {
 export function pickOfTheDay(db, game, { now = new Date() } = {}) {
   const nd = nextDraw(game, now);
   const hist = history(db, game, { until: nd.date });
-  const stats = liveMethodStats(db).filter(m => m.n >= 30 && m.method !== 'azar').sort((a, b) => b.per100 - a.per100);
+  const { stats: gameStats, scope } = methodStatsFor(db, game);
+  const stats = gameStats.filter(m => m.n >= 30 && m.method !== 'azar').sort((a, b) => b.per100 - a.per100);
   const method = stats[0]?.method || 'frecuentes';
   // 3 números por sorteo (cada uno una apuesta de quiniela): más chance de pegar uno, como juega la gente en la banca
   let numbers = METHODS[method].pick(hist, 'tripleta', rng(parseInt(sha256(game + nd.date).slice(0, 8), 16)));
@@ -100,12 +112,13 @@ export function pickOfTheDay(db, game, { now = new Date() } = {}) {
   let fromOrder = false;
   try { const v = methodVotes(db, game, { now }); if (v?.order?.length >= 3) { numbers = v.order.slice(0, 3).map(o => o.num); fromOrder = true; } } catch { /* se queda con el del método */ }
   const s = stats[0];
-  const azar = liveMethodStats(db).find(m => m.method === 'azar');
+  const azar = gameStats.find(m => m.method === 'azar');
   const w = s ? wilson(s.wins, s.n) : null;
   return {
     game, date: nd.date, closesAt: nd.close.toISOString(), numbers, method, methodLabel: fromOrder ? 'Orden aprendido' : METHODS[method].label,
     why: fromOrder ? `Los 3 primeros del orden aprendido: los números que más métodos votaron, ajustados por el historial y por los métodos que de verdad le ganan al azar (el mejor ahora: ${METHODS[method].label}).` : METHODS[method].why,
-    record: s ? `En vivo este método acierta ${s.wins} de ${s.n} (${round(s.wins / s.n * 100, 1)}%, rango ${round(w.lo * 100)}–${round(w.hi * 100)}%). Devuelve RD$${s.per100} por cada RD$100; el azar, RD$${azar?.per100 ?? '—'}.` : 'Todavía no hay suficientes jugadas en vivo para medir este método.',
+    statsScope: scope,
+    record: s ? `${scope === 'loteria' ? 'En esta lotería' : 'En todas las loterías juntas'}, este método acierta ${s.wins} de ${s.n} (${round(s.wins / s.n * 100, 1)}%, rango ${round(w.lo * 100)}–${round(w.hi * 100)}%). Devuelve RD$${s.per100} por cada RD$100; el azar, RD$${azar?.per100 ?? '—'}.` : 'Todavía no hay suficientes jugadas en vivo para medir este método.',
     light: 'gris', stake: (() => { const st = smartStake(db, method, numbers.length); return { min: STAKE, suggested: Math.max(STAKE, st.perNumberRd), perNumber: true, why: `${st.why} Mínimo RD$${STAKE} por número (US$${(STAKE / (fx(db)?.rate || 60)).toFixed(2)}).` }; })(),
     warning: 'Si los sorteos son justos, cada número tiene 3 de cada 100 de salir. Con 3 números, la chance de pegar al menos uno es de unos 9 de cada 100.',
   };
@@ -132,7 +145,8 @@ export function reviewEffort(db) {
 export function methodVotes(db, game, { now = new Date() } = {}) {
   const nd = nextDraw(game, now), hist = history(db, game, { until: nd.date });
   if (hist.length < 10) return null;
-  const live = Object.fromEntries(liveMethodStats(db).map(m => [m.method, m]));
+  const { stats: gameStats, scope } = methodStatsFor(db, game);
+  const live = Object.fromEntries(gameStats.map(m => [m.method, m]));
   const azar = live.azar;
   // Votan LOS 6 métodos y cada uno elige 3 números (como juega la gente en la banca)
   const voters = Object.entries(METHODS).map(([k, m]) => {
@@ -171,7 +185,7 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
   top.splice(0, top.length, ...order.slice(0, 3));
   const anyBeats = voters.some(v => v.beatsChance);
   return {
-    game, date: nd.date, voters, top, order, totalVoters: voters.length, fairProb: round(P0 * 100, 2), draws: n, realShare: round(B * 100),
+    game, date: nd.date, statsScope: scope, voters, top, order, totalVoters: voters.length, fairProb: round(P0 * 100, 2), draws: n, realShare: round(B * 100),
     chance: 'En quiniela salen 3 números de 100 (del 00 al 99): cada número tiene 3 de cada 100 de salir, sea cual sea.',
     verdict: anyBeats ? 'Algún método le va ganando al azar en las jugadas reales; sigue en observación (puede ser suerte).'
       : voters.every(v => v.n < 30) ? 'Todavía hay pocas jugadas reales para saber si algún método sirve.'

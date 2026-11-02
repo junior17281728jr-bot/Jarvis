@@ -418,3 +418,21 @@ test('parejas: con datos al azar no inventa parejas; con una pareja real, la enc
   const linked = build(true), r1 = findPairs(linked, { symbols: ['SPY', 'A', 'B', 'C', 'D'] });
   assert.ok(r1.found >= 1, 'encuentra A → B');
 });
+
+test('loterías: cada una usa el récord de SUS métodos cuando ya hay 30+ jugadas; antes, el de todas juntas', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { methodStatsFor } = await import('../src/motor/lottery-agent.js');
+  const { METHODS } = await import('../src/lottery/methods.js');
+  const db = od(':memory:');
+  const ins = db.prepare("INSERT INTO lottery_plays (agent, game, date, kind, numbers, stake, payouts, method, method_version, purpose, sealed_at, ledger_hash, status, prize) VALUES ('loteria', ?, '2026-10-01', 'quiniela', '[\"01\"]', 100, '{}', ?, 1, 'experimento', 'x', 'h', ?, ?)");
+  const play = (game, method, k, wins) => { for (let i = 0; i < k; i++) ins.run(game, method, i < wins ? 'gano' : 'perdio', i < wins ? 6000 : 0); };
+  const methods = Object.keys(METHODS);
+  // En Loteka gana "frecuentes"; en Leidsa le va mal. Juntas se ve parecido.
+  for (const m of methods) { play('loteka', m, 20, m === 'frecuentes' ? 3 : 1); play('leidsa', m, 20, m === 'frecuentes' ? 0 : 1); }
+  assert.equal(methodStatsFor(db, 'loteka').scope, 'todas', 'con 20 jugadas por lotería todavía sería suerte');
+  for (const m of methods) { play('loteka', m, 15, m === 'frecuentes' ? 2 : 0); play('leidsa', m, 15, 0); }
+  const lk = methodStatsFor(db, 'loteka'), ld = methodStatsFor(db, 'leidsa');
+  assert.equal(lk.scope, 'loteria');
+  const f = (r) => r.stats.find(m => m.method === 'frecuentes');
+  assert.equal(f(lk).n, 35); assert.equal(f(lk).wins, 5); assert.equal(f(ld).wins, 0, 'cada lotería con su propio récord');
+});
