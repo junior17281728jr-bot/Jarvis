@@ -339,3 +339,21 @@ test('orden aprendido: con sorteos de puro azar no inventa ventajas (todos ≈ 2
   const seven = w.order.find(o => o.num === '07');
   if (seven) assert.ok(seven.prob > w.fairProb * 1.5, 'el 07 sale mucho más y lo dice');
 });
+
+test('votación: votan LOS 6 métodos con 3 números cada uno; las pruebas juegan 3 números por método', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { recordObservation } = await import('../src/lottery/results.js');
+  const { methodVotes, autoPlays } = await import('../src/motor/lottery-agent.js');
+  const db = od(':memory:');
+  // Pocos sorteos y muy parecidos: antes, varios métodos elegían el mismo número y quedaban solo 2
+  for (let i = 1; i <= 12; i++) { const d = new Date(Date.UTC(2026, 9, i)).toISOString().slice(0, 10); for (const source of ['a', 'b']) recordObservation(db, { game: 'loteka', date: d, source, nums: ['11', '22', String(30 + i)], fetchedAt: `${d}T23:59:00.000Z` }); }
+  const now = new Date('2026-10-13T12:00:00Z');
+  const v = methodVotes(db, 'loteka', { now });
+  assert.equal(v.voters.length, 6);
+  for (const x of v.voters) assert.equal(x.nums.length, 3, x.method);
+  assert.ok(v.top.length === 3 && v.order.length >= 3);
+  autoPlays(db, { now });
+  const per = db.prepare("SELECT method, COUNT(*) n FROM lottery_plays WHERE game = 'loteka' AND purpose = 'experimento' GROUP BY method").all();
+  assert.equal(per.length, 6);
+  for (const r of per) assert.equal(r.n, 3, r.method);
+});

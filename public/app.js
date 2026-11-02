@@ -883,7 +883,7 @@ views.loterias = async () => {
     <div id="lplus"></div><button type="button" class="btn ghost" id="lplusb">Explícamelo</button></section>
   <div id="jvlot"><div class="card note">Cargando lo que juega JARVIS…</div></div>
   <h3 class="cs-h" style="margin:18px 0 4px">🧪 Laboratorio: los 6 métodos de prueba</h3>
-  <p class="note" style="margin:0 0 8px">Aparte del dinero de JARVIS: cada método juega RD$100 en cada sorteo solo para medir si alguno le gana al azar. Así JARVIS sabe cuál usar.</p>
+  <p class="note" style="margin:0 0 8px">Aparte del dinero de JARVIS: cada uno de los 6 métodos juega sus 3 números (RD$100 cada uno) en cada sorteo, solo para medir si alguno le gana al azar. Así JARVIS sabe cuál usar.</p>
   <section class="grid g4">
     <div class="card kpi"><div class="l">Jugadas de prueba ya pagadas</div><div class="v">${L.stats.settled}</div><div class="s">${L.stats.pending} esperando el resultado del sorteo</div></div>
     <div class="card kpi" style="--c:var(--good)"><div class="l">Aciertos de las pruebas</div><div class="v">${L.stats.hitRate != null ? L.stats.hitRate + '%' : '—'}</div><div class="s">${L.stats.wins} premios · racha récord ${L.stats.streak.bestWin}</div></div>

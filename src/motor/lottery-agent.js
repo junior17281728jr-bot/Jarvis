@@ -68,9 +68,9 @@ export function autoPlays(db, { now = new Date() } = {}) {
       const exists = db.prepare("SELECT 1 FROM lottery_plays WHERE agent = 'loteria' AND game = ? AND date = ? AND method = ? AND purpose = 'experimento'").get(game, nd.date, method);
       if (exists) continue;
       const seed = parseInt(sha256(`${game}${nd.date}${method}`).slice(0, 8), 16);
-      const numbers = METHODS[method].pick(hist, 'quiniela', rng(seed));
-      sealPlay(db, { agent: 'loteria', game, kind: 'quiniela', numbers, stake: STAKE, method, purpose: 'experimento', now, P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) });
-      sealed++;
+      // Cada método juega SUS 3 números, cada uno como una quiniela de RD$100 (igual que "su número" de JARVIS)
+      const three = [...new Set(METHODS[method].pick(hist, 'tripleta', rng(seed)))];
+      for (const x of three) { sealPlay(db, { agent: 'loteria', game, kind: 'quiniela', numbers: [x], stake: STAKE, method, purpose: 'experimento', now, P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) }); sealed++; }
     }
   }
   // "Su número" de cada sorteo también queda sellado como recomendación, para medir su acierto real
@@ -134,8 +134,9 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
   if (hist.length < 10) return null;
   const live = Object.fromEntries(liveMethodStats(db).map(m => [m.method, m]));
   const azar = live.azar;
-  const voters = Object.entries(METHODS).filter(([k]) => k !== 'azar').map(([k, m]) => {
-    const nums = m.pick(hist, 'quiniela', rng(parseInt(sha256(game + nd.date + k).slice(0, 8), 16)));
+  // Votan LOS 6 métodos y cada uno elige 3 números (como juega la gente en la banca)
+  const voters = Object.entries(METHODS).map(([k, m]) => {
+    const nums = [...new Set(m.pick(hist, 'tripleta', rng(parseInt(sha256(game + nd.date + k).slice(0, 8), 16))))];
     const L = live[k];
     return { method: k, label: m.label, why: m.why, nums, n: L?.n || 0, wins: L?.wins || 0, per100: L?.per100 ?? null, beatsChance: L && azar && L.n >= 30 ? L.per100 > azar.per100 : null };
   });
@@ -189,8 +190,16 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
   const rate = fx(db)?.rate || null;
   const sealedPick = (game, date) => { const r = db.prepare("SELECT payload, sealed_at, ledger_hash FROM predictions WHERE subject = ?").get(`loteria:${game}:${date}`); return r ? { ...JSON.parse(r.payload), sealedAt: r.sealed_at, hash: r.ledger_hash } : null; };
   const seenAt = (game, date) => db.prepare('SELECT MIN(fetched_at) t FROM lottery_observations WHERE game = ? AND date = ?').get(game, date)?.t || null;
-  const playsFor = (game, date) => db.prepare("SELECT method, numbers, stake, status, prize FROM lottery_plays WHERE agent = 'loteria' AND game = ? AND date = ? ORDER BY method").all(game, date)
-    .map(p => ({ method: p.method, label: METHODS[p.method]?.label || p.method, numbers: JSON.parse(p.numbers), stake: p.stake, status: p.status, prize: p.prize }));
+  const playsFor = (game, date) => {
+    const by = new Map();
+    for (const p of db.prepare("SELECT method, numbers, stake, status, prize FROM lottery_plays WHERE agent = 'loteria' AND game = ? AND date = ? ORDER BY method, id").all(game, date)) {
+      const g = by.get(p.method) || { method: p.method, label: METHODS[p.method]?.label || p.method, numbers: [], stake: 0, status: 'perdio', prize: 0, pending: false };
+      g.numbers.push(...JSON.parse(p.numbers)); g.stake += p.stake; g.prize += p.prize || 0;
+      if (p.status === 'pending') g.pending = true; if (p.status === 'gano') g.status = 'gano';
+      by.set(p.method, g);
+    }
+    return [...by.values()].map(g => ({ ...g, status: g.pending ? 'pending' : g.status }));
+  };
   const upcoming = [];
   for (const game of Object.keys(GAMES)) {
     let nd; try { nd = nextDraw(game, now); } catch { continue; }
