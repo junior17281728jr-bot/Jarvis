@@ -863,12 +863,13 @@ const ampm = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); 
 const untilTxt = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'cerrado' : m < 60 ? `cierra en ${m} min` : `cierra en ${Math.floor(m / 60)} h ${m % 60} min`; };
 async function loadJarvisLottery() {
   const el = $('#jvlot'); if (!el) return;
-  let B; try { B = await api('/api/lottery/jarvis'); } catch (e) { el.innerHTML = `<div class="card note">${esc(e.message)}</div>`; return; }
+  let B, W = null; try { [B, W] = await Promise.all([api('/api/lottery/jarvis'), api('/api/jarvis/cuentas').then(c => c.loteria).catch(() => null)]); } catch (e) { el.innerHTML = `<div class="card note">${esc(e.message)}</div>`; return; }
   if (B.rate) FX = B.rate;
   const S = B.summary, ST = { acerto: ['✅', 'Acertó', 'good'], fallo: ['❌', 'Falló', 'bad'], esperando: ['⏳', 'Esperando resultado', 'warn'] };
   const balls = (nums, hit) => nums.map(n => `<span class="ball${hit && hit.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('');
-  el.innerHTML = `<section class="card jvlot"><h2>🎱 Lo que juega JARVIS <span class="more note">sellado antes de cada sorteo</span></h2>
-    <div class="jvsum">${[['🎯', `${S.hits} de ${S.picks}`, 'aciertos'], ['💵', rdu(S.stakedRd), 'jugado (virtual)'], ['🏆', rdu(S.wonRd), 'cobrado'], [S.netRd >= 0 ? '📈' : '📉', rdu(S.netRd, { sign: true }), 'resultado']].map(([i, v, l]) => `<div><span>${i}</span><b class="${l === 'resultado' ? (S.netRd >= 0 ? 'good' : 'bad') : ''}">${v}</b><small>${l}</small></div>`).join('')}</div>
+  const wallet = W ? `<h3 class="cs-h">💰 El dinero de JARVIS en lotería</h3>${flow([['Empezó con', rdu(W.startRd), '', ''], ['Jugó', rdu(W.playedRd), '', `${W.plays} sorteos`], ['Ganó (premios)', rdu(W.wonRd), W.wonRd > 0 ? 'good' : '', `${W.hits} con premio`], ['Perdió', rdu(W.lostRd), W.lostRd > 0 ? 'bad' : '', `${W.settled - W.hits} sin premio`], ['Le queda', rdu(W.leftRd), W.leftRd >= W.startRd ? 'good' : 'bad', `${W.leftRd >= W.startRd ? 'va ganando' : 'va perdiendo'} ${rdRaw(Math.abs(W.leftRd - W.startRd))}${W.pendingRd ? ` · ${rdRaw(W.pendingRd)} esperando sorteo` : ''}`]])}<div class="note" style="margin-bottom:6px">Es el dinero de <b>su número</b> de cada sorteo. Las jugadas de prueba de los 6 métodos se cuentan aparte (arriba, en "Jugadas virtuales").</div>` : '';
+  el.innerHTML = `<section class="card jvlot"><h2>🎱 Lo que juega JARVIS <span class="more note">sellado antes de cada sorteo</span></h2>${wallet}
+    ${W ? '' : `<div class="jvsum">${[['🎯', `${S.hits} de ${S.picks}`, 'aciertos'], ['💵', rdu(S.stakedRd), 'jugado (virtual)'], ['🏆', rdu(S.wonRd), 'cobrado'], [S.netRd >= 0 ? '📈' : '📉', rdu(S.netRd, { sign: true }), 'resultado']].map(([i, v, l]) => `<div><span>${i}</span><b class="${l === 'resultado' ? (S.netRd >= 0 ? 'good' : 'bad') : ''}">${v}</b><small>${l}</small></div>`).join('')}</div>`}
     <h3 class="cs-h">⏭️ Próximos sorteos</h3>
     <div class="jvnext">${B.upcoming.map(u => `<div class="jvn">
       <div class="jvn-h"><b>${esc(u.name)}</b><span class="chip">${untilTxt(u.closesAt)}</span></div>
