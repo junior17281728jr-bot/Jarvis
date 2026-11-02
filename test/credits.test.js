@@ -29,10 +29,10 @@ test('potenciador: sin base ni créditos la IA se frena, pero con el mensaje cla
 test('potenciador: pedir con comprobante, aprobar y poder seguir usando la IA', () => {
   const { db, admin, user, spend } = setup();
   spend(0.02);
-  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, reference: '123', note: 'pagado', payerName: 'Ricardo', payerBank: 'Banco BHD' });
+  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, reference: '123', note: 'pagado', payerName: 'Ricardo', payerBank: 'Banco BHD', amount: '150' });
   assert.equal(listRequests(db, { status: 'pendiente' }).length, 1);
   assert.ok(receiptFile(db, cfg, id).buf.length > 0);
-  assert.throws(() => createRequest(db, cfg, user, { packId: 'p1', receipt: 'data:image/png;base64,AAAA', payerName: 'R', payerBank: 'Otro' }), /válida/);
+  assert.throws(() => createRequest(db, cfg, user, { packId: 'p1', receipt: 'data:image/png;base64,AAAA', payerName: 'R', payerBank: 'Otro', amount: 150 }), /válida/);
   decideRequest(db, admin, id, { approve: true });
   assert.equal(creditStatus(db, user.id).extra, 200);
   assert.equal(budgetCheck(db, cfg, { userId: user.id, estUsd: 0.5 }).ok, true);
@@ -41,7 +41,7 @@ test('potenciador: pedir con comprobante, aprobar y poder seguir usando la IA', 
 
 test('potenciador: el gasto pasado de la base se descuenta de los créditos extra; rechazar no da créditos', async () => {
   const { db, admin, user } = setup();
-  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, payerName: 'R', payerBank: 'Otro' });
+  const { id } = createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, payerName: 'R', payerBank: 'Otro', amount: 150 });
   decideRequest(db, admin, id, { approve: false, note: 'no llegó el pago' });
   assert.equal(creditStatus(db, user.id).extra, 0);
   grantCredits(db, admin, user.id, 100);
@@ -59,7 +59,7 @@ test('potenciador: cuentas de banco del administrador, datos de quien paga y pla
   assert.equal(creditSettings(db).accounts[0].bank, 'Banco Popular');
   assert.throws(() => saveCreditSettings(db, { accounts: [{ bank: 'Banco BHD', number: 'abc', holder: 'J' }] }), /solo lleva números/);
   assert.throws(() => createRequest(db, cfg, user, { packId: 'p3', receipt: PNG, payerBank: 'Banco BHD' }), /a nombre de quién/);
-  const { id } = createRequest(db, cfg, user, { packId: 'p3', receipt: PNG, payerName: 'Ricardo P', payerBank: 'Banco BHD' });
+  const { id } = createRequest(db, cfg, user, { packId: 'p3', receipt: PNG, payerName: 'Ricardo P', payerBank: 'Banco BHD', amount: 'RD$400.00' });
   assert.equal(listRequests(db)[0].payer_bank, 'Banco BHD');
   decideRequest(db, admin, id, { approve: true });
   const st = creditStatus(db, user.id);
@@ -67,4 +67,15 @@ test('potenciador: cuentas de banco del administrador, datos de quien paga y pla
   db.prepare('UPDATE users SET plan_until = ? WHERE id = ?').run(new Date(Date.now() + 2 * 864e5).toISOString(), user.id);
   assert.equal(planReminders(db)[0].stage, 'pronto');
   assert.equal(planReminders(db).length, 0, 'no repite el mismo aviso');
+});
+
+test('potenciador: exige la cantidad exacta enviada y recuerda al administrador después de 24 horas', async () => {
+  const { adminPendingReminder } = await import('../src/motor/credits.js');
+  const { db, user } = setup();
+  assert.throws(() => createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, payerName: 'R', payerBank: 'Otro' }), /cantidad exacta/);
+  createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, payerName: 'R', payerBank: 'Otro', amount: '1,500.50', currency: 'RD$' });
+  assert.equal(listRequests(db)[0].amount, 1500.5);
+  assert.equal(adminPendingReminder(db), 0);
+  db.prepare('UPDATE credit_requests SET created_at = ?').run(new Date(Date.now() - 25 * 3600e3).toISOString());
+  assert.equal(adminPendingReminder(db), 1); assert.equal(adminPendingReminder(db), 0);
 });

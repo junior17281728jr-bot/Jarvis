@@ -37,7 +37,7 @@ import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
 import { aiView } from './motor/autopilot.js';
 import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
-import { creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
+import { packEconomics, creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
 import { getProfile, saveProfile, profileLine, STYLES, HORIZONS } from './motor/profile.js';
 import { getBudget, saveBudget, sizeFor, evidence, finder, bigBetCheck } from './motor/sizing.js';
 import { publicBrand, saveBrand, logoFile, manifest } from './core/brand.js';
@@ -298,7 +298,7 @@ route('POST', '/api/users', async ({ req }) => { const b = await body(req); cons
 route('GET', '/api/potenciador', ({ user }) => {
   const isAdmin = user.role === 'admin', st = creditSettings(db);
   return { me: creditStatus(db, user.id), packs: st.packs, payInfo: st.payInfo, accounts: st.accounts, banks: st.banks, mine: listRequests(db, { userId: user.id }), isAdmin,
-    admin: isAdmin ? { requests: listRequests(db), users: db.prepare("SELECT id FROM users WHERE active = 1 AND role != 'admin'").all().map(u => ({ id: u.id, ...creditStatus(db, u.id), name: db.prepare('SELECT COALESCE(display_name, username) n FROM users WHERE id = ?').get(u.id).n })) } : null };
+    admin: isAdmin ? { margin: st.margin, rate: fx(db)?.rate || 62, rateSource: fx(db)?.source || 'aproximado', economics: st.packs.map(p => packEconomics(p.credits, { margin: st.margin, rate: fx(db)?.rate || 62 })), requests: listRequests(db), users: db.prepare("SELECT id FROM users WHERE active = 1 AND role != 'admin'").all().map(u => ({ id: u.id, ...creditStatus(db, u.id), name: db.prepare('SELECT COALESCE(display_name, username) n FROM users WHERE id = ?').get(u.id).n })) } : null };
 });
 route('POST', '/api/potenciador', async ({ req, user }) => { const b = await body(req, 2.2e6); return createRequest(db, cfg, user, b); });
 route('GET', '/api/potenciador/:id/foto', ({ res, user, p }) => {

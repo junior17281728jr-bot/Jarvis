@@ -1,4 +1,4 @@
-/* Colores resueltos para navegadores viejos. Generado desde styles.css (d3fd25549b39291a). */
+/* Colores resueltos para navegadores viejos. Generado desde styles.css (2a3d3c088ff17995). */
 /* JARVIS — sistema visual. Colores con significado fijo: verde=ganancia/seguro, amarillo=duda, rojo=pérdida/peligro, azul=información. */
 
 
@@ -445,3 +445,4 @@ abbr.gl{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .bankacc{margin-top:8px;padding:12px;border:1px solid #1e2a44;border-radius:14px;background:#111a2e;display:grid;gap:6px}
 .ba-h{display:flex;justify-content:space-between;gap:8px;align-items:center}.ba-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.ba-r>.note{min-width:96px}.mono{font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;letter-spacing:.04em}
 .accrow{padding:10px 0;border-top:1px solid #1e2a44}
+.econ{padding:10px 12px;border-radius:12px;background:#111a2e;margin-bottom:8px}.econline{margin:2px 0 10px}

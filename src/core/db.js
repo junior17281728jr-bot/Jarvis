@@ -197,6 +197,15 @@ ALTER TABLE users ADD COLUMN plan_name TEXT;
 ALTER TABLE users ADD COLUMN plan_reminded TEXT;
 `,
   },
+  {
+    id: 9,
+    name: 'monto_enviado',
+    sql: `
+ALTER TABLE credit_requests ADD COLUMN amount REAL;
+ALTER TABLE credit_requests ADD COLUMN currency TEXT;
+ALTER TABLE credit_requests ADD COLUMN admin_reminded INTEGER NOT NULL DEFAULT 0;
+`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */

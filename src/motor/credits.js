@@ -13,17 +13,18 @@ export const toCredits = usd => Math.max(0, Math.floor(round(usd / CREDIT_USD, 6
 const MAX_RECEIPT = 1_500_000;
 
 export const DEFAULT_PACKS = [
-  { id: 'p1', name: 'Potenciador básico', price: 'RD$150', credits: 200, kind: 'una_vez' },
-  { id: 'p2', name: 'Potenciador plus', price: 'RD$300', credits: 500, kind: 'una_vez' },
-  { id: 'p3', name: 'Plan mensual', price: 'RD$400 al mes', credits: 800, kind: 'mensual' },
+  { id: 'p1', name: 'Potenciador básico', price: 'RD$250', credits: 200, kind: 'una_vez' },
+  { id: 'p2', name: 'Potenciador plus', price: 'RD$620', credits: 500, kind: 'una_vez' },
+  { id: 'p3', name: 'Plan mensual', price: 'RD$995 al mes', credits: 800, kind: 'mensual' },
 ];
 export const BANKS = ['Banco Popular', 'Banco BHD', 'Banreservas', 'Banco Santa Cruz', 'Scotiabank', 'Asociación Popular (APAP)', 'Banco Promerica', 'Otro'];
 export const PLAN_DAYS = 30;
 export function creditSettings(db) {
   const packs = getSetting(db, 'global', 'credits.packs', DEFAULT_PACKS).map(p => ({ kind: 'una_vez', ...p }));
-  return { packs, payInfo: getSetting(db, 'global', 'credits.payInfo', ''), accounts: getSetting(db, 'global', 'credits.accounts', []), banks: BANKS };
+  return { packs, payInfo: getSetting(db, 'global', 'credits.payInfo', ''), accounts: getSetting(db, 'global', 'credits.accounts', []), banks: BANKS, margin: getSetting(db, 'global', 'credits.margin', 2) };
 }
-export function saveCreditSettings(db, { packs, payInfo, accounts }) {
+export function saveCreditSettings(db, { packs, payInfo, accounts, margin }) {
+  if (margin !== undefined) { const m = Number(margin); if (!(m >= 1 && m <= 10)) throw new Error('El margen debe estar entre 1 (sin ganancia) y 10.'); setSetting(db, 'global', 'credits.margin', Math.round(m * 100) / 100); }
   const clean = (v, max) => String(v ?? '').replace(/[\u0000-\u0008\u000b-\u001f<>]/g, '').trim().slice(0, max);
   if (packs !== undefined) {
     if (!Array.isArray(packs) || !packs.length || packs.length > 6) throw new Error('Pon entre 1 y 6 paquetes.');
@@ -78,21 +79,24 @@ function decodeReceipt(dataUrl) {
 }
 const receiptDir = dbPath => join(dirname(dbPath), 'comprobantes');
 
-export function createRequest(db, cfg, user, { packId, receipt, reference, note, payerName, payerBank }) {
+export function createRequest(db, cfg, user, { packId, receipt, reference, note, payerName, payerBank, amount, currency }) {
   const { packs } = creditSettings(db), pack = packs.find(p => p.id === packId);
   if (!pack) throw new Error('Elige un paquete.');
   if (db.prepare("SELECT COUNT(*) n FROM credit_requests WHERE user_id = ? AND status = 'pendiente'").get(user.id).n >= 3) throw new Error('Ya tienes 3 solicitudes esperando respuesta. Espera a que el administrador las revise.');
   const clean = (v, max) => String(v ?? '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, max);
   if (!clean(payerName, 60)) throw new Error('Escribe a nombre de quién salió el pago.');
   if (!clean(payerBank, 40)) throw new Error('Elige desde qué banco pagaste.');
+  const amt = Math.round(Number(String(amount ?? '').replace(/[^0-9.]/g, '')) * 100) / 100;
+  if (!(amt > 0 && amt < 10_000_000)) throw new Error('Escribe la cantidad exacta que enviaste, como sale en el comprobante.');
+  const cur = currency === 'US$' ? 'US$' : 'RD$';
   const r = decodeReceipt(receipt);
-  const info = db.prepare(`INSERT INTO credit_requests (user_id, created_at, pack_name, price, credits, reference, note, receipt_ext, status, payer_name, payer_bank, kind)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?)`).run(user.id, nowIso(), pack.name, pack.price, pack.credits, clean(reference, 60), clean(note, 300), r.ext, clean(payerName, 60), clean(payerBank, 40), pack.kind === 'mensual' ? 'mensual' : 'una_vez');
+  const info = db.prepare(`INSERT INTO credit_requests (user_id, created_at, pack_name, price, credits, reference, note, receipt_ext, status, payer_name, payer_bank, kind, amount, currency)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`).run(user.id, nowIso(), pack.name, pack.price, pack.credits, clean(reference, 60), clean(note, 300), r.ext, clean(payerName, 60), clean(payerBank, 40), pack.kind === 'mensual' ? 'mensual' : 'una_vez', amt, cur);
   const id = Number(info.lastInsertRowid), dir = receiptDir(cfg.dbPath);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(dir, `${id}.${r.ext}`), r.buf, { mode: 0o600 });
   audit(db, user.id, 'potenciador_solicitud', { id, pack: pack.name, credits: pack.credits });
-  activity(db, { type: 'potenciador', important: true, userId: adminId(db), text: `⚡ ${user.displayName || user.username} pidió "${pack.name}" (${pack.price}) y subió su comprobante. Revísalo en Potenciador.` });
+  activity(db, { type: 'potenciador', important: true, userId: adminId(db), text: `⚡ ${user.displayName || user.username} pidió "${pack.name}" (${pack.price}), dice que envió ${cur}${amt.toLocaleString('en-US')} y subió su comprobante. Confirma en tu banco que llegó y aprueba en Potenciador.` });
   return { id };
 }
 const adminId = db => db.prepare("SELECT id FROM users WHERE role = 'admin' AND active = 1 ORDER BY id LIMIT 1").get()?.id ?? null;
@@ -108,7 +112,7 @@ export function listRequests(db, { userId = null, status = null } = {}) {
   const where = [], args = [];
   if (userId != null) { where.push('r.user_id = ?'); args.push(userId); }
   if (status) { where.push('r.status = ?'); args.push(status); }
-  return db.prepare(`SELECT r.id, r.user_id, r.created_at, r.pack_name, r.price, r.credits, r.reference, r.note, r.status, r.decided_at, r.admin_note, r.payer_name, r.payer_bank, r.kind,
+  return db.prepare(`SELECT r.id, r.user_id, r.created_at, r.pack_name, r.price, r.credits, r.reference, r.note, r.status, r.decided_at, r.admin_note, r.payer_name, r.payer_bank, r.kind, r.amount, r.currency,
       COALESCE(u.display_name, u.username) who, u.username FROM credit_requests r JOIN users u ON u.id = r.user_id
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY (r.status = 'pendiente') DESC, r.id DESC LIMIT 100`).all(...args);
 }
@@ -159,4 +163,23 @@ export function planReminders(db) {
     out.push({ userId: u.id, stage });
   }
   return out;
+}
+
+/** Precio del paquete en número (para avisar si lo enviado no coincide). */
+export const priceNumber = p => { const n = Number(String(p || '').replace(/,/g, '').match(/[0-9]+(\.[0-9]+)?/)?.[0]); return Number.isFinite(n) ? n : null; };
+
+/** Si una solicitud lleva más de 24 horas esperando, se le recuerda al administrador (una vez). */
+export function adminPendingReminder(db) {
+  const old = db.prepare("SELECT r.id, COALESCE(u.display_name, u.username) who, r.pack_name FROM credit_requests r JOIN users u ON u.id = r.user_id WHERE r.status = 'pendiente' AND r.admin_reminded = 0 AND r.created_at <= ?").all(new Date(Date.now() - 24 * 3600e3).toISOString());
+  if (!old.length) return 0;
+  db.prepare(`UPDATE credit_requests SET admin_reminded = 1 WHERE id IN (${old.map(() => '?').join(',')})`).run(...old.map(r => r.id));
+  activity(db, { type: 'potenciador', important: true, userId: adminId(db), text: `⚡ Tienes ${old.length} ${old.length === 1 ? 'solicitud' : 'solicitudes'} de Potenciador esperando más de 24 horas (${old.map(r => r.who).join(', ')}). Revisa tu banco y respóndelas en Potenciador.` });
+  return old.length;
+}
+
+/** Cuánto te cuesta a ti un paquete en IA (como máximo) y cuánto cobrar con tu margen. 1 crédito = US$0.01 de costo real. */
+export function packEconomics(credits, { margin = 2, rate = null } = {}) {
+  const costUsd = credits * CREDIT_USD, chargeUsd = costUsd * margin;
+  const chargeRd = rate ? Math.ceil(chargeUsd * rate / 5) * 5 : null; // redondeado a múltiplos de RD$5
+  return { costUsd: round(costUsd, 2), chargeUsd: round(chargeUsd, 2), chargeRd, profitUsd: round(chargeUsd - costUsd, 2) };
 }

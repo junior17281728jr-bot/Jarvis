@@ -25,7 +25,7 @@ import { offsiteBackup } from '../core/offsite.js';
 import { updateFx, updateCalendar } from './insights.js';
 import { updateMap, exploreStep, watchRealPositions } from './map.js';
 import { autopilotStep } from './autopilot.js';
-import { planReminders } from './credits.js';
+import { planReminders, adminPendingReminder } from './credits.js';
 import { suggestStocks } from '../ai/plus.js';
 import { getProfile } from './profile.js';
 import { setTradingDays } from '../stocks/market.js';
@@ -90,7 +90,7 @@ async function runTask(name, db, cfg, now, fetchImpl) {
     case 'loterias_jugadas': return { sealed: autoPlays(db, { now }), effort: reviewEffort(db) };
     case 'prueba_en_vivo': return liveStep(db, { symbols: syms, now, bench: BENCH });
     case 'cartera_ia': return autopilotStep(db, { now });
-    case 'recordatorio_planes': return planReminders(db);
+    case 'recordatorio_planes': return { planes: planReminders(db), pendientes: adminPendingReminder(db) };
     case 'ideas_acciones_ia': { const adm = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get(); return suggestStocks(db, cfg, { fetchImpl, horizon: adm ? getProfile(db, adm.id).horizon : 'medio' }); }
     case 'ranking': { resolveRanking(db, BENCH); const cards = buildRanking(db, { symbols: syms, bench: BENCH }); return { cards: cards.length, moves: updateMap(db, cards) }; }
     case 'explorar': { const r = await exploreStep(db, cfg, { fetchImpl }); if (r.swap) activity(db, { agent: 'largo', type: 'mapa', important: true, text: r.swap.out ? `Mapa: entró ${r.swap.in} y salió ${r.swap.out} (llevaba mucho tiempo en "No te recomiendo").` : `Mapa: entró ${r.swap.in}.` }); return r; }

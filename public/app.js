@@ -1104,11 +1104,13 @@ function shrinkReceipt(file) {
 const STATUS_CHIP = { pendiente: ['⏳ Esperando revisión', 'warn'], aprobada: ['✅ Aprobada', 'good'], rechazada: ['✕ No aprobada', 'bad'] };
 const monthName = iso => new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 views.potenciador = async () => {
-  const d = await api('/api/potenciador'), m = d.me;
+  const d = await api('/api/potenciador'), m = d.me; window.__potRate = d.admin?.rate;
   const pctUsed = m.base ? Math.round(m.baseUsed / m.base * 100) : 0;
   const reqRow = (r, admin) => `<div class="preq ${r.status}"><div class="preq-h"><b>${esc(admin ? r.who : r.pack_name)}</b><span class="chip ${STATUS_CHIP[r.status][1]}">${STATUS_CHIP[r.status][0]}</span></div>
     <div class="note">${admin ? `${esc(r.pack_name)} · ` : ''}${esc(r.price)} → <b>${r.credits} créditos</b> · ${esc(new Date(r.created_at).toLocaleString('es-DO'))}${r.reference ? ` · Ref: ${esc(r.reference)}` : ''}</div>
     ${r.payer_name ? `<div class="note">Pagó: <b>${esc(r.payer_name)}</b>${r.payer_bank ? ` desde ${esc(r.payer_bank)}` : ''}${r.kind === 'mensual' ? ' · <b>plan mensual</b>' : ''}</div>` : ''}
+    ${r.amount != null ? `<div>Dice que envió: <b class="mono">${esc(r.currency || 'RD$')}${Number(r.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</b>${(() => { const n = Number(String(r.price).replace(/,/g, '').match(/[0-9]+(\.[0-9]+)?/)?.[0]); return Number.isFinite(n) && Math.abs(n - r.amount) > 0.009 ? ` <span class="chip warn">⚠️ no coincide con el precio (${esc(r.price)})</span>` : ' <span class="chip good">coincide con el precio</span>'; })()}</div>` : ''}
+    ${admin && r.status === 'pendiente' ? `<div class="note">Esperando hace ${timeAgo(r.created_at).replace('hace ', '')}. Busca en tu banco un depósito de <b>esa cantidad exacta</b> a nombre de <b>${esc(r.payer_name || r.who)}</b> antes de aprobar.</div>` : ''}
     ${r.note ? `<div class="note">“${esc(r.note)}”</div>` : ''}${r.admin_note ? `<div class="note">Respuesta: ${esc(r.admin_note)}</div>` : ''}
     <a href="/api/potenciador/${r.id}/foto" target="_blank" rel="noopener"><img class="preq-img" src="/api/potenciador/${r.id}/foto" alt="Comprobante" loading="lazy"></a>
     ${admin && r.status === 'pendiente' ? `<div class="row" style="gap:8px;margin-top:8px;align-items:center"><input class="pnote" data-id="${r.id}" placeholder="Nota (opcional)" style="flex:1;min-width:140px"><button class="btn sm" data-ok="${r.id}">Aprobar</button><button class="btn ghost sm" data-no="${r.id}">Rechazar</button></div>` : ''}</div>`;
@@ -1128,17 +1130,18 @@ views.potenciador = async () => {
           ${a.note ? `<div class="note">${esc(a.note)}</div>` : ''}</div>`).join('') : ''}
         ${d.payInfo ? `<div class="payinfo">${esc(d.payInfo).replace(/\n/g, '<br>')}</div>` : !d.accounts.length ? '<div class="payinfo">El administrador todavía no puso sus cuentas. Pregúntale directamente.</div>' : ''}</div>
       <div><b>3. Dinos quién pagó</b><div class="grid g2" style="gap:10px;margin-top:6px"><label>A nombre de quién salió el pago<input id="ppn" maxlength="60" required placeholder="Ej.: Ricardo Pérez"></label>
-        <label>Desde qué banco pagaste<select id="ppb"><option value="">Elige…</option>${d.banks.map(b => `<option>${esc(b)}</option>`).join('')}</select></label></div></div>
+        <label>Desde qué banco pagaste<select id="ppb"><option value="">Elige…</option>${d.banks.map(b => `<option>${esc(b)}</option>`).join('')}</select></label></div>
+        <div class="row" style="gap:10px;margin-top:10px;align-items:flex-end"><label style="width:110px">Moneda<select id="ppc"><option>RD$</option><option>US$</option></select></label><label style="flex:1;min-width:160px">Cantidad exacta que enviaste (como sale en el comprobante)<input id="ppa" inputmode="decimal" required placeholder="Ej.: 300.00"></label></div></div>
       <div><b>4. Sube la foto del comprobante (voucher o captura)</b><br><label class="btn ghost" style="cursor:pointer;margin-top:8px;display:inline-flex">📷 Elegir foto o captura<input id="prc" type="file" accept="image/*" hidden></label><div id="prcv" class="note" style="margin-top:6px"></div></div>
       <label>Número de referencia (opcional)<input id="pref" maxlength="60" placeholder="Ej.: 123456789"></label>
       <label>Nota para el administrador (opcional)<input id="pnt" maxlength="300"></label>
       <button class="btn">Enviar solicitud</button><div class="msg" id="pmsg"></div>
-      <div class="note">El administrador revisa tu comprobante y aprueba. Te llega un aviso aquí cuando lo haga.</div>
+      <div class="note">⏳ <b>La aprobación toma de 24 a 48 horas</b>: el administrador confirma en su banco que el dinero llegó de verdad. Te llega un aviso aquí cuando responda.</div>
     </form></section>
   <section class="card"><h2>Mis solicitudes</h2>${d.mine.length ? d.mine.map(r => reqRow(r, false)).join('') : '<div class="empty">Todavía no has pedido ningún Potenciador.</div>'}</section>`;
   const adminPart = d.isAdmin ? `
   <section class="card"><h2>Solicitudes de tus usuarios ${d.admin.requests.filter(r => r.status === 'pendiente').length ? `<span class="chip warn">${d.admin.requests.filter(r => r.status === 'pendiente').length} por revisar</span>` : ''}</h2>
-    <div class="note">Revisa que el pago te llegó de verdad antes de aprobar. Al aprobar, los créditos se le suman al momento.</div>
+    <div class="note">Tienes de 24 a 48 horas para responder (a tus usuarios se les dice eso). Antes de aprobar, confirma en tu banco que llegó <b>la cantidad exacta</b>. Si pasan 24 horas sin responder, JARVIS te lo recuerda.</div>
     ${d.admin.requests.length ? d.admin.requests.map(r => reqRow(r, true)).join('') : '<div class="empty">No hay solicitudes todavía.</div>'}<div class="msg" id="amsg"></div></section>
   <section class="card"><h2>Créditos de cada usuario</h2>${d.admin.users.length ? `<div class="tablewrap"><table><tr><th>Persona</th><th class="r">Gratis del mes</th><th class="r">Extra</th><th class="r">Regalar</th></tr>${d.admin.users.map(u => `<tr><td>${esc(u.name)}${u.pending ? ' <span class="chip warn">pidió</span>' : ''}</td><td class="r">${u.baseLeft}/${u.base}</td><td class="r"><b>${u.extra}</b></td><td class="r"><span class="row" style="gap:6px;justify-content:flex-end"><input type="number" class="gift" data-u="${u.id}" placeholder="50" style="width:80px"><button class="btn ghost sm" data-gift="${u.id}">Dar</button></span></td></tr>`).join('')}</table></div>` : '<div class="empty">Todavía no has creado usuarios.</div>'}
     <div class="note">La IA gratis de cada mes es la que pusiste al crear el usuario ("IA gratis al mes") (1 crédito = 1 centavo de dólar de IA).</div></section>
@@ -1148,7 +1151,9 @@ views.potenciador = async () => {
       <div class="grid g3" style="gap:8px;margin-top:6px"><label>A nombre de<input data-ac="${i}" data-f="holder" value="${esc(a.holder || '')}" maxlength="60"></label><label>Cédula o RNC<input data-ac="${i}" data-f="cedula" value="${esc(a.cedula || '')}" inputmode="numeric" maxlength="20"></label><label>Nota (opcional)<input data-ac="${i}" data-f="note" value="${esc(a.note || '')}" maxlength="80" placeholder="Ej.: también acepto depósito"></label></div></div>`; }).join('')}
     <div class="note">Solo lo ven tus usuarios cuando van a pagar. Deja el banco en "ninguna" para quitar una cuenta.</div>
     <h3 style="margin-top:12px">Paquetes</h3>
-    ${[0, 1, 2].map(i => { const p = d.packs[i] || {}; return `<div class="grid g4" style="gap:8px"><label>Nombre<input data-pk="${i}" data-f="name" value="${esc(p.name || '')}" maxlength="40"></label><label>Precio<input data-pk="${i}" data-f="price" value="${esc(p.price || '')}" maxlength="24" placeholder="RD$300"></label><label>Créditos<input data-pk="${i}" data-f="credits" type="number" value="${p.credits || ''}"></label><label>Tipo<select data-pk="${i}" data-f="kind"><option value="una_vez"${p.kind !== 'mensual' ? ' selected' : ''}>De una vez</option><option value="mensual"${p.kind === 'mensual' ? ' selected' : ''}>Plan mensual (se renueva)</option></select></label></div>`; }).join('')}
+    <div class="econ"><div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap"><label style="width:170px">Tu ganancia (multiplica el costo)<select id="pmar">${[1.5, 2, 2.5, 3].map(m => `<option value="${m}"${Number(d.admin.margin) === m ? ' selected' : ''}>×${m}${m === 2 ? ' (el doble)' : ''}</option>`).join('')}</select></label><button type="button" class="btn ghost" id="pauto">Calcular precios con mi ganancia</button></div>
+      <div class="note" style="margin-top:6px">1 crédito = US$0.01 de lo que te cobra la IA a ti. Con ×2, si 500 créditos te cuestan US$5, tu usuario te paga US$10 (unos RD$${Math.ceil(10 * d.admin.rate / 5) * 5}). Dólar a RD$${Number(d.admin.rate).toFixed(2)} (${esc(d.admin.rateSource)}).</div></div>
+    ${[0, 1, 2].map(i => { const p = d.packs[i] || {}; return `<div class="grid g4" style="gap:8px"><label>Nombre<input data-pk="${i}" data-f="name" value="${esc(p.name || '')}" maxlength="40"></label><label>Precio<input data-pk="${i}" data-f="price" value="${esc(p.price || '')}" maxlength="24" placeholder="RD$300"></label><label>Créditos<input data-pk="${i}" data-f="credits" type="number" value="${p.credits || ''}"></label><label>Tipo<select data-pk="${i}" data-f="kind"><option value="una_vez"${p.kind !== 'mensual' ? ' selected' : ''}>De una vez</option><option value="mensual"${p.kind === 'mensual' ? ' selected' : ''}>Plan mensual (se renueva)</option></select></label></div>${d.admin.economics[i] ? `<div class="note econline">Te cuesta como máximo <b>US$${d.admin.economics[i].costUsd.toFixed(2)}</b> en IA · con ×${d.admin.margin} cobras <b>RD$${d.admin.economics[i].chargeRd}</b> · ganas unos <b class="good">US$${d.admin.economics[i].profitUsd.toFixed(2)}</b></div>` : ''}`; }).join('')}
     <label>Otras instrucciones de pago (opcional)<textarea id="ppay" rows="3" maxlength="600" placeholder="Ej.: Si depositas en efectivo, manda foto del recibo.">${esc(d.payInfo)}</textarea></label>
     <button class="btn">Guardar</button><div class="msg" id="psm"></div></form></section>` : '';
   return `<div><h1>⚡ Potenciador de IA</h1><p class="sub">${d.isAdmin ? 'Aquí apruebas los pagos de tus usuarios y decides los paquetes.' : 'Más respuestas de la IA cuando las necesites.'}</p></div>${d.isAdmin ? adminPart : userPart}`;
@@ -1160,19 +1165,26 @@ views.potenciador.after = () => {
   if ($('#pf2')) $('#pf2').onsubmit = async e => {
     e.preventDefault();
     if (!receipt) { $('#pmsg').className = 'msg err'; $('#pmsg').textContent = 'Falta la foto del comprobante.'; return; }
-    try { await api('/api/potenciador', { method: 'POST', body: { packId: document.querySelector('input[name=pack]:checked')?.value, receipt, reference: $('#pref').value, note: $('#pnt').value, payerName: $('#ppn').value, payerBank: $('#ppb').value } }); $('#pmsg').className = 'msg ok'; $('#pmsg').textContent = '¡Enviado! Te aviso cuando el administrador lo apruebe.'; setTimeout(render, 1400); }
+    try { await api('/api/potenciador', { method: 'POST', body: { packId: document.querySelector('input[name=pack]:checked')?.value, receipt, reference: $('#pref').value, note: $('#pnt').value, payerName: $('#ppn').value, payerBank: $('#ppb').value, amount: $('#ppa').value, currency: $('#ppc').value } }); $('#pmsg').className = 'msg ok'; $('#pmsg').textContent = '¡Enviado! El administrador confirma que el dinero llegó a su banco y te responde en 24 a 48 horas. Te llega un aviso aquí.'; setTimeout(render, 1400); }
     catch (err) { $('#pmsg').className = 'msg err'; $('#pmsg').textContent = err.message; }
   };
   const decide = async (id, approve) => { try { await api(`/api/potenciador/${id}/decidir`, { method: 'POST', body: { approve, note: document.querySelector(`.pnote[data-id="${id}"]`)?.value || '' } }); render(); } catch (err) { $('#amsg').className = 'msg err'; $('#amsg').textContent = err.message; } };
   document.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => decide(b.dataset.ok, true));
   document.querySelectorAll('[data-no]').forEach(b => b.onclick = () => decide(b.dataset.no, false));
   document.querySelectorAll('[data-gift]').forEach(b => b.onclick = async () => { const n = Number(document.querySelector(`.gift[data-u="${b.dataset.gift}"]`).value); try { await api('/api/potenciador/regalar', { method: 'POST', body: { userId: Number(b.dataset.gift), credits: n } }); render(); } catch (err) { alertMsg(err.message); } });
+  if ($('#pauto')) $('#pauto').onclick = () => {
+    const m = Number($('#pmar').value), rate = window.__potRate || 62;
+    [0, 1, 2].forEach(i => { const c = Number(document.querySelector(`[data-pk="${i}"][data-f=credits]`).value); if (!c) return;
+      const rd = Math.ceil(c * 0.01 * m * rate / 5) * 5, kind = document.querySelector(`[data-pk="${i}"][data-f=kind]`).value;
+      document.querySelector(`[data-pk="${i}"][data-f=price]`).value = `RD$${rd}${kind === 'mensual' ? ' al mes' : ''}`; });
+    $('#psm').className = 'msg ok'; $('#psm').textContent = 'Precios calculados. Revisa y toca Guardar.';
+  };
   if ($('#pset')) $('#pset').onsubmit = async e => {
     e.preventDefault();
     const f = (sel, i, k) => document.querySelector(`[${sel}="${i}"][data-f=${k}]`).value;
     const packs = [0, 1, 2].map(i => ({ name: f('data-pk', i, 'name'), price: f('data-pk', i, 'price'), credits: Number(f('data-pk', i, 'credits')), kind: f('data-pk', i, 'kind') })).filter(p => p.name || p.price || p.credits);
     const accounts = [0, 1, 2].map(i => ({ bank: f('data-ac', i, 'bank'), type: f('data-ac', i, 'type'), number: f('data-ac', i, 'number'), holder: f('data-ac', i, 'holder'), cedula: f('data-ac', i, 'cedula'), note: f('data-ac', i, 'note') })).filter(a => a.bank);
-    try { await api('/api/potenciador/ajustes', { method: 'POST', body: { packs, accounts, payInfo: $('#ppay').value } }); $('#psm').className = 'msg ok'; $('#psm').textContent = 'Guardado.'; } catch (err) { $('#psm').className = 'msg err'; $('#psm').textContent = err.message; }
+    try { await api('/api/potenciador/ajustes', { method: 'POST', body: { packs, accounts, payInfo: $('#ppay').value, margin: Number($('#pmar').value) } }); $('#psm').className = 'msg ok'; $('#psm').textContent = 'Guardado.'; } catch (err) { $('#psm').className = 'msg err'; $('#psm').textContent = err.message; }
   };
 };
 function alertMsg(t) { const m = $('#amsg'); if (m) { m.className = 'msg err'; m.textContent = t; } }
