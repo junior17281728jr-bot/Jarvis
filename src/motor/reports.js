@@ -39,7 +39,7 @@ export function home(db, cfg, user) {
   const azar = liveMethodStats(db).find(m => m.method === 'azar');
   const heartbeat = getSetting(db, 'global', 'motor.heartbeat', null);
   const mv = mapView(db, { userId: user.id }), mb = mv.best;
-  return { budget: getBudget(db, user.id), myBest: mb ? { symbol: mb.symbol, light: mb.card.light, probBeat: mb.card.probBeat, timing: mb.card.timing, reasons: mb.card.reasons } : null, styleLabel: mv.styleLabel,
+  return { budget: getBudget(db, user.id), myBest: mb ? { symbol: mb.symbol, light: mb.card.light, probBeat: mb.card.probBeat, timing: mb.card.timing, reasons: mb.card.reasons, contributions: mb.card.contributions } : null, styleLabel: mv.styleLabel,
     user: { username: user.username, role: user.role },
     system: { heartbeat, alive: heartbeat ? Date.now() - Date.parse(heartbeat) < 20 * 60e3 : false, motor: getSetting(db, 'global', 'motor.state', { running: false }) },
     ai: aiSpend(db, cfg),

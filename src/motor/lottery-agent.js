@@ -75,3 +75,32 @@ export function reviewEffort(db) {
   }
   return effort;
 }
+
+/**
+ * 🗳️ Votación: cada método popular propone sus 3 números para el próximo sorteo y se cuentan los votos.
+ * Honestidad: en un sorteo justo cada número tiene 3 de 100 de salir en quiniela, voten lo que voten.
+ * El "récord" de cada método es real (jugadas virtuales selladas antes del sorteo).
+ */
+export function methodVotes(db, game, { now = new Date() } = {}) {
+  const nd = nextDraw(game, now), hist = history(db, game, { until: nd.date });
+  if (hist.length < 10) return null;
+  const live = Object.fromEntries(liveMethodStats(db).map(m => [m.method, m]));
+  const azar = live.azar;
+  const voters = Object.entries(METHODS).filter(([k]) => k !== 'azar').map(([k, m]) => {
+    const nums = m.pick(hist, 'quiniela', rng(parseInt(sha256(game + nd.date + k).slice(0, 8), 16)));
+    const L = live[k];
+    return { method: k, label: m.label, why: m.why, nums, n: L?.n || 0, wins: L?.wins || 0, per100: L?.per100 ?? null, beatsChance: L && azar && L.n >= 30 ? L.per100 > azar.per100 : null };
+  });
+  const tally = {};
+  for (const v of voters) for (const x of v.nums) (tally[x] ||= { num: x, votes: 0, by: [] }), tally[x].votes++, tally[x].by.push(v.label);
+  const ranked = Object.values(tally).sort((a, b) => b.votes - a.votes || (a.num < b.num ? -1 : 1));
+  const top = ranked.slice(0, 3);
+  const anyBeats = voters.some(v => v.beatsChance);
+  return {
+    game, date: nd.date, voters, top, totalVoters: voters.length,
+    chance: 'En quiniela salen 3 números de 100 (del 00 al 99): cada número tiene 3 de cada 100 de salir, sea cual sea.',
+    verdict: anyBeats ? 'Algún método le va ganando al azar en las jugadas reales; sigue en observación (puede ser suerte).'
+      : voters.every(v => v.n < 30) ? 'Todavía hay pocas jugadas reales para saber si algún método sirve.'
+      : 'Ningún método le gana al azar en las jugadas reales: estos números son tan buenos como cualquier otro.',
+  };
+}

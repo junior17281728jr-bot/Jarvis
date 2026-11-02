@@ -16,7 +16,7 @@ import { home, predictionStats, aiSpend, dailySummary } from './motor/reports.js
 import { latestRanking, debateTop } from './motor/recommend.js';
 import { leagueTable, cheatReports, ensureAgents } from './motor/league.js';
 import { strategiesSummary, seedAgenda } from './motor/research.js';
-import { pickOfTheDay, liveMethodStats } from './motor/lottery-agent.js';
+import { pickOfTheDay, liveMethodStats, methodVotes } from './motor/lottery-agent.js';
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
@@ -248,7 +248,7 @@ route('GET', '/api/lottery', () => cached('lottery', 30 * 60e3, () => {
     let nd = null; try { nd = nextDraw(g.id); } catch { /* sin horario */ }
     return { id: g.id, name: g.name, entity: g.entity, timeVerified: g.verified, next: nd ? { date: nd.date, closesAt: nd.close.toISOString() } : null, draws: h.length, last: h.slice(-10).reverse(),
       freq: h.length ? frequencies(h).total : null, insights: h.length ? numberInsights(h, 10) : [], scan: h.length >= 10 ? scan(h, { sims: 400 }) : null,
-      compare: h.length >= 20 ? compareMethods(h, 'quiniela', { sims: 200, P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) }) : null, pick: (() => { try { return pickOfTheDay(db, g.id); } catch { return null; } })() };
+      compare: h.length >= 20 ? compareMethods(h, 'quiniela', { sims: 200, P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) }) : null, pick: (() => { try { return pickOfTheDay(db, g.id); } catch { return null; } })(), votes: (() => { try { return methodVotes(db, g.id); } catch { return null; } })() };
   });
   return { games, live: liveMethodStats(db), stats: playStats(db, { agent: 'loteria' }), payouts: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS), expected: (() => { const P = getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS); return { quiniela: round(expectedReturn('quiniela', P) * 100, 2), pale: round(expectedReturn('pale', P) * 100, 2), tripleta: round(expectedReturn('tripleta', P) * 100, 2) }; })() };
 }));

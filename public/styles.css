@@ -53,7 +53,7 @@ h1{font-size:26px;margin:0;letter-spacing:-.01em} h2{font-size:15px;margin:0;let
 .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)} .muted{color:var(--mute)}
 
 /* Frase de 10 segundos */
-.hero{display:flex;gap:20px;align-items:center;border-radius:18px;padding:20px 22px;background:linear-gradient(100deg,var(--info-bg),var(--panel) 60%);border:1px solid var(--line)}
+.hero{display:flex;flex-wrap:wrap;gap:20px;align-items:center;border-radius:18px;padding:20px 22px;background:linear-gradient(100deg,var(--info-bg),var(--panel) 60%);border:1px solid var(--line)}
 .hero .big{font-size:22px;font-weight:800;letter-spacing:-.01em}
 .hero .tag{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:800}
 
@@ -460,3 +460,9 @@ abbr.gl{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .legaldoc{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:12px 14px}
 .legaltext{white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.55;margin:0}
 .card.locked form{opacity:.45;pointer-events:none}
+.vote-top{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px}.vt{display:flex;gap:12px;align-items:center;min-width:180px}.vt-c{display:grid;gap:6px;min-width:110px}
+.ball.big{width:64px;height:64px;font-size:26px}.vbar{height:8px;border-radius:8px;background:var(--panel2);overflow:hidden}.vbar span{display:block;height:100%;background:var(--accent)}
+.votes{flex-basis:100%;margin-top:10px;display:grid;gap:6px}.votes-h{font-size:14px}.vchips{display:flex;flex-wrap:wrap;gap:6px}
+.vchip{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line)}.vchip.yes{background:var(--good-bg);border-color:var(--good);color:var(--good)}.vchip.no{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
+.conf-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.conf-v{font-size:28px;font-weight:800}.conf-v.good{color:var(--good)}.conf-v.warn{color:var(--warn)}.conf-v.bad{color:var(--bad)}.conf-v.accent{color:var(--accent)}
+.conf-m{text-align:right}.conf-big{font-size:40px;font-weight:800;line-height:1}.conf-big small{font-size:18px;color:var(--mute)}

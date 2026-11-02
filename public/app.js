@@ -290,6 +290,30 @@ async function showAuth() {
 let ME = null;
 const views = {};
 
+// ---------- 🗳️ Votación de señales y 🧠 qué tan seguro está JARVIS ----------
+const VOTE_NAME = { tendencia: 'Cómo va su precio', historial: 'Lo que JARVIS ya acertó con ella', empresa: 'Salud de la empresa', riesgo: 'Qué tan riesgosa es', polemicas: 'Noticias graves' };
+function votesHtml(contribs) {
+  const c = (contribs || []).filter(x => VOTE_NAME[x.factor]); if (!c.length) return '';
+  const yes = c.filter(x => x.value > 0.05), no = c.filter(x => x.value < -0.05), mid = c.length - yes.length - no.length;
+  return `<div class="votes"><div class="votes-h">🗳️ <b>${yes.length} de ${c.length} señales votan a favor</b>${no.length ? ` · ${no.length} en contra` : ''}${mid ? ` · ${mid} neutral${mid > 1 ? 'es' : ''}` : ''}</div>
+    <div class="vchips">${c.map(x => `<span class="vchip ${x.value > 0.05 ? 'yes' : x.value < -0.05 ? 'no' : 'mid'}">${x.value > 0.05 ? '👍' : x.value < -0.05 ? '👎' : '✋'} ${esc(VOTE_NAME[x.factor])}</span>`).join('')}</div></div>`;
+}
+function confidenceCard() {
+  const ev = MYBUDGET?.evidence; if (!ev) return '';
+  const NEED = 50, n = ev.n || 0, hr = ev.hitRate, lo = ev.lo || 0;
+  const level = n < 20 ? ['Aprendiendo', 'warn', 'Todavía tiene muy pocas recomendaciones terminadas para saber si acierta. Por eso te pide poner poco.']
+    : lo > 0.55 ? ['Seguro', 'good', 'Ya demostró con casos reales que acierta más que la suerte.']
+    : lo > 0.5 ? ['Medio', 'accent', 'Va acertando más que la suerte, pero todavía puede ser casualidad.']
+    : ['Todavía no', 'bad', 'Con lo que ha visto hasta ahora, acierta casi como lanzar una moneda. Sigue aprendiendo y no te deja poner más.'];
+  const pctNeed = Math.min(100, Math.round(n / NEED * 100));
+  return `<section class="card conf"><div class="conf-h"><div><div class="s10-h">🧠 Qué tan seguro está JARVIS</div><div class="conf-v ${level[1]}">${level[0]}</div></div>
+    <div class="conf-m"><div class="conf-big">${hr != null ? `${Math.round(hr * 10)}<small>/10</small>` : '—'}</div><div class="note">aciertos</div></div></div>
+    <div class="note">${esc(level[2])}</div>
+    <div class="row" style="justify-content:space-between;margin-top:10px;font-size:14px"><span>Recomendaciones ya terminadas</span><b>${n} de ${NEED} para estar seguro</b></div>
+    <div class="vbar" style="height:10px;margin-top:6px"><span style="width:${pctNeed}%"></span></div>
+    <div class="note" style="margin-top:8px">Nadie puede acertar 100% en la bolsa (ni JARVIS, ni los bancos). Lo honesto es medir cuánto acierta de verdad y decírtelo. Cada día que trabaja suma casos y esta medida se vuelve más confiable.</div></section>`;
+}
+
 // ---------- 🎯 ¿Qué buscas? (prioridad corto / largo plazo) ----------
 const FOCUS_OPTS = [['corto', '⚡', 'Ganar en semanas', 'Corto plazo'], ['medio', '⚖️', 'En unos meses', 'Medio plazo'], ['largo', '🌳', 'A largo plazo', '1 año o más']];
 const focusShell = () => `<section class="card focuscard" id="focuscard"><h2>🎯 ¿Qué buscas ahora?</h2><div class="note">Toca una opción y JARVIS se concentra en buscar lo mejor para ese plazo.</div><div class="fopts" id="fopts">${FOCUS_OPTS.map(([k, i, t, sub]) => `<button type="button" class="fopt" data-h="${k}"><span class="fi">${i}</span><b>${t}</b><span class="note">${sub}</span></button>`).join('')}</div><div id="fres" class="note" style="margin-top:10px">Cargando…</div></section>`;
@@ -319,7 +343,9 @@ views.inicio = async () => {
     <div class="big">${best ? `Te recomiendo: ${esc(coName(best.symbol))} → ${best.light === 'verde' ? `invierte ${usd(baseAmt('verde'), 0)}` : `invierte poco (${usd(baseAmt('amarillo'), 0)})`}` : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar'}</div>
     <div class="sub">${best ? `${chanceDots(best.probBeat)}${patience(best.timing, best.light)} <a href="#analisis/${esc(best.symbol)}">Ver por qué ▸</a> · <a href="#mapa">Ver mi mapa ▸</a>` : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.'}</div>
     <div class="note" style="margin-top:4px">Tu dinero de práctica: <b class="${cls(h.account.returnPct)}">${usd(h.account.total)} (${pct(h.account.returnPct, 2)})</b> · ${alerts} aviso${alerts === 1 ? '' : 's'} hoy</div></div>
+    ${best ? votesHtml(best.contributions) : ''}
     <div class="pill">${h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>'}</div></section>
+  ${confidenceCard()}
   ${focusShell()}
 
   <section class="grid g4">
@@ -454,7 +480,7 @@ views.mapa = async () => {
   return `<div><h1>Tu mapa de inversión</h1><p class="sub">Ordenado para tu estilo: <b>${esc(m.styleLabel || 'Equilibrado')}</b> (<a href="#perfil">cambiar</a>). Todas las empresas que JARVIS sigue, de la que más te conviene a la que menos. Las que no sirven no se olvidan: se revisan cada día y, si aparece una mejor, la reemplaza.</p></div>
   <section class="card explorer"><div class="ex-ic">🔭</div><div><b>Explorando sin parar</b><div class="note">Ya estudió <b>${e.studied}</b> de ${e.pool} empresas y fondos grandes de EE. UU.${e.pending ? ` · le faltan ${e.pending}` : ''} · busca más cada ${esc(e.every)}${e.lastAt ? ` (la última vez: ${timeAgo(e.lastAt)})` : ''}. Si una lleva ${e.redStreak} revisiones seguidas en "No te recomiendo" y aparece otra mejor, la cambia; la que sale se vuelve a revisar cada ${e.recheckDays} días.</div>${m.aiIdeas?.length ? `<div class="aiideas"><b>✨ Sugeridas por la IA</b> <span class="note">(JARVIS las prueba con precios reales antes de recomendarlas)</span>${m.aiIdeas.map(x => `<div class="aiidea"><b>${esc(x.symbol)}</b> <span class="note">· ${esc(({ por_estudiar: '⏳ por estudiar', estudiada: '✅ estudiada', no_encontrada: '✕ sin datos reales' })[x.status] || x.status)}${x.verdict ? ' · ' + esc(x.verdict) : ''}</span><div class="note">${esc(x.why)}</div></div>`).join('')}</div>` : m.aiOn ? '<div class="note" style="margin-top:6px">✨ La IA propone empresas nuevas cada semana (y cuando tocas "¿Qué buscas ahora?" en Inicio).</div>' : ''}</div></section>
   ${b ? `<section class="card bestpick ${ZL[b.zone][2]}"><div class="s10-h">Tu mejor opción ahora</div><div class="bp">${coBadge(b.symbol, 72)}<div style="flex:1;min-width:0"><div class="bp-v">${esc(coName(b.symbol))}: ${esc(b.verdict)}</div>
-    <ul class="bp-l">${b.why.map(w => `<li>${esc(w)}</li>`).join('')}<li>⏳ ${esc(b.hold)}</li>${b.size ? `<li><b>¿Puedo poner más?</b> ${esc(b.size.more)}</li>` : ''}${b.exitIf.map(w => `<li class="note">${esc(w)}</li>`).join('')}</ul></div>
+    <ul class="bp-l">${b.why.map(w => `<li>${esc(w)}</li>`).join('')}<li>⏳ ${esc(b.hold)}</li>${b.size ? `<li><b>¿Puedo poner más?</b> ${esc(b.size.more)}</li>` : ''}${b.exitIf.map(w => `<li class="note">${esc(w)}</li>`).join('')}</ul></div>${b.card?.contributions ? votesHtml(b.card.contributions) : b.contributions ? votesHtml(b.contributions) : ''}
     <div class="bp-r">${chanceDots(b.card.probBeat)}${moneyRange(b.size?.usd || 10, scaleProj(b.card.projection.personal, b.size?.usd || 10))}<a class="btn" href="#analisis/${esc(b.symbol)}">Ver el análisis ▸</a></div></div></section>`
     : `<section class="card bestpick bad"><div class="bp-v">Hoy no te recomiendo invertir en ninguna.</div><div class="note">Esperar también es una decisión. JARVIS sigue explorando y te avisa al celular cuando una suba a "Te recomiendo".</div></section>`}
   <section class="card"><h2>El mapa de un vistazo</h2>${takeaway('cada bolita es una empresa. Arriba a la derecha está lo que más te conviene: le gana al mercado más veces y con US$10 lo probable es ganar.')}<div class="scatterwrap">${mapScatter(act)}</div>
@@ -732,7 +758,7 @@ views.loterias = async () => {
   <div id="gview"></div>`;
 };
 views.loterias.after = () => {
-  if ($('#lplusb')) $('#lplusb').onclick = async () => { $('#lplus').innerHTML = '<div class="note">Pensando…</div>'; try { const r = await api('/api/lottery/plus', { method: 'POST' }); $('#lplus').innerHTML = r.text ? `<div class="answer">${esc(r.text).replace(/\n/g, '<br>')}</div>` : `<div class="msg err">${esc(r.error || 'No se pudo.')}</div>`; } catch (err) { $('#lplus').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; } };
+  if ($('#lplusb')) $('#lplusb').onclick = async () => { $('#lplus').innerHTML = '<div class="note">Pensando…</div>'; try { const r = await api('/api/lottery/plus', { method: 'POST' }); $('#lplus').innerHTML = r.text ? `<div class="answer">${esc(r.text).replace(/\n/g, '<br>')}</div>` : `<div class="msg err">${esc(r.error || 'La IA no respondió. Revisa en Ajustes → Claves que la clave de ChatGPT esté puesta.')}</div>`; } catch (err) { $('#lplus').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; } };
   const L = window.__L;
   const show = id => {
     document.querySelectorAll('#gtabs button').forEach(b => b.classList.toggle('ghost', b.dataset.g !== id));
@@ -742,7 +768,13 @@ views.loterias.after = () => {
     const heat = g.freq ? Object.keys(g.freq).sort().map(n => { const c = g.freq[n]; const z = exp ? (c - exp) / Math.sqrt(exp) : 0;
       const bg = enough && z > 3 ? 'var(--bad)' : enough && z > 2 ? 'var(--warn)' : `color-mix(in srgb, var(--accent) ${Math.round(c / maxc * 55)}%, var(--panel2))`;
       return `<div style="background:${bg};color:var(--ink)" title="${n}: salió ${c} veces (esperado ${exp.toFixed(1)})">${n}</div>`; }).join('') : '';
+    const V = g.votes;
     $('#gview').innerHTML = `
+    ${V ? `<section class="card votecard"><h2>🗳️ Votación de los métodos <span class="more note">sorteo del ${esc(V.date)}</span></h2>
+      <div class="vote-top">${V.top.map(t => `<div class="vt"><span class="ball big">${esc(t.num)}</span><div class="vt-c"><b>${t.votes} de ${V.totalVoters} votos</b><div class="vbar"><span style="width:${Math.round(t.votes / V.totalVoters * 100)}%"></span></div></div></div>`).join('')}</div>
+      <div class="note" style="margin:8px 0">Los números que más métodos eligieron. <b>Probabilidad real:</b> ${esc(V.chance)}</div>
+      <details><summary class="note">Ver cómo votó cada método y cómo le va de verdad</summary><div class="tablewrap"><table><tr><th>Método</th><th>Su voto</th><th class="r">Jugadas reales</th><th class="r">¿Le gana al azar?</th></tr>${V.voters.map(v => `<tr><td><b>${esc(v.label)}</b><div class="note">${esc(v.why)}</div></td><td><div class="balls">${v.nums.map(n => `<span class="ball" style="width:30px;height:30px;font-size:13px">${esc(n)}</span>`).join('')}</div></td><td class="r">${v.n ? `${v.wins} premios en ${v.n}` : '—'}</td><td class="r">${v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>'}</td></tr>`).join('')}</table></div></details>
+      <div class="answer" style="margin-top:8px">🧠 ${esc(V.verdict)}</div></section>` : ''}
     <section class="grid g2">
       <div class="card"><h2>Su número del próximo sorteo</h2>${g.pick ? `<div class="balls" style="margin-bottom:8px">${g.pick.numbers.map(n => `<span class="ball">${esc(n)}</span>`).join('')} ${light(g.pick.light)}</div>
         <div><b>${esc(g.pick.methodLabel)}:</b> ${esc(g.pick.why)}</div><div class="note" style="margin-top:4px">${esc(g.pick.record)}</div>
