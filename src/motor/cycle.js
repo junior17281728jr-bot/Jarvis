@@ -7,6 +7,8 @@ import { rdDate } from '../core/util.js';
 import { collectAll, backfillHistory } from '../lottery/sources.js';
 import { runCalibration } from './calibration.js';
 import { retoStep } from './reto.js';
+import { evolveStep } from './evolution.js';
+import { findPairs } from './pairs.js';
 import { settlePending } from '../lottery/simulator.js';
 import { scan } from '../lottery/stats.js';
 import { history, repairLotteryData } from '../lottery/results.js';
@@ -64,6 +66,8 @@ const TASKS = [
   ['prueba_en_vivo', 15 * MIN, true, now => marketOpen(now)],
   ['cartera_ia', 60 * MIN, true, now => marketOpen(now)],
   ['reto_ia', 60 * MIN, true, now => marketOpen(now)],
+  ['evolucion', 3 * 60 * MIN, true],
+  ['parejas', 24 * 60 * MIN, true],
   ['ideas_acciones_ia', 7 * 24 * 60 * MIN, true],
   ['recordatorio_planes', 6 * 60 * MIN, false],
   ['explorar', 6 * 60 * MIN, true],
@@ -114,6 +118,8 @@ async function runTask(name, db, cfg, now, fetchImpl) {
     case 'prueba_en_vivo': return liveStep(db, { symbols: syms, now, bench: BENCH });
     case 'cartera_ia': return autopilotStep(db, { now });
     case 'reto_ia': return retoStep(db, { now });
+    case 'evolucion': return evolveStep(db, { symbols: syms, bench: BENCH });
+    case 'parejas': { const extra = db.prepare("SELECT symbol FROM map_entries WHERE light != 'rojo'").all().map(r => r.symbol); return findPairs(db, { symbols: [...new Set([...syms, ...extra])].slice(0, 45), bench: BENCH }); }
     case 'recordatorio_planes': return { planes: planReminders(db), pendientes: adminPendingReminder(db) };
     case 'ideas_acciones_ia': { const adm = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get(); return suggestStocks(db, cfg, { fetchImpl, horizon: adm ? getProfile(db, adm.id).horizon : 'medio' }); }
     case 'ranking': { resolveRanking(db, BENCH); const cards = buildRanking(db, { symbols: syms, bench: BENCH }); return { cards: cards.length, moves: updateMap(db, cards) }; }

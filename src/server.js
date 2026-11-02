@@ -19,6 +19,8 @@ import { strategiesSummary, seedAgenda } from './motor/research.js';
 import { pickOfTheDay, liveMethodStats, methodVotes , lotteryBoard } from './motor/lottery-agent.js';
 import { calibration } from './motor/calibration.js';
 import { retoView, setReto } from './motor/reto.js';
+import { evoView } from './motor/evolution.js';
+import { pairsView } from './motor/pairs.js';
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
@@ -375,6 +377,7 @@ route('GET', '/api/lottery/mine', ({ user }) => ({ stats: playStats(db, { userId
 route('GET', '/api/coins/audit', () => coinAudit(db));
 route('GET', '/api/calibracion', () => calibration(db));
 route('GET', '/api/reto', () => retoView(db));
+route('GET', '/api/cerebro', () => ({ evo: evoView(db), parejas: pairsView(db) }));
 route('POST', '/api/reto', async ({ req }) => { const b = await body(req); return setReto(db, { goalUsd: b.goalUsd, days: b.days, startUsd: b.startUsd, restart: !!b.restart }); }, { admin: true });
 // Registro de votos: qué votó JARVIS, qué pasó de verdad y si ganó o perdió su moneda
 route('GET', '/api/votes/recent', () => {

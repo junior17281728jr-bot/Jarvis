@@ -34,9 +34,9 @@ export function calibration(db) {
     range: { n: withRange.length, inside, pct: withRange.length ? round(inside / withRange.length * 100, 1) : null, target: 80 },
     lottery: { n: lot.length, said: lot.length ? round(lot.reduce((t, x) => t + x.prob, 0) / lot.length * 100, 1) : null, happened: lot.length ? round(lot.filter(x => x.correct).length / lot.length * 100, 1) : null },
     verdict: n < MIN_N ? `Todavía hay ${n} recomendaciones terminadas; con ${MIN_N} se puede saber si sus % se cumplen.`
-      : shrink >= 0.9 ? `Sus % se cumplen: dijo ${round(said * 100)}% en promedio y pasó ${round(happened * 100)}%.`
-      : happened <= 0.5 ? `Sus % NO se cumplen: dijo ${round(said * 100)}% y pasó ${round(happened * 100)}% (como lanzar una moneda). Por eso ahora sus % se muestran más cerca del 50%.`
-      : `Exagera un poco: dijo ${round(said * 100)}% y pasó ${round(happened * 100)}%. Sus % se corrigen solos (se quedan con el ${round(shrink * 100)}% de la ventaja que dice tener).`,
+      : shrink >= 0.9 ? `Sus % se cumplen: dijo ${Math.round(said * 100)}% en promedio y pasó ${Math.round(happened * 100)}%.`
+      : happened <= 0.5 ? `Sus % NO se cumplen: dijo ${Math.round(said * 100)}% y pasó ${Math.round(happened * 100)}% (como lanzar una moneda). Por eso ahora sus % se muestran más cerca del 50%.`
+      : `Exagera un poco: dijo ${Math.round(said * 100)}% y pasó ${Math.round(happened * 100)}%. Sus % se corrigen solos (se quedan con el ${Math.round(shrink * 100)}% de la ventaja que dice tener).`,
   };
 }
 

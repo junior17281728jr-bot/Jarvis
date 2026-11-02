@@ -374,3 +374,47 @@ test('reto de la IA: cuenta aparte, mide la presión (cuánto necesita por día)
   assert.equal(r2.goalUsd, 150); assert.notEqual(retoAccount(db).id, p.accountId, 'reto nuevo = cuenta nueva');
   assert.ok(['baja', 'media'].includes(retoPace(db).level), 'meta realista = poca presión');
 });
+
+test('evolución: inventa reglas sin repetir, solo con datos de entrenamiento, y las buenas van al examen final', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { saveBars } = await import('../src/stocks/market.js');
+  const { evolveStep } = await import('../src/motor/evolution.js');
+  const { runExperiment } = await import('../src/motor/research.js');
+  const { syntheticBars } = await import('../src/stocks/synthetic.js').catch(() => ({}));
+  const db = od(':memory:');
+  const mk = (seed, drift) => { let p = 100, x = seed; return Array.from({ length: 700 }, (_, i) => { x = (x * 16807) % 2147483647; p *= 1 + drift + ((x / 2147483647) - 0.5) * 0.03; const d = new Date(Date.UTC(2023, 0, 2) + i * 864e5).toISOString().slice(0, 10); return { ts: d, open: p, high: p * 1.01, low: p * 0.99, close: p, volume: 1e6 }; }); };
+  saveBars(db, 'SPY', { source: 'test', bars: mk(7, 0.0003) });
+  for (const [s, i] of [['AAA', 1], ['BBB', 2], ['CCC', 3], ['DDD', 4]]) saveBars(db, s, { source: 'test', bars: mk(100 + i, 0.0006) });
+  const r1 = evolveStep(db, { symbols: ['SPY', 'AAA', 'BBB', 'CCC', 'DDD'], size: 30, seed: 1 });
+  const r2 = evolveStep(db, { symbols: ['SPY', 'AAA', 'BBB', 'CCC', 'DDD'], size: 30, seed: 2 });
+  assert.equal(r1.tested, 30); assert.equal(r2.gen, 2);
+  // Una regla inventada se puede llevar al examen normal (familia "combinada")
+  db.prepare("INSERT INTO agenda (module, family, title, params, created_at, source) VALUES ('bolsa','combinada','x',?, '2026-01-01','evolucion')").run(JSON.stringify({ genes: [{ g: 'sobre_media', p: { n: 50 } }] }));
+  const it = db.prepare("SELECT * FROM agenda WHERE family = 'combinada' LIMIT 1").get();
+  const ex = runExperiment(db, { ...it, agent: 'largo' }, { symbols: ['SPY', 'AAA', 'BBB', 'CCC', 'DDD'] });
+  assert.ok(['no_validada', 'en_prueba', 'en_desarrollo'].includes(ex.status));
+  const { describe } = await import('../src/stocks/strategies.js');
+  assert.match(describe('combinada', JSON.parse(it.params)), /Regla inventada por JARVIS: Compra cuando el precio está por encima de su promedio de 50 días/);
+});
+
+test('parejas: con datos al azar no inventa parejas; con una pareja real, la encuentra', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { saveBars } = await import('../src/stocks/market.js');
+  const { findPairs } = await import('../src/motor/pairs.js');
+  const { rng } = await import('../src/core/util.js');
+  const build = withLink => {
+    const db = od(':memory:'), r = rng(withLink ? 5 : 6), n = 900, dates = Array.from({ length: n }, (_, i) => new Date(Date.UTC(2022, 0, 3) + i * 864e5).toISOString().slice(0, 10));
+    const spy = [], series = { A: [], B: [], C: [], D: [] }; let ps = 100; const px = { A: 100, B: 100, C: 100, D: 100 }; let prevA = 0, todayA = 0;
+    for (let i = 0; i < n; i++) {
+      const m = (r() - 0.5) * 0.01; ps *= 1 + m; spy.push({ ts: dates[i], open: ps, high: ps, low: ps, close: ps, volume: 1 });
+      for (const k of Object.keys(px)) { let e = (r() - 0.5) * 0.03; if (withLink && k === 'B') e = 0.5 * prevA + (r() - 0.5) * 0.02; if (k === 'A') todayA = e; px[k] *= 1 + m + e; series[k].push({ ts: dates[i], open: px[k], high: px[k], low: px[k], close: px[k], volume: 1 }); }
+      prevA = todayA; // B sigue a lo que hizo A AYER
+    }
+    saveBars(db, 'SPY', { source: 't', bars: spy }); for (const k of Object.keys(series)) saveBars(db, k, { source: 't', bars: series[k] });
+    return db;
+  };
+  const noise = build(false), r0 = findPairs(noise, { symbols: ['SPY', 'A', 'B', 'C', 'D'] });
+  assert.equal(r0.tested, 12); assert.equal(r0.found, 0, 'el azar no da parejas');
+  const linked = build(true), r1 = findPairs(linked, { symbols: ['SPY', 'A', 'B', 'C', 'D'] });
+  assert.ok(r1.found >= 1, 'encuentra A → B');
+});

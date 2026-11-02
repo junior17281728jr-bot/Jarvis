@@ -1,3 +1,4 @@
+import { ruleText, ruleTest } from './genes.js';
 // Familias de estrategias con parámetros. Cada señal usa solo datos hasta el cierre del día t
 // y se ejecuta en la apertura del día siguiente (así nunca ve el futuro).
 const sma = (b, t, n) => { if (t + 1 < n) return null; let s = 0; for (let i = t - n + 1; i <= t; i++) s += b[i].close; return s / n; };
@@ -63,6 +64,14 @@ Object.assign(FAMILIES, {
     label: 'Rebote en bandas de Bollinger', explain: p => `Compra cuando el precio cae ${p.k} desviaciones por debajo de su promedio de ${p.n} días (muy barato para lo normal) y vende cuando vuelve al promedio.`,
     grid: [[20, 2], [20, 1.5]].map(([n, k]) => ({ n, k })),
     target: (b, t, p, prev) => { const m = sma(b, t, p.n); if (m == null || t < p.n) return 0; let v = 0; for (let i = t - p.n + 1; i <= t; i++) v += (b[i].close - m) ** 2; const s = Math.sqrt(v / p.n); if (prev === 0 && b[t].close < m - p.k * s) return 1; if (prev === 1 && b[t].close >= m) return 0; return prev; },
+  },
+});
+
+// 🧬 Reglas que JARVIS inventa solo (ver genes.js y motor/evolution.js)
+Object.assign(FAMILIES, {
+  combinada: {
+    label: 'Regla inventada por JARVIS', explain: p => ruleText(p).replace(/^Compra cuando /, 'Compra cuando '),
+    grid: [], target: (b, t, p) => (ruleTest(b, t, p) ? 1 : 0),
   },
 });
 
