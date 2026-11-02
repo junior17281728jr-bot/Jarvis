@@ -28,13 +28,13 @@ test('las decisiones no ven el futuro', () => {
   assert.equal(getBars(db, 'X', { before: until }).length, 20);
 });
 
-test('cuenta de US$100 con operaciones de 5 a 10, costes y límites', () => {
+test('cuenta de US$100: sin monto fijo, pero con frenos (máx. 40% en una empresa), costes y límites', () => {
   const db = openDb(':memory:');
   const acc = ensureAccount(db, { owner: 'user:1', userId: 1, startCash: 100 });
   const now = new Date('2026-10-28T15:01:00Z');
   const fresh = { usable: true };
-  assert.equal(placeOrder(db, { accountId: acc.id, symbol: 'MSFT', side: 'buy', usd: 20, quote: q(500), now, quoteUsable: fresh }).ok, false);
-  assert.equal(placeOrder(db, { accountId: acc.id, symbol: 'MSFT', side: 'buy', usd: 3, quote: q(500), now, quoteUsable: fresh }).ok, false);
+  assert.equal(placeOrder(db, { accountId: acc.id, symbol: 'MSFT', side: 'buy', usd: 45, quote: q(500), now, quoteUsable: fresh }).ok, false, 'más del 40% en una sola empresa');
+  assert.equal(placeOrder(db, { accountId: acc.id, symbol: 'MSFT', side: 'buy', usd: 0.5, quote: q(500), now, quoteUsable: fresh }).ok, false, 'menos de US$1');
   assert.match(placeOrder(db, { accountId: acc.id, symbol: 'MSFT', side: 'buy', usd: 10, quote: q(500), now, quoteUsable: { usable: false, label: 'desactualizado' } }).reason, /no es actual/);
   const b = placeOrder(db, { accountId: acc.id, symbol: 'MSFT', side: 'buy', usd: 10, quote: q(500), now, quoteUsable: fresh });
   assert.equal(b.ok, true);
@@ -46,7 +46,7 @@ test('cuenta de US$100 con operaciones de 5 a 10, costes y límites', () => {
   assert.ok(v.realized > 0.9 && v.realized < 1);
   assert.equal(v.positions.length, 0);
   assert.equal(verifyLedger(db).ok, true);
-  assert.equal(PERSONAL_LIMITS.maxTradeUsd, 10);
+  assert.equal(PERSONAL_LIMITS.maxPerSymbolPct, 40); assert.ok(PERSONAL_LIMITS.maxTradeUsd > 1e6, 'sin monto fijo');
 });
 
 test('prueba histórica: ejecuta al día siguiente e incluye costes', () => {

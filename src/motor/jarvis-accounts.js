@@ -4,7 +4,7 @@
 // Todo sale de operaciones y jugadas selladas; nada se calcula "a ojo".
 import { valuation, ledgerState } from '../stocks/account.js';
 import { getQuote, marketOpen } from '../stocks/market.js';
-import { aiAccount, marketRegime, riskDecision } from './autopilot.js';
+import { aiAccount, marketRegime, riskDecision, aiConfig } from './autopilot.js';
 import { fx } from './insights.js';
 import { GAMES } from '../lottery/games.js';
 import { round } from '../core/util.js';
@@ -45,8 +45,8 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
     risk: { mode: getSetting(db, 'global', 'ia.lastStep', null)?.mode || 'normal', peak: getSetting(db, 'global', 'ia.peakTotal', null) },
   };
   // ---------- Lotería (su número de cada sorteo) ----------
-  const startRd = round(100 * rate, 2); // exacto: así se ve US$100.00 y no US$100.01
-  const picks = db.prepare("SELECT payload, outcome, correct, sealed_at FROM predictions WHERE module = 'loteria' ORDER BY sealed_at").all().map(r => ({ ...JSON.parse(r.payload), out: r.outcome ? JSON.parse(r.outcome) : null, correct: r.correct, sealedAt: r.sealed_at }));
+  const cfgIA = aiConfig(db), startRd = round(cfgIA.lotoUsd * rate, 2); // exacto: así se ve US$100.00 y no US$100.01
+  const picks = db.prepare("SELECT payload, outcome, correct, sealed_at FROM predictions WHERE module = 'loteria' AND sealed_at >= ? ORDER BY sealed_at").all(cfgIA.lotoSince || '').map(r => ({ ...JSON.parse(r.payload), out: r.outcome ? JSON.parse(r.outcome) : null, correct: r.correct, sealedAt: r.sealed_at }));
   const done = picks.filter(p => p.correct != null), pend = picks.filter(p => p.correct == null);
   const playedRd = picks.reduce((s, p) => s + (p.amountRd || 0), 0), wonRd = done.reduce((s, p) => s + (p.out?.prizeRd || 0), 0);
   const lostRd = done.filter(p => !p.correct).reduce((s, p) => s + (p.amountRd || 0), 0), pendingRd = pend.reduce((s, p) => s + (p.amountRd || 0), 0);
@@ -56,9 +56,9 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
   let bal = startRd, brokeAt = null;
   for (const p of done) { bal += (p.out?.prizeRd || 0) - (p.amountRd || 0); if (bal < 100 && !brokeAt) brokeAt = p.date; }
   const loteria = {
-    rate, startRd, startUsd: 100, playedRd, wonRd, lostRd, pendingRd, leftRd: startRd - playedRd + wonRd, netRd: wonRd - (playedRd - pendingRd),
+    rate, startRd, startUsd: cfgIA.lotoUsd, since: cfgIA.lotoSince, playedRd, wonRd, lostRd, pendingRd, leftRd: startRd - playedRd + wonRd, netRd: wonRd - (playedRd - pendingRd),
     plays: picks.length, settled: done.length, hits: done.filter(p => p.correct).length, byGame: Object.values(byGame), brokeAt,
-    note: 'Es el dinero de "su número" en cada sorteo (RD$100 por jugada). Aparte, JARVIS prueba 6 métodos para medirlos; esas jugadas de prueba no salen de este monedero.',
+    note: 'Es el dinero de "su número" en cada sorteo (RD$100 por número, 3 números por sorteo). Aparte, JARVIS prueba 6 métodos para medirlos; esas jugadas de prueba no salen de este monedero.',
   };
   return { rate, bolsa, loteria };
 }

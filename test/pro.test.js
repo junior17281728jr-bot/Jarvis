@@ -418,3 +418,21 @@ test('parejas: con datos al azar no inventa parejas; con una pareja real, la enc
   const linked = build(true), r1 = findPairs(linked, { symbols: ['SPY', 'A', 'B', 'C', 'D'] });
   assert.ok(r1.found >= 1, 'encuentra A → B');
 });
+
+test('dinero de la IA: cambiarlo empieza un periodo nuevo sin borrar el anterior; la lotería cuenta desde el cambio', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { aiAccount, setAiMoney, aiConfig } = await import('../src/motor/autopilot.js');
+  const { jarvisAccounts } = await import('../src/motor/jarvis-accounts.js');
+  const { sealLotteryPick } = await import('../src/motor/track.js');
+  const db = od(':memory:');
+  const a1 = aiAccount(db);
+  sealLotteryPick(db, { game: 'real', date: '2026-11-01', numbers: ['11', '22', '33'], method: 'frecuentes', why: 'x' }, { stake: 100 });
+  assert.equal(jarvisAccounts(db).loteria.playedRd, 300);
+  setAiMoney(db, { bolsaUsd: 500, lotoUsd: 50 });
+  const a2 = aiAccount(db);
+  assert.notEqual(a2.id, a1.id); assert.equal(a2.start_cash, 500);
+  assert.ok(db.prepare('SELECT 1 FROM accounts WHERE id = ?').get(a1.id), 'el periodo anterior sigue guardado');
+  const L = jarvisAccounts(db).loteria;
+  assert.equal(L.playedRd, 0, 'el monedero nuevo empieza limpio'); assert.equal(L.startUsd, 50);
+  assert.equal(aiConfig(db).history.length, 2);
+});

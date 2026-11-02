@@ -7,12 +7,35 @@ import { getQuote, quoteStatus, getBars } from '../stocks/market.js';
 import { getBudget, baseAmount } from './sizing.js';
 import { round, sd } from '../core/util.js';
 import { regimes } from './contexts.js';
+import { rememberBuy, contextFor, tradeLessons, judge } from './trade-lessons.js';
 
 export const AI_OWNER = 'jarvis:ia';
 const MAX_POSITIONS = 8, STOP_LOSS = -0.08, TRAIL = -0.10, TARGET_VOL = 0.25;
 
+/** ⚙️ Con cuánto dinero trabaja la IA. Cambiarlo NO borra nada: empieza un periodo nuevo y el anterior queda guardado. */
+export function aiConfig(db) { return { bolsaUsd: getBudget(db).usd || 100, lotoUsd: 100, n: 1, lotoSince: null, history: [], ...getSetting(db, 'global', 'ia.config', {}) }; }
 export function aiAccount(db) {
-  return ensureAccount(db, { owner: AI_OWNER, name: 'principal', startCash: getBudget(db).usd || 100 });
+  const c = aiConfig(db);
+  return ensureAccount(db, { owner: AI_OWNER, name: c.n > 1 ? `principal-${c.n}` : 'principal', startCash: c.bolsaUsd });
+}
+export function setAiMoney(db, { bolsaUsd, lotoUsd } = {}) {
+  const c = aiConfig(db), at = nowIso(), b = Number(bolsaUsd), l = Number(lotoUsd);
+  if (b > 0 && Math.abs(b - c.bolsaUsd) >= 0.01) {
+    const old = aiAccount(db), v = valuation(db, old.id, s => getQuote(db, s)?.price ?? null);
+    c.history.push({ at, kind: 'bolsa', from: c.bolsaUsd, to: b, period: c.n, endedWith: Math.round(v.total * 100) / 100 });
+    Object.assign(c, { bolsaUsd: b, n: c.n + 1 });
+    setSetting(db, 'global', 'ia.peakTotal', b);
+    activity(db, { agent: 'ia', type: 'cartera_ia', important: true, text: `⚙️ La IA empieza un periodo nuevo en la bolsa con US$${b} (el anterior terminó con US$${Math.round(v.total * 100) / 100} y queda guardado).` });
+  }
+  if (l > 0 && Math.abs(l - c.lotoUsd) >= 0.01) {
+    c.history.push({ at, kind: 'loteria', from: c.lotoUsd, to: l });
+    Object.assign(c, { lotoUsd: l, lotoSince: at });
+    setSetting(db, 'global', 'lottery.brokeNoted', false);
+    activity(db, { agent: 'loteria', type: 'loteria', important: true, text: `⚙️ El monedero de lotería de la IA empieza de nuevo con US$${l} (lo anterior queda en el historial).` });
+  }
+  c.history = c.history.slice(-30);
+  setSetting(db, 'global', 'ia.config', c);
+  return c;
 }
 function limitsFor(start, total = start) {
   return { minTradeUsd: 1, maxTradeUsd: Math.max(5, round(Math.max(start, total) * 0.30, 2)), maxPerSymbolPct: 30, minCashPct: 10, maxLossPct: 40 };
@@ -79,6 +102,7 @@ export function autopilotStep(db, { now = new Date() } = {}) {
   const cooling = new Set(db.prepare("SELECT DISTINCT symbol FROM trades WHERE account_id = ? AND side = 'sell' AND ts >= ?").all(acc.id, new Date(now.getTime() - 7 * 864e5).toISOString()).map(r => r.symbol));
   const picks = [...entries.values()].filter(e => e.zone === 'recomendada' && e.light === 'verde' && !held.has(e.symbol) && !cooling.has(e.symbol)).sort((a, b) => b.conv - a.conv);
   const mk = marketRegime(db);
+  const lessons = tradeLessons(db, [{ id: acc.id, owner: AI_OWNER }]);
   if (mk === 'bajista' && picks.length) { out.skipped.push({ symbol: '*', why: 'mercado bajista' }); out.regime = mk; setSetting(db, 'global', 'ia.lastStep', { at: nowIso(), ...out }); return out; }
   for (const e of picks) {
     if (held.size >= MAX_POSITIONS) break;
@@ -87,13 +111,19 @@ export function autopilotStep(db, { now = new Date() } = {}) {
     const d = riskDecision(db, { symbol: e.symbol, conv: e.conv, total: vNow.total, start: acc.start_cash, peak: peakTotal, vol });
     out.mode = d.mode;
     if (d.mode === 'defensa') { out.skipped.push({ symbol: '*', why: d.why }); if (getSetting(db, 'global', 'ia.defenseNoted', null) !== nowIso().slice(0, 10)) { say(d.why, true); setSetting(db, 'global', 'ia.defenseNoted', nowIso().slice(0, 10)); } break; }
+    // 📚 Lo que aprendió de sus propias operaciones: si con estas condiciones casi siempre pierde, no compra;
+    // si casi siempre gana, pone un poco más (máximo 30% en una empresa)
+    const card = (() => { try { const r = db.prepare('SELECT payload FROM recommendations WHERE symbol = ? ORDER BY id DESC LIMIT 1').get(e.symbol); return r ? JSON.parse(r.payload) : null; } catch { return null; } })();
+    const ctx = contextFor({ level: d.level, regime: mk, vol, card, light: e.light });
+    const L = judge(lessons, ctx);
+    if (L.avoid) { out.skipped.push({ symbol: e.symbol, why: L.why }); say(`No compré ${e.symbol}: ${L.why}`); continue; }
     // No puede usar el 10% de reserva: si no alcanza, compra con lo que se puede
-    const usd = Math.min(d.usd, round(vNow.cash - vNow.total * 0.10 - 0.05, 2), lim.maxTradeUsd);
+    const usd = Math.min(L.boost ? Math.min(d.usd * 1.5, vNow.total * 0.30) : d.usd, round(vNow.cash - vNow.total * 0.10 - 0.05, 2), lim.maxTradeUsd);
     if (usd < 1) { out.skipped.push({ symbol: e.symbol, why: 'sin efectivo libre (guarda 10% de reserva)' }); break; }
     const quote = getQuote(db, e.symbol), qs = quoteStatus(quote, now);
     if (!qs.usable) { out.skipped.push({ symbol: e.symbol, why: 'sin precio actual' }); continue; }
-    const r = placeOrder(db, { accountId: acc.id, symbol: e.symbol, side: 'buy', usd, quote, quoteUsable: qs, reason: `IA compra: está en "Te recomiendo". ${d.why}`, limits: lim, now });
-    if (r.ok) { held.add(e.symbol); out.bought.push(e.symbol); say(`La IA compró US$${round(r.qty * r.execPrice)} de ${e.symbol}. ${d.why}`, true); }
+    const r = placeOrder(db, { accountId: acc.id, symbol: e.symbol, side: 'buy', usd, quote, quoteUsable: qs, reason: `IA compra: está en "Te recomiendo". ${d.why}${L.why ? ' ' + L.why : ''}`, limits: lim, now });
+    if (r.ok) { held.add(e.symbol); out.bought.push(e.symbol); rememberBuy(db, { owner: AI_OWNER, symbol: e.symbol, ctx }); say(`La IA compró US$${round(r.qty * r.execPrice)} de ${e.symbol}. ${d.why}${L.why ? ' ' + L.why : ''}`, true); }
     else out.skipped.push({ symbol: e.symbol, why: r.reason });
   }
   setSetting(db, 'global', 'ia.lastStep', { at: nowIso(), ...out });

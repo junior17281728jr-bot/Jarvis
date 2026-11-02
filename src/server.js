@@ -21,6 +21,7 @@ import { calibration } from './motor/calibration.js';
 import { retoView, setReto } from './motor/reto.js';
 import { evoView } from './motor/evolution.js';
 import { pairsView } from './motor/pairs.js';
+import { followView } from './motor/follow.js';
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
@@ -39,7 +40,7 @@ import { stockAnalysis, lotteryAnalysis, explainAnalysis, analysisHistory, fetch
 import { historyList, performance, addReal, closeReal, realSummary } from './motor/track.js';
 import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
-import { aiView } from './motor/autopilot.js';
+import { aiView, aiConfig, setAiMoney } from './motor/autopilot.js';
 import { brainSummary, exportBrain, restoreBrain, brainFileInfo } from './core/brain.js';
 import { driveScript, newDriveToken, drivePing, driveLatest, driveLegal, queueLegalSync, DRIVE_URL_RE, DRIVE_KEEP } from './core/drive.js';
 import { buildMemory } from './core/memory.js';
@@ -87,7 +88,8 @@ function userAccount(user) {
   const name = getSetting(db, `user:${user.id}`, 'account.name', 'principal');
   return ensureAccount(db, { owner: `user:${user.id}`, userId: user.id, name, startCash: getBudget(db, user.id).usd ?? cfg.startCashUsd });
 }
-const tradeLimits = user => { const b = getBudget(db, user.id).usd; return { min: cfg.tradeMinUsd, max: Math.max(cfg.tradeMaxUsd, Math.round(b * 0.2)) }; };
+// Sin monto fijo: hasta 40% de tu dinero de práctica en una sola compra (el análisis sugiere cuánto)
+const tradeLimits = user => { const acc = userAccount(user), t = valuation(db, acc.id, x => getQuote(db, x)?.price ?? null).total; return { min: 1, max: Math.max(1, Math.floor(Math.max(t, getBudget(db, user.id).usd || 0) * 0.4)) }; };
 
 // ---------- Rutas ----------
 const routes = [];
@@ -377,7 +379,10 @@ route('GET', '/api/lottery/mine', ({ user }) => ({ stats: playStats(db, { userId
 route('GET', '/api/coins/audit', () => coinAudit(db));
 route('GET', '/api/calibracion', () => calibration(db));
 route('GET', '/api/reto', () => retoView(db));
+route('GET', '/api/ia/dinero', () => { const c = aiConfig(db); return { bolsaUsd: c.bolsaUsd, lotoUsd: c.lotoUsd, period: c.n, lotoSince: c.lotoSince, history: c.history.slice().reverse() }; }, { admin: true });
+route('POST', '/api/ia/dinero', async ({ req, user }) => { const b = await body(req); const c = setAiMoney(db, { bolsaUsd: b.bolsaUsd, lotoUsd: b.lotoUsd }); audit(db, user.id, 'dinero_ia', { bolsaUsd: c.bolsaUsd, lotoUsd: c.lotoUsd }); cache.clear(); return { ok: true, bolsaUsd: c.bolsaUsd, lotoUsd: c.lotoUsd, period: c.n }; }, { admin: true });
 route('GET', '/api/cerebro', () => ({ evo: evoView(db), parejas: pairsView(db) }));
+route('GET', '/api/sigue', ({ user }) => { const acc = userAccount(user); const v = valuation(db, acc.id, s => getQuote(db, s)?.price); return followView(db, { userTotal: v.total }); });
 route('POST', '/api/reto', async ({ req }) => { const b = await body(req); return setReto(db, { goalUsd: b.goalUsd, days: b.days, startUsd: b.startUsd, restart: !!b.restart }); }, { admin: true });
 // Registro de votos: qué votó JARVIS, qué pasó de verdad y si ganó o perdió su moneda
 route('GET', '/api/votes/recent', () => {

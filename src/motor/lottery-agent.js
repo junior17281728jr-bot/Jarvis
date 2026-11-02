@@ -22,8 +22,8 @@ const STAKE = 100;
  *  - Si no le alcanza para el mínimo, NO juega y lo avisa.
  */
 export function smartStake(db, method, count = 3) {
-  const rate = fx(db)?.rate || 60, startRd = round(100 * rate, 2);
-  const rows = db.prepare("SELECT payload, outcome FROM predictions WHERE module = 'loteria'").all();
+  const C = getSetting(db, 'global', 'ia.config', {}), rate = fx(db)?.rate || 60, startRd = round((C.lotoUsd || 100) * rate, 2);
+  const rows = db.prepare("SELECT payload, outcome FROM predictions WHERE module = 'loteria' AND sealed_at >= ?").all(C.lotoSince || '');
   const played = rows.reduce((t, r) => t + (JSON.parse(r.payload).amountRd || 0), 0);
   const won = rows.reduce((t, r) => t + (r.outcome ? JSON.parse(r.outcome).prizeRd || 0 : 0), 0);
   const leftRd = startRd - played + won;
@@ -209,7 +209,7 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
     upcoming.push({ game, name: GAMES[game].name, date: nd.date, time: drawTime(game, nd.date), closesAt: nd.close.toISOString(), verified: !!GAMES[game].verified,
       pick: pk ? { stakeWhy: pk.stakeWhy || null, numbers: pk.numbers, method: pk.method, methodLabel: pk.methodLabel || METHODS[pk.method]?.label || pk.method, why: pk.why || METHODS[pk.method]?.why || '', stakeRd: pk.amountRd ?? STAKE, perNumberRd: pk.perNumberRd ?? pk.amountRd ?? STAKE, sealedAt: pk.sealedAt, hash: pk.hash || null } : null,
       plays: playsFor(game, nd.date), enough, draws: history(db, game).length,
-      order: enough ? (() => { try { const v = methodVotes(db, game, { now }); return v ? { fair: v.fairProb, list: v.order.slice(0, 6).map(o => ({ num: o.num, prob: o.prob, votes: o.votes, rank: o.rank })) } : null; } catch { return null; } })() : null,
+      order: enough ? (() => { try { const v = methodVotes(db, game, { now }); return v ? { fair: v.fairProb, draws: v.draws, realShare: v.realShare, voters: v.totalVoters, list: v.order.slice(0, 6).map(o => ({ num: o.num, prob: o.prob, votes: o.votes, rank: o.rank, by: o.by, timesOut: o.timesOut })) } : null; } catch { return null; } })() : null,
       sources: enough ? null : (getSetting(db, 'global', 'lottery.sources', null)?.report || []).filter(x => x.game === game).map(x => ({ source: x.source, ok: x.ok, saved: x.saved, error: x.error })) });
   }
   upcoming.sort((a, b) => a.closesAt < b.closesAt ? -1 : 1);

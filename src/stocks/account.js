@@ -4,7 +4,8 @@ import { seal } from '../core/ledger.js';
 import { round } from '../core/util.js';
 
 export const DEFAULT_COSTS = Object.freeze({ commissionUsd: 0, spreadBps: 3, slippageBps: 5 });
-export const PERSONAL_LIMITS = Object.freeze({ minTradeUsd: 5, maxTradeUsd: 10, maxPerSymbolPct: 40, minCashPct: 10, maxLossPct: 30 });
+// Sin monto fijo: el monto lo decide el análisis; los frenos son % de tu dinero (máx. 40% en una empresa, 10% siempre en efectivo)
+export const PERSONAL_LIMITS = Object.freeze({ minTradeUsd: 1, maxTradeUsd: 1e9, maxPerSymbolPct: 40, minCashPct: 10, maxLossPct: 50 });
 export const STRATEGY_LIMITS = Object.freeze({ minTradeUsd: 1, maxTradeUsd: 1e9, maxPerSymbolPct: 100, minCashPct: 0, maxLossPct: 50 });
 
 export function ensureAccount(db, { owner, userId = null, name = 'principal', startCash = 100 }) {
