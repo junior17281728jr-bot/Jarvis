@@ -79,7 +79,7 @@ export function runExperiment(db, item, { symbols, bench = 'SPY' }) {
   const train = pooledExcess(db, item.family, params, symbols.filter(s => s !== bench), 'train', bench);
   let result = { train }, status, reason;
   if (train.n < 100) { status = 'en_desarrollo'; reason = 'Pocos datos todavía para probar.'; }
-  else if (train.t < CRITERIA.trainMinT) { status = 'no_validada'; reason = `No le ganó al mercado ni en los datos de práctica (t=${round(train.t, 2)}).`; }
+  else if (train.t < CRITERIA.trainMinT) { status = 'no_validada'; reason = 'La probé con años de precios reales y no ganó más que simplemente comprar el mercado y esperar. La descarto.'; }
   else {
     const hold = pooledExcess(db, item.family, params, symbols.filter(s => s !== bench), 'holdout', bench);
     result.holdout = hold;
@@ -88,8 +88,8 @@ export function runExperiment(db, item, { symbols, bench = 'SPY' }) {
     const all = [...prior.map(x => x.p), hold.p];
     const sig = benjaminiHochberg(all, CRITERIA.fdr).has(all.length - 1);
     result.testsSoFar = all.length;
-    if (sig && hold.trades >= CRITERIA.minTrades && hold.meanDaily > 0) { status = 'en_prueba'; reason = `Pasó el examen con datos bajo llave (t=${round(hold.t, 2)}, corregido por ${all.length} pruebas). Pasa a prueba en vivo.`; }
-    else { status = 'no_validada'; reason = `En el examen final no demostró ventaja (t=${round(hold.t, 2)}, ${all.length} pruebas hechas).`; }
+    if (sig && hold.trades >= CRITERIA.minTrades && hold.meanDaily > 0) { status = 'en_prueba'; reason = `¡Pasó el examen final con precios que nunca había visto (y con la exigencia extra por haber probado ${all.length} ideas)! Ahora la pruebo en vivo con dinero virtual.`; }
+    else { status = 'no_validada'; reason = 'Pasó la primera prueba, pero en el examen final (con precios que nunca había visto) no ganó más que el mercado. La descarto.'; }
   }
   db.prepare("UPDATE experiments SET status = 'decidido', result = ?, decided_at = ? WHERE id = ?").run(JSON.stringify(result), nowIso(), expId);
   db.prepare('UPDATE agenda SET tries = tries + 1, wins = wins + ? WHERE id = ?').run(status === 'en_prueba' ? 1 : 0, item.id);

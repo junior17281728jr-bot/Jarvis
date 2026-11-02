@@ -99,12 +99,17 @@ export async function exploreStep(db, cfg, { n = 3, fetchImpl = fetch, fetchBars
   const seen = new Map(db.prepare('SELECT symbol, zone, checked_at FROM map_entries').all().map(r => [r.symbol, r]));
   const due = s => { const r = seen.get(s); return !r || ((r.zone === 'candidata' || r.zone === 'descartada') && Date.parse(date) - Date.parse(r.checked_at) >= RECHECK_DAYS * 864e5); };
   const dropped = [...seen.values()].filter(r => r.zone === 'descartada').map(r => r.symbol);
-  const queue = [...new Set([...dropped, ...CANDIDATES])].filter(s => !inU.has(s) && s !== BENCH && due(s)).sort((a, b) => (seen.get(a)?.checked_at || '').localeCompare(seen.get(b)?.checked_at || ''));
+  // Primero lo que propuso la IA (si hay IA conectada); JARVIS lo prueba con precios reales igual que todo lo demás
+  const aiList = getSetting(db, 'global', 'explore.ai', []), aiNew = aiList.filter(x => x.status === 'por_estudiar').map(x => x.symbol);
+  const isAi = new Set(aiNew);
+  const queue = [...new Set([...aiNew, ...dropped, ...CANDIDATES])].filter(s => !inU.has(s) && s !== BENCH && due(s))
+    .sort((a, b) => (isAi.has(b) - isAi.has(a)) || (seen.get(a)?.checked_at || '').localeCompare(seen.get(b)?.checked_at || ''));
+  const markAi = (sym, status, extra = {}) => { if (!isAi.has(sym)) return; const it = aiList.find(x => x.symbol === sym); Object.assign(it, { status, checkedAt: nowIso(), ...extra }); setSetting(db, 'global', 'explore.ai', aiList); };
   const studied = [];
   for (const sym of queue.slice(0, n)) {
-    try { await (fetchBars ? fetchBars(sym) : updateSymbol(db, cfg, sym, { fetchImpl })); } catch (err) { studied.push({ symbol: sym, error: err.message }); continue; }
+    try { await (fetchBars ? fetchBars(sym) : updateSymbol(db, cfg, sym, { fetchImpl })); } catch (err) { studied.push({ symbol: sym, error: err.message }); markAi(sym, 'no_encontrada'); continue; }
     const card = cardFor(db, sym, spy);
-    if (!card) { studied.push({ symbol: sym, error: 'pocos precios' }); continue; }
+    if (!card) { studied.push({ symbol: sym, error: 'pocos precios' }); markAi(sym, 'no_encontrada'); continue; }
     delete card._bars;
     const e = explain(card), conv = convenience(card), prev = seen.get(sym);
     const zone = prev?.zone === 'descartada' ? 'descartada' : 'candidata';
@@ -113,6 +118,7 @@ export async function exploreStep(db, cfg, { n = 3, fetchImpl = fetch, fetchBars
       .run(sym, zone, conv, card.light, card.probBeat, date, date, JSON.stringify(compact(card)), e.verdict);
     if (!prev) move(db, { symbol: sym, from: null, to: 'candidata', reason: `Empecé a estudiarla: ${lc(e.verdict)} (conveniencia ${conv}).`, date });
     activity(db, { agent: 'largo', type: 'explorar', text: `Exploré ${sym}: ${lc(e.verdict)} · conveniencia ${conv}/100.` });
+    markAi(sym, 'estudiada', { conv, verdict: e.verdict });
     studied.push({ symbol: sym, conv, zone: e.zone });
   }
   // ¿Alguna estudiada es mejor que lo que ya está en el mapa?

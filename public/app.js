@@ -18,7 +18,22 @@ const scaleProj = (r, amt) => (r ? { ...r, bad: r.bad * amt / 10, probable: r.pr
 async function loadBudget() { try { MYBUDGET = await api('/api/budget'); } catch { MYBUDGET = null; } }
 const light = l => `<span class="light ${l}"><i></i>${LIGHT[l] || l}</span>`;
 const FACTOR = { tendencia: 'Cómo le va contra el mercado', historial: 'Aciertos previos de JARVIS', empresa: 'Salud de la empresa', riesgo: 'Cuánto sube y baja', polemicas: 'Noticias' };
-const STATUS = { en_desarrollo: 'En desarrollo', en_prueba: 'En prueba en vivo', en_evaluacion: 'En evaluación', validada: 'Validada (simulación)', no_validada: 'No validada', en_revision: 'En revisión', retirada: 'Retirada' };
+const STATUS = { en_desarrollo: '🛠️ Preparándose', en_prueba: '🧪 En prueba en vivo', en_evaluacion: '🔍 En evaluación', validada: '✅ Aprobada (con dinero virtual)', no_validada: '❌ Descartada', en_revision: '🔍 En revisión', retirada: '⏹️ Retirada' };
+const STATUS_TONE = { no_validada: 'bad', retirada: 'bad', en_prueba: 'warn', en_evaluacion: 'warn', en_revision: 'warn', validada: 'good' };
+const STRAT = {
+  comprar_y_mantener: () => 'Comprar y no vender nunca (es la referencia contra la que se compara todo).',
+  cruce_medias: p => `Comprar cuando el precio promedio de los últimos ${p.fast} días sube por encima del promedio de ${p.slow} días (señal de que empieza a subir), y vender cuando baja.`,
+  impulso: p => `Comprar las acciones que subieron en los últimos ${p.lookback} días (lo que sube suele seguir subiendo) y vender si empiezan a bajar.`,
+  rebote_rsi: p => `Comprar cuando una acción cayó mucho en pocos días (${p.period} días), esperando que rebote, y vender cuando se recupera.`,
+  ruptura: p => `Comprar cuando el precio pasa su punto más alto de los últimos ${p.n} días, y vender si cae a su punto más bajo de los últimos ${Math.round(p.n / 2)} días.`,
+};
+const stratText = (f, params) => { try { const p = typeof params === 'string' ? JSON.parse(params) : params; return STRAT[f] ? STRAT[f](p || {}) : String(f).replace(/_/g, ' '); } catch { return String(f).replace(/_/g, ' '); } };
+const plainReason = t => String(t || '')
+  .replace(/No le ganó al mercado ni en los datos de práctica \(t=[^)]*\)\./, 'La probé con años de precios reales y no ganó más que simplemente comprar el mercado y esperar. La descarto.')
+  .replace(/En el examen final no demostró ventaja \(t=[^)]*\)\./, 'Pasó la primera prueba, pero en el examen final (con precios que nunca había visto) no ganó más que el mercado. La descarto.')
+  .replace(/Pasó el examen con datos bajo llave \(t=[^)]*\)\. Pasa a prueba en vivo\./, '¡Pasó el examen final con precios que nunca había visto! Ahora la pruebo en vivo con dinero virtual.')
+  .replace(/\s*\(t=[^)]*\)/g, '');
+const AGENT_NAME = { largo: 'Agente de largo plazo', corto: 'Agente de corto plazo', polemicas: 'Cazador de noticias graves', loteria: 'Agente de loterías', ia: 'Cartera de la IA' };
 const GLOSS = {
   volatilidad: 'Cuánto sube y baja el precio. Más volatilidad = más riesgo.', 'SPY': 'Fondo que copia a las 500 empresas más grandes de EE. UU. Es la referencia del mercado.',
   confianza: 'Qué tan respaldada está la idea por datos y por el historial real de JARVIS. No es una garantía.', semáforo: 'Verde: buenas pruebas. Amarillo: hay dudas. Rojo: las razones en contra pesan más.',
@@ -31,7 +46,45 @@ const GLOSS = {
   'datos bajo llave': 'Una parte del historial que JARVIS nunca usa para crear estrategias, solo para el examen final.', 'pruebas múltiples': 'Si pruebas cientos de ideas, alguna gana por suerte. JARVIS exige más mientras más prueba.',
   bróker: 'La empresa donde se compran y venden acciones de verdad (JARVIS nunca se conecta a uno con dinero real).', 'polémica': 'Noticia que puede dañar a la empresa: demandas, fraudes, investigaciones, retiros de productos.',
   'tipo de cambio': 'Cuántos pesos dominicanos cuesta un dólar.', 'fondo de emergencia': 'Dinero guardado para imprevistos (3 a 6 meses de gastos). Va antes de invertir.',
+  'el mercado': 'Las 500 empresas más grandes de EE. UU. juntas (el fondo SPY). Es la vara para medir: si una acción no le gana al mercado, sería mejor comprar ese fondo y esperar.',
+  'informes oficiales': 'Los reportes de ventas, ganancias y deudas que la ley obliga a publicar a las empresas de EE. UU.',
+  conveniencia: 'Nota de 0 a 100 que resume qué tanto te conviene una opción según su historia, su riesgo y tu forma de invertir.',
+  probabilidad: 'De cada 10 casos parecidos en el pasado, cuántos salieron bien. Ayuda a decidir, pero no es una promesa.',
+  efectivo: 'Dinero que no está invertido, listo para usar.', cartera: 'El grupo de acciones que tienes compradas.',
+  'riesgo alto': 'Que el precio puede bajar mucho de golpe (aunque después se recupere). Pon menos dinero y ten paciencia.',
+  dividendo: 'Parte de las ganancias que algunas empresas reparten cada cierto tiempo a quienes tienen sus acciones.',
 };
+// Palabras que se marcan solas en cualquier pantalla (tócalas y sale qué significan)
+const GLOSS_AUTO = ['el mercado', 'volatilidad', 'informes oficiales', 'conveniencia', 'fondo de emergencia', 'caída máxima', 'diversificar', 'valor esperado', 'acción fraccionada', 'bróker', 'tipo de cambio', 'probabilidad', 'semáforo', 'riesgo alto', 'dividendo', 'SPY'];
+function glossify(root) {
+  if (!root) return;
+  const W = 'A-Za-z0-9áéíóúüñÁÉÍÓÚÜÑ', done = {};
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false), nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(n => {
+    const par = n.parentNode; if (!par || par.closest('a,button,abbr,input,textarea,select,label,script,style,.gl,h1,.tvbig,.pbox .v')) return;
+    let text = n.nodeValue, hit = null;
+    for (const k of GLOSS_AUTO) {
+      if (done[k]) continue;
+      const m = new RegExp('(^|[^' + W + '])(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?=$|[^' + W + '])', 'i').exec(text);
+      if (m && (!hit || m.index < hit.i)) hit = { i: m.index + m[1].length, len: m[2].length, k };
+    }
+    if (!hit) return;
+    done[hit.k] = true;
+    const ab = document.createElement('abbr'); ab.className = 'gl'; ab.dataset.g = hit.k; ab.title = GLOSS[hit.k]; ab.textContent = text.substr(hit.i, hit.len);
+    const after = document.createTextNode(text.slice(hit.i + hit.len));
+    n.nodeValue = text.slice(0, hit.i); par.insertBefore(ab, n.nextSibling); par.insertBefore(after, ab.nextSibling);
+  });
+}
+document.addEventListener('click', e => {
+  const g = e.target.closest && e.target.closest('abbr.gl, abbr[title]');
+  const old = document.getElementById('glpop'); if (old) old.remove();
+  if (!g || !(GLOSS[g.dataset.g] || g.title)) return;
+  e.preventDefault();
+  const pop = document.createElement('div'); pop.id = 'glpop'; pop.className = 'glpop';
+  const ttl = String(g.dataset.g || g.textContent); pop.innerHTML = `<b>${esc(ttl.charAt(0).toUpperCase() + ttl.slice(1))}</b><div>${esc(GLOSS[g.dataset.g] || g.title)}</div><div class="note">Toca en cualquier parte para cerrar</div>`;
+  document.body.appendChild(pop);
+});
 const term = (w, label = w) => `<abbr title="${esc(GLOSS[w] || '')}" style="text-decoration:underline dotted;cursor:help">${esc(label)}</abbr>`;
 
 // ---------- Marca propia ----------
@@ -379,7 +432,7 @@ views.mapa = async () => {
   const zname = k => (ZL[k] || ['', k])[1];
   const col = (k, list) => `<div class="mcol"><div class="mcol-h ${ZL[k][2]}">${ZL[k][0]} ${ZL[k][1]} <span class="note">(${list.length})</span></div>${list.length ? list.map(r => mapCard(r)).join('') : `<div class="empty">${k === 'recomendada' ? 'Hoy ninguna cumple. JARVIS sigue buscando.' : 'Ninguna.'}</div>`}</div>`;
   return `<div><h1>Tu mapa de inversión</h1><p class="sub">Ordenado para tu estilo: <b>${esc(m.styleLabel || 'Equilibrado')}</b> (<a href="#perfil">cambiar</a>). Todas las empresas que JARVIS sigue, de la que más te conviene a la que menos. Las que no sirven no se olvidan: se revisan cada día y, si aparece una mejor, la reemplaza.</p></div>
-  <section class="card explorer"><div class="ex-ic">🔭</div><div><b>Explorando sin parar</b><div class="note">Ya estudió <b>${e.studied}</b> de ${e.pool} empresas y fondos grandes de EE. UU.${e.pending ? ` · le faltan ${e.pending}` : ''} · busca más cada ${esc(e.every)}${e.lastAt ? ` (la última vez: ${timeAgo(e.lastAt)})` : ''}. Si una lleva ${e.redStreak} revisiones seguidas en "No te recomiendo" y aparece otra mejor, la cambia; la que sale se vuelve a revisar cada ${e.recheckDays} días.</div></div></section>
+  <section class="card explorer"><div class="ex-ic">🔭</div><div><b>Explorando sin parar</b><div class="note">Ya estudió <b>${e.studied}</b> de ${e.pool} empresas y fondos grandes de EE. UU.${e.pending ? ` · le faltan ${e.pending}` : ''} · busca más cada ${esc(e.every)}${e.lastAt ? ` (la última vez: ${timeAgo(e.lastAt)})` : ''}. Si una lleva ${e.redStreak} revisiones seguidas en "No te recomiendo" y aparece otra mejor, la cambia; la que sale se vuelve a revisar cada ${e.recheckDays} días.</div>${m.aiIdeas?.length ? `<div class="aiideas"><b>✨ Sugeridas por la IA</b> <span class="note">(JARVIS las prueba con precios reales antes de recomendarlas)</span>${m.aiIdeas.map(x => `<div class="aiidea"><b>${esc(x.symbol)}</b> <span class="note">· ${esc(({ por_estudiar: '⏳ por estudiar', estudiada: '✅ estudiada', no_encontrada: '✕ sin datos reales' })[x.status] || x.status)}${x.verdict ? ' · ' + esc(x.verdict) : ''}</span><div class="note">${esc(x.why)}</div></div>`).join('')}</div>` : m.aiOn ? '<div class="note" style="margin-top:6px">✨ La IA propone empresas nuevas cada semana (y cuando tocas "¿Qué buscas ahora?" en Inicio).</div>' : ''}</div></section>
   ${b ? `<section class="card bestpick ${ZL[b.zone][2]}"><div class="s10-h">Tu mejor opción ahora</div><div class="bp">${coBadge(b.symbol, 72)}<div style="flex:1;min-width:0"><div class="bp-v">${esc(coName(b.symbol))}: ${esc(b.verdict)}</div>
     <ul class="bp-l">${b.why.map(w => `<li>${esc(w)}</li>`).join('')}<li>⏳ ${esc(b.hold)}</li>${b.size ? `<li><b>¿Puedo poner más?</b> ${esc(b.size.more)}</li>` : ''}${b.exitIf.map(w => `<li class="note">${esc(w)}</li>`).join('')}</ul></div>
     <div class="bp-r">${chanceDots(b.card.probBeat)}${moneyRange(b.size?.usd || 10, scaleProj(b.card.projection.personal, b.size?.usd || 10))}<a class="btn" href="#analisis/${esc(b.symbol)}">Ver el análisis ▸</a></div></div></section>`
@@ -646,6 +699,8 @@ views.loterias = async () => {
   const g0 = L.games.find(g => g.draws) || L.games[0];
   window.__L = L;
   return `<div><h1>Loterías RD</h1><p class="sub">Resultados verificados, vigilancia de trampas y métodos puestos a prueba contra el azar. Si los sorteos son justos, ningún número es más probable que otro.</p></div>
+  <section class="card pluscard"><h2>✨ Explícame las loterías (IA)</h2><p class="note">La IA lee lo que encontró JARVIS (vigilancia de trampas, métodos probados, cuánto se pierde en promedio) y te lo explica en palabras simples, con consejos para jugar con cabeza. <b>Honestidad:</b> si los sorteos son justos, ninguna IA puede adivinar el próximo número.</p>
+    <div id="lplus"></div><button type="button" class="btn ghost" id="lplusb">Explícamelo</button></section>
   <section class="grid g4">
     <div class="card kpi"><div class="l">Jugadas virtuales</div><div class="v">${L.stats.settled}</div><div class="s">${L.stats.pending} pendientes de sorteo</div></div>
     <div class="card kpi" style="--c:var(--good)"><div class="l">Aciertos</div><div class="v">${L.stats.hitRate != null ? L.stats.hitRate + '%' : '—'}</div><div class="s">${L.stats.wins} premios · racha récord ${L.stats.streak.bestWin}</div></div>
@@ -656,6 +711,7 @@ views.loterias = async () => {
   <div id="gview"></div>`;
 };
 views.loterias.after = () => {
+  if ($('#lplusb')) $('#lplusb').onclick = async () => { $('#lplus').innerHTML = '<div class="note">Pensando…</div>'; try { const r = await api('/api/lottery/plus', { method: 'POST' }); $('#lplus').innerHTML = r.text ? `<div class="answer">${esc(r.text).replace(/\n/g, '<br>')}</div>` : `<div class="msg err">${esc(r.error || 'No se pudo.')}</div>`; } catch (err) { $('#lplus').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; } };
   const L = window.__L;
   const show = id => {
     document.querySelectorAll('#gtabs button').forEach(b => b.classList.toggle('ghost', b.dataset.g !== id));
@@ -696,15 +752,15 @@ views.loterias.after = () => {
 views.aprendizaje = async () => {
   const [d, wi, gr] = await Promise.all([api('/api/learning'), api('/api/whatif?usd=10'), api('/api/grade')]);
   const p = d.predictions, s = d.strategies;
-  return `<div><h1>Aprendizaje</h1><p class="sub">Aprender = mejorar en datos que no se usaron para crear la estrategia. Aquí está todo: aciertos, errores, cambios y trampas.</p></div>
+  return `<div><h1>Aprendizaje</h1><p class="sub">Aquí ves cómo JARVIS aprende: qué ideas prueba, cuáles descarta y por qué, cuántas veces acierta y cuántas falla. Todo queda guardado y no se puede borrar.</p></div>
   <section class="grid g4">
-    <div class="card kpi" style="--c:var(--good)"><div class="l">Predicciones selladas</div><div class="v">${p.total}</div><div class="s">${p.resolved} calificadas · ${p.pending} pendientes</div></div>
+    <div class="card kpi" style="--c:var(--good)"><div class="l">Recomendaciones guardadas</div><div class="v">${p.total}</div><div class="s">${p.resolved} ya se sabe si acertó · ${p.pending} esperando</div></div>
     <div class="card kpi" style="--c:var(--accent)"><div class="l">% de acierto</div><div class="v">${p.hitRate != null ? p.hitRate + '%' : '—'}</div><div class="s">${p.hits} aciertos / ${p.misses} fallos${p.range ? ` · rango ${p.range[0]}–${p.range[1]}%` : ''}</div></div>
-    <div class="card kpi" style="--c:var(--warn)"><div class="l">Rachas</div><div class="v">${p.streak.current}</div><div class="s">actual (${p.streak.type || '—'}) · récord ${p.streak.bestHits} aciertos / ${p.streak.bestMisses} fallos</div></div>
-    <div class="card kpi" style="--c:var(--violet)"><div class="l">Experimentos</div><div class="v">${s.experiments}</div><div class="s">${s.byStatus.en_prueba || 0} en prueba en vivo · ${s.byStatus.validada || 0} validadas</div></div>
+    <div class="card kpi" style="--c:var(--warn)"><div class="l">Racha actual</div><div class="v">${p.streak.current}</div><div class="s">${p.streak.current ? `${p.streak.type === 'acierto' ? 'aciertos' : 'fallos'} seguidos` : 'sin racha'} · mejor racha: ${p.streak.bestHits} aciertos seguidos</div></div>
+    <div class="card kpi" style="--c:var(--violet)"><div class="l">Ideas probadas</div><div class="v">${s.experiments}</div><div class="s">${s.byStatus.en_prueba || 0} en prueba en vivo · ${s.byStatus.validada || 0} aprobadas</div></div>
   </section>
   <section class="grid g2">
-    <div class="card"><h2>Cambios recientes (con su motivo)</h2>${s.recent.length ? s.recent.map(r => `<div style="padding:8px 0;border-top:1px solid var(--line)"><b>${esc(STATUS[r.to_status] || r.to_status)}</b> <span class="note">· ${esc(r.family.replace(/_/g, ' '))} ${esc(r.params)} · ${esc(r.agent || '')} · ${timeAgo(r.ts)}</span><div class="note">${esc(r.reason)}</div></div>`).join('') : '<div class="empty">Aún no hay experimentos. Activa el motor.</div>'}</div>
+    <div class="card"><h2>Ideas que JARVIS probó</h2><p class="note">JARVIS inventa reglas para comprar y vender, las prueba con años de precios reales y solo se queda con las que le ganan al mercado. Que casi todas fallen es normal: así te protege de reglas que solo <i>parecen</i> buenas.</p>${s.recent.length ? s.recent.map(r => `<div class="idea"><div class="idea-h"><span class="chip ${STATUS_TONE[r.to_status] || ''}">${esc(STATUS[r.to_status] || r.to_status)}</span><span class="note">${esc(AGENT_NAME[r.agent] || r.agent || '')} · ${timeAgo(r.ts)}</span></div><div><b>La idea:</b> ${esc(stratText(r.family, r.params))}</div><div class="note"><b>Resultado:</b> ${esc(plainReason(r.reason))}</div></div>`).join('') : '<div class="empty">Todavía no ha probado ideas.</div>'}</div>
     <div class="card"><h2>Liga de agentes y monedas</h2><table><tr><th>Agente</th><th class="r">Monedas</th><th class="r">Semana</th><th class="r">Trampas</th></tr>${d.league.map(a => `<tr><td>${esc(a.name)}</td><td class="r"><b>${a.coins}</b></td><td class="r ${cls(a.week)}">${a.week ?? '—'}</td><td class="r ${a.cheats ? 'bad' : ''}">${a.cheats}</td></tr>`).join('')}</table>
       <div class="note" style="margin-top:8px">+1 moneda por cada 1% ganado neto en la bolsa, +1 extra si le gana al mercado. Las pérdidas restan. Las monedas compran más pruebas y prioridad.</div>
       ${d.coins.length ? `<details style="margin-top:8px"><summary>Últimos movimientos ▸</summary>${d.coins.map(c => `<div class="note">${esc(c.ts.slice(0, 16).replace('T', ' '))} · ${esc(c.agent)} · <b class="${cls(c.amount)}">${c.amount > 0 ? '+' : ''}${c.amount}</b> ${esc(c.reason)}${c.revoked ? ' (revocada)' : ''}</div>`).join('')}</details>` : ''}</div>
@@ -721,7 +777,7 @@ views.aprendizaje = async () => {
       <div class="row" style="margin-top:12px"><a class="btn ghost" href="/api/export/predicciones">Exportar predicciones (CSV)</a><a class="btn ghost" href="/api/export/ranking">Exportar ranking (CSV)</a><button class="btn ghost" onclick="window.print()">Imprimir / PDF</button></div></div>
   </section>
   <section class="card"><h2>Glosario</h2><div class="grid g3" style="gap:10px">${Object.entries(GLOSS).map(([k, v]) => `<div><b>${esc(k[0].toUpperCase() + k.slice(1))}</b><div class="note">${esc(v)}</div></div>`).join('')}</div></section>
-  <section class="card"><h2>Estrategias</h2>${d.list.length ? `<div class="tablewrap"><table><tr><th>Estrategia</th><th>Agente</th><th>Estado</th><th class="r">Práctica (t)</th><th class="r">Examen (t)</th><th class="r">Extra anual vs SPY</th></tr>${d.list.map(x => `<tr><td>${esc(x.family.replace(/_/g, ' '))} <span class="note">${esc(JSON.stringify(x.params))}</span></td><td>${esc(x.agent || '')}</td><td>${esc(STATUS[x.status] || x.status)}</td><td class="r">${x.result?.train ? x.result.train.t.toFixed(2) : '—'}</td><td class="r">${x.result?.holdout ? x.result.holdout.t.toFixed(2) : '—'}</td><td class="r ${cls(x.result?.holdout?.annual)}">${x.result?.holdout ? pct(x.result.holdout.annual * 100) : '—'}</td></tr>`).join('')}</table></div>` : '<div class="empty">Sin estrategias probadas todavía.</div>'}</section>`;
+  <section class="card"><h2>Todas las ideas probadas</h2>${d.list.length ? `<div class="tablewrap"><table><tr><th>La idea</th><th>Estado</th><th class="r">¿Le ganó al mercado?</th></tr>${d.list.map(x => `<tr><td>${esc(stratText(x.family, x.params))}<div class="note">${esc(AGENT_NAME[x.agent] || x.agent || '')}</div></td><td><span class="chip ${STATUS_TONE[x.status] || ''}">${esc(STATUS[x.status] || x.status)}</span></td><td class="r">${x.result?.holdout ? `<b class="${cls(x.result.holdout.annual)}">${x.result.holdout.annual > 0 ? 'Sí' : 'No'}</b><div class="note">${pct(x.result.holdout.annual * 100)} al año vs el mercado</div>` : x.result?.train ? '<b class="bad">No</b><div class="note">ni en la primera prueba</div>' : '—'}</td></tr>`).join('')}</table></div>` : '<div class="empty">Sin estrategias probadas todavía.</div>'}</section>`;
 };
 
 const adminOnly = () => `<section class="card"><h2>Solo para el administrador</h2><p class="note">Esta parte la maneja quien administra JARVIS. Lo tuyo está en <a href="#perfil">Mi perfil</a> y <a href="#potenciador">⚡ Potenciador</a>.</p></section>`;
@@ -759,6 +815,11 @@ views.ajustes = async () => {
       <div><div class="note" style="margin-bottom:8px">Así se verá</div><div class="bprev" id="bprev"></div><div class="note" style="margin-top:8px">Sale en la barra de arriba, la pantalla de entrada, el Modo TV, la pestaña del navegador y el ícono cuando lo instalas en el celular.</div></div>
     </div></section>
   ${mot.publicUrl ? `<section class="card"><h2>Tu enlace para la TV y cualquier navegador</h2><p style="font-size:18px;margin:8px 0"><a href="${esc(mot.publicUrl)}" target="_blank" rel="noopener"><b>${esc(mot.publicUrl)}</b></a></p><div class="note">Escríbelo en la barra de direcciones (no en el buscador de Google) del navegador de la TV, otra computadora o el celular de tu amigo. Siempre pide usuario y contraseña. Para la TV usa el botón "Modo TV".</div></section>` : `<section class="card"><h2>Enlace para que cualquiera entre (sin instalar nada)</h2>${mot.funnelEnable ? `<p style="margin:8px 0">Tailscale pide tu permiso <b>una sola vez</b> para abrir JARVIS a internet.</p><a class="btn" href="${esc(mot.funnelEnable)}" target="_blank" rel="noopener">Activar enlace público</a><ol class="note" style="margin-top:10px;padding-left:18px"><li>Toca el botón (se abre la página de Tailscale).</li><li>Entra con la misma cuenta de Tailscale y toca <b>Enable</b> / <b>Activar</b> en todo lo que pregunte.</li><li>Vuelve aquí en unos 10 minutos: aparecerá tu enlace.</li></ol><div class="note">Aunque el enlace sea público, nadie ve nada sin el usuario y la contraseña que tú le crees.</div>` : '<div class="note">Todavía no hay enlace público. El servidor lo intenta cada 10 minutos. Si en 20 minutos sigue así, mándale una foto de esta tarjeta a Claude. Mientras tanto entra con Tailscale: http://jarvis:8080</div>'}</section>`}
+  <section class="card"><h2>✨ Plus con IA ${mot.aiOn ? '<span class="chip good">activado</span>' : '<span class="chip warn">apagado: falta la clave de ChatGPT</span>'}</h2><ul class="note" style="line-height:1.7;padding-left:18px">
+    <li><b>Explicación del analista:</b> cada análisis explicado como a un amigo.</li><li><b>Preguntas:</b> le preguntas lo que quieras a JARVIS.</li>
+    <li><b>Empresas nuevas:</b> la IA propone qué estudiar (cada semana y al tocar "¿Qué buscas ahora?"); JARVIS las prueba con precios reales.</li>
+    <li><b>Debate:</b> varias IA discuten a favor y en contra de una recomendación.</li><li><b>Loterías:</b> te explica la vigilancia y cómo jugar con cabeza.</li><li><b>Noticias:</b> resúmenes en español sencillo.</li></ul>
+    <div class="note">Sin IA, JARVIS sigue funcionando completo; solo se pierde esto. La IA explica y propone, pero nunca decide sola ni inventa números.</div></section>
   <section class="card keyscard"><h2>Claves <span class="more note">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>
     <p class="note">Pégalas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vacío y marca "borrar".</p>
     <form class="form" id="kf">${keys.map(k => `<div class="krow"><div><b>${esc(k.label)}</b> ${k.set ? `<span class="tag dato">puesta ${esc(k.hint || '')}</span>` : '<span class="tag est">falta</span>'}<div class="note">Dónde sacarla: <a href="${KEYHELP[k.name][1]}" target="_blank" rel="noopener">${esc(KEYHELP[k.name][0])}</a></div></div>
@@ -1354,6 +1415,7 @@ async function render() {
     document.querySelectorAll('[data-go]').forEach(el => el.onclick = () => (location.hash = el.dataset.go));
     if (v.after) await v.after(decodeURIComponent(arg || ''));
     bindDebateButtons();
+    try { glossify(app); } catch { /* sin glosario */ }
   } catch (e) { if (e.message !== 'Inicia sesión.') app.innerHTML = `<div class="card msg err">${esc(e.message)}</div>`; }
   window.scrollTo(0, 0);
 }

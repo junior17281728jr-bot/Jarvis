@@ -19,32 +19,32 @@ export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, tra
   if (r6 != null) {
     const rel = b6 != null ? r6 - b6 : r6;
     factors.tendencia = clamp(rel / 0.2);
-    reasons.push({ factor: 'tendencia', text: `En 6 meses ${r6 >= 0 ? 'subió' : 'bajó'} ${round(Math.abs(r6) * 100, 1)}%${b6 != null ? `; el mercado ${round(b6 * 100, 1)}%` : ''}.`, kind: 'dato' });
+    reasons.push({ factor: 'tendencia', text: `En los últimos 6 meses su precio ${r6 >= 0 ? 'subió' : 'bajó'} ${round(Math.abs(r6) * 100, 1)}%.${b6 != null ? ` En ese mismo tiempo, las 500 empresas más grandes de EE. UU. ("el mercado") ${b6 >= 0 ? 'subieron' : 'bajaron'} ${round(Math.abs(b6) * 100, 1)}%: ${rel > 0.02 ? 'le fue mejor que al promedio' : rel < -0.02 ? 'le fue peor que al promedio' : 'le fue más o menos igual que al promedio'}.` : ''}`, kind: 'dato' });
   }
   const n = track.wins + track.losses;
   if (n > 0) {
     const w = wilson(track.wins, n);
     factors.historial = clamp((w.lo - 0.5) * 4) * Math.min(1, n / 20) + (track.net > 0 ? 0.1 : -0.1);
-    reasons.push({ factor: 'historial', text: `JARVIS con ${symbol}: ${track.wins} aciertos y ${track.losses} fallos${n < 10 ? ' (pocos casos, puede ser suerte)' : ''}.`, kind: 'dato' });
+    reasons.push({ factor: 'historial', text: `Las veces que JARVIS ya la recomendó: ${track.wins} aciertos y ${track.losses} fallos${n < 10 ? ' (todavía son pocas veces, puede ser suerte)' : ''}.`, kind: 'dato' });
   }
   const val = (metric) => facts.filter(f => f.metric === metric).sort((a, b) => (a.period < b.period ? 1 : -1)).map(f => f.value);
   const rev = val('ingresos'), ni = val('ganancia_neta'), debt = val('deuda_largo_plazo'), eq = val('patrimonio');
   if (rev.length >= 2 || ni.length >= 1) {
     let s = 0, parts = [];
-    if (rev.length >= 2 && rev[1]) { const g = rev[0] / rev[1] - 1; s += clamp(g / 0.15); parts.push(`ingresos ${g >= 0 ? '+' : ''}${round(g * 100, 1)}% en un año`); }
-    if (ni.length >= 1) { s += ni[0] > 0 ? 0.5 : -0.7; parts.push(ni[0] > 0 ? 'con ganancias' : 'con pérdidas'); }
-    if (debt.length && eq.length && eq[0] > 0) { const de = debt[0] / eq[0]; s += de > 2 ? -0.5 : de < 0.5 ? 0.3 : 0; parts.push(`deuda/patrimonio ${round(de, 2)}`); }
+    if (rev.length >= 2 && rev[1]) { const g = rev[0] / rev[1] - 1; s += clamp(g / 0.15); parts.push(`vendió ${round(Math.abs(g) * 100, 1)}% ${g >= 0 ? 'más' : 'menos'} que el año anterior`); }
+    if (ni.length >= 1) { s += ni[0] > 0 ? 0.5 : -0.7; parts.push(ni[0] > 0 ? 'está ganando dinero' : 'está perdiendo dinero'); }
+    if (debt.length && eq.length && eq[0] > 0) { const de = debt[0] / eq[0]; s += de > 2 ? -0.5 : de < 0.5 ? 0.3 : 0; parts.push(de > 2 ? 'debe mucho comparado con lo que tiene' : de < 0.5 ? 'debe poco comparado con lo que tiene' : 'tiene una deuda normal'); }
     factors.empresa = clamp(s / 1.5);
-    reasons.push({ factor: 'empresa', text: `Informes oficiales (SEC): ${parts.join(', ')}.`, kind: 'dato' });
+    reasons.push({ factor: 'empresa', text: `Lo que dicen sus informes oficiales (los que la ley le obliga a publicar): ${parts.join(', ')}.`, kind: 'dato' });
   }
   const daily = bars.slice(-253).map((b, i, a) => (i ? b.close / a[i - 1].close - 1 : 0)).slice(1);
   if (daily.length > 60) {
     const vol = sd(daily) * Math.sqrt(252);
     factors.riesgo = clamp((0.3 - vol) / 0.3);
-    reasons.push({ factor: 'riesgo', text: `Sube y baja ${round(vol * 100)}% al año (volatilidad)${vol > 0.45 ? ': riesgo alto' : vol < 0.2 ? ': riesgo bajo' : ''}.`, kind: 'dato' });
+    reasons.push({ factor: 'riesgo', text: `Qué tanto se mueve su precio: en un año normal sube y baja alrededor de ${round(vol * 100)}%. ${vol > 0.45 ? 'Se mueve mucho: riesgo alto (puedes ver caídas fuertes).' : vol < 0.2 ? 'Se mueve poco: riesgo bajo.' : 'Riesgo medio.'}`, kind: 'dato' });
   }
   factors.polemicas = polemics > 0 ? -Math.min(1, polemics / 2) : 0.2;
-  reasons.push({ factor: 'polemicas', text: polemics ? `${polemics} polémica(s) abierta(s) en noticias.` : 'Sin polémicas abiertas detectadas.', kind: 'dato' });
+  reasons.push({ factor: 'polemicas', text: polemics ? `Hay ${polemics} ${polemics === 1 ? 'noticia grave' : 'noticias graves'} contra la empresa (demanda, fraude o investigación del gobierno).` : 'No encontré noticias graves contra la empresa (demandas, fraudes o investigaciones).', kind: 'dato' });
 
   const used = Object.keys(factors);
   const wsum = used.reduce((s, k) => s + WEIGHTS[k], 0) || 1;

@@ -35,6 +35,7 @@ import { historyList, performance, addReal, closeReal, realSummary } from './mot
 import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
 import { aiView } from './motor/autopilot.js';
+import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
 import { creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
 import { getProfile, saveProfile, profileLine, STYLES, HORIZONS } from './motor/profile.js';
 import { getBudget, saveBudget, sizeFor, evidence, finder, bigBetCheck } from './motor/sizing.js';
@@ -153,7 +154,7 @@ route('GET', '/api/tv', ({ user }) => {
 });
 
 route('GET', '/api/ranking', () => latestRanking(db));
-route('GET', '/api/map', ({ user }) => { const v = mapView(db, { userId: user.id }); delete v.rows; return v; });
+route('GET', '/api/map', ({ user }) => { const v = mapView(db, { userId: user.id }); delete v.rows; return { ...v, aiOn: aiOn(db, cfg), aiIdeas: aiSuggestions(db).slice(0, 8) }; });
 route('GET', '/api/budget', ({ user }) => ({ ...getBudget(db, user.id), evidence: evidence(db), account: userAccount(user), profile: getProfile(db, user.id) }));
 route('POST', '/api/budget', async ({ req, user }) => { const b = await body(req); const out = saveBudget(db, user.id, b, { isAdmin: user.role === 'admin' }); audit(db, user.id, 'mi_dinero', { usd: out.usd }); return out; });
 route('POST', '/api/account/reset', async ({ user }) => {
@@ -220,6 +221,14 @@ route('POST', '/api/advice', async ({ req }) => {
 route('GET', '/api/watchlist', ({ user }) => db.prepare('SELECT symbol FROM watchlist WHERE user_id = ?').all(user.id).map(r => r.symbol));
 route('POST', '/api/watchlist', async ({ req, user }) => { const b = await body(req); const s = String(b.symbol || '').toUpperCase(); if (!/^[A-Z.\-]{1,10}$/.test(s)) throw new Error('Símbolo no válido.'); if (b.remove) db.prepare('DELETE FROM watchlist WHERE user_id = ? AND symbol = ?').run(user.id, s); else db.prepare('INSERT OR IGNORE INTO watchlist (user_id, symbol, added_at) VALUES (?, ?, ?)').run(user.id, s, nowIso()); return { ok: true }; });
 
+route('POST', '/api/lottery/plus', async ({ user }) => {
+  const L = cache.get('lottery')?.v || null;
+  const games = (L?.games || Object.values(GAMES).map(g => { const h = history(db, g.id); return { name: g.name, draws: h.length, scan: h.length >= 10 ? scan(h, { sims: 300 }) : null, compare: null }; }))
+    .map(g => ({ juego: g.name, sorteos_revisados: g.draws, vigilancia: g.scan?.verdict || 'pocos datos', metodos: g.compare?.verdict || 'pocos datos' }));
+  const P = getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS);
+  const facts = { juegos: games, devolucion_promedio_por_cada_100_pesos: { quiniela: round(expectedReturn('quiniela', P) * 100, 1), pale: round(expectedReturn('pale', P) * 100, 1), tripleta: round(expectedReturn('tripleta', P) * 100, 1) }, jugadas_virtuales_de_jarvis: playStats(db, { agent: 'loteria' }) };
+  return lotteryExplain(db, cfg, { userId: user.id, facts });
+});
 route('GET', '/api/lottery', () => cached('lottery', 5 * 60e3, () => {
   const games = Object.values(GAMES).map(g => {
     const h = history(db, g.id);
@@ -243,10 +252,10 @@ route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league
     'Datos de Yahoo son de respaldo no oficial; con claves de Alpaca la calidad mejora.',
   ] }));
 
-const fullStatus = () => ({ storage: { persistent: cfg.persistent, platform: cfg.platform }, version: (() => { try { return readFileSync(join(dirname(cfg.dbPath), 'version.txt'), 'utf8').trim().slice(0, 7); } catch { return null; } })(), publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
+const fullStatus = () => ({ aiOn: aiOn(db, cfg), storage: { persistent: cfg.persistent, platform: cfg.platform }, version: (() => { try { return readFileSync(join(dirname(cfg.dbPath), 'version.txt'), 'utf8').trim().slice(0, 7); } catch { return null; } })(), publicUrl: publicUrl(), funnelEnable: publicUrl() ? null : funnelEnableLink(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), tasks: taskStatus(db), errors: recentErrors(db), ledger: verifyLedger(db), ai: { ...aiSpend(db, cfg), available: available(db, cfg) },
   sources: { alpaca: !!cfg.alpacaKey, openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey }, db: { bars: db.prepare('SELECT COUNT(*) n FROM stock_bars').get().n, draws: db.prepare('SELECT COUNT(*) n FROM lottery_draws').get().n, ledger: db.prepare('SELECT COUNT(*) n FROM ledger').get().n },
   dailySummary: getSetting(db, 'global', 'report.daily', null), backup: getSetting(db, 'global', 'backup.last', null), notify: !!cfg.ntfyTopic, fx: fx(db) });
-route('GET', '/api/status', ({ user }) => user.role === 'admin' ? fullStatus() : { motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), ledger: { ok: verifyLedger(db).ok }, storage: { persistent: true } });
+route('GET', '/api/status', ({ user }) => user.role === 'admin' ? fullStatus() : { aiOn: aiOn(db, cfg), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), ledger: { ok: verifyLedger(db).ok }, storage: { persistent: true } });
 route('GET', '/api/summary', () => ({ text: dailySummary(db) }));
 
 route('POST', '/api/motor/:action', async ({ p, req }) => {
@@ -318,7 +327,10 @@ route('POST', '/api/focus', async ({ req, user }) => {
   if (!focusRun && !recent) {
     setSetting(db, 'global', 'focus.last', { at: nowIso(), horizon: b.horizon, by: user.id });
     activity(db, { agent: 'largo', type: 'explorar', userId: user.id, text: `🔎 Búsqueda enfocada: buscando las mejores opciones para ${FOCUS_TXT[b.horizon]}…` });
-    focusRun = exploreStep(db, cfg, { n: 4 }).then(() => {
+    const lastAi = getSetting(db, 'global', `plus.suggest.${b.horizon}`, null);
+    const askAi = aiOn(db, cfg) && (!lastAi || Date.now() - Date.parse(lastAi) > 864e5)
+      ? suggestStocks(db, cfg, { horizon: b.horizon }).then(() => setSetting(db, 'global', `plus.suggest.${b.horizon}`, nowIso())).catch(() => {}) : Promise.resolve();
+    focusRun = askAi.then(() => exploreStep(db, cfg, { n: 4 })).then(() => {
       const t = focusTop(b.horizon)[0];
       activity(db, { agent: 'largo', type: 'explorar', important: true, userId: user.id, text: t ? `🔎 Búsqueda enfocada lista. Lo mejor para ${FOCUS_TXT[b.horizon]}: ${t.symbol} (terminó ganando ${Math.round(t.p * 10)} de cada 10 veces).` : '🔎 Búsqueda enfocada lista: todavía no hay datos suficientes.' });
     }).catch(err => activity(db, { type: 'error', text: `Búsqueda enfocada falló: ${err.message}` })).finally(() => { focusRun = null; });
