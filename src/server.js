@@ -36,6 +36,7 @@ import { historyList, performance, addReal, closeReal, realSummary } from './mot
 import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
 import { aiView } from './motor/autopilot.js';
+import { legalDoc, acceptLegal, currentAcceptance, listAcceptances, signedText, LEGAL_VERSION } from './core/legal.js';
 import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
 import { packEconomics, creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
 import { getProfile, saveProfile, profileLine, STYLES, HORIZONS } from './motor/profile.js';
@@ -115,7 +116,7 @@ route('POST', '/api/login', async ({ req }) => { const b = await body(req); retu
 route('POST', '/api/tvcode', ({ user }) => makeTvCode(db, user.id));
 route('POST', '/api/tvlogin', async ({ req }) => { const b = await body(req); return loginWithTvCode(db, b.code); }, { auth: false });
 route('POST', '/api/logout', ({ req }) => { logout(db, tokenOf(req)); return { ok: true }; });
-route('GET', '/api/me', ({ user }) => ({ ...user, profile: getProfile(db, user.id) }));
+route('GET', '/api/me', ({ user }) => ({ ...user, profile: getProfile(db, user.id), needsTerms: user.role !== 'admin' && !currentAcceptance(db, user.id, 'terminos') }));
 route('GET', '/api/profile', ({ user }) => { const p = getProfile(db, user.id), b = getBudget(db, user.id); return { profile: p, budget: b, displayName: user.displayName, styles: STYLES, horizons: HORIZONS, line: profileLine(p, b.usd) }; });
 route('POST', '/api/profile', async ({ req, user }) => {
   const b = await body(req);
@@ -294,6 +295,21 @@ route('POST', '/api/users', async ({ req }) => { const b = await body(req); cons
 
 
 
+
+// ---------- Contratos y términos (firmas que no se borran) ----------
+const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+route('GET', '/api/legal', ({ user }) => ({
+  terminos: { ...legalDoc(db, 'terminos'), signed: currentAcceptance(db, user.id, 'terminos'), required: user.role !== 'admin' },
+  contrato: { ...legalDoc(db, 'contrato'), signed: currentAcceptance(db, user.id, 'contrato') },
+  mine: listAcceptances(db, { userId: user.id }).map(a => ({ id: a.id, doc: a.doc, version: a.version, accepted_at: a.accepted_at })),
+}));
+route('POST', '/api/legal/accept', async ({ req, user }) => { const b = await body(req); return acceptLegal(db, user, { doc: b.doc, fullName: b.fullName, cedula: b.cedula, agree: !!b.agree, ip: clientIp(req), ua: req.headers['user-agent'] }); });
+route('GET', '/api/legal/firmas', () => listAcceptances(db), { admin: true });
+route('GET', '/api/legal/texto/:hash', ({ p, user }) => {
+  const own = listAcceptances(db, { userId: user.id }).some(a => a.doc_hash === p.hash);
+  if (user.role !== 'admin' && !own) throw Object.assign(new Error('No encontrado.'), { code: 404 });
+  return signedText(db, p.hash) || {};
+});
 // ---------- ⚡ Potenciador de IA ----------
 route('GET', '/api/potenciador', ({ user }) => {
   const isAdmin = user.role === 'admin', st = creditSettings(db);
@@ -365,6 +381,11 @@ route('GET', '/api/grade', ({ url }) => monthlyGrade(db, url.searchParams.get('m
 route('GET', '/api/fx', () => fx(db));
 route('POST', '/api/notify/test', async () => { const r = await sendPush(cfg, { title: 'JARVIS', message: 'Prueba de aviso: si ves esto, los avisos funcionan.', tags: ['white_check_mark'] }); if (!r.ok) throw new Error(r.reason || 'No se pudo enviar el aviso.'); return r; }, { admin: true });
 const csv = rows => { if (!rows.length) return 'sin datos\n'; const k = Object.keys(rows[0]); return '\ufeff' + [k.join(','), ...rows.map(r => k.map(x => `"${String(r[x] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); };
+route('GET', '/api/export/firmas', ({ user, res }) => {
+  if (user.role !== 'admin') throw Object.assign(new Error('Solo el administrador.'), { code: 403 });
+  res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="firmas-jarvis.csv"' });
+  res.end(csv(listAcceptances(db).map(a => ({ fecha: a.accepted_at, usuario: a.username, documento: a.doc, version: a.version, nombre: a.full_name, cedula: a.id_number, ip: a.ip, navegador: a.user_agent, huella_texto: a.doc_hash, sello: a.ledger_hash }))));
+});
 route('GET', '/api/export/:what', ({ p, user, res }) => {
   const acc = userAccount(user);
   const data = {

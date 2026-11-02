@@ -206,6 +206,26 @@ ALTER TABLE credit_requests ADD COLUMN currency TEXT;
 ALTER TABLE credit_requests ADD COLUMN admin_reminded INTEGER NOT NULL DEFAULT 0;
 `,
   },
+  {
+    id: 10,
+    name: 'contratos_y_firmas',
+    sql: `
+CREATE TABLE legal_docs (hash TEXT PRIMARY KEY, doc TEXT NOT NULL, version TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE legal_acceptances (
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), doc TEXT NOT NULL, version TEXT NOT NULL, doc_hash TEXT NOT NULL REFERENCES legal_docs(hash),
+  full_name TEXT NOT NULL, id_number TEXT NOT NULL, accepted_at TEXT NOT NULL, ip TEXT, user_agent TEXT, ledger_hash TEXT
+);
+CREATE INDEX legal_acceptances_user ON legal_acceptances (user_id, doc, version);
+CREATE TRIGGER legal_docs_no_update BEFORE UPDATE ON legal_docs BEGIN SELECT RAISE(ABORT, 'los documentos firmados no se pueden modificar'); END;
+CREATE TRIGGER legal_docs_no_delete BEFORE DELETE ON legal_docs BEGIN SELECT RAISE(ABORT, 'los documentos firmados no se pueden borrar'); END;
+CREATE TRIGGER legal_acc_no_update BEFORE UPDATE ON legal_acceptances BEGIN SELECT RAISE(ABORT, 'las firmas no se pueden modificar'); END;
+CREATE TRIGGER legal_acc_no_delete BEFORE DELETE ON legal_acceptances BEGIN SELECT RAISE(ABORT, 'las firmas no se pueden borrar'); END;
+ALTER TABLE credit_requests ADD COLUMN legal_id INTEGER;
+CREATE TRIGGER credit_requests_no_delete BEFORE DELETE ON credit_requests BEGIN SELECT RAISE(ABORT, 'las solicitudes de pago no se pueden borrar'); END;
+CREATE TRIGGER credit_requests_lock BEFORE UPDATE OF user_id, created_at, pack_name, price, credits, reference, note, receipt_ext, payer_name, payer_bank, kind, amount, currency, legal_id ON credit_requests
+  BEGIN SELECT RAISE(ABORT, 'los datos de un pago no se pueden cambiar'); END;
+`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */

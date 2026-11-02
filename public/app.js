@@ -1104,7 +1104,7 @@ function shrinkReceipt(file) {
 const STATUS_CHIP = { pendiente: ['⏳ Esperando revisión', 'warn'], aprobada: ['✅ Aprobada', 'good'], rechazada: ['✕ No aprobada', 'bad'] };
 const monthName = iso => new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 views.potenciador = async () => {
-  const d = await api('/api/potenciador'), m = d.me; window.__potRate = d.admin?.rate;
+  const [d, L] = await Promise.all([api('/api/potenciador'), api('/api/legal')]), m = d.me; window.__potRate = d.admin?.rate; window.__legal = L;
   const pctUsed = m.base ? Math.round(m.baseUsed / m.base * 100) : 0;
   const reqRow = (r, admin) => `<div class="preq ${r.status}"><div class="preq-h"><b>${esc(admin ? r.who : r.pack_name)}</b><span class="chip ${STATUS_CHIP[r.status][1]}">${STATUS_CHIP[r.status][0]}</span></div>
     <div class="note">${admin ? `${esc(r.pack_name)} · ` : ''}${esc(r.price)} → <b>${r.credits} créditos</b> · ${esc(new Date(r.created_at).toLocaleString('es-DO'))}${r.reference ? ` · Ref: ${esc(r.reference)}` : ''}</div>
@@ -1120,7 +1120,8 @@ views.potenciador = async () => {
     <div class="pbox" style="margin-top:10px"><div class="l">⚡ Créditos extra (Potenciador)</div><div class="v">${m.extra}</div><div class="note">No vencen. Se usan solo cuando se acaba la IA gratis del mes.</div></div>
     ${m.plan ? `<div class="pbox" style="margin-top:10px"><div class="l">📅 ${esc(m.plan.name || 'Plan mensual')}</div><div class="v ${m.plan.active ? (m.plan.daysLeft <= 3 ? 'warn' : 'good') : 'bad'}">${m.plan.active ? `${m.plan.daysLeft} ${m.plan.daysLeft === 1 ? 'día' : 'días'}` : 'Vencido'}</div><div class="note">${m.plan.active ? `Vence el ${esc(new Date(m.plan.until).toLocaleDateString('es-DO', { day: 'numeric', month: 'long' }))}. Te aviso 3 días antes para que lo renueves.` : 'Renuévalo abajo para recibir los créditos del próximo mes. Lo que te sobró sigue ahí.'}</div></div>` : ''}
     <div class="note" style="margin-top:10px">La IA responde tus preguntas y hace los análisis con IA. <b>Si se te acaba, JARVIS sigue funcionando igual</b> (mapa, recomendaciones, historial, avisos): solo las respuestas de la IA esperan al mes siguiente o a un Potenciador.</div></section>
-  <section class="card"><h2>⚡ Activar un Potenciador</h2>
+  ${!L.contrato.signed ? `<section class="card" id="contractcard"><h2>📝 Primero: contrato de compra</h2><p class="note">Antes de pagar, lee y firma este contrato. Te protege a ti y al administrador: dice qué compras, cómo se paga, los plazos y las devoluciones. Se firma una sola vez (o cuando cambie).</p>${signForm('contrato', L.contrato, 'ct')}</section>` : `<div class="note" style="margin:-4px 0 4px">📝 Contrato de compra firmado el ${esc(new Date(L.contrato.signed.accepted_at).toLocaleDateString('es-DO'))} (versión ${esc(L.contrato.signed.version)}). <a href="#" id="seect">Ver contrato</a></div>`}
+  <section class="card${!L.contrato.signed ? ' locked' : ''}"><h2>⚡ Activar un Potenciador</h2>${!L.contrato.signed ? '<div class="msg err" style="margin:6px 0">Firma el contrato de arriba para poder pagar.</div>' : ''}
     <form class="form" id="pf2">
       <div><b>1. Elige un paquete</b><div class="packs" style="margin-top:8px">${d.packs.map((p, i) => `<label class="pack"><input type="radio" name="pack" value="${esc(p.id)}"${i === 0 ? ' checked' : ''}><span><b>${esc(p.name)}</b><span class="pk-price">${esc(p.price)}</span><span class="note">${p.credits} créditos extra${p.kind === 'mensual' ? ` · <b>se renueva cada ${30} días</b>` : ' · pago de una vez'}</span></span></label>`).join('')}</div></div>
       <div><b>2. Deposita o transfiere a una de estas cuentas</b>${d.accounts.length ? d.accounts.map(a => `<div class="bankacc"><div class="ba-h"><b>${esc(a.bank)}</b><span class="note">Cuenta de ${esc(a.type.toLowerCase())}</span></div>
@@ -1143,6 +1144,7 @@ views.potenciador = async () => {
   <section class="card"><h2>Solicitudes de tus usuarios ${d.admin.requests.filter(r => r.status === 'pendiente').length ? `<span class="chip warn">${d.admin.requests.filter(r => r.status === 'pendiente').length} por revisar</span>` : ''}</h2>
     <div class="note">Tienes de 24 a 48 horas para responder (a tus usuarios se les dice eso). Antes de aprobar, confirma en tu banco que llegó <b>la cantidad exacta</b>. Si pasan 24 horas sin responder, JARVIS te lo recuerda.</div>
     ${d.admin.requests.length ? d.admin.requests.map(r => reqRow(r, true)).join('') : '<div class="empty">No hay solicitudes todavía.</div>'}<div class="msg" id="amsg"></div></section>
+  <section class="card"><h2>📝 Contratos y términos firmados</h2><div class="note">Cada firma guarda nombre, cédula, fecha, IP, navegador y el texto exacto que aceptó. No se puede borrar ni cambiar (ni siquiera tú). Las solicitudes de pago y sus comprobantes tampoco se borran.</div><div id="firmas" class="note" style="margin-top:8px">Cargando…</div><a class="btn ghost sm" href="/api/export/firmas" style="margin-top:8px;display:inline-block">Descargar todas (Excel/CSV)</a></section>
   <section class="card"><h2>Créditos de cada usuario</h2>${d.admin.users.length ? `<div class="tablewrap"><table><tr><th>Persona</th><th class="r">Gratis del mes</th><th class="r">Extra</th><th class="r">Regalar</th></tr>${d.admin.users.map(u => `<tr><td>${esc(u.name)}${u.pending ? ' <span class="chip warn">pidió</span>' : ''}</td><td class="r">${u.baseLeft}/${u.base}</td><td class="r"><b>${u.extra}</b></td><td class="r"><span class="row" style="gap:6px;justify-content:flex-end"><input type="number" class="gift" data-u="${u.id}" placeholder="50" style="width:80px"><button class="btn ghost sm" data-gift="${u.id}">Dar</button></span></td></tr>`).join('')}</table></div>` : '<div class="empty">Todavía no has creado usuarios.</div>'}
     <div class="note">La IA gratis de cada mes es la que pusiste al crear el usuario ("IA gratis al mes") (1 crédito = 1 centavo de dólar de IA).</div></section>
   <section class="card"><h2>Tus cuentas, paquetes y forma de pago</h2><form class="form" id="pset">
@@ -1159,6 +1161,9 @@ views.potenciador = async () => {
   return `<div><h1>⚡ Potenciador de IA</h1><p class="sub">${d.isAdmin ? 'Aquí apruebas los pagos de tus usuarios y decides los paquetes.' : 'Más respuestas de la IA cuando las necesites.'}</p></div>${d.isAdmin ? adminPart : userPart}`;
 };
 views.potenciador.after = () => {
+  if ($('#ctb')) bindSign('contrato', 'ct', () => render());
+  if ($('#seect')) $('#seect').onclick = e => { e.preventDefault(); const L = window.__legal; const box = document.createElement('section'); box.className = 'card'; box.innerHTML = `<h2>Contrato que firmaste</h2><div class="legaldoc"><pre class="legaltext">${esc(L.contrato.text)}</pre></div>`; $('#seect').closest('div').after(box); $('#seect').remove(); };
+  if ($('#firmas')) api('/api/legal/firmas').then(rows => { $('#firmas').innerHTML = rows.length ? `<div class="tablewrap"><table><tr><th>Fecha</th><th>Persona</th><th>Documento</th><th>Cédula</th><th>IP</th></tr>${rows.map(a => `<tr><td>${esc(new Date(a.accepted_at).toLocaleString('es-DO'))}</td><td><b>${esc(a.full_name)}</b><div class="note">${esc(a.username)}</div></td><td>${a.doc === 'contrato' ? 'Contrato de compra' : 'Términos de uso'} <span class="note">v${esc(a.version)}</span></td><td class="mono">${esc(a.id_number)}</td><td class="note">${esc(a.ip || '')}</td></tr>`).join('')}</table></div>` : 'Todavía nadie ha firmado.'; }).catch(e => { $('#firmas').textContent = e.message; });
   document.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { const t = b.dataset.copy; try { await navigator.clipboard.writeText(t); } catch { const i = document.createElement('input'); i.value = t; document.body.appendChild(i); i.select(); try { document.execCommand('copy'); } catch { /* sin copiar */ } i.remove(); } b.textContent = '¡Copiado!'; setTimeout(() => { b.textContent = 'Copiar'; }, 1500); });
   let receipt = null;
   if ($('#prc')) $('#prc').onchange = async e => { const f = e.target.files[0]; if (!f) return; $('#prcv').textContent = 'Preparando la foto…'; try { receipt = await shrinkReceipt(f); $('#prcv').innerHTML = `<img src="${receipt}" class="preq-img" alt="Vista previa"><div>✅ Foto lista</div>`; } catch (err) { receipt = null; $('#prcv').textContent = err.message; } };
@@ -1458,9 +1463,31 @@ async function pulse() {
   try { const s = await api('/api/status');
     if (s.storage && !s.storage.persistent && !document.getElementById('nopersist')) document.querySelector('main').insertAdjacentHTML('beforebegin', '<div id="nopersist" class="msg err" style="text-align:center;padding:10px;font-weight:700">⚠️ Falta el volumen en Railway: tus datos se borran en cada actualización. Agrega un volumen montado en /data.</div>'); const alive = s.heartbeat && Date.now() - Date.parse(s.heartbeat) < 20 * 60e3; $('#sys-dot').className = 'status-dot ' + (alive && s.ledger.ok ? 'on' : 'off'); $('#sys-text').textContent = alive ? (s.motor.running ? 'Trabajando' : 'En pausa') : 'Sin latido'; } catch { /* sin sesión */ }
 }
+// ---------- Contrato y términos: firmar con nombre completo y cédula ----------
+function signForm(doc, d, id) {
+  return `<div class="legaldoc"><pre class="legaltext">${esc(d.text)}</pre></div>
+    <div class="grid g2" style="gap:10px;margin-top:10px"><label>Tu nombre completo<input id="${id}n" maxlength="80" autocomplete="name" placeholder="Nombre y apellido"></label>
+    <label>Tu cédula (o pasaporte)<input id="${id}c" maxlength="20" inputmode="numeric" placeholder="000-0000000-0"></label></div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="${id}a"> Leí todo y acepto ${doc === 'contrato' ? 'este contrato' : 'estos términos'}. Mi nombre y cédula valen como mi firma.</label>
+    <button type="button" class="btn" id="${id}b" style="margin-top:10px">Firmar y aceptar</button><div class="msg" id="${id}m"></div>`;
+}
+function bindSign(doc, id, done) {
+  $(`#${id}b`).onclick = async () => {
+    try { await api('/api/legal/accept', { method: 'POST', body: { doc, fullName: $(`#${id}n`).value, cedula: $(`#${id}c`).value, agree: $(`#${id}a`).checked } }); $(`#${id}m`).className = 'msg ok'; $(`#${id}m`).textContent = 'Firmado. Queda guardado.'; setTimeout(done, 700); }
+    catch (err) { $(`#${id}m`).className = 'msg err'; $(`#${id}m`).textContent = err.message; }
+  };
+}
+async function showTerms() {
+  $('#top').classList.add('hide');
+  const L = await api('/api/legal');
+  app.innerHTML = `<div class="center" style="align-items:flex-start;padding-top:24px"><section class="card" style="max-width:820px;width:100%"><h1 style="font-size:24px">Antes de empezar</h1><p class="note">Lee y acepta los términos de uso de ${esc(BRAND.name || 'JARVIS')}. Es una sola vez.</p>${signForm('terminos', L.terminos, 'tt')}</section></div>`;
+  bindSign('terminos', 'tt', () => boot());
+}
+
 async function boot() {
   await loadBrand();
   try { ME = await api('/api/me'); } catch { return; }
+  if (ME.needsTerms) return showTerms();
   await loadBudget();
   applyUser();
   if (ME.profile && !ME.profile.setup && !location.hash.startsWith('#perfil')) location.hash = '#perfil';

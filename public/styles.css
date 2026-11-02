@@ -457,3 +457,6 @@ abbr.gl{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .ba-h{display:flex;justify-content:space-between;gap:8px;align-items:center}.ba-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.ba-r>.note{min-width:96px}.mono{font-family:var(--mono);letter-spacing:.04em}
 .accrow{padding:10px 0;border-top:1px solid var(--line)}
 .econ{padding:10px 12px;border-radius:12px;background:var(--panel2);margin-bottom:8px}.econline{margin:2px 0 10px}
+.legaldoc{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:12px 14px}
+.legaltext{white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.55;margin:0}
+.card.locked form{opacity:.45;pointer-events:none}

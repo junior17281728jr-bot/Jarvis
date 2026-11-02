@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { openDb } from '../src/core/db.js';
 import { createUser, userFromToken, login } from '../src/core/auth.js';
 import { budgetCheck } from '../src/ai/providers.js';
+import { acceptLegal } from '../src/core/legal.js';
 import { createRequest, decideRequest, creditStatus, listRequests, receiptFile, grantCredits } from '../src/motor/credits.js';
 
 const PNG = 'data:image/png;base64,' + Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40)]).toString('base64');
@@ -15,6 +16,7 @@ function setup() {
   createUser(db, { username: 'junior', password: 'unaclavemuylarga1', role: 'admin' });
   createUser(db, { username: 'ricardo', password: 'otraclavemuylarga', monthlyCap: 0.02, dailyCap: 0.02, displayName: 'Ricardo' });
   const admin = userFromToken(db, login(db, 'junior', 'unaclavemuylarga1').token), user = userFromToken(db, login(db, 'ricardo', 'otraclavemuylarga').token);
+  acceptLegal(db, user, { doc: 'contrato', fullName: 'Ricardo Pérez', cedula: '001-1234567-8', agree: true, ip: '1.2.3.4', ua: 'test' });
   const spend = usd => db.prepare("INSERT INTO ai_usage (ts, user_id, provider, model, task, in_tokens, out_tokens, cost_usd, ok) VALUES (?, ?, 'x', 'x', 't', 0, 0, ?, 1)").run(new Date().toISOString(), user.id, usd);
   return { db, admin, user, spend };
 }
@@ -76,6 +78,31 @@ test('potenciador: exige la cantidad exacta enviada y recuerda al administrador 
   createRequest(db, cfg, user, { packId: 'p1', receipt: PNG, payerName: 'R', payerBank: 'Otro', amount: '1,500.50', currency: 'RD$' });
   assert.equal(listRequests(db)[0].amount, 1500.5);
   assert.equal(adminPendingReminder(db), 0);
+  db.exec('DROP TRIGGER credit_requests_lock'); // solo en la prueba: simular que pasaron 25 horas
   db.prepare('UPDATE credit_requests SET created_at = ?').run(new Date(Date.now() - 25 * 3600e3).toISOString());
   assert.equal(adminPendingReminder(db), 1); assert.equal(adminPendingReminder(db), 0);
+});
+
+test('contrato: sin firmar no se puede pagar; la firma y el pago no se pueden borrar ni cambiar', async () => {
+  const { openDb } = await import('../src/core/db.js');
+  const { createUser, login, userFromToken } = await import('../src/core/auth.js');
+  const { currentAcceptance, listAcceptances, signedText } = await import('../src/core/legal.js');
+  const db = openDb(':memory:');
+  createUser(db, { username: 'junior', password: 'unaclavemuylarga1', role: 'admin' });
+  createUser(db, { username: 'pedro', password: 'otraclavemuylarga' });
+  const u = userFromToken(db, login(db, 'pedro', 'otraclavemuylarga').token);
+  assert.throws(() => createRequest(db, cfg, u, { packId: 'p1', receipt: PNG, payerName: 'P', payerBank: 'Otro', amount: 250 }), /firmar el contrato/);
+  assert.throws(() => acceptLegal(db, u, { doc: 'contrato', fullName: 'Pedro', cedula: '00112345678', agree: true }), /nombre completo/);
+  assert.throws(() => acceptLegal(db, u, { doc: 'contrato', fullName: 'Pedro Gómez', cedula: '123', agree: true }), /cédula/);
+  const a = acceptLegal(db, u, { doc: 'contrato', fullName: 'Pedro Gómez', cedula: '001-1234567-8', agree: true, ip: '9.9.9.9', ua: 'iPhone' });
+  assert.ok(currentAcceptance(db, u.id, 'contrato'));
+  const { id } = createRequest(db, cfg, u, { packId: 'p1', receipt: PNG, payerName: 'Pedro Gómez', payerBank: 'Banco BHD', amount: 250 });
+  assert.equal(listRequests(db)[0].legal_id, a.id);
+  const row = listAcceptances(db)[0];
+  assert.equal(row.id_number, '00112345678'); assert.equal(row.ip, '9.9.9.9');
+  assert.match(signedText(db, row.doc_hash).text, /Ley 155-17/);
+  assert.throws(() => db.prepare('DELETE FROM legal_acceptances').run(), /no se pueden borrar/);
+  assert.throws(() => db.prepare("UPDATE legal_acceptances SET full_name = 'otro'").run(), /no se pueden modificar/);
+  assert.throws(() => db.prepare('DELETE FROM credit_requests WHERE id = ?').run(id), /no se pueden borrar/);
+  assert.throws(() => db.prepare('UPDATE credit_requests SET amount = 1 WHERE id = ?').run(id), /no se pueden cambiar/);
 });

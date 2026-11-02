@@ -7,6 +7,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { getSetting, setSetting, nowIso, activity, audit } from '../core/db.js';
 import { round } from '../core/util.js';
+import { currentAcceptance } from '../core/legal.js';
 
 export const CREDIT_USD = 0.01;
 export const toCredits = usd => Math.max(0, Math.floor(round(usd / CREDIT_USD, 6)));
@@ -82,6 +83,8 @@ const receiptDir = dbPath => join(dirname(dbPath), 'comprobantes');
 export function createRequest(db, cfg, user, { packId, receipt, reference, note, payerName, payerBank, amount, currency }) {
   const { packs } = creditSettings(db), pack = packs.find(p => p.id === packId);
   if (!pack) throw new Error('Elige un paquete.');
+  const signed = currentAcceptance(db, user.id, 'contrato');
+  if (!signed) throw Object.assign(new Error('Antes de pagar tienes que leer y firmar el contrato de compra.'), { code: 428 });
   if (db.prepare("SELECT COUNT(*) n FROM credit_requests WHERE user_id = ? AND status = 'pendiente'").get(user.id).n >= 3) throw new Error('Ya tienes 3 solicitudes esperando respuesta. Espera a que el administrador las revise.');
   const clean = (v, max) => String(v ?? '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, max);
   if (!clean(payerName, 60)) throw new Error('Escribe a nombre de quién salió el pago.');
@@ -90,8 +93,8 @@ export function createRequest(db, cfg, user, { packId, receipt, reference, note,
   if (!(amt > 0 && amt < 10_000_000)) throw new Error('Escribe la cantidad exacta que enviaste, como sale en el comprobante.');
   const cur = currency === 'US$' ? 'US$' : 'RD$';
   const r = decodeReceipt(receipt);
-  const info = db.prepare(`INSERT INTO credit_requests (user_id, created_at, pack_name, price, credits, reference, note, receipt_ext, status, payer_name, payer_bank, kind, amount, currency)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?)`).run(user.id, nowIso(), pack.name, pack.price, pack.credits, clean(reference, 60), clean(note, 300), r.ext, clean(payerName, 60), clean(payerBank, 40), pack.kind === 'mensual' ? 'mensual' : 'una_vez', amt, cur);
+  const info = db.prepare(`INSERT INTO credit_requests (user_id, created_at, pack_name, price, credits, reference, note, receipt_ext, status, payer_name, payer_bank, kind, amount, currency, legal_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?, ?, ?, ?, ?)`).run(user.id, nowIso(), pack.name, pack.price, pack.credits, clean(reference, 60), clean(note, 300), r.ext, clean(payerName, 60), clean(payerBank, 40), pack.kind === 'mensual' ? 'mensual' : 'una_vez', amt, cur, signed.id);
   const id = Number(info.lastInsertRowid), dir = receiptDir(cfg.dbPath);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(dir, `${id}.${r.ext}`), r.buf, { mode: 0o600 });
@@ -112,7 +115,7 @@ export function listRequests(db, { userId = null, status = null } = {}) {
   const where = [], args = [];
   if (userId != null) { where.push('r.user_id = ?'); args.push(userId); }
   if (status) { where.push('r.status = ?'); args.push(status); }
-  return db.prepare(`SELECT r.id, r.user_id, r.created_at, r.pack_name, r.price, r.credits, r.reference, r.note, r.status, r.decided_at, r.admin_note, r.payer_name, r.payer_bank, r.kind, r.amount, r.currency,
+  return db.prepare(`SELECT r.id, r.user_id, r.created_at, r.pack_name, r.price, r.credits, r.reference, r.note, r.status, r.decided_at, r.admin_note, r.payer_name, r.payer_bank, r.kind, r.amount, r.currency, r.legal_id,
       COALESCE(u.display_name, u.username) who, u.username FROM credit_requests r JOIN users u ON u.id = r.user_id
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY (r.status = 'pendiente') DESC, r.id DESC LIMIT 100`).all(...args);
 }
