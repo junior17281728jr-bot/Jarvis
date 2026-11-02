@@ -101,6 +101,10 @@ export function retoView(db, { now = new Date() } = {}) {
     // 2,000 caminos posibles por empresa, repitiendo al azar subidas y bajadas DIARIAS que de verdad tuvo (últimos 3 años)
     const ps = syms.map(s => project(getBars(db, s), 100, { days: Math.max(1, P.tradingLeft), sims: 2000, target: need })?.pTarget).filter(x => x != null);
     if (ps.length) { const best = Math.max(...ps); chance = round(best * 100, 2); var simHits = Math.round(best * 2000), simN = 2000, simSyms = syms; }
+    // ¿Qué SÍ es realista con lo que tiene y el tiempo que queda? (lo más probable, 1 de cada 4 y 1 de cada 10 veces)
+    var realistic = syms.map(sy => { const pr = project(getBars(db, sy), 100, { days: Math.max(1, P.tradingLeft), sims: 2000 }); return pr && { symbol: sy, probable: pr.probable, good: pr.good, bad: pr.bad }; }).filter(Boolean)
+      .reduce((a, b) => (!a || b.good > a.good ? b : a), null);
+    if (realistic) realistic = { probable: round(P.total * (1 + realistic.probable / 100), 2), good: round(P.total * (1 + realistic.good / 100), 2), bad: round(P.total * (1 + realistic.bad / 100), 2), days: P.tradingLeft };
   } catch { /* sin datos */ }
   const moves = db.prepare('SELECT ts, side, symbol, qty, exec_price, reason FROM trades WHERE account_id = ? ORDER BY ts DESC, id DESC LIMIT 15').all(P.accountId)
     .map(t => ({ at: t.ts, side: t.side, symbol: t.symbol, usd: round(t.qty * t.exec_price, 2), why: String(t.reason || '').replace(/^Reto (compra|vende):\s*/, '') }));
@@ -109,7 +113,7 @@ export function retoView(db, { now = new Date() } = {}) {
   const t0 = Date.parse(P.startedAt || new Date().toISOString()), span = P.days * 864e5;
   const goalLine = curve.map(([d]) => [d, round(P.startUsd * Math.pow(P.goalUsd / P.startUsd, Math.min(1, Math.max(0, (Date.parse(d + 'T21:00:00Z') - t0) / span))), 2)]);
   const stocks = byStock(db, P.accountId), bw = bestWorst(curve);
-  return { ...P, sim: typeof simN === 'undefined' ? null : { hits: simHits, n: simN, symbols: simSyms }, curve, goalLine, stocks, best: bw.best, worst: bw.worst, pressure: PRESSURE_TXT[P.level], gain: round(P.total - P.startUsd, 2), progressPct: round(Math.max(0, Math.min(100, (P.total - P.startUsd) / (P.goalUsd - P.startUsd) * 100)), 1), chance,
+  return { ...P, realistic: typeof realistic === 'undefined' ? null : realistic, sim: typeof simN === 'undefined' ? null : { hits: simHits, n: simN, symbols: simSyms }, curve, goalLine, stocks, best: bw.best, worst: bw.worst, pressure: PRESSURE_TXT[P.level], gain: round(P.total - P.startUsd, 2), progressPct: round(Math.max(0, Math.min(100, (P.total - P.startUsd) / (P.goalUsd - P.startUsd) * 100)), 1), chance,
     positions: v.positions.map(p => ({ symbol: p.symbol, value: round(p.value, 2), pnl: round(p.pnl, 2), pnlPct: round(p.pnlPct * 100, 2) })), moves, last: getSetting(db, 'global', 'reto.last', null),
     marketOpen: marketOpen(now),
     honest: `Para ir de US$${P.startUsd.toLocaleString("en-US")} a US$${P.goalUsd.toLocaleString("en-US")} en ${P.days} días hay que ganar cerca de +${round((Math.pow(P.goalUsd / P.startUsd, 1 / Math.max(1, Math.round(P.days * 5 / 7))) - 1) * 100, 1)}% cada día de bolsa. La presión no le da más acierto a la IA: la hace arriesgar más. Es dinero virtual para que veas qué pasa de verdad cuando se busca ganar rápido.` };
