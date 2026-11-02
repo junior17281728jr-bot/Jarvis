@@ -846,7 +846,7 @@ views.loterias = async () => {
   <section class="grid g4">
     <div class="card kpi"><div class="l">Jugadas virtuales</div><div class="v">${L.stats.settled}</div><div class="s">${L.stats.pending} pendientes de sorteo</div></div>
     <div class="card kpi" style="--c:var(--good)"><div class="l">Aciertos</div><div class="v">${L.stats.hitRate != null ? L.stats.hitRate + '%' : '—'}</div><div class="s">${L.stats.wins} premios · racha récord ${L.stats.streak.bestWin}</div></div>
-    <div class="card kpi" style="--c:var(--bad)"><div class="l">Devuelve por RD$100</div><div class="v">${L.stats.per100 != null ? rdRaw(L.stats.per100) : '—'}</div><div class="s">Apostado ${rd(L.stats.staked)} · cobrado ${rd(L.stats.paid)}</div></div>
+    <div class="card kpi" style="--c:var(--bad)"><div class="l">Volvió de lo jugado</div><div class="v ${L.stats.per100 >= 100 ? 'good' : 'bad'}">${L.stats.per100 != null ? L.stats.per100 + '%' : '—'}</div><div class="s">${L.stats.per100 != null ? (L.stats.per100 >= 100 ? `ganó ${(L.stats.per100 - 100).toFixed(1)}% más de lo jugado` : `perdió ${(100 - L.stats.per100).toFixed(1)}% de lo jugado`) + (L.stats.settled < 200 ? ' (con pocas jugadas, es suerte)' : '') : ''}</div><div class="s">Apostado ${rd(L.stats.staked)} · cobrado ${rd(L.stats.paid)}</div></div>
     <div class="card kpi" style="--c:var(--accent)"><div class="l">${term('valor esperado', 'Valor esperado')}</div><div class="v">${rdRaw(L.expected.quiniela)}</div><div class="s">Quiniela · palé ${rdRaw(L.expected.pale)} · tripleta ${rdRaw(L.expected.tripleta)}</div></div>
   </section>
   <div id="jvlot"><div class="card note">Cargando lo que juega JARVIS…</div></div>
@@ -856,6 +856,9 @@ views.loterias = async () => {
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const fdate = d => { const x = new Date(d + 'T12:00:00Z'); const today = new Date().toISOString().slice(0, 10), tm = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
   return d === today ? 'hoy' : d === tm ? 'mañana' : `${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${x.toLocaleDateString('es-DO', { month: 'short', timeZone: 'UTC' })}`; };
+const lateSeal = (sealedAt, date, time) => !!(sealedAt && date && time) && Date.parse(sealedAt) > Date.parse(`${date}T${time}:00-04:00`);
+const lateTag = x => (lateSeal(x.sealedAt, x.date, x.time) ? ' <b class="bad">⚠️ sellado después del sorteo: no cuenta</b>' : ' <span class="good">✓ antes del sorteo</span>');
+const fmtWhen = iso => iso ? new Date(iso).toLocaleString('es-DO', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 const ampm = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`; };
 const untilTxt = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'cerrado' : m < 60 ? `cierra en ${m} min` : `cierra en ${Math.floor(m / 60)} h ${m % 60} min`; };
 async function loadJarvisLottery() {
@@ -875,11 +878,17 @@ async function loadJarvisLottery() {
         <div class="note">${u.pick.sealedAt ? `🔒 Sellado ${hhmm(u.pick.sealedAt)} · huella ${esc((u.pick.hash || '').slice(0, 10))}… (ya no se puede cambiar)` : '📝 Se sella automáticamente antes del cierre'}</div>
         ${u.plays.length ? `<details><summary class="note">Lo que juegan los otros ${u.plays.length} métodos de prueba</summary><div class="jvo">${u.plays.map(p => `<span><i>${esc(p.label)}</i> ${p.numbers.map(esc).join(' ')}</span>`).join('')}</div></details>` : ''}`
       : `<div class="note" style="margin-top:8px">${u.enough ? 'Preparando su número…' : `Tiene ${u.draws} sorteos guardados y necesita 10 para elegir.`}</div>${u.sources?.length ? `<div class="srcst">${u.sources.map(x => `<div>${x.ok ? '✅' : '❌'} <b>${esc(x.source)}</b>: ${x.ok ? `leyó ${x.saved} resultados` : esc(x.error || 'no respondió')}</div>`).join('')}<div class="note">Si las dos páginas salen con ❌, mándale una foto de esto a Claude.</div></div>` : ''}`}</div>`).join('')}</div>
+    ${B.wins?.length ? `<h3 class="cs-h">🏆 Jugadas que ganaron (${B.wins.length})</h3><div class="note" style="margin-bottom:8px">Cada una se selló <b>antes</b> del sorteo: compara la hora en que apostó con la hora del sorteo.</div>
+    <div class="jvwins">${B.wins.map(w => `<div class="jw"><div class="jw-h"><b>${esc(w.name)}</b> <span class="note">${fdate(w.date)}</span><span class="tag ${w.kind === 'su_numero' ? 'dato' : ''}">${w.kind === 'su_numero' ? '⭐ su número' : `prueba: ${esc(w.methodLabel)}`}</span><b class="good jw-p">+${rdu(w.prizeRd - w.stakeRd)}</b></div>
+      <div class="jw-b"><div><div class="note">Jugó</div><div class="balls">${w.numbers.map(n => `<span class="ball${w.draw?.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('')}</div></div><div class="jvp-vs">→</div><div><div class="note">Salió</div><div class="balls">${(w.draw || []).map(n => `<span class="ball${w.numbers.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('')}</div></div></div>
+      <div class="jw-t">🔒 Apostó: <b>${fmtWhen(w.sealedAt)}</b>${lateTag(w)} · 🎰 Sorteo: <b>${fdate(w.date)} ${ampm(w.time)}</b> · 📰 Resultado visto: <b>${w.resultSeenAt ? fmtWhen(w.resultSeenAt) : '—'}</b></div>
+      <div class="note">Apostó ${rdu(w.stakeRd)} y cobró ${rdu(w.prizeRd)} · salió en ${w.positions.map(p => `${p}ª`).join(' y ')} posición · huella ${esc((w.hash || '').slice(0, 10))}…</div></div>`).join('')}</div>` : ''}
     <h3 class="cs-h">🧾 Lo que ya jugó y cómo le fue</h3>
     ${B.past.length ? `<div class="jvpast">${B.past.map(p => { const [ic, tx, cl] = ST[p.status]; return `<div class="jvp k-${cl}">
       <div class="jvp-h"><b>${esc(p.name)}</b> <span class="note">${fdate(p.date)} · ${ampm(p.time)}</span><span class="jvp-s ${cl}">${ic} ${tx}</span></div>
       <div class="jvp-c"><div><div class="note">Jugó</div><div class="balls">${balls(p.numbers, p.draw)}</div></div><div class="jvp-vs">vs</div><div><div class="note">Salió</div><div class="balls">${p.draw ? balls(p.draw, p.numbers) : '<span class="note">todavía no</span>'}</div></div>
         <div class="jvp-m"><div class="note">Resultado</div><b class="${p.pnlRd > 0 ? 'good' : p.pnlRd < 0 ? 'bad' : ''}">${p.pnlRd != null ? rdu(p.pnlRd, { sign: true }) : '—'}</b></div></div>
+      <div class="jw-t">🔒 Apostó: <b>${fmtWhen(p.sealedAt)}</b>${lateTag(p)} · 🎰 Sorteo: <b>${ampm(p.time)}</b>${p.resultSeenAt ? ` · 📰 Resultado visto: <b>${fmtWhen(p.resultSeenAt)}</b>` : ''}</div>
       <div class="note jvp-e">${esc(p.explain)} <b>Por qué lo eligió:</b> ${esc(p.methodLabel)} — ${esc(p.why)}</div>
       ${p.others.length ? `<details><summary class="note">Cómo les fue a los otros métodos en ese sorteo</summary><div class="jvo">${p.others.map(o => `<span class="${o.won ? 'good' : ''}"><i>${esc(o.label)}</i> ${o.numbers.map(esc).join(' ')} ${o.won ? '✅' : '❌'}</span>`).join('')}</div></details>` : ''}
     </div>`; }).join('')}</div>` : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>'}

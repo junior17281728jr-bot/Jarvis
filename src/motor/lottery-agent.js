@@ -119,6 +119,7 @@ const drawTime = (game, date) => { const wd = new Date(date + 'T12:00:00Z').getU
 export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
   const rate = fx(db)?.rate || null;
   const sealedPick = (game, date) => { const r = db.prepare("SELECT payload, sealed_at, ledger_hash FROM predictions WHERE subject = ?").get(`loteria:${game}:${date}`); return r ? { ...JSON.parse(r.payload), sealedAt: r.sealed_at, hash: r.ledger_hash } : null; };
+  const seenAt = (game, date) => db.prepare('SELECT MIN(fetched_at) t FROM lottery_observations WHERE game = ? AND date = ?').get(game, date)?.t || null;
   const playsFor = (game, date) => db.prepare("SELECT method, numbers, stake, status, prize FROM lottery_plays WHERE agent = 'loteria' AND game = ? AND date = ? ORDER BY method").all(game, date)
     .map(p => ({ method: p.method, label: METHODS[p.method]?.label || p.method, numbers: JSON.parse(p.numbers), stake: p.stake, status: p.status, prize: p.prize }));
   const upcoming = [];
@@ -139,15 +140,21 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
       const per = pl.perNumberRd ?? pl.amountRd, many = pl.numbers.length > 1;
       const plays = playsFor(pl.game, pl.date);
       return { game: pl.game, name: GAMES[pl.game]?.name || pl.game, date: pl.date, time: GAMES[pl.game] ? drawTime(pl.game, pl.date) : null,
-        numbers: pl.numbers, method: pl.method, methodLabel: METHODS[pl.method]?.label || pl.method, why: pl.why || '', stakeRd: pl.amountRd, sealedAt: r.sealed_at, hash: r.ledger_hash,
+        numbers: pl.numbers, method: pl.method, methodLabel: METHODS[pl.method]?.label || pl.method, why: pl.why || '', stakeRd: pl.amountRd, sealedAt: r.sealed_at, hash: r.ledger_hash, resultSeenAt: out ? seenAt(pl.game, pl.date) : null,
         draw, status: r.correct == null ? 'esperando' : r.correct ? 'acerto' : 'fallo', position: pos >= 0 ? pos + 1 : null, perNumberRd: per, hits, prizeRd: out?.prizeRd ?? null, pnlRd: out?.pnlRd ?? null,
         explain: r.correct == null ? 'El sorteo todavía no tiene resultado confirmado por dos fuentes.'
           : r.correct ? `¡Salió ${hits.map(h => `el ${h} (${['1ra', '2da', '3ra'][draw.indexOf(h)]} posición)`).join(' y ')}! Jugó RD$${pl.amountRd}${many ? ` (RD$${per} por número)` : ''} y cobró RD$${out.prizeRd}.`
           : `No salió ${many ? `ninguno de sus ${pl.numbers.length} números (${pl.numbers.join(', ')})` : `el ${pl.numbers[0]}`}. Salieron ${draw.join(' · ')}.${many ? '' : ' (Esta jugada era de antes, con un solo número.)'}`,
         others: plays.filter(p => p.status !== 'pending').map(p => ({ label: p.label, numbers: p.numbers, won: p.status === 'gano' })) };
     }).filter(p => !upcoming.some(u => u.game === p.game && u.date === p.date && p.status === 'esperando'));
+  // 🏆 Todas las jugadas que ganaron (su número y las de prueba de cada método), con la hora en que se apostó y la del resultado
+  const wins = db.prepare(`SELECT game, date, method, numbers, stake, prize, sealed_at, ledger_hash FROM lottery_plays WHERE agent = 'loteria' AND status = 'gano' ORDER BY date DESC, sealed_at DESC LIMIT 30`).all()
+    .map(w => { const d = db.prepare('SELECT nums FROM lottery_draws WHERE game = ? AND date = ?').get(w.game, w.date); const draw = d ? JSON.parse(d.nums) : null, nums = JSON.parse(w.numbers);
+      return { kind: 'prueba', game: w.game, name: GAMES[w.game]?.name || w.game, date: w.date, time: GAMES[w.game] ? drawTime(w.game, w.date) : null, method: w.method, methodLabel: METHODS[w.method]?.label || w.method,
+        numbers: nums, draw, positions: draw ? nums.filter(n => draw.includes(n)).map(n => draw.indexOf(n) + 1) : [], stakeRd: w.stake, prizeRd: w.prize, sealedAt: w.sealed_at, resultSeenAt: seenAt(w.game, w.date), hash: w.ledger_hash }; });
+  for (const p of past.filter(p => p.status === 'acerto')) wins.unshift({ kind: 'su_numero', game: p.game, name: p.name, date: p.date, time: p.time, method: p.method, methodLabel: p.methodLabel, numbers: p.numbers, draw: p.draw, positions: (p.hits || []).map(h => p.draw.indexOf(h) + 1), stakeRd: p.stakeRd, prizeRd: p.prizeRd, sealedAt: p.sealedAt, resultSeenAt: p.resultSeenAt, hash: p.hash });
   const done = past.filter(p => p.status !== 'esperando');
   const staked = done.reduce((s, p) => s + (p.stakeRd || 0), 0), won = done.reduce((s, p) => s + (p.prizeRd || 0), 0);
-  return { rate, upcoming, past, summary: { picks: done.length, hits: done.filter(p => p.status === 'acerto').length, stakedRd: staked, wonRd: won, netRd: won - staked },
+  return { rate, upcoming, past, wins, summary: { picks: done.length, hits: done.filter(p => p.status === 'acerto').length, stakedRd: staked, wonRd: won, netRd: won - staked },
     honest: 'Cada número se sella con hora y huella ANTES del sorteo; después se compara con el resultado oficial. En quiniela cada número tiene 3 de cada 100 de salir: ningún método puede adivinar el próximo si el sorteo es justo.' };
 }

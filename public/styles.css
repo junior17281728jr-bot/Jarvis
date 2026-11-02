@@ -613,3 +613,9 @@ html.legacy .top{max-width:100vw;overflow:hidden}
 .eye:hover,.eye:focus{background:var(--panel2)}
 .forgot{margin:12px 0 4px}.forgot summary{cursor:pointer;color:var(--accent)}.forgot>div{margin-top:8px;line-height:1.6}.cmd{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;word-break:break-all;user-select:all;font-size:13px}
 .srcst{margin-top:8px;font-size:13px;line-height:1.6;border-top:1px dashed var(--line);padding-top:6px}
+/* Jugadas que ganaron, con horas */
+.jvwins{display:flex;flex-direction:column;gap:10px;margin-bottom:6px}
+.jw{border:1px solid color-mix(in srgb,var(--good) 45%,var(--line));border-left:4px solid var(--good);border-radius:14px;padding:12px 14px;background:var(--panel2)}
+.jw-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.jw-p{margin-left:auto}
+.jw-b{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin:8px 0}
+.jw-t{font-size:13px;line-height:1.6;color:var(--mute);margin:4px 0}.jw-t b{color:var(--ink)}

@@ -7,7 +7,7 @@ export function recordObservation(db, { game, date, source, nums, fetchedAt = no
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Fecha no válida: ${date}`);
   if (!isValidDraw(nums)) throw new Error(`Números no válidos para ${game} ${date}: ${JSON.stringify(nums)}`);
   db.prepare(`INSERT INTO lottery_observations (game, date, source, nums, fetched_at) VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(game, date, source) DO UPDATE SET nums = excluded.nums, fetched_at = excluded.fetched_at`)
+    ON CONFLICT(game, date, source) DO UPDATE SET fetched_at = CASE WHEN lottery_observations.nums = excluded.nums THEN lottery_observations.fetched_at ELSE excluded.fetched_at END, nums = excluded.nums`) // se guarda la PRIMERA vez que se vio ese resultado
     .run(game, date, source, JSON.stringify(nums), fetchedAt);
   return reconcile(db, game, date);
 }
