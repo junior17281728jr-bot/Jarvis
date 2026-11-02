@@ -54,15 +54,16 @@ export function pickOfTheDay(db, game, { now = new Date() } = {}) {
   const hist = history(db, game, { until: nd.date });
   const stats = liveMethodStats(db).filter(m => m.n >= 30 && m.method !== 'azar').sort((a, b) => b.per100 - a.per100);
   const method = stats[0]?.method || 'frecuentes';
-  const numbers = METHODS[method].pick(hist, 'quiniela', rng(parseInt(sha256(game + nd.date).slice(0, 8), 16)));
+  // 3 números por sorteo (cada uno una apuesta de quiniela): más chance de pegar uno, como juega la gente en la banca
+  const numbers = METHODS[method].pick(hist, 'tripleta', rng(parseInt(sha256(game + nd.date).slice(0, 8), 16)));
   const s = stats[0];
   const azar = liveMethodStats(db).find(m => m.method === 'azar');
   const w = s ? wilson(s.wins, s.n) : null;
   return {
     game, date: nd.date, closesAt: nd.close.toISOString(), numbers, method, methodLabel: METHODS[method].label, why: METHODS[method].why,
     record: s ? `En vivo este método acierta ${s.wins} de ${s.n} (${round(s.wins / s.n * 100, 1)}%, rango ${round(w.lo * 100)}–${round(w.hi * 100)}%). Devuelve RD$${s.per100} por cada RD$100; el azar, RD$${azar?.per100 ?? '—'}.` : 'Todavía no hay suficientes jugadas en vivo para medir este método.',
-    light: 'gris', stake: { min: STAKE, suggested: STAKE, why: `Juega el mínimo (US$${(STAKE / (fx(db)?.rate || 60)).toFixed(2)}, o sea RD$${STAKE}). En las loterías, en promedio, se pierde parte de lo jugado: subir el monto solo aumenta lo que puedes perder. Solo te diría que subas si un método le ganara al azar con pruebas fuertes.` },
-    warning: 'Si los sorteos son justos, este número tiene la misma probabilidad que cualquier otro (3 de cada 100 en quiniela).',
+    light: 'gris', stake: { min: STAKE, suggested: STAKE, perNumber: true, why: `RD$${STAKE} por cada número (US$${(STAKE / (fx(db)?.rate || 60)).toFixed(2)}); con 3 números son RD$${STAKE * 3}. En las loterías, en promedio, se pierde parte de lo jugado: subir el monto solo aumenta lo que puedes perder. Solo te diría que subas si un método le ganara al azar con pruebas fuertes.` },
+    warning: 'Si los sorteos son justos, cada número tiene 3 de cada 100 de salir. Con 3 números, la chance de pegar al menos uno es de unos 9 de cada 100.',
   };
 }
 
@@ -125,22 +126,24 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
     let nd; try { nd = nextDraw(game, now); } catch { continue; }
     const enough = history(db, game, { until: nd.date }).length >= 10;
     let pk = sealedPick(game, nd.date);
-    if (!pk && enough) { try { const p = pickOfTheDay(db, game, { now }); pk = { ...p, amountRd: STAKE, sealedAt: null }; } catch { /* sin datos */ } }
+    if (!pk && enough) { try { const p = pickOfTheDay(db, game, { now }); pk = { ...p, amountRd: STAKE * p.numbers.length, perNumberRd: STAKE, sealedAt: null }; } catch { /* sin datos */ } }
     upcoming.push({ game, name: GAMES[game].name, date: nd.date, time: drawTime(game, nd.date), closesAt: nd.close.toISOString(), verified: !!GAMES[game].verified,
-      pick: pk ? { numbers: pk.numbers, method: pk.method, methodLabel: METHODS[pk.method]?.label || pk.method, why: pk.why || METHODS[pk.method]?.why || '', stakeRd: pk.amountRd ?? STAKE, sealedAt: pk.sealedAt, hash: pk.hash || null } : null,
-      plays: playsFor(game, nd.date), enough });
+      pick: pk ? { numbers: pk.numbers, method: pk.method, methodLabel: METHODS[pk.method]?.label || pk.method, why: pk.why || METHODS[pk.method]?.why || '', stakeRd: pk.amountRd ?? STAKE, perNumberRd: pk.perNumberRd ?? pk.amountRd ?? STAKE, sealedAt: pk.sealedAt, hash: pk.hash || null } : null,
+      plays: playsFor(game, nd.date), enough, draws: history(db, game).length,
+      sources: enough ? null : (getSetting(db, 'global', 'lottery.sources', null)?.report || []).filter(x => x.game === game).map(x => ({ source: x.source, ok: x.ok, saved: x.saved, error: x.error })) });
   }
   upcoming.sort((a, b) => a.closesAt < b.closesAt ? -1 : 1);
   const past = db.prepare("SELECT subject, payload, sealed_at, ledger_hash, outcome, correct, resolved_at FROM predictions WHERE module = 'loteria' ORDER BY sealed_at DESC LIMIT ?").all(limit)
     .map(r => { const pl = JSON.parse(r.payload), out = r.outcome ? JSON.parse(r.outcome) : null; const draw = out?.draw || null;
-      const pos = draw ? draw.indexOf(pl.numbers[0]) : -1;
+      const hits = draw ? pl.numbers.filter(x => draw.includes(x)) : [], pos = draw && hits.length ? draw.indexOf(hits[0]) : -1;
+      const per = pl.perNumberRd ?? pl.amountRd, many = pl.numbers.length > 1;
       const plays = playsFor(pl.game, pl.date);
       return { game: pl.game, name: GAMES[pl.game]?.name || pl.game, date: pl.date, time: GAMES[pl.game] ? drawTime(pl.game, pl.date) : null,
         numbers: pl.numbers, method: pl.method, methodLabel: METHODS[pl.method]?.label || pl.method, why: pl.why || '', stakeRd: pl.amountRd, sealedAt: r.sealed_at, hash: r.ledger_hash,
-        draw, status: r.correct == null ? 'esperando' : r.correct ? 'acerto' : 'fallo', position: pos >= 0 ? pos + 1 : null, prizeRd: out?.prizeRd ?? null, pnlRd: out?.pnlRd ?? null,
+        draw, status: r.correct == null ? 'esperando' : r.correct ? 'acerto' : 'fallo', position: pos >= 0 ? pos + 1 : null, perNumberRd: per, hits, prizeRd: out?.prizeRd ?? null, pnlRd: out?.pnlRd ?? null,
         explain: r.correct == null ? 'El sorteo todavía no tiene resultado confirmado por dos fuentes.'
-          : r.correct ? `Salió el ${pl.numbers[0]} en ${['1ra', '2da', '3ra'][pos] || ''} posición. Cobra ${out.prizeRd} por cada ${pl.amountRd} jugados.`
-          : `No salió el ${pl.numbers[0]}. Salieron ${draw.join(' · ')}.`,
+          : r.correct ? `¡Salió ${hits.map(h => `el ${h} (${['1ra', '2da', '3ra'][draw.indexOf(h)]} posición)`).join(' y ')}! Jugó RD$${pl.amountRd}${many ? ` (RD$${per} por número)` : ''} y cobró RD$${out.prizeRd}.`
+          : `No salió ${many ? `ninguno de sus ${pl.numbers.length} números (${pl.numbers.join(', ')})` : `el ${pl.numbers[0]}`}. Salieron ${draw.join(' · ')}.${many ? '' : ' (Esta jugada era de antes, con un solo número.)'}`,
         others: plays.filter(p => p.status !== 'pending').map(p => ({ label: p.label, numbers: p.numbers, won: p.status === 'gano' })) };
     }).filter(p => !upcoming.some(u => u.game === p.game && u.date === p.date && p.status === 'esperando'));
   const done = past.filter(p => p.status !== 'esperando');

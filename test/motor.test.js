@@ -105,8 +105,9 @@ test('loterías: jugadas automáticas selladas y número del sorteo con adverten
   assert.ok(n >= 6);
   assert.equal(autoPlays(db, { now }), 0); // no duplica
   const pick = pickOfTheDay(db, 'real', { now });
-  assert.equal(pick.numbers.length, 1);
-  assert.match(pick.warning, /misma probabilidad/);
+  assert.equal(pick.numbers.length, 3, 'juega 3 números por sorteo');
+  assert.equal(new Set(pick.numbers).size, 3, 'sin repetir');
+  assert.match(pick.warning, /3 de cada 100/);
 });
 
 test('ciclo completo sin red: no se cae, registra errores y respeta el motor apagado', async () => {

@@ -16,6 +16,7 @@ export const DEFAULT_PRICES = {
   },
 };
 // Orden de preferencia cuando no se fija OPENAI_MODEL: el más barato que tu cuenta tenga
+export const OPENAI_FALLBACK = 'gpt-4o-mini';
 export const OPENAI_PREFERENCE = ['gpt-5-nano', 'gpt-6-luna', 'gpt-4.1-nano', 'gpt-4o-mini', 'gpt-5.6-luna', 'gpt-5.4-nano', 'gpt-5-mini'];
 function priceFor(db, provider, model) {
   const P = prices(db);
@@ -87,14 +88,24 @@ function record(db, { userId, provider, model, task, inTok, outTok, ok }) {
   return cost;
 }
 
+// Los modelos que "piensan" antes de responder (gpt-5, gpt-6, o-series) gastan parte del límite pensando:
+// con un límite corto devolvían la respuesta VACÍA. Se les da más espacio y se les pide pensar lo mínimo.
+export const isReasoningModel = m => /^(gpt-5|gpt-6|o\d)/i.test(m || '');
 async function callOpenAI(cfg, { system, prompt, json, maxTokens }, fetchImpl) {
-  const res = await fetchImpl('https://api.openai.com/v1/chat/completions', {
-    method: 'POST', headers: { Authorization: `Bearer ${cfg.openaiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: cfg.openaiModel, max_completion_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }], ...(json ? { response_format: { type: 'json_object' } } : {}) }),
-  });
-  if (!res.ok) throw new Error(`ChatGPT respondió ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const model = cfg.openaiModel, R = isReasoningModel(model);
+  const body = { model, max_completion_tokens: R ? maxTokens * 4 + 1500 : maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }], ...(json ? { response_format: { type: 'json_object' } } : {}), ...(R ? { reasoning_effort: 'minimal' } : {}) };
+  const post = b => fetchImpl('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${cfg.openaiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  let res = await post(body);
+  if (!res.ok && R && res.status === 400) {
+    const t = await res.text();
+    if (/reasoning/i.test(t)) { delete body.reasoning_effort; res = await post(body); } // ese modelo no acepta ese ajuste
+    else throw Object.assign(new Error(`ChatGPT respondió 400: ${t.slice(0, 200)}`), { status: 400, body: t });
+  }
+  if (!res.ok) { const t = await res.text(); throw Object.assign(new Error(`ChatGPT respondió ${res.status}: ${t.slice(0, 200)}`), { status: res.status, body: t }); }
   const j = await res.json();
-  return { text: j.choices[0].message.content, inTok: j.usage?.prompt_tokens, outTok: j.usage?.completion_tokens, model: cfg.openaiModel };
+  const text = j.choices?.[0]?.message?.content || '';
+  if (!text.trim()) throw Object.assign(new Error(`ChatGPT no devolvió texto (${j.choices?.[0]?.finish_reason || 'vacío'})`), { empty: true });
+  return { text, inTok: j.usage?.prompt_tokens, outTok: j.usage?.completion_tokens, model };
 }
 async function callAnthropic(cfg, { system, prompt, json, maxTokens }, fetchImpl) {
   const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
@@ -133,8 +144,10 @@ export async function complete(db, cfg, { task, userId = null, system, prompt, j
   const av = available(db, cfg);
   const order = only ? [only] : prefer === 'paid' ? ['openai', 'anthropic', 'ollama'] : ['ollama', 'openai', 'anthropic'];
   const errors = [];
+  const ollamaDown = getSetting(db, 'global', 'ai.ollamaDown', null);
   for (const prov of order) {
     if (!av[prov]) continue;
+    if (prov === 'ollama' && ollamaDown && Date.now() - Date.parse(ollamaDown) < 6 * 3600e3 && (av.openai || av.anthropic)) continue; // el modelo gratis no está instalado: no perder tiempo
     // Primero el tope (con un precio prudente); solo si hay presupuesto se consulta qué modelo usar
     const known = prov === 'openai' ? (cfg.openaiModel || getSetting(db, 'global', 'ai.openaiModel', null)?.model) : prov === 'anthropic' ? cfg.anthropicModel : cfg.ollamaModel;
     const p = priceFor(db, prov, known);
@@ -142,15 +155,30 @@ export async function complete(db, cfg, { task, userId = null, system, prompt, j
     if (estUsd > 0) { const b = budgetCheck(db, cfg, { userId, estUsd }); if (!b.ok) { errors.push(b.reason); continue; } }
     if (prov === 'openai') cfg = { ...cfg, openaiModel: await resolveOpenAIModel(db, cfg, fetchImpl) };
     try {
-      const r = await CALLERS[prov](cfg, { system, prompt, json, maxTokens }, fetchImpl);
+      let r;
+      try { r = await CALLERS[prov](cfg, { system, prompt, json, maxTokens }, fetchImpl); }
+      catch (e) {
+        // ChatGPT: si el modelo elegido no existe, no sirve o respondió vacío, se prueba una vez con uno clásico y estable
+        const modelProblem = prov === 'openai' && (e.empty || e.status === 404 || /model/i.test(e.body || ''));
+        if (!modelProblem || cfg.openaiModel === OPENAI_FALLBACK) throw e;
+        record(db, { userId, provider: prov, model: cfg.openaiModel, task, inTok: 0, outTok: 0, ok: false });
+        setSetting(db, 'global', 'ai.openaiModel', { model: OPENAI_FALLBACK, at: nowIso(), why: e.message.slice(0, 160) });
+        cfg = { ...cfg, openaiModel: OPENAI_FALLBACK };
+        r = await CALLERS[prov](cfg, { system, prompt, json, maxTokens }, fetchImpl);
+      }
       const cost = record(db, { userId, provider: prov, model: r.model, task, inTok: r.inTok ?? estTokens(system + prompt), outTok: r.outTok ?? estTokens(r.text), ok: true });
       let parsed = null;
       if (json) { try { parsed = JSON.parse(r.text.slice(r.text.indexOf('{'), r.text.lastIndexOf('}') + 1)); } catch { errors.push(`${prov}: respuesta no fue JSON válido`); continue; } }
       return { ok: true, text: r.text, json: parsed, provider: prov, model: r.model, cost };
     } catch (e) {
-      record(db, { userId, provider: prov, model: prov, task, inTok: 0, outTok: 0, ok: false });
+      record(db, { userId, provider: prov, model: prov === 'openai' ? cfg.openaiModel : prov, task, inTok: 0, outTok: 0, ok: false });
       errors.push(`${prov}: ${e.message}`);
+      if (prov === 'ollama') setSetting(db, 'global', 'ai.ollamaDown', nowIso());
+      setSetting(db, 'global', 'ai.lastError', { at: nowIso(), provider: prov, task, error: e.message.slice(0, 300) });
     }
   }
-  return { ok: false, reason: errors.length ? errors.join(' | ') : 'No hay ninguna IA disponible (falta la clave de ChatGPT o el modelo local).' };
+  // Mensaje claro para la persona; el detalle técnico queda guardado para el administrador (Ajustes → Plus con IA)
+  const budget = errors.find(e => /tope|límite|Potenciador|gratis de este mes/i.test(e));
+  const reason = !errors.length ? 'No hay ninguna IA disponible (falta la clave de ChatGPT).' : budget || 'La IA no pudo responder en este momento. Intenta de nuevo en unos minutos; si sigue igual, el administrador lo verá en Ajustes.';
+  return { ok: false, reason, detail: errors.join(' | ') };
 }

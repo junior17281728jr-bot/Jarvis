@@ -101,3 +101,60 @@ test('las cuentas de JARVIS cuadran: total = efectivo + acciones; lotería: le q
   assert.equal(L.leftRd, L.startRd - L.playedRd + L.wonRd);
   assert.ok(getSetting(db, 'global', 'ia.lastStep', null));
 });
+
+test('lotería: su jugada de 3 números se paga número por número (RD$100 cada uno)', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { sealLotteryPick, resolveLotteryPicks } = await import('../src/motor/track.js');
+  const { recordObservation } = await import('../src/lottery/results.js');
+  const db = od(':memory:');
+  sealLotteryPick(db, { game: 'real', date: '2026-11-02', numbers: ['11', '22', '33'], method: 'frecuentes', why: 'x' }, { stake: 100 });
+  const pl = JSON.parse(db.prepare("SELECT payload FROM predictions WHERE module = 'loteria'").get().payload);
+  assert.equal(pl.amountRd, 300); assert.equal(pl.perNumberRd, 100);
+  assert.ok(pl.probHit > 0.08 && pl.probHit < 0.09);
+  for (const source of ['premios.do', 'nacionalloteria.com']) recordObservation(db, { game: 'real', date: '2026-11-02', source, nums: ['22', '50', '11'] });
+  assert.equal(resolveLotteryPicks(db), 1);
+  const out = JSON.parse(db.prepare("SELECT outcome FROM predictions WHERE module = 'loteria'").get().outcome);
+  // 22 en 1ra (x60) y 11 en 3ra (x4), RD$100 cada uno
+  assert.deepEqual(out.hits.sort(), ['11', '22']);
+  assert.equal(out.prizeRd, 100 * 60 + 100 * 4);
+  assert.equal(out.pnlRd, 6400 - 300);
+});
+
+test('IA: si ChatGPT responde vacío (modelo que "piensa"), se reintenta con uno estable y se recuerda', async () => {
+  const { openDb: od, getSetting: gs } = await import('../src/core/db.js');
+  const { complete, isReasoningModel } = await import('../src/ai/providers.js');
+  const db = od(':memory:'), cfg = { openaiKey: 'sk-test', openaiModel: '', aiMonthlyCapUsd: 10, aiDailyCapUsd: 1, ollamaUrl: 'http://x', ollamaModel: 'x' };
+  const calls = [];
+  const fetchImpl = async (url, o) => {
+    if (url.includes('/models')) return { ok: true, json: async () => ({ data: [{ id: 'gpt-5-nano' }, { id: 'gpt-4o-mini' }] }) };
+    if (url.includes('11434') || url.startsWith('http://x')) throw new Error('no hay modelo local');
+    const b = JSON.parse(o.body); calls.push(b);
+    if (b.model === 'gpt-5-nano') return { ok: true, json: async () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }], usage: { prompt_tokens: 10, completion_tokens: 600 } }) };
+    return { ok: true, json: async () => ({ choices: [{ message: { content: 'Hola, aquí está el análisis.' } }], usage: { prompt_tokens: 10, completion_tokens: 8 } }) };
+  };
+  assert.ok(isReasoningModel('gpt-5-nano') && !isReasoningModel('gpt-4o-mini'));
+  const r = await complete(db, cfg, { task: 'prueba', system: 's', prompt: 'p', maxTokens: 300, fetchImpl });
+  assert.equal(r.ok, true); assert.match(r.text, /análisis/);
+  assert.equal(calls[0].model, 'gpt-5-nano'); assert.equal(calls[0].reasoning_effort, 'minimal');
+  assert.ok(calls[0].max_completion_tokens > 300 * 3, 'a los que piensan se les da más espacio');
+  assert.equal(calls[1].model, 'gpt-4o-mini');
+  assert.equal(gs(db, 'global', 'ai.openaiModel', null).model, 'gpt-4o-mini', 'recuerda el modelo que sí funciona');
+  // La siguiente vez va directo al que funciona
+  calls.length = 0; await complete(db, cfg, { task: 'prueba', system: 's', prompt: 'p', fetchImpl });
+  assert.equal(calls[0].model, 'gpt-4o-mini');
+});
+
+test('IA: si un modelo no acepta el ajuste de pensamiento, se reintenta sin él', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { complete } = await import('../src/ai/providers.js');
+  const db = od(':memory:'), cfg = { openaiKey: 'sk-test', openaiModel: 'gpt-6-luna', aiMonthlyCapUsd: 10, aiDailyCapUsd: 1, ollamaUrl: 'http://x', ollamaModel: 'x' };
+  const bodies = [];
+  const fetchImpl = async (url, o) => {
+    if (url.startsWith('http://x')) throw new Error('no local');
+    const b = JSON.parse(o.body); bodies.push(b);
+    if (b.reasoning_effort) return { ok: false, status: 400, text: async () => '{"error":{"message":"Unsupported value: reasoning_effort minimal"}}' };
+    return { ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }], usage: {} }) };
+  };
+  const r = await complete(db, cfg, { task: 't', system: 's', prompt: 'p', fetchImpl });
+  assert.equal(r.ok, true); assert.equal(bodies.length, 2); assert.equal(bodies[1].reasoning_effort, undefined);
+});

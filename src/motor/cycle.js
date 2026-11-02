@@ -82,7 +82,7 @@ export function stopMotor(db) { const st = { running: false, until: null, starte
 async function runTask(name, db, cfg, now, fetchImpl) {
   const syms = universe(db);
   switch (name) {
-    case 'loterias_resultados': { const r = await collectAll(db, { fetchImpl }); const ok = r.filter(x => x.ok).length; activity(db, { agent: 'loteria', type: 'datos', text: `Revisé ${r.length} páginas de resultados: ${ok} respondieron.` }); return { ok, total: r.length, failed: r.filter(x => !x.ok) }; }
+    case 'loterias_resultados': { const r = await collectAll(db, { fetchImpl }); const ok = r.filter(x => x.ok).length; setSetting(db, 'global', 'lottery.sources', { at: now.toISOString(), report: r }); activity(db, { agent: 'loteria', type: 'datos', text: `Revisé ${r.length} páginas de resultados: ${ok} respondieron.` }); return { ok, total: r.length, failed: r.filter(x => !x.ok) }; }
     case 'loterias_liquidar': return { settled: settlePending(db), picks: resolveLotteryPicks(db), real: settleRealLottery(db) };
     case 'bolsa_precios': return { quotes: await updateQuotes(db, cfg, syms, { fetchImpl }) };
     case 'bolsa_historial': { const res = []; for (const s of syms) { try { res.push(await updateSymbol(db, cfg, s, { fetchImpl })); } catch (e) { res.push({ symbol: s, error: e.message }); } } activity(db, { type: 'datos', text: `Historial de precios actualizado: ${res.filter(r => !r.error).length} de ${syms.length} acciones.` }); return res; }

@@ -186,7 +186,7 @@ export function lotteryAnalysis(db, game, { now = new Date() } = {}) {
   const P = getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS);
   const pick = pickOfTheDay(db, game, { now });
   const f = frequencies(hist), exp = hist.length * 3 / 100;
-  const num = pick.numbers[0];
+  const num = pick.numbers[0]; // el primero de sus números (para el detalle de apariciones)
   const appearances = hist.filter(d => d.nums.includes(num)).map(d => d.date);
   const sc = scan(hist, { sims: 400 }), cmp = compareMethods(hist, 'quiniela', { sims: 200, P }), live = liveMethodStats(db);
   const azar = live.find(m => m.method === 'azar');
