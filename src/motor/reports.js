@@ -4,7 +4,8 @@ import { getBudget } from './sizing.js';
 import { getSetting } from '../core/db.js';
 import { round, wilson } from '../core/util.js';
 import { ensureAccount, valuation } from '../stocks/account.js';
-import { getQuote, dayChangePct } from '../stocks/market.js';
+import { getQuote, dayChangePct, getBars } from '../stocks/market.js';
+import { project } from '../stocks/advice.js';
 import { leagueTable, cheatReports } from './league.js';
 import { strategiesSummary } from './research.js';
 import { latestRanking } from './recommend.js';
@@ -68,10 +69,18 @@ export function home(db, cfg, user) {
 export function opportunities(db, cfg, k = 3) {
   const fixed = getSetting(db, 'global', 'stocks.fixedCostUsd', 0);
   const worth = fixed > 0 ? Math.max(cfg.tradeMinUsd, Math.ceil(fixed / 0.02)) : cfg.tradeMinUsd;
+  const LABEL = { 63: '3 meses', 126: '6 meses', 252: '1 año' };
+  // El mercado entero (SPY) en los mismos plazos, para comparar
+  const spyBars = getBars(db, 'SPY');
+  const market = Object.fromEntries([63, 126, 252].map(d => { const p = spyBars.length >= 130 ? project(spyBars, 100, { days: d, sims: 1000 }) : null; return [d, p ? round(p.probable, 1) : null]; }));
   return latestRanking(db).filter(c => c.light !== 'rojo' && c.projection?.ejemplo).slice(0, k).map(c => {
-    const p = c.projection.ejemplo, a = p.amountUsd;
-    return { symbol: c.symbol, light: c.light, confidence: c.confidence, probBeat: c.probBeat ?? null, timing: c.timing ?? null, why: c.reasons[0]?.text || '', months: Math.round(p.days / 21),
+    const H = c.projection.h, rec = c.timing?.recommended?.days;
+    // El cálculo principal es para el tiempo que JARVIS recomienda dejarla (así coinciden "Déjala X" y la ganancia)
+    const days = H ? (rec == null ? 252 : rec <= 63 ? 63 : rec <= 126 ? 126 : 252) : 126;
+    const p = H?.[days] ? { ...H[days], amountUsd: 100 } : c.projection.ejemplo, a = p.amountUsd;
+    return { symbol: c.symbol, light: c.light, confidence: c.confidence, probBeat: c.probBeat ?? null, timing: c.timing ?? null, why: c.reasons[0]?.text || '', months: Math.round(days / 21), horizonLabel: LABEL[days],
       pct: { bad: round(p.bad / a * 100, 1), probable: round(p.probable / a * 100, 1), good: round(p.good / a * 100, 1) }, lossChance: p.lossChance,
+      byTime: H ? [63, 126, 252].filter(d => H[d]).map(d => ({ days: d, label: LABEL[d], probable: round(H[d].probable, 1), lossChance: H[d].lossChance, market: market[d] })) : null,
       minimum: cfg.tradeMinUsd, minimumWorth: worth, fixedCostUsd: fixed };
   });
 }

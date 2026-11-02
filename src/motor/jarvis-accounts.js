@@ -4,7 +4,7 @@
 // Todo sale de operaciones y jugadas selladas; nada se calcula "a ojo".
 import { valuation, ledgerState } from '../stocks/account.js';
 import { getQuote, marketOpen } from '../stocks/market.js';
-import { aiAccount, marketRegime } from './autopilot.js';
+import { aiAccount, marketRegime, riskDecision } from './autopilot.js';
 import { fx } from './insights.js';
 import { GAMES } from '../lottery/games.js';
 import { round } from '../core/util.js';
@@ -34,14 +34,15 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
   const invested = positions.reduce((s, p) => s + p.invested, 0);
   const plan = db.prepare("SELECT symbol, conv FROM map_entries WHERE zone = 'recomendada' AND light = 'verde' ORDER BY conv DESC").all()
     .filter(e => !positions.some(p => p.symbol === e.symbol)).slice(0, Math.max(0, MAX_POSITIONS - positions.length))
-    .map(e => ({ symbol: e.symbol, conv: e.conv, usd: round(Math.min(acc.start_cash * 0.10, v.cash - acc.start_cash * 0.10), 2) }));
+    .map(e => { const d = riskDecision(db, { symbol: e.symbol, conv: e.conv, total: v.total, start: acc.start_cash, peak: getSetting(db, 'global', 'ia.peakTotal', acc.start_cash) }); return { symbol: e.symbol, conv: e.conv, level: d.level, pct: round(d.pct * 100), usd: round(Math.max(0, Math.min(d.usd, v.cash - v.total * 0.10)), 2), why: d.why }; });
   const bolsa = {
     since: acc.created_at, start: acc.start_cash, total: round(v.total, 2), cash: round(v.cash, 2), invested: round(invested, 2), valueNow: round(v.positionsValue, 2),
     gain: round(v.total - acc.start_cash, 2), returnPct: round(v.returnPct * 100, 2), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), fees: round(v.fees || 0, 2),
     positions, closed, moves, wins: v.closed.filter(c => c.pnl > 0).length, losses: v.closed.filter(c => c.pnl <= 0).length,
     marketOpen: marketOpen(now), nextOpen: nextOpen(now), plan: positions.length < MAX_POSITIONS ? plan : [],
     regime: marketRegime(db), lastStep: getSetting(db, 'global', 'ia.lastStep', null), lastCheck: getSetting(db, 'global', 'motor.lastRun', {})?.cartera_ia?.at || null,
-    rules: 'Compra sola lo que está en "Te recomiendo" (de 5% a 15% del dinero según el riesgo, máximo 8 a la vez, siempre deja 10% en efectivo). No compra si el mercado entero va bajando. Vende si deja de recomendarla, si baja 8% desde la compra o si baja 10% desde su punto más alto (asegura la ganancia). Solo opera con la bolsa abierta y precios actuales.',
+    rules: 'Decide sola cuánto arriesgar según qué tan segura está y cuánto tiene ahora: normal 8% de la cartera, segura 15%, muy segura 25% (nunca más de 30% en una empresa; siempre deja 10% en efectivo; máximo 8 a la vez). Frenos para no quedar en 0: cada compra sale si baja 8%; si la cartera baja 20% desde su mejor momento arriesga la mitad; si pierde 40% deja de comprar y cuida lo que queda. No compra si el mercado entero va bajando. Vende si deja de recomendarla o si baja 10% desde su punto más alto (asegura la ganancia). Solo opera con la bolsa abierta y precios actuales.',
+    risk: { mode: getSetting(db, 'global', 'ia.lastStep', null)?.mode || 'normal', peak: getSetting(db, 'global', 'ia.peakTotal', null) },
   };
   // ---------- Lotería (su número de cada sorteo) ----------
   const startRd = Math.round(100 * rate);

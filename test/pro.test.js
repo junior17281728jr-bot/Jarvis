@@ -42,7 +42,7 @@ test('montos según el riesgo y venta para asegurar la ganancia (10% desde el pu
   autopilotStep(db, { now: OPEN });
   const v = aiView(db), m = v.positions.find(p => p.symbol === 'MSFT'), k = v.positions.find(p => p.symbol === 'KO');
   assert.ok(m.value > k.value, `la tranquila recibe más (${m.value} vs ${k.value})`);
-  assert.ok(m.value <= 15.01 && k.value >= 4.99, 'entre 5% y 15%');
+  assert.ok(m.value <= 30.01 && k.value >= 4.5, 'nunca más del 30% en una sola empresa');
   // Subió a 500 y bajó a 445: gana 11% pero cayó 11% desde el punto más alto → vende y asegura
   saveBars(db, 'MSFT', { source: 'test', bars: [{ ts: '2026-11-03', open: 480, high: 505, low: 470, close: 500, volume: 1 }] });
   quote('MSFT', 445); quote('KO', 60);
@@ -214,4 +214,21 @@ test('lotería: texto real de premios.do (hoy sin resultado todavía) no inventa
   const { parseResults } = await import('../src/lottery/sources.js');
   const t = 'Loteka Lunes 02 de noviembre, 2026 7:50PM Avísame Loteka Domingo 01 de noviembre, 2026 7:50PM 22 74 06 Loteka Sábado 31 de octubre, 2026 7:50PM 95 11 99';
   assert.deepEqual(parseResults(t), [{ date: '2026-11-01', nums: ['22', '74', '06'] }, { date: '2026-10-31', nums: ['95', '11', '99'] }]);
+});
+
+test('bolsa: la IA arriesga más cuando está muy segura, menos si va perdiendo, y no compra si perdió 40%', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { riskDecision } = await import('../src/motor/autopilot.js');
+  const db = od(':memory:');
+  db.prepare("INSERT INTO recommendations (symbol, created_at, light, confidence, payload, ledger_hash) VALUES ('AAA','x','verde',0.8,?,'h')").run(JSON.stringify({ probBeat: 0.7, confidence: 0.8 }));
+  db.prepare("INSERT INTO recommendations (symbol, created_at, light, confidence, payload, ledger_hash) VALUES ('BBB','x','verde',0.5,?,'h')").run(JSON.stringify({ probBeat: 0.52, confidence: 0.5 }));
+  const sure = riskDecision(db, { symbol: 'AAA', conv: 85, total: 200, start: 100, peak: 200 });
+  assert.equal(sure.level, 'muy segura'); assert.equal(sure.usd, 50); // 25% de lo que tiene AHORA (US$200)
+  const meh = riskDecision(db, { symbol: 'BBB', conv: 60, total: 100, start: 100, peak: 100 });
+  assert.equal(meh.level, 'normal'); assert.equal(meh.usd, 8);
+  const careful = riskDecision(db, { symbol: 'AAA', conv: 85, total: 75, start: 100, peak: 100 });
+  assert.equal(careful.mode, 'cuidado'); assert.ok(careful.pct <= 0.125 + 1e-9);
+  const def = riskDecision(db, { symbol: 'AAA', conv: 85, total: 59, start: 100, peak: 100 });
+  assert.equal(def.mode, 'defensa'); assert.equal(def.usd, 0);
+  assert.ok(riskDecision(db, { symbol: 'AAA', conv: 90, total: 100, start: 100, peak: 100, vol: 0.05 }).pct <= 0.30);
 });

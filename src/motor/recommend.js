@@ -35,6 +35,8 @@ export function cardFor(db, sym, benchBars) {
   card.probBeat = pb.p; card.probMethod = pb.method;
   card.price = q ? { value: q.price, asOf: q.as_of, source: q.source, kind: q.kind } : { value: bars.at(-1).close, asOf: bars.at(-1).ts, source: bars.at(-1).source, kind: 'cierre' };
   card.projection = { personal: project(bars, 10), ejemplo: project(bars, 200) };
+  // Lo mismo en 3 meses, 6 meses y 1 año (en % de lo invertido), para decir el tiempo exacto de cada cálculo
+  card.projection.h = Object.fromEntries([63, 126, 252].map(days => { const p = project(bars, 100, { days, sims: 1000 }); return [days, p && { bad: p.bad, probable: p.probable, good: p.good, lossChance: p.lossChance }]; }));
   const tm = timeToProfit(bars, benchBars);
   card.timing = tm ? { recommended: tm.recommended, immediate: tm.immediate, toTarget: tm.toTarget, pProfit: Object.fromEntries(tm.horizons.map(h => [h.days, h.pProfit])), h: Object.fromEntries(tm.horizons.map(h => [h.days, { p: h.pProfit, median: h.median, bad: h.bad, pBeat: h.pBeat }])) } : null;
   card.polemicList = pol.slice(0, 3);

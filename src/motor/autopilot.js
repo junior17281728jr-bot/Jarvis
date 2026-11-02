@@ -14,13 +14,46 @@ const MAX_POSITIONS = 8, STOP_LOSS = -0.08, TRAIL = -0.10, TARGET_VOL = 0.25;
 export function aiAccount(db) {
   return ensureAccount(db, { owner: AI_OWNER, name: 'principal', startCash: getBudget(db).usd || 100 });
 }
-function limitsFor(start) {
-  return { minTradeUsd: 1, maxTradeUsd: Math.max(5, round(start * 0.15, 2)), maxPerSymbolPct: 20, minCashPct: 10, maxLossPct: 30 };
+function limitsFor(start, total = start) {
+  return { minTradeUsd: 1, maxTradeUsd: Math.max(5, round(Math.max(start, total) * 0.30, 2)), maxPerSymbolPct: 30, minCashPct: 10, maxLossPct: 40 };
+}
+
+/**
+ * 🎯 ¿Cuánto arriesga la IA en una compra? Lo decide ella según qué tan segura está y cuánto tiene AHORA:
+ *  - Normal: 8% de la cartera. Segura: 15%. Muy segura: 25%. (Ajustado por lo que se mueve la acción.)
+ *  - Nunca más del 30% en una sola empresa y siempre deja 10% en efectivo.
+ *  - Cada compra tiene su salida del 8%: aunque salga mal, una compra del 25% le quita como mucho ~2% de la cartera.
+ *  - Frenos para no quedar en 0: si baja 20% desde su mejor momento, arriesga la mitad ("modo cuidado");
+ *    si pierde 40% de lo que empezó, deja de comprar ("modo defensa") y solo cuida lo que tiene.
+ */
+export function riskDecision(db, { symbol, conv = 50, total, start, peak, vol = null }) {
+  const card = (() => { try { const r = db.prepare('SELECT payload FROM recommendations WHERE symbol = ? ORDER BY id DESC LIMIT 1').get(symbol); return r ? JSON.parse(r.payload) : null; } catch { return null; } })();
+  const pb = card?.probBeat ?? null, conf = card?.confidence ?? null;
+  let level, pctOf;
+  if (conv >= 80 && (pb ?? 0) >= 0.65 && (conf ?? 0) >= 0.75) { level = 'muy segura'; pctOf = 0.25; }
+  else if (conv >= 70 && (pb ?? 0) >= 0.6) { level = 'segura'; pctOf = 0.15; }
+  else { level = 'normal'; pctOf = 0.08; }
+  const scale = vol ? Math.min(1.3, Math.max(0.6, TARGET_VOL / vol)) : 1;
+  let mode = 'normal';
+  if (total <= start * 0.6) mode = 'defensa';
+  else if (peak && total <= peak * 0.8) mode = 'cuidado';
+  const final = mode === 'defensa' ? 0 : Math.min(0.30, pctOf * scale * (mode === 'cuidado' ? 0.5 : 1));
+  const usd = round(total * final, 2);
+  const why = mode === 'defensa'
+    ? `No compro: la cartera bajó a US$${round(total)} (perdió 40% o más de los US$${round(start)} con que empezó). Primero cuido lo que queda para no llegar a 0.`
+    : `Me siento ${level}${pb != null ? ` (le ganó al mercado ${Math.round(pb * 10)} de cada 10 veces` : ' ('}${conf != null ? `, confianza ${Math.round(conf * 100)}%` : ''}, conveniencia ${conv}/100) → pongo ${Math.round(final * 100)}% de lo que tengo (US$${usd} de US$${round(total)})${vol ? `; se mueve ${Math.round(vol * 100)}% al año` : ''}${mode === 'cuidado' ? '; la mitad de lo normal porque la cartera bajó 20% desde su mejor momento' : ''}.`;
+  return { level, mode, pct: final, usd, why, probBeat: pb, confidence: conf };
 }
 
 /** Un paso de la IA: primero vende lo que ya no conviene, después compra lo mejor recomendado. */
 export function autopilotStep(db, { now = new Date() } = {}) {
-  const acc = aiAccount(db), lim = limitsFor(acc.start_cash), out = { sold: [], bought: [], skipped: [] };
+  const acc = aiAccount(db), out = { sold: [], bought: [], skipped: [] };
+  const priceOf0 = s => getQuote(db, s)?.price ?? null;
+  const v0 = valuation(db, acc.id, priceOf0);
+  // Su mejor momento (para el freno de "modo cuidado")
+  const peakTotal = Math.max(getSetting(db, 'global', 'ia.peakTotal', acc.start_cash), v0.total);
+  setSetting(db, 'global', 'ia.peakTotal', round(peakTotal, 2));
+  const lim = limitsFor(acc.start_cash, v0.total);
   const entries = new Map(db.prepare('SELECT symbol, zone, light, conv, note FROM map_entries').all().map(r => [r.symbol, r]));
   const priceOf = s => getQuote(db, s)?.price ?? null;
   const say = (text, important = false) => activity(db, { agent: 'ia', type: 'cartera_ia', important, text: `🤖 ${text}` });
@@ -49,13 +82,18 @@ export function autopilotStep(db, { now = new Date() } = {}) {
   if (mk === 'bajista' && picks.length) { out.skipped.push({ symbol: '*', why: 'mercado bajista' }); out.regime = mk; setSetting(db, 'global', 'ia.lastStep', { at: nowIso(), ...out }); return out; }
   for (const e of picks) {
     if (held.size >= MAX_POSITIONS) break;
-    // Monto según el riesgo: las que se mueven mucho reciben menos, las tranquilas un poco más (5% a 15%)
-    const vol = annualVol(db, e.symbol), scale = vol ? Math.min(1.5, Math.max(0.5, TARGET_VOL / vol)) : 1;
-    const usd = Math.min(round(baseAmount('verde', acc.start_cash, 'equilibrado') * scale, 2), lim.maxTradeUsd);
+    const vNow = valuation(db, acc.id, priceOf0);
+    const vol = annualVol(db, e.symbol);
+    const d = riskDecision(db, { symbol: e.symbol, conv: e.conv, total: vNow.total, start: acc.start_cash, peak: peakTotal, vol });
+    out.mode = d.mode;
+    if (d.mode === 'defensa') { out.skipped.push({ symbol: '*', why: d.why }); if (getSetting(db, 'global', 'ia.defenseNoted', null) !== nowIso().slice(0, 10)) { say(d.why, true); setSetting(db, 'global', 'ia.defenseNoted', nowIso().slice(0, 10)); } break; }
+    // No puede usar el 10% de reserva: si no alcanza, compra con lo que se puede
+    const usd = Math.min(d.usd, round(vNow.cash - vNow.total * 0.10 - 0.05, 2), lim.maxTradeUsd);
+    if (usd < 1) { out.skipped.push({ symbol: e.symbol, why: 'sin efectivo libre (guarda 10% de reserva)' }); break; }
     const quote = getQuote(db, e.symbol), qs = quoteStatus(quote, now);
     if (!qs.usable) { out.skipped.push({ symbol: e.symbol, why: 'sin precio actual' }); continue; }
-    const r = placeOrder(db, { accountId: acc.id, symbol: e.symbol, side: 'buy', usd, quote, quoteUsable: qs, reason: `IA compra: está en "Te recomiendo" (conveniencia ${e.conv}/100)${vol ? `; se mueve ${Math.round(vol * 100)}% al año, por eso pongo ${Math.round(scale * 10)}% del dinero` : ''}.`, limits: lim, now });
-    if (r.ok) { held.add(e.symbol); out.bought.push(e.symbol); say(`La IA compró US$${round(r.qty * r.execPrice)} de ${e.symbol}: está en "Te recomiendo" (conveniencia ${e.conv}/100).`, true); }
+    const r = placeOrder(db, { accountId: acc.id, symbol: e.symbol, side: 'buy', usd, quote, quoteUsable: qs, reason: `IA compra: está en "Te recomiendo". ${d.why}`, limits: lim, now });
+    if (r.ok) { held.add(e.symbol); out.bought.push(e.symbol); say(`La IA compró US$${round(r.qty * r.execPrice)} de ${e.symbol}. ${d.why}`, true); }
     else out.skipped.push({ symbol: e.symbol, why: r.reason });
   }
   setSetting(db, 'global', 'ia.lastStep', { at: nowIso(), ...out });
