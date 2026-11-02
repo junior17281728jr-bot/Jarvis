@@ -114,7 +114,7 @@ const coName = s => CO[s] || s;
 function coBadge(sym, size = 40) {
   let h = 0; for (const ch of String(sym)) h = (h * 31 + ch.charCodeAt(0)) % 360;
   const t = String(sym).replace('.', '').slice(0, 4);
-  return `<span class="cob" style="--h:${h};width:${size}px;height:${size}px;font-size:${Math.round(size * (t.length > 3 ? .27 : .34))}px">${esc(t)}</span>`;
+  return `<span class="cob" style="--h:${h};background-color:hsl(${h},70%,44%);width:${size}px;height:${size}px;font-size:${Math.round(size * (t.length > 3 ? .27 : .34))}px">${esc(t)}</span>`;
 }
 const coCell = (sym, sub = '') => `<div class="coc">${coBadge(sym)}<div><b>${esc(coName(sym))}</b><div class="note">${esc(sym)}${sub ? ' · ' + sub : ''}</div></div></div>`;
 const AGENTS = { largo: ['Largo plazo', 'var(--accent)'], corto: ['Corto plazo', 'var(--violet)'], polemicas: ['Noticias', 'var(--warn)'], loteria: ['Loterías', 'var(--good)'] };
@@ -217,29 +217,34 @@ function todoFor(lightName) {
 }
 
 // ---------- Autenticación ----------
-// Cuentas recordadas EN ESTE EQUIPO (solo el usuario, nunca la contraseña). La contraseña la guarda el
-// llavero del celular o del navegador si la persona quiere (Face ID / autocompletar).
-const ACC_KEY = 'jv.accounts';
-function savedAccounts() { try { const a = JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.u === 'string').slice(0, 8) : []; } catch { return []; } }
-function rememberAccount(u, name) { try { const a = savedAccounts().filter(x => x.u.toLowerCase() !== u.toLowerCase()); a.unshift({ u, name: name || u }); localStorage.setItem(ACC_KEY, JSON.stringify(a.slice(0, 8))); } catch { /* sin almacenamiento */ } }
-function forgetAccount(u) { try { localStorage.setItem(ACC_KEY, JSON.stringify(savedAccounts().filter(x => x.u !== u))); } catch { /* sin almacenamiento */ } }
+// Pantalla de entrada: salen todos los usuarios (si el administrador lo permite). Tocas tu nombre y pones tu contraseña.
+// "Recordar mi contraseña en este equipo" guarda un código seguro (no la contraseña) para entrar solo con tocar tu nombre.
+const ACC_KEY = 'jv.accounts', DEV_KEY = 'jv.dev.';
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
+function savedAccounts() { try { const a = JSON.parse(lsGet(ACC_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.u === 'string').slice(0, 12) : []; } catch { return []; } }
+function rememberAccount(u, name) { const a = savedAccounts().filter(x => x.u.toLowerCase() !== u.toLowerCase()); a.unshift({ u, name: name || u }); lsSet(ACC_KEY, JSON.stringify(a.slice(0, 12))); }
+function forgetAccount(u) { lsSet(ACC_KEY, JSON.stringify(savedAccounts().filter(x => x.u !== u))); const t = lsGet(DEV_KEY + u); if (t) { fetch('/api/login/forget', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) }).catch(() => {}); lsSet(DEV_KEY + u, null); } }
 
 async function showAuth() {
   $('#top').classList.add('hide');
   const { needsSetup } = await fetch('/api/setup').then(r => r.json());
-  const accs = needsSetup ? [] : savedAccounts();
+  let all = []; if (!needsSetup) try { all = await fetch('/api/login/users').then(r => r.json()); } catch { /* sin lista */ }
+  const saved = savedAccounts(), seen = {};
+  const accs = needsSetup ? [] : [...saved.filter(x => !all.length || all.some(y => y.u === x.u)), ...all].filter(x => { const k = x.u.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return true; })
+    .map(x => ({ ...x, name: (all.find(y => y.u === x.u) || x).name, quick: !!lsGet(DEV_KEY + x.u) }));
   app.innerHTML = `<div class="center"><form class="card auth form" id="auth">
     <div class="auth-brand">${brandMark(true)}<div class="logo">${brandName()}</div>${BRAND.tagline ? `<div class="note">${esc(BRAND.tagline)}</div>` : ''}${BRAND.owner ? `<div class="owner">Programa privado de ${esc(BRAND.owner)}</div>` : ''}</div>
     <h1 style="text-align:center;font-size:20px">${needsSetup ? 'Crea tu cuenta de administrador' : accs.length ? '¿Quién entra?' : 'Inicia sesión'}</h1>
     ${needsSetup ? '<p class="note" style="text-align:center">Es la primera vez. Esta cuenta controla JARVIS y crea los usuarios de tus amigos.</p>' : ''}
-    ${accs.length ? `<div class="accts" id="accs">${accs.map(x => `<div class="acct-item"><button type="button" class="acct" data-u="${esc(x.u)}"><span class="acct-av">${esc((x.name || x.u).trim().charAt(0).toUpperCase())}</span><span class="acct-t"><b>${esc(x.name || x.u)}</b><span class="note">${esc(x.u)}</span></span></button><button type="button" class="acct-x" data-x="${esc(x.u)}" title="Olvidar esta cuenta en este equipo" aria-label="Olvidar ${esc(x.u)}">×</button></div>`).join('')}</div>
-      <button type="button" class="linkbtn" id="other">Entrar con otra cuenta</button>` : ''}
+    ${accs.length ? `<div class="accts" id="accs">${accs.map(x => `<div class="acct-item"><button type="button" class="acct" data-u="${esc(x.u)}"><span class="acct-av">${esc((x.name || x.u).trim().charAt(0).toUpperCase())}</span><span class="acct-t"><b>${esc(x.name || x.u)}</b><span class="note">${x.quick ? '🔓 entra con un toque' : x.admin ? 'administrador' : 'pon tu contraseña'}</span></span></button>${saved.some(y => y.u === x.u) ? `<button type="button" class="acct-x" data-x="${esc(x.u)}" title="Olvidar en este equipo" aria-label="Olvidar ${esc(x.name)} en este equipo">×</button>` : ''}</div>`).join('')}</div>
+      <button type="button" class="linkbtn" id="other">Entrar con otro usuario</button>` : ''}
     <div id="userbox"${accs.length ? ' class="hide"' : ''}><label>Usuario<input id="u" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label></div>
     <div id="passbox"${accs.length ? ' class="hide"' : ''}>
       <div id="who" class="note hide" style="text-align:center;margin-bottom:6px"></div>
       <label>Contraseña<input id="p" name="password" type="password" autocomplete="${needsSetup ? 'new-password' : 'current-password'}" required minlength="${needsSetup ? 10 : 1}"></label>
-      <label class="chk" style="margin-top:8px"><input type="checkbox" id="rem" checked> Recordar mi usuario en este equipo</label>
-      <div class="note" style="margin-top:4px">La contraseña la puede guardar tu iPhone (te lo ofrece al entrar) y después se pone sola con Face ID. Además, la sesión dura 30 días en este equipo.</div>
+      ${needsSetup ? '' : `<label class="chk" style="margin-top:8px"><input type="checkbox" id="remp"> Recordar mi contraseña en este equipo <span class="note">(la próxima vez entras con solo tocar tu nombre)</span></label>
+      <div class="note" style="margin-top:2px">Úsalo solo en tu celular o en tu TV, no en equipos de otras personas.</div>`}
       <button class="btn" style="margin-top:10px">${needsSetup ? 'Crear y entrar' : 'Entrar'}</button>
     </div><div class="msg err" id="am"></div>
     ${needsSetup ? '' : `<div class="tvbox"><button type="button" class="linkbtn" id="tvopen">📺 Entrar con código (TV)</button>
@@ -247,15 +252,22 @@ async function showAuth() {
       <input id="tvc" class="tvcode" maxlength="8" placeholder="1234 AB" autocomplete="off" autocapitalize="characters" spellcheck="false">
       <button type="button" class="btn" id="tvgo" style="width:100%">Entrar</button></div></div>`}
     </form></div>`;
-  const pick = u => {
-    $('#u').value = u; $('#userbox').classList.add('hide'); $('#passbox').classList.remove('hide');
-    const a = accs.find(x => x.u === u); $('#who').textContent = `Entrando como ${a?.name || u}`; $('#who').classList.remove('hide');
-    document.querySelectorAll('.acct').forEach(b => b.classList.toggle('on', b.dataset.u === u)); $('#p').focus();
+  const pick = async u => {
+    const a = accs.find(x => x.u === u);
+    document.querySelectorAll('.acct').forEach(b => b.classList.toggle('on', b.dataset.u === u));
+    $('#u').value = u; $('#am').textContent = '';
+    const tok = lsGet(DEV_KEY + u);
+    if (tok) {
+      $('#who').textContent = `Entrando como ${a?.name || u}…`; $('#who').classList.remove('hide'); $('#passbox').classList.remove('hide');
+      try { await api('/api/login/device', { method: 'POST', body: { username: u, token: tok } }); rememberAccount(u, a?.name); return boot(); }
+      catch (err) { lsSet(DEV_KEY + u, null); $('#am').textContent = err.message; }
+    }
+    $('#userbox').classList.add('hide'); $('#passbox').classList.remove('hide');
+    $('#who').textContent = `Entrando como ${a?.name || u}`; $('#who').classList.remove('hide'); $('#p').value = ''; $('#p').focus();
   };
   document.querySelectorAll('.acct').forEach(b => b.onclick = () => pick(b.dataset.u));
   document.querySelectorAll('.acct-x').forEach(b => b.onclick = () => { forgetAccount(b.dataset.x); showAuth(); });
   if ($('#other')) $('#other').onclick = () => { $('#u').value = ''; $('#who').classList.add('hide'); $('#userbox').classList.remove('hide'); $('#passbox').classList.remove('hide'); document.querySelectorAll('.acct').forEach(b => b.classList.remove('on')); $('#u').focus(); };
-  if (accs.length === 1) pick(accs[0].u);
   if ($('#tvopen')) {
     $('#tvopen').onclick = () => { $('#tvform').classList.toggle('hide'); $('#tvc').focus(); };
     const tvGo = async () => { try { await api('/api/tvlogin', { method: 'POST', body: { code: $('#tvc').value } }); boot(); } catch (err) { $('#am').textContent = err.message; } };
@@ -264,8 +276,11 @@ async function showAuth() {
   $('#auth').onsubmit = async e => {
     e.preventDefault();
     try {
-      const r = await api(needsSetup ? '/api/setup' : '/api/login', { method: 'POST', body: { username: $('#u').value.trim(), password: $('#p').value } });
-      if ($('#rem').checked) rememberAccount(r?.user?.username || $('#u').value.trim(), r?.user?.displayName); else forgetAccount($('#u').value.trim());
+      const u = $('#u').value.trim(), remember = !!$('#remp')?.checked;
+      const r = await api(needsSetup ? '/api/setup' : '/api/login', { method: 'POST', body: { username: u, password: $('#p').value, remember } });
+      const name = r?.user?.username || u;
+      rememberAccount(name, r?.user?.displayName);
+      if (r?.deviceToken) lsSet(DEV_KEY + name, r.deviceToken);
       boot();
     } catch (err) { $('#am').textContent = err.message; }
   };
@@ -853,7 +868,7 @@ views.ajustes = async () => {
     <div class="card"><h2>Avisos al celular</h2>${st.notify.on ? `<p>Activos (tema ${esc(st.notify.topic)}).</p><button class="btn ghost" id="ntest">Enviar aviso de prueba</button>` : `<ol class="note" style="padding-left:18px"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class="mono">jarvis-junior-7f3k9</span>, y suscríbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves → Tema de avisos</b>. Para tus avisos personales, ponlo también en <a href="#perfil">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>`}<div class="msg" id="nm"></div></div>
     <div class="card"><h2>Copia fuera del servidor</h2>${st.offsite ? '<p class="good">Activa: cada copia diaria se cifra y se sube.</p>' : '<ol class="note" style="padding-left:18px"><li>En el servidor instala rclone y conecta tu Google Drive: <span class="mono">sudo apt install -y rclone && sudo -u jarvis rclone config</span></li><li>En .env pon <span class="mono">RCLONE_REMOTE=gdrive:</span> y una frase larga en <span class="mono">BACKUP_PASSPHRASE</span>. Guarda la frase en un lugar seguro: sin ella la copia no se puede abrir.</li><li>Reinicia JARVIS.</li></ol>'}</div>
   </section>
-  <section class="card" id="usuarios"><h2>Usuarios <span class="more note">cada uno con su perfil; todos usan el mismo núcleo</span></h2>${(() => { const on = users.filter(u => u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3); return `<div class="onl"><b>👥 Tienes ${users.length} ${users.length === 1 ? 'usuario' : 'usuarios'}</b> · ${on.length ? `🟢 En línea ahora: ${on.map(u => esc(u.display_name || u.username)).join(', ')}` : 'nadie en línea ahora'}</div>`; })()}<div class="tablewrap"><table><tr><th>Persona</th><th>Estilo</th><th class="r">Su dinero</th><th>Estado</th><th></th></tr>${users.map(u => `<tr><td><b>${esc(u.display_name || u.username)}</b><div class="note">${esc(u.username)} · ${u.role === 'admin' ? 'Administrador' : 'Usuario'}</div><div style="margin-top:4px">${onlineChip(u.lastSeen)}</div></td><td>${u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>'}</td><td class="r">${usd(u.budget, 0)}</td><td>${u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>'}</td>
+  <section class="card" id="usuarios"><h2>Usuarios <span class="more note">cada uno con su perfil; todos usan el mismo núcleo</span></h2><label class="chk" style="margin:6px 0"><input type="checkbox" id="showusers"${st.showUsers !== false ? ' checked' : ''}> Mostrar la lista de usuarios en la pantalla de entrada <span class="note">(cada uno toca su nombre y pone su contraseña)</span></label>${(() => { const on = users.filter(u => u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3); return `<div class="onl"><b>👥 Tienes ${users.length} ${users.length === 1 ? 'usuario' : 'usuarios'}</b> · ${on.length ? `🟢 En línea ahora: ${on.map(u => esc(u.display_name || u.username)).join(', ')}` : 'nadie en línea ahora'}</div>`; })()}<div class="tablewrap"><table><tr><th>Persona</th><th>Estilo</th><th class="r">Su dinero</th><th>Estado</th><th></th></tr>${users.map(u => `<tr><td><b>${esc(u.display_name || u.username)}</b><div class="note">${esc(u.username)} · ${u.role === 'admin' ? 'Administrador' : 'Usuario'}</div><div style="margin-top:4px">${onlineChip(u.lastSeen)}</div></td><td>${u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>'}</td><td class="r">${usd(u.budget, 0)}</td><td>${u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>'}</td>
       <td class="r" style="white-space:nowrap">${u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : `<button class="btn ghost sm" data-pw="${u.id}">Nueva contraseña</button> <button class="btn ghost sm" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Desactivar' : 'Activar'}</button>`}</td></tr>`).join('')}</table></div>
     <h3 class="cs-h">Crear un usuario (por ejemplo, para tu amigo)</h3>
     <form class="row" id="uf" style="align-items:flex-end;gap:10px"><label style="flex:1;min-width:160px">Su nombre<input id="nn" placeholder="Ricardo"></label><label style="flex:1;min-width:160px">Usuario para entrar<input id="nu" required placeholder="ricardo"></label><label style="flex:1;min-width:180px">Contraseña (déjala vacía y JARVIS crea una)<input id="np" type="text" minlength="10" placeholder="automática" autocomplete="off"></label><label style="width:150px">IA gratis al mes (US$)<input id="nm" type="number" value="2" step="0.5"></label><button class="btn">Crear usuario</button></form>
@@ -861,6 +876,7 @@ views.ajustes = async () => {
 };
 views.ajustes.after = () => {
   if (ME?.role !== 'admin') return;
+  if ($('#showusers')) $('#showusers').onchange = e => api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(() => {});
   $('#kf').onsubmit = async e => { e.preventDefault(); const body = {};
     document.querySelectorAll('[data-key]').forEach(i => { if (i.value.trim()) body[i.dataset.key] = i.value.trim(); });
     document.querySelectorAll('[data-del]').forEach(c => { if (c.checked) body[c.dataset.del] = ''; });

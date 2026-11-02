@@ -1,5 +1,5 @@
 // Usuarios, contraseñas y sesiones. Cada usuario tiene sus datos privados y su propio tope de IA.
-import { scryptSync, randomBytes, timingSafeEqual, randomInt } from 'node:crypto';
+import { scryptSync, randomBytes, timingSafeEqual, randomInt, createHash } from 'node:crypto';
 import { nowIso, audit } from './db.js';
 
 export function hashPassword(pw) {
@@ -97,6 +97,7 @@ export function changeOwnPassword(db, userId, current, next, keepToken = null) {
   checkNew(next);
   db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(hashPassword(next), userId);
   db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, keepToken || '');
+  db.prepare('DELETE FROM device_tokens WHERE user_id = ?').run(userId);
   audit(db, userId, 'contrasena_cambiada');
 }
 /** El administrador pone una contraseña nueva (por si tu amigo la olvidó). Cierra sus sesiones. */
@@ -104,6 +105,7 @@ export function resetPassword(db, adminId, userId, next) {
   checkNew(next);
   if (!db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(hashPassword(next), userId).changes) throw new Error('No existe ese usuario.');
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  db.prepare('DELETE FROM device_tokens WHERE user_id = ?').run(userId);
   audit(db, adminId, 'contrasena_reiniciada', { userId });
 }
 /** Activar o desactivar a un usuario (sus datos se guardan). Nunca deja el sistema sin administrador activo. */
@@ -113,7 +115,7 @@ export function setActive(db, adminId, userId, active) {
   if (!active && userId === adminId) throw new Error('No puedes desactivarte a ti mismo.');
   if (!active && u.role === 'admin' && db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'admin' AND active = 1").get().n <= 1) throw new Error('Debe quedar al menos un administrador activo.');
   db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, userId);
-  if (!active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+  if (!active) { db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId); db.prepare('DELETE FROM device_tokens WHERE user_id = ?').run(userId); }
   audit(db, adminId, active ? 'usuario_activado' : 'usuario_desactivado', { userId });
 }
 export function setDisplayName(db, userId, name) {
@@ -121,3 +123,19 @@ export function setDisplayName(db, userId, name) {
   db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(n || null, userId);
   return n;
 }
+
+// ---------- Recordar en este equipo: entrar sin escribir la contraseña ----------
+// Se guarda solo una huella del código (nunca la contraseña). Dura 180 días; cambiar la contraseña o desactivar la cuenta lo borra.
+const DEVICE_DAYS = 180, sha = t => createHash('sha256').update(String(t)).digest('hex');
+export function makeDeviceToken(db, userId, ua = '') {
+  const token = randomBytes(32).toString('hex');
+  db.prepare('INSERT INTO device_tokens (hash, user_id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)').run(sha(token), userId, nowIso(), new Date(Date.now() + DEVICE_DAYS * 864e5).toISOString(), String(ua).slice(0, 200));
+  return token;
+}
+export function loginWithDevice(db, username, token) {
+  const r = db.prepare('SELECT d.hash, u.* FROM device_tokens d JOIN users u ON u.id = d.user_id WHERE d.hash = ? AND d.expires_at > ? AND u.active = 1').get(sha(token), nowIso());
+  if (!r || r.username.toLowerCase() !== String(username || '').toLowerCase()) throw new Error('Este equipo ya no recuerda tu contraseña. Escríbela otra vez.');
+  db.prepare('UPDATE device_tokens SET last_used = ? WHERE hash = ?').run(nowIso(), r.hash);
+  return newSession(db, r, 'inicio_sesion_equipo');
+}
+export function forgetDevice(db, token) { db.prepare('DELETE FROM device_tokens WHERE hash = ?').run(sha(token)); }

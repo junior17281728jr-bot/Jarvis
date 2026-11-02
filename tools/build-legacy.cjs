@@ -13,6 +13,8 @@ const hash = f => crypto.createHash('sha256').update(fs.readFileSync(path.join(r
 const css = fs.readFileSync(path.join(root, 'public/styles.css'), 'utf8');
 const vars = {};
 const grab = re => { const m = css.match(re); if (m) for (const d of m[1].matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) vars[d[1]] = d[2].trim(); };
+// Variables de cualquier regla (por ejemplo las del Modo TV); las de :root y tema oscuro mandan
+for (const m of css.matchAll(/\{([^{}]*)\}/g)) for (const d of m[1].matchAll(/--([\w-]+)\s*:\s*([^;}]+)/g)) if (!(d[1] in vars)) vars[d[1]] = d[2].trim();
 grab(/:root\s*\{([^}]*)\}/); grab(/:root\[data-theme="dark"\]\s*\{([^}]*)\}/);
 const resolve = (v, depth = 0) => depth > 8 ? v : v.replace(/var\(\s*--([\w-]+)\s*(?:,\s*([^()]*(?:\([^()]*\))?[^()]*))?\)/g, (_, n, fb) => resolve(vars[n] ?? (fb ? fb.trim() : 'initial'), depth + 1));
 
@@ -24,7 +26,8 @@ const js = `/* JARVIS versión para navegadores viejos. Generado desde app.js ($
 fs.writeFileSync(path.join(root, 'public/app.legacy.js'), js);
 
 // 2) CSS sin variables (tema oscuro, que es el de la TV)
-const legacyCss = `/* Colores resueltos para navegadores viejos. Generado desde styles.css (${hash('public/styles.css')}). */\n`
-  + resolve(css.replace(/:root(\[data-theme="\w+"\])?\s*\{[^}]*\}/g, '')).replace(/color-mix\([^;]*\)/g, 'transparent');
+const { convertCss } = require('./legacy-css.cjs');
+const legacyCss = `/* Para navegadores viejos (colores resueltos, grid → flexbox). Generado desde styles.css (${hash('public/styles.css')}). */\n`
+  + convertCss(resolve(css.replace(/:root(\[data-theme="\w+"\])?\s*\{[^}]*\}/g, '')).replace(/color-mix\([^;]*\)/g, 'transparent'));
 fs.writeFileSync(path.join(root, 'public/styles.legacy.css'), legacyCss);
 console.log(`Listo: app.legacy.js (${hash('public/app.js')}) y styles.legacy.css (${hash('public/styles.css')})`);

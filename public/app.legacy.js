@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (cb41c9c02b8742d1). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (c7e3327f68f86706). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -349,7 +349,7 @@ function coBadge(sym, size) {
         finally { if (e_2) throw e_2.error; }
     }
     var t = String(sym).replace('.', '').slice(0, 4);
-    return "<span class=\"cob\" style=\"--h:".concat(h, ";width:").concat(size, "px;height:").concat(size, "px;font-size:").concat(Math.round(size * (t.length > 3 ? .27 : .34)), "px\">").concat(esc(t), "</span>");
+    return "<span class=\"cob\" style=\"--h:".concat(h, ";background-color:hsl(").concat(h, ",70%,44%);width:").concat(size, "px;height:").concat(size, "px;font-size:").concat(Math.round(size * (t.length > 3 ? .27 : .34)), "px\">").concat(esc(t), "</span>");
 }
 var coCell = function (sym, sub) {
     if (sub === void 0) { sub = ''; }
@@ -471,56 +471,103 @@ function todoFor(lightName) {
         return [{ step: 'Invierte US$5 ahora', note: 'Entrada en dos partes por la duda' }, { step: 'Otros US$5 en 2 semanas', note: 'Solo si no sube más de 5% ni aparece una polémica' }, { step: 'Sal si cae 8%', note: 'Pérdida máxima: US$0.80' }];
     return [{ step: 'No compres por ahora', note: 'Las razones en contra pesan más' }, { step: 'Queda en vigilancia', note: 'JARVIS te avisa si cambia' }];
 }
-var ACC_KEY = 'jv.accounts';
+var ACC_KEY = 'jv.accounts', DEV_KEY = 'jv.dev.';
+var lsGet = function (k) { try {
+    return localStorage.getItem(k);
+}
+catch (_a) {
+    return null;
+} };
+var lsSet = function (k, v) { try {
+    v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v);
+}
+catch (_a) { } };
 function savedAccounts() { try {
-    var a = JSON.parse(localStorage.getItem(ACC_KEY) || '[]');
-    return Array.isArray(a) ? a.filter(function (x) { return x && typeof x.u === 'string'; }).slice(0, 8) : [];
+    var a = JSON.parse(lsGet(ACC_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(function (x) { return x && typeof x.u === 'string'; }).slice(0, 12) : [];
 }
 catch (_a) {
     return [];
 } }
-function rememberAccount(u, name) { try {
-    var a = savedAccounts().filter(function (x) { return x.u.toLowerCase() !== u.toLowerCase(); });
-    a.unshift({ u: u, name: name || u });
-    localStorage.setItem(ACC_KEY, JSON.stringify(a.slice(0, 8)));
-}
-catch (_a) { } }
-function forgetAccount(u) { try {
-    localStorage.setItem(ACC_KEY, JSON.stringify(savedAccounts().filter(function (x) { return x.u !== u; })));
-}
-catch (_a) { } }
+function rememberAccount(u, name) { var a = savedAccounts().filter(function (x) { return x.u.toLowerCase() !== u.toLowerCase(); }); a.unshift({ u: u, name: name || u }); lsSet(ACC_KEY, JSON.stringify(a.slice(0, 12))); }
+function forgetAccount(u) { lsSet(ACC_KEY, JSON.stringify(savedAccounts().filter(function (x) { return x.u !== u; }))); var t = lsGet(DEV_KEY + u); if (t) {
+    fetch('/api/login/forget', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) }).catch(function () { });
+    lsSet(DEV_KEY + u, null);
+} }
 function showAuth() {
     return __awaiter(this, void 0, void 0, function () {
-        var needsSetup, accs, pick, tvGo_1;
+        var needsSetup, all, _a, saved, seen, accs, pick, tvGo_1;
         var _this = this;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
+        return __generator(this, function (_b) {
+            switch (_b.label) {
                 case 0:
                     $('#top').classList.add('hide');
                     return [4, fetch('/api/setup').then(function (r) { return r.json(); })];
                 case 1:
-                    needsSetup = (_a.sent()).needsSetup;
-                    accs = needsSetup ? [] : savedAccounts();
-                    app.innerHTML = "<div class=\"center\"><form class=\"card auth form\" id=\"auth\">\n    <div class=\"auth-brand\">".concat(brandMark(true), "<div class=\"logo\">").concat(brandName(), "</div>").concat(BRAND.tagline ? "<div class=\"note\">".concat(esc(BRAND.tagline), "</div>") : '').concat(BRAND.owner ? "<div class=\"owner\">Programa privado de ".concat(esc(BRAND.owner), "</div>") : '', "</div>\n    <h1 style=\"text-align:center;font-size:20px\">").concat(needsSetup ? 'Crea tu cuenta de administrador' : accs.length ? '¿Quién entra?' : 'Inicia sesión', "</h1>\n    ").concat(needsSetup ? '<p class="note" style="text-align:center">Es la primera vez. Esta cuenta controla JARVIS y crea los usuarios de tus amigos.</p>' : '', "\n    ").concat(accs.length ? "<div class=\"accts\" id=\"accs\">".concat(accs.map(function (x) { return "<div class=\"acct-item\"><button type=\"button\" class=\"acct\" data-u=\"".concat(esc(x.u), "\"><span class=\"acct-av\">").concat(esc((x.name || x.u).trim().charAt(0).toUpperCase()), "</span><span class=\"acct-t\"><b>").concat(esc(x.name || x.u), "</b><span class=\"note\">").concat(esc(x.u), "</span></span></button><button type=\"button\" class=\"acct-x\" data-x=\"").concat(esc(x.u), "\" title=\"Olvidar esta cuenta en este equipo\" aria-label=\"Olvidar ").concat(esc(x.u), "\">\u00D7</button></div>"); }).join(''), "</div>\n      <button type=\"button\" class=\"linkbtn\" id=\"other\">Entrar con otra cuenta</button>") : '', "\n    <div id=\"userbox\"").concat(accs.length ? ' class="hide"' : '', "><label>Usuario<input id=\"u\" name=\"username\" autocomplete=\"username\" autocapitalize=\"none\" autocorrect=\"off\" spellcheck=\"false\" required></label></div>\n    <div id=\"passbox\"").concat(accs.length ? ' class="hide"' : '', ">\n      <div id=\"who\" class=\"note hide\" style=\"text-align:center;margin-bottom:6px\"></div>\n      <label>Contrase\u00F1a<input id=\"p\" name=\"password\" type=\"password\" autocomplete=\"").concat(needsSetup ? 'new-password' : 'current-password', "\" required minlength=\"").concat(needsSetup ? 10 : 1, "\"></label>\n      <label class=\"chk\" style=\"margin-top:8px\"><input type=\"checkbox\" id=\"rem\" checked> Recordar mi usuario en este equipo</label>\n      <div class=\"note\" style=\"margin-top:4px\">La contrase\u00F1a la puede guardar tu iPhone (te lo ofrece al entrar) y despu\u00E9s se pone sola con Face ID. Adem\u00E1s, la sesi\u00F3n dura 30 d\u00EDas en este equipo.</div>\n      <button class=\"btn\" style=\"margin-top:10px\">").concat(needsSetup ? 'Crear y entrar' : 'Entrar', "</button>\n    </div><div class=\"msg err\" id=\"am\"></div>\n    ").concat(needsSetup ? '' : "<div class=\"tvbox\"><button type=\"button\" class=\"linkbtn\" id=\"tvopen\">\uD83D\uDCFA Entrar con c\u00F3digo (TV)</button>\n      <div id=\"tvform\" class=\"hide\"><div class=\"note\" style=\"text-align:center\">En tu celular abre JARVIS \u2192 <b>Mi perfil</b> \u2192 <b>C\u00F3digo para la TV</b>. Escribe aqu\u00ED ese c\u00F3digo (4 n\u00FAmeros y 2 letras).</div>\n      <input id=\"tvc\" class=\"tvcode\" maxlength=\"8\" placeholder=\"1234 AB\" autocomplete=\"off\" autocapitalize=\"characters\" spellcheck=\"false\">\n      <button type=\"button\" class=\"btn\" id=\"tvgo\" style=\"width:100%\">Entrar</button></div></div>", "\n    </form></div>");
-                    pick = function (u) {
-                        $('#u').value = u;
-                        $('#userbox').classList.add('hide');
-                        $('#passbox').classList.remove('hide');
-                        var a = accs.find(function (x) { return x.u === u; });
-                        $('#who').textContent = "Entrando como ".concat((a === null || a === void 0 ? void 0 : a.name) || u);
-                        $('#who').classList.remove('hide');
-                        document.querySelectorAll('.acct').forEach(function (b) { return b.classList.toggle('on', b.dataset.u === u); });
-                        $('#p').focus();
-                    };
+                    needsSetup = (_b.sent()).needsSetup;
+                    all = [];
+                    if (!!needsSetup) return [3, 5];
+                    _b.label = 2;
+                case 2:
+                    _b.trys.push([2, 4, , 5]);
+                    return [4, fetch('/api/login/users').then(function (r) { return r.json(); })];
+                case 3:
+                    all = _b.sent();
+                    return [3, 5];
+                case 4:
+                    _a = _b.sent();
+                    return [3, 5];
+                case 5:
+                    saved = savedAccounts(), seen = {};
+                    accs = needsSetup ? [] : __spreadArray(__spreadArray([], __read(saved.filter(function (x) { return !all.length || all.some(function (y) { return y.u === x.u; }); })), false), __read(all), false).filter(function (x) { var k = x.u.toLowerCase(); if (seen[k])
+                        return false; seen[k] = 1; return true; })
+                        .map(function (x) { return (__assign(__assign({}, x), { name: (all.find(function (y) { return y.u === x.u; }) || x).name, quick: !!lsGet(DEV_KEY + x.u) })); });
+                    app.innerHTML = "<div class=\"center\"><form class=\"card auth form\" id=\"auth\">\n    <div class=\"auth-brand\">".concat(brandMark(true), "<div class=\"logo\">").concat(brandName(), "</div>").concat(BRAND.tagline ? "<div class=\"note\">".concat(esc(BRAND.tagline), "</div>") : '').concat(BRAND.owner ? "<div class=\"owner\">Programa privado de ".concat(esc(BRAND.owner), "</div>") : '', "</div>\n    <h1 style=\"text-align:center;font-size:20px\">").concat(needsSetup ? 'Crea tu cuenta de administrador' : accs.length ? '¿Quién entra?' : 'Inicia sesión', "</h1>\n    ").concat(needsSetup ? '<p class="note" style="text-align:center">Es la primera vez. Esta cuenta controla JARVIS y crea los usuarios de tus amigos.</p>' : '', "\n    ").concat(accs.length ? "<div class=\"accts\" id=\"accs\">".concat(accs.map(function (x) { return "<div class=\"acct-item\"><button type=\"button\" class=\"acct\" data-u=\"".concat(esc(x.u), "\"><span class=\"acct-av\">").concat(esc((x.name || x.u).trim().charAt(0).toUpperCase()), "</span><span class=\"acct-t\"><b>").concat(esc(x.name || x.u), "</b><span class=\"note\">").concat(x.quick ? '🔓 entra con un toque' : x.admin ? 'administrador' : 'pon tu contraseña', "</span></span></button>").concat(saved.some(function (y) { return y.u === x.u; }) ? "<button type=\"button\" class=\"acct-x\" data-x=\"".concat(esc(x.u), "\" title=\"Olvidar en este equipo\" aria-label=\"Olvidar ").concat(esc(x.name), " en este equipo\">\u00D7</button>") : '', "</div>"); }).join(''), "</div>\n      <button type=\"button\" class=\"linkbtn\" id=\"other\">Entrar con otro usuario</button>") : '', "\n    <div id=\"userbox\"").concat(accs.length ? ' class="hide"' : '', "><label>Usuario<input id=\"u\" name=\"username\" autocomplete=\"username\" autocapitalize=\"none\" autocorrect=\"off\" spellcheck=\"false\" required></label></div>\n    <div id=\"passbox\"").concat(accs.length ? ' class="hide"' : '', ">\n      <div id=\"who\" class=\"note hide\" style=\"text-align:center;margin-bottom:6px\"></div>\n      <label>Contrase\u00F1a<input id=\"p\" name=\"password\" type=\"password\" autocomplete=\"").concat(needsSetup ? 'new-password' : 'current-password', "\" required minlength=\"").concat(needsSetup ? 10 : 1, "\"></label>\n      ").concat(needsSetup ? '' : "<label class=\"chk\" style=\"margin-top:8px\"><input type=\"checkbox\" id=\"remp\"> Recordar mi contrase\u00F1a en este equipo <span class=\"note\">(la pr\u00F3xima vez entras con solo tocar tu nombre)</span></label>\n      <div class=\"note\" style=\"margin-top:2px\">\u00DAsalo solo en tu celular o en tu TV, no en equipos de otras personas.</div>", "\n      <button class=\"btn\" style=\"margin-top:10px\">").concat(needsSetup ? 'Crear y entrar' : 'Entrar', "</button>\n    </div><div class=\"msg err\" id=\"am\"></div>\n    ").concat(needsSetup ? '' : "<div class=\"tvbox\"><button type=\"button\" class=\"linkbtn\" id=\"tvopen\">\uD83D\uDCFA Entrar con c\u00F3digo (TV)</button>\n      <div id=\"tvform\" class=\"hide\"><div class=\"note\" style=\"text-align:center\">En tu celular abre JARVIS \u2192 <b>Mi perfil</b> \u2192 <b>C\u00F3digo para la TV</b>. Escribe aqu\u00ED ese c\u00F3digo (4 n\u00FAmeros y 2 letras).</div>\n      <input id=\"tvc\" class=\"tvcode\" maxlength=\"8\" placeholder=\"1234 AB\" autocomplete=\"off\" autocapitalize=\"characters\" spellcheck=\"false\">\n      <button type=\"button\" class=\"btn\" id=\"tvgo\" style=\"width:100%\">Entrar</button></div></div>", "\n    </form></div>");
+                    pick = function (u) { return __awaiter(_this, void 0, void 0, function () {
+                        var a, tok, err_1;
+                        return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0:
+                                    a = accs.find(function (x) { return x.u === u; });
+                                    document.querySelectorAll('.acct').forEach(function (b) { return b.classList.toggle('on', b.dataset.u === u); });
+                                    $('#u').value = u;
+                                    $('#am').textContent = '';
+                                    tok = lsGet(DEV_KEY + u);
+                                    if (!tok) return [3, 4];
+                                    $('#who').textContent = "Entrando como ".concat((a === null || a === void 0 ? void 0 : a.name) || u, "\u2026");
+                                    $('#who').classList.remove('hide');
+                                    $('#passbox').classList.remove('hide');
+                                    _a.label = 1;
+                                case 1:
+                                    _a.trys.push([1, 3, , 4]);
+                                    return [4, api('/api/login/device', { method: 'POST', body: { username: u, token: tok } })];
+                                case 2:
+                                    _a.sent();
+                                    rememberAccount(u, a === null || a === void 0 ? void 0 : a.name);
+                                    return [2, boot()];
+                                case 3:
+                                    err_1 = _a.sent();
+                                    lsSet(DEV_KEY + u, null);
+                                    $('#am').textContent = err_1.message;
+                                    return [3, 4];
+                                case 4:
+                                    $('#userbox').classList.add('hide');
+                                    $('#passbox').classList.remove('hide');
+                                    $('#who').textContent = "Entrando como ".concat((a === null || a === void 0 ? void 0 : a.name) || u);
+                                    $('#who').classList.remove('hide');
+                                    $('#p').value = '';
+                                    $('#p').focus();
+                                    return [2];
+                            }
+                        });
+                    }); };
                     document.querySelectorAll('.acct').forEach(function (b) { return b.onclick = function () { return pick(b.dataset.u); }; });
                     document.querySelectorAll('.acct-x').forEach(function (b) { return b.onclick = function () { forgetAccount(b.dataset.x); showAuth(); }; });
                     if ($('#other'))
                         $('#other').onclick = function () { $('#u').value = ''; $('#who').classList.add('hide'); $('#userbox').classList.remove('hide'); $('#passbox').classList.remove('hide'); document.querySelectorAll('.acct').forEach(function (b) { return b.classList.remove('on'); }); $('#u').focus(); };
-                    if (accs.length === 1)
-                        pick(accs[0].u);
                     if ($('#tvopen')) {
                         $('#tvopen').onclick = function () { $('#tvform').classList.toggle('hide'); $('#tvc').focus(); };
-                        tvGo_1 = function () { return __awaiter(_this, void 0, void 0, function () { var err_1; return __generator(this, function (_a) {
+                        tvGo_1 = function () { return __awaiter(_this, void 0, void 0, function () { var err_2; return __generator(this, function (_a) {
                             switch (_a.label) {
                                 case 0:
                                     _a.trys.push([0, 2, , 3]);
@@ -530,8 +577,8 @@ function showAuth() {
                                     boot();
                                     return [3, 3];
                                 case 2:
-                                    err_1 = _a.sent();
-                                    $('#am').textContent = err_1.message;
+                                    err_2 = _a.sent();
+                                    $('#am').textContent = err_2.message;
                                     return [3, 3];
                                 case 3: return [2];
                             }
@@ -543,27 +590,28 @@ function showAuth() {
                         } };
                     }
                     $('#auth').onsubmit = function (e) { return __awaiter(_this, void 0, void 0, function () {
-                        var r, err_2;
-                        var _a, _b;
-                        return __generator(this, function (_c) {
-                            switch (_c.label) {
+                        var u, remember, r, name, err_3;
+                        var _a, _b, _c;
+                        return __generator(this, function (_d) {
+                            switch (_d.label) {
                                 case 0:
                                     e.preventDefault();
-                                    _c.label = 1;
+                                    _d.label = 1;
                                 case 1:
-                                    _c.trys.push([1, 3, , 4]);
-                                    return [4, api(needsSetup ? '/api/setup' : '/api/login', { method: 'POST', body: { username: $('#u').value.trim(), password: $('#p').value } })];
+                                    _d.trys.push([1, 3, , 4]);
+                                    u = $('#u').value.trim(), remember = !!((_a = $('#remp')) === null || _a === void 0 ? void 0 : _a.checked);
+                                    return [4, api(needsSetup ? '/api/setup' : '/api/login', { method: 'POST', body: { username: u, password: $('#p').value, remember: remember } })];
                                 case 2:
-                                    r = _c.sent();
-                                    if ($('#rem').checked)
-                                        rememberAccount(((_a = r === null || r === void 0 ? void 0 : r.user) === null || _a === void 0 ? void 0 : _a.username) || $('#u').value.trim(), (_b = r === null || r === void 0 ? void 0 : r.user) === null || _b === void 0 ? void 0 : _b.displayName);
-                                    else
-                                        forgetAccount($('#u').value.trim());
+                                    r = _d.sent();
+                                    name = ((_b = r === null || r === void 0 ? void 0 : r.user) === null || _b === void 0 ? void 0 : _b.username) || u;
+                                    rememberAccount(name, (_c = r === null || r === void 0 ? void 0 : r.user) === null || _c === void 0 ? void 0 : _c.displayName);
+                                    if (r === null || r === void 0 ? void 0 : r.deviceToken)
+                                        lsSet(DEV_KEY + name, r.deviceToken);
                                     boot();
                                     return [3, 4];
                                 case 3:
-                                    err_2 = _c.sent();
-                                    $('#am').textContent = err_2.message;
+                                    err_3 = _d.sent();
+                                    $('#am').textContent = err_3.message;
                                     return [3, 4];
                                 case 4: return [2];
                             }
@@ -659,7 +707,7 @@ views.inicio.after = function () {
     bindOpp();
     focusInit();
     $('#ask').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var q, r, u, err_3;
+        var q, r, u, err_4;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -683,8 +731,8 @@ views.inicio.after = function () {
                     }
                     return [3, 4];
                 case 3:
-                    err_3 = _a.sent();
-                    $('#ans').innerHTML = "<div class=\"answer msg err\">".concat(esc(err_3.message), "</div>");
+                    err_4 = _a.sent();
+                    $('#ans').innerHTML = "<div class=\"answer msg err\">".concat(esc(err_4.message), "</div>");
                     return [3, 4];
                 case 4: return [2];
             }
@@ -789,7 +837,7 @@ views.buscar = function () { return __awaiter(void 0, void 0, void 0, function (
 views.buscar.after = function () {
     document.querySelectorAll('#fchips [data-r]').forEach(function (c) { return c.onclick = function () { var _a = __read(c.dataset.r.split(','), 2), a = _a[0], z = _a[1]; $('#fmin').value = a; $('#fmax').value = z; document.querySelectorAll('#fchips button').forEach(function (x) { return x.classList.toggle('ghost', x !== c); }); }; });
     $('#ff').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var r_1, q_1, card, bb, okN, err_4;
+        var r_1, q_1, card, bb, okN, err_5;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -812,8 +860,8 @@ views.buscar.after = function () {
                     $('#fres').scrollIntoView({ behavior: 'smooth', block: 'start' });
                     return [3, 4];
                 case 3:
-                    err_4 = _a.sent();
-                    $('#fres').innerHTML = "<div class=\"card msg err\">".concat(esc(err_4.message), "</div>");
+                    err_5 = _a.sent();
+                    $('#fres').innerHTML = "<div class=\"card msg err\">".concat(esc(err_5.message), "</div>");
                     return [3, 4];
                 case 4: return [2];
             }
@@ -846,7 +894,7 @@ views.perfil.after = function () {
     var _a;
     var tvTick = null;
     $('#tvnew').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var r_2, paint, err_5;
+        var r_2, paint, err_6;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -868,8 +916,8 @@ views.perfil.after = function () {
                     $('#tvnew').textContent = 'Crear otro código';
                     return [3, 3];
                 case 2:
-                    err_5 = _a.sent();
-                    $('#tvshow').innerHTML = "<div class=\"msg err\">".concat(esc(err_5.message), "</div>");
+                    err_6 = _a.sent();
+                    $('#tvshow').innerHTML = "<div class=\"msg err\">".concat(esc(err_6.message), "</div>");
                     return [3, 3];
                 case 3: return [2];
             }
@@ -882,7 +930,7 @@ views.perfil.after = function () {
         b.onclick = function () { sel[b.dataset.g] = b.dataset.k; document.querySelectorAll(".opt[data-g=\"".concat(b.dataset.g, "\"]")).forEach(function (x) { return x.classList.toggle('on', x === b); }); };
     });
     $('#pf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var interests, r, err_6;
+        var interests, r, err_7;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -909,16 +957,16 @@ views.perfil.after = function () {
                         setTimeout(function () { location.hash = '#inicio'; }, 1200);
                     return [3, 6];
                 case 5:
-                    err_6 = _a.sent();
+                    err_7 = _a.sent();
                     $('#pm').className = 'msg err';
-                    $('#pm').textContent = err_6.message;
+                    $('#pm').textContent = err_7.message;
                     return [3, 6];
                 case 6: return [2];
             }
         });
     }); };
     window.__wasSetup = !!((_a = MYBUDGET === null || MYBUDGET === void 0 ? void 0 : MYBUDGET.profile) === null || _a === void 0 ? void 0 : _a.setup);
-    $('#pwf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_7; return __generator(this, function (_a) {
+    $('#pwf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_8; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 e.preventDefault();
@@ -933,9 +981,9 @@ views.perfil.after = function () {
                 $('#pw0').value = $('#pw1').value = '';
                 return [3, 4];
             case 3:
-                err_7 = _a.sent();
+                err_8 = _a.sent();
                 $('#pwm').className = 'msg err';
-                $('#pwm').textContent = err_7.message;
+                $('#pwm').textContent = err_8.message;
                 return [3, 4];
             case 4: return [2];
         }
@@ -1085,7 +1133,7 @@ views.bolsa = function () { return __awaiter(void 0, void 0, void 0, function ()
     });
 }); };
 views.bolsa.after = function () {
-    $('#bf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_8; return __generator(this, function (_a) {
+    $('#bf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_9; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 e.preventDefault();
@@ -1103,14 +1151,14 @@ views.bolsa.after = function () {
                 setTimeout(render, 900);
                 return [3, 5];
             case 4:
-                err_8 = _a.sent();
+                err_9 = _a.sent();
                 $('#bm').className = 'msg err';
-                $('#bm').textContent = err_8.message;
+                $('#bm').textContent = err_9.message;
                 return [3, 5];
             case 5: return [2];
         }
     }); }); };
-    $('#breset').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_9; return __generator(this, function (_a) {
+    $('#breset').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_10; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1122,16 +1170,16 @@ views.bolsa.after = function () {
                 setTimeout(render, 1100);
                 return [3, 3];
             case 2:
-                err_9 = _a.sent();
+                err_10 = _a.sent();
                 $('#bm').className = 'msg err';
-                $('#bm').textContent = err_9.message;
+                $('#bm').textContent = err_10.message;
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
     $('#oside').onchange = function () { var s = $('#oside').value === 'sell'; $('#ousdl').classList.toggle('hide', s); $('#oqtyl').classList.toggle('hide', !s); };
     $('#of').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var r, err_10;
+        var r, err_11;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1148,10 +1196,10 @@ views.bolsa.after = function () {
                     setTimeout(render, 1500);
                     return [3, 4];
                 case 3:
-                    err_10 = _a.sent();
+                    err_11 = _a.sent();
                     $('#om').className = 'msg err';
-                    $('#om').textContent = err_10.message;
-                    if (/caliente|esperar/.test(err_10.message)) {
+                    $('#om').textContent = err_11.message;
+                    if (/caliente|esperar/.test(err_11.message)) {
                         $('#om').innerHTML += ' <button type="button" class="btn ghost" id="emo" style="padding:3px 10px">Entiendo, seguir igual</button>';
                         $('#emo').onclick = function () { window.__emo = true; $('#of').requestSubmit(); };
                     }
@@ -1190,7 +1238,7 @@ views.loterias = function () { return __awaiter(void 0, void 0, void 0, function
 }); };
 views.loterias.after = function () {
     if ($('#lplusb'))
-        $('#lplusb').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_11; return __generator(this, function (_a) {
+        $('#lplusb').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_12; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     $('#lplus').innerHTML = '<div class="note">Pensando…</div>';
@@ -1203,8 +1251,8 @@ views.loterias.after = function () {
                     $('#lplus').innerHTML = r.text ? "<div class=\"answer\">".concat(esc(r.text).replace(/\n/g, '<br>'), "</div>") : "<div class=\"msg err\">".concat(esc(r.error || 'No se pudo.'), "</div>");
                     return [3, 4];
                 case 3:
-                    err_11 = _a.sent();
-                    $('#lplus').innerHTML = "<div class=\"msg err\">".concat(esc(err_11.message), "</div>");
+                    err_12 = _a.sent();
+                    $('#lplus').innerHTML = "<div class=\"msg err\">".concat(esc(err_12.message), "</div>");
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1223,7 +1271,7 @@ views.loterias.after = function () {
         }).join('') : '';
         $('#gview').innerHTML = "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>".concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        <div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo del ").concat(esc(g.pick.date), " \u00B7 cierra ").concat(hhmm(g.pick.closesAt), " ").concat(g.timeVerified ? '' : '(horario por verificar)', "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(esc(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><table><tr><th>Prueba</th><th class=\"r\">Prob. de casualidad</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rd(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rd(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$<input id=\"ls\" type=\"number\" min=\"1\" value=\"10\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
         $('#lf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var r, err_12;
+            var r, err_13;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1238,9 +1286,9 @@ views.loterias.after = function () {
                         $('#lm').textContent = "Sellada para el sorteo del ".concat(r.date, ". Huella: ").concat(r.hash.slice(0, 12), "\u2026");
                         return [3, 4];
                     case 3:
-                        err_12 = _a.sent();
+                        err_13 = _a.sent();
                         $('#lm').className = 'msg err';
-                        $('#lm').textContent = err_12.message;
+                        $('#lm').textContent = err_13.message;
                         return [3, 4];
                     case 4: return [2];
                 }
@@ -1300,15 +1348,17 @@ views.ajustes = function () { return __awaiter(void 0, void 0, void 0, function 
                     }).join(''), "</div></div>\n        <div><div class=\"note\" style=\"margin-bottom:6px\">Logo (PNG, JPG o WEBP; se ajusta solo)</div><div class=\"row\" style=\"gap:10px;align-items:center\"><label class=\"btn ghost\" style=\"cursor:pointer\">Subir logo<input id=\"bl\" type=\"file\" accept=\"image/png,image/jpeg,image/webp\" hidden></label>").concat(BRAND.hasLogo ? '<button type="button" class="btn ghost" id="blr">Quitar logo</button>' : '', "</div></div>\n        <button class=\"btn\" id=\"bsave\">Guardar mi marca</button><div class=\"msg\" id=\"bm\"></div>\n      </div>\n      <div><div class=\"note\" style=\"margin-bottom:8px\">As\u00ED se ver\u00E1</div><div class=\"bprev\" id=\"bprev\"></div><div class=\"note\" style=\"margin-top:8px\">Sale en la barra de arriba, la pantalla de entrada, el Modo TV, la pesta\u00F1a del navegador y el \u00EDcono cuando lo instalas en el celular.</div></div>\n    </div></section>\n  ").concat(mot.publicUrl ? "<section class=\"card\"><h2>Tu enlace para la TV y cualquier navegador</h2><p style=\"font-size:18px;margin:8px 0\"><a href=\"".concat(esc(mot.publicUrl), "\" target=\"_blank\" rel=\"noopener\"><b>").concat(esc(mot.publicUrl), "</b></a></p><div class=\"note\">Escr\u00EDbelo en la barra de direcciones (no en el buscador de Google) del navegador de la TV, otra computadora o el celular de tu amigo. Siempre pide usuario y contrase\u00F1a. Para la TV usa el bot\u00F3n \"Modo TV\".</div></section>") : "<section class=\"card\"><h2>Enlace para que cualquiera entre (sin instalar nada)</h2>".concat(mot.funnelEnable ? "<p style=\"margin:8px 0\">Tailscale pide tu permiso <b>una sola vez</b> para abrir JARVIS a internet.</p><a class=\"btn\" href=\"".concat(esc(mot.funnelEnable), "\" target=\"_blank\" rel=\"noopener\">Activar enlace p\u00FAblico</a><ol class=\"note\" style=\"margin-top:10px;padding-left:18px\"><li>Toca el bot\u00F3n (se abre la p\u00E1gina de Tailscale).</li><li>Entra con la misma cuenta de Tailscale y toca <b>Enable</b> / <b>Activar</b> en todo lo que pregunte.</li><li>Vuelve aqu\u00ED en unos 10 minutos: aparecer\u00E1 tu enlace.</li></ol><div class=\"note\">Aunque el enlace sea p\u00FAblico, nadie ve nada sin el usuario y la contrase\u00F1a que t\u00FA le crees.</div>") : '<div class="note">Todavía no hay enlace público. El servidor lo intenta cada 10 minutos. Si en 20 minutos sigue así, mándale una foto de esta tarjeta a Claude. Mientras tanto entra con Tailscale: http://jarvis:8080</div>', "</section>"), "\n  <section class=\"card\"><h2>\u2728 Plus con IA ").concat(mot.aiOn ? '<span class="chip good">activado</span>' : '<span class="chip warn">apagado: falta la clave de ChatGPT</span>', "</h2><ul class=\"note\" style=\"line-height:1.7;padding-left:18px\">\n    <li><b>Explicaci\u00F3n del analista:</b> cada an\u00E1lisis explicado como a un amigo.</li><li><b>Preguntas:</b> le preguntas lo que quieras a JARVIS.</li>\n    <li><b>Empresas nuevas:</b> la IA propone qu\u00E9 estudiar (cada semana y al tocar \"\u00BFQu\u00E9 buscas ahora?\"); JARVIS las prueba con precios reales.</li>\n    <li><b>Debate:</b> varias IA discuten a favor y en contra de una recomendaci\u00F3n.</li><li><b>Loter\u00EDas:</b> te explica la vigilancia y c\u00F3mo jugar con cabeza.</li><li><b>Noticias:</b> res\u00FAmenes en espa\u00F1ol sencillo.</li></ul>\n    <div class=\"note\">Sin IA, JARVIS sigue funcionando completo; solo se pierde esto. La IA explica y propone, pero nunca decide sola ni inventa n\u00FAmeros.</div></section>\n  <section class=\"card keyscard\"><h2>Claves <span class=\"more note\">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>\n    <p class=\"note\">P\u00E9galas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vac\u00EDo y marca \"borrar\".</p>\n    <form class=\"form\" id=\"kf\">").concat(keys.map(function (k) { return "<div class=\"krow\"><div><b>".concat(esc(k.label), "</b> ").concat(k.set ? "<span class=\"tag dato\">puesta ".concat(esc(k.hint || ''), "</span>") : '<span class="tag est">falta</span>', "<div class=\"note\">D\u00F3nde sacarla: <a href=\"").concat(KEYHELP[k.name][1], "\" target=\"_blank\" rel=\"noopener\">").concat(esc(KEYHELP[k.name][0]), "</a></div></div>\n      <input type=\"").concat(k.name === 'NTFY_TOPIC' || k.name === 'SEC_USER_AGENT' ? 'text' : 'password', "\" data-key=\"").concat(k.name, "\" autocomplete=\"off\" placeholder=\"").concat(k.set ? 'Escribe solo si quieres cambiarla' : esc(KEYHELP[k.name][2]), "\">").concat(k.set ? "<label class=\"note\" style=\"flex-direction:row;gap:6px;align-items:center\"><input type=\"checkbox\" data-del=\"".concat(k.name, "\" style=\"width:auto\"> borrar</label>") : '<span></span>', "</div>"); }).join(''), "\n      <button class=\"btn\">Guardar claves</button><div class=\"msg\" id=\"km\"></div></form>\n    <div class=\"note\">Pon tambi\u00E9n un l\u00EDmite de gasto en la p\u00E1gina de OpenAI. JARVIS adem\u00E1s respeta su propio tope: ").concat(usd(st.caps.month, 0), " al mes.</div></section>\n  <section class=\"card\"><h2>Motor aut\u00F3nomo</h2><div class=\"row\" style=\"align-items:flex-end\">\n    <label style=\"flex-direction:row;align-items:center;gap:8px;padding-bottom:10px\"><input type=\"checkbox\" id=\"mnon\" style=\"width:auto\" checked> Sin parar (hasta que yo lo detenga)</label>\n    <label style=\"width:180px\" id=\"mhl\" class=\"hide\">Trabajar durante (horas)<input id=\"mh\" type=\"number\" min=\"1\" value=\"72\"></label>\n    <button class=\"btn\" id=\"mstart\">Iniciar</button><button class=\"btn ghost\" id=\"mpause\">Pausar</button><button class=\"btn ghost\" id=\"mresume\">Reanudar</button><button class=\"btn danger\" id=\"mstop\">Detener</button><button class=\"btn ghost\" id=\"mrun\">Correr ciclo ahora</button></div>\n    <div class=\"note\" style=\"margin-top:8px\">Estado: <b>").concat(mot.motor.running ? 'activo' : 'en pausa', "</b>").concat(mot.motor.until ? ' hasta ' + new Date(mot.motor.until).toLocaleString('es-DO') : '', ". Al pausar o detener, todo el progreso queda guardado.</div><div class=\"msg\" id=\"mm\"></div></section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Inteligencia artificial</h2><div class=\"form\">\n      ").concat([['openai', 'ChatGPT (principal)'], ['anthropic', 'Claude (opcional, activa el debate entre dos IA)'], ['ollama', 'Modelo gratis en el servidor']].map(function (_a) {
                         var _b = __read(_a, 2), k = _b[0], l = _b[1];
                         return "<label style=\"flex-direction:row;align-items:center;gap:10px\"><input type=\"checkbox\" data-ai=\"".concat(k, "\" ").concat(st.aiEnabled[k] ? 'checked' : '', " style=\"width:auto\"> ").concat(l, " ").concat(st.keys[k] === false ? '<span class="tag est">falta la clave (ponla arriba, en Claves)</span>' : '', "</label>");
-                    }).join(''), "\n      <div class=\"note\">Modelos: ").concat(esc(st.models.openai), " \u00B7 ").concat(esc(st.models.anthropic), " \u00B7 ").concat(esc(st.models.local), ". Tope: ").concat(usd(st.caps.month, 0), " al mes, ").concat(usd(st.caps.day, 2), " al d\u00EDa (en .env).</div>\n      <label>Precios por mill\u00F3n de tokens (conf\u00EDrmalos en la p\u00E1gina oficial)<textarea id=\"prices\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.prices, null, 1)), "</textarea></label>\n      <button class=\"btn\" id=\"saveai\">Guardar IA</button></div></div>\n    <div class=\"card\"><h2>Bolsa y loter\u00EDas</h2><div class=\"form\">\n      <label>Acciones que investiga (separadas por coma)<textarea id=\"univ\" rows=\"3\">").concat(esc(st.universe.join(', ')), "</textarea></label>\n      <label>Pagos de la banca (por RD$1)<textarea id=\"pay\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.payouts)), "</textarea></label>\n      <label style=\"flex-direction:row;align-items:center;gap:10px\"><input type=\"checkbox\" id=\"single\" ").concat(st.allowSingleSource ? 'checked' : '', " style=\"width:auto\"> Pagar jugadas con una sola fuente (marcadas como \"1 fuente\")</label>\n      <button class=\"btn\" id=\"saveother\">Guardar</button></div></div>\n  </section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Avisos al celular</h2>").concat(st.notify.on ? "<p>Activos (tema ".concat(esc(st.notify.topic), ").</p><button class=\"btn ghost\" id=\"ntest\">Enviar aviso de prueba</button>") : "<ol class=\"note\" style=\"padding-left:18px\"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class=\"mono\">jarvis-junior-7f3k9</span>, y suscr\u00EDbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves \u2192 Tema de avisos</b>. Para tus avisos personales, ponlo tambi\u00E9n en <a href=\"#perfil\">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>", "<div class=\"msg\" id=\"nm\"></div></div>\n    <div class=\"card\"><h2>Copia fuera del servidor</h2>").concat(st.offsite ? '<p class="good">Activa: cada copia diaria se cifra y se sube.</p>' : '<ol class="note" style="padding-left:18px"><li>En el servidor instala rclone y conecta tu Google Drive: <span class="mono">sudo apt install -y rclone && sudo -u jarvis rclone config</span></li><li>En .env pon <span class="mono">RCLONE_REMOTE=gdrive:</span> y una frase larga en <span class="mono">BACKUP_PASSPHRASE</span>. Guarda la frase en un lugar seguro: sin ella la copia no se puede abrir.</li><li>Reinicia JARVIS.</li></ol>', "</div>\n  </section>\n  <section class=\"card\" id=\"usuarios\"><h2>Usuarios <span class=\"more note\">cada uno con su perfil; todos usan el mismo n\u00FAcleo</span></h2>").concat((function () { var on = users.filter(function (u) { return u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3; }); return "<div class=\"onl\"><b>\uD83D\uDC65 Tienes ".concat(users.length, " ").concat(users.length === 1 ? 'usuario' : 'usuarios', "</b> \u00B7 ").concat(on.length ? "\uD83D\uDFE2 En l\u00EDnea ahora: ".concat(on.map(function (u) { return esc(u.display_name || u.username); }).join(', ')) : 'nadie en línea ahora', "</div>"); })(), "<div class=\"tablewrap\"><table><tr><th>Persona</th><th>Estilo</th><th class=\"r\">Su dinero</th><th>Estado</th><th></th></tr>").concat(users.map(function (u) { return "<tr><td><b>".concat(esc(u.display_name || u.username), "</b><div class=\"note\">").concat(esc(u.username), " \u00B7 ").concat(u.role === 'admin' ? 'Administrador' : 'Usuario', "</div><div style=\"margin-top:4px\">").concat(onlineChip(u.lastSeen), "</div></td><td>").concat(u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>', "</td><td class=\"r\">").concat(usd(u.budget, 0), "</td><td>").concat(u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>', "</td>\n      <td class=\"r\" style=\"white-space:nowrap\">").concat(u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : "<button class=\"btn ghost sm\" data-pw=\"".concat(u.id, "\">Nueva contrase\u00F1a</button> <button class=\"btn ghost sm\" data-act=\"").concat(u.id, "\" data-on=\"").concat(u.active ? 0 : 1, "\">").concat(u.active ? 'Desactivar' : 'Activar', "</button>"), "</td></tr>"); }).join(''), "</table></div>\n    <h3 class=\"cs-h\">Crear un usuario (por ejemplo, para tu amigo)</h3>\n    <form class=\"row\" id=\"uf\" style=\"align-items:flex-end;gap:10px\"><label style=\"flex:1;min-width:160px\">Su nombre<input id=\"nn\" placeholder=\"Ricardo\"></label><label style=\"flex:1;min-width:160px\">Usuario para entrar<input id=\"nu\" required placeholder=\"ricardo\"></label><label style=\"flex:1;min-width:180px\">Contrase\u00F1a (d\u00E9jala vac\u00EDa y JARVIS crea una)<input id=\"np\" type=\"text\" minlength=\"10\" placeholder=\"autom\u00E1tica\" autocomplete=\"off\"></label><label style=\"width:150px\">IA gratis al mes (US$)<input id=\"nm\" type=\"number\" value=\"2\" step=\"0.5\"></label><button class=\"btn\">Crear usuario</button></form>\n    <div class=\"note\" style=\"margin-top:6px\">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qu\u00E9 le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigaci\u00F3n se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class=\"msg\" id=\"um\"></div></section>")];
+                    }).join(''), "\n      <div class=\"note\">Modelos: ").concat(esc(st.models.openai), " \u00B7 ").concat(esc(st.models.anthropic), " \u00B7 ").concat(esc(st.models.local), ". Tope: ").concat(usd(st.caps.month, 0), " al mes, ").concat(usd(st.caps.day, 2), " al d\u00EDa (en .env).</div>\n      <label>Precios por mill\u00F3n de tokens (conf\u00EDrmalos en la p\u00E1gina oficial)<textarea id=\"prices\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.prices, null, 1)), "</textarea></label>\n      <button class=\"btn\" id=\"saveai\">Guardar IA</button></div></div>\n    <div class=\"card\"><h2>Bolsa y loter\u00EDas</h2><div class=\"form\">\n      <label>Acciones que investiga (separadas por coma)<textarea id=\"univ\" rows=\"3\">").concat(esc(st.universe.join(', ')), "</textarea></label>\n      <label>Pagos de la banca (por RD$1)<textarea id=\"pay\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.payouts)), "</textarea></label>\n      <label style=\"flex-direction:row;align-items:center;gap:10px\"><input type=\"checkbox\" id=\"single\" ").concat(st.allowSingleSource ? 'checked' : '', " style=\"width:auto\"> Pagar jugadas con una sola fuente (marcadas como \"1 fuente\")</label>\n      <button class=\"btn\" id=\"saveother\">Guardar</button></div></div>\n  </section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Avisos al celular</h2>").concat(st.notify.on ? "<p>Activos (tema ".concat(esc(st.notify.topic), ").</p><button class=\"btn ghost\" id=\"ntest\">Enviar aviso de prueba</button>") : "<ol class=\"note\" style=\"padding-left:18px\"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class=\"mono\">jarvis-junior-7f3k9</span>, y suscr\u00EDbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves \u2192 Tema de avisos</b>. Para tus avisos personales, ponlo tambi\u00E9n en <a href=\"#perfil\">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>", "<div class=\"msg\" id=\"nm\"></div></div>\n    <div class=\"card\"><h2>Copia fuera del servidor</h2>").concat(st.offsite ? '<p class="good">Activa: cada copia diaria se cifra y se sube.</p>' : '<ol class="note" style="padding-left:18px"><li>En el servidor instala rclone y conecta tu Google Drive: <span class="mono">sudo apt install -y rclone && sudo -u jarvis rclone config</span></li><li>En .env pon <span class="mono">RCLONE_REMOTE=gdrive:</span> y una frase larga en <span class="mono">BACKUP_PASSPHRASE</span>. Guarda la frase en un lugar seguro: sin ella la copia no se puede abrir.</li><li>Reinicia JARVIS.</li></ol>', "</div>\n  </section>\n  <section class=\"card\" id=\"usuarios\"><h2>Usuarios <span class=\"more note\">cada uno con su perfil; todos usan el mismo n\u00FAcleo</span></h2><label class=\"chk\" style=\"margin:6px 0\"><input type=\"checkbox\" id=\"showusers\"").concat(st.showUsers !== false ? ' checked' : '', "> Mostrar la lista de usuarios en la pantalla de entrada <span class=\"note\">(cada uno toca su nombre y pone su contrase\u00F1a)</span></label>").concat((function () { var on = users.filter(function (u) { return u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3; }); return "<div class=\"onl\"><b>\uD83D\uDC65 Tienes ".concat(users.length, " ").concat(users.length === 1 ? 'usuario' : 'usuarios', "</b> \u00B7 ").concat(on.length ? "\uD83D\uDFE2 En l\u00EDnea ahora: ".concat(on.map(function (u) { return esc(u.display_name || u.username); }).join(', ')) : 'nadie en línea ahora', "</div>"); })(), "<div class=\"tablewrap\"><table><tr><th>Persona</th><th>Estilo</th><th class=\"r\">Su dinero</th><th>Estado</th><th></th></tr>").concat(users.map(function (u) { return "<tr><td><b>".concat(esc(u.display_name || u.username), "</b><div class=\"note\">").concat(esc(u.username), " \u00B7 ").concat(u.role === 'admin' ? 'Administrador' : 'Usuario', "</div><div style=\"margin-top:4px\">").concat(onlineChip(u.lastSeen), "</div></td><td>").concat(u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>', "</td><td class=\"r\">").concat(usd(u.budget, 0), "</td><td>").concat(u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>', "</td>\n      <td class=\"r\" style=\"white-space:nowrap\">").concat(u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : "<button class=\"btn ghost sm\" data-pw=\"".concat(u.id, "\">Nueva contrase\u00F1a</button> <button class=\"btn ghost sm\" data-act=\"").concat(u.id, "\" data-on=\"").concat(u.active ? 0 : 1, "\">").concat(u.active ? 'Desactivar' : 'Activar', "</button>"), "</td></tr>"); }).join(''), "</table></div>\n    <h3 class=\"cs-h\">Crear un usuario (por ejemplo, para tu amigo)</h3>\n    <form class=\"row\" id=\"uf\" style=\"align-items:flex-end;gap:10px\"><label style=\"flex:1;min-width:160px\">Su nombre<input id=\"nn\" placeholder=\"Ricardo\"></label><label style=\"flex:1;min-width:160px\">Usuario para entrar<input id=\"nu\" required placeholder=\"ricardo\"></label><label style=\"flex:1;min-width:180px\">Contrase\u00F1a (d\u00E9jala vac\u00EDa y JARVIS crea una)<input id=\"np\" type=\"text\" minlength=\"10\" placeholder=\"autom\u00E1tica\" autocomplete=\"off\"></label><label style=\"width:150px\">IA gratis al mes (US$)<input id=\"nm\" type=\"number\" value=\"2\" step=\"0.5\"></label><button class=\"btn\">Crear usuario</button></form>\n    <div class=\"note\" style=\"margin-top:6px\">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qu\u00E9 le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigaci\u00F3n se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class=\"msg\" id=\"um\"></div></section>")];
         }
     });
 }); };
 views.ajustes.after = function () {
     if ((ME === null || ME === void 0 ? void 0 : ME.role) !== 'admin')
         return;
+    if ($('#showusers'))
+        $('#showusers').onchange = function (e) { return api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(function () { }); };
     $('#kf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var body, err_13;
+        var body, err_14;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1335,9 +1385,9 @@ views.ajustes.after = function () {
                     setTimeout(render, 1000);
                     return [3, 4];
                 case 3:
-                    err_13 = _a.sent();
+                    err_14 = _a.sent();
                     $('#km').className = 'msg err';
-                    $('#km').textContent = err_13.message;
+                    $('#km').textContent = err_14.message;
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1520,7 +1570,7 @@ views.ajustes.after = function () {
                 case 3: return [2];
             }
         }); }); };
-    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_14; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_15; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1530,9 +1580,9 @@ views.ajustes.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_14 = _a.sent();
+                err_15 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_14.message;
+                $('#um').textContent = err_15.message;
                 return [3, 3];
             case 3: return [2];
         }
@@ -1540,7 +1590,7 @@ views.ajustes.after = function () {
     document.querySelectorAll('[data-pw]').forEach(function (b) { return b.onclick = function () {
         var td = b.parentElement;
         td.innerHTML = "<form class=\"row\" style=\"gap:6px;justify-content:flex-end\"><input type=\"text\" minlength=\"10\" placeholder=\"vac\u00EDa = autom\u00E1tica\" style=\"width:160px\" autocomplete=\"off\"><button class=\"btn sm\">Guardar</button></form>";
-        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_15; return __generator(this, function (_a) {
+        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_16; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     ev.preventDefault();
@@ -1553,15 +1603,15 @@ views.ajustes.after = function () {
                     td.innerHTML = r.password ? "<span class=\"good\">Nueva: <b style=\"font-family:ui-monospace,monospace;user-select:all\">".concat(esc(r.password), "</b></span><div class=\"note\">D\u00E1sela ahora; no se vuelve a mostrar.</div>") : '<span class="good">Contraseña cambiada</span>';
                     return [3, 4];
                 case 3:
-                    err_15 = _a.sent();
-                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_15.message), "</div>"));
+                    err_16 = _a.sent();
+                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_16.message), "</div>"));
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     }; });
     var showPw = function (who, pw) { return "<div class=\"msg ok\" style=\"font-size:16px;line-height:1.6\">Usuario <b>".concat(esc(who), "</b> listo. Su contrase\u00F1a es: <b style=\"font-family:ui-monospace,monospace;font-size:20px;user-select:all\">").concat(esc(pw), "</b><br><span class=\"note\">C\u00F3piala y d\u00E1sela ahora: no se vuelve a mostrar. \u00C9l la puede cambiar en Mi perfil.</span></div>"); };
-    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_16; return __generator(this, function (_a) {
+    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_17; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 e.preventDefault();
@@ -1583,9 +1633,9 @@ views.ajustes.after = function () {
                 }
                 return [3, 4];
             case 3:
-                err_16 = _a.sent();
+                err_17 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_16.message;
+                $('#um').textContent = err_17.message;
                 return [3, 4];
             case 4: return [2];
         }
@@ -1825,7 +1875,7 @@ views.potenciador.after = function () {
     }); }); }; });
     var receipt = null;
     if ($('#prc'))
-        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_17; return __generator(this, function (_a) {
+        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_18; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     f = e.target.files[0];
@@ -1841,16 +1891,16 @@ views.potenciador.after = function () {
                     $('#prcv').innerHTML = "<img src=\"".concat(receipt, "\" class=\"preq-img\" alt=\"Vista previa\"><div>\u2705 Foto lista</div>");
                     return [3, 4];
                 case 3:
-                    err_17 = _a.sent();
+                    err_18 = _a.sent();
                     receipt = null;
-                    $('#prcv').textContent = err_17.message;
+                    $('#prcv').textContent = err_18.message;
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     if ($('#pf2'))
         $('#pf2').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var err_18;
+            var err_19;
             var _a;
             return __generator(this, function (_b) {
                 switch (_b.label) {
@@ -1872,15 +1922,15 @@ views.potenciador.after = function () {
                         setTimeout(render, 1400);
                         return [3, 4];
                     case 3:
-                        err_18 = _b.sent();
+                        err_19 = _b.sent();
                         $('#pmsg').className = 'msg err';
-                        $('#pmsg').textContent = err_18.message;
+                        $('#pmsg').textContent = err_19.message;
                         return [3, 4];
                     case 4: return [2];
                 }
             });
         }); };
-    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_19; var _a; return __generator(this, function (_b) {
+    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_20; var _a; return __generator(this, function (_b) {
         switch (_b.label) {
             case 0:
                 _b.trys.push([0, 2, , 3]);
@@ -1890,16 +1940,16 @@ views.potenciador.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_19 = _b.sent();
+                err_20 = _b.sent();
                 $('#amsg').className = 'msg err';
-                $('#amsg').textContent = err_19.message;
+                $('#amsg').textContent = err_20.message;
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
     document.querySelectorAll('[data-ok]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.ok, true); }; });
     document.querySelectorAll('[data-no]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.no, false); }; });
-    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_20; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_21; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 n = Number(document.querySelector(".gift[data-u=\"".concat(b.dataset.gift, "\"]")).value);
@@ -1912,8 +1962,8 @@ views.potenciador.after = function () {
                 render();
                 return [3, 4];
             case 3:
-                err_20 = _a.sent();
-                alertMsg(err_20.message);
+                err_21 = _a.sent();
+                alertMsg(err_21.message);
                 return [3, 4];
             case 4: return [2];
         }
@@ -1933,7 +1983,7 @@ views.potenciador.after = function () {
         };
     if ($('#pset'))
         $('#pset').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var f, packs, accounts, err_21;
+            var f, packs, accounts, err_22;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -1951,9 +2001,9 @@ views.potenciador.after = function () {
                         $('#psm').textContent = 'Guardado.';
                         return [3, 4];
                     case 3:
-                        err_21 = _a.sent();
+                        err_22 = _a.sent();
                         $('#psm').className = 'msg err';
-                        $('#psm').textContent = err_21.message;
+                        $('#psm').textContent = err_22.message;
                         return [3, 4];
                     case 4: return [2];
                 }
@@ -2051,7 +2101,7 @@ views.historial.after = function () {
                 return __generator(this, function (_a) {
                     td = b.parentElement;
                     td.innerHTML = "<form class=\"ask\" style=\"max-width:260px\"><input type=\"number\" step=\"0.0001\" placeholder=\"Precio de venta\" required><button class=\"btn\">OK</button></form>";
-                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_22; return __generator(this, function (_a) {
+                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_23; return __generator(this, function (_a) {
                         switch (_a.label) {
                             case 0:
                                 e.preventDefault();
@@ -2064,8 +2114,8 @@ views.historial.after = function () {
                                 render();
                                 return [3, 4];
                             case 3:
-                                err_22 = _a.sent();
-                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_22.message), "</div>"));
+                                err_23 = _a.sent();
+                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_23.message), "</div>"));
                                 return [3, 4];
                             case 4: return [2];
                         }
@@ -2403,7 +2453,7 @@ function signForm(doc, d, id) {
 function bindSign(doc, id, done) {
     var _this = this;
     $("#".concat(id, "b")).onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-        var err_23;
+        var err_24;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -2416,9 +2466,9 @@ function bindSign(doc, id, done) {
                     setTimeout(done, 700);
                     return [3, 3];
                 case 2:
-                    err_23 = _a.sent();
+                    err_24 = _a.sent();
                     $("#".concat(id, "m")).className = 'msg err';
-                    $("#".concat(id, "m")).textContent = err_23.message;
+                    $("#".concat(id, "m")).textContent = err_24.message;
                     return [3, 3];
                 case 3: return [2];
             }

@@ -226,6 +226,12 @@ CREATE TRIGGER credit_requests_lock BEFORE UPDATE OF user_id, created_at, pack_n
   BEGIN SELECT RAISE(ABORT, 'los datos de un pago no se pueden cambiar'); END;
 `,
   },
+  {
+    id: 11,
+    name: 'recordar_en_este_equipo',
+    sql: `CREATE TABLE device_tokens (hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL, expires_at TEXT NOT NULL, last_used TEXT, user_agent TEXT);
+CREATE INDEX device_tokens_user ON device_tokens (user_id);`,
+  },
 ];
 
 /** Registra lo que JARVIS está haciendo (para el Modo TV y el panel). Guarda solo los últimos 5,000 eventos. */

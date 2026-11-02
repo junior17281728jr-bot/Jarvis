@@ -8,7 +8,7 @@ import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv, config } from './core/config.js';
 import { openDb, getSetting, setSetting, audit, nowIso, activity } from './core/db.js';
-import { createUser, login, logout, makeTvCode, loginWithTvCode, userFromToken, countUsers, changeOwnPassword, resetPassword, setActive, setDisplayName } from './core/auth.js';
+import { createUser, login, logout, makeTvCode, loginWithTvCode, makeDeviceToken, loginWithDevice, forgetDevice, userFromToken, countUsers, changeOwnPassword, resetPassword, setActive, setDisplayName } from './core/auth.js';
 import { verifyLedger } from './core/ledger.js';
 import { recentErrors } from './core/jobs.js';
 import { runCycle, startMotor, pauseMotor, resumeMotor, stopMotor, motorState, taskStatus } from './motor/cycle.js';
@@ -112,7 +112,14 @@ route('POST', '/api/setup', async ({ req }) => {
   createUser(db, { username: b.username, password: b.password, role: 'admin' });
   return login(db, b.username, b.password);
 }, { auth: false });
-route('POST', '/api/login', async ({ req }) => { const b = await body(req); return login(db, b.username, b.password); }, { auth: false });
+route('POST', '/api/login', async ({ req }) => { const b = await body(req); const r = login(db, b.username, b.password); if (b.remember) r.deviceToken = makeDeviceToken(db, r.user.id, req.headers['user-agent']); return r; }, { auth: false });
+route('POST', '/api/login/device', async ({ req }) => { const b = await body(req); return loginWithDevice(db, b.username, b.token); }, { auth: false });
+route('POST', '/api/login/forget', async ({ req }) => { const b = await body(req); if (b.token) forgetDevice(db, b.token); return { ok: true }; }, { auth: false });
+// Lista de usuarios en la pantalla de entrada (el administrador la puede apagar en Ajustes)
+route('GET', '/api/login/users', () => getSetting(db, 'global', 'login.showUsers', true)
+  ? db.prepare('SELECT username u, COALESCE(display_name, username) name, role FROM users WHERE active = 1 ORDER BY (role = \'admin\') DESC, id').all().map(x => ({ u: x.u, name: x.name, admin: x.role === 'admin' }))
+  : [], { auth: false });
+route('POST', '/api/login/users', async ({ req }) => { const b = await body(req); setSetting(db, 'global', 'login.showUsers', !!b.show); return { show: !!b.show }; }, { admin: true });
 route('POST', '/api/tvcode', ({ user }) => makeTvCode(db, user.id));
 route('POST', '/api/tvlogin', async ({ req }) => { const b = await body(req); return loginWithTvCode(db, b.code); }, { auth: false });
 route('POST', '/api/logout', ({ req }) => { logout(db, tokenOf(req)); return { ok: true }; });
@@ -274,7 +281,7 @@ route('POST', '/api/motor/:action', async ({ p, req }) => {
   throw new Error('Acción desconocida.');
 }, { admin: true });
 
-route('GET', '/api/settings', () => ({ payouts: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS), universe: universe(db), aiEnabled: getSetting(db, 'global', 'ai.enabled', { openai: true, anthropic: false, ollama: true }), prices: getSetting(db, 'global', 'ai.prices', DEFAULT_PRICES), allowSingleSource: getSetting(db, 'global', 'lottery.allowSingleSource', true), caps: { month: cfg.aiMonthlyCapUsd, day: cfg.aiDailyCapUsd }, models: { openai: cfg.openaiModel, anthropic: cfg.anthropicModel, local: cfg.ollamaModel }, keys: { openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey, alpaca: !!cfg.alpacaKey }, notify: { on: !!cfg.ntfyTopic, topic: cfg.ntfyTopic ? cfg.ntfyTopic.slice(0, 4) + '…' : null }, offsite: !!(cfg.backupPassphrase && cfg.rcloneRemote) }), { admin: true });
+route('GET', '/api/settings', () => ({ showUsers: getSetting(db, 'global', 'login.showUsers', true), payouts: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS), universe: universe(db), aiEnabled: getSetting(db, 'global', 'ai.enabled', { openai: true, anthropic: false, ollama: true }), prices: getSetting(db, 'global', 'ai.prices', DEFAULT_PRICES), allowSingleSource: getSetting(db, 'global', 'lottery.allowSingleSource', true), caps: { month: cfg.aiMonthlyCapUsd, day: cfg.aiDailyCapUsd }, models: { openai: cfg.openaiModel, anthropic: cfg.anthropicModel, local: cfg.ollamaModel }, keys: { openai: !!cfg.openaiKey, anthropic: !!cfg.anthropicKey, alpaca: !!cfg.alpacaKey }, notify: { on: !!cfg.ntfyTopic, topic: cfg.ntfyTopic ? cfg.ntfyTopic.slice(0, 4) + '…' : null }, offsite: !!(cfg.backupPassphrase && cfg.rcloneRemote) }), { admin: true });
 route('POST', '/api/settings', async ({ req, user }) => {
   const b = await body(req);
   if (b.payouts) { const P = b.payouts; if (!Array.isArray(P.q) || P.q.length !== 3 || ['p12', 'p13', 'p23', 't3', 't2'].some(k => !(Number(P[k]) >= 0))) throw new Error('Los pagos no tienen el formato correcto.'); setSetting(db, 'global', 'lottery.payouts', P); cache.delete('lottery'); }
@@ -438,7 +445,7 @@ const server = createServer(async (req, res) => {
       if (r.admin && user?.role !== 'admin') return send(res, 403, { error: 'Solo el administrador puede hacer esto.' });
       const out = await r.handler({ req, res, url, user, p: url.pathname.match(r.re).groups || {} });
       if (res.writableEnded) return;
-      if (out && out.token) return send(res, 200, { user: out.user }, { 'Set-Cookie': `jv=${out.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}${req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : ''}` });
+      if (out && out.token) return send(res, 200, { user: out.user, deviceToken: out.deviceToken }, { 'Set-Cookie': `jv=${out.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}${req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : ''}` });
       return send(res, 200, out ?? { ok: true });
     }
     if (url.pathname === '/brand/logo') {
