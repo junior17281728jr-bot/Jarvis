@@ -11,20 +11,24 @@ import { join, dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { encryptBuffer } from './offsite.js';
 import { nowIso } from './db.js';
-import { buildMemory } from './memory.js';
+import { buildMemory, journalEntry } from './memory.js';
 import { listAcceptances } from './legal.js';
 import { getSetting, setSetting } from './db.js';
 
-export const DRIVE_KEEP = 3;
+export const DRIVE_KEEP = { diarias: 7, semanas: 8 }; // + una por mes PARA SIEMPRE
 export const DRIVE_URL_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/;
 export const newDriveToken = () => randomBytes(18).toString('hex');
 
 /** El código que se pega en script.google.com (lleva la clave para que nadie más pueda escribir en tu Drive). */
 export function driveScript(token, keep = DRIVE_KEEP) {
+  if (typeof keep === 'number') keep = { diarias: keep, semanas: 0 };
   return `// JARVIS → tu Google Drive. Pega TODO esto sin cambiar nada.
 var TOKEN = '${token}';
 var CARPETA = 'JARVIS - copias y memoria';
-var GUARDAR = ${keep}; // copias completas del núcleo que se guardan (las viejas se botan solas)
+// Qué copias del núcleo se guardan (lo aprendido NUNCA se pierde: cada copia lleva TODO lo acumulado hasta ese día)
+var DIARIAS = ${keep.diarias}; // las más nuevas
+var SEMANAS = ${keep.semanas}; // una por semana de las últimas semanas
+// + la última de CADA MES, para siempre
 
 function doGet() { return out({ ok: true, jarvis: true }); }
 
@@ -41,16 +45,15 @@ function doPost(e) {
     var dest = x.folder ? sub(f, x.folder) : f;
     var it = dest.getFilesByName(x.name);
     if (x.text != null) {
-      if (it.hasNext()) it.next().setContent(x.text);
-      else dest.createFile(x.name, x.text, MimeType.PLAIN_TEXT);
+      if (it.hasNext()) { var old = it.next(); old.setContent(x.append ? old.getBlob().getDataAsString() + x.text : x.text); }
+      else dest.createFile(x.name, (x.head || '') + x.text, MimeType.PLAIN_TEXT);
     } else if (x.data && !it.hasNext()) {
       dest.createFile(Utilities.newBlob(Utilities.base64Decode(x.data), x.mime || 'application/octet-stream', x.name));
     }
   });
-  var c = copias(f);
-  for (var i = GUARDAR; i < c.length; i++) c[i].setTrashed(true);
-  var used = tam(f);
-  return out({ ok: true, folder: f.getUrl(), used: used, copias: Math.min(c.length, GUARDAR) });
+  var c = copias(f), k = cuales(c), n = 0;
+  for (var i = 0; i < c.length; i++) { if (k[i]) n++; else c[i].setTrashed(true); }
+  return out({ ok: true, folder: f.getUrl(), used: tam(f), copias: n });
 }
 
 function sub(f, name) { var it = f.getFoldersByName(name); return it.hasNext() ? it.next() : f.createFolder(name); }
@@ -60,6 +63,18 @@ function copias(f) {
   while (it.hasNext()) { var x = it.next(); if (/^jarvis-nucleo-.*\\.jvbk$/.test(x.getName()) && !x.isTrashed()) a.push(x); }
   a.sort(function (p, q) { return p.getName() < q.getName() ? 1 : -1; });
   return a;
+}
+function cuales(c) { // c: de la más nueva a la más vieja
+  var k = {}, sem = {}, mes = {}, nsem = 0;
+  for (var i = 0; i < c.length; i++) {
+    var m = /(\\d{4})(\\d{2})(\\d{2})/.exec(c[i].getName());
+    if (!m) { k[i] = true; continue; }
+    var w = Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 6048e5), mm = m[1] + m[2];
+    if (i < DIARIAS) k[i] = true;
+    if (!sem[w] && nsem < SEMANAS) { sem[w] = true; nsem++; k[i] = true; }
+    if (!mes[mm]) { mes[mm] = true; k[i] = true; }
+  }
+  return k;
 }
 function tam(f) {
   var n = 0, a = f.getFiles(), s = f.getFolders();
@@ -115,6 +130,10 @@ export async function driveBackup(db, cfg, { fetchImpl = fetch, tasks = [], vers
     { name: 'JARVIS-memoria.json', text: mem.json },
     { name: `JARVIS-memoria-${month}.md`, text: mem.md },
   ];
+  // Bitácora: cada día se AGREGA lo nuevo al final (nunca se reemplaza ni se borra)
+  const since = getSetting(db, 'global', 'drive.journalAt', null), year = nowIso().slice(0, 4);
+  const entry = journalEntry(db, since);
+  files.push({ name: `JARVIS-bitacora-${year}.md`, append: true, head: `# 📓 Bitácora de JARVIS ${year}\n\nCada día se agrega lo que aprendió, lo que cambió y por qué. Nunca se borra nada.\n`, text: entry });
   let core = null;
   if (withCore && cfg.backupPassphrase) {
     const enc = encryptBuffer(lightCopy(db, cfg), cfg.backupPassphrase);
@@ -122,7 +141,8 @@ export async function driveBackup(db, cfg, { fetchImpl = fetch, tasks = [], vers
     files.push({ name: core.name, data: enc.toString('base64') });
   }
   const r = await call(cfg, { action: 'guardar', files }, fetchImpl);
-  return { uploaded: true, memoryBytes: Buffer.byteLength(mem.md) + Buffer.byteLength(mem.json), core, folder: r.folder, used: r.used, copies: r.copias, at: nowIso() };
+  setSetting(db, 'global', 'drive.journalAt', nowIso());
+  return { uploaded: true, journalBytes: Buffer.byteLength(entry), memoryBytes: Buffer.byteLength(mem.md) + Buffer.byteLength(mem.json), core, folder: r.folder, used: r.used, copies: r.copias, at: nowIso() };
 }
 
 /** Trae la copia del núcleo más nueva que hay en Drive (para restaurar). */

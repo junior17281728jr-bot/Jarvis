@@ -20,7 +20,7 @@ import { pickOfTheDay, liveMethodStats, methodVotes , lotteryBoard } from './mot
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
-import { getBars, getQuote, quoteStatus, marketOpen } from './stocks/market.js';
+import { getBars, getQuote, quoteStatus, marketOpen, dayChangePct } from './stocks/market.js';
 import { factsFor, universe, DEFAULT_UNIVERSE } from './stocks/collector.js';
 import { adviseAmount, project } from './stocks/advice.js';
 import { GAMES } from './lottery/games.js';
@@ -39,6 +39,7 @@ import { aiView } from './motor/autopilot.js';
 import { brainSummary, exportBrain, restoreBrain, brainFileInfo } from './core/brain.js';
 import { driveScript, newDriveToken, drivePing, driveLatest, driveLegal, queueLegalSync, DRIVE_URL_RE, DRIVE_KEEP } from './core/drive.js';
 import { buildMemory } from './core/memory.js';
+import { jarvisAccounts } from './motor/jarvis-accounts.js';
 import { runDrive, programVersion } from './motor/cycle.js';
 import { legalDoc, acceptLegal, currentAcceptance, listAcceptances, signedText, LEGAL_VERSION } from './core/legal.js';
 import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
@@ -174,6 +175,20 @@ function tvThoughts(r, lot) {
   for (const g of lot.slice(0, 3)) out.push({ kind: 'loto', text: `Revisando ${g.game}: ${g.verdict} Los métodos votan por ${g.top.join(', ')} (cada uno tiene 3 de 100 de salir).` });
   return out;
 }
+// Qué está haciendo cada agente y cuándo puede ganar o perder monedas (para que se entienda por qué el número no se mueve)
+function agentDoing(id) {
+  const q1 = (sql, ...a) => { try { return db.prepare(sql).get(...a) || {}; } catch { return {}; } };
+  if (id === 'largo') {
+    const p = q1("SELECT COUNT(*) n, MIN(json_extract(payload,'$.startDate')) d FROM predictions WHERE module = 'ranking' AND correct IS NULL");
+    const r = q1("SELECT COUNT(*) n, SUM(correct) c FROM predictions WHERE module = 'ranking' AND correct IS NOT NULL");
+    const when = p.d ? new Date(Date.parse(p.d) + 29 * 864e5).toLocaleDateString('es-DO', { day: 'numeric', month: 'short' }) : null;
+    return p.n ? `${p.n} votos esperando resultado${when ? ` · el primero se decide ~${when}` : ''}${r.n ? ` · ya acertó ${r.c} de ${r.n}` : ''}` : r.n ? `acertó ${r.c} de ${r.n} votos` : 'preparando sus primeros votos';
+  }
+  if (id === 'corto') { const t = q1("SELECT COUNT(*) n FROM experiments e JOIN strategies s ON s.id = e.strategy_id WHERE s.agent = 'corto'"), l = q1("SELECT COUNT(*) n FROM strategies WHERE agent = 'corto' AND status IN ('en_prueba','validada')"); return `probó ${t.n || 0} ideas · ${l.n ? `${l.n} en prueba en vivo` : 'gana monedas cuando una idea pase el examen'}`; }
+  if (id === 'polemicas') { const n = q1('SELECT COUNT(*) n, SUM(polemic) p FROM news'); return `revisó ${n.n || 0} noticias · ${n.p || 0} graves`; }
+  if (id === 'loteria') { const n = q1("SELECT COUNT(*) n FROM lottery_plays WHERE agent = 'loteria'"); return `${n.n || 0} jugadas de prueba para medir métodos`; }
+  return '';
+}
 route('GET', '/api/tv', ({ user }) => {
   const r = latestRanking(db);
   const tvVotes = Object.keys(GAMES).map(g => { try { const v = methodVotes(db, g); return v ? { game: GAMES[g].name, date: v.date, top: v.top.map(t => t.num), votes: v.top.map(t => t.votes), voters: v.totalVoters, verdict: v.verdict } : null; } catch { return null; } }).filter(Boolean).slice(0, 4);
@@ -185,10 +200,10 @@ route('GET', '/api/tv', ({ user }) => {
     headline: best ? tvHeadline(best) : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar.',
     lotteryLine: (() => { const s = liveMethodStats(db); const az = s.find(m => m.method === 'azar'); const better = s.filter(m => m.method !== 'azar' && az && m.n >= 30 && m.per100 > az.per100 + 10); return better.length ? `Loterías: ${better[0].method} va por encima del azar; falta confirmarlo.` : 'Loterías: ningún método le gana al azar todavía.'; })(),
     ranking: r.slice(0, 8).map(c => ({ symbol: c.symbol, light: c.light, confidence: c.confidence, probBeat: c.probBeat ?? null, score: c.score, why: c.reasons[0]?.text, price: c.price })),
-    league: leagueTable(db), predictions: predictionStats(db), learning: st, lottery: lot, ai: aiSpend(db, cfg),
+    league: leagueTable(db).map(a => ({ ...a, doing: agentDoing(a.id) })), cuentas: (() => { try { return jarvisAccounts(db); } catch { return null; } })(), predictions: predictionStats(db), learning: st, lottery: lot, ai: aiSpend(db, cfg),
     activity: db.prepare('SELECT * FROM activity WHERE user_id IS NULL OR user_id = ? ORDER BY id DESC LIMIT 40').all(user.id),
     account: (() => { const acc = userAccount(user); const v = valuation(db, acc.id, s => getQuote(db, s)?.price); return { total: round(v.total, 2), start: v.start, returnPct: round(v.returnPct * 100, 2), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), positions: v.positions.length, fx: fx(db)?.rate ?? null }; })(),
-    quotes: db.prepare('SELECT symbol, price, prev_close, kind, source, as_of FROM stock_quotes ORDER BY symbol').all().map(q => ({ ...q, changePct: q.prev_close ? round((q.price / q.prev_close - 1) * 100, 2) : null })),
+    quotes: db.prepare('SELECT symbol, price, prev_close, kind, source, as_of FROM stock_quotes ORDER BY symbol').all().map(q => ({ ...q, changePct: dayChangePct(db, q) })),
     // Para el Modo TV: lo que hace cada área, en vivo
     map: (() => { const zs = { recomendada: [], observacion: [], no_recomendada: [], candidata: [] }; for (const e of db.prepare("SELECT symbol, zone, conv FROM map_entries WHERE zone != 'descartada' ORDER BY conv DESC").all()) (zs[e.zone] ||= []).push({ s: e.symbol, c: e.conv }); const ex = getSetting(db, 'global', 'map.explore', null); return { zones: zs, exploredAt: ex?.at || null }; })(),
     votes: tvVotes,
@@ -487,6 +502,7 @@ route('GET', '/api/whatif', ({ url }) => whatIf(db, { perTradeUsd: Number(url.se
 route('GET', '/api/grade', ({ url }) => monthlyGrade(db, url.searchParams.get('month') || undefined));
 route('GET', '/api/fx', () => fx(db));
 route('GET', '/api/lottery/jarvis', () => lotteryBoard(db));
+route('GET', '/api/jarvis/cuentas', () => jarvisAccounts(db));
 route('POST', '/api/notify/test', async () => { const r = await sendPush(cfg, { title: 'JARVIS', message: 'Prueba de aviso: si ves esto, los avisos funcionan.', tags: ['white_check_mark'] }); if (!r.ok) throw new Error(r.reason || 'No se pudo enviar el aviso.'); return r; }, { admin: true });
 const csv = rows => { if (!rows.length) return 'sin datos\n'; const k = Object.keys(rows[0]); return '\ufeff' + [k.join(','), ...rows.map(r => k.map(x => `"${String(r[x] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); };
 route('GET', '/api/export/firmas', ({ user, res }) => {

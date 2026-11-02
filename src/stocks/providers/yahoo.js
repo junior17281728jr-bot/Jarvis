@@ -9,5 +9,9 @@ export async function dailyBars(symbol, { range = '5y', fetchImpl = fetch } = {}
     const f = adj && q.close[i] ? adj[i] / q.close[i] : 1; // ajusta por dividendos y divisiones
     return { ts: new Date(t * 1000).toISOString().slice(0, 10), open: q.open[i] * f, high: q.high[i] * f, low: q.low[i] * f, close: q.close[i] * f, volume: q.volume[i] };
   }).filter(b => [b.open, b.high, b.low, b.close].every(Number.isFinite));
-  return { source: 'yahoo-no-oficial', bars, quote: { symbol, price: r.meta.regularMarketPrice, prevClose: r.meta.chartPreviousClose, asOf: new Date(r.meta.regularMarketTime * 1000).toISOString(), kind: 'retrasado', source: 'yahoo-no-oficial' } };
+  // Cierre de AYER (no el de hace 5 años: "chartPreviousClose" es el cierre antes del rango pedido)
+  const raw = r.timestamp.map((t, i) => ({ d: new Date(t * 1000).toISOString().slice(0, 10), c: q.close[i] })).filter(x => Number.isFinite(x.c));
+  const mDay = new Date(r.meta.regularMarketTime * 1000).toISOString().slice(0, 10), n = raw.length - 1;
+  const prevClose = r.meta.previousClose ?? r.meta.regularMarketPreviousClose ?? (n >= 0 ? (raw[n].d === mDay ? raw[n - 1]?.c : raw[n].c) : null) ?? (range === '1d' || range === '5d' ? r.meta.chartPreviousClose : null);
+  return { source: 'yahoo-no-oficial', bars, quote: { symbol, price: r.meta.regularMarketPrice, prevClose, asOf: new Date(r.meta.regularMarketTime * 1000).toISOString(), kind: 'retrasado', source: 'yahoo-no-oficial' } };
 }

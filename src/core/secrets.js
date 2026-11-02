@@ -4,12 +4,12 @@ import { readFileSync, writeFileSync, existsSync, renameSync, chmodSync } from '
 import { dirname, resolve } from 'node:path';
 
 export const KEYS = {
-  OPENAI_API_KEY: { cfg: 'openaiKey', label: 'ChatGPT (OpenAI)', re: /^sk-[A-Za-z0-9_\-]{20,200}$/ },
-  ANTHROPIC_API_KEY: { cfg: 'anthropicKey', label: 'Claude (Anthropic)', re: /^sk-ant-[A-Za-z0-9_\-]{20,200}$/ },
-  ALPACA_KEY_ID: { cfg: 'alpacaKey', label: 'Alpaca: Key ID', re: /^[A-Z0-9]{10,40}$/ },
-  ALPACA_SECRET_KEY: { cfg: 'alpacaSecret', label: 'Alpaca: Secret', re: /^[A-Za-z0-9]{20,80}$/ },
-  NTFY_TOPIC: { cfg: 'ntfyTopic', label: 'Tema de avisos (ntfy)', re: /^[A-Za-z0-9_\-]{8,64}$/ },
-  SEC_USER_AGENT: { cfg: 'secUserAgent', label: 'Tu nombre y correo para la SEC', re: /^[^\n\r<>]{5,120}@[^\n\r<>]{3,80}$/ },
+  OPENAI_API_KEY: { cfg: 'openaiKey', need: 'principal', label: 'ChatGPT (OpenAI)', re: /^sk-[A-Za-z0-9_\-]{20,200}$/ },
+  ANTHROPIC_API_KEY: { cfg: 'anthropicKey', need: 'opcional', label: 'Claude (Anthropic)', re: /^sk-ant-[A-Za-z0-9_\-]{20,200}$/ },
+  ALPACA_KEY_ID: { cfg: 'alpacaKey', need: 'opcional', label: 'Alpaca: Key ID', re: /^[A-Z0-9]{10,40}$/ },
+  ALPACA_SECRET_KEY: { cfg: 'alpacaSecret', need: 'opcional', label: 'Alpaca: Secret', re: /^[A-Za-z0-9]{20,80}$/ },
+  NTFY_TOPIC: { cfg: 'ntfyTopic', need: 'opcional', label: 'Tema de avisos (ntfy)', re: /^[A-Za-z0-9_\-]{8,64}$/ },
+  SEC_USER_AGENT: { cfg: 'secUserAgent', need: 'recomendada', label: 'Tu nombre y correo para la SEC', re: /^[^\n\r<>]{5,120}@[^\n\r<>]{3,80}$/ },
   // Copia automática en Google Drive (se ponen desde su propia tarjeta, no en la lista de claves)
   DRIVE_URL: { cfg: 'driveUrl', label: 'Enlace del código de Google Drive', re: /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,200}\/exec$/, hidden: true },
   DRIVE_TOKEN: { cfg: 'driveToken', label: 'Clave del código de Google Drive', re: /^[A-Za-z0-9]{16,80}$/, hidden: true },
@@ -35,7 +35,7 @@ export function keyStatus(cfg) {
   return Object.entries(KEYS).filter(([, k]) => !k.hidden).map(([name, k]) => {
     const v = cfg[k.cfg] || '';
     const isDefault = name === 'SEC_USER_AGENT' && /example\.com/.test(v);
-    return { name, label: k.label, set: !!v && !isDefault, hint: v && !isDefault && name !== 'SEC_USER_AGENT' && name !== 'NTFY_TOPIC' ? '…' + v.slice(-4) : null };
+    return { name, label: k.label, need: k.need || 'opcional', set: !!v && !isDefault, hint: v && !isDefault && name !== 'SEC_USER_AGENT' && name !== 'NTFY_TOPIC' ? '…' + v.slice(-4) : null };
   });
 }
 

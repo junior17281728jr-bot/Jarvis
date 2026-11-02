@@ -145,7 +145,8 @@ export function memoryData(db, { tasks = [], version = null } = {}) {
       cartera_ia: ['Compra sola lo que está en "Te recomiendo", 10% por idea, máximo 8 a la vez.', 'Vende si deja de estar recomendada o si baja 8%; espera 7 días para volver a comprarla.', 'Siempre deja al menos 10% en efectivo.'],
     },
     bolsa: {
-      ideas_probadas: strats.filter(s => s.entrenamiento).length, activas, familias: famList, lo_que_dejo_de_usar: abandonadas, casi_pasaron: casi,
+      ideas_probadas: strats.filter(s => s.entrenamiento).length, activas,
+      todas_las_ideas: strats.map(s => ({ regla: s.regla, familia: s.familia, parametros: s.parametros, agente: s.agente, estado: s.estado, desde: s.desde, entrenamiento: s.entrenamiento, examen_final: s.examen_final, historia: byStrat[s.id] || [] })), familias: famList, lo_que_dejo_de_usar: abandonadas, casi_pasaron: casi,
       mapa: { zonas: zones, ultimos_movimientos: moves },
       cartera_ia: iaAcc.id ? { desde: iaAcc.created_at?.slice(0, 10), dinero_inicial_usd: iaAcc.start_cash, operaciones: iaTrades.n || 0, ventas: iaTrades.ventas || 0 } : null,
       ideas_de_la_ia: aiStocks,
@@ -244,6 +245,7 @@ export function memoryMarkdown(d) {
   out.push('## 🗓️ Decisiones importantes (de la más vieja a la más nueva)', '', d.decisiones_importantes.length ? d.decisiones_importantes.map(t => `- ${t.fecha} · ${t.quien}: ${t.que}`).join('\n') : '_(nada todavía)_', '');
   out.push('## 🗄️ Su base de datos (cómo guarda todo)', '', `Motor: ${d.base_de_datos.motor}.`, '', table(d.base_de_datos.tablas, [['Tabla', 'tabla'], ['Filas', 'filas'], ['Qué guarda', 'guarda']]), '');
   out.push('## 🌐 De dónde saca los datos', '', ...d.fuentes.bolsa.map(x => `- Bolsa: ${x}`), ...d.fuentes.loterias.map(x => `- Loterías: ${x}`), `- ${d.fuentes.regla}`, '');
+  out.push('## 📚 Todas las ideas probadas (detalle)', '', table(b.todas_las_ideas.slice(-400), [['Regla', 'regla'], ['Agente', 'agente'], ['Estado', 'estado'], ['1ª prueba (extra/año, t)', r => (r.entrenamiento ? `${r.entrenamiento.extra_anual_pct}% · t=${r.entrenamiento.t}` : '—')], ['Examen final', r => (r.examen_final ? `${r.examen_final.extra_anual_pct}% · t=${r.examen_final.t}` : '—')], ['Último cambio', r => { const h = r.historia[r.historia.length - 1]; return h ? `${h.fecha}: ${h.por_que}` : ''; }]]), '');
   out.push('## 🛟 Cómo recuperar JARVIS completo', '',
     '1. Crea un servidor nuevo con el mismo programa (repositorio de GitHub de JARVIS).',
     '2. Entra como administrador → Ajustes → "El núcleo de JARVIS".',
@@ -256,4 +258,31 @@ export function memoryMarkdown(d) {
 export function buildMemory(db, opts = {}) {
   const data = memoryData(db, opts);
   return { data, md: memoryMarkdown(data), json: JSON.stringify(data) };
+}
+
+/** Lo nuevo desde la última vez, para AGREGAR a la bitácora (nunca se borra). */
+export function journalEntry(db, sinceIso = null) {
+  const since = sinceIso || '1970-01-01', now = nowIso(), L = [];
+  const d = new Date(now), DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  L.push('', `## ${now.slice(0, 10)} (${DAYS[d.getUTCDay()]})${sinceIso ? '' : ' — primera entrada: todo lo anterior'}`, '');
+  const tot = one(db, "SELECT COUNT(*) n FROM experiments WHERE status = 'decidido'").n || 0;
+  const rk = one(db, "SELECT COUNT(*) n, SUM(correct) c FROM predictions WHERE module = 'ranking' AND correct IS NOT NULL");
+  const coins = q(db, 'SELECT a.name, COALESCE(SUM(CASE WHEN c.revoked = 0 THEN c.amount END),0) w FROM agents a LEFT JOIN coins c ON c.agent = a.id GROUP BY a.id ORDER BY w DESC');
+  L.push(`**Cómo va:** ${tot} ideas probadas en total · votos de bolsa: ${rk.n ? `${pct(rk.c, rk.n)}% de acierto en ${rk.n}` : 'todavía sin resolver'} · monedas: ${coins.map(c => `${c.name} ${r1(c.w)}`).join(', ')}`, '');
+  const ch = q(db, `SELECT l.ts, l.from_status de, l.to_status a, l.reason, s.family, s.params FROM strategy_status_log l JOIN strategies s ON s.id = l.strategy_id WHERE l.ts > ? ORDER BY l.id LIMIT 300`, since);
+  if (ch.length) L.push('### Ideas que cambiaron', '', ...ch.map(c => `- ${describe(c.family, J(c.params) || {})}: ${c.de || 'nueva'} → **${c.a}**. ${c.reason}`), '');
+  const v = one(db, "SELECT COUNT(*) n, SUM(correct) c FROM predictions WHERE resolved_at > ? AND correct IS NOT NULL", since);
+  if (v.n) L.push(`### Votos resueltos: ${v.c} aciertos de ${v.n}`, '', ...q(db, "SELECT module, agent, subject, correct FROM predictions WHERE resolved_at > ? AND correct IS NOT NULL ORDER BY resolved_at LIMIT 200", since).map(p => `- ${p.correct ? '✅' : '❌'} ${agentLabel(p.agent)} · ${p.subject.replace(/^[a-z_]+:/, '')}`), '');
+  const mv = q(db, 'SELECT symbol, from_zone, to_zone, reason FROM map_moves WHERE ts > ? ORDER BY id LIMIT 100', since);
+  if (mv.length) L.push('### Movimientos del mapa', '', ...mv.map(m => `- ${m.symbol}: ${ZONE_LABEL[m.from_zone] || m.from_zone || 'nueva'} → ${ZONE_LABEL[m.to_zone] || m.to_zone}. ${m.reason}`), '');
+  const ctx = getSetting(db, 'global', 'lessons.contexts', null);
+  if (ctx && ctx.at > since && ctx.findings?.length) L.push('### Pistas: formas viejas que sí sirven en casos específicos', '', ...ctx.findings.map(f => `- "${f.regla}" ${f.donde}: +${f.extra_anual_pct}%/año (${f.dias} días, t=${f.t})`), '');
+  const ch2 = q(db, 'SELECT agent, rule, explanation FROM cheat_reports WHERE ts > ? ORDER BY id LIMIT 50', since);
+  if (ch2.length) L.push('### Trampas detectadas', '', ...ch2.map(c => `- ${c.agent}: ${c.rule} — ${c.explanation}`), '');
+  const ai = one(db, 'SELECT COUNT(*) n, SUM(cost_usd) usd FROM ai_usage WHERE ts > ?', since);
+  if (ai.n) L.push(`### IA: ${ai.n} usos, US$${Math.round((ai.usd || 0) * 100) / 100}`, '');
+  const act = q(db, `SELECT ts, agent, text FROM activity WHERE important = 1 AND user_id IS NULL AND type NOT IN ('legal','pago','potenciador') AND ts > ? ORDER BY id LIMIT 200`, since);
+  if (act.length) L.push('### Decisiones importantes', '', ...act.map(a => `- ${a.ts.slice(11, 16)} · ${a.agent || 'jarvis'}: ${a.text}`), '');
+  if (L.length <= 5) L.push('_Sin cambios importantes desde la última copia._', '');
+  return L.join('\n');
 }

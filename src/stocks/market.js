@@ -95,3 +95,16 @@ export function syntheticBars(n, { seed = 1, start = 100, drift = 0.0003, vol = 
   }
   return bars;
 }
+
+/** Cambio del día en %. Si el cierre anterior guardado no tiene sentido (más de 35%), se calcula con los precios diarios. */
+export function dayChangePct(db, q) {
+  if (!q) return null;
+  let prev = q.prev_close;
+  if (!prev || Math.abs(q.price / prev - 1) > 0.35) {
+    const day = String(q.as_of || '').slice(0, 10);
+    const r = db.prepare("SELECT ts, close FROM stock_bars WHERE symbol = ? AND interval = '1d' ORDER BY ts DESC LIMIT 2").all(q.symbol);
+    prev = r.length ? (r[0].ts === day ? r[1]?.close : r[0].close) : null;
+    if (!prev || Math.abs(q.price / prev - 1) > 0.35) return null;
+  }
+  return Math.round((q.price / prev - 1) * 10000) / 100;
+}

@@ -4,7 +4,7 @@ import { getBudget } from './sizing.js';
 import { getSetting } from '../core/db.js';
 import { round, wilson } from '../core/util.js';
 import { ensureAccount, valuation } from '../stocks/account.js';
-import { getQuote } from '../stocks/market.js';
+import { getQuote, dayChangePct } from '../stocks/market.js';
 import { leagueTable, cheatReports } from './league.js';
 import { strategiesSummary } from './research.js';
 import { latestRanking } from './recommend.js';
@@ -43,7 +43,7 @@ export function home(db, cfg, user) {
     user: { username: user.username, role: user.role },
     system: { heartbeat, alive: heartbeat ? Date.now() - Date.parse(heartbeat) < 20 * 60e3 : false, motor: getSetting(db, 'global', 'motor.state', { running: false }) },
     ai: aiSpend(db, cfg),
-    account: { total: round(v.total), start: v.start, returnPct: round(v.returnPct * 100, 2), cash: round(v.cash), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), positions: v.positions, spy: spyQ ? { price: spyQ.price, changePct: spyQ.prev_close ? round((spyQ.price / spyQ.prev_close - 1) * 100, 2) : null } : null },
+    account: { total: round(v.total), start: v.start, returnPct: round(v.returnPct * 100, 2), cash: round(v.cash), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), positions: v.positions, spy: spyQ ? { price: spyQ.price, changePct: dayChangePct(db, spyQ) } : null },
     predictions: predictionStats(db),
     rankingStats: predictionStats(db, 'ranking'),
     league: leagueTable(db, new Date(Date.now() - 7 * 864e5).toISOString()),

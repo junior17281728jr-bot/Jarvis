@@ -355,6 +355,19 @@ views.inicio = async () => {
     ${best ? votesHtml(best.contributions) : ''}
     <div class="pill">${h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>'}</div></section>
   ${confidenceCard()}
+  <section class="card guide"><h2>🧭 ¿Qué hay en cada parte? <span class="more note">toca para ir</span></h2><div class="gtiles">${[
+    ['#cuentas', '💼', 'Cuentas de JARVIS', 'Su dinero virtual: en qué lo invirtió, cuánto ganó o perdió y con cuánto queda.'],
+    ['#mapa', '🗺️', 'Mapa', 'Todas las empresas por color: recomendadas, en observación y no recomendadas.'],
+    ['#recomendaciones', '⭐', 'Recomendaciones', 'Las mejores ideas de hoy, con su nota y por qué.'],
+    ['#buscar', '🔍', 'Buscar', 'Busca cualquier empresa y JARVIS te dice si conviene.'],
+    ['#bolsa', '💵', 'Mi dinero', 'Tu dinero de práctica: compra, vende y mira cómo vas.'],
+    ['#loterias', '🎱', 'Loterías', 'Próximos sorteos, el número de JARVIS y si acertó o no.'],
+    ['#aprendizaje', '🧠', 'Aprendizaje', 'Qué ideas probó, cuáles funcionan, monedas y trampas.'],
+    ['#historial', '📜', 'Historial', 'Todo lo que recomendó antes y cómo le fue de verdad.'],
+    ['#potenciador', '⚡', 'Potenciador', 'Créditos extra para usar más la inteligencia artificial.'],
+    ['#tv', '📺', 'Modo TV', 'Pantalla grande con todo en vivo, para dejarla prendida.'],
+    ...(ME?.role === 'admin' ? [['#ajustes', '⚙️', 'Ajustes', 'Usuarios, claves, copia en Google Drive, marca y el núcleo.']] : []),
+  ].map(([h, i, t, d]) => `<a class="gt" href="${h}"><span>${i}</span><b>${t}</b><small>${d}</small></a>`).join('')}</div></section>
   <section class="card" id="votelog"><h2>🗳️ Registro de votos <span class="more note">lo que votó JARVIS y lo que pasó de verdad</span></h2><div class="note">Cargando…</div></section>
   ${focusShell()}
 
@@ -486,6 +499,31 @@ function mapCard(r, compact = false) {
     ${r.exitIf?.length && !compact && r.zone !== 'candidata' ? `<div class="mc-s note"><b>La saco si:</b> ${esc(r.exitIf[0])}</div>` : ''}
     <div class="mc-f note">${r.zone === 'no_recomendada' && r.reds ? `${r.reds} revisión${r.reds > 1 ? 'es' : ''} seguida${r.reds > 1 ? 's' : ''} aquí · ` : ''}${r.zone === 'candidata' ? `estudiada ${esc(r.checkedAt)}` : `desde ${esc(r.since)}`}${r.active ? ` · <a href="#analisis/${esc(r.symbol)}">Análisis completo ▸</a>` : ''}</div></div>`;
 }
+// ---------- 💼 Las cuentas de JARVIS ----------
+const dt = iso => iso ? new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'short' }) : '—';
+const flow = steps => `<div class="flow">${steps.map(([l, v, cls, sub]) => `<div class="fl ${cls || ''}"><small>${l}</small><b>${v}</b>${sub ? `<i>${sub}</i>` : ''}</div>`).join('<span class="fla">→</span>')}</div>`;
+views.cuentas = async () => {
+  const A = await api('/api/jarvis/cuentas'); if (A.rate) FX = A.rate;
+  const B = A.bolsa, L = A.loteria, up = B.gain >= 0;
+  const empty = !B.positions.length;
+  return `<div><h1>💼 Las cuentas de JARVIS</h1><p class="sub">El dinero virtual que JARVIS maneja solo: cuánto tenía, en qué lo puso, cuánto ganó o perdió y con cuánto queda. Todo sale de operaciones selladas con precios reales.</p></div>
+  <section class="card acct-card"><h2>📈 Bolsa <span class="more note">empezó el ${dt(B.since)} con ${usd(B.start)}</span></h2>
+    ${flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', `${B.positions.length} ${B.positions.length === 1 ? 'acción' : 'acciones'}`], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', `${up ? '+' : ''}${usd(B.gain)} (${up ? '+' : ''}${B.returnPct}%)`]])}
+    <div class="acct-mini"><span>✅ Ventas con ganancia: <b>${B.wins}</b></span><span>❌ Ventas con pérdida: <b>${B.losses}</b></span><span>💰 Ganado ya cobrado: <b class="${B.realized >= 0 ? 'good' : 'bad'}">${B.realized >= 0 ? '+' : ''}${usd(B.realized)}</b></span><span>⏳ Ganancia aún sin vender: <b class="${B.unrealized >= 0 ? 'good' : 'bad'}">${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}</b></span></div>
+    <h3 class="cs-h">En qué lo tiene ahora</h3>
+    ${empty ? `<div class="answer">💤 Ahora todo está en efectivo. ${B.marketOpen ? 'Está buscando qué comprar.' : `La bolsa está cerrada; empieza a comprar cuando abra${B.nextOpen ? `: <b>${new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })}</b> (hora RD)` : ''}.`}</div>
+      ${B.plan.length ? `<div class="note" style="margin:8px 0">Lo que compraría (está en "Te recomiendo"):</div><div class="plan">${B.plan.map(p => `<a class="pl" href="#analisis/${esc(p.symbol)}"><b>${esc(p.symbol)}</b><span>${usd(p.usd)}</span><small>conviene ${p.conv}/100</small></a>`).join('')}</div>` : '<div class="note">Todavía no hay empresas en "Te recomiendo".</div>'}`
+    : `<div class="tablewrap"><table class="acct-t"><tr><th>Acción</th><th class="r">Invirtió</th><th class="r">Vale hoy</th><th class="r">Ganancia</th><th>Desde</th></tr>${B.positions.map(p => `<tr><td><a href="#analisis/${esc(p.symbol)}"><b>${esc(p.symbol)}</b></a></td><td class="r">${usd(p.invested)}</td><td class="r">${usd(p.value)}</td><td class="r ${p.pnl >= 0 ? 'good' : 'bad'}">${p.pnl >= 0 ? '+' : ''}${usd(p.pnl)} <span class="note">(${p.pnl >= 0 ? '+' : ''}${p.pnlPct}%)</span></td><td>${dt(p.since)}</td></tr>`).join('')}
+      <tr class="tot"><td><b>Total</b></td><td class="r"><b>${usd(B.invested)}</b></td><td class="r"><b>${usd(B.valueNow)}</b></td><td class="r ${B.unrealized >= 0 ? 'good' : 'bad'}"><b>${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}</b></td><td></td></tr></table></div>`}
+    ${B.closed.length ? `<h3 class="cs-h">Lo que ya vendió (resultado final)</h3><div class="tablewrap"><table class="acct-t"><tr><th>Acción</th><th class="r">Puso</th><th class="r">Sacó</th><th class="r">Resultado</th><th>Por qué vendió</th></tr>${B.closed.map(c => `<tr><td><b>${esc(c.symbol)}</b><div class="note">${dt(c.openedAt)} → ${dt(c.closedAt)}</div></td><td class="r">${usd(c.invested)}</td><td class="r">${usd(c.got)}</td><td class="r ${c.pnl >= 0 ? 'good' : 'bad'}"><b>${c.pnl >= 0 ? '+' : ''}${usd(c.pnl)}</b> <span class="note">(${c.pnlPct}%)</span></td><td class="note">${esc(c.why)}</td></tr>`).join('')}</table></div>` : ''}
+    ${B.moves.length ? `<details style="margin-top:10px"><summary class="note">Todas sus compras y ventas (${B.moves.length})</summary><div class="tablewrap"><table class="acct-t">${B.moves.map(m => `<tr><td>${dt(m.at)}</td><td><b class="${m.side === 'buy' ? '' : 'warn'}">${m.side === 'buy' ? '🟢 Compró' : '🔴 Vendió'}</b> ${esc(m.symbol)}</td><td class="r">${usd(m.usd)}</td><td class="note">a ${usd(m.price)} · ${esc(m.why)}</td></tr>`).join('')}</table></div></details>` : ''}
+    <div class="note" style="margin-top:10px">📋 Reglas: ${esc(B.rules)}</div></section>
+  <section class="card acct-card"><h2>🎱 Lotería <span class="more note">su monedero: ${usd(L.startUsd)} ≈ ${rdRaw(L.startRd)}</span></h2>
+    ${flow([['Empezó con', rdu(L.startRd), '', ''], ['Jugó', rdu(L.playedRd), '', `${L.plays} jugadas`], ['Ganó (premios)', rdu(L.wonRd), L.wonRd > 0 ? 'good' : '', `${L.hits} ${L.hits === 1 ? 'acierto' : 'aciertos'} de ${L.settled}`], ['Perdió', rdu(L.lostRd), L.lostRd > 0 ? 'bad' : '', `${L.settled - L.hits} sin premio`], ['Le queda', rdu(L.leftRd), L.leftRd >= L.startRd ? 'good' : 'bad', L.pendingRd ? `${rdRaw(L.pendingRd)} esperando sorteo` : '']])}
+    ${L.byGame.length ? `<div class="tablewrap"><table class="acct-t"><tr><th>Lotería</th><th class="r">Jugadas</th><th class="r">Aciertos</th><th class="r">Jugó</th><th class="r">Ganó</th><th class="r">Resultado</th></tr>${L.byGame.map(g => `<tr><td>${esc(g.name)}</td><td class="r">${g.plays}</td><td class="r">${g.hits}</td><td class="r">${rdu(g.playedRd)}</td><td class="r">${rdu(g.wonRd)}</td><td class="r ${g.wonRd - g.playedRd >= 0 ? 'good' : 'bad'}">${rdu(g.wonRd - g.playedRd, { sign: true })}</td></tr>`).join('')}</table></div>` : ''}
+    ${L.brokeAt ? `<div class="answer bad" style="margin-top:8px">⚠️ Con este ritmo se habría quedado sin dinero el ${esc(L.brokeAt)}.</div>` : ''}
+    <div class="note" style="margin-top:8px">${esc(L.note)} <a href="#loterias">Ver cada jugada y qué salió ▸</a></div></section>`;
+};
 views.mapa = async () => {
   const m = await api('/api/map');
   const z = m.zones, act = [...z.recomendada, ...z.observacion, ...z.no_recomendada], b = m.best, e = m.explore;
@@ -910,7 +948,7 @@ const onlineChip = iso => !iso ? '<span class="note">Nunca ha entrado</span>' : 
 views.ajustes = async () => {
   if (ME?.role !== 'admin') return adminOnly();
   const [st, users, mot, keys] = await Promise.all([api('/api/settings'), api('/api/users'), api('/api/status'), api('/api/keys')]);
-  const KEYHELP = { OPENAI_API_KEY: ['platform.openai.com/api-keys', 'https://platform.openai.com/api-keys', 'sk-…'], ANTHROPIC_API_KEY: ['console.anthropic.com (opcional)', 'https://console.anthropic.com/settings/keys', 'sk-ant-…'], ALPACA_KEY_ID: ['alpaca.markets, cuenta de práctica (gratis)', 'https://app.alpaca.markets/paper/dashboard/overview', 'PK…'], ALPACA_SECRET_KEY: ['la misma página de Alpaca', 'https://app.alpaca.markets/paper/dashboard/overview', ''], NTFY_TOPIC: ['inventa un nombre secreto y suscríbete en la app ntfy', 'https://ntfy.sh', 'jarvis-junior-7f3k9'], SEC_USER_AGENT: ['tu nombre y correo (la SEC lo pide)', 'https://www.sec.gov/os/accessing-edgar-data', 'Junior tu@correo.com'] };
+  const KEYHELP = { OPENAI_API_KEY: ['platform.openai.com/api-keys', 'https://platform.openai.com/api-keys', 'sk-…', 'La principal: explica, resume noticias, debate y propone empresas.'], ANTHROPIC_API_KEY: ['console.anthropic.com (opcional)', 'https://console.anthropic.com/settings/keys', 'sk-ant-…', 'No es obligatoria: solo agrega una segunda IA para el debate.'], ALPACA_KEY_ID: ['alpaca.markets, cuenta de práctica (gratis)', 'https://app.alpaca.markets/paper/dashboard/overview', 'PK…', 'NO es obligatoria. Solo da precios al segundo. Sin ella JARVIS usa Yahoo Finance gratis y funciona igual (los precios pueden venir con unos minutos de retraso).'], ALPACA_SECRET_KEY: ['la misma página de Alpaca', 'https://app.alpaca.markets/paper/dashboard/overview', '', 'Va junto con la de arriba. Tampoco es obligatoria.'], NTFY_TOPIC: ['inventa un nombre secreto y suscríbete en la app ntfy', 'https://ntfy.sh', 'jarvis-junior-7f3k9', 'No es obligatoria: avisos al celular.'], SEC_USER_AGENT: ['tu nombre y correo (la SEC lo pide)', 'https://www.sec.gov/os/accessing-edgar-data', 'Junior tu@correo.com', 'Recomendada y gratis: no es una clave, solo tu nombre y tu correo. La SEC (el gobierno de EE. UU.) los pide para dar los datos oficiales de las empresas (ventas, ganancias, deudas). Sin esto puede bloquear esa parte.'] };
   return `<div><h1>Ajustes</h1><p class="sub">Solo el administrador ve esta pantalla.</p></div>
   <section class="card brandcard"><h2>Tu marca <span class="more note">hazlo tuyo: nombre, logo y color</span></h2>
     <div class="grid split" style="gap:20px;margin-top:10px">
@@ -939,7 +977,7 @@ views.ajustes = async () => {
   <section class="card drivecard"><h2>☁️ Copia automática en tu Google Drive <span class="more note">gratis · se hace sola cada día</span></h2><div id="drv" class="note">Cargando…</div></section>
   <section class="card keyscard"><h2>Claves <span class="more note">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>
     <p class="note">Pégalas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vacío y marca "borrar".</p>
-    <form class="form" id="kf">${keys.map(k => `<div class="krow"><div><b>${esc(k.label)}</b> ${k.set ? `<span class="tag dato">puesta ${esc(k.hint || '')}</span>` : '<span class="tag est">falta</span>'}<div class="note">Dónde sacarla: <a href="${KEYHELP[k.name][1]}" target="_blank" rel="noopener">${esc(KEYHELP[k.name][0])}</a></div></div>
+    <form class="form" id="kf">${keys.map(k => `<div class="krow"><div><b>${esc(k.label)}</b> <span class="need ${esc(k.need)}">${{ principal: '⭐ principal', recomendada: '👍 recomendada', opcional: 'opcional' }[k.need] || ''}</span> ${k.set ? `<span class="tag dato">puesta ${esc(k.hint || '')}</span>` : k.need === 'opcional' ? '<span class="tag">sin poner (no pasa nada)</span>' : '<span class="tag est">falta</span>'}${KEYHELP[k.name][3] ? `<div class="note khelp">${esc(KEYHELP[k.name][3])}</div>` : ''}<div class="note">Dónde sacarla: <a href="${KEYHELP[k.name][1]}" target="_blank" rel="noopener">${esc(KEYHELP[k.name][0])}</a></div></div>
       <input type="${k.name === 'NTFY_TOPIC' || k.name === 'SEC_USER_AGENT' ? 'text' : 'password'}" data-key="${k.name}" autocomplete="off" placeholder="${k.set ? 'Escribe solo si quieres cambiarla' : esc(KEYHELP[k.name][2])}">${k.set ? `<label class="note" style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" data-del="${k.name}" style="width:auto"> borrar</label>` : '<span></span>'}</div>`).join('')}
       <button class="btn">Guardar claves</button><div class="msg" id="km"></div></form>
     <div class="note">Pon también un límite de gasto en la página de OpenAI. JARVIS además respeta su propio tope: ${usd(st.caps.month, 0)} al mes.</div></section>
@@ -976,7 +1014,7 @@ async function loadDrive() {
   let d; try { d = await api('/api/drive'); } catch (e) { el.textContent = e.message; return; }
   const L = d.last, G = d.legal;
   const status = d.connected ? `<div class="drvok"><b>✅ Conectado</b> · ${L ? (L.ok ? `última copia ${timeAgo(L.at)}: memoria ${kb(L.memoryBytes)}${L.core ? ` + núcleo ${kb(L.core.bytes)}` : ''} · en tu Drive ocupa <b>${kb(L.used)}</b> en total${L.folder ? ` · <a href="${esc(L.folder)}" target="_blank" rel="noopener">abrir carpeta</a>` : ''}` : `<span class="bad">la última vez falló: ${esc(L.error)}</span>`) : 'todavía no ha subido nada'}${G?.ok ? `<br>📝 Firmas y pagos: ${G.firmas} firmas y ${G.pagos} pagos guardados (${timeAgo(G.at)})` : ''}${d.passphrase ? '' : '<br><span class="warn">⚠️ Falta la frase secreta: solo se sube la memoria, no el núcleo completo.</span>'}</div>` : '';
-  const what = `<div class="drvwhat">${[['📘', 'Memoria', 'lo que aprendió y por qué (texto pequeño, se reemplaza cada día)'], ['🧠', 'Núcleo', `todo JARVIS, cifrado con tu frase y sin el historial de precios (se vuelve a bajar solo). Se guardan las últimas ${d.keep}.`], ['📝', 'Firmas, contratos y pagos', 'cada firma, el texto exacto firmado, cada pago y la foto del comprobante. Se suben al momento y nunca se borran.']].map(([i, t, x]) => `<div><span>${i}</span><b>${t}</b><small>${x}</small></div>`).join('')}</div>`;
+  const what = `<div class="drvwhat">${[['📘', 'Memoria', 'todo lo que aprendió, con detalle de cada idea probada (se actualiza cada día y queda una copia de cada mes)'], ['🧠', 'Núcleo', `todo JARVIS con todo lo aprendido, cifrado con tu frase (sin el historial de precios, que se vuelve a bajar solo). Se guardan las ${d.keep.diarias} más nuevas, una por semana de las últimas ${d.keep.semanas} semanas y <b>una por mes para siempre</b>.`], ['📓', 'Bitácora', 'cada día se AGREGA lo que aprendió, lo que cambió y por qué. Nunca se borra nada.'], ['📝', 'Firmas, contratos y pagos', 'cada firma, el texto exacto firmado, cada pago y la foto del comprobante. Se suben al momento y nunca se borran.']].map(([i, t, x]) => `<div><span>${i}</span><b>${t}</b><small>${x}</small></div>`).join('')}</div>`; // x lleva <b> propio, sin datos de usuario
   el.innerHTML = status + what + (d.connected ? `<div class="row" style="gap:8px;margin-top:10px"><button class="btn" id="dnow">Subir ahora</button><button class="btn ghost" id="doff">Desconectar</button></div><div class="msg" id="dm"></div>
     <details style="margin-top:12px"><summary><b>Recuperar JARVIS desde tu Drive</b> (si el servidor se daña o pasas a uno nuevo)</summary><div class="form" style="margin-top:8px"><label>Frase secreta de las copias<input id="drpw" type="password" autocomplete="off"></label><label class="chk"><input type="checkbox" id="drok"> Entiendo que esto reemplaza el núcleo actual (antes se guarda una copia del actual)</label><button class="btn ghost" id="drs">Traer la última copia desde Drive</button><div class="msg" id="drm"></div></div></details>` : '') +
     `<details ${d.connected ? '' : 'open'} style="margin-top:12px"><summary><b>${d.connected ? 'Volver a conectar' : 'Conectar (una sola vez, unos 5 minutos)'}</b> · más fácil desde una computadora</summary>
@@ -1469,7 +1507,7 @@ async function tvOpen() {
     <div class="headline" id="tvh">Conectando…</div>
     <div class="kpis">
       <div class="kp money"><small>Tu dinero virtual</small><i class="what">lo que tendrías siguiendo a JARVIS</i><div class="row1"><b id="k-money">—</b><span class="arrow" id="k-arrow"></span></div><div class="sub" id="k-money-sub"></div><div class="sub" id="k-pos"></div></div>
-      <div class="kp"><small>🤖 Cartera de la IA</small><i class="what">la IA invierte sola, sin ti</i><b id="k-ia">—</b><div class="sub" id="k-ia-sub"></div></div>
+      <div class="kp"><small>💼 Los US$100 de JARVIS</small><i class="what">JARVIS invierte solo, sin ti</i><b id="k-ia">—</b><div class="sub" id="k-ia-sub"></div></div>
       <div class="kp"><small>🧠 Experiencia</small><i class="what">de cada 10 ideas, cuántas acertó</i><b id="k-hit">—</b><div class="sub" id="k-hit-sub"></div></div>
       <div class="kp"><small>🎱 Loterías (virtual)</small><i class="what">jugadas de prueba, sin dinero real</i><b id="k-lot">—</b><div class="sub" id="k-lot-sub"></div></div>
       <div class="kp"><small>✨ Gasto de IA este mes</small><i class="what">lo que cuesta la inteligencia artificial</i><b id="k-ai">—</b><div class="sub" id="k-ai-sub"></div></div>
@@ -1483,7 +1521,8 @@ async function tvOpen() {
       </div>
       <div class="col">
         <div class="pane spot"><h3><span class="live"></span><span id="tvst">Mapa</span><span class="dots" id="tvsd"></span></h3><p class="what" id="tvsw"></p>
-          <div class="slide on" data-s="mapa"><div class="tvmap" id="tvmap"></div></div>
+          <div class="slide on" data-s="cuentas"><div class="tvacct" id="tvacct"></div></div>
+          <div class="slide" data-s="mapa"><div class="tvmap" id="tvmap"></div></div>
           <div class="slide" data-s="loto"><div class="tvloto" id="tvloto"></div></div>
           <div class="slide" data-s="ia"><div class="tvia" id="tvia"></div></div>
           <div class="slide" data-s="ana"><div class="tvana" id="tvana"></div></div>
@@ -1555,15 +1594,26 @@ function tvDebate(d) {
   next();
 }
 
+function tvAcct(c) {
+  const el = $('#tvacct'); if (!el || !c) return;
+  const B = c.bolsa, L = c.loteria, U = v => usd(v / (c.rate || FX));
+  const box = (l, v, cls, sub) => `<div class="ab ${cls || ''}"><small>${l}</small><b>${v}</b>${sub ? `<i>${sub}</i>` : ''}</div>`;
+  const syms = B.positions.length ? B.positions.slice(0, 3).map(p => esc(p.symbol)).join(', ') + (B.positions.length > 3 ? '…' : '') : (B.marketOpen ? 'buscando qué comprar' : 'compra al abrir la bolsa');
+  el.innerHTML = `<div class="acols"><div><div class="ah">📈 Bolsa <span>empezó con ${usd(B.start, 0)} · ${syms}</span></div>
+    <div class="agrid">${box('Invirtió', usd(B.invested), '', syms)}${box('Vale hoy', usd(B.valueNow), B.unrealized >= 0 ? 'up' : 'dn', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`)}${box('Efectivo', usd(B.cash), '', 'sin invertir')}${box('Tiene', usd(B.total), B.gain >= 0 ? 'up' : 'dn', `${B.gain >= 0 ? '+' : ''}${usd(B.gain)} (${B.returnPct}%)`)}</div></div>
+    <div><div class="ah">🎱 Lotería <span>empezó con ${usd(L.startUsd, 0)} · ${L.plays} jugadas</span></div>
+    <div class="agrid">${box('Jugó', U(L.playedRd), '', `${L.plays} jugadas`)}${box('Ganó', U(L.wonRd), L.wonRd > 0 ? 'up' : '', `${L.hits} aciertos`)}${box('Perdió', U(L.lostRd), L.lostRd > 0 ? 'dn' : '', `${L.settled - L.hits} sin premio`)}${box('Le queda', U(L.leftRd), L.leftRd >= L.startRd ? 'up' : 'dn', `≈ RD$${Math.round(L.leftRd).toLocaleString('en-US')}`)}</div></div></div>`;
+}
 function tvLeague(list) {
   const box = $('#tvlg'); if (!box) return;
-  const rowH = 2.9, max = Math.max(1, ...list.map(a => Math.abs(a.coins)));
+  const rowH = 3.1, max = Math.max(1, ...list.map(a => Math.abs(a.coins)));
   list.forEach((a, rank) => {
     let row = box.querySelector(`[data-ag="${a.id}"]`);
     const prev = row ? Number(row.dataset.coins) : null;
-    if (!row) { row = document.createElement('div'); row.className = 'lrow'; row.dataset.ag = a.id; row.innerHTML = `<span class="pos"></span><span class="nm">${esc(a.name)}</span><b class="cn"></b><div class="bar"><span></span></div>`; box.appendChild(row); }
+    if (!row) { row = document.createElement('div'); row.className = 'lrow'; row.dataset.ag = a.id; row.innerHTML = `<span class="pos"></span><span class="nm">${esc(a.name)}<small class="dg"></small></span><b class="cn"></b><div class="bar"><span></span></div>`; box.appendChild(row); }
     row.style.top = rank * rowH + 'vw';
     row.querySelector('.pos').textContent = rank + 1;
+    const dg = row.querySelector('.dg'); if (dg) dg.textContent = a.doing || '';
     const cn = row.querySelector('.cn'); animNum(cn, prev ?? 0, a.coins, v => (Math.round(v * 10) / 10).toString(), 1200);
     cn.className = 'cn ' + (a.coins >= 0 ? 'pos-c' : 'neg-c');
     requestAnimationFrame(() => { row.querySelector('.bar span').style.width = Math.max(3, (a.coins + max) / (2 * max) * 100) + '%'; });
@@ -1591,7 +1641,7 @@ function tvTicker(qs) {
 
 // ---------- Modo TV: panel que rota (Mapa · Loterías · Tú vs IA · Debate) y trabajadores 24/7 ----------
 let tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
-const TV_SLIDES = [['mapa', '🗺️ Mapa de inversión', 'Verde = recomendada · amarillo = en observación · rojo = no.'], ['loto', '🎱 Loterías: próximos sorteos', 'Próximo sorteo y los números que votó cada método.'], ['ia', '🤖 Tú vs la IA vs el mercado', 'Quién va ganando: tú, la IA sola o el mercado.'], ['debate', '💬 Debate de las IA', 'Dos IA discuten a favor y en contra.'], ['ana', '🔬 Análisis en vivo', 'JARVIS revisa una empresa paso a paso.']];
+const TV_SLIDES = [['cuentas', '💼 Las cuentas de JARVIS', 'Cuánto tenía, en qué lo invirtió, cuánto ganó o perdió y con cuánto queda.'], ['mapa', '🗺️ Mapa de inversión', 'Verde = recomendada · amarillo = en observación · rojo = no.'], ['loto', '🎱 Loterías: próximos sorteos', 'Próximo sorteo y los números que votó cada método.'], ['ia', '🤖 Tú vs la IA vs el mercado', 'Quién va ganando: tú, la IA sola o el mercado.'], ['debate', '💬 Debate de las IA', 'Dos IA discuten a favor y en contra.'], ['ana', '🔬 Análisis en vivo', 'JARVIS revisa una empresa paso a paso.']];
 function tvSpotShow() {
   const list = TV_SLIDES.filter(([k]) => (k !== 'debate' || tvHasDebate)), cur = list[tvSlide % list.length];
   document.querySelectorAll('.tv .slide').forEach(el => el.classList.toggle('on', el.dataset.s === cur[0]));
@@ -1664,10 +1714,12 @@ async function tvRefresh() {
   if (prev && prev.account.total !== a.total) { const k = $('.kp.money'); k.classList.remove('flash-up', 'flash-dn'); void k.offsetWidth; k.classList.add(a.total > prev.account.total ? 'flash-up' : 'flash-dn'); }
   const pos = d.positions || [], inv = pos.reduce((t, x) => t + x.v, 0);
   $('#k-pos').innerHTML = pos.length ? `Invertido ${usd(inv, 0)} en ${pos.slice(0, 3).map(x => `<span class="ps">${esc(x.s)}</span> <span class="${x.pct >= 0 ? 'up' : 'dn'}">${x.pct >= 0 ? '+' : ''}${x.pct}%</span>`).join(' · ')}` : 'Todavía no has comprado nada (todo en efectivo).';
-  if (d.ia) { $('#k-ia').innerHTML = `<span class="${d.ia.returnPct >= 0 ? 'up' : 'dn'}">${d.ia.returnPct >= 0 ? '+' : ''}${(d.ia.returnPct * 100).toFixed(2)}%</span>`; $('#k-ia-sub').innerHTML = `${usd(d.ia.total)} · ${d.ia.positions} ${d.ia.positions === 1 ? 'acción' : 'acciones'}${d.ia.market != null ? ` · mercado ${(d.ia.market * 100).toFixed(2)}%` : ''}`; }
+  const CB = d.cuentas?.bolsa;
+  if (CB) { $('#k-ia').innerHTML = `${usd(CB.total)} <span class="${CB.gain >= 0 ? 'up' : 'dn'} kpct">${CB.gain >= 0 ? '+' : ''}${CB.returnPct}%</span>`; $('#k-ia-sub').innerHTML = CB.positions.length ? `invirtió ${usd(CB.invested, 0)} en ${CB.positions.slice(0, 3).map(p => `<span class="ps">${esc(p.symbol)}</span>`).join(', ')}${CB.positions.length > 3 ? '…' : ''} · efectivo ${usd(CB.cash, 0)}` : `todo en efectivo · ${CB.marketOpen ? 'buscando qué comprar' : 'compra cuando abra la bolsa'}`; }
+  else if (d.ia) { $('#k-ia').innerHTML = `<span class="${d.ia.returnPct >= 0 ? 'up' : 'dn'}">${d.ia.returnPct >= 0 ? '+' : ''}${(d.ia.returnPct * 100).toFixed(2)}%</span>`; $('#k-ia-sub').innerHTML = `${usd(d.ia.total)} · ${d.ia.positions} ${d.ia.positions === 1 ? 'acción' : 'acciones'}${d.ia.market != null ? ` · mercado ${(d.ia.market * 100).toFixed(2)}%` : ''}`; }
   const ex = d.exp || {};
   $('#k-hit').textContent = ex.hitRate != null ? `${Math.round(ex.hitRate * 10)}/10` : '—';
-  $('#k-hit-sub').textContent = `${ex.n || 0} recomendaciones terminadas · necesita 50 para estar seguro`;
+  $('#k-hit-sub').textContent = (ex.n || 0) >= 50 ? `${ex.n} recomendaciones terminadas: ya son suficientes para confiar en este número` : `${ex.n || 0} recomendaciones terminadas · necesita 50 para estar seguro`;
   const L = ex.lot || {};
   const fxr = d.account?.fx || FX, U = v => `US$${Math.abs(v / fxr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, net = (L.paid || 0) - (L.staked || 0);
   $('#k-lot').innerHTML = L.settled ? `<span class="${net >= 0 ? 'up' : 'dn'}">${net >= 0 ? '+' : '−'}${U(net)}</span>` : 'US$0.00';
@@ -1689,7 +1741,7 @@ async function tvRefresh() {
   $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map((c, i) => `<div class="rc" style="animation-delay:${i * 0.08}s"><div class="s"><i style="background:${TVC[c.light]};box-shadow:0 0 12px ${TVC[c.light]}"></i><span class="nm">${esc(coName(c.symbol))}</span><span class="c">${c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : ''}</span></div><div class="cbar"><span style="width:${Math.round((c.probBeat ?? c.confidence) * 100)}%;background:${TVC[c.light]}"></span></div><p>${esc(c.why || '')}</p></div>`).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
   tvHasDebate = !!(d.debate && d.debate.rounds?.length);
   tvDebate(d.debate);
-  tvMap(d.map); tvLoto(d.votes, d.nextDraws); tvIa(d); tvWorkers(d.tasks);
+  tvAcct(d.cuentas); tvMap(d.map); tvLoto(d.votes, d.nextDraws); tvIa(d); tvWorkers(d.tasks);
   tvLeague(d.league);
   tvTicker(d.quotes || []);
   tvPrev = d;

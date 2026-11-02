@@ -23,7 +23,7 @@ function fakeDrive(token) {
   const iter = arr => { let i = 0; return { hasNext: () => i < arr.length, next: () => arr[i++] }; };
   const fileObj = (name, bytes, mime) => { const f = { id: ++seq, name, bytes, mime, trashed: false,
     getName: () => f.name, getSize: () => f.bytes.length, isTrashed: () => f.trashed, setTrashed: t => { f.trashed = t; },
-    setContent: t => { f.bytes = Buffer.from(t); }, getBlob: () => ({ getBytes: () => [...f.bytes] }) }; return f; };
+    setContent: t => { f.bytes = Buffer.from(t); }, getBlob: () => ({ getBytes: () => [...f.bytes], getDataAsString: () => f.bytes.toString() }) }; return f; };
   const folderApi = F => ({ F,
     getFilesByName: n => iter(F.files.filter(f => f.name === n && !f.trashed)),
     getFiles: () => iter(F.files), getFolders: () => iter(F.folders.map(folderApi)),
@@ -38,7 +38,7 @@ function fakeDrive(token) {
     MimeType: { PLAIN_TEXT: 'text/plain' },
   };
   vm.createContext(ctx);
-  vm.runInContext(driveScript(token, 3), ctx);
+  vm.runInContext(driveScript(token), ctx);
   const fetchImpl = async (url, opts) => { const r = ctx.doPost({ postData: { contents: opts.body } }); return { text: async () => r.t }; };
   const folder = () => root.folders.find(f => f.name === 'JARVIS - copias y memoria');
   return { fetchImpl, folder };
@@ -54,19 +54,26 @@ function setup() {
   return { dir, cfg, db, amigo };
 }
 
-test('Drive: memoria se reemplaza, el núcleo ligero se rota (quedan 3) y se puede recuperar', async () => {
+test('Drive: memoria se reemplaza, el núcleo guarda 7 diarias + semanales + una por mes para siempre, bitácora sin borrar, y se recupera', async () => {
   const { cfg, db, dir } = setup(), D = fakeDrive(cfg.driveToken);
   await drivePing(cfg, D.fetchImpl);
   await assert.rejects(drivePing({ ...cfg, driveToken: 'otra' }, D.fetchImpl), /clave/);
-  for (let i = 0; i < 5; i++) {
-    const r = await driveBackup(db, cfg, { fetchImpl: async (u, o) => { const b = JSON.parse(o.body); b.files.forEach(f => { if (f.data) f.name = f.name.replace('.jvbk', `-${i}.jvbk`); }); return D.fetchImpl(u, { ...o, body: JSON.stringify(b) }); } });
+  // 40 copias, una cada 3 días hacia atrás (120 días): nombres con su fecha
+  const day = i => new Date(Date.UTC(2026, 10, 1) - (39 - i) * 3 * 864e5).toISOString().slice(0, 10).replace(/-/g, '');
+  for (let i = 0; i < 40; i++) {
+    const r = await driveBackup(db, cfg, { fetchImpl: async (u, o) => { const b = JSON.parse(o.body); b.files.forEach(f => { if (f.data) f.name = `jarvis-nucleo-${day(i)}-0400.jvbk`; }); return D.fetchImpl(u, { ...o, body: JSON.stringify(b) }); } });
     assert.ok(r.core.bytes > 0);
   }
-  const live = D.folder().files.filter(f => !f.trashed);
-  assert.equal(live.filter(f => /^jarvis-nucleo-/.test(f.name)).length, 3, 'solo se guardan 3 copias');
+  const live = D.folder().files.filter(f => !f.trashed), cores = live.filter(f => /^jarvis-nucleo-/.test(f.name)).map(f => f.name);
+  const months = new Set(Array.from({ length: 40 }, (_, i) => day(i).slice(0, 6)));
+  assert.ok(cores.length < 40 && cores.length >= 7 + 3, `se guardan menos, pero suficientes (${cores.length})`);
+  for (const m of months) assert.ok(cores.some(n => n.includes(`-${m}`)), `queda al menos una del mes ${m}`);
+  for (let i = 33; i < 40; i++) assert.ok(cores.includes(`jarvis-nucleo-${day(i)}-0400.jvbk`), 'las 7 más nuevas quedan');
   assert.equal(live.filter(f => f.name === 'JARVIS-memoria.md').length, 1, 'la memoria se reemplaza, no se duplica');
+  const bit = live.find(f => /^JARVIS-bitacora-/.test(f.name)).bytes.toString();
+  assert.match(bit, /Bitácora de JARVIS/); assert.equal((bit.match(/^## \d{4}-/gm) || []).length, 40, 'la bitácora agrega cada día y no borra');
   const latest = await driveLatest(cfg, D.fetchImpl);
-  assert.match(latest.name, /-4\.jvbk$/);
+  assert.equal(latest.name, `jarvis-nucleo-${day(39)}-0400.jvbk`);
   const cfg2 = { dbPath: join(dir, 'b.db'), backupDir: join(dir, 'c2') }, db2 = openDb(cfg2.dbPath);
   const r = restoreBrain(db2, cfg2, latest.data, cfg.backupPassphrase, { id: 1 });
   assert.equal(r.info.bars, 0, 'la copia ligera no lleva precios (se vuelven a bajar)');
