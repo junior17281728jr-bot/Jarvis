@@ -646,3 +646,9 @@ html.legacy .top{max-width:100vw;overflow:hidden}
 .fd-b{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;margin:8px 0}
 .fd-b .ball{width:32px;height:32px;font-size:13px}
 .jvhist{margin-top:10px}
+
+.reto-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media(max-width:800px){.reto-top{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.reto-v{font-size:24px;font-weight:800}.reto-p{font-size:18px;font-weight:800}
+.reto-p.good,.reto-v.good{color:var(--good)}.reto-p.warn,.reto-v.warn{color:var(--warn)}.reto-p.bad,.reto-v.bad{color:var(--bad)}
+.answer.warn{border-color:var(--warn)}

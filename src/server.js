@@ -18,6 +18,7 @@ import { leagueTable, cheatReports, ensureAgents, coinAudit } from './motor/leag
 import { strategiesSummary, seedAgenda } from './motor/research.js';
 import { pickOfTheDay, liveMethodStats, methodVotes , lotteryBoard } from './motor/lottery-agent.js';
 import { calibration } from './motor/calibration.js';
+import { retoView, setReto } from './motor/reto.js';
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
@@ -373,6 +374,8 @@ route('GET', '/api/lottery/mine', ({ user }) => ({ stats: playStats(db, { userId
 
 route('GET', '/api/coins/audit', () => coinAudit(db));
 route('GET', '/api/calibracion', () => calibration(db));
+route('GET', '/api/reto', () => retoView(db));
+route('POST', '/api/reto', async ({ req }) => { const b = await body(req); return setReto(db, { goalUsd: b.goalUsd, days: b.days, startUsd: b.startUsd, restart: !!b.restart }); }, { admin: true });
 // Registro de votos: qué votó JARVIS, qué pasó de verdad y si ganó o perdió su moneda
 route('GET', '/api/votes/recent', () => {
   const rows = db.prepare("SELECT id, payload, outcome, correct, sealed_at, resolved_at FROM predictions WHERE module = 'ranking' AND correct IS NOT NULL ORDER BY resolved_at DESC, id DESC LIMIT 12").all();

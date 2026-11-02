@@ -6,6 +6,7 @@ import { verifyLedger } from '../core/ledger.js';
 import { rdDate } from '../core/util.js';
 import { collectAll, backfillHistory } from '../lottery/sources.js';
 import { runCalibration } from './calibration.js';
+import { retoStep } from './reto.js';
 import { settlePending } from '../lottery/simulator.js';
 import { scan } from '../lottery/stats.js';
 import { history, repairLotteryData } from '../lottery/results.js';
@@ -62,6 +63,7 @@ const TASKS = [
   ['loterias_jugadas', 30 * MIN, true],
   ['prueba_en_vivo', 15 * MIN, true, now => marketOpen(now)],
   ['cartera_ia', 60 * MIN, true, now => marketOpen(now)],
+  ['reto_ia', 60 * MIN, true, now => marketOpen(now)],
   ['ideas_acciones_ia', 7 * 24 * 60 * MIN, true],
   ['recordatorio_planes', 6 * 60 * MIN, false],
   ['explorar', 6 * 60 * MIN, true],
@@ -111,6 +113,7 @@ async function runTask(name, db, cfg, now, fetchImpl) {
     case 'loterias_jugadas': return { sealed: autoPlays(db, { now }), effort: reviewEffort(db) };
     case 'prueba_en_vivo': return liveStep(db, { symbols: syms, now, bench: BENCH });
     case 'cartera_ia': return autopilotStep(db, { now });
+    case 'reto_ia': return retoStep(db, { now });
     case 'recordatorio_planes': return { planes: planReminders(db), pendientes: adminPendingReminder(db) };
     case 'ideas_acciones_ia': { const adm = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get(); return suggestStocks(db, cfg, { fetchImpl, horizon: adm ? getProfile(db, adm.id).horizon : 'medio' }); }
     case 'ranking': { resolveRanking(db, BENCH); const cards = buildRanking(db, { symbols: syms, bench: BENCH }); return { cards: cards.length, moves: updateMap(db, cards) }; }

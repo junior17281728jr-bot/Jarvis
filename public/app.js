@@ -557,6 +557,7 @@ views.cuentas = async () => {
   const empty = !B.positions.length;
   return `<div class="side-banner ai"><span>🤖</span><div><b>PARTE DE LA IA · decide sola</b><small>Aquí JARVIS invierte su propio dinero virtual con sus propias reglas. Tú no puedes comprar aquí: solo miras cómo le va. Para invertir tú, ve a "🧑 Mi dinero".</small></div></div>
   <div><h1>🤖 Dinero de la IA</h1><p class="sub">Cuánto tenía, en qué lo puso, cuánto ganó o perdió y con cuánto queda. Todo sale de operaciones selladas con precios reales.</p></div>
+  <div id="reto"></div>
   ${A.me ? `<section class="card"><h2>¿Quién va ganando?</h2>${vsStrip(A.me.returnPct, B.returnPct / 100, A.me.market, 'ai')}</section>` : ''}
   <section class="card acct-card"><h2>📈 Bolsa <span class="more note">empezó el ${dt(B.since)} con ${usd(B.start)}</span></h2>
     ${flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', `${B.positions.length} ${B.positions.length === 1 ? 'acción' : 'acciones'}`], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', `${up ? '+' : ''}${usd(B.gain)} (${up ? '+' : ''}${B.returnPct}%)`]])}
@@ -1940,3 +1941,24 @@ $('#logout').onclick = async () => { await api('/api/logout', { method: 'POST' }
 window.addEventListener('hashchange', () => ME && render());
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 boot();
+
+/** 🎯 El reto de la IA: meta, presión, chance real y cada decisión con su porqué. */
+async function loadReto() {
+  const el = document.getElementById('reto'); if (!el) return;
+  let R; try { R = await api('/api/reto'); } catch { return; }
+  const tone = { baja: 'good', media: 'warn', alta: 'warn', maxima: 'bad', defensa: 'bad', lograda: 'good', terminada: '' }[R.level];
+  el.innerHTML = `<section class="card reto"><h2>🎯 Reto de la IA: de ${usd(R.startUsd, 0)} a ${usd(R.goalUsd, 0)} en ${R.days} días <span class="more note">cuenta aparte · dinero virtual</span></h2>
+    <div class="reto-top"><div><div class="note">Tiene ahora</div><div class="reto-v ${R.gain >= 0 ? 'good' : 'bad'}">${usd(R.total)}</div><div class="note">${R.gain >= 0 ? '+' : ''}${usd(R.gain)} desde el inicio</div></div>
+      <div><div class="note">Presión</div><div class="reto-p ${tone}">${esc(R.pressure)}</div><div class="note">${R.needed != null ? `necesita <b>+${R.needed}% por día</b> de bolsa` : ''}</div></div>
+      <div><div class="note">Le quedan</div><div class="reto-v">${R.daysLeft} días</div><div class="note">${R.tradingLeft} días de bolsa · hoy debería ir en ${usd(R.shouldHave)}</div></div>
+      <div><div class="note">Chance real de lograrlo</div><div class="reto-v ${R.chance >= 20 ? 'good' : R.chance >= 5 ? 'warn' : 'bad'}">${R.chance == null ? '—' : R.chance < 0.1 ? 'menos de 0.1%' : R.chance + '%'}</div><div class="note">simulado con precios reales</div></div></div>
+    <div class="vbar" style="height:12px;margin:10px 0 4px"><span style="width:${R.progressPct}%"></span></div><div class="note">${R.progressPct}% del camino a la meta</div>
+    ${R.positions.length ? `<div class="jvo" style="margin-top:8px">${R.positions.map(p => `<span><b>${esc(p.symbol)}</b> ${usd(p.value)} <i class="${p.pnl >= 0 ? 'good' : 'bad'}">${p.pnl >= 0 ? '+' : ''}${p.pnlPct}%</i></span>`).join('')}</div>` : `<div class="note" style="margin-top:8px">${R.marketOpen ? 'Todavía no compra: revisa cada hora.' : 'La bolsa está cerrada: compra cuando abra.'}${R.last?.why ? ' ' + esc(R.last.why) : ''}</div>`}
+    ${R.moves.length ? `<details style="margin-top:8px"><summary class="note">Sus decisiones y por qué (${R.moves.length})</summary>${R.moves.map(m => `<div class="note" style="margin:6px 0">${m.side === 'buy' ? '🟢 Compró' : '🔴 Vendió'} <b>${esc(m.symbol)}</b> ${usd(m.usd)} · ${fmtWhen(m.at)} — ${esc(m.why)}</div>`).join('')}</details>` : ''}
+    <div class="answer warn" style="margin-top:10px">⚠️ ${esc(R.honest)}</div>
+    ${ME?.role === 'admin' ? `<details style="margin-top:8px"><summary class="note">Cambiar la meta</summary><div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px"><label style="width:150px">Meta (US$)<input id="rg" type="number" min="1" value="${R.goalUsd}"></label><label style="width:120px">Días<input id="rd" type="number" min="1" max="365" value="${R.days}"></label><label style="width:150px">Empieza con (US$)<input id="rs" type="number" min="1" value="${R.startUsd}"></label>
+      <button class="btn sm" id="rsave">Guardar meta</button><button class="btn ghost sm" id="rnew">Empezar un reto nuevo</button></div><div class="note">"Guardar" cambia la meta del reto actual. "Empezar uno nuevo" abre otra cuenta desde cero (la anterior queda guardada).</div><div class="msg" id="rmsg"></div></details>` : ''}</section>`;
+  const send = async restart => { try { await api('/api/reto', { method: 'POST', body: { goalUsd: $('#rg').value, days: $('#rd').value, startUsd: $('#rs').value, restart } }); loadReto(); } catch (e) { $('#rmsg').className = 'msg err'; $('#rmsg').textContent = e.message; } };
+  if ($('#rsave')) { $('#rsave').onclick = () => send(false); $('#rnew').onclick = () => send(true); }
+}
+views.cuentas.after = () => { loadReto(); };

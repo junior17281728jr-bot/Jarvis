@@ -357,3 +357,20 @@ test('votación: votan LOS 6 métodos con 3 números cada uno; las pruebas juega
   assert.equal(per.length, 6);
   for (const r of per) assert.equal(r.n, 3, r.method);
 });
+
+test('reto de la IA: cuenta aparte, mide la presión (cuánto necesita por día) y nunca baja del piso', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { setReto, retoPace, retoView, retoAccount } = await import('../src/motor/reto.js');
+  const { aiAccount } = await import('../src/motor/autopilot.js');
+  const db = od(':memory:');
+  setReto(db, { goalUsd: 1500, days: 30 });
+  const p = retoPace(db);
+  assert.equal(p.total, 100);
+  assert.ok(p.needed > 9 && p.needed < 15, `necesita ~+12% por día de bolsa (${p.needed})`);
+  assert.equal(p.level, 'maxima');
+  assert.notEqual(retoAccount(db).id, aiAccount(db).id, 'no se mezcla con el dinero de la IA');
+  const v = retoView(db); assert.match(v.honest, /cada día de bolsa/);
+  const r2 = setReto(db, { goalUsd: 150, days: 30, restart: true });
+  assert.equal(r2.goalUsd, 150); assert.notEqual(retoAccount(db).id, p.accountId, 'reto nuevo = cuenta nueva');
+  assert.ok(['baja', 'media'].includes(retoPace(db).level), 'meta realista = poca presión');
+});

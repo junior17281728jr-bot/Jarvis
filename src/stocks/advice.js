@@ -85,7 +85,7 @@ export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, tra
 }
 
 /** Rango de lo que podría pasar con un monto, remuestreando bloques de retornos reales (no es promesa). */
-export function project(bars, amountUsd, { days = 126, sims = 2000, block = 10, seed = 5, fixedCostUsd = 0 } = {}) {
+export function project(bars, amountUsd, { days = 126, sims = 2000, block = 10, seed = 5, fixedCostUsd = 0, target = null } = {}) {
   const daily = bars.slice(-756).map((b, i, a) => (i ? b.close / a[i - 1].close - 1 : 0)).slice(1);
   if (daily.length < 120) return null;
   const r = rng(seed), outcomes = [];
@@ -95,7 +95,8 @@ export function project(bars, amountUsd, { days = 126, sims = 2000, block = 10, 
     outcomes.push(amountUsd * g - amountUsd - fixedCostUsd);
   }
   outcomes.sort((a, b) => a - b);
-  return { amountUsd, days, bad: round(quantile(outcomes, 0.1)), probable: round(quantile(outcomes, 0.5)), good: round(quantile(outcomes, 0.9)), lossChance: round(outcomes.filter(x => x < 0).length / sims, 2), basedOnDays: daily.length };
+  return { amountUsd, days, bad: round(quantile(outcomes, 0.1)), probable: round(quantile(outcomes, 0.5)), good: round(quantile(outcomes, 0.9)), lossChance: round(outcomes.filter(x => x < 0).length / sims, 2), basedOnDays: daily.length,
+    ...(target != null ? { pTarget: outcomes.filter(x => x >= target).length / sims } : {}) };
 }
 
 /** ¿Cuánto invertir? Revisa tu situación y te dice si el monto vale la pena y cómo repartirlo. */
