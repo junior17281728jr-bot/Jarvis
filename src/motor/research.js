@@ -55,20 +55,28 @@ function pooledExcess(db, family, params, symbols, part, bench) {
   const bRet = new Map(benchBars.map((b, i) => [b.ts, i ? b.close / benchBars[i - 1].close - 1 : 0]));
   // Ideas "solo en tal situación del mercado": se miden solo en los días de esa situación
   const reg = params.regimen ? regimes(benchBars) : null, inRegime = ts => { const r = reg.get(ts); return r && (r.trend === params.regimen || r.vol === params.regimen); };
-  const excess = []; let trades = 0;
+  // Se junta por FECHA (cartera de igual peso): varias acciones el mismo día se mueven juntas,
+  // así que contarlas como datos independientes inflaría la prueba y aprobaría ideas por suerte.
+  const byDate = new Map(); let trades = 0, symbolsUsed = 0;
   for (const sym of symbols) {
     const bars = getBars(db, sym);
     if (bars.length < 300) continue;
+    symbolsUsed++;
     const split = splitIndex(bars, CRITERIA.holdoutFrac);
     const slice = part === 'train' ? bars.slice(0, split) : bars;
     const run = runStrategy(slice, family, params, { from: part === 'train' ? 1 : split });
-    run.curve.forEach((c, i) => { const br = bRet.get(c.ts); if (br != null && (!reg || inRegime(c.ts))) excess.push(run.daily[i] - br); });
+    run.curve.forEach((c, i) => {
+      const br = bRet.get(c.ts);
+      if (br == null || (reg && !inRegime(c.ts))) return;
+      const a = byDate.get(c.ts) || [0, 0]; a[0] += run.daily[i] - br; a[1]++; byDate.set(c.ts, a);
+    });
     trades += metrics(run).trades;
   }
+  const excess = [...byDate.values()].map(([s, k]) => s / k);
   const n = excess.length, m = n ? excess.reduce((a, b) => a + b, 0) / n : 0;
   const s = n > 1 ? Math.sqrt(excess.reduce((a, b) => a + (b - m) ** 2, 0) / (n - 1)) : 0;
   const t = s > 0 ? m / (s / Math.sqrt(n)) : 0;
-  return { n, meanDaily: m, annual: m * 252, t, p: 1 - normalCdf(t), trades };
+  return { n, meanDaily: m, annual: m * 252, t, p: 1 - normalCdf(t), trades, symbols: symbolsUsed };
 }
 
 /** Un experimento completo sobre una idea de la agenda. */

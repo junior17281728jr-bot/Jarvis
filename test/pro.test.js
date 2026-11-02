@@ -418,3 +418,18 @@ test('parejas: con datos al azar no inventa parejas; con una pareja real, la enc
   const linked = build(true), r1 = findPairs(linked, { symbols: ['SPY', 'A', 'B', 'C', 'D'] });
   assert.ok(r1.found >= 1, 'encuentra A → B');
 });
+
+test('la prueba de estrategias junta por fecha: copias de la misma acción no inflan la evidencia', () => {
+  const db = openDb(':memory:');
+  saveBars(db, 'SPY', { source: 'test', bars: syntheticBars(900, { drift: 0.0003, from: '2022-01-03' }) });
+  const same = syntheticBars(900, { drift: 0.0006, from: '2022-01-03', seed: 7 });
+  saveBars(db, 'A1', { source: 'test', bars: same });
+  const item = { id: 1, family: 'impulso', params: JSON.stringify({ lookback: 20 }), agent: 'corto', title: 't' };
+  db.prepare("INSERT INTO agenda (id, module, family, title, params, created_at, source) VALUES (1, 'bolsa', 'impulso', 't', ?, '2026-01-01', 'test')").run(item.params);
+  const one = runExperiment(db, item, { symbols: ['SPY', 'A1'], bench: 'SPY' }).result.train;
+  for (const s of ['A2', 'A3', 'A4']) saveBars(db, s, { source: 'test', bars: same });
+  const four = runExperiment(db, item, { symbols: ['SPY', 'A1', 'A2', 'A3', 'A4'], bench: 'SPY' }).result.train;
+  assert.equal(four.n, one.n, 'cuenta días, no acciones×días');
+  assert.ok(Math.abs(four.t - one.t) < 1e-9, 'la misma información repetida no da más seguridad');
+  assert.equal(four.symbols, 4);
+});
