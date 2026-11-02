@@ -7,7 +7,7 @@ import { nextDraw, sealPlay } from '../lottery/simulator.js';
 import { getSetting, setSetting, activity } from '../core/db.js';
 import { DEFAULT_PAYOUTS } from '../lottery/payouts.js';
 import { sealLotteryPick } from './track.js';
-import { rng, sha256, round, wilson } from '../core/util.js';
+import { rng, sha256, round, wilson, rdTimeToUtc } from '../core/util.js';
 import { fx } from './insights.js';
 
 // Monto de cada jugada virtual del agente: RD$100, lo mínimo que se juega normalmente en una banca
@@ -232,8 +232,30 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
       return { kind: 'prueba', game: w.game, name: GAMES[w.game]?.name || w.game, date: w.date, time: GAMES[w.game] ? drawTime(w.game, w.date) : null, method: w.method, methodLabel: METHODS[w.method]?.label || w.method,
         numbers: nums, draw, positions: draw ? nums.filter(n => draw.includes(n)).map(n => draw.indexOf(n) + 1) : [], stakeRd: w.stake, prizeRd: w.prize, sealedAt: w.sealed_at, resultSeenAt: seenAt(w.game, w.date), hash: w.ledger_hash }; });
   for (const p of past.filter(p => p.status === 'acerto')) wins.unshift({ kind: 'su_numero', game: p.game, name: p.name, date: p.date, time: p.time, method: p.method, methodLabel: p.methodLabel, numbers: p.numbers, draw: p.draw, positions: (p.hits || []).map(h => p.draw.indexOf(h) + 1), stakeRd: p.stakeRd, prizeRd: p.prizeRd, sealedAt: p.sealedAt, resultSeenAt: p.resultSeenAt, hash: p.hash });
+  // 📋 La lista de apuestas: las que vienen (con la hora del sorteo) y las que ya salieron, que se quedan 24 horas
+  // con su resultado; las nuevas entran arriba y empujan las viejas hacia abajo.
+  const at = (game, date) => { const [h, m] = GAMES[game].time(new Date(date + 'T12:00:00Z').getUTCDay()); return rdTimeToUtc(date, h, m); };
+  const nowMs = now.getTime(), DAY = 864e5;
+  const feed = [];
+  for (const u of upcoming) if (u.pick) {
+    const d = at(u.game, u.date);
+    feed.push({ game: u.game, name: u.name, date: u.date, time: u.time, drawAt: d.toISOString(), state: 'por_jugar', numbers: u.pick.numbers, stakeRd: u.pick.stakeRd, perNumberRd: u.pick.perNumberRd,
+      sealedAt: u.pick.sealedAt, why: u.pick.why, methodLabel: u.pick.methodLabel, stakeWhy: u.pick.stakeWhy });
+  }
+  for (const p of past) {
+    if (!GAMES[p.game]) continue;
+    const d = at(p.game, p.date);
+    if (nowMs - d.getTime() > DAY && p.status !== 'esperando') continue; // ya pasó su día: se va al historial
+    feed.push({ game: p.game, name: p.name, date: p.date, time: p.time, drawAt: d.toISOString(), leavesAt: new Date(d.getTime() + DAY).toISOString(),
+      state: p.status === 'esperando' ? (d.getTime() > nowMs ? 'por_jugar' : 'esperando_resultado') : p.status === 'acerto' ? 'gano' : 'perdio',
+      numbers: p.numbers, stakeRd: p.stakeRd, perNumberRd: p.perNumberRd, sealedAt: p.sealedAt, resultSeenAt: p.resultSeenAt, draw: p.draw, hits: p.hits,
+      prizeRd: p.prizeRd, pnlRd: p.pnlRd, why: p.why, methodLabel: p.methodLabel, explain: p.explain });
+  }
+  const seenKey = new Set();
+  const feedList = feed.filter(f => { const k = `${f.game}|${f.date}`; if (seenKey.has(k)) return false; seenKey.add(k); return true; })
+    .sort((a, b) => (a.drawAt < b.drawAt ? 1 : -1));
   const done = past.filter(p => p.status !== 'esperando');
   const staked = done.reduce((s, p) => s + (p.stakeRd || 0), 0), won = done.reduce((s, p) => s + (p.prizeRd || 0), 0);
-  return { rate, upcoming, past, wins, summary: { picks: done.length, hits: done.filter(p => p.status === 'acerto').length, stakedRd: staked, wonRd: won, netRd: won - staked },
+  return { rate, upcoming, past, feed: feedList, wins, summary: { picks: done.length, hits: done.filter(p => p.status === 'acerto').length, stakedRd: staked, wonRd: won, netRd: won - staked },
     honest: 'Cada número se sella con hora y huella ANTES del sorteo; después se compara con el resultado oficial. En quiniela cada número tiene 3 de cada 100 de salir: ningún método puede adivinar el próximo si el sorteo es justo.' };
 }

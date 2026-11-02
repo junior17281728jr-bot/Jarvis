@@ -901,6 +901,7 @@ const lateSeal = (sealedAt, date, time) => !!(sealedAt && date && time) && Date.
 const lateTag = x => (lateSeal(x.sealedAt, x.date, x.time) ? ' <b class="bad">⚠️ sellado después del sorteo: no cuenta</b>' : ' <span class="good">✓ antes del sorteo</span>');
 const fmtWhen = iso => iso ? new Date(iso).toLocaleString('es-DO', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 const ampm = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`; };
+const inTxt = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'ya' : m < 60 ? `en ${m} min` : `en ${Math.floor(m / 60)} h ${m % 60} min`; };
 const untilTxt = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'cerrado' : m < 60 ? `cierra en ${m} min` : `cierra en ${Math.floor(m / 60)} h ${m % 60} min`; };
 async function loadJarvisLottery() {
   const el = $('#jvlot'); if (!el) return;
@@ -908,10 +909,21 @@ async function loadJarvisLottery() {
   if (B.rate) FX = B.rate;
   const S = B.summary, ST = { acerto: ['✅', 'Acertó', 'good'], fallo: ['❌', 'Falló', 'bad'], esperando: ['⏳', 'Esperando resultado', 'warn'] };
   const balls = (nums, hit) => nums.map(n => `<span class="ball${hit && hit.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('');
-  const wallet = W ? `<h3 class="cs-h">💰 El dinero de JARVIS en lotería</h3>${flow([['Empezó con', rdu(W.startRd), '', ''], ['Jugó', rdu(W.playedRd), '', `${W.plays} sorteos`], ['Ganó (premios)', rdu(W.wonRd), W.wonRd > 0 ? 'good' : '', `${W.hits} con premio`], ['Perdió', rdu(W.lostRd), W.lostRd > 0 ? 'bad' : '', `${W.settled - W.hits} sin premio`], ['Le queda', rdu(W.leftRd), W.leftRd >= W.startRd ? 'good' : 'bad', `${W.leftRd >= W.startRd ? 'va ganando' : 'va perdiendo'} ${rdRaw(Math.abs(W.leftRd - W.startRd))}${W.pendingRd ? ` · ${rdRaw(W.pendingRd)} esperando sorteo` : ''}`]])}<div class="note" style="margin-bottom:6px">Es el dinero de <b>su número</b> de cada sorteo. Las jugadas de prueba de los 6 métodos se cuentan aparte (arriba, en "Jugadas virtuales").</div>` : '';
+  const wallet = W ? `<h3 class="cs-h">💰 El dinero de JARVIS en lotería</h3>${flow([['Empezó con', rdu(W.startRd), '', ''], ['Jugó', rdu(W.playedRd), '', `${W.plays} sorteos`], ['Ganó (premios)', rdu(W.wonRd), W.wonRd > 0 ? 'good' : '', `${W.hits} con premio`], ['Perdió', rdu(W.lostRd), W.lostRd > 0 ? 'bad' : '', `${W.settled - W.hits} sin premio`], ['Le queda', rdu(W.leftRd), W.leftRd >= W.startRd ? 'good' : 'bad', `${W.leftRd >= W.startRd ? 'va ganando' : 'va perdiendo'} ${rdRaw(Math.abs(W.leftRd - W.startRd))}${W.pendingRd ? ` · ${rdRaw(W.pendingRd)} esperando sorteo` : ''}`]])}<div class="note" style="margin-bottom:6px">Es el dinero de <b>su número</b> de cada sorteo. Las jugadas de prueba de los 6 métodos se cuentan aparte (más abajo, en "🧪 Laboratorio").</div>` : '';
   el.innerHTML = `<section class="card jvlot"><h2>🎱 Lo que juega JARVIS <span class="more note">sellado antes de cada sorteo</span></h2>${wallet}
     ${W ? '' : `<div class="jvsum">${[['🎯', `${S.hits} de ${S.picks}`, 'aciertos'], ['💵', rdu(S.stakedRd), 'jugado (virtual)'], ['🏆', rdu(S.wonRd), 'cobrado'], [S.netRd >= 0 ? '📈' : '📉', rdu(S.netRd, { sign: true }), 'resultado']].map(([i, v, l]) => `<div><span>${i}</span><b class="${l === 'resultado' ? (S.netRd >= 0 ? 'good' : 'bad') : ''}">${v}</b><small>${l}</small></div>`).join('')}</div>`}
-    <h3 class="cs-h">⏭️ Próximos sorteos</h3>
+    ${B.feed?.length ? `<h3 class="cs-h">📋 Lo que apostó JARVIS <span class="note" style="font-weight:400">· lo nuevo arriba · los resultados se quedan 24 horas</span></h3>
+    <div class="jvfeed">${B.feed.map(f => { const st = { por_jugar: ['⏳', `Sale ${inTxt(f.drawAt)}`, 'warn'], esperando_resultado: ['🕐', 'Ya se jugó · esperando el resultado confirmado', 'warn'], gano: ['✅', `Ganó ${rdu(f.prizeRd)}`, 'good'], perdio: ['❌', 'Perdió', 'bad'] }[f.state];
+      return `<div class="fd k-${st[2]}">
+        <div class="fd-h"><b>${esc(f.name)}</b><span class="note">🎰 sorteo ${fdate(f.date)} a las <b>${ampm(f.time)}</b></span><span class="fd-s ${st[2]}">${st[0]} ${st[1]}</span></div>
+        <div class="fd-b"><div><div class="note">Apostó a</div><div class="balls">${balls(f.numbers, f.draw)}</div></div>
+          <div><div class="note">Cuánto</div><b>${rdu(f.stakeRd)}</b><div class="note">${f.numbers.length > 1 ? `RD$${f.perNumberRd} por número` : ''}</div></div>
+          <div><div class="note">Salió</div><div class="balls">${f.draw ? balls(f.draw, f.numbers) : '<span class="note">todavía no</span>'}</div></div>
+          <div><div class="note">Resultado</div><b class="${f.pnlRd > 0 ? 'good' : f.pnlRd < 0 ? 'bad' : ''}">${f.pnlRd != null ? rdu(f.pnlRd, { sign: true }) : '—'}</b></div></div>
+        <div class="jw-t">🔒 Apostó: <b>${f.sealedAt ? fmtWhen(f.sealedAt) : 'se sella antes del cierre'}</b> · 🎰 Sorteo: <b>${fdate(f.date)} ${ampm(f.time)}</b>${f.resultSeenAt ? ` · 📰 Resultado: <b>${fmtWhen(f.resultSeenAt)}</b>` : ''}${f.leavesAt && f.state !== 'por_jugar' ? ` · ⏱️ se quita de aquí ${inTxt(f.leavesAt)}` : ''}</div>
+        ${f.explain && f.state !== 'por_jugar' && f.state !== 'esperando_resultado' ? `<div class="note">${esc(f.explain)}</div>` : ''}
+      </div>`; }).join('')}</div>` : ''}
+    <details class="jvhist"${B.feed?.length ? '' : ' open'}><summary class="cs-h" style="cursor:pointer">🔎 Detalle de cada próximo sorteo: por qué esos números, el orden aprendido y lo que juega cada método</summary>
     <div class="jvnext">${B.upcoming.map(u => `<div class="jvn">
       <div class="jvn-h"><b>${esc(u.name)}</b><span class="chip">${untilTxt(u.closesAt)}</span></div>
       <div class="jvn-d">📅 ${fdate(u.date)} · 🕐 ${ampm(u.time)}${u.verified ? '' : ' <span class="note">(hora por confirmar)</span>'}</div>
@@ -919,13 +931,13 @@ async function loadJarvisLottery() {
         <div class="jvn-w"><b>¿Por qué?</b> Método "${esc(u.pick.methodLabel)}": ${esc(u.pick.why)}</div>
         <div class="note">${u.pick.sealedAt ? `🔒 Sellado ${hhmm(u.pick.sealedAt)} · huella ${esc((u.pick.hash || '').slice(0, 10))}… (ya no se puede cambiar)` : '📝 Se sella automáticamente antes del cierre'}</div>
         ${u.plays.length ? `<details><summary class="note">Lo que juegan los otros ${u.plays.length} métodos de prueba</summary><div class="jvo">${u.plays.map(p => `<span><i>${esc(p.label)}</i> ${p.numbers.map(esc).join(' ')}</span>`).join('')}</div></details>` : ''}`
-      : `<div class="note" style="margin-top:8px">${u.enough ? 'Preparando su número…' : `Tiene ${u.draws} sorteos guardados y necesita 10 para elegir.`}</div>${u.sources?.length ? `<div class="srcst">${u.sources.map(x => `<div>${x.ok ? '✅' : '❌'} <b>${esc(x.source)}</b>: ${x.ok ? `leyó ${x.saved} resultados` : esc(x.error || 'no respondió')}</div>`).join('')}<div class="note">Si las dos páginas salen con ❌, mándale una foto de esto a Claude.</div></div>` : ''}`}</div>`).join('')}</div>
+      : `<div class="note" style="margin-top:8px">${u.enough ? 'Preparando su número…' : `Tiene ${u.draws} sorteos guardados y necesita 10 para elegir.`}</div>${u.sources?.length ? `<div class="srcst">${u.sources.map(x => `<div>${x.ok ? '✅' : '❌'} <b>${esc(x.source)}</b>: ${x.ok ? `leyó ${x.saved} resultados` : esc(x.error || 'no respondió')}</div>`).join('')}<div class="note">Si las dos páginas salen con ❌, mándale una foto de esto a Claude.</div></div>` : ''}`}</div>`).join('')}</div></details>
     ${B.wins?.length ? `<h3 class="cs-h">🏆 Jugadas que ganaron (${B.wins.length})</h3><div class="note" style="margin-bottom:8px">Cada una se selló <b>antes</b> del sorteo: compara la hora en que apostó con la hora del sorteo.</div>
     <div class="jvwins">${B.wins.map(w => `<div class="jw"><div class="jw-h"><b>${esc(w.name)}</b> <span class="note">${fdate(w.date)}</span><span class="tag ${w.kind === 'su_numero' ? 'dato' : ''}">${w.kind === 'su_numero' ? '⭐ su número' : `prueba: ${esc(w.methodLabel)}`}</span><b class="good jw-p">+${rdu(w.prizeRd - w.stakeRd)}</b></div>
       <div class="jw-b"><div><div class="note">Jugó</div><div class="balls">${w.numbers.map(n => `<span class="ball${w.draw?.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('')}</div></div><div class="jvp-vs">→</div><div><div class="note">Salió</div><div class="balls">${(w.draw || []).map(n => `<span class="ball${w.numbers.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('')}</div></div></div>
       <div class="jw-t">🔒 Apostó: <b>${fmtWhen(w.sealedAt)}</b>${lateTag(w)} · 🎰 Sorteo: <b>${fdate(w.date)} ${ampm(w.time)}</b> · 📰 Resultado visto: <b>${w.resultSeenAt ? fmtWhen(w.resultSeenAt) : '—'}</b></div>
       <div class="note">Apostó ${rdu(w.stakeRd)} y cobró ${rdu(w.prizeRd)} · salió en ${w.positions.map(p => `${p}ª`).join(' y ')} posición (la ${w.positions[0] === 1 ? '1ª paga 60' : w.positions[0] === 2 ? '2ª paga 8' : '3ª paga 4'} veces lo apostado)${w.stakeRd < 100 ? ' · <b>jugada vieja</b>: era de antes del mínimo de RD$100' : ''} · huella ${esc((w.hash || '').slice(0, 10))}…</div></div>`).join('')}</div>` : ''}
-    <h3 class="cs-h">🧾 Lo que ya jugó y cómo le fue</h3>
+    <details class="jvhist"><summary class="cs-h" style="cursor:pointer">🧾 Historial completo: todo lo que jugó y cómo le fue (${B.past.length})</summary>
     ${B.past.length ? `<div class="jvpast">${B.past.map(p => { const [ic, tx, cl] = ST[p.status]; return `<div class="jvp k-${cl}">
       <div class="jvp-h"><b>${esc(p.name)}</b> <span class="note">${fdate(p.date)} · ${ampm(p.time)}</span><span class="jvp-s ${cl}">${ic} ${tx}</span></div>
       <div class="jvp-c"><div><div class="note">Jugó</div><div class="balls">${balls(p.numbers, p.draw)}</div></div><div class="jvp-vs">vs</div><div><div class="note">Salió</div><div class="balls">${p.draw ? balls(p.draw, p.numbers) : '<span class="note">todavía no</span>'}</div></div>
@@ -933,7 +945,7 @@ async function loadJarvisLottery() {
       <div class="jw-t">🔒 Apostó: <b>${fmtWhen(p.sealedAt)}</b>${lateTag(p)} · 🎰 Sorteo: <b>${ampm(p.time)}</b>${p.resultSeenAt ? ` · 📰 Resultado visto: <b>${fmtWhen(p.resultSeenAt)}</b>` : ''}</div>
       <div class="note jvp-e">${esc(p.explain)} <b>Por qué lo eligió:</b> ${esc(p.methodLabel)} — ${esc(p.why)}</div>
       ${p.others.length ? `<details><summary class="note">Cómo les fue a los otros métodos en ese sorteo</summary><div class="jvo">${p.others.map(o => `<span class="${o.won ? 'good' : ''}"><i>${esc(o.label)}</i> ${o.numbers.map(esc).join(' ')} ${o.won ? '✅' : '❌'}</span>`).join('')}</div></details>` : ''}
-    </div>`; }).join('')}</div>` : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>'}
+    </div>`; }).join('')}</div>` : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>'}</details>
     <div class="answer" style="margin-top:12px">🔒 ${esc(B.honest)}</div></section>`;
 }
 /** 🔬 Comparación entre loterías: si una se porta distinto a las demás, salta a la vista. */
@@ -980,15 +992,7 @@ views.loterias.after = () => {
     <section class="card"><h2>Métodos contra el azar</h2>${g.compare ? `<div class="answer" style="margin-bottom:10px">${esc(g.compare.verdict)}</div><div class="tablewrap"><table><tr><th>Método</th><th class="r">Jugadas</th><th class="r">Premios</th><th class="r">Devuelve / RD$100</th><th class="r">¿Le gana al azar?</th></tr>
       <tr><td><b>Azar puro</b> <span class="note">(400 jugadores simulados)</span></td><td class="r">—</td><td class="r">—</td><td class="r">${rdRaw(g.compare.random.median)} <span class="note">(${g.compare.random.lo}–${g.compare.random.hi})</span></td><td class="r">Referencia</td></tr>
       ${g.compare.methods.map(m => `<tr><td>${esc(m.label)}<div class="note">${esc(m.why)}</div></td><td class="r">${m.plays}</td><td class="r">${m.wins}</td><td class="r ${m.per100 >= 100 ? 'good' : 'bad'}">${rdRaw(m.per100)}</td><td class="r">${m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : `<span class="light gris"><i></i>No</span> <span class="note">${(m.pBetterThanRandom * 100).toFixed(0)}% por azar</span>`}</td></tr>`).join('')}</table></div>` : '<div class="empty">Se necesitan al menos 20 sorteos.</div>'}</section>
-    <section class="card"><h2>Jugar en virtual</h2><form class="form" id="lf"><div class="grid g4" style="gap:10px">
-      <label>Tipo<select id="lk"><option value="quiniela">Quiniela</option><option value="pale">Palé</option><option value="tripleta">Tripleta</option></select></label>
-      <label>Números (separados por espacio)<input id="ln" placeholder="27 o 27 45"></label><label>Monto RD$ (mínimo 100)<input id="ls" type="number" min="100" step="25" value="100"></label><label>&nbsp;<button class="btn">Sellar jugada</button></label></div><div class="msg" id="lm"></div></form></section>`;
-    $('#lf').onsubmit = async e => {
-      e.preventDefault();
-      try { const r = await api('/api/lottery/play', { method: 'POST', body: { game: id, kind: $('#lk').value, numbers: $('#ln').value.trim().split(/\s+/).map(x => x.padStart(2, '0')), stake: Number($('#ls').value) } });
-        $('#lm').className = 'msg ok'; $('#lm').textContent = `Sellada para el sorteo del ${r.date}. Huella: ${r.hash.slice(0, 12)}…`; }
-      catch (err) { $('#lm').className = 'msg err'; $('#lm').textContent = err.message; }
-    };
+`;
   };
   document.querySelectorAll('#gtabs button').forEach(b => b.onclick = () => show(b.dataset.g));
   show(document.querySelector('#gtabs button:not(.ghost)').dataset.g);

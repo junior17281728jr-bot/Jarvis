@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (6395b32f11424682). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (5783bcf6ce4d073c). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -1464,28 +1464,29 @@ var lateTag = function (x) { return (lateSeal(x.sealedAt, x.date, x.time) ? ' <b
 var fmtWhen = function (iso) { return iso ? new Date(iso).toLocaleString('es-DO', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'; };
 var ampm = function (t) { if (!t)
     return ''; var _a = __read(t.split(':').map(Number), 2), h = _a[0], m = _a[1]; return "".concat(((h + 11) % 12) + 1, ":").concat(String(m).padStart(2, '0'), " ").concat(h < 12 ? 'a. m.' : 'p. m.'); };
+var inTxt = function (iso) { var m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'ya' : m < 60 ? "en ".concat(m, " min") : "en ".concat(Math.floor(m / 60), " h ").concat(m % 60, " min"); };
 var untilTxt = function (iso) { var m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'cerrado' : m < 60 ? "cierra en ".concat(m, " min") : "cierra en ".concat(Math.floor(m / 60), " h ").concat(m % 60, " min"); };
 function loadJarvisLottery() {
     return __awaiter(this, void 0, void 0, function () {
         var el, B, W, e_6, S, ST, balls, wallet;
         var _a;
-        var _b;
-        return __generator(this, function (_c) {
-            switch (_c.label) {
+        var _b, _c, _d;
+        return __generator(this, function (_e) {
+            switch (_e.label) {
                 case 0:
                     el = $('#jvlot');
                     if (!el)
                         return [2];
                     W = null;
-                    _c.label = 1;
+                    _e.label = 1;
                 case 1:
-                    _c.trys.push([1, 3, , 4]);
+                    _e.trys.push([1, 3, , 4]);
                     return [4, Promise.all([api('/api/lottery/jarvis'), api('/api/jarvis/cuentas').then(function (c) { return c.loteria; }).catch(function () { return null; })])];
                 case 2:
-                    _a = __read.apply(void 0, [_c.sent(), 2]), B = _a[0], W = _a[1];
+                    _a = __read.apply(void 0, [_e.sent(), 2]), B = _a[0], W = _a[1];
                     return [3, 4];
                 case 3:
-                    e_6 = _c.sent();
+                    e_6 = _e.sent();
                     el.innerHTML = "<div class=\"card note\">".concat(esc(e_6.message), "</div>");
                     return [2];
                 case 4:
@@ -1493,18 +1494,21 @@ function loadJarvisLottery() {
                         FX = B.rate;
                     S = B.summary, ST = { acerto: ['✅', 'Acertó', 'good'], fallo: ['❌', 'Falló', 'bad'], esperando: ['⏳', 'Esperando resultado', 'warn'] };
                     balls = function (nums, hit) { return nums.map(function (n) { return "<span class=\"ball".concat(hit && hit.includes(n) ? ' hit' : '', "\">").concat(esc(n), "</span>"); }).join(''); };
-                    wallet = W ? "<h3 class=\"cs-h\">\uD83D\uDCB0 El dinero de JARVIS en loter\u00EDa</h3>".concat(flow([['Empezó con', rdu(W.startRd), '', ''], ['Jugó', rdu(W.playedRd), '', "".concat(W.plays, " sorteos")], ['Ganó (premios)', rdu(W.wonRd), W.wonRd > 0 ? 'good' : '', "".concat(W.hits, " con premio")], ['Perdió', rdu(W.lostRd), W.lostRd > 0 ? 'bad' : '', "".concat(W.settled - W.hits, " sin premio")], ['Le queda', rdu(W.leftRd), W.leftRd >= W.startRd ? 'good' : 'bad', "".concat(W.leftRd >= W.startRd ? 'va ganando' : 'va perdiendo', " ").concat(rdRaw(Math.abs(W.leftRd - W.startRd))).concat(W.pendingRd ? " \u00B7 ".concat(rdRaw(W.pendingRd), " esperando sorteo") : '')]]), "<div class=\"note\" style=\"margin-bottom:6px\">Es el dinero de <b>su n\u00FAmero</b> de cada sorteo. Las jugadas de prueba de los 6 m\u00E9todos se cuentan aparte (arriba, en \"Jugadas virtuales\").</div>") : '';
+                    wallet = W ? "<h3 class=\"cs-h\">\uD83D\uDCB0 El dinero de JARVIS en loter\u00EDa</h3>".concat(flow([['Empezó con', rdu(W.startRd), '', ''], ['Jugó', rdu(W.playedRd), '', "".concat(W.plays, " sorteos")], ['Ganó (premios)', rdu(W.wonRd), W.wonRd > 0 ? 'good' : '', "".concat(W.hits, " con premio")], ['Perdió', rdu(W.lostRd), W.lostRd > 0 ? 'bad' : '', "".concat(W.settled - W.hits, " sin premio")], ['Le queda', rdu(W.leftRd), W.leftRd >= W.startRd ? 'good' : 'bad', "".concat(W.leftRd >= W.startRd ? 'va ganando' : 'va perdiendo', " ").concat(rdRaw(Math.abs(W.leftRd - W.startRd))).concat(W.pendingRd ? " \u00B7 ".concat(rdRaw(W.pendingRd), " esperando sorteo") : '')]]), "<div class=\"note\" style=\"margin-bottom:6px\">Es el dinero de <b>su n\u00FAmero</b> de cada sorteo. Las jugadas de prueba de los 6 m\u00E9todos se cuentan aparte (m\u00E1s abajo, en \"\uD83E\uDDEA Laboratorio\").</div>") : '';
                     el.innerHTML = "<section class=\"card jvlot\"><h2>\uD83C\uDFB1 Lo que juega JARVIS <span class=\"more note\">sellado antes de cada sorteo</span></h2>".concat(wallet, "\n    ").concat(W ? '' : "<div class=\"jvsum\">".concat([['🎯', "".concat(S.hits, " de ").concat(S.picks), 'aciertos'], ['💵', rdu(S.stakedRd), 'jugado (virtual)'], ['🏆', rdu(S.wonRd), 'cobrado'], [S.netRd >= 0 ? '📈' : '📉', rdu(S.netRd, { sign: true }), 'resultado']].map(function (_a) {
                         var _b = __read(_a, 3), i = _b[0], v = _b[1], l = _b[2];
                         return "<div><span>".concat(i, "</span><b class=\"").concat(l === 'resultado' ? (S.netRd >= 0 ? 'good' : 'bad') : '', "\">").concat(v, "</b><small>").concat(l, "</small></div>");
-                    }).join(''), "</div>"), "\n    <h3 class=\"cs-h\">\u23ED\uFE0F Pr\u00F3ximos sorteos</h3>\n    <div class=\"jvnext\">").concat(B.upcoming.map(function (u) {
+                    }).join(''), "</div>"), "\n    ").concat(((_b = B.feed) === null || _b === void 0 ? void 0 : _b.length) ? "<h3 class=\"cs-h\">\uD83D\uDCCB Lo que apost\u00F3 JARVIS <span class=\"note\" style=\"font-weight:400\">\u00B7 lo nuevo arriba \u00B7 los resultados se quedan 24 horas</span></h3>\n    <div class=\"jvfeed\">".concat(B.feed.map(function (f) {
+                        var st = { por_jugar: ['⏳', "Sale ".concat(inTxt(f.drawAt)), 'warn'], esperando_resultado: ['🕐', 'Ya se jugó · esperando el resultado confirmado', 'warn'], gano: ['✅', "Gan\u00F3 ".concat(rdu(f.prizeRd)), 'good'], perdio: ['❌', 'Perdió', 'bad'] }[f.state];
+                        return "<div class=\"fd k-".concat(st[2], "\">\n        <div class=\"fd-h\"><b>").concat(esc(f.name), "</b><span class=\"note\">\uD83C\uDFB0 sorteo ").concat(fdate(f.date), " a las <b>").concat(ampm(f.time), "</b></span><span class=\"fd-s ").concat(st[2], "\">").concat(st[0], " ").concat(st[1], "</span></div>\n        <div class=\"fd-b\"><div><div class=\"note\">Apost\u00F3 a</div><div class=\"balls\">").concat(balls(f.numbers, f.draw), "</div></div>\n          <div><div class=\"note\">Cu\u00E1nto</div><b>").concat(rdu(f.stakeRd), "</b><div class=\"note\">").concat(f.numbers.length > 1 ? "RD$".concat(f.perNumberRd, " por n\u00FAmero") : '', "</div></div>\n          <div><div class=\"note\">Sali\u00F3</div><div class=\"balls\">").concat(f.draw ? balls(f.draw, f.numbers) : '<span class="note">todavía no</span>', "</div></div>\n          <div><div class=\"note\">Resultado</div><b class=\"").concat(f.pnlRd > 0 ? 'good' : f.pnlRd < 0 ? 'bad' : '', "\">").concat(f.pnlRd != null ? rdu(f.pnlRd, { sign: true }) : '—', "</b></div></div>\n        <div class=\"jw-t\">\uD83D\uDD12 Apost\u00F3: <b>").concat(f.sealedAt ? fmtWhen(f.sealedAt) : 'se sella antes del cierre', "</b> \u00B7 \uD83C\uDFB0 Sorteo: <b>").concat(fdate(f.date), " ").concat(ampm(f.time), "</b>").concat(f.resultSeenAt ? " \u00B7 \uD83D\uDCF0 Resultado: <b>".concat(fmtWhen(f.resultSeenAt), "</b>") : '').concat(f.leavesAt && f.state !== 'por_jugar' ? " \u00B7 \u23F1\uFE0F se quita de aqu\u00ED ".concat(inTxt(f.leavesAt)) : '', "</div>\n        ").concat(f.explain && f.state !== 'por_jugar' && f.state !== 'esperando_resultado' ? "<div class=\"note\">".concat(esc(f.explain), "</div>") : '', "\n      </div>");
+                    }).join(''), "</div>") : '', "\n    <details class=\"jvhist\"").concat(((_c = B.feed) === null || _c === void 0 ? void 0 : _c.length) ? '' : ' open', "><summary class=\"cs-h\" style=\"cursor:pointer\">\uD83D\uDD0E Detalle de cada pr\u00F3ximo sorteo: por qu\u00E9 esos n\u00FAmeros, el orden aprendido y lo que juega cada m\u00E9todo</summary>\n    <div class=\"jvnext\">").concat(B.upcoming.map(function (u) {
                         var _a, _b, _c, _d, _e;
                         return "<div class=\"jvn\">\n      <div class=\"jvn-h\"><b>".concat(esc(u.name), "</b><span class=\"chip\">").concat(untilTxt(u.closesAt), "</span></div>\n      <div class=\"jvn-d\">\uD83D\uDCC5 ").concat(fdate(u.date), " \u00B7 \uD83D\uDD50 ").concat(ampm(u.time)).concat(u.verified ? '' : ' <span class="note">(hora por confirmar)</span>', "</div>\n      ").concat(u.pick ? "<div class=\"jvn-b\"><div class=\"balls\">".concat(balls(u.pick.numbers), "</div><div><div class=\"note\">").concat(u.pick.numbers.length > 1 ? "Sus ".concat(u.pick.numbers.length, " n\u00FAmeros \u00B7 RD$").concat(u.pick.perNumberRd, " c/u") : 'Su número · juega', "</div><b>").concat(rdu(u.pick.stakeRd), "</b></div></div>").concat(u.pick.stakeWhy ? "<div class=\"note\">\uD83D\uDCB5 ".concat(esc(u.pick.stakeWhy), "</div>") : '').concat(((_b = (_a = u.order) === null || _a === void 0 ? void 0 : _a.list) === null || _b === void 0 ? void 0 : _b.length) && u.pick.sealedAt && u.pick.numbers.slice().sort().join() !== u.order.list.slice(0, 3).map(function (o) { return o.num; }).sort().join() ? "<div class=\"note\">\u2139\uFE0F Estos 3 n\u00FAmeros se sellaron a las ".concat(hhmm(u.pick.sealedAt), " y ya no se pueden cambiar. El orden de abajo es lo aprendido ahora; se usa en el pr\u00F3ximo sorteo.</div>") : '').concat(((_d = (_c = u.order) === null || _c === void 0 ? void 0 : _c.list) === null || _d === void 0 ? void 0 : _d.length) ? "<div class=\"jv-ord\"><span class=\"note\">\uD83C\uDFAF Orden aprendido para jugar:</span> ".concat(u.order.list.map(function (o) { return "<span class=\"jo\"><small>".concat(o.rank, "\u00BA</small><b>").concat(esc(o.num), "</b><small>").concat(o.prob, "%</small></span>"); }).join(''), " <span class=\"note\">(lo normal: ").concat(u.order.fair, "%)</span></div>") : '', "\n        <div class=\"jvn-w\"><b>\u00BFPor qu\u00E9?</b> M\u00E9todo \"").concat(esc(u.pick.methodLabel), "\": ").concat(esc(u.pick.why), "</div>\n        <div class=\"note\">").concat(u.pick.sealedAt ? "\uD83D\uDD12 Sellado ".concat(hhmm(u.pick.sealedAt), " \u00B7 huella ").concat(esc((u.pick.hash || '').slice(0, 10)), "\u2026 (ya no se puede cambiar)") : '📝 Se sella automáticamente antes del cierre', "</div>\n        ").concat(u.plays.length ? "<details><summary class=\"note\">Lo que juegan los otros ".concat(u.plays.length, " m\u00E9todos de prueba</summary><div class=\"jvo\">").concat(u.plays.map(function (p) { return "<span><i>".concat(esc(p.label), "</i> ").concat(p.numbers.map(esc).join(' '), "</span>"); }).join(''), "</div></details>") : '')
                             : "<div class=\"note\" style=\"margin-top:8px\">".concat(u.enough ? 'Preparando su número…' : "Tiene ".concat(u.draws, " sorteos guardados y necesita 10 para elegir."), "</div>").concat(((_e = u.sources) === null || _e === void 0 ? void 0 : _e.length) ? "<div class=\"srcst\">".concat(u.sources.map(function (x) { return "<div>".concat(x.ok ? '✅' : '❌', " <b>").concat(esc(x.source), "</b>: ").concat(x.ok ? "ley\u00F3 ".concat(x.saved, " resultados") : esc(x.error || 'no respondió'), "</div>"); }).join(''), "<div class=\"note\">Si las dos p\u00E1ginas salen con \u274C, m\u00E1ndale una foto de esto a Claude.</div></div>") : ''), "</div>");
-                    }).join(''), "</div>\n    ").concat(((_b = B.wins) === null || _b === void 0 ? void 0 : _b.length) ? "<h3 class=\"cs-h\">\uD83C\uDFC6 Jugadas que ganaron (".concat(B.wins.length, ")</h3><div class=\"note\" style=\"margin-bottom:8px\">Cada una se sell\u00F3 <b>antes</b> del sorteo: compara la hora en que apost\u00F3 con la hora del sorteo.</div>\n    <div class=\"jvwins\">").concat(B.wins.map(function (w) { return "<div class=\"jw\"><div class=\"jw-h\"><b>".concat(esc(w.name), "</b> <span class=\"note\">").concat(fdate(w.date), "</span><span class=\"tag ").concat(w.kind === 'su_numero' ? 'dato' : '', "\">").concat(w.kind === 'su_numero' ? '⭐ su número' : "prueba: ".concat(esc(w.methodLabel)), "</span><b class=\"good jw-p\">+").concat(rdu(w.prizeRd - w.stakeRd), "</b></div>\n      <div class=\"jw-b\"><div><div class=\"note\">Jug\u00F3</div><div class=\"balls\">").concat(w.numbers.map(function (n) { var _a; return "<span class=\"ball".concat(((_a = w.draw) === null || _a === void 0 ? void 0 : _a.includes(n)) ? ' hit' : '', "\">").concat(esc(n), "</span>"); }).join(''), "</div></div><div class=\"jvp-vs\">\u2192</div><div><div class=\"note\">Sali\u00F3</div><div class=\"balls\">").concat((w.draw || []).map(function (n) { return "<span class=\"ball".concat(w.numbers.includes(n) ? ' hit' : '', "\">").concat(esc(n), "</span>"); }).join(''), "</div></div></div>\n      <div class=\"jw-t\">\uD83D\uDD12 Apost\u00F3: <b>").concat(fmtWhen(w.sealedAt), "</b>").concat(lateTag(w), " \u00B7 \uD83C\uDFB0 Sorteo: <b>").concat(fdate(w.date), " ").concat(ampm(w.time), "</b> \u00B7 \uD83D\uDCF0 Resultado visto: <b>").concat(w.resultSeenAt ? fmtWhen(w.resultSeenAt) : '—', "</b></div>\n      <div class=\"note\">Apost\u00F3 ").concat(rdu(w.stakeRd), " y cobr\u00F3 ").concat(rdu(w.prizeRd), " \u00B7 sali\u00F3 en ").concat(w.positions.map(function (p) { return "".concat(p, "\u00AA"); }).join(' y '), " posici\u00F3n (la ").concat(w.positions[0] === 1 ? '1ª paga 60' : w.positions[0] === 2 ? '2ª paga 8' : '3ª paga 4', " veces lo apostado)").concat(w.stakeRd < 100 ? ' · <b>jugada vieja</b>: era de antes del mínimo de RD$100' : '', " \u00B7 huella ").concat(esc((w.hash || '').slice(0, 10)), "\u2026</div></div>"); }).join(''), "</div>") : '', "\n    <h3 class=\"cs-h\">\uD83E\uDDFE Lo que ya jug\u00F3 y c\u00F3mo le fue</h3>\n    ").concat(B.past.length ? "<div class=\"jvpast\">".concat(B.past.map(function (p) {
+                    }).join(''), "</div></details>\n    ").concat(((_d = B.wins) === null || _d === void 0 ? void 0 : _d.length) ? "<h3 class=\"cs-h\">\uD83C\uDFC6 Jugadas que ganaron (".concat(B.wins.length, ")</h3><div class=\"note\" style=\"margin-bottom:8px\">Cada una se sell\u00F3 <b>antes</b> del sorteo: compara la hora en que apost\u00F3 con la hora del sorteo.</div>\n    <div class=\"jvwins\">").concat(B.wins.map(function (w) { return "<div class=\"jw\"><div class=\"jw-h\"><b>".concat(esc(w.name), "</b> <span class=\"note\">").concat(fdate(w.date), "</span><span class=\"tag ").concat(w.kind === 'su_numero' ? 'dato' : '', "\">").concat(w.kind === 'su_numero' ? '⭐ su número' : "prueba: ".concat(esc(w.methodLabel)), "</span><b class=\"good jw-p\">+").concat(rdu(w.prizeRd - w.stakeRd), "</b></div>\n      <div class=\"jw-b\"><div><div class=\"note\">Jug\u00F3</div><div class=\"balls\">").concat(w.numbers.map(function (n) { var _a; return "<span class=\"ball".concat(((_a = w.draw) === null || _a === void 0 ? void 0 : _a.includes(n)) ? ' hit' : '', "\">").concat(esc(n), "</span>"); }).join(''), "</div></div><div class=\"jvp-vs\">\u2192</div><div><div class=\"note\">Sali\u00F3</div><div class=\"balls\">").concat((w.draw || []).map(function (n) { return "<span class=\"ball".concat(w.numbers.includes(n) ? ' hit' : '', "\">").concat(esc(n), "</span>"); }).join(''), "</div></div></div>\n      <div class=\"jw-t\">\uD83D\uDD12 Apost\u00F3: <b>").concat(fmtWhen(w.sealedAt), "</b>").concat(lateTag(w), " \u00B7 \uD83C\uDFB0 Sorteo: <b>").concat(fdate(w.date), " ").concat(ampm(w.time), "</b> \u00B7 \uD83D\uDCF0 Resultado visto: <b>").concat(w.resultSeenAt ? fmtWhen(w.resultSeenAt) : '—', "</b></div>\n      <div class=\"note\">Apost\u00F3 ").concat(rdu(w.stakeRd), " y cobr\u00F3 ").concat(rdu(w.prizeRd), " \u00B7 sali\u00F3 en ").concat(w.positions.map(function (p) { return "".concat(p, "\u00AA"); }).join(' y '), " posici\u00F3n (la ").concat(w.positions[0] === 1 ? '1ª paga 60' : w.positions[0] === 2 ? '2ª paga 8' : '3ª paga 4', " veces lo apostado)").concat(w.stakeRd < 100 ? ' · <b>jugada vieja</b>: era de antes del mínimo de RD$100' : '', " \u00B7 huella ").concat(esc((w.hash || '').slice(0, 10)), "\u2026</div></div>"); }).join(''), "</div>") : '', "\n    <details class=\"jvhist\"><summary class=\"cs-h\" style=\"cursor:pointer\">\uD83E\uDDFE Historial completo: todo lo que jug\u00F3 y c\u00F3mo le fue (").concat(B.past.length, ")</summary>\n    ").concat(B.past.length ? "<div class=\"jvpast\">".concat(B.past.map(function (p) {
                         var _a = __read(ST[p.status], 3), ic = _a[0], tx = _a[1], cl = _a[2];
                         return "<div class=\"jvp k-".concat(cl, "\">\n      <div class=\"jvp-h\"><b>").concat(esc(p.name), "</b> <span class=\"note\">").concat(fdate(p.date), " \u00B7 ").concat(ampm(p.time), "</span><span class=\"jvp-s ").concat(cl, "\">").concat(ic, " ").concat(tx, "</span></div>\n      <div class=\"jvp-c\"><div><div class=\"note\">Jug\u00F3</div><div class=\"balls\">").concat(balls(p.numbers, p.draw), "</div></div><div class=\"jvp-vs\">vs</div><div><div class=\"note\">Sali\u00F3</div><div class=\"balls\">").concat(p.draw ? balls(p.draw, p.numbers) : '<span class="note">todavía no</span>', "</div></div>\n        <div class=\"jvp-m\"><div class=\"note\">Resultado</div><b class=\"").concat(p.pnlRd > 0 ? 'good' : p.pnlRd < 0 ? 'bad' : '', "\">").concat(p.pnlRd != null ? rdu(p.pnlRd, { sign: true }) : '—', "</b></div></div>\n      <div class=\"jw-t\">\uD83D\uDD12 Apost\u00F3: <b>").concat(fmtWhen(p.sealedAt), "</b>").concat(lateTag(p), " \u00B7 \uD83C\uDFB0 Sorteo: <b>").concat(ampm(p.time), "</b>").concat(p.resultSeenAt ? " \u00B7 \uD83D\uDCF0 Resultado visto: <b>".concat(fmtWhen(p.resultSeenAt), "</b>") : '', "</div>\n      <div class=\"note jvp-e\">").concat(esc(p.explain), " <b>Por qu\u00E9 lo eligi\u00F3:</b> ").concat(esc(p.methodLabel), " \u2014 ").concat(esc(p.why), "</div>\n      ").concat(p.others.length ? "<details><summary class=\"note\">C\u00F3mo les fue a los otros m\u00E9todos en ese sorteo</summary><div class=\"jvo\">".concat(p.others.map(function (o) { return "<span class=\"".concat(o.won ? 'good' : '', "\"><i>").concat(esc(o.label), "</i> ").concat(o.numbers.map(esc).join(' '), " ").concat(o.won ? '✅' : '❌', "</span>"); }).join(''), "</div></details>") : '', "\n    </div>");
-                    }).join(''), "</div>") : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>', "\n    <div class=\"answer\" style=\"margin-top:12px\">\uD83D\uDD12 ").concat(esc(B.honest), "</div></section>");
+                    }).join(''), "</div>") : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>', "</details>\n    <div class=\"answer\" style=\"margin-top:12px\">\uD83D\uDD12 ").concat(esc(B.honest), "</div></section>");
                     return [2];
             }
         });
@@ -1553,31 +1557,7 @@ views.loterias.after = function () {
             return "<div style=\"background:".concat(bg, ";color:#e8eefc\" title=\"").concat(n, ": sali\u00F3 ").concat(c, " veces (esperado ").concat(exp.toFixed(1), ")\">").concat(n, "</div>");
         }).join('') : '';
         var V = g.votes;
-        $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo: ".concat(fdate(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { var _a; return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div>").concat(t.prob != null ? "<div class=\"note\">\uD83D\uDCC8 ".concat(t.prob, "% de salir").concat(V.order ? " \u00B7 ".concat((_a = V.order.find(function (o) { return o.num === t.num; })) === null || _a === void 0 ? void 0 : _a.rank, "\u00BA para jugar") : '', "</div>") : '', "</div></div>"); }).join(''), "</div>\n      ").concat(((_a = V.order) === null || _a === void 0 ? void 0 : _a.length) ? "<div class=\"vorder\"><div class=\"note\" style=\"margin-bottom:6px\"><b>\uD83C\uDFAF Orden para jugar seg\u00FAn lo aprendido</b> (de m\u00E1s a menos probable). Lo normal para cualquier n\u00FAmero es <b>".concat(V.fairProb, "%</b>; aprendido de ").concat(V.draws, " sorteos y de c\u00F3mo les va a los m\u00E9todos de verdad.</div><div class=\"vo-list\">").concat(V.order.map(function (o) { return "<div class=\"vo".concat(o.rank <= 3 ? ' top' : '', "\"><small>").concat(o.rank, "\u00BA</small><span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">").concat(esc(o.num), "</span><b>").concat(o.prob, "%</b><small class=\"").concat(o.vsFair > 0 ? 'good' : o.vsFair < 0 ? 'bad' : '', "\">").concat(o.vsFair > 0 ? '+' : '').concat(o.vsFair, "% vs normal</small><small>").concat(o.votes, " voto").concat(o.votes === 1 ? '' : 's', " \u00B7 sali\u00F3 ").concat(o.timesOut, " veces</small></div>"); }).join(''), "</div><div class=\"note\" style=\"margin-top:6px\">").concat(V.realShare > 0 ? "De las diferencias entre n\u00FAmeros en el historial, el <b>".concat(V.realShare, "%</b> parece real (m\u00E1s de lo que explica la suerte); el resto es ruido y no se cuenta.") : 'En el historial, los números varían <b>lo mismo que variaría el azar puro</b>: por eso todos quedan casi iguales (no hay ventaja real que aprovechar). El orden sale de los votos.', " Si un m\u00E9todo demuestra que le gana al azar, sus n\u00FAmeros suben en este orden.</div></div>") : '', "\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        ").concat(g.pick.stake ? "<div style=\"margin-top:8px\"><b>\uD83D\uDCB5 Cu\u00E1nto jugar: ".concat(rdu(g.pick.stake.suggested), "</b> <span class=\"note\">\u00B7 ").concat(esc(g.pick.stake.why), "</span></div>") : '', "<div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo: ").concat(fdate(g.pick.date), " \u00B7 se cierra a las ").concat(hhmm(g.pick.closesAt), "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(fdate(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'estable' ? '1 fuente (confirmada)' : d.status === 'una_fuente' ? '1 fuente (esperando confirmar)' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><div class=\"note\" style=\"margin-bottom:8px\">\uD83D\uDCA1 <b>\u00BFPor qu\u00E9 los % son tan distintos?</b> Cada prueba mira algo diferente, y el % dice <b>qu\u00E9 tan f\u00E1cil es que eso pase por pura suerte</b>. Si los sorteos son limpios, estos % caen al azar en cualquier parte entre 0% y 100% (por eso unos dan 9% y otros 55%): <b>todos son normales</b>. Solo preocupa si uno baja de <b>1%</b> y se repite con m\u00E1s sorteos.</div><table><tr><th>Prueba</th><th class=\"r\">Chance de que sea suerte</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rdRaw(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rdRaw(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$ (m\u00EDnimo 100)<input id=\"ls\" type=\"number\" min=\"100\" step=\"25\" value=\"100\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
-        $('#lf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var r, err_15;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        e.preventDefault();
-                        _a.label = 1;
-                    case 1:
-                        _a.trys.push([1, 3, , 4]);
-                        return [4, api('/api/lottery/play', { method: 'POST', body: { game: id, kind: $('#lk').value, numbers: $('#ln').value.trim().split(/\s+/).map(function (x) { return x.padStart(2, '0'); }), stake: Number($('#ls').value) } })];
-                    case 2:
-                        r = _a.sent();
-                        $('#lm').className = 'msg ok';
-                        $('#lm').textContent = "Sellada para el sorteo del ".concat(r.date, ". Huella: ").concat(r.hash.slice(0, 12), "\u2026");
-                        return [3, 4];
-                    case 3:
-                        err_15 = _a.sent();
-                        $('#lm').className = 'msg err';
-                        $('#lm').textContent = err_15.message;
-                        return [3, 4];
-                    case 4: return [2];
-                }
-            });
-        }); };
+        $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo: ".concat(fdate(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { var _a; return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div>").concat(t.prob != null ? "<div class=\"note\">\uD83D\uDCC8 ".concat(t.prob, "% de salir").concat(V.order ? " \u00B7 ".concat((_a = V.order.find(function (o) { return o.num === t.num; })) === null || _a === void 0 ? void 0 : _a.rank, "\u00BA para jugar") : '', "</div>") : '', "</div></div>"); }).join(''), "</div>\n      ").concat(((_a = V.order) === null || _a === void 0 ? void 0 : _a.length) ? "<div class=\"vorder\"><div class=\"note\" style=\"margin-bottom:6px\"><b>\uD83C\uDFAF Orden para jugar seg\u00FAn lo aprendido</b> (de m\u00E1s a menos probable). Lo normal para cualquier n\u00FAmero es <b>".concat(V.fairProb, "%</b>; aprendido de ").concat(V.draws, " sorteos y de c\u00F3mo les va a los m\u00E9todos de verdad.</div><div class=\"vo-list\">").concat(V.order.map(function (o) { return "<div class=\"vo".concat(o.rank <= 3 ? ' top' : '', "\"><small>").concat(o.rank, "\u00BA</small><span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">").concat(esc(o.num), "</span><b>").concat(o.prob, "%</b><small class=\"").concat(o.vsFair > 0 ? 'good' : o.vsFair < 0 ? 'bad' : '', "\">").concat(o.vsFair > 0 ? '+' : '').concat(o.vsFair, "% vs normal</small><small>").concat(o.votes, " voto").concat(o.votes === 1 ? '' : 's', " \u00B7 sali\u00F3 ").concat(o.timesOut, " veces</small></div>"); }).join(''), "</div><div class=\"note\" style=\"margin-top:6px\">").concat(V.realShare > 0 ? "De las diferencias entre n\u00FAmeros en el historial, el <b>".concat(V.realShare, "%</b> parece real (m\u00E1s de lo que explica la suerte); el resto es ruido y no se cuenta.") : 'En el historial, los números varían <b>lo mismo que variaría el azar puro</b>: por eso todos quedan casi iguales (no hay ventaja real que aprovechar). El orden sale de los votos.', " Si un m\u00E9todo demuestra que le gana al azar, sus n\u00FAmeros suben en este orden.</div></div>") : '', "\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        ").concat(g.pick.stake ? "<div style=\"margin-top:8px\"><b>\uD83D\uDCB5 Cu\u00E1nto jugar: ".concat(rdu(g.pick.stake.suggested), "</b> <span class=\"note\">\u00B7 ").concat(esc(g.pick.stake.why), "</span></div>") : '', "<div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo: ").concat(fdate(g.pick.date), " \u00B7 se cierra a las ").concat(hhmm(g.pick.closesAt), "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(fdate(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'estable' ? '1 fuente (confirmada)' : d.status === 'una_fuente' ? '1 fuente (esperando confirmar)' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><div class=\"note\" style=\"margin-bottom:8px\">\uD83D\uDCA1 <b>\u00BFPor qu\u00E9 los % son tan distintos?</b> Cada prueba mira algo diferente, y el % dice <b>qu\u00E9 tan f\u00E1cil es que eso pase por pura suerte</b>. Si los sorteos son limpios, estos % caen al azar en cualquier parte entre 0% y 100% (por eso unos dan 9% y otros 55%): <b>todos son normales</b>. Solo preocupa si uno baja de <b>1%</b> y se repite con m\u00E1s sorteos.</div><table><tr><th>Prueba</th><th class=\"r\">Chance de que sea suerte</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rdRaw(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rdRaw(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n");
     };
     document.querySelectorAll('#gtabs button').forEach(function (b) { return b.onclick = function () { return show(b.dataset.g); }; });
     show(document.querySelector('#gtabs button:not(.ghost)').dataset.g);
@@ -1701,7 +1681,7 @@ function loadDrive() {
                         m.textContent = t;
                     } };
                     $('#dcf').onsubmit = function (e) { return __awaiter(_this, void 0, void 0, function () {
-                        var r, err_16;
+                        var r, err_15;
                         var _a;
                         return __generator(this, function (_b) {
                             switch (_b.label) {
@@ -1718,15 +1698,15 @@ function loadDrive() {
                                     setTimeout(loadDrive, 2500);
                                     return [3, 4];
                                 case 3:
-                                    err_16 = _b.sent();
-                                    msg('#dcm', 'err', err_16.message);
+                                    err_15 = _b.sent();
+                                    msg('#dcm', 'err', err_15.message);
                                     return [3, 4];
                                 case 4: return [2];
                             }
                         });
                     }); };
                     if ($('#dnow'))
-                        $('#dnow').onclick = function () { return __awaiter(_this, void 0, void 0, function () { var r, err_17; return __generator(this, function (_a) {
+                        $('#dnow').onclick = function () { return __awaiter(_this, void 0, void 0, function () { var r, err_16; return __generator(this, function (_a) {
                             switch (_a.label) {
                                 case 0:
                                     msg('#dm', '', 'Subiendo…');
@@ -1740,8 +1720,8 @@ function loadDrive() {
                                     setTimeout(loadDrive, 1500);
                                     return [3, 4];
                                 case 3:
-                                    err_17 = _a.sent();
-                                    msg('#dm', 'err', err_17.message);
+                                    err_16 = _a.sent();
+                                    msg('#dm', 'err', err_16.message);
                                     return [3, 4];
                                 case 4: return [2];
                             }
@@ -1758,7 +1738,7 @@ function loadDrive() {
                         }); }); };
                     if ($('#drs'))
                         $('#drs').onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-                            var r, err_18;
+                            var r, err_17;
                             return __generator(this, function (_a) {
                                 switch (_a.label) {
                                     case 0:
@@ -1775,8 +1755,8 @@ function loadDrive() {
                                         setTimeout(function () { return location.reload(); }, 9000);
                                         return [3, 4];
                                     case 3:
-                                        err_18 = _a.sent();
-                                        msg('#drm', 'err', err_18.message);
+                                        err_17 = _a.sent();
+                                        msg('#drm', 'err', err_17.message);
                                         return [3, 4];
                                     case 4: return [2];
                                 }
@@ -1805,7 +1785,7 @@ views.ajustes.after = function () {
     $('#brf').onchange = function (e) { var f = e.target.files[0]; if (!f)
         return; var r = new FileReader(); r.onload = function () { restoreFile = r.result; $('#brn').textContent = "".concat(f.name, " \u00B7 ").concat((f.size / 1048576).toFixed(1), " MB"); }; r.readAsDataURL(f); };
     $('#bdl').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var res, j, blob, name, a_1, err_19;
+        var res, j, blob, name, a_1, err_18;
         var _a;
         return __generator(this, function (_b) {
             switch (_b.label) {
@@ -1836,16 +1816,16 @@ views.ajustes.after = function () {
                     $('#bdm').textContent = "Listo: ".concat(name, ". Gu\u00E1rdalo en tu Drive o correo, junto con tu frase en un lugar seguro.");
                     return [3, 7];
                 case 6:
-                    err_19 = _b.sent();
+                    err_18 = _b.sent();
                     $('#bdm').className = 'msg err';
-                    $('#bdm').textContent = err_19.message;
+                    $('#bdm').textContent = err_18.message;
                     return [3, 7];
                 case 7: return [2];
             }
         });
     }); };
     $('#brs').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var r, err_20;
+        var r, err_19;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1872,9 +1852,9 @@ views.ajustes.after = function () {
                     setTimeout(function () { return location.reload(); }, 9000);
                     return [3, 4];
                 case 3:
-                    err_20 = _a.sent();
+                    err_19 = _a.sent();
                     $('#brm').className = 'msg err';
-                    $('#brm').textContent = err_20.message;
+                    $('#brm').textContent = err_19.message;
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1884,7 +1864,7 @@ views.ajustes.after = function () {
     if ($('#showusers'))
         $('#showusers').onchange = function (e) { return api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(function () { }); };
     $('#kf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var body, err_21;
+        var body, err_20;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1911,9 +1891,9 @@ views.ajustes.after = function () {
                     setTimeout(render, 1000);
                     return [3, 4];
                 case 3:
-                    err_21 = _a.sent();
+                    err_20 = _a.sent();
                     $('#km').className = 'msg err';
-                    $('#km').textContent = err_21.message;
+                    $('#km').textContent = err_20.message;
                     return [3, 4];
                 case 4: return [2];
             }
@@ -2096,7 +2076,7 @@ views.ajustes.after = function () {
                 case 3: return [2];
             }
         }); }); };
-    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_22; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_21; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -2106,9 +2086,9 @@ views.ajustes.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_22 = _a.sent();
+                err_21 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_22.message;
+                $('#um').textContent = err_21.message;
                 return [3, 3];
             case 3: return [2];
         }
@@ -2116,7 +2096,7 @@ views.ajustes.after = function () {
     document.querySelectorAll('[data-pw]').forEach(function (b) { return b.onclick = function () {
         var td = b.parentElement;
         td.innerHTML = "<form class=\"row\" style=\"gap:6px;justify-content:flex-end\"><input type=\"text\" minlength=\"10\" placeholder=\"vac\u00EDa = autom\u00E1tica\" style=\"width:160px\" autocomplete=\"off\"><button class=\"btn sm\">Guardar</button></form>";
-        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_23; return __generator(this, function (_a) {
+        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_22; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     ev.preventDefault();
@@ -2129,15 +2109,15 @@ views.ajustes.after = function () {
                     td.innerHTML = r.password ? "<span class=\"good\">Nueva: <b style=\"font-family:ui-monospace,monospace;user-select:all\">".concat(esc(r.password), "</b></span><div class=\"note\">D\u00E1sela ahora; no se vuelve a mostrar.</div>") : '<span class="good">Contraseña cambiada</span>';
                     return [3, 4];
                 case 3:
-                    err_23 = _a.sent();
-                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_23.message), "</div>"));
+                    err_22 = _a.sent();
+                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_22.message), "</div>"));
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     }; });
     var showPw = function (who, pw) { return "<div class=\"msg ok\" style=\"font-size:16px;line-height:1.6\">Usuario <b>".concat(esc(who), "</b> listo. Su contrase\u00F1a es: <b style=\"font-family:ui-monospace,monospace;font-size:20px;user-select:all\">").concat(esc(pw), "</b><br><span class=\"note\">C\u00F3piala y d\u00E1sela ahora: no se vuelve a mostrar. \u00C9l la puede cambiar en Mi perfil.</span></div>"); };
-    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_24; return __generator(this, function (_a) {
+    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_23; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 e.preventDefault();
@@ -2159,9 +2139,9 @@ views.ajustes.after = function () {
                 }
                 return [3, 4];
             case 3:
-                err_24 = _a.sent();
+                err_23 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_24.message;
+                $('#um').textContent = err_23.message;
                 return [3, 4];
             case 4: return [2];
         }
@@ -2422,7 +2402,7 @@ views.potenciador.after = function () {
     }); }); }; });
     var receipt = null;
     if ($('#prc'))
-        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_25; return __generator(this, function (_a) {
+        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_24; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     f = e.target.files[0];
@@ -2438,16 +2418,16 @@ views.potenciador.after = function () {
                     $('#prcv').innerHTML = "<img src=\"".concat(receipt, "\" class=\"preq-img\" alt=\"Vista previa\"><div>\u2705 Foto lista</div>");
                     return [3, 4];
                 case 3:
-                    err_25 = _a.sent();
+                    err_24 = _a.sent();
                     receipt = null;
-                    $('#prcv').textContent = err_25.message;
+                    $('#prcv').textContent = err_24.message;
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     if ($('#pf2'))
         $('#pf2').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var err_26;
+            var err_25;
             var _a;
             return __generator(this, function (_b) {
                 switch (_b.label) {
@@ -2469,15 +2449,15 @@ views.potenciador.after = function () {
                         setTimeout(render, 1400);
                         return [3, 4];
                     case 3:
-                        err_26 = _b.sent();
+                        err_25 = _b.sent();
                         $('#pmsg').className = 'msg err';
-                        $('#pmsg').textContent = err_26.message;
+                        $('#pmsg').textContent = err_25.message;
                         return [3, 4];
                     case 4: return [2];
                 }
             });
         }); };
-    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_27; var _a; return __generator(this, function (_b) {
+    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_26; var _a; return __generator(this, function (_b) {
         switch (_b.label) {
             case 0:
                 _b.trys.push([0, 2, , 3]);
@@ -2487,16 +2467,16 @@ views.potenciador.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_27 = _b.sent();
+                err_26 = _b.sent();
                 $('#amsg').className = 'msg err';
-                $('#amsg').textContent = err_27.message;
+                $('#amsg').textContent = err_26.message;
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
     document.querySelectorAll('[data-ok]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.ok, true); }; });
     document.querySelectorAll('[data-no]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.no, false); }; });
-    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_28; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_27; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 n = Number(document.querySelector(".gift[data-u=\"".concat(b.dataset.gift, "\"]")).value);
@@ -2509,8 +2489,8 @@ views.potenciador.after = function () {
                 render();
                 return [3, 4];
             case 3:
-                err_28 = _a.sent();
-                alertMsg(err_28.message);
+                err_27 = _a.sent();
+                alertMsg(err_27.message);
                 return [3, 4];
             case 4: return [2];
         }
@@ -2530,7 +2510,7 @@ views.potenciador.after = function () {
         };
     if ($('#pset'))
         $('#pset').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var f, packs, accounts, err_29;
+            var f, packs, accounts, err_28;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -2548,9 +2528,9 @@ views.potenciador.after = function () {
                         $('#psm').textContent = 'Guardado.';
                         return [3, 4];
                     case 3:
-                        err_29 = _a.sent();
+                        err_28 = _a.sent();
                         $('#psm').className = 'msg err';
-                        $('#psm').textContent = err_29.message;
+                        $('#psm').textContent = err_28.message;
                         return [3, 4];
                     case 4: return [2];
                 }
@@ -2648,7 +2628,7 @@ views.historial.after = function () {
                 return __generator(this, function (_a) {
                     td = b.parentElement;
                     td.innerHTML = "<form class=\"ask\" style=\"max-width:260px\"><input type=\"number\" step=\"0.0001\" placeholder=\"Precio de venta\" required><button class=\"btn\">OK</button></form>";
-                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_30; return __generator(this, function (_a) {
+                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_29; return __generator(this, function (_a) {
                         switch (_a.label) {
                             case 0:
                                 e.preventDefault();
@@ -2661,8 +2641,8 @@ views.historial.after = function () {
                                 render();
                                 return [3, 4];
                             case 3:
-                                err_30 = _a.sent();
-                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_30.message), "</div>"));
+                                err_29 = _a.sent();
+                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_29.message), "</div>"));
                                 return [3, 4];
                             case 4: return [2];
                         }
@@ -3195,7 +3175,7 @@ function signForm(doc, d, id) {
 function bindSign(doc, id, done) {
     var _this = this;
     $("#".concat(id, "b")).onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-        var err_31;
+        var err_30;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -3208,9 +3188,9 @@ function bindSign(doc, id, done) {
                     setTimeout(done, 700);
                     return [3, 3];
                 case 2:
-                    err_31 = _a.sent();
+                    err_30 = _a.sent();
                     $("#".concat(id, "m")).className = 'msg err';
-                    $("#".concat(id, "m")).textContent = err_31.message;
+                    $("#".concat(id, "m")).textContent = err_30.message;
                     return [3, 3];
                 case 3: return [2];
             }
