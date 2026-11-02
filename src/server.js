@@ -139,14 +139,46 @@ route('POST', '/api/brand', async ({ req, user }) => { const b = await body(req)
 
 route('GET', '/api/home', ({ user }) => home(db, cfg, user));
 route('GET', '/api/activity', ({ url, user }) => db.prepare('SELECT * FROM activity WHERE id > ? AND (user_id IS NULL OR user_id = ?) ORDER BY id DESC LIMIT 60').all(Number(url.searchParams.get('after') || 0), user.id));
+
+// ---------- Modo TV: titular con datos concretos y "pensamientos" del analista con datos reales ----------
+const VOTE_TV = { tendencia: 'precio', historial: 'aciertos previos', empresa: 'salud de la empresa', riesgo: 'riesgo', polemicas: 'noticias' };
+function cardFacts(c) {
+  const t = (c.reasons || []).find(r => r.factor === 'tendencia')?.text || '';
+  const m = t.match(/(subió|bajó) ([\d.]+)%/), mk = t.match(/(subieron|bajaron) ([\d.]+)%/);
+  const votes = (c.contributions || []).filter(x => VOTE_TV[x.factor]), yes = votes.filter(x => x.value > 0.05), no = votes.filter(x => x.value < -0.05);
+  return { r6: m ? (m[1] === 'bajó' ? -1 : 1) * Number(m[2]) : null, mk6: mk ? (mk[1] === 'bajaron' ? -1 : 1) * Number(mk[2]) : null, yes, no, votes, p10: c.probBeat != null ? Math.round(c.probBeat * 10) : null };
+}
+function tvHeadline(c) {
+  const f = cardFacts(c), amt = c.light === 'verde' ? 'invierte US$10' : 'invierte poco (US$5)';
+  return `Mejor idea hoy: ${coLabel(c.symbol)} a US$${round(pval(c), 2)} → ${amt}`
+    + (f.r6 != null ? ` · 6 meses: ${f.r6 >= 0 ? '+' : ''}${f.r6}%${f.mk6 != null ? ` (mercado ${f.mk6 >= 0 ? '+' : ''}${f.mk6}%)` : ''}` : '')
+    + (f.p10 != null ? ` · le ganó al mercado ${f.p10} de 10 veces` : '')
+    + (f.votes.length ? ` · ${f.yes.length}/${f.votes.length} señales a favor` : '')
+    + (c.timing?.recommended ? ` · déjala ${c.timing.recommended.label}` : '') + '.';
+}
+const coLabel = s => s;
+const pval = c => Number(c.price?.value ?? c.price) || 0;
+function tvThoughts(r, lot) {
+  const out = [], verdict = { verde: 'Sí, invierte', amarillo: 'Invierte poco', rojo: 'No inviertas' };
+  for (const c of r.slice(0, 6)) {
+    const f = cardFacts(c);
+    out.push({ kind: 'bolsa', sym: c.symbol, light: c.light, text: `Analizando ${c.symbol} (US$${round(pval(c), 2)}): `
+      + (f.r6 != null ? `en 6 meses ${f.r6 >= 0 ? 'subió' : 'bajó'} ${Math.abs(f.r6)}%${f.mk6 != null ? ` contra ${f.mk6}% del mercado` : ''}. ` : '')
+      + (f.votes.length ? `A favor: ${f.yes.map(x => VOTE_TV[x.factor]).join(', ') || 'nada'}${f.no.length ? `; en contra: ${f.no.map(x => VOTE_TV[x.factor]).join(', ')}` : ''}. ` : '')
+      + (f.p10 != null ? `Le ganó al mercado ${f.p10} de cada 10 veces. ` : '') + `Mi voto: ${verdict[c.light] || '—'}.` });
+  }
+  for (const g of lot.slice(0, 3)) out.push({ kind: 'loto', text: `Revisando ${g.game}: ${g.verdict} Los métodos votan por ${g.top.join(', ')} (cada uno tiene 3 de 100 de salir).` });
+  return out;
+}
 route('GET', '/api/tv', ({ user }) => {
   const r = latestRanking(db);
+  const tvVotes = Object.keys(GAMES).map(g => { try { const v = methodVotes(db, g); return v ? { game: GAMES[g].name, date: v.date, top: v.top.map(t => t.num), votes: v.top.map(t => t.votes), voters: v.totalVoters, verdict: v.verdict } : null; } catch { return null; } }).filter(Boolean).slice(0, 4);
   const lot = Object.keys(GAMES).map(g => { try { return pickOfTheDay(db, g); } catch { return null; } }).filter(Boolean);
   const st = strategiesSummary(db);
   const best = r.find(c => c.light === 'verde') || r.find(c => c.light === 'amarillo');
   return {
     now: nowIso(), motor: motorState(db), heartbeat: getSetting(db, 'global', 'motor.heartbeat', null), marketOpen: marketOpen(),
-    headline: best ? `Te recomiendo: ${best.symbol} → ${best.light === 'verde' ? 'invierte US$10' : 'invierte poco (US$5)'}${best.probBeat != null ? ` · le gana al mercado ${Math.round(best.probBeat * 10)} de cada 10 veces` : ''}${best.timing?.recommended ? ` · paciencia: ${best.timing.recommended.label}` : ''}.` : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar.',
+    headline: best ? tvHeadline(best) : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar.',
     lotteryLine: (() => { const s = liveMethodStats(db); const az = s.find(m => m.method === 'azar'); const better = s.filter(m => m.method !== 'azar' && az && m.n >= 30 && m.per100 > az.per100 + 10); return better.length ? `Loterías: ${better[0].method} va por encima del azar; falta confirmarlo.` : 'Loterías: ningún método le gana al azar todavía.'; })(),
     ranking: r.slice(0, 8).map(c => ({ symbol: c.symbol, light: c.light, confidence: c.confidence, probBeat: c.probBeat ?? null, score: c.score, why: c.reasons[0]?.text, price: c.price })),
     league: leagueTable(db), predictions: predictionStats(db), learning: st, lottery: lot, ai: aiSpend(db, cfg),
@@ -155,7 +187,10 @@ route('GET', '/api/tv', ({ user }) => {
     quotes: db.prepare('SELECT symbol, price, prev_close, kind, source, as_of FROM stock_quotes ORDER BY symbol').all().map(q => ({ ...q, changePct: q.prev_close ? round((q.price / q.prev_close - 1) * 100, 2) : null })),
     // Para el Modo TV: lo que hace cada área, en vivo
     map: (() => { const zs = { recomendada: [], observacion: [], no_recomendada: [], candidata: [] }; for (const e of db.prepare("SELECT symbol, zone, conv FROM map_entries WHERE zone != 'descartada' ORDER BY conv DESC").all()) (zs[e.zone] ||= []).push({ s: e.symbol, c: e.conv }); const ex = getSetting(db, 'global', 'map.explore', null); return { zones: zs, exploredAt: ex?.at || null }; })(),
-    votes: Object.keys(GAMES).map(g => { try { const v = methodVotes(db, g); return v ? { game: GAMES[g].name, date: v.date, top: v.top.map(t => t.num), verdict: v.verdict } : null; } catch { return null; } }).filter(Boolean).slice(0, 4),
+    votes: tvVotes,
+    thoughts: tvThoughts(r, tvVotes),
+    exp: (() => { const e = evidence(db), ls = playStats(db, { agent: 'loteria' }); return { n: e.n, hitRate: e.hitRate, lot: { plays: ls.plays, settled: ls.settled, staked: ls.staked, paid: ls.paid, wins: ls.wins } }; })(),
+    positions: (() => { const acc = userAccount(user); return valuation(db, acc.id, s => getQuote(db, s)?.price).positions.map(p => ({ s: p.symbol, v: round(p.value, 2), pct: round(p.pnlPct * 100, 1) })); })(),
     nextDraws: Object.keys(GAMES).map(g => { try { const nd = nextDraw(g); return { game: GAMES[g].name, closesAt: nd.close.toISOString() }; } catch { return null; } }).filter(Boolean).sort((a, b) => a.closesAt.localeCompare(b.closesAt)).slice(0, 4),
     ia: (() => { try { const v = aiView(db); return { total: v.total, start: v.start, returnPct: v.returnPct, market: v.market, positions: v.positions.length, last: v.trades[0] || null }; } catch { return null; } })(),
     tasks: taskStatus(db).filter(t => ['bolsa_precios', 'loterias_resultados', 'investigacion', 'explorar', 'ranking', 'cartera_ia', 'noticias', 'prueba_en_vivo'].includes(t.name)).map(t => ({ name: t.name, every: t.every, last: t.last?.at || null, ok: t.last ? t.last.ok !== false : null })),

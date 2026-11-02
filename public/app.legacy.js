@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (c1964a460523300d). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (9b45dc3edf2b4e4a). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -2179,7 +2179,7 @@ function tvOpen() {
         return __generator(this, function (_d) {
             switch (_d.label) {
                 case 0:
-                    $('#tv-root').innerHTML = "<div class=\"tv\" id=\"tv\"><button class=\"iconbtn exit\" id=\"tvx\">Salir \u2715</button>\n    <div class=\"th\"><span class=\"logo\">".concat(brandMark()).concat(brandName(), "</span><span class=\"chip\" id=\"tvm\">\u2026</span><span class=\"chip\" id=\"tvmk\">\u2026</span><span class=\"chip\" id=\"tvai\">\u2026</span><span class=\"clock\" id=\"tvc\"></span></div>\n    <div class=\"headline\" id=\"tvh\">Conectando\u2026</div>\n    <div class=\"kpis\">\n      <div class=\"kp money\"><small>Dinero virtual</small><div class=\"row1\"><b id=\"k-money\">\u2014</b><span class=\"arrow\" id=\"k-arrow\"></span></div><div class=\"sub\" id=\"k-money-sub\"></div></div>\n      <div class=\"kp\"><small>Aciertos</small><b id=\"k-hit\">\u2014</b><div class=\"sub\" id=\"k-hit-sub\"></div></div>\n      <div class=\"kp\"><small>Racha actual</small><b id=\"k-streak\">0</b><div class=\"sub\" id=\"k-streak-sub\"></div></div>\n      <div class=\"kp\"><small>Experimentos</small><b id=\"k-exp\">0</b><div class=\"sub\" id=\"k-exp-sub\"></div></div>\n    </div>\n    <div class=\"workers\" id=\"tvw\"></div>\n    <div class=\"body\">\n      <div class=\"pane\"><h3><span class=\"live\"></span>La IA en este momento</h3><div class=\"console\" id=\"tvcon\"></div><div class=\"prog\"><span></span></div></div>\n      <div class=\"col\">\n        <div class=\"pane chartpane\"><h3 id=\"tvct\">Rendimiento</h3><div id=\"tvchart\" class=\"chartbox\"></div></div>\n        <div class=\"pane\"><h3>Recomendaciones del momento</h3><div class=\"cards\" id=\"tvrank\"></div></div>\n      </div>\n      <div class=\"col\">\n        <div class=\"pane spot\"><h3><span class=\"live\"></span><span id=\"tvst\">Mapa</span><span class=\"dots\" id=\"tvsd\"></span></h3>\n          <div class=\"slide on\" data-s=\"mapa\"><div class=\"tvmap\" id=\"tvmap\"></div></div>\n          <div class=\"slide\" data-s=\"loto\"><div class=\"tvloto\" id=\"tvloto\"></div></div>\n          <div class=\"slide\" data-s=\"ia\"><div class=\"tvia\" id=\"tvia\"></div></div>\n          <div class=\"slide\" data-s=\"debate\"><h4 class=\"sub\" id=\"tvdt\">Debate en vivo</h4><div class=\"chat\" id=\"tvchat\"></div></div>\n          <div class=\"sbar\"><span id=\"tvsb\"></span></div></div>\n        <div class=\"pane leaguepane\"><h3>Liga de agentes \u00B7 monedas</h3><div class=\"league\" id=\"tvlg\"></div></div>\n      </div>\n    </div>\n    <div class=\"ticker\"><div class=\"track\" id=\"tvtk\"></div></div></div>");
+                    $('#tv-root').innerHTML = "<div class=\"tv\" id=\"tv\"><button class=\"iconbtn exit\" id=\"tvx\">Salir \u2715</button>\n    <div class=\"th\"><span class=\"logo\">".concat(brandMark()).concat(brandName(), "</span><span class=\"chip\" id=\"tvm\">\u2026</span><span class=\"chip\" id=\"tvmk\">\u2026</span><span class=\"chip\" id=\"tvai\">\u2026</span><span class=\"clock\" id=\"tvc\"></span></div>\n    <div class=\"headline\" id=\"tvh\">Conectando\u2026</div>\n    <div class=\"kpis\">\n      <div class=\"kp money\"><small>Tu dinero virtual</small><div class=\"row1\"><b id=\"k-money\">\u2014</b><span class=\"arrow\" id=\"k-arrow\"></span></div><div class=\"sub\" id=\"k-money-sub\"></div><div class=\"sub\" id=\"k-pos\"></div></div>\n      <div class=\"kp\"><small>\uD83E\uDD16 Cartera de la IA</small><b id=\"k-ia\">\u2014</b><div class=\"sub\" id=\"k-ia-sub\"></div></div>\n      <div class=\"kp\"><small>\uD83E\uDDE0 Experiencia</small><b id=\"k-hit\">\u2014</b><div class=\"sub\" id=\"k-hit-sub\"></div></div>\n      <div class=\"kp\"><small>\uD83C\uDFB1 Loter\u00EDas (virtual)</small><b id=\"k-lot\">\u2014</b><div class=\"sub\" id=\"k-lot-sub\"></div></div>\n      <div class=\"kp\"><small>\u2728 Gasto de IA este mes</small><b id=\"k-ai\">\u2014</b><div class=\"sub\" id=\"k-ai-sub\"></div></div>\n    </div>\n    <div class=\"workers\" id=\"tvw\"></div>\n    <div class=\"body\">\n      <div class=\"pane\"><h3><span class=\"live\"></span>La IA en este momento</h3><div class=\"think\" id=\"tvthink\"></div><div class=\"console\" id=\"tvcon\"></div><div class=\"prog\"><span></span></div></div>\n      <div class=\"col\">\n        <div class=\"pane chartpane\"><h3 id=\"tvct\">Rendimiento</h3><div id=\"tvchart\" class=\"chartbox\"></div></div>\n        <div class=\"pane\"><h3>Recomendaciones del momento</h3><div class=\"cards\" id=\"tvrank\"></div></div>\n      </div>\n      <div class=\"col\">\n        <div class=\"pane spot\"><h3><span class=\"live\"></span><span id=\"tvst\">Mapa</span><span class=\"dots\" id=\"tvsd\"></span></h3>\n          <div class=\"slide on\" data-s=\"mapa\"><div class=\"tvmap\" id=\"tvmap\"></div></div>\n          <div class=\"slide\" data-s=\"loto\"><div class=\"tvloto\" id=\"tvloto\"></div></div>\n          <div class=\"slide\" data-s=\"ia\"><div class=\"tvia\" id=\"tvia\"></div></div>\n          <div class=\"slide\" data-s=\"ana\"><div class=\"tvana\" id=\"tvana\"></div></div>\n          <div class=\"slide\" data-s=\"debate\"><h4 class=\"sub\" id=\"tvdt\">Debate en vivo</h4><div class=\"chat\" id=\"tvchat\"></div></div>\n          <div class=\"sbar\"><span id=\"tvsb\"></span></div></div>\n        <div class=\"pane leaguepane\"><h3>Liga de agentes \u00B7 monedas</h3><div class=\"league\" id=\"tvlg\"></div></div>\n      </div>\n    </div>\n    <div class=\"ticker\"><div class=\"track\" id=\"tvtk\"></div></div></div>");
                     $('#tvx').onclick = function () { location.hash = '#inicio'; };
                     _d.label = 1;
                 case 1:
@@ -2210,7 +2210,7 @@ function tvOpen() {
         });
     });
 }
-function tvClose() { var _a; clearInterval(tvSpotTimer); clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement)
+function tvClose() { var _a; clearInterval(tvThinkTimer); tvThinkTimer = null; clearInterval(tvSpotTimer); clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement)
     (_a = document.exitFullscreen) === null || _a === void 0 ? void 0 : _a.call(document).catch(function () { }); }
 function tvChart(c) {
     var box = $('#tvchart');
@@ -2339,11 +2339,11 @@ function tvTicker(qs) {
     }
 }
 var tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
-var TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA']];
+var TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA'], ['ana', '🔬 Análisis en vivo']];
 function tvSpotShow() {
     var list = TV_SLIDES.filter(function (_a) {
         var _b = __read(_a, 1), k = _b[0];
-        return k !== 'debate' || tvHasDebate;
+        return (k !== 'debate' || tvHasDebate);
     }), cur = list[tvSlide % list.length];
     document.querySelectorAll('.tv .slide').forEach(function (el) { return el.classList.toggle('on', el.dataset.s === cur[0]); });
     var t = $('#tvst');
@@ -2390,7 +2390,7 @@ function tvLoto(votes, draws) {
         return;
     var cd = function (iso) { var ms = Date.parse(iso) - Date.now(); if (ms <= 0)
         return 'cerrado'; var h = Math.floor(ms / 3600e3), mi = Math.floor(ms % 3600e3 / 60e3); return h ? "".concat(h, " h ").concat(mi, " min") : "".concat(mi, " min"); };
-    el.innerHTML = "<div class=\"draws\">".concat((draws || []).slice(0, 2).map(function (d) { return "<div class=\"dr\"><b>".concat(esc(d.game), "</b><span>cierra en <em data-cd=\"").concat(esc(d.closesAt), "\">").concat(cd(d.closesAt), "</em></span></div>"); }).join(''), "</div>\n    <div class=\"lv\">").concat((votes || []).slice(0, 3).map(function (v) { return "<div class=\"lvr\"><span class=\"lg\">".concat(esc(v.game), "</span><span class=\"lb\">").concat(v.top.map(function (n, i) { return "<i style=\"animation-delay:".concat(i * 0.15, "s\">").concat(esc(n), "</i>"); }).join(''), "</span></div>"); }).join('') || '<div class="zempty">Juntando resultados…</div>', "</div>\n    <div class=\"znote\">\uD83D\uDDF3\uFE0F Los n\u00FAmeros m\u00E1s votados por los m\u00E9todos. Cada n\u00FAmero tiene 3 de cada 100 de salir: JARVIS vigila trampas y no promete nada.</div>");
+    el.innerHTML = "<div class=\"draws\">".concat((draws || []).slice(0, 2).map(function (d) { return "<div class=\"dr\"><b>".concat(esc(d.game), "</b><span>cierra en <em data-cd=\"").concat(esc(d.closesAt), "\">").concat(cd(d.closesAt), "</em></span></div>"); }).join(''), "</div>\n    <div class=\"lv\">").concat((votes || []).slice(0, 3).map(function (v) { return "<div class=\"lvr\"><span class=\"lg\">".concat(esc(v.game), "<small>").concat(v.top.length, " n\u00FAmeros \u00B7 ").concat(v.voters, " m\u00E9todos votaron</small></span><span class=\"lb\">").concat(v.top.map(function (n, i) { var _a, _b, _c; return "<span class=\"lbn\"><i style=\"animation-delay:".concat(i * 0.15, "s\">").concat(esc(n), "</i><small>").concat((_b = (_a = v.votes) === null || _a === void 0 ? void 0 : _a[i]) !== null && _b !== void 0 ? _b : '', " voto").concat(((_c = v.votes) === null || _c === void 0 ? void 0 : _c[i]) === 1 ? '' : 's', "</small></span>"); }).join(''), "</span></div>"); }).join('') || '<div class="zempty">Juntando resultados…</div>', "</div>\n    <div class=\"znote\">\uD83D\uDDF3\uFE0F Los n\u00FAmeros m\u00E1s votados por los m\u00E9todos. Cada n\u00FAmero tiene 3 de cada 100 de salir: JARVIS vigila trampas y no promete nada.</div>");
 }
 function tvIa(d) {
     var _a, _b, _c, _d, _e;
@@ -2404,20 +2404,57 @@ function tvIa(d) {
         return "<div class=\"b3\"><div class=\"b3v\" style=\"color:".concat((v || 0) >= 0 ? '#2fd58a' : '#ff5d6c', "\">").concat(v == null ? '—' : "".concat(v >= 0 ? '+' : '').concat((v * 100).toFixed(2), "%"), "</div><div class=\"b3t\"><span style=\"height:").concat(Math.max(4, Math.abs(v || 0) / mx * 100), "%;background:linear-gradient(0deg,").concat(col, "33,").concat(col, ")\"></span></div><b>").concat(lb, "</b></div>");
     }).join(''), "</div>\n    <div class=\"znote\">").concat(((_e = d.ia) === null || _e === void 0 ? void 0 : _e.last) ? "\uD83E\uDD16 \u00DAltima decisi\u00F3n de la IA: <b>".concat(d.ia.last.side === 'buy' ? 'compró' : 'vendió', " ").concat(esc(d.ia.last.symbol), "</b> \u00B7 ").concat(esc(String(d.ia.last.reason || '').replace(/^IA (compra|vende): /, ''))) : '🤖 La IA invierte sola cuando la bolsa abre (lunes a viernes, 10:30 a.m. a 5 p.m.).', "</div>");
 }
+var tvThinkIdx = 0, tvThinkTimer = null;
+function tvThink(list) {
+    var el = $('#tvthink');
+    if (!el || !list.length)
+        return;
+    window.__tvThoughts = list;
+    if (tvThinkTimer)
+        return;
+    var step = function () {
+        var L = window.__tvThoughts || [], t = L[tvThinkIdx++ % L.length];
+        var box = $('#tvthink');
+        if (!box || !t) {
+            clearInterval(tvThinkTimer);
+            tvThinkTimer = null;
+            return;
+        }
+        box.innerHTML = "<span class=\"tk ".concat(t.kind, "\">").concat(t.kind === 'loto' ? '🎱' : '📈', " ").concat(t.kind === 'loto' ? 'Loterías' : esc(t.sym), "</span><span class=\"tt\"></span>");
+        var tt = box.querySelector('.tt');
+        var n = 0;
+        var ty = setInterval(function () { if (!tt.isConnected)
+            return clearInterval(ty); tt.textContent = t.text.slice(0, n += 2); if (n >= t.text.length)
+            clearInterval(ty); }, 24);
+        tvAna(t);
+    };
+    step();
+    tvThinkTimer = setInterval(step, 9000);
+}
+function tvAna(t) {
+    var _a, _b;
+    var el = $('#tvana');
+    if (!el || t.kind !== 'bolsa')
+        return;
+    var c = (window.__tvRank || []).find(function (x) { return x.symbol === t.sym; });
+    if (!c)
+        return;
+    el.innerHTML = "<div class=\"ana-h\">".concat(coBadge(c.symbol, 46), "<div><b>").concat(esc(coName(c.symbol)), "</b><div class=\"sub\">US$").concat((Number((_b = (_a = c.price) === null || _a === void 0 ? void 0 : _a.value) !== null && _b !== void 0 ? _b : c.price) || 0).toFixed(2), " \u00B7 confianza ").concat(Math.round((c.confidence || 0) * 100), "%</div></div><span class=\"ana-v\" style=\"color:").concat(TVC[c.light], ";border-color:").concat(TVC[c.light], "\">").concat({ verde: 'Sí, invierte', amarillo: 'Invierte poco', rojo: 'No inviertas' }[c.light] || '', "</span></div>\n    <div class=\"ana-p\"><span>Le gana al mercado</span><div class=\"ana-dots\">").concat(Array.from({ length: 10 }, function (_, i) { var _a; return "<i class=\"".concat(i < Math.round(((_a = c.probBeat) !== null && _a !== void 0 ? _a : 0) * 10) ? 'on' : '', "\"></i>"); }).join(''), "</div><b>").concat(c.probBeat != null ? Math.round(c.probBeat * 10) + ' de 10' : '—', "</b></div>\n    <div class=\"ana-t\">").concat(esc(t.text.replace(/^Analizando [^:]+: /, '')), "</div>");
+}
 function tvRefresh() {
     return __awaiter(this, void 0, void 0, function () {
-        var d, _a, a, prev, delta, up, k, p, evs, con, first, full_1, n_1, ty_1, alert, el_1;
-        var _b, _c, _d, _e;
-        return __generator(this, function (_f) {
-            switch (_f.label) {
+        var d, _a, a, prev, delta, up, k, pos, inv, ex, L, evs, con, first, full_1, n_1, ty_1, alert, el_1;
+        var _b;
+        return __generator(this, function (_c) {
+            switch (_c.label) {
                 case 0:
-                    _f.trys.push([0, 2, , 3]);
+                    _c.trys.push([0, 2, , 3]);
                     return [4, api('/api/tv')];
                 case 1:
-                    d = _f.sent();
+                    d = _c.sent();
                     return [3, 3];
                 case 2:
-                    _a = _f.sent();
+                    _a = _c.sent();
                     return [2];
                 case 3:
                     if (!$('#tv'))
@@ -2438,17 +2475,23 @@ function tvRefresh() {
                         void k.offsetWidth;
                         k.classList.add(a.total > prev.account.total ? 'flash-up' : 'flash-dn');
                     }
-                    p = d.predictions;
-                    if (p.hitRate != null)
-                        animNum($('#k-hit'), (_b = prev === null || prev === void 0 ? void 0 : prev.predictions.hitRate) !== null && _b !== void 0 ? _b : 0, p.hitRate, function (v) { return v.toFixed(1) + '%'; });
-                    else
-                        $('#k-hit').textContent = '—';
-                    $('#k-hit-sub').textContent = "".concat(p.hits, " aciertos \u00B7 ").concat(p.misses, " fallos \u00B7 ").concat(p.pending, " pendientes");
-                    animNum($('#k-streak'), (_c = prev === null || prev === void 0 ? void 0 : prev.predictions.streak.current) !== null && _c !== void 0 ? _c : 0, p.streak.current || 0, function (v) { return Math.round(v).toString(); });
-                    $('#k-streak-sub').textContent = "".concat(p.streak.type ? (p.streak.type === 'acierto' ? 'aciertos seguidos' : 'fallos seguidos') : 'esperando resultados', " \u00B7 r\u00E9cord ").concat(p.streak.bestHits);
-                    animNum($('#k-exp'), (_d = prev === null || prev === void 0 ? void 0 : prev.learning.experiments) !== null && _d !== void 0 ? _d : 0, d.learning.experiments, function (v) { return Math.round(v).toString(); });
-                    $('#k-exp-sub').textContent = "".concat(d.learning.byStatus.en_prueba || 0, " en prueba en vivo \u00B7 ").concat(d.learning.byStatus.validada || 0, " validadas");
-                    evs = d.activity.slice(0, 13);
+                    pos = d.positions || [], inv = pos.reduce(function (t, x) { return t + x.v; }, 0);
+                    $('#k-pos').innerHTML = pos.length ? "Invertido ".concat(usd(inv, 0), " en ").concat(pos.slice(0, 3).map(function (x) { return "<span class=\"ps\">".concat(esc(x.s), "</span> <span class=\"").concat(x.pct >= 0 ? 'up' : 'dn', "\">").concat(x.pct >= 0 ? '+' : '').concat(x.pct, "%</span>"); }).join(' · ')) : 'Todavía no has comprado nada (todo en efectivo).';
+                    if (d.ia) {
+                        $('#k-ia').innerHTML = "<span class=\"".concat(d.ia.returnPct >= 0 ? 'up' : 'dn', "\">").concat(d.ia.returnPct >= 0 ? '+' : '').concat((d.ia.returnPct * 100).toFixed(2), "%</span>");
+                        $('#k-ia-sub').innerHTML = "".concat(usd(d.ia.total), " \u00B7 ").concat(d.ia.positions, " ").concat(d.ia.positions === 1 ? 'acción' : 'acciones').concat(d.ia.market != null ? " \u00B7 mercado ".concat((d.ia.market * 100).toFixed(2), "%") : '');
+                    }
+                    ex = d.exp || {};
+                    $('#k-hit').textContent = ex.hitRate != null ? "".concat(Math.round(ex.hitRate * 10), "/10") : '—';
+                    $('#k-hit-sub').textContent = "".concat(ex.n || 0, " recomendaciones terminadas \u00B7 necesita 50 para estar seguro");
+                    L = ex.lot || {};
+                    $('#k-lot').innerHTML = L.settled ? "<span class=\"".concat(L.paid - L.staked >= 0 ? 'up' : 'dn', "\">").concat(L.paid - L.staked >= 0 ? '+' : '−', "RD$").concat(Math.abs(Math.round(L.paid - L.staked)).toLocaleString('en-US'), "</span>") : 'RD$0';
+                    $('#k-lot-sub').textContent = "Jug\u00F3 RD$".concat(Math.round(L.staked || 0).toLocaleString('en-US'), " \u00B7 gan\u00F3 RD$").concat(Math.round(L.paid || 0).toLocaleString('en-US'), " \u00B7 ").concat(L.plays || 0, " jugadas (").concat(L.wins || 0, " premios)");
+                    $('#k-ai').textContent = usd(d.ai.month, 2);
+                    $('#k-ai-sub').textContent = "de ".concat(usd(d.ai.monthCap, 0), " de tope \u00B7 hoy ").concat(usd(d.ai.day, 3));
+                    window.__tvRank = d.ranking || [];
+                    tvThink(d.thoughts || []);
+                    evs = d.activity.slice(0, 9);
                     con = $('#tvcon');
                     con.innerHTML = evs.map(function (e, i) { return "<div class=\"".concat(e.important ? 'imp' : '', "\"><time>").concat(hhmm(e.ts), "</time><span>").concat(e.agent ? "<span class=\"ag\">[".concat(esc((AGENTS[e.agent] || [e.agent])[0]), "]</span> ") : '', "<span class=\"tx\" data-full=\"").concat(esc(e.text), "\">").concat(i === 0 && e.id > tvLastId ? '' : esc(e.text), "</span>").concat(i === 0 ? '<span class="cursor"></span>' : '', "</span></div>"); }).join('');
                     first = con.querySelector('.tx');
@@ -2469,8 +2512,8 @@ function tvRefresh() {
                     }
                     tvLastId = Math.max.apply(Math, __spreadArray(__spreadArray([tvLastId], __read(d.activity.map(function (e) { return e.id; })), false), [0], false));
                     tvChart(d.chart);
-                    $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map(function (c, i) { var _a; return "<div class=\"rc\" style=\"animation-delay:".concat(i * 0.08, "s\"><div class=\"s\"><i style=\"background:").concat(TVC[c.light], ";box-shadow:0 0 12px ").concat(TVC[c.light], "\"></i>").concat(esc(coName(c.symbol)), "<span class=\"c\">").concat(c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : '', "</span></div><div class=\"cbar\"><span style=\"width:").concat(Math.round(((_a = c.probBeat) !== null && _a !== void 0 ? _a : c.confidence) * 100), "%;background:").concat(TVC[c.light], "\"></span></div><p>").concat(esc(c.why || ''), "</p></div>"); }).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
-                    tvHasDebate = !!(d.debate && ((_e = d.debate.rounds) === null || _e === void 0 ? void 0 : _e.length));
+                    $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map(function (c, i) { var _a; return "<div class=\"rc\" style=\"animation-delay:".concat(i * 0.08, "s\"><div class=\"s\"><i style=\"background:").concat(TVC[c.light], ";box-shadow:0 0 12px ").concat(TVC[c.light], "\"></i><span class=\"nm\">").concat(esc(coName(c.symbol)), "</span><span class=\"c\">").concat(c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : '', "</span></div><div class=\"cbar\"><span style=\"width:").concat(Math.round(((_a = c.probBeat) !== null && _a !== void 0 ? _a : c.confidence) * 100), "%;background:").concat(TVC[c.light], "\"></span></div><p>").concat(esc(c.why || ''), "</p></div>"); }).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
+                    tvHasDebate = !!(d.debate && ((_b = d.debate.rounds) === null || _b === void 0 ? void 0 : _b.length));
                     tvDebate(d.debate);
                     tvMap(d.map);
                     tvLoto(d.votes, d.nextDraws);

@@ -1345,14 +1345,15 @@ async function tvOpen() {
     <div class="th"><span class="logo">${brandMark()}${brandName()}</span><span class="chip" id="tvm">…</span><span class="chip" id="tvmk">…</span><span class="chip" id="tvai">…</span><span class="clock" id="tvc"></span></div>
     <div class="headline" id="tvh">Conectando…</div>
     <div class="kpis">
-      <div class="kp money"><small>Dinero virtual</small><div class="row1"><b id="k-money">—</b><span class="arrow" id="k-arrow"></span></div><div class="sub" id="k-money-sub"></div></div>
-      <div class="kp"><small>Aciertos</small><b id="k-hit">—</b><div class="sub" id="k-hit-sub"></div></div>
-      <div class="kp"><small>Racha actual</small><b id="k-streak">0</b><div class="sub" id="k-streak-sub"></div></div>
-      <div class="kp"><small>Experimentos</small><b id="k-exp">0</b><div class="sub" id="k-exp-sub"></div></div>
+      <div class="kp money"><small>Tu dinero virtual</small><div class="row1"><b id="k-money">—</b><span class="arrow" id="k-arrow"></span></div><div class="sub" id="k-money-sub"></div><div class="sub" id="k-pos"></div></div>
+      <div class="kp"><small>🤖 Cartera de la IA</small><b id="k-ia">—</b><div class="sub" id="k-ia-sub"></div></div>
+      <div class="kp"><small>🧠 Experiencia</small><b id="k-hit">—</b><div class="sub" id="k-hit-sub"></div></div>
+      <div class="kp"><small>🎱 Loterías (virtual)</small><b id="k-lot">—</b><div class="sub" id="k-lot-sub"></div></div>
+      <div class="kp"><small>✨ Gasto de IA este mes</small><b id="k-ai">—</b><div class="sub" id="k-ai-sub"></div></div>
     </div>
     <div class="workers" id="tvw"></div>
     <div class="body">
-      <div class="pane"><h3><span class="live"></span>La IA en este momento</h3><div class="console" id="tvcon"></div><div class="prog"><span></span></div></div>
+      <div class="pane"><h3><span class="live"></span>La IA en este momento</h3><div class="think" id="tvthink"></div><div class="console" id="tvcon"></div><div class="prog"><span></span></div></div>
       <div class="col">
         <div class="pane chartpane"><h3 id="tvct">Rendimiento</h3><div id="tvchart" class="chartbox"></div></div>
         <div class="pane"><h3>Recomendaciones del momento</h3><div class="cards" id="tvrank"></div></div>
@@ -1362,6 +1363,7 @@ async function tvOpen() {
           <div class="slide on" data-s="mapa"><div class="tvmap" id="tvmap"></div></div>
           <div class="slide" data-s="loto"><div class="tvloto" id="tvloto"></div></div>
           <div class="slide" data-s="ia"><div class="tvia" id="tvia"></div></div>
+          <div class="slide" data-s="ana"><div class="tvana" id="tvana"></div></div>
           <div class="slide" data-s="debate"><h4 class="sub" id="tvdt">Debate en vivo</h4><div class="chat" id="tvchat"></div></div>
           <div class="sbar"><span id="tvsb"></span></div></div>
         <div class="pane leaguepane"><h3>Liga de agentes · monedas</h3><div class="league" id="tvlg"></div></div>
@@ -1375,7 +1377,7 @@ async function tvOpen() {
   await tvRefresh(); tvTimer = setInterval(tvRefresh, 15000);
   tvSlide = 0; tvSpotShow(); clearInterval(tvSpotTimer); tvSpotTimer = setInterval(() => { tvSlide++; tvSpotShow(); }, 12000);
 }
-function tvClose() { clearInterval(tvSpotTimer); clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
+function tvClose() { clearInterval(tvThinkTimer); tvThinkTimer = null; clearInterval(tvSpotTimer); clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
 
 function tvChart(c) {
   const box = $('#tvchart'); if (!box) return;
@@ -1466,9 +1468,9 @@ function tvTicker(qs) {
 
 // ---------- Modo TV: panel que rota (Mapa · Loterías · Tú vs IA · Debate) y trabajadores 24/7 ----------
 let tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
-const TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA']];
+const TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA'], ['ana', '🔬 Análisis en vivo']];
 function tvSpotShow() {
-  const list = TV_SLIDES.filter(([k]) => k !== 'debate' || tvHasDebate), cur = list[tvSlide % list.length];
+  const list = TV_SLIDES.filter(([k]) => (k !== 'debate' || tvHasDebate)), cur = list[tvSlide % list.length];
   document.querySelectorAll('.tv .slide').forEach(el => el.classList.toggle('on', el.dataset.s === cur[0]));
   const t = $('#tvst'); if (t) t.textContent = cur[1];
   const d = $('#tvsd'); if (d) d.innerHTML = list.map(x => `<i class="${x[0] === cur[0] ? 'on' : ''}"></i>`).join('');
@@ -1491,7 +1493,7 @@ function tvLoto(votes, draws) {
   const el = $('#tvloto'); if (!el) return;
   const cd = iso => { const ms = Date.parse(iso) - Date.now(); if (ms <= 0) return 'cerrado'; const h = Math.floor(ms / 3600e3), mi = Math.floor(ms % 3600e3 / 60e3); return h ? `${h} h ${mi} min` : `${mi} min`; };
   el.innerHTML = `<div class="draws">${(draws || []).slice(0, 2).map(d => `<div class="dr"><b>${esc(d.game)}</b><span>cierra en <em data-cd="${esc(d.closesAt)}">${cd(d.closesAt)}</em></span></div>`).join('')}</div>
-    <div class="lv">${(votes || []).slice(0, 3).map(v => `<div class="lvr"><span class="lg">${esc(v.game)}</span><span class="lb">${v.top.map((n, i) => `<i style="animation-delay:${i * 0.15}s">${esc(n)}</i>`).join('')}</span></div>`).join('') || '<div class="zempty">Juntando resultados…</div>'}</div>
+    <div class="lv">${(votes || []).slice(0, 3).map(v => `<div class="lvr"><span class="lg">${esc(v.game)}<small>${v.top.length} números · ${v.voters} métodos votaron</small></span><span class="lb">${v.top.map((n, i) => `<span class="lbn"><i style="animation-delay:${i * 0.15}s">${esc(n)}</i><small>${v.votes?.[i] ?? ''} voto${v.votes?.[i] === 1 ? '' : 's'}</small></span>`).join('')}</span></div>`).join('') || '<div class="zempty">Juntando resultados…</div>'}</div>
     <div class="znote">🗳️ Los números más votados por los métodos. Cada número tiene 3 de cada 100 de salir: JARVIS vigila trampas y no promete nada.</div>`;
 }
 function tvIa(d) {
@@ -1500,6 +1502,26 @@ function tvIa(d) {
   const vals = [['Tú', you, '#38d6f5'], ['La IA', ia, '#a98bff'], ['Mercado', mk, '#8a97b5']], mx = Math.max(0.01, ...vals.map(v => Math.abs(v[1] || 0)));
   el.innerHTML = `<div class="bars3">${vals.map(([lb, v, col]) => `<div class="b3"><div class="b3v" style="color:${(v || 0) >= 0 ? '#2fd58a' : '#ff5d6c'}">${v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`}</div><div class="b3t"><span style="height:${Math.max(4, Math.abs(v || 0) / mx * 100)}%;background:linear-gradient(0deg,${col}33,${col})"></span></div><b>${lb}</b></div>`).join('')}</div>
     <div class="znote">${d.ia?.last ? `🤖 Última decisión de la IA: <b>${d.ia.last.side === 'buy' ? 'compró' : 'vendió'} ${esc(d.ia.last.symbol)}</b> · ${esc(String(d.ia.last.reason || '').replace(/^IA (compra|vende): /, ''))}` : '🤖 La IA invierte sola cuando la bolsa abre (lunes a viernes, 10:30 a.m. a 5 p.m.).'}</div>`;
+}
+
+// Lo que está analizando JARVIS ahora mismo (datos reales, uno por uno, como si escribiera)
+let tvThinkIdx = 0, tvThinkTimer = null;
+function tvThink(list) {
+  const el = $('#tvthink'); if (!el || !list.length) return;
+  window.__tvThoughts = list;
+  if (tvThinkTimer) return;
+  const step = () => { const L = window.__tvThoughts || [], t = L[tvThinkIdx++ % L.length]; const box = $('#tvthink'); if (!box || !t) { clearInterval(tvThinkTimer); tvThinkTimer = null; return; }
+    box.innerHTML = `<span class="tk ${t.kind}">${t.kind === 'loto' ? '🎱' : '📈'} ${t.kind === 'loto' ? 'Loterías' : esc(t.sym)}</span><span class="tt"></span>`;
+    const tt = box.querySelector('.tt'); let n = 0; const ty = setInterval(() => { if (!tt.isConnected) return clearInterval(ty); tt.textContent = t.text.slice(0, n += 2); if (n >= t.text.length) clearInterval(ty); }, 24);
+    tvAna(t); };
+  step(); tvThinkTimer = setInterval(step, 9000);
+}
+function tvAna(t) {
+  const el = $('#tvana'); if (!el || t.kind !== 'bolsa') return;
+  const c = (window.__tvRank || []).find(x => x.symbol === t.sym); if (!c) return;
+  el.innerHTML = `<div class="ana-h">${coBadge(c.symbol, 46)}<div><b>${esc(coName(c.symbol))}</b><div class="sub">US$${(Number(c.price?.value ?? c.price) || 0).toFixed(2)} · confianza ${Math.round((c.confidence || 0) * 100)}%</div></div><span class="ana-v" style="color:${TVC[c.light]};border-color:${TVC[c.light]}">${{ verde: 'Sí, invierte', amarillo: 'Invierte poco', rojo: 'No inviertas' }[c.light] || ''}</span></div>
+    <div class="ana-p"><span>Le gana al mercado</span><div class="ana-dots">${Array.from({ length: 10 }, (_, i) => `<i class="${i < Math.round((c.probBeat ?? 0) * 10) ? 'on' : ''}"></i>`).join('')}</div><b>${c.probBeat != null ? Math.round(c.probBeat * 10) + ' de 10' : '—'}</b></div>
+    <div class="ana-t">${esc(t.text.replace(/^Analizando [^:]+: /, ''))}</div>`;
 }
 
 async function tvRefresh() {
@@ -1516,15 +1538,21 @@ async function tvRefresh() {
   $('#k-arrow').className = 'arrow ' + (up ? 'up' : 'dn'); $('#k-arrow').textContent = up ? '▲' : '▼';
   $('#k-money-sub').innerHTML = `<span class="${up ? 'up' : 'dn'}">${up ? '+' : '−'}${usd(Math.abs(delta)).replace('−', '')} (${pct(a.returnPct, 2)})</span> desde ${usd(a.start, 0)}${a.fx ? ` · ≈ RD$${Math.round(a.total * a.fx).toLocaleString('es-DO')}` : ''}`;
   if (prev && prev.account.total !== a.total) { const k = $('.kp.money'); k.classList.remove('flash-up', 'flash-dn'); void k.offsetWidth; k.classList.add(a.total > prev.account.total ? 'flash-up' : 'flash-dn'); }
-  const p = d.predictions;
-  if (p.hitRate != null) animNum($('#k-hit'), prev?.predictions.hitRate ?? 0, p.hitRate, v => v.toFixed(1) + '%'); else $('#k-hit').textContent = '—';
-  $('#k-hit-sub').textContent = `${p.hits} aciertos · ${p.misses} fallos · ${p.pending} pendientes`;
-  animNum($('#k-streak'), prev?.predictions.streak.current ?? 0, p.streak.current || 0, v => Math.round(v).toString());
-  $('#k-streak-sub').textContent = `${p.streak.type ? (p.streak.type === 'acierto' ? 'aciertos seguidos' : 'fallos seguidos') : 'esperando resultados'} · récord ${p.streak.bestHits}`;
-  animNum($('#k-exp'), prev?.learning.experiments ?? 0, d.learning.experiments, v => Math.round(v).toString());
-  $('#k-exp-sub').textContent = `${d.learning.byStatus.en_prueba || 0} en prueba en vivo · ${d.learning.byStatus.validada || 0} validadas`;
+  const pos = d.positions || [], inv = pos.reduce((t, x) => t + x.v, 0);
+  $('#k-pos').innerHTML = pos.length ? `Invertido ${usd(inv, 0)} en ${pos.slice(0, 3).map(x => `<span class="ps">${esc(x.s)}</span> <span class="${x.pct >= 0 ? 'up' : 'dn'}">${x.pct >= 0 ? '+' : ''}${x.pct}%</span>`).join(' · ')}` : 'Todavía no has comprado nada (todo en efectivo).';
+  if (d.ia) { $('#k-ia').innerHTML = `<span class="${d.ia.returnPct >= 0 ? 'up' : 'dn'}">${d.ia.returnPct >= 0 ? '+' : ''}${(d.ia.returnPct * 100).toFixed(2)}%</span>`; $('#k-ia-sub').innerHTML = `${usd(d.ia.total)} · ${d.ia.positions} ${d.ia.positions === 1 ? 'acción' : 'acciones'}${d.ia.market != null ? ` · mercado ${(d.ia.market * 100).toFixed(2)}%` : ''}`; }
+  const ex = d.exp || {};
+  $('#k-hit').textContent = ex.hitRate != null ? `${Math.round(ex.hitRate * 10)}/10` : '—';
+  $('#k-hit-sub').textContent = `${ex.n || 0} recomendaciones terminadas · necesita 50 para estar seguro`;
+  const L = ex.lot || {};
+  $('#k-lot').innerHTML = L.settled ? `<span class="${L.paid - L.staked >= 0 ? 'up' : 'dn'}">${L.paid - L.staked >= 0 ? '+' : '−'}RD$${Math.abs(Math.round(L.paid - L.staked)).toLocaleString('en-US')}</span>` : 'RD$0';
+  $('#k-lot-sub').textContent = `Jugó RD$${Math.round(L.staked || 0).toLocaleString('en-US')} · ganó RD$${Math.round(L.paid || 0).toLocaleString('en-US')} · ${L.plays || 0} jugadas (${L.wins || 0} premios)`;
+  $('#k-ai').textContent = usd(d.ai.month, 2);
+  $('#k-ai-sub').textContent = `de ${usd(d.ai.monthCap, 0)} de tope · hoy ${usd(d.ai.day, 3)}`;
   // Consola: la línea nueva se escribe letra por letra
-  const evs = d.activity.slice(0, 13);
+  window.__tvRank = d.ranking || [];
+  tvThink(d.thoughts || []);
+  const evs = d.activity.slice(0, 9);
   const con = $('#tvcon');
   con.innerHTML = evs.map((e, i) => `<div class="${e.important ? 'imp' : ''}"><time>${hhmm(e.ts)}</time><span>${e.agent ? `<span class="ag">[${esc((AGENTS[e.agent] || [e.agent])[0])}]</span> ` : ''}<span class="tx" data-full="${esc(e.text)}">${i === 0 && e.id > tvLastId ? '' : esc(e.text)}</span>${i === 0 ? '<span class="cursor"></span>' : ''}</span></div>`).join('');
   const first = con.querySelector('.tx');
@@ -1533,7 +1561,7 @@ async function tvRefresh() {
   if (alert) { const el = document.createElement('div'); el.className = 'alert'; el.textContent = alert.text; $('#tv').appendChild(el); setTimeout(() => el.remove(), 7000); }
   tvLastId = Math.max(tvLastId, ...d.activity.map(e => e.id), 0);
   tvChart(d.chart);
-  $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map((c, i) => `<div class="rc" style="animation-delay:${i * 0.08}s"><div class="s"><i style="background:${TVC[c.light]};box-shadow:0 0 12px ${TVC[c.light]}"></i>${esc(coName(c.symbol))}<span class="c">${c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : ''}</span></div><div class="cbar"><span style="width:${Math.round((c.probBeat ?? c.confidence) * 100)}%;background:${TVC[c.light]}"></span></div><p>${esc(c.why || '')}</p></div>`).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
+  $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map((c, i) => `<div class="rc" style="animation-delay:${i * 0.08}s"><div class="s"><i style="background:${TVC[c.light]};box-shadow:0 0 12px ${TVC[c.light]}"></i><span class="nm">${esc(coName(c.symbol))}</span><span class="c">${c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : ''}</span></div><div class="cbar"><span style="width:${Math.round((c.probBeat ?? c.confidence) * 100)}%;background:${TVC[c.light]}"></span></div><p>${esc(c.why || '')}</p></div>`).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
   tvHasDebate = !!(d.debate && d.debate.rounds?.length);
   tvDebate(d.debate);
   tvMap(d.map); tvLoto(d.votes, d.nextDraws); tvIa(d); tvWorkers(d.tasks);

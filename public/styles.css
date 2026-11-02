@@ -157,7 +157,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:13px;font-weight:60
 .tv .chip b{color:#fff}
 .tv .headline{border:1px solid rgba(56,214,245,.35);border-radius:1vw;padding:1.2vh 1.4vw;background:linear-gradient(90deg,rgba(56,214,245,.12),rgba(13,20,36,.9));font-size:1.8vw;font-weight:800;letter-spacing:-.01em}
 .tv .headline small{display:block;font-size:1vw;color:var(--m);font-weight:600;margin-top:.4vh}
-.tv .kpis{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:1vw}
+.tv .kpis{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr 1fr;gap:.8vw}
 .tv .kp{background:var(--p);border:1px solid var(--l);border-radius:1vw;padding:1.2vh 1.1vw;position:relative;overflow:hidden}
 .tv .kp:before{content:"";position:absolute;left:1vw;right:1vw;top:0;height:3px;border-radius:3px;background:linear-gradient(90deg,var(--a),#4c7dff)}
 .tv .kp small{display:block;font-size:.75vw;letter-spacing:.14em;text-transform:uppercase;color:var(--m);font-weight:700}
@@ -503,3 +503,16 @@ html.is-tv #tabs a{padding:10px 16px;font-size:17px}
 html.is-phone .tv .workers{grid-template-columns:repeat(4,1fr)}
 html.is-phone .tv .body{grid-template-columns:1fr}
 .tv .bars3{flex:none;height:21vh}.tv .tvia{justify-content:center}
+
+.tv .kp b{font-size:2.2vw}.tv .money b{font-size:2.8vw}.tv .kp .sub{font-size:.78vw;line-height:1.35}
+.tv .think{border:1px solid rgba(56,214,245,.35);background:rgba(56,214,245,.07);border-radius:.7vw;padding:.9vh .8vw;margin-bottom:1vh;min-height:11vh;font-size:.95vw;line-height:1.45}
+.tv .think .tk{display:inline-block;font-family:var(--mono);font-weight:800;font-size:.8vw;padding:.1vh .5vw;border-radius:.4vw;background:rgba(56,214,245,.18);color:var(--a);margin-right:.5vw}.tv .think .tk.loto{background:rgba(47,213,138,.18);color:var(--g)}
+.tv .think .tt:after{content:"▍";color:var(--a);animation:blink 1s steps(2) infinite}
+.tv .rc .s{min-width:0}.tv .rc .s .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:1.1vw}.tv .rc .c{flex:none;margin-left:.4vw}
+.tv .lg{display:flex;flex-direction:column;width:10vw}.tv .lg small{font-size:.62vw;color:#5d6a86}
+.tv .lbn{display:flex;flex-direction:column;align-items:center;gap:.2vh}.tv .lbn small{font-size:.6vw;color:var(--m)}
+.tv .tvana{display:flex;flex-direction:column;gap:1.2vh;flex:1;min-height:0}.tv .ana-h{display:flex;align-items:center;gap:.8vw}.tv .ana-h b{font-size:1.3vw}.tv .ana-h .sub{font-size:.8vw;color:var(--m)}
+.tv .ana-v{margin-left:auto;border:1px solid;border-radius:1vw;padding:.3vh .7vw;font-weight:800;font-size:.85vw}
+.tv .ana-p{display:flex;align-items:center;gap:.6vw;font-size:.8vw;color:var(--m)}.tv .ana-p b{color:#fff}.tv .ana-dots{display:flex;gap:.25vw}.tv .ana-dots i{width:.8vw;height:.8vw;border-radius:50%;border:1px solid #3b4766}.tv .ana-dots i.on{background:var(--g);border-color:var(--g)}
+.tv .ana-t{font-size:.92vw;line-height:1.5}
+.tv .kp .ps{font-weight:800;color:#fff;font-family:var(--mono)}
