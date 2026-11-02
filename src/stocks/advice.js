@@ -4,7 +4,7 @@ import { wilson, quantile, rng, round, mean, sd } from '../core/util.js';
 
 const clamp = (x, a = -1, b = 1) => Math.max(a, Math.min(b, x));
 export const RANKING_VERSION = 1;
-export const WEIGHTS = { tendencia: 0.25, historial: 0.25, empresa: 0.25, riesgo: 0.15, polemicas: 0.10 };
+export const WEIGHTS = { tendencia: 0.25, historial: 0.25, empresa: 0.25, riesgo: 0.15, polemicas: 0.10, duenos: 0.10, sorpresa: 0.10 };
 
 /**
  * Puntúa una empresa con razones explícitas. Entrada:
@@ -38,6 +38,28 @@ export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, tra
     factors.empresa = clamp(s / 1.5);
     reasons.push({ factor: 'empresa', text: `Lo que dicen sus informes oficiales (los que la ley le obliga a publicar): ${parts.join(', ')}.`, kind: 'dato' });
   }
+  // 👔 Lo que hacen los dueños con su propio dinero (SEC, Formulario 4, últimos 6 meses)
+  const one = m => facts.find(f => f.metric === m)?.value;
+  const bUsd = one('duenos_compras_usd'), buyers = one('duenos_compradores'), sUsd = one('duenos_ventas_usd');
+  if (bUsd != null) {
+    let v;
+    if (buyers >= 2 && bUsd >= 100000) v = 0.8; else if (buyers >= 1 && bUsd >= 100000) v = 0.5; else if (buyers >= 1) v = 0.25;
+    else v = sUsd > 50e6 ? -0.15 : 0;
+    factors.duenos = v;
+    reasons.push({ factor: 'duenos', text: buyers ? `${buyers} ${buyers === 1 ? 'directivo compró' : 'directivos compraron'} acciones de la empresa con su propio dinero en los últimos 6 meses (US$${Math.round(bUsd).toLocaleString('en-US')}). Casi nadie se fija en esto y suele ser buena señal: compran por una sola razón.` : sUsd ? `Los directivos no compraron en 6 meses; vendieron US$${Math.round(sUsd).toLocaleString('en-US')} (vender es común: impuestos, planes automáticos), así que pesa poco.` : 'Los directivos no compraron ni vendieron acciones en los últimos 6 meses.', kind: 'dato' });
+  }
+  // 📊 Sorpresa de ganancias: el último trimestre contra el mismo trimestre del año pasado
+  const q = facts.filter(f => f.metric === 'bpa_trimestral').sort((a, b) => (a.period < b.period ? 1 : -1));
+  if (q.length >= 5) {
+    const [y, qq] = [Number(q[0].period.slice(2, 6)), q[0].period.slice(6)], prev = q.find(f => f.period === `CY${y - 1}${qq}`);
+    if (prev) {
+      const e0 = q[0].value, e4 = prev.value, filed = (q[0].source.match(/presentado (\d{4}-\d{2}-\d{2})/) || [])[1];
+      const fresh = filed ? (Date.now() - Date.parse(filed)) / 864e5 <= 90 : false; // el efecto dura unas semanas después del informe
+      const g = e4 > 0 ? (e0 - e4) / Math.abs(e4) : e0 > 0 ? 1 : (e0 - e4) / Math.max(Math.abs(e4), 0.01);
+      factors.sorpresa = clamp(g / 0.3) * (fresh ? 1 : 0.4);
+      reasons.push({ factor: 'sorpresa', text: `En su último trimestre ganó US$${e0} por acción; el mismo trimestre del año pasado, US$${e4} (${g >= 0 ? '+' : ''}${Math.round(g * 100)}%).${fresh ? ' El informe es reciente: las empresas que mejoran mucho suelen seguir subiendo unas semanas, porque la gente reacciona tarde.' : ' El informe ya tiene más de 3 meses, así que pesa menos.'}`, kind: 'dato' });
+    }
+  }
   const daily = bars.slice(-253).map((b, i, a) => (i ? b.close / a[i - 1].close - 1 : 0)).slice(1);
   if (daily.length > 60) {
     const vol = sd(daily) * Math.sqrt(252);
@@ -52,7 +74,7 @@ export function scoreSymbol({ symbol, bars, bench, facts = [], polemics = 0, tra
   const contributions = used.map(k => ({ factor: k, weight: W[k] / wsum, value: factors[k], contribution: round((W[k] / wsum) * factors[k] * 100, 1) }));
   const score = contributions.reduce((s, c) => s + c.contribution, 0) / 100;
   // Confianza: cuántos datos hay, cuánto historial real, si los factores apuntan al mismo lado y qué tan clara es la señal
-  const coverage = used.reduce((s, k) => s + WEIGHTS[k], 0); // cuántos datos hay (con los pesos base)
+  const coverage = Math.min(1, used.reduce((s, k) => s + WEIGHTS[k], 0)); // cuántos datos hay (con los pesos base)
   const sample = Math.min(1, n / 20) * (track.wins >= track.losses ? 1 : 0.4);
   const signed = contributions.filter(c => Math.abs(c.value) > 0.05);
   const agreement = signed.length ? signed.filter(c => Math.sign(c.value) === Math.sign(score || 1)).length / signed.length : 0.5;

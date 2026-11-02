@@ -633,3 +633,7 @@ html.legacy .top{max-width:100vw;overflow:hidden}
 .vo b{font-size:15px}.vo small{font-size:11px;color:var(--mute)}.vo small.good{color:var(--good)}.vo small.bad{color:var(--bad)}
 .opp-m{margin-top:4px;font-size:14px}
 .answer.good{border-color:var(--good)}.answer.warn{border-color:var(--warn)}
+
+.jv-ord{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.jo{display:inline-flex;align-items:baseline;gap:3px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);font-size:13px}
+.jo small{font-size:10px;color:var(--mute)}

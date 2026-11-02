@@ -24,6 +24,7 @@ export function backtest(hist, methodId, kind, { stake = 100, warmup = 10, seed 
 
 /** Compara cada método con 400 jugadores al azar y corrige por haber probado varios métodos. */
 export function compareMethods(hist, kind, { stake = 100, warmup = 10, sims = 400, P = DEFAULT_PAYOUTS } = {}) {
+  hist = hist.slice(-400); // los últimos 400 sorteos bastan para comparar y la página no se pone lenta
   const baseline = [];
   for (let s = 0; s < sims; s++) baseline.push(backtest(hist, 'azar', kind, { stake, warmup, seed: 1000 + s, P }).per100 ?? 0);
   baseline.sort((a, b) => a - b);

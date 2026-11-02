@@ -1,9 +1,9 @@
 // Recolector de datos de bolsa: Alpaca si hay claves; si no, Yahoo como respaldo no oficial. Fundamentales de la SEC.
 import * as alpaca from './providers/alpaca.js';
 import * as yahoo from './providers/yahoo.js';
-import { companyFacts } from './providers/sec.js';
+import { companyFacts, insiderActivity } from './providers/sec.js';
 import { saveBars, saveQuote, qualityCheck, getBars } from './market.js';
-import { nowIso, getSetting } from '../core/db.js';
+import { nowIso, getSetting, setSetting } from '../core/db.js';
 
 export const DEFAULT_UNIVERSE = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'JPM', 'KO', 'JNJ', 'V', 'WMT', 'COST', 'XOM'];
 export const BENCH = 'SPY';
@@ -43,6 +43,19 @@ export async function updateFacts(db, cfg, symbol, { fetchImpl = fetch } = {}) {
   const t = nowIso();
   for (const f of r.facts) st.run(symbol, f.metric, f.period, f.value, f.source, t);
   return { symbol, facts: r.facts.length, note: r.note || null };
+}
+
+/** Compras y ventas de los dueños (últimos 180 días) → se guardan como datos de la empresa para el ranking. */
+export async function updateInsiders(db, cfg, symbol, { fetchImpl = fetch } = {}) {
+  const r = await insiderActivity(symbol, cfg.secUserAgent, { fetchImpl });
+  if (r.none) return { symbol, none: true };
+  const st = db.prepare(`INSERT INTO fundamentals (symbol, metric, period, value, source, fetched_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(symbol, metric, period) DO UPDATE SET value=excluded.value, source=excluded.source, fetched_at=excluded.fetched_at`);
+  const t = nowIso(), src = `SEC EDGAR Formulario 4 (${r.filings} presentados en ${r.days} días)`;
+  for (const [m, v] of [['duenos_compras_usd', r.buyUsd], ['duenos_compradores', r.buyers], ['duenos_ventas_usd', r.sellUsd], ['duenos_vendedores', r.sellers]]) st.run(symbol, m, 'U180D', v, src, t);
+  setSetting(db, 'global', `sec.insider.${symbol}`, { at: t, buyUsd: r.buyUsd, sellUsd: r.sellUsd, buyers: r.buyers, sellers: r.sellers,
+    recent: [...r.buys, ...r.sells].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 10).map(x => ({ who: x.who, title: x.title, code: x.code, usd: Math.round(x.usd), date: x.date })) });
+  return { symbol, buys: r.buys.length, sells: r.sells.length };
 }
 
 export function factsFor(db, symbol) {

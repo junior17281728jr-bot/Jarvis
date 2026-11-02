@@ -21,9 +21,12 @@ export function probBeat(db, score) {
   const rows = db.prepare("SELECT payload, outcome FROM predictions WHERE module = 'ranking' AND correct IS NOT NULL").all()
     .map(r => ({ s: JSON.parse(r.payload).score, beat: JSON.parse(r.outcome).excess > 0 }))
     .filter(r => Math.abs(r.s - score) <= 0.1);
-  if (rows.length < 10) return { p: round(base, 3), method: 'modelo', n: rows.length };
+  // Si en general sus % no se cumplen, se acercan solos al 50% (ver calibration.js)
+  const k = getSetting(db, 'global', 'calib.shrink', 1), adj = p => round(0.5 + (p - 0.5) * k, 3);
+  if (rows.length < 10) return { p: adj(base), raw: round(base, 3), method: 'modelo', n: rows.length, shrink: k };
   const hits = rows.filter(r => r.beat).length;
-  return { p: round((hits + base * 10) / (rows.length + 10), 3), method: 'calibrado', n: rows.length };
+  const raw = (hits + base * 10) / (rows.length + 10);
+  return { p: adj(raw), raw: round(raw, 3), method: 'calibrado', n: rows.length, shrink: k };
 }
 
 /**
@@ -111,7 +114,7 @@ export function sealLotteryPick(db, pick, { stake = 100 } = {}) {
   // Juega VARIOS números en quiniela (cada uno es su propia apuesta, como en la banca): stake por número
   const nums = [...new Set(pick.numbers)];
   const probHit = 1 - Math.pow(1 - nums.length / 100, 3); // que salga al menos uno de sus números en los 3 premios
-  const payload = { game: pick.game, date: pick.date, numbers: nums, kind: 'quiniela', method: pick.method, why: pick.why, stakeWhy: pick.stakeWhy || null, amountRd: stake * nums.length, perNumberRd: stake,
+  const payload = { game: pick.game, date: pick.date, numbers: nums, kind: 'quiniela', method: pick.method, methodLabel: pick.methodLabel || null, why: pick.why, stakeWhy: pick.stakeWhy || null, amountRd: stake * nums.length, perNumberRd: stake,
     potentialRd: stake * P.q[0], probHit: round(probHit, 4), claim: `Sale al menos uno de ${nums.join(', ')} en el sorteo`, payouts: P };
   const s = seal(db, { kind: 'recomendacion_loteria', ref: subject, payload });
   db.prepare('INSERT INTO predictions (module, agent, subject, payload, prob, sealed_at, ledger_hash) VALUES (?, ?, ?, ?, ?, ?, ?)')

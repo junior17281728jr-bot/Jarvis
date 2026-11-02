@@ -32,11 +32,11 @@ test('valor esperado exacto con pagos típicos', () => {
 
 test('verificación con dos fuentes y conflictos', () => {
   const db = openDb(':memory:');
-  let r = recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['64', '06', '71'] });
+  let r = recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['64', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(r.status, 'una_fuente');
-  r = recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'b', nums: ['64', '06', '71'] });
+  r = recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'b', nums: ['64', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(r.status, 'verificado');
-  r = recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'c', nums: ['64', '06', '17'] });
+  r = recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'c', nums: ['64', '06', '17'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(r.status, 'conflicto');
   assert.equal(r.nums, null);
   assert.throws(() => recordObservation(db, { game: 'leidsa', date: '2026-10-28', source: 'a', nums: ['6', '06', '71'] }), /no válidos/);
@@ -79,8 +79,8 @@ test('jugada sellada antes del cierre, liquidada con el resultado y sin cambios 
   const play = sealPlay(db, { game: 'leidsa', kind: 'quiniela', numbers: ['64'], stake: 10, method: 'azar', now });
   const late = new Date('2026-10-28T00:52:00Z'); // 8:52 p.m. RD: ya cerró el del 27
   assert.equal(nextDraw('leidsa', late).date, '2026-10-28');
-  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['64', '06', '71'] });
-  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'b', nums: ['64', '06', '71'] });
+  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['64', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
+  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'b', nums: ['64', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(settlePending(db), 1);
   const st = playStats(db);
   assert.equal(st.wins, 1);

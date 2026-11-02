@@ -2,6 +2,7 @@
 // Cada página se lee y se interpreta por separado; luego results.js compara las fuentes.
 // IMPORTANTE: los lectores se validan contra la página real en el servidor (estado "por validar" hasta entonces).
 import { recordObservation } from './results.js';
+import { getSetting, setSetting } from '../core/db.js';
 
 export const SOURCES = {
   'premios.do': {
@@ -88,4 +89,43 @@ export async function collectAll(db, { days = 7, fetchImpl, today } = {}) {
     }
   }
   return report;
+}
+
+/**
+ * 📚 Historial de años: premios.do tiene una página por fecha (…-AAAA-MM-DD) con los ~15 sorteos anteriores.
+ * Cada vuelta baja unas pocas páginas por lotería, hacia atrás, sin apurar a la página (pausa entre pedidos).
+ * Se detiene en una lotería cuando encuentra 3 páginas seguidas que no existen (ahí empieza el archivo).
+ */
+export async function backfillHistory(db, { fetchImpl = fetch, pagesPerGame = 6, pauseMs = 800, today = new Date().toISOString().slice(0, 10) } = {}) {
+  const st = getSetting(db, 'global', 'lottery.backfill', {});
+  const out = {};
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  for (const [game, base] of Object.entries(SOURCES['premios.do'])) {
+    const g = (st[game] ||= { cursor: today, misses: 0, done: false, saved: 0, pages: 0, oldest: null });
+    if (g.done) { out[game] = { done: true, saved: g.saved }; continue; }
+    let saved = 0;
+    for (let i = 0; i < pagesPerGame && !g.done; i++) {
+      const url = `${base}-${g.cursor}`;
+      let rows = [];
+      try {
+        const res = await fetchImpl(url, { headers: { 'User-Agent': 'Mozilla/5.0 (JARVIS investigacion personal)' } });
+        if (res.status === 404) { g.misses++; if (g.misses >= 3) g.done = true; }
+        else if (res.ok) { rows = parseResults(htmlToText(await res.text())); g.misses = 0; }
+        else break; // la página falla: se intenta en la próxima vuelta
+      } catch { break; }
+      for (const r of rows) {
+        if (r.date > g.cursor) continue; // solo lo de esa fecha hacia atrás
+        try { const x = recordObservation(db, { game, date: r.date, source: 'premios.do', nums: r.nums }); if (!x?.skipped) saved++; } catch { /* números no válidos */ }
+        if (!g.oldest || r.date < g.oldest) g.oldest = r.date;
+      }
+      g.pages++;
+      // La próxima página: 14 días antes (cada página trae ~15 sorteos, así no queda ningún hueco)
+      g.cursor = new Date(Date.parse(g.cursor) - 14 * 864e5).toISOString().slice(0, 10);
+      if (pauseMs) await sleep(pauseMs);
+    }
+    g.saved += saved;
+    out[game] = { saved, oldest: g.oldest, done: g.done };
+  }
+  setSetting(db, 'global', 'lottery.backfill', st);
+  return out;
 }

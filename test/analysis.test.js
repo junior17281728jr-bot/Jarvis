@@ -88,7 +88,7 @@ test('apuestas reales registradas por ti, separadas de las virtuales', () => {
   assert.equal(closeReal(db, 1, r.id, { sellPrice: 550 }).pnl, 1);
   assert.throws(() => closeReal(db, 2, r.id, { sellPrice: 1 }), /No se encontró/);
   addReal(db, 1, { module: 'loteria', game: 'leidsa', numbers: ['64'], stakeRd: 10, date: '2026-10-27' });
-  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['64', '06', '71'] });
+  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['64', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(settleRealLottery(db), 1);
   const s = performance(db).real;
   assert.equal(s.bolsa.net, 1); assert.equal(s.loterias.net, 590);
@@ -97,9 +97,9 @@ test('apuestas reales registradas por ti, separadas de las virtuales', () => {
 test('número del sorteo sellado como recomendación y calificado', () => {
   const db = openDb(':memory:');
   sealLotteryPick(db, { game: 'leidsa', date: '2026-10-27', numbers: ['64'], method: 'azar', why: 'x' });
-  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['01', '06', '71'] });
+  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'a', nums: ['01', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(resolveLotteryPicks(db), 0); // con una sola página no se califica: puede estar mal leída
-  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'b', nums: ['01', '06', '71'] });
+  recordObservation(db, { game: 'leidsa', date: '2026-10-27', source: 'b', nums: ['01', '06', '71'], fetchedAt: '2026-10-28T01:30:00.000Z' });
   assert.equal(resolveLotteryPicks(db), 1);
   assert.equal(historyList(db, { module: 'loteria' })[0].status, 'fallo');
 });

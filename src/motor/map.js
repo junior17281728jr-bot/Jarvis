@@ -38,6 +38,8 @@ const NEED = {
   historial: 'Que JARVIS acierte más con ella: hoy falla más de lo que acierta.',
   riesgo: 'Que se calme: hoy sube y baja demasiado para tu dinero.',
   polemicas: 'Que se aclaren las noticias negativas.',
+  duenos: 'Que los directivos compren acciones con su propio dinero.',
+  sorpresa: 'Que su próximo informe trimestral mejore contra el año pasado.',
   empresa: 'Mejores números en sus informes oficiales (ventas y ganancias).',
 };
 

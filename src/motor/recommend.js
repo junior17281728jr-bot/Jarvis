@@ -32,7 +32,7 @@ export function cardFor(db, sym, benchBars) {
   const raw = scoreSymbol({ symbol: sym, bars, bench: benchBars, facts: factsFor(db, sym), polemics: npol, track: trackRecord(db, sym), weights: learnedWeights(db) });
   const pb = probBeat(db, raw.score), card = calibrateLight(raw, pb, { polemics: npol });
   const q = getQuote(db, sym);
-  card.probBeat = pb.p; card.probMethod = pb.method;
+  card.probBeat = pb.p; card.probMethod = pb.method; card.probRaw = pb.raw ?? pb.p;
   card.price = q ? { value: q.price, asOf: q.as_of, source: q.source, kind: q.kind } : { value: bars.at(-1).close, asOf: bars.at(-1).ts, source: bars.at(-1).source, kind: 'cierre' };
   card.projection = { personal: project(bars, 10), ejemplo: project(bars, 200) };
   // Lo mismo en 3 meses, 6 meses y 1 año (en % de lo invertido), para decir el tiempo exacto de cada cálculo
@@ -50,16 +50,18 @@ export function buildRanking(db, { symbols, bench = 'SPY', date = new Date().toI
     const card = cardFor(db, sym, benchBars);
     if (!card) continue;
     const bars = card._bars; delete card._bars;
-    const pb = { p: card.probBeat, method: card.probMethod };
+    const pb = { p: card.probBeat, method: card.probMethod, raw: card.probRaw ?? card.probBeat };
     const subject = `ranking:${sym}:${date}`;
     if (!db.prepare('SELECT 1 FROM predictions WHERE subject = ?').get(subject)) {
       const claimBeat = card.light !== 'rojo';
       const amountUsd = recommendedAmount(card.light, { budgetUsd: getBudget(db).usd });
       const proj = card.projection.personal;
-      const payload = { symbol: sym, light: card.light, score: card.score, confidence: card.confidence, probBeat: pb.p, probMethod: pb.method, claimBeat, amountUsd,
+      const payload = { symbol: sym, light: card.light, score: card.score, confidence: card.confidence, probBeat: pb.p, probRaw: claimBeat ? pb.raw : 1 - pb.raw, probMethod: pb.method, claimBeat, amountUsd,
         potentialUsd: proj && amountUsd ? { probable: round(proj.probable / 10 * amountUsd, 2), good: round(proj.good / 10 * amountUsd, 2), bad: round(proj.bad / 10 * amountUsd, 2), months: 6 } : null,
         reasons: card.reasons.map(r => r.text), sources: sourcesFor(db, sym, card),
         claim: claimBeat ? `${sym} le ganará al SPY en ${HORIZON} días de bolsa` : `${sym} NO le ganará al SPY en ${HORIZON} días de bolsa`,
+        // Rango honesto para los próximos 20 días de bolsa: 8 de cada 10 veces debería terminar entre lo y hi
+        range: (() => { const r = project(bars, 100, { days: HORIZON, sims: 800 }); return r ? { lo: round(r.bad / 100, 4), hi: round(r.good / 100, 4), days: HORIZON } : null; })(),
         startClose: bars.at(-1).close, startBench: benchBars.at(-1)?.close, startDate: bars.at(-1).ts, version: card.version };
       card.amountUsd = amountUsd;
       const s = seal(db, { kind: 'recomendacion', ref: subject, payload });

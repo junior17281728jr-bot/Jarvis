@@ -27,7 +27,7 @@ const VERDICT = {
 const scaleProj = (r, amt) => (r ? { ...r, bad: r.bad * amt / 10, probable: r.probable * amt / 10, good: r.good * amt / 10 } : r);
 async function loadBudget() { try { MYBUDGET = await api('/api/budget'); } catch { MYBUDGET = null; } }
 const light = l => `<span class="light ${l}"><i></i>${LIGHT[l] || l}</span>`;
-const FACTOR = { tendencia: 'Cómo le va contra el mercado', historial: 'Aciertos previos de JARVIS', empresa: 'Salud de la empresa', riesgo: 'Cuánto sube y baja', polemicas: 'Noticias' };
+const FACTOR = { tendencia: 'Cómo le va contra el mercado', historial: 'Aciertos previos de JARVIS', empresa: 'Salud de la empresa', riesgo: 'Cuánto sube y baja', polemicas: 'Noticias', duenos: 'Compras de los dueños', sorpresa: 'Sorpresa de ganancias' };
 const STATUS = { en_desarrollo: '🛠️ Preparándose', en_prueba: '🧪 En prueba en vivo', en_evaluacion: '🔍 En evaluación', validada: '✅ Aprobada (con dinero virtual)', no_validada: '❌ Descartada', en_revision: '🔍 En revisión', retirada: '⏹️ Retirada' };
 const STATUS_TONE = { no_validada: 'bad', retirada: 'bad', en_prueba: 'warn', en_evaluacion: 'warn', en_revision: 'warn', validada: 'good' };
 const STRAT = {
@@ -103,7 +103,7 @@ const term = (w, label = w) => `<abbr title="${esc(GLOSS[w] || '')}" style="text
 
 // ---------- Marca propia ----------
 const PALETTES0 = { cian: { name: 'Cian', dark: '#38d6f5', light: '#1a6dff' }, azul: { name: 'Azul', dark: '#6fa0ff', light: '#1a4fd6' }, violeta: { name: 'Violeta', dark: '#b39bff', light: '#6a46e8' }, dorado: { name: 'Dorado', dark: '#ffc94d', light: '#9a6400' }, rosa: { name: 'Rosa', dark: '#ff7cc8', light: '#c02a86' }, turquesa: { name: 'Turquesa', dark: '#3ee6c4', light: '#00806a' } };
-let BRAND = { name: 'JARVIS', tagline: 'Tu investigador de bolsa y loterías', owner: '', color: 'cian', hasLogo: false, v: 0, palette: PALETTES0.cian, palettes: PALETTES0 };
+let BRAND = { name: 'JARVIS', tagline: 'Ve lo que la mente humana no alcanza. Y lo prueba.', owner: '', color: 'cian', hasLogo: false, v: 0, palette: PALETTES0.cian, palettes: PALETTES0 };
 const brandMark = (big = false) => BRAND.hasLogo ? `<img class="blogo${big ? ' big' : ''}" src="/brand/logo?v=${BRAND.v}" alt="">` : `<span class="ring${big ? ' big' : ''}"><i></i></span>`;
 const brandName = () => `<span class="bname${BRAND.name.length <= 8 ? ' wide' : ''}">${esc(BRAND.name)}</span>`;
 function applyBrand() {
@@ -301,7 +301,7 @@ let ME = null;
 const views = {};
 
 // ---------- 🗳️ Votación de señales y 🧠 qué tan seguro está JARVIS ----------
-const VOTE_NAME = { tendencia: 'Cómo va su precio', historial: 'Lo que JARVIS ya acertó con ella', empresa: 'Salud de la empresa', riesgo: 'Qué tan riesgosa es', polemicas: 'Noticias graves' };
+const VOTE_NAME = { tendencia: 'Cómo va su precio', historial: 'Lo que JARVIS ya acertó con ella', empresa: 'Salud de la empresa', riesgo: 'Qué tan riesgosa es', polemicas: 'Noticias graves', duenos: 'Lo que hacen los dueños', sorpresa: 'Sorpresa de ganancias' };
 function votesHtml(contribs) {
   const c = (contribs || []).filter(x => VOTE_NAME[x.factor]); if (!c.length) return '';
   const yes = c.filter(x => x.value > 0.05), no = c.filter(x => x.value < -0.05), mid = c.length - yes.length - no.length;
@@ -888,6 +888,7 @@ views.loterias = async () => {
     <div class="card kpi" style="--c:var(--accent)"><div class="l">${term('valor esperado', 'Valor esperado')}</div><div class="v">${rdRaw(L.expected.quiniela)}</div><div class="s">Quiniela · palé ${rdRaw(L.expected.pale)} · tripleta ${rdRaw(L.expected.tripleta)}</div></div>
   </section>
   <div id="jvlot"><div class="card note">Cargando lo que juega JARVIS…</div></div>
+  ${lotteryCompare(L)}
   <div class="row" id="gtabs">${L.games.map(g => `<button class="btn ${g.id === g0.id ? '' : 'ghost'}" data-g="${g.id}">${esc(g.name)}</button>`).join('')}</div>
   <div id="gview"></div>`;
 };
@@ -912,7 +913,7 @@ async function loadJarvisLottery() {
     <div class="jvnext">${B.upcoming.map(u => `<div class="jvn">
       <div class="jvn-h"><b>${esc(u.name)}</b><span class="chip">${untilTxt(u.closesAt)}</span></div>
       <div class="jvn-d">📅 ${fdate(u.date)} · 🕐 ${ampm(u.time)}${u.verified ? '' : ' <span class="note">(hora por confirmar)</span>'}</div>
-      ${u.pick ? `<div class="jvn-b"><div class="balls">${balls(u.pick.numbers)}</div><div><div class="note">${u.pick.numbers.length > 1 ? `Sus ${u.pick.numbers.length} números · RD$${u.pick.perNumberRd} c/u` : 'Su número · juega'}</div><b>${rdu(u.pick.stakeRd)}</b></div></div>${u.pick.stakeWhy ? `<div class="note">💵 ${esc(u.pick.stakeWhy)}</div>` : ''}
+      ${u.pick ? `<div class="jvn-b"><div class="balls">${balls(u.pick.numbers)}</div><div><div class="note">${u.pick.numbers.length > 1 ? `Sus ${u.pick.numbers.length} números · RD$${u.pick.perNumberRd} c/u` : 'Su número · juega'}</div><b>${rdu(u.pick.stakeRd)}</b></div></div>${u.pick.stakeWhy ? `<div class="note">💵 ${esc(u.pick.stakeWhy)}</div>` : ''}${u.order?.list?.length ? `<div class="jv-ord"><span class="note">🎯 Orden aprendido para jugar:</span> ${u.order.list.map(o => `<span class="jo"><small>${o.rank}º</small><b>${esc(o.num)}</b><small>${o.prob}%</small></span>`).join('')} <span class="note">(lo normal: ${u.order.fair}%)</span></div>` : ''}
         <div class="jvn-w"><b>¿Por qué?</b> Método "${esc(u.pick.methodLabel)}": ${esc(u.pick.why)}</div>
         <div class="note">${u.pick.sealedAt ? `🔒 Sellado ${hhmm(u.pick.sealedAt)} · huella ${esc((u.pick.hash || '').slice(0, 10))}… (ya no se puede cambiar)` : '📝 Se sella automáticamente antes del cierre'}</div>
         ${u.plays.length ? `<details><summary class="note">Lo que juegan los otros ${u.plays.length} métodos de prueba</summary><div class="jvo">${u.plays.map(p => `<span><i>${esc(p.label)}</i> ${p.numbers.map(esc).join(' ')}</span>`).join('')}</div></details>` : ''}`
@@ -933,6 +934,17 @@ async function loadJarvisLottery() {
     </div>`; }).join('')}</div>` : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>'}
     <div class="answer" style="margin-top:12px">🔒 ${esc(B.honest)}</div></section>`;
 }
+/** 🔬 Comparación entre loterías: si una se porta distinto a las demás, salta a la vista. */
+function lotteryCompare(L) {
+  const rows = L.games.filter(g => g.scan);
+  if (!rows.length) return '';
+  const bf = L.backfill || {}, loading = Object.values(bf).some(x => !x.done);
+  return `<section class="card"><h2>🔬 Auditoría de todas las loterías <span class="more note">como la de un casino: ${rows[0].scan.tests.length} pruebas a cada una</span></h2>
+    ${loading ? `<div class="note" style="margin-bottom:8px">📚 Trayendo el historial de años de cada lotería (sigue solo cada 20 minutos hasta llegar al principio del archivo)…</div>` : ''}
+    <div class="tablewrap"><table><tr><th>Lotería</th><th class="r">Sorteos revisados</th><th>Desde</th><th>Resultado</th><th class="r">Pruebas en alerta</th></tr>
+    ${rows.map(g => { const bad = g.scan.tests.filter(t => t.anomaly).length + (g.scan.hotOutliers?.length || 0); return `<tr><td><b>${esc(g.name)}</b></td><td class="r">${g.draws}</td><td>${g.since ? new Date(g.since + 'T12:00:00Z').toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—'}</td><td>${g.draws < 100 ? '<span class="note">pocos sorteos todavía</span>' : bad ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Se porta como azar justo</span>'}</td><td class="r">${bad ? `<b class="bad">${bad}</b>` : '0'}</td></tr>`; }).join('')}</table></div>
+    <div class="note" style="margin-top:6px">Si una lotería sale en <b>Revisar</b> y las demás no, es la que hay que vigilar: un tambor gastado o una bola más pesada se notaría ahí. Que todas salgan "azar justo" es lo normal, y significa que <b>ningún número tiene ventaja de verdad</b>.</div></section>`;
+}
 views.loterias.after = () => {
   loadJarvisLottery();
   if ($('#lplusb')) $('#lplusb').onclick = async () => { $('#lplus').innerHTML = '<div class="note">Pensando…</div>'; try { const r = await api('/api/lottery/plus', { method: 'POST' }); $('#lplus').innerHTML = r.text ? `<div class="answer">${esc(r.text).replace(/\n/g, '<br>')}</div>` : `<div class="msg err">${esc(r.error || 'La IA no respondió. Revisa en Ajustes → Claves que la clave de ChatGPT esté puesta.')}</div>`; } catch (err) { $('#lplus').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; } };
@@ -949,7 +961,7 @@ views.loterias.after = () => {
     $('#gview').innerHTML = `
     ${V ? `<section class="card votecard"><h2>🗳️ Votación de los métodos <span class="more note">sorteo del ${esc(V.date)}</span></h2>
       <div class="vote-top">${V.top.map(t => `<div class="vt"><span class="ball big">${esc(t.num)}</span><div class="vt-c"><b>${t.votes} de ${V.totalVoters} votos</b><div class="vbar"><span style="width:${Math.round(t.votes / V.totalVoters * 100)}%"></span></div>${t.prob != null ? `<div class="note">📈 ${t.prob}% de salir${V.order ? ` · ${V.order.find(o => o.num === t.num)?.rank}º para jugar` : ''}</div>` : ''}</div></div>`).join('')}</div>
-      ${V.order?.length ? `<div class="vorder"><div class="note" style="margin-bottom:6px"><b>🎯 Orden para jugar según lo aprendido</b> (de más a menos probable). Lo normal para cualquier número es <b>${V.fairProb}%</b>; aprendido de ${V.draws} sorteos y de cómo les va a los métodos de verdad.</div><div class="vo-list">${V.order.map(o => `<div class="vo${o.rank <= 3 ? ' top' : ''}"><small>${o.rank}º</small><span class="ball" style="width:30px;height:30px;font-size:13px">${esc(o.num)}</span><b>${o.prob}%</b><small class="${o.vsFair > 0 ? 'good' : o.vsFair < 0 ? 'bad' : ''}">${o.vsFair > 0 ? '+' : ''}${o.vsFair}% vs normal</small><small>${o.votes} voto${o.votes === 1 ? '' : 's'} · salió ${o.timesOut} veces</small></div>`).join('')}</div><div class="note" style="margin-top:6px">Las diferencias son pequeñas a propósito: si los sorteos son justos, ningún número es mucho más probable que otro. Si un método demuestra que le gana al azar, sus números suben en este orden.</div></div>` : ''}
+      ${V.order?.length ? `<div class="vorder"><div class="note" style="margin-bottom:6px"><b>🎯 Orden para jugar según lo aprendido</b> (de más a menos probable). Lo normal para cualquier número es <b>${V.fairProb}%</b>; aprendido de ${V.draws} sorteos y de cómo les va a los métodos de verdad.</div><div class="vo-list">${V.order.map(o => `<div class="vo${o.rank <= 3 ? ' top' : ''}"><small>${o.rank}º</small><span class="ball" style="width:30px;height:30px;font-size:13px">${esc(o.num)}</span><b>${o.prob}%</b><small class="${o.vsFair > 0 ? 'good' : o.vsFair < 0 ? 'bad' : ''}">${o.vsFair > 0 ? '+' : ''}${o.vsFair}% vs normal</small><small>${o.votes} voto${o.votes === 1 ? '' : 's'} · salió ${o.timesOut} veces</small></div>`).join('')}</div><div class="note" style="margin-top:6px">${V.realShare > 0 ? `De las diferencias entre números en el historial, el <b>${V.realShare}%</b> parece real (más de lo que explica la suerte); el resto es ruido y no se cuenta.` : 'En el historial, los números varían <b>lo mismo que variaría el azar puro</b>: por eso todos quedan casi iguales (no hay ventaja real que aprovechar). El orden sale de los votos.'} Si un método demuestra que le gana al azar, sus números suben en este orden.</div></div>` : ''}
       <div class="note" style="margin:8px 0">Los números que más métodos eligieron. <b>Probabilidad real:</b> ${esc(V.chance)}</div>
       <details><summary class="note">Ver cómo votó cada método y cómo le va de verdad</summary><div class="tablewrap"><table><tr><th>Método</th><th>Su voto</th><th class="r">Jugadas reales</th><th class="r">¿Le gana al azar?</th></tr>${V.voters.map(v => `<tr><td><b>${esc(v.label)}</b><div class="note">${esc(v.why)}</div></td><td><div class="balls">${v.nums.map(n => `<span class="ball" style="width:30px;height:30px;font-size:13px">${esc(n)}</span>`).join('')}</div></td><td class="r">${v.n ? `${v.wins} premios en ${v.n}` : '—'}</td><td class="r">${v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>'}</td></tr>`).join('')}</table></div></details>
       <div class="answer" style="margin-top:8px">🧠 ${esc(V.verdict)}</div></section>` : ''}
@@ -997,6 +1009,7 @@ views.aprendizaje = async () => {
       ${d.coins.length ? `<details style="margin-top:8px"><summary>Últimos movimientos ▸</summary>${d.coins.map(c => `<div class="note">${esc(c.ts.slice(0, 16).replace('T', ' '))} · ${esc(c.agent)} · <b class="${cls(c.amount)}">${c.amount > 0 ? '+' : ''}${c.amount}</b> ${esc(c.reason)}${c.revoked ? ' (revocada)' : ''}</div>`).join('')}</details>` : ''}</div>
   </section>
   <section class="grid g2">
+    <div class="card"><h2>📏 ¿Se cumplen sus %? <span class="more note">cuando dice "6 de cada 10", ¿pasa 6 de cada 10?</span></h2><div id="calib" class="note">Cargando…</div></div>
     <div class="card"><h2>🛡️ Auditoría de monedas <span class="more note">cómo se ganó cada una y de dónde salieron los datos</span></h2><p class="note">Un agente solo gana monedas cuando una operación cerrada gana dinero (virtual). Antes de pagarle, el auditor revisa que no haya hecho trampa. Aquí ves la prueba de cada moneda.</p><div id="caudit" class="note">Cargando…</div></div>
   </section>
   <section class="grid g2">
@@ -1018,7 +1031,7 @@ const adminOnly = () => `<section class="card"><h2>Solo para el administrador</h
 views.estado = async () => {
   if (ME?.role !== 'admin') return adminOnly();
   const s = await api('/api/status');
-  const NAMES = { loterias_resultados: 'Resultados de loterías', loterias_liquidar: 'Pagar jugadas', bolsa_precios: 'Precios en vivo', bolsa_historial: 'Historial de precios', copia: 'Copia de seguridad', resumen_diario: 'Resumen diario', fundamentales: 'Informes de empresas', noticias: 'Noticias', investigacion: 'Investigación', loterias_jugadas: 'Jugadas automáticas', prueba_en_vivo: 'Prueba en vivo', cartera_ia: 'Cartera de la IA', explorar: 'Explorar nuevas acciones', ranking: 'Ranking', debate: 'Debate', vigilancia_loterias: 'Vigilancia de trampas' };
+  const NAMES = { loterias_resultados: 'Resultados de loterías', loterias_historial: 'Historial de años de loterías', calibracion: '¿Se cumplen sus %?', sec_duenos: 'Compras de los dueños (SEC)', loterias_liquidar: 'Pagar jugadas', bolsa_precios: 'Precios en vivo', bolsa_historial: 'Historial de precios', copia: 'Copia de seguridad', resumen_diario: 'Resumen diario', fundamentales: 'Informes de empresas', noticias: 'Noticias', investigacion: 'Investigación', loterias_jugadas: 'Jugadas automáticas', prueba_en_vivo: 'Prueba en vivo', cartera_ia: 'Cartera de la IA', explorar: 'Explorar nuevas acciones', ranking: 'Ranking', debate: 'Debate', vigilancia_loterias: 'Vigilancia de trampas' };
   return `<div><h1>Estado del sistema</h1><p class="sub">Último latido: ${timeAgo(s.heartbeat)} · Motor: ${s.motor.running ? `activo${s.motor.until ? ' hasta ' + new Date(s.motor.until).toLocaleString('es-DO') : ''}` : 'en pausa'} · Versión: <b>${esc(s.version || '—')}</b></p></div>
   <section class="grid g4">
     <div class="card kpi" style="--c:${s.ledger.ok ? 'var(--good)' : 'var(--bad)'}"><div class="l">Registro sellado</div><div class="v">${s.ledger.ok ? 'Intacto' : 'Alterado'}</div><div class="s">${s.ledger.checked} entradas verificadas</div></div>
@@ -1392,6 +1405,16 @@ function shrinkReceipt(file) {
 const STATUS_CHIP = { pendiente: ['⏳ Esperando revisión', 'warn'], aprobada: ['✅ Aprobada', 'good'], rechazada: ['✕ No aprobada', 'bad'] };
 const monthName = iso => new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 views.aprendizaje.after = () => {
+  api('/api/calibracion').then(c => { const el = $('#calib'); if (!el) return;
+    const bins = c.bins.filter(b => b.n);
+    el.innerHTML = `<div class="answer ${c.n < c.minN ? '' : c.shrink >= 0.9 ? 'good' : 'warn'}">${esc(c.verdict)}</div>
+      ${bins.length ? `<div class="tablewrap" style="margin-top:8px"><table><tr><th>Cuando dijo</th><th class="r">Casos</th><th class="r">Pasó de verdad</th><th>¿Se cumple?</th></tr>${bins.map(b => `<tr><td>${Math.round(b.from * 100)}%–${Math.round(Math.min(b.to, 1) * 100)}% <span class="note">(promedio ${b.said}%)</span></td><td class="r">${b.n}</td><td class="r"><b>${b.happened}%</b> <span class="note">(entre ${b.lo}% y ${b.hi}%)</span></td><td>${b.ok == null ? '<span class="note">pocos casos</span>' : b.ok ? '<b class="good">✓ Sí</b>' : b.happened < b.said ? '<b class="bad">✕ Exagera</b>' : '<b class="good">✓ Se queda corto</b>'}</td></tr>`).join('')}</table></div>` : ''}
+      <div class="grid g3" style="gap:10px;margin-top:10px">
+        <div class="pbox"><div class="l">Puntaje de acierto</div><div class="v ${c.skill > 0 ? 'good' : c.skill < 0 ? 'bad' : ''}">${c.skill == null ? '—' : (c.skill > 0 ? '+' : '') + c.skill + '%'}</div><div class="note">mejor (+) o peor (−) que decir siempre 50%</div></div>
+        <div class="pbox"><div class="l">Rangos "8 de cada 10 veces entre X y Y"</div><div class="v">${c.range.pct == null ? '—' : c.range.pct + '%'}</div><div class="note">${c.range.n ? `${c.range.inside} de ${c.range.n} cayeron dentro (lo correcto: cerca de 80%)` : 'se empiezan a medir con las nuevas recomendaciones'}</div></div>
+        <div class="pbox"><div class="l">Corrección automática</div><div class="v">${Math.round(c.shrink * 100)}%</div><div class="note">${c.shrink >= 0.99 ? 'sin corrección: se cree lo que dice' : `de la ventaja que dice tener, solo cuenta este %`}</div></div></div>
+      ${c.lottery.n ? `<div class="note" style="margin-top:8px">🎱 Lotería: dijo en promedio ${c.lottery.said}% de chance de pegar al menos un número y pegó el ${c.lottery.happened}% de las veces (${c.lottery.n} sorteos).</div>` : ''}`;
+  }).catch(e => { const el = $('#calib'); if (el) el.textContent = e.message; });
   api('/api/coins/audit').then(rows => { const el = $('#caudit'); if (!el) return;
     const AG = { largo: 'Agente de largo plazo', corto: 'Agente de corto plazo', polemicas: 'Cazador de noticias', loteria: 'Agente de loterías' };
     el.innerHTML = rows.length ? rows.slice(0, 10).map(c => `<div class="coin"><div class="coin-h"><b class="${c.amount >= 0 ? 'good' : 'bad'}">${c.amount >= 0 ? '+' : ''}${c.amount} monedas</b> · ${esc(AG[c.agent] || c.agent || '')} · ${esc(c.symbol || '')} <span class="chip ${c.clean ? 'good' : 'bad'}">${c.clean ? '✓ Limpia' : c.revoked ? '✕ Revocada: ' + esc(c.revokedReason || 'trampa') : '⚠ Revisar'}</span></div>

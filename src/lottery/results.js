@@ -19,7 +19,7 @@ export function recordObservation(db, { game, date, source, nums, fetchedAt = no
   db.prepare(`INSERT INTO lottery_observations (game, date, source, nums, fetched_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(game, date, source) DO UPDATE SET fetched_at = CASE WHEN lottery_observations.nums = excluded.nums THEN lottery_observations.fetched_at ELSE excluded.fetched_at END, nums = excluded.nums`) // se guarda la PRIMERA vez que se vio ese resultado
     .run(game, date, source, JSON.stringify(nums), fetchedAt);
-  return reconcile(db, game, date);
+  return reconcile(db, game, date, Date.parse(fetchedAt));
 }
 
 /** Hora del sorteo (hora de RD) de una lotería en una fecha. */
@@ -29,7 +29,7 @@ export function drawTime(game, date) { const [h, m] = GAMES[game].time(weekday(d
  * Estados: verificado (2+ fuentes coinciden), conflicto (fuentes distintas), una_fuente (solo una).
  * Si en ajustes se permite, una sola fuente cuenta para pagar jugadas, pero queda marcada así.
  */
-export function reconcile(db, game, date) {
+export function reconcile(db, game, date, now = Date.now()) {
   const obs = db.prepare('SELECT source, nums, fetched_at FROM lottery_observations WHERE game = ? AND date = ?').all(game, date);
   const groups = new Map();
   for (const o of obs) groups.set(o.nums, [...(groups.get(o.nums) || []), o.source]);
@@ -38,7 +38,12 @@ export function reconcile(db, game, date) {
   else if (obs.length >= 2) { status = 'verificado'; nums = obs[0].nums; }
   // Una sola página: si sigue diciendo lo mismo 2 horas después de verlo por primera vez, se toma como estable
   // (los errores de antes eran páginas que todavía no se habían actualizado).
-  else { nums = obs[0]?.nums ?? null; status = obs[0] && Date.now() - Date.parse(obs[0].fetched_at) >= 2 * 3600e3 ? 'estable' : 'una_fuente'; }
+  // Lo leído del archivo un día o más después del sorteo también es estable (la página ya no cambia).
+  else {
+    nums = obs[0]?.nums ?? null;
+    const seenAt = obs[0] ? Date.parse(obs[0].fetched_at) : 0;
+    status = obs[0] && (now - seenAt >= 2 * 3600e3 || (GAMES[game] && seenAt - drawTime(game, date).getTime() >= 24 * 3600e3)) ? 'estable' : 'una_fuente';
+  }
   const sources = Object.fromEntries([...groups].map(([n, s]) => [n, s]));
   db.prepare(`INSERT INTO lottery_draws (game, date, nums, status, sources, updated_at) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(game, date) DO UPDATE SET nums = excluded.nums, status = excluded.status, sources = excluded.sources, updated_at = excluded.updated_at`)

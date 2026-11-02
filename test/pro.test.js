@@ -265,3 +265,77 @@ test('votación de lotería: cada número trae su probabilidad aprendida y un or
   for (const o of v.order) assert.ok(o.prob >= v.fairProb * 0.5 && o.prob <= v.fairProb * 2, 'nunca se inventa una ventaja grande');
   assert.ok(v.top.every(t => t.prob != null));
 });
+
+test('historial de años: baja páginas por fecha hacia atrás, sin huecos, y se detiene donde empieza el archivo', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { backfillHistory } = await import('../src/lottery/sources.js');
+  const db = od(':memory:');
+  const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'], MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const pageFor = end => { let t = ''; for (let i = 0; i < 15; i++) { const d = new Date(Date.parse(end) - i * 864e5); if (d < new Date('2026-08-01')) break; const k = d.getUTCDate(); t += ` Loteka ${DAYS[d.getUTCDay()]} ${String(k).padStart(2, '0')} de ${MES[d.getUTCMonth()]}, ${d.getUTCFullYear()} 7:50PM ${[k, (k * 3 + 1) % 100, (k * 7 + 5) % 100].map(x => String(x % 100).padStart(2, '0')).join(' ')}`; } return t; };
+  const fake = async url => { const m = url.match(/(\d{4}-\d{2}-\d{2})$/), d = m[1]; if (!url.includes('loteka') || d < '2026-08-01') return { ok: false, status: 404, text: async () => '' }; return { ok: true, status: 200, text: async () => `<html><body>${pageFor(d)}</body></html>` }; };
+  let r; for (let i = 0; i < 4; i++) r = await backfillHistory(db, { fetchImpl: fake, pauseMs: 0, today: '2026-10-31', pagesPerGame: 4 });
+  const n = db.prepare("SELECT COUNT(*) n FROM lottery_draws WHERE game = 'loteka'").get().n;
+  assert.equal(n, 92, 'del 1 de agosto al 31 de octubre, sin huecos'); // 92 días
+  assert.equal(r.loteka.done, true);
+  assert.equal(db.prepare("SELECT status FROM lottery_draws WHERE game = 'loteka' AND date = '2026-09-15'").get().status, 'estable');
+});
+
+test('auditoría profunda: decenas, pares, suma y día de la semana; no da falsas alarmas con azar justo y sí detecta un sesgo', async () => {
+  const { scan } = await import('../src/lottery/stats.js');
+  const { rng, pad2 } = await import('../src/core/util.js');
+  const mk = (seed, biased) => { const r = rng(seed); return Array.from({ length: 400 }, (_, i) => ({ date: new Date(Date.UTC(2025, 0, 1) + i * 864e5).toISOString().slice(0, 10), nums: [0, 1, 2].map(() => pad2(biased && r() < 0.15 ? 60 + Math.floor(r() * 40) : Math.floor(r() * 100))) })); };
+  const fair = scan(mk(4), { sims: 200 });
+  for (const id of ['decenas', 'pares', 'suma', 'dia_semana']) assert.ok(fair.tests.some(t => t.id === id), id);
+  assert.match(fair.verdict, /azar justo/);
+  const bad = scan(mk(4, true), { sims: 200 });
+  assert.ok(bad.tests.find(t => t.id === 'suma').anomaly, 'las bolas tiran hacia números altos');
+});
+
+test('calibración: si dice 65% y pasa 50%, sus % se corrigen solos hacia el 50%', async () => {
+  const { openDb: od, getSetting: gs } = await import('../src/core/db.js');
+  const { calibration, runCalibration } = await import('../src/motor/calibration.js');
+  const { probBeat } = await import('../src/motor/track.js');
+  const db = od(':memory:');
+  const ins = db.prepare("INSERT INTO predictions (module, agent, subject, payload, prob, sealed_at, ledger_hash, resolved_at, outcome, correct) VALUES ('ranking','jarvis',?,?,0.65,'2026-01-01',?,'2026-02-01',?,?)");
+  for (let i = 0; i < 100; i++) ins.run(`s${i}`, JSON.stringify({ score: 0.6, range: { lo: -0.05, hi: 0.05 } }), `h${i}`, JSON.stringify({ ret: i % 10 === 0 ? 0.2 : 0.01, excess: i % 2 ? 0.01 : -0.01 }), i % 2);
+  const c = calibration(db);
+  assert.equal(c.n, 100); assert.equal(c.happened, 50); assert.equal(c.range.pct, 90);
+  assert.ok(c.shrink <= 0.31, 'no se cumple nada → máxima corrección');
+  runCalibration(db);
+  assert.ok(gs(db, 'global', 'calib.shrink', 1) < 0.5);
+  const pb = probBeat(db, 0.6);
+  assert.ok(Math.abs(pb.p - 0.5) < 0.05, `queda cerca de 50% (${pb.p})`);
+});
+
+test('SEC: lee un Formulario 4 real (venta de un directivo) y las compras de los dueños suben la nota', async () => {
+  const { parseForm4 } = await import('../src/stocks/providers/sec.js');
+  const { scoreSymbol } = await import('../src/stocks/advice.js');
+  const real = '<ownershipDocument><reportingOwner><reportingOwnerId><rptOwnerName>Adams Katherine L.</rptOwnerName></reportingOwnerId><reportingOwnerRelationship><isOfficer>1</isOfficer><officerTitle>SVP, General Counsel</officerTitle></reportingOwnerRelationship></reportingOwner><nonDerivativeTable><nonDerivativeTransaction> <securityTitle> <value>Common Stock</value> <footnoteId id="F1"/> </securityTitle> <transactionDate> <value>2026-10-27</value> </transactionDate> <transactionCoding> <transactionFormType>4</transactionFormType> <transactionCode>S</transactionCode> <equitySwapInvolved>false</equitySwapInvolved> </transactionCoding> <transactionAmounts> <transactionShares> <value>2399</value> </transactionShares> <transactionPricePerShare> <value>343.36</value> </transactionPricePerShare> <transactionAcquiredDisposedCode> <value>D</value> </transactionAcquiredDisposedCode> </transactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>';
+  const t = parseForm4(real, '2026-10-29');
+  assert.equal(t.length, 1); assert.equal(t[0].code, 'S'); assert.equal(t[0].shares, 2399); assert.equal(Math.round(t[0].usd), 823721); assert.equal(t[0].title, 'SVP, General Counsel');
+  const bars = Array.from({ length: 300 }, (_, i) => ({ ts: `d${i}`, close: 100 + i * 0.05 }));
+  const base = scoreSymbol({ symbol: 'X', bars, bench: bars, facts: [] });
+  const withBuys = scoreSymbol({ symbol: 'X', bars, bench: bars, facts: [{ metric: 'duenos_compras_usd', value: 500000 }, { metric: 'duenos_compradores', value: 3 }, { metric: 'duenos_ventas_usd', value: 0 }] });
+  assert.ok(withBuys.score > base.score, 'las compras de los dueños suben la nota');
+  assert.ok(withBuys.reasons.some(r => r.factor === 'duenos' && /3 directivos compraron/.test(r.text)));
+  const today = new Date().toISOString().slice(0, 10);
+  const eps = [['CY2026Q3', 2.0, today], ['CY2026Q2', 1.8, '2026-08-01'], ['CY2026Q1', 1.7, '2026-05-01'], ['CY2025Q4', 1.6, '2026-02-01'], ['CY2025Q3', 1.2, '2025-11-01']].map(([period, value, f]) => ({ metric: 'bpa_trimestral', period, value, source: `SEC EDGAR 10-Q presentado ${f}` }));
+  const surprise = scoreSymbol({ symbol: 'X', bars, bench: bars, facts: eps });
+  assert.ok(surprise.reasons.some(r => r.factor === 'sorpresa' && /\+67%/.test(r.text)));
+});
+
+test('orden aprendido: con sorteos de puro azar no inventa ventajas (todos ≈ 2.97%); con un sesgo real, sí lo detecta', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { recordObservation } = await import('../src/lottery/results.js');
+  const { methodVotes } = await import('../src/motor/lottery-agent.js');
+  const { rng, pad2 } = await import('../src/core/util.js');
+  const fill = (db, biased) => { const r = rng(11); for (let i = 0; i < 700; i++) { const d = new Date(Date.UTC(2024, 0, 1) + i * 864e5).toISOString().slice(0, 10); let nums = [0, 1, 2].map(() => pad2(biased && r() < 0.08 ? 7 : Math.floor(r() * 100))); if (new Set(nums).size < 3) nums = [nums[0], pad2((Number(nums[0]) + 33) % 100), pad2((Number(nums[0]) + 66) % 100)]; recordObservation(db, { game: 'loteka', date: d, source: 'premios.do', nums, fetchedAt: `${d}T23:59:00.000Z` }); } };
+  const fair = od(':memory:'); fill(fair, false);
+  const v = methodVotes(fair, 'loteka', { now: new Date('2025-12-15T12:00:00Z') });
+  for (const o of v.order) assert.ok(Math.abs(o.prob - v.fairProb) < 0.35, `azar puro: ${o.num} ${o.prob}%`);
+  const bad = od(':memory:'); fill(bad, true);
+  const w = methodVotes(bad, 'loteka', { now: new Date('2025-12-15T12:00:00Z') });
+  assert.ok(w.realShare > 50, `detecta el sesgo (${w.realShare}%)`);
+  const seven = w.order.find(o => o.num === '07');
+  if (seven) assert.ok(seven.prob > w.fairProb * 1.5, 'el 07 sale mucho más y lo dice');
+});

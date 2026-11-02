@@ -4,12 +4,13 @@ import { getSetting, setSetting, activity, nowIso } from '../core/db.js';
 import { backup } from '../core/jobs.js';
 import { verifyLedger } from '../core/ledger.js';
 import { rdDate } from '../core/util.js';
-import { collectAll } from '../lottery/sources.js';
+import { collectAll, backfillHistory } from '../lottery/sources.js';
+import { runCalibration } from './calibration.js';
 import { settlePending } from '../lottery/simulator.js';
 import { scan } from '../lottery/stats.js';
 import { history, repairLotteryData } from '../lottery/results.js';
 import { GAMES } from '../lottery/games.js';
-import { universe, updateSymbol, updateQuotes, updateFacts, BENCH } from '../stocks/collector.js';
+import { universe, updateSymbol, updateQuotes, updateFacts, updateInsiders, BENCH } from '../stocks/collector.js';
 import { marketOpen, nyParts } from '../stocks/market.js';
 import { collectNews, digestNews } from '../ai/research.js';
 import { ensureAgents } from './league.js';
@@ -40,11 +41,14 @@ const MIN = 60e3;
 const TASKS = [
   ['loterias_resultados', 30 * MIN, false],
   ['loterias_liquidar', 10 * MIN, false],
+  ['loterias_historial', 20 * MIN, false, (now, cfg, db) => !Object.values(getSetting(db, 'global', 'lottery.backfill', {})).length || Object.values(getSetting(db, 'global', 'lottery.backfill', {})).some(g => !g.done)],
   ['bolsa_precios', 15 * MIN, false, now => marketOpen(now)],
   ['bolsa_historial', 12 * 60 * MIN, false],
   ['copia', 24 * 60 * MIN, false],
   ['lecciones', 7 * 24 * 60 * MIN, false],
   ['aprender_senales', 24 * 60 * MIN, false],
+  ['calibracion', 24 * 60 * MIN, false],
+  ['sec_duenos', 24 * 60 * MIN, false],
   ['drive', 24 * 60 * MIN, false, (now, cfg) => !!(cfg.driveUrl && cfg.driveToken)],
   ['avisos', 5 * MIN, false],
   ['tipo_cambio', 24 * 60 * MIN, false],
@@ -83,6 +87,15 @@ async function runTask(name, db, cfg, now, fetchImpl) {
   const syms = universe(db);
   switch (name) {
     case 'loterias_resultados': { const r = await collectAll(db, { fetchImpl }); const ok = r.filter(x => x.ok).length; setSetting(db, 'global', 'lottery.sources', { at: now.toISOString(), report: r }); activity(db, { agent: 'loteria', type: 'datos', text: `Revisé ${r.length} páginas de resultados: ${ok} respondieron.` }); return { ok, total: r.length, failed: r.filter(x => !x.ok) }; }
+    case 'loterias_historial': { const r = await backfillHistory(db, { fetchImpl }); const n = Object.values(r).reduce((t, x) => t + (x.saved || 0), 0); if (n) activity(db, { agent: 'loteria', type: 'datos', text: `📚 Historial: guardé ${n} sorteos viejos (${Object.entries(r).map(([g, x]) => `${g} desde ${x.oldest || '—'}`).join(', ')}).` }); return r; }
+    case 'calibracion': return runCalibration(db);
+    case 'sec_duenos': {
+      const res = [];
+      for (const s of syms.filter(x => x !== BENCH)) { try { res.push(await updateInsiders(db, cfg, s, { fetchImpl })); } catch (e) { res.push({ symbol: s, error: e.message }); } }
+      const buys = res.filter(r => r.buys).map(r => r.symbol);
+      activity(db, { agent: 'largo', type: 'datos', important: buys.length > 0, text: `👔 Revisé en la SEC lo que hicieron los dueños de ${res.filter(r => !r.error && !r.none).length} empresas.${buys.length ? ` Compraron con su propio dinero en: ${buys.join(', ')}.` : ' Ningún directivo compró en los últimos 6 meses.'}` });
+      return res;
+    }
     case 'loterias_liquidar': return { repaired: repairLotteryData(db), settled: settlePending(db), picks: resolveLotteryPicks(db), real: settleRealLottery(db) };
     case 'bolsa_precios': return { quotes: await updateQuotes(db, cfg, syms, { fetchImpl }) };
     case 'bolsa_historial': { const res = []; for (const s of syms) { try { res.push(await updateSymbol(db, cfg, s, { fetchImpl })); } catch (e) { res.push({ symbol: s, error: e.message }); } } activity(db, { type: 'datos', text: `Historial de precios actualizado: ${res.filter(r => !r.error).length} de ${syms.length} acciones.` }); return res; }
@@ -165,7 +178,7 @@ export async function runCycle(db, cfg, { now = new Date(), fetchImpl = fetch, f
   const last = getSetting(db, 'global', 'motor.lastRun', {});
   const results = {};
   for (const [name, every, needsMotor, cond] of TASKS) {
-    const due = force.includes(name) || ((!needsMotor || running) && (!last[name] || now - new Date(last[name].at) >= every) && (!cond || cond(now, cfg)));
+    const due = force.includes(name) || ((!needsMotor || running) && (!last[name] || now - new Date(last[name].at) >= every) && (!cond || cond(now, cfg, db)));
     if (!due) continue;
     try {
       const r = await runTask(name, db, cfg, now, fetchImpl);

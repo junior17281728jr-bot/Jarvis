@@ -5,7 +5,7 @@
 import { getSetting, setSetting, nowIso, activity } from '../core/db.js';
 import { WEIGHTS } from '../stocks/advice.js';
 
-const NAMES = { tendencia: 'Cómo va su precio', historial: 'Lo que JARVIS ya acertó con ella', empresa: 'Salud de la empresa', riesgo: 'Qué tan riesgosa es', polemicas: 'Noticias graves' };
+const NAMES = { tendencia: 'Cómo va su precio', historial: 'Lo que JARVIS ya acertó con ella', empresa: 'Salud de la empresa', riesgo: 'Qué tan riesgosa es', polemicas: 'Noticias graves', duenos: 'Lo que hacen los dueños', sorpresa: 'Sorpresa de ganancias' };
 const PRIOR = 150; // casos "imaginarios" en 50% que frenan los cambios con pocos datos
 
 export function factorStats(db) {

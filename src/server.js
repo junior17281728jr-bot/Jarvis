@@ -17,6 +17,7 @@ import { latestRanking, debateTop } from './motor/recommend.js';
 import { leagueTable, cheatReports, ensureAgents, coinAudit } from './motor/league.js';
 import { strategiesSummary, seedAgenda } from './motor/research.js';
 import { pickOfTheDay, liveMethodStats, methodVotes , lotteryBoard } from './motor/lottery-agent.js';
+import { calibration } from './motor/calibration.js';
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
@@ -147,7 +148,7 @@ route('GET', '/api/home', ({ user }) => home(db, cfg, user));
 route('GET', '/api/activity', ({ url, user }) => db.prepare('SELECT * FROM activity WHERE id > ? AND (user_id IS NULL OR user_id = ?) ORDER BY id DESC LIMIT 60').all(Number(url.searchParams.get('after') || 0), user.id));
 
 // ---------- Modo TV: titular con datos concretos y "pensamientos" del analista con datos reales ----------
-const VOTE_TV = { tendencia: 'precio', historial: 'aciertos previos', empresa: 'salud de la empresa', riesgo: 'riesgo', polemicas: 'noticias' };
+const VOTE_TV = { tendencia: 'precio', historial: 'aciertos previos', empresa: 'salud de la empresa', riesgo: 'riesgo', polemicas: 'noticias', duenos: 'compras de los dueños', sorpresa: 'sorpresa de ganancias' };
 function cardFacts(c) {
   const t = (c.reasons || []).find(r => r.factor === 'tendencia')?.text || '';
   const m = t.match(/(subió|bajó) ([\d.]+)%/), mk = t.match(/(subieron|bajaron) ([\d.]+)%/);
@@ -354,20 +355,24 @@ route('POST', '/api/lottery/plus', async ({ user }) => {
   const facts = { juegos: games, devolucion_promedio_por_cada_100_pesos: { quiniela: round(expectedReturn('quiniela', P) * 100, 1), pale: round(expectedReturn('pale', P) * 100, 1), tripleta: round(expectedReturn('tripleta', P) * 100, 1) }, jugadas_virtuales_de_jarvis: playStats(db, { agent: 'loteria' }) };
   return lotteryExplain(db, cfg, { userId: user.id, facts });
 });
+// Lo pesado (vigilancia y comparación de métodos) solo se recalcula cuando llega un sorteo nuevo de esa lotería
+const lotMemo = new Map();
+const memoLot = (kind, game, h, fn) => { const k = `${kind}|${game}|${h.length}|${h.at(-1)?.date}`; if (!lotMemo.has(k)) { for (const x of lotMemo.keys()) if (x.startsWith(`${kind}|${game}|`)) lotMemo.delete(x); lotMemo.set(k, fn()); } return lotMemo.get(k); };
 route('GET', '/api/lottery', () => cached('lottery', 30 * 60e3, () => {
   const games = Object.values(GAMES).map(g => {
     const h = history(db, g.id);
     let nd = null; try { nd = nextDraw(g.id); } catch { /* sin horario */ }
-    return { id: g.id, name: g.name, entity: g.entity, timeVerified: g.verified, next: nd ? { date: nd.date, closesAt: nd.close.toISOString() } : null, draws: h.length, last: h.slice(-10).reverse(),
-      freq: h.length ? frequencies(h).total : null, insights: h.length ? numberInsights(h, 10) : [], scan: h.length >= 10 ? scan(h, { sims: 400 }) : null,
-      compare: h.length >= 20 ? compareMethods(h, 'quiniela', { sims: 200, P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) }) : null, pick: (() => { try { return pickOfTheDay(db, g.id); } catch { return null; } })(), votes: (() => { try { return methodVotes(db, g.id); } catch { return null; } })() };
+    return { id: g.id, name: g.name, entity: g.entity, timeVerified: g.verified, next: nd ? { date: nd.date, closesAt: nd.close.toISOString() } : null, draws: h.length, since: h[0]?.date || null, last: h.slice(-10).reverse(),
+      freq: h.length ? frequencies(h).total : null, insights: h.length ? numberInsights(h, 10) : [], scan: h.length >= 10 ? memoLot('scan', g.id, h, () => scan(h, { sims: 400 })) : null,
+      compare: h.length >= 20 ? memoLot('cmp', g.id, h, () => compareMethods(h, 'quiniela', { sims: 200, P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) })) : null, pick: (() => { try { return pickOfTheDay(db, g.id); } catch { return null; } })(), votes: (() => { try { return methodVotes(db, g.id); } catch { return null; } })() };
   });
-  return { games, live: liveMethodStats(db), stats: playStats(db, { agent: 'loteria' }), payouts: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS), expected: (() => { const P = getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS); return { quiniela: round(expectedReturn('quiniela', P) * 100, 2), pale: round(expectedReturn('pale', P) * 100, 2), tripleta: round(expectedReturn('tripleta', P) * 100, 2) }; })() };
+  return { games, backfill: getSetting(db, 'global', 'lottery.backfill', {}), live: liveMethodStats(db), stats: playStats(db, { agent: 'loteria' }), payouts: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS), expected: (() => { const P = getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS); return { quiniela: round(expectedReturn('quiniela', P) * 100, 2), pale: round(expectedReturn('pale', P) * 100, 2), tripleta: round(expectedReturn('tripleta', P) * 100, 2) }; })() };
 }));
 route('POST', '/api/lottery/play', async ({ req, user }) => { const b = await body(req); return sealPlay(db, { userId: user.id, game: b.game, kind: b.kind, numbers: b.numbers, stake: Number(b.stake), method: 'manual', purpose: 'usuario', P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) }); });
 route('GET', '/api/lottery/mine', ({ user }) => ({ stats: playStats(db, { userId: user.id }), plays: db.prepare('SELECT * FROM lottery_plays WHERE user_id = ? ORDER BY sealed_at DESC LIMIT 50').all(user.id) }));
 
 route('GET', '/api/coins/audit', () => coinAudit(db));
+route('GET', '/api/calibracion', () => calibration(db));
 // Registro de votos: qué votó JARVIS, qué pasó de verdad y si ganó o perdió su moneda
 route('GET', '/api/votes/recent', () => {
   const rows = db.prepare("SELECT id, payload, outcome, correct, sealed_at, resolved_at FROM predictions WHERE module = 'ranking' AND correct IS NOT NULL ORDER BY resolved_at DESC, id DESC LIMIT 12").all();

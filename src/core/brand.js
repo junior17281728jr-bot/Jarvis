@@ -9,10 +9,15 @@ export const PALETTES = {
   rosa: { name: 'Rosa', dark: '#ff7cc8', light: '#c02a86' },
   turquesa: { name: 'Turquesa', dark: '#3ee6c4', light: '#00806a' },
 };
-export const DEFAULT_BRAND = { name: 'JARVIS', tagline: 'Tu investigador de bolsa y loterías', owner: '', color: 'cian', logo: null, v: 0 };
+export const DEFAULT_BRAND = { name: 'JARVIS', tagline: 'Ve lo que la mente humana no alcanza. Y lo prueba.', owner: '', color: 'cian', logo: null, v: 0 };
 const MAX_LOGO = 300 * 1024;
 
-export function getBrand(db) { return { ...DEFAULT_BRAND, ...getSetting(db, 'global', 'brand', {}) }; }
+const OLD_TAGLINE = 'Tu investigador de bolsa y loterías';
+export function getBrand(db) {
+  const b = { ...DEFAULT_BRAND, ...getSetting(db, 'global', 'brand', {}) };
+  if (b.tagline === OLD_TAGLINE) b.tagline = DEFAULT_BRAND.tagline; // la frase vieja de fábrica pasa a la nueva
+  return b;
+}
 
 /** Lo que ve cualquiera (también la pantalla de entrada): sin el logo en sí, solo si existe. */
 export function publicBrand(db) {

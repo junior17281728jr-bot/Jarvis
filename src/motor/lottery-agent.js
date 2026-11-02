@@ -95,12 +95,16 @@ export function pickOfTheDay(db, game, { now = new Date() } = {}) {
   const stats = liveMethodStats(db).filter(m => m.n >= 30 && m.method !== 'azar').sort((a, b) => b.per100 - a.per100);
   const method = stats[0]?.method || 'frecuentes';
   // 3 números por sorteo (cada uno una apuesta de quiniela): más chance de pegar uno, como juega la gente en la banca
-  const numbers = METHODS[method].pick(hist, 'tripleta', rng(parseInt(sha256(game + nd.date).slice(0, 8), 16)));
+  let numbers = METHODS[method].pick(hist, 'tripleta', rng(parseInt(sha256(game + nd.date).slice(0, 8), 16)));
+  // "Sus 3 números" = los 3 primeros del orden aprendido (votos de todos los métodos + historial + los que le ganan al azar)
+  let fromOrder = false;
+  try { const v = methodVotes(db, game, { now }); if (v?.order?.length >= 3) { numbers = v.order.slice(0, 3).map(o => o.num); fromOrder = true; } } catch { /* se queda con el del método */ }
   const s = stats[0];
   const azar = liveMethodStats(db).find(m => m.method === 'azar');
   const w = s ? wilson(s.wins, s.n) : null;
   return {
-    game, date: nd.date, closesAt: nd.close.toISOString(), numbers, method, methodLabel: METHODS[method].label, why: METHODS[method].why,
+    game, date: nd.date, closesAt: nd.close.toISOString(), numbers, method, methodLabel: fromOrder ? 'Orden aprendido' : METHODS[method].label,
+    why: fromOrder ? `Los 3 primeros del orden aprendido: los números que más métodos votaron, ajustados por el historial y por los métodos que de verdad le ganan al azar (el mejor ahora: ${METHODS[method].label}).` : METHODS[method].why,
     record: s ? `En vivo este método acierta ${s.wins} de ${s.n} (${round(s.wins / s.n * 100, 1)}%, rango ${round(w.lo * 100)}–${round(w.hi * 100)}%). Devuelve RD$${s.per100} por cada RD$100; el azar, RD$${azar?.per100 ?? '—'}.` : 'Todavía no hay suficientes jugadas en vivo para medir este método.',
     light: 'gris', stake: (() => { const st = smartStake(db, method, numbers.length); return { min: STAKE, suggested: Math.max(STAKE, st.perNumberRd), perNumber: true, why: `${st.why} Mínimo RD$${STAKE} por número (US$${(STAKE / (fx(db)?.rate || 60)).toFixed(2)}).` }; })(),
     warning: 'Si los sorteos son justos, cada número tiene 3 de cada 100 de salir. Con 3 números, la chance de pegar al menos uno es de unos 9 de cada 100.',
@@ -140,10 +144,16 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
   // 📈 Probabilidad aprendida de cada número votado: parte de la probabilidad justa (≈3 de 100) y la mueve
   // poquito según (a) cuántas veces salió en el historial y (b) si los métodos que lo votaron le ganan al azar
   // en jugadas reales. Con pocos datos casi no se mueve: así no se inventa una ventaja que no existe.
-  const P0 = 1 - Math.pow(0.99, 3), PRIOR = 300, n = hist.length;
+  const P0 = 1 - Math.pow(0.99, 3), n = hist.length;
   const seen = {}; for (const d of hist) for (const x of new Set(d.nums)) seen[x] = (seen[x] || 0) + 1;
+  // ¿Cuánto de las diferencias entre números es real y cuánto es ruido del azar? (Bayes empírico / James-Stein)
+  // Si los 100 números varían lo mismo que variaría el azar puro, B = 0 y todos quedan en ~2.97%.
+  // Solo si varían MÁS de lo que explica el azar (un sesgo real), B sube y los diferencia.
+  const ph = Array.from({ length: 100 }, (_, i) => (seen[String(i).padStart(2, '0')] || 0) / Math.max(1, n));
+  const mean = ph.reduce((a, b) => a + b, 0) / 100, varObs = ph.reduce((t, x) => t + (x - mean) ** 2, 0) / 99, varExp = P0 * (1 - P0) / Math.max(1, n);
+  const B = n >= 30 && varObs > 0 ? Math.max(0, Math.min(1, 1 - varExp / varObs)) : 0;
   for (const t of Object.values(tally)) {
-    const pHist = ((seen[t.num] || 0) + PRIOR * P0) / (n + PRIOR);
+    const pHist = P0 + B * ((seen[t.num] || 0) / Math.max(1, n) - P0);
     let skill = 0;
     for (const v of voters.filter(v => v.nums.includes(t.num))) {
       const L = live[v.method];
@@ -158,7 +168,7 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
   const order = Object.values(tally).sort((a, b) => b.prob - a.prob || b.votes - a.votes || (a.num < b.num ? -1 : 1)).map((t, i) => ({ ...t, rank: i + 1 }));
   const anyBeats = voters.some(v => v.beatsChance);
   return {
-    game, date: nd.date, voters, top, order, totalVoters: voters.length, fairProb: round(P0 * 100, 2), draws: n,
+    game, date: nd.date, voters, top, order, totalVoters: voters.length, fairProb: round(P0 * 100, 2), draws: n, realShare: round(B * 100),
     chance: 'En quiniela salen 3 números de 100 (del 00 al 99): cada número tiene 3 de cada 100 de salir, sea cual sea.',
     verdict: anyBeats ? 'Algún método le va ganando al azar en las jugadas reales; sigue en observación (puede ser suerte).'
       : voters.every(v => v.n < 30) ? 'Todavía hay pocas jugadas reales para saber si algún método sirve.'
@@ -186,8 +196,9 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
     let pk = sealedPick(game, nd.date);
     if (!pk && enough) { try { const p = pickOfTheDay(db, game, { now }); pk = { ...p, amountRd: p.stake.suggested * p.numbers.length, perNumberRd: p.stake.suggested, stakeWhy: p.stake.why, sealedAt: null }; } catch { /* sin datos */ } }
     upcoming.push({ game, name: GAMES[game].name, date: nd.date, time: drawTime(game, nd.date), closesAt: nd.close.toISOString(), verified: !!GAMES[game].verified,
-      pick: pk ? { stakeWhy: pk.stakeWhy || null, numbers: pk.numbers, method: pk.method, methodLabel: METHODS[pk.method]?.label || pk.method, why: pk.why || METHODS[pk.method]?.why || '', stakeRd: pk.amountRd ?? STAKE, perNumberRd: pk.perNumberRd ?? pk.amountRd ?? STAKE, sealedAt: pk.sealedAt, hash: pk.hash || null } : null,
+      pick: pk ? { stakeWhy: pk.stakeWhy || null, numbers: pk.numbers, method: pk.method, methodLabel: pk.methodLabel || METHODS[pk.method]?.label || pk.method, why: pk.why || METHODS[pk.method]?.why || '', stakeRd: pk.amountRd ?? STAKE, perNumberRd: pk.perNumberRd ?? pk.amountRd ?? STAKE, sealedAt: pk.sealedAt, hash: pk.hash || null } : null,
       plays: playsFor(game, nd.date), enough, draws: history(db, game).length,
+      order: enough ? (() => { try { const v = methodVotes(db, game, { now }); return v ? { fair: v.fairProb, list: v.order.slice(0, 6).map(o => ({ num: o.num, prob: o.prob, votes: o.votes, rank: o.rank })) } : null; } catch { return null; } })() : null,
       sources: enough ? null : (getSetting(db, 'global', 'lottery.sources', null)?.report || []).filter(x => x.game === game).map(x => ({ source: x.source, ok: x.ok, saved: x.saved, error: x.error })) });
   }
   upcoming.sort((a, b) => a.closesAt < b.closesAt ? -1 : 1);
@@ -197,7 +208,7 @@ export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
       const per = pl.perNumberRd ?? pl.amountRd, many = pl.numbers.length > 1;
       const plays = playsFor(pl.game, pl.date);
       return { game: pl.game, name: GAMES[pl.game]?.name || pl.game, date: pl.date, time: GAMES[pl.game] ? drawTime(pl.game, pl.date) : null,
-        numbers: pl.numbers, method: pl.method, methodLabel: METHODS[pl.method]?.label || pl.method, why: pl.why || '', stakeRd: pl.amountRd, sealedAt: r.sealed_at, hash: r.ledger_hash, resultSeenAt: out ? seenAt(pl.game, pl.date) : null,
+        numbers: pl.numbers, method: pl.method, methodLabel: pl.methodLabel || METHODS[pl.method]?.label || pl.method, why: pl.why || '', stakeRd: pl.amountRd, sealedAt: r.sealed_at, hash: r.ledger_hash, resultSeenAt: out ? seenAt(pl.game, pl.date) : null,
         draw, status: r.correct == null ? 'esperando' : r.correct ? 'acerto' : 'fallo', position: pos >= 0 ? pos + 1 : null, perNumberRd: per, hits, prizeRd: out?.prizeRd ?? null, pnlRd: out?.pnlRd ?? null,
         explain: r.correct == null ? 'El sorteo todavía no tiene resultado confirmado por dos fuentes.'
           : r.correct ? `¡Salió ${hits.map(h => `el ${h} (${['1ra', '2da', '3ra'][draw.indexOf(h)]} posición)`).join(' y ')}! Jugó RD$${pl.amountRd}${many ? ` (RD$${per} por número)` : ''} y cobró RD$${out.prizeRd}.`

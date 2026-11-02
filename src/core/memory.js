@@ -56,6 +56,10 @@ export const PRINCIPLES = [
   'Monedas: los agentes ganan monedas solo con aciertos verificados; un auditor revisa cada moneda y quita las conseguidas con trampa (precios viejos, datos del futuro, decisiones no selladas).',
   'La IA explica y propone, pero nunca decide sola ni pone números: JARVIS prueba con datos reales todo lo que la IA sugiere.',
   'Nunca prometer ganancias ni hablar de 100% de seguridad.',
+  'Calibración: se revisa si sus % se cumplen (cuando dice 6 de cada 10, ¿pasa 6 de cada 10?). Si exagera, sus % se acercan solos al 50% usando lo que decía antes de corregirse.',
+  'Lotería: la probabilidad aprendida usa Bayes empírico (James-Stein): si los números varían lo mismo que el azar puro, todos quedan en ~2.97% y no se inventa ventaja.',
+  'Lotería: un resultado no se acepta antes de la hora del sorteo ni si repite el del día anterior; para pagar, 2 páginas iguales o 1 página estable 2 horas.',
+  'Bolsa: además del precio y los informes, mira lo que hacen los dueños (Formulario 4 de la SEC: compras con su dinero) y la sorpresa de ganancias del último trimestre.',
 ];
 
 /** Junta todo lo aprendido en un objeto. */
