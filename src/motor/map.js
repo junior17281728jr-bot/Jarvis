@@ -8,6 +8,7 @@ import { round } from '../core/util.js';
 import { getBars } from '../stocks/market.js';
 import { universe, updateSymbol, BENCH } from '../stocks/collector.js';
 import { cardFor } from './recommend.js';
+import { HIDDEN, radarFetch, rareza, noteGem, gems } from './gems.js';
 import { recommendedAmount } from './track.js';
 import { getBudget, evidence, sizeFor, baseAmount } from './sizing.js';
 import { getProfile, personalConv, wants, STYLES } from './profile.js';
@@ -93,7 +94,7 @@ export function updateMap(db, cards, { date = nowIso().slice(0, 10) } = {}) {
 }
 
 /** El explorador: estudia unas pocas empresas nuevas por vuelta y, si encuentra una mejor, la mete al mapa. */
-export async function exploreStep(db, cfg, { n = 3, fetchImpl = fetch, fetchBars = null, date = nowIso().slice(0, 10) } = {}) {
+export async function exploreStep(db, cfg, { n = 4, fetchImpl = fetch, fetchBars = null, date = nowIso().slice(0, 10) } = {}) {
   const U = universe(db), inU = new Set(U);
   const spy = getBars(db, BENCH);
   const seen = new Map(db.prepare('SELECT symbol, zone, checked_at FROM map_entries').all().map(r => [r.symbol, r]));
@@ -102,11 +103,20 @@ export async function exploreStep(db, cfg, { n = 3, fetchImpl = fetch, fetchBars
   // Primero lo que propuso la IA (si hay IA conectada); JARVIS lo prueba con precios reales igual que todo lo demás
   const aiList = getSetting(db, 'global', 'explore.ai', []), aiNew = aiList.filter(x => x.status === 'por_estudiar').map(x => x.symbol);
   const isAi = new Set(aiNew);
-  const queue = [...new Set([...aiNew, ...dropped, ...CANDIDATES])].filter(s => !inU.has(s) && s !== BENCH && due(s))
-    .sort((a, b) => (isAi.has(b) - isAi.has(a)) || (seen.get(a)?.checked_at || '').localeCompare(seen.get(b)?.checked_at || ''));
+  // Radar de Yahoo (una vez al día) y la lista de joyas poco conocidas: así no estudia solo a las famosas
+  let radar = [];
+  if (!fetchBars) { try { radar = (await radarFetch(db, { fetchImpl })).map(x => x.symbol); } catch { /* sin radar hoy */ } }
+  const isRadar = new Set(radar), hidden = Object.keys(HIDDEN);
+  const prio = s => (isAi.has(s) ? 3 : isRadar.has(s) && !seen.has(s) ? 2 : !seen.has(s) ? 1 : 0);
+  const queue = [...new Set([...aiNew, ...radar, ...dropped, ...CANDIDATES, ...hidden])].filter(s => !inU.has(s) && s !== BENCH && due(s))
+    .sort((a, b) => (prio(b) - prio(a)) || (seen.get(a)?.checked_at || '').localeCompare(seen.get(b)?.checked_at || ''));
   const markAi = (sym, status, extra = {}) => { if (!isAi.has(sym)) return; const it = aiList.find(x => x.symbol === sym); Object.assign(it, { status, checkedAt: nowIso(), ...extra }); setSetting(db, 'global', 'explore.ai', aiList); };
   const studied = [];
-  for (const sym of queue.slice(0, n)) {
+  // Casi todo para lo nuevo, pero siempre 1 lugar para volver a revisar una que ya había salido (no se olvida)
+  const recheck = queue.find(x => seen.has(x) && !isAi.has(x));
+  const batch = queue.slice(0, n);
+  if (recheck && !batch.includes(recheck)) batch[batch.length - 1] = recheck;
+  for (const sym of batch) {
     try { await (fetchBars ? fetchBars(sym) : updateSymbol(db, cfg, sym, { fetchImpl })); } catch (err) { studied.push({ symbol: sym, error: err.message }); markAi(sym, 'no_encontrada'); continue; }
     const card = cardFor(db, sym, spy);
     if (!card) { studied.push({ symbol: sym, error: 'pocos precios' }); markAi(sym, 'no_encontrada'); continue; }
@@ -119,6 +129,9 @@ export async function exploreStep(db, cfg, { n = 3, fetchImpl = fetch, fetchBars
     if (!prev) move(db, { symbol: sym, from: null, to: 'candidata', reason: `Empecé a estudiarla: ${lc(e.verdict)} (conveniencia ${conv}).`, date });
     activity(db, { agent: 'largo', type: 'explorar', text: `Exploré ${sym}: ${lc(e.verdict)} · conveniencia ${conv}/100.` });
     markAi(sym, 'estudiada', { conv, verdict: e.verdict });
+    // ¿Tiene rarezas que la gente suele pasar por alto? Con 2 o más, es una "joya" a vigilar
+    const tags = rareza(getBars(db, sym), spy);
+    if (tags.length >= 2 && card.light !== 'rojo') noteGem(db, { symbol: sym, tags, conv, light: card.light, source: isAi.has(sym) ? 'ia' : isRadar.has(sym) ? 'radar' : HIDDEN[sym] ? 'lista' : 'grandes' });
     studied.push({ symbol: sym, conv, zone: e.zone });
   }
   // ¿Alguna estudiada es mejor que lo que ya está en el mapa?
@@ -169,7 +182,8 @@ export function mapView(db, { userId = null } = {}) {
     budget, evidence: ev, rows, profile, styleLabel: STYLES[style].label,
     zones, best: zones.recomendada[0] || zones.observacion[0] || null,
     moves: db.prepare('SELECT * FROM map_moves ORDER BY id DESC LIMIT 40').all(),
-    explore: { pool: CANDIDATES.length, studied, pending: CANDIDATES.filter(s => !rows.some(r => r.symbol === s)).length, lastAt: ex?.at || null, every: '6 horas', recheckDays: RECHECK_DAYS, maxActive: MAX_ACTIVE, redStreak: RED_STREAK },
+    gems: gems(db).slice(0, 8), radar: (getSetting(db, 'global', 'explore.radar', { list: [] }).list || []).length,
+    explore: { pool: new Set([...CANDIDATES, ...Object.keys(HIDDEN)]).size, studied, pending: [...new Set([...CANDIDATES, ...Object.keys(HIDDEN)])].filter(s => !rows.some(r => r.symbol === s)).length, lastAt: ex?.at || null, every: '6 horas', recheckDays: RECHECK_DAYS, maxActive: MAX_ACTIVE, redStreak: RED_STREAK },
   };
 }
 

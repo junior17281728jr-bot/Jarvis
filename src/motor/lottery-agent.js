@@ -137,11 +137,28 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
   });
   const tally = {};
   for (const v of voters) for (const x of v.nums) (tally[x] ||= { num: x, votes: 0, by: [] }), tally[x].votes++, tally[x].by.push(v.label);
+  // 📈 Probabilidad aprendida de cada número votado: parte de la probabilidad justa (≈3 de 100) y la mueve
+  // poquito según (a) cuántas veces salió en el historial y (b) si los métodos que lo votaron le ganan al azar
+  // en jugadas reales. Con pocos datos casi no se mueve: así no se inventa una ventaja que no existe.
+  const P0 = 1 - Math.pow(0.99, 3), PRIOR = 300, n = hist.length;
+  const seen = {}; for (const d of hist) for (const x of new Set(d.nums)) seen[x] = (seen[x] || 0) + 1;
+  for (const t of Object.values(tally)) {
+    const pHist = ((seen[t.num] || 0) + PRIOR * P0) / (n + PRIOR);
+    let skill = 0;
+    for (const v of voters.filter(v => v.nums.includes(t.num))) {
+      const L = live[v.method];
+      if (L && azar && L.n >= 30 && azar.per100) skill += ((L.per100 - azar.per100) / azar.per100) * (L.n / (L.n + 300)) / voters.length;
+    }
+    const p = Math.min(2 * P0, Math.max(0.5 * P0, pHist * (1 + Math.max(-0.2, Math.min(0.2, skill)))));
+    Object.assign(t, { prob: round(p * 100, 2), timesOut: seen[t.num] || 0, vsFair: round((p / P0 - 1) * 100, 1) });
+  }
   const ranked = Object.values(tally).sort((a, b) => b.votes - a.votes || (a.num < b.num ? -1 : 1));
   const top = ranked.slice(0, 3);
+  // Orden para jugar: primero el de más probabilidad aprendida; si empatan, el de más votos
+  const order = Object.values(tally).sort((a, b) => b.prob - a.prob || b.votes - a.votes || (a.num < b.num ? -1 : 1)).map((t, i) => ({ ...t, rank: i + 1 }));
   const anyBeats = voters.some(v => v.beatsChance);
   return {
-    game, date: nd.date, voters, top, totalVoters: voters.length,
+    game, date: nd.date, voters, top, order, totalVoters: voters.length, fairProb: round(P0 * 100, 2), draws: n,
     chance: 'En quiniela salen 3 números de 100 (del 00 al 99): cada número tiene 3 de cada 100 de salir, sea cual sea.',
     verdict: anyBeats ? 'Algún método le va ganando al azar en las jugadas reales; sigue en observación (puede ser suerte).'
       : voters.every(v => v.n < 30) ? 'Todavía hay pocas jugadas reales para saber si algún método sirve.'

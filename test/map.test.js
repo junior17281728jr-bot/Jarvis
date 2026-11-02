@@ -48,7 +48,7 @@ test('el explorador estudia empresas nuevas y reemplaza la que lleva mucho tiemp
   updateMap(db, cards, { date: '2026-10-01' });
   db.prepare("UPDATE map_entries SET zone = 'no_recomendada', reds = 12, conv = 5 WHERE symbol = 'ZA'").run();
   const r = await exploreStep(db, cfg, { n: 3, fetchBars: async () => {}, date: '2026-10-02' });
-  assert.equal(r.studied.filter(x => !x.error).length, 3);
+  assert.equal(r.studied.filter(x => !x.error).length, 3, JSON.stringify(r.studied));
   assert.equal(r.swap?.out, 'ZA');
   const v = mapView(db);
   assert.ok(v.zones.descartada.some(x => x.symbol === 'ZA'));

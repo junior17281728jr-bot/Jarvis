@@ -80,6 +80,8 @@ export function opportunities(db, cfg, k = 3) {
     const p = H?.[days] ? { ...H[days], amountUsd: 100 } : c.projection.ejemplo, a = p.amountUsd;
     return { symbol: c.symbol, light: c.light, confidence: c.confidence, probBeat: c.probBeat ?? null, timing: c.timing ?? null, why: c.reasons[0]?.text || '', months: Math.round(days / 21), horizonLabel: LABEL[days],
       pct: { bad: round(p.bad / a * 100, 1), probable: round(p.probable / a * 100, 1), good: round(p.good / a * 100, 1) }, lossChance: p.lossChance,
+      // Lo mismo repartido por mes (con interés compuesto): cuánto sería cada mes en promedio
+      monthlyPct: round((Math.pow(1 + p.probable / a, 21 / days) - 1) * 100, 2),
       byTime: H ? [63, 126, 252].filter(d => H[d]).map(d => ({ days: d, label: LABEL[d], probable: round(H[d].probable, 1), lossChance: H[d].lossChance, market: market[d] })) : null,
       minimum: cfg.tradeMinUsd, minimumWorth: worth, fixedCostUsd: fixed };
   });

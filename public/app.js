@@ -382,6 +382,7 @@ views.inicio = async () => {
   ${ME?.role === 'admin' && h.setup.some(x => !x.ok) ? `<details class="card setup"><summary><span class="prog-ring" style="--p:${Math.round(h.setup.filter(x => x.ok).length / h.setup.length * 100)}"></span><b>Instalación: ${h.setup.filter(x => x.ok).length} de ${h.setup.length} pasos listos</b><span class="note">Toca para ver qué falta (solo tú lo ves)</span></summary>
     <div class="grid g3" style="gap:10px;margin-top:12px">${h.setup.map(x => `<div class="pbox" style="opacity:${x.ok ? .6 : 1}"><b class="${x.ok ? 'good' : ''}">${x.ok ? '✓' : '○'} ${esc(x.text)}</b>${x.ok ? '' : `<div class="note">${esc(x.how)}</div>`}</div>`).join('')}</div></details>` : ''}
   ${oppCard(h.opportunities)}
+  ${goalCard(h.opportunities)}
 
   <section class="grid split">
     <div class="card"><h2>Ranking de hoy <a class="more" href="#recomendaciones">Ver todas ▸</a></h2>${rankingTable(h.ranking, true)}</div>
@@ -404,7 +405,7 @@ views.inicio = async () => {
   ${footLine()}`;
 };
 views.inicio.after = () => {
-  bindOpp(); focusInit();
+  bindOpp(); bindGoal(); focusInit();
   api('/api/votes/recent').then(v => { const el = $('#votelog'); if (!el) return;
     el.innerHTML = `<h2>🗳️ Registro de votos <span class="more note">lo que votó JARVIS y lo que pasó de verdad</span></h2>
       <div class="note" style="margin-bottom:6px">Cada voto se sella antes y se califica a los 21 días hábiles con precios reales. Acierto = +1 moneda, fallo = −1 (así adivinar no da monedas). Esta semana: <b class="${v.coinsWeek >= 0 ? 'good' : 'bad'}">${v.coinsWeek >= 0 ? '+' : ''}${v.coinsWeek} monedas</b> · ${v.pending} votos esperando resultado.</div>
@@ -440,12 +441,48 @@ function oppCard(list) {
       ${o.probBeat != null ? `<div style="margin-top:8px">${chanceDots(o.probBeat)}</div>` : ''}
       <div style="margin:10px 0 4px;font-size:13px;color:var(--mute)">Lo más probable que ganes <b style="color:var(--ink)">si la dejas ${esc(o.horizonLabel || `${o.months} meses`)}</b></div>
       <div style="display:flex;align-items:baseline;gap:10px"><span class="opp-v ${cls(o.pct.probable)}" data-p="${o.pct.probable}" style="font-size:30px;font-weight:800"></span><span class="${cls(o.pct.probable)}" style="font-weight:700">${pct(o.pct.probable)}</span></div>
+      ${o.monthlyPct != null ? `<div class="opp-m">📅 ≈ <b class="opp-v ${cls(o.monthlyPct)}" data-p="${o.monthlyPct}"></b> <b>por mes</b> en promedio <span class="note">(${pct(o.monthlyPct, 2)} al mes; unos meses sube más, otros baja)</span></div>` : ''}
       <div class="mini3" style="margin-top:8px"><div><div class="note">Caso malo</div><b class="opp-v ${cls(o.pct.bad)}" data-p="${o.pct.bad}"></b><div class="note">${pct(o.pct.bad)}</div></div>
       <div><div class="note">Caso bueno</div><b class="opp-v ${cls(o.pct.good)}" data-p="${o.pct.good}"></b><div class="note">${pct(o.pct.good)}</div></div>
       <div><div class="note">Chance de perder</div><b>${Math.round(o.lossChance * 100)}%</b></div></div>
       ${o.byTime?.length ? `<div class="opp-t"><div class="note" style="margin-bottom:4px">⏱️ Según cuánto tiempo la dejes (lo más probable · chance de perder):</div><table>${o.byTime.map(t => `<tr${t.label === o.horizonLabel ? ' class="on"' : ''}><td>${esc(t.label)}</td><td class="r"><b class="opp-v ${cls(t.probable)}" data-p="${t.probable}"></b> <span class="note">(${pct(t.probable)})</span></td><td class="r note">pierde ${Math.round(t.lossChance * 100)}%</td></tr>`).join('')}</table>${o.byTime.at(-1)?.market != null ? `<div class="note" style="margin-top:4px">El mercado entero, en 1 año: ${pct(o.byTime.at(-1).market)}</div>` : ''}</div>` : ''}
       ${o.timing ? `<div style="margin-top:10px">${patience(o.timing, o.light)} <span class="note">${o.timing.toTarget?.median != null ? `Subir 5% tardó normalmente ${humanDays(o.timing.toTarget.median)}.` : ''}</span></div>` : ''}
       <div class="note" style="margin-top:8px">${esc(o.why)}</div></div>`).join('')}</div></section>`;
+}
+/** 🎯 ¿Puedo llegar a mi meta? Cuenta honesta: cuánto tendría que ganar cada mes y qué haría falta de verdad. */
+function goalCard(list) {
+  if (!list?.length) return '';
+  const best = list.filter(o => o.monthlyPct != null).sort((a, b) => b.monthlyPct - a.monthlyPct)[0];
+  const mY = list.find(o => o.byTime?.at(-1)?.market != null)?.byTime.at(-1).market;
+  const mkt = mY != null ? (Math.pow(1 + mY / 100, 1 / 12) - 1) * 100 : 0.8;
+  return `<section class="card goal" data-best="${best?.monthlyPct ?? 1}" data-bsym="${esc(best?.symbol || '')}" data-mkt="${mkt.toFixed(3)}"><h2>🎯 ¿Puedo llegar a mi meta? <span class="more note">la cuenta honesta</span></h2>
+    <div class="row" style="gap:10px;flex-wrap:wrap"><label style="width:150px">Empiezo con (US$)<input id="g-a" type="number" min="1" value="100"></label><label style="width:150px">Quiero llegar a (US$)<input id="g-g" type="number" min="1" value="6000"></label><label style="width:120px">En (meses)<input id="g-m" type="number" min="1" max="120" value="5"></label><label style="width:170px">Puedo añadir cada mes (US$)<input id="g-c" type="number" min="0" value="0"></label></div>
+    <div id="g-out" style="margin-top:10px"></div></section>`;
+}
+function bindGoal() {
+  const box = document.querySelector('.goal'); if (!box) return;
+  const best = Number(box.dataset.best) / 100, mkt = Number(box.dataset.mkt) / 100, bsym = box.dataset.bsym;
+  const fv = (a, c, r, m) => a * Math.pow(1 + r, m) + (r ? c * (Math.pow(1 + r, m) - 1) / r : c * m);
+  const upd = () => {
+    const a = Math.max(1, +$('#g-a').value || 0), g = Math.max(1, +$('#g-g').value || 0), m = Math.max(1, Math.min(120, +$('#g-m').value || 1)), c = Math.max(0, +$('#g-c').value || 0);
+    // ¿Qué ganancia mensual haría falta? (búsqueda simple)
+    let lo = -0.5, hi = 20; for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; if (fv(a, c, mid, m) < g) lo = mid; else hi = mid; }
+    const need = hi, withBest = fv(a, c, best, m), withMkt = fv(a, c, mkt, m);
+    const needStart = (g - (best ? c * (Math.pow(1 + best, m) - 1) / best : c * m)) / Math.pow(1 + best, m);
+    const needAdd = best ? (g - a * Math.pow(1 + best, m)) * best / (Math.pow(1 + best, m) - 1) : (g - a) / m;
+    const ratio = need / Math.max(best, 0.001);
+    const tone = need <= best ? 'good' : ratio <= 3 ? 'warn' : 'bad';
+    const verdict = need <= best ? '✅ <b>Es posible</b> con lo que JARVIS ve hoy (no es seguro, pero es realista).'
+      : ratio <= 3 ? '⚠️ <b>Muy difícil.</b> Haría falta ganar bastante más que la mejor idea de JARVIS, todos los meses, sin un mal mes.'
+      : `❌ <b>No es realista</b> solo invirtiendo: haría falta ganar <b>${(need * 100).toFixed(0)}% cada mes</b>. Los mejores inversionistas del mundo ganan cerca de 20% a 30% <b>al año</b>. Lo que promete eso en pocos meses (opciones, apalancamiento, cripto de moda, "señales") casi siempre termina en perder todo.`;
+    $('#g-out').innerHTML = `<div class="answer ${tone}">${verdict}</div>
+      <div class="grid g3" style="gap:10px;margin-top:10px">
+        <div class="pbox"><div class="l">Haría falta ganar</div><div class="v ${tone}">${(need * 100).toFixed(1)}% al mes</div><div class="note">todos los meses, ${m} meses seguidos</div></div>
+        <div class="pbox"><div class="l">Con la mejor idea de hoy${bsym ? ` (${esc(bsym)})` : ''}</div><div class="v">${usd(withBest)}</div><div class="note">≈ ${(best * 100).toFixed(2)}% al mes (lo más probable)</div></div>
+        <div class="pbox"><div class="l">Con el mercado entero</div><div class="v">${usd(withMkt)}</div><div class="note">≈ ${(mkt * 100).toFixed(2)}% al mes en promedio</div></div></div>
+      ${need > best ? `<div class="note" style="margin-top:10px"><b>Qué haría falta de verdad para llegar a ${usd(g, 0)} en ${m} meses</b> (con la mejor idea de hoy):<br>• Empezar con unos <b>${usd(Math.max(0, needStart), 0)}</b>${c ? ` (y seguir añadiendo ${usd(c, 0)} al mes)` : ''}, <b>o</b><br>• Añadir unos <b>${usd(Math.max(0, needAdd), 0)} cada mes</b> a tus ${usd(a, 0)}.<br>En la bolsa el dinero crece con <b>más dinero y más tiempo</b>; lo que más rápido sube lo que inviertes es lo que ganas con tu trabajo o tu negocio.</div>` : ''}`;
+  };
+  ['#g-a', '#g-g', '#g-m', '#g-c'].forEach(id => { $(id).oninput = upd; }); upd();
 }
 function bindOpp() {
   const inp = $('#oppamt'); if (!inp) return;
@@ -546,7 +583,7 @@ views.mapa = async () => {
   const zname = k => (ZL[k] || ['', k])[1];
   const col = (k, list) => `<div class="mcol"><div class="mcol-h ${ZL[k][2]}">${ZL[k][0]} ${ZL[k][1]} <span class="note">(${list.length})</span></div>${list.length ? list.map(r => mapCard(r)).join('') : `<div class="empty">${k === 'recomendada' ? 'Hoy ninguna cumple. JARVIS sigue buscando.' : 'Ninguna.'}</div>`}</div>`;
   return `<div><h1>Tu mapa de inversión</h1><p class="sub">Ordenado para tu estilo: <b>${esc(m.styleLabel || 'Equilibrado')}</b> (<a href="#perfil">cambiar</a>). Todas las empresas que JARVIS sigue, de la que más te conviene a la que menos. Las que no sirven no se olvidan: se revisan cada día y, si aparece una mejor, la reemplaza.</p></div>
-  <section class="card explorer"><div class="ex-ic">🔭</div><div><b>Explorando sin parar</b><div class="note">Ya estudió <b>${e.studied}</b> de ${e.pool} empresas y fondos grandes de EE. UU.${e.pending ? ` · le faltan ${e.pending}` : ''} · busca más cada ${esc(e.every)}${e.lastAt ? ` (la última vez: ${timeAgo(e.lastAt)})` : ''}. Si una lleva ${e.redStreak} revisiones seguidas en "No te recomiendo" y aparece otra mejor, la cambia; la que sale se vuelve a revisar cada ${e.recheckDays} días.</div>${m.aiIdeas?.length ? `<div class="aiideas"><b>✨ Sugeridas por la IA</b> <span class="note">(JARVIS las prueba con precios reales antes de recomendarlas)</span>${m.aiIdeas.map(x => `<div class="aiidea"><b>${esc(x.symbol)}</b> <span class="note">· ${esc(({ por_estudiar: '⏳ por estudiar', estudiada: '✅ estudiada', no_encontrada: '✕ sin datos reales' })[x.status] || x.status)}${x.verdict ? ' · ' + esc(x.verdict) : ''}</span><div class="note">${esc(x.why)}</div></div>`).join('')}</div>` : m.aiOn ? '<div class="note" style="margin-top:6px">✨ La IA propone empresas nuevas cada semana (y cuando tocas "¿Qué buscas ahora?" en Inicio).</div>' : ''}</div></section>
+  <section class="card explorer"><div class="ex-ic">🔭</div><div><b>Explorando sin parar</b><div class="note">Ya estudió <b>${e.studied}</b> de ${e.pool} empresas y fondos (las famosas, medianas poco conocidas, fondos de sectores y de otros países)${m.radar ? `, más ${m.radar} que encontró hoy en el radar de Yahoo` : ''}.${e.pending ? ` · le faltan ${e.pending}` : ''} · busca más cada ${esc(e.every)}${e.lastAt ? ` (la última vez: ${timeAgo(e.lastAt)})` : ''}. Si una lleva ${e.redStreak} revisiones seguidas en "No te recomiendo" y aparece otra mejor, la cambia; la que sale se vuelve a revisar cada ${e.recheckDays} días.</div>${m.gems?.length ? `<div class="aiideas"><b>💎 Joyas poco conocidas</b> <span class="note">(tienen 2 o más rarezas que la gente suele pasar por alto; JARVIS las sigue probando)</span>${m.gems.map(g => `<div class="aiidea"><a href="#analisis/${esc(g.symbol)}"><b>${esc(g.symbol)}</b></a>${g.about ? ` <span class="note">· ${esc(g.about)}</span>` : ''} <span class="note">· conveniencia ${g.conv}/100 · ${esc({ ia: 'la propuso la IA', radar: 'del radar de Yahoo', lista: 'de la lista de joyas', grandes: 'de las grandes' }[g.source] || '')}</span>${g.tags.map(t => `<div class="note">• ${esc(t.text)}</div>`).join('')}</div>`).join('')}</div>` : ''}${m.aiIdeas?.length ? `<div class="aiideas"><b>✨ Sugeridas por la IA</b> <span class="note">(JARVIS las prueba con precios reales antes de recomendarlas)</span>${m.aiIdeas.map(x => `<div class="aiidea"><b>${esc(x.symbol)}</b> <span class="note">· ${esc(({ por_estudiar: '⏳ por estudiar', estudiada: '✅ estudiada', no_encontrada: '✕ sin datos reales' })[x.status] || x.status)}${x.verdict ? ' · ' + esc(x.verdict) : ''}</span><div class="note">${esc(x.why)}</div></div>`).join('')}</div>` : m.aiOn ? '<div class="note" style="margin-top:6px">✨ La IA propone empresas nuevas cada semana (y cuando tocas "¿Qué buscas ahora?" en Inicio).</div>' : ''}</div></section>
   ${b ? `<section class="card bestpick ${ZL[b.zone][2]}"><div class="s10-h">Tu mejor opción ahora</div><div class="bp">${coBadge(b.symbol, 72)}<div style="flex:1;min-width:0"><div class="bp-v">${esc(coName(b.symbol))}: ${esc(b.verdict)}</div>
     <ul class="bp-l">${b.why.map(w => `<li>${esc(w)}</li>`).join('')}<li>⏳ ${esc(b.hold)}</li>${b.size ? `<li><b>¿Puedo poner más?</b> ${esc(b.size.more)}</li>` : ''}${b.exitIf.map(w => `<li class="note">${esc(w)}</li>`).join('')}</ul></div>${b.card?.contributions ? votesHtml(b.card.contributions) : b.contributions ? votesHtml(b.contributions) : ''}
     <div class="bp-r">${chanceDots(b.card.probBeat)}${moneyRange(b.size?.usd || 10, scaleProj(b.card.projection.personal, b.size?.usd || 10))}<a class="btn" href="#analisis/${esc(b.symbol)}">Ver el análisis ▸</a></div></div></section>`
@@ -911,7 +948,8 @@ views.loterias.after = () => {
     const V = g.votes;
     $('#gview').innerHTML = `
     ${V ? `<section class="card votecard"><h2>🗳️ Votación de los métodos <span class="more note">sorteo del ${esc(V.date)}</span></h2>
-      <div class="vote-top">${V.top.map(t => `<div class="vt"><span class="ball big">${esc(t.num)}</span><div class="vt-c"><b>${t.votes} de ${V.totalVoters} votos</b><div class="vbar"><span style="width:${Math.round(t.votes / V.totalVoters * 100)}%"></span></div></div></div>`).join('')}</div>
+      <div class="vote-top">${V.top.map(t => `<div class="vt"><span class="ball big">${esc(t.num)}</span><div class="vt-c"><b>${t.votes} de ${V.totalVoters} votos</b><div class="vbar"><span style="width:${Math.round(t.votes / V.totalVoters * 100)}%"></span></div>${t.prob != null ? `<div class="note">📈 ${t.prob}% de salir${V.order ? ` · ${V.order.find(o => o.num === t.num)?.rank}º para jugar` : ''}</div>` : ''}</div></div>`).join('')}</div>
+      ${V.order?.length ? `<div class="vorder"><div class="note" style="margin-bottom:6px"><b>🎯 Orden para jugar según lo aprendido</b> (de más a menos probable). Lo normal para cualquier número es <b>${V.fairProb}%</b>; aprendido de ${V.draws} sorteos y de cómo les va a los métodos de verdad.</div><div class="vo-list">${V.order.map(o => `<div class="vo${o.rank <= 3 ? ' top' : ''}"><small>${o.rank}º</small><span class="ball" style="width:30px;height:30px;font-size:13px">${esc(o.num)}</span><b>${o.prob}%</b><small class="${o.vsFair > 0 ? 'good' : o.vsFair < 0 ? 'bad' : ''}">${o.vsFair > 0 ? '+' : ''}${o.vsFair}% vs normal</small><small>${o.votes} voto${o.votes === 1 ? '' : 's'} · salió ${o.timesOut} veces</small></div>`).join('')}</div><div class="note" style="margin-top:6px">Las diferencias son pequeñas a propósito: si los sorteos son justos, ningún número es mucho más probable que otro. Si un método demuestra que le gana al azar, sus números suben en este orden.</div></div>` : ''}
       <div class="note" style="margin:8px 0">Los números que más métodos eligieron. <b>Probabilidad real:</b> ${esc(V.chance)}</div>
       <details><summary class="note">Ver cómo votó cada método y cómo le va de verdad</summary><div class="tablewrap"><table><tr><th>Método</th><th>Su voto</th><th class="r">Jugadas reales</th><th class="r">¿Le gana al azar?</th></tr>${V.voters.map(v => `<tr><td><b>${esc(v.label)}</b><div class="note">${esc(v.why)}</div></td><td><div class="balls">${v.nums.map(n => `<span class="ball" style="width:30px;height:30px;font-size:13px">${esc(n)}</span>`).join('')}</div></td><td class="r">${v.n ? `${v.wins} premios en ${v.n}` : '—'}</td><td class="r">${v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>'}</td></tr>`).join('')}</table></div></details>
       <div class="answer" style="margin-top:8px">🧠 ${esc(V.verdict)}</div></section>` : ''}
@@ -1715,7 +1753,7 @@ function tvLoto(votes, draws) {
   const el = $('#tvloto'); if (!el) return;
   const cd = iso => { const ms = Date.parse(iso) - Date.now(); if (ms <= 0) return 'cerrado'; const h = Math.floor(ms / 3600e3), mi = Math.floor(ms % 3600e3 / 60e3); return h ? `${h} h ${mi} min` : `${mi} min`; };
   el.innerHTML = `<div class="draws">${(draws || []).slice(0, 2).map(d => `<div class="dr"><b>${esc(d.game)}</b><span>cierra en <em data-cd="${esc(d.closesAt)}">${cd(d.closesAt)}</em></span></div>`).join('')}</div>
-    <div class="lv">${(votes || []).slice(0, 3).map(v => `<div class="lvr"><span class="lg">${esc(v.game)}<small>${v.top.length} números · ${v.voters} métodos votaron</small></span><span class="lb">${v.top.map((n, i) => `<span class="lbn"><i style="animation-delay:${i * 0.15}s">${esc(n)}</i><small>${v.votes?.[i] ?? ''} voto${v.votes?.[i] === 1 ? '' : 's'}</small></span>`).join('')}</span></div>`).join('') || '<div class="zempty">Juntando resultados…</div>'}</div>
+    <div class="lv">${(votes || []).slice(0, 3).map(v => `<div class="lvr"><span class="lg">${esc(v.game)}<small>${v.top.length} números · ${v.voters} métodos votaron</small></span><span class="lb">${v.top.map((n, i) => `<span class="lbn"><i style="animation-delay:${i * 0.15}s">${esc(n)}</i><small>${v.votes?.[i] ?? ''} voto${v.votes?.[i] === 1 ? '' : 's'}${v.probs?.[i] != null ? ` · ${v.probs[i]}%` : ''}</small></span>`).join('')}</span></div>`).join('') || '<div class="zempty">Juntando resultados…</div>'}</div>
     <div class="znote">🗳️ Los números más votados por los métodos. Cada número tiene 3 de cada 100 de salir: JARVIS vigila trampas y no promete nada.</div>`;
 }
 function tvIa(d) {

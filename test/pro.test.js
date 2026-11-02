@@ -232,3 +232,36 @@ test('bolsa: la IA arriesga más cuando está muy segura, menos si va perdiendo,
   assert.equal(def.mode, 'defensa'); assert.equal(def.usd, 0);
   assert.ok(riskDecision(db, { symbol: 'AAA', conv: 90, total: 100, start: 100, peak: 100, vol: 0.05 }).pct <= 0.30);
 });
+
+test('joyas: detecta rarezas (cerca del máximo, sube parejo) y el radar solo acepta empresas grandes y negociadas', async () => {
+  const { rareza, radarFetch, HIDDEN } = await import('../src/motor/gems.js');
+  const { openDb: od } = await import('../src/core/db.js');
+  const bars = Array.from({ length: 300 }, (_, i) => ({ ts: `d${i}`, close: 100 * Math.pow(1.002, i) * (1 + 0.002 * Math.sin(i)) }));
+  const ids = rareza(bars, bars.map(b => ({ ts: b.ts, close: 100 }))).map(t => t.id);
+  assert.ok(ids.includes('cerca_maximo') && ids.includes('constante') && ids.includes('fuerza_silenciosa'));
+  assert.ok(Object.keys(HIDDEN).length >= 60);
+  const db = od(':memory:');
+  const fake = async () => ({ ok: true, json: async () => ({ finance: { result: [{ quotes: [
+    { symbol: 'GOOD', quoteType: 'EQUITY', marketCap: 5e9, regularMarketPrice: 40, averageDailyVolume3Month: 2e6 },
+    { symbol: 'PENY', quoteType: 'EQUITY', marketCap: 5e7, regularMarketPrice: 0.4, averageDailyVolume3Month: 1e5 },
+    { symbol: 'FUND', quoteType: 'ETF', marketCap: 9e9, regularMarketPrice: 50, averageDailyVolume3Month: 2e6 }] }] } }) });
+  assert.deepEqual((await radarFetch(db, { fetchImpl: fake })).map(x => x.symbol), ['GOOD']);
+});
+
+test('votación de lotería: cada número trae su probabilidad aprendida y un orden para jugar (cerca de lo justo)', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { recordObservation } = await import('../src/lottery/results.js');
+  const { methodVotes } = await import('../src/motor/lottery-agent.js');
+  const db = od(':memory:');
+  for (let i = 1; i <= 40; i++) {
+    const d = new Date(Date.UTC(2026, 8, i)).toISOString().slice(0, 10), nums = [i % 100, (i * 7) % 100, (i * 13 + 1) % 100].map(x => String(x).padStart(2, '0'));
+    if (new Set(nums).size < 3) continue;
+    for (const source of ['a', 'b']) recordObservation(db, { game: 'loteka', date: d, source, nums, fetchedAt: `${d}T23:59:00.000Z` });
+  }
+  const v = methodVotes(db, 'loteka', { now: new Date('2026-10-15T12:00:00Z') });
+  assert.ok(v.order.length >= 3);
+  assert.equal(v.order[0].rank, 1);
+  for (let i = 1; i < v.order.length; i++) assert.ok(v.order[i - 1].prob >= v.order[i].prob);
+  for (const o of v.order) assert.ok(o.prob >= v.fairProb * 0.5 && o.prob <= v.fairProb * 2, 'nunca se inventa una ventaja grande');
+  assert.ok(v.top.every(t => t.prob != null));
+});

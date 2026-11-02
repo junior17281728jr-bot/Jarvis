@@ -6,6 +6,7 @@ import { getSetting, setSetting, nowIso, activity } from '../core/db.js';
 import { complete, available } from './providers.js';
 import { universe } from '../stocks/collector.js';
 import { CANDIDATES } from '../motor/map.js';
+import { HIDDEN } from '../motor/gems.js';
 
 const TICKER = /^[A-Z]{1,5}(\.[A-Z])?$/;
 export const aiOn = (db, cfg) => { const a = available(db, cfg); return !!(a.openai || a.anthropic); };
@@ -13,10 +14,10 @@ export const aiOn = (db, cfg) => { const a = available(db, cfg); return !!(a.ope
 /** La IA sugiere hasta 6 empresas o fondos grandes de EE. UU. que JARVIS todavía no estudia. */
 export async function suggestStocks(db, cfg, { fetchImpl = fetch, horizon = 'medio' } = {}) {
   if (!aiOn(db, cfg)) return { skipped: 'sin IA conectada' };
-  const known = new Set([...universe(db), ...CANDIDATES, ...db.prepare('SELECT symbol FROM map_entries').all().map(r => r.symbol), ...getSetting(db, 'global', 'explore.ai', []).map(x => x.symbol)]);
+  const known = new Set([...universe(db), ...CANDIDATES, ...Object.keys(HIDDEN), ...db.prepare('SELECT symbol FROM map_entries').all().map(r => r.symbol), ...getSetting(db, 'global', 'explore.ai', []).map(x => x.symbol)]);
   const r = await complete(db, cfg, { task: 'plus:sugerir_acciones', prefer: 'paid', json: true, maxTokens: 450, fetchImpl,
-    system: 'Eres un investigador de bolsa prudente. Propones empresas o fondos GRANDES y muy negociados de la bolsa de EE. UU. (no centavos, no cripto, no apalancados). Respondes solo JSON.',
-    prompt: `Propón 6 símbolos que valga la pena estudiar para un inversionista principiante con plazo "${horizon}" (corto = semanas, medio = meses, largo = un año o más). No repitas estos: ${[...known].slice(0, 120).join(', ')}. Formato: {"ideas":[{"symbol":"XXX","why":"una frase sencilla en español de por qué estudiarla"}]}` });
+    system: 'Eres un investigador de bolsa curioso y prudente. Buscas lo que casi nadie está mirando: líderes de nicho, empresas medianas muy bien llevadas, beneficiarios indirectos de tendencias (los que venden "las palas" en la fiebre del oro), empresas extranjeras que cotizan en EE. UU. y fondos de sectores o países olvidados. Evitas a las famosas que todo el mundo ya conoce. Solo cosas que se negocian mucho en la bolsa de EE. UU. y valen más de US$2 mil millones (no centavos, no cripto, no apalancados). Respondes solo JSON.',
+    prompt: `Propón 6 símbolos poco obvios que valga la pena estudiar con plazo "${horizon}" (corto = semanas, medio = meses, largo = un año o más). Para cada uno di, en una frase sencilla en español, qué hace y por qué casi nadie se fija en ella. No repitas estos: ${[...known].slice(0, 160).join(', ')}. Formato: {"ideas":[{"symbol":"XXX","why":"..."}]}` });
   if (!r.ok) return { error: r.reason };
   const ideas = (r.json?.ideas || []).map(x => ({ symbol: String(x.symbol || '').toUpperCase().trim(), why: String(x.why || '').replace(/[<>]/g, '').slice(0, 160) }))
     .filter(x => TICKER.test(x.symbol) && !known.has(x.symbol)).slice(0, 6);

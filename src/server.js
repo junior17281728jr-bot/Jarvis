@@ -208,7 +208,7 @@ function agentDoing(id) {
 }
 route('GET', '/api/tv', ({ user }) => {
   const r = latestRanking(db);
-  const tvVotes = Object.keys(GAMES).map(g => { try { const v = methodVotes(db, g); return v ? { game: GAMES[g].name, date: v.date, top: v.top.map(t => t.num), votes: v.top.map(t => t.votes), voters: v.totalVoters, verdict: v.verdict } : null; } catch { return null; } }).filter(Boolean).slice(0, 4);
+  const tvVotes = Object.keys(GAMES).map(g => { try { const v = methodVotes(db, g); return v ? { game: GAMES[g].name, date: v.date, top: v.top.map(t => t.num), votes: v.top.map(t => t.votes), probs: v.top.map(t => t.prob), voters: v.totalVoters, verdict: v.verdict } : null; } catch { return null; } }).filter(Boolean).slice(0, 4);
   const lot = Object.keys(GAMES).map(g => { try { return pickOfTheDay(db, g); } catch { return null; } }).filter(Boolean);
   const st = strategiesSummary(db);
   const best = r.find(c => c.light === 'verde') || r.find(c => c.light === 'amarillo');
