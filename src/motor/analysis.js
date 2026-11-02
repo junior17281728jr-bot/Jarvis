@@ -149,7 +149,7 @@ export function stockAnalysis(db, symbol, { now = new Date() } = {}) {
   const topReasons = ordered.slice(0, 3).map(r => r.text);
   const verdictWord = card.light === 'verde' ? 'Recomendada' : card.light === 'amarillo' ? 'Con dudas' : 'No recomendada';
   const conclusion = {
-    headline: `${verdictWord}: ${symbol} ${card.light === 'rojo' ? 'probablemente NO le ganará' : 'tiene posibilidades de ganarle'} al mercado en ${HORIZON} días de bolsa.`,
+    headline: `${verdictWord}: ${symbol} ${card.light === 'rojo' ? 'probablemente NO le ganará' : 'tiene posibilidades de ganarle'} al mercado. JARVIS revisa si acertó a los ${HORIZON} días de bolsa (1 mes); para ganar dinero, mira cuánto tiempo conviene dejarla.`,
     why: card.light === 'rojo'
       ? `Pesa más lo que está en contra: ${(against.length ? against : ordered).slice(0, 2).map(r => r.text).join(' ')}${favor.length ? ` A favor, pero no alcanza: ${favor[0].text}` : ''}`
       : `Lo que más pesa a favor: ${(favor.length ? favor : ordered).slice(0, 2).map(r => r.text).join(' ')}${against.length ? ` En contra: ${against[0].text}` : ''}`,

@@ -45,7 +45,7 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
     risk: { mode: getSetting(db, 'global', 'ia.lastStep', null)?.mode || 'normal', peak: getSetting(db, 'global', 'ia.peakTotal', null) },
   };
   // ---------- Lotería (su número de cada sorteo) ----------
-  const startRd = Math.round(100 * rate);
+  const startRd = round(100 * rate, 2); // exacto: así se ve US$100.00 y no US$100.01
   const picks = db.prepare("SELECT payload, outcome, correct, sealed_at FROM predictions WHERE module = 'loteria' ORDER BY sealed_at").all().map(r => ({ ...JSON.parse(r.payload), out: r.outcome ? JSON.parse(r.outcome) : null, correct: r.correct, sealedAt: r.sealed_at }));
   const done = picks.filter(p => p.correct != null), pend = picks.filter(p => p.correct == null);
   const playedRd = picks.reduce((s, p) => s + (p.amountRd || 0), 0), wonRd = done.reduce((s, p) => s + (p.out?.prizeRd || 0), 0);

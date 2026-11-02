@@ -50,8 +50,8 @@ export function sizeFor(card, budget, ev, style = 'equilibrado') {
   const checks = [
     { ok: card.light === 'verde', text: card.light === 'verde' ? 'JARVIS la recomienda.' : 'JARVIS no la recomienda con fuerza (no está en "Sí, invierte").' },
     { ok: card.probMethod === 'calibrado', text: card.probMethod === 'calibrado'
-      ? 'JARVIS ya comprobó con el tiempo que sus porcentajes aciertan.'
-      : 'JARVIS es nuevo: todavía no ha comprobado con el tiempo si sus porcentajes aciertan. Esto se arregla solo, con semanas de trabajo.' },
+      ? 'El % de esta acción ya está medido con casos reales parecidos.'
+      : 'El % de esta acción todavía no está medido con casos reales parecidos (necesita al menos 10 recomendaciones terminadas con una nota parecida). Se arregla solo con el tiempo.' },
     { ok: ev.lo > 0.5, text: !ev.n
       ? 'JARVIS todavía no tiene recomendaciones terminadas para saber si acierta. Cada una tarda unas semanas en terminar.'
       : ev.lo > 0.5 ? `JARVIS ha acertado ${n10(ev.hitRate)} de cada 10 en ${ev.n} recomendaciones ya terminadas: más que la suerte.`

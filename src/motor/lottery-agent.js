@@ -22,7 +22,7 @@ const STAKE = 100;
  *  - Si no le alcanza para el mínimo, NO juega y lo avisa.
  */
 export function smartStake(db, method, count = 3) {
-  const rate = fx(db)?.rate || 60, startRd = Math.round(100 * rate);
+  const rate = fx(db)?.rate || 60, startRd = round(100 * rate, 2);
   const rows = db.prepare("SELECT payload, outcome FROM predictions WHERE module = 'loteria'").all();
   const played = rows.reduce((t, r) => t + (JSON.parse(r.payload).amountRd || 0), 0);
   const won = rows.reduce((t, r) => t + (r.outcome ? JSON.parse(r.outcome).prizeRd || 0 : 0), 0);
@@ -166,6 +166,8 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
   const top = ranked.slice(0, 3);
   // Orden para jugar: primero el de más probabilidad aprendida; si empatan, el de más votos
   const order = Object.values(tally).sort((a, b) => b.prob - a.prob || b.votes - a.votes || (a.num < b.num ? -1 : 1)).map((t, i) => ({ ...t, rank: i + 1 }));
+  // Los 3 de arriba de la votación son los mismos 3 primeros del orden (así no se contradicen)
+  top.splice(0, top.length, ...order.slice(0, 3));
   const anyBeats = voters.some(v => v.beatsChance);
   return {
     game, date: nd.date, voters, top, order, totalVoters: voters.length, fairProb: round(P0 * 100, 2), draws: n, realShare: round(B * 100),

@@ -3,7 +3,7 @@
 export const GAMES = {
   real: {
     id: 'real', entity: 'Lotería Real', name: 'Quiniela Real', format: 'quiniela',
-    time: () => [12, 55], verified: false,
+    time: () => [12, 55], verified: true, // 12:55 p. m. (confirmado en premios.do, nov 2026)
     sources: ['nacionalloteria.com/quiniela-real', 'premios.do/resultados-real'],
   },
   nacional: {
@@ -18,12 +18,12 @@ export const GAMES = {
   },
   loteka: {
     id: 'loteka', entity: 'Loteka', name: 'Quiniela Loteka', format: 'quiniela',
-    time: () => [19, 55], verified: false,
+    time: () => [19, 55], verified: true, // 7:55 p. m. ("sorteo oficial de las 7:55 PM", premios.do)
     sources: ['premios.do/resultados-loteka', 'nacionalloteria.com/quiniela-loteka'],
   },
   leidsa: {
     id: 'leidsa', entity: 'Leidsa', name: 'Quiniela Leidsa', format: 'quiniela',
-    time: wd => (wd === 0 ? [15, 55] : [20, 55]), verified: false,
+    time: wd => (wd === 0 ? [15, 55] : [20, 55]), verified: true, // 8:55 p. m.; domingos 3:55 p. m. (premios.do)
     sources: ['premios.do/resultados-leidsa', 'nacionalloteria.com/quiniela-leidsa'],
   },
 };
