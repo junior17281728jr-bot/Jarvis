@@ -256,6 +256,7 @@ async function showAuth() {
       <div class="note" style="margin-top:2px">Úsalo solo en tu celular o en tu TV, no en equipos de otras personas.</div>`}
       <button class="btn" style="margin-top:10px">${needsSetup ? 'Crear y entrar' : 'Entrar'}</button>
     </div><div class="msg err" id="am"></div>
+    ${needsSetup ? '' : `<details class="forgot note"><summary>¿Se te olvidó la contraseña?</summary><div><b>Si eres usuario:</b> pídele al administrador una nueva (Ajustes → Usuarios → "Nueva contraseña").<br><b>Si eres el administrador:</b> abre la consola de tu servidor en DigitalOcean (botón "Console") y escribe:<div class="mono cmd">sudo -u jarvis node /opt/jarvis/deploy/nueva-clave.mjs</div>Te muestra una clave nueva. La vieja no se puede ver: se guarda cifrada para que nadie la robe.</div></details>`}
     ${needsSetup ? '' : `<div class="tvbox"><button type="button" class="linkbtn" id="tvopen">📺 Entrar con código (TV)</button>
       <div id="tvform" class="hide"><div class="note" style="text-align:center">En tu celular abre JARVIS → <b>Mi perfil</b> → <b>Código para la TV</b>. Escribe aquí ese código (4 números y 2 letras).</div>
       <input id="tvc" class="tvcode" maxlength="8" placeholder="1234 AB" autocomplete="off" autocapitalize="characters" spellcheck="false">
@@ -1786,6 +1787,18 @@ async function tvRefresh() {
 }
 
 // ---------- Enrutador ----------
+// 👁 Ver la contraseña mientras se escribe: se agrega solo a TODOS los campos de contraseña (entrada, perfil, ajustes…)
+function addPwToggles(root) {
+  (root || document).querySelectorAll('input[type="password"]:not([data-eye])').forEach(inp => {
+    inp.setAttribute('data-eye', '1');
+    const wrap = document.createElement('span'); wrap.className = 'pwwrap';
+    inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.textContent = '👁'; b.setAttribute('aria-label', 'Mostrar contraseña'); b.title = 'Mostrar u ocultar la contraseña';
+    b.onclick = () => { const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; b.textContent = show ? '🙈' : '👁'; b.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña'); inp.focus(); };
+    wrap.appendChild(b);
+  });
+}
+try { new MutationObserver(() => addPwToggles()).observe(document.documentElement, { childList: true, subtree: true }); } catch { setInterval(() => addPwToggles(), 1000); }
 async function render() {
   const [name, ...rest] = (location.hash.slice(1) || 'inicio').split('/'); const arg = rest.join('/');
   document.querySelectorAll('#tabs a').forEach(a => a.setAttribute('aria-current', a.getAttribute('href') === '#' + name ? 'page' : 'false'));

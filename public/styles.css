@@ -607,3 +607,8 @@ html.legacy .top{max-width:100vw;overflow:hidden}
 .vsc span{font-size:20px}.vsc small{color:var(--mute);font-weight:700}.vsc b{font-size:22px}
 .vsc.me.on{border:2px solid #3b82f6}.vsc.ai.on{border:2px solid #a98bff}
 .vsc{min-width:0;padding:10px}.vsc b{font-size:clamp(15px,4.6vw,22px);white-space:nowrap}.vsstrip{gap:8px}
+/* 👁 Ver contraseña */
+.pwwrap{position:relative;display:block;width:100%}.pwwrap input{width:100%;padding-right:48px}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:34px;border:0;border-radius:8px;background:transparent;font-size:18px;cursor:pointer;color:var(--ink);line-height:1}
+.eye:hover,.eye:focus{background:var(--panel2)}
+.forgot{margin:12px 0 4px}.forgot summary{cursor:pointer;color:var(--accent)}.forgot>div{margin-top:8px;line-height:1.6}.cmd{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;word-break:break-all;user-select:all;font-size:13px}
