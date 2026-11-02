@@ -1,6 +1,7 @@
 // Servidor de JARVIS: API + pantallas + ciclo automático. Sin dependencias externas.
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { randomInt } from 'node:crypto';
 import { extname, join, normalize, dirname } from 'node:path';
@@ -57,8 +58,12 @@ const cache = new Map();
 const cached = (key, ms, fn) => { const c = cache.get(key); if (c && Date.now() - c.t < ms) return c.v; const v = fn(); cache.set(key, { t: Date.now(), v }); return v; };
 
 function send(res, code, body, headers = {}) {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...headers });
-  res.end(typeof body === 'string' ? body : JSON.stringify(body));
+  let out = typeof body === 'string' ? body : JSON.stringify(body);
+  const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', ...headers };
+  // Comprimido: carga más rápido en el celular y en la TV (sobre todo con internet lento)
+  if (res.__gz && out.length > 1400) { out = gzipSync(out, { level: 6 }); h['Content-Encoding'] = 'gzip'; h.Vary = 'Accept-Encoding'; }
+  res.writeHead(code, h);
+  res.end(out);
 }
 async function body(req, max = 1e6) {
   let s = ''; for await (const ch of req) { s += ch; if (s.length > max) throw new Error('Petición demasiado grande.'); }
@@ -229,7 +234,7 @@ route('POST', '/api/lottery/plus', async ({ user }) => {
   const facts = { juegos: games, devolucion_promedio_por_cada_100_pesos: { quiniela: round(expectedReturn('quiniela', P) * 100, 1), pale: round(expectedReturn('pale', P) * 100, 1), tripleta: round(expectedReturn('tripleta', P) * 100, 1) }, jugadas_virtuales_de_jarvis: playStats(db, { agent: 'loteria' }) };
   return lotteryExplain(db, cfg, { userId: user.id, facts });
 });
-route('GET', '/api/lottery', () => cached('lottery', 5 * 60e3, () => {
+route('GET', '/api/lottery', () => cached('lottery', 30 * 60e3, () => {
   const games = Object.values(GAMES).map(g => {
     const h = history(db, g.id);
     let nd = null; try { nd = nextDraw(g.id); } catch { /* sin horario */ }
@@ -343,11 +348,16 @@ route('POST', '/api/comments', async ({ req, user }) => { const b = await body(r
 route('POST', '/api/ask', async ({ req, user }) => {
   const b = await body(req);
   const q = String(b.question || '').slice(0, 500);
+  // La misma pregunta en la misma hora no se paga dos veces
+  const askKey = `${user.id}:${q.toLowerCase().replace(/[^a-z0-9áéíóúñ ]/g, '').replace(/\s+/g, ' ').trim()}`;
+  const hit = askCache.get(askKey); if (hit && Date.now() - hit.t < 60 * 60e3) return { answer: hit.answer, provider: hit.provider, cached: true };
   const h = home(db, cfg, user);
   const ctx = JSON.stringify({ cuenta: h.account, predicciones: h.predictions, ranking: h.ranking.map(c => ({ s: c.symbol, luz: c.light, conf: c.confidence, razones: c.reasons.map(r => r.text) })), aprendizaje: h.learning.byStatus, loterias: h.lottery.stats, liga: h.league });
   const r = await complete(db, cfg, { task: 'pregunta', userId: user.id, prefer: 'paid', maxTokens: 400,
     system: `Eres ${publicBrand(db).name}, el asistente de inversiones. Responde en español sencillo y corto usando SOLO el estado que te doy. Si el dato no está, dilo. Distingue hechos de opiniones. Nunca prometas ganancias.`, prompt: `Estado:\n${ctx}\n\nPregunta: ${q}` });
-  return r.ok ? { answer: r.text, provider: r.provider } : { answer: `No pude consultar la IA: ${r.reason}`, provider: null };
+  if (r.ok) askCache.set(askKey, { t: Date.now(), answer: r.text, provider: r.provider });
+  if (askCache.size > 300) askCache.delete(askCache.keys().next().value);
+  return r.ok ? { answer: r.text, provider: r.provider } : { answer: user.role === 'admin' ? `No pude consultar la IA: ${r.reason}` : (/Potenciador|límite de IA/.test(r.reason) ? r.reason : 'La IA no está disponible en este momento. JARVIS sigue funcionando; intenta más tarde.'), provider: null };
 });
 
 route('GET', '/api/whatif', ({ url }) => whatIf(db, { perTradeUsd: Number(url.searchParams.get('usd') || 10) }));
@@ -386,6 +396,9 @@ route('GET', '/api/real', ({ user }) => realSummary(db, user.id));
 route('POST', '/api/real', async ({ req, user }) => { const b = await body(req); return addReal(db, user.id, { ...b, amountUsd: Number(b.amountUsd), price: Number(b.price), stakeRd: Number(b.stakeRd), symbol: b.symbol ? String(b.symbol).toUpperCase() : undefined }); });
 route('POST', '/api/real/:id/close', async ({ req, user, p }) => { const b = await body(req); return closeReal(db, user.id, Number(p.id), { sellPrice: Number(b.sellPrice) }); });
 
+const staticCache = new Map();
+const askCache = new Map();
+
 // ---------- En línea ----------
 const seenAt = new Map();
 function markSeen(id) { const now = Date.now(); if (now - (seenAt.get(id) || 0) < 60e3) return; seenAt.set(id, now); db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(new Date(now).toISOString(), id); }
@@ -393,6 +406,7 @@ function markSeen(id) { const now = Date.now(); if (now - (seenAt.get(id) || 0) 
 // ---------- Servidor ----------
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  res.__gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
   try {
     if (url.pathname.startsWith('/api/')) {
       const r = routes.find(r => r.method === req.method && r.re.test(url.pathname));
@@ -415,10 +429,17 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/manifest.webmanifest') return send(res, 200, manifest(db), { 'Content-Type': 'application/manifest+json' });
     let file = normalize(join(PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname));
     if (!file.startsWith(PUBLIC)) return send(res, 403, { error: 'No permitido.' });
-    let data;
-    try { data = await readFile(file); } catch { file = join(PUBLIC, 'index.html'); data = await readFile(file); }
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
-    res.end(data);
+    let st;
+    try { st = await stat(file); if (!st.isFile()) throw new Error('no'); } catch { file = join(PUBLIC, 'index.html'); st = await stat(file); }
+    // ETag: si el archivo no cambió, el navegador usa su copia (respuesta vacía 304) → abre mucho más rápido
+    const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+    const base = { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag, 'X-Content-Type-Options': 'nosniff', Vary: 'Accept-Encoding' };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, base); return res.end(); }
+    let f = staticCache.get(file);
+    if (!f || f.etag !== etag) { const raw = await readFile(file); f = { etag, raw, gz: /\.(js|css|html|svg|json|webmanifest)$/.test(file) && raw.length > 1400 ? gzipSync(raw, { level: 9 }) : null }; staticCache.set(file, f); }
+    if (res.__gz && f.gz) { res.writeHead(200, { ...base, 'Content-Encoding': 'gzip' }); return res.end(f.gz); }
+    res.writeHead(200, base);
+    res.end(f.raw);
   } catch (e) {
     send(res, e.code && Number.isInteger(e.code) ? e.code : 400, { error: e.message || 'Error.' });
   }
@@ -428,7 +449,13 @@ server.listen(cfg.port, cfg.host, () => console.log(`JARVIS listo en http://${cf
 
 // Ciclo automático cada 5 minutos (y uno al arrancar)
 let busy = false;
-async function tick() { if (busy) return; busy = true; try { await runCycle(db, cfg); } catch (e) { console.error('Ciclo:', e.message); } finally { busy = false; } }
+async function tick() {
+  if (busy) return; busy = true;
+  try { await runCycle(db, cfg); } catch (e) { console.error('Ciclo:', e.message); } finally { busy = false; }
+  // Precalcula lo pesado (loterías) en segundo plano, para que la pantalla abra al instante
+  const lc = cache.get('lottery'); if (lc && Date.now() - lc.t > 20 * 60e3) cache.delete('lottery');
+  if (!cache.get('lottery')) setTimeout(() => { try { routes.find(r => r.method === 'GET' && r.re.test('/api/lottery')).handler({}); } catch { /* se calcula al abrir */ } }, 1000);
+}
 setTimeout(tick, 3000);
 setInterval(tick, 5 * 60e3);
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { server.close(); db.close(); process.exit(0); });
