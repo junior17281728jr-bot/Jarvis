@@ -141,7 +141,7 @@ details summary{cursor:pointer;color:var(--accent);font-size:13px;font-weight:60
 .foot{font-size:12px;color:var(--faint);text-align:center;padding:8px}
 
 /* ---------- MODO TV ---------- */
-.tv{position:fixed;inset:0;z-index:50;background:radial-gradient(1400px 700px at 85% -10%,#10224a 0%,transparent 60%),radial-gradient(1000px 600px at -10% 110%,#0b2a3a 0%,transparent 60%),#05080f;color:#e8eefc;font-family:var(--f);overflow:hidden;display:grid;grid-template-rows:auto auto auto 1fr auto;gap:1vh;padding:1.8vh 1.6vw;
+.tv{position:fixed;inset:0;z-index:50;background:radial-gradient(1400px 700px at 85% -10%,#10224a 0%,transparent 60%),radial-gradient(1000px 600px at -10% 110%,#0b2a3a 0%,transparent 60%),#05080f;color:#e8eefc;font-family:var(--f);overflow:hidden;display:grid;grid-template-rows:auto auto auto auto 1fr auto;gap:1vh;padding:1.8vh 1.6vw;
   --a:#38d6f5;--g:#2fd58a;--y:#ffbf3c;--r:#ff5d6c;--m:#8a97b5;--l:#1e2a44;--p:rgba(13,20,36,.85)}
 .tv:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(56,214,245,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(56,214,245,.05) 1px,transparent 1px);background-size:3vw 3vw;pointer-events:none}
 .tv:after{content:"";position:absolute;left:0;right:0;height:22vh;top:-22vh;background:linear-gradient(180deg,transparent,rgba(56,214,245,.05),transparent);animation:scan 8s linear infinite;pointer-events:none}
@@ -466,3 +466,40 @@ abbr.gl{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .vchip{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line)}.vchip.yes{background:var(--good-bg);border-color:var(--good);color:var(--good)}.vchip.no{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
 .conf-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.conf-v{font-size:28px;font-weight:800}.conf-v.good{color:var(--good)}.conf-v.warn{color:var(--warn)}.conf-v.bad{color:var(--bad)}.conf-v.accent{color:var(--accent)}
 .conf-m{text-align:right}.conf-big{font-size:40px;font-weight:800;line-height:1}.conf-big small{font-size:18px;color:var(--mute)}
+
+/* Modo TV: trabajadores 24/7 y panel que rota */
+.tv .workers{display:grid;grid-template-columns:repeat(8,1fr);gap:.6vw}
+.tv .wk{display:flex;align-items:center;gap:.5vw;padding:.7vh .6vw;border-radius:.8vw;background:var(--p);border:1px solid var(--l);position:relative;overflow:hidden}
+.tv .wk .wi{font-size:1.4vw}.tv .wk b{display:block;font-size:.78vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tv .wk small{display:block;font-size:.66vw;color:var(--m)}
+.tv .wk .wd{position:absolute;top:.6vh;right:.5vw;width:.55vw;height:.55vw;border-radius:50%;background:#3b4766}.tv .wk.ok .wd{background:var(--g);box-shadow:0 0 8px var(--g)}
+.tv .wk.busy{border-color:var(--a)}.tv .wk.busy small{color:var(--a)}.tv .wk.busy:after{content:"";position:absolute;left:0;bottom:0;height:2px;width:40%;background:var(--a);animation:scan 1.6s linear infinite}
+@keyframes scan{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
+.tv .spot{flex:1.3}.tv .spot h3 .dots{margin-left:auto;display:flex;gap:.3vw}.tv .spot h3 .dots i{width:.5vw;height:.5vw;border-radius:50%;background:#2a3757}.tv .spot h3 .dots i.on{background:var(--a)}
+.tv .slide{display:none;flex:1;min-height:0;flex-direction:column;animation:fadein .6s}.tv .slide.on{display:flex}
+.tv .slide .sub{margin:0 0 .6vh;font-size:.85vw;color:var(--m)}
+.tv .sbar{height:.4vh;background:#1b2640;border-radius:1vh;overflow:hidden;margin-top:.8vh}.tv .sbar span{display:block;height:100%;width:100%;background:var(--a);transform-origin:left;animation:sbar 12s linear}
+@keyframes sbar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.tv .tvmap{display:grid;grid-template-columns:repeat(2,1fr);gap:.6vw;flex:1;min-height:0}
+.tv .zcol{border:1px solid;border-radius:.7vw;padding:.7vh .6vw;background:rgba(7,11,20,.5);overflow:hidden}
+.tv .zh{font-size:.85vw;font-weight:800;display:flex;justify-content:space-between}.tv .zh span{color:#fff;font-family:var(--mono)}
+.tv .zb{display:flex;flex-wrap:wrap;gap:.35vw;margin-top:.6vh}.tv .zs{font-family:var(--mono);font-size:.8vw;font-weight:700;padding:.3vh .45vw;border-radius:.5vw;border:1px solid;animation:pop .5s both}.tv .zs small{margin-left:.3vw;color:var(--m);font-size:.62vw}
+.tv .zempty{color:var(--m);font-size:.8vw}.tv .znote{grid-column:1/-1;font-size:.72vw;color:var(--m);margin-top:.6vh;line-height:1.35}
+.tv .tvloto{display:flex;flex-direction:column;gap:.8vh;flex:1;min-height:0}
+.tv .draws{display:grid;grid-template-columns:repeat(2,1fr);gap:.5vw}.tv .dr{background:rgba(7,11,20,.5);border:1px solid var(--l);border-radius:.6vw;padding:.6vh .6vw;font-size:.78vw}.tv .dr b{display:block}.tv .dr em{font-style:normal;color:var(--y);font-family:var(--mono)}
+.tv .lv{display:flex;flex-direction:column;gap:.6vh}.tv .lvr{display:flex;align-items:center;gap:.6vw}.tv .lg{font-size:.78vw;width:9vw;color:var(--m)}
+.tv .lb{display:flex;gap:.4vw}.tv .lb i{font-style:normal;width:2.1vw;height:2.1vw;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:1vw;color:#06101f;background:radial-gradient(circle at 35% 30%,#fff,#38d6f5);animation:pop .5s both}
+.tv .tvia{display:flex;flex-direction:column;flex:1;min-height:0}.tv .bars3{display:flex;justify-content:space-around;align-items:flex-end;flex:1;min-height:0;gap:1vw}
+.tv .b3{display:flex;flex-direction:column;align-items:center;gap:.5vh;height:100%;flex:1}.tv .b3v{font-family:var(--mono);font-size:1.1vw;font-weight:800}.tv .b3t{flex:1;width:60%;display:flex;align-items:flex-end;min-height:0}
+.tv .b3t span{display:block;width:100%;border-radius:.5vw .5vw 0 0;transition:height 1s}.tv .b3 b{font-size:.9vw}
+.tv .b3t{height:14vh;flex:none}.tv .b3{height:auto;justify-content:flex-end}.tv .slide{overflow:hidden}
+
+/* Diseño según el equipo (lo detecta boot.js) */
+html.is-tv{font-size:20px}
+html.is-tv body{font-size:18px}
+html.is-tv .center .auth{width:min(560px,100%)}
+html.is-tv .acct{padding:16px 18px}html.is-tv .acct-av{width:56px;height:56px;font-size:24px}
+html.is-tv a:focus,html.is-tv button:focus,html.is-tv input:focus,html.is-tv select:focus,html.is-tv .acct:focus{outline:4px solid #38d6f5;outline-offset:3px}
+html.is-tv #tabs a{padding:10px 16px;font-size:17px}
+html.is-phone .tv .workers{grid-template-columns:repeat(4,1fr)}
+html.is-phone .tv .body{grid-template-columns:1fr}
+.tv .bars3{flex:none;height:21vh}.tv .tvia{justify-content:center}

@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (819abde29444cf10). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (c1964a460523300d). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -897,7 +897,15 @@ views.perfil = function () { return __awaiter(void 0, void 0, void 0, function (
                 d = _a.sent();
                 p = d.profile, first = !p.setup;
                 card = function (group, key, o) { return "<button type=\"button\" class=\"opt".concat((group === 'style' ? p.style : p.horizon) === key ? ' on' : '', "\" data-g=\"").concat(group, "\" data-k=\"").concat(key, "\">").concat(o.icon ? "<span class=\"oi\">".concat(o.icon, "</span>") : '', "<b>").concat(esc(o.label), "</b><span class=\"note\">").concat(esc(o.desc), "</span>").concat(o.pct ? "<span class=\"note\">\"S\u00ED, invierte\" = ".concat(Math.round(o.pct.verde * 100), "% de tu dinero</span>") : '', "</button>"); };
-                return [2, "".concat(first ? "<section class=\"card welcome\"><div class=\"s10-h\">Bienvenido".concat((ME === null || ME === void 0 ? void 0 : ME.displayName) ? ', ' + esc(ME.displayName) : '', "</div><div class=\"bp-v\">Cu\u00E9ntale a JARVIS c\u00F3mo eres</div><p class=\"note\">El n\u00FAcleo (la investigaci\u00F3n, el mapa y el historial) es el mismo para todos. Esto solo cambia cu\u00E1nto te sugiere poner y en qu\u00E9 orden te muestra las opciones. Lo puedes cambiar cuando quieras.</p></section>") : "<div><h1>Mi perfil</h1><p class=\"sub\">JARVIS se adapta a tu forma de invertir. Tu amigo tiene el suyo: cada uno ve lo mismo del n\u00FAcleo, pero ordenado para s\u00ED.</p></div>", "\n  <section class=\"card tvcard\"><h2>\uD83D\uDCFA C\u00F3digo para la TV</h2><p class=\"note\">Para entrar r\u00E1pido en la TV o en otro equipo sin escribir tu usuario ni contrase\u00F1a. En la TV toca <b>\"Entrar con c\u00F3digo (TV)\"</b> y escribe este c\u00F3digo. Sirve <b>10 minutos</b> y <b>una sola vez</b>.</p>\n    <div id=\"tvshow\"></div><button type=\"button\" class=\"btn\" id=\"tvnew\">Crear c\u00F3digo</button></section>\n  <form id=\"pf\" class=\"grid\" style=\"gap:16px\">\n    <section class=\"card\"><h2>Tu nombre</h2><label style=\"max-width:360px;margin-top:8px\">C\u00F3mo quieres que te llame<input id=\"pn\" maxlength=\"30\" value=\"").concat(esc(d.displayName || ''), "\"></label></section>\n    <section class=\"card\"><h2>\u00BFC\u00F3mo eres con el riesgo?</h2><div class=\"opts\" style=\"margin-top:10px\">").concat(Object.entries(d.styles).map(function (_a) {
+                return [2, "".concat(first ? "<section class=\"card welcome\"><div class=\"s10-h\">Bienvenido".concat((ME === null || ME === void 0 ? void 0 : ME.displayName) ? ', ' + esc(ME.displayName) : '', "</div><div class=\"bp-v\">Cu\u00E9ntale a JARVIS c\u00F3mo eres</div><p class=\"note\">El n\u00FAcleo (la investigaci\u00F3n, el mapa y el historial) es el mismo para todos. Esto solo cambia cu\u00E1nto te sugiere poner y en qu\u00E9 orden te muestra las opciones. Lo puedes cambiar cuando quieras.</p></section>") : "<div><h1>Mi perfil</h1><p class=\"sub\">JARVIS se adapta a tu forma de invertir. Tu amigo tiene el suyo: cada uno ve lo mismo del n\u00FAcleo, pero ordenado para s\u00ED.</p></div>", "\n  <section class=\"card\"><h2>\uD83D\uDDA5\uFE0F Este equipo</h2><p class=\"note\">JARVIS detecta solo si es tel\u00E9fono, computadora o TV y se adapta. Si se equivoc\u00F3, elige aqu\u00ED (solo cambia en este equipo).</p>\n    <div class=\"row\" style=\"gap:8px;margin-top:8px\">").concat([['', 'Automático'], ['phone', '📱 Teléfono'], ['desktop', '💻 Computadora'], ['tv', '📺 TV']].map(function (_a) {
+                        var _b = __read(_a, 2), k = _b[0], l = _b[1];
+                        return "<button type=\"button\" class=\"btn ".concat(((function () { try {
+                            return localStorage.getItem('jv-device') || '';
+                        }
+                        catch (_a) {
+                            return '';
+                        } })()) === k ? '' : 'ghost', " sm\" data-dev=\"").concat(k, "\">").concat(l, "</button>");
+                    }).join(''), "</div>\n    <div class=\"note\" style=\"margin-top:6px\">Ahora: <b>").concat({ phone: 'teléfono', tablet: 'tableta', desktop: 'computadora', tv: 'TV' }[window.JV_DEVICE] || 'automático', "</b></div></section>\n  <section class=\"card tvcard\"><h2>\uD83D\uDCFA C\u00F3digo para la TV</h2><p class=\"note\">Para entrar r\u00E1pido en la TV o en otro equipo sin escribir tu usuario ni contrase\u00F1a. En la TV toca <b>\"Entrar con c\u00F3digo (TV)\"</b> y escribe este c\u00F3digo. Sirve <b>10 minutos</b> y <b>una sola vez</b>.</p>\n    <div id=\"tvshow\"></div><button type=\"button\" class=\"btn\" id=\"tvnew\">Crear c\u00F3digo</button></section>\n  <form id=\"pf\" class=\"grid\" style=\"gap:16px\">\n    <section class=\"card\"><h2>Tu nombre</h2><label style=\"max-width:360px;margin-top:8px\">C\u00F3mo quieres que te llame<input id=\"pn\" maxlength=\"30\" value=\"").concat(esc(d.displayName || ''), "\"></label></section>\n    <section class=\"card\"><h2>\u00BFC\u00F3mo eres con el riesgo?</h2><div class=\"opts\" style=\"margin-top:10px\">").concat(Object.entries(d.styles).map(function (_a) {
                         var _b = __read(_a, 2), k = _b[0], o = _b[1];
                         return card('style', k, o);
                     }).join(''), "</div></section>\n    <section class=\"card\"><h2>\u00BFCu\u00E1nto tiempo puedes dejar el dinero?</h2><div class=\"opts\" style=\"margin-top:10px\">").concat(Object.entries(d.horizons).map(function (_a) {
@@ -912,6 +920,10 @@ views.perfil = function () { return __awaiter(void 0, void 0, void 0, function (
 }); };
 views.perfil.after = function () {
     var _a;
+    document.querySelectorAll('[data-dev]').forEach(function (b) { return b.onclick = function () { try {
+        b.dataset.dev ? localStorage.setItem('jv-device', b.dataset.dev) : localStorage.removeItem('jv-device');
+    }
+    catch (_a) { } location.reload(); }; });
     var tvTick = null;
     $('#tvnew').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
         var r_2, paint, err_6;
@@ -1290,7 +1302,7 @@ views.loterias.after = function () {
             return "<div style=\"background:".concat(bg, ";color:#e8eefc\" title=\"").concat(n, ": sali\u00F3 ").concat(c, " veces (esperado ").concat(exp.toFixed(1), ")\">").concat(n, "</div>");
         }).join('') : '';
         var V = g.votes;
-        $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo del ".concat(esc(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div></div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        <div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo del ").concat(esc(g.pick.date), " \u00B7 cierra ").concat(hhmm(g.pick.closesAt), " ").concat(g.timeVerified ? '' : '(horario por verificar)', "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(esc(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><table><tr><th>Prueba</th><th class=\"r\">Prob. de casualidad</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rd(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rd(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$<input id=\"ls\" type=\"number\" min=\"1\" value=\"10\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
+        $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo del ".concat(esc(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div></div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        ").concat(g.pick.stake ? "<div style=\"margin-top:8px\"><b>\uD83D\uDCB5 Cu\u00E1nto jugar: RD$".concat(g.pick.stake.suggested, "</b> <span class=\"note\">\u00B7 ").concat(esc(g.pick.stake.why), "</span></div>") : '', "<div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo del ").concat(esc(g.pick.date), " \u00B7 cierra ").concat(hhmm(g.pick.closesAt), " ").concat(g.timeVerified ? '' : '(horario por verificar)', "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(esc(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><table><tr><th>Prueba</th><th class=\"r\">Prob. de casualidad</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rd(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rd(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$ (m\u00EDnimo 100)<input id=\"ls\" type=\"number\" min=\"100\" step=\"25\" value=\"100\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
         $('#lf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
             var r, err_13;
             return __generator(this, function (_a) {
@@ -2167,7 +2179,7 @@ function tvOpen() {
         return __generator(this, function (_d) {
             switch (_d.label) {
                 case 0:
-                    $('#tv-root').innerHTML = "<div class=\"tv\" id=\"tv\"><button class=\"iconbtn exit\" id=\"tvx\">Salir \u2715</button>\n    <div class=\"th\"><span class=\"logo\">".concat(brandMark()).concat(brandName(), "</span><span class=\"chip\" id=\"tvm\">\u2026</span><span class=\"chip\" id=\"tvmk\">\u2026</span><span class=\"chip\" id=\"tvai\">\u2026</span><span class=\"clock\" id=\"tvc\"></span></div>\n    <div class=\"headline\" id=\"tvh\">Conectando\u2026</div>\n    <div class=\"kpis\">\n      <div class=\"kp money\"><small>Dinero virtual</small><div class=\"row1\"><b id=\"k-money\">\u2014</b><span class=\"arrow\" id=\"k-arrow\"></span></div><div class=\"sub\" id=\"k-money-sub\"></div></div>\n      <div class=\"kp\"><small>Aciertos</small><b id=\"k-hit\">\u2014</b><div class=\"sub\" id=\"k-hit-sub\"></div></div>\n      <div class=\"kp\"><small>Racha actual</small><b id=\"k-streak\">0</b><div class=\"sub\" id=\"k-streak-sub\"></div></div>\n      <div class=\"kp\"><small>Experimentos</small><b id=\"k-exp\">0</b><div class=\"sub\" id=\"k-exp-sub\"></div></div>\n    </div>\n    <div class=\"body\">\n      <div class=\"pane\"><h3><span class=\"live\"></span>La IA en este momento</h3><div class=\"console\" id=\"tvcon\"></div><div class=\"prog\"><span></span></div></div>\n      <div class=\"col\">\n        <div class=\"pane chartpane\"><h3 id=\"tvct\">Rendimiento</h3><div id=\"tvchart\" class=\"chartbox\"></div></div>\n        <div class=\"pane\"><h3>Recomendaciones del momento</h3><div class=\"cards\" id=\"tvrank\"></div></div>\n      </div>\n      <div class=\"col\">\n        <div class=\"pane debpane\"><h3><span class=\"live\"></span><span id=\"tvdt\">Debate en vivo</span></h3><div class=\"chat\" id=\"tvchat\"></div></div>\n        <div class=\"pane leaguepane\"><h3>Liga de agentes \u00B7 monedas</h3><div class=\"league\" id=\"tvlg\"></div></div>\n      </div>\n    </div>\n    <div class=\"ticker\"><div class=\"track\" id=\"tvtk\"></div></div></div>");
+                    $('#tv-root').innerHTML = "<div class=\"tv\" id=\"tv\"><button class=\"iconbtn exit\" id=\"tvx\">Salir \u2715</button>\n    <div class=\"th\"><span class=\"logo\">".concat(brandMark()).concat(brandName(), "</span><span class=\"chip\" id=\"tvm\">\u2026</span><span class=\"chip\" id=\"tvmk\">\u2026</span><span class=\"chip\" id=\"tvai\">\u2026</span><span class=\"clock\" id=\"tvc\"></span></div>\n    <div class=\"headline\" id=\"tvh\">Conectando\u2026</div>\n    <div class=\"kpis\">\n      <div class=\"kp money\"><small>Dinero virtual</small><div class=\"row1\"><b id=\"k-money\">\u2014</b><span class=\"arrow\" id=\"k-arrow\"></span></div><div class=\"sub\" id=\"k-money-sub\"></div></div>\n      <div class=\"kp\"><small>Aciertos</small><b id=\"k-hit\">\u2014</b><div class=\"sub\" id=\"k-hit-sub\"></div></div>\n      <div class=\"kp\"><small>Racha actual</small><b id=\"k-streak\">0</b><div class=\"sub\" id=\"k-streak-sub\"></div></div>\n      <div class=\"kp\"><small>Experimentos</small><b id=\"k-exp\">0</b><div class=\"sub\" id=\"k-exp-sub\"></div></div>\n    </div>\n    <div class=\"workers\" id=\"tvw\"></div>\n    <div class=\"body\">\n      <div class=\"pane\"><h3><span class=\"live\"></span>La IA en este momento</h3><div class=\"console\" id=\"tvcon\"></div><div class=\"prog\"><span></span></div></div>\n      <div class=\"col\">\n        <div class=\"pane chartpane\"><h3 id=\"tvct\">Rendimiento</h3><div id=\"tvchart\" class=\"chartbox\"></div></div>\n        <div class=\"pane\"><h3>Recomendaciones del momento</h3><div class=\"cards\" id=\"tvrank\"></div></div>\n      </div>\n      <div class=\"col\">\n        <div class=\"pane spot\"><h3><span class=\"live\"></span><span id=\"tvst\">Mapa</span><span class=\"dots\" id=\"tvsd\"></span></h3>\n          <div class=\"slide on\" data-s=\"mapa\"><div class=\"tvmap\" id=\"tvmap\"></div></div>\n          <div class=\"slide\" data-s=\"loto\"><div class=\"tvloto\" id=\"tvloto\"></div></div>\n          <div class=\"slide\" data-s=\"ia\"><div class=\"tvia\" id=\"tvia\"></div></div>\n          <div class=\"slide\" data-s=\"debate\"><h4 class=\"sub\" id=\"tvdt\">Debate en vivo</h4><div class=\"chat\" id=\"tvchat\"></div></div>\n          <div class=\"sbar\"><span id=\"tvsb\"></span></div></div>\n        <div class=\"pane leaguepane\"><h3>Liga de agentes \u00B7 monedas</h3><div class=\"league\" id=\"tvlg\"></div></div>\n      </div>\n    </div>\n    <div class=\"ticker\"><div class=\"track\" id=\"tvtk\"></div></div></div>");
                     $('#tvx').onclick = function () { location.hash = '#inicio'; };
                     _d.label = 1;
                 case 1:
@@ -2189,12 +2201,16 @@ function tvOpen() {
                 case 5:
                     _d.sent();
                     tvTimer = setInterval(tvRefresh, 15000);
+                    tvSlide = 0;
+                    tvSpotShow();
+                    clearInterval(tvSpotTimer);
+                    tvSpotTimer = setInterval(function () { tvSlide++; tvSpotShow(); }, 12000);
                     return [2];
             }
         });
     });
 }
-function tvClose() { var _a; clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement)
+function tvClose() { var _a; clearInterval(tvSpotTimer); clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement)
     (_a = document.exitFullscreen) === null || _a === void 0 ? void 0 : _a.call(document).catch(function () { }); }
 function tvChart(c) {
     var box = $('#tvchart');
@@ -2322,20 +2338,86 @@ function tvTicker(qs) {
         t.style.animationDuration = Math.max(30, qs.length * 5) + 's';
     }
 }
+var tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
+var TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA']];
+function tvSpotShow() {
+    var list = TV_SLIDES.filter(function (_a) {
+        var _b = __read(_a, 1), k = _b[0];
+        return k !== 'debate' || tvHasDebate;
+    }), cur = list[tvSlide % list.length];
+    document.querySelectorAll('.tv .slide').forEach(function (el) { return el.classList.toggle('on', el.dataset.s === cur[0]); });
+    var t = $('#tvst');
+    if (t)
+        t.textContent = cur[1];
+    var d = $('#tvsd');
+    if (d)
+        d.innerHTML = list.map(function (x) { return "<i class=\"".concat(x[0] === cur[0] ? 'on' : '', "\"></i>"); }).join('');
+    var b = $('#tvsb');
+    if (b) {
+        b.style.animation = 'none';
+        void b.offsetWidth;
+        b.style.animation = '';
+    }
+}
+var TASK_TV = { bolsa_precios: ['📈', 'Precios en vivo'], loterias_resultados: ['🎱', 'Resultados de loterías'], investigacion: ['🧪', 'Probando ideas'], explorar: ['🔭', 'Explorando empresas'], ranking: ['🗺️', 'Actualizando el mapa'], cartera_ia: ['🤖', 'Cartera de la IA'], noticias: ['📰', 'Leyendo noticias'], prueba_en_vivo: ['⚡', 'Prueba en vivo'] };
+function tvWorkers(tasks) {
+    var _a;
+    var el = $('#tvw');
+    if (!el || !tasks)
+        return;
+    var now = Date.now(), recent = (_a = tasks.slice().sort(function (a, b) { return (b.last || '').localeCompare(a.last || ''); })[0]) === null || _a === void 0 ? void 0 : _a.name;
+    el.innerHTML = tasks.map(function (t) {
+        var _a = __read(TASK_TV[t.name] || ['•', t.name], 2), ic = _a[0], lb = _a[1];
+        var mins = t.last ? (now - Date.parse(t.last)) / 60e3 : null, alive = mins != null && mins < t.every * 2 + 10;
+        return "<div class=\"wk ".concat(t.name === recent ? 'busy' : '', " ").concat(alive ? 'ok' : 'idle', "\"><span class=\"wi\">").concat(ic, "</span><div><b>").concat(esc(lb), "</b><small>").concat(t.name === recent ? 'trabajando ahora…' : mins == null ? 'esperando su turno' : mins < 1 ? 'hace un momento' : mins < 60 ? "hace ".concat(Math.round(mins), " min") : "hace ".concat(Math.round(mins / 60), " h"), "</small></div><span class=\"wd\"></span></div>");
+    }).join('');
+}
+var ZTV = [['recomendada', 'Te recomiendo', '#2fd58a'], ['observacion', 'En observación', '#ffbf3c'], ['no_recomendada', 'No te recomiendo', '#ff5d6c'], ['candidata', 'Explorando', '#a98bff']];
+function tvMap(m) {
+    var el = $('#tvmap');
+    if (!el || !m)
+        return;
+    el.innerHTML = ZTV.map(function (_a) {
+        var _b = __read(_a, 3), k = _b[0], lb = _b[1], col = _b[2];
+        var L = m.zones[k] || [];
+        return "<div class=\"zcol\" style=\"border-color:".concat(col, "55\"><div class=\"zh\" style=\"color:").concat(col, "\">").concat(esc(lb), " <span>").concat(L.length, "</span></div><div class=\"zb\">").concat(L.slice(0, 8).map(function (x, i) { return "<span class=\"zs\" style=\"background:".concat(col, "22;border-color:").concat(col, "88;animation-delay:").concat(i * 0.07, "s\">").concat(esc(x.s), "<small>").concat(x.c, "</small></span>"); }).join('') || '<span class="zempty">—</span>', "</div></div>");
+    }).join('')
+        + "<div class=\"znote\">\uD83D\uDD2D Busca empresas nuevas cada 6 horas".concat(m.exploredAt ? " \u00B7 \u00FAltima b\u00FAsqueda ".concat(timeAgo(m.exploredAt)) : '', ". El n\u00FAmero peque\u00F1o es qu\u00E9 tanto te conviene (0 a 100).</div>");
+}
+function tvLoto(votes, draws) {
+    var el = $('#tvloto');
+    if (!el)
+        return;
+    var cd = function (iso) { var ms = Date.parse(iso) - Date.now(); if (ms <= 0)
+        return 'cerrado'; var h = Math.floor(ms / 3600e3), mi = Math.floor(ms % 3600e3 / 60e3); return h ? "".concat(h, " h ").concat(mi, " min") : "".concat(mi, " min"); };
+    el.innerHTML = "<div class=\"draws\">".concat((draws || []).slice(0, 2).map(function (d) { return "<div class=\"dr\"><b>".concat(esc(d.game), "</b><span>cierra en <em data-cd=\"").concat(esc(d.closesAt), "\">").concat(cd(d.closesAt), "</em></span></div>"); }).join(''), "</div>\n    <div class=\"lv\">").concat((votes || []).slice(0, 3).map(function (v) { return "<div class=\"lvr\"><span class=\"lg\">".concat(esc(v.game), "</span><span class=\"lb\">").concat(v.top.map(function (n, i) { return "<i style=\"animation-delay:".concat(i * 0.15, "s\">").concat(esc(n), "</i>"); }).join(''), "</span></div>"); }).join('') || '<div class="zempty">Juntando resultados…</div>', "</div>\n    <div class=\"znote\">\uD83D\uDDF3\uFE0F Los n\u00FAmeros m\u00E1s votados por los m\u00E9todos. Cada n\u00FAmero tiene 3 de cada 100 de salir: JARVIS vigila trampas y no promete nada.</div>");
+}
+function tvIa(d) {
+    var _a, _b, _c, _d, _e;
+    var el = $('#tvia');
+    if (!el)
+        return;
+    var you = d.account ? d.account.returnPct / 100 : null, ia = (_b = (_a = d.ia) === null || _a === void 0 ? void 0 : _a.returnPct) !== null && _b !== void 0 ? _b : null, mk = (_d = (_c = d.ia) === null || _c === void 0 ? void 0 : _c.market) !== null && _d !== void 0 ? _d : null;
+    var vals = [['Tú', you, '#38d6f5'], ['La IA', ia, '#a98bff'], ['Mercado', mk, '#8a97b5']], mx = Math.max.apply(Math, __spreadArray([0.01], __read(vals.map(function (v) { return Math.abs(v[1] || 0); })), false));
+    el.innerHTML = "<div class=\"bars3\">".concat(vals.map(function (_a) {
+        var _b = __read(_a, 3), lb = _b[0], v = _b[1], col = _b[2];
+        return "<div class=\"b3\"><div class=\"b3v\" style=\"color:".concat((v || 0) >= 0 ? '#2fd58a' : '#ff5d6c', "\">").concat(v == null ? '—' : "".concat(v >= 0 ? '+' : '').concat((v * 100).toFixed(2), "%"), "</div><div class=\"b3t\"><span style=\"height:").concat(Math.max(4, Math.abs(v || 0) / mx * 100), "%;background:linear-gradient(0deg,").concat(col, "33,").concat(col, ")\"></span></div><b>").concat(lb, "</b></div>");
+    }).join(''), "</div>\n    <div class=\"znote\">").concat(((_e = d.ia) === null || _e === void 0 ? void 0 : _e.last) ? "\uD83E\uDD16 \u00DAltima decisi\u00F3n de la IA: <b>".concat(d.ia.last.side === 'buy' ? 'compró' : 'vendió', " ").concat(esc(d.ia.last.symbol), "</b> \u00B7 ").concat(esc(String(d.ia.last.reason || '').replace(/^IA (compra|vende): /, ''))) : '🤖 La IA invierte sola cuando la bolsa abre (lunes a viernes, 10:30 a.m. a 5 p.m.).', "</div>");
+}
 function tvRefresh() {
     return __awaiter(this, void 0, void 0, function () {
         var d, _a, a, prev, delta, up, k, p, evs, con, first, full_1, n_1, ty_1, alert, el_1;
-        var _b, _c, _d;
-        return __generator(this, function (_e) {
-            switch (_e.label) {
+        var _b, _c, _d, _e;
+        return __generator(this, function (_f) {
+            switch (_f.label) {
                 case 0:
-                    _e.trys.push([0, 2, , 3]);
+                    _f.trys.push([0, 2, , 3]);
                     return [4, api('/api/tv')];
                 case 1:
-                    d = _e.sent();
+                    d = _f.sent();
                     return [3, 3];
                 case 2:
-                    _a = _e.sent();
+                    _a = _f.sent();
                     return [2];
                 case 3:
                     if (!$('#tv'))
@@ -2388,7 +2470,12 @@ function tvRefresh() {
                     tvLastId = Math.max.apply(Math, __spreadArray(__spreadArray([tvLastId], __read(d.activity.map(function (e) { return e.id; })), false), [0], false));
                     tvChart(d.chart);
                     $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map(function (c, i) { var _a; return "<div class=\"rc\" style=\"animation-delay:".concat(i * 0.08, "s\"><div class=\"s\"><i style=\"background:").concat(TVC[c.light], ";box-shadow:0 0 12px ").concat(TVC[c.light], "\"></i>").concat(esc(coName(c.symbol)), "<span class=\"c\">").concat(c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : '', "</span></div><div class=\"cbar\"><span style=\"width:").concat(Math.round(((_a = c.probBeat) !== null && _a !== void 0 ? _a : c.confidence) * 100), "%;background:").concat(TVC[c.light], "\"></span></div><p>").concat(esc(c.why || ''), "</p></div>"); }).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
+                    tvHasDebate = !!(d.debate && ((_e = d.debate.rounds) === null || _e === void 0 ? void 0 : _e.length));
                     tvDebate(d.debate);
+                    tvMap(d.map);
+                    tvLoto(d.votes, d.nextDraws);
+                    tvIa(d);
+                    tvWorkers(d.tasks);
                     tvLeague(d.league);
                     tvTicker(d.quotes || []);
                     tvPrev = d;
@@ -2544,6 +2631,13 @@ function boot() {
                     $('#top').classList.remove('hide');
                     $('#nav-admin').classList.toggle('hide', ME.role !== 'admin');
                     (_b = $('#nav-estado')) === null || _b === void 0 ? void 0 : _b.classList.toggle('hide', ME.role !== 'admin');
+                    if (window.JV_DEVICE === 'tv' && !sessionStorage.getItem('jv-tv-opened') && (!location.hash || location.hash === '#inicio')) {
+                        try {
+                            sessionStorage.setItem('jv-tv-opened', '1');
+                        }
+                        catch (_d) { }
+                        location.hash = '#tv';
+                    }
                     render();
                     pulse();
                     setInterval(pulse, 60000);

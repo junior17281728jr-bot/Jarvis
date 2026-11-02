@@ -1,5 +1,14 @@
 // Elige la versión de JARVIS que entiende este navegador. Los modernos cargan app.js; las TVs y equipos viejos, app.legacy.js.
 (function () {
+  // ¿Qué equipo es? TV, teléfono o computadora. Cada uno recibe su propio diseño.
+  var ua = navigator.userAgent || '', w = Math.max(screen.width || 0, window.innerWidth || 0), touch = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
+  var tv = /SmartTV|SMART-TV|Tizen|Web0S|WebOS|NetCast|HbbTV|BRAVIA|AFT[A-Z]|GoogleTV|Android TV|CrKey|Roku|VIDAA|Viera|AQUOS|PhilipsTV|Opera TV|TV Safari|Large Screen/i.test(ua);
+  var phone = !tv && (/iPhone|iPod|Android.+Mobile|Windows Phone|Mobile Safari/i.test(ua) || (touch && w < 760));
+  var tablet = !tv && !phone && (/iPad|Android|Tablet/i.test(ua) || (touch && w < 1200));
+  var kind = tv ? 'tv' : phone ? 'phone' : tablet ? 'tablet' : 'desktop';
+  try { var forced = localStorage.getItem('jv-device'); if (forced) kind = forced; } catch (e) {}
+  document.documentElement.className += ' is-' + kind;
+  window.JV_DEVICE = kind;
   var modern = false;
   try { modern = !!(new Function('var o={a:[1]};return o?.a?.at(-1)??0'))() && 'noModule' in document.createElement('script'); } catch (e) { modern = false; }
   var s = document.createElement('script');

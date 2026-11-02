@@ -9,7 +9,8 @@ import { DEFAULT_PAYOUTS } from '../lottery/payouts.js';
 import { sealLotteryPick } from './track.js';
 import { rng, sha256, round, wilson } from '../core/util.js';
 
-const STAKE = 10;
+// Monto de cada jugada virtual del agente: RD$100, lo mínimo que se juega normalmente en una banca
+const STAKE = 100;
 
 export function liveMethodStats(db) {
   return db.prepare(`SELECT method, COUNT(*) n, SUM(stake) staked, SUM(COALESCE(prize,0)) paid, SUM(status = 'gano') wins
@@ -59,7 +60,8 @@ export function pickOfTheDay(db, game, { now = new Date() } = {}) {
   return {
     game, date: nd.date, closesAt: nd.close.toISOString(), numbers, method, methodLabel: METHODS[method].label, why: METHODS[method].why,
     record: s ? `En vivo este método acierta ${s.wins} de ${s.n} (${round(s.wins / s.n * 100, 1)}%, rango ${round(w.lo * 100)}–${round(w.hi * 100)}%). Devuelve RD$${s.per100} por cada RD$100; el azar, RD$${azar?.per100 ?? '—'}.` : 'Todavía no hay suficientes jugadas en vivo para medir este método.',
-    light: 'gris', warning: 'Si los sorteos son justos, este número tiene la misma probabilidad que cualquier otro (3 de cada 100 en quiniela).',
+    light: 'gris', stake: { min: STAKE, suggested: STAKE, why: 'Juega el mínimo (RD$100). En las loterías, en promedio, se pierde parte de lo jugado: subir el monto solo aumenta lo que puedes perder. Solo te diría que subas si un método le ganara al azar con pruebas fuertes.' },
+    warning: 'Si los sorteos son justos, este número tiene la misma probabilidad que cualquier otro (3 de cada 100 en quiniela).',
   };
 }
 

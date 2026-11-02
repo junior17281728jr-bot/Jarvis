@@ -549,6 +549,9 @@ views.perfil = async () => {
   const p = d.profile, first = !p.setup;
   const card = (group, key, o) => `<button type="button" class="opt${(group === 'style' ? p.style : p.horizon) === key ? ' on' : ''}" data-g="${group}" data-k="${key}">${o.icon ? `<span class="oi">${o.icon}</span>` : ''}<b>${esc(o.label)}</b><span class="note">${esc(o.desc)}</span>${o.pct ? `<span class="note">"Sí, invierte" = ${Math.round(o.pct.verde * 100)}% de tu dinero</span>` : ''}</button>`;
   return `${first ? `<section class="card welcome"><div class="s10-h">Bienvenido${ME?.displayName ? ', ' + esc(ME.displayName) : ''}</div><div class="bp-v">Cuéntale a JARVIS cómo eres</div><p class="note">El núcleo (la investigación, el mapa y el historial) es el mismo para todos. Esto solo cambia cuánto te sugiere poner y en qué orden te muestra las opciones. Lo puedes cambiar cuando quieras.</p></section>` : `<div><h1>Mi perfil</h1><p class="sub">JARVIS se adapta a tu forma de invertir. Tu amigo tiene el suyo: cada uno ve lo mismo del núcleo, pero ordenado para sí.</p></div>`}
+  <section class="card"><h2>🖥️ Este equipo</h2><p class="note">JARVIS detecta solo si es teléfono, computadora o TV y se adapta. Si se equivocó, elige aquí (solo cambia en este equipo).</p>
+    <div class="row" style="gap:8px;margin-top:8px">${[['', 'Automático'], ['phone', '📱 Teléfono'], ['desktop', '💻 Computadora'], ['tv', '📺 TV']].map(([k, l]) => `<button type="button" class="btn ${((() => { try { return localStorage.getItem('jv-device') || ''; } catch { return ''; } })()) === k ? '' : 'ghost'} sm" data-dev="${k}">${l}</button>`).join('')}</div>
+    <div class="note" style="margin-top:6px">Ahora: <b>${{ phone: 'teléfono', tablet: 'tableta', desktop: 'computadora', tv: 'TV' }[window.JV_DEVICE] || 'automático'}</b></div></section>
   <section class="card tvcard"><h2>📺 Código para la TV</h2><p class="note">Para entrar rápido en la TV o en otro equipo sin escribir tu usuario ni contraseña. En la TV toca <b>"Entrar con código (TV)"</b> y escribe este código. Sirve <b>10 minutos</b> y <b>una sola vez</b>.</p>
     <div id="tvshow"></div><button type="button" class="btn" id="tvnew">Crear código</button></section>
   <form id="pf" class="grid" style="gap:16px">
@@ -570,6 +573,7 @@ views.perfil = async () => {
     <button class="btn">Cambiar</button></form><div class="msg" id="pwm"></div></section>`;
 };
 views.perfil.after = () => {
+  document.querySelectorAll('[data-dev]').forEach(b => b.onclick = () => { try { b.dataset.dev ? localStorage.setItem('jv-device', b.dataset.dev) : localStorage.removeItem('jv-device'); } catch { /* sin almacenamiento */ } location.reload(); });
   let tvTick = null;
   $('#tvnew').onclick = async () => {
     try { const r = await api('/api/tvcode', { method: 'POST' }); clearInterval(tvTick);
@@ -778,7 +782,7 @@ views.loterias.after = () => {
     <section class="grid g2">
       <div class="card"><h2>Su número del próximo sorteo</h2>${g.pick ? `<div class="balls" style="margin-bottom:8px">${g.pick.numbers.map(n => `<span class="ball">${esc(n)}</span>`).join('')} ${light(g.pick.light)}</div>
         <div><b>${esc(g.pick.methodLabel)}:</b> ${esc(g.pick.why)}</div><div class="note" style="margin-top:4px">${esc(g.pick.record)}</div>
-        <div class="answer" style="margin-top:8px">⚠ ${esc(g.pick.warning)}</div><div class="note">Sorteo del ${esc(g.pick.date)} · cierra ${hhmm(g.pick.closesAt)} ${g.timeVerified ? '' : '(horario por verificar)'}</div><a class="btn ghost" href="#analisis/loteria/${esc(id)}" style="margin-top:8px;display:inline-block">Análisis completo ▸</a>` : '<div class="empty">Faltan sorteos para elegir.</div>'}</div>
+        ${g.pick.stake ? `<div style="margin-top:8px"><b>💵 Cuánto jugar: RD$${g.pick.stake.suggested}</b> <span class="note">· ${esc(g.pick.stake.why)}</span></div>` : ''}<div class="answer" style="margin-top:8px">⚠ ${esc(g.pick.warning)}</div><div class="note">Sorteo del ${esc(g.pick.date)} · cierra ${hhmm(g.pick.closesAt)} ${g.timeVerified ? '' : '(horario por verificar)'}</div><a class="btn ghost" href="#analisis/loteria/${esc(id)}" style="margin-top:8px;display:inline-block">Análisis completo ▸</a>` : '<div class="empty">Faltan sorteos para elegir.</div>'}</div>
       <div class="card"><h2>Últimos resultados</h2>${g.last.length ? `<table>${g.last.map(d => `<tr><td>${esc(d.date)}</td><td><div class="balls">${d.nums.map(n => `<span class="ball" style="width:28px;height:28px;font-size:12px">${esc(n)}</span>`).join('')}</div></td><td><span class="src ${d.status === 'verificado' ? 'ok' : ''}">${d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status)}</span></td></tr>`).join('')}</table>` : '<div class="empty">Sin resultados todavía.</div>'}</div>
     </section>
     <section class="grid g2">
@@ -790,7 +794,7 @@ views.loterias.after = () => {
       ${g.compare.methods.map(m => `<tr><td>${esc(m.label)}<div class="note">${esc(m.why)}</div></td><td class="r">${m.plays}</td><td class="r">${m.wins}</td><td class="r ${m.per100 >= 100 ? 'good' : 'bad'}">${rd(m.per100)}</td><td class="r">${m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : `<span class="light gris"><i></i>No</span> <span class="note">${(m.pBetterThanRandom * 100).toFixed(0)}% por azar</span>`}</td></tr>`).join('')}</table></div>` : '<div class="empty">Se necesitan al menos 20 sorteos.</div>'}</section>
     <section class="card"><h2>Jugar en virtual</h2><form class="form" id="lf"><div class="grid g4" style="gap:10px">
       <label>Tipo<select id="lk"><option value="quiniela">Quiniela</option><option value="pale">Palé</option><option value="tripleta">Tripleta</option></select></label>
-      <label>Números (separados por espacio)<input id="ln" placeholder="27 o 27 45"></label><label>Monto RD$<input id="ls" type="number" min="1" value="10"></label><label>&nbsp;<button class="btn">Sellar jugada</button></label></div><div class="msg" id="lm"></div></form></section>`;
+      <label>Números (separados por espacio)<input id="ln" placeholder="27 o 27 45"></label><label>Monto RD$ (mínimo 100)<input id="ls" type="number" min="100" step="25" value="100"></label><label>&nbsp;<button class="btn">Sellar jugada</button></label></div><div class="msg" id="lm"></div></form></section>`;
     $('#lf').onsubmit = async e => {
       e.preventDefault();
       try { const r = await api('/api/lottery/play', { method: 'POST', body: { game: id, kind: $('#lk').value, numbers: $('#ln').value.trim().split(/\s+/).map(x => x.padStart(2, '0')), stake: Number($('#ls').value) } });
@@ -1346,6 +1350,7 @@ async function tvOpen() {
       <div class="kp"><small>Racha actual</small><b id="k-streak">0</b><div class="sub" id="k-streak-sub"></div></div>
       <div class="kp"><small>Experimentos</small><b id="k-exp">0</b><div class="sub" id="k-exp-sub"></div></div>
     </div>
+    <div class="workers" id="tvw"></div>
     <div class="body">
       <div class="pane"><h3><span class="live"></span>La IA en este momento</h3><div class="console" id="tvcon"></div><div class="prog"><span></span></div></div>
       <div class="col">
@@ -1353,7 +1358,12 @@ async function tvOpen() {
         <div class="pane"><h3>Recomendaciones del momento</h3><div class="cards" id="tvrank"></div></div>
       </div>
       <div class="col">
-        <div class="pane debpane"><h3><span class="live"></span><span id="tvdt">Debate en vivo</span></h3><div class="chat" id="tvchat"></div></div>
+        <div class="pane spot"><h3><span class="live"></span><span id="tvst">Mapa</span><span class="dots" id="tvsd"></span></h3>
+          <div class="slide on" data-s="mapa"><div class="tvmap" id="tvmap"></div></div>
+          <div class="slide" data-s="loto"><div class="tvloto" id="tvloto"></div></div>
+          <div class="slide" data-s="ia"><div class="tvia" id="tvia"></div></div>
+          <div class="slide" data-s="debate"><h4 class="sub" id="tvdt">Debate en vivo</h4><div class="chat" id="tvchat"></div></div>
+          <div class="sbar"><span id="tvsb"></span></div></div>
         <div class="pane leaguepane"><h3>Liga de agentes · monedas</h3><div class="league" id="tvlg"></div></div>
       </div>
     </div>
@@ -1363,8 +1373,9 @@ async function tvOpen() {
   tvClock = setInterval(() => { const c = $('#tvc'); if (c) c.textContent = new Date().toLocaleString('es-DO', { weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); }, 1000);
   tvPrev = null; tvLastId = 0; tvChartKey = '';
   await tvRefresh(); tvTimer = setInterval(tvRefresh, 15000);
+  tvSlide = 0; tvSpotShow(); clearInterval(tvSpotTimer); tvSpotTimer = setInterval(() => { tvSlide++; tvSpotShow(); }, 12000);
 }
-function tvClose() { clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
+function tvClose() { clearInterval(tvSpotTimer); clearInterval(tvTimer); clearInterval(tvClock); clearTimeout(tvDebTimer); $('#tv-root').innerHTML = ''; if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); }
 
 function tvChart(c) {
   const box = $('#tvchart'); if (!box) return;
@@ -1453,6 +1464,44 @@ function tvTicker(qs) {
   if (t.dataset.h !== html) { t.dataset.h = html; t.innerHTML = html + html; t.style.animationDuration = Math.max(30, qs.length * 5) + 's'; }
 }
 
+// ---------- Modo TV: panel que rota (Mapa · Loterías · Tú vs IA · Debate) y trabajadores 24/7 ----------
+let tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
+const TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA']];
+function tvSpotShow() {
+  const list = TV_SLIDES.filter(([k]) => k !== 'debate' || tvHasDebate), cur = list[tvSlide % list.length];
+  document.querySelectorAll('.tv .slide').forEach(el => el.classList.toggle('on', el.dataset.s === cur[0]));
+  const t = $('#tvst'); if (t) t.textContent = cur[1];
+  const d = $('#tvsd'); if (d) d.innerHTML = list.map(x => `<i class="${x[0] === cur[0] ? 'on' : ''}"></i>`).join('');
+  const b = $('#tvsb'); if (b) { b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; }
+}
+const TASK_TV = { bolsa_precios: ['📈', 'Precios en vivo'], loterias_resultados: ['🎱', 'Resultados de loterías'], investigacion: ['🧪', 'Probando ideas'], explorar: ['🔭', 'Explorando empresas'], ranking: ['🗺️', 'Actualizando el mapa'], cartera_ia: ['🤖', 'Cartera de la IA'], noticias: ['📰', 'Leyendo noticias'], prueba_en_vivo: ['⚡', 'Prueba en vivo'] };
+function tvWorkers(tasks) {
+  const el = $('#tvw'); if (!el || !tasks) return;
+  const now = Date.now(), recent = tasks.slice().sort((a, b) => (b.last || '').localeCompare(a.last || ''))[0]?.name;
+  el.innerHTML = tasks.map(t => { const [ic, lb] = TASK_TV[t.name] || ['•', t.name]; const mins = t.last ? (now - Date.parse(t.last)) / 60e3 : null, alive = mins != null && mins < t.every * 2 + 10;
+    return `<div class="wk ${t.name === recent ? 'busy' : ''} ${alive ? 'ok' : 'idle'}"><span class="wi">${ic}</span><div><b>${esc(lb)}</b><small>${t.name === recent ? 'trabajando ahora…' : mins == null ? 'esperando su turno' : mins < 1 ? 'hace un momento' : mins < 60 ? `hace ${Math.round(mins)} min` : `hace ${Math.round(mins / 60)} h`}</small></div><span class="wd"></span></div>`; }).join('');
+}
+const ZTV = [['recomendada', 'Te recomiendo', '#2fd58a'], ['observacion', 'En observación', '#ffbf3c'], ['no_recomendada', 'No te recomiendo', '#ff5d6c'], ['candidata', 'Explorando', '#a98bff']];
+function tvMap(m) {
+  const el = $('#tvmap'); if (!el || !m) return;
+  el.innerHTML = ZTV.map(([k, lb, col]) => { const L = m.zones[k] || []; return `<div class="zcol" style="border-color:${col}55"><div class="zh" style="color:${col}">${esc(lb)} <span>${L.length}</span></div><div class="zb">${L.slice(0, 8).map((x, i) => `<span class="zs" style="background:${col}22;border-color:${col}88;animation-delay:${i * 0.07}s">${esc(x.s)}<small>${x.c}</small></span>`).join('') || '<span class="zempty">—</span>'}</div></div>`; }).join('')
+    + `<div class="znote">🔭 Busca empresas nuevas cada 6 horas${m.exploredAt ? ` · última búsqueda ${timeAgo(m.exploredAt)}` : ''}. El número pequeño es qué tanto te conviene (0 a 100).</div>`;
+}
+function tvLoto(votes, draws) {
+  const el = $('#tvloto'); if (!el) return;
+  const cd = iso => { const ms = Date.parse(iso) - Date.now(); if (ms <= 0) return 'cerrado'; const h = Math.floor(ms / 3600e3), mi = Math.floor(ms % 3600e3 / 60e3); return h ? `${h} h ${mi} min` : `${mi} min`; };
+  el.innerHTML = `<div class="draws">${(draws || []).slice(0, 2).map(d => `<div class="dr"><b>${esc(d.game)}</b><span>cierra en <em data-cd="${esc(d.closesAt)}">${cd(d.closesAt)}</em></span></div>`).join('')}</div>
+    <div class="lv">${(votes || []).slice(0, 3).map(v => `<div class="lvr"><span class="lg">${esc(v.game)}</span><span class="lb">${v.top.map((n, i) => `<i style="animation-delay:${i * 0.15}s">${esc(n)}</i>`).join('')}</span></div>`).join('') || '<div class="zempty">Juntando resultados…</div>'}</div>
+    <div class="znote">🗳️ Los números más votados por los métodos. Cada número tiene 3 de cada 100 de salir: JARVIS vigila trampas y no promete nada.</div>`;
+}
+function tvIa(d) {
+  const el = $('#tvia'); if (!el) return;
+  const you = d.account ? d.account.returnPct / 100 : null, ia = d.ia?.returnPct ?? null, mk = d.ia?.market ?? null;
+  const vals = [['Tú', you, '#38d6f5'], ['La IA', ia, '#a98bff'], ['Mercado', mk, '#8a97b5']], mx = Math.max(0.01, ...vals.map(v => Math.abs(v[1] || 0)));
+  el.innerHTML = `<div class="bars3">${vals.map(([lb, v, col]) => `<div class="b3"><div class="b3v" style="color:${(v || 0) >= 0 ? '#2fd58a' : '#ff5d6c'}">${v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`}</div><div class="b3t"><span style="height:${Math.max(4, Math.abs(v || 0) / mx * 100)}%;background:linear-gradient(0deg,${col}33,${col})"></span></div><b>${lb}</b></div>`).join('')}</div>
+    <div class="znote">${d.ia?.last ? `🤖 Última decisión de la IA: <b>${d.ia.last.side === 'buy' ? 'compró' : 'vendió'} ${esc(d.ia.last.symbol)}</b> · ${esc(String(d.ia.last.reason || '').replace(/^IA (compra|vende): /, ''))}` : '🤖 La IA invierte sola cuando la bolsa abre (lunes a viernes, 10:30 a.m. a 5 p.m.).'}</div>`;
+}
+
 async function tvRefresh() {
   let d; try { d = await api('/api/tv'); } catch { return; }
   if (!$('#tv')) return;
@@ -1485,7 +1534,9 @@ async function tvRefresh() {
   tvLastId = Math.max(tvLastId, ...d.activity.map(e => e.id), 0);
   tvChart(d.chart);
   $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map((c, i) => `<div class="rc" style="animation-delay:${i * 0.08}s"><div class="s"><i style="background:${TVC[c.light]};box-shadow:0 0 12px ${TVC[c.light]}"></i>${esc(coName(c.symbol))}<span class="c">${c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : ''}</span></div><div class="cbar"><span style="width:${Math.round((c.probBeat ?? c.confidence) * 100)}%;background:${TVC[c.light]}"></span></div><p>${esc(c.why || '')}</p></div>`).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
+  tvHasDebate = !!(d.debate && d.debate.rounds?.length);
   tvDebate(d.debate);
+  tvMap(d.map); tvLoto(d.votes, d.nextDraws); tvIa(d); tvWorkers(d.tasks);
   tvLeague(d.league);
   tvTicker(d.quotes || []);
   tvPrev = d;
@@ -1541,6 +1592,7 @@ async function boot() {
   if (ME.profile && !ME.profile.setup && !location.hash.startsWith('#perfil')) location.hash = '#perfil';
   $('#top').classList.remove('hide');
   $('#nav-admin').classList.toggle('hide', ME.role !== 'admin'); $('#nav-estado')?.classList.toggle('hide', ME.role !== 'admin');
+  if (window.JV_DEVICE === 'tv' && !sessionStorage.getItem('jv-tv-opened') && (!location.hash || location.hash === '#inicio')) { try { sessionStorage.setItem('jv-tv-opened', '1'); } catch { /* sin almacenamiento */ } location.hash = '#tv'; }
   render(); pulse(); setInterval(pulse, 60000);
 }
 $('#theme').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; try { localStorage.setItem('jv-theme', t); } catch { /* sin almacenamiento */ } };

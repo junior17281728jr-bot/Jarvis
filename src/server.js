@@ -153,6 +153,12 @@ route('GET', '/api/tv', ({ user }) => {
     activity: db.prepare('SELECT * FROM activity WHERE user_id IS NULL OR user_id = ? ORDER BY id DESC LIMIT 40').all(user.id),
     account: (() => { const acc = userAccount(user); const v = valuation(db, acc.id, s => getQuote(db, s)?.price); return { total: round(v.total, 2), start: v.start, returnPct: round(v.returnPct * 100, 2), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), positions: v.positions.length, fx: fx(db)?.rate ?? null }; })(),
     quotes: db.prepare('SELECT symbol, price, prev_close, kind, source, as_of FROM stock_quotes ORDER BY symbol').all().map(q => ({ ...q, changePct: q.prev_close ? round((q.price / q.prev_close - 1) * 100, 2) : null })),
+    // Para el Modo TV: lo que hace cada área, en vivo
+    map: (() => { const zs = { recomendada: [], observacion: [], no_recomendada: [], candidata: [] }; for (const e of db.prepare("SELECT symbol, zone, conv FROM map_entries WHERE zone != 'descartada' ORDER BY conv DESC").all()) (zs[e.zone] ||= []).push({ s: e.symbol, c: e.conv }); const ex = getSetting(db, 'global', 'map.explore', null); return { zones: zs, exploredAt: ex?.at || null }; })(),
+    votes: Object.keys(GAMES).map(g => { try { const v = methodVotes(db, g); return v ? { game: GAMES[g].name, date: v.date, top: v.top.map(t => t.num), verdict: v.verdict } : null; } catch { return null; } }).filter(Boolean).slice(0, 4),
+    nextDraws: Object.keys(GAMES).map(g => { try { const nd = nextDraw(g); return { game: GAMES[g].name, closesAt: nd.close.toISOString() }; } catch { return null; } }).filter(Boolean).sort((a, b) => a.closesAt.localeCompare(b.closesAt)).slice(0, 4),
+    ia: (() => { try { const v = aiView(db); return { total: v.total, start: v.start, returnPct: v.returnPct, market: v.market, positions: v.positions.length, last: v.trades[0] || null }; } catch { return null; } })(),
+    tasks: taskStatus(db).filter(t => ['bolsa_precios', 'loterias_resultados', 'investigacion', 'explorar', 'ranking', 'cartera_ia', 'noticias', 'prueba_en_vivo'].includes(t.name)).map(t => ({ name: t.name, every: t.every, last: t.last?.at || null, ok: t.last ? t.last.ok !== false : null })),
     debate: (() => { const d = db.prepare('SELECT * FROM debates ORDER BY id DESC LIMIT 1').get(); return d ? { id: d.id, subject: d.subject, at: d.created_at, rounds: JSON.parse(d.rounds), verdict: JSON.parse(d.verdict) } : null; })(),
     chart: (() => {
       const w = whatIf(db, { perTradeUsd: 10 });

@@ -4,11 +4,12 @@ import { seal } from '../core/ledger.js';
 import { nowIso } from '../core/db.js';
 import { settleMultiplier, expectedReturn, DEFAULT_PAYOUTS } from './payouts.js';
 import { METHODS } from './methods.js';
+export const MIN_STAKE = 100;
 import { GAMES, isValidNumbers } from './games.js';
 import { history, payableStatuses } from './results.js';
 
 /** Juega un método sorteo por sorteo: en cada fecha solo conoce lo anterior. */
-export function backtest(hist, methodId, kind, { stake = 10, warmup = 10, seed = 1, P = DEFAULT_PAYOUTS } = {}) {
+export function backtest(hist, methodId, kind, { stake = 100, warmup = 10, seed = 1, P = DEFAULT_PAYOUTS } = {}) {
   const m = METHODS[methodId], r = rng(seed);
   let plays = 0, wins = 0, staked = 0, paid = 0;
   const curve = [];
@@ -22,7 +23,7 @@ export function backtest(hist, methodId, kind, { stake = 10, warmup = 10, seed =
 }
 
 /** Compara cada método con 400 jugadores al azar y corrige por haber probado varios métodos. */
-export function compareMethods(hist, kind, { stake = 10, warmup = 10, sims = 400, P = DEFAULT_PAYOUTS } = {}) {
+export function compareMethods(hist, kind, { stake = 100, warmup = 10, sims = 400, P = DEFAULT_PAYOUTS } = {}) {
   const baseline = [];
   for (let s = 0; s < sims; s++) baseline.push(backtest(hist, 'azar', kind, { stake, warmup, seed: 1000 + s, P }).per100 ?? 0);
   baseline.sort((a, b) => a - b);
@@ -63,6 +64,7 @@ export function sealPlay(db, { userId = null, agent = null, game, kind, numbers,
   if (!GAMES[game]) throw new Error('Lotería desconocida.');
   if (!isValidNumbers(numbers, kind)) throw new Error('Números no válidos para esa jugada (00–99, sin repetir).');
   if (!(stake > 0)) throw new Error('El monto debe ser mayor que 0.');
+  if (purpose === 'usuario' && stake < MIN_STAKE) throw new Error(`El mínimo por jugada es RD$${MIN_STAKE} (como en las bancas). Puedes jugar más.`);
   const nd = nextDraw(game, now);
   const m = METHODS[method] || { version: 0 };
   const payload = { game, date: nd.date, kind, numbers, stake, payouts: P, method, methodVersion: m.version, purpose, closesAt: nd.close.toISOString(), userId, agent };
