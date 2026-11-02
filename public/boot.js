@@ -3,7 +3,11 @@
   var modern = false;
   try { modern = !!(new Function('var o={a:[1]};return o?.a?.at(-1)??0'))() && 'noModule' in document.createElement('script'); } catch (e) { modern = false; }
   var s = document.createElement('script');
-  if (modern) { s.type = 'module'; s.src = '/app.js'; } else { s.src = '/app.legacy.js'; }
+  if (modern) { s.type = 'module'; s.src = '/app.js'; } else {
+    s.src = '/app.legacy.js';
+    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '/styles.legacy.css'; document.head.appendChild(l);
+    document.documentElement.className += ' legacy';
+  }
   document.body.appendChild(s);
   // Si algo falla, que se vea en pantalla (sirve para mandarle una foto a quien lo arregla)
   window.addEventListener('error', function (e) {
