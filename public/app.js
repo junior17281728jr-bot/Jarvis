@@ -356,11 +356,11 @@ views.inicio = async () => {
     <div class="pill">${h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>'}</div></section>
   ${confidenceCard()}
   <section class="card guide"><h2>🧭 ¿Qué hay en cada parte? <span class="more note">toca para ir</span></h2><div class="gtiles">${[
-    ['#cuentas', '💼', 'Cuentas de JARVIS', 'Su dinero virtual: en qué lo invirtió, cuánto ganó o perdió y con cuánto queda.'],
+    ['#bolsa', '🧑', 'Mi dinero', 'TU parte: inviertes tú con dinero de práctica para probar.'],
+    ['#cuentas', '🤖', 'Dinero de la IA', 'La parte de la IA: invierte sola. Mira en qué, cuánto ganó o perdió y con cuánto queda.'],
     ['#mapa', '🗺️', 'Mapa', 'Todas las empresas por color: recomendadas, en observación y no recomendadas.'],
     ['#recomendaciones', '⭐', 'Recomendaciones', 'Las mejores ideas de hoy, con su nota y por qué.'],
     ['#buscar', '🔍', 'Buscar', 'Busca cualquier empresa y JARVIS te dice si conviene.'],
-    ['#bolsa', '💵', 'Mi dinero', 'Tu dinero de práctica: compra, vende y mira cómo vas.'],
     ['#loterias', '🎱', 'Loterías', 'Próximos sorteos, el número de JARVIS y si acertó o no.'],
     ['#aprendizaje', '🧠', 'Aprendizaje', 'Qué ideas probó, cuáles funcionan, monedas y trampas.'],
     ['#historial', '📜', 'Historial', 'Todo lo que recomendó antes y cómo le fue de verdad.'],
@@ -513,10 +513,12 @@ function iaStateHtml(B) {
   return `<div class="iastate">🤖 <b>Qué está haciendo la IA ahora</b><br>${t}</div>`;
 }
 views.cuentas = async () => {
-  const A = await api('/api/jarvis/cuentas'); if (A.rate) FX = A.rate;
+  const [A, me, iav] = await Promise.all([api('/api/jarvis/cuentas'), api('/api/account').catch(() => null), api('/api/ia').catch(() => null)]); if (A.rate) FX = A.rate; if (me) A.me = { returnPct: me.returnPct, market: iav?.market ?? null };
   const B = A.bolsa, L = A.loteria, up = B.gain >= 0;
   const empty = !B.positions.length;
-  return `<div><h1>💼 Las cuentas de JARVIS</h1><p class="sub">El dinero virtual que JARVIS maneja solo: cuánto tenía, en qué lo puso, cuánto ganó o perdió y con cuánto queda. Todo sale de operaciones selladas con precios reales.</p></div>
+  return `<div class="side-banner ai"><span>🤖</span><div><b>PARTE DE LA IA · decide sola</b><small>Aquí JARVIS invierte su propio dinero virtual con sus propias reglas. Tú no puedes comprar aquí: solo miras cómo le va. Para invertir tú, ve a "🧑 Mi dinero".</small></div></div>
+  <div><h1>🤖 Dinero de la IA</h1><p class="sub">Cuánto tenía, en qué lo puso, cuánto ganó o perdió y con cuánto queda. Todo sale de operaciones selladas con precios reales.</p></div>
+  ${A.me ? `<section class="card"><h2>¿Quién va ganando?</h2>${vsStrip(A.me.returnPct, B.returnPct / 100, A.me.market, 'ai')}</section>` : ''}
   <section class="card acct-card"><h2>📈 Bolsa <span class="more note">empezó el ${dt(B.since)} con ${usd(B.start)}</span></h2>
     ${flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', `${B.positions.length} ${B.positions.length === 1 ? 'acción' : 'acciones'}`], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', `${up ? '+' : ''}${usd(B.gain)} (${up ? '+' : ''}${B.returnPct}%)`]])}
     ${iaStateHtml(B)}
@@ -742,6 +744,10 @@ views.debate = async id => {
 };
 
 // ---------- Tú vs la IA vs el mercado (dos carteras separadas) ----------
+function vsStrip(you, ia, mk, here) {
+  const cell = (icon, t, v, cls2, on) => `<div class="vsc ${cls2}${on ? ' on' : ''}"><span>${icon}</span><small>${t}</small><b class="${cls(v)}">${v != null ? pct(v * 100, 2) : '—'}</b></div>`;
+  return `<div class="vsstrip">${cell('🧑', 'Tú', you, 'me', here === 'me')}${cell('🤖', 'La IA', ia, 'ai', here === 'ai')}${cell('📈', 'El mercado', mk, 'mk', false)}</div>`;
+}
 function iaCompare(a, ia) {
   const you = a.returnPct, iaR = ia?.returnPct ?? null, mk = ia?.market ?? a.compare?.market ?? null;
   const box = (icon, title, sub, v, extra) => `<div class="pbox vs"><div class="l">${icon} <b>${title}</b></div><div class="note">${sub}</div><div class="v ${cls(v)}">${v != null ? pct(v * 100, 2) : '—'}</div>${extra || ''}</div>`;
@@ -761,7 +767,8 @@ views.bolsa = async () => {
   const B = a.budget || MYBUDGET || { usd: 100, emergency: true };
   const openTxt = a.marketOpen ? '<span class="good">🟢 La bolsa está abierta: las órdenes se hacen al momento.</span>' : `<span class="warn">🌙 La bolsa está cerrada${a.nextOpen ? ` · abre ${new Date(a.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })} (hora RD)` : ''}</span> · Puedes dejar tus órdenes listas y se hacen solas al abrir.`;
   const picks = r.filter(c => c.light !== 'rojo').slice(0, 6);
-  return `<section class="card investnow"><h2>💵 Invertir con mi dinero de práctica <span class="more note">dinero virtual, precios reales</span></h2>
+  return `<div class="side-banner me"><span>🧑</span><div><b>TU PARTE · aquí decides tú</b><small>Tu dinero de práctica: compras y vendes tú para probar. La IA tiene su propio dinero aparte, en "🤖 Dinero de la IA".</small></div></div>
+  <section class="card investnow"><h2>💵 Invertir con mi dinero de práctica <span class="more note">dinero virtual, precios reales</span></h2>
     <div class="mkt">${openTxt}</div>
     ${picks.length ? `<div class="qbuy">${picks.map(c => { const amt = Math.min(a.limits.max, Math.max(a.limits.min, baseAmt(c.light))); return `<div class="qb"><div class="qb-h">${coBadge(c.symbol, 34)}<div><b>${esc(coName(c.symbol))}</b><div class="note">${esc(c.symbol)} · ${light(c.light)}</div></div></div>
       <button type="button" class="btn" data-qbuy="${esc(c.symbol)}" data-amt="${amt}">${a.marketOpen ? 'Comprar' : 'Dejar lista la compra de'} ${usd(amt, 0)}</button></div>`; }).join('')}</div>` : '<div class="note">Hoy JARVIS no recomienda comprar nada.</div>'}
@@ -774,8 +781,7 @@ views.bolsa = async () => {
     <div class="grid g3" style="gap:10px;margin-top:12px"><div class="pbox"><div class="l">"Sí, invierte" (${myStyle().verde * 100}%)</div><div class="v good">${usd(baseAmt('verde'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">"Invierte poco" (${myStyle().amarillo * 100}%)</div><div class="v warn">${usd(baseAmt('amarillo'), 0)}</div><div class="note">por idea</div></div><div class="pbox"><div class="l">Máximo con pruebas fuertes (${myStyle().max * 100}%)</div><div class="v">${usd(Math.round(B.usd * myStyle().max), 0)}</div><div class="note">solo si se cumplen las 5 condiciones</div></div></div>
     <div class="note" style="margin-top:8px">Porcentajes según tu estilo (${esc({ conservador: 'conservador', equilibrado: 'equilibrado', arriesgado: 'arriesgado' }[MYBUDGET?.profile?.style] || 'equilibrado')}). <a href="#perfil">Cambiar mi estilo ▸</a></div>
     <div class="row" style="margin-top:12px;gap:10px;align-items:center"><button type="button" class="btn ghost" id="breset">Empezar mi práctica con ${usd(B.usd, 0)}</button><span class="note">Tu cuenta de práctica empieza con ${usd(a.start, 0)}. Si la reinicias, la anterior queda guardada en el historial (no se borra).</span></div><div class="msg" id="bm"></div></section>
-  ${iaCompare(a, ia)}
-  ${ct ? `<section class="card"><h2>🤖 La IA con sus US$100 <a class="more" href="#cuentas">Ver todas sus cuentas ▸</a></h2>${iaStateHtml(ct.bolsa)}</section>` : ''}
+  <section class="card"><h2>¿Quién va ganando? <a class="more" href="#cuentas">Ver la parte de la IA ▸</a></h2>${vsStrip(a.returnPct, ia?.returnPct ?? null, ia?.market ?? a.compare?.market ?? null, 'me')}<div class="note" style="margin-top:6px">Tu cartera y la de la IA están <b>separadas</b>: lo que compras tú no cambia la de la IA, ni al revés.</div></section>
   <div><h1>🧑 Mi cartera virtual <span class="note" style="font-size:15px;font-weight:600">· aquí decides tú</span></h1><p class="sub">Dinero de mentira, precios reales. Operaciones de ${usd(a.limits.min, 0)} a ${usd(a.limits.max, 0)}, como harías tú. Mercado ${a.marketOpen ? '<b class="good">abierto</b>' : '<b>cerrado</b> (9:30 a.m.–4:00 p.m. hora de Nueva York)'}.</p></div>
   <section class="grid g4">
     <div class="card kpi"><div class="l">Valor total</div><div class="v">${usd(a.total)}</div><div class="s"><span class="${cls(a.returnPct)}">${pct(a.returnPct * 100, 2)} desde ${usd(a.start, 0)}</span>${a.fx ? ` · ≈ ${rd(Math.round(a.total * a.fx.rate))}` : ''}</div></div>
@@ -1671,7 +1677,7 @@ function tvTicker(qs) {
 
 // ---------- Modo TV: panel que rota (Mapa · Loterías · Tú vs IA · Debate) y trabajadores 24/7 ----------
 let tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
-const TV_SLIDES = [['cuentas', '💼 Las cuentas de JARVIS', 'Cuánto tenía, en qué lo invirtió, cuánto ganó o perdió y con cuánto queda.'], ['mapa', '🗺️ Mapa de inversión', 'Verde = recomendada · amarillo = en observación · rojo = no.'], ['loto', '🎱 Loterías: próximos sorteos', 'Próximo sorteo y los números que votó cada método.'], ['ia', '🤖 Tú vs la IA vs el mercado', 'Quién va ganando: tú, la IA sola o el mercado.'], ['debate', '💬 Debate de las IA', 'Dos IA discuten a favor y en contra.'], ['ana', '🔬 Análisis en vivo', 'JARVIS revisa una empresa paso a paso.']];
+const TV_SLIDES = [['cuentas', '🤖 Dinero de la IA', 'Cuánto tenía, en qué lo invirtió, cuánto ganó o perdió y con cuánto queda.'], ['mapa', '🗺️ Mapa de inversión', 'Verde = recomendada · amarillo = en observación · rojo = no.'], ['loto', '🎱 Loterías: próximos sorteos', 'Próximo sorteo y los números que votó cada método.'], ['ia', '🤖 Tú vs la IA vs el mercado', 'Quién va ganando: tú, la IA sola o el mercado.'], ['debate', '💬 Debate de las IA', 'Dos IA discuten a favor y en contra.'], ['ana', '🔬 Análisis en vivo', 'JARVIS revisa una empresa paso a paso.']];
 function tvSpotShow() {
   const list = TV_SLIDES.filter(([k]) => (k !== 'debate' || tvHasDebate)), cur = list[tvSlide % list.length];
   document.querySelectorAll('.tv .slide').forEach(el => el.classList.toggle('on', el.dataset.s === cur[0]));
