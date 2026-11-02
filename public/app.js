@@ -3,7 +3,12 @@ const $ = s => document.querySelector(s);
 const app = $('#app');
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const usd = (v, d = 2) => (v == null || isNaN(v) ? '—' : (v < 0 ? '−' : '') + 'US$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
-const rd = v => (v == null ? '—' : 'RD$' + Number(v).toLocaleString('es-DO', { maximumFractionDigits: 2 }));
+const rdRaw = v => (v == null ? '—' : 'RD$' + Number(v).toLocaleString('es-DO', { maximumFractionDigits: 2 }));
+// Montos: siempre en dólares, con los pesos pequeños debajo (más claro que "RD$20")
+let FX = 60;
+const rdu = (v, { sign = false } = {}) => { if (v == null || isNaN(v)) return '—'; const u = v / FX, s = sign ? (v > 0 ? '+' : v < 0 ? '−' : '') : (v < 0 ? '−' : '');
+  return `<span class="dual">${s}US$${Math.abs(u).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<small class="rdsub">${s}RD$${Math.abs(Math.round(v)).toLocaleString('en-US')}</small></span>`; };
+const rd = v => rdu(v);
 const pct = (v, d = 1) => (v == null || isNaN(v) ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d) + '%');
 const cls = v => (v > 0 ? 'good' : v < 0 ? 'bad' : '');
 const timeAgo = iso => { if (!iso) return 'nunca'; const m = Math.round((Date.now() - Date.parse(iso)) / 60e3); return m < 1 ? 'ahora' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`; };
@@ -379,7 +384,7 @@ views.inicio = async () => {
       <div class="note" style="margin-top:8px">${h.learning.experiments} experimentos con datos bajo llave. ${h.rankingStats.resolved ? `Recomendaciones calificadas: ${h.rankingStats.hits} de ${h.rankingStats.resolved} acertadas.` : 'Las recomendaciones se califican a los 20 días de bolsa.'}</div></div>
     <div class="card"><h2>Liga de agentes <span class="more note">ganan monedas si ganan dinero</span></h2>${h.league.map(a => `<div class="w" style="margin-bottom:8px"><span>${esc(a.name)}</span><b>${a.coins}</b><div class="bar"><span style="width:${Math.max(4, Math.min(100, 50 + a.coins * 2))}%;background:linear-gradient(90deg,var(--violet),var(--accent))"></span></div></div>`).join('')}</div>
     <div class="card${ME?.profile?.interests?.loterias === false ? ' hide' : ''}"><h2>Loterías RD <a class="more" href="#loterias">Ver ▸</a></h2>
-      <div class="mini3"><div><div class="note">Jugadas</div><b style="font-size:22px">${h.lottery.stats.settled}</b></div><div><div class="note">De cada RD$100 volvieron</div><b style="font-size:22px" class="${h.lottery.stats.per100 != null && h.lottery.stats.per100 < 100 ? 'bad' : ''}">${h.lottery.stats.per100 != null ? rd(h.lottery.stats.per100) : '—'}</b></div><div><div class="note">Lo normal a largo plazo</div><b style="font-size:22px">${rd(h.lottery.expectedQuinielaPer100)}</b></div></div>
+      <div class="mini3"><div><div class="note">Jugadas</div><b style="font-size:22px">${h.lottery.stats.settled}</b></div><div><div class="note">Volvió de lo jugado</div><b style="font-size:22px" class="${h.lottery.stats.per100 != null && h.lottery.stats.per100 < 100 ? 'bad' : ''}">${h.lottery.stats.per100 != null ? Math.round(h.lottery.stats.per100) + '%' : '—'}</b></div><div><div class="note">Lo normal a largo plazo</div><b style="font-size:22px">${h.lottery.expectedQuinielaPer100 != null ? Math.round(h.lottery.expectedQuinielaPer100) + '%' : '—'}</b></div></div>
       <div class="note" style="margin-top:8px">${h.lottery.effort === 'bajo' ? 'Ningún método le gana al azar: esfuerzo reducido, prioridad a la bolsa.' : 'Probando métodos contra el azar en cada sorteo.'}</div></div>
   </section>
   ${footLine()}`;
@@ -612,6 +617,7 @@ views.perfil.after = () => {
 };
 /** Muestra el nombre arriba y oculta lo que a esta persona no le interesa. */
 function applyUser() {
+  api('/api/fx').then(f => { if (f?.rate) FX = f.rate; }).catch(() => {});
   const chip = $('#mechip'); if (chip) chip.textContent = '👤 ' + (ME?.displayName || ME?.username || '');
   const lot = document.querySelector('#tabs a[href="#loterias"]'); if (lot) lot.classList.toggle('hide', ME?.profile?.interests?.loterias === false);
 }
@@ -765,13 +771,47 @@ views.loterias = async () => {
   <section class="grid g4">
     <div class="card kpi"><div class="l">Jugadas virtuales</div><div class="v">${L.stats.settled}</div><div class="s">${L.stats.pending} pendientes de sorteo</div></div>
     <div class="card kpi" style="--c:var(--good)"><div class="l">Aciertos</div><div class="v">${L.stats.hitRate != null ? L.stats.hitRate + '%' : '—'}</div><div class="s">${L.stats.wins} premios · racha récord ${L.stats.streak.bestWin}</div></div>
-    <div class="card kpi" style="--c:var(--bad)"><div class="l">Devuelve por RD$100</div><div class="v">${L.stats.per100 != null ? rd(L.stats.per100) : '—'}</div><div class="s">Apostado ${rd(L.stats.staked)} · cobrado ${rd(L.stats.paid)}</div></div>
-    <div class="card kpi" style="--c:var(--accent)"><div class="l">${term('valor esperado', 'Valor esperado')}</div><div class="v">${rd(L.expected.quiniela)}</div><div class="s">Quiniela · palé ${rd(L.expected.pale)} · tripleta ${rd(L.expected.tripleta)}</div></div>
+    <div class="card kpi" style="--c:var(--bad)"><div class="l">Devuelve por RD$100</div><div class="v">${L.stats.per100 != null ? rdRaw(L.stats.per100) : '—'}</div><div class="s">Apostado ${rd(L.stats.staked)} · cobrado ${rd(L.stats.paid)}</div></div>
+    <div class="card kpi" style="--c:var(--accent)"><div class="l">${term('valor esperado', 'Valor esperado')}</div><div class="v">${rdRaw(L.expected.quiniela)}</div><div class="s">Quiniela · palé ${rdRaw(L.expected.pale)} · tripleta ${rdRaw(L.expected.tripleta)}</div></div>
   </section>
+  <div id="jvlot"><div class="card note">Cargando lo que juega JARVIS…</div></div>
   <div class="row" id="gtabs">${L.games.map(g => `<button class="btn ${g.id === g0.id ? '' : 'ghost'}" data-g="${g.id}">${esc(g.name)}</button>`).join('')}</div>
   <div id="gview"></div>`;
 };
+const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const fdate = d => { const x = new Date(d + 'T12:00:00Z'); const today = new Date().toISOString().slice(0, 10), tm = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  return d === today ? 'hoy' : d === tm ? 'mañana' : `${DAYS[x.getUTCDay()]} ${x.getUTCDate()} ${x.toLocaleDateString('es-DO', { month: 'short', timeZone: 'UTC' })}`; };
+const ampm = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`; };
+const untilTxt = iso => { const m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'cerrado' : m < 60 ? `cierra en ${m} min` : `cierra en ${Math.floor(m / 60)} h ${m % 60} min`; };
+async function loadJarvisLottery() {
+  const el = $('#jvlot'); if (!el) return;
+  let B; try { B = await api('/api/lottery/jarvis'); } catch (e) { el.innerHTML = `<div class="card note">${esc(e.message)}</div>`; return; }
+  if (B.rate) FX = B.rate;
+  const S = B.summary, ST = { acerto: ['✅', 'Acertó', 'good'], fallo: ['❌', 'Falló', 'bad'], esperando: ['⏳', 'Esperando resultado', 'warn'] };
+  const balls = (nums, hit) => nums.map(n => `<span class="ball${hit && hit.includes(n) ? ' hit' : ''}">${esc(n)}</span>`).join('');
+  el.innerHTML = `<section class="card jvlot"><h2>🎱 Lo que juega JARVIS <span class="more note">sellado antes de cada sorteo</span></h2>
+    <div class="jvsum">${[['🎯', `${S.hits} de ${S.picks}`, 'aciertos'], ['💵', rdu(S.stakedRd), 'jugado (virtual)'], ['🏆', rdu(S.wonRd), 'cobrado'], [S.netRd >= 0 ? '📈' : '📉', rdu(S.netRd, { sign: true }), 'resultado']].map(([i, v, l]) => `<div><span>${i}</span><b class="${l === 'resultado' ? (S.netRd >= 0 ? 'good' : 'bad') : ''}">${v}</b><small>${l}</small></div>`).join('')}</div>
+    <h3 class="cs-h">⏭️ Próximos sorteos</h3>
+    <div class="jvnext">${B.upcoming.map(u => `<div class="jvn">
+      <div class="jvn-h"><b>${esc(u.name)}</b><span class="chip">${untilTxt(u.closesAt)}</span></div>
+      <div class="jvn-d">📅 ${fdate(u.date)} · 🕐 ${ampm(u.time)}${u.verified ? '' : ' <span class="note">(hora por confirmar)</span>'}</div>
+      ${u.pick ? `<div class="jvn-b"><div class="balls">${balls(u.pick.numbers)}</div><div><div class="note">Su número · juega</div><b>${rdu(u.pick.stakeRd)}</b></div></div>
+        <div class="jvn-w"><b>¿Por qué?</b> Método "${esc(u.pick.methodLabel)}": ${esc(u.pick.why)}</div>
+        <div class="note">${u.pick.sealedAt ? `🔒 Sellado ${hhmm(u.pick.sealedAt)} · huella ${esc((u.pick.hash || '').slice(0, 10))}… (ya no se puede cambiar)` : '📝 Se sella automáticamente antes del cierre'}</div>
+        ${u.plays.length ? `<details><summary class="note">Lo que juegan los otros ${u.plays.length} métodos de prueba</summary><div class="jvo">${u.plays.map(p => `<span><i>${esc(p.label)}</i> ${p.numbers.map(esc).join(' ')}</span>`).join('')}</div></details>` : ''}`
+      : `<div class="note" style="margin-top:8px">${u.enough ? 'Preparando su número…' : 'Faltan sorteos guardados para elegir (necesita 10).'}</div>`}</div>`).join('')}</div>
+    <h3 class="cs-h">🧾 Lo que ya jugó y cómo le fue</h3>
+    ${B.past.length ? `<div class="jvpast">${B.past.map(p => { const [ic, tx, cl] = ST[p.status]; return `<div class="jvp k-${cl}">
+      <div class="jvp-h"><b>${esc(p.name)}</b> <span class="note">${fdate(p.date)} · ${ampm(p.time)}</span><span class="jvp-s ${cl}">${ic} ${tx}</span></div>
+      <div class="jvp-c"><div><div class="note">Jugó</div><div class="balls">${balls(p.numbers, p.draw)}</div></div><div class="jvp-vs">vs</div><div><div class="note">Salió</div><div class="balls">${p.draw ? balls(p.draw, p.numbers) : '<span class="note">todavía no</span>'}</div></div>
+        <div class="jvp-m"><div class="note">Resultado</div><b class="${p.pnlRd > 0 ? 'good' : p.pnlRd < 0 ? 'bad' : ''}">${p.pnlRd != null ? rdu(p.pnlRd, { sign: true }) : '—'}</b></div></div>
+      <div class="note jvp-e">${esc(p.explain)} <b>Por qué lo eligió:</b> ${esc(p.methodLabel)} — ${esc(p.why)}</div>
+      ${p.others.length ? `<details><summary class="note">Cómo les fue a los otros métodos en ese sorteo</summary><div class="jvo">${p.others.map(o => `<span class="${o.won ? 'good' : ''}"><i>${esc(o.label)}</i> ${o.numbers.map(esc).join(' ')} ${o.won ? '✅' : '❌'}</span>`).join('')}</div></details>` : ''}
+    </div>`; }).join('')}</div>` : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>'}
+    <div class="answer" style="margin-top:12px">🔒 ${esc(B.honest)}</div></section>`;
+}
 views.loterias.after = () => {
+  loadJarvisLottery();
   if ($('#lplusb')) $('#lplusb').onclick = async () => { $('#lplus').innerHTML = '<div class="note">Pensando…</div>'; try { const r = await api('/api/lottery/plus', { method: 'POST' }); $('#lplus').innerHTML = r.text ? `<div class="answer">${esc(r.text).replace(/\n/g, '<br>')}</div>` : `<div class="msg err">${esc(r.error || 'La IA no respondió. Revisa en Ajustes → Claves que la clave de ChatGPT esté puesta.')}</div>`; } catch (err) { $('#lplus').innerHTML = `<div class="msg err">${esc(err.message)}</div>`; } };
   const L = window.__L;
   const show = id => {
@@ -792,7 +832,7 @@ views.loterias.after = () => {
     <section class="grid g2">
       <div class="card"><h2>Su número del próximo sorteo</h2>${g.pick ? `<div class="balls" style="margin-bottom:8px">${g.pick.numbers.map(n => `<span class="ball">${esc(n)}</span>`).join('')} ${light(g.pick.light)}</div>
         <div><b>${esc(g.pick.methodLabel)}:</b> ${esc(g.pick.why)}</div><div class="note" style="margin-top:4px">${esc(g.pick.record)}</div>
-        ${g.pick.stake ? `<div style="margin-top:8px"><b>💵 Cuánto jugar: RD$${g.pick.stake.suggested}</b> <span class="note">· ${esc(g.pick.stake.why)}</span></div>` : ''}<div class="answer" style="margin-top:8px">⚠ ${esc(g.pick.warning)}</div><div class="note">Sorteo del ${esc(g.pick.date)} · cierra ${hhmm(g.pick.closesAt)} ${g.timeVerified ? '' : '(horario por verificar)'}</div><a class="btn ghost" href="#analisis/loteria/${esc(id)}" style="margin-top:8px;display:inline-block">Análisis completo ▸</a>` : '<div class="empty">Faltan sorteos para elegir.</div>'}</div>
+        ${g.pick.stake ? `<div style="margin-top:8px"><b>💵 Cuánto jugar: ${rdu(g.pick.stake.suggested)}</b> <span class="note">· ${esc(g.pick.stake.why)}</span></div>` : ''}<div class="answer" style="margin-top:8px">⚠ ${esc(g.pick.warning)}</div><div class="note">Sorteo del ${esc(g.pick.date)} · cierra ${hhmm(g.pick.closesAt)} ${g.timeVerified ? '' : '(horario por verificar)'}</div><a class="btn ghost" href="#analisis/loteria/${esc(id)}" style="margin-top:8px;display:inline-block">Análisis completo ▸</a>` : '<div class="empty">Faltan sorteos para elegir.</div>'}</div>
       <div class="card"><h2>Últimos resultados</h2>${g.last.length ? `<table>${g.last.map(d => `<tr><td>${esc(d.date)}</td><td><div class="balls">${d.nums.map(n => `<span class="ball" style="width:28px;height:28px;font-size:12px">${esc(n)}</span>`).join('')}</div></td><td><span class="src ${d.status === 'verificado' ? 'ok' : ''}">${d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status)}</span></td></tr>`).join('')}</table>` : '<div class="empty">Sin resultados todavía.</div>'}</div>
     </section>
     <section class="grid g2">
@@ -800,8 +840,8 @@ views.loterias.after = () => {
       <div class="card"><h2>Vigilancia de trampas</h2>${g.scan ? `<div class="answer" style="margin-bottom:10px">${esc(g.scan.verdict)}</div><table><tr><th>Prueba</th><th class="r">Prob. de casualidad</th><th>Estado</th></tr>${g.scan.tests.map(t => `<tr><td>${esc(t.title)}<div class="note">${esc(t.detail)}</div></td><td class="r">${(t.p * 100).toFixed(1)}%</td><td>${t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>'}</td></tr>`).join('')}</table>` : '<div class="empty">Se necesitan al menos 10 sorteos.</div>'}</div>
     </section>
     <section class="card"><h2>Métodos contra el azar</h2>${g.compare ? `<div class="answer" style="margin-bottom:10px">${esc(g.compare.verdict)}</div><div class="tablewrap"><table><tr><th>Método</th><th class="r">Jugadas</th><th class="r">Premios</th><th class="r">Devuelve / RD$100</th><th class="r">¿Le gana al azar?</th></tr>
-      <tr><td><b>Azar puro</b> <span class="note">(400 jugadores simulados)</span></td><td class="r">—</td><td class="r">—</td><td class="r">${rd(g.compare.random.median)} <span class="note">(${g.compare.random.lo}–${g.compare.random.hi})</span></td><td class="r">Referencia</td></tr>
-      ${g.compare.methods.map(m => `<tr><td>${esc(m.label)}<div class="note">${esc(m.why)}</div></td><td class="r">${m.plays}</td><td class="r">${m.wins}</td><td class="r ${m.per100 >= 100 ? 'good' : 'bad'}">${rd(m.per100)}</td><td class="r">${m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : `<span class="light gris"><i></i>No</span> <span class="note">${(m.pBetterThanRandom * 100).toFixed(0)}% por azar</span>`}</td></tr>`).join('')}</table></div>` : '<div class="empty">Se necesitan al menos 20 sorteos.</div>'}</section>
+      <tr><td><b>Azar puro</b> <span class="note">(400 jugadores simulados)</span></td><td class="r">—</td><td class="r">—</td><td class="r">${rdRaw(g.compare.random.median)} <span class="note">(${g.compare.random.lo}–${g.compare.random.hi})</span></td><td class="r">Referencia</td></tr>
+      ${g.compare.methods.map(m => `<tr><td>${esc(m.label)}<div class="note">${esc(m.why)}</div></td><td class="r">${m.plays}</td><td class="r">${m.wins}</td><td class="r ${m.per100 >= 100 ? 'good' : 'bad'}">${rdRaw(m.per100)}</td><td class="r">${m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : `<span class="light gris"><i></i>No</span> <span class="note">${(m.pBetterThanRandom * 100).toFixed(0)}% por azar</span>`}</td></tr>`).join('')}</table></div>` : '<div class="empty">Se necesitan al menos 20 sorteos.</div>'}</section>
     <section class="card"><h2>Jugar en virtual</h2><form class="form" id="lf"><div class="grid g4" style="gap:10px">
       <label>Tipo<select id="lk"><option value="quiniela">Quiniela</option><option value="pale">Palé</option><option value="tripleta">Tripleta</option></select></label>
       <label>Números (separados por espacio)<input id="ln" placeholder="27 o 27 45"></label><label>Monto RD$ (mínimo 100)<input id="ls" type="number" min="100" step="25" value="100"></label><label>&nbsp;<button class="btn">Sellar jugada</button></label></div><div class="msg" id="lm"></div></form></section>`;
@@ -891,11 +931,12 @@ views.ajustes = async () => {
     <li><b>Debate:</b> varias IA discuten a favor y en contra de una recomendación.</li><li><b>Loterías:</b> te explica la vigilancia y cómo jugar con cabeza.</li><li><b>Noticias:</b> resúmenes en español sencillo.</li></ul>
     <div class="note">Sin IA, JARVIS sigue funcionando completo; solo se pierde esto. La IA explica y propone, pero nunca decide sola ni inventa números.</div></section>
   <section class="card brain"><h2>🧠 El núcleo de JARVIS <span class="more note">toda su experiencia</span></h2><div id="brainsum" class="note">Cargando…</div>
-    <p class="note" style="margin-top:8px">Todo lo que JARVIS aprendió (votos, ideas probadas, monedas, historial, usuarios, firmas y pagos) vive en un solo archivo en tu servidor. Cada día se hace una copia verificada. Descarga una copia cifrada y guárdala en tu Google Drive o en tu correo: si el servidor se daña, la subes en un servidor nuevo y JARVIS sigue <b>exactamente</b> donde iba.</p>
+    <p class="note" style="margin-top:8px">Todo lo que JARVIS aprendió (votos, ideas probadas, monedas, historial, usuarios, firmas y pagos) vive en un solo archivo en tu servidor. Cada día se hace una copia verificada y, si conectas tu Google Drive (abajo), también se sube sola, cifrada y comprimida. Si el servidor se daña, la restauras en un servidor nuevo y JARVIS sigue <b>exactamente</b> donde iba.</p>
     <div class="grid g2" style="gap:14px;margin-top:10px">
       <div class="form"><b>Descargar copia</b><label>Frase secreta (10 o más letras; guárdala bien)<input id="bpw" type="password" autocomplete="new-password" minlength="10"></label><button type="button" class="btn" id="bdl">Descargar copia del núcleo</button><div class="msg" id="bdm"></div></div>
       <div class="form"><b>Restaurar desde una copia</b><label class="btn ghost" style="cursor:pointer;display:inline-flex">📁 Elegir archivo .jvbk<input id="brf" type="file" accept=".jvbk,application/octet-stream" hidden></label><div class="note" id="brn"></div><label>Frase secreta de esa copia<input id="brpw" type="password" autocomplete="off"></label><label class="chk"><input type="checkbox" id="brok"> Entiendo que esto reemplaza el núcleo actual (antes se guarda una copia del actual)</label><button type="button" class="btn ghost" id="brs">Restaurar</button><div class="msg" id="brm"></div></div>
     </div></section>
+  <section class="card drivecard"><h2>☁️ Copia automática en tu Google Drive <span class="more note">gratis · se hace sola cada día</span></h2><div id="drv" class="note">Cargando…</div></section>
   <section class="card keyscard"><h2>Claves <span class="more note">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>
     <p class="note">Pégalas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vacío y marca "borrar".</p>
     <form class="form" id="kf">${keys.map(k => `<div class="krow"><div><b>${esc(k.label)}</b> ${k.set ? `<span class="tag dato">puesta ${esc(k.hint || '')}</span>` : '<span class="tag est">falta</span>'}<div class="note">Dónde sacarla: <a href="${KEYHELP[k.name][1]}" target="_blank" rel="noopener">${esc(KEYHELP[k.name][0])}</a></div></div>
@@ -921,7 +962,7 @@ views.ajustes = async () => {
   </section>
   <section class="grid g2">
     <div class="card"><h2>Avisos al celular</h2>${st.notify.on ? `<p>Activos (tema ${esc(st.notify.topic)}).</p><button class="btn ghost" id="ntest">Enviar aviso de prueba</button>` : `<ol class="note" style="padding-left:18px"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class="mono">jarvis-junior-7f3k9</span>, y suscríbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves → Tema de avisos</b>. Para tus avisos personales, ponlo también en <a href="#perfil">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>`}<div class="msg" id="nm"></div></div>
-    <div class="card"><h2>Copia fuera del servidor</h2>${st.offsite ? '<p class="good">Activa: cada copia diaria se cifra y se sube.</p>' : '<ol class="note" style="padding-left:18px"><li>En el servidor instala rclone y conecta tu Google Drive: <span class="mono">sudo apt install -y rclone && sudo -u jarvis rclone config</span></li><li>En .env pon <span class="mono">RCLONE_REMOTE=gdrive:</span> y una frase larga en <span class="mono">BACKUP_PASSPHRASE</span>. Guarda la frase en un lugar seguro: sin ella la copia no se puede abrir.</li><li>Reinicia JARVIS.</li></ol>'}</div>
+    <div class="card"><h2>📘 La memoria de JARVIS</h2><p class="note">Un archivo pequeño (texto) con todo lo que aprendió: qué métodos usa y por qué, cuáles dejó y por qué, dónde sí sirven métodos viejos, cuánto acierta, cómo usó la IA y cuánto costó. Sin datos personales. Sirve para leerlo tú y para dárselo a otra IA en el futuro y que no empiece de cero.</p><div class="row" style="gap:8px"><a class="btn ghost" href="/api/memoria" download>Descargar memoria (.md)</a><a class="btn ghost" href="/api/memoria?formato=json" download>Versión para programas (.json)</a></div></div>
   </section>
   <section class="card" id="usuarios"><h2>Usuarios <span class="more note">cada uno con su perfil; todos usan el mismo núcleo</span></h2><label class="chk" style="margin:6px 0"><input type="checkbox" id="showusers"${st.showUsers !== false ? ' checked' : ''}> Mostrar la lista de usuarios en la pantalla de entrada <span class="note">(cada uno toca su nombre y pone su contraseña)</span></label>${(() => { const on = users.filter(u => u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3); return `<div class="onl"><b>👥 Tienes ${users.length} ${users.length === 1 ? 'usuario' : 'usuarios'}</b> · ${on.length ? `🟢 En línea ahora: ${on.map(u => esc(u.display_name || u.username)).join(', ')}` : 'nadie en línea ahora'}</div>`; })()}<div class="tablewrap"><table><tr><th>Persona</th><th>Estilo</th><th class="r">Su dinero</th><th>Estado</th><th></th></tr>${users.map(u => `<tr><td><b>${esc(u.display_name || u.username)}</b><div class="note">${esc(u.username)} · ${u.role === 'admin' ? 'Administrador' : 'Usuario'}</div><div style="margin-top:4px">${onlineChip(u.lastSeen)}</div></td><td>${u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>'}</td><td class="r">${usd(u.budget, 0)}</td><td>${u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>'}</td>
       <td class="r" style="white-space:nowrap">${u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : `<button class="btn ghost sm" data-pw="${u.id}">Nueva contraseña</button> <button class="btn ghost sm" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Desactivar' : 'Activar'}</button>`}</td></tr>`).join('')}</table></div>
@@ -929,6 +970,36 @@ views.ajustes = async () => {
     <form class="row" id="uf" style="align-items:flex-end;gap:10px"><label style="flex:1;min-width:160px">Su nombre<input id="nn" placeholder="Ricardo"></label><label style="flex:1;min-width:160px">Usuario para entrar<input id="nu" required placeholder="ricardo"></label><label style="flex:1;min-width:180px">Contraseña (déjala vacía y JARVIS crea una)<input id="np" type="text" minlength="10" placeholder="automática" autocomplete="off"></label><label style="width:150px">IA gratis al mes (US$)<input id="nm" type="number" value="2" step="0.5"></label><button class="btn">Crear usuario</button></form>
     <div class="note" style="margin-top:6px">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qué le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigación se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class="msg" id="um"></div></section>`;
 };
+const kb = n => n == null ? '—' : n < 1048576 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(1)} MB`;
+async function loadDrive() {
+  const el = $('#drv'); if (!el) return;
+  let d; try { d = await api('/api/drive'); } catch (e) { el.textContent = e.message; return; }
+  const L = d.last, G = d.legal;
+  const status = d.connected ? `<div class="drvok"><b>✅ Conectado</b> · ${L ? (L.ok ? `última copia ${timeAgo(L.at)}: memoria ${kb(L.memoryBytes)}${L.core ? ` + núcleo ${kb(L.core.bytes)}` : ''} · en tu Drive ocupa <b>${kb(L.used)}</b> en total${L.folder ? ` · <a href="${esc(L.folder)}" target="_blank" rel="noopener">abrir carpeta</a>` : ''}` : `<span class="bad">la última vez falló: ${esc(L.error)}</span>`) : 'todavía no ha subido nada'}${G?.ok ? `<br>📝 Firmas y pagos: ${G.firmas} firmas y ${G.pagos} pagos guardados (${timeAgo(G.at)})` : ''}${d.passphrase ? '' : '<br><span class="warn">⚠️ Falta la frase secreta: solo se sube la memoria, no el núcleo completo.</span>'}</div>` : '';
+  const what = `<div class="drvwhat">${[['📘', 'Memoria', 'lo que aprendió y por qué (texto pequeño, se reemplaza cada día)'], ['🧠', 'Núcleo', `todo JARVIS, cifrado con tu frase y sin el historial de precios (se vuelve a bajar solo). Se guardan las últimas ${d.keep}.`], ['📝', 'Firmas, contratos y pagos', 'cada firma, el texto exacto firmado, cada pago y la foto del comprobante. Se suben al momento y nunca se borran.']].map(([i, t, x]) => `<div><span>${i}</span><b>${t}</b><small>${x}</small></div>`).join('')}</div>`;
+  el.innerHTML = status + what + (d.connected ? `<div class="row" style="gap:8px;margin-top:10px"><button class="btn" id="dnow">Subir ahora</button><button class="btn ghost" id="doff">Desconectar</button></div><div class="msg" id="dm"></div>
+    <details style="margin-top:12px"><summary><b>Recuperar JARVIS desde tu Drive</b> (si el servidor se daña o pasas a uno nuevo)</summary><div class="form" style="margin-top:8px"><label>Frase secreta de las copias<input id="drpw" type="password" autocomplete="off"></label><label class="chk"><input type="checkbox" id="drok"> Entiendo que esto reemplaza el núcleo actual (antes se guarda una copia del actual)</label><button class="btn ghost" id="drs">Traer la última copia desde Drive</button><div class="msg" id="drm"></div></div></details>` : '') +
+    `<details ${d.connected ? '' : 'open'} style="margin-top:12px"><summary><b>${d.connected ? 'Volver a conectar' : 'Conectar (una sola vez, unos 5 minutos)'}</b> · más fácil desde una computadora</summary>
+    <ol class="drvsteps"><li>Toca <button type="button" class="btn sm" data-copy="${esc(d.script)}">Copiar</button> para copiar el código.</li>
+      <li>Abre <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener"><b>script.google.com</b></a> con tu cuenta de Google. Se abre un proyecto nuevo.</li>
+      <li>Borra lo que hay, pega el código y toca 💾 <b>Guardar</b>.</li>
+      <li>Arriba a la derecha: <b>Implementar → Nueva implementación</b> → toca el engranaje ⚙️ → <b>Aplicación web</b>. En "Ejecutar como" deja <b>Yo</b> y en "Quién tiene acceso" pon <b>Cualquier usuario</b>. Toca <b>Implementar</b>.</li>
+      <li>Google pide permiso: <b>Autorizar acceso</b> → tu cuenta → <b>Configuración avanzada</b> → <b>Ir a … (no seguro)</b> → <b>Permitir</b>. Avisa así porque es tu propio código y Google no lo revisó; solo puede escribir en la carpeta de JARVIS.</li>
+      <li>Copia la <b>URL de la aplicación web</b> (termina en <span class="mono">/exec</span>) y pégala aquí:</li></ol>
+    <form class="form" id="dcf"><label>URL de la aplicación web<input id="durl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label>Frase secreta para las copias (10 o más letras) <span class="note">— anótala en un lugar seguro: sin ella el núcleo no se puede abrir, ni siquiera yo puedo</span><input id="dpw" type="password" autocomplete="new-password" placeholder="${d.passphrase ? 'Ya hay una puesta: escribe solo si quieres cambiarla' : ''}"></label>
+      <label>Clave del código <span class="note">(ya va dentro del código; cámbiala solo si conectas un código que ya tenías)</span><input id="dtok" value="${esc(d.codeKey)}" class="mono" autocomplete="off"></label>
+      <button class="btn">Conectar y subir la primera copia</button><div class="msg" id="dcm"></div></form></details>`;
+  el.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { const t = b.dataset.copy; try { await navigator.clipboard.writeText(t); } catch { const i = document.createElement('textarea'); i.value = t; document.body.appendChild(i); i.select(); try { document.execCommand('copy'); } catch { /* sin copiar */ } i.remove(); } b.textContent = '¡Copiado!'; setTimeout(() => { b.textContent = 'Copiar'; }, 1800); });
+  const msg = (id, cls, t) => { const m = $(id); if (m) { m.className = 'msg ' + cls; m.textContent = t; } };
+  $('#dcf').onsubmit = async e => { e.preventDefault(); msg('#dcm', '', 'Probando la conexión con tu Drive…');
+    try { const r = await api('/api/drive/conectar', { method: 'POST', body: { url: $('#durl').value, passphrase: $('#dpw').value, token: $('#dtok').value } }); msg('#dcm', 'ok', r.first?.error ? `Conectado, pero la primera copia falló: ${r.first.error}` : '¡Conectado! Ya subí la primera copia a la carpeta "JARVIS - copias y memoria" de tu Drive.'); setTimeout(loadDrive, 2500); }
+    catch (err) { msg('#dcm', 'err', err.message); } };
+  if ($('#dnow')) $('#dnow').onclick = async () => { msg('#dm', '', 'Subiendo…'); try { const r = await api('/api/drive/ahora', { method: 'POST' }); msg('#dm', 'ok', `Listo: memoria ${kb(r.memoryBytes)}${r.core ? ` + núcleo ${kb(r.core.bytes)}` : ''}.`); setTimeout(loadDrive, 1500); } catch (err) { msg('#dm', 'err', err.message); } };
+  if ($('#doff')) $('#doff').onclick = async () => { await api('/api/drive/desconectar', { method: 'POST' }).catch(() => {}); loadDrive(); };
+  if ($('#drs')) $('#drs').onclick = async () => { if (!$('#drok').checked) return msg('#drm', 'err', 'Marca la casilla para confirmar.'); msg('#drm', '', 'Trayendo la copia de tu Drive y revisándola…');
+    try { const r = await api('/api/drive/restaurar', { method: 'POST', body: { passphrase: $('#drpw').value, confirm: true } }); msg('#drm', 'ok', `${r.message} (${r.info.predictions} votos, ${r.info.experiments} ideas probadas).`); setTimeout(() => location.reload(), 9000); } catch (err) { msg('#drm', 'err', err.message); } };
+}
 views.ajustes.after = () => {
   if (ME?.role !== 'admin') return;
   api('/api/brain').then(b => { const el = $('#brainsum'); if (!el) return; const S = b.summary;
@@ -952,6 +1023,7 @@ views.ajustes.after = () => {
     try { const r = await api('/api/brain/restore', { method: 'POST', body: { file: restoreFile, passphrase: $('#brpw').value } }); $('#brm').className = 'msg ok'; $('#brm').textContent = `${r.message} (${r.info.predictions} votos, ${r.info.experiments} ideas probadas).`; setTimeout(() => location.reload(), 9000); }
     catch (err) { $('#brm').className = 'msg err'; $('#brm').textContent = err.message; }
   };
+  loadDrive();
   if ($('#showusers')) $('#showusers').onchange = e => api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(() => {});
   $('#kf').onsubmit = async e => { e.preventDefault(); const body = {};
     document.querySelectorAll('[data-key]').forEach(i => { if (i.value.trim()) body[i.dataset.key] = i.value.trim(); });
@@ -1161,7 +1233,7 @@ async function lotteryAnalysisView(game) {
   <section class="card summary10" style="border-color:var(--warn)"><div class="s10-h">Resumen en 10 segundos</div>
     <div class="s10">
       <div class="tile"><div class="q">¿Qué hago?</div><div class="a warn">Si juegas, solo por diversión</div><div class="note">${esc(c.headline.replace(/^[^:]+:\s*/, ''))}</div></div>
-      <div class="tile"><div class="q">Si apuestas RD$100 muchas veces…</div><div class="mr-v bad">vuelven ${rd(a.probs[0].per100)}</div><div class="note">en promedio, a largo plazo (quiniela). La banca se queda con el resto.</div></div>
+      <div class="tile"><div class="q">Si apuestas RD$100 muchas veces…</div><div class="mr-v bad">vuelven ${rdRaw(a.probs[0].per100)}</div><div class="note">en promedio, a largo plazo (quiniela). La banca se queda con el resto.</div></div>
       <div class="tile"><div class="q">¿Qué tan seguido sale el ${esc(a.number.num)}?</div>${chanceDots(a.probs[0].win, { what: 'sale en el sorteo', big: true })}<div class="note">Igual que cualquier otro número, si el sorteo es justo</div></div>
       <div class="tile"><div class="q">¿Cuándo sé si gané?</div><div class="a good">El mismo día</div><div class="note">Al salir los números. Si ganas, cobras con el ticket en la banca: guárdalo y pregunta el plazo.</div></div>
     </div></section>
@@ -1170,10 +1242,10 @@ async function lotteryAnalysisView(game) {
   ${timingCard(a)}
   <section class="grid split">
     <div class="card"><h2>Cuántas veces salió cada número</h2>${takeaway(`el ${esc(a.number.num)} salió ${a.number.count} veces en ${a.draws} sorteos. Con tan pocos sorteos, que un número salga más es casi siempre casualidad.`)}${freqChart(a.freq, a.draws * 3 / 100, a.number.num)}<div class="note">Naranja: el ${esc(a.number.num)}, que salió ${a.number.count} veces (esperado ${a.number.expected}); lleva ${a.number.gap} sorteos sin salir. ${kindTag('dato')}</div></div>
-    <div class="card"><h2>Probabilidades exactas</h2><div class="tablewrap"><table><tr><th>Jugada</th><th class="r">Chance</th><th class="r">Devuelve de cada RD$100</th></tr>${a.probs.map(p => `<tr><td>${esc({ quiniela: 'Quiniela', pale: 'Palé', tripleta: 'Tripleta' }[p.kind])}</td><td class="r">${(p.win * 100).toFixed(p.win < 0.01 ? 3 : 2)}%</td><td class="r bad">${rd(p.per100)}</td></tr>`).join('')}</table></div><div class="note">${kindTag('dato')} Calculado con todas las combinaciones posibles y los pagos de banca configurados.</div></div>
+    <div class="card"><h2>Probabilidades exactas</h2><div class="tablewrap"><table><tr><th>Jugada</th><th class="r">Chance</th><th class="r">Devuelve de cada RD$100</th></tr>${a.probs.map(p => `<tr><td>${esc({ quiniela: 'Quiniela', pale: 'Palé', tripleta: 'Tripleta' }[p.kind])}</td><td class="r">${(p.win * 100).toFixed(p.win < 0.01 ? 3 : 2)}%</td><td class="r bad">${rdRaw(p.per100)}</td></tr>`).join('')}</table></div><div class="note">${kindTag('dato')} Calculado con todas las combinaciones posibles y los pagos de banca configurados.</div></div>
   </section>
   <section class="grid split">
-    <div class="card"><h2>¿Algún método le gana al azar?</h2>${takeaway(esc(a.compare.verdict))}${barChart([{ label: 'Azar (mediana)', value: a.compare.random.median, color: 'var(--mute)' }, ...a.compare.methods.map(m => ({ label: m.label, value: m.per100, color: m.beatsRandom ? 'var(--good)' : 'var(--warn)' }))], { fmt: v => rd(v), label: 'Devuelve por RD$100' })}<div class="note">${esc(a.compare.verdict)}</div></div>
+    <div class="card"><h2>¿Algún método le gana al azar?</h2>${takeaway(esc(a.compare.verdict))}${barChart([{ label: 'Azar (mediana)', value: a.compare.random.median, color: 'var(--mute)' }, ...a.compare.methods.map(m => ({ label: m.label, value: m.per100, color: m.beatsRandom ? 'var(--good)' : 'var(--warn)' }))], { fmt: v => rdRaw(v), label: 'Devuelve por RD$100' })}<div class="note">${esc(a.compare.verdict)}</div></div>
     <div class="card"><h2>¿Hay señales de trampa?</h2>${takeaway(esc(a.scan.verdict))}${a.scan.tests.map(t => `<div style="display:flex;gap:8px;padding:4px 0">${t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>'}<span>${esc(t.title)}</span><span class="note" style="margin-left:auto">${(Math.min(1, t.p) * 100).toFixed(1)}% por casualidad</span></div>`).join('')}</div>
   </section>
   <section class="grid split">${narrativeBox(a)}${realtimeBox(a)}</section>
@@ -1321,7 +1393,7 @@ function perfBlock(s, cur) {
   </section>
   <section class="grid split">
     <div class="card"><h2>Evolución del dinero</h2>${s.curve.length > 1 ? lineChart(s.curve, { h: 200, label: 'Dinero acumulado' }) : '<div class="empty">Aparece cuando haya al menos 2 recomendaciones calificadas.</div>'}</div>
-    <div class="card"><h2>Ganancias y pérdidas por mes</h2>${s.months.length ? barChart(s.months.map(m => ({ label: m.month, value: m.net })), { fmt: money, label: 'Por mes' }) : '<div class="empty">Sin meses calificados todavía.</div>'}
+    <div class="card"><h2>Ganancias y pérdidas por mes</h2>${s.months.length ? barChart(s.months.map(m => ({ label: m.month, value: m.net })), { fmt: v => (cur === 'RD$' ? usd(v / FX) : usd(v)), label: 'Por mes' }) : '<div class="empty">Sin meses calificados todavía.</div>'}
       <div class="note">${s.best ? `Mejor mes: ${esc(s.best.month)} (${money(s.best.net)}). Peor mes: ${esc(s.worst.month)} (${money(s.worst.net)}).` : ''}</div>
       ${s.brier != null ? `<details class="note" style="margin-top:6px"><summary>Para expertos</summary>Calibración (Brier): ${s.brier}. Más bajo es mejor; 0.25 es lo mismo que adivinar.</details>` : ''}</div>
   </section>`;
@@ -1396,28 +1468,28 @@ async function tvOpen() {
     <div class="th"><span class="logo">${brandMark()}${brandName()}</span><span class="chip" id="tvm">…</span><span class="chip" id="tvmk">…</span><span class="chip" id="tvai">…</span><span class="clock" id="tvc"></span></div>
     <div class="headline" id="tvh">Conectando…</div>
     <div class="kpis">
-      <div class="kp money"><small>Tu dinero virtual</small><div class="row1"><b id="k-money">—</b><span class="arrow" id="k-arrow"></span></div><div class="sub" id="k-money-sub"></div><div class="sub" id="k-pos"></div></div>
-      <div class="kp"><small>🤖 Cartera de la IA</small><b id="k-ia">—</b><div class="sub" id="k-ia-sub"></div></div>
-      <div class="kp"><small>🧠 Experiencia</small><b id="k-hit">—</b><div class="sub" id="k-hit-sub"></div></div>
-      <div class="kp"><small>🎱 Loterías (virtual)</small><b id="k-lot">—</b><div class="sub" id="k-lot-sub"></div></div>
-      <div class="kp"><small>✨ Gasto de IA este mes</small><b id="k-ai">—</b><div class="sub" id="k-ai-sub"></div></div>
+      <div class="kp money"><small>Tu dinero virtual</small><i class="what">lo que tendrías siguiendo a JARVIS</i><div class="row1"><b id="k-money">—</b><span class="arrow" id="k-arrow"></span></div><div class="sub" id="k-money-sub"></div><div class="sub" id="k-pos"></div></div>
+      <div class="kp"><small>🤖 Cartera de la IA</small><i class="what">la IA invierte sola, sin ti</i><b id="k-ia">—</b><div class="sub" id="k-ia-sub"></div></div>
+      <div class="kp"><small>🧠 Experiencia</small><i class="what">de cada 10 ideas, cuántas acertó</i><b id="k-hit">—</b><div class="sub" id="k-hit-sub"></div></div>
+      <div class="kp"><small>🎱 Loterías (virtual)</small><i class="what">jugadas de prueba, sin dinero real</i><b id="k-lot">—</b><div class="sub" id="k-lot-sub"></div></div>
+      <div class="kp"><small>✨ Gasto de IA este mes</small><i class="what">lo que cuesta la inteligencia artificial</i><b id="k-ai">—</b><div class="sub" id="k-ai-sub"></div></div>
     </div>
     <div class="workers" id="tvw"></div>
     <div class="body">
-      <div class="pane"><h3><span class="live"></span>La IA en este momento</h3><div class="think" id="tvthink"></div><div class="console" id="tvcon"></div><div class="prog"><span></span></div></div>
+      <div class="pane"><h3><span class="live"></span>La IA en este momento</h3><p class="what">Lo que JARVIS está pensando y haciendo ahora, en vivo.</p><div class="think" id="tvthink"></div><div class="console" id="tvcon"></div><div class="prog"><span></span></div></div>
       <div class="col">
-        <div class="pane chartpane"><h3 id="tvct">Rendimiento</h3><div id="tvchart" class="chartbox"></div></div>
-        <div class="pane"><h3>Recomendaciones del momento</h3><div class="cards" id="tvrank"></div></div>
+        <div class="pane chartpane"><h3 id="tvct">Rendimiento</h3><p class="what">Verde: JARVIS · punteada: el mercado. Si la verde va arriba, va ganando.</p><div id="tvchart" class="chartbox"></div></div>
+        <div class="pane recpane"><h3>Recomendaciones del momento</h3><p class="what">Las mejores ideas de hoy. La nota de 10 = qué tan convencido está.</p><div class="cards" id="tvrank"></div></div>
       </div>
       <div class="col">
-        <div class="pane spot"><h3><span class="live"></span><span id="tvst">Mapa</span><span class="dots" id="tvsd"></span></h3>
+        <div class="pane spot"><h3><span class="live"></span><span id="tvst">Mapa</span><span class="dots" id="tvsd"></span></h3><p class="what" id="tvsw"></p>
           <div class="slide on" data-s="mapa"><div class="tvmap" id="tvmap"></div></div>
           <div class="slide" data-s="loto"><div class="tvloto" id="tvloto"></div></div>
           <div class="slide" data-s="ia"><div class="tvia" id="tvia"></div></div>
           <div class="slide" data-s="ana"><div class="tvana" id="tvana"></div></div>
           <div class="slide" data-s="debate"><h4 class="sub" id="tvdt">Debate en vivo</h4><div class="chat" id="tvchat"></div></div>
           <div class="sbar"><span id="tvsb"></span></div></div>
-        <div class="pane leaguepane"><h3>Liga de agentes · monedas</h3><div class="league" id="tvlg"></div></div>
+        <div class="pane leaguepane"><h3>Liga de agentes · monedas</h3><p class="what">Ganan una moneda al acertar y la pierden al fallar (con auditor).</p><div class="league" id="tvlg"></div></div>
       </div>
     </div>
     <div class="ticker"><div class="track" id="tvtk"></div></div></div>`;
@@ -1519,20 +1591,21 @@ function tvTicker(qs) {
 
 // ---------- Modo TV: panel que rota (Mapa · Loterías · Tú vs IA · Debate) y trabajadores 24/7 ----------
 let tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
-const TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA'], ['ana', '🔬 Análisis en vivo']];
+const TV_SLIDES = [['mapa', '🗺️ Mapa de inversión', 'Verde = recomendada · amarillo = en observación · rojo = no.'], ['loto', '🎱 Loterías: próximos sorteos', 'Próximo sorteo y los números que votó cada método.'], ['ia', '🤖 Tú vs la IA vs el mercado', 'Quién va ganando: tú, la IA sola o el mercado.'], ['debate', '💬 Debate de las IA', 'Dos IA discuten a favor y en contra.'], ['ana', '🔬 Análisis en vivo', 'JARVIS revisa una empresa paso a paso.']];
 function tvSpotShow() {
   const list = TV_SLIDES.filter(([k]) => (k !== 'debate' || tvHasDebate)), cur = list[tvSlide % list.length];
   document.querySelectorAll('.tv .slide').forEach(el => el.classList.toggle('on', el.dataset.s === cur[0]));
   const t = $('#tvst'); if (t) t.textContent = cur[1];
+  const w = $('#tvsw'); if (w) w.textContent = cur[2] || '';
   const d = $('#tvsd'); if (d) d.innerHTML = list.map(x => `<i class="${x[0] === cur[0] ? 'on' : ''}"></i>`).join('');
   const b = $('#tvsb'); if (b) { b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; }
 }
-const TASK_TV = { bolsa_precios: ['📈', 'Precios en vivo'], loterias_resultados: ['🎱', 'Resultados de loterías'], investigacion: ['🧪', 'Probando ideas'], explorar: ['🔭', 'Explorando empresas'], ranking: ['🗺️', 'Actualizando el mapa'], cartera_ia: ['🤖', 'Cartera de la IA'], noticias: ['📰', 'Leyendo noticias'], prueba_en_vivo: ['⚡', 'Prueba en vivo'] };
+const TASK_TV = { bolsa_precios: ['📈', 'Precios en vivo', 'trae precios reales'], loterias_resultados: ['🎱', 'Resultados de loterías', 'lee los resultados oficiales'], investigacion: ['🧪', 'Probando ideas', 'prueba ideas con años de precios'], explorar: ['🔭', 'Explorando empresas', 'busca empresas nuevas'], ranking: ['🗺️', 'Actualizando el mapa', 'mueve empresas en el mapa'], cartera_ia: ['🤖', 'Cartera de la IA', 'compra y vende sola (virtual)'], noticias: ['📰', 'Leyendo noticias', 'busca noticias graves'], prueba_en_vivo: ['⚡', 'Prueba en vivo', 'prueba ideas con precios de hoy'] };
 function tvWorkers(tasks) {
   const el = $('#tvw'); if (!el || !tasks) return;
   const now = Date.now(), recent = tasks.slice().sort((a, b) => (b.last || '').localeCompare(a.last || ''))[0]?.name;
-  el.innerHTML = tasks.map(t => { const [ic, lb] = TASK_TV[t.name] || ['•', t.name]; const mins = t.last ? (now - Date.parse(t.last)) / 60e3 : null, alive = mins != null && mins < t.every * 2 + 10;
-    return `<div class="wk ${t.name === recent ? 'busy' : ''} ${alive ? 'ok' : 'idle'}"><span class="wi">${ic}</span><div><b>${esc(lb)}</b><small>${t.name === recent ? 'trabajando ahora…' : mins == null ? 'esperando su turno' : mins < 1 ? 'hace un momento' : mins < 60 ? `hace ${Math.round(mins)} min` : `hace ${Math.round(mins / 60)} h`}</small></div><span class="wd"></span></div>`; }).join('');
+  el.innerHTML = tasks.map(t => { const [ic, lb, ds] = TASK_TV[t.name] || ['•', t.name, '']; const mins = t.last ? (now - Date.parse(t.last)) / 60e3 : null, alive = mins != null && mins < t.every * 2 + 10;
+    return `<div class="wk ${t.name === recent ? 'busy' : ''} ${alive ? 'ok' : 'idle'}"><span class="wi">${ic}</span><div><b>${esc(lb)}</b><small class="wds">${esc(ds)}</small><small>${t.name === recent ? 'trabajando ahora…' : mins == null ? 'esperando su turno' : mins < 1 ? 'hace un momento' : mins < 60 ? `hace ${Math.round(mins)} min` : `hace ${Math.round(mins / 60)} h`}</small></div><span class="wd"></span></div>`; }).join('');
 }
 const ZTV = [['recomendada', 'Te recomiendo', '#2fd58a'], ['observacion', 'En observación', '#ffbf3c'], ['no_recomendada', 'No te recomiendo', '#ff5d6c'], ['candidata', 'Explorando', '#a98bff']];
 function tvMap(m) {
@@ -1596,8 +1669,9 @@ async function tvRefresh() {
   $('#k-hit').textContent = ex.hitRate != null ? `${Math.round(ex.hitRate * 10)}/10` : '—';
   $('#k-hit-sub').textContent = `${ex.n || 0} recomendaciones terminadas · necesita 50 para estar seguro`;
   const L = ex.lot || {};
-  $('#k-lot').innerHTML = L.settled ? `<span class="${L.paid - L.staked >= 0 ? 'up' : 'dn'}">${L.paid - L.staked >= 0 ? '+' : '−'}RD$${Math.abs(Math.round(L.paid - L.staked)).toLocaleString('en-US')}</span>` : 'RD$0';
-  $('#k-lot-sub').textContent = `Jugó RD$${Math.round(L.staked || 0).toLocaleString('en-US')} · ganó RD$${Math.round(L.paid || 0).toLocaleString('en-US')} · ${L.plays || 0} jugadas (${L.wins || 0} premios)`;
+  const fxr = d.account?.fx || FX, U = v => `US$${Math.abs(v / fxr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, net = (L.paid || 0) - (L.staked || 0);
+  $('#k-lot').innerHTML = L.settled ? `<span class="${net >= 0 ? 'up' : 'dn'}">${net >= 0 ? '+' : '−'}${U(net)}</span>` : 'US$0.00';
+  $('#k-lot-sub').innerHTML = `Jugó ${U(L.staked || 0)} · ganó ${U(L.paid || 0)} · ${L.plays || 0} jugadas (${L.wins || 0} premios)<br><span class="rdx">≈ ${net >= 0 ? '+' : '−'}RD$${Math.abs(Math.round(net)).toLocaleString('en-US')} en pesos</span>`;
   $('#k-ai').textContent = usd(d.ai.month, 2);
   $('#k-ai-sub').textContent = `de ${usd(d.ai.monthCap, 0)} de tope · hoy ${usd(d.ai.day, 3)}`;
   // Consola: la línea nueva se escribe letra por letra

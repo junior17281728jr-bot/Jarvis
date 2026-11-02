@@ -8,6 +8,7 @@ import { getSetting, setSetting, activity } from '../core/db.js';
 import { DEFAULT_PAYOUTS } from '../lottery/payouts.js';
 import { sealLotteryPick } from './track.js';
 import { rng, sha256, round, wilson } from '../core/util.js';
+import { fx } from './insights.js';
 
 // Monto de cada jugada virtual del agente: RD$100, lo mínimo que se juega normalmente en una banca
 const STAKE = 100;
@@ -42,7 +43,7 @@ export function autoPlays(db, { now = new Date() } = {}) {
     }
   }
   // "Su número" de cada sorteo también queda sellado como recomendación, para medir su acierto real
-  for (const game of Object.keys(GAMES)) { try { const pk = pickOfTheDay(db, game, { now }); if (history(db, game, { until: pk.date }).length >= 10) sealLotteryPick(db, pk); } catch { /* sin datos */ } }
+  for (const game of Object.keys(GAMES)) { try { const pk = pickOfTheDay(db, game, { now }); if (history(db, game, { until: pk.date }).length >= 10) sealLotteryPick(db, pk, { stake: STAKE }); } catch { /* sin datos */ } }
   if (sealed) activity(db, { agent: 'loteria', type: 'loteria', text: `${sealed} jugadas virtuales selladas antes de los próximos sorteos` });
   return sealed;
 }
@@ -60,7 +61,7 @@ export function pickOfTheDay(db, game, { now = new Date() } = {}) {
   return {
     game, date: nd.date, closesAt: nd.close.toISOString(), numbers, method, methodLabel: METHODS[method].label, why: METHODS[method].why,
     record: s ? `En vivo este método acierta ${s.wins} de ${s.n} (${round(s.wins / s.n * 100, 1)}%, rango ${round(w.lo * 100)}–${round(w.hi * 100)}%). Devuelve RD$${s.per100} por cada RD$100; el azar, RD$${azar?.per100 ?? '—'}.` : 'Todavía no hay suficientes jugadas en vivo para medir este método.',
-    light: 'gris', stake: { min: STAKE, suggested: STAKE, why: 'Juega el mínimo (RD$100). En las loterías, en promedio, se pierde parte de lo jugado: subir el monto solo aumenta lo que puedes perder. Solo te diría que subas si un método le ganara al azar con pruebas fuertes.' },
+    light: 'gris', stake: { min: STAKE, suggested: STAKE, why: `Juega el mínimo (US$${(STAKE / (fx(db)?.rate || 60)).toFixed(2)}, o sea RD$${STAKE}). En las loterías, en promedio, se pierde parte de lo jugado: subir el monto solo aumenta lo que puedes perder. Solo te diría que subas si un método le ganara al azar con pruebas fuertes.` },
     warning: 'Si los sorteos son justos, este número tiene la misma probabilidad que cualquier otro (3 de cada 100 en quiniela).',
   };
 }
@@ -105,4 +106,45 @@ export function methodVotes(db, game, { now = new Date() } = {}) {
       : voters.every(v => v.n < 30) ? 'Todavía hay pocas jugadas reales para saber si algún método sirve.'
       : 'Ningún método le gana al azar en las jugadas reales: estos números son tan buenos como cualquier otro.',
   };
+}
+
+const pad = n => String(n).padStart(2, '0');
+const drawTime = (game, date) => { const wd = new Date(date + 'T12:00:00Z').getUTCDay(); const [h, m] = GAMES[game].time(wd); return `${pad(h)}:${pad(m)}`; };
+
+/**
+ * 🎱 Tablero de JARVIS en loterías: lo que va a jugar (con fecha y hora del sorteo), lo que ya jugó,
+ * qué salió de verdad y si acertó o no, con la explicación. Todo sellado ANTES del sorteo.
+ */
+export function lotteryBoard(db, { now = new Date(), limit = 40 } = {}) {
+  const rate = fx(db)?.rate || null;
+  const sealedPick = (game, date) => { const r = db.prepare("SELECT payload, sealed_at, ledger_hash FROM predictions WHERE subject = ?").get(`loteria:${game}:${date}`); return r ? { ...JSON.parse(r.payload), sealedAt: r.sealed_at, hash: r.ledger_hash } : null; };
+  const playsFor = (game, date) => db.prepare("SELECT method, numbers, stake, status, prize FROM lottery_plays WHERE agent = 'loteria' AND game = ? AND date = ? ORDER BY method").all(game, date)
+    .map(p => ({ method: p.method, label: METHODS[p.method]?.label || p.method, numbers: JSON.parse(p.numbers), stake: p.stake, status: p.status, prize: p.prize }));
+  const upcoming = [];
+  for (const game of Object.keys(GAMES)) {
+    let nd; try { nd = nextDraw(game, now); } catch { continue; }
+    const enough = history(db, game, { until: nd.date }).length >= 10;
+    let pk = sealedPick(game, nd.date);
+    if (!pk && enough) { try { const p = pickOfTheDay(db, game, { now }); pk = { ...p, amountRd: STAKE, sealedAt: null }; } catch { /* sin datos */ } }
+    upcoming.push({ game, name: GAMES[game].name, date: nd.date, time: drawTime(game, nd.date), closesAt: nd.close.toISOString(), verified: !!GAMES[game].verified,
+      pick: pk ? { numbers: pk.numbers, method: pk.method, methodLabel: METHODS[pk.method]?.label || pk.method, why: pk.why || METHODS[pk.method]?.why || '', stakeRd: pk.amountRd ?? STAKE, sealedAt: pk.sealedAt, hash: pk.hash || null } : null,
+      plays: playsFor(game, nd.date), enough });
+  }
+  upcoming.sort((a, b) => a.closesAt < b.closesAt ? -1 : 1);
+  const past = db.prepare("SELECT subject, payload, sealed_at, ledger_hash, outcome, correct, resolved_at FROM predictions WHERE module = 'loteria' ORDER BY sealed_at DESC LIMIT ?").all(limit)
+    .map(r => { const pl = JSON.parse(r.payload), out = r.outcome ? JSON.parse(r.outcome) : null; const draw = out?.draw || null;
+      const pos = draw ? draw.indexOf(pl.numbers[0]) : -1;
+      const plays = playsFor(pl.game, pl.date);
+      return { game: pl.game, name: GAMES[pl.game]?.name || pl.game, date: pl.date, time: GAMES[pl.game] ? drawTime(pl.game, pl.date) : null,
+        numbers: pl.numbers, method: pl.method, methodLabel: METHODS[pl.method]?.label || pl.method, why: pl.why || '', stakeRd: pl.amountRd, sealedAt: r.sealed_at, hash: r.ledger_hash,
+        draw, status: r.correct == null ? 'esperando' : r.correct ? 'acerto' : 'fallo', position: pos >= 0 ? pos + 1 : null, prizeRd: out?.prizeRd ?? null, pnlRd: out?.pnlRd ?? null,
+        explain: r.correct == null ? 'El sorteo todavía no tiene resultado confirmado por dos fuentes.'
+          : r.correct ? `Salió el ${pl.numbers[0]} en ${['1ra', '2da', '3ra'][pos] || ''} posición. Cobra ${out.prizeRd} por cada ${pl.amountRd} jugados.`
+          : `No salió el ${pl.numbers[0]}. Salieron ${draw.join(' · ')}.`,
+        others: plays.filter(p => p.status !== 'pending').map(p => ({ label: p.label, numbers: p.numbers, won: p.status === 'gano' })) };
+    }).filter(p => !upcoming.some(u => u.game === p.game && u.date === p.date && p.status === 'esperando'));
+  const done = past.filter(p => p.status !== 'esperando');
+  const staked = done.reduce((s, p) => s + (p.stakeRd || 0), 0), won = done.reduce((s, p) => s + (p.prizeRd || 0), 0);
+  return { rate, upcoming, past, summary: { picks: done.length, hits: done.filter(p => p.status === 'acerto').length, stakedRd: staked, wonRd: won, netRd: won - staked },
+    honest: 'Cada número se sella con hora y huella ANTES del sorteo; después se compara con el resultado oficial. En quiniela cada número tiene 3 de cada 100 de salir: ningún método puede adivinar el próximo si el sorteo es justo.' };
 }

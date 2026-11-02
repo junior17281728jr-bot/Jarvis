@@ -16,7 +16,7 @@ import { home, predictionStats, aiSpend, dailySummary } from './motor/reports.js
 import { latestRanking, debateTop } from './motor/recommend.js';
 import { leagueTable, cheatReports, ensureAgents, coinAudit } from './motor/league.js';
 import { strategiesSummary, seedAgenda } from './motor/research.js';
-import { pickOfTheDay, liveMethodStats, methodVotes } from './motor/lottery-agent.js';
+import { pickOfTheDay, liveMethodStats, methodVotes , lotteryBoard } from './motor/lottery-agent.js';
 import { runDebate } from './ai/debate.js';
 import { complete, available, DEFAULT_PRICES } from './ai/providers.js';
 import { ensureAccount, valuation, placeOrder } from './stocks/account.js';
@@ -37,6 +37,9 @@ import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
 import { aiView } from './motor/autopilot.js';
 import { brainSummary, exportBrain, restoreBrain, brainFileInfo } from './core/brain.js';
+import { driveScript, newDriveToken, drivePing, driveLatest, driveLegal, queueLegalSync, DRIVE_URL_RE, DRIVE_KEEP } from './core/drive.js';
+import { buildMemory } from './core/memory.js';
+import { runDrive, programVersion } from './motor/cycle.js';
 import { legalDoc, acceptLegal, currentAcceptance, listAcceptances, signedText, LEGAL_VERSION } from './core/legal.js';
 import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
 import { packEconomics, creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
@@ -368,6 +371,38 @@ route('POST', '/api/brain/restore', async ({ req, user }) => {
   setTimeout(() => { try { server.close(); r.swap(); } catch (e) { console.error('Restaurar:', e.message); } process.exit(0); }, 800);
   return { ok: true, info: r.info, message: 'Copia revisada. JARVIS se reinicia con ese núcleo en unos segundos.' };
 }, { admin: true });
+// ---------- Copia automática en Google Drive ----------
+const driveToken = () => { if (!cfg.driveToken) saveKeys(cfg, { DRIVE_TOKEN: newDriveToken() }); return cfg.driveToken; };
+route('GET', '/api/drive', () => ({
+  connected: !!(cfg.driveUrl && cfg.driveToken), url: cfg.driveUrl ? cfg.driveUrl.replace(/\/s\/(.{6}).*(.{4})\/exec$/, '/s/$1…$2/exec') : null,
+  passphrase: !!cfg.backupPassphrase, codeKey: driveToken(), script: driveScript(driveToken(), DRIVE_KEEP), keep: DRIVE_KEEP,
+  last: getSetting(db, 'global', 'drive.last', null), legal: getSetting(db, 'global', 'drive.legal', null),
+}), { admin: true });
+route('POST', '/api/drive/conectar', async ({ req, user }) => {
+  const b = await body(req), url = String(b.url || '').trim(), token = String(b.token || '').trim() || driveToken(), pass = String(b.passphrase || '');
+  if (!DRIVE_URL_RE.test(url)) throw new Error('El enlace debe empezar con https://script.google.com/macros/s/ y terminar en /exec. Cópialo completo del paso "Implementar".');
+  if (pass && pass.length < 10) throw new Error('La frase secreta debe tener 10 o más letras.');
+  await drivePing({ ...cfg, driveUrl: url, driveToken: token });
+  saveKeys(cfg, { DRIVE_URL: url, DRIVE_TOKEN: token, ...(pass ? { BACKUP_PASSPHRASE: pass } : {}) });
+  audit(db, user.id, 'drive_conectado', { conFrase: !!pass });
+  let first = null; try { first = await runDrive(db, cfg); } catch (e) { first = { error: e.message }; }
+  return { ok: true, first };
+}, { admin: true });
+route('POST', '/api/drive/desconectar', async ({ user }) => { saveKeys(cfg, { DRIVE_URL: '' }); audit(db, user.id, 'drive_desconectado', {}); return { ok: true }; }, { admin: true });
+route('POST', '/api/drive/ahora', async () => runDrive(db, cfg), { admin: true });
+route('POST', '/api/drive/restaurar', async ({ req, user }) => {
+  const b = await body(req);
+  if (!b.confirm) throw new Error('Marca la casilla para confirmar.');
+  const latest = await driveLatest(cfg);
+  const r = restoreBrain(db, cfg, latest.data, b.passphrase || cfg.backupPassphrase, user);
+  setTimeout(() => { try { server.close(); r.swap(); } catch (e) { console.error('Restaurar:', e.message); } process.exit(0); }, 800);
+  return { ok: true, info: r.info, name: latest.name, message: `Copia ${latest.name} revisada. JARVIS se reinicia con ese núcleo en unos segundos.` };
+}, { admin: true });
+route('GET', '/api/memoria', ({ res, url }) => {
+  const m = buildMemory(db, { tasks: taskStatus(db), version: programVersion(cfg) }), json = url.searchParams.get('formato') === 'json';
+  res.writeHead(200, { 'Content-Type': json ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8', 'Content-Disposition': `attachment; filename="JARVIS-memoria.${json ? 'json' : 'md'}"`, 'Cache-Control': 'no-store' });
+  res.end(json ? m.json : m.md);
+}, { admin: true });
 // ---------- Contratos y términos (firmas que no se borran) ----------
 const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 route('GET', '/api/legal', ({ user }) => ({
@@ -375,7 +410,7 @@ route('GET', '/api/legal', ({ user }) => ({
   contrato: { ...legalDoc(db, 'contrato'), signed: currentAcceptance(db, user.id, 'contrato') },
   mine: listAcceptances(db, { userId: user.id }).map(a => ({ id: a.id, doc: a.doc, version: a.version, accepted_at: a.accepted_at })),
 }));
-route('POST', '/api/legal/accept', async ({ req, user }) => { const b = await body(req); return acceptLegal(db, user, { doc: b.doc, fullName: b.fullName, cedula: b.cedula, agree: !!b.agree, ip: clientIp(req), ua: req.headers['user-agent'] }); });
+route('POST', '/api/legal/accept', async ({ req, user }) => { const b = await body(req); const r = acceptLegal(db, user, { doc: b.doc, fullName: b.fullName, cedula: b.cedula, agree: !!b.agree, ip: clientIp(req), ua: req.headers['user-agent'] }); queueLegalSync(db, cfg); return r; });
 route('GET', '/api/legal/firmas', () => listAcceptances(db), { admin: true });
 route('GET', '/api/legal/texto/:hash', ({ p, user }) => {
   const own = listAcceptances(db, { userId: user.id }).some(a => a.doc_hash === p.hash);
@@ -388,14 +423,14 @@ route('GET', '/api/potenciador', ({ user }) => {
   return { me: creditStatus(db, user.id), packs: st.packs, payInfo: st.payInfo, accounts: st.accounts, banks: st.banks, mine: listRequests(db, { userId: user.id }), isAdmin,
     admin: isAdmin ? { margin: st.margin, rate: fx(db)?.rate || 62, rateSource: fx(db)?.source || 'aproximado', economics: st.packs.map(p => packEconomics(p.credits, { margin: st.margin, rate: fx(db)?.rate || 62 })), requests: listRequests(db), users: db.prepare("SELECT id FROM users WHERE active = 1 AND role != 'admin'").all().map(u => ({ id: u.id, ...creditStatus(db, u.id), name: db.prepare('SELECT COALESCE(display_name, username) n FROM users WHERE id = ?').get(u.id).n })) } : null };
 });
-route('POST', '/api/potenciador', async ({ req, user }) => { const b = await body(req, 2.2e6); return createRequest(db, cfg, user, b); });
+route('POST', '/api/potenciador', async ({ req, user }) => { const b = await body(req, 2.2e6); const r = createRequest(db, cfg, user, b); queueLegalSync(db, cfg); return r; });
 route('GET', '/api/potenciador/:id/foto', ({ res, user, p }) => {
   const f = receiptFile(db, cfg, Number(p.id));
   if (!f || (user.role !== 'admin' && f.userId !== user.id)) throw Object.assign(new Error('No encontrado.'), { code: 404 });
   res.writeHead(200, { 'Content-Type': f.type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
   res.end(f.buf);
 });
-route('POST', '/api/potenciador/:id/decidir', async ({ req, user, p }) => { const b = await body(req); return decideRequest(db, user, Number(p.id), { approve: !!b.approve, note: b.note }); }, { admin: true });
+route('POST', '/api/potenciador/:id/decidir', async ({ req, user, p }) => { const b = await body(req); const r = decideRequest(db, user, Number(p.id), { approve: !!b.approve, note: b.note }); queueLegalSync(db, cfg); return r; }, { admin: true });
 route('POST', '/api/potenciador/ajustes', async ({ req }) => saveCreditSettings(db, await body(req)), { admin: true });
 route('POST', '/api/potenciador/regalar', async ({ req, user }) => { const b = await body(req); return grantCredits(db, user, Number(b.userId), Number(b.credits)); }, { admin: true });
 // ---------- Cartera de la IA (decide sola) y búsqueda enfocada ----------
@@ -451,6 +486,7 @@ route('POST', '/api/ask', async ({ req, user }) => {
 route('GET', '/api/whatif', ({ url }) => whatIf(db, { perTradeUsd: Number(url.searchParams.get('usd') || 10) }));
 route('GET', '/api/grade', ({ url }) => monthlyGrade(db, url.searchParams.get('month') || undefined));
 route('GET', '/api/fx', () => fx(db));
+route('GET', '/api/lottery/jarvis', () => lotteryBoard(db));
 route('POST', '/api/notify/test', async () => { const r = await sendPush(cfg, { title: 'JARVIS', message: 'Prueba de aviso: si ves esto, los avisos funcionan.', tags: ['white_check_mark'] }); if (!r.ok) throw new Error(r.reason || 'No se pudo enviar el aviso.'); return r; }, { admin: true });
 const csv = rows => { if (!rows.length) return 'sin datos\n'; const k = Object.keys(rows[0]); return '\ufeff' + [k.join(','), ...rows.map(r => k.map(x => `"${String(r[x] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n'); };
 route('GET', '/api/export/firmas', ({ user, res }) => {

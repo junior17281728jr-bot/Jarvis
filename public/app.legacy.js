@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (98c81d53a31d87fa). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (783b2a5899ec18f9). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -139,7 +139,16 @@ var usd = function (v, d) {
     if (d === void 0) { d = 2; }
     return (v == null || isNaN(v) ? '—' : (v < 0 ? '−' : '') + 'US$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
 };
-var rd = function (v) { return (v == null ? '—' : 'RD$' + Number(v).toLocaleString('es-DO', { maximumFractionDigits: 2 })); };
+var rdRaw = function (v) { return (v == null ? '—' : 'RD$' + Number(v).toLocaleString('es-DO', { maximumFractionDigits: 2 })); };
+var FX = 60;
+var rdu = function (v, _a) {
+    var _b = _a === void 0 ? {} : _a, _c = _b.sign, sign = _c === void 0 ? false : _c;
+    if (v == null || isNaN(v))
+        return '—';
+    var u = v / FX, s = sign ? (v > 0 ? '+' : v < 0 ? '−' : '') : (v < 0 ? '−' : '');
+    return "<span class=\"dual\">".concat(s, "US$").concat(Math.abs(u).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), "<small class=\"rdsub\">").concat(s, "RD$").concat(Math.abs(Math.round(v)).toLocaleString('en-US'), "</small></span>");
+};
+var rd = function (v) { return rdu(v); };
 var pct = function (v, d) {
     if (d === void 0) { d = 1; }
     return (v == null || isNaN(v) ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d) + '%');
@@ -723,7 +732,7 @@ views.inicio = function () { return __awaiter(void 0, void 0, void 0, function (
                 greens = h.ranking.filter(function (c) { return c.light === 'verde'; }), alerts = h.activity.filter(function (a) { return a.important && Date.now() - Date.parse(a.ts) < 864e5; }).length;
                 best = h.myBest || greens[0] || h.ranking.find(function (c) { return c.light === 'amarillo'; });
                 p = h.predictions, leader = h.league[0];
-                return [2, "\n  <section class=\"hero\">".concat(best ? coBadge(best.symbol, 64) : '<span class="cob idle" style="width:64px;height:64px;font-size:26px">⏸</span>', "<div style=\"flex:1;min-width:0\"><div class=\"tag\">Hoy en 10 segundos</div>\n    <div class=\"big\">").concat(best ? "Te recomiendo: ".concat(esc(coName(best.symbol)), " \u2192 ").concat(best.light === 'verde' ? "invierte ".concat(usd(baseAmt('verde'), 0)) : "invierte poco (".concat(usd(baseAmt('amarillo'), 0), ")")) : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar', "</div>\n    <div class=\"sub\">").concat(best ? "".concat(chanceDots(best.probBeat)).concat(patience(best.timing, best.light), " <a href=\"#analisis/").concat(esc(best.symbol), "\">Ver por qu\u00E9 \u25B8</a> \u00B7 <a href=\"#mapa\">Ver mi mapa \u25B8</a>") : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.', "</div>\n    <div class=\"note\" style=\"margin-top:4px\">Tu dinero de pr\u00E1ctica: <b class=\"").concat(cls(h.account.returnPct), "\">").concat(usd(h.account.total), " (").concat(pct(h.account.returnPct, 2), ")</b> \u00B7 ").concat(alerts, " aviso").concat(alerts === 1 ? '' : 's', " hoy</div></div>\n    ").concat(best ? votesHtml(best.contributions) : '', "\n    <div class=\"pill\">").concat(h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>', "</div></section>\n  ").concat(confidenceCard(), "\n  <section class=\"card\" id=\"votelog\"><h2>\uD83D\uDDF3\uFE0F Registro de votos <span class=\"more note\">lo que vot\u00F3 JARVIS y lo que pas\u00F3 de verdad</span></h2><div class=\"note\">Cargando\u2026</div></section>\n  ").concat(focusShell(), "\n\n  <section class=\"grid g4\">\n    <div class=\"card kpi\" style=\"--c:#38d6f5\"><div class=\"l\">Tu dinero de pr\u00E1ctica</div><div class=\"v\">").concat(usd(h.account.total), "</div><div class=\"s\"><span class=\"").concat(cls(h.account.returnPct), "\">").concat(pct(h.account.returnPct, 2), "</span> desde ").concat(usd(h.account.start, 0)).concat(h.account.spy ? " \u00B7 el ".concat(term('SPY', 'mercado'), " hoy ").concat(pct(h.account.spy.changePct, 2)) : '', "</div></div>\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">JARVIS acierta</div><div class=\"v\">").concat(p.hitRate != null ? Math.round(p.hitRate / 10) + ' de 10' : '—', "</div><div class=\"s\">").concat(p.hits, " aciertos y ").concat(p.misses, " fallos (").concat(p.hitRate != null ? p.hitRate + '%' : '—', ") \u00B7 ").concat(p.pending, " esperando resultado</div></div>\n    <div class=\"card kpi\" style=\"--c:#ffbf3c\"><div class=\"l\">Racha</div><div class=\"v\">").concat(p.streak.current || 0, "</div><div class=\"s\">").concat(p.streak.type ? (p.streak.type === 'acierto' ? 'aciertos seguidos' : 'fallos seguidos') : 'sin datos', " \u00B7 r\u00E9cord ").concat(p.streak.bestHits, " aciertos</div></div>\n    <div class=\"card kpi\" style=\"--c:#a98bff\"><div class=\"l\">Monedas del mejor agente</div><div class=\"v\">").concat(leader ? leader.coins : 0, "</div><div class=\"s\">").concat(leader ? esc(leader.name) : '—').concat((leader === null || leader === void 0 ? void 0 : leader.week) != null ? " \u00B7 ".concat(leader.week >= 0 ? '+' : '').concat(leader.week, " esta semana") : '', " \u00B7 trampas: ").concat(h.cheats.length, "</div></div>\n  </section>\n\n  ").concat((ME === null || ME === void 0 ? void 0 : ME.role) === 'admin' && h.setup.some(function (x) { return !x.ok; }) ? "<details class=\"card setup\"><summary><span class=\"prog-ring\" style=\"--p:".concat(Math.round(h.setup.filter(function (x) { return x.ok; }).length / h.setup.length * 100), "\"></span><b>Instalaci\u00F3n: ").concat(h.setup.filter(function (x) { return x.ok; }).length, " de ").concat(h.setup.length, " pasos listos</b><span class=\"note\">Toca para ver qu\u00E9 falta (solo t\u00FA lo ves)</span></summary>\n    <div class=\"grid g3\" style=\"gap:10px;margin-top:12px\">").concat(h.setup.map(function (x) { return "<div class=\"pbox\" style=\"opacity:".concat(x.ok ? .6 : 1, "\"><b class=\"").concat(x.ok ? 'good' : '', "\">").concat(x.ok ? '✓' : '○', " ").concat(esc(x.text), "</b>").concat(x.ok ? '' : "<div class=\"note\">".concat(esc(x.how), "</div>"), "</div>"); }).join(''), "</div></details>") : '', "\n  ").concat(oppCard(h.opportunities), "\n\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>Ranking de hoy <a class=\"more\" href=\"#recomendaciones\">Ver todas \u25B8</a></h2>").concat(rankingTable(h.ranking, true), "</div>\n    <div class=\"card\"><h2>Preg\u00FAntale a JARVIS</h2>\n      <form class=\"ask\" id=\"ask\"><input id=\"q\" placeholder=\"\u00BFPor qu\u00E9 me recomiendas Microsoft? \u00BFC\u00F3mo voy este mes?\" maxlength=\"500\"><button type=\"button\" class=\"btn ghost\" id=\"mic\" title=\"Preguntar con la voz\">\uD83C\uDFA4</button><button class=\"btn\">Preguntar</button></form>\n      <label class=\"note\" style=\"flex-direction:row;align-items:center;gap:6px;margin-top:6px\"><input type=\"checkbox\" id=\"speak\" style=\"width:auto\"> Leer la respuesta en voz alta</label>\n      <div id=\"ans\"></div>\n      <h2 style=\"margin-top:18px\">Qu\u00E9 est\u00E1 haciendo ahora</h2>").concat(feed(h.activity.slice(0, 12)), "</div>\n  </section>\n\n  <section class=\"grid g3\">\n    <div class=\"card\"><h2>Lo que aprendi\u00F3 <a class=\"more\" href=\"#aprendizaje\">Detalle \u25B8</a></h2>\n      <div class=\"mini3\">").concat(['en_prueba', 'validada', 'no_validada'].map(function (s) { return "<div><div class=\"note\">".concat(STATUS[s], "</div><div style=\"font-size:24px;font-weight:800\">").concat(h.learning.byStatus[s] || 0, "</div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin-top:8px\">").concat(h.learning.experiments, " experimentos con datos bajo llave. ").concat(h.rankingStats.resolved ? "Recomendaciones calificadas: ".concat(h.rankingStats.hits, " de ").concat(h.rankingStats.resolved, " acertadas.") : 'Las recomendaciones se califican a los 20 días de bolsa.', "</div></div>\n    <div class=\"card\"><h2>Liga de agentes <span class=\"more note\">ganan monedas si ganan dinero</span></h2>").concat(h.league.map(function (a) { return "<div class=\"w\" style=\"margin-bottom:8px\"><span>".concat(esc(a.name), "</span><b>").concat(a.coins, "</b><div class=\"bar\"><span style=\"width:").concat(Math.max(4, Math.min(100, 50 + a.coins * 2)), "%;background:linear-gradient(90deg,#a98bff,#38d6f5)\"></span></div></div>"); }).join(''), "</div>\n    <div class=\"card").concat(((_b = (_a = ME === null || ME === void 0 ? void 0 : ME.profile) === null || _a === void 0 ? void 0 : _a.interests) === null || _b === void 0 ? void 0 : _b.loterias) === false ? ' hide' : '', "\"><h2>Loter\u00EDas RD <a class=\"more\" href=\"#loterias\">Ver \u25B8</a></h2>\n      <div class=\"mini3\"><div><div class=\"note\">Jugadas</div><b style=\"font-size:22px\">").concat(h.lottery.stats.settled, "</b></div><div><div class=\"note\">De cada RD$100 volvieron</div><b style=\"font-size:22px\" class=\"").concat(h.lottery.stats.per100 != null && h.lottery.stats.per100 < 100 ? 'bad' : '', "\">").concat(h.lottery.stats.per100 != null ? rd(h.lottery.stats.per100) : '—', "</b></div><div><div class=\"note\">Lo normal a largo plazo</div><b style=\"font-size:22px\">").concat(rd(h.lottery.expectedQuinielaPer100), "</b></div></div>\n      <div class=\"note\" style=\"margin-top:8px\">").concat(h.lottery.effort === 'bajo' ? 'Ningún método le gana al azar: esfuerzo reducido, prioridad a la bolsa.' : 'Probando métodos contra el azar en cada sorteo.', "</div></div>\n  </section>\n  ").concat(footLine())];
+                return [2, "\n  <section class=\"hero\">".concat(best ? coBadge(best.symbol, 64) : '<span class="cob idle" style="width:64px;height:64px;font-size:26px">⏸</span>', "<div style=\"flex:1;min-width:0\"><div class=\"tag\">Hoy en 10 segundos</div>\n    <div class=\"big\">").concat(best ? "Te recomiendo: ".concat(esc(coName(best.symbol)), " \u2192 ").concat(best.light === 'verde' ? "invierte ".concat(usd(baseAmt('verde'), 0)) : "invierte poco (".concat(usd(baseAmt('amarillo'), 0), ")")) : 'Hoy no te recomiendo invertir en ninguna: lo mejor es esperar', "</div>\n    <div class=\"sub\">").concat(best ? "".concat(chanceDots(best.probBeat)).concat(patience(best.timing, best.light), " <a href=\"#analisis/").concat(esc(best.symbol), "\">Ver por qu\u00E9 \u25B8</a> \u00B7 <a href=\"#mapa\">Ver mi mapa \u25B8</a>") : 'Esperar también es una decisión. JARVIS sigue investigando y te avisa si algo cambia.', "</div>\n    <div class=\"note\" style=\"margin-top:4px\">Tu dinero de pr\u00E1ctica: <b class=\"").concat(cls(h.account.returnPct), "\">").concat(usd(h.account.total), " (").concat(pct(h.account.returnPct, 2), ")</b> \u00B7 ").concat(alerts, " aviso").concat(alerts === 1 ? '' : 's', " hoy</div></div>\n    ").concat(best ? votesHtml(best.contributions) : '', "\n    <div class=\"pill\">").concat(h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>', "</div></section>\n  ").concat(confidenceCard(), "\n  <section class=\"card\" id=\"votelog\"><h2>\uD83D\uDDF3\uFE0F Registro de votos <span class=\"more note\">lo que vot\u00F3 JARVIS y lo que pas\u00F3 de verdad</span></h2><div class=\"note\">Cargando\u2026</div></section>\n  ").concat(focusShell(), "\n\n  <section class=\"grid g4\">\n    <div class=\"card kpi\" style=\"--c:#38d6f5\"><div class=\"l\">Tu dinero de pr\u00E1ctica</div><div class=\"v\">").concat(usd(h.account.total), "</div><div class=\"s\"><span class=\"").concat(cls(h.account.returnPct), "\">").concat(pct(h.account.returnPct, 2), "</span> desde ").concat(usd(h.account.start, 0)).concat(h.account.spy ? " \u00B7 el ".concat(term('SPY', 'mercado'), " hoy ").concat(pct(h.account.spy.changePct, 2)) : '', "</div></div>\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">JARVIS acierta</div><div class=\"v\">").concat(p.hitRate != null ? Math.round(p.hitRate / 10) + ' de 10' : '—', "</div><div class=\"s\">").concat(p.hits, " aciertos y ").concat(p.misses, " fallos (").concat(p.hitRate != null ? p.hitRate + '%' : '—', ") \u00B7 ").concat(p.pending, " esperando resultado</div></div>\n    <div class=\"card kpi\" style=\"--c:#ffbf3c\"><div class=\"l\">Racha</div><div class=\"v\">").concat(p.streak.current || 0, "</div><div class=\"s\">").concat(p.streak.type ? (p.streak.type === 'acierto' ? 'aciertos seguidos' : 'fallos seguidos') : 'sin datos', " \u00B7 r\u00E9cord ").concat(p.streak.bestHits, " aciertos</div></div>\n    <div class=\"card kpi\" style=\"--c:#a98bff\"><div class=\"l\">Monedas del mejor agente</div><div class=\"v\">").concat(leader ? leader.coins : 0, "</div><div class=\"s\">").concat(leader ? esc(leader.name) : '—').concat((leader === null || leader === void 0 ? void 0 : leader.week) != null ? " \u00B7 ".concat(leader.week >= 0 ? '+' : '').concat(leader.week, " esta semana") : '', " \u00B7 trampas: ").concat(h.cheats.length, "</div></div>\n  </section>\n\n  ").concat((ME === null || ME === void 0 ? void 0 : ME.role) === 'admin' && h.setup.some(function (x) { return !x.ok; }) ? "<details class=\"card setup\"><summary><span class=\"prog-ring\" style=\"--p:".concat(Math.round(h.setup.filter(function (x) { return x.ok; }).length / h.setup.length * 100), "\"></span><b>Instalaci\u00F3n: ").concat(h.setup.filter(function (x) { return x.ok; }).length, " de ").concat(h.setup.length, " pasos listos</b><span class=\"note\">Toca para ver qu\u00E9 falta (solo t\u00FA lo ves)</span></summary>\n    <div class=\"grid g3\" style=\"gap:10px;margin-top:12px\">").concat(h.setup.map(function (x) { return "<div class=\"pbox\" style=\"opacity:".concat(x.ok ? .6 : 1, "\"><b class=\"").concat(x.ok ? 'good' : '', "\">").concat(x.ok ? '✓' : '○', " ").concat(esc(x.text), "</b>").concat(x.ok ? '' : "<div class=\"note\">".concat(esc(x.how), "</div>"), "</div>"); }).join(''), "</div></details>") : '', "\n  ").concat(oppCard(h.opportunities), "\n\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>Ranking de hoy <a class=\"more\" href=\"#recomendaciones\">Ver todas \u25B8</a></h2>").concat(rankingTable(h.ranking, true), "</div>\n    <div class=\"card\"><h2>Preg\u00FAntale a JARVIS</h2>\n      <form class=\"ask\" id=\"ask\"><input id=\"q\" placeholder=\"\u00BFPor qu\u00E9 me recomiendas Microsoft? \u00BFC\u00F3mo voy este mes?\" maxlength=\"500\"><button type=\"button\" class=\"btn ghost\" id=\"mic\" title=\"Preguntar con la voz\">\uD83C\uDFA4</button><button class=\"btn\">Preguntar</button></form>\n      <label class=\"note\" style=\"flex-direction:row;align-items:center;gap:6px;margin-top:6px\"><input type=\"checkbox\" id=\"speak\" style=\"width:auto\"> Leer la respuesta en voz alta</label>\n      <div id=\"ans\"></div>\n      <h2 style=\"margin-top:18px\">Qu\u00E9 est\u00E1 haciendo ahora</h2>").concat(feed(h.activity.slice(0, 12)), "</div>\n  </section>\n\n  <section class=\"grid g3\">\n    <div class=\"card\"><h2>Lo que aprendi\u00F3 <a class=\"more\" href=\"#aprendizaje\">Detalle \u25B8</a></h2>\n      <div class=\"mini3\">").concat(['en_prueba', 'validada', 'no_validada'].map(function (s) { return "<div><div class=\"note\">".concat(STATUS[s], "</div><div style=\"font-size:24px;font-weight:800\">").concat(h.learning.byStatus[s] || 0, "</div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin-top:8px\">").concat(h.learning.experiments, " experimentos con datos bajo llave. ").concat(h.rankingStats.resolved ? "Recomendaciones calificadas: ".concat(h.rankingStats.hits, " de ").concat(h.rankingStats.resolved, " acertadas.") : 'Las recomendaciones se califican a los 20 días de bolsa.', "</div></div>\n    <div class=\"card\"><h2>Liga de agentes <span class=\"more note\">ganan monedas si ganan dinero</span></h2>").concat(h.league.map(function (a) { return "<div class=\"w\" style=\"margin-bottom:8px\"><span>".concat(esc(a.name), "</span><b>").concat(a.coins, "</b><div class=\"bar\"><span style=\"width:").concat(Math.max(4, Math.min(100, 50 + a.coins * 2)), "%;background:linear-gradient(90deg,#a98bff,#38d6f5)\"></span></div></div>"); }).join(''), "</div>\n    <div class=\"card").concat(((_b = (_a = ME === null || ME === void 0 ? void 0 : ME.profile) === null || _a === void 0 ? void 0 : _a.interests) === null || _b === void 0 ? void 0 : _b.loterias) === false ? ' hide' : '', "\"><h2>Loter\u00EDas RD <a class=\"more\" href=\"#loterias\">Ver \u25B8</a></h2>\n      <div class=\"mini3\"><div><div class=\"note\">Jugadas</div><b style=\"font-size:22px\">").concat(h.lottery.stats.settled, "</b></div><div><div class=\"note\">Volvi\u00F3 de lo jugado</div><b style=\"font-size:22px\" class=\"").concat(h.lottery.stats.per100 != null && h.lottery.stats.per100 < 100 ? 'bad' : '', "\">").concat(h.lottery.stats.per100 != null ? Math.round(h.lottery.stats.per100) + '%' : '—', "</b></div><div><div class=\"note\">Lo normal a largo plazo</div><b style=\"font-size:22px\">").concat(h.lottery.expectedQuinielaPer100 != null ? Math.round(h.lottery.expectedQuinielaPer100) + '%' : '—', "</b></div></div>\n      <div class=\"note\" style=\"margin-top:8px\">").concat(h.lottery.effort === 'bajo' ? 'Ningún método le gana al azar: esfuerzo reducido, prioridad a la bolsa.' : 'Probando métodos contra el azar en cada sorteo.', "</div></div>\n  </section>\n  ").concat(footLine())];
         }
     });
 }); };
@@ -1033,6 +1042,8 @@ views.perfil.after = function () {
 };
 function applyUser() {
     var _a, _b;
+    api('/api/fx').then(function (f) { if (f === null || f === void 0 ? void 0 : f.rate)
+        FX = f.rate; }).catch(function () { });
     var chip = $('#mechip');
     if (chip)
         chip.textContent = '👤 ' + ((ME === null || ME === void 0 ? void 0 : ME.displayName) || (ME === null || ME === void 0 ? void 0 : ME.username) || '');
@@ -1274,11 +1285,59 @@ views.loterias = function () { return __awaiter(void 0, void 0, void 0, function
                 L = _a.sent();
                 g0 = L.games.find(function (g) { return g.draws; }) || L.games[0];
                 window.__L = L;
-                return [2, "<div><h1>Loter\u00EDas RD</h1><p class=\"sub\">Resultados verificados, vigilancia de trampas y m\u00E9todos puestos a prueba contra el azar. Si los sorteos son justos, ning\u00FAn n\u00FAmero es m\u00E1s probable que otro.</p></div>\n  <section class=\"card pluscard\"><h2>\u2728 Expl\u00EDcame las loter\u00EDas (IA)</h2><p class=\"note\">La IA lee lo que encontr\u00F3 JARVIS (vigilancia de trampas, m\u00E9todos probados, cu\u00E1nto se pierde en promedio) y te lo explica en palabras simples, con consejos para jugar con cabeza. <b>Honestidad:</b> si los sorteos son justos, ninguna IA puede adivinar el pr\u00F3ximo n\u00FAmero.</p>\n    <div id=\"lplus\"></div><button type=\"button\" class=\"btn ghost\" id=\"lplusb\">Expl\u00EDcamelo</button></section>\n  <section class=\"grid g4\">\n    <div class=\"card kpi\"><div class=\"l\">Jugadas virtuales</div><div class=\"v\">".concat(L.stats.settled, "</div><div class=\"s\">").concat(L.stats.pending, " pendientes de sorteo</div></div>\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">Aciertos</div><div class=\"v\">").concat(L.stats.hitRate != null ? L.stats.hitRate + '%' : '—', "</div><div class=\"s\">").concat(L.stats.wins, " premios \u00B7 racha r\u00E9cord ").concat(L.stats.streak.bestWin, "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ff5d6c\"><div class=\"l\">Devuelve por RD$100</div><div class=\"v\">").concat(L.stats.per100 != null ? rd(L.stats.per100) : '—', "</div><div class=\"s\">Apostado ").concat(rd(L.stats.staked), " \u00B7 cobrado ").concat(rd(L.stats.paid), "</div></div>\n    <div class=\"card kpi\" style=\"--c:#38d6f5\"><div class=\"l\">").concat(term('valor esperado', 'Valor esperado'), "</div><div class=\"v\">").concat(rd(L.expected.quiniela), "</div><div class=\"s\">Quiniela \u00B7 pal\u00E9 ").concat(rd(L.expected.pale), " \u00B7 tripleta ").concat(rd(L.expected.tripleta), "</div></div>\n  </section>\n  <div class=\"row\" id=\"gtabs\">").concat(L.games.map(function (g) { return "<button class=\"btn ".concat(g.id === g0.id ? '' : 'ghost', "\" data-g=\"").concat(g.id, "\">").concat(esc(g.name), "</button>"); }).join(''), "</div>\n  <div id=\"gview\"></div>")];
+                return [2, "<div><h1>Loter\u00EDas RD</h1><p class=\"sub\">Resultados verificados, vigilancia de trampas y m\u00E9todos puestos a prueba contra el azar. Si los sorteos son justos, ning\u00FAn n\u00FAmero es m\u00E1s probable que otro.</p></div>\n  <section class=\"card pluscard\"><h2>\u2728 Expl\u00EDcame las loter\u00EDas (IA)</h2><p class=\"note\">La IA lee lo que encontr\u00F3 JARVIS (vigilancia de trampas, m\u00E9todos probados, cu\u00E1nto se pierde en promedio) y te lo explica en palabras simples, con consejos para jugar con cabeza. <b>Honestidad:</b> si los sorteos son justos, ninguna IA puede adivinar el pr\u00F3ximo n\u00FAmero.</p>\n    <div id=\"lplus\"></div><button type=\"button\" class=\"btn ghost\" id=\"lplusb\">Expl\u00EDcamelo</button></section>\n  <section class=\"grid g4\">\n    <div class=\"card kpi\"><div class=\"l\">Jugadas virtuales</div><div class=\"v\">".concat(L.stats.settled, "</div><div class=\"s\">").concat(L.stats.pending, " pendientes de sorteo</div></div>\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">Aciertos</div><div class=\"v\">").concat(L.stats.hitRate != null ? L.stats.hitRate + '%' : '—', "</div><div class=\"s\">").concat(L.stats.wins, " premios \u00B7 racha r\u00E9cord ").concat(L.stats.streak.bestWin, "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ff5d6c\"><div class=\"l\">Devuelve por RD$100</div><div class=\"v\">").concat(L.stats.per100 != null ? rdRaw(L.stats.per100) : '—', "</div><div class=\"s\">Apostado ").concat(rd(L.stats.staked), " \u00B7 cobrado ").concat(rd(L.stats.paid), "</div></div>\n    <div class=\"card kpi\" style=\"--c:#38d6f5\"><div class=\"l\">").concat(term('valor esperado', 'Valor esperado'), "</div><div class=\"v\">").concat(rdRaw(L.expected.quiniela), "</div><div class=\"s\">Quiniela \u00B7 pal\u00E9 ").concat(rdRaw(L.expected.pale), " \u00B7 tripleta ").concat(rdRaw(L.expected.tripleta), "</div></div>\n  </section>\n  <div id=\"jvlot\"><div class=\"card note\">Cargando lo que juega JARVIS\u2026</div></div>\n  <div class=\"row\" id=\"gtabs\">").concat(L.games.map(function (g) { return "<button class=\"btn ".concat(g.id === g0.id ? '' : 'ghost', "\" data-g=\"").concat(g.id, "\">").concat(esc(g.name), "</button>"); }).join(''), "</div>\n  <div id=\"gview\"></div>")];
         }
     });
 }); };
+var DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+var fdate = function (d) {
+    var x = new Date(d + 'T12:00:00Z');
+    var today = new Date().toISOString().slice(0, 10), tm = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+    return d === today ? 'hoy' : d === tm ? 'mañana' : "".concat(DAYS[x.getUTCDay()], " ").concat(x.getUTCDate(), " ").concat(x.toLocaleDateString('es-DO', { month: 'short', timeZone: 'UTC' }));
+};
+var ampm = function (t) { if (!t)
+    return ''; var _a = __read(t.split(':').map(Number), 2), h = _a[0], m = _a[1]; return "".concat(((h + 11) % 12) + 1, ":").concat(String(m).padStart(2, '0'), " ").concat(h < 12 ? 'a. m.' : 'p. m.'); };
+var untilTxt = function (iso) { var m = Math.round((Date.parse(iso) - Date.now()) / 60e3); return m <= 0 ? 'cerrado' : m < 60 ? "cierra en ".concat(m, " min") : "cierra en ".concat(Math.floor(m / 60), " h ").concat(m % 60, " min"); };
+function loadJarvisLottery() {
+    return __awaiter(this, void 0, void 0, function () {
+        var el, B, e_6, S, ST, balls;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    el = $('#jvlot');
+                    if (!el)
+                        return [2];
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, , 4]);
+                    return [4, api('/api/lottery/jarvis')];
+                case 2:
+                    B = _a.sent();
+                    return [3, 4];
+                case 3:
+                    e_6 = _a.sent();
+                    el.innerHTML = "<div class=\"card note\">".concat(esc(e_6.message), "</div>");
+                    return [2];
+                case 4:
+                    if (B.rate)
+                        FX = B.rate;
+                    S = B.summary, ST = { acerto: ['✅', 'Acertó', 'good'], fallo: ['❌', 'Falló', 'bad'], esperando: ['⏳', 'Esperando resultado', 'warn'] };
+                    balls = function (nums, hit) { return nums.map(function (n) { return "<span class=\"ball".concat(hit && hit.includes(n) ? ' hit' : '', "\">").concat(esc(n), "</span>"); }).join(''); };
+                    el.innerHTML = "<section class=\"card jvlot\"><h2>\uD83C\uDFB1 Lo que juega JARVIS <span class=\"more note\">sellado antes de cada sorteo</span></h2>\n    <div class=\"jvsum\">".concat([['🎯', "".concat(S.hits, " de ").concat(S.picks), 'aciertos'], ['💵', rdu(S.stakedRd), 'jugado (virtual)'], ['🏆', rdu(S.wonRd), 'cobrado'], [S.netRd >= 0 ? '📈' : '📉', rdu(S.netRd, { sign: true }), 'resultado']].map(function (_a) {
+                        var _b = __read(_a, 3), i = _b[0], v = _b[1], l = _b[2];
+                        return "<div><span>".concat(i, "</span><b class=\"").concat(l === 'resultado' ? (S.netRd >= 0 ? 'good' : 'bad') : '', "\">").concat(v, "</b><small>").concat(l, "</small></div>");
+                    }).join(''), "</div>\n    <h3 class=\"cs-h\">\u23ED\uFE0F Pr\u00F3ximos sorteos</h3>\n    <div class=\"jvnext\">").concat(B.upcoming.map(function (u) { return "<div class=\"jvn\">\n      <div class=\"jvn-h\"><b>".concat(esc(u.name), "</b><span class=\"chip\">").concat(untilTxt(u.closesAt), "</span></div>\n      <div class=\"jvn-d\">\uD83D\uDCC5 ").concat(fdate(u.date), " \u00B7 \uD83D\uDD50 ").concat(ampm(u.time)).concat(u.verified ? '' : ' <span class="note">(hora por confirmar)</span>', "</div>\n      ").concat(u.pick ? "<div class=\"jvn-b\"><div class=\"balls\">".concat(balls(u.pick.numbers), "</div><div><div class=\"note\">Su n\u00FAmero \u00B7 juega</div><b>").concat(rdu(u.pick.stakeRd), "</b></div></div>\n        <div class=\"jvn-w\"><b>\u00BFPor qu\u00E9?</b> M\u00E9todo \"").concat(esc(u.pick.methodLabel), "\": ").concat(esc(u.pick.why), "</div>\n        <div class=\"note\">").concat(u.pick.sealedAt ? "\uD83D\uDD12 Sellado ".concat(hhmm(u.pick.sealedAt), " \u00B7 huella ").concat(esc((u.pick.hash || '').slice(0, 10)), "\u2026 (ya no se puede cambiar)") : '📝 Se sella automáticamente antes del cierre', "</div>\n        ").concat(u.plays.length ? "<details><summary class=\"note\">Lo que juegan los otros ".concat(u.plays.length, " m\u00E9todos de prueba</summary><div class=\"jvo\">").concat(u.plays.map(function (p) { return "<span><i>".concat(esc(p.label), "</i> ").concat(p.numbers.map(esc).join(' '), "</span>"); }).join(''), "</div></details>") : '')
+                        : "<div class=\"note\" style=\"margin-top:8px\">".concat(u.enough ? 'Preparando su número…' : 'Faltan sorteos guardados para elegir (necesita 10).', "</div>"), "</div>"); }).join(''), "</div>\n    <h3 class=\"cs-h\">\uD83E\uDDFE Lo que ya jug\u00F3 y c\u00F3mo le fue</h3>\n    ").concat(B.past.length ? "<div class=\"jvpast\">".concat(B.past.map(function (p) {
+                        var _a = __read(ST[p.status], 3), ic = _a[0], tx = _a[1], cl = _a[2];
+                        return "<div class=\"jvp k-".concat(cl, "\">\n      <div class=\"jvp-h\"><b>").concat(esc(p.name), "</b> <span class=\"note\">").concat(fdate(p.date), " \u00B7 ").concat(ampm(p.time), "</span><span class=\"jvp-s ").concat(cl, "\">").concat(ic, " ").concat(tx, "</span></div>\n      <div class=\"jvp-c\"><div><div class=\"note\">Jug\u00F3</div><div class=\"balls\">").concat(balls(p.numbers, p.draw), "</div></div><div class=\"jvp-vs\">vs</div><div><div class=\"note\">Sali\u00F3</div><div class=\"balls\">").concat(p.draw ? balls(p.draw, p.numbers) : '<span class="note">todavía no</span>', "</div></div>\n        <div class=\"jvp-m\"><div class=\"note\">Resultado</div><b class=\"").concat(p.pnlRd > 0 ? 'good' : p.pnlRd < 0 ? 'bad' : '', "\">").concat(p.pnlRd != null ? rdu(p.pnlRd, { sign: true }) : '—', "</b></div></div>\n      <div class=\"note jvp-e\">").concat(esc(p.explain), " <b>Por qu\u00E9 lo eligi\u00F3:</b> ").concat(esc(p.methodLabel), " \u2014 ").concat(esc(p.why), "</div>\n      ").concat(p.others.length ? "<details><summary class=\"note\">C\u00F3mo les fue a los otros m\u00E9todos en ese sorteo</summary><div class=\"jvo\">".concat(p.others.map(function (o) { return "<span class=\"".concat(o.won ? 'good' : '', "\"><i>").concat(esc(o.label), "</i> ").concat(o.numbers.map(esc).join(' '), " ").concat(o.won ? '✅' : '❌', "</span>"); }).join(''), "</div></details>") : '', "\n    </div>");
+                    }).join(''), "</div>") : '<div class="empty">Todavía no ha jugado ningún sorteo.</div>', "\n    <div class=\"answer\" style=\"margin-top:12px\">\uD83D\uDD12 ").concat(esc(B.honest), "</div></section>");
+                    return [2];
+            }
+        });
+    });
+}
 views.loterias.after = function () {
+    loadJarvisLottery();
     if ($('#lplusb'))
         $('#lplusb').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, err_12; return __generator(this, function (_a) {
             switch (_a.label) {
@@ -1312,7 +1371,7 @@ views.loterias.after = function () {
             return "<div style=\"background:".concat(bg, ";color:#e8eefc\" title=\"").concat(n, ": sali\u00F3 ").concat(c, " veces (esperado ").concat(exp.toFixed(1), ")\">").concat(n, "</div>");
         }).join('') : '';
         var V = g.votes;
-        $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo del ".concat(esc(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div></div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        ").concat(g.pick.stake ? "<div style=\"margin-top:8px\"><b>\uD83D\uDCB5 Cu\u00E1nto jugar: RD$".concat(g.pick.stake.suggested, "</b> <span class=\"note\">\u00B7 ").concat(esc(g.pick.stake.why), "</span></div>") : '', "<div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo del ").concat(esc(g.pick.date), " \u00B7 cierra ").concat(hhmm(g.pick.closesAt), " ").concat(g.timeVerified ? '' : '(horario por verificar)', "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(esc(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><table><tr><th>Prueba</th><th class=\"r\">Prob. de casualidad</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rd(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rd(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$ (m\u00EDnimo 100)<input id=\"ls\" type=\"number\" min=\"100\" step=\"25\" value=\"100\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
+        $('#gview').innerHTML = "\n    ".concat(V ? "<section class=\"card votecard\"><h2>\uD83D\uDDF3\uFE0F Votaci\u00F3n de los m\u00E9todos <span class=\"more note\">sorteo del ".concat(esc(V.date), "</span></h2>\n      <div class=\"vote-top\">").concat(V.top.map(function (t) { return "<div class=\"vt\"><span class=\"ball big\">".concat(esc(t.num), "</span><div class=\"vt-c\"><b>").concat(t.votes, " de ").concat(V.totalVoters, " votos</b><div class=\"vbar\"><span style=\"width:").concat(Math.round(t.votes / V.totalVoters * 100), "%\"></span></div></div></div>"); }).join(''), "</div>\n      <div class=\"note\" style=\"margin:8px 0\">Los n\u00FAmeros que m\u00E1s m\u00E9todos eligieron. <b>Probabilidad real:</b> ").concat(esc(V.chance), "</div>\n      <details><summary class=\"note\">Ver c\u00F3mo vot\u00F3 cada m\u00E9todo y c\u00F3mo le va de verdad</summary><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th>Su voto</th><th class=\"r\">Jugadas reales</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>").concat(V.voters.map(function (v) { return "<tr><td><b>".concat(esc(v.label), "</b><div class=\"note\">").concat(esc(v.why), "</div></td><td><div class=\"balls\">").concat(v.nums.map(function (n) { return "<span class=\"ball\" style=\"width:30px;height:30px;font-size:13px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td class=\"r\">").concat(v.n ? "".concat(v.wins, " premios en ").concat(v.n) : '—', "</td><td class=\"r\">").concat(v.beatsChance == null ? '<span class="note">pocos datos</span>' : v.beatsChance ? '<b class="good">Sí, por ahora</b>' : '<b class="bad">No</b>', "</td></tr>"); }).join(''), "</table></div></details>\n      <div class=\"answer\" style=\"margin-top:8px\">\uD83E\uDDE0 ").concat(esc(V.verdict), "</div></section>") : '', "\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Su n\u00FAmero del pr\u00F3ximo sorteo</h2>").concat(g.pick ? "<div class=\"balls\" style=\"margin-bottom:8px\">".concat(g.pick.numbers.map(function (n) { return "<span class=\"ball\">".concat(esc(n), "</span>"); }).join(''), " ").concat(light(g.pick.light), "</div>\n        <div><b>").concat(esc(g.pick.methodLabel), ":</b> ").concat(esc(g.pick.why), "</div><div class=\"note\" style=\"margin-top:4px\">").concat(esc(g.pick.record), "</div>\n        ").concat(g.pick.stake ? "<div style=\"margin-top:8px\"><b>\uD83D\uDCB5 Cu\u00E1nto jugar: ".concat(rdu(g.pick.stake.suggested), "</b> <span class=\"note\">\u00B7 ").concat(esc(g.pick.stake.why), "</span></div>") : '', "<div class=\"answer\" style=\"margin-top:8px\">\u26A0 ").concat(esc(g.pick.warning), "</div><div class=\"note\">Sorteo del ").concat(esc(g.pick.date), " \u00B7 cierra ").concat(hhmm(g.pick.closesAt), " ").concat(g.timeVerified ? '' : '(horario por verificar)', "</div><a class=\"btn ghost\" href=\"#analisis/loteria/").concat(esc(id), "\" style=\"margin-top:8px;display:inline-block\">An\u00E1lisis completo \u25B8</a>") : '<div class="empty">Faltan sorteos para elegir.</div>', "</div>\n      <div class=\"card\"><h2>\u00DAltimos resultados</h2>").concat(g.last.length ? "<table>".concat(g.last.map(function (d) { return "<tr><td>".concat(esc(d.date), "</td><td><div class=\"balls\">").concat(d.nums.map(function (n) { return "<span class=\"ball\" style=\"width:28px;height:28px;font-size:12px\">".concat(esc(n), "</span>"); }).join(''), "</div></td><td><span class=\"src ").concat(d.status === 'verificado' ? 'ok' : '', "\">").concat(d.status === 'verificado' ? '2 fuentes' : d.status === 'una_fuente' ? '1 fuente' : esc(d.status), "</span></td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin resultados todavía.</div>', "</div>\n    </section>\n    <section class=\"grid g2\">\n      <div class=\"card\"><h2>Mapa de n\u00FAmeros (").concat(g.draws, " sorteos)</h2>").concat(heat ? "<div class=\"heat\">".concat(heat, "</div><div class=\"legend\"><span><i style=\"background:color-mix(in srgb,#38d6f5 55%,#111a2e)\"></i>M\u00E1s veces</span><span><i style=\"background:#111a2e;border:1px solid #1e2a44\"></i>Menos veces</span>").concat(enough ? '<span><i style="background:#ffbf3c"></i>Raro</span><span><i style="background:#ff5d6c"></i>Muy raro: revisar</span>' : '', "</div><div class=\"note\" style=\"margin-top:6px\">").concat(enough ? 'Rojo solo si sale tanto que el azar casi no lo explica.' : "Con ".concat(g.draws, " sorteos estas diferencias son ruido normal del azar; las alertas de color se activan desde 100 sorteos."), "</div>") : '<div class="empty">Sin datos.</div>', "</div>\n      <div class=\"card\"><h2>Vigilancia de trampas</h2>").concat(g.scan ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.scan.verdict), "</div><table><tr><th>Prueba</th><th class=\"r\">Prob. de casualidad</th><th>Estado</th></tr>").concat(g.scan.tests.map(function (t) { return "<tr><td>".concat(esc(t.title), "<div class=\"note\">").concat(esc(t.detail), "</div></td><td class=\"r\">").concat((t.p * 100).toFixed(1), "%</td><td>").concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Se necesitan al menos 10 sorteos.</div>', "</div>\n    </section>\n    <section class=\"card\"><h2>M\u00E9todos contra el azar</h2>").concat(g.compare ? "<div class=\"answer\" style=\"margin-bottom:10px\">".concat(esc(g.compare.verdict), "</div><div class=\"tablewrap\"><table><tr><th>M\u00E9todo</th><th class=\"r\">Jugadas</th><th class=\"r\">Premios</th><th class=\"r\">Devuelve / RD$100</th><th class=\"r\">\u00BFLe gana al azar?</th></tr>\n      <tr><td><b>Azar puro</b> <span class=\"note\">(400 jugadores simulados)</span></td><td class=\"r\">\u2014</td><td class=\"r\">\u2014</td><td class=\"r\">").concat(rdRaw(g.compare.random.median), " <span class=\"note\">(").concat(g.compare.random.lo, "\u2013").concat(g.compare.random.hi, ")</span></td><td class=\"r\">Referencia</td></tr>\n      ").concat(g.compare.methods.map(function (m) { return "<tr><td>".concat(esc(m.label), "<div class=\"note\">").concat(esc(m.why), "</div></td><td class=\"r\">").concat(m.plays, "</td><td class=\"r\">").concat(m.wins, "</td><td class=\"r ").concat(m.per100 >= 100 ? 'good' : 'bad', "\">").concat(rdRaw(m.per100), "</td><td class=\"r\">").concat(m.beatsRandom ? '<span class="light verde"><i></i>Sí (confirmar)</span>' : "<span class=\"light gris\"><i></i>No</span> <span class=\"note\">".concat((m.pBetterThanRandom * 100).toFixed(0), "% por azar</span>"), "</td></tr>"); }).join(''), "</table></div>") : '<div class="empty">Se necesitan al menos 20 sorteos.</div>', "</section>\n    <section class=\"card\"><h2>Jugar en virtual</h2><form class=\"form\" id=\"lf\"><div class=\"grid g4\" style=\"gap:10px\">\n      <label>Tipo<select id=\"lk\"><option value=\"quiniela\">Quiniela</option><option value=\"pale\">Pal\u00E9</option><option value=\"tripleta\">Tripleta</option></select></label>\n      <label>N\u00FAmeros (separados por espacio)<input id=\"ln\" placeholder=\"27 o 27 45\"></label><label>Monto RD$ (m\u00EDnimo 100)<input id=\"ls\" type=\"number\" min=\"100\" step=\"25\" value=\"100\"></label><label>&nbsp;<button class=\"btn\">Sellar jugada</button></label></div><div class=\"msg\" id=\"lm\"></div></form></section>");
         $('#lf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
             var r, err_13;
             return __generator(this, function (_a) {
@@ -1388,13 +1447,164 @@ views.ajustes = function () { return __awaiter(void 0, void 0, void 0, function 
                 return [2, "<div><h1>Ajustes</h1><p class=\"sub\">Solo el administrador ve esta pantalla.</p></div>\n  <section class=\"card brandcard\"><h2>Tu marca <span class=\"more note\">hazlo tuyo: nombre, logo y color</span></h2>\n    <div class=\"grid split\" style=\"gap:20px;margin-top:10px\">\n      <div class=\"form\">\n        <label>Nombre del programa<input id=\"bn\" maxlength=\"24\" value=\"".concat(esc(BRAND.name), "\"></label>\n        <label>Frase debajo del nombre<input id=\"bt\" maxlength=\"60\" value=\"").concat(esc(BRAND.tagline), "\" placeholder=\"Ej.: Mi investigador personal\"></label>\n        <label>Due\u00F1o (sale como \"Programa privado de\u2026\")<input id=\"bo\" maxlength=\"40\" value=\"").concat(esc(BRAND.owner), "\" placeholder=\"Ej.: Junior\"></label>\n        <div><div class=\"note\" style=\"margin-bottom:6px\">Color principal</div><div class=\"swatches\">").concat(Object.entries(BRAND.palettes || {}).map(function (_a) {
                         var _b = __read(_a, 2), k = _b[0], p = _b[1];
                         return "<button type=\"button\" class=\"sw".concat(k === BRAND.color ? ' on' : '', "\" data-c=\"").concat(k, "\" title=\"").concat(esc(p.name), "\" style=\"--d:").concat(p.dark, ";--l:").concat(p.light, "\"><i></i>").concat(esc(p.name), "</button>");
-                    }).join(''), "</div></div>\n        <div><div class=\"note\" style=\"margin-bottom:6px\">Logo (PNG, JPG o WEBP; se ajusta solo)</div><div class=\"row\" style=\"gap:10px;align-items:center\"><label class=\"btn ghost\" style=\"cursor:pointer\">Subir logo<input id=\"bl\" type=\"file\" accept=\"image/png,image/jpeg,image/webp\" hidden></label>").concat(BRAND.hasLogo ? '<button type="button" class="btn ghost" id="blr">Quitar logo</button>' : '', "</div></div>\n        <button class=\"btn\" id=\"bsave\">Guardar mi marca</button><div class=\"msg\" id=\"bm\"></div>\n      </div>\n      <div><div class=\"note\" style=\"margin-bottom:8px\">As\u00ED se ver\u00E1</div><div class=\"bprev\" id=\"bprev\"></div><div class=\"note\" style=\"margin-top:8px\">Sale en la barra de arriba, la pantalla de entrada, el Modo TV, la pesta\u00F1a del navegador y el \u00EDcono cuando lo instalas en el celular.</div></div>\n    </div></section>\n  ").concat(mot.publicUrl ? "<section class=\"card\"><h2>Tu enlace para la TV y cualquier navegador</h2><p style=\"font-size:18px;margin:8px 0\"><a href=\"".concat(esc(mot.publicUrl), "\" target=\"_blank\" rel=\"noopener\"><b>").concat(esc(mot.publicUrl), "</b></a></p><div class=\"note\">Escr\u00EDbelo en la barra de direcciones (no en el buscador de Google) del navegador de la TV, otra computadora o el celular de tu amigo. Siempre pide usuario y contrase\u00F1a. Para la TV usa el bot\u00F3n \"Modo TV\".</div></section>") : "<section class=\"card\"><h2>Enlace para que cualquiera entre (sin instalar nada)</h2>".concat(mot.funnelEnable ? "<p style=\"margin:8px 0\">Tailscale pide tu permiso <b>una sola vez</b> para abrir JARVIS a internet.</p><a class=\"btn\" href=\"".concat(esc(mot.funnelEnable), "\" target=\"_blank\" rel=\"noopener\">Activar enlace p\u00FAblico</a><ol class=\"note\" style=\"margin-top:10px;padding-left:18px\"><li>Toca el bot\u00F3n (se abre la p\u00E1gina de Tailscale).</li><li>Entra con la misma cuenta de Tailscale y toca <b>Enable</b> / <b>Activar</b> en todo lo que pregunte.</li><li>Vuelve aqu\u00ED en unos 10 minutos: aparecer\u00E1 tu enlace.</li></ol><div class=\"note\">Aunque el enlace sea p\u00FAblico, nadie ve nada sin el usuario y la contrase\u00F1a que t\u00FA le crees.</div>") : '<div class="note">Todavía no hay enlace público. El servidor lo intenta cada 10 minutos. Si en 20 minutos sigue así, mándale una foto de esta tarjeta a Claude. Mientras tanto entra con Tailscale: http://jarvis:8080</div>', "</section>"), "\n  <section class=\"card\"><h2>\u2728 Plus con IA ").concat(mot.aiOn ? '<span class="chip good">activado</span>' : '<span class="chip warn">apagado: falta la clave de ChatGPT</span>', "</h2><ul class=\"note\" style=\"line-height:1.7;padding-left:18px\">\n    <li><b>Explicaci\u00F3n del analista:</b> cada an\u00E1lisis explicado como a un amigo.</li><li><b>Preguntas:</b> le preguntas lo que quieras a JARVIS.</li>\n    <li><b>Empresas nuevas:</b> la IA propone qu\u00E9 estudiar (cada semana y al tocar \"\u00BFQu\u00E9 buscas ahora?\"); JARVIS las prueba con precios reales.</li>\n    <li><b>Debate:</b> varias IA discuten a favor y en contra de una recomendaci\u00F3n.</li><li><b>Loter\u00EDas:</b> te explica la vigilancia y c\u00F3mo jugar con cabeza.</li><li><b>Noticias:</b> res\u00FAmenes en espa\u00F1ol sencillo.</li></ul>\n    <div class=\"note\">Sin IA, JARVIS sigue funcionando completo; solo se pierde esto. La IA explica y propone, pero nunca decide sola ni inventa n\u00FAmeros.</div></section>\n  <section class=\"card brain\"><h2>\uD83E\uDDE0 El n\u00FAcleo de JARVIS <span class=\"more note\">toda su experiencia</span></h2><div id=\"brainsum\" class=\"note\">Cargando\u2026</div>\n    <p class=\"note\" style=\"margin-top:8px\">Todo lo que JARVIS aprendi\u00F3 (votos, ideas probadas, monedas, historial, usuarios, firmas y pagos) vive en un solo archivo en tu servidor. Cada d\u00EDa se hace una copia verificada. Descarga una copia cifrada y gu\u00E1rdala en tu Google Drive o en tu correo: si el servidor se da\u00F1a, la subes en un servidor nuevo y JARVIS sigue <b>exactamente</b> donde iba.</p>\n    <div class=\"grid g2\" style=\"gap:14px;margin-top:10px\">\n      <div class=\"form\"><b>Descargar copia</b><label>Frase secreta (10 o m\u00E1s letras; gu\u00E1rdala bien)<input id=\"bpw\" type=\"password\" autocomplete=\"new-password\" minlength=\"10\"></label><button type=\"button\" class=\"btn\" id=\"bdl\">Descargar copia del n\u00FAcleo</button><div class=\"msg\" id=\"bdm\"></div></div>\n      <div class=\"form\"><b>Restaurar desde una copia</b><label class=\"btn ghost\" style=\"cursor:pointer;display:inline-flex\">\uD83D\uDCC1 Elegir archivo .jvbk<input id=\"brf\" type=\"file\" accept=\".jvbk,application/octet-stream\" hidden></label><div class=\"note\" id=\"brn\"></div><label>Frase secreta de esa copia<input id=\"brpw\" type=\"password\" autocomplete=\"off\"></label><label class=\"chk\"><input type=\"checkbox\" id=\"brok\"> Entiendo que esto reemplaza el n\u00FAcleo actual (antes se guarda una copia del actual)</label><button type=\"button\" class=\"btn ghost\" id=\"brs\">Restaurar</button><div class=\"msg\" id=\"brm\"></div></div>\n    </div></section>\n  <section class=\"card keyscard\"><h2>Claves <span class=\"more note\">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>\n    <p class=\"note\">P\u00E9galas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vac\u00EDo y marca \"borrar\".</p>\n    <form class=\"form\" id=\"kf\">").concat(keys.map(function (k) { return "<div class=\"krow\"><div><b>".concat(esc(k.label), "</b> ").concat(k.set ? "<span class=\"tag dato\">puesta ".concat(esc(k.hint || ''), "</span>") : '<span class="tag est">falta</span>', "<div class=\"note\">D\u00F3nde sacarla: <a href=\"").concat(KEYHELP[k.name][1], "\" target=\"_blank\" rel=\"noopener\">").concat(esc(KEYHELP[k.name][0]), "</a></div></div>\n      <input type=\"").concat(k.name === 'NTFY_TOPIC' || k.name === 'SEC_USER_AGENT' ? 'text' : 'password', "\" data-key=\"").concat(k.name, "\" autocomplete=\"off\" placeholder=\"").concat(k.set ? 'Escribe solo si quieres cambiarla' : esc(KEYHELP[k.name][2]), "\">").concat(k.set ? "<label class=\"note\" style=\"flex-direction:row;gap:6px;align-items:center\"><input type=\"checkbox\" data-del=\"".concat(k.name, "\" style=\"width:auto\"> borrar</label>") : '<span></span>', "</div>"); }).join(''), "\n      <button class=\"btn\">Guardar claves</button><div class=\"msg\" id=\"km\"></div></form>\n    <div class=\"note\">Pon tambi\u00E9n un l\u00EDmite de gasto en la p\u00E1gina de OpenAI. JARVIS adem\u00E1s respeta su propio tope: ").concat(usd(st.caps.month, 0), " al mes.</div></section>\n  <section class=\"card\"><h2>Motor aut\u00F3nomo</h2><div class=\"row\" style=\"align-items:flex-end\">\n    <label style=\"flex-direction:row;align-items:center;gap:8px;padding-bottom:10px\"><input type=\"checkbox\" id=\"mnon\" style=\"width:auto\" checked> Sin parar (hasta que yo lo detenga)</label>\n    <label style=\"width:180px\" id=\"mhl\" class=\"hide\">Trabajar durante (horas)<input id=\"mh\" type=\"number\" min=\"1\" value=\"72\"></label>\n    <button class=\"btn\" id=\"mstart\">Iniciar</button><button class=\"btn ghost\" id=\"mpause\">Pausar</button><button class=\"btn ghost\" id=\"mresume\">Reanudar</button><button class=\"btn danger\" id=\"mstop\">Detener</button><button class=\"btn ghost\" id=\"mrun\">Correr ciclo ahora</button></div>\n    <div class=\"note\" style=\"margin-top:8px\">Estado: <b>").concat(mot.motor.running ? 'activo' : 'en pausa', "</b>").concat(mot.motor.until ? ' hasta ' + new Date(mot.motor.until).toLocaleString('es-DO') : '', ". Al pausar o detener, todo el progreso queda guardado.</div><div class=\"msg\" id=\"mm\"></div></section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Inteligencia artificial</h2><div class=\"form\">\n      ").concat([['openai', 'ChatGPT (principal)'], ['anthropic', 'Claude (opcional, activa el debate entre dos IA)'], ['ollama', 'Modelo gratis en el servidor']].map(function (_a) {
+                    }).join(''), "</div></div>\n        <div><div class=\"note\" style=\"margin-bottom:6px\">Logo (PNG, JPG o WEBP; se ajusta solo)</div><div class=\"row\" style=\"gap:10px;align-items:center\"><label class=\"btn ghost\" style=\"cursor:pointer\">Subir logo<input id=\"bl\" type=\"file\" accept=\"image/png,image/jpeg,image/webp\" hidden></label>").concat(BRAND.hasLogo ? '<button type="button" class="btn ghost" id="blr">Quitar logo</button>' : '', "</div></div>\n        <button class=\"btn\" id=\"bsave\">Guardar mi marca</button><div class=\"msg\" id=\"bm\"></div>\n      </div>\n      <div><div class=\"note\" style=\"margin-bottom:8px\">As\u00ED se ver\u00E1</div><div class=\"bprev\" id=\"bprev\"></div><div class=\"note\" style=\"margin-top:8px\">Sale en la barra de arriba, la pantalla de entrada, el Modo TV, la pesta\u00F1a del navegador y el \u00EDcono cuando lo instalas en el celular.</div></div>\n    </div></section>\n  ").concat(mot.publicUrl ? "<section class=\"card\"><h2>Tu enlace para la TV y cualquier navegador</h2><p style=\"font-size:18px;margin:8px 0\"><a href=\"".concat(esc(mot.publicUrl), "\" target=\"_blank\" rel=\"noopener\"><b>").concat(esc(mot.publicUrl), "</b></a></p><div class=\"note\">Escr\u00EDbelo en la barra de direcciones (no en el buscador de Google) del navegador de la TV, otra computadora o el celular de tu amigo. Siempre pide usuario y contrase\u00F1a. Para la TV usa el bot\u00F3n \"Modo TV\".</div></section>") : "<section class=\"card\"><h2>Enlace para que cualquiera entre (sin instalar nada)</h2>".concat(mot.funnelEnable ? "<p style=\"margin:8px 0\">Tailscale pide tu permiso <b>una sola vez</b> para abrir JARVIS a internet.</p><a class=\"btn\" href=\"".concat(esc(mot.funnelEnable), "\" target=\"_blank\" rel=\"noopener\">Activar enlace p\u00FAblico</a><ol class=\"note\" style=\"margin-top:10px;padding-left:18px\"><li>Toca el bot\u00F3n (se abre la p\u00E1gina de Tailscale).</li><li>Entra con la misma cuenta de Tailscale y toca <b>Enable</b> / <b>Activar</b> en todo lo que pregunte.</li><li>Vuelve aqu\u00ED en unos 10 minutos: aparecer\u00E1 tu enlace.</li></ol><div class=\"note\">Aunque el enlace sea p\u00FAblico, nadie ve nada sin el usuario y la contrase\u00F1a que t\u00FA le crees.</div>") : '<div class="note">Todavía no hay enlace público. El servidor lo intenta cada 10 minutos. Si en 20 minutos sigue así, mándale una foto de esta tarjeta a Claude. Mientras tanto entra con Tailscale: http://jarvis:8080</div>', "</section>"), "\n  <section class=\"card\"><h2>\u2728 Plus con IA ").concat(mot.aiOn ? '<span class="chip good">activado</span>' : '<span class="chip warn">apagado: falta la clave de ChatGPT</span>', "</h2><ul class=\"note\" style=\"line-height:1.7;padding-left:18px\">\n    <li><b>Explicaci\u00F3n del analista:</b> cada an\u00E1lisis explicado como a un amigo.</li><li><b>Preguntas:</b> le preguntas lo que quieras a JARVIS.</li>\n    <li><b>Empresas nuevas:</b> la IA propone qu\u00E9 estudiar (cada semana y al tocar \"\u00BFQu\u00E9 buscas ahora?\"); JARVIS las prueba con precios reales.</li>\n    <li><b>Debate:</b> varias IA discuten a favor y en contra de una recomendaci\u00F3n.</li><li><b>Loter\u00EDas:</b> te explica la vigilancia y c\u00F3mo jugar con cabeza.</li><li><b>Noticias:</b> res\u00FAmenes en espa\u00F1ol sencillo.</li></ul>\n    <div class=\"note\">Sin IA, JARVIS sigue funcionando completo; solo se pierde esto. La IA explica y propone, pero nunca decide sola ni inventa n\u00FAmeros.</div></section>\n  <section class=\"card brain\"><h2>\uD83E\uDDE0 El n\u00FAcleo de JARVIS <span class=\"more note\">toda su experiencia</span></h2><div id=\"brainsum\" class=\"note\">Cargando\u2026</div>\n    <p class=\"note\" style=\"margin-top:8px\">Todo lo que JARVIS aprendi\u00F3 (votos, ideas probadas, monedas, historial, usuarios, firmas y pagos) vive en un solo archivo en tu servidor. Cada d\u00EDa se hace una copia verificada y, si conectas tu Google Drive (abajo), tambi\u00E9n se sube sola, cifrada y comprimida. Si el servidor se da\u00F1a, la restauras en un servidor nuevo y JARVIS sigue <b>exactamente</b> donde iba.</p>\n    <div class=\"grid g2\" style=\"gap:14px;margin-top:10px\">\n      <div class=\"form\"><b>Descargar copia</b><label>Frase secreta (10 o m\u00E1s letras; gu\u00E1rdala bien)<input id=\"bpw\" type=\"password\" autocomplete=\"new-password\" minlength=\"10\"></label><button type=\"button\" class=\"btn\" id=\"bdl\">Descargar copia del n\u00FAcleo</button><div class=\"msg\" id=\"bdm\"></div></div>\n      <div class=\"form\"><b>Restaurar desde una copia</b><label class=\"btn ghost\" style=\"cursor:pointer;display:inline-flex\">\uD83D\uDCC1 Elegir archivo .jvbk<input id=\"brf\" type=\"file\" accept=\".jvbk,application/octet-stream\" hidden></label><div class=\"note\" id=\"brn\"></div><label>Frase secreta de esa copia<input id=\"brpw\" type=\"password\" autocomplete=\"off\"></label><label class=\"chk\"><input type=\"checkbox\" id=\"brok\"> Entiendo que esto reemplaza el n\u00FAcleo actual (antes se guarda una copia del actual)</label><button type=\"button\" class=\"btn ghost\" id=\"brs\">Restaurar</button><div class=\"msg\" id=\"brm\"></div></div>\n    </div></section>\n  <section class=\"card drivecard\"><h2>\u2601\uFE0F Copia autom\u00E1tica en tu Google Drive <span class=\"more note\">gratis \u00B7 se hace sola cada d\u00EDa</span></h2><div id=\"drv\" class=\"note\">Cargando\u2026</div></section>\n  <section class=\"card keyscard\"><h2>Claves <span class=\"more note\">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>\n    <p class=\"note\">P\u00E9galas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vac\u00EDo y marca \"borrar\".</p>\n    <form class=\"form\" id=\"kf\">").concat(keys.map(function (k) { return "<div class=\"krow\"><div><b>".concat(esc(k.label), "</b> ").concat(k.set ? "<span class=\"tag dato\">puesta ".concat(esc(k.hint || ''), "</span>") : '<span class="tag est">falta</span>', "<div class=\"note\">D\u00F3nde sacarla: <a href=\"").concat(KEYHELP[k.name][1], "\" target=\"_blank\" rel=\"noopener\">").concat(esc(KEYHELP[k.name][0]), "</a></div></div>\n      <input type=\"").concat(k.name === 'NTFY_TOPIC' || k.name === 'SEC_USER_AGENT' ? 'text' : 'password', "\" data-key=\"").concat(k.name, "\" autocomplete=\"off\" placeholder=\"").concat(k.set ? 'Escribe solo si quieres cambiarla' : esc(KEYHELP[k.name][2]), "\">").concat(k.set ? "<label class=\"note\" style=\"flex-direction:row;gap:6px;align-items:center\"><input type=\"checkbox\" data-del=\"".concat(k.name, "\" style=\"width:auto\"> borrar</label>") : '<span></span>', "</div>"); }).join(''), "\n      <button class=\"btn\">Guardar claves</button><div class=\"msg\" id=\"km\"></div></form>\n    <div class=\"note\">Pon tambi\u00E9n un l\u00EDmite de gasto en la p\u00E1gina de OpenAI. JARVIS adem\u00E1s respeta su propio tope: ").concat(usd(st.caps.month, 0), " al mes.</div></section>\n  <section class=\"card\"><h2>Motor aut\u00F3nomo</h2><div class=\"row\" style=\"align-items:flex-end\">\n    <label style=\"flex-direction:row;align-items:center;gap:8px;padding-bottom:10px\"><input type=\"checkbox\" id=\"mnon\" style=\"width:auto\" checked> Sin parar (hasta que yo lo detenga)</label>\n    <label style=\"width:180px\" id=\"mhl\" class=\"hide\">Trabajar durante (horas)<input id=\"mh\" type=\"number\" min=\"1\" value=\"72\"></label>\n    <button class=\"btn\" id=\"mstart\">Iniciar</button><button class=\"btn ghost\" id=\"mpause\">Pausar</button><button class=\"btn ghost\" id=\"mresume\">Reanudar</button><button class=\"btn danger\" id=\"mstop\">Detener</button><button class=\"btn ghost\" id=\"mrun\">Correr ciclo ahora</button></div>\n    <div class=\"note\" style=\"margin-top:8px\">Estado: <b>").concat(mot.motor.running ? 'activo' : 'en pausa', "</b>").concat(mot.motor.until ? ' hasta ' + new Date(mot.motor.until).toLocaleString('es-DO') : '', ". Al pausar o detener, todo el progreso queda guardado.</div><div class=\"msg\" id=\"mm\"></div></section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Inteligencia artificial</h2><div class=\"form\">\n      ").concat([['openai', 'ChatGPT (principal)'], ['anthropic', 'Claude (opcional, activa el debate entre dos IA)'], ['ollama', 'Modelo gratis en el servidor']].map(function (_a) {
                         var _b = __read(_a, 2), k = _b[0], l = _b[1];
                         return "<label style=\"flex-direction:row;align-items:center;gap:10px\"><input type=\"checkbox\" data-ai=\"".concat(k, "\" ").concat(st.aiEnabled[k] ? 'checked' : '', " style=\"width:auto\"> ").concat(l, " ").concat(st.keys[k] === false ? '<span class="tag est">falta la clave (ponla arriba, en Claves)</span>' : '', "</label>");
-                    }).join(''), "\n      <div class=\"note\">Modelos: ").concat(esc(st.models.openai), " \u00B7 ").concat(esc(st.models.anthropic), " \u00B7 ").concat(esc(st.models.local), ". Tope: ").concat(usd(st.caps.month, 0), " al mes, ").concat(usd(st.caps.day, 2), " al d\u00EDa (en .env).</div>\n      <label>Precios por mill\u00F3n de tokens (conf\u00EDrmalos en la p\u00E1gina oficial)<textarea id=\"prices\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.prices, null, 1)), "</textarea></label>\n      <button class=\"btn\" id=\"saveai\">Guardar IA</button></div></div>\n    <div class=\"card\"><h2>Bolsa y loter\u00EDas</h2><div class=\"form\">\n      <label>Acciones que investiga (separadas por coma)<textarea id=\"univ\" rows=\"3\">").concat(esc(st.universe.join(', ')), "</textarea></label>\n      <label>Pagos de la banca (por RD$1)<textarea id=\"pay\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.payouts)), "</textarea></label>\n      <label style=\"flex-direction:row;align-items:center;gap:10px\"><input type=\"checkbox\" id=\"single\" ").concat(st.allowSingleSource ? 'checked' : '', " style=\"width:auto\"> Pagar jugadas con una sola fuente (marcadas como \"1 fuente\")</label>\n      <button class=\"btn\" id=\"saveother\">Guardar</button></div></div>\n  </section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Avisos al celular</h2>").concat(st.notify.on ? "<p>Activos (tema ".concat(esc(st.notify.topic), ").</p><button class=\"btn ghost\" id=\"ntest\">Enviar aviso de prueba</button>") : "<ol class=\"note\" style=\"padding-left:18px\"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class=\"mono\">jarvis-junior-7f3k9</span>, y suscr\u00EDbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves \u2192 Tema de avisos</b>. Para tus avisos personales, ponlo tambi\u00E9n en <a href=\"#perfil\">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>", "<div class=\"msg\" id=\"nm\"></div></div>\n    <div class=\"card\"><h2>Copia fuera del servidor</h2>").concat(st.offsite ? '<p class="good">Activa: cada copia diaria se cifra y se sube.</p>' : '<ol class="note" style="padding-left:18px"><li>En el servidor instala rclone y conecta tu Google Drive: <span class="mono">sudo apt install -y rclone && sudo -u jarvis rclone config</span></li><li>En .env pon <span class="mono">RCLONE_REMOTE=gdrive:</span> y una frase larga en <span class="mono">BACKUP_PASSPHRASE</span>. Guarda la frase en un lugar seguro: sin ella la copia no se puede abrir.</li><li>Reinicia JARVIS.</li></ol>', "</div>\n  </section>\n  <section class=\"card\" id=\"usuarios\"><h2>Usuarios <span class=\"more note\">cada uno con su perfil; todos usan el mismo n\u00FAcleo</span></h2><label class=\"chk\" style=\"margin:6px 0\"><input type=\"checkbox\" id=\"showusers\"").concat(st.showUsers !== false ? ' checked' : '', "> Mostrar la lista de usuarios en la pantalla de entrada <span class=\"note\">(cada uno toca su nombre y pone su contrase\u00F1a)</span></label>").concat((function () { var on = users.filter(function (u) { return u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3; }); return "<div class=\"onl\"><b>\uD83D\uDC65 Tienes ".concat(users.length, " ").concat(users.length === 1 ? 'usuario' : 'usuarios', "</b> \u00B7 ").concat(on.length ? "\uD83D\uDFE2 En l\u00EDnea ahora: ".concat(on.map(function (u) { return esc(u.display_name || u.username); }).join(', ')) : 'nadie en línea ahora', "</div>"); })(), "<div class=\"tablewrap\"><table><tr><th>Persona</th><th>Estilo</th><th class=\"r\">Su dinero</th><th>Estado</th><th></th></tr>").concat(users.map(function (u) { return "<tr><td><b>".concat(esc(u.display_name || u.username), "</b><div class=\"note\">").concat(esc(u.username), " \u00B7 ").concat(u.role === 'admin' ? 'Administrador' : 'Usuario', "</div><div style=\"margin-top:4px\">").concat(onlineChip(u.lastSeen), "</div></td><td>").concat(u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>', "</td><td class=\"r\">").concat(usd(u.budget, 0), "</td><td>").concat(u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>', "</td>\n      <td class=\"r\" style=\"white-space:nowrap\">").concat(u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : "<button class=\"btn ghost sm\" data-pw=\"".concat(u.id, "\">Nueva contrase\u00F1a</button> <button class=\"btn ghost sm\" data-act=\"").concat(u.id, "\" data-on=\"").concat(u.active ? 0 : 1, "\">").concat(u.active ? 'Desactivar' : 'Activar', "</button>"), "</td></tr>"); }).join(''), "</table></div>\n    <h3 class=\"cs-h\">Crear un usuario (por ejemplo, para tu amigo)</h3>\n    <form class=\"row\" id=\"uf\" style=\"align-items:flex-end;gap:10px\"><label style=\"flex:1;min-width:160px\">Su nombre<input id=\"nn\" placeholder=\"Ricardo\"></label><label style=\"flex:1;min-width:160px\">Usuario para entrar<input id=\"nu\" required placeholder=\"ricardo\"></label><label style=\"flex:1;min-width:180px\">Contrase\u00F1a (d\u00E9jala vac\u00EDa y JARVIS crea una)<input id=\"np\" type=\"text\" minlength=\"10\" placeholder=\"autom\u00E1tica\" autocomplete=\"off\"></label><label style=\"width:150px\">IA gratis al mes (US$)<input id=\"nm\" type=\"number\" value=\"2\" step=\"0.5\"></label><button class=\"btn\">Crear usuario</button></form>\n    <div class=\"note\" style=\"margin-top:6px\">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qu\u00E9 le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigaci\u00F3n se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class=\"msg\" id=\"um\"></div></section>")];
+                    }).join(''), "\n      <div class=\"note\">Modelos: ").concat(esc(st.models.openai), " \u00B7 ").concat(esc(st.models.anthropic), " \u00B7 ").concat(esc(st.models.local), ". Tope: ").concat(usd(st.caps.month, 0), " al mes, ").concat(usd(st.caps.day, 2), " al d\u00EDa (en .env).</div>\n      <label>Precios por mill\u00F3n de tokens (conf\u00EDrmalos en la p\u00E1gina oficial)<textarea id=\"prices\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.prices, null, 1)), "</textarea></label>\n      <button class=\"btn\" id=\"saveai\">Guardar IA</button></div></div>\n    <div class=\"card\"><h2>Bolsa y loter\u00EDas</h2><div class=\"form\">\n      <label>Acciones que investiga (separadas por coma)<textarea id=\"univ\" rows=\"3\">").concat(esc(st.universe.join(', ')), "</textarea></label>\n      <label>Pagos de la banca (por RD$1)<textarea id=\"pay\" rows=\"4\" class=\"mono\">").concat(esc(JSON.stringify(st.payouts)), "</textarea></label>\n      <label style=\"flex-direction:row;align-items:center;gap:10px\"><input type=\"checkbox\" id=\"single\" ").concat(st.allowSingleSource ? 'checked' : '', " style=\"width:auto\"> Pagar jugadas con una sola fuente (marcadas como \"1 fuente\")</label>\n      <button class=\"btn\" id=\"saveother\">Guardar</button></div></div>\n  </section>\n  <section class=\"grid g2\">\n    <div class=\"card\"><h2>Avisos al celular</h2>").concat(st.notify.on ? "<p>Activos (tema ".concat(esc(st.notify.topic), ").</p><button class=\"btn ghost\" id=\"ntest\">Enviar aviso de prueba</button>") : "<ol class=\"note\" style=\"padding-left:18px\"><li>Instala la app gratis <b>ntfy</b> en tu celular.</li><li>Inventa un nombre secreto, por ejemplo <span class=\"mono\">jarvis-junior-7f3k9</span>, y suscr\u00EDbete a ese tema en la app.</li><li>Ponlo arriba, en <b>Claves \u2192 Tema de avisos</b>. Para tus avisos personales, ponlo tambi\u00E9n en <a href=\"#perfil\">Mi perfil</a>. Cada usuario puede tener el suyo.</li></ol>", "<div class=\"msg\" id=\"nm\"></div></div>\n    <div class=\"card\"><h2>\uD83D\uDCD8 La memoria de JARVIS</h2><p class=\"note\">Un archivo peque\u00F1o (texto) con todo lo que aprendi\u00F3: qu\u00E9 m\u00E9todos usa y por qu\u00E9, cu\u00E1les dej\u00F3 y por qu\u00E9, d\u00F3nde s\u00ED sirven m\u00E9todos viejos, cu\u00E1nto acierta, c\u00F3mo us\u00F3 la IA y cu\u00E1nto cost\u00F3. Sin datos personales. Sirve para leerlo t\u00FA y para d\u00E1rselo a otra IA en el futuro y que no empiece de cero.</p><div class=\"row\" style=\"gap:8px\"><a class=\"btn ghost\" href=\"/api/memoria\" download>Descargar memoria (.md)</a><a class=\"btn ghost\" href=\"/api/memoria?formato=json\" download>Versi\u00F3n para programas (.json)</a></div></div>\n  </section>\n  <section class=\"card\" id=\"usuarios\"><h2>Usuarios <span class=\"more note\">cada uno con su perfil; todos usan el mismo n\u00FAcleo</span></h2><label class=\"chk\" style=\"margin:6px 0\"><input type=\"checkbox\" id=\"showusers\"").concat(st.showUsers !== false ? ' checked' : '', "> Mostrar la lista de usuarios en la pantalla de entrada <span class=\"note\">(cada uno toca su nombre y pone su contrase\u00F1a)</span></label>").concat((function () { var on = users.filter(function (u) { return u.lastSeen && Date.now() - Date.parse(u.lastSeen) < 3 * 60e3; }); return "<div class=\"onl\"><b>\uD83D\uDC65 Tienes ".concat(users.length, " ").concat(users.length === 1 ? 'usuario' : 'usuarios', "</b> \u00B7 ").concat(on.length ? "\uD83D\uDFE2 En l\u00EDnea ahora: ".concat(on.map(function (u) { return esc(u.display_name || u.username); }).join(', ')) : 'nadie en línea ahora', "</div>"); })(), "<div class=\"tablewrap\"><table><tr><th>Persona</th><th>Estilo</th><th class=\"r\">Su dinero</th><th>Estado</th><th></th></tr>").concat(users.map(function (u) { return "<tr><td><b>".concat(esc(u.display_name || u.username), "</b><div class=\"note\">").concat(esc(u.username), " \u00B7 ").concat(u.role === 'admin' ? 'Administrador' : 'Usuario', "</div><div style=\"margin-top:4px\">").concat(onlineChip(u.lastSeen), "</div></td><td>").concat(u.setup ? esc({ conservador: '🛡️ Conservador', equilibrado: '⚖️ Equilibrado', arriesgado: '🚀 Arriesgado' }[u.style]) : '<span class="note">sin configurar</span>', "</td><td class=\"r\">").concat(usd(u.budget, 0), "</td><td>").concat(u.active ? '<span class="good">Activo</span>' : '<span class="bad">Desactivado</span>', "</td>\n      <td class=\"r\" style=\"white-space:nowrap\">").concat(u.id === ME.id ? '<a class="note" href="#perfil">Mi perfil ▸</a>' : "<button class=\"btn ghost sm\" data-pw=\"".concat(u.id, "\">Nueva contrase\u00F1a</button> <button class=\"btn ghost sm\" data-act=\"").concat(u.id, "\" data-on=\"").concat(u.active ? 0 : 1, "\">").concat(u.active ? 'Desactivar' : 'Activar', "</button>"), "</td></tr>"); }).join(''), "</table></div>\n    <h3 class=\"cs-h\">Crear un usuario (por ejemplo, para tu amigo)</h3>\n    <form class=\"row\" id=\"uf\" style=\"align-items:flex-end;gap:10px\"><label style=\"flex:1;min-width:160px\">Su nombre<input id=\"nn\" placeholder=\"Ricardo\"></label><label style=\"flex:1;min-width:160px\">Usuario para entrar<input id=\"nu\" required placeholder=\"ricardo\"></label><label style=\"flex:1;min-width:180px\">Contrase\u00F1a (d\u00E9jala vac\u00EDa y JARVIS crea una)<input id=\"np\" type=\"text\" minlength=\"10\" placeholder=\"autom\u00E1tica\" autocomplete=\"off\"></label><label style=\"width:150px\">IA gratis al mes (US$)<input id=\"nm\" type=\"number\" value=\"2\" step=\"0.5\"></label><button class=\"btn\">Crear usuario</button></form>\n    <div class=\"note\" style=\"margin-top:6px\">Al entrar por primera vez, JARVIS le pregunta su estilo, su plazo y qu\u00E9 le interesa. Tiene su propio dinero virtual, sus avisos y su historial real; la investigaci\u00F3n se comparte sin gastar doble. Desactivar guarda sus datos.</div><div class=\"msg\" id=\"um\"></div></section>")];
         }
     });
 }); };
+var kb = function (n) { return n == null ? '—' : n < 1048576 ? "".concat(Math.max(1, Math.round(n / 1024)), " KB") : "".concat((n / 1048576).toFixed(1), " MB"); };
+function loadDrive() {
+    return __awaiter(this, void 0, void 0, function () {
+        var el, d, e_7, L, G, status, what, msg;
+        var _this = this;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    el = $('#drv');
+                    if (!el)
+                        return [2];
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, , 4]);
+                    return [4, api('/api/drive')];
+                case 2:
+                    d = _a.sent();
+                    return [3, 4];
+                case 3:
+                    e_7 = _a.sent();
+                    el.textContent = e_7.message;
+                    return [2];
+                case 4:
+                    L = d.last, G = d.legal;
+                    status = d.connected ? "<div class=\"drvok\"><b>\u2705 Conectado</b> \u00B7 ".concat(L ? (L.ok ? "\u00FAltima copia ".concat(timeAgo(L.at), ": memoria ").concat(kb(L.memoryBytes)).concat(L.core ? " + n\u00FAcleo ".concat(kb(L.core.bytes)) : '', " \u00B7 en tu Drive ocupa <b>").concat(kb(L.used), "</b> en total").concat(L.folder ? " \u00B7 <a href=\"".concat(esc(L.folder), "\" target=\"_blank\" rel=\"noopener\">abrir carpeta</a>") : '') : "<span class=\"bad\">la \u00FAltima vez fall\u00F3: ".concat(esc(L.error), "</span>")) : 'todavía no ha subido nada').concat((G === null || G === void 0 ? void 0 : G.ok) ? "<br>\uD83D\uDCDD Firmas y pagos: ".concat(G.firmas, " firmas y ").concat(G.pagos, " pagos guardados (").concat(timeAgo(G.at), ")") : '').concat(d.passphrase ? '' : '<br><span class="warn">⚠️ Falta la frase secreta: solo se sube la memoria, no el núcleo completo.</span>', "</div>") : '';
+                    what = "<div class=\"drvwhat\">".concat([['📘', 'Memoria', 'lo que aprendió y por qué (texto pequeño, se reemplaza cada día)'], ['🧠', 'Núcleo', "todo JARVIS, cifrado con tu frase y sin el historial de precios (se vuelve a bajar solo). Se guardan las \u00FAltimas ".concat(d.keep, ".")], ['📝', 'Firmas, contratos y pagos', 'cada firma, el texto exacto firmado, cada pago y la foto del comprobante. Se suben al momento y nunca se borran.']].map(function (_a) {
+                        var _b = __read(_a, 3), i = _b[0], t = _b[1], x = _b[2];
+                        return "<div><span>".concat(i, "</span><b>").concat(t, "</b><small>").concat(x, "</small></div>");
+                    }).join(''), "</div>");
+                    el.innerHTML = status + what + (d.connected ? "<div class=\"row\" style=\"gap:8px;margin-top:10px\"><button class=\"btn\" id=\"dnow\">Subir ahora</button><button class=\"btn ghost\" id=\"doff\">Desconectar</button></div><div class=\"msg\" id=\"dm\"></div>\n    <details style=\"margin-top:12px\"><summary><b>Recuperar JARVIS desde tu Drive</b> (si el servidor se da\u00F1a o pasas a uno nuevo)</summary><div class=\"form\" style=\"margin-top:8px\"><label>Frase secreta de las copias<input id=\"drpw\" type=\"password\" autocomplete=\"off\"></label><label class=\"chk\"><input type=\"checkbox\" id=\"drok\"> Entiendo que esto reemplaza el n\u00FAcleo actual (antes se guarda una copia del actual)</label><button class=\"btn ghost\" id=\"drs\">Traer la \u00FAltima copia desde Drive</button><div class=\"msg\" id=\"drm\"></div></div></details>" : '') +
+                        "<details ".concat(d.connected ? '' : 'open', " style=\"margin-top:12px\"><summary><b>").concat(d.connected ? 'Volver a conectar' : 'Conectar (una sola vez, unos 5 minutos)', "</b> \u00B7 m\u00E1s f\u00E1cil desde una computadora</summary>\n    <ol class=\"drvsteps\"><li>Toca <button type=\"button\" class=\"btn sm\" data-copy=\"").concat(esc(d.script), "\">Copiar</button> para copiar el c\u00F3digo.</li>\n      <li>Abre <a href=\"https://script.google.com/home/projects/create\" target=\"_blank\" rel=\"noopener\"><b>script.google.com</b></a> con tu cuenta de Google. Se abre un proyecto nuevo.</li>\n      <li>Borra lo que hay, pega el c\u00F3digo y toca \uD83D\uDCBE <b>Guardar</b>.</li>\n      <li>Arriba a la derecha: <b>Implementar \u2192 Nueva implementaci\u00F3n</b> \u2192 toca el engranaje \u2699\uFE0F \u2192 <b>Aplicaci\u00F3n web</b>. En \"Ejecutar como\" deja <b>Yo</b> y en \"Qui\u00E9n tiene acceso\" pon <b>Cualquier usuario</b>. Toca <b>Implementar</b>.</li>\n      <li>Google pide permiso: <b>Autorizar acceso</b> \u2192 tu cuenta \u2192 <b>Configuraci\u00F3n avanzada</b> \u2192 <b>Ir a \u2026 (no seguro)</b> \u2192 <b>Permitir</b>. Avisa as\u00ED porque es tu propio c\u00F3digo y Google no lo revis\u00F3; solo puede escribir en la carpeta de JARVIS.</li>\n      <li>Copia la <b>URL de la aplicaci\u00F3n web</b> (termina en <span class=\"mono\">/exec</span>) y p\u00E9gala aqu\u00ED:</li></ol>\n    <form class=\"form\" id=\"dcf\"><label>URL de la aplicaci\u00F3n web<input id=\"durl\" placeholder=\"https://script.google.com/macros/s/\u2026/exec\" autocomplete=\"off\"></label>\n      <label>Frase secreta para las copias (10 o m\u00E1s letras) <span class=\"note\">\u2014 an\u00F3tala en un lugar seguro: sin ella el n\u00FAcleo no se puede abrir, ni siquiera yo puedo</span><input id=\"dpw\" type=\"password\" autocomplete=\"new-password\" placeholder=\"").concat(d.passphrase ? 'Ya hay una puesta: escribe solo si quieres cambiarla' : '', "\"></label>\n      <label>Clave del c\u00F3digo <span class=\"note\">(ya va dentro del c\u00F3digo; c\u00E1mbiala solo si conectas un c\u00F3digo que ya ten\u00EDas)</span><input id=\"dtok\" value=\"").concat(esc(d.codeKey), "\" class=\"mono\" autocomplete=\"off\"></label>\n      <button class=\"btn\">Conectar y subir la primera copia</button><div class=\"msg\" id=\"dcm\"></div></form></details>");
+                    el.querySelectorAll('[data-copy]').forEach(function (b) { return b.onclick = function () { return __awaiter(_this, void 0, void 0, function () { var t, _a, i; return __generator(this, function (_b) {
+                        switch (_b.label) {
+                            case 0:
+                                t = b.dataset.copy;
+                                _b.label = 1;
+                            case 1:
+                                _b.trys.push([1, 3, , 4]);
+                                return [4, navigator.clipboard.writeText(t)];
+                            case 2:
+                                _b.sent();
+                                return [3, 4];
+                            case 3:
+                                _a = _b.sent();
+                                i = document.createElement('textarea');
+                                i.value = t;
+                                document.body.appendChild(i);
+                                i.select();
+                                try {
+                                    document.execCommand('copy');
+                                }
+                                catch (_c) { }
+                                i.remove();
+                                return [3, 4];
+                            case 4:
+                                b.textContent = '¡Copiado!';
+                                setTimeout(function () { b.textContent = 'Copiar'; }, 1800);
+                                return [2];
+                        }
+                    }); }); }; });
+                    msg = function (id, cls, t) { var m = $(id); if (m) {
+                        m.className = 'msg ' + cls;
+                        m.textContent = t;
+                    } };
+                    $('#dcf').onsubmit = function (e) { return __awaiter(_this, void 0, void 0, function () {
+                        var r, err_14;
+                        var _a;
+                        return __generator(this, function (_b) {
+                            switch (_b.label) {
+                                case 0:
+                                    e.preventDefault();
+                                    msg('#dcm', '', 'Probando la conexión con tu Drive…');
+                                    _b.label = 1;
+                                case 1:
+                                    _b.trys.push([1, 3, , 4]);
+                                    return [4, api('/api/drive/conectar', { method: 'POST', body: { url: $('#durl').value, passphrase: $('#dpw').value, token: $('#dtok').value } })];
+                                case 2:
+                                    r = _b.sent();
+                                    msg('#dcm', 'ok', ((_a = r.first) === null || _a === void 0 ? void 0 : _a.error) ? "Conectado, pero la primera copia fall\u00F3: ".concat(r.first.error) : '¡Conectado! Ya subí la primera copia a la carpeta "JARVIS - copias y memoria" de tu Drive.');
+                                    setTimeout(loadDrive, 2500);
+                                    return [3, 4];
+                                case 3:
+                                    err_14 = _b.sent();
+                                    msg('#dcm', 'err', err_14.message);
+                                    return [3, 4];
+                                case 4: return [2];
+                            }
+                        });
+                    }); };
+                    if ($('#dnow'))
+                        $('#dnow').onclick = function () { return __awaiter(_this, void 0, void 0, function () { var r, err_15; return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0:
+                                    msg('#dm', '', 'Subiendo…');
+                                    _a.label = 1;
+                                case 1:
+                                    _a.trys.push([1, 3, , 4]);
+                                    return [4, api('/api/drive/ahora', { method: 'POST' })];
+                                case 2:
+                                    r = _a.sent();
+                                    msg('#dm', 'ok', "Listo: memoria ".concat(kb(r.memoryBytes)).concat(r.core ? " + n\u00FAcleo ".concat(kb(r.core.bytes)) : '', "."));
+                                    setTimeout(loadDrive, 1500);
+                                    return [3, 4];
+                                case 3:
+                                    err_15 = _a.sent();
+                                    msg('#dm', 'err', err_15.message);
+                                    return [3, 4];
+                                case 4: return [2];
+                            }
+                        }); }); };
+                    if ($('#doff'))
+                        $('#doff').onclick = function () { return __awaiter(_this, void 0, void 0, function () { return __generator(this, function (_a) {
+                            switch (_a.label) {
+                                case 0: return [4, api('/api/drive/desconectar', { method: 'POST' }).catch(function () { })];
+                                case 1:
+                                    _a.sent();
+                                    loadDrive();
+                                    return [2];
+                            }
+                        }); }); };
+                    if ($('#drs'))
+                        $('#drs').onclick = function () { return __awaiter(_this, void 0, void 0, function () {
+                            var r, err_16;
+                            return __generator(this, function (_a) {
+                                switch (_a.label) {
+                                    case 0:
+                                        if (!$('#drok').checked)
+                                            return [2, msg('#drm', 'err', 'Marca la casilla para confirmar.')];
+                                        msg('#drm', '', 'Trayendo la copia de tu Drive y revisándola…');
+                                        _a.label = 1;
+                                    case 1:
+                                        _a.trys.push([1, 3, , 4]);
+                                        return [4, api('/api/drive/restaurar', { method: 'POST', body: { passphrase: $('#drpw').value, confirm: true } })];
+                                    case 2:
+                                        r = _a.sent();
+                                        msg('#drm', 'ok', "".concat(r.message, " (").concat(r.info.predictions, " votos, ").concat(r.info.experiments, " ideas probadas)."));
+                                        setTimeout(function () { return location.reload(); }, 9000);
+                                        return [3, 4];
+                                    case 3:
+                                        err_16 = _a.sent();
+                                        msg('#drm', 'err', err_16.message);
+                                        return [3, 4];
+                                    case 4: return [2];
+                                }
+                            });
+                        }); };
+                    return [2];
+            }
+        });
+    });
+}
 views.ajustes.after = function () {
     if ((ME === null || ME === void 0 ? void 0 : ME.role) !== 'admin')
         return;
@@ -1413,7 +1623,7 @@ views.ajustes.after = function () {
     $('#brf').onchange = function (e) { var f = e.target.files[0]; if (!f)
         return; var r = new FileReader(); r.onload = function () { restoreFile = r.result; $('#brn').textContent = "".concat(f.name, " \u00B7 ").concat((f.size / 1048576).toFixed(1), " MB"); }; r.readAsDataURL(f); };
     $('#bdl').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var res, j, blob, name, a_1, err_14;
+        var res, j, blob, name, a_1, err_17;
         var _a;
         return __generator(this, function (_b) {
             switch (_b.label) {
@@ -1444,16 +1654,16 @@ views.ajustes.after = function () {
                     $('#bdm').textContent = "Listo: ".concat(name, ". Gu\u00E1rdalo en tu Drive o correo, junto con tu frase en un lugar seguro.");
                     return [3, 7];
                 case 6:
-                    err_14 = _b.sent();
+                    err_17 = _b.sent();
                     $('#bdm').className = 'msg err';
-                    $('#bdm').textContent = err_14.message;
+                    $('#bdm').textContent = err_17.message;
                     return [3, 7];
                 case 7: return [2];
             }
         });
     }); };
     $('#brs').onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var r, err_15;
+        var r, err_18;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1480,18 +1690,19 @@ views.ajustes.after = function () {
                     setTimeout(function () { return location.reload(); }, 9000);
                     return [3, 4];
                 case 3:
-                    err_15 = _a.sent();
+                    err_18 = _a.sent();
                     $('#brm').className = 'msg err';
-                    $('#brm').textContent = err_15.message;
+                    $('#brm').textContent = err_18.message;
                     return [3, 4];
                 case 4: return [2];
             }
         });
     }); };
+    loadDrive();
     if ($('#showusers'))
         $('#showusers').onchange = function (e) { return api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(function () { }); };
     $('#kf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-        var body, err_16;
+        var body, err_19;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1518,9 +1729,9 @@ views.ajustes.after = function () {
                     setTimeout(render, 1000);
                     return [3, 4];
                 case 3:
-                    err_16 = _a.sent();
+                    err_19 = _a.sent();
                     $('#km').className = 'msg err';
-                    $('#km').textContent = err_16.message;
+                    $('#km').textContent = err_19.message;
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1534,7 +1745,7 @@ views.ajustes.after = function () {
     };
     ['#bn', '#bt', '#bo'].forEach(function (id) { return $(id).oninput = prev; });
     document.querySelectorAll('.sw').forEach(function (b) { return b.onclick = function () { color = b.dataset.c; document.querySelectorAll('.sw').forEach(function (x) { return x.classList.toggle('on', x === b); }); prev(); }; });
-    $('#bl').onchange = function () { return __awaiter(void 0, void 0, void 0, function () { var f, e_6; return __generator(this, function (_a) {
+    $('#bl').onchange = function () { return __awaiter(void 0, void 0, void 0, function () { var f, e_8; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 f = $('#bl').files[0];
@@ -1552,16 +1763,16 @@ views.ajustes.after = function () {
                 $('#bm').textContent = 'Logo listo. Pulsa "Guardar mi marca".';
                 return [3, 4];
             case 3:
-                e_6 = _a.sent();
+                e_8 = _a.sent();
                 $('#bm').className = 'msg err';
-                $('#bm').textContent = e_6.message;
+                $('#bm').textContent = e_8.message;
                 return [3, 4];
             case 4: return [2];
         }
     }); }); };
     if ($('#blr'))
         $('#blr').onclick = function () { removeLogo = true; logo = null; prev(); };
-    $('#bsave').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var e_7; return __generator(this, function (_a) {
+    $('#bsave').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var e_9; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1574,9 +1785,9 @@ views.ajustes.after = function () {
                 setTimeout(render, 900);
                 return [3, 3];
             case 2:
-                e_7 = _a.sent();
+                e_9 = _a.sent();
                 $('#bm').className = 'msg err';
-                $('#bm').textContent = e_7.message;
+                $('#bm').textContent = e_9.message;
                 return [3, 3];
             case 3: return [2];
         }
@@ -1628,7 +1839,7 @@ views.ajustes.after = function () {
                 return [2];
         }
     }); }); };
-    $('#mrun').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, e_8; return __generator(this, function (_a) {
+    $('#mrun').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var r, e_10; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 m('Corriendo ciclo… puede tardar unos minutos la primera vez.');
@@ -1644,13 +1855,13 @@ views.ajustes.after = function () {
                 }).join(', '));
                 return [3, 4];
             case 3:
-                e_8 = _a.sent();
-                m(e_8.message, false);
+                e_10 = _a.sent();
+                m(e_10.message, false);
                 return [3, 4];
             case 4: return [2];
         }
     }); }); };
-    $('#saveai').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var en_1, e_9; return __generator(this, function (_a) {
+    $('#saveai').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var en_1, e_11; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1662,13 +1873,13 @@ views.ajustes.after = function () {
                 m('IA guardada.');
                 return [3, 3];
             case 2:
-                e_9 = _a.sent();
-                m(e_9.message, false);
+                e_11 = _a.sent();
+                m(e_11.message, false);
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
-    $('#saveother').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var e_10; return __generator(this, function (_a) {
+    $('#saveother').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var e_12; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1678,14 +1889,14 @@ views.ajustes.after = function () {
                 m('Guardado.');
                 return [3, 3];
             case 2:
-                e_10 = _a.sent();
-                m(e_10.message, false);
+                e_12 = _a.sent();
+                m(e_12.message, false);
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
     if ($('#ntest'))
-        $('#ntest').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var e_11; return __generator(this, function (_a) {
+        $('#ntest').onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var e_13; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 2, , 3]);
@@ -1696,14 +1907,14 @@ views.ajustes.after = function () {
                     $('#nm').textContent = 'Aviso enviado: revisa tu celular.';
                     return [3, 3];
                 case 2:
-                    e_11 = _a.sent();
+                    e_13 = _a.sent();
                     $('#nm').className = 'msg err';
-                    $('#nm').textContent = e_11.message;
+                    $('#nm').textContent = e_13.message;
                     return [3, 3];
                 case 3: return [2];
             }
         }); }); };
-    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_17; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-act]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var err_20; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 2, , 3]);
@@ -1713,9 +1924,9 @@ views.ajustes.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_17 = _a.sent();
+                err_20 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_17.message;
+                $('#um').textContent = err_20.message;
                 return [3, 3];
             case 3: return [2];
         }
@@ -1723,7 +1934,7 @@ views.ajustes.after = function () {
     document.querySelectorAll('[data-pw]').forEach(function (b) { return b.onclick = function () {
         var td = b.parentElement;
         td.innerHTML = "<form class=\"row\" style=\"gap:6px;justify-content:flex-end\"><input type=\"text\" minlength=\"10\" placeholder=\"vac\u00EDa = autom\u00E1tica\" style=\"width:160px\" autocomplete=\"off\"><button class=\"btn sm\">Guardar</button></form>";
-        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_18; return __generator(this, function (_a) {
+        td.querySelector('form').onsubmit = function (ev) { return __awaiter(void 0, void 0, void 0, function () { var r, err_21; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     ev.preventDefault();
@@ -1736,15 +1947,15 @@ views.ajustes.after = function () {
                     td.innerHTML = r.password ? "<span class=\"good\">Nueva: <b style=\"font-family:ui-monospace,monospace;user-select:all\">".concat(esc(r.password), "</b></span><div class=\"note\">D\u00E1sela ahora; no se vuelve a mostrar.</div>") : '<span class="good">Contraseña cambiada</span>';
                     return [3, 4];
                 case 3:
-                    err_18 = _a.sent();
-                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_18.message), "</div>"));
+                    err_21 = _a.sent();
+                    td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_21.message), "</div>"));
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     }; });
     var showPw = function (who, pw) { return "<div class=\"msg ok\" style=\"font-size:16px;line-height:1.6\">Usuario <b>".concat(esc(who), "</b> listo. Su contrase\u00F1a es: <b style=\"font-family:ui-monospace,monospace;font-size:20px;user-select:all\">").concat(esc(pw), "</b><br><span class=\"note\">C\u00F3piala y d\u00E1sela ahora: no se vuelve a mostrar. \u00C9l la puede cambiar en Mi perfil.</span></div>"); };
-    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_19; return __generator(this, function (_a) {
+    $('#uf').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var r, err_22; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 e.preventDefault();
@@ -1766,9 +1977,9 @@ views.ajustes.after = function () {
                 }
                 return [3, 4];
             case 3:
-                err_19 = _a.sent();
+                err_22 = _a.sent();
                 $('#um').className = 'msg err';
-                $('#um').textContent = err_19.message;
+                $('#um').textContent = err_22.message;
                 return [3, 4];
             case 4: return [2];
         }
@@ -1889,7 +2100,7 @@ views.analisis.after = function () {
     if (!b)
         return;
     b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () {
-        var r, e_12;
+        var r, e_14;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -1904,8 +2115,8 @@ views.analisis.after = function () {
                     $('#narr').innerHTML = r.text ? "<div class=\"answer\">".concat(esc(r.text), "<div class=\"note\" style=\"margin-top:6px\">Escrita por ").concat(esc((ME === null || ME === void 0 ? void 0 : ME.role) === 'admin' ? r.by : 'la IA de JARVIS'), " \u00B7 <span class=\"tag opinion\">Opini\u00F3n de IA</span></div></div>") : "<div class=\"msg err\">".concat(esc(r.error), "</div>");
                     return [3, 4];
                 case 3:
-                    e_12 = _a.sent();
-                    $('#narr').innerHTML = "<div class=\"msg err\">".concat(esc(e_12.message), "</div>");
+                    e_14 = _a.sent();
+                    $('#narr').innerHTML = "<div class=\"msg err\">".concat(esc(e_14.message), "</div>");
                     return [3, 4];
                 case 4: return [2];
             }
@@ -1923,7 +2134,7 @@ function lotteryAnalysisView(game) {
                     if (a.empty)
                         return [2, "<div class=\"card empty\">".concat(esc(a.message), "</div>")];
                     c = a.conclusion;
-                    return [2, "<div class=\"note\"><a href=\"#loterias\">Loter\u00EDas</a> \u203A ".concat(esc(a.name), " \u203A An\u00E1lisis profundo</div>\n  <section class=\"card ahead\">\n    <div class=\"balls\">").concat(a.pick.numbers.map(function (n) { return "<span class=\"ball\" style=\"width:84px;height:84px;font-size:30px\">".concat(esc(n), "</span>"); }).join(''), "</div>\n    <div><h1>").concat(esc(a.name), " <span class=\"muted\" style=\"font-size:16px\">").concat(esc(a.entity), " \u00B7 ").concat(a.draws, " sorteos analizados</span></h1><div class=\"sub\">N\u00FAmero del sorteo del ").concat(esc(a.pick.date), " \u00B7 m\u00E9todo: ").concat(esc(a.pick.methodLabel), "</div></div>\n    <div></div></section>\n  <section class=\"card summary10\" style=\"border-color:#ffbf3c\"><div class=\"s10-h\">Resumen en 10 segundos</div>\n    <div class=\"s10\">\n      <div class=\"tile\"><div class=\"q\">\u00BFQu\u00E9 hago?</div><div class=\"a warn\">Si juegas, solo por diversi\u00F3n</div><div class=\"note\">").concat(esc(c.headline.replace(/^[^:]+:\s*/, '')), "</div></div>\n      <div class=\"tile\"><div class=\"q\">Si apuestas RD$100 muchas veces\u2026</div><div class=\"mr-v bad\">vuelven ").concat(rd(a.probs[0].per100), "</div><div class=\"note\">en promedio, a largo plazo (quiniela). La banca se queda con el resto.</div></div>\n      <div class=\"tile\"><div class=\"q\">\u00BFQu\u00E9 tan seguido sale el ").concat(esc(a.number.num), "?</div>").concat(chanceDots(a.probs[0].win, { what: 'sale en el sorteo', big: true }), "<div class=\"note\">Igual que cualquier otro n\u00FAmero, si el sorteo es justo</div></div>\n      <div class=\"tile\"><div class=\"q\">\u00BFCu\u00E1ndo s\u00E9 si gan\u00E9?</div><div class=\"a good\">El mismo d\u00EDa</div><div class=\"note\">Al salir los n\u00FAmeros. Si ganas, cobras con el ticket en la banca: gu\u00E1rdalo y pregunta el plazo.</div></div>\n    </div></section>\n  ").concat(a.size ? sizeCard(a.size, a.budget, a.light) : '', "\n  <section class=\"card\"><h2>Las preguntas, respondidas</h2>").concat(qaAccordion(c), "</section>\n  ").concat(timingCard(a), "\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>Cu\u00E1ntas veces sali\u00F3 cada n\u00FAmero</h2>").concat(takeaway("el ".concat(esc(a.number.num), " sali\u00F3 ").concat(a.number.count, " veces en ").concat(a.draws, " sorteos. Con tan pocos sorteos, que un n\u00FAmero salga m\u00E1s es casi siempre casualidad."))).concat(freqChart(a.freq, a.draws * 3 / 100, a.number.num), "<div class=\"note\">Naranja: el ").concat(esc(a.number.num), ", que sali\u00F3 ").concat(a.number.count, " veces (esperado ").concat(a.number.expected, "); lleva ").concat(a.number.gap, " sorteos sin salir. ").concat(kindTag('dato'), "</div></div>\n    <div class=\"card\"><h2>Probabilidades exactas</h2><div class=\"tablewrap\"><table><tr><th>Jugada</th><th class=\"r\">Chance</th><th class=\"r\">Devuelve de cada RD$100</th></tr>").concat(a.probs.map(function (p) { return "<tr><td>".concat(esc({ quiniela: 'Quiniela', pale: 'Palé', tripleta: 'Tripleta' }[p.kind]), "</td><td class=\"r\">").concat((p.win * 100).toFixed(p.win < 0.01 ? 3 : 2), "%</td><td class=\"r bad\">").concat(rd(p.per100), "</td></tr>"); }).join(''), "</table></div><div class=\"note\">").concat(kindTag('dato'), " Calculado con todas las combinaciones posibles y los pagos de banca configurados.</div></div>\n  </section>\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>\u00BFAlg\u00FAn m\u00E9todo le gana al azar?</h2>").concat(takeaway(esc(a.compare.verdict))).concat(barChart(__spreadArray([{ label: 'Azar (mediana)', value: a.compare.random.median, color: '#8a97b5' }], __read(a.compare.methods.map(function (m) { return ({ label: m.label, value: m.per100, color: m.beatsRandom ? '#2fd58a' : '#ffbf3c' }); })), false), { fmt: function (v) { return rd(v); }, label: 'Devuelve por RD$100' }), "<div class=\"note\">").concat(esc(a.compare.verdict), "</div></div>\n    <div class=\"card\"><h2>\u00BFHay se\u00F1ales de trampa?</h2>").concat(takeaway(esc(a.scan.verdict))).concat(a.scan.tests.map(function (t) { return "<div style=\"display:flex;gap:8px;padding:4px 0\">".concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "<span>").concat(esc(t.title), "</span><span class=\"note\" style=\"margin-left:auto\">").concat((Math.min(1, t.p) * 100).toFixed(1), "% por casualidad</span></div>"); }).join(''), "</div>\n  </section>\n  <section class=\"grid split\">").concat(narrativeBox(a)).concat(realtimeBox(a), "</section>\n  <section class=\"card\"><h2>Fuentes y pruebas</h2>").concat(sourcesList(a.sources), "</section>")];
+                    return [2, "<div class=\"note\"><a href=\"#loterias\">Loter\u00EDas</a> \u203A ".concat(esc(a.name), " \u203A An\u00E1lisis profundo</div>\n  <section class=\"card ahead\">\n    <div class=\"balls\">").concat(a.pick.numbers.map(function (n) { return "<span class=\"ball\" style=\"width:84px;height:84px;font-size:30px\">".concat(esc(n), "</span>"); }).join(''), "</div>\n    <div><h1>").concat(esc(a.name), " <span class=\"muted\" style=\"font-size:16px\">").concat(esc(a.entity), " \u00B7 ").concat(a.draws, " sorteos analizados</span></h1><div class=\"sub\">N\u00FAmero del sorteo del ").concat(esc(a.pick.date), " \u00B7 m\u00E9todo: ").concat(esc(a.pick.methodLabel), "</div></div>\n    <div></div></section>\n  <section class=\"card summary10\" style=\"border-color:#ffbf3c\"><div class=\"s10-h\">Resumen en 10 segundos</div>\n    <div class=\"s10\">\n      <div class=\"tile\"><div class=\"q\">\u00BFQu\u00E9 hago?</div><div class=\"a warn\">Si juegas, solo por diversi\u00F3n</div><div class=\"note\">").concat(esc(c.headline.replace(/^[^:]+:\s*/, '')), "</div></div>\n      <div class=\"tile\"><div class=\"q\">Si apuestas RD$100 muchas veces\u2026</div><div class=\"mr-v bad\">vuelven ").concat(rdRaw(a.probs[0].per100), "</div><div class=\"note\">en promedio, a largo plazo (quiniela). La banca se queda con el resto.</div></div>\n      <div class=\"tile\"><div class=\"q\">\u00BFQu\u00E9 tan seguido sale el ").concat(esc(a.number.num), "?</div>").concat(chanceDots(a.probs[0].win, { what: 'sale en el sorteo', big: true }), "<div class=\"note\">Igual que cualquier otro n\u00FAmero, si el sorteo es justo</div></div>\n      <div class=\"tile\"><div class=\"q\">\u00BFCu\u00E1ndo s\u00E9 si gan\u00E9?</div><div class=\"a good\">El mismo d\u00EDa</div><div class=\"note\">Al salir los n\u00FAmeros. Si ganas, cobras con el ticket en la banca: gu\u00E1rdalo y pregunta el plazo.</div></div>\n    </div></section>\n  ").concat(a.size ? sizeCard(a.size, a.budget, a.light) : '', "\n  <section class=\"card\"><h2>Las preguntas, respondidas</h2>").concat(qaAccordion(c), "</section>\n  ").concat(timingCard(a), "\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>Cu\u00E1ntas veces sali\u00F3 cada n\u00FAmero</h2>").concat(takeaway("el ".concat(esc(a.number.num), " sali\u00F3 ").concat(a.number.count, " veces en ").concat(a.draws, " sorteos. Con tan pocos sorteos, que un n\u00FAmero salga m\u00E1s es casi siempre casualidad."))).concat(freqChart(a.freq, a.draws * 3 / 100, a.number.num), "<div class=\"note\">Naranja: el ").concat(esc(a.number.num), ", que sali\u00F3 ").concat(a.number.count, " veces (esperado ").concat(a.number.expected, "); lleva ").concat(a.number.gap, " sorteos sin salir. ").concat(kindTag('dato'), "</div></div>\n    <div class=\"card\"><h2>Probabilidades exactas</h2><div class=\"tablewrap\"><table><tr><th>Jugada</th><th class=\"r\">Chance</th><th class=\"r\">Devuelve de cada RD$100</th></tr>").concat(a.probs.map(function (p) { return "<tr><td>".concat(esc({ quiniela: 'Quiniela', pale: 'Palé', tripleta: 'Tripleta' }[p.kind]), "</td><td class=\"r\">").concat((p.win * 100).toFixed(p.win < 0.01 ? 3 : 2), "%</td><td class=\"r bad\">").concat(rdRaw(p.per100), "</td></tr>"); }).join(''), "</table></div><div class=\"note\">").concat(kindTag('dato'), " Calculado con todas las combinaciones posibles y los pagos de banca configurados.</div></div>\n  </section>\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>\u00BFAlg\u00FAn m\u00E9todo le gana al azar?</h2>").concat(takeaway(esc(a.compare.verdict))).concat(barChart(__spreadArray([{ label: 'Azar (mediana)', value: a.compare.random.median, color: '#8a97b5' }], __read(a.compare.methods.map(function (m) { return ({ label: m.label, value: m.per100, color: m.beatsRandom ? '#2fd58a' : '#ffbf3c' }); })), false), { fmt: function (v) { return rdRaw(v); }, label: 'Devuelve por RD$100' }), "<div class=\"note\">").concat(esc(a.compare.verdict), "</div></div>\n    <div class=\"card\"><h2>\u00BFHay se\u00F1ales de trampa?</h2>").concat(takeaway(esc(a.scan.verdict))).concat(a.scan.tests.map(function (t) { return "<div style=\"display:flex;gap:8px;padding:4px 0\">".concat(t.anomaly ? '<span class="light rojo"><i></i>Revisar</span>' : '<span class="light verde"><i></i>Normal</span>', "<span>").concat(esc(t.title), "</span><span class=\"note\" style=\"margin-left:auto\">").concat((Math.min(1, t.p) * 100).toFixed(1), "% por casualidad</span></div>"); }).join(''), "</div>\n  </section>\n  <section class=\"grid split\">").concat(narrativeBox(a)).concat(realtimeBox(a), "</section>\n  <section class=\"card\"><h2>Fuentes y pruebas</h2>").concat(sourcesList(a.sources), "</section>")];
             }
         });
     });
@@ -2021,7 +2232,7 @@ views.potenciador.after = function () {
     }); }); }; });
     var receipt = null;
     if ($('#prc'))
-        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_20; return __generator(this, function (_a) {
+        $('#prc').onchange = function (e) { return __awaiter(void 0, void 0, void 0, function () { var f, err_23; return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     f = e.target.files[0];
@@ -2037,16 +2248,16 @@ views.potenciador.after = function () {
                     $('#prcv').innerHTML = "<img src=\"".concat(receipt, "\" class=\"preq-img\" alt=\"Vista previa\"><div>\u2705 Foto lista</div>");
                     return [3, 4];
                 case 3:
-                    err_20 = _a.sent();
+                    err_23 = _a.sent();
                     receipt = null;
-                    $('#prcv').textContent = err_20.message;
+                    $('#prcv').textContent = err_23.message;
                     return [3, 4];
                 case 4: return [2];
             }
         }); }); };
     if ($('#pf2'))
         $('#pf2').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var err_21;
+            var err_24;
             var _a;
             return __generator(this, function (_b) {
                 switch (_b.label) {
@@ -2068,15 +2279,15 @@ views.potenciador.after = function () {
                         setTimeout(render, 1400);
                         return [3, 4];
                     case 3:
-                        err_21 = _b.sent();
+                        err_24 = _b.sent();
                         $('#pmsg').className = 'msg err';
-                        $('#pmsg').textContent = err_21.message;
+                        $('#pmsg').textContent = err_24.message;
                         return [3, 4];
                     case 4: return [2];
                 }
             });
         }); };
-    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_22; var _a; return __generator(this, function (_b) {
+    var decide = function (id, approve) { return __awaiter(void 0, void 0, void 0, function () { var err_25; var _a; return __generator(this, function (_b) {
         switch (_b.label) {
             case 0:
                 _b.trys.push([0, 2, , 3]);
@@ -2086,16 +2297,16 @@ views.potenciador.after = function () {
                 render();
                 return [3, 3];
             case 2:
-                err_22 = _b.sent();
+                err_25 = _b.sent();
                 $('#amsg').className = 'msg err';
-                $('#amsg').textContent = err_22.message;
+                $('#amsg').textContent = err_25.message;
                 return [3, 3];
             case 3: return [2];
         }
     }); }); };
     document.querySelectorAll('[data-ok]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.ok, true); }; });
     document.querySelectorAll('[data-no]').forEach(function (b) { return b.onclick = function () { return decide(b.dataset.no, false); }; });
-    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_23; return __generator(this, function (_a) {
+    document.querySelectorAll('[data-gift]').forEach(function (b) { return b.onclick = function () { return __awaiter(void 0, void 0, void 0, function () { var n, err_26; return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 n = Number(document.querySelector(".gift[data-u=\"".concat(b.dataset.gift, "\"]")).value);
@@ -2108,8 +2319,8 @@ views.potenciador.after = function () {
                 render();
                 return [3, 4];
             case 3:
-                err_23 = _a.sent();
-                alertMsg(err_23.message);
+                err_26 = _a.sent();
+                alertMsg(err_26.message);
                 return [3, 4];
             case 4: return [2];
         }
@@ -2129,7 +2340,7 @@ views.potenciador.after = function () {
         };
     if ($('#pset'))
         $('#pset').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () {
-            var f, packs, accounts, err_24;
+            var f, packs, accounts, err_27;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
@@ -2147,9 +2358,9 @@ views.potenciador.after = function () {
                         $('#psm').textContent = 'Guardado.';
                         return [3, 4];
                     case 3:
-                        err_24 = _a.sent();
+                        err_27 = _a.sent();
                         $('#psm').className = 'msg err';
-                        $('#psm').textContent = err_24.message;
+                        $('#psm').textContent = err_27.message;
                         return [3, 4];
                     case 4: return [2];
                 }
@@ -2176,7 +2387,7 @@ function perfBlock(s, cur) {
     var money = function (v) { return (cur === 'RD$' ? rd(v) : usd(v)); };
     var coin = s.range && s.range[0] <= 50 && s.range[1] >= 50;
     var verdict = !s.resolved ? 'Todavía no hay resultados para juzgar.' : coin ? 'Por ahora acierta casi igual que lanzar una moneda: hace falta más tiempo para saber si de verdad sirve.' : s.hitRate > 50 ? 'Acierta más de lo que daría la suerte, y no es casualidad con estos datos.' : 'Acierta menos que la suerte: no conviene seguirlo todavía.';
-    return "<section class=\"card hsum\" style=\"border-color:var(--".concat(!s.resolved || coin ? 'warn' : s.hitRate > 50 ? 'good' : 'bad', ")\">\n    <div class=\"hs-big\">").concat(s.resolved ? "De <b>".concat(s.resolved, "</b> recomendaciones ya revisadas, acert\u00F3 <b class=\"good\">").concat(s.hits, "</b> (").concat(Math.round(s.hitRate), "%).") : 'Aún no hay recomendaciones revisadas.', "</div>\n    ").concat(s.resolved ? "<div class=\"hs-sub\">Si le hubieras hecho caso con los montos que dijo, hoy ir\u00EDas <b class=\"".concat(cls(s.net), "\">").concat(s.net >= 0 ? 'ganando' : 'perdiendo', " ").concat(money(Math.abs(s.net)), "</b> (dinero virtual).</div>") : '', "\n    <div class=\"hs-v\">").concat(verdict, "</div></section>\n  <section class=\"grid g4\">\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">Acertadas</div><div class=\"v good\">").concat(s.hits, "</div><div class=\"s\">").concat(s.hitRate != null ? s.hitRate + '% de acierto' : 'sin calificar aún').concat(s.range ? " (rango ".concat(s.range[0], "\u2013").concat(s.range[1], "%)") : '', "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ff5d6c\"><div class=\"l\">Fallidas</div><div class=\"v bad\">").concat(s.misses, "</div><div class=\"s\">racha r\u00E9cord de fallos: ").concat(s.streak.bestMisses, "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ffbf3c\"><div class=\"l\">Pendientes</div><div class=\"v\">").concat(s.pending, "</div><div class=\"s\">").concat(s.total, " registradas en total</div></div>\n    <div class=\"card kpi\"><div class=\"l\">Si le hubieras hecho caso</div><div class=\"v ").concat(cls(s.net), "\">").concat(money(s.net), "</div><div class=\"s\">apostado ").concat(money(s.staked), " \u00B7 ganado ").concat(money(s.won), " \u00B7 perdido ").concat(money(s.lost), "</div></div>\n  </section>\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>Evoluci\u00F3n del dinero</h2>").concat(s.curve.length > 1 ? lineChart(s.curve, { h: 200, label: 'Dinero acumulado' }) : '<div class="empty">Aparece cuando haya al menos 2 recomendaciones calificadas.</div>', "</div>\n    <div class=\"card\"><h2>Ganancias y p\u00E9rdidas por mes</h2>").concat(s.months.length ? barChart(s.months.map(function (m) { return ({ label: m.month, value: m.net }); }), { fmt: money, label: 'Por mes' }) : '<div class="empty">Sin meses calificados todavía.</div>', "\n      <div class=\"note\">").concat(s.best ? "Mejor mes: ".concat(esc(s.best.month), " (").concat(money(s.best.net), "). Peor mes: ").concat(esc(s.worst.month), " (").concat(money(s.worst.net), ").") : '', "</div>\n      ").concat(s.brier != null ? "<details class=\"note\" style=\"margin-top:6px\"><summary>Para expertos</summary>Calibraci\u00F3n (Brier): ".concat(s.brier, ". M\u00E1s bajo es mejor; 0.25 es lo mismo que adivinar.</details>") : '', "</div>\n  </section>");
+    return "<section class=\"card hsum\" style=\"border-color:var(--".concat(!s.resolved || coin ? 'warn' : s.hitRate > 50 ? 'good' : 'bad', ")\">\n    <div class=\"hs-big\">").concat(s.resolved ? "De <b>".concat(s.resolved, "</b> recomendaciones ya revisadas, acert\u00F3 <b class=\"good\">").concat(s.hits, "</b> (").concat(Math.round(s.hitRate), "%).") : 'Aún no hay recomendaciones revisadas.', "</div>\n    ").concat(s.resolved ? "<div class=\"hs-sub\">Si le hubieras hecho caso con los montos que dijo, hoy ir\u00EDas <b class=\"".concat(cls(s.net), "\">").concat(s.net >= 0 ? 'ganando' : 'perdiendo', " ").concat(money(Math.abs(s.net)), "</b> (dinero virtual).</div>") : '', "\n    <div class=\"hs-v\">").concat(verdict, "</div></section>\n  <section class=\"grid g4\">\n    <div class=\"card kpi\" style=\"--c:#2fd58a\"><div class=\"l\">Acertadas</div><div class=\"v good\">").concat(s.hits, "</div><div class=\"s\">").concat(s.hitRate != null ? s.hitRate + '% de acierto' : 'sin calificar aún').concat(s.range ? " (rango ".concat(s.range[0], "\u2013").concat(s.range[1], "%)") : '', "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ff5d6c\"><div class=\"l\">Fallidas</div><div class=\"v bad\">").concat(s.misses, "</div><div class=\"s\">racha r\u00E9cord de fallos: ").concat(s.streak.bestMisses, "</div></div>\n    <div class=\"card kpi\" style=\"--c:#ffbf3c\"><div class=\"l\">Pendientes</div><div class=\"v\">").concat(s.pending, "</div><div class=\"s\">").concat(s.total, " registradas en total</div></div>\n    <div class=\"card kpi\"><div class=\"l\">Si le hubieras hecho caso</div><div class=\"v ").concat(cls(s.net), "\">").concat(money(s.net), "</div><div class=\"s\">apostado ").concat(money(s.staked), " \u00B7 ganado ").concat(money(s.won), " \u00B7 perdido ").concat(money(s.lost), "</div></div>\n  </section>\n  <section class=\"grid split\">\n    <div class=\"card\"><h2>Evoluci\u00F3n del dinero</h2>").concat(s.curve.length > 1 ? lineChart(s.curve, { h: 200, label: 'Dinero acumulado' }) : '<div class="empty">Aparece cuando haya al menos 2 recomendaciones calificadas.</div>', "</div>\n    <div class=\"card\"><h2>Ganancias y p\u00E9rdidas por mes</h2>").concat(s.months.length ? barChart(s.months.map(function (m) { return ({ label: m.month, value: m.net }); }), { fmt: function (v) { return (cur === 'RD$' ? usd(v / FX) : usd(v)); }, label: 'Por mes' }) : '<div class="empty">Sin meses calificados todavía.</div>', "\n      <div class=\"note\">").concat(s.best ? "Mejor mes: ".concat(esc(s.best.month), " (").concat(money(s.best.net), "). Peor mes: ").concat(esc(s.worst.month), " (").concat(money(s.worst.net), ").") : '', "</div>\n      ").concat(s.brier != null ? "<details class=\"note\" style=\"margin-top:6px\"><summary>Para expertos</summary>Calibraci\u00F3n (Brier): ".concat(s.brier, ". M\u00E1s bajo es mejor; 0.25 es lo mismo que adivinar.</details>") : '', "</div>\n  </section>");
 }
 function recordsTable(rows) {
     if (!rows.length)
@@ -2221,7 +2432,7 @@ views.historial.after = function () {
         else {
             var r = real;
             $('#hview').innerHTML = "<section class=\"card\" style=\"border-color:#ffbf3c\"><h2>Dinero real</h2><p class=\"note\">JARVIS nunca invierte ni apuesta por ti. Aqu\u00ED anotas lo que hiciste de verdad, para comparar tu dinero real con sus recomendaciones. Lo que anotes queda sellado. Si una inversi\u00F3n real cae 8% desde tu compra o pasa a \"No te recomiendo\", te aviso al celular para que decidas salir.</p>\n        <div class=\"grid g4\"><div class=\"pbox\"><div class=\"l\">Bolsa: neto realizado</div><div class=\"v ".concat(cls(r.bolsa.net), "\">").concat(usd(r.bolsa.net), "</div><div class=\"note\">").concat(r.bolsa.count, " registros \u00B7 ").concat(r.bolsa.open, " abiertos</div></div><div class=\"pbox\"><div class=\"l\">Bolsa: invertido</div><div class=\"v\">").concat(usd(r.bolsa.staked), "</div><div class=\"note\">").concat(r.bolsa.followed, " siguiendo a JARVIS</div></div>\n        <div class=\"pbox\"><div class=\"l\">Loter\u00EDas: neto</div><div class=\"v ").concat(cls(r.loterias.net), "\">").concat(rd(r.loterias.net), "</div><div class=\"note\">").concat(r.loterias.count, " apuestas \u00B7 ").concat(r.loterias.wins, " premios</div></div><div class=\"pbox\"><div class=\"l\">Loter\u00EDas: apostado</div><div class=\"v\">").concat(rd(r.loterias.staked), "</div></div></div></section>\n        <section class=\"grid g2\"><div class=\"card\"><h2>Anotar inversi\u00F3n real (bolsa)</h2><form class=\"form\" id=\"rbf\"><div class=\"grid g3\" style=\"gap:10px\"><label>Acci\u00F3n<input id=\"rbs\" placeholder=\"MSFT\" required></label><label>Monto US$<input id=\"rba\" type=\"number\" step=\"0.01\" min=\"0.01\" required></label><label>Precio de compra<input id=\"rbp\" type=\"number\" step=\"0.0001\" min=\"0.0001\" required></label></div><button class=\"btn\">Anotar</button><div class=\"msg\" id=\"rbm\"></div></form></div>\n        <div class=\"card\"><h2>Anotar apuesta real (loter\u00EDa)</h2><form class=\"form\" id=\"rlf\"><div class=\"grid g4\" style=\"gap:10px\"><label>Loter\u00EDa<select id=\"rlg\">").concat(['leidsa', 'nacional', 'nacional-noche', 'loteka', 'real'].map(function (g) { return "<option>".concat(g, "</option>"); }).join(''), "</select></label><label>Fecha<input id=\"rld\" type=\"date\" required></label><label>N\u00FAmeros<input id=\"rln\" placeholder=\"27\" required></label><label>Monto RD$<input id=\"rls\" type=\"number\" min=\"1\" required></label></div><button class=\"btn\">Anotar</button><div class=\"msg\" id=\"rlm\"></div></form></div></section>\n        <section class=\"card\"><h2>Mis registros reales</h2>").concat(r.rows.length ? "<table><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Estado</th><th class=\"r\">Resultado</th></tr>".concat(r.rows.map(function (x) { return "<tr><td class=\"note\">".concat(esc(x.ts.slice(0, 10)), "</td><td>").concat(x.module === 'bolsa' ? 'Bolsa' : 'Lotería', "</td><td>").concat(x.module === 'bolsa' ? "".concat(esc(x.detail.symbol), " \u00B7 ").concat(usd(x.detail.amountUsd), " a ").concat(usd(x.detail.price)) : "".concat(esc(x.detail.game), " ").concat(esc(x.detail.date), " \u00B7 ").concat(esc(x.detail.numbers.join('-')), " \u00B7 ").concat(rd(x.detail.stakeRd)), "</td><td>").concat(x.status === 'abierta' ? (x.module === 'bolsa' ? "<button class=\"btn ghost\" data-close=\"".concat(x.id, "\" style=\"padding:3px 10px\">Anotar venta</button>") : 'Esperando sorteo') : 'Cerrada', "</td><td class=\"r ").concat(cls(x.result), "\">").concat(x.result != null ? (x.module === 'bolsa' ? usd(x.result) : rd(x.result)) : '—', "</td></tr>"); }).join(''), "</table>") : '<div class="empty">Sin registros reales todavía.</div>', "</section>");
-            var post_1 = function (body, m) { return __awaiter(void 0, void 0, void 0, function () { var e_13; return __generator(this, function (_a) {
+            var post_1 = function (body, m) { return __awaiter(void 0, void 0, void 0, function () { var e_15; return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
                         _a.trys.push([0, 2, , 3]);
@@ -2233,9 +2444,9 @@ views.historial.after = function () {
                         setTimeout(render, 900);
                         return [3, 3];
                     case 2:
-                        e_13 = _a.sent();
+                        e_15 = _a.sent();
                         $(m).className = 'msg err';
-                        $(m).textContent = e_13.message;
+                        $(m).textContent = e_15.message;
                         return [3, 3];
                     case 3: return [2];
                 }
@@ -2247,7 +2458,7 @@ views.historial.after = function () {
                 return __generator(this, function (_a) {
                     td = b.parentElement;
                     td.innerHTML = "<form class=\"ask\" style=\"max-width:260px\"><input type=\"number\" step=\"0.0001\" placeholder=\"Precio de venta\" required><button class=\"btn\">OK</button></form>";
-                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_25; return __generator(this, function (_a) {
+                    td.querySelector('form').onsubmit = function (e) { return __awaiter(void 0, void 0, void 0, function () { var err_28; return __generator(this, function (_a) {
                         switch (_a.label) {
                             case 0:
                                 e.preventDefault();
@@ -2260,8 +2471,8 @@ views.historial.after = function () {
                                 render();
                                 return [3, 4];
                             case 3:
-                                err_25 = _a.sent();
-                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_25.message), "</div>"));
+                                err_28 = _a.sent();
+                                td.insertAdjacentHTML('beforeend', "<div class=\"msg err\">".concat(esc(err_28.message), "</div>"));
                                 return [3, 4];
                             case 4: return [2];
                         }
@@ -2292,7 +2503,7 @@ function tvOpen() {
         return __generator(this, function (_d) {
             switch (_d.label) {
                 case 0:
-                    $('#tv-root').innerHTML = "<div class=\"tv\" id=\"tv\"><button class=\"iconbtn exit\" id=\"tvx\">Salir \u2715</button>\n    <div class=\"th\"><span class=\"logo\">".concat(brandMark()).concat(brandName(), "</span><span class=\"chip\" id=\"tvm\">\u2026</span><span class=\"chip\" id=\"tvmk\">\u2026</span><span class=\"chip\" id=\"tvai\">\u2026</span><span class=\"clock\" id=\"tvc\"></span></div>\n    <div class=\"headline\" id=\"tvh\">Conectando\u2026</div>\n    <div class=\"kpis\">\n      <div class=\"kp money\"><small>Tu dinero virtual</small><div class=\"row1\"><b id=\"k-money\">\u2014</b><span class=\"arrow\" id=\"k-arrow\"></span></div><div class=\"sub\" id=\"k-money-sub\"></div><div class=\"sub\" id=\"k-pos\"></div></div>\n      <div class=\"kp\"><small>\uD83E\uDD16 Cartera de la IA</small><b id=\"k-ia\">\u2014</b><div class=\"sub\" id=\"k-ia-sub\"></div></div>\n      <div class=\"kp\"><small>\uD83E\uDDE0 Experiencia</small><b id=\"k-hit\">\u2014</b><div class=\"sub\" id=\"k-hit-sub\"></div></div>\n      <div class=\"kp\"><small>\uD83C\uDFB1 Loter\u00EDas (virtual)</small><b id=\"k-lot\">\u2014</b><div class=\"sub\" id=\"k-lot-sub\"></div></div>\n      <div class=\"kp\"><small>\u2728 Gasto de IA este mes</small><b id=\"k-ai\">\u2014</b><div class=\"sub\" id=\"k-ai-sub\"></div></div>\n    </div>\n    <div class=\"workers\" id=\"tvw\"></div>\n    <div class=\"body\">\n      <div class=\"pane\"><h3><span class=\"live\"></span>La IA en este momento</h3><div class=\"think\" id=\"tvthink\"></div><div class=\"console\" id=\"tvcon\"></div><div class=\"prog\"><span></span></div></div>\n      <div class=\"col\">\n        <div class=\"pane chartpane\"><h3 id=\"tvct\">Rendimiento</h3><div id=\"tvchart\" class=\"chartbox\"></div></div>\n        <div class=\"pane\"><h3>Recomendaciones del momento</h3><div class=\"cards\" id=\"tvrank\"></div></div>\n      </div>\n      <div class=\"col\">\n        <div class=\"pane spot\"><h3><span class=\"live\"></span><span id=\"tvst\">Mapa</span><span class=\"dots\" id=\"tvsd\"></span></h3>\n          <div class=\"slide on\" data-s=\"mapa\"><div class=\"tvmap\" id=\"tvmap\"></div></div>\n          <div class=\"slide\" data-s=\"loto\"><div class=\"tvloto\" id=\"tvloto\"></div></div>\n          <div class=\"slide\" data-s=\"ia\"><div class=\"tvia\" id=\"tvia\"></div></div>\n          <div class=\"slide\" data-s=\"ana\"><div class=\"tvana\" id=\"tvana\"></div></div>\n          <div class=\"slide\" data-s=\"debate\"><h4 class=\"sub\" id=\"tvdt\">Debate en vivo</h4><div class=\"chat\" id=\"tvchat\"></div></div>\n          <div class=\"sbar\"><span id=\"tvsb\"></span></div></div>\n        <div class=\"pane leaguepane\"><h3>Liga de agentes \u00B7 monedas</h3><div class=\"league\" id=\"tvlg\"></div></div>\n      </div>\n    </div>\n    <div class=\"ticker\"><div class=\"track\" id=\"tvtk\"></div></div></div>");
+                    $('#tv-root').innerHTML = "<div class=\"tv\" id=\"tv\"><button class=\"iconbtn exit\" id=\"tvx\">Salir \u2715</button>\n    <div class=\"th\"><span class=\"logo\">".concat(brandMark()).concat(brandName(), "</span><span class=\"chip\" id=\"tvm\">\u2026</span><span class=\"chip\" id=\"tvmk\">\u2026</span><span class=\"chip\" id=\"tvai\">\u2026</span><span class=\"clock\" id=\"tvc\"></span></div>\n    <div class=\"headline\" id=\"tvh\">Conectando\u2026</div>\n    <div class=\"kpis\">\n      <div class=\"kp money\"><small>Tu dinero virtual</small><i class=\"what\">lo que tendr\u00EDas siguiendo a JARVIS</i><div class=\"row1\"><b id=\"k-money\">\u2014</b><span class=\"arrow\" id=\"k-arrow\"></span></div><div class=\"sub\" id=\"k-money-sub\"></div><div class=\"sub\" id=\"k-pos\"></div></div>\n      <div class=\"kp\"><small>\uD83E\uDD16 Cartera de la IA</small><i class=\"what\">la IA invierte sola, sin ti</i><b id=\"k-ia\">\u2014</b><div class=\"sub\" id=\"k-ia-sub\"></div></div>\n      <div class=\"kp\"><small>\uD83E\uDDE0 Experiencia</small><i class=\"what\">de cada 10 ideas, cu\u00E1ntas acert\u00F3</i><b id=\"k-hit\">\u2014</b><div class=\"sub\" id=\"k-hit-sub\"></div></div>\n      <div class=\"kp\"><small>\uD83C\uDFB1 Loter\u00EDas (virtual)</small><i class=\"what\">jugadas de prueba, sin dinero real</i><b id=\"k-lot\">\u2014</b><div class=\"sub\" id=\"k-lot-sub\"></div></div>\n      <div class=\"kp\"><small>\u2728 Gasto de IA este mes</small><i class=\"what\">lo que cuesta la inteligencia artificial</i><b id=\"k-ai\">\u2014</b><div class=\"sub\" id=\"k-ai-sub\"></div></div>\n    </div>\n    <div class=\"workers\" id=\"tvw\"></div>\n    <div class=\"body\">\n      <div class=\"pane\"><h3><span class=\"live\"></span>La IA en este momento</h3><p class=\"what\">Lo que JARVIS est\u00E1 pensando y haciendo ahora, en vivo.</p><div class=\"think\" id=\"tvthink\"></div><div class=\"console\" id=\"tvcon\"></div><div class=\"prog\"><span></span></div></div>\n      <div class=\"col\">\n        <div class=\"pane chartpane\"><h3 id=\"tvct\">Rendimiento</h3><p class=\"what\">Verde: JARVIS \u00B7 punteada: el mercado. Si la verde va arriba, va ganando.</p><div id=\"tvchart\" class=\"chartbox\"></div></div>\n        <div class=\"pane recpane\"><h3>Recomendaciones del momento</h3><p class=\"what\">Las mejores ideas de hoy. La nota de 10 = qu\u00E9 tan convencido est\u00E1.</p><div class=\"cards\" id=\"tvrank\"></div></div>\n      </div>\n      <div class=\"col\">\n        <div class=\"pane spot\"><h3><span class=\"live\"></span><span id=\"tvst\">Mapa</span><span class=\"dots\" id=\"tvsd\"></span></h3><p class=\"what\" id=\"tvsw\"></p>\n          <div class=\"slide on\" data-s=\"mapa\"><div class=\"tvmap\" id=\"tvmap\"></div></div>\n          <div class=\"slide\" data-s=\"loto\"><div class=\"tvloto\" id=\"tvloto\"></div></div>\n          <div class=\"slide\" data-s=\"ia\"><div class=\"tvia\" id=\"tvia\"></div></div>\n          <div class=\"slide\" data-s=\"ana\"><div class=\"tvana\" id=\"tvana\"></div></div>\n          <div class=\"slide\" data-s=\"debate\"><h4 class=\"sub\" id=\"tvdt\">Debate en vivo</h4><div class=\"chat\" id=\"tvchat\"></div></div>\n          <div class=\"sbar\"><span id=\"tvsb\"></span></div></div>\n        <div class=\"pane leaguepane\"><h3>Liga de agentes \u00B7 monedas</h3><p class=\"what\">Ganan una moneda al acertar y la pierden al fallar (con auditor).</p><div class=\"league\" id=\"tvlg\"></div></div>\n      </div>\n    </div>\n    <div class=\"ticker\"><div class=\"track\" id=\"tvtk\"></div></div></div>");
                     $('#tvx').onclick = function () { location.hash = '#inicio'; };
                     _d.label = 1;
                 case 1:
@@ -2452,7 +2663,7 @@ function tvTicker(qs) {
     }
 }
 var tvSpotTimer = null, tvSlide = 0, tvHasDebate = false;
-var TV_SLIDES = [['mapa', '🗺️ Mapa de inversión'], ['loto', '🎱 Loterías: próximos sorteos'], ['ia', '🤖 Tú vs la IA vs el mercado'], ['debate', '💬 Debate de las IA'], ['ana', '🔬 Análisis en vivo']];
+var TV_SLIDES = [['mapa', '🗺️ Mapa de inversión', 'Verde = recomendada · amarillo = en observación · rojo = no.'], ['loto', '🎱 Loterías: próximos sorteos', 'Próximo sorteo y los números que votó cada método.'], ['ia', '🤖 Tú vs la IA vs el mercado', 'Quién va ganando: tú, la IA sola o el mercado.'], ['debate', '💬 Debate de las IA', 'Dos IA discuten a favor y en contra.'], ['ana', '🔬 Análisis en vivo', 'JARVIS revisa una empresa paso a paso.']];
 function tvSpotShow() {
     var list = TV_SLIDES.filter(function (_a) {
         var _b = __read(_a, 1), k = _b[0];
@@ -2462,6 +2673,9 @@ function tvSpotShow() {
     var t = $('#tvst');
     if (t)
         t.textContent = cur[1];
+    var w = $('#tvsw');
+    if (w)
+        w.textContent = cur[2] || '';
     var d = $('#tvsd');
     if (d)
         d.innerHTML = list.map(function (x) { return "<i class=\"".concat(x[0] === cur[0] ? 'on' : '', "\"></i>"); }).join('');
@@ -2472,7 +2686,7 @@ function tvSpotShow() {
         b.style.animation = '';
     }
 }
-var TASK_TV = { bolsa_precios: ['📈', 'Precios en vivo'], loterias_resultados: ['🎱', 'Resultados de loterías'], investigacion: ['🧪', 'Probando ideas'], explorar: ['🔭', 'Explorando empresas'], ranking: ['🗺️', 'Actualizando el mapa'], cartera_ia: ['🤖', 'Cartera de la IA'], noticias: ['📰', 'Leyendo noticias'], prueba_en_vivo: ['⚡', 'Prueba en vivo'] };
+var TASK_TV = { bolsa_precios: ['📈', 'Precios en vivo', 'trae precios reales'], loterias_resultados: ['🎱', 'Resultados de loterías', 'lee los resultados oficiales'], investigacion: ['🧪', 'Probando ideas', 'prueba ideas con años de precios'], explorar: ['🔭', 'Explorando empresas', 'busca empresas nuevas'], ranking: ['🗺️', 'Actualizando el mapa', 'mueve empresas en el mapa'], cartera_ia: ['🤖', 'Cartera de la IA', 'compra y vende sola (virtual)'], noticias: ['📰', 'Leyendo noticias', 'busca noticias graves'], prueba_en_vivo: ['⚡', 'Prueba en vivo', 'prueba ideas con precios de hoy'] };
 function tvWorkers(tasks) {
     var _a;
     var el = $('#tvw');
@@ -2480,9 +2694,9 @@ function tvWorkers(tasks) {
         return;
     var now = Date.now(), recent = (_a = tasks.slice().sort(function (a, b) { return (b.last || '').localeCompare(a.last || ''); })[0]) === null || _a === void 0 ? void 0 : _a.name;
     el.innerHTML = tasks.map(function (t) {
-        var _a = __read(TASK_TV[t.name] || ['•', t.name], 2), ic = _a[0], lb = _a[1];
+        var _a = __read(TASK_TV[t.name] || ['•', t.name, ''], 3), ic = _a[0], lb = _a[1], ds = _a[2];
         var mins = t.last ? (now - Date.parse(t.last)) / 60e3 : null, alive = mins != null && mins < t.every * 2 + 10;
-        return "<div class=\"wk ".concat(t.name === recent ? 'busy' : '', " ").concat(alive ? 'ok' : 'idle', "\"><span class=\"wi\">").concat(ic, "</span><div><b>").concat(esc(lb), "</b><small>").concat(t.name === recent ? 'trabajando ahora…' : mins == null ? 'esperando su turno' : mins < 1 ? 'hace un momento' : mins < 60 ? "hace ".concat(Math.round(mins), " min") : "hace ".concat(Math.round(mins / 60), " h"), "</small></div><span class=\"wd\"></span></div>");
+        return "<div class=\"wk ".concat(t.name === recent ? 'busy' : '', " ").concat(alive ? 'ok' : 'idle', "\"><span class=\"wi\">").concat(ic, "</span><div><b>").concat(esc(lb), "</b><small class=\"wds\">").concat(esc(ds), "</small><small>").concat(t.name === recent ? 'trabajando ahora…' : mins == null ? 'esperando su turno' : mins < 1 ? 'hace un momento' : mins < 60 ? "hace ".concat(Math.round(mins), " min") : "hace ".concat(Math.round(mins / 60), " h"), "</small></div><span class=\"wd\"></span></div>");
     }).join('');
 }
 var ZTV = [['recomendada', 'Te recomiendo', '#2fd58a'], ['observacion', 'En observación', '#ffbf3c'], ['no_recomendada', 'No te recomiendo', '#ff5d6c'], ['candidata', 'Explorando', '#a98bff']];
@@ -2556,18 +2770,18 @@ function tvAna(t) {
 }
 function tvRefresh() {
     return __awaiter(this, void 0, void 0, function () {
-        var d, _a, a, prev, delta, up, k, pos, inv, ex, L, evs, con, first, full_1, n_1, ty_1, alert, el_1;
-        var _b;
-        return __generator(this, function (_c) {
-            switch (_c.label) {
+        var d, _a, a, prev, delta, up, k, pos, inv, ex, L, fxr, U, net, evs, con, first, full_1, n_1, ty_1, alert, el_1;
+        var _b, _c;
+        return __generator(this, function (_d) {
+            switch (_d.label) {
                 case 0:
-                    _c.trys.push([0, 2, , 3]);
+                    _d.trys.push([0, 2, , 3]);
                     return [4, api('/api/tv')];
                 case 1:
-                    d = _c.sent();
+                    d = _d.sent();
                     return [3, 3];
                 case 2:
-                    _a = _c.sent();
+                    _a = _d.sent();
                     return [2];
                 case 3:
                     if (!$('#tv'))
@@ -2598,8 +2812,9 @@ function tvRefresh() {
                     $('#k-hit').textContent = ex.hitRate != null ? "".concat(Math.round(ex.hitRate * 10), "/10") : '—';
                     $('#k-hit-sub').textContent = "".concat(ex.n || 0, " recomendaciones terminadas \u00B7 necesita 50 para estar seguro");
                     L = ex.lot || {};
-                    $('#k-lot').innerHTML = L.settled ? "<span class=\"".concat(L.paid - L.staked >= 0 ? 'up' : 'dn', "\">").concat(L.paid - L.staked >= 0 ? '+' : '−', "RD$").concat(Math.abs(Math.round(L.paid - L.staked)).toLocaleString('en-US'), "</span>") : 'RD$0';
-                    $('#k-lot-sub').textContent = "Jug\u00F3 RD$".concat(Math.round(L.staked || 0).toLocaleString('en-US'), " \u00B7 gan\u00F3 RD$").concat(Math.round(L.paid || 0).toLocaleString('en-US'), " \u00B7 ").concat(L.plays || 0, " jugadas (").concat(L.wins || 0, " premios)");
+                    fxr = ((_b = d.account) === null || _b === void 0 ? void 0 : _b.fx) || FX, U = function (v) { return "US$".concat(Math.abs(v / fxr).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })); }, net = (L.paid || 0) - (L.staked || 0);
+                    $('#k-lot').innerHTML = L.settled ? "<span class=\"".concat(net >= 0 ? 'up' : 'dn', "\">").concat(net >= 0 ? '+' : '−').concat(U(net), "</span>") : 'US$0.00';
+                    $('#k-lot-sub').innerHTML = "Jug\u00F3 ".concat(U(L.staked || 0), " \u00B7 gan\u00F3 ").concat(U(L.paid || 0), " \u00B7 ").concat(L.plays || 0, " jugadas (").concat(L.wins || 0, " premios)<br><span class=\"rdx\">\u2248 ").concat(net >= 0 ? '+' : '−', "RD$").concat(Math.abs(Math.round(net)).toLocaleString('en-US'), " en pesos</span>");
                     $('#k-ai').textContent = usd(d.ai.month, 2);
                     $('#k-ai-sub').textContent = "de ".concat(usd(d.ai.monthCap, 0), " de tope \u00B7 hoy ").concat(usd(d.ai.day, 3));
                     window.__tvRank = d.ranking || [];
@@ -2626,7 +2841,7 @@ function tvRefresh() {
                     tvLastId = Math.max.apply(Math, __spreadArray(__spreadArray([tvLastId], __read(d.activity.map(function (e) { return e.id; })), false), [0], false));
                     tvChart(d.chart);
                     $('#tvrank').innerHTML = d.ranking.length ? d.ranking.slice(0, 6).map(function (c, i) { var _a; return "<div class=\"rc\" style=\"animation-delay:".concat(i * 0.08, "s\"><div class=\"s\"><i style=\"background:").concat(TVC[c.light], ";box-shadow:0 0 12px ").concat(TVC[c.light], "\"></i><span class=\"nm\">").concat(esc(coName(c.symbol)), "</span><span class=\"c\">").concat(c.probBeat != null ? Math.round(c.probBeat * 10) + '/10' : '', "</span></div><div class=\"cbar\"><span style=\"width:").concat(Math.round(((_a = c.probBeat) !== null && _a !== void 0 ? _a : c.confidence) * 100), "%;background:").concat(TVC[c.light], "\"></span></div><p>").concat(esc(c.why || ''), "</p></div>"); }).join('') : '<div class="empty-tv">El ranking aparece cuando haya suficientes precios.</div>';
-                    tvHasDebate = !!(d.debate && ((_b = d.debate.rounds) === null || _b === void 0 ? void 0 : _b.length));
+                    tvHasDebate = !!(d.debate && ((_c = d.debate.rounds) === null || _c === void 0 ? void 0 : _c.length));
                     tvDebate(d.debate);
                     tvMap(d.map);
                     tvLoto(d.votes, d.nextDraws);
@@ -2642,7 +2857,7 @@ function tvRefresh() {
 }
 function render() {
     return __awaiter(this, void 0, void 0, function () {
-        var _a, name, rest, arg, v, _b, e_14;
+        var _a, name, rest, arg, v, _b, e_16;
         return __generator(this, function (_c) {
             switch (_c.label) {
                 case 0:
@@ -2676,9 +2891,9 @@ function render() {
                     catch (_d) { }
                     return [3, 6];
                 case 5:
-                    e_14 = _c.sent();
-                    if (e_14.message !== 'Inicia sesión.')
-                        app.innerHTML = "<div class=\"card msg err\">".concat(esc(e_14.message), "</div>");
+                    e_16 = _c.sent();
+                    if (e_16.message !== 'Inicia sesión.')
+                        app.innerHTML = "<div class=\"card msg err\">".concat(esc(e_16.message), "</div>");
                     return [3, 6];
                 case 6:
                     window.scrollTo(0, 0);
@@ -2717,7 +2932,7 @@ function signForm(doc, d, id) {
 function bindSign(doc, id, done) {
     var _this = this;
     $("#".concat(id, "b")).onclick = function () { return __awaiter(_this, void 0, void 0, function () {
-        var err_26;
+        var err_29;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
@@ -2730,9 +2945,9 @@ function bindSign(doc, id, done) {
                     setTimeout(done, 700);
                     return [3, 3];
                 case 2:
-                    err_26 = _a.sent();
+                    err_29 = _a.sent();
                     $("#".concat(id, "m")).className = 'msg err';
-                    $("#".concat(id, "m")).textContent = err_26.message;
+                    $("#".concat(id, "m")).textContent = err_29.message;
                     return [3, 3];
                 case 3: return [2];
             }

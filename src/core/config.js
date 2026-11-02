@@ -45,5 +45,7 @@ export function config() {
     ntfyTopic: e.NTFY_TOPIC || '',
     backupPassphrase: e.BACKUP_PASSPHRASE || '',
     rcloneRemote: e.RCLONE_REMOTE || '',
+    driveUrl: e.DRIVE_URL || '',
+    driveToken: e.DRIVE_TOKEN || '',
   };
 }

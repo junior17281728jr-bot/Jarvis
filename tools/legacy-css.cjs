@@ -66,11 +66,21 @@ function convertRule(sel, body) {
       if (gtr) { const R = tracks(gtr).list || []; R.forEach((t, i) => extra.push(`${kids(`:nth-last-child(${R.length - i})`)}{${t.fr ? `-webkit-flex:${t.fr} 1 0%;flex:${t.fr} 1 0%;min-height:0` : 'flex:0 0 auto'}}`)); }
     }
   }
-  // gap → márgenes
+  // gap → márgenes. Sin márgenes negativos abajo/arriba (anulaban el espacio entre filas y dejaban todo pegado):
+  //  - columna: margen arriba a cada hijo menos el primero
+  //  - fila que no se parte: margen a la izquierda a cada hijo menos el primero
+  //  - fila que se parte (wrap): medio margen a cada lado + margen abajo
   const flexy = isGrid || (disp && /flex/.test(disp)) || (!disp && gap);
+  const wraps = /wrap/.test(get('flex-wrap') || '') && !/nowrap/.test(get('flex-wrap') || '');
+  const T0 = gtc ? tracks(gtc) : null, nCols = T0 && T0.list ? T0.list.length : 0;
   if (gap && flexy) {
-    if ((isGrid && !gtc) || column) { extra.push(`${kids('*')}{margin-bottom:${rg}}`); out.push(`margin-bottom:calc(${rg} * -1)`); }
-    else { extra.push(`${kids('*')}{margin-left:${half(cg)};margin-right:${half(cg)};margin-bottom:${rg}}`); out.push(`margin-left:${neg(cg)}`, `margin-right:${neg(cg)}`, `margin-bottom:calc(${rg} * -1)`); }
+    if ((isGrid && !gtc) || column) extra.push(`${kids('*+*')}{margin-top:${rg}}`);
+    else if (gtc && nCols && !T0.list.some(t => t.auto)) {
+      extra.push(`${kids('*')}{margin-left:${half(cg)};margin-right:${half(cg)}}`, `${kids(`*:nth-child(n+${nCols + 1})`)}{margin-top:${rg}}`);
+      out.push(`margin-left:${neg(cg)}`, `margin-right:${neg(cg)}`);
+    } else if (gtc && nCols) extra.push(`${kids('*+*')}{margin-left:${cg}}`);
+    else if (isGrid || wraps) { extra.push(`${kids('*')}{margin-left:${half(cg)};margin-right:${half(cg)};margin-bottom:${rg}}`); out.push(`margin-left:${neg(cg)}`, `margin-right:${neg(cg)}`); }
+    else extra.push(`${kids('*+*')}{margin-left:${cg}}`);
   }
   // columnas
   if (gtc) {
@@ -81,7 +91,7 @@ function convertRule(sel, body) {
     else {
       const sum = T.list.reduce((a, t) => a + (t.fr || 0), 0), fixed = T.list.filter(t => t.fixed).map(t => t.fixed);
       T.list.forEach((t, i) => {
-        const w = t.fixed ? t.fixed : fixed.length ? `calc((100% - ${fixed.join(' - ')}) * ${(t.fr / sum).toFixed(5)} - ${g})` : `calc(${(t.fr / sum * 100).toFixed(4)}% - ${g})`;
+        const w = t.fixed ? t.fixed : fixed.length ? `calc((100% - ${fixed.join(' - ')}) * ${(t.fr / sum).toFixed(5)} - ${g} - 1px)` : `calc(${(t.fr / sum * 100).toFixed(4)}% - ${g} - 1px)`; // 1px de holgura: el redondeo no los manda a otra fila
         extra.push(`${kids(`:nth-child(${T.list.length}n+${i + 1})`)}{flex:0 0 auto${imp};width:${w}${imp};min-width:0}`);
       });
     }

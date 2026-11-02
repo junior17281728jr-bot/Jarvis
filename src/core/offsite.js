@@ -2,25 +2,29 @@
 // a Google Drive u otro almacenamiento. Sin tu frase, nadie puede leerla.
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { gunzipSync, brotliCompressSync, brotliDecompressSync, constants as Z } from 'node:zlib';
 import { execFile } from 'node:child_process';
 
-const MAGIC = Buffer.from('JVBK1');
+const MAGIC = Buffer.from('JVBK1'); // versión vieja (gzip): se sigue pudiendo abrir
+const MAGIC2 = Buffer.from('JVBK2'); // versión nueva (brotli): ocupa bastante menos
+const squeeze = buf => brotliCompressSync(buf, { params: { [Z.BROTLI_PARAM_QUALITY]: 11, [Z.BROTLI_PARAM_LGWIN]: 24, [Z.BROTLI_PARAM_SIZE_HINT]: buf.length } });
 
 export function encryptBuffer(buf, passphrase) {
   const salt = randomBytes(16), iv = randomBytes(12);
   const key = scryptSync(passphrase, salt, 32, { N: 16384, r: 8, p: 1 });
   const c = createCipheriv('aes-256-gcm', key, iv);
-  const enc = Buffer.concat([c.update(gzipSync(buf)), c.final()]);
-  return Buffer.concat([MAGIC, salt, iv, c.getAuthTag(), enc]);
+  const enc = Buffer.concat([c.update(squeeze(buf)), c.final()]);
+  return Buffer.concat([MAGIC2, salt, iv, c.getAuthTag(), enc]);
 }
 export function decryptBuffer(data, passphrase) {
-  if (!data.subarray(0, 5).equals(MAGIC)) throw new Error('No es una copia de JARVIS.');
+  const head = data.subarray(0, 5), v2 = head.equals(MAGIC2);
+  if (!v2 && !head.equals(MAGIC)) throw new Error('No es una copia de JARVIS.');
   const salt = data.subarray(5, 21), iv = data.subarray(21, 33), tag = data.subarray(33, 49);
   const key = scryptSync(passphrase, salt, 32, { N: 16384, r: 8, p: 1 });
   const d = createDecipheriv('aes-256-gcm', key, iv);
   d.setAuthTag(tag);
-  return gunzipSync(Buffer.concat([d.update(data.subarray(49)), d.final()]));
+  const raw = Buffer.concat([d.update(data.subarray(49)), d.final()]);
+  return v2 ? brotliDecompressSync(raw) : gunzipSync(raw);
 }
 
 export function encryptFile(src, dest, passphrase) {

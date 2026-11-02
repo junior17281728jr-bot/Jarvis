@@ -22,6 +22,10 @@ import { fetchProfile } from './analysis.js';
 import { resolveLotteryPicks, settleRealLottery, resolveMarketPredictions } from './track.js';
 import { pushImportant, sendPush } from '../core/notify.js';
 import { offsiteBackup } from '../core/offsite.js';
+import { driveBackup, driveLegal } from '../core/drive.js';
+import { runContextScan } from './contexts.js';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { updateFx, updateCalendar } from './insights.js';
 import { updateMap, exploreStep, watchRealPositions } from './map.js';
 import { autopilotStep } from './autopilot.js';
@@ -38,6 +42,8 @@ const TASKS = [
   ['bolsa_precios', 15 * MIN, false, now => marketOpen(now)],
   ['bolsa_historial', 12 * 60 * MIN, false],
   ['copia', 24 * 60 * MIN, false],
+  ['lecciones', 7 * 24 * 60 * MIN, false],
+  ['drive', 24 * 60 * MIN, false, (now, cfg) => !!(cfg.driveUrl && cfg.driveToken)],
   ['avisos', 5 * MIN, false],
   ['tipo_cambio', 24 * 60 * MIN, false],
   ['calendario', 7 * 24 * 60 * MIN, false],
@@ -116,6 +122,8 @@ async function runTask(name, db, cfg, now, fetchImpl) {
       activity(db, { type: 'sistema', text: `Copia de seguridad verificada (${Math.round(b.bytes / 1024)} KB)${off.uploaded ? ', cifrada y subida fuera del servidor' : ''}. Registro sellado: ${v.ok ? 'intacto' : 'ALTERADO'}.`, important: !v.ok });
       return { ...b, ledger: v, offsite: off };
     }
+    case 'lecciones': return runContextScan(db, { symbols: syms, bench: BENCH });
+    case 'drive': return runDrive(db, cfg, fetchImpl);
     case 'perfiles': { let n = 0; for (const s of syms) if (await fetchProfile(db, s, fetchImpl)) n++; return { profiles: n }; }
     case 'avisos': return { real: watchRealPositions(db), push: await pushImportant(db, cfg, fetchImpl) };
     case 'tipo_cambio': return updateFx(db, fetchImpl);
@@ -126,6 +134,22 @@ async function runTask(name, db, cfg, now, fetchImpl) {
       try { await sendPush(cfg, { title: 'JARVIS: resumen del día', message: s, tags: ['sunrise'] }, fetchImpl); } catch { /* el resumen queda en la app */ }
       return { chars: s.length };
     }
+  }
+}
+
+export const programVersion = cfg => { try { return readFileSync(join(dirname(cfg.dbPath), 'version.txt'), 'utf8').trim().slice(0, 7); } catch { return null; } };
+
+/** Manda la memoria y el núcleo ligero a Google Drive y anota cómo salió. */
+export async function runDrive(db, cfg, fetchImpl = fetch) {
+  try {
+    const r = await driveBackup(db, cfg, { fetchImpl, tasks: taskStatus(db), version: programVersion(cfg) });
+    try { r.legal = await driveLegal(db, cfg, { fetchImpl }); } catch (e) { r.legal = { ok: false, error: e.message }; }
+    setSetting(db, 'global', 'drive.last', { ok: true, ...r });
+    activity(db, { type: 'sistema', text: `Copia en tu Google Drive lista: memoria (${Math.round(r.memoryBytes / 1024)} KB)${r.core ? ` y núcleo cifrado (${Math.round(r.core.bytes / 1024)} KB)` : ' (el núcleo completo no se mandó: falta la frase secreta)'}.` });
+    return r;
+  } catch (e) {
+    setSetting(db, 'global', 'drive.last', { ok: false, error: e.message, at: nowIso() });
+    throw e;
   }
 }
 
