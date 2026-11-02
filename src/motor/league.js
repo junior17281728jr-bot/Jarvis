@@ -91,3 +91,26 @@ export function settleCoins(db, { agent, strategyId, closed, entry, exit, decisi
 export function cheatReports(db, limit = 20) {
   return db.prepare('SELECT * FROM cheat_reports ORDER BY ts DESC LIMIT ?').all(limit);
 }
+
+const SOURCE_NAME = { alpaca: 'Alpaca (precios de la bolsa en tiempo real)', yahoo: 'Yahoo Finanzas', stooq: 'Stooq (precios de cierre)', demo: 'datos de demostración' };
+/**
+ * Auditoría de cada moneda: de qué operación salió, de dónde vino cada precio (fuente y hora),
+ * cuándo quedó sellada la decisión y qué revisó el auditor. Así se ve que nada se inventó.
+ */
+export function coinAudit(db, limit = 25) {
+  const ledgerOf = h => { const r = db.prepare('SELECT ts, payload FROM ledger WHERE hash = ?').get(h); try { return r ? { ts: r.ts, ...JSON.parse(r.payload) } : null; } catch { return null; } };
+  return db.prepare('SELECT * FROM coins ORDER BY ts DESC LIMIT ?').all(limit).map(c => {
+    const id = Number(String(c.ref || '').replace('trade:', '')), exit = id ? db.prepare('SELECT * FROM trades WHERE id = ?').get(id) : null;
+    const entry = exit ? db.prepare("SELECT * FROM trades WHERE account_id = ? AND symbol = ? AND side = 'buy' AND ts <= ? ORDER BY ts DESC, id DESC LIMIT 1").get(exit.account_id, exit.symbol, exit.ts) : null;
+    const decision = entry && c.strategy_id ? db.prepare("SELECT sealed_at, payload, ledger_hash FROM predictions WHERE strategy_id = ? AND subject LIKE ? AND sealed_at <= ? ORDER BY sealed_at DESC LIMIT 1").get(c.strategy_id, `senal:${c.strategy_id}:${exit.symbol}:%`, entry.ts) : null;
+    const side = t => { if (!t) return null; const L = ledgerOf(t.ledger_hash); const src = L?.quoteSource || null; return { at: t.ts, price: t.observed_price, priceAt: t.observed_at, source: src, sourceName: SOURCE_NAME[src] || src || 'desconocida', sealedHash: t.ledger_hash.slice(0, 12) }; };
+    const a = entry && exit ? audit(db, { entry, exit, decision }) : { ok: false, issues: [{ rule: 'sin_datos', text: 'No encontré las operaciones de esta moneda.' }] };
+    const checks = [
+      ['Precio actual (de menos de 20 minutos) al comprar y al vender', !a.issues.some(i => i.rule === 'precio_viejo' || i.rule === 'precio_del_futuro')],
+      ['La decisión quedó sellada ANTES de comprar', !a.issues.some(i => i.rule === 'sin_decision_previa')],
+      ['No usó datos del futuro', !a.issues.some(i => i.rule === 'datos_del_futuro')],
+    ];
+    return { id: c.id, ts: c.ts, agent: c.agent, amount: c.amount, reason: c.reason, revoked: !!c.revoked, revokedReason: c.revoked_reason, symbol: exit?.symbol || null,
+      buy: side(entry), sell: side(exit), decisionAt: decision?.sealed_at || null, decisionHash: decision?.ledger_hash?.slice(0, 12) || null, checks, clean: a.ok && !c.revoked };
+  });
+}

@@ -516,3 +516,4 @@ html.is-phone .tv .body{grid-template-columns:1fr}
 .tv .ana-p{display:flex;align-items:center;gap:.6vw;font-size:.8vw;color:var(--m)}.tv .ana-p b{color:#fff}.tv .ana-dots{display:flex;gap:.25vw}.tv .ana-dots i{width:.8vw;height:.8vw;border-radius:50%;border:1px solid #3b4766}.tv .ana-dots i.on{background:var(--g);border-color:var(--g)}
 .tv .ana-t{font-size:.92vw;line-height:1.5}
 .tv .kp .ps{font-weight:800;color:#fff;font-family:var(--mono)}
+.coin{padding:10px 0;border-top:1px solid var(--line);display:grid;gap:4px}.coin-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.coin-ck{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px}

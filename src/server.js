@@ -14,7 +14,7 @@ import { recentErrors } from './core/jobs.js';
 import { runCycle, startMotor, pauseMotor, resumeMotor, stopMotor, motorState, taskStatus } from './motor/cycle.js';
 import { home, predictionStats, aiSpend, dailySummary } from './motor/reports.js';
 import { latestRanking, debateTop } from './motor/recommend.js';
-import { leagueTable, cheatReports, ensureAgents } from './motor/league.js';
+import { leagueTable, cheatReports, ensureAgents, coinAudit } from './motor/league.js';
 import { strategiesSummary, seedAgenda } from './motor/research.js';
 import { pickOfTheDay, liveMethodStats, methodVotes } from './motor/lottery-agent.js';
 import { runDebate } from './ai/debate.js';
@@ -296,6 +296,7 @@ route('GET', '/api/lottery', () => cached('lottery', 30 * 60e3, () => {
 route('POST', '/api/lottery/play', async ({ req, user }) => { const b = await body(req); return sealPlay(db, { userId: user.id, game: b.game, kind: b.kind, numbers: b.numbers, stake: Number(b.stake), method: 'manual', purpose: 'usuario', P: getSetting(db, 'global', 'lottery.payouts', DEFAULT_PAYOUTS) }); });
 route('GET', '/api/lottery/mine', ({ user }) => ({ stats: playStats(db, { userId: user.id }), plays: db.prepare('SELECT * FROM lottery_plays WHERE user_id = ? ORDER BY sealed_at DESC LIMIT 50').all(user.id) }));
 
+route('GET', '/api/coins/audit', () => coinAudit(db));
 route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league: leagueTable(db, new Date(Date.now() - 7 * 864e5).toISOString()), cheats: cheatReports(db, 30), predictions: predictionStats(db), byModule: { ranking: predictionStats(db, 'ranking'), senales: predictionStats(db, 'bolsa_senal') },
   list: db.prepare('SELECT s.*, (SELECT result FROM experiments e WHERE e.strategy_id = s.id ORDER BY id DESC LIMIT 1) result FROM strategies s ORDER BY s.id DESC LIMIT 60').all().map(s => ({ ...s, params: JSON.parse(s.params), result: s.result ? JSON.parse(s.result) : null })),
   coins: db.prepare('SELECT * FROM coins ORDER BY ts DESC LIMIT 30').all(),

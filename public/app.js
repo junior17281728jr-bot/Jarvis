@@ -823,6 +823,9 @@ views.aprendizaje = async () => {
       ${d.coins.length ? `<details style="margin-top:8px"><summary>Últimos movimientos ▸</summary>${d.coins.map(c => `<div class="note">${esc(c.ts.slice(0, 16).replace('T', ' '))} · ${esc(c.agent)} · <b class="${cls(c.amount)}">${c.amount > 0 ? '+' : ''}${c.amount}</b> ${esc(c.reason)}${c.revoked ? ' (revocada)' : ''}</div>`).join('')}</details>` : ''}</div>
   </section>
   <section class="grid g2">
+    <div class="card"><h2>🛡️ Auditoría de monedas <span class="more note">cómo se ganó cada una y de dónde salieron los datos</span></h2><p class="note">Un agente solo gana monedas cuando una operación cerrada gana dinero (virtual). Antes de pagarle, el auditor revisa que no haya hecho trampa. Aquí ves la prueba de cada moneda.</p><div id="caudit" class="note">Cargando…</div></div>
+  </section>
+  <section class="grid g2">
     <div class="card"><h2>Reporte de trampas</h2>${d.cheats.length ? d.cheats.map(c => `<div style="padding:8px 0;border-top:1px solid var(--line)"><span class="light rojo"><i></i>${esc(c.rule.replace(/_/g, ' '))}</span> <span class="note">${esc(c.agent)} · ${timeAgo(c.ts)} · −${c.coins_removed} monedas</span><div>${esc(c.explanation)}</div></div>`).join('') : '<div class="empty">Ninguna trampa detectada. El auditor revisa cada moneda antes de darla.</div>'}</div>
     <div class="card"><h2>Lo que JARVIS no sabe</h2>${d.dontKnow.map(x => `<div style="padding:6px 0">• ${esc(x)}</div>`).join('')}</div>
   </section>
@@ -1155,6 +1158,16 @@ function shrinkReceipt(file) {
 }
 const STATUS_CHIP = { pendiente: ['⏳ Esperando revisión', 'warn'], aprobada: ['✅ Aprobada', 'good'], rechazada: ['✕ No aprobada', 'bad'] };
 const monthName = iso => new Date(iso).toLocaleDateString('es-DO', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+views.aprendizaje.after = () => {
+  api('/api/coins/audit').then(rows => { const el = $('#caudit'); if (!el) return;
+    const AG = { largo: 'Agente de largo plazo', corto: 'Agente de corto plazo', polemicas: 'Cazador de noticias', loteria: 'Agente de loterías' };
+    el.innerHTML = rows.length ? rows.slice(0, 10).map(c => `<div class="coin"><div class="coin-h"><b class="${c.amount >= 0 ? 'good' : 'bad'}">${c.amount >= 0 ? '+' : ''}${c.amount} monedas</b> · ${esc(AG[c.agent] || c.agent || '')} · ${esc(c.symbol || '')} <span class="chip ${c.clean ? 'good' : 'bad'}">${c.clean ? '✓ Limpia' : c.revoked ? '✕ Revocada: ' + esc(c.revokedReason || 'trampa') : '⚠ Revisar'}</span></div>
+      <div>${esc(c.reason)}</div>
+      ${c.buy ? `<div class="note">Compró a US$${c.buy.price.toFixed(2)} (precio de las ${esc(new Date(c.buy.priceAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }))}, fuente: ${esc(c.buy.sourceName)}) · vendió a US$${c.sell.price.toFixed(2)} (fuente: ${esc(c.sell.sourceName)})</div>` : ''}
+      ${c.decisionAt ? `<div class="note">Decisión sellada el ${esc(new Date(c.decisionAt).toLocaleString('es-DO'))} · sello ${esc(c.decisionHash)}…</div>` : ''}
+      <div class="coin-ck">${c.checks.map(([t, ok]) => `<span class="${ok ? 'good' : 'bad'}">${ok ? '✓' : '✕'} ${esc(t)}</span>`).join('')}</div></div>`).join('') : 'Todavía ningún agente ha ganado monedas: primero una idea tiene que pasar el examen y luego ganar dinero en la prueba en vivo.';
+  }).catch(e => { const el = $('#caudit'); if (el) el.textContent = e.message; });
+};
 views.potenciador = async () => {
   const [d, L] = await Promise.all([api('/api/potenciador'), api('/api/legal')]), m = d.me; window.__potRate = d.admin?.rate; window.__legal = L;
   const pctUsed = m.base ? Math.round(m.baseUsed / m.base * 100) : 0;
