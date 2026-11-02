@@ -31,6 +31,10 @@ const STRAT = {
   impulso: p => `Comprar las acciones que subieron en los últimos ${p.lookback} días (lo que sube suele seguir subiendo) y vender si empiezan a bajar.`,
   rebote_rsi: p => `Comprar cuando una acción cayó mucho en pocos días (${p.period} días), esperando que rebote, y vender cuando se recupera.`,
   ruptura: p => `Comprar cuando el precio pasa su punto más alto de los últimos ${p.n} días, y vender si cae a su punto más bajo de los últimos ${Math.round(p.n / 2)} días.`,
+  tendencia_larga: p => `(Usada por profesionales) Estar invertido solo cuando el precio está por encima de su promedio de ${p.n} días, para esquivar las caídas grandes.`,
+  momento_12_1: p => `(Usada por profesionales) Comprar lo que subió en los últimos ${Math.round(p.look / 21)} meses, sin contar el último mes.`,
+  baja_volatilidad: p => `(Usada por profesionales) Estar invertido solo cuando el mercado está tranquilo (se mueve menos de lo normal en ${p.n} días).`,
+  bandas_bollinger: p => `(Usada por profesionales) Comprar cuando el precio cae mucho por debajo de lo normal (${p.k} desviaciones bajo el promedio de ${p.n} días) y vender cuando vuelve al promedio.`,
 };
 const stratText = (f, params) => { try { const p = typeof params === 'string' ? JSON.parse(params) : params; return STRAT[f] ? STRAT[f](p || {}) : String(f).replace(/_/g, ' '); } catch { return String(f).replace(/_/g, ' '); } };
 const plainReason = t => String(t || '')
@@ -346,6 +350,7 @@ views.inicio = async () => {
     ${best ? votesHtml(best.contributions) : ''}
     <div class="pill">${h.system.motor.running ? '<span class="status-dot on"></span><b>Trabajando</b>' : '<span class="status-dot"></span><b>En pausa</b>'}</div></section>
   ${confidenceCard()}
+  <section class="card" id="votelog"><h2>🗳️ Registro de votos <span class="more note">lo que votó JARVIS y lo que pasó de verdad</span></h2><div class="note">Cargando…</div></section>
   ${focusShell()}
 
   <section class="grid g4">
@@ -381,6 +386,11 @@ views.inicio = async () => {
 };
 views.inicio.after = () => {
   bindOpp(); focusInit();
+  api('/api/votes/recent').then(v => { const el = $('#votelog'); if (!el) return;
+    el.innerHTML = `<h2>🗳️ Registro de votos <span class="more note">lo que votó JARVIS y lo que pasó de verdad</span></h2>
+      <div class="note" style="margin-bottom:6px">Cada voto se sella antes y se califica a los 21 días hábiles con precios reales. Acierto = +1 moneda, fallo = −1 (así adivinar no da monedas). Esta semana: <b class="${v.coinsWeek >= 0 ? 'good' : 'bad'}">${v.coinsWeek >= 0 ? '+' : ''}${v.coinsWeek} monedas</b> · ${v.pending} votos esperando resultado.</div>
+      ${v.list.length ? `<div class="vlog">${v.list.slice(0, 8).map(x => `<div class="vl ${x.ok ? 'ok' : 'no'}"><span class="vi">${x.ok ? '✓' : '✕'}</span><div><b>${esc(x.symbol)}</b>: votó "${esc(x.claim)}" · <span class="${(x.ret || 0) >= 0 ? 'good' : 'bad'}">${x.ret != null ? (x.ret >= 0 ? '+' : '') + (x.ret * 100).toFixed(1) + '%' : ''}</span> <span class="note">contra ${x.bench != null ? (x.bench * 100).toFixed(1) + '%' : '—'} del mercado · ${esc(x.end || '')}</span></div><span class="vc ${x.ok ? 'good' : 'bad'}">${x.ok ? '+1' : '−1'}</span></div>`).join('')}</div><a class="note" href="#historial">Ver todo el historial ▸</a>` : '<div class="empty">Todavía no hay votos calificados. El primero se califica 21 días hábiles después de que empezó.</div>'}`;
+  }).catch(() => {});
   $('#ask').onsubmit = async e => {
     e.preventDefault();
     const q = $('#q').value.trim(); if (!q) return;
@@ -1164,6 +1174,7 @@ views.aprendizaje.after = () => {
     el.innerHTML = rows.length ? rows.slice(0, 10).map(c => `<div class="coin"><div class="coin-h"><b class="${c.amount >= 0 ? 'good' : 'bad'}">${c.amount >= 0 ? '+' : ''}${c.amount} monedas</b> · ${esc(AG[c.agent] || c.agent || '')} · ${esc(c.symbol || '')} <span class="chip ${c.clean ? 'good' : 'bad'}">${c.clean ? '✓ Limpia' : c.revoked ? '✕ Revocada: ' + esc(c.revokedReason || 'trampa') : '⚠ Revisar'}</span></div>
       <div>${esc(c.reason)}</div>
       ${c.buy ? `<div class="note">Compró a US$${c.buy.price.toFixed(2)} (precio de las ${esc(new Date(c.buy.priceAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }))}, fuente: ${esc(c.buy.sourceName)}) · vendió a US$${c.sell.price.toFixed(2)} (fuente: ${esc(c.sell.sourceName)})</div>` : ''}
+      ${c.vote ? `<div class="note">Voto sellado el ${esc(new Date(c.vote.sealedAt).toLocaleString('es-DO'))} (sello ${esc(c.vote.hash)}…) · precio el ${esc(c.vote.start)}: US$${Number(c.vote.startClose).toFixed(2)} → el ${esc(c.vote.end || '')}: US$${Number(c.vote.endClose || 0).toFixed(2)} · fuente: ${esc(c.vote.source)}</div>` : ''}
       ${c.decisionAt ? `<div class="note">Decisión sellada el ${esc(new Date(c.decisionAt).toLocaleString('es-DO'))} · sello ${esc(c.decisionHash)}…</div>` : ''}
       <div class="coin-ck">${c.checks.map(([t, ok]) => `<span class="${ok ? 'good' : 'bad'}">${ok ? '✓' : '✕'} ${esc(t)}</span>`).join('')}</div></div>`).join('') : 'Todavía ningún agente ha ganado monedas: primero una idea tiene que pasar el examen y luego ganar dinero en la prueba en vivo.';
   }).catch(e => { const el = $('#caudit'); if (el) el.textContent = e.message; });

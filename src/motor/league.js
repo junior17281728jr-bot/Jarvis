@@ -6,8 +6,8 @@ import { seal } from '../core/ledger.js';
 import { round } from '../core/util.js';
 
 export const DEFAULT_AGENTS = [
-  { id: 'largo', name: 'El de largo plazo', role: 'bolsa', style: JSON.stringify({ families: ['comprar_y_mantener', 'cruce_medias', 'impulso'], mira: 'empresas sólidas y tendencias de meses' }) },
-  { id: 'corto', name: 'El de corto plazo', role: 'bolsa', style: JSON.stringify({ families: ['rebote_rsi', 'ruptura'], mira: 'movimientos de días o semanas' }) },
+  { id: 'largo', name: 'El de largo plazo', role: 'bolsa', style: JSON.stringify({ families: ['comprar_y_mantener', 'cruce_medias', 'impulso', 'tendencia_larga', 'momento_12_1', 'baja_volatilidad'], mira: 'empresas sólidas y tendencias de meses' }) },
+  { id: 'corto', name: 'El de corto plazo', role: 'bolsa', style: JSON.stringify({ families: ['rebote_rsi', 'ruptura', 'bandas_bollinger'], mira: 'movimientos de días o semanas' }) },
   { id: 'polemicas', name: 'El cazador de polémicas', role: 'investigacion', style: JSON.stringify({ mira: 'noticias, demandas y riesgos escondidos' }) },
   { id: 'loteria', name: 'El estadístico de loterías', role: 'loteria', style: JSON.stringify({ mira: 'si los sorteos son justos y qué métodos sirven' }) },
 ];
@@ -100,6 +100,13 @@ const SOURCE_NAME = { alpaca: 'Alpaca (precios de la bolsa en tiempo real)', yah
 export function coinAudit(db, limit = 25) {
   const ledgerOf = h => { const r = db.prepare('SELECT ts, payload FROM ledger WHERE hash = ?').get(h); try { return r ? { ts: r.ts, ...JSON.parse(r.payload) } : null; } catch { return null; } };
   return db.prepare('SELECT * FROM coins ORDER BY ts DESC LIMIT ?').all(limit).map(c => {
+    if (String(c.ref || '').startsWith('pred:')) {
+      const p = db.prepare('SELECT * FROM predictions WHERE id = ?').get(Number(c.ref.slice(5))); const pl = p ? JSON.parse(p.payload) : {}, o = p?.outcome ? JSON.parse(p.outcome) : {};
+      const fair = p && p.sealed_at.slice(0, 10) <= (o.endDate || '9999');
+      return { id: c.id, ts: c.ts, agent: c.agent, amount: c.amount, reason: c.reason, revoked: !!c.revoked, revokedReason: c.revoked_reason, symbol: pl.symbol || null, kind: 'voto',
+        vote: p ? { sealedAt: p.sealed_at, start: pl.startDate, startClose: pl.startClose, end: o.endDate, endClose: o.endClose, source: 'precios de cierre oficiales guardados por JARVIS', hash: p.ledger_hash.slice(0, 12) } : null,
+        checks: [['El voto quedó sellado antes de saber el resultado', !!fair], ['El resultado sale de precios reales de cierre (no de la IA)', true], ['Se calificó a los 21 días hábiles, como estaba dicho', !!o.endDate]], clean: !!fair && !c.revoked };
+    }
     const id = Number(String(c.ref || '').replace('trade:', '')), exit = id ? db.prepare('SELECT * FROM trades WHERE id = ?').get(id) : null;
     const entry = exit ? db.prepare("SELECT * FROM trades WHERE account_id = ? AND symbol = ? AND side = 'buy' AND ts <= ? ORDER BY ts DESC, id DESC LIMIT 1").get(exit.account_id, exit.symbol, exit.ts) : null;
     const decision = entry && c.strategy_id ? db.prepare("SELECT sealed_at, payload, ledger_hash FROM predictions WHERE strategy_id = ? AND subject LIKE ? AND sealed_at <= ? ORDER BY sealed_at DESC LIMIT 1").get(c.strategy_id, `senal:${c.strategy_id}:${exit.symbol}:%`, entry.ts) : null;

@@ -89,6 +89,13 @@ export function resolveMarketPredictions(db, bench = 'SPY') {
     const amount = pl.amountUsd ?? (claimBeat ? 10 : 0);
     const outcome = { ret: r, bench: rb, excess: r - rb, beat, endDate: bars[i + HORIZON].ts, endClose: bars[i + HORIZON].close, pnlUsd: round(amount * r, 2) };
     db.prepare('UPDATE predictions SET resolved_at = ?, outcome = ?, correct = ? WHERE id = ?').run(nowIso(), JSON.stringify(outcome), claimBeat === beat ? 1 : 0, p.id);
+    // Pago por votar bien: +1 moneda si acertó, −1 si falló (así adivinar no da monedas). Solo si el voto se selló antes de empezar.
+    if (p.module === 'ranking') {
+      const fair = p.sealed_at.slice(0, 10) <= pl.startDate || p.sealed_at.slice(0, 10) <= (bars[i + 1]?.ts || pl.startDate);
+      const ok = claimBeat === beat;
+      if (!fair) db.prepare('INSERT INTO cheat_reports (ts, agent, strategy_id, ref, rule, explanation, coins_removed) VALUES (?, ?, ?, ?, ?, ?, 0)').run(nowIso(), p.agent || 'largo', null, `pred:${p.id}`, 'voto_tardio', `El voto sobre ${pl.symbol} se selló después de que empezó a contar: no recibe monedas.`);
+      else db.prepare('INSERT INTO coins (ts, agent, strategy_id, amount, reason, ref) VALUES (?, ?, ?, ?, ?, ?)').run(nowIso(), 'largo', null, ok ? 1 : -1, `${ok ? 'Acertó' : 'Falló'} su voto sobre ${pl.symbol}: dijo "${claimBeat ? 'le gana al mercado' : 'no le gana'}" y ${beat ? 'le ganó' : 'no le ganó'} (${round(r * 100, 1)}% contra ${round(rb * 100, 1)}%).`, `pred:${p.id}`);
+    }
     n++;
   }
   return n;

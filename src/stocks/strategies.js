@@ -41,6 +41,31 @@ export const FAMILIES = {
   },
 };
 
+// ---------- Estrategias que usan los profesionales (estudiadas por años en la literatura de inversión) ----------
+const sd = (b, t, n) => { if (t < n) return null; const r = []; for (let i = t - n + 1; i <= t; i++) r.push(b[i].close / b[i - 1].close - 1); const m = r.reduce((a, x) => a + x, 0) / n; return Math.sqrt(r.reduce((a, x) => a + (x - m) ** 2, 0) / n); };
+Object.assign(FAMILIES, {
+  tendencia_larga: {
+    label: 'Filtro de tendencia (estilo Faber)', explain: p => `Está invertido solo mientras el precio está por encima de su promedio de ${p.n} días; si cae por debajo, sale para esquivar las caídas grandes.`,
+    grid: [100, 150, 200].map(n => ({ n })),
+    target: (b, t, p) => { const m = sma(b, t, p.n); return m == null ? 0 : b[t].close > m ? 1 : 0; },
+  },
+  momento_12_1: {
+    label: 'Momento de 12 meses (sin el último mes)', explain: p => `Compra si subió desde hace ${Math.round(p.look / 21)} meses hasta hace ${Math.round(p.skip / 21)} mes(es); ignora el último mes porque suele revertirse.`,
+    grid: [[252, 21], [126, 21], [189, 21]].map(([look, skip]) => ({ look, skip })),
+    target: (b, t, p) => (t < p.look ? 0 : b[t - p.skip].close > b[t - p.look].close ? 1 : 0),
+  },
+  baja_volatilidad: {
+    label: 'Solo en calma (baja volatilidad)', explain: p => `Está invertido cuando el precio se mueve menos de lo normal (últimos ${p.n} días contra el último año) y sale cuando hay nerviosismo.`,
+    grid: [20, 60].map(n => ({ n })),
+    target: (b, t, p) => { if (t < 260) return 0; const now = sd(b, t, p.n), year = sd(b, t, 252); return now == null || year == null ? 0 : now < year ? 1 : 0; },
+  },
+  bandas_bollinger: {
+    label: 'Rebote en bandas de Bollinger', explain: p => `Compra cuando el precio cae ${p.k} desviaciones por debajo de su promedio de ${p.n} días (muy barato para lo normal) y vende cuando vuelve al promedio.`,
+    grid: [[20, 2], [20, 1.5]].map(([n, k]) => ({ n, k })),
+    target: (b, t, p, prev) => { const m = sma(b, t, p.n); if (m == null || t < p.n) return 0; let v = 0; for (let i = t - p.n + 1; i <= t; i++) v += (b[i].close - m) ** 2; const s = Math.sqrt(v / p.n); if (prev === 0 && b[t].close < m - p.k * s) return 1; if (prev === 1 && b[t].close >= m) return 0; return prev; },
+  },
+});
+
 export function describe(family, params) {
   const f = FAMILIES[family];
   return f ? `${f.label}: ${f.explain(params)}` : family;

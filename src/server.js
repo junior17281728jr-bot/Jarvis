@@ -297,6 +297,13 @@ route('POST', '/api/lottery/play', async ({ req, user }) => { const b = await bo
 route('GET', '/api/lottery/mine', ({ user }) => ({ stats: playStats(db, { userId: user.id }), plays: db.prepare('SELECT * FROM lottery_plays WHERE user_id = ? ORDER BY sealed_at DESC LIMIT 50').all(user.id) }));
 
 route('GET', '/api/coins/audit', () => coinAudit(db));
+// Registro de votos: qué votó JARVIS, qué pasó de verdad y si ganó o perdió su moneda
+route('GET', '/api/votes/recent', () => {
+  const rows = db.prepare("SELECT id, payload, outcome, correct, sealed_at, resolved_at FROM predictions WHERE module = 'ranking' AND correct IS NOT NULL ORDER BY resolved_at DESC, id DESC LIMIT 12").all();
+  const pending = db.prepare("SELECT COUNT(*) n FROM predictions WHERE module = 'ranking' AND correct IS NULL").get().n;
+  const coinsWeek = db.prepare("SELECT COALESCE(SUM(amount),0) s FROM coins WHERE ref LIKE 'pred:%' AND revoked = 0 AND ts >= ?").get(new Date(Date.now() - 7 * 864e5).toISOString()).s;
+  return { pending, coinsWeek: round(coinsWeek, 1), list: rows.map(r => { const p = JSON.parse(r.payload), o = JSON.parse(r.outcome || '{}'); return { symbol: p.symbol, light: p.light, claim: (p.claimBeat ?? p.light !== 'rojo') ? 'le gana al mercado' : 'no le gana al mercado', ret: o.ret, bench: o.bench, ok: !!r.correct, sealed: r.sealed_at, end: o.endDate }; }) };
+});
 route('GET', '/api/learning', () => ({ strategies: strategiesSummary(db), league: leagueTable(db, new Date(Date.now() - 7 * 864e5).toISOString()), cheats: cheatReports(db, 30), predictions: predictionStats(db), byModule: { ranking: predictionStats(db, 'ranking'), senales: predictionStats(db, 'bolsa_senal') },
   list: db.prepare('SELECT s.*, (SELECT result FROM experiments e WHERE e.strategy_id = s.id ORDER BY id DESC LIMIT 1) result FROM strategies s ORDER BY s.id DESC LIMIT 60').all().map(s => ({ ...s, params: JSON.parse(s.params), result: s.result ? JSON.parse(s.result) : null })),
   coins: db.prepare('SELECT * FROM coins ORDER BY ts DESC LIMIT 30').all(),
