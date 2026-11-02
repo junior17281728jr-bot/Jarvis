@@ -13,7 +13,12 @@ let MYBUDGET = null;
 const STYLE_PCT = { conservador: { verde: 0.05, amarillo: 0.025, max: 0.1 }, equilibrado: { verde: 0.1, amarillo: 0.05, max: 0.2 }, arriesgado: { verde: 0.15, amarillo: 0.075, max: 0.25 } };
 const myStyle = () => STYLE_PCT[MYBUDGET?.profile?.style] || STYLE_PCT.equilibrado;
 const baseAmt = l => { const B = MYBUDGET?.usd ?? 100, p = myStyle()[l] || 0; return l === 'rojo' || !p ? 0 : Math.max(5, Math.round(B * p)); };
-const VERDICT = new Proxy({}, { get: (_, l) => (l === 'verde' ? `Sí, te recomiendo invertir ${usd(baseAmt('verde'), 0)}` : l === 'amarillo' ? `Invierte poco: ${usd(baseAmt('amarillo'), 0)}, con cuidado` : 'No te recomiendo invertir ahora') });
+// Sin Proxy: las TVs viejas no lo entienden
+const VERDICT = {
+  get verde() { return `Sí, te recomiendo invertir ${usd(baseAmt('verde'), 0)}`; },
+  get amarillo() { return `Invierte poco: ${usd(baseAmt('amarillo'), 0)}, con cuidado`; },
+  get rojo() { return 'No te recomiendo invertir ahora'; },
+};
 const scaleProj = (r, amt) => (r ? { ...r, bad: r.bad * amt / 10, probable: r.probable * amt / 10, good: r.good * amt / 10 } : r);
 async function loadBudget() { try { MYBUDGET = await api('/api/budget'); } catch { MYBUDGET = null; } }
 const light = l => `<span class="light ${l}"><i></i>${LIGHT[l] || l}</span>`;

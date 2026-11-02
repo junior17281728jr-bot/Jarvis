@@ -1,4 +1,4 @@
-/* JARVIS versión para navegadores viejos. Generado desde app.js (3557beadbbf81ffa). No editar a mano: node tools/build-legacy.cjs */
+/* JARVIS versión para navegadores viejos. Generado desde app.js (41c280b17890d402). No editar a mano: node tools/build-legacy.cjs */
 // Ayudas para navegadores viejos (TV Samsung/LG, celulares antiguos). Solo agrega lo que falte.
 (function () {
   function def(o, k, f) { if (!o[k]) Object.defineProperty(o, k, { value: f, writable: true, configurable: true }); }
@@ -153,7 +153,11 @@ var MYBUDGET = null;
 var STYLE_PCT = { conservador: { verde: 0.05, amarillo: 0.025, max: 0.1 }, equilibrado: { verde: 0.1, amarillo: 0.05, max: 0.2 }, arriesgado: { verde: 0.15, amarillo: 0.075, max: 0.25 } };
 var myStyle = function () { var _a; return STYLE_PCT[(_a = MYBUDGET === null || MYBUDGET === void 0 ? void 0 : MYBUDGET.profile) === null || _a === void 0 ? void 0 : _a.style] || STYLE_PCT.equilibrado; };
 var baseAmt = function (l) { var _a; var B = (_a = MYBUDGET === null || MYBUDGET === void 0 ? void 0 : MYBUDGET.usd) !== null && _a !== void 0 ? _a : 100, p = myStyle()[l] || 0; return l === 'rojo' || !p ? 0 : Math.max(5, Math.round(B * p)); };
-var VERDICT = new Proxy({}, { get: function (_, l) { return (l === 'verde' ? "S\u00ED, te recomiendo invertir ".concat(usd(baseAmt('verde'), 0)) : l === 'amarillo' ? "Invierte poco: ".concat(usd(baseAmt('amarillo'), 0), ", con cuidado") : 'No te recomiendo invertir ahora'); } });
+var VERDICT = {
+    get verde() { return "S\u00ED, te recomiendo invertir ".concat(usd(baseAmt('verde'), 0)); },
+    get amarillo() { return "Invierte poco: ".concat(usd(baseAmt('amarillo'), 0), ", con cuidado"); },
+    get rojo() { return 'No te recomiendo invertir ahora'; },
+};
 var scaleProj = function (r, amt) { return (r ? __assign(__assign({}, r), { bad: r.bad * amt / 10, probable: r.probable * amt / 10, good: r.good * amt / 10 }) : r); };
 function loadBudget() {
     return __awaiter(this, void 0, void 0, function () { var _a; return __generator(this, function (_b) {
