@@ -890,6 +890,12 @@ views.ajustes = async () => {
     <li><b>Empresas nuevas:</b> la IA propone qué estudiar (cada semana y al tocar "¿Qué buscas ahora?"); JARVIS las prueba con precios reales.</li>
     <li><b>Debate:</b> varias IA discuten a favor y en contra de una recomendación.</li><li><b>Loterías:</b> te explica la vigilancia y cómo jugar con cabeza.</li><li><b>Noticias:</b> resúmenes en español sencillo.</li></ul>
     <div class="note">Sin IA, JARVIS sigue funcionando completo; solo se pierde esto. La IA explica y propone, pero nunca decide sola ni inventa números.</div></section>
+  <section class="card brain"><h2>🧠 El núcleo de JARVIS <span class="more note">toda su experiencia</span></h2><div id="brainsum" class="note">Cargando…</div>
+    <p class="note" style="margin-top:8px">Todo lo que JARVIS aprendió (votos, ideas probadas, monedas, historial, usuarios, firmas y pagos) vive en un solo archivo en tu servidor. Cada día se hace una copia verificada. Descarga una copia cifrada y guárdala en tu Google Drive o en tu correo: si el servidor se daña, la subes en un servidor nuevo y JARVIS sigue <b>exactamente</b> donde iba.</p>
+    <div class="grid g2" style="gap:14px;margin-top:10px">
+      <div class="form"><b>Descargar copia</b><label>Frase secreta (10 o más letras; guárdala bien)<input id="bpw" type="password" autocomplete="new-password" minlength="10"></label><button type="button" class="btn" id="bdl">Descargar copia del núcleo</button><div class="msg" id="bdm"></div></div>
+      <div class="form"><b>Restaurar desde una copia</b><label class="btn ghost" style="cursor:pointer;display:inline-flex">📁 Elegir archivo .jvbk<input id="brf" type="file" accept=".jvbk,application/octet-stream" hidden></label><div class="note" id="brn"></div><label>Frase secreta de esa copia<input id="brpw" type="password" autocomplete="off"></label><label class="chk"><input type="checkbox" id="brok"> Entiendo que esto reemplaza el núcleo actual (antes se guarda una copia del actual)</label><button type="button" class="btn ghost" id="brs">Restaurar</button><div class="msg" id="brm"></div></div>
+    </div></section>
   <section class="card keyscard"><h2>Claves <span class="more note">se guardan solo en tu servidor; nunca se muestran de nuevo</span></h2>
     <p class="note">Pégalas desde el celular. JARVIS revisa el formato y las usa al momento, sin reiniciar. Para borrar una, deja el campo vacío y marca "borrar".</p>
     <form class="form" id="kf">${keys.map(k => `<div class="krow"><div><b>${esc(k.label)}</b> ${k.set ? `<span class="tag dato">puesta ${esc(k.hint || '')}</span>` : '<span class="tag est">falta</span>'}<div class="note">Dónde sacarla: <a href="${KEYHELP[k.name][1]}" target="_blank" rel="noopener">${esc(KEYHELP[k.name][0])}</a></div></div>
@@ -925,6 +931,27 @@ views.ajustes = async () => {
 };
 views.ajustes.after = () => {
   if (ME?.role !== 'admin') return;
+  api('/api/brain').then(b => { const el = $('#brainsum'); if (!el) return; const S = b.summary;
+    el.innerHTML = `<div class="bsum">${[['🗳️', S.predictions, 'votos y recomendaciones'], ['🧪', S.experiments, 'ideas probadas'], ['🪙', S.coins, 'movimientos de monedas'], ['🔒', S.ledger, 'registros sellados'], ['🎱', S.lottery, 'jugadas de lotería'], ['📈', S.bars, 'precios guardados']].map(([i, n, l]) => `<div class="pbox"><div class="l">${i} ${l}</div><div class="v">${Number(n).toLocaleString('en-US')}</div></div>`).join('')}</div>
+      <div class="note" style="margin-top:6px">Tamaño: ${b.file ? (b.file.bytes / 1048576).toFixed(1) + ' MB' : '—'} · última copia diaria: ${b.last ? timeAgo(b.last.at) + (b.last.verified ? ' (verificada ✓)' : '') + (b.last.offsite?.uploaded ? ', también fuera del servidor ✓' : ', solo dentro del servidor') : 'todavía no'}</div>`; }).catch(() => {});
+  let restoreFile = null;
+  $('#brf').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { restoreFile = r.result; $('#brn').textContent = `${f.name} · ${(f.size / 1048576).toFixed(1)} MB`; }; r.readAsDataURL(f); };
+  $('#bdl').onclick = async () => {
+    $('#bdm').className = 'msg'; $('#bdm').textContent = 'Preparando copia…';
+    try { const res = await fetch('/api/brain/export', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passphrase: $('#bpw').value }) });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'No se pudo.'); }
+      const blob = await res.blob(), name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'jarvis-nucleo.jvbk';
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      $('#bdm').className = 'msg ok'; $('#bdm').textContent = `Listo: ${name}. Guárdalo en tu Drive o correo, junto con tu frase en un lugar seguro.`;
+    } catch (err) { $('#bdm').className = 'msg err'; $('#bdm').textContent = err.message; }
+  };
+  $('#brs').onclick = async () => {
+    if (!restoreFile) { $('#brm').className = 'msg err'; $('#brm').textContent = 'Elige el archivo de la copia.'; return; }
+    if (!$('#brok').checked) { $('#brm').className = 'msg err'; $('#brm').textContent = 'Marca la casilla para confirmar.'; return; }
+    $('#brm').className = 'msg'; $('#brm').textContent = 'Revisando la copia…';
+    try { const r = await api('/api/brain/restore', { method: 'POST', body: { file: restoreFile, passphrase: $('#brpw').value } }); $('#brm').className = 'msg ok'; $('#brm').textContent = `${r.message} (${r.info.predictions} votos, ${r.info.experiments} ideas probadas).`; setTimeout(() => location.reload(), 9000); }
+    catch (err) { $('#brm').className = 'msg err'; $('#brm').textContent = err.message; }
+  };
   if ($('#showusers')) $('#showusers').onchange = e => api('/api/login/users', { method: 'POST', body: { show: e.target.checked } }).catch(() => {});
   $('#kf').onsubmit = async e => { e.preventDefault(); const body = {};
     document.querySelectorAll('[data-key]').forEach(i => { if (i.value.trim()) body[i.dataset.key] = i.value.trim(); });

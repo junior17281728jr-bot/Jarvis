@@ -36,6 +36,7 @@ import { historyList, performance, addReal, closeReal, realSummary } from './mot
 import { sendPush } from './core/notify.js';
 import { mapView, exploreStep } from './motor/map.js';
 import { aiView } from './motor/autopilot.js';
+import { brainSummary, exportBrain, restoreBrain, brainFileInfo } from './core/brain.js';
 import { legalDoc, acceptLegal, currentAcceptance, listAcceptances, signedText, LEGAL_VERSION } from './core/legal.js';
 import { aiOn, suggestStocks, aiSuggestions, lotteryExplain } from './ai/plus.js';
 import { packEconomics, creditSettings, saveCreditSettings, creditStatus, createRequest, listRequests, decideRequest, receiptFile, grantCredits } from './motor/credits.js';
@@ -352,6 +353,21 @@ route('POST', '/api/users', async ({ req }) => { const b = await body(req); cons
 
 
 
+
+// ---------- El núcleo: descargar copia cifrada y restaurar ----------
+route('GET', '/api/brain', () => ({ summary: brainSummary(db), file: brainFileInfo(cfg), last: getSetting(db, 'global', 'backup.last', null) }), { admin: true });
+route('POST', '/api/brain/export', async ({ req, res, user }) => {
+  const b = await body(req); const out = exportBrain(db, cfg, b.passphrase, user);
+  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${out.name}"`, 'Cache-Control': 'no-store' });
+  res.end(out.data);
+}, { admin: true });
+route('POST', '/api/brain/restore', async ({ req, user }) => {
+  const b = await body(req, 400e6);
+  const buf = Buffer.from(String(b.file || '').replace(/^data:[^,]*,/, ''), 'base64');
+  const r = restoreBrain(db, cfg, buf, b.passphrase, user);
+  setTimeout(() => { try { server.close(); r.swap(); } catch (e) { console.error('Restaurar:', e.message); } process.exit(0); }, 800);
+  return { ok: true, info: r.info, message: 'Copia revisada. JARVIS se reinicia con ese núcleo en unos segundos.' };
+}, { admin: true });
 // ---------- Contratos y términos (firmas que no se borran) ----------
 const clientIp = req => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 route('GET', '/api/legal', ({ user }) => ({

@@ -518,3 +518,4 @@ html.is-phone .tv .body{grid-template-columns:1fr}
 .tv .kp .ps{font-weight:800;color:#fff;font-family:var(--mono)}
 .coin{padding:10px 0;border-top:1px solid var(--line);display:grid;gap:4px}.coin-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.coin-ck{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px}
 .vlog{display:grid;gap:6px}.vl{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--panel2);border-left:3px solid var(--line)}.vl.ok{border-left-color:var(--good)}.vl.no{border-left-color:var(--bad)}.vl>div{flex:1;min-width:0}.vi{font-weight:800;width:18px;text-align:center}.vl.ok .vi{color:var(--good)}.vl.no .vi{color:var(--bad)}.vc{font-weight:800;font-family:var(--mono)}
+.bsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
