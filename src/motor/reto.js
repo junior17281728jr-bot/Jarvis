@@ -11,8 +11,11 @@ import { equityCurve, byStock, bestWorst } from './account-stats.js';
 
 export const RETO_OWNER = 'jarvis:reto';
 const DEF = { startUsd: 100, goalUsd: 1500, days: 30 };
-const LIMITS = { minTradeUsd: 1, maxTradeUsd: 1e9, maxPerSymbolPct: 50, minCashPct: 5, maxLossPct: 60 };
+const LIMITS = { minTradeUsd: 1, maxTradeUsd: 1e9, maxPerSymbolPct: 95, minCashPct: 5, maxLossPct: 60 };
 const STOP = -0.12, TRAIL = -0.10, FLOOR = 0.4; // nunca deja que la cuenta baje del 40% de lo que empezó
+// 🚀 Opciones "fuera de lo básico" para cuando la presión es alta: fondos apalancados 3x (suben y bajan 3 veces lo que
+// su índice) y las acciones más explosivas. Solo en el reto: el dinero principal de la IA NO las usa.
+export const RETO_EXTRA = { TQQQ: 'fondo 3x del Nasdaq', SOXL: 'fondo 3x de chips', UPRO: 'fondo 3x del S&P 500', TECL: 'fondo 3x de tecnología', TSLA: 'Tesla', NVDA: 'Nvidia', AMD: 'AMD', COIN: 'Coinbase', PLTR: 'Palantir', MSTR: 'MicroStrategy' };
 
 export function retoConfig(db) { return { ...DEF, n: 1, startedAt: null, ...getSetting(db, 'global', 'reto', {}) }; }
 export function retoAccount(db) { const c = retoConfig(db); return ensureAccount(db, { owner: RETO_OWNER, name: `reto-${c.n}`, startCash: c.startUsd }); }
@@ -66,21 +69,26 @@ export function retoStep(db, { now = new Date() } = {}) {
   if (['lograda', 'terminada', 'defensa'].includes(P.level)) { if (P.level === 'defensa') say(`la cuenta bajó a US$${P.total}: no compro más para no llegar a 0.`); setSetting(db, 'global', 'reto.last', { at: nowIso(), ...out, why: PRESSURE_TXT[P.level] }); return out; }
   // 2) Compras: la presión decide cuántas empresas y cuánto en cada una
   const held = new Set(Object.keys(ledgerState(db, P.accountId).positions));
-  const maxPos = P.level === 'maxima' ? 2 : P.level === 'alta' ? 2 : 3;
+  // Concentrarse aumenta la chance de un resultado MUY grande (y de una caída grande): con presión máxima, una sola apuesta
+  const maxPos = P.level === 'maxima' ? 1 : P.level === 'alta' ? 2 : 3;
   if (held.size >= maxPos) { setSetting(db, 'global', 'reto.last', { at: nowIso(), ...out, why: `Tiene ${held.size} empresas; espera a vender alguna.` }); return out; }
   // Candidatas: todo lo que no está en rojo. Con presión alta busca las que MÁS pueden subir en el plazo que queda.
   const days = Math.max(5, P.tradingLeft), target = (Math.pow(1 + (P.needed || 0) / 100, days) - 1) * 100;
-  const cands = db.prepare("SELECT symbol, conv, light FROM map_entries WHERE light != 'rojo' AND zone IN ('recomendada','observacion','candidata')").all()
-    .filter(e => !held.has(e.symbol) && usable(e.symbol))
-    .map(e => { const pr = project(getBars(db, e.symbol), 100, { days, sims: 600, target }); return pr && { ...e, med: pr.probable, good: pr.good, loss: pr.lossChance, pGoal: pr.pTarget }; })
+  const pressured = ['alta', 'maxima'].includes(P.level);
+  const base = db.prepare("SELECT symbol, conv, light FROM map_entries WHERE light != 'rojo' AND zone IN ('recomendada','observacion','candidata')").all();
+  const extra = pressured ? Object.keys(RETO_EXTRA).filter(s => !base.some(b => b.symbol === s)).map(s => ({ symbol: s, conv: 0, light: 'extra' })) : [];
+  const cands = [...base, ...extra]
+    .filter(e => !held.has(e.symbol) && usable(e.symbol) && getBars(db, e.symbol).length >= 200)
+    .map(e => { const pr = project(getBars(db, e.symbol), 100, { days, sims: 2000, target }); return pr && { ...e, med: pr.probable, good: pr.good, loss: pr.lossChance, pGoal: pr.pTarget }; })
     .filter(Boolean)
-    .sort((a, b) => (['alta', 'maxima'].includes(P.level) ? b.good - a.good : b.med - a.med) || b.conv - a.conv);
-  const share = P.level === 'maxima' ? 0.45 : P.level === 'alta' ? 0.40 : 0.30;
+    // Con presión: la que tiene MÁS chance de llegar a la meta; si empatan (por ejemplo en 0), la que más puede subir
+    .sort((a, b) => (pressured ? (b.pGoal - a.pGoal) || (b.good - a.good) : b.med - a.med) || b.conv - a.conv);
+  const share = P.level === 'maxima' ? 0.90 : P.level === 'alta' ? 0.45 : 0.30;
   for (const c of cands.slice(0, maxPos - held.size)) {
     const v = valuation(db, P.accountId, priceOf), usd = round(Math.min(v.total * share, v.cash - v.total * 0.05 - 0.05), 2);
     if (usd < 1) break;
     const why = `${PRESSURE_TXT[P.level]}: necesito +${P.needed}% por día y voy en US$${P.total} (debería ir en US$${P.shouldHave}). ` +
-      (['alta', 'maxima'].includes(P.level) ? `Elijo ${c.symbol} porque es de las que MÁS pueden subir en ${days} días (en un buen caso +${round(c.good)}%), aunque se arriesga más (pierde ${Math.round(c.loss * 100)}% de las veces).`
+      (pressured ? `Revisé ${cands.length} opciones (también fuera de lo básico, como fondos apalancados 3x) y elijo ${c.symbol}${RETO_EXTRA[c.symbol] ? ` (${RETO_EXTRA[c.symbol]})` : ''} porque es la que más chance tiene de llegar a la meta: ${round((c.pGoal || 0) * 100, 2)}% (${Math.round((c.pGoal || 0) * 2000)} de 2,000 caminos); en un buen caso sube +${round(c.good)}% en ${days} días, pero pierde ${Math.round(c.loss * 100)}% de las veces.${P.level === 'maxima' ? ' Con presión máxima pongo casi todo en una sola apuesta: es lo que más sube la chance de un resultado grande.' : ''}`
         : `Elijo ${c.symbol} porque es de las que mejor ganancia probable tiene en ${days} días (+${round(c.med)}%).`) + ` Pongo ${Math.round(share * 100)}% de la cuenta.`;
     const r = placeOrder(db, { accountId: P.accountId, symbol: c.symbol, side: 'buy', usd, quote: getQuote(db, c.symbol), quoteUsable: { usable: true }, reason: `Reto compra: ${why}`, limits: LIMITS, now });
     if (r.ok) { out.bought.push(c.symbol); say(`compré US$${round(r.qty * r.execPrice)} de ${c.symbol}. ${why}`); }
@@ -116,5 +124,5 @@ export function retoView(db, { now = new Date() } = {}) {
   return { ...P, realistic: typeof realistic === 'undefined' ? null : realistic, sim: typeof simN === 'undefined' ? null : { hits: simHits, n: simN, symbols: simSyms }, curve, goalLine, stocks, best: bw.best, worst: bw.worst, pressure: PRESSURE_TXT[P.level], gain: round(P.total - P.startUsd, 2), progressPct: round(Math.max(0, Math.min(100, (P.total - P.startUsd) / (P.goalUsd - P.startUsd) * 100)), 1), chance,
     positions: v.positions.map(p => ({ symbol: p.symbol, value: round(p.value, 2), pnl: round(p.pnl, 2), pnlPct: round(p.pnlPct * 100, 2) })), moves, last: getSetting(db, 'global', 'reto.last', null),
     marketOpen: marketOpen(now),
-    honest: `Para ir de US$${P.startUsd.toLocaleString("en-US")} a US$${P.goalUsd.toLocaleString("en-US")} en ${P.days} días hay que ganar cerca de +${round((Math.pow(P.goalUsd / P.startUsd, 1 / Math.max(1, Math.round(P.days * 5 / 7))) - 1) * 100, 1)}% cada día de bolsa. La presión no le da más acierto a la IA: la hace arriesgar más. Es dinero virtual para que veas qué pasa de verdad cuando se busca ganar rápido.` };
+    honest: `Para ir de US$${P.startUsd.toLocaleString("en-US")} a US$${P.goalUsd.toLocaleString("en-US")} en ${P.days} días hay que ganar cerca de +${round((Math.pow(P.goalUsd / P.startUsd, 1 / Math.max(1, Math.round(P.days * 5 / 7))) - 1) * 100, 1)}% cada día de bolsa. La presión no le da más acierto a la IA: la hace arriesgar más. Con presión alta busca fuera de lo básico (fondos apalancados 3x y acciones explosivas) y escoge la opción con MÁS chance de llegar; con presión máxima pone casi todo en una sola apuesta. Siempre con salida al −12% y piso de US$${round(P.startUsd * FLOOR)} para no llegar a 0. Es dinero virtual para que veas qué pasa de verdad cuando se busca ganar rápido.` };
 }

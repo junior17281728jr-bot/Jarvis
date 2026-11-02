@@ -6,7 +6,7 @@ import { verifyLedger } from '../core/ledger.js';
 import { rdDate } from '../core/util.js';
 import { collectAll, backfillHistory } from '../lottery/sources.js';
 import { runCalibration } from './calibration.js';
-import { retoStep } from './reto.js';
+import { retoStep, RETO_EXTRA } from './reto.js';
 import { evolveStep } from './evolution.js';
 import { findPairs } from './pairs.js';
 import { settlePending } from '../lottery/simulator.js';
@@ -14,7 +14,7 @@ import { scan } from '../lottery/stats.js';
 import { history, repairLotteryData } from '../lottery/results.js';
 import { GAMES } from '../lottery/games.js';
 import { universe, updateSymbol, updateQuotes, updateFacts, updateInsiders, BENCH } from '../stocks/collector.js';
-import { marketOpen, nyParts } from '../stocks/market.js';
+import { marketOpen, nyParts, getBars } from '../stocks/market.js';
 import { collectNews, digestNews } from '../ai/research.js';
 import { ensureAgents } from './league.js';
 import { seedAgenda, pickNext, runExperiment, proposeIdeas } from './research.js';
@@ -117,7 +117,13 @@ async function runTask(name, db, cfg, now, fetchImpl) {
     case 'loterias_jugadas': return { sealed: autoPlays(db, { now }), effort: reviewEffort(db) };
     case 'prueba_en_vivo': return liveStep(db, { symbols: syms, now, bench: BENCH });
     case 'cartera_ia': return autopilotStep(db, { now });
-    case 'reto_ia': return retoStep(db, { now });
+    case 'reto_ia': {
+      // Precios de las opciones "fuera de lo básico" del reto (historial 1 vez al día, precio del momento cada vez)
+      const ex = Object.keys(RETO_EXTRA);
+      for (const sym of ex) { const b = getBars(db, sym); if (!b.length || Date.now() - Date.parse(b.at(-1).ts) > 3 * 864e5) { try { await updateSymbol(db, cfg, sym, { fetchImpl }); } catch { /* sin datos hoy */ } } }
+      try { await updateQuotes(db, cfg, ex, { fetchImpl }); } catch { /* se intenta la próxima hora */ }
+      return retoStep(db, { now });
+    }
     case 'evolucion': return evolveStep(db, { symbols: syms, bench: BENCH });
     case 'parejas': { const extra = db.prepare("SELECT symbol FROM map_entries WHERE light != 'rojo'").all().map(r => r.symbol); return findPairs(db, { symbols: [...new Set([...syms, ...extra])].slice(0, 45), bench: BENCH }); }
     case 'recordatorio_planes': return { planes: planReminders(db), pendientes: adminPendingReminder(db) };

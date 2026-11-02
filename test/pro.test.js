@@ -436,3 +436,22 @@ test('dinero de la IA: cambiarlo empieza un periodo nuevo sin borrar el anterior
   assert.equal(L.playedRd, 0, 'el monedero nuevo empieza limpio'); assert.equal(L.startUsd, 50);
   assert.equal(aiConfig(db).history.length, 2);
 });
+
+test('reto: con presión busca fuera de lo básico y escoge la opción con MÁS chance de llegar a la meta', async () => {
+  const { openDb: od } = await import('../src/core/db.js');
+  const { saveBars, saveQuote } = await import('../src/stocks/market.js');
+  const { setReto, retoStep, retoAccount } = await import('../src/motor/reto.js');
+  const db = od(':memory:');
+  const mk = (seed, vol) => { let p = 100, x = seed; return Array.from({ length: 400 }, (_, i) => { x = (x * 16807) % 2147483647; p *= 1 + 0.0004 + ((x / 2147483647) - 0.5) * vol; return { ts: new Date(Date.UTC(2025, 0, 2) + i * 864e5).toISOString().slice(0, 10), open: p, high: p, low: p, close: p, volume: 1 }; }); };
+  saveBars(db, 'KO', { source: 't', bars: mk(3, 0.01) }); saveBars(db, 'TQQQ', { source: 't', bars: mk(5, 0.12) });
+  db.prepare("INSERT INTO map_entries (symbol, zone, conv, light, prob, since, checked_at, reds, card, note) VALUES ('KO','recomendada',80,'verde',0.6,'2026-01-01','2026-01-01',0,'{}','')").run();
+  const now = new Date('2026-11-04T15:00:00Z');
+  for (const s of ['KO', 'TQQQ']) saveQuote(db, { symbol: s, price: 100, prevClose: 100, asOf: now.toISOString(), kind: 'prueba', source: 'prueba' });
+  setReto(db, { goalUsd: 1500, days: 30, restart: true });
+  const r = retoStep(db, { now });
+  const { getSetting: gs2 } = await import('../src/core/db.js');
+  assert.deepEqual(r.bought, ['TQQQ'], JSON.stringify(gs2(db, 'global', 'reto.last', null)) + ' ' + 'la tranquila (KO) casi no tiene chance; la explosiva sí');
+  const t = db.prepare('SELECT qty, exec_price, reason FROM trades WHERE account_id = ?').get(retoAccount(db).id);
+  assert.ok(t.qty * t.exec_price > 80, 'presión máxima: casi todo en una apuesta');
+  assert.match(t.reason, /más chance tiene de llegar a la meta/);
+});
