@@ -7,6 +7,7 @@ import { ensureAccount, placeOrder, valuation, ledgerState } from '../stocks/acc
 import { getQuote, quoteStatus, getBars, marketOpen } from '../stocks/market.js';
 import { project } from '../stocks/advice.js';
 import { round } from '../core/util.js';
+import { equityCurve, byStock, bestWorst } from './account-stats.js';
 
 export const RETO_OWNER = 'jarvis:reto';
 const DEF = { startUsd: 100, goalUsd: 1500, days: 30 };
@@ -97,12 +98,18 @@ export function retoView(db, { now = new Date() } = {}) {
   try {
     const syms = v.positions.length ? v.positions.map(p => p.symbol) : db.prepare("SELECT symbol FROM map_entries WHERE light != 'rojo' ORDER BY conv DESC LIMIT 1").all().map(r => r.symbol);
     const need = (P.goalUsd / Math.max(0.01, P.total) - 1) * 100;
-    const ps = syms.map(s => project(getBars(db, s), 100, { days: Math.max(1, P.tradingLeft), sims: 600, target: need })?.pTarget).filter(x => x != null);
-    if (ps.length) chance = round(Math.max(...ps) * 100, 2);
+    // 2,000 caminos posibles por empresa, repitiendo al azar subidas y bajadas DIARIAS que de verdad tuvo (últimos 3 años)
+    const ps = syms.map(s => project(getBars(db, s), 100, { days: Math.max(1, P.tradingLeft), sims: 2000, target: need })?.pTarget).filter(x => x != null);
+    if (ps.length) { const best = Math.max(...ps); chance = round(best * 100, 2); var simHits = Math.round(best * 2000), simN = 2000, simSyms = syms; }
   } catch { /* sin datos */ }
   const moves = db.prepare('SELECT ts, side, symbol, qty, exec_price, reason FROM trades WHERE account_id = ? ORDER BY ts DESC, id DESC LIMIT 15').all(P.accountId)
     .map(t => ({ at: t.ts, side: t.side, symbol: t.symbol, usd: round(t.qty * t.exec_price, 2), why: String(t.reason || '').replace(/^Reto (compra|vende):\s*/, '') }));
-  return { ...P, pressure: PRESSURE_TXT[P.level], gain: round(P.total - P.startUsd, 2), progressPct: round(Math.max(0, Math.min(100, (P.total - P.startUsd) / (P.goalUsd - P.startUsd) * 100)), 1), chance,
+  // 📈 Cómo ha ido contra la meta: su dinero día a día y dónde debería ir cada día para llegar
+  const curve = equityCurve(db, P.accountId, P.startUsd, P.startedAt);
+  const t0 = Date.parse(P.startedAt || new Date().toISOString()), span = P.days * 864e5;
+  const goalLine = curve.map(([d]) => [d, round(P.startUsd * Math.pow(P.goalUsd / P.startUsd, Math.min(1, Math.max(0, (Date.parse(d + 'T21:00:00Z') - t0) / span))), 2)]);
+  const stocks = byStock(db, P.accountId), bw = bestWorst(curve);
+  return { ...P, sim: typeof simN === 'undefined' ? null : { hits: simHits, n: simN, symbols: simSyms }, curve, goalLine, stocks, best: bw.best, worst: bw.worst, pressure: PRESSURE_TXT[P.level], gain: round(P.total - P.startUsd, 2), progressPct: round(Math.max(0, Math.min(100, (P.total - P.startUsd) / (P.goalUsd - P.startUsd) * 100)), 1), chance,
     positions: v.positions.map(p => ({ symbol: p.symbol, value: round(p.value, 2), pnl: round(p.pnl, 2), pnlPct: round(p.pnlPct * 100, 2) })), moves, last: getSetting(db, 'global', 'reto.last', null),
     marketOpen: marketOpen(now),
     honest: `Para ir de US$${P.startUsd.toLocaleString("en-US")} a US$${P.goalUsd.toLocaleString("en-US")} en ${P.days} días hay que ganar cerca de +${round((Math.pow(P.goalUsd / P.startUsd, 1 / Math.max(1, Math.round(P.days * 5 / 7))) - 1) * 100, 1)}% cada día de bolsa. La presión no le da más acierto a la IA: la hace arriesgar más. Es dinero virtual para que veas qué pasa de verdad cuando se busca ganar rápido.` };

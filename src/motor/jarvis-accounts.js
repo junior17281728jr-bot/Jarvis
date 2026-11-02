@@ -8,6 +8,7 @@ import { aiAccount, marketRegime, riskDecision, aiConfig } from './autopilot.js'
 import { fx } from './insights.js';
 import { GAMES } from '../lottery/games.js';
 import { round } from '../core/util.js';
+import { equityCurve, byStock } from './account-stats.js';
 import { getSetting } from '../core/db.js';
 
 const MAX_POSITIONS = 8;
@@ -38,6 +39,7 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
   const bolsa = {
     since: acc.created_at, start: acc.start_cash, total: round(v.total, 2), cash: round(v.cash, 2), invested: round(invested, 2), valueNow: round(v.positionsValue, 2),
     gain: round(v.total - acc.start_cash, 2), returnPct: round(v.returnPct * 100, 2), realized: round(v.realized, 2), unrealized: round(v.unrealized, 2), fees: round(v.fees || 0, 2),
+    curve: equityCurve(db, acc.id, acc.start_cash, acc.created_at), stocks: byStock(db, acc.id),
     positions, closed, moves, wins: v.closed.filter(c => c.pnl > 0).length, losses: v.closed.filter(c => c.pnl <= 0).length,
     marketOpen: marketOpen(now), nextOpen: nextOpen(now), plan: positions.length < MAX_POSITIONS ? plan : [],
     regime: marketRegime(db), lastStep: getSetting(db, 'global', 'ia.lastStep', null), lastCheck: getSetting(db, 'global', 'motor.lastRun', {})?.cartera_ia?.at || null,
@@ -46,7 +48,7 @@ export function jarvisAccounts(db, { now = new Date() } = {}) {
   };
   // ---------- Lotería (su número de cada sorteo) ----------
   const cfgIA = aiConfig(db), startRd = round(cfgIA.lotoUsd * rate, 2); // exacto: así se ve US$100.00 y no US$100.01
-  const picks = db.prepare("SELECT payload, outcome, correct, sealed_at FROM predictions WHERE module = 'loteria' AND sealed_at >= ? ORDER BY sealed_at").all(cfgIA.lotoSince || '').map(r => ({ ...JSON.parse(r.payload), out: r.outcome ? JSON.parse(r.outcome) : null, correct: r.correct, sealedAt: r.sealed_at }));
+  const picks = db.prepare("SELECT payload, outcome, correct, sealed_at FROM predictions WHERE module = 'loteria' AND sealed_at > ? ORDER BY sealed_at").all(cfgIA.lotoSince || '').map(r => ({ ...JSON.parse(r.payload), out: r.outcome ? JSON.parse(r.outcome) : null, correct: r.correct, sealedAt: r.sealed_at }));
   const done = picks.filter(p => p.correct != null), pend = picks.filter(p => p.correct == null);
   const playedRd = picks.reduce((s, p) => s + (p.amountRd || 0), 0), wonRd = done.reduce((s, p) => s + (p.out?.prizeRd || 0), 0);
   const lostRd = done.filter(p => !p.correct).reduce((s, p) => s + (p.amountRd || 0), 0), pendingRd = pend.reduce((s, p) => s + (p.amountRd || 0), 0);

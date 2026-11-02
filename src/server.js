@@ -65,7 +65,7 @@ if (!db.prepare('SELECT 1 FROM lottery_observations LIMIT 1').get()) for (const 
 setTradingDays(getSetting(db, 'global', 'market.tradingDays', null)?.days);
 
 const PUBLIC = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.mp4': 'video/mp4', '.webmanifest': 'application/manifest+json' };
 const cache = new Map();
 const cached = (key, ms, fn) => { const c = cache.get(key); if (c && Date.now() - c.t < ms) return c.v; const v = fn(); cache.set(key, { t: Date.now(), v }); return v; };
 
@@ -651,6 +651,15 @@ const server = createServer(async (req, res) => {
     let f = staticCache.get(file);
     if (!f || f.etag !== etag) { const raw = await readFile(file); f = { etag, raw, gz: /\.(js|css|html|svg|json|webmanifest)$/.test(file) && raw.length > 1400 ? gzipSync(raw, { level: 9 }) : null }; staticCache.set(file, f); }
     if (res.__gz && f.gz) { res.writeHead(200, { ...base, 'Content-Encoding': 'gzip' }); return res.end(f.gz); }
+    // Videos: el iPhone (Safari) pide el archivo por pedazos ("Range"); sin esto el video no se reproduce
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (range && extname(file) === '.mp4') {
+      const size = f.raw.length, start = range[1] ? Number(range[1]) : size - Number(range[2]), end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      if (!(start >= 0 && start <= end)) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
+      res.writeHead(206, { ...base, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+      return res.end(f.raw.subarray(start, end + 1));
+    }
+    if (extname(file) === '.mp4') base['Accept-Ranges'] = 'bytes';
     res.writeHead(200, base);
     res.end(f.raw);
   } catch (e) {

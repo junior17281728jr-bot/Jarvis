@@ -23,7 +23,7 @@ const STAKE = 100;
  */
 export function smartStake(db, method, count = 3) {
   const C = getSetting(db, 'global', 'ia.config', {}), rate = fx(db)?.rate || 60, startRd = round((C.lotoUsd || 100) * rate, 2);
-  const rows = db.prepare("SELECT payload, outcome FROM predictions WHERE module = 'loteria' AND sealed_at >= ?").all(C.lotoSince || '');
+  const rows = db.prepare("SELECT payload, outcome FROM predictions WHERE module = 'loteria' AND sealed_at > ?").all(C.lotoSince || '');
   const played = rows.reduce((t, r) => t + (JSON.parse(r.payload).amountRd || 0), 0);
   const won = rows.reduce((t, r) => t + (r.outcome ? JSON.parse(r.outcome).prizeRd || 0 : 0), 0);
   const leftRd = startRd - played + won;

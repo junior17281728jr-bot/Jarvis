@@ -366,6 +366,7 @@ views.inicio = async () => {
     ['#aprendizaje', '🧠', 'Aprendizaje', 'Qué ideas probó, cuáles funcionan, monedas y trampas.'],
     ['#historial', '📜', 'Historial', 'Todo lo que recomendó antes y cómo le fue de verdad.'],
     ['#potenciador', '⚡', 'Potenciador', 'Créditos extra para usar más la inteligencia artificial.'],
+    ['#tutorial', '🎓', 'Tutorial', 'Video de 2 minutos y explicación de cada parte, con fotos.'],
     ['#tv', '📺', 'Modo TV', 'Pantalla grande con todo en vivo, para dejarla prendida.'],
     ...(ME?.role === 'admin' ? [['#ajustes', '⚙️', 'Ajustes', 'Usuarios, claves, copia en Google Drive, marca y el núcleo.']] : []),
   ].map(([h, i, t, d]) => `<a class="gt" href="${h}"><span>${i}</span><b>${t}</b><small>${d}</small></a>`).join('')}</div></section>
@@ -563,6 +564,8 @@ views.cuentas = async () => {
   <section class="card acct-card"><h2>📈 Bolsa <span class="more note">empezó el ${dt(B.since)} con ${usd(B.start)}</span></h2>
     ${flow([['Empezó con', usd(B.start), '', 'dinero virtual'], ['Invirtió', usd(B.invested), '', `${B.positions.length} ${B.positions.length === 1 ? 'acción' : 'acciones'}`], ['Eso vale hoy', usd(B.valueNow), B.valueNow >= B.invested ? 'good' : 'bad', `${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}`], ['En efectivo', usd(B.cash), '', 'sin invertir'], ['Tiene en total', usd(B.total), up ? 'good' : 'bad', `${up ? '+' : ''}${usd(B.gain)} (${up ? '+' : ''}${B.returnPct}%)`]])}
     ${iaStateHtml(B)}
+    ${B.curve?.length > 1 ? `<h3 class="cs-h">📈 Cómo ha subido y bajado su dinero</h3>${lineChart(B.curve, { h: 180, label: 'Dinero de la IA día a día' })}<div class="note">Su dinero cada día (con el precio de cierre) y el valor de ahora al final. Empezó con ${usd(B.start)}.</div>` : ''}
+    ${B.stocks?.length ? stockTable(B.stocks) : ''}
     <div class="acct-mini"><span>✅ Ventas con ganancia: <b>${B.wins}</b></span><span>❌ Ventas con pérdida: <b>${B.losses}</b></span><span>💰 Ganado ya cobrado: <b class="${B.realized >= 0 ? 'good' : 'bad'}">${B.realized >= 0 ? '+' : ''}${usd(B.realized)}</b></span><span>⏳ Si vendiera todo ahora (todavía no es ganancia real): <b class="${B.unrealized >= 0 ? 'good' : 'bad'}">${B.unrealized >= 0 ? '+' : ''}${usd(B.unrealized)}</b></span></div>
     <h3 class="cs-h">En qué lo tiene ahora</h3><div class="note" style="margin-bottom:6px">Lo de "va ganando o perdiendo" cambia con el precio de cada momento. <b>Solo es ganancia o pérdida de verdad cuando vende</b> (eso sale arriba en "Ganado ya cobrado").</div>
     ${empty ? `<div class="answer">💤 Ahora todo está en efectivo. ${B.regime === 'bajista' ? '🛡️ El mercado entero va bajando: espera a que mejore antes de comprar. ' : ''}${B.marketOpen ? 'Está buscando qué comprar.' : `La bolsa está cerrada; empieza a comprar cuando abra${B.nextOpen ? `: <b>${new Date(B.nextOpen).toLocaleString('es-DO', { weekday: 'long', hour: 'numeric', minute: '2-digit' })}</b> (hora RD)` : ''}.`}</div>
@@ -1979,7 +1982,10 @@ async function loadReto() {
     <div class="reto-top"><div><div class="note">Tiene ahora</div><div class="reto-v ${R.gain >= 0 ? 'good' : 'bad'}">${usd(R.total)}</div><div class="note">${R.gain >= 0 ? '+' : ''}${usd(R.gain)} desde el inicio</div></div>
       <div><div class="note">Presión</div><div class="reto-p ${tone}">${esc(R.pressure)}</div><div class="note">${R.needed != null ? `necesita <b>+${R.needed}% por día</b> de bolsa` : ''}</div></div>
       <div><div class="note">Le quedan</div><div class="reto-v">${R.daysLeft} días</div><div class="note">${R.tradingLeft} días de bolsa · hoy debería ir en ${usd(R.shouldHave)}</div></div>
-      <div><div class="note">Chance real de lograrlo</div><div class="reto-v ${R.chance >= 20 ? 'good' : R.chance >= 5 ? 'warn' : 'bad'}">${R.chance == null ? '—' : R.chance < 0.1 ? 'menos de 0.1%' : R.chance + '%'}</div><div class="note">simulado con precios reales</div></div></div>
+      <div><div class="note">Chance real de lograrlo</div><div class="reto-v ${R.chance >= 20 ? 'good' : R.chance >= 5 ? 'warn' : 'bad'}">${R.chance == null ? '—' : R.sim ? `${R.sim.hits} de ${R.sim.n.toLocaleString('es-DO')}` : R.chance + '%'}</div><div class="note">${R.sim ? `caminos simulados llegaron a la meta (${R.chance}%)` : 'simulado con precios reales'}</div></div></div>
+    ${R.sim ? `<details style="margin-top:6px"><summary class="note">¿De dónde sale esa chance?</summary><div class="note" style="margin-top:4px">JARVIS imaginó <b>${R.sim.n.toLocaleString('es-DO')} caminos posibles</b> para los ${R.tradingLeft} días de bolsa que quedan, usando al azar las subidas y bajadas de cada día que de verdad tuvo ${R.sim.symbols.map(esc).join(', ')} en los últimos 3 años. En <b>${R.sim.hits}</b> de esos caminos llegó a ${usd(R.goalUsd, 0)}. No es imposible, pero ${R.sim.hits === 0 ? 'en ninguno de los 2,000 lo logró: es extremadamente improbable' : `pasó ${R.sim.hits} veces de cada ${R.sim.n.toLocaleString('es-DO')}`}. Si cambias la meta, la chance se recalcula.</div></details>` : ''}
+    ${R.curve?.length > 1 ? `<h3 class="cs-h" style="margin-top:10px">📈 Cómo va contra la meta</h3>${lineChart(R.curve, { h: 190, bench: R.goalLine, label: 'Dinero del reto contra la meta' })}<div class="note">Línea de color: lo que tiene cada día · línea punteada: dónde debería ir para llegar a la meta.${R.best ? ` Mejor día: ${fdate(R.best.date)} (${R.best.change >= 0 ? '+' : ''}${usd(R.best.change)}) · peor día: ${fdate(R.worst.date)} (${usd(R.worst.change)}).` : ''}</div>` : ''}
+    ${R.stocks?.length ? stockTable(R.stocks) : ''}
     <div class="vbar" style="height:12px;margin:10px 0 4px"><span style="width:${R.progressPct}%"></span></div><div class="note">${R.progressPct}% del camino a la meta</div>
     ${R.positions.length ? `<div class="jvo" style="margin-top:8px">${R.positions.map(p => `<span><b>${esc(p.symbol)}</b> ${usd(p.value)} <i class="${p.pnl >= 0 ? 'good' : 'bad'}">${p.pnl >= 0 ? '+' : ''}${p.pnlPct}%</i></span>`).join('')}</div>` : `<div class="note" style="margin-top:8px">${R.marketOpen ? 'Todavía no compra: revisa cada hora.' : 'La bolsa está cerrada: compra cuando abra.'}${R.last?.why ? ' ' + esc(R.last.why) : ''}</div>`}
     ${R.moves.length ? `<details style="margin-top:8px"><summary class="note">Sus decisiones y por qué (${R.moves.length})</summary>${R.moves.map(m => `<div class="note" style="margin:6px 0">${m.side === 'buy' ? '🟢 Compró' : '🔴 Vendió'} <b>${esc(m.symbol)}</b> ${usd(m.usd)} · ${fmtWhen(m.at)} — ${esc(m.why)}</div>`).join('')}</details>` : ''}
@@ -2027,4 +2033,33 @@ async function loadSigue() {
     const sym = b.dataset.qbuy, amt = Number(b.dataset.amt); b.disabled = true;
     try { const r = await api('/api/order', { method: 'POST', body: { symbol: sym, side: 'buy', usd: amt } }); b.textContent = r.queued ? '⏳ Lista para cuando abra la bolsa' : '✅ Comprada'; } catch (e) { b.disabled = false; b.textContent = e.message; }
   });
+}
+
+// ---------- 🎓 Tutorial: video y para qué sirve cada parte ----------
+const TUTORIAL = [
+  ['inicio', '#inicio', '🏠 Inicio', 'El resumen del día.', 'La mejor idea de hoy, qué tan seguro está JARVIS, cuánto podrías ganar (y en cuánto tiempo) y la calculadora de metas.'],
+  ['bolsa', '#bolsa', '🧑 Mi dinero', 'Tu parte: aquí decides tú.', 'Tu dinero de práctica (virtual). Compras y vendes tú, o tocas "Seguir a la IA" para copiar lo que ella más cree que va a ganar, con el monto que ella pondría.'],
+  ['cuentas', '#cuentas', '🤖 Dinero de la IA', 'La parte de la IA: decide sola.', 'La IA invierte su propio dinero virtual: en qué lo puso, cuánto gana o pierde, lo que aprendió y su Reto con meta. Tú solo miras (el administrador puede cambiar su dinero y su meta).'],
+  ['mapa', '#mapa', '🗺️ Mapa', 'Todas las empresas por color.', 'Verde = recomendada, amarillo = en observación, rojo = no. JARVIS explora empresas nuevas solo, también las poco conocidas.'],
+  ['recomendaciones', '#recomendaciones', '⭐ Recomendaciones', 'Las mejores ideas de hoy.', 'Cada una con su nota, cuántas veces le ganó al mercado y el porqué. Toca una para ver el análisis completo.'],
+  ['analisis', '#analisis/JPM', '🔬 Análisis de una empresa', 'Todo sobre una empresa.', 'Si te la recomienda, cuánto podrías ganar o perder, en cuánto tiempo, los riesgos y las pruebas.'],
+  ['buscar', '#buscar', '🔍 Buscar', 'Pregunta por cualquier empresa.', 'Escribe una empresa o lo que buscas (por ejemplo "algo seguro a 1 año") y JARVIS te dice si conviene.'],
+  ['loterias', '#loterias', '🎱 Loterías', 'Lo que apuesta JARVIS y los resultados.', 'Qué números apostó, cuánto, a qué hora sale cada sorteo y el resultado (se queda 24 horas). Además vigila si algún sorteo se porta raro. En la lotería nadie tiene ventaja: es para medir, no para prometer.'],
+  ['aprendizaje', '#aprendizaje', '🧠 Aprendizaje', 'Cómo aprende JARVIS.', 'Las reglas que inventa y prueba solo, las empresas que se mueven juntas, si sus % se cumplen y las monedas de cada agente.'],
+  ['historial', '#historial', '📜 Historial', 'Todo lo que dijo y cómo le fue.', 'Cada recomendación sellada con su hora y su resultado real. Nada se puede borrar.'],
+  ['potenciador', '#potenciador', '⚡ Potenciador', 'Más inteligencia artificial.', 'Créditos extra para usar más la IA (explicaciones, debates). Se pide aquí y el administrador lo aprueba.'],
+  ['tv', '#tv', '📺 Modo TV', 'Todo en grande.', 'Pantalla con todo en vivo para dejarla prendida en la TV o en un monitor.'],
+  ['ajustes', '#ajustes', '⚙️ Ajustes', 'Solo el administrador.', 'Usuarios, claves, copia en Google Drive, marca y el motor de JARVIS.'],
+];
+views.tutorial = async () => `<div><h1>🎓 Tutorial</h1><p class="sub">Cómo funciona JARVIS y para qué sirve cada parte. Las fotos son de la versión actual (con datos de ejemplo).</p></div>
+  <section class="card"><h2>▶️ Video: JARVIS en 2 minutos</h2>
+    <video class="tut-video" src="/tutorial/tutorial.mp4" controls playsinline preload="metadata" poster="/tutorial/inicio.jpg"></video>
+    <div class="note" style="margin-top:6px">Recuerda: todo es dinero virtual. La decisión de invertir dinero real es tuya.</div></section>
+  <section class="tut-grid">${TUTORIAL.filter(t => t[0] !== 'ajustes' || ME?.role === 'admin').map(([img, href, title, short, long]) => `<a class="card tut" href="${href}">
+    <img src="/tutorial/${img}.jpg" alt="${esc(title)}" loading="lazy"><div class="tut-b"><b>${title}</b><div class="tut-s">${esc(short)}</div><div class="note">${esc(long)}</div><span class="tut-go">Ir ▸</span></div></a>`).join('')}</section>`;
+
+/** En qué empresa ganó y en cuál perdió (ya vendido y sin vender). */
+function stockTable(rows) {
+  return `<h3 class="cs-h" style="margin-top:10px">🏢 En qué empresa ganó y en cuál perdió</h3><div class="tablewrap"><table><tr><th>Empresa</th><th class="r">Ya vendido</th><th class="r">Sin vender (si vendiera ahora)</th><th class="r">Total</th><th class="r">Ventas que ganaron / perdieron</th></tr>
+    ${rows.map(r => `<tr><td><a href="#analisis/${esc(r.symbol)}"><b>${esc(r.symbol)}</b></a>${r.open ? ' <span class="note">· la tiene</span>' : ''}</td><td class="r ${r.realized > 0 ? 'good' : r.realized < 0 ? 'bad' : ''}">${r.realized ? (r.realized > 0 ? '+' : '') + usd(r.realized) : '—'}</td><td class="r ${r.unrealized > 0 ? 'good' : r.unrealized < 0 ? 'bad' : ''}">${r.open ? (r.unrealized >= 0 ? '+' : '') + usd(r.unrealized) : '—'}</td><td class="r"><b class="${r.total >= 0 ? 'good' : 'bad'}">${r.total >= 0 ? '+' : ''}${usd(r.total)}</b></td><td class="r">${r.wins} ✅ / ${r.losses} ❌</td></tr>`).join('')}</table></div>`;
 }
