@@ -83,3 +83,16 @@ export function estadoBase(db) {
   const version = db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v ?? 0;
   return { estado: 'ok', version };
 }
+
+// Hace un trabajo completo o nada: si algo falla a mitad, la base queda como estaba.
+export function enTransaccion(db, trabajo) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const resultado = trabajo();
+    db.exec('COMMIT');
+    return resultado;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}

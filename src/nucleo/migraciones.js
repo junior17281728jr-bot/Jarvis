@@ -67,4 +67,54 @@ CREATE TABLE IF NOT EXISTS ajustes (
 CREATE INDEX IF NOT EXISTS auditoria_fecha ON auditoria(fecha);
 `,
   },
+  {
+    id: 3,
+    nombre: 'proyectos',
+    // Cada proyecto vive en un espacio. Su configuración se guarda por versiones: cambiar algo crea
+    // una versión nueva que espera aprobación, y la anterior sigue en uso hasta que se apruebe.
+    // «Eliminar» manda el proyecto a la papelera: no se borra y se puede restaurar.
+    sql: `
+CREATE TABLE IF NOT EXISTS proyectos (
+  id INTEGER PRIMARY KEY,
+  espacio_id INTEGER NOT NULL REFERENCES espacios(id),
+  nombre TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'comercial' CHECK (tipo IN ('comercial', 'laboral')),
+  estado TEXT NOT NULL DEFAULT 'borrador'
+    CHECK (estado IN ('borrador', 'pendiente', 'en_ejecucion', 'pausado', 'completado', 'con_errores')),
+  version_activa INTEGER,
+  en_papelera INTEGER NOT NULL DEFAULT 0,
+  motivo_error TEXT,
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL,
+  actualizado_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS proyectos_espacio ON proyectos(espacio_id, en_papelera);
+CREATE TABLE IF NOT EXISTS proyecto_versiones (
+  id INTEGER PRIMARY KEY,
+  proyecto_id INTEGER NOT NULL REFERENCES proyectos(id),
+  numero INTEGER NOT NULL,
+  instrucciones TEXT NOT NULL,
+  configuracion TEXT NOT NULL,
+  interpretacion TEXT NOT NULL DEFAULT '{}',
+  origen TEXT NOT NULL DEFAULT 'instrucciones' CHECK (origen IN ('instrucciones', 'campos')),
+  estado TEXT NOT NULL DEFAULT 'pendiente'
+    CHECK (estado IN ('pendiente', 'aprobada', 'rechazada', 'reemplazada', 'descartada')),
+  motivo TEXT,
+  creada_por INTEGER REFERENCES usuarios(id),
+  creada_en TEXT NOT NULL,
+  decidida_por INTEGER REFERENCES usuarios(id),
+  decidida_en TEXT,
+  UNIQUE (proyecto_id, numero)
+);
+CREATE TABLE IF NOT EXISTS proyecto_historial (
+  id INTEGER PRIMARY KEY,
+  proyecto_id INTEGER NOT NULL REFERENCES proyectos(id),
+  fecha TEXT NOT NULL,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  accion TEXT NOT NULL,
+  detalle TEXT
+);
+CREATE INDEX IF NOT EXISTS proyecto_historial_proyecto ON proyecto_historial(proyecto_id, id);
+`,
+  },
 ];

@@ -8,6 +8,7 @@ import { entradaPermitida, esLocal, clienteDe, esHttps } from './nucleo/red.js';
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
+import { registrarRutasProyectos } from './api/proyectos.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
@@ -39,6 +40,7 @@ function texto(res, codigo, mensaje) {
 export function crearServidor({ db = null, limites } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites });
+  registrarRutasProyectos(rutas);
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

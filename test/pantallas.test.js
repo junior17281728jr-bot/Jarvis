@@ -84,3 +84,30 @@ test('las pantallas nunca convierten texto en código (sin innerHTML, eval ni sc
   assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/i, 'hay un script incrustado');
   assert.doesNotMatch(html, /<style|\sstyle=|\son[a-z]+=/i, 'hay estilos o eventos incrustados');
 });
+
+test('las frases que las pantallas arman por partes (estados, capacidades, historial…) existen en los dos idiomas', async () => {
+  const { catalogo } = await import('../src/motor/interpretar.js');
+  const { ESTADOS, ACCIONES } = await import('../src/proyectos/proyectos.js');
+  const { FUENTES } = await import('../src/motor/diccionarios.js');
+  const cat = catalogo();
+  const claves = [
+    ...ESTADOS.map(e => `estado.${e}`),
+    ...Object.keys(ACCIONES).map(a => `accion.${a}`),
+    ...Object.values(ACCIONES).map(a => `historial.${a.evento}`),
+    ...['creado', 'version_nueva', 'aprobada', 'rechazada', 'renombrado', 'a_papelera', 'restaurado', 'con_errores'].map(h => `historial.${h}`),
+    ...cat.tipos.flatMap(x => [`tipo.${x}`, `campo.producto.${x}`, `faltante.producto.${x}`, `proyecto.aviso_espera.${x}`, `proyecto.entendi.${x}`]),
+    ...cat.tamanos.map(x => `tamano.${x}`),
+    ...cat.frecuencias.map(x => `frecuencia.${x}`),
+    ...cat.capacidades.flatMap(x => [`capacidad.${x.clave}`, `capacidad.${x.clave}.ayuda`]),
+    ...Object.keys(cat.combinaciones).map(x => `combinacion.${x}`),
+    ...Object.values(FUENTES).flat().map(x => `fuente.${x}`),
+    ...['sectores', 'zonas', 'capacidades'].map(x => `faltante.${x}`),
+    ...['frecuencia', 'capacidades', 'tipo', 'sectores_todos', 'gran_santo_domingo'].map(x => `supuesto.${x}`),
+    ...['pendiente', 'aprobada', 'rechazada', 'reemplazada', 'descartada'].map(x => `version.estado.${x}`),
+    ...['instrucciones', 'campos'].map(x => `version.origen.${x}`),
+  ];
+  for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
+  // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
+  const prefijos = new Set(claves.map(c => c.slice(0, c.lastIndexOf('.') + 1)).concat(['estado.', 'tipo.', 'idioma.', 'error.', 'faltante.', 'campo.producto.', 'capacidad.', 'proyecto.aviso_espera.', 'historial.', 'version.estado.', 'version.origen.', 'supuesto.']));
+  for (const m of appJs.matchAll(/\bt\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
+});
