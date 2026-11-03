@@ -41,11 +41,13 @@ test('/sw.js se sirve como JavaScript (borra la app vieja de JARVIS del navegado
 });
 
 test('una ruta /api desconocida responde 404 en JSON', async () => {
-  await conServidor(crearServidor(), async base => {
+  const db = abrirBase(configDePrueba());
+  await conServidor(crearServidor({ db }), async base => {
     const r = await fetch(`${base}/api/no-existe`);
     assert.equal(r.status, 404);
     assert.match(r.headers.get('content-type'), /json/);
   });
+  db.close();
 });
 
 test('la página principal dice OPORTIA', async () => {

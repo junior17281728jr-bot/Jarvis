@@ -28,6 +28,18 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 - Nunca abre, cambia ni borra `jarvis.db`, `secrets.env`, `version.txt`, `update.log` ni ningún otro archivo.
 - Antes de cada cambio de la base se guarda una copia completa en `oportia-copias/`.
 
+## Recuperar el acceso de administrador
+En la Consola de DigitalOcean (nunca como root, para no dañar los permisos de la base):
+
+    sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs
+
+Muestra una contraseña temporal para el primer administrador (o crea uno si no existe) y cierra sus sesiones.
+Para un nombre concreto: `sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs junior`.
+
 ## Estado
-Fase 0: página temporal "OPORTIA · En construcción" que ya no borra nada, base de datos propia y entrada protegida
-(solo por el enlace https de Tailscale o por la red Tailscale). Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».
+- Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.
+- Fase 1, parte a: cuentas. El primer administrador solo se crea desde Tailscale; contraseñas con scrypt; sesiones en galletas
+  HttpOnly; candados contra intentos; protección contra pedidos falsos; español e inglés; administración de usuarios;
+  herramienta de rescate del acceso.
+
+Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

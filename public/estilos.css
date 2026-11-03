@@ -1,0 +1,105 @@
+/* OPORTIA: estilo sencillo, claro y legible en el iPhone y en la Mac. Modo claro y oscuro automáticos. */
+:root {
+  --fondo: #f6f7fb;
+  --tarjeta: #ffffff;
+  --texto: #0f172a;
+  --suave: #475569;
+  --borde: #e2e8f0;
+  --acento: #0369a1;
+  --acento-texto: #ffffff;
+  --bien: #15803d;
+  --mal: #b91c1c;
+  --aviso-fondo: #fef3c7;
+  --aviso-texto: #78350f;
+  --sombra: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #0b1120;
+    --tarjeta: #111a2e;
+    --texto: #e5e9f2;
+    --suave: #9aa8c1;
+    --borde: #22304b;
+    --acento: #38bdf8;
+    --acento-texto: #04121f;
+    --bien: #4ade80;
+    --mal: #f87171;
+    --aviso-fondo: #3a2a06;
+    --aviso-texto: #fcd34d;
+    --sombra: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+}
+#app { max-width: 720px; margin: 0 auto; }
+.cargando { text-align: center; color: var(--suave); padding-top: 30vh; letter-spacing: 0.2em; }
+
+/* Encabezado y menú */
+.encabezado { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; }
+.marca { font-weight: 800; letter-spacing: 0.18em; font-size: 18px; }
+.menu { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 16px; }
+.menu a {
+  text-decoration: none; color: var(--texto); padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--borde); background: var(--tarjeta); font-size: 15px;
+}
+.menu a[aria-current="page"] { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+
+/* Tarjetas y textos */
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 16px; padding: 18px; margin: 0 0 16px; box-shadow: var(--sombra); }
+.centrada { max-width: 440px; margin: 8vh auto 0; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0 0 8px; }
+h2 { font-size: 19px; margin: 0 0 10px; }
+p { margin: 0 0 12px; }
+.suave { color: var(--suave); font-size: 15px; }
+ul, ol { margin: 0 0 12px; padding-left: 22px; }
+li { margin: 4px 0; }
+
+/* Formularios */
+label { display: block; font-weight: 600; margin: 12px 0 4px; font-size: 15px; }
+input, select {
+  width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--borde);
+  background: var(--fondo); color: var(--texto);
+}
+input:focus, select:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
+.ayuda { color: var(--suave); font-size: 14px; margin-top: 4px; }
+button {
+  font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 18px; cursor: pointer;
+  background: var(--acento); color: var(--acento-texto); margin-top: 16px;
+}
+button.secundario { background: transparent; color: var(--acento); border: 1px solid var(--borde); }
+button.peligro { background: transparent; color: var(--mal); border: 1px solid var(--borde); }
+button:disabled { opacity: 0.6; cursor: wait; }
+.botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.botones button { margin-top: 8px; }
+
+/* Mensajes */
+.mensaje { border-radius: 12px; padding: 12px; margin: 12px 0 0; font-size: 15px; }
+.mensaje.error { background: color-mix(in srgb, var(--mal) 12%, transparent); color: var(--mal); }
+.mensaje.bien { background: color-mix(in srgb, var(--bien) 12%, transparent); color: var(--bien); }
+.aviso { background: var(--aviso-fondo); color: var(--aviso-texto); border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+.clave-temporal {
+  font: 600 22px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em;
+  background: var(--fondo); border: 1px dashed var(--borde); border-radius: 12px; padding: 12px; margin: 8px 0; text-align: center;
+}
+
+/* Lista de usuarios */
+.fila { border-top: 1px solid var(--borde); padding: 12px 0; }
+.fila:first-of-type { border-top: 0; }
+.fila .nombre { font-weight: 700; }
+.etiqueta { display: inline-block; font-size: 13px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--borde); color: var(--suave); margin-left: 6px; }
+.etiqueta.bien { color: var(--bien); }
+.etiqueta.mal { color: var(--mal); }
+
+.idiomas { display: flex; gap: 6px; justify-content: center; margin-top: 14px; }
+.idiomas button { margin: 0; padding: 6px 12px; font-size: 14px; }
+.pie { text-align: center; color: var(--suave); font-size: 13px; margin-top: 24px; }

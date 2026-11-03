@@ -27,3 +27,31 @@ export function esTailscale(direccion) {
 export function entradaPermitida(direccionLocal) {
   return esLocal(direccionLocal) || esTailscale(direccionLocal);
 }
+
+// Dirección real del visitante. Por el enlace https (Tailscale) todos llegan como 127.0.0.1,
+// así que en ese caso se usa la cabecera X-Forwarded-For que pone Tailscale. Solo se confía
+// en ella cuando la conexión viene del propio servidor.
+export function clienteDe(req) {
+  const remoto = req.socket?.remoteAddress;
+  if (esLocal(remoto)) {
+    const reenviado = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (reenviado) return reenviado.slice(0, 64);
+  }
+  return sinPrefijo(remoto || 'desconocido');
+}
+
+export function esHttps(req) {
+  return esLocal(req.socket?.remoteAddress) && String(req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https';
+}
+
+// ¿La petición viene de un equipo de tu red Tailscale (y no del público a través de Funnel)?
+//  - Directa a la dirección 100.x del servidor: sí.
+//  - Por el enlace https: Tailscale añade Tailscale-User-Login a los usuarios de tu red y
+//    Tailscale-Funnel-Request a los visitantes de internet. Tailscale borra esas cabeceras si alguien las inventa.
+export function vieneDeTailscale(req) {
+  const remoto = req.socket?.remoteAddress;
+  if (esTailscale(remoto)) return { si: true, login: null };
+  const login = req.headers['tailscale-user-login'];
+  if (esLocal(remoto) && login && !req.headers['tailscale-funnel-request']) return { si: true, login: String(login).slice(0, 200) };
+  return { si: false, login: null };
+}
