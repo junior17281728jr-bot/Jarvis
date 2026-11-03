@@ -16,5 +16,17 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 - Las pruebas corren en el servidor real, como root y con la app funcionando: no usan internet, no tocan `/var/lib/jarvis`, no usan el puerto 8080 y están todas en `test/` sin subcarpetas.
 - Un cambio por cada ventana de 30 minutos.
 
+## Ramas
+- `main`: lo que instala el servidor. Solo se actualiza con autorización del dueño.
+- `desarrollo`: donde se trabaja y se prueba. GitHub corre las pruebas en cada cambio (Node 22 y 24).
+- `respaldo/antes-de-oportia`: copia exacta de `main` antes de empezar OPORTIA. No se borra.
+- `jarvis-archivo`: el código viejo de JARVIS. No se usa.
+
+## Datos en el servidor
+- OPORTIA usa solo su archivo `/var/lib/jarvis/oportia.db` y su carpeta `/var/lib/jarvis/oportia-copias/`.
+- Nunca abre, cambia ni borra `jarvis.db`, `secrets.env`, `version.txt`, `update.log` ni ningún otro archivo.
+- Antes de cada cambio de la base se guarda una copia completa en `oportia-copias/`.
+
 ## Estado
-Fase 0: página temporal "OPORTIA · En construcción" que ya no borra nada. La arquitectura y el plan completos están en el documento «OPORTIA: arquitectura y plan».
+Fase 0: página temporal "OPORTIA · En construcción" que ya no borra nada, base de datos propia y entrada protegida
+(solo por el enlace https de Tailscale o por la red Tailscale). Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

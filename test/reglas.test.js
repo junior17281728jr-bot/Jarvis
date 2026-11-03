@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(RAIZ, 'src');
-const MINIMO_DE_PRUEBAS = 2;
+const MINIMO_DE_PRUEBAS = 4;
 
 function archivos(dir, filtro = () => true) {
   const fuera = new Set(['.git', 'node_modules']);
@@ -70,4 +70,23 @@ test('ningún archivo del repositorio contiene claves secretas', () => {
 
 test('existe public/sw.js (los navegadores con la app vieja lo necesitan)', () => {
   assert.ok(existsSync(join(RAIZ, 'public', 'sw.js')));
+});
+
+test('los cambios de la base solo agregan: nunca DROP, nunca RENAME, y NOT NULL nuevo siempre con DEFAULT', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const ids = MIGRACIONES.map(m => m.id);
+  assert.deepEqual(ids, [...ids].sort((a, b) => a - b), 'las migraciones deben ir en orden');
+  assert.equal(new Set(ids).size, ids.length, 'no puede haber dos migraciones con el mismo número');
+  for (const m of MIGRACIONES) {
+    assert.doesNotMatch(m.sql, /\bDROP\b|\bRENAME\b|\bDELETE\s+FROM\b/i, `la migración ${m.id} borra o renombra algo`);
+    for (const linea of m.sql.split('\n').filter(l => /ADD\s+COLUMN/i.test(l) && /NOT\s+NULL/i.test(l))) {
+      assert.match(linea, /DEFAULT/i, `la migración ${m.id} agrega una columna NOT NULL sin DEFAULT`);
+    }
+  }
+});
+
+test('las pruebas usan la ayuda común (sin internet, sin datos reales)', () => {
+  for (const nombre of readdirSync(join(RAIZ, 'test')).filter(n => n.endsWith('.test.js') && n !== 'reglas.test.js')) {
+    assert.match(readFileSync(join(RAIZ, 'test', nombre), 'utf8'), /from '\.\/ayuda\.js'|import '\.\/ayuda\.js'/, `test/${nombre} no importa ./ayuda.js`);
+  }
 });
