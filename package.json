@@ -1,11 +1,16 @@
 {
-  "name": "nexus",
-  "version": "0.0.1",
-  "description": "NEXUS (en construcción). JARVIS fue retirado: su código está en la rama jarvis-archivo.",
+  "name": "oportia",
+  "version": "0.0.2",
+  "description": "OPORTIA (en construcción): plataforma de inteligencia de oportunidades. JARVIS fue retirado: su código está en la rama jarvis-archivo.",
   "type": "module",
   "main": "src/server.js",
-  "engines": { "node": ">=22.13" },
-  "scripts": { "start": "node --no-warnings src/server.js", "test": "node --no-warnings --test test/*.test.js" },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --no-warnings src/server.js",
+    "test": "node --no-warnings --test test/*.test.js"
+  },
   "license": "UNLICENSED",
   "private": true
 }
