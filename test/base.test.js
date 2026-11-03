@@ -3,7 +3,7 @@ import { configDePrueba, carpetaTemporal } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { abrirBase, estadoBase, ID_APLICACION } from '../src/nucleo/db.js';
 import { MIGRACIONES } from '../src/nucleo/migraciones.js';
@@ -80,4 +80,38 @@ test('un jarvis.db que esté al lado queda intacto', () => {
   writeFileSync(viejo, 'datos de jarvis');
   abrirBase(config).close();
   assert.equal(readFileSync(viejo, 'utf8'), 'datos de jarvis');
+});
+
+test('la marca de OPORTIA queda en el archivo principal, aunque se pierda el archivo -wal', () => {
+  const config = configDePrueba();
+  const db = abrirBase(config);
+  const cabecera = readFileSync(config.archivoBase).subarray(0, 100);
+  assert.equal(cabecera.readUInt32BE(68), ID_APLICACION);
+  db.close();
+});
+
+test('un archivo ajeno en modo WAL, con su -wal, no se modifica en absoluto', () => {
+  const raiz = carpetaTemporal();
+  const original = join(raiz, 'otra.db');
+  const otra = new DatabaseSync(original);
+  otra.exec("PRAGMA journal_mode = WAL; CREATE TABLE t (x); INSERT INTO t VALUES (1);");
+  // Copia el archivo y su -wal mientras la otra base sigue abierta (como si se hubiera cerrado mal).
+  const ajeno = join(raiz, 'oportia.db');
+  copyFileSync(original, ajeno);
+  copyFileSync(`${original}-wal`, `${ajeno}-wal`);
+  otra.close();
+  const antes = readFileSync(ajeno);
+  const antesWal = readFileSync(`${ajeno}-wal`);
+  assert.throws(() => abrirBase({ archivoBase: ajeno, carpetaCopias: join(raiz, 'copias') }), /no es de OPORTIA/);
+  assert.deepEqual(readFileSync(ajeno), antes, 'el archivo principal cambió');
+  assert.ok(existsSync(`${ajeno}-wal`), 'se borró su archivo -wal');
+  assert.deepEqual(readFileSync(`${ajeno}-wal`), antesWal, 'el archivo -wal cambió');
+});
+
+test('un archivo con ese nombre que no es una base de datos tampoco se toca', () => {
+  const raiz = carpetaTemporal();
+  const ajeno = join(raiz, 'oportia.db');
+  writeFileSync(ajeno, 'esto no es una base de datos, pero es de alguien');
+  assert.throws(() => abrirBase({ archivoBase: ajeno, carpetaCopias: join(raiz, 'copias') }), /no es de OPORTIA/);
+  assert.equal(readFileSync(ajeno, 'utf8'), 'esto no es una base de datos, pero es de alguien');
 });

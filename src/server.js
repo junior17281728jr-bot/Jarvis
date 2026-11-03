@@ -21,4 +21,6 @@ function cerrar() {
 }
 process.on('SIGTERM', cerrar);
 process.on('SIGINT', cerrar);
-process.on('unhandledRejection', error => console.error('Error no controlado:', error));
+// Red de seguridad: un error inesperado se registra, pero no tumba el servidor.
+process.on('uncaughtException', error => console.error('Error inesperado (el servidor sigue):', error));
+process.on('unhandledRejection', error => console.error('Error no controlado (el servidor sigue):', error));

@@ -26,7 +26,14 @@ export function crearServidor({ db = null } = {}) {
       res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end('Entra por https://jarvis.taila693e9.ts.net');
     }
-    const ruta = new URL(req.url, 'http://x').pathname;
+    let ruta;
+    try {
+      ruta = new URL(req.url, 'http://x').pathname;
+    } catch {
+      // Una dirección mal formada no puede tumbar el servidor: se responde 400 y se sigue.
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end('Dirección no válida');
+    }
     if (ruta === '/api/setup') {
       // Si la base no abrió, responde 503: el actualizador del servidor lo ve y vuelve a la versión anterior.
       if (!db) return json(res, 503, { app: 'oportia', estado: 'error', version: VERSION, base: 'no disponible' });

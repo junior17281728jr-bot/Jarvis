@@ -19,7 +19,8 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 ## Ramas
 - `main`: lo que instala el servidor. Solo se actualiza con autorización del dueño.
 - `desarrollo`: donde se trabaja y se prueba. GitHub corre las pruebas en cada cambio (Node 22 y 24).
-- `respaldo/antes-de-oportia`: copia exacta de `main` antes de empezar OPORTIA. No se borra.
+- `respaldo/antes-de-oportia`: copia exacta de `main` antes de empezar OPORTIA, solo para consultar. **NUNCA restaurarla en `main`**: esa versión borra `/var/lib/jarvis` al arrancar.
+- `publicar/parte-1`: lo que se publicó en `main` en la fase 0, parte 1.
 - `jarvis-archivo`: el código viejo de JARVIS. No se usa.
 
 ## Datos en el servidor
