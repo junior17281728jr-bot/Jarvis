@@ -1,15 +1,11 @@
 {
-  "name": "jarvis",
-  "version": "0.1.0",
-  "description": "JARVIS: investigador autónomo de bolsa y loterías RD, con dinero virtual",
+  "name": "nexus",
+  "version": "0.0.1",
+  "description": "NEXUS (en construcción). JARVIS fue retirado: su código está en la rama jarvis-archivo.",
   "type": "module",
   "main": "src/server.js",
   "engines": { "node": ">=22.13" },
-  "scripts": {
-    "start": "node --no-warnings src/server.js",
-    "test": "node --no-warnings --test test/*.test.js",
-    "demo": "node --no-warnings src/demo.js"
-  },
+  "scripts": { "start": "node --no-warnings src/server.js", "test": "node --no-warnings --test test/*.test.js" },
   "license": "UNLICENSED",
   "private": true
 }
