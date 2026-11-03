@@ -119,5 +119,5 @@ test('un archivo con ese nombre que no es una base de datos tampoco se toca', ()
 test('las pruebas nunca pueden escribir fuera de la carpeta temporal, aunque alguien se equivoque', () => {
   assert.throws(() => leerConfig({ DB_PATH: '/var/lib/jarvis/jarvis.db' }), /\/var\/lib/);
   assert.throws(() => abrirBase({ archivoBase: '/var/lib/jarvis/oportia.db', carpetaCopias: '/var/lib/jarvis/oportia-copias' }), /Modo de prueba/);
-  assert.throws(() => abrirBase({ archivoBase: join(process.cwd(), 'oportia.db'), carpetaCopias: join(process.cwd(), 'copias') }), /Modo de prueba/);
+  assert.throws(() => abrirBase({ archivoBase: '/opt/oportia-nunca/oportia.db', carpetaCopias: '/opt/oportia-nunca/copias' }), /Modo de prueba/);
 });
