@@ -1,5 +1,6 @@
 // Rutas de proyectos. Cada pedido trabaja SOLO dentro del espacio de quien pregunta.
 import { ErrorHttp, leerJson } from '../nucleo/http.js';
+import { Limitador } from '../nucleo/limites.js';
 import { interpretar, configuracionDesdeCampos, catalogo } from '../motor/interpretar.js';
 import {
   espacioDe, listarProyectos, detalleProyecto, crearProyecto, nuevaVersion, aprobarVersion, rechazarVersion,
@@ -8,11 +9,9 @@ import {
 
 const CATALOGO = catalogo();
 
-function espacio(db, usuario, { escribir = false } = {}) {
-  const e = espacioDe(db, usuario);
-  if (!e) throw new ErrorHttp(409, 'sin_espacio');
-  if (escribir && !e.puedeEscribir) throw new ErrorHttp(403, 'solo_lectura');
-  return e;
+// Cada cambio hace trabajar al motor: un tope por persona protege al servidor pequeño.
+export function crearLimitesProyectos() {
+  return { escrituras: new Limitador({ maximo: 120, ventanaMs: 10 * 60 * 1000 }) };
 }
 
 function resumenEspacio(db, e) {
@@ -20,7 +19,16 @@ function resumenEspacio(db, e) {
   return { proyectos, limite: e.limite, usados: proyectos.filter(p => !p.enPapelera).length, puedeEscribir: e.puedeEscribir };
 }
 
-export function registrarRutasProyectos(rutas) {
+export function registrarRutasProyectos(rutas, { limites = crearLimitesProyectos() } = {}) {
+  // El espacio de quien pregunta; para cambiar algo, además, tiene que poder escribir y no pasarse del tope.
+  function espacio(db, usuario, { escribir = false } = {}) {
+    const e = espacioDe(db, usuario);
+    if (!e) throw new ErrorHttp(409, 'sin_espacio');
+    if (escribir && !e.puedeEscribir) throw new ErrorHttp(403, 'solo_lectura');
+    if (escribir && !limites.escrituras.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    return e;
+  }
+
   rutas.agregar('GET', '/api/catalogo', () => ({ codigo: 200, datos: CATALOGO }));
 
   rutas.agregar('GET', '/api/proyectos', ({ db, usuario }) => ({ codigo: 200, datos: resumenEspacio(db, espacio(db, usuario)) }));

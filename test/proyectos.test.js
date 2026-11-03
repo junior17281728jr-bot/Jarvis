@@ -262,3 +262,20 @@ test('datos raros o enormes se rechazan con un error claro', async () => {
     assert.equal(catalogo.datos.capacidades.length, 7);
   });
 });
+
+test('hay un tope de cambios por persona para cuidar el servidor', async () => {
+  const { crearRuteador } = await import('../src/nucleo/http.js');
+  const { registrarRutasProyectos } = await import('../src/api/proyectos.js');
+  const { Limitador } = await import('../src/nucleo/limites.js');
+  const db = abrirBase(configDePrueba());
+  db.prepare("INSERT INTO usuarios (nombre, clave_hash, rol, creado_en) VALUES ('ana', 'x', 'usuario', '2026-01-01')").run();
+  db.prepare("INSERT INTO espacios (nombre, creado_en) VALUES ('e', '2026-01-01')").run();
+  db.prepare("INSERT INTO miembros (espacio_id, usuario_id, rol, creado_en) VALUES (1, 1, 'dueno', '2026-01-01')").run();
+  const rutas = crearRuteador();
+  registrarRutasProyectos(rutas, { limites: { escrituras: new Limitador({ maximo: 2, ventanaMs: 60000 }) } });
+  const ruta = rutas.buscar('POST', '/api/proyectos/1/estado');
+  const pedido = () => ruta.manejador({ db, usuario: { id: 1, rol: 'usuario' }, parametros: { id: '1' }, req: null });
+  for (let i = 0; i < 2; i++) await assert.rejects(pedido(), e => e.clave === 'datos_no_validos' || e.clave === 'no_existe' || e instanceof TypeError);
+  await assert.rejects(pedido(), e => e.clave === 'demasiados_intentos');
+  db.close();
+});

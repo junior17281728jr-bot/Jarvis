@@ -41,5 +41,10 @@ Para un nombre concreto: `sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.m
 - Fase 1, parte a: cuentas. El primer administrador solo se crea desde Tailscale; contraseñas con scrypt; sesiones en galletas
   HttpOnly; candados contra intentos; protección contra pedidos falsos; español e inglés; administración de usuarios;
   herramienta de rescate del acceso.
+- Fase 1, parte b: proyectos. Cada cuenta escribe lo que necesita con sus palabras; el motor propio (`src/motor/`, sin IA)
+  entiende sectores, las 32 provincias, ciudades, producto o empleo, salario, exclusiones, prioridades y frecuencia, y lo
+  que no entiende lo pregunta. Nada trabaja hasta que se aprueba. Cada cambio crea una versión nueva que espera aprobación
+  mientras la anterior sigue en uso. Estados, las 7 capacidades, historial y papelera (no se borra nada).
+  Toda consulta lleva el espacio de quien pregunta: una cuenta nunca ve proyectos de otra (`test/proyectos.test.js`).
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».
