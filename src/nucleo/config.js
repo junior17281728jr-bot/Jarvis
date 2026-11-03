@@ -12,7 +12,7 @@ export function leerConfig(env = process.env) {
     archivoBase: resolve(env.OPORTIA_DB || join(carpetaDatos, 'oportia.db')),
     // Carpeta propia para las copias: nunca se escribe en las carpetas de JARVIS.
     carpetaCopias: resolve(env.OPORTIA_COPIAS || join(carpetaDatos, 'oportia-copias')),
-    modoPrueba: env.OPORTIA_TEST === '1',
+    modoPrueba: env.OPORTIA_TEST === '1' || process.env.OPORTIA_TEST === '1',
   };
   if (config.modoPrueba && (config.archivoBase.startsWith('/var/lib') || config.carpetaCopias.startsWith('/var/lib'))) {
     throw new Error('En modo de prueba no se permite usar /var/lib: las pruebas nunca tocan los datos reales.');

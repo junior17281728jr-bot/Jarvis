@@ -115,3 +115,9 @@ test('un archivo con ese nombre que no es una base de datos tampoco se toca', ()
   assert.throws(() => abrirBase({ archivoBase: ajeno, carpetaCopias: join(raiz, 'copias') }), /no es de OPORTIA/);
   assert.equal(readFileSync(ajeno, 'utf8'), 'esto no es una base de datos, pero es de alguien');
 });
+
+test('las pruebas nunca pueden escribir fuera de la carpeta temporal, aunque alguien se equivoque', () => {
+  assert.throws(() => leerConfig({ DB_PATH: '/var/lib/jarvis/jarvis.db' }), /\/var\/lib/);
+  assert.throws(() => abrirBase({ archivoBase: '/var/lib/jarvis/oportia.db', carpetaCopias: '/var/lib/jarvis/oportia-copias' }), /Modo de prueba/);
+  assert.throws(() => abrirBase({ archivoBase: join(process.cwd(), 'oportia.db'), carpetaCopias: join(process.cwd(), 'copias') }), /Modo de prueba/);
+});

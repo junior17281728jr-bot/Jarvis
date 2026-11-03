@@ -4,7 +4,7 @@
 name: Pruebas
 on:
   push:
-    branches: [desarrollo]
+    branches: [desarrollo, main]
   pull_request:
     branches: [main]
 permissions:

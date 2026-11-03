@@ -8,7 +8,7 @@ process.env.OPORTIA_TEST = '1';
 
 const fetchReal = globalThis.fetch;
 globalThis.fetch = (url, ...resto) => {
-  const destino = new URL(typeof url === 'string' ? url : url.url);
+  const destino = new URL(url instanceof Request ? url.url : String(url));
   if (destino.hostname !== '127.0.0.1') return Promise.reject(new Error(`Internet prohibido en las pruebas: ${destino.href}`));
   return fetchReal(url, ...resto);
 };

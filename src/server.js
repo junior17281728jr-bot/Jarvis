@@ -13,7 +13,7 @@ try {
 }
 
 const servidor = crearServidor({ db });
-servidor.listen(config.puerto, config.host, () => console.log(`OPORTIA ${VERSION} escuchando en ${config.host}:${config.puerto}`));
+servidor.listen(config.puerto, config.host, () => console.log(`OPORTIA ${VERSION} escuchando en ${config.host}:${servidor.address().port}`));
 
 function cerrar() {
   servidor.close(() => { try { db?.close(); } catch { /* ya cerrada */ } process.exit(0); });

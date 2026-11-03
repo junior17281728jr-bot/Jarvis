@@ -106,3 +106,9 @@ test('una dirección mal formada no tumba el servidor: responde 400 y sigue func
   });
   db.close();
 });
+
+test('una dirección mal formada también responde 400 cuando llega por la puerta simulada', async () => {
+  const servidor = crearServidor();
+  const r = await peticionSimulada(servidor, { url: '//a:b', direccionLocal: '127.0.0.1' });
+  assert.equal(r.codigo, 400);
+});

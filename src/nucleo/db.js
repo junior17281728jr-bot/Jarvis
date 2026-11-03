@@ -5,7 +5,8 @@
 //  - Cada cambio va dentro de una transacción: si falla, la base queda como estaba.
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { MIGRACIONES } from './migraciones.js';
 
 export const ID_APLICACION = 0x4f505254; // "OPRT": marca los archivos que son de OPORTIA
@@ -25,7 +26,17 @@ function leerMarca(archivo) {
   }
 }
 
+// En modo de prueba, nunca se escribe fuera de la carpeta temporal del sistema.
+function revisarModoPrueba(...rutas) {
+  if (process.env.OPORTIA_TEST !== '1') return;
+  const temporal = resolve(tmpdir()) + sep;
+  for (const ruta of rutas) {
+    if (!resolve(ruta).startsWith(temporal)) throw new Error(`Modo de prueba: no se permite escribir en ${ruta}`);
+  }
+}
+
 export function abrirBase({ archivoBase, carpetaCopias }, migraciones = MIGRACIONES) {
+  revisarModoPrueba(archivoBase, carpetaCopias);
   const existia = existsSync(archivoBase) && statSync(archivoBase).size > 0;
   if (existia && leerMarca(archivoBase) !== ID_APLICACION) {
     throw new Error(`El archivo ${archivoBase} existe y no es de OPORTIA: no se toca.`);
