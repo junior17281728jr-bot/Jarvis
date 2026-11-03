@@ -65,3 +65,22 @@ test('arrancar el servidor no borra ningún archivo de la carpeta de datos', asy
   }
   for (const f of archivos) assert.ok(existsSync(join(datos, f)), `se borró ${f}`);
 });
+
+test('una dirección mal formada no tumba el servidor: responde 400 y sigue funcionando', async () => {
+  const { connect } = await import('node:net');
+  await conServidor(async base => {
+    const puerto = Number(new URL(base).port);
+    for (const destino of ['//a:b', '//a:99999', '//%5B']) {
+      const respuesta = await new Promise((ok, mal) => {
+        const s = connect(puerto, '127.0.0.1', () => s.write(`GET ${destino} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`));
+        let datos = '';
+        s.on('data', d => { datos += d; });
+        s.on('end', () => ok(datos));
+        s.on('error', mal);
+      });
+      assert.match(respuesta, /^HTTP\/1\.1 400/, `respuesta para ${destino}`);
+    }
+    const r = await fetch(`${base}/api/setup`);
+    assert.equal(r.status, 200, 'el servidor sigue vivo');
+  });
+});

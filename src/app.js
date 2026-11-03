@@ -15,7 +15,14 @@ export function crearServidor() {
   const pagina = readFileSync(join(PUB, 'index.html'));
   const sw = readFileSync(join(PUB, 'sw.js'));
   return createServer((req, res) => {
-    const ruta = new URL(req.url, 'http://x').pathname;
+    let ruta;
+    try {
+      ruta = new URL(req.url, 'http://x').pathname;
+    } catch {
+      // Una dirección mal formada no puede tumbar el servidor: se responde 400 y se sigue.
+      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end('Dirección no válida');
+    }
     if (ruta === '/api/setup') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify({ app: 'oportia', estado: 'en construcción', version: VERSION }));
