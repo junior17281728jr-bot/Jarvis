@@ -73,20 +73,29 @@ CREATE INDEX IF NOT EXISTS auditoria_fecha ON auditoria(fecha);
     // Cada proyecto vive en un espacio. Su configuración se guarda por versiones: cambiar algo crea
     // una versión nueva que espera aprobación, y la anterior sigue en uso hasta que se apruebe.
     // «Eliminar» manda el proyecto a la papelera: no se borra y se puede restaurar.
+    // «numero» es el número del proyecto DENTRO de su espacio (1, 2, 3…): es el que ven las pantallas, así
+    // nadie puede contar los proyectos de otras cuentas. «id» es solo interno.
+    // «nombre_propio» = 1 cuando la persona le puso nombre; si es 0, el nombre se recalcula al aprobar.
+    // Los valores de tipo, estado y origen NO llevan CHECK: se revisan en el código (src/proyectos/proyectos.js),
+    // así una fase futura puede agregar un valor nuevo sin rehacer la tabla (eso exigiría DROP y RENAME).
+    // avisos_cuenta: avisos para la persona, por ahora «el administrador reinició tu contraseña». Se guardan
+    // siempre (la lista se ve en Configuración); «visto_en» dice cuándo lo vio al entrar.
     sql: `
 CREATE TABLE IF NOT EXISTS proyectos (
   id INTEGER PRIMARY KEY,
   espacio_id INTEGER NOT NULL REFERENCES espacios(id),
+  numero INTEGER NOT NULL,
   nombre TEXT NOT NULL,
-  tipo TEXT NOT NULL DEFAULT 'comercial' CHECK (tipo IN ('comercial', 'laboral')),
-  estado TEXT NOT NULL DEFAULT 'borrador'
-    CHECK (estado IN ('borrador', 'pendiente', 'en_ejecucion', 'pausado', 'completado', 'con_errores')),
+  nombre_propio INTEGER NOT NULL DEFAULT 0,
+  tipo TEXT NOT NULL DEFAULT 'comercial',
+  estado TEXT NOT NULL DEFAULT 'borrador',
   version_activa INTEGER,
   en_papelera INTEGER NOT NULL DEFAULT 0,
   motivo_error TEXT,
   creado_por INTEGER REFERENCES usuarios(id),
   creado_en TEXT NOT NULL,
-  actualizado_en TEXT NOT NULL
+  actualizado_en TEXT NOT NULL,
+  UNIQUE (espacio_id, numero)
 );
 CREATE INDEX IF NOT EXISTS proyectos_espacio ON proyectos(espacio_id, en_papelera);
 CREATE TABLE IF NOT EXISTS proyecto_versiones (
@@ -96,9 +105,8 @@ CREATE TABLE IF NOT EXISTS proyecto_versiones (
   instrucciones TEXT NOT NULL,
   configuracion TEXT NOT NULL,
   interpretacion TEXT NOT NULL DEFAULT '{}',
-  origen TEXT NOT NULL DEFAULT 'instrucciones' CHECK (origen IN ('instrucciones', 'campos')),
-  estado TEXT NOT NULL DEFAULT 'pendiente'
-    CHECK (estado IN ('pendiente', 'aprobada', 'rechazada', 'reemplazada', 'descartada')),
+  origen TEXT NOT NULL DEFAULT 'instrucciones',
+  estado TEXT NOT NULL DEFAULT 'pendiente',
   motivo TEXT,
   creada_por INTEGER REFERENCES usuarios(id),
   creada_en TEXT NOT NULL,
@@ -115,6 +123,14 @@ CREATE TABLE IF NOT EXISTS proyecto_historial (
   detalle TEXT
 );
 CREATE INDEX IF NOT EXISTS proyecto_historial_proyecto ON proyecto_historial(proyecto_id, id);
+CREATE TABLE IF NOT EXISTS avisos_cuenta (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  tipo TEXT NOT NULL,
+  fecha TEXT NOT NULL,
+  visto_en TEXT
+);
+CREATE INDEX IF NOT EXISTS avisos_cuenta_usuario ON avisos_cuenta(usuario_id, id);
 `,
   },
 ];

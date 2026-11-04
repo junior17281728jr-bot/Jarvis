@@ -126,8 +126,9 @@ test('los ejemplos de la pantalla se entienden completos en español y en inglé
   const ejemplo1 = interpretar(es['proyectos.ejemplo.1']).configuracion;
   assert.deepEqual(ejemplo1.sectores, ['hoteles', 'clinicas', 'fabricas']);
   assert.equal(ejemplo1.paisCompleto, true);
-  assert.equal(nombreSugerido(ejemplo1), 'Clientes para paneles solares');
-  assert.equal(nombreSugerido(interpretar(en['proyectos.ejemplo.1'], { idioma: 'en' }).configuracion, 'en'), 'Customers for solar panels');
+  // El nombre lleva el primer sector (o lugar): dos proyectos del mismo producto no se ven iguales en la lista.
+  assert.equal(nombreSugerido(ejemplo1), 'Clientes para paneles solares · Hoteles');
+  assert.equal(nombreSugerido(interpretar(en['proyectos.ejemplo.1'], { idioma: 'en' }).configuracion, 'en'), 'Customers for solar panels · Hotels');
   assert.match(objetivoSugerido(interpretar(en['proyectos.ejemplo.3']).configuracion, 'en'), /^Get a job as driver/);
 });
 
@@ -443,4 +444,39 @@ test('por el servidor: las dudas llegan a la pantalla, bloquean «Aprobar» y se
     assert.equal(aprobada.codigo, 200);
   });
   db.close();
+});
+
+// ---------- Decisiones del dueño: autonomía, IA y nombre sugerido ----------
+test('autonomía: la más segura por defecto; «solo cuando yo lo pida» va con frecuencia manual; la IA queda apagada', () => {
+  const normal = interpretar('Vendo paneles solares a hoteles en Santiago').configuracion;
+  assert.equal(normal.autonomia, 'aprobar_salidas');
+  assert.deepEqual(normal.ia, { permitida: false, topeMensualUsd: 0 });
+  assert.equal(normal.costoEstimadoUsd, 0);
+  for (const texto of ['Vendo paneles solares a hoteles en Santiago. Busca solo cuando yo lo pida', 'I sell software to hotels in Santiago. Only when I ask.']) {
+    const c = interpretar(texto).configuracion;
+    assert.deepEqual([c.autonomia, c.frecuencia], ['solo_cuando_pida', 'manual'], texto);
+  }
+  // Lo que llega de afuera no puede encender la IA ni poner otro costo: llega en la parte 1d, con su propia aprobación.
+  const c = limpiarConfiguracion({ ...normal, ia: { permitida: true, topeMensualUsd: 50 }, costoEstimadoUsd: 9, autonomia: 'inventada' });
+  assert.deepEqual(c.ia, { permitida: false, topeMensualUsd: 0 });
+  assert.equal(c.costoEstimadoUsd, 0);
+  assert.equal(c.autonomia, 'aprobar_salidas');
+  assert.equal(limpiarConfiguracion({ ...normal, autonomia: 'solo_cuando_pida', frecuencia: 'diaria' }).frecuencia, 'manual');
+  assert.equal(limpiarConfiguracion({ ...normal, autonomia: 'frecuencia_aprobada', frecuencia: 'manual' }).autonomia, 'frecuencia_aprobada');
+  // Una configuración guardada antes de estos campos se lee con los valores seguros.
+  const vieja = { ...normal };
+  delete vieja.autonomia; delete vieja.ia; delete vieja.costoEstimadoUsd;
+  assert.deepEqual(limpiarConfiguracion(vieja), limpiarConfiguracion(normal));
+  assert.deepEqual(CATALOGO.autonomias, ['aprobar_salidas', 'frecuencia_aprobada', 'solo_cuando_pida']);
+});
+
+test('nombre sugerido: el producto y el primer sector o lugar', () => {
+  const nombre = (texto, idioma = 'es') => nombreSugerido(interpretar(texto, { idioma }).configuracion, idioma);
+  assert.equal(nombre('Vendo paneles solares a hoteles en Punta Cana'), 'Clientes para paneles solares · Hoteles');
+  assert.equal(nombre('Busco trabajo de chofer en Santiago'), 'Empleo: chofer · Santiago');
+  assert.match(nombre('Vendo software a negocios en Moca'), /^Clientes para software · Moca/);
+  assert.equal(nombre('I sell solar panels to hotels in Santiago', 'en').startsWith('Customers for'), true);
+  assert.equal(nombreSugerido({ tipo: 'comercial', producto: 'x'.repeat(200), sectores: ['hoteles'] }).length <= LIMITES.nombre, true);
+  assert.equal(nombreSugerido({}), 'Proyecto nuevo');
+  assert.equal(nombreSugerido(null), 'Proyecto nuevo');
 });

@@ -1,5 +1,6 @@
 // Usuarios y espacios de trabajo. Cada usuario tiene su propio espacio (donde vivirán sus proyectos).
 // Aquí nunca se borra a nadie: un usuario se desactiva y se puede volver a activar.
+import { limiteDe } from './planes.js';
 
 const ahora = () => new Date().toISOString();
 
@@ -67,9 +68,12 @@ export function buscarPorId(db, id) {
   return db.prepare('SELECT * FROM usuarios WHERE id = ?').get(Number(id)) || null;
 }
 
+// Para la pantalla «Administrador». Del espacio de cada cuenta solo se muestra su plan y cuántos proyectos
+// permite: nunca nada de sus proyectos.
 export function listarUsuarios(db) {
-  return db.prepare(`SELECT id, nombre, rol, activo, idioma, debe_cambiar_clave, creado_en, ultimo_acceso
-    FROM usuarios ORDER BY id`).all().map(u => ({
+  return db.prepare(`SELECT u.id, u.nombre, u.rol, u.activo, u.idioma, u.debe_cambiar_clave, u.creado_en, u.ultimo_acceso,
+      (SELECT e.plan FROM miembros m JOIN espacios e ON e.id = m.espacio_id WHERE m.usuario_id = u.id AND m.rol = 'dueno' ORDER BY e.id LIMIT 1) AS plan
+    FROM usuarios u ORDER BY u.id`).all().map(u => ({
     id: u.id,
     nombre: u.nombre,
     rol: u.rol,
@@ -78,6 +82,8 @@ export function listarUsuarios(db) {
     debeCambiarClave: u.debe_cambiar_clave === 1,
     creadoEn: u.creado_en,
     ultimoAcceso: u.ultimo_acceso,
+    plan: u.plan ?? null,
+    proyectosPermitidos: u.plan == null ? null : limiteDe(u.plan, u.rol),
   }));
 }
 
@@ -99,4 +105,27 @@ export function registrarAcceso(db, usuarioId) {
 
 export function cuantosAdminsActivos(db) {
   return db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE rol = 'admin' AND activo = 1").get().n;
+}
+
+// ---------- Avisos para la persona ----------
+// Cuando el administrador reinicia la contraseña de alguien, queda un aviso guardado: la persona lo ve al entrar
+// la próxima vez («El administrador reinició tu contraseña el …») y la lista completa está en Configuración.
+// Así nadie puede entrar a una cuenta ajena con una contraseña reiniciada sin que la dueña se entere.
+export function avisarClaveReiniciada(db, usuarioId) {
+  db.prepare("INSERT INTO avisos_cuenta (usuario_id, tipo, fecha) VALUES (?, 'clave_reiniciada', ?)").run(usuarioId, ahora());
+}
+
+export function avisosSinVer(db, usuarioId) {
+  return db.prepare('SELECT id, tipo, fecha FROM avisos_cuenta WHERE usuario_id = ? AND visto_en IS NULL ORDER BY id LIMIT 20').all(usuarioId)
+    .map(a => ({ id: a.id, tipo: a.tipo, fecha: a.fecha }));
+}
+
+// La pantalla ya mostró los avisos hasta «hasta» (incluido): quedan como vistos, pero no se borran.
+export function marcarAvisosVistos(db, usuarioId, hasta) {
+  return db.prepare('UPDATE avisos_cuenta SET visto_en = ? WHERE usuario_id = ? AND visto_en IS NULL AND id <= ?').run(ahora(), usuarioId, hasta).changes;
+}
+
+export function reiniciosDeClave(db, usuarioId) {
+  return db.prepare("SELECT fecha, visto_en FROM avisos_cuenta WHERE usuario_id = ? AND tipo = 'clave_reiniciada' ORDER BY id DESC LIMIT 50").all(usuarioId)
+    .map(a => ({ fecha: a.fecha, vistoEn: a.visto_en }));
 }

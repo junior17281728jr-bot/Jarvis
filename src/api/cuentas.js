@@ -1,6 +1,8 @@
 // Rutas de cuentas: crear el primer administrador, entrar, salir, cambiar la clave y administrar usuarios.
 // Las respuestas de error llevan una CLAVE (por ejemplo 'credenciales'); las pantallas la traducen.
-import { ErrorHttp, leerJson } from '../nucleo/http.js';
+// Los textos que llegan se leen con textoDe: un valor que no es texto se responde con 400, nunca con 500.
+import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
+import { enTransaccion } from '../nucleo/db.js';
 import { Limitador } from '../nucleo/limites.js';
 import { createHash } from 'node:crypto';
 import { vieneDeTailscale } from '../nucleo/red.js';
@@ -9,7 +11,9 @@ import { crearSesion, cerrarSesion, cerrarTodas, textoGalleta } from '../cuentas
 import {
   NOMBRE_VALIDO, auditar, hayAdmin, crearPrimerAdmin, crearUsuario, buscarPorNombre, buscarPorId,
   listarUsuarios, guardarClave, ponerActivo, ponerIdioma, registrarAcceso, cuantosAdminsActivos,
+  avisarClaveReiniciada, avisosSinVer, marcarAvisosVistos, reiniciosDeClave,
 } from '../cuentas/usuarios.js';
+import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 
 const IDIOMAS = new Set(['es', 'en']);
 
@@ -36,7 +40,7 @@ function llaveDeCuenta(nombre, usuario) {
 }
 
 function nombreDe(datos) {
-  const nombre = String(datos.nombre || '').trim();
+  const nombre = textoDe(datos, 'nombre').trim();
   if (!NOMBRE_VALIDO.test(nombre)) throw new ErrorHttp(400, 'nombre_no_valido');
   return nombre;
 }
@@ -84,7 +88,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   rutas.agregar('POST', '/api/entrar', async ({ db, req, cliente, https }) => {
     if (!limites.entrarPorCliente.permitir(cliente)) throw new ErrorHttp(429, 'demasiados_intentos');
     const datos = await leerJson(req);
-    const nombre = String(datos.nombre || '').trim().toLowerCase().slice(0, 40);
+    const nombre = textoDe(datos, 'nombre').trim().toLowerCase().slice(0, 40);
+    const clave = textoDe(datos, 'clave');
     const usuario = nombre ? buscarPorNombre(db, nombre) : null;
     const cuenta = llaveDeCuenta(nombre, usuario);
     const lugar = `${cuenta}|${cliente}`;
@@ -95,7 +100,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     // El intento se aparta ANTES de calcular la contraseña: así muchos pedidos a la vez no se saltan el límite.
     limites.fallosPorCuentaYLugar.permitir(lugar);
     if (desdeInternet) limites.fallosPorCuentaDesdeInternet.permitir(cuenta);
-    const correcta = await verificarClave(String(datos.clave || ''), usuario?.clave_hash);
+    const correcta = await verificarClave(clave, usuario?.clave_hash);
     if (!usuario || !correcta || usuario.activo !== 1) {
       auditar(db, { usuarioId: usuario?.id ?? null, accion: 'entrada_fallida', detalle: nombre });
       throw new ErrorHttp(401, 'credenciales');
@@ -105,7 +110,13 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const sesion = crearSesion(db, usuario.id, req.headers['user-agent']);
     registrarAcceso(db, usuario.id);
     auditar(db, { usuarioId: usuario.id, accion: 'entrada' });
-    return { codigo: 200, datos: { usuario: usuarioPublico(usuario) }, cabeceras: { 'Set-Cookie': textoGalleta(sesion.token, { segura: https }) } };
+    // «avisos»: por ejemplo, que el administrador reinició su contraseña. La pantalla los muestra y luego avisa
+    // que ya se vieron (POST /api/yo/avisos/vistos); hasta entonces se siguen mostrando.
+    return {
+      codigo: 200,
+      datos: { usuario: usuarioPublico(usuario), avisos: avisosSinVer(db, usuario.id) },
+      cabeceras: { 'Set-Cookie': textoGalleta(sesion.token, { segura: https }) },
+    };
   }, { publica: true });
 
   rutas.agregar('POST', '/api/salir', ({ db, token, https }) => {
@@ -113,7 +124,20 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     return { codigo: 200, datos: { ok: true }, cabeceras: { 'Set-Cookie': textoGalleta('', { segura: https, borrar: true }) } };
   }, { permitirConClaveTemporal: true });
 
-  rutas.agregar('GET', '/api/yo', ({ usuario }) => ({ codigo: 200, datos: { usuario: usuarioPublico(usuario) } }), { permitirConClaveTemporal: true });
+  rutas.agregar('GET', '/api/yo', ({ db, usuario }) => ({ codigo: 200, datos: { usuario: usuarioPublico(usuario), avisos: avisosSinVer(db, usuario.id) } }),
+    { permitirConClaveTemporal: true });
+
+  // La pantalla ya mostró los avisos hasta este número: quedan como vistos (no se borran).
+  rutas.agregar('POST', '/api/yo/avisos/vistos', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    if (!Number.isSafeInteger(datos.hasta) || datos.hasta < 1) throw new ErrorHttp(400, 'datos_no_validos');
+    marcarAvisosVistos(db, usuario.id, datos.hasta);
+    return { codigo: 200, datos: { ok: true } };
+  }, { permitirConClaveTemporal: true });
+
+  // Para Configuración: cada vez que el administrador reinició la contraseña de esta cuenta.
+  rutas.agregar('GET', '/api/yo/reinicios', ({ db, usuario }) => ({ codigo: 200, datos: { reinicios: reiniciosDeClave(db, usuario.id) } }),
+    { permitirConClaveTemporal: true });
 
   rutas.agregar('POST', '/api/yo/clave', async ({ db, req, usuario, token, https }) => {
     const datos = await leerJson(req);
@@ -124,7 +148,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       cerrarSesion(db, token);
       return { codigo: 429, datos: { error: 'demasiados_intentos_clave' }, cabeceras: { 'Set-Cookie': textoGalleta('', { segura: https, borrar: true }) } };
     }
-    if (!(await verificarClave(String(datos.actual || ''), fila.clave_hash))) throw new ErrorHttp(400, 'clave_actual_incorrecta');
+    if (!(await verificarClave(textoDe(datos, 'actual'), fila.clave_hash))) throw new ErrorHttp(400, 'clave_actual_incorrecta');
     limites.cambioDeClave.olvidar(llave);
     if (!claveValida(datos.nueva)) throw new ErrorHttp(400, 'clave_corta');
     if (datos.nueva === datos.actual) throw new ErrorHttp(400, 'clave_igual');
@@ -141,7 +165,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     return { codigo: 200, datos: { ok: true } };
   }, { permitirConClaveTemporal: true });
 
-  rutas.agregar('GET', '/api/admin/usuarios', ({ db }) => ({ codigo: 200, datos: { usuarios: listarUsuarios(db) } }), { admin: true });
+  rutas.agregar('GET', '/api/admin/usuarios', ({ db }) => ({ codigo: 200, datos: { usuarios: listarUsuarios(db), planes: planesPublicos() } }), { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
@@ -157,10 +181,29 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
     const temporal = claveTemporal();
-    guardarClave(db, destino.id, await hashClave(temporal), { debeCambiarClave: true });
-    cerrarTodas(db, destino.id);
-    auditar(db, { usuarioId: usuario.id, accion: 'clave_reiniciada', detalle: destino.nombre });
+    const claveHash = await hashClave(temporal);
+    // Todo junto o nada: la clave nueva, sus sesiones cerradas, el aviso para la persona y la auditoría.
+    enTransaccion(db, () => {
+      guardarClave(db, destino.id, claveHash, { debeCambiarClave: true });
+      cerrarTodas(db, destino.id);
+      avisarClaveReiniciada(db, destino.id);
+      auditar(db, { usuarioId: usuario.id, accion: 'clave_reiniciada', detalle: destino.nombre });
+    });
     return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, claveTemporal: temporal } };
+  }, { admin: true });
+
+  // «Proyectos permitidos»: el plan de la cuenta (prueba = 1, pago = 5, empresarial = 20). Nunca por debajo de los
+  // proyectos que ya tiene en uso: en ese caso no cambia nada y se responde un error claro.
+  rutas.agregar('POST', '/api/admin/usuarios/:id/plan', async ({ db, req, parametros, usuario }) => {
+    const datos = await leerJson(req);
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    const r = cambiarPlan(db, {
+      usuario: destino,
+      plan: datos.plan,
+      alCambiar: (antes, ahora) => auditar(db, { usuarioId: usuario.id, accion: 'plan_cambiado', detalle: `${destino.nombre}: ${antes} -> ${ahora}` }),
+    });
+    return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, plan: r.ahora, proyectosPermitidos: r.limite } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios/:id/activo', async ({ db, req, parametros, usuario }) => {

@@ -102,6 +102,14 @@ export const FRECUENCIAS = [
   { clave: 'manual', palabras: ['cuando yo diga', 'cuando yo lo diga', 'cuando yo lo pida', 'cuando lo pida', 'cuando yo quiera', 'manualmente', 'when i ask', 'when i say', 'manually', 'on demand'], adverbios: [] },
 ];
 export const FRECUENCIA_POR_DEFECTO = 'semanal';
+
+// ---------- Nivel de autonomía de cada proyecto (decisión del dueño) ----------
+// aprobar_salidas: todo lo que sale (correos, propuestas enviadas, contactos) espera su aprobación. Es el más seguro.
+// frecuencia_aprobada: trabaja solo con la frecuencia aprobada y le avisa.
+// solo_cuando_pida: solo trabaja cuando él lo pide (va siempre con la frecuencia «manual»).
+// En TODOS los niveles, contactar a alguien necesita su «sí».
+export const AUTONOMIAS = ['aprobar_salidas', 'frecuencia_aprobada', 'solo_cuando_pida'];
+export const AUTONOMIA_POR_DEFECTO = 'aprobar_salidas';
 // Frecuencias que la persona puede pedir pero que todavía no existen: se preguntan.
 export const FRECUENCIAS_NO_DISPONIBLES = ['cada 15 dias', 'cada quince dias', 'cada dos semanas', 'cada 2 semanas', 'quincenalmente', 'cada quincena',
   'cada dos dias', 'cada 2 dias', 'cada tres dias', 'cada 3 dias', 'interdiario', 'cada hora', 'cada dos meses', 'cada 2 meses', 'cada tres meses',

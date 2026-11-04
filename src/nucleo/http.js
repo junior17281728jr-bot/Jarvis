@@ -54,6 +54,15 @@ export function leerJson(req, limite = 64 * 1024) {
   });
 }
 
+// Un dato de texto de un pedido: si no vino es '', si es texto se devuelve tal cual, y si es otra cosa
+// (un objeto, una lista, un número) el pedido no es válido: 400, nunca un error del servidor.
+export function textoDe(datos, campo) {
+  const valor = datos && typeof datos === 'object' && Object.hasOwn(datos, campo) ? datos[campo] : undefined;
+  if (valor === undefined || valor === null) return '';
+  if (typeof valor !== 'string') throw new ErrorHttp(400, 'datos_no_validos');
+  return valor;
+}
+
 // Rutas con partes variables, por ejemplo '/api/admin/usuarios/:id/clave'.
 export function crearRuteador() {
   const rutas = [];

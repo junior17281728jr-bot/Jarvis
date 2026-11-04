@@ -769,8 +769,10 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir }) {
 
 function dibujarProyecto(d, aviso = null) {
   const { proyecto: p, activa, pendiente, versiones, historial, puedeEscribir = true } = d;
+  // Lo que solo el dueño puede hacer (papelera, completar, reabrir): a quien no puede, no se le muestra el botón.
+  const permisos = d.permisos || { escribir: puedeEscribir, papelera: puedeEscribir, completar: puedeEscribir };
   const mensaje = caja();
-  const base = pendiente || activa || versiones[0];
+  const base = pendiente || activa || versiones.find(v => v.completa !== false) || versiones[0];
   const escribe = puedeEscribir && !p.enPapelera;
 
   const avisoEstado = p.enPapelera ? t('proyecto.en_papelera')
@@ -781,7 +783,7 @@ function dibujarProyecto(d, aviso = null) {
   const acciones = [];
   if (escribe) {
     const disponibles = { en_ejecucion: ['pausar', 'completar'], pausado: ['reanudar', 'completar'], completado: ['reabrir'], con_errores: ['reintentar', 'pausar'] }[p.estado] || [];
-    for (const accion of disponibles) {
+    for (const accion of disponibles.filter(a => permisos.completar || (a !== 'completar' && a !== 'reabrir'))) {
       acciones.push(botonAccion(t(`accion.${accion}`), 'secundario', mensaje, () =>
         pedirYMostrar('POST', `/api/proyectos/${p.id}/estado`, { accion }, x => t('proyecto.listo.estado', { estado: t(`estado.${x.proyecto.estado}`) }))));
     }
@@ -832,14 +834,28 @@ function dibujarProyecto(d, aviso = null) {
       mensajeModificar);
   }
 
+  // Las versiones viejas llegan sin su contenido (así el proyecto abre rápido); se abren una por una.
+  const contenidoVersion = v => [
+    el('p', { class: 'instrucciones', texto: v.instrucciones }),
+    resumen(v.configuracion),
+  ];
+  const contenidoBajoPedido = v => {
+    const lugar = el('div', {});
+    const mensajeVersion = caja();
+    lugar.append(botonAccion(t('version.ver'), 'secundario', mensajeVersion, async () => {
+      const r = await api('GET', `/api/proyectos/${p.id}/versiones/${v.numero}`);
+      if (!r.ok) throw new Error(textoError(r.datos.error));
+      lugar.replaceChildren(...contenidoVersion(r.datos.version));
+    }), mensajeVersion);
+    return lugar;
+  };
   const listaVersiones = el('section', { class: 'tarjeta' },
     el('h2', { texto: t('proyecto.versiones') }),
     versiones.map(v => el('details', { class: 'version' },
       el('summary', { texto: t('version.linea', { numero: v.numero, estado: t(`version.estado.${v.estado}`), fecha: fecha(v.creadaEn) }) }),
       el('p', { class: 'suave', texto: t(`version.origen.${v.origen}`) }),
-      el('p', { class: 'instrucciones', texto: v.instrucciones }),
       v.motivo ? el('p', { class: 'suave', texto: t('version.motivo', { motivo: v.motivo }) }) : null,
-      resumen(v.configuracion))));
+      v.completa === false ? contenidoBajoPedido(v) : contenidoVersion(v))));
 
   const listaHistorial = el('section', { class: 'tarjeta' },
     el('details', {},
@@ -849,7 +865,7 @@ function dibujarProyecto(d, aviso = null) {
         el('span', { class: 'suave', texto: ` · ${fecha(h.fecha)}` }))))));
 
   const mensajePapelera = caja();
-  const papelera = puedeEscribir ? el('section', { class: 'tarjeta' },
+  const papelera = puedeEscribir && permisos.papelera ? el('section', { class: 'tarjeta' },
     p.enPapelera
       ? botonAccion(t('proyectos.restaurar'), '', mensajePapelera, () =>
         pedirYMostrar('POST', `/api/proyectos/${p.id}/papelera`, { enPapelera: false }, t('proyecto.listo.restaurado')))

@@ -280,3 +280,50 @@ test('la galleta lleva Secure cuando se entra por el enlace https', async () => 
     assert.match(r.setCookie, /; Secure/);
   });
 });
+
+test('cuando el administrador reinicia una contraseña, la persona lo ve al entrar y la lista queda en Configuración', async () => {
+  await conAdmin(async (base, galletaAdmin, db) => {
+    const creado = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'bob' }, galleta: galletaAdmin });
+    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: creado.datos.claveTemporal } });
+    assert.deepEqual(r.datos.avisos, [], 'crear la cuenta no es un reinicio');
+    await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: creado.datos.claveTemporal, nueva: 'la clave de bob 2026' }, galleta: r.galleta });
+
+    // El administrador reinicia la contraseña de Bob dos veces.
+    for (let i = 0; i < 2; i++) assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).codigo, 200);
+    const temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
+    assert.equal(r.codigo, 200);
+    assert.equal(r.datos.avisos.length, 3);
+    assert.ok(r.datos.avisos.every(a => a.tipo === 'clave_reiniciada' && !Number.isNaN(Date.parse(a.fecha))));
+    const galleta = r.galleta;
+    // Mientras la pantalla no diga que ya lo mostró, el aviso sigue (también en /api/yo, aun con la clave temporal).
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos.length, 3);
+    const hasta = Math.max(...r.datos.avisos.map(a => a.id));
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta }, galleta })).codigo, 200);
+    assert.deepEqual((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos, [], 'se ve una vez');
+    // La lista en Configuración se queda para siempre (nada se borra).
+    r = await pedir(base, 'GET', '/api/yo/reinicios', { galleta });
+    assert.equal(r.datos.reinicios.length, 3);
+    assert.ok(r.datos.reinicios.every(x => x.vistoEn));
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM avisos_cuenta').get().n, 3);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE accion = 'clave_reiniciada'").get().n, 3);
+    // Los avisos de Bob son solo de Bob.
+    assert.deepEqual((await pedir(base, 'GET', '/api/yo/reinicios', { galleta: galletaAdmin })).datos.reinicios, []);
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: 'todo' }, galleta })).datos.error, 'datos_no_validos');
+    assert.equal((await pedir(base, 'GET', '/api/yo/reinicios')).codigo, 401);
+  });
+});
+
+test('datos de cuentas del tipo equivocado dan 400, nunca un error del servidor', async () => {
+  await conAdmin(async (base, galletaAdmin) => {
+    const raro = { toString: 0 };
+    for (const [ruta, datos, galleta] of [
+      ['/api/entrar', { nombre: raro, clave: 'x' }], ['/api/entrar', { nombre: 'junior', clave: [CLAVE] }],
+      ['/api/admin/usuarios', { nombre: raro }, galletaAdmin], ['/api/yo/clave', { actual: raro, nueva: 'otra clave larga' }, galletaAdmin],
+    ]) {
+      const r = await pedir(base, 'POST', ruta, { datos, galleta });
+      assert.equal(r.codigo, 400, ruta);
+      assert.equal(r.datos.error, 'datos_no_validos', ruta);
+    }
+  });
+});

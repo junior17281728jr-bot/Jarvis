@@ -5,7 +5,7 @@
 // y mientras haya dudas no se puede aprobar.
 import {
   SECTORES, PRODUCTOS, ZONAS, TAMANOS, FRECUENCIAS, FRECUENCIA_POR_DEFECTO, CAPACIDADES, CLAVES_CAPACIDADES, COMBINACIONES,
-  COMBINACION_POR_DEFECTO, FUENTES,
+  COMBINACION_POR_DEFECTO, FUENTES, AUTONOMIAS, AUTONOMIA_POR_DEFECTO,
 } from './diccionarios.js';
 import { comparable } from './texto.js';
 import { leer, negociosDeTexto, lugaresDeTexto, exclusionDeTexto, esExtranjero, clavesDeProducto, sugerenciasDeLugar } from './leer.js';
@@ -15,7 +15,11 @@ export const LIMITES = { instrucciones: 4000, nombre: 80, objetivo: 300, product
 export const TIPOS = ['comercial', 'laboral'];
 export const CLAVES_FRECUENCIAS = FRECUENCIAS.map(f => f.clave);
 export const CLAVES_TAMANOS = TAMANOS.map(t => t.clave);
-export const ESQUEMA = 2;
+export const ESQUEMA = 3;
+export { AUTONOMIAS, AUTONOMIA_POR_DEFECTO };
+// La IA llega en la parte 1d. Hasta entonces cada versión guarda que la IA no está permitida, con tope US$0,
+// y que el costo estimado es US$0. Encenderla será un cambio que crea una versión nueva y espera aprobación.
+export const IA_APAGADA = Object.freeze({ permitida: false, topeMensualUsd: 0 });
 
 // Lo que el motor decidió solo y avisa (se muestra; no impide aprobar).
 export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_laboral', 'sectores_todos', 'gran_santo_domingo', 'contactar_a_mano',
@@ -52,10 +56,32 @@ export function capacidadesDesdeLista(lista) {
   return Object.fromEntries(CLAVES_CAPACIDADES.map(c => [c, encendidas.has(c)]));
 }
 
+// El nombre que se le pone solo a un proyecto: lo que vende (o el empleo) y el primer sector o lugar,
+// para que dos proyectos del mismo producto no se vean iguales en la lista.
+// «Clientes para paneles solares · Hoteles», «Empleo: chofer · Santiago».
 export function nombreSugerido(config, idioma = 'es') {
-  const producto = recorte(config.producto, 60);
-  if (config.tipo === 'laboral') return producto ? textoDe(idioma, `Empleo: ${producto}`, `Job: ${producto}`) : textoDe(idioma, 'Búsqueda de empleo', 'Job search');
-  return producto ? textoDe(idioma, `Clientes para ${producto}`, `Customers for ${producto}`) : textoDe(idioma, 'Proyecto nuevo', 'New project');
+  const c = config && typeof config === 'object' ? config : {};
+  const producto = recorte(c.producto, 50);
+  const base = c.tipo === 'laboral'
+    ? (producto ? textoDe(idioma, `Empleo: ${producto}`, `Job: ${producto}`) : textoDe(idioma, 'Búsqueda de empleo', 'Job search'))
+    : (producto ? textoDe(idioma, `Clientes para ${producto}`, `Customers for ${producto}`) : textoDe(idioma, 'Proyecto nuevo', 'New project'));
+  const detalle = recorte(detalleDelNombre(c, idioma), 30);
+  return recorte(detalle ? `${base} · ${detalle}` : base, LIMITES.nombre);
+}
+
+function detalleDelNombre(c, idioma) {
+  const lista = valor => (Array.isArray(valor) ? valor : []);
+  if (c.tipo !== 'laboral') {
+    const sector = lista(c.sectores).find(s => s !== 'todas' && SECTOR.has(s));
+    if (sector) return textoDe(idioma, SECTOR.get(sector).es, SECTOR.get(sector).en);
+    const libre = lista(c.sectoresLibres).map(comoTexto).find(Boolean);
+    if (libre) return libre;
+  }
+  const zona = lista(c.zonas).find(z => ZONA.has(z));
+  if (zona) return ZONA.get(zona).nombre;
+  const lugar = lista(c.zonasLibres).map(comoTexto).find(Boolean);
+  if (lugar) return lugar;
+  return c.paisCompleto === true ? textoDe(idioma, 'Todo el país', 'Whole country') : '';
 }
 
 export function objetivoSugerido(config, idioma = 'es') {
@@ -181,6 +207,9 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
     moneda: salario.moneda || 'DOP',
     experiencia: tipo === 'laboral' ? x.experiencia : null,
     frecuencia,
+    // «Solo cuando yo lo pida» (frecuencia manual) también dice cuánta libertad tiene: solo trabaja cuando él lo pide.
+    // Si no lo dijo, queda el nivel más seguro: todo lo que sale espera su aprobación.
+    autonomia: frecuencia === 'manual' ? 'solo_cuando_pida' : AUTONOMIA_POR_DEFECTO,
     capacidades,
     noEntendido,
   });
@@ -227,6 +256,7 @@ function dudasValidas(valor) {
 // Deja la configuración con la forma exacta que guarda la base: nada de más, nada fuera de límites.
 export function limpiarConfiguracion(c = {}) {
   const tipo = TIPOS.includes(c.tipo) ? c.tipo : 'comercial';
+  const autonomia = AUTONOMIAS.includes(c.autonomia) ? c.autonomia : AUTONOMIA_POR_DEFECTO;
   const capacidades = Object.fromEntries(CLAVES_CAPACIDADES.map(k => [k, c.capacidades?.[k] === true]));
   if (capacidades.contactar) capacidades.correos = true;
   return {
@@ -249,9 +279,13 @@ export function limpiarConfiguracion(c = {}) {
     salarioMaximo: tipo === 'laboral' ? salarioValido(c.salarioMaximo) : null,
     moneda: c.moneda === 'USD' ? 'USD' : 'DOP',
     experiencia: tipo === 'laboral' && c.experiencia === 'no_requerida' ? 'no_requerida' : null,
-    frecuencia: CLAVES_FRECUENCIAS.includes(c.frecuencia) ? c.frecuencia : FRECUENCIA_POR_DEFECTO,
+    // «Solo cuando yo lo pida» siempre va con la frecuencia manual.
+    frecuencia: autonomia === 'solo_cuando_pida' ? 'manual' : CLAVES_FRECUENCIAS.includes(c.frecuencia) ? c.frecuencia : FRECUENCIA_POR_DEFECTO,
+    autonomia,
     capacidades,
     fuentes: FUENTES[tipo],
+    ia: { ...IA_APAGADA },
+    costoEstimadoUsd: 0,
     noEntendido: dudasValidas(c.noEntendido),
   };
 }
@@ -360,6 +394,13 @@ export function configuracionDesdeCampos(campos = {}, anterior = {}) {
   const mismoProducto = comparable(producto) === comparable(comoTexto(previa.producto)) && previa.tipo === tipo && Array.isArray(previa.productos);
   const productos = tipo === 'comercial' ? (mismoProducto ? previa.productos : productosDe(producto)) : [];
   const capacidades = campos.capacidades && typeof campos.capacidades === 'object' ? campos.capacidades : previa.capacidades;
+  // Autonomía: la que eligió en el formulario, o la que tenía. Si tenía «solo cuando yo lo pida» y ahora eligió
+  // otra frecuencia sin tocar la autonomía, vuelve al nivel más seguro (todo lo que sale espera su aprobación).
+  const eligioAutonomia = AUTONOMIAS.includes(campos.autonomia);
+  let autonomia = eligioAutonomia ? campos.autonomia : previa.autonomia;
+  if (!eligioAutonomia && autonomia === 'solo_cuando_pida' && CLAVES_FRECUENCIAS.includes(campos.frecuencia) && campos.frecuencia !== 'manual') {
+    autonomia = AUTONOMIA_POR_DEFECTO;
+  }
 
   // Dudas: se quitan las que la persona marcó; un lugar nuevo que no se conoce se vuelve a preguntar.
   const resueltas = new Set((Array.isArray(campos.resueltas) ? campos.resueltas : []).map(Number));
@@ -391,6 +432,7 @@ export function configuracionDesdeCampos(campos = {}, anterior = {}) {
     moneda: campos.moneda ?? previa.moneda,
     experiencia: campos.experienciaNoRequerida === true ? 'no_requerida' : null,
     frecuencia: campos.frecuencia,
+    autonomia,
     capacidades,
     noEntendido,
   });
@@ -406,6 +448,8 @@ export function catalogo() {
     frecuencias: CLAVES_FRECUENCIAS,
     capacidades: CAPACIDADES.map(c => ({ clave: c.clave, desde: c.desde })),
     combinaciones: COMBINACIONES,
+    autonomias: AUTONOMIAS,
+    autonomiaPorDefecto: AUTONOMIA_POR_DEFECTO,
     tipos: TIPOS,
     dudas: CLAVES_DUDAS,
     supuestos: CLAVES_SUPUESTOS,
