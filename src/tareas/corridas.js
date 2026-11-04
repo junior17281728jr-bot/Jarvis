@@ -109,6 +109,14 @@ export function salidasAnormales(db, { codigo, desde }) {
     .get(String(codigo ?? ''), typeof desde === 'number' ? iso(desde) : String(desde), ...ANORMALES).n;
 }
 
+// Cuántas veces terminó mal el trabajador desde una fecha, con cualquier código (para la pantalla y el aviso
+// 'trabajador_reinicios').
+export function reiniciosDesde(db, desde) {
+  const marcas = ANORMALES.map(() => '?').join(', ');
+  return db.prepare(`SELECT COUNT(*) AS n FROM trabajador_corridas WHERE termino_en >= ? AND como_termino IN (${marcas})`)
+    .get(typeof desde === 'number' ? iso(desde) : String(desde), ...ANORMALES).n;
+}
+
 export function ultimasCorridas(db, n = 5) {
   const cuantas = Math.max(1, Math.min(50, Math.trunc(Number(n)) || 5));
   return db.prepare('SELECT * FROM trabajador_corridas ORDER BY id DESC LIMIT ?').all(cuantas).map(c => ({

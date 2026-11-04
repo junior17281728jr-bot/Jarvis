@@ -1,9 +1,10 @@
 // OPORTIA: servidor web. Une la entrada protegida, las rutas de la API y las pantallas.
 // Este programa NUNCA borra archivos de datos.
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
-import { dirname, join, extname } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, extname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido } from './nucleo/red.js';
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
@@ -14,6 +15,31 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
 
 export const VERSION = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')).version;
+
+// La «huella» del código: los primeros 12 caracteres de un sha256 de todos los src/**/*.js y package.json (con
+// sus rutas, en orden). Cambia con CUALQUIER cambio de código, aunque nadie suba la versión. El modo seguro la
+// usa para saber si el código es el mismo que falló (solo cuenta las caídas del mismo código) y para quitarse
+// solo una vez cuando llega código nuevo.
+function calcularHuella() {
+  const archivos = [];
+  (function recorrer(carpeta) {
+    for (const nombre of readdirSync(carpeta)) {
+      const ruta = join(carpeta, nombre);
+      if (statSync(ruta).isDirectory()) recorrer(ruta);
+      else if (nombre.endsWith('.js')) archivos.push(ruta);
+    }
+  })(join(RAIZ, 'src'));
+  archivos.push(join(RAIZ, 'package.json'));
+  const huella = createHash('sha256');
+  for (const ruta of archivos.map(r => relative(RAIZ, r).split(sep).join('/')).sort()) {
+    huella.update(`${ruta}\0`);
+    huella.update(readFileSync(join(RAIZ, ruta)));
+    huella.update('\0');
+  }
+  return huella.digest('hex').slice(0, 12);
+}
+
+export const HUELLA = calcularHuella();
 
 // Protección contra pedidos falsos desde otras páginas: toda acción necesita la cabecera X-Oportia
 // (que solo pone la propia app) y, si el navegador dice de dónde viene, tiene que ser de OPORTIA.
@@ -37,9 +63,10 @@ function texto(res, codigo, mensaje) {
 }
 
 // opciones.db: la base abierta (null si no se pudo abrir). opciones.limites: límites de cuentas (para pruebas).
-export function crearServidor({ db = null, limites } = {}) {
+// opciones.supervisor: el que cuida al trabajador (src/tareas/supervisor.js); null en las pruebas que no lo usan.
+export function crearServidor({ db = null, limites, supervisor = null } = {}) {
   const rutas = crearRuteador();
-  registrarRutasCuentas(rutas, { version: VERSION, limites });
+  registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
   registrarRutasProyectos(rutas);
   const sw = readFileSync(join(PUB, 'sw.js'));
 

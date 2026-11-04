@@ -299,6 +299,8 @@
   "error.nombre_ocupado": "Ese nombre de usuario ya existe.",
   "error.no_existe": "Eso no existe.",
   "error.ya_hay_otra_en_marcha": "Ya hay otra tarea igual en la fila o trabajando. Espera a que termine.",
+  "error.arrancando": "OPORTIA está arrancando. Espera unos segundos y vuelve a intentarlo.",
+  "app.arrancando": "OPORTIA está arrancando…",
   "error.no_puedes_desactivarte": "No puedes desactivar tu propia cuenta.",
   "error.ultimo_admin": "No puedes desactivar al único administrador.",
   "error.origen_no_valido": "Pedido rechazado por seguridad. Recarga la página.",

@@ -1,6 +1,6 @@
 // Pruebas de la fila de tareas 24/7 (fase 1, parte c). Todo corre en este mismo proceso, con un reloj fijo y
 // tipos de prueba inyectados: sin procesos aparte, sin esperas de verdad, sin internet.
-import { configDePrueba, carpetaTemporal } from './ayuda.js';
+import { configDePrueba, carpetaTemporal, conServidor, esperarHasta, huellas } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -25,6 +25,10 @@ import {
 } from '../src/tareas/modo-seguro.js';
 import { abrirAviso, resolverAviso, marcarVisto, avisosAbiertos, avisosRecientes, sincronizarAvisos } from '../src/avisos/avisos.js';
 import { medirSalud, evaluarSalud, semaforo, guardarMuestra, historialSalud } from '../src/nucleo/salud.js';
+import { crearEjecutor } from '../src/tareas/ejecutor.js';
+import { MANEJADORES } from '../src/tareas/manejadores.js';
+import { crearServidor } from '../src/app.js';
+import { MANEJADORES_PRUEBA, REGISTRO_PRUEBA, CONCURRENCIA, reiniciarConcurrencia } from './tareas-prueba.js';
 
 const T0 = Date.parse('2026-11-04T10:05:00Z');
 const MIN = 60_000;
@@ -83,18 +87,6 @@ function tomar(db, { cupo = 'normal', tipos = TIPOS_PRUEBA, corrida = 'corrida-1
 
 function guardar(db, tarea, salida, { corrida = 'corrida-1', ahora = T0, duracionMs = 10, alFallar = marcarConErrores } = {}) {
   return guardarPaso(db, { tarea, corrida, salida, duracionMs, ahora, azar: MITAD, alFallar, registro: REGISTRO });
-}
-
-function huellas(carpeta) {
-  const lista = {};
-  (function recorrer(dir) {
-    for (const nombre of readdirSync(dir)) {
-      const ruta = join(dir, nombre);
-      if (statSync(ruta).isDirectory()) recorrer(ruta);
-      else lista[relative(carpeta, ruta)] = createHash('sha256').update(readFileSync(ruta)).digest('hex');
-    }
-  })(carpeta);
-  return lista;
 }
 
 // ---------- 1. Migración 4 ----------
@@ -1007,5 +999,200 @@ test('las listas de valores que se revisan en el código cuadran con lo que guar
   for (const c of db.prepare('SELECT DISTINCT cupo FROM tareas').all()) assert.ok(Object.hasOwn(CUPOS, c.cupo));
   for (const c of db.prepare('SELECT DISTINCT como_termino FROM trabajador_corridas WHERE como_termino IS NOT NULL').all()) assert.ok(COMO_TERMINA.includes(c.como_termino));
   assert.deepEqual([...ESTADOS_TAREA].sort(), ['cancelada', 'en_curso', 'fallida', 'hecha', 'lista', 'revisar']);
+  db.close();
+});
+
+// ---------- 20. El ejecutor en este mismo proceso (tipos de test/tareas-prueba.js, tiempos cortos) ----------
+const MANEJADORES_CON_PRUEBA = { ...MANEJADORES, ...MANEJADORES_PRUEBA };
+
+function prepararEjecutor({ memoriaDisponibleMb = () => 1000, tiempos = {}, pedidos = [] } = {}) {
+  const { db, config } = nuevaBase();
+  const corrida = nuevaCorrida(db, { version: 'prueba', codigo: 'prueba' });
+  const escritor = crearEscritor(db, { registro: SILENCIO });
+  const ejecutor = crearEjecutor({
+    db, config, corrida, escritor, registro: REGISTRO_PRUEBA, manejadores: MANEJADORES_CON_PRUEBA,
+    tiempos: { rssMaxMb: 1e9, graciaAbortoMs: 100, ...tiempos }, programas: [], memoriaDisponibleMb, discoLibreMb: () => 100_000,
+    pedirSalida: motivo => pedidos.push(motivo), log: SILENCIO,
+  });
+  const ponerAhora = (tipo, datos = {}) => encolar(db, { tipo, datos }, { registro: REGISTRO_PRUEBA }).id;
+  const hasta = (condicion, que) => esperarHasta(async () => { await ejecutor.ciclo(); return condicion(); }, { que, cada: 20 });
+  return { db, config, corrida, escritor, ejecutor, pedidos, ponerAhora, hasta };
+}
+
+test('ejecutor: una tarea de 2 pasos termina, y nunca corren más de 1 normal y 1 grande a la vez', async () => {
+  const e = prepararEjecutor();
+  const pasos = e.ponerAhora('prueba.pasos', { esperaMs: 0 });
+  await e.hasta(() => fila(e.db, pasos).estado === 'hecha', 'prueba.pasos hecha');
+  assert.equal(fila(e.db, pasos).pasos, 2);
+  assert.deepEqual(JSON.parse(fila(e.db, pasos).resultado), { pasos: 2 });
+  assert.equal(e.db.prepare('SELECT pasos_hechos FROM trabajador_corridas WHERE corrida = ?').get(e.corrida).pasos_hechos, 2);
+
+  reiniciarConcurrencia();
+  const ids = [];
+  for (let i = 0; i < 3; i += 1) ids.push(e.ponerAhora('prueba.lenta', { ms: 60 }), e.ponerAhora('prueba.grande', { ms: 60 }));
+  await e.hasta(() => ids.every(id => fila(e.db, id).estado === 'hecha'), 'las 6 tareas hechas');
+  assert.equal(CONCURRENCIA.maximo.normal, 1);
+  assert.equal(CONCURRENCIA.maximo.grande, 1);
+  assert.equal(CONCURRENCIA.maximo.juntos, 2, 'una normal y una grande sí corren a la vez');
+  await e.ejecutor.parar();
+  e.db.close();
+});
+
+test('ejecutor: con poca memoria solo corre lo que vigila (freno «poca_memoria»)', async () => {
+  const e = prepararEjecutor({ memoriaDisponibleMb: () => 20 });
+  const eco = e.ponerAhora('prueba.eco');
+  const vigilar = e.ponerAhora('sistema.vigilar');
+  await e.hasta(() => fila(e.db, vigilar).estado === 'hecha', 'sistema.vigilar hecha aunque falte memoria');
+  await e.ejecutor.ciclo();
+  assert.equal(fila(e.db, eco).estado, 'lista', 'lo demás espera a que se libere memoria');
+  assert.equal(e.ejecutor.estado().freno, 'poca_memoria');
+  await e.ejecutor.parar();
+  e.db.close();
+});
+
+test('ejecutor: parar a mitad de un paso devuelve la tarea a la fila sin contar fallo', async () => {
+  const e = prepararEjecutor();
+  const lenta = e.ponerAhora('prueba.lenta', { ms: 30_000 });
+  await e.hasta(() => fila(e.db, lenta).estado === 'en_curso', 'prueba.lenta en curso');
+  assert.equal(e.ejecutor.estado().enCurso.length, 1);
+  const { devueltas } = await e.ejecutor.parar({ esperaMs: 30 });
+  assert.equal(devueltas.length, 1);
+  const f = fila(e.db, lenta);
+  assert.equal(f.estado, 'lista');
+  assert.equal(f.fallos_seguidos, 0);
+  assert.equal(f.dueno, null);
+  assert.deepEqual(eventos(e.db, lenta), ['interrumpida']);
+  e.db.close();
+});
+
+test('ejecutor: un paso que no respeta la señal de parar da «tiempo_agotado» y es un zombi; con 2 zombis pide salir', async () => {
+  const e = prepararEjecutor();
+  const terca = e.ponerAhora('prueba.terca');
+  await e.hasta(() => fila(e.db, terca).ultimo_error === 'tiempo_agotado', 'el primer corte por tiempo');
+  assert.equal(fila(e.db, terca).fallos_seguidos >= 1, true);
+  await e.hasta(() => e.pedidos.includes('zombis'), 'dos zombis piden salir');
+  assert.equal(e.ejecutor.estado().zombis, 2);
+  assert.ok(fila(e.db, terca).fallos_seguidos >= 2);
+  await e.ejecutor.parar({ esperaMs: 0 });
+  e.db.close();
+});
+
+test('ejecutor: un tipo que falla 6 veces seguidas en 2 tareas se frena solo, con su aviso', async () => {
+  const e = prepararEjecutor();
+  const a = e.ponerAhora('prueba.fallar');
+  const b = e.ponerAhora('prueba.fallar');
+  await e.hasta(() => fila(e.db, a).estado === 'fallida' && fila(e.db, b).estado === 'fallida', 'las dos fallidas (3 intentos cada una)');
+  await esperarHasta(() => leerFrenos(e.db).some(f => f.tipo === 'prueba.fallar'), { que: 'el freno del tipo' });
+  assert.ok(e.db.prepare("SELECT 1 FROM avisos WHERE clave = 'freno:prueba.fallar' AND resuelto_en IS NULL").get());
+  const otra = e.ponerAhora('prueba.fallar');
+  await e.ejecutor.ciclo();
+  assert.equal(fila(e.db, otra).estado, 'lista', 'mientras está frenado, el tipo no se toma');
+  await e.ejecutor.parar();
+  e.db.close();
+});
+
+// ---------- Los trabajos del sistema (src/tareas/manejadores.js) ----------
+function ctxDePrueba(db, config, { tarea = {}, dbParaLeer = db } = {}) {
+  const escrituras = [];
+  return {
+    escrituras,
+    ctx: {
+      tarea: { id: 1, tipo: 'sistema.base', datos: {}, punto: null, pasos: 0, intento: 1, ...tarea },
+      senal: new AbortController().signal,
+      db: dbParaLeer,
+      config,
+      version: '0.0.0-prueba',
+      codigo: 'codigo-prueba',
+      escribir: (trabajo, { transaccion = true } = {}) => {
+        escrituras.push(transaccion);
+        // La misma conexión que usa el trabajo (ctx.db): así las transacciones de adentro se anidan bien.
+        return Promise.resolve(transaccion ? enTransaccion(dbParaLeer, trabajo) : trabajo());
+      },
+      quedaMs: () => 60_000,
+      ceder: () => Promise.resolve(),
+    },
+  };
+}
+
+test('sistema.base: con la base sana revisa y después ordena (2 pasos); con un problema activa el modo seguro «base_danada»', async () => {
+  const { db, config } = nuevaBase();
+  abrirAviso(db, { clave: 'base_danada', nivel: 'grave', ahora: T0 });
+  const sano = ctxDePrueba(db, config);
+  const paso1 = await MANEJADORES['sistema.base'].paso(sano.ctx);
+  assert.deepEqual(paso1, { punto: { paso: 'mantener' } });
+  assert.equal(avisosAbiertos(db).some(a => a.clave === 'base_danada'), false, 'una revisión buena resuelve el aviso anterior');
+  const paso2 = await MANEJADORES['sistema.base'].paso({ ...sano.ctx, tarea: { ...sano.ctx.tarea, punto: paso1.punto } });
+  assert.equal(paso2.listo, true);
+  assert.equal(paso2.resultado.quickCheck, 'ok');
+  assert.ok(paso2.resultado.paginas > 0);
+  assert.ok(sano.escrituras.includes(false), 'optimize y el checkpoint van sin transacción');
+  assert.equal(leerModoSeguro(db).activo, false);
+
+  // Una base «dañada»: quick_check devuelve problemas (se simula la respuesta; nada se daña de verdad).
+  const danada = new Proxy(db, {
+    get(objetivo, nombre) {
+      if (nombre === 'prepare') {
+        return sql => (/quick_check/.test(sql) ? { all: () => [{ quick_check: '*** in database main *** Page 7: btreeInitPage() returns error code 11' }] } : objetivo.prepare(sql));
+      }
+      const valor = objetivo[nombre];
+      return typeof valor === 'function' ? valor.bind(objetivo) : valor;
+    },
+  });
+  const mal = ctxDePrueba(db, config, { dbParaLeer: danada });
+  const r = await MANEJADORES['sistema.base'].paso(mal.ctx);
+  assert.equal(r.listo, true);
+  assert.equal(r.resultado.quickCheck, 'problemas');
+  const m = leerModoSeguro(db);
+  assert.equal(m.activo, true);
+  assert.equal(m.motivo, 'base_danada');
+  assert.equal(m.codigo, 'codigo-prueba');
+  assert.equal(avisosAbiertos(db).find(a => a.clave === 'base_danada')?.nivel, 'grave');
+  db.close();
+});
+
+test('sistema.vigilar: abre y resuelve los avisos de la fila según cómo está', async () => {
+  const { db, config } = nuevaBase();
+  const vigilar = async () => (await MANEJADORES['sistema.vigilar'].paso(ctxDePrueba(db, config, { tarea: { tipo: 'sistema.vigilar' } }).ctx));
+  let r = await vigilar();
+  assert.equal(r.listo, true);
+  assert.equal(typeof r.resultado.walMb, 'number');
+  assert.equal(avisosAbiertos(db).length, 0);
+  const id = encolar(db, { tipo: 'prueba.correo' }, { registro: REGISTRO }).id;
+  db.prepare("UPDATE tareas SET estado = 'revisar' WHERE id = ?").run(id);
+  r = await vigilar();
+  assert.equal(r.resultado.fila.revisar, 1);
+  assert.deepEqual(avisosAbiertos(db).map(a => a.clave), ['tareas_revisar']);
+  db.prepare("UPDATE tareas SET estado = 'cancelada' WHERE id = ?").run(id);
+  await vigilar();
+  assert.equal(avisosAbiertos(db).length, 0, 'cuando se arregla, el aviso se resuelve');
+  db.close();
+});
+
+// ---------- 23. La puerta de arranque de /api/setup ----------
+test('/api/setup: «arrancando» y «fallido» responden 503 arrancando al instante; «listo», «no_aplica» y sin supervisor, 200', async () => {
+  const { db } = nuevaBase();
+  let estado = 'arrancando';
+  const supervisor = { estadoArranque: () => estado };
+  await conServidor(crearServidor({ db, supervisor }), async base => {
+    for (const valor of ['arrancando', 'fallido']) {
+      estado = valor;
+      const r = await fetch(`${base}/api/setup`);
+      assert.equal(r.status, 503, valor);
+      const datos = await r.json();
+      assert.deepEqual(Object.keys(datos).sort(), ['app', 'error', 'estado', 'version'], 'no dice nada de la fila ni del modo seguro');
+      assert.equal(datos.error, 'arrancando');
+      assert.equal(datos.estado, 'arrancando');
+      assert.equal(datos.app, 'oportia');
+    }
+    for (const valor of ['listo', 'no_aplica']) {
+      estado = valor;
+      const r = await fetch(`${base}/api/setup`);
+      assert.equal(r.status, 200, valor);
+      assert.equal((await r.json()).base.estado, 'ok');
+    }
+  });
+  await conServidor(crearServidor({ db }), async base => {
+    assert.equal((await fetch(`${base}/api/setup`)).status, 200, 'sin supervisor no hay puerta');
+  });
   db.close();
 });

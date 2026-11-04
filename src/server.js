@@ -1,8 +1,11 @@
-// Arranque de OPORTIA. Abre la base propia (oportia.db) y el servidor web.
+// Arranque de OPORTIA. Abre la base propia (oportia.db), el servidor web y, cuando ya tiene el puerto, el
+// trabajador (el programa aparte que hace las tareas de la fila). Son dos procesos dentro del mismo servicio.
 // No borra ni modifica ningún archivo que no sea de OPORTIA.
-import { crearServidor, VERSION } from './app.js';
+import { crearServidor, VERSION, HUELLA } from './app.js';
 import { leerConfig } from './nucleo/config.js';
 import { abrirBase } from './nucleo/db.js';
+import { crearSupervisor } from './tareas/supervisor.js';
+import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
 
 // Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
 process.umask(0o027);
@@ -15,12 +18,52 @@ try {
   console.error('Base de datos no disponible:', error.message);
 }
 
-const servidor = crearServidor({ db });
-servidor.listen(config.puerto, config.host, () => console.log(`OPORTIA ${VERSION} escuchando en ${config.host}:${servidor.address().port}`));
+const supervisor = db ? crearSupervisor({ db, config, version: VERSION, codigo: HUELLA }) : null;
+const servidor = crearServidor({ db, supervisor });
+let arranque = null;
 
-function cerrar() {
-  servidor.close(() => { try { db?.close(); } catch { /* ya cerrada */ } process.exit(0); });
-  setTimeout(() => process.exit(0), 5000).unref();
+// Tener el puerto es el «candado»: una segunda copia que no lo consigue sale ANTES de escribir nada en la base
+// y nunca enciende un trabajador. systemd la vuelve a intentar a los 5 s.
+const alFallarPuerto = error => {
+  console.error('No se pudo abrir el puerto:', error.message);
+  process.exit(1);
+};
+servidor.once('error', alFallarPuerto);
+servidor.listen(config.puerto, config.host, () => {
+  servidor.off('error', alFallarPuerto);
+  servidor.on('error', error => console.error('Error del servidor (sigue):', error));
+  console.log(`OPORTIA ${VERSION} escuchando en ${config.host}:${servidor.address().port}`); // test/arranque.test.js lee esta línea
+  if (!db) return;
+  try {
+    arranque = registrarArranque(db, { version: VERSION, codigo: HUELLA, pid: process.pid });
+  } catch (error) {
+    console.error('No se pudo anotar el arranque:', error);
+  }
+  supervisor.iniciar();
+});
+
+// Apagado ordenado (systemctl stop/restart, el actualizador): una sola vez.
+//  1. anota que fue un cierre limpio; 2. deja de aceptar visitas; 3. apaga al trabajador (le da 5 s y, si no,
+//  lo corta); 4. cierra la base. Sale sí o sí a los 8 s (systemd espera hasta 90 s).
+let cerrando = false;
+async function cerrar() {
+  if (cerrando) return;
+  cerrando = true;
+  setTimeout(() => process.exit(0), 8000).unref();
+  try {
+    if (db && arranque) registrarCierre(db, arranque.id);
+  } catch (error) {
+    console.error('No se pudo anotar el cierre:', error.message);
+  }
+  servidor.close();
+  servidor.closeIdleConnections?.();
+  try {
+    await supervisor?.parar();
+  } catch (error) {
+    console.error('No se pudo apagar el trabajador:', error);
+  }
+  try { db?.close(); } catch { /* ya cerrada */ }
+  process.exit(0);
 }
 process.on('SIGTERM', cerrar);
 process.on('SIGINT', cerrar);

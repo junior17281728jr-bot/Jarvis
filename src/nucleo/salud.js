@@ -88,6 +88,20 @@ function copias(carpeta) {
   return resumen;
 }
 
+// Memoria libre del servidor en MB (MemAvailable: la que de verdad se puede usar), o null si no se puede leer.
+// La usa el trabajador antes de tomar una tarea.
+export function memoriaDisponibleMb() {
+  const meminfo = camposKb(leerTexto('/proc/meminfo'));
+  if (meminfo.MemAvailable != null) return redondear(meminfo.MemAvailable / 1024);
+  const libre = freemem();
+  return Number.isFinite(libre) && libre > 0 ? redondear(libre / MB) : null;
+}
+
+// Disco libre (en MB) donde está esa carpeta, o null si no se puede leer.
+export function discoLibreMb(carpeta) {
+  return disco(carpeta).libreMb;
+}
+
 // Todas las medidas de una vez. Lo que no se puede leer queda en null (nunca se inventa un número).
 export function medirSalud({ carpetaDatos = null, archivoBase, carpetaCopias = null, pids = {}, pantallasP99Ms = null } = {}) {
   const meminfo = camposKb(leerTexto('/proc/meminfo'));

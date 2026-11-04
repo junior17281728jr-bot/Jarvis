@@ -902,7 +902,14 @@ async function iniciar() {
     return pantallaNoArranco();
   }
   mostrar(el('p', { class: 'cargando', texto: t('app.cargando') }));
-  const setup = await api('GET', '/api/setup');
+  let setup = await api('GET', '/api/setup');
+  // Justo después de un reinicio, el servidor dice «arrancando» por un momento: se espera (hasta 60 s) en vez
+  // de mostrar un error.
+  for (let intento = 0; !setup.ok && setup.datos?.error === 'arrancando' && intento < 60; intento += 1) {
+    mostrar(el('p', { class: 'cargando', texto: t('app.arrancando') }));
+    await new Promise(listo => setTimeout(listo, 1000));
+    setup = await api('GET', '/api/setup');
+  }
   estado.setup = setup.datos;
   if (!setup.ok) return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
   const yo = await api('GET', '/api/yo');

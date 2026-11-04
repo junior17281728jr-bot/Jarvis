@@ -49,8 +49,25 @@ function usuarioPublico(u) {
   return { id: u.id, nombre: u.nombre, rol: u.rol, idioma: u.idioma, debeCambiarClave: Boolean(u.debeCambiarClave ?? u.debe_cambiar_clave === 1) };
 }
 
-export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas() } = {}) {
+// La puerta de arranque: los primeros 90 s después de encender el servicio, /api/setup responde 503
+// «arrancando» hasta que el trabajo automático avisa que está listo (o, si falló 3 veces al arrancar, hasta que
+// se acaba ese rato). Así el actualizador del servidor ve el 503 y vuelve SOLO a la versión anterior del código
+// (nunca de los datos) si una versión nueva trae un trabajador que no arranca. Contesta enseguida, sin esperar
+// a nada, y no dice nada de la fila ni del modo seguro.
+function arrancando(supervisor) {
+  try {
+    const estado = supervisor?.estadoArranque?.();
+    return estado === 'arrancando' || estado === 'fallido';
+  } catch {
+    return false;
+  }
+}
+
+export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null } = {}) {
   rutas.agregar('GET', '/api/setup', ({ db, req }) => {
+    if (arrancando(supervisor)) {
+      return { codigo: 503, datos: { app: 'oportia', estado: 'arrancando', version, error: 'arrancando' }, cabeceras: { 'Retry-After': '1' } };
+    }
     const necesitaAdmin = !hayAdmin(db);
     return {
       codigo: 200,

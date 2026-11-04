@@ -299,6 +299,8 @@
   "error.nombre_ocupado": "That username already exists.",
   "error.no_existe": "That does not exist.",
   "error.ya_hay_otra_en_marcha": "Another task of the same kind is already queued or running. Wait for it to finish.",
+  "error.arrancando": "OPORTIA is starting. Wait a few seconds and try again.",
+  "app.arrancando": "OPORTIA is starting…",
   "error.no_puedes_desactivarte": "You cannot deactivate your own account.",
   "error.ultimo_admin": "You cannot deactivate the only administrator.",
   "error.origen_no_valido": "Request rejected for security. Reload the page.",

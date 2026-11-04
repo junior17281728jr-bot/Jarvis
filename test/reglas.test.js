@@ -164,3 +164,57 @@ test('cada tipo de tarea está bien definido, y en src/ no hay tipos de prueba',
     assert.doesNotMatch(readFileSync(f, 'utf8'), /['"`]prueba\./, `${relative(RAIZ, f)} menciona un tipo de prueba`);
   }
 });
+
+// Todo lo que carga el trabajador (sus imports, y los imports de sus imports…), empezando por trabajador.js.
+function grafoDeImports(inicio) {
+  const patron = /(?:^|\n)\s*(?:import|export)\s[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]|(?:^|\n)\s*import\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
+  const archivosVistos = new Set();
+  const modulosDeNode = new Set();
+  const pendientes = [inicio];
+  while (pendientes.length) {
+    const archivo = pendientes.pop();
+    if (archivosVistos.has(archivo)) continue;
+    archivosVistos.add(archivo);
+    for (const m of readFileSync(archivo, 'utf8').matchAll(patron)) {
+      const destino = m[1] || m[2] || m[3];
+      if (destino.startsWith('node:')) modulosDeNode.add(destino);
+      else if (destino.startsWith('.')) pendientes.push(resolve(dirname(archivo), destino));
+      else modulosDeNode.add(destino);
+    }
+  }
+  return { archivos: [...archivosVistos], modulos: [...modulosDeNode] };
+}
+
+test('el trabajador nunca carga el servidor web: ni node:http, ni src/app.js, ni src/api/, y nunca llama a abrirBase', () => {
+  const { archivos, modulos } = grafoDeImports(join(SRC, 'tareas', 'trabajador.js'));
+  assert.ok(archivos.length > 5, 'el grafo de imports del trabajador salió vacío');
+  for (const prohibido of ['node:http', 'node:https', 'node:http2', 'node:net', 'http', 'https']) {
+    assert.ok(!modulos.includes(prohibido), `el trabajador carga ${prohibido}`);
+  }
+  assert.ok(!modulos.includes('node:child_process'), 'el trabajador no enciende procesos');
+  for (const archivo of archivos) {
+    const nombre = relative(SRC, archivo);
+    assert.notEqual(nombre, 'app.js', 'el trabajador carga src/app.js');
+    assert.notEqual(nombre, 'server.js', 'el trabajador carga src/server.js');
+    assert.ok(!nombre.startsWith(`api${sep}`), `el trabajador carga ${nombre}`);
+    assert.notEqual(nombre, join('tareas', 'supervisor.js'), 'el trabajador carga el supervisor');
+    // abrirBase crea, cambia y copia la base: eso solo lo hace el servidor web. El trabajador usa conectarBase.
+    const sinDefinicion = readFileSync(archivo, 'utf8').replace(/function\s+abrirBase\s*\(/g, '');
+    assert.doesNotMatch(sinDefinicion, /\babrirBase\s*\(/, `${nombre} (cargado por el trabajador) llama a abrirBase`);
+  }
+});
+
+test('cada tipo de tarea tiene su manejador en src/tareas/manejadores.js, y cada manejador su tipo', async () => {
+  const { TIPOS } = await import('../src/tareas/tipos.js');
+  const { MANEJADORES } = await import('../src/tareas/manejadores.js');
+  for (const tipo of Object.keys(TIPOS)) assert.equal(typeof MANEJADORES[tipo]?.paso, 'function', `${tipo} no tiene manejador`);
+  for (const tipo of Object.keys(MANEJADORES)) assert.ok(Object.hasOwn(TIPOS, tipo), `el manejador ${tipo} no tiene su tipo en TIPOS`);
+});
+
+test('las pantallas nunca cargan el código de los trabajos (src/tareas/manejadores.js solo lo usa el trabajador)', () => {
+  const { archivos } = grafoDeImports(join(SRC, 'server.js'));
+  const delServidor = new Set(archivos.map(a => relative(SRC, a)));
+  for (const soloDelTrabajador of [join('tareas', 'manejadores.js'), join('tareas', 'ejecutor.js'), join('tareas', 'trabajador.js')]) {
+    assert.ok(!delServidor.has(soloDelTrabajador), `el servidor web carga ${soloDelTrabajador}`);
+  }
+});

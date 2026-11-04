@@ -332,11 +332,13 @@ export function asegurarQueEsMia(db, tarea, corrida) {
 
 // La función «escribir» que recibe cada trabajo (ctx.escribir): pasa por el escritor (con su pausa) y, en la
 // misma transacción, comprueba la cerca. Si la tarea ya no es suya, lanza 'ya_no_es_mia' y no escribe nada.
+// { transaccion: false } es solo para órdenes PRAGMA que no pueden ir dentro de una transacción (por ejemplo
+// wal_checkpoint): la cerca se comprueba justo antes.
 export function escritorDeTarea(escritor, db, { tarea, corrida }) {
-  return trabajo => escritor.escribir(() => {
+  return (trabajo, { transaccion = true } = {}) => escritor.escribir(() => {
     asegurarQueEsMia(db, tarea, corrida);
     return trabajo();
-  });
+  }, { transaccion });
 }
 
 // ---------- Devolver y recuperar ----------
