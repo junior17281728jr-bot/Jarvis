@@ -1,5 +1,6 @@
 // Usuarios y espacios de trabajo. Cada usuario tiene su propio espacio (donde vivirán sus proyectos).
 // Aquí nunca se borra a nadie: un usuario se desactiva y se puede volver a activar.
+import { enTransaccion } from '../nucleo/db.js';
 
 const ahora = () => new Date().toISOString();
 
@@ -18,18 +19,6 @@ function crearEspacio(db, usuarioId, nombre) {
   const espacio = db.prepare('INSERT INTO espacios (nombre, creado_en) VALUES (?, ?)').run(`Espacio de ${nombre}`, ahora());
   db.prepare("INSERT INTO miembros (espacio_id, usuario_id, rol, creado_en) VALUES (?, ?, 'dueno', ?)")
     .run(Number(espacio.lastInsertRowid), usuarioId, ahora());
-}
-
-function enTransaccion(db, trabajo) {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const resultado = trabajo();
-    db.exec('COMMIT');
-    return resultado;
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
 }
 
 // Crea el primer administrador SOLO si todavía no existe ninguno (seguro aunque lleguen dos pedidos a la vez).

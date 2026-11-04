@@ -1,0 +1,82 @@
+// Qué tipos de tarea existen y cómo se comportan. Lo importan los dos procesos (las pantallas y el
+// trabajador), por eso aquí solo hay DATOS: el código que hace cada trabajo vive en manejadores.js y solo lo
+// carga el trabajador. Los tipos de prueba NO viven aquí: están en test/tareas-prueba.js.
+
+// En qué fase del plan estamos. Un tipo con una fase mayor existe en el código pero todavía no se usa.
+export const FASE_ACTUAL = 1;
+
+// Cuántas tareas a la vez, por cupo. «grande» es para trabajos pesados (revisar la base, copias…).
+// Con el servidor de 512 MB: 1 normal y 1 grande. En la fase 2, con 1 GB, normal sube a 2.
+export const CUPOS = Object.freeze({ normal: 1, grande: 1 });
+
+// Lo que vale para un tipo cuando no dice otra cosa.
+export const POR_DEFECTO = Object.freeze({
+  fase: 1,
+  cupo: 'normal',
+  maxFallos: 3, // fallos SEGUIDOS antes de quedar «fallida» (un paso bueno pone la cuenta en cero)
+  tiempoPorPasoMs: 60_000, // un paso que tarda más se corta
+  repetible: true, // false = si se interrumpe a mitad, una persona revisa (nunca se repite solo: correos)
+  ignoraFrenos: false, // true = corre aunque falte memoria o disco (vigilar, para que el aviso salga)
+  prioridad: 0, // solo ordena dentro de un mismo carril
+  reintentos: Object.freeze({ baseMs: 60_000, factor: 4, topeMs: 21_600_000 }), // 1 min, 4 min, 16 min… hasta 6 h
+  frenoTrasFallos: 6, // tantos pasos fallidos seguidos (de 2 tareas o más) frenan el tipo un rato
+});
+
+export const TIPOS = Object.freeze({
+  // Revisa la fila cada hora: avisos de tareas con error, por revisar o atrasadas.
+  'sistema.vigilar': Object.freeze({ cupo: 'normal', maxFallos: 2, tiempoPorPasoMs: 30_000, ignoraFrenos: true, prioridad: 10 }),
+  // Cada madrugada: revisa que la base esté sana y luego la ordena.
+  'sistema.base': Object.freeze({ cupo: 'grande', maxFallos: 2, tiempoPorPasoMs: 300_000, prioridad: 10 }),
+});
+
+// La definición completa de un tipo (con lo que vale por defecto), o null si este código no lo conoce.
+export function definicion(tipo, registro = TIPOS) {
+  if (typeof tipo !== 'string' || !Object.hasOwn(registro, tipo)) return null;
+  const propio = registro[tipo] ?? {};
+  return { ...POR_DEFECTO, ...propio, reintentos: { ...POR_DEFECTO.reintentos, ...(propio.reintentos ?? {}) }, tipo };
+}
+
+// Los tipos que este código sabe hacer en esta fase.
+export function tiposEjecutables(registro = TIPOS, fase = FASE_ACTUAL) {
+  return Object.keys(registro).filter(tipo => definicion(tipo, registro).fase <= fase);
+}
+
+// Trabajos del sistema que se repiten (la hora es de República Dominicana).
+export const PROGRAMAS_DEL_SISTEMA = Object.freeze([
+  Object.freeze({ programa: 'sistema.vigilar', tipo: 'sistema.vigilar', cada: 'hora', minuto: 7 }),
+  Object.freeze({ programa: 'sistema.base', tipo: 'sistema.base', cada: 'diaria', hora: 4, minuto: 10 }),
+]);
+
+// Cómo terminó cada vida del trabajador (trabajador_corridas.como_termino). Viven aquí, con los demás datos
+// que comparten los dos procesos; src/tareas/corridas.js las vuelve a exportar.
+export const COMO_TERMINA = Object.freeze([
+  'normal', 'senal', 'sin_padre', 'modo_seguro', 'zombis',
+  'caida', 'colgado', 'no_arranco', 'memoria', 'reemplazada', 'base_no_compatible', 'perdida',
+]);
+// Las que sí son un problema del trabajador: cuentan para el modo seguro, y la tarea que tenía en las manos
+// suma un fallo (puede ser la culpable). «perdida» (un apagón, o se cayó el servicio entero), «normal»,
+// «senal», «sin_padre», «modo_seguro» y «zombis» no cuentan.
+export const ANORMALES = Object.freeze(['caida', 'colgado', 'no_arranco', 'memoria', 'reemplazada', 'base_no_compatible']);
+
+// Cómo un trabajo dice qué le pasó. Cualquier otro error cuenta como un fallo que se puede reintentar.
+//  - clave: texto corto que las pantallas traducen (por ejemplo 'sin_red' o 'tope_ia').
+//  - reintentable: false = no tiene arreglo solo; la tarea queda «fallida» de una vez.
+//  - esperarMs: cuánto esperar antes de volver a intentarlo (si no, lo calcula la política del tipo).
+//  - noEsFallo: true = no es culpa de la tarea (tope de gasto de IA, cortesía con una web): espera sin contar fallo.
+//  - revisar: true = una persona tiene que mirar antes de seguir (por ejemplo, no se sabe si un correo salió).
+export class ErrorTarea extends Error {
+  constructor(clave, { reintentable = true, esperarMs = null, noEsFallo = false, revisar = false } = {}) {
+    super(String(clave));
+    this.name = 'ErrorTarea';
+    this.clave = String(clave);
+    this.reintentable = reintentable !== false;
+    this.esperarMs = esperarMs == null ? null : Number(esperarMs);
+    this.noEsFallo = noEsFallo === true;
+    this.revisar = revisar === true;
+  }
+}
+
+// Esperar sin que cuente como fallo: throw esperar(3_600_000, 'tope_ia')
+export function esperar(ms, clave) {
+  return new ErrorTarea(clave, { esperarMs: ms, noEsFallo: true });
+}
