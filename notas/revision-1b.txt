@@ -1,0 +1,553 @@
+===== privacidad
+SUMMARY: I reviewed fase-1b (77cdfde) against main 972150f for security, privacy and authorization. I worked from a git-archive copy in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-sec/code, with experiment scripts in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-sec/exp (lib.mjs and e1-e8.mjs against local servers; bench*.mjs and prof1.mjs for the engine). The repository was not touched. The test suite passes (91/91).
+
+**What holds up (tested):**
+- **Isolation between accounts.** Another account and the platform admin get 404 on every route: GET detail, versiones, aprobar, rechazar, estado, nombre, papelera. I tried ID variants 02, 2.0, 2e0, +2, 0x2, %2B2, 2%00, 2abc, -1, 0, 2^53+1 and 2.0000000000000001. Not-yours and not-found look the same, so there is no existence oracle. The list and catalog show nothing from other accounts.
+- **Roles.** A lector reads but gets 403 solo_lectura on every write; an editor can approve.
+- **Plan limits.** Of 8 parallel creates at the limit, exactly 4 succeed (with 1 already active). Restoring from papelera at the limit gets 409. A parallel restore + create can't go over the limit, because the handlers are synchronous and use BEGIN IMMEDIATE.
+- **Transactions and SQL.** Errors inside transactions roll back. tocar() only receives column names from the code, never from the request.
+- **Prototype pollution.** __proto__ and constructor keys in campos or capacidades have no effect; accion '__proto__', 'constructor' or 'toString' gets 400.
+- **Odd payloads.** Arrays of 12k items, 30k-deep nesting and numeric strings are all handled.
+- **XSS.** Playwright on iPhone 13 with injection payloads in name, instructions, motivo and every campos field: nothing ran, everything rendered with textContent, and the strict CSP is in place.
+- **Error responses.** Errors return only an error key.
+
+**What doesn't:**
+- **High: CPU denial of service from crafted instructions.** 'sin aa sin ab …' (or 'without q0 without q1 …') hits an O(n²) loop at interpretar.js:259 and costs about 5.5 s per request (7.4 s pinned to one core). It even runs when the account is already at its plan limit. With the allowed 120 writes per 10 minutes, one account can keep the 1-vCPU server unusable for everyone.
+- **Medium: project detail sends every version in full.** At 500 versions, one GET takes about 2.3 s and returns 7.5 MB, and GETs have no rate limit. With 15 clients that don't read the response, server memory reached 566 MB, more than the droplet's 512 MB.
+- **Medium: the admin can read any account's projects through password reset.** Reset the password, log in as the user, change it, read everything. Nothing about it is visible to the user. Junior needs to decide how to handle this, since resets are by design while there is no email.
+- **Medium: the papelera has no cap.** The plan limit doesn't bound stored projects or database growth: I measured 25 stored projects on a limit of 5, and one account could add about 480 MB a day.
+- **Low:**
+  - Values like {"toString":0} in any text field cause a 500 instead of a 400.
+  - The editor role can pause, complete and trash projects, which the plan reserves to the dueno. Not reachable yet, since no route creates editor memberships.
+  - Project IDs are numbered across the whole platform, so a customer can count other accounts' projects.
+
+-- [high] Crafted instructions block the 1-vCPU server for 5-7 s per request (O(n^2) loop in the engine); one account can keep the CPU busy all the time  (votos 3, confirmados 3)
+   file src/motor/interpretar.js:259
+   SCENARIO: Any logged-in dueno or editor sends POST /api/proyectos (or POST /api/proyectos/:id/versiones with modo 'instrucciones') with 4000 characters like 'sin aa sin ab sin ac ...' (or 'without q0 without q1 ...'). Every 'sin' section gets its own text, and line 259 runs `prioridades.some(p => comparable(p).includes(comparable(texto)))` against the growing list. That is about 220k comparable() calls on 80-character strings (the profile puts 4.7 of 5.5 s there). I measured interpretar() at 5.5 s on this machine and 7.4 s pinned to one core. End to end on a local server: one request took 5239 ms, and GET /api/setup sent during it waited 5190 ms; 10 such requests kept the server busy for 54 s. The write limiter allows 120 per 10 min per user, which is about 120 x 7 s = 14 min of CPU per 10 min. One account can therefore keep the server unusable for everyone indefinitely. It also works when the account is already at its plan limit: crearProyecto runs interpretar() before the limit check (src/proyectos/proyectos.js:142 vs :144), and that request still took 5.2 s before answering 409. The same happens on a trashed project, because versiones calls interpretar before nuevaVersion checks the papelera.
+   FIX: In interpretar(), compute comparable() once per stored prioridad (keep a Set or array of normalized values). Stop adding to prioridades and exclusiones once LIMITES.lista (30) is reached, and only process a bounded number of tramos (for example the first 60). In crearProyecto, check contarActivos against the limit before calling interpretar (and check papelera before interpreting in the versiones route). Add a test that a 4000-character adversarial input ('sin aa sin ab ...', 'without q0 ...') is interpreted in under about 200 ms.
+   * CONFIRMED (medium): I could not refute it. I reproduced it on fase-1b (77cdfde), extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-dos-Pjtx, with the server pinned to one core. The cause is the one named: each 'sin X' tramo is up to 80 characters, so the prioridad texts don't contain each other. That means prioridades grows to about 570 entries before limp
+   * CONFIRMED (medium): I could not refute this. I reproduced it on commit 77cdfde, extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-dos/code.
+
+What the code does: in src/motor/interpretar.js line 259, every 'sin' or 'without' section runs `prioridades.some(p => comparable(p).includes(comparable(texto)))`. It recomputes comparable() for every stored entry on 
+   * CONFIRMED (medium): I could not refute this; I reproduced it on fase-1b (77cdfde), extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-dos-GSpN. My test scripts are in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-dos-scripts.
+
+What I measured:
+- **Engine alone:** interpretar() on 3996 characters of 'sin aa sin ab ...' takes 
+
+-- [medium] Project detail returns every version in full (up to 500); GETs have no limit: about 2.3 s CPU and 7.5 MB per request, RSS above 512 MB with slow readers  (votos 3, confirmados 3)
+   file src/proyectos/proyectos.js:119
+   SCENARIO: detalleProyecto loads and parses all versions and runs limpiarConfiguracion + faltantes on each one. Each version's full instructions and configuration go into the response. The detail is also returned after every write, and POST /versiones builds it twice (src/api/proyectos.js:53 and :66). One max-size 'campos' version (60 free-text sectors, zones and exclusions, 60 long priorities) stores about 28 KB. A user reaches MAXIMO_VERSIONES=500 in about 42 min of the write budget; I simulated this by copying that same version row in the DB, giving a 14 MB DB. Then one GET /api/proyectos/:id took 2283 ms and returned 7,523,733 chars. POST /versiones, which correctly refuses with 409 demasiadas_versiones, still took 1910 ms. Server RSS went to 218 MB after those two calls, and to 566 MB after 15 clients sent that GET and did not read the response. That is more than the droplet's 512 MB, so the kernel OOM killer or a V8 heap OOM would restart the service. GET routes are not rate-limited, so after this one-time setup an account can repeat the cost without limit. With unlimited papelera (next finding) it can have any number of such projects.
+   FIX: Return only metadata (numero, estado, origen, fechas) for older versions, plus full content for the active, pending and last few. Add GET /api/proyectos/:id/versiones/:numero to load one version on demand. In POST /versiones, read only the base version instead of building detalleProyecto twice. Consider a much lower MAXIMO_VERSIONES, or not counting discarded versions toward the stored-content cap. Add a per-user limit for GETs too.
+   * CONFIRMED (medium): I could not refute it. I reproduced it on fase-1b (77cdfde) in a temp copy at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-vers-X2bH, with my scripts in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-vers-scripts.
+
+Code facts, all confirmed:
+- detalleProyecto (src/proyectos/proyectos.js:119) loads every version w
+   * CONFIRMED (low): I could not refute this. The mechanism is real, but it only matters if an account is deliberately abusing the server, so I'd rate it lower than medium.
+
+What the code does:
+- detalleProyecto (src/proyectos/proyectos.js:119) loads every version row with no limit. For each row it runs JSON.parse, then limpiarConfiguracion and faltantes. limpiarConfiguracion runs comparable() on each
+   * CONFIRMED (low): I could not refute this. I reproduced it on fase-1b at 77cdfde, in a temp copy under /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-ver-work.
+
+What I did: created one maximal 'campos' version through the real API. It holds 3,871 chars of instructions plus 10,512 chars of configuration (about 22.8 KB in UTF-8), because limpiarConfiguracion caps each 
+
+-- [medium] Platform admin can silently read any account's projects through the password-reset feature  (votos 3, confirmados 1)
+   file src/api/cuentas.js:156
+   SCENARIO: Reproduced on a local server. Admin calls POST /api/admin/usuarios/:id/reiniciar-clave for bob and receives the temporary password in the response. Admin logs in as bob, calls POST /api/yo/clave {actual: temp, nueva: anything}, then GET /api/proyectos and GET /api/proyectos/:id return bob's projects with full instructions ('Secreto comercial de Bob'). Nothing about this appears in bob's project historial or anywhere else bob can see; only the admin-only 'auditoria' table has 'clave_reiniciada'. Later, bob just finds his password does not work and asks for another reset. Any admin can do this, and admins can create more admins. Before phase 1b there was no project content, so this path didn't matter. Now it breaks the rule that the admin never sees another account's projects, and the plan's 'Solo ve el contenido de un proyecto si el usuario lo autoriza para soporte'.
+   FIX: Junior needs to decide this (resets are by design while there is no email). Minimum: on the next login, show the user a notice like 'El administrador reinició tu clave el <fecha>', and keep a list of these events the user can see in Configuración. Also add a project historial entry for any session that started from an admin-issued temporary password. Optionally block project reads in such a session until the real owner confirms.
+   * CONFIRMED (low): I reproduced the mechanics on a local fase-1b server (77cdfde). The script and data are in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-reset/. The admin's own account cannot see bob's projects: GET /api/proyectos returned [] and GET /api/proyectos/1 returned no_existe. But POST /api/admin/usuarios/2/reiniciar-clave returned the temporary password
+   * REFUTED (low): The steps work, but the finding overstates what this means and wrongly calls it a phase 1b defect.
+
+1. **Password resets by the admin are part of the approved plan.** In 'Roles', OPORTIA-arquitectura-y-plan-v2.md says: "Tú creas cada cuenta desde Administrador con una clave temporal. Si alguien olvida su clave, tú la reinicias, porque todavía no habrá correo para recuperarla." Any r
+   * REFUTED (low): The mechanism is real. I reproduced it on a local server built from fase-1b 77cdfde (scripts in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-adminreset/scripts/repro.sh). Admin calls reiniciar-clave and gets the temporary password. Logging in with it is limited to the change-password routes (GET /api/proyectos returns 403 debe_cambiar_clave). After 
+
+-- [medium] Papelera makes the plan limit and the 500-version cap meaningless for storage: one account can grow the DB without bound  (votos 3, confirmados 3)
+   file src/proyectos/proyectos.js:253
+   SCENARIO: Only active projects count toward the limit (contarActivos), and the papelera has no cap. Reproduced: 25 create+trash cycles (50 writes) left 25 stored projects for a 'prueba' account with limite 5. Combined with 500 versions per project at about 28 KB each, the 120 writes / 10 min budget allows about 17,000 writes/day, roughly 480 MB/day of DB growth from one account. That fills a 10 GB droplet disk in a few weeks. Even sooner, the VACUUM INTO backup taken before the next migration needs as much free space again. When the disk is full, every SQLite write fails (SQLITE_FULL), including session creation, so nobody can log in. GET /api/proyectos also returns every trashed project with no pagination.
+   FIX: Without deleting anything, cap the total stored projects per space (for example plan limit x N, or a fixed number) and refuse new creates once papelera plus active reaches it. Consider a per-space stored-bytes quota checked in nuevaVersion and crearProyecto. Paginate the list or return papelera separately.
+   * CONFIRMED (low): I could not refute it. I reproduced it on a temp copy of fase-1b (77cdfde) running a local server against a fresh data dir. I created an admin, then a normal 'usuario' account on the 'prueba' plan (limite 5), changed its temporary password and logged in. 25 cycles of POST /api/proyectos followed by POST /api/proyectos/:id/papelera {enPapelera:true} all succeeded: 50 writes, 25 pro
+   * CONFIRMED (low): The mechanism is real, but the threat is smaller than the report claims.
+
+What I confirmed by reading the code and running it against a copy of fase-1b (77cdfde):
+- contarActivos (proyectos.js:46) counts only en_papelera = 0. crearProyecto (line 144) and the restore path in moverAPapelera (line 253) check only that count.
+- No total cap exists on stored projects per space, and not
+   * CONFIRMED (low): I could not refute the mechanism, but in production it needs an account holder who is actively hostile, so I rate it low rather than medium.
+
+What I confirmed, on a local server built from fase-1b 77cdfde (temp copy in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-papelera-FwGY; script at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f001
+
+-- LOW Non-string JSON values (e.g. {"toString":0}) make project routes answer 500 error_interno instead of 400 (src/motor/interpretar.js:36)
+   SCENARIO: recorte(), validarInstrucciones(), renombrarProyecto(), rechazarVersion() and salarioValido() call String() or Number() on raw request values. Body {"instrucciones":{"toString":0}} to POST /api/proyectos returns 500 error_interno and logs a 'TypeError: Cannot convert object to primitive value' stack trace. I reproduced the same for nombre (rename), motivo (rechazar), and campos.producto, campos.objetivo, campos.sectores:[{...}] and campos.salarioMinimo (versiones). There is no data change (inside transactions the rollback works) and no data leak, but any account can fill the log with stack tra
+   FIX: Validate types at the API boundary: typeof === 'string' for instrucciones, nombre, motivo and campos text fields; numbers or numeric strings for salario; arrays of strings for tamanos. Answer 400 datos_no_validos otherwise. Or make recorte() return '' for anything that is not a string or number.
+
+-- LOW Editor role can complete, pause and send projects to papelera, beyond the plan's 'Editor: crear, aprobar y revisar' (src/proyectos/proyectos.js:28)
+   SCENARIO: ROLES_QUE_ESCRIBEN = {dueno, editor} gates every write. Reproduced by inserting an 'editor' membership in bob's space: carla (editor) did POST /estado {accion:'completar'} -> 200 'completado', and POST /papelera {enPapelera:true} -> 200. The plan's roles table gives the editor create, approve and review; 'Todo en su espacio' (including eliminar) is listed only for the dueno. No current route can create such memberships, so this is latent until invitations exist. But the role model is defined in this diff.
+   FIX: Ask Junior which actions an editor may take. Probably restrict papelera (and maybe completar/pausar) to 'dueno' with a separate role set, and add role tests for each route.
+
+-- LOW Global sequential project IDs let any account count other accounts' projects (src/nucleo/migraciones.js:79)
+   SCENARIO: proyectos.id is a platform-wide INTEGER PRIMARY KEY returned to the client. A customer who creates a project and gets id 57, then another a week later with id 212, learns that 154 projects were created by other accounts in that week (platform activity and growth). This doesn't expose project content (all queries are scoped by espacio_id, and every cross-account ID variant I tried returns 404), but it is metadata about other accounts.
+   FIX: Optional: expose a per-space project number or a random public id in URLs and responses, and keep the integer id internal.
+===== motor
+SUMMARY: I reviewed the own interpretation engine on fase-1b (77cdfde), from a git archive in a temp dir; the repository was not touched. I ran about 200 realistic instructions through interpretar(), faltantes() and configuracionDesdeCampos(): Dominican job searches and sales, slang, typos, ALL CAPS, emojis, English, and many salary formats. I also confirmed some results end to end on a local server (API plus Playwright on an iPhone 13 viewport). The engine never crashed. But it often makes the approval screen say something wrong rather than asking.
+
+Main systematic problems:
+1. Negations are reversed. 'pero no en Moca', 'ni en...', 'no pequeños', 'que no sea zona franca', 'que no son bancos', 'sin Santiago', 'excepto los grandes' and 'but not to small ones' all end up included.
+2. Capabilities: 'sin contactarlos', 'no los contactes' and "don't contact them" switch ON 'Contactar'. 'Solo investiga' still prepares proposals and emails.
+3. Salary: 'entre 20 y 30 mil' shows 'Más de RD$30,000', 'no menos de 25 mil' shows 'Hasta RD$25,000', and phone numbers or years become the salary.
+4. 'Santiago, RD' / 'República Dominicana' switches on the whole country.
+5. The seller's own business or product becomes a target sector (ferretería, gimnasio, transporte, café). 'inversores' (investors) becomes generators and inverters.
+6. Avenida or calle 'Duarte' becomes Duarte province, and 'capital extranjero' becomes Gran Santo Domingo.
+7. Frequency comes from salary periods or 'Diario Libre', and the frequency supuesto disappears.
+8. Job vs sales type is decided by a word count, can be wrong, and is not flagged.
+9. Job titles swallow text after commas ('Empleo: administrador, salario entre RD$40,000'). English gives 'Job: as'.
+10. Priorities run on to the end of the sentence.
+11. Unknown places ('Stgo', 'SD', 'Cibao') are silently dropped when another zone is found, so nothing is asked.
+12. Speed: a crafted 4000-char 'sin z0 sin z1 ...' input takes about 3.6 s in interpretar and blocked /api/setup for 3.7 s over HTTP.
+
+Edit-form round-trip: all sector and zone labels, including those with commas or ' y ', come back the same. Only the product labels 'cámaras y seguridad' and 'agua y filtros' lose their product key when saved unchanged.
+
+Scripts and case files are in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-motor/scripts (run.mjs, casos1.txt to casos6.txt, perf.mjs, perf2.mjs, roundtrip.mjs, http.mjs, pw.cjs). Screenshots are /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-motor/proyecto-2.png and /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-motor/proyecto-3.png.
+
+-- [blocker] Negations reverse meaning: excluded zones, sizes and sectors end up INCLUDED  (votos 3, confirmados 3)
+   file src/motor/interpretar.js:234
+   SCENARIO: Reproduced with interpretar(). The approval screen ends up saying the opposite of what was written:
+- 'Vendo software a hoteles en Santiago y La Vega pero no en Moca' -> zonas [santiago, la-vega, moca]. Rendered on the iPhone screen as 'Entendí que quieres encontrar hoteles en Santiago, La Vega y Moca...'.
+- 'ni en Moca ni en La Vega' -> both included.
+- 'en todo el pais sin Santiago' -> paisCompleto plus zona santiago, and the priority 'sin Santiago'. 'sin' only excludes sectors.
+- 'hoteles grandes y medianos, no pequenos' -> tamanos [grandes, medianas, pequenas].
+- 'excepto los grandes' -> Tamaño: Grandes, with 'Excluir: los grandes' next to it.
+- 'I sell software to hotels ... but not to small ones' -> tamanos [pequenas].
+- 'que no sea zona franca' (singular) -> sector zonas-francas INCLUDED. This happens in both sales and job projects; in a job project it is also invisible.
+- 'negocios que no son bancos' -> sectores [finanzas] only.
+- 'mas o menos grandes en Santiago' -> Santiago goes into zonasExcluidas and the screen asks for a zone.
+Causes: there is only a fixed list of trigger words (line 40). The words 'no', 'ni', 'pero no', 'que no sea/son' and 'but not' are not handled. 'sin' marks only sectors as excluded (line 234). Sizes (line 282) never check the exclusion spans. The 'menos' guard does not cover 'mas o menos'.
+   FIX: Treat 'no'/'ni'/'que no sea|son'/'but not'/'not' + noun phrase as an exclusion span. Make 'sin' + zone exclude the zone. Run the sizes through the same exclusion spans. Skip 'mas o menos'. When a known word sits inside a negated span the engine cannot classify, list it as a question instead of including it.
+   * CONFIRMED (high): I could not refute it: all 10 reported cases reproduce on fase-1b (77cdfde). I extracted the code to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-neg-3911 and ran interpretar() on each case (script: /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-neg-scripts/neg.mjs).
+
+Results:
+- 'pero no en Moca' -> zonas [santiago
+   * CONFIRMED (medium): I could not refute the defect, but blocker is too high. I ran every case through interpretar() on fase-1b 77cdfde (extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-neg-XzBR, script at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-neg-scripts/repro.mjs) and each one gives the result the reviewer describe
+   * CONFIRMED (medium): I could not refute it. The behaviour is real, and nothing about production stops it. I extracted fase-1b (77cdfde) to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-neg25870 and ran interpretar() on each scenario. Every one came out as the reviewer said:
+- 'pero no en Moca' gives zonas [santiago, la-vega, moca].
+- 'ni en Moca ni en La Vega' inclu
+
+-- [blocker] Capabilities: a negated or incidental word turns on Contactar/Correos/Supervisar  (votos 3, confirmados 3)
+   file src/motor/interpretar.js:291
+   SCENARIO: pedidas = any capability word anywhere, with no negation check:
+- 'Busca hoteles en Punta Cana que necesiten paneles solares, sin contactarlos todavia' -> contactar=true, correos=true, propuestas=false. The supuesto is removed, so nothing warns.
+- 'Vendo software a hoteles en Santiago, no los contactes' -> contactar=true. 'contactes' is the generated Spanish plural of the English word 'contact' (texto.js pluralEs).
+- 'Find clinics ... don't contact them' -> contactar=true.
+- 'Solo investigar hoteles..., no quiero propuestas ni correos' -> propuestas+correos ON, and 'propuestas ni correos' is also listed under Excluir.
+- 'Solo investiga hoteles en Punta Cana...' -> still investigar_y_preparar (propuestas+correos).
+- Incidental words: 'cajas para enviar paquetes' and 'software para contact centers' -> contactar ON. 'GPS para seguimiento de flotas' -> supervisar ON, and propuestas/correos are silently dropped with no supuesto.
+The approval screen then lists 'Contactar con aprobación', the most sensitive action, which the vision says needs its own authorization.
+   FIX: Detect capabilities only from imperative or explicit phrases about what the project should do, never from product or sector descriptions. Honour negation ('no', 'sin', 'don't', 'ni'). Honour 'solo investigar'/'solo buscar' as the solo_investigar combination. Never switch 'contactar' on from free text; leave it off and mention it in supuestos.
+   * CONFIRMED (high): I could not refute it. Every scenario reproduced in a temp copy of fase-1b (77cdfde) at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-capneg-Nh37.
+
+Cause: src/motor/interpretar.js:291 builds `pedidas` by checking whether any CAPACIDADES word appears anywhere in the text (contieneAlguna plus variantes), with no negation or context check. The 'conta
+   * CONFIRMED (medium): The behaviour is real. I ran interpretar() from fase-1b (77cdfde, extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-negcap/src) and got every result the report describes.
+
+**What happens**
+- 'sin contactarlos todavia', 'no los contactes' and "don't contact them" all turn on contactar and correos. The 'capacidades' supuesto disappears, a
+   * CONFIRMED (medium): I could not refute the bug, but it is not a blocker. I extracted fase-1b (77cdfde) into /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-capneg and ran interpretar() on every scenario in the report. All of them behave as reported:
+- 'sin contactarlos todavia', 'no los contactes' and "don't contact them" each turn on contactar and correos. The 'capa
+
+-- [blocker] Salary: ranges, 'no menos de', stray numbers and mixed currencies produce a wrong salary  (votos 3, confirmados 3)
+   file src/motor/interpretar.js:148
+   SCENARIO: Screen text is valor.salario.*:
+- 'Busco empleo de secretaria en Santo Domingo Este, salario entre 20 y 30 mil' -> salarioMinimo 30000. Confirmed through the API and Playwright: 'Salario: Más de RD$30,000'. The bare '20' is under 100 and is skipped, then '30 mil' falls into the 'entre' branch as the minimum.
+- 'entre 80 y 100 mil' -> 'Más de RD$100,000'.
+- 'salario no menos de 25 mil' and 'no inferior a 25 mil' -> salarioMaximo 25000 ('Hasta RD$25,000'), the opposite meaning.
+- 'salario a convenir, tel 809-555-1234' -> 'Más de RD$809'.
+- 'disponible desde 2027, salario 30 mil' -> 'Más de RD$2,027'.
+- 'en el edificio 120, salario 25 mil' -> 'Más de RD$120'. The first number wins and the real 25 mil is ignored.
+- 'salario minimo RD$30,000 o US$500' -> 'Más de US$30,000'. Any USD mention flips the currency of every amount.
+- Upper bounds are silently lost for '60 mil a 80 mil', '25,000 a 30,000', '25000-30000', '18k-22k', 'between US$600 and US$900' and 'from US$500 to US$700'.
+   FIX: Parse 'entre A y B' / 'A a B' / 'A-B' / 'between/from A and/to B' as one range, carrying 'mil'/'k' back to A. Check for 'no' before 'menos de'/'inferior a'/'menor de'. Only accept a number next to a salary word or currency symbol (not anywhere once a salary word appears), and reject phone patterns and years. Keep the currency per amount. If amounts conflict, ask.
+   * CONFIRMED (medium): I could not refute it. Every case reproduced on the fase-1b code (commit 77cdfde), which I extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-salario-cLrf.
+
+Calling interpretar() directly, every result matched the report:
+- 'salario entre 20 y 30 mil' gives min 30000 and no max. The bare 20 is under 100 and is skipped, so 30 mil lands in
+   * CONFIRMED (medium): The bug is real, but calling it a blocker overstates it.
+
+I reproduced every case by calling interpretar() from the fase-1b archive (77cdfde), and the results match the report exactly:
+- 'entre 20 y 30 mil' gives min 30000.
+- 'entre 80 y 100 mil' gives min 100000.
+- 'no menos de 25 mil' and 'no inferior a 25 mil' give max 25000.
+- 'tel 809-555-1234' gives min 809.
+- 'desde 2027
+   * CONFIRMED (medium): I could not refute this. The bug is real and anyone can hit it with ordinary Spanish. I extracted fase-1b (77cdfde) to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-salario and ran every listed sentence through interpretar(). Each one gave exactly the reported result:
+- 'entre 20 y 30 mil' -> min 30000.
+- 'entre 80 y 100 mil' -> min 100000.
+- 'n
+
+-- [high] 'RD' / 'República Dominicana' / 'del país' as an address suffix switches on the whole country  (votos 3, confirmados 3)
+   file src/motor/diccionarios.js:141
+   SCENARIO: - 'Busco trabajo de chofer en Santiago, RD' -> paisCompleto=true plus Santiago. The screen says 'Dónde: Todo el país y Santiago' and the search would cover all 32 provinces.
+- 'Vendo paneles solares a hoteles en Punta Cana, Republica Dominicana' -> same result.
+- 'los mejores hoteles del pais que esten en Punta Cana' -> paisCompleto.
+Dominicans routinely write 'Ciudad, RD'. The engine silently guesses the widest scope, with no supuesto shown.
+   FIX: Count the country phrases as 'whole country' only when no specific zone is named, or only for explicit phrases ('todo el país', 'a nivel nacional'). Otherwise treat 'RD'/'República Dominicana' as a country qualifier, or ask.
+   * CONFIRMED (medium): I could not refute this. I reproduced it in a temp copy of fase-1b (77cdfde) at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-rd-jyig, using the script /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-rd-scripts/t.mjs.
+
+Cause: PAIS_COMPLETO in src/motor/diccionarios.js:141 includes 'rd', 'republica dominicana', 'del
+   * CONFIRMED (medium): I could not refute this one: the bug is real. I checked it on fase-1b (77cdfde), extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-rd-oN4N. I rate it medium rather than high.
+
+**What the code does.** PAIS_COMPLETO in src/motor/diccionarios.js:141 includes 'rd', 'republica dominicana', 'del pais' and 'en el pais'. In interpretar() (src/m
+   * CONFIRMED (medium): I could not refute this. I ran the engine from a copy of fase-1b (77cdfde). 'Busco trabajo de chofer en Santiago, RD' gives paisCompleto=true with zonas=[santiago]. Each of these does the same thing: 'Vendo paneles solares a hoteles en Punta Cana, Republica Dominicana', '...Punta Cana, R.D.', 'los mejores hoteles del pais que esten en Punta Cana', 'Find hotels in Punta Cana, Do
+
+-- [high] Seller's own business, product and customer traits become target sectors and products; 'inversores' read as inverters  (votos 3, confirmados 3)
+   file src/motor/interpretar.js:232
+   SCENARIO: Every sector or product word anywhere in the text is used:
+- 'Tengo una ferreteria en Santiago y quiero vender a constructoras' -> sectores [ferreterias, constructoras].
+- 'Vendo equipos de gimnasio a hoteles' -> [gimnasios, hoteles].
+- 'Ofrezco servicios de transporte a hoteles' -> [transporte, hoteles].
+- 'Vendo cafe ... a colmados' -> [restaurantes, colmados].
+- 'Vendo comida rapida a oficinas' -> [restaurantes, servicios-profesionales].
+- 'mi agencia de viajes', 'Tengo un restaurante', 'mi taller de mecanica' and 'mi negocio de bienes raices' -> the user's own sector becomes the target.
+- 'Quiero encontrar inversores para mi negocio de bienes raices' -> producto and name 'Clientes para plantas eléctricas e inversores'.
+- 'software para inversores inmobiliarios' -> producto 'software, plantas eléctricas e inversores'.
+- Customer traits after 'sin' are added to what is sold. 'Vendo marketing digital a restaurantes de Santiago sin pagina web' -> 'Lo que vendes: marketing digital, páginas web'. 'paneles solares a clinicas sin planta electrica' -> 'paneles solares, plantas eléctricas e inversores'.
+   FIX: Split the sentence into roles: the 'vendo/ofrezco X' phrase is the product, 'a/para Y' is the target, and 'tengo/mi negocio de Z' is the user's own business. Only Y feeds the sectors. Do not add products that appear inside 'sin ...' spans. Do not map 'inversor(es)' without a power or energy context; ask instead.
+   * CONFIRMED (medium): I reproduced every case by running interpretar() from a temp copy of fase-1b (77cdfde) at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-sellerq3q8. The loop at src/motor/interpretar.js:232-244 sends every sector hit to `sectores` and every product hit to `productos`, whatever role the word plays in the sentence. Results:
+- 'Tengo una ferreteria 
+   * CONFIRMED (medium): The bug is real, but "high" overstates it. I ran interpretar() from a fase-1b archive (77cdfde) and every reported case reproduces. 'Tengo una ferreteria en Santiago y quiero vender a constructoras' gives sectores [ferreterias, constructoras]. The other sector cases give [gimnasios, hoteles], [transporte, hoteles], [restaurantes, colmados] and [restaurantes, servicios-profesion
+   * CONFIRMED (medium): I could not refute it. Every scenario reproduces on fase-1b (77cdfde) when I call interpretar() directly. The loop at src/motor/interpretar.js:232-244 sends every sector or product dictionary hit to `sectores` or `productos`, no matter where it sits in the sentence:
+- 'Tengo una ferreteria en Santiago y quiero vender a constructoras' gives sectores [ferreterias, constructoras].
+
+-- [high] Exclusions: qualifiers are lost and general words exclude everything or contradict the search  (votos 3, confirmados 3)
+   file src/motor/interpretar.js:262
+   SCENARIO: - 'excepto empresas del gobierno' -> sectoresExcluidos [todas] ('Excluir: Todo tipo de empresas'); 'del gobierno' is lost.
+- 'que no sean negocios pequenos' -> sectores [todas] plus excluded [todas] plus tamanos [pequenas].
+- 'Vendo software a hoteles en Punta Cana, excepto los hoteles todo incluido' -> searches Hoteles AND excludes Hoteles.
+- 'excepto los de cadena, los all inclusive y los boutique' -> excludes 'Tiendas y comercios' (boutique). The other two qualifiers are dropped because the span is marked as used.
+- 'excepto bancas de loteria, colmados y bares' -> 'bancas de loteria' is silently dropped.
+- 'que tengan por lo menos tres sucursales' -> 'Excluir: tres sucursales'. The guard only covers 'al/a menos'.
+- Silently dropped altogether: 'excepto los que esten en Navarrete' (cut at 'que'), 'excepto las cadenas del pais', 'que no sea en bancas de loteria', 'no me interesan las bancas'.
+- 'sin incluir bancas' and 'sin mi permiso' are shown as 'Dar prioridad a: sin incluir bancas' / 'sin mi permiso'.
+   FIX: Never exclude the general 'todas' sector. When an exclusion span holds a known word plus a qualifier, keep the qualifier as a free exclusion instead of excluding the whole category. If an excluded sector equals an included one, ask. Add the 'que no sea', 'no me interesa(n)' and 'sin incluir/sin contar' triggers. Extend the 'menos' guard to 'por lo menos' and 'mas o menos'.
+   * CONFIRMED (medium): I could not refute any part of the report; every case behaves as described. I ran each of the reported sentences through interpret() on a fresh fase-1b archive (77cdfde). I also checked them end to end on a local server with a fresh data dir (POST /api/projects, then the review screen in Playwright with iPhone 13 emulation). Results:
+(1) 'Vendo software a empresas en Santiago, 
+   * CONFIRMED (high): I could not refute this. I ran every reported case against interpretar() on a copy of fase-1b (77cdfde) and each one came out as described:
+- 'excepto empresas del gobierno' gives sectores [todas] and sectoresExcluidos [todas]. 'del gobierno' is lost.
+- 'que no sean negocios pequeños' gives sectores [todas], excluded [todas] and tamanos [pequenas]. The size meaning is reversed.
+-
+   * CONFIRMED (medium): I could not refute this. I reproduced it on fase-1b (77cdfde), in the engine and through the real API. Every scenario in the report behaves as described.
+
+- 'excepto empresas del gobierno' gives sectores [todas] and sectoresExcluidos [todas]. 'del gobierno' is lost.
+- 'que no sean negocios pequeños' gives sectores [todas], excluded [todas] and tamanos [pequenas]. That is the op
+
+-- [high] 'Duarte' (an avenue or street in every city) and 'capital' (money) are taken as zones  (votos 3, confirmados 3)
+   file src/motor/diccionarios.js:79
+   SCENARIO: - 'Busco trabajo de digitador cerca de la avenida Duarte en la capital' -> zonas [duarte, gran-santo-domingo].
+- 'Busco empleo en la Duarte, Santo Domingo' -> [duarte, gran-santo-domingo].
+- 'negocios en la Duarte con Paris' -> [duarte].
+- 'en la calle Duarte de Santiago' -> [moca, duarte, santiago].
+In every case the screen shows province Duarte (San Francisco de Macorís), with no supuesto.
+- 'Vendo software a empresas de capital extranjero en Santiago' and 'Busco socios con capital ...' -> adds Gran Santo Domingo. Only the generic Gran SD supuesto is shown.
+- 'Independencia' is handled correctly: only 'provincia Independencia' matches.
+   FIX: Map only 'provincia Duarte' (like Independencia). Do not map bare 'duarte' after avenida/av./calle/la. Restrict 'capital' to 'la capital'/'en la capital', or ask when it is ambiguous.
+   * CONFIRMED (medium): I confirmed this by running interpretar() from a temp copy of fase-1b (77cdfde) at /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-duarte. Both routes, POST /api/proyectos (via crearProyecto) and POST /versiones, call this same function.
+
+Cause: in src/motor/diccionarios.js:79 province 'duarte' lists bare 'duarte' as a keyword. In REGIONES, 'gran-
+   * CONFIRMED (medium): I could not refute it. The bug is real, but I rate it medium, not high.
+
+Code: src/motor/diccionarios.js:79 maps the bare word 'duarte' to the province (palabras: ['provincia duarte', 'duarte']). Line 137 maps bare 'capital' to the Gran Santo Domingo region (palabras: [..., 'la capital', 'capital']). buscarFrases matches whole words with no context check, and interpretar() puts
+   * CONFIRMED (medium): I reproduced this on fase-1b (77cdfde), both in the engine and through the live API and UI. diccionarios.js:79 maps a bare 'duarte' to province Duarte. diccionarios.js:137 maps a bare 'capital' to the Gran Santo Domingo region.
+
+Engine results:
+- 'Busco trabajo de digitador cerca de la avenida Duarte en la capital' gives zonas [duarte, gran-santo-domingo].
+- 'Busco empleo de ca
+
+-- [high] Frequency taken from salary periods, newspaper names and negated mentions, and the supuesto disappears  (votos 1, confirmados 1)
+   file src/motor/interpretar.js:283
+   SCENARIO: - 'Busco trabajo de maestro en colegios de La Vega, pago 30,000 mensual' -> frecuencia mensual.
+- 'que paguen RD$25,000 mensuales o mas' -> mensual.
+- 'turnos de 12 horas diarias' -> diaria.
+- 'Busca en Diario Libre y Listin Diario' -> diaria.
+- 'revisa cada semana, no cada dia' -> diaria (first list entry wins).
+- 'sueldo semanal de 6 mil' -> semanal.
+Because a frequency word was found, supuesto 'frecuencia' is not added. 'Cada cuánto revisa: Cada mes/Cada día' looks like something the user asked for, and a daily run costs work on the 1-vCPU server.
+   FIX: Accept a frequency only from phrases about how often to review or run (cada/todos los/una vez + period, revisa/busca + adverb), not adjectives attached to pago/sueldo/horas or proper names. Honour negation. When several frequencies appear, ask.
+   * CONFIRMED (medium): I reproduced every case in the report on fase-1b (77cdfde), extracted to /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-frequfvo. My script is /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-freq-scripts/t.mjs and calls interpretar(). That is the same function used by src/api/proyectos.js:58 and src/proyectos/proyec
+
+-- [high] Job vs sales type misclassified silently by a word count  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:216
+   SCENARIO: - 'Busco empleo de representante de ventas para vender a clientes en Santiago' -> tipo comercial: 3 job signals vs 3 sales signals, and a tie means comercial. The screen shows 'Para vender', the product and sectors are asked for, and there is no 'tipo' supuesto.
+- 'Quiero trabajar en un call center atendiendo clientes en Santiago' -> comercial, with sector call-centers.
+- 'Vendo software de nomina para calcular salarios y sueldos a empresas de Santiago' -> laboral: 'Búsqueda de empleo', with a question asking which job he wants.
+The 'tipo' supuesto is only shown when both scores are 0.
+   FIX: Give strong signals priority ('busco trabajo/empleo', 'quiero trabajar' vs 'vendo/ofrezco' at the start). Do not count 'salario/sueldo' as job signals when they follow a product word. When both sides score, or there is a tie, add the 'tipo' supuesto or ask.
+
+-- [medium] Job title and product text: commas are not boundaries; English 'a'/'to' break the phrase  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:159
+   SCENARIO: normalizar() turns ',' into a space and CORTES_FRASE has no punctuation.
+- 'Busco empleo de administrador, salario entre RD$40,000 y RD$60,000, en Santo Domingo' -> producto and project name 'Empleo: administrador, salario entre RD$40,000'.
+- 'Busco empleo de chofer, salario: 25000-30000, Santiago' -> 'chofer, salario'.
+- 'Busco trabajo de cajero, no de mensajero' -> 'cajero, no de mensajero'.
+- 'programador remoto, salario US$1,500'.
+- English: "I'm looking for a job as a driver" and 'a job as a cashier' -> 'Job: as', because the Spanish cut word 'a' kills 'a driver'.
+- 'I sell coffee to restaurants' -> 'Customers for coffee to restaurants'.
+- 'I sell security cameras to car dealers' -> 'security cameras to car dealers'.
+- Titles truncated at 'en': 'ingeniero en sistemas' -> 'ingeniero', 'licenciada en enfermeria' -> 'licenciada', 'tecnico en refrigeracion' -> 'tecnico'.
+   FIX: Stop the phrase at commas, semicolons and colons: look them up in the original text, since normalizar drops them. Use language-specific cut lists (English 'to', and not 'a'). Strip English articles after 'as'. Keep 'en' inside a title when it is followed by a field of study, or allow up to N words.
+
+-- [medium] Priorities swallow the rest of the sentence and become hard filters  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:104
+   SCENARIO: The priority span runs to the next period (up to 160 characters) and ignores commas and other clauses:
+- '... preferiblemente grandes, cada dia' -> priority 'grandes, cada dia'.
+- 'Vendo paneles solares a empresas grandes que tengan alto consumo electrico, en todo el pais excepto Santiago' -> priority 'que tengan alto consumo electrico, en todo el pais excepto Santiago'.
+- 'Prioriza hoteles grandes en Punta Cana y contactalos cada semana.' -> the whole clause.
+Preferences also become filters:
+- 'preferiblemente medianas y grandes' -> tamanos [medianas, grandes].
+- 'Vendo marketing digital a negocios de Santiago, sobre todo restaurantes' -> sectores [restaurantes] only, so the 'all businesses' intent is dropped and only restaurants are searched.
+   FIX: End priority spans at commas and at the exclusion, zone and frequency triggers. Do not turn words inside a priority span into hard size or sector filters. Keep general 'negocios' when 'sobre todo X' only prioritises X.
+
+-- [medium] Unknown places silently dropped whenever one known zone is found (it should ask)  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:309
+   SCENARIO: interpretar always sets zonasLibres: [], so an unrecognised place only produces a question when nothing else matched:
+- 'Busco trabajo de chofer en Stgo o en La Vega' -> only La Vega.
+- 'Vendo software a hoteles en Santiago y SD' -> only Santiago.
+- 'SDE y SDN' -> only SDE.
+- 'enfermera en Estados Unidos o en Santiago' -> only Santiago.
+- 'Santiago y todo el Cibao' -> only Santiago.
+- 'La Romana o en Casa de Campo' -> only La Romana.
+In each case faltantes() is empty, so he can approve a narrower area than he asked for without being told. 'Stgo', 'SD', 'SDN', 'SDO' and 'Cibao'/'zona este' are also missing from the dictionary.
+   FIX: Capture place-like phrases after 'en'/'de' that are not in the dictionary as zonasLibres, or add a 'zona_no_entendida' question. Add the common abbreviations (stgo, sd, sdn, sdo, sto dgo) and the regions (Cibao, zona este/sur) to the dictionary.
+
+-- [medium] 'empresas de X' with unknown X becomes 'Todo tipo de empresas' and claims the user said nothing (also in the edit form)  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:268
+   SCENARIO: - 'Vendo software a empresas de seguridad en Santiago' -> sectores [todas] with supuesto 'No dijiste a qué tipo de negocios: buscaré en todos'. That supuesto is false, and the search is broadened instead of asking.
+- In the edit form, typing 'empresas de seguridad' in 'A quién buscar' saves as 'Todo tipo de empresas'. clasificarSectores (line 408) matches the general word 'empresa' instead of keeping a free sector.
+- Similar: 'salones de clase' -> 'Salones de belleza'.
+   FIX: When a general word is followed by 'de <unknown>', keep it as sectoresLibres (or ask) instead of mapping it to 'todas'. In clasificarSectores, ignore general-only matches when the part has other words.
+
+-- [medium] English multi-word plurals miss the last word ('coffee shops' becomes shops)  (votos 0, confirmados 0)
+   file src/motor/texto.js:35
+   SCENARIO: variantes() pluralises all words, or only the first, but never only the last. So:
+- 'coffee shops' and 'repair shops' -> sector tiendas, via the single word 'shop'. 'I sell websites to coffee shops and law firms in Punta Cana' -> sectores [tiendas] only.
+- 'call centers', 'contact centers', 'free zones' and 'law firms' are not recognised. 'I sell solar panels to factories in free zones' loses the free-zones sector.
+   FIX: Also generate the variant that pluralises only the last word (and Spanish adjective agreement), and add regression tests for common English plurals.
+
+-- [medium] Pathological slowness: about 3.7 s of blocked event loop per request on a 4000-char input  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:259
+   SCENARIO: Input: 'sin z0 sin z1 sin z2 ...' (4000 chars). interpretar takes 3568 ms on a 2.8 GHz Xeon.
+Through the real server, POST /api/proyectos took 3779 ms, and a concurrent GET /api/setup (the auto-updater health check) waited 3695 ms. On the 1-vCPU droplet this is likely several seconds per call.
+The Limitador allows 120 writes per 10 minutes per user, and POST /versiones with modo 'instrucciones' needs no free project slot, so one logged-in account can keep the server mostly frozen.
+Cause: about 570 overlapping 80-char 'sin' spans each become a priority, and prioridades.some(p => comparable(p).includes(comparable(texto))) is O(n^2) over NFD-normalising comparable(). finDeTramo also re-runs a full-text regex per cut word per span.
+   FIX: Cap the number of spans/priorities collected (e.g. LIMITES.lista) before deduplicating. Precompute comparable() once per priority, end a 'sin' span at the next trigger, and compute cut positions once per text.
+
+-- LOW Edit form round-trip drops product keys for 'cámaras y seguridad' and 'agua y filtros' (src/motor/interpretar.js:453)
+   SCENARIO: Tested every sector (es/en), zone and product label through formularioCampos prefill and configuracionDesdeCampos. Sector labels with commas or ' y ' (e.g. 'Restaurantes, bares y cafés') round-trip fine.
+Products do not:
+- 'Vendo camaras de seguridad a farmacias...' -> productos ['seguridad']. After saving the form unchanged, productos becomes [], because the label 'cámaras y seguridad' / 'cameras and security' matches no dictionary phrase.
+- Same for 'agua y filtros' / 'water and filters' (from 'agua purificada' / 'filtros de agua').
+The key that will drive the affinity scoring is lost and a 
+   FIX: In configuracionDesdeCampos, also match the producto against the es/en labels exactly (like porEtiqueta), or keep anterior.productos when the producto text is unchanged. Add 'camaras', 'agua' and 'filtros' phrases to the dictionary.
+===== datos
+SUMMARY: I simulated the real update path (scripts in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-scripts/). Step 1: built a DB with the 0.1.0 code (git archive 972150f): primer-admin from Tailscale, a second user who changed the temporary password, 3 sessions, then SIGKILL, leaving a 136 KB -wal. Step 2: started the 1b code (77cdfde) on it. Migration 3 first took a VACUUM INTO copy (oportia-copias/oportia-antes-m3-*.db, mode 640, folder 750). The copy includes the rows that existed only in the WAL (2 users, 3 sessions), its migrations are 1 and 2, the application_id is correct and integrity is ok. Migration 3 applied cleanly, /api/setup answered 200 in ~114 ms with base version 3, and old cookies kept working. Projects, approval and the trash worked, and each account got 404 on the other's project, the admin included. Step 3: rolled back to 0.1.0 code on the migrated DB (after SIGKILL with WAL content): it starts, both users log in, the admin creates a new user, and /api/proyectos is 404 as expected. Step 4: rolled forward again: no second copy was made, all data was intact, and the user created during the rollback has a space. At the end integrity_check is ok and foreign_key_check is empty. Fingerprints: migrations 1 and 2 are unchanged versus 972150f; migration 3 has its entry, and the sha256 e1c181eb… matches; the test also asserts that every migration has an entry. Test suite run like the updater: fresh copy, run as root, env -i (PATH also needed /opt/node22/bin, because node is not in /usr/bin here), timeout 900, taskset -c 0, under strace. Result: 91/91 pass in 11.6 s. Every write went to /tmp/oportia-* (48 dirs, ~5 MB left behind per run), every connect/bind was to 127.0.0.1 on random ports, port 8080 was never used, and nothing went to the internet. Nothing in src/ deletes project data: the only DELETEs are the pre-existing session ones, versions only change state, and the trash keeps everything and restores it. Problems found are about resource limits, not data loss. (1) The interpretation engine has an O(n^2) dedupe for «sin/without» spans: a 4000-char input takes 3-5 s of CPU on one core, the write limiter allows enough requests to keep one account saturating the single vCPU, and 10 concurrent creates froze the server for 34 s. (2) DB growth is effectively unbounded: ~43 KB per version, and trashed projects are uncounted, so the 500-version cap can be bypassed. That is ~740 MB/day per account, which breaks the planned 50 MB Telegram backup within hours and fills the disk within weeks; a full disk then breaks logins and every future migration copy. (3) Project detail returns every version in full with no GET throttling: 21 MB and ~1.9 s per request, and non-reading clients pushed RSS to 0.5-1.1 GB, which means an OOM kill on 512 MB. Lower-severity items: the 500-version dead end, CHECK lists that can never be widened once frozen (fix before merging to main), and the version number left at 0.1.0, which hides rollbacks from Junior.
+
+-- [high] Interpretation engine is O(n^2) on repeated «sin/without»: one account can keep the only CPU busy at 100% with a 4000-char text  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:259
+   SCENARIO: For every «sin»/«without» span the engine checks `prioridades.some(p => comparable(p).includes(comparable(texto)))`. comparable() normalizes the string one character at a time, and prioridades grows with every span (the 30-item cap is only applied later in limpiarConfiguracion), so the cost grows with the square of the number of spans. On one core (taskset -c 0), a 4000-char input like 'sin k0, sin k1, sin k2, …' takes 4969 ms per interpretar() call, 'sin w0 sin w1 …' takes 3343 ms and 'without q0 …' takes 2787 ms. A normal text takes 35-70 ms. Removing only that dedupe line in a scratch copy brings the 3343 ms case down to 56 ms, which confirms the cause. The call is synchronous on the single event loop. It also runs before the cheap rejections: crearProyecto interprets at line 142 and checks limite_de_proyectos at line 144, and the versiones route interprets before nuevaVersion checks en_papelera or demasiadas_versiones. So being at the project limit, or editing a project in the trash, does not stop the CPU cost. Reproduced over HTTP on one core: 10 concurrent POST /api/proyectos took 34.4 s in total, and a GET /api/setup sent meanwhile took 20.5 s. The updater's `curl -m 5` health check would fail at that point. The write limiter allows 120 requests per 10 min per account: 120 × ~5 s ≈ 600 s of CPU per 600 s window, so one ordinary account Junior created can freeze OPORTIA for everyone indefinitely. The limiter also resets on every restart.
+   FIX: In the 'sin' loop, keep a Set of comparable(texto) values computed once, and stop collecting once prioridades/exclusiones reach LIMITES.lista. Also cap how many trigger spans tramosDeExclusion/prioridadesDe process, e.g. the first 60. Run the plan-limit, papelera and version-cap checks before calling interpretar(). Add a motor.test.js case with this kind of input and a time budget, e.g. under 300 ms on one core.
+
+-- [medium] Per-account DB growth is effectively unbounded: trashed projects don't count, each version can be ~43 KB, so the 500-version cap is easy to bypass  (votos 0, confirmados 0)
+   file src/proyectos/proyectos.js:25
+   SCENARIO: Measured on disk after a checkpoint: about 43 KB per version when the free-text lists (sectoresLibres/zonasLibres/exclusiones up to 30×80 chars each, prioridades 30×160) and the 4000-char instructions use 3-byte UTF-8 characters. In 'campos' mode the unchanged instructions are copied into every version again. Each request body is about 37 KB, under the 64 KB limit. MAXIMO_VERSIONES=500 is per project, but projects in the trash don't count toward the plan limit and their number is not capped (verified: 51 projects in a 5-project space). The sequence create → 499 edits → trash → repeat uses 501 writes per 500 versions. At the allowed 120 writes per 10 min that is ~17,280 versions/day ≈ 740 MB/day from one account. History rows are uncapped as well (2000 renames → 2000 rows). Concrete failures: (1) one maxed project already makes oportia.db 21.6 MB. The plan's nightly encrypted Telegram backup (50 MB per file, plan 'Copias de seguridad') breaks after ~1,200 such versions, about 100 minutes of one account's allowed writes. (2) Within about two weeks the 10 GB droplet disk is full. SQLite then returns SQLITE_FULL, so every login fails (the session INSERT), and the next migration's VACUUM INTO copy fails, so abrirBase throws, /api/setup returns 503, and every later update is rolled back. The pre-migration copies in oportia-copias are never pruned, so each future migration adds another full copy of the database.
+   FIX: Add a per-space storage quota: total versions across all projects including the trash, and/or total bytes, checked inside the same transaction. Cap trashed projects too, e.g. count them toward a higher total such as limite×4. Do not store the instructions again when they did not change (point to the previous version). Cap the total size of the serialized configuration, e.g. 4-8 KB, instead of relying only on per-list caps. Cap history rows per project per day.
+
+-- [medium] GET /api/proyectos/:id returns every version in full and is not rate-limited: 21 MB per response, ~1.9 s CPU, and slow readers push RSS past 1 GB  (votos 0, confirmados 0)
+   file src/proyectos/proyectos.js:119
+   SCENARIO: detalleProyecto selects all versions and runs limpiarConfiguracion and faltantes on each one. This happens on every GET, and after every write: the versiones route calls it twice. With one project at 500 maximum-size versions (built through the same code paths), one GET took 1.8-1.9 s of CPU on one core and returned 21.3 MB of JSON. GET routes are not rate-limited at all. 8 raw HTTP clients that sent the GET and never read the response raised server RSS to 506 MB, and 20 such clients raised it to 1,153 MB. That means an OOM kill on the 512 MB droplet, and the attacker can repeat it after every systemd restart. The event loop is also blocked for about 20 × 1.9 s. With normal-size versions the cost is fine (500 versions → 35 ms, 576 KB), so this needs one account that fills its project first, which the previous finding shows is easy. Junior's iPhone would also download the whole payload every time a project opens.
+   FIX: Return version metadata plus only the active and pending versions in full. Fetch an older version's content on demand, e.g. GET /api/proyectos/:id/versiones/:numero, or page the list. Apply a per-user limiter to the read routes too, and/or a maximum response size.
+
+-- LOW 500-version cap makes a project permanently uneditable, since nothing can be deleted (src/proyectos/proyectos.js:165)
+   SCENARIO: nuevaVersion counts every version: 'descartada', 'rechazada' and 'reemplazada' too. Every form save or instruction rewrite creates one. After 500 saves, every edit of that project returns 409 demasiadas_versiones forever. Versions are never deleted, by rule, and there is no other way back, so the project's configuration is frozen and the user has to recreate the project and lose its history/approvals. With heavy tweaking this is reachable without abuse; it is also a no-exit dead end, which Junior's rules forbid.
+   FIX: Count only meaningful versions, e.g. exclude 'descartada' pending drafts that were replaced before any decision. Or reuse the current pending row's slot through a new pending revision table instead of stacking versions. At minimum, explain in the UI what to do when the cap is hit.
+
+-- LOW Migration 3 CHECK lists (tipo, estado, origen) can never be extended under the repo's additive-only rules (src/nucleo/migraciones.js:82)
+   SCENARIO: SQLite can only change a CHECK constraint by rebuilding the table: create new, copy, DROP old, RENAME. test/reglas.test.js forbids DROP and RENAME in every migration, and the fingerprint freezes migration 3 once it reaches main. If a later phase needs a new project type (vision §19 says projects are not limited to one 'tipo de búsqueda'; §9 job publishing/alerts) or a new state or version origin (e.g. an AI interpretation origin from 'Modo básico y modo IA'), the INSERT fails with a CHECK error. The only options left would be a parallel table or writable_schema hacks. This is the last moment i
+   FIX: Before merging to main, drop the CHECK lists on tipo/estado/origen in migration 3 and validate in code (ESTADOS/TIPOS already exist). Then update the frozen fingerprint for migration 3 in test/reglas.test.js. Keep CHECKs only where the value set is truly closed.
+
+-- LOW Version not bumped: /api/setup and the UI footer say 0.1.0 for both 1a and 1b, so Junior cannot tell whether an update was installed or rolled back (package.json:3)
+   SCENARIO: Observed in the simulation: /api/setup returned version '0.1.0' with base version 3 under the 1b code, and the same version under the rolled-back 0.1.0 code on the same migrated DB. public/app.js:154 shows that string in the footer. After the updater's silent code-only rollback, which writes version.bad and adds a line to update.log only, Junior on his iPhone sees the same 'Versión 0.1.0' and the projects screens are just missing. Nothing visible tells him that 1b was rolled back.
+   FIX: Bump package.json to 0.2.0 (or another value unique to phase 1b) in this branch, and add a rule test that the version changes whenever a migration is added.
+===== pantallas
+SUMMARY: I ran branch fase-1b (commit 77cdfde, v0.1.0, DB at migration 3) on a local server from a temp copy and drove it with Playwright as an iPhone 13 (390px wide). I tested Spanish and English, light and dark, with an admin, a normal user, an English-language user and a read-only (lector) account. That account was set up directly in the database, because no screen can create a lector yet.
+
+These flows work: create from an example, "Lo que entendí", approve, approve disabled while data is missing, reject with a reason, rewrite instructions, edit fields by hand (type switch, capacity presets, "contactar" also ticks "correos"), pause, resume, complete, reopen, rename (a blank name shows an error), trash and restore, the plan limit, an id that does not exist or belongs to another account (shows "Eso no existe"), and back/forward. Accessibility checks found no inputs without labels, no duplicate ids and no text below contrast thresholds in either theme.
+
+Real problems, in order of severity:
+1. The app's own English job example is not understood. Approve stays disabled, and the "no experience required" wish is saved as a priority instead. "I want a job as a cashier" is read as a job called "as" and can be approved.
+2. Tapping "Entender mis instrucciones" twice on a slow connection creates two identical projects (reproduced).
+3. Saving the hand-edit form cuts every priority to 80 characters, even when only the frequency was changed.
+4. The "Lo que entendí" card and the home page never say that searching starts in phase 2 (customers) or phase 6 (jobs) before the owner taps "Aprobar y activar".
+5. After switching the type to "Para buscar empleo" in the form, every capacity still says it starts in phase 2 or 3. For job projects it is phase 6.
+
+Smaller problems:
+- When the session ends, the text being typed is lost and the app goes back to Inicio instead of the project.
+- "Volver a entender" silently throws away changes made by hand.
+- Trashed projects still show a green "En ejecución" badge.
+- Product, project name and goal stay in the language the project was created in.
+- An instruction containing a link makes the page scroll sideways at 390px.
+- Two error messages tell the owner to "Recarga la página", which the iPhone home-screen app cannot do.
+- Smaller items: wrong text on restore at the limit, the examples overwrite typed text, the lector sees approval prompts, form gaps (salary, currency, "correos"), duplicate auto-names, focus is lost after each action, and a product is detected inside a priority.
+
+Screenshots and Playwright scripts are in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-ux/shots and /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-ux/pw. I did not touch the repository, and I stopped only my own local server. Another session's server, PID 2295, was left running.
+
+-- [high] English: the built-in job example fails, and common English job phrases give a wrong job that can still be approved  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:159
+   SCENARIO: Reproduced with an English account (maria). On Projects > See examples I tapped 'Use this example' on example 3 ('I am looking for work as a driver in Santiago... preferably without required experience') and then 'Understand my instructions'. The result was 'I understood that you are looking for a job as (missing) in Santiago', with the question 'What job are you looking for?', Approve disabled, and 'without required experience' saved as a priority instead of the experience flag. The cause is that 'a' is in CORTES_FRASE (line 159), so the job phrase is cut right after 'work as'. The experience check at line 253 only accepts text that starts with 'experience'. 'I want a job as a cashier in Santo Domingo' is understood as 'looking for a job as as', the project is named 'Job: as', and Approve is ENABLED. Built-in example 2 in English also wrongly shows the note 'I understood it is for selling. If you are looking for a job, change it.' The Spanish examples work. Screenshots: shots/22-example-3-en-dark.png and shots/60-job-as-as-en.png.
+   FIX: Remove 'a' and 'at' from the cut words when they come right after the job trigger, or strip articles first and cut afterwards. Never accept a job title made only of filler words such as 'as' or 'a' (treat it as missing). Accept 'required experience' and 'no experience' in the experience check. Add the three English examples to test/motor.test.js and check that they produce a job title, zone, salary and experience.
+
+-- [medium] Two taps on 'Entender mis instrucciones' create two identical projects  (votos 0, confirmados 0)
+   file public/app.js:588
+   SCENARIO: Reproduced with the project screen made slow to load (1.5 s), as it can be on an iPhone over the Funnel. After the first tap, the create request finishes and the finally block in alEnviar turns the button back on. The page is still the project list while the project screen loads, so to the owner nothing seems to have happened. A second tap sent a second create request. Result: two identical 'Clientes para cámaras y seguridad' projects (ids 5 and 6). Both count toward the 5-project limit, and since nothing is ever deleted the duplicate stays in the trash forever.
+   FIX: After a successful create, keep the button disabled, or replace the form with 'Abriendo tu proyecto…', until the project screen is drawn. Simpler still: draw the new project straight from the create response (it already contains the full project) instead of navigating and loading it again.
+
+-- [medium] Saving the hand-edit form cuts every priority to 80 characters, even when nothing about the priority changed  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:473
+   SCENARIO: Reproduced in the UI. I created a project with 'Prioriza hoteles que tengan generadores viejos, facturas de luz muy altas y que hayan tenido apagones frecuentes este año.' The engine keeps the full 112-character priority (its limit is 160). I opened 'Cambiar los datos a mano', changed only 'Cada cuánto revisa' to daily and saved. Version 2 now shows the priority as '…y que hayan ten'. partes() at line 391 first cuts each piece to LIMITES.elemento (80), and the later cut to LIMITES.prioridad (160) cannot restore it. A ';' inside a priority also splits it in two. The owner's words are silently cut and he has no warning. Screenshot: shots/61-prioridad-recortada.png.
+   FIX: In configuracionDesdeCampos, split the priorities without the 80-character cut (for example pass a maximum to partes, or split by newline only) and then cut at LIMITES.prioridad. Put maxlength 160 per line in the help text. Add a test: interpret, save the form unchanged, and check the configuration is identical.
+
+-- [medium] The approval card and the home page do not say that searching only starts in phase 2 (customers) or phase 6 (jobs)  (votos 0, confirmados 0)
+   file public/app.js:708
+   SCENARIO: Home > 'Espera tu aprobación' links straight to the project. The pending card says 'Revisa que esté bien. No se hace nada hasta que lo apruebes.' The notes say 'Revisaré cada semana' and 'Investigaré y prepararé propuestas y correos', and the button says 'Aprobar y activar' ('Approve and activate'). All of this suggests that approving starts the work. The phase notice only appears on the project list (aviso_fase) and on the project AFTER approval (aviso_espera). For a 'Borrador' (draft) project there is also no phase notice. On the home page, 'Próximamente' lists 'Buscar clientes en RD (fase 2)' but says nothing about job search (phase 6). The owner forbids presenting things as working before they do. Screenshots: shots/04-proyecto-creado-es.png and shots/43-junior-inicio.png.
+   FIX: In tarjetaVersion, when there is no approved version yet, show the matching proyecto.aviso_espera text, written for 'before approving' (e.g. 'Al aprobar queda guardado; la búsqueda empieza en la fase 2/6'). Consider renaming the button to 'Aprobar'. Add 'Buscar empleos (fase 6)' to the home page's 'Próximamente' list.
+
+-- [medium] Changing the type to job search in the form leaves every capacity saying it starts in phase 2 or 3 (it is phase 6)  (votos 0, confirmados 0)
+   file public/app.js:655
+   SCENARIO: Reproduced. On a sales project I opened 'Cambiar los datos a mano' and chose '¿Para qué es?' = 'Para buscar empleo'. The product label changes, but every capacity still says 'Empieza a trabajar en la fase 2.' or 'fase 3'. The help text is built once from c.tipo, and the tipo change listener (line 649) does not update it. For job projects the catalog says phase 6. So the screen promises a job project starts researching in phase 2, which is false. It only shows the right phase after saving and reopening the form. Screenshot: shots/11-form-laboral-es.png.
+   FIX: Keep a reference to each capacity's help element and rebuild the 'capacidad.desde' text inside the tipo change listener, using x.desde[tipo.value].
+
+-- LOW When the session ends on a project, the typed text and the place are lost (public/app.js:220)
+   SCENARIO: Reproduced. On #proyecto/5 I opened 'Escribir otra vez lo que necesitas' and typed a long new instruction. Then the session ended (simulated by deleting it, as happens when the admin resets the password or after 30 days) and I tapped 'Volver a entender'. The app switched to the login screen ('Tu sesión terminó'). After logging in it went to #inicio (pantallaEntrar always sets location.hash = '#inicio'). On reopening the project, the text field held the old instructions and the typed text was gone. A link to #proyecto/N opened without a session also ends up on Inicio. Screenshot: shots/14-sesio
+   FIX: Remember the hash when the session ends and go back to it after login instead of #inicio. Save the unsent text of the project fields (instructions, rewrite, rejection reason) in memory or sessionStorage and fill them back in.
+
+-- LOW 'Volver a entender' silently throws away changes made by hand (public/app.js:793)
+   SCENARIO: Reproduced on project 15. By hand I added the zone Puerto Plata and chose 'Ciclo completo' (version 3, pending). The 'Escribir otra vez lo que necesitas' box is pre-filled with the ORIGINAL instructions. I added 'Cada día.' and tapped 'Volver a entender'. Version 4 lost Puerto Plata and the full cycle, and version 3 became 'cambiada antes de aprobar' with no button to bring it back. The only help text is 'mientras tanto no cambia nada', with no warning. Screenshot: shots/62-reescribir-pierde-cambios.png.
+   FIX: If the base version came from hand edits, warn above the rewrite button ('Lo que cambiaste a mano se reemplaza con lo que entienda de nuevo'). Also offer 'Usar esta versión otra vez' on a discarded version, so the work can come back without retyping.
+
+-- LOW A project in the trash still shows a green 'En ejecución' (Running) badge (public/app.js:508)
+   SCENARIO: Reproduced. I approved a project and tapped 'Mandar a la papelera'. Its page shows 'Para vender · En ejecución · En uso: versión 1' right above 'Este proyecto está en la papelera: no trabaja', and the row inside 'Papelera (1)' also says 'En ejecución'. The owner sees 'running' and 'does not work' at the same time. Screenshots: shots/31-en-papelera-es.png and shots/33-restaurar-limite-es.png.
+   FIX: In etiquetaEstado, when p.enPapelera is true, show a 'En la papelera' badge instead of the state.
+
+-- LOW After switching the language, the project mixes Spanish and English (src/motor/interpretar.js:238)
+   SCENARIO: Reproduced. A project created in Spanish, then Configuración > English, then back to the project. It reads 'I understood that you are looking for a job as paneles solares…', 'Goal: Encontrar clientes que puedan necesitar paneles solares', with the title 'Clientes para paneles solares'. The product label, name and goal are saved as text in the language of creation, even though the product keys (configuracion.productos) have both translations. Screenshot: shots/50-proyecto-tras-cambiar-a-ingles-dark.png.
+   FIX: When producto exactly matches the labels of the 'productos' keys, draw it from the catalog in the current language. Keep generated goals and names as keys until the owner edits them, or tell the owner they stay in the original language.
+
+-- LOW An instruction containing a link makes the page scroll sideways at 390px (public/estilos.css:130)
+   SCENARIO: Reproduced. I created a project with 'Vendo https://www.energiasolardominicana.com.do/productos/paneles-solares-para-hoteles a hoteles en Santiago' and opened 'Versiones'. p.instrucciones overflows (scrollWidth 475 in a 320px box) and the whole page becomes 510px wide on a 390px iPhone, so it drags sideways. Screenshot: shots/73-desborde-instrucciones.png.
+   FIX: Add overflow-wrap: anywhere to .instrucciones (and to h1 and .entendi for long names or products).
+
+-- LOW Two errors say 'Recarga la página', which the iPhone home-screen app cannot do; the old approve button stays (public/i18n/es.json:287)
+   SCENARIO: Reproduced with two devices. The project page is open on the iPhone, and the version is approved on the Mac. On the iPhone, tapping 'Aprobar y activar' shows 'Esa versión ya no espera aprobación. Recarga la página.' and the old pending card stays. index.html sets apple-mobile-web-app-capable, so the home-screen app has no reload button, as app.js itself notes at line 866. 'error.accion_no_permitida_ahora' has the same problem. Screenshot: shots/80-version-ya-no-pendiente.png.
+   FIX: On 409 version_no_pendiente or accion_no_permitida_ahora, load the project again automatically and show 'Esto cambió en otro equipo; esto es lo que hay ahora', instead of asking the owner to reload.
+
+-- LOW Restoring at the plan limit shows a message about creating, and 'Usar este ejemplo' overwrites typed text (public/app.js:585)
+   SCENARIO: (a) With 5 of 5 projects, I opened a trashed project and tapped 'Restaurar'. It shows 'Llegaste al límite… Manda uno a la papelera para crear otro.', which talks about creating while the owner is restoring (shots/33-restaurar-limite-es.png). (b) The owner types a long instruction, opens 'Ver ejemplos' to compare, and taps 'Usar este ejemplo'. area.value is replaced with no confirmation, and the typed text is gone with no undo.
+   FIX: (a) Use a separate message for restoring ('…para restaurar este'). (b) If the text box is not empty, ask before replacing it, or add the example below the text instead.
+
+-- LOW Read-only (lector) accounts are told to approve and change things they cannot (public/app.js:295)
+   SCENARIO: With a lector membership (only possible by editing the database today), Home > 'Espera tu aprobación' lists 'Versión 1 por aprobar'. The project shows 'No se hace nada hasta que lo apruebes', 'Antes de aprobar, necesito saber… Escribe…' and 'cámbialo si no es así', but there are no buttons. The only explanation is the line 'Puedes ver estos proyectos, pero no cambiarlos.' Screenshots: shots/40-lector-inicio.png and shots/41-lector-proyecto.png.
+   FIX: When puedeEscribir is false, use a title such as 'Esperando aprobación del dueño' on the home page and leave out the 'apruébalo / escríbelo / cámbialo' instructions from the pending card.
+
+-- LOW Hand-edit form gaps: 'correos' can look unticked but is saved on; minimum salary above maximum is accepted; currency cannot be changed (public/app.js:659)
+   SCENARIO: Reproduced: with 'Contactar con tu aprobación' ticked I unticked 'Preparar correos' and saved. The new version shows 'Investigar, Preparar correos y Contactar…' (the server forces correos on at line 353), with no explanation. From the code, not run: salarioMinimo 50000 with salarioMaximo 20000 saves as 'Entre RD$50,000 y RD$20,000'. The form has no RD$/US$ choice, so a wrongly detected currency can only be fixed by rewriting the instructions, even though the plan says every field can be changed before approving.
+   FIX: When contactar is ticked, disable the 'correos' box with a note ('lo necesita Contactar'). Reject or swap a minimum above the maximum. Add a currency select (DOP/USD) to the form.
+
+-- LOW Projects get identical automatic names that are never updated (src/proyectos/proyectos.js:160)
+   SCENARIO: Two projects for the same product ('Vendo paneles solares a hoteles en Punta Cana' and '…a fábricas en Santiago') are both named 'Clientes para paneles solares'. Every project created without a product is 'Proyecto nuevo', and the name is not updated when the product is filled in by hand (project 4 stayed 'Proyecto nuevo'). In the list and in 'Espera tu aprobación' the rows look identical, because only name, type and state are shown (shots/32-limite-es.png).
+   FIX: Include the first sector or zone in the suggested name (e.g. 'Paneles solares · Hoteles · Punta Cana'). Update the suggested name when the first approved version gets a product, as long as the owner never renamed it. Show sectors and zones on each row.
+
+-- LOW Accessibility: focus goes to the page body after every action, and the disabled Approve button is not linked to its explanation (public/app.js:99)
+   SCENARIO: After 'Guardar nombre' (and approve, reject, state changes and save), mostrar() replaces the whole page. document.activeElement becomes BODY, so VoiceOver loses its place, and the success message is inserted already filled, so it may not be read aloud. The disabled 'Aprobar y activar' has no aria-describedby pointing to 'Para poder aprobar, completa lo que falta…'. In dark mode the disabled button (opacity 0.6 of #38bdf8) still looks like a normal button (shots/22-example-3-en-dark.png).
+   FIX: After re-drawing, move focus to the success message (tabindex=-1) or the h1. Connect the disabled button to its explanation with aria-describedby. Give disabled buttons a clearly different look, not just lower opacity.
+
+-- LOW 'Lo que entendí' lists products found inside the priority sentence as things the owner sells (src/motor/interpretar.js:222)
+   SCENARIO: Reproduced: 'Vendo paneles solares a hoteles en Punta Cana. Prioriza hoteles que tengan generadores viejos…' is understood as 'Lo que vendes: paneles solares, plantas eléctricas e inversores', and the goal says the same. The word 'generadores' in the priority counts as a product (shots/62-reescribir-pierde-cambios.png).
+   FIX: Ignore dictionary products found inside a priority or exclusion stretch, the same way exclusions are handled, or only take products from the stretch after 'vendo/ofrezco'.
+===== vision
+SUMMARY: I reviewed fase-1b (77cdfde) against the vision (§3, §4, §19), the architecture plan and the expanded plan (OPORTIA-evaluacion-y-plan-ampliado.pdf, converted to text). The code came from git archive into /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-vision/code. All 91 tests pass. I also ran a local server, drove it through the API and on an iPhone 13 with Playwright, and called interpretar() directly with about 30 sentences.
+
+**Works as the documents promise:**
+- **Privacy:** one account never sees another's projects. The admin gets 404 when reading or approving María's project.
+- **States:** Borrador, Pendiente de aprobación, En ejecución, Pausado, Completado and Con errores exist. The buttons pausar, reanudar, completar, reabrir and reintentar work. 'Aprobar y activar' acts as iniciar.
+- **Approval:** the user can approve, reject with a reason, retype the instructions, or change sectors, zones, exclusions, priorities, salary, frequency and capabilities. Every change is a new pending version while the approved one stays in use.
+- **History:** every version is kept with its instructions and configuration, and there is an event history.
+- **Delete:** 'eliminar' sends the project to a trash it can be restored from, which follows Junior's never-delete rule.
+- **Capabilities:** the 7 capabilities each show the phase they start in, and the 3 quick combinations work.
+- **Honesty about phases:** 'En ejecución' explains that nothing searches until phase 2 (customers) or phase 6 (jobs).
+- **Other:** pending approvals appear on Inicio, the per-plan project limit is enforced, and Spanish and English have the same 293 keys.
+- The vision's own examples (solar panels, chofer in Santiago, inventory for restaurants) are interpreted correctly.
+
+**Findings (a, should be fixed in 1b):**
+- **High:** exclusions such as 'pero no a', 'no me interesan' and 'pero no en' become targets, or leave a category both targeted and excluded, and the project can still be approved.
+- **Medium:** there is no list of what the engine did not understand, so sectors and conditions disappear silently, and products are swapped for dictionary labels.
+- **Medium:** only 26 municipalities and 1 region are known, and unknown places typed in the form are accepted as understood.
+- **Low:** a trashed project still shows 'En ejecución'.
+- **Low:** the name is not updated after re-interpretation.
+- **Low:** the version is still 0.1.0, so Junior cannot see on /api/setup that 1b was installed.
+
+**Findings (c, Junior decides):**
+- The autonomy level is missing, although the expanded plan #12 puts it in phase 1.
+- The AI cost is a fixed text and no AI permission or budget is saved with the approved version.
+- Choosing sources and the analysis type are not shown as 'Próximamente'.
+- The 'prueba' plan gives 5 projects with no end date, and the admin gets 20.
+
+**(b) Correctly deferred:**
+- **Phase 1, part c (task queue, per the in-app list and the plan's 'fila de tareas'):** running at the chosen frequency, a 'run now' button for manual projects, the Tareas screen, and projects actually reaching 'Con errores'. marcarConErrores() is prepared but not called yet.
+- **Phase 1, part d (IA con tope; plan 'Control del gasto'):** AI providers, per-project and per-user caps, and 50/80/100% alerts.
+- **Phase 2 (plan 'Cómo aprende cada proyecto'; expanded #44, phases 2 and 6):** results, results history, learned preferences, the button to copy what one project learned to another, and the stats behind it.
+- **Phase 2 (architecture 'Lo que este plan deja para después'):** suggesting sectors or zones the user did not ask for.
+- **Phase 7 (expanded #55):** assigning editor and reader roles and multiple members.
+- **Later, per the expanded plan:** other goal types (#2, no phase), 'no sé qué vender' (#4, after phase 7), 'investiga esta empresa' (#5, phase 3), other countries (#60).
+
+**Note for Junior:** the architecture plan proposes support access, where the admin sees a project if the user authorizes it for 24 hours and it is logged. That contradicts his rule that not even the admin sees other accounts' projects. 1b correctly implements nothing of the kind, but he should settle that conflict before support access is ever built.
+
+Never edited the repository; work and screenshots are in /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/rev1b-vision/. The local server was stopped.
+
+-- [high] (a) Exclusions written as people normally write them end up as targets, or as both target and excluded, and the project can still be approved  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:40
+   SCENARIO: Reproduced on fase-1b, both with interpretar() and through the UI on an iPhone 13. (1) 'Vendo páginas web a negocios en Santiago, pero no a colmados' gives sectores=['colmados'] and sectoresExcluidos=[]. The screen says 'Entendí que quieres encontrar colmados en Santiago que puedan necesitar páginas web.' The 'faltantes' list is empty and 'Aprobar y activar' is enabled. (2) 'No me interesan los colmados' also makes colmados the target. (3) 'hoteles en Santiago y Puerto Plata, pero no en Sosúa' adds sosua to zonas. (4) 'hoteles y restaurantes en Santiago, no quiero bares' puts restaurantes in sectores AND in sectoresExcluidos, because 'bar' is a word of the restaurantes entry. The summary then shows the same category under 'A quién buscar' and under 'Excluir', and approval is allowed. (5) In English, 'but not bars' is dropped. The plan (Motor propio) promises exclusions are understood, and vision §4 says OPORTIA must not start a task it may have misunderstood. Here it states the opposite of what Junior wrote, with no doubt shown.
+   FIX: Add the common forms to DISPARADORES_EXCLUSION: 'pero no', 'no a', 'no en', 'no me interesa(n)', 'menos a/en', 'but not', 'not in', 'no'. In faltantes(), block approval when a sector or zone is both included and excluded, and ask 'Do you want X or not?'. Add these sentences to test/motor.test.js.
+
+-- [medium] (a) The engine never says what it did not understand: parts of the instruction disappear without a question, and the product is replaced by a dictionary label  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:381
+   SCENARIO: The plan ('Interpretación y aprobación') says: 'Si el motor no entiende algo, lo pregunta en vez de adivinar'. faltantes() only checks the required fields (producto, sectores, zonas, capacidades), so whatever the engine misses is dropped. Reproduced: 'Vendo cámaras de seguridad a bancos, joyerías y estaciones de combustible en Higüey, pero no a las que estén en Verón' keeps only Bancos. 'joyerías', 'estaciones de combustible' and the Verón exclusion are gone, faltantes=[], approval enabled. 'solo los que no tengan página web' (a key commercial condition) is dropped. 'que sea remoto o de medio tiempo' is dropped. 'No sé qué vender, quiero descubrir qué negocios necesitan algo en Santo Domingo' becomes the approvable project 'Clientes para algo'. That goal is planned for after phase 7 (expanded plan #4), and the engine should say so. 'Quiero saber quiénes son mis competidores: otras agencias de marketing' becomes 'I sell marketing digital'. The user's product is also overwritten by the dictionary label: 'software de administración empresarial' becomes 'software', 'seguros de salud' becomes 'seguros', and 'plantas eléctricas' becomes 'plantas eléctricas e inversores', which adds something he never said.
+   FIX: Have interpretar() return a list called 'no_entendido': the meaningful words that no dictionary entry, trigger or exclusion range used up. Show it as questions ('No entendí: «joyerías», «pero no a las que estén en Verón»') and keep approval disabled until each one is answered or dismissed. Put unknown sector phrases into sectoresLibres instead of dropping them. Keep the user's own product wording and store the dictionary key separately. For goal types that are not supported yet (competitors, suppliers, 'no sé qué vender', 'investiga esta empresa'), show 'Próximamente (fase X)' instead of forcing them into vender or empleo.
+
+-- [medium] (a) Only 26 of the ~158 municipalities and 1 region are known, and any place typed in the form is accepted as if it were understood  (votos 0, confirmados 0)
+   file src/motor/diccionarios.js:105
+   SCENARIO: The plan (Motor propio) promises dictionaries with 'las 32 provincias y sus municipios'. CIUDADES has 26 entries and REGIONES has only Gran Santo Domingo, so Cibao, Este, Sur, Línea Noroeste, Tamboril, Licey, Verón and others are unknown. Reproduced through the API: 'Busco trabajo de enfermera en el Cibao…' correctly asks '¿Dónde?'. The user then types 'Cibao, Santigo, Miami' in 'Cambiar los datos a mano'. clasificarZonas() stores all three as zonasLibres, faltantes=[], supuestos=[]. Approval returns 200 and the project shows 'En ejecución' with 'Dónde: Cibao, Santigo y Miami'. The UI never says that OPORTIA does not know these places, and they include a typo and a place abroad. Phase 2 will have nothing to search with, and the user approved believing the zone was understood.
+   FIX: Complete CIUDADES with every municipality (and the main distritos municipales) mapped to its province. Add the regions people use (Cibao, Norte, Sur, Este, Noroeste). When the form contains a place that is not recognized, show it as a question with close matches ('¿Quisiste decir Santiago?'), and block approval of places outside RD until other countries exist.
+
+-- [medium] (c) The project has no 'nivel de autonomía' setting, even though the plan puts it in phase 1  (votos 0, confirmados 0)
+   file src/motor/interpretar.js:350
+   SCENARIO: The architecture ('Qué guarda cada proyecto → Permisos: acciones permitidas, nivel de autonomía, frecuencia, presupuesto de IA') and vision §19 list autonomy as a setting of every project. The expanded plan, capability #12 'Nivel de autonomía', says phase 1. limpiarConfiguracion() has no such field, the approval screen and the 'Modificar' form do not show it, and there is no 'Próximamente' label. The in-app roadmap (inicio.viene.*: parte c tareas, d IA, e copias) does not mention it either. Every project Junior approves now has no stated autonomy. When the task queue arrives (part c), the code will have to make up a default for projects that were already approved, so it would be deciding for him something his approval never covered.
+   FIX: Junior needs to decide what the levels are, because the plan does not define them. For example: 'pedirme aprobación de cada ejecución' / 'repetir solo con la frecuencia aprobada' / 'solo cuando yo lo pida'. Then add the setting to the configuration and the form now, with the safest level as default, so it is part of what gets approved. Or he explicitly moves it to part c, and the screen says so.
+
+-- [medium] (c) The AI cost estimate is a fixed text and nothing is stored about AI with the version, so today's 'US$0, sin IA' approval cannot bind future AI spending  (votos 0, confirmados 0)
+   file public/app.js:504
+   SCENARIO: The plan says the estimated AI cost is shown before approving and is calculated by OPORTIA ('unos US$0.80 al mes'), and that there are AI caps per user and per project. In 1b, resumen() always prints t('valor.costo') = 'US$0: lo hace el motor propio de OPORTIA, sin IA.' This is true today, but it is a constant: it is not computed and not saved with the version, and the configuration has no AI permission or budget field. Scenario: Junior approves 'Clientes para paneles solares' today, under 'US$0, sin IA'. Part d (IA con tope) is then installed. The approved version contains nothing that says 'sin IA, tope 0'. Either the project starts using paid AI without Junior having approved any cost, or every project needs to be approved again. Also, if the text is updated in part d, the version history will show the new wording for versions Junior approved under the old one, so the history no longer shows what he saw.
+   FIX: Save in every version now something like ia:{permitida:false, topeMensualUsd:0} and costoEstimadoUsd:0, and show them from the version instead of the fixed i18n text. Junior decides whether turning on AI in part d needs a new approval per project (recommended: yes, each change creates a pending version, the same way capability changes do).
+
+-- LOW (c) Sources cannot be chosen or added per project and there is no analysis-type setting, with no 'Próximamente' label (src/motor/interpretar.js:376)
+   SCENARIO: Vision §19 and the plan's project configuration include 'fuentes de información' and 'tipo de análisis'. The expanded plan, #13 'Elegir fuentes por proyecto y añadir las tuyas', says phases 1–2, and function #3 describes básica, avanzada and profunda research. In 1b, limpiarConfiguracion() always overwrites fuentes with the fixed FUENTES[tipo]. The screen shows 'De dónde saldrá la información: Datos abiertos…, La web de cada empresa y Noticias' as fixed text with no way to change it, and nothing says choosing will come later. There is no analysis-type field at all. Junior cannot tell whether t
+   FIX: Junior should confirm moving both to phase 2. Until then, show 'Elegir y añadir fuentes: Próximamente (fase 2)' and 'Tipo de análisis (básico, avanzado, profundo): Próximamente (fase 2)' on the summary and in the form.
+
+-- LOW (c) Every account gets a 'prueba' plan with 5 projects and no end date, and the admin gets 20, which no plan document decided (src/proyectos/proyectos.js:23)
+   SCENARIO: The architecture proposes 'gratis 1, pago 5, empresarial 20'. The expanded plan proposes a 14-day trial with caps under US$0.50. Migration 2 gives every new espacio plan='prueba', and LIMITE_POR_PLAN.prueba=5 with no expiry. The admin always gets max(plan, 20). Scenario: Junior creates an account for a tester, who can immediately run 5 independent projects for as long as they like. Once phase 2 research starts, those 5 projects share the 1-vCPU, 512 MB server's fair task queue with Junior's own work. The plans are 'referencia, no decisión', so the number should be his.
+   FIX: Ask Junior what limit accounts created now should have (1, as in 'gratis', or 5) and whether the trial expires, then set the 'prueba' value to his answer.
+
+-- LOW (a) A project in the trash keeps the 'En ejecución' state, and restoring it makes it run again without asking (src/proyectos/proyectos.js:248)
+   SCENARIO: Reproduced: approve a project, then 'Mandar a la papelera'. GET /api/proyectos returns estado 'en_ejecucion' for the trashed project. The project screen shows the 'En ejecución' tag next to 'Este proyecto está en la papelera: no trabaja', and the Papelera list shows a green 'En ejecución' tag. 'Restaurar' puts it straight back in 'En ejecución'. Once the part c queue exists, the trash only stops work if every job also checks en_papelera. The plan says eliminar means 'deja de trabajar'.
+   FIX: When a project goes to the trash, pause it and remember its previous state, or show 'En papelera' instead of the state tag. When it is restored, bring it back paused and let the user choose 'Reanudar'.
+
+-- LOW (a) The suggested name is not updated after the instructions change, so a job search can stay named 'Clientes para paneles solares' (src/proyectos/proyectos.js:206)
+   SCENARIO: Reproduced through the API: create 'Vendo paneles solares a hoteles en Samaná' and approve it. Then use 'Escribir otra vez lo que necesitas' with 'Busco trabajo de chofer en Santiago…' and approve version 2. The project now has tipo=laboral and objetivo 'Conseguir empleo de chofer', but its name is still 'Clientes para paneles solares'. With several projects running at once (vision §19), the list shows a misleading name until he renames it by hand.
+   FIX: If the name was never changed by the user (it still equals the first suggested name), recompute nombreSugerido when a new version is approved. Or show the new suggested name inside the pending version so he approves it too.
+
+-- LOW (a) The version number is still 0.1.0, so /api/setup cannot show Junior that phase 1b was installed (package.json:3)
+   SCENARIO: The plan ('Cómo se publica cada parte', step 4) tells Junior to open /api/setup and look at the version number to know what is installed. Phase 1a (main 972150f) is 0.1.0 and fase-1b is still 0.1.0, which my local server confirmed: 'OPORTIA 0.1.0'. After the updater installs 1b, he sees the same number as before and cannot tell whether it was installed or rolled back. Only base.version=3 differs, and he has not been told to look at it.
+   FIX: Bump package.json to 0.2.0 (or 0.1.1) in this phase and tell Junior which number to look for.
+===== critico None
