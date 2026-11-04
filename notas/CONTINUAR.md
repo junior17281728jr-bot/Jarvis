@@ -4,7 +4,7 @@ El crédito se acabó a mitad de la fase 1. Nada se perdió: todo está en estas
 
 ## Estado
 - `main` = 0.1.0 (parte 1a, cuentas). Está instalada en el servidor y funciona. El admin se llama Junior.
-- `fase-1b` (bc8af3d): proyectos + motor propio rehecho + ronda 1 de arreglos del equipo rojo. **NO publicar todavía.**
+- `fase-1b` (d3c0bd2): proyectos + motor rehecho + ronda 1 del equipo rojo + PASO 1 (servidor y decisiones del dueño, 0.2.0) HECHO; verificar que cubre todo el punto 1. **NO publicar todavía.**
   Le falta (ver `notas/revision-1b.txt` y las decisiones en `notas/decisiones-dueno.md`):
   1. Servidor: decisiones del dueño (autonomía 3 niveles, por defecto `aprobar_salidas`; `ia {permitida:false, topeMensualUsd:0}` y `costoEstimadoUsd` por versión;
      plan prueba = 1 proyecto, admin 20, control "Proyectos permitidos"; aviso al usuario cuando el admin le cambia la clave);
