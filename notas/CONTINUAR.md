@@ -23,3 +23,6 @@ El crédito se acabó a mitad de la fase 1. Nada se perdió: todo está en estas
 ## Reglas que nunca cambian
 Las 10 condiciones de Junior; nunca secretos en GitHub (repo público); nunca volver `main` a antes de 0.0.2;
 migraciones solo agregan; pedir permiso antes de pagos o de sus cuentas; explicar en español sencillo y corto.
+
+## Pedido de Junior al retomar
+Al volver, revisar dónde quedamos y seguir solo. Volver a poner las pruebas completas: hasta 3 rondas de ataque al motor (equipo rojo) y 2 revisores por cada problema (se recortaron solo para ahorrar crédito).
