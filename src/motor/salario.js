@@ -21,18 +21,19 @@ const COMPARADORES = indice([
     'no superior a', 'under', 'up to', 'less than', 'below', 'maximum', 'no more than', 'not more than', 'at most']],
   ['entre', ['entre', 'between']],
   // «alrededor de 30 mil», «around 30k»: una cantidad aproximada; se toma como el mínimo y se avisa.
-  ['aprox', ['alrededor de', 'cerca de', 'around', 'about', 'approximately', 'aproximadamente', 'aprox', 'unos', 'como unos', 'mas o menos']],
+  ['aprox', ['alrededor de', 'cerca de', 'around', 'about', 'approximately', 'aproximadamente', 'aprox', 'unos', 'como unos', 'mas o menos', 'como']],
   ['de', ['de', 'from', 'of', 'en']],
 ]);
 const DESPUES = indice([
   ['min', ['o mas', 'o mas que eso', 'para arriba', 'pa arriba', 'en adelante', 'como minimo', 'minimo', 'or more', 'and up', 'plus', 'o superior']],
   ['max', ['o menos', 'como maximo', 'maximo', 'or less', 'at most', 'tops', 'max']],
-  ['extra', ['mas propinas', 'mas comisiones', 'mas beneficios', 'con propinas', 'plus tips', 'plus commissions']],
+  ['extra', ['mas propinas', 'mas comisiones', 'mas comision', 'con comision', 'con comisiones', 'mas beneficios', 'con propinas', 'plus tips', 'plus commissions',
+    'plus commission']],
   ['nada', ['netos', 'brutos', 'libres', 'aproximadamente', 'aprox', 'mas o menos', 'dominicanos', 'de salario', 'de sueldo', 'de pago', 'in salary']],
 ]);
 export const PERIODOS = indice([
   ['mensual', ['mensual', 'mensuales', 'al mes', 'por mes', 'cada mes', 'el mes', 'a month', 'per month', 'monthly', 'mensualmente']],
-  ['quincenal', ['quincenal', 'quincenales', 'por quincena', 'cada quincena', 'a la quincena', 'quincenalmente', 'biweekly', 'every two weeks', 'every 2 weeks',
+  ['quincenal', ['quincenal', 'quincenales', 'quincena', 'la quincena', 'por quincena', 'cada quincena', 'a la quincena', 'quincenalmente', 'biweekly', 'every two weeks', 'every 2 weeks',
     'every other week', 'a fortnight', 'per fortnight', 'fortnightly', 'cada quince dias', 'cada 15 dias', 'cada dos semanas', 'cada 2 semanas']],
   ['semanal', ['semanal', 'semanales', 'por semana', 'a la semana', 'cada semana', 'semanalmente', 'a week', 'per week', 'weekly']],
   ['diario', ['diario', 'diarios', 'por dia', 'al dia', 'diariamente', 'a day', 'per day', 'daily']],
@@ -151,8 +152,10 @@ function leerExpresion(T, k, enContexto) {
   const conector = T[a.fin]?.w;
   const valeConector = ['a', 'al', '-', 'hasta', 'to'].includes(conector) || (['y', 'and'].includes(conector) && comp === 'entre');
   const b = valeConector ? leerMonto(T, a.fin + 1, true) : null;
+  // «25 o 30 mil»: dos cantidades; la segunda dice que es dinero (se pregunta cuál).
+  const otra = ['o', 'or'].includes(conector) ? leerMonto(T, a.fin + 1, true) : null;
   // Sin nada que diga «salario», un número sin marca de dinero solo vale si abre un rango con dinero: «de 50 a 70 mil».
-  if (!fuerte && !a.marcador && !(b && b.marcador)) return null;
+  if (!fuerte && !a.marcador && !(b && b.marcador) && !(otra && otra.mil && !a.mil)) return null;
   j = a.fin;
   if (b) {
     // «entre 20 y 30 mil»: el «mil» y la moneda del segundo también son del primero.
@@ -229,6 +232,13 @@ export function salarioEn(T, k) {
     }
   }
   let periodoAntes = null;
+  // «quincenal 12 mil», «semanal 6 mil», «quincena de 15 mil»: el periodo va antes de la cantidad.
+  if (!palabra && !negado) {
+    const p = buscarEn(T, j, PERIODOS);
+    const q = p && ['de', 'of'].includes(T[p.fin]?.w) ? p.fin + 1 : p?.fin;
+    const e = p ? leerExpresion(T, q, false) : null;
+    if (e && e.montos.some(m => m.marcador)) { periodoAntes = p.datos[0]; j = q; }
+  }
   if (palabra) {
     const p = buscarEn(T, j, PERIODOS);
     if (p) { periodoAntes = p.datos[0]; j = p.fin; }
@@ -248,11 +258,22 @@ export function salarioEn(T, k) {
     j = e.fin;
     const sigue = T[j];
     if (!sigue) break;
-    if ((sigue.w === ',' || sigue.w === 'y' || sigue.w === 'and') && leerExpresion(T, j + 1, true)) { j++; continue; }
+    // «…, de 8 a 6»: un horario después del salario no es otra cantidad.
+    if ((sigue.w === ',' || sigue.w === 'y' || sigue.w === 'and') && !horarioEn(T, j + 1) && leerExpresion(T, j + 1, true)) { j++; continue; }
     if ((sigue.w === 'o' || sigue.w === 'or') && leerExpresion(T, j + 1, true)) { alternativa = true; j++; continue; }
     break;
   }
   if (!expresiones.length) return null;
+  // «25 o 30 mil»: el «mil» del segundo también es del primero.
+  for (let q = 1; q < expresiones.length; q++) {
+    const antes = expresiones[q - 1].montos[expresiones[q - 1].montos.length - 1];
+    const despues = expresiones[q].montos[0];
+    if (alternativa && antes && despues && despues.mil && !antes.mil && antes.base < 1000) {
+      antes.valor = Math.round(antes.base * (despues.valor / despues.base));
+      antes.mil = true;
+      antes.marcador = true;
+    }
+  }
   const montos = expresiones.flatMap(e => e.montos);
   if (!palabra && !negado && !montos.some(m => m.marcador)) return null;
   const despues = buscarEn(T, j, NEGACION_DESPUES);
@@ -274,7 +295,8 @@ export function juntarSalario(tramos, limite) {
   if (monedas.size > 1) return { ...vacio, duda: 'salario' };
   const moneda = monedas.size ? [...monedas][0] : 'DOP';
   for (const m of montos) {
-    const muyPoco = moneda === 'USD' ? m.valor < 50 : m.valor < 1000;
+    // RD$1,500 al mes no es un salario creíble (el mínimo pasa de RD$10,000): casi seguro son dólares o falta algo. Se pregunta.
+    const muyPoco = moneda === 'USD' ? m.valor < 50 : m.valor < 5000;
     if (muyPoco || m.valor > limite) return { ...vacio, duda: 'salario' };
   }
   const minimos = [...new Set(montos.filter(m => m.rol === 'min').map(m => m.valor))];
@@ -290,4 +312,32 @@ export function juntarSalario(tramos, limite) {
   }
   if (minimo != null && maximo != null && minimo > maximo) return { ...vacio, duda: 'salario' };
   return { minimo, maximo, moneda, duda: null, supuesto };
+}
+
+// «de 7 a 3», «de 8am a 5pm», «desde las 6 hasta las 2»: un horario, no un salario. Devuelve dónde termina, o 0.
+// Solo con horas (1 a 24) y si después no viene algo que se cuenta («de 3 a 5 años») ni dinero («de 15 a 20 mil»).
+const DESPUES_DE_HORARIO = new Set(['y', 'e', 'and', 'pero', 'but', 'de', 'del', 'los', 'todos', 'horas', 'hrs', 'h', 'am', 'pm', 'en', 'o', 'or']);
+function horaEn(T, k) {
+  let j = k;
+  if (['las', 'la', 'the'].includes(T[j]?.w)) j++;
+  const t = T[j];
+  if (!t || t.tipo !== 'n' || !/^\d{1,2}$/.test(t.w)) return 0;
+  const n = Number(t.w);
+  if (n < 1 || n > 24) return 0;
+  j++;
+  if (['am', 'pm', 'a', 'p'].includes(T[j]?.w) && T[j].fin - T[j].ini <= 2 && T[j].ini === t.fin) j++;
+  else if (['am', 'pm'].includes(T[j]?.w)) j++;
+  if (T[j]?.w === 'de' && T[j + 1]?.w === 'la' && ['manana', 'tarde', 'noche', 'madrugada'].includes(T[j + 2]?.w)) j += 3;
+  return j;
+}
+export function horarioEn(T, k) {
+  if (!['de', 'desde', 'from'].includes(T[k]?.w)) return 0;
+  const a = horaEn(T, k + 1);
+  if (!a || !['a', 'al', 'hasta', 'to', '-', 'till', 'until'].includes(T[a]?.w)) return 0;
+  const b = horaEn(T, a + 1);
+  if (!b) return 0;
+  const siguiente = T[b];
+  if (siguiente && siguiente.tipo !== 's' && !DESPUES_DE_HORARIO.has(siguiente.w)) return 0;
+  if (siguiente && siguiente.tipo === 's' && siguiente.w !== '.' && siguiente.w !== ',') return 0;
+  return b;
 }

@@ -34,7 +34,8 @@ const DATOS_PROVINCIAS = [
   ['monte-plata', 'Monte Plata', ['monte plata', 'provincia monte plata', 'provincia de monte plata']],
   ['hato-mayor', 'Hato Mayor', ['hato mayor', 'provincia hato mayor', 'provincia de hato mayor']],
   ['el-seibo', 'El Seibo', ['el seibo', 'el seybo', 'seibo', 'provincia el seibo']],
-  ['san-juan', 'San Juan', ['san juan', 'provincia san juan', 'provincia de san juan']],
+  // «el Valle de San Juan» es San Juan, no El Valle de Hato Mayor.
+  ['san-juan', 'San Juan', ['san juan', 'provincia san juan', 'provincia de san juan', 'valle de san juan', 'el valle de san juan']],
   ['elias-pina', 'Elías Piña', ['elias pina', 'provincia elias pina']],
   ['dajabon', 'Dajabón', ['dajabon', 'provincia dajabon', 'provincia de dajabon']],
   ['montecristi', 'Montecristi', ['montecristi', 'monte cristi', 'provincia montecristi']],
@@ -91,7 +92,7 @@ const DATOS_MUNICIPIOS = {
   'elias-pina': [['Comendador', { ambiguas: ['comendador'] }], 'Bánica', ['El Llano', { ambiguas: ['el llano'] }], 'Hondo Valle', 'Juan Santiago', 'Pedro Santana'],
   'el-seibo': [['Santa Cruz del Seibo', { palabras: ['santa cruz del seibo', 'municipio de el seibo', 'municipio del seibo'] }], 'Miches'],
   espaillat: ['Moca', 'Cayetano Germosén', 'Gaspar Hernández', ['Jamao al Norte', { palabras: ['jamao al norte', 'jamao'] }]],
-  'hato-mayor': [['Hato Mayor del Rey', { palabras: ['hato mayor del rey', 'municipio de hato mayor'] }], ['El Valle', { ambiguas: ['el valle'] }], 'Sabana de la Mar'],
+  'hato-mayor': [['Hato Mayor del Rey', { palabras: ['hato mayor del rey', 'municipio de hato mayor'] }], ['El Valle (Hato Mayor)', { palabras: ['el valle'], ambiguas: ['el valle'], homonimo: true }], 'Sabana de la Mar'],
   'hermanas-mirabal': ['Salcedo', 'Tenares', 'Villa Tapia'],
   independencia: ['Jimaní', ['Cristóbal', { ambiguas: ['cristobal'] }], 'Duvergé', ['La Descubierta', { ambiguas: ['la descubierta'] }], ['Mella', { ambiguas: ['mella'] }], 'Postrer Río'],
   'la-altagracia': [
@@ -132,7 +133,7 @@ const DATOS_MUNICIPIOS = {
   'san-juan': ['San Juan de la Maguana', 'Bohechío', ['El Cercado', { ambiguas: ['el cercado'] }], 'Juan de Herrera', 'Las Matas de Farfán', 'Vallejuelo'],
   'san-pedro-de-macoris': [
     cabecera('San Pedro de Macorís (municipio)', 'san-pedro-de-macoris-municipio', 'san pedro de macoris'),
-    ['Consuelo', { ambiguas: ['consuelo'] }], ['Guayacanes', { ambiguas: ['guayacanes'] }], ['Quisqueya', { ambiguas: ['quisqueya'] }], 'Ramón Santana',
+    ['Consuelo', { ambiguas: ['consuelo'] }], ['Guayacanes', { ambiguas: ['guayacanes'] }], ['Quisqueya (San Pedro de Macorís)', { palabras: ['quisqueya'], ambiguas: ['quisqueya'], homonimo: true }], 'Ramón Santana',
     ['San José de Los Llanos', { palabras: ['san jose de los llanos', 'los llanos'], ambiguas: ['los llanos'] }],
   ],
   'sanchez-ramirez': ['Cotuí', 'Cevicos', 'Fantino', ['La Mata', { ambiguas: ['la mata'] }]],

@@ -23,13 +23,15 @@ export const IA_APAGADA = Object.freeze({ permitida: false, topeMensualUsd: 0 })
 
 // Lo que el motor decidió solo y avisa (se muestra; no impide aprobar).
 export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_laboral', 'sectores_todos', 'gran_santo_domingo', 'contactar_a_mano',
-  'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono', 'contactar_sin_correos'];
+  'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono', 'contactar_sin_correos', 'contactar_telefono', 'clientes_actuales',
+  'autonomia_pedida'];
 // Dudas: cosas que el motor no entendió. Mientras haya alguna, no se puede aprobar.
 // Las «guardadas» salen de las instrucciones y se marcan como resueltas en el formulario; las otras se calculan
 // de la configuración y desaparecen solas cuando se corrige el dato.
 export const CLAVES_DUDAS_GUARDADAS = ['texto', 'lugar', 'calle_o_provincia', 'direccion', 'conflicto_tamano', 'salario', 'salario_periodo', 'frecuencia', 'frecuencia_no_disponible',
   'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa',
-  'objetivo_empleados', 'objetivo_otra_tarea', 'parte_de_lugar', 'lugar_homonimo', 'lugar_difuso', 'cambio', 'combinacion_producto', 'combinacion_parcial'];
+  'objetivo_empleados', 'objetivo_otra_tarea', 'parte_de_lugar', 'lugar_homonimo', 'lugar_difuso', 'cambio', 'combinacion_producto', 'combinacion_parcial',
+  'sector_general', 'lugar_provincia'];
 export const CLAVES_DUDAS_CALCULADAS = ['conflicto_sector', 'conflicto_zona', 'fuera_del_pais'];
 export const CLAVES_DUDAS = [...CLAVES_DUDAS_GUARDADAS, ...CLAVES_DUDAS_CALCULADAS];
 
@@ -123,6 +125,10 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
       if (!x.general.todos) supuestos.add('sectores_todos');
     } else if (x.sectoresPrioridad.length) sectores = unicos(x.sectoresPrioridad);
   }
+  // «a talleres…, sobre todo colmados y farmacias»: los negocios con prioridad también se buscan.
+  if (tipo === 'comercial' && sectores.length && !sectores.includes('todas')) sectores = unicos([...sectores, ...x.sectoresPrioridadDirectos]);
+  // «hoteles y empresas», «casas y negocios»: no se sabe si busca solo esos negocios o todos. Se pregunta.
+  if (tipo === 'comercial' && x.generalesEnLista.length && (sectores.some(s => s !== 'todas') || sectoresLibres.length)) duda('sector_general', x.generalesEnLista[0]);
   if (!sectoresLibres.length) supuestos.delete('sectores_libres');
 
   // Tamaños: lo incluido menos lo excluido. Si algo está en los dos lados, se pregunta.
@@ -171,18 +177,22 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   // Capacidades: solo lo que se pidió de verdad. «Contactar» nunca se enciende desde el texto.
   const pedidas = new Set(x.capPedidas);
   pedidas.delete('contactar');
-  if (x.contactarPedido) pedidas.add('correos');
   let base;
   if (x.cicloCompleto) base = CLAVES_CAPACIDADES.filter(c => c !== 'contactar');
   else if (x.soloInvestigar) base = ['investigar', ...pedidas];
   else if (pedidas.size) base = ['investigar', 'analizar', 'recomendar', ...pedidas];
   else base = COMBINACIONES[COMBINACION_POR_DEFECTO];
+  // Pedir contactar enciende preparar los correos (contactar se enciende a mano), sin apagar nada más («llámalos» no quita las propuestas).
+  if (x.contactarPedido) base = [...base, 'correos'];
   const lista = base.filter(c => c === 'investigar' || !x.capNegadas.has(c)).filter(c => c !== 'contactar');
   const capacidades = capacidadesDesdeLista(lista);
   const porDefecto = capacidadesDesdeLista(COMBINACIONES[COMBINACION_POR_DEFECTO]);
-  if (!x.soloInvestigar && !x.cicloCompleto && !pedidas.size && CLAVES_CAPACIDADES.every(c => capacidades[c] === porDefecto[c])) supuestos.add('capacidades');
+  if (!x.soloInvestigar && !x.cicloCompleto && !pedidas.size && !x.contactarPedido && CLAVES_CAPACIDADES.every(c => capacidades[c] === porDefecto[c])) supuestos.add('capacidades');
   // Si pidió contactar pero también que no prepare correos («no les mandes correos, solo llámalos»), el aviso no puede prometer correos.
-  if (x.contactarPedido) supuestos.add(capacidades.correos ? 'contactar_a_mano' : 'contactar_sin_correos');
+  // Si pidió llamar o escribir por WhatsApp, se dice que eso todavía no se hace.
+  if (x.contactarPedido) supuestos.add(!capacidades.correos ? 'contactar_sin_correos' : x.porTelefono ? 'contactar_telefono' : 'contactar_a_mano');
+  // «hazlo todo tú solo sin preguntarme»: se queda en el nivel más seguro, y se avisa.
+  if (x.autonomiaPedida) supuestos.add('autonomia_pedida');
 
   if (noEntendido.some(d => d.clave === 'tipo')) { supuestos.delete('tipo'); supuestos.delete('tipo_laboral'); }
   // Si lo que pide todavía no existe (competidores, proveedores…), no se dice nada más: solo eso.

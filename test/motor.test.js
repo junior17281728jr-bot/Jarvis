@@ -12,7 +12,7 @@ import {
 } from '../src/motor/interpretar.js';
 import { normalizar, comparable, buscarFrases, tokenizar, variantes } from '../src/motor/texto.js';
 import { SECTORES, PRODUCTOS, PROVINCIAS, MUNICIPIOS, CIUDADES, REGIONES, ZONAS, CAPACIDADES, COMBINACIONES } from '../src/motor/diccionarios.js';
-import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO } from './motor-casos.js';
+import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2 } from './motor-casos.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 
@@ -20,7 +20,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
 const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
 const CATALOGO = catalogo();
-const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO];
+const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2];
 
 // ---------- Texto ----------
 test('normalizar quita acentos y mayúsculas sin cambiar la longitud del texto', () => {
@@ -91,6 +91,46 @@ test(`instrucciones dominicanas variadas: ventas, empleos, jerga, MAYÚSCULAS, e
 test(`cada frase del equipo rojo (ronda 1) se entiende bien o se pregunta (${CASOS_EQUIPO_ROJO.length} casos)`, () => {
   assert.ok(CASOS_EQUIPO_ROJO.length >= 300);
   for (const caso of CASOS_EQUIPO_ROJO) revisarCaso(caso);
+});
+
+test(`cada frase de la segunda tanda del equipo rojo (ronda 1) se entiende bien o se pregunta (${CASOS_EQUIPO_ROJO_2.length} casos)`, () => {
+  assert.ok(CASOS_EQUIPO_ROJO_2.length >= 130);
+  for (const caso of CASOS_EQUIPO_ROJO_2) revisarCaso(caso);
+});
+
+test('segunda tanda: las preguntas nombran el pedazo exacto, y lo que se guarda va completo', () => {
+  const dudasDe = (texto, idioma = 'es') => dudas(interpretar(texto, { idioma }).configuracion).map(d => `${d.clave}:${d.texto}`);
+  assert.deepEqual(dudasDe('Busco trabajo de chofer en EE.UU.'), ['fuera_del_pais:EE.UU.'], 'la zona no queda cortada («EE.U»)');
+  assert.deepEqual(dudasDe('Vendo ropa a tiendas en E.E.U.U.'), ['fuera_del_pais:E.E.U.U.']);
+  assert.deepEqual(dudasDe('Busco trabajo de chofer en Moca, Santiago'), ['lugar_provincia:Moca, Santiago']);
+  assert.deepEqual(dudasDe('Vendo agua a colmados en Constanza, La Vega'), [], 'la provincia solo dice dónde queda');
+  assert.deepEqual(dudasDe('Vendo agua a colmados en Moca, Santiago y La Vega'), [], 'una lista de tres lugares no se pregunta');
+  assert.deepEqual(dudasDe('Vendo agua a colmados en Puerto Rico y en San Juan'), ['lugar_homonimo:San Juan', 'fuera_del_pais:Puerto Rico', 'fuera_del_pais:San Juan (Puerto Rico)']);
+  assert.deepEqual(dudasDe('Vendo seguros a hoteles y empresas en Santo Domingo'), ['sector_general:empresas']);
+  assert.deepEqual(dudasDe('Busco trabajo de técnico de refrigeración en Puerto Plata, quincenal 12 mil'), ['salario_periodo:quincenal 12 mil']);
+  assert.deepEqual(dudasDe('vendo camaras a colmados en santiago quincenal'), ['frecuencia_no_disponible:quincenal']);
+  assert.deepEqual(dudasDe('Busco trabajo de chofer en Santiago o donde sea'), ['lugar_difuso:donde sea']);
+  // El enlace del dueño no es lo que vende; un enlace solo no dice qué vende.
+  const web = interpretar('Vendo seguros a empresas en Santiago. Mi página web: https://segurosjr.do').configuracion;
+  assert.deepEqual([web.producto, web.productos], ['seguros', ['seguros']]);
+  const enlace = interpretar('Vendo https://www.tiendajunior.com a supermercados de La Romana').configuracion;
+  assert.equal(enlace.producto, '');
+  assert.ok(faltantes(enlace).includes('producto'));
+  // «Hotel Matum» y la Bonanza ya son sus clientes: van en «Excluir», nunca en «A quién buscar».
+  const clientes = interpretar('vendo seguros a empresas en santiago, ya tengo a la Bonanza y a Supermercado Nacional como clientes, sacalos').configuracion;
+  assert.deepEqual(clientes.exclusiones, ['Bonanza', 'Supermercado Nacional']);
+  assert.deepEqual(clientes.sectoresLibres, []);
+  // Llamar o WhatsApp: se avisa que todavía no se hace, y las propuestas no se apagan.
+  const llamar = interpretar('vendo camaras a colmados en santiago, llamalos');
+  assert.ok(llamar.supuestos.includes('contactar_telefono') && !llamar.supuestos.includes('contactar_a_mano'));
+  assert.equal(llamar.configuracion.capacidades.propuestas, true);
+  assert.equal(llamar.configuracion.capacidades.contactar, false);
+  // «sin preguntarme»: sigue en el nivel más seguro, y se avisa.
+  const solo = interpretar('vendo camaras a colmados en santiago, hazlo todo tu solo sin preguntarme');
+  assert.equal(solo.configuracion.autonomia, 'aprobar_salidas');
+  assert.ok(solo.supuestos.includes('autonomia_pedida'));
+  assert.ok(!interpretar('no contactes a nadie sin preguntarme, vendo software a hoteles en Santiago').supuestos.includes('autonomia_pedida'),
+    '«no contactes a nadie sin preguntarme» pide lo contrario');
 });
 
 test('«Contactar» nunca se enciende desde el texto, ni siquiera cuando se pide: se avisa y se deja para encender a mano', () => {
@@ -360,6 +400,13 @@ test('cualquier texto de 4000 letras, aunque esté hecho para trabar el motor, s
     'salarios negados': relleno(i => `no quiero ganar menos de ${i} mil,`),
     'SD Norte y Este': relleno(() => 'Santo Domingo Norte y Este y'),
     'los que estén en …': relleno(() => 'excepto los que esten en Moca y que sean grandes'),
+    // Segunda tanda de la ronda 1: suplidores, clientes que ya tiene, horarios, lugares con provincia, prioridades.
+    'me venden …': relleno(i => `los hoteles${i} me venden toallas,`),
+    'ya tengo a …': relleno(i => `ya tengo a Empresa${i} y a Otra${i} como clientes, sacalos,`),
+    'de 7 a 3 …': relleno(i => `de ${i % 12 + 1} a ${i % 7 + 1},`),
+    'Moca, Santiago …': relleno(i => ['Moca, Santiago,', 'Constanza, La Vega,', 'Los Mina de Santiago,'][i % 3]),
+    'sobre todo …': relleno(i => `talleres${i} sobre todo, colmados y farmacias principalmente,`),
+    'quincenal …': relleno(i => `quincenal ${i} mil o ${i + 1} mil,`),
   };
   let peor = 0;
   for (const [nombre, texto] of Object.entries(casos)) {

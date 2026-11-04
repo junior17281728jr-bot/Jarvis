@@ -63,10 +63,14 @@ export function tokenizar(texto) {
   let p = plano(original);
   // Enlaces y correos: un solo token, para que «hoteles» dentro de una dirección web no cuente.
   p = p.replace(/(?:https?:\/\/|www\.)[^\s,;]+|[^\s,;@]+@[^\s,;@]+\.[a-z]{2,}/g, m => `${'_'.repeat(m.length)}`);
-  // R.D., S.D., EE.UU.: letras con punto se juntan en una sola palabra.
-  p = p.replace(/(?<![a-z0-9])(?:[a-z]{1,2}\.\s?){2,}(?![a-z0-9])/g, m => {
+  // R.D., S.D., EE.UU.: letras con punto se juntan en una sola palabra. La palabra abarca todo lo escrito
+  // («EE.UU.», no «EE.U»), para que lo que se guarde sea el nombre completo.
+  const siglas = new Map();
+  p = p.replace(/(?<![a-z0-9])(?:[a-z]{1,2}\.\s?){2,}(?![a-z0-9])/g, (m, desde) => {
     const letras = m.replace(/[.\s]/g, '');
-    return letras.length <= 4 ? letras + ' '.repeat(m.length - letras.length) : m;
+    if (letras.length > 4) return m;
+    siglas.set(desde, desde + m.trimEnd().length);
+    return letras + ' '.repeat(m.length - letras.length);
   });
   const tokens = [];
   const empujar = (w, ini, fin, tipo) => tokens.push({ w, ini, fin, tipo, mayus: tipo === 'p' && /\p{Lu}/u.test(original[ini] || '') });
@@ -98,6 +102,7 @@ export function tokenizar(texto) {
       if (w === 'k' && anterior?.tipo === 'n') empujar('k', ini, i, 'p');
       else if (w === 'k') empujar('que', ini, i, 'p');
       else if (corto) for (const parte of corto.split(' ')) empujar(parte, ini, i, 'p');
+      else if (siglas.has(ini)) { i = siglas.get(ini); empujar(w, ini, i, 'p'); }
       else empujar(w, ini, i, 'p');
       // «Av.», «Sto.»: el punto de una abreviatura no termina la frase.
       if (p[i] === '.' && ABREVIATURAS.has(w) && /^\s*[a-z0-9,;:)]/.test(p.slice(i + 1, i + 4))) i++;

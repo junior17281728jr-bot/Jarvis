@@ -34,7 +34,7 @@ export const SECTORES = [
   { clave: 'educacion', es: 'Colegios, escuelas y universidades', en: 'Schools and universities', palabras: ['colegio', 'escuela', 'universidad', 'instituto', 'academia', 'liceo', 'school', 'university', 'universities', 'academy', 'academies'], parciales: ['instituto', 'academia', 'liceo', 'academy', 'academies'] },
   { clave: 'finanzas', es: 'Bancos, financieras y cooperativas', en: 'Banks, lenders and credit unions', palabras: ['banco', 'financiera', 'cooperativa', 'asociacion de ahorros', 'bank', 'credit union', 'lender'], parciales: ['asociacion de ahorros'] },
   { clave: 'aseguradoras', es: 'Aseguradoras', en: 'Insurance companies', palabras: ['aseguradora', 'compania de seguros', 'insurance company', 'insurance companies'] },
-  { clave: 'bancas', es: 'Bancas de lotería', en: 'Lottery shops (bancas)', palabras: ['banca de loteria', 'banca de apuestas', 'banca', 'loteria', 'lottery shop'] },
+  { clave: 'bancas', es: 'Bancas de lotería', en: 'Lottery shops (bancas)', palabras: ['banca de loteria', 'banca de apuestas', 'banca de apuesta', 'bancas de apuesta', 'banca', 'loteria', 'lottery shop'] },
   { clave: 'talleres', es: 'Talleres mecánicos', en: 'Auto repair shops', palabras: ['taller', 'taller mecanico', 'taller de mecanica', 'auto repair', 'repair shop', 'garage', 'body shop'] },
   { clave: 'concesionarios', es: 'Concesionarios de vehículos', en: 'Car dealerships', palabras: ['concesionario', 'dealer', 'car dealer', 'car dealership', 'dealer de carros'] },
   { clave: 'belleza', es: 'Salones de belleza, barberías y spas', en: 'Beauty salons, barbershops and spas', palabras: ['salon de belleza', 'peluqueria', 'barberia', 'spa', 'estetica', 'beauty salon', 'barbershop', 'barber shop', 'nail salon', 'salon de unas'], parciales: ['peluqueria', 'barberia', 'spa', 'estetica', 'barbershop', 'barber shop', 'nail salon', 'salon de unas'] },
@@ -114,7 +114,11 @@ export const AUTONOMIA_POR_DEFECTO = 'aprobar_salidas';
 export const FRECUENCIAS_NO_DISPONIBLES = ['cada 15 dias', 'cada quince dias', 'cada dos semanas', 'cada 2 semanas', 'quincenalmente', 'cada quincena',
   'cada dos dias', 'cada 2 dias', 'cada tres dias', 'cada 3 dias', 'interdiario', 'cada hora', 'cada dos meses', 'cada 2 meses', 'cada tres meses',
   'cada 3 meses', 'cada ano', 'una vez al ano', 'anualmente', 'every two weeks', 'every 2 weeks', 'every other week', 'every other day', 'biweekly',
-  'every hour', 'hourly', 'yearly', 'every year'];
+  'every hour', 'hourly', 'yearly', 'every year', 'cada rato', 'a cada rato', 'cada ratito', 'de vez en cuando', 'de cuando en cuando', 'every now and then',
+  'from time to time', 'once in a while', 'twice a week', 'twice a day', 'twice a month'];
+// «quincenal», «bisemanal»: palabras sueltas que piden una frecuencia que no existe. Solo cuentan si no hablan de dinero
+// («quincenal 12 mil» es un salario por quincena).
+export const FRECUENCIAS_NO_DISPONIBLES_SUELTAS = ['quincenal', 'quincenales', 'bisemanal', 'fortnightly'];
 export const DIAS_DE_LA_SEMANA = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 // Verbos que, junto a «diario», «semanal»…, sí hablan de cada cuánto revisar.
 export const VERBOS_DE_REVISAR = ['revisa', 'revisar', 'revises', 'revisen', 'revisalo', 'revision', 'busca', 'buscar', 'busques', 'busquen', 'buscalos',
@@ -145,7 +149,8 @@ export const VERBOS_DE_ENVIAR = ['envia', 'enviar', 'envies', 'manda', 'mandar',
 // «Solo investigar»: la combinación más corta.
 export const SOLO_INVESTIGAR = ['solo investiga', 'solo investigar', 'solamente investiga', 'solamente investigar', 'nada mas investiga', 'nada mas investigar',
   'unicamente investiga', 'unicamente investigar', 'solo busca', 'solo buscar', 'solo buscalos', 'solo encuentra', 'solo encontrar', 'solamente busca',
-  'solamente buscar', 'nada mas busca', 'nada mas buscar', 'only research', 'just research', 'only find', 'just find', 'only search', 'just search'];
+  'solamente buscar', 'nada mas busca', 'nada mas buscar', 'only research', 'just research', 'only find', 'just find', 'only search', 'just search',
+  'research only', 'investigar solamente', 'investigar nada mas', 'solo la investigacion', 'only the research', 'just the research'];
 
 // Tres combinaciones listas para elegir rápido.
 export const COMBINACIONES = {
@@ -166,9 +171,11 @@ export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco 
   // Formas dominicanas de decir trabajo: chamba, pega, camello, chance, trabajito, empleíto.
   'busco una chamba', 'busco chamba', 'necesito chamba', 'necesito una chamba', 'quiero chamba', 'chamba de', 'busco una chambita', 'chambita de',
   'busco un chance', 'busco pega', 'necesito pega', 'pega de', 'busco camello', 'camello de', 'busco trabajito', 'busco un trabajito', 'trabajito de',
-  'busco un empleito', 'empleito de', 'jobs for', 'jobs in', 'job hunting', 'job search', 'job searching'];
+  'busco un empleito', 'empleito de', 'jobs for', 'jobs in', 'job hunting', 'job search', 'job searching',
+  // «Busco puestos de enfermera», «busco una plaza de maestro»: también es buscar empleo.
+  'puestos de', 'un puesto de', 'busco puesto de', 'plazas de', 'busco plaza de', 'busco una plaza de', 'quiero una plaza de', 'necesito una plaza de'];
 export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden', 'ofrezco', 'ofrecemos', 'ofrece', 'brindo', 'brindamos',
-  'distribuyo', 'distribuimos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
+  'distribuyo', 'distribuimos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'i install', 'we install', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
   'mi empresa', 'tengo una empresa', 'tengo un negocio', 'tenemos una empresa', 'me dedico a vender', 'nos dedicamos a vender', 'trabajo vendiendo',
   'soy distribuidor', 'soy distribuidora', 'somos distribuidores', 'tengo una agencia', 'tengo una tienda', 'busco clientes', 'buscar clientes', 'conseguir clientes',
   'encontrar clientes', 'necesito clientes', 'quiero clientes', 'clientes para', 'prospectos', 'que necesiten', 'puedan necesitar', 'que necesitan',
@@ -193,7 +200,9 @@ export const OBJETIVOS_NO_DISPONIBLES = [
     'manejes mis redes', 'maneja mis redes', 'manejar mis redes', 'hazme una pagina', 'hazme la pagina', 'disena mi logo', 'hazme un logo',
     'run my social media'] },
   { clave: 'proveedores', palabras: ['busco proveedores', 'buscar proveedores', 'encontrar proveedores', 'conseguir proveedores', 'necesito proveedores', 'proveedores para mi', 'suplidores', 'busco suplidores', 'suppliers', 'find suppliers', 'vendors for my'] },
-  { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners'] },
+  { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners',
+    'business partner', 'business partners', 'busco un socio', 'busco socio', 'necesito un socio', 'quiero un socio', 'encontrar un socio', 'conseguir un socio',
+    'socio inversionista', 'socios inversionistas'] },
   { clave: 'que_vender', palabras: ['no se que vender', 'no se que ofrecer', 'que puedo vender', 'que podria vender', 'que deberia vender', 'que negocio poner', 'que negocio puedo', 'descubrir que vender', 'dime que vender', 'what to sell', 'what should i sell', 'what can i sell'] },
   { clave: 'una_empresa', palabras: ['investiga esta empresa', 'investiga la empresa', 'investigar esta empresa', 'investigar la empresa', 'investiga a la empresa', 'informacion sobre la empresa', 'informacion de la empresa', 'research this company', 'research the company'] },
 ];
