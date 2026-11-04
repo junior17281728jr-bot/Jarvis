@@ -39,3 +39,11 @@ Idea de Junior para la revisión: apartado «Errores» SOLO para el admin; cada 
 Más pedidos de Junior: cada revisión diaria le deja un RESUMEN del día en sencillo: por qué pasó cada error, si se corrigió y qué se hizo. Y DETECTAR FALTA DE CRÉDITO: si la clave de IA se queda sin saldo (la API responde que no hay crédito), OPORTIA sigue con su motor propio y le avisa al momento (Administrador + Telegram); si un día no llega la revisión diaria de Claude, también avisa. Avisos al 50/80/100% de cada tope. Recordarle: la API de Claude se paga aparte (console.anthropic.com), no es el mismo crédito de este chat.
 Cambios de cuentas pedidos por Junior (para la próxima versión): contraseña mínima de 6 caracteres (no más), bloqueando las obvias (123456, 111111, abcdef, su propio nombre…); usuarios con nombre y apellido: el admin escribe «Juan Pérez» y el sistema propone el usuario «juan.perez» (si ya existe, «juan.perez2»); el nombre visible guarda acentos. El restablecer clave del admin ya existe (clave temporal + cambio obligatorio al entrar): explicárselo en la pantalla. Si la IA se apaga o se queda sin saldo, todo sigue con el motor propio.
 Pantallas (pedido de Junior): que se vean simples pero tecnológicas y todo claro; empezar en CLARO (blanco) por defecto y en Configuración un selector de tema Claro / Oscuro / Automático guardado por usuario. Hacer una pasada de diseño (logo, colores, tipografía, iconos) sin perder claridad.
+
+## Pedido de Junior (4 nov 2026, 22:30 UTC): pantallas más visuales
+Texto suyo: «Que necesita ser visual, debe verse siempre y sin tener que escribir tanto, y donde escriba se vea más. O sea, no tan básico.»
+Plan: una PASADA VISUAL propia (después de la 1c, antes de la 1d; intensidad media, ultracode apagado salvo la revisión final):
+- Crear proyectos tocando en vez de escribir: tarjetas/botones para tipo (vender, comprar, empleo…), negocios, lugares (provincias), tamaño, frecuencia; el texto libre queda como opción.
+- La caja de texto grande y cómoda (crece con lo escrito, letra más grande).
+- Lo importante siempre a la vista (estado del proyecto, qué falta, siguiente paso).
+- Diseño menos básico: logo, colores, iconos, tarjetas; claro por defecto + oscuro. Sin perder claridad ni funciones.
