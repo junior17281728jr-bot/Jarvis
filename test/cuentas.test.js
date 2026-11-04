@@ -62,6 +62,17 @@ test('contraseñas obvias: la lista corta, un carácter repetido y el nombre de 
   for (const c of ['mango verde', 'Casa2024!', 'tres gatos']) assert.equal(claveObvia(c, ['junior', 'Juan Pérez']), false, c);
   assert.equal(problemaDeClave('12345'), 'clave_corta');
   assert.equal(problemaDeClave('123456'), 'clave_obvia');
+});
+
+test('contraseñas obvias: las de la lista con números o signos alrededor, series, teclado y repeticiones tampoco sirven', () => {
+  const malas = ['password123', 'qwerty1', 'iloveyou1', 'teamo123', 'Oportia2026', 'jarvis', 'Jarvis123', '123321', '102030', '1q2w3e',
+    '123qwe', 'qwertyuiop', 'asdf1234', '111222', '000001', 'abcabc', 'aaa111', '1234567a', 'dominicana', 'santiago', 'hola123', 'p4ssw0rd',
+    'teamo!', 'Santo Domingo 2026', '123abc', 'a12345', '654321a', 'zxcvbn', 'mariposa1', 'princesa2025', 'holahola', '112233', '7890123',
+    'abccba', '1qaz2wsx', '!@#$%^', 'hola!!', 'contraseña', 'cont rasena'];
+  for (const c of malas) assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), 'clave_obvia', c);
+  const buenas = ['mango verde', 'Casa2024!', 'tres gatos', 'mango7', 'Gato-azul-9', 'pan con queso', 'casa de mi abuela 1975', 'x9k2mq',
+    'perro2019', 'Bávaro azul', 'la clave de bob 2026'];
+  for (const c of buenas) assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), null, c);
   assert.equal(problemaDeClave('mango verde', ['junior']), null);
 });
 
@@ -340,7 +351,12 @@ test('cuando el administrador reinicia una contraseña, la persona lo ve al entr
     const galleta = r.galleta;
     // Mientras la pantalla no diga que ya lo mostró, el aviso sigue (también en /api/yo, aun con la clave temporal).
     assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos.length, 3);
+    assert.equal(r.datos.reiniciosRecientes.length, 3, 'con el aviso van los reinicios recientes');
     const hasta = Math.max(...r.datos.avisos.map(a => a.id));
+    // Con la contraseña temporal no se puede marcar como visto (puede ser otra persona).
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta }, galleta })).datos.error, 'debe_cambiar_clave');
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos.length, 3);
+    assert.equal((await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'otra clave de bob 2026' }, galleta })).codigo, 200);
     assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta }, galleta })).codigo, 200);
     assert.deepEqual((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos, [], 'se ve una vez');
     // La lista en Configuración se queda para siempre (nada se borra).
@@ -367,5 +383,30 @@ test('datos de cuentas del tipo equivocado dan 400, nunca un error del servidor'
       assert.equal(r.codigo, 400, ruta);
       assert.equal(r.datos.error, 'datos_no_validos', ruta);
     }
+  });
+});
+
+test('si otro entra con la contraseña reiniciada y «ve» el aviso, la dueña igual ve esa fecha al entrar la próxima vez', async () => {
+  await conAdmin(async (base, galletaAdmin) => {
+    const creado = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'bob' }, galleta: galletaAdmin });
+    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: creado.datos.claveTemporal } });
+    await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: creado.datos.claveTemporal, nueva: 'la clave de bob 2026' }, galleta: r.galleta });
+    // 1. Sin que Bob lo pida, el administrador reinicia su contraseña y entra con la temporal.
+    let temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
+    let galleta = r.galleta;
+    const primero = r.datos.avisos[0].id;
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: primero }, galleta })).codigo, 403);
+    // 2. Pone una contraseña nueva y ahí sí marca el aviso como visto.
+    assert.equal((await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'la clave del intruso' }, galleta })).codigo, 200);
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: primero }, galleta })).codigo, 200);
+    // 3. Bob ya no puede entrar, pide un reinicio y entra.
+    temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
+    assert.equal(r.datos.avisos.length, 1, 'el aviso nuevo es solo el que pidió');
+    assert.equal(r.datos.reiniciosRecientes.length, 2, 'pero la pantalla le muestra los dos reinicios, con su fecha');
+    assert.ok(r.datos.reiniciosRecientes[1].vistoEn, 'el viejo ya estaba visto, y aun así aparece');
+    galleta = r.galleta;
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.reiniciosRecientes.length, 2);
   });
 });

@@ -8,7 +8,7 @@ import { abrirBase } from '../src/nucleo/db.js';
 import { Limitador } from '../src/nucleo/limites.js';
 import { interpretar, configuracionDesdeCampos, TIPOS, AUTONOMIAS } from '../src/motor/interpretar.js';
 import {
-  marcarConErrores, LIMITE_ADMINISTRADOR, MAXIMO_VERSIONES, MAXIMO_BYTES_VERSION, VERSIONES_COMPLETAS, ESTADOS, ESTADOS_VERSION, ORIGENES, EVENTOS,
+  marcarConErrores, espacioDe, crearProyecto, moverAPapelera, LIMITE_ADMINISTRADOR, MAXIMO_VERSIONES, MAXIMO_BYTES_VERSION, VERSIONES_COMPLETAS, ESTADOS, ESTADOS_VERSION, ORIGENES, EVENTOS,
 } from '../src/proyectos/proyectos.js';
 import { LIMITE_POR_PLAN, guardadosPermitidos } from '../src/cuentas/planes.js';
 
@@ -272,6 +272,63 @@ test('el nombre sugerido lleva el sector o el lugar, y se recalcula al aprobar s
     assert.equal(r.datos.proyecto.nombre, 'Empleo: chofer · Santiago');
     assert.equal(r.datos.proyecto.tipo, 'laboral');
     assert.deepEqual(r.datos.historial[0], { ...r.datos.historial[0], accion: 'renombrado', detalle: { antes: a.nombre, ahora: 'Empleo: chofer · Santiago', automatico: true } });
+  });
+});
+
+test('el nombre que puso OPORTIA se ve en el idioma de cada uno, y aprobar en otro idioma no lo mezcla', async () => {
+  await conPlataforma(async ({ admin, pedir, db }) => {
+    const juan = (await pedir('POST', '/api/proyectos', { datos: { instrucciones: 'Vendo paneles solares a hoteles en Punta Cana' }, galleta: admin })).datos.proyecto;
+    const libre = (await pedir('POST', '/api/proyectos', { datos: { instrucciones: 'Vendo mantenimiento de piscinas a hoteles en Bávaro' }, galleta: admin })).datos.proyecto;
+    assert.equal(juan.nombre, 'Clientes para paneles solares · Hoteles');
+    assert.equal((await pedir('POST', '/api/yo/idioma', { datos: { idioma: 'en' }, galleta: admin })).codigo, 200);
+    let lista = (await pedir('GET', '/api/proyectos', { galleta: admin })).datos.proyectos;
+    assert.equal(lista.find(p => p.id === juan.id).nombre, 'Customers for solar panels · Hotels', 'todo sale del catálogo: se traduce');
+    const nombreLibre = lista.find(p => p.id === libre.id).nombre;
+    assert.match(nombreLibre, /^Clientes para mantenimiento de piscinas · Hoteles/, 'lo que él escribió no se traduce, y el nombre no se mezcla');
+    // Aprueba en inglés: lo guardado sigue en español y no hay un «renombrado» de más.
+    let r = await pedir('POST', `/api/proyectos/${juan.id}/versiones/1/aprobar`, { galleta: admin });
+    assert.equal(r.datos.proyecto.nombre, 'Customers for solar panels · Hotels');
+    assert.ok(!r.datos.historial.some(h => h.accion === 'renombrado'));
+    r = await pedir('POST', `/api/proyectos/${libre.id}/versiones/1/aprobar`, { galleta: admin });
+    assert.equal(r.datos.proyecto.nombre, nombreLibre, 'aprobar en inglés no deja «Customers for mantenimiento de piscinas»');
+    assert.ok(!/Customers for/.test(db.prepare('SELECT group_concat(nombre) AS n FROM proyectos').get().n));
+    // De vuelta en español, todo como estaba.
+    await pedir('POST', '/api/yo/idioma', { datos: { idioma: 'es' }, galleta: admin });
+    lista = (await pedir('GET', '/api/proyectos', { galleta: admin })).datos.proyectos;
+    assert.equal(lista.find(p => p.id === juan.id).nombre, 'Clientes para paneles solares · Hoteles');
+    // Un cambio automático de nombre se ve en el historial en el idioma de quien lo mira.
+    await pedir('POST', `/api/proyectos/${juan.id}/versiones`, { datos: { modo: 'instrucciones', instrucciones: 'Vendo paneles solares a fábricas en Santiago' }, galleta: admin });
+    await pedir('POST', '/api/yo/idioma', { datos: { idioma: 'en' }, galleta: admin });
+    r = await pedir('POST', `/api/proyectos/${juan.id}/versiones/2/aprobar`, { galleta: admin });
+    assert.match(r.datos.proyecto.nombre, /^Customers for solar panels · /);
+    assert.equal(r.datos.historial[0].accion, 'renombrado');
+    assert.equal(r.datos.historial[0].detalle.ahora, r.datos.proyecto.nombre);
+    assert.match(db.prepare('SELECT nombre FROM proyectos WHERE numero = ?').get(juan.id).nombre, /^Clientes para paneles solares · /, 'se guarda en el idioma en que se creó');
+    // El nombre que él escribe se queda como lo escribió, en cualquier idioma.
+    await pedir('POST', `/api/proyectos/${juan.id}/nombre`, { datos: { nombre: 'Mis paneles' }, galleta: admin });
+    assert.equal((await pedir('GET', `/api/proyectos/${juan.id}`, { galleta: admin })).datos.proyecto.nombre, 'Mis paneles');
+  });
+});
+
+test('si el administrador baja el plan mientras llega un pedido lento, vale el plan nuevo (crear y restaurar)', async () => {
+  await conPlataforma(async ({ admin, pedir, db, nuevaCuenta }) => {
+    const dani = await nuevaCuenta('dani');
+    assert.equal((await pedir('POST', `/api/admin/usuarios/${dani.id}/plan`, { datos: { plan: 'pago' }, galleta: admin })).codigo, 200);
+    const uno = (await pedir('POST', '/api/proyectos', { datos: { instrucciones: PANELES }, galleta: dani.galleta })).datos.proyecto;
+    const dos = (await pedir('POST', '/api/proyectos', { datos: { instrucciones: CHOFER }, galleta: dani.galleta })).datos.proyecto;
+    assert.equal((await pedir('POST', `/api/proyectos/${dos.id}/papelera`, { datos: { enPapelera: true }, galleta: dani.galleta })).codigo, 200);
+    // El espacio se leyó con el plan pago (5)…
+    const usuario = { id: dani.id, rol: 'usuario' };
+    const viejo = espacioDe(db, usuario);
+    assert.equal(viejo.limite, 5);
+    // …y antes de guardar, el administrador lo baja a prueba (1): tiene 1 en uso, así que se puede.
+    assert.equal((await pedir('POST', `/api/admin/usuarios/${dani.id}/plan`, { datos: { plan: 'prueba' }, galleta: admin })).codigo, 200);
+    assert.throws(() => crearProyecto(db, { espacio: viejo, usuarioId: dani.id, instrucciones: 'Vendo cámaras de seguridad a bancos en Santiago' }), e => e.clave === 'limite_de_proyectos');
+    assert.throws(() => moverAPapelera(db, { espacio: viejo, proyectoId: dos.id, usuarioId: dani.id, enPapelera: false }), e => e.clave === 'limite_para_restaurar');
+    const r = await pedir('GET', '/api/proyectos', { galleta: dani.galleta });
+    assert.equal(r.datos.usados, 1);
+    assert.equal(r.datos.limite, 1);
+    assert.ok(uno.id);
   });
 });
 

@@ -65,7 +65,16 @@ hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
   - Roles: el editor crea, cambia, aprueba, rechaza, pausa y reanuda; solo el dueño manda a la papelera, restaura, completa
     y reabre. Mandar a la papelera algo que trabaja lo pausa (queda en el historial) y al restaurarlo vuelve pausado.
   - Si el administrador reinicia la contraseña de alguien, esa persona lo ve al entrar («El administrador reinició tu
-    contraseña el …») y la lista queda en Configuración (`GET /api/yo/reinicios`).
+    contraseña el …») y la lista queda en Configuración (`GET /api/yo/reinicios`). Con la contraseña temporal el aviso no
+    se puede marcar como visto, y cada aviso nuevo muestra también los reinicios de los últimos 90 días (vistos o no): quien
+    entre con una contraseña reiniciada no puede esconderle el aviso a la dueña de la cuenta.
+  - Contraseñas obvias: además de la lista, se rechazan con números o signos alrededor («password123», «Oportia2026»),
+    series («123321», «102030»), filas del teclado («qwerty1», «1q2w3e»), repeticiones («abcabc», «111222») y palabras
+    comunes en RD («teamo», «dominicana», «santiago»…). El mínimo sigue siendo 6.
+  - El nombre que OPORTIA le pone a un proyecto se muestra en el idioma de cada persona cuando sale del catálogo, y se guarda
+    en el idioma en que se creó (aprobar en otro idioma no lo mezcla). Lo que la persona escribe con sus palabras no se traduce.
+  - Solo se buscan negocios: si se pide buscar personas («maestros», «turistas», «familias»), se pregunta a qué negocios venderles.
+  - Un proyecto aprobado se ve como «Aprobado · espera la fase 2» (o la 6, si busca empleo) hasta que existan esas fases.
   - Buscar de verdad empieza en la fase 2 (clientes) y en la fase 6 (empleos); elegir fuentes y el tipo de análisis
     llegan en la fase 2.
   - Pantallas: «Lo que entendí» dice antes de aprobar que la búsqueda empieza en la fase 2 o 6; las dudas del motor se

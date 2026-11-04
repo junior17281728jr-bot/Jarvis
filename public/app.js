@@ -11,7 +11,7 @@ let estado = { setup: null, usuario: null };
 let avisoEntrar = null; // mensaje para la pantalla de entrar (por ejemplo, «tu sesión terminó»)
 let idiomaElegidoAlEntrar = false; // la persona tocó Español/English antes de entrar
 let turno = 0;
-let avisosCuenta = []; // avisos que se muestran una sola vez (por ejemplo, «el administrador reinició tu contraseña»)
+let avisosCuenta = { avisos: [], recientes: [] }; // avisos de la cuenta (por ejemplo, «el administrador reinició tu contraseña»)
 let sesionTerminada = null; // de quién era la sesión que terminó: al entrar otra vez, la misma persona vuelve a donde estaba
 const MANTENER = Symbol('mantener'); // un formulario que devuelve esto deja su botón apagado (ya se fue a otra pantalla)
 
@@ -275,7 +275,7 @@ function pantallaEntrar() {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.usuario = r.datos.usuario;
-    avisosCuenta = Array.isArray(r.datos.avisos) ? r.datos.avisos : [];
+    avisosCuenta = leerAvisos(r.datos);
     if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
       // Eligió un idioma en esta pantalla: se guarda en su cuenta.
       const cambio = await api('POST', '/api/yo/idioma', { idioma });
@@ -323,7 +323,7 @@ function pantallaClaveObligatoria() {
   mostrar(el('section', { class: 'tarjeta centrada' },
     el('h1', { texto: t('clave.titulo') }),
     el('p', { class: 'aviso', texto: t('clave.obligatoria') }),
-    avisosDeCuenta(),
+    avisosDeCuenta({ marcar: false }),
     formularioClave({ alTerminar: async () => { estado.usuario.debeCambiarClave = false; if (!location.hash) history.replaceState(null, '', '#inicio'); await dibujar(); } }),
     el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir }),
     selectorIdioma(async valor => {
@@ -339,7 +339,7 @@ async function salir() {
   if (!r.ok && r.codigo !== 401) return alert(textoError(r.datos.error));
   estado.usuario = null;
   sesionTerminada = null;
-  avisosCuenta = [];
+  avisosCuenta = { avisos: [], recientes: [] };
   borradores.clear();
   guardarBorradores();
   await refrescarSetup();
@@ -348,15 +348,28 @@ async function salir() {
 }
 
 // ---------- Pantallas con sesión ----------
-// Los avisos de la cuenta se muestran una vez, arriba, y se marcan como vistos (no se borran: siguen en Configuración).
-function avisosDeCuenta() {
-  const lista = avisosCuenta.filter(a => a && a.tipo === 'clave_reiniciada' && Number.isSafeInteger(a.id));
-  avisosCuenta = [];
-  if (!lista.length) return null;
-  api('POST', '/api/yo/avisos/vistos', { hasta: Math.max(...lista.map(a => a.id)) });
+// Los avisos de la cuenta se muestran arriba hasta que la dueña los ve con su propia contraseña (no se borran: siguen en
+// Configuración). Con la contraseña temporal se muestran pero NO se marcan como vistos: quien entra con ella puede ser
+// otra persona. Y cada vez que hay uno nuevo se listan todos los reinicios recientes, también los ya vistos: así la
+// dueña ve la fecha de un reinicio que no pidió aunque otro lo haya «visto» antes.
+function leerAvisos(datos) {
+  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && a.tipo === 'clave_reiniciada' && Number.isSafeInteger(a.id));
+  const recientes = (Array.isArray(datos?.reiniciosRecientes) ? datos.reiniciosRecientes : []).filter(x => x && typeof x.fecha === 'string');
+  return { avisos, recientes };
+}
+
+function avisosDeCuenta({ marcar = true } = {}) {
+  const { avisos, recientes } = avisosCuenta;
+  if (!avisos.length) return null;
+  if (marcar) {
+    avisosCuenta = { avisos: [], recientes: [] };
+    api('POST', '/api/yo/avisos/vistos', { hasta: Math.max(...avisos.map(a => a.id)) });
+  }
+  const fechas = recientes.length ? recientes.map(x => x.fecha) : avisos.map(a => a.fecha).reverse();
   return el('section', { class: 'tarjeta', role: 'alert' },
-    lista.map(a => el('p', { class: 'aviso', texto: t('aviso.clave_reiniciada', { fecha: fecha(a.fecha) }) })),
-    el('p', { class: 'suave', texto: t('aviso.clave_reiniciada.que_hacer') }));
+    fechas.length > 1 ? el('p', { class: 'suave', texto: t('aviso.clave_reiniciada.recientes', { dias: 90 }) }) : null,
+    fechas.map(f => el('p', { class: 'aviso', texto: t('aviso.clave_reiniciada', { fecha: fecha(f) }) })),
+    el('p', { class: 'suave', texto: t(fechas.length > 1 ? 'aviso.clave_reiniciada.que_hacer_varios' : 'aviso.clave_reiniciada.que_hacer') }));
 }
 
 function marco(seccion, ...contenido) {
@@ -511,7 +524,27 @@ function usuarioLibre(base, ocupados) {
   return base;
 }
 
-async function pantallaAdmin(avisoArriba = null) {
+// La última contraseña temporal que se creó (cuenta nueva o reinicio). Se sigue mostrando aunque la pantalla se vuelva
+// a dibujar (por ejemplo, al cambiarle el plan a esa cuenta enseguida), hasta que el administrador toque «Ya se la di»
+// o se vaya de Administrador: si se perdiera, habría que reiniciarla y la persona vería un reinicio que no pidió.
+let claveTemporalVisible = null;
+
+function seccionClaveTemporal() {
+  if (!claveTemporalVisible) return null;
+  const { textoClave, nombre, temporal, usuario } = claveTemporalVisible;
+  const seccion = el('section', { class: 'tarjeta' }, bloqueClaveTemporal(textoClave, nombre, temporal, usuario));
+  seccion.append(el('button', {
+    type: 'button',
+    class: 'secundario',
+    texto: t('admin.clave.ya_la_di'),
+    onclick: () => { claveTemporalVisible = null; seccion.remove(); },
+  }));
+  return seccion;
+}
+
+// «mantenerClave»: la pantalla se vuelve a dibujar sin salir de Administrador (la contraseña temporal sigue a la vista).
+async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {}) {
+  if (!mantenerClave) claveTemporalVisible = null;
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/admin/usuarios');
   if (!vigente()) return;
@@ -559,12 +592,15 @@ async function pantallaAdmin(avisoArriba = null) {
       throw new Error(t('admin.nombre_ocupado_propuesta', { nombre: otro }));
     }
     if (!creado.ok) throw new Error(textoError(creado.datos.error));
-    await pantallaAdmin(bloqueClaveTemporal('admin.creado', creado.datos.nombreVisible || creado.datos.nombre, creado.datos.claveTemporal, creado.datos.nombre));
+    claveTemporalVisible = { textoClave: 'admin.creado', nombre: creado.datos.nombreVisible || creado.datos.nombre, temporal: creado.datos.claveTemporal, usuario: creado.datos.nombre };
+    await pantallaAdmin(null, { mantenerClave: true });
     return MANTENER;
   });
 
   // «Proyectos permitidos» de cada cuenta. Si tiene más proyectos en uso de los que permite el plan, el servidor no cambia nada y lo explica.
+  // Un administrador siempre tiene al menos 20: a él no se le muestra un plan que no cambia nada.
   const controlPlan = u => {
+    if (u.rol === 'admin' && u.proyectosPermitidos) return el('p', { class: 'suave', texto: t('admin.plan.es_admin', { n: u.proyectosPermitidos }) });
     if (!u.plan || !planes.length) return null;
     const id = `plan-${u.id}`;
     const mensajePlan = caja();
@@ -577,9 +613,8 @@ async function pantallaAdmin(avisoArriba = null) {
           if (selector.value === u.plan) return decir(mensajePlan, t('admin.plan.igual'), 'bien');
           const x = await api('POST', `/api/admin/usuarios/${u.id}/plan`, { plan: selector.value });
           if (!x.ok) throw new Error(textoError(x.datos.error));
-          await pantallaAdmin(el('p', { class: 'mensaje bien', 'data-foco': true, texto: t('admin.plan.listo', { nombre: u.nombreVisible || u.nombre, n: x.datos.proyectosPermitidos }) }));
+          await pantallaAdmin(el('p', { class: 'mensaje bien', 'data-foco': true, texto: t('admin.plan.listo', { nombre: u.nombreVisible || u.nombre, n: x.datos.proyectosPermitidos }) }), { mantenerClave: true });
         })),
-      u.rol === 'admin' ? el('p', { class: 'ayuda', texto: t('admin.plan.admin') }) : null,
       mensajePlan);
   };
 
@@ -594,7 +629,8 @@ async function pantallaAdmin(avisoArriba = null) {
           if (!confirm(t('admin.confirmar_reiniciar', { nombre: u.nombre }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/reiniciar-clave`, {});
           if (!x.ok) return alert(textoError(x.datos.error));
-          await pantallaAdmin(bloqueClaveTemporal('admin.reiniciada', u.nombreVisible || x.datos.nombre, x.datos.claveTemporal, x.datos.nombre));
+          claveTemporalVisible = { textoClave: 'admin.reiniciada', nombre: u.nombreVisible || x.datos.nombre, temporal: x.datos.claveTemporal, usuario: x.datos.nombre };
+          await pantallaAdmin(null, { mantenerClave: true });
         },
       }),
       el('button', {
@@ -605,7 +641,7 @@ async function pantallaAdmin(avisoArriba = null) {
           if (u.activo && !confirm(t('admin.confirmar_desactivar', { nombre: u.nombre }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/activo`, { activo: !u.activo });
           if (!x.ok) return alert(textoError(x.datos.error));
-          await pantallaAdmin();
+          await pantallaAdmin(null, { mantenerClave: true });
         },
       }));
     return el('div', { class: 'fila' },
@@ -623,6 +659,7 @@ async function pantallaAdmin(avisoArriba = null) {
   mostrar(marco('admin',
     el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') })),
     avisoArriba ? el('section', { class: 'tarjeta' }, avisoArriba) : null,
+    seccionClaveTemporal(),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.usuarios') }), filas),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.nuevo') }), formulario)));
 }
@@ -750,10 +787,17 @@ function resumen(c) {
 }
 
 // En la papelera no se muestra el estado (diría «En ejecución» de algo que no trabaja): se dice que está en la papelera.
+// El nombre del estado. Mientras no existan las fases que buscan, un proyecto aprobado no trabaja todavía:
+// no se le dice «En ejecución» (ni en verde), sino «Aprobado · espera la fase 2» (o la 6, si busca empleo).
+function nombreDeEstado(p) {
+  if (p.estado === 'en_ejecucion') return t(p.tipo === 'laboral' ? 'estado.en_ejecucion.laboral' : 'estado.en_ejecucion.comercial');
+  return t(`estado.${p.estado}`);
+}
+
 function etiquetaEstado(p) {
   if (p.enPapelera) return el('span', { class: 'etiqueta mal', texto: t('proyecto.etiqueta_papelera') });
-  const clase = { en_ejecucion: 'bien', con_errores: 'mal', pendiente: 'aviso-etiqueta' }[p.estado] || '';
-  return el('span', { class: `etiqueta ${clase}`, texto: t(`estado.${p.estado}`) });
+  const clase = { con_errores: 'mal', pendiente: 'aviso-etiqueta' }[p.estado] || '';
+  return el('span', { class: `etiqueta ${clase}`, texto: nombreDeEstado(p) });
 }
 
 function tarjetaError(mensaje) {
@@ -1054,10 +1098,15 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
   const c = v.configuracion;
   const mensaje = caja();
   const esCambio = Boolean(activa);
+  // «escribe»: se muestran los botones (no en la papelera). «lector»: quien solo puede leer (los textos le hablan del dueño).
   const escribe = puedeEscribir && !proyecto.enPapelera;
+  const lector = !puedeEscribir;
+  const subtitulo = lector ? t('proyecto.pendiente.lector')
+    : proyecto.enPapelera ? t('proyecto.pendiente.papelera')
+      : esCambio ? t('proyecto.pendiente.cambio', { numero: activa.numero }) : t('proyecto.pendiente.texto');
   const partes = [
     el('h2', { texto: t('proyecto.pendiente.titulo', { numero: v.numero }) }),
-    el('p', { class: 'suave', texto: !escribe ? t('proyecto.pendiente.lector') : esCambio ? t('proyecto.pendiente.cambio', { numero: activa.numero }) : t('proyecto.pendiente.texto') }),
+    el('p', { class: 'suave', texto: subtitulo }),
     // Antes de la primera aprobación se dice qué pasa al aprobar: queda guardado, pero todavía no busca.
     !esCambio ? el('p', { class: 'aviso', texto: avisoAntesDeAprobar(c.tipo) }) : null,
     el('p', { class: 'entendi', texto: fraseEntendi(c) }),
@@ -1070,16 +1119,16 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
   const idExplicacion = `explicacion-${v.numero}`;
   if (preguntas.length || noEntendi.length) {
     partes.push(el('div', { class: 'aviso dudas', id: idExplicacion },
-      !escribe ? el('p', { texto: t('proyecto.preguntas.lector', { n: preguntas.length + noEntendi.length }) }) : [
+      lector ? el('p', { texto: t('proyecto.preguntas.lector', { n: preguntas.length + noEntendi.length }) }) : [
         preguntas.length ? [el('p', { texto: t('proyecto.preguntas') }), el('ul', {}, preguntas.map(p => el('li', { texto: p })))] : null,
         noEntendi.length ? [el('p', { texto: t('proyecto.no_entendi') }), el('ul', {}, noEntendi.map(p => el('li', { texto: p })))] : null,
         el('p', { texto: t('proyecto.no_se_puede_aprobar') }),
-        abrirFormulario ? el('button', { type: 'button', class: 'secundario', texto: t('proyecto.responder'), onclick: abrirFormulario }) : null,
+        abrirFormulario && escribe ? el('button', { type: 'button', class: 'secundario', texto: t('proyecto.responder'), onclick: abrirFormulario }) : null,
       ]));
   }
   if (v.supuestos.length) {
     partes.push(el('div', { class: 'supuestos' },
-      el('p', { class: 'suave', texto: escribe ? t('proyecto.supuestos') : t('proyecto.supuestos.lector') }),
+      el('p', { class: 'suave', texto: lector ? t('proyecto.supuestos.lector') : t('proyecto.supuestos') }),
       el('ul', {}, v.supuestos.map(s => el('li', { class: 'suave', texto: t(`supuesto.${s}`) })))));
   }
   partes.push(resumen(c));
@@ -1137,7 +1186,7 @@ function dibujarProyecto(d, aviso = null) {
     const disponibles = { en_ejecucion: ['pausar', 'completar'], pausado: ['reanudar', 'completar'], completado: ['reabrir'], con_errores: ['reintentar', 'pausar'] }[p.estado] || [];
     for (const accion of disponibles.filter(a => permisos.completar || (a !== 'completar' && a !== 'reabrir'))) {
       acciones.push(botonAccion(t(`accion.${accion}`), 'secundario', mensaje, () =>
-        pedirYMostrar('POST', `/api/proyectos/${p.id}/estado`, { accion }, x => t('proyecto.listo.estado', { estado: t(`estado.${x.proyecto.estado}`) }))));
+        pedirYMostrar('POST', `/api/proyectos/${p.id}/estado`, { accion }, x => t('proyecto.listo.estado', { estado: nombreDeEstado(x.proyecto) }))));
     }
   }
 
@@ -1309,7 +1358,7 @@ async function iniciar() {
   const yo = await api('GET', '/api/yo');
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
-    avisosCuenta = Array.isArray(yo.datos.avisos) ? yo.datos.avisos : [];
+    avisosCuenta = leerAvisos(yo.datos);
     if (estado.usuario.idioma !== idioma) await cargarIdioma(estado.usuario.idioma);
   }
   await dibujar();

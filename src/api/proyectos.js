@@ -60,8 +60,8 @@ export function revisarCampos(campos) {
   return campos;
 }
 
-function resumenEspacio(db, e) {
-  const proyectos = listarProyectos(db, e.id);
+function resumenEspacio(db, e, idioma) {
+  const proyectos = listarProyectos(db, e.id, idioma);
   return {
     proyectos,
     limite: e.limite,
@@ -89,23 +89,24 @@ export function registrarRutasProyectos(rutas, { limites = {}, motor = MOTOR } =
   }
 
   // El proyecto como lo ven las pantallas, con lo que esta persona puede hacer en él.
-  const detalle = (db, e, numero) => ({ ...detalleProyecto(db, e.id, numero), puedeEscribir: e.puedeEscribir, permisos: permisosDe(e) });
+  // Los nombres que puso OPORTIA se muestran en el idioma de quien pregunta.
+  const detalle = (db, e, numero, idioma) => ({ ...detalleProyecto(db, e.id, numero, idioma), puedeEscribir: e.puedeEscribir, permisos: permisosDe(e) });
 
   rutas.agregar('GET', '/api/catalogo', () => ({ codigo: 200, datos: CATALOGO }));
 
-  rutas.agregar('GET', '/api/proyectos', ({ db, usuario }) => ({ codigo: 200, datos: resumenEspacio(db, espacio(db, usuario)) }));
+  rutas.agregar('GET', '/api/proyectos', ({ db, usuario }) => ({ codigo: 200, datos: resumenEspacio(db, espacio(db, usuario), usuario.idioma) }));
 
   rutas.agregar('POST', '/api/proyectos', async ({ db, req, usuario }) => {
     const e = espacio(db, usuario, { escribir: true });
     const datos = await leerJson(req);
     const instrucciones = textoDe(datos, 'instrucciones');
     const { numero, repetido } = crearProyecto(db, { espacio: e, usuarioId: usuario.id, instrucciones, idioma: usuario.idioma, interpretarCon: motor.interpretar });
-    return { codigo: repetido ? 200 : 201, datos: { ...detalle(db, e, numero), repetido } };
+    return { codigo: repetido ? 200 : 201, datos: { ...detalle(db, e, numero, usuario.idioma), repetido } };
   });
 
   rutas.agregar('GET', '/api/proyectos/:id', ({ db, usuario, parametros }) => {
     const e = espacio(db, usuario);
-    return { codigo: 200, datos: detalle(db, e, parametros.id) };
+    return { codigo: 200, datos: detalle(db, e, parametros.id, usuario.idioma) };
   });
 
   rutas.agregar('GET', '/api/proyectos/:id/versiones/:numero', ({ db, usuario, parametros }) => {
@@ -139,34 +140,34 @@ export function registrarRutasProyectos(rutas, { limites = {}, motor = MOTOR } =
       version = { instrucciones: base.instrucciones, configuracion: motor.configuracionDesdeCampos(pedido.campos, base.configuracion), supuestos: [], origen: 'campos' };
     }
     nuevaVersion(db, { espacioId: e.id, proyectoId: numero, usuarioId: usuario.id, ...version });
-    return { codigo: 201, datos: detalle(db, e, numero) };
+    return { codigo: 201, datos: detalle(db, e, numero, usuario.idioma) };
   });
 
   rutas.agregar('POST', '/api/proyectos/:id/versiones/:numero/aprobar', ({ db, usuario, parametros }) => {
     const e = espacio(db, usuario, { escribir: true });
-    aprobarVersion(db, { espacioId: e.id, proyectoId: parametros.id, numero: parametros.numero, usuarioId: usuario.id, idioma: usuario.idioma });
-    return { codigo: 200, datos: detalle(db, e, parametros.id) };
+    aprobarVersion(db, { espacioId: e.id, proyectoId: parametros.id, numero: parametros.numero, usuarioId: usuario.id });
+    return { codigo: 200, datos: detalle(db, e, parametros.id, usuario.idioma) };
   });
 
   rutas.agregar('POST', '/api/proyectos/:id/versiones/:numero/rechazar', async ({ db, req, usuario, parametros }) => {
     const e = espacio(db, usuario, { escribir: true });
     const datos = await leerJson(req);
     rechazarVersion(db, { espacioId: e.id, proyectoId: parametros.id, numero: parametros.numero, usuarioId: usuario.id, motivo: textoDe(datos, 'motivo') });
-    return { codigo: 200, datos: detalle(db, e, parametros.id) };
+    return { codigo: 200, datos: detalle(db, e, parametros.id, usuario.idioma) };
   });
 
   rutas.agregar('POST', '/api/proyectos/:id/estado', async ({ db, req, usuario, parametros }) => {
     const e = espacio(db, usuario, { escribir: true });
     const datos = await leerJson(req);
     cambiarEstado(db, { espacio: e, proyectoId: parametros.id, accion: textoDe(datos, 'accion'), usuarioId: usuario.id });
-    return { codigo: 200, datos: detalle(db, e, parametros.id) };
+    return { codigo: 200, datos: detalle(db, e, parametros.id, usuario.idioma) };
   });
 
   rutas.agregar('POST', '/api/proyectos/:id/nombre', async ({ db, req, usuario, parametros }) => {
     const e = espacio(db, usuario, { escribir: true });
     const datos = await leerJson(req);
     renombrarProyecto(db, { espacioId: e.id, proyectoId: parametros.id, nombre: textoDe(datos, 'nombre'), usuarioId: usuario.id });
-    return { codigo: 200, datos: detalle(db, e, parametros.id) };
+    return { codigo: 200, datos: detalle(db, e, parametros.id, usuario.idioma) };
   });
 
   rutas.agregar('POST', '/api/proyectos/:id/papelera', async ({ db, req, usuario, parametros }) => {
@@ -174,6 +175,6 @@ export function registrarRutasProyectos(rutas, { limites = {}, motor = MOTOR } =
     const datos = await leerJson(req);
     if (typeof datos.enPapelera !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     moverAPapelera(db, { espacio: e, proyectoId: parametros.id, usuarioId: usuario.id, enPapelera: datos.enPapelera });
-    return { codigo: 200, datos: detalle(db, e, parametros.id) };
+    return { codigo: 200, datos: detalle(db, e, parametros.id, usuario.idioma) };
   });
 }

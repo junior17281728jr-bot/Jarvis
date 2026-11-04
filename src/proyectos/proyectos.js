@@ -5,7 +5,7 @@
 // Aquí nunca se borra nada: «eliminar» manda a la papelera, y una versión vieja queda en el historial.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { interpretar, limpiarConfiguracion, faltantes, dudas, nombreSugerido, LIMITES, TIPOS } from '../motor/interpretar.js';
+import { interpretar, limpiarConfiguracion, faltantes, dudas, nombreSugerido, idiomaDelNombre, LIMITES, TIPOS } from '../motor/interpretar.js';
 import { limiteDe, guardadosPermitidos, contarProyectos, LIMITE_POR_PLAN, LIMITE_ADMINISTRADOR } from '../cuentas/planes.js';
 
 export { LIMITE_POR_PLAN, LIMITE_ADMINISTRADOR };
@@ -71,6 +71,17 @@ export function espacioDe(db, usuario) {
     limite,
     maximoGuardados: guardadosPermitidos(limite),
   };
+}
+
+// El límite del espacio leído AHORA de la base (su plan y el rol de su dueño). Las revisiones que van dentro de una
+// transacción usan este, no el que se calculó al empezar el pedido: si el administrador bajó el plan mientras
+// llegaba un pedido lento, vale el plan nuevo.
+export function limiteActual(db, espacioId) {
+  const fila = db.prepare(`SELECT e.plan,
+      (SELECT u.rol FROM miembros d JOIN usuarios u ON u.id = d.usuario_id WHERE d.espacio_id = e.id AND d.rol = 'dueno' ORDER BY d.usuario_id LIMIT 1) AS rol_dueno
+    FROM espacios e WHERE e.id = ?`).get(espacioId);
+  const limite = limiteDe(fila?.plan, fila?.rol_dueno ?? 'usuario');
+  return { limite, maximoGuardados: guardadosPermitidos(limite) };
 }
 
 // Lo que cada rol puede hacer, para que las pantallas muestren solo los botones que funcionan.
@@ -143,10 +154,23 @@ function versionResumida(v) {
   return { numero: v.numero, estado: v.estado, origen: v.origen, completa: false, motivo: v.motivo, creadaEn: v.creada_en, decididaEn: v.decidida_en };
 }
 
-function proyectoPublico(p, pendiente = null) {
+// El nombre que se muestra. Si lo escribió la persona, tal cual. Si lo puso OPORTIA (con lo que se creó o lo último
+// aprobado), se vuelve a armar en el idioma de quien lo mira: «Clientes para paneles solares · Hoteles» se ve
+// «Customers for solar panels · Hotels» en inglés. Lo que la persona escribió con sus palabras no se traduce.
+function nombreParaMostrar(p, configTexto, idioma) {
+  if (p.nombre_propio === 1 || !configTexto || !idioma) return p.nombre;
+  const config = limpiarConfiguracion(leerJson(configTexto, {}));
+  return nombreSugerido(config, idioma, idiomaDelNombre(p.nombre));
+}
+
+// La configuración de la que salió el nombre automático: la versión en uso o, si nunca se aprobó, la primera.
+const CONFIG_DEL_NOMBRE = `(SELECT v.configuracion FROM proyecto_versiones v
+  WHERE v.proyecto_id = p.id AND v.numero = COALESCE(p.version_activa, 1) AND p.nombre_propio = 0)`;
+
+function proyectoPublico(p, pendiente = null, idioma = null) {
   return {
     id: p.numero,
-    nombre: p.nombre,
+    nombre: nombreParaMostrar(p, p.config_del_nombre, idioma),
     tipo: p.tipo,
     estado: p.estado,
     enPapelera: p.en_papelera === 1,
@@ -159,14 +183,24 @@ function proyectoPublico(p, pendiente = null) {
 }
 
 // ---------- Leer ----------
-export function listarProyectos(db, espacioId) {
-  return db.prepare(`SELECT p.*, (SELECT v.numero FROM proyecto_versiones v WHERE v.proyecto_id = p.id AND v.estado = 'pendiente') AS pendiente
+export function listarProyectos(db, espacioId, idioma = null) {
+  return db.prepare(`SELECT p.*, (SELECT v.numero FROM proyecto_versiones v WHERE v.proyecto_id = p.id AND v.estado = 'pendiente') AS pendiente,
+      ${CONFIG_DEL_NOMBRE} AS config_del_nombre
     FROM proyectos p WHERE p.espacio_id = ? ORDER BY p.en_papelera, p.actualizado_en DESC, p.id DESC`).all(espacioId)
-    .map(p => proyectoPublico(p, p.pendiente ?? null));
+    .map(p => proyectoPublico(p, p.pendiente ?? null, idioma));
 }
 
-export function detalleProyecto(db, espacioId, numeroProyecto) {
-  const p = filaProyecto(db, espacioId, numeroProyecto);
+// Un cambio de nombre automático guarda el nombre en los dos idiomas: el historial lo muestra en el de quien lo mira.
+function detalleDelHistorial(h, idioma) {
+  const detalle = leerJson(h.detalle, null);
+  if (h.accion !== 'renombrado' || !detalle?.automatico || !detalle.nombres || typeof detalle.nombres[idioma] !== 'string') return detalle;
+  const { nombres, ...resto } = detalle;
+  return { ...resto, ahora: nombres[idioma] };
+}
+
+export function detalleProyecto(db, espacioId, numeroProyecto, idioma = null) {
+  const fila = filaProyecto(db, espacioId, numeroProyecto);
+  const p = { ...fila, config_del_nombre: db.prepare(`SELECT ${CONFIG_DEL_NOMBRE} AS c FROM proyectos p WHERE p.id = ?`).get(fila.id).c };
   const filas = db.prepare('SELECT numero, estado, origen, motivo, creada_en, decidida_en FROM proyecto_versiones WHERE proyecto_id = ? ORDER BY numero DESC').all(p.id);
   const pendienteFila = filas.find(v => v.estado === 'pendiente') || null;
   const completas = new Set(filas.slice(0, VERSIONES_COMPLETAS).map(v => v.numero));
@@ -179,9 +213,9 @@ export function detalleProyecto(db, espacioId, numeroProyecto) {
     : []);
   const versiones = filas.map(v => contenido.get(v.numero) || versionResumida(v));
   const historial = db.prepare('SELECT fecha, accion, detalle FROM proyecto_historial WHERE proyecto_id = ? ORDER BY id DESC LIMIT 100').all(p.id)
-    .map(h => ({ fecha: h.fecha, accion: h.accion, detalle: leerJson(h.detalle, null) }));
+    .map(h => ({ fecha: h.fecha, accion: h.accion, detalle: detalleDelHistorial(h, idioma) }));
   return {
-    proyecto: proyectoPublico(p, pendienteFila?.numero ?? null),
+    proyecto: proyectoPublico(p, pendienteFila?.numero ?? null, idioma),
     activa: (p.version_activa != null && contenido.get(p.version_activa)) || null,
     pendiente: (pendienteFila && contenido.get(pendienteFila.numero)) || null,
     versiones,
@@ -203,8 +237,9 @@ export function versionDeProyecto(db, espacioId, numeroProyecto, numeroVersion) 
 // papelera, tope de versiones), se responde enseguida sin interpretar nada.
 export function revisarAntesDeCrear(db, espacio) {
   const { activos, guardados } = contarProyectos(db, espacio.id);
-  if (activos >= espacio.limite) throw new ErrorHttp(409, 'limite_de_proyectos');
-  if (guardados >= espacio.maximoGuardados) throw new ErrorHttp(409, 'demasiados_guardados');
+  const { limite, maximoGuardados } = limiteActual(db, espacio.id);
+  if (activos >= limite) throw new ErrorHttp(409, 'limite_de_proyectos');
+  if (guardados >= maximoGuardados) throw new ErrorHttp(409, 'demasiados_guardados');
 }
 
 // La versión sobre la que se hace un cambio: la que espera aprobación, si no la que está en uso, si no la última.
@@ -302,8 +337,10 @@ function versionPendiente(db, proyectoId, numero) {
 }
 
 // Aprobar: la versión pasa a estar en uso. Si la persona nunca le cambió el nombre al proyecto,
-// el nombre se vuelve a sugerir con lo aprobado (queda en el historial).
-export function aprobarVersion(db, { espacioId, proyectoId, numero, usuarioId, idioma = 'es' }) {
+// el nombre se vuelve a sugerir con lo aprobado (queda en el historial). Se guarda en el idioma en que se creó, no en
+// el de quien aprueba: así aprobar en inglés no deja «Customers for paneles solares». (Las pantallas lo muestran
+// en el idioma de cada persona; ver nombreParaMostrar.)
+export function aprobarVersion(db, { espacioId, proyectoId, numero, usuarioId }) {
   return enTransaccion(db, () => {
     const p = filaProyecto(db, espacioId, proyectoId);
     noEnPapelera(p);
@@ -317,11 +354,15 @@ export function aprobarVersion(db, { espacioId, proyectoId, numero, usuarioId, i
     db.prepare("UPDATE proyecto_versiones SET estado = 'aprobada', decidida_por = ?, decidida_en = ? WHERE id = ?").run(usuarioId, momento, v.id);
     const cambios = { version_activa: v.numero, tipo: config.tipo };
     if (p.estado === 'borrador' || p.estado === 'pendiente') cambios.estado = 'en_ejecucion';
-    const nombre = p.nombre_propio === 1 ? p.nombre : nombreSugerido(config, idioma);
+    const original = idiomaDelNombre(p.nombre);
+    const nombre = p.nombre_propio === 1 ? p.nombre : nombreSugerido(config, original, original);
     if (nombre !== p.nombre) cambios.nombre = nombre;
     tocar(db, p.id, cambios);
     anotar(db, p.id, usuarioId, 'aprobada', { numero: v.numero });
-    if (cambios.nombre) anotar(db, p.id, usuarioId, 'renombrado', { antes: p.nombre, ahora: nombre, automatico: true });
+    if (cambios.nombre) {
+      const nombres = { es: nombreSugerido(config, 'es', original), en: nombreSugerido(config, 'en', original) };
+      anotar(db, p.id, usuarioId, 'renombrado', { antes: p.nombre, ahora: nombre, automatico: true, nombres });
+    }
     return v.numero;
   });
 }
@@ -383,7 +424,7 @@ export function moverAPapelera(db, { espacio, proyectoId, usuarioId, enPapelera 
       if (pausar) anotar(db, p.id, usuarioId, 'pausado', { porPapelera: true });
       anotar(db, p.id, usuarioId, 'a_papelera');
     } else {
-      if (contarProyectos(db, espacio.id).activos >= espacio.limite) throw new ErrorHttp(409, 'limite_para_restaurar');
+      if (contarProyectos(db, espacio.id).activos >= limiteActual(db, espacio.id).limite) throw new ErrorHttp(409, 'limite_para_restaurar');
       tocar(db, p.id, { en_papelera: 0 });
       anotar(db, p.id, usuarioId, 'restaurado');
     }

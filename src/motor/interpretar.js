@@ -31,10 +31,13 @@ export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_labo
 export const CLAVES_DUDAS_GUARDADAS = ['texto', 'lugar', 'calle_o_provincia', 'direccion', 'conflicto_tamano', 'salario', 'salario_periodo', 'frecuencia', 'frecuencia_no_disponible',
   'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa',
   'objetivo_empleados', 'objetivo_otra_tarea', 'parte_de_lugar', 'lugar_homonimo', 'lugar_difuso', 'cambio', 'combinacion_producto', 'combinacion_parcial',
-  'sector_general', 'lugar_provincia', 'lista_larga', 'lugar_inseguro'];
+  'sector_general', 'lugar_provincia', 'lista_larga', 'lugar_inseguro', 'para_quien', 'personas', 'tamano_del_general'];
 export const CLAVES_DUDAS_CALCULADAS = ['conflicto_sector', 'conflicto_zona', 'fuera_del_pais'];
 export const CLAVES_DUDAS = [...CLAVES_DUDAS_GUARDADAS, ...CLAVES_DUDAS_CALCULADAS];
 
+const PALABRAS_DE_FRECUENCIA = new Set([...FRECUENCIAS.flatMap(f => [...f.palabras, ...f.adverbios]).flatMap(p => comparable(p).split(' '))
+  .filter(p => !['cada', 'todos', 'todas', 'los', 'las', 'una', 'vez', 'al', 'por', 'a', 'la', 'to', 'every', 'each', 'once', 'when', 'yo', 'lo', 'i', 'cuando'].includes(p)),
+'quincenal', 'quincena', 'quincenas', 'biweekly', 'fortnightly', 'semanas', 'meses', 'dias', 'diarias', 'semanales', 'mensuales', 'anual', 'yearly', 'annually']);
 const SECTOR = new Map(SECTORES.map(s => [s.clave, s]));
 const PRODUCTO = new Map(PRODUCTOS.map(p => [p.clave, p]));
 const ZONA = new Map(ZONAS.map(z => [z.clave, z]));
@@ -58,32 +61,85 @@ export function capacidadesDesdeLista(lista) {
   return Object.fromEntries(CLAVES_CAPACIDADES.map(c => [c, encendidas.has(c)]));
 }
 
+// Corta un texto sin partir palabras: «Oficinas y servicios profesion» no; «Oficinas y servicios…» sí.
+// Solo lleva «…» si de verdad se cortó algo.
+export function recortePorPalabra(valor, maximo) {
+  const texto = recorte(valor, 10_000);
+  if (texto.length <= maximo) return texto;
+  const corte = texto.slice(0, maximo - 1);
+  const espacio = corte.lastIndexOf(' ');
+  const base = (espacio >= Math.floor(maximo / 3) ? corte.slice(0, espacio) : corte)
+    .replace(/\s+(?:y|e|o|u|and|or|de|del|para|for|of|the|la|el|los|las|a|en|in|to)$/i, '').replace(/[\s,;:·]+$/u, '');
+  return `${base}…`;
+}
+
+// La primera parte de una etiqueta compuesta: «Oficinas y servicios profesionales» → «Oficinas»,
+// «Banks, lenders and credit unions» → «Banks».
+const primeraParte = etiqueta => comoTexto(etiqueta).split(/,\s*|\s+(?:y|e|and)\s+/u)[0];
+
+// Lo que vende, si es exactamente el nombre de productos del catálogo («paneles solares», «cámaras y seguridad»):
+// entonces se puede escribir en cualquier idioma. Si la persona lo escribió con sus palabras, es null.
+function productoDelCatalogo(c, idioma) {
+  const claves = Array.isArray(c.productos) ? c.productos : [];
+  if (c.tipo === 'laboral' || !c.producto || !claves.length) return null;
+  const items = claves.map(k => PRODUCTO.get(k));
+  if (!items.every(Boolean)) return null;
+  const unir = (lengua, nombres) => {
+    try { return new Intl.ListFormat(lengua, { type: 'conjunction' }).format(nombres); } catch { return nombres.join(', '); }
+  };
+  const formas = new Set(['es', 'en'].flatMap(lengua => {
+    const nombres = items.map(x => x[lengua]);
+    return [comparable(nombres.join(', ')), comparable(unir(lengua, nombres))];
+  }));
+  return formas.has(comparable(c.producto)) ? unir(idioma, items.map(x => x[idioma === 'en' ? 'en' : 'es'])) : null;
+}
+
+// ¿En qué idioma se escribió un nombre que puso OPORTIA? (los nombres sugeridos empiezan siempre igual).
+export function idiomaDelNombre(nombre) {
+  return /^(?:Customers for |Job: |Job search|New project)/.test(comoTexto(nombre)) ? 'en' : 'es';
+}
+
 // El nombre que se le pone solo a un proyecto: lo que vende (o el empleo) y el primer sector o lugar,
 // para que dos proyectos del mismo producto no se vean iguales en la lista.
 // «Clientes para paneles solares · Hoteles», «Empleo: chofer · Santiago».
-export function nombreSugerido(config, idioma = 'es') {
+// Va entero en un idioma: si todo sale del catálogo, en «idioma» (el de quien lo mira); si lleva palabras que la
+// persona escribió («paneles solares» a su manera, «turistas»), en «idiomaOriginal», el de cuando se creó:
+// nunca «Customers for paneles solares».
+export function nombreSugerido(config, idioma = 'es', idiomaOriginal = idioma) {
   const c = config && typeof config === 'object' ? config : {};
-  const producto = recorte(c.producto, 50);
+  const delCatalogo = productoDelCatalogo(c, 'es') != null;
+  const detalle = detalleDelNombre(c);
+  const libre = (recorte(c.producto, 1) && !delCatalogo) || detalle?.libre;
+  const lengua = libre ? idiomaOriginal : idioma;
+  let parte = detalle ? (detalle.textos ? textoDe(lengua, detalle.textos.es, detalle.textos.en) : detalle.texto) : '';
+  if (parte.length > 30) parte = recortePorPalabra(primeraParte(parte), 30);
+  const cola = parte ? ` · ${parte}` : '';
+  const conProducto = (es, en) => {
+    const prefijo = textoDe(lengua, es, en);
+    const texto = delCatalogo ? productoDelCatalogo(c, lengua) : c.producto;
+    return prefijo + recortePorPalabra(texto, Math.min(50, LIMITES.nombre - prefijo.length - cola.length));
+  };
   const base = c.tipo === 'laboral'
-    ? (producto ? textoDe(idioma, `Empleo: ${producto}`, `Job: ${producto}`) : textoDe(idioma, 'Búsqueda de empleo', 'Job search'))
-    : (producto ? textoDe(idioma, `Clientes para ${producto}`, `Customers for ${producto}`) : textoDe(idioma, 'Proyecto nuevo', 'New project'));
-  const detalle = recorte(detalleDelNombre(c, idioma), 30);
-  return recorte(detalle ? `${base} · ${detalle}` : base, LIMITES.nombre);
+    ? (recorte(c.producto, 1) ? conProducto('Empleo: ', 'Job: ') : textoDe(lengua, 'Búsqueda de empleo', 'Job search'))
+    : (recorte(c.producto, 1) ? conProducto('Clientes para ', 'Customers for ') : textoDe(lengua, 'Proyecto nuevo', 'New project'));
+  return recortePorPalabra(base + cola, LIMITES.nombre);
 }
 
-function detalleDelNombre(c, idioma) {
+// La segunda parte del nombre: { textos: {es, en} } si sale del catálogo, { texto, libre } si no.
+function detalleDelNombre(c) {
   const lista = valor => (Array.isArray(valor) ? valor : []);
   if (c.tipo !== 'laboral') {
     const sector = lista(c.sectores).find(s => s !== 'todas' && SECTOR.has(s));
-    if (sector) return textoDe(idioma, SECTOR.get(sector).es, SECTOR.get(sector).en);
+    if (sector) return { textos: { es: SECTOR.get(sector).es, en: SECTOR.get(sector).en } };
     const libre = lista(c.sectoresLibres).map(comoTexto).find(Boolean);
-    if (libre) return libre;
+    if (libre) return { texto: libre, libre: true };
   }
+  // Los lugares se llaman igual en los dos idiomas.
   const zona = lista(c.zonas).find(z => ZONA.has(z));
-  if (zona) return ZONA.get(zona).nombre;
+  if (zona) return { texto: ZONA.get(zona).nombre };
   const lugar = lista(c.zonasLibres).map(comoTexto).find(Boolean);
-  if (lugar) return lugar;
-  return c.paisCompleto === true ? textoDe(idioma, 'Todo el país', 'Whole country') : '';
+  if (lugar) return { texto: lugar };
+  return c.paisCompleto === true ? { textos: { es: 'Todo el país', en: 'Whole country' } } : null;
 }
 
 export function objetivoSugerido(config, idioma = 'es') {
@@ -128,7 +184,13 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   // «a talleres…, sobre todo colmados y farmacias»: los negocios con prioridad también se buscan.
   if (tipo === 'comercial' && sectores.length && !sectores.includes('todas')) sectores = unicos([...sectores, ...x.sectoresPrioridadDirectos]);
   // «hoteles y empresas», «casas y negocios»: no se sabe si busca solo esos negocios o todos. Se pregunta.
-  if (tipo === 'comercial' && x.generalesEnLista.length && (sectores.some(s => s !== 'todas') || sectoresLibres.length)) duda('sector_general', x.generalesEnLista[0]);
+  // «hoteles, clínicas, fábricas y negocios grandes»: los negocios nombrados (de todo tamaño) y además cualquier negocio grande. Eso todavía
+  // no se puede guardar en un proyecto: se pregunta con su propia duda. «empresas medianas y grandes…» sola en su lista dice el tamaño
+  // de todo lo que busca: ahí no se pregunta si es «cualquier negocio».
+  const conNegocios = sectores.some(s => s !== 'todas') || sectoresLibres.length > 0;
+  if (tipo === 'comercial' && x.generalesConTamano.length && conNegocios) duda('tamano_del_general', x.generalesConTamano[0]);
+  const generales = x.generalesEnLista.filter(g => !x.generalesConTamano.includes(g) && !x.generalesMarco.includes(g));
+  if (tipo === 'comercial' && generales.length && conNegocios) duda('sector_general', generales[0]);
   if (!sectoresLibres.length) supuestos.delete('sectores_libres');
 
   // Tamaños: lo incluido menos lo excluido. Si algo está en los dos lados, se pregunta.
@@ -173,7 +235,13 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   else if (frecuencias.length === 1 && x.frecuencias.some(f => f.dia)) supuestos.add('dia_semana');
   if (!frecuencias.length) {
     frecuencia = FRECUENCIA_POR_DEFECTO;
-    if (!noEntendido.some(d => d.clave === 'frecuencia_no_disponible')) supuestos.add('frecuencia');
+    // Si lo que no entendí es casi solo una frecuencia («Biweekly», «revisa quincenal»), no se dice a la vez «Revisaré cada semana».
+    const hablaDeFrecuencia = d => {
+      if (d.clave === 'frecuencia_no_disponible') return true;
+      const palabras = comparable(d.texto).split(' ').filter(Boolean);
+      return d.clave === 'texto' && palabras.length <= 3 && palabras.some(p => PALABRAS_DE_FRECUENCIA.has(p));
+    };
+    if (!noEntendido.some(hablaDeFrecuencia)) supuestos.add('frecuencia');
   }
 
   // Capacidades: solo lo que se pidió de verdad. «Contactar» nunca se enciende desde el texto.

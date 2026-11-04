@@ -176,7 +176,10 @@ export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco 
   'busco un chance', 'busco pega', 'necesito pega', 'pega de', 'busco camello', 'camello de', 'busco trabajito', 'busco un trabajito', 'trabajito de',
   'busco un empleito', 'empleito de', 'jobs for', 'jobs in', 'job hunting', 'job search', 'job searching',
   // «Busco puestos de enfermera», «busco una plaza de maestro»: también es buscar empleo.
-  'puestos de', 'un puesto de', 'busco puesto de', 'plazas de', 'busco plaza de', 'busco una plaza de', 'quiero una plaza de', 'necesito una plaza de'];
+  'puestos de', 'un puesto de', 'busco puesto de', 'plazas de', 'busco plaza de', 'busco una plaza de', 'quiero una plaza de', 'necesito una plaza de',
+  // Pasantías y prácticas profesionales: también es buscar empleo («Busco una pasantía de contabilidad»).
+  'pasantia', 'pasantias', 'una pasantia', 'pasantia de', 'pasantias de', 'practicas profesionales', 'practica profesional', 'mis practicas',
+  'hacer practicas', 'hacer mis practicas', 'practicas de', 'internship', 'internships', 'an internship'];
 export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden', 'ofrezco', 'ofrecemos', 'ofrece', 'brindo', 'brindamos',
   'distribuyo', 'distribuimos', 'exporto', 'exportamos', 'reparo', 'reparamos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'i install', 'we install', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
   'mi empresa', 'tengo una empresa', 'tengo un negocio', 'tenemos una empresa', 'me dedico a vender', 'nos dedicamos a vender', 'trabajo vendiendo',

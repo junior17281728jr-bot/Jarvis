@@ -117,6 +117,8 @@ export function tokenizar(texto) {
       const anterior = tokens[tokens.length - 1];
       if (w === 'k' && anterior?.tipo === 'n') empujar('k', ini, i, 'p');
       else if (w === 'k') empujar('que', ini, i, 'p');
+      // «rayos X», «máquinas de rayos x.»: esa x es parte del nombre, no «por». Solo es «por» entre dos palabras («x semana», «x encargo»).
+      else if (w === 'x' && (['rayos', 'ray', 'rayo'].includes(anterior?.w) || !/^\s*[a-z0-9]/.test(p.slice(i, i + 4)))) empujar('x', ini, i, 'p');
       else if (corto) for (const parte of corto.split(' ')) empujar(parte, ini, i, 'p');
       else if (siglas.has(ini)) { i = siglas.get(ini); empujar(w, ini, i, 'p'); }
       else empujar(w, ini, i, 'p');

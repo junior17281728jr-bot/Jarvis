@@ -11,7 +11,7 @@ import { crearSesion, cerrarSesion, cerrarTodas, textoGalleta } from '../cuentas
 import {
   NOMBRE_VALIDO, auditar, hayAdmin, crearPrimerAdmin, crearUsuario, buscarPorNombre, buscarPorId,
   listarUsuarios, guardarClave, ponerActivo, ponerIdioma, registrarAcceso, cuantosAdminsActivos,
-  avisarClaveReiniciada, avisosSinVer, marcarAvisosVistos, reiniciosDeClave,
+  avisarClaveReiniciada, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 
@@ -66,6 +66,11 @@ function usuarioPublico(u) {
     idioma: u.idioma,
     debeCambiarClave: Boolean(u.debeCambiarClave ?? u.debe_cambiar_clave === 1),
   };
+}
+
+function avisosParaLaPantalla(db, usuario) {
+  const avisos = avisosSinVer(db, usuario.id);
+  return { usuario: usuarioPublico(usuario), avisos, reiniciosRecientes: avisos.length ? reiniciosRecientes(db, usuario.id) : [] };
 }
 
 export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas() } = {}) {
@@ -127,10 +132,11 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     registrarAcceso(db, usuario.id);
     auditar(db, { usuarioId: usuario.id, accion: 'entrada' });
     // «avisos»: por ejemplo, que el administrador reinició su contraseña. La pantalla los muestra y luego avisa
-    // que ya se vieron (POST /api/yo/avisos/vistos); hasta entonces se siguen mostrando.
+    // que ya se vieron (POST /api/yo/avisos/vistos); hasta entonces se siguen mostrando. Junto a ellos van los
+    // reinicios recientes, también los ya vistos (ver usuarios.js): así nadie puede «tapar» un reinicio que la dueña no pidió.
     return {
       codigo: 200,
-      datos: { usuario: usuarioPublico(usuario), avisos: avisosSinVer(db, usuario.id) },
+      datos: avisosParaLaPantalla(db, usuario),
       cabeceras: { 'Set-Cookie': textoGalleta(sesion.token, { segura: https }) },
     };
   }, { publica: true });
@@ -140,16 +146,18 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     return { codigo: 200, datos: { ok: true }, cabeceras: { 'Set-Cookie': textoGalleta('', { segura: https, borrar: true }) } };
   }, { permitirConClaveTemporal: true });
 
-  rutas.agregar('GET', '/api/yo', ({ db, usuario }) => ({ codigo: 200, datos: { usuario: usuarioPublico(usuario), avisos: avisosSinVer(db, usuario.id) } }),
+  rutas.agregar('GET', '/api/yo', ({ db, usuario }) => ({ codigo: 200, datos: avisosParaLaPantalla(db, usuario) }),
     { permitirConClaveTemporal: true });
 
   // La pantalla ya mostró los avisos hasta este número: quedan como vistos (no se borran).
+  // Con la contraseña temporal NO se puede: quien entra con ella puede ser otra persona (el que la reinició),
+  // y el aviso tiene que seguir esperando a la dueña de la cuenta.
   rutas.agregar('POST', '/api/yo/avisos/vistos', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     if (!Number.isSafeInteger(datos.hasta) || datos.hasta < 1) throw new ErrorHttp(400, 'datos_no_validos');
     marcarAvisosVistos(db, usuario.id, datos.hasta);
     return { codigo: 200, datos: { ok: true } };
-  }, { permitirConClaveTemporal: true });
+  });
 
   // Para Configuración: cada vez que el administrador reinició la contraseña de esta cuenta.
   rutas.agregar('GET', '/api/yo/reinicios', ({ db, usuario }) => ({ codigo: 200, datos: { reinicios: reiniciosDeClave(db, usuario.id) } }),

@@ -12,7 +12,7 @@ import {
 } from '../src/motor/interpretar.js';
 import { normalizar, comparable, buscarFrases, tokenizar, variantes } from '../src/motor/texto.js';
 import { SECTORES, PRODUCTOS, PROVINCIAS, MUNICIPIOS, CIUDADES, REGIONES, ZONAS, CAPACIDADES, COMBINACIONES } from '../src/motor/diccionarios.js';
-import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2, CASOS_EQUIPO_ROJO_3, CASOS_EQUIPO_ROJO_4 } from './motor-casos.js';
+import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2, CASOS_EQUIPO_ROJO_3, CASOS_EQUIPO_ROJO_4, CASOS_REVISION_FINAL } from './motor-casos.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 
@@ -20,7 +20,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
 const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
 const CATALOGO = catalogo();
-const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2, ...CASOS_EQUIPO_ROJO_3, ...CASOS_EQUIPO_ROJO_4];
+const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2, ...CASOS_EQUIPO_ROJO_3, ...CASOS_EQUIPO_ROJO_4, ...CASOS_REVISION_FINAL];
 
 // ---------- Texto ----------
 test('normalizar quita acentos y mayúsculas sin cambiar la longitud del texto', () => {
@@ -106,6 +106,19 @@ test(`cada frase de la segunda ronda del equipo rojo se entiende bien, se pregun
 test(`cada frase de la tercera ronda del equipo rojo se entiende bien, se pregunta o se avisa (${CASOS_EQUIPO_ROJO_4.length} casos)`, () => {
   assert.ok(CASOS_EQUIPO_ROJO_4.length >= 150);
   for (const caso of CASOS_EQUIPO_ROJO_4) revisarCaso(caso);
+});
+
+test(`cada frase de la revisión final de la parte 1b se entiende bien o se pregunta (${CASOS_REVISION_FINAL.length} casos)`, () => {
+  assert.ok(CASOS_REVISION_FINAL.length >= 25);
+  for (const caso of CASOS_REVISION_FINAL) revisarCaso(caso);
+  // Lo que se pregunta nombra el pedazo exacto, y las claves nuevas tienen su texto en los dos idiomas.
+  const dudasDe = texto => dudas(interpretar(texto).configuracion).map(d => `${d.clave}:${d.texto}`);
+  assert.deepEqual(dudasDe('Tengo una empresa de limpieza para oficinas. Quiero clientes en Santiago: bancos y clínicas'), ['para_quien:para oficinas']);
+  assert.deepEqual(dudasDe('Vendo seguros de vida a maestros y policías de Santiago'), ['personas:maestros, policías']);
+  assert.deepEqual(dudasDe('Vendo software a hoteles y negocios grandes en Santiago'), ['tamano_del_general:negocios grandes']);
+  for (const clave of ['duda.para_quien', 'duda.personas', 'duda.tamano_del_general']) assert.ok(es[clave] && en[clave], clave);
+  assert.match(es['duda.lugar_difuso'], /Todo el país/);
+  assert.match(es['duda.personas'], /no personas/);
 });
 
 test('tercera ronda: las preguntas nombran lo que no se aplicó, y nada se quita en silencio', () => {
@@ -586,4 +599,24 @@ test('nombre sugerido: el producto y el primer sector o lugar', () => {
   assert.equal(nombreSugerido({ tipo: 'comercial', producto: 'x'.repeat(200), sectores: ['hoteles'] }).length <= LIMITES.nombre, true);
   assert.equal(nombreSugerido({}), 'Proyecto nuevo');
   assert.equal(nombreSugerido(null), 'Proyecto nuevo');
+});
+
+test('nombre sugerido: va entero en un idioma y nunca termina en media palabra', () => {
+  const config = (texto, idioma = 'es') => interpretar(texto, { idioma }).configuracion;
+  const paneles = config('Vendo paneles solares a hoteles en Punta Cana');
+  assert.equal(nombreSugerido(paneles, 'en', 'es'), 'Customers for solar panels · Hotels', 'del catálogo: se traduce');
+  const piscinas = config('Vendo mantenimiento de piscinas a hoteles en Bávaro');
+  assert.match(nombreSugerido(piscinas, 'en', 'es'), /^Clientes para mantenimiento de piscinas · Hoteles/, 'escrito por él: queda en su idioma');
+  for (const [texto, idioma] of [['Vendo aire acondicionado a oficinas en Santiago', 'es'], ['I sell security cameras to banks and credit unions in Santiago', 'en'],
+    ['I sell cleaning to offices in Santiago', 'en'], ['Vendo servicio de catering para bodas y eventos corporativos a salones de eventos en Santiago', 'es']]) {
+    for (const lengua of ['es', 'en']) {
+      const nombre = nombreSugerido(config(texto, idioma), lengua, idioma);
+      assert.ok(nombre.length <= LIMITES.nombre, nombre);
+      // Cada palabra del nombre está entera: es una palabra del texto o de las etiquetas del catálogo.
+      const palabras = x => String(x).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+      const conocidas = new Set(palabras(`${texto} clientes para customers for ${JSON.stringify(catalogo())}`));
+      for (const palabra of palabras(nombre)) assert.ok(conocidas.has(palabra), `«${palabra}» en «${nombre}»`);
+    }
+  }
+  assert.equal(nombreSugerido(config('Vendo aire acondicionado a oficinas en Santiago')), 'Clientes para aire acondicionado · Oficinas');
 });

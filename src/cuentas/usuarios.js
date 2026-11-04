@@ -112,7 +112,9 @@ export function cuantosAdminsActivos(db) {
 // ---------- Avisos para la persona ----------
 // Cuando el administrador reinicia la contraseña de alguien, queda un aviso guardado: la persona lo ve al entrar
 // la próxima vez («El administrador reinició tu contraseña el …») y la lista completa está en Configuración.
-// Así nadie puede entrar a una cuenta ajena con una contraseña reiniciada sin que la dueña se entere.
+// Así nadie puede entrar a una cuenta ajena con una contraseña reiniciada sin que la dueña se entere: «visto» no basta,
+// porque quien entra con la clave temporal también ve el aviso. Por eso, cada vez que hay un aviso nuevo, la pantalla
+// muestra TODOS los reinicios recientes (también los ya vistos), con su fecha: la dueña ve uno que no pidió.
 export function avisarClaveReiniciada(db, usuarioId) {
   db.prepare("INSERT INTO avisos_cuenta (usuario_id, tipo, fecha) VALUES (?, 'clave_reiniciada', ?)").run(usuarioId, ahora());
 }
@@ -125,6 +127,14 @@ export function avisosSinVer(db, usuarioId) {
 // La pantalla ya mostró los avisos hasta «hasta» (incluido): quedan como vistos, pero no se borran.
 export function marcarAvisosVistos(db, usuarioId, hasta) {
   return db.prepare('UPDATE avisos_cuenta SET visto_en = ? WHERE usuario_id = ? AND visto_en IS NULL AND id <= ?').run(ahora(), usuarioId, hasta).changes;
+}
+
+// Los reinicios de los últimos 90 días (hasta 5, del más nuevo al más viejo), vistos o no.
+export const DIAS_REINICIOS_RECIENTES = 90;
+export function reiniciosRecientes(db, usuarioId, { dias = DIAS_REINICIOS_RECIENTES, maximo = 5 } = {}) {
+  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+  return db.prepare("SELECT fecha, visto_en FROM avisos_cuenta WHERE usuario_id = ? AND tipo = 'clave_reiniciada' AND fecha >= ? ORDER BY id DESC LIMIT ?")
+    .all(usuarioId, desde, maximo).map(a => ({ fecha: a.fecha, vistoEn: a.visto_en }));
 }
 
 export function reiniciosDeClave(db, usuarioId) {
