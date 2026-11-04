@@ -685,3 +685,29 @@ test('sin CHECK en la base: el código solo guarda valores conocidos (tipo, esta
     assert.deepEqual([...estados].sort(), ['descartada', 'pendiente', 'rechazada', 'reemplazada', 'aprobada'].sort());
   });
 });
+
+test('una versión cambiada antes de aprobar se puede volver a usar: se copia tal cual como versión nueva que espera aprobación', async () => {
+  await conPlataforma(async ({ admin, pedir }) => {
+    let r = await pedir('POST', '/api/proyectos', { datos: { instrucciones: 'Vendo paneles solares a hoteles en Punta Cana.' }, galleta: admin });
+    const id = r.datos.proyecto.id;
+    const campos = { tipo: 'comercial', producto: 'paneles solares', sectores: 'hoteles', zonas: 'Punta Cana, Puerto Plata', frecuencia: 'diaria', capacidades: { investigar: true, analizar: true } };
+    r = await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'campos', campos }, galleta: admin });
+    assert.equal(r.datos.pendiente.numero, 2);
+    const aMano = r.datos.pendiente.configuracion;
+    // «Volver a entender» reemplaza lo hecho a mano: la versión 2 queda «descartada», no se borra.
+    r = await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'instrucciones', instrucciones: 'Vendo paneles solares a hoteles en Punta Cana. Cada día.' }, galleta: admin });
+    assert.equal(r.datos.versiones.find(v => v.numero === 2).estado, 'descartada');
+    r = await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'version', numero: 2 }, galleta: admin });
+    assert.equal(r.codigo, 201);
+    assert.equal(r.datos.pendiente.numero, 4);
+    assert.deepEqual(r.datos.pendiente.configuracion, aMano, 'la copia es igual a la versión 2');
+    assert.equal(r.datos.pendiente.origen, 'campos');
+    // La que espera aprobación (4) no se puede «volver a usar»; tampoco un número que no existe o que no es número.
+    r = await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'version', numero: 4 }, galleta: admin });
+    assert.equal(r.datos.error, 'version_no_reusable');
+    r = await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'version', numero: 99 }, galleta: admin });
+    assert.equal(r.codigo, 404);
+    r = await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'version', numero: '2' }, galleta: admin });
+    assert.equal(r.datos.error, 'datos_no_validos');
+  });
+});

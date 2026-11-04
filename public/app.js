@@ -11,11 +11,68 @@ let estado = { setup: null, usuario: null };
 let avisoEntrar = null; // mensaje para la pantalla de entrar (por ejemplo, «tu sesión terminó»)
 let idiomaElegidoAlEntrar = false; // la persona tocó Español/English antes de entrar
 let turno = 0;
+let avisosCuenta = []; // avisos que se muestran una sola vez (por ejemplo, «el administrador reinició tu contraseña»)
+let sesionTerminada = null; // de quién era la sesión que terminó: al entrar otra vez, la misma persona vuelve a donde estaba
+const MANTENER = Symbol('mantener'); // un formulario que devuelve esto deja su botón apagado (ya se fue a otra pantalla)
 
 // Si la persona cambia de pantalla mientras otra todavía carga, la vieja no se dibuja encima.
 function nuevoTurno() {
   const mio = ++turno;
   return () => mio === turno;
+}
+
+// ---------- Tema (claro, oscuro o automático) ----------
+// tema.js ya lo puso antes de dibujar la página; aquí se cambia desde Configuración. Se guarda solo en este navegador.
+const TEMAS = ['claro', 'oscuro', 'auto'];
+function temaGuardado() {
+  try {
+    const valor = localStorage.getItem('op_tema');
+    return TEMAS.includes(valor) ? valor : 'claro';
+  } catch { return 'claro'; }
+}
+function colorDeLaBarra() {
+  // El color de la barra de arriba del iPhone sigue al fondo de la página.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const fondo = getComputedStyle(document.body || document.documentElement).backgroundColor;
+  if (meta && fondo) meta.setAttribute('content', fondo);
+}
+function ponerTema(valor) {
+  const tema = TEMAS.includes(valor) ? valor : 'claro';
+  document.documentElement.setAttribute('data-tema', tema);
+  try { localStorage.setItem('op_tema', tema); } catch { /* el navegador no deja guardar: vale solo por ahora */ }
+  colorDeLaBarra();
+}
+try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', colorDeLaBarra); } catch { /* navegador viejo */ }
+
+// ---------- Lo escrito sin enviar ----------
+// Si la sesión termina mientras la persona escribe, lo escrito no se pierde: queda en memoria (y en esta pestaña)
+// y vuelve a su lugar cuando entra otra vez. Cada borrador lleva el número de la cuenta: otra persona no lo ve.
+const borradores = new Map();
+function guardarBorradores() {
+  try { sessionStorage.setItem('op_borradores', JSON.stringify([...borradores])); } catch { /* sin almacenamiento: queda en memoria */ }
+}
+function leerBorradores() {
+  try {
+    const lista = JSON.parse(sessionStorage.getItem('op_borradores') || '[]');
+    if (Array.isArray(lista)) for (const par of lista) if (Array.isArray(par) && typeof par[0] === 'string' && typeof par[1] === 'string') borradores.set(par[0], par[1]);
+  } catch { /* nada guardado */ }
+}
+function borrador(clave, valor) {
+  const llave = `${estado.usuario?.id ?? '-'}|${clave}`;
+  if (valor === undefined) return borradores.get(llave);
+  if (valor) borradores.set(llave, valor); else borradores.delete(llave);
+  guardarBorradores();
+  return valor;
+}
+// Un cuadro de texto que recuerda lo escrito. Devuelve true si trajo de vuelta algo escrito antes.
+function recordarTexto(area, clave) {
+  const guardado = borrador(clave);
+  area.addEventListener('input', () => borrador(clave, area.value));
+  if (guardado && guardado !== area.value) {
+    area.value = guardado;
+    return true;
+  }
+  return false;
 }
 
 // ---------- Idioma ----------
@@ -79,6 +136,8 @@ async function api(metodo, ruta, datos) {
   // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
   const error = respuesta.datos?.error;
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
+    // Se recuerda de quién era: si entra la misma persona, vuelve a la misma pantalla (la dirección no cambia).
+    sesionTerminada = estado.usuario.id;
     estado.usuario = null;
     avisoEntrar = textoError(error);
     setTimeout(dibujar);
@@ -98,6 +157,12 @@ function mostrar(...contenido) {
   // Las partes que no aplican llegan como null: no se muestran.
   raiz.replaceChildren(...contenido.flat().filter(parte => parte != null && parte !== false));
   window.scrollTo(0, 0);
+  // Para quien usa VoiceOver: después de dibujar, el foco va al mensaje nuevo (si hay) o al título de la pantalla.
+  const foco = raiz.querySelector('[data-foco]') || raiz.querySelector('h1');
+  if (foco) {
+    if (!foco.hasAttribute('tabindex')) foco.setAttribute('tabindex', '-1');
+    try { foco.focus({ preventScroll: true }); } catch { foco.focus(); }
+  }
 }
 
 function caja(clase = '') {
@@ -116,12 +181,13 @@ function alEnviar(formulario, cajaMensaje, accion) {
     const boton = formulario.querySelector('button[type="submit"]');
     boton.disabled = true;
     cajaMensaje.hidden = true;
+    let mantener = false;
     try {
-      await accion(new FormData(formulario));
+      mantener = (await accion(new FormData(formulario))) === MANTENER;
     } catch (error) {
       decir(cajaMensaje, error.message || t('error.desconocido'), 'error');
     } finally {
-      boton.disabled = false;
+      if (!mantener) boton.disabled = false;
     }
   });
 }
@@ -170,15 +236,15 @@ function pantallaCrearAdmin() {
   const formulario = el('form', { novalidate: true },
     campo('nombre', t('setup.nombre'), 'text', { autocomplete: 'username', maxlength: 40 }),
     el('p', { class: 'ayuda', texto: t('setup.nombre.ayuda') }),
-    campo('clave', t('setup.clave'), 'password', { autocomplete: 'new-password', minlength: 10 }),
-    campo('clave2', t('setup.clave2'), 'password', { autocomplete: 'new-password', minlength: 10 }),
+    campo('clave', t('setup.clave'), 'password', { autocomplete: 'new-password', minlength: 6 }),
+    campo('clave2', t('setup.clave2'), 'password', { autocomplete: 'new-password', minlength: 6 }),
     el('p', { class: 'ayuda', texto: t('setup.clave.ayuda') }),
     el('button', { type: 'submit', texto: t('setup.boton') }),
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
     // Se revisa aquí antes de enviar, para que un error al escribir no gaste intentos.
     if (!/^[a-z0-9][a-z0-9._-]{2,39}$/i.test(String(datos.get('nombre')).trim())) throw new Error(t('error.nombre_no_valido'));
-    if (String(datos.get('clave')).length < 10) throw new Error(t('error.clave_corta'));
+    if (String(datos.get('clave')).length < 6) throw new Error(t('error.clave_corta'));
     if (datos.get('clave') !== datos.get('clave2')) throw new Error(t('setup.claves_distintas'));
     const r = await api('POST', '/api/primer-admin', { nombre: String(datos.get('nombre')).trim(), clave: datos.get('clave'), idioma });
     if (r.datos.error === 'ya_existe_admin') {
@@ -209,6 +275,7 @@ function pantallaEntrar() {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.usuario = r.datos.usuario;
+    avisosCuenta = Array.isArray(r.datos.avisos) ? r.datos.avisos : [];
     if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
       // Eligió un idioma en esta pantalla: se guarda en su cuenta.
       const cambio = await api('POST', '/api/yo/idioma', { idioma });
@@ -217,7 +284,10 @@ function pantallaEntrar() {
       await cargarIdioma(estado.usuario.idioma);
       guardarIdioma(estado.usuario.idioma);
     }
-    location.hash = '#inicio';
+    // La misma persona vuelve a donde estaba (y a lo que estaba escribiendo); otra persona empieza en Inicio.
+    const otraPersona = sesionTerminada != null && sesionTerminada !== estado.usuario.id;
+    sesionTerminada = null;
+    if (otraPersona || !location.hash) history.replaceState(null, '', '#inicio');
     await dibujar();
   });
   const aviso = avisoEntrar;
@@ -233,8 +303,8 @@ function formularioClave({ alTerminar }) {
   const mensaje = caja();
   const formulario = el('form', { novalidate: true },
     campo('actual', t('clave.actual'), 'password', { autocomplete: 'current-password' }),
-    campo('nueva', t('clave.nueva'), 'password', { autocomplete: 'new-password', minlength: 10 }),
-    campo('nueva2', t('clave.nueva2'), 'password', { autocomplete: 'new-password', minlength: 10 }),
+    campo('nueva', t('clave.nueva'), 'password', { autocomplete: 'new-password', minlength: 6 }),
+    campo('nueva2', t('clave.nueva2'), 'password', { autocomplete: 'new-password', minlength: 6 }),
     el('p', { class: 'ayuda', texto: t('setup.clave.ayuda') }),
     el('button', { type: 'submit', texto: t('clave.boton') }),
     mensaje);
@@ -253,7 +323,8 @@ function pantallaClaveObligatoria() {
   mostrar(el('section', { class: 'tarjeta centrada' },
     el('h1', { texto: t('clave.titulo') }),
     el('p', { class: 'aviso', texto: t('clave.obligatoria') }),
-    formularioClave({ alTerminar: async () => { estado.usuario.debeCambiarClave = false; location.hash = '#inicio'; await dibujar(); } }),
+    avisosDeCuenta(),
+    formularioClave({ alTerminar: async () => { estado.usuario.debeCambiarClave = false; if (!location.hash) history.replaceState(null, '', '#inicio'); await dibujar(); } }),
     el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir }),
     selectorIdioma(async valor => {
       const r = await api('POST', '/api/yo/idioma', { idioma: valor });
@@ -267,12 +338,27 @@ async function salir() {
   // Si el servidor no pudo cerrar la sesión, no se finge que se cerró.
   if (!r.ok && r.codigo !== 401) return alert(textoError(r.datos.error));
   estado.usuario = null;
+  sesionTerminada = null;
+  avisosCuenta = [];
+  borradores.clear();
+  guardarBorradores();
   await refrescarSetup();
-  location.hash = '';
+  history.replaceState(null, '', location.pathname);
   await dibujar();
 }
 
 // ---------- Pantallas con sesión ----------
+// Los avisos de la cuenta se muestran una vez, arriba, y se marcan como vistos (no se borran: siguen en Configuración).
+function avisosDeCuenta() {
+  const lista = avisosCuenta.filter(a => a && a.tipo === 'clave_reiniciada' && Number.isSafeInteger(a.id));
+  avisosCuenta = [];
+  if (!lista.length) return null;
+  api('POST', '/api/yo/avisos/vistos', { hasta: Math.max(...lista.map(a => a.id)) });
+  return el('section', { class: 'tarjeta', role: 'alert' },
+    lista.map(a => el('p', { class: 'aviso', texto: t('aviso.clave_reiniciada', { fecha: fecha(a.fecha) }) })),
+    el('p', { class: 'suave', texto: t('aviso.clave_reiniciada.que_hacer') }));
+}
+
 function marco(seccion, ...contenido) {
   const enlaces = [['inicio', 'menu.inicio'], ['proyectos', 'menu.proyectos'], ['configuracion', 'menu.configuracion']];
   if (estado.usuario.rol === 'admin') enlaces.push(['admin', 'menu.admin']);
@@ -282,6 +368,7 @@ function marco(seccion, ...contenido) {
       el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir })),
     el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
       enlaces.map(([id, clave]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null, texto: t(clave) }))),
+    avisosDeCuenta(),
     ...contenido,
     pie(),
   ];
@@ -293,51 +380,88 @@ async function pantallaInicio() {
   if (!vigente()) return;
   const lista = claves => el('ul', {}, claves.map(clave => el('li', { texto: t(clave) })));
   const pendientes = r.ok ? r.datos.proyectos.filter(p => !p.enPapelera && p.versionPendiente) : [];
+  // Quien solo puede ver (lector) no aprueba: se le dice que espera al dueño.
+  const escribe = r.ok ? r.datos.puedeEscribir !== false : true;
   const aprobar = el('section', { class: 'tarjeta' },
-    el('h2', { texto: t('inicio.aprobar.titulo') }),
+    el('h2', { texto: escribe ? t('inicio.aprobar.titulo') : t('inicio.aprobar.titulo_lector') }),
     !r.ok ? el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })
-      : pendientes.length ? pendientes.map(p => el('a', { class: 'fila enlace', href: `#proyecto/${p.id}` },
-        el('span', { class: 'nombre', texto: p.nombre }),
-        el('span', { class: 'etiquetas' }, el('span', { class: 'etiqueta aviso-etiqueta', texto: t('inicio.aprobar.version', { numero: p.versionPendiente }) }))))
+      : pendientes.length ? [
+        pendientes.map(p => el('a', { class: 'fila enlace', href: `#proyecto/${p.id}` },
+          el('span', { class: 'nombre', texto: p.nombre }),
+          el('span', { class: 'etiquetas' },
+            el('span', { class: 'etiqueta', texto: t(`tipo.${p.tipo}`) }),
+            el('span', { class: 'etiqueta aviso-etiqueta', texto: t(escribe ? 'inicio.aprobar.version' : 'inicio.aprobar.version_lector', { numero: p.versionPendiente }) })))),
+        // Antes de aprobar, sin rodeos: aprobar guarda el proyecto, pero todavía no busca.
+        el('p', { class: 'suave', texto: t('inicio.aprobar.fase') }),
+      ]
         : el('p', { class: 'suave', texto: t('inicio.aprobar.vacio') }),
     r.ok ? el('p', { class: 'suave' }, el('a', { href: '#proyectos', texto: t('inicio.ir_proyectos', { usados: r.datos.usados, limite: r.datos.limite }) })) : null);
   mostrar(marco('inicio',
     el('section', { class: 'tarjeta' },
-      el('h1', { texto: t('inicio.hola', { nombre: estado.usuario.nombre }) }),
+      el('h1', { texto: t('inicio.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
       el('p', { class: 'suave', texto: t('inicio.texto') })),
     aprobar,
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.funciona') }),
       lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.2', 'inicio.funciona.3'])),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.viene') }),
-      lista(['inicio.viene.tareas', 'inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes']))));
+      lista(['inicio.viene.tareas', 'inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos']))));
 }
 
-function pantallaConfiguracion() {
-  const mensajeIdioma = caja();
-  const botonesIdioma = el('div', { class: 'botones' }, ['es', 'en'].map(valor => el('button', {
+// Botones de los que se elige uno (idioma, tema): el elegido se ve lleno y lo dice a VoiceOver (aria-pressed).
+function grupoDeBotones(opciones, elegido, alElegir) {
+  const botones = opciones.map(([valor, texto]) => el('button', {
     type: 'button',
-    class: valor === idioma ? '' : 'secundario',
-    texto: t(`idioma.${valor}`),
-    onclick: async () => {
-      const r = await api('POST', '/api/yo/idioma', { idioma: valor });
-      if (!r.ok) return decir(mensajeIdioma, textoError(r.datos.error), 'error');
-      estado.usuario.idioma = valor;
-      guardarIdioma(valor);
-      await cargarIdioma(valor);
-      pantallaConfiguracion();
-    },
-  })));
+    class: valor === elegido ? '' : 'secundario',
+    'aria-pressed': valor === elegido ? 'true' : 'false',
+    texto,
+    onclick: () => alElegir(valor, () => botones.forEach((b, i) => {
+      const marcado = opciones[i][0] === valor;
+      b.className = marcado ? '' : 'secundario';
+      b.setAttribute('aria-pressed', marcado ? 'true' : 'false');
+    })),
+  }));
+  return el('div', { class: 'botones' }, botones);
+}
+
+async function pantallaConfiguracion() {
+  const vigente = nuevoTurno();
+  const reinicios = await api('GET', '/api/yo/reinicios');
+  if (!vigente()) return;
+  const mensajeIdioma = caja();
+  const botonesIdioma = grupoDeBotones(['es', 'en'].map(v => [v, t(`idioma.${v}`)]), idioma, async valor => {
+    const r = await api('POST', '/api/yo/idioma', { idioma: valor });
+    if (!r.ok) return decir(mensajeIdioma, textoError(r.datos.error), 'error');
+    estado.usuario.idioma = valor;
+    guardarIdioma(valor);
+    await cargarIdioma(valor);
+    pantallaConfiguracion();
+  });
+  const botonesTema = grupoDeBotones([['claro', t('tema.claro')], ['oscuro', t('tema.oscuro')], ['auto', t('tema.auto')]], temaGuardado(), (valor, marcar) => {
+    ponerTema(valor);
+    marcar();
+  });
+  const lista = reinicios.ok ? reinicios.datos.reinicios : null;
   mostrar(marco('configuracion',
     el('section', { class: 'tarjeta' },
       el('h1', { texto: t('config.titulo') }),
       el('h2', { texto: t('config.cuenta') }),
+      estado.usuario.nombreVisible && estado.usuario.nombreVisible !== estado.usuario.nombre
+        ? el('p', { texto: t('config.nombre', { nombre: estado.usuario.nombreVisible }) }) : null,
       el('p', { texto: t('config.usuario', { nombre: estado.usuario.nombre }) }),
       el('p', { class: 'suave', texto: t(estado.usuario.rol === 'admin' ? 'config.rol.admin' : 'config.rol.usuario') })),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('idioma.titulo') }), botonesIdioma, mensajeIdioma),
-    el('section', { class: 'tarjeta' }, el('h2', { texto: t('clave.titulo') }), formularioClave({}))));
+    el('section', { class: 'tarjeta' }, el('h2', { texto: t('tema.titulo') }), botonesTema, el('p', { class: 'ayuda', texto: t('tema.ayuda') })),
+    el('section', { class: 'tarjeta' }, el('h2', { texto: t('clave.titulo') }), formularioClave({})),
+    el('section', { class: 'tarjeta' },
+      el('h2', { texto: t('config.reinicios') }),
+      !lista ? el('p', { class: 'mensaje error', texto: textoError(reinicios.datos.error) })
+        : lista.length ? [
+          el('p', { class: 'suave', texto: t('config.reinicios.texto') }),
+          el('ul', {}, lista.map(x => el('li', { texto: t('config.reinicios.linea', { fecha: fecha(x.fecha) }) }))),
+        ] : el('p', { class: 'suave', texto: t('config.reinicios.vacio') }))));
 }
 
-function bloqueClaveTemporal(textoClave, nombre, temporal) {
+function bloqueClaveTemporal(textoClave, nombre, temporal, usuario = nombre) {
   const clave = el('div', { class: 'clave-temporal', texto: temporal });
   const ayuda = el('p', { class: 'ayuda', hidden: true, texto: t('admin.copiar_a_mano') });
   const boton = el('button', {
@@ -360,7 +484,31 @@ function bloqueClaveTemporal(textoClave, nombre, temporal) {
       }
     },
   });
-  return el('div', { class: 'mensaje bien' }, el('p', { texto: t(textoClave, { nombre }) }), clave, boton, ayuda);
+  return el('div', { class: 'mensaje bien', 'data-foco': true },
+    el('p', { texto: t(textoClave, { nombre }) }),
+    el('p', { texto: t('admin.entra_con', { usuario }) }),
+    clave, boton, ayuda);
+}
+
+// El nombre de usuario que se propone a partir del nombre completo: «Juan Pérez» → «juan.perez».
+// Minúsculas, sin tildes (ñ → n), solo letras, números y un punto entre el primer nombre y el primer apellido.
+// Con 4 palabras o más («Ana María Pérez Gómez») el primer apellido es la tercera; «de», «del», «la»… no cuentan.
+const PARTICULAS_DE_NOMBRE = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'do', 'dos', 'di', 'van', 'von', 'mc']);
+function usuarioPropuesto(nombreCompleto) {
+  const palabras = String(nombreCompleto).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(p => p && !PARTICULAS_DE_NOMBRE.has(p));
+  if (!palabras.length) return '';
+  const partes = palabras.length === 1 ? [palabras[0]] : [palabras[0], palabras[palabras.length >= 4 ? 2 : 1]];
+  let base = partes.map(p => p.slice(0, 18)).join('.');
+  while (base.length < 3) base += '1';
+  return base;
+}
+// El primero libre: juan.perez, juan.perez2, juan.perez3…
+function usuarioLibre(base, ocupados) {
+  if (!base) return '';
+  if (!ocupados.has(base)) return base;
+  for (let n = 2; n < 1000; n++) if (!ocupados.has(`${base}${n}`)) return `${base}${n}`;
+  return base;
 }
 
 async function pantallaAdmin(avisoArriba = null) {
@@ -371,10 +519,21 @@ async function pantallaAdmin(avisoArriba = null) {
     mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
     return;
   }
+  const planes = Array.isArray(r.datos.planes) ? r.datos.planes : [];
+  const ocupados = new Set(r.datos.usuarios.map(u => String(u.nombre).toLowerCase()));
   const mensaje = caja();
+  const completo = el('input', { id: 'campo-nombre-completo', name: 'nombreVisible', type: 'text', maxlength: 80, autocomplete: 'off', autocapitalize: 'words' });
+  const usuario = el('input', { id: 'campo-nombre', name: 'nombre', type: 'text', maxlength: 40, required: true, autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', autocomplete: 'off' });
+  // Mientras el administrador no escriba el usuario a mano, se va proponiendo solo.
+  let usuarioAMano = false;
+  completo.addEventListener('input', () => { if (!usuarioAMano) usuario.value = usuarioLibre(usuarioPropuesto(completo.value), ocupados); });
+  usuario.addEventListener('input', () => { usuarioAMano = usuario.value.trim() !== ''; });
   const formulario = el('form', { novalidate: true },
-    campo('nombre', t('admin.nuevo.nombre'), 'text', { maxlength: 40 }),
-    el('p', { class: 'ayuda', texto: t('setup.nombre.ayuda') }),
+    el('label', { for: 'campo-nombre-completo', texto: t('admin.nuevo.nombre_completo') }),
+    completo,
+    el('label', { for: 'campo-nombre', texto: t('admin.nuevo.nombre') }),
+    usuario,
+    el('p', { class: 'ayuda', texto: t('admin.nuevo.nombre.ayuda') }),
     el('label', { for: 'campo-rol', texto: t('admin.nuevo.rol') }),
     el('select', { id: 'campo-rol', name: 'rol' },
       el('option', { value: 'usuario', texto: t('admin.rol.usuario') }),
@@ -383,13 +542,46 @@ async function pantallaAdmin(avisoArriba = null) {
     el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
       el('option', { value: 'es', texto: t('idioma.es') }),
       el('option', { value: 'en', texto: t('idioma.en') })),
+    el('p', { class: 'ayuda', texto: t('admin.nuevo.plan') }),
     el('button', { type: 'submit', texto: t('admin.nuevo.boton') }),
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
-    const creado = await api('POST', '/api/admin/usuarios', { nombre: datos.get('nombre'), rol: datos.get('rol'), idioma: datos.get('idioma') });
+    const nombre = String(datos.get('nombre')).trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(nombre)) throw new Error(t('error.nombre_no_valido'));
+    const creado = await api('POST', '/api/admin/usuarios', { nombre, nombreVisible: String(datos.get('nombreVisible')).trim(), rol: datos.get('rol'), idioma: datos.get('idioma') });
+    if (creado.datos.error === 'nombre_ocupado') {
+      // Ya existe: se propone el siguiente libre (juan.perez2…) y el administrador decide.
+      ocupados.add(nombre);
+      const otro = usuarioLibre(nombre.replace(/\d+$/, '') || nombre, ocupados);
+      usuario.value = otro;
+      usuarioAMano = false;
+      usuario.focus();
+      throw new Error(t('admin.nombre_ocupado_propuesta', { nombre: otro }));
+    }
     if (!creado.ok) throw new Error(textoError(creado.datos.error));
-    await pantallaAdmin(bloqueClaveTemporal('admin.creado', creado.datos.nombre, creado.datos.claveTemporal));
+    await pantallaAdmin(bloqueClaveTemporal('admin.creado', creado.datos.nombreVisible || creado.datos.nombre, creado.datos.claveTemporal, creado.datos.nombre));
+    return MANTENER;
   });
+
+  // «Proyectos permitidos» de cada cuenta. Si tiene más proyectos en uso de los que permite el plan, el servidor no cambia nada y lo explica.
+  const controlPlan = u => {
+    if (!u.plan || !planes.length) return null;
+    const id = `plan-${u.id}`;
+    const mensajePlan = caja();
+    const selector = el('select', { id }, planes.map(x => el('option', { value: x.clave, selected: x.clave === u.plan, texto: t(`plan.${x.clave}`) })));
+    return el('div', {},
+      el('div', { class: 'plan' },
+        el('label', { for: id, texto: t('admin.plan', { n: u.proyectosPermitidos }) }),
+        selector,
+        botonAccion(t('admin.plan.guardar'), 'secundario', mensajePlan, async () => {
+          if (selector.value === u.plan) return decir(mensajePlan, t('admin.plan.igual'), 'bien');
+          const x = await api('POST', `/api/admin/usuarios/${u.id}/plan`, { plan: selector.value });
+          if (!x.ok) throw new Error(textoError(x.datos.error));
+          await pantallaAdmin(el('p', { class: 'mensaje bien', 'data-foco': true, texto: t('admin.plan.listo', { nombre: u.nombreVisible || u.nombre, n: x.datos.proyectosPermitidos }) }));
+        })),
+      u.rol === 'admin' ? el('p', { class: 'ayuda', texto: t('admin.plan.admin') }) : null,
+      mensajePlan);
+  };
 
   const filas = r.datos.usuarios.map(u => {
     const acciones = u.id === estado.usuario.id ? el('p', { class: 'suave', texto: t('admin.tu_cuenta') }) : el('div', { class: 'botones' },
@@ -402,7 +594,7 @@ async function pantallaAdmin(avisoArriba = null) {
           if (!confirm(t('admin.confirmar_reiniciar', { nombre: u.nombre }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/reiniciar-clave`, {});
           if (!x.ok) return alert(textoError(x.datos.error));
-          await pantallaAdmin(bloqueClaveTemporal('admin.reiniciada', x.datos.nombre, x.datos.claveTemporal));
+          await pantallaAdmin(bloqueClaveTemporal('admin.reiniciada', u.nombreVisible || x.datos.nombre, x.datos.claveTemporal, x.datos.nombre));
         },
       }),
       el('button', {
@@ -418,11 +610,13 @@ async function pantallaAdmin(avisoArriba = null) {
       }));
     return el('div', { class: 'fila' },
       el('div', {},
-        el('span', { class: 'nombre', texto: u.nombre }),
+        el('span', { class: 'nombre', texto: u.nombreVisible || u.nombre }),
         el('span', { class: 'etiqueta', texto: t(u.rol === 'admin' ? 'admin.rol.admin' : 'admin.rol.usuario') }),
         el('span', { class: `etiqueta ${u.activo ? 'bien' : 'mal'}`, texto: t(u.activo ? 'admin.activo' : 'admin.inactivo') })),
+      el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }),
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
+      controlPlan(u),
       acciones);
   });
 
@@ -435,12 +629,6 @@ async function pantallaAdmin(avisoArriba = null) {
 
 // ---------- Proyectos ----------
 let catalogo = null;
-let avisoPendiente = null;
-
-function ir(destino) {
-  if (location.hash === destino) dibujar();
-  else location.hash = destino;
-}
 
 async function cargarCatalogo() {
   if (catalogo) return catalogo;
@@ -481,24 +669,67 @@ function salarioDe(c) {
   return '';
 }
 
+// Para comparar textos sin fijarse en mayúsculas, tildes ni espacios de más.
+const comparable = texto => String(texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+// Lo que vende, en el idioma que usa la persona ahora: si lo guardado es exactamente el nombre de productos
+// del catálogo («paneles solares»), se muestra con el nombre del catálogo en este idioma («solar panels»).
+// Si la persona lo escribió con sus palabras, se muestra tal cual.
+function productoDe(c) {
+  if (!c.producto || c.tipo !== 'comercial' || !Array.isArray(c.productos) || !c.productos.length) return c.producto;
+  const items = c.productos.map(clave => catalogo.productos.find(x => x.clave === clave));
+  if (!items.every(x => x && x.es && x.en)) return c.producto;
+  const formas = new Set();
+  for (const lengua of ['es', 'en']) {
+    const nombres = items.map(x => x[lengua]);
+    formas.add(comparable(nombres.join(', ')));
+    try { formas.add(comparable(new Intl.ListFormat(lengua, { type: 'conjunction' }).format(nombres))); } catch { /* navegador viejo */ }
+  }
+  return formas.has(comparable(c.producto)) ? unir(items.map(x => x[idioma] || x.es)) : c.producto;
+}
+
+// El objetivo que OPORTIA sugirió al crear el proyecto se muestra en el idioma de ahora;
+// si la persona lo escribió a mano, se muestra tal cual.
+function objetivoDe(c) {
+  const p = String(c.producto ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  const sugeridos = c.tipo === 'laboral'
+    ? (p ? [`Conseguir empleo de ${p}`, `Get a job as ${p}`] : ['Conseguir empleo', 'Get a job'])
+    : (p ? [`Encontrar clientes que puedan necesitar ${p}`, `Find customers who may need ${p}`] : ['Encontrar clientes', 'Find customers']);
+  if (!sugeridos.some(x => comparable(x) === comparable(c.objetivo))) return c.objetivo;
+  const producto = productoDe(c);
+  if (c.tipo === 'laboral') return producto ? t('objetivo.laboral', { producto }) : t('objetivo.laboral.sin_producto');
+  return producto ? t('objetivo.comercial', { producto }) : t('objetivo.comercial.sin_producto');
+}
+
 // La frase «Entendí que…» se arma con la configuración, en el idioma que esté usando la persona.
 function fraseEntendi(c) {
   const falta = t('valor.falta');
   const zonas = c.paisCompleto ? [t('valor.pais_frase'), ...zonasDe(c)] : zonasDe(c);
-  if (c.tipo === 'laboral') return t('proyecto.entendi.laboral', { producto: c.producto || falta, zonas: unir(zonas) || falta });
+  if (c.tipo === 'laboral') return t('proyecto.entendi.laboral', { producto: productoDe(c) || falta, zonas: unir(zonas) || falta });
   return t('proyecto.entendi.comercial', {
     sectores: unir(sectoresDe(c).map(enMinuscula)) || falta,
     zonas: unir(zonas) || falta,
-    producto: c.producto || falta,
+    producto: productoDe(c) || falta,
   });
+}
+
+// Lo que todavía no se puede elegir, dicho claramente (sin botones que no hacen nada).
+function proximamente() {
+  return el('div', { class: 'proximamente' },
+    el('p', { texto: t('proximamente.fuentes') }),
+    el('p', { texto: t('proximamente.analisis') }));
+}
+
+function textoIa(c) {
+  return c.ia?.permitida ? t('valor.ia.permitida', { tope: `US$${Number(c.ia.topeMensualUsd) || 0}` }) : t('valor.ia.no_permitida');
 }
 
 function resumen(c) {
   const filas = [];
   const fila = (clave, valor) => { if (valor) filas.push(el('dt', { texto: t(clave) }), el('dd', { texto: valor })); };
   fila('campo.tipo', t(`tipo.${c.tipo}`));
-  fila('campo.objetivo', c.objetivo);
-  fila(`campo.producto.${c.tipo}`, c.producto);
+  fila('campo.objetivo', objetivoDe(c));
+  fila(`campo.producto.${c.tipo}`, productoDe(c));
   if (c.tipo === 'comercial') fila('campo.sectores', unir(sectoresDe(c)));
   fila('campo.zonas', unir(c.paisCompleto ? [t('valor.pais_completo'), ...zonasDe(c)] : zonasDe(c)));
   if (c.tipo === 'comercial') fila('campo.tamanos', unir(c.tamanos.map(x => t(`tamano.${x}`))));
@@ -509,20 +740,28 @@ function resumen(c) {
   fila('campo.exclusiones', unir(exclusionesDe(c)));
   fila('campo.prioridades', unir(c.prioridades));
   fila('campo.frecuencia', t(`frecuencia.${c.frecuencia}`));
+  fila('campo.autonomia', `${t(`autonomia.${c.autonomia || catalogo.autonomiaPorDefecto}`)}. ${t('autonomia.contactar_siempre')}`);
   fila('campo.capacidades', unir(catalogo.capacidades.filter(x => c.capacidades[x.clave]).map(x => t(`capacidad.${x.clave}`))));
   fila('campo.fuentes', unir(c.fuentes.map(f => t(`fuente.${f}`))));
-  fila('campo.costo', t('valor.costo'));
-  return el('dl', { class: 'resumen' }, filas);
+  fila('campo.ia', textoIa(c));
+  const costo = Number(c.costoEstimadoUsd) || 0;
+  fila('campo.costo', costo ? t('valor.costo.mes', { cantidad: `US$${costo}` }) : t('valor.costo'));
+  return el('div', {}, el('dl', { class: 'resumen' }, filas), proximamente());
 }
 
+// En la papelera no se muestra el estado (diría «En ejecución» de algo que no trabaja): se dice que está en la papelera.
 function etiquetaEstado(p) {
+  if (p.enPapelera) return el('span', { class: 'etiqueta mal', texto: t('proyecto.etiqueta_papelera') });
   const clase = { en_ejecucion: 'bien', con_errores: 'mal', pendiente: 'aviso-etiqueta' }[p.estado] || '';
   return el('span', { class: `etiqueta ${clase}`, texto: t(`estado.${p.estado}`) });
 }
 
 function tarjetaError(mensaje) {
-  return el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: mensaje }));
+  return el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', 'data-foco': true, texto: mensaje }));
 }
+
+// Antes de aprobar por primera vez, sin rodeos: aprobar guarda el proyecto, pero la búsqueda llega más adelante.
+const avisoAntesDeAprobar = tipo => t(tipo === 'laboral' ? 'proyecto.aviso_antes.laboral' : 'proyecto.aviso_antes.comercial');
 
 // Botón que hace un pedido: se desactiva mientras espera y, si falla, explica por qué.
 function botonAccion(texto, clase, cajaMensaje, accion) {
@@ -545,11 +784,24 @@ function botonAccion(texto, clase, cajaMensaje, accion) {
   return boton;
 }
 
+// Errores que quieren decir «esto cambió en otro equipo»: el proyecto se vuelve a cargar solo y se avisa.
+const CAMBIO_EN_OTRO_LADO = new Set(['version_no_pendiente', 'accion_no_permitida_ahora', 'en_papelera']);
+
 // Hace el pedido y, si salió bien, vuelve a dibujar el proyecto con un aviso arriba.
 async function pedirYMostrar(metodo, ruta, datos, aviso) {
   const pantalla = turno;
   const r = await api(metodo, ruta, datos);
-  if (!r.ok) throw new Error(textoError(r.datos.error));
+  if (!r.ok) {
+    const numero = ruta.match(/^\/api\/proyectos\/(\d+)/)?.[1];
+    if (numero && CAMBIO_EN_OTRO_LADO.has(r.datos.error)) {
+      const ahora = await api('GET', `/api/proyectos/${numero}`);
+      if (ahora.ok && pantalla === turno) {
+        dibujarProyecto(ahora.datos, { texto: t('proyecto.cambio_en_otro_lado'), clase: 'aviso' });
+        return;
+      }
+    }
+    throw new Error(textoError(r.datos.error));
+  }
   if (pantalla !== turno) return; // la persona ya se fue a otra pantalla
   dibujarProyecto(r.datos, typeof aviso === 'function' ? aviso(r.datos) : aviso);
 }
@@ -575,7 +827,7 @@ async function pantallaProyectos() {
     el('span', { class: 'etiquetas' },
       el('span', { class: 'etiqueta', texto: t(`tipo.${p.tipo}`) }),
       etiquetaEstado(p),
-      p.versionPendiente && p.estado !== 'pendiente' ? el('span', { class: 'etiqueta aviso-etiqueta', texto: t('proyectos.cambios_pendientes') }) : null),
+      p.versionPendiente && p.estado !== 'pendiente' && !p.enPapelera ? el('span', { class: 'etiqueta aviso-etiqueta', texto: t('proyectos.cambios_pendientes') }) : null),
     el('span', { class: 'suave', texto: t('proyectos.actualizado', { fecha: fecha(p.actualizadoEn) }) }));
 
   let nuevo;
@@ -584,6 +836,7 @@ async function pantallaProyectos() {
   else {
     const mensaje = caja();
     const area = el('textarea', { id: 'campo-instrucciones', name: 'instrucciones', rows: 5, required: true, minlength: 10, maxlength: 4000 });
+    recordarTexto(area, 'nuevo');
     const formulario = el('form', { novalidate: true },
       el('label', { for: 'campo-instrucciones', texto: t('proyectos.instrucciones') }),
       el('p', { class: 'ayuda', texto: t('proyectos.instrucciones.ayuda') }),
@@ -592,14 +845,31 @@ async function pantallaProyectos() {
         el('summary', { texto: t('proyectos.ejemplos') }),
         ['proyectos.ejemplo.1', 'proyectos.ejemplo.2', 'proyectos.ejemplo.3'].map(clave => el('div', { class: 'ejemplo' },
           el('p', { texto: t(clave) }),
-          el('button', { type: 'button', class: 'secundario', texto: t('proyectos.usar_ejemplo'), onclick: () => { area.value = t(clave); area.focus(); } })))),
+          el('button', {
+            type: 'button',
+            class: 'secundario',
+            texto: t('proyectos.usar_ejemplo'),
+            onclick: () => {
+              // Lo que la persona ya escribió no se pierde sin preguntarle.
+              if (area.value.trim() && area.value.trim() !== t(clave) && !confirm(t('proyectos.reemplazar_texto'))) return;
+              area.value = t(clave);
+              borrador('nuevo', area.value);
+              area.focus();
+            },
+          })))),
       el('button', { type: 'submit', texto: t('proyectos.crear') }),
       mensaje);
     alEnviar(formulario, mensaje, async datos => {
       const creado = await api('POST', '/api/proyectos', { instrucciones: datos.get('instrucciones') });
       if (!creado.ok) throw new Error(textoError(creado.datos.error));
-      avisoPendiente = t('proyecto.listo.creado');
-      ir(`#proyecto/${creado.datos.proyecto.id}`);
+      borrador('nuevo', '');
+      // El proyecto se dibuja con lo que respondió el servidor (sin pedirlo otra vez) y el botón queda apagado:
+      // así un segundo toque no puede crear otro.
+      if (!vigente()) return MANTENER;
+      history.pushState(null, '', `#proyecto/${creado.datos.proyecto.id}`);
+      turno++;
+      dibujarProyecto(creado.datos, t(creado.datos.repetido ? 'proyecto.listo.repetido' : 'proyecto.listo.creado'));
+      return MANTENER;
     });
     nuevo = formulario;
   }
@@ -632,12 +902,11 @@ async function pantallaProyecto(id) {
     return;
   }
   if (!vigente()) return;
-  const aviso = avisoPendiente;
-  avisoPendiente = null;
-  dibujarProyecto(r.datos, aviso);
+  dibujarProyecto(r.datos);
 }
 
-function formularioCampos(c, alGuardar) {
+// «Cambiar los datos a mano». «dudasTodas»: lo que el motor no entendió y lo que choca (lo mismo para buscar y excluir).
+function formularioCampos(c, dudasTodas, alGuardar) {
   const mensaje = caja();
   const id = nombre => `f-${nombre}`;
   const etiqueta = (nombre, texto) => el('label', { for: id(nombre), texto });
@@ -645,6 +914,7 @@ function formularioCampos(c, alGuardar) {
   const casilla = (nombre, texto, marcada, valor, ayuda) => el('label', { class: 'casilla' },
     el('input', { type: 'checkbox', name: nombre, value: valor, checked: marcada }),
     el('span', {}, texto, ayuda ? el('small', { class: 'ayuda', texto: ayuda }) : null));
+  const simbolo = moneda => (moneda === 'USD' ? 'US$' : 'RD$');
 
   const tipo = el('select', { id: id('tipo'), name: 'tipo' }, catalogo.tipos.map(x => el('option', { value: x, selected: x === c.tipo, texto: t(`tipo.${x}`) })));
   const etiquetaProducto = etiqueta('producto', t(`campo.producto.${c.tipo}`));
@@ -652,33 +922,81 @@ function formularioCampos(c, alGuardar) {
     linea('sectores', t('formulario.sectores'), sectoresDe(c).join(', ')),
     el('fieldset', {}, el('legend', { texto: t('campo.tamanos') }),
       catalogo.tamanos.map(x => casilla('tamanos', t(`tamano.${x}`), c.tamanos.includes(x), x))));
+
+  // Salario: con su moneda (RD$ o US$) y el mínimo nunca mayor que el máximo.
+  const moneda = el('select', { id: id('moneda'), name: 'moneda' },
+    el('option', { value: 'DOP', selected: c.moneda !== 'USD', texto: t('moneda.DOP') }),
+    el('option', { value: 'USD', selected: c.moneda === 'USD', texto: t('moneda.USD') }));
+  const [etiquetaMinimo, salarioMinimo] = linea('salarioMinimo', t('formulario.salario_minimo', { moneda: simbolo(c.moneda) }), c.salarioMinimo ?? '', { type: 'number', inputmode: 'numeric', min: 0, step: 1 });
+  const [etiquetaMaximo, salarioMaximo] = linea('salarioMaximo', t('formulario.salario_maximo', { moneda: simbolo(c.moneda) }), c.salarioMaximo ?? '', { type: 'number', inputmode: 'numeric', min: 0, step: 1 });
+  moneda.addEventListener('change', () => {
+    etiquetaMinimo.textContent = t('formulario.salario_minimo', { moneda: simbolo(moneda.value) });
+    etiquetaMaximo.textContent = t('formulario.salario_maximo', { moneda: simbolo(moneda.value) });
+  });
   const laboral = el('div', { hidden: c.tipo !== 'laboral' },
-    linea('salarioMinimo', t('formulario.salario_minimo', { moneda: c.moneda === 'USD' ? 'US$' : 'RD$' }), c.salarioMinimo ?? '', { type: 'number', inputmode: 'numeric', min: 0, step: 1 }),
-    linea('salarioMaximo', t('formulario.salario_maximo', { moneda: c.moneda === 'USD' ? 'US$' : 'RD$' }), c.salarioMaximo ?? '', { type: 'number', inputmode: 'numeric', min: 0, step: 1 }),
+    etiqueta('moneda', t('formulario.moneda')), moneda,
+    etiquetaMinimo, salarioMinimo, etiquetaMaximo, salarioMaximo,
     casilla('experiencia', t('formulario.experiencia'), c.experiencia === 'no_requerida', 'si'));
+
+  // Qué hará el proyecto. La fase en que empieza cada cosa depende del tipo (clientes: fase 2 o 3; empleos: fase 6).
+  const casillasCapacidad = catalogo.capacidades.map(x => {
+    const ayuda = el('small', { class: 'ayuda' });
+    const entrada = el('input', { type: 'checkbox', name: 'capacidades', value: x.clave, checked: c.capacidades[x.clave] });
+    return { clave: x.clave, entrada, ayuda, nodo: el('label', { class: 'casilla' }, entrada, el('span', {}, t(`capacidad.${x.clave}`), ayuda)) };
+  });
+  const capacidad = clave => casillasCapacidad.find(x => x.clave === clave);
+  const ponerFases = valorTipo => casillasCapacidad.forEach(x => {
+    const fase = faseDe(x.clave, valorTipo);
+    x.ayuda.textContent = fase ? `${t(`capacidad.${x.clave}.ayuda`)} ${t('capacidad.desde', { fase })}` : t(`capacidad.${x.clave}.ayuda`);
+  });
+  ponerFases(c.tipo);
+  // «Contactar» necesita los correos: mientras esté marcado, «Preparar correos» queda marcado y no se puede quitar.
+  const contactar = capacidad('contactar').entrada;
+  const correos = capacidad('correos');
+  const notaCorreos = el('small', { class: 'ayuda', texto: t('formulario.correos_por_contactar') });
+  correos.nodo.querySelector('span').append(notaCorreos);
+  const ajustarCorreos = () => {
+    if (contactar.checked) correos.entrada.checked = true;
+    correos.entrada.disabled = contactar.checked;
+    notaCorreos.hidden = !contactar.checked;
+  };
+  contactar.addEventListener('change', ajustarCorreos);
+  const marcar = lista => { casillasCapacidad.forEach(x => { x.entrada.checked = lista.includes(x.clave); }); ajustarCorreos(); };
+  ajustarCorreos();
+
   tipo.addEventListener('change', () => {
     comercial.hidden = tipo.value !== 'comercial';
     laboral.hidden = tipo.value !== 'laboral';
     etiquetaProducto.textContent = t(`campo.producto.${tipo.value}`);
+    ponerFases(tipo.value);
   });
 
-  const casillasCapacidad = catalogo.capacidades.map(x => casilla('capacidades', t(`capacidad.${x.clave}`), c.capacidades[x.clave], x.clave,
-    `${t(`capacidad.${x.clave}.ayuda`)} ${t('capacidad.desde', { fase: x.desde[c.tipo] })}`));
-  const marcar = lista => casillasCapacidad.forEach(l => { const entrada = l.querySelector('input'); entrada.checked = lista.includes(entrada.value); });
-  const contactar = casillasCapacidad.find(l => l.querySelector('input').value === 'contactar').querySelector('input');
-  contactar.addEventListener('change', () => { if (contactar.checked) casillasCapacidad.find(l => l.querySelector('input').value === 'correos').querySelector('input').checked = true; });
+  // Cada cuánto y cuánta libertad tiene. «Solo cuando yo lo pida» siempre va con la frecuencia manual.
+  const frecuencia = el('select', { id: id('frecuencia'), name: 'frecuencia' }, catalogo.frecuencias.map(x => el('option', { value: x, selected: x === c.frecuencia, texto: t(`frecuencia.${x}`) })));
+  const autonomia = el('select', { id: id('autonomia'), name: 'autonomia' },
+    catalogo.autonomias.map(x => el('option', { value: x, selected: x === (c.autonomia || catalogo.autonomiaPorDefecto), texto: t(`autonomia.${x}`) })));
+  autonomia.addEventListener('change', () => { if (autonomia.value === 'solo_cuando_pida') frecuencia.value = 'manual'; });
+  frecuencia.addEventListener('change', () => { if (frecuencia.value !== 'manual' && autonomia.value === 'solo_cuando_pida') autonomia.value = catalogo.autonomiaPorDefecto; });
 
-  // Lo que el motor no entendió: la persona lo arregla arriba y lo marca, o lo marca porque no importa.
+  // Lo que el motor no entendió: la persona lo arregla abajo y lo marca, o lo marca porque no importa.
+  // Lo que choca (lo mismo en «Dónde» y en «Excluir», un lugar de fuera) se arregla solo al corregir el dato.
   const noEntendido = Array.isArray(c.noEntendido) ? c.noEntendido : [];
-  const dudasDelFormulario = noEntendido.length ? el('fieldset', {}, el('legend', { texto: t('formulario.dudas') }),
-    el('p', { class: 'ayuda', texto: t('formulario.dudas.ayuda') }),
-    noEntendido.map((d, numero) => casilla('resueltas', textoDuda(d), false, String(numero), t('formulario.duda_resuelta')))) : null;
+  const calculadas = (Array.isArray(dudasTodas) ? dudasTodas : []).filter(d => !noEntendido.some(x => x.clave === d.clave && x.texto === d.texto));
+  const dudasDelFormulario = noEntendido.length || calculadas.length ? el('fieldset', { class: 'dudas' }, el('legend', { texto: t('formulario.dudas') }),
+    noEntendido.length ? [
+      el('p', { class: 'ayuda', texto: t('formulario.dudas.ayuda') }),
+      noEntendido.map((d, numero) => casilla('resueltas', textoDuda(d), false, String(numero), t('formulario.duda_resuelta'))),
+    ] : null,
+    calculadas.length ? [
+      el('p', { class: 'ayuda', texto: t('formulario.dudas.calculadas') }),
+      el('ul', {}, calculadas.map(d => el('li', { texto: textoDuda(d) }))),
+    ] : null) : null;
 
   const formulario = el('form', { novalidate: true },
     dudasDelFormulario,
     etiqueta('tipo', t('formulario.tipo')), tipo,
-    linea('objetivo', t('campo.objetivo'), c.objetivo, { maxlength: 300 }),
-    etiquetaProducto, el('input', { id: id('producto'), name: 'producto', type: 'text', value: c.producto, autocomplete: 'off', maxlength: 120 }),
+    linea('objetivo', t('campo.objetivo'), objetivoDe(c), { maxlength: 300 }),
+    etiquetaProducto, el('input', { id: id('producto'), name: 'producto', type: 'text', value: productoDe(c), autocomplete: 'off', maxlength: 120 }),
     comercial,
     linea('zonas', t('formulario.zonas'), zonasDe(c).join(', ')),
     casilla('pais', t('valor.pais_completo'), c.paisCompleto, 'si'),
@@ -686,85 +1004,117 @@ function formularioCampos(c, alGuardar) {
     linea('exclusiones', t('formulario.exclusiones'), exclusionesDe(c).join(', ')),
     etiqueta('prioridades', t('formulario.prioridades')),
     el('textarea', { id: id('prioridades'), name: 'prioridades', rows: 3, texto: c.prioridades.join('\n') }),
-    etiqueta('frecuencia', t('campo.frecuencia')),
-    el('select', { id: id('frecuencia'), name: 'frecuencia' }, catalogo.frecuencias.map(x => el('option', { value: x, selected: x === c.frecuencia, texto: t(`frecuencia.${x}`) }))),
+    etiqueta('frecuencia', t('campo.frecuencia')), frecuencia,
+    etiqueta('autonomia', t('campo.autonomia')), autonomia,
+    el('p', { class: 'ayuda', texto: t('autonomia.contactar_siempre') }),
     el('fieldset', {}, el('legend', { texto: t('campo.capacidades') }),
       el('div', { class: 'botones' }, Object.entries(catalogo.combinaciones).map(([clave, lista]) =>
         el('button', { type: 'button', class: 'secundario', texto: t(`combinacion.${clave}`), onclick: () => marcar(lista) }))),
-      casillasCapacidad),
+      casillasCapacidad.map(x => x.nodo)),
+    el('p', { class: 'nota-ia', texto: `${t('campo.ia')}: ${textoIa(c)}` }),
+    proximamente(),
     el('p', { class: 'ayuda', texto: t('formulario.guardar.ayuda') }),
     el('button', { type: 'submit', texto: t('formulario.guardar') }),
     mensaje);
 
   alEnviar(formulario, mensaje, async datos => {
     const capacidades = datos.getAll('capacidades');
+    const minimo = datos.get('salarioMinimo');
+    const maximo = datos.get('salarioMaximo');
+    if (tipo.value === 'laboral' && minimo && maximo && Number(minimo) > Number(maximo)) throw new Error(t('error.salario_al_reves'));
+    const producto = String(datos.get('producto'));
+    const objetivo = String(datos.get('objetivo'));
     await alGuardar({
       tipo: datos.get('tipo'),
-      objetivo: datos.get('objetivo'),
-      producto: datos.get('producto'),
+      // Si no los cambió, se guarda lo que había (no la traducción que se mostró).
+      objetivo: objetivo === objetivoDe(c) ? c.objetivo : objetivo,
+      producto: producto === productoDe(c) ? c.producto : producto,
       sectores: datos.get('sectores'),
       zonas: datos.get('zonas'),
       paisCompleto: datos.get('pais') === 'si',
       tamanos: datos.getAll('tamanos'),
       exclusiones: datos.get('exclusiones'),
       prioridades: datos.get('prioridades'),
-      salarioMinimo: datos.get('salarioMinimo') || null,
-      salarioMaximo: datos.get('salarioMaximo') || null,
+      salarioMinimo: minimo || null,
+      salarioMaximo: maximo || null,
+      moneda: datos.get('moneda'),
       experienciaNoRequerida: datos.get('experiencia') === 'si',
       frecuencia: datos.get('frecuencia'),
-      capacidades: Object.fromEntries(catalogo.capacidades.map(x => [x.clave, capacidades.includes(x.clave)])),
+      autonomia: datos.get('autonomia'),
+      // «Preparar correos» apagado no se envía en el formulario: con «Contactar» va siempre encendido.
+      capacidades: Object.fromEntries(catalogo.capacidades.map(x => [x.clave, capacidades.includes(x.clave) || (x.clave === 'correos' && capacidades.includes('contactar'))])),
       resueltas: datos.getAll('resueltas').map(Number),
     });
   });
   return formulario;
 }
 
-function tarjetaVersion(v, { proyecto, activa, puedeEscribir }) {
+function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario }) {
   const c = v.configuracion;
   const mensaje = caja();
   const esCambio = Boolean(activa);
+  const escribe = puedeEscribir && !proyecto.enPapelera;
   const partes = [
     el('h2', { texto: t('proyecto.pendiente.titulo', { numero: v.numero }) }),
-    el('p', { class: 'suave', texto: esCambio ? t('proyecto.pendiente.cambio', { numero: activa.numero }) : t('proyecto.pendiente.texto') }),
+    el('p', { class: 'suave', texto: !escribe ? t('proyecto.pendiente.lector') : esCambio ? t('proyecto.pendiente.cambio', { numero: activa.numero }) : t('proyecto.pendiente.texto') }),
+    // Antes de la primera aprobación se dice qué pasa al aprobar: queda guardado, pero todavía no busca.
+    !esCambio ? el('p', { class: 'aviso', texto: avisoAntesDeAprobar(c.tipo) }) : null,
     el('p', { class: 'entendi', texto: fraseEntendi(c) }),
   ];
   // Lo que falta y lo que el motor no entendió se pregunta; mientras tanto no se puede aprobar.
-  const preguntas = [
-    ...v.faltantes.filter(f => f !== 'dudas').map(f => t(f === 'producto' ? `faltante.producto.${c.tipo}` : `faltante.${f}`)),
-    ...(Array.isArray(v.dudas) ? v.dudas : []).map(textoDuda),
-  ];
-  if (v.faltantes.includes('dudas') && !(Array.isArray(v.dudas) && v.dudas.length)) preguntas.push(t('faltante.dudas'));
-  if (preguntas.length) {
-    partes.push(el('div', { class: 'aviso' },
-      el('p', { texto: t('proyecto.preguntas') }),
-      el('ul', {}, preguntas.map(p => el('li', { texto: p })))));
+  const dudasVersion = Array.isArray(v.dudas) ? v.dudas : [];
+  const preguntas = v.faltantes.filter(f => f !== 'dudas').map(f => t(f === 'producto' ? `faltante.producto.${c.tipo}` : `faltante.${f}`));
+  const noEntendi = dudasVersion.map(textoDuda);
+  if (v.faltantes.includes('dudas') && !noEntendi.length) noEntendi.push(t('faltante.dudas'));
+  const idExplicacion = `explicacion-${v.numero}`;
+  if (preguntas.length || noEntendi.length) {
+    partes.push(el('div', { class: 'aviso dudas', id: idExplicacion },
+      !escribe ? el('p', { texto: t('proyecto.preguntas.lector', { n: preguntas.length + noEntendi.length }) }) : [
+        preguntas.length ? [el('p', { texto: t('proyecto.preguntas') }), el('ul', {}, preguntas.map(p => el('li', { texto: p })))] : null,
+        noEntendi.length ? [el('p', { texto: t('proyecto.no_entendi') }), el('ul', {}, noEntendi.map(p => el('li', { texto: p })))] : null,
+        el('p', { texto: t('proyecto.no_se_puede_aprobar') }),
+        abrirFormulario ? el('button', { type: 'button', class: 'secundario', texto: t('proyecto.responder'), onclick: abrirFormulario }) : null,
+      ]));
   }
   if (v.supuestos.length) {
     partes.push(el('div', { class: 'supuestos' },
-      el('p', { class: 'suave', texto: t('proyecto.supuestos') }),
+      el('p', { class: 'suave', texto: escribe ? t('proyecto.supuestos') : t('proyecto.supuestos.lector') }),
       el('ul', {}, v.supuestos.map(s => el('li', { class: 'suave', texto: t(`supuesto.${s}`) })))));
   }
   partes.push(resumen(c));
-  if (puedeEscribir && !proyecto.enPapelera) {
+  if (escribe) {
     const motivo = el('textarea', { id: 'campo-motivo', rows: 2, maxlength: 300 });
-    const aprobar = botonAccion(t(esCambio ? 'proyecto.aprobar.cambio' : 'proyecto.aprobar.primera'), '', mensaje, async () => {
-      await pedirYMostrar('POST', `/api/proyectos/${proyecto.id}/versiones/${v.numero}/aprobar`, {}, t('proyecto.listo.aprobada', { numero: v.numero }));
+    const claveMotivo = `motivo|${proyecto.id}|${v.numero}`;
+    const motivoRecuperado = recordarTexto(motivo, claveMotivo);
+    const bloqueado = v.faltantes.length > 0;
+    const aprobar = botonAccion(t(esCambio ? 'proyecto.aprobar.cambio' : 'proyecto.aprobar.primera'), bloqueado ? 'bloqueado' : '', mensaje, async () => {
+      await pedirYMostrar('POST', `/api/proyectos/${proyecto.id}/versiones/${v.numero}/aprobar`, {}, t(esCambio ? 'proyecto.listo.aprobada' : 'proyecto.listo.aprobada.primera', { numero: v.numero }));
     });
-    // Mientras falte algo, el botón no se puede tocar y se explica por qué justo debajo.
-    if (v.faltantes.length) aprobar.disabled = true;
+    // Mientras falte algo, el botón no se puede tocar; VoiceOver lee por qué (las preguntas de arriba).
+    if (bloqueado) {
+      aprobar.disabled = true;
+      aprobar.setAttribute('aria-describedby', idExplicacion);
+    }
     partes.push(
       el('div', { class: 'botones' }, aprobar),
-      v.faltantes.length ? el('p', { class: 'ayuda', texto: t('proyecto.no_se_puede_aprobar') }) : null,
-      el('details', { class: 'rechazar' },
+      el('details', { class: 'rechazar', open: motivoRecuperado },
         el('summary', { texto: t('proyecto.rechazar') }),
         el('label', { for: 'campo-motivo', texto: t('proyecto.motivo') }),
         motivo,
         botonAccion(t('proyecto.rechazar.boton', { numero: v.numero }), 'peligro', mensaje, async () => {
           await pedirYMostrar('POST', `/api/proyectos/${proyecto.id}/versiones/${v.numero}/rechazar`, { motivo: motivo.value }, t('proyecto.listo.rechazada', { numero: v.numero }));
+          borrador(claveMotivo, '');
         })),
       mensaje);
   }
   return el('section', { class: 'tarjeta pendiente' }, partes);
+}
+
+// Un aviso arriba del proyecto: texto (sale bien) o { texto, clase } (por ejemplo, «esto cambió en otro equipo»).
+function avisoDeArriba(aviso) {
+  if (!aviso) return null;
+  const { texto, clase } = typeof aviso === 'string' ? { texto: aviso, clase: 'bien' } : aviso;
+  return el('p', { class: clase === 'aviso' ? 'aviso' : 'mensaje bien', role: 'status', 'data-foco': true, texto });
 }
 
 function dibujarProyecto(d, aviso = null) {
@@ -778,7 +1128,8 @@ function dibujarProyecto(d, aviso = null) {
   const avisoEstado = p.enPapelera ? t('proyecto.en_papelera')
     : p.estado === 'con_errores' ? t('proyecto.error', { motivo: p.motivoError || t('valor.falta') })
       : p.estado === 'en_ejecucion' ? t(`proyecto.aviso_espera.${p.tipo}`)
-        : p.estado === 'borrador' ? t('proyecto.aviso_borrador') : null;
+        : p.estado === 'borrador' ? `${t('proyecto.aviso_borrador')} ${avisoAntesDeAprobar(p.tipo)}`
+          : p.estado === 'pausado' ? t('proyecto.aviso_pausado') : null;
 
   const acciones = [];
   if (escribe) {
@@ -792,7 +1143,7 @@ function dibujarProyecto(d, aviso = null) {
   const nombre = el('input', { id: 'campo-nombre-proyecto', type: 'text', value: p.nombre, maxlength: 80, autocomplete: 'off' });
   const cabecera = el('section', { class: 'tarjeta' },
     el('p', {}, el('a', { href: '#proyectos', texto: t('proyecto.volver') })),
-    aviso ? el('p', { class: 'mensaje bien', role: 'status', texto: aviso }) : null,
+    avisoDeArriba(aviso),
     el('h1', { texto: p.nombre }),
     el('p', { class: 'etiquetas' }, el('span', { class: 'etiqueta', texto: t(`tipo.${p.tipo}`) }), etiquetaEstado(p),
       p.versionActiva ? el('span', { class: 'etiqueta', texto: t('proyecto.version_en_uso', { numero: p.versionActiva }) }) : null),
@@ -814,25 +1165,43 @@ function dibujarProyecto(d, aviso = null) {
       resumen(activa.configuracion))) : null;
 
   let modificar = null;
+  let detallesCampos = null;
   if (escribe) {
     const mensajeModificar = caja();
     const area = el('textarea', { id: 'campo-reinterpretar', rows: 5, maxlength: 4000, texto: base.instrucciones });
+    const claveArea = `reescribir|${p.id}`;
+    const recuperado = recordarTexto(area, claveArea);
+    // Si lo que está ahora se cambió a mano, «Volver a entender» lo reemplaza: se avisa antes, y se pregunta al tocar.
+    const conCambiosAMano = base.origen === 'campos';
+    detallesCampos = el('details', {},
+      el('summary', { texto: t('proyecto.modificar.campos') }),
+      formularioCampos(base.configuracion, base.dudas, async campos => {
+        await pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'campos', campos }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero }));
+      }));
     modificar = el('section', { class: 'tarjeta' },
       el('h2', { texto: t('proyecto.modificar') }),
       el('p', { class: 'suave', texto: t('formulario.guardar.ayuda') }),
-      el('details', {},
+      el('details', { open: recuperado },
         el('summary', { texto: t('proyecto.modificar.instrucciones') }),
+        conCambiosAMano ? el('p', { class: 'aviso', texto: t('proyecto.reescribir.aviso') }) : null,
         el('label', { for: 'campo-reinterpretar', texto: t('proyectos.instrucciones') }),
         area,
-        botonAccion(t('formulario.reinterpretar'), '', mensajeModificar, () =>
-          pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'instrucciones', instrucciones: area.value }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero })))),
-      el('details', {},
-        el('summary', { texto: t('proyecto.modificar.campos') }),
-        formularioCampos(base.configuracion, async campos => {
-          await pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'campos', campos }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero }));
+        botonAccion(t('formulario.reinterpretar'), '', mensajeModificar, async () => {
+          if (conCambiosAMano && !confirm(t('proyecto.reescribir.confirmar'))) return;
+          await pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'instrucciones', instrucciones: area.value }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero }));
+          borrador(claveArea, '');
         })),
+      detallesCampos,
       mensajeModificar);
   }
+  // «Responder estas preguntas» abre el formulario y lleva hasta él.
+  const abrirFormulario = detallesCampos ? () => {
+    detallesCampos.open = true;
+    detallesCampos.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const primero = detallesCampos.querySelector('legend, label');
+    const destino = detallesCampos.querySelector('summary');
+    (destino || primero)?.focus({ preventScroll: true });
+  } : null;
 
   // Las versiones viejas llegan sin su contenido (así el proyecto abre rápido); se abren una por una.
   const contenidoVersion = v => [
@@ -849,13 +1218,25 @@ function dibujarProyecto(d, aviso = null) {
     }), mensajeVersion);
     return lugar;
   };
+  // Una versión que no quedó en uso (cambiada antes de aprobar, rechazada o usada antes) se puede volver a usar:
+  // se copia como versión nueva que espera aprobación. No se borra nada.
+  const reusar = v => {
+    if (!escribe || !['descartada', 'rechazada', 'reemplazada'].includes(v.estado)) return null;
+    const mensajeReusar = caja();
+    return el('div', {},
+      el('p', { class: 'ayuda', texto: t('version.usar_otra_vez.ayuda') }),
+      botonAccion(t('version.usar_otra_vez', { numero: v.numero }), 'secundario', mensajeReusar, () =>
+        pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'version', numero: v.numero }, x => t('proyecto.listo.copiada', { numero: x.pendiente.numero, desde: v.numero }))),
+      mensajeReusar);
+  };
   const listaVersiones = el('section', { class: 'tarjeta' },
     el('h2', { texto: t('proyecto.versiones') }),
     versiones.map(v => el('details', { class: 'version' },
       el('summary', { texto: t('version.linea', { numero: v.numero, estado: t(`version.estado.${v.estado}`), fecha: fecha(v.creadaEn) }) }),
       el('p', { class: 'suave', texto: t(`version.origen.${v.origen}`) }),
       v.motivo ? el('p', { class: 'suave', texto: t('version.motivo', { motivo: v.motivo }) }) : null,
-      v.completa === false ? contenidoBajoPedido(v) : contenidoVersion(v))));
+      v.completa === false ? contenidoBajoPedido(v) : contenidoVersion(v),
+      reusar(v))));
 
   const listaHistorial = el('section', { class: 'tarjeta' },
     el('details', {},
@@ -867,8 +1248,9 @@ function dibujarProyecto(d, aviso = null) {
   const mensajePapelera = caja();
   const papelera = puedeEscribir && permisos.papelera ? el('section', { class: 'tarjeta' },
     p.enPapelera
-      ? botonAccion(t('proyectos.restaurar'), '', mensajePapelera, () =>
-        pedirYMostrar('POST', `/api/proyectos/${p.id}/papelera`, { enPapelera: false }, t('proyecto.listo.restaurado')))
+      ? [el('p', { class: 'suave', texto: t('proyecto.restaurar.texto') }),
+        botonAccion(t('proyectos.restaurar'), '', mensajePapelera, () =>
+          pedirYMostrar('POST', `/api/proyectos/${p.id}/papelera`, { enPapelera: false }, t('proyecto.listo.restaurado')))]
       : botonAccion(t('proyecto.papelera'), 'peligro', mensajePapelera, async () => {
         if (!confirm(t('proyecto.confirmar_papelera', { nombre: p.nombre }))) return;
         await pedirYMostrar('POST', `/api/proyectos/${p.id}/papelera`, { enPapelera: true }, t('proyecto.listo.papelera'));
@@ -877,7 +1259,7 @@ function dibujarProyecto(d, aviso = null) {
 
   mostrar(marco('proyectos',
     cabecera,
-    pendiente ? tarjetaVersion(pendiente, { proyecto: p, activa, puedeEscribir }) : null,
+    pendiente ? tarjetaVersion(pendiente, { proyecto: p, activa, puedeEscribir, abrirFormulario }) : null,
     enUso,
     modificar,
     listaVersiones,
@@ -911,6 +1293,8 @@ function pantallaNoArranco(detalle) {
 }
 
 async function iniciar() {
+  leerBorradores();
+  colorDeLaBarra();
   const preferido = idiomaGuardado() || (navigator.language || '').slice(0, 2);
   try {
     await cargarIdioma(preferido === 'en' ? 'en' : 'es');
@@ -924,6 +1308,7 @@ async function iniciar() {
   const yo = await api('GET', '/api/yo');
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
+    avisosCuenta = Array.isArray(yo.datos.avisos) ? yo.datos.avisos : [];
     if (estado.usuario.idioma !== idioma) await cargarIdioma(estado.usuario.idioma);
   }
   await dibujar();

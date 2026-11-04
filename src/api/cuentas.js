@@ -6,7 +6,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { Limitador } from '../nucleo/limites.js';
 import { createHash } from 'node:crypto';
 import { vieneDeTailscale } from '../nucleo/red.js';
-import { hashClave, verificarClave, claveValida, claveTemporal } from '../cuentas/claves.js';
+import { hashClave, verificarClave, problemaDeClave, claveTemporal } from '../cuentas/claves.js';
 import { crearSesion, cerrarSesion, cerrarTodas, textoGalleta } from '../cuentas/sesiones.js';
 import {
   NOMBRE_VALIDO, auditar, hayAdmin, crearPrimerAdmin, crearUsuario, buscarPorNombre, buscarPorId,
@@ -49,8 +49,23 @@ function idiomaDe(datos, porDefecto = 'es') {
   return IDIOMAS.has(datos.idioma) ? datos.idioma : porDefecto;
 }
 
+// El nombre completo que escribió el administrador («Juan Pérez»): espacios normales y hasta 80 letras.
+function nombreVisibleDe(datos) {
+  const valor = datos.nombreVisible;
+  if (valor == null || valor === '') return null;
+  if (typeof valor !== 'string') throw new ErrorHttp(400, 'datos_no_validos');
+  return valor.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || null;
+}
+
 function usuarioPublico(u) {
-  return { id: u.id, nombre: u.nombre, rol: u.rol, idioma: u.idioma, debeCambiarClave: Boolean(u.debeCambiarClave ?? u.debe_cambiar_clave === 1) };
+  return {
+    id: u.id,
+    nombre: u.nombre,
+    nombreVisible: u.nombreVisible || u.nombre_visible || u.nombre,
+    rol: u.rol,
+    idioma: u.idioma,
+    debeCambiarClave: Boolean(u.debeCambiarClave ?? u.debe_cambiar_clave === 1),
+  };
 }
 
 export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas() } = {}) {
@@ -75,7 +90,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const datos = await leerJson(req);
     // Un error al escribir (nombre o contraseña no válidos) no cuenta como intento.
     const nombre = nombreDe(datos);
-    if (!claveValida(datos.clave)) throw new ErrorHttp(400, 'clave_corta');
+    const problema = problemaDeClave(datos.clave, [nombre]);
+    if (problema) throw new ErrorHttp(400, problema);
     if (hayAdmin(db)) throw new ErrorHttp(409, 'ya_existe_admin');
     if (!limites.primerAdmin.permitir(cliente)) throw new ErrorHttp(429, 'demasiados_intentos_una_hora');
     const id = crearPrimerAdmin(db, { nombre, claveHash: await hashClave(datos.clave), idioma: idiomaDe(datos), tailscaleLogin: tailscale.login });
@@ -150,7 +166,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     }
     if (!(await verificarClave(textoDe(datos, 'actual'), fila.clave_hash))) throw new ErrorHttp(400, 'clave_actual_incorrecta');
     limites.cambioDeClave.olvidar(llave);
-    if (!claveValida(datos.nueva)) throw new ErrorHttp(400, 'clave_corta');
+    const problema = problemaDeClave(datos.nueva, [fila.nombre, fila.nombre_visible]);
+    if (problema) throw new ErrorHttp(400, problema);
     if (datos.nueva === datos.actual) throw new ErrorHttp(400, 'clave_igual');
     guardarClave(db, usuario.id, await hashClave(datos.nueva), { debeCambiarClave: false });
     cerrarTodas(db, usuario.id, token);
@@ -170,11 +187,14 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   rutas.agregar('POST', '/api/admin/usuarios', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     const nombre = nombreDe(datos);
+    const nombreVisible = nombreVisibleDe(datos);
     const rol = datos.rol === 'admin' ? 'admin' : 'usuario';
+    // Si el nombre ya existe, se responde antes de calcular nada (la pantalla propone otro: juan.perez2…).
+    if (buscarPorNombre(db, nombre)) throw new ErrorHttp(409, 'nombre_ocupado');
     const temporal = claveTemporal();
-    const id = crearUsuario(db, { nombre, claveHash: await hashClave(temporal), rol, idioma: idiomaDe(datos), creadoPor: usuario.id });
+    const id = crearUsuario(db, { nombre, nombreVisible, claveHash: await hashClave(temporal), rol, idioma: idiomaDe(datos), creadoPor: usuario.id });
     if (!id) throw new ErrorHttp(409, 'nombre_ocupado');
-    return { codigo: 201, datos: { id, nombre, rol, claveTemporal: temporal } };
+    return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, parametros, usuario }) => {

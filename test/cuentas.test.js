@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
-import { hashClave, verificarClave, claveValida, claveTemporal } from '../src/cuentas/claves.js';
+import { hashClave, verificarClave, claveValida, claveTemporal, claveObvia, problemaDeClave } from '../src/cuentas/claves.js';
 
 const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
 const CLAVE = 'una clave bien larga';
@@ -46,7 +46,21 @@ test('contraseñas: se guardan con scrypt y solo la correcta coincide', async ()
   assert.equal(await verificarClave(CLAVE, 'basura'), false);
   assert.equal(await verificarClave(CLAVE), false, 'sin usuario nunca coincide');
   assert.equal(claveValida('corta'), false);
+  assert.equal(claveValida('seis66'), true, 'desde 6 caracteres');
   assert.match(claveTemporal(), /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+});
+
+test('contraseñas obvias: la lista corta, un carácter repetido y el nombre de la persona no sirven', () => {
+  for (const c of ['123456', '111111', '000000', '123123', '654321', 'abcdef', 'qwerty', 'password', 'contraseña', 'CONTRASEÑA', 'Qwerty', 'zzzzzzz'])
+    assert.equal(claveObvia(c), true, c);
+  assert.equal(claveObvia('Junior', ['junior']), true);
+  assert.equal(claveObvia('junior123', ['junior']), true);
+  assert.equal(claveObvia('Juan Pérez', ['juan.perez', 'Juan Pérez']), true);
+  assert.equal(claveObvia('juanperez1', ['juan.perez', 'Juan Pérez']), true);
+  for (const c of ['mango verde', 'Casa2024!', 'tres gatos']) assert.equal(claveObvia(c, ['junior', 'Juan Pérez']), false, c);
+  assert.equal(problemaDeClave('12345'), 'clave_corta');
+  assert.equal(problemaDeClave('123456'), 'clave_obvia');
+  assert.equal(problemaDeClave('mango verde', ['junior']), null);
 });
 
 test('sin administrador, /api/setup lo dice, y solo se puede crear desde Tailscale', async () => {
@@ -177,7 +191,7 @@ test('con una sesión abierta no se puede adivinar la contraseña actual: 5 fall
 test('al crear el primer administrador, los errores al escribir no cuentan como intentos', async () => {
   const db = nuevaBase();
   await conServidor(crearServidor({ db }), async base => {
-    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'corta' }, { nombre: 'junior', clave: 'tambien' }, { nombre: 'junior', clave: 'otra' }]) {
+    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'corta' }, { nombre: 'junior', clave: '123456' }, { nombre: 'junior', clave: 'Junior2024' }, { nombre: 'junior', clave: 'otra' }]) {
       const r = await pedir(base, 'POST', '/api/primer-admin', { datos, cabeceras: DESDE_TAILSCALE });
       assert.equal(r.codigo, 400);
     }
@@ -233,6 +247,32 @@ test('el administrador crea un usuario con clave temporal, y ese usuario debe ca
     r = await pedir(base, 'GET', '/api/admin/usuarios', { galleta: galletaMaria });
     assert.equal(r.codigo, 403);
     assert.equal(r.datos.error, 'solo_admin', 'un usuario normal no administra');
+  });
+});
+
+test('el nombre completo que escribe el administrador queda como nombre visible; la contraseña nueva no puede ser su nombre', async () => {
+  await conAdmin(async (base, galletaAdmin) => {
+    let r = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'juan.perez', nombreVisible: '  Juan   Pérez ' }, galleta: galletaAdmin });
+    assert.equal(r.codigo, 201);
+    assert.equal(r.datos.nombreVisible, 'Juan Pérez');
+    const temporal = r.datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'Juan.Perez', nombreVisible: 'Juan Pérez' }, galleta: galletaAdmin });
+    assert.equal(r.codigo, 409);
+    assert.equal(r.datos.error, 'nombre_ocupado', 'la pantalla propone juan.perez2');
+    r = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'juan.perez2', nombreVisible: { x: 1 } }, galleta: galletaAdmin });
+    assert.equal(r.codigo, 400, 'un nombre visible que no es texto');
+    r = await pedir(base, 'GET', '/api/admin/usuarios', { galleta: galletaAdmin });
+    assert.equal(r.datos.usuarios.find(u => u.nombre === 'juan.perez').nombreVisible, 'Juan Pérez');
+
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'juan.perez', clave: temporal } });
+    assert.equal(r.datos.usuario.nombreVisible, 'Juan Pérez');
+    const galleta = r.galleta;
+    for (const [nueva, error] of [['12345', 'clave_corta'], ['123456', 'clave_obvia'], ['juanperez', 'clave_obvia'], ['Juan Pérez 1', 'clave_obvia']]) {
+      r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva }, galleta });
+      assert.equal(r.datos.error, error, nueva);
+    }
+    r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'mango7' }, galleta });
+    assert.equal(r.codigo, 200, '6 caracteres que no son obvios sirven');
   });
 });
 

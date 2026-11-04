@@ -48,11 +48,12 @@ export function crearPrimerAdmin(db, { nombre, claveHash, idioma = 'es', tailsca
   });
 }
 
-export function crearUsuario(db, { nombre, claveHash, rol = 'usuario', idioma = 'es', debeCambiarClave = true, creadoPor = null }) {
+// «nombreVisible»: el nombre completo de la persona («Juan Pérez»); si no se da, se usa el de usuario.
+export function crearUsuario(db, { nombre, nombreVisible = null, claveHash, rol = 'usuario', idioma = 'es', debeCambiarClave = true, creadoPor = null }) {
   return enTransaccion(db, () => {
     if (db.prepare('SELECT 1 FROM usuarios WHERE nombre = ?').get(nombre)) return null;
     const r = db.prepare(`INSERT INTO usuarios (nombre, nombre_visible, clave_hash, rol, idioma, debe_cambiar_clave, creado_en)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(nombre, nombre, claveHash, rol, idioma, debeCambiarClave ? 1 : 0, ahora());
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(nombre, nombreVisible || nombre, claveHash, rol, idioma, debeCambiarClave ? 1 : 0, ahora());
     const id = Number(r.lastInsertRowid);
     crearEspacio(db, id, nombre);
     auditar(db, { usuarioId: creadoPor, accion: 'usuario_creado', detalle: `${nombre} (${rol})` });
@@ -71,11 +72,12 @@ export function buscarPorId(db, id) {
 // Para la pantalla «Administrador». Del espacio de cada cuenta solo se muestra su plan y cuántos proyectos
 // permite: nunca nada de sus proyectos.
 export function listarUsuarios(db) {
-  return db.prepare(`SELECT u.id, u.nombre, u.rol, u.activo, u.idioma, u.debe_cambiar_clave, u.creado_en, u.ultimo_acceso,
+  return db.prepare(`SELECT u.id, u.nombre, u.nombre_visible, u.rol, u.activo, u.idioma, u.debe_cambiar_clave, u.creado_en, u.ultimo_acceso,
       (SELECT e.plan FROM miembros m JOIN espacios e ON e.id = m.espacio_id WHERE m.usuario_id = u.id AND m.rol = 'dueno' ORDER BY e.id LIMIT 1) AS plan
     FROM usuarios u ORDER BY u.id`).all().map(u => ({
     id: u.id,
     nombre: u.nombre,
+    nombreVisible: u.nombre_visible || u.nombre,
     rol: u.rol,
     activo: u.activo === 1,
     idioma: u.idioma,

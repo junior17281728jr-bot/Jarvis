@@ -10,6 +10,8 @@ import {
 } from '../proyectos/proyectos.js';
 
 const CATALOGO = catalogo();
+// Versiones que se pueden volver a usar: las que no están en uso ni esperan aprobación.
+const ESTADOS_REUSABLES = ['descartada', 'rechazada', 'reemplazada'];
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 
 // Cada cambio hace trabajar al motor y cada lectura arma una respuesta: un tope por persona protege al servidor pequeño.
@@ -112,7 +114,8 @@ export function registrarRutasProyectos(rutas, { limites = {}, motor = MOTOR } =
   });
 
   // Versión nueva: o se vuelven a escribir las instrucciones (el motor las interpreta otra vez),
-  // o se cambian los campos a mano. En los dos casos queda esperando aprobación.
+  // o se cambian los campos a mano, o se vuelve a usar una versión anterior que no quedó en uso
+  // (modo 'version': cambiada antes de aprobar, rechazada o usada antes). En todos los casos queda esperando aprobación.
   // Antes de que trabaje el motor se revisa que se pueda guardar (papelera, tope de versiones).
   rutas.agregar('POST', '/api/proyectos/:id/versiones', async ({ db, req, usuario, parametros }) => {
     const e = espacio(db, usuario, { escribir: true });
@@ -120,10 +123,16 @@ export function registrarRutasProyectos(rutas, { limites = {}, motor = MOTOR } =
     let pedido;
     if (datos.modo === 'instrucciones') pedido = { instrucciones: validarInstrucciones(textoDe(datos, 'instrucciones')) };
     else if (datos.modo === 'campos') pedido = { campos: revisarCampos(datos.campos) };
+    else if (datos.modo === 'version' && Number.isSafeInteger(datos.numero) && datos.numero > 0) pedido = { desde: datos.numero };
     else throw new ErrorHttp(400, 'datos_no_validos');
     const { numero, base } = baseParaCambiar(db, e.id, parametros.id);
     let version;
-    if (pedido.instrucciones) {
+    if (pedido.desde) {
+      // Se copia tal cual (instrucciones y datos): el motor no trabaja.
+      const vieja = versionDeProyecto(db, e.id, parametros.id, pedido.desde);
+      if (!ESTADOS_REUSABLES.includes(vieja.estado)) throw new ErrorHttp(409, 'version_no_reusable');
+      version = { instrucciones: vieja.instrucciones, configuracion: vieja.configuracion, supuestos: vieja.supuestos, origen: vieja.origen };
+    } else if (pedido.instrucciones) {
       const { configuracion, supuestos } = motor.interpretar(pedido.instrucciones, { idioma: usuario.idioma });
       version = { instrucciones: pedido.instrucciones, configuracion, supuestos, origen: 'instrucciones' };
     } else {

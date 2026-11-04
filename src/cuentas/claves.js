@@ -22,8 +22,37 @@ function derivar(clave, sal) {
   return new Promise((ok, mal) => scrypt(clave, sal, LARGO, { N, r: R, p: P, maxmem: 64 * 1024 * 1024 }, (e, k) => (e ? mal(e) : ok(k))));
 }
 
+export const LARGO_MINIMO_CLAVE = 6;
+
 export function claveValida(clave) {
-  return typeof clave === 'string' && clave.length >= 10 && clave.length <= 200;
+  return typeof clave === 'string' && clave.length >= LARGO_MINIMO_CLAVE && clave.length <= 200;
+}
+
+// Contraseñas que cualquiera adivina. Se comparan sin mayúsculas, sin tildes y sin espacios.
+const CLAVES_OBVIAS = new Set(['123456', '1234567', '12345678', '123456789', '1234567890', '0123456789', '111111', '000000', '123123',
+  '654321', '987654', '987654321', '121212', '112233', 'abcdef', 'abc123', 'abcd1234', 'qwerty', 'qwerty123', 'asdfgh', 'password',
+  'password1', 'contrasena', 'contrasena1', 'clave123', 'iloveyou', 'teamo', 'oportia', 'oportia123', 'admin123', 'administrador']);
+
+const simple = texto => String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s._-]+/g, '');
+
+// ¿Es tan fácil que no sirve? Las de la lista, un mismo carácter repetido («aaaaaa») o el nombre de la persona
+// (su usuario o su nombre completo, solo o con números al final, como «junior123»).
+export function claveObvia(clave, nombres = []) {
+  const c = simple(clave);
+  if (!c) return true;
+  if (CLAVES_OBVIAS.has(c) || /^(.)\1+$/.test(c)) return true;
+  for (const nombre of nombres) {
+    const n = simple(nombre);
+    if (n.length >= 3 && c.startsWith(n) && /^\d{0,4}$/.test(c.slice(n.length))) return true;
+  }
+  return false;
+}
+
+// La clave de error que corresponde, o null si la contraseña sirve.
+export function problemaDeClave(clave, nombres = []) {
+  if (!claveValida(clave)) return 'clave_corta';
+  if (claveObvia(clave, nombres)) return 'clave_obvia';
+  return null;
 }
 
 export async function hashClave(clave) {
