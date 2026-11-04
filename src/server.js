@@ -4,6 +4,9 @@ import { crearServidor, VERSION } from './app.js';
 import { leerConfig } from './nucleo/config.js';
 import { abrirBase } from './nucleo/db.js';
 
+// Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
+process.umask(0o027);
+
 const config = leerConfig();
 let db = null;
 try {

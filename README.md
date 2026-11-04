@@ -31,10 +31,15 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 ## Recuperar el acceso de administrador
 En la Consola de DigitalOcean (nunca como root, para no dañar los permisos de la base):
 
-    sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs
 
-Muestra una contraseña temporal para el primer administrador (o crea uno si no existe) y cierra sus sesiones.
-Para un nombre concreto: `sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs junior`.
+Muestra una contraseña temporal para el primer administrador (o crea uno si no existe), cierra sus sesiones y quita
+cualquier bloqueo por intentos fallidos. Para un nombre concreto:
+`sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs junior`.
+
+Bloqueos por contraseñas malas: 5 fallos desde un mismo lugar bloquean ese lugar 15 minutos; 20 fallos desde internet
+(sumando todos los lugares) frenan a internet 15 minutos. Quien entra por Tailscale nunca queda frenado por lo que
+hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
 
 ## Estado
 - Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.

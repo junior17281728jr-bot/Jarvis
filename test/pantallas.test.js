@@ -26,7 +26,7 @@ function archivosDe(carpeta, filtro) {
 test('las pantallas se sirven con su tipo y con cabeceras de seguridad', async () => {
   const db = abrirBase(configDePrueba());
   await conServidor(crearServidor({ db }), async base => {
-    for (const [ruta, tipo] of [['/', /text\/html/], ['/app.js', /javascript/], ['/estilos.css', /text\/css/], ['/i18n/es.json', /json/], ['/icono.svg', /svg/]]) {
+    for (const [ruta, tipo] of [['/', /text\/html/], ['/app.js', /javascript/], ['/estilos.css', /text\/css/], ['/i18n/es.json', /json/], ['/icono.svg', /svg/], ['/icono-180.png', /image\/png/]]) {
       const r = await fetch(`${base}${ruta}`);
       assert.equal(r.status, 200, ruta);
       assert.match(r.headers.get('content-type'), tipo, ruta);

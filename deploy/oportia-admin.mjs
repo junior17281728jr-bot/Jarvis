@@ -1,8 +1,10 @@
 // Recuperar el acceso de administrador de OPORTIA desde la Consola de DigitalOcean.
 //
 // Uso (pégalo en la Consola del servidor):
-//   sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs            -> recupera el primer administrador
-//   sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs junior     -> recupera (o crea) el administrador «junior»
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs          -> recupera el primer administrador
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs junior   -> recupera (o crea) el administrador «junior»
+//
+// La contraseña nueva también quita cualquier bloqueo por intentos fallidos que tuviera la cuenta.
 //
 // Qué hace: genera una contraseña temporal, cierra las sesiones abiertas de esa cuenta y te pide
 // cambiarla al entrar. No borra nada. Se ejecuta como el usuario «jarvis» (nunca como root) para que
@@ -25,8 +27,9 @@ function leerEnv(archivo) {
 }
 
 async function principal() {
+  process.umask(0o027);
   if (process.getuid?.() === 0 && process.env.OPORTIA_TEST !== '1') {
-    console.error('No lo ejecutes como root. Usa: sudo -u jarvis node /opt/jarvis/deploy/oportia-admin.mjs');
+    console.error('No lo ejecutes como root. Usa: sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs');
     return 2;
   }
   const archivoEnv = process.env.OPORTIA_ENV_FILE || '/opt/jarvis/.env';
@@ -37,7 +40,7 @@ async function principal() {
     let admin;
     if (pedido) {
       if (!NOMBRE_VALIDO.test(pedido)) {
-        console.error('Nombre no válido: de 3 a 40 letras o números, sin espacios.');
+        console.error('Nombre no válido: de 3 a 40 caracteres, sin espacios (letras sin tilde ni ñ, números, punto, guion o guion bajo).');
         return 2;
       }
       admin = buscarPorNombre(db, pedido);

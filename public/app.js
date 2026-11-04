@@ -8,6 +8,15 @@ const raiz = document.getElementById('app');
 const catalogos = {};
 let idioma = 'es';
 let estado = { setup: null, usuario: null };
+let avisoEntrar = null; // mensaje para la pantalla de entrar (por ejemplo, «tu sesión terminó»)
+let idiomaElegidoAlEntrar = false; // la persona tocó Español/English antes de entrar
+let turno = 0;
+
+// Si la persona cambia de pantalla mientras otra todavía carga, la vieja no se dibuja encima.
+function nuevoTurno() {
+  const mio = ++turno;
+  return () => mio === turno;
+}
 
 // ---------- Idioma ----------
 function idiomaGuardado() {
@@ -59,13 +68,30 @@ async function api(metodo, ruta, datos) {
     opciones.headers['Content-Type'] = 'application/json';
     opciones.body = JSON.stringify(datos);
   }
+  let respuesta;
   try {
     const r = await fetch(ruta, opciones);
     const cuerpo = await r.json().catch(() => ({}));
-    return { ok: r.ok, codigo: r.status, datos: cuerpo };
+    respuesta = { ok: r.ok, codigo: r.status, datos: cuerpo };
   } catch {
     return { ok: false, codigo: 0, datos: { error: 'sin_conexion' } };
   }
+  // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
+  const error = respuesta.datos?.error;
+  if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
+    estado.usuario = null;
+    avisoEntrar = textoError(error);
+    setTimeout(dibujar);
+  } else if (estado.usuario && error === 'debe_cambiar_clave') {
+    estado.usuario.debeCambiarClave = true;
+    setTimeout(dibujar);
+  }
+  return respuesta;
+}
+
+async function refrescarSetup() {
+  const setup = await api('GET', '/api/setup');
+  if (setup.ok) estado.setup = setup.datos;
 }
 
 function mostrar(...contenido) {
@@ -115,7 +141,12 @@ function selectorIdioma(alCambiar) {
       class: valor === idioma ? '' : 'secundario',
       'aria-pressed': valor === idioma ? 'true' : 'false',
       texto: t(`idioma.${valor}`),
-      onclick: async () => { guardarIdioma(valor); await cargarIdioma(valor); await alCambiar(valor); },
+      onclick: async () => {
+        if (!estado.usuario) idiomaElegidoAlEntrar = true;
+        guardarIdioma(valor);
+        await cargarIdioma(valor);
+        await alCambiar(valor);
+      },
     })));
 }
 
@@ -145,9 +176,19 @@ function pantallaCrearAdmin() {
     el('button', { type: 'submit', texto: t('setup.boton') }),
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
+    // Se revisa aquí antes de enviar, para que un error al escribir no gaste intentos.
+    if (!/^[a-z0-9][a-z0-9._-]{2,39}$/i.test(String(datos.get('nombre')).trim())) throw new Error(t('error.nombre_no_valido'));
+    if (String(datos.get('clave')).length < 10) throw new Error(t('error.clave_corta'));
     if (datos.get('clave') !== datos.get('clave2')) throw new Error(t('setup.claves_distintas'));
-    const r = await api('POST', '/api/primer-admin', { nombre: datos.get('nombre'), clave: datos.get('clave'), idioma });
+    const r = await api('POST', '/api/primer-admin', { nombre: String(datos.get('nombre')).trim(), clave: datos.get('clave'), idioma });
+    if (r.datos.error === 'ya_existe_admin') {
+      // Alguien ya la creó (o la creaste en otra pestaña): se pasa a la pantalla de entrar.
+      await refrescarSetup();
+      avisoEntrar = textoError(r.datos.error);
+      return dibujar();
+    }
     if (!r.ok) throw new Error(textoError(r.datos.error));
+    estado.setup = { ...estado.setup, necesitaAdmin: false, puedeCrearAdmin: false };
     estado.usuario = r.datos.usuario;
     location.hash = '#inicio';
     await dibujar();
@@ -168,12 +209,22 @@ function pantallaEntrar() {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.usuario = r.datos.usuario;
-    if (estado.usuario.idioma !== idioma) await cargarIdioma(estado.usuario.idioma);
+    if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
+      // Eligió un idioma en esta pantalla: se guarda en su cuenta.
+      const cambio = await api('POST', '/api/yo/idioma', { idioma });
+      if (cambio.ok) estado.usuario.idioma = idioma;
+    } else if (estado.usuario.idioma !== idioma) {
+      await cargarIdioma(estado.usuario.idioma);
+      guardarIdioma(estado.usuario.idioma);
+    }
     location.hash = '#inicio';
     await dibujar();
   });
+  const aviso = avisoEntrar;
+  avisoEntrar = null;
   mostrar(el('section', { class: 'tarjeta centrada' },
     el('div', { class: 'marca', texto: t('app.nombre') }), el('p', { class: 'suave', texto: t('app.lema') }),
+    aviso ? el('p', { class: 'aviso', role: 'status', texto: aviso }) : null,
     el('h1', { texto: t('entrar.titulo') }), formulario, el('p', { class: 'ayuda', texto: t('entrar.olvide') }),
     selectorIdioma(() => pantallaEntrar())), pie());
 }
@@ -203,12 +254,20 @@ function pantallaClaveObligatoria() {
     el('h1', { texto: t('clave.titulo') }),
     el('p', { class: 'aviso', texto: t('clave.obligatoria') }),
     formularioClave({ alTerminar: async () => { estado.usuario.debeCambiarClave = false; location.hash = '#inicio'; await dibujar(); } }),
-    el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir })), pie());
+    el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir }),
+    selectorIdioma(async valor => {
+      const r = await api('POST', '/api/yo/idioma', { idioma: valor });
+      if (r.ok && estado.usuario) estado.usuario.idioma = valor;
+      if (estado.usuario) pantallaClaveObligatoria();
+    })), pie());
 }
 
 async function salir() {
-  await api('POST', '/api/salir', {});
+  const r = await api('POST', '/api/salir', {});
+  // Si el servidor no pudo cerrar la sesión, no se finge que se cerró.
+  if (!r.ok && r.codigo !== 401) return alert(textoError(r.datos.error));
   estado.usuario = null;
+  await refrescarSetup();
   location.hash = '';
   await dibujar();
 }
@@ -221,7 +280,7 @@ function marco(seccion, ...contenido) {
     el('header', { class: 'encabezado' },
       el('div', { class: 'marca', texto: t('app.nombre') }),
       el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir })),
-    el('nav', { class: 'menu', 'aria-label': 'menu' },
+    el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
       enlaces.map(([id, clave]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null, texto: t(clave) }))),
     ...contenido,
     pie(),
@@ -279,19 +338,35 @@ function pantallaConfiguracion() {
 }
 
 function bloqueClaveTemporal(textoClave, nombre, temporal) {
+  const clave = el('div', { class: 'clave-temporal', texto: temporal });
+  const ayuda = el('p', { class: 'ayuda', hidden: true, texto: t('admin.copiar_a_mano') });
   const boton = el('button', {
     type: 'button',
     class: 'secundario',
     texto: t('admin.copiar'),
     onclick: async () => {
-      try { await navigator.clipboard.writeText(temporal); boton.textContent = t('admin.copiado'); } catch { /* sin permiso para copiar */ }
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('sin portapapeles');
+        await navigator.clipboard.writeText(temporal);
+        boton.textContent = t('admin.copiado');
+      } catch {
+        // Sin permiso para copiar (por ejemplo, entrando por http): se deja la contraseña seleccionada.
+        const rango = document.createRange();
+        rango.selectNodeContents(clave);
+        const seleccion = window.getSelection();
+        seleccion.removeAllRanges();
+        seleccion.addRange(rango);
+        ayuda.hidden = false;
+      }
     },
   });
-  return el('div', { class: 'mensaje bien' }, el('p', { texto: t(textoClave, { nombre }) }), el('div', { class: 'clave-temporal', texto: temporal }), boton);
+  return el('div', { class: 'mensaje bien' }, el('p', { texto: t(textoClave, { nombre }) }), clave, boton, ayuda);
 }
 
 async function pantallaAdmin(avisoArriba = null) {
+  const vigente = nuevoTurno();
   const r = await api('GET', '/api/admin/usuarios');
+  if (!vigente()) return;
   if (!r.ok) {
     mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
     return;
@@ -304,17 +379,22 @@ async function pantallaAdmin(avisoArriba = null) {
     el('select', { id: 'campo-rol', name: 'rol' },
       el('option', { value: 'usuario', texto: t('admin.rol.usuario') }),
       el('option', { value: 'admin', texto: t('admin.rol.admin') })),
+    el('label', { for: 'campo-idioma-nuevo', texto: t('admin.nuevo.idioma') }),
+    el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
+      el('option', { value: 'es', texto: t('idioma.es') }),
+      el('option', { value: 'en', texto: t('idioma.en') })),
     el('button', { type: 'submit', texto: t('admin.nuevo.boton') }),
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
-    const creado = await api('POST', '/api/admin/usuarios', { nombre: datos.get('nombre'), rol: datos.get('rol'), idioma });
+    const creado = await api('POST', '/api/admin/usuarios', { nombre: datos.get('nombre'), rol: datos.get('rol'), idioma: datos.get('idioma') });
     if (!creado.ok) throw new Error(textoError(creado.datos.error));
     await pantallaAdmin(bloqueClaveTemporal('admin.creado', creado.datos.nombre, creado.datos.claveTemporal));
   });
 
   const filas = r.datos.usuarios.map(u => {
     const acciones = u.id === estado.usuario.id ? el('p', { class: 'suave', texto: t('admin.tu_cuenta') }) : el('div', { class: 'botones' },
-      el('button', {
+      // A una cuenta desactivada no se le reinicia la contraseña: no podría entrar con ella.
+      !u.activo ? null : el('button', {
         type: 'button',
         class: 'secundario',
         texto: t('admin.reiniciar'),
@@ -356,13 +436,6 @@ async function pantallaAdmin(avisoArriba = null) {
 // ---------- Proyectos ----------
 let catalogo = null;
 let avisoPendiente = null;
-let turno = 0;
-
-// Si la persona cambia de pantalla mientras otra todavía carga, la vieja no se dibuja encima.
-function nuevoTurno() {
-  const mio = ++turno;
-  return () => mio === turno;
-}
 
 function ir(destino) {
   if (location.hash === destino) dibujar();
@@ -789,16 +862,25 @@ async function dibujar() {
   return pantallaInicio();
 }
 
+// Si OPORTIA no pudo arrancar, se explica en los dos idiomas y se ofrece reintentar
+// (en el iPhone, la app de la pantalla de inicio no tiene botón de recargar).
+function pantallaNoArranco(detalle) {
+  mostrar(el('section', { class: 'tarjeta centrada' },
+    el('p', { class: 'mensaje error', texto: detalle || 'No se pudo cargar OPORTIA. / OPORTIA could not load.' }),
+    el('button', { type: 'button', texto: 'Reintentar / Retry', onclick: () => location.reload() })));
+}
+
 async function iniciar() {
   const preferido = idiomaGuardado() || (navigator.language || '').slice(0, 2);
-  await cargarIdioma(preferido === 'en' ? 'en' : 'es');
+  try {
+    await cargarIdioma(preferido === 'en' ? 'en' : 'es');
+  } catch {
+    return pantallaNoArranco();
+  }
   mostrar(el('p', { class: 'cargando', texto: t('app.cargando') }));
   const setup = await api('GET', '/api/setup');
   estado.setup = setup.datos;
-  if (!setup.ok) {
-    mostrar(el('section', { class: 'tarjeta centrada' }, el('p', { class: 'mensaje error', texto: textoError(setup.datos.error || 'error_interno') })));
-    return;
-  }
+  if (!setup.ok) return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
   const yo = await api('GET', '/api/yo');
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
@@ -808,4 +890,4 @@ async function iniciar() {
 }
 
 window.addEventListener('hashchange', () => { if (estado.usuario) dibujar(); });
-iniciar();
+iniciar().catch(() => pantallaNoArranco());

@@ -81,13 +81,16 @@ test('existe public/sw.js (los navegadores con la app vieja lo necesitan)', () =
   assert.ok(existsSync(join(RAIZ, 'public', 'sw.js')));
 });
 
-// Huella de cada cambio de base YA PUBLICADO. Si alguien edita uno, esta prueba falla:
-// los cambios publicados nunca se editan; se agrega uno nuevo al final.
+// Huella de CADA cambio de base. Si alguien edita uno ya publicado, esta prueba falla: los cambios
+// publicados nunca se editan; se agrega uno nuevo al final. Una migración nueva también necesita su
+// huella aquí (así no se puede olvidar congelarla al publicar).
 const MIGRACIONES_PUBLICADAS = {
   1: 'e7d3afb3583848d13303951ce7d309319b7ad05b7f47b43677597499edc6d2f4',
+  2: 'faedbc4c80a34ab4085bdea7aa2330cb28148e69e14d7f1564c5ce3621bd0a53',
+  3: 'e1c181eba7d2c793921aefac7c80d2c7e2377dc7ed750552f6ae105e3bc9f658',
 };
 
-test('los cambios de base ya publicados no se editan, y los nuevos van al final', async () => {
+test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
   const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
   const porId = new Map(MIGRACIONES.map(m => [m.id, m]));
   for (const [id, huella] of Object.entries(MIGRACIONES_PUBLICADAS)) {
@@ -95,8 +98,7 @@ test('los cambios de base ya publicados no se editan, y los nuevos van al final'
     assert.ok(m, `desapareció la migración publicada ${id}`);
     assert.equal(createHash('sha256').update(m.sql).digest('hex'), huella, `se editó la migración publicada ${id}: agrega una nueva en su lugar`);
   }
-  const maxPublicada = Math.max(...Object.keys(MIGRACIONES_PUBLICADAS).map(Number));
-  for (const m of MIGRACIONES) if (!(m.id in MIGRACIONES_PUBLICADAS)) assert.ok(m.id > maxPublicada, `la migración nueva ${m.id} debe ir después de ${maxPublicada}`);
+  for (const m of MIGRACIONES) assert.ok(m.id in MIGRACIONES_PUBLICADAS, `la migración ${m.id} no tiene su huella en MIGRACIONES_PUBLICADAS`);
 });
 
 test('los cambios de la base solo agregan: nunca DROP, nunca RENAME, y NOT NULL nuevo siempre con DEFAULT', async () => {

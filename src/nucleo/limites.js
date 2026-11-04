@@ -29,6 +29,12 @@ export class Limitador {
     this.registro.delete(clave);
   }
 
+  // Devuelve un intento que se había apartado (por ejemplo, cuando la contraseña resultó correcta).
+  descontar(clave) {
+    const actual = this.registro.get(clave);
+    if (actual && actual.cuenta > 0) actual.cuenta--;
+  }
+
   limpiarViejos(ahora) {
     if (this.registro.size < 1000) return;
     for (const [clave, valor] of this.registro) if (ahora - valor.desde > this.ventanaMs) this.registro.delete(clave);

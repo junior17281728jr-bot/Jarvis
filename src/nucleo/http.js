@@ -70,7 +70,11 @@ export function crearRuteador() {
         if (!m) continue;
         if (r.metodo !== metodo) { metodoNoPermitido = true; continue; }
         const parametros = {};
-        r.nombres.forEach((nombre, i) => { parametros[nombre] = decodeURIComponent(m[i + 1]); });
+        try {
+          r.nombres.forEach((nombre, i) => { parametros[nombre] = decodeURIComponent(m[i + 1]); });
+        } catch {
+          return { direccionNoValida: true }; // por ejemplo %FF: se responde 400, sin error del servidor
+        }
         return { ...r, parametros };
       }
       return metodoNoPermitido ? { metodoNoPermitido: true } : null;

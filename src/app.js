@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname, join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { entradaPermitida, esLocal, clienteDe, esHttps } from './nucleo/red.js';
+import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido } from './nucleo/red.js';
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
@@ -49,6 +49,7 @@ export function crearServidor({ db = null, limites } = {}) {
     const encontrada = rutas.buscar(req.method, ruta);
     if (!encontrada) return enviarJson(res, 404, { error: 'no_existe' });
     if (encontrada.metodoNoPermitido) return enviarJson(res, 405, { error: 'metodo_no_permitido' });
+    if (encontrada.direccionNoValida) return enviarJson(res, 400, { error: 'direccion_no_valida' });
     if (req.method !== 'GET' && !origenValido(req)) return enviarJson(res, 403, { error: 'origen_no_valido' });
 
     const token = leerGalleta(req);
@@ -69,6 +70,7 @@ export function crearServidor({ db = null, limites } = {}) {
 
   async function atender(req, res) {
     if (!entradaPermitida(req.socket.localAddress)) return texto(res, 403, 'Entra por https://jarvis.taila693e9.ts.net');
+    if (!nombrePermitido(req)) return texto(res, 421, 'Entra por https://jarvis.taila693e9.ts.net');
     let ruta;
     try {
       ruta = new URL(req.url, 'http://x').pathname;
