@@ -33,4 +33,4 @@ Quiere un lugar de ERRORES que se revise TODOS LOS DÍAS. Plan:
 1. OPORTIA guarda cada error en su base (tabla de avisos/errores de la 1c) y lo muestra en Administrador.
 2. Un informe diario de errores solo para el mantenimiento: un enlace solo de admin por el enlace https con una clave larga guardada como secreto del entorno de la nube (nunca en GitHub), sin datos privados de usuarios.
 3. Una tarea programada diaria (sesión en la nube) que lee el informe, revisa el código, corrige, prueba y publica, y le manda un resumen corto.
-Activar la tarea diaria cuando vuelva a tener crédito: cada día gasta crédito de Claude. Decirle antes cuánto gasta más o menos.
+NO activarla todavía: Junior dice que se habla cuando TODO el proyecto esté listo (solo lo dejó anotado para no olvidarlo). Cada día gasta crédito de Claude: decirle antes cuánto.
