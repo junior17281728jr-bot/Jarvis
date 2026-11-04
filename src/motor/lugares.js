@@ -84,7 +84,7 @@ const DATOS_MUNICIPIOS = {
     ['El Pino', { ambiguas: ['el pino'] }], 'Loma de Cabrera', ['Partido', { ambiguas: ['partido'] }], ['Restauración', { ambiguas: ['restauracion'] }],
   ],
   duarte: [
-    ['San Francisco de Macorís', { palabras: ['san francisco de macoris', 'san francisco', 'sfm'] }],
+    ['San Francisco de Macorís', { palabras: ['san francisco de macoris', 'san francisco', 'sfm', 'san fco de macoris', 'san fco macoris', 'san fco', 'sfco'] }],
     ['Arenoso', { ambiguas: ['arenoso'] }], ['Castillo', { ambiguas: ['castillo'] }],
     ['Eugenio María de Hostos', { palabras: ['eugenio maria de hostos', 'hostos'], ambiguas: ['hostos'] }],
     'Las Guáranas', ['Pimentel', { ambiguas: ['pimentel'] }], 'Villa Riva',
@@ -295,6 +295,11 @@ export const DIFUSOS = [
   { palabras: ['el interior', 'el interior del pais', 'interior del pais', 'the interior', 'the interior of the country'], sugerencias: [] },
   { palabras: ['costa norte', 'la costa norte', 'north coast', 'the north coast'], sugerencias: ['puerto-plata'] },
   { palabras: ['costa sur', 'la costa sur', 'south coast', 'the south coast'], sugerencias: [] },
+  // «la frontera con Haití»: cinco provincias tocan la frontera. Se pregunta cuáles.
+  { palabras: ['la frontera', 'frontera con haiti', 'la frontera con haiti', 'zona fronteriza', 'la zona fronteriza', 'linea fronteriza', 'la linea fronteriza',
+    'the border', 'the border with haiti', 'border with haiti'], sugerencias: [] },
+  // «Sabana Grande» a secas puede ser Sabana Grande de Boyá (Monte Plata) o Sabana Grande de Palenque (San Cristóbal). No es un tamaño.
+  { palabras: ['sabana grande'], sugerencias: ['sabana-grande-de-boya', 'sabana-grande-de-palenque'] },
 ];
 
 // Frases que dicen «todo el país» sin dudas.

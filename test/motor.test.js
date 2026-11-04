@@ -12,7 +12,7 @@ import {
 } from '../src/motor/interpretar.js';
 import { normalizar, comparable, buscarFrases, tokenizar, variantes } from '../src/motor/texto.js';
 import { SECTORES, PRODUCTOS, PROVINCIAS, MUNICIPIOS, CIUDADES, REGIONES, ZONAS, CAPACIDADES, COMBINACIONES } from '../src/motor/diccionarios.js';
-import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2, CASOS_EQUIPO_ROJO_3 } from './motor-casos.js';
+import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2, CASOS_EQUIPO_ROJO_3, CASOS_EQUIPO_ROJO_4 } from './motor-casos.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 
@@ -20,7 +20,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
 const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
 const CATALOGO = catalogo();
-const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2, ...CASOS_EQUIPO_ROJO_3];
+const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2, ...CASOS_EQUIPO_ROJO_3, ...CASOS_EQUIPO_ROJO_4];
 
 // ---------- Texto ----------
 test('normalizar quita acentos y mayúsculas sin cambiar la longitud del texto', () => {
@@ -101,6 +101,38 @@ test(`cada frase de la segunda tanda del equipo rojo (ronda 1) se entiende bien 
 test(`cada frase de la segunda ronda del equipo rojo se entiende bien, se pregunta o se avisa (${CASOS_EQUIPO_ROJO_3.length} casos)`, () => {
   assert.ok(CASOS_EQUIPO_ROJO_3.length >= 100);
   for (const caso of CASOS_EQUIPO_ROJO_3) revisarCaso(caso);
+});
+
+test(`cada frase de la tercera ronda del equipo rojo se entiende bien, se pregunta o se avisa (${CASOS_EQUIPO_ROJO_4.length} casos)`, () => {
+  assert.ok(CASOS_EQUIPO_ROJO_4.length >= 150);
+  for (const caso of CASOS_EQUIPO_ROJO_4) revisarCaso(caso);
+});
+
+test('tercera ronda: las preguntas nombran lo que no se aplicó, y nada se quita en silencio', () => {
+  const dudasDe = (texto, idioma = 'es') => dudas(interpretar(texto, { idioma }).configuracion).map(d => `${d.clave}:${d.texto}`);
+  // Más de 30 preferencias: la pregunta dice cuáles quedaron fuera.
+  const beneficios = ['seguro médico', 'transporte', 'comida', 'bono', 'uniforme', 'vacaciones pagadas', 'horas extras pagadas', 'regalía', 'celular de la empresa',
+    'combustible', 'dieta', 'capacitación', 'plan de pensiones', 'ascensos', 'buen ambiente', 'parqueo', 'guardería', 'gimnasio', 'descuentos', 'préstamos',
+    'cooperativa', 'seguro de vida', 'seguro dental', 'bono navideño', 'bono de productividad', 'incentivos', 'comisiones', 'propinas', 'viáticos', 'laptop',
+    'internet pagado', 'home office'];
+  assert.deepEqual(dudasDe(`Busco trabajo de chofer en Santiago, 25 mil, ${beneficios.map(b => `con ${b}`).join(', ')}`), ['lista_larga:con internet pagado, con home office']);
+  // El salario en letras, con una excepción o con otro periodo se pregunta con el pedazo exacto.
+  assert.deepEqual(dudasDe('Busco empleo de cajera en Santiago, 20 mil, pago quincenal'), ['salario_periodo:20 mil … pago quincenal']);
+  assert.deepEqual(dudasDe('Busco trabajo de chofer en Santiago, 25 mil, aunque acepto menos si es cerca'), ['salario:25 mil … aunque acepto menos si es cerca']);
+  assert.deepEqual(dudasDe('Busco trabajo de cajera en Santiago, que pague más de treinta mil'), ['salario:que pague más de treinta mil']);
+  // Lo que no es seguro, lo que es solo para una parte y lo que no se puede: se dice qué es.
+  assert.deepEqual(dudasDe('vendo seguros a talleres en santiago, moca no se'), ['lugar_inseguro:moca no se']);
+  assert.deepEqual(dudasDe('Vendo paneles a hoteles y restaurantes, pero los restaurantes solo en Santiago'), ['combinacion_parcial:pero los restaurantes solo en Santiago']);
+  assert.deepEqual(dudasDe('Busca hoteles en Santiago todos los dias menos los fines de semana, vendo solar'), ['frecuencia_no_disponible:todos los dias menos los fines de semana']);
+  // «Sabana Grande» puede ser dos municipios: se pregunta con los dos.
+  const sabana = dudas(interpretar('Vendo hielo a colmados de Sabana Grande').configuracion);
+  assert.deepEqual(sabana.map(d => [d.clave, d.texto, d.sugerencias]), [['lugar_difuso', 'Sabana Grande', ['sabana-grande-de-boya', 'sabana-grande-de-palenque']]]);
+  // Las claves nuevas tienen su texto en los dos idiomas.
+  for (const clave of ['duda.lugar_inseguro', 'supuesto.personas_sueltas', 'supuesto.enviar_whatsapp']) assert.ok(es[clave] && en[clave], clave);
+  // Un cliente con nombre se excluye aunque se diga de otra manera, y la competencia nombrada también (sin pedir buscarla).
+  assert.deepEqual(interpretar('vendo seguros a talleres en moca, menos al taller garcia que ya es cliente').configuracion.exclusiones, ['taller garcia']);
+  assert.deepEqual(interpretar('I sell cameras to supermarkets in Santiago, Bravo and La Sirena are already my customers', { idioma: 'en' }).configuracion.exclusiones, ['Bravo', 'La Sirena']);
+  assert.deepEqual(interpretar('Vendo seguros a empresas de Santiago. No busques a Seguros Universal, son mi competencia').configuracion.exclusiones, ['Seguros Universal']);
 });
 
 test('el motor nunca falla, ni con un «no» o una palabra suelta al final del texto (sin punto)', () => {
@@ -424,6 +456,17 @@ test('cualquier texto de 4000 letras, aunque esté hecho para trabar el motor, s
     'Moca, Santiago …': relleno(i => ['Moca, Santiago,', 'Constanza, La Vega,', 'Los Mina de Santiago,'][i % 3]),
     'sobre todo …': relleno(i => `talleres${i} sobre todo, colmados y farmacias principalmente,`),
     'quincenal …': relleno(i => `quincenal ${i} mil o ${i + 1} mil,`),
+    // Tercera ronda: otras personas, clientes y competencia con nombre, lugares inseguros, productos con su negocio, días que se saltan.
+    'mi hermano vende …': relleno(i => `mi hermano vende cosa${i} y`),
+    'ya son clientes …': relleno(i => `ya son clientes mios el hotel h${i} y el hodelpa${i},`),
+    'menos el … que ya es cliente': relleno(i => `menos el aloft${i} que ya es cliente`),
+    'Bravo and … are my customers': relleno(i => `Bravo${i} and La Sirena${i} and`),
+    'mi competencia es …': relleno(i => `mi competencia es Ferreteria Ochoa${i} y`),
+    'no sé si en …': relleno(i => ['no se si en la vega tambien', 'moca no se,', 'tal vez en Moca'][i % 3]),
+    'y mesas a hoteles …': relleno(i => `vendo sillas a restaurantes y mesas${i} a hoteles${i}`),
+    'todos los días menos …': relleno(i => 'todos los dias menos los domingos y los lunes,'),
+    'treinta mil …': relleno(i => 'que pague mas de treinta mil o veinte y cinco mil,'),
+    'no hago delivery a …': relleno(i => `no hago delivery a Pueblo${i},`),
   };
   let peor = 0;
   for (const [nombre, texto] of Object.entries(casos)) {

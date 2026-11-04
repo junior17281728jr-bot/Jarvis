@@ -288,6 +288,8 @@ export function salarioEn(T, k) {
 export function juntarSalario(tramos, limite) {
   const montos = tramos.flatMap(t => t.montos.map(m => ({ ...m, periodo: m.periodo || t.periodoAntes })));
   const vacio = { minimo: null, maximo: null, moneda: null, duda: null, supuesto: false };
+  // Un salario que no se pudo leer («treinta mil» en letras, «acepto menos si es cerca»): se pregunta, sin ninguna cifra.
+  if (tramos.some(t => t.dudoso)) return { ...vacio, duda: 'salario' };
   if (!montos.length) return vacio;
   if (montos.some(m => m.periodo && m.periodo !== 'mensual')) return { ...vacio, duda: 'salario_periodo' };
   if (tramos.some(t => t.alternativa)) return { ...vacio, duda: 'salario' };

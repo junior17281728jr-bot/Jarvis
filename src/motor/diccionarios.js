@@ -96,9 +96,9 @@ export const TAMANOS_QUE_SON_EMPRESA = ['pyme', 'mipyme', 'microempresa'];
 // «adverbios» (diario, semanal…) solo cuentan junto a un verbo como «revisa» o «busca»: «pago mensual»,
 // «12 horas diarias» o «Diario Libre» no dicen nada de la frecuencia.
 export const FRECUENCIAS = [
-  { clave: 'diaria', palabras: ['cada dia', 'todos los dias', 'diariamente', 'a diario', 'una vez al dia', 'una vez por dia', 'every day', 'each day', 'once a day'], adverbios: ['diario', 'diaria', 'daily'] },
-  { clave: 'semanal', palabras: ['cada semana', 'todas las semanas', 'semanalmente', 'una vez por semana', 'una vez a la semana', 'una vez cada semana', 'every week', 'each week', 'once a week'], adverbios: ['semanal', 'weekly'] },
-  { clave: 'mensual', palabras: ['cada mes', 'todos los meses', 'mensualmente', 'una vez al mes', 'una vez por mes', 'una vez cada mes', 'every month', 'each month', 'once a month'], adverbios: ['mensual', 'monthly'] },
+  { clave: 'diaria', palabras: ['cada dia', 'todos los dias', 'to los dias', 'toos los dias', 'diariamente', 'a diario', 'una vez al dia', 'una vez por dia', 'every day', 'each day', 'once a day'], adverbios: ['diario', 'diaria', 'daily'] },
+  { clave: 'semanal', palabras: ['cada semana', 'todas las semanas', 'to las semanas', 'semanalmente', 'una vez por semana', 'una vez a la semana', 'una vez cada semana', 'every week', 'each week', 'once a week'], adverbios: ['semanal', 'weekly'] },
+  { clave: 'mensual', palabras: ['cada mes', 'todos los meses', 'to los meses', 'mensualmente', 'una vez al mes', 'una vez por mes', 'una vez cada mes', 'every month', 'each month', 'once a month'], adverbios: ['mensual', 'monthly'] },
   { clave: 'manual', palabras: ['cuando yo diga', 'cuando yo lo diga', 'cuando yo lo pida', 'cuando lo pida', 'cuando yo quiera', 'manualmente', 'when i ask', 'when i say', 'manually', 'on demand'], adverbios: [] },
 ];
 export const FRECUENCIA_POR_DEFECTO = 'semanal';
@@ -166,7 +166,10 @@ export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco 
   'busco chiripa', 'busco una chiripa', 'quiero trabajar', 'quisiera trabajar', 'me gustaria trabajar', 'quiero trabajo', 'quiero un trabajo',
   'quiero un empleo', 'quiero empleo', 'necesito trabajo', 'necesito empleo', 'necesito un trabajo', 'necesito un empleo', 'consigueme trabajo',
   'consigueme un trabajo', 'conseguir trabajo', 'conseguir empleo', 'trabajo de', 'trabajo como', 'empleo de', 'empleo como', 'empleos de',
-  'empleos', 'vacante de', 'vacantes de', 'puesto de', 'trabajar de', 'trabajar como', 'looking for work', 'looking for a job', 'looking for job',
+  'empleos', 'vacante de', 'vacantes de', 'puesto de', 'trabajar de', 'trabajar como',
+  // Teletrabajo y empleo remoto, también sin «busco» al principio («Empleo remoto de servicio al cliente…»).
+  'busco teletrabajo', 'teletrabajo de', 'teletrabajo como', 'empleo remoto', 'trabajo remoto', 'empleo a distancia', 'trabajo a distancia', 'remote job',
+  'looking for work', 'looking for a job', 'looking for job',
   'i want a job', 'i need a job', 'find me a job', 'job as', 'jobs as', 'work as', 'working as', 'position as', 'a job in', 'job in',
   // Formas dominicanas de decir trabajo: chamba, pega, camello, chance, trabajito, empleíto.
   'busco una chamba', 'busco chamba', 'necesito chamba', 'necesito una chamba', 'quiero chamba', 'chamba de', 'busco una chambita', 'chambita de',
@@ -181,13 +184,14 @@ export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden'
   'encontrar clientes', 'necesito clientes', 'quiero clientes', 'clientes para', 'prospectos', 'que necesiten', 'puedan necesitar', 'que necesitan',
   'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'clients for', 'customers for', 'i want clients',
   'i want customers', 'want customers', 'want clients', 'representante de ventas', 'looking for clients', 'looking for customers', 'busca clientes',
-  'buscamos clientes', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'find me customers', 'find me clients', 'get me customers', 'get me clients', 'buscame clientes', 'consigueme clientes', 'leads', 'that need', 'that may need', 'who need'];
+  'buscamos clientes', 'quien me compre', 'quienes me compren', 'que me compren', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'find me customers', 'find me clients', 'get me customers', 'get me clients', 'buscame clientes', 'consigueme clientes', 'leads', 'that need', 'that may need', 'who need'];
 export const SENALES_LABORAL_DEBILES = ['trabajo', 'empleo', 'salario', 'sueldo', 'vacante', 'curriculum', 'job', 'salary'];
 export const SENALES_COMERCIAL_DEBILES = ['venta', 'ventas', 'vender', 'cliente', 'clientes', 'customers', 'clients', 'sell'];
 
 // ---------- Objetivos que todavía no existen: se dice que llegan más adelante, no se fuerzan ----------
 export const OBJETIVOS_NO_DISPONIBLES = [
-  { clave: 'competidores', palabras: ['mis competidores', 'competidores', 'la competencia', 'mi competencia', 'competitors', 'my competition'] },
+  { clave: 'competidores', palabras: ['mis competidores', 'competidores', 'la competencia', 'mi competencia', 'competitors', 'my competition',
+    'me hacen competencia', 'me hace competencia', 'nos hacen competencia', 'nos hace competencia'] },
   { clave: 'empleados', palabras: ['busco empleados', 'buscar empleados', 'necesito empleados', 'busco personal', 'necesito personal', 'buscando empleados',
     'buscando personal', 'busco trabajadores', 'necesito trabajadores', 'quiero contratar', 'necesito contratar', 'contratar empleados', 'contratar personal',
     'busco un empleado', 'busco una empleada', 'busco empleado', 'busco empleada', 'need workers', 'need employees', 'looking for employees',

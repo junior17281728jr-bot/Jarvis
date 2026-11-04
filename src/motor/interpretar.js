@@ -24,14 +24,14 @@ export const IA_APAGADA = Object.freeze({ permitida: false, topeMensualUsd: 0 })
 // Lo que el motor decidió solo y avisa (se muestra; no impide aprobar).
 export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_laboral', 'sectores_todos', 'gran_santo_domingo', 'contactar_a_mano',
   'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono', 'contactar_sin_correos', 'contactar_telefono', 'clientes_actuales',
-  'autonomia_pedida', 'clientes_sin_nombre'];
+  'autonomia_pedida', 'clientes_sin_nombre', 'personas_sueltas', 'enviar_whatsapp'];
 // Dudas: cosas que el motor no entendió. Mientras haya alguna, no se puede aprobar.
 // Las «guardadas» salen de las instrucciones y se marcan como resueltas en el formulario; las otras se calculan
 // de la configuración y desaparecen solas cuando se corrige el dato.
 export const CLAVES_DUDAS_GUARDADAS = ['texto', 'lugar', 'calle_o_provincia', 'direccion', 'conflicto_tamano', 'salario', 'salario_periodo', 'frecuencia', 'frecuencia_no_disponible',
   'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa',
   'objetivo_empleados', 'objetivo_otra_tarea', 'parte_de_lugar', 'lugar_homonimo', 'lugar_difuso', 'cambio', 'combinacion_producto', 'combinacion_parcial',
-  'sector_general', 'lugar_provincia', 'lista_larga'];
+  'sector_general', 'lugar_provincia', 'lista_larga', 'lugar_inseguro'];
 export const CLAVES_DUDAS_CALCULADAS = ['conflicto_sector', 'conflicto_zona', 'fuera_del_pais'];
 export const CLAVES_DUDAS = [...CLAVES_DUDAS_GUARDADAS, ...CLAVES_DUDAS_CALCULADAS];
 
@@ -143,6 +143,8 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   const lugarDudoso = noEntendido.some(d => d.clave === 'lugar');
   if (!zonas.length && !zonasLibres.length && !x.pais.explicito && !x.pais.nombre) zonas = unicos(x.zonasPropias);
   const paisCompleto = x.pais.explicito || (x.pais.nombre && !zonas.length && !zonasLibres.length && !lugarDudoso);
+  // «Santo Domingo, pero no en el Distrito Nacional»: queda la provincia Santo Domingo (el aviso no puede prometer el Distrito Nacional).
+  if (zonas.includes('gran-santo-domingo') && x.zonasExcluidas.includes('distrito-nacional')) zonas = unicos(zonas.map(z => (z === 'gran-santo-domingo' ? 'santo-domingo' : z)));
   if (zonas.includes('gran-santo-domingo')) supuestos.add('gran_santo_domingo');
 
   // Producto o empleo
@@ -152,7 +154,7 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
     producto = unicosPorTexto(x.productos).join(', ');
     // «tengo una empresa de transporte»: lo que hace su negocio, si no dijo otra cosa.
     if (!producto) producto = unicosPorTexto(x.productosPropios).join(', ');
-    if (!producto && x.negocioPropio) {
+    if (!producto && x.negocioPropio && !x.productoRelleno) {
       producto = x.negocioPropio;
       supuestos.add('producto_negocio');
     }
@@ -161,7 +163,7 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
 
   // Salario
   const salario = juntarSalario(x.tramosSalario, LIMITES.salario);
-  if (salario.duda) duda(salario.duda, x.tramosSalario.map(t => t.texto).join(' … ').slice(0, 80));
+  if (salario.duda) duda(salario.duda, [...x.tramosSalario].sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0)).map(t => t.texto).join(' … ').slice(0, 80));
   if (salario.supuesto && tipo === 'laboral') supuestos.add('salario_minimo');
 
   // Frecuencia

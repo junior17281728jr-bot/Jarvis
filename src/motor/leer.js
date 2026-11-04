@@ -15,7 +15,7 @@ import {
   FUENTES_CON_NOMBRE, CARDINALES, DIFUSOS, FRECUENCIAS_NO_DISPONIBLES_SUELTAS,
 } from './diccionarios.js';
 import { tokenizar, crearIndice, buscarEn, comparable, distancia, todoEnMayusculas } from './texto.js';
-import { salarioEn, esTelefono, finDeTelefono, PALABRAS_SALARIO, UNIDADES, horarioEn } from './salario.js';
+import { salarioEn, esTelefono, finDeTelefono, PALABRAS_SALARIO, UNIDADES, horarioEn, PERIODOS } from './salario.js';
 
 // ---------- Índices (se arman una sola vez al cargar) ----------
 const indice = (lista, dato = {}) => crearIndice(lista.map(frase => ({ frase, dato: { ...dato, frase } })));
@@ -52,6 +52,7 @@ const EXPERIENCIA = indice(['sin experiencia', 'sin experiencia obligatoria', 's
   'que no requieran experiencia', 'no tengo experiencia', 'experiencia no obligatoria', 'experiencia no requerida', 'without experience',
   'without required experience', 'without prior experience', 'no experience', 'no experience required', 'no experience needed', 'no prior experience',
   'i have no experience', 'experience not required', 'i dont have experience', 'i do not have experience', 'dont have experience',
+  'que no me pidan experiencia', 'que no me exijan experiencia', 'no me pidan experiencia', 'que no me pidan mucha experiencia',
   'i dont have any experience', 'no tengo experiencia previa', 'no tengo mucha experiencia']);
 const OBJETIVOS = crearIndice(OBJETIVOS_NO_DISPONIBLES.flatMap(o => o.palabras.map(frase => ({ frase, dato: { clave: o.clave } }))));
 const SOLO = indice(SOLO_INVESTIGAR);
@@ -122,7 +123,8 @@ const PRIORIDAD = indice(['prioriza', 'priorizar', 'prioriza a', 'priorizame', '
   'lo que mas me interesa es', 'lo que mas me interesa son', 'los que mas me interesan', 'las que mas me interesan', 'empieza por', 'empieza con',
   'empezando por', 'comienza por', 'comienza con', 'primero los', 'primero las', 'primero a los', 'primero a las', 'lo primero que quiero son',
   'lo primero que quiero es', 'lo primero son', 'me gustan mas', 'start with', 'begin with', 'more interested in', 'im more interested in',
-  'i am more interested in', 'mas que nada', 'more than anything', 'most of all']);
+  'i am more interested in', 'mas que nada', 'more than anything', 'most of all', 'la prioridad son', 'la prioridad es', 'mi prioridad son', 'mi prioridad es',
+  'mis prioridades son', 'nuestra prioridad es', 'nuestra prioridad son', 'la prioridad seria', 'my priority is', 'our priority is', 'the priority is']);
 const CONDICION = indicePorClave([
   [{ clave: 'tener' }, ['que tengan', 'que tenga', 'que tienen', 'que tiene', 'que no tengan', 'que no tenga', 'que no tienen', 'que no tiene', 'que hayan',
     'que haya', 'que cuenten con', 'que cuente con', 'que manejen', 'que usen', 'que utilicen', 'que facturen', 'que vendan', 'que ofrezcan',
@@ -164,7 +166,9 @@ const PRODUCTO = indice(['vendo', 'vende', 'vendemos', 'venden', 'ofrezco', 'ofr
   'puedan necesitar', 'que podrian necesitar', 'que quieran comprar', 'i sell', 'we sell', 'sell', 'sells', 'selling', 'i offer', 'we offer', 'offer', 'offers', 'that need', 'that may need',
   'who need', 'that might need', 'which need', 'clientes para', 'customers for', 'clients for', 'buyers for', 'compradores para', 'me dedico a vender',
   'nos dedicamos a vender', 'me dedico a la venta de', 'nos dedicamos a la venta de', 'trabajo vendiendo', 'vendiendo', 'soy distribuidor de',
-  'soy distribuidora de', 'somos distribuidores de', 'distribuidor de', 'distribuidora de']);
+  'soy distribuidora de', 'somos distribuidores de', 'distribuidor de', 'distribuidora de',
+  // «Busco quien me compre mangos», «clientes que me compren pan»: lo que le compren es lo que vende.
+  'quien me compre', 'quienes me compren', 'alguien que me compre', 'gente que me compre', 'que me compre', 'que me compren', 'who will buy my', 'someone to buy my']);
 const PROPIO = indice(['tengo un', 'tengo una', 'tenemos un', 'tenemos una', 'soy dueno de un', 'soy dueno de una', 'soy duena de un', 'soy duena de una',
   'soy dueno de', 'soy duena de', 'soy el dueno de', 'soy la duena de', 'soy el dueno de un', 'soy el dueno de una', 'soy la duena de un', 'soy la duena de una',
   'somos los duenos de', 'somos duenos de', 'i own', 'im the owner of', 'i am the owner of',
@@ -196,7 +200,8 @@ const PORQUE = indice(['porque', 'because', 'ya que', 'debido a que', 'pues ya']
 // Dónde está la persona o su negocio: no es dónde se busca («Vivo en Moca», «I'm based in Santo Domingo», «desde Santiago»).
 const ORIGEN = indice(['estoy en', 'estamos en', 'vivo en', 'vivimos en', 'soy de', 'somos de', 'naci en', 'nacimos en', 'vengo de', 'i live in',
   'we live in', 'im from', 'i am from', 'were from', 'we are from', 'im based in', 'i am based in', 'were based in', 'we are based in',
-  'im located in', 'i am located in', 'were located in', 'we are located in', 'desde']);
+  'im located in', 'i am located in', 'were located in', 'we are located in', 'desde', 'me mude a', 'me mude para', 'me mude pa', 'nos mudamos a',
+  'nos mudamos para', 'i moved to', 'we moved to']);
 // Lugares del propio negocio: «mi oficina está en Naco», «nuestra oficina queda en Higüey».
 const LUGARES_PROPIOS = new Set(['oficina', 'oficinas', 'local', 'sede', 'sucursal', 'almacen', 'deposito', 'casa', 'office', 'warehouse', 'headquarters', 'base']);
 const VERBOS_DE_ESTAR = new Set(['esta', 'estan', 'queda', 'quedan', 'se', 'encuentra', 'encuentran', 'ubicada', 'ubicado', 'ubicados', 'is', 'are', 'located',
@@ -240,17 +245,39 @@ const ME_VENDEN = indice(['me venden', 'me vende', 'me lo venden', 'me la venden
   'son mis proveedores', 'are my suppliers']);
 // «ya tengo a la Bonanza y a Supermercado Nacional como clientes»: los clientes que ya tiene se excluyen.
 const TENGO_A = indice(['ya tengo a', 'tengo a', 'ya tenemos a', 'tenemos a', 'i already have', 'we already have']);
+// «ya trabajo con Hotel Matum», «we already work with Hodelpa», «ya le vendí al hotel Aloft»: con nombre, ya son sus clientes.
+const YA_TRABAJO_CON = indice(['ya trabajo con', 'ya trabajamos con', 'i already work with', 'we already work with', 'already work with', 'ya le trabajo a',
+  'ya les trabajo a', 'ya le vendi', 'ya les vendi', 'ya le vendimos', 'ya les vendimos', 'ya le he vendido', 'ya les he vendido', 'le vendi', 'les vendi',
+  'i already sold to', 'we already sold to', 'already sold to']);
+// Empleo: dónde trabajó o estudió antes. No es dónde busca.
+const PASADO_LABORAL = indice(['antes trabaje', 'antes trabajaba', 'anteriormente trabaje', 'trabaje', 'trabajaba', 'labore', 'laboraba', 'antes labore', 'estudie',
+  'estudiaba', 'antes estudie', 'me gradue', 'mi ultimo trabajo', 'mi ultimo empleo', 'mi trabajo anterior', 'mi empleo anterior', 'mi anterior trabajo',
+  'mi anterior empleo', 'i worked', 'i used to work', 'i studied', 'my last job', 'my previous job', 'previously worked']);
 const COMO_CLIENTES = indice(['como clientes', 'como cliente', 'de clientes', 'de cliente', 'as customers', 'as clients', 'as a customer', 'as a client']);
 // «sácalos», «no lo incluyas»: después de nombrar a sus clientes, pide que no se busquen (ya se excluyeron).
 const QUITALOS = indice(['sacalos', 'sacalo', 'sacala', 'sacalas', 'quitalos', 'quitalo', 'quitala', 'quitalas', 'excluyelos', 'excluyelo', 'excluyela',
   'no lo incluyas', 'no los incluyas', 'no la incluyas', 'no las incluyas', 'no lo busques', 'no los busques', 'no la busques', 'no las busques',
-  'leave them out', 'leave it out', 'exclude them', 'exclude it', 'dont include them', 'dont include it']);
+  'leave them out', 'leave it out', 'exclude them', 'exclude it', 'dont include them', 'dont include it', 'do not include them', 'skip them', 'so skip them',
+  'skip it', 'so skip it', 'no quiero que la busques', 'no quiero que lo busques', 'no quiero que los busques', 'no quiero que las busques']);
 // «donde sea», «en cualquier lugar»: no es un lugar exacto. Se pregunta.
 const CUALQUIER_LUGAR = indice(['donde sea', 'en donde sea', 'dondequiera', 'donde quiera', 'cualquier lugar', 'en cualquier lugar', 'cualquier sitio',
   'en cualquier sitio', 'cualquier parte', 'en cualquier parte', 'en todas partes', 'wherever', 'anywhere', 'everywhere']);
+// «no sé si…», «tal vez», «puede que» antes de un lugar; «moca no sé», «Moca tal vez» después.
+const DUDA_DE_LUGAR = indice(['no se si', 'no estoy seguro si', 'no estoy segura si', 'no estoy seguro de', 'no estoy segura de', 'tal vez', 'talvez', 'quizas',
+  'quiza', 'a lo mejor', 'puede que', 'capaz que', 'posiblemente', 'probablemente', 'maybe', 'perhaps', 'not sure if', 'im not sure if', 'i dont know if',
+  'possibly']);
+const DUDA_DESPUES = indice(['no se', 'no estoy seguro', 'no estoy segura', 'tal vez', 'talvez', 'quizas', 'quiza', 'not sure', 'maybe', 'no se todavia']);
+function dudaDespues(x, k) {
+  const m = buscarEn(x.T, k, DUDA_DESPUES);
+  if (!m) return 0;
+  const t = x.T[m.fin];
+  return !t || esFuerte(t) || esComa(t) || ['y', 'e', 'and', 'pero', 'but'].includes(t.w) ? m.fin : 0;
+}
 // «hazlo todo tú solo», «sin preguntarme»: pide más libertad. Se avisa que todo espera su aprobación.
+// «vende mis productos tú mismo», «sin molestarme»: también. («contáctalos tú mismo» ya es pedir contactar: ver finDeObjetoDeCapacidad).
 const AUTONOMIA_PEDIDA = indice(['tu solo', 'tu sola', 'por tu cuenta', 'sin preguntarme', 'sin consultarme', 'sin pedirme permiso', 'sin esperar mi aprobacion',
-  'sin mi aprobacion', 'on your own', 'by yourself', 'without asking me', 'without my approval', 'without my permission']);
+  'sin mi aprobacion', 'on your own', 'by yourself', 'without asking me', 'without my approval', 'without my permission', 'tu mismo', 'tu misma', 'tu solito',
+  'tu solita', 'sin molestarme', 'sin molestarnos', 'sin interrumpirme', 'without bothering me']);
 // Lo que la persona compra (no vende): «le compro a fincas», «quiero comprar paneles».
 const COMPRA = indice(['le compro a', 'les compro a', 'compro', 'compramos', 'le compramos a', 'quiero comprar', 'queremos comprar', 'necesito comprar',
   'quiero comprarle', 'quiero comprarles', 'queremos comprarle', 'queremos comprarles', 'necesito comprarle', 'necesito comprarles', 'comprarle a',
@@ -296,7 +323,7 @@ export const RELLENO = new Set(`a al ante bajo con contra de del desde durante e
   i im ive we you they it its my our your their a an the to of in on at for from with by and or but so please thanks thank hi hello want need looking
   look find search get some any new potential customers clients leads that who which can could would will should is are be am this these those there here
   also just only more very me us them him her do does did dont have has project help work job jobs sell selling buy ones one really well good great
-  yes then hermano hermana mano manito ta espero cuento sitios sitio lugares ayudes ayude ayuden ademas too among`
+  yes then hermano hermana mano manito ta espero cuento sitios sitio lugares ayudes ayude ayuden ademas too among consigas consigan hagas hagan`
   .split(/\s+/).filter(Boolean));
 
 const ARTICULOS = new Set(['el', 'la', 'los', 'las', 'lo', 'un', 'una', 'unos', 'unas', 'the', 'a', 'an']);
@@ -396,7 +423,7 @@ function nombreDelNegocio(x, k) {
 // ¿Hay un nombre propio entre «a» y «b»? (una palabra con mayúscula que no es una palabra común ni algo conocido, o una sigla).
 function hayNombrePropio(x, a, b) {
   if (x.mayus) return false;
-  for (let q = a; q < b; q++) {
+  for (let q = a; q < Math.min(b, x.n); q++) {
     const t = x.T[q];
     if (t.tipo !== 'p') continue;
     const sigla = /^[A-Z]{2,5}$/.test(x.original.slice(t.ini, t.fin));
@@ -410,7 +437,11 @@ const esFuerte = t => !t || (t.tipo === 's' && t.w === '.');
 const esComa = t => t?.tipo === 's' && t.w === ',';
 const marcar = (x, a, b) => { for (let k = Math.max(0, a); k < Math.min(b, x.n); k++) x.usado[k] = 1; };
 const datoDe = (x, i, que) => x.ent[i]?.datos.find(d => d.que === que) || null;
-const esRelleno = w => RELLENO.has(w);
+// La risa al final («jaja», «lol», «jsjs») no dice nada: no rompe un filtro («pero no los pequeños jaja»).
+const RISA = /^(?:(?:ja|je|ji|ha|he)){2,}[jh]?$|^(?:lol|lmao|xd+|(?:js){2,})$/;
+const esRelleno = w => RELLENO.has(w) || RISA.test(w);
+// Las listas guardan más de las 30 que caben, para poder decir cuáles quedaron fuera (nada se quita en silencio).
+const TOPE = 60;
 
 const MAXIMO_DE_DUDAS = 12;
 
@@ -424,12 +455,83 @@ function agregarDuda(x, clave, valor, sugerencias = []) {
 function agregarPrioridad(x, a, b) {
   if (hayEnlace(x, a, b)) { agregarDuda(x, 'texto', texto(x, a, b)); return; }
   while (a < b && (esComa(x.T[a]) || ['y', 'e', 'and', 'pero', 'tambien', 'also'].includes(x.T[a].w) || (['a', 'al', 'to'].includes(x.T[a].w) && x.ent[a + 1]))) a++;
-  while (b > a && (x.T[b - 1].tipo === 's' || ['y', 'e', 'de', 'and', 'o', 'que', 'con', 'en', 'tambien', 'also', 'too'].includes(x.T[b - 1].w))) b--;
+  // «cerca de Santiago para venderles…», «near Punta Cana to sell…»: el «para» o el «to» de después no son parte de la preferencia.
+  while (b > a && (x.T[b - 1].tipo === 's' || ['y', 'e', 'de', 'and', 'o', 'que', 'con', 'en', 'tambien', 'also', 'too', 'para', 'pa', 'to', 'for'].includes(x.T[b - 1].w))) b--;
   if (b <= a) return;
+  if (x.tipo === 'laboral' && salarioEnPreferencia(x, a, b)) return;
   let valor = texto(x, a, b).replace(/\s+/g, ' ').trim();
   if (valor.length > 160) valor = valor.slice(0, 160).replace(/\s+\S*$/, '');
-  if (!valor || x.prioridades.length >= 30) return;
+  if (!valor || x.prioridades.length >= TOPE) return;
   if (!x.prioridades.some(p => comparable(p) === comparable(valor))) x.prioridades.push(valor);
+}
+
+// Números escritos con letras: «treinta mil», «veinticinco mil».
+const NUMEROS_ESCRITOS = new Set(['dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince',
+  'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiun', 'veintiuno', 'veintidos', 'veintitres', 'veinticuatro', 'veinticinco', 'veintiseis',
+  'veintisiete', 'veintiocho', 'veintinueve', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa', 'cien', 'ciento', 'doscientos',
+  'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos', 'two', 'three', 'four', 'five', 'six', 'seven',
+  'eight', 'nine', 'ten', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety', 'hundred']);
+const DINERO = new Set(['mil', 'k', 'pesos', 'peso', 'dolares', 'dolar', 'dollars', 'dollar', 'usd', 'us$', 'rd$', 'dop', 'thousand', '$', 'minimo', 'maximo',
+  'minimum', 'maximum']);
+function cantidadEscrita(x, k) {
+  const { T } = x;
+  if (!NUMEROS_ESCRITOS.has(T[k]?.w)) return false;
+  for (let q = k + 1; q < x.n && q - k <= 4; q++) {
+    if (['mil', 'thousand', 'pesos', 'dolares', 'dollars'].includes(T[q].w)) return true;
+    if (!NUMEROS_ESCRITOS.has(T[q].w) && !['y', 'e', 'and'].includes(T[q].w)) return false;
+  }
+  return false;
+}
+
+// «sueldo de veinte mil pesos», «quiero ganar treinta mil», «veinticinco mil o más». Devuelve dónde termina, o 0.
+function salarioEscritoEn(x, j) {
+  const { T } = x;
+  let k = j;
+  for (let v = 0; v < 2 && k < x.n && ['que', 'me', 'con', 'un', 'una', 'el', 'mi', 'de', 'a', 'to', 'quiero', 'want'].includes(T[k].w); v++) k++;
+  const palabra = PALABRAS_SALARIO.has(T[k]?.w);
+  if (palabra) k++; else k = j;
+  let q = k;
+  while (q < x.n && q - k < 4 && !cantidadEscrita(x, q) && ['de', 'mas', 'menos', 'por', 'lo', 'al', 'minimo', 'como', 'unos', 'alrededor', 'arriba', 'encima',
+    'desde', 'entre', 'hasta', 'me', 'que', 'es', 'of', 'at', 'least', 'about', 'around', 'over'].includes(T[q].w)) q++;
+  if (!cantidadEscrita(x, q) || (!palabra && q !== j)) return 0;
+  let fin = q;
+  while (fin < x.n && (NUMEROS_ESCRITOS.has(T[fin].w) || ['y', 'e', 'and', 'mil', 'thousand', 'pesos', 'dolares', 'dollars'].includes(T[fin].w))) fin++;
+  while (fin > q + 1 && ['y', 'e', 'and'].includes(T[fin - 1].w)) fin--;
+  if (['o', 'or'].includes(T[fin]?.w) && ['mas', 'more', 'menos', 'less'].includes(T[fin + 1]?.w)) fin += 2;
+  return fin;
+}
+
+// Empleo: un salario dentro de una preferencia («que pague más de treinta mil», «que paguen en dólares, mínimo 800») no se
+// esconde ahí: se pregunta el salario. Y un periodo de pago después del salario («20 mil, pago quincenal») hace preguntar si
+// es por mes o por quincena. Devuelve true si ya se usó.
+function salarioEnPreferencia(x, a, b) {
+  const { T } = x;
+  let cifra = false;
+  let dinero = false;
+  let escrita = false;
+  let periodo = null;
+  let pago = false;
+  for (let k = a; k < b; k++) {
+    const w = T[k].w;
+    if (T[k].tipo === 'n') cifra = true;
+    if (cantidadEscrita(x, k)) escrita = true;
+    if (DINERO.has(w) || PALABRAS_SALARIO.has(w)) dinero = true;
+    if (PALABRAS_SALARIO.has(w)) pago = true;
+    const p = periodo ? null : buscarEn(T, k, PERIODOS);
+    if (p) periodo = p.datos[0];
+  }
+  const valor = texto(x, a, b);
+  if (escrita || (cifra && dinero)) {
+    x.tramosSalario.push({ montos: [], extras: [], dudoso: true, texto: valor, pos: a });
+    return true;
+  }
+  // «pago quincenal», «que paguen por quincena», «que me paguen quincenal», después de «20 mil».
+  const ultimo = x.tramosSalario[x.tramosSalario.length - 1];
+  if (periodo && (pago || b - a <= 2) && ultimo && ultimo.montos.length && !ultimo.periodoAntes && ultimo.montos.every(m => !m.periodo)) {
+    if (periodo !== 'mensual') { ultimo.periodoAntes = periodo; ultimo.texto = `${ultimo.texto} … ${valor}`; }
+    return true;
+  }
+  return false;
 }
 
 // ---------- Lugares ----------
@@ -529,7 +631,9 @@ function pareceLugar(x, i) {
     // «del Este» dentro del nombre.
     const cardinal = ['de', 'del'].includes(s.w) && conMayuscula(fin + 1) && [x.ent[fin], x.ent[fin + 1]].some(e => e?.datos.some(d => d.que === 'zona' && d.cardinal));
     if (cardinal) { fin = x.ent[fin] ? x.ent[fin].fin : x.ent[fin + 1].fin; continue; }
-    if (s.tipo === 'p' && !x.ent[fin] && !detectar(x, fin) && (s.mayus || (['de', 'del', 'la', 'los', 'las'].includes(s.w) && T[fin + 1]?.mayus && !x.ent[fin + 1]))) fin++;
+    // «Villa Grande», «Laguna Grande»: un tamaño con mayúscula dentro del nombre es parte del nombre.
+    const tamanoEnElNombre = s.mayus && !x.mayus && x.ent[fin]?.datos.every(d => d.que === 'tamano');
+    if (s.tipo === 'p' && (!x.ent[fin] || tamanoEnElNombre) && !detectar(x, fin) && (s.mayus || (['de', 'del', 'la', 'los', 'las'].includes(s.w) && T[fin + 1]?.mayus && !x.ent[fin + 1]))) fin++;
     else break;
   }
   while (fin > i + 1 && ['de', 'del', 'la', 'los', 'las'].includes(T[fin - 1].w)) fin--;
@@ -610,11 +714,13 @@ function listaDeLugares(x, i, destino = 'incluir') {
   let anterior = null;
   let zonasAntesDelUltimo = x.zonas.length;
   let libresAntesDelUltimo = x.zonasLibres.length;
+  let inicioDelUltimo = i;
   const destinoDe = () => (destino === 'excluir' ? x.zonasExcluidas : destino === 'propia' ? x.zonasPropias : x.zonas);
   for (let vueltas = 0; vueltas < 25; vueltas++) {
     const L = lugarEn(x, j, enLista);
     zonasAntesDelUltimo = x.zonas.length;
     libresAntesDelUltimo = x.zonasLibres.length;
+    inicioDelUltimo = j;
     // «la capital de Santiago» es la ciudad de Santiago, no Santo Domingo.
     if (L && L.clave === 'gran-santo-domingo' && ['la', 'the'].includes(T[j].w) && ['de', 'del', 'of'].includes(T[L.fin]?.w) && lugarEn(x, L.fin + 1, true)?.que === 'zona') {
       marcar(x, j, L.fin + 1);
@@ -698,8 +804,8 @@ function listaDeLugares(x, i, destino = 'incluir') {
       const fin = enLista || PREP_LUGAR_FUERTE.has(T[j - 1]?.w) || BARRIO_PREVIO.has(T[j].w) ? pareceLugar(x, j) : 0;
       if (!fin) break;
       const valor = texto(x, j, fin);
-      if (destino === 'excluir') { if (x.exclusiones.length < 30) x.exclusiones.push(valor); }
-      else if (destino === 'incluir' && x.zonasLibres.length < 30) {
+      if (destino === 'excluir') { if (x.exclusiones.length < TOPE) x.exclusiones.push(valor); }
+      else if (destino === 'incluir' && x.zonasLibres.length < TOPE) {
         x.zonasLibres.push(valor);
         // Las sugerencias cuestan: solo se buscan si la duda todavía cabe en la lista.
         if (x.dudas.length < MAXIMO_DE_DUDAS) agregarDuda(x, 'lugar', valor, sugerenciasDeLugar(valor, x));
@@ -724,6 +830,7 @@ function listaDeLugares(x, i, destino = 'incluir') {
     }
     let hallado = -1;
     for (let q = k; q < x.n && q - k < 4; q++) {
+      if (x.usado[q]) break;
       const siguiente = lugarEn(x, q, true);
       if ((siguiente && !(siguiente.que === 'calle' && siguiente.explicita)) || pareceLugar(x, q)) { hallado = q; break; }
       if (!(['en', 'de', 'del', 'in', 'a', 'al', 'y'].includes(T[q].w) || ADJETIVOS_PREVIOS.has(T[q].w))) break;
@@ -762,7 +869,15 @@ function listaDeLugares(x, i, destino = 'incluir') {
     marcar(x, desde, fin);
     return fin;
   }
-  if (destino === 'incluir') {
+  // «…, moca no sé», «Moca tal vez»: no está seguro de ese lugar. No se busca ahí: se pregunta.
+  const inseguro = destino === 'incluir' ? dudaDespues(x, j) : 0;
+  if (inseguro) {
+    x.zonas.splice(zonasAntesDelUltimo);
+    x.zonasLibres.splice(libresAntesDelUltimo);
+    agregarDuda(x, 'lugar_inseguro', texto(x, inicioDelUltimo, inseguro));
+    marcar(x, j, inseguro);
+    j = inseguro;
+  } else if (destino === 'incluir') {
     // «pero en Sosúa no», «pa Santiago no»: la negación de después excluye el último lugar. «pa La Vega sí»: lo confirma.
     const neg = negacionDespues(x, j);
     if (neg) {
@@ -782,6 +897,8 @@ function listaDeLugares(x, i, destino = 'incluir') {
 // ¿El lugar «L» queda dentro de un lugar que ya se busca (Naco en Santo Domingo, La Vega en el Cibao)?
 function dentroDeLoBuscado(x, L) {
   if (L.que !== 'zona') return false;
+  // «en todo el país, sobre todo en Santiago»: todo queda dentro del país.
+  if (x.pais.explicito || x.pais.nombre) return true;
   const chico = ZONA_POR_CLAVE.get(L.clave);
   return x.zonas.some(c => {
     const grande = ZONA_POR_CLAVE.get(c);
@@ -873,6 +990,14 @@ function detectarSinMemo(x, j) {
   if (m && correccionValida(x, j, m)) return { tipo: 'cambio', fin: m.fin };
   m = buscarEn(T, j, CUALQUIER_LUGAR);
   if (m) return { tipo: 'difuso', fin: m.fin };
+  // «no sé si en La Vega también», «y puede que en La Vega», «tal vez en Moca»: no está seguro de ese lugar. Se pregunta.
+  m = buscarEn(T, j, DUDA_DE_LUGAR);
+  if (m) {
+    let q = m.fin;
+    while (q < x.n && q - m.fin < 3 && ['en', 'in', 'tambien', 'also', 'a', 'al', 'de', 'para', 'pa', 'y'].includes(T[q].w)) q++;
+    const L = lugarTras(x, q);
+    if (L && L.L.que === 'zona') return { tipo: 'lugarDudoso', fin: m.fin, lugar: L.q };
+  }
   m = buscarEn(T, j, AUTONOMIA_PEDIDA);
   if (m) return { tipo: 'autonomia', fin: m.fin };
   m = buscarEn(T, j, SOLO);
@@ -894,6 +1019,18 @@ function detectarSinMemo(x, j) {
   // «a las 8 de la mañana», «at 8am»: todavía no se puede elegir la hora. Se pregunta (nunca se pierde sin avisar).
   const hora = horaDeRevisar(x, j);
   if (hora) return { tipo: 'trabajoActual', fin: hora };
+  // «que me lo mandes cada día», «mándamela por WhatsApp»: mandarle los resultados a él no es contactar a nadie.
+  m = buscarEn(T, j, MANDAME);
+  if (m) {
+    let fin = m.fin;
+    const canal = ['por', 'via', 'by', 'on', 'al', 'to'].includes(T[fin]?.w) ? fin + 1 : -1;
+    const whatsapp = canal > 0 && ['whatsapp', 'wasap', 'wa', 'whatsap'].includes(T[canal]?.w);
+    if (whatsapp) fin = canal + 1;
+    return { tipo: 'mandame', fin, whatsapp };
+  }
+  // «no hago entregas en Cienfuegos», «no hago delivery a Gurabo», «we don't deliver to Moca»: ese lugar se excluye.
+  const entrega = entregaNegadaEn(x, j);
+  if (entrega) return entrega;
   const cap = capacidadEn(x, j);
   if (cap) return cap;
   const frec = frecuenciaEn(x, j);
@@ -914,9 +1051,26 @@ function detectarSinMemo(x, j) {
       if (q > j) return { tipo: 'horario', fin: q + 1 };
       if (['en', 'in'].includes(T[q + 1]?.w) && ['dolares', 'dolar', 'pesos', 'usd', 'dollars', 'us$', 'rd$'].includes(T[q + 2]?.w)) return { tipo: 'horario', fin: q + 3 };
     }
+    // «pago en dólares», «que paguen en dólares» (sin cifra): también.
+    const r = T[q]?.w === 'que' ? q + 1 : q;
+    if (['pago', 'paga', 'pagan', 'paguen', 'pague'].includes(T[r]?.w) && ['en', 'in'].includes(T[r + 1]?.w)
+      && ['dolares', 'dolar', 'pesos', 'usd', 'dollars', 'us$', 'rd$'].includes(T[r + 2]?.w) && !esFuerte(T[r + 3]) && (esComa(T[r + 3]) || !T[r + 3] || T[r + 3].tipo !== 'n')) {
+      let fin = r + 3;
+      // «pago en dólares, mínimo US$800»: la moneda ya va con la cifra. «…, mínimo 800»: la cifra va con lo de antes (se pregunta el salario).
+      const sal = esComa(T[fin]) ? salarioEn(T, fin + 1) : null;
+      const moneda = ['pesos', 'rd$'].includes(T[r + 2].w) ? 'DOP' : 'USD';
+      if (sal && sal.montos.length && sal.montos.every(mm => mm.moneda === moneda)) return { tipo: 'relleno', fin };
+      const cifra = esComa(T[fin]) && (T[fin + 1]?.tipo === 'n' || T[fin + 2]?.tipo === 'n' || sal);
+      if (!cifra) return { tipo: 'horario', fin };
+    }
   }
   const salario = salarioEn(T, j);
   if (salario) return { tipo: 'salario', fin: salario.fin, tramo: salario };
+  // «sueldo de veinte mil pesos», «quiero ganar treinta mil»: un salario escrito con letras. Se pregunta el salario.
+  if (x.tipo === 'laboral') {
+    const escrito = salarioEscritoEn(x, j);
+    if (escrito) return { tipo: 'salarioEscrito', fin: escrito };
+  }
   // «pagan 20 mil pero quiero 30»: otra cifra para el salario, sin «mil». No se sabe cuál es el mínimo: se pregunta el salario.
   if (x.tipo === 'laboral' && x.tramosSalario.length && ['quiero', 'pido', 'aspiro', 'quisiera', 'want', 'necesito'].includes(t.w)) {
     const q = ['a', 'unos', 'like', 'about'].includes(T[j + 1]?.w) ? j + 2 : j + 1;
@@ -1016,6 +1170,30 @@ function detectarSinMemo(x, j) {
   return null;
 }
 
+const MANDAME = indice(['mandamela', 'mandamelo', 'mandamelos', 'mandamelas', 'enviamela', 'enviamelo', 'enviamelos', 'me la mandas', 'me lo mandas',
+  'me los mandas', 'me lo mandes', 'me la mandes', 'me los mandes', 'que me lo mandes', 'que me la mandes', 'que me los mandes', 'me lo envies', 'que me lo envies',
+  'send it to me', 'send them to me', 'send me the list', 'mandame la lista', 'enviame la lista']);
+// Dónde no entrega: «no hago entregas en…», «no hago delivery a…», «no llego a…». Con un lugar, se excluye; sin lugar, se pregunta.
+const ENTREGA = indicePorClave([
+  [{ conNombre: true }, ['no hago entregas', 'no hacemos entregas', 'no hago delivery', 'no hacemos delivery', 'no hago envios', 'no hacemos envios',
+    'no hago domicilios', 'no hacemos domicilios', 'no doy delivery', 'no damos delivery', 'we dont deliver', 'i dont deliver', 'dont deliver',
+    'we do not deliver', 'i do not deliver', 'no delivery', 'no deliveries']],
+  [{}, ['no entrego', 'no entregamos', 'no reparto', 'no repartimos', 'no llego', 'no llegamos', 'no llevo', 'no llevamos', 'no despacho', 'no despachamos',
+    'no envio', 'no enviamos', 'no doy servicio', 'no damos servicio']],
+]);
+function entregaNegadaEn(x, j) {
+  const { T } = x;
+  // «pero no hago delivery a Gurabo»: el «pero» va con lo que sigue.
+  const m = buscarEn(T, ['pero', 'y', 'e', 'but', 'and'].includes(T[j].w) ? j + 1 : j, ENTREGA);
+  if (!m) return null;
+  let q = m.fin;
+  while (q < x.n && q - m.fin < 3 && ['a', 'al', 'en', 'para', 'pa', 'hasta', 'to', 'in'].includes(T[q].w)) q++;
+  const L = lugarTras(x, q);
+  if (L && L.L.que === 'zona') return { tipo: 'entrega', fin: m.fin, lugar: L.q };
+  if (q > m.fin && pareceLugar(x, q)) return { tipo: 'entrega', fin: m.fin, lugar: q };
+  return m.datos[0].conNombre ? { tipo: 'entrega', fin: m.fin, lugar: -1 } : null;
+}
+
 const VENDEN_ELLOS = new Set(['venden', 'vende', 'vendan', 'venda', 'sell', 'sells', 'ofrecen', 'ofrece', 'ofrezcan', 'ofrezca', 'offer', 'offers', 'selling']);
 const NEGACIONES = new Set(['no', 'not', 'dont', 'nunca', 'never', 'ni', 'jamas']);
 
@@ -1059,6 +1237,8 @@ function correccionValida(x, j, m) {
 // «Vivo en Moca», «soy de San Juan», «desde Santiago»: solo si después viene un lugar.
 function origenValido(x, j, m) {
   const L = lugarTras(x, m.fin);
+  // «Vivo en Miami», «I live in New York»: dónde vive la persona, aunque sea fuera del país (no es dónde busca).
+  if (L && L.L.que === 'extranjero' && m.datos[0].frase !== 'desde') return true;
   if (!L || L.L.que !== 'zona') return false;
   // «Vendo software desde Santiago»: después de lo que se vende es de dónde sale. «trabajo desde casa» no es un lugar.
   if (m.datos[0].frase === 'desde') return x.tipo === 'comercial' && x.usado[j - 1] === 1;
@@ -1417,7 +1597,7 @@ function analizarNegocio(x, a, b, { libre }) {
   // «Le vendo agua a Banreservas y quiero más bancos», «Ya le vendo a la UASD»: ese negocio con nombre propio ya es su cliente.
   // No se busca: se excluye (ya le compra).
   if (valorLibre && libre && (x.leVende || x.quiereMas) && !sectores.length && hayNombrePropio(x, s, ultimo)) {
-    if (x.exclusiones.length < 30) x.exclusiones.push(valorLibre);
+    if (x.exclusiones.length < TOPE) x.exclusiones.push(valorLibre);
     x.supuestos.add('clientes_actuales');
     return true;
   }
@@ -1457,6 +1637,7 @@ const ADJETIVOS_DE_NEGOCIO = new Set(['boutique', 'spa', 'resort', 'express', 'g
 function spanObjetivo(x, k, { libre, deClientes = false }) {
   const { T } = x;
   const items = [];
+  let productoDespues = -1;
   let a = k;
   let j = k;
   let fin = k;
@@ -1487,6 +1668,8 @@ function spanObjetivo(x, k, { libre, deClientes = false }) {
     if (t.w === 'mas' && T[j + 1]?.w === 'o' && T[j + 2]?.w === 'menos') { j += 3; continue; }
     if (SEPARADORES.has(t.w) && T[j - 1]?.tipo === 'n' && T[j + 1]?.tipo === 'n') { j++; continue; }
     if (esComa(t) || SEPARADORES.has(t.w)) {
+      // «Vendo sillas a restaurantes y mesas a hoteles»: después de la «y» viene otro producto con su negocio, no otro negocio.
+      if (SEPARADORES.has(t.w) && otroProductoConSuNegocio(x, j + 1)) { productoDespues = j; break; }
       if ((j > a || items.length) && empiezaNegocio(x, j + 1, libre && !esComa(t))) { if (j > a) items.push([a, j]); a = j + 1; j++; continue; }
       if (SEPARADORES.has(t.w) && x.ent[j + 1]?.datos.some(d => d.que === 'tamano')) { if (j > a) items.push([a, j]); a = j + 1; j++; continue; }
       break;
@@ -1567,7 +1750,32 @@ function spanObjetivo(x, k, { libre, deClientes = false }) {
     }
   }
   if (usadoAlguno) x.secuencia.push({ t: 'T' });
+  if (productoDespues >= 0) return spanProducto(x, productoDespues, { fin: productoDespues + 1, frase: 'y' });
   return Math.max(j, fin);
+}
+
+// «… y mesas a hoteles», «… y gomas a gomeras»: después de una lista de negocios, ¿empieza en «k» otro producto (que no es un negocio
+// conocido) seguido de «a» y su negocio? Solo si ya dijo lo que vende.
+function otroProductoConSuNegocio(x, k) {
+  const { T } = x;
+  if (x.tipo !== 'comercial' || !x.productos.length) return false;
+  let j = k;
+  while (j < x.n && ARTICULOS.has(T[j].w) && !x.ent[j]) j++;
+  const t = T[j];
+  if (!t || t.tipo !== 'p' || esRelleno(t.w) || x.ent[j]?.datos.some(d => ['sector', 'zona', 'tamano', 'pais', 'extranjero'].includes(d.que)) || detectar(x, j)
+    || lugarEn(x, j, true)) return false;
+  for (let q = j + 1; q < x.n && q - j <= 4; q++) {
+    const w = T[q];
+    if (w.tipo === 's') return false;
+    if (['a', 'al', 'to'].includes(w.w)) {
+      let z = q + 1;
+      while (z < x.n && ARTICULOS.has(T[z].w) && !x.ent[z]) z++;
+      if (x.ent[z]?.datos.some(d => d.que === 'sector' && !d.general)) return true;
+      return Boolean(T[z]?.tipo === 'p' && !esRelleno(T[z].w) && !x.ent[z] && !detectar(x, z) && !lugarEn(x, z, true) && !['precio', 'precios', 'buen', 'mejor', 'credito', 'domicilio'].includes(T[z].w));
+    }
+    if (x.ent[q]?.datos.some(d => ['sector', 'zona'].includes(d.que)) || (detectar(x, q) && !x.ent[q]) || (PREP_LUGAR_FUERTE.has(w.w) && !['de', 'del'].includes(w.w))) return false;
+  }
+  return false;
 }
 
 // ---------- Exclusiones ----------
@@ -1839,7 +2047,7 @@ function finDePreferencia(x, desde) {
     }
     if (j > desde) {
       const d = detectar(x, j);
-      if (d && !['condicion', 'sin', 'lugar', 'direccion'].includes(d.tipo) && !(d.tipo === 'salario' && x.tipo === 'comercial')) break;
+      if (d && !['condicion', 'sin', 'lugar', 'direccion', 'salarioEscrito'].includes(d.tipo) && !(d.tipo === 'salario' && x.tipo === 'comercial')) break;
       if (d && d.tipo === 'condicion' && d.clave === 'con' && T[j - 1]?.w === 'y') break;
     }
     if (['en', 'in', 'de', 'del'].includes(t.w)) {
@@ -1851,6 +2059,8 @@ function finDePreferencia(x, desde) {
       if (L && (L.que === 'zona' || L.que === 'pais') && t.w !== 'de' && !(j === desde && (L.cardinal || dentroDeLoBuscado(x, L)))) break;
       // «los que más me interesan son los de Bávaro»: «los de…» es la preferencia.
       if (L && L.que === 'zona' && t.w === 'de' && x.tipo === 'comercial' && !x.ent[j - 1] && !ELIPTICOS.has(T[j - 1]?.w)) break;
+      // «la prioridad son las farmacias grandes de Santiago» sin otro lugar: Santiago es dónde busca, no parte de la preferencia.
+      if (L && L.que === 'zona' && t.w === 'de' && j > desde && !x.zonas.length && !x.zonasLibres.length && !x.pais.explicito && !x.pais.nombre) break;
     }
     if (['y', 'and'].includes(t.w) && (capacidadEn(x, j + 1) || frecuenciaEn(x, j + 1) || detectar(x, j + 1)?.tipo === 'verbo'
       || ['si', 'ademas', 'also'].includes(T[j + 1]?.w) || VERBOS_REVISAR.has(T[j + 1]?.w))) break;
@@ -1898,6 +2108,8 @@ function spanCondicion(x, i, d) {
     }
   }
   let inicio = i;
+  // «I have 3 years experience», «yo tengo experiencia»: la preferencia empieza en «I».
+  if (['i', 'yo', 'we', 'nosotros'].includes(T[i - 1]?.w) && !x.usado[i - 1]) inicio = i - 1;
   // «solo los que…» se guarda completo.
   if (['los', 'las'].includes(T[i - 1]?.w) && ['solo', 'solamente'].includes(T[i - 2]?.w)) inicio = i - 2;
   // «bilingüe», «remoto», «medio tiempo»: la condición es esa palabra sola. «de noche no»: con la negación después, se excluye.
@@ -1905,7 +2117,7 @@ function spanCondicion(x, i, d) {
   if (d.corta) {
     if (['solo', 'solamente', 'only'].includes(T[i - 1]?.w) && !x.usado[i - 1] && !negacionDespues(x, d.fin)) inicio = i - 1;
     const neg = negacionDespues(x, d.fin);
-    if (neg) { if (x.exclusiones.length < 30) x.exclusiones.push(texto(x, inicio, d.fin)); marcar(x, inicio, neg); return neg; }
+    if (neg) { if (x.exclusiones.length < TOPE) x.exclusiones.push(texto(x, inicio, d.fin)); marcar(x, inicio, neg); return neg; }
     agregarPrioridad(x, inicio, d.fin);
     marcar(x, inicio, d.fin);
     return d.fin;
@@ -1964,9 +2176,11 @@ const DESPUES_DEL_EMPLEO = new Set(['urgente', 'ya', 'pronto', 'rapido', 'rapida
 
 function agregarPrioridadTexto(x, valor) {
   const limpio = String(valor).replace(/\s+/g, ' ').trim();
-  if (limpio && x.prioridades.length < 30 && !x.prioridades.some(p => comparable(p) === comparable(limpio))) x.prioridades.push(limpio);
+  if (limpio && x.prioridades.length < TOPE && !x.prioridades.some(p => comparable(p) === comparable(limpio))) x.prioridades.push(limpio);
 }
 
+const CUANDO_ES_EL_TRABAJO = new Set(['weekend', 'weekends', 'night', 'nights', 'evening', 'evenings', 'morning', 'mornings', 'day', 'weekday', 'overnight',
+  'summer', 'seasonal', 'temporary', 'temp', 'side', 'remote', 'online', 'part', 'full', 'time', 'parttime', 'fulltime']);
 // «cashier job», «nursing jobs», «security guard job»: el empleo va antes de «job».
 function puestoAntesDeJob(x, j) {
   const { T } = x;
@@ -1975,6 +2189,10 @@ function puestoAntesDeJob(x, j) {
   for (let k = j + 1; k <= j + 2 && k < x.n; k++) {
     if (!['job', 'jobs'].includes(T[k].w)) continue;
     for (let q = j; q < k; q++) if (T[q].tipo !== 'p' || esRelleno(T[q].w) || lugarEn(x, q, true)) return null;
+    // «a weekend job as a bartender», «a night job»: cuándo es el trabajo, no cuál. Es una preferencia; el empleo va después.
+    let condicion = true;
+    for (let q = j; q < k; q++) if (!CUANDO_ES_EL_TRABAJO.has(T[q].w)) condicion = false;
+    if (condicion) return { tipo: 'horario', fin: k };
     return { tipo: 'puesto', fin: k + 1, ini: j, finValor: k };
   }
   return null;
@@ -2008,6 +2226,8 @@ function spanPuesto(x, i, d) {
     return d.fin;
   }
   let s = d.fin;
+  // «Find jobs for me as a software developer»: «me» no es el empleo.
+  if (['for', 'para'].includes(T[s - 1]?.w) && ['me', 'us'].includes(T[s]?.w)) s++;
   // «trabajo estable de chofer»: se salta el adjetivo; si es una condición real, queda como preferencia.
   const conAdjetivo = s < x.n && ADJETIVOS_DE_EMPLEO.has(T[s].w);
   while (s < x.n && ADJETIVOS_DE_EMPLEO.has(T[s].w)) {
@@ -2025,6 +2245,14 @@ function spanPuesto(x, i, d) {
   if (modalidad && modalidad.datos[0].clave === 'laboral' && modalidad.datos[0].corta && ['de', 'como', 'of', 'as'].includes(T[modalidad.fin]?.w)) {
     agregarPrioridad(x, s, modalidad.fin);
     s = modalidad.fin + 1;
+  } else if (modalidad && modalidad.datos[0].clave === 'laboral' && modalidad.datos[0].corta) {
+    // «trabajo de medio tiempo en Santiago»: la modalidad no dice qué empleo. Queda como preferencia y se pregunta el empleo.
+    const sig = T[modalidad.fin];
+    if (!sig || sig.tipo === 's' || PREP_LUGAR.has(sig.w) || ['que', 'con', 'y', 'pero', 'cerca', 'that', 'with', 'and', 'but'].includes(sig.w) || detectar(x, modalidad.fin)) {
+      agregarPrioridad(x, s, modalidad.fin);
+      marcar(x, i, modalidad.fin);
+      return modalidad.fin;
+    }
   }
   while (s < x.n && ['un', 'una', 'de', 'como', 'a', 'an', 'the', 'as', 'el', 'la'].includes(T[s].w) && T[s + 1] && T[s + 1].tipo === 'p') s++;
   // «trabajo de cualquier cosa», «trabajo de lo que sea»: no dice qué empleo; se pregunta.
@@ -2088,7 +2316,7 @@ function spanPuesto(x, i, d) {
   // «chofer de Uber no, de chofer privado»: lo negado no es el empleo que busca; se excluye.
   const negado = !soloRelleno && ['no', 'not', 'tampoco'].includes(T[j]?.w) ? negacionDespues(x, j) : 0;
   if (negado) {
-    if (x.exclusiones.length < 30) x.exclusiones.push(valor);
+    if (x.exclusiones.length < TOPE) x.exclusiones.push(valor);
     marcar(x, i, negado);
     return negado;
   }
@@ -2102,7 +2330,8 @@ function spanPuesto(x, i, d) {
 const PRODUCTO_RELLENO = new Set(['cosas', 'cosa', 'algo', 'productos', 'producto', 'servicios', 'servicio', 'mis servicios', 'mis productos', 'nuestros servicios',
   'nuestros productos', 'lo que vendo', 'lo que ofrezco', 'lo que tengo', 'de todo', 'stuff', 'things', 'products', 'services', 'my services', 'my products',
   'our services', 'our products', 'eso', 'esto', 'lo mio', 'mi producto', 'mi servicio', 'mis cosas', 'los', 'las', 'lo', 'them', 'it', 'mas', 'mucho',
-  'mucho mas', 'bastante', 'more', 'a lot', 'mas cosas']);
+  'mucho mas', 'bastante', 'more', 'a lot', 'mas cosas', 'lo mismo', 'lo mismo que', 'the same', 'same', 'the same thing', 'the same as']);
+const PRODUCTO_SIN_DECIR = /^(mis |nuestros |nuestras |my |our )?(cosas|cosa|algo|productos|producto|servicios|servicio|stuff|things|products|services)$|^(lo mismo|lo mismo que|the same|same|the same thing|the same as)$/;
 // «vender agua en botellones»: «vender» no es parte de lo que se vende.
 const VENDER_AL_INICIO = new Set(['vender', 'venta', 'ventas', 'venderle', 'venderles']);
 // «por medio de distribuidores», «a través de Instagram»: cómo vende, no qué vende.
@@ -2135,7 +2364,8 @@ function spanProducto(x, i, d, destino = 'productos') {
   // «reparo inversores»: el servicio va con su verbo («reparo inversores», no solo «inversores»).
   let s = ['reparo', 'reparamos', 'arreglo', 'arreglamos'].includes(d.frase) ? i : d.fin;
   const ingles = DISPARADORES_EN_INGLES.has(d.frase || '');
-  const articulos = ingles ? ['a', 'an', 'the', 'some', 'new'] : ['un', 'una', 'unos', 'unas', 'el', 'la', 'los', 'las', 'an', 'the', 'some', 'tambien'];
+  // «to sell them coffee»: «them» no es parte de lo que vende.
+  const articulos = ingles ? ['a', 'an', 'the', 'some', 'new', 'them', 'us', 'him', 'her'] : ['un', 'una', 'unos', 'unas', 'el', 'la', 'los', 'las', 'an', 'the', 'some', 'tambien'];
   // «Lo que yo vendo es hielo», «what I sell is software»: «es» no es parte de lo que vende.
   const loQue = (T[i - 1]?.w === 'que' && T[i - 2]?.w === 'lo') || (['yo', 'nosotros'].includes(T[i - 1]?.w) && T[i - 2]?.w === 'que' && T[i - 3]?.w === 'lo')
     || T[i - 1]?.w === 'what' || (['i', 'we'].includes(T[i - 1]?.w) && T[i - 2]?.w === 'what');
@@ -2146,6 +2376,8 @@ function spanProducto(x, i, d, destino = 'productos') {
     s++;
   }
   while (s < x.n && articulos.includes(T[s].w)) s++;
+  // «Find clients for me in Santiago»: «me» no es lo que vende.
+  if (/(for|para)$/.test(d.frase || '') && ['me', 'us', 'nosotros'].includes(T[s]?.w)) s++;
   // «Le vendo agua a…», «Ya le vendo a…»: le vende a alguien que ya es su cliente.
   if (destino === 'productos' && (['le', 'les'].includes(T[i - 1]?.w) || T[i - 1]?.w === 'ya' || T[i - 2]?.w === 'ya')) x.leVende = true;
   const sinProducto = () => { marcar(x, i, d.fin); x.ultimoProductoFin = d.fin; if (destino === 'productos') x.ventaSinProducto = true; return d.fin; };
@@ -2175,6 +2407,20 @@ function spanProducto(x, i, d, destino = 'productos') {
     marcar(x, s, b);
     if (['a', 'al', 'to'].includes(T[b]?.w) || !T[b] || T[b].tipo === 's') { marcar(x, i, b); x.ultimoProductoFin = b; return b; }
     s = b;
+  }
+  // «my hotel supplies business», «my gym equipment», «my car wash supplies»: en inglés lo que describe va antes; lo que vende es todo eso.
+  if (['my', 'our'].includes(T[s]?.w) && destino === 'productos') {
+    const n = negocioPropioEn(x, s + 1, T[s].w);
+    if (n?.producto) {
+      const [pa, pb] = n.producto;
+      let fin = pb;
+      if (EMPRESA.has(T[fin]?.w)) fin = x.ent[fin]?.fin || fin + 1;
+      x.productos.push(texto(x, pa, pb));
+      x.secuencia.push({ t: 'P', valor: comparable(texto(x, pa, pb)) });
+      marcar(x, i, fin);
+      x.ultimoProductoFin = fin;
+      return fin;
+    }
   }
   // «clientes para mi negocio de uniformes», «clientes para mi taller de mecánica».
   if (POSESIVOS.has(T[s]?.w)) {
@@ -2291,6 +2537,9 @@ function spanProducto(x, i, d, destino = 'productos') {
   const valor = texto(x, s, fin);
   marcar(x, i, Math.max(finLeido, d.fin));
   if (destino !== 'ninguno') x.ultimoProductoFin = j;
+  // «Vendo productos de mi tienda»: dijo que vende, pero no qué. No se toma su negocio («tienda») como lo que vende: se pregunta.
+  // («quiero vender más» sí habla de lo de su negocio).
+  if (valor && PRODUCTO_SIN_DECIR.test(comparable(valor)) && destino === 'productos') x.productoRelleno = true;
   if (valor && !PRODUCTO_RELLENO.has(comparable(valor))) {
     if (destino === 'productos') { x.productos.push(valor); x.secuencia.push({ t: 'P', valor: comparable(valor) }); }
     else if (destino === 'propios') x.productosPropios.push(valor);
@@ -2512,9 +2761,16 @@ function otroProductoNegado(x, i) {
   let k = i;
   if (k === x.ultimoProductoFin && (SEPARADORES.has(T[k].w) || ['pero', 'but'].includes(T[k].w))) k++;
   else if (!(k - 1 === x.ultimoProductoFin && (esComa(T[k - 1]) || SEPARADORES.has(T[k - 1].w)))) return 0;
+  else if (['pero', 'but'].includes(T[k].w)) k++;
   if (!['no', 'ni', 'not', 'nor'].includes(T[k]?.w)) return 0;
   const q = k + 1;
   const sig = T[q];
+  // «Vendo café, pero no café molido», «publicidad en vallas, no en redes sociales»: lo negado es una forma de lo que vende.
+  const ultimo = comparable(x.productos[x.productos.length - 1] || '');
+  if (ultimo && sig && sig.tipo === 'p' && !lugarEn(x, q, true) && !lugarEn(x, q + 1, true) && !x.ent[q + 1]?.datos.some(dd => dd.que === 'sector')) {
+    if (sig.w.length > 2 && !esRelleno(sig.w) && ultimo.split(' ').includes(sig.w)) return q;
+    if (['en', 'de', 'para', 'con', 'in', 'for', 'with'].includes(sig.w) && ` ${ultimo} `.includes(` ${sig.w} `) && T[q + 1]?.tipo === 'p') return q;
+  }
   if (!sig || sig.tipo !== 'p' || esRelleno(sig.w) || INICIO_DE_EXCLUSION.has(sig.w) || PREP_LUGAR.has(sig.w) || detectar(x, q)) return 0;
   if (x.ent[q]?.datos.some(dd => ['sector', 'zona', 'tamano', 'pais', 'extranjero', 'capcosa', 'calle'].includes(dd.que)) || lugarEn(x, q, true)) return 0;
   return q;
@@ -2527,6 +2783,13 @@ function manejar(x, d, i) {
       // «sin experiencia no»: no se sabe si la quiere sin experiencia o no. Se pregunta.
       const neg = negacionDespues(x, d.fin);
       if (neg) { agregarDuda(x, 'texto', texto(x, i, neg)); marcar(x, i, neg); return neg; }
+      // «No busco trabajo sin experiencia»: la negación de antes dice lo contrario (tiene experiencia). Se pregunta.
+      for (let q = i - 1; q >= 0 && q >= i - 5 && !esFuerte(T[q]) && !esComa(T[q]); q--) {
+        if (!['no', 'not', 'nunca', 'never', 'dont'].includes(T[q].w)) continue;
+        agregarDuda(x, 'texto', texto(x, q, d.fin));
+        marcar(x, q, d.fin);
+        return d.fin;
+      }
       x.experiencia = 'no_requerida';
       marcar(x, i, d.fin);
       return d.fin;
@@ -2537,7 +2800,7 @@ function manejar(x, d, i) {
       // «I don't want to find investors»: lo que no quiere no se pregunta. «no a la competencia»: se excluye.
       let a = i;
       while (a > 0 && a > i - 4 && !esFuerte(T[a - 1]) && !esComa(T[a - 1])) a--;
-      if (d.clave === 'competidores' && x.exclusiones.length < 30) x.exclusiones.push(texto(x, i, d.fin));
+      if (d.clave === 'competidores' && x.exclusiones.length < TOPE) x.exclusiones.push(texto(x, i, d.fin));
       marcar(x, a, d.fin);
       return d.fin;
     }
@@ -2598,7 +2861,17 @@ function manejar(x, d, i) {
       marcar(x, i, d.fin);
       const L = lugarTras(x, d.fin);
       marcar(x, d.fin, L.q);
-      return listaDeLugares(x, L.q, 'propia');
+      const fin = listaDeLugares(x, L.q, 'propia');
+      // «Me mudé a Santiago desde La Vega»: de dónde viene no es dónde está ni dónde busca.
+      const antes = ['desde', 'de', 'from'].includes(T[fin]?.w) && /mud|moved/.test(texto(x, i, d.fin)) ? lugarTras(x, fin + 1) : null;
+      if (antes && antes.L.que === 'zona') {
+        const propias = x.zonasPropias.length;
+        marcar(x, fin, antes.q);
+        const fin2 = listaDeLugares(x, antes.q, 'propia');
+        x.zonasPropias.length = propias;
+        return fin2;
+      }
+      return fin;
     }
     case 'usar': {
       // Si nombra una fuente («usa Google Maps»), se pregunta por la fuente; si no, por lo que pidió.
@@ -2629,6 +2902,13 @@ function manejar(x, d, i) {
       marcar(x, i, d.fin);
       return d.fin;
     case 'cap': {
+      // «Research Hotel Matum», «Investiga el Hotel Matum»: investigar una empresa en particular llega en la fase 3.
+      if (!d.neg && d.claves.includes('investigar')) {
+        let q = d.fin;
+        while (q < x.n && ['a', 'al', 'el', 'la', 'the', 'to'].includes(T[q].w)) q++;
+        const nombre = finDeNombre(x, q);
+        if (nombre > q && hayNombrePropio(x, q, nombre)) return objetivoNoDisponible(x, i, nombre, 'una_empresa');
+      }
       for (const c of d.claves) (d.neg ? x.capNegadas : x.capPedidas).add(c);
       // «don't email them», «never email them»: tampoco se preparan correos.
       if (d.neg && /^(e ?mail|mail)/.test(d.frase || '')) x.capNegadas.add('correos');
@@ -2637,15 +2917,33 @@ function manejar(x, d, i) {
       if (d.neg && d.enviar) x.capNegadas.add('contactar');
       if (x.capPedidas.has('contactar')) { x.capPedidas.delete('contactar'); x.contactarPedido = true; }
       marcar(x, i, d.fin);
-      return finDeObjetoDeCapacidad(x, d.fin);
+      // «Don't email or call anyone»: lo de después de la «o» también se niega.
+      let fin = d.fin;
+      if (d.neg && ['or', 'o', 'ni', 'nor', 'y', 'and'].includes(T[fin]?.w)
+        && ['call', 'llames', 'llamar', 'contact', 'contactes', 'escribas', 'text', 'message', 'whatsapp', 'wasap'].includes(T[fin + 1]?.w)) {
+        x.capNegadas.add('contactar');
+        marcar(x, fin, fin + 2);
+        fin += 2;
+      }
+      return finDeObjetoDeCapacidad(x, fin);
     }
-    case 'frec':
+    case 'frec': {
+      // «every day except Sundays», «todos los días menos los fines de semana», «cada semana pero no los lunes»:
+      // todavía no puedo saltarme días. Nunca va a «Excluir».
+      const dias = d.neg ? 0 : diasExceptuados(x, d.fin);
+      if (dias) {
+        if (d.nd || d.clave === 'diaria') agregarDuda(x, 'frecuencia_no_disponible', texto(x, d.ini, dias));
+        else { x.frecuencias.push({ clave: d.clave, texto: texto(x, d.ini, d.fin), dia: true }); }
+        marcar(x, i, dias);
+        return dias;
+      }
       if (!d.neg) {
         if (d.nd) agregarDuda(x, 'frecuencia_no_disponible', texto(x, d.ini, d.fin));
         else x.frecuencias.push({ clave: d.clave, texto: texto(x, d.ini, d.fin), dia: d.dia });
-      }
+      } else if (d.dia) x.supuestos.add('dia_semana');
       marcar(x, i, d.fin);
       return d.fin;
+    }
     case 'telefono':
       x.supuestos.add('telefono');
       marcar(x, i, d.fin);
@@ -2653,17 +2951,55 @@ function manejar(x, d, i) {
     case 'salario':
       if (d.tramo.soloPeriodo) agregarPrioridad(x, i, d.fin);
       else if (x.tipo === 'laboral') {
-        x.tramosSalario.push({ ...d.tramo, texto: texto(x, i, d.fin) });
+        x.tramosSalario.push({ ...d.tramo, texto: texto(x, i, d.fin), pos: i });
         for (const e of d.tramo.extras) agregarPrioridad(x, e.ini, e.fin);
       } else if (d.tramo.montos.length) agregarDuda(x, 'texto', texto(x, i, d.fin));
       marcar(x, i, d.fin);
       return d.fin;
     case 'salarioDudoso':
-      x.tramosSalario.push({ montos: [], extras: [], alternativa: true, texto: texto(x, i, d.fin) });
+      x.tramosSalario.push({ montos: [], extras: [], alternativa: true, texto: texto(x, i, d.fin), pos: i });
+      marcar(x, i, d.fin);
+      return d.fin;
+    case 'salarioEscrito':
+      x.tramosSalario.push({ montos: [], extras: [], dudoso: true, texto: texto(x, i, d.fin), pos: i });
       marcar(x, i, d.fin);
       return d.fin;
     case 'excluir':
       return spanExcluir(x, i, d);
+    case 'lugarDudoso': {
+      // El lugar se lee (para saber dónde termina) pero no se busca ahí.
+      const zonas = x.zonas.length;
+      const libres = x.zonasLibres.length;
+      const secuencia = x.secuencia.length;
+      marcar(x, i, d.lugar);
+      let fin = listaDeLugares(x, d.lugar, 'incluir');
+      x.zonas.length = zonas;
+      x.zonasLibres.length = libres;
+      x.secuencia.length = secuencia;
+      if (['tambien', 'too', 'also'].includes(T[fin]?.w)) fin++;
+      agregarDuda(x, 'lugar_inseguro', texto(x, i, fin));
+      marcar(x, i, fin);
+      return fin;
+    }
+    case 'pero': {
+      // «but restaurants only in Santiago», «pero los restaurantes solo en Santiago»: una regla solo para una parte. Se pregunta.
+      const fin = reglaParaUnaParte(x, d.fin);
+      if (fin) { agregarDuda(x, 'combinacion_parcial', texto(x, i, fin)); marcar(x, i, fin); return fin; }
+      marcar(x, i, d.fin);
+      return d.fin;
+    }
+    case 'mandame':
+      // «mándamela por WhatsApp»: todavía no se manda nada por WhatsApp. Se avisa. Sin WhatsApp, lo que encuentre se ve en OPORTIA.
+      if (d.whatsapp) x.supuestos.add('enviar_whatsapp');
+      marcar(x, i, d.fin);
+      return d.fin;
+    case 'entrega': {
+      if (d.lugar >= 0) { marcar(x, i, d.lugar); return listaDeLugares(x, d.lugar, 'excluir'); }
+      const fin = finDeRazon(x, d.fin);
+      agregarDuda(x, 'texto', texto(x, i, fin));
+      marcar(x, i, fin);
+      return fin;
+    }
     case 'prioridad': {
       // «colmados y farmacias sobre todo», «restaurantes sobre todo»: la prioridad va con los negocios de antes.
       const sig = T[d.fin];
@@ -2720,6 +3056,45 @@ function manejar(x, d, i) {
       marcar(x, i, d.fin);
       return d.fin;
   }
+}
+
+// Después de una frecuencia, ¿dice qué días no («except Sundays», «menos los fines de semana», «pero no los lunes»)? Devuelve dónde termina, o 0.
+const DIAS_SUELTOS = new Set(['weekends', 'weekend', 'feriados', 'holidays', 'festivos']);
+function diasExceptuados(x, k) {
+  const { T } = x;
+  let q = esComa(T[k]) ? k + 1 : k;
+  if (['pero', 'but', 'y', 'and'].includes(T[q]?.w) && ['no', 'not'].includes(T[q + 1]?.w)) q += 2;
+  else if (['excepto', 'except', 'menos', 'salvo', 'sin', 'excluding', 'minus', 'besides'].includes(T[q]?.w)) q++;
+  else return 0;
+  const esDia = r => DIAS.has(T[r]?.w) || DIAS.has(T[r]?.w.replace(/s$/, '')) || DIAS_SUELTOS.has(T[r]?.w);
+  let fin = 0;
+  for (let vueltas = 0; vueltas < 7 && q < x.n; vueltas++) {
+    while (q < x.n && ['los', 'las', 'el', 'la', 'on', 'the', 'a', 'for', 'de'].includes(T[q].w) && !esDia(q)) q++;
+    if (['fin', 'fines'].includes(T[q]?.w) && T[q + 1]?.w === 'de' && T[q + 2]?.w === 'semana') q += 3;
+    else if (esDia(q)) q++;
+    else break;
+    fin = q;
+    if (!(SEPARADORES.has(T[q]?.w) || esComa(T[q]))) break;
+    q++;
+  }
+  return fin;
+}
+
+// Después de «pero»: un negocio de los que se buscan (no todos) con un lugar solo para él. Devuelve dónde termina, o 0.
+function reglaParaUnaParte(x, k) {
+  const { T } = x;
+  let j = k;
+  while (j < x.n && ARTICULOS.has(T[j].w) && !x.ent[j]) j++;
+  const s = datoDe(x, j, 'sector');
+  if (!s || s.general || !x.sectores.includes(s.clave) || new Set(x.sectores).size < 2) return 0;
+  let q = x.ent[j].fin;
+  if (['solo', 'only', 'solamente', 'just'].includes(T[q]?.w)) q++;
+  if (!['en', 'in', 'de', 'del', 'at'].includes(T[q]?.w)) return 0;
+  const L = lugarTras(x, q + 1);
+  if (!L || L.L.que !== 'zona') return 0;
+  let fin = L.L.fin;
+  while ((SEPARADORES.has(T[fin]?.w) || esComa(T[fin])) && lugarEn(x, fin + 1, true)?.que === 'zona') fin = lugarEn(x, fin + 1, true).fin;
+  return fin;
 }
 
 // Algo que todavía no hace (competidores, proveedores, empleados, publicar…): se dice y no se lee nada más de esa frase.
@@ -2807,8 +3182,13 @@ function finDeObjetoDeCapacidad(x, k) {
     marcar(x, j, x.ent[j + 1].fin);
     j = x.ent[j + 1].fin;
   }
-  for (let vueltas = 0; vueltas < 3; vueltas++) {
-    if (['todavia', 'aun', 'ya', 'yet', 'for', 'now', 'them', 'tampoco', 'tambien', 'directamente'].includes(T[j]?.w)) { marcar(x, j, j + 1); j++; continue; }
+  for (let vueltas = 0; vueltas < 4; vueltas++) {
+    if (['todavia', 'aun', 'ya', 'yet', 'for', 'now', 'them', 'tampoco', 'tambien', 'directamente', 'yourself'].includes(T[j]?.w)) { marcar(x, j, j + 1); j++; continue; }
+    // «contáctalos tú mismo»: lo hace OPORTIA (contactar se enciende a mano); no es pedir más libertad.
+    if (T[j]?.w === 'tu' && ['mismo', 'misma'].includes(T[j + 1]?.w)) { marcar(x, j, j + 2); j += 2; continue; }
+    // «don't email anyone (yet)», «no emails to anyone», «a nadie»: a quién no se escribe no es a quién se busca.
+    const q = ['a', 'to'].includes(T[j]?.w) ? j + 1 : j;
+    if (['anyone', 'anybody', 'everyone', 'nobody', 'nadie', 'ninguno', 'ninguna'].includes(T[q]?.w)) { marcar(x, j, q + 1); j = q + 1; continue; }
     if (['a', 'al', 'to'].includes(T[j]?.w) && T[j + 1] && T[j + 1].tipo === 'p' && !x.ent[j + 1]?.datos.some(d => d.que === 'sector')) {
       let b = j + 1;
       while (b < x.n && b - j < 5 && T[b].tipo === 'p' && !detectar(x, b) && !lugarEn(x, b, false)) b++;
@@ -2849,6 +3229,17 @@ function manejarEntidad(x, i) {
   }
   const e = x.ent[i];
   if (e.datos.some(d => d.que === 'fuente')) {
+    // «mi instagram es @cervezajr», «mi tienda en instagram es instagram.com/petjunior»: su propia cuenta, no de dónde sacar la información.
+    let propia = false;
+    for (let q = i - 1; q >= 0 && q >= i - 3 && !esFuerte(T[q]) && !esComa(T[q]); q--) if (['mi', 'mis', 'nuestro', 'nuestra', 'my', 'our'].includes(T[q].w)) propia = true;
+    if (propia) {
+      let fin = e.fin;
+      if (['es', 'is'].includes(T[fin]?.w) || (esComa(T[fin]) && x.original[T[fin].ini] === ':')) fin++;
+      if (esEnlace(x, fin) || (T[fin]?.tipo === 'p' && x.original[T[fin].ini - 1] === '@')) fin++;
+      else if (fin > e.fin) fin--;
+      marcar(x, i, fin);
+      return fin;
+    }
     let fin = e.fin;
     const partes = [texto(x, i, e.fin)];
     while (SEPARADORES.has(T[fin]?.w) || esComa(T[fin])) {
@@ -2900,7 +3291,10 @@ const OBJETIVO_TRIG = indice(['a', 'al', 'para', 'to', 'for', 'encontrar', 'encu
   'conseguir', 'consigueme', 'venderle a', 'venderles a', 'vender a', 'venderle', 'venderles', 'dirigido a', 'enfocado en', 'clientes como', 'targeting',
   'looking for', 'enfocate en', 'apunta a', 'llegar a', 'llegarle a', 'reach', 'target', 'targets', 'mis clientes son', 'mis clientes serian',
   'me sirven', 'me sirve', 'tambien me sirven', 'tambien me sirve',
-  'my customers are', 'my clients are']);
+  'my customers are', 'my clients are',
+  // «Los que me compran son los colmados»: sus clientes son de ese tipo; es a quién busca.
+  'los que me compran son', 'las que me compran son', 'quienes me compran son', 'los que me compran serian', 'mis compradores son',
+  'the ones who buy from me are', 'those who buy from me are']);
 
 function objetivoDesde(x, i) {
   const { T } = x;
@@ -2965,7 +3359,7 @@ function sobrantes(x) {
         // «la Esperanza»: el artículo va con el nombre (así se distingue de Esperanza, en Valverde).
         const desde = ARTICULOS.has(T[conSentido[0] - 1]?.w) && conSentido[0] - 1 >= a ? conSentido[0] - 1 : conSentido[0];
         const nombre = texto(x, desde, conSentido[conSentido.length - 1] + 1);
-        if (x.zonasLibres.length < 30) x.zonasLibres.push(nombre);
+        if (x.zonasLibres.length < TOPE) x.zonasLibres.push(nombre);
         agregarDuda(x, 'lugar', nombre, sugerencias);
       } else agregarDuda(x, 'texto', valor);
     }
@@ -2984,6 +3378,8 @@ export function leer(original) {
   antesDeRecorrer(x);
   recorrer(x);
   sobrantes(x);
+  // «a personas y empresas», «y también a personas»: a personas sueltas no las busco (solo negocios). Se avisa; nunca se pierde en silencio.
+  if (x.tipo === 'comercial' && personasSueltas(x)) x.supuestos.add('personas_sueltas');
   // «en Puerto Rico y en San Juan»: con Puerto Rico al lado, «San Juan» casi seguro es su capital (fuera del país).
   // Se guarda así y se pregunta; si era la provincia dominicana, la persona lo escribe en «Dónde».
   if (x.zonasLibres.some(z => /puerto rico/.test(comparable(z))) && x.zonas.includes('san-juan')) {
@@ -3013,6 +3409,19 @@ export function leer(original) {
   return x;
 }
 
+// ¿Pide venderle a personas sueltas («a personas», «y a las personas», «to individuals»)?
+const PERSONAS = new Set(['personas', 'persona', 'people', 'individuals', 'particulares', 'familias', 'gente']);
+function personasSueltas(x) {
+  const { T } = x;
+  for (let k = 1; k < x.n; k++) {
+    if (!PERSONAS.has(T[k].w) || x.ent[k]) continue;
+    let p = k - 1;
+    if (['la', 'las', 'los', 'el', 'the'].includes(T[p].w) && p > 0) p--;
+    if (['a', 'al', 'y', 'e', 'to', 'and', 'para', 'for', 'busca', 'buscame', 'encuentra', 'find', 'tambien', 'also'].includes(T[p].w)) return true;
+  }
+  return false;
+}
+
 // Antes de leer de izquierda a derecha: lo que solo se entiende mirando el final de una parte de la frase.
 function antesDeRecorrer(x) {
   const { T } = x;
@@ -3023,24 +3432,53 @@ function antesDeRecorrer(x) {
   };
   for (let k = 0; k < x.n; k++) {
     if (x.usado[k] || T[k].tipo === 's') continue;
+    // «Mi hermano vende celulares», «mi esposa trabaja en Moca», «mi competencia vende más barato»: lo que hace otra persona no es
+    // lo que vende la persona, ni dónde busca. Tampoco el «yo no» de después («Mi socio vende seguros, yo no»).
+    const tercero = otraPersonaEn(x, k);
+    if (tercero) { k = tercero - 1; continue; }
     // Lo que todavía no hace (proveedores, empleados, publicar…): se dice antes de leer nada más de esa frase,
     // para que no quede, por ejemplo, «A quién buscar: clínicas» en «busco una clínica que acepte mi seguro».
     const objetivo = buscarEn(T, k, OBJETIVOS);
     // «y a mis competidores no»: no pide buscarlos, pide no venderles. Se excluye.
     const negadoDespues = objetivo ? negacionDespues(x, objetivo.fin) : 0;
     if (objetivo && negadoDespues && !negadoAntes(x, k)) {
-      if (objetivo.datos[0].clave === 'competidores' && x.exclusiones.length < 30) x.exclusiones.push(texto(x, k, objetivo.fin));
+      if (objetivo.datos[0].clave === 'competidores' && x.exclusiones.length < TOPE) x.exclusiones.push(texto(x, k, objetivo.fin));
       let a = k;
       while (a > 0 && !x.usado[a - 1] && ['a', 'al', 'y', 'e', 'to', 'and', 'ni'].includes(T[a - 1].w)) a--;
       marcar(x, a, negadoDespues);
       k = negadoDespues - 1;
       continue;
     }
+    // «…, son mi competencia», «mi competencia es Ferretería Ochoa», «mi competencia vende más barato»: dice quién es su competencia
+    // (que no se busca), no pide buscarla.
+    if (objetivo && objetivo.datos[0].clave === 'competidores' && !negadoAntes(x, k)) {
+      const fin = competenciaNombrada(x, k, objetivo.fin, inicioDeParte(k));
+      if (fin) { k = fin - 1; continue; }
+    }
     if (objetivo && !negadoAntes(x, k)) { k = objetivoNoDisponible(x, k, objetivo.fin, objetivo.datos[0].clave) - 1; continue; }
     const compra = buscarEn(T, k, COMPRA);
     if (compra && !x.tieneVenta && detectar(x, k)?.tipo === 'compra') { k = objetivoNoDisponible(x, k, compra.fin, 'proveedores') - 1; continue; }
+    // Empleo: dónde trabajó o estudió antes («antes trabajé en Puerto Plata», «estudié en la UASD», «mi último trabajo fue en…»)
+    // no es dónde busca. Es parte de su historia: no se lee como lugar ni como preferencia.
+    const pasado = x.tipo === 'laboral' ? buscarEn(T, k, PASADO_LABORAL) : null;
+    if (pasado && inicioDeParte(k) === k) {
+      const fin = finDeRazon(x, pasado.fin);
+      marcar(x, k, fin);
+      k = fin - 1;
+      continue;
+    }
+    // Empleo: «aunque acepto menos si es cerca», «y si es cerca de Gurabo acepto menos», «o menos si es cerca de mi casa»:
+    // una excepción al salario mínimo. No se puede guardar así: se pregunta el salario.
+    if (x.tipo === 'laboral' && excepcionDelSalario(x, k)) {
+      const a = inicioDeParte(k);
+      const fin = finDeRazon(x, k + 1);
+      x.tramosSalario.push({ montos: [], extras: [], dudoso: true, texto: texto(x, a, fin), pos: a });
+      marcar(x, a, fin);
+      k = fin - 1;
+      continue;
+    }
     // «los colmados de por aquí ya me compran», «Los hoteles me compran toallas», «ya Hotel Matum es cliente mío»: ya son sus
-    // clientes; no son clientes nuevos que buscar. Si tienen nombre propio, se excluyen.
+    // clientes; no son clientes nuevos que buscar. Si tienen nombre, se excluyen.
     const ya = buscarEn(T, k, YA_CLIENTES);
     // «los bancos no me compran»: no son sus clientes, pero tampoco dice si los busca o no. Se pregunta.
     if (ya && NEGACIONES.has(T[k - 1]?.w)) {
@@ -3051,24 +3489,28 @@ function antesDeRecorrer(x) {
       k = fin - 1;
       continue;
     }
+    // «Los que me compran son los colmados»: dice a quién busca (ver OBJETIVO_TRIG), no que ya son sus clientes.
+    if (ya && ['me compran', 'me compra', 'nos compran', 'nos compra', 'buy from me', 'buy from us'].includes(ya.datos[0].frase)
+      && ['que', 'who', 'that'].includes(T[k - 1]?.w) && ['son', 'es', 'serian', 'are', 'is'].includes(T[ya.fin]?.w)) continue;
     if (ya) {
-      const a = inicioDeParte(k);
-      let s = a;
-      while (s < k && ['ya', 'y', 'pero', 'also', 'tambien', 'and', 'but'].includes(T[s].w)) s++;
-      let e = k;
-      while (e > s && ['ya', 'already', 'tambien', 'also'].includes(T[e - 1].w)) e--;
-      if (e > s && hayNombrePropio(x, s, e)) { clienteActual(x, texto(x, s, e)); }
-      // «excepto las que ya me compran», «no me busques los que ya son clientes míos»: pide no buscarlos, pero no dice quiénes son.
-      // Se avisa que hay que escribirlos en «Excluir».
-      else if (['que', 'who', 'that'].includes(T[k - 1]?.w)) x.supuestos.add('clientes_sin_nombre');
-      let fin = finDeRazon(x, ya.fin);
-      // «… ni los chiquitos»: lo que sigue a «ni» es otra exclusión.
-      for (let q = ya.fin; q < fin; q++) if (['ni', 'nor'].includes(T[q].w)) { fin = q; break; }
-      marcar(x, a, fin);
+      const fin = clientesYa(x, k, ya, inicioDeParte(k));
       k = fin - 1;
       continue;
     }
-    // «Los hoteles me venden toallas», «los molinos de Nagua me lo venden»: son sus suplidores, no clientes (ni dónde busca).
+    // «ya trabajo con Hotel Matum», «we already work with Hodelpa», «ya le vendí al hotel Aloft»: con nombre, ya son sus clientes.
+    const trabajoCon = x.tipo === 'comercial' ? buscarEn(T, k, YA_TRABAJO_CON) : null;
+    if (trabajoCon) {
+      let desde = trabajoCon.fin;
+      if (['a', 'al', 'to'].includes(T[desde]?.w)) desde++;
+      const b = finDeNombres(x, desde);
+      if (b > desde) {
+        nombresQueExcluir(x, desde, b, true);
+        marcar(x, inicioDeParte(k), b);
+        k = b - 1;
+        continue;
+      }
+    }
+    // Los que le venden a la persona (sus suplidores): «Los hoteles me venden toallas», «los molinos de Nagua me lo venden».
     const suplidor = buscarEn(T, k, ME_VENDEN);
     if (suplidor) {
       const fin = finDeRazon(x, suplidor.fin);
@@ -3082,27 +3524,213 @@ function antesDeRecorrer(x) {
       const fin = clientesQueYaTiene(x, inicioDeParte(k), tengo.fin);
       if (fin) { k = fin - 1; continue; }
     }
-    // «sácalos», «no lo incluyas»: después de nombrar a sus clientes actuales (que ya se excluyeron).
-    const quita = x.clientesActuales ? buscarEn(T, k, QUITALOS) : null;
+    // «sácalos», «no lo incluyas», «so skip them»: después de nombrar a sus clientes o a su competencia (que ya se excluyeron).
+    const quita = x.clientesActuales || x.competidoresNombrados ? buscarEn(T, k, QUITALOS) : null;
     if (quita) { marcar(x, k, quita.fin); k = quita.fin - 1; continue; }
-    // «los más grandes primero»: lo que va antes de «primero» es una preferencia, no un filtro.
-    if (['primero', 'first'].includes(T[k].w) && (!T[k + 1] || esFuerte(T[k + 1]) || esComa(T[k + 1]))) {
+    // «los más grandes primero», «los hoteles primero y luego los supermercados»: lo que va antes de «primero» es una
+    // preferencia, no un filtro. Lo de «luego» se lee como siempre.
+    const luego = ['y', 'and'].includes(T[k + 1]?.w) && ['luego', 'despues', 'then', 'after'].includes(T[k + 2]?.w) ? k + 3
+      : ['luego', 'despues', 'then'].includes(T[k + 1]?.w) ? k + 2 : 0;
+    if (['primero', 'first'].includes(T[k].w) && (!T[k + 1] || esFuerte(T[k + 1]) || esComa(T[k + 1]) || luego)) {
       const a = inicioDeParte(k);
       let conDato = false;
       for (let q = a; q < k; q++) if (T[q].w === 'mas' || x.ent[q]?.datos.some(dd => ['tamano', 'sector', 'zona'].includes(dd.que))) conDato = true;
       if (conDato && a < k) {
-        for (let q = a; q < k; q++) { const sc = datoDe(x, q, 'sector'); if (sc && !sc.general) x.sectoresPrioridad.push(sc.clave); }
+        for (let q = a; q < k; q++) {
+          const sc = datoDe(x, q, 'sector');
+          if (sc && !sc.general) { x.sectoresPrioridad.push(sc.clave); if (luego) x.sectoresPrioridadDirectos.push(sc.clave); }
+        }
         agregarPrioridad(x, a, k);
-        marcar(x, a, k + 1);
+        marcar(x, a, luego || k + 1);
       }
     }
   }
 }
 
+// Otra persona («mi hermano», «mi socio», «mi esposa», «mi competencia») que vende, trabaja o vive en algún sitio. Devuelve dónde termina, o 0.
+const TERCEROS = new Set([...FAMILIA, 'socio', 'socia', 'socios', 'socias', 'vecino', 'vecina', 'vecinos', 'compadre', 'comadre', 'jefe', 'jefa', 'competencia',
+  'competidor', 'competidores', 'companero', 'companera', 'partner', 'neighbor', 'boss', 'competition', 'competitor', 'competitors']);
+const VERBOS_DE_TERCEROS = new Set(['vende', 'venden', 'vendia', 'vendian', 'ofrece', 'ofrecen', 'distribuye', 'distribuyen', 'trabaja', 'trabajan', 'trabajaba',
+  'vive', 'viven', 'vivia', 'estudia', 'estudian', 'sells', 'sell', 'offers', 'works', 'work', 'worked', 'lives', 'live', 'lived', 'studies']);
+function otraPersonaEn(x, k) {
+  const { T } = x;
+  if (!POSESIVOS.has(T[k].w) || !TERCEROS.has(T[k + 1]?.w) || !VERBOS_DE_TERCEROS.has(T[k + 2]?.w)) return 0;
+  if (['tu', 'tus', 'your'].includes(T[k].w)) return 0;
+  let j = k + 3;
+  while (j < x.n && !esFuerte(T[j]) && !esComa(T[j]) && !['pero', 'but', 'sino'].includes(T[j].w)) {
+    if (['y', 'e', 'and'].includes(T[j].w) && (['yo', 'i', 'we', 'nosotros'].includes(T[j + 1]?.w) || empiezaInstruccion(x, j + 1))) break;
+    j++;
+  }
+  // «…, yo no», «…, yo tampoco», «…, I don't»: él no vende eso.
+  const q = esComa(T[j]) ? j + 1 : j;
+  if (['yo', 'i', 'we', 'nosotros'].includes(T[q]?.w) && ['no', 'tampoco', 'dont', 'not'].includes(T[q + 1]?.w) && (esFuerte(T[q + 2]) || esComa(T[q + 2]))) j = q + 2;
+  marcar(x, k, j);
+  return j;
+}
+
+// Lo que dijo de su competencia: «…, son mi competencia» (la nombró antes), «Ferretería Ochoa es mi competencia», «mi competencia es
+// Ferretería Ochoa», «mi competencia vende más barato». Con nombre, se excluye. Devuelve dónde termina, o 0 si pide buscarla.
+const PREGUNTAS = new Set(['quien', 'quienes', 'cual', 'cuales', 'who', 'which', 'what', 'saber', 'dime', 'tell', 'conocer', 'averiguar', 'encuentra', 'busca',
+  'buscar', 'find', 'search', 'investiga', 'analiza', 'research']);
+function competenciaNombrada(x, k, fin, a) {
+  const { T } = x;
+  for (let q = a; q < k; q++) if (PREGUNTAS.has(T[q].w)) return 0;
+  const previo = T[k - 1]?.w;
+  const copula = w => ['es', 'son', 'is', 'are', 'era', 'eran'].includes(w);
+  // «X es mi competencia», «X me hace competencia», «…, son mi competencia».
+  if ((copula(previo) && k - 1 >= a) || (/hace/.test(texto(x, k, fin)) && k > a)) {
+    const e = copula(previo) ? k - 1 : k;
+    if (e > a && !hayNombre(x, a, e)) return 0;
+    if (e > a) nombresQueExcluir(x, a, e, false);
+    const b = finDeRazon(x, fin);
+    marcar(x, a, b);
+    x.competidoresNombrados = true;
+    return b;
+  }
+  if (k !== a || !T[fin] || T[fin].tipo !== 'p') return 0;
+  // «mi competencia es Ferretería Ochoa (y no quiero que la busques)».
+  if (copula(T[fin].w)) {
+    const q = fin + 1;
+    if (q >= x.n) { marcar(x, k, q); return q; }
+    // «mi competencia es fuerte»: solo cuenta algo (no es un nombre ni pide nada).
+    if (!x.mayus && !hayNombrePropio(x, q, q + 1) && !ARTICULOS.has(T[q]?.w) && !datoDe(x, q, 'sector')) {
+      const b = finDeRazon(x, q);
+      marcar(x, k, b);
+      return b;
+    }
+    const b = finDeNombres(x, q);
+    if (b <= q) return 0;
+    nombresQueExcluir(x, fin + 1, b, false);
+    marcar(x, k, b);
+    x.competidoresNombrados = true;
+    return b;
+  }
+  // «mi competencia vende más barato», «la competencia está fuerte»: solo cuenta algo.
+  if (detectar(x, fin)?.tipo === 'excluir') return 0;
+  const b = finDeRazon(x, fin);
+  marcar(x, k, b);
+  return b;
+}
+
+// ¿Hay un nombre entre «a» y «b»? Una palabra que no es común ni conocida («aloft», «garcia», «Hodelpa»), o un nombre propio.
+// «los colmados de por aquí», «las que», «those» no son nombres.
+function hayNombre(x, a, b) {
+  const { T } = x;
+  if (hayNombrePropio(x, a, b)) return true;
+  for (let q = a; q < Math.min(b, x.n); q++) {
+    if (x.ent[q]) { q = x.ent[q].fin - 1; continue; }
+    const t = T[q];
+    // «mis vecinos», «my friends»: lo que va después de un posesivo es una palabra común, no un nombre.
+    if (POSESIVOS.has(T[q - 1]?.w)) continue;
+    if (t.tipo === 'p' && !esRelleno(t.w) && !ELIPTICOS.has(t.w) && !['ones', 'one', 'those', 'these', 'aquellos', 'aquellas'].includes(t.w) && !detectar(x, q)) return true;
+  }
+  return false;
+}
+
+// Desde «k», una lista de nombres («el hotel aloft y el hodelpa», «Bravo and La Sirena»). Devuelve dónde termina.
+function finDeNombres(x, k) {
+  const { T } = x;
+  let j = k;
+  let fin = k;
+  for (let vueltas = 0; vueltas < 8 && j < x.n; vueltas++) {
+    let b = j;
+    while (b < x.n && !esFuerte(T[b]) && !esComa(T[b]) && !SEPARADORES.has(T[b].w) && !['so', 'pero', 'but', 'que', 'that', 'who'].includes(T[b].w) && b - j < 6) b++;
+    if (b === j || !hayNombre(x, j, b)) break;
+    for (let q = j; q < b; q++) if (detectar(x, q) && !x.ent[q]) return fin;
+    fin = b;
+    if (!(esComa(T[b]) || SEPARADORES.has(T[b]?.w))) break;
+    j = b + 1;
+  }
+  return fin;
+}
+
+// Los nombres entre «a» y «b», separados por comas o «y», van a «Excluir». Con «clientes», se avisa que ya son sus clientes.
+function nombresQueExcluir(x, a, b, clientes) {
+  const { T } = x;
+  let inicio = a;
+  for (let k = a; k <= b; k++) {
+    if (k === b || esComa(T[k]) || SEPARADORES.has(T[k].w)) {
+      if (k > inicio && hayNombre(x, inicio, k)) {
+        if (clientes) clienteActual(x, texto(x, inicio, k));
+        else if (x.exclusiones.length < TOPE) x.exclusiones.push(sinArticulo(x, texto(x, inicio, k)));
+      }
+      inicio = k + 1;
+    }
+  }
+}
+
+// «menos el aloft que ya es cliente mío», «excepto las que ya me compran», «el hotel aloft ya es cliente», «ya son clientes míos
+// el hotel aloft y el hodelpa», «Bravo and La Sirena are already my customers». Devuelve dónde termina.
+const CORTE_DE_CLIENTE = new Set(['menos', 'excepto', 'salvo', 'except', 'skip', 'sin', 'without', 'ni', 'nor', 'busques', 'incluyas', 'incluir', 'buscar',
+  'besides', 'excluding', 'exclude', 'no', 'not']);
+function clientesYa(x, k, ya, a) {
+  const { T } = x;
+  let fin = finDeRazon(x, ya.fin);
+  // «… ni los chiquitos»: lo que sigue a «ni» es otra exclusión.
+  for (let q = ya.fin; q < fin; q++) if (['ni', 'nor'].includes(T[q].w)) { fin = q; break; }
+  let q = k - 1;
+  while (q > a && ['ya', 'already', 'are', 'is', 'son', 'es', 'estan', 'were'].includes(T[q].w)) q--;
+  if (q >= a && ['que', 'who', 'that', 'which'].includes(T[q].w)) {
+    // Lo que va antes del «que» es de quién se habla.
+    let s = q;
+    while (s > a && s > q - 7 && !CORTE_DE_CLIENTE.has(T[s - 1].w)) s--;
+    let desde = s;
+    if (s > a && CORTE_DE_CLIENTE.has(T[s - 1].w)) {
+      desde = s - 1;
+      while (desde > a && (CORTE_DE_CLIENTE.has(T[desde - 1].w) || ['no', 'me', 'dont', 'do', 'not', 'pero', 'but', 'y', 'and'].includes(T[desde - 1].w))) desde--;
+    }
+    if (hayNombre(x, s, q)) nombresQueExcluir(x, s, q, true);
+    else x.supuestos.add('clientes_sin_nombre');
+    marcar(x, desde, fin);
+    return fin;
+  }
+  // Antes: «el hotel aloft ya es cliente», «Bravo and La Sirena are already my customers» (la lista puede empezar antes de la «y»).
+  let s = a;
+  while (s > 1 && ['y', 'and', 'e'].includes(T[s - 1].w)) {
+    let p = s - 1;
+    while (p > 0 && !esFuerte(T[p - 1]) && !esComa(T[p - 1]) && !SEPARADORES.has(T[p - 1].w)) p--;
+    if (s - 1 - p > 4 || !hayNombre(x, p, s - 1) || lugarEn(x, p, true)?.que === 'zona') break;
+    let conDisparador = false;
+    for (let r = p; r < s - 1; r++) if (detectar(x, r) && !x.ent[r]) conDisparador = true;
+    if (conDisparador) break;
+    s = p;
+  }
+  let inicio = s;
+  while (inicio < k && ['ya', 'y', 'pero', 'also', 'tambien', 'and', 'but'].includes(T[inicio].w)) inicio++;
+  let e = k;
+  while (e > inicio && ['ya', 'already', 'tambien', 'also', 'are', 'is', 'son', 'es'].includes(T[e - 1].w)) e--;
+  if (e > inicio && hayNombre(x, inicio, e)) nombresQueExcluir(x, inicio, e, true);
+  else if (e <= inicio) {
+    // Después: «ya son clientes míos el hotel aloft y el hodelpa».
+    const b = finDeNombres(x, ya.fin);
+    if (b > ya.fin) { nombresQueExcluir(x, ya.fin, b, true); fin = Math.max(fin, b); }
+  }
+  marcar(x, s, fin);
+  return fin;
+}
+
+// «Los Bravo»: el artículo con mayúscula es parte del nombre; «la Bonanza», «al taller garcía»: el artículo no.
+function sinArticulo(x, valor) {
+  const articulo = x.mayus ? /^(\s*(a|al|la|el|los|las|to|the)\s+)+/i : /^(\s*(a|al|la|el|los|las|to|the)\s+)+/;
+  return String(valor).replace(articulo, '').replace(/\s+/g, ' ').trim();
+}
+
+// ¿Empieza en «k» una excepción al salario mínimo («acepto menos», «o menos si…», «or less if…»)?
+function excepcionDelSalario(x, k) {
+  const { T } = x;
+  const w = T[k].w;
+  // «no acepto menos de 20 mil» es el mínimo, no una excepción.
+  if (['acepto', 'aceptaria', 'aceptamos', 'accept', 'aceptar'].includes(w) && !NEGACIONES.has(T[k - 1]?.w) && !['dont', 'wont'].includes(T[k - 1]?.w)) {
+    const q = ['algo', 'un'].includes(T[k + 1]?.w) ? (T[k + 1].w === 'un' && T[k + 2]?.w === 'poco' ? k + 3 : k + 2) : k + 1;
+    return ['menos', 'less'].includes(T[q]?.w) && !['de', 'del', 'que', 'than'].includes(T[q + 1]?.w) && T[q + 1]?.tipo !== 'n';
+  }
+  return ['o', 'or'].includes(w) && ['menos', 'less'].includes(T[k + 1]?.w) && ['si', 'if', 'cuando', 'when'].includes(T[k + 2]?.w);
+}
+
 // Un cliente que ya tiene: va en «Excluir» (no se busca como cliente nuevo) y se avisa.
 function clienteActual(x, valor) {
-  const limpio = String(valor).replace(/^(\s*(a|al|la|el|los|las|to|the)\s+)+/i, '').replace(/\s+/g, ' ').trim();
-  if (limpio && x.exclusiones.length < 30) x.exclusiones.push(limpio);
+  const limpio = sinArticulo(x, valor);
+  if (limpio && x.exclusiones.length < TOPE) x.exclusiones.push(limpio);
   x.clientesActuales = true;
   x.supuestos.add('clientes_actuales');
 }
