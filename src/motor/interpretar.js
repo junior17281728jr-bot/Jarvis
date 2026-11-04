@@ -24,14 +24,14 @@ export const IA_APAGADA = Object.freeze({ permitida: false, topeMensualUsd: 0 })
 // Lo que el motor decidió solo y avisa (se muestra; no impide aprobar).
 export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_laboral', 'sectores_todos', 'gran_santo_domingo', 'contactar_a_mano',
   'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono', 'contactar_sin_correos', 'contactar_telefono', 'clientes_actuales',
-  'autonomia_pedida'];
+  'autonomia_pedida', 'clientes_sin_nombre'];
 // Dudas: cosas que el motor no entendió. Mientras haya alguna, no se puede aprobar.
 // Las «guardadas» salen de las instrucciones y se marcan como resueltas en el formulario; las otras se calculan
 // de la configuración y desaparecen solas cuando se corrige el dato.
 export const CLAVES_DUDAS_GUARDADAS = ['texto', 'lugar', 'calle_o_provincia', 'direccion', 'conflicto_tamano', 'salario', 'salario_periodo', 'frecuencia', 'frecuencia_no_disponible',
   'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa',
   'objetivo_empleados', 'objetivo_otra_tarea', 'parte_de_lugar', 'lugar_homonimo', 'lugar_difuso', 'cambio', 'combinacion_producto', 'combinacion_parcial',
-  'sector_general', 'lugar_provincia'];
+  'sector_general', 'lugar_provincia', 'lista_larga'];
 export const CLAVES_DUDAS_CALCULADAS = ['conflicto_sector', 'conflicto_zona', 'fuera_del_pais'];
 export const CLAVES_DUDAS = [...CLAVES_DUDAS_GUARDADAS, ...CLAVES_DUDAS_CALCULADAS];
 
@@ -194,6 +194,12 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   // «hazlo todo tú solo sin preguntarme»: se queda en el nivel más seguro, y se avisa.
   if (x.autonomiaPedida) supuestos.add('autonomia_pedida');
 
+  // Más de 30 en una lista: no caben. Nunca se quitan en silencio: se dice cuáles quedaron fuera.
+  const listas = [[zonas, z => ZONA.get(z)?.nombre], [unicos(x.zonasExcluidas), z => ZONA.get(z)?.nombre], [sectores, s => SECTOR.get(s)?.es],
+    [unicos(x.sectoresExcluidos), s => SECTOR.get(s)?.es], [sectoresLibres], [zonasLibres], [unicosPorTexto(x.exclusiones)], [x.prioridades]];
+  for (const [lista, nombre = v => v] of listas) {
+    if (lista.length > LIMITES.lista) duda('lista_larga', lista.slice(LIMITES.lista).map(v => nombre(v) || v).join(', ').slice(0, LIMITES.elemento));
+  }
   if (noEntendido.some(d => d.clave === 'tipo')) { supuestos.delete('tipo'); supuestos.delete('tipo_laboral'); }
   // Si lo que pide todavía no existe (competidores, proveedores…), no se dice nada más: solo eso.
   if (noEntendido.some(d => d.clave.startsWith('objetivo_'))) supuestos.clear();

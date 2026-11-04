@@ -297,7 +297,9 @@ export function juntarSalario(tramos, limite) {
   for (const m of montos) {
     // RD$1,500 al mes no es un salario creíble (el mínimo pasa de RD$10,000): casi seguro son dólares o falta algo. Se pregunta.
     const muyPoco = moneda === 'USD' ? m.valor < 50 : m.valor < 5000;
-    if (muyPoco || m.valor > limite) return { ...vacio, duda: 'salario' };
+    // RD$9 millones o US$50,000 al mes tampoco: casi seguro es al año o un error al escribir. Si no, filtraría todos los empleos.
+    const muchoAlMes = moneda === 'USD' ? m.valor > 15_000 : m.valor > 500_000;
+    if (muyPoco || muchoAlMes || m.valor > limite) return { ...vacio, duda: 'salario' };
   }
   const minimos = [...new Set(montos.filter(m => m.rol === 'min').map(m => m.valor))];
   const maximos = [...new Set(montos.filter(m => m.rol === 'max').map(m => m.valor))];

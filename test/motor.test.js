@@ -12,7 +12,7 @@ import {
 } from '../src/motor/interpretar.js';
 import { normalizar, comparable, buscarFrases, tokenizar, variantes } from '../src/motor/texto.js';
 import { SECTORES, PRODUCTOS, PROVINCIAS, MUNICIPIOS, CIUDADES, REGIONES, ZONAS, CAPACIDADES, COMBINACIONES } from '../src/motor/diccionarios.js';
-import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2 } from './motor-casos.js';
+import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO, CASOS_EQUIPO_ROJO_2, CASOS_EQUIPO_ROJO_3 } from './motor-casos.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 
@@ -20,7 +20,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
 const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
 const CATALOGO = catalogo();
-const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2];
+const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO, ...CASOS_EQUIPO_ROJO_2, ...CASOS_EQUIPO_ROJO_3];
 
 // ---------- Texto ----------
 test('normalizar quita acentos y mayúsculas sin cambiar la longitud del texto', () => {
@@ -96,6 +96,23 @@ test(`cada frase del equipo rojo (ronda 1) se entiende bien o se pregunta (${CAS
 test(`cada frase de la segunda tanda del equipo rojo (ronda 1) se entiende bien o se pregunta (${CASOS_EQUIPO_ROJO_2.length} casos)`, () => {
   assert.ok(CASOS_EQUIPO_ROJO_2.length >= 130);
   for (const caso of CASOS_EQUIPO_ROJO_2) revisarCaso(caso);
+});
+
+test(`cada frase de la segunda ronda del equipo rojo se entiende bien, se pregunta o se avisa (${CASOS_EQUIPO_ROJO_3.length} casos)`, () => {
+  assert.ok(CASOS_EQUIPO_ROJO_3.length >= 100);
+  for (const caso of CASOS_EQUIPO_ROJO_3) revisarCaso(caso);
+});
+
+test('el motor nunca falla, ni con un «no» o una palabra suelta al final del texto (sin punto)', () => {
+  const finales = [' no', ', no', ' experiencia no', ' noches no', ' tardes', ' sin', ' a', ' en', ' de', ' que', ' y', ' -', ' 💧', ' usa', ' a las 8'];
+  for (const caso of TODOS) {
+    const palabras = caso.texto.split(/\s+/);
+    for (const final of finales) {
+      for (const texto of [caso.texto + final, palabras.slice(0, Math.ceil(palabras.length / 2)).join(' ') + final]) {
+        assert.doesNotThrow(() => interpretar(texto, { idioma: caso.idioma || 'es' }), texto);
+      }
+    }
+  }
 });
 
 test('segunda tanda: las preguntas nombran el pedazo exacto, y lo que se guarda va completo', () => {

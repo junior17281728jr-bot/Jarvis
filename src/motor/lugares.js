@@ -94,7 +94,7 @@ const DATOS_MUNICIPIOS = {
   espaillat: ['Moca', 'Cayetano Germosén', 'Gaspar Hernández', ['Jamao al Norte', { palabras: ['jamao al norte', 'jamao'] }]],
   'hato-mayor': [['Hato Mayor del Rey', { palabras: ['hato mayor del rey', 'municipio de hato mayor'] }], ['El Valle (Hato Mayor)', { palabras: ['el valle'], ambiguas: ['el valle'], homonimo: true }], 'Sabana de la Mar'],
   'hermanas-mirabal': ['Salcedo', 'Tenares', 'Villa Tapia'],
-  independencia: ['Jimaní', ['Cristóbal', { ambiguas: ['cristobal'] }], 'Duvergé', ['La Descubierta', { ambiguas: ['la descubierta'] }], ['Mella', { ambiguas: ['mella'] }], 'Postrer Río'],
+  independencia: ['Jimaní', ['Cristóbal', { ambiguas: ['cristobal'] }], 'Duvergé', ['La Descubierta', { ambiguas: ['la descubierta'] }], ['Mella', { palabras: ['municipio de mella', 'municipio mella'] }], 'Postrer Río'],
   'la-altagracia': [
     ['Higüey', { palabras: ['higuey', 'salvaleon de higuey'] }],
     ['San Rafael del Yuma', { palabras: ['san rafael del yuma', 'yuma'], ambiguas: ['yuma'] }],
@@ -108,7 +108,8 @@ const DATOS_MUNICIPIOS = {
   'monsenor-nouel': ['Bonao', ['Maimón', { ambiguas: ['maimon'] }], ['Piedra Blanca', { ambiguas: ['piedra blanca'] }]],
   montecristi: [
     ['San Fernando de Monte Cristi', { palabras: ['san fernando de monte cristi', 'san fernando de montecristi', 'municipio de montecristi'] }],
-    ['Castañuelas', { ambiguas: ['castanuelas'] }], 'Guayubín', 'Las Matas de Santa Cruz', 'Pepillo Salcedo', 'Villa Vásquez',
+    ['Castañuelas', { ambiguas: ['castanuelas'] }], 'Guayubín',
+    ['Las Matas de Santa Cruz', { palabras: ['las matas de santa cruz', 'las matas'], ambiguas: ['las matas'], homonimo: true }], 'Pepillo Salcedo', 'Villa Vásquez',
   ],
   'monte-plata': [cabecera('Monte Plata (municipio)', 'monte-plata-municipio', 'monte plata'), 'Bayaguana', 'Peralvillo', 'Sabana Grande de Boyá', 'Yamasá'],
   pedernales: [cabecera('Pedernales (municipio)', 'pedernales-municipio', 'pedernales'), ['Oviedo', { ambiguas: ['oviedo'] }]],
@@ -116,7 +117,7 @@ const DATOS_MUNICIPIOS = {
   'puerto-plata': [
     ['San Felipe de Puerto Plata', { palabras: ['san felipe de puerto plata', 'ciudad de puerto plata', 'municipio de puerto plata'] }],
     ['Altamira', { ambiguas: ['altamira'] }], 'Guananico', ['Imbert', { ambiguas: ['imbert'] }], ['Los Hidalgos', { ambiguas: ['los hidalgos'] }],
-    ['Luperón', { ambiguas: ['luperon'] }], 'Sosúa', 'Villa Isabela', ['Villa Montellano', { palabras: ['villa montellano', 'montellano'] }],
+    ['Luperón', { palabras: ['municipio de luperon', 'municipio luperon'] }], 'Sosúa', 'Villa Isabela', ['Villa Montellano', { palabras: ['villa montellano', 'montellano'] }],
   ],
   samana: [['Santa Bárbara de Samaná', { palabras: ['santa barbara de samana', 'municipio de samana', 'ciudad de samana'] }], 'Las Terrenas', ['Sánchez', { ambiguas: ['sanchez'] }]],
   'san-cristobal': [
@@ -130,7 +131,8 @@ const DATOS_MUNICIPIOS = {
     cabecera('San José de Ocoa (municipio)', 'san-jose-de-ocoa-municipio', 'san jose de ocoa'),
     ['Rancho Arriba', { ambiguas: ['rancho arriba'] }], ['Sabana Larga', { ambiguas: ['sabana larga'] }],
   ],
-  'san-juan': ['San Juan de la Maguana', 'Bohechío', ['El Cercado', { ambiguas: ['el cercado'] }], 'Juan de Herrera', 'Las Matas de Farfán', 'Vallejuelo'],
+  'san-juan': ['San Juan de la Maguana', 'Bohechío', ['El Cercado', { ambiguas: ['el cercado'] }], 'Juan de Herrera',
+    ['Las Matas de Farfán', { palabras: ['las matas de farfan', 'las matas'], ambiguas: ['las matas'], homonimo: true }], 'Vallejuelo'],
   'san-pedro-de-macoris': [
     cabecera('San Pedro de Macorís (municipio)', 'san-pedro-de-macoris-municipio', 'san pedro de macoris'),
     ['Consuelo', { ambiguas: ['consuelo'] }], ['Guayacanes', { ambiguas: ['guayacanes'] }], ['Quisqueya (San Pedro de Macorís)', { palabras: ['quisqueya'], ambiguas: ['quisqueya'], homonimo: true }], 'Ramón Santana',
@@ -211,6 +213,7 @@ const DATOS_SECTORES = [
   ['Villa Juana', 'santo-domingo-de-guzman'],
   ['Villa Consuelo', 'santo-domingo-de-guzman'],
   ['Villa Francisca', 'santo-domingo-de-guzman'],
+  ['Villas Agrícolas', 'santo-domingo-de-guzman', { palabras: ['villas agricolas', 'villa agricolas'] }],
   ['Cristo Rey', 'santo-domingo-de-guzman', { ambiguas: ['cristo rey'] }],
   ['Los Cacicazgos', 'santo-domingo-de-guzman'],
   ['La Esperilla', 'santo-domingo-de-guzman'],
@@ -272,7 +275,7 @@ export const CARDINALES = ['el norte', 'del norte', 'el sur', 'del sur', 'zona s
 
 export const REGIONES = [
   // «Santo Domingo» a secas casi siempre quiere decir la capital y sus alrededores. «Capital» solo cuenta como «la capital».
-  { clave: 'gran-santo-domingo', nombre: 'Gran Santo Domingo', provincias: ['distrito-nacional', 'santo-domingo'], palabras: ['gran santo domingo', 'santo domingo', 'la capital', 'sto dgo', 'santo dgo', 'sto domingo', 'sd'] },
+  { clave: 'gran-santo-domingo', nombre: 'Gran Santo Domingo', provincias: ['distrito-nacional', 'santo-domingo'], palabras: ['gran santo domingo', 'santo domingo', 'la capital', 'the capital', 'sto dgo', 'santo dgo', 'sto domingo', 'sd'] },
   { clave: 'cibao', nombre: 'Cibao (región Norte)', provincias: [...CIBAO_NORTE, ...CIBAO_SUR, ...CIBAO_NORDESTE, ...CIBAO_NOROESTE], palabras: ['cibao', 'region del cibao', 'region cibao', 'region norte', 'el norte', 'del norte', 'norte del pais'] },
   { clave: 'cibao-norte', nombre: 'Cibao Norte', provincias: CIBAO_NORTE, palabras: ['cibao norte'] },
   { clave: 'cibao-sur', nombre: 'Cibao Sur', provincias: CIBAO_SUR, palabras: ['cibao sur'] },

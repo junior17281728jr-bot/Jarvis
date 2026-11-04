@@ -175,13 +175,13 @@ export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco 
   // «Busco puestos de enfermera», «busco una plaza de maestro»: también es buscar empleo.
   'puestos de', 'un puesto de', 'busco puesto de', 'plazas de', 'busco plaza de', 'busco una plaza de', 'quiero una plaza de', 'necesito una plaza de'];
 export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden', 'ofrezco', 'ofrecemos', 'ofrece', 'brindo', 'brindamos',
-  'distribuyo', 'distribuimos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'i install', 'we install', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
+  'distribuyo', 'distribuimos', 'exporto', 'exportamos', 'reparo', 'reparamos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'i install', 'we install', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
   'mi empresa', 'tengo una empresa', 'tengo un negocio', 'tenemos una empresa', 'me dedico a vender', 'nos dedicamos a vender', 'trabajo vendiendo',
   'soy distribuidor', 'soy distribuidora', 'somos distribuidores', 'tengo una agencia', 'tengo una tienda', 'busco clientes', 'buscar clientes', 'conseguir clientes',
   'encontrar clientes', 'necesito clientes', 'quiero clientes', 'clientes para', 'prospectos', 'que necesiten', 'puedan necesitar', 'que necesitan',
   'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'clients for', 'customers for', 'i want clients',
   'i want customers', 'want customers', 'want clients', 'representante de ventas', 'looking for clients', 'looking for customers', 'busca clientes',
-  'buscamos clientes', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'leads', 'that need', 'that may need', 'who need'];
+  'buscamos clientes', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'find me customers', 'find me clients', 'get me customers', 'get me clients', 'buscame clientes', 'consigueme clientes', 'leads', 'that need', 'that may need', 'who need'];
 export const SENALES_LABORAL_DEBILES = ['trabajo', 'empleo', 'salario', 'sueldo', 'vacante', 'curriculum', 'job', 'salary'];
 export const SENALES_COMERCIAL_DEBILES = ['venta', 'ventas', 'vender', 'cliente', 'clientes', 'customers', 'clients', 'sell'];
 
@@ -198,7 +198,10 @@ export const OBJETIVOS_NO_DISPONIBLES = [
     'make ads', 'vender por amazon', 'vender en amazon', 'vendo por amazon', 'por amazon', 'por mercadolibre', 'por mercado libre', 'me lleves la contabilidad',
     'lleves la contabilidad', 'llevarme la contabilidad', 'llevar la contabilidad', 'hazme la contabilidad', 'haz mi contabilidad', 'do my accounting',
     'manejes mis redes', 'maneja mis redes', 'manejar mis redes', 'hazme una pagina', 'hazme la pagina', 'disena mi logo', 'hazme un logo',
-    'run my social media'] },
+    'run my social media', 'me hagas una pagina', 'me hagas la pagina', 'me hagas mi pagina', 'me hagas una web', 'me hagas un sitio', 'me hagas un logo',
+    'me hagas el logo', 'me hagas mi logo', 'me hagas anuncios', 'me hagas publicidad', 'me hagas un video', 'me hagas un flyer', 'hazme una web',
+    'hazme un sitio', 'hazme un video', 'hazme un flyer', 'me disenes', 'disename', 'me crees una pagina', 'creame una pagina', 'creame un logo',
+    'make me a website', 'build me a website', 'build my website', 'make my website', 'make me a logo', 'design my logo', 'design me a logo'] },
   { clave: 'proveedores', palabras: ['busco proveedores', 'buscar proveedores', 'encontrar proveedores', 'conseguir proveedores', 'necesito proveedores', 'proveedores para mi', 'suplidores', 'busco suplidores', 'suppliers', 'find suppliers', 'vendors for my'] },
   { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners',
     'business partner', 'business partners', 'busco un socio', 'busco socio', 'necesito un socio', 'quiero un socio', 'encontrar un socio', 'conseguir un socio',
@@ -230,7 +233,7 @@ export const CALLES = [
   ['duarte', 'duarte'], ['juan pablo duarte', 'duarte'], ['independencia', 'independencia'], ['hermanas mirabal', 'hermanas-mirabal'],
   ['churchill'], ['winston churchill'], ['lincoln'], ['abraham lincoln'], ['kennedy'], ['john f kennedy'], ['maximo gomez'], ['tiradentes'],
   ['nunez de caceres'], ['sarasota'], ['bolivar'], ['charles de gaulle'], ['jacobo majluta'], ['ortega y gasset'], ['27 de febrero'],
-  ['30 de marzo'], ['george washington'], ['malecon'], ['las americas'], ['el conde'], ['mella'], ['luperon'], ['gregorio luperon'],
+  ['30 de marzo'], ['george washington'], ['malecon'], ['las americas'], ['el conde'], ['mella', 'mella'], ['luperon', 'luperon'], ['gregorio luperon'],
   ['sabana larga'], ['venezuela'], ['mexico'], ['paris'], ['san martin'], ['san vicente de paul'], ['romulo betancourt'], ['estrella sadhala'],
   ['las carreras'], ['del sol'], ['rafael vidal'], ['bartolome colon'], ['salvador estrella sadhala'], ['lope de vega'], ['pedro henriquez urena'],
   ['gustavo mejia ricart'], ['roberto pastoriza'], ['los proceres'], ['jose ortega y gasset'], ['rafael augusto sanchez'], ['alma mater'],
