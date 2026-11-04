@@ -711,3 +711,16 @@ test('una versión cambiada antes de aprobar se puede volver a usar: se copia ta
     assert.equal(r.datos.error, 'datos_no_validos');
   });
 });
+
+test('quien es lector o editor en el espacio de un administrador ve el límite de ese espacio (20), no el suyo', async () => {
+  await conPlataforma(async ({ db, admin, nuevaCuenta, pedir }) => {
+    const luis = await nuevaCuenta('luis');
+    const junior = { id: db.prepare("SELECT id FROM usuarios WHERE nombre = 'junior'").get().id };
+    unirAlEspacio(db, luis, junior, 'lector');
+    const r = await pedir('GET', '/api/proyectos', { galleta: luis.galleta });
+    const delAdmin = await pedir('GET', '/api/proyectos', { galleta: admin });
+    assert.equal(r.datos.limite, LIMITE_ADMINISTRADOR);
+    assert.equal(r.datos.limite, delAdmin.datos.limite);
+    assert.equal(r.datos.puedeEscribir, false);
+  });
+});

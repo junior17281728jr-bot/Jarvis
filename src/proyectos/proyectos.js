@@ -52,11 +52,15 @@ function exigir(lista, valor, que) {
 
 // ---------- Espacio de quien pregunta ----------
 export function espacioDe(db, usuario) {
-  const fila = db.prepare(`SELECT m.espacio_id, m.rol, e.plan FROM miembros m JOIN espacios e ON e.id = m.espacio_id
+  // El límite es el del espacio: depende de su plan y de quién es su dueño (un administrador tiene al menos 20),
+  // no de quién pregunta (un editor o lector del espacio ve el mismo límite que el dueño).
+  const fila = db.prepare(`SELECT m.espacio_id, m.rol, e.plan,
+      (SELECT u.rol FROM miembros d JOIN usuarios u ON u.id = d.usuario_id WHERE d.espacio_id = e.id AND d.rol = 'dueno' ORDER BY d.usuario_id LIMIT 1) AS rol_dueno
+    FROM miembros m JOIN espacios e ON e.id = m.espacio_id
     WHERE m.usuario_id = ?
     ORDER BY CASE m.rol WHEN 'dueno' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, m.espacio_id LIMIT 1`).get(usuario.id);
   if (!fila) return null;
-  const limite = limiteDe(fila.plan, usuario.rol);
+  const limite = limiteDe(fila.plan, fila.rol_dueno ?? usuario.rol);
   const esDueno = fila.rol === 'dueno';
   return {
     id: fila.espacio_id,

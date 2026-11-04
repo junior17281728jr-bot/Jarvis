@@ -112,7 +112,7 @@ function el(etiqueta, propiedades = {}, ...hijos) {
     else if (clave === 'texto') nodo.textContent = valor;
     else nodo.setAttribute(clave, valor === true ? '' : String(valor));
   }
-  for (const hijo of hijos.flat()) {
+  for (const hijo of hijos.flat(Infinity)) {
     if (hijo == null || hijo === false) continue;
     nodo.append(typeof hijo === 'string' ? document.createTextNode(hijo) : hijo);
   }
@@ -155,7 +155,7 @@ async function refrescarSetup() {
 
 function mostrar(...contenido) {
   // Las partes que no aplican llegan como null: no se muestran.
-  raiz.replaceChildren(...contenido.flat().filter(parte => parte != null && parte !== false));
+  raiz.replaceChildren(...contenido.flat(Infinity).filter(parte => parte != null && parte !== false));
   window.scrollTo(0, 0);
   // Para quien usa VoiceOver: después de dibujar, el foco va al mensaje nuevo (si hay) o al título de la pantalla.
   const foco = raiz.querySelector('[data-foco]') || raiz.querySelector('h1');
@@ -613,7 +613,7 @@ async function pantallaAdmin(avisoArriba = null) {
         el('span', { class: 'nombre', texto: u.nombreVisible || u.nombre }),
         el('span', { class: 'etiqueta', texto: t(u.rol === 'admin' ? 'admin.rol.admin' : 'admin.rol.usuario') }),
         el('span', { class: `etiqueta ${u.activo ? 'bien' : 'mal'}`, texto: t(u.activo ? 'admin.activo' : 'admin.inactivo') })),
-      el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }),
+      u.nombreVisible && u.nombreVisible !== u.nombre ? el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }) : null,
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
       controlPlan(u),
@@ -1035,8 +1035,9 @@ function formularioCampos(c, dudasTodas, alGuardar) {
       tamanos: datos.getAll('tamanos'),
       exclusiones: datos.get('exclusiones'),
       prioridades: datos.get('prioridades'),
-      salarioMinimo: minimo || null,
-      salarioMaximo: maximo || null,
+      // El salario solo cuenta para buscar empleo: si es para vender, no se envía (aunque quedara escrito).
+      salarioMinimo: tipo.value === 'laboral' ? minimo || null : null,
+      salarioMaximo: tipo.value === 'laboral' ? maximo || null : null,
       moneda: datos.get('moneda'),
       experienciaNoRequerida: datos.get('experiencia') === 'si',
       frecuencia: datos.get('frecuencia'),

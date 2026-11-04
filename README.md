@@ -68,6 +68,14 @@ hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
     contraseña el …») y la lista queda en Configuración (`GET /api/yo/reinicios`).
   - Buscar de verdad empieza en la fase 2 (clientes) y en la fase 6 (empleos); elegir fuentes y el tipo de análisis
     llegan en la fase 2.
+  - Pantallas: «Lo que entendí» dice antes de aprobar que la búsqueda empieza en la fase 2 o 6; las dudas del motor se
+    muestran y bloquean «Aprobar» hasta responderlas; «Volver a entender» avisa si reemplaza cambios hechos a mano y
+    cualquier versión que no quedó en uso se puede volver a usar (`modo: 'version'`); si algo cambió en otro equipo, el
+    proyecto se vuelve a cargar solo; si la sesión termina, al entrar otra vez vuelve al mismo lugar con lo escrito.
+  - Tema claro (por defecto), oscuro o automático en Configuración, guardado en el navegador (`public/tema.js`).
+  - Contraseñas: al menos 6 caracteres y nada obvio (123456, qwerty, contraseña, el nombre de la persona…).
+  - Crear usuario: el administrador escribe el nombre completo y la pantalla propone el usuario (Juan Pérez → juan.perez,
+    juan.perez2 si ya existe); el nombre completo queda como nombre visible.
   Toda consulta lleva el espacio de quien pregunta: una cuenta nunca ve proyectos de otra, ni siquiera el administrador
   (`test/proyectos.test.js`). Cada espacio numera sus proyectos desde 1, así nadie puede contar los de otras cuentas.
 

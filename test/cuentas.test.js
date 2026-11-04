@@ -57,6 +57,8 @@ test('contraseñas obvias: la lista corta, un carácter repetido y el nombre de 
   assert.equal(claveObvia('junior123', ['junior']), true);
   assert.equal(claveObvia('Juan Pérez', ['juan.perez', 'Juan Pérez']), true);
   assert.equal(claveObvia('juanperez1', ['juan.perez', 'Juan Pérez']), true);
+  assert.equal(claveObvia('maria2026', ['maria.gomez', 'María Gómez']), true, 'una parte del nombre con números');
+  assert.equal(claveObvia('Gómez', ['maria.gomez', 'María Gómez']), true);
   for (const c of ['mango verde', 'Casa2024!', 'tres gatos']) assert.equal(claveObvia(c, ['junior', 'Juan Pérez']), false, c);
   assert.equal(problemaDeClave('12345'), 'clave_corta');
   assert.equal(problemaDeClave('123456'), 'clave_obvia');

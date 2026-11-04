@@ -36,13 +36,17 @@ const CLAVES_OBVIAS = new Set(['123456', '1234567', '12345678', '123456789', '12
 const simple = texto => String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s._-]+/g, '');
 
 // ¿Es tan fácil que no sirve? Las de la lista, un mismo carácter repetido («aaaaaa») o el nombre de la persona
-// (su usuario o su nombre completo, solo o con números al final, como «junior123»).
+// (su usuario, su nombre completo o una parte, solo o con números al final, como «junior123» o «maria2026»).
 export function claveObvia(clave, nombres = []) {
   const c = simple(clave);
   if (!c) return true;
   if (CLAVES_OBVIAS.has(c) || /^(.)\1+$/.test(c)) return true;
-  for (const nombre of nombres) {
-    const n = simple(nombre);
+  // El nombre entero («juanperez») y cada parte («juan», «perez»), sin tildes.
+  const partes = nombres.flatMap(nombre => {
+    const sinTildes = String(nombre ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return [simple(nombre), ...sinTildes.split(/[^a-z0-9]+/)];
+  });
+  for (const n of partes) {
     if (n.length >= 3 && c.startsWith(n) && /^\d{0,4}$/.test(c.slice(n.length))) return true;
   }
   return false;
