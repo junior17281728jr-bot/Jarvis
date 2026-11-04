@@ -85,14 +85,74 @@ export function estadoBase(db) {
 }
 
 // Hace un trabajo completo o nada: si algo falla a mitad, la base queda como estaba.
+// Se puede anidar (un trabajo puede llamar a otro que también usa enTransaccion):
+//  - la de afuera abre BEGIN IMMEDIATE: toma el permiso de escribir de una vez, así nunca falla a mitad
+//    porque otro proceso (el trabajador o las pantallas) escribió primero;
+//  - las de adentro abren un SAVEPOINT: si fallan, se deshace SOLO lo de adentro (si quien llama atrapa
+//    el error); si falla la de afuera, se deshace todo.
+// Nunca acepta trabajo asíncrono: una espera (await) con la base tomada congelaría las pantallas, y lo
+// que se hiciera después de la espera quedaría fuera de la transacción.
+const profundidad = new WeakMap();
+
+function esAsincrona(funcion) {
+  const tipo = Object.prototype.toString.call(funcion);
+  return tipo === '[object AsyncFunction]' || tipo === '[object AsyncGeneratorFunction]';
+}
+
+function errorAsincrono() {
+  return Object.assign(new Error('enTransaccion no acepta trabajo asíncrono: nada de esperas con la base tomada'), { codigo: 'transaccion_asincrona' });
+}
+
 export function enTransaccion(db, trabajo) {
-  db.exec('BEGIN IMMEDIATE');
+  if (typeof trabajo !== 'function') throw new TypeError('enTransaccion necesita una función');
+  if (esAsincrona(trabajo)) throw errorAsincrono();
+  const nivel = profundidad.get(db) ?? 0;
+  const punto = `oportia_sp${nivel}`;
+  db.exec(nivel === 0 ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${punto}`);
+  profundidad.set(db, nivel + 1);
   try {
     const resultado = trabajo();
-    db.exec('COMMIT');
+    if (resultado && typeof resultado.then === 'function') {
+      // Se deshace todo y se avisa. La promesa se atiende aquí para que su error no tumbe el proceso.
+      Promise.resolve(resultado).catch(() => {});
+      throw errorAsincrono();
+    }
+    db.exec(nivel === 0 ? 'COMMIT' : `RELEASE ${punto}`);
     return resultado;
   } catch (error) {
-    db.exec('ROLLBACK');
+    try {
+      db.exec(nivel === 0 ? 'ROLLBACK' : `ROLLBACK TO ${punto}; RELEASE ${punto}`);
+    } catch (errorAlDeshacer) {
+      // SQLite ya deshizo la transacción entera por su cuenta (disco lleno, por ejemplo). Si esto pasó
+      // adentro, la de afuera ya no existe: se avisa con el error original para que nadie siga escribiendo.
+      if (nivel > 0) error.transaccionPerdida = true;
+    }
+    throw error;
+  } finally {
+    profundidad.set(db, nivel);
+  }
+}
+
+// Para el trabajador (el otro proceso): abre una base de OPORTIA que YA existe y ya está al día.
+// Nunca la crea, nunca le aplica cambios, nunca copia ni compacta: eso solo lo hace el servidor web al
+// arrancar (abrirBase). Si algo no cuadra, lanza un error con `codigo`:
+// 'base_no_existe' | 'base_ajena' | 'base_sin_wal' | 'base_vieja'.
+export function conectarBase({ archivoBase }, { versionMinima = 0 } = {}) {
+  revisarModoPrueba(archivoBase);
+  const falla = (codigo, mensaje) => Object.assign(new Error(mensaje), { codigo });
+  if (!existsSync(archivoBase) || statSync(archivoBase).size === 0) throw falla('base_no_existe', `No existe la base ${archivoBase}`);
+  if (leerMarca(archivoBase) !== ID_APLICACION) throw falla('base_ajena', `El archivo ${archivoBase} no es de OPORTIA: no se toca.`);
+  const db = new DatabaseSync(archivoBase);
+  try {
+    db.exec('PRAGMA busy_timeout = 5000;');
+    if (db.prepare('PRAGMA journal_mode').get().journal_mode !== 'wal') throw falla('base_sin_wal', 'La base no está en modo WAL');
+    db.exec('PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;');
+    let version = 0;
+    try { version = db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v ?? 0; } catch { version = 0; }
+    if (version < versionMinima) throw falla('base_vieja', `La base está en la versión ${version} y hace falta la ${versionMinima}`);
+    return db;
+  } catch (error) {
+    db.close();
     throw error;
   }
 }

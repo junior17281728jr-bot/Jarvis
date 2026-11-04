@@ -298,6 +298,7 @@
   "error.clave_igual": "La contraseña nueva debe ser distinta de la actual.",
   "error.nombre_ocupado": "Ese nombre de usuario ya existe.",
   "error.no_existe": "Eso no existe.",
+  "error.ya_hay_otra_en_marcha": "Ya hay otra tarea igual en la fila o trabajando. Espera a que termine.",
   "error.no_puedes_desactivarte": "No puedes desactivar tu propia cuenta.",
   "error.ultimo_admin": "No puedes desactivar al único administrador.",
   "error.origen_no_valido": "Pedido rechazado por seguridad. Recarga la página.",

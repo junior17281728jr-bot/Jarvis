@@ -88,6 +88,7 @@ const MIGRACIONES_PUBLICADAS = {
   1: 'e7d3afb3583848d13303951ce7d309319b7ad05b7f47b43677597499edc6d2f4',
   2: 'faedbc4c80a34ab4085bdea7aa2330cb28148e69e14d7f1564c5ce3621bd0a53',
   3: 'e1c181eba7d2c793921aefac7c80d2c7e2377dc7ed750552f6ae105e3bc9f658',
+  4: '46758487c7db33997048188be268fea4420332e1b08bcc431d82114607529860',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -117,5 +118,49 @@ test('los cambios de la base solo agregan: nunca DROP, nunca RENAME, y NOT NULL 
 test('las pruebas usan la ayuda común (sin internet, sin datos reales)', () => {
   for (const nombre of readdirSync(join(RAIZ, 'test')).filter(n => n.endsWith('.test.js') && n !== 'reglas.test.js')) {
     assert.match(readFileSync(join(RAIZ, 'test', nombre), 'utf8'), /from '\.\/ayuda\.js'|import '\.\/ayuda\.js'/, `test/${nombre} no importa ./ayuda.js`);
+  }
+});
+
+// Fase 1, parte c: la fila de tareas.
+test('las transacciones solo se abren en src/nucleo/db.js (enTransaccion), nunca a mano en otro archivo', () => {
+  const patron = /\b(?:exec|prepare)\(\s*['"`]\s*(?:BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
+  for (const f of codigo) {
+    if (relative(SRC, f) === join('nucleo', 'db.js')) continue;
+    assert.doesNotMatch(readFileSync(f, 'utf8'), patron, `${relative(RAIZ, f)} abre o cierra una transacción a mano: usa enTransaccion`);
+  }
+});
+
+test('solo src/tareas/supervisor.js puede encender otros procesos (node:child_process)', () => {
+  for (const f of codigo) {
+    if (relative(SRC, f) === join('tareas', 'supervisor.js')) continue;
+    assert.doesNotMatch(readFileSync(f, 'utf8'), /['"]node:child_process['"]/, `${relative(RAIZ, f)} usa node:child_process`);
+  }
+});
+
+test('la migración 4 tiene un solo CHECK (el del estado de las tareas): un CHECK nunca se puede ampliar', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const m = MIGRACIONES.find(x => x.id === 4);
+  assert.ok(m, 'falta la migración 4');
+  assert.equal((m.sql.match(/\bCHECK\b/gi) || []).length, 1);
+  assert.match(m.sql, /estado TEXT NOT NULL DEFAULT 'lista'\s+CHECK \(estado IN \('lista', 'en_curso', 'hecha', 'fallida', 'cancelada', 'revisar'\)\)/);
+});
+
+test('cada tipo de tarea está bien definido, y en src/ no hay tipos de prueba', async () => {
+  const { TIPOS, CUPOS, definicion } = await import('../src/tareas/tipos.js');
+  const tipos = Object.keys(TIPOS);
+  assert.ok(tipos.length > 0);
+  for (const tipo of tipos) {
+    const d = definicion(tipo);
+    assert.match(tipo, /^[a-z]+\.[a-z_]+$/, `nombre de tipo raro: ${tipo}`);
+    assert.ok(!tipo.startsWith('prueba.'), `${tipo}: los tipos de prueba van en test/, nunca en src/`);
+    assert.ok(Object.hasOwn(CUPOS, d.cupo), `${tipo}: cupo desconocido ${d.cupo}`);
+    assert.ok(Number.isSafeInteger(d.maxFallos) && d.maxFallos >= 1, `${tipo}: maxFallos debe ser 1 o más`);
+    assert.ok(Number.isFinite(d.tiempoPorPasoMs) && d.tiempoPorPasoMs > 0 && d.tiempoPorPasoMs <= 600_000, `${tipo}: tiempoPorPasoMs debe ser de 10 minutos o menos`);
+    assert.ok(Number.isSafeInteger(d.fase) && d.fase >= 1, `${tipo}: fase no válida`);
+    assert.equal(typeof d.repetible, 'boolean', `${tipo}: repetible debe ser true o false`);
+    assert.equal(typeof d.ignoraFrenos, 'boolean', `${tipo}: ignoraFrenos debe ser true o false`);
+  }
+  for (const f of codigo) {
+    assert.doesNotMatch(readFileSync(f, 'utf8'), /['"`]prueba\./, `${relative(RAIZ, f)} menciona un tipo de prueba`);
   }
 });
