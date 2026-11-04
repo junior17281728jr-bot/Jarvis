@@ -9,6 +9,8 @@ export function plano(texto) {
   let r = '';
   for (let i = 0; i < original.length; i++) {
     const codigo = original.charCodeAt(i);
+    // Las letras simples (sin acento) van directo: es lo más común y así se ahorra trabajo.
+    if (codigo < 128) { r += codigo >= 65 && codigo <= 90 ? String.fromCharCode(codigo + 32) : original[i]; continue; }
     if (codigo >= 0xd800 && codigo <= 0xdfff) { r += ' '; continue; }
     r += original[i].toLowerCase().normalize('NFD')[0] || ' ';
   }
@@ -39,7 +41,12 @@ export function comparable(texto) {
 const ESCRITURA_RAPIDA = new Map([
   ['q', 'que'], ['xq', 'porque'], ['pq', 'porque'], ['d', 'de'], ['pa', 'para'], ['pal', 'para'], ['tb', 'tambien'], ['tmb', 'tambien'],
   ['tbn', 'tambien'], ['dl', 'del'], ['n', 'en'], ['cn', 'con'], ['toy', 'estoy'], ['porfa', 'por favor'], ['xfa', 'por favor'], ['xfavor', 'por favor'],
+  // «na de bancas», «na' de eso»: en RD «na» es «nada». «kiero» es «quiero». «x encargo», «al x mayor»: la x es «por».
+  ['na', 'nada'], ['kiero', 'quiero'], ['kieres', 'quieres'], ['kiere', 'quiere'], ['x', 'por'],
 ]);
+// Emojis que dicen «no» (❌ bancos) o «teléfono» (📞 809…).
+const EMOJIS_NO = new Set([0x274c, 0x2716, 0x2717, 0x2718, 0x26d4, 0x1f6ab, 0x1f645]);
+const EMOJIS_TELEFONO = new Set([0x1f4de, 0x260e, 0x1f4f1, 0x1f4f2]);
 // Puntos que no terminan una frase: «Av. Duarte», «Sto. Dgo.», «No. 5».
 const ABREVIATURAS = new Set(['av', 'ave', 'avda', 'sto', 'sta', 'dgo', 'stgo', 'prov', 'mun', 'sr', 'sra', 'srta', 'dr', 'dra', 'lic', 'licda', 'ing',
   'tel', 'cel', 'aprox', 'ej', 'urb', 'res', 'esq', 'edif', 'apto', 'km', 'mr', 'mrs', 'ms', 'st', 'calle', 'c', 'num', 'arq', 'prof']);
@@ -66,6 +73,13 @@ export function tokenizar(texto) {
   let i = 0;
   while (i < p.length) {
     const c = p[i];
+    const punto = original.codePointAt(i);
+    if (EMOJIS_NO.has(punto) || EMOJIS_TELEFONO.has(punto)) {
+      const largo = punto > 0xffff ? 2 : 1;
+      empujar(EMOJIS_NO.has(punto) ? 'no' : 'tel', i, i + largo, 'p');
+      i += largo;
+      continue;
+    }
     if (c === '_') {
       const ini = i;
       while (i < p.length && p[i] === '_') i++;

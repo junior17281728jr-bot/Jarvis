@@ -19,12 +19,13 @@ export const ESQUEMA = 2;
 
 // Lo que el motor decidió solo y avisa (se muestra; no impide aprobar).
 export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_laboral', 'sectores_todos', 'gran_santo_domingo', 'contactar_a_mano',
-  'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono'];
+  'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono', 'contactar_sin_correos'];
 // Dudas: cosas que el motor no entendió. Mientras haya alguna, no se puede aprobar.
 // Las «guardadas» salen de las instrucciones y se marcan como resueltas en el formulario; las otras se calculan
 // de la configuración y desaparecen solas cuando se corrige el dato.
 export const CLAVES_DUDAS_GUARDADAS = ['texto', 'lugar', 'calle_o_provincia', 'direccion', 'conflicto_tamano', 'salario', 'salario_periodo', 'frecuencia', 'frecuencia_no_disponible',
-  'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa'];
+  'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa',
+  'objetivo_empleados', 'objetivo_otra_tarea', 'parte_de_lugar', 'lugar_homonimo', 'lugar_difuso', 'cambio', 'combinacion_producto', 'combinacion_parcial'];
 export const CLAVES_DUDAS_CALCULADAS = ['conflicto_sector', 'conflicto_zona', 'fuera_del_pais'];
 export const CLAVES_DUDAS = [...CLAVES_DUDAS_GUARDADAS, ...CLAVES_DUDAS_CALCULADAS];
 
@@ -103,10 +104,12 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   for (const t of x.tamanosExcluidos) if (x.tamanos.has(t)) duda('conflicto_tamano', t);
   if (!tamanos.length && x.tamanosExcluidos.size) tamanos = CLAVES_TAMANOS.filter(t => !x.tamanosExcluidos.has(t));
 
-  // Dónde
-  const zonas = unicos(x.zonas);
+  // Dónde. Dónde está la persona o su negocio («vivo en Moca», «mi oficina está en Naco») no es dónde se busca;
+  // solo si no dijo ningún otro lugar se busca ahí (un negocio de Santiago que no dice más vende en Santiago).
+  let zonas = unicos(x.zonas);
   const zonasLibres = unicosPorTexto(x.zonasLibres);
   const lugarDudoso = noEntendido.some(d => d.clave === 'lugar');
+  if (!zonas.length && !zonasLibres.length && !x.pais.explicito && !x.pais.nombre) zonas = unicos(x.zonasPropias);
   const paisCompleto = x.pais.explicito || (x.pais.nombre && !zonas.length && !zonasLibres.length && !lugarDudoso);
   if (zonas.includes('gran-santo-domingo')) supuestos.add('gran_santo_domingo');
 
@@ -115,6 +118,8 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   if (tipo === 'laboral') producto = x.puesto;
   else {
     producto = unicosPorTexto(x.productos).join(', ');
+    // «tengo una empresa de transporte»: lo que hace su negocio, si no dijo otra cosa.
+    if (!producto) producto = unicosPorTexto(x.productosPropios).join(', ');
     if (!producto && x.negocioPropio) {
       producto = x.negocioPropio;
       supuestos.add('producto_negocio');
@@ -150,7 +155,8 @@ export function interpretar(instrucciones, { idioma = 'es' } = {}) {
   const capacidades = capacidadesDesdeLista(lista);
   const porDefecto = capacidadesDesdeLista(COMBINACIONES[COMBINACION_POR_DEFECTO]);
   if (!x.soloInvestigar && !x.cicloCompleto && !pedidas.size && CLAVES_CAPACIDADES.every(c => capacidades[c] === porDefecto[c])) supuestos.add('capacidades');
-  if (x.contactarPedido) supuestos.add('contactar_a_mano');
+  // Si pidió contactar pero también que no prepare correos («no les mandes correos, solo llámalos»), el aviso no puede prometer correos.
+  if (x.contactarPedido) supuestos.add(capacidades.correos ? 'contactar_a_mano' : 'contactar_sin_correos');
 
   if (noEntendido.some(d => d.clave === 'tipo')) { supuestos.delete('tipo'); supuestos.delete('tipo_laboral'); }
   // Si lo que pide todavía no existe (competidores, proveedores…), no se dice nada más: solo eso.

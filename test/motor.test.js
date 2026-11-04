@@ -12,7 +12,7 @@ import {
 } from '../src/motor/interpretar.js';
 import { normalizar, comparable, buscarFrases, tokenizar, variantes } from '../src/motor/texto.js';
 import { SECTORES, PRODUCTOS, PROVINCIAS, MUNICIPIOS, CIUDADES, REGIONES, ZONAS, CAPACIDADES, COMBINACIONES } from '../src/motor/diccionarios.js';
-import { CASOS_REVISION, CASOS_VARIADOS } from './motor-casos.js';
+import { CASOS_REVISION, CASOS_VARIADOS, CASOS_EQUIPO_ROJO } from './motor-casos.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 
@@ -20,7 +20,7 @@ const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
 const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
 const CATALOGO = catalogo();
-const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS];
+const TODOS = [...CASOS_REVISION, ...CASOS_VARIADOS, ...CASOS_EQUIPO_ROJO];
 
 // ---------- Texto ----------
 test('normalizar quita acentos y mayúsculas sin cambiar la longitud del texto', () => {
@@ -88,6 +88,11 @@ test(`instrucciones dominicanas variadas: ventas, empleos, jerga, MAYÚSCULAS, e
   for (const caso of CASOS_VARIADOS) revisarCaso(caso);
 });
 
+test(`cada frase del equipo rojo (ronda 1) se entiende bien o se pregunta (${CASOS_EQUIPO_ROJO.length} casos)`, () => {
+  assert.ok(CASOS_EQUIPO_ROJO.length >= 300);
+  for (const caso of CASOS_EQUIPO_ROJO) revisarCaso(caso);
+});
+
 test('«Contactar» nunca se enciende desde el texto, ni siquiera cuando se pide: se avisa y se deja para encender a mano', () => {
   for (const caso of TODOS) {
     const { configuracion: c } = interpretar(caso.texto, { idioma: caso.idioma || 'es' });
@@ -124,6 +129,35 @@ test('los ejemplos de la pantalla se entienden completos en español y en inglé
   assert.equal(nombreSugerido(ejemplo1), 'Clientes para paneles solares');
   assert.equal(nombreSugerido(interpretar(en['proyectos.ejemplo.1'], { idioma: 'en' }).configuracion, 'en'), 'Customers for solar panels');
   assert.match(objetivoSugerido(interpretar(en['proyectos.ejemplo.3']).configuracion, 'en'), /^Get a job as driver/);
+});
+
+test('una negación de después nunca queda como dato de la búsqueda, y los teléfonos no se guardan', () => {
+  const negacionAlFinal = /(^|\s)(no|tampoco|not|nunca|never|jamás|jamas)$/i;
+  for (const caso of TODOS) {
+    const { configuracion: c } = interpretar(caso.texto, { idioma: caso.idioma || 'es' });
+    for (const v of [...c.sectoresLibres, ...c.zonasLibres, ...c.prioridades, ...c.exclusiones, c.producto]) {
+      assert.doesNotMatch(v, negacionAlFinal, `«${caso.texto}»: «${v}»`);
+    }
+  }
+  for (const texto of ['busco trabajo de cocinero en bavaro, me pueden llamar al 809 555 1234', 'busco trabajo de cocinero en bavaro 📞 809.555.1234',
+    'Vendo software a hoteles en Santiago, mi celular es 809-555-1234']) {
+    const { configuracion: c, supuestos } = interpretar(texto);
+    assert.doesNotMatch(JSON.stringify(c), /555/, texto);
+    assert.ok(supuestos.includes('telefono'), texto);
+    assert.ok(!supuestos.includes('contactar_a_mano'), `${texto}: dar su número no es pedir que contacte`);
+    assert.equal(c.capacidades.propuestas, true, texto);
+  }
+});
+
+test('los lugares con el mismo nombre en dos provincias se muestran con su provincia y se preguntan', () => {
+  const nombre = clave => CATALOGO.zonas.find(z => z.clave === clave).nombre;
+  assert.match(nombre('los-rios'), /Bahoruco/);
+  assert.match(nombre('la-cienaga'), /Barahona/);
+  assert.match(nombre('bella-vista'), /Distrito Nacional/);
+  const { configuracion: c } = interpretar('Vendo agua a negocios en Arroyo Hondo y Los Ríos');
+  assert.deepEqual(dudas(c).map(d => `${d.clave}:${d.texto}`), ['lugar_homonimo:Los Ríos']);
+  const conProvincia = interpretar('Vendo agua a colmados en Los Ríos, Bahoruco').configuracion;
+  assert.deepEqual(dudas(conProvincia), [], 'con su provincia no hay duda');
 });
 
 // ---------- Dudas: lo que no se entendió se pregunta y bloquea ----------
@@ -314,6 +348,17 @@ test('cualquier texto de 4000 letras, aunque esté hecho para trabar el motor, s
     'la Duarte con': 'la Duarte con '.repeat(290),
     'rangos con mil': 'de 1 a 2 mil de 3 a 4 mil '.repeat(160),
     '1k-1k-': '1k-'.repeat(1400),
+    // Ronda 1 del equipo rojo: muchos oficios con comas hacían buscar lugares parecidos una y otra vez.
+    'oficios con comas': relleno(i => `${['chofer', 'mensajero', 'cajero', 'vendedor', 'conserje', 'ayudante', 'digitador', 'mesero', 'cocinero', 'pintor', 'plomero'][i % 11]},`),
+    'oficios distintos': relleno(i => `oficio${i}x,`),
+    'Villa y Los …': relleno(i => `colmados de Villa Nombre${i} y Los Mameyes${i},`),
+    'X no, Y tampoco': relleno(i => ['hoteles no,', 'bares tampoco,', 'a moca no,'][i % 3]),
+    'el norte de …': relleno(i => ['en el norte de Santiago,', 'Jardines del Este,'][i % 2]),
+    'porque …': relleno(() => 'porque no compran y'),
+    'vivo en …': relleno(i => ['Soy de Moca,', 'mi oficina está en Naco,'][i % 2]),
+    'salarios negados': relleno(i => `no quiero ganar menos de ${i} mil,`),
+    'SD Norte y Este': relleno(() => 'Santo Domingo Norte y Este y'),
+    'los que estén en …': relleno(() => 'excepto los que esten en Moca y que sean grandes'),
   };
   let peor = 0;
   for (const [nombre, texto] of Object.entries(casos)) {

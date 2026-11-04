@@ -2,9 +2,9 @@
 // Cada palabra va escrita en minúsculas y sin acentos (así se compara). Los plurales se generan solos
 // (hotel → hoteles, hotels; coffee shop → coffee shops); los que no siguen la regla se escriben aparte.
 // Para añadir un sector, un producto o una zona basta con agregar una línea aquí (o en lugares.js).
-import { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS } from './lugares.js';
+import { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS, CARDINALES, DIFUSOS } from './lugares.js';
 
-export { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS };
+export { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS, CARDINALES, DIFUSOS };
 
 // Todos los lugares de dentro de una provincia (municipios, distritos municipales y sectores conocidos).
 export const CIUDADES = [...MUNICIPIOS.map(m => ({ ...m, tipo: 'municipio' })), ...DISTRITOS, ...SECTORES_DE_CIUDAD];
@@ -50,6 +50,8 @@ export const SECTORES = [
   { clave: 'iglesias', es: 'Iglesias', en: 'Churches', palabras: ['iglesia', 'church', 'churches'] },
   { clave: 'ong', es: 'Fundaciones y ONG', en: 'Foundations and nonprofits', palabras: ['ong', 'fundacion', 'nonprofit', 'ngo', 'foundation'] },
   { clave: 'joyerias', es: 'Joyerías', en: 'Jewelry stores', palabras: ['joyeria', 'jewelry store', 'jeweler'] },
+  { clave: 'lavaderos', es: 'Lavaderos de carros (car wash)', en: 'Car washes', palabras: ['car wash', 'carwash', 'lavadero', 'lavadero de carros', 'lavado de carros', 'autolavado', 'auto lavado'] },
+  { clave: 'discotecas', es: 'Discotecas y centros nocturnos', en: 'Nightclubs', palabras: ['discoteca', 'discotec', 'club nocturno', 'centro nocturno', 'nightclub', 'night club'] },
   { clave: 'combustible', es: 'Estaciones de combustible', en: 'Gas stations', palabras: ['estacion de combustible', 'estacion de gasolina', 'gasolinera', 'bomba de gasolina', 'bomba de combustible', 'gas station'] },
   // «Empresas» o «negocios» sin decir cuáles: se usa solo si no se nombró ningún otro sector.
   { clave: 'todas', es: 'Todo tipo de empresas', en: 'All kinds of businesses', palabras: ['empresa', 'negocio', 'compania', 'establecimiento', 'local comercial', 'company', 'companies', 'business', 'businesses', 'todo tipo de negocio', 'todo tipo de negocios', 'todo tipo de empresas', 'cualquier negocio', 'cualquier empresa', 'todos los negocios', 'todas las empresas', 'any business', 'all businesses', 'any company'], general: true },
@@ -152,19 +154,36 @@ export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco 
   'quiero un empleo', 'quiero empleo', 'necesito trabajo', 'necesito empleo', 'necesito un trabajo', 'necesito un empleo', 'consigueme trabajo',
   'consigueme un trabajo', 'conseguir trabajo', 'conseguir empleo', 'trabajo de', 'trabajo como', 'empleo de', 'empleo como', 'empleos de',
   'empleos', 'vacante de', 'vacantes de', 'puesto de', 'trabajar de', 'trabajar como', 'looking for work', 'looking for a job', 'looking for job',
-  'i want a job', 'i need a job', 'find me a job', 'job as', 'jobs as', 'work as', 'working as', 'position as', 'a job in', 'job in'];
+  'i want a job', 'i need a job', 'find me a job', 'job as', 'jobs as', 'work as', 'working as', 'position as', 'a job in', 'job in',
+  // Formas dominicanas de decir trabajo: chamba, pega, camello, chance, trabajito, empleíto.
+  'busco una chamba', 'busco chamba', 'necesito chamba', 'necesito una chamba', 'quiero chamba', 'chamba de', 'busco una chambita', 'chambita de',
+  'busco un chance', 'busco pega', 'necesito pega', 'pega de', 'busco camello', 'camello de', 'busco trabajito', 'busco un trabajito', 'trabajito de',
+  'busco un empleito', 'empleito de', 'jobs for', 'jobs in', 'job hunting', 'job search', 'job searching'];
 export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden', 'ofrezco', 'ofrecemos', 'ofrece', 'brindo', 'brindamos',
   'distribuyo', 'distribuimos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
   'mi empresa', 'tengo una empresa', 'tengo un negocio', 'tenemos una empresa', 'me dedico a vender', 'nos dedicamos a vender', 'trabajo vendiendo',
   'soy distribuidor', 'soy distribuidora', 'somos distribuidores', 'tengo una agencia', 'tengo una tienda', 'busco clientes', 'buscar clientes', 'conseguir clientes',
   'encontrar clientes', 'necesito clientes', 'quiero clientes', 'clientes para', 'prospectos', 'que necesiten', 'puedan necesitar', 'que necesitan',
-  'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'leads', 'that need', 'that may need', 'who need'];
+  'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'clients for', 'customers for', 'i want clients',
+  'i want customers', 'want customers', 'want clients', 'representante de ventas', 'looking for clients', 'looking for customers', 'busca clientes',
+  'buscamos clientes', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'leads', 'that need', 'that may need', 'who need'];
 export const SENALES_LABORAL_DEBILES = ['trabajo', 'empleo', 'salario', 'sueldo', 'vacante', 'curriculum', 'job', 'salary'];
 export const SENALES_COMERCIAL_DEBILES = ['venta', 'ventas', 'vender', 'cliente', 'clientes', 'customers', 'clients', 'sell'];
 
 // ---------- Objetivos que todavía no existen: se dice que llegan más adelante, no se fuerzan ----------
 export const OBJETIVOS_NO_DISPONIBLES = [
   { clave: 'competidores', palabras: ['mis competidores', 'competidores', 'la competencia', 'mi competencia', 'competitors', 'my competition'] },
+  { clave: 'empleados', palabras: ['busco empleados', 'buscar empleados', 'necesito empleados', 'busco personal', 'necesito personal', 'buscando empleados',
+    'buscando personal', 'busco trabajadores', 'necesito trabajadores', 'quiero contratar', 'necesito contratar', 'contratar empleados', 'contratar personal',
+    'busco un empleado', 'busco una empleada', 'busco empleado', 'busco empleada', 'need workers', 'need employees', 'looking for employees',
+    'looking for workers', 'i want to hire', 'i need to hire', 'need to hire', 'we are hiring'] },
+  // Cosas que piden hacer y que OPORTIA no hace: publicar, poner anuncios, vender por Amazon, llevar la contabilidad…
+  { clave: 'otra_tarea', palabras: ['pon anuncios', 'poner anuncios', 'pon publicidad', 'haz anuncios', 'hazme anuncios', 'publica mis', 'publica en',
+    'publicar mis', 'publicar en', 'publicame', 'publiques', 'publica los', 'publica las', 'publica anuncios', 'sube mis productos', 'post my', 'run ads',
+    'make ads', 'vender por amazon', 'vender en amazon', 'vendo por amazon', 'por amazon', 'por mercadolibre', 'por mercado libre', 'me lleves la contabilidad',
+    'lleves la contabilidad', 'llevarme la contabilidad', 'llevar la contabilidad', 'hazme la contabilidad', 'haz mi contabilidad', 'do my accounting',
+    'manejes mis redes', 'maneja mis redes', 'manejar mis redes', 'hazme una pagina', 'hazme la pagina', 'disena mi logo', 'hazme un logo',
+    'run my social media'] },
   { clave: 'proveedores', palabras: ['busco proveedores', 'buscar proveedores', 'encontrar proveedores', 'conseguir proveedores', 'necesito proveedores', 'proveedores para mi', 'suplidores', 'busco suplidores', 'suppliers', 'find suppliers', 'vendors for my'] },
   { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners'] },
   { clave: 'que_vender', palabras: ['no se que vender', 'no se que ofrecer', 'que puedo vender', 'que podria vender', 'que deberia vender', 'que negocio poner', 'que negocio puedo', 'descubrir que vender', 'dime que vender', 'what to sell', 'what should i sell', 'what can i sell'] },
@@ -196,5 +215,7 @@ export const CALLES = [
   ['nunez de caceres'], ['sarasota'], ['bolivar'], ['charles de gaulle'], ['jacobo majluta'], ['ortega y gasset'], ['27 de febrero'],
   ['30 de marzo'], ['george washington'], ['malecon'], ['las americas'], ['el conde'], ['mella'], ['luperon'], ['gregorio luperon'],
   ['sabana larga'], ['venezuela'], ['mexico'], ['paris'], ['san martin'], ['san vicente de paul'], ['romulo betancourt'], ['estrella sadhala'],
-  ['las carreras'], ['del sol'], ['rafael vidal'], ['bartolome colon'], ['salvador estrella sadhala'],
+  ['las carreras'], ['del sol'], ['rafael vidal'], ['bartolome colon'], ['salvador estrella sadhala'], ['lope de vega'], ['pedro henriquez urena'],
+  ['gustavo mejia ricart'], ['roberto pastoriza'], ['los proceres'], ['jose ortega y gasset'], ['rafael augusto sanchez'], ['alma mater'],
+  ['jose contreras'], ['luis f thomen'], ['correa y cidron'], ['jimenez moya'],
 ].map(([frase, provincia = null]) => ({ frase, provincia }));

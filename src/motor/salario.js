@@ -15,21 +15,25 @@ const ANTES_DE_SALARIO = new Set(['que', 'me', 'con', 'y', 'un', 'una', 'el', 'm
 const COMPARADORES = indice([
   ['min', ['mas de', 'mas que', 'superior a', 'superior de', 'mayor a', 'mayor de', 'minimo', 'minimo de', 'como minimo', 'al menos', 'por lo menos',
     'desde', 'a partir de', 'arriba de', 'por encima de', 'no menos de', 'no menor de', 'no menor a', 'no inferior a', 'no inferior de', 'de mas de',
-    'over', 'more than', 'at least', 'above', 'minimum', 'minimum of', 'starting at', 'no less than', 'not less than']],
+    'over', 'more than', 'at least', 'above', 'minimum', 'minimum of', 'starting at', 'no less than', 'not less than', 'me conformo con', 'conformo con',
+    'me conformaria con', 'i would settle for', 'i can settle for']],
   ['max', ['menos de', 'hasta', 'maximo', 'maximo de', 'como maximo', 'inferior a', 'por debajo de', 'no mas de', 'no mayor de', 'no mayor a',
     'no superior a', 'under', 'up to', 'less than', 'below', 'maximum', 'no more than', 'not more than', 'at most']],
   ['entre', ['entre', 'between']],
+  // «alrededor de 30 mil», «around 30k»: una cantidad aproximada; se toma como el mínimo y se avisa.
+  ['aprox', ['alrededor de', 'cerca de', 'around', 'about', 'approximately', 'aproximadamente', 'aprox', 'unos', 'como unos', 'mas o menos']],
   ['de', ['de', 'from', 'of', 'en']],
 ]);
 const DESPUES = indice([
   ['min', ['o mas', 'o mas que eso', 'para arriba', 'pa arriba', 'en adelante', 'como minimo', 'minimo', 'or more', 'and up', 'plus', 'o superior']],
   ['max', ['o menos', 'como maximo', 'maximo', 'or less', 'at most', 'tops', 'max']],
   ['extra', ['mas propinas', 'mas comisiones', 'mas beneficios', 'con propinas', 'plus tips', 'plus commissions']],
-  ['nada', ['netos', 'brutos', 'libres', 'aproximadamente', 'aprox', 'mas o menos', 'dominicanos']],
+  ['nada', ['netos', 'brutos', 'libres', 'aproximadamente', 'aprox', 'mas o menos', 'dominicanos', 'de salario', 'de sueldo', 'de pago', 'in salary']],
 ]);
 export const PERIODOS = indice([
   ['mensual', ['mensual', 'mensuales', 'al mes', 'por mes', 'cada mes', 'el mes', 'a month', 'per month', 'monthly', 'mensualmente']],
-  ['quincenal', ['quincenal', 'quincenales', 'por quincena', 'cada quincena', 'a la quincena', 'quincenalmente', 'biweekly']],
+  ['quincenal', ['quincenal', 'quincenales', 'por quincena', 'cada quincena', 'a la quincena', 'quincenalmente', 'biweekly', 'every two weeks', 'every 2 weeks',
+    'every other week', 'a fortnight', 'per fortnight', 'fortnightly', 'cada quince dias', 'cada 15 dias', 'cada dos semanas', 'cada 2 semanas']],
   ['semanal', ['semanal', 'semanales', 'por semana', 'a la semana', 'cada semana', 'semanalmente', 'a week', 'per week', 'weekly']],
   ['diario', ['diario', 'diarios', 'por dia', 'al dia', 'diariamente', 'a day', 'per day', 'daily']],
   ['hora', ['por hora', 'la hora', 'a la hora', 'an hour', 'per hour', 'hourly']],
@@ -68,12 +72,21 @@ export function esTelefono(T, k) {
   const t = T[k];
   if (!t || t.tipo !== 'n') return false;
   const digitos = t.w.replace(/\D/g, '');
+  // 8095551234 o 809.555.1234 (los puntos quedan dentro del mismo número).
   if (digitos.length >= 10 && /^[0-9]+$/.test(t.w)) return true;
+  if (/^[0-9]{3}\.[0-9]{3}\.[0-9]{4}$/.test(t.w)) return true;
   const anterior = T[k - 1];
   if (anterior && ANTES_DE_TELEFONO.has(anterior.w)) return true;
-  // 809-555-1234: se mira el número desde cualquiera de sus tres partes.
-  const patron = j => /^[0-9]{3}$/.test(T[j]?.w || '') && T[j + 1]?.w === '-' && /^[0-9]{3}$/.test(T[j + 2]?.w || '') && T[j + 3]?.w === '-' && /^[0-9]{4}$/.test(T[j + 4]?.w || '');
-  return patron(k) || patron(k - 2) || patron(k - 4);
+  // 809-555-1234 o 809 555 1234: se mira el número desde cualquiera de sus tres partes.
+  const tres = j => /^[0-9]{3}$/.test(T[j]?.w || '');
+  const patron = j => {
+    if (!tres(j)) return false;
+    const a = T[j + 1]?.w === '-' ? j + 2 : j + 1;
+    if (!tres(a)) return false;
+    const b = T[a + 1]?.w === '-' ? a + 2 : a + 1;
+    return /^[0-9]{4}$/.test(T[b]?.w || '') && (a === j + 2) === (b === a + 2);
+  };
+  return patron(k) || patron(k - 1) || patron(k - 2) || patron(k - 3) || patron(k - 4);
 }
 
 // Dónde termina un teléfono que empieza en «k» (para guardarlo como «no es salario»).
@@ -93,8 +106,8 @@ function leerMonto(T, k, enContexto) {
   let marcador = false;
   let j = k;
   const w = T[j]?.w;
-  if (w === 'rd$' || w === 'dop' || (w === 'rd' && T[j + 1]?.tipo === 'n')) { moneda = 'DOP'; marcador = true; j++; }
-  else if (w === 'us$' || w === 'usd') { moneda = 'USD'; marcador = true; j++; }
+  if (w === 'rd$' || w === 'dop' || (w === 'rd' && T[j + 1]?.tipo === 'n') || (['pesos', 'peso'].includes(w) && T[j + 1]?.tipo === 'n')) { moneda = 'DOP'; marcador = true; j++; }
+  else if (w === 'us$' || w === 'usd' || (['dolares', 'dolar', 'dollars'].includes(w) && T[j + 1]?.tipo === 'n')) { moneda = 'USD'; marcador = true; j++; }
   else if (w === '$') { marcador = true; j++; }
   const t = T[j];
   if (!t || t.tipo !== 'n') return null;
@@ -163,6 +176,9 @@ function leerDespues(T, k) {
   const extras = [];
   for (let vueltas = 0; vueltas < 3; vueltas++) {
     if (T[j]?.w === '+') { rol = 'min'; j++; continue; }
+    // «20 mil, no menos», «20k, not less»: es el mínimo.
+    const q = T[j]?.w === ',' ? j + 1 : j;
+    if (['no', 'ni', 'not'].includes(T[q]?.w) && ['menos', 'less'].includes(T[q + 1]?.w)) { rol = 'min'; j = q + 2; continue; }
     const p = buscarEn(T, j, PERIODOS);
     if (p) { j = p.fin; continue; }
     const d = buscarEn(T, j, DESPUES);
@@ -175,15 +191,42 @@ function leerDespues(T, k) {
   return { fin: j, rol, extras };
 }
 
+// «no quiero ganar menos de 40 mil», «que no paguen menos de 25 mil», «nada por debajo de 22 mil»: con la negación,
+// el «menos de» dice el mínimo. También si la negación va después: «menos de 25 mil no me sirve», «under 20k is not ok».
+const NEGACION_SALARIO = new Set(['no', 'nada', 'nunca', 'jamas', 'not', 'never', 'dont']);
+const ENTRE_NEGACION_Y_CIFRA = new Set(['quiero', 'ganar', 'gano', 'trabajo', 'trabajar', 'trabajaria', 'acepto', 'aceptar', 'aceptaria', 'paguen', 'pague',
+  'pagan', 'me', 'por', 'want', 'to', 'earn', 'work', 'for', 'accept', 'i', 'will', 'cobrar', 'cobro', 'que', 'do', 'would', 'take']);
+const NEGACION_DESPUES = indice([['neg', ['no me sirve', 'no me sirven', 'no me conviene', 'no me alcanza', 'no acepto', 'no lo acepto', 'no va', 'no', 'is not ok',
+  'isnt ok', 'is not okay', 'not ok', 'is not enough', 'no thanks', 'es muy poco', 'es poco']]]);
+
 // ¿Empieza en «k» algo sobre el salario? Devuelve { ini, fin, montos, periodoAntes, extras, alternativa } o null.
 export function salarioEn(T, k) {
   let j = k;
   let palabra = false;
-  if (T[j] && ANTES_DE_SALARIO.has(T[j].w) && PALABRAS_SALARIO.has(T[j + 1]?.w)) j++;
-  if (T[j] && PALABRAS_SALARIO.has(T[j].w)) {
-    palabra = true;
-    j++;
-    if (['me', 'de', 'es', 'que', 'of', 'is'].includes(T[j]?.w)) j++;
+  let negado = false;
+  let q = j;
+  if (T[q]?.w === 'que') q++;
+  if (NEGACION_SALARIO.has(T[q]?.w)) {
+    q++;
+    let conPalabra = false;
+    for (let vueltas = 0; vueltas < 4 && q < T.length && ENTRE_NEGACION_Y_CIFRA.has(T[q].w) && !buscarEn(T, q, COMPARADORES); vueltas++) {
+      if (PALABRAS_SALARIO.has(T[q].w)) conPalabra = true;
+      q++;
+    }
+    const c = buscarEn(T, q, COMPARADORES);
+    if (c && c.datos[0] === 'max') { negado = true; palabra = conPalabra; j = q; }
+  }
+  if (!negado) {
+    // «con un sueldo de 25 mil»: hasta dos palabras pequeñas antes de la palabra de salario.
+    if (T[j] && ANTES_DE_SALARIO.has(T[j].w) && PALABRAS_SALARIO.has(T[j + 1]?.w)) j++;
+    else if (T[j] && ANTES_DE_SALARIO.has(T[j].w) && ANTES_DE_SALARIO.has(T[j + 1]?.w) && PALABRAS_SALARIO.has(T[j + 2]?.w)) j += 2;
+    // «con 25 mil», «por 20 mil»: «con» o «por» delante de una cantidad de dinero.
+    else if (T[j] && ['con', 'with', 'por', 'for'].includes(T[j].w) && leerExpresion(T, j + 1, false)) j++;
+    if (T[j] && PALABRAS_SALARIO.has(T[j].w)) {
+      palabra = true;
+      j++;
+      if (['me', 'de', 'es', 'que', 'of', 'is'].includes(T[j]?.w)) j++;
+    }
   }
   let periodoAntes = null;
   if (palabra) {
@@ -211,8 +254,12 @@ export function salarioEn(T, k) {
   }
   if (!expresiones.length) return null;
   const montos = expresiones.flatMap(e => e.montos);
-  if (!palabra && !montos.some(m => m.marcador)) return null;
-  return { ini: k, fin: j, montos, extras: expresiones.flatMap(e => e.extras), alternativa, periodoAntes, palabra };
+  if (!palabra && !negado && !montos.some(m => m.marcador)) return null;
+  const despues = buscarEn(T, j, NEGACION_DESPUES);
+  const finDeParte = t => !t || (t.tipo === 's' && (t.w === '.' || t.w === ',')) || ['y', 'pero', 'and', 'but'].includes(t.w);
+  if (despues && finDeParte(T[despues.fin]) && montos.some(m => m.rol === 'max')) { negado = true; j = despues.fin; }
+  if (negado) for (const m of montos) if (m.rol === 'max') m.rol = 'min';
+  return { ini: k, fin: j, montos, extras: expresiones.flatMap(e => e.extras), alternativa, periodoAntes, palabra: palabra || negado };
 }
 
 // Junta todo lo que se dijo del salario. Devuelve { minimo, maximo, moneda, duda, supuesto }.
