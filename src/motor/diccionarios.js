@@ -1,173 +1,141 @@
 // Diccionarios del motor propio: con ellos OPORTIA entiende las instrucciones sin ninguna IA.
 // Cada palabra va escrita en minúsculas y sin acentos (así se compara). Los plurales se generan solos
-// (hotel → hoteles, hotels); los que no siguen la regla se escriben aparte.
-// Para añadir un sector, un producto o una zona basta con agregar una línea aquí.
+// (hotel → hoteles, hotels; coffee shop → coffee shops); los que no siguen la regla se escriben aparte.
+// Para añadir un sector, un producto o una zona basta con agregar una línea aquí (o en lugares.js).
+import { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS } from './lugares.js';
+
+export { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS };
+
+// Todos los lugares de dentro de una provincia (municipios, distritos municipales y sectores conocidos).
+export const CIUDADES = [...MUNICIPIOS.map(m => ({ ...m, tipo: 'municipio' })), ...DISTRITOS, ...SECTORES_DE_CIUDAD];
+
+// Para compatibilidad con lo anterior: las frases que significan el país (las claras y el nombre).
+export const PAIS_COMPLETO = [...PAIS_EXPLICITO, ...PAIS_NOMBRE];
 
 // ---------- Sectores (a quién se busca) ----------
+// «parciales»: palabras que son solo una parte del sector (los bares son parte de «Restaurantes, bares y cafés»).
+// Si alguien excluye una parcial («no quiero bares»), se guarda tal cual y no se excluye el sector entero.
 export const SECTORES = [
-  { clave: 'hoteles', es: 'Hoteles', en: 'Hotels', palabras: ['hotel', 'hospedaje', 'resort', 'hostal', 'aparthotel', 'apart hotel', 'lodging', 'villa turistica'] },
-  { clave: 'clinicas', es: 'Clínicas y hospitales', en: 'Clinics and hospitals', palabras: ['clinica', 'centro medico', 'hospital', 'consultorio', 'policlinica', 'clinic', 'medical center', 'centro de salud'] },
-  { clave: 'odontologia', es: 'Consultorios dentales', en: 'Dental offices', palabras: ['clinica dental', 'consultorio dental', 'odontologo', 'odontologia', 'dentista', 'dentist', 'dental clinic', 'dental office'] },
+  { clave: 'hoteles', es: 'Hoteles', en: 'Hotels', palabras: ['hotel', 'hospedaje', 'resort', 'hostal', 'aparthotel', 'apart hotel', 'lodging', 'villa turistica', 'villa'], parciales: ['villa', 'hostal', 'aparthotel', 'apart hotel'] },
+  { clave: 'clinicas', es: 'Clínicas y hospitales', en: 'Clinics and hospitals', palabras: ['clinica', 'centro medico', 'hospital', 'consultorio', 'policlinica', 'clinic', 'medical center', 'centro de salud'], parciales: ['consultorio', 'policlinica', 'centro de salud'] },
+  { clave: 'odontologia', es: 'Consultorios dentales', en: 'Dental offices', palabras: ['clinica dental', 'consultorio dental', 'consultorio odontologico', 'odontologo', 'odontologia', 'dentista', 'dentist', 'dental clinic', 'dental office'] },
   { clave: 'laboratorios', es: 'Laboratorios', en: 'Laboratories', palabras: ['laboratorio', 'laboratorio clinico', 'laboratory', 'laboratories', 'lab'] },
   { clave: 'farmacias', es: 'Farmacias', en: 'Pharmacies', palabras: ['farmacia', 'pharmacy', 'pharmacies', 'drugstore'] },
-  { clave: 'restaurantes', es: 'Restaurantes, bares y cafés', en: 'Restaurants, bars and cafés', palabras: ['restaurante', 'restaurant', 'bar', 'cafeteria', 'cafe', 'comedor', 'pizzeria', 'comida rapida', 'coffee shop', 'fast food'] },
+  { clave: 'restaurantes', es: 'Restaurantes, bares y cafés', en: 'Restaurants, bars and cafés', palabras: ['restaurante', 'restaurant', 'bar', 'cafeteria', 'cafe', 'comedor', 'pizzeria', 'comida rapida', 'coffee shop', 'fast food', 'pica pollo', 'food truck'], parciales: ['bar', 'cafeteria', 'cafe', 'comedor', 'pizzeria', 'comida rapida', 'coffee shop', 'fast food', 'pica pollo', 'food truck'] },
   { clave: 'panaderias', es: 'Panaderías y reposterías', en: 'Bakeries', palabras: ['panaderia', 'reposteria', 'bakery', 'bakeries'] },
   { clave: 'supermercados', es: 'Supermercados', en: 'Supermarkets', palabras: ['supermercado', 'super mercado', 'hipermercado', 'supermarket', 'grocery store'] },
   { clave: 'colmados', es: 'Colmados', en: 'Corner stores (colmados)', palabras: ['colmado', 'colmadon', 'bodega', 'minimarket', 'mini market', 'corner store', 'convenience store'] },
-  { clave: 'tiendas', es: 'Tiendas y comercios', en: 'Shops and retail', palabras: ['tienda', 'comercio', 'boutique', 'almacen', 'retail', 'store', 'shop', 'tienda de ropa'] },
+  { clave: 'tiendas', es: 'Tiendas y comercios', en: 'Shops and retail', palabras: ['tienda', 'comercio', 'boutique', 'almacen', 'retail', 'store', 'shop', 'tienda de ropa'], parciales: ['boutique', 'almacen', 'tienda de ropa'] },
   { clave: 'ferreterias', es: 'Ferreterías', en: 'Hardware stores', palabras: ['ferreteria', 'hardware store'] },
-  { clave: 'fabricas', es: 'Fábricas e industrias', en: 'Factories and industry', palabras: ['fabrica', 'industria', 'manufactura', 'manufacturera', 'planta industrial', 'industrial', 'factory', 'factories', 'manufacturing', 'industry', 'industries'] },
-  { clave: 'zonas-francas', es: 'Zonas francas', en: 'Free trade zones', palabras: ['zona franca', 'free zone', 'free trade zone'] },
+  { clave: 'fabricas', es: 'Fábricas e industrias', en: 'Factories and industry', palabras: ['fabrica', 'industria', 'manufactura', 'manufacturera', 'planta industrial', 'factory', 'factories', 'manufacturing', 'industry', 'industries'] },
+  { clave: 'zonas-francas', es: 'Zonas francas', en: 'Free trade zones', palabras: ['zona franca', 'zona franca industrial', 'parque de zona franca', 'free zone', 'free trade zone'] },
   { clave: 'constructoras', es: 'Constructoras', en: 'Construction companies', palabras: ['constructora', 'empresa de construccion', 'contratista', 'construction company', 'construction companies', 'contractor'] },
-  { clave: 'inmobiliarias', es: 'Inmobiliarias', en: 'Real estate', palabras: ['inmobiliaria', 'bienes raices', 'real estate', 'realtor'] },
-  { clave: 'educacion', es: 'Colegios, escuelas y universidades', en: 'Schools and universities', palabras: ['colegio', 'escuela', 'universidad', 'instituto', 'academia', 'liceo', 'school', 'university', 'universities', 'academy', 'academies'] },
-  { clave: 'finanzas', es: 'Bancos, financieras y cooperativas', en: 'Banks, lenders and credit unions', palabras: ['banco', 'financiera', 'cooperativa', 'asociacion de ahorros', 'bank', 'credit union', 'lender'] },
-  { clave: 'aseguradoras', es: 'Aseguradoras', en: 'Insurance companies', palabras: ['aseguradora', 'insurance company', 'insurance companies'] },
-  { clave: 'talleres', es: 'Talleres mecánicos', en: 'Auto repair shops', palabras: ['taller', 'taller mecanico', 'mecanica', 'auto repair', 'repair shop', 'garage'] },
-  { clave: 'concesionarios', es: 'Concesionarios de vehículos', en: 'Car dealerships', palabras: ['concesionario', 'dealer', 'car dealer', 'car dealership'] },
-  { clave: 'belleza', es: 'Salones de belleza, barberías y spas', en: 'Beauty salons, barbershops and spas', palabras: ['salon de belleza', 'salon', 'peluqueria', 'barberia', 'spa', 'estetica', 'beauty salon', 'barbershop', 'barber shop'] },
+  { clave: 'inmobiliarias', es: 'Inmobiliarias', en: 'Real estate', palabras: ['inmobiliaria', 'bienes raices', 'real estate', 'realtor', 'agencia inmobiliaria'] },
+  { clave: 'educacion', es: 'Colegios, escuelas y universidades', en: 'Schools and universities', palabras: ['colegio', 'escuela', 'universidad', 'instituto', 'academia', 'liceo', 'school', 'university', 'universities', 'academy', 'academies'], parciales: ['instituto', 'academia', 'liceo', 'academy', 'academies'] },
+  { clave: 'finanzas', es: 'Bancos, financieras y cooperativas', en: 'Banks, lenders and credit unions', palabras: ['banco', 'financiera', 'cooperativa', 'asociacion de ahorros', 'bank', 'credit union', 'lender'], parciales: ['asociacion de ahorros'] },
+  { clave: 'aseguradoras', es: 'Aseguradoras', en: 'Insurance companies', palabras: ['aseguradora', 'compania de seguros', 'insurance company', 'insurance companies'] },
+  { clave: 'bancas', es: 'Bancas de lotería', en: 'Lottery shops (bancas)', palabras: ['banca de loteria', 'banca de apuestas', 'banca', 'loteria', 'lottery shop'] },
+  { clave: 'talleres', es: 'Talleres mecánicos', en: 'Auto repair shops', palabras: ['taller', 'taller mecanico', 'taller de mecanica', 'auto repair', 'repair shop', 'garage', 'body shop'] },
+  { clave: 'concesionarios', es: 'Concesionarios de vehículos', en: 'Car dealerships', palabras: ['concesionario', 'dealer', 'car dealer', 'car dealership', 'dealer de carros'] },
+  { clave: 'belleza', es: 'Salones de belleza, barberías y spas', en: 'Beauty salons, barbershops and spas', palabras: ['salon de belleza', 'peluqueria', 'barberia', 'spa', 'estetica', 'beauty salon', 'barbershop', 'barber shop', 'nail salon', 'salon de unas'], parciales: ['peluqueria', 'barberia', 'spa', 'estetica', 'barbershop', 'barber shop', 'nail salon', 'salon de unas'] },
   { clave: 'gimnasios', es: 'Gimnasios', en: 'Gyms', palabras: ['gimnasio', 'gym', 'fitness center'] },
-  { clave: 'transporte', es: 'Transporte y logística', en: 'Transport and logistics', palabras: ['transporte', 'logistica', 'mensajeria', 'courier', 'transportista', 'flota', 'transport', 'logistics', 'shipping'] },
-  { clave: 'turismo', es: 'Turismo y agencias de viajes', en: 'Tourism and travel agencies', palabras: ['turismo', 'agencia de viajes', 'agencias de viajes', 'tour operador', 'excursion', 'tourism', 'travel agency', 'travel agencies', 'tour operator'] },
-  { clave: 'agricultura', es: 'Fincas y agricultura', en: 'Farms and agriculture', palabras: ['finca', 'agricola', 'agricultura', 'agropecuaria', 'ganaderia', 'granja', 'farm', 'agriculture'] },
-  { clave: 'servicios-profesionales', es: 'Oficinas y servicios profesionales', en: 'Offices and professional services', palabras: ['oficina', 'despacho', 'abogado', 'bufete', 'firma de abogados', 'contador', 'firma contable', 'consultora', 'law firm', 'lawyer', 'accountant', 'office', 'consulting firm'] },
+  { clave: 'transporte', es: 'Transporte y logística', en: 'Transport and logistics', palabras: ['transporte', 'logistica', 'mensajeria', 'courier', 'transportista', 'flota', 'transport', 'logistics', 'shipping'], parciales: ['mensajeria', 'courier', 'flota'] },
+  { clave: 'turismo', es: 'Turismo y agencias de viajes', en: 'Tourism and travel agencies', palabras: ['turismo', 'agencia de viajes', 'agencias de viajes', 'agencia de viaje', 'tour operador', 'turoperador', 'tourism', 'travel agency', 'travel agencies', 'tour operator'], parciales: ['tour operador', 'turoperador', 'tour operator'] },
+  { clave: 'agricultura', es: 'Fincas y agricultura', en: 'Farms and agriculture', palabras: ['finca', 'agricola', 'agricultura', 'agropecuaria', 'ganaderia', 'granja', 'farm', 'agriculture'], parciales: ['ganaderia', 'granja'] },
+  { clave: 'servicios-profesionales', es: 'Oficinas y servicios profesionales', en: 'Offices and professional services', palabras: ['oficina', 'despacho', 'abogado', 'bufete', 'firma de abogados', 'contador', 'firma contable', 'consultora', 'law firm', 'lawyer', 'accountant', 'office', 'consulting firm'], parciales: ['despacho', 'abogado', 'bufete', 'firma de abogados', 'contador', 'firma contable', 'consultora', 'law firm', 'lawyer', 'accountant', 'consulting firm'] },
   { clave: 'empresas-servicios', es: 'Empresas de servicios', en: 'Service companies', palabras: ['empresa de servicios', 'empresas de servicios', 'service company', 'service companies'] },
-  { clave: 'call-centers', es: 'Call centers', en: 'Call centers', palabras: ['call center', 'centro de llamadas', 'contact center'] },
+  { clave: 'call-centers', es: 'Call centers', en: 'Call centers', palabras: ['call center', 'centro de llamadas', 'contact center', 'centro de contacto'] },
   { clave: 'eventos', es: 'Eventos y salones de fiesta', en: 'Events and venues', palabras: ['salon de eventos', 'organizador de eventos', 'salon de fiestas', 'event venue', 'event planner', 'wedding planner'] },
   { clave: 'veterinarias', es: 'Veterinarias', en: 'Veterinary clinics', palabras: ['veterinaria', 'veterinario', 'veterinary', 'vet clinic'] },
   { clave: 'iglesias', es: 'Iglesias', en: 'Churches', palabras: ['iglesia', 'church', 'churches'] },
   { clave: 'ong', es: 'Fundaciones y ONG', en: 'Foundations and nonprofits', palabras: ['ong', 'fundacion', 'nonprofit', 'ngo', 'foundation'] },
+  { clave: 'joyerias', es: 'Joyerías', en: 'Jewelry stores', palabras: ['joyeria', 'jewelry store', 'jeweler'] },
+  { clave: 'combustible', es: 'Estaciones de combustible', en: 'Gas stations', palabras: ['estacion de combustible', 'estacion de gasolina', 'gasolinera', 'bomba de gasolina', 'bomba de combustible', 'gas station'] },
   // «Empresas» o «negocios» sin decir cuáles: se usa solo si no se nombró ningún otro sector.
-  { clave: 'todas', es: 'Todo tipo de empresas', en: 'All kinds of businesses', palabras: ['empresa', 'negocio', 'compania', 'company', 'companies', 'business', 'businesses'], general: true },
+  { clave: 'todas', es: 'Todo tipo de empresas', en: 'All kinds of businesses', palabras: ['empresa', 'negocio', 'compania', 'establecimiento', 'local comercial', 'company', 'companies', 'business', 'businesses', 'todo tipo de negocio', 'todo tipo de negocios', 'todo tipo de empresas', 'cualquier negocio', 'cualquier empresa', 'todos los negocios', 'todas las empresas', 'any business', 'all businesses', 'any company'], general: true },
 ];
 
 // ---------- Productos o servicios (lo que se vende) ----------
+// La clave sirve para puntuar en la fase 2; lo que se muestra es lo que la persona escribió.
 export const PRODUCTOS = [
   { clave: 'paneles-solares', es: 'paneles solares', en: 'solar panels', palabras: ['panel solar', 'paneles solares', 'energia solar', 'placa solar', 'placas solares', 'fotovoltaico', 'solar', 'solar panel', 'solar energy'] },
-  { clave: 'plantas-electricas', es: 'plantas eléctricas e inversores', en: 'generators and inverters', palabras: ['planta electrica', 'plantas electricas', 'generador', 'inversor', 'bateria', 'generator', 'inverter'] },
+  { clave: 'plantas-electricas', es: 'plantas eléctricas e inversores', en: 'generators and inverters', palabras: ['planta electrica', 'plantas electricas', 'generador', 'generador electrico', 'inversor', 'inversor solar', 'bateria', 'generator', 'inverter'] },
   { clave: 'inventario', es: 'sistemas de inventario', en: 'inventory systems', palabras: ['inventario', 'sistema de inventario', 'sistemas de inventario', 'control de inventario', 'inventory', 'inventory system'] },
   { clave: 'reservas', es: 'sistemas de reservas', en: 'booking systems', palabras: ['reserva', 'reservacion', 'sistema de reservas', 'booking', 'reservation', 'booking system'] },
-  { clave: 'citas', es: 'citas en línea', en: 'online appointments', palabras: ['citas en linea', 'sistema de citas', 'agenda en linea', 'agendamiento', 'appointment', 'online appointments', 'scheduling'] },
+  { clave: 'citas', es: 'citas en línea', en: 'online appointments', palabras: ['citas en linea', 'sistema de citas', 'sistemas de citas', 'agenda en linea', 'agendamiento', 'appointment', 'online appointments', 'scheduling'] },
   { clave: 'facturacion', es: 'facturación y punto de venta', en: 'invoicing and point of sale', palabras: ['facturacion', 'facturacion electronica', 'factura electronica', 'punto de venta', 'caja registradora', 'invoicing', 'point of sale', 'e invoicing'] },
-  { clave: 'contabilidad', es: 'contabilidad', en: 'accounting', palabras: ['contabilidad', 'sistema contable', 'servicios contables', 'accounting', 'bookkeeping'] },
+  { clave: 'contabilidad', es: 'contabilidad', en: 'accounting', palabras: ['contabilidad', 'sistema contable', 'servicios contables', 'software contable', 'accounting', 'bookkeeping'] },
   { clave: 'paginas-web', es: 'páginas web', en: 'websites', palabras: ['pagina web', 'paginas web', 'sitio web', 'sitios web', 'website', 'diseno web', 'desarrollo web', 'tienda en linea', 'tiendas en linea', 'ecommerce', 'e commerce', 'online store', 'web design'] },
   { clave: 'software', es: 'software', en: 'software', palabras: ['software', 'software empresarial', 'aplicacion', 'aplicaciones', 'app', 'programa informatico', 'erp', 'crm', 'application', 'business software'] },
   { clave: 'automatizacion', es: 'automatización y chatbots', en: 'automation and chatbots', palabras: ['automatizacion', 'chatbot', 'inteligencia artificial', 'whatsapp business', 'automation', 'artificial intelligence'] },
   { clave: 'marketing', es: 'marketing digital', en: 'digital marketing', palabras: ['marketing', 'marketing digital', 'publicidad', 'redes sociales', 'community manager', 'mercadeo', 'advertising', 'social media'] },
-  { clave: 'seguridad', es: 'cámaras y seguridad', en: 'cameras and security', palabras: ['camara de seguridad', 'camaras de seguridad', 'cctv', 'videovigilancia', 'alarma', 'seguridad electronica', 'security camera', 'alarm'] },
-  { clave: 'redes', es: 'internet y redes', en: 'internet and networks', palabras: ['internet', 'cableado', 'wifi', 'fibra optica', 'networking'] },
+  { clave: 'seguridad', es: 'cámaras y seguridad', en: 'cameras and security', palabras: ['camara', 'camara de seguridad', 'camaras de seguridad', 'camara de vigilancia', 'cctv', 'videovigilancia', 'alarma', 'sistema de seguridad', 'seguridad electronica', 'security camera', 'alarm'] },
+  { clave: 'redes', es: 'internet y redes', en: 'internet and networks', palabras: ['internet', 'cableado', 'cableado estructurado', 'wifi', 'fibra optica', 'networking'] },
   { clave: 'climatizacion', es: 'aire acondicionado', en: 'air conditioning', palabras: ['aire acondicionado', 'aires acondicionados', 'climatizacion', 'refrigeracion', 'air conditioning', 'hvac'] },
   { clave: 'limpieza', es: 'limpieza', en: 'cleaning', palabras: ['limpieza', 'servicio de limpieza', 'productos de limpieza', 'cleaning'] },
-  { clave: 'seguros', es: 'seguros', en: 'insurance', palabras: ['seguros', 'poliza', 'insurance'] },
-  { clave: 'agua', es: 'agua y filtros', en: 'water and filters', palabras: ['agua purificada', 'botellon', 'filtro de agua', 'purificadora', 'water filter'] },
+  { clave: 'seguros', es: 'seguros', en: 'insurance', palabras: ['seguro', 'seguros', 'seguro de vida', 'seguros de salud', 'poliza', 'insurance'] },
+  { clave: 'agua', es: 'agua y filtros', en: 'water and filters', palabras: ['agua', 'agua purificada', 'botellon', 'filtro', 'filtro de agua', 'purificadora', 'water', 'water filter'] },
   { clave: 'uniformes', es: 'uniformes', en: 'uniforms', palabras: ['uniforme', 'uniform'] },
   { clave: 'capacitacion', es: 'capacitación', en: 'training', palabras: ['capacitacion', 'curso', 'entrenamiento', 'formacion', 'training'] },
   { clave: 'consultoria', es: 'consultoría', en: 'consulting', palabras: ['consultoria', 'asesoria', 'consulting'] },
 ];
 
-// ---------- Zonas de República Dominicana: las 32 provincias (31 y el Distrito Nacional) ----------
-export const PROVINCIAS = [
-  { clave: 'distrito-nacional', nombre: 'Distrito Nacional', palabras: ['distrito nacional', 'dn'] },
-  { clave: 'santo-domingo', nombre: 'Santo Domingo (provincia)', palabras: ['provincia santo domingo', 'provincia de santo domingo'] },
-  { clave: 'santiago', nombre: 'Santiago', palabras: ['santiago', 'santiago de los caballeros'] },
-  { clave: 'la-vega', nombre: 'La Vega', palabras: ['la vega'] },
-  { clave: 'puerto-plata', nombre: 'Puerto Plata', palabras: ['puerto plata'] },
-  { clave: 'san-cristobal', nombre: 'San Cristóbal', palabras: ['san cristobal'] },
-  { clave: 'la-altagracia', nombre: 'La Altagracia', palabras: ['la altagracia', 'altagracia'] },
-  { clave: 'la-romana', nombre: 'La Romana', palabras: ['la romana'] },
-  { clave: 'san-pedro-de-macoris', nombre: 'San Pedro de Macorís', palabras: ['san pedro de macoris', 'san pedro'] },
-  { clave: 'duarte', nombre: 'Duarte', palabras: ['provincia duarte', 'duarte'] },
-  { clave: 'espaillat', nombre: 'Espaillat', palabras: ['espaillat'] },
-  { clave: 'peravia', nombre: 'Peravia', palabras: ['peravia'] },
-  { clave: 'azua', nombre: 'Azua', palabras: ['azua'] },
-  { clave: 'barahona', nombre: 'Barahona', palabras: ['barahona'] },
-  { clave: 'monsenor-nouel', nombre: 'Monseñor Nouel', palabras: ['monsenor nouel'] },
-  { clave: 'sanchez-ramirez', nombre: 'Sánchez Ramírez', palabras: ['sanchez ramirez'] },
-  { clave: 'valverde', nombre: 'Valverde', palabras: ['valverde'] },
-  { clave: 'maria-trinidad-sanchez', nombre: 'María Trinidad Sánchez', palabras: ['maria trinidad sanchez'] },
-  { clave: 'samana', nombre: 'Samaná', palabras: ['samana'] },
-  { clave: 'hermanas-mirabal', nombre: 'Hermanas Mirabal', palabras: ['hermanas mirabal'] },
-  { clave: 'monte-plata', nombre: 'Monte Plata', palabras: ['monte plata'] },
-  { clave: 'hato-mayor', nombre: 'Hato Mayor', palabras: ['hato mayor'] },
-  { clave: 'el-seibo', nombre: 'El Seibo', palabras: ['el seibo', 'el seybo'] },
-  { clave: 'san-juan', nombre: 'San Juan', palabras: ['san juan', 'san juan de la maguana'] },
-  { clave: 'elias-pina', nombre: 'Elías Piña', palabras: ['elias pina'] },
-  { clave: 'dajabon', nombre: 'Dajabón', palabras: ['dajabon'] },
-  { clave: 'montecristi', nombre: 'Montecristi', palabras: ['montecristi', 'monte cristi'] },
-  { clave: 'santiago-rodriguez', nombre: 'Santiago Rodríguez', palabras: ['santiago rodriguez'] },
-  { clave: 'bahoruco', nombre: 'Bahoruco', palabras: ['bahoruco', 'baoruco'] },
-  { clave: 'independencia', nombre: 'Independencia', palabras: ['provincia independencia'] },
-  { clave: 'pedernales', nombre: 'Pedernales', palabras: ['pedernales'] },
-  { clave: 'san-jose-de-ocoa', nombre: 'San José de Ocoa', palabras: ['san jose de ocoa', 'ocoa'] },
-];
-
-// Ciudades y municipios conocidos: cada uno dice a qué provincia pertenece.
-export const CIUDADES = [
-  { clave: 'santo-domingo-este', nombre: 'Santo Domingo Este', provincia: 'santo-domingo', palabras: ['santo domingo este', 'sde'] },
-  { clave: 'santo-domingo-norte', nombre: 'Santo Domingo Norte', provincia: 'santo-domingo', palabras: ['santo domingo norte'] },
-  { clave: 'santo-domingo-oeste', nombre: 'Santo Domingo Oeste', provincia: 'santo-domingo', palabras: ['santo domingo oeste'] },
-  { clave: 'boca-chica', nombre: 'Boca Chica', provincia: 'santo-domingo', palabras: ['boca chica'] },
-  { clave: 'los-alcarrizos', nombre: 'Los Alcarrizos', provincia: 'santo-domingo', palabras: ['los alcarrizos'] },
-  { clave: 'pedro-brand', nombre: 'Pedro Brand', provincia: 'santo-domingo', palabras: ['pedro brand'] },
-  { clave: 'punta-cana', nombre: 'Bávaro-Punta Cana', provincia: 'la-altagracia', palabras: ['punta cana', 'bavaro'] },
-  { clave: 'higuey', nombre: 'Higüey', provincia: 'la-altagracia', palabras: ['higuey'] },
-  { clave: 'bayahibe', nombre: 'Bayahibe', provincia: 'la-altagracia', palabras: ['bayahibe'] },
-  { clave: 'juan-dolio', nombre: 'Juan Dolio', provincia: 'san-pedro-de-macoris', palabras: ['juan dolio'] },
-  { clave: 'bonao', nombre: 'Bonao', provincia: 'monsenor-nouel', palabras: ['bonao'] },
-  { clave: 'san-francisco-de-macoris', nombre: 'San Francisco de Macorís', provincia: 'duarte', palabras: ['san francisco de macoris', 'san francisco'] },
-  { clave: 'moca', nombre: 'Moca', provincia: 'espaillat', palabras: ['moca'] },
-  { clave: 'bani', nombre: 'Baní', provincia: 'peravia', palabras: ['bani'] },
-  { clave: 'jarabacoa', nombre: 'Jarabacoa', provincia: 'la-vega', palabras: ['jarabacoa'] },
-  { clave: 'constanza', nombre: 'Constanza', provincia: 'la-vega', palabras: ['constanza'] },
-  { clave: 'sosua', nombre: 'Sosúa-Cabarete', provincia: 'puerto-plata', palabras: ['sosua', 'cabarete'] },
-  { clave: 'las-terrenas', nombre: 'Las Terrenas', provincia: 'samana', palabras: ['las terrenas'] },
-  { clave: 'cotui', nombre: 'Cotuí', provincia: 'sanchez-ramirez', palabras: ['cotui'] },
-  { clave: 'mao', nombre: 'Mao', provincia: 'valverde', palabras: ['mao'] },
-  { clave: 'nagua', nombre: 'Nagua', provincia: 'maria-trinidad-sanchez', palabras: ['nagua'] },
-  { clave: 'salcedo', nombre: 'Salcedo', provincia: 'hermanas-mirabal', palabras: ['salcedo'] },
-  { clave: 'haina', nombre: 'Bajos de Haina', provincia: 'san-cristobal', palabras: ['haina', 'bajos de haina'] },
-  { clave: 'villa-altagracia', nombre: 'Villa Altagracia', provincia: 'san-cristobal', palabras: ['villa altagracia'] },
-  { clave: 'neiba', nombre: 'Neiba', provincia: 'bahoruco', palabras: ['neiba'] },
-  { clave: 'jimani', nombre: 'Jimaní', provincia: 'independencia', palabras: ['jimani'] },
-];
-
-// Regiones: nombres que la gente usa para varias provincias juntas.
-export const REGIONES = [
-  // «Santo Domingo» a secas casi siempre quiere decir la capital y sus alrededores.
-  { clave: 'gran-santo-domingo', nombre: 'Gran Santo Domingo', provincias: ['distrito-nacional', 'santo-domingo'], palabras: ['gran santo domingo', 'santo domingo', 'la capital', 'capital'] },
-];
-
-// Frases que significan «todo el país».
-export const PAIS_COMPLETO = ['republica dominicana', 'rd', 'todo el pais', 'en el pais', 'del pais', 'todo rd', 'toda la republica', 'nivel nacional', 'a nivel nacional', 'dominican republic', 'the whole country', 'nationwide'];
-
 // ---------- Tamaño de las empresas ----------
 export const TAMANOS = [
-  { clave: 'pequenas', es: 'Pequeñas', en: 'Small', palabras: ['pequena', 'pequeno', 'pyme', 'micro', 'microempresa', 'small'] },
-  { clave: 'medianas', es: 'Medianas', en: 'Medium', palabras: ['mediana', 'mediano', 'medium', 'mid sized', 'midsize'] },
-  { clave: 'grandes', es: 'Grandes', en: 'Large', palabras: ['grande', 'large', 'big'] },
+  { clave: 'pequenas', es: 'Pequeñas', en: 'Small', palabras: ['pequena', 'pequeno', 'pequenita', 'chiquita', 'chiquito', 'pyme', 'mipyme', 'micro', 'microempresa', 'small'] },
+  { clave: 'medianas', es: 'Medianas', en: 'Medium', palabras: ['mediana', 'mediano', 'medium', 'mid sized', 'midsize', 'medium sized'] },
+  { clave: 'grandes', es: 'Grandes', en: 'Large', palabras: ['grande', 'grandisima', 'enorme', 'large', 'big'] },
 ];
+// Palabras de tamaño que ya dicen «empresa» (una pyme es una empresa pequeña).
+export const TAMANOS_QUE_SON_EMPRESA = ['pyme', 'mipyme', 'microempresa'];
 
 // ---------- Cada cuánto trabaja el proyecto ----------
+// Solo cuentan frases que dicen cada cuánto revisar: «cada semana», «todos los días», «revisa diario»…
+// «adverbios» (diario, semanal…) solo cuentan junto a un verbo como «revisa» o «busca»: «pago mensual»,
+// «12 horas diarias» o «Diario Libre» no dicen nada de la frecuencia.
 export const FRECUENCIAS = [
-  { clave: 'diaria', palabras: ['cada dia', 'todos los dias', 'diario', 'diaria', 'diariamente', 'a diario', 'daily', 'every day'] },
-  { clave: 'semanal', palabras: ['cada semana', 'semanal', 'semanalmente', 'una vez por semana', 'una vez a la semana', 'weekly', 'every week'] },
-  { clave: 'mensual', palabras: ['cada mes', 'mensual', 'mensualmente', 'una vez al mes', 'monthly', 'every month'] },
-  { clave: 'manual', palabras: ['cuando yo diga', 'cuando yo lo pida', 'solo cuando lo pida', 'manualmente', 'manually', 'when i ask'] },
+  { clave: 'diaria', palabras: ['cada dia', 'todos los dias', 'diariamente', 'a diario', 'una vez al dia', 'una vez por dia', 'every day', 'each day', 'once a day'], adverbios: ['diario', 'diaria', 'daily'] },
+  { clave: 'semanal', palabras: ['cada semana', 'todas las semanas', 'semanalmente', 'una vez por semana', 'una vez a la semana', 'una vez cada semana', 'every week', 'each week', 'once a week'], adverbios: ['semanal', 'weekly'] },
+  { clave: 'mensual', palabras: ['cada mes', 'todos los meses', 'mensualmente', 'una vez al mes', 'una vez por mes', 'una vez cada mes', 'every month', 'each month', 'once a month'], adverbios: ['mensual', 'monthly'] },
+  { clave: 'manual', palabras: ['cuando yo diga', 'cuando yo lo diga', 'cuando yo lo pida', 'cuando lo pida', 'cuando yo quiera', 'manualmente', 'when i ask', 'when i say', 'manually', 'on demand'], adverbios: [] },
 ];
 export const FRECUENCIA_POR_DEFECTO = 'semanal';
+// Frecuencias que la persona puede pedir pero que todavía no existen: se preguntan.
+export const FRECUENCIAS_NO_DISPONIBLES = ['cada 15 dias', 'cada quince dias', 'cada dos semanas', 'cada 2 semanas', 'quincenalmente', 'cada quincena',
+  'cada dos dias', 'cada 2 dias', 'cada tres dias', 'cada 3 dias', 'interdiario', 'cada hora', 'cada dos meses', 'cada 2 meses', 'cada tres meses',
+  'cada 3 meses', 'cada ano', 'una vez al ano', 'anualmente', 'every two weeks', 'every 2 weeks', 'every other week', 'every other day', 'biweekly',
+  'every hour', 'hourly', 'yearly', 'every year'];
+export const DIAS_DE_LA_SEMANA = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+// Verbos que, junto a «diario», «semanal»…, sí hablan de cada cuánto revisar.
+export const VERBOS_DE_REVISAR = ['revisa', 'revisar', 'revises', 'revisen', 'revisalo', 'revision', 'busca', 'buscar', 'busques', 'busquen', 'buscalos',
+  'busqueda', 'corre', 'correr', 'ejecuta', 'ejecutar', 'actualiza', 'actualizar', 'hazlo', 'hacerlo', 'repite', 'repetir', 'trabaja', 'frecuencia',
+  'forma', 'manera', 'check', 'search', 'run', 'update', 'review', 'look'];
 
 // ---------- Las 7 capacidades de cada proyecto ----------
 // «desde» dice en qué fase empieza a trabajar de verdad cada capacidad, según el tipo de proyecto.
+// Solo se encienden si la persona lo PIDE («prepara propuestas», «analiza…»), nunca porque la palabra
+// aparezca en lo que vende («GPS para seguimiento de flotas»). «Contactar» nunca se enciende solo.
+// «verbos»: piden la capacidad por sí solos. «cosas»: necesitan un verbo de pedir delante («prepara correos»).
 export const CAPACIDADES = [
-  { clave: 'investigar', desde: { comercial: 2, laboral: 6 }, palabras: ['investigar', 'investiga', 'buscar', 'busca', 'encontrar', 'research', 'find'] },
-  { clave: 'analizar', desde: { comercial: 2, laboral: 6 }, palabras: ['analizar', 'analiza', 'analisis', 'detectar necesidades', 'necesidades', 'clasificar', 'clasifica', 'puntuar', 'analyze', 'analyse'] },
-  { clave: 'recomendar', desde: { comercial: 2, laboral: 6 }, palabras: ['recomendar', 'recomienda', 'recomendaciones', 'que ofrecer', 'recommend', 'recommendations'] },
-  { clave: 'propuestas', desde: { comercial: 3, laboral: 6 }, palabras: ['propuesta', 'cotizacion', 'candidatura', 'proposal', 'quote'] },
-  { clave: 'correos', desde: { comercial: 3, laboral: 6 }, palabras: ['correo', 'email', 'e mail', 'mensaje', 'carta de presentacion', 'cover letter'] },
-  { clave: 'contactar', desde: { comercial: 3, laboral: 6 }, palabras: ['contactar', 'contactarlos', 'contactarlas', 'contacta', 'contactalos', 'contactalas', 'enviar', 'enviarles', 'envialos', 'envialas', 'escribirles', 'escribeles', 'gmail', 'contact', 'send'] },
-  { clave: 'supervisar', desde: { comercial: 3, laboral: 6 }, palabras: ['respuestas', 'supervisar', 'supervisa', 'seguimiento', 'follow up', 'replies'] },
-];
+  { clave: 'investigar', desde: { comercial: 2, laboral: 6 }, verbos: ['investiga', 'investigar', 'investigues', 'research'], cosas: [] },
+  { clave: 'analizar', desde: { comercial: 2, laboral: 6 }, verbos: ['analiza', 'analizar', 'analices', 'analicen', 'clasifica', 'clasificar', 'clasifiques', 'puntua', 'puntuar', 'evalua', 'evaluar', 'califica', 'calificar', 'analyze', 'analyse', 'evaluate', 'rank', 'score'], cosas: ['analisis', 'analysis'] },
+  { clave: 'recomendar', desde: { comercial: 2, laboral: 6 }, verbos: ['recomienda', 'recomendar', 'recomiendes', 'recomiendame', 'sugiere', 'sugerir', 'sugiereme', 'recommend', 'suggest'], cosas: ['recomendacion', 'recomendaciones', 'recommendation', 'recommendations'] },
+  { clave: 'propuestas', desde: { comercial: 3, laboral: 6 }, verbos: [], cosas: ['propuesta', 'cotizacion', 'candidatura', 'curriculum', 'hoja de vida', 'cv', 'proposal', 'quote', 'resume', 'application'] },
+  { clave: 'correos', desde: { comercial: 3, laboral: 6 }, verbos: [], cosas: ['correo', 'email', 'e mail', 'mensaje', 'carta de presentacion', 'cover letter', 'message'] },
+  { clave: 'contactar', desde: { comercial: 3, laboral: 6 }, verbos: ['contacta', 'contactar', 'contactes', 'contacte', 'contacten', 'contactarlos', 'contactarlas', 'contactarles', 'contactalos', 'contactalas', 'contactales', 'contactenlos', 'llama', 'llamar', 'llames', 'llamen', 'llamalos', 'llamalas', 'llamarlos', 'llamarlas', 'llamales', 'llamarles', 'escribas', 'escriban', 'escribeles', 'escribirles', 'enviales', 'enviarles', 'mandales', 'mandarles', 'aplica', 'aplicar', 'aplicame', 'postula', 'postular', 'postulame', 'contact', 'reach out', 'call them', 'email them', 'apply'], cosas: [] },
+  { clave: 'supervisar', desde: { comercial: 3, laboral: 6 }, verbos: ['supervisa', 'supervisar', 'supervises', 'dale seguimiento', 'darle seguimiento', 'da seguimiento', 'dar seguimiento', 'haz seguimiento', 'hacer seguimiento', 'revisa las respuestas', 'revisar las respuestas', 'follow up', 'track replies', 'monitor replies'], cosas: ['seguimiento', 'respuestas', 'replies', 'follow ups'] },
+].map(c => ({ ...c, palabras: [...c.verbos, ...c.cosas] }));
 export const CLAVES_CAPACIDADES = CAPACIDADES.map(c => c.clave);
+// Verbos que piden una cosa: «prepara propuestas», «haz correos», «write emails».
+export const VERBOS_DE_PEDIR = ['prepara', 'preparar', 'prepares', 'preparame', 'haz', 'hacer', 'hagas', 'hazme', 'redacta', 'redactar', 'redactes', 'redactame',
+  'escribe', 'escribir', 'escribas', 'escribeme', 'genera', 'generar', 'arma', 'armar', 'armame', 'crea', 'crear', 'quiero', 'queremos', 'necesito',
+  'dame', 'manda', 'mandar', 'mandes', 'envia', 'enviar', 'envies', 'incluye', 'incluir', 'write', 'prepare', 'draft', 'make', 'create', 'want', 'need', 'send'];
+// Verbos que, con correos o mensajes, son ya contactar: «envía correos», «manda mensajes».
+export const VERBOS_DE_ENVIAR = ['envia', 'enviar', 'envies', 'manda', 'mandar', 'mandes', 'send'];
+// «Solo investigar»: la combinación más corta.
+export const SOLO_INVESTIGAR = ['solo investiga', 'solo investigar', 'solamente investiga', 'solamente investigar', 'nada mas investiga', 'nada mas investigar',
+  'unicamente investiga', 'unicamente investigar', 'solo busca', 'solo buscar', 'solo buscalos', 'solo encuentra', 'solo encontrar', 'solamente busca',
+  'solamente buscar', 'nada mas busca', 'nada mas buscar', 'only research', 'just research', 'only find', 'just find', 'only search', 'just search'];
 
 // Tres combinaciones listas para elegir rápido.
 export const COMBINACIONES = {
@@ -178,11 +146,55 @@ export const COMBINACIONES = {
 export const COMBINACION_POR_DEFECTO = 'investigar_y_preparar';
 
 // ---------- Señales para saber si el proyecto es para vender o para buscar empleo ----------
-export const SENALES_LABORAL = ['busco trabajo', 'busco empleo', 'buscar trabajo', 'buscar empleo', 'trabajo de', 'trabajo como', 'empleo de', 'empleo como', 'empleo', 'empleos', 'vacante', 'puesto de', 'trabajar como', 'trabajar de', 'salario', 'sueldo', 'curriculum', 'job', 'jobs', 'looking for work', 'salary', 'position as', 'work as'];
-export const SENALES_COMERCIAL = ['vendo', 'vende', 'vender', 'vendemos', 'venta', 'ventas', 'cliente', 'clientes', 'ofrecer', 'ofrezco', 'ofrecemos', 'mis servicios', 'mis productos', 'mi empresa', 'mi negocio', 'prospecto', 'necesiten', 'puedan necesitar', 'necesitan', 'sell', 'selling', 'customer', 'customers', 'client', 'clients', 'leads', 'prospects'];
+// Las «fuertes» deciden solas; las «débiles» solo cuentan si no hay fuertes (y entonces se avisa).
+export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco un trabajo', 'busco un empleo', 'buscar trabajo', 'buscar empleo',
+  'busco chiripa', 'busco una chiripa', 'quiero trabajar', 'quisiera trabajar', 'me gustaria trabajar', 'quiero trabajo', 'quiero un trabajo',
+  'quiero un empleo', 'quiero empleo', 'necesito trabajo', 'necesito empleo', 'necesito un trabajo', 'necesito un empleo', 'consigueme trabajo',
+  'consigueme un trabajo', 'conseguir trabajo', 'conseguir empleo', 'trabajo de', 'trabajo como', 'empleo de', 'empleo como', 'empleos de',
+  'empleos', 'vacante de', 'vacantes de', 'puesto de', 'trabajar de', 'trabajar como', 'looking for work', 'looking for a job', 'looking for job',
+  'i want a job', 'i need a job', 'find me a job', 'job as', 'jobs as', 'work as', 'working as', 'position as', 'a job in', 'job in'];
+export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden', 'ofrezco', 'ofrecemos', 'ofrece', 'brindo', 'brindamos',
+  'distribuyo', 'distribuimos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
+  'mi empresa', 'tengo una empresa', 'tengo un negocio', 'tenemos una empresa', 'me dedico a vender', 'nos dedicamos a vender', 'trabajo vendiendo',
+  'soy distribuidor', 'soy distribuidora', 'somos distribuidores', 'tengo una agencia', 'tengo una tienda', 'busco clientes', 'buscar clientes', 'conseguir clientes',
+  'encontrar clientes', 'necesito clientes', 'quiero clientes', 'clientes para', 'prospectos', 'que necesiten', 'puedan necesitar', 'que necesitan',
+  'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'leads', 'that need', 'that may need', 'who need'];
+export const SENALES_LABORAL_DEBILES = ['trabajo', 'empleo', 'salario', 'sueldo', 'vacante', 'curriculum', 'job', 'salary'];
+export const SENALES_COMERCIAL_DEBILES = ['venta', 'ventas', 'vender', 'cliente', 'clientes', 'customers', 'clients', 'sell'];
+
+// ---------- Objetivos que todavía no existen: se dice que llegan más adelante, no se fuerzan ----------
+export const OBJETIVOS_NO_DISPONIBLES = [
+  { clave: 'competidores', palabras: ['mis competidores', 'competidores', 'la competencia', 'mi competencia', 'competitors', 'my competition'] },
+  { clave: 'proveedores', palabras: ['busco proveedores', 'buscar proveedores', 'encontrar proveedores', 'conseguir proveedores', 'necesito proveedores', 'proveedores para mi', 'suplidores', 'busco suplidores', 'suppliers', 'find suppliers', 'vendors for my'] },
+  { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners'] },
+  { clave: 'que_vender', palabras: ['no se que vender', 'no se que ofrecer', 'que puedo vender', 'que podria vender', 'que deberia vender', 'que negocio poner', 'que negocio puedo', 'descubrir que vender', 'dime que vender', 'what to sell', 'what should i sell', 'what can i sell'] },
+  { clave: 'una_empresa', palabras: ['investiga esta empresa', 'investiga la empresa', 'investigar esta empresa', 'investigar la empresa', 'investiga a la empresa', 'informacion sobre la empresa', 'informacion de la empresa', 'research this company', 'research the company'] },
+];
+
+// Fuentes de información con nombre: elegirlas llega más adelante (por ahora son fijas).
+export const FUENTES_CON_NOMBRE = ['diario libre', 'listin diario', 'el nuevo diario', 'el caribe', 'hoy digital', 'acento', 'linkedin', 'facebook',
+  'instagram', 'google maps', 'paginas amarillas', 'computrabajo', 'indeed', 'twitter', 'tiktok'];
 
 // Fuentes previstas para cada tipo de proyecto (se conectan en las fases 2 y 6).
 export const FUENTES = {
   comercial: ['datos_abiertos', 'webs', 'noticias'],
   laboral: ['empleos', 'webs', 'noticias'],
 };
+
+// Todas las zonas en una sola lista, con su clase.
+export const ZONAS = [
+  ...PROVINCIAS.map(p => ({ ...p, tipo: 'provincia' })),
+  ...CIUDADES,
+  ...REGIONES.map(r => ({ ...r, ambiguas: [], tipo: 'region' })),
+];
+
+// Avenidas y calles famosas: «la Duarte», «avenida Independencia», «la 27». No son provincias.
+// «provincia»: si alguien escribe solo «en Duarte», se le sugiere la provincia de ese nombre.
+export const CALLES = [
+  ['duarte', 'duarte'], ['juan pablo duarte', 'duarte'], ['independencia', 'independencia'], ['hermanas mirabal', 'hermanas-mirabal'],
+  ['churchill'], ['winston churchill'], ['lincoln'], ['abraham lincoln'], ['kennedy'], ['john f kennedy'], ['maximo gomez'], ['tiradentes'],
+  ['nunez de caceres'], ['sarasota'], ['bolivar'], ['charles de gaulle'], ['jacobo majluta'], ['ortega y gasset'], ['27 de febrero'],
+  ['30 de marzo'], ['george washington'], ['malecon'], ['las americas'], ['el conde'], ['mella'], ['luperon'], ['gregorio luperon'],
+  ['sabana larga'], ['venezuela'], ['mexico'], ['paris'], ['san martin'], ['san vicente de paul'], ['romulo betancourt'], ['estrella sadhala'],
+  ['las carreras'], ['del sol'], ['rafael vidal'], ['bartolome colon'], ['salvador estrella sadhala'],
+].map(([frase, provincia = null]) => ({ frase, provincia }));

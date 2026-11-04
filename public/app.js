@@ -464,6 +464,16 @@ const exclusionesDe = c => [...c.sectoresExcluidos.map(nombreSector), ...c.zonas
 const dinero = (cantidad, moneda) => `${moneda === 'USD' ? 'US$' : 'RD$'}${Number(cantidad).toLocaleString('en-US')}`;
 const faseDe = (clave, tipo) => catalogo.capacidades.find(x => x.clave === clave)?.desde?.[tipo];
 
+// Una duda del motor en palabras: «No conozco el lugar «Stgo». ¿Quisiste decir Santiago?».
+function textoDuda(d) {
+  const valor = d.clave === 'conflicto_sector' ? nombreSector(d.texto)
+    : d.clave === 'conflicto_zona' ? nombreZona(d.texto)
+      : d.clave === 'conflicto_tamano' ? t(`tamano.${d.texto}`) : d.texto;
+  const frase = t(`duda.${d.clave}`, { texto: valor });
+  const sugerencias = Array.isArray(d.sugerencias) ? d.sugerencias : [];
+  return sugerencias.length ? `${frase} ${t('duda.sugerencia', { lugares: unir(sugerencias.map(nombreZona)) })}` : frase;
+}
+
 function salarioDe(c) {
   if (c.salarioMinimo && c.salarioMaximo) return t('valor.salario.rango', { minimo: dinero(c.salarioMinimo, c.moneda), maximo: dinero(c.salarioMaximo, c.moneda) });
   if (c.salarioMinimo) return t('valor.salario.min', { cantidad: dinero(c.salarioMinimo, c.moneda) });
@@ -658,7 +668,14 @@ function formularioCampos(c, alGuardar) {
   const contactar = casillasCapacidad.find(l => l.querySelector('input').value === 'contactar').querySelector('input');
   contactar.addEventListener('change', () => { if (contactar.checked) casillasCapacidad.find(l => l.querySelector('input').value === 'correos').querySelector('input').checked = true; });
 
+  // Lo que el motor no entendió: la persona lo arregla arriba y lo marca, o lo marca porque no importa.
+  const noEntendido = Array.isArray(c.noEntendido) ? c.noEntendido : [];
+  const dudasDelFormulario = noEntendido.length ? el('fieldset', {}, el('legend', { texto: t('formulario.dudas') }),
+    el('p', { class: 'ayuda', texto: t('formulario.dudas.ayuda') }),
+    noEntendido.map((d, numero) => casilla('resueltas', textoDuda(d), false, String(numero), t('formulario.duda_resuelta')))) : null;
+
   const formulario = el('form', { novalidate: true },
+    dudasDelFormulario,
     etiqueta('tipo', t('formulario.tipo')), tipo,
     linea('objetivo', t('campo.objetivo'), c.objetivo, { maxlength: 300 }),
     etiquetaProducto, el('input', { id: id('producto'), name: 'producto', type: 'text', value: c.producto, autocomplete: 'off', maxlength: 120 }),
@@ -696,6 +713,7 @@ function formularioCampos(c, alGuardar) {
       experienciaNoRequerida: datos.get('experiencia') === 'si',
       frecuencia: datos.get('frecuencia'),
       capacidades: Object.fromEntries(catalogo.capacidades.map(x => [x.clave, capacidades.includes(x.clave)])),
+      resueltas: datos.getAll('resueltas').map(Number),
     });
   });
   return formulario;
@@ -710,10 +728,16 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir }) {
     el('p', { class: 'suave', texto: esCambio ? t('proyecto.pendiente.cambio', { numero: activa.numero }) : t('proyecto.pendiente.texto') }),
     el('p', { class: 'entendi', texto: fraseEntendi(c) }),
   ];
-  if (v.faltantes.length) {
+  // Lo que falta y lo que el motor no entendió se pregunta; mientras tanto no se puede aprobar.
+  const preguntas = [
+    ...v.faltantes.filter(f => f !== 'dudas').map(f => t(f === 'producto' ? `faltante.producto.${c.tipo}` : `faltante.${f}`)),
+    ...(Array.isArray(v.dudas) ? v.dudas : []).map(textoDuda),
+  ];
+  if (v.faltantes.includes('dudas') && !(Array.isArray(v.dudas) && v.dudas.length)) preguntas.push(t('faltante.dudas'));
+  if (preguntas.length) {
     partes.push(el('div', { class: 'aviso' },
       el('p', { texto: t('proyecto.preguntas') }),
-      el('ul', {}, v.faltantes.map(f => el('li', { texto: t(f === 'producto' ? `faltante.producto.${c.tipo}` : `faltante.${f}`) })))));
+      el('ul', {}, preguntas.map(p => el('li', { texto: p })))));
   }
   if (v.supuestos.length) {
     partes.push(el('div', { class: 'supuestos' },

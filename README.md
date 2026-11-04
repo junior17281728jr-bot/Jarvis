@@ -47,8 +47,9 @@ hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
   HttpOnly; candados contra intentos; protección contra pedidos falsos; español e inglés; administración de usuarios;
   herramienta de rescate del acceso.
 - Fase 1, parte b: proyectos. Cada cuenta escribe lo que necesita con sus palabras; el motor propio (`src/motor/`, sin IA)
-  entiende sectores, las 32 provincias, ciudades, producto o empleo, salario, exclusiones, prioridades y frecuencia, y lo
-  que no entiende lo pregunta. Nada trabaja hasta que se aprueba. Cada cambio crea una versión nueva que espera aprobación
+  entiende sectores, las 32 provincias con sus municipios, distritos municipales conocidos y regiones (Cibao, Este, Sur…),
+  producto o empleo, salario, exclusiones y negaciones («pero no», «ni», «que no sea»…), prioridades y frecuencia. Lo que no
+  entiende lo pregunta (dudas), y mientras haya dudas no se puede aprobar. «Contactar» nunca se enciende solo. Nada trabaja hasta que se aprueba. Cada cambio crea una versión nueva que espera aprobación
   mientras la anterior sigue en uso. Estados, las 7 capacidades, historial y papelera (no se borra nada).
   Toda consulta lleva el espacio de quien pregunta: una cuenta nunca ve proyectos de otra (`test/proyectos.test.js`).
 

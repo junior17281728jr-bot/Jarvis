@@ -1,190 +1,48 @@
 // Motor propio: entiende las instrucciones de un proyecto SIN IA.
-// Lee lo que la persona escribió, encuentra sectores, zonas, producto, salario, exclusiones, prioridades
-// y frecuencia, y arma una configuración que la persona revisa y aprueba antes de que se haga nada.
-// Si algo no lo entiende, no lo adivina: lo deja como pregunta (ver faltantes()).
+// Lee lo que la persona escribió (ver leer.js), encuentra a quién se busca, dónde, qué se vende o qué empleo,
+// salario, exclusiones, preferencias y frecuencia, y arma una configuración que la persona revisa y aprueba
+// antes de que se haga nada. Lo que no entiende no lo adivina: lo deja como duda (ver dudas() y faltantes()),
+// y mientras haya dudas no se puede aprobar.
 import {
-  SECTORES, PRODUCTOS, PROVINCIAS, CIUDADES, REGIONES, PAIS_COMPLETO, TAMANOS, FRECUENCIAS, FRECUENCIA_POR_DEFECTO,
-  CAPACIDADES, CLAVES_CAPACIDADES, COMBINACIONES, COMBINACION_POR_DEFECTO, SENALES_LABORAL, SENALES_COMERCIAL, FUENTES,
+  SECTORES, PRODUCTOS, ZONAS, TAMANOS, FRECUENCIAS, FRECUENCIA_POR_DEFECTO, CAPACIDADES, CLAVES_CAPACIDADES, COMBINACIONES,
+  COMBINACION_POR_DEFECTO, FUENTES,
 } from './diccionarios.js';
-import { normalizar, comparable, buscarFrases, contiene, variantes } from './texto.js';
+import { comparable } from './texto.js';
+import { leer, negociosDeTexto, lugaresDeTexto, exclusionDeTexto, esExtranjero, clavesDeProducto, sugerenciasDeLugar } from './leer.js';
+import { juntarSalario } from './salario.js';
 
-export const LIMITES = { instrucciones: 4000, nombre: 80, objetivo: 300, producto: 120, elemento: 80, lista: 30, prioridad: 160, salario: 10_000_000 };
+export const LIMITES = { instrucciones: 4000, nombre: 80, objetivo: 300, producto: 120, elemento: 80, lista: 30, prioridad: 160, salario: 10_000_000, dudas: 12 };
 export const TIPOS = ['comercial', 'laboral'];
 export const CLAVES_FRECUENCIAS = FRECUENCIAS.map(f => f.clave);
 export const CLAVES_TAMANOS = TAMANOS.map(t => t.clave);
-export const ESQUEMA = 1;
+export const ESQUEMA = 2;
+
+// Lo que el motor decidió solo y avisa (se muestra; no impide aprobar).
+export const CLAVES_SUPUESTOS = ['frecuencia', 'capacidades', 'tipo', 'tipo_laboral', 'sectores_todos', 'gran_santo_domingo', 'contactar_a_mano',
+  'salario_minimo', 'producto_negocio', 'sectores_libres', 'dia_semana', 'telefono'];
+// Dudas: cosas que el motor no entendió. Mientras haya alguna, no se puede aprobar.
+// Las «guardadas» salen de las instrucciones y se marcan como resueltas en el formulario; las otras se calculan
+// de la configuración y desaparecen solas cuando se corrige el dato.
+export const CLAVES_DUDAS_GUARDADAS = ['texto', 'lugar', 'calle_o_provincia', 'direccion', 'conflicto_tamano', 'salario', 'salario_periodo', 'frecuencia', 'frecuencia_no_disponible',
+  'tipo', 'fuente', 'combinacion', 'objetivo_competidores', 'objetivo_proveedores', 'objetivo_socios', 'objetivo_que_vender', 'objetivo_una_empresa'];
+export const CLAVES_DUDAS_CALCULADAS = ['conflicto_sector', 'conflicto_zona', 'fuera_del_pais'];
+export const CLAVES_DUDAS = [...CLAVES_DUDAS_GUARDADAS, ...CLAVES_DUDAS_CALCULADAS];
 
 const SECTOR = new Map(SECTORES.map(s => [s.clave, s]));
 const PRODUCTO = new Map(PRODUCTOS.map(p => [p.clave, p]));
-const ZONAS = [
-  ...PROVINCIAS.map(p => ({ ...p, tipo: 'provincia' })),
-  ...CIUDADES.map(c => ({ ...c, tipo: 'ciudad' })),
-  ...REGIONES.map(r => ({ ...r, tipo: 'region' })),
-];
 const ZONA = new Map(ZONAS.map(z => [z.clave, z]));
 
-const ENTRADAS_LUGARES_Y_COSAS = [
-  ...SECTORES.flatMap(s => s.palabras.map(frase => ({ frase, dato: { que: 'sector', clave: s.clave, general: Boolean(s.general) } }))),
-  ...PRODUCTOS.flatMap(p => p.palabras.map(frase => ({ frase, dato: { que: 'producto', clave: p.clave } }))),
-  ...ZONAS.flatMap(z => z.palabras.map(frase => ({ frase, dato: { que: 'zona', clave: z.clave } }))),
-  ...PAIS_COMPLETO.map(frase => ({ frase, dato: { que: 'pais' } })),
-];
-const ENTRADAS_TAMANOS = TAMANOS.flatMap(t => t.palabras.map(frase => ({ frase, dato: t.clave })));
-
-// ¿Aparece alguna de estas frases (o su plural)?
-const contieneAlguna = (norm, frases) => frases.some(f => variantes(f).some(v => contiene(norm, v)));
-const recorte = (texto, maximo) => String(texto ?? '').replace(/\s+/g, ' ').trim().slice(0, maximo);
+// Solo textos y números cuentan como texto: cualquier otra cosa (un objeto, una lista) queda vacía.
+const comoTexto = valor => (typeof valor === 'string' || typeof valor === 'number' ? String(valor) : '');
+const recorte = (valor, maximo) => comoTexto(valor).replace(/\s+/g, ' ').trim().slice(0, maximo);
 const unicos = lista => [...new Set(lista)];
+const unicosPorTexto = lista => {
+  const vistos = new Set();
+  return lista.filter(v => { const c = comparable(v); if (!c || vistos.has(c)) return false; vistos.add(c); return true; });
+};
 
-// ---------- Partes del texto que excluyen, priorizan o califican ----------
-const DISPARADORES_EXCLUSION = ['excepto', 'salvo', 'menos', 'no quiero', 'no incluyas', 'no incluir', 'no busques', 'que no sean', 'excluye', 'excluyendo', 'excluir', 'evita', 'evitar', 'fuera de', 'nada de', 'except', 'excluding', 'exclude', 'not including'];
-const DISPARADORES_SIN = ['sin', 'without'];
-const CORTES = ['pero', 'prioriza', 'priorizar', 'quiero', 'busco', 'que', 'con', 'en', 'para', 'cada', 'preferiblemente', 'sobre todo', 'but', 'with', 'in', 'every'];
-const DISPARADORES_PRIORIDAD = [
-  { frase: 'prioriza', incluir: false }, { frase: 'priorizar', incluir: false }, { frase: 'prioriza a', incluir: false },
-  { frase: 'dale prioridad a', incluir: false }, { frase: 'prioridad a', incluir: false }, { frase: 'preferiblemente', incluir: false },
-  { frase: 'preferentemente', incluir: false }, { frase: 'de preferencia', incluir: false }, { frase: 'sobre todo', incluir: false },
-  { frase: 'especialmente', incluir: false }, { frase: 'en especial', incluir: false }, { frase: 'prefiero', incluir: false },
-  { frase: 'que tengan', incluir: true }, { frase: 'prioritize', incluir: false }, { frase: 'especially', incluir: false },
-  { frase: 'preferably', incluir: false }, { frase: 'that have', incluir: true },
-];
-const RELLENO = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'unos', 'unas', 'a', 'y', 'o', 'e', 'que', 'the', 'a', 'an', 'and', 'or', 'of']);
-
-function posiciones(norm, frase) {
-  const patron = new RegExp(`(?<![a-z0-9$])${comparable(frase).split(' ').join('\\s+')}(?![a-z0-9$])`, 'g');
-  return [...norm.matchAll(patron)].map(m => ({ inicio: m.index, fin: m.index + m[0].length }));
-}
-
-// Hasta dónde llega una frase que empezó en «desde»: el final de la oración, una palabra de corte o 80 letras.
-function finDeTramo(norm, desde, { cortes = CORTES, maximo = 80 } = {}) {
-  let fin = Math.min(norm.length, desde + maximo);
-  const punto = norm.indexOf('.', desde);
-  if (punto !== -1 && punto < fin) fin = punto;
-  for (const corte of cortes) {
-    for (const p of posiciones(norm, corte)) if (p.inicio > desde && p.inicio < fin) fin = p.inicio;
-  }
-  return fin;
-}
-
-function tramosDeExclusion(norm) {
-  const tramos = [];
-  for (const disparador of DISPARADORES_EXCLUSION) {
-    for (const p of posiciones(norm, disparador)) {
-      const antes = norm.slice(Math.max(0, p.inicio - 3), p.inicio);
-      const despues = norm.slice(p.fin, p.fin + 6);
-      // «al menos», «a menos que» y «menos de 25,000» no son exclusiones.
-      if (disparador === 'menos' && (/\bal?\s$/.test(antes) || /^\s+(de\s+\d|que)/.test(despues) || /^\s+\d/.test(despues))) continue;
-      tramos.push({ inicio: p.fin, fin: finDeTramo(norm, p.fin, { cortes: CORTES.filter(c => c !== 'en' && c !== 'in') }), clase: 'excluir' });
-    }
-  }
-  for (const disparador of DISPARADORES_SIN) {
-    for (const p of posiciones(norm, disparador)) tramos.push({ inicio: p.fin, fin: finDeTramo(norm, p.fin), clase: 'sin', desde: p.inicio });
-  }
-  return tramos;
-}
-
-function dentroDe(tramos, h) {
-  return tramos.find(t => h.inicio >= t.inicio && h.fin <= t.fin) || null;
-}
-
-function textoSignificativo(original, inicio, fin) {
-  const texto = recorte(original.slice(inicio, fin), LIMITES.elemento);
-  const palabras = comparable(texto).split(' ').filter(p => p && !RELLENO.has(p));
-  return palabras.length ? texto.replace(/^[\s,;:]+|[\s,;:]+$/g, '') : '';
-}
-
-function prioridadesDe(original, norm) {
-  const encontradas = [];
-  const disparos = DISPARADORES_PRIORIDAD.flatMap(d => posiciones(norm, d.frase).map(p => ({ ...p, ...d })))
-    .sort((a, b) => a.inicio - b.inicio || b.fin - a.fin);
-  let hasta = -1;
-  for (const d of disparos) {
-    if (d.inicio < hasta) continue;
-    const desde = d.incluir ? d.inicio : d.fin;
-    let fin = Math.min(norm.length, desde + LIMITES.prioridad);
-    const punto = norm.indexOf('.', desde);
-    if (punto !== -1 && punto < fin) fin = punto;
-    hasta = fin;
-    const texto = recorte(original.slice(desde, fin), LIMITES.prioridad).replace(/^[\s,;:]+|[\s,;:]+$/g, '');
-    // «preferiblemente sin experiencia» ya se entiende como experiencia no obligatoria.
-    if (!texto || /^sin experiencia|^without experience/.test(comparable(texto))) continue;
-    encontradas.push(texto);
-  }
-  return encontradas;
-}
-
-// ---------- Salario ----------
-const PALABRAS_SALARIO = ['salario', 'sueldo', 'pago', 'paguen', 'pagan', 'ganar', 'gane', 'ingreso', 'salary', 'pay', 'wage', 'earn'];
-const MINIMO = ['mas de', 'superior a', 'superior de', 'mayor a', 'mayor de', 'minimo', 'minimo de', 'al menos', 'desde', 'a partir de', 'arriba de', 'por encima de', 'over', 'more than', 'at least', 'above', 'from'];
-const MAXIMO = ['menos de', 'hasta', 'maximo', 'no mas de', 'inferior a', 'por debajo de', 'under', 'up to', 'less than', 'below'];
-const UNIDADES_QUE_NO_SON_DINERO = /^\s*(anos|ano|meses|mes|dias|dia|horas|hora|semanas|years|year|months|days|hours|km|kilometros|empleados|personas|habitaciones|camas|sucursales|%|por ciento)\b/;
-
-function numero(texto, mil) {
-  let limpio = texto;
-  if (/^\d{1,3}([.,]\d{3})+$/.test(limpio)) limpio = limpio.replace(/[.,]/g, '');
-  else limpio = limpio.replace(',', '.');
-  const valor = Number(limpio);
-  if (!Number.isFinite(valor)) return null;
-  return Math.round(mil ? valor * 1000 : valor);
-}
-
-function salarioDe(norm, esLaboral) {
-  const patron = /(us\$|rd\$|usd|dop|\$)?\s?(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s?(mil|k)?(?![a-z0-9])\s?(pesos|dolares|usd|dop)?/g;
-  const hablaDeSalario = PALABRAS_SALARIO.some(p => contiene(norm, p));
-  const resultado = { salarioMinimo: null, salarioMaximo: null, moneda: 'DOP' };
-  for (const m of norm.matchAll(patron)) {
-    const [todo, simbolo, cifra, mil, palabraMoneda] = m;
-    const despues = norm.slice(m.index + todo.length);
-    if (!simbolo && !palabraMoneda && UNIDADES_QUE_NO_SON_DINERO.test(despues)) continue;
-    if (!simbolo && !palabraMoneda && !hablaDeSalario) continue;
-    if (!esLaboral && !hablaDeSalario) continue;
-    const valor = numero(cifra, Boolean(mil));
-    if (valor == null || valor < 100 || valor > LIMITES.salario) continue;
-    if (/us\$|usd/.test(simbolo || '') || /dolares|usd/.test(palabraMoneda || '')) resultado.moneda = 'USD';
-    const antes = norm.slice(Math.max(0, m.index - 28), m.index);
-    const esMaximo = MAXIMO.some(p => contiene(antes, p)) && !contiene(antes, 'al menos');
-    const esMinimo = MINIMO.some(p => contiene(antes, p));
-    const entreAntes = contiene(norm.slice(Math.max(0, m.index - 60), m.index), 'entre');
-    if (/\b(y|a|and|to)\s*$/.test(antes) && entreAntes && resultado.salarioMinimo != null && resultado.salarioMaximo == null) resultado.salarioMaximo = valor;
-    else if (contiene(antes, 'entre')) resultado.salarioMinimo ??= valor;
-    else if (esMaximo) resultado.salarioMaximo ??= valor;
-    else if (esMinimo || resultado.salarioMinimo == null) resultado.salarioMinimo ??= valor;
-  }
-  return resultado;
-}
-
-// ---------- Puesto (empleo) y producto (venta) cuando no está en el diccionario ----------
-const DISPARADORES_PUESTO = ['trabajo de', 'trabajo como', 'empleo de', 'empleo como', 'empleos de', 'puesto de', 'puestos de', 'vacante de', 'vacantes de', 'trabajar de', 'trabajar como', 'busco trabajo', 'busco empleo', 'empleos', 'empleo', 'work as', 'job as', 'jobs as', 'position as', 'job', 'jobs'];
-const DISPARADORES_PRODUCTO = ['vendo', 'vende', 'vendemos', 'ofrezco', 'ofrece', 'ofrecemos', 'que necesiten', 'puedan necesitar', 'necesitan', 'i sell', 'we sell', 'sell', 'offer'];
-const CORTES_FRASE = ['en', 'con', 'que', 'y', 'para', 'sin', 'por', 'donde', 'cerca', 'a', 'de mas', 'con un', 'mas de', 'in', 'with', 'that', 'and', 'for', 'near', 'at'];
-const ARTICULOS = /^(un|una|unos|unas|el|la|los|las|mis|mi|nuestros|nuestras|nuestro|nuestra|sus|de|como|a|an|the|my|our|as)\s+/;
-
-function fraseTras(original, norm, disparadores, { maximoPalabras = 6 } = {}) {
-  const disparos = disparadores.flatMap(d => posiciones(norm, d)).sort((a, b) => a.inicio - b.inicio || b.fin - a.fin);
-  for (const d of disparos) {
-    const fin = finDeTramo(norm, d.fin, { cortes: CORTES_FRASE, maximo: 60 });
-    let texto = recorte(original.slice(d.fin, fin), LIMITES.producto).replace(/^[\s,;:]+|[\s,;:]+$/g, '');
-    let comp = comparable(texto);
-    while (ARTICULOS.test(comp)) {
-      const quitar = comp.match(ARTICULOS)[0].length;
-      texto = texto.slice(quitar).trim();
-      comp = comparable(texto);
-    }
-    if (!comp || RELLENO.has(comp)) continue;
-    if (comp.split(' ').length > maximoPalabras) texto = texto.split(/\s+/).slice(0, maximoPalabras).join(' ');
-    return texto;
-  }
-  return '';
-}
-
-// ---------- Interpretar ----------
 function textoDe(idioma, es, en) {
   return idioma === 'en' ? en : es;
-}
-
-function etiquetaProducto(clave, idioma) {
-  const p = PRODUCTO.get(clave);
-  return p ? textoDe(idioma, p.es, p.en) : clave;
 }
 
 export function capacidadesDesdeLista(lista) {
@@ -205,125 +63,128 @@ export function objetivoSugerido(config, idioma = 'es') {
   return producto ? textoDe(idioma, `Encontrar clientes que puedan necesitar ${producto}`, `Find customers who may need ${producto}`) : textoDe(idioma, 'Encontrar clientes', 'Find customers');
 }
 
+// Las claves del diccionario que hay en lo que se vende (sirven para puntuar en la fase 2).
+// Si el texto es exactamente la etiqueta de un producto («cámaras y seguridad»), también cuenta.
+export function productosDe(producto) {
+  const valor = recorte(producto, LIMITES.producto);
+  if (!valor) return [];
+  const comp = comparable(valor);
+  const porEtiqueta = PRODUCTOS.filter(p => comparable(p.es) === comp || comparable(p.en) === comp).map(p => p.clave);
+  if (porEtiqueta.length) return porEtiqueta;
+  return clavesDeProducto(valor);
+}
+
 // Devuelve { configuracion, supuestos }. «supuestos» son las cosas que el motor decidió solo
 // (por ejemplo, la frecuencia) para que la persona las vea y las cambie si no son así.
+// Lo que no entendió va en configuracion.noEntendido (y bloquea la aprobación hasta que se resuelva).
 export function interpretar(instrucciones, { idioma = 'es' } = {}) {
-  const original = String(instrucciones ?? '').slice(0, LIMITES.instrucciones);
-  const norm = normalizar(original.replace(/\bR\.\s?D\.(?!\$)/gi, m => `RD${' '.repeat(m.length - 2)}`));
-  const supuestos = [];
+  const original = comoTexto(instrucciones).slice(0, LIMITES.instrucciones);
+  const x = leer(original);
+  const supuestos = new Set(x.supuestos);
+  const noEntendido = [...x.dudas];
+  const duda = (clave, texto = '') => {
+    if (!noEntendido.some(d => d.clave === clave && d.texto === texto)) noEntendido.push({ clave, texto, sugerencias: [] });
+  };
+  const tipo = x.tipo;
 
-  // Tipo de proyecto
-  const puntosLaboral = SENALES_LABORAL.filter(s => contieneAlguna(norm, [s])).length;
-  const puntosComercial = SENALES_COMERCIAL.filter(s => contieneAlguna(norm, [s])).length;
-  const tipo = puntosLaboral > puntosComercial ? 'laboral' : 'comercial';
-  if (puntosLaboral === 0 && puntosComercial === 0) supuestos.push('tipo');
-
-  const tramos = tramosDeExclusion(norm);
-  const hallazgos = buscarFrases(norm, ENTRADAS_LUGARES_Y_COSAS);
-  const sectores = [];
-  const generales = [];
-  const sectoresExcluidos = [];
-  const productos = [];
-  const zonas = [];
-  const zonasExcluidas = [];
-  let paisCompleto = false;
-  const usados = [];
-
-  for (const h of hallazgos) {
-    const tramo = dentroDe(tramos, h);
-    const excluido = tramo && (tramo.clase === 'excluir' || (tramo.clase === 'sin' && h.dato.que === 'sector' && !h.dato.general));
-    if (tramo) usados.push(tramo);
-    const { que, clave } = h.dato;
-    if (que === 'sector') {
-      if (excluido) sectoresExcluidos.push(clave);
-      else if (h.dato.general) generales.push(clave);
-      else sectores.push(clave);
-    } else if (que === 'producto' && !excluido) productos.push(clave);
-    else if (que === 'zona') (excluido ? zonasExcluidas : zonas).push(clave);
-    else if (que === 'pais' && !excluido) paisCompleto = true;
+  // A quién se busca
+  let sectores = unicos(x.sectores);
+  const sectoresLibres = unicosPorTexto(x.sectoresLibres);
+  if (tipo === 'comercial' && !sectores.length && !sectoresLibres.length) {
+    if (x.general.visto || x.pideClientes) {
+      sectores = ['todas'];
+      if (!x.general.todos) supuestos.add('sectores_todos');
+    } else if (x.sectoresPrioridad.length) sectores = unicos(x.sectoresPrioridad);
   }
+  if (!sectoresLibres.length) supuestos.delete('sectores_libres');
 
-  // Lo que va después de «sin», «excepto»… y no es un sector ni una zona conocida
-  const exclusiones = [];
-  const prioridades = prioridadesDe(original, norm);
-  let experiencia = null;
-  for (const tramo of tramos) {
-    const contenido = comparable(original.slice(tramo.inicio, tramo.fin));
-    if (tramo.clase === 'sin') {
-      if (/^(experiencia|ninguna experiencia|experience)/.test(contenido)) {
-        experiencia = 'no_requerida';
-        continue;
-      }
-      if (usados.includes(tramo) && hallazgos.some(h => dentroDe([tramo], h) && h.dato.que === 'sector')) continue;
-      const texto = textoSignificativo(original, tramo.desde, tramo.fin);
-      if (texto && !prioridades.some(p => comparable(p).includes(comparable(texto)))) prioridades.push(texto);
-      continue;
-    }
-    if (usados.includes(tramo)) continue;
-    const texto = textoSignificativo(original, tramo.inicio, tramo.fin);
-    if (texto) exclusiones.push(texto);
-  }
+  // Tamaños: lo incluido menos lo excluido. Si algo está en los dos lados, se pregunta.
+  let tamanos = [...x.tamanos];
+  for (const t of x.tamanosExcluidos) if (x.tamanos.has(t)) duda('conflicto_tamano', t);
+  if (!tamanos.length && x.tamanosExcluidos.size) tamanos = CLAVES_TAMANOS.filter(t => !x.tamanosExcluidos.has(t));
 
-  // Si solo dijo «empresas» o «negocios», se buscan todas (y se avisa).
-  if (!sectores.length && generales.length && tipo === 'comercial') {
-    sectores.push('todas');
-    supuestos.push('sectores_todos');
-  }
-  if (hallazgos.some(h => h.dato.clave === 'gran-santo-domingo')) supuestos.push('gran_santo_domingo');
+  // Dónde
+  const zonas = unicos(x.zonas);
+  const zonasLibres = unicosPorTexto(x.zonasLibres);
+  const lugarDudoso = noEntendido.some(d => d.clave === 'lugar');
+  const paisCompleto = x.pais.explicito || (x.pais.nombre && !zonas.length && !zonasLibres.length && !lugarDudoso);
+  if (zonas.includes('gran-santo-domingo')) supuestos.add('gran_santo_domingo');
 
-  // Producto o puesto
+  // Producto o empleo
   let producto = '';
-  const listaProductos = unicos(productos);
-  if (tipo === 'laboral') producto = fraseTras(original, norm, DISPARADORES_PUESTO, { maximoPalabras: 5 });
-  else if (listaProductos.length) producto = listaProductos.map(c => etiquetaProducto(c, idioma)).join(', ');
-  else producto = fraseTras(original, norm, DISPARADORES_PRODUCTO);
-
-  // Tamaño, frecuencia, salario
-  const tamanos = unicos(buscarFrases(norm, ENTRADAS_TAMANOS).map(h => h.dato));
-  let frecuencia = FRECUENCIAS.find(f => contieneAlguna(norm, f.palabras))?.clave;
-  if (!frecuencia) {
-    frecuencia = FRECUENCIA_POR_DEFECTO;
-    supuestos.push('frecuencia');
-  }
-  const salario = salarioDe(norm, tipo === 'laboral');
-
-  // Capacidades: investigar siempre; lo demás según lo que pidió.
-  const pedidas = CAPACIDADES.filter(c => c.clave !== 'investigar' && contieneAlguna(norm, c.palabras)).map(c => c.clave);
-  let capacidades;
-  if (pedidas.length) capacidades = capacidadesDesdeLista(['investigar', 'analizar', 'recomendar', ...pedidas]);
+  if (tipo === 'laboral') producto = x.puesto;
   else {
-    capacidades = capacidadesDesdeLista(COMBINACIONES[COMBINACION_POR_DEFECTO]);
-    supuestos.push('capacidades');
+    producto = unicosPorTexto(x.productos).join(', ');
+    if (!producto && x.negocioPropio) {
+      producto = x.negocioPropio;
+      supuestos.add('producto_negocio');
+    }
   }
+  producto = recorte(producto, LIMITES.producto);
+
+  // Salario
+  const salario = juntarSalario(x.tramosSalario, LIMITES.salario);
+  if (salario.duda) duda(salario.duda, x.tramosSalario.map(t => t.texto).join(' … ').slice(0, 80));
+  if (salario.supuesto && tipo === 'laboral') supuestos.add('salario_minimo');
+
+  // Frecuencia
+  const frecuencias = unicos(x.frecuencias.map(f => f.clave));
+  let frecuencia = frecuencias[0] || FRECUENCIA_POR_DEFECTO;
+  if (frecuencias.length > 1) duda('frecuencia', x.frecuencias.map(f => f.texto).join(', ').slice(0, 80));
+  else if (frecuencias.length === 1 && x.frecuencias.some(f => f.dia)) supuestos.add('dia_semana');
+  if (!frecuencias.length) {
+    frecuencia = FRECUENCIA_POR_DEFECTO;
+    if (!noEntendido.some(d => d.clave === 'frecuencia_no_disponible')) supuestos.add('frecuencia');
+  }
+
+  // Capacidades: solo lo que se pidió de verdad. «Contactar» nunca se enciende desde el texto.
+  const pedidas = new Set(x.capPedidas);
+  pedidas.delete('contactar');
+  if (x.contactarPedido) pedidas.add('correos');
+  let base;
+  if (x.cicloCompleto) base = CLAVES_CAPACIDADES.filter(c => c !== 'contactar');
+  else if (x.soloInvestigar) base = ['investigar', ...pedidas];
+  else if (pedidas.size) base = ['investigar', 'analizar', 'recomendar', ...pedidas];
+  else base = COMBINACIONES[COMBINACION_POR_DEFECTO];
+  const lista = base.filter(c => c === 'investigar' || !x.capNegadas.has(c)).filter(c => c !== 'contactar');
+  const capacidades = capacidadesDesdeLista(lista);
+  const porDefecto = capacidadesDesdeLista(COMBINACIONES[COMBINACION_POR_DEFECTO]);
+  if (!x.soloInvestigar && !x.cicloCompleto && !pedidas.size && CLAVES_CAPACIDADES.every(c => capacidades[c] === porDefecto[c])) supuestos.add('capacidades');
+  if (x.contactarPedido) supuestos.add('contactar_a_mano');
+
+  if (noEntendido.some(d => d.clave === 'tipo')) { supuestos.delete('tipo'); supuestos.delete('tipo_laboral'); }
+  // Si lo que pide todavía no existe (competidores, proveedores…), no se dice nada más: solo eso.
+  if (noEntendido.some(d => d.clave.startsWith('objetivo_'))) supuestos.clear();
 
   const configuracion = limpiarConfiguracion({
     tipo,
     producto,
-    productos: listaProductos,
-    sectores: unicos(sectores),
-    sectoresLibres: [],
-    sectoresExcluidos: unicos(sectoresExcluidos),
-    exclusiones,
+    productos: tipo === 'comercial' ? productosDe(producto) : [],
+    sectores: tipo === 'comercial' ? sectores : [],
+    sectoresLibres: tipo === 'comercial' ? sectoresLibres : [],
+    sectoresExcluidos: unicos(x.sectoresExcluidos).filter(s => s !== 'todas'),
+    exclusiones: unicosPorTexto(x.exclusiones),
     paisCompleto,
-    zonas: unicos(zonas),
-    zonasLibres: [],
-    zonasExcluidas: unicos(zonasExcluidas),
+    zonas,
+    zonasLibres,
+    zonasExcluidas: unicos(x.zonasExcluidas),
     tamanos: tipo === 'comercial' ? tamanos : [],
-    prioridades,
-    salarioMinimo: tipo === 'laboral' ? salario.salarioMinimo : null,
-    salarioMaximo: tipo === 'laboral' ? salario.salarioMaximo : null,
-    moneda: salario.moneda,
-    experiencia: tipo === 'laboral' ? experiencia : null,
+    prioridades: x.prioridades,
+    salarioMinimo: tipo === 'laboral' ? salario.minimo : null,
+    salarioMaximo: tipo === 'laboral' ? salario.maximo : null,
+    moneda: salario.moneda || 'DOP',
+    experiencia: tipo === 'laboral' ? x.experiencia : null,
     frecuencia,
     capacidades,
+    noEntendido,
   });
   configuracion.objetivo = objetivoSugerido(configuracion, idioma);
-  return { configuracion, supuestos: unicos(supuestos) };
+  return { configuracion, supuestos: CLAVES_SUPUESTOS.filter(s => supuestos.has(s)) };
 }
 
 // ---------- Limpieza y validación (para lo que interpreta el motor y para lo que cambia la persona) ----------
 function listaDeClaves(valor, validas) {
-  return unicos((Array.isArray(valor) ? valor : []).filter(v => validas.has(v))).slice(0, LIMITES.lista);
+  return unicos((Array.isArray(valor) ? valor : []).filter(v => typeof v === 'string' && validas.has(v))).slice(0, LIMITES.lista);
 }
 
 function listaDeTextos(valor, maximo = LIMITES.elemento) {
@@ -342,8 +203,19 @@ function listaDeTextos(valor, maximo = LIMITES.elemento) {
 
 function salarioValido(valor) {
   if (valor === null || valor === undefined || valor === '') return null;
+  if (typeof valor !== 'number' && typeof valor !== 'string') return null;
   const n = Math.round(Number(valor));
   return Number.isFinite(n) && n > 0 && n <= LIMITES.salario ? n : null;
+}
+
+function dudasValidas(valor) {
+  const lista = [];
+  for (const d of Array.isArray(valor) ? valor : []) {
+    if (!d || typeof d !== 'object' || !CLAVES_DUDAS_GUARDADAS.includes(d.clave)) continue;
+    lista.push({ clave: d.clave, texto: recorte(d.texto, LIMITES.elemento), sugerencias: listaDeClaves(d.sugerencias, ZONA).slice(0, 3) });
+    if (lista.length >= LIMITES.dudas) break;
+  }
+  return lista;
 }
 
 // Deja la configuración con la forma exacta que guarda la base: nada de más, nada fuera de límites.
@@ -374,90 +246,127 @@ export function limpiarConfiguracion(c = {}) {
     frecuencia: CLAVES_FRECUENCIAS.includes(c.frecuencia) ? c.frecuencia : FRECUENCIA_POR_DEFECTO,
     capacidades,
     fuentes: FUENTES[tipo],
+    noEntendido: dudasValidas(c.noEntendido),
   };
 }
 
-// Lo que falta para poder aprobar. La interfaz lo muestra como preguntas.
+// Todas las dudas de una configuración: las que dejó el motor y las que salen de los datos
+// (lo mismo para buscar y para excluir, o un lugar fuera del país). La interfaz las muestra como preguntas.
+export function dudas(config = {}) {
+  const lista = dudasValidas(config.noEntendido);
+  const excluidos = new Set(Array.isArray(config.sectoresExcluidos) ? config.sectoresExcluidos : []);
+  for (const s of Array.isArray(config.sectores) ? config.sectores : []) if (excluidos.has(s)) lista.push({ clave: 'conflicto_sector', texto: s, sugerencias: [] });
+  const zonasFuera = new Set(Array.isArray(config.zonasExcluidas) ? config.zonasExcluidas : []);
+  for (const z of Array.isArray(config.zonas) ? config.zonas : []) if (zonasFuera.has(z)) lista.push({ clave: 'conflicto_zona', texto: z, sugerencias: [] });
+  for (const z of Array.isArray(config.zonasLibres) ? config.zonasLibres : []) if (esExtranjero(z)) lista.push({ clave: 'fuera_del_pais', texto: recorte(z, LIMITES.elemento), sugerencias: [] });
+  return lista;
+}
+
+// Lo que falta para poder aprobar. La interfaz lo muestra como preguntas; «dudas» quiere decir
+// que hay cosas sin entender (la lista está en dudas()).
 export function faltantes(config) {
   const lista = [];
   if (!config.producto) lista.push('producto');
   if (config.tipo === 'comercial' && !config.sectores.length && !config.sectoresLibres.length) lista.push('sectores');
   if (!config.paisCompleto && !config.zonas.length && !config.zonasLibres.length) lista.push('zonas');
   if (!Object.values(config.capacidades).some(Boolean)) lista.push('capacidades');
+  if (dudas(config).length) lista.push('dudas');
   return lista;
 }
 
 // ---------- Lo que la persona cambia a mano en el formulario ----------
-function partes(texto, separador = /[,;\n]+/) {
-  const lista = Array.isArray(texto) ? texto : String(texto ?? '').split(separador);
-  return lista.map(p => recorte(p, LIMITES.elemento)).filter(Boolean).slice(0, LIMITES.lista * 2);
+function partes(valor, separador = /[,;\n]+/) {
+  const lista = Array.isArray(valor) ? valor.map(comoTexto) : comoTexto(valor).split(separador);
+  return lista.map(p => p.replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, LIMITES.lista * 3);
 }
 
-function porEtiqueta(texto, entradas) {
-  const comp = comparable(texto);
-  return entradas.find(e => [e.es, e.en, e.nombre].filter(Boolean).some(n => comparable(n) === comp)) || null;
+// Junta pedazos que, unidos con comas, son una etiqueta conocida («Restaurantes, bares y cafés»).
+function piezas(valor, etiquetas) {
+  const lista = partes(valor);
+  const resultado = [];
+  for (let i = 0; i < lista.length; i++) {
+    let encontrada = null;
+    for (let j = Math.min(lista.length, i + 4); j > i; j--) {
+      const comp = comparable(lista.slice(i, j).join(', '));
+      const hallada = etiquetas.get(comp);
+      if (hallada) { encontrada = { clave: hallada, hasta: j }; break; }
+    }
+    if (encontrada) { resultado.push({ clave: encontrada.clave }); i = encontrada.hasta - 1; } else resultado.push({ texto: lista[i] });
+  }
+  return resultado;
 }
 
-// Separa una lista escrita a mano en claves conocidas y textos libres.
-function clasificarSectores(texto) {
+const ETIQUETAS_SECTORES = new Map(SECTORES.flatMap(s => [[comparable(s.es), s.clave], [comparable(s.en), s.clave]]));
+const ETIQUETAS_ZONAS = new Map(ZONAS.map(z => [comparable(z.nombre), z.clave]));
+
+function clasificarSectores(valor) {
   const claves = [];
   const libres = [];
-  for (const parte of partes(texto)) {
-    const exacta = porEtiqueta(parte, SECTORES);
-    if (exacta) { claves.push(exacta.clave); continue; }
-    const encontrados = buscarFrases(normalizar(parte), ENTRADAS_LUGARES_Y_COSAS).filter(h => h.dato.que === 'sector');
-    if (encontrados.length) claves.push(...encontrados.map(h => h.dato.clave));
-    else libres.push(parte);
+  for (const p of piezas(valor, ETIQUETAS_SECTORES)) {
+    if (p.clave) { claves.push(p.clave); continue; }
+    const r = negociosDeTexto(p.texto);
+    if (r.todas) claves.push('todas');
+    claves.push(...r.claves);
+    libres.push(...r.libres);
   }
-  return { claves: unicos(claves), libres };
+  const lista = unicos(claves);
+  return { claves: lista.length > 1 ? lista.filter(c => c !== 'todas') : lista, libres: unicosPorTexto(libres) };
 }
 
-function clasificarZonas(texto) {
+function clasificarZonas(valor) {
   const claves = [];
   const libres = [];
   let pais = false;
-  for (const parte of partes(texto)) {
-    const exacta = porEtiqueta(parte, ZONAS);
-    if (exacta) { claves.push(exacta.clave); continue; }
-    const encontrados = buscarFrases(normalizar(parte), ENTRADAS_LUGARES_Y_COSAS).filter(h => h.dato.que === 'zona' || h.dato.que === 'pais');
-    if (encontrados.some(h => h.dato.que === 'pais')) pais = true;
-    const zonasHalladas = encontrados.filter(h => h.dato.que === 'zona').map(h => h.dato.clave);
-    if (zonasHalladas.length) claves.push(...zonasHalladas);
-    else if (!encontrados.length) libres.push(parte);
+  for (const p of piezas(valor, ETIQUETAS_ZONAS)) {
+    if (p.clave) { claves.push(p.clave); continue; }
+    const r = lugaresDeTexto(p.texto);
+    if (r.libre) libres.push(r.libre);
+    claves.push(...r.claves);
+    if (r.pais) pais = true;
   }
-  return { claves: unicos(claves), libres, pais };
+  return { claves: unicos(claves), libres: unicosPorTexto(libres), pais };
 }
 
-function clasificarExclusiones(texto) {
+function clasificarExclusiones(valor) {
   const sectores = [];
   const zonas = [];
   const libres = [];
-  for (const parte of partes(texto)) {
-    const sector = clasificarSectores(parte);
-    if (sector.claves.length && !sector.libres.length) { sectores.push(...sector.claves); continue; }
-    const zona = clasificarZonas(parte);
-    if (zona.claves.length && !zona.libres.length) { zonas.push(...zona.claves); continue; }
-    libres.push(parte);
+  for (const p of piezas(valor, new Map([...ETIQUETAS_SECTORES, ...ETIQUETAS_ZONAS]))) {
+    if (p.clave) { (SECTOR.has(p.clave) ? sectores : zonas).push(p.clave); continue; }
+    const r = exclusionDeTexto(p.texto);
+    sectores.push(...r.sectores);
+    zonas.push(...r.zonas);
+    libres.push(...r.libres);
   }
-  return { sectores: unicos(sectores), zonas: unicos(zonas), libres };
+  return { sectores: unicos(sectores).filter(s => s !== 'todas'), zonas: unicos(zonas), libres: unicosPorTexto(libres) };
 }
 
 // campos: lo que manda el formulario (textos tal como los escribió la persona).
+// campos.resueltas: los números de las dudas que la persona marcó como «ya lo arreglé».
+// Guardar el formulario sin cambiar nada deja la configuración exactamente igual.
 export function configuracionDesdeCampos(campos = {}, anterior = {}) {
+  const previa = anterior && typeof anterior === 'object' ? anterior : {};
+  const tipo = TIPOS.includes(campos.tipo) ? campos.tipo : previa.tipo;
   const sectores = clasificarSectores(campos.sectores);
   const zonas = clasificarZonas(campos.zonas);
   const exclusiones = clasificarExclusiones(campos.exclusiones);
-  const tipo = TIPOS.includes(campos.tipo) ? campos.tipo : anterior.tipo;
   const producto = recorte(campos.producto, LIMITES.producto);
-  // Si el producto escrito coincide con uno del diccionario, se guarda su clave (servirá para puntuar).
-  const productos = tipo === 'comercial'
-    ? unicos(buscarFrases(normalizar(producto), ENTRADAS_LUGARES_Y_COSAS).filter(h => h.dato.que === 'producto').map(h => h.dato.clave))
-    : [];
-  const capacidades = campos.capacidades && typeof campos.capacidades === 'object' ? campos.capacidades : anterior.capacidades;
+  const mismoProducto = comparable(producto) === comparable(comoTexto(previa.producto)) && previa.tipo === tipo && Array.isArray(previa.productos);
+  const productos = tipo === 'comercial' ? (mismoProducto ? previa.productos : productosDe(producto)) : [];
+  const capacidades = campos.capacidades && typeof campos.capacidades === 'object' ? campos.capacidades : previa.capacidades;
+
+  // Dudas: se quitan las que la persona marcó; un lugar nuevo que no se conoce se vuelve a preguntar.
+  const resueltas = new Set((Array.isArray(campos.resueltas) ? campos.resueltas : []).map(Number));
+  const noEntendido = dudasValidas(previa.noEntendido).filter((_, i) => !resueltas.has(i));
+  const libresAntes = new Set((Array.isArray(previa.zonasLibres) ? previa.zonasLibres : []).map(z => comparable(comoTexto(z))));
+  for (const z of zonas.libres) {
+    if (!libresAntes.has(comparable(z)) && !esExtranjero(z)) noEntendido.push({ clave: 'lugar', texto: z, sugerencias: sugerenciasDeLugar(z) });
+  }
+
   return limpiarConfiguracion({
-    ...anterior,
+    ...previa,
     tipo,
-    objetivo: campos.objetivo ?? anterior.objetivo,
+    objetivo: campos.objetivo ?? previa.objetivo,
     producto,
     productos,
     sectores: sectores.claves,
@@ -469,14 +378,15 @@ export function configuracionDesdeCampos(campos = {}, anterior = {}) {
     zonasLibres: zonas.libres,
     zonasExcluidas: exclusiones.zonas,
     tamanos: Array.isArray(campos.tamanos) ? campos.tamanos : [],
-    // Las prioridades son frases (pueden llevar comas): van una por línea.
-    prioridades: partes(campos.prioridades, /[;\n]+/).map(p => recorte(p, LIMITES.prioridad)),
+    // Las prioridades son frases (pueden llevar comas o punto y coma): van una por línea, hasta 160 letras.
+    prioridades: partes(campos.prioridades, /\n+/).map(p => recorte(p, LIMITES.prioridad)),
     salarioMinimo: campos.salarioMinimo,
     salarioMaximo: campos.salarioMaximo,
-    moneda: campos.moneda ?? anterior.moneda,
+    moneda: campos.moneda ?? previa.moneda,
     experiencia: campos.experienciaNoRequerida === true ? 'no_requerida' : null,
     frecuencia: campos.frecuencia,
     capacidades,
+    noEntendido,
   });
 }
 
@@ -491,5 +401,7 @@ export function catalogo() {
     capacidades: CAPACIDADES.map(c => ({ clave: c.clave, desde: c.desde })),
     combinaciones: COMBINACIONES,
     tipos: TIPOS,
+    dudas: CLAVES_DUDAS,
+    supuestos: CLAVES_SUPUESTOS,
   };
 }

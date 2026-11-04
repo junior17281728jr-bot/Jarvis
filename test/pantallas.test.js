@@ -102,7 +102,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...Object.keys(cat.combinaciones).map(x => `combinacion.${x}`),
     ...Object.values(FUENTES).flat().map(x => `fuente.${x}`),
     ...['sectores', 'zonas', 'capacidades'].map(x => `faltante.${x}`),
-    ...['frecuencia', 'capacidades', 'tipo', 'sectores_todos', 'gran_santo_domingo'].map(x => `supuesto.${x}`),
+    ...cat.supuestos.map(x => `supuesto.${x}`),
+    ...cat.dudas.map(x => `duda.${x}`),
+    'duda.sugerencia', 'faltante.dudas',
     ...['pendiente', 'aprobada', 'rechazada', 'reemplazada', 'descartada'].map(x => `version.estado.${x}`),
     ...['instrucciones', 'campos'].map(x => `version.origen.${x}`),
   ];

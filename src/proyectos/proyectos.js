@@ -4,7 +4,7 @@
 // Aquí nunca se borra nada: «eliminar» manda a la papelera, y una versión vieja queda en el historial.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { interpretar, limpiarConfiguracion, faltantes, nombreSugerido, LIMITES } from '../motor/interpretar.js';
+import { interpretar, limpiarConfiguracion, faltantes, dudas, nombreSugerido, LIMITES } from '../motor/interpretar.js';
 
 const ahora = () => new Date().toISOString();
 
@@ -86,6 +86,7 @@ function versionPublica(v) {
     configuracion,
     supuestos: Array.isArray(interpretacion.supuestos) ? interpretacion.supuestos : [],
     faltantes: faltantes(configuracion),
+    dudas: dudas(configuracion),
     motivo: v.motivo,
     creadaEn: v.creada_en,
     decididaEn: v.decidida_en,
