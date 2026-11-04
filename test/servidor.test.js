@@ -72,6 +72,21 @@ test('el enlace seguro (llega desde el propio servidor) y la red Tailscale sí e
     const r = await peticionSimulada(servidor, { url: '/', direccionLocal });
     assert.equal(r.codigo, 200, `debió entrar por ${direccionLocal}`);
   }
+  for (const host of ['jarvis', 'jarvis:8080', 'JARVIS.taila693e9.ts.net', 'jarvis.taila693e9.ts.net.:8080']) {
+    const r = await peticionSimulada(servidor, { url: '/', direccionLocal: '100.101.2.3', direccionRemota: '100.90.0.1', host });
+    assert.equal(r.codigo, 200, `el nombre ${host} es del servidor`);
+  }
+});
+
+test('por la red Tailscale, un nombre inventado (DNS rebinding) se rechaza', async () => {
+  const servidor = crearServidor();
+  for (const host of ['malo.example', 'malo.example:8080', '', 'jarvis.otra.ts.net', '100.101.2.3.malo.example', 'localhost']) {
+    const r = await peticionSimulada(servidor, { url: '/api/setup', direccionLocal: '100.101.2.3', direccionRemota: '100.90.0.1', host });
+    assert.equal(r.codigo, 421, `${host || '(vacío)'} debió rechazarse`);
+  }
+  // Por el enlace https (llega desde el mismo servidor) el nombre lo pone Tailscale: no se rechaza.
+  const r = await peticionSimulada(servidor, { url: '/', direccionLocal: '127.0.0.1', host: 'cualquiera.example' });
+  assert.equal(r.codigo, 200);
 });
 
 test('arrancar no borra ningún archivo que ya existía en la carpeta de datos', async () => {

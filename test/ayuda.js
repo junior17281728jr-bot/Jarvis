@@ -29,9 +29,12 @@ export async function conServidor(servidor, fn) {
 }
 
 // Simula una petición que entra por otra "puerta" del servidor (por ejemplo, la IP pública).
-export function peticionSimulada(servidor, { url = '/', direccionLocal }) {
+// Por defecto viene de la misma dirección y con la IP escrita tal cual en la barra del navegador.
+export function peticionSimulada(servidor, { url = '/', direccionLocal, direccionRemota = direccionLocal, host }) {
+  const ip = String(direccionLocal).replace(/^::ffff:/, '');
+  const nombre = host ?? (ip.includes(':') ? `[${ip}]:8080` : `${ip}:8080`);
   return new Promise(resolver => {
-    const req = { url, method: 'GET', headers: {}, socket: { localAddress: direccionLocal } };
+    const req = { url, method: 'GET', headers: { host: nombre }, socket: { localAddress: direccionLocal, remoteAddress: direccionRemota } };
     const res = {
       codigo: 0, cuerpo: '', cabeceras: {},
       writeHead(codigo, cabeceras) { this.codigo = codigo; this.cabeceras = cabeceras || {}; return this; },

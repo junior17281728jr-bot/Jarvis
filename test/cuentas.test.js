@@ -107,16 +107,91 @@ test('entrar, ver quién soy y salir', async () => {
   });
 });
 
-test('5 contraseñas malas bloquean la cuenta un rato, aunque luego pongan la buena', async () => {
+const DESDE_INTERNET = ip => ({ 'X-Forwarded-For': `1.2.3.4, ${ip}`, 'Tailscale-Funnel-Request': '?1' });
+
+test('5 contraseñas malas desde un lugar bloquean ese lugar un rato, aunque luego pongan la buena', async () => {
   await conAdmin(async base => {
     for (let i = 0; i < 5; i++) {
-      const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` } });
+      const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') });
       assert.equal(r.codigo, 401);
       assert.equal(r.datos.error, 'credenciales');
     }
-    const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE } });
+    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('203.0.113.7') });
     assert.equal(r.codigo, 429);
     assert.equal(r.datos.error, 'cuenta_bloqueada_un_rato');
+    // Inventar otra dirección al principio de X-Forwarded-For no sirve: cuenta la última, la que pone Tailscale.
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: { 'X-Forwarded-For': '9.9.9.9, 203.0.113.7', 'Tailscale-Funnel-Request': '?1' } });
+    assert.equal(r.codigo, 429);
+    // Pero el dueño, desde otro lugar, sí entra: un extraño no puede dejarlo fuera.
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('198.51.100.20') });
+    assert.equal(r.codigo, 200);
+  });
+});
+
+test('un ataque repartido desde muchos lugares frena a internet, pero el dueño entra por Tailscale', async () => {
+  await conAdmin(async base => {
+    for (let i = 0; i < 20; i++) {
+      await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET(`203.0.113.${i}`) });
+    }
+    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('198.51.100.20') });
+    assert.equal(r.codigo, 429, 'desde internet queda frenada un rato');
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });
+    assert.equal(r.codigo, 200, 'por Tailscale el dueño siempre entra');
+  });
+});
+
+test('muchos pedidos a la vez no se saltan el límite de 5', async () => {
+  await conAdmin(async base => {
+    const respuestas = await Promise.all(Array.from({ length: 15 }, (_, i) =>
+      pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') })));
+    assert.equal(respuestas.filter(r => r.codigo === 401).length, 5, 'solo 5 contraseñas se llegan a probar');
+    assert.ok(respuestas.filter(r => r.codigo === 429).length >= 5);
+  });
+});
+
+test('una contraseña nueva (puesta por el administrador o la consola) quita el bloqueo anterior', async () => {
+  await conAdmin(async (base, galleta, db) => {
+    const { hashClave } = await import('../src/cuentas/claves.js');
+    const { guardarClave } = await import('../src/cuentas/usuarios.js');
+    for (let i = 0; i < 5; i++) await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') });
+    assert.equal((await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('203.0.113.7') })).codigo, 429);
+    guardarClave(db, 1, await hashClave('clave nueva de rescate'), { debeCambiarClave: true });
+    const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: 'clave nueva de rescate' }, cabeceras: DESDE_INTERNET('203.0.113.7') });
+    assert.equal(r.codigo, 200);
+  });
+});
+
+test('con una sesión abierta no se puede adivinar la contraseña actual: 5 fallos cierran la sesión', async () => {
+  await conAdmin(async (base, galleta) => {
+    for (let i = 0; i < 5; i++) {
+      const r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: `mala-${i}-clave-larga`, nueva: 'otra clave muy larga' }, galleta });
+      assert.equal(r.datos.error, 'clave_actual_incorrecta');
+    }
+    const r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: CLAVE, nueva: 'otra clave muy larga' }, galleta });
+    assert.equal(r.codigo, 429);
+    assert.equal(r.datos.error, 'demasiados_intentos_clave');
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).codigo, 401, 'la sesión quedó cerrada');
+  });
+});
+
+test('al crear el primer administrador, los errores al escribir no cuentan como intentos', async () => {
+  const db = nuevaBase();
+  await conServidor(crearServidor({ db }), async base => {
+    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'corta' }, { nombre: 'junior', clave: 'tambien' }, { nombre: 'junior', clave: 'otra' }]) {
+      const r = await pedir(base, 'POST', '/api/primer-admin', { datos, cabeceras: DESDE_TAILSCALE });
+      assert.equal(r.codigo, 400);
+    }
+    const r = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });
+    assert.equal(r.codigo, 201);
+  });
+  db.close();
+});
+
+test('una dirección con un código roto (%FF) responde 400 sin error del servidor', async () => {
+  await conAdmin(async (base, galleta) => {
+    const r = await pedir(base, 'POST', '/api/admin/usuarios/%FF/activo', { datos: { activo: false }, galleta });
+    assert.equal(r.codigo, 400);
+    assert.equal(r.datos.error, 'direccion_no_valida');
   });
 });
 
