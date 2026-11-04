@@ -87,7 +87,8 @@ test('las pantallas nunca convierten texto en código (sin innerHTML, eval ni sc
 
 test('las frases que las pantallas arman por partes (estados, capacidades, historial…) existen en los dos idiomas', async () => {
   const { catalogo } = await import('../src/motor/interpretar.js');
-  const { ESTADOS, ACCIONES } = await import('../src/proyectos/proyectos.js');
+  const { ESTADOS, ACCIONES, ESTADOS_VERSION, ORIGENES } = await import('../src/proyectos/proyectos.js');
+  const { PLANES } = await import('../src/cuentas/planes.js');
   const { FUENTES } = await import('../src/motor/diccionarios.js');
   const cat = catalogo();
   const claves = [
@@ -105,11 +106,22 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...cat.supuestos.map(x => `supuesto.${x}`),
     ...cat.dudas.map(x => `duda.${x}`),
     'duda.sugerencia', 'faltante.dudas',
-    ...['pendiente', 'aprobada', 'rechazada', 'reemplazada', 'descartada'].map(x => `version.estado.${x}`),
-    ...['instrucciones', 'campos'].map(x => `version.origen.${x}`),
+    ...ESTADOS_VERSION.map(x => `version.estado.${x}`),
+    ...ORIGENES.map(x => `version.origen.${x}`),
+    ...cat.autonomias.map(x => `autonomia.${x}`),
+    'autonomia.contactar_siempre',
+    ...PLANES.map(x => `plan.${x}`),
+    'aviso.clave_reiniciada',
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
-  const prefijos = new Set(claves.map(c => c.slice(0, c.lastIndexOf('.') + 1)).concat(['estado.', 'tipo.', 'idioma.', 'error.', 'faltante.', 'campo.producto.', 'capacidad.', 'proyecto.aviso_espera.', 'historial.', 'version.estado.', 'version.origen.', 'supuesto.']));
+  const prefijos = new Set(claves.map(c => c.slice(0, c.lastIndexOf('.') + 1)).concat(['estado.', 'tipo.', 'idioma.', 'error.', 'faltante.', 'campo.producto.', 'capacidad.', 'proyecto.aviso_espera.', 'historial.', 'version.estado.', 'version.origen.', 'supuesto.', 'autonomia.', 'plan.']));
   for (const m of appJs.matchAll(/\bt\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
+});
+
+test('los mensajes que dicen un número de tope usan el número que de verdad tiene el servidor', async () => {
+  const { MAXIMO_VERSIONES } = await import('../src/proyectos/proyectos.js');
+  for (const idioma of [es, en]) assert.ok(idioma['error.demasiadas_versiones'].includes(String(MAXIMO_VERSIONES)), 'error.demasiadas_versiones');
+  const { LIMITE_POR_PLAN } = await import('../src/cuentas/planes.js');
+  for (const [plan, n] of Object.entries(LIMITE_POR_PLAN)) for (const idioma of [es, en]) assert.match(idioma[`plan.${plan}`], new RegExp(`\\b${n}\\b`), `plan.${plan}`);
 });

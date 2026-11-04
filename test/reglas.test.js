@@ -87,8 +87,15 @@ test('existe public/sw.js (los navegadores con la app vieja lo necesitan)', () =
 const MIGRACIONES_PUBLICADAS = {
   1: 'e7d3afb3583848d13303951ce7d309319b7ad05b7f47b43677597499edc6d2f4',
   2: 'faedbc4c80a34ab4085bdea7aa2330cb28148e69e14d7f1564c5ce3621bd0a53',
-  3: 'e1c181eba7d2c793921aefac7c80d2c7e2377dc7ed750552f6ae105e3bc9f658',
+  3: '7af1fad890803931148e2be3e0e3d90481229546ae8f94bb4cd9d022af9310d1',
   4: '46758487c7db33997048188be268fea4420332e1b08bcc431d82114607529860',
+};
+
+// Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
+// Agregar un cambio de base obliga a subir la versión: así /api/setup muestra si quedó instalada o se volvió atrás.
+const VERSION_DE_CADA_MIGRACION = {
+  3: '0.2.0',
+  4: '0.3.0',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -216,5 +223,20 @@ test('las pantallas nunca cargan el código de los trabajos (src/tareas/manejado
   const delServidor = new Set(archivos.map(a => relative(SRC, a)));
   for (const soloDelTrabajador of [join('tareas', 'manejadores.js'), join('tareas', 'ejecutor.js'), join('tareas', 'trabajador.js')]) {
     assert.ok(!delServidor.has(soloDelTrabajador), `el servidor web carga ${soloDelTrabajador}`);
+  }
+});
+
+test('cada cambio de base nuevo sube la versión de package.json', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const version = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')).version;
+  const partes = v => v.split('.').map(Number);
+  const comparar = (a, b) => { const [x, y] = [partes(a), partes(b)]; for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
+  assert.match(version, /^\d+\.\d+\.\d+$/);
+  const ultima = Math.max(...MIGRACIONES.map(m => m.id));
+  assert.ok(ultima in VERSION_DE_CADA_MIGRACION, `el cambio de base ${ultima} no tiene su versión en VERSION_DE_CADA_MIGRACION`);
+  assert.ok(comparar(version, VERSION_DE_CADA_MIGRACION[ultima]) >= 0, `package.json (${version}) es más vieja que la del cambio de base ${ultima}`);
+  const ids = Object.keys(VERSION_DE_CADA_MIGRACION).map(Number).sort((a, b) => a - b);
+  for (let i = 1; i < ids.length; i++) {
+    assert.ok(comparar(VERSION_DE_CADA_MIGRACION[ids[i]], VERSION_DE_CADA_MIGRACION[ids[i - 1]]) > 0, `el cambio de base ${ids[i]} no subió la versión`);
   }
 });

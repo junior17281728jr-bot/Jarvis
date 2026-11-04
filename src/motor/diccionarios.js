@@ -2,9 +2,9 @@
 // Cada palabra va escrita en minúsculas y sin acentos (así se compara). Los plurales se generan solos
 // (hotel → hoteles, hotels; coffee shop → coffee shops); los que no siguen la regla se escriben aparte.
 // Para añadir un sector, un producto o una zona basta con agregar una línea aquí (o en lugares.js).
-import { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS } from './lugares.js';
+import { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS, CARDINALES, DIFUSOS } from './lugares.js';
 
-export { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS };
+export { PROVINCIAS, MUNICIPIOS, DISTRITOS, SECTORES_DE_CIUDAD, REGIONES, PAIS_EXPLICITO, PAIS_NOMBRE, EXTRANJEROS, CARDINALES, DIFUSOS };
 
 // Todos los lugares de dentro de una provincia (municipios, distritos municipales y sectores conocidos).
 export const CIUDADES = [...MUNICIPIOS.map(m => ({ ...m, tipo: 'municipio' })), ...DISTRITOS, ...SECTORES_DE_CIUDAD];
@@ -34,7 +34,7 @@ export const SECTORES = [
   { clave: 'educacion', es: 'Colegios, escuelas y universidades', en: 'Schools and universities', palabras: ['colegio', 'escuela', 'universidad', 'instituto', 'academia', 'liceo', 'school', 'university', 'universities', 'academy', 'academies'], parciales: ['instituto', 'academia', 'liceo', 'academy', 'academies'] },
   { clave: 'finanzas', es: 'Bancos, financieras y cooperativas', en: 'Banks, lenders and credit unions', palabras: ['banco', 'financiera', 'cooperativa', 'asociacion de ahorros', 'bank', 'credit union', 'lender'], parciales: ['asociacion de ahorros'] },
   { clave: 'aseguradoras', es: 'Aseguradoras', en: 'Insurance companies', palabras: ['aseguradora', 'compania de seguros', 'insurance company', 'insurance companies'] },
-  { clave: 'bancas', es: 'Bancas de lotería', en: 'Lottery shops (bancas)', palabras: ['banca de loteria', 'banca de apuestas', 'banca', 'loteria', 'lottery shop'] },
+  { clave: 'bancas', es: 'Bancas de lotería', en: 'Lottery shops (bancas)', palabras: ['banca de loteria', 'banca de apuestas', 'banca de apuesta', 'bancas de apuesta', 'banca', 'loteria', 'lottery shop'] },
   { clave: 'talleres', es: 'Talleres mecánicos', en: 'Auto repair shops', palabras: ['taller', 'taller mecanico', 'taller de mecanica', 'auto repair', 'repair shop', 'garage', 'body shop'] },
   { clave: 'concesionarios', es: 'Concesionarios de vehículos', en: 'Car dealerships', palabras: ['concesionario', 'dealer', 'car dealer', 'car dealership', 'dealer de carros'] },
   { clave: 'belleza', es: 'Salones de belleza, barberías y spas', en: 'Beauty salons, barbershops and spas', palabras: ['salon de belleza', 'peluqueria', 'barberia', 'spa', 'estetica', 'beauty salon', 'barbershop', 'barber shop', 'nail salon', 'salon de unas'], parciales: ['peluqueria', 'barberia', 'spa', 'estetica', 'barbershop', 'barber shop', 'nail salon', 'salon de unas'] },
@@ -50,6 +50,8 @@ export const SECTORES = [
   { clave: 'iglesias', es: 'Iglesias', en: 'Churches', palabras: ['iglesia', 'church', 'churches'] },
   { clave: 'ong', es: 'Fundaciones y ONG', en: 'Foundations and nonprofits', palabras: ['ong', 'fundacion', 'nonprofit', 'ngo', 'foundation'] },
   { clave: 'joyerias', es: 'Joyerías', en: 'Jewelry stores', palabras: ['joyeria', 'jewelry store', 'jeweler'] },
+  { clave: 'lavaderos', es: 'Lavaderos de carros (car wash)', en: 'Car washes', palabras: ['car wash', 'carwash', 'lavadero', 'lavadero de carros', 'lavado de carros', 'autolavado', 'auto lavado'] },
+  { clave: 'discotecas', es: 'Discotecas y centros nocturnos', en: 'Nightclubs', palabras: ['discoteca', 'discotec', 'club nocturno', 'centro nocturno', 'nightclub', 'night club'] },
   { clave: 'combustible', es: 'Estaciones de combustible', en: 'Gas stations', palabras: ['estacion de combustible', 'estacion de gasolina', 'gasolinera', 'bomba de gasolina', 'bomba de combustible', 'gas station'] },
   // «Empresas» o «negocios» sin decir cuáles: se usa solo si no se nombró ningún otro sector.
   { clave: 'todas', es: 'Todo tipo de empresas', en: 'All kinds of businesses', palabras: ['empresa', 'negocio', 'compania', 'establecimiento', 'local comercial', 'company', 'companies', 'business', 'businesses', 'todo tipo de negocio', 'todo tipo de negocios', 'todo tipo de empresas', 'cualquier negocio', 'cualquier empresa', 'todos los negocios', 'todas las empresas', 'any business', 'all businesses', 'any company'], general: true },
@@ -94,17 +96,29 @@ export const TAMANOS_QUE_SON_EMPRESA = ['pyme', 'mipyme', 'microempresa'];
 // «adverbios» (diario, semanal…) solo cuentan junto a un verbo como «revisa» o «busca»: «pago mensual»,
 // «12 horas diarias» o «Diario Libre» no dicen nada de la frecuencia.
 export const FRECUENCIAS = [
-  { clave: 'diaria', palabras: ['cada dia', 'todos los dias', 'diariamente', 'a diario', 'una vez al dia', 'una vez por dia', 'every day', 'each day', 'once a day'], adverbios: ['diario', 'diaria', 'daily'] },
-  { clave: 'semanal', palabras: ['cada semana', 'todas las semanas', 'semanalmente', 'una vez por semana', 'una vez a la semana', 'una vez cada semana', 'every week', 'each week', 'once a week'], adverbios: ['semanal', 'weekly'] },
-  { clave: 'mensual', palabras: ['cada mes', 'todos los meses', 'mensualmente', 'una vez al mes', 'una vez por mes', 'una vez cada mes', 'every month', 'each month', 'once a month'], adverbios: ['mensual', 'monthly'] },
+  { clave: 'diaria', palabras: ['cada dia', 'todos los dias', 'to los dias', 'toos los dias', 'diariamente', 'a diario', 'una vez al dia', 'una vez por dia', 'every day', 'each day', 'once a day'], adverbios: ['diario', 'diaria', 'daily'] },
+  { clave: 'semanal', palabras: ['cada semana', 'todas las semanas', 'to las semanas', 'semanalmente', 'una vez por semana', 'una vez a la semana', 'una vez cada semana', 'every week', 'each week', 'once a week'], adverbios: ['semanal', 'weekly'] },
+  { clave: 'mensual', palabras: ['cada mes', 'todos los meses', 'to los meses', 'mensualmente', 'una vez al mes', 'una vez por mes', 'una vez cada mes', 'every month', 'each month', 'once a month'], adverbios: ['mensual', 'monthly'] },
   { clave: 'manual', palabras: ['cuando yo diga', 'cuando yo lo diga', 'cuando yo lo pida', 'cuando lo pida', 'cuando yo quiera', 'manualmente', 'when i ask', 'when i say', 'manually', 'on demand'], adverbios: [] },
 ];
 export const FRECUENCIA_POR_DEFECTO = 'semanal';
+
+// ---------- Nivel de autonomía de cada proyecto (decisión del dueño) ----------
+// aprobar_salidas: todo lo que sale (correos, propuestas enviadas, contactos) espera su aprobación. Es el más seguro.
+// frecuencia_aprobada: trabaja solo con la frecuencia aprobada y le avisa.
+// solo_cuando_pida: solo trabaja cuando él lo pide (va siempre con la frecuencia «manual»).
+// En TODOS los niveles, contactar a alguien necesita su «sí».
+export const AUTONOMIAS = ['aprobar_salidas', 'frecuencia_aprobada', 'solo_cuando_pida'];
+export const AUTONOMIA_POR_DEFECTO = 'aprobar_salidas';
 // Frecuencias que la persona puede pedir pero que todavía no existen: se preguntan.
 export const FRECUENCIAS_NO_DISPONIBLES = ['cada 15 dias', 'cada quince dias', 'cada dos semanas', 'cada 2 semanas', 'quincenalmente', 'cada quincena',
   'cada dos dias', 'cada 2 dias', 'cada tres dias', 'cada 3 dias', 'interdiario', 'cada hora', 'cada dos meses', 'cada 2 meses', 'cada tres meses',
   'cada 3 meses', 'cada ano', 'una vez al ano', 'anualmente', 'every two weeks', 'every 2 weeks', 'every other week', 'every other day', 'biweekly',
-  'every hour', 'hourly', 'yearly', 'every year'];
+  'every hour', 'hourly', 'yearly', 'every year', 'cada rato', 'a cada rato', 'cada ratito', 'de vez en cuando', 'de cuando en cuando', 'every now and then',
+  'from time to time', 'once in a while', 'twice a week', 'twice a day', 'twice a month'];
+// «quincenal», «bisemanal»: palabras sueltas que piden una frecuencia que no existe. Solo cuentan si no hablan de dinero
+// («quincenal 12 mil» es un salario por quincena).
+export const FRECUENCIAS_NO_DISPONIBLES_SUELTAS = ['quincenal', 'quincenales', 'bisemanal', 'fortnightly'];
 export const DIAS_DE_LA_SEMANA = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 // Verbos que, junto a «diario», «semanal»…, sí hablan de cada cuánto revisar.
 export const VERBOS_DE_REVISAR = ['revisa', 'revisar', 'revises', 'revisen', 'revisalo', 'revision', 'busca', 'buscar', 'busques', 'busquen', 'buscalos',
@@ -135,7 +149,8 @@ export const VERBOS_DE_ENVIAR = ['envia', 'enviar', 'envies', 'manda', 'mandar',
 // «Solo investigar»: la combinación más corta.
 export const SOLO_INVESTIGAR = ['solo investiga', 'solo investigar', 'solamente investiga', 'solamente investigar', 'nada mas investiga', 'nada mas investigar',
   'unicamente investiga', 'unicamente investigar', 'solo busca', 'solo buscar', 'solo buscalos', 'solo encuentra', 'solo encontrar', 'solamente busca',
-  'solamente buscar', 'nada mas busca', 'nada mas buscar', 'only research', 'just research', 'only find', 'just find', 'only search', 'just search'];
+  'solamente buscar', 'nada mas busca', 'nada mas buscar', 'only research', 'just research', 'only find', 'just find', 'only search', 'just search',
+  'research only', 'investigar solamente', 'investigar nada mas', 'solo la investigacion', 'only the research', 'just the research'];
 
 // Tres combinaciones listas para elegir rápido.
 export const COMBINACIONES = {
@@ -151,22 +166,53 @@ export const SENALES_LABORAL_FUERTES = ['busco trabajo', 'busco empleo', 'busco 
   'busco chiripa', 'busco una chiripa', 'quiero trabajar', 'quisiera trabajar', 'me gustaria trabajar', 'quiero trabajo', 'quiero un trabajo',
   'quiero un empleo', 'quiero empleo', 'necesito trabajo', 'necesito empleo', 'necesito un trabajo', 'necesito un empleo', 'consigueme trabajo',
   'consigueme un trabajo', 'conseguir trabajo', 'conseguir empleo', 'trabajo de', 'trabajo como', 'empleo de', 'empleo como', 'empleos de',
-  'empleos', 'vacante de', 'vacantes de', 'puesto de', 'trabajar de', 'trabajar como', 'looking for work', 'looking for a job', 'looking for job',
-  'i want a job', 'i need a job', 'find me a job', 'job as', 'jobs as', 'work as', 'working as', 'position as', 'a job in', 'job in'];
+  'empleos', 'vacante de', 'vacantes de', 'puesto de', 'trabajar de', 'trabajar como',
+  // Teletrabajo y empleo remoto, también sin «busco» al principio («Empleo remoto de servicio al cliente…»).
+  'busco teletrabajo', 'teletrabajo de', 'teletrabajo como', 'empleo remoto', 'trabajo remoto', 'empleo a distancia', 'trabajo a distancia', 'remote job',
+  'looking for work', 'looking for a job', 'looking for job',
+  'i want a job', 'i need a job', 'find me a job', 'job as', 'jobs as', 'work as', 'working as', 'position as', 'a job in', 'job in',
+  // Formas dominicanas de decir trabajo: chamba, pega, camello, chance, trabajito, empleíto.
+  'busco una chamba', 'busco chamba', 'necesito chamba', 'necesito una chamba', 'quiero chamba', 'chamba de', 'busco una chambita', 'chambita de',
+  'busco un chance', 'busco pega', 'necesito pega', 'pega de', 'busco camello', 'camello de', 'busco trabajito', 'busco un trabajito', 'trabajito de',
+  'busco un empleito', 'empleito de', 'jobs for', 'jobs in', 'job hunting', 'job search', 'job searching',
+  // «Busco puestos de enfermera», «busco una plaza de maestro»: también es buscar empleo.
+  'puestos de', 'un puesto de', 'busco puesto de', 'plazas de', 'busco plaza de', 'busco una plaza de', 'quiero una plaza de', 'necesito una plaza de',
+  // Pasantías y prácticas profesionales: también es buscar empleo («Busco una pasantía de contabilidad»).
+  'pasantia', 'pasantias', 'una pasantia', 'pasantia de', 'pasantias de', 'practicas profesionales', 'practica profesional', 'mis practicas',
+  'hacer practicas', 'hacer mis practicas', 'practicas de', 'internship', 'internships', 'an internship'];
 export const SENALES_COMERCIAL_FUERTES = ['vendo', 'vendemos', 'vende', 'venden', 'ofrezco', 'ofrecemos', 'ofrece', 'brindo', 'brindamos',
-  'distribuyo', 'distribuimos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
+  'distribuyo', 'distribuimos', 'exporto', 'exportamos', 'reparo', 'reparamos', 'instalo', 'instalamos', 'fabrico', 'fabricamos', 'i install', 'we install', 'quiero vender', 'queremos vender', 'quiero venderle', 'quiero venderles', 'queremos venderles', 'venderle', 'venderles', 'mi negocio',
   'mi empresa', 'tengo una empresa', 'tengo un negocio', 'tenemos una empresa', 'me dedico a vender', 'nos dedicamos a vender', 'trabajo vendiendo',
   'soy distribuidor', 'soy distribuidora', 'somos distribuidores', 'tengo una agencia', 'tengo una tienda', 'busco clientes', 'buscar clientes', 'conseguir clientes',
   'encontrar clientes', 'necesito clientes', 'quiero clientes', 'clientes para', 'prospectos', 'que necesiten', 'puedan necesitar', 'que necesitan',
-  'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'leads', 'that need', 'that may need', 'who need'];
+  'que puedan necesitar', 'i sell', 'we sell', 'i offer', 'we offer', 'sells', 'that sells', 'clients for', 'customers for', 'i want clients',
+  'i want customers', 'want customers', 'want clients', 'representante de ventas', 'looking for clients', 'looking for customers', 'busca clientes',
+  'buscamos clientes', 'quien me compre', 'quienes me compren', 'que me compren', 'i have a company', 'i have a business', 'my company', 'my business', 'find customers', 'find clients', 'find me customers', 'find me clients', 'get me customers', 'get me clients', 'buscame clientes', 'consigueme clientes', 'leads', 'that need', 'that may need', 'who need'];
 export const SENALES_LABORAL_DEBILES = ['trabajo', 'empleo', 'salario', 'sueldo', 'vacante', 'curriculum', 'job', 'salary'];
 export const SENALES_COMERCIAL_DEBILES = ['venta', 'ventas', 'vender', 'cliente', 'clientes', 'customers', 'clients', 'sell'];
 
 // ---------- Objetivos que todavía no existen: se dice que llegan más adelante, no se fuerzan ----------
 export const OBJETIVOS_NO_DISPONIBLES = [
-  { clave: 'competidores', palabras: ['mis competidores', 'competidores', 'la competencia', 'mi competencia', 'competitors', 'my competition'] },
+  { clave: 'competidores', palabras: ['mis competidores', 'competidores', 'la competencia', 'mi competencia', 'competitors', 'my competition',
+    'me hacen competencia', 'me hace competencia', 'nos hacen competencia', 'nos hace competencia'] },
+  { clave: 'empleados', palabras: ['busco empleados', 'buscar empleados', 'necesito empleados', 'busco personal', 'necesito personal', 'buscando empleados',
+    'buscando personal', 'busco trabajadores', 'necesito trabajadores', 'quiero contratar', 'necesito contratar', 'contratar empleados', 'contratar personal',
+    'busco un empleado', 'busco una empleada', 'busco empleado', 'busco empleada', 'need workers', 'need employees', 'looking for employees',
+    'looking for workers', 'i want to hire', 'i need to hire', 'need to hire', 'we are hiring'] },
+  // Cosas que piden hacer y que OPORTIA no hace: publicar, poner anuncios, vender por Amazon, llevar la contabilidad…
+  { clave: 'otra_tarea', palabras: ['pon anuncios', 'poner anuncios', 'pon publicidad', 'haz anuncios', 'hazme anuncios', 'publica mis', 'publica en',
+    'publicar mis', 'publicar en', 'publicame', 'publiques', 'publica los', 'publica las', 'publica anuncios', 'sube mis productos', 'post my', 'run ads',
+    'make ads', 'vender por amazon', 'vender en amazon', 'vendo por amazon', 'por amazon', 'por mercadolibre', 'por mercado libre', 'me lleves la contabilidad',
+    'lleves la contabilidad', 'llevarme la contabilidad', 'llevar la contabilidad', 'hazme la contabilidad', 'haz mi contabilidad', 'do my accounting',
+    'manejes mis redes', 'maneja mis redes', 'manejar mis redes', 'hazme una pagina', 'hazme la pagina', 'disena mi logo', 'hazme un logo',
+    'run my social media', 'me hagas una pagina', 'me hagas la pagina', 'me hagas mi pagina', 'me hagas una web', 'me hagas un sitio', 'me hagas un logo',
+    'me hagas el logo', 'me hagas mi logo', 'me hagas anuncios', 'me hagas publicidad', 'me hagas un video', 'me hagas un flyer', 'hazme una web',
+    'hazme un sitio', 'hazme un video', 'hazme un flyer', 'me disenes', 'disename', 'me crees una pagina', 'creame una pagina', 'creame un logo',
+    'make me a website', 'build me a website', 'build my website', 'make my website', 'make me a logo', 'design my logo', 'design me a logo'] },
   { clave: 'proveedores', palabras: ['busco proveedores', 'buscar proveedores', 'encontrar proveedores', 'conseguir proveedores', 'necesito proveedores', 'proveedores para mi', 'suplidores', 'busco suplidores', 'suppliers', 'find suppliers', 'vendors for my'] },
-  { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners'] },
+  { clave: 'socios', palabras: ['encontrar inversores', 'busco inversores', 'buscar inversores', 'conseguir inversores', 'necesito inversores', 'encontrar inversionistas', 'busco inversionistas', 'buscar inversionistas', 'conseguir inversionistas', 'busco socios', 'buscar socios', 'encontrar socios', 'conseguir socios', 'necesito socios', 'find investors', 'looking for investors', 'find partners', 'looking for partners',
+    'business partner', 'business partners', 'busco un socio', 'busco socio', 'necesito un socio', 'quiero un socio', 'encontrar un socio', 'conseguir un socio',
+    'socio inversionista', 'socios inversionistas'] },
   { clave: 'que_vender', palabras: ['no se que vender', 'no se que ofrecer', 'que puedo vender', 'que podria vender', 'que deberia vender', 'que negocio poner', 'que negocio puedo', 'descubrir que vender', 'dime que vender', 'what to sell', 'what should i sell', 'what can i sell'] },
   { clave: 'una_empresa', palabras: ['investiga esta empresa', 'investiga la empresa', 'investigar esta empresa', 'investigar la empresa', 'investiga a la empresa', 'informacion sobre la empresa', 'informacion de la empresa', 'research this company', 'research the company'] },
 ];
@@ -194,7 +240,9 @@ export const CALLES = [
   ['duarte', 'duarte'], ['juan pablo duarte', 'duarte'], ['independencia', 'independencia'], ['hermanas mirabal', 'hermanas-mirabal'],
   ['churchill'], ['winston churchill'], ['lincoln'], ['abraham lincoln'], ['kennedy'], ['john f kennedy'], ['maximo gomez'], ['tiradentes'],
   ['nunez de caceres'], ['sarasota'], ['bolivar'], ['charles de gaulle'], ['jacobo majluta'], ['ortega y gasset'], ['27 de febrero'],
-  ['30 de marzo'], ['george washington'], ['malecon'], ['las americas'], ['el conde'], ['mella'], ['luperon'], ['gregorio luperon'],
+  ['30 de marzo'], ['george washington'], ['malecon'], ['las americas'], ['el conde'], ['mella', 'mella'], ['luperon', 'luperon'], ['gregorio luperon'],
   ['sabana larga'], ['venezuela'], ['mexico'], ['paris'], ['san martin'], ['san vicente de paul'], ['romulo betancourt'], ['estrella sadhala'],
-  ['las carreras'], ['del sol'], ['rafael vidal'], ['bartolome colon'], ['salvador estrella sadhala'],
+  ['las carreras'], ['del sol'], ['rafael vidal'], ['bartolome colon'], ['salvador estrella sadhala'], ['lope de vega'], ['pedro henriquez urena'],
+  ['gustavo mejia ricart'], ['roberto pastoriza'], ['los proceres'], ['jose ortega y gasset'], ['rafael augusto sanchez'], ['alma mater'],
+  ['jose contreras'], ['luis f thomen'], ['correa y cidron'], ['jimenez moya'],
 ].map(([frase, provincia = null]) => ({ frase, provincia }));

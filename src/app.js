@@ -64,10 +64,11 @@ function texto(res, codigo, mensaje) {
 
 // opciones.db: la base abierta (null si no se pudo abrir). opciones.limites: límites de cuentas (para pruebas).
 // opciones.supervisor: el que cuida al trabajador (src/tareas/supervisor.js); null en las pruebas que no lo usan.
-export function crearServidor({ db = null, limites, supervisor = null } = {}) {
+// opciones.proyectos: límites o motor de las rutas de proyectos (solo para pruebas).
+export function crearServidor({ db = null, limites, supervisor = null, proyectos = {} } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
-  registrarRutasProyectos(rutas);
+  registrarRutasProyectos(rutas, proyectos);
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

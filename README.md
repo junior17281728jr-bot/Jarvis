@@ -46,11 +46,46 @@ hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
 - Fase 1, parte a: cuentas. El primer administrador solo se crea desde Tailscale; contraseñas con scrypt; sesiones en galletas
   HttpOnly; candados contra intentos; protección contra pedidos falsos; español e inglés; administración de usuarios;
   herramienta de rescate del acceso.
-- Fase 1, parte b: proyectos. Cada cuenta escribe lo que necesita con sus palabras; el motor propio (`src/motor/`, sin IA)
+- Fase 1, parte b (versión 0.2.0, cambio de base 3): proyectos. Cada cuenta escribe lo que necesita con sus palabras; el motor propio (`src/motor/`, sin IA)
   entiende sectores, las 32 provincias con sus municipios, distritos municipales conocidos y regiones (Cibao, Este, Sur…),
   producto o empleo, salario, exclusiones y negaciones («pero no», «ni», «que no sea»…), prioridades y frecuencia. Lo que no
   entiende lo pregunta (dudas), y mientras haya dudas no se puede aprobar. «Contactar» nunca se enciende solo. Nada trabaja hasta que se aprueba. Cada cambio crea una versión nueva que espera aprobación
   mientras la anterior sigue en uso. Estados, las 7 capacidades, historial y papelera (no se borra nada).
-  Toda consulta lleva el espacio de quien pregunta: una cuenta nunca ve proyectos de otra (`test/proyectos.test.js`).
+  - Cada versión guarda su nivel de autonomía (por defecto «todo lo que sale espera tu aprobación»; también «trabaja solo con
+    la frecuencia aprobada y te avisa» y «solo cuando yo lo pida», que va con la frecuencia manual). Contactar a alguien
+    siempre necesita el «sí» del dueño, en cualquier nivel. También guarda la IA: no permitida, tope US$0 y costo estimado
+    US$0; la IA llega en la parte 1d, y encenderla será un cambio que espera aprobación.
+  - Planes: una cuenta nueva («prueba») tiene 1 proyecto en uso; el administrador tiene 20 y puede darle a cada cuenta
+    «pago» (5) o «empresarial» (20) con `POST /api/admin/usuarios/:id/plan` (queda en la auditoría y nunca baja de los
+    proyectos que la cuenta ya tiene en uso).
+  - Topes para cuidar el servidor, sin borrar nada: proyectos guardados por espacio (en uso + papelera: el triple del plan,
+    mínimo 10), 100 versiones por proyecto, 24 KB por versión, y un tope de lecturas y de cambios por persona. El motor no
+    trabaja si el pedido no se va a poder guardar. El detalle de un proyecto trae completas solo la versión en uso, la que
+    espera y las 3 últimas; las demás se abren con `GET /api/proyectos/:id/versiones/:numero`.
+  - Roles: el editor crea, cambia, aprueba, rechaza, pausa y reanuda; solo el dueño manda a la papelera, restaura, completa
+    y reabre. Mandar a la papelera algo que trabaja lo pausa (queda en el historial) y al restaurarlo vuelve pausado.
+  - Si el administrador reinicia la contraseña de alguien, esa persona lo ve al entrar («El administrador reinició tu
+    contraseña el …») y la lista queda en Configuración (`GET /api/yo/reinicios`). Con la contraseña temporal el aviso no
+    se puede marcar como visto, y cada aviso nuevo muestra también los reinicios de los últimos 90 días (vistos o no): quien
+    entre con una contraseña reiniciada no puede esconderle el aviso a la dueña de la cuenta.
+  - Contraseñas obvias: además de la lista, se rechazan con números o signos alrededor («password123», «Oportia2026»),
+    series («123321», «102030»), filas del teclado («qwerty1», «1q2w3e»), repeticiones («abcabc», «111222») y palabras
+    comunes en RD («teamo», «dominicana», «santiago»…). El mínimo sigue siendo 6.
+  - El nombre que OPORTIA le pone a un proyecto se muestra en el idioma de cada persona cuando sale del catálogo, y se guarda
+    en el idioma en que se creó (aprobar en otro idioma no lo mezcla). Lo que la persona escribe con sus palabras no se traduce.
+  - Solo se buscan negocios: si se pide buscar personas («maestros», «turistas», «familias»), se pregunta a qué negocios venderles.
+  - Un proyecto aprobado se ve como «Aprobado · espera la fase 2» (o la 6, si busca empleo) hasta que existan esas fases.
+  - Buscar de verdad empieza en la fase 2 (clientes) y en la fase 6 (empleos); elegir fuentes y el tipo de análisis
+    llegan en la fase 2.
+  - Pantallas: «Lo que entendí» dice antes de aprobar que la búsqueda empieza en la fase 2 o 6; las dudas del motor se
+    muestran y bloquean «Aprobar» hasta responderlas; «Volver a entender» avisa si reemplaza cambios hechos a mano y
+    cualquier versión que no quedó en uso se puede volver a usar (`modo: 'version'`); si algo cambió en otro equipo, el
+    proyecto se vuelve a cargar solo; si la sesión termina, al entrar otra vez vuelve al mismo lugar con lo escrito.
+  - Tema claro (por defecto), oscuro o automático en Configuración, guardado en el navegador (`public/tema.js`).
+  - Contraseñas: al menos 6 caracteres y nada obvio (123456, qwerty, contraseña, el nombre de la persona…).
+  - Crear usuario: el administrador escribe el nombre completo y la pantalla propone el usuario (Juan Pérez → juan.perez,
+    juan.perez2 si ya existe); el nombre completo queda como nombre visible.
+  Toda consulta lleva el espacio de quien pregunta: una cuenta nunca ve proyectos de otra, ni siquiera el administrador
+  (`test/proyectos.test.js`). Cada espacio numera sus proyectos desde 1, así nadie puede contar los de otras cuentas.
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

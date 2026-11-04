@@ -59,8 +59,10 @@ function crearCuenta(db, nombre = 'cuenta') {
 
 function crearProyecto(db, espacioId, { estado = 'en_ejecucion', papelera = 0 } = {}) {
   const fecha = new Date(T0).toISOString();
-  return Number(db.prepare('INSERT INTO proyectos (espacio_id, nombre, estado, en_papelera, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(espacioId, 'Proyecto de prueba', estado, papelera, fecha, fecha).lastInsertRowid);
+  // Desde la 0.2.0 cada proyecto lleva su número dentro de su espacio (1, 2, 3…).
+  const numero = Number(db.prepare('SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM proyectos WHERE espacio_id = ?').get(espacioId).n);
+  return Number(db.prepare('INSERT INTO proyectos (espacio_id, numero, nombre, estado, en_papelera, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(espacioId, numero, 'Proyecto de prueba', estado, papelera, fecha, fecha).lastInsertRowid);
 }
 
 function crearAdmin(db, nombre = 'admin') {

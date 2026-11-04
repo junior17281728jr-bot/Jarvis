@@ -9,6 +9,8 @@ export function plano(texto) {
   let r = '';
   for (let i = 0; i < original.length; i++) {
     const codigo = original.charCodeAt(i);
+    // Las letras simples (sin acento) van directo: es lo más común y así se ahorra trabajo.
+    if (codigo < 128) { r += codigo >= 65 && codigo <= 90 ? String.fromCharCode(codigo + 32) : original[i]; continue; }
     if (codigo >= 0xd800 && codigo <= 0xdfff) { r += ' '; continue; }
     r += original[i].toLowerCase().normalize('NFD')[0] || ' ';
   }
@@ -39,13 +41,20 @@ export function comparable(texto) {
 const ESCRITURA_RAPIDA = new Map([
   ['q', 'que'], ['xq', 'porque'], ['pq', 'porque'], ['d', 'de'], ['pa', 'para'], ['pal', 'para'], ['tb', 'tambien'], ['tmb', 'tambien'],
   ['tbn', 'tambien'], ['dl', 'del'], ['n', 'en'], ['cn', 'con'], ['toy', 'estoy'], ['porfa', 'por favor'], ['xfa', 'por favor'], ['xfavor', 'por favor'],
+  // «na de bancas», «na' de eso»: en RD «na» es «nada». «kiero» es «quiero». «x encargo», «al x mayor»: la x es «por».
+  ['na', 'nada'], ['kiero', 'quiero'], ['kieres', 'quieres'], ['kiere', 'quiere'], ['x', 'por'],
 ]);
+// Emojis que dicen «no» (❌ bancos) o «teléfono» (📞 809…).
+const EMOJIS_NO = new Set([0x274c, 0x2716, 0x2717, 0x2718, 0x26d4, 0x1f6ab, 0x1f645]);
+const EMOJIS_TELEFONO = new Set([0x1f4de, 0x260e, 0x1f4f1, 0x1f4f2]);
 // Puntos que no terminan una frase: «Av. Duarte», «Sto. Dgo.», «No. 5».
 const ABREVIATURAS = new Set(['av', 'ave', 'avda', 'sto', 'sta', 'dgo', 'stgo', 'prov', 'mun', 'sr', 'sra', 'srta', 'dr', 'dra', 'lic', 'licda', 'ing',
   'tel', 'cel', 'aprox', 'ej', 'urb', 'res', 'esq', 'edif', 'apto', 'km', 'mr', 'mrs', 'ms', 'st', 'calle', 'c', 'num', 'arq', 'prof']);
 const SIGNOS_FUERTES = new Set(['.', ';', '!', '?', '¡', '¿', '…', '\n', '\r']);
 const SIGNOS_SUAVES = new Set([',', ':', '(', ')', '–', '—', '[', ']', '{', '}']);
 
+// Emojis y pictogramas (no las letras con acento ni los signos de siempre).
+const esEmoji = punto => punto != null && ((punto >= 0x1f000 && punto <= 0x1faff) || (punto >= 0x2600 && punto <= 0x27bf) || (punto >= 0x2b00 && punto <= 0x2bff));
 const esLetra = c => c >= 'a' && c <= 'z';
 const esDigito = c => c >= '0' && c <= '9';
 
@@ -55,17 +64,42 @@ export function tokenizar(texto) {
   const original = String(texto ?? '');
   let p = plano(original);
   // Enlaces y correos: un solo token, para que «hoteles» dentro de una dirección web no cuente.
-  p = p.replace(/(?:https?:\/\/|www\.)[^\s,;]+|[^\s,;@]+@[^\s,;@]+\.[a-z]{2,}/g, m => `${'_'.repeat(m.length)}`);
-  // R.D., S.D., EE.UU.: letras con punto se juntan en una sola palabra.
-  p = p.replace(/(?<![a-z0-9])(?:[a-z]{1,2}\.\s?){2,}(?![a-z0-9])/g, m => {
+  // También las direcciones sin «www» («jrcamaras.com», «hielohielo.com.do», «santiago.gob.do»).
+  p = p.replace(/(?:https?:\/\/|www\.)[^\s,;]+|[^\s,;@]+@[^\s,;@]+\.[a-z]{2,}|(?<![a-z0-9.@_-])[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|io|app|store|shop|online|site|gob|edu|do)(?:\.[a-z]{2})?(?![a-z0-9])(?:\/[^\s,;]*)?/g,
+    m => `${'_'.repeat(m.length)}`);
+  // R.D., S.D., EE.UU.: letras con punto se juntan en una sola palabra. La palabra abarca todo lo escrito
+  // («EE.UU.», no «EE.U»), para que lo que se guarde sea el nombre completo.
+  const siglas = new Map();
+  p = p.replace(/(?<![a-z0-9])(?:[a-z]{1,2}\.\s?){2,}(?![a-z0-9])/g, (m, desde) => {
     const letras = m.replace(/[.\s]/g, '');
-    return letras.length <= 4 ? letras + ' '.repeat(m.length - letras.length) : m;
+    if (letras.length > 4) return m;
+    siglas.set(desde, desde + m.trimEnd().length);
+    return letras + ' '.repeat(m.length - letras.length);
   });
   const tokens = [];
-  const empujar = (w, ini, fin, tipo) => tokens.push({ w, ini, fin, tipo, mayus: tipo === 'p' && /\p{Lu}/u.test(original[ini] || '') });
+  let separado = false;
+  const empujar = (w, ini, fin, tipo) => {
+    tokens.push({ w, ini, fin, tipo, mayus: tipo === 'p' && /\p{Lu}/u.test(original[ini] || ''), sep: separado });
+    separado = false;
+  };
   let i = 0;
   while (i < p.length) {
     const c = p[i];
+    const punto = original.codePointAt(i);
+    if (EMOJIS_NO.has(punto) || EMOJIS_TELEFONO.has(punto)) {
+      const largo = punto > 0xffff ? 2 : 1;
+      empujar(EMOJIS_NO.has(punto) ? 'no' : 'tel', i, i + largo, 'p');
+      i += largo;
+      continue;
+    }
+    // «agua 💧 colmados 🏪 santiago»: un emoji suelto (o varios juntos) separa un poco, como el guion suelto («agua - colmados»).
+    // La palabra que sigue queda marcada («sep»): lo que se vende termina ahí si sigue un negocio o un lugar.
+    if (esEmoji(punto)) {
+      const ini = i;
+      while (i < p.length && (esEmoji(original.codePointAt(i)) || [0xfe0f, 0x200d].includes(original.charCodeAt(i)))) i += original.codePointAt(i) > 0xffff ? 2 : 1;
+      if (i > ini) separado = true;
+      continue;
+    }
     if (c === '_') {
       const ini = i;
       while (i < p.length && p[i] === '_') i++;
@@ -83,7 +117,10 @@ export function tokenizar(texto) {
       const anterior = tokens[tokens.length - 1];
       if (w === 'k' && anterior?.tipo === 'n') empujar('k', ini, i, 'p');
       else if (w === 'k') empujar('que', ini, i, 'p');
+      // «rayos X», «máquinas de rayos x.»: esa x es parte del nombre, no «por». Solo es «por» entre dos palabras («x semana», «x encargo»).
+      else if (w === 'x' && (['rayos', 'ray', 'rayo'].includes(anterior?.w) || !/^\s*[a-z0-9]/.test(p.slice(i, i + 4)))) empujar('x', ini, i, 'p');
       else if (corto) for (const parte of corto.split(' ')) empujar(parte, ini, i, 'p');
+      else if (siglas.has(ini)) { i = siglas.get(ini); empujar(w, ini, i, 'p'); }
       else empujar(w, ini, i, 'p');
       // «Av.», «Sto.»: el punto de una abreviatura no termina la frase.
       if (p[i] === '.' && ABREVIATURAS.has(w) && /^\s*[a-z0-9,;:)]/.test(p.slice(i + 1, i + 4))) i++;
@@ -108,7 +145,9 @@ export function tokenizar(texto) {
       const antes = p[a] || '';
       const despues = p[d] || '';
       if (esDigito(despues) || esDigito(antes) || (antes === 'k' && esDigito(p[a - 1] || ''))) empujar('-', i, i + 1, 's');
+      // «agua - colmados - santiago»: el guion suelto, con espacios, separa como una coma.
       else if (c !== '-') empujar(',', i, i + 1, 's');
+      else if (p[i - 1] === ' ' && p[i + 1] === ' ') separado = true;
       i++;
     } else if (c === '&') {
       empujar('y', i, i + 1, 'p');

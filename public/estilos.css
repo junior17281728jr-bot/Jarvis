@@ -1,28 +1,55 @@
-/* OPORTIA: estilo sencillo, claro y legible en el iPhone y en la Mac. Modo claro y oscuro automáticos. */
+/* OPORTIA: estilo sencillo, claro y legible en el iPhone y en la Mac.
+   El tema lo elige la persona en Configuración (data-tema en <html>): claro (el de siempre, blanco),
+   oscuro, o automático (sigue al equipo). Sin nada guardado empieza en claro. */
 :root {
-  --fondo: #f6f7fb;
+  --fondo: #ffffff;
   --tarjeta: #ffffff;
+  --campo: #f8fafc;
   --texto: #0f172a;
   --suave: #475569;
-  --borde: #e2e8f0;
+  --borde: #dfe4ec;
   --acento: #0369a1;
   --acento-texto: #ffffff;
+  --apagado-fondo: #e2e8f0;
+  --apagado-texto: #475569;
   --bien: #166534;
   --mal: #b91c1c;
   --aviso-fondo: #fef3c7;
   --aviso-texto: #78350f;
-  --sombra: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.06);
+  --sombra: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 16px rgba(15, 23, 42, 0.05);
   color-scheme: light;
 }
+/* Los mismos colores oscuros para «Oscuro» y para «Automático» cuando el equipo está en oscuro. */
+:root[data-tema="oscuro"] {
+  --fondo: #0b1120;
+  --tarjeta: #111a2e;
+  --campo: #0b1120;
+  --texto: #e5e9f2;
+  --suave: #9aa8c1;
+  --borde: #22304b;
+  --acento: #38bdf8;
+  --acento-texto: #04121f;
+  --apagado-fondo: #1e293b;
+  --apagado-texto: #94a3b8;
+  --bien: #4ade80;
+  --mal: #f87171;
+  --aviso-fondo: #3a2a06;
+  --aviso-texto: #fcd34d;
+  --sombra: none;
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-tema="auto"] {
     --fondo: #0b1120;
     --tarjeta: #111a2e;
+    --campo: #0b1120;
     --texto: #e5e9f2;
     --suave: #9aa8c1;
     --borde: #22304b;
     --acento: #38bdf8;
     --acento-texto: #04121f;
+    --apagado-fondo: #1e293b;
+    --apagado-texto: #94a3b8;
     --bien: #4ade80;
     --mal: #f87171;
     --aviso-fondo: #3a2a06;
@@ -33,11 +60,13 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--fondo);
   color: var(--texto);
+  overflow-wrap: break-word;
   font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
 }
@@ -57,7 +86,9 @@ body {
 /* Tarjetas y textos */
 .tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 16px; padding: 18px; margin: 0 0 16px; box-shadow: var(--sombra); }
 .centrada { max-width: 440px; margin: 8vh auto 0; }
-h1 { font-size: 26px; line-height: 1.2; margin: 0 0 8px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0 0 8px; overflow-wrap: anywhere; }
+h1:focus, [tabindex="-1"]:focus { outline: none; }
+h1:focus-visible, .mensaje:focus-visible, .aviso:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 h2 { font-size: 19px; margin: 0 0 10px; }
 p { margin: 0 0 12px; }
 .suave { color: var(--suave); font-size: 15px; }
@@ -68,7 +99,7 @@ li { margin: 4px 0; }
 label { display: block; font-weight: 600; margin: 12px 0 4px; font-size: 15px; }
 input, select, textarea {
   width: 100%; font: inherit; padding: 12px; border-radius: 12px; border: 1px solid var(--borde);
-  background: var(--fondo); color: var(--texto);
+  background: var(--campo); color: var(--texto);
 }
 textarea { resize: vertical; line-height: 1.45; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--acento); outline-offset: 1px; }
@@ -84,7 +115,12 @@ button {
 }
 button.secundario { background: transparent; color: var(--acento); border: 1px solid var(--borde); }
 button.peligro { background: transparent; color: var(--mal); border: 1px solid var(--borde); }
-button:disabled { opacity: 0.6; cursor: wait; }
+button:disabled { cursor: wait; opacity: 0.75; }
+/* Un botón que no se puede tocar se ve claramente distinto (gris y con borde punteado), no solo más pálido. */
+button.bloqueado, button.bloqueado:disabled {
+  background: var(--apagado-fondo); color: var(--apagado-texto); border: 1px dashed var(--suave); cursor: not-allowed; opacity: 1;
+}
+input:disabled { opacity: 0.6; }
 .botones { display: flex; gap: 8px; flex-wrap: wrap; }
 .botones button { margin-top: 8px; }
 
@@ -113,7 +149,14 @@ a.fila.enlace .nombre { color: var(--acento); }
 .fila .etiquetas, p.etiquetas { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 .etiquetas .etiqueta { margin-left: 0; }
 .etiqueta.aviso-etiqueta { background: var(--aviso-fondo); color: var(--aviso-texto); border-color: transparent; }
-.entendi { font-size: 18px; font-weight: 600; }
+.entendi { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.fila .nombre, .etiqueta, li, dd, .aviso, .mensaje { overflow-wrap: anywhere; }
+.dudas { border: 1px solid var(--aviso-texto); }
+.dudas ul { margin-bottom: 4px; }
+.dudas button { margin-top: 4px; }
+.proximamente { color: var(--suave); font-size: 15px; border-top: 1px solid var(--borde); padding-top: 10px; margin-top: 12px; }
+.proximamente p { margin: 0 0 4px; }
+.nota-ia { font-size: 15px; }
 dl.resumen { display: grid; grid-template-columns: minmax(110px, 36%) 1fr; gap: 6px 12px; margin: 12px 0 0; font-size: 15px; }
 dl.resumen dt { color: var(--suave); }
 dl.resumen dd { margin: 0; overflow-wrap: anywhere; }
@@ -127,7 +170,7 @@ details.version summary { color: var(--texto); font-weight: 500; }
 .ejemplo { border-top: 1px solid var(--borde); padding-top: 10px; margin-top: 10px; }
 .ejemplo p { font-size: 15px; margin-bottom: 0; }
 .ejemplo button { margin-top: 8px; padding: 8px 14px; font-size: 15px; }
-.instrucciones { white-space: pre-wrap; background: var(--fondo); border-radius: 12px; padding: 10px 12px; font-size: 15px; }
+.instrucciones { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--fondo); border-radius: 12px; padding: 10px 12px; font-size: 15px; }
 .tarjeta.pendiente { border-color: var(--acento); }
 ul.historial { list-style: none; padding: 0; font-size: 15px; }
 a { color: var(--acento); }
@@ -135,3 +178,10 @@ a { color: var(--acento); }
 .idiomas { display: flex; gap: 6px; justify-content: center; margin-top: 14px; }
 .idiomas button { margin: 0; padding: 6px 12px; font-size: 14px; }
 .pie { text-align: center; color: var(--suave); font-size: 13px; margin-top: 24px; }
+
+/* Tema y otras opciones con botones que se quedan marcados */
+.botones button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--acento-texto); }
+.plan { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-top: 6px; }
+.plan label { margin-top: 6px; width: 100%; }
+.plan select { flex: 1 1 180px; width: auto; }
+.plan button { margin-top: 0; }

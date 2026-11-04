@@ -34,7 +34,8 @@ const DATOS_PROVINCIAS = [
   ['monte-plata', 'Monte Plata', ['monte plata', 'provincia monte plata', 'provincia de monte plata']],
   ['hato-mayor', 'Hato Mayor', ['hato mayor', 'provincia hato mayor', 'provincia de hato mayor']],
   ['el-seibo', 'El Seibo', ['el seibo', 'el seybo', 'seibo', 'provincia el seibo']],
-  ['san-juan', 'San Juan', ['san juan', 'provincia san juan', 'provincia de san juan']],
+  // «el Valle de San Juan» es San Juan, no El Valle de Hato Mayor.
+  ['san-juan', 'San Juan', ['san juan', 'provincia san juan', 'provincia de san juan', 'valle de san juan', 'el valle de san juan']],
   ['elias-pina', 'Elías Piña', ['elias pina', 'provincia elias pina']],
   ['dajabon', 'Dajabón', ['dajabon', 'provincia dajabon', 'provincia de dajabon']],
   ['montecristi', 'Montecristi', ['montecristi', 'monte cristi', 'provincia montecristi']],
@@ -59,9 +60,9 @@ const cabecera = (nombre, clave, base) => [nombre, { clave, palabras: [`municipi
 const DATOS_MUNICIPIOS = {
   'distrito-nacional': [['Santo Domingo de Guzmán', { palabras: ['santo domingo de guzman'] }]],
   'santo-domingo': [
-    ['Santo Domingo Este', { palabras: ['santo domingo este', 'sde', 'sto dgo este', 'santo dgo este', 'zona oriental'] }],
-    ['Santo Domingo Norte', { palabras: ['santo domingo norte', 'sdn', 'sto dgo norte', 'santo dgo norte'] }],
-    ['Santo Domingo Oeste', { palabras: ['santo domingo oeste', 'sdo', 'sto dgo oeste', 'santo dgo oeste'] }],
+    ['Santo Domingo Este', { palabras: ['santo domingo este', 'sde', 'sto dgo este', 'santo dgo este', 'zona oriental', 'sd este', 'santo domingo east', 'sd east'] }],
+    ['Santo Domingo Norte', { palabras: ['santo domingo norte', 'sdn', 'sto dgo norte', 'santo dgo norte', 'sd norte', 'santo domingo north', 'sd north'] }],
+    ['Santo Domingo Oeste', { palabras: ['santo domingo oeste', 'sdo', 'sto dgo oeste', 'santo dgo oeste', 'sd oeste', 'santo domingo west', 'sd west'] }],
     'Boca Chica', 'Los Alcarrizos', 'Pedro Brand',
     ['San Antonio de Guerra', { palabras: ['san antonio de guerra', 'guerra'], ambiguas: ['guerra'] }],
   ],
@@ -71,11 +72,11 @@ const DATOS_MUNICIPIOS = {
     ['Las Yayas de Viajama', { palabras: ['las yayas de viajama', 'las yayas'] }], 'Padre Las Casas',
     ['Peralta', { ambiguas: ['peralta'] }], ['Pueblo Viejo', { ambiguas: ['pueblo viejo'] }], 'Sabana Yegua', 'Tábara Arriba',
   ],
-  bahoruco: ['Neiba', ['Galván', { ambiguas: ['galvan'] }], ['Los Ríos', { ambiguas: ['los rios'] }], ['Tamayo', { ambiguas: ['tamayo'] }], 'Villa Jaragua'],
+  bahoruco: ['Neiba', ['Galván', { ambiguas: ['galvan'] }], ['Los Ríos (Bahoruco)', { palabras: ['los rios'], ambiguas: ['los rios'], homonimo: true }], ['Tamayo', { ambiguas: ['tamayo'] }], 'Villa Jaragua'],
   barahona: [
     ['Santa Cruz de Barahona', { palabras: ['santa cruz de barahona', 'municipio de barahona', 'ciudad de barahona'] }],
     ['Cabral', { ambiguas: ['cabral'] }], ['El Peñón', { ambiguas: ['el penon'] }], ['Enriquillo', { ambiguas: ['enriquillo'] }],
-    ['Fundación', { ambiguas: ['fundacion'] }], 'Jaquimeyes', ['La Ciénaga', { ambiguas: ['la cienaga'] }],
+    ['Fundación', { ambiguas: ['fundacion'] }], 'Jaquimeyes', ['La Ciénaga (Barahona)', { palabras: ['la cienaga'], ambiguas: ['la cienaga'], homonimo: true }],
     ['Las Salinas', { ambiguas: ['las salinas'] }], ['Paraíso', { ambiguas: ['paraiso'] }], ['Polo', { ambiguas: ['polo'] }], 'Vicente Noble',
   ],
   dajabon: [
@@ -83,7 +84,7 @@ const DATOS_MUNICIPIOS = {
     ['El Pino', { ambiguas: ['el pino'] }], 'Loma de Cabrera', ['Partido', { ambiguas: ['partido'] }], ['Restauración', { ambiguas: ['restauracion'] }],
   ],
   duarte: [
-    ['San Francisco de Macorís', { palabras: ['san francisco de macoris', 'san francisco', 'sfm'] }],
+    ['San Francisco de Macorís', { palabras: ['san francisco de macoris', 'san francisco', 'sfm', 'san fco de macoris', 'san fco macoris', 'san fco', 'sfco'] }],
     ['Arenoso', { ambiguas: ['arenoso'] }], ['Castillo', { ambiguas: ['castillo'] }],
     ['Eugenio María de Hostos', { palabras: ['eugenio maria de hostos', 'hostos'], ambiguas: ['hostos'] }],
     'Las Guáranas', ['Pimentel', { ambiguas: ['pimentel'] }], 'Villa Riva',
@@ -91,9 +92,9 @@ const DATOS_MUNICIPIOS = {
   'elias-pina': [['Comendador', { ambiguas: ['comendador'] }], 'Bánica', ['El Llano', { ambiguas: ['el llano'] }], 'Hondo Valle', 'Juan Santiago', 'Pedro Santana'],
   'el-seibo': [['Santa Cruz del Seibo', { palabras: ['santa cruz del seibo', 'municipio de el seibo', 'municipio del seibo'] }], 'Miches'],
   espaillat: ['Moca', 'Cayetano Germosén', 'Gaspar Hernández', ['Jamao al Norte', { palabras: ['jamao al norte', 'jamao'] }]],
-  'hato-mayor': [['Hato Mayor del Rey', { palabras: ['hato mayor del rey', 'municipio de hato mayor'] }], ['El Valle', { ambiguas: ['el valle'] }], 'Sabana de la Mar'],
+  'hato-mayor': [['Hato Mayor del Rey', { palabras: ['hato mayor del rey', 'municipio de hato mayor'] }], ['El Valle (Hato Mayor)', { palabras: ['el valle'], ambiguas: ['el valle'], homonimo: true }], 'Sabana de la Mar'],
   'hermanas-mirabal': ['Salcedo', 'Tenares', 'Villa Tapia'],
-  independencia: ['Jimaní', ['Cristóbal', { ambiguas: ['cristobal'] }], 'Duvergé', ['La Descubierta', { ambiguas: ['la descubierta'] }], ['Mella', { ambiguas: ['mella'] }], 'Postrer Río'],
+  independencia: ['Jimaní', ['Cristóbal', { ambiguas: ['cristobal'] }], 'Duvergé', ['La Descubierta', { ambiguas: ['la descubierta'] }], ['Mella', { palabras: ['municipio de mella', 'municipio mella'] }], 'Postrer Río'],
   'la-altagracia': [
     ['Higüey', { palabras: ['higuey', 'salvaleon de higuey'] }],
     ['San Rafael del Yuma', { palabras: ['san rafael del yuma', 'yuma'], ambiguas: ['yuma'] }],
@@ -107,7 +108,8 @@ const DATOS_MUNICIPIOS = {
   'monsenor-nouel': ['Bonao', ['Maimón', { ambiguas: ['maimon'] }], ['Piedra Blanca', { ambiguas: ['piedra blanca'] }]],
   montecristi: [
     ['San Fernando de Monte Cristi', { palabras: ['san fernando de monte cristi', 'san fernando de montecristi', 'municipio de montecristi'] }],
-    ['Castañuelas', { ambiguas: ['castanuelas'] }], 'Guayubín', 'Las Matas de Santa Cruz', 'Pepillo Salcedo', 'Villa Vásquez',
+    ['Castañuelas', { ambiguas: ['castanuelas'] }], 'Guayubín',
+    ['Las Matas de Santa Cruz', { palabras: ['las matas de santa cruz', 'las matas'], ambiguas: ['las matas'], homonimo: true }], 'Pepillo Salcedo', 'Villa Vásquez',
   ],
   'monte-plata': [cabecera('Monte Plata (municipio)', 'monte-plata-municipio', 'monte plata'), 'Bayaguana', 'Peralvillo', 'Sabana Grande de Boyá', 'Yamasá'],
   pedernales: [cabecera('Pedernales (municipio)', 'pedernales-municipio', 'pedernales'), ['Oviedo', { ambiguas: ['oviedo'] }]],
@@ -115,7 +117,7 @@ const DATOS_MUNICIPIOS = {
   'puerto-plata': [
     ['San Felipe de Puerto Plata', { palabras: ['san felipe de puerto plata', 'ciudad de puerto plata', 'municipio de puerto plata'] }],
     ['Altamira', { ambiguas: ['altamira'] }], 'Guananico', ['Imbert', { ambiguas: ['imbert'] }], ['Los Hidalgos', { ambiguas: ['los hidalgos'] }],
-    ['Luperón', { ambiguas: ['luperon'] }], 'Sosúa', 'Villa Isabela', ['Villa Montellano', { palabras: ['villa montellano', 'montellano'] }],
+    ['Luperón', { palabras: ['municipio de luperon', 'municipio luperon'] }], 'Sosúa', 'Villa Isabela', ['Villa Montellano', { palabras: ['villa montellano', 'montellano'] }],
   ],
   samana: [['Santa Bárbara de Samaná', { palabras: ['santa barbara de samana', 'municipio de samana', 'ciudad de samana'] }], 'Las Terrenas', ['Sánchez', { ambiguas: ['sanchez'] }]],
   'san-cristobal': [
@@ -129,10 +131,11 @@ const DATOS_MUNICIPIOS = {
     cabecera('San José de Ocoa (municipio)', 'san-jose-de-ocoa-municipio', 'san jose de ocoa'),
     ['Rancho Arriba', { ambiguas: ['rancho arriba'] }], ['Sabana Larga', { ambiguas: ['sabana larga'] }],
   ],
-  'san-juan': ['San Juan de la Maguana', 'Bohechío', ['El Cercado', { ambiguas: ['el cercado'] }], 'Juan de Herrera', 'Las Matas de Farfán', 'Vallejuelo'],
+  'san-juan': ['San Juan de la Maguana', 'Bohechío', ['El Cercado', { ambiguas: ['el cercado'] }], 'Juan de Herrera',
+    ['Las Matas de Farfán', { palabras: ['las matas de farfan', 'las matas'], ambiguas: ['las matas'], homonimo: true }], 'Vallejuelo'],
   'san-pedro-de-macoris': [
     cabecera('San Pedro de Macorís (municipio)', 'san-pedro-de-macoris-municipio', 'san pedro de macoris'),
-    ['Consuelo', { ambiguas: ['consuelo'] }], ['Guayacanes', { ambiguas: ['guayacanes'] }], ['Quisqueya', { ambiguas: ['quisqueya'] }], 'Ramón Santana',
+    ['Consuelo', { ambiguas: ['consuelo'] }], ['Guayacanes', { ambiguas: ['guayacanes'] }], ['Quisqueya (San Pedro de Macorís)', { palabras: ['quisqueya'], ambiguas: ['quisqueya'], homonimo: true }], 'Ramón Santana',
     ['San José de Los Llanos', { palabras: ['san jose de los llanos', 'los llanos'], ambiguas: ['los llanos'] }],
   ],
   'sanchez-ramirez': ['Cotuí', 'Cevicos', 'Fantino', ['La Mata', { ambiguas: ['la mata'] }]],
@@ -150,7 +153,7 @@ function armar(lista, extra) {
   return lista.map(entrada => {
     const [nombre, opciones = {}] = Array.isArray(entrada) ? entrada : [entrada];
     const palabras = opciones.palabras || [comparable(nombre)];
-    return { clave: opciones.clave || slug(nombre), nombre, palabras, ambiguas: opciones.ambiguas || [], ...extra };
+    return { clave: opciones.clave || slug(nombre), nombre, palabras, ambiguas: opciones.ambiguas || [], homonimo: Boolean(opciones.homonimo), ...extra };
   });
 }
 
@@ -200,7 +203,7 @@ const DATOS_SECTORES = [
   ['Naco', 'santo-domingo-de-guzman', { palabras: ['naco', 'ensanche naco'] }],
   ['Piantini', 'santo-domingo-de-guzman', { palabras: ['piantini', 'ensanche piantini'] }],
   ['Gazcue', 'santo-domingo-de-guzman'],
-  ['Bella Vista', 'santo-domingo-de-guzman', { ambiguas: ['bella vista'] }],
+  ['Bella Vista (Distrito Nacional)', 'santo-domingo-de-guzman', { palabras: ['bella vista'], ambiguas: ['bella vista'], homonimo: true }],
   ['Los Prados', 'santo-domingo-de-guzman', { ambiguas: ['los prados'] }],
   ['Arroyo Hondo', 'santo-domingo-de-guzman'],
   ['Evaristo Morales', 'santo-domingo-de-guzman'],
@@ -210,6 +213,7 @@ const DATOS_SECTORES = [
   ['Villa Juana', 'santo-domingo-de-guzman'],
   ['Villa Consuelo', 'santo-domingo-de-guzman'],
   ['Villa Francisca', 'santo-domingo-de-guzman'],
+  ['Villas Agrícolas', 'santo-domingo-de-guzman', { palabras: ['villas agricolas', 'villa agricolas'] }],
   ['Cristo Rey', 'santo-domingo-de-guzman', { ambiguas: ['cristo rey'] }],
   ['Los Cacicazgos', 'santo-domingo-de-guzman'],
   ['La Esperilla', 'santo-domingo-de-guzman'],
@@ -244,6 +248,7 @@ function armarDentro(lista, tipo) {
     nombre,
     palabras: opciones.palabras || [comparable(nombre)],
     ambiguas: opciones.ambiguas || [],
+    homonimo: Boolean(opciones.homonimo),
     municipio,
     provincia: PROVINCIA_DE_MUNICIPIO.get(municipio),
     tipo,
@@ -264,9 +269,13 @@ const ENRIQUILLO = ['barahona', 'bahoruco', 'independencia', 'pedernales'];
 const HIGUAMO = ['san-pedro-de-macoris', 'hato-mayor', 'monte-plata'];
 const YUMA = ['la-altagracia', 'la-romana', 'el-seibo'];
 
+// Palabras de región que solo dicen un punto cardinal: «el norte de Santiago» es una parte de Santiago, no el Cibao.
+export const CARDINALES = ['el norte', 'del norte', 'el sur', 'del sur', 'zona sur', 'la zona sur', 'el este', 'del este', 'zona este', 'zona del este',
+  'nordeste', 'noroeste'];
+
 export const REGIONES = [
   // «Santo Domingo» a secas casi siempre quiere decir la capital y sus alrededores. «Capital» solo cuenta como «la capital».
-  { clave: 'gran-santo-domingo', nombre: 'Gran Santo Domingo', provincias: ['distrito-nacional', 'santo-domingo'], palabras: ['gran santo domingo', 'santo domingo', 'la capital', 'sto dgo', 'santo dgo', 'sto domingo', 'sd'] },
+  { clave: 'gran-santo-domingo', nombre: 'Gran Santo Domingo', provincias: ['distrito-nacional', 'santo-domingo'], palabras: ['gran santo domingo', 'santo domingo', 'la capital', 'the capital', 'sto dgo', 'santo dgo', 'sto domingo', 'sd'] },
   { clave: 'cibao', nombre: 'Cibao (región Norte)', provincias: [...CIBAO_NORTE, ...CIBAO_SUR, ...CIBAO_NORDESTE, ...CIBAO_NOROESTE], palabras: ['cibao', 'region del cibao', 'region cibao', 'region norte', 'el norte', 'del norte', 'norte del pais'] },
   { clave: 'cibao-norte', nombre: 'Cibao Norte', provincias: CIBAO_NORTE, palabras: ['cibao norte'] },
   { clave: 'cibao-sur', nombre: 'Cibao Sur', provincias: CIBAO_SUR, palabras: ['cibao sur'] },
@@ -281,15 +290,33 @@ export const REGIONES = [
   { clave: 'region-yuma', nombre: 'Región Yuma', provincias: YUMA, palabras: ['region yuma'] },
 ];
 
+// Lugares que no son exactos («el interior», «la costa norte»): se preguntan, con una sugerencia si la hay.
+export const DIFUSOS = [
+  { palabras: ['el interior', 'el interior del pais', 'interior del pais', 'the interior', 'the interior of the country'], sugerencias: [] },
+  { palabras: ['costa norte', 'la costa norte', 'north coast', 'the north coast'], sugerencias: ['puerto-plata'] },
+  { palabras: ['costa sur', 'la costa sur', 'south coast', 'the south coast'], sugerencias: [] },
+  // «la frontera con Haití»: cinco provincias tocan la frontera. Se pregunta cuáles.
+  { palabras: ['la frontera', 'frontera con haiti', 'la frontera con haiti', 'zona fronteriza', 'la zona fronteriza', 'linea fronteriza', 'la linea fronteriza',
+    'the border', 'the border with haiti', 'border with haiti'], sugerencias: [] },
+  // «Sabana Grande» a secas puede ser Sabana Grande de Boyá (Monte Plata) o Sabana Grande de Palenque (San Cristóbal). No es un tamaño.
+  { palabras: ['sabana grande'], sugerencias: ['sabana-grande-de-boya', 'sabana-grande-de-palenque'] },
+];
+
 // Frases que dicen «todo el país» sin dudas.
 export const PAIS_EXPLICITO = ['todo el pais', 'en todo el pais', 'a nivel nacional', 'nivel nacional', 'todo rd', 'toda rd', 'toda la republica',
   'toda la republica dominicana', 'todo el territorio', 'todo el territorio nacional', 'cualquier parte del pais', 'cualquier provincia',
-  'todas las provincias', 'nationwide', 'the whole country', 'across the country', 'all over the country', 'all of the dominican republic'];
+  'todas las provincias', 'nationwide', 'the whole country', 'across the country', 'all over the country', 'all of the dominican republic',
+  'all over the dominican republic', 'all over the dr', 'all over dr', 'anywhere in the country', 'anywhere in the dominican republic', 'anywhere in the dr',
+  'everywhere in the country', 'por todo el pais'];
 // El nombre del país: si va solo, es todo el país; si va junto a una ciudad («Santiago, RD»), solo dice el país.
-export const PAIS_NOMBRE = ['republica dominicana', 'rd', 'dominican republic', 'the dominican republic', 'pais', 'nuestro pais', 'quisqueya', 'the country'];
+export const PAIS_NOMBRE = ['republica dominicana', 'rd', 'dominican republic', 'the dominican republic', 'pais', 'nuestro pais', 'quisqueya', 'the country',
+  'dr', 'the dr'];
 
 // Lugares fuera del país: por ahora OPORTIA solo busca dentro de República Dominicana.
 export const EXTRANJEROS = ['estados unidos', 'eeuu', 'ee uu', 'usa', 'united states', 'nueva york', 'new york', 'nueva jersey', 'new jersey', 'miami',
   'florida', 'boston', 'puerto rico', 'haiti', 'espana', 'spain', 'madrid', 'barcelona', 'europa', 'europe', 'canada', 'mexico', 'panama',
   'colombia', 'venezuela', 'cuba', 'italia', 'italy', 'francia', 'france', 'paris', 'alemania', 'germany', 'suiza', 'chile', 'argentina',
-  'peru', 'costa rica', 'curazao', 'aruba', 'el extranjero', 'en el extranjero', 'el exterior', 'fuera del pais', 'otro pais', 'otros paises', 'abroad', 'overseas'];
+  'peru', 'costa rica', 'curazao', 'aruba', 'ecuador', 'california', 'texas', 'orlando', 'chicago', 'filadelfia', 'philadelphia', 'connecticut',
+  'massachusetts', 'pennsylvania', 'rhode island', 'bolivia', 'uruguay', 'paraguay', 'guatemala', 'honduras', 'el salvador', 'nicaragua', 'brasil',
+  'brazil', 'portugal', 'inglaterra', 'england', 'londres', 'london', 'china', 'japon', 'japan', 'santiago de chile', 'santiago de cuba',
+  'santiago de compostela', 'san juan de puerto rico', 'el extranjero', 'en el extranjero', 'el exterior', 'fuera del pais', 'otro pais', 'otros paises', 'abroad', 'overseas'];

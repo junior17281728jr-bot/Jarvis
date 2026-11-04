@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
-import { hashClave, verificarClave, claveValida, claveTemporal } from '../src/cuentas/claves.js';
+import { hashClave, verificarClave, claveValida, claveTemporal, claveObvia, problemaDeClave } from '../src/cuentas/claves.js';
 
 const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
 const CLAVE = 'una clave bien larga';
@@ -46,7 +46,34 @@ test('contraseñas: se guardan con scrypt y solo la correcta coincide', async ()
   assert.equal(await verificarClave(CLAVE, 'basura'), false);
   assert.equal(await verificarClave(CLAVE), false, 'sin usuario nunca coincide');
   assert.equal(claveValida('corta'), false);
+  assert.equal(claveValida('seis66'), true, 'desde 6 caracteres');
   assert.match(claveTemporal(), /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+});
+
+test('contraseñas obvias: la lista corta, un carácter repetido y el nombre de la persona no sirven', () => {
+  for (const c of ['123456', '111111', '000000', '123123', '654321', 'abcdef', 'qwerty', 'password', 'contraseña', 'CONTRASEÑA', 'Qwerty', 'zzzzzzz'])
+    assert.equal(claveObvia(c), true, c);
+  assert.equal(claveObvia('Junior', ['junior']), true);
+  assert.equal(claveObvia('junior123', ['junior']), true);
+  assert.equal(claveObvia('Juan Pérez', ['juan.perez', 'Juan Pérez']), true);
+  assert.equal(claveObvia('juanperez1', ['juan.perez', 'Juan Pérez']), true);
+  assert.equal(claveObvia('maria2026', ['maria.gomez', 'María Gómez']), true, 'una parte del nombre con números');
+  assert.equal(claveObvia('Gómez', ['maria.gomez', 'María Gómez']), true);
+  for (const c of ['mango verde', 'Casa2024!', 'tres gatos']) assert.equal(claveObvia(c, ['junior', 'Juan Pérez']), false, c);
+  assert.equal(problemaDeClave('12345'), 'clave_corta');
+  assert.equal(problemaDeClave('123456'), 'clave_obvia');
+});
+
+test('contraseñas obvias: las de la lista con números o signos alrededor, series, teclado y repeticiones tampoco sirven', () => {
+  const malas = ['password123', 'qwerty1', 'iloveyou1', 'teamo123', 'Oportia2026', 'jarvis', 'Jarvis123', '123321', '102030', '1q2w3e',
+    '123qwe', 'qwertyuiop', 'asdf1234', '111222', '000001', 'abcabc', 'aaa111', '1234567a', 'dominicana', 'santiago', 'hola123', 'p4ssw0rd',
+    'teamo!', 'Santo Domingo 2026', '123abc', 'a12345', '654321a', 'zxcvbn', 'mariposa1', 'princesa2025', 'holahola', '112233', '7890123',
+    'abccba', '1qaz2wsx', '!@#$%^', 'hola!!', 'contraseña', 'cont rasena'];
+  for (const c of malas) assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), 'clave_obvia', c);
+  const buenas = ['mango verde', 'Casa2024!', 'tres gatos', 'mango7', 'Gato-azul-9', 'pan con queso', 'casa de mi abuela 1975', 'x9k2mq',
+    'perro2019', 'Bávaro azul', 'la clave de bob 2026'];
+  for (const c of buenas) assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), null, c);
+  assert.equal(problemaDeClave('mango verde', ['junior']), null);
 });
 
 test('sin administrador, /api/setup lo dice, y solo se puede crear desde Tailscale', async () => {
@@ -177,7 +204,7 @@ test('con una sesión abierta no se puede adivinar la contraseña actual: 5 fall
 test('al crear el primer administrador, los errores al escribir no cuentan como intentos', async () => {
   const db = nuevaBase();
   await conServidor(crearServidor({ db }), async base => {
-    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'corta' }, { nombre: 'junior', clave: 'tambien' }, { nombre: 'junior', clave: 'otra' }]) {
+    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'corta' }, { nombre: 'junior', clave: '123456' }, { nombre: 'junior', clave: 'Junior2024' }, { nombre: 'junior', clave: 'otra' }]) {
       const r = await pedir(base, 'POST', '/api/primer-admin', { datos, cabeceras: DESDE_TAILSCALE });
       assert.equal(r.codigo, 400);
     }
@@ -236,6 +263,32 @@ test('el administrador crea un usuario con clave temporal, y ese usuario debe ca
   });
 });
 
+test('el nombre completo que escribe el administrador queda como nombre visible; la contraseña nueva no puede ser su nombre', async () => {
+  await conAdmin(async (base, galletaAdmin) => {
+    let r = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'juan.perez', nombreVisible: '  Juan   Pérez ' }, galleta: galletaAdmin });
+    assert.equal(r.codigo, 201);
+    assert.equal(r.datos.nombreVisible, 'Juan Pérez');
+    const temporal = r.datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'Juan.Perez', nombreVisible: 'Juan Pérez' }, galleta: galletaAdmin });
+    assert.equal(r.codigo, 409);
+    assert.equal(r.datos.error, 'nombre_ocupado', 'la pantalla propone juan.perez2');
+    r = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'juan.perez2', nombreVisible: { x: 1 } }, galleta: galletaAdmin });
+    assert.equal(r.codigo, 400, 'un nombre visible que no es texto');
+    r = await pedir(base, 'GET', '/api/admin/usuarios', { galleta: galletaAdmin });
+    assert.equal(r.datos.usuarios.find(u => u.nombre === 'juan.perez').nombreVisible, 'Juan Pérez');
+
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'juan.perez', clave: temporal } });
+    assert.equal(r.datos.usuario.nombreVisible, 'Juan Pérez');
+    const galleta = r.galleta;
+    for (const [nueva, error] of [['12345', 'clave_corta'], ['123456', 'clave_obvia'], ['juanperez', 'clave_obvia'], ['Juan Pérez 1', 'clave_obvia']]) {
+      r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva }, galleta });
+      assert.equal(r.datos.error, error, nueva);
+    }
+    r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'mango7' }, galleta });
+    assert.equal(r.codigo, 200, '6 caracteres que no son obvios sirven');
+  });
+});
+
 test('reiniciar una clave cierra las sesiones de ese usuario; desactivar impide entrar y no borra nada', async () => {
   await conAdmin(async (base, galletaAdmin, db) => {
     const creado = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'pedro' }, galleta: galletaAdmin });
@@ -278,5 +331,82 @@ test('la galleta lleva Secure cuando se entra por el enlace https', async () => 
   await conAdmin(async base => {
     const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: { 'X-Forwarded-Proto': 'https' } });
     assert.match(r.setCookie, /; Secure/);
+  });
+});
+
+test('cuando el administrador reinicia una contraseña, la persona lo ve al entrar y la lista queda en Configuración', async () => {
+  await conAdmin(async (base, galletaAdmin, db) => {
+    const creado = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'bob' }, galleta: galletaAdmin });
+    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: creado.datos.claveTemporal } });
+    assert.deepEqual(r.datos.avisos, [], 'crear la cuenta no es un reinicio');
+    await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: creado.datos.claveTemporal, nueva: 'la clave de bob 2026' }, galleta: r.galleta });
+
+    // El administrador reinicia la contraseña de Bob dos veces.
+    for (let i = 0; i < 2; i++) assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).codigo, 200);
+    const temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
+    assert.equal(r.codigo, 200);
+    assert.equal(r.datos.avisos.length, 3);
+    assert.ok(r.datos.avisos.every(a => a.tipo === 'clave_reiniciada' && !Number.isNaN(Date.parse(a.fecha))));
+    const galleta = r.galleta;
+    // Mientras la pantalla no diga que ya lo mostró, el aviso sigue (también en /api/yo, aun con la clave temporal).
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos.length, 3);
+    assert.equal(r.datos.reiniciosRecientes.length, 3, 'con el aviso van los reinicios recientes');
+    const hasta = Math.max(...r.datos.avisos.map(a => a.id));
+    // Con la contraseña temporal no se puede marcar como visto (puede ser otra persona).
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta }, galleta })).datos.error, 'debe_cambiar_clave');
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos.length, 3);
+    assert.equal((await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'otra clave de bob 2026' }, galleta })).codigo, 200);
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta }, galleta })).codigo, 200);
+    assert.deepEqual((await pedir(base, 'GET', '/api/yo', { galleta })).datos.avisos, [], 'se ve una vez');
+    // La lista en Configuración se queda para siempre (nada se borra).
+    r = await pedir(base, 'GET', '/api/yo/reinicios', { galleta });
+    assert.equal(r.datos.reinicios.length, 3);
+    assert.ok(r.datos.reinicios.every(x => x.vistoEn));
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM avisos_cuenta').get().n, 3);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE accion = 'clave_reiniciada'").get().n, 3);
+    // Los avisos de Bob son solo de Bob.
+    assert.deepEqual((await pedir(base, 'GET', '/api/yo/reinicios', { galleta: galletaAdmin })).datos.reinicios, []);
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: 'todo' }, galleta })).datos.error, 'datos_no_validos');
+    assert.equal((await pedir(base, 'GET', '/api/yo/reinicios')).codigo, 401);
+  });
+});
+
+test('datos de cuentas del tipo equivocado dan 400, nunca un error del servidor', async () => {
+  await conAdmin(async (base, galletaAdmin) => {
+    const raro = { toString: 0 };
+    for (const [ruta, datos, galleta] of [
+      ['/api/entrar', { nombre: raro, clave: 'x' }], ['/api/entrar', { nombre: 'junior', clave: [CLAVE] }],
+      ['/api/admin/usuarios', { nombre: raro }, galletaAdmin], ['/api/yo/clave', { actual: raro, nueva: 'otra clave larga' }, galletaAdmin],
+    ]) {
+      const r = await pedir(base, 'POST', ruta, { datos, galleta });
+      assert.equal(r.codigo, 400, ruta);
+      assert.equal(r.datos.error, 'datos_no_validos', ruta);
+    }
+  });
+});
+
+test('si otro entra con la contraseña reiniciada y «ve» el aviso, la dueña igual ve esa fecha al entrar la próxima vez', async () => {
+  await conAdmin(async (base, galletaAdmin) => {
+    const creado = await pedir(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'bob' }, galleta: galletaAdmin });
+    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: creado.datos.claveTemporal } });
+    await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: creado.datos.claveTemporal, nueva: 'la clave de bob 2026' }, galleta: r.galleta });
+    // 1. Sin que Bob lo pida, el administrador reinicia su contraseña y entra con la temporal.
+    let temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
+    let galleta = r.galleta;
+    const primero = r.datos.avisos[0].id;
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: primero }, galleta })).codigo, 403);
+    // 2. Pone una contraseña nueva y ahí sí marca el aviso como visto.
+    assert.equal((await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'la clave del intruso' }, galleta })).codigo, 200);
+    assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: primero }, galleta })).codigo, 200);
+    // 3. Bob ya no puede entrar, pide un reinicio y entra.
+    temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
+    assert.equal(r.datos.avisos.length, 1, 'el aviso nuevo es solo el que pidió');
+    assert.equal(r.datos.reiniciosRecientes.length, 2, 'pero la pantalla le muestra los dos reinicios, con su fecha');
+    assert.ok(r.datos.reiniciosRecientes[1].vistoEn, 'el viejo ya estaba visto, y aun así aparece');
+    galleta = r.galleta;
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).datos.reiniciosRecientes.length, 2);
   });
 });
