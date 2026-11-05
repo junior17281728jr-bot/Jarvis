@@ -12,6 +12,11 @@
 // Escenas de la ronda 2: 'uso_anidado' (un cobro nuevo DENTRO de un objeto: usage.nuevo_cobro = { tokens }, con
 // { tokens }), 'uso_herramienta_anidada' (server_tool_use: { web_fetch: { requests: 30 } }), 'uso_absurdo' (2^53 − 1
 // tokens de entrada y de salida: cada número es «válido», el costo no cabe) y 'uso_cero' (dice 0 y 0 tokens).
+// Escena de la ronda 3: 'eco_clave_contenido' (un proveedor hostil que devuelve la clave que recibió en lo que «escribe»
+// el modelo o en sus códigos). { modo }: 'contenido' (200 bueno con la clave en producto, sectores y prioridades),
+// 'minusculas' (200 bueno con la clave en minúsculas y solo letras y números), 'stop' (200 con la clave así en
+// stop_reason / incomplete_details.reason), 'error' (401 con la clave así en el tipo y el código del error) y
+// 'error_500' (lo mismo con un 500).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
 import { createServer } from 'node:http';
 
@@ -20,6 +25,7 @@ export const ESCENAS = Object.freeze([
   'sin_credito_texto', 'otro_400', 'limite_tope_429', 'limite_429', 'sin_credito_openai', 'insufficient_quota', 'redirige',
   'geo_us', 'uso_raro', 'uso_raro_herramienta', 'nunca', 'lento', 'json_roto', 'enorme', 'sin_uso', 'uso_enorme', 'cortar', 'eco_clave',
   'geo_desconocido', 'geo_raro', 'profundo', 'eco_id', 'uso_anidado', 'uso_herramienta_anidada', 'uso_absurdo', 'uso_cero',
+  'eco_clave_contenido',
 ]);
 
 const USO_ANTHROPIC = Object.freeze({ input_tokens: 2000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, service_tier: 'standard', inference_geo: 'global' });
@@ -159,6 +165,24 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
         // Un proveedor que devuelve la clave que recibió dentro de su mensaje de error: OPORTIA nunca debe guardarlo.
         const recibida = String(req.headers['x-api-key'] ?? req.headers.authorization ?? '');
         return enviar(res, 401, esOpenai ? errorOpenai(`Incorrect API key provided: ${recibida}`, 'invalid_request_error', 'invalid_api_key') : errorAnthropic(401, `invalid x-api-key: ${recibida}`), id);
+      }
+      case 'eco_clave_contenido': {
+        const recibida = String(req.headers['x-api-key'] ?? req.headers.authorization ?? '').replace(/^Bearer /, '');
+        const plana = recibida.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const modo = escena.modo ?? 'contenido';
+        if (modo === 'error' || modo === 'error_500') {
+          const s = modo === 'error' ? 401 : 500;
+          const codigo = plana.slice(-40);
+          if (esOpenai) return enviar(res, s, errorOpenai('falso', codigo, codigo), id);
+          return enviar(res, s, { type: 'error', error: { type: codigo, message: 'falso', details: { error_code: codigo } }, request_id: 'req_falso_error' }, id);
+        }
+        const eco = modo === 'minusculas' ? plana : recibida;
+        const json = { ...(escena.json ?? respuestaJson), producto: `reparación ${eco}`, sectores: `Talleres ${eco}`, prioridades: eco };
+        const cuerpo = esOpenai ? okOpenai({ tipo: 'ok', json }, cuerpoPedido) : okAnthropic({ tipo: 'ok', json }, cuerpoPedido);
+        if (modo === 'stop') {
+          if (esOpenai) { cuerpo.status = 'incomplete'; cuerpo.incomplete_details = { reason: plana.slice(0, 40) }; } else cuerpo.stop_reason = plana.slice(0, 40);
+        }
+        return enviar(res, 200, cuerpo, id);
       }
       default: break;
     }

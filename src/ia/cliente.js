@@ -36,13 +36,21 @@ const CABECERAS_ID = Object.freeze(['request-id', 'x-request-id']);
 const TROZO_CLAVE = 12;
 
 // ¿El texto trae la clave, o un pedazo de 12 caracteres o más de ella? (un proveedor, o algo en el medio, que la
-// devuelve como id). Solo en memoria, mientras la clave existe.
-function traePedazoDeClave(texto, clave) {
-  if (typeof texto !== 'string' || typeof clave !== 'string' || !clave) return false;
-  if (texto.includes(clave)) return true;
-  if (clave.length < TROZO_CLAVE) return false;
-  for (let i = 0; i + TROZO_CLAVE <= clave.length; i++) if (texto.includes(clave.slice(i, i + TROZO_CLAVE))) return true;
+// devuelve como id, en lo que «escribió» el modelo o en un código de error). Solo en memoria, mientras la clave existe.
+// Ronda 3 de revisión: también sin mirar mayúsculas y minúsculas, y con solo sus letras y números (así queda en un
+// código corto: codigoCorto pasa todo a minúsculas y no acepta «-»).
+const soloLetrasYNumeros = texto => texto.toLowerCase().replace(/[^a-z0-9]/g, '');
+function traePedazo(texto, pedazoDe) {
+  if (!pedazoDe) return false;
+  if (texto.includes(pedazoDe)) return true;
+  if (pedazoDe.length < TROZO_CLAVE) return false;
+  for (let i = 0; i + TROZO_CLAVE <= pedazoDe.length; i++) if (texto.includes(pedazoDe.slice(i, i + TROZO_CLAVE))) return true;
   return false;
+}
+function traePedazoDeClave(texto, clave) {
+  if (typeof texto !== 'string' || !texto || typeof clave !== 'string' || !clave) return false;
+  if (texto.includes(clave)) return true;
+  return traePedazo(texto.toLowerCase(), clave.toLowerCase()) || traePedazo(soloLetrasYNumeros(texto), soloLetrasYNumeros(clave));
 }
 
 // Quita de la respuesta todo «id» que traiga la clave, ANTES de olvidarla: así nunca llega a la base.
@@ -55,6 +63,39 @@ function quitarEcoDeClave(respuesta, clave) {
     for (const campo of CAMPOS_ID) if (traePedazoDeClave(json[campo], clave)) json[campo] = null;
   }
 }
+
+// Ronda 3 de revisión: ¿queda la clave (o un pedazo) en ALGUNA parte de la respuesta, después de quitar los id? Mira
+// todas las cabeceras que se leen, todo el JSON (lo que escribió el modelo, los códigos de error, el motivo de parada)
+// y el texto de una respuesta que no es JSON.
+function respuestaTraeClave(respuesta, clave) {
+  const partes = Object.values(respuesta?.cabeceras ?? {});
+  if (typeof respuesta?.textoCorto === 'string') partes.push(respuesta.textoCorto);
+  if (respuesta?.json != null) {
+    try { partes.push(JSON.stringify(respuesta.json)); } catch { return true; }
+  }
+  return partes.some(p => traePedazoDeClave(String(p), clave));
+}
+
+// Lo que se anota de una respuesta que traía la clave: NADA de lo que dijo (ni texto, ni JSON, ni códigos, ni id, ni
+// lugar). Solo cuánto gastó, si lo dijo (sin el lugar: se cobra con el más caro). Un 200: 'eco_de_clave' (pausa del
+// dueño y aviso grave). Un error: si el proveedor dijo que la clave no sirve, eso; si no, 'eco_de_clave' sin costo.
+function resultadoConEco(leido, respuesta) {
+  const exito = Number.isSafeInteger(respuesta?.status) && respuesta.status >= 200 && respuesta.status <= 299;
+  const nada = { texto: null, json: null, idPeticion: null, reintentarMs: null, http: leido?.http ?? null, detalle: {} };
+  if (exito) {
+    let uso = null;
+    if (leido?.uso && typeof leido.uso === 'object') {
+      uso = { ...leido.uso };
+      delete uso.geo;
+    }
+    return { ...nada, motivo: 'eco_de_clave', estado: uso ? 'hecha' : 'desconocida', uso };
+  }
+  const estado = leido?.estado === 'desconocida' ? 'desconocida' : 'fallida';
+  return { ...nada, motivo: leido?.motivo === 'clave_no_valida' ? 'clave_no_valida' : 'eco_de_clave', estado, uso: null };
+}
+
+// Para deshacer lo anotado cuando una respuesta buena no se pudo guardar (se vuelve a anotar como lo que fue).
+class NoSeGuardo extends Error {}
 
 // Lo que se suma a los bytes del pedido por el «sobre» del proveedor (roles, nombres de campos…).
 export const MARCO_BYTES = 200;
@@ -192,43 +233,66 @@ export function crearClienteIA({
     // 4. UNA llamada, con su tiempo máximo y la señal de parar del paso.
     const p = adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo });
     let respuesta;
+    let eco = false;
     try {
       respuesta = await llamarProveedor({
         url: urlDe(adaptador, config, p.ruta), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
         senal, timeoutMs: def.timeoutMs, permitido: adaptador.host, topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES,
       });
       quitarEcoDeClave(respuesta, clave);
+      eco = respuestaTraeClave(respuesta, clave);
     } finally {
       clave = null;
     }
 
     // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor). Lo que no cumple el esquema pedido
-    // no se usa: cuenta como 'respuesta_no_valida' (con su costo real) y no se guarda nada.
+    // no se usa: cuenta como 'respuesta_no_valida' (con su costo real) y no se guarda nada. Una respuesta que traía la
+    // clave no se usa ni se guarda nada de ella (ronda 3 de revisión).
     let leido = adaptador.leer(respuesta, { json: Boolean(esquema) });
-    if (leido.motivo === 'ok' && esquema && !cumpleEsquema(leido.json, esquema)) {
+    if (eco) {
+      leido = resultadoConEco(leido, respuesta);
+      respuesta.json = null;
+      respuesta.textoCorto = null;
+      respuesta.cabeceras = {};
+    } else if (leido.motivo === 'ok' && esquema && !cumpleEsquema(leido.json, esquema)) {
       leido = { ...leido, motivo: 'respuesta_no_valida', json: null, texto: null, detalle: { ...leido.detalle, esquema: 'no_cumple' } };
     }
 
     // 6. Anotar lo que costó (siempre, sin cerca) y, si sirvió, guardar lo que hizo (con la cerca, en la misma escritura).
+    // Ronda 3 de revisión: si una respuesta buena NO se pudo guardar (por ejemplo, las dudas ya no cabían), lo anotado se
+    // deshace y se anota otra vez como lo que fue: 'no_se_pudo_guardar' (se pagó y no sirvió). Así nunca cierra el aviso
+    // del proveedor ni quita una pausa, y cuenta para la pausa de «tres seguidas». Una versión que cambió o un proyecto en
+    // la papelera mientras la IA pensaba no es culpa del modelo: queda 'ok'.
+    const anotar = resultado => liquidar(db, { llamadaId: llamada.id, resultado, duracionMs: respuesta.msTotal, ahora: reloj(), config, enviadoBytes: bytes });
     let cierre;
     try {
       cierre = await escribirSinCerca(() => {
-        const l = liquidar(db, { llamadaId: llamada.id, resultado: leido, duracionMs: respuesta.msTotal, ahora: reloj(), config, enviadoBytes: bytes });
         let guardado = null;
-        if (leido.motivo === 'ok' && typeof pedido.guardar === 'function') {
-          try {
-            const valor = enTransaccion(db, () => {
-              if (conCerca) asegurarQueEsMia(db, tarea, corrida);
-              return pedido.guardar(db, leido.json, { id: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo, costoMicro: l.costoMicro });
-            });
-            guardado = { ok: true, valor: valor ?? null };
-          } catch (error) {
-            // Si SQLite deshizo la escritura entera, no se puede seguir en ella: que falle toda (la reserva se barre).
-            if (error?.transaccionPerdida) throw error;
-            const motivo = claveDeError(error);
-            if (motivo === 'no_se_pudo_guardar') registro?.error?.('ia: no se pudo guardar lo que hizo la IA', typeof error?.name === 'string' ? error.name.slice(0, 40) : 'Error');
-            guardado = { ok: false, error: motivo };
-          }
+        let l;
+        try {
+          l = enTransaccion(db, () => {
+            const hecho = anotar(leido);
+            if (leido.motivo === 'ok' && typeof pedido.guardar === 'function') {
+              try {
+                const valor = enTransaccion(db, () => {
+                  if (conCerca) asegurarQueEsMia(db, tarea, corrida);
+                  return pedido.guardar(db, leido.json, { id: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo, costoMicro: hecho.costoMicro });
+                });
+                guardado = { ok: true, valor: valor ?? null };
+              } catch (error) {
+                // Si SQLite deshizo la escritura entera, no se puede seguir en ella: que falle toda (la reserva se barre).
+                if (error?.transaccionPerdida) throw error;
+                const motivo = claveDeError(error);
+                if (motivo === 'no_se_pudo_guardar') registro?.error?.('ia: no se pudo guardar lo que hizo la IA', typeof error?.name === 'string' ? error.name.slice(0, 40) : 'Error');
+                guardado = { ok: false, error: motivo };
+                if (motivo === 'no_se_pudo_guardar') throw new NoSeGuardo();
+              }
+            }
+            return hecho;
+          });
+        } catch (error) {
+          if (!(error instanceof NoSeGuardo) || error.transaccionPerdida) throw error;
+          l = anotar({ ...leido, motivo: 'no_se_pudo_guardar', json: null });
         }
         return { costoMicro: l.costoMicro, guardado };
       });

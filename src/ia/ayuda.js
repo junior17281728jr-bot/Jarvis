@@ -14,10 +14,10 @@
 // termina «hecha» con { usada: false, motivo } y el proyecto queda como lo entendió OPORTIA. Solo un error de verdad
 // del programa sigue el camino normal de errores de la fila.
 import { ErrorHttp } from '../nucleo/http.js';
-import { configuracionDesdeCampos } from '../motor/interpretar.js';
+import { configuracionDesdeCampos, lugaresNuevosSinDuda } from '../motor/interpretar.js';
 import { pendienteDeProyecto, puedeTenerOtraVersion, nuevaVersion, versionDeLlamadaIa, versionSinIa, LUGARES_PARA_AYUDA_IA } from '../proyectos/proyectos.js';
 import { anotarBloqueo, mesCobro } from './presupuesto.js';
-import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, conDudasDeLaBase, PROPOSITO_AYUDA } from './interpretar.js';
+import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, conDudasDeLaBase, sinLugarParaDudas, supuestosQueSiguen, PROPOSITO_AYUDA } from './interpretar.js';
 
 export const CADUCA_MS = 15 * 60_000;
 const idiomaDe = idioma => (idioma === 'en' ? 'en' : 'es');
@@ -36,6 +36,8 @@ function revisarBase(db, espacioId, datos) {
   // Dos lugares: la versión que hace la IA y uno para «Volver a la versión sin IA».
   const no = puedeTenerOtraVersion(db, { espacioId, proyectoId: datos.proyecto, libres: LUGARES_PARA_AYUDA_IA });
   if (no) return { motivo: no };
+  // Ronda 3 de revisión: lo que hiciera la IA podría no caber (las dudas están llenas): no se paga.
+  if (sinLugarParaDudas(v.configuracion)) return { motivo: 'demasiadas_dudas' };
   return { info };
 }
 
@@ -70,6 +72,13 @@ async function pasoInterpretar(ctx) {
     // un cambio de la IA: pasan como dudas guardadas, y la versión sigue sin poder aprobarse hasta que alguien las vea.
     const configuracion = conDudasDeLaBase(actual.configuracion, configuracionDesdeCampos(aCampos(json, actual.configuracion, idioma), actual.configuracion), idioma);
     if (!configuracion) throw new ErrorHttp(409, 'no_se_pudo_guardar');
+    // Ronda 3 de revisión: un lugar nuevo que no se conoce siempre queda como duda. Si no cupo (más lugares nuevos que
+    // dudas libres), la versión no se guarda: nunca se podría aprobar un lugar por el que nadie preguntó.
+    if (lugaresNuevosSinDuda(actual.configuracion, configuracion).length) throw new ErrorHttp(409, 'no_se_pudo_guardar');
+    const pistas = pistasDeDudas(json, actual.configuracion.noEntendido);
+    // Ronda 3 de revisión: si la IA respondió lo mismo que ya tenía la versión y no dejó ninguna pista, no hace falta una
+    // versión nueva: la que espera aprobación sigue igual (y no queda «descartada»).
+    if (!cambiosIa(actual.configuracion, configuracion).length && !pistas.length) return { sinCambios: true };
     // «base» y lo que cambió se cuentan desde la primera versión SIN IA de la cadena: si se pidió ayuda sobre una versión
     // que ya hizo la IA, «Volver a la versión sin IA» vuelve a lo que entendió el motor propio, y la lista muestra todo
     // lo que la IA cambió (también lo de antes).
@@ -82,10 +91,13 @@ async function pasoInterpretar(ctx) {
       costoMicro: llamada.costoMicro,
       base: raiz.numero,
       cambios: cambiosIa(raiz.configuracion, configuracion),
-      pistas: pistasDeDudas(json, actual.configuracion.noEntendido),
+      pistas,
     };
+    // Ronda 3 de revisión: las notas del motor propio («Lo que decidí yo») pasan a la versión de la IA, salvo las que
+    // hablan de algo que la IA cambió (contactar a mano, la autonomía pedida… siguen a la vista).
+    const supuestos = supuestosQueSiguen(raiz.supuestos, ayudaIa.cambios);
     return nuevaVersion(db, {
-      espacioId, proyectoId: datos.proyecto, usuarioId, instrucciones: actual.instrucciones, configuracion, supuestos: [], origen: 'campos', ayudaIa,
+      espacioId, proyectoId: datos.proyecto, usuarioId, instrucciones: actual.instrucciones, configuracion, supuestos, origen: 'campos', ayudaIa,
     });
   }
 
@@ -104,6 +116,8 @@ async function pasoInterpretar(ctx) {
   }
   if (!r.usada) return fin({ motivo: r.motivo, costoMicro: r.costoMicro ?? 0 });
   if (!r.guardado?.ok) return fin({ motivo: r.guardado?.error ?? 'no_se_pudo_guardar', costoMicro: r.costoMicro ?? 0 });
+  // La IA respondió lo mismo que ya entendió OPORTIA: se usó (y se pagó), pero no hizo falta una versión nueva.
+  if (r.guardado.valor?.sinCambios === true) return { listo: true, resultado: { usada: true, motivo: 'sin_cambios', numero: null, costoMicro: r.costoMicro ?? 0 } };
   return { listo: true, resultado: { usada: true, motivo: 'ok', numero: r.guardado.valor, costoMicro: r.costoMicro ?? 0 } };
 }
 

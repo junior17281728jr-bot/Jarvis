@@ -192,6 +192,28 @@ export function conDudasDeLaBase(base = {}, nueva = {}, idioma = 'es') {
   return resultado.noEntendido.length === guardadas.length + extra.length ? resultado : null;
 }
 
+// Ronda 3 de revisión: ¿la versión ya tiene todas las dudas guardadas que caben (LIMITES.dudas) y además alguna que
+// calcula el motor? Entonces no se ofrece la ayuda: si la IA hiciera desaparecer esa duda calculada (por ejemplo, quita
+// un lugar de fuera del país, como le pide la regla 5), no cabría como duda guardada y la versión no se podría guardar
+// DESPUÉS de pagar.
+export function sinLugarParaDudas(config = {}) {
+  const guardadas = Array.isArray(config?.noEntendido) ? config.noEntendido.length : 0;
+  return guardadas >= LIMITES.dudas && dudasCalculadas(config).length > 0;
+}
+
+// Ronda 3 de revisión: las notas del motor («supuestos») que siguen valiendo en la versión que hizo la IA. Cada nota
+// habla de un grupo de campos; si la IA cambió ese grupo, la nota ya no explica la versión y no pasa. Las que hablan de
+// lo que la IA nunca toca (cada cuánto, qué hace, la autonomía, contactar…) pasan siempre.
+const GRUPO_DE_SUPUESTO = Object.freeze({
+  tipo: 'tipo', tipo_laboral: 'tipo', sectores_todos: 'sectores', sectores_libres: 'sectores', personas_sueltas: 'sectores',
+  gran_santo_domingo: 'zonas', producto_negocio: 'producto', salario_minimo: 'salario',
+  clientes_actuales: 'exclusiones', clientes_sin_nombre: 'exclusiones',
+});
+export function supuestosQueSiguen(supuestos = [], cambios = []) {
+  const cambiados = new Set(Array.isArray(cambios) ? cambios : []);
+  return (Array.isArray(supuestos) ? supuestos : []).filter(s => typeof s === 'string' && !cambiados.has(GRUPO_DE_SUPUESTO[s]));
+}
+
 // ---------- Lo que vuelve de la IA ----------
 
 const SIN_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f]/g;

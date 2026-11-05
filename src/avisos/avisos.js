@@ -21,13 +21,16 @@ const FRENO = /^freno:[a-z0-9._-]{1,60}$/;
 // de cobro: UNA fila por tope y por mes, que sube de nivel) y 'ia_proveedor:<proveedor>' (el proveedor no se pudo usar).
 export const AVISO_IA_TOPE = /^ia_tope:(?:general|[ep][1-9]\d{0,9}):\d{4}-(?:0[1-9]|1[0-2])$/;
 export const AVISO_IA_PROVEEDOR = /^ia_proveedor:[a-z][a-z0-9_]{1,30}$/;
+// Ronda 3 de revisión: 'ia_llamadas:e<cuenta>' (una cuenta que no es la del administrador usó su parte de las llamadas
+// de IA de una hora; se cierra sola en la revisión de cada hora).
+export const AVISO_IA_LLAMADAS = /^ia_llamadas:e[1-9]\d{0,9}$/;
 
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
 
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
-  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto);
+  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto);
 }
 
 function textoDetalle(detalle) {

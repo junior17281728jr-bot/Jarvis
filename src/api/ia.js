@@ -19,19 +19,23 @@ import { PLANES } from '../cuentas/planes.js';
 import { leerConfigIa, guardarConfigIa, usdAMicro, esEspacioAdmin, LIMITES_IA } from '../ia/config.js';
 import { disponibilidad, elegirProveedor } from '../ia/presupuesto.js';
 import { estadoIA, consumoIA } from '../ia/consumo.js';
-import { armarPeticion, PROPOSITO_AYUDA } from '../ia/interpretar.js';
+import { armarPeticion, sinLugarParaDudas, PROPOSITO_AYUDA } from '../ia/interpretar.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const DIA_MS = 86_400_000;
 // Lo único que ve de la ayuda una cuenta que no es la del administrador (nunca el estado del dueño: saldo, clave…).
 const MOTIVOS_PARA_CUENTAS = new Set(['ok', 'tope_espacio', 'demasiadas_llamadas', 'trabajo_en_pausa', 'sin_pendiente', 'en_papelera', 'demasiadas_versiones',
-  'caducada', 'version_cambio', 'rechazada', 'respuesta_no_valida', 'respuesta_incompleta', 'demasiado_largo', 'precio_cambio']);
+  'caducada', 'version_cambio', 'rechazada', 'respuesta_no_valida', 'respuesta_incompleta', 'demasiado_largo', 'precio_cambio',
+  'demasiadas_dudas', 'sin_cambios', 'no_se_pudo_guardar']);
 
 export function crearLimitesIa() {
   return {
     ajustes: new Limitador({ maximo: 30, ventanaMs: DIEZ_MINUTOS }),
     apagar: new Limitador({ maximo: 30, ventanaMs: DIEZ_MINUTOS }),
     ayuda: new Limitador({ maximo: 10, ventanaMs: DIEZ_MINUTOS }),
+    // Ronda 3 de revisión: una cuenta que no es la del administrador pide ayuda como mucho 3 veces cada 10 minutos
+    // (además, en una hora usa como mucho su parte de las llamadas: src/ia/presupuesto.js, partesPorHora).
+    ayudaCuentas: new Limitador({ maximo: 3, ventanaMs: DIEZ_MINUTOS }),
     lecturas: new Limitador({ maximo: 600, ventanaMs: DIEZ_MINUTOS }),
   };
 }
@@ -123,6 +127,8 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     if (!info.pendiente) { r.motivo = 'sin_pendiente'; return r; }
     const no = puedeTenerOtraVersion(db, { espacioId: e.id, proyectoId: numeroProyecto, libres: LUGARES_PARA_AYUDA_IA });
     if (no) { r.motivo = no; return r; }
+    // Ronda 3 de revisión: si las dudas ya están llenas, lo que hiciera la IA podría no guardarse: no se ofrece.
+    if (sinLugarParaDudas(info.pendiente.configuracion)) { r.motivo = 'demasiadas_dudas'; return r; }
     const peticion = armarPeticion(info.pendiente, idioma);
     if (!peticion) { r.motivo = 'demasiado_largo'; return r; }
     r.d = disponibilidad(db, { config, espacioId: e.id, proposito: PROPOSITO_AYUDA, entradaMax: peticion.entradaMax, ahora });
@@ -171,6 +177,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     contar(topes.ayuda, usuario);
     const esAdmin = esEspacioAdmin(db, e.id);
     if (esAdmin && !vieneDeTailscale(req).si) throw new ErrorHttp(403, 'solo_desde_tailnet');
+    if (!esAdmin) contar(topes.ayudaCuentas, usuario);
     const datos = await leerJson(req);
     const aceptado = datos.maximoMicro;
     if (!Number.isSafeInteger(aceptado) || aceptado < 0) throw new ErrorHttp(400, 'datos_no_validos');

@@ -23,6 +23,12 @@ export const POLITICA = Object.freeze({
   respuesta_incompleta: P('hecha'),
   rechazada: P('hecha'),
   respuesta_no_valida: P('hecha'), // sin lo que gastó, el adaptador la deja 'desconocida'
+  // Ronda 3 de revisión: una respuesta buena que NO se pudo guardar (por ejemplo, las dudas ya no cabían) se pagó y no
+  // sirvió: nunca cierra el aviso del proveedor ni quita una pausa, y cuenta para la pausa de «tres seguidas».
+  no_se_pudo_guardar: P('hecha'),
+  // Ronda 3 de revisión: la respuesta traía la clave (o un pedazo de ella). No se guarda nada de lo que respondió, esa
+  // clave queda en pausa del dueño y se avisa grave (un proveedor así no es de fiar). Sin lo que gastó: 'desconocida'.
+  eco_de_clave: P('hecha', 'admin', 'grave'),
   clave_no_valida: P('fallida', 'admin', 'grave', { prueba: true }),
   sin_permiso: P('fallida', 'admin', 'grave', { prueba: true }),
   sin_credito: P('fallida', 'admin', 'grave'),

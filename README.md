@@ -135,6 +135,13 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   igual que tres errores. Lo que se lee de una respuesta tiene su tope (256 KB para la ayuda), para cuidar la memoria del
   trabajador. Un lugar de cobro (`inference_geo`) que la tabla de precios no conoce cuenta como un cobro desconocido: se
   cuenta al menos lo apartado, la clave queda en pausa y hay aviso grave.
+- Una respuesta buena que no se pudo guardar (por ejemplo, ya no cabían más dudas) cuenta como pagada y que no sirvió
+  (también para las tres seguidas). Si la versión ya tiene todas las dudas que caben, la ayuda no se ofrece. Si la IA
+  entiende lo mismo que OPORTIA, no se crea otra versión (la pantalla lo dice). Una respuesta que trae la clave (o un
+  pedazo) no se usa ni se guarda nada de ella: la clave queda en pausa y hay aviso grave.
+- Las 30 llamadas de una hora se reparten: otra cuenta con presupuesto usa como mucho 10 (y pide ayuda como mucho 3 veces
+  cada 10 minutos), y entre todas las otras cuentas nunca usan las 10 que quedan para el dueño. Hay aviso con el número de
+  la cuenta.
 - Modelo: Claude Haiku 5.5 (US$0.10 por millón de tokens que lee y US$0.50 por millón que escribe; ×1.1 si la cuenta usa
   solo servidores de EE. UU.). Un uso cuesta unos US$0.0005; el máximo que se muestra suele ser US$0.002 y el código nunca
   aparta más de US$0.005. Con un tope de US$2 caben unos 4,000 usos. Probar una clave es gratis (`count_tokens`).

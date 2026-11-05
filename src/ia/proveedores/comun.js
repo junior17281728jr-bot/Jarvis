@@ -1,7 +1,8 @@
 // Piezas que comparten los adaptadores de los proveedores de IA. Todo es puro: nada de red, nada de base.
 // Lo que dice un proveedor (sus mensajes de error) se lee SOLO en memoria para clasificarlo; nunca se guarda.
 
-const CODIGO = /^[a-z0-9_]{1,60}$/;
+// Ronda 3 de revisión: hasta 40 letras (ningún código de verdad es más largo; uno más largo puede ser otra cosa).
+const CODIGO = /^[a-z0-9_]{1,40}$/;
 // El id de una petición, SOLO con la forma que usan los proveedores: req_… (Anthropic y OpenAI), msg_… (un mensaje de
 // Claude) o resp_… (una respuesta de OpenAI), con letras, números y _ (nunca «-»: una clave sk-… nunca cabe aquí).
 // Cualquier otra cosa no se guarda (ia_llamadas.id_peticion queda vacío). Además, src/ia/cliente.js quita todo id que

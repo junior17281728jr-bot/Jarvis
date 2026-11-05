@@ -43,11 +43,17 @@ export const MOTIVOS = Object.freeze([
   'clave_no_valida', 'sin_permiso', 'sin_credito', 'limite_gasto_proveedor', 'limite_proveedor', 'sobrecargado',
   'error_proveedor', 'redireccion', 'modelo_no_disponible', 'pedido_no_valido', 'tiempo_agotado', 'sin_red',
   'respuesta_no_valida', 'respuesta_incompleta', 'rechazada',
+  // Ronda 3 de revisión: la respuesta traía la clave (o un pedazo): no se guarda nada de ella y esa clave queda en pausa.
+  'eco_de_clave',
   // Lo que pasó alrededor de la llamada.
   'interrumpida', 'ya_cobrada', 'base_ocupada', 'costo_mayor', 'fallas_seguidas',
   // La ayuda de la fase 1 y las rutas.
   'version_cambio', 'sin_pendiente', 'en_papelera', 'demasiadas_versiones', 'caducada', 'no_se_pudo_guardar',
   'trabajo_en_pausa', 'solo_tailnet', 'no_disponible',
+  // Ronda 3 de revisión: la versión ya tiene todas las dudas que caben y además una que calcula el motor (la ayuda no
+  // se ofrece: lo que hiciera la IA no se podría guardar), y la IA respondió lo mismo que entendió OPORTIA (no hace
+  // falta una versión nueva).
+  'demasiadas_dudas', 'sin_cambios',
 ]);
 
 // Estados de una fila de ia_llamadas (un intento PAGADO, que pasó la reserva):

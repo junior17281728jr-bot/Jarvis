@@ -24,7 +24,7 @@ import { ID_PETICION, TOKENS_MAX } from './proveedores/comun.js';
 import { politicaDe, finDePausa, FALLAS_SEGUIDAS } from './politica.js';
 import { leerConfigIa } from './config.js';
 import { gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro } from './gasto.js';
-import { topeEspacioMicro, iaDeVersionActiva } from './topes.js';
+import { topeEspacioMicro, iaDeVersionActiva, esEspacioAdmin } from './topes.js';
 
 export { mesCobro, inicioMesSiguienteCobro, gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro };
 
@@ -73,6 +73,34 @@ export function elegirProveedor(db, config, cfg, ahora = Date.now()) {
   return { ok: false, motivo: primero ?? 'proveedor_no_usado' };
 }
 
+// Ronda 3 de revisión: las llamadas de una hora (cfg.llamadasPorHora) se reparten, así una cuenta con tope de plan
+// nunca deja sin ayuda al dueño ni a las demás cuentas:
+//  - total: entre todos, como siempre.
+//  - porCuenta: lo más que usa en una hora UNA cuenta que no es la del administrador (un tercio; al menos 1).
+//  - cuentas: lo más que usan en una hora, juntas, las cuentas que no son la del administrador. El resto (un tercio,
+//    al menos 1) queda siempre para el dueño.
+export function partesPorHora(llamadasPorHora) {
+  const total = Number.isSafeInteger(llamadasPorHora) && llamadasPorHora > 0 ? llamadasPorHora : 1;
+  return { total, porCuenta: Math.max(1, Math.floor(total / 3)), cuentas: Math.max(0, total - Math.max(1, Math.ceil(total / 3))) };
+}
+
+// Cuántas llamadas hubo en la última hora: todas, las de las cuentas que no son la del administrador y las de esa
+// cuenta. cuenta: true si espacioId es una cuenta que no es la del administrador.
+export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now() }) {
+  const partes = partesPorHora(cfg.llamadasPorHora);
+  const filas = db.prepare('SELECT espacio_id AS e, COUNT(*) AS n FROM ia_llamadas WHERE creada_en >= ? GROUP BY espacio_id').all(iso(ahora - HORA_MS));
+  let todas = 0;
+  let deCuentas = 0;
+  let deLaCuenta = 0;
+  for (const f of filas) {
+    todas += f.n;
+    if (f.e != null && !esEspacioAdmin(db, f.e)) deCuentas += f.n;
+    if (espacioId != null && f.e === Number(espacioId)) deLaCuenta = f.n;
+  }
+  const cuenta = espacioId != null && !esEspacioAdmin(db, espacioId);
+  return { partes, todas, deCuentas, deLaCuenta, cuenta };
+}
+
 // Todas las revisiones de reservar, SIN escribir nada (también las usa disponibilidad, para las pantallas).
 function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, salidaMax, maximoConfirmadoMicro, ahora }) {
   const mes = mesCobro(ahora);
@@ -85,8 +113,10 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   const base = { proveedor: eleccion.proveedor, modelo: eleccion.modelo, reserva };
   if (reserva > def.maximoMicro) return no('llamada_muy_cara', 'general', base);
   if (maximoConfirmadoMicro != null && reserva > maximoConfirmadoMicro) return no('precio_cambio', 'general', base);
-  const enLaHora = db.prepare('SELECT COUNT(*) AS n FROM ia_llamadas WHERE creada_en >= ?').get(iso(ahora - HORA_MS)).n;
-  if (enLaHora >= cfg.llamadasPorHora) return no('demasiadas_llamadas', 'general', base);
+  const hora = llamadasEnLaHora(db, { cfg, espacioId, ahora });
+  if (hora.todas >= hora.partes.total) return no('demasiadas_llamadas', 'general', base);
+  if (hora.cuenta && hora.deLaCuenta >= hora.partes.porCuenta) return no('demasiadas_llamadas', `e${espacioId}`, base);
+  if (hora.cuenta && hora.deCuentas >= hora.partes.cuentas) return no('demasiadas_llamadas', 'general', base);
   // Los topes. Un tope de 0 bloquea siempre.
   const general = { usadoMicro: gastoMicro(db, { mes }), topeMicro: cfg.topeGeneralMicro };
   if (general.usadoMicro + reserva > general.topeMicro) return no('tope_general', 'general', { ...base, ...general });
@@ -151,6 +181,14 @@ export function reservar(db, {
       VALUES (?, 'reservada', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(r.mes, proposito, paso == null ? null : String(paso).slice(0, 80), e.proveedor, e.modelo, e.secreto.id, espacioId, proyectoId,
         versionNumero, def.cuentaProyecto ? 1 : 0, tareaId, usuarioId, entradaMax, salida, r.reserva, JSON.stringify(instantaneaPrecio(e.precio)), iso(ahora));
+    // Ronda 3 de revisión: la cuenta (que no es la del administrador) acaba de usar su parte de llamadas de esta hora:
+    // se avisa al momento, con su número de cuenta (se cierra solo en la revisión de cada hora, cuando vuelve a tener).
+    if (espacioId != null) {
+      const hora = llamadasEnLaHora(db, { cfg, espacioId, ahora });
+      if (hora.cuenta && hora.deLaCuenta >= hora.partes.porCuenta) {
+        abrirAviso(db, { clave: `ia_llamadas:e${espacioId}`, nivel: 'atencion', detalle: { ambito: `e${espacioId}`, usadas: hora.deLaCuenta, parte: hora.partes.porCuenta }, ahora });
+      }
+    }
     return {
       ok: true,
       llamada: {
@@ -187,7 +225,8 @@ function avisoProveedor(db, { proveedor, motivo, pausa, hasta, nivel, ahora }) {
 // Respuestas que se PAGAN pero no sirven (el modelo respondió mal, se cortó o no quiso): para la pausa de «tres
 // seguidas» cuentan como fallas, así un modelo que responde mal una y otra vez no gasta sin freno (fases 2 a 7: los
 // trabajos automáticos piden solos). Un uso bueno entre ellas vuelve a empezar la cuenta.
-export const RESPUESTAS_INSERVIBLES = Object.freeze(['respuesta_no_valida', 'respuesta_incompleta', 'rechazada']);
+// Ronda 3: también una respuesta buena que no se pudo guardar ('no_se_pudo_guardar') y una que traía la clave.
+export const RESPUESTAS_INSERVIBLES = Object.freeze(['respuesta_no_valida', 'respuesta_incompleta', 'rechazada', 'no_se_pudo_guardar', 'eco_de_clave']);
 const esFalla = ({ estado, resultado }) => ((estado === 'fallida' || estado === 'desconocida') && resultado !== 'interrumpida')
   || RESPUESTAS_INSERVIBLES.includes(resultado);
 
@@ -255,7 +294,7 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
     const mayor = Boolean(uso) && (costo > reservado || uso.raro === true);
     // Solo códigos cortos (tipo, código, motivo de parada…): nunca un mensaje del proveedor.
     const detalle = Object.fromEntries(Object.entries(resultado?.detalle ?? {})
-      .filter(([clave, valor]) => /^[a-zA-Z]{1,30}$/.test(clave) && typeof valor === 'string' && /^[a-z0-9_]{1,60}$/.test(valor)));
+      .filter(([clave, valor]) => /^[a-zA-Z]{1,30}$/.test(clave) && typeof valor === 'string' && /^[a-z0-9_]{1,40}$/.test(valor)));
     if (uso?.geo && /^[a-z]{2,20}$/.test(uso.geo)) detalle.geo = uso.geo;
     if (mayor) detalle.motivoInterno = uso.raro ? 'uso_desconocido' : 'costo_mayor';
     const http = Number.isSafeInteger(resultado?.http) ? resultado.http : null;
@@ -333,6 +372,12 @@ export function vigilarIA(db, { config, ahora = Date.now() }) {
     }
     const cfg = leerConfigIa(db);
     revisarUmbrales(db, { mes, ambitos: ['general'], ahora, cfg });
+    // Ronda 3: el aviso de una cuenta que usó su parte de llamadas se cierra cuando ya vuelve a tener.
+    for (const a of db.prepare("SELECT clave FROM avisos WHERE resuelto_en IS NULL AND substr(clave, 1, 12) = 'ia_llamadas:'").all()) {
+      const m = /^ia_llamadas:e([1-9]\d{0,9})$/.exec(a.clave);
+      const hora = m ? llamadasEnLaHora(db, { cfg, espacioId: Number(m[1]), ahora }) : null;
+      if ((!hora || hora.deLaCuenta < hora.partes.porCuenta) && resolverAviso(db, a.clave, ahora)) cerrados += 1;
+    }
     const activas = db.prepare("SELECT llave_huella FROM secretos WHERE estado = 'activa'").all();
     let llave = 'sin_claves';
     // Sin carpeta de datos (algunas pruebas de la fila corren sin ella) no se puede mirar la llave.

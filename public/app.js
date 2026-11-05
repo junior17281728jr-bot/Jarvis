@@ -748,6 +748,10 @@ function textoAviso(a) {
     const proveedor = nombreProveedor(d.proveedor ?? String(a.clave).slice('ia_proveedor:'.length));
     return t(d.pausa === 'admin' ? 'aviso.ia_proveedor.admin' : 'aviso.ia_proveedor', { proveedor, motivo: d.motivo ? textoMotivoIa(d.motivo) : '?' });
   }
+  if (String(a.clave).startsWith('ia_llamadas:')) {
+    const id = /^e(\d+)$/.exec(String(d.ambito ?? String(a.clave).slice('ia_llamadas:'.length)))?.[1] ?? '?';
+    return t('aviso.ia_llamadas', { id, usadas: v(d.usadas), parte: v(d.parte) });
+  }
   if (a.clave === 'ia_costo_mayor') {
     return t('aviso.ia_costo_mayor', { real: usd(d.realMicro), reservado: usd(d.reservadoMicro), proveedor: nombreProveedor(d.proveedor) });
   }
@@ -1834,9 +1838,11 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
       return;
     }
   }
-  if (vista.fallo) ayudasPedidas.delete(proyecto.id);
+  if (vista.fallo || vista.igual) ayudasPedidas.delete(proyecto.id);
   const linea = (nombreIcono, texto) => el('p', { class: 'con-icono-arriba ayuda-ia-linea' }, icono(nombreIcono, 'icono'), el('span', { texto }));
-  const fallo = vista.fallo ? el('p', { class: 'aviso', role: 'status', texto: t('ayuda_ia.no_se_pudo', { motivo: textoMotivoIa(vista.fallo.motivo), costo: usd(vista.fallo.costoMicro) }) }) : null;
+  const fallo = vista.fallo ? el('p', { class: 'aviso', role: 'status', texto: t('ayuda_ia.no_se_pudo', { motivo: textoMotivoIa(vista.fallo.motivo), costo: usd(vista.fallo.costoMicro) }) })
+    : vista.igual ? el('p', { class: 'con-icono-arriba ayuda-ia-linea', role: 'status' }, icono('bien', 'icono'), el('span', { texto: t('ayuda_ia.sin_cambios', { costo: usd(vista.igual.costoMicro) }) }))
+      : null;
   let partes = [];
   if (vista.vista === 'esperando') {
     const seguida = ayudasPedidas.get(proyecto.id);

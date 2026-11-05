@@ -89,8 +89,9 @@ export function estadoDeClave(activa, ahora = Date.now()) {
 //          dice la pausa y que el pedido espera, nunca «sigue en la fila» sin decir por qué.
 //   lista: { numero, costoMicro } si la IA hizo una versión nueva (la pantalla vuelve a cargar el proyecto).
 //   fallo: { motivo, costoMicro } si la ayuda que se pidió no pudo (se dice una vez, con lo que costó).
+//   igual: { costoMicro } si la IA entendió lo mismo que OPORTIA y no hizo falta una versión nueva (ronda 3).
 export function vistaAyudaIa(d, { seguida = null } = {}) {
-  const r = { vista: 'nada', motivo: null, lista: null, fallo: null, enFila: false };
+  const r = { vista: 'nada', motivo: null, lista: null, fallo: null, igual: null, enFila: false };
   if (!d || typeof d !== 'object') return r;
   const tarea = d.tarea && typeof d.tarea === 'object' ? d.tarea : null;
   if (tarea && TAREA_VIVA.includes(tarea.estado)) {
@@ -100,6 +101,7 @@ export function vistaAyudaIa(d, { seguida = null } = {}) {
   if (tarea && seguida && seguida.tareaId === tarea.id) {
     const res = tarea.resultado;
     if (tarea.estado === 'hecha' && res?.usada === true && Number.isSafeInteger(res.numero)) r.lista = { numero: res.numero, costoMicro: res.costoMicro ?? 0 };
+    else if (tarea.estado === 'hecha' && res?.usada === true && res.motivo === 'sin_cambios') r.igual = { costoMicro: res.costoMicro ?? 0 };
     else r.fallo = { motivo: res?.motivo || 'no_disponible', costoMicro: res?.costoMicro ?? 0 };
   }
   const motivo = typeof d.motivo === 'string' ? d.motivo : null;

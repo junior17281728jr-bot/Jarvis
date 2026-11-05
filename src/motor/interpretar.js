@@ -524,6 +524,16 @@ export function configuracionDesdeCampos(campos = {}, anterior = {}) {
   });
 }
 
+// Los lugares NUEVOS (que no estaban en «anterior») que no se conocen, no son de fuera del país y se quedaron sin su
+// duda 'lugar' en «nueva» (las dudas no cupieron: LIMITES.dudas). Ronda 3 de revisión: la ayuda de IA no guarda una
+// versión así (src/ia/ayuda.js): un lugar que no se conoce siempre se pregunta.
+export function lugaresNuevosSinDuda(anterior = {}, nueva = {}) {
+  const textos = v => (Array.isArray(v) ? v.map(comoTexto) : []);
+  const antes = new Set(textos(anterior?.zonasLibres).map(comparable));
+  const conDuda = new Set(dudasValidas(nueva?.noEntendido).filter(d => d.clave === 'lugar').map(d => comparable(d.texto)));
+  return textos(nueva?.zonasLibres).filter(z => !antes.has(comparable(z)) && !esExtranjero(z) && !conDuda.has(comparable(z)));
+}
+
 // Lo que la interfaz necesita para mostrar nombres en español o inglés.
 export function catalogo() {
   return {
