@@ -620,3 +620,161 @@ test('nombre sugerido: va entero en un idioma y nunca termina en media palabra',
   }
   assert.equal(nombreSugerido(config('Vendo aire acondicionado a oficinas en Santiago')), 'Clientes para aire acondicionado · Oficinas');
 });
+
+// ---------- Pase visual (0.3.1): el creador con toques (public/creador.js) ----------
+// Lo que la persona elige tocando se convierte en una frase que el motor tiene que entender EXACTAMENTE: los mismos
+// negocios, lugares, tamaños, frecuencia, producto y salario, sin dudas, sin supuestos de más y sin adivinar nada.
+const CREADOR = await import('../public/creador.js');
+const nombreDelProducto = (clave, idioma) => CREADOR.PRODUCTOS_CON_OTRAS_PALABRAS[clave]?.[idioma] ?? PRODUCTOS.find(p => p.clave === clave)[idioma];
+const mismos = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+
+// Devuelve la lista de lo que el motor entendió distinto (vacía si entendió todo bien).
+function comoLoEntiende(eleccion, idioma) {
+  const texto = CREADOR.componer(eleccion, idioma);
+  const x = CREADOR.normalizarEleccion(eleccion);
+  const { configuracion: c, supuestos } = interpretar(texto, { idioma });
+  const mal = [];
+  if (texto.length > LIMITES.instrucciones) mal.push(`largo ${texto.length}`);
+  if (c.tipo !== x.tipo) mal.push(`tipo ${c.tipo}`);
+  if (x.tipo === 'comercial' && !mismos(c.sectores, x.sectores)) mal.push(`sectores ${c.sectores}`);
+  if (c.sectoresLibres.length || c.zonasLibres.length) mal.push(`libres ${c.sectoresLibres} ${c.zonasLibres}`);
+  if (!mismos(c.zonas, x.zonas) || c.paisCompleto !== x.pais) mal.push(`zonas ${c.zonas} ${c.paisCompleto}`);
+  if (x.tipo === 'comercial' && !mismos(c.tamanos, x.tamanos.length === 3 ? [] : x.tamanos)) mal.push(`tamaños ${c.tamanos}`);
+  if (c.frecuencia !== x.frecuencia) mal.push(`frecuencia ${c.frecuencia}`);
+  if (comparable(c.producto) !== comparable(x.producto)) mal.push(`producto ${c.producto}`);
+  if (x.tipo === 'laboral' && (c.salarioMinimo ?? null) !== x.salarioMinimo) mal.push(`salario ${c.salarioMinimo}`);
+  if (c.salarioMaximo || c.exclusiones.length || c.sectoresExcluidos.length || c.zonasExcluidas.length || c.prioridades.length) mal.push('algo de más');
+  if (dudas(c).length) mal.push(`dudas ${JSON.stringify(dudas(c))}`);
+  if (faltantes(c).length) mal.push(`faltan ${faltantes(c)}`);
+  // Solo se aceptan los avisos que no dependen de los toques (las capacidades de siempre y qué es el Gran Santo Domingo).
+  const otros = supuestos.filter(s => !['capacidades', 'gran_santo_domingo'].includes(s));
+  if (otros.length) mal.push(`supuestos ${otros}`);
+  return mal.length ? `${idioma}: «${texto}» → ${mal.join(' | ')}` : null;
+}
+
+test('creador: ofrece todo lo que el motor conoce (negocios, provincias, regiones, tamaños, frecuencias y productos)', () => {
+  const sectores = CATALOGO.sectores.map(s => s.clave).filter(s => s !== 'todas');
+  assert.deepEqual([...CREADOR.SECTORES_CREADOR.map(s => s.clave)].sort(), [...sectores].sort());
+  const provincias = CATALOGO.zonas.filter(z => z.tipo === 'provincia').map(z => z.clave);
+  const regiones = CATALOGO.zonas.filter(z => z.tipo === 'region').map(z => z.clave);
+  assert.deepEqual(CREADOR.ZONAS_CREADOR.map(z => z.clave).sort(), [...provincias, ...regiones].sort());
+  assert.deepEqual(CREADOR.ORDEN_TAMANOS, CATALOGO.tamanos);
+  assert.deepEqual(CREADOR.ORDEN_FRECUENCIAS, CATALOGO.frecuencias);
+  for (const clave of CREADOR.PRODUCTOS_SUGERIDOS) assert.ok(PRODUCTOS.some(p => p.clave === clave), clave);
+  assert.deepEqual([...CREADOR.PRODUCTOS_SUGERIDOS].sort(), PRODUCTOS.map(p => p.clave).sort(), 'cada producto del catálogo tiene su sugerencia');
+});
+
+test('creador: cada toque solo (cada negocio, lugar, producto, empleo, tamaño, frecuencia y salario) se entiende sin dudas, en español y en inglés', () => {
+  const malos = [];
+  const revisar = (e, idioma) => { const m = comoLoEntiende(e, idioma); if (m) malos.push(m); };
+  for (const idioma of ['es', 'en']) {
+    const base = { tipo: 'comercial', producto: nombreDelProducto('paneles-solares', idioma), sectores: ['hoteles'], zonas: ['santiago'], frecuencia: 'semanal' };
+    for (const s of [...CREADOR.SECTORES_CREADOR.map(s => s.clave), 'todas']) revisar({ ...base, sectores: [s] }, idioma);
+    for (const z of CREADOR.ZONAS_CREADOR) {
+      revisar({ ...base, zonas: [z.clave] }, idioma);
+      revisar({ tipo: 'laboral', producto: idioma === 'en' ? 'driver' : 'chofer', zonas: [z.clave], frecuencia: 'diaria', salarioMinimo: 25000 }, idioma);
+    }
+    revisar({ ...base, pais: true }, idioma);
+    for (const clave of CREADOR.PRODUCTOS_SUGERIDOS) revisar({ ...base, producto: nombreDelProducto(clave, idioma) }, idioma);
+    for (const puesto of CREADOR.PUESTOS_SUGERIDOS) revisar({ tipo: 'laboral', producto: puesto[idioma], pais: true, frecuencia: 'semanal' }, idioma);
+    for (const n of CREADOR.SALARIOS_SUGERIDOS) revisar({ tipo: 'laboral', producto: idioma === 'en' ? 'cashier' : 'cajero', zonas: ['duarte'], salarioMinimo: n }, idioma);
+    for (const f of CREADOR.ORDEN_FRECUENCIAS) {
+      revisar({ ...base, frecuencia: f }, idioma);
+      revisar({ tipo: 'laboral', producto: idioma === 'en' ? 'cook' : 'cocinero', zonas: ['la-romana'], frecuencia: f }, idioma);
+    }
+    const tamanos = [[], ['pequenas'], ['medianas'], ['grandes'], ['pequenas', 'medianas'], ['medianas', 'grandes'], ['pequenas', 'grandes'], ['pequenas', 'medianas', 'grandes']];
+    for (const t of tamanos) for (const sectores of [['hoteles'], ['todas'], ['hoteles', 'clinicas', 'fabricas']]) revisar({ ...base, tamanos: t, sectores }, idioma);
+  }
+  assert.deepEqual(malos, []);
+});
+
+test('creador: miles de combinaciones de toques (hasta 12 negocios y 12 lugares) se entienden sin dudas y caben en 4000 letras', () => {
+  const malos = [];
+  let semilla = 20261105;
+  const azar = n => { semilla = (semilla * 1103515245 + 12345) % 2147483648; return semilla % n; };
+  const elegir = (lista, k) => { const s = new Set(); while (s.size < Math.min(k, lista.length)) s.add(lista[azar(lista.length)]); return [...s]; };
+  const sectores = CREADOR.SECTORES_CREADOR.map(s => s.clave);
+  const zonas = CREADOR.ZONAS_CREADOR.map(z => z.clave);
+  for (const idioma of ['es', 'en']) {
+    for (let i = 0; i < 1500; i++) {
+      const laboral = azar(4) === 0;
+      const e = {
+        tipo: laboral ? 'laboral' : 'comercial',
+        producto: laboral ? CREADOR.PUESTOS_SUGERIDOS[azar(CREADOR.PUESTOS_SUGERIDOS.length)][idioma] : nombreDelProducto(CREADOR.PRODUCTOS_SUGERIDOS[azar(CREADOR.PRODUCTOS_SUGERIDOS.length)], idioma),
+        sectores: azar(10) === 0 ? ['todas'] : elegir(sectores, 1 + azar(CREADOR.MAXIMO_ELEGIDOS)),
+        pais: azar(6) === 0,
+        zonas: elegir(zonas, 1 + azar(CREADOR.MAXIMO_ELEGIDOS)),
+        tamanos: elegir(CREADOR.ORDEN_TAMANOS, azar(4)),
+        frecuencia: CREADOR.ORDEN_FRECUENCIAS[azar(4)],
+        salarioMinimo: laboral && azar(2) ? CREADOR.SALARIOS_SUGERIDOS[azar(CREADOR.SALARIOS_SUGERIDOS.length)] : null,
+      };
+      const m = comoLoEntiende(e, idioma);
+      if (m) malos.push(m);
+    }
+    // Lo más largo que se puede armar: 12 negocios, 12 lugares, el producto más largo permitido.
+    const largo = CREADOR.componer({ tipo: 'comercial', producto: 'x'.repeat(500), sectores: sectores.slice(-12), zonas: zonas.slice(-12), tamanos: ['pequenas'] }, idioma);
+    assert.ok(largo.length < LIMITES.instrucciones, `${largo.length} letras`);
+  }
+  assert.deepEqual(malos.slice(0, 10), []);
+});
+
+test('creador: lo que falta se dice antes de crear, y la vista previa nunca se manda con huecos', () => {
+  assert.deepEqual(CREADOR.faltaEnEleccion({}), ['producto', 'sectores', 'zonas']);
+  assert.deepEqual(CREADOR.faltaEnEleccion({ tipo: 'laboral', producto: 'chofer' }), ['zonas']);
+  assert.deepEqual(CREADOR.faltaEnEleccion({ producto: '  .  ', sectores: ['hoteles'], pais: true }), ['producto'], 'un producto de solo signos no cuenta');
+  assert.deepEqual(CREADOR.faltaEnEleccion({ producto: 'agua', sectores: ['todas'], zonas: ['santiago'] }), []);
+  for (const f of CREADOR.faltaEnEleccion({})) assert.ok(CREADOR.CLAVES_FALTA.includes(f));
+  assert.equal(CREADOR.componer({}, 'es', { huecos: true }), 'Quiero vender … a … en …. Revisa cada semana.');
+  assert.doesNotMatch(CREADOR.componer({ producto: 'agua', sectores: ['hoteles'], zonas: ['azua'] }, 'es'), /…/);
+  // «Todo el país» quita los lugares; «Todo tipo de empresas» quita los negocios; nada inventado pasa.
+  const x = CREADOR.normalizarEleccion({ producto: '«Agua.»', sectores: ['hoteles', 'todas', 'inventado'], pais: true, zonas: ['santiago'], tamanos: ['enormes', 'grandes'], frecuencia: 'cada hora', salarioMinimo: 5 });
+  assert.deepEqual(x, { tipo: 'comercial', producto: 'Agua', sectores: ['todas'], pais: true, zonas: [], tamanos: ['grandes'], frecuencia: 'semanal', salarioMinimo: null });
+});
+
+test('creador: «Cambiar tocando» marca lo que está en uso, y avisa de lo que no cabe en los toques', () => {
+  const porDefecto = COMBINACIONES.investigar_y_preparar;
+  for (const [e, idioma] of [
+    [{ tipo: 'comercial', producto: 'paneles solares', sectores: ['hoteles', 'clinicas'], zonas: ['santiago', 'cibao'], tamanos: ['medianas'], frecuencia: 'mensual' }, 'es'],
+    [{ tipo: 'comercial', producto: 'software', sectores: ['todas'], pais: true, tamanos: [], frecuencia: 'manual' }, 'en'],
+    [{ tipo: 'laboral', producto: 'chofer', zonas: ['duarte'], frecuencia: 'diaria', salarioMinimo: 30000 }, 'es'],
+  ]) {
+    const { configuracion } = interpretar(CREADOR.componer(e, idioma), { idioma });
+    const { eleccion, quedaFuera } = CREADOR.eleccionDesde(configuracion, configuracion.producto, porDefecto);
+    assert.deepEqual(eleccion, CREADOR.normalizarEleccion(e), JSON.stringify(e));
+    assert.deepEqual(quedaFuera, []);
+  }
+  const { configuracion: c } = interpretar('Vendo paneles solares a hoteles y a «Casa Pepe» en Santiago y en Naco, pero no en Moca. Prioriza los que tengan planta eléctrica.');
+  const { quedaFuera } = CREADOR.eleccionDesde({ ...c, capacidades: capacidadesDesdeLista(['investigar']) }, c.producto, porDefecto);
+  for (const x of ['zonas', 'exclusiones', 'prioridades', 'capacidades']) assert.ok(quedaFuera.includes(x), `${x}: ${quedaFuera}`);
+  for (const x of quedaFuera) assert.ok(CREADOR.CLAVES_QUEDA_FUERA.includes(x), x);
+});
+
+test('por el servidor: un proyecto hecho solo con toques se crea, no tiene dudas y se aprueba', async () => {
+  const db = abrirBase(configDePrueba());
+  await conServidor(crearServidor({ db }), async base => {
+    const pedir = async (metodo, ruta, datos, galleta) => {
+      const r = await fetch(`${base}${ruta}`, {
+        method: metodo,
+        headers: { 'X-Oportia': '1', 'Content-Type': 'application/json', ...(galleta ? { Cookie: galleta } : { 'Tailscale-User-Login': 'junior@example.com' }) },
+        body: datos === undefined ? undefined : JSON.stringify(datos),
+      });
+      return { codigo: r.status, datos: await r.json().catch(() => ({})), galleta: (r.headers.get('set-cookie') || '').split(';')[0] };
+    };
+    const admin = (await pedir('POST', '/api/primer-admin', { nombre: 'junior', clave: 'una clave bien larga' })).galleta;
+    const texto = CREADOR.componer({ producto: 'paneles solares', sectores: ['hoteles', 'clinicas'], zonas: ['santiago', 'la-vega'], tamanos: ['medianas', 'grandes'], frecuencia: 'mensual' }, 'es');
+    const creado = await pedir('POST', '/api/proyectos', { instrucciones: texto }, admin);
+    assert.equal(creado.codigo, 201);
+    const v1 = creado.datos.pendiente;
+    assert.deepEqual([v1.dudas, v1.faltantes], [[], []]);
+    assert.equal(v1.instrucciones, texto, 'se guarda la frase tal cual: se ve en las versiones');
+    assert.deepEqual([v1.configuracion.sectores, v1.configuracion.zonas, v1.configuracion.tamanos, v1.configuracion.frecuencia],
+      [['hoteles', 'clinicas'], ['santiago', 'la-vega'], ['medianas', 'grandes'], 'mensual']);
+    const id = creado.datos.proyecto.id;
+    assert.equal((await pedir('POST', `/api/proyectos/${id}/versiones/1/aprobar`, {}, admin)).codigo, 200);
+    // «Cambiar tocando» crea una versión nueva por el camino de siempre (modo «instrucciones»), que espera aprobación.
+    const cambio = CREADOR.componer({ producto: 'paneles solares', sectores: ['hoteles', 'clinicas', 'farmacias'], zonas: ['santiago'], frecuencia: 'semanal' }, 'es');
+    const v2 = (await pedir('POST', `/api/proyectos/${id}/versiones`, { modo: 'instrucciones', instrucciones: cambio }, admin)).datos.pendiente;
+    assert.deepEqual([v2.numero, v2.dudas, v2.faltantes, v2.configuracion.sectores], [2, [], [], ['hoteles', 'clinicas', 'farmacias']]);
+  });
+  db.close();
+});

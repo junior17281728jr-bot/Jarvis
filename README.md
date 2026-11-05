@@ -152,4 +152,16 @@ en menos de 30 segundos, sin reiniciar. Queda en la auditoría como «consola».
     `POST /api/admin/tareas/:id/reintentar`, `POST /api/admin/tareas/:id/cancelar` y `POST /api/admin/avisos/:id/visto`
     (30 acciones cada 10 minutos). De las tareas de proyectos el administrador nunca ve datos ni resultados.
 
+- Pase visual (versión 0.3.1, sin cambio de base ni del servidor): se ve más claro y se escribe menos.
+  - «Nuevo proyecto» se arma tocando: qué quieres (vender o buscar empleo; comprar dice «Próximamente»), qué vendes o qué
+    empleo (el único campo para escribir, con sugerencias para tocar), a qué negocios, dónde (todo el país, provincias o
+    regiones), tamaño o salario mínimo, y cada cuánto. `public/creador.js` lo convierte en una frase sencilla que se ve
+    antes de crear y va por el mismo camino que el texto libre (lo que entendí, dudas, aprobación, versiones, 4000 letras).
+    «Escribirlo con mis palabras» sigue igual, y en cada proyecto está «Cambiar tocando». `test/motor.test.js` comprueba
+    que cada toque y miles de combinaciones se entienden sin dudas, en español y en inglés.
+  - El estado de cada proyecto se ve siempre en color y con ícono (borrador, pendiente, aprobado · espera la fase 2,
+    pausado, completado, con errores, papelera) junto con el «Siguiente paso».
+  - Menú de abajo con íconos en el iPhone (arriba en la Mac), logo nuevo (`icono.svg` e `icono-180.png`), colores para
+    claro y oscuro, cuadros de texto grandes que crecen, y todo lo que se toca mide al menos 44 puntos.
+
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

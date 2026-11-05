@@ -456,6 +456,6 @@ ul.faltan { list-style: none; padding: 0; margin: 8px 0 0; }
 ul.faltan li { color: var(--aviso-texto); background: var(--aviso-fondo); border-radius: 10px; padding: 6px 10px; margin: 6px 0 0; font-size: 15px; font-weight: 600; }
 .acciones-creador { display: grid; gap: 8px; }
 .acciones-creador button { margin-top: 6px; }
-.acciones-creador button.grande, form.texto-libre button.grande { justify-content: center; display: flex; }
+.acciones-creador button, form.texto-libre button.grande { justify-content: center; display: flex; width: 100%; }
 .mensaje.aviso-maximo { background: var(--aviso-fondo); color: var(--aviso-texto); }
 details > .creador { margin-top: 10px; }

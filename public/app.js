@@ -271,7 +271,7 @@ function pantallaCrearAdmin() {
     await dibujar();
   });
   mostrar(el('section', { class: 'tarjeta centrada' },
-    el('h1', { texto: t('setup.titulo') }), el('p', { class: 'suave', texto: t('setup.texto') }), formulario,
+    marcaConLogo(), el('h1', { texto: t('setup.titulo') }), el('p', { class: 'suave', texto: t('setup.texto') }), formulario,
     selectorIdioma(() => pantallaCrearAdmin())), pie());
 }
 

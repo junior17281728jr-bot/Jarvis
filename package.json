@@ -1,6 +1,6 @@
 {
   "name": "oportia",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "OPORTIA (en construcción): plataforma de inteligencia de oportunidades. JARVIS fue retirado: su código está en la rama jarvis-archivo.",
   "type": "module",
   "main": "src/server.js",

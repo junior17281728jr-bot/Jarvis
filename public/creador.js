@@ -2,7 +2,7 @@
 // de qué tamaño y cada cuánto) en una frase sencilla que el motor entiende igual que si la hubiera escrito.
 // Así todo sigue igual que con el texto libre: «Lo que entendí», las dudas, la aprobación, las versiones y el
 // límite de 4000 letras. Este archivo no toca la pantalla (solo datos y texto): las pruebas lo usan directamente
-// (test/creador.test.js comprueba que cada frase que puede salir de aquí se entiende sin adivinar nada).
+// (test/motor.test.js comprueba que cada frase que puede salir de aquí se entiende sin adivinar nada).
 
 // Cada negocio con las palabras que el motor reconoce sin dudar, en español y en inglés.
 // El orden es el de la pantalla: primero los más pedidos.
