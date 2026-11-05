@@ -3,6 +3,7 @@
 El crédito se acabó a mitad de la fase 1. Nada se perdió: todo está en estas ramas de GitHub.
 
 ## Estado
+- **5 nov 2026: parte 1c PUBLICADA.** main = desarrollo = fase-1c = 8cb58ac (0.3.0), 208/208 pruebas. Siguiente: PASADA VISUAL (ver abajo), luego 1d. Pendiente para fase 2: si alFallar siempre falla al marcar una tarea de proyecto «fallida», la tarea no se recupera (decidir antes de la fase 2); quick_check síncrono en bases muy grandes.
 - **4 nov 2026, 22:40 UTC: parte 1b PUBLICADA.** main = desarrollo = fase-1b = 92c277c (0.2.0), 133/133 pruebas como el actualizador. Siguiente: unir 92c277c a fase-1c y seguir la 1c (pasos 2 y 3, revisión, 0.3.0).
 - `main` = 0.1.0 (parte 1a, cuentas). Está instalada en el servidor y funciona. El admin se llama Junior.
 - `fase-1b` (d3c0bd2): proyectos + motor rehecho + ronda 1 del equipo rojo + PASO 1 (servidor y decisiones del dueño, 0.2.0) HECHO; verificar que cubre todo el punto 1. **NO publicar todavía.**
