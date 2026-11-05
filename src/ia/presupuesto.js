@@ -20,13 +20,13 @@ import { anotarPrueba, anotarUso, pausarSecreto, quitarPausaCorta, secretoUsable
 import { PROPOSITOS, MOTIVOS, ESTADOS_LLAMADA, definicionProposito } from './propositos.js';
 import { precioDe, reservaMicro, costoMicro, cotaMicro, instantaneaPrecio } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
-import { ID_PETICION } from './proveedores/comun.js';
+import { ID_PETICION, TOKENS_MAX } from './proveedores/comun.js';
 import { politicaDe, finDePausa, FALLAS_SEGUIDAS } from './politica.js';
 import { leerConfigIa } from './config.js';
-import { gastoMicro, revisarUmbrales } from './gasto.js';
+import { gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro } from './gasto.js';
 import { topeEspacioMicro, iaDeVersionActiva } from './topes.js';
 
-export { mesCobro, inicioMesSiguienteCobro, gastoMicro, revisarUmbrales };
+export { mesCobro, inicioMesSiguienteCobro, gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro };
 
 // Una reserva que lleva más de 10 minutos «en curso» quedó huérfana (el proceso se cayó o se actualizó): se cierra
 // como «desconocida», contando lo máximo apartado (nunca menos).
@@ -139,7 +139,10 @@ export function reservar(db, {
     const r = evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, salidaMax: salida, maximoConfirmadoMicro, ahora });
     if (!r.ok) {
       anotarBloqueo(db, { mes: r.mes, ambito: r.ambito, motivo: r.motivo, proposito, ahora });
-      if (r.motivo.startsWith('tope_')) revisarUmbrales(db, { mes: r.mes, ambitos: [r.ambito], lleno: r.ambito, ahora, cfg });
+      // El aviso del 100 % («queda en pausa hasta…») solo sale si el tope está lleno de verdad (revisarUmbrales lo mira
+      // con topeLleno): si este pedido no cabe pero uno más corto sí, solo se cuenta la vez sin IA (ia_bloqueos) y la
+      // pantalla del proyecto dice que este pedido no cabe.
+      if (r.motivo.startsWith('tope_')) revisarUmbrales(db, { mes: r.mes, ambitos: [r.ambito], ahora, cfg, propositos });
       return { ok: false, motivo: r.motivo, ambito: r.ambito };
     }
     const e = r.eleccion;
@@ -195,10 +198,25 @@ function tresFallasSeguidas(db, secretoId, ahora) {
   return ultimas.length === FALLAS_SEGUIDAS.veces && ultimas.every(esFalla);
 }
 
+// Lo mínimo que puede gastar de entrada un pedido de OPORTIA: 1 token por cada 32 bytes enviados (en la práctica un
+// token son 3 a 5 bytes; ni siquiera un texto hecho de un solo carácter repetido llega a 32). Ronda 2 de revisión: un
+// 200 que dice «0 tokens» (o casi nada) para un pedido de miles de bytes no se cree: es un gasto desconocido.
+export const BYTES_POR_TOKEN_MAX = 32;
+
+// ¿Lo que el proveedor dice que gastó es imposible para lo que OPORTIA mandó? enviadoBytes: los bytes del pedido
+// (sistema, texto y esquema); conTexto: si volvió una respuesta con texto (entonces escribió al menos 1 token).
+function usoImposible(uso, { enviadoBytes, conTexto }) {
+  if (!Number.isSafeInteger(enviadoBytes) || enviadoBytes <= 0) return false;
+  const entrada = uso.entrada + uso.cacheLectura + uso.cacheEscritura;
+  if (entrada < Math.max(1, Math.ceil(enviadoBytes / BYTES_POR_TOKEN_MAX))) return true;
+  return conTexto && uso.salida < 1;
+}
+
 // Anota lo que pasó con una llamada reservada. resultado: lo que devolvió el adaptador (leer): { motivo, estado, uso,
 // idPeticion, reintentarMs, http, detalle }. Nunca guarda lo preguntado ni lo respondido, ni un mensaje del proveedor.
+// enviadoBytes: lo que OPORTIA mandó (src/ia/cliente.js lo pasa siempre): un uso menor que lo posible es desconocido.
 // Devuelve { cambio, costoMicro, mayorQueReserva, estado, motivo }.
-export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = Date.now(), config = null }) {
+export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = Date.now(), config = null, enviadoBytes = null }) {
   return enTransaccion(db, () => {
     const f = db.prepare('SELECT * FROM ia_llamadas WHERE id = ?').get(Number(llamadaId));
     const sinCambio = { cambio: false, costoMicro: f?.costo_micro ?? null, mayorQueReserva: false, estado: f?.estado ?? null, motivo: f?.resultado ?? null };
@@ -221,9 +239,19 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
     // un cobro desconocido (al menos lo apartado), pausa la clave y avisa, como un service_tier o una velocidad nueva.
     // Si el proveedor no dice el lugar, se usa el multiplicador más alto (src/ia/precios.js).
     if (uso && precio && typeof uso.geo === 'string' && !Object.hasOwn(precio.geoMil ?? {}, uso.geo)) uso = { ...uso, raro: true };
+    const conTexto = typeof resultado?.texto === 'string' && resultado.texto.length > 0;
+    if (uso && usoImposible(uso, { enviadoBytes, conTexto })) uso = { ...uso, raro: true };
+    // Un número absurdo (más tokens de los que caben en cualquier modelo, o un gasto desconocido así de grande): no se
+    // puede creer ni hacer cuentas con él. Cuenta lo apartado (lo máximo que ese pedido podía costar de verdad), pausa la
+    // clave y avisa grave (ronda 2 de revisión: antes la cuenta no cabía en la base y la llamada quedaba «en curso»).
+    const absurdo = Boolean(uso) && ['entrada', 'salida', 'cacheLectura', 'cacheEscritura', 'desconocidos'].some(c => (uso[c] ?? 0) > TOKENS_MAX);
+    if (absurdo) uso = { ...uso, raro: true };
     let costo;
-    if (uso) costo = precio ? (uso.raro ? cotaMicro(precio, uso, reservado) : costoMicro(precio, uso)) : reservado;
+    if (absurdo) costo = reservado;
+    else if (uso) costo = precio ? (uso.raro ? cotaMicro(precio, uso, reservado) : costoMicro(precio, uso)) : reservado;
     else costo = estado === 'desconocida' ? reservado : 0;
+    // Nunca un costo que la base no pueda guardar (src/ia/precios.js ya lo limita; esto es por si acaso).
+    if (!Number.isSafeInteger(costo) || costo < 0) costo = Number.MAX_SAFE_INTEGER;
     const mayor = Boolean(uso) && (costo > reservado || uso.raro === true);
     // Solo códigos cortos (tipo, código, motivo de parada…): nunca un mensaje del proveedor.
     const detalle = Object.fromEntries(Object.entries(resultado?.detalle ?? {})
@@ -275,6 +303,24 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
   });
 }
 
+// Cierra una llamada cuya respuesta no se pudo anotar (liquidar lanzó un error que no es «base ocupada»): cuenta lo
+// apartado (nunca menos), esa clave queda en pausa del dueño y se abre el aviso grave. Nunca lanza por la fila.
+export function cerrarLlamadaRota(db, { llamadaId, ahora = Date.now() }) {
+  return enTransaccion(db, () => {
+    const f = db.prepare('SELECT * FROM ia_llamadas WHERE id = ?').get(Number(llamadaId));
+    if (!f) return { cambio: false };
+    const cambio = db.prepare(`UPDATE ia_llamadas SET estado = 'desconocida', resultado = 'costo_mayor',
+        costo_micro = MAX(reservado_micro, COALESCE(costo_micro, 0)), terminada_en = ?, detalle = ?
+      WHERE id = ? AND (estado = 'reservada' OR (estado = 'desconocida' AND resultado = 'interrumpida'))`)
+      .run(iso(ahora), JSON.stringify({ motivoInterno: 'no_se_pudo_anotar' }), f.id).changes;
+    if (f.secreto_id != null) {
+      abrirAviso(db, { clave: 'ia_costo_mayor', nivel: 'grave', detalle: { proveedor: f.proveedor, llamadaId: f.id, realMicro: f.reservado_micro, reservadoMicro: f.reservado_micro, motivo: 'no_se_pudo_anotar' }, ahora });
+      pausarSecreto(db, { id: f.secreto_id, motivo: 'costo_mayor', hastaMs: null, ahora });
+    }
+    return { cambio: cambio > 0 };
+  });
+}
+
 // Cada hora (dentro de sistema.vigilar): cierra reservas huérfanas, cierra los avisos de tope de meses pasados, mira
 // el tope general (por si se cambió desde la consola) y avisa si la llave de las claves no se puede leer.
 export function vigilarIA(db, { config, ahora = Date.now() }) {
@@ -316,8 +362,9 @@ export function tipicoMicro(db, { proposito, espacioId, propositos = PROPOSITOS 
 }
 
 // Para las pantallas y para la ruta que pone en la fila la ayuda: ¿se podría usar ahora? Solo lee (no cuenta nada).
-//  { disponible, motivo, maximoMicro, tipicoMicro, usadoMicro, topeMicro, vuelveEl, proveedor, modelo }
-// maximoMicro es exactamente lo que reservar apartaría ahora.
+//  { disponible, motivo, maximoMicro, tipicoMicro, usadoMicro, topeMicro, vuelveEl, proveedor, modelo, topeLleno }
+// maximoMicro es exactamente lo que reservar apartaría ahora. topeLleno (solo si el motivo es un tope): true si ya no
+// cabe ningún uso este mes; false si solo este pedido no cabe (uno más corto sí).
 export function disponibilidad(db, { config, espacioId, proposito, entradaMax, salidaMax = null, ahora = Date.now(), propositos = PROPOSITOS }) {
   const { def, salida } = exigirDatos({ proposito, espacioId, entradaMax, salidaMax, maximoConfirmadoMicro: null, proyectoId: null, propositos });
   const cfg = leerConfigIa(db);
@@ -338,5 +385,6 @@ export function disponibilidad(db, { config, espacioId, proposito, entradaMax, s
     vuelveEl: iso(inicioMesSiguienteCobro(ahora)),
     proveedor,
     modelo,
+    topeLleno: !r.ok && r.motivo.startsWith('tope_') ? topeLleno(db, { cfg, ambito: r.ambito, mes, propositos }) : null,
   };
 }

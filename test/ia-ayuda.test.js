@@ -22,11 +22,11 @@ import { crearSupervisor } from '../src/tareas/supervisor.js';
 import { ponerModoSeguro } from '../src/tareas/modo-seguro.js';
 import { espacioDe, crearProyecto, nuevaVersion, aprobarVersion, moverAPapelera, detalleProyecto, baseParaCambiar, MAXIMO_VERSIONES } from '../src/proyectos/proyectos.js';
 import { abrirAviso } from '../src/avisos/avisos.js';
-import { configuracionDesdeCampos, dudas, faltantes } from '../src/motor/interpretar.js';
+import { configuracionDesdeCampos, dudas, faltantes, interpretar } from '../src/motor/interpretar.js';
 import { MOTIVOS, PROPOSITOS } from '../src/ia/propositos.js';
 import { precioDe, costoMicro, reservaMicro } from '../src/ia/precios.js';
 import { crearClienteIA } from '../src/ia/cliente.js';
-import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, jsonSeguro, ESQUEMA, DUDAS_QUE_LA_IA_NO_RESUELVE } from '../src/ia/interpretar.js';
+import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, jsonSeguro, ESQUEMA, DUDAS_QUE_LA_IA_NO_RESUELVE, camposDelMotor, conDudasDeLaBase } from '../src/ia/interpretar.js';
 import { gastoMicro, mesCobro } from '../src/ia/presupuesto.js';
 import { programaDeAyuda } from '../src/api/ia.js';
 import { crearServidor } from '../src/app.js';
@@ -455,6 +455,65 @@ test('17. lo que se manda a la IA: un solo bloque de datos que ningún texto pue
   assert.equal(reservaMicro(HAIKU, { entradaMax: p.entradaMax, salidaMax: 2048 }) <= PROPOSITOS.interpretar.maximoMicro, true);
   // Demasiado largo: no se arma (y no se gasta).
   assert.equal(armarPeticion({ instrucciones: 'ñ'.repeat(13_000), configuracion: {} }, 'es'), null);
+});
+
+// Ronda 2 de revisión: las dudas que el motor CALCULA (un lugar fuera del país, algo para buscar y para excluir) se
+// iban solas si la IA cambiaba esos datos, y la versión de la IA se podía aprobar sin que nadie las viera.
+test('17e. la IA quita Miami o la exclusión: la duda pasa a la versión nueva como guardada y aprobar sigue cerrado', async () => {
+  const falso = await crearProveedorFalso();
+  const b = preparar({ iaBases: { anthropic: falso.base } });
+  const e = conEjecutor(b, { registro: TIPOS, manejadores: MANEJADORES });
+  try {
+    const casos = [
+      ['Vendo paneles solares a hoteles en Punta Cana y en Miami', 'fuera_del_pais', c => ({ zonas: c.zonas.split(', ').filter(z => !/miami/i.test(z)).join(', ') }), ['lugar_inseguro', 'Miami']],
+      ['Vendo pan a restaurantes en Santiago pero no restaurantes', 'conflicto_sector', () => ({ exclusiones: '' }), ['cambio', 'Restaurantes, bares y cafés']],
+      ['Vendo pan a restaurantes en Santiago pero no en Santiago', 'conflicto_zona', () => ({ exclusiones: '' }), ['cambio', 'Santiago']],
+    ];
+    for (const [instrucciones, calculada, cambio, esperada] of casos) {
+      const p = proyecto(b, instrucciones);
+      const base = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
+      assert.deepEqual(dudas(base.configuracion).map(d => d.clave), [calculada], instrucciones);
+      assert.deepEqual(base.faltantes, ['dudas']);
+      // La IA ve también las dudas calculadas (para que no las ignore), pero nunca las puede dar por aclaradas.
+      const pedido = armarPeticion(base, 'es');
+      const enviadas = JSON.parse(pedido.texto.slice(pedido.texto.indexOf('<datos>') + 7, pedido.texto.lastIndexOf('</datos>'))).dudas;
+      assert.deepEqual(enviadas.map(d => d.clave), [calculada]);
+      // La IA deja todo como lo entendió el motor, salvo lo que hace desaparecer la duda, y dice que la resolvió.
+      const motor = camposDelMotor(base.configuracion, 'es');
+      falso.siguiente({ tipo: 'ok', json: { ...motor, ...cambio(motor), dudasResueltas: [0] } });
+      const t = await e.terminar(pedirAyuda(b, p));
+      assert.deepEqual([t.estado, t.resultado.usada, t.resultado.numero], ['hecha', true, 2], instrucciones);
+      const nueva = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
+      assert.ok(!dudas(nueva.configuracion).some(d => d.clave === calculada), 'la calculada ya no sale de los datos');
+      assert.deepEqual(nueva.configuracion.noEntendido.map(d => [d.clave, d.texto]), [esperada], 'pasó como duda guardada');
+      assert.ok(nueva.faltantes.includes('dudas'), 'con la duda no se puede aprobar');
+      assert.deepEqual(nueva.ayudaIa.pistas, [], 'una duda calculada nunca es pista');
+      assert.throws(() => aprobarVersion(b.db, { espacioId: p.espacioId, proyectoId: p.numero, numero: 2, usuarioId: b.admin }), e2 => e2.clave === 'faltan_datos');
+      // Una persona la marca como arreglada (como en la 1b) y ya se puede aprobar.
+      const arreglada = configuracionDesdeCampos({ ...camposDelMotor(nueva.configuracion, 'es'), resueltas: [0], capacidades: nueva.configuracion.capacidades, autonomia: nueva.configuracion.autonomia, frecuencia: nueva.configuracion.frecuencia }, nueva.configuracion);
+      assert.deepEqual(faltantes(arreglada), [], 'la persona decide');
+    }
+    // Lo puro: si la duda sigue saliendo de los datos, no se agrega nada; si no cabe (12 dudas), no se guarda.
+    const miami = interpretar('Vendo paneles solares a hoteles en Punta Cana y en Miami').configuracion ?? interpretar('Vendo paneles solares a hoteles en Punta Cana y en Miami');
+    assert.equal(conDudasDeLaBase(miami, miami), miami);
+    const sinMiami = configuracionDesdeCampos({ ...aCampos({ ...camposDelMotor(miami), zonas: 'Punta Cana' }, miami) }, miami);
+    assert.deepEqual(conDudasDeLaBase(miami, sinMiami).noEntendido.map(d => d.clave), ['lugar_inseguro']);
+    const llena = { ...sinMiami, noEntendido: Array.from({ length: 12 }, (_, i) => ({ clave: 'texto', texto: `t${i}`, sugerencias: [] })) };
+    assert.equal(conDudasDeLaBase(miami, llena), null);
+  } finally {
+    await e.ejecutor.parar({ esperaMs: 0 });
+    b.db.close();
+    await falso.cerrar();
+  }
+});
+
+// Lo mínimo que puede ser un pedido de la ayuda (para saber si un tope está lleno de verdad) nunca es más que el
+// pedido más corto de verdad.
+test('17f. entradaMinBytes de la ayuda nunca es más que el pedido más corto posible (en los dos idiomas)', () => {
+  for (const idioma of ['es', 'en']) {
+    const p = armarPeticion({ instrucciones: '', configuracion: {} }, idioma);
+    assert.ok(p.entradaMax >= PROPOSITOS.interpretar.entradaMinBytes, `${idioma}: ${p.entradaMax}`);
+  }
 });
 
 // ---------- 18. Los casos raros de la ayuda: siempre «hecha», sin tocar el proyecto ----------

@@ -12,11 +12,11 @@ import { ErrorHttp } from '../src/nucleo/http.js';
 import { crearPrimerAdmin } from '../src/cuentas/usuarios.js';
 import {
   rutaLlave, estadoLlave, asegurarLlave, leerLlave, apartarLlaveDanada, diagnosticoLlave, huellaDe, ErrorClaves, esArchivoDeLlave, recuperarLlave,
-  PREFIJO_ARCHIVOS_LLAVE,
+  PREFIJO_ARCHIVOS_LLAVE, empezarLlaveNueva,
 } from '../src/claves/cifrado.js';
 import {
   validarValor, guardarSecreto, leerSecreto, listarSecretos, activarSecreto, desactivarSecreto, anotarPrueba, pausarSecreto,
-  quitarPausaCorta, reanudarSecreto, secretoUsable, pausaVigente,
+  quitarPausaCorta, reanudarSecreto, secretoUsable, pausaVigente, estadoAlmacen, clavesGuardadas,
 } from '../src/claves/almacen.js';
 import { USOS, ESTADOS_SECRETO, ORIGENES_SECRETO } from '../src/claves/usos.js';
 import { MOTIVOS } from '../src/ia/propositos.js';
@@ -452,4 +452,96 @@ test('cada motivo para no guardar una clave tiene su explicación en los dos idi
   const motivos = new Set(['clave_formato', 'uso_no_valido', 'almacen_no_disponible']);
   for (const def of Object.values(USOS)) for (const [, motivo] of def.rechazar) motivos.add(motivo);
   for (const m of motivos) assert.ok(`error.${m}` in es && `error.${m}` in en, `falta error.${m}`);
+});
+
+// Ronda 2 de revisión: si falta el nombre final de la llave y YA hay claves guardadas, pegar otra clave creaba en
+// silencio una llave nueva: las demás claves quedaban sin poder leerse para siempre y --claves=recuperar-llave ya no
+// servía. Ahora el almacén dice 'llave_falta' (no listo) y guardar responde 503 sin crear nada.
+test('falta el nombre final con claves guardadas: no listo (llave_falta), guardar responde 503 y la recuperación sigue sirviendo', () => {
+  const { config, db, admin } = nuevaBase();
+  assert.deepEqual(estadoAlmacen(db, config), { listo: true, motivo: 'llave_no_existe' }, 'antes de la primera clave es lo normal');
+  const claude = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic('a'), usuarioId: admin, ahora: T0 }).secreto;
+  const chatgpt = guardarSecreto(db, config, { uso: 'ia_openai', valor: claveOpenai('b'), usuarioId: admin, ahora: T0 + 1 }).secreto;
+  assert.deepEqual(estadoAlmacen(db, config), { listo: true, motivo: null });
+  const ruta = rutaLlave(config);
+  const carpeta = dirname(ruta);
+  const huella = estadoLlave(config).huella;
+  renameSync(ruta, join(carpeta, 'movida-a-mano'));
+  assert.equal(estadoLlave(config).motivo, 'llave_no_existe');
+  assert.deepEqual(estadoAlmacen(db, config), { listo: false, motivo: 'llave_falta' }, 'la pantalla esconde el lugar para pegar');
+  const antes = readdirSync(carpeta).sort();
+  const filas = db.prepare('SELECT COUNT(*) AS n FROM secretos').get().n;
+  falla(() => guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic('c'), usuarioId: admin, ahora: T0 + 2 }), 'almacen_no_disponible', 503);
+  assert.deepEqual(readdirSync(carpeta).sort(), antes, 'no se creó ninguna llave nueva');
+  assert.equal(existsSync(ruta), false);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM secretos').get().n, filas, 'no se guardó nada');
+  assert.throws(() => asegurarLlave(config, { guardadas: { huellas: [huella], ultimaMs: T0 } }), e => e.clave === 'llave_falta');
+  // La revisión ya no dice «No existe todavía», y sí cómo recuperarla.
+  const texto = diagnosticoLlave(config, { db }).join('\n');
+  assert.doesNotMatch(texto, /No existe todavía/);
+  assert.match(texto, /FALTA el archivo de la llave, y ya hay claves guardadas/);
+  assert.match(texto, /--claves=recuperar-llave/);
+  assert.doesNotMatch(texto, /--claves=empezar-de-nuevo/, 'se puede recuperar: no se ofrece empezar de nuevo');
+  assert.deepEqual(empezarLlaveNueva(config, clavesGuardadas(db)), { creada: false, motivo: 'recuperable', huella: null });
+  // La recuperación sigue sirviendo, y las dos claves se leen otra vez.
+  const r = recuperarLlave(config, { huellas: [huella] });
+  assert.equal(r.recuperada, true);
+  assert.equal(leerSecreto(db, config, { id: claude.id }), claveAnthropic('a'));
+  assert.equal(leerSecreto(db, config, { id: chatgpt.id }), claveOpenai('b'));
+  assert.deepEqual(estadoAlmacen(db, config), { listo: true, motivo: null });
+  db.close();
+});
+
+test('falta la llave y no queda ningún otro nombre con ella: solo la consola empieza de nuevo (y después de apartar una dañada, la próxima clave)', () => {
+  const { config, db, admin } = nuevaBase();
+  guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic('a'), usuarioId: admin, ahora: T0 });
+  const ruta = rutaLlave(config);
+  const carpeta = dirname(ruta);
+  const huellaVieja = estadoLlave(config).huella;
+  // Se pierden los DOS nombres (el final y el .nueva-…): ya no se puede recuperar.
+  renameSync(ruta, join(carpeta, 'movida-1'));
+  for (const n of readdirSync(carpeta).filter(x => x.startsWith('oportia-llave-secretos.nueva-'))) renameSync(join(carpeta, n), join(carpeta, `movida-${n.length}`));
+  assert.deepEqual(estadoAlmacen(db, config), { listo: false, motivo: 'llave_falta' });
+  falla(() => guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic('b'), usuarioId: admin, ahora: T0 + 1000 }), 'almacen_no_disponible', 503);
+  assert.match(diagnosticoLlave(config, { db }).join('\n'), /--claves=empezar-de-nuevo crea una llave nueva/);
+  // La consola decide empezar de nuevo: una llave nueva; la clave vieja queda guardada sin poder leerse.
+  const r = empezarLlaveNueva(config, clavesGuardadas(db));
+  assert.equal(r.creada, true);
+  assert.notEqual(r.huella, huellaVieja);
+  assert.deepEqual(empezarLlaveNueva(config, clavesGuardadas(db)).motivo, 'llave_sana', 'una sola vez');
+  const nueva = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic('c'), usuarioId: admin, ahora: T0 + 2000 });
+  assert.equal(nueva.secreto.legible, true);
+  assert.equal(listarSecretos(db, config).find(u => u.uso === 'ia_anthropic').anteriores[0].legible, false);
+  db.close();
+  // Después de apartar una llave dañada (eso ya es decidir empezar de nuevo), la próxima clave pegada crea otra.
+  const otra = nuevaBase();
+  guardarSecreto(otra.db, otra.config, { uso: 'ia_anthropic', valor: claveAnthropic('d'), usuarioId: otra.admin, ahora: T0 });
+  writeFileSync(rutaLlave(otra.config), 'roto');
+  assert.equal(apartarLlaveDanada(otra.config, { ahora: T0 + 5000 }).apartada, true);
+  assert.deepEqual(estadoAlmacen(otra.db, otra.config), { listo: true, motivo: 'llave_no_existe' });
+  assert.match(diagnosticoLlave(otra.config, { db: otra.db }).join('\n'), /la llave dañada se apartó y la próxima clave que pegues/);
+  assert.equal(guardarSecreto(otra.db, otra.config, { uso: 'ia_anthropic', valor: claveAnthropic('e'), usuarioId: otra.admin, ahora: T0 + 6000 }).secreto.legible, true);
+  // …pero si DESPUÉS de esa llave nueva se pierde su nombre, no se vuelve a crear otra en silencio.
+  renameSync(rutaLlave(otra.config), join(dirname(rutaLlave(otra.config)), 'movida-2'));
+  assert.deepEqual(estadoAlmacen(otra.db, otra.config), { listo: false, motivo: 'llave_falta' });
+  falla(() => guardarSecreto(otra.db, otra.config, { uso: 'ia_anthropic', valor: claveAnthropic('f'), usuarioId: otra.admin, ahora: T0 + 7000 }), 'almacen_no_disponible', 503);
+  otra.db.close();
+});
+
+test('la llave nunca queda en la memoria del proceso: solo su huella (y lo leído para cifrar o descifrar se borra al terminar)', () => {
+  const { config, db, admin } = nuevaBase();
+  const { secreto } = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic('m'), usuarioId: admin, ahora: T0 });
+  const una = leerLlave(config);
+  const otra = leerLlave(config);
+  assert.notEqual(una.llave, otra.llave, 'cada lectura es una copia nueva');
+  assert.ok(una.llave.equals(otra.llave));
+  una.llave.fill(0);
+  assert.equal(leerSecreto(db, config, { id: secreto.id }), claveAnthropic('m'), 'borrar una copia no cambia la llave');
+  assert.equal(estadoLlave(config).huella, otra.huella);
+  const fuente = readFileSync(join(RAIZ, 'src', 'claves', 'cifrado.js'), 'utf8');
+  assert.match(fuente, /huellasLeidas\.set\(ruta, \{ firma: firma\(info\), huella \}\)/, 'lo que se guarda es solo la huella');
+  assert.doesNotMatch(fuente, /\.set\(ruta, \{[^}]*llave[^}]*\}\)/);
+  const almacen = readFileSync(join(RAIZ, 'src', 'claves', 'almacen.js'), 'utf8');
+  assert.equal((almacen.match(/llave\.llave\.fill\(0\)/g) || []).length, 2, 'guardar y leer borran la llave al terminar');
+  db.close();
 });

@@ -125,12 +125,18 @@ function filaUtil(fila) {
 }
 
 const divArriba = (a, b) => (a + b - 1n) / b;
+// Ronda 2 de revisión: las cuentas van en BigInt y el resultado nunca pasa del número entero más grande que se puede
+// guardar (2^53 − 1 µUSD). Antes, un uso absurdo (dos números «válidos» de 2^53 − 1 tokens) daba un costo que la base
+// no aceptaba, la llamada quedaba «en curso» sin aviso ni pausa y el proveedor seguía recibiendo pedidos.
+const MAXIMO_SEGURO = BigInt(Number.MAX_SAFE_INTEGER);
+const aNumero = n => Number(n > MAXIMO_SEGURO ? MAXIMO_SEGURO : n);
 
 // El tramo que corresponde a un pedido: el primero cuyo «hasta» alcanza toda la entrada (con la de caché).
+// entradaTotal: un número entero de 0 en adelante, o un BigInt (la suma de varios números grandes).
 export function tramoDe(fila, entradaTotal) {
-  const total = entero(entradaTotal);
+  const total = typeof entradaTotal === 'bigint' && entradaTotal >= 0n ? entradaTotal : BigInt(entero(entradaTotal));
   const tramos = filaUtil(fila).tramos;
-  return tramos.find(t => t.hastaEntrada == null || total <= t.hastaEntrada) ?? tramos[tramos.length - 1];
+  return tramos.find(t => t.hastaEntrada == null || total <= BigInt(t.hastaEntrada)) ?? tramos[tramos.length - 1];
 }
 
 // El multiplicador (en milésimas: 1100 = ×1,1) del lugar donde corrió el modelo. Si no se sabe o no se conoce, el
@@ -145,14 +151,20 @@ function geoMilMaximo(fila) {
   return geoMilDe(fila, null);
 }
 
-const entradaDe = uso => entero(uso.entrada) + entero(uso.cacheLectura) + entero(uso.cacheEscritura);
+const entradaDe = uso => BigInt(entero(uso.entrada)) + BigInt(entero(uso.cacheLectura)) + BigInt(entero(uso.cacheEscritura));
 
-// Lo que costó una llamada, en µUSD (entero, hacia arriba). uso = { entrada, salida, cacheLectura, cacheEscritura, geo }.
-export function costoMicro(fila, uso) {
+// Lo que costó una llamada en nano-dólares × milésimas del lugar (BigInt, sin redondear).
+function costoBig(fila, uso) {
   const t = tramoDe(fila, entradaDe(uso));
   let nano = 0n;
   for (const tipo of TIPOS_DE_TOKEN) nano += BigInt(entero(uso[tipo])) * BigInt(entero(t.nano[tipo]));
-  return Number(divArriba(nano * BigInt(geoMilDe(fila, uso.geo)), 1_000_000n));
+  return divArriba(nano * BigInt(geoMilDe(fila, uso.geo)), 1_000_000n);
+}
+
+// Lo que costó una llamada, en µUSD (entero, hacia arriba). uso = { entrada, salida, cacheLectura, cacheEscritura, geo }.
+// Nunca pasa de Number.MAX_SAFE_INTEGER.
+export function costoMicro(fila, uso) {
+  return aNumero(costoBig(fila, uso));
 }
 
 // Lo que se aparta ANTES de llamar: lo peor que puede costar. Cada token de entrada al precio más caro de entrada
@@ -161,16 +173,18 @@ export function reservaMicro(fila, { entradaMax, salidaMax }) {
   const t = tramoDe(fila, entradaMax);
   const nanoEntrada = BigInt(Math.max(entero(t.nano.entrada), entero(t.nano.cacheEscritura)));
   const nano = BigInt(entero(entradaMax)) * nanoEntrada + BigInt(entero(salidaMax)) * BigInt(entero(t.nano.salida));
-  return Number(divArriba(nano * MARGEN_POR_CIENTO * BigInt(geoMilMaximo(fila)), 100_000_000n)) + 1;
+  return aNumero(divArriba(nano * MARGEN_POR_CIENTO * BigInt(geoMilMaximo(fila)), 100_000_000n) + 1n);
 }
 
 // Cuando el proveedor dice que gastó algo que OPORTIA no conoce (uso.raro): lo conocido, más cada cosa desconocida al
-// precio más alto de la fila y del lugar más caro; nunca menos que lo apartado.
+// precio más alto de la fila y del lugar más caro; nunca menos que lo apartado (ni más que 2^53 − 1).
 export function cotaMicro(fila, uso, reservadoMicro) {
-  const conocido = costoMicro(fila, uso);
+  const conocido = costoBig(fila, uso);
   const nanoMax = BigInt(entero(fila.nanoMax ?? Math.max(...fila.tramos.flatMap(t => TIPOS_DE_TOKEN.map(tipo => t.nano[tipo])))));
-  const extra = Number(divArriba(BigInt(entero(uso.desconocidos)) * nanoMax * BigInt(geoMilMaximo(fila)), 1_000_000n));
-  return Math.max(entero(reservadoMicro), conocido + extra);
+  const extra = divArriba(BigInt(entero(uso.desconocidos)) * nanoMax * BigInt(geoMilMaximo(fila)), 1_000_000n);
+  const total = conocido + extra;
+  const reservado = BigInt(entero(reservadoMicro));
+  return aNumero(total > reservado ? total : reservado);
 }
 
 // La copia del precio que se guarda con cada llamada (ia_llamadas.precio): solo lo que hace falta para las cuentas,

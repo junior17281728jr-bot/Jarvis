@@ -6,13 +6,12 @@
 //  - Lo que vuelve es solo lo público (los últimos 4 caracteres, el estado, la última prueba): nunca la clave.
 //  - Si al cambiar o desactivar una clave ya no queda un proveedor listo con la IA encendida, la IA se apaga sola
 //    (iaApagada: true). Una clave nueva nunca vuelve a gastar sin un «Encender» nuevo del dueño.
-//  - Sin la configuración del servidor (algunas pruebas), o si el archivo que protege las claves está dañado:
-//    503 almacen_no_disponible. Nada se borra nunca.
+//  - Sin la configuración del servidor (algunas pruebas), si el archivo que protege las claves está dañado, o si falta
+//    y ya hay claves guardadas con él (ronda 2: nunca se crea otro encima): 503 almacen_no_disponible. Nada se borra.
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
-import { estadoLlave } from '../claves/cifrado.js';
 import { GRUPOS } from '../claves/usos.js';
-import { guardarSecreto, listarSecretos, activarSecreto, desactivarSecreto } from '../claves/almacen.js';
+import { guardarSecreto, listarSecretos, activarSecreto, desactivarSecreto, estadoAlmacen } from '../claves/almacen.js';
 import { probarSecreto } from '../claves/probar.js';
 import { apagarSiNoQuedaProveedor } from '../ia/config.js';
 import { loginDeTailscale } from '../cuentas/tailscale.js';
@@ -30,19 +29,13 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
   // Dentro de la misma transacción del cambio: si ya no queda un proveedor listo, la IA se apaga.
   const trasCambio = usuario => d => ({ iaApagada: apagarSiNoQuedaProveedor(d, config, { usuarioId: usuario.id }) });
 
-  function almacen() {
-    const e = estadoLlave(config);
-    // Que el archivo todavía no exista es lo normal antes de la primera clave: se crea al guardarla.
-    return { listo: e.listo || e.motivo === 'llave_no_existe', motivo: e.motivo };
-  }
-
   rutas.agregar('GET', '/api/admin/claves', ({ db, usuario }) => {
     necesitaConfig();
     const usos = listarSecretos(db, config);
     return {
       codigo: 200,
       datos: {
-        almacen: almacen(),
+        almacen: estadoAlmacen(db, config),
         duenoTailscale: loginDeTailscale(db, usuario.id),
         grupos: GRUPOS.map(grupo => ({ grupo, usos: usos.filter(u => u.grupo === grupo).map(({ uso, proveedor, activa, anteriores }) => ({ uso, proveedor, activa, anteriores })) })),
       },

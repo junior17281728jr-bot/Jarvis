@@ -7,7 +7,7 @@ import { carpetaTemporal, esperarHasta, huellas, matarSiVive, procesoTerminado }
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,13 @@ test('al arrancar el servidor completo, ningún archivo existente cambia ni desa
       if (termino) throw new Error(`El servidor se cerró (código ${termino.codigo}). Salida: ${salida}`);
       return salida.match(/escuchando en 127\.0\.0\.1:(\d+)/);
     }, { que: `que el servidor abra el puerto. Salida: ${salida}` }))[1]);
+    // Ronda 2 de revisión: el servidor web (que puede tener por un momento una clave descifrada) tampoco deja archivos
+    // «core»: se baja a sí mismo ese límite a 0 al arrancar, con prlimit (si existe).
+    if (existsSync(`/proc/${hijo.pid}/limits`) && (existsSync('/usr/bin/prlimit') || existsSync('/bin/prlimit'))) {
+      const linea = readFileSync(`/proc/${hijo.pid}/limits`, 'utf8').split('\n').find(l => l.startsWith('Max core file size'));
+      assert.match(linea, /Max core file size\s+0\s+0\s+bytes/, 'el servidor web corre sin archivos «core»');
+      assert.doesNotMatch(salida, /no se pudo quitar los archivos «core»/);
+    }
     // El actualizador del servidor pregunta varias veces: mientras el trabajador arranca, responde 503 «arrancando».
     const r = await esperarHasta(async () => {
       const respuesta = await fetch(`http://127.0.0.1:${puerto}/api/setup`);

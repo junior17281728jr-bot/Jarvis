@@ -23,7 +23,7 @@ import { asegurarQueEsMia } from '../tareas/cola.js';
 import { abrirAviso } from '../avisos/avisos.js';
 import { leerSecreto, validarValor } from '../claves/almacen.js';
 import { PROPOSITOS, MOTIVOS, definicionProposito } from './propositos.js';
-import { reservar, liquidar, anotarBloqueo, mesCobro } from './presupuesto.js';
+import { reservar, liquidar, anotarBloqueo, mesCobro, cerrarLlamadaRota } from './presupuesto.js';
 import { PROVEEDORES, urlDe } from './proveedores/index.js';
 import { llamarProveedor } from './llamar.js';
 import { cumpleEsquema } from './esquema.js';
@@ -101,6 +101,19 @@ export function crearClienteIA({
       registro?.error?.('ia: no se pudo cerrar la llamada', llamada.id);
     }
     return { usada: false, motivo, costoMicro: 0, llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+  }
+
+  // Una respuesta que no se pudo anotar (un error que no es «base ocupada»): cuenta lo apartado, pausa esa clave
+  // hasta que el dueño la revise y abre el aviso grave de «costó más de lo apartado» (no se sabe cuánto costó).
+  async function cerrarConFalla(llamada) {
+    const datos = { llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+    try {
+      await escribirSinCerca(() => cerrarLlamadaRota(db, { llamadaId: llamada.id, ahora: reloj() }));
+    } catch {
+      registro?.error?.('ia: no se pudo cerrar la llamada', llamada.id);
+      return { usada: false, motivo: 'base_ocupada', ...datos };
+    }
+    return { usada: false, motivo: 'costo_mayor', costoMicro: llamada.reservadoMicro ?? null, ...datos };
   }
 
   async function pedir(pedido = {}) {
@@ -200,7 +213,7 @@ export function crearClienteIA({
     let cierre;
     try {
       cierre = await escribirSinCerca(() => {
-        const l = liquidar(db, { llamadaId: llamada.id, resultado: leido, duracionMs: respuesta.msTotal, ahora: reloj(), config });
+        const l = liquidar(db, { llamadaId: llamada.id, resultado: leido, duracionMs: respuesta.msTotal, ahora: reloj(), config, enviadoBytes: bytes });
         let guardado = null;
         if (leido.motivo === 'ok' && typeof pedido.guardar === 'function') {
           try {
@@ -219,10 +232,13 @@ export function crearClienteIA({
         }
         return { costoMicro: l.costoMicro, guardado };
       });
-    } catch {
-      // La reserva sigue «en curso» (cuenta lo máximo) y el barrido la cierra después.
+    } catch (error) {
       registro?.error?.('ia: no se pudo cerrar la llamada', llamada.id);
-      return { usada: false, motivo: 'base_ocupada', llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+      // La base estaba ocupada: la reserva sigue «en curso» (cuenta lo máximo) y el barrido la cierra después.
+      if (baseOcupada(error)) return { usada: false, motivo: 'base_ocupada', llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+      // Ronda 2 de revisión: cualquier otro error al anotar lo que costó NUNCA queda en silencio (el proveedor ya
+      // respondió y pudo cobrar): se cierra contando lo apartado, esa clave queda en pausa del dueño y se avisa grave.
+      return cerrarConFalla(llamada);
     }
 
     const comun = { costoMicro: cierre.costoMicro, llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };

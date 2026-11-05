@@ -11,12 +11,15 @@
 //  - «Sin saldo» llega como 402 o como 400 con «credit balance» en el mensaje (también como texto plano); el límite de
 //    gasto propio llega como 400 «You have reached your specified … API usage limits» o como 429
 //    enforced_spend_limit_reached. Esos mensajes se leen solo en memoria, nunca se guardan.
-import { codigoCorto, idPeticionDe, esperaPedida, tokens, comoJson, resultado, resultadoSinRespuesta, motivoSinRespuesta } from './comun.js';
+import {
+  codigoCorto, idPeticionDe, esperaPedida, tokens, comoJson, resultado, resultadoSinRespuesta, motivoSinRespuesta, revisarUsoDesconocido, TOKENS_MAX,
+} from './comun.js';
 
 const VERSION_API = '2026-10-21';
 const LIMITE_GASTO = /you have reached your specified (?:workspace )?api usage limits/i;
 const SIN_CREDITO = /credit balance/i;
-// Lo que Anthropic informa y OPORTIA sabe cobrar. Cualquier otro número mayor que 0 es un gasto desconocido.
+// Lo que Anthropic informa y OPORTIA sabe cobrar. Cualquier otra cosa (un número mayor que 0, un texto o un objeto con
+// algo dentro, a cualquier profundidad) es un gasto desconocido: src/ia/proveedores/comun.js (revisarUsoDesconocido).
 const USO_CONOCIDO = new Set(['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'cache_creation', 'server_tool_use', 'service_tier', 'inference_geo', 'speed']);
 
 function leerUso(u) {
@@ -27,21 +30,31 @@ function leerUso(u) {
   const cacheLectura = tokens(u.cache_read_input_tokens);
   const cacheEscritura = tokens(u.cache_creation_input_tokens);
   if ([entrada, salida, cacheLectura, cacheEscritura].some(Number.isNaN)) return null;
-  let raro = false;
-  let desconocidos = 0;
-  const sumar = v => { if (typeof v === 'number' && Number.isFinite(v) && v > 0) { raro = true; desconocidos += Math.ceil(v); } };
-  // Caché de 1 hora (cuesta el doble de la entrada): OPORTIA nunca la pide.
-  if (u.cache_creation && typeof u.cache_creation === 'object') sumar(u.cache_creation.ephemeral_1h_input_tokens);
-  // Herramientas del servidor (búsqueda web…): se cobran aparte; OPORTIA nunca las pide.
-  if (u.server_tool_use && typeof u.server_tool_use === 'object') for (const v of Object.values(u.server_tool_use)) sumar(v);
-  if (u.service_tier != null && u.service_tier !== 'standard') raro = true;
-  if (u.speed != null && u.speed !== 'standard') raro = true;
-  for (const [clave, v] of Object.entries(u)) if (!USO_CONOCIDO.has(clave)) sumar(v);
+  const nota = { raro: false, desconocidos: 0 };
+  // Un número absurdo (más de lo que cabe en cualquier modelo): nunca se confía en él.
+  if ([entrada, salida, cacheLectura, cacheEscritura].some(n => n > TOKENS_MAX)) nota.raro = true;
+  // cache_creation: el detalle de cache_creation_input_tokens. La caché de 5 minutos ya está dentro de ese total; la de
+  // 1 hora (cuesta el doble de la entrada) OPORTIA nunca la pide, y cualquier otra cosa ahí dentro es desconocida.
+  if (u.cache_creation != null) {
+    if (typeof u.cache_creation !== 'object' || Array.isArray(u.cache_creation)) nota.raro = true;
+    else {
+      for (const [clave, v] of Object.entries(u.cache_creation)) {
+        if (clave === 'ephemeral_5m_input_tokens' && Number.isSafeInteger(v) && v >= 0) continue;
+        revisarUsoDesconocido(v, nota, 1);
+      }
+    }
+  }
+  // Herramientas del servidor (búsqueda web…): se cobran aparte; OPORTIA nunca las pide. Cualquier número mayor que 0,
+  // a cualquier profundidad, es un gasto desconocido.
+  revisarUsoDesconocido(u.server_tool_use, nota);
+  if (u.service_tier != null && u.service_tier !== 'standard') nota.raro = true;
+  if (u.speed != null && u.speed !== 'standard') nota.raro = true;
+  for (const [clave, v] of Object.entries(u)) if (!USO_CONOCIDO.has(clave)) revisarUsoDesconocido(v, nota);
   const geo = typeof u.inference_geo === 'string' && /^[a-z]{2,20}$/.test(u.inference_geo) ? u.inference_geo : null;
   // Un lugar que vino pero no se entiende es un cobro desconocido (puede ser más caro): nunca se cuenta de menos.
   // (Uno que se entiende pero que la tabla de precios no conoce lo revisa liquidar, con el precio de esa llamada.)
-  if (u.inference_geo != null && geo == null) raro = true;
-  return { entrada, salida, cacheLectura, cacheEscritura, geo, raro, desconocidos: Math.min(desconocidos, Number.MAX_SAFE_INTEGER) };
+  if (u.inference_geo != null && geo == null) nota.raro = true;
+  return { entrada, salida, cacheLectura, cacheEscritura, geo, raro: nota.raro, desconocidos: nota.desconocidos };
 }
 
 function mensajeDe(json, textoCorto) {

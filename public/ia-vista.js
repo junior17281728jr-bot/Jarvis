@@ -83,7 +83,8 @@ export function estadoDeClave(activa, ahora = Date.now()) {
 // El bloque «Ayuda de IA» de una versión que espera aprobación, según GET /api/proyectos/:id/ayuda-ia.
 // seguida: la ayuda que se pidió desde esta pantalla ({ tareaId }), para contar cómo terminó.
 //   vista: 'nada' (no se muestra nada: a esta cuenta no le toca la IA), 'disponible' (con el botón), 'esperando',
-//          'solo_tailnet', 'apagada_admin', 'tope_lleno', 'pausa' o 'no_disponible' (una línea con el motivo).
+//          'solo_tailnet', 'apagada_admin', 'tope_lleno', 'no_cabe' (este pedido no cabe en lo que queda del tope, pero
+//          uno más corto sí: no se dice «vuelve el…»), 'pausa' o 'no_disponible' (una línea con el motivo).
 //   enFila: true si la ayuda pedida espera en la fila mientras el trabajo automático está en pausa (modo seguro): se
 //          dice la pausa y que el pedido espera, nunca «sigue en la fila» sin decir por qué.
 //   lista: { numero, costoMicro } si la IA hizo una versión nueva (la pantalla vuelve a cargar el proyecto).
@@ -107,7 +108,7 @@ export function vistaAyudaIa(d, { seguida = null } = {}) {
   if (!motivo || motivo === 'sin_pendiente') return r;
   if (d.disponible === true && motivo === 'ok' && Number.isSafeInteger(d.maximoMicro) && d.maximoMicro > 0) return { ...r, vista: 'disponible' };
   if (motivo === 'trabajo_en_pausa') return { ...r, vista: 'pausa' };
-  if (motivo === 'tope_general' || motivo === 'tope_espacio' || motivo === 'tope_proyecto') return { ...r, vista: 'tope_lleno' };
+  if (motivo === 'tope_general' || motivo === 'tope_espacio' || motivo === 'tope_proyecto') return { ...r, vista: d.topeLleno === false ? 'no_cabe' : 'tope_lleno' };
   if (d.esAdmin === true) {
     if (motivo === 'solo_tailnet') return { ...r, vista: 'solo_tailnet' };
     if (motivo === 'ia_apagada' || motivo === 'ayuda_no_activada') return { ...r, vista: 'apagada_admin' };

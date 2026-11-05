@@ -273,6 +273,42 @@ test('--claves=recuperar-llave le vuelve a poner su nombre a la llave (desde su 
   assert.match(salida.stdout, /es OTRO NOMBRE del mismo archivo de la llave/);
 });
 
+// Ronda 2 de revisión: si falta la llave y ya hay claves guardadas, la pantalla no deja pegar (no se crea otra llave
+// encima). Si no se puede recuperar, empezar de nuevo es una decisión del dueño, por consola.
+test('--claves=empezar-de-nuevo solo crea una llave nueva si falta y no se puede recuperar (queda en la auditoría)', async () => {
+  const { readdirSync, renameSync } = await import('node:fs');
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  await baseConIa(raiz);
+  const carpeta = join(raiz, 'jarvis');
+  const ruta = join(carpeta, 'oportia-llave-secretos');
+  let salida = rescatar(archivoEnv, '--claves=empezar-de-nuevo');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /No se creó nada: el archivo de la llave existe y está bien/);
+  // Falta el nombre final, pero queda el otro: se puede recuperar, así que no se empieza de nuevo.
+  renameSync(ruta, join(carpeta, 'movida'));
+  salida = rescatar(archivoEnv, '--claves=revisar');
+  assert.match(salida.stdout, /FALTA el archivo de la llave, y ya hay claves guardadas/);
+  assert.doesNotMatch(salida.stdout, /No existe todavía/);
+  salida = rescatar(archivoEnv, '--claves=empezar-de-nuevo');
+  assert.equal(salida.status, 2);
+  assert.match(salida.stdout, /todavía queda otro nombre con la llave de tus claves: usa --claves=recuperar-llave/);
+  assert.equal(existsSync(ruta), false, 'no se creó nada');
+  // Sin ningún nombre con la llave: ahora sí.
+  for (const n of readdirSync(carpeta).filter(x => x.startsWith('oportia-llave-secretos.nueva-'))) renameSync(join(carpeta, n), join(carpeta, 'movida-otra'));
+  salida = rescatar(archivoEnv, '--claves=revisar');
+  assert.match(salida.stdout, /--claves=empezar-de-nuevo crea una llave nueva/);
+  salida = rescatar(archivoEnv, '--claves=empezar-de-nuevo');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /Listo: se creó una llave nueva \(no se borró nada\)/);
+  assert.ok(existsSync(ruta) && existsSync(join(carpeta, 'movida')) && existsSync(join(carpeta, 'movida-otra')), 'nada se borró');
+  const db = abrirBase(leerConfig({ DB_PATH: join(carpeta, 'jarvis.db') }));
+  try {
+    assert.equal(JSON.parse(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'llave_nueva'").get().detalle).origen, 'consola');
+  } finally {
+    db.close();
+  }
+});
+
 test('--tailscale=reanotar olvida la cuenta de Tailscale guardada del administrador (queda en la auditoría); la próxima entrada anota la nueva', async () => {
   const { raiz, archivoEnv } = prepararServidorDePrueba();
   const { config } = await baseConIa(raiz);

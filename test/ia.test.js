@@ -28,7 +28,8 @@ import {
   CONFIG_POR_DEFECTO, leerConfigIa, guardarConfigIa, faltaParaEncender, usdAMicro, apagarSiNoQuedaProveedor, normalizarConfig,
 } from '../src/ia/config.js';
 import { gastoMicro, apartadoMicro } from '../src/ia/gasto.js';
-import { reservar, liquidar, vigilarIA, disponibilidad, barrerViejas, tipicoMicro, VIEJA_MS } from '../src/ia/presupuesto.js';
+import { reservar, liquidar, vigilarIA, disponibilidad, barrerViejas, tipicoMicro, VIEJA_MS, topeLleno, reservaMinimaMicro } from '../src/ia/presupuesto.js';
+import { estadoIA } from '../src/ia/consumo.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MIN = 60_000;
@@ -552,19 +553,30 @@ test('avisos de tope: UNA fila por tope y mes, sube 50 → 80 → 100 (lleno), c
   assert.equal(JSON.parse(a.detalle).umbral, 80);
   assert.equal(a.enviado_en, null, 'subió: se vuelve a mandar');
   assert.equal(a.visto_en, null, 'y la pantalla lo muestra como nuevo');
-  // 8.000 gastados: la próxima reserva (2.180) ya no cabe.
+  // 8.000 gastados: esta reserva (2.180) ya no cabe, pero una del pedido más corto posible sí. Ronda 2 de revisión: el
+  // tope NO está lleno (antes un pedido grande frenado decía «queda en pausa» mientras se seguía gastando).
   assert.equal(reservarUno(b).motivo, 'tope_general');
   a = avisoDe(db, clave);
+  assert.deepEqual([a.nivel, JSON.parse(a.detalle).umbral], ['atencion', 80], 'un pedido grande que no cabe no llena el tope');
+  assert.equal(estadoIA(db, { config: b.config, ahora: T0 }).estado, 'encendida');
+  const corta = reservarUno(b, { entradaMax: PROPOSITOS.interpretar.entradaMinBytes });
+  assert.equal(corta.ok, true, 'uno más corto sí cabe');
+  liquidar(db, { llamadaId: corta.llamada.id, resultado: bien(usoDe(0, 1000)), ahora: T0 }); // 500 µUSD: 8.500
+  // Lo que queda (1.500) ya no alcanza ni para el pedido más corto: ahora sí está lleno (aunque el número diga 85 %).
+  assert.ok(10_000 - 8_500 < reservaMinimaMicro(precioDe('anthropic', 'claude-haiku-5-5')));
+  a = avisoDe(db, clave);
   assert.equal(a.nivel, 'grave');
-  assert.equal(JSON.parse(a.detalle).umbral, 100, 'un uso frenado por el tope cuenta como lleno');
+  assert.deepEqual([JSON.parse(a.detalle).umbral, JSON.parse(a.detalle).pct], [100, 85], 'lleno de verdad: ya no cabe ningún uso');
+  assert.equal(estadoIA(db, { config: b.config, ahora: T0 }).estado, 'tope_lleno');
+  assert.equal(reservarUno(b, { entradaMax: PROPOSITOS.interpretar.entradaMinBytes }).motivo, 'tope_general');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM avisos WHERE clave LIKE 'ia_tope:%'").get().n, 1, 'una sola fila en todo el mes');
-  // Subir el tope cierra el «lleno» (queda en la historia) y vuelve a mirar: 8.000 de 20.000 = 40 %, nada abierto.
+  // Subir el tope cierra el «lleno» (queda en la historia) y vuelve a mirar: 8.500 de 20.000 = 42 %, nada abierto.
   guardarConfigIa(db, { topeGeneralMicro: 20_000 }, { config: b.config, ahora: T0 + 1000 });
   assert.equal(avisoDe(db, clave), undefined);
   assert.ok(db.prepare('SELECT resuelto_en FROM avisos WHERE id = ?').get(a.id).resuelto_en);
-  // Bajarlo abre uno nuevo (otra fila).
+  // Bajarlo abre uno nuevo (otra fila): con 8.500 de 10.000 ya no cabe ningún uso, así que es el del 100 %.
   guardarConfigIa(db, { topeGeneralMicro: 10_000 }, { config: b.config, ahora: T0 + 2000 });
-  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 80);
+  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 100);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM avisos WHERE clave = ?').get(clave).n, 2);
   // Un mes de cobro nuevo empieza limpio, y la vigilancia cierra los del mes pasado.
   const diciembre = Date.parse('2026-12-02T12:00:00Z');
@@ -577,6 +589,45 @@ test('avisos de tope: UNA fila por tope y mes, sube 50 → 80 → 100 (lleno), c
   db.close();
 });
 
+// Ronda 2 de revisión: un pedido grande que no cabe NO deja la IA «en pausa hasta…»: uno más corto todavía se paga, así
+// que el aviso, «Tope lleno» de las pantallas y la ayuda del proyecto siguen lo que de verdad se gastó, y el 80 % avisa.
+test('un pedido grande frenado al 75 % no llena el tope: uno corto se acepta, nadie dice «en pausa» y el 80 % avisa al pasar', () => {
+  const b = preparar({ tope: 10_000 });
+  const { db } = b;
+  const clave = 'ia_tope:general:2026-11';
+  const usar = (entradaMax, salida) => {
+    const r = reservarUno(b, { entradaMax });
+    assert.equal(r.ok, true, `reserva de ${entradaMax}`);
+    liquidar(db, { llamadaId: r.llamada.id, resultado: bien(usoDe(0, salida)), ahora: T0 });
+  };
+  for (let i = 0; i < 5; i++) usar(4_200, 3_000); // 1.500 µUSD cada uno: 7.500 (75 %)
+  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 50);
+  // Un pedido largo (instrucciones largas) ya no cabe.
+  const larga = reservarUno(b, { entradaMax: 20_000 });
+  assert.deepEqual([larga.ok, larga.motivo], [false, 'tope_general']);
+  assert.equal(veces(db, 'tope_general'), 1, 'se cuenta la vez sin IA');
+  let a = avisoDe(db, clave);
+  assert.deepEqual([a.nivel, JSON.parse(a.detalle).umbral], ['info', 50], 'el aviso NO dice «se llegó al tope, queda en pausa»');
+  const estado = estadoIA(db, { config: b.config, ahora: T0 });
+  assert.deepEqual([estado.estado, estado.pct], ['encendida', 75], 'las pantallas no dicen «Tope lleno»');
+  assert.equal(topeLleno(db, { cfg: leerConfigIa(db), ambito: 'general', mes: '2026-11' }), false);
+  // La ayuda del proyecto largo dice que ESE pedido no cabe (no «vuelve el 1 de diciembre»); uno corto sí está.
+  const dLarga = disponibilidad(db, { config: b.config, espacioId: b.espacioAdmin, proposito: 'interpretar', entradaMax: 20_000, ahora: T0 });
+  assert.deepEqual([dLarga.disponible, dLarga.motivo, dLarga.topeLleno], [false, 'tope_general', false]);
+  const dCorta = disponibilidad(db, { config: b.config, espacioId: b.espacioAdmin, proposito: 'interpretar', entradaMax: 4_200, ahora: T0 });
+  assert.deepEqual([dCorta.disponible, dCorta.topeLleno], [true, null]);
+  // El corto se paga: 600 µUSD más (8.100, el 81 %). El aviso del 80 % sale al pasarlo (antes nunca salía).
+  usar(4_200, 1_200);
+  a = avisoDe(db, clave);
+  assert.deepEqual([a.nivel, JSON.parse(a.detalle).umbral, JSON.parse(a.detalle).pct], ['atencion', 80, 81]);
+  assert.equal(a.enviado_en, null, 'se vuelve a mandar (Telegram en la parte e)');
+  assert.equal(estadoIA(db, { config: b.config, ahora: T0 }).estado, 'encendida');
+  // Con 8.100 gastados todavía cabe el pedido más corto (1.900 libres): no está lleno.
+  assert.ok(10_000 - 8_100 >= reservaMinimaMicro(precioDe('anthropic', 'claude-haiku-5-5')));
+  assert.equal(disponibilidad(db, { config: b.config, espacioId: b.espacioAdmin, proposito: 'interpretar', entradaMax: 20_000, ahora: T0 }).topeLleno, false);
+  db.close();
+});
+
 test('avisos de tope de una cuenta: tienen su propia fila y al 100 % quedan en «atención» (el grave es solo el general)', () => {
   const b = preparar({ tope: 1_000_000, planes: { prueba: 10_000 } });
   const { db } = b;
@@ -585,6 +636,9 @@ test('avisos de tope de una cuenta: tienen su propia fila y al 100 % quedan en �
     liquidar(db, { llamadaId: r.llamada.id, resultado: bien(usoDe(0, 4000)), ahora: T0 });
   }
   assert.equal(reservarUno(b, { espacioId: b.espacioOtro }).motivo, 'tope_espacio');
+  assert.equal(JSON.parse(avisoDe(db, `ia_tope:e${b.espacioOtro}:2026-11`).detalle).umbral, 80, 'este no cupo, pero uno más corto sí');
+  const corta = reservarUno(b, { espacioId: b.espacioOtro, entradaMax: PROPOSITOS.interpretar.entradaMinBytes });
+  liquidar(db, { llamadaId: corta.llamada.id, resultado: bien(usoDe(0, 1000)), ahora: T0 });
   const a = avisoDe(db, `ia_tope:e${b.espacioOtro}:2026-11`);
   assert.equal(a.nivel, 'atencion');
   assert.equal(JSON.parse(a.detalle).umbral, 100);

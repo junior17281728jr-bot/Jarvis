@@ -9,6 +9,7 @@
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar   -> explica cómo está el archivo que protege las claves (no cambia nada)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=apartar-llave-danada -> si ese archivo está dañado, le cambia el nombre (no lo borra)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=recuperar-llave -> si falta ese archivo y queda otro nombre con la llave de tus claves, se lo vuelve a poner
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=empezar-de-nuevo -> si falta ese archivo y no se puede recuperar, crea uno nuevo (las claves de antes quedan sin poder leerse; nada se borra)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar     -> olvida la cuenta de Tailscale del dueño (el primer administrador; la próxima entrada anota la nueva)
 //
 // Para encender la IA no hay opción de consola, a propósito: gastar dinero se decide en la pantalla, con su aviso.
@@ -30,7 +31,8 @@ import { cerrarTodas } from '../src/cuentas/sesiones.js';
 import { NOMBRE_VALIDO, auditar, buscarPorNombre, crearUsuario, guardarClave, ponerActivo } from '../src/cuentas/usuarios.js';
 import { ponerModoSeguro } from '../src/tareas/modo-seguro.js';
 import { guardarConfigIa, leerConfigIa } from '../src/ia/config.js';
-import { estadoLlave, apartarLlaveDanada, diagnosticoLlave, recuperarLlave } from '../src/claves/cifrado.js';
+import { estadoLlave, apartarLlaveDanada, diagnosticoLlave, recuperarLlave, empezarLlaveNueva } from '../src/claves/cifrado.js';
+import { clavesGuardadas } from '../src/claves/almacen.js';
 import { reanotarTailscale, idDelDueno } from '../src/cuentas/tailscale.js';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
@@ -61,10 +63,11 @@ async function principal() {
     if (pedido === '--claves=revisar') return revisarClaves(config);
     if (pedido === '--claves=apartar-llave-danada') return apartarLlave(config);
     if (pedido === '--claves=recuperar-llave') return recuperarLaLlave(config);
+    if (pedido === '--claves=empezar-de-nuevo') return empezarDeNuevo(config);
     if (pedido === '--tailscale=reanotar') return conBase(config, { abrirSiFalta: false }, db => reanotar(db, (process.argv[3] || '').trim()));
     const m = pedido.match(/^--modo-seguro=(si|no)$/);
     if (!m) {
-      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático), --modo-seguro=no (encenderlo otra vez), --ia=no (apagar la IA), --claves=revisar, --claves=apartar-llave-danada, --claves=recuperar-llave o --tailscale=reanotar.');
+      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático), --modo-seguro=no (encenderlo otra vez), --ia=no (apagar la IA), --claves=revisar, --claves=apartar-llave-danada, --claves=recuperar-llave, --claves=empezar-de-nuevo o --tailscale=reanotar.');
       return 2;
     }
     modoSeguro = m[1] === 'si';
@@ -224,6 +227,39 @@ function recuperarLaLlave(config) {
     }
     auditar(db, { usuarioId: null, accion: 'llave_recuperada', detalle: JSON.stringify({ archivo: r.archivo, origen: 'consola' }) });
     console.log(`Listo: la llave volvió a su nombre desde ${r.archivo} (no se borró nada). Tus claves guardadas se pueden leer otra vez.`);
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+// --claves=empezar-de-nuevo: SOLO si falta el archivo de la llave y ningún otro nombre tiene la llave de tus claves
+// (si alguno la tiene, --claves=recuperar-llave). Crea una llave nueva: las claves de antes quedan guardadas, sin
+// poder leerse, y se pegan otra vez en Administrador → Claves. Nada se borra. Queda en la auditoría.
+function empezarDeNuevo(config) {
+  let db;
+  try {
+    db = conectarBase(config, { versionMinima: 5 });
+  } catch (error) {
+    console.error(`No se pudo abrir la base (${error.codigo ?? 'error'}): sin ella no se sabe si tus claves se pueden recuperar. No se cambió nada.`);
+    return 1;
+  }
+  try {
+    const r = empezarLlaveNueva(config, clavesGuardadas(db));
+    if (!r.creada) {
+      const porQue = {
+        llave_sana: 'el archivo de la llave existe y está bien',
+        llave_danada: 'el archivo de la llave existe pero está dañado (usa --claves=apartar-llave-danada)',
+        llave_version_nueva: 'el archivo de la llave lo escribió una versión más nueva de OPORTIA',
+        llave_sin_permiso: 'no se puede leer por permisos (corre esto como sudo -u jarvis …)',
+        recuperable: 'todavía queda otro nombre con la llave de tus claves: usa --claves=recuperar-llave',
+      }[r.motivo] ?? 'no se pudo';
+      console.log(`No se creó nada: ${porQue}. No se cambió nada.`);
+      return r.motivo === 'llave_sana' ? 0 : 2;
+    }
+    auditar(db, { usuarioId: null, accion: 'llave_nueva', detalle: JSON.stringify({ origen: 'consola' }) });
+    console.log('Listo: se creó una llave nueva (no se borró nada). Las claves de antes quedan guardadas, sin poder leerse.');
+    console.log('Ahora pega tus claves otra vez en Administrador → Claves (desde Tailscale).');
     return 0;
   } finally {
     db.close();

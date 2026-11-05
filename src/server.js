@@ -4,11 +4,14 @@
 import { crearServidor, VERSION, HUELLA } from './app.js';
 import { leerConfig } from './nucleo/config.js';
 import { abrirBase } from './nucleo/db.js';
-import { crearSupervisor } from './tareas/supervisor.js';
+import { crearSupervisor, quitarArchivosCore } from './tareas/supervisor.js';
 import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
 
 // Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
 process.umask(0o027);
+// Sin archivos «core» (una copia de la memoria en el disco si el proceso se cae), ANTES de abrir la base: este proceso
+// puede tener por un momento una clave descifrada. El trabajador ya arranca así (src/tareas/supervisor.js).
+if (!quitarArchivosCore()) console.error('Aviso: no se pudo quitar los archivos «core» de este proceso (sigue igual).');
 
 const config = leerConfig();
 let db = null;

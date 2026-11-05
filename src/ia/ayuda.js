@@ -17,7 +17,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { configuracionDesdeCampos } from '../motor/interpretar.js';
 import { pendienteDeProyecto, puedeTenerOtraVersion, nuevaVersion, versionDeLlamadaIa, versionSinIa, LUGARES_PARA_AYUDA_IA } from '../proyectos/proyectos.js';
 import { anotarBloqueo, mesCobro } from './presupuesto.js';
-import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, PROPOSITO_AYUDA } from './interpretar.js';
+import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, conDudasDeLaBase, PROPOSITO_AYUDA } from './interpretar.js';
 
 export const CADUCA_MS = 15 * 60_000;
 const idiomaDe = idioma => (idioma === 'en' ? 'en' : 'es');
@@ -66,7 +66,10 @@ async function pasoInterpretar(ctx) {
     const otra = revisarBase(db, espacioId, datos);
     if (otra.motivo) throw new ErrorHttp(409, otra.motivo);
     const actual = otra.info.pendiente;
-    const configuracion = configuracionDesdeCampos(aCampos(json, actual.configuracion, idioma), actual.configuracion);
+    // Las dudas que el motor calcula (un lugar fuera del país, algo para buscar y para excluir) nunca se van solas por
+    // un cambio de la IA: pasan como dudas guardadas, y la versión sigue sin poder aprobarse hasta que alguien las vea.
+    const configuracion = conDudasDeLaBase(actual.configuracion, configuracionDesdeCampos(aCampos(json, actual.configuracion, idioma), actual.configuracion), idioma);
+    if (!configuracion) throw new ErrorHttp(409, 'no_se_pudo_guardar');
     // «base» y lo que cambió se cuentan desde la primera versión SIN IA de la cadena: si se pidió ayuda sobre una versión
     // que ya hizo la IA, «Volver a la versión sin IA» vuelve a lo que entendió el motor propio, y la lista muestra todo
     // lo que la IA cambió (también lo de antes).

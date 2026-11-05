@@ -297,6 +297,33 @@ test('20. guardar y probar: solo lo público vuelve, la prueba es GRATIS (count_
   });
 });
 
+// Ronda 2 de revisión: si falta el nombre final de la llave con claves guardadas, la pantalla no ofrece pegar y la ruta
+// no crea una llave nueva (503): la recuperación por consola sigue sirviendo.
+test('20d. falta el archivo de la llave con claves guardadas: GET dice llave_falta, pegar responde 503 y nada se crea', async () => {
+  const { readdirSync, renameSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { rutaLlave, recuperarLlave, estadoLlave } = await import('../src/claves/cifrado.js');
+  await conPlataforma(async ({ db, config, comoDueno }) => {
+    assert.deepEqual((await comoDueno('GET', '/api/admin/claves')).datos.almacen, { listo: true, motivo: 'llave_no_existe' });
+    assert.equal((await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'ia_anthropic', valor: claveAnthropic() } })).codigo, 201);
+    assert.equal((await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'ia_openai', valor: claveOpenai() } })).codigo, 201);
+    const huella = estadoLlave(config).huella;
+    const ruta = rutaLlave(config);
+    renameSync(ruta, join(dirname(ruta), 'movida'));
+    const lista = await comoDueno('GET', '/api/admin/claves');
+    assert.deepEqual(lista.datos.almacen, { listo: false, motivo: 'llave_falta' });
+    const antes = readdirSync(dirname(ruta)).sort();
+    const r = await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'ia_anthropic', valor: claveAnthropic('n') } });
+    assert.deepEqual([r.codigo, r.datos.error], [503, 'almacen_no_disponible']);
+    assert.deepEqual(readdirSync(dirname(ruta)).sort(), antes, 'ninguna llave nueva');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM secretos').get().n, 2);
+    assert.equal(recuperarLlave(config, { huellas: [huella] }).recuperada, true, 'la consola la recupera');
+    const despues = await comoDueno('GET', '/api/admin/claves');
+    assert.deepEqual(despues.datos.almacen, { listo: true, motivo: null });
+    assert.ok(despues.datos.grupos.flatMap(g => g.usos).filter(u => u.activa).every(u => u.activa.legible === true), 'las dos claves se leen otra vez');
+  });
+});
+
 test('20. «Probar y reanudar» quita la pausa del dueño y cierra su aviso; la prueba gratis también funciona en modo seguro', async () => {
   await conPlataforma(async ({ db, comoDueno, falso }) => {
     const s = await encender(comoDueno);

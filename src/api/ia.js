@@ -158,7 +158,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     const comun = {
       disponible: r.motivo === 'ok', motivo, version: info.pendiente?.numero ?? null,
       maximoMicro: d.maximoMicro ?? null, tipicoMicro: d.tipicoMicro ?? null, usadoMicro: d.usadoMicro ?? null,
-      topeMicro: d.topeMicro ?? null, vuelveEl: d.vuelveEl ?? null, proveedor: d.proveedor ?? null, tarea,
+      topeMicro: d.topeMicro ?? null, vuelveEl: d.vuelveEl ?? null, proveedor: d.proveedor ?? null, topeLleno: d.topeLleno ?? null, tarea,
     };
     return { codigo: 200, datos: esAdmin ? { ...comun, modelo: d.modelo ?? null, esAdmin: true } : comun };
   });

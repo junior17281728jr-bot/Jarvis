@@ -12,7 +12,7 @@ import { crearProveedorFalso } from './proveedor-falso.js';
 import { lanzarTrabajador } from '../src/tareas/supervisor.js';
 import { leerSecreto, guardarSecreto } from '../src/claves/almacen.js';
 import { MOTIVOS } from '../src/ia/propositos.js';
-import { precioDe, costoMicro } from '../src/ia/precios.js';
+import { precioDe, costoMicro, cotaMicro } from '../src/ia/precios.js';
 import { llamarProveedor, destinoPermitido } from '../src/ia/llamar.js';
 import { PROVEEDORES, urlDe } from '../src/ia/proveedores/index.js';
 import { anthropic } from '../src/ia/proveedores/anthropic.js';
@@ -79,6 +79,22 @@ test('Claude: lee el texto por tipo de bloque (aunque venga «pensar» primero) 
   assert.equal(raro({ service_tier: 'priority' }).raro, true);
   assert.equal(raro({ speed: 'fast' }).raro, true);
   assert.equal(raro({ algo_nuevo_tokens: 7 }).desconocidos, 7);
+  // Ronda 2: un cobro nuevo DENTRO de un objeto (a cualquier profundidad), o algo que no es un número, también.
+  assert.deepEqual([raro({ nuevo_cobro: { tokens: 50_000 } }).raro, raro({ nuevo_cobro: { tokens: 50_000 } }).desconocidos], [true, 50_000]);
+  assert.deepEqual([raro({ x: { y: { z: [3] } } }).raro, raro({ x: { y: { z: [3] } } }).desconocidos], [true, 3]);
+  assert.equal(raro({ server_tool_use: { web_fetch: { requests: 30 } } }).desconocidos, 30);
+  assert.equal(raro({ cache_creation: { ephemeral_24h_input_tokens: 999 } }).raro, true);
+  assert.equal(raro({ cache_creation: 'algo' }).raro, true);
+  assert.equal(raro({ nuevo_nivel: 'premium' }).raro, true, 'un texto desconocido');
+  assert.equal(raro({ nuevo: true }).raro, true);
+  assert.equal(raro({ nuevo: -5 }).raro, true);
+  assert.equal(raro({ nuevo: { a: { b: { c: { d: { e: { f: { g: { h: { i: 0 } } } } } } } } } }).raro, true, 'demasiados niveles');
+  // Lo que vale 0, null o está vacío no es un gasto.
+  for (const nada of [{ nuevo: 0 }, { nuevo: null }, { nuevo: {} }, { nuevo: { a: 0, b: [0, null] } }, { server_tool_use: null }, { server_tool_use: { web_search_requests: 0 } }]) {
+    assert.equal(raro(nada).raro, false, JSON.stringify(nada));
+  }
+  // Un número absurdo (más de 100 millones de tokens): nunca se confía en él.
+  assert.equal(raro({ input_tokens: Number.MAX_SAFE_INTEGER }).raro, true);
   assert.equal(raro({ inference_geo: undefined }).geo, null, 'sin lugar: se cobra el más caro');
 });
 
@@ -157,6 +173,15 @@ test('ChatGPT: store:false siempre, máximo de salida de al menos 16, formato es
   assert.deepEqual([fallo.motivo, fallo.estado], ['error_proveedor', 'hecha'], 'falló, pero con lo gastado: se cobra lo real');
   assert.equal(con({ service_tier: 'priority' }).uso.raro, true);
   assert.equal(con({ usage: undefined }).estado, 'desconocida');
+  // Ronda 2: lo desconocido a cualquier profundidad (también dentro de los detalles) es un gasto desconocido.
+  const usoO = u => con({ usage: { ...bien.usage, ...u } }).uso;
+  assert.deepEqual([usoO({ nuevo: { tokens: 1 } }).raro, usoO({ nuevo: { tokens: 1 } }).desconocidos], [true, 1]);
+  assert.equal(usoO({ input_tokens_details: { cached_tokens: 200, cache_write_tokens: 100, audio_tokens: 99 } }).raro, true);
+  assert.equal(usoO({ output_tokens_details: { reasoning_tokens: 120, imagen_tokens: 5 } }).raro, true);
+  assert.equal(usoO({ input_tokens_details: { cached_tokens: 200, cache_write_tokens: 100, audio_tokens: 0 } }).raro, false, 'un 0 no es gasto');
+  assert.equal(usoO({ input_tokens_details: 'x' }).raro, true);
+  assert.equal(usoO({ nuevo: 5 }).desconocidos, 5);
+  assert.equal(usoO({ output_tokens: Number.MAX_SAFE_INTEGER }).raro, true);
   const errorO = (status, type, code) => resp(status, { error: { message: 'x', type, code } });
   for (const [r2, motivo] of [
     [errorO(429, 'insufficient_quota', 'credit_balance_exhausted'), 'sin_credito'], [errorO(429, 'insufficient_quota', 'insufficient_quota'), 'sin_credito'],
@@ -388,7 +413,9 @@ test('un gasto desconocido (caché de 1 hora, herramientas del servidor) o mayor
   try {
     // Ronda 1: un lugar (inference_geo) que la tabla de precios no conoce ('eu') o que no se entiende ('EU West') es un
     // cobro desconocido: puede ser más caro que ×1,1, así que nunca se cuenta de menos.
-    for (const escena of ['uso_raro', 'uso_raro_herramienta', 'uso_enorme', 'geo_desconocido', 'geo_raro']) {
+    // Ronda 2: un cobro nuevo dentro de un objeto ({ x: { y: N } }), en server_tool_use anidado, o un uso absurdo
+    // (2^53 − 1 tokens: el costo no cabe en un número seguro y antes la llamada quedaba «en curso» sin aviso).
+    for (const escena of ['uso_raro', 'uso_raro_herramienta', 'uso_enorme', 'geo_desconocido', 'geo_raro', 'uso_anidado', 'uso_herramienta_anidada', 'uso_absurdo', { tipo: 'ok', uso: { x: { y: 50_000 } } }]) {
       const b = preparar({ iaBases: { anthropic: falso.base } });
       try {
         falso.siguiente(escena);
@@ -400,6 +427,8 @@ test('un gasto desconocido (caché de 1 hora, herramientas del servidor) o mayor
         assert.equal(b.db.prepare('SELECT pausa_motivo FROM secretos').get().pausa_motivo, 'costo_mayor');
         if (escena === 'geo_desconocido') assert.deepEqual([JSON.parse(u.fila.detalle).geo, JSON.parse(u.fila.detalle).motivoInterno], ['eu', 'uso_desconocido']);
         if (escena === 'geo_raro') assert.equal(JSON.parse(u.fila.detalle).geo, undefined);
+        if (escena === 'uso_anidado' || typeof escena === 'object') assert.ok(u.fila.costo_micro > ok450 * 10, 'lo desconocido se cuenta al precio más alto');
+        if (escena === 'uso_absurdo') assert.equal(u.fila.costo_micro, u.reserva.llamada.reservadoMicro, 'un número absurdo no se cree: cuenta lo apartado, nunca queda «en curso»');
         const antes = falso.peticiones.length;
         assert.equal((await usarUnaVez(b, { ahora: T0 + 1000 })).reserva.motivo, 'proveedor_en_pausa');
         assert.equal(falso.peticiones.length, antes);
@@ -594,4 +623,83 @@ test('el trabajador se enciende con prlimit --core=0 (si existe): una caída nun
   assert.equal(codigo, 0);
   const linea = salida.split('\n').find(l => l.startsWith('Max core file size'));
   assert.match(linea, /Max core file size\s+0\s+0\s+bytes/);
+});
+
+// ---------- Ronda 2 de revisión: lo que gastó, visto por el cliente del trabajador ----------
+
+// Un uso absurdo (2^53 − 1 tokens), uno que dice «0 tokens» para un pedido de miles de bytes, o un error al anotar lo
+// que costó: nunca queda en silencio. Se cuenta al menos lo apartado, esa clave queda en pausa del dueño, se avisa
+// grave al momento y la próxima vez no se toca la red (nunca un bucle de pedidos).
+test('uso absurdo, uso imposible (0 tokens) o un error al anotarlo: aviso grave, pausa del dueño y ningún pedido más', async () => {
+  const falso = await crearProveedorFalso();
+  const silencio = { log() {}, error() {}, warn() {}, info() {} };
+  const esquema = { type: 'object', additionalProperties: false, properties: { listo: { type: 'boolean' } }, required: ['listo'] };
+  try {
+    for (const caso of ['uso_absurdo', 'uso_desconocido_enorme', 'uso_cero', 'uso_casi_cero', 'error_al_anotar']) {
+      const b = preparar({ iaBases: { anthropic: falso.base } });
+      let ahora = T0;
+      const escritor = crearEscritor(b.db, { registro: silencio, dormir: async () => {} });
+      const ia = crearClienteIA({ db: b.db, config: b.config, escritor, reloj: () => ahora, registro: silencio });
+      // Un pedido de unos 9 KB: con 1 token por cada 32 bytes, al menos 280 tokens de entrada.
+      const pedido = { proposito: 'interpretar', espacioId: b.espacioAdmin, sistema: 'S'.repeat(4000), texto: 'T'.repeat(5000), esquema };
+      try {
+        if (caso === 'error_al_anotar') {
+          // Algo que hace fallar la anotación de una respuesta buena (no es «base ocupada»).
+          b.db.exec("CREATE TRIGGER falla_al_anotar BEFORE UPDATE ON ia_llamadas WHEN NEW.estado = 'hecha' BEGIN SELECT RAISE(ABORT, 'falla de prueba'); END");
+          falso.siguiente('ok');
+        } else if (caso === 'uso_casi_cero') falso.siguiente({ tipo: 'ok', uso: { input_tokens: 10, output_tokens: 3 } });
+        else if (caso === 'uso_desconocido_enorme') falso.siguiente({ tipo: 'ok', uso: { nuevo: { tokens: 9e15 } } });
+        else falso.siguiente(caso);
+        const antes = falso.peticiones.length;
+        const r = await ia.pedir(pedido);
+        assert.equal(falso.peticiones.length, antes + 1, `${caso}: un pedido`);
+        const fila = b.db.prepare('SELECT * FROM ia_llamadas ORDER BY id DESC LIMIT 1').get();
+        assert.notEqual(fila.estado, 'reservada', `${caso}: nunca queda «en curso»`);
+        assert.ok(fila.costo_micro >= fila.reservado_micro, `${caso}: nunca se cuenta menos que lo apartado`);
+        assert.ok(Number.isSafeInteger(fila.costo_micro));
+        if (caso === 'error_al_anotar') {
+          assert.deepEqual([r.usada, r.motivo, r.costoMicro], [false, 'costo_mayor', fila.reservado_micro]);
+          assert.deepEqual([fila.estado, fila.resultado, JSON.parse(fila.detalle).motivoInterno], ['desconocida', 'costo_mayor', 'no_se_pudo_anotar']);
+        } else {
+          assert.equal(JSON.parse(fila.detalle).motivoInterno, 'uso_desconocido', caso);
+          // Un número absurdo no se cree ni se usa para hacer cuentas: cuenta lo apartado (nunca US$9 mil millones).
+          if (caso === 'uso_absurdo' || caso === 'uso_desconocido_enorme') assert.equal(fila.costo_micro, fila.reservado_micro, caso);
+          assert.notEqual(r.costoMicro, 0, `${caso}: la pantalla nunca dice US$0.00`);
+        }
+        const aviso = b.db.prepare("SELECT * FROM avisos WHERE clave = 'ia_costo_mayor' AND resuelto_en IS NULL").get();
+        assert.equal(aviso?.nivel, 'grave', `${caso}: aviso grave al momento`);
+        assert.equal(b.db.prepare('SELECT pausa_motivo FROM secretos WHERE id = ?').get(b.secretoId).pausa_motivo, 'costo_mayor', `${caso}: pausa del dueño`);
+        // Las siguientes, sin tocar la red.
+        for (let i = 0; i < 3; i++) {
+          ahora += MIN;
+          assert.equal((await ia.pedir(pedido)).motivo, 'proveedor_en_pausa');
+        }
+        assert.equal(falso.peticiones.length, antes + 1, `${caso}: en pausa no se toca la red`);
+      } finally {
+        b.db.close();
+      }
+    }
+    // Un uso normal para un pedido normal sigue siendo normal (2.000 tokens para unos 9 KB está bien).
+    const b = preparar({ iaBases: { anthropic: falso.base } });
+    try {
+      const escritor = crearEscritor(b.db, { registro: silencio, dormir: async () => {} });
+      const ia = crearClienteIA({ db: b.db, config: b.config, escritor, reloj: () => T0, registro: silencio });
+      falso.siguiente('ok');
+      const r = await ia.pedir({ proposito: 'interpretar', espacioId: b.espacioAdmin, sistema: 'S'.repeat(4000), texto: 'T'.repeat(5000), esquema });
+      assert.deepEqual([r.usada, r.costoMicro], [true, ok450]);
+      assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM avisos WHERE clave = 'ia_costo_mayor'").get().n, 0);
+    } finally {
+      b.db.close();
+    }
+  } finally {
+    await falso.cerrar();
+  }
+});
+
+test('las cuentas de dinero nunca pasan de 2^53 − 1 (BigInt) y nunca lanzan con números grandes válidos', () => {
+  const enorme = { entrada: Number.MAX_SAFE_INTEGER, salida: Number.MAX_SAFE_INTEGER, cacheLectura: Number.MAX_SAFE_INTEGER, cacheEscritura: 0, geo: 'us' };
+  assert.equal(costoMicro(HAIKU, enorme), Number.MAX_SAFE_INTEGER);
+  assert.equal(cotaMicro(HAIKU, { ...enorme, desconocidos: Number.MAX_SAFE_INTEGER }, 1000), Number.MAX_SAFE_INTEGER);
+  assert.equal(cotaMicro(HAIKU, { entrada: 0, salida: 0, cacheLectura: 0, cacheEscritura: 0, desconocidos: 0 }, 1234), 1234, 'nunca menos que lo apartado');
+  assert.equal(costoMicro(HAIKU, { entrada: 2000, salida: 500, cacheLectura: 0, cacheEscritura: 0, geo: 'global' }), ok450, 'lo normal no cambia');
 });

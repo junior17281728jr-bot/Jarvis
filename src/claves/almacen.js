@@ -14,7 +14,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { MOTIVOS } from '../ia/propositos.js';
 import { USOS, LARGO, ESTADOS_SECRETO, ORIGENES_SECRETO, definicionUso } from './usos.js';
-import { ErrorClaves, asegurarLlave, leerLlave, estadoLlave, cifrar, descifrar, ESQUEMA_CIFRADO } from './cifrado.js';
+import { ErrorClaves, asegurarLlave, leerLlave, estadoLlave, cifrar, descifrar, permisoLlaveNueva, ESQUEMA_CIFRADO, LLAVE_FALTA } from './cifrado.js';
 
 const iso = ms => new Date(ms).toISOString();
 const IMPRIMIBLE = /^[\x21-\x7e]+$/;
@@ -70,6 +70,22 @@ export function secretoPublico(f, { huellaActual = null, ahora = Date.now() } = 
   };
 }
 
+// Las huellas de las claves guardadas y cuándo se guardó la más nueva (para permisoLlaveNueva).
+export function clavesGuardadas(db) {
+  const f = db.prepare('SELECT MAX(creado_en) AS ultima FROM secretos').get();
+  return { huellas: db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(x => x.h), ultimaMs: f?.ultima ? Date.parse(f.ultima) : null };
+}
+
+// Cómo está el almacén para la pantalla Claves: { listo, motivo }. Que el archivo de la llave todavía no exista es lo
+// normal antes de la primera clave (se crea al guardarla). Ronda 2 de revisión: si ya hay claves guardadas, que falte
+// es 'llave_falta' (no listo: no se puede pegar hasta que la consola la recupere o se decida empezar de nuevo).
+export function estadoAlmacen(db, config) {
+  const e = estadoLlave(config);
+  if (e.listo) return { listo: true, motivo: null };
+  if (e.motivo !== 'llave_no_existe') return { listo: false, motivo: e.motivo };
+  return permisoLlaveNueva(config, clavesGuardadas(db)).si ? { listo: true, motivo: 'llave_no_existe' } : { listo: false, motivo: LLAVE_FALTA };
+}
+
 function huellaDeAhora(config) {
   const e = estadoLlave(config);
   return e.listo ? e.huella : null;
@@ -88,14 +104,21 @@ export function guardarSecreto(db, config, { uso, valor, usuarioId = null, espac
   if (espacioId != null && numero(espacioId) == null) throw new ErrorHttp(400, 'datos_no_validos');
   let llave;
   try {
-    llave = asegurarLlave(config);
+    // Si falta el archivo de la llave y ya hay claves guardadas con ella, nunca se crea otra en silencio (503).
+    llave = asegurarLlave(config, { guardadas: clavesGuardadas(db) });
   } catch (error) {
     if (error instanceof ErrorClaves) throw new ErrorHttp(503, 'almacen_no_disponible');
     throw error;
   }
   const ref = randomUUID();
-  // Se cifra ANTES de tomar la base: la transacción es corta y no hace nada lento.
-  const partes = cifrar(llave.llave, v, { ref, uso });
+  // Se cifra ANTES de tomar la base: la transacción es corta y no hace nada lento. La llave se borra de la memoria
+  // enseguida (solo queda su huella).
+  let partes;
+  try {
+    partes = cifrar(llave.llave, v, { ref, uso });
+  } finally {
+    llave.llave.fill(0);
+  }
   const final = v.slice(-4);
   const largo = v.length;
   return enTransaccion(db, () => {
@@ -126,11 +149,13 @@ export function leerSecreto(db, config, { id }) {
   if (!f || f.esquema !== ESQUEMA_CIFRADO) return null;
   let llave;
   try { llave = leerLlave(config); } catch { return null; }
-  if (llave.huella !== f.llave_huella) return null;
   try {
+    if (llave.huella !== f.llave_huella) return null;
     return descifrar(llave.llave, { iv: f.iv, sello: f.sello, cifrado: f.cifrado }, { ref: f.ref, uso: f.uso });
   } catch {
     return null;
+  } finally {
+    llave.llave.fill(0); // la llave nunca queda en la memoria del proceso
   }
 }
 

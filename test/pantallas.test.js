@@ -317,6 +317,13 @@ test('27. la ayuda de IA en un proyecto: nunca un botón que no se puede usar, y
     trabajo_en_pausa: 'pausa', proveedor_en_pausa: 'no_disponible', sin_clave: 'no_disponible', demasiadas_llamadas: 'no_disponible', sin_pendiente: 'nada',
   };
   for (const [motivo, vista] of Object.entries(casos)) assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo }).vista, vista, motivo);
+  // Ronda 2: si solo ESTE pedido no cabe en lo que queda del tope (uno más corto sí), no se dice «Tope lleno, vuelve
+  // el…»: se dice que este pedido no cabe.
+  for (const motivo of ['tope_general', 'tope_espacio', 'tope_proyecto']) {
+    assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo, topeLleno: false }).vista, 'no_cabe', motivo);
+    assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo, topeLleno: true }).vista, 'tope_lleno', motivo);
+  }
+  assert.match(appJs, /vista\.vista === 'no_cabe'\) partes = \[linea\('atencion', t\('ayuda_ia\.no_cabe'\)\)\]/);
   // Otra cuenta (con presupuesto, fase 6): nunca el estado del dueño; un motivo extraño sale como «no disponible».
   assert.equal(vistaAyudaIa({ disponible: false, motivo: 'no_disponible', tarea: null }).vista, 'no_disponible');
   assert.equal(vistaAyudaIa({ disponible: false, motivo: 'ia_apagada' }).vista, 'no_disponible', 'solo el administrador ve «está apagada»');

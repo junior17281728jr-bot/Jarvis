@@ -8,6 +8,9 @@
 //    conoce vuelve a ser una duda, uno de fuera del país también.
 //  - La IA NUNCA quita una duda. Todas las dudas de la versión base pasan a la nueva, en su orden; lo que la IA cree
 //    que ya quedó claro es solo una PISTA que la pantalla muestra al lado de la duda (la persona la marca, como en la 1b).
+//    Ronda 2 de revisión: también las que el motor CALCULA de los datos (un lugar fuera del país, algo que está para
+//    buscar y para excluir): si la IA cambió los datos y esa duda se iría sola, pasa a la nueva como duda guardada
+//    (conDudasDeLaBase), así la versión no se puede aprobar hasta que una persona la vea y la marque.
 //  - La IA nunca cambia la autonomía ni la frecuencia (pasan de la versión base, de forma explícita: si quedaran
 //    vacías, el motor podría cambiar «solo cuando yo lo pida» por un trabajo automático), ni las capacidades, ni el
 //    objetivo, ni el permiso de IA del proyecto. «frecuencia» ni siquiera está en el esquema.
@@ -16,7 +19,7 @@
 //    cerrar el bloque ni parecer una orden. Lo que la IA escriba y se guarde también es DATO para siempre (fase 2: si
 //    se vuelve a mandar a una IA, va dentro del mismo bloque, nunca como instrucción).
 import { SECTORES, ZONAS } from '../motor/diccionarios.js';
-import { LIMITES, TIPOS, CLAVES_TAMANOS, CLAVES_DUDAS_GUARDADAS } from '../motor/interpretar.js';
+import { LIMITES, TIPOS, CLAVES_TAMANOS, CLAVES_DUDAS_GUARDADAS, CLAVES_DUDAS_CALCULADAS, dudas as dudasDe, limpiarConfiguracion } from '../motor/interpretar.js';
 import { PROPOSITOS } from './propositos.js';
 
 export const PROPOSITO_AYUDA = 'interpretar';
@@ -133,13 +136,60 @@ function textoDelSistema(idioma) {
 export function armarPeticion(version, idioma = 'es', { propositos = PROPOSITOS } = {}) {
   const def = propositos[PROPOSITO_AYUDA];
   const c = version?.configuracion ?? {};
-  const dudas = (Array.isArray(c.noEntendido) ? c.noEntendido : []).map((d, numero) => ({ numero, clave: d.clave, texto: d.texto }));
+  const guardadas = Array.isArray(c.noEntendido) ? c.noEntendido : [];
+  // Las guardadas primero (sus números son los que la IA puede dar como pista); después las que calcula el motor, para
+  // que la IA las vea (nunca se pueden dar por aclaradas: pistasDeDudas solo acepta números de las guardadas).
+  const calculadas = dudasCalculadas(c).map(d => ({ clave: d.clave, texto: d.clave === 'fuera_del_pais' ? d.texto : nombreDeClave(d, idioma) }));
+  const dudas = [...guardadas, ...calculadas].map((d, numero) => ({ numero, clave: d.clave, texto: d.texto }));
   const datos = { instrucciones: String(version?.instrucciones ?? ''), motor: camposDelMotor(c, idioma), dudas };
   const texto = `Estos son los datos del proyecto:\n<datos>${jsonSeguro(datos)}</datos>`;
   const sistema = textoDelSistema(idioma);
   const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(ESQUEMA));
   if (!def || bytes > def.entradaMaxBytes) return null;
   return { sistema, texto, esquema: ESQUEMA, entradaMax: bytes + MARCO_BYTES, bytes };
+}
+
+// Las dudas que el motor calcula de los datos (dudas() sin las guardadas). Nunca lanza.
+function dudasCalculadas(config) {
+  try {
+    return dudasDe(config ?? {}).filter(d => CLAVES_DUDAS_CALCULADAS.includes(d.clave));
+  } catch {
+    return [];
+  }
+}
+
+// El nombre (como lo muestra el formulario) de lo que nombra una duda calculada: un sector o una zona del catálogo.
+function nombreDeClave(d, idioma) {
+  return d.clave === 'conflicto_sector' ? nombreSector(d.texto, idiomaValido(idioma)) : nombreZona(d.texto);
+}
+
+// La duda guardada que reemplaza a una calculada que la IA hizo desaparecer (mismas palabras que ya conoce la
+// pantalla): un lugar de fuera del país que la IA quitó de «Dónde» → 'lugar_inseguro' («no sé si quieres buscar ahí»);
+// algo que estaba para buscar y para excluir y la IA dejó en un solo lado → 'cambio' («revisa y deja solo lo que
+// quieres»).
+const GUARDADA_DE = Object.freeze({ fuera_del_pais: 'lugar_inseguro', conflicto_sector: 'cambio', conflicto_zona: 'cambio' });
+
+// La configuración nueva (la que salió de lo que respondió la IA) con las dudas calculadas de la base que se irían
+// solas, puestas como dudas guardadas al final (las de la base siguen primero y en su orden). null si no caben
+// (LIMITES.dudas): entonces no se guarda la versión de la IA.
+export function conDudasDeLaBase(base = {}, nueva = {}, idioma = 'es') {
+  const quedan = new Set(dudasDe(nueva).map(d => `${d.clave}|${d.texto}`));
+  const guardadas = Array.isArray(nueva.noEntendido) ? [...nueva.noEntendido] : [];
+  const yaGuardadas = new Set(guardadas.map(d => `${d.clave}|${d.texto}`));
+  const extra = [];
+  for (const d of dudasCalculadas(base)) {
+    if (quedan.has(`${d.clave}|${d.texto}`)) continue;
+    const texto = d.clave === 'fuera_del_pais' ? d.texto : nombreDeClave(d, idioma);
+    const duda = { clave: GUARDADA_DE[d.clave], texto: String(texto).slice(0, LIMITES.elemento), sugerencias: [] };
+    const llave = `${duda.clave}|${duda.texto}`;
+    if (yaGuardadas.has(llave)) continue;
+    yaGuardadas.add(llave);
+    extra.push(duda);
+  }
+  if (!extra.length) return nueva;
+  if (guardadas.length + extra.length > LIMITES.dudas) return null;
+  const resultado = limpiarConfiguracion({ ...nueva, noEntendido: [...guardadas, ...extra] });
+  return resultado.noEntendido.length === guardadas.length + extra.length ? resultado : null;
 }
 
 // ---------- Lo que vuelve de la IA ----------

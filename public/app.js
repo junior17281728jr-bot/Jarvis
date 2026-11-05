@@ -1670,7 +1670,7 @@ async function pantallaClaves(aviso = null) {
     cabeza(
       el('p', { texto: t('claves.explica') }),
       d.duenoTailscale ? el('p', { class: 'suave con-icono' }, icono('escudo', 'icono chico'), el('span', { texto: t('claves.dueno', { login: d.duenoTailscale }) })) : null,
-      !listo ? el('p', { class: 'aviso', role: 'alert', texto: t('claves.llave_danada') }) : null),
+      !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null),
     (d.grupos ?? []).map(g => el('section', { class: 'tarjeta' },
       titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
       (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))));
@@ -1883,6 +1883,7 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
   } else if (vista.vista === 'solo_tailnet') partes = [linea('candado', t('ayuda_ia.solo_tailnet'))];
   else if (vista.vista === 'apagada_admin') partes = [linea('apagado', t('ayuda_ia.apagada_admin'))];
   else if (vista.vista === 'tope_lleno') partes = [linea('atencion', t('ayuda_ia.tope_lleno', { fecha: fechaHora(d.vuelveEl) }))];
+  else if (vista.vista === 'no_cabe') partes = [linea('atencion', t('ayuda_ia.no_cabe'))];
   else if (vista.vista === 'pausa' && vista.enFila) {
     // El pedido espera en la fila mientras dura la pausa (no se cobra nada). Se sigue preguntando cada 10 s: cuando la
     // pausa termina, la versión nueva aparece aquí (o, si pasaron más de 15 minutos, se dice que se canceló sin costo).

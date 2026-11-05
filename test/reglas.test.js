@@ -423,6 +423,17 @@ test('ninguna prueba enciende el trabajador real directamente: siempre por un pr
   }
 });
 
+// Ronda 2 de revisión: el servidor web también (tiene por un momento una clave descifrada en la prueba gratis).
+test('el servidor web se quita los archivos «core» al arrancar, ANTES de abrir la base, y el servicio nuevo trae LimitCORE=0', () => {
+  const servidor = readFileSync(join(RAIZ, 'src', 'server.js'), 'utf8');
+  const quitar = servidor.indexOf('quitarArchivosCore()');
+  assert.ok(quitar > 0, 'server.js llama a quitarArchivosCore');
+  assert.ok(quitar < servidor.indexOf('abrirBase(config)'), 'antes de abrir la base');
+  const supervisor = readFileSync(join(RAIZ, 'src', 'tareas', 'supervisor.js'), 'utf8');
+  assert.match(supervisor, /execFileSync\(PRLIMIT, \['--pid', String\(pid\), '--core=0'\]/);
+  assert.match(readFileSync(join(RAIZ, 'deploy', 'jarvis.service'), 'utf8'), /^LimitCORE=0$/m);
+});
+
 test('el trabajador se enciende sin archivos «core» (prlimit --core=0), y la huella del código cuenta los .json de src/', () => {
   const supervisor = leer(de('tareas', 'supervisor.js'));
   assert.match(supervisor, /const PRLIMIT = \['\/usr\/bin\/prlimit', '\/bin\/prlimit'\]/);

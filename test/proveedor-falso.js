@@ -9,6 +9,9 @@
 // que no se entiende), 'profundo' (un 200 bueno con un campo de arreglos anidados de { bytes } bytes: mucha memoria al
 // leerlo), 'eco_id' (devuelve la clave que recibió como id de la petición: cabecera request-id, request_id e id; con
 // { status } y { trozo: true } para mandar solo «req_» + un pedazo de la clave).
+// Escenas de la ronda 2: 'uso_anidado' (un cobro nuevo DENTRO de un objeto: usage.nuevo_cobro = { tokens }, con
+// { tokens }), 'uso_herramienta_anidada' (server_tool_use: { web_fetch: { requests: 30 } }), 'uso_absurdo' (2^53 − 1
+// tokens de entrada y de salida: cada número es «válido», el costo no cabe) y 'uso_cero' (dice 0 y 0 tokens).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
 import { createServer } from 'node:http';
 
@@ -16,7 +19,7 @@ export const ESCENAS = Object.freeze([
   'ok', 'refusal', 'max_tokens', 'incomplete', 'content_filter', 'failed', 'status', 'limite_gasto_400', 'sin_credito_400',
   'sin_credito_texto', 'otro_400', 'limite_tope_429', 'limite_429', 'sin_credito_openai', 'insufficient_quota', 'redirige',
   'geo_us', 'uso_raro', 'uso_raro_herramienta', 'nunca', 'lento', 'json_roto', 'enorme', 'sin_uso', 'uso_enorme', 'cortar', 'eco_clave',
-  'geo_desconocido', 'geo_raro', 'profundo', 'eco_id',
+  'geo_desconocido', 'geo_raro', 'profundo', 'eco_id', 'uso_anidado', 'uso_herramienta_anidada', 'uso_absurdo', 'uso_cero',
 ]);
 
 const USO_ANTHROPIC = Object.freeze({ input_tokens: 2000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, service_tier: 'standard', inference_geo: 'global' });
@@ -65,6 +68,10 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
     if (escena.tipo === 'uso_raro') { uso.cache_creation_input_tokens = 50; uso.cache_creation = { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 50 }; }
     if (escena.tipo === 'uso_raro_herramienta') uso.server_tool_use = { web_search_requests: 1 };
     if (escena.tipo === 'uso_enorme') { uso.input_tokens = 5_000_000; uso.output_tokens = 900_000; }
+    if (escena.tipo === 'uso_anidado') uso.nuevo_cobro = { tokens: escena.tokens ?? 50_000 };
+    if (escena.tipo === 'uso_herramienta_anidada') uso.server_tool_use = { web_fetch: { requests: 30 } };
+    if (escena.tipo === 'uso_absurdo') { uso.input_tokens = Number.MAX_SAFE_INTEGER; uso.output_tokens = Number.MAX_SAFE_INTEGER; }
+    if (escena.tipo === 'uso_cero') { uso.input_tokens = 0; uso.output_tokens = 0; }
     const content = [];
     if (escena.pensar !== false) content.push({ type: 'thinking', thinking: '', signature: 'firma_falsa' });
     let stop = 'end_turn';
@@ -79,6 +86,9 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
   function okOpenai(escena, cuerpoPedido) {
     const uso = { input_tokens: 2000, input_tokens_details: { cached_tokens: 0 }, output_tokens: 500, output_tokens_details: { reasoning_tokens: 100 }, total_tokens: 2500, ...(escena.uso ?? {}) };
     if (escena.tipo === 'uso_enorme') { uso.input_tokens = 5_000_000; uso.output_tokens = 900_000; }
+    if (escena.tipo === 'uso_anidado') uso.nuevo = { tokens: escena.tokens ?? 50_000 };
+    if (escena.tipo === 'uso_absurdo') { uso.input_tokens = Number.MAX_SAFE_INTEGER; uso.output_tokens = Number.MAX_SAFE_INTEGER; uso.total_tokens = Number.MAX_SAFE_INTEGER; }
+    if (escena.tipo === 'uso_cero') { uso.input_tokens = 0; uso.output_tokens = 0; uso.total_tokens = 0; uso.output_tokens_details = { reasoning_tokens: 0 }; }
     const cuerpo = {
       id: `resp_falso_${numero}`, object: 'response', status: 'completed', model: cuerpoPedido?.model ?? 'gpt-6-luna', service_tier: 'default',
       output: [{ type: 'reasoning', summary: [] }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: escena.texto ?? JSON.stringify(escena.json ?? respuestaJson) }] }],

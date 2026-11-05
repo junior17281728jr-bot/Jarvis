@@ -9,8 +9,8 @@ import { leerConfigIa, faltaParaEncender } from './config.js';
 import { precioDe, filaDe, precioPublico } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
 import { PROPOSITOS } from './propositos.js';
-import { GASTO_SQL, gastoMicro, apartadoMicro, claveAvisoTope } from './gasto.js';
-import { mesCobro, inicioMesSiguienteCobro, elegirProveedor, tipicoMicro } from './presupuesto.js';
+import { GASTO_SQL, gastoMicro, apartadoMicro } from './gasto.js';
+import { mesCobro, inicioMesSiguienteCobro, elegirProveedor, tipicoMicro, topeLleno } from './presupuesto.js';
 import { topeEspacioMicro } from './topes.js';
 
 const MES = /^\d{4}-(?:0[1-9]|1[0-2])$/;
@@ -50,12 +50,12 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
   let motivo = null;
   let modelo = cfg.proveedores[cfg.orden[0]]?.modelo ?? null;
   if (cfg.encendida) {
-    const aviso = db.prepare('SELECT detalle FROM avisos WHERE clave = ? AND resuelto_en IS NULL').get(claveAvisoTope('general', mes));
-    let umbral = 0;
-    try { umbral = Number(JSON.parse(aviso?.detalle ?? 'null')?.umbral) || 0; } catch { umbral = 0; }
     const eleccion = elegirProveedor(db, config, cfg, ahora);
     if (eleccion.ok) modelo = eleccion.modelo;
-    if (pct >= 100 || umbral >= 100) estado = 'tope_lleno';
+    // Ronda 2 de revisión: «Tope lleno» sale de la MISMA regla que el aviso del 100 % (topeLleno: lo que queda no
+    // alcanza ni para el uso más barato), nunca de un aviso abierto: un pedido grande que no cupo no apaga la IA.
+    const lleno = pct >= 100 || topeLleno(db, { cfg, ambito: 'general', mes });
+    if (lleno) estado = 'tope_lleno';
     else if (!eleccion.ok) { estado = 'sin_uso'; motivo = eleccion.motivo; }
     else estado = 'encendida';
   }

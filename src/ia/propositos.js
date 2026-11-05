@@ -8,6 +8,9 @@
 //  - cuentaProyecto: true = la llamada cuenta contra el tope del proyecto (ia_llamadas.cuenta_proyecto = 1).
 //  - salidaMax: lo máximo que puede escribir el modelo (max_tokens / max_output_tokens; incluye su «pensar»).
 //  - entradaMaxBytes: lo más largo que se le puede mandar (en bytes UTF-8).
+//  - entradaMinBytes: lo más CORTO que puede ser un pedido de este uso (su texto fijo; test/ia-ayuda.test.js comprueba
+//    que nunca es más que el pedido más corto de verdad). Sirve para saber si un tope está lleno de verdad: si lo que
+//    queda no alcanza ni para el pedido más corto, ya no cabe ninguno (src/ia/presupuesto.js, topeLleno).
 //  - respuestaMaxBytes: lo más largo que se LEE de su respuesta (más que eso no se lee ni se usa). Una respuesta de
 //    salidaMax tokens ocupa unos 20 KB: el tope deja mucho margen y protege la memoria del trabajador (120 MB).
 //  - maximoMicro: lo máximo que puede costar una vez, en millonésimas de dólar (si la reserva pasa de esto, no se usa).
@@ -21,7 +24,7 @@ export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
   interpretar: Object.freeze({
-    fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 2048, entradaMaxBytes: 24_000, respuestaMaxBytes: 262_144,
+    fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 2048, entradaMaxBytes: 24_000, entradaMinBytes: 3_500, respuestaMaxBytes: 262_144,
     maximoMicro: 5_000, tipicoMicro: 500, esfuerzo: 'low', timeoutMs: 45_000, alFaltar: 'motor_propio',
     ajuste: 'ayudaProyectos', tarea: 'ia.interpretar',
   }),

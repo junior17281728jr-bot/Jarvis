@@ -14,7 +14,7 @@
 //    anterior si una versión nueva trae un trabajador que no arranca. Se vuelve atrás el CÓDIGO, nunca los datos.
 //  - Toma una muestra de salud por hora (también en modo seguro) y abre o resuelve sus avisos.
 // Nada de esto hace esperar a las pantallas: todo es corto y en segundo plano.
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +68,20 @@ export function lanzarTrabajador({ ruta = RUTA_TRABAJADOR, env }) {
   // Sin archivos «core»: el límite 0 vale para el trabajador y para todo lo que él encienda.
   const completa = PRLIMIT ? [PRLIMIT, '--core=0', '--', ...orden] : orden;
   return spawn(completa[0], completa.slice(1), opciones);
+}
+
+// Ronda 2 de revisión: el servidor web también tiene en memoria, por un momento, una clave descifrada (la prueba gratis
+// de Claves y «Probar y reanudar»), así que tampoco puede dejar un archivo «core» si se cae: se baja a sí mismo ese
+// límite a 0 al arrancar, con el mismo prlimit (bajar el propio límite no necesita root, ni depende del archivo del
+// servicio, que el actualizador no vuelve a instalar). Devuelve true si quedó en 0; nunca lanza.
+export function quitarArchivosCore({ pid = process.pid } = {}) {
+  if (!PRLIMIT || !Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    execFileSync(PRLIMIT, ['--pid', String(pid), '--core=0'], { stdio: 'ignore', timeout: 5000, env: {} });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Pasa la salida del trabajador al registro del servicio, línea por línea, con «[tareas]» delante.

@@ -34,6 +34,36 @@ export function tokens(valor) {
   return Number.isSafeInteger(valor) && valor >= 0 ? valor : Number.NaN;
 }
 
+// Ningún pedido de OPORTIA se acerca a esto (el contexto más grande de un modelo es de 1 millón de tokens): un número
+// mayor en lo que gastó es un dato absurdo y se trata como un gasto desconocido (cota, aviso grave y pausa).
+export const TOKENS_MAX = 100_000_000;
+const PROFUNDIDAD_USO = 8;
+
+// Revisa un valor de «lo que gastó» que OPORTIA no sabe cobrar (un campo nuevo, o uno nuevo DENTRO de un campo
+// conocido), a cualquier profundidad. Ronda 2 de revisión: un cobro nuevo puede llegar como número o como objeto
+// anidado ({ nuevo: { tokens: N } }), así que se mira todo:
+//  - null, undefined o 0: nada.
+//  - un número mayor que 0: gasto desconocido (se suma a nota.desconocidos para la cota).
+//  - cualquier otro número (negativo, infinito), un texto o un sí/no: gasto desconocido (no se sabe cuánto).
+//  - un objeto o un arreglo: se mira cada valor (demasiados niveles: gasto desconocido).
+// nota: { raro, desconocidos } (se cambia en el lugar).
+export function revisarUsoDesconocido(valor, nota, profundidad = 0) {
+  if (valor == null) return nota;
+  if (typeof valor === 'number') {
+    if (valor === 0) return nota;
+    nota.raro = true;
+    if (Number.isFinite(valor) && valor > 0) nota.desconocidos = Math.min(Number.MAX_SAFE_INTEGER, nota.desconocidos + Math.ceil(valor));
+    return nota;
+  }
+  if (typeof valor === 'object') {
+    if (profundidad >= PROFUNDIDAD_USO) { nota.raro = true; return nota; }
+    for (const v of Object.values(valor)) revisarUsoDesconocido(v, nota, profundidad + 1);
+    return nota;
+  }
+  nota.raro = true;
+  return nota;
+}
+
 // Lo que el modelo escribió, si es JSON: { json } o { error: true }.
 export function comoJson(texto) {
   if (typeof texto !== 'string' || !texto.trim()) return { error: true };

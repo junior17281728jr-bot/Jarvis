@@ -160,7 +160,9 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   la clave o un pedazo de ella. Cambiar una clave deja la anterior guardada como «reemplazada»; desactivar
   la deja «desactivada»: nunca se borran. Si alguien vio una clave, cámbiala aquí **y anúlala en la página del proveedor**.
 - Lo que queda: quien sea root (o el usuario `jarvis`) en el servidor puede leer la llave y la base, y la memoria de
-  intercambio (swap) podría guardar un trozo de memoria. El trabajador corre sin archivos de volcado (`prlimit --core=0`).
+  intercambio (swap) podría guardar un trozo de memoria. El trabajador y el servidor web corren sin archivos de volcado
+  (`prlimit --core=0`: el servidor se lo pone a sí mismo al arrancar, y el servicio nuevo trae `LimitCORE=0`). La llave
+  nunca queda guardada en la memoria del proceso: solo su huella.
   Si un día dudas, anula la clave en el proveedor y pega una nueva.
 
 ### Desde la consola (cuando las pantallas no abren)
@@ -169,6 +171,7 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=apartar-llave-danada
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=recuperar-llave
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=empezar-de-nuevo
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar
 
 `--ia=no` apaga la IA (no hay `--ia=si`: encenderla necesita la pantalla y su aviso). `--claves=revisar` explica en palabras
@@ -176,6 +179,9 @@ simples cómo está el archivo de la llave y no cambia nada. `--claves=apartar-l
 está dañado: le cambia el nombre (no lo borra) para que la próxima clave pegada cree una llave nueva.
 `--claves=recuperar-llave` solo hace algo si falta el archivo de la llave y queda otro nombre (`.nueva-…`) con la llave con
 la que se guardaron tus claves: se lo vuelve a poner (no borra ni pisa nada; `--claves=revisar` dice si se puede).
+Mientras falte ese archivo y ya haya claves guardadas, la pantalla Claves no deja pegar otra (así nunca se crea una llave
+nueva encima de la que falta). Si no se puede recuperar, `--claves=empezar-de-nuevo` crea una llave nueva: las claves de
+antes quedan guardadas sin poder leerse y se pegan otra vez.
 `--tailscale=reanotar` olvida la cuenta de Tailscale guardada del dueño (el primer administrador; si cambiaste de cuenta);
 la próxima entrada del dueño anota la nueva.
 

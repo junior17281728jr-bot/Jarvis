@@ -6,10 +6,15 @@
 //  - El texto se lee de output[] (type 'message') → content[] (type 'output_text').
 //  - usage.input_tokens es el TOTAL; los de caché van dentro (input_tokens_details).
 //  - «Sin saldo»: 429 con code credit_balance_exhausted, o type/code insufficient_quota.
-import { codigoCorto, idPeticionDe, esperaPedida, tokens, comoJson, resultado, resultadoSinRespuesta, motivoSinRespuesta } from './comun.js';
+import {
+  codigoCorto, idPeticionDe, esperaPedida, tokens, comoJson, resultado, resultadoSinRespuesta, motivoSinRespuesta, revisarUsoDesconocido, TOKENS_MAX,
+} from './comun.js';
 
 const USO_CONOCIDO = new Set(['input_tokens', 'output_tokens', 'total_tokens', 'input_tokens_details', 'output_tokens_details']);
 const NIVELES_NORMALES = new Set(['default', 'auto']);
+
+// Lo que se sabe cobrar dentro de los detalles (lo demás que venga ahí es un gasto desconocido).
+const DETALLE_CONOCIDO = Object.freeze({ input_tokens_details: new Set(['cached_tokens', 'cache_write_tokens']), output_tokens_details: new Set(['reasoning_tokens']) });
 
 function leerUso(u, nivel) {
   if (!u || typeof u !== 'object' || Array.isArray(u)) return null;
@@ -19,14 +24,20 @@ function leerUso(u, nivel) {
   const cacheLectura = tokens(u.input_tokens_details?.cached_tokens);
   const cacheEscritura = tokens(u.input_tokens_details?.cache_write_tokens);
   if ([total, salida, cacheLectura, cacheEscritura].some(Number.isNaN)) return null;
-  let raro = false;
-  let desconocidos = 0;
-  if (nivel != null && !NIVELES_NORMALES.has(nivel)) raro = true; // por ejemplo «priority», que cuesta más
-  if (cacheLectura + cacheEscritura > total) raro = true;
-  for (const [clave, v] of Object.entries(u)) {
-    if (!USO_CONOCIDO.has(clave) && typeof v === 'number' && Number.isFinite(v) && v > 0) { raro = true; desconocidos += Math.ceil(v); }
+  const nota = { raro: false, desconocidos: 0 };
+  if (nivel != null && !NIVELES_NORMALES.has(nivel)) nota.raro = true; // por ejemplo «priority», que cuesta más
+  if (cacheLectura + cacheEscritura > total) nota.raro = true;
+  if ([total, salida].some(n => n > TOKENS_MAX)) nota.raro = true;
+  // Los detalles: lo que se conoce ya está dentro de los totales; cualquier otra cosa (audio, imágenes, algo nuevo, a
+  // cualquier profundidad) es un gasto desconocido.
+  for (const [campo, conocidos] of Object.entries(DETALLE_CONOCIDO)) {
+    const d = u[campo];
+    if (d == null) continue;
+    if (typeof d !== 'object' || Array.isArray(d)) { nota.raro = true; continue; }
+    for (const [clave, v] of Object.entries(d)) if (!conocidos.has(clave)) revisarUsoDesconocido(v, nota, 1);
   }
-  return { entrada: Math.max(0, total - cacheLectura - cacheEscritura), salida, cacheLectura, cacheEscritura, geo: null, raro, desconocidos };
+  for (const [clave, v] of Object.entries(u)) if (!USO_CONOCIDO.has(clave)) revisarUsoDesconocido(v, nota);
+  return { entrada: Math.max(0, total - cacheLectura - cacheEscritura), salida, cacheLectura, cacheEscritura, geo: null, raro: nota.raro, desconocidos: nota.desconocidos };
 }
 
 function motivoDeError(status, json) {

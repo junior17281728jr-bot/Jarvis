@@ -17,6 +17,8 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/jarvis
 PrivateTmp=true
+# Sin archivos «core»: una caída nunca deja en el disco una copia de la memoria (con una clave descifrada)
+LimitCORE=0
 
 [Install]
 WantedBy=multi-user.target
