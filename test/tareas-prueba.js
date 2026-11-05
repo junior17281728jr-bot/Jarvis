@@ -39,7 +39,12 @@ export const TIPOS_PRUEBA = Object.freeze({
   'prueba.correo': { repetible: false, cupo: 'grande' }, // «manda algo»: nunca se repite sola
   'prueba.lenta': {}, // espera datos.ms y respeta la señal
   'prueba.grande': { cupo: 'grande' },
+  'prueba.rara': { reintentos: { baseMs: 10 } }, // devuelve algo que no se puede guardar (datos.modo)
+  'prueba.correo_terco': { repetible: false, tiempoPorPasoMs: 100, reintentos: { baseMs: 10 } }, // «manda» y no respeta la señal
 });
+
+// Cuántas veces «mandó» prueba.correo_terco (para comprobar que nunca se manda dos veces sola).
+export const ENVIOS = { n: 0 };
 
 export const MANEJADORES_PRUEBA = Object.freeze({
   'prueba.eco': { paso: async ctx => ({ listo: true, resultado: { eco: ctx.tarea.datos } }) },
@@ -73,6 +78,22 @@ export const MANEJADORES_PRUEBA = Object.freeze({
   },
   'prueba.lenta': { paso: ctx => contando('normal', async () => { await esperarCon(ctx.tarea.datos.ms ?? 10_000, ctx.senal); return { listo: true, resultado: null }; }) },
   'prueba.grande': { paso: ctx => contando('grande', async () => { await esperarCon(ctx.tarea.datos.ms ?? 10_000, ctx.senal); return { listo: true, resultado: null }; }) },
+  'prueba.rara': {
+    paso: async ctx => {
+      const circular = {};
+      circular.yo = circular;
+      if (ctx.tarea.datos.modo === 'circular') return { punto: circular };
+      if (ctx.tarea.datos.modo === 'tojson') return { listo: true, resultado: { toJSON() { throw new Error('no se deja'); } } };
+      return { listo: true, resultado: { n: 1n } };
+    },
+  },
+  'prueba.correo_terco': {
+    paso: async ctx => {
+      await new Promise(listo => setTimeout(listo, ctx.tarea.datos.ms ?? 300).unref());
+      ENVIOS.n += 1; // «ya salió» aunque el paso se haya cortado por tiempo
+      return { listo: true, resultado: { enviado: true } };
+    },
+  },
 });
 
 export const REGISTRO_PRUEBA = Object.freeze({ ...TIPOS, ...TIPOS_PRUEBA });

@@ -1,7 +1,8 @@
 // Ayuda común para las pruebas. Las pruebas corren en el servidor real (como administrador y con OPORTIA
 // funcionando), así que: nunca usan internet, nunca tocan /var/lib/jarvis y nunca usan el puerto 8080.
-import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 
@@ -14,8 +15,23 @@ globalThis.fetch = (url, ...resto) => {
   return fetchReal(url, ...resto);
 };
 
+// Dónde van las carpetas de prueba. El actualizador del servidor baja el código a una carpeta temporal propia
+// ($TMP/src) y al terminar borra $TMP entero: si el código está ahí adentro, las carpetas de prueba van en
+// $TMP/oportia-pruebas y se van con él (si no, se quedarían en /tmp hasta reiniciar el servidor: unos 28 MB
+// cada vez que se prueba una versión). En cualquier otro lugar, en la carpeta temporal del sistema, como antes.
+// Siempre queda dentro de la carpeta temporal del sistema (el modo de prueba de la base lo exige).
+export function baseDePruebas(raiz = join(dirname(fileURLToPath(import.meta.url)), '..'), temporal = tmpdir()) {
+  const sistema = resolve(temporal);
+  const padre = resolve(raiz, '..');
+  if (padre !== sistema && padre.startsWith(sistema + sep)) return join(padre, 'oportia-pruebas');
+  return sistema;
+}
+
+const BASE_PRUEBAS = baseDePruebas();
+
 export function carpetaTemporal(nombre = 'oportia') {
-  return mkdtempSync(join(tmpdir(), `${nombre}-`));
+  mkdirSync(BASE_PRUEBAS, { recursive: true });
+  return mkdtempSync(join(BASE_PRUEBAS, `${nombre}-`));
 }
 
 export function configDePrueba() {

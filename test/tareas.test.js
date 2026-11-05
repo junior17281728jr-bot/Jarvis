@@ -28,7 +28,7 @@ import { medirSalud, evaluarSalud, semaforo, guardarMuestra, historialSalud } fr
 import { crearEjecutor } from '../src/tareas/ejecutor.js';
 import { MANEJADORES } from '../src/tareas/manejadores.js';
 import { crearServidor } from '../src/app.js';
-import { MANEJADORES_PRUEBA, REGISTRO_PRUEBA, CONCURRENCIA, reiniciarConcurrencia } from './tareas-prueba.js';
+import { MANEJADORES_PRUEBA, REGISTRO_PRUEBA, CONCURRENCIA, reiniciarConcurrencia, ENVIOS } from './tareas-prueba.js';
 
 const T0 = Date.parse('2026-11-04T10:05:00Z');
 const MIN = 60_000;
@@ -1331,5 +1331,173 @@ test('API del administrador: sin supervisor también funciona, y la acción 31 e
     assert.equal(leerModoSeguro(db).activo, true, 'la acción 31 no cambió nada');
     assert.equal((await pedir('GET', '/api/admin/sistema')).codigo, 200, 'mirar no tiene tope');
   });
+  db.close();
+});
+
+// ---------- Arreglos de la revisión de la parte 1c ----------
+test('un resultado o un punto que no se puede guardar (BigInt, circular, toJSON que falla) deja la tarea «fallida» y el trabajador sigue', async () => {
+  const e = prepararEjecutor();
+  const ids = ['bigint', 'circular', 'tojson'].map(modo => e.ponerAhora('prueba.rara', { modo }));
+  await e.hasta(() => ids.every(id => fila(e.db, id).estado === 'fallida'), 'las 3 tareas raras fallidas');
+  for (const id of ids) {
+    const f = fila(e.db, id);
+    assert.equal(f.ultimo_error, 'respuesta_no_valida');
+    assert.equal(f.fallos_seguidos, 1, 'no se reintenta: es un error del programa');
+    assert.deepEqual(eventos(e.db, id), ['fallida']);
+  }
+  assert.deepEqual(e.pedidos, [], 'el trabajador no pidió salir');
+  // Y sigue trabajando normal.
+  const eco = e.ponerAhora('prueba.eco');
+  await e.hasta(() => fila(e.db, eco).estado === 'hecha', 'prueba.eco hecha después');
+  await e.ejecutor.parar();
+  e.db.close();
+
+  // guardarPaso también se cuida solo, aunque le llegue la salida sin pasar por normalizarSalida.
+  const { db } = nuevaBase();
+  const id = poner(db, 'prueba.eco');
+  assert.equal(guardar(db, tomar(db), { tipo: 'listo', resultado: { n: 2n } }).estado, 'fallida');
+  assert.equal(fila(db, id).ultimo_error, 'respuesta_no_valida');
+  db.close();
+});
+
+test('si el paso de una tarea no se puede guardar ni la segunda vez, el trabajador sale y ESA tarea suma un fallo (no vuelve gratis)', async () => {
+  const e = prepararEjecutor();
+  // La base no deja terminar ninguna tarea (como si guardar fallara siempre).
+  e.db.exec(`CREATE TEMP TRIGGER no_se_deja BEFORE UPDATE OF estado ON tareas WHEN NEW.estado = 'hecha'
+    BEGIN SELECT RAISE(ABORT, 'no se puede guardar'); END;`);
+  const eco = e.ponerAhora('prueba.eco');
+  await e.hasta(() => e.pedidos.includes('caida'), 'el trabajador pide salir');
+  const { devueltas } = await e.ejecutor.parar();
+  assert.equal(devueltas.length, 1);
+  const f = fila(e.db, eco);
+  assert.equal(f.estado, 'lista');
+  assert.equal(f.fallos_seguidos, 1);
+  assert.equal(f.ultimo_error, 'no_se_pudo_guardar');
+  assert.deepEqual(eventos(e.db, eco), ['abandonada']);
+  e.db.close();
+
+  // Con sus intentos gastados queda «fallida» (antes de que el trabajador llegue al modo seguro).
+  const { db } = nuevaBase();
+  const id = poner(db, 'prueba.eco');
+  poner(db, 'prueba.grande');
+  for (let vida = 1; vida <= 3; vida++) {
+    db.prepare('UPDATE tareas SET disponible_en = ? WHERE id = ?').run(new Date(T0).toISOString(), id);
+    assert.equal(tomar(db).id, id);
+    const otra = tomar(db, { cupo: 'grande' });
+    devolverLasMias(db, { corrida: 'corrida-1', culpables: [id], ahora: T0, azar: MITAD, registro: REGISTRO });
+    assert.equal(fila(db, otra.id).fallos_seguidos, 0, 'la otra tarea en curso no tuvo la culpa');
+  }
+  assert.equal(fila(db, id).estado, 'fallida');
+  assert.deepEqual(eventos(db, id), ['abandonada', 'abandonada', 'fallida']);
+  db.close();
+});
+
+test('repetible:false: un paso cortado por tiempo o con un error cualquiera va a «por revisar» (nunca se repite solo); un ErrorTarea sí puede volver', async () => {
+  const { db } = nuevaBase();
+  const corte = Object.assign(new Error('se pasó'), { name: 'TimeoutError' });
+  for (const [salida, esperado] of [
+    [salidaDeError(corte), 'revisar'],
+    [salidaDeError(new Error('se cayó la conexión')), 'revisar'],
+    [{ tipo: 'listo', resultado: { n: 1n } }, 'revisar'],
+    [salidaDeError(new ErrorTarea('sin_red')), 'lista'], // el trabajo SABE que no salió nada
+    [salidaDeError(new ErrorTarea('clave_mala', { reintentable: false })), 'fallida'],
+  ]) {
+    const id = poner(db, 'prueba.correo');
+    const t = tomar(db);
+    assert.equal(t.id, id);
+    assert.equal(guardar(db, t, salida).estado, esperado, JSON.stringify(salida.error ?? salida.tipo));
+    if (esperado === 'revisar') assert.deepEqual(eventos(db, id), ['revisar']);
+    db.prepare("UPDATE tareas SET estado = 'cancelada' WHERE id = ?").run(id);
+  }
+  // Uno que sí se puede repetir, cortado por tiempo, vuelve a la fila como siempre.
+  const eco = poner(db, 'prueba.eco');
+  assert.equal(guardar(db, tomar(db), salidaDeError(corte)).estado, 'lista');
+  assert.equal(fila(db, eco).ultimo_error, 'tiempo_agotado');
+  db.close();
+
+  // Con el ejecutor de verdad: un «correo» que no respeta la señal se corta por tiempo, igual «sale», y no se
+  // vuelve a mandar: queda por revisar.
+  ENVIOS.n = 0;
+  const e = prepararEjecutor();
+  const correo = e.ponerAhora('prueba.correo_terco', { ms: 300 });
+  await e.hasta(() => fila(e.db, correo).estado === 'revisar', 'el correo por revisar');
+  assert.equal(fila(e.db, correo).ultimo_error, 'tiempo_agotado');
+  await esperarHasta(() => ENVIOS.n === 1, { que: 'el envío que ya estaba en marcha' });
+  for (let i = 0; i < 5; i++) await e.ejecutor.ciclo();
+  await new Promise(listo => setTimeout(listo, 400));
+  assert.equal(ENVIOS.n, 1, 'se mandó una sola vez');
+  assert.equal(fila(e.db, correo).tomas, 1);
+  await e.ejecutor.parar({ esperaMs: 0 });
+  e.db.close();
+});
+
+// Cómo contaba resumenFila antes (trayendo cada fila a JavaScript): el SQL nuevo tiene que dar lo mismo.
+function resumenFilaComoAntes(db, { tipos, ahora }) {
+  const conocidos = new Set(tipos);
+  const momento = new Date(ahora).toISOString();
+  const r = { listas: 0, esperando: 0, enCurso: 0, revisar: 0, enPausa: 0, esperanVersion: 0, fallidas7d: 0, hechas24h: 0, fallidas24h: 0, canceladas24h: 0, masViejaDesde: null, atrasadaDesde: null };
+  for (const t of db.prepare(`SELECT t.estado, t.tipo, t.disponible_en, t.proyecto_id, p.estado AS p_estado, p.en_papelera AS p_papelera
+    FROM tareas t LEFT JOIN proyectos p ON p.id = t.proyecto_id WHERE t.estado IN ('lista', 'en_curso', 'revisar')`).all()) {
+    if (t.estado === 'en_curso') r.enCurso += 1;
+    else if (t.estado === 'revisar') r.revisar += 1;
+    else if (!conocidos.has(t.tipo)) r.esperanVersion += 1;
+    else if (t.proyecto_id != null && !(t.p_estado === 'en_ejecucion' && t.p_papelera === 0)) r.enPausa += 1;
+    else if (t.disponible_en > momento) r.esperando += 1;
+    else { r.listas += 1; if (r.masViejaDesde == null || t.disponible_en < r.masViejaDesde) r.masViejaDesde = t.disponible_en; }
+  }
+  if (r.masViejaDesde != null && r.masViejaDesde < new Date(ahora - 30 * MIN).toISOString()) r.atrasadaDesde = r.masViejaDesde;
+  const hace24h = new Date(ahora - DIA).toISOString();
+  for (const t of db.prepare("SELECT estado, terminada_en FROM tareas WHERE estado IN ('hecha', 'fallida', 'cancelada') AND terminada_en >= ?").all(new Date(ahora - 7 * DIA).toISOString())) {
+    if (t.estado === 'fallida') r.fallidas7d += 1;
+    if (t.terminada_en < hace24h) continue;
+    if (t.estado === 'hecha') r.hechas24h += 1;
+    else if (t.estado === 'fallida') r.fallidas24h += 1;
+    else r.canceladas24h += 1;
+  }
+  return r;
+}
+
+test('resumenFila cuenta en SQLite y da exactamente lo mismo que antes (estados, pausas, tipos nuevos, esperas, 24 h y 7 días)', () => {
+  const { db } = nuevaBase();
+  const cuenta = crearCuenta(db);
+  const proyectos = [crearProyecto(db, cuenta), crearProyecto(db, cuenta, { estado: 'pausado' }), crearProyecto(db, cuenta, { papelera: 1 })];
+  const estados = ['lista', 'lista', 'en_curso', 'revisar', 'hecha', 'fallida', 'cancelada'];
+  let semilla = 7;
+  const azar = () => { semilla = (semilla * 1103515245 + 12345) % 2147483648; return semilla / 2147483648; };
+  for (let i = 0; i < 300; i++) {
+    const id = poner(db, 'prueba.eco', { claveUnica: `r${i}`, ...(azar() < 0.4 ? { proyectoId: proyectos[Math.floor(azar() * 3)] } : {}) });
+    const estado = estados[Math.floor(azar() * estados.length)];
+    const disponible = new Date(T0 + Math.round((azar() - 0.6) * 4 * HORA)).toISOString();
+    const terminada = ['hecha', 'fallida', 'cancelada'].includes(estado) ? new Date(T0 - Math.round(azar() * 9 * DIA)).toISOString() : null;
+    db.prepare('UPDATE tareas SET estado = ?, disponible_en = ?, terminada_en = ?, tipo = ? WHERE id = ?')
+      .run(estado, disponible, terminada, azar() < 0.1 ? 'proyecto.de_la_fase_9' : 'prueba.eco', id);
+  }
+  for (const ahora of [T0, T0 + HORA, T0 - 3 * HORA]) {
+    const nuevo = resumenFila(db, { tipos: TIPOS_PRUEBA, ahora });
+    assert.deepEqual(nuevo, resumenFilaComoAntes(db, { tipos: TIPOS_PRUEBA, ahora }));
+    if (ahora === T0) assert.ok(nuevo.listas > 0 && nuevo.atrasadaDesde && nuevo.enPausa > 0 && nuevo.esperanVersion > 0 && nuevo.hechas24h > 0 && nuevo.fallidas7d > 0, JSON.stringify(nuevo));
+  }
+  // Con la fila vacía, todo en cero.
+  const { db: vacia } = nuevaBase();
+  assert.deepEqual(resumenFila(vacia, { tipos: TIPOS_PRUEBA, ahora: T0 }), resumenFilaComoAntes(vacia, { tipos: TIPOS_PRUEBA, ahora: T0 }));
+  vacia.close();
+  db.close();
+});
+
+test('servicio_inestable: después de que alguien lo quita, una sola caída más NO lo vuelve a poner (cuentan solo los arranques nuevos)', () => {
+  const { db } = nuevaBase();
+  for (let i = 0; i < 3; i++) registrarArranque(db, { version: 'v', codigo: 'c', ahora: T0 + i * MIN });
+  assert.equal(registrarArranque(db, { version: 'v', codigo: 'c', ahora: T0 + 3 * MIN }).modoSeguro?.activo, true);
+  ponerModoSeguro(db, { activo: false, origen: 'admin', ahora: T0 + 5 * MIN });
+  // El servicio se vuelve a caer UNA vez: el arranque siguiente no lo activa.
+  const quinto = registrarArranque(db, { version: 'v', codigo: 'c', ahora: T0 + 6 * MIN });
+  assert.equal(quinto.caidasRecientes, 0);
+  assert.equal(leerModoSeguro(db).activo, false);
+  // Con 3 caídas nuevas, sí (la regla de siempre).
+  registrarArranque(db, { version: 'v', codigo: 'c', ahora: T0 + 7 * MIN });
+  registrarArranque(db, { version: 'v', codigo: 'c', ahora: T0 + 8 * MIN });
+  assert.equal(leerModoSeguro(db).activo, false);
+  assert.equal(registrarArranque(db, { version: 'v', codigo: 'c', ahora: T0 + 9 * MIN }).caidasRecientes, 3);
+  assert.equal(leerModoSeguro(db).motivo, 'servicio_inestable');
   db.close();
 });

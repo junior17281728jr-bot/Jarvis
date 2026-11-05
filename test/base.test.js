@@ -121,3 +121,11 @@ test('las pruebas nunca pueden escribir fuera de la carpeta temporal, aunque alg
   assert.throws(() => abrirBase({ archivoBase: '/var/lib/jarvis/oportia.db', carpetaCopias: '/var/lib/jarvis/oportia-copias' }), /Modo de prueba/);
   assert.throws(() => abrirBase({ archivoBase: '/opt/oportia-nunca/oportia.db', carpetaCopias: '/opt/oportia-nunca/copias' }), /Modo de prueba/);
 });
+
+test('las carpetas de prueba quedan dentro de la carpeta del actualizador (que la borra al terminar); si no, en la temporal del sistema', async () => {
+  const { baseDePruebas } = await import('./ayuda.js');
+  assert.equal(baseDePruebas('/tmp/tmp.Ab12/src', '/tmp'), '/tmp/tmp.Ab12/oportia-pruebas');
+  assert.equal(baseDePruebas('/tmp/tmp.Ab12', '/tmp'), '/tmp', 'sin carpeta propia: como antes');
+  assert.equal(baseDePruebas('/home/user/jarvis', '/tmp'), '/tmp');
+  assert.equal(baseDePruebas('/tmpx/a/src', '/tmp'), '/tmp', 'una carpeta que solo empieza igual no cuenta');
+});

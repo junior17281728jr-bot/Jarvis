@@ -152,6 +152,7 @@ function supervisorDeMentira({ tiempos = {}, reloj, ...opciones } = {}) {
     tiempos: { revisarCadaMs: 50, modoSeguroCadaMs: 50, saludCadaMs: 600_000, ...tiempos },
     registro: { log() {}, error() {}, warn() {} },
     ...(reloj ? { reloj } : {}),
+    ...(opciones.monotono ? { monotono: opciones.monotono } : {}),
   });
   return { db, config, codigo, supervisor, lanzados, cuando, cerrar: async () => { await supervisor.parar(); db.close(); } };
 }
@@ -247,6 +248,78 @@ test('supervisor: después de quitar el modo seguro, solo cuentan las caídas NU
     await esperarHasta(() => leerModoSeguro(m.db).activo, { que: 'modo seguro con 5 caídas nuevas' });
     assert.equal(m.lanzados.length, 5);
     assert.equal(leerModoSeguro(m.db).motivo, 'trabajador_inestable');
+  } finally {
+    await m.cerrar();
+  }
+});
+
+test('supervisor: si el reloj del servidor salta 2 min adelante, un trabajador sano NO se corta por «colgado»; si salta 1 h atrás, la puerta igual se abre a los 90 s', async () => {
+  let salto = 0;
+  const m = supervisorDeMentira({
+    reloj: () => Date.now() + salto,
+    monotono: () => performance.now(),
+    crear: () => trabajadorDeMentira({ alNacer: p => p.decir({ tipo: 'listo' }) }),
+  });
+  try {
+    m.supervisor.iniciar();
+    await esperarHasta(() => m.supervisor.estado().fase === 'esperando', { que: 'listo' });
+    salto = 120_000; // NTP corrige la hora del servidor: 2 minutos adelante de golpe
+    await dormir(300); // la vigilancia mira cada 50 ms
+    assert.deepEqual(m.lanzados[0].senales, [], 'nadie le mandó SIGKILL');
+    assert.equal(m.lanzados.length, 1);
+    assert.equal(m.supervisor.estado().fase, 'esperando');
+    assert.ok(m.supervisor.estado().segundosDesdeLatido < 5);
+  } finally {
+    await m.cerrar();
+  }
+
+  salto = 0;
+  const n = supervisorDeMentira({ tiempos: { ventanaArranqueMs: 150 }, reloj: () => Date.now() + salto, monotono: () => performance.now() });
+  try {
+    salto = -3_600_000;
+    await dormir(250);
+    assert.equal(n.supervisor.estadoArranque(), 'no_aplica', 'la ventana de 90 s se mide con un reloj que no salta');
+  } finally {
+    await n.cerrar();
+  }
+});
+
+test('supervisor: si el trabajador sale una y otra vez por pasos zombis, cada vez espera más (no se reinicia sin parar)', async () => {
+  const m = supervisorDeMentira({
+    tiempos: { ventanaArranqueMs: 0, reintentoSenalMs: 20, reinicioBaseMs: 100, reinicioMaxMs: 10_000 },
+    crear: () => trabajadorDeMentira({ alNacer: p => { p.decir({ tipo: 'listo' }); setTimeout(() => p.salir(76), 5); } }),
+  });
+  try {
+    m.supervisor.iniciar();
+    await esperarHasta(() => m.lanzados.length >= 4, { que: '4 vidas' });
+    const esperas = [1, 2, 3].map(i => m.cuando[i] - m.cuando[i - 1]);
+    assert.ok(esperas[0] < 95, `la primera vez vuelve rápido (${Math.round(esperas[0])} ms)`);
+    assert.ok(esperas[1] >= 95, `la segunda ya espera más (${Math.round(esperas[1])} ms)`);
+    assert.ok(esperas[2] >= 190, `y la tercera, más todavía (${Math.round(esperas[2])} ms)`);
+    assert.equal(leerModoSeguro(m.db).activo, false, 'los zombis no cuentan para el modo seguro');
+    assert.ok(m.db.prepare("SELECT COUNT(*) AS n FROM trabajador_corridas WHERE como_termino = 'zombis'").get().n >= 3);
+  } finally {
+    await m.cerrar();
+  }
+});
+
+test('supervisor: si el servicio arranca en modo seguro, las tareas que quedaron «en curso» de una vida anterior que ya no existe vuelven a la fila', async () => {
+  const m = supervisorDeMentira();
+  try {
+    // Una vida anterior del trabajador (su proceso ya no existe) tenía una tarea en las manos cuando se cayó todo.
+    const vieja = nuevaCorrida(m.db, { version: '0.0.0-prueba', codigo: m.codigo });
+    m.db.prepare('UPDATE trabajador_corridas SET pid = ?, listo_en = empezo_en, latido_en = empezo_en WHERE corrida = ?').run(2 ** 30, vieja);
+    const id = encolar(m.db, { tipo: 'sistema.vigilar' }).id;
+    m.db.prepare("UPDATE tareas SET estado = 'en_curso', dueno = ?, tomas = 1, arriendo_hasta = ? WHERE id = ?").run(vieja, new Date(Date.now() + 120_000).toISOString(), id);
+    ponerModoSeguro(m.db, { activo: true, origen: 'admin' });
+    m.supervisor.iniciar();
+    assert.equal(m.supervisor.estado().fase, 'modo_seguro');
+    assert.equal(m.lanzados.length, 0, 'en modo seguro no se enciende ningún trabajador');
+    const t = m.db.prepare('SELECT * FROM tareas WHERE id = ?').get(id);
+    assert.equal(t.estado, 'lista');
+    assert.equal(t.fallos_seguidos, 0, 'no fue culpa de la tarea');
+    assert.equal(t.dueno, null);
+    assert.equal(m.db.prepare('SELECT como_termino FROM trabajador_corridas WHERE corrida = ?').get(vieja).como_termino, 'perdida');
   } finally {
     await m.cerrar();
   }

@@ -61,9 +61,29 @@ test('español e inglés tienen exactamente las mismas frases', () => {
 });
 
 test('toda frase que usan las pantallas existe en los dos idiomas', () => {
-  for (const m of appJs.matchAll(/\bt\('([a-z0-9_.]+)'/g)) assert.ok(m[1] in es, `falta la frase ${m[1]}`);
+  for (const m of appJs.matchAll(/\b(?:t|tn)\('([a-z0-9_.]+)'/g)) assert.ok(m[1] in es, `falta la frase ${m[1]}`);
+  // tn(…) elige la frase en singular («.uno») cuando el número es 1: tiene que existir.
+  for (const m of appJs.matchAll(/\btn\('([a-z0-9_.]+)'/g)) assert.ok(`${m[1]}.uno` in es, `falta la frase ${m[1]}.uno`);
   for (const m of appJs.matchAll(/texto: t\(u\.[a-z]+ \? '([a-z0-9_.]+)' : '([a-z0-9_.]+)'/g)) {
     assert.ok(m[1] in es && m[2] in es, `falta ${m[1]} o ${m[2]}`);
+  }
+});
+
+test('en español una hora nunca va pegada a un punto final («p. m..»): la hora ya termina en punto', () => {
+  // es-DO escribe «8:47 p. m.»: una frase que termina en «{hora}.» o «{fecha}.» mostraría «p. m..».
+  for (const [clave, valor] of Object.entries(es)) assert.doesNotMatch(valor, /\{(hora|fecha|desde|ultima)\}\./, clave);
+  const hora = new Intl.DateTimeFormat('es-DO', { timeStyle: 'short', timeZone: 'America/Santo_Domingo' }).format(new Date('2026-11-05T01:00:00Z'));
+  assert.match(hora, /m\.$/, 'si un día la hora deja de terminar en punto, esta prueba se puede relajar');
+});
+
+test('con 1 se dice en singular: «1 paso», «1 archivo», «1 tarea»', () => {
+  for (const clave of ['tareas.pasos', 'servidor.copias', 'aviso.tareas_fallidas', 'aviso.tareas_revisar', 'tiempo.hace_d']) {
+    for (const [nombre, idioma] of [['es', es], ['en', en]]) {
+      const uno = idioma[`${clave}.uno`];
+      assert.ok(uno, `falta ${clave}.uno en ${nombre}`);
+      assert.match(uno, /\b1\b/, `${clave}.uno (${nombre})`);
+      assert.doesNotMatch(uno, /\b1 (pasos|archivos|tareas|días|steps|files|tasks|days)\b/, `${clave}.uno (${nombre})`);
+    }
   }
 });
 
@@ -124,7 +144,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...EVENTOS.map(x => `tareas.evento.${x}`),
     ...COMO_TERMINA.map(x => `tareas.como.${x}`),
     ...['poca_memoria', 'poco_disco'].map(x => `tareas.freno.${x}`),
-    ...['tiempo_agotado', 'respuesta_no_valida', 'resultado_muy_grande', 'memoria', 'apagado', 'arriendo_vencido', 'sin_dueno', 'trabajador'].map(x => `tareas.motivo.${x}`),
+    ...['tiempo_agotado', 'respuesta_no_valida', 'resultado_muy_grande', 'memoria', 'apagado', 'arriendo_vencido', 'sin_dueno', 'trabajador', 'no_se_pudo_guardar'].map(x => `tareas.motivo.${x}`),
     ...MOTIVOS_MODO_SEGURO.map(x => `modo_seguro.motivo.${x}`),
     ...QUIEN_QUITA.map(x => `modo_seguro.quitado.${x}`),
     ...CLAVES_AVISO.map(x => `aviso.${x}`),

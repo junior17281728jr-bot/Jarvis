@@ -16,7 +16,8 @@
 // los archivos de la base sigan siendo de quien debe.
 import { readFileSync, existsSync } from 'node:fs';
 import { leerConfig } from '../src/nucleo/config.js';
-import { abrirBase } from '../src/nucleo/db.js';
+import { abrirBase, conectarBase } from '../src/nucleo/db.js';
+import { MIGRACIONES } from '../src/nucleo/migraciones.js';
 import { hashClave, claveTemporal } from '../src/cuentas/claves.js';
 import { cerrarTodas } from '../src/cuentas/sesiones.js';
 import { NOMBRE_VALIDO, auditar, buscarPorNombre, crearUsuario, guardarClave, ponerActivo } from '../src/cuentas/usuarios.js';
@@ -53,7 +54,11 @@ async function principal() {
     }
     modoSeguro = m[1] === 'si';
   }
-  const db = abrirBase(config);
+  // El modo seguro se pone con el servicio ENCENDIDO: la base se abre sin cambiarla ni ordenarla (conectarBase),
+  // porque el «ordenar al abrir» de abrirBase espera a que terminen las lecturas en marcha y, mientras tanto,
+  // las pantallas no pueden guardar nada (hasta 5 s). Solo si la base todavía no existe o no está al día (el
+  // servicio no ha arrancado con esta versión) se abre como siempre.
+  const db = modoSeguro != null ? abrirParaModoSeguro(config) : abrirBase(config);
   try {
     if (modoSeguro != null) return cambiarModoSeguro(db, modoSeguro);
     let admin;
@@ -91,6 +96,16 @@ async function principal() {
     return 0;
   } finally {
     db.close();
+  }
+}
+
+function abrirParaModoSeguro(config) {
+  const versionMinima = Math.max(...MIGRACIONES.map(m => m.id));
+  try {
+    return conectarBase(config, { versionMinima });
+  } catch (error) {
+    if (['base_no_existe', 'base_vieja', 'base_sin_wal'].includes(error.codigo)) return abrirBase(config);
+    throw error;
   }
 }
 

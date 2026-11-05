@@ -15,6 +15,7 @@
   --bien: #166534;
   --mal: #b91c1c;
   --atencion: #a16207;
+  --info: #1d4ed8;
   --aviso-fondo: #fef3c7;
   --aviso-texto: #78350f;
   --sombra: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 16px rgba(15, 23, 42, 0.05);
@@ -35,6 +36,7 @@
   --bien: #4ade80;
   --mal: #f87171;
   --atencion: #facc15;
+  --info: #93c5fd;
   --aviso-fondo: #3a2a06;
   --aviso-texto: #fcd34d;
   --sombra: none;
@@ -55,6 +57,7 @@
     --bien: #4ade80;
     --mal: #f87171;
   --atencion: #facc15;
+    --info: #93c5fd;
     --aviso-fondo: #3a2a06;
     --aviso-texto: #fcd34d;
     --sombra: none;
@@ -190,11 +193,13 @@ a { color: var(--acento); }
 .plan button { margin-top: 0; }
 
 /* ---------- Zona de sistema (Administrador) e Inicio del administrador ----------
-   Cada cosa lleva su color: verde = bien, amarillo = mirar, rojo = grave, gris = apagado. */
+   Cada cosa lleva su color: verde = bien, amarillo = mirar, rojo = grave, azul = para que lo sepas,
+   gris = apagado o sin datos al día. */
 .tono-bien { --tono: var(--bien); }
 .tono-atencion { --tono: var(--atencion); }
 .tono-mal { --tono: var(--mal); }
 .tono-apagado { --tono: var(--suave); }
+.tono-info { --tono: var(--info); }
 .tono-neutro { --tono: var(--texto); }
 .tono-color { color: var(--tono); }
 .icono { width: 20px; height: 20px; flex: none; }
@@ -205,7 +210,7 @@ button.con-icono { display: inline-flex; }
 .fuerte { font-weight: 600; }
 h3 { font-size: 17px; margin: 20px 0 8px; }
 h3.con-icono .icono { color: var(--suave); }
-button.chico { margin-top: 0; padding: 8px 12px; font-size: 15px; }
+button.chico { margin-top: 0; padding: 8px 12px; font-size: 15px; min-height: 44px; }
 button.grande { width: 100%; padding: 15px 18px; font-size: 18px; }
 
 .resumen-encabezado { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
@@ -265,7 +270,14 @@ ul.lista-simple { list-style: none; padding: 0; }
 ul.lista-simple li { border-top: 1px solid var(--borde); padding: 8px 0; margin: 0; }
 ul.lista-simple li:first-child { border-top: 0; }
 .historial-salud { font-size: 14px; }
-.filtros button { padding: 8px 12px; font-size: 15px; }
+.filtros button { padding: 8px 12px; font-size: 15px; min-height: 44px; }
+/* Lo que se toca con el dedo mide al menos 44 px de alto (lo que pide el iPhone). */
+.zona-sistema summary { padding: 10px 0; }
+
+/* Atajos de arriba en Administrador (a los usuarios, que quedan debajo de la zona de sistema). */
+.atajos { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+@media (min-width: 640px) { .atajos { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+button.atajo { margin: 0; justify-content: flex-start; text-align: left; min-height: 52px; padding: 12px 16px; font-size: 17px; }
 details.ver-fila { margin-top: 18px; }
 
 .estado-inicio .etiquetas { margin: 4px 0 10px; }

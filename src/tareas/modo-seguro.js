@@ -110,12 +110,17 @@ export function revisarAlArrancar(db, { codigo, version = null, ahora = Date.now
 // Anota que el servidor web arrancó (después de abrir el puerto). Cuenta los arranques del MISMO código en los
 // últimos 30 minutos que nunca se cerraron bien, desde el último cierre limpio; con 3 o más se activa el modo
 // seguro 'servicio_inestable'. Devuelve { id, caidasRecientes, modoSeguro }.
+// Si alguien quitó el modo seguro hace poco, solo cuentan los arranques de DESPUÉS (como hace el supervisor
+// con el trabajador): las caídas de antes ya se vieron, y OPORTIA tiene otras 3 oportunidades.
 export function registrarArranque(db, { version, codigo = '', pid = process.pid, ahora = Date.now(), ventanaMs = VENTANA_CAIDAS_SERVICIO_MS, caidasParaModoSeguro = CAIDAS_SERVICIO_PARA_MODO_SEGURO }) {
   return enTransaccion(db, () => {
+    const quitadoEn = leerModoSeguro(db).ultimo?.hasta;
+    const desdeVentana = iso(ahora - ventanaMs);
+    const desde = typeof quitadoEn === 'string' && quitadoEn > desdeVentana ? quitadoEn : desdeVentana;
     const caidasRecientes = db.prepare(`SELECT COUNT(*) AS n FROM servidor_arranques
       WHERE codigo = ? AND termino_en IS NULL AND empezo_en >= ?
         AND id > COALESCE((SELECT MAX(id) FROM servidor_arranques WHERE termino_en IS NOT NULL), 0)`)
-      .get(String(codigo), iso(ahora - ventanaMs)).n;
+      .get(String(codigo), desde).n;
     const r = db.prepare('INSERT INTO servidor_arranques (version, codigo, pid, empezo_en) VALUES (?, ?, ?, ?)')
       .run(String(version ?? ''), String(codigo), pid, iso(ahora));
     let modoSeguro = null;

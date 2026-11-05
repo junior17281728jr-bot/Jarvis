@@ -67,8 +67,11 @@ El servicio `jarvis` sigue siendo uno solo (`node --no-warnings src/server.js`),
 - Nunca `await` dentro de una transacción (el código lo rechaza).
 - Respetar `ctx.senal`: cuando se pide parar, el paso termina pronto.
 - Cada paso se puede repetir sin daño (idempotente): un corte de luz o un reinicio pueden hacer que corra dos veces.
-- Todo lo que MANDA algo (correos, mensajes) va con `repetible: false`: si se interrumpe, queda «por revisar» y nunca se
-  manda dos veces solo.
+- Todo lo que MANDA algo (correos, mensajes) va con `repetible: false`: si se interrumpe, se corta por tiempo o falla con
+  un error cualquiera, queda «por revisar» y nunca se manda dos veces solo. Solo vuelve a la fila si el trabajo lanza un
+  `ErrorTarea` (por ejemplo `sin_red`), que quiere decir «sé seguro que no salió nada».
+- Lo que devuelve un paso (resultado o punto) tiene que ser JSON normal: un BigInt o un objeto que se contiene a sí mismo
+  deja la tarea «fallida» con `respuesta_no_valida`.
 - Un tipo nuevo se registra en `src/tareas/tipos.js` (solo datos) y su trabajo en `src/tareas/manejadores.js`; los tipos de
   prueba viven en `test/tareas-prueba.js`, nunca en `src/`.
 

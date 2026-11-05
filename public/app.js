@@ -94,6 +94,12 @@ function t(clave, variables = {}) {
   const texto = catalogos[idioma]?.[clave] ?? catalogos.es?.[clave] ?? clave;
   return texto.replace(/\{(\w+)\}/g, (_, nombre) => (nombre in variables ? String(variables[nombre]) : `{${nombre}}`));
 }
+// Con n = 1, la frase en singular si existe (clave + «.uno»): «1 paso», no «1 pasos».
+function tn(clave, variables = {}) {
+  const uno = `${clave}.uno`;
+  const hay = catalogos[idioma]?.[uno] != null || catalogos.es?.[uno] != null;
+  return Number(variables.n) === 1 && hay ? t(uno, variables) : t(clave, variables);
+}
 function textoError(clave) {
   const completa = `error.${clave}`;
   return catalogos[idioma]?.[completa] ? t(completa) : t('error.desconocido');
@@ -399,6 +405,8 @@ function estadoEnInicio(s) {
     el('div', { class: 'etiquetas' },
       insignia(tonoTrabajo(s), t('inicio.estado.trabajo', { estado: nombreFase(s) })),
       insignia(tonoServidor, t('inicio.estado.servidor', { estado: t(`sistema.semaforo.${s.salud?.semaforo ?? 'amarillo'}`) }))),
+    // Esta tarjeta no se actualiza sola: dice de cuándo son los datos.
+    el('p', { class: 'ayuda', texto: t('inicio.estado.actualizado', { hora: cuando(new Date().toISOString()) }) }),
     el('a', { class: 'boton-enlace', href: '#admin', texto: t('inicio.alerta.ver') }));
 }
 
@@ -574,6 +582,10 @@ const ICONOS = {
   atencion: [['path', { d: 'M12 3.5 2.5 20h19z' }], ['line', { x1: 12, y1: 10, x2: 12, y2: 14 }], ['line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }]],
   mal: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 12, y1: 7, x2: 12, y2: 13 }], ['line', { x1: 12, y1: 16.5, x2: 12.01, y2: 16.5 }]],
   apagado: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 10, y1: 9, x2: 10, y2: 15 }], ['line', { x1: 14, y1: 9, x2: 14, y2: 15 }]],
+  info: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 12, y1: 11, x2: 12, y2: 16.5 }], ['line', { x1: 12, y1: 7.5, x2: 12.01, y2: 7.5 }]],
+  personas: [['circle', { cx: 9, cy: 8, r: 3.5 }], ['path', { d: 'M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6' }], ['path', { d: 'M16 4.6a3.5 3.5 0 0 1 0 6.8' }], ['path', { d: 'M18 14.3c2.1.7 3.5 2.8 3.5 5.7' }]],
+  mas: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 12, y1: 8, x2: 12, y2: 16 }], ['line', { x1: 8, y1: 12, x2: 16, y2: 12 }]],
+  sin_conexion: [['path', { d: 'M2 8.5a15 15 0 0 1 20 0' }], ['path', { d: 'M5.5 12a10 10 0 0 1 13 0' }], ['path', { d: 'M9 15.5a5 5 0 0 1 6 0' }], ['line', { x1: 12, y1: 19, x2: 12.01, y2: 19 }], ['line', { x1: 3, y1: 3, x2: 21, y2: 21 }]],
   reloj: [['circle', { cx: 12, cy: 12, r: 9 }], ['polyline', { points: '12 7 12 12 15.5 14' }]],
   fila: [['line', { x1: 9, y1: 6, x2: 20, y2: 6 }], ['line', { x1: 9, y1: 12, x2: 20, y2: 12 }], ['line', { x1: 9, y1: 18, x2: 20, y2: 18 }], ['line', { x1: 4, y1: 6, x2: 4.01, y2: 6 }], ['line', { x1: 4, y1: 12, x2: 4.01, y2: 12 }], ['line', { x1: 4, y1: 18, x2: 4.01, y2: 18 }]],
   base: [['ellipse', { cx: 12, cy: 5, rx: 8, ry: 3 }], ['path', { d: 'M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5' }], ['path', { d: 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3' }]],
@@ -620,7 +632,7 @@ function hace(iso, ahora = Date.now()) {
   if (s < 60) return t('tiempo.hace_s', { n: s });
   if (s < 3600) return t('tiempo.hace_min', { n: Math.round(s / 60) });
   if (s < 86400) return t('tiempo.hace_h', { n: Math.round(s / 3600) });
-  return t('tiempo.hace_d', { n: Math.round(s / 86400) });
+  return tn('tiempo.hace_d', { n: Math.round(s / 86400) });
 }
 // «hoy 10:07 p. m.», «mañana 4:10 a. m.» (hora de República Dominicana, UTC−4 todo el año).
 function cuando(iso, ahora = Date.now()) {
@@ -635,14 +647,16 @@ function cuando(iso, ahora = Date.now()) {
   return fecha(iso);
 }
 
-// El color de cada cosa: 'bien' (verde), 'atencion' (amarillo), 'mal' (rojo) o 'apagado' (gris).
+// El color de cada cosa: 'bien' (verde), 'atencion' (amarillo), 'mal' (rojo), 'info' (azul: solo para que lo
+// sepas, por ejemplo «alguien puso el modo seguro») o 'apagado' (gris: sin datos al día).
 const TONO_FASE = { esperando: 'bien', trabajando: 'bien', arrancando: 'atencion', reiniciando: 'atencion', parando: 'atencion', sin_respuesta: 'mal', sin_supervisor: 'apagado' };
 function tonoTrabajo(s) {
   if (s.modoSeguro?.activo) return s.modoSeguro.origen === 'automatico' ? 'mal' : 'atencion';
   return TONO_FASE[s.trabajador?.fase] ?? 'atencion';
 }
 const TONO_SEMAFORO = { verde: 'bien', amarillo: 'atencion', rojo: 'mal' };
-const tonoAviso = nivel => (nivel === 'grave' ? 'mal' : nivel === 'atencion' ? 'atencion' : 'bien');
+// Un aviso nunca sale verde: verde es solo «todo bien». Un aviso de información sale azul.
+const tonoAviso = nivel => (nivel === 'grave' ? 'mal' : nivel === 'atencion' ? 'atencion' : 'info');
 function nombreFase(s) {
   const tr = s.trabajador ?? {};
   if (s.modoSeguro?.activo && !['parando'].includes(tr.fase)) return t('tareas.fase.modo_seguro');
@@ -658,9 +672,10 @@ function textoAviso(a) {
     return t('aviso.freno', { tipo: nombreTipo(String(a.clave).slice(6)), hora: d.hasta ? cuando(d.hasta) : '?' });
   }
   const mb = d.disponibleMb ?? d.libreMb ?? d.archivoMb ?? d.walMb;
-  return tSi(`aviso.${a.clave}`, a.clave, {
-    mb: mb == null ? '?' : tamano(mb), ms: v(d.p99Ms), fecha: d.desde ? fecha(d.desde) : '?',
-    n: v(d.reinicios24h ?? d.fallidas24h ?? d.revisar),
+  const n = v(d.reinicios24h ?? d.fallidas24h ?? d.revisar);
+  const singular = n === 1 && (catalogos[idioma]?.[`aviso.${a.clave}.uno`] != null || catalogos.es?.[`aviso.${a.clave}.uno`] != null);
+  return tSi(singular ? `aviso.${a.clave}.uno` : `aviso.${a.clave}`, a.clave, {
+    mb: mb == null ? '?' : tamano(mb), ms: v(d.p99Ms), fecha: d.desde ? fecha(d.desde) : '?', n,
   });
 }
 
@@ -669,13 +684,13 @@ function insignia(tono, texto) {
 }
 
 // Una tarjeta del resumen de arriba. Al tocarla, baja a su parte.
-function tarjetaResumen({ nombreIcono, titulo, valor, detalle, tono, destino }) {
+function tarjetaResumen({ nombreIcono, titulo, valor, detalle, tono, destino, iconoTono = tono }) {
   return el('button', {
     type: 'button',
     class: `resumen-tarjeta tono-${tono}`,
     onclick: () => destino?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
   },
-  el('span', { class: 'resumen-cabeza' }, icono(nombreIcono), el('span', { class: 'resumen-titulo', texto: titulo }), el('span', { class: 'tono-color' }, icono(tono))),
+  el('span', { class: 'resumen-cabeza' }, icono(nombreIcono), el('span', { class: 'resumen-titulo', texto: titulo }), el('span', { class: 'tono-color' }, icono(iconoTono))),
   el('span', { class: 'resumen-valor', texto: valor }),
   detalle ? el('span', { class: 'resumen-detalle', texto: detalle }) : null);
 }
@@ -709,14 +724,18 @@ function explicacionModoSeguro(m) {
 }
 
 // La zona entera. «acciones» trae lo que hacen los botones (ver crearZonaSistema).
-function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista }) {
-  const tono = tonoTrabajo(s);
+// datosDe: cuándo llegaron estos datos. sinConexion: la última actualización falló (el servidor no contesta):
+// lo de arriba se pone gris y lo dice, para que nadie crea que todo está bien con datos viejos.
+function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista, datosDe = Date.now(), sinConexion = false }) {
   const tr = s.trabajador ?? {};
   const fila = s.fila ?? {};
   const salud = s.salud ?? {};
   const abiertos = s.avisos?.abiertos ?? [];
-  const tonoServidor = TONO_SEMAFORO[salud.semaforo] ?? 'atencion';
-  const peorAviso = abiertos.some(a => a.nivel === 'grave') ? 'mal' : abiertos.some(a => a.nivel === 'atencion') ? 'atencion' : 'bien';
+  const tono = sinConexion ? 'apagado' : tonoTrabajo(s);
+  const tonoServidor = sinConexion ? 'apagado' : TONO_SEMAFORO[salud.semaforo] ?? 'atencion';
+  const horaDatos = cuando(new Date(datosDe).toISOString());
+  const valorTrabajo = sinConexion ? t('sistema.sin_conexion.valor') : nombreFase(s);
+  const peorAviso = abiertos.some(a => a.nivel === 'grave') ? 'mal' : abiertos.some(a => a.nivel === 'atencion') ? 'atencion' : abiertos.length ? 'info' : 'bien';
   const usaOportia = salud.oportiaMb ?? (salud.webMb != null ? salud.webMb + (salud.trabajadorMb ?? 0) : null);
   const conError = (fila.fallidas7d ?? 0) + (fila.revisar ?? 0);
 
@@ -733,22 +752,25 @@ function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista 
       el('button', { type: 'button', class: 'secundario chico con-icono', onclick: acciones.actualizar }, icono('actualizar'), el('span', { texto: t('sistema.actualizar') }))),
     el('div', { class: 'resumen-rejilla' },
       tarjetaResumen({
-        nombreIcono: 'latido', titulo: t('sistema.trabajo'), valor: nombreFase(s), tono, destino: anclaTrabajo,
-        detalle: s.modoSeguro?.activo ? t('sistema.resumen.en_pausa') : tr.ultimoLatido ? t('tareas.latido', { hace: hace(tr.ultimoLatido) }) : null,
+        nombreIcono: 'latido', iconoTono: sinConexion ? 'sin_conexion' : undefined, titulo: t('sistema.trabajo'), valor: valorTrabajo, tono, destino: anclaTrabajo,
+        detalle: sinConexion ? t('sistema.sin_conexion.detalle', { hora: horaDatos })
+          : s.modoSeguro?.activo ? t('sistema.resumen.en_pausa') : tr.ultimoLatido ? t('tareas.latido', { hace: hace(tr.ultimoLatido) }) : null,
       }),
       tarjetaResumen({
-        nombreIcono: 'servidor', titulo: t('sistema.servidor'), valor: t(`sistema.semaforo.${salud.semaforo ?? 'amarillo'}`), tono: tonoServidor, destino: anclaServidor,
-        detalle: t('sistema.resumen.memoria', { mb: tamano(salud.memoria?.disponibleMb) }),
+        nombreIcono: 'servidor', iconoTono: sinConexion ? 'sin_conexion' : undefined, titulo: t('sistema.servidor'), valor: sinConexion ? t('sistema.sin_conexion.valor') : t(`sistema.semaforo.${salud.semaforo ?? 'amarillo'}`), tono: tonoServidor, destino: anclaServidor,
+        detalle: sinConexion ? t('sistema.sin_conexion.detalle', { hora: horaDatos }) : t('sistema.resumen.memoria', { mb: tamano(salud.memoria?.disponibleMb) }),
       }),
+      // Sin conexión, todo el resumen va en gris: son datos viejos, ni buenos ni malos.
       tarjetaResumen({
-        nombreIcono: 'campana', titulo: t('sistema.avisos'), valor: abiertos.length ? numero(abiertos.length) : t('sistema.avisos.ninguno'), tono: peorAviso, destino: anclaAvisos,
+        nombreIcono: 'campana', iconoTono: sinConexion ? 'sin_conexion' : undefined, titulo: t('sistema.avisos'), valor: abiertos.length ? numero(abiertos.length) : t('sistema.avisos.ninguno'), tono: sinConexion ? 'apagado' : peorAviso, destino: anclaAvisos,
         detalle: abiertos.length ? t('sistema.resumen.avisos_texto') : t('sistema.resumen.avisos_vacio'),
       }),
       tarjetaResumen({
-        nombreIcono: 'fila', titulo: t('sistema.errores'), valor: numero(conError), tono: conError ? (fila.fallidas7d ? 'mal' : 'atencion') : 'bien', destino: anclaErrores,
+        nombreIcono: 'fila', iconoTono: sinConexion ? 'sin_conexion' : undefined, titulo: t('sistema.errores'), valor: numero(conError), tono: sinConexion ? 'apagado' : conError ? (fila.fallidas7d ? 'mal' : 'atencion') : 'bien', destino: anclaErrores,
         detalle: t('sistema.resumen.hechas', { n: numero(fila.hechas24h ?? 0) }),
       })),
-    el('p', { class: 'ayuda', texto: t('sistema.actualizado', { hora: cuando(new Date().toISOString()) }) }),
+    sinConexion ? el('p', { class: 'mensaje error con-icono', role: 'alert' }, icono('sin_conexion'), el('span', { texto: t('sistema.sin_conexion', { hora: horaDatos }) })) : null,
+    el('p', { class: 'ayuda', texto: t('sistema.actualizado', { hora: horaDatos }) }),
     mensajeZona);
 
   // ---- Avisos (solo si hay abiertos) ----
@@ -798,7 +820,7 @@ function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista 
 
   const trabajo = el('section', { class: 'tarjeta' }, anclaTrabajo,
     titulo('latido', t('sistema.trabajo')),
-    el('div', { class: `estado-grande tono-${tono}` }, icono(tono, 'icono estado'), el('span', { texto: nombreFase(s) })),
+    el('div', { class: `estado-grande tono-${tono}` }, icono(sinConexion ? 'sin_conexion' : tono, 'icono estado'), el('span', { texto: valorTrabajo })),
     el('p', { class: 'suave', texto: linea }),
     el('p', { class: 'fuerte', texto: enCurso.length ? t('tareas.ahora', { que: enCurso.map(x => `${nombreTipo(x.tipo)} (${hace(x.desde)})`).join(', ') }) : t('tareas.ahora.nada') }),
     tr.freno ? el('p', { class: 'aviso', texto: tSi(`tareas.freno.${tr.freno}`, tr.freno) }) : null,
@@ -839,7 +861,7 @@ function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista 
   detallesHistorial.addEventListener('toggle', () => { estadoVista.historialAbierto = detallesHistorial.open; });
   const servidor = el('section', { class: 'tarjeta' }, anclaServidor,
     titulo('servidor', t('sistema.servidor')),
-    el('div', { class: `estado-grande tono-${tonoServidor}` }, icono(tonoServidor, 'icono estado'), el('span', { texto: t(`servidor.semaforo.${salud.semaforo ?? 'amarillo'}`) })),
+    el('div', { class: `estado-grande tono-${tonoServidor}` }, icono(sinConexion ? 'sin_conexion' : tonoServidor, 'icono estado'), el('span', { texto: sinConexion ? t('sistema.sin_conexion.valor') : t(`servidor.semaforo.${salud.semaforo ?? 'amarillo'}`) })),
     (salud.problemas ?? []).map(p => el('p', { class: `aviso-linea tono-${tonoAviso(p.nivel)}`, texto: textoAviso({ clave: p.clave, detalle: p.detalle }) })),
     el('div', { class: 'medidor' },
       el('div', { class: 'medidor-texto' }, el('span', { texto: t('servidor.memoria') }), el('strong', { texto: t('servidor.de', { a: tamano(memoria.disponibleMb), b: tamano(memoria.totalMb) }) })),
@@ -851,7 +873,7 @@ function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista 
       memoria.swapTotalMb ? el('li', { texto: t('servidor.swap', { a: tamano(memoria.swapUsadaMb), b: tamano(memoria.swapTotalMb) }) }) : null,
       el('li', { texto: t('servidor.oportia', { mb: tamano(usaOportia), a: tamano(salud.webMb), b: tamano(salud.trabajadorMb) }) }),
       el('li', { texto: t('servidor.base', { mb: tamano(salud.base?.archivoMb), wal: tamano(salud.base?.walMb) }) }),
-      el('li', { texto: t('servidor.copias', { n: salud.copias?.archivos ?? 0, mb: tamano(salud.copias?.mb ?? 0) }) }),
+      el('li', { texto: tn('servidor.copias', { n: salud.copias?.archivos ?? 0, mb: tamano(salud.copias?.mb ?? 0) }) }),
       el('li', { texto: t('servidor.carga', { a: numero(salud.carga?.m1 ?? 0, 2), b: numero(salud.carga?.m5 ?? 0, 2), c: numero(salud.carga?.m15 ?? 0, 2) }) }),
       el('li', { texto: salud.pantallasP99Ms == null ? t('servidor.pantallas.sin_dato') : t('servidor.pantallas', { ms: numero(salud.pantallasP99Ms, 1) }) }),
       salud.encendidoDesde ? el('li', { texto: t('servidor.encendido', { fecha: fecha(salud.encendidoDesde) }) }) : null),
@@ -886,7 +908,7 @@ function crearBloqueFila() {
         el('div', { class: 'etiquetas' },
           el('span', { class: 'etiqueta', texto: tSi(`tareas.estado.${x.estado}`, x.estado) }),
           el('span', { class: 'nombre', texto: `${nombreTipo(x.tipo)} · n.º ${x.id}` })),
-        el('p', { class: 'suave', texto: [fecha(x.terminadaEn ?? x.creadaEn), x.pasos ? t('tareas.pasos', { n: x.pasos }) : null, x.ultimoError ? textoMotivo(x.ultimoError) : null, x.proyecto ? t('tareas.de_proyecto', { proyecto: x.proyecto, cuenta: x.cuenta }) : null].filter(Boolean).join(' · ') })));
+        el('p', { class: 'suave', texto: [fecha(x.terminadaEn ?? x.creadaEn), x.pasos ? tn('tareas.pasos', { n: x.pasos }) : null, x.ultimoError ? textoMotivo(x.ultimoError) : null, x.proyecto ? t('tareas.de_proyecto', { proyecto: x.proyecto, cuenta: x.cuenta }) : null].filter(Boolean).join(' · ') })));
     }
     if (!lista.childElementCount) lista.append(el('p', { class: 'suave', texto: t('tareas.fila.vacia') }));
     siguiente = r.datos.siguiente;
@@ -911,6 +933,10 @@ function crearZonaSistema(vigente) {
   const mensajeZona = caja();
   const bloqueFila = crearBloqueFila();
   const estadoVista = { historialAbierto: false };
+  // Los últimos datos buenos y cuándo llegaron: si una actualización falla, se vuelven a dibujar en gris y con
+  // «Sin conexión», en vez de dejar en verde algo que ya no se sabe.
+  let ultimos = null;
+  let ultimosEn = null;
   let ocupado = false;
   let reloj = null;
   let pronto = null;
@@ -918,19 +944,23 @@ function crearZonaSistema(vigente) {
   function decirZona(texto, clase) {
     decir(mensajeZona, texto, clase);
   }
-  function dibujarCon(datos) {
+  function dibujarCon(datos, { sinConexion = false } = {}) {
     // Si la zona ya se dibujó y salió de la pantalla (la persona se fue), no se vuelve a dibujar.
     if (!vigente() || (zona.dataset.dibujada && !zona.isConnected)) return;
+    if (!sinConexion) {
+      ultimos = datos;
+      ultimosEn = Date.now();
+    }
     zona.dataset.dibujada = '1';
-    zona.replaceChildren(...dibujarZonaSistema(datos, { acciones, bloqueFila, mensajeZona, estadoVista }).filter(Boolean));
+    zona.replaceChildren(...dibujarZonaSistema(datos, { acciones, bloqueFila, mensajeZona, estadoVista, datosDe: ultimosEn ?? Date.now(), sinConexion }).filter(Boolean));
   }
-  async function actualizar({ aviso = false } = {}) {
+  async function actualizar() {
     if (ocupado) return;
     const r = await api('GET', '/api/admin/sistema');
     if (!vigente()) return;
     if (!r.ok) {
-      if (!zona.dataset.dibujada) zona.replaceChildren(el('section', { class: 'tarjeta' }, el('h2', { texto: t('sistema.titulo') }), el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })));
-      else if (aviso) decirZona(textoError(r.datos.error), 'error');
+      if (!ultimos) zona.replaceChildren(el('section', { class: 'tarjeta' }, el('h2', { texto: t('sistema.titulo') }), el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })));
+      else dibujarCon(ultimos, { sinConexion: true });
       return;
     }
     dibujarCon(r.datos);
@@ -1112,13 +1142,24 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
       acciones);
   });
 
+  // La zona de sistema es larga: arriba van dos atajos grandes a lo de siempre (usuarios y crear uno).
+  const tarjetaUsuarios = el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.usuarios') }), filas);
+  const tarjetaNuevo = el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.nuevo') }), formulario);
+  const atajo = (nombreIcono, texto, destino, despues) => el('button', {
+    type: 'button',
+    class: 'secundario con-icono atajo',
+    onclick: () => { destino.scrollIntoView({ behavior: 'smooth', block: 'start' }); despues?.(); },
+  }, icono(nombreIcono), el('span', { texto }));
   mostrar(marco('admin',
-    el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') })),
+    el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') }),
+      el('div', { class: 'atajos' },
+        atajo('personas', t('admin.ir.usuarios', { n: numero(r.datos.usuarios.length) }), tarjetaUsuarios),
+        atajo('mas', t('admin.ir.nuevo'), tarjetaNuevo, () => completo.focus({ preventScroll: true })))),
     avisoArriba ? el('section', { class: 'tarjeta' }, avisoArriba) : null,
     seccionClaveTemporal(),
     sistema.zona,
-    el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.usuarios') }), filas),
-    el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.nuevo') }), formulario)));
+    tarjetaUsuarios,
+    tarjetaNuevo));
 }
 
 // ---------- Proyectos ----------

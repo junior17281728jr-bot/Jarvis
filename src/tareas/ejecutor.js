@@ -72,10 +72,13 @@ export function crearEjecutor({
   db, config = {}, corrida, escritor, registro = TIPOS, manejadores = MANEJADORES, cupos = CUPOS, tiempos = {},
   alFallar = marcarConErrores, memoriaDisponibleMb = memoriaDelServidor, discoLibreMb = null, medirMemoria = memoriaPropia,
   pedirSalida = () => {}, log = console, programas = null, version = null, codigo = null,
-  reloj = Date.now, azar = Math.random, dormir = dormirDeVerdad,
+  reloj = Date.now, monotono = null, azar = Math.random, dormir = dormirDeVerdad,
 }) {
   if (!db || !corrida || !escritor) throw new Error('crearEjecutor necesita db, corrida y escritor');
   const T = { ...TIEMPOS_TRABAJADOR, ...tiempos };
+  // «reloj» es la fecha y hora (lo que se guarda); «mono» solo mide cuánto pasó y no salta si el servidor
+  // corrige su hora: un salto hacia atrás no deja de recuperar ni de programar durante lo que saltó.
+  const mono = monotono ?? (reloj === Date.now ? () => performance.now() : reloj);
   const carpetaDatos = config.carpetaDatos ?? (config.archivoBase ? dirname(config.archivoBase) : null);
   const medirDisco = discoLibreMb ?? (() => discoDelServidor(carpetaDatos));
   // Solo se toman tareas de tipos que este código sabe hacer de verdad (con su manejador).
@@ -83,8 +86,9 @@ export function crearEjecutor({
   const cuenta = crearCuentaDeFallos({ registro });
   const enCurso = new Map();
   const recordadas = new Map();
+  const sinGuardar = new Set(); // tareas cuyo paso no se pudo guardar (al salir suman un fallo)
   const saltos = new Map();
-  let ultimaRecuperacion = reloj(); // al arrancar ya recuperó (empezarCorrida)
+  let ultimaRecuperacion = mono(); // al arrancar ya recuperó (empezarCorrida)
   let ultimaProgramacion = -Infinity;
   let disco = { valor: null, en: -Infinity };
   let freno = null;
@@ -103,7 +107,7 @@ export function crearEjecutor({
   }
 
   function discoLibre() {
-    const ahora = reloj();
+    const ahora = mono();
     if (ahora - disco.en >= T.discoCadaMs) {
       let valor = null;
       try { valor = medirDisco(); } catch { valor = null; }
@@ -126,7 +130,7 @@ export function crearEjecutor({
   const carrilesOcupados = () => [...new Set([...enCurso.values()].map(e => e.carrilProyecto))];
 
   async function recuperar() {
-    ultimaRecuperacion = reloj();
+    ultimaRecuperacion = mono();
     // Solo se toma el permiso de escribir si hay algo que mirar.
     const hayAlgo = db.prepare('SELECT 1 FROM trabajador_corridas WHERE termino_en IS NULL AND corrida <> ? LIMIT 1').get(corrida)
       || db.prepare("SELECT 1 FROM tareas WHERE estado = 'en_curso' AND dueno IS NOT ? LIMIT 1").get(corrida);
@@ -142,7 +146,7 @@ export function crearEjecutor({
 
   async function programarAhora() {
     const ahora = reloj();
-    ultimaProgramacion = ahora;
+    ultimaProgramacion = mono();
     const lista = programas ?? [...PROGRAMAS_DEL_SISTEMA, ...programasDeProyectos(db, { registro })];
     const tipos = [...conManejador];
     // Si todas las ranuras de ahora ya están hechas, no se toca la base.
@@ -232,6 +236,7 @@ export function crearEjecutor({
       } catch (otro) {
         // La base no deja guardar: es mejor salir y que el servidor web recupere la tarea.
         log.error?.(`Tampoco se pudo la segunda vez (tarea ${tarea.id}):`, otro);
+        sinGuardar.add(tarea.id);
         pedir('caida');
         return;
       }
@@ -293,9 +298,9 @@ export function crearEjecutor({
       log.warn?.(`El trabajador usa mucha memoria (${Math.round(memoria.rssMb)} MB): sale para volver a empezar limpio`);
       return pedir('memoria');
     }
-    if (reloj() - ultimaRecuperacion >= T.recuperarCadaMs) await recuperar();
+    if (mono() - ultimaRecuperacion >= T.recuperarCadaMs) await recuperar();
     if (detenido()) return;
-    if (reloj() - ultimaProgramacion >= T.programarCadaMs) await programarAhora();
+    if (mono() - ultimaProgramacion >= T.programarCadaMs) await programarAhora();
     if (detenido()) return;
     await tomar();
   }
@@ -323,7 +328,8 @@ export function crearEjecutor({
   }
 
   // Al apagarse: deja de tomar, espera un poco a los pasos en marcha, corta los demás y devuelve sus tareas
-  // a la fila (sin fallo, salvo conFallo: salió por falta de memoria y la tarea pudo ser la culpable).
+  // a la fila (sin fallo, salvo conFallo: salió por falta de memoria y la tarea pudo ser la culpable; y salvo
+// la tarea cuyo paso no se pudo guardar, que sí suma uno).
   // Todo cabe en esperaMs + 1 s (con 3 s, en 4 s), antes de la salida forzada del trabajador a los 5 s.
   async function parar({ esperaMs = T.graciaParadaMs, conFallo = false, motivo = 'apagado', devolver = true } = {}) {
     parando = true;
@@ -335,7 +341,8 @@ export function crearEjecutor({
     for (const e of enCurso.values()) e.controlador.abort(new Parada());
     if (enCurso.size || enMarcha) await conTope(Promise.allSettled([...pasos(), enMarcha]), 1000);
     if (!devolver) return { devueltas: [] };
-    const devueltas = await escritor.escribir(() => devolverLasMias(db, { corrida, conFallo, motivo, ahora: reloj(), azar, alFallar, registro }));
+    const culpables = [...sinGuardar];
+    const devueltas = await escritor.escribir(() => devolverLasMias(db, { corrida, conFallo, motivo, culpables, ahora: reloj(), azar, alFallar, registro }));
     return { devueltas };
   }
 

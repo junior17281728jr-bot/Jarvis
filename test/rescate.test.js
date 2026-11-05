@@ -106,6 +106,29 @@ test('--modo-seguro=si pone en pausa el trabajo automático (con auditoría «co
   db.close();
 });
 
+test('--modo-seguro con el servicio encendido no «ordena» la base al abrirla (así no frena lo que las pantallas guardan)', async () => {
+  const { statSync } = await import('node:fs');
+  const { leerModoSeguro } = await import('../src/tareas/modo-seguro.js');
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  // El «servicio»: la base abierta, con cambios recientes que todavía viven en el archivo -wal.
+  const config = leerConfig({ DB_PATH: join(raiz, 'jarvis', 'jarvis.db') });
+  const db = abrirBase(config);
+  try {
+    db.prepare("INSERT INTO ajustes (clave, valor, actualizado_en) VALUES ('prueba.relleno', ?, 'x')").run('x'.repeat(400_000));
+    const wal = `${config.archivoBase}-wal`;
+    const antes = statSync(wal).size;
+    assert.ok(antes > 400_000);
+    const salida = rescatar(archivoEnv, '--modo-seguro=si');
+    assert.equal(salida.status, 0, salida.stderr);
+    assert.equal(leerModoSeguro(db).activo, true);
+    // Con abrirBase, el archivo -wal habría quedado casi vacío (wal_checkpoint TRUNCATE, que espera a las
+    // lecturas en marcha y mientras tanto no deja escribir a nadie).
+    assert.ok(statSync(wal).size >= antes, 'la herramienta no ordenó la base');
+  } finally {
+    db.close();
+  }
+});
+
 test('una opción que no existe se rechaza sin tocar la base', () => {
   const { raiz, archivoEnv } = prepararServidorDePrueba();
   for (const opcion of ['--modo-seguro', '--modo-seguro=tal-vez', '--borrar']) {

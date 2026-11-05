@@ -209,16 +209,31 @@ export function marcarTomada(db, { candidata, corrida, arriendoMs = ARRIENDO_MS,
 }
 
 // ---------- Lo que devuelve un paso ----------
+// Un error que pone NUESTRO código (no el trabajo): por ejemplo, el trabajo devolvió algo que no se puede guardar.
 function salidaDeErrorClave(clave, reintentable = false) {
-  return { tipo: 'error', error: { clave, reintentable, esperarMs: null, noEsFallo: false, revisar: false } };
+  return { tipo: 'error', error: { clave, reintentable, esperarMs: null, noEsFallo: false, revisar: false, delTrabajo: false } };
+}
+
+// El texto JSON de un valor, o null si no se puede convertir (un BigInt, un objeto que se contiene a sí mismo,
+// un toJSON que falla…). Así un resultado raro es un error de la tarea y nunca tumba al trabajador.
+function aJson(valor) {
+  try {
+    return { texto: JSON.stringify(valor ?? null) };
+  } catch {
+    return null;
+  }
 }
 
 // Convierte lo que devolvió un paso en una de tres salidas: listo, seguir (con su punto) o error.
 // Cualquier otra cosa es el error 'respuesta_no_valida', que no se reintenta (es un error del código).
 export function normalizarSalida(valor) {
   if (valor && typeof valor === 'object' && !Array.isArray(valor)) {
-    if (valor.listo === true) return { tipo: 'listo', resultado: valor.resultado ?? null };
+    if (valor.listo === true) {
+      if (!aJson(valor.resultado)) return salidaDeErrorClave('respuesta_no_valida');
+      return { tipo: 'listo', resultado: valor.resultado ?? null };
+    }
     if (Object.hasOwn(valor, 'punto') && valor.listo !== true) {
+      if (!aJson(valor.punto)) return salidaDeErrorClave('respuesta_no_valida');
       const esperarMs = valor.esperarMs == null ? 0 : Number(valor.esperarMs);
       if (!Number.isFinite(esperarMs) || esperarMs < 0) return salidaDeErrorClave('respuesta_no_valida');
       const motivo = valor.motivo == null ? null : textoCorto(valor.motivo, 60);
@@ -228,8 +243,9 @@ export function normalizarSalida(valor) {
   return salidaDeErrorClave('respuesta_no_valida');
 }
 
-// Qué clase de error es. ErrorTarea guarda lo que dijo el trabajo; un corte por tiempo es 'tiempo_agotado'
-// (se reintenta); cualquier otro error se reintenta, con su mensaje recortado.
+// Qué clase de error es. ErrorTarea guarda lo que dijo el trabajo (delTrabajo: true: el trabajo sabe lo que
+// pasó); un corte por tiempo es 'tiempo_agotado' (se reintenta); cualquier otro error se reintenta, con su
+// mensaje recortado. Para un tipo repetible:false, solo un ErrorTarea puede volver a la fila (ver guardarPaso).
 export function clasificarError(error) {
   if (error instanceof ErrorTarea || error?.name === 'ErrorTarea') {
     return {
@@ -238,12 +254,13 @@ export function clasificarError(error) {
       esperarMs: error.esperarMs == null ? null : Number(error.esperarMs),
       noEsFallo: error.noEsFallo === true,
       revisar: error.revisar === true,
+      delTrabajo: true,
     };
   }
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
-    return { clave: 'tiempo_agotado', reintentable: true, esperarMs: null, noEsFallo: false, revisar: false };
+    return { clave: 'tiempo_agotado', reintentable: true, esperarMs: null, noEsFallo: false, revisar: false, delTrabajo: false };
   }
-  return { clave: textoCorto(error?.message ?? error) || 'error', reintentable: true, esperarMs: null, noEsFallo: false, revisar: false };
+  return { clave: textoCorto(error?.message ?? error) || 'error', reintentable: true, esperarMs: null, noEsFallo: false, revisar: false, delTrabajo: false };
 }
 
 export function salidaDeError(error) {
@@ -273,8 +290,10 @@ export function guardarPaso(db, { tarea, corrida, salida, duracionMs = 0, ahora 
     let s = salida && ['listo', 'seguir', 'error'].includes(salida.tipo) ? salida : normalizarSalida(null);
 
     if (s.tipo === 'listo') {
-      const texto = s.resultado == null ? null : JSON.stringify(s.resultado);
-      if (texto != null && texto.length > MAXIMO_RESULTADO) s = salidaDeErrorClave('resultado_muy_grande');
+      const json = s.resultado == null ? { texto: null } : aJson(s.resultado);
+      const texto = json?.texto ?? null;
+      if (!json) s = salidaDeErrorClave('respuesta_no_valida');
+      else if (texto != null && texto.length > MAXIMO_RESULTADO) s = salidaDeErrorClave('resultado_muy_grande');
       else {
         db.prepare(`UPDATE tareas SET estado = 'hecha', resultado = ?, pasos = pasos + 1, fallos_seguidos = 0, motivo_espera = NULL,
           dueno = NULL, arriendo_hasta = NULL, terminada_en = ?, actualizada_en = ? WHERE id = ?`).run(texto, momento, momento, f.id);
@@ -283,8 +302,10 @@ export function guardarPaso(db, { tarea, corrida, salida, duracionMs = 0, ahora 
     }
 
     if (s.tipo === 'seguir') {
-      const texto = JSON.stringify(s.punto ?? null);
-      if (texto.length > MAXIMO_PUNTO) s = salidaDeErrorClave('punto_muy_grande');
+      const json = aJson(s.punto);
+      const texto = json?.texto ?? 'null';
+      if (!json) s = salidaDeErrorClave('respuesta_no_valida');
+      else if (texto.length > MAXIMO_PUNTO) s = salidaDeErrorClave('punto_muy_grande');
       else {
         const espera = Math.min(ESPERA_MAXIMA_MS, Math.max(0, Number(s.esperarMs) || 0));
         db.prepare(`UPDATE tareas SET estado = 'lista', punto = ?, pasos = pasos + 1, fallos_seguidos = 0, disponible_en = ?, motivo_espera = ?,
@@ -307,7 +328,9 @@ export function guardarPaso(db, { tarea, corrida, salida, duracionMs = 0, ahora 
     let estado = 'lista';
     let evento = 'error';
     let disponible = f.disponible_en;
-    if (e.revisar) { estado = 'revisar'; evento = 'revisar'; }
+    // Un tipo que «manda algo» (repetible:false) nunca se repite solo: si el paso se cortó por tiempo o falló sin
+    // que el trabajo dijera qué pasó (un ErrorTarea), pudo haber mandado ya. Una persona revisa.
+    if (e.revisar || (f.repetible === 0 && e.delTrabajo !== true)) { estado = 'revisar'; evento = 'revisar'; }
     else if (!e.reintentable || fallos >= f.max_fallos) { estado = 'fallida'; evento = 'fallida'; }
     else {
       const def = definicion(f.tipo, registro);
@@ -377,9 +400,15 @@ function soltar(db, f, { conFallo, motivo, eventoSinFallo, ahora, azar, alFallar
 
 // Al apagarse: el trabajador devuelve lo que tenía en las manos. Sin fallo (una actualización no gasta
 // intentos), salvo conFallo (salió por falta de memoria: la tarea pudo ser la culpable).
-export function devolverLasMias(db, { corrida, conFallo = false, motivo = 'apagado', ahora = Date.now(), azar = Math.random, alFallar = null, registro = TIPOS }) {
+// culpables: tareas cuyo paso no se pudo guardar (el trabajador sale por eso). Esas SÍ suman un fallo, con el
+// motivo 'no_se_pudo_guardar': así una tarea que nunca se puede guardar queda «fallida» después de sus intentos,
+// en vez de hacer caer al trabajador una y otra vez hasta el modo seguro.
+export function devolverLasMias(db, { corrida, conFallo = false, motivo = 'apagado', culpables = [], ahora = Date.now(), azar = Math.random, alFallar = null, registro = TIPOS }) {
   const filas = db.prepare("SELECT * FROM tareas WHERE estado = 'en_curso' AND dueno = ?").all(corrida);
-  return filas.map(f => soltar(db, f, { conFallo, motivo, eventoSinFallo: 'interrumpida', ahora, azar, alFallar, registro })).filter(Boolean);
+  const culpable = new Set(culpables);
+  return filas.map(f => soltar(db, f, {
+    conFallo: conFallo || culpable.has(f.id), motivo: culpable.has(f.id) ? 'no_se_pudo_guardar' : motivo, eventoSinFallo: 'interrumpida', ahora, azar, alFallar, registro,
+  })).filter(Boolean);
 }
 
 // Tareas «en curso» cuyo dueño ya no es una corrida abierta. El fallo se cuenta según cómo terminó esa corrida:
@@ -523,37 +552,40 @@ export function cancelar(db, { id, usuarioId = null, ahora = Date.now() }) {
 }
 
 // ---------- Lo que se muestra ----------
+// Los números de la fila. Se cuentan en SQLite (GROUP BY), nunca trayendo cada fila a JavaScript: aunque la fila
+// tuviera cien mil tareas, las pantallas no se congelan.
 export function resumenFila(db, { tipos = null, ahora = Date.now() } = {}) {
-  const conocidos = new Set(tipos ?? tiposEjecutables());
+  const conocidos = [...new Set(tipos ?? tiposEjecutables())];
   const momento = iso(ahora);
   const resumen = {
     listas: 0, esperando: 0, enCurso: 0, revisar: 0, enPausa: 0, esperanVersion: 0,
     fallidas7d: 0, hechas24h: 0, fallidas24h: 0, canceladas24h: 0, masViejaDesde: null, atrasadaDesde: null,
   };
-  const vivas = db.prepare(`SELECT t.estado, t.tipo, t.disponible_en, t.proyecto_id, p.estado AS p_estado, p.en_papelera AS p_papelera
-    FROM tareas t LEFT JOIN proyectos p ON p.id = t.proyecto_id WHERE t.estado IN ('lista', 'en_curso', 'revisar')`).all();
-  for (const t of vivas) {
-    if (t.estado === 'en_curso') resumen.enCurso += 1;
-    else if (t.estado === 'revisar') resumen.revisar += 1;
-    else if (!conocidos.has(t.tipo)) resumen.esperanVersion += 1;
-    else if (t.proyecto_id != null && !(t.p_estado === 'en_ejecucion' && t.p_papelera === 0)) resumen.enPausa += 1;
-    else if (t.disponible_en > momento) resumen.esperando += 1;
-    else {
-      resumen.listas += 1;
-      if (resumen.masViejaDesde == null || t.disponible_en < resumen.masViejaDesde) resumen.masViejaDesde = t.disponible_en;
-    }
+  // Cada tarea viva cae en UN grupo, en este orden (igual que antes): en curso, por revisar, de un tipo que esta
+  // versión no conoce, de un proyecto en pausa, esperando su hora, o lista para tomar.
+  const grupos = db.prepare(`SELECT grupo, COUNT(*) AS n, MIN(disponible_en) AS mas_vieja FROM (
+      SELECT t.disponible_en, CASE
+        WHEN t.estado = 'en_curso' THEN 'enCurso'
+        WHEN t.estado = 'revisar' THEN 'revisar'
+        WHEN t.tipo NOT IN (SELECT value FROM json_each(?)) THEN 'esperanVersion'
+        WHEN t.proyecto_id IS NOT NULL AND NOT (p.estado IS 'en_ejecucion' AND p.en_papelera IS 0) THEN 'enPausa'
+        WHEN t.disponible_en > ? THEN 'esperando'
+        ELSE 'listas' END AS grupo
+      FROM tareas t LEFT JOIN proyectos p ON p.id = t.proyecto_id WHERE t.estado IN ('lista', 'en_curso', 'revisar'))
+    GROUP BY grupo`).all(JSON.stringify(conocidos), momento);
+  for (const g of grupos) {
+    resumen[g.grupo] = Number(g.n);
+    if (g.grupo === 'listas') resumen.masViejaDesde = g.mas_vieja ?? null;
   }
   if (resumen.masViejaDesde != null && resumen.masViejaDesde < iso(ahora - ATRASO_MS)) resumen.atrasadaDesde = resumen.masViejaDesde;
   const hace24h = iso(ahora - 86_400_000);
-  const terminadas = db.prepare("SELECT estado, terminada_en FROM tareas WHERE estado IN ('hecha', 'fallida', 'cancelada') AND terminada_en >= ?")
-    .all(iso(ahora - 7 * 86_400_000));
-  for (const t of terminadas) {
-    if (t.estado === 'fallida') resumen.fallidas7d += 1;
-    if (t.terminada_en < hace24h) continue;
-    if (t.estado === 'hecha') resumen.hechas24h += 1;
-    else if (t.estado === 'fallida') resumen.fallidas24h += 1;
-    else resumen.canceladas24h += 1;
-  }
+  const t = db.prepare(`SELECT
+      COALESCE(SUM(estado = 'fallida'), 0) AS fallidas7d,
+      COALESCE(SUM(estado = 'hecha' AND terminada_en >= ?), 0) AS hechas24h,
+      COALESCE(SUM(estado = 'fallida' AND terminada_en >= ?), 0) AS fallidas24h,
+      COALESCE(SUM(estado = 'cancelada' AND terminada_en >= ?), 0) AS canceladas24h
+    FROM tareas WHERE estado IN ('hecha', 'fallida', 'cancelada') AND terminada_en >= ?`).get(hace24h, hace24h, hace24h, iso(ahora - 7 * 86_400_000));
+  for (const clave of ['fallidas7d', 'hechas24h', 'fallidas24h', 'canceladas24h']) resumen[clave] = Number(t[clave]);
   return resumen;
 }
 

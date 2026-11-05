@@ -16,12 +16,13 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { ANORMALES, nuevaCorrida, terminarCorrida, salidasAnormales, reiniciosDesde } from './corridas.js';
+import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
+import { ANORMALES, nuevaCorrida, terminarCorrida, salidasAnormales, reiniciosDesde, marcarPerdidas } from './corridas.js';
 import { recuperarAbandonadas, resumenFila } from './cola.js';
 import { leerModoSeguro, ponerModoSeguro, revisarAlArrancar } from './modo-seguro.js';
 import { sincronizarAvisos } from '../avisos/avisos.js';
 import { medirSalud, evaluarSalud, guardarMuestra } from '../nucleo/salud.js';
+import { enTransaccion } from '../nucleo/db.js';
 import { marcarConErrores } from '../proyectos/proyectos.js';
 
 export const RUTA_TRABAJADOR = fileURLToPath(new URL('./trabajador.js', import.meta.url));
@@ -41,6 +42,7 @@ export const TIEMPOS_SUPERVISOR = Object.freeze({
   paradaMs: 5000, // al apagar: si en 5 s no salió, se corta con SIGKILL
   senalTrasMs: 1000, // si en 1 s no contestó al pedido de salir (por ejemplo, todavía cargaba), recibe SIGTERM
   reintentoSenalMs: 2000,
+  ventanaZombisMs: 600000, // dos salidas por zombis en 10 min: la segunda ya espera cada vez más
   saludCadaMs: 60000,
 });
 export const FASES_TRABAJADOR = Object.freeze(['arrancando', 'esperando', 'trabajando', 'reiniciando', 'sin_respuesta', 'modo_seguro', 'parando']);
@@ -81,23 +83,29 @@ function reemitir(flujo, escribir) {
 
 export function crearSupervisor({
   db, config = {}, version = '', codigo = '', ruta = RUTA_TRABAJADOR, lanzar = lanzarTrabajador, tiempos = {},
-  tiemposTrabajador = null, entorno = {}, registro = console, reloj = Date.now,
+  tiemposTrabajador = null, entorno = {}, registro = console, reloj = Date.now, monotono = null,
 }) {
   if (!db) throw new Error('crearSupervisor necesita la base');
   const T = { ...TIEMPOS_SUPERVISOR, ...tiempos };
+  // Dos relojes: «reloj» da la fecha y hora (lo que se guarda en la base y se muestra); «mono» solo mide cuánto
+  // tiempo pasó, y nunca salta aunque el servidor corrija su hora (NTP). Si el reloj del sistema salta 2 minutos
+  // hacia adelante, eso no corta a un trabajador sano por «colgado», ni deja /api/setup en 503 si salta atrás.
+  // Las pruebas que pasan su propio «reloj» lo usan también para medir.
+  const mono = monotono ?? (reloj === Date.now ? () => performance.now() : reloj);
   const log = (...partes) => { try { registro.log?.(...partes); } catch { /* sin registro */ } };
   const error = (...partes) => { try { registro.error?.(...partes); } catch { /* sin registro */ } };
   const retraso = monitorEventLoopDelay({ resolution: RESOLUCION_RETRASO_MS });
 
   let fase = 'arrancando';
   let hijo = null;
-  const creadoEn = reloj();
+  const creadoEn = mono();
   let iniciadoEn = null;
   let parando = false;
   let paradaEnMarcha = null;
   let temporizadorReinicio = null;
   let proximoIntento = null;
   let reinicios = 0;
+  let ultimaZombis = null;
   let salidasEnVentana = 0;
   let ultimaSalida = null;
   let ultimoModoSeguro = null;
@@ -111,7 +119,7 @@ export function crearSupervisor({
   function estadoArranque() {
     if (!puerta.aplica) return 'no_aplica';
     if (puerta.listo) return 'listo';
-    if (reloj() - (iniciadoEn ?? creadoEn) >= T.ventanaArranqueMs) return 'no_aplica';
+    if (mono() - (iniciadoEn ?? creadoEn) >= T.ventanaArranqueMs) return 'no_aplica';
     if (puerta.fallos >= T.fallosArranque) return 'fallido';
     return 'arrancando';
   }
@@ -211,7 +219,7 @@ export function crearSupervisor({
       return programarReinicio(null, 'no_arranco');
     }
     const h = {
-      corrida, pid: null, proceso: null, desde: reloj(), listo: false, ultimoLatido: null, memoriaMb: null, heapPct: null,
+      corrida, pid: null, proceso: null, desde: mono(), desdeEn: reloj(), listo: false, ultimoLatido: null, ultimoLatidoEn: null, memoriaMb: null, heapPct: null,
       enCurso: [], freno: null, saliendo: null, pidioSalir: null, temporizadorSenal: null, matadoPor: null, terminado: false,
       esperas: [],
     };
@@ -251,14 +259,16 @@ export function crearSupervisor({
 
   function alMensaje(h, mensaje) {
     if (!mensaje || typeof mensaje !== 'object' || h.terminado) return;
-    const ahora = reloj();
+    const ahora = mono();
     if (mensaje.tipo === 'listo') {
       h.listo = true;
       h.ultimoLatido = ahora;
+      h.ultimoLatidoEn = reloj();
       puerta.listo = true; // para siempre: la puerta ya no cierra hasta el próximo reinicio del servicio
       if (!h.pidioSalir) fase = 'esperando';
     } else if (mensaje.tipo === 'latido') {
       h.ultimoLatido = ahora;
+      h.ultimoLatidoEn = reloj();
       h.memoriaMb = Number.isFinite(mensaje.memoriaMb) ? mensaje.memoriaMb : null;
       h.heapPct = Number.isFinite(mensaje.heapPct) ? mensaje.heapPct : null;
       h.enCurso = Array.isArray(mensaje.enCurso) ? mensaje.enCurso.slice(0, 10) : [];
@@ -340,8 +350,16 @@ export function crearSupervisor({
   function programarReinicio(h, como) {
     if (parando) return;
     let espera;
-    if (h && reloj() - h.desde > T.vidaEstableMs) reinicios = 0;
-    if (como === 'senal' || como === 'zombis') espera = T.reintentoSenalMs;
+    if (h && mono() - h.desde > T.vidaEstableMs) reinicios = 0;
+    // Zombis: la primera vez vuelve en 2 s (los pasos zombis ya contaron su fallo). Si vuelve a pasar en
+    // 10 min, cada vez espera más (como una caída), para que un tipo que se traba no tenga al trabajador
+    // reiniciándose sin parar mientras queden tareas de ese tipo. No cuenta para el modo seguro.
+    const zombisSeguidos = como === 'zombis' && ultimaZombis != null && mono() - ultimaZombis < T.ventanaZombisMs;
+    if (como === 'zombis') ultimaZombis = mono();
+    if (zombisSeguidos) {
+      reinicios += 1;
+      espera = Math.max(T.reintentoSenalMs, Math.min(T.reinicioMaxMs, T.reinicioBaseMs * 2 ** (reinicios - 1)));
+    } else if (como === 'senal' || como === 'zombis') espera = T.reintentoSenalMs;
     else if (estadoArranque() === 'arrancando') {
       // Al arrancar se reintenta enseguida (0,5 s, 1 s y 1,5 s). Ya «fallido», se espera cada vez más, como
       // siempre: no sirve de nada encenderlo cada segundo mientras el actualizador vuelve atrás.
@@ -366,7 +384,7 @@ export function crearSupervisor({
   function vigilar() {
     const h = hijo;
     if (!h || h.terminado || h.matadoPor) return;
-    const ahora = reloj();
+    const ahora = mono();
     if (!h.listo) {
       if (ahora - h.desde > T.listoMaxMs) matar(h, 'no_arranco');
       return;
@@ -384,6 +402,7 @@ export function crearSupervisor({
       else fase = 'modo_seguro';
     } else if (!hijo && (fase === 'modo_seguro' || temporizadorReinicio == null)) {
       reinicios = 0;
+      ultimaZombis = null;
       encender();
     }
   }
@@ -439,9 +458,27 @@ export function crearSupervisor({
     };
   }
 
+  // Cuando el servicio entero se cayó (apagón, falta de memoria) nadie devolvió las tareas que el trabajador
+  // tenía en las manos: eso lo hace el próximo trabajador al empezar. Si el servicio arranca en modo seguro, no
+  // hay próximo trabajador: lo hace el servidor web una vez, igual que lo haría el trabajador (corridas que ya
+  // no viven → «perdida», y sus tareas vuelven a la fila sin contar fallo). Así nada queda «en curso» de mentira.
+  function recuperarSinTrabajador() {
+    try {
+      const r = enTransaccion(db, () => {
+        const ahora = reloj();
+        const perdidas = marcarPerdidas(db, { ahora });
+        const recuperadas = recuperarAbandonadas(db, { ahora, alFallar: marcarConErrores });
+        return { perdidas, recuperadas };
+      });
+      if (r.recuperadas.length) log(`En modo seguro: ${r.recuperadas.length} tarea(s) de una vida anterior volvieron a la fila`);
+    } catch (e) {
+      error('No se pudieron recuperar las tareas de una vida anterior del trabajador:', e.message);
+    }
+  }
+
   function iniciar() {
     if (iniciadoEn != null || parando) return;
-    iniciadoEn = reloj();
+    iniciadoEn = mono();
     try { retraso.enable(); } catch { /* sin medida */ }
     let m = null;
     try {
@@ -471,6 +508,7 @@ export function crearSupervisor({
       puerta.aplica = false;
       fase = 'modo_seguro';
       log('Modo seguro activo: el trabajo automático no se enciende (las pantallas funcionan normal)');
+      recuperarSinTrabajador();
       return;
     }
     encender();
@@ -512,9 +550,9 @@ export function crearSupervisor({
       fase,
       pid: h?.pid ?? null,
       corrida: h?.corrida ?? null,
-      desde: h ? iso(h.desde) : null,
-      ultimoLatido: h?.ultimoLatido ? iso(h.ultimoLatido) : null,
-      segundosDesdeLatido: h?.ultimoLatido ? Math.round((ahora - h.ultimoLatido) / 1000) : null,
+      desde: h ? iso(h.desdeEn) : null,
+      ultimoLatido: h?.ultimoLatidoEn ? iso(h.ultimoLatidoEn) : null,
+      segundosDesdeLatido: h?.ultimoLatido != null ? Math.round((mono() - h.ultimoLatido) / 1000) : null,
       memoriaMb: h?.memoriaMb ?? null,
       heapPct: h?.heapPct ?? null,
       enCurso: h?.enCurso ?? [],
