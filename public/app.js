@@ -1496,7 +1496,7 @@ function pistaProyecto(p) {
   const faseContactar = faseDe('contactar', p.tipo) ?? (p.tipo === 'laboral' ? 6 : 3);
   const pasos = [
     { nombreIcono: 'chispa', texto: t('pista.creado'), estado: 'hecho' },
-    { nombreIcono: 'marca', texto: aprobado ? t('pista.aprobado') : t('pista.aprobar'), estado: aprobado ? 'hecho' : 'ahora' },
+    { nombreIcono: 'reloj', texto: aprobado ? t('pista.aprobado') : t('pista.aprobar'), estado: aprobado ? 'hecho' : 'ahora' },
     { nombreIcono: 'buscar', texto: p.tipo === 'laboral' ? t('pista.buscar.laboral') : t('pista.buscar.comercial'), fase: faseBuscar, estado: 'luego' },
     { nombreIcono: 'sobre', texto: t('pista.contactar'), fase: faseContactar, estado: 'luego' },
   ];
