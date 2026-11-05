@@ -442,7 +442,10 @@ function estadoEnInicio(s) {
 async function pantallaInicio() {
   const vigente = nuevoTurno();
   const esAdmin = estado.usuario.rol === 'admin';
-  const [r, sistema] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null]);
+  // Las tarjetas de los proyectos que esperan aprobación usan el catálogo (los nombres de negocios y lugares):
+  // se pide a la vez que lo demás. Sin él, abrir OPORTIA directo en Inicio fallaba («No se pudo cargar OPORTIA»).
+  const [r, sistema, faltaCatalogo] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null,
+    cargarCatalogo().then(() => null, error => error)]);
   if (!vigente()) return;
   const lista = (claves, nombreIcono, tono) => el('ul', { class: 'lista-iconos' }, claves.map(clave => el('li', { class: `tono-${tono}` }, icono(nombreIcono, 'icono chico tono-color'), el('span', { texto: t(clave) }))));
   const pendientes = r.ok ? r.datos.proyectos.filter(p => !p.enPapelera && p.versionPendiente) : [];
@@ -452,6 +455,7 @@ async function pantallaInicio() {
   const aprobar = el('section', { class: `tarjeta${pendientes.length ? ' tarjeta-atencion' : ''}` },
     el('h2', { class: 'con-icono' }, icono(pendientes.length ? 'reloj' : 'bien'), el('span', { texto: escribe ? t('inicio.aprobar.titulo') : t('inicio.aprobar.titulo_lector') })),
     !r.ok ? el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })
+      : pendientes.length && faltaCatalogo ? el('p', { class: 'mensaje error', texto: faltaCatalogo.message })
       : pendientes.length ? [
         el('div', { class: 'lista-proyectos' }, pendientes.map(p => filaProyecto(p, escribe))),
         // Antes de aprobar, sin rodeos: aprobar guarda el proyecto, pero todavía no busca.
@@ -1219,13 +1223,17 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
 
 // ---------- Proyectos ----------
 let catalogo = null;
+let pidiendoCatalogo = null; // si dos pantallas lo piden a la vez, se baja una sola vez
 
 async function cargarCatalogo() {
   if (catalogo) return catalogo;
-  const r = await api('GET', '/api/catalogo');
-  if (!r.ok) throw new Error(textoError(r.datos.error));
-  catalogo = r.datos;
-  return catalogo;
+  pidiendoCatalogo ??= (async () => {
+    const r = await api('GET', '/api/catalogo');
+    if (!r.ok) throw new Error(textoError(r.datos.error));
+    catalogo = r.datos;
+    return catalogo;
+  })().finally(() => { pidiendoCatalogo = null; });
+  return pidiendoCatalogo;
 }
 
 function unir(lista) {
@@ -1943,8 +1951,8 @@ async function pantallaProyectos() {
   const vigente = nuevoTurno();
   let r;
   try {
-    await cargarCatalogo();
-    r = await api('GET', '/api/proyectos');
+    // El catálogo (solo la primera vez) y los datos, a la vez.
+    [, r] = await Promise.all([cargarCatalogo(), api('GET', '/api/proyectos')]);
     if (!r.ok) throw new Error(textoError(r.datos.error));
   } catch (error) {
     if (vigente()) mostrar(marco('proyectos', tarjetaError(error.message)));
@@ -2002,8 +2010,8 @@ async function pantallaNuevo(textoInicial = null) {
   const vigente = nuevoTurno();
   let r;
   try {
-    await cargarCatalogo();
-    r = await api('GET', '/api/proyectos');
+    // El catálogo (solo la primera vez) y los datos, a la vez.
+    [, r] = await Promise.all([cargarCatalogo(), api('GET', '/api/proyectos')]);
     if (!r.ok) throw new Error(textoError(r.datos.error));
   } catch (error) {
     if (vigente()) mostrar(marco('proyectos', tarjetaError(error.message)));
@@ -2075,8 +2083,7 @@ async function pantallaProyecto(id) {
   const vigente = nuevoTurno();
   let r;
   try {
-    await cargarCatalogo();
-    r = await api('GET', `/api/proyectos/${encodeURIComponent(id)}`);
+    [, r] = await Promise.all([cargarCatalogo(), api('GET', `/api/proyectos/${encodeURIComponent(id)}`)]);
     if (!r.ok) throw new Error(textoError(r.datos.error));
   } catch (error) {
     if (vigente()) mostrar(marco('proyectos', el('p', {}, el('a', { href: '#proyectos', texto: t('proyecto.volver') })), tarjetaError(error.message)));
@@ -2542,23 +2549,29 @@ async function iniciar() {
   leerBorradores();
   colorDeLaBarra();
   const preferido = idiomaGuardado() || (navigator.language || '').slice(0, 2);
+  // Los textos, el estado del servidor y la cuenta se piden a la vez, no uno tras otro: por la red del teléfono
+  // cada viaje de ida y vuelta cuesta 150-400 ms.
+  const pedidoSetup = api('GET', '/api/setup');
+  const pedidoYo = api('GET', '/api/yo');
   try {
     await cargarIdioma(preferido === 'en' ? 'en' : 'es');
   } catch {
     return pantallaNoArranco();
   }
   mostrar(el('p', { class: 'cargando', texto: t('app.cargando') }));
-  let setup = await api('GET', '/api/setup');
+  let setup = await pedidoSetup;
   // Justo después de un reinicio, el servidor dice «arrancando» por un momento: se espera (hasta 60 s) en vez
   // de mostrar un error.
-  for (let intento = 0; !setup.ok && setup.datos?.error === 'arrancando' && intento < 60; intento += 1) {
+  let intento = 0;
+  for (; !setup.ok && setup.datos?.error === 'arrancando' && intento < 60; intento += 1) {
     mostrar(el('p', { class: 'cargando', texto: t('app.arrancando') }));
     await new Promise(listo => setTimeout(listo, 1000));
     setup = await api('GET', '/api/setup');
   }
   estado.setup = setup.datos;
   if (!setup.ok) return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
-  const yo = await api('GET', '/api/yo');
+  // Si hubo que esperar al servidor, la cuenta se vuelve a pedir (la primera respuesta puede ser vieja).
+  const yo = intento ? await api('GET', '/api/yo') : await pedidoYo;
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
     avisosCuenta = leerAvisos(yo.datos);

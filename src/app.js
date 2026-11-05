@@ -58,6 +58,12 @@ function origenValido(req) {
   return host === esperado;
 }
 
+// Respuestas que viajan comprimidas si el navegador sabe (de 7 a 30 KB bajan a 1-6 KB): las grandes que piden
+// las pantallas y que no llevan ningún secreto (ver enviarJson en src/nucleo/http.js). Una ruta nueva no se
+// comprime hasta que se agregue aquí.
+const RESPUESTAS_COMPRIMIBLES = new Set(['/api/catalogo', '/api/proyectos', '/api/proyectos/:id', '/api/proyectos/:id/versiones/:numero',
+  '/api/admin/sistema', '/api/admin/tareas', '/api/admin/usuarios']);
+
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });
   res.end(mensaje);
@@ -92,7 +98,7 @@ export function crearServidor({ db = null, limites, supervisor = null, proyectos
 
     try {
       const r = await encontrada.manejador({ db, req, res, usuario, token, parametros: encontrada.parametros, cliente: clienteDe(req), https: esHttps(req) });
-      enviarJson(res, r.codigo, r.datos, r.cabeceras);
+      enviarJson(res, r.codigo, r.datos, r.cabeceras, { comprimir: RESPUESTAS_COMPRIMIBLES.has(encontrada.patron) });
     } catch (error) {
       if (error instanceof ErrorHttp) return enviarJson(res, error.codigo, { error: error.clave });
       throw error;
