@@ -53,3 +53,10 @@ Plan: una PASADA VISUAL propia (después de la 1c, antes de la 1d; intensidad me
 ## Pedido de Junior (5 nov 2026): fotos de las empresas (fase 2 en adelante)
 «Foto de empresas cuando haga investigación.» Cuando OPORTIA investigue empresas, cada ficha debe mostrar la imagen de la empresa: logo o foto de su web pública (og:image / favicon grande), guardada en el servidor con tamaño reducido, citando de dónde salió; si no hay, un icono del sector. Solo fuentes públicas y legales (no copiar fotos de Google Maps u otras con licencia cerrada). Fichas visuales: foto, nombre, sector con icono, ubicación en el mapa, puntuación en grande, poco texto.
 Los 2 enfoques siguen en el plan: clientes para vender (fase 2+) y buscar empleo (fase 6). Ambos ya se pueden crear como proyecto.
+
+## Pedido de Junior (5 nov 2026): también para PC, y nada escondido al fondo en el celular
+«No solo es para cel, también para PC; y que no hagas apartados que tenga que bajar en el cel hasta lo último.»
+Plan: PASADA DE DISEÑO DE PANTALLAS justo después de publicar la 1d (intensidad media):
+- PC/Mac: diseño ancho de verdad (menú lateral o barra arriba, 2-3 columnas, tarjetas en rejilla, nada estirado ni perdido en el centro).
+- Celular: ninguna pantalla larga. Administrador partido en pestañas/subpáginas (Resumen, Usuarios, Trabajo automático, Servidor, IA y gastos, Claves); proyecto con pestañas (Resumen, Lo que entendí, Versiones, Historial); acciones principales siempre arriba o fijas; lo largo plegado.
+- Regla para todo lo nuevo: lo importante en la primera pantalla, sin bajar.
