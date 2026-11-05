@@ -333,5 +333,6 @@ y el costo estimado; (5) la fase 6 trae claves propias por cuenta (`secretos.esp
     (Inicio ahora carga los nombres de negocios y lugares antes de dibujar esa lista).
   - Preguntas para el dueño (cada una tiene su respuesta segura si no contesta): «Ayuda en proyectos» (apagada), leer
     `secrets.env` de JARVIS (no), modelo (Haiku 5.5), IA para las otras cuentas (US$0) y ChatGPT como segundo (no).
+- Rapidez (versión 0.3.3, sin cambio de base): por Funnel en el teléfono, volver a abrir OPORTIA pasa de unos 4 s a 1,1-1,2 s (de 6 s a 1,8 s con una red lenta; unos 0,6 s si la conexión sigue abierta) y la primera vez de 4 s a 1,7-2,2 s. Los archivos van comprimidos, con ETag y su huella `?v=` (index.html se revisa siempre: una actualización se ve al instante), y al abrir se pide a la vez lo que necesita la pantalla. Inicio ya no falla al abrir con proyectos esperando aprobación.
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

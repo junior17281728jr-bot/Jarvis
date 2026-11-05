@@ -135,20 +135,29 @@ function el(etiqueta, propiedades = {}, ...hijos) {
   return nodo;
 }
 
-async function api(metodo, ruta, datos) {
+// El pedido tal cual, sin mirar la respuesta (eso lo hace api). Nunca falla: sin red responde «sin_conexion».
+async function pedirAlServidor(metodo, ruta, datos) {
   const opciones = { method: metodo, credentials: 'same-origin', headers: { 'X-Oportia': '1' } };
   if (datos !== undefined) {
     opciones.headers['Content-Type'] = 'application/json';
     opciones.body = JSON.stringify(datos);
   }
-  let respuesta;
   try {
     const r = await fetch(ruta, opciones);
     const cuerpo = await r.json().catch(() => ({}));
-    respuesta = { ok: r.ok, codigo: r.status, datos: cuerpo };
+    return { ok: r.ok, codigo: r.status, datos: cuerpo };
   } catch {
     return { ok: false, codigo: 0, datos: { error: 'sin_conexion' } };
   }
+}
+
+// Pedidos GET que iniciar() hace por adelantado (ruta -> respuesta en camino): solo los usa la primera pantalla.
+const adelantados = new Map();
+
+async function api(metodo, ruta, datos) {
+  const adelantado = metodo === 'GET' && datos === undefined ? adelantados.get(ruta) : undefined;
+  if (adelantado) adelantados.delete(ruta);
+  const respuesta = await (adelantado ?? pedirAlServidor(metodo, ruta, datos));
   // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
   const error = respuesta.datos?.error;
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
@@ -291,6 +300,7 @@ function pantallaEntrar() {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.usuario = r.datos.usuario;
+    recordarAdmin(estado.usuario);
     avisosCuenta = leerAvisos(r.datos);
     if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
       // Eligió un idioma en esta pantalla: se guarda en su cuenta.
@@ -459,10 +469,10 @@ function estadoEnInicio(s, ia = null) {
 async function pantallaInicio() {
   const vigente = nuevoTurno();
   const esAdmin = estado.usuario.rol === 'admin';
-  // El catálogo (nombres de negocios y lugares) hace falta para las filas de «Espera tu aprobación»: sin él, abrir
-  // OPORTIA directo en Inicio con un proyecto pendiente fallaba («No se pudo cargar OPORTIA»).
-  const [r, sistema, ia] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null, esAdmin ? api('GET', '/api/admin/ia') : null,
-    cargarCatalogo().catch(() => null)]);
+  // Las tarjetas de los proyectos que esperan aprobación usan el catálogo (los nombres de negocios y lugares):
+  // se pide a la vez que lo demás. Sin él, abrir OPORTIA directo en Inicio fallaba («No se pudo cargar OPORTIA»).
+  const [r, sistema, ia, faltaCatalogo] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null,
+    esAdmin ? api('GET', '/api/admin/ia') : null, cargarCatalogo().then(() => null, error => error)]);
   if (!vigente()) return;
   const lista = (claves, nombreIcono, tono) => el('ul', { class: 'lista-iconos' }, claves.map(clave => el('li', { class: `tono-${tono}` }, icono(nombreIcono, 'icono chico tono-color'), el('span', { texto: t(clave) }))));
   const pendientes = r.ok ? r.datos.proyectos.filter(p => !p.enPapelera && p.versionPendiente) : [];
@@ -472,6 +482,7 @@ async function pantallaInicio() {
   const aprobar = el('section', { class: `tarjeta${pendientes.length ? ' tarjeta-atencion' : ''}` },
     el('h2', { class: 'con-icono' }, icono(pendientes.length ? 'reloj' : 'bien'), el('span', { texto: escribe ? t('inicio.aprobar.titulo') : t('inicio.aprobar.titulo_lector') })),
     !r.ok ? el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })
+      : pendientes.length && faltaCatalogo ? el('p', { class: 'mensaje error', texto: faltaCatalogo.message })
       : pendientes.length ? [
         el('div', { class: 'lista-proyectos' }, pendientes.map(p => filaProyecto(p, escribe))),
         // Antes de aprobar, sin rodeos: aprobar guarda el proyecto, pero todavía no busca.
@@ -1993,13 +2004,17 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
 
 // ---------- Proyectos ----------
 let catalogo = null;
+let pidiendoCatalogo = null; // si dos pantallas lo piden a la vez, se baja una sola vez
 
 async function cargarCatalogo() {
   if (catalogo) return catalogo;
-  const r = await api('GET', '/api/catalogo');
-  if (!r.ok) throw new Error(textoError(r.datos.error));
-  catalogo = r.datos;
-  return catalogo;
+  pidiendoCatalogo ??= (async () => {
+    const r = await api('GET', '/api/catalogo');
+    if (!r.ok) throw new Error(textoError(r.datos.error));
+    catalogo = r.datos;
+    return catalogo;
+  })().finally(() => { pidiendoCatalogo = null; });
+  return pidiendoCatalogo;
 }
 
 function unir(lista) {
@@ -2718,8 +2733,8 @@ async function pantallaProyectos() {
   const vigente = nuevoTurno();
   let r;
   try {
-    await cargarCatalogo();
-    r = await api('GET', '/api/proyectos');
+    // El catálogo (solo la primera vez) y los datos, a la vez.
+    [, r] = await Promise.all([cargarCatalogo(), api('GET', '/api/proyectos')]);
     if (!r.ok) throw new Error(textoError(r.datos.error));
   } catch (error) {
     if (vigente()) mostrar(marco('proyectos', tarjetaError(error.message)));
@@ -2777,8 +2792,8 @@ async function pantallaNuevo(textoInicial = null) {
   const vigente = nuevoTurno();
   let r;
   try {
-    await cargarCatalogo();
-    r = await api('GET', '/api/proyectos');
+    // El catálogo (solo la primera vez) y los datos, a la vez.
+    [, r] = await Promise.all([cargarCatalogo(), api('GET', '/api/proyectos')]);
     if (!r.ok) throw new Error(textoError(r.datos.error));
   } catch (error) {
     if (vigente()) mostrar(marco('proyectos', tarjetaError(error.message)));
@@ -2850,8 +2865,7 @@ async function pantallaProyecto(id) {
   const vigente = nuevoTurno();
   let r;
   try {
-    await cargarCatalogo();
-    r = await api('GET', `/api/proyectos/${encodeURIComponent(id)}`);
+    [, r] = await Promise.all([cargarCatalogo(), api('GET', `/api/proyectos/${encodeURIComponent(id)}`)]);
     if (!r.ok) throw new Error(textoError(r.datos.error));
   } catch (error) {
     if (vigente()) mostrar(marco('proyectos', el('p', {}, el('a', { href: '#proyectos', texto: t('proyecto.volver') })), tarjetaError(error.message)));
@@ -3328,6 +3342,31 @@ async function dibujar() {
   return pantallaInicio();
 }
 
+// Lo que la primera pantalla va a pedir (los mismos caminos que dibujar), para pedirlo al abrir junto con la cuenta
+// y no después: por la red del teléfono eso es un viaje de ida y vuelta menos (150-400 ms). Si una pantalla pide
+// algo más al empezar, va aquí también (test/archivos.test.js lo revisa).
+function pedidosAlAbrir(seccion, admin) {
+  if (seccion === 'configuracion') return ['/api/yo/reinicios'];
+  // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
+  if (seccion === 'admin') return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia'] : [];
+  // Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
+  if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
+  if (seccion === 'claves') return admin ? ['/api/admin/claves'] : [];
+  if (seccion === 'proyectos' || seccion === 'nuevo') return ['/api/catalogo', '/api/proyectos'];
+  const proyecto = seccion.match(/^proyecto\/(\d+)$/);
+  if (proyecto) return ['/api/catalogo', `/api/proyectos/${encodeURIComponent(proyecto[1])}`];
+  return ['/api/proyectos', '/api/catalogo', ...(admin ? ['/api/admin/sistema', '/api/admin/ia'] : [])];
+}
+
+// Si la última cuenta que abrió OPORTIA en este navegador era de administrador: solo para saber qué pedir por
+// adelantado. Si se equivoca no pasa nada (lo que sobra se descarta y lo que falta se pide después).
+function eraAdmin() {
+  try { return localStorage.getItem('op_admin') === '1'; } catch { return false; }
+}
+function recordarAdmin(usuario) {
+  try { localStorage.setItem('op_admin', usuario?.rol === 'admin' ? '1' : '0'); } catch { /* sin almacenamiento: no pasa nada */ }
+}
+
 // Si OPORTIA no pudo arrancar, se explica en los dos idiomas y se ofrece reintentar
 // (en el iPhone, la app de la pantalla de inicio no tiene botón de recargar).
 function pantallaNoArranco(detalle) {
@@ -3340,29 +3379,49 @@ async function iniciar() {
   leerBorradores();
   colorDeLaBarra();
   const preferido = idiomaGuardado() || (navigator.language || '').slice(0, 2);
+  // Los textos, el estado del servidor y la cuenta se piden a la vez, no uno tras otro: por la red del teléfono
+  // cada viaje de ida y vuelta cuesta 150-400 ms.
+  const pedidoSetup = api('GET', '/api/setup');
+  const pedidoYo = api('GET', '/api/yo');
+  // Y lo que va a pedir la primera pantalla. Se descarta si no hay sesión, si hubo que esperar al servidor o si la
+  // persona cambió de pantalla mientras tanto; después de la primera pantalla no queda nada guardado.
+  const direccionAlAbrir = location.hash;
+  for (const ruta of pedidosAlAbrir(direccionAlAbrir.replace('#', '') || 'inicio', eraAdmin())) adelantados.set(ruta, pedirAlServidor('GET', ruta));
   try {
     await cargarIdioma(preferido === 'en' ? 'en' : 'es');
   } catch {
+    adelantados.clear();
     return pantallaNoArranco();
   }
   mostrar(el('p', { class: 'cargando', texto: t('app.cargando') }));
-  let setup = await api('GET', '/api/setup');
+  let setup = await pedidoSetup;
   // Justo después de un reinicio, el servidor dice «arrancando» por un momento: se espera (hasta 60 s) en vez
   // de mostrar un error.
-  for (let intento = 0; !setup.ok && setup.datos?.error === 'arrancando' && intento < 60; intento += 1) {
+  let intento = 0;
+  for (; !setup.ok && setup.datos?.error === 'arrancando' && intento < 60; intento += 1) {
     mostrar(el('p', { class: 'cargando', texto: t('app.arrancando') }));
     await new Promise(listo => setTimeout(listo, 1000));
     setup = await api('GET', '/api/setup');
   }
   estado.setup = setup.datos;
-  if (!setup.ok) return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
-  const yo = await api('GET', '/api/yo');
+  if (!setup.ok) {
+    adelantados.clear();
+    return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
+  }
+  // Si hubo que esperar al servidor, la cuenta se vuelve a pedir (la primera respuesta puede ser vieja).
+  const yo = intento ? await api('GET', '/api/yo') : await pedidoYo;
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
+    recordarAdmin(estado.usuario);
     avisosCuenta = leerAvisos(yo.datos);
     if (estado.usuario.idioma !== idioma) await cargarIdioma(estado.usuario.idioma);
   }
-  await dibujar();
+  if (!yo.ok || intento || location.hash !== direccionAlAbrir) adelantados.clear();
+  // La primera pantalla toma lo pedido por adelantado al empezar a dibujarse (sus pedidos salen enseguida, antes
+  // de esperar nada); lo que no usó se descarta, así ninguna pantalla de después recibe datos viejos.
+  const primera = dibujar();
+  adelantados.clear();
+  await primera;
 }
 
 window.addEventListener('hashchange', () => { if (estado.usuario) dibujar(); });
