@@ -169,7 +169,7 @@ export function normalizarEleccion(e = {}) {
 // Las claves de lo que puede faltar (la pantalla dice «empleo» en vez de «producto» cuando busca empleo) y de lo que
 // no cabe en los toques: test/pantallas.test.js comprueba que cada una tiene su frase en los dos idiomas.
 export const CLAVES_FALTA = ['producto', 'empleo', 'sectores', 'zonas'];
-export const CLAVES_QUEDA_FUERA = ['sectores', 'zonas', 'exclusiones', 'prioridades', 'salario', 'autonomia', 'capacidades'];
+export const CLAVES_QUEDA_FUERA = ['sectores', 'zonas', 'exclusiones', 'prioridades', 'salario', 'autonomia', 'capacidades', 'objetivo'];
 
 // Lo que falta elegir antes de crear. La pantalla lo dice paso a paso (no deja crear algo incompleto).
 export function faltaEnEleccion(e) {
@@ -215,7 +215,8 @@ export function componer(eleccion, idioma = 'es', { huecos = false } = {}) {
 // Para «Cambiar con toques» en un proyecto que ya existe: lo que se puede marcar a partir de lo que está en uso,
 // y lo que NO cabe en los toques (exclusiones, prioridades, lugares escritos a mano…), para avisar antes de reemplazarlo.
 // capacidadesPorDefecto: las que enciende el motor cuando no se dice nada (catalogo.combinaciones.investigar_y_preparar).
-export function eleccionDesde(c = {}, productoVisible = c.producto, capacidadesPorDefecto = null) {
+// objetivoPropio: true si la persona escribió el objetivo a mano (la frase nueva lo cambiaría por el sugerido).
+export function eleccionDesde(c = {}, productoVisible = c.producto, capacidadesPorDefecto = null, { objetivoPropio = false } = {}) {
   const sectores = Array.isArray(c.sectores) ? c.sectores.filter(s => s === 'todas' || SECTOR.has(s)) : [];
   const zonas = Array.isArray(c.zonas) ? c.zonas.filter(z => ZONA.has(z)) : [];
   const eleccion = normalizarEleccion({
@@ -237,8 +238,11 @@ export function eleccionDesde(c = {}, productoVisible = c.producto, capacidadesP
   if (largo(c.exclusiones) || largo(c.sectoresExcluidos) || largo(c.zonasExcluidas)) quedaFuera.push('exclusiones');
   if (largo(c.prioridades)) quedaFuera.push('prioridades');
   if (c.tipo === 'laboral' && (c.salarioMaximo || c.moneda === 'USD' || c.experiencia)) quedaFuera.push('salario');
-  if (c.autonomia && c.autonomia !== 'aprobar_salidas' && c.autonomia !== 'solo_cuando_pida') quedaFuera.push('autonomia');
+  // La frase de los toques da «solo cuando yo lo pida» con «Revisa solo cuando yo lo pida» y, si no, la más segura.
+  const autonomiaDeLaFrase = eleccion.frecuencia === 'manual' ? 'solo_cuando_pida' : 'aprobar_salidas';
+  if (c.autonomia && c.autonomia !== autonomiaDeLaFrase) quedaFuera.push('autonomia');
   if (Array.isArray(capacidadesPorDefecto) && c.capacidades && typeof c.capacidades === 'object'
     && Object.entries(c.capacidades).some(([k, v]) => Boolean(v) !== capacidadesPorDefecto.includes(k))) quedaFuera.push('capacidades');
-  return { eleccion, quedaFuera };
+  if (objetivoPropio) quedaFuera.push('objetivo');
+  return { eleccion, quedaFuera: [...new Set(quedaFuera)] };
 }

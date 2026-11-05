@@ -1275,12 +1275,15 @@ function productoDe(c) {
 
 // El objetivo que OPORTIA sugirió al crear el proyecto se muestra en el idioma de ahora;
 // si la persona lo escribió a mano, se muestra tal cual.
-function objetivoDe(c) {
+function objetivoEsPropio(c) {
   const p = String(c.producto ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const sugeridos = c.tipo === 'laboral'
     ? (p ? [`Conseguir empleo de ${p}`, `Get a job as ${p}`] : ['Conseguir empleo', 'Get a job'])
     : (p ? [`Encontrar clientes que puedan necesitar ${p}`, `Find customers who may need ${p}`] : ['Encontrar clientes', 'Find customers']);
-  if (!sugeridos.some(x => comparable(x) === comparable(c.objetivo))) return c.objetivo;
+  return !sugeridos.some(x => comparable(x) === comparable(c.objetivo));
+}
+function objetivoDe(c) {
+  if (objetivoEsPropio(c)) return c.objetivo;
   const producto = productoDe(c);
   if (c.tipo === 'laboral') return producto ? t('objetivo.laboral', { producto }) : t('objetivo.laboral.sin_producto');
   return producto ? t('objetivo.comercial', { producto }) : t('objetivo.comercial.sin_producto');
@@ -1819,7 +1822,9 @@ async function pantallaNuevo(textoInicial = null) {
   const crearCon = async instrucciones => {
     const creado = await api('POST', '/api/proyectos', { instrucciones });
     if (!creado.ok) throw new Error(textoError(creado.datos.error));
-    borrador('nuevo', '');
+    // Cada camino borra solo su borrador (el creador con toques borra el suyo al terminar): lo escrito a mano no se pierde
+    // por crear tocando.
+    if (modoNuevo === 'texto') borrador('nuevo', '');
     // El proyecto se dibuja con lo que respondió el servidor (sin pedirlo otra vez) y el botón queda apagado:
     // así un segundo toque no puede crear otro.
     if (!vigente()) return MANTENER;
@@ -2168,7 +2173,8 @@ function dibujarProyecto(d, aviso = null) {
       }));
     // «Cambiar con toques»: el mismo creador de «Nuevo proyecto», con lo que está ahora ya marcado.
     // Lo que no cabe en los toques (exclusiones, prioridades, lugares escritos a mano…) se avisa antes de reemplazarlo.
-    const { eleccion, quedaFuera } = eleccionDesde(base.configuracion, productoDe(base.configuracion), catalogo.combinaciones?.investigar_y_preparar);
+    const { eleccion, quedaFuera } = eleccionDesde(base.configuracion, productoDe(base.configuracion), catalogo.combinaciones?.investigar_y_preparar,
+      { objetivoPropio: Boolean(base.configuracion.objetivo) && objetivoEsPropio(base.configuracion) });
     const claveToques = `toques|${p.id}`;
     const detallesToques = el('details', { open: Boolean(borrador(claveToques)) },
       el('summary', { class: 'con-icono' }, icono('dedo'), el('span', { texto: t('proyecto.modificar.toques') })));

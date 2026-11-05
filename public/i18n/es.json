@@ -700,6 +700,7 @@
   "creador.fuera.salario": "el salario máximo, la moneda o la experiencia",
   "creador.fuera.autonomia": "el nivel de libertad",
   "creador.fuera.capacidades": "lo que elegiste que haga",
+  "creador.fuera.objetivo": "el objetivo que escribiste",
   "proyecto.modificar.toques": "Cambiar tocando",
   "proyectos.instrucciones.ejemplo": "Por ejemplo: Vendo paneles solares. Quiero encontrar hoteles y clínicas en Santiago. Revisa cada semana.",
   "proyectos.contador": "{n} de {maximo} letras",

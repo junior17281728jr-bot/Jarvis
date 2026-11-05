@@ -747,6 +747,11 @@ test('creador: «Cambiar tocando» marca lo que está en uso, y avisa de lo que 
   const { quedaFuera } = CREADOR.eleccionDesde({ ...c, capacidades: capacidadesDesdeLista(['investigar']) }, c.producto, porDefecto);
   for (const x of ['zonas', 'exclusiones', 'prioridades', 'capacidades']) assert.ok(quedaFuera.includes(x), `${x}: ${quedaFuera}`);
   for (const x of quedaFuera) assert.ok(CREADOR.CLAVES_QUEDA_FUERA.includes(x), x);
+  assert.equal(new Set(quedaFuera).size, quedaFuera.length, 'sin repetidos');
+  // Un objetivo escrito a mano, o «aprobar lo que sale» con «solo cuando yo lo pida», tampoco caben: se avisa.
+  const { configuracion: m } = interpretar(CREADOR.componer({ producto: 'agua', sectores: ['hoteles'], zonas: ['azua'], frecuencia: 'manual' }, 'es'));
+  assert.deepEqual(CREADOR.eleccionDesde({ ...m, autonomia: 'aprobar_salidas' }, m.producto, porDefecto).quedaFuera, ['autonomia']);
+  assert.deepEqual(CREADOR.eleccionDesde(m, m.producto, porDefecto, { objetivoPropio: true }).quedaFuera, ['objetivo']);
 });
 
 test('por el servidor: un proyecto hecho solo con toques se crea, no tiene dudas y se aprueba', async () => {

@@ -700,6 +700,7 @@
   "creador.fuera.salario": "the maximum salary, the currency or the experience",
   "creador.fuera.autonomia": "the level of freedom",
   "creador.fuera.capacidades": "what you chose it should do",
+  "creador.fuera.objetivo": "the goal you wrote",
   "proyecto.modificar.toques": "Change by tapping",
   "proyectos.instrucciones.ejemplo": "For example: I sell solar panels. I want to find hotels and clinics in Santiago. Search every week.",
   "proyectos.contador": "{n} of {maximo} characters",
