@@ -3,6 +3,11 @@
 // Uso (pégalo en la Consola del servidor):
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs          -> recupera el primer administrador
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs junior   -> recupera (o crea) el administrador «junior»
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --modo-seguro=si   -> pone en pausa el trabajo automático
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --modo-seguro=no   -> lo vuelve a encender
+//
+// El modo seguro sirve cuando las pantallas no abren: el servicio que está corriendo lo aplica en menos de
+// 30 segundos, sin reiniciar. Las pantallas siguen funcionando y no se pierde nada (lo que está en la fila espera).
 //
 // La contraseña nueva también quita cualquier bloqueo por intentos fallidos que tuviera la cuenta.
 //
@@ -15,6 +20,9 @@ import { abrirBase } from '../src/nucleo/db.js';
 import { hashClave, claveTemporal } from '../src/cuentas/claves.js';
 import { cerrarTodas } from '../src/cuentas/sesiones.js';
 import { NOMBRE_VALIDO, auditar, buscarPorNombre, crearUsuario, guardarClave, ponerActivo } from '../src/cuentas/usuarios.js';
+import { ponerModoSeguro } from '../src/tareas/modo-seguro.js';
+
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 function leerEnv(archivo) {
   const env = {};
@@ -34,9 +42,20 @@ async function principal() {
   }
   const archivoEnv = process.env.OPORTIA_ENV_FILE || '/opt/jarvis/.env';
   const config = leerConfig({ ...leerEnv(archivoEnv), ...process.env });
+  const pedido = (process.argv[2] || '').trim();
+  // Un nombre de usuario nunca empieza con «-», así que esto no se confunde con recuperar a alguien.
+  let modoSeguro = null;
+  if (pedido.startsWith('-')) {
+    const m = pedido.match(/^--modo-seguro=(si|no)$/);
+    if (!m) {
+      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático) o --modo-seguro=no (encenderlo otra vez).');
+      return 2;
+    }
+    modoSeguro = m[1] === 'si';
+  }
   const db = abrirBase(config);
   try {
-    const pedido = (process.argv[2] || '').trim();
+    if (modoSeguro != null) return cambiarModoSeguro(db, modoSeguro);
     let admin;
     if (pedido) {
       if (!NOMBRE_VALIDO.test(pedido)) {
@@ -73,6 +92,22 @@ async function principal() {
   } finally {
     db.close();
   }
+}
+
+// Escribe el modo seguro en la base (con su auditoría y su aviso). El servicio lo lee cada 30 segundos.
+function cambiarModoSeguro(db, activo) {
+  const r = ponerModoSeguro(db, { activo, origen: 'consola', version: VERSION });
+  if (activo) {
+    console.log(r.cambio ? 'Listo: modo seguro ACTIVADO desde la consola.' : 'El modo seguro ya estaba activado: no cambió nada.');
+    console.log('El trabajo automático se apaga en menos de 30 segundos, sin reiniciar. Las pantallas siguen funcionando y no se pierde nada.');
+    console.log('Para quitarlo: sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --modo-seguro=no');
+  } else {
+    console.log(r.cambio ? 'Listo: modo seguro QUITADO desde la consola.' : 'El modo seguro ya estaba quitado: no cambió nada.');
+    if (r.cambio) console.log('El trabajo automático se vuelve a encender en menos de 30 segundos y sigue con lo que estaba en la fila.');
+    if (r.cambio && r.ultimo?.motivo === 'base_danada') console.log('Como estaba activado por un problema en la base, la base se revisa otra vez enseguida.');
+  }
+  console.log(`Estado ahora: modo seguro ${r.activo ? 'activado' : 'quitado'}.`);
+  return 0;
 }
 
 principal().then(codigo => { process.exitCode = codigo; }).catch(error => {

@@ -387,9 +387,25 @@ function marco(seccion, ...contenido) {
   ];
 }
 
+// Solo para el administrador, arriba de Inicio: cómo está el sistema de un vistazo y, si el trabajo automático
+// está en pausa (modo seguro) o hay un aviso grave sin ver, una tarjeta roja que lleva a Administrador.
+function estadoEnInicio(s) {
+  if (!s) return null;
+  const graves = (s.avisos?.abiertos ?? []).filter(a => a.nivel === 'grave' && !a.vistoEn).length;
+  const alerta = s.modoSeguro?.activo ? t('inicio.alerta.modo_seguro') : graves ? t('inicio.alerta.grave', { n: graves }) : null;
+  const tonoServidor = TONO_SEMAFORO[s.salud?.semaforo] ?? 'atencion';
+  return el('section', { class: `tarjeta estado-inicio${alerta ? ' alerta tono-mal' : ''}` },
+    alerta ? el('p', { class: 'alerta-texto con-icono' }, icono('mal', 'icono estado'), el('span', { texto: alerta })) : el('h2', { texto: t('inicio.estado') }),
+    el('div', { class: 'etiquetas' },
+      insignia(tonoTrabajo(s), t('inicio.estado.trabajo', { estado: nombreFase(s) })),
+      insignia(tonoServidor, t('inicio.estado.servidor', { estado: t(`sistema.semaforo.${s.salud?.semaforo ?? 'amarillo'}`) }))),
+    el('a', { class: 'boton-enlace', href: '#admin', texto: t('inicio.alerta.ver') }));
+}
+
 async function pantallaInicio() {
   const vigente = nuevoTurno();
-  const r = await api('GET', '/api/proyectos');
+  const esAdmin = estado.usuario.rol === 'admin';
+  const [r, sistema] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null]);
   if (!vigente()) return;
   const lista = claves => el('ul', {}, claves.map(clave => el('li', { texto: t(clave) })));
   const pendientes = r.ok ? r.datos.proyectos.filter(p => !p.enPapelera && p.versionPendiente) : [];
@@ -410,14 +426,15 @@ async function pantallaInicio() {
         : el('p', { class: 'suave', texto: t('inicio.aprobar.vacio') }),
     r.ok ? el('p', { class: 'suave' }, el('a', { href: '#proyectos', texto: t('inicio.ir_proyectos', { usados: r.datos.usados, limite: r.datos.limite }) })) : null);
   mostrar(marco('inicio',
+    sistema?.ok ? estadoEnInicio(sistema.datos) : null,
     el('section', { class: 'tarjeta' },
       el('h1', { texto: t('inicio.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
       el('p', { class: 'suave', texto: t('inicio.texto') })),
     aprobar,
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.funciona') }),
-      lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.2', 'inicio.funciona.3'])),
+      lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.2', 'inicio.funciona.3'])),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.viene') }),
-      lista(['inicio.viene.tareas', 'inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos']))));
+      lista(['inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos']))));
 }
 
 // Botones de los que se elige uno (idioma, tema): el elegido se ve lleno y lo dice a VoiceOver (aria-pressed).
@@ -542,14 +559,453 @@ function seccionClaveTemporal() {
   return seccion;
 }
 
+// ---------- Zona de sistema (Administrador, fase 1, parte c) ----------
+// Lo importante se ve de un vistazo: tarjetas de colores con su ícono (verde = bien, amarillo = mirar,
+// rojo = grave) y números grandes. Todo se maneja con botones: no hay que escribir nada.
+// Se actualiza sola cada 30 s mientras Administrador está abierto. Solo se cambia esta zona: lo que se está
+// escribiendo en «Crear un usuario» nunca se pierde.
+const SVG = 'http://www.w3.org/2000/svg';
+const ICONOS = {
+  latido: [['polyline', { points: '3 12 7 12 10 5 14 19 17 12 21 12' }]],
+  servidor: [['rect', { x: 3, y: 4, width: 18, height: 7, rx: 2 }], ['rect', { x: 3, y: 13, width: 18, height: 7, rx: 2 }], ['line', { x1: 7, y1: 7.5, x2: 7.01, y2: 7.5 }], ['line', { x1: 7, y1: 16.5, x2: 7.01, y2: 16.5 }]],
+  campana: [['path', { d: 'M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z' }], ['path', { d: 'M10 21h4' }]],
+  escudo: [['path', { d: 'M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6z' }]],
+  bien: [['circle', { cx: 12, cy: 12, r: 9 }], ['polyline', { points: '8 12.5 11 15.5 16 9.5' }]],
+  atencion: [['path', { d: 'M12 3.5 2.5 20h19z' }], ['line', { x1: 12, y1: 10, x2: 12, y2: 14 }], ['line', { x1: 12, y1: 17, x2: 12.01, y2: 17 }]],
+  mal: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 12, y1: 7, x2: 12, y2: 13 }], ['line', { x1: 12, y1: 16.5, x2: 12.01, y2: 16.5 }]],
+  apagado: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 10, y1: 9, x2: 10, y2: 15 }], ['line', { x1: 14, y1: 9, x2: 14, y2: 15 }]],
+  reloj: [['circle', { cx: 12, cy: 12, r: 9 }], ['polyline', { points: '12 7 12 12 15.5 14' }]],
+  fila: [['line', { x1: 9, y1: 6, x2: 20, y2: 6 }], ['line', { x1: 9, y1: 12, x2: 20, y2: 12 }], ['line', { x1: 9, y1: 18, x2: 20, y2: 18 }], ['line', { x1: 4, y1: 6, x2: 4.01, y2: 6 }], ['line', { x1: 4, y1: 12, x2: 4.01, y2: 12 }], ['line', { x1: 4, y1: 18, x2: 4.01, y2: 18 }]],
+  base: [['ellipse', { cx: 12, cy: 5, rx: 8, ry: 3 }], ['path', { d: 'M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5' }], ['path', { d: 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3' }]],
+  actualizar: [['path', { d: 'M20 12a8 8 0 1 1-2.4-5.7' }], ['polyline', { points: '20 4 20 9 15 9' }]],
+};
+function icono(nombre, clase = 'icono') {
+  const svg = document.createElementNS(SVG, 'svg');
+  const atributos = { viewBox: '0 0 24 24', class: clase, 'aria-hidden': 'true', focusable: 'false', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  for (const [clave, valor] of Object.entries(atributos)) svg.setAttribute(clave, String(valor));
+  for (const [etiqueta, propias] of ICONOS[nombre] ?? ICONOS.bien) {
+    const parte = document.createElementNS(SVG, etiqueta);
+    for (const [clave, valor] of Object.entries(propias)) parte.setAttribute(clave, String(valor));
+    svg.append(parte);
+  }
+  return svg;
+}
+
+// Una frase si existe en el idioma; si no (por ejemplo, un tipo de una versión más nueva), el respaldo tal cual.
+function tSi(clave, respaldo, variables = {}) {
+  return catalogos[idioma]?.[clave] != null || catalogos.es?.[clave] != null ? t(clave, variables) : String(respaldo ?? '');
+}
+const nombreTipo = tipo => tSi(`tareas.tipo.${tipo}`, tipo);
+const nombreComo = como => tSi(`tareas.como.${como}`, como);
+function textoMotivo(motivo) {
+  if (!motivo) return '';
+  const propio = tSi(`tareas.motivo.${motivo}`, null);
+  if (propio) return propio;
+  const como = String(motivo).match(/^trabajador_([a-z_]+)$/);
+  if (como) return t('tareas.motivo.trabajador', { como: enMinuscula(nombreComo(como[1])) });
+  return String(motivo);
+}
+
+const numero = (n, decimales = 0) => new Intl.NumberFormat(idioma === 'en' ? 'en-US' : 'es-DO', { maximumFractionDigits: decimales }).format(n);
+// «142 MB» o «7.8 GB». Lo que no se pudo medir se muestra como «—» (nunca se inventa un número).
+function tamano(mb) {
+  if (mb == null || !Number.isFinite(Number(mb))) return '—';
+  const n = Number(mb);
+  if (n >= 1024) return `${numero(n / 1024, 1)} GB`;
+  return `${numero(n, n >= 10 ? 0 : 1)} MB`;
+}
+function hace(iso, ahora = Date.now()) {
+  const s = Math.max(0, Math.round((ahora - Date.parse(iso)) / 1000));
+  if (!Number.isFinite(s)) return '';
+  if (s < 60) return t('tiempo.hace_s', { n: s });
+  if (s < 3600) return t('tiempo.hace_min', { n: Math.round(s / 60) });
+  if (s < 86400) return t('tiempo.hace_h', { n: Math.round(s / 3600) });
+  return t('tiempo.hace_d', { n: Math.round(s / 86400) });
+}
+// «hoy 10:07 p. m.», «mañana 4:10 a. m.» (hora de República Dominicana, UTC−4 todo el año).
+function cuando(iso, ahora = Date.now()) {
+  if (!iso) return '';
+  const dia = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
+  const ms = Date.parse(iso);
+  const hora = new Intl.DateTimeFormat(idioma === 'en' ? 'en-US' : 'es-DO', { timeStyle: 'short', timeZone: 'America/Santo_Domingo' }).format(new Date(ms));
+  const diferencia = Math.round((Date.parse(dia(ms)) - Date.parse(dia(ahora))) / 86400000);
+  if (diferencia === 0) return t('tiempo.hoy', { hora });
+  if (diferencia === 1) return t('tiempo.manana', { hora });
+  if (diferencia === -1) return t('tiempo.ayer', { hora });
+  return fecha(iso);
+}
+
+// El color de cada cosa: 'bien' (verde), 'atencion' (amarillo), 'mal' (rojo) o 'apagado' (gris).
+const TONO_FASE = { esperando: 'bien', trabajando: 'bien', arrancando: 'atencion', reiniciando: 'atencion', parando: 'atencion', sin_respuesta: 'mal', sin_supervisor: 'apagado' };
+function tonoTrabajo(s) {
+  if (s.modoSeguro?.activo) return s.modoSeguro.origen === 'automatico' ? 'mal' : 'atencion';
+  return TONO_FASE[s.trabajador?.fase] ?? 'atencion';
+}
+const TONO_SEMAFORO = { verde: 'bien', amarillo: 'atencion', rojo: 'mal' };
+const tonoAviso = nivel => (nivel === 'grave' ? 'mal' : nivel === 'atencion' ? 'atencion' : 'bien');
+function nombreFase(s) {
+  const tr = s.trabajador ?? {};
+  if (s.modoSeguro?.activo && !['parando'].includes(tr.fase)) return t('tareas.fase.modo_seguro');
+  const segundos = tr.proximoIntento ? Math.max(1, Math.round((Date.parse(tr.proximoIntento) - Date.now()) / 1000)) : 1;
+  return tSi(`tareas.fase.${tr.fase}`, tr.fase, { s: segundos });
+}
+
+// Las variables que usa el texto de cada aviso (las que falten salen como «?»).
+function textoAviso(a) {
+  const d = a.detalle ?? {};
+  const v = x => (x == null ? '?' : x);
+  if (String(a.clave).startsWith('freno:')) {
+    return t('aviso.freno', { tipo: nombreTipo(String(a.clave).slice(6)), hora: d.hasta ? cuando(d.hasta) : '?' });
+  }
+  const mb = d.disponibleMb ?? d.libreMb ?? d.archivoMb ?? d.walMb;
+  return tSi(`aviso.${a.clave}`, a.clave, {
+    mb: mb == null ? '?' : tamano(mb), ms: v(d.p99Ms), fecha: d.desde ? fecha(d.desde) : '?',
+    n: v(d.reinicios24h ?? d.fallidas24h ?? d.revisar),
+  });
+}
+
+function insignia(tono, texto) {
+  return el('span', { class: `insignia tono-${tono}` }, icono(tono, 'icono chico'), el('span', { texto }));
+}
+
+// Una tarjeta del resumen de arriba. Al tocarla, baja a su parte.
+function tarjetaResumen({ nombreIcono, titulo, valor, detalle, tono, destino }) {
+  return el('button', {
+    type: 'button',
+    class: `resumen-tarjeta tono-${tono}`,
+    onclick: () => destino?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+  },
+  el('span', { class: 'resumen-cabeza' }, icono(nombreIcono), el('span', { class: 'resumen-titulo', texto: titulo }), el('span', { class: 'tono-color' }, icono(tono))),
+  el('span', { class: 'resumen-valor', texto: valor }),
+  detalle ? el('span', { class: 'resumen-detalle', texto: detalle }) : null);
+}
+
+function numeroGrande(valor, etiqueta, tono = 'neutro') {
+  return el('div', { class: `numero tono-${valor > 0 ? tono : 'neutro'}` },
+    el('span', { class: 'numero-valor', texto: numero(valor ?? 0) }),
+    el('span', { class: 'numero-etiqueta', texto: etiqueta }));
+}
+
+// Una barra que se llena (memoria y disco libres). El ancho se pone por código (sin estilos en el HTML).
+function barra(libre, total, tono) {
+  const lleno = el('span', { class: `barra-llena tono-${tono}` });
+  const porcentaje = libre != null && total ? Math.max(2, Math.min(100, Math.round((libre / total) * 100))) : 0;
+  lleno.style.width = `${porcentaje}%`;
+  return el('span', { class: 'barra', 'aria-hidden': 'true' }, lleno);
+}
+
+function titulo(nombreIcono, texto, id) {
+  return el('h2', { class: 'con-icono', id }, icono(nombreIcono), el('span', { texto }));
+}
+
+// Lo que dice el modo seguro, en palabras sencillas.
+function explicacionModoSeguro(m) {
+  if (!m.activo) {
+    if (m.ultimo?.por === 'codigo_nuevo') return t('modo_seguro.quitado.codigo_nuevo', { fecha: fecha(m.ultimo.hasta) });
+    if (m.ultimo?.por) return tSi(`modo_seguro.quitado.${m.ultimo.por}`, '', { fecha: fecha(m.ultimo.hasta) });
+    return null;
+  }
+  return tSi(`modo_seguro.motivo.${m.motivo}`, m.motivo, { fecha: fecha(m.desde) });
+}
+
+// La zona entera. «acciones» trae lo que hacen los botones (ver crearZonaSistema).
+function dibujarZonaSistema(s, { acciones, bloqueFila, mensajeZona, estadoVista }) {
+  const tono = tonoTrabajo(s);
+  const tr = s.trabajador ?? {};
+  const fila = s.fila ?? {};
+  const salud = s.salud ?? {};
+  const abiertos = s.avisos?.abiertos ?? [];
+  const tonoServidor = TONO_SEMAFORO[salud.semaforo] ?? 'atencion';
+  const peorAviso = abiertos.some(a => a.nivel === 'grave') ? 'mal' : abiertos.some(a => a.nivel === 'atencion') ? 'atencion' : 'bien';
+  const usaOportia = salud.oportiaMb ?? (salud.webMb != null ? salud.webMb + (salud.trabajadorMb ?? 0) : null);
+  const conError = (fila.fallidas7d ?? 0) + (fila.revisar ?? 0);
+
+  // Las partes de abajo (se crean antes para que el resumen pueda bajar hasta ellas).
+  const anclaAvisos = el('span');
+  const anclaTrabajo = el('span');
+  const anclaServidor = el('span');
+  const anclaErrores = el('span');
+
+  // ---- Resumen de arriba ----
+  const resumen = el('section', { class: 'tarjeta resumen-sistema', 'aria-label': t('sistema.resumen') },
+    el('div', { class: 'resumen-encabezado' },
+      el('h2', { texto: t('sistema.titulo') }),
+      el('button', { type: 'button', class: 'secundario chico con-icono', onclick: acciones.actualizar }, icono('actualizar'), el('span', { texto: t('sistema.actualizar') }))),
+    el('div', { class: 'resumen-rejilla' },
+      tarjetaResumen({
+        nombreIcono: 'latido', titulo: t('sistema.trabajo'), valor: nombreFase(s), tono, destino: anclaTrabajo,
+        detalle: s.modoSeguro?.activo ? t('sistema.resumen.en_pausa') : tr.ultimoLatido ? t('tareas.latido', { hace: hace(tr.ultimoLatido) }) : null,
+      }),
+      tarjetaResumen({
+        nombreIcono: 'servidor', titulo: t('sistema.servidor'), valor: t(`sistema.semaforo.${salud.semaforo ?? 'amarillo'}`), tono: tonoServidor, destino: anclaServidor,
+        detalle: t('sistema.resumen.memoria', { mb: tamano(salud.memoria?.disponibleMb) }),
+      }),
+      tarjetaResumen({
+        nombreIcono: 'campana', titulo: t('sistema.avisos'), valor: abiertos.length ? numero(abiertos.length) : t('sistema.avisos.ninguno'), tono: peorAviso, destino: anclaAvisos,
+        detalle: abiertos.length ? t('sistema.resumen.avisos_texto') : t('sistema.resumen.avisos_vacio'),
+      }),
+      tarjetaResumen({
+        nombreIcono: 'fila', titulo: t('sistema.errores'), valor: numero(conError), tono: conError ? (fila.fallidas7d ? 'mal' : 'atencion') : 'bien', destino: anclaErrores,
+        detalle: t('sistema.resumen.hechas', { n: numero(fila.hechas24h ?? 0) }),
+      })),
+    el('p', { class: 'ayuda', texto: t('sistema.actualizado', { hora: cuando(new Date().toISOString()) }) }),
+    mensajeZona);
+
+  // ---- Avisos (solo si hay abiertos) ----
+  const avisos = abiertos.length ? el('section', { class: 'tarjeta' }, anclaAvisos,
+    titulo('campana', t('sistema.avisos')),
+    abiertos.map(a => el('div', { class: `aviso-sistema tono-${tonoAviso(a.nivel)}` },
+      el('div', { class: 'aviso-cabeza' }, insignia(tonoAviso(a.nivel), t(`aviso.nivel.${a.nivel}`)), a.veces > 1 ? el('span', { class: 'suave', texto: t('aviso.veces', { n: a.veces }) }) : null),
+      el('p', { class: 'aviso-texto', texto: textoAviso(a) }),
+      el('p', { class: 'suave', texto: a.veces > 1 ? t('aviso.desde_ultima', { desde: fecha(a.creadoEn), ultima: hace(a.ultimaVez) }) : t('aviso.desde', { desde: fecha(a.creadoEn) }) }),
+      a.vistoEn ? el('p', { class: 'suave', texto: t('aviso.visto', { fecha: fecha(a.vistoEn) }) })
+        : el('button', { type: 'button', class: 'secundario', texto: t('aviso.entendido'), onclick: evento => acciones.visto(a, evento.currentTarget) }))),
+    el('p', { class: 'ayuda', texto: t('sistema.avisos.telegram') })) : el('span', {}, anclaAvisos);
+
+  // ---- Trabajo automático ----
+  const linea = [
+    tr.ultimoLatido ? t('tareas.latido', { hace: hace(tr.ultimoLatido) }) : null,
+    tr.memoriaMb != null ? t('tareas.usa', { mb: tamano(tr.memoriaMb) }) : null,
+    t('tareas.version', { version: s.version, codigo: s.codigo }),
+  ].filter(Boolean).join(' · ');
+  const enCurso = Array.isArray(tr.enCurso) ? tr.enCurso : [];
+  const m = s.modoSeguro ?? {};
+  const explicacion = explicacionModoSeguro(m);
+  const bloqueModoSeguro = el('div', { class: `modo-seguro tono-${m.activo ? (m.origen === 'automatico' ? 'mal' : 'atencion') : 'bien'}` },
+    el('div', { class: 'con-icono fuerte' }, icono('escudo'), el('span', { texto: t(m.activo ? 'modo_seguro.activo' : 'modo_seguro.apagado') })),
+    el('p', { texto: t(m.activo ? 'modo_seguro.activo.texto' : 'modo_seguro.apagado.texto') }),
+    explicacion ? el('p', { class: m.activo ? '' : 'suave', texto: explicacion }) : null,
+    el('button', {
+      type: 'button',
+      class: m.activo ? 'grande' : 'peligro grande',
+      texto: t(m.activo ? 'modo_seguro.quitar' : 'modo_seguro.activar'),
+      onclick: evento => acciones.modoSeguro(!m.activo, m, evento.currentTarget),
+    }));
+
+  // Si una misma tarea sale varias veces en «Errores recientes», sus botones van solo en la más nueva.
+  const conBotones = new Set();
+  const errores = (s.errores ?? []).map(e => {
+    const botones = !conBotones.has(e.tareaId) && (e.puedeReintentar || e.puedeCancelar);
+    conBotones.add(e.tareaId);
+    return el('div', { class: 'fila' },
+      el('div', { class: 'etiquetas' }, insignia(e.estado === 'fallida' ? 'mal' : 'atencion', tSi(`tareas.estado.${e.estado}`, e.estado)), el('span', { class: 'nombre', texto: nombreTipo(e.tipo) })),
+      el('p', { texto: [tSi(`tareas.evento.${e.evento}`, e.evento), textoMotivo(e.motivo)].filter(Boolean).join(': ') }),
+      el('p', { class: 'suave', texto: [fecha(e.fecha), e.intento ? t('tareas.intento', { x: e.intento, y: e.maxFallos }) : null, e.proyecto ? t('tareas.de_proyecto', { proyecto: e.proyecto, cuenta: e.cuenta }) : null].filter(Boolean).join(' · ') }),
+      botones ? el('div', { class: 'botones' },
+        e.puedeReintentar ? el('button', { type: 'button', texto: t('tareas.reintentar'), onclick: evento => acciones.tarea(e.tareaId, 'reintentar', evento.currentTarget) }) : null,
+        e.puedeCancelar ? el('button', { type: 'button', class: 'secundario', texto: t('tareas.cancelar'), onclick: evento => acciones.tarea(e.tareaId, 'cancelar', evento.currentTarget) }) : null) : null);
+  });
+
+  const trabajo = el('section', { class: 'tarjeta' }, anclaTrabajo,
+    titulo('latido', t('sistema.trabajo')),
+    el('div', { class: `estado-grande tono-${tono}` }, icono(tono, 'icono estado'), el('span', { texto: nombreFase(s) })),
+    el('p', { class: 'suave', texto: linea }),
+    el('p', { class: 'fuerte', texto: enCurso.length ? t('tareas.ahora', { que: enCurso.map(x => `${nombreTipo(x.tipo)} (${hace(x.desde)})`).join(', ') }) : t('tareas.ahora.nada') }),
+    tr.freno ? el('p', { class: 'aviso', texto: tSi(`tareas.freno.${tr.freno}`, tr.freno) }) : null,
+    (s.frenos ?? []).map(f => el('p', { class: 'aviso', texto: t('tareas.frenado', { tipo: nombreTipo(f.tipo), hora: cuando(f.hasta) }) })),
+    el('div', { class: 'numeros' },
+      numeroGrande(fila.listas, t('tareas.cuenta.listas')),
+      numeroGrande(fila.esperando, t('tareas.cuenta.esperando')),
+      numeroGrande(fila.enCurso, t('tareas.cuenta.en_curso'), 'bien'),
+      numeroGrande(fila.revisar, t('tareas.cuenta.revisar'), 'atencion'),
+      numeroGrande(fila.fallidas7d, t('tareas.cuenta.fallidas7d'), 'mal'),
+      numeroGrande(fila.hechas24h, t('tareas.cuenta.hechas24h'), 'bien')),
+    fila.esperanVersion > 0 ? el('p', { class: 'suave', texto: t('tareas.esperan_version', { n: fila.esperanVersion }) }) : null,
+    fila.enPausa > 0 ? el('p', { class: 'suave', texto: t('tareas.en_pausa', { n: fila.enPausa }) }) : null,
+    fila.atrasadaDesde ? el('p', { class: 'aviso', texto: t('tareas.atrasada', { hora: cuando(fila.atrasadaDesde) }) }) : null,
+    bloqueModoSeguro,
+    el('h3', { class: 'con-icono' }, icono('reloj'), el('span', { texto: t('tareas.proximas') })),
+    el('ul', { class: 'lista-simple' }, (s.proximas ?? []).map(p => el('li', {
+      texto: [nombreTipo(p.tipo), p.proximaEn ? cuando(p.proximaEn) : t('tareas.proxima.sin_hora')].join(' — ') + (m.activo ? ` ${t('tareas.proxima.en_pausa')}` : ''),
+    }))),
+    anclaErrores,
+    el('h3', { class: 'con-icono' }, icono('atencion'), el('span', { texto: t('tareas.errores') })),
+    errores.length ? errores : el('p', { class: 'con-icono tono-bien tono-color' }, icono('bien', 'icono chico'), el('span', { texto: t('tareas.errores.vacio') })),
+    bloqueFila,
+    el('h3', { texto: t('tareas.corridas') }),
+    (s.corridas ?? []).length ? el('ul', { class: 'lista-simple' }, s.corridas.map(c => el('li', {},
+      el('span', { class: 'suave', texto: `${fecha(c.terminoEn ?? c.empezoEn)} · ` }),
+      el('span', { texto: c.terminoEn ? nombreComo(c.como) : t('tareas.corrida.viva') })))) : el('p', { class: 'suave', texto: t('tareas.corridas.vacio') }),
+    el('p', { class: 'ayuda', texto: t('tareas.explicacion') }));
+
+  // ---- Servidor ----
+  const memoria = salud.memoria ?? {};
+  const historial = Array.isArray(s.historial) ? s.historial : [];
+  const detallesHistorial = el('details', { open: estadoVista.historialAbierto },
+    el('summary', { texto: t('servidor.historial') }),
+    historial.length ? el('ul', { class: 'lista-simple historial-salud' }, historial.map(h => el('li', {
+      texto: t('servidor.muestra', { hora: cuando(h.fecha), memoria: tamano(h.memoriaDisponibleMb), disco: tamano(h.discoLibreMb), base: tamano(h.baseMb), ms: h.pantallasP99Ms == null ? '—' : numero(h.pantallasP99Ms, 1) }),
+    }))) : el('p', { class: 'suave', texto: t('servidor.sin_muestras') }));
+  detallesHistorial.addEventListener('toggle', () => { estadoVista.historialAbierto = detallesHistorial.open; });
+  const servidor = el('section', { class: 'tarjeta' }, anclaServidor,
+    titulo('servidor', t('sistema.servidor')),
+    el('div', { class: `estado-grande tono-${tonoServidor}` }, icono(tonoServidor, 'icono estado'), el('span', { texto: t(`servidor.semaforo.${salud.semaforo ?? 'amarillo'}`) })),
+    (salud.problemas ?? []).map(p => el('p', { class: `aviso-linea tono-${tonoAviso(p.nivel)}`, texto: textoAviso({ clave: p.clave, detalle: p.detalle }) })),
+    el('div', { class: 'medidor' },
+      el('div', { class: 'medidor-texto' }, el('span', { texto: t('servidor.memoria') }), el('strong', { texto: t('servidor.de', { a: tamano(memoria.disponibleMb), b: tamano(memoria.totalMb) }) })),
+      barra(memoria.disponibleMb, memoria.totalMb, memoria.disponibleMb != null && memoria.disponibleMb < 64 ? 'mal' : memoria.disponibleMb != null && memoria.disponibleMb < 128 ? 'atencion' : 'bien')),
+    el('div', { class: 'medidor' },
+      el('div', { class: 'medidor-texto' }, el('span', { texto: t('servidor.disco') }), el('strong', { texto: t('servidor.de', { a: tamano(salud.disco?.libreMb), b: tamano(salud.disco?.totalMb) }) })),
+      barra(salud.disco?.libreMb, salud.disco?.totalMb, salud.disco?.libreMb != null && salud.disco.libreMb < 300 ? 'mal' : salud.disco?.libreMb != null && salud.disco.libreMb < 1024 ? 'atencion' : 'bien')),
+    el('ul', { class: 'lista-simple datos-servidor' },
+      memoria.swapTotalMb ? el('li', { texto: t('servidor.swap', { a: tamano(memoria.swapUsadaMb), b: tamano(memoria.swapTotalMb) }) }) : null,
+      el('li', { texto: t('servidor.oportia', { mb: tamano(usaOportia), a: tamano(salud.webMb), b: tamano(salud.trabajadorMb) }) }),
+      el('li', { texto: t('servidor.base', { mb: tamano(salud.base?.archivoMb), wal: tamano(salud.base?.walMb) }) }),
+      el('li', { texto: t('servidor.copias', { n: salud.copias?.archivos ?? 0, mb: tamano(salud.copias?.mb ?? 0) }) }),
+      el('li', { texto: t('servidor.carga', { a: numero(salud.carga?.m1 ?? 0, 2), b: numero(salud.carga?.m5 ?? 0, 2), c: numero(salud.carga?.m15 ?? 0, 2) }) }),
+      el('li', { texto: salud.pantallasP99Ms == null ? t('servidor.pantallas.sin_dato') : t('servidor.pantallas', { ms: numero(salud.pantallasP99Ms, 1) }) }),
+      salud.encendidoDesde ? el('li', { texto: t('servidor.encendido', { fecha: fecha(salud.encendidoDesde) }) }) : null),
+    detallesHistorial);
+
+  return [resumen, avisos, trabajo, servidor];
+}
+
+// «Ver la fila»: las 25 tareas más nuevas, con un filtro de botones (sin escribir) y «Ver más».
+// Se crea una vez por visita a Administrador: así sigue abierto (y con lo cargado) cuando la zona se actualiza.
+function crearBloqueFila() {
+  const FILTROS = [['', 'tareas.filtro.todas'], ['lista', 'tareas.estado.lista'], ['en_curso', 'tareas.estado.en_curso'], ['hecha', 'tareas.estado.hecha'], ['fallida', 'tareas.estado.fallida'], ['revisar', 'tareas.estado.revisar'], ['cancelada', 'tareas.estado.cancelada']];
+  let filtro = '';
+  let cargado = false;
+  const lista = el('div', {});
+  const mensaje = caja();
+  const mas = el('button', { type: 'button', class: 'secundario', hidden: true, texto: t('tareas.ver_mas') });
+  let siguiente = null;
+  async function cargar(desde = null) {
+    mensaje.hidden = true;
+    const consulta = new URLSearchParams();
+    if (filtro) consulta.set('estado', filtro);
+    if (desde) consulta.set('antes', String(desde));
+    mas.disabled = true;
+    const texto = consulta.toString();
+    const r = await api('GET', `/api/admin/tareas${texto ? `?${texto}` : ''}`);
+    mas.disabled = false;
+    if (!r.ok) return decir(mensaje, textoError(r.datos.error), 'error');
+    if (!desde) lista.replaceChildren();
+    for (const x of r.datos.tareas) {
+      lista.append(el('div', { class: 'fila' },
+        el('div', { class: 'etiquetas' },
+          el('span', { class: 'etiqueta', texto: tSi(`tareas.estado.${x.estado}`, x.estado) }),
+          el('span', { class: 'nombre', texto: `${nombreTipo(x.tipo)} · n.º ${x.id}` })),
+        el('p', { class: 'suave', texto: [fecha(x.terminadaEn ?? x.creadaEn), x.pasos ? t('tareas.pasos', { n: x.pasos }) : null, x.ultimoError ? textoMotivo(x.ultimoError) : null, x.proyecto ? t('tareas.de_proyecto', { proyecto: x.proyecto, cuenta: x.cuenta }) : null].filter(Boolean).join(' · ') })));
+    }
+    if (!lista.childElementCount) lista.append(el('p', { class: 'suave', texto: t('tareas.fila.vacia') }));
+    siguiente = r.datos.siguiente;
+    mas.hidden = !siguiente;
+  }
+  mas.addEventListener('click', () => cargar(siguiente));
+  const filtros = grupoDeBotones(FILTROS.map(([valor, clave]) => [valor, t(clave)]), filtro, (valor, marcar) => {
+    filtro = valor;
+    marcar();
+    cargar();
+  });
+  filtros.classList.add('filtros');
+  const detalles = el('details', { class: 'ver-fila' }, el('summary', { texto: t('tareas.ver_fila') }), filtros, lista, mas, mensaje);
+  detalles.addEventListener('toggle', () => { if (detalles.open && !cargado) { cargado = true; cargar(); } });
+  return detalles;
+}
+
+// La zona de sistema de Administrador: se dibuja, se actualiza cada 30 s y maneja sus botones.
+// vigente: la guarda de nuevoTurno de la pantalla (si la persona se fue a otra pantalla, se deja de actualizar).
+function crearZonaSistema(vigente) {
+  const zona = el('div', { class: 'zona-sistema' });
+  const mensajeZona = caja();
+  const bloqueFila = crearBloqueFila();
+  const estadoVista = { historialAbierto: false };
+  let ocupado = false;
+  let reloj = null;
+  let pronto = null;
+
+  function decirZona(texto, clase) {
+    decir(mensajeZona, texto, clase);
+  }
+  function dibujarCon(datos) {
+    // Si la zona ya se dibujó y salió de la pantalla (la persona se fue), no se vuelve a dibujar.
+    if (!vigente() || (zona.dataset.dibujada && !zona.isConnected)) return;
+    zona.dataset.dibujada = '1';
+    zona.replaceChildren(...dibujarZonaSistema(datos, { acciones, bloqueFila, mensajeZona, estadoVista }).filter(Boolean));
+  }
+  async function actualizar({ aviso = false } = {}) {
+    if (ocupado) return;
+    const r = await api('GET', '/api/admin/sistema');
+    if (!vigente()) return;
+    if (!r.ok) {
+      if (!zona.dataset.dibujada) zona.replaceChildren(el('section', { class: 'tarjeta' }, el('h2', { texto: t('sistema.titulo') }), el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })));
+      else if (aviso) decirZona(textoError(r.datos.error), 'error');
+      return;
+    }
+    dibujarCon(r.datos);
+  }
+  // Un botón: se apaga mientras espera, y al terminar se actualiza la zona (y otra vez a los 3 s, porque el
+  // trabajador tarda un momento en apagarse o encenderse).
+  async function conBoton(boton, accion) {
+    if (ocupado) return;
+    ocupado = true;
+    if (boton) boton.disabled = true;
+    mensajeZona.hidden = true;
+    try {
+      const resultado = await accion();
+      if (resultado?.datos) dibujarCon(resultado.datos);
+      if (resultado?.texto) decirZona(resultado.texto, 'bien');
+    } catch (error) {
+      decirZona(error.message || t('error.desconocido'), 'error');
+      if (boton) boton.disabled = false;
+    } finally {
+      ocupado = false;
+    }
+    await actualizar();
+    clearTimeout(pronto);
+    pronto = setTimeout(() => { if (vigente()) actualizar(); }, 3000);
+  }
+  const errorDeTarea = clave => (clave === 'accion_no_permitida_ahora' ? t('tareas.accion_ya_no') : textoError(clave));
+  const acciones = {
+    actualizar: () => conBoton(null, async () => null),
+    visto: (a, boton) => conBoton(boton, async () => {
+      const r = await api('POST', `/api/admin/avisos/${a.id}/visto`, {});
+      if (!r.ok) throw new Error(textoError(r.datos.error));
+      return { texto: t('aviso.entendido.listo') };
+    }),
+    modoSeguro: (activar, m, boton) => {
+      const pregunta = activar ? t('modo_seguro.confirmar_activar') : m.motivo === 'base_danada' ? t('modo_seguro.confirmar_quitar_base') : t('modo_seguro.confirmar_quitar');
+      if (!confirm(pregunta)) return;
+      return conBoton(boton, async () => {
+        const r = await api('POST', '/api/admin/modo-seguro', { activo: activar });
+        if (!r.ok) throw new Error(textoError(r.datos.error));
+        return { datos: r.datos, texto: t(activar ? 'modo_seguro.activado_listo' : 'modo_seguro.quitado_listo') };
+      });
+    },
+    tarea: (id, accion, boton) => {
+      if (accion === 'cancelar' && !confirm(t('tareas.confirmar_cancelar'))) return;
+      return conBoton(boton, async () => {
+        const r = await api('POST', `/api/admin/tareas/${id}/${accion}`, {});
+        if (!r.ok) throw new Error(errorDeTarea(r.datos.error));
+        return { texto: t(accion === 'reintentar' ? 'tareas.reintentada' : 'tareas.cancelada') };
+      });
+    },
+  };
+  function empezar(datosIniciales) {
+    if (datosIniciales?.ok) dibujarCon(datosIniciales.datos);
+    else if (datosIniciales) zona.replaceChildren(el('section', { class: 'tarjeta' }, el('h2', { texto: t('sistema.titulo') }), el('p', { class: 'mensaje error', texto: textoError(datosIniciales.datos?.error) })));
+    reloj = setInterval(() => {
+      if (!vigente() || location.hash !== '#admin') { clearInterval(reloj); clearTimeout(pronto); return; }
+      if (document.hidden || ocupado) return;
+      mensajeZona.hidden = true; // el mensaje de la última acción ya se leyó
+      actualizar();
+    }, 30000);
+  }
+  return { zona, empezar };
+}
+
 // «mantenerClave»: la pantalla se vuelve a dibujar sin salir de Administrador (la contraseña temporal sigue a la vista).
 async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {}) {
   if (!mantenerClave) claveTemporalVisible = null;
   const vigente = nuevoTurno();
-  const r = await api('GET', '/api/admin/usuarios');
+  const sistema = crearZonaSistema(vigente);
+  const [r, datosSistema] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema')]);
   if (!vigente()) return;
+  sistema.empezar(datosSistema);
   if (!r.ok) {
-    mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+    mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') })), sistema.zona,
+      el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
     return;
   }
   const planes = Array.isArray(r.datos.planes) ? r.datos.planes : [];
@@ -660,6 +1116,7 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
     el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') })),
     avisoArriba ? el('section', { class: 'tarjeta' }, avisoArriba) : null,
     seccionClaveTemporal(),
+    sistema.zona,
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.usuarios') }), filas),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.nuevo') }), formulario)));
 }

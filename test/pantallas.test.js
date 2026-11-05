@@ -90,6 +90,12 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const { ESTADOS, ACCIONES, ESTADOS_VERSION, ORIGENES } = await import('../src/proyectos/proyectos.js');
   const { PLANES } = await import('../src/cuentas/planes.js');
   const { FUENTES } = await import('../src/motor/diccionarios.js');
+  // Fase 1, parte c: la zona de sistema de Administrador.
+  const { FASES_TRABAJADOR } = await import('../src/tareas/supervisor.js');
+  const { ESTADOS_TAREA, EVENTOS } = await import('../src/tareas/cola.js');
+  const { TIPOS: TIPOS_TAREA, COMO_TERMINA } = await import('../src/tareas/tipos.js');
+  const { MOTIVOS_MODO_SEGURO, QUIEN_QUITA } = await import('../src/tareas/modo-seguro.js');
+  const { CLAVES_AVISO, NIVELES } = await import('../src/avisos/avisos.js');
   const cat = catalogo();
   const claves = [
     ...ESTADOS.map(e => `estado.${e}`),
@@ -112,11 +118,27 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     'autonomia.contactar_siempre',
     ...PLANES.map(x => `plan.${x}`),
     'aviso.clave_reiniciada',
+    ...[...FASES_TRABAJADOR, 'sin_supervisor'].map(x => `tareas.fase.${x}`),
+    ...ESTADOS_TAREA.map(x => `tareas.estado.${x}`),
+    ...Object.keys(TIPOS_TAREA).map(x => `tareas.tipo.${x}`),
+    ...EVENTOS.map(x => `tareas.evento.${x}`),
+    ...COMO_TERMINA.map(x => `tareas.como.${x}`),
+    ...['poca_memoria', 'poco_disco'].map(x => `tareas.freno.${x}`),
+    ...['tiempo_agotado', 'respuesta_no_valida', 'resultado_muy_grande', 'memoria', 'apagado', 'arriendo_vencido', 'sin_dueno', 'trabajador'].map(x => `tareas.motivo.${x}`),
+    ...MOTIVOS_MODO_SEGURO.map(x => `modo_seguro.motivo.${x}`),
+    ...QUIEN_QUITA.map(x => `modo_seguro.quitado.${x}`),
+    ...CLAVES_AVISO.map(x => `aviso.${x}`),
+    'aviso.freno',
+    ...NIVELES.map(x => `aviso.nivel.${x}`),
+    ...['verde', 'amarillo', 'rojo'].flatMap(x => [`sistema.semaforo.${x}`, `servidor.semaforo.${x}`]),
+    'error.ya_hay_otra_en_marcha', 'error.arrancando',
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
-  const prefijos = new Set(claves.map(c => c.slice(0, c.lastIndexOf('.') + 1)).concat(['estado.', 'tipo.', 'idioma.', 'error.', 'faltante.', 'campo.producto.', 'capacidad.', 'proyecto.aviso_espera.', 'historial.', 'version.estado.', 'version.origen.', 'supuesto.', 'autonomia.', 'plan.']));
-  for (const m of appJs.matchAll(/\bt\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
+  const prefijos = new Set(claves.map(c => c.slice(0, c.lastIndexOf('.') + 1)).concat(['estado.', 'tipo.', 'idioma.', 'error.', 'faltante.', 'campo.producto.', 'capacidad.', 'proyecto.aviso_espera.', 'historial.', 'version.estado.', 'version.origen.', 'supuesto.', 'autonomia.', 'plan.',
+    'tareas.fase.', 'tareas.estado.', 'tareas.tipo.', 'tareas.motivo.', 'tareas.evento.', 'tareas.como.', 'tareas.freno.', 'modo_seguro.motivo.', 'modo_seguro.quitado.', 'aviso.', 'aviso.nivel.', 'sistema.semaforo.', 'servidor.semaforo.']));
+  // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
+  for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
 
 test('los mensajes que dicen un número de tope usan el número que de verdad tiene el servidor', async () => {

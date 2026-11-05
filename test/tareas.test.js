@@ -1198,3 +1198,138 @@ test('/api/setup: «arrancando» y «fallido» responden 503 arrancando al insta
   });
   db.close();
 });
+
+// ---------- 22. La API del administrador (src/api/tareas.js) ----------
+const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
+const CLAVE_PRUEBA = 'una clave bien larga';
+
+async function pedirApi(base, metodo, ruta, { datos, galleta, cabeceras = {} } = {}) {
+  const opciones = { method: metodo, headers: { 'X-Oportia': '1', ...cabeceras } };
+  if (galleta) opciones.headers.Cookie = galleta;
+  if (datos !== undefined) {
+    opciones.headers['Content-Type'] = 'application/json';
+    opciones.body = JSON.stringify(datos);
+  }
+  const r = await fetch(`${base}${ruta}`, opciones);
+  const cuerpo = await r.json().catch(() => ({}));
+  const galletaNueva = r.headers.get('set-cookie');
+  return { codigo: r.status, datos: cuerpo, galleta: galletaNueva ? galletaNueva.split(';')[0] : null };
+}
+
+// Crea a «junior» (administrador) y a «ana» (usuaria normal, con su contraseña ya cambiada).
+async function adminYUsuaria(base) {
+  const admin = await pedirApi(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE_PRUEBA }, cabeceras: DESDE_TAILSCALE });
+  assert.equal(admin.codigo, 201);
+  const creada = await pedirApi(base, 'POST', '/api/admin/usuarios', { datos: { nombre: 'ana' }, galleta: admin.galleta });
+  const entrada = await pedirApi(base, 'POST', '/api/entrar', { datos: { nombre: 'ana', clave: creada.datos.claveTemporal } });
+  assert.equal((await pedirApi(base, 'POST', '/api/yo/clave', { datos: { actual: creada.datos.claveTemporal, nueva: CLAVE_PRUEBA }, galleta: entrada.galleta })).codigo, 200);
+  return { admin: admin.galleta, adminId: admin.datos.usuario.id, ana: entrada.galleta };
+}
+
+test('API del administrador: el estado del sistema, el modo seguro con auditoría, reintentar/cancelar con sus errores y los avisos', async () => {
+  const { db } = nuevaBase();
+  let despertado = 0;
+  const supervisor = {
+    estadoArranque: () => 'no_aplica',
+    estado: () => ({ fase: 'esperando', pid: 4321, enCurso: [], freno: null, reinicios24h: 0 }),
+    ponerModoSeguro: ({ activo, usuarioId }) => ponerModoSeguro(db, { activo, origen: 'admin', usuarioId, codigo: 'abc', version: '0.3.0' }),
+    despertar: () => { despertado += 1; },
+  };
+  await conServidor(crearServidor({ db, supervisor }), async base => {
+    const { admin, adminId, ana } = await adminYUsuaria(base);
+    const pedir = (metodo, ruta, opciones = {}) => pedirApi(base, metodo, ruta, { galleta: admin, ...opciones });
+
+    // El estado del sistema: solo el administrador.
+    let r = await pedir('GET', '/api/admin/sistema');
+    assert.equal(r.codigo, 200);
+    for (const clave of ['fase', 'version', 'codigo', 'trabajador', 'modoSeguro', 'fila', 'frenos', 'proximas', 'errores', 'corridas', 'avisos', 'salud', 'historial']) {
+      assert.ok(clave in r.datos, `falta ${clave}`);
+    }
+    assert.equal(r.datos.fase, 1);
+    assert.equal(r.datos.trabajador.fase, 'esperando');
+    assert.equal(r.datos.modoSeguro.activo, false);
+    assert.ok(['verde', 'amarillo', 'rojo'].includes(r.datos.salud.semaforo));
+    assert.deepEqual(r.datos.proximas.map(p => p.programa).sort(), ['sistema.base', 'sistema.vigilar']);
+    assert.equal((await pedirApi(base, 'GET', '/api/admin/sistema', { galleta: ana })).codigo, 403);
+    assert.equal((await pedirApi(base, 'GET', '/api/admin/sistema')).codigo, 401);
+
+    // Modo seguro: solo true o false; cada cambio deja su auditoría con el administrador.
+    assert.equal((await pedir('POST', '/api/admin/modo-seguro', { datos: { activo: 'si' } })).datos.error, 'datos_no_validos');
+    assert.equal((await pedirApi(base, 'POST', '/api/admin/modo-seguro', { galleta: ana, datos: { activo: true } })).codigo, 403);
+    r = await pedir('POST', '/api/admin/modo-seguro', { datos: { activo: true } });
+    assert.equal(r.codigo, 200);
+    assert.equal(r.datos.modoSeguro.activo, true);
+    assert.equal(r.datos.modoSeguro.motivo, 'admin');
+    assert.ok(!('usuarioId' in r.datos.modoSeguro), 'no muestra números internos');
+    assert.equal(db.prepare("SELECT usuario_id FROM auditoria WHERE accion = 'modo_seguro_activado'").get().usuario_id, adminId);
+    r = await pedir('POST', '/api/admin/modo-seguro', { datos: { activo: false } });
+    assert.equal(r.datos.modoSeguro.activo, false);
+    assert.equal(r.datos.modoSeguro.ultimo.por, 'admin');
+    assert.equal(db.prepare("SELECT usuario_id FROM auditoria WHERE accion = 'modo_seguro_quitado'").get().usuario_id, adminId);
+
+    // Reintentar y cancelar.
+    assert.equal((await pedir('POST', '/api/admin/tareas/999/reintentar', { datos: {} })).datos.error, 'no_existe');
+    assert.equal((await pedir('POST', '/api/admin/tareas/abc/cancelar', { datos: {} })).datos.error, 'no_existe');
+    const primera = encolar(db, { tipo: 'sistema.vigilar', programa: 'sistema.vigilar', claveUnica: 'prueba:1' }).id;
+    r = await pedir('POST', `/api/admin/tareas/${primera}/reintentar`, { datos: {} });
+    assert.equal(r.codigo, 409);
+    assert.equal(r.datos.error, 'accion_no_permitida_ahora', 'una tarea que espera no se reintenta');
+    r = await pedir('POST', `/api/admin/tareas/${primera}/cancelar`, { datos: {} });
+    assert.equal(r.codigo, 200);
+    assert.equal(r.datos.estado, 'cancelada');
+    assert.equal((await pedir('POST', `/api/admin/tareas/${primera}/cancelar`, { datos: {} })).datos.error, 'accion_no_permitida_ahora');
+    const segunda = encolar(db, { tipo: 'sistema.vigilar', programa: 'sistema.vigilar', claveUnica: 'prueba:2' }).id;
+    r = await pedir('POST', `/api/admin/tareas/${primera}/reintentar`, { datos: {} });
+    assert.equal(r.codigo, 409);
+    assert.equal(r.datos.error, 'ya_hay_otra_en_marcha');
+    assert.equal(despertado, 0);
+    assert.equal((await pedir('POST', `/api/admin/tareas/${segunda}/cancelar`, { datos: {} })).codigo, 200);
+    r = await pedir('POST', `/api/admin/tareas/${primera}/reintentar`, { datos: {} });
+    assert.equal(r.codigo, 200);
+    assert.equal(r.datos.estado, 'lista');
+    assert.equal(despertado, 1, 'reintentar despierta al trabajador');
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE accion IN ('tarea_cancelada', 'tarea_reintentada') AND usuario_id = ?").get(adminId).n, 3);
+
+    // La fila, con su filtro de estado.
+    r = await pedir('GET', '/api/admin/tareas?estado=cancelada');
+    assert.equal(r.codigo, 200);
+    assert.deepEqual(r.datos.tareas.map(x => x.id), [segunda]);
+    assert.equal((await pedir('GET', '/api/admin/tareas?estado=rara')).datos.error, 'datos_no_validos');
+    assert.equal((await pedir('GET', '/api/admin/tareas?antes=-1')).datos.error, 'datos_no_validos');
+
+    // Avisos: «Entendido» los deja como vistos (no los borra ni los resuelve).
+    const aviso = abrirAviso(db, { clave: 'disco_bajo', nivel: 'grave', detalle: { libreMb: 200 } });
+    assert.equal((await pedir('POST', `/api/admin/avisos/${aviso}/visto`, { datos: {} })).codigo, 200);
+    const fila = db.prepare('SELECT * FROM avisos WHERE id = ?').get(aviso);
+    assert.equal(fila.visto_por, adminId);
+    assert.equal(fila.resuelto_en, null);
+    assert.equal((await pedir('POST', '/api/admin/avisos/9999/visto', { datos: {} })).datos.error, 'no_existe');
+    r = await pedir('GET', '/api/admin/sistema');
+    assert.equal(r.datos.avisos.abiertos.find(a => a.id === aviso).vistoEn != null, true);
+  });
+  db.close();
+});
+
+test('API del administrador: sin supervisor también funciona, y la acción 31 en 10 minutos responde 429', async () => {
+  const { db } = nuevaBase();
+  await conServidor(crearServidor({ db }), async base => {
+    const { admin } = await adminYUsuaria(base);
+    const pedir = (metodo, ruta, opciones = {}) => pedirApi(base, metodo, ruta, { galleta: admin, ...opciones });
+    let r = await pedir('GET', '/api/admin/sistema');
+    assert.equal(r.codigo, 200);
+    assert.equal(r.datos.trabajador.fase, 'sin_supervisor');
+    assert.ok(r.datos.salud.base.archivoMb > 0, 'mide la base aunque no haya supervisor');
+    r = await pedir('POST', '/api/admin/modo-seguro', { datos: { activo: true } });
+    assert.equal(r.datos.modoSeguro.activo, true);
+    assert.equal(leerModoSeguro(db).origen, 'admin');
+    // Un pedido mal hecho no gasta acciones; cualquier acción, aunque responda 404, sí.
+    for (let i = 0; i < 5; i += 1) assert.equal((await pedir('POST', '/api/admin/modo-seguro', { datos: {} })).codigo, 400);
+    for (let i = 2; i <= 30; i += 1) assert.equal((await pedir('POST', '/api/admin/avisos/9999/visto', { datos: {} })).codigo, 404, `acción ${i}`);
+    r = await pedir('POST', '/api/admin/modo-seguro', { datos: { activo: false } });
+    assert.equal(r.codigo, 429);
+    assert.equal(r.datos.error, 'demasiados_intentos');
+    assert.equal(leerModoSeguro(db).activo, true, 'la acción 31 no cambió nada');
+    assert.equal((await pedir('GET', '/api/admin/sistema')).codigo, 200, 'mirar no tiene tope');
+  });
+  db.close();
+});

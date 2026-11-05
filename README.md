@@ -7,6 +7,9 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 - Descarga `main`, corre `node --test test/*.test.js` (si una prueba falla, NO instala esa versión) y copia solo `src/`, `public/`, `deploy/` y `package.json` a `/opt/jarvis`.
 - Reinicia el servicio `jarvis` (`node --no-warnings src/server.js`, usuario `jarvis`, solo puede escribir en `/var/lib/jarvis`).
 - Después de reiniciar, `http://127.0.0.1:8080/api/setup` debe responder en el primer minuto; si no, vuelve sola a la versión anterior. Si falla más tarde, no vuelve sola.
+- Desde la parte 1c, durante los primeros 90 segundos `/api/setup` responde 503 «arrancando» hasta que el trabajo automático
+  avisa que está listo. Si una versión nueva trae un trabajador que no arranca, sigue en 503 y el actualizador vuelve solo a la
+  versión anterior. Se vuelve atrás el CÓDIGO, nunca los datos.
 - `/api/setup` muestra la versión de `package.json`: así se sabe qué versión quedó instalada.
 - Las claves de API están en `/var/lib/jarvis/secrets.env` (nunca en GitHub: este repositorio es público).
 
@@ -40,6 +43,43 @@ cualquier bloqueo por intentos fallidos. Para un nombre concreto:
 Bloqueos por contraseñas malas: 5 fallos desde un mismo lugar bloquean ese lugar 15 minutos; 20 fallos desde internet
 (sumando todos los lugares) frenan a internet 15 minutos. Quien entra por Tailscale nunca queda frenado por lo que
 hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
+
+## Dos procesos, un servicio (fase 1, parte c)
+El servicio `jarvis` sigue siendo uno solo (`node --no-warnings src/server.js`), pero adentro corren dos programas:
+- **Las pantallas** (`src/server.js`): abren el puerto primero y, solo cuando lo tienen, encienden UN trabajador.
+- **El trabajador** (`src/tareas/trabajador.js`): hace las tareas de la fila, día y noche, con menos prioridad
+  (`nice 10` en todos sus hilos) y con poca memoria permitida (64 MB de heap). Si se traba o se cae, las pantallas siguen
+  funcionando y `src/tareas/supervisor.js` lo vuelve a encender solo, esperando cada vez un poco más.
+- Los dos usan la misma base (`oportia.db`, en modo WAL). Toda escritura del trabajador pasa por el «escritor», que hace
+  una pausa después de cada una para que las pantallas nunca esperen.
+- **Modo seguro**: si el trabajador se cae 5 veces en 15 minutos, si OPORTIA se apaga mal 3 veces en 30 minutos, si no
+  puede abrir la base o si la revisión de la base encuentra un problema, el trabajo automático queda en pausa y lo dice en
+  Administrador (y arriba en Inicio). Las pantallas siguen funcionando y no se borra nada: lo que está en la fila espera.
+  Las causas que un código nuevo puede arreglar se quitan solas UNA vez al instalar código nuevo; el modo seguro puesto a
+  mano y el de base dañada solo los quita una persona.
+- **Nunca pongas `KillMode=process` en el servicio.** Con el valor normal (`control-group`) systemd apaga los dos procesos
+  juntos; con `process` el trabajador podría quedar vivo y huérfano.
+- Para ver los dos procesos en el servidor (solo mirar): `systemd-cgls -u jarvis.service`.
+
+### Reglas para escribir trabajos nuevos (`src/tareas/manejadores.js`)
+- Cada `ctx.escribir(fn)` es una escritura CORTA (lotes de 200 filas o menos, con `ctx.ceder()` entre lotes). Una
+  escritura larga congela las pantallas mientras dura.
+- Nunca `await` dentro de una transacción (el código lo rechaza).
+- Respetar `ctx.senal`: cuando se pide parar, el paso termina pronto.
+- Cada paso se puede repetir sin daño (idempotente): un corte de luz o un reinicio pueden hacer que corra dos veces.
+- Todo lo que MANDA algo (correos, mensajes) va con `repetible: false`: si se interrumpe, queda «por revisar» y nunca se
+  manda dos veces solo.
+- Un tipo nuevo se registra en `src/tareas/tipos.js` (solo datos) y su trabajo en `src/tareas/manejadores.js`; los tipos de
+  prueba viven en `test/tareas-prueba.js`, nunca en `src/`.
+
+### Modo seguro desde la consola (cuando las pantallas no abren)
+En la Consola de DigitalOcean:
+
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --modo-seguro=si
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --modo-seguro=no
+
+El primero pone en pausa el trabajo automático; el segundo lo vuelve a encender. El servicio que está corriendo lo aplica
+en menos de 30 segundos, sin reiniciar. Queda en la auditoría como «consola».
 
 ## Estado
 - Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.
@@ -87,5 +127,26 @@ hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
     juan.perez2 si ya existe); el nombre completo queda como nombre visible.
   Toda consulta lleva el espacio de quien pregunta: una cuenta nunca ve proyectos de otra, ni siquiera el administrador
   (`test/proyectos.test.js`). Cada espacio numera sus proyectos desde 1, así nadie puede contar los de otras cuentas.
+
+- Fase 1, parte c (versión 0.3.0, cambio de base 4): trabajo automático 24 horas en un proceso aparte (ver «Dos procesos,
+  un servicio»). Fila de tareas con pasos que se pueden retomar, turnos justos por tiempo (primero entre cuentas y luego
+  entre proyectos), reintentos a 1 y 4 minutos, frenos por tipo que se sueltan solos, modo seguro y puerta de arranque.
+  - Lo que hace de verdad por ahora: revisa la fila cada hora (a las :07, hora de RD) y revisa y ordena la base cada
+    madrugada (4:10). Las pantallas toman una muestra de salud por hora (memoria, disco, base, carga y lo que tardan),
+    también en modo seguro.
+  - Los proyectos todavía NO crean tareas: empiezan con la búsqueda de clientes (fase 2), y las pantallas lo dicen así.
+    La pantalla «Tareas» para cada cuenta también llega en la fase 2 (hoy estaría vacía).
+  - Administrador tiene arriba el «Estado del sistema»: tarjetas de colores (verde bien, amarillo mirar, rojo grave) para el
+    trabajo automático, el servidor, los avisos y las tareas con error; se actualiza sola cada 30 s sin borrar lo que se
+    está escribiendo. Debajo: los avisos con «Entendido», el trabajo automático (qué hace, contadores, próximas
+    ejecuciones, errores recientes con «Reintentar» y «Cancelar», la fila completa y cómo terminó las últimas 5 veces), el
+    botón del modo seguro (con confirmación) y la salud del servidor con las últimas 24 muestras.
+  - Inicio muestra al administrador el estado en una línea, y una tarjeta roja si el modo seguro está activo o hay un aviso
+    grave sin ver.
+  - Los avisos solo se ven en Administrador; por Telegram llegan en la parte e (la tabla `avisos` ya guarda cuántas veces
+    pasó, la primera y la última vez, el detalle y si ya se mandó).
+  - API del administrador: `GET /api/admin/sistema`, `GET /api/admin/tareas`, `POST /api/admin/modo-seguro`,
+    `POST /api/admin/tareas/:id/reintentar`, `POST /api/admin/tareas/:id/cancelar` y `POST /api/admin/avisos/:id/visto`
+    (30 acciones cada 10 minutos). De las tareas de proyectos el administrador nunca ve datos ni resultados.
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

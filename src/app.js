@@ -10,6 +10,7 @@ import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDA
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
 import { registrarRutasProyectos } from './api/proyectos.js';
+import { registrarRutasTareas } from './api/tareas.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
@@ -65,10 +66,12 @@ function texto(res, codigo, mensaje) {
 // opciones.db: la base abierta (null si no se pudo abrir). opciones.limites: límites de cuentas (para pruebas).
 // opciones.supervisor: el que cuida al trabajador (src/tareas/supervisor.js); null en las pruebas que no lo usan.
 // opciones.proyectos: límites o motor de las rutas de proyectos (solo para pruebas).
-export function crearServidor({ db = null, limites, supervisor = null, proyectos = {} } = {}) {
+// opciones.tareas: límites de las rutas del sistema (solo para pruebas).
+export function crearServidor({ db = null, limites, supervisor = null, proyectos = {}, tareas = {} } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
   registrarRutasProyectos(rutas, proyectos);
+  registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, ...tareas });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
