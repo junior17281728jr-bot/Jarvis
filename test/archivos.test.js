@@ -5,9 +5,10 @@ import { configDePrueba, conServidor, carpetaTemporal } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request } from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, relative, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
@@ -322,4 +323,142 @@ test('enviarJson solo comprime GET correctos, grandes, sin galleta y de rutas de
   const suelto = { writeHead(c, cab) { this.cabeceras = cab; }, end(cuerpo) { this.cuerpo = cuerpo; } };
   enviarJson(suelto, 200, grande, {}, { comprimir: true });
   assert.equal(suelto.cabeceras['Content-Encoding'], undefined);
+});
+
+// ---------- Ciclos de módulos ----------
+// La huella de un módulo depende de las huellas de lo que importa: en un ciclo (a.js -> b.js -> a.js) eso no tiene
+// solución, y la importación que cierra el ciclo queda sin huella. El navegador toma /a.js y /a.js?v=… por dos módulos
+// distintos y corre a.js dos veces (si fuera app.js, OPORTIA arrancaría dos veces). Por eso un ciclo no pasa las pruebas
+// y el actualizador no instala esa versión.
+const IMPORTACION = /(?:\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.{1,2}\/[^'"?#\s]+\.js)\1/g;
+
+// El primer ciclo que encuentra (lista de nombres, el primero repetido al final) o null.
+function buscarCiclo(importa) {
+  const visto = new Map(); // nombre -> 'en camino' | 'listo'
+  const camino = [];
+  const visitar = nombre => {
+    if (visto.get(nombre) === 'listo') return null;
+    if (visto.get(nombre) === 'en camino') return [...camino.slice(camino.indexOf(nombre)), nombre];
+    visto.set(nombre, 'en camino');
+    camino.push(nombre);
+    for (const otro of importa.get(nombre) ?? []) {
+      const ciclo = visitar(otro);
+      if (ciclo) return ciclo;
+    }
+    camino.pop();
+    visto.set(nombre, 'listo');
+    return null;
+  };
+  for (const nombre of importa.keys()) {
+    const ciclo = visitar(nombre);
+    if (ciclo) return ciclo;
+  }
+  return null;
+}
+
+function modulosDe(carpeta) {
+  const lista = [];
+  for (const nombre of readdirSync(carpeta)) {
+    const ruta = join(carpeta, nombre);
+    if (statSync(ruta).isDirectory()) lista.push(...modulosDe(ruta));
+    else if (nombre.endsWith('.js')) lista.push(ruta);
+  }
+  return lista;
+}
+
+test('los módulos de public/ no se importan en ciclo, y todo módulo que se importa va con su huella', async () => {
+  // La prueba sí encuentra un ciclo.
+  assert.deepEqual(buscarCiclo(new Map([['a.js', ['b.js']], ['b.js', ['c.js']], ['c.js', ['a.js']]])), ['a.js', 'b.js', 'c.js', 'a.js']);
+  assert.deepEqual(buscarCiclo(new Map([['a.js', ['a.js']]])), ['a.js', 'a.js']);
+  assert.equal(buscarCiclo(new Map([['a.js', ['b.js', 'c.js']], ['b.js', ['c.js']], ['c.js', []]])), null, 'un rombo no es un ciclo');
+  const importa = new Map();
+  for (const archivo of modulosDe(PUB)) {
+    const texto = readFileSync(archivo, 'utf8');
+    importa.set(relative(PUB, archivo), [...texto.matchAll(IMPORTACION)].map(m => relative(PUB, normalize(join(dirname(archivo), m[2])))));
+  }
+  assert.ok(importa.get('app.js')?.length >= 2, 'app.js importa sus módulos');
+  const ciclo = buscarCiclo(importa);
+  assert.equal(ciclo, null, `ciclo de módulos en public/: ${ciclo?.join(' -> ')}. El navegador correría uno de ellos dos veces: hay que romper el ciclo (por ejemplo, pasar lo compartido a otro módulo).`);
+  // Como lo sirve OPORTIA: cada módulo que se importa lleva su huella (?v=…).
+  await conOportia(async base => {
+    for (const nombre of importa.keys()) {
+      const servido = (await pedir(base, `/${nombre.split('\\').join('/')}`)).cuerpo.toString('utf8');
+      for (const m of servido.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.{1,2}\/[^'"#\s]+)\1/g)) {
+        assert.match(m[2], /\.js\?v=[A-Za-z0-9_-]{22}$/, `${nombre} importa ${m[2]} sin huella`);
+      }
+    }
+  });
+});
+
+test('con un ciclo de módulos y un archivo que cambia sin reiniciar, el servidor no se queda dando vueltas', async () => {
+  // Como en el rato del actualizador entre copiar los archivos y reiniciar: antes, b.js revisaba a a.js, a.js a b.js,
+  // y así sin fin (RangeError) y toda la app respondía 500 hasta el reinicio.
+  const carpeta = carpetaTemporal('ciclo');
+  writeFileSync(join(carpeta, 'index.html'), '<script type="module" src="/a.js"></script>');
+  writeFileSync(join(carpeta, 'a.js'), "import { b } from './b.js';\nexport const a = 1;\n");
+  writeFileSync(join(carpeta, 'b.js'), "import { a } from './a.js';\nexport const b = 2;\n");
+  const servir = ruta => new Promise((listo, mal) => {
+    const res = { writeHead(codigo) { this.codigo = codigo; }, end(cuerpo) { listo({ codigo: this.codigo, cuerpo: String(cuerpo ?? '') }); } };
+    try {
+      if (!servirArchivo(res, carpeta, ruta, { url: ruta, headers: {} })) listo({ codigo: 404 });
+    } catch (error) {
+      mal(error);
+    }
+  });
+  for (const ruta of ['/', '/a.js', '/b.js']) assert.equal((await servir(ruta)).codigo, 200, ruta);
+  appendFileSync(join(carpeta, 'b.js'), '// cambio\n');
+  for (const ruta of ['/b.js', '/a.js', '/', '/b.js']) assert.equal((await servir(ruta)).codigo, 200, `${ruta} después del cambio`);
+  assert.match((await servir('/b.js')).cuerpo, /\/\/ cambio/);
+  appendFileSync(join(carpeta, 'a.js'), '// otro cambio\n');
+  for (const ruta of ['/', '/a.js', '/b.js']) assert.equal((await servir(ruta)).codigo, 200, `${ruta} después del otro cambio`);
+  assert.match((await servir('/a.js')).cuerpo, /\/\/ otro cambio/);
+});
+
+// ---------- Pedidos adelantados al abrir (public/app.js) ----------
+// Al abrir, iniciar() pide la cuenta y, a la vez, lo que va a pedir la primera pantalla (pedidosAlAbrir): por la red del
+// teléfono es un viaje de ida y vuelta menos. Esta prueba cuida que la lista sea justo lo que pide cada pantalla.
+test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni de menos', () => {
+  const app = readFileSync(join(PUB, 'app.js'), 'utf8');
+  const fuente = /^function pedidosAlAbrir\(seccion, admin\) \{\n[\s\S]*?\n\}$/m.exec(app)?.[0];
+  assert.ok(fuente, 'falta pedidosAlAbrir en public/app.js');
+  const pedidosAlAbrir = runInNewContext(`${fuente}\npedidosAlAbrir;`);
+  const funcion = nombre => /^(?:async )?function [A-Za-z]+\([^\n]*\) \{\n[\s\S]*?\n\}$/m.exec(app.slice(app.search(new RegExp(`^(?:async )?function ${nombre}\\(`, 'm'))))?.[0] ?? '';
+  // Lo que pide una pantalla con GET (lo que va dentro de ${…} se escribe :n), y el catálogo si lo carga.
+  const pidePantalla = nombre => {
+    const cuerpo = funcion(nombre);
+    assert.ok(cuerpo, `falta ${nombre} en public/app.js`);
+    const rutas = new Set([...cuerpo.matchAll(/\bapi\('GET', (['`])(.+?)\1\)/g)].map(m => m[2].replace(/\$\{[^}]*\}/g, ':n')));
+    if (/\bcargarCatalogo\(\)/.test(cuerpo)) rutas.add('/api/catalogo');
+    return rutas;
+  };
+  const adelanta = (seccion, admin) => {
+    const lista = pedidosAlAbrir(seccion, admin);
+    assert.equal(new Set(lista).size, lista.length, `${seccion}: un pedido repetido`);
+    return new Set(lista.map(ruta => ruta.replace(/\/7$/, '/:n')));
+  };
+  // Lo que una pantalla pide solo después de otra respuesta (o al tocar algo) no se puede adelantar. Hoy, nada.
+  const NO_SE_ADELANTA = new Set([]);
+  const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'], ['proyectos', 'pantallaProyectos'],
+    ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto']];
+  // Toda pantalla que dibujar conoce está en la lista de arriba.
+  const dibujar = funcion('dibujar');
+  for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
+    assert.ok(PANTALLAS.some(([s]) => s === seccion), `dibujar conoce la pantalla «${seccion}»: agrégala a pedidosAlAbrir (public/app.js) y a esta prueba`);
+  }
+  for (const [seccion, nombre] of PANTALLAS) {
+    assert.match(dibujar, new RegExp(`return ${nombre}\\(`), `dibujar no lleva a ${nombre}`);
+    const pide = new Set([...pidePantalla(nombre)].filter(ruta => !NO_SE_ADELANTA.has(ruta)));
+    // Para el administrador: exactamente lo que pide la pantalla.
+    assert.deepEqual([...adelanta(seccion, true)].sort(), [...pide].sort(), `${seccion} (administrador): lo adelantado no es lo que pide ${nombre}. Si la pantalla pide algo nuevo al empezar, agrégalo a pedidosAlAbrir en public/app.js`);
+    // Para los demás: nada de Administrador, y nada que la pantalla no use (Administrador lo ven como Inicio).
+    const otros = adelanta(seccion, false);
+    for (const ruta of otros) assert.doesNotMatch(ruta, /^\/api\/admin\//, `${seccion}: a quien no es administrador se le adelanta ${ruta}`);
+    const usa = seccion === 'admin' ? pidePantalla('pantallaInicio') : pide;
+    for (const ruta of otros) assert.ok(usa.has(ruta), `${seccion}: se adelanta ${ruta}, que la pantalla no pide`);
+  }
+  // Sin dirección o con una que no existe se ve Inicio.
+  assert.deepEqual(pedidosAlAbrir('cualquier-cosa', true), pedidosAlAbrir('inicio', true));
+  assert.deepEqual(pedidosAlAbrir('proyecto/abc', false), pedidosAlAbrir('inicio', false));
+  // Lo adelantado lo toma solo la primera pantalla: iniciar() lo descarta enseguida después.
+  assert.match(funcion('iniciar'), /const primera = dibujar\(\);\n {2}adelantados\.clear\(\);\n {2}await primera;/);
 });

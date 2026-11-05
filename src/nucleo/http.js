@@ -218,6 +218,18 @@ function versionarPagina(texto, completa, carpeta, enCamino, usa) {
   });
 }
 
+// ¿Siguen iguales (con la misma huella) todos los archivos que nombra la entrada? El archivo que se revisa va en
+// enCamino mientras tanto, y uno que ya está en el camino cuenta como igual: así un ciclo de módulos (a.js -> b.js
+// -> a.js) no se revisa sin fin. Las pruebas no dejan pasar un ciclo en public/ (test/archivos.test.js).
+function siguenIguales(carpeta, completa, vieja, enCamino) {
+  enCamino.add(completa);
+  try {
+    return vieja.usa.every(([ruta, huella]) => enCamino.has(ruta) || leerEntrada(carpeta, ruta, enCamino)?.huella === huella);
+  } finally {
+    enCamino.delete(completa);
+  }
+}
+
 // La entrada en memoria de un archivo de public/ (o null si no existe o no es de un tipo que se sirve).
 // Vale mientras el archivo y todos los que nombra (con su huella) sigan iguales.
 function leerEntrada(carpeta, completa, enCamino = new Set()) {
@@ -227,7 +239,7 @@ function leerEntrada(carpeta, completa, enCamino = new Set()) {
   if (!tipo || !st.isFile()) return null;
   const firma = firmaDe(st);
   const vieja = enMemoria.get(completa);
-  if (vieja && vieja.firma === firma && vieja.usa.every(([ruta, huella]) => leerEntrada(carpeta, ruta, enCamino)?.huella === huella)) return vieja;
+  if (vieja && vieja.firma === firma && siguenIguales(carpeta, completa, vieja, enCamino)) return vieja;
   let contenido;
   try { contenido = readFileSync(completa); } catch { return null; }
   const usa = [];

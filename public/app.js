@@ -131,20 +131,29 @@ function el(etiqueta, propiedades = {}, ...hijos) {
   return nodo;
 }
 
-async function api(metodo, ruta, datos) {
+// El pedido tal cual, sin mirar la respuesta (eso lo hace api). Nunca falla: sin red responde «sin_conexion».
+async function pedirAlServidor(metodo, ruta, datos) {
   const opciones = { method: metodo, credentials: 'same-origin', headers: { 'X-Oportia': '1' } };
   if (datos !== undefined) {
     opciones.headers['Content-Type'] = 'application/json';
     opciones.body = JSON.stringify(datos);
   }
-  let respuesta;
   try {
     const r = await fetch(ruta, opciones);
     const cuerpo = await r.json().catch(() => ({}));
-    respuesta = { ok: r.ok, codigo: r.status, datos: cuerpo };
+    return { ok: r.ok, codigo: r.status, datos: cuerpo };
   } catch {
     return { ok: false, codigo: 0, datos: { error: 'sin_conexion' } };
   }
+}
+
+// Pedidos GET que iniciar() hace por adelantado (ruta -> respuesta en camino): solo los usa la primera pantalla.
+const adelantados = new Map();
+
+async function api(metodo, ruta, datos) {
+  const adelantado = metodo === 'GET' && datos === undefined ? adelantados.get(ruta) : undefined;
+  if (adelantado) adelantados.delete(ruta);
+  const respuesta = await (adelantado ?? pedirAlServidor(metodo, ruta, datos));
   // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
   const error = respuesta.datos?.error;
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
@@ -287,6 +296,7 @@ function pantallaEntrar() {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.usuario = r.datos.usuario;
+    recordarAdmin(estado.usuario);
     avisosCuenta = leerAvisos(r.datos);
     if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
       // Eligió un idioma en esta pantalla: se guarda en su cuenta.
@@ -2537,6 +2547,28 @@ async function dibujar() {
   return pantallaInicio();
 }
 
+// Lo que la primera pantalla va a pedir (los mismos caminos que dibujar), para pedirlo al abrir junto con la cuenta
+// y no después: por la red del teléfono eso es un viaje de ida y vuelta menos (150-400 ms). Si una pantalla pide
+// algo más al empezar, va aquí también (test/archivos.test.js lo revisa).
+function pedidosAlAbrir(seccion, admin) {
+  if (seccion === 'configuracion') return ['/api/yo/reinicios'];
+  // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
+  if (seccion === 'admin') return admin ? ['/api/admin/usuarios', '/api/admin/sistema'] : [];
+  if (seccion === 'proyectos' || seccion === 'nuevo') return ['/api/catalogo', '/api/proyectos'];
+  const proyecto = seccion.match(/^proyecto\/(\d+)$/);
+  if (proyecto) return ['/api/catalogo', `/api/proyectos/${encodeURIComponent(proyecto[1])}`];
+  return ['/api/proyectos', '/api/catalogo', ...(admin ? ['/api/admin/sistema'] : [])];
+}
+
+// Si la última cuenta que abrió OPORTIA en este navegador era de administrador: solo para saber qué pedir por
+// adelantado. Si se equivoca no pasa nada (lo que sobra se descarta y lo que falta se pide después).
+function eraAdmin() {
+  try { return localStorage.getItem('op_admin') === '1'; } catch { return false; }
+}
+function recordarAdmin(usuario) {
+  try { localStorage.setItem('op_admin', usuario?.rol === 'admin' ? '1' : '0'); } catch { /* sin almacenamiento: no pasa nada */ }
+}
+
 // Si OPORTIA no pudo arrancar, se explica en los dos idiomas y se ofrece reintentar
 // (en el iPhone, la app de la pantalla de inicio no tiene botón de recargar).
 function pantallaNoArranco(detalle) {
@@ -2553,9 +2585,14 @@ async function iniciar() {
   // cada viaje de ida y vuelta cuesta 150-400 ms.
   const pedidoSetup = api('GET', '/api/setup');
   const pedidoYo = api('GET', '/api/yo');
+  // Y lo que va a pedir la primera pantalla. Se descarta si no hay sesión, si hubo que esperar al servidor o si la
+  // persona cambió de pantalla mientras tanto; después de la primera pantalla no queda nada guardado.
+  const direccionAlAbrir = location.hash;
+  for (const ruta of pedidosAlAbrir(direccionAlAbrir.replace('#', '') || 'inicio', eraAdmin())) adelantados.set(ruta, pedirAlServidor('GET', ruta));
   try {
     await cargarIdioma(preferido === 'en' ? 'en' : 'es');
   } catch {
+    adelantados.clear();
     return pantallaNoArranco();
   }
   mostrar(el('p', { class: 'cargando', texto: t('app.cargando') }));
@@ -2569,15 +2606,24 @@ async function iniciar() {
     setup = await api('GET', '/api/setup');
   }
   estado.setup = setup.datos;
-  if (!setup.ok) return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
+  if (!setup.ok) {
+    adelantados.clear();
+    return pantallaNoArranco(textoError(setup.datos.error || 'error_interno'));
+  }
   // Si hubo que esperar al servidor, la cuenta se vuelve a pedir (la primera respuesta puede ser vieja).
   const yo = intento ? await api('GET', '/api/yo') : await pedidoYo;
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
+    recordarAdmin(estado.usuario);
     avisosCuenta = leerAvisos(yo.datos);
     if (estado.usuario.idioma !== idioma) await cargarIdioma(estado.usuario.idioma);
   }
-  await dibujar();
+  if (!yo.ok || intento || location.hash !== direccionAlAbrir) adelantados.clear();
+  // La primera pantalla toma lo pedido por adelantado al empezar a dibujarse (sus pedidos salen enseguida, antes
+  // de esperar nada); lo que no usó se descarta, así ninguna pantalla de después recibe datos viejos.
+  const primera = dibujar();
+  adelantados.clear();
+  await primera;
 }
 
 window.addEventListener('hashchange', () => { if (estado.usuario) dibujar(); });
