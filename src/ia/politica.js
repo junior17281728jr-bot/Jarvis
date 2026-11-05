@@ -38,6 +38,9 @@ export const POLITICA = Object.freeze({
   sin_red: P('fallida', 'corta'), // si se cortó a mitad, el adaptador la deja 'desconocida'
   tiempo_agotado: P('desconocida', 'corta'),
   interrumpida: P('desconocida'),
+  // La clave guardada no se pudo abrir justo antes de llamar (la llave cambió o falta): no salió nada, cuesta 0. No se
+  // pausa al proveedor: el aviso es 'ia_llave' (lo abre src/ia/cliente.js), y reservar ya no la elige.
+  clave_ilegible: P('fallida'),
 });
 
 // La política de un motivo. Uno que no esté en la tabla nunca cuenta de menos: queda 'desconocida' (lo máximo).

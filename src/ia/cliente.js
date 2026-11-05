@@ -1,0 +1,200 @@
+// El camino PAGADO de la IA: SOLO lo usa el trabajador (test/reglas.test.js comprueba que el servidor web nunca lo
+// carga). Cada paso de una tarea recibe uno propio en ctx.ia (src/tareas/ejecutor.js).
+//
+//   const r = await ctx.ia.pedir({ proposito, paso, espacioId, proyectoId?, versionNumero?, usuarioId?, sistema, texto,
+//                                  esquema?, maximoConfirmadoMicro?, guardar?: (db, json, llamada) => valor })
+//   → { usada: true, json, texto, costoMicro, llamadaId, proveedor, modelo, guardado }
+//   → { usada: false, motivo, costoMicro?, llamadaId?, guardado? }
+//
+// Reglas (valen para todas las fases):
+//  - NUNCA lanza por un problema del proveedor, de la red, de la clave o de un tope: devuelve { usada: false, motivo }
+//    y quien la usa sigue con el motor propio. Solo lanza por un error de programación (un propósito que no existe).
+//  - UN solo pedido a la red por cada pedir, siempre. Nunca reintenta: un error pausa esa clave y el próximo pedir la
+//    encuentra en pausa SIN tocar la red (src/ia/politica.js).
+//  - Antes de llamar se APARTA lo máximo que puede costar (reservar, en una escritura con la cerca de la tarea). Después
+//    se anota lo que costó de verdad (liquidar) con el escritor SIN cerca: el costo se anota siempre, aunque la tarea
+//    ya no sea de este trabajador. Lo que se guarda con lo que respondió la IA (guardar) sí va con la cerca, dentro de
+//    la misma escritura: si la tarea ya no es suya, el costo queda anotado y no se guarda nada más.
+//  - Un paso que se repite (un reinicio a mitad) nunca paga dos veces: (tarea, propósito, paso) identifica la llamada.
+//  - La clave descifrada vive solo dentro de un pedir: nunca se guarda, se muestra ni se escribe en un registro.
+import { enTransaccion } from '../nucleo/db.js';
+import { FASE_ACTUAL } from '../tareas/tipos.js';
+import { asegurarQueEsMia } from '../tareas/cola.js';
+import { abrirAviso } from '../avisos/avisos.js';
+import { leerSecreto, validarValor } from '../claves/almacen.js';
+import { PROPOSITOS, MOTIVOS, definicionProposito } from './propositos.js';
+import { reservar, liquidar, anotarBloqueo, mesCobro } from './presupuesto.js';
+import { PROVEEDORES, urlDe } from './proveedores/index.js';
+import { llamarProveedor } from './llamar.js';
+
+// Lo que se suma a los bytes del pedido por el «sobre» del proveedor (roles, nombres de campos…).
+export const MARCO_BYTES = 200;
+const CLAVE_CORTA = /^[a-z_]{1,60}$/;
+
+// ¿SQLite dijo «ocupada» (otro está escribiendo hace más de busy_timeout)? Solo mira el código, nunca el texto.
+function baseOcupada(error) {
+  const n = Number(error?.errcode);
+  return Number.isInteger(n) && ((n & 0xff) === 5 || (n & 0xff) === 6);
+}
+
+// La clave corta de un error de guardar (ErrorHttp / ErrorTarea), o 'no_se_pudo_guardar'.
+function claveDeError(error) {
+  const clave = typeof error?.clave === 'string' && CLAVE_CORTA.test(error.clave) ? error.clave : null;
+  if (clave === 'ya_no_es_mia') return 'interrumpida';
+  return clave && MOTIVOS.includes(clave) ? clave : 'no_se_pudo_guardar';
+}
+
+// db, config: los del trabajador. escritor: el escritor del trabajador (src/tareas/escritor.js). tarea, corrida: la
+// tarea tomada y la corrida de este trabajador (para la cerca); sin tarea, escribe sin cerca (pruebas, consola).
+// senal: la señal de parar del paso. validar: solo para una prueba (comprobar que una clave mal guardada nunca sale en
+// un error); el trabajador nunca la cambia.
+export function crearClienteIA({
+  db, config, escritor, tarea = null, corrida = null, senal = null, reloj = Date.now, registro = console,
+  propositos = PROPOSITOS, validar = validarValor,
+}) {
+  if (!db || !escritor) throw new Error('crearClienteIA necesita db y escritor');
+  const conCerca = Boolean(tarea?.id != null && corrida);
+  const escribirConCerca = trabajo => escritor.escribir(() => {
+    if (conCerca) asegurarQueEsMia(db, tarea, corrida);
+    return trabajo();
+  });
+  const escribirSinCerca = trabajo => escritor.escribir(trabajo);
+
+  // Cierra una llamada reservada que no llegó a salir (clave ilegible o mal guardada): cuesta 0.
+  async function cerrarSinLlamar(llamada, motivo, { avisoLlave = false } = {}) {
+    try {
+      await escribirSinCerca(() => {
+        const l = liquidar(db, { llamadaId: llamada.id, resultado: { motivo, estado: 'fallida' }, ahora: reloj(), config });
+        if (avisoLlave) abrirAviso(db, { clave: 'ia_llave', nivel: 'grave', detalle: { motivo }, ahora: reloj() });
+        return l;
+      });
+    } catch {
+      registro?.error?.('ia: no se pudo cerrar la llamada', llamada.id);
+    }
+    return { usada: false, motivo, costoMicro: 0, llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+  }
+
+  async function pedir(pedido = {}) {
+    const proposito = pedido.proposito;
+    const def = definicionProposito(proposito, propositos);
+    // Errores de programación: se lanzan (nunca son culpa de la persona ni del proveedor).
+    if (!def) throw new Error(`propósito de IA desconocido: ${String(proposito).slice(0, 40)}`);
+    if (def.fase > FASE_ACTUAL) throw new Error(`el propósito ${proposito} es de la fase ${def.fase}`);
+    const sistema = String(pedido.sistema ?? '');
+    const texto = String(pedido.texto ?? '');
+    const esquema = pedido.esquema ?? null;
+    const paso = pedido.paso == null ? null : String(pedido.paso).slice(0, 80);
+    const espacioId = pedido.espacioId ?? null;
+    const proyectoId = pedido.proyectoId ?? null;
+
+    // 0. ¿Cabe? Lo que no cabe ni se intenta (y cuenta como una vez sin IA).
+    const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + (esquema ? Buffer.byteLength(JSON.stringify(esquema)) : 0);
+    if (bytes > def.entradaMaxBytes) {
+      try {
+        await escribirConCerca(() => anotarBloqueo(db, { mes: mesCobro(reloj()), ambito: 'general', motivo: 'demasiado_largo', proposito, ahora: reloj() }));
+      } catch (error) {
+        if (error?.clave === 'ya_no_es_mia') return { usada: false, motivo: 'interrumpida' };
+        if (!baseOcupada(error)) throw error;
+      }
+      return { usada: false, motivo: 'demasiado_largo' };
+    }
+
+    // 1. ¿Este paso ya se hizo? (un reinicio a mitad nunca paga dos veces)
+    if (tarea?.id != null && paso != null) {
+      const previa = db.prepare('SELECT id, estado, resultado, costo_micro, proveedor, modelo FROM ia_llamadas WHERE tarea_id = ? AND proposito = ? AND paso = ? ORDER BY id DESC LIMIT 1')
+        .get(tarea.id, proposito, paso);
+      if (previa) {
+        const datos = { llamadaId: previa.id, proveedor: previa.proveedor, modelo: previa.modelo };
+        if (previa.estado === 'reservada') {
+          // Quedó a mitad (el trabajador se cayó o se actualizó): se cierra contando lo máximo apartado.
+          let costo = null;
+          try {
+            costo = (await escribirSinCerca(() => liquidar(db, { llamadaId: previa.id, resultado: { motivo: 'interrumpida', estado: 'desconocida' }, ahora: reloj(), config }))).costoMicro;
+          } catch {
+            registro?.error?.('ia: no se pudo cerrar la llamada', previa.id);
+          }
+          return { usada: false, motivo: 'interrumpida', costoMicro: costo, ...datos };
+        }
+        if (previa.estado === 'hecha' && previa.resultado === 'ok') return { usada: false, motivo: 'ya_cobrada', costoMicro: previa.costo_micro, ...datos };
+        return { usada: false, motivo: MOTIVOS.includes(previa.resultado) ? previa.resultado : 'interrumpida', costoMicro: previa.costo_micro, ...datos };
+      }
+    }
+
+    // 2. Apartar el dinero (o saber por qué no), con la cerca de la tarea. Nunca toca la red.
+    let r;
+    try {
+      r = await escribirConCerca(() => reservar(db, {
+        config, proposito, espacioId, proyectoId, versionNumero: pedido.versionNumero ?? null, tareaId: tarea?.id ?? null,
+        usuarioId: pedido.usuarioId ?? null, paso, entradaMax: bytes + MARCO_BYTES, maximoConfirmadoMicro: pedido.maximoConfirmadoMicro ?? null,
+        ahora: reloj(), propositos,
+      }));
+    } catch (error) {
+      if (error?.clave === 'ya_no_es_mia') return { usada: false, motivo: 'interrumpida' };
+      if (baseOcupada(error)) return { usada: false, motivo: 'base_ocupada' };
+      throw error;
+    }
+    if (!r.ok) return { usada: false, motivo: r.motivo };
+    const llamada = r.llamada;
+    const adaptador = PROVEEDORES[llamada.proveedor];
+
+    // 3. La clave, descifrada justo ahora (y revisada otra vez: un valor raro nunca llega a una cabecera).
+    let clave = leerSecreto(db, config, { id: llamada.secretoId });
+    if (clave == null) return cerrarSinLlamar(llamada, 'clave_ilegible', { avisoLlave: true });
+    try {
+      clave = validar(adaptador.uso, clave);
+    } catch {
+      clave = null;
+      return cerrarSinLlamar(llamada, 'clave_no_valida');
+    }
+
+    // 4. UNA llamada, con su tiempo máximo y la señal de parar del paso.
+    const p = adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo });
+    let respuesta;
+    try {
+      respuesta = await llamarProveedor({
+        url: urlDe(adaptador, config, p.ruta), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
+        senal, timeoutMs: def.timeoutMs, permitido: adaptador.host,
+      });
+    } finally {
+      clave = null;
+    }
+
+    // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor).
+    const leido = adaptador.leer(respuesta, { json: Boolean(esquema) });
+
+    // 6. Anotar lo que costó (siempre, sin cerca) y, si sirvió, guardar lo que hizo (con la cerca, en la misma escritura).
+    let cierre;
+    try {
+      cierre = await escribirSinCerca(() => {
+        const l = liquidar(db, { llamadaId: llamada.id, resultado: leido, duracionMs: respuesta.msTotal, ahora: reloj(), config });
+        let guardado = null;
+        if (leido.motivo === 'ok' && typeof pedido.guardar === 'function') {
+          try {
+            const valor = enTransaccion(db, () => {
+              if (conCerca) asegurarQueEsMia(db, tarea, corrida);
+              return pedido.guardar(db, leido.json, { id: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo, costoMicro: l.costoMicro });
+            });
+            guardado = { ok: true, valor: valor ?? null };
+          } catch (error) {
+            // Si SQLite deshizo la escritura entera, no se puede seguir en ella: que falle toda (la reserva se barre).
+            if (error?.transaccionPerdida) throw error;
+            const motivo = claveDeError(error);
+            if (motivo === 'no_se_pudo_guardar') registro?.error?.('ia: no se pudo guardar lo que hizo la IA', typeof error?.name === 'string' ? error.name.slice(0, 40) : 'Error');
+            guardado = { ok: false, error: motivo };
+          }
+        }
+        return { costoMicro: l.costoMicro, guardado };
+      });
+    } catch {
+      // La reserva sigue «en curso» (cuenta lo máximo) y el barrido la cierra después.
+      registro?.error?.('ia: no se pudo cerrar la llamada', llamada.id);
+      return { usada: false, motivo: 'base_ocupada', llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+    }
+
+    const comun = { costoMicro: cierre.costoMicro, llamadaId: llamada.id, proveedor: llamada.proveedor, modelo: llamada.modelo };
+    if (leido.motivo === 'ok') return { usada: true, json: leido.json, texto: leido.texto, ...comun, guardado: cierre.guardado };
+    return { usada: false, motivo: MOTIVOS.includes(leido.motivo) ? leido.motivo : 'error_proveedor', ...comun };
+  }
+
+  return Object.freeze({ pedir });
+}

@@ -1,7 +1,9 @@
 // Los trabajos de verdad que hace el trabajador (el proceso aparte). Este archivo SOLO lo carga el trabajador:
 // las pantallas nunca lo importan. En la fase 1, parte c hay dos, los dos del sistema:
-//  - sistema.vigilar (cada hora, a los :07): revisa la fila y abre o resuelve sus avisos;
+//  - sistema.vigilar (cada hora, a los :07): revisa la fila y abre o resuelve sus avisos (y, desde la parte d, la IA:
+//    reservas huérfanas, avisos de tope de meses pasados y la llave de las claves);
 //  - sistema.base (cada madrugada, 4:10): revisa que la base esté sana y después la ordena.
+// En la parte d se suma 'ia.interpretar' (la ayuda de IA en un proyecto que espera aprobación, src/ia/ayuda.js).
 // Los proyectos empiezan a tener trabajos en la fase 2 (la búsqueda de clientes).
 //
 // REGLAS PARA ESCRIBIR UN TRABAJO (valen también para la fase 2):
@@ -19,6 +21,8 @@ import { resumenFila } from './cola.js';
 import { sincronizarAvisos, abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { ponerModoSeguro } from './modo-seguro.js';
 import { ErrorTarea } from './tipos.js';
+import { vigilarIA } from '../ia/presupuesto.js';
+import { MANEJADOR_INTERPRETAR } from '../ia/ayuda.js';
 
 export const WAL_GRANDE_MB = 64; // con más que esto, vigilar pasa lo pendiente del -wal a la base
 export const PROBLEMAS_A_GUARDAR = 5;
@@ -49,13 +53,15 @@ async function vigilar(ctx) {
     { clave: 'fila_atrasada', nivel: 'atencion', activo: fila.atrasadaDesde != null, detalle: { desde: fila.atrasadaDesde } },
   ];
   await ctx.escribir(() => sincronizarAvisos(ctx.db, avisos, ahora));
+  // La IA (parte d): una sola escritura corta. Sin carpeta de datos (algunas pruebas) no mira la llave.
+  const ia = await ctx.escribir(() => vigilarIA(ctx.db, { config: ctx.config, ahora }));
   let walMb = tamanoWalMb(ctx.config);
   let checkpoint = null;
   if (walMb > WAL_GRANDE_MB) {
     checkpoint = await pasarWal(ctx);
     walMb = tamanoWalMb(ctx.config);
   }
-  return { listo: true, resultado: { fila, walMb, ...(checkpoint ? { checkpoint } : {}) } };
+  return { listo: true, resultado: { fila, walMb, ia, ...(checkpoint ? { checkpoint } : {}) } };
 }
 
 // sistema.base, paso 1 «revisar»: quick_check SOLO lee. Si encuentra un problema, se abre el aviso grave
@@ -95,4 +101,5 @@ async function base(ctx) {
 export const MANEJADORES = Object.freeze({
   'sistema.vigilar': Object.freeze({ paso: vigilar }),
   'sistema.base': Object.freeze({ paso: base }),
+  'ia.interpretar': MANEJADOR_INTERPRETAR,
 });

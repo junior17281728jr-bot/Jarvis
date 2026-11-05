@@ -138,3 +138,127 @@ test('una opción que no existe se rechaza sin tocar la base', () => {
   }
   assert.equal(existsSync(join(raiz, 'jarvis', 'oportia.db')), false, 'ni siquiera abrió la base');
 });
+
+// ---------- Fase 1, parte d: la IA y las claves desde la consola ----------
+
+// Una base como la del servidor, con el administrador (y su cuenta de Tailscale), una clave probada y la IA encendida.
+async function baseConIa(raiz) {
+  const { crearPrimerAdmin } = await import('../src/cuentas/usuarios.js');
+  const { guardarSecreto, anotarPrueba } = await import('../src/claves/almacen.js');
+  const { guardarConfigIa } = await import('../src/ia/config.js');
+  const { claveAnthropic } = await import('./ia-base.js');
+  const config = leerConfig({ DB_PATH: join(raiz, 'jarvis', 'jarvis.db') });
+  const db = abrirBase(config);
+  const admin = crearPrimerAdmin(db, { nombre: 'junior', claveHash: 'x', tailscaleLogin: 'junior@example.com' });
+  const { secreto } = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic(), usuarioId: admin });
+  anotarPrueba(db, { id: secreto.id, motivo: 'ok' });
+  guardarConfigIa(db, { topeGeneralMicro: 2_000_000 }, { config, usuarioId: admin });
+  guardarConfigIa(db, { encendida: true, ayudaProyectos: true }, { config, usuarioId: admin });
+  db.close();
+  return { config, admin };
+}
+
+test('--ia=no apaga la IA desde la consola (auditoría «consola»), no toca la ayuda ni los topes, y lo próximo ya no aparta nada', async () => {
+  const { leerConfigIa } = await import('../src/ia/config.js');
+  const { reservar } = await import('../src/ia/presupuesto.js');
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  const { config } = await baseConIa(raiz);
+  let salida = rescatar(archivoEnv, '--ia=no');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /la IA quedó APAGADA desde la consola/);
+  assert.match(salida.stdout, /Estado ahora: IA apagada\./);
+  const db = abrirBase(config);
+  try {
+    const cfg = leerConfigIa(db);
+    assert.deepEqual([cfg.encendida, cfg.ayudaProyectos, cfg.topeGeneralMicro, cfg.origen], [false, true, 2_000_000, 'consola']);
+    const a = db.prepare("SELECT detalle FROM auditoria WHERE accion = 'ia_config' ORDER BY id DESC").get();
+    assert.deepEqual(JSON.parse(a.detalle), { antes: { encendida: true }, despues: { encendida: false }, origen: 'consola' });
+    const espacio = db.prepare('SELECT espacio_id FROM miembros LIMIT 1').get().espacio_id;
+    assert.deepEqual(reservar(db, { config, proposito: 'interpretar', espacioId: espacio, entradaMax: 6900 }), { ok: false, motivo: 'ia_apagada', ambito: 'general' });
+  } finally {
+    db.close();
+  }
+  salida = rescatar(archivoEnv, '--ia=no');
+  assert.equal(salida.status, 0);
+  assert.match(salida.stdout, /ya estaba apagada: no cambió nada/);
+  // No existe una opción para encenderla desde la consola.
+  salida = rescatar(archivoEnv, '--ia=si');
+  assert.equal(salida.status, 2);
+  assert.match(salida.stderr, /Opción no válida/);
+});
+
+test('--claves=revisar explica el archivo que protege las claves sin cambiar nada y sin mostrarlo', async () => {
+  const { readFileSync, statSync } = await import('node:fs');
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  // Antes de la primera clave: no existe todavía (y revisar no lo crea).
+  let salida = rescatar(archivoEnv, '--claves=revisar');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /No existe todavía/);
+  const ruta = join(raiz, 'jarvis', 'oportia-llave-secretos');
+  assert.equal(existsSync(ruta), false);
+  await baseConIa(raiz);
+  const antes = readFileSync(ruta);
+  const fecha = statSync(ruta).mtimeMs;
+  salida = rescatar(archivoEnv, '--claves=revisar');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /Permisos: 600/);
+  assert.match(salida.stdout, /Está bien/);
+  assert.match(salida.stdout, /Claves guardadas: 1; con esta llave: 1\./);
+  assert.match(salida.stdout, /Nunca copies fuera del servidor/);
+  const llave = antes.toString('latin1').split(':')[1].trim();
+  assert.ok(!salida.stdout.includes(llave) && !salida.stderr.includes(llave), 'nunca muestra la llave');
+  assert.ok(readFileSync(ruta).equals(antes) && statSync(ruta).mtimeMs === fecha, 'no cambió nada');
+});
+
+test('--claves=apartar-llave-danada solo aparta un archivo DAÑADO, con otro nombre (nunca lo borra), y deja la auditoría', async () => {
+  const { readFileSync, writeFileSync, readdirSync } = await import('node:fs');
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  const { config } = await baseConIa(raiz);
+  const ruta = join(raiz, 'jarvis', 'oportia-llave-secretos');
+  const buena = readFileSync(ruta);
+  let salida = rescatar(archivoEnv, '--claves=apartar-llave-danada');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /No se apartó nada: el archivo que protege las claves está bien/);
+  assert.ok(readFileSync(ruta).equals(buena), 'una llave sana nunca se toca');
+  // Un archivo dañado (por ejemplo, editado a mano): se aparta con otro nombre, igual byte a byte.
+  const otra = join(raiz, 'otra');
+  mkdirSync(join(otra, 'jarvis'), { recursive: true });
+  const envOtra = join(otra, '.env');
+  writeFileSync(envOtra, `DB_PATH=${join(otra, 'jarvis', 'jarvis.db')}\n`);
+  abrirBase(leerConfig({ DB_PATH: join(otra, 'jarvis', 'jarvis.db') })).close();
+  const danada = join(otra, 'jarvis', 'oportia-llave-secretos');
+  writeFileSync(danada, 'esto no es una llave\n', { mode: 0o600 });
+  salida = rescatar(envOtra, '--claves=apartar-llave-danada');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /quedó guardado como oportia-llave-secretos\.danada-\d{8}-\d{6} \(no se borró\)/);
+  assert.match(salida.stdout, /pega tus claves otra vez/);
+  assert.equal(existsSync(danada), false);
+  const apartada = readdirSync(join(otra, 'jarvis')).find(n => n.startsWith('oportia-llave-secretos.danada-'));
+  assert.equal(readFileSync(join(otra, 'jarvis', apartada), 'utf8'), 'esto no es una llave\n');
+  const db = abrirBase(leerConfig({ DB_PATH: join(otra, 'jarvis', 'jarvis.db') }));
+  try {
+    assert.deepEqual(JSON.parse(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'llave_apartada'").get().detalle), { archivo: apartada, origen: 'consola' });
+  } finally {
+    db.close();
+  }
+  void config;
+});
+
+test('--tailscale=reanotar olvida la cuenta de Tailscale guardada del administrador (queda en la auditoría); la próxima entrada anota la nueva', async () => {
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  const { config } = await baseConIa(raiz);
+  let salida = rescatar(archivoEnv, '--tailscale=reanotar');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /se olvidó la cuenta de Tailscale de «junior»/);
+  const db = abrirBase(config);
+  try {
+    assert.equal(db.prepare("SELECT tailscale_login FROM usuarios WHERE nombre = 'junior'").get().tailscale_login, null);
+    assert.deepEqual(JSON.parse(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'tailscale_login_reanotar'").get().detalle), { antes: 'junior@example.com', despues: null, origen: 'consola' });
+  } finally {
+    db.close();
+  }
+  salida = rescatar(archivoEnv, '--tailscale=reanotar', 'junior');
+  assert.equal(salida.status, 0);
+  assert.match(salida.stdout, /no tenía una cuenta de Tailscale guardada/);
+  assert.equal(rescatar(archivoEnv, '--tailscale=reanotar', 'nadie').status, 2);
+});

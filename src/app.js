@@ -5,12 +5,15 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, extname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido } from './nucleo/red.js';
+import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido, vieneDeTailscale } from './nucleo/red.js';
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
 import { registrarRutasProyectos } from './api/proyectos.js';
 import { registrarRutasTareas } from './api/tareas.js';
+import { registrarRutasIa } from './api/ia.js';
+import { registrarRutasClaves } from './api/claves.js';
+import { duenoDeTailscale } from './cuentas/tailscale.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
@@ -59,6 +62,18 @@ function origenValido(req) {
   return host === esperado;
 }
 
+// Lo que se agrega a una respuesta de error: solo un objeto de datos simples (listas de claves, números).
+function detalleSeguro(detalle) {
+  if (!detalle || typeof detalle !== 'object' || Array.isArray(detalle)) return {};
+  const limpio = {};
+  for (const [clave, valor] of Object.entries(detalle)) {
+    if (!/^[a-zA-Z]{1,30}$/.test(clave)) continue;
+    if (Number.isSafeInteger(valor)) limpio[clave] = valor;
+    else if (Array.isArray(valor) && valor.every(v => typeof v === 'string' && /^[a-z_]{1,40}$/.test(v))) limpio[clave] = valor.slice(0, 20);
+  }
+  return limpio;
+}
+
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });
   res.end(mensaje);
@@ -68,11 +83,16 @@ function texto(res, codigo, mensaje) {
 // opciones.supervisor: el que cuida al trabajador (src/tareas/supervisor.js); null en las pruebas que no lo usan.
 // opciones.proyectos: límites o motor de las rutas de proyectos (solo para pruebas).
 // opciones.tareas: límites de las rutas del sistema (solo para pruebas).
-export function crearServidor({ db = null, limites, supervisor = null, proyectos = {}, tareas = {} } = {}) {
+// opciones.config: la configuración del servidor (src/nucleo/config.js). La necesitan las claves y la IA (dónde está el
+// archivo que protege las claves; en las pruebas, adónde va el proveedor falso). Sin ella, esas rutas responden 503.
+// opciones.ia: límites de las rutas de la IA y de las claves, y probadores de prueba (solo para pruebas).
+export function crearServidor({ db = null, config = null, limites, supervisor = null, proyectos = {}, tareas = {}, ia = {} } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
   registrarRutasProyectos(rutas, proyectos);
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, ...tareas });
+  registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
+  registrarRutasClaves(rutas, { config, limites: ia.limitesClaves, probadores: ia.probadores });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
@@ -90,12 +110,20 @@ export function crearServidor({ db = null, limites, supervisor = null, proyectos
     if (!opciones.publica && !usuario) return enviarJson(res, 401, { error: 'no_has_entrado' });
     if (usuario?.debeCambiarClave && !opciones.publica && !opciones.permitirConClaveTemporal) return enviarJson(res, 403, { error: 'debe_cambiar_clave' });
     if (opciones.admin && usuario?.rol !== 'admin') return enviarJson(res, 403, { error: 'solo_admin' });
+    // Fase 1, parte d. soloTailnet: solo desde la red de Tailscale (nunca por el enlace público de Funnel).
+    // soloDueno: además, con la cuenta de Tailscale del administrador que entró (las claves y lo que gasta dinero).
+    if (opciones.soloTailnet && !vieneDeTailscale(req).si) return enviarJson(res, 403, { error: 'solo_desde_tailnet' });
+    if (opciones.soloDueno) {
+      const dueno = duenoDeTailscale(db, req, usuario, { anotar: true });
+      if (!dueno.si) return enviarJson(res, 403, { error: dueno.motivo });
+    }
 
     try {
       const r = await encontrada.manejador({ db, req, res, usuario, token, parametros: encontrada.parametros, cliente: clienteDe(req), https: esHttps(req) });
       enviarJson(res, r.codigo, r.datos, r.cabeceras);
     } catch (error) {
-      if (error instanceof ErrorHttp) return enviarJson(res, error.codigo, { error: error.clave });
+      // detalle: solo datos simples que la pantalla necesita (por ejemplo, qué falta para encender la IA).
+      if (error instanceof ErrorHttp) return enviarJson(res, error.codigo, { ...detalleSeguro(error.detalle), error: error.clave });
       throw error;
     }
   }

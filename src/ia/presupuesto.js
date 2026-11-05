@@ -278,7 +278,10 @@ export function vigilarIA(db, { config, ahora = Date.now() }) {
     revisarUmbrales(db, { mes, ambitos: ['general'], ahora, cfg });
     const activas = db.prepare("SELECT llave_huella FROM secretos WHERE estado = 'activa'").all();
     let llave = 'sin_claves';
-    if (activas.length) {
+    // Sin carpeta de datos (algunas pruebas de la fila corren sin ella) no se puede mirar la llave.
+    const conCarpeta = Boolean(config && (config.carpetaDatos || config.archivoBase));
+    if (activas.length && !conCarpeta) llave = 'sin_carpeta';
+    else if (activas.length) {
       const e = estadoLlave(config);
       const mal = !e.listo || activas.some(a => a.llave_huella !== e.huella);
       llave = mal ? (e.motivo ?? 'clave_ilegible') : 'bien';

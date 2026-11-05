@@ -23,6 +23,7 @@ import { ranura } from './tiempo.js';
 import { leerModoSeguro, leerFrenos, frenarTipo, soltarFreno, crearCuentaDeFallos } from './modo-seguro.js';
 import { MANEJADORES } from './manejadores.js';
 import { marcarConErrores } from '../proyectos/proyectos.js';
+import { crearClienteIA } from '../ia/cliente.js';
 import { memoriaDisponibleMb as memoriaDelServidor, discoLibreMb as discoDelServidor } from '../nucleo/salud.js';
 
 export const TIEMPOS_TRABAJADOR = Object.freeze({
@@ -177,6 +178,8 @@ export function crearEjecutor({
       version,
       codigo,
       escribir: escritorDeTarea(escritor, db, { tarea, corrida }),
+      // La IA opcional (parte d): ctx.ia.pedir(…) nunca lanza por el proveedor ni por un tope; ver src/ia/cliente.js.
+      ia: crearClienteIA({ db, config, escritor, tarea, corrida, senal: controlador.signal, reloj, registro: log }),
       quedaMs: () => Math.max(0, limite - (performance.now() - inicio)),
       ceder: () => new Promise(listo => setImmediate(listo)),
     });

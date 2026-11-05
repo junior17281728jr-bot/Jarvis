@@ -130,6 +130,23 @@ function leerJson(texto, porDefecto) {
   try { return JSON.parse(texto); } catch { return porDefecto; }
 }
 
+// Fase 1, parte d: lo que se muestra de una versión hecha con ayuda de IA (sin nada interno: ni el número de la
+// llamada ni nada que haya escrito el proveedor). Solo claves y números.
+const GRUPOS_IA = new Set(['tipo', 'producto', 'sectores', 'zonas', 'paisCompleto', 'exclusiones', 'tamanos', 'prioridades', 'salario', 'moneda', 'experiencia']);
+const PROVEEDOR_IA = /^[a-z][a-z0-9_]{1,30}$/;
+const MODELO_IA = /^[a-z][a-z0-9._-]{1,60}$/;
+function ayudaIaPublica(a) {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
+  return {
+    proveedor: PROVEEDOR_IA.test(String(a.proveedor)) ? a.proveedor : null,
+    modelo: MODELO_IA.test(String(a.modelo)) ? a.modelo : null,
+    costoMicro: Number.isSafeInteger(a.costoMicro) && a.costoMicro >= 0 ? a.costoMicro : null,
+    base: Number.isSafeInteger(a.base) && a.base > 0 ? a.base : null,
+    cambios: Array.isArray(a.cambios) ? a.cambios.filter(c => GRUPOS_IA.has(c)) : [],
+    pistas: Array.isArray(a.pistas) ? a.pistas.filter(n => Number.isSafeInteger(n) && n >= 0 && n < 50) : [],
+  };
+}
+
 function versionCompleta(v) {
   const configuracion = limpiarConfiguracion(leerJson(v.configuracion, {}));
   const interpretacion = leerJson(v.interpretacion, {});
@@ -146,6 +163,7 @@ function versionCompleta(v) {
     motivo: v.motivo,
     creadaEn: v.creada_en,
     decididaEn: v.decidida_en,
+    ayudaIa: ayudaIaPublica(interpretacion?.ayudaIa),
   };
 }
 
@@ -281,8 +299,11 @@ export function validarInstrucciones(texto) {
 }
 
 // Lo que se guarda de una versión, ya en texto, y si cabe en el tope de tamaño.
-function filaDeVersion(instrucciones, configuracion, supuestos) {
-  const fila = { instrucciones, configuracion: JSON.stringify(configuracion), interpretacion: JSON.stringify({ supuestos }) };
+// ayudaIa (fase 1, parte d): si la hizo la IA, con qué llamada, proveedor, modelo y costo, desde qué versión, qué
+// grupos de campos cambió y qué dudas cree que ya quedaron claras (solo pistas). La versión 0.3.2 lo ignora.
+function filaDeVersion(instrucciones, configuracion, supuestos, ayudaIa = null) {
+  const interpretacion = ayudaIa ? { supuestos, ayudaIa } : { supuestos };
+  const fila = { instrucciones, configuracion: JSON.stringify(configuracion), interpretacion: JSON.stringify(interpretacion) };
   const bytes = Buffer.byteLength(fila.instrucciones) + Buffer.byteLength(fila.configuracion) + Buffer.byteLength(fila.interpretacion);
   if (bytes > MAXIMO_BYTES_VERSION) throw new ErrorHttp(400, 'version_demasiado_grande');
   return fila;
@@ -323,9 +344,11 @@ export function crearProyecto(db, { espacio, usuarioId, instrucciones, idioma = 
 
 // Guarda una versión nueva que espera aprobación. Si ya había otra esperando, esa queda «descartada».
 // La versión aprobada que está en uso NO cambia hasta que se apruebe la nueva.
-export function nuevaVersion(db, { espacioId, proyectoId, usuarioId, instrucciones, configuracion, supuestos = [], origen }) {
+// ayudaIa: la hizo la IA (fase 1, parte d). El historial lo dice con la misma acción 'version_nueva' (detalle.conIa),
+// así la versión 0.3.2 la muestra como una versión más si alguna vez se vuelve atrás.
+export function nuevaVersion(db, { espacioId, proyectoId, usuarioId, instrucciones, configuracion, supuestos = [], origen, ayudaIa = null }) {
   const config = limpiarConfiguracion(configuracion);
-  const fila = filaDeVersion(instrucciones, config, supuestos);
+  const fila = filaDeVersion(instrucciones, config, supuestos, ayudaIa);
   return enTransaccion(db, () => {
     const p = filaProyecto(db, espacioId, proyectoId);
     noEnPapelera(p);
@@ -342,9 +365,36 @@ export function nuevaVersion(db, { espacioId, proyectoId, usuarioId, instruccion
     if (p.estado === 'borrador') cambios.estado = 'pendiente';
     if (p.version_activa == null) cambios.tipo = config.tipo;
     tocar(db, p.id, cambios);
-    anotar(db, p.id, usuarioId, 'version_nueva', { numero });
+    anotar(db, p.id, usuarioId, 'version_nueva', ayudaIa ? { numero, conIa: true } : { numero });
     return numero;
   });
+}
+
+// ---------- Para la ayuda de IA (fase 1, parte d): revisar ANTES de pagar ----------
+// ¿Se le puede agregar otra versión a este proyecto? null (sí), 'en_papelera' o 'demasiadas_versiones'. Lo mismo que
+// revisa nuevaVersion, pero sin escribir nada: la ayuda de IA lo mira antes de gastar (en la pantalla, al pedirla y
+// en el trabajador justo antes de llamar). proyectoId: el número del proyecto dentro de su espacio.
+export function puedeTenerOtraVersion(db, { espacioId, proyectoId }) {
+  const p = filaProyecto(db, espacioId, proyectoId);
+  if (p.en_papelera === 1) return 'en_papelera';
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM proyecto_versiones WHERE proyecto_id = ?').get(p.id);
+  return n >= MAXIMO_VERSIONES ? 'demasiadas_versiones' : null;
+}
+
+// La versión que espera aprobación de un proyecto (completa), su id interno y el número de su última versión.
+// Solo lee. 404 si el proyecto no es de ese espacio. { id, numero, pendiente: versión | null, ultima }
+export function pendienteDeProyecto(db, espacioId, numeroProyecto) {
+  const p = filaProyecto(db, espacioId, numeroProyecto);
+  const v = db.prepare("SELECT * FROM proyecto_versiones WHERE proyecto_id = ? AND estado = 'pendiente' ORDER BY numero DESC LIMIT 1").get(p.id);
+  const ultima = db.prepare('SELECT MAX(numero) AS n FROM proyecto_versiones WHERE proyecto_id = ?').get(p.id).n ?? 0;
+  return { id: p.id, numero: p.numero, enPapelera: p.en_papelera === 1, pendiente: v ? versionCompleta(v) : null, ultima };
+}
+
+// La versión que hizo la IA con esa llamada (si quedó guardada), o null. Para no cobrar dos veces el mismo paso.
+export function versionDeLlamadaIa(db, { proyectoInternoId, llamadaId }) {
+  const fila = db.prepare("SELECT numero FROM proyecto_versiones WHERE proyecto_id = ? AND json_extract(interpretacion, '$.ayudaIa.llamadaId') = ?")
+    .get(Number(proyectoInternoId), Number(llamadaId));
+  return fila?.numero ?? null;
 }
 
 function versionPendiente(db, proyectoId, numero) {

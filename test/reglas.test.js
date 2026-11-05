@@ -362,13 +362,43 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     assert.ok(['low', 'medium', 'high'].includes(p.esfuerzo), `${id}: esfuerzo`);
     assert.ok(['motor_propio', 'esperar'].includes(p.alFaltar), `${id}: alFaltar`);
     assert.match(p.tarea, /^[a-z]+\.[a-z_]+$/, `${id}: tarea`);
-    // Su tarea (cuando ya existe en esta versión) le da más tiempo al paso que a la llamada.
-    if (Object.hasOwn(TIPOS, p.tarea)) assert.ok(p.timeoutMs < definicion(p.tarea).tiempoPorPasoMs, `${id}: el paso de ${p.tarea} es más corto que la llamada`);
+    // Su tarea existe (con su manejador, lo revisa otra regla) y le da más tiempo al paso que a la llamada.
+    assert.ok(Object.hasOwn(TIPOS, p.tarea), `${id}: la tarea ${p.tarea} no existe en src/tareas/tipos.js`);
+    assert.ok(p.timeoutMs < definicion(p.tarea).tiempoPorPasoMs, `${id}: el paso de ${p.tarea} es más corto que la llamada`);
+    assert.equal(definicion(p.tarea).repetible, true, `${id}: su tarea se repite sin pagar dos veces (la llamada se anota por tarea y paso)`);
   }
   assert.equal(new Set(MOTIVOS).size, MOTIVOS.length);
   for (const m of MOTIVOS) assert.match(m, /^[a-z_]+$/);
   for (const m of Object.keys(POLITICA)) assert.ok(MOTIVOS.includes(m), `POLITICA.${m} no está en MOTIVOS`);
   for (const id of Object.keys(USOS)) assert.match(id, /^[a-z_]+$/, `uso de clave raro: ${id}`);
+});
+
+test('el servidor web nunca carga el camino PAGADO de la IA (src/ia/cliente.js ni src/ia/ayuda.js): solo el trabajador gasta', () => {
+  const { archivos } = grafoDeImports(join(SRC, 'server.js'));
+  const delServidor = new Set(archivos.map(a => relative(SRC, a)));
+  for (const soloDelTrabajador of [join('ia', 'cliente.js'), join('ia', 'ayuda.js')]) {
+    assert.ok(!delServidor.has(soloDelTrabajador), `el servidor web carga ${soloDelTrabajador}`);
+  }
+  // Y el trabajador sí los carga (si no, la ayuda nunca correría).
+  const delTrabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
+  for (const archivo of [join('ia', 'cliente.js'), join('ia', 'ayuda.js')]) assert.ok(delTrabajador.has(archivo), `el trabajador no carga ${archivo}`);
+  // La prueba gratis de una clave (servidor web) nunca usa el camino pagado ni crea una reserva.
+  const probar = leer(de('claves', 'probar.js')).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  assert.doesNotMatch(probar, /\breservar\s*\(|\bliquidar\s*\(|\/v1\/messages['"`]|\/v1\/responses/, 'la prueba gratis no gasta');
+});
+
+test('las rutas que cambian claves o lo que gasta piden la cuenta de Tailscale del dueño, y el detalle del gasto la red de Tailscale', () => {
+  const claves = leer(de('api', 'claves.js'));
+  const rutas = [...claves.matchAll(/rutas\.agregar\('(GET|POST)', '([^']+)'[\s\S]*?\}, (\{[^}]*\})\);/g)];
+  assert.ok(rutas.length >= 4, 'no se encontraron las rutas de claves');
+  for (const [, metodo, ruta, opciones] of rutas) assert.match(opciones, /admin: true, soloDueno: true/, `${metodo} ${ruta}`);
+  const ia = leer(de('api', 'ia.js'));
+  assert.match(ia, /'\/api\/admin\/ia\/ajustes'[\s\S]*?\{ admin: true, soloDueno: true \}\);/);
+  assert.match(ia, /'\/api\/admin\/ia\/consumo'[\s\S]*?\{ admin: true, soloTailnet: true \}\);/);
+  // Apagar sí se puede desde cualquier entrada (nunca gasta).
+  assert.match(ia, /'\/api\/admin\/ia\/apagar'[\s\S]*?\{ admin: true \}\);/);
+  // Encender la IA desde la consola no existe (gastar se decide en la pantalla, con su aviso).
+  assert.doesNotMatch(leer(join(RAIZ, 'deploy', 'oportia-admin.mjs')), /--ia=si/);
 });
 
 test('ninguna prueba enciende el trabajador real directamente: siempre por un programa de test/ que primero carga ./ayuda.js', () => {

@@ -19,7 +19,7 @@ try {
 }
 
 const supervisor = db ? crearSupervisor({ db, config, version: VERSION, codigo: HUELLA }) : null;
-const servidor = crearServidor({ db, supervisor });
+const servidor = crearServidor({ db, config, supervisor });
 let arranque = null;
 let cerrando = false;
 
