@@ -50,3 +50,20 @@ export function horarioRepartido(proyectoId) {
   const minutos = 60 + ((n * 37) % 300);
   return { hora: Math.floor(minutos / 60), minuto: minutos % 60 };
 }
+
+// ---------- Fase 1, parte d: el mes de cobro de la IA ----------
+// El mes de la IA es el mismo con el que cobra el proveedor (su factura, su límite de gasto y su tope por nivel):
+// el mes del calendario en hora universal (UTC), que empieza el día 1 a las 00:00 UTC. En RD eso es a las
+// 8:00 p. m. del último día del mes anterior. Así «nunca pasa de US$X este mes» habla del mismo mes que la factura.
+export function mesCobro(ms) {
+  const fecha = new Date(Number(ms));
+  if (!Number.isFinite(fecha.getTime())) throw new Error('mesCobro: hora no válida');
+  return fecha.toISOString().slice(0, 7);
+}
+
+// Las 00:00 UTC del día 1 del mes de cobro siguiente (en milisegundos).
+export function inicioMesSiguienteCobro(ms) {
+  const fecha = new Date(Number(ms));
+  if (!Number.isFinite(fecha.getTime())) throw new Error('inicioMesSiguienteCobro: hora no válida');
+  return Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, 1);
+}

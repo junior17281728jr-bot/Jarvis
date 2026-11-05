@@ -17,7 +17,8 @@ const PUB = join(RAIZ, 'public');
 
 export const VERSION = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')).version;
 
-// La «huella» del código: los primeros 12 caracteres de un sha256 de todos los src/**/*.js y package.json (con
+// La «huella» del código: los primeros 12 caracteres de un sha256 de todos los src/**/*.js, src/**/*.json (por
+// ejemplo, la tabla de precios de la IA) y package.json (con
 // sus rutas, en orden). Cambia con CUALQUIER cambio de código, aunque nadie suba la versión. El modo seguro la
 // usa para saber si el código es el mismo que falló (solo cuenta las caídas del mismo código) y para quitarse
 // solo una vez cuando llega código nuevo.
@@ -27,7 +28,7 @@ function calcularHuella() {
     for (const nombre of readdirSync(carpeta)) {
       const ruta = join(carpeta, nombre);
       if (statSync(ruta).isDirectory()) recorrer(ruta);
-      else if (nombre.endsWith('.js')) archivos.push(ruta);
+      else if (nombre.endsWith('.js') || nombre.endsWith('.json')) archivos.push(ruta);
     }
   })(join(RAIZ, 'src'));
   archivos.push(join(RAIZ, 'package.json'));

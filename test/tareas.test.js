@@ -104,7 +104,7 @@ test('migración 4: crea las tablas e índices de la fila, y abrir otra vez no r
     'tarea_eventos_tarea', 'tarea_eventos_fecha', 'trabajador_corridas_fin', 'servidor_arranques_inicio', 'avisos_abierto_por_clave', 'avisos_fecha']) {
     assert.ok(indices.has(i), `falta el índice ${i}`);
   }
-  assert.equal(estadoBase(db).version, 4);
+  assert.equal(estadoBase(db).version, Math.max(...MIGRACIONES.map(m => m.id))); // 4 o una más nueva (la 5 es de la parte d)
   db.close();
   const otra = abrirBase(config);
   assert.equal(otra.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, MIGRACIONES.length);
@@ -117,7 +117,7 @@ test('migración 4: una base que estaba en la versión 3 se pone al día, con su
   vieja.prepare('INSERT INTO auditoria (fecha, accion) VALUES (?, ?)').run('2026-11-03', 'dato de antes');
   vieja.close();
   const db = abrirBase(config);
-  assert.equal(estadoBase(db).version, 4);
+  assert.equal(estadoBase(db).version, Math.max(...MIGRACIONES.map(m => m.id))); // 4 o una más nueva (la 5 es de la parte d)
   assert.equal(db.prepare("SELECT accion FROM auditoria WHERE accion = 'dato de antes'").get().accion, 'dato de antes');
   db.close();
   const copias = readdirSync(config.carpetaCopias);

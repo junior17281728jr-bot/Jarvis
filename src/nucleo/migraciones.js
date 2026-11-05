@@ -277,4 +277,99 @@ CREATE UNIQUE INDEX IF NOT EXISTS avisos_abierto_por_clave ON avisos(clave) WHER
 CREATE INDEX IF NOT EXISTS avisos_fecha ON avisos(creado_en);
 `,
   },
+  {
+    id: 5,
+    nombre: 'ia',
+    // Fase 1, parte d: la IA opcional con topes. Explicaciones FUERA del texto SQL (la huella no depende de ellas).
+    //  - secretos: el almacén de claves (IA ahora, el bot de Telegram en la parte e). Solo guarda el texto cifrado
+    //    (AES-256-GCM); la llave está en su propio archivo junto a la base (src/claves/cifrado.js), nunca en la base.
+    //    ref entra en la AAD.
+    //    Nunca se borra una clave: cambiar deja la vieja «reemplazada», desactivar la deja «desactivada».
+    //    pausa_*: el proveedor quedó en pausa por un error (pausa_hasta NULL = hasta que el administrador la reanude).
+    //  - ia_llamadas: cada intento PAGADO (pasó la reserva). El dinero va en millonésimas de dólar (enteros).
+    //    Nunca guarda lo que se preguntó ni lo que se respondió. mes = 'AAAA-MM' del mes de cobro del proveedor
+    //    (calendario UTC, el mismo de su factura y de su límite de gasto).
+    //  - ia_bloqueos: cuántas veces NO se usó la IA (apagada, tope, pausa…), por mes: crece poco aunque se repita.
+    //    Su llave (mes, ambito, motivo, proposito) queda CONGELADA a propósito: una dimensión nueva (por ejemplo,
+    //    el proveedor) será una tabla nueva, nunca un cambio de esta.
+    //  - Sin CHECK y sin reglas únicas de negocio (solo ref, que es al azar, y la llave de conteo de ia_bloqueos):
+    //    los valores se revisan en el código (un CHECK o un índice único nunca se pueden quitar ni ampliar).
+    sql: `
+CREATE TABLE IF NOT EXISTS secretos (
+  id INTEGER PRIMARY KEY,
+  ref TEXT NOT NULL UNIQUE,
+  uso TEXT NOT NULL,
+  espacio_id INTEGER REFERENCES espacios(id),
+  estado TEXT NOT NULL DEFAULT 'activa',
+  origen TEXT NOT NULL DEFAULT 'pegada',
+  cifrado BLOB NOT NULL,
+  iv BLOB NOT NULL,
+  sello BLOB NOT NULL,
+  llave_huella TEXT NOT NULL,
+  esquema INTEGER NOT NULL DEFAULT 1,
+  final TEXT NOT NULL DEFAULT '',
+  largo INTEGER NOT NULL DEFAULT 0,
+  reemplaza_a INTEGER REFERENCES secretos(id),
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL,
+  cambiado_por INTEGER REFERENCES usuarios(id),
+  cambiado_en TEXT,
+  probado_en TEXT,
+  prueba TEXT,
+  usado_en TEXT,
+  pausa_motivo TEXT,
+  pausa_desde TEXT,
+  pausa_hasta TEXT
+);
+CREATE INDEX IF NOT EXISTS secretos_por_uso ON secretos(uso, espacio_id, estado);
+CREATE TABLE IF NOT EXISTS ia_llamadas (
+  id INTEGER PRIMARY KEY,
+  mes TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'reservada',
+  resultado TEXT,
+  proposito TEXT NOT NULL,
+  paso TEXT,
+  proveedor TEXT NOT NULL,
+  modelo TEXT NOT NULL,
+  secreto_id INTEGER REFERENCES secretos(id),
+  espacio_id INTEGER REFERENCES espacios(id),
+  proyecto_id INTEGER REFERENCES proyectos(id),
+  version_numero INTEGER,
+  cuenta_proyecto INTEGER NOT NULL DEFAULT 0,
+  tarea_id INTEGER REFERENCES tareas(id),
+  usuario_id INTEGER REFERENCES usuarios(id),
+  entrada_max INTEGER NOT NULL DEFAULT 0,
+  salida_max INTEGER NOT NULL DEFAULT 0,
+  reservado_micro INTEGER NOT NULL DEFAULT 0,
+  tokens_entrada INTEGER,
+  tokens_salida INTEGER,
+  tokens_cache_lectura INTEGER,
+  tokens_cache_escritura INTEGER,
+  costo_micro INTEGER,
+  precio TEXT NOT NULL DEFAULT '{}',
+  id_peticion TEXT,
+  http INTEGER,
+  duracion_ms INTEGER,
+  creada_en TEXT NOT NULL,
+  terminada_en TEXT,
+  detalle TEXT
+);
+CREATE INDEX IF NOT EXISTS ia_llamadas_mes ON ia_llamadas(mes, estado);
+CREATE INDEX IF NOT EXISTS ia_llamadas_espacio ON ia_llamadas(espacio_id, mes);
+CREATE INDEX IF NOT EXISTS ia_llamadas_proyecto ON ia_llamadas(proyecto_id, mes);
+CREATE INDEX IF NOT EXISTS ia_llamadas_tarea ON ia_llamadas(tarea_id, proposito, paso);
+CREATE INDEX IF NOT EXISTS ia_llamadas_fecha ON ia_llamadas(creada_en);
+CREATE INDEX IF NOT EXISTS ia_llamadas_reservadas ON ia_llamadas(creada_en) WHERE estado = 'reservada';
+CREATE TABLE IF NOT EXISTS ia_bloqueos (
+  mes TEXT NOT NULL,
+  ambito TEXT NOT NULL,
+  motivo TEXT NOT NULL,
+  proposito TEXT NOT NULL,
+  veces INTEGER NOT NULL DEFAULT 0,
+  primera_vez TEXT NOT NULL,
+  ultima_vez TEXT NOT NULL,
+  PRIMARY KEY (mes, ambito, motivo, proposito)
+);
+`,
+  },
 ];

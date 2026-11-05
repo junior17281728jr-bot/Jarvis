@@ -26,8 +26,9 @@ function leerMarca(archivo) {
   }
 }
 
-// En modo de prueba, nunca se escribe fuera de la carpeta temporal del sistema.
-function revisarModoPrueba(...rutas) {
+// En modo de prueba, nunca se escribe fuera de la carpeta temporal del sistema. La usan también otros archivos
+// que escriben junto a la base (por ejemplo, la llave de las claves en src/claves/cifrado.js).
+export function revisarModoPrueba(...rutas) {
   if (process.env.OPORTIA_TEST !== '1') return;
   const temporal = resolve(tmpdir()) + sep;
   for (const ruta of rutas) {

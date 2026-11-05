@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "unidad": "USD por millón de tokens",
+  "nota": "Solo datos. Un modelo con confirmado:false se puede guardar y probar gratis, pero OPORTIA nunca gasta con él. Cada fila dice de dónde salió el precio y cuándo se revisó. multiplicadoresGeo: lo que cobra de más el proveedor según dónde corrió el modelo (usage.inference_geo); si no lo dice, se usa el más alto.",
+  "modelos": [
+    {
+      "proveedor": "anthropic",
+      "modelo": "claude-haiku-5-5",
+      "nombre": "Claude Haiku 5.5",
+      "confirmado": true,
+      "fuente": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "fuenteGeo": "https://platform.claude.com/docs/en/manage-claude/data-residency",
+      "revisadoEl": "2026-11-05",
+      "multiplicadoresGeo": { "global": "1", "us": "1.1" },
+      "tramos": [
+        { "hastaEntrada": 100000, "entrada": "0.10", "cacheLectura": "0.01", "cacheEscritura": "0.125", "salida": "0.50" },
+        { "hastaEntrada": null, "entrada": "0.50", "cacheLectura": "0.05", "cacheEscritura": "0.625", "salida": "2.50" }
+      ]
+    },
+    {
+      "proveedor": "anthropic",
+      "modelo": "claude-sonnet-5-5",
+      "nombre": "Claude Sonnet 5.5",
+      "confirmado": true,
+      "fuente": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "fuenteGeo": "https://platform.claude.com/docs/en/manage-claude/data-residency",
+      "revisadoEl": "2026-11-05",
+      "multiplicadoresGeo": { "global": "1", "us": "1.1" },
+      "tramos": [
+        { "hastaEntrada": null, "entrada": "2.00", "cacheLectura": "0.20", "cacheEscritura": "2.50", "salida": "10.00" }
+      ]
+    },
+    {
+      "proveedor": "anthropic",
+      "modelo": "claude-opus-5-5",
+      "nombre": "Claude Opus 5.5",
+      "confirmado": true,
+      "fuente": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "fuenteGeo": "https://platform.claude.com/docs/en/manage-claude/data-residency",
+      "revisadoEl": "2026-11-05",
+      "multiplicadoresGeo": { "global": "1", "us": "1.1" },
+      "tramos": [
+        { "hastaEntrada": null, "entrada": "4.00", "cacheLectura": "0.20", "cacheEscritura": "5.00", "salida": "20.00" }
+      ]
+    },
+    {
+      "proveedor": "openai",
+      "modelo": "gpt-6-luna",
+      "nombre": "GPT-6 Luna",
+      "confirmado": false,
+      "fuente": "https://developers.openai.com/api/docs/pricing",
+      "revisadoEl": "2026-11-05",
+      "multiplicadoresGeo": { "global": "1" },
+      "tramos": [
+        { "hastaEntrada": 272000, "entrada": "0.10", "cacheLectura": "0.01", "cacheEscritura": "0.125", "salida": "0.50" },
+        { "hastaEntrada": null, "entrada": "0.20", "cacheLectura": "0.02", "cacheEscritura": "0.25", "salida": "0.75" }
+      ]
+    }
+  ]
+}

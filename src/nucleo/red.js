@@ -66,6 +66,10 @@ export function esHttps(req) {
   return esLocal(req.socket?.remoteAddress) && String(req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https';
 }
 
+// Ningún otro proxy local puede reenviar a 127.0.0.1:8080: OPORTIA confía en las cabeceras de identidad de Tailscale
+// solo porque Tailscale Serve es el único que habla por esa puerta. (Un programa en el mismo servidor podría
+// inventarlas: tiene el mismo nivel de confianza que root o el usuario jarvis.)
+//
 // ¿La petición viene de un equipo de tu red Tailscale (y no del público a través de Funnel)?
 //  - Directa a la dirección 100.x del servidor: sí.
 //  - Por el enlace https: Tailscale añade Tailscale-User-Login a los usuarios de tu red y

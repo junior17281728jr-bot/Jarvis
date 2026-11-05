@@ -14,8 +14,25 @@ export function leerConfig(env = process.env) {
     carpetaCopias: resolve(env.OPORTIA_COPIAS || join(carpetaDatos, 'oportia-copias')),
     modoPrueba: env.OPORTIA_TEST === '1' || process.env.OPORTIA_TEST === '1',
   };
+  // Direcciones de los proveedores de IA. En el servidor real queda VACÍO: cada adaptador usa su dirección oficial
+  // (src/ia/proveedores/). Solo en modo de prueba se puede apuntar a un proveedor FALSO en 127.0.0.1
+  // (test/proveedor-falso.js). Nunca se cambia desde las pantallas.
+  config.iaBases = config.modoPrueba ? basesDePrueba(env) : {};
+  Object.freeze(config.iaBases);
   if (config.modoPrueba && (config.archivoBase.startsWith('/var/lib') || config.carpetaCopias.startsWith('/var/lib'))) {
     throw new Error('En modo de prueba no se permite usar /var/lib: las pruebas nunca tocan los datos reales.');
   }
   return config;
+}
+
+const BASE_DE_PRUEBA = /^http:\/\/127\.0\.0\.1:\d{2,5}$/;
+const VARIABLES_DE_PRUEBA = Object.freeze({ anthropic: 'OPORTIA_IA_URL_ANTHROPIC', openai: 'OPORTIA_IA_URL_OPENAI' });
+
+function basesDePrueba(env) {
+  const bases = {};
+  for (const [proveedor, variable] of Object.entries(VARIABLES_DE_PRUEBA)) {
+    const valor = String(env[variable] ?? '');
+    if (BASE_DE_PRUEBA.test(valor)) bases[proveedor] = valor;
+  }
+  return bases;
 }

@@ -1,7 +1,9 @@
 // El SUPERVISOR: vive en el servidor web y cuida al trabajador (el proceso aparte que hace las tareas).
 // Es el ÚNICO archivo que puede encender otros procesos (lo comprueba test/reglas.test.js).
-//  - Enciende UN trabajador, con /usr/bin/nice -n 10 (todos sus hilos con menos prioridad que las pantallas) y
-//    con poca memoria permitida. Lo anota en trabajador_corridas ANTES de encenderlo.
+//  - Enciende UN trabajador, con /usr/bin/nice -n 10 (todos sus hilos con menos prioridad que las pantallas),
+//    con poca memoria permitida y sin archivos «core» (prlimit --core=0: si se cae por falta de memoria, no deja
+//    en el disco una copia de su memoria, que podría tener una clave de IA descifrada). Lo anota en
+//    trabajador_corridas ANTES de encenderlo.
 //  - Lo vigila: si no queda listo en 30 s, o deja de latir 90 s, lo corta. Cuando sale, anota cómo terminó,
 //    devuelve a la fila las tareas que tenía en las manos (ninguna queda «en curso» de mentira) y lo vuelve a
 //    encender, esperando cada vez un poco más si se sigue cayendo.
@@ -48,9 +50,12 @@ export const TIEMPOS_SUPERVISOR = Object.freeze({
 export const FASES_TRABAJADOR = Object.freeze(['arrancando', 'esperando', 'trabajando', 'reiniciando', 'sin_respuesta', 'modo_seguro', 'parando']);
 export const ESTADOS_ARRANQUE = Object.freeze(['arrancando', 'listo', 'fallido', 'no_aplica']);
 
-// El primer `nice` que exista (con ruta completa: funciona aunque el entorno venga vacío).
+// El primer `nice` y el primer `prlimit` que existan (con ruta completa: funciona aunque el entorno venga vacío).
+// Los dos «se convierten» en el programa que encienden (exec), así el número del proceso sigue siendo el del
+// trabajador.
 const RESOLUCION_RETRASO_MS = 20;
 const NICE = ['/usr/bin/nice', '/bin/nice'].find(ruta => existsSync(ruta)) ?? null;
+const PRLIMIT = ['/usr/bin/prlimit', '/bin/prlimit'].find(ruta => existsSync(ruta)) ?? null;
 const iso = ms => new Date(ms).toISOString();
 // Salidas que NO cuentan como fallo al arrancar (no son culpa del código nuevo).
 const NO_SON_FALLO = new Set(['normal', 'senal', 'sin_padre', 'modo_seguro']);
@@ -59,7 +64,10 @@ export function lanzarTrabajador({ ruta = RUTA_TRABAJADOR, env }) {
   const argumentos = [...BANDERAS_TRABAJADOR, ruta];
   // El hijo nunca va aparte (detached): queda en el mismo grupo de procesos y en el mismo servicio de systemd.
   const opciones = { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], serialization: 'json', env };
-  return NICE ? spawn(NICE, ['-n', '10', process.execPath, ...argumentos], opciones) : spawn(process.execPath, argumentos, opciones);
+  const orden = [...(NICE ? [NICE, '-n', '10'] : []), process.execPath, ...argumentos];
+  // Sin archivos «core»: el límite 0 vale para el trabajador y para todo lo que él encienda.
+  const completa = PRLIMIT ? [PRLIMIT, '--core=0', '--', ...orden] : orden;
+  return spawn(completa[0], completa.slice(1), opciones);
 }
 
 // Pasa la salida del trabajador al registro del servicio, línea por línea, con «[tareas]» delante.

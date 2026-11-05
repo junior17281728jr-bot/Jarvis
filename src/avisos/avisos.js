@@ -12,15 +12,22 @@ export const NIVELES = Object.freeze(['info', 'atencion', 'grave']);
 export const CLAVES_AVISO = Object.freeze([
   'memoria_baja', 'disco_bajo', 'base_grande', 'wal_grande', 'pantallas_lentas', 'trabajador_reinicios',
   'modo_seguro', 'base_danada', 'tareas_fallidas', 'tareas_revisar', 'fila_atrasada',
+  // Fase 1, parte d (IA): un uso costó más de lo apartado; no se puede leer la llave que protege las claves.
+  'ia_costo_mayor', 'ia_llave',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;
+// Fase 1, parte d: 'ia_tope:<general|e<cuenta>|p<proyecto>>:<AAAA-MM>' (50, 80 y 100 % de un tope de IA en un mes
+// de cobro: UNA fila por tope y por mes, que sube de nivel) y 'ia_proveedor:<proveedor>' (el proveedor no se pudo usar).
+export const AVISO_IA_TOPE = /^ia_tope:(?:general|[ep][1-9]\d{0,9}):\d{4}-(?:0[1-9]|1[0-2])$/;
+export const AVISO_IA_PROVEEDOR = /^ia_proveedor:[a-z][a-z0-9_]{1,30}$/;
 
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
 
 export function claveDeAvisoValida(clave) {
-  return CLAVES_AVISO.includes(clave) || FRENO.test(String(clave));
+  const texto = String(clave);
+  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto);
 }
 
 function textoDetalle(detalle) {
@@ -35,7 +42,10 @@ function leerDetalle(texto) {
 }
 
 // Abre el aviso (o suma una vez al que ya está abierto). Devuelve su id.
-export function abrirAviso(db, { clave, nivel = 'atencion', detalle = null, ahora = Date.now() }) {
+// reenviar: true = es una noticia nueva aunque el aviso ya estuviera abierto (por ejemplo, el gasto de IA pasó del
+// 50 % al 80 %): se vuelve a mandar (enviado_en vacío, para Telegram en la parte e) y la pantalla lo muestra como no
+// visto. Sin reenviar, solo se vuelve a mandar si sube a «grave», como siempre.
+export function abrirAviso(db, { clave, nivel = 'atencion', detalle = null, reenviar = false, ahora = Date.now() }) {
   if (!claveDeAvisoValida(clave)) throw new Error(`Clave de aviso no válida: ${clave}`);
   if (!NIVELES.includes(nivel)) throw new Error(`Nivel de aviso no válido: ${nivel}`);
   const momento = iso(ahora);
@@ -46,8 +56,10 @@ export function abrirAviso(db, { clave, nivel = 'atencion', detalle = null, ahor
       ultima_vez = excluded.ultima_vez,
       detalle = excluded.detalle,
       nivel = CASE WHEN ${RANGO_SQL('excluded.nivel')} > ${RANGO_SQL('nivel')} THEN excluded.nivel ELSE nivel END,
-      enviado_en = CASE WHEN excluded.nivel = 'grave' AND nivel <> 'grave' THEN NULL ELSE enviado_en END
-    RETURNING id`).get(clave, nivel, textoDetalle(detalle), momento, momento);
+      enviado_en = CASE WHEN ? = 1 THEN NULL WHEN excluded.nivel = 'grave' AND nivel <> 'grave' THEN NULL ELSE enviado_en END,
+      visto_en = CASE WHEN ? = 1 THEN NULL ELSE visto_en END,
+      visto_por = CASE WHEN ? = 1 THEN NULL ELSE visto_por END
+    RETURNING id`).get(clave, nivel, textoDetalle(detalle), momento, momento, ...Array(3).fill(reenviar === true ? 1 : 0));
   return fila.id;
 }
 

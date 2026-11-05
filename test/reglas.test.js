@@ -69,6 +69,8 @@ test('ningún archivo del repositorio contiene claves secretas', () => {
     /sk-[A-Za-z0-9_-]{20,}/, /sk-ant-[A-Za-z0-9_-]{20,}/, /sk_(?:live|test)_[A-Za-z0-9]{16,}/, /tskey-[A-Za-z0-9-]{10,}/,
     /gh[pousr]_[A-Za-z0-9]{30,}/, /github_pat_[A-Za-z0-9_]{30,}/, /AIza[0-9A-Za-z_-]{35}/, /dop_v1_[a-f0-9]{40,}/,
     /\b\d{8,10}:AA[0-9A-Za-z_-]{30,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    // Fase 1, parte d: una llave maestra de OPORTIA (el archivo oportia-llave-secretos) nunca va al repositorio.
+    /oportia-llave-v\d+:[A-Za-z0-9_-]{43}/,
   ];
   const texto = archivos(RAIZ, p => /\.(js|mjs|cjs|ts|json|md|html|css|sh|service|txt|ya?ml|toml|env|example)$|\.env(\.|$)/.test(p) && !p.endsWith('reglas.test.js'));
   for (const f of texto) {
@@ -89,6 +91,7 @@ const MIGRACIONES_PUBLICADAS = {
   2: 'faedbc4c80a34ab4085bdea7aa2330cb28148e69e14d7f1564c5ce3621bd0a53',
   3: '7af1fad890803931148e2be3e0e3d90481229546ae8f94bb4cd9d022af9310d1',
   4: '46758487c7db33997048188be268fea4420332e1b08bcc431d82114607529860',
+  5: '35064c417418d3c4fe614166b0354746cd36019ce51b528d5dac45d3108c768e',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
@@ -96,6 +99,7 @@ const MIGRACIONES_PUBLICADAS = {
 const VERSION_DE_CADA_MIGRACION = {
   3: '0.2.0',
   4: '0.3.0',
+  5: '0.4.0',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -239,4 +243,157 @@ test('cada cambio de base nuevo sube la versión de package.json', async () => {
   for (let i = 1; i < ids.length; i++) {
     assert.ok(comparar(VERSION_DE_CADA_MIGRACION[ids[i]], VERSION_DE_CADA_MIGRACION[ids[i - 1]]) > 0, `el cambio de base ${ids[i]} no subió la versión`);
   }
+});
+
+// ---------- Fase 1, parte d: la IA opcional y las claves secretas ----------
+
+const deTodo = archivos(RAIZ, p => /\.(js|mjs|cjs|json|sh|service|html)$/.test(p) && !p.includes(`${sep}test${sep}`));
+const leer = f => readFileSync(f, 'utf8');
+const de = (...partes) => join(SRC, ...partes);
+
+test('la migración 5 no tiene CHECK ni índices únicos (nunca se podrían ampliar ni quitar)', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const m = MIGRACIONES.find(x => x.id === 5);
+  assert.ok(m, 'falta la migración 5');
+  assert.equal((m.sql.match(/\bCHECK\b/gi) || []).length, 0);
+  assert.doesNotMatch(m.sql, /CREATE\s+UNIQUE\s+INDEX/i);
+  assert.deepEqual(m.sql.match(/\bUNIQUE\b/gi), ['UNIQUE'], 'solo secretos.ref (al azar) es único');
+  assert.doesNotMatch(m.sql, /ADD\s+COLUMN/i);
+});
+
+test('solo src/claves/cifrado.js cifra y descifra, y solo él conoce el nombre del archivo de la llave', () => {
+  for (const f of deTodo) {
+    if (f === de('claves', 'cifrado.js')) continue;
+    const texto = leer(f);
+    assert.doesNotMatch(texto, /\bcreate(?:Cipheriv|Decipheriv)\b/, `${relative(RAIZ, f)} cifra o descifra`);
+    assert.ok(!texto.includes('oportia-llave-secretos'), `${relative(RAIZ, f)} nombra el archivo de la llave`);
+  }
+});
+
+test('solo tres archivos pueden leer una clave descifrada (leerSecreto)', () => {
+  const permitidos = new Set([de('claves', 'almacen.js'), de('claves', 'probar.js'), de('ia', 'cliente.js')]);
+  for (const f of deTodo) {
+    if (!permitidos.has(f)) assert.doesNotMatch(leer(f), /\bleerSecreto\s*\(/, `${relative(RAIZ, f)} lee una clave descifrada`);
+  }
+});
+
+test('la ÚNICA llamada a la red de src/ es src/ia/llamar.js, nunca sigue redirecciones y nunca lee el texto de un error', () => {
+  const llamar = de('ia', 'llamar.js');
+  for (const f of codigo) {
+    if (f === llamar) continue;
+    assert.doesNotMatch(leer(f), /\bfetch\s*\(/, `${relative(RAIZ, f)} llama a fetch`);
+  }
+  const texto = leer(llamar);
+  const llamadas = [...texto.matchAll(/\bfetch\s*\(/g)];
+  assert.equal(llamadas.length, 1, 'una sola llamada a fetch');
+  assert.match(texto, /redirect: 'manual'/);
+  assert.doesNotMatch(texto, /\.message\b/, 'el texto de un error puede traer la clave (Node pone el valor de la cabecera)');
+  assert.doesNotMatch(texto, /\bconsole\./);
+  // Solo el servidor web abre puertos; los módulos de IA nunca usan node:http/https/net directamente.
+  for (const f of archivos(de('ia')).concat(archivos(de('claves')))) {
+    assert.doesNotMatch(leer(f), /['"]node:(?:https?|http2|net|tls|dgram)['"]/, `${relative(RAIZ, f)} usa la red sin pasar por llamar.js`);
+  }
+});
+
+test('las direcciones oficiales de los proveedores solo están en src/ia/proveedores/, y nada lee claves del entorno ni de secrets.env', () => {
+  for (const f of deTodo) {
+    const texto = leer(f);
+    const nombre = relative(RAIZ, f);
+    if (!f.startsWith(de('ia', 'proveedores') + sep)) assert.doesNotMatch(texto, /api\.anthropic\.com|api\.openai\.com/, `${nombre} nombra un servidor de IA`);
+    if (f.startsWith(SRC + sep)) assert.ok(!texto.includes('secrets.env'), `${nombre} menciona secrets.env`);
+    assert.doesNotMatch(texto, /\b(?:ANTHROPIC|OPENAI|CLAUDE)_(?:API_)?KEY\b/, `${nombre}: las claves nunca vienen del entorno`);
+  }
+  // La dirección del proveedor falso solo se acepta en modo de prueba, y solo 127.0.0.1.
+  const config = leer(de('nucleo', 'config.js'));
+  assert.match(config, /config\.iaBases = config\.modoPrueba \? basesDePrueba\(env\) : \{\}/);
+  assert.match(config, /\^http:\\\/\\\/127\\\.0\\\.0\\\.1:\\d\{2,5\}\$/);
+});
+
+test('los adaptadores nunca mandan parámetros que la API rechaza (muestreo, «pensar» a mano, modelos de reemplazo)', () => {
+  for (const f of archivos(de('ia', 'proveedores'))) {
+    assert.doesNotMatch(leer(f), /\b(?:temperature|top_p|top_k|fallbacks|budget_tokens)\b/, relative(RAIZ, f));
+  }
+});
+
+test('solo el almacén escribe la tabla de claves, y solo el presupuesto escribe el libro de gastos de la IA', () => {
+  for (const f of codigo) {
+    const texto = leer(f);
+    const nombre = relative(RAIZ, f);
+    if (f !== de('claves', 'almacen.js')) assert.doesNotMatch(texto, /\b(?:INSERT\s+INTO|UPDATE)\s+secretos\b/i, `${nombre} escribe secretos`);
+    if (f !== de('ia', 'presupuesto.js')) assert.doesNotMatch(texto, /\b(?:INSERT\s+INTO|UPDATE)\s+ia_(?:llamadas|bloqueos)\b/i, `${nombre} escribe el libro de gastos`);
+    if (f.startsWith(de('claves') + sep) || f.startsWith(de('ia') + sep)) assert.doesNotMatch(texto, /\bconsole\./, `${nombre} escribe en la consola (podría llevar una clave)`);
+  }
+});
+
+test('la IA llega APAGADA: tope US$0 en todo, sin la ayuda en proyectos, sin ChatGPT, y el precio de Claude por defecto confirmado', async () => {
+  const { CONFIG_POR_DEFECTO, normalizarConfig } = await import('../src/ia/config.js');
+  const { estadoPrecios, precioDe, filaDe } = await import('../src/ia/precios.js');
+  for (const cfg of [CONFIG_POR_DEFECTO, normalizarConfig(null), normalizarConfig({})]) {
+    assert.equal(cfg.encendida, false);
+    assert.equal(cfg.topeGeneralMicro, 0);
+    assert.ok(Object.values(cfg.topesPlanMicro).every(n => n === 0));
+    assert.equal(cfg.ayudaProyectos, false);
+    assert.equal(cfg.proveedores.openai.usar, false);
+  }
+  assert.equal(estadoPrecios().valido, true, `src/ia/precios.json no es válido: ${estadoPrecios().error}`);
+  const { anthropic, openai } = CONFIG_POR_DEFECTO.proveedores;
+  assert.ok(precioDe('anthropic', anthropic.modelo), 'el modelo de Claude por defecto tiene su precio confirmado');
+  assert.ok(filaDe('openai', openai.modelo), 'el modelo de ChatGPT por defecto está en la tabla');
+  // Ningún archivo de las migraciones enciende la IA.
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  for (const m of MIGRACIONES) assert.ok(!m.sql.includes('ia.config'));
+});
+
+test('cada propósito de IA está bien definido (fase, salida, tiempo, costo máximo) y cada uso de clave tiene un nombre simple', async () => {
+  const { PROPOSITOS, MOTIVOS } = await import('../src/ia/propositos.js');
+  const { POLITICA } = await import('../src/ia/politica.js');
+  const { FASE_ACTUAL, TIPOS, definicion } = await import('../src/tareas/tipos.js');
+  const { USOS } = await import('../src/claves/usos.js');
+  assert.ok(Object.keys(PROPOSITOS).length > 0);
+  for (const [id, p] of Object.entries(PROPOSITOS)) {
+    assert.match(id, /^[a-z_]+$/);
+    assert.ok(Number.isSafeInteger(p.fase) && p.fase >= 1 && p.fase <= FASE_ACTUAL, `${id}: fase`);
+    assert.ok(['espacio', 'proyecto', 'general'].includes(p.ambito), `${id}: ámbito`);
+    assert.equal(typeof p.cuentaProyecto, 'boolean');
+    assert.ok(Number.isSafeInteger(p.salidaMax) && p.salidaMax >= 16 && p.salidaMax <= 4096, `${id}: salidaMax`);
+    assert.ok(Number.isSafeInteger(p.entradaMaxBytes) && p.entradaMaxBytes > 0 && p.entradaMaxBytes <= 200_000, `${id}: entradaMaxBytes`);
+    assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= 50_000, `${id}: maximoMicro (US$0,05 como mucho por vez)`);
+    assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= 60_000, `${id}: timeoutMs`);
+    assert.ok(['low', 'medium', 'high'].includes(p.esfuerzo), `${id}: esfuerzo`);
+    assert.ok(['motor_propio', 'esperar'].includes(p.alFaltar), `${id}: alFaltar`);
+    assert.match(p.tarea, /^[a-z]+\.[a-z_]+$/, `${id}: tarea`);
+    // Su tarea (cuando ya existe en esta versión) le da más tiempo al paso que a la llamada.
+    if (Object.hasOwn(TIPOS, p.tarea)) assert.ok(p.timeoutMs < definicion(p.tarea).tiempoPorPasoMs, `${id}: el paso de ${p.tarea} es más corto que la llamada`);
+  }
+  assert.equal(new Set(MOTIVOS).size, MOTIVOS.length);
+  for (const m of MOTIVOS) assert.match(m, /^[a-z_]+$/);
+  for (const m of Object.keys(POLITICA)) assert.ok(MOTIVOS.includes(m), `POLITICA.${m} no está en MOTIVOS`);
+  for (const id of Object.keys(USOS)) assert.match(id, /^[a-z_]+$/, `uso de clave raro: ${id}`);
+});
+
+test('ninguna prueba enciende el trabajador real directamente: siempre por un programa de test/ que primero carga ./ayuda.js', () => {
+  const carpeta = join(RAIZ, 'test');
+  for (const nombre of readdirSync(carpeta).filter(n => n.endsWith('.js') && n !== 'reglas.test.js')) {
+    const texto = readFileSync(join(carpeta, nombre), 'utf8');
+    assert.ok(!texto.includes('RUTA_TRABAJADOR'), `test/${nombre} usa la ruta del trabajador real`);
+    for (const linea of texto.split('\n').filter(l => !l.trim().startsWith('//') && /tareas[/'", ]+trabajador\.js/.test(l))) {
+      assert.match(linea, /\bimport\s*\(|\bfrom\s+['"]/, `test/${nombre} usa src/tareas/trabajador.js sin importarlo: ${linea.trim()}`);
+      assert.match(texto, /^(?:\/\/.*\n)*import '\.\/ayuda\.js';/m, `test/${nombre} carga el trabajador sin cargar antes ./ayuda.js`);
+    }
+    let desde = 0;
+    for (;;) {
+      const i = texto.indexOf('crearSupervisor({', desde);
+      if (i < 0) break;
+      const bloque = texto.slice(i, texto.indexOf('});', i));
+      assert.match(bloque, /\b(?:ruta|lanzar):/, `test/${nombre}: crearSupervisor sin ruta ni lanzar encendería el trabajador real`);
+      desde = i + 1;
+    }
+  }
+});
+
+test('el trabajador se enciende sin archivos «core» (prlimit --core=0), y la huella del código cuenta los .json de src/', () => {
+  const supervisor = leer(de('tareas', 'supervisor.js'));
+  assert.match(supervisor, /const PRLIMIT = \['\/usr\/bin\/prlimit', '\/bin\/prlimit'\]/);
+  assert.match(supervisor, /PRLIMIT \? \[PRLIMIT, '--core=0', '--', \.\.\.orden\] : orden/);
+  assert.match(leer(de('app.js')), /nombre\.endsWith\('\.js'\) \|\| nombre\.endsWith\('\.json'\)/);
 });
