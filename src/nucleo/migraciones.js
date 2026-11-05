@@ -292,6 +292,10 @@ CREATE INDEX IF NOT EXISTS avisos_fecha ON avisos(creado_en);
     //  - ia_bloqueos: cuántas veces NO se usó la IA (apagada, tope, pausa…), por mes: crece poco aunque se repita.
     //    Su llave (mes, ambito, motivo, proposito) queda CONGELADA a propósito: una dimensión nueva (por ejemplo,
     //    el proveedor) será una tabla nueva, nunca un cambio de esta.
+    //  - cuentas_confianza (ronda 5 de revisión): de dónde vino cada cambio que da acceso al dinero de la IA de una cuenta
+    //    (crearla, cambiar su plan, reiniciar su contraseña, volver a activarla) y el permiso del dueño. Una cuenta común
+    //    gasta IA solo si su última fila es «confiable» y su huella (contraseña guardada, activa, plan) sigue igual:
+    //    un cambio que no quedó anotado (por ejemplo, con la versión anterior del código) la deja sin permiso.
     //  - Sin CHECK y sin reglas únicas de negocio (solo ref, que es al azar, y la llave de conteo de ia_bloqueos):
     //    los valores se revisan en el código (un CHECK o un índice único nunca se pueden quitar ni ampliar).
     sql: `
@@ -370,6 +374,17 @@ CREATE TABLE IF NOT EXISTS ia_bloqueos (
   ultima_vez TEXT NOT NULL,
   PRIMARY KEY (mes, ambito, motivo, proposito)
 );
+CREATE TABLE IF NOT EXISTS cuentas_confianza (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  accion TEXT NOT NULL,
+  desde TEXT NOT NULL,
+  confiable INTEGER NOT NULL DEFAULT 0,
+  huella TEXT NOT NULL,
+  hecho_por INTEGER REFERENCES usuarios(id),
+  fecha TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cuentas_confianza_usuario ON cuentas_confianza(usuario_id, id);
 `,
   },
 ];

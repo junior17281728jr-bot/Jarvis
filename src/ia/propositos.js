@@ -39,6 +39,8 @@ export const MOTIVOS = Object.freeze([
   'ia_apagada', 'ayuda_no_activada', 'proveedor_no_usado', 'sin_clave', 'clave_ilegible', 'llave_no_disponible',
   'precio_sin_confirmar', 'proveedor_en_pausa', 'llamada_muy_cara', 'precio_cambio', 'demasiado_largo',
   'demasiadas_llamadas', 'tope_general', 'tope_espacio', 'tope_proyecto', 'no_permitida_en_proyecto', 'proyecto_inactivo',
+  // Ronda 5 de revisión: la cuenta no tiene el permiso de IA del dueño (src/cuentas/confianza.js).
+  'cuenta_sin_permiso',
   // Lo que respondió el proveedor (o la red).
   'clave_no_valida', 'sin_permiso', 'sin_credito', 'limite_gasto_proveedor', 'limite_proveedor', 'sobrecargado',
   'error_proveedor', 'redireccion', 'modelo_no_disponible', 'pedido_no_valido', 'tiempo_agotado', 'sin_red',

@@ -236,6 +236,10 @@ a { color: var(--acento); }
 .plan label { margin-top: 6px; width: 100%; }
 .plan select { flex: 1 1 180px; width: auto; }
 .plan button { margin-top: 0; }
+/* Ronda 5 de revisión: el permiso de IA de cada cuenta (Administrador → Usuarios). */
+.ia-cuenta { margin-top: 6px; }
+.ia-cuenta details { margin: 4px 0; }
+.ia-cuenta .botones { margin-top: 4px; }
 
 /* ---------- Zona de sistema (Administrador) e Inicio del administrador ----------
    Cada cosa lleva su color: verde = bien, amarillo = mirar, rojo = grave, azul = para que lo sepas,

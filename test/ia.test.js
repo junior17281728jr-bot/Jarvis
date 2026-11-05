@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { configDePrueba, carpetaTemporal, esperarHasta } from './ayuda.js';
-import { T0, claveAnthropic, preparar, ponerConfig, veces } from './ia-base.js';
+import { T0, claveAnthropic, preparar, ponerConfig, veces, permitirIa } from './ia-base.js';
 import { abrirBase, conectarBase, estadoBase } from '../src/nucleo/db.js';
 import { MIGRACIONES } from '../src/nucleo/migraciones.js';
 import { ErrorHttp } from '../src/nucleo/http.js';
@@ -378,8 +378,10 @@ test('carrera: 4 procesos reservando a la vez (300 cada uno) nunca pasan el tope
   // Una tercera cuenta con plan «pago».
   const { crearUsuario } = await import('../src/cuentas/usuarios.js');
   const { espacioPropio } = await import('../src/cuentas/planes.js');
-  const tercera = espacioPropio(db, crearUsuario(db, { nombre: 'pedro', claveHash: 'x' })).id;
+  const pedro = crearUsuario(db, { nombre: 'pedro', claveHash: 'x' });
+  const tercera = espacioPropio(db, pedro).id;
   db.prepare("UPDATE espacios SET plan = 'pago' WHERE id = ?").run(tercera);
+  permitirIa(db, pedro);
   const espacios = [b.espacioAdmin, b.espacioOtro, tercera];
   const barrera = carpetaTemporal('carrera');
   const hijo = semilla => new Promise((listo, mal) => {

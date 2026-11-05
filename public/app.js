@@ -1212,6 +1212,37 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
       mensajePlan);
   };
 
+  // Ronda 5 de revisión: el permiso de IA de cada cuenta común. Una cuenta creada o tocada (plan, contraseña, activar)
+  // desde el enlace público no gasta IA hasta que el dueño, desde su cuenta de Tailscale, se lo da aquí. Antes de darlo
+  // se ve cuándo y desde dónde se tocó la cuenta por última vez. Quitarlo se puede desde cualquier entrada.
+  const controlIa = u => {
+    if (u.rol === 'admin' || !u.ia) return null;
+    const permitida = u.ia.permitida === true;
+    const ultimo = u.ia.ultimo;
+    const mensajeIa = caja();
+    const origen = !ultimo ? t('admin.ia.sin_historia')
+      : ultimo.vigente === false ? t('admin.ia.cambio_sin_anotar')
+        : t('admin.ia.ultimo', { accion: tSi(`admin.ia.accion.${ultimo.accion}`, ultimo.accion), desde: tSi(`admin.ia.desde.${ultimo.desde}`, ultimo.desde), fecha: fecha(ultimo.fecha) });
+    const cambiarPermiso = permitir => async () => {
+      if (permitir && !confirm(t('admin.ia.confirmar', { nombre: u.nombreVisible || u.nombre, origen }))) return;
+      const x = await api('POST', `/api/admin/usuarios/${u.id}/ia`, { permitida: permitir });
+      if (!x.ok) throw new Error(textoError(x.datos.error));
+      await pantallaAdmin(el('p', { class: 'mensaje bien', 'data-foco': true, texto: t(permitir ? 'admin.ia.listo_permitida' : 'admin.ia.listo_retirada', { nombre: u.nombreVisible || u.nombre }) }), { mantenerClave: true });
+    };
+    const boton = permitida ? botonAccion(t('admin.ia.quitar'), 'secundario', mensajeIa, cambiarPermiso(false), 'prohibido')
+      : u.activo && permisos.admins ? botonAccion(t('admin.ia.permitir'), 'secundario', mensajeIa, cambiarPermiso(true), 'chispa')
+        : null;
+    return el('div', { class: 'ia-cuenta' },
+      el('p', { class: 'etiquetas' }, insignia(permitida ? 'bien' : 'apagado', t(permitida ? 'admin.ia.permitida' : 'admin.ia.sin_permiso'))),
+      el('details', {},
+        el('summary', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('admin.ia.detalle') })),
+        el('p', { class: 'ayuda', texto: t('admin.ia.explica') }),
+        el('p', { class: 'suave', texto: origen }),
+        !permitida && u.activo && !permisos.admins ? el('p', { class: 'suave con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.ia.solo_dueno') })) : null),
+      boton ? el('div', { class: 'botones' }, boton) : null,
+      mensajeIa);
+  };
+
   const filas = r.datos.usuarios.map(u => {
     // A otro administrador solo lo toca el dueño; a una cuenta común, reiniciar y activar necesitan «cuentas».
     const esOtroAdmin = u.rol === 'admin' && u.id !== estado.usuario.id;
@@ -1254,6 +1285,7 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
       controlPlan(u),
+      controlIa(u),
       acciones);
   });
 
@@ -1542,6 +1574,10 @@ function dibujarIa(s, aviso, vigente) {
     planes.length ? el('details', {},
       el('summary', { class: 'con-icono' }, icono('personas'), el('span', { texto: t('ia.planes.titulo') })),
       el('p', { class: 'ayuda', texto: t('ia.planes.ayuda') }),
+      // Ronda 5 de revisión: un tope de plan solo lo usan las cuentas con el permiso de IA del dueño (Administrador → Usuarios).
+      s.cuentas ? el('p', { class: 'suave con-icono' }, icono('personas', 'icono chico'),
+        el('span', { texto: t('ia.planes.cuentas', { si: numero(s.cuentas.permitidas ?? 0), no: numero(s.cuentas.sinPermiso ?? 0) }) })) : null,
+      s.cuentas?.sinPermiso > 0 ? el('p', {}, el('a', { href: '#admin', texto: t('ia.planes.ir_permisos') })) : null,
       planes.map((plan, i) => [el('label', { for: `ia-tope-${plan}`, texto: t(`ia.plan.${plan}`) }),
         el('div', { class: 'campo-dinero' }, el('span', { class: 'campo-dinero-signo', 'aria-hidden': 'true', texto: 'US$' }), camposPlan[i])]),
       el('button', {

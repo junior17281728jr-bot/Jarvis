@@ -125,6 +125,8 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const { PROVEEDORES } = await import('../src/ia/proveedores/index.js');
   const { USOS, GRUPOS, ESTADOS_SECRETO } = await import('../src/claves/usos.js');
   const { GRUPOS_CAMBIO } = await import('../src/ia/interpretar.js');
+  // Ronda 5 de revisión: el permiso de IA de cada cuenta (Administrador → Usuarios).
+  const { ACCIONES_CONFIANZA, DESDE } = await import('../src/cuentas/confianza.js');
   const cat = catalogo();
   const claves = [
     ...MOTIVOS.map(x => `ia.motivo.${x}`),
@@ -140,6 +142,8 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...GRUPOS.map(x => `claves.grupo.${x}`),
     ...[...ESTADOS_SECRETO, 'ninguna', 'pausada', 'no_pasa', 'ilegible'].map(x => `claves.estado.${x}`),
     ...GRUPOS_CAMBIO.map(x => `version.campo_ia.${x}`),
+    ...ACCIONES_CONFIANZA.map(x => `admin.ia.accion.${x}`),
+    ...DESDE.map(x => `admin.ia.desde.${x}`),
     'historial.version_nueva.ia', 'aviso.ia_tope', 'aviso.ia_tope.lleno', 'aviso.ia_proveedor', 'aviso.ia_proveedor.admin',
     ...CLAVES_FALTA.map(x => `creador.falta.${x}`),
     ...CLAVES_QUEDA_FUERA.map(x => `creador.fuera.${x}`),
@@ -408,6 +412,21 @@ test('27c. con el trabajo en pausa y la ayuda en la fila, se ve la pausa y que e
   assert.deepEqual(lista.lista, { numero: 2, costoMicro: 450 });
   assert.match(appJs, /vista\.vista === 'pausa' && vista\.enFila\) \{[\s\S]*?t\('ayuda_ia\.pausa_en_fila'\)[\s\S]*?setTimeout\(\(\) => refrescarAyudaIa\(bloque, ctx\), 10_000\)/);
   for (const idioma of [es, en]) assert.ok(idioma['ayuda_ia.pausa_en_fila']);
+});
+
+// Ronda 5 de revisión: el permiso de IA de cada cuenta común. «Permitir IA» solo aparece para el dueño desde su cuenta de
+// Tailscale (y con la cuenta activa); «Quitar IA», desde cualquier entrada. Antes de dar permiso se ve de dónde vino el
+// último cambio de la cuenta. La pantalla de la IA dice cuántas cuentas esperan el permiso.
+test('27e. Administrador: el permiso de IA de cada cuenta (dar solo el dueño desde Tailscale, quitar desde cualquier entrada)', () => {
+  assert.match(appJs, /if \(u\.rol === 'admin' \|\| !u\.ia\) return null;/);
+  assert.match(appJs, /const boton = permitida \? botonAccion\(t\('admin\.ia\.quitar'\)[^\n]*\n\s*: u\.activo && permisos\.admins \? botonAccion\(t\('admin\.ia\.permitir'\)/);
+  assert.match(appJs, /if \(permitir && !confirm\(t\('admin\.ia\.confirmar', \{ nombre: u\.nombreVisible \|\| u\.nombre, origen \}\)\)\) return;/);
+  assert.match(appJs, /api\('POST', `\/api\/admin\/usuarios\/\$\{u\.id\}\/ia`, \{ permitida: permitir \}\)/);
+  assert.match(appJs, /controlPlan\(u\),\n\s*controlIa\(u\),/);
+  assert.match(appJs, /t\('ia\.planes\.cuentas', \{ si: numero\(s\.cuentas\.permitidas \?\? 0\), no: numero\(s\.cuentas\.sinPermiso \?\? 0\) \}\)/);
+  for (const clave of ['admin.ia.permitida', 'admin.ia.sin_permiso', 'admin.ia.solo_dueno', 'admin.ia.sin_historia', 'admin.ia.cambio_sin_anotar', 'ia.planes.ir_permisos', 'error.cuenta_inactiva', 'ia.motivo.cuenta_sin_permiso']) {
+    assert.ok(es[clave] && en[clave], clave);
+  }
 });
 
 // Ronda 1 de revisión: Administrador solo muestra los botones que sirven desde esta entrada (dueño único; cuentas por

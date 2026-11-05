@@ -25,6 +25,7 @@ import { politicaDe, finDePausa, FALLAS_SEGUIDAS } from './politica.js';
 import { leerConfigIa } from './config.js';
 import { gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro } from './gasto.js';
 import { topeEspacioMicro, iaDeVersionActiva, esEspacioAdmin } from './topes.js';
+import { espacioConfirmado } from '../cuentas/confianza.js';
 
 export { mesCobro, inicioMesSiguienteCobro, gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro };
 
@@ -107,6 +108,9 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   const no = (motivo, ambito = 'general', extra = {}) => ({ ok: false, motivo, ambito, mes, ...extra });
   if (!cfg.encendida) return no('ia_apagada');
   if (def.ajuste && cfg[def.ajuste] !== true) return no('ayuda_no_activada');
+  // Ronda 5 de revisión: una cuenta común gasta solo con el permiso de IA vigente (src/cuentas/confianza.js): se mira
+  // AQUÍ, al gastar, y no solo al crear la cuenta o cambiar su plan.
+  if (espacioId != null && !esEspacioAdmin(db, espacioId) && !espacioConfirmado(db, espacioId)) return no('cuenta_sin_permiso', `e${espacioId}`);
   const eleccion = elegirProveedor(db, config, cfg, ahora);
   if (!eleccion.ok) return no(eleccion.motivo);
   const reserva = reservaMicro(eleccion.precio, { entradaMax, salidaMax });

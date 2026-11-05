@@ -169,6 +169,12 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   reiniciar contraseñas y volver a activar cuentas se hace desde un equipo con Tailscale: una contraseña de administrador
   robada, por el enlace público, no puede multiplicar las cuentas que gastan. Con los topes de plan en US$0 (lo que trae
   OPORTIA) todo sigue como antes.
+- Además, una cuenta común gasta IA solo con **tu permiso**, y se revisa en el momento de gastar. Si alguien crea una cuenta
+  o le cambia el plan, la contraseña o la vuelve a activar desde el enlace público (aunque los topes estuvieran en US$0),
+  esa cuenta queda sin permiso hasta que tú, desde tu cuenta de Tailscale, toques «Permitir IA» en Administrador →
+  Usuarios (ahí ves cuándo y desde dónde se tocó por última vez). Las cuentas que creas desde Tailscale ya lo tienen.
+  Las que existían antes de esta versión lo esperan. Un cambio que no quedó anotado (por ejemplo, con la versión anterior
+  del código) también quita el permiso. «Quitar IA» se puede desde cualquier entrada.
 - El id de cada petición se guarda solo si tiene la forma de los proveedores (`req_…`, `msg_…`, `resp_…`) y nunca si trae
   la clave o un pedazo de ella. Cambiar una clave deja la anterior guardada como «reemplazada»; desactivar
   la deja «desactivada»: nunca se borran. Si alguien vio una clave, cámbiala aquí **y anúlala en la página del proveedor**.

@@ -12,6 +12,7 @@ import { PROPOSITOS } from './propositos.js';
 import { GASTO_SQL, gastoMicro, apartadoMicro } from './gasto.js';
 import { mesCobro, inicioMesSiguienteCobro, elegirProveedor, tipicoMicro, topeLleno } from './presupuesto.js';
 import { topeEspacioMicro } from './topes.js';
+import { resumenConfianza } from '../cuentas/confianza.js';
 
 const MES = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 const iso = ms => new Date(ms).toISOString();
@@ -87,6 +88,8 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
     llamadasMes: db.prepare('SELECT COUNT(*) AS n FROM ia_llamadas WHERE mes = ?').get(mes).n,
     bloqueosMes: db.prepare('SELECT COALESCE(SUM(veces), 0) AS n FROM ia_bloqueos WHERE mes = ?').get(mes).n,
     tipicoMicro: espacioAdmin != null ? tipicoMicro(db, { proposito: 'interpretar', espacioId: espacioAdmin }) : PROPOSITOS.interpretar.tipicoMicro,
+    // Ronda 5 de revisión: cuántas cuentas comunes activas tienen el permiso de IA y cuántas lo esperan.
+    cuentas: resumenConfianza(db),
   };
 }
 

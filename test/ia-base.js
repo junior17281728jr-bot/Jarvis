@@ -8,19 +8,27 @@ import { crearPrimerAdmin, crearUsuario } from '../src/cuentas/usuarios.js';
 import { espacioPropio } from '../src/cuentas/planes.js';
 import { guardarSecreto, anotarPrueba } from '../src/claves/almacen.js';
 import { guardarConfigIa, leerConfigIa, CLAVE_AJUSTE_IA } from '../src/ia/config.js';
+import { anotarConfianza } from '../src/cuentas/confianza.js';
 
 export const T0 = Date.parse('2026-11-10T15:00:00Z');
 
 export const claveAnthropic = (letra = 'x') => ['sk', 'ant', 'api03', `prueba${letra.repeat(32)}`].join('-');
 export const claveOpenai = (letra = 'z') => ['sk', 'proj', `prueba${letra.repeat(32)}`].join('-');
 
-// Una base con el administrador (su espacio), otra cuenta (plan prueba), una clave de Claude guardada y probada, y la IA
-// encendida con un tope (si se pide). iaBases: adónde va el proveedor falso.
-export function preparar({ encendida = true, tope = 2_000_000, ayuda = true, planes = {}, probar = true, guardar = true, iaBases = {}, ahora = T0 } = {}) {
+// Ronda 5 de revisión: el permiso de IA del dueño para una cuenta común (como si lo diera desde su cuenta de Tailscale).
+// Va DESPUÉS de cualquier cambio de la cuenta (plan, contraseña): un cambio sin anotar le quita el permiso.
+export function permitirIa(db, usuarioId, hechoPor = null) {
+  return anotarConfianza(db, { usuarioId, accion: 'permitida', desdeTailnet: true, hechoPor });
+}
+
+// Una base con el administrador (su espacio), otra cuenta (plan prueba, con el permiso de IA del dueño si permitirOtro),
+// una clave de Claude guardada y probada, y la IA encendida con un tope (si se pide). iaBases: adónde va el proveedor falso.
+export function preparar({ encendida = true, tope = 2_000_000, ayuda = true, planes = {}, probar = true, guardar = true, iaBases = {}, ahora = T0, permitirOtro = true } = {}) {
   const config = { ...configDePrueba(), iaBases };
   const db = abrirBase(config);
   const admin = crearPrimerAdmin(db, { nombre: 'junior', claveHash: 'x' });
   const otro = crearUsuario(db, { nombre: 'maria', claveHash: 'x', creadoPor: admin });
+  if (permitirOtro) permitirIa(db, otro, admin);
   const espacioAdmin = espacioPropio(db, admin).id;
   const espacioOtro = espacioPropio(db, otro).id;
   let secretoId = null;

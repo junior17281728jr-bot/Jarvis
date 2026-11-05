@@ -16,6 +16,7 @@ import {
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 import { duenoDeTailscale, exigirDueno } from '../cuentas/tailscale.js';
 import { leerConfigIa, algunTopeDePlan } from '../ia/config.js';
+import { anotarConfianza, cuentaConfirmada, seguirConfianza, estadoConfianza, ponerPermisoIa } from '../cuentas/confianza.js';
 
 const IDIOMAS = new Set(['es', 'en']);
 
@@ -98,6 +99,12 @@ function cuentasDesdeAqui(db, req) {
 }
 function exigirCuentasDesdeAqui(db, req) {
   if (!cuentasDesdeAqui(db, req)) throw new ErrorHttp(403, 'cuentas_solo_tailnet');
+}
+// Ronda 5 de revisión: lo de arriba solo mira los topes de AHORA. Por eso cada uno de esos cambios, además, queda anotado
+// con de dónde vino (src/cuentas/confianza.js): una cuenta tocada desde internet no gasta IA (aunque el dueño ponga un
+// tope de plan más adelante) hasta que el dueño, desde su cuenta de Tailscale, le da permiso.
+function anotarOrigen(db, req, { usuarioId, accion, hechoPor }) {
+  anotarConfianza(db, { usuarioId, accion, desdeTailnet: vieneDeTailscale(req).si, hechoPor });
 }
 
 export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null } = {}) {
@@ -207,9 +214,15 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const problema = problemaDeClave(datos.nueva, [fila.nombre, fila.nombre_visible]);
     if (problema) throw new ErrorHttp(400, problema);
     if (datos.nueva === datos.actual) throw new ErrorHttp(400, 'clave_igual');
-    guardarClave(db, usuario.id, await hashClave(datos.nueva), { debeCambiarClave: false });
-    cerrarTodas(db, usuario.id, token);
-    auditar(db, { usuarioId: usuario.id, accion: 'clave_cambiada' });
+    const claveHash = await hashClave(datos.nueva);
+    // El permiso de IA que tenía la cuenta (si lo tenía) sigue: la persona sabía su contraseña actual.
+    enTransaccion(db, () => {
+      const teniaPermiso = cuentaConfirmada(db, usuario.id);
+      guardarClave(db, usuario.id, claveHash, { debeCambiarClave: false });
+      seguirConfianza(db, { usuarioId: usuario.id, teniaPermiso, desdeTailnet: vieneDeTailscale(req).si });
+      cerrarTodas(db, usuario.id, token);
+      auditar(db, { usuarioId: usuario.id, accion: 'clave_cambiada' });
+    });
     return { codigo: 200, datos: { ok: true } };
   }, { permitirConClaveTemporal: true });
 
@@ -226,7 +239,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   rutas.agregar('GET', '/api/admin/usuarios', ({ db, req, usuario }) => ({
     codigo: 200,
     datos: {
-      usuarios: listarUsuarios(db),
+      // ia (solo de las cuentas comunes): si puede gastar IA y de dónde vino su último cambio (src/cuentas/confianza.js).
+      usuarios: listarUsuarios(db).map(u => (u.rol === 'admin' ? u : { ...u, ia: estadoConfianza(db, u.id) })),
       planes: planesPublicos(),
       permisos: { cuentas: cuentasDesdeAqui(db, req), admins: duenoDeTailscale(db, req, usuario).si },
     },
@@ -243,7 +257,12 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     // Si el nombre ya existe, se responde antes de calcular nada (la pantalla propone otro: juan.perez2…).
     if (buscarPorNombre(db, nombre)) throw new ErrorHttp(409, 'nombre_ocupado');
     const temporal = claveTemporal();
-    const id = crearUsuario(db, { nombre, nombreVisible, claveHash: await hashClave(temporal), rol, idioma: idiomaDe(datos), creadoPor: usuario.id });
+    const claveHash = await hashClave(temporal);
+    const id = enTransaccion(db, () => {
+      const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), creadoPor: usuario.id });
+      if (nuevo && rol === 'usuario') anotarOrigen(db, req, { usuarioId: nuevo, accion: 'creada', hechoPor: usuario.id });
+      return nuevo;
+    });
     if (!id) throw new ErrorHttp(409, 'nombre_ocupado');
     return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal } };
   }, { admin: true });
@@ -259,6 +278,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     // Todo junto o nada: la clave nueva, sus sesiones cerradas, el aviso para la persona y la auditoría.
     enTransaccion(db, () => {
       guardarClave(db, destino.id, claveHash, { debeCambiarClave: true });
+      if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'clave_reiniciada', hechoPor: usuario.id });
       cerrarTodas(db, destino.id);
       avisarClaveReiniciada(db, destino.id);
       auditar(db, { usuarioId: usuario.id, accion: 'clave_reiniciada', detalle: destino.nombre });
@@ -276,7 +296,10 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const r = cambiarPlan(db, {
       usuario: destino,
       plan: datos.plan,
-      alCambiar: (antes, ahora) => auditar(db, { usuarioId: usuario.id, accion: 'plan_cambiado', detalle: `${destino.nombre}: ${antes} -> ${ahora}` }),
+      alCambiar: (antes, ahora) => {
+        auditar(db, { usuarioId: usuario.id, accion: 'plan_cambiado', detalle: `${destino.nombre}: ${antes} -> ${ahora}` });
+        if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'plan', hechoPor: usuario.id });
+      },
     });
     return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, plan: r.ahora, proyectosPermitidos: r.limite } };
   }, { admin: true });
@@ -292,9 +315,33 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     if (destino.rol === 'admin') exigirDueno(db, req, usuario);
     else if (activo) exigirCuentasDesdeAqui(db, req);
     if (!activo && destino.rol === 'admin' && cuantosAdminsActivos(db) <= 1) throw new ErrorHttp(400, 'ultimo_admin');
-    ponerActivo(db, destino.id, activo);
-    if (!activo) cerrarTodas(db, destino.id);
-    auditar(db, { usuarioId: usuario.id, accion: activo ? 'usuario_activado' : 'usuario_desactivado', detalle: destino.nombre });
+    enTransaccion(db, () => {
+      ponerActivo(db, destino.id, activo);
+      // Volver a activar una cuenta común queda anotado (solo si de verdad estaba desactivada).
+      if (activo && destino.activo !== 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'activada', hechoPor: usuario.id });
+      if (!activo) cerrarTodas(db, destino.id);
+      auditar(db, { usuarioId: usuario.id, accion: activo ? 'usuario_activado' : 'usuario_desactivado', detalle: destino.nombre });
+    });
     return { codigo: 200, datos: { ok: true } };
+  }, { admin: true });
+
+  // Ronda 5 de revisión: el permiso de IA de una cuenta común. Darlo solo lo hace el dueño, desde su cuenta de Tailscale
+  // (la pantalla le muestra antes cuándo y desde dónde se tocó la cuenta por última vez). Quitarlo protege: se puede desde
+  // cualquier entrada. Las dos cosas quedan en la auditoría.
+  rutas.agregar('POST', '/api/admin/usuarios/:id/ia', async ({ db, req, parametros, usuario }) => {
+    const datos = await leerJson(req);
+    if (typeof datos.permitida !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (destino.rol !== 'usuario') throw new ErrorHttp(400, 'datos_no_validos');
+    if (datos.permitida) {
+      exigirDueno(db, req, usuario);
+      if (destino.activo !== 1) throw new ErrorHttp(409, 'cuenta_inactiva');
+    }
+    enTransaccion(db, () => {
+      ponerPermisoIa(db, { usuarioId: destino.id, permitida: datos.permitida, hechoPor: usuario.id, desdeTailnet: vieneDeTailscale(req).si });
+      auditar(db, { usuarioId: usuario.id, accion: datos.permitida ? 'ia_cuenta_permitida' : 'ia_cuenta_retirada', detalle: destino.nombre });
+    });
+    return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, ia: estadoConfianza(db, destino.id) } };
   }, { admin: true });
 }

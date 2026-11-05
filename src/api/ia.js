@@ -15,6 +15,7 @@ import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { espacioDe, pendienteDeProyecto, puedeTenerOtraVersion, LUGARES_PARA_AYUDA_IA } from '../proyectos/proyectos.js';
 import { duenoDeTailscale } from '../cuentas/tailscale.js';
+import { espacioConfirmado } from '../cuentas/confianza.js';
 import { PLANES } from '../cuentas/planes.js';
 import { leerConfigIa, guardarConfigIa, usdAMicro, esEspacioAdmin, LIMITES_IA } from '../ia/config.js';
 import { disponibilidad, elegirProveedor } from '../ia/presupuesto.js';
@@ -147,6 +148,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     if (!cfg.encendida || !cfg.ayudaProyectos) return false;
     const plan = db.prepare('SELECT plan FROM espacios WHERE id = ?').get(espacioId)?.plan;
     if (!((cfg.topesPlanMicro?.[plan] ?? 0) > 0)) return false;
+    if (!espacioConfirmado(db, espacioId)) return false;
     return elegirProveedor(db, config, cfg, ahora).ok;
   }
 

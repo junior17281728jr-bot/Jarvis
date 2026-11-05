@@ -10,7 +10,7 @@ import { configDePrueba, conServidor, esperarHasta } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { T0, claveAnthropic, preparar, buscarEnTodo } from './ia-base.js';
+import { T0, claveAnthropic, preparar, buscarEnTodo, permitirIa } from './ia-base.js';
 import { crearProveedorFalso } from './proveedor-falso.js';
 import { TIPOS } from '../src/tareas/tipos.js';
 import { MANEJADORES } from '../src/tareas/manejadores.js';
@@ -264,7 +264,11 @@ test('ronda 3 (3): una cuenta con tope de plan usa como mucho su parte de la hor
   const b = preparar({ planes: { prueba: 1_000_000 } });
   try {
     const cuentas = [b.espacioOtro];
-    for (const nombre of ['pedro', 'ana']) cuentas.push(espacioPropio(b.db, crearUsuario(b.db, { nombre, claveHash: 'x', creadoPor: b.admin })).id);
+    for (const nombre of ['pedro', 'ana']) {
+      const id = crearUsuario(b.db, { nombre, claveHash: 'x', creadoPor: b.admin });
+      permitirIa(b.db, id, b.admin);
+      cuentas.push(espacioPropio(b.db, id).id);
+    }
     for (const c of cuentas) assert.equal(b.db.prepare('SELECT plan FROM espacios WHERE id = ?').get(c).plan, 'prueba');
     let ahora = T0;
     const apartar = espacioId => { ahora += 1000; return reservar(b.db, { config: b.config, proposito: 'interpretar', espacioId, entradaMax: 4000, ahora }); };

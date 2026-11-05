@@ -91,7 +91,7 @@ const MIGRACIONES_PUBLICADAS = {
   2: 'faedbc4c80a34ab4085bdea7aa2330cb28148e69e14d7f1564c5ce3621bd0a53',
   3: '7af1fad890803931148e2be3e0e3d90481229546ae8f94bb4cd9d022af9310d1',
   4: '46758487c7db33997048188be268fea4420332e1b08bcc431d82114607529860',
-  5: '35064c417418d3c4fe614166b0354746cd36019ce51b528d5dac45d3108c768e',
+  5: '3c0ca4c956e2b5f453e160785c33587ba23e3b8c22302ba5ea53e42c198df720',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
