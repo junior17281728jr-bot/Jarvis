@@ -11,7 +11,9 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
   avisa que está listo. Si una versión nueva trae un trabajador que no arranca, sigue en 503 y el actualizador vuelve solo a la
   versión anterior. Se vuelve atrás el CÓDIGO, nunca los datos.
 - `/api/setup` muestra la versión de `package.json`: así se sabe qué versión quedó instalada.
-- Las claves de API están en `/var/lib/jarvis/secrets.env` (nunca en GitHub: este repositorio es público).
+- JARVIS dejó sus claves de API en `/var/lib/jarvis/secrets.env` (nunca en GitHub: este repositorio es público). OPORTIA
+  **nunca** abre ese archivo ni lee claves de variables de entorno: sus claves se pegan una vez en Administrador → Claves y
+  se guardan cifradas (ver «IA opcional y claves»).
 
 ## Reglas que no se rompen
 - **Nunca revertir `main` a una versión anterior a la 0.0.2.** Las versiones anteriores borraban `/var/lib/jarvis` al arrancar.
@@ -28,6 +30,12 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 
 ## Datos en el servidor
 - OPORTIA usa solo su archivo `/var/lib/jarvis/oportia.db` y su carpeta `/var/lib/jarvis/oportia-copias/`.
+- Desde la parte 1d, también `/var/lib/jarvis/oportia-llave-secretos`: la llave que cifra las claves (permisos 600, dueño
+  `jarvis`). Se crea sola al guardar la primera clave y **nunca** se cambia, se sobrescribe ni se borra. Puede haber nombres
+  `oportia-llave-secretos.nueva-…` (un intento de crearla que quedó a medias) y `oportia-llave-secretos.danada-…` (una llave
+  dañada apartada con la consola): también se guardan. **Nunca copies fuera del servidor ningún archivo cuyo nombre
+  empiece con `oportia-llave`** (ni en copias de seguridad, ni por Telegram, ni a GitHub): con esa llave y una copia de la
+  base se podrían leer las claves. Una base copiada a otro servidor necesita que se peguen las claves otra vez.
 - Nunca abre, cambia ni borra `jarvis.db`, `secrets.env`, `version.txt`, `update.log` ni ningún otro archivo.
 - Antes de cada cambio de la base se guarda una copia completa en `oportia-copias/`.
 
@@ -83,6 +91,100 @@ En la Consola de DigitalOcean:
 
 El primero pone en pausa el trabajo automático; el segundo lo vuelve a encender. El servicio que está corriendo lo aplica
 en menos de 30 segundos, sin reiniciar. Queda en la auditoría como «consola».
+
+## IA opcional y claves (fase 1, parte d)
+OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una **ayuda opcional que cuesta dinero**:
+- **Llega apagada** y con tope US$0 al mes. No gasta ni un centavo hasta que el dueño la enciende y pone un tope. Cada
+  versión de un proyecto guarda `ia {permitida: false, topeMensualUsd: 0}`; permitirla en un proyecto (fase 2) será una
+  versión nueva que hay que aprobar.
+- **Se paga aparte.** La API de Claude se paga en la Consola de Claude (console.anthropic.com → Billing), con saldo que se
+  compra por adelantado. **No** es la suscripción ni el saldo del chat de Claude. La de ChatGPT, en platform.openai.com.
+- OPORTIA **aparta el dinero antes de cada uso** (así nunca se pasa del tope, aunque haya varios a la vez), anota cada uso
+  con lo que costó (`ia_llamadas`) y avisa en Administrador al 50 %, 80 % y 100 % de cada tope (los avisos por Telegram
+  llegan en la parte e: `avisos.enviado_en` ya está listo).
+- Si el proveedor dice que no hay saldo, que la clave no sirve o que esperemos, OPORTIA **sigue con su motor propio**, nunca
+  bloquea a la persona, **no reintenta solo** (esa clave queda en pausa y el próximo uso ni siquiera llama) y abre un aviso
+  para el administrador enseguida. «Probar y reanudar» (gratis) en Claves la vuelve a usar.
+- El mes de la IA es el mismo con el que cobra el proveedor: empieza el día 1 a medianoche en hora universal (en RD, a las
+  8:00 p. m. del último día del mes anterior). Las pantallas lo dicen así.
+
+### Cómo encenderla sin sorpresas (unos 5 minutos)
+1. En console.anthropic.com → Billing → «Buy credits», compra saldo (es prepago: vence al año y no se devuelve). Deja
+   **apagada** la recarga automática (auto-reload).
+2. Settings → Workspaces → crea un espacio «oportia» y ponle un **límite de gasto un poco más alto** que el tope que pondrás
+   en OPORTIA (el tope + 20 %, al menos US$1 más; por ejemplo US$3 para un tope de US$2). Es un segundo candado; si fuera
+   igual, el proveedor podría frenar a OPORTIA antes de tiempo. (El espacio «Default» no admite límite.)
+3. API keys → Create key, dentro del espacio «oportia». Tiene que ser una clave normal de la API (empieza con `sk-ant-api`):
+   OPORTIA rechaza, sin guardarlas, las claves de administrador de la cuenta y las de la suscripción de Claude.
+4. Desde tu iPhone o Mac **con tu cuenta de Tailscale**, por el enlace https: Administrador → Claves → pegar → «Guardar y
+   probar (gratis)». Luego Administrador → Inteligencia artificial → tope (por ejemplo US$2) → «Encender la IA» → confirmar.
+   Si quieres la ayuda en los proyectos, enciende también «Ayuda en proyectos» (está apagada hasta que digas que sí).
+
+### Qué hace por ahora y cuánto cuesta (US$)
+- Una sola cosa, y solo con «Ayuda en proyectos» encendida: en un proyecto que espera aprobación, «Pedir ayuda a la IA».
+  La pantalla muestra el precio máximo y pide confirmar; la IA llena el formulario, el motor propio lo vuelve a leer y sale
+  una versión nueva que una persona revisa y aprueba. La IA nunca aprueba, nunca quita las dudas del motor (solo deja una
+  pista al lado), nunca cambia la autonomía, la frecuencia, las capacidades ni el permiso de IA, y «Volver a la versión sin
+  IA» siempre está.
+- Modelo: Claude Haiku 5.5 (US$0.10 por millón de tokens que lee y US$0.50 por millón que escribe; ×1.1 si la cuenta usa
+  solo servidores de EE. UU.). Un uso cuesta unos US$0.0005; el máximo que se muestra suele ser US$0.002 y el código nunca
+  aparta más de US$0.005. Con un tope de US$2 caben unos 4,000 usos. Probar una clave es gratis (`count_tokens`).
+- Instalar la 1d no cuesta nada: mismo servidor, mismos procesos. El trabajador usa unos 77 MB de sus 120 MB después de una
+  llamada.
+- ChatGPT (OpenAI): su clave se puede guardar y probar gratis, pero OPORTIA **no gasta** con ChatGPT mientras su precio en
+  `src/ia/precios.json` diga `confirmado: false` (hoy es así: la página oficial no se pudo leer desde aquí) y el dueño no
+  lo active en la pantalla.
+
+### Cómo se guardan las claves
+- Cifradas con AES-256-GCM en la base (`secretos`); la llave está en el archivo `oportia-llave-secretos` (ver «Datos en el
+  servidor»). De una clave solo se ven sus últimos 4 caracteres; nunca sale en registros, errores, avisos, tareas,
+  respuestas de la API ni copias.
+- Solo se ven y se cambian desde la cuenta de Tailscale del dueño, por el enlace https (por el enlace público de Funnel solo
+  se ve el gasto y se puede **apagar** la IA). Cambiar una clave deja la anterior guardada como «reemplazada»; desactivar
+  la deja «desactivada»: nunca se borran. Si alguien vio una clave, cámbiala aquí **y anúlala en la página del proveedor**.
+- Lo que queda: quien sea root (o el usuario `jarvis`) en el servidor puede leer la llave y la base, y la memoria de
+  intercambio (swap) podría guardar un trozo de memoria. El trabajador corre sin archivos de volcado (`prlimit --core=0`).
+  Si un día dudas, anula la clave en el proveedor y pega una nueva.
+
+### Desde la consola (cuando las pantallas no abren)
+
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --ia=no
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=apartar-llave-danada
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar
+
+`--ia=no` apaga la IA (no hay `--ia=si`: encenderla necesita la pantalla y su aviso). `--claves=revisar` explica en palabras
+simples cómo está el archivo de la llave y no cambia nada. `--claves=apartar-llave-danada` solo hace algo si ese archivo
+está dañado: le cambia el nombre (no lo borra) para que la próxima clave pegada cree una llave nueva. `--tailscale=reanotar`
+olvida la cuenta de Tailscale guardada del administrador (si cambiaste de cuenta); la próxima entrada anota la nueva.
+
+### Precios
+`src/ia/precios.json` es solo datos: precio por millón de tokens, de dónde salió (`fuente`), cuándo se revisó
+(`revisadoEl`) y si está `confirmado`. Para actualizarlo: revisar la página oficial de precios, cambiar solo ese archivo
+(con su fecha y su fuente) y publicar como siempre. Un archivo mal escrito deja la tabla vacía: nada se puede gastar. Cada
+uso guarda el precio con que se cobró.
+
+### Cómo usarán la IA las fases 2 a 7
+Siempre como tareas del trabajador, con `ctx.ia.pedir(...)`, que nunca lanza error por un problema del proveedor, del tope
+o de la red: devuelve `{ usada: false, motivo }` y el trabajo sigue con el motor propio.
+
+```js
+async paso(ctx) {
+  const base = conMotorPropio(datos);                                        // 1. el motor propio SIEMPRE primero
+  const r = await ctx.ia.pedir({ proposito: 'investigar_empresa', paso: `empresa:${id}`, espacioId, proyectoId,
+    versionNumero, sistema, texto, esquema });                               // 2. la IA es una ayuda opcional
+  const final = r.usada && esValido(r.json) ? mezclar(base, r.json) : base; // 3. la IA solo puede mejorar
+  await ctx.escribir(() => guardarResultado(ctx.db, { …, conIa: r.usada, llamadaId: r.llamadaId ?? null }));
+  return { listo: true, resultado: { conIa: r.usada, motivo: r.motivo ?? null } };
+}
+```
+Reglas: (1) cada uso se registra en `src/ia/propositos.js` (fase, cuánto puede costar una vez, tiempo máximo, interruptor
+del dueño si hace falta); (2) todo lo que devuelve la IA se revisa contra catálogos y esquemas; la IA nunca pone
+capacidades, autonomía, frecuencia ni aprobación, y nunca quita las dudas del motor; lo que escribió la IA y se guarda es
+**dato**: si se manda otra vez a un modelo va dentro del mismo bloque de datos escapado que el texto de la persona;
+(3) todo lo que MANDA algo a otra persona (fases 4 y 7) es una tarea aparte con `repetible: false`: la IA solo hace el
+borrador; (4) la fase 2 trae el editor del permiso de IA de cada proyecto (cambiarlo es una versión nueva que se aprueba)
+y el costo estimado; (5) la fase 6 trae claves propias por cuenta (`secretos.espacio_id`) y topes por cuenta editables.
 
 ## Estado
 - Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.
@@ -164,5 +266,26 @@ en menos de 30 segundos, sin reiniciar. Queda en la auditoría como «consola».
   - Menú de abajo con íconos en el iPhone (arriba en la Mac), logo nuevo (`icono.svg` e `icono-180.png`), colores para
     claro y oscuro, cuadros de texto grandes que crecen, y todo lo que se toca mide al menos 44 puntos.
 - Pase visual 2 (versión 0.3.2, sin cambio de base): los proyectos con dibujos propios (`public/dibujos.js`: un ícono por negocio, mapa de casillas de las 32 provincias que también se toca en el creador, pista de pasos con la fase de cada uno) y poco texto; lo largo queda en «Ver en palabras». La lista de proyectos trae un `vistazo` corto (negocios y lugares).
+- Fase 1, parte d (versión 0.4.0, cambio de base 5): IA opcional con topes de gasto (ver «IA opcional y claves»).
+  - Llega apagada y con tope US$0; el motor propio sigue haciendo todo. Base: tablas `secretos` (claves cifradas),
+    `ia_llamadas` (cada uso pagado, con su precio) e `ia_bloqueos` (cuántas veces NO se usó y por qué), sin borrar nada.
+  - Topes por mes de cobro: general, por cuenta según su plan (US$0 por defecto: solo la cuenta del administrador usa la IA,
+    con el tope general), por proyecto (desde la versión aprobada, para la fase 2) y por uso; además un máximo de usos por
+    hora. Se aparta el peor caso antes de cada uso y se ajusta con lo que informa el proveedor.
+  - Proveedores: Claude (Anthropic) y ChatGPT (OpenAI, sin gastar hasta confirmar su precio), con la URL oficial fija; las
+    pruebas usan un proveedor falso en 127.0.0.1 (nunca una API de verdad ni una clave de verdad).
+  - Pantallas (con colores, íconos, números grandes y la barra de lo gastado contra el tope): Administrador → «Servicios»
+    (Inteligencia artificial y Claves), Administrador → Inteligencia artificial (encender y apagar, tope del mes, topes de las
+    otras cuentas, «Ayuda en proyectos», proveedores, detalle del gasto y «Se paga aparte»), Administrador → Claves (pegar,
+    probar gratis, desactivar, activar una anterior, «Probar y reanudar»), «Pedir ayuda a la IA» en la versión que espera
+    aprobación (solo aparece cuando se puede usar), la marca «Hecha con ayuda de IA» con lo que cambió y una línea en Inicio
+    con lo gastado.
+  - API: `GET /api/admin/ia`, `POST /api/admin/ia/apagar`, `POST /api/admin/ia/ajustes`, `GET /api/admin/ia/consumo`,
+    `GET|POST /api/admin/claves`, `POST /api/admin/claves/:id/probar`, `POST /api/admin/claves/:id/activa`,
+    `GET /api/proyectos/:id/ayuda-ia` y `POST /api/proyectos/:id/versiones/:numero/ayuda-ia`.
+  - Arreglo de paso: abrir OPORTIA directo en Inicio con un proyecto pendiente ya no muestra «No se pudo cargar OPORTIA»
+    (Inicio ahora carga los nombres de negocios y lugares antes de dibujar esa lista).
+  - Preguntas para el dueño (cada una tiene su respuesta segura si no contesta): «Ayuda en proyectos» (apagada), leer
+    `secrets.env` de JARVIS (no), modelo (Haiku 5.5), IA para las otras cuentas (US$0) y ChatGPT como segundo (no).
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

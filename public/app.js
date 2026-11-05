@@ -4,7 +4,10 @@ import {
   PRODUCTOS_CON_OTRAS_PALABRAS, PUESTOS_SUGERIDOS, SALARIOS_SUGERIDOS, MAXIMO_ELEGIDOS, MAXIMO_PRODUCTO, componer, normalizarEleccion,
   faltaEnEleccion, eleccionDesde,
 } from './creador.js';
-import { ICONOS_SECTOR, ICONOS_PROYECTO, MAPA_COLUMNAS, MAPA_FILAS, MAPA_PROVINCIAS, PROVINCIAS_DE_REGION, EDIFICIOS_POR_TAMANO } from './dibujos.js';
+import { ICONOS_SECTOR, ICONOS_PROYECTO, ICONOS_SERVICIOS, MAPA_COLUMNAS, MAPA_FILAS, MAPA_PROVINCIAS, PROVINCIAS_DE_REGION, EDIFICIOS_POR_TAMANO } from './dibujos.js';
+import {
+  ATRIBUTOS_CAMPO_CLAVE, MARCAS_GASTO, CAMBIOS_RESALTADOS, partesBarraGasto, controlesProveedores, estadoDeClave, vistaAyudaIa, nombreModelo, leerDolares,
+} from './ia-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -424,7 +427,8 @@ function marco(seccion, ...contenido) {
 
 // Solo para el administrador, arriba de Inicio: cómo está el sistema de un vistazo y, si el trabajo automático
 // está en pausa (modo seguro) o hay un aviso grave sin ver, una tarjeta roja que lleva a Administrador.
-function estadoEnInicio(s) {
+// ia: GET /api/admin/ia. Con la IA encendida, una línea con lo gastado este mes y su barra (lleva a la pantalla de la IA).
+function estadoEnInicio(s, ia = null) {
   if (!s) return null;
   const graves = (s.avisos?.abiertos ?? []).filter(a => a.nivel === 'grave' && !a.vistoEn).length;
   const alerta = s.modoSeguro?.activo ? t('inicio.alerta.modo_seguro') : graves ? t('inicio.alerta.grave', { n: graves }) : null;
@@ -434,6 +438,9 @@ function estadoEnInicio(s) {
     el('div', { class: 'etiquetas' },
       insignia(tonoTrabajo(s), t('inicio.estado.trabajo', { estado: nombreFase(s) })),
       insignia(tonoServidor, t('inicio.estado.servidor', { estado: t(`sistema.semaforo.${s.salud?.semaforo ?? 'amarillo'}`) }))),
+    ia?.encendida ? el('a', { class: 'linea-ia', href: '#ia' },
+      el('span', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('inicio.ia_encendida', { usado: usd(ia.usadoMicro), tope: usd(ia.topeGeneralMicro) }) })),
+      barraGasto({ usadoMicro: ia.usadoMicro, apartadoMicro: ia.apartadoMicro, topeMicro: ia.topeGeneralMicro }, { conMarcas: false })) : null,
     // Esta tarjeta no se actualiza sola: dice de cuándo son los datos.
     el('p', { class: 'ayuda', texto: t('inicio.estado.actualizado', { hora: cuando(new Date().toISOString()) }) }),
     el('a', { class: 'boton-enlace', href: '#admin', texto: t('inicio.alerta.ver') }));
@@ -442,7 +449,10 @@ function estadoEnInicio(s) {
 async function pantallaInicio() {
   const vigente = nuevoTurno();
   const esAdmin = estado.usuario.rol === 'admin';
-  const [r, sistema] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null]);
+  // El catálogo (nombres de negocios y lugares) hace falta para las filas de «Espera tu aprobación»: sin él, abrir
+  // OPORTIA directo en Inicio con un proyecto pendiente fallaba («No se pudo cargar OPORTIA»).
+  const [r, sistema, ia] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null, esAdmin ? api('GET', '/api/admin/ia') : null,
+    cargarCatalogo().catch(() => null)]);
   if (!vigente()) return;
   const lista = (claves, nombreIcono, tono) => el('ul', { class: 'lista-iconos' }, claves.map(clave => el('li', { class: `tono-${tono}` }, icono(nombreIcono, 'icono chico tono-color'), el('span', { texto: t(clave) }))));
   const pendientes = r.ok ? r.datos.proyectos.filter(p => !p.enPapelera && p.versionPendiente) : [];
@@ -459,7 +469,7 @@ async function pantallaInicio() {
       ]
         : el('p', { class: 'suave', texto: t('inicio.aprobar.vacio') }));
   mostrar(marco('inicio',
-    sistema?.ok ? estadoEnInicio(sistema.datos) : null,
+    sistema?.ok ? estadoEnInicio(sistema.datos, ia?.ok ? ia.datos : null) : null,
     el('section', { class: 'tarjeta portada' },
       el('h1', { texto: t('inicio.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
       el('p', { texto: t('inicio.texto') }),
@@ -468,9 +478,9 @@ async function pantallaInicio() {
         r.ok ? el('a', { class: 'boton-enlace borde con-icono', href: '#proyectos' }, icono('carpeta'), el('span', { texto: t('inicio.ir_proyectos', { usados: r.datos.usados, limite: r.datos.limite }) })) : null)),
     aprobar,
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.funciona') }),
-      lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.2', 'inicio.funciona.3'], 'bien', 'bien')),
+      lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.6', 'inicio.funciona.2', 'inicio.funciona.3'], 'bien', 'bien')),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.viene') }),
-      lista(['inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado'))));
+      lista(['inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado'))));
 }
 
 // Botones de los que se elige uno (idioma, tema): el elegido se ve lleno y lo dice a VoiceOver (aria-pressed).
@@ -648,8 +658,8 @@ function svgEl(etiqueta, atributos = {}) {
   for (const [clave, valor] of Object.entries(atributos)) if (valor != null) nodo.setAttribute(clave, String(valor));
   return nodo;
 }
-// Los íconos: los de siempre, los de los proyectos (public/dibujos.js) y uno por negocio («s-hoteles»…).
-const formaDeIcono = nombre => ICONOS[nombre] ?? ICONOS_PROYECTO[nombre] ?? (nombre.startsWith('s-') ? ICONOS_SECTOR[nombre.slice(2)] : null) ?? ICONOS.bien;
+// Los íconos: los de siempre, los de los proyectos y de los servicios (public/dibujos.js) y uno por negocio («s-hoteles»…).
+const formaDeIcono = nombre => ICONOS[nombre] ?? ICONOS_PROYECTO[nombre] ?? ICONOS_SERVICIOS[nombre] ?? (nombre.startsWith('s-') ? ICONOS_SECTOR[nombre.slice(2)] : null) ?? ICONOS.bien;
 function icono(nombre, clase = 'icono') {
   const svg = svgEl('svg', { viewBox: '0 0 24 24', class: clase, 'aria-hidden': 'true', focusable: 'false', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
   for (const [etiqueta, propias] of formaDeIcono(nombre)) svg.append(svgEl(etiqueta, propias));
@@ -726,6 +736,20 @@ function textoAviso(a) {
   if (String(a.clave).startsWith('freno:')) {
     return t('aviso.freno', { tipo: nombreTipo(String(a.clave).slice(6)), hora: d.hasta ? cuando(d.hasta) : '?' });
   }
+  // Fase 1, parte d: los avisos de la IA (topes al 50, 80 y 100 %, un proveedor con problemas, un uso que costó más).
+  if (String(a.clave).startsWith('ia_tope:')) {
+    const ambito = textoAmbito(d.ambito ?? String(a.clave).split(':')[1]);
+    const mes = d.mes ? nombreMes(d.mes, true) : '?';
+    if (Number(d.umbral) >= 100) return t('aviso.ia_tope.lleno', { ambito, mes, fecha: d.vuelveEl ? fechaHora(d.vuelveEl) : '?' });
+    return t('aviso.ia_tope', { pct: v(d.pct), ambito, mes, usado: usd(d.usadoMicro), tope: usd(d.topeMicro) });
+  }
+  if (String(a.clave).startsWith('ia_proveedor:')) {
+    const proveedor = nombreProveedor(d.proveedor ?? String(a.clave).slice('ia_proveedor:'.length));
+    return t(d.pausa === 'admin' ? 'aviso.ia_proveedor.admin' : 'aviso.ia_proveedor', { proveedor, motivo: d.motivo ? textoMotivoIa(d.motivo) : '?' });
+  }
+  if (a.clave === 'ia_costo_mayor') {
+    return t('aviso.ia_costo_mayor', { real: usd(d.realMicro), reservado: usd(d.reservadoMicro), proveedor: nombreProveedor(d.proveedor) });
+  }
   const mb = d.disponibleMb ?? d.libreMb ?? d.archivoMb ?? d.walMb;
   const n = v(d.reinicios24h ?? d.fallidas24h ?? d.revisar);
   const singular = n === 1 && (catalogos[idioma]?.[`aviso.${a.clave}.uno`] != null || catalogos.es?.[`aviso.${a.clave}.uno`] != null);
@@ -738,16 +762,21 @@ function insignia(tono, texto) {
   return el('span', { class: `insignia tono-${tono}` }, icono(tono, 'icono chico'), el('span', { texto }));
 }
 
-// Una tarjeta del resumen de arriba. Al tocarla, baja a su parte.
-function tarjetaResumen({ nombreIcono, titulo, valor, detalle, tono, destino, iconoTono = tono }) {
+// Una tarjeta del resumen de arriba. Al tocarla, baja a su parte (o, si destino es una dirección como '#ia', va a
+// esa pantalla). extra: algo más que se dibuja abajo (por ejemplo, la barra del gasto de la IA).
+function tarjetaResumen({ nombreIcono, titulo, valor, detalle, tono, destino, iconoTono = tono, extra = null }) {
   return el('button', {
     type: 'button',
     class: `resumen-tarjeta tono-${tono}`,
-    onclick: () => destino?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    onclick: () => {
+      if (typeof destino === 'string') location.hash = destino;
+      else destino?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
   },
   el('span', { class: 'resumen-cabeza' }, icono(nombreIcono), el('span', { class: 'resumen-titulo', texto: titulo }), el('span', { class: 'tono-color' }, icono(iconoTono))),
   el('span', { class: 'resumen-valor', texto: valor }),
-  detalle ? el('span', { class: 'resumen-detalle', texto: detalle }) : null);
+  detalle ? el('span', { class: 'resumen-detalle', texto: detalle }) : null,
+  extra);
 }
 
 function numeroGrande(valor, etiqueta, tono = 'neutro') {
@@ -1085,11 +1114,14 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
   if (!mantenerClave) claveTemporalVisible = null;
   const vigente = nuevoTurno();
   const sistema = crearZonaSistema(vigente);
-  const [r, datosSistema] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema')]);
+  const [r, datosSistema, ia] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia')]);
+  // Las claves solo se piden desde la cuenta de Tailscale del dueño (por el enlace público ni se preguntan).
+  const claves = ia.ok && ia.datos.esDueno ? await api('GET', '/api/admin/claves') : null;
   if (!vigente()) return;
   sistema.empezar(datosSistema);
+  const servicios = tarjetaServicios(ia, claves);
   if (!r.ok) {
-    mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') })), sistema.zona,
+    mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('h1', { texto: t('admin.titulo') })), sistema.zona, servicios,
       el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
     return;
   }
@@ -1213,8 +1245,643 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
     avisoArriba ? el('section', { class: 'tarjeta' }, avisoArriba) : null,
     seccionClaveTemporal(),
     sistema.zona,
+    servicios,
     tarjetaUsuarios,
     tarjetaNuevo));
+}
+
+// ---------- IA opcional y Claves (fase 1, parte d) ----------
+// La IA es una ayuda que cuesta dinero: llega APAGADA y con tope US$0, y OPORTIA funciona completo sin ella. Estas
+// pantallas la muestran de un vistazo (tarjetas de color, números grandes, la barra de lo gastado contra el tope) y dejan
+// los detalles dentro de «Ver…». Por el enlace público solo se ve el gasto y se puede APAGAR. Las claves y todo lo que
+// gasta solo se cambian desde la cuenta de Tailscale del dueño, y de una clave solo se ven sus últimos 4 caracteres.
+// Las decisiones (qué botón aparece, qué se ve en cada caso) están en public/ia-vista.js, que también se prueba solo.
+const formatoLocal = () => (idioma === 'en' ? 'en-US' : 'es-DO');
+
+// Dinero de la IA: llega en millonésimas de dólar. «US$0.12» desde un centavo; debajo, hasta 4 decimales («US$0.0022»).
+function usd(micro) {
+  const n = Number(micro) / 1_000_000;
+  if (micro == null || !Number.isFinite(n)) return '—';
+  if (n > 0 && n < 0.0001) return '<US$0.0001';
+  return `US$${new Intl.NumberFormat(formatoLocal(), { minimumFractionDigits: 2, maximumFractionDigits: n > 0 && n < 0.01 ? 4 : 2 }).format(n)}`;
+}
+// «2.00»: el tope como se escribe en su cuadro.
+const dolaresParaEscribir = micro => (Number(micro || 0) / 1_000_000).toFixed(2);
+// El día y la hora en RD: «30 de noviembre a las 8:00 p. m.» (el mes de la IA empieza a esa hora en RD).
+function fechaHora(iso) {
+  if (!iso || !Number.isFinite(Date.parse(iso))) return '';
+  return new Intl.DateTimeFormat(formatoLocal(), { day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'America/Santo_Domingo' }).format(new Date(iso));
+}
+// Un mes de cobro 'AAAA-MM' en palabras: «noviembre» (o «noviembre de 2026»).
+function nombreMes(mes, conAnio = false) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(mes ?? ''));
+  if (!m) return String(mes ?? '');
+  return new Intl.DateTimeFormat(formatoLocal(), { month: 'long', ...(conAnio ? { year: 'numeric' } : {}), timeZone: 'UTC' }).format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 15)));
+}
+// Un día 'AAAA-MM-DD' (cuándo se revisó un precio).
+function fechaDia(texto) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(texto ?? ''));
+  if (!m) return String(texto ?? '');
+  return new Intl.DateTimeFormat(formatoLocal(), { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
+}
+const nombreProveedor = id => tSi(`ia.proveedor.${id}`, id ?? '?');
+const textoMotivoIa = motivo => (motivo ? tSi(`ia.motivo.${motivo}`, motivo) : '');
+function textoAmbito(ambito) {
+  const m = /^([ep])(\d+)$/.exec(String(ambito ?? ''));
+  if (!m) return t('ia.ambito.general');
+  return m[1] === 'e' ? t('ia.ambito.e', { id: m[2] }) : t('ia.ambito.p', { id: m[2] });
+}
+function textoFalta(f) {
+  if (f === 'clave') return t('ia.falta.clave');
+  if (f === 'tope') return t('ia.falta.tope');
+  if (f === 'precio') return t('ia.falta.precio');
+  if (f === 'encendida') return t('ia.falta.encendida');
+  return String(f);
+}
+
+// La barra de lo gastado contra el tope: lo real (verde, amarillo desde el 80 %, rojo al llegar), lo apartado para
+// usos en curso (rayado) y dos rayitas en el 50 y el 80 %, donde salen los avisos.
+function barraGasto(datos, { conMarcas = true } = {}) {
+  const p = partesBarraGasto(datos);
+  const real = el('span', { class: `barra-gasto-real tono-${p.tono}` });
+  real.style.width = `${p.realPct}%`;
+  const apartado = el('span', { class: 'barra-gasto-apartado' });
+  apartado.style.left = `${p.realPct}%`;
+  apartado.style.width = `${p.apartadoPct}%`;
+  apartado.hidden = !p.apartadoPct;
+  const rayitas = conMarcas ? MARCAS_GASTO.map(m => { const x = el('span', { class: 'barra-gasto-marca' }); x.style.left = `${m}%`; return x; }) : [];
+  const barra = el('span', { class: 'barra-gasto', 'aria-hidden': 'true' }, real, apartado, rayitas);
+  if (!conMarcas) return barra;
+  return el('span', { class: 'barra-gasto-caja', 'aria-hidden': 'true' }, barra,
+    el('span', { class: 'barra-gasto-textos' }, MARCAS_GASTO.map(m => { const x = el('span', { texto: t('ia.gasto.marca', { pct: m }) }); x.style.left = `${m}%`; return x; })));
+}
+
+// Un interruptor (como los del iPhone): VoiceOver lo lee como «interruptor, activado».
+function interruptor(texto, encendido, alTocar) {
+  const boton = el('button', { type: 'button', role: 'switch', class: 'interruptor', 'aria-checked': encendido ? 'true' : 'false', onclick: () => alTocar(boton) },
+    el('span', { class: 'interruptor-texto', texto }),
+    el('span', { class: 'interruptor-riel', 'aria-hidden': 'true' }, el('span', { class: 'interruptor-bola' })));
+  return boton;
+}
+
+// Un número grande que es un texto ya armado (por ejemplo, dinero).
+function cifraGrande(texto, etiqueta, tono = 'neutro') {
+  return el('div', { class: `numero tono-${tono}` },
+    el('span', { class: 'numero-valor numero-texto', texto }),
+    el('span', { class: 'numero-etiqueta', texto: etiqueta }));
+}
+
+const volverAAdmin = () => el('p', { class: 'volver-linea' }, el('a', { href: '#admin', class: 'volver', texto: t('admin.volver') }));
+
+// ---- Administrador → «Servicios»: dos tarjetas que llevan a la IA y a las Claves ----
+function azulejoIa(r) {
+  const base = { nombreIcono: 'chispa', titulo: t('servicios.ia'), destino: '#ia' };
+  if (!r?.ok) return tarjetaResumen({ ...base, valor: '—', detalle: textoError(r?.datos?.error), tono: 'apagado' });
+  const s = r.datos;
+  if (!s.encendida) return tarjetaResumen({ ...base, valor: t('servicios.ia.apagada'), detalle: t('servicios.ia.apagada.detalle'), tono: 'apagado' });
+  const partes = partesBarraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro });
+  const tono = s.estado === 'tope_lleno' ? 'mal' : s.estado === 'sin_uso' ? 'atencion' : partes.tono;
+  const detalle = s.estado === 'sin_uso' ? textoMotivoIa(s.motivo) : s.estado === 'tope_lleno' ? t('ia.estado.tope_lleno.corto') : t('servicios.ia.mes', { mes: nombreMes(s.mes) });
+  return tarjetaResumen({
+    ...base, tono, detalle,
+    valor: t('servicios.ia.uso', { usado: usd(s.usadoMicro), tope: usd(s.topeGeneralMicro) }),
+    extra: barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro }, { conMarcas: false }),
+  });
+}
+function azulejoClaves(ia, claves) {
+  const base = { nombreIcono: 'llave', titulo: t('servicios.claves'), destino: '#claves' };
+  if (!ia?.ok || !ia.datos.esDueno || !claves?.ok) return tarjetaResumen({ ...base, valor: t('servicios.claves.tailnet'), tono: 'apagado', iconoTono: 'candado' });
+  const activas = (claves.datos.grupos ?? []).flatMap(g => g.usos ?? []).filter(u => u.activa);
+  const tonos = activas.map(u => estadoDeClave(u.activa).tono);
+  const tono = !activas.length ? 'apagado' : tonos.includes('mal') ? 'mal' : tonos.includes('atencion') ? 'atencion' : 'bien';
+  return tarjetaResumen({
+    ...base, tono,
+    valor: activas.length ? tn('servicios.claves.n', { n: activas.length }) : t('servicios.claves.ninguna'),
+    detalle: activas.length ? activas.map(u => t('servicios.claves.una', { nombre: tSi(`claves.corto.${u.uso}`, u.uso), final: u.activa.final })).join(' · ') : t('claves.agregar'),
+  });
+}
+function tarjetaServicios(ia, claves) {
+  return el('section', { class: 'tarjeta servicios' },
+    el('h2', { texto: t('servicios.titulo') }),
+    el('div', { class: 'resumen-rejilla rejilla-2' }, azulejoIa(ia), azulejoClaves(ia, claves)));
+}
+
+// ---- #ia: Administrador → Inteligencia artificial ----
+async function pantallaIa(aviso = null) {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/admin/ia');
+  if (!vigente()) return;
+  if (!r.ok) {
+    mostrar(marco('admin', el('section', { class: 'tarjeta' }, volverAAdmin(), el('h1', { texto: t('ia.titulo') }), el('p', { class: 'mensaje error', 'data-foco': true, texto: textoError(r.datos.error) }))));
+    return;
+  }
+  dibujarIa(r.datos, aviso, vigente);
+}
+
+function dibujarIa(s, aviso, vigente) {
+  const dueno = s.esDueno === true;
+  const proveedores = Array.isArray(s.proveedores) ? s.proveedores : [];
+  const elegido = proveedores.find(p => p.usable) ?? proveedores.find(p => p.usar) ?? null;
+  const modelo = elegido?.precio?.nombre || nombreModelo(s.modelo);
+  const proveedor = nombreProveedor(elegido?.id ?? 'anthropic');
+  const tope = usd(s.topeGeneralMicro);
+
+  // Un cambio: el botón se apaga mientras espera; al terminar se dibuja todo con lo que respondió el servidor.
+  async function cambiar(boton, cajaMensaje, ruta, datos, listo) {
+    boton.disabled = true;
+    cajaMensaje.hidden = true;
+    const x = await api('POST', ruta, datos);
+    if (!vigente()) return;
+    if (!x.ok) {
+      boton.disabled = false;
+      const faltan = Array.isArray(x.datos.faltan) ? x.datos.faltan : [];
+      decir(cajaMensaje, faltan.length ? `${textoError(x.datos.error)} ${unir(faltan.map(textoFalta))}.` : textoError(x.datos.error), 'error');
+      return;
+    }
+    dibujarIa(x.datos, typeof listo === 'function' ? listo(x.datos) : listo, vigente);
+  }
+
+  // ---- 1. El estado: apagada, encendida, encendida pero sin uso, o tope lleno ----
+  const mensajeEstado = caja();
+  const tono = { encendida: 'bien', sin_uso: 'atencion', tope_lleno: 'mal' }[s.estado] ?? 'apagado';
+  const nombreEstado = s.estado === 'tope_lleno' ? t('ia.estado.tope_lleno.corto') : s.estado === 'sin_uso' ? t('ia.estado.sin_uso.corto')
+    : s.encendida ? t('ia.estado.encendida') : t('ia.estado.apagada');
+  const textoEstado = s.estado === 'tope_lleno' ? t('ia.estado.tope_lleno', { fecha: fechaHora(s.vuelveEl) })
+    : s.estado === 'sin_uso' ? t('ia.estado.sin_uso', { motivo: textoMotivoIa(s.motivo) })
+      : s.encendida ? t('ia.estado.encendida.texto', { modelo, tope }) : t('ia.estado.apagada.texto');
+  const faltan = Array.isArray(s.faltan) ? s.faltan : [];
+  const listaParaEncender = dueno && !s.encendida ? [
+    el('p', { class: 'fuerte', texto: t('ia.para_encender') }),
+    el('ul', { class: 'lista-falta' }, ['clave', 'tope', 'precio'].map(f => {
+      const listo = !faltan.includes(f);
+      return el('li', { class: `tono-${listo ? 'bien' : 'atencion'}` }, icono(listo ? 'bien' : 'mal', 'icono'),
+        el('span', { texto: textoFalta(f) }), el('span', { class: 'solo-lectores', texto: listo ? t('ia.falta.listo') : t('ia.falta.pendiente') }));
+    })),
+    faltan.includes('clave') ? el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, icono('llave'), el('span', { texto: t('ia.ir_claves') })) : null,
+  ] : null;
+  const encender = dueno && !s.encendida && !faltan.length ? el('button', {
+    type: 'button', class: 'grande con-icono centrado',
+    onclick: evento => {
+      if (!confirm(t('ia.encender.confirmar', { proveedor, tope }))) return;
+      cambiar(evento.currentTarget, mensajeEstado, '/api/admin/ia/ajustes', { encendida: true }, x => t('ia.encender.listo', { tope: usd(x.topeGeneralMicro) }));
+    },
+  }, icono('encendido'), el('span', { texto: t('ia.encender') })) : null;
+  // Apagar se puede siempre, también por el enlace público: nunca gasta.
+  const apagar = s.encendida ? el('button', {
+    type: 'button', class: 'peligro grande con-icono centrado',
+    onclick: evento => {
+      if (!confirm(t('ia.apagar.confirmar'))) return;
+      cambiar(evento.currentTarget, mensajeEstado, '/api/admin/ia/apagar', {}, t('ia.apagar.listo'));
+    },
+  }, icono('encendido'), el('span', { texto: t('ia.apagar') })) : null;
+  const tarjetaEstadoIa = el('section', { class: 'tarjeta' },
+    volverAAdmin(),
+    avisoDeArriba(aviso),
+    el('h1', { class: 'con-icono' }, icono('chispa', 'icono grande'), el('span', { texto: t('ia.titulo') })),
+    el('div', { class: `estado-grande tono-${tono}` }, icono('encendido', 'icono estado'), el('span', { texto: nombreEstado })),
+    el('p', { class: 'fuerte', texto: textoEstado }),
+    s.estado === 'sin_uso' && dueno ? el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, icono('llave'), el('span', { texto: t('ia.ir_claves') })) : null,
+    s.encendida && s.modoSeguro ? el('p', { class: 'aviso', texto: t('ayuda_ia.pausa') }) : null,
+    listaParaEncender,
+    encender,
+    apagar,
+    !s.enTailnet ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t('ia.solo_tailnet') }))
+      : !dueno ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t('ia.solo_dueno') })) : null,
+    el('details', { class: 'en-palabras' },
+      el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: t('ia.que_es') })),
+      el('p', { texto: t('ia.explica') }),
+      el('p', { texto: t('ia.que_es.texto') })),
+    mensajeEstado);
+
+  // ---- 2. El gasto del mes: el número grande, la barra contra el tope y, para el dueño, los detalles ----
+  const partes = partesBarraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro });
+  const sinNada = !s.usadoMicro && !(s.llamadasMes > 0);
+  const tarjetaGasto = el('section', { class: 'tarjeta' },
+    titulo('grafica', t('ia.gasto.titulo', { mes: nombreMes(s.mes) })),
+    el('div', { class: 'gasto-cifras' },
+      el('span', { class: `gasto-grande tono-${s.usadoMicro > 0 ? partes.tono : 'neutro'}`, texto: usd(s.usadoMicro) }),
+      el('span', { class: 'gasto-de', texto: t('ia.gasto.de', { tope }) })),
+    barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro }),
+    s.apartadoMicro > 0 ? el('p', { class: 'ayuda', texto: t('ia.gasto.apartado', { monto: usd(s.apartadoMicro) }) }) : null,
+    el('p', { class: 'suave con-icono' }, icono('calendario', 'icono chico'), el('span', { texto: t('ia.gasto.reinicia', { fecha: fechaHora(s.vuelveEl) }) })),
+    dueno ? el('div', { class: 'numeros' },
+      numeroGrande(s.llamadasMes ?? 0, t('ia.gasto.usos'), 'info'),
+      numeroGrande(s.bloqueosMes ?? 0, t('ia.gasto.sin_ia'), 'atencion'),
+      cifraGrande(usd(s.tipicoMicro), t('ia.gasto.tipico'))) : null,
+    dueno && sinNada ? el('p', { class: 'suave', texto: t('ia.gasto.vacio') }) : null,
+    dueno && s.enTailnet ? detalleDelGasto(s.mes) : null);
+  if (!dueno) {
+    mostrar(marco('admin', tarjetaEstadoIa, tarjetaGasto));
+    return;
+  }
+
+  // ---- 3. El tope del mes (y los de las otras cuentas) ----
+  const mensajeTope = caja();
+  const campoTope = el('input', { id: 'ia-tope', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: dolaresParaEscribir(s.topeGeneralMicro), 'aria-describedby': 'ia-tope-ayuda' });
+  const planes = Object.keys(s.topesPlanMicro ?? {});
+  const camposPlan = planes.map(plan => el('input', { id: `ia-tope-${plan}`, type: 'text', inputmode: 'decimal', autocomplete: 'off', value: dolaresParaEscribir(s.topesPlanMicro[plan]) }));
+  const tarjetaTope = el('section', { class: 'tarjeta' },
+    titulo('dinero', t('ia.tope.titulo')),
+    el('label', { for: 'ia-tope', texto: t('ia.tope.etiqueta') }),
+    el('div', { class: 'campo-dinero' }, el('span', { class: 'campo-dinero-signo', 'aria-hidden': 'true', texto: 'US$' }), campoTope),
+    el('p', { class: 'ayuda', id: 'ia-tope-ayuda', texto: t('ia.tope.ayuda') }),
+    el('button', {
+      type: 'button', class: 'con-icono',
+      onclick: evento => {
+        const valor = leerDolares(campoTope.value);
+        if (valor == null) return decir(mensajeTope, textoError('tope_no_valido'), 'error');
+        cambiar(evento.currentTarget, mensajeTope, '/api/admin/ia/ajustes', { topeGeneralUsd: valor }, t('ia.tope.listo'));
+      },
+    }, icono('marca'), el('span', { texto: t('ia.tope.guardar') })),
+    mensajeTope,
+    planes.length ? el('details', {},
+      el('summary', { class: 'con-icono' }, icono('personas'), el('span', { texto: t('ia.planes.titulo') })),
+      el('p', { class: 'ayuda', texto: t('ia.planes.ayuda') }),
+      planes.map((plan, i) => [el('label', { for: `ia-tope-${plan}`, texto: t(`ia.plan.${plan}`) }),
+        el('div', { class: 'campo-dinero' }, el('span', { class: 'campo-dinero-signo', 'aria-hidden': 'true', texto: 'US$' }), camposPlan[i])]),
+      el('button', {
+        type: 'button', class: 'secundario con-icono',
+        onclick: evento => {
+          const valores = {};
+          for (const [i, plan] of planes.entries()) {
+            const valor = leerDolares(camposPlan[i].value);
+            if (valor == null) return decir(mensajeTope, textoError('tope_no_valido'), 'error');
+            valores[plan] = valor;
+          }
+          cambiar(evento.currentTarget, mensajeTope, '/api/admin/ia/ajustes', { topesPlanUsd: valores }, t('ia.tope.listo'));
+        },
+      }, icono('marca'), el('span', { texto: t('ia.planes.guardar') }))) : null,
+    el('details', {},
+      el('summary', { class: 'con-icono' }, icono('calendario'), el('span', { texto: t('ia.mes.titulo') })),
+      el('p', { texto: t('ia.mes.texto') })));
+
+  // ---- 4. «Ayuda en proyectos»: el «sí» del dueño a la ayuda de la fase 1 ----
+  const mensajeAyuda = caja();
+  const ayudaEncendida = s.ayudaProyectos === true;
+  const tarjetaAyuda = el('section', { class: 'tarjeta' },
+    titulo('chispa', t('ia.ayuda.titulo')),
+    el('p', { class: 'etiquetas' }, insignia(ayudaEncendida ? 'bien' : 'apagado', ayudaEncendida ? t('ia.ayuda.encendida') : t('ia.ayuda.apagada'))),
+    el('p', { texto: t('ia.ayuda.texto') }),
+    ayudaEncendida ? [
+      !s.encendida ? el('p', { class: 'suave', texto: t('ia.ayuda.necesita_ia') }) : null,
+      el('button', {
+        type: 'button', class: 'secundario con-icono',
+        onclick: evento => cambiar(evento.currentTarget, mensajeAyuda, '/api/admin/ia/ajustes', { ayudaProyectos: false }, `${t('ia.ayuda.titulo')}: ${t('ia.ayuda.apagada')}`),
+      }, icono('encendido'), el('span', { texto: t('ia.ayuda.apagar') })),
+    ] : s.encendida ? el('button', {
+      type: 'button', class: 'con-icono',
+      onclick: evento => {
+        if (!confirm(t('ia.ayuda.confirmar'))) return;
+        cambiar(evento.currentTarget, mensajeAyuda, '/api/admin/ia/ajustes', { ayudaProyectos: true }, `${t('ia.ayuda.titulo')}: ${t('ia.ayuda.encendida')}`);
+      },
+    }, icono('encendido'), el('span', { texto: t('ia.ayuda.encender') }))
+      : el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('ia.ayuda.necesita_ia') })),
+    mensajeAyuda);
+
+  // ---- 5. Los proveedores (el interruptor «Usar …» solo existe si su precio oficial está confirmado) ----
+  const mensajeProveedores = caja();
+  const tarjetaProveedores = el('section', { class: 'tarjeta' },
+    titulo('ajustes', t('ia.proveedores.titulo')),
+    controlesProveedores(proveedores).map(c => {
+      const p = proveedores.find(x => x.id === c.id);
+      const nombre = nombreProveedor(c.id);
+      const [tonoP, textoP] = c.estado === 'lista' ? ['bien', t('ia.proveedor.lista')]
+        : c.estado === 'sin_precio' ? ['apagado', t('ia.proveedor.sin_precio.corto')]
+          : c.estado === 'apagado' ? ['apagado', t('ia.proveedor.apagado')] : ['atencion', textoMotivoIa(c.motivo)];
+      return el('div', { class: 'proveedor' },
+        el('div', { class: 'proveedor-cabeza' }, el('strong', { texto: nombre }), insignia(tonoP, textoP)),
+        c.confirmado ? el('p', { class: 'suave', texto: t('ia.precio', { modelo: p.precio.nombre || nombreModelo(p.modelo), entrada: `US$${p.precio.entradaUsd}`, salida: `US$${p.precio.salidaUsd}`, fecha: fechaDia(p.precio.revisadoEl) }) })
+          : el('p', { class: 'suave', texto: t('ia.proveedor.sin_precio', { proveedor: nombre }) }),
+        c.conInterruptor ? interruptor(c.etiqueta === 'ia.proveedor.segundo' ? t('ia.proveedor.segundo') : t('ia.proveedor.usar', { proveedor: nombre }), c.usar,
+          boton => cambiar(boton, mensajeProveedores, '/api/admin/ia/ajustes', { usar: { [c.id]: !c.usar } }, null)) : null);
+    }),
+    mensajeProveedores,
+    el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, icono('llave'), el('span', { texto: t('ia.ir_claves') })));
+
+  // ---- 6. Se paga aparte: la IA de Claude NO es la suscripción del chat ----
+  const tarjetaPago = el('section', { class: 'tarjeta nota-pago' },
+    titulo('recibo', t('ia.pago.titulo')),
+    el('p', { class: 'fuerte', texto: t('ia.pago.claude') }),
+    el('details', { class: 'en-palabras' },
+      el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: t('ia.pago.consejos') })),
+      el('p', { texto: t('ia.pago.limite') }),
+      el('p', { class: 'suave', texto: t('ia.pago.limite.por_que') }),
+      el('p', { texto: t('ia.pago.openai') })));
+
+  mostrar(marco('admin', tarjetaEstadoIa, tarjetaGasto, tarjetaTope, tarjetaAyuda, tarjetaProveedores, tarjetaPago));
+}
+
+// «Ver el detalle» del gasto (desde Tailscale): por cuenta, por proyecto y por uso, las veces sin IA, los últimos usos y
+// los meses anteriores. Solo números: nunca el nombre de un proyecto ni lo que alguien escribió. Se carga al abrirlo.
+function detalleDelGasto(mes) {
+  const cuerpo = el('div', { class: 'detalle-gasto-cuerpo' });
+  const mensajeDetalle = caja();
+  let cargado = false;
+  const lista = filas => el('ul', { class: 'lista-simple' }, filas.map(texto => el('li', { texto })));
+  const parte = (nombreIcono, texto, contenido) => [el('h3', { class: 'con-icono' }, icono(nombreIcono), el('span', { texto })), contenido];
+  const lineaLlamada = f => t('ia.gasto.llamada', {
+    fecha: fecha(f.fecha), uso: tSi(`ia.proposito.${f.proposito}`, f.proposito), modelo: nombreModelo(f.modelo),
+    reservado: usd(f.reservadoMicro), real: f.costoMicro == null ? '—' : usd(f.costoMicro),
+    resultado: [tSi(`ia.estado_llamada.${f.estado}`, f.estado), f.resultado && f.resultado !== 'ok' ? textoMotivoIa(f.resultado) : null].filter(Boolean).join(': '),
+  });
+  async function cargar() {
+    const r = await api('GET', `/api/admin/ia/consumo?mes=${encodeURIComponent(mes)}`);
+    if (!r.ok) return decir(mensajeDetalle, textoError(r.datos.error), 'error');
+    const c = r.datos;
+    const ultimas = el('ul', { class: 'lista-simple llamadas' }, (c.ultimas ?? []).map(f => el('li', { texto: lineaLlamada(f) })));
+    const mas = el('button', { type: 'button', class: 'secundario', hidden: !c.siguiente, texto: t('ia.gasto.ver_mas') });
+    let siguiente = c.siguiente;
+    mas.addEventListener('click', async () => {
+      mas.disabled = true;
+      const x = await api('GET', `/api/admin/ia/consumo?mes=${encodeURIComponent(mes)}&antes=${encodeURIComponent(siguiente)}`);
+      mas.disabled = false;
+      if (!x.ok) return decir(mensajeDetalle, textoError(x.datos.error), 'error');
+      for (const f of x.datos.ultimas ?? []) ultimas.append(el('li', { texto: lineaLlamada(f) }));
+      siguiente = x.datos.siguiente;
+      mas.hidden = !siguiente;
+    });
+    cuerpo.replaceChildren(...[
+      c.porCuenta?.length ? parte('personas', t('ia.gasto.por_cuenta'), lista(c.porCuenta.map(x => (x.propia
+        ? tn('ia.gasto.cuenta_propia', { monto: usd(x.usadoMicro), n: x.n })
+        : tn('ia.gasto.cuenta', { cuenta: x.cuenta, monto: usd(x.usadoMicro), tope: x.topeMicro == null ? '—' : usd(x.topeMicro), n: x.n }))))) : null,
+      c.porProyecto?.length ? parte('carpeta', t('ia.gasto.por_proyecto'), lista(c.porProyecto.map(x => tn('ia.gasto.proyecto', { proyecto: x.proyecto, cuenta: x.cuenta, monto: usd(x.usadoMicro), n: x.n })))) : null,
+      c.porUso?.length ? parte('chispa', t('ia.gasto.por_uso'), lista(c.porUso.map(x => tn('ia.gasto.uso', { uso: tSi(`ia.proposito.${x.proposito}`, x.proposito), monto: usd(x.usadoMicro), n: x.n })))) : null,
+      c.bloqueos?.length ? parte('pausa', t('ia.gasto.bloqueos'), lista(c.bloqueos.map(x => t('ia.gasto.bloqueo', { motivo: textoMotivoIa(x.motivo), veces: numero(x.veces) })))) : null,
+      c.ultimas?.length ? parte('recibo', t('ia.gasto.ultimas'), [ultimas, mas]) : el('p', { class: 'suave', texto: t('ia.gasto.vacio') }),
+      c.meses?.length > 1 ? parte('calendario', t('ia.gasto.meses'), lista(c.meses.map(x => t('ia.gasto.mes', { mes: nombreMes(x.mes, true), monto: usd(x.usadoMicro) })))) : null,
+      el('p', { class: 'ayuda', texto: t('ia.gasto.nota') })].flat(Infinity).filter(Boolean));
+  }
+  const detalles = el('details', { class: 'detalle-gasto' },
+    el('summary', { class: 'con-icono' }, icono('recibo'), el('span', { texto: t('ia.gasto.detalle') })),
+    cuerpo, mensajeDetalle);
+  detalles.addEventListener('toggle', () => { if (detalles.open && !cargado) { cargado = true; cargar(); } });
+  return detalles;
+}
+
+// ---- #claves: Administrador → Claves (solo desde la cuenta de Tailscale del dueño) ----
+const ICONO_GRUPO_CLAVES = { ia: 'chispa' };
+const ICONO_ESTADO_CLAVE = { activa: 'bien', pausada: 'pausa', no_pasa: 'mal', ilegible: 'mal', ninguna: 'apagado' };
+function textoEstadoClave(estadoClave) {
+  if (estadoClave === 'activa') return t('claves.estado.activa');
+  if (estadoClave === 'pausada') return t('claves.estado.pausada');
+  if (estadoClave === 'no_pasa') return t('claves.estado.no_pasa');
+  if (estadoClave === 'ilegible') return t('claves.estado.ilegible');
+  return t('claves.estado.ninguna');
+}
+
+async function pantallaClaves(aviso = null) {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/admin/claves');
+  if (!vigente()) return;
+  const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
+    volverAAdmin(),
+    avisoDeArriba(aviso),
+    el('h1', { class: 'con-icono' }, icono('llave', 'icono grande'), el('span', { texto: t('claves.titulo') })),
+    ...hijos);
+  if (!r.ok) {
+    // Por el enlace público, desde otro equipo o por la conexión directa: ni se ven ni se cambian (lo dice y nada más).
+    const e = r.datos.error;
+    const texto = e === 'solo_desde_tailnet' ? t('claves.solo_tailnet') : e === 'solo_dueno_tailscale' ? t('claves.solo_dueno') : textoError(e);
+    mostrar(marco('admin', cabeza(el('p', { class: 'aviso con-icono-arriba', 'data-foco': true }, icono('candado'), el('span', { texto })))));
+    return;
+  }
+  const d = r.datos;
+  const listo = d.almacen?.listo !== false;
+  const recargar = siguiente => pantallaClaves(siguiente);
+  mostrar(marco('admin',
+    cabeza(
+      el('p', { texto: t('claves.explica') }),
+      d.duenoTailscale ? el('p', { class: 'suave con-icono' }, icono('escudo', 'icono chico'), el('span', { texto: t('claves.dueno', { login: d.duenoTailscale }) })) : null,
+      !listo ? el('p', { class: 'aviso', role: 'alert', texto: t('claves.llave_danada') }) : null),
+    (d.grupos ?? []).map(g => el('section', { class: 'tarjeta' },
+      titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
+      (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))));
+}
+
+function cajaDeClave(u, { listo, recargar, abrirPegar }) {
+  const a = u.activa;
+  const { estado: estadoClave, tono } = estadoDeClave(a);
+  const mensajeClave = caja();
+  const nombre = tSi(`claves.uso.${u.uso}`, u.uso);
+  const conIaApagada = (texto, x) => [texto, x.datos.iaApagada ? t('claves.ia_apagada') : null].filter(Boolean).join(' ');
+  const partes = [el('div', { class: 'clave-cabeza' },
+    el('strong', { class: 'clave-nombre', texto: nombre }),
+    el('span', { class: `insignia tono-${tono}` }, icono(ICONO_ESTADO_CLAVE[estadoClave] ?? 'info', 'icono chico'), el('span', { texto: textoEstadoClave(estadoClave) })))];
+  if (a) {
+    partes.push(el('p', { class: 'clave-final', texto: t('claves.termina', { final: a.final }) }));
+    partes.push(el('p', { class: 'suave', texto: [
+      a.probadoEn ? t('claves.probada', { cuando: hace(a.probadoEn), resultado: textoMotivoIa(a.prueba) }) : t('claves.sin_probar'),
+      a.usadoEn ? t('claves.usada', { cuando: hace(a.usadoEn) }) : t('claves.nunca_usada'),
+    ].join(' · ') }));
+    if (estadoClave === 'ilegible') partes.push(el('p', { class: 'aviso', texto: textoMotivoIa('clave_ilegible') }));
+    const pausa = estadoClave === 'pausada' ? a.pausa : null;
+    if (pausa) {
+      partes.push(el('div', { class: 'aviso-sistema tono-atencion' },
+        el('p', { class: 'fuerte con-icono' }, icono('pausa'), el('span', { texto: t('claves.pausa', { motivo: textoMotivoIa(pausa.motivo) }) })),
+        el('p', { texto: pausa.hasta ? t('claves.pausa.hasta', { cuando: cuando(pausa.hasta) }) : t('claves.pausa.admin') })));
+    }
+    const botones = [];
+    if (a.legible !== false) {
+      // La prueba es gratis (no escribe nada con la IA). Si está en pausa, la misma prueba la reanuda si pasa.
+      const reanudar = Boolean(pausa);
+      const textoBoton = el('span', { texto: reanudar ? t('claves.probar_reanudar') : t('claves.probar') });
+      const probar = el('button', {
+        type: 'button', class: reanudar ? 'con-icono' : 'secundario con-icono',
+        onclick: async () => {
+          probar.disabled = true;
+          mensajeClave.hidden = true;
+          textoBoton.textContent = t('claves.probando');
+          const x = await api('POST', `/api/admin/claves/${a.id}/probar`, { reanudar });
+          if (!x.ok) {
+            probar.disabled = false;
+            textoBoton.textContent = reanudar ? t('claves.probar_reanudar') : t('claves.probar');
+            return decir(mensajeClave, textoError(x.datos.error), 'error');
+          }
+          const m = x.datos.prueba?.motivo;
+          recargar({ texto: m === 'ok' ? (x.datos.reanudada ? t('claves.reanudada') : t('claves.prueba.ok')) : t('claves.prueba.mal', { motivo: textoMotivoIa(m) }), clase: m === 'ok' ? 'bien' : 'aviso' });
+        },
+      }, icono(reanudar ? 'play' : 'actualizar'), textoBoton);
+      botones.push(probar);
+    }
+    botones.push(botonAccion(t('claves.desactivar'), 'peligro', mensajeClave, async () => {
+      if (!confirm(t('claves.desactivar.confirmar'))) return;
+      const x = await api('POST', `/api/admin/claves/${a.id}/activa`, { activa: false });
+      if (!x.ok) throw new Error(textoError(x.datos.error));
+      recargar({ texto: conIaApagada(t('claves.desactivada_listo'), x), clase: x.datos.iaApagada ? 'aviso' : 'bien' });
+    }, 'prohibido'));
+    partes.push(el('div', { class: 'botones' }, botones));
+  }
+  if (listo) {
+    // Pegar una clave: una línea tapada con puntos que se vacía apenas se manda. Nunca se vuelve a mostrar.
+    const id = `clave-${u.uso}`;
+    const area = crecer(el('textarea', { ...ATRIBUTOS_CAMPO_CLAVE, id, 'aria-describedby': `${id}-donde` }));
+    const guardar = el('button', {
+      type: 'button', class: 'con-icono',
+      onclick: async () => {
+        const valor = area.value;
+        area.value = '';
+        area.dispatchEvent(new Event('input'));
+        if (!valor.trim()) return decir(mensajeClave, textoError('clave_formato'), 'error');
+        guardar.disabled = true;
+        mensajeClave.hidden = true;
+        const x = await api('POST', '/api/admin/claves', { uso: u.uso, valor });
+        if (!x.ok) {
+          guardar.disabled = false;
+          return decir(mensajeClave, textoError(x.datos.error), 'error');
+        }
+        const m = x.datos.prueba?.motivo;
+        recargar({ texto: conIaApagada(t('claves.guardada', { resultado: textoMotivoIa(m) }), x), clase: m === 'ok' && !x.datos.iaApagada ? 'bien' : 'aviso' });
+      },
+    }, icono('llave'), el('span', { texto: t('claves.guardar') }));
+    partes.push(el('details', { class: 'clave-pegar', open: abrirPegar },
+      el('summary', { class: 'con-icono' }, icono(a ? 'lapiz' : 'mas'), el('span', { texto: a ? t('claves.cambiar') : t('claves.agregar') })),
+      el('p', { class: 'ayuda', id: `${id}-donde`, texto: tSi(`claves.donde.${u.uso}`, '') }),
+      a ? el('p', { class: 'suave', texto: t('claves.reemplazo') }) : null,
+      el('label', { for: id, texto: t('claves.pegar') }),
+      area,
+      guardar));
+  }
+  const anteriores = Array.isArray(u.anteriores) ? u.anteriores : [];
+  if (anteriores.length) {
+    partes.push(el('details', {},
+      el('summary', { class: 'con-icono' }, icono('reloj'), el('span', { texto: tn('claves.anteriores', { n: anteriores.length }) })),
+      el('ul', { class: 'lista-simple' }, anteriores.map(x => el('li', { class: 'clave-anterior' },
+        el('span', { texto: t('claves.anterior', { final: x.final, estado: x.legible === false ? t('claves.estado.ilegible') : tSi(`claves.estado.${x.estado}`, x.estado), fecha: fecha(x.cambiadoEn || x.creadoEn) }) }),
+        x.legible !== false && x.estado !== 'activa' ? botonAccion(t('claves.activar'), 'secundario chico', mensajeClave, async () => {
+          const y = await api('POST', `/api/admin/claves/${x.id}/activa`, { activa: true });
+          if (!y.ok) throw new Error(textoError(y.datos.error));
+          recargar({ texto: conIaApagada(t('claves.activada'), y), clase: y.datos.iaApagada ? 'aviso' : 'bien' });
+        }) : null)))));
+  }
+  partes.push(mensajeClave);
+  return el('div', { class: `clave-caja tono-${tono}` }, partes);
+}
+
+// ---- En un proyecto: «Ayuda de IA» en la versión que espera aprobación ----
+const MOTIVOS_DE_CLAVES = new Set(['proveedor_en_pausa', 'sin_clave', 'clave_ilegible', 'llave_no_disponible', 'proveedor_no_usado']);
+// Las ayudas que se pidieron desde esta pestaña: proyecto → { tareaId, desde } (para decir cómo terminaron).
+const ayudasPedidas = new Map();
+
+// «✦ Hecha con ayuda de IA (Claude Haiku 5.5) · costó US$0.0004»
+function marcaIa(v) {
+  const a = v?.ayudaIa;
+  if (!a) return null;
+  return el('p', { class: 'insignia tono-info marca-ia' }, icono('chispa', 'icono chico'),
+    el('span', { texto: t('version.con_ia', { modelo: nombreModelo(a.modelo), costo: usd(a.costoMicro ?? 0) }) }));
+}
+const nombreCampoIa = grupo => tSi(`version.campo_ia.${grupo}`, grupo);
+// Lo que cambió la IA. Lo que cambia mucho la búsqueda (otro tipo, todo el país) se marca en amarillo.
+function cambiosDeIa(a) {
+  const cambios = Array.isArray(a?.cambios) ? a.cambios : [];
+  if (!cambios.length) return el('p', { class: 'suave', texto: t('version.ia_sin_cambios') });
+  const resaltados = cambios.filter(c => CAMBIOS_RESALTADOS.includes(c));
+  return el('div', { class: 'ia-cambios' },
+    el('p', { class: 'fuerte', texto: t('version.ia_cambio', { campos: unir(cambios.map(nombreCampoIa)) }) }),
+    resaltados.length ? el('div', { class: 'pastillas' }, resaltados.map(c => el('span', { class: 'pastilla resaltada' }, icono('atencion', 'icono chico'), el('span', { texto: nombreCampoIa(c) })))) : null);
+}
+
+function bloqueAyudaIa(ctx) {
+  const bloque = el('div', { class: 'ayuda-ia', hidden: true, 'aria-live': 'polite' });
+  // Se pregunta después de dibujar la página: el proyecto se ve enseguida y el bloque aparece solo si sirve.
+  setTimeout(() => refrescarAyudaIa(bloque, ctx), 0);
+  return bloque;
+}
+
+async function refrescarAyudaIa(bloque, ctx, avisoBloque = null) {
+  const pantalla = turno;
+  const r = await api('GET', `/api/proyectos/${encodeURIComponent(ctx.proyecto.id)}/ayuda-ia`);
+  if (pantalla !== turno || !bloque.isConnected) return;
+  if (!r.ok) {
+    bloque.hidden = true;
+    return;
+  }
+  dibujarAyudaIa(bloque, r.datos, ctx, avisoBloque);
+}
+
+async function volverACargarProyecto(id, aviso) {
+  const pantalla = turno;
+  const r = await api('GET', `/api/proyectos/${encodeURIComponent(id)}`);
+  if (pantalla !== turno || !r.ok) return;
+  dibujarProyecto(r.datos, aviso);
+}
+
+function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
+  const { proyecto, v } = ctx;
+  const vista = vistaAyudaIa(d, { seguida: ayudasPedidas.get(proyecto.id) ?? null });
+  if (vista.lista) {
+    ayudasPedidas.delete(proyecto.id);
+    // La IA hizo una versión nueva: el proyecto se vuelve a cargar con ella (espera tu aprobación).
+    if (vista.lista.numero !== v.numero) {
+      volverACargarProyecto(proyecto.id, t('ayuda_ia.lista', { numero: vista.lista.numero, costo: usd(vista.lista.costoMicro) }));
+      return;
+    }
+  }
+  if (vista.fallo) ayudasPedidas.delete(proyecto.id);
+  const linea = (nombreIcono, texto) => el('p', { class: 'con-icono-arriba ayuda-ia-linea' }, icono(nombreIcono, 'icono'), el('span', { texto }));
+  const fallo = vista.fallo ? el('p', { class: 'aviso', role: 'status', texto: t('ayuda_ia.no_se_pudo', { motivo: textoMotivoIa(vista.fallo.motivo), costo: usd(vista.fallo.costoMicro) }) }) : null;
+  let partes = [];
+  if (vista.vista === 'esperando') {
+    const seguida = ayudasPedidas.get(proyecto.id);
+    const desde = seguida?.desde ?? Date.now();
+    if (!seguida && d.tarea) ayudasPedidas.set(proyecto.id, { tareaId: d.tarea.id, desde });
+    const largo = Date.now() - desde > 60_000;
+    partes = [el('p', { class: 'ayuda-ia-espera con-icono' }, el('span', { class: 'girando' }, icono('reloj')), el('span', { texto: largo ? t('ayuda_ia.en_fila') : t('ayuda_ia.esperando') }))];
+    // Se pregunta cada 2 s durante el primer minuto y luego cada 10 s, mientras esta pantalla siga abierta.
+    setTimeout(() => refrescarAyudaIa(bloque, ctx), largo ? 10_000 : 2000);
+  } else if (vista.vista === 'disponible') {
+    const mensajeIa = caja();
+    const boton = el('button', { type: 'button', class: 'con-icono boton-ia' }, icono('chispa'), el('span', { texto: t('ayuda_ia.boton') }));
+    boton.addEventListener('click', async () => {
+      if (!confirm(t('ayuda_ia.confirmar', { maximo: usd(d.maximoMicro), proveedor: nombreProveedor(d.proveedor) }))) return;
+      boton.disabled = true;
+      mensajeIa.hidden = true;
+      const pantalla = turno;
+      const x = await api('POST', `/api/proyectos/${encodeURIComponent(proyecto.id)}/versiones/${v.numero}/ayuda-ia`, { maximoMicro: d.maximoMicro });
+      if (pantalla !== turno || !bloque.isConnected) return;
+      if (x.ok) {
+        ayudasPedidas.set(proyecto.id, { tareaId: x.datos.tarea?.id, desde: Date.now() });
+        dibujarAyudaIa(bloque, { ...d, tarea: x.datos.tarea }, ctx);
+        return;
+      }
+      const e = x.datos.error;
+      // El precio subió: se muestra el nuevo y la persona decide otra vez.
+      if (e === 'precio_cambio' && Number.isSafeInteger(x.datos.maximoMicro)) {
+        dibujarAyudaIa(bloque, { ...d, maximoMicro: x.datos.maximoMicro }, ctx, el('p', { class: 'aviso', role: 'status', texto: t('ayuda_ia.precio_cambio', { maximo: usd(x.datos.maximoMicro) }) }));
+        return;
+      }
+      if (e === 'ya_hay_otra_en_marcha') return refrescarAyudaIa(bloque, ctx);
+      if (CAMBIO_EN_OTRO_LADO.has(e)) return volverACargarProyecto(proyecto.id, { texto: t('proyecto.cambio_en_otro_lado'), clase: 'aviso' });
+      if (e === 'ia_no_disponible' || e === 'trabajo_en_pausa') return refrescarAyudaIa(bloque, ctx, el('p', { class: 'mensaje error', role: 'status', texto: textoError(e) }));
+      boton.disabled = false;
+      decir(mensajeIa, textoError(e), 'error');
+    });
+    partes = [
+      el('p', { texto: t('ayuda_ia.texto') }),
+      el('p', { class: 'ayuda-ia-precio' }, el('strong', { texto: t('ayuda_ia.precio', { maximo: usd(d.maximoMicro) }) }),
+        d.tipicoMicro != null ? el('span', { class: 'suave', texto: ` · ${t('ayuda_ia.tipico', { tipico: usd(d.tipicoMicro) })}` }) : null),
+      boton,
+      mensajeIa,
+    ];
+  } else if (vista.vista === 'solo_tailnet') partes = [linea('candado', t('ayuda_ia.solo_tailnet'))];
+  else if (vista.vista === 'apagada_admin') partes = [linea('apagado', t('ayuda_ia.apagada_admin'))];
+  else if (vista.vista === 'tope_lleno') partes = [linea('atencion', t('ayuda_ia.tope_lleno', { fecha: fechaHora(d.vuelveEl) }))];
+  else if (vista.vista === 'pausa') partes = [linea('pausa', t('ayuda_ia.pausa'))];
+  else if (vista.vista === 'no_disponible') {
+    partes = [linea('info', t('ayuda_ia.no_disponible_admin', { motivo: textoMotivoIa(vista.motivo) }))];
+    // Al administrador, si el problema está en la clave o el proveedor, un atajo a Claves (allí se prueba y se reanuda).
+    if (d.esAdmin === true && MOTIVOS_DE_CLAVES.has(vista.motivo)) partes.push(el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, icono('llave'), el('span', { texto: t('ia.ir_claves') })));
+  }
+  // Sin nada que decir (a esta cuenta no le toca la IA): el bloque no se muestra.
+  if (!partes.length && !fallo && !avisoBloque) {
+    bloque.hidden = true;
+    bloque.replaceChildren();
+    return;
+  }
+  bloque.className = `ayuda-ia${vista.vista === 'disponible' ? ' disponible' : ''}`;
+  bloque.hidden = false;
+  bloque.replaceChildren(...[
+    el('p', { class: 'ayuda-ia-titulo con-icono' }, icono('chispa'), el('span', { texto: t('ayuda_ia.titulo') })),
+    avisoBloque, fallo, ...partes].filter(Boolean));
 }
 
 // ---------- Proyectos ----------
@@ -1234,8 +1901,9 @@ function unir(lista) {
   try { return new Intl.ListFormat(idioma, { type: 'conjunction' }).format(limpia); } catch { return limpia.join(', '); }
 }
 const enMinuscula = texto => (texto ? texto.charAt(0).toLowerCase() + texto.slice(1) : texto);
-const nombreSector = clave => { const s = catalogo.sectores.find(x => x.clave === clave); return s ? s[idioma] || s.es : clave; };
-const nombreZona = clave => catalogo.zonas.find(x => x.clave === clave)?.nombre || clave;
+// Sin catálogo (no se pudo cargar), el nombre guardado tal cual: la pantalla se dibuja igual.
+const nombreSector = clave => { const s = catalogo?.sectores.find(x => x.clave === clave); return s ? s[idioma] || s.es : clave; };
+const nombreZona = clave => catalogo?.zonas.find(x => x.clave === clave)?.nombre || clave;
 const sectoresDe = c => [...c.sectores.map(nombreSector), ...c.sectoresLibres];
 const zonasDe = c => [...c.zonas.map(nombreZona), ...c.zonasLibres];
 const exclusionesDe = c => [...c.sectoresExcluidos.map(nombreSector), ...c.zonasExcluidas.map(nombreZona), ...c.exclusiones];
@@ -2247,19 +2915,29 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
     // Antes de la primera aprobación se dice qué pasa al aprobar: queda guardado, pero todavía no busca (corto aquí;
     // la explicación completa, en «Ver en palabras»).
     !esCambio ? el('p', { class: 'linea-fase con-icono' }, icono('candado'), el('span', { texto: avisoCortoAntesDeAprobar(c.tipo) })) : null,
+    // Fase 1, parte d: si la hizo la IA, se dice arriba (con qué modelo y cuánto costó), qué cambió y cómo volver.
+    v.ayudaIa ? el('div', { class: 'version-ia' },
+      marcaIa(v),
+      cambiosDeIa(v.ayudaIa),
+      escribe && v.ayudaIa.base ? botonAccion(t('version.volver_sin_ia', { numero: v.ayudaIa.base }), 'secundario', mensaje, () =>
+        pedirYMostrar('POST', `/api/proyectos/${proyecto.id}/versiones`, { modo: 'version', numero: v.ayudaIa.base }, x => t('proyecto.listo.copiada', { numero: x.pendiente.numero, desde: v.ayudaIa.base })), 'actualizar') : null) : null,
   ];
   // Lo que falta y lo que el motor no entendió se pregunta; mientras tanto no se puede aprobar.
   const dudasVersion = Array.isArray(v.dudas) ? v.dudas : [];
   const preguntas = v.faltantes.filter(f => f !== 'dudas').map(f => t(f === 'producto' ? `faltante.producto.${c.tipo}` : `faltante.${f}`));
-  const noEntendi = dudasVersion.map(textoDuda);
-  if (v.faltantes.includes('dudas') && !noEntendi.length) noEntendi.push(t('faltante.dudas'));
+  // Junto a cada duda que la IA cree aclarada, una pista (la duda sigue: la marca una persona, como siempre).
+  const pistas = new Set(v.ayudaIa?.pistas ?? []);
+  const noEntendi = dudasVersion.map((d, i) => ({ texto: textoDuda(d), pista: pistas.has(i) }));
+  if (v.faltantes.includes('dudas') && !noEntendi.length) noEntendi.push({ texto: t('faltante.dudas'), pista: false });
   const idExplicacion = `explicacion-${v.numero}`;
   if (preguntas.length || noEntendi.length) {
     partes.push(el('div', { class: 'aviso dudas', id: idExplicacion },
       el('p', { class: 'dudas-titulo con-icono' }, icono('atencion'), el('span', { texto: t('proyecto.dudas.titulo') })),
       lector ? el('p', { texto: t('proyecto.preguntas.lector', { n: preguntas.length + noEntendi.length }) }) : [
         preguntas.length ? [el('p', { texto: t('proyecto.preguntas') }), el('ul', {}, preguntas.map(p => el('li', { texto: p })))] : null,
-        noEntendi.length ? [el('p', { texto: t('proyecto.no_entendi') }), el('ul', {}, noEntendi.map(p => el('li', { texto: p })))] : null,
+        noEntendi.length ? [el('p', { texto: t('proyecto.no_entendi') }), el('ul', {}, noEntendi.map(p => el('li', {},
+          el('span', { texto: p.texto }),
+          p.pista ? el('span', { class: 'pista-ia' }, icono('chispa', 'icono chico'), el('span', { texto: t('ayuda_ia.pista') })) : null)))] : null,
         el('p', { texto: t('proyecto.no_se_puede_aprobar') }),
         abrirFormulario && escribe ? el('button', { type: 'button', class: 'secundario con-icono', onclick: abrirFormulario }, icono('lapiz'), el('span', { texto: t('proyecto.responder') })) : null,
       ]));
@@ -2273,6 +2951,8 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
       el('ul', {}, v.supuestos.map(s => el('li', { class: 'suave', texto: t(`supuesto.${s}`) })))));
   }
   partes.push(enPalabras(c, !esCambio ? el('p', { class: 'aviso', texto: avisoAntesDeAprobar(c.tipo) }) : null));
+  // «Pedir ayuda a la IA»: solo aparece si se puede usar ahora (se pregunta al servidor después de dibujar).
+  if (escribe) partes.push(bloqueAyudaIa({ proyecto, v }));
   if (escribe) {
     const motivo = crecer(el('textarea', { id: 'campo-motivo', rows: 2, maxlength: 300, placeholder: t('proyecto.motivo.ejemplo') }));
     const claveMotivo = `motivo|${proyecto.id}|${v.numero}`;
@@ -2370,6 +3050,7 @@ function dibujarProyecto(d, aviso = null) {
   const enUso = activa ? el('section', { class: 'tarjeta' },
     el('details', { open: !pendiente },
       el('summary', { class: 'con-icono' }, icono('bien'), el('span', { texto: t('proyecto.activa.titulo', { numero: activa.numero }) })),
+      marcaIa(activa),
       resumenVisual(activa.configuracion),
       enPalabras(activa.configuracion))) : null;
 
@@ -2449,10 +3130,11 @@ function dibujarProyecto(d, aviso = null) {
 
   // Las versiones viejas llegan sin su contenido (así el proyecto abre rápido); se abren una por una.
   const contenidoVersion = v => [
+    marcaIa(v),
     el('p', { class: 'instrucciones', texto: v.instrucciones }),
     resumenVisual(v.configuracion),
     enPalabras(v.configuracion),
-  ];
+  ].filter(Boolean);
   const contenidoBajoPedido = v => {
     const lugar = el('div', {});
     const mensajeVersion = caja();
@@ -2478,7 +3160,7 @@ function dibujarProyecto(d, aviso = null) {
     el('h2', { class: 'con-icono' }, icono('fila'), el('span', { texto: t('proyecto.versiones') })),
     versiones.map(v => el('details', { class: 'version' },
       el('summary', { texto: t('version.linea', { numero: v.numero, estado: t(`version.estado.${v.estado}`), fecha: fecha(v.creadaEn) }) }),
-      el('p', { class: 'suave', texto: t(`version.origen.${v.origen}`) }),
+      el('p', { class: 'suave', texto: v.ayudaIa ? t('version.origen_ia') : t(`version.origen.${v.origen}`) }),
       v.motivo ? el('p', { class: 'suave', texto: t('version.motivo', { motivo: v.motivo }) }) : null,
       v.completa === false ? contenidoBajoPedido(v) : contenidoVersion(v),
       reusar(v))));
@@ -2487,7 +3169,7 @@ function dibujarProyecto(d, aviso = null) {
     el('details', {},
       el('summary', { class: 'con-icono' }, icono('reloj'), el('span', { texto: t('proyecto.historial') })),
       el('ul', { class: 'historial' }, historial.map(h => el('li', {},
-        el('span', { texto: t(`historial.${h.accion}`, h.detalle || {}) }),
+        el('span', { texto: h.accion === 'version_nueva' && h.detalle?.conIa ? t('historial.version_nueva.ia', h.detalle) : t(`historial.${h.accion}`, h.detalle || {}) }),
         el('span', { class: 'suave', texto: ` · ${fecha(h.fecha)}` }))))));
 
   const mensajePapelera = caja();
@@ -2523,6 +3205,8 @@ async function dibujar() {
   const seccion = location.hash.replace('#', '') || 'inicio';
   if (seccion === 'configuracion') return pantallaConfiguracion();
   if (seccion === 'admin' && estado.usuario.rol === 'admin') return pantallaAdmin();
+  if (seccion === 'ia' && estado.usuario.rol === 'admin') return pantallaIa();
+  if (seccion === 'claves' && estado.usuario.rol === 'admin') return pantallaClaves();
   if (seccion === 'proyectos') return pantallaProyectos();
   if (seccion === 'nuevo') return pantallaNuevo();
   const proyecto = seccion.match(/^proyecto\/(\d+)$/);

@@ -1,5 +1,5 @@
-// OPORTIA: los dibujos de los proyectos (pase visual 2, versión 0.3.2). Solo datos: íconos de línea (24×24) y el
-// mapa de casillas de las 32 provincias. Todo es propio (sin fotos, sin archivos de fuera, sin red): app.js los
+// OPORTIA: los dibujos de los proyectos (pase visual 2, versión 0.3.2) y de los servicios (fase 1, parte d). Solo datos:
+// íconos de línea (24×24) y el mapa de casillas de las 32 provincias. Todo es propio (sin fotos, sin archivos de fuera, sin red): app.js los
 // dibuja con createElementNS. test/pantallas.test.js comprueba que cada negocio del motor tiene su ícono y que el
 // mapa tiene las 32 provincias, cada una en su casilla, y las mismas regiones que el motor.
 
@@ -58,6 +58,14 @@ export const ICONOS_PROYECTO = {
   libro: [['path', { d: 'M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z' }], ['path', { d: 'M4 21a2 2 0 0 1 2-2h13v2H6' }], ['path', { d: 'M9 7h6' }]],
   // Un edificio solo (para dibujar 1, 2 o 3 según el tamaño de las empresas).
   casita: [['rect', { x: 6, y: 4, width: 12, height: 17, rx: 1 }], ['path', { d: 'M9.5 8h1M13.5 8h1M9.5 12h1M13.5 12h1M10.5 21v-4h3v4' }]],
+};
+
+// Fase 1, parte d: los íconos de los servicios (la IA opcional y las Claves). La IA usa la chispa de siempre.
+export const ICONOS_SERVICIOS = {
+  llave: [['circle', { cx: 7.5, cy: 15.5, r: 4.5 }], ['path', { d: 'M10.7 12.3L20 3' }], ['path', { d: 'M16 7l3 3' }], ['path', { d: 'M18.5 4.5l2 2' }]],
+  encendido: [['path', { d: 'M12 3v8' }], ['path', { d: 'M6.3 6.8a8 8 0 1 0 11.4 0' }]],
+  grafica: [['path', { d: 'M4 20h16' }], ['rect', { x: 5, y: 12, width: 3, height: 6, rx: 0.8 }], ['rect', { x: 10.5, y: 7, width: 3, height: 11, rx: 0.8 }], ['rect', { x: 16, y: 10, width: 3, height: 8, rx: 0.8 }]],
+  recibo: [['path', { d: 'M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21z' }], ['path', { d: 'M9 8h6M9 12h6M9 16h3' }]],
 };
 
 // El mapa de casillas: cada provincia en una casilla de una rejilla de 7×5, más o menos donde queda (el norte arriba,

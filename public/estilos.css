@@ -578,3 +578,110 @@ button.chip .chip-icono { width: 18px; height: 18px; color: var(--acento); }
 button.chip[aria-pressed="true"] .chip-icono { display: inline-block; color: var(--acento-texto); }
 button.chip .edificios { color: var(--acento); }
 button.chip[aria-pressed="true"] .edificios { color: var(--acento-texto); }
+
+/* ---------- Fase 1, parte d (versión 0.4.0): la IA opcional y las Claves ----------
+   Lo mismo que el resto: tarjetas de color, números grandes y una barra; los detalles van dentro de «Ver…». */
+h1.con-icono .icono { color: var(--acento); }
+.resumen-rejilla.rejilla-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+button.resumen-tarjeta .barra-gasto { width: 100%; height: 10px; margin-top: 4px; }
+.centrado { justify-content: center; }
+button.grande.con-icono { display: flex; }
+
+/* La barra de lo gastado contra el tope: lo real, lo apartado (rayado) y las rayitas del 50 y el 80 %. */
+.barra-gasto-caja { display: block; margin: 12px 0 4px; }
+.barra-gasto { position: relative; display: block; height: 16px; border-radius: 999px; background: var(--apagado-fondo); }
+.barra-gasto-real, .barra-gasto-apartado { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 999px; }
+.barra-gasto-real { background: var(--tono); }
+.barra-gasto-apartado {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--info) 60%, transparent) 0 4px, transparent 4px 8px);
+  border: 1px solid color-mix(in srgb, var(--info) 70%, transparent);
+}
+.barra-gasto-marca { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--suave); }
+.barra-gasto-textos { position: relative; display: block; height: 20px; font-size: 12px; font-weight: 700; color: var(--suave); }
+.barra-gasto-textos span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; }
+.gasto-cifras { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; margin: 2px 0 0; }
+.gasto-grande { font-size: 36px; line-height: 1.1; font-weight: 800; color: var(--tono); letter-spacing: -0.01em; }
+.gasto-de { font-size: 17px; font-weight: 600; color: var(--suave); }
+.numero-valor.numero-texto { font-size: 17px; line-height: 1.75; white-space: nowrap; letter-spacing: -0.02em; }
+.linea-ia { display: block; text-decoration: none; color: var(--texto); font-weight: 600; border-top: 1px solid var(--borde); padding: 10px 0 4px; margin: 4px 0 6px; min-height: 44px; }
+.linea-ia .icono { color: var(--acento); }
+.linea-ia .barra-gasto { height: 10px; margin-top: 8px; }
+
+/* Lo que falta para encender: ✓ verde lo que ya está, ! amarillo lo que falta. */
+ul.lista-falta { list-style: none; padding: 0; margin: 4px 0 12px; }
+ul.lista-falta li { display: flex; align-items: center; gap: 10px; margin: 0; padding: 7px 0; font-weight: 600; border-top: 1px solid var(--borde); }
+ul.lista-falta li:first-child { border-top: 0; }
+ul.lista-falta li .icono { color: var(--tono); width: 24px; height: 24px; }
+a.boton-enlace.secundario { background: transparent; color: var(--acento); border: 1px solid var(--borde); margin-top: 10px; }
+
+/* Interruptor (como los del iPhone): toda la fila se toca. */
+button.interruptor {
+  display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; min-height: 56px;
+  padding: 10px 14px; border-radius: 14px; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); text-align: left;
+}
+.interruptor-texto { flex: 1; min-width: 0; }
+.interruptor-riel {
+  flex: none; position: relative; width: 54px; height: 32px; border-radius: 999px; background: var(--apagado-fondo);
+  border: 2px solid var(--suave); transition: background 0.15s, border-color 0.15s;
+}
+.interruptor-bola {
+  position: absolute; top: 2px; left: 2px; width: 24px; height: 24px; border-radius: 50%; background: var(--suave); transition: transform 0.15s, background 0.15s;
+}
+button.interruptor[aria-checked="true"] .interruptor-riel { background: var(--bien); border-color: var(--bien); }
+button.interruptor[aria-checked="true"] .interruptor-bola { transform: translateX(22px); background: var(--tarjeta); }
+@media (prefers-reduced-motion: reduce) { .interruptor-riel, .interruptor-bola { transition: none; } }
+
+.proveedor { border-top: 1px solid var(--borde); padding: 12px 0 14px; }
+.proveedor:first-of-type { border-top: 0; padding-top: 4px; }
+.proveedor-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.proveedor-cabeza strong { font-size: 17px; }
+.proveedor p { margin-bottom: 4px; }
+.campo-dinero { display: flex; align-items: center; gap: 8px; max-width: 260px; }
+.campo-dinero-signo { font-weight: 800; color: var(--suave); }
+.campo-dinero input { font-size: 20px; font-weight: 700; }
+.nota-pago { border-left: 6px solid var(--info); }
+
+/* Claves: una caja por proveedor, con su color a la izquierda. */
+.clave-caja {
+  border: 1px solid var(--borde); border-left: 6px solid var(--tono); border-radius: 14px; padding: 12px 14px; margin: 12px 0 0;
+  background: color-mix(in srgb, var(--tono) 4%, var(--tarjeta));
+}
+.clave-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.clave-nombre { font-size: 17px; }
+.clave-final { font-size: 19px; font-weight: 800; letter-spacing: 0.02em; margin: 6px 0 4px; }
+.clave-caja .botones button { margin-top: 6px; }
+.clave-caja .aviso-sistema { margin: 8px 0 4px; }
+li.clave-anterior { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 15px; }
+li.clave-anterior button { margin-top: 0; }
+/* El cuadro para pegar la clave: una línea tapada con puntos (no es un campo de contraseña: ver public/ia-vista.js). */
+textarea.campo-clave {
+  min-height: 52px; font: 16px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; resize: none; padding: 13px 14px;
+  -webkit-text-security: disc; overflow-wrap: anywhere; word-break: break-all;
+}
+
+/* La ayuda de IA dentro de la versión que espera aprobación. */
+.ayuda-ia {
+  border: 1.5px dashed color-mix(in srgb, var(--acento) 50%, var(--borde)); border-radius: 16px; padding: 14px; margin: 14px 0 4px;
+  background: color-mix(in srgb, var(--acento) 5%, var(--tarjeta));
+}
+.ayuda-ia.disponible { border-style: solid; }
+.ayuda-ia-titulo { font-weight: 800; margin-bottom: 6px; }
+.ayuda-ia-titulo .icono { color: var(--acento); }
+.ayuda-ia-precio { font-size: 15px; }
+.ayuda-ia-linea { margin: 0; font-size: 15px; }
+.ayuda-ia-linea .icono { color: var(--suave); margin-top: 2px; }
+.ayuda-ia button.boton-ia { margin-top: 4px; }
+.ayuda-ia-espera { font-weight: 700; color: var(--acento); margin: 0; }
+.girando { display: inline-flex; animation: girar 2.4s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .girando { animation: none; } }
+.version-ia { display: grid; gap: 6px; margin: 2px 0 12px; justify-items: start; }
+.version-ia .ia-cambios p { margin: 0 0 6px; }
+.version-ia button { margin-top: 2px; text-align: left; }
+p.insignia { margin: 0 0 6px; }
+.marca-ia { max-width: 100%; }
+.pista-ia { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; font-weight: 600; color: var(--info); margin: 2px 0 4px; }
+.pista-ia .icono { margin-top: 2px; }
+.pastilla.resaltada { background: var(--aviso-fondo); color: var(--aviso-texto); }
+.pastilla.resaltada .icono { color: var(--aviso-texto); }
+.detalle-gasto ul.llamadas li { font-size: 14px; }
