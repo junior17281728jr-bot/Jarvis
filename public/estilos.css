@@ -605,6 +605,7 @@ button.grande.con-icono { display: flex; }
 .numero-valor.numero-texto { font-size: 17px; line-height: 1.75; white-space: nowrap; letter-spacing: -0.02em; }
 .linea-ia { display: block; text-decoration: none; color: var(--texto); font-weight: 600; border-top: 1px solid var(--borde); padding: 10px 0 4px; margin: 4px 0 6px; min-height: 44px; }
 .linea-ia .icono { color: var(--acento); }
+.linea-ia.tono-atencion .icono, .linea-ia.tono-mal .icono { color: var(--tono); }
 .linea-ia .barra-gasto { height: 10px; margin-top: 8px; }
 
 /* Lo que falta para encender: ✓ verde lo que ya está, ! amarillo lo que falta. */

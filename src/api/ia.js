@@ -107,8 +107,11 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
       }
     }
     if ('usar' in datos) cambios.usar = datos.usar;
-    guardarConfigIa(db, cambios, { config, usuarioId: usuario.id, origen: 'pantalla' });
-    return { codigo: 200, datos: estado(db, req, usuario) };
+    // Ronda 4 de revisión: si el cambio apagó la IA (por ejemplo, el último «Usar …» o el tope en US$0), la respuesta lo
+    // dice (apagadaPor: lo que falta) y la pantalla explica por qué, nunca en silencio.
+    const informe = {};
+    guardarConfigIa(db, cambios, { config, usuarioId: usuario.id, origen: 'pantalla', informe });
+    return { codigo: 200, datos: { ...estado(db, req, usuario), apagadaPor: informe.apagadaPor ?? null } };
   }, { admin: true, soloDueno: true });
 
   rutas.agregar('GET', '/api/admin/ia/consumo', ({ db, req, usuario }) => {
@@ -156,7 +159,16 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     const esAdmin = esEspacioAdmin(db, e.id);
     const info = pendienteDeProyecto(db, e.id, parametros.id); // 404 si no es de esta cuenta
     const tarea = ultimaAyuda(db, { espacioId: e.id, proyectoInternoId: info.id, paraCuenta: !esAdmin, ahora });
-    if (esAdmin && !vieneDeTailscale(req).si) return { codigo: 200, datos: { disponible: false, motivo: 'solo_tailnet', esAdmin: true, tarea } };
+    const enTailnet = vieneDeTailscale(req).si;
+    // Ronda 4 de revisión: el administrador sabe si quien mira es el dueño (solo el dueño enciende la IA y la ayuda; a
+    // otro administrador no se le manda a un interruptor que no tiene). Por el enlace público no se sabe: null.
+    const esDueno = esAdmin && enTailnet ? duenoDeTailscale(db, req, usuario).si : null;
+    if (esAdmin && !enTailnet) {
+      // Con la IA o la ayuda apagadas, eso es lo que se dice (no «se pide desde Tailscale», que haría pensar que allí sí).
+      const cfg = leerConfigIa(db);
+      const motivo = !cfg.encendida ? 'ia_apagada' : !cfg.ayudaProyectos ? 'ayuda_no_activada' : 'solo_tailnet';
+      return { codigo: 200, datos: { disponible: false, motivo, esAdmin: true, esDueno, tarea } };
+    }
     if (!esAdmin && !cuentaConPresupuesto(db, e.id, ahora)) return { codigo: 200, datos: { disponible: false } };
     const r = revisarAyuda(db, { e, numeroProyecto: parametros.id, idioma: usuario.idioma, ahora });
     const d = r.d ?? {};
@@ -166,7 +178,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
       maximoMicro: d.maximoMicro ?? null, tipicoMicro: d.tipicoMicro ?? null, usadoMicro: d.usadoMicro ?? null,
       topeMicro: d.topeMicro ?? null, vuelveEl: d.vuelveEl ?? null, proveedor: d.proveedor ?? null, topeLleno: d.topeLleno ?? null, tarea,
     };
-    return { codigo: 200, datos: esAdmin ? { ...comun, modelo: d.modelo ?? null, esAdmin: true } : comun };
+    return { codigo: 200, datos: esAdmin ? { ...comun, modelo: d.modelo ?? null, esAdmin: true, esDueno } : comun };
   });
 
   rutas.agregar('POST', '/api/proyectos/:id/versiones/:numero/ayuda-ia', async ({ db, req, usuario, parametros }) => {

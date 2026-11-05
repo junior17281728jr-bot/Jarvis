@@ -6,6 +6,9 @@
 //  - Apagar se puede siempre (también desde la consola: oportia-admin.mjs --ia=no) y no toca ayudaProyectos.
 //  - Si ya no queda ninguna clave probada mientras la IA está encendida, la IA se apaga sola: una clave nueva nunca
 //    vuelve a gastar sin un «Encender» nuevo del dueño.
+//  - Ronda 4 de revisión: una clave probada que está EN PAUSA (por ejemplo, sin crédito) no apaga la IA al cambiar el
+//    tope o un proveedor: la IA sigue «En espera» y vuelve sola cuando el dueño toca «Probar y reanudar». Cuando un
+//    cambio sí la apaga, se dice por qué (informe.apagadaPor) y la pantalla lo muestra.
 import { enTransaccion } from '../nucleo/db.js';
 import { ErrorHttp } from '../nucleo/http.js';
 import { auditar } from '../cuentas/usuarios.js';
@@ -109,9 +112,10 @@ export function usdAMicro(valor, maxMicro) {
   return micro;
 }
 
-// Cómo está cada proveedor para ENCENDER la IA (versión estricta: la clave pasó su prueba gratis).
+// Cómo está cada proveedor para ENCENDER la IA (versión estricta: la clave pasó su prueba gratis y no está en pausa del
+// dueño). seguir: para una IA que YA está encendida, una pausa no cuenta (la IA queda «En espera», no se apaga).
 //   { id, usar, modelo, precio, clave, listo }
-export function proveedoresParaEncender(db, config, cfg = leerConfigIa(db), ahora = Date.now()) {
+export function proveedoresParaEncender(db, config, cfg = leerConfigIa(db), ahora = Date.now(), { seguir = false } = {}) {
   const llave = estadoLlave(config);
   return cfg.orden.map(id => {
     const p = cfg.proveedores[id];
@@ -119,16 +123,18 @@ export function proveedoresParaEncender(db, config, cfg = leerConfigIa(db), ahor
     const precio = precioDe(id, p.modelo) != null;
     const fila = db.prepare("SELECT * FROM secretos WHERE uso = ? AND espacio_id IS NULL AND estado = 'activa' ORDER BY id DESC LIMIT 1").get(adaptador.uso);
     const pausa = pausaVigente(fila, ahora);
-    const clave = Boolean(fila && llave.listo && fila.llave_huella === llave.huella && fila.prueba === 'ok' && !pausa?.admin);
+    const clave = Boolean(fila && llave.listo && fila.llave_huella === llave.huella && fila.prueba === 'ok' && (seguir || !pausa?.admin));
     return { id, usar: p.usar, modelo: p.modelo, precio, clave, listo: p.usar && precio && clave };
   });
 }
 
-// Qué falta para encender: [] si nada. 'clave' | 'tope' | 'precio'.
-export function faltaParaEncender(db, config, cfg = leerConfigIa(db), ahora = Date.now()) {
+// Qué falta para encender: [] si nada. 'proveedor' (ningún proveedor tiene «Usar …» encendido: entonces no se habla de
+// clave ni de precio, que sí están) | 'clave' | 'tope' | 'precio'. seguir: ver proveedoresParaEncender.
+export function faltaParaEncender(db, config, cfg = leerConfigIa(db), ahora = Date.now(), { seguir = false } = {}) {
   const faltan = [];
-  const lista = proveedoresParaEncender(db, config, cfg, ahora).filter(p => p.usar);
-  if (!lista.some(p => p.listo)) {
+  const lista = proveedoresParaEncender(db, config, cfg, ahora, { seguir }).filter(p => p.usar);
+  if (!lista.length) faltan.push('proveedor');
+  else if (!lista.some(p => p.listo)) {
     if (!lista.some(p => p.clave)) faltan.push('clave');
     if (!lista.some(p => p.precio)) faltan.push('precio');
     if (!faltan.length) faltan.push('clave'); // hay clave y hay precio, pero no del mismo proveedor
@@ -192,8 +198,10 @@ function diferencias(antes, despues) {
 // Guarda cambios de la configuración. cambios: { encendida?, ayudaProyectos?, topeGeneralMicro?, topesPlanMicro?,
 // usar?: { anthropic?, openai? } } (topes en µUSD; las rutas pasan los dólares por usdAMicro).
 // 400 datos_no_validos / tope_no_valido · 409 ia_falta (detalle: { faltan }). Devuelve la configuración nueva.
-export function guardarConfigIa(db, cambios, { config, usuarioId = null, origen = 'pantalla', ahora = Date.now() } = {}) {
+// informe (opcional): si el cambio apagó la IA sin pedirlo, queda informe.apagadaPor = [lo que falta] (para la pantalla).
+export function guardarConfigIa(db, cambios, { config, usuarioId = null, origen = 'pantalla', ahora = Date.now(), informe = null } = {}) {
   if (!ORIGENES_CAMBIO.includes(origen)) throw new Error(`origen no válido: ${origen}`);
+  if (informe && typeof informe === 'object') informe.apagadaPor = null;
   return enTransaccion(db, () => {
     const antes = leerConfigIa(db);
     const nueva = cambiosValidados(antes, cambios);
@@ -203,10 +211,13 @@ export function guardarConfigIa(db, cambios, { config, usuarioId = null, origen 
       if (p.usar && !antes.proveedores[id].usar && precioDe(id, p.modelo) == null) falta(['precio']);
     }
     // Encender (o seguir encendida tras un cambio): todo lo necesario tiene que estar.
+    // Si ya estaba encendida, una clave en pausa no cuenta como «falta» (sigue «En espera»): solo se apaga si de verdad
+    // queda sin proveedor, sin clave probada, sin precio o con tope 0, y entonces se dice por qué.
+    let apagadaPor = null;
     if (nueva.encendida && (!antes.encendida || 'usar' in cambios || 'topeGeneralMicro' in cambios)) {
-      const faltan = faltaParaEncender(db, config, nueva, ahora);
+      const faltan = faltaParaEncender(db, config, nueva, ahora, { seguir: antes.encendida });
       if (faltan.length) {
-        if (antes.encendida && !('encendida' in cambios)) nueva.encendida = false; // un cambio que la deja sin nada: se apaga
+        if (antes.encendida && !('encendida' in cambios)) { nueva.encendida = false; apagadaPor = faltan; } // un cambio que la deja sin nada: se apaga
         else falta(faltan);
       }
     }
@@ -219,7 +230,8 @@ export function guardarConfigIa(db, cambios, { config, usuarioId = null, origen 
     db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
       ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`)
       .run(CLAVE_AJUSTE_IA, JSON.stringify(nueva), nueva.cambiadoEn);
-    auditar(db, { usuarioId, accion: 'ia_config', detalle: JSON.stringify({ antes: cambio.antes, despues: cambio.despues, origen }) });
+    auditar(db, { usuarioId, accion: 'ia_config', detalle: JSON.stringify({ antes: cambio.antes, despues: cambio.despues, origen, ...(apagadaPor ? { apagadaPor } : {}) }) });
+    if (apagadaPor && informe && typeof informe === 'object') informe.apagadaPor = [...apagadaPor];
     // Un tope que cambió: se cierra el aviso de este mes de ese tope y se mira otra vez (subir el tope cierra el
     // «tope lleno»; la historia queda: si vuelve, es un aviso nuevo).
     const mes = mesCobro(ahora);
@@ -246,7 +258,8 @@ export function apagarSiNoQuedaProveedor(db, config, { usuarioId = null, ahora =
   return enTransaccion(db, () => {
     const cfg = leerConfigIa(db);
     if (!cfg.encendida) return false;
-    const faltan = faltaParaEncender(db, config, cfg, ahora).filter(f => f !== 'tope');
+    // Una clave probada en pausa no la apaga (la IA queda «En espera»); una clave nueva sin probar, sí.
+    const faltan = faltaParaEncender(db, config, cfg, ahora, { seguir: true }).filter(f => f !== 'tope');
     if (!faltan.length) return false;
     guardarConfigIa(db, { encendida: false }, { config, usuarioId, origen: 'automatico', ahora });
     return true;

@@ -7,7 +7,7 @@ import {
 import { ICONOS_SECTOR, ICONOS_PROYECTO, ICONOS_SERVICIOS, MAPA_COLUMNAS, MAPA_FILAS, MAPA_PROVINCIAS, PROVINCIAS_DE_REGION, EDIFICIOS_POR_TAMANO } from './dibujos.js';
 import {
   ATRIBUTOS_CAMPO_CLAVE, MARCAS_GASTO, CAMBIOS_RESALTADOS, partesBarraGasto, controlesProveedores, estadoDeClave, vistaAyudaIa, nombreModelo, leerDolares,
-  textoUsd,
+  textoUsd, lineaIaInicio, cosasParaEncender, apagarProveedorApagaIa,
 } from './ia-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
@@ -429,6 +429,17 @@ function marco(seccion, ...contenido) {
 // Solo para el administrador, arriba de Inicio: cómo está el sistema de un vistazo y, si el trabajo automático
 // está en pausa (modo seguro) o hay un aviso grave sin ver, una tarjeta roja que lleva a Administrador.
 // ia: GET /api/admin/ia. Con la IA encendida, una línea con lo gastado este mes y su barra (lleva a la pantalla de la IA).
+// Ronda 4 de revisión: la línea dice el mismo estado que la tarjeta de Servicios (en espera, tope lleno), no solo «encendida».
+function lineaIa(ia) {
+  const l = lineaIaInicio(ia);
+  if (!l) return null;
+  const datos = { usado: usd(ia.usadoMicro), tope: usd(ia.topeGeneralMicro), motivo: textoMotivoIa(ia.motivo), fecha: fechaHora(ia.vuelveEl) };
+  const texto = l.clave === 'inicio.ia_tope_lleno' ? t('inicio.ia_tope_lleno', datos) : l.clave === 'inicio.ia_espera' ? t('inicio.ia_espera', datos) : t('inicio.ia_encendida', datos);
+  return el('a', { class: `linea-ia tono-${l.tono}`, href: '#ia' },
+    el('span', { class: 'con-icono' }, icono(l.clave === 'inicio.ia_encendida' ? 'chispa' : l.clave === 'inicio.ia_espera' ? 'pausa' : 'atencion', 'icono tono-color'), el('span', { texto })),
+    barraGasto({ usadoMicro: ia.usadoMicro, apartadoMicro: ia.apartadoMicro, topeMicro: ia.topeGeneralMicro, lleno: l.lleno }, { conMarcas: false }));
+}
+
 function estadoEnInicio(s, ia = null) {
   if (!s) return null;
   const graves = (s.avisos?.abiertos ?? []).filter(a => a.nivel === 'grave' && !a.vistoEn).length;
@@ -439,9 +450,7 @@ function estadoEnInicio(s, ia = null) {
     el('div', { class: 'etiquetas' },
       insignia(tonoTrabajo(s), t('inicio.estado.trabajo', { estado: nombreFase(s) })),
       insignia(tonoServidor, t('inicio.estado.servidor', { estado: t(`sistema.semaforo.${s.salud?.semaforo ?? 'amarillo'}`) }))),
-    ia?.encendida ? el('a', { class: 'linea-ia', href: '#ia' },
-      el('span', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('inicio.ia_encendida', { usado: usd(ia.usadoMicro), tope: usd(ia.topeGeneralMicro) }) })),
-      barraGasto({ usadoMicro: ia.usadoMicro, apartadoMicro: ia.apartadoMicro, topeMicro: ia.topeGeneralMicro }, { conMarcas: false })) : null,
+    lineaIa(ia),
     // Esta tarjeta no se actualiza sola: dice de cuándo son los datos.
     el('p', { class: 'ayuda', texto: t('inicio.estado.actualizado', { hora: cuando(new Date().toISOString()) }) }),
     el('a', { class: 'boton-enlace', href: '#admin', texto: t('inicio.alerta.ver') }));
@@ -1309,7 +1318,15 @@ function textoAmbito(ambito) {
   if (!m) return t('ia.ambito.general');
   return m[1] === 'e' ? t('ia.ambito.e', { id: m[2] }) : t('ia.ambito.p', { id: m[2] });
 }
+// Por qué un cambio apagó la IA (ronda 4 de revisión): «La IA se apagó porque …».
+function textoApagadaPor(f) {
+  if (f === 'proveedor') return t('ia.apagada_por.proveedor');
+  if (f === 'tope') return t('ia.apagada_por.tope');
+  if (f === 'precio') return t('ia.apagada_por.precio');
+  return t('ia.apagada_por.clave');
+}
 function textoFalta(f) {
+  if (f === 'proveedor') return t('ia.falta.proveedor');
   if (f === 'clave') return t('ia.falta.clave');
   if (f === 'tope') return t('ia.falta.tope');
   if (f === 'precio') return t('ia.falta.precio');
@@ -1363,7 +1380,7 @@ function azulejoIa(r) {
   return tarjetaResumen({
     ...base, tono, detalle,
     valor: t('servicios.ia.uso', { usado: usd(s.usadoMicro), tope: usd(s.topeGeneralMicro) }),
-    extra: barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro }, { conMarcas: false }),
+    extra: barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro, lleno: s.estado === 'tope_lleno' }, { conMarcas: false }),
   });
 }
 function azulejoClaves(ia, claves) {
@@ -1419,7 +1436,13 @@ function dibujarIa(s, aviso, vigente) {
       decir(cajaMensaje, faltan.length ? `${textoError(x.datos.error)} ${unir(faltan.map(textoFalta))}.` : textoError(x.datos.error), 'error');
       return;
     }
-    dibujarIa(x.datos, typeof listo === 'function' ? listo(x.datos) : listo, vigente);
+    const hecho = typeof listo === 'function' ? listo(x.datos) : listo;
+    // Ronda 4 de revisión: si el cambio apagó la IA (sin pedirlo), se dice por qué, nunca en silencio.
+    const apagadaPor = Array.isArray(x.datos.apagadaPor) ? x.datos.apagadaPor : [];
+    const textoHecho = hecho && typeof hecho === 'object' ? hecho.texto : hecho;
+    dibujarIa(x.datos, apagadaPor.length
+      ? { texto: [textoHecho, t('ia.apagada_por', { motivo: unir(apagadaPor.map(textoApagadaPor)) })].filter(Boolean).join(' '), clase: 'aviso' }
+      : hecho, vigente);
   }
 
   // ---- 1. El estado: apagada, encendida, encendida pero sin uso, o tope lleno ----
@@ -1433,7 +1456,7 @@ function dibujarIa(s, aviso, vigente) {
   const faltan = Array.isArray(s.faltan) ? s.faltan : [];
   const listaParaEncender = dueno && !s.encendida ? [
     el('p', { class: 'fuerte', texto: t('ia.para_encender') }),
-    el('ul', { class: 'lista-falta' }, ['clave', 'tope', 'precio'].map(f => {
+    el('ul', { class: 'lista-falta' }, cosasParaEncender(faltan).map(f => {
       const listo = !faltan.includes(f);
       return el('li', { class: `tono-${listo ? 'bien' : 'atencion'}` }, icono(listo ? 'bien' : 'mal', 'icono'),
         el('span', { texto: textoFalta(f) }), el('span', { class: 'solo-lectores', texto: listo ? t('ia.falta.listo') : t('ia.falta.pendiente') }));
@@ -1475,14 +1498,15 @@ function dibujarIa(s, aviso, vigente) {
     mensajeEstado);
 
   // ---- 2. El gasto del mes: el número grande, la barra contra el tope y, para el dueño, los detalles ----
-  const partes = partesBarraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro });
+  const lleno = s.estado === 'tope_lleno';
+  const partes = partesBarraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro, lleno });
   const sinNada = !s.usadoMicro && !(s.llamadasMes > 0);
   const tarjetaGasto = el('section', { class: 'tarjeta' },
     titulo('grafica', t('ia.gasto.titulo', { mes: nombreMes(s.mes) })),
     el('div', { class: 'gasto-cifras' },
       el('span', { class: `gasto-grande tono-${s.usadoMicro > 0 ? partes.tono : 'neutro'}`, texto: usd(s.usadoMicro) }),
       el('span', { class: 'gasto-de', texto: t('ia.gasto.de', { tope }) })),
-    barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro }),
+    barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro, lleno }),
     s.apartadoMicro > 0 ? el('p', { class: 'ayuda', texto: t('ia.gasto.apartado', { monto: usd(s.apartadoMicro) }) }) : null,
     el('p', { class: 'suave con-icono' }, icono('calendario', 'icono chico'), el('span', { texto: t('ia.gasto.reinicia', { fecha: fechaHora(s.vuelveEl) }) })),
     dueno ? el('div', { class: 'numeros' },
@@ -1574,7 +1598,11 @@ function dibujarIa(s, aviso, vigente) {
         c.confirmado ? el('p', { class: 'suave', texto: t('ia.precio', { modelo: p.precio.nombre || nombreModelo(p.modelo), entrada: `US$${p.precio.entradaUsd}`, salida: `US$${p.precio.salidaUsd}`, fecha: fechaDia(p.precio.revisadoEl) }) })
           : el('p', { class: 'suave', texto: t('ia.proveedor.sin_precio', { proveedor: nombre }) }),
         c.conInterruptor ? interruptor(c.etiqueta === 'ia.proveedor.segundo' ? t('ia.proveedor.segundo') : t('ia.proveedor.usar', { proveedor: nombre }), c.usar,
-          boton => cambiar(boton, mensajeProveedores, '/api/admin/ia/ajustes', { usar: { [c.id]: !c.usar } }, null)) : null);
+          boton => {
+            // Apagar el último proveedor apaga la IA: se pregunta antes (y, si sigue, la pantalla dice por qué se apagó).
+            if (apagarProveedorApagaIa(s, c.id) && !confirm(t('ia.proveedor.apagar_ia.confirmar', { proveedor: nombre }))) return;
+            cambiar(boton, mensajeProveedores, '/api/admin/ia/ajustes', { usar: { [c.id]: !c.usar } }, null);
+          }) : null);
     }),
     mensajeProveedores,
     el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, icono('llave'), el('span', { texto: t('ia.ir_claves') })));
@@ -1686,6 +1714,8 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
   const mensajeClave = caja();
   const nombre = tSi(`claves.uso.${u.uso}`, u.uso);
   const conIaApagada = (texto, x) => [texto, x.datos.iaApagada ? t('claves.ia_apagada') : null].filter(Boolean).join(' ');
+  // Cuando la IA se apagó, un atajo para volver a encenderla (ronda 4 de revisión).
+  const abrirIa = { href: '#ia', texto: t('ia.abrir') };
   const partes = [el('div', { class: 'clave-cabeza' },
     el('strong', { class: 'clave-nombre', texto: nombre }),
     el('span', { class: `insignia tono-${tono}` }, icono(ICONO_ESTADO_CLAVE[estadoClave] ?? 'info', 'icono chico'), el('span', { texto: textoEstadoClave(estadoClave) })))];
@@ -1720,6 +1750,8 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
             return decir(mensajeClave, textoError(x.datos.error), 'error');
           }
           const m = x.datos.prueba?.motivo;
+          // Ronda 4 de revisión: reanudada pero con la IA apagada → se dice, con el atajo para encenderla.
+          if (m === 'ok' && x.datos.reanudada && x.datos.iaEncendida === false) return recargar({ texto: t('claves.reanudada_ia_apagada'), clase: 'aviso', enlace: abrirIa });
           recargar({ texto: m === 'ok' ? (x.datos.reanudada ? t('claves.reanudada') : t('claves.prueba.ok')) : t('claves.prueba.mal', { motivo: textoMotivoIa(m) }), clase: m === 'ok' ? 'bien' : 'aviso' });
         },
       }, icono(reanudar ? 'play' : 'actualizar'), textoBoton);
@@ -1729,7 +1761,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
       if (!confirm(t('claves.desactivar.confirmar'))) return;
       const x = await api('POST', `/api/admin/claves/${a.id}/activa`, { activa: false });
       if (!x.ok) throw new Error(textoError(x.datos.error));
-      recargar({ texto: conIaApagada(t('claves.desactivada_listo'), x), clase: x.datos.iaApagada ? 'aviso' : 'bien' });
+      recargar({ texto: conIaApagada(t('claves.desactivada_listo'), x), clase: x.datos.iaApagada ? 'aviso' : 'bien', enlace: x.datos.iaApagada ? abrirIa : null });
     }, 'prohibido'));
     partes.push(el('div', { class: 'botones' }, botones));
   }
@@ -1752,7 +1784,11 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
           return decir(mensajeClave, textoError(x.datos.error), 'error');
         }
         const m = x.datos.prueba?.motivo;
-        recargar({ texto: conIaApagada(t('claves.guardada', { resultado: textoMotivoIa(m) }), x), clase: m === 'ok' && !x.datos.iaApagada ? 'bien' : 'aviso' });
+        const guardadaTexto = t('claves.guardada', { resultado: textoMotivoIa(m) });
+        // Ronda 4 de revisión: la clave nueva funciona, pero por seguridad cambiarla apagó la IA: se dice así (no «ya no
+        // queda una clave que funcione») y se ofrece volver a encenderla.
+        if (x.datos.iaApagada && m === 'ok') return recargar({ texto: `${guardadaTexto} ${t('claves.ia_apagada_cambio')}`, clase: 'aviso', enlace: abrirIa });
+        recargar({ texto: conIaApagada(guardadaTexto, x), clase: m === 'ok' && !x.datos.iaApagada ? 'bien' : 'aviso', enlace: x.datos.iaApagada ? abrirIa : null });
       },
     }, icono('llave'), el('span', { texto: t('claves.guardar') }));
     partes.push(el('details', { class: 'clave-pegar', open: abrirPegar },
@@ -1772,7 +1808,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
         x.legible !== false && x.estado !== 'activa' ? botonAccion(t('claves.activar'), 'secundario chico', mensajeClave, async () => {
           const y = await api('POST', `/api/admin/claves/${x.id}/activa`, { activa: true });
           if (!y.ok) throw new Error(textoError(y.datos.error));
-          recargar({ texto: conIaApagada(t('claves.activada'), y), clase: y.datos.iaApagada ? 'aviso' : 'bien' });
+          recargar({ texto: conIaApagada(t('claves.activada'), y), clase: y.datos.iaApagada ? 'aviso' : 'bien', enlace: y.datos.iaApagada ? abrirIa : null });
         }) : null)))));
   }
   partes.push(mensajeClave);
@@ -1887,7 +1923,11 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
       mensajeIa,
     ];
   } else if (vista.vista === 'solo_tailnet') partes = [linea('candado', t('ayuda_ia.solo_tailnet'))];
-  else if (vista.vista === 'apagada_admin') partes = [linea('apagado', t('ayuda_ia.apagada_admin'))];
+  else if (vista.vista === 'apagada_admin' || vista.vista === 'ia_apagada_admin') {
+    // Ronda 4 de revisión: si lo apagado es la IA misma, se dice eso (no «Ayuda en proyectos», que puede estar encendida).
+    partes = [linea('apagado', vista.vista === 'ia_apagada_admin' ? t('ayuda_ia.ia_apagada_admin') : t('ayuda_ia.apagada_admin')),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#ia' }, icono('chispa'), el('span', { texto: t('ia.abrir') }))];
+  } else if (vista.vista === 'apagada_otro') partes = [linea('apagado', t('ayuda_ia.apagada_otro'))];
   else if (vista.vista === 'tope_lleno') partes = [linea('atencion', t('ayuda_ia.tope_lleno', { fecha: fechaHora(d.vuelveEl) }))];
   else if (vista.vista === 'no_cabe') partes = [linea('atencion', t('ayuda_ia.no_cabe'))];
   else if (vista.vista === 'pausa' && vista.enFila) {
@@ -3017,11 +3057,14 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
 }
 
 // Un aviso arriba del proyecto: texto (sale bien) o { texto, clase } (por ejemplo, «esto cambió en otro equipo»).
+// aviso: un texto, o { texto, clase: 'bien' | 'aviso', enlace?: { href, texto } } (un atajo debajo, por ejemplo a la IA).
 function avisoDeArriba(aviso) {
   if (!aviso) return null;
-  const { texto, clase } = typeof aviso === 'string' ? { texto: aviso, clase: 'bien' } : aviso;
-  return el('p', { class: `${clase === 'aviso' ? 'aviso' : 'mensaje bien'} aviso-arriba con-icono`, role: 'status', 'data-foco': true },
+  const { texto, clase, enlace = null } = typeof aviso === 'string' ? { texto: aviso, clase: 'bien' } : aviso;
+  const linea = el('p', { class: `${clase === 'aviso' ? 'aviso' : 'mensaje bien'} aviso-arriba con-icono`, role: 'status', 'data-foco': true },
     icono(clase === 'aviso' ? 'atencion' : 'bien'), el('span', { texto }));
+  if (!enlace?.href) return linea;
+  return [linea, el('a', { class: 'boton-enlace secundario con-icono', href: enlace.href }, icono('chispa'), el('span', { texto: enlace.texto }))];
 }
 
 function dibujarProyecto(d, aviso = null) {

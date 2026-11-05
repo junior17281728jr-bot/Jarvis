@@ -107,7 +107,10 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   llegan en la parte e: `avisos.enviado_en` ya está listo).
 - Si el proveedor dice que no hay saldo, que la clave no sirve o que esperemos, OPORTIA **sigue con su motor propio**, nunca
   bloquea a la persona, **no reintenta solo** (esa clave queda en pausa y el próximo uso ni siquiera llama) y abre un aviso
-  para el administrador enseguida. «Probar y reanudar» (gratis) en Claves la vuelve a usar.
+  para el administrador enseguida. «Probar y reanudar» (gratis) en Claves la vuelve a usar. Mientras tanto la IA queda
+  «En espera» (también en Inicio): cambiar el tope no la apaga. Si un cambio sí la apaga (el tope en US$0, apagar el
+  último «Usar …» o cambiar la clave, que por seguridad pide un «Encender» nuevo), la pantalla dice por qué y ofrece
+  volver a encenderla; si la reanudas con la IA apagada, también lo dice.
 - El mes de la IA es el mismo con el que cobra el proveedor: empieza el día 1 a medianoche en hora universal (en RD, a las
   8:00 p. m. del último día del mes anterior). Las pantallas lo dicen así.
 
@@ -125,6 +128,9 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
 
 ### Qué hace por ahora y cuánto cuesta (US$)
 - Una sola cosa, y solo con «Ayuda en proyectos» encendida: en un proyecto que espera aprobación, «Pedir ayuda a la IA».
+  Sirve para cualquier versión que espera aprobación: un proyecto nuevo o un cambio a uno que ya funciona. No usa el
+  permiso de IA de cada proyecto («IA en el trabajo automático: No permitida»): ese permiso es para el trabajo automático
+  de las fases que vienen; la ayuda se paga con el tope general (o el de la cuenta) y cada vez se confirma el precio.
   La pantalla muestra el precio máximo y pide confirmar; la IA llena el formulario, el motor propio lo vuelve a leer y sale
   una versión nueva que una persona revisa y aprueba. La IA nunca aprueba, nunca quita las dudas del motor (solo deja una
   pista al lado), nunca cambia la autonomía, la frecuencia, las capacidades ni el permiso de IA, y «Volver a la versión sin

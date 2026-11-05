@@ -13,7 +13,7 @@ import { Limitador } from '../nucleo/limites.js';
 import { GRUPOS } from '../claves/usos.js';
 import { guardarSecreto, listarSecretos, activarSecreto, desactivarSecreto, estadoAlmacen } from '../claves/almacen.js';
 import { probarSecreto } from '../claves/probar.js';
-import { apagarSiNoQuedaProveedor } from '../ia/config.js';
+import { apagarSiNoQuedaProveedor, leerConfigIa } from '../ia/config.js';
 import { loginDeTailscale } from '../cuentas/tailscale.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
@@ -65,7 +65,8 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
     if (datos.reanudar != null && typeof datos.reanudar !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     contar(usuario);
     const r = await probarSecreto(db, config, { id: parametros.id, usuarioId: usuario.id, reanudar: datos.reanudar === true, probadores });
-    return { codigo: 200, datos: { secreto: r.secreto, prueba: { motivo: r.motivo }, reanudada: r.reanudada } };
+    // Ronda 4 de revisión: si se reanudó pero la IA está apagada, la pantalla lo dice y ofrece encenderla.
+    return { codigo: 200, datos: { secreto: r.secreto, prueba: { motivo: r.motivo }, reanudada: r.reanudada, iaEncendida: leerConfigIa(db).encendida } };
   }, { admin: true, soloDueno: true });
 
   rutas.agregar('POST', '/api/admin/claves/:id/activa', async ({ db, req, usuario, parametros }) => {

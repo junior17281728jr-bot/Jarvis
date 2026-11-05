@@ -313,7 +313,7 @@ test('27. la ayuda de IA en un proyecto: nunca un botón que no se puede usar, y
   assert.notEqual(vistaAyudaIa({ ...ok, maximoMicro: null }).vista, 'disponible');
   assert.notEqual(vistaAyudaIa({ ...ok, disponible: false }).vista, 'disponible');
   const casos = {
-    solo_tailnet: 'solo_tailnet', ia_apagada: 'apagada_admin', ayuda_no_activada: 'apagada_admin', tope_general: 'tope_lleno', tope_espacio: 'tope_lleno',
+    solo_tailnet: 'solo_tailnet', ia_apagada: 'ia_apagada_admin', ayuda_no_activada: 'apagada_admin', tope_general: 'tope_lleno', tope_espacio: 'tope_lleno',
     trabajo_en_pausa: 'pausa', proveedor_en_pausa: 'no_disponible', sin_clave: 'no_disponible', demasiadas_llamadas: 'no_disponible', sin_pendiente: 'nada',
   };
   for (const [motivo, vista] of Object.entries(casos)) assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo }).vista, vista, motivo);
