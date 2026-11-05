@@ -100,6 +100,21 @@ test('crear un proyecto con instrucciones normales: queda pendiente con lo que e
     assert.equal(lista.datos.guardados, 1);
     assert.equal(lista.datos.maximoGuardados, guardadosPermitidos(LIMITE_ADMINISTRADOR));
     assert.equal(lista.datos.proyectos[0].versionPendiente, 1);
+    // Pase visual 2 (0.3.2): la lista trae un vistazo corto (pocos negocios y lugares) para dibujar sus íconos.
+    assert.deepEqual(lista.datos.proyectos[0].vistazo, { sectores: ['hoteles', 'clinicas', 'fabricas'], sectoresLibres: [], zonas: [], zonasLibres: [], paisCompleto: true });
+  });
+});
+
+test('el vistazo de la lista sale de la versión en uso, aunque haya un cambio esperando', async () => {
+  await conPlataforma(async ({ admin, pedir }) => {
+    const { id } = (await pedir('POST', '/api/proyectos', { datos: { instrucciones: 'Vendo paneles solares a hoteles en Santiago y La Vega' }, galleta: admin })).datos.proyecto;
+    assert.equal((await pedir('POST', `/api/proyectos/${id}/versiones/1/aprobar`, { galleta: admin })).codigo, 200);
+    await pedir('POST', `/api/proyectos/${id}/versiones`, { datos: { modo: 'instrucciones', instrucciones: 'Vendo paneles solares a farmacias en Azua' }, galleta: admin });
+    const [p] = (await pedir('GET', '/api/proyectos', { galleta: admin })).datos.proyectos;
+    assert.equal(p.versionPendiente, 2);
+    assert.deepEqual(p.vistazo.sectores, ['hoteles']);
+    assert.deepEqual(p.vistazo.zonas, ['santiago', 'la-vega']);
+    assert.equal(p.vistazo.paisCompleto, false);
   });
 });
 

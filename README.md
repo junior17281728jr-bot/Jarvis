@@ -163,5 +163,6 @@ en menos de 30 segundos, sin reiniciar. Queda en la auditoría como «consola».
     pausado, completado, con errores, papelera) junto con el «Siguiente paso».
   - Menú de abajo con íconos en el iPhone (arriba en la Mac), logo nuevo (`icono.svg` e `icono-180.png`), colores para
     claro y oscuro, cuadros de texto grandes que crecen, y todo lo que se toca mide al menos 44 puntos.
+- Pase visual 2 (versión 0.3.2, sin cambio de base): los proyectos con dibujos propios (`public/dibujos.js`: un ícono por negocio, mapa de casillas de las 32 provincias que también se toca en el creador, pista de pasos con la fase de cada uno) y poco texto; lo largo queda en «Ver en palabras». La lista de proyectos trae un `vistazo` corto (negocios y lugares).
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

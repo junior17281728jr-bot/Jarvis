@@ -99,7 +99,9 @@ test('todo error que puede dar el servidor tiene su explicación en los dos idio
 });
 
 test('las pantallas nunca convierten texto en código (sin innerHTML, eval ni scripts incrustados)', () => {
-  assert.doesNotMatch(appJs, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(/);
+  for (const archivo of readdirSync(join(RAIZ, 'public')).filter(n => n.endsWith('.js'))) {
+    assert.doesNotMatch(readFileSync(join(RAIZ, 'public', archivo), 'utf8'), /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function\(/, archivo);
+  }
   const html = readFileSync(join(RAIZ, 'public/index.html'), 'utf8');
   assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)[^>]*>/i, 'hay un script incrustado');
   assert.doesNotMatch(html, /<style|\sstyle=|\son[a-z]+=/i, 'hay estilos o eventos incrustados');
@@ -139,6 +141,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...ESTADOS_VERSION.map(x => `version.estado.${x}`),
     ...ORIGENES.map(x => `version.origen.${x}`),
     ...cat.autonomias.map(x => `autonomia.${x}`),
+    ...cat.autonomias.map(x => `autonomia.corta.${x}`),
     'autonomia.contactar_siempre',
     ...PLANES.map(x => `plan.${x}`),
     'aviso.clave_reiniciada',
@@ -170,4 +173,37 @@ test('los mensajes que dicen un número de tope usan el número que de verdad ti
   for (const idioma of [es, en]) assert.ok(idioma['error.demasiadas_versiones'].includes(String(MAXIMO_VERSIONES)), 'error.demasiadas_versiones');
   const { LIMITE_POR_PLAN } = await import('../src/cuentas/planes.js');
   for (const [plan, n] of Object.entries(LIMITE_POR_PLAN)) for (const idioma of [es, en]) assert.match(idioma[`plan.${plan}`], new RegExp(`\\b${n}\\b`), `plan.${plan}`);
+});
+
+test('pase visual 2: cada negocio del motor tiene su ícono, y el mapa tiene las 32 provincias y las mismas regiones', async () => {
+  const { ICONOS_SECTOR, ICONOS_PROYECTO, MAPA_PROVINCIAS, MAPA_COLUMNAS, MAPA_FILAS, PROVINCIAS_DE_REGION, EDIFICIOS_POR_TAMANO } = await import('../public/dibujos.js');
+  const { SECTORES } = await import('../src/motor/diccionarios.js');
+  const { PROVINCIAS, REGIONES } = await import('../src/motor/lugares.js');
+  const { ZONAS_CREADOR, ORDEN_TAMANOS } = await import('../public/creador.js');
+  const sectores = SECTORES.map(s => s.clave).filter(s => s !== 'todas');
+  assert.equal(sectores.length, 37);
+  for (const s of sectores) assert.ok(Array.isArray(ICONOS_SECTOR[s]) && ICONOS_SECTOR[s].length, `falta el ícono de ${s}`);
+  assert.deepEqual(Object.keys(ICONOS_SECTOR).sort(), [...sectores].sort(), 'un ícono de un negocio que el motor no conoce');
+  for (const forma of [...Object.values(ICONOS_SECTOR), ...Object.values(ICONOS_PROYECTO)]) {
+    for (const [etiqueta, atributos] of forma) {
+      assert.ok(['path', 'circle', 'rect', 'line', 'polyline', 'ellipse'].includes(etiqueta), etiqueta);
+      for (const v of Object.values(atributos)) assert.match(String(v), /^[-\d.\sMmLlHhVvCcSsQqTtAaZz,]+$/, 'solo números y órdenes de dibujo');
+    }
+  }
+  // El mapa: las 32 provincias, cada una una vez, en una casilla distinta dentro de la rejilla, y todas se pueden tocar en el creador.
+  assert.equal(MAPA_PROVINCIAS.length, 32);
+  assert.deepEqual(MAPA_PROVINCIAS.map(p => p.clave).sort(), PROVINCIAS.map(p => p.clave).sort());
+  assert.equal(new Set(MAPA_PROVINCIAS.map(p => `${p.columna},${p.fila}`)).size, 32);
+  assert.equal(new Set(MAPA_PROVINCIAS.map(p => p.letras)).size, 32, 'dos casillas con las mismas letras');
+  for (const p of MAPA_PROVINCIAS) {
+    assert.ok(p.columna >= 0 && p.columna < MAPA_COLUMNAS && p.fila >= 0 && p.fila < MAPA_FILAS, p.clave);
+    assert.ok(p.letras.length <= 3, p.clave);
+    assert.ok(ZONAS_CREADOR.some(z => z.clave === p.clave && z.tipo === 'provincia'), `${p.clave} no se puede elegir tocando`);
+  }
+  assert.deepEqual(Object.fromEntries(REGIONES.map(r => [r.clave, [...r.provincias].sort()])), Object.fromEntries(Object.entries(PROVINCIAS_DE_REGION).map(([k, v]) => [k, [...v].sort()])));
+  assert.deepEqual(Object.keys(EDIFICIOS_POR_TAMANO), ORDEN_TAMANOS);
+  // app.js usa íconos que existen.
+  for (const m of appJs.matchAll(/icono\('([a-z_-]+)'/g)) {
+    assert.ok(appJs.includes(`  ${m[1]}: [`) || m[1] in ICONOS_PROYECTO, `falta el ícono ${m[1]}`);
+  }
 });

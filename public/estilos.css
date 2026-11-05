@@ -459,3 +459,122 @@ ul.faltan li { color: var(--aviso-texto); background: var(--aviso-fondo); border
 .acciones-creador button, form.texto-libre button.grande { justify-content: center; display: flex; width: 100%; }
 .mensaje.aviso-maximo { background: var(--aviso-fondo); color: var(--aviso-texto); }
 details > .creador { margin-top: 10px; }
+
+/* ---------- Pase visual 2 (versión 0.3.2): proyectos con dibujos y poco texto ---------- */
+.solo-lectores {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* El dibujo del proyecto: su tipo en grande con el sello de su negocio principal. */
+.ilustracion {
+  position: relative; flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px;
+  color: var(--acento); background: var(--acento-suave); border: 1.5px solid color-mix(in srgb, var(--acento) 25%, transparent);
+}
+.ilustracion .ilustracion-tipo { width: 28px; height: 28px; }
+.ilustracion-sello {
+  position: absolute; right: -6px; bottom: -6px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--acento); color: var(--acento-texto); border: 2.5px solid var(--tarjeta);
+}
+.ilustracion-sello .icono { width: 15px; height: 15px; }
+.ilustracion.grande { width: 84px; height: 84px; border-radius: 24px; }
+.ilustracion.grande .ilustracion-tipo { width: 46px; height: 46px; stroke-width: 1.7; }
+.ilustracion.grande .ilustracion-sello { width: 40px; height: 40px; right: -8px; bottom: -8px; }
+.ilustracion.grande .ilustracion-sello .icono { width: 22px; height: 22px; }
+.proyecto-titulo { display: flex; align-items: center; gap: 18px; margin: 4px 0 6px; }
+.proyecto-titulo-texto { min-width: 0; flex: 1; }
+.proyecto-titulo h1 { font-size: 24px; margin-bottom: 4px; }
+.proyecto-titulo .etiquetas { margin: 0; }
+.volver-linea { margin: 0 0 4px; }
+.aviso-arriba { display: flex; align-items: center; gap: 8px; font-weight: 600; margin: 0 0 12px; }
+
+/* Estado: color, ícono, pista de pasos y siguiente paso en una línea. */
+.estado-proyecto-cabeza { gap: 10px; }
+.estado-icono { width: 40px; height: 40px; }
+.estado-nombre { font-size: 19px; }
+.pista { list-style: none; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pista-paso { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; margin: 0; }
+/* La línea que une los pasos. */
+.pista-paso + .pista-paso::before {
+  content: ""; position: absolute; top: 20px; right: calc(50% + 22px); width: calc(100% - 44px); height: 3px; border-radius: 2px;
+  background: var(--borde);
+}
+.pista-paso.hecho + .pista-paso::before { background: var(--bien); }
+.pista-punto {
+  position: relative; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--tarjeta); color: var(--suave); border: 2px dashed var(--borde);
+}
+.pista-paso.hecho .pista-punto { background: var(--bien); color: var(--tarjeta); border: 2px solid var(--bien); }
+.pista-paso.ahora .pista-punto { background: var(--aviso-fondo); color: var(--aviso-texto); border: 2.5px solid var(--aviso-texto); }
+.pista-candado {
+  position: absolute; right: -5px; bottom: -5px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--apagado-fondo); color: var(--apagado-texto); border: 1.5px solid var(--tarjeta);
+}
+.pista-candado .icono { width: 12px; height: 12px; }
+.pista-texto { font-size: 13px; font-weight: 700; line-height: 1.2; }
+.pista-paso.luego .pista-texto { color: var(--suave); }
+.pista-fase { font-size: 12px; font-weight: 700; line-height: 1.2; color: var(--apagado-texto); background: var(--apagado-fondo); border-radius: 999px; padding: 1px 7px; }
+.siguiente { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; }
+.siguiente-icono { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--acento); color: var(--acento-texto); }
+.siguiente-icono .icono { width: 17px; height: 17px; }
+.siguiente-texto { flex: 1 1 180px; font-size: 16px; margin: 0; }
+.siguiente button { margin-top: 0; }
+.linea-fase { font-size: 15px; font-weight: 600; color: var(--suave); margin: 0 0 10px; }
+.linea-fase .icono { color: var(--suave); }
+details.en-palabras { margin: 6px 0 0; }
+details.en-palabras > summary { font-size: 15px; }
+details.en-palabras[open] { background: var(--fondo); border-radius: 12px; padding: 0 12px 10px; }
+.nota details.en-palabras[open] { background: transparent; padding: 0; }
+.tarjeta.nota .con-icono-arriba .icono { color: var(--acento); }
+.dudas-titulo { font-weight: 800; margin-bottom: 6px; }
+details.supuestos { margin-top: 12px; }
+.proyecto-cabeza .botones button { margin-top: 10px; }
+h2.con-icono .icono { color: var(--acento); }
+
+/* «Lo que entendí»: una ficha por cada cosa (ícono, rótulo corto y lo elegido). */
+.fichas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0 4px; }
+.ficha { border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px 12px; background: color-mix(in srgb, var(--acento) 3%, var(--tarjeta)); min-width: 0; }
+.ficha.ancha { grid-column: 1 / -1; }
+.ficha-cabeza { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ficha-icono { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--acento-suave); color: var(--acento); }
+.ficha-rotulo { font-size: 13px; font-weight: 800; color: var(--suave); text-transform: uppercase; letter-spacing: 0.06em; }
+.ficha-valor { font-size: 16px; font-weight: 700; line-height: 1.3; margin: 0; overflow-wrap: anywhere; }
+.pastillas { display: flex; flex-wrap: wrap; gap: 6px; }
+.pastilla {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 11px; border-radius: 999px; font-size: 15px; font-weight: 600;
+  background: var(--acento-suave); color: var(--texto); overflow-wrap: anywhere; line-height: 1.3;
+}
+.pastilla .icono { color: var(--acento); }
+.pastilla.fuerte { font-size: 17px; font-weight: 800; }
+.pastilla.falta { background: var(--aviso-fondo); color: var(--aviso-texto); }
+.tamanos-vista { display: flex; flex-direction: column; gap: 6px; }
+.tamano-vista { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+.edificios { display: inline-flex; align-items: flex-end; gap: 0; color: var(--acento); }
+.edificios .casita { width: 18px; height: 18px; }
+.edificios .casita-2 { width: 22px; height: 22px; }
+.edificios .casita-3 { width: 26px; height: 26px; }
+.edificios.todos { color: var(--suave); }
+
+/* El mapa de casillas de las 32 provincias. */
+.mapa-rd { display: block; width: 100%; max-width: 420px; height: auto; margin: 2px auto 10px; }
+.mapa-toque { fill: transparent; }
+.mapa-cuadro { fill: var(--apagado-fondo); stroke: none; }
+.mapa-letras { fill: var(--apagado-texto); font-size: 13px; font-weight: 800; letter-spacing: 0.02em; font-family: inherit; pointer-events: none; }
+.mapa-casilla.suave .mapa-cuadro { fill: var(--acento-suave); stroke: var(--acento); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.mapa-casilla.suave .mapa-letras { fill: var(--acento); }
+.mapa-casilla.marcada .mapa-cuadro { fill: var(--acento); }
+.mapa-casilla.marcada .mapa-letras { fill: var(--acento-texto); }
+.mapa-rd.tocable .mapa-casilla { cursor: pointer; }
+.mapa-rd.tocable .mapa-casilla:focus { outline: none; }
+.mapa-rd.tocable .mapa-casilla:focus-visible .mapa-cuadro { stroke: var(--texto); stroke-width: 2.5; stroke-dasharray: none; }
+.mapa-caja { margin: 10px 0 2px; }
+.mapa-caja .ayuda { margin: 0 0 4px; }
+
+/* Lista de proyectos: dibujo grande, nombre, estado y pocas pastillas. */
+a.proyecto-fila { align-items: center; gap: 14px; padding: 14px 10px 14px 12px; }
+a.proyecto-fila .pastillas { margin-top: 2px; }
+a.proyecto-fila .pastilla { font-size: 14px; padding: 3px 9px; }
+
+/* Creador: íconos de los negocios y edificios del tamaño. */
+button.chip .chip-icono { width: 18px; height: 18px; color: var(--acento); }
+button.chip[aria-pressed="true"] .chip-icono { display: inline-block; color: var(--acento-texto); }
+button.chip .edificios { color: var(--acento); }
+button.chip[aria-pressed="true"] .edificios { color: var(--acento-texto); }

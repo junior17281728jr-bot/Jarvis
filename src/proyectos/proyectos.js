@@ -185,9 +185,26 @@ function proyectoPublico(p, pendiente = null, idioma = null) {
 // ---------- Leer ----------
 export function listarProyectos(db, espacioId, idioma = null) {
   return db.prepare(`SELECT p.*, (SELECT v.numero FROM proyecto_versiones v WHERE v.proyecto_id = p.id AND v.estado = 'pendiente') AS pendiente,
-      ${CONFIG_DEL_NOMBRE} AS config_del_nombre
+      ${CONFIG_DEL_NOMBRE} AS config_del_nombre, ${CONFIG_VISTAZO} AS config_vistazo
     FROM proyectos p WHERE p.espacio_id = ? ORDER BY p.en_papelera, p.actualizado_en DESC, p.id DESC`).all(espacioId)
-    .map(p => proyectoPublico(p, p.pendiente ?? null, idioma));
+    .map(p => ({ ...proyectoPublico(p, p.pendiente ?? null, idioma), vistazo: vistazoDe(p.config_vistazo) }));
+}
+
+// Pase visual 2 (0.3.2): lo poco que la lista muestra con íconos (a qué negocios y dónde), de la versión en uso,
+// o de la que espera, o de la última. Solo claves y pocos elementos: la lista sigue siendo liviana.
+const CONFIG_VISTAZO = `(SELECT v.configuracion FROM proyecto_versiones v WHERE v.proyecto_id = p.id
+  ORDER BY (v.numero = p.version_activa) DESC, (v.estado = 'pendiente') DESC, v.numero DESC LIMIT 1)`;
+function vistazoDe(texto) {
+  const c = leerJson(texto, null);
+  if (!c || typeof c !== 'object') return null;
+  const lista = (v, n) => (Array.isArray(v) ? v.filter(x => typeof x === 'string').slice(0, n) : []);
+  return {
+    sectores: lista(c.sectores, 3),
+    sectoresLibres: lista(c.sectoresLibres, 1),
+    zonas: lista(c.zonas, 2),
+    zonasLibres: lista(c.zonasLibres, 1),
+    paisCompleto: c.paisCompleto === true,
+  };
 }
 
 // Un cambio de nombre automático guarda el nombre en los dos idiomas: el historial lo muestra en el de quien lo mira.
