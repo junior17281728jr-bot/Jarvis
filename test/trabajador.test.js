@@ -6,6 +6,7 @@ import { configDePrueba, carpetaTemporal, esperarHasta, matarSiVive, procesoTerm
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join, dirname } from 'node:path';
@@ -13,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { abrirBase } from '../src/nucleo/db.js';
 import { encolar } from '../src/tareas/cola.js';
 import { leerModoSeguro, ponerModoSeguro } from '../src/tareas/modo-seguro.js';
+import { nuevaCorrida, terminarCorrida } from '../src/tareas/corridas.js';
 import { crearSupervisor, lanzarTrabajador } from '../src/tareas/supervisor.js';
 import { REGISTRO_PRUEBA } from './tareas-prueba.js';
 
@@ -104,6 +106,153 @@ function leerBase(datos) {
   }
 }
 
+// ---------- El supervisor con un trabajador DE MENTIRA (sin procesos: rápido y exacto) ----------
+// Un «proceso» que solo hace lo que la prueba le dice. contestaParar: si sale ordenado cuando se le pide por
+// el canal. Nunca tiene un pid de verdad, así que nada se puede cortar por error.
+function trabajadorDeMentira({ contestaParar = true, alNacer = null } = {}) {
+  const p = new EventEmitter();
+  p.pid = null;
+  p.connected = true;
+  p.mensajes = [];
+  p.senales = [];
+  p.salir = (codigo, senal = null) => setImmediate(() => {
+    if (p.salido) return;
+    p.salido = true;
+    p.connected = false;
+    p.emit('exit', codigo, senal);
+  });
+  p.decir = mensaje => setImmediate(() => { if (!p.salido) p.emit('message', mensaje); });
+  p.send = mensaje => {
+    p.mensajes.push(mensaje);
+    if (mensaje.tipo === 'parar' && contestaParar) {
+      p.decir({ tipo: 'saliendo', motivo: mensaje.motivo });
+      p.salir(0);
+    }
+    return true;
+  };
+  p.kill = senal => {
+    p.senales.push(senal);
+    if (senal === 'SIGTERM') { p.decir({ tipo: 'saliendo', motivo: 'senal' }); p.salir(0); } else p.salir(null, senal);
+    return true;
+  };
+  if (alNacer) setImmediate(() => alNacer(p));
+  return p;
+}
+
+function supervisorDeMentira({ tiempos = {}, reloj, ...opciones } = {}) {
+  const config = configDePrueba();
+  const db = abrirBase(config);
+  const lanzados = [];
+  const cuando = [];
+  const codigo = `mentira-${Math.random().toString(16).slice(2, 10)}`;
+  const crear = opciones.crear ?? (() => trabajadorDeMentira());
+  const supervisor = crearSupervisor({
+    db, config, version: '0.0.0-prueba', codigo,
+    lanzar: () => { const p = crear(lanzados.length); lanzados.push(p); cuando.push(performance.now()); return p; },
+    tiempos: { revisarCadaMs: 50, modoSeguroCadaMs: 50, saludCadaMs: 600_000, ...tiempos },
+    registro: { log() {}, error() {}, warn() {} },
+    ...(reloj ? { reloj } : {}),
+  });
+  return { db, config, codigo, supervisor, lanzados, cuando, cerrar: async () => { await supervisor.parar(); db.close(); } };
+}
+
+test('supervisor: la puerta de arranque nunca queda en «arrancando» para siempre, aunque nunca se llame a iniciar()', async () => {
+  let ahora = 1_000_000;
+  const m = supervisorDeMentira({ reloj: () => ahora });
+  try {
+    assert.equal(m.supervisor.estadoArranque(), 'arrancando');
+    ahora += 89_000;
+    assert.equal(m.supervisor.estadoArranque(), 'arrancando');
+    ahora += 1_001;
+    assert.equal(m.supervisor.estadoArranque(), 'no_aplica');
+    // Si el servicio ya se está apagando cuando llega iniciar(), no se enciende ningún trabajador.
+    await m.supervisor.parar();
+    m.supervisor.iniciar();
+    assert.equal(m.lanzados.length, 0);
+  } finally {
+    await m.cerrar();
+  }
+});
+
+test('supervisor: después de 3 fallos al arrancar queda «fallido» y deja de reintentar cada segundo (espera cada vez más)', async () => {
+  const m = supervisorDeMentira({
+    tiempos: { reinicioBaseMs: 40 },
+    crear: () => trabajadorDeMentira({ alNacer: p => p.salir(1) }),
+  });
+  try {
+    m.supervisor.iniciar();
+    await esperarHasta(() => m.lanzados.length >= 6, { que: '6 intentos' });
+    assert.equal(m.supervisor.estadoArranque(), 'fallido');
+    // Dentro de la ventana: 20, 40, 60 ms. Ya «fallido»: 40, 80, 160 ms (los relojes nunca llegan antes).
+    const espera = m.cuando[5] - m.cuando[4];
+    assert.ok(espera >= 150, `el 6.º intento esperó solo ${Math.round(espera)} ms`);
+    for (const c of m.db.prepare('SELECT como_termino FROM trabajador_corridas WHERE termino_en IS NOT NULL').all()) assert.equal(c.como_termino, 'no_arranco');
+  } finally {
+    await m.cerrar();
+  }
+});
+
+test('supervisor: si el trabajador sale porque se activó el modo seguro mientras arrancaba, /api/setup no se queda en 503', async () => {
+  // La revisión de cada 30 s no llega a tiempo aquí: la puerta tiene que abrirse sola al quedar en modo seguro.
+  const m = supervisorDeMentira({ tiempos: { modoSeguroCadaMs: 600_000 }, crear: () => trabajadorDeMentira() });
+  try {
+    m.supervisor.iniciar();
+    assert.equal(m.supervisor.estadoArranque(), 'arrancando');
+    // Como la consola: escribe directo en la base; el trabajador lo ve al arrancar y sale «modo_seguro».
+    ponerModoSeguro(m.db, { activo: true, origen: 'consola' });
+    m.lanzados[0].decir({ tipo: 'saliendo', motivo: 'modo_seguro' });
+    m.lanzados[0].salir(0);
+    await esperarHasta(() => m.supervisor.estado().fase === 'modo_seguro', { que: 'fase modo_seguro' });
+    assert.equal(m.supervisor.estadoArranque(), 'no_aplica');
+    assert.equal(m.lanzados.length, 1);
+  } finally {
+    await m.cerrar();
+  }
+});
+
+test('supervisor: al apagar, si el trabajador no contesta por el canal en 1 s, recibe SIGTERM (y no hace falta SIGKILL)', async () => {
+  const m = supervisorDeMentira({
+    tiempos: { senalTrasMs: 50 },
+    crear: () => trabajadorDeMentira({ contestaParar: false, alNacer: p => p.decir({ tipo: 'listo' }) }),
+  });
+  try {
+    m.supervisor.iniciar();
+    await esperarHasta(() => m.supervisor.estadoArranque() === 'listo', { que: 'listo' });
+    const { corrida } = m.supervisor.estado();
+    await m.supervisor.parar();
+    assert.deepEqual(m.lanzados[0].mensajes.map(x => x.tipo), ['parar']);
+    assert.deepEqual(m.lanzados[0].senales, ['SIGTERM']);
+    assert.equal(m.db.prepare('SELECT como_termino FROM trabajador_corridas WHERE corrida = ?').get(corrida).como_termino, 'normal');
+    assert.equal(m.lanzados.length, 1);
+  } finally {
+    await m.cerrar();
+  }
+});
+
+test('supervisor: después de quitar el modo seguro, solo cuentan las caídas NUEVAS (el trabajador tiene otras 5 oportunidades)', async () => {
+  const m = supervisorDeMentira({
+    tiempos: { ventanaArranqueMs: 0, reinicioBaseMs: 10, reinicioMaxMs: 20 },
+    crear: () => trabajadorDeMentira({ alNacer: p => { p.decir({ tipo: 'listo' }); setTimeout(() => p.salir(1), 5); } }),
+  });
+  try {
+    // 5 caídas recientes del mismo código, y después alguien quitó el modo seguro.
+    for (let i = 0; i < 5; i += 1) terminarCorrida(m.db, { corrida: nuevaCorrida(m.db, { version: '0.0.0-prueba', codigo: m.codigo }), como: 'caida', codigo: 1 });
+    await dormir(5);
+    ponerModoSeguro(m.db, { activo: true, origen: 'automatico', motivo: 'trabajador_inestable', codigo: m.codigo });
+    ponerModoSeguro(m.db, { activo: false, origen: 'consola' });
+    await dormir(5);
+    m.supervisor.iniciar();
+    await esperarHasta(() => m.lanzados.length >= 3, { que: '3 intentos' });
+    assert.equal(leerModoSeguro(m.db).activo, false, 'las caídas de antes de quitarlo no cuentan');
+    await esperarHasta(() => leerModoSeguro(m.db).activo, { que: 'modo seguro con 5 caídas nuevas' });
+    assert.equal(m.lanzados.length, 5);
+    assert.equal(leerModoSeguro(m.db).motivo, 'trabajador_inestable');
+  } finally {
+    await m.cerrar();
+  }
+});
+
+// ---------- Con procesos de verdad ----------
 test('1. el trabajador arranca con nice, queda listo, hace sus tareas y se apaga normal', async () => {
   const s = preparar();
   try {
@@ -265,5 +414,26 @@ test('7. si el servidor web muere de golpe, el trabajador se da cuenta y sale so
       matarSiVive(servicio.hijo.pid);
       matarSiVive(servicio.pidTrabajador);
     }
+  }
+});
+
+test('8. el trabajador sin canal con el servidor web no arranca: sale con 1 sin tocar la base', async () => {
+  const config = configDePrueba();
+  const db = abrirBase(config);
+  const corrida = nuevaCorrida(db, { version: '0.0.0-prueba', codigo: 'sin-canal' });
+  const hijo = spawn(process.execPath, ['--no-warnings', RUTA_PRUEBA], {
+    env: { PATH: process.env.PATH, OPORTIA_TEST: '1', OPORTIA_DB: config.archivoBase, OPORTIA_COPIAS: config.carpetaCopias, OPORTIA_CORRIDA: corrida },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let salida = '';
+  hijo.stderr.on('data', d => { salida += d; });
+  try {
+    const fin = await conTope(new Promise(listo => hijo.once('exit', codigo => listo({ codigo }))), 20_000);
+    assert.equal(fin?.codigo, 1, `salió con ${fin?.codigo}. Salida: ${salida}`);
+    assert.match(salida, /solo lo enciende el servidor web/);
+    assert.equal(db.prepare('SELECT pid FROM trabajador_corridas WHERE corrida = ?').get(corrida).pid, null, 'no anotó nada en la base');
+  } finally {
+    matarSiVive(hijo.pid);
+    db.close();
   }
 });

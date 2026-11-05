@@ -21,6 +21,7 @@ try {
 const supervisor = db ? crearSupervisor({ db, config, version: VERSION, codigo: HUELLA }) : null;
 const servidor = crearServidor({ db, supervisor });
 let arranque = null;
+let cerrando = false;
 
 // Tener el puerto es el «candado»: una segunda copia que no lo consigue sale ANTES de escribir nada en la base
 // y nunca enciende un trabajador. systemd la vuelve a intentar a los 5 s.
@@ -33,7 +34,7 @@ servidor.listen(config.puerto, config.host, () => {
   servidor.off('error', alFallarPuerto);
   servidor.on('error', error => console.error('Error del servidor (sigue):', error));
   console.log(`OPORTIA ${VERSION} escuchando en ${config.host}:${servidor.address().port}`); // test/arranque.test.js lee esta línea
-  if (!db) return;
+  if (!db || cerrando) return; // si ya se está apagando, no se enciende el trabajador
   try {
     arranque = registrarArranque(db, { version: VERSION, codigo: HUELLA, pid: process.pid });
   } catch (error) {
@@ -45,7 +46,6 @@ servidor.listen(config.puerto, config.host, () => {
 // Apagado ordenado (systemctl stop/restart, el actualizador): una sola vez.
 //  1. anota que fue un cierre limpio; 2. deja de aceptar visitas; 3. apaga al trabajador (le da 5 s y, si no,
 //  lo corta); 4. cierra la base. Sale sí o sí a los 8 s (systemd espera hasta 90 s).
-let cerrando = false;
 async function cerrar() {
   if (cerrando) return;
   cerrando = true;

@@ -324,13 +324,16 @@ export function crearEjecutor({
 
   // Al apagarse: deja de tomar, espera un poco a los pasos en marcha, corta los demás y devuelve sus tareas
   // a la fila (sin fallo, salvo conFallo: salió por falta de memoria y la tarea pudo ser la culpable).
+  // Todo cabe en esperaMs + 1 s (con 3 s, en 4 s), antes de la salida forzada del trabajador a los 5 s.
   async function parar({ esperaMs = T.graciaParadaMs, conFallo = false, motivo = 'apagado', devolver = true } = {}) {
     parando = true;
-    if (enMarcha) await conTope(enMarcha, Math.max(esperaMs, 1000));
+    const limite = performance.now() + Math.max(0, esperaMs);
+    const queda = () => Math.max(0, limite - performance.now());
     const pasos = () => [...enCurso.values()].map(e => e.promesa);
-    if (enCurso.size && esperaMs > 0) await conTope(Promise.allSettled(pasos()), esperaMs);
+    if (enMarcha) await conTope(enMarcha, queda());
+    if (enCurso.size && queda() > 0) await conTope(Promise.allSettled(pasos()), queda());
     for (const e of enCurso.values()) e.controlador.abort(new Parada());
-    if (enCurso.size) await conTope(Promise.allSettled(pasos()), 1000);
+    if (enCurso.size || enMarcha) await conTope(Promise.allSettled([...pasos(), enMarcha]), 1000);
     if (!devolver) return { devueltas: [] };
     const devueltas = await escritor.escribir(() => devolverLasMias(db, { corrida, conFallo, motivo, ahora: reloj(), azar, alFallar, registro }));
     return { devueltas };

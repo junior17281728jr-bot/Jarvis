@@ -38,7 +38,8 @@ export const TIEMPOS_SUPERVISOR = Object.freeze({
   vidaEstableMs: 600000, // si vivió más de 10 min, la cuenta de reinicios vuelve a cero
   ventanaCaidasMs: 900000,
   caidasParaModoSeguro: 5,
-  paradaMs: 5000,
+  paradaMs: 5000, // al apagar: si en 5 s no salió, se corta con SIGKILL
+  senalTrasMs: 1000, // si en 1 s no contestó al pedido de salir (por ejemplo, todavía cargaba), recibe SIGTERM
   reintentoSenalMs: 2000,
   saludCadaMs: 60000,
 });
@@ -90,6 +91,7 @@ export function crearSupervisor({
 
   let fase = 'arrancando';
   let hijo = null;
+  const creadoEn = reloj();
   let iniciadoEn = null;
   let parando = false;
   let paradaEnMarcha = null;
@@ -104,11 +106,12 @@ export function crearSupervisor({
   // La puerta de arranque (ver estadoArranque).
   const puerta = { aplica: true, listo: false, fallos: 0 };
 
+  // La ventana se cuenta desde iniciar(); si por un error nunca se llamó, desde que se creó el supervisor: así
+  // /api/setup nunca queda en 503 para siempre.
   function estadoArranque() {
     if (!puerta.aplica) return 'no_aplica';
     if (puerta.listo) return 'listo';
-    if (iniciadoEn == null) return 'arrancando';
-    if (reloj() - iniciadoEn >= T.ventanaArranqueMs) return 'no_aplica';
+    if (reloj() - (iniciadoEn ?? creadoEn) >= T.ventanaArranqueMs) return 'no_aplica';
     if (puerta.fallos >= T.fallosArranque) return 'fallido';
     return 'arrancando';
   }
@@ -133,14 +136,17 @@ export function crearSupervisor({
     }
   }
 
-  // Le pide al trabajador que salga ordenado (por el canal; si no se puede, con SIGTERM).
+  // Le pide al trabajador que salga ordenado, por el canal (así anota «normal» o «modo_seguro»). Si no se
+  // puede, o si en 1 s no contestó «saliendo» (por ejemplo, porque todavía estaba cargando y el mensaje se
+  // perdió), recibe SIGTERM: sale igual de ordenado, anotado como «senal».
   function pedirQueSalga(h, motivo) {
     if (!h || h.terminado || h.pidioSalir) return;
     h.pidioSalir = motivo;
     fase = 'parando';
-    if (!enviarA(h, { tipo: 'parar', motivo })) {
-      try { h.proceso.kill('SIGTERM'); } catch { /* ya salió */ }
-    }
+    const senal = () => { if (!h.terminado && !h.saliendo) { try { h.proceso.kill('SIGTERM'); } catch { /* ya salió */ } } };
+    if (!enviarA(h, { tipo: 'parar', motivo })) return senal();
+    h.temporizadorSenal = setTimeout(senal, T.senalTrasMs);
+    h.temporizadorSenal.unref?.();
   }
 
   function matar(h, como) {
@@ -165,18 +171,27 @@ export function crearSupervisor({
 
   // 5 salidas anormales del MISMO código en 15 min → modo seguro (solo fuera de la ventana de arranque, para
   // no tapar el «arrancando» que hace volver a la versión anterior).
+  // Si alguien quitó el modo seguro hace poco, solo cuentan las caídas de DESPUÉS: el trabajador tiene otras 5
+  // oportunidades (si no, la primera caída lo volvería a poner en modo seguro enseguida).
   function revisarInestable() {
     if (enVentana() || parando) return false;
     let n = 0;
-    try { n = salidasAnormales(db, { codigo, desde: reloj() - T.ventanaCaidasMs }); } catch { return false; }
+    try {
+      const quitadoEn = Date.parse(leerModoSeguro(db).ultimo?.hasta ?? '');
+      const desde = Math.max(reloj() - T.ventanaCaidasMs, Number.isFinite(quitadoEn) ? quitadoEn : -Infinity);
+      n = salidasAnormales(db, { codigo, desde });
+    } catch { return false; }
     if (n < T.caidasParaModoSeguro) return false;
     let yaActivo = false;
     try { yaActivo = leerModoSeguro(db).activo; } catch { /* se intenta igual */ }
     return yaActivo || activarModoSeguro('trabajador_inestable');
   }
 
+  // En modo seguro no hay trabajador: la puerta de arranque ya no aplica (si no, /api/setup diría «arrancando»
+  // 90 s y el actualizador volvería atrás una versión que está bien).
   function quedarEnModoSeguro() {
     cancelarReinicio();
+    puerta.aplica = false;
     fase = 'modo_seguro';
   }
 
@@ -197,7 +212,8 @@ export function crearSupervisor({
     }
     const h = {
       corrida, pid: null, proceso: null, desde: reloj(), listo: false, ultimoLatido: null, memoriaMb: null, heapPct: null,
-      enCurso: [], freno: null, saliendo: null, pidioSalir: null, matadoPor: null, terminado: false, esperas: [],
+      enCurso: [], freno: null, saliendo: null, pidioSalir: null, temporizadorSenal: null, matadoPor: null, terminado: false,
+      esperas: [],
     };
     hijo = h;
     fase = 'arrancando';
@@ -270,6 +286,7 @@ export function crearSupervisor({
   function alSalir(h, codigoSalida, senal, fallo = null) {
     if (h.terminado) return;
     h.terminado = true;
+    clearTimeout(h.temporizadorSenal);
     if (hijo === h) hijo = null;
     const ahora = reloj();
     let como = comoPropuesto(h, codigoSalida);
@@ -325,9 +342,11 @@ export function crearSupervisor({
     let espera;
     if (h && reloj() - h.desde > T.vidaEstableMs) reinicios = 0;
     if (como === 'senal' || como === 'zombis') espera = T.reintentoSenalMs;
-    else if (enVentana()) {
+    else if (estadoArranque() === 'arrancando') {
+      // Al arrancar se reintenta enseguida (0,5 s, 1 s y 1,5 s). Ya «fallido», se espera cada vez más, como
+      // siempre: no sirve de nada encenderlo cada segundo mientras el actualizador vuelve atrás.
       salidasEnVentana += 1;
-      espera = (T.reinicioBaseMs / 2) * Math.min(3, salidasEnVentana); // 0,5 s, 1 s y 1,5 s
+      espera = (T.reinicioBaseMs / 2) * Math.min(3, salidasEnVentana);
     } else {
       reinicios += 1;
       espera = Math.min(T.reinicioMaxMs, T.reinicioBaseMs * 2 ** (reinicios - 1));
@@ -421,7 +440,7 @@ export function crearSupervisor({
   }
 
   function iniciar() {
-    if (iniciadoEn != null) return;
+    if (iniciadoEn != null || parando) return;
     iniciadoEn = reloj();
     try { retraso.enable(); } catch { /* sin medida */ }
     let m = null;

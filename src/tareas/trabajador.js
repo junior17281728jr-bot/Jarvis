@@ -107,6 +107,7 @@ export async function principal({ registro = TIPOS, manejadores = MANEJADORES, e
     if (saliendo) return;
     const salida = SALIDAS[motivo] ?? SALIDAS.caida;
     saliendo = salida.como;
+    setTimeout(() => process.exit(salida.codigo), TIEMPOS_TRABAJADOR.salidaDuraMs); // sale sí o sí
     await enviar({ tipo: 'saliendo', motivo: salida.como });
     if (db && corridaEmpezada) {
       try { terminarCorrida(db, { corrida, como: salida.como, codigo: salida.codigo }); } catch { /* la anota el servidor web */ }
@@ -124,6 +125,14 @@ export async function principal({ registro = TIPOS, manejadores = MANEJADORES, e
     if (mensaje.tipo === 'despertar') ejecutor?.ciclo();
     else if (mensaje.tipo === 'parar') pedirParada(mensaje.motivo === 'modo_seguro' ? 'modo_seguro' : 'normal');
   });
+
+  // Solo lo enciende el servidor web, con su canal. Si el canal ya se cerró mientras cargaba (el servidor web
+  // murió en ese rato), el aviso 'disconnect' ya pasó y no vuelve: sale ahora mismo.
+  if (typeof process.send !== 'function') {
+    console.error('Al trabajador solo lo enciende el servidor web (no tiene canal con él).');
+    process.exit(SALIDA.caida);
+  }
+  if (!process.connected) return salirAlArrancar('sin_padre');
 
   const faltan = Object.keys(registro).filter(tipo => typeof manejadores?.[tipo]?.paso !== 'function');
   if (faltan.length) {
@@ -152,6 +161,7 @@ export async function principal({ registro = TIPOS, manejadores = MANEJADORES, e
     corridaEmpezada = true;
     datos = db.prepare('SELECT version, codigo FROM trabajador_corridas WHERE corrida = ?').get(corrida);
   } catch (error) {
+    if (saliendo) return; // llegó una señal mientras empezaba: ya está saliendo ordenado
     console.error('El trabajador no pudo empezar su corrida:', error.message);
     try { db.close(); } catch { /* ya cerrada */ }
     process.exit(error.codigo === 'corrida_no_valida' ? SALIDA.reemplazada : SALIDA.caida);
