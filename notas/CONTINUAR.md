@@ -49,3 +49,7 @@ Plan: una PASADA VISUAL propia (después de la 1c, antes de la 1d; intensidad me
 - La caja de texto grande y cómoda (crece con lo escrito, letra más grande).
 - Lo importante siempre a la vista (estado del proyecto, qué falta, siguiente paso).
 - Diseño menos básico: logo, colores, iconos, tarjetas; claro por defecto + oscuro. Sin perder claridad ni funciones.
+
+## Pedido de Junior (5 nov 2026): fotos de las empresas (fase 2 en adelante)
+«Foto de empresas cuando haga investigación.» Cuando OPORTIA investigue empresas, cada ficha debe mostrar la imagen de la empresa: logo o foto de su web pública (og:image / favicon grande), guardada en el servidor con tamaño reducido, citando de dónde salió; si no hay, un icono del sector. Solo fuentes públicas y legales (no copiar fotos de Google Maps u otras con licencia cerrada). Fichas visuales: foto, nombre, sector con icono, ubicación en el mapa, puntuación en grande, poco texto.
+Los 2 enfoques siguen en el plan: clientes para vender (fase 2+) y buscar empleo (fase 6). Ambos ya se pueden crear como proyecto.
