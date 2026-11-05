@@ -1,4 +1,9 @@
 // OPORTIA: pantallas (sin librerías). Todo texto se pone con textContent: nunca se interpreta como código.
+import {
+  SECTORES_CREADOR, SECTORES_A_LA_VISTA, ZONAS_CREADOR, ZONAS_A_LA_VISTA, ORDEN_TAMANOS, ORDEN_FRECUENCIAS, PRODUCTOS_SUGERIDOS,
+  PRODUCTOS_CON_OTRAS_PALABRAS, PUESTOS_SUGERIDOS, SALARIOS_SUGERIDOS, MAXIMO_ELEGIDOS, MAXIMO_PRODUCTO, componer, normalizarEleccion,
+  faltaEnEleccion, eleccionDesde,
+} from './creador.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -299,7 +304,7 @@ function pantallaEntrar() {
   const aviso = avisoEntrar;
   avisoEntrar = null;
   mostrar(el('section', { class: 'tarjeta centrada' },
-    el('div', { class: 'marca', texto: t('app.nombre') }), el('p', { class: 'suave', texto: t('app.lema') }),
+    marcaConLogo(), el('p', { class: 'suave', texto: t('app.lema') }),
     aviso ? el('p', { class: 'aviso', role: 'status', texto: aviso }) : null,
     el('h1', { texto: t('entrar.titulo') }), formulario, el('p', { class: 'ayuda', texto: t('entrar.olvide') }),
     selectorIdioma(() => pantallaEntrar())), pie());
@@ -378,15 +383,38 @@ function avisosDeCuenta({ marcar = true } = {}) {
     el('p', { class: 'suave', texto: t(fechas.length > 1 ? 'aviso.clave_reiniciada.que_hacer_varios' : 'aviso.clave_reiniciada.que_hacer') }));
 }
 
+// La marca de OPORTIA: un círculo (el radar que encuentra oportunidades) con un punto en el centro.
+function logo() {
+  const svg = document.createElementNS(SVG, 'svg');
+  for (const [clave, valor] of Object.entries({ viewBox: '0 0 32 32', class: 'logo', 'aria-hidden': 'true', focusable: 'false' })) svg.setAttribute(clave, valor);
+  const partes = [
+    ['rect', { width: 32, height: 32, rx: 9, class: 'logo-fondo' }],
+    ['circle', { cx: 16, cy: 16, r: 8.5, fill: 'none', class: 'logo-anillo', 'stroke-width': 3.2 }],
+    ['path', { d: 'M16 7.5a8.5 8.5 0 0 1 8.5 8.5', fill: 'none', class: 'logo-arco', 'stroke-width': 3.2, 'stroke-linecap': 'round' }],
+    ['circle', { cx: 16, cy: 16, r: 2.8, class: 'logo-punto' }],
+  ];
+  for (const [etiqueta, propias] of partes) {
+    const parte = document.createElementNS(SVG, etiqueta);
+    for (const [clave, valor] of Object.entries(propias)) parte.setAttribute(clave, String(valor));
+    svg.append(parte);
+  }
+  return svg;
+}
+function marcaConLogo() {
+  return el('div', { class: 'marca con-logo' }, logo(), el('span', { texto: t('app.nombre') }));
+}
+
+// Arriba: la marca y «Salir». Abajo (como las apps del iPhone): el menú con íconos, siempre a mano.
 function marco(seccion, ...contenido) {
-  const enlaces = [['inicio', 'menu.inicio'], ['proyectos', 'menu.proyectos'], ['configuracion', 'menu.configuracion']];
-  if (estado.usuario.rol === 'admin') enlaces.push(['admin', 'menu.admin']);
+  const enlaces = [['inicio', 'menu.inicio', 'casa'], ['proyectos', 'menu.proyectos', 'carpeta'], ['configuracion', 'menu.configuracion', 'ajustes']];
+  if (estado.usuario.rol === 'admin') enlaces.push(['admin', 'menu.admin', 'escudo']);
   return [
     el('header', { class: 'encabezado' },
-      el('div', { class: 'marca', texto: t('app.nombre') }),
-      el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir })),
+      el('a', { href: '#inicio', class: 'marca-enlace', 'aria-label': t('menu.inicio') }, marcaConLogo()),
+      el('button', { type: 'button', class: 'secundario chico con-icono', onclick: salir }, icono('salir'), el('span', { texto: t('menu.salir') }))),
     el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
-      enlaces.map(([id, clave]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null, texto: t(clave) }))),
+      enlaces.map(([id, clave, nombreIcono]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null },
+        icono(nombreIcono, 'icono menu-icono'), el('span', { texto: t(clave) })))),
     avisosDeCuenta(),
     ...contenido,
     pie(),
@@ -415,34 +443,33 @@ async function pantallaInicio() {
   const esAdmin = estado.usuario.rol === 'admin';
   const [r, sistema] = await Promise.all([api('GET', '/api/proyectos'), esAdmin ? api('GET', '/api/admin/sistema') : null]);
   if (!vigente()) return;
-  const lista = claves => el('ul', {}, claves.map(clave => el('li', { texto: t(clave) })));
+  const lista = (claves, nombreIcono, tono) => el('ul', { class: 'lista-iconos' }, claves.map(clave => el('li', { class: `tono-${tono}` }, icono(nombreIcono, 'icono chico tono-color'), el('span', { texto: t(clave) }))));
   const pendientes = r.ok ? r.datos.proyectos.filter(p => !p.enPapelera && p.versionPendiente) : [];
   // Quien solo puede ver (lector) no aprueba: se le dice que espera al dueño.
   const escribe = r.ok ? r.datos.puedeEscribir !== false : true;
-  const aprobar = el('section', { class: 'tarjeta' },
-    el('h2', { texto: escribe ? t('inicio.aprobar.titulo') : t('inicio.aprobar.titulo_lector') }),
+  const puedeCrear = r.ok && escribe && r.datos.usados < r.datos.limite;
+  const aprobar = el('section', { class: `tarjeta${pendientes.length ? ' tarjeta-atencion' : ''}` },
+    el('h2', { class: 'con-icono' }, icono(pendientes.length ? 'reloj' : 'bien'), el('span', { texto: escribe ? t('inicio.aprobar.titulo') : t('inicio.aprobar.titulo_lector') })),
     !r.ok ? el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })
       : pendientes.length ? [
-        pendientes.map(p => el('a', { class: 'fila enlace', href: `#proyecto/${p.id}` },
-          el('span', { class: 'nombre', texto: p.nombre }),
-          el('span', { class: 'etiquetas' },
-            el('span', { class: 'etiqueta', texto: t(`tipo.${p.tipo}`) }),
-            el('span', { class: 'etiqueta aviso-etiqueta', texto: t(escribe ? 'inicio.aprobar.version' : 'inicio.aprobar.version_lector', { numero: p.versionPendiente }) })))),
+        el('div', { class: 'lista-proyectos' }, pendientes.map(p => filaProyecto(p, escribe))),
         // Antes de aprobar, sin rodeos: aprobar guarda el proyecto, pero todavía no busca.
         el('p', { class: 'suave', texto: t('inicio.aprobar.fase') }),
       ]
-        : el('p', { class: 'suave', texto: t('inicio.aprobar.vacio') }),
-    r.ok ? el('p', { class: 'suave' }, el('a', { href: '#proyectos', texto: t('inicio.ir_proyectos', { usados: r.datos.usados, limite: r.datos.limite }) })) : null);
+        : el('p', { class: 'suave', texto: t('inicio.aprobar.vacio') }));
   mostrar(marco('inicio',
     sistema?.ok ? estadoEnInicio(sistema.datos) : null,
-    el('section', { class: 'tarjeta' },
+    el('section', { class: 'tarjeta portada' },
       el('h1', { texto: t('inicio.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
-      el('p', { class: 'suave', texto: t('inicio.texto') })),
+      el('p', { texto: t('inicio.texto') }),
+      el('div', { class: 'portada-botones' },
+        puedeCrear ? el('a', { class: 'boton-enlace claro con-icono', href: '#nuevo' }, icono('mas'), el('span', { texto: t('proyectos.nuevo') })) : null,
+        r.ok ? el('a', { class: 'boton-enlace borde con-icono', href: '#proyectos' }, icono('carpeta'), el('span', { texto: t('inicio.ir_proyectos', { usados: r.datos.usados, limite: r.datos.limite }) })) : null)),
     aprobar,
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.funciona') }),
-      lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.2', 'inicio.funciona.3'])),
+      lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.2', 'inicio.funciona.3'], 'bien', 'bien')),
     el('section', { class: 'tarjeta' }, el('h2', { texto: t('inicio.viene') }),
-      lista(['inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos']))));
+      lista(['inicio.viene.ia', 'inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado'))));
 }
 
 // Botones de los que se elige uno (idioma, tema): el elegido se ve lleno y lo dice a VoiceOver (aria-pressed).
@@ -590,6 +617,29 @@ const ICONOS = {
   fila: [['line', { x1: 9, y1: 6, x2: 20, y2: 6 }], ['line', { x1: 9, y1: 12, x2: 20, y2: 12 }], ['line', { x1: 9, y1: 18, x2: 20, y2: 18 }], ['line', { x1: 4, y1: 6, x2: 4.01, y2: 6 }], ['line', { x1: 4, y1: 12, x2: 4.01, y2: 12 }], ['line', { x1: 4, y1: 18, x2: 4.01, y2: 18 }]],
   base: [['ellipse', { cx: 12, cy: 5, rx: 8, ry: 3 }], ['path', { d: 'M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5' }], ['path', { d: 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3' }]],
   actualizar: [['path', { d: 'M20 12a8 8 0 1 1-2.4-5.7' }], ['polyline', { points: '20 4 20 9 15 9' }]],
+  // Fase 1, pase visual: menú de abajo, estados de los proyectos y el creador con toques.
+  casa: [['path', { d: 'M3 11 12 4l9 7' }], ['path', { d: 'M5 10v10h5v-6h4v6h5V10' }]],
+  carpeta: [['path', { d: 'M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z' }]],
+  ajustes: [['circle', { cx: 12, cy: 12, r: 3 }], ['path', { d: 'M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1' }]],
+  salir: [['path', { d: 'M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4' }], ['polyline', { points: '10 8 6 12 10 16' }], ['line', { x1: 6, y1: 12, x2: 16, y2: 12 }]],
+  lapiz: [['path', { d: 'M4 20h4L19 9l-4-4L4 16z' }], ['line', { x1: 13.5, y1: 6.5, x2: 17.5, y2: 10.5 }]],
+  pausa: [['circle', { cx: 12, cy: 12, r: 9 }], ['line', { x1: 10, y1: 9, x2: 10, y2: 15 }], ['line', { x1: 14, y1: 9, x2: 14, y2: 15 }]],
+  bandera: [['path', { d: 'M5 21V4' }], ['path', { d: 'M5 4h11l-2 4 2 4H5' }]],
+  papelera: [['polyline', { points: '4 7 20 7' }], ['path', { d: 'M9 7V4h6v3' }], ['path', { d: 'M6 7l1 13h10l1-13' }]],
+  tienda: [['path', { d: 'M4 9l1.5-5h13L20 9' }], ['path', { d: 'M4 9h16v2a3 3 0 0 1-5.3 1.9A3 3 0 0 1 12 14a3 3 0 0 1-2.7-1.1A3 3 0 0 1 4 11z' }], ['path', { d: 'M5.5 13.5V20h13v-6.5' }]],
+  maletin: [['rect', { x: 3, y: 7, width: 18, height: 13, rx: 2 }], ['path', { d: 'M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2' }], ['line', { x1: 3, y1: 13, x2: 21, y2: 13 }]],
+  carrito: [['circle', { cx: 9, cy: 20, r: 1.3 }], ['circle', { cx: 17, cy: 20, r: 1.3 }], ['path', { d: 'M3 4h2l2.4 11h10.8L21 8H6.3' }]],
+  marca: [['polyline', { points: '5 12.5 10 17.5 19 7.5' }]],
+  edificio: [['rect', { x: 4, y: 3, width: 11, height: 18, rx: 1 }], ['path', { d: 'M15 9h5v12h-5' }], ['path', { d: 'M8 7h3M8 11h3M8 15h3' }]],
+  lugar: [['path', { d: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z' }], ['circle', { cx: 12, cy: 9.5, r: 2.5 }]],
+  regla: [['rect', { x: 3, y: 8, width: 18, height: 8, rx: 1.5 }], ['path', { d: 'M7 8v3M11 8v4M15 8v3M19 8v4' }]],
+  calendario: [['rect', { x: 3, y: 5, width: 18, height: 16, rx: 2 }], ['line', { x1: 3, y1: 10, x2: 21, y2: 10 }], ['line', { x1: 8, y1: 3, x2: 8, y2: 7 }], ['line', { x1: 16, y1: 3, x2: 16, y2: 7 }]],
+  etiqueta: [['path', { d: 'M3 12V4h8l10 10-8 8z' }], ['circle', { cx: 7.5, cy: 8.5, r: 1.5 }]],
+  dinero: [['rect', { x: 2.5, y: 6, width: 19, height: 12, rx: 2 }], ['circle', { cx: 12, cy: 12, r: 2.5 }]],
+  dedo: [['path', { d: 'M9 11V5a1.5 1.5 0 0 1 3 0v6' }], ['path', { d: 'M12 10.5a1.5 1.5 0 0 1 3 0V12a1.5 1.5 0 0 1 3 0v3a6 6 0 0 1-6 6h-.5a6 6 0 0 1-4.8-2.4L4 15a1.5 1.5 0 0 1 2.3-1.9L9 15' }]],
+  flecha: [['line', { x1: 5, y1: 12, x2: 19, y2: 12 }], ['polyline', { points: '13 6 19 12 13 18' }]],
+  chispa: [['path', { d: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z' }], ['path', { d: 'M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z' }]],
+  ojo: [['path', { d: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z' }], ['circle', { cx: 12, cy: 12, r: 2.8 }]],
 };
 function icono(nombre, clase = 'icono') {
   const svg = document.createElementNS(SVG, 'svg');
@@ -1292,10 +1342,60 @@ function nombreDeEstado(p) {
   return t(`estado.${p.estado}`);
 }
 
+// Cada estado con su color y su ícono, igual en la lista, en el proyecto y en Inicio:
+// gris = borrador, pausado o en la papelera; amarillo = espera tu aprobación; azul = aprobado (espera la fase que
+// busca); verde = completado; rojo = con errores.
+const ESTADO_VISUAL = {
+  borrador: ['apagado', 'lapiz'], pendiente: ['atencion', 'reloj'], en_ejecucion: ['info', 'marca'],
+  pausado: ['apagado', 'pausa'], completado: ['bien', 'bandera'], con_errores: ['mal', 'mal'],
+};
+function visualDeEstado(p) {
+  if (p.enPapelera) return { tono: 'apagado', nombreIcono: 'papelera', texto: t('proyecto.etiqueta_papelera') };
+  const [tono, nombreIcono] = ESTADO_VISUAL[p.estado] ?? ['apagado', 'info'];
+  return { tono, nombreIcono, texto: ESTADO_VISUAL[p.estado] ? nombreDeEstado(p) : String(p.estado) };
+}
 function etiquetaEstado(p) {
-  if (p.enPapelera) return el('span', { class: 'etiqueta mal', texto: t('proyecto.etiqueta_papelera') });
-  const clase = { con_errores: 'mal', pendiente: 'aviso-etiqueta' }[p.estado] || '';
-  return el('span', { class: `etiqueta ${clase}`, texto: nombreDeEstado(p) });
+  const v = visualDeEstado(p);
+  return el('span', { class: `insignia tono-${v.tono}` }, icono(v.nombreIcono, 'icono chico'), el('span', { texto: v.texto }));
+}
+const iconoTipo = tipo => (tipo === 'laboral' ? 'maletin' : 'tienda');
+function etiquetaTipo(tipo) {
+  return el('span', { class: 'etiqueta con-icono-chico' }, icono(iconoTipo(tipo), 'icono chico'), el('span', { texto: t(`tipo.${tipo}`) }));
+}
+
+// «Siguiente paso»: qué tiene que hacer la persona ahora, en una frase.
+// pendiente: la versión que espera (en el proyecto) o solo su número (en la lista). escribe: puede cambiarlo.
+function siguientePaso(p, { pendiente = p.versionPendiente, escribe = true } = {}) {
+  if (!escribe && !p.enPapelera) return t(pendiente ? 'siguiente.lector_pendiente' : 'siguiente.lector');
+  if (p.enPapelera) return t(escribe ? 'siguiente.papelera' : 'siguiente.papelera_lector');
+  if (pendiente) {
+    if (typeof pendiente === 'object' && pendiente.faltantes?.length) return t('siguiente.responder');
+    if (p.versionActiva) return t('siguiente.aprobar_cambio');
+    return t(typeof pendiente === 'object' ? 'siguiente.aprobar' : 'siguiente.revisar');
+  }
+  if (p.estado === 'borrador') return t('siguiente.borrador');
+  if (p.estado === 'en_ejecucion') return t(p.tipo === 'laboral' ? 'siguiente.espera.laboral' : 'siguiente.espera.comercial');
+  if (p.estado === 'pausado') return t('siguiente.pausado');
+  if (p.estado === 'completado') return t('siguiente.completado');
+  if (p.estado === 'con_errores') return t('siguiente.con_errores');
+  return '';
+}
+
+// La tarjeta grande de arriba del proyecto: el estado en color, con su ícono, y el siguiente paso.
+// destino: a dónde baja «Ir» (la versión que espera, los botones…), si hay algo que hacer.
+function tarjetaEstado(p, { pendiente, escribe, destino }) {
+  const v = visualDeEstado(p);
+  const paso = siguientePaso(p, { pendiente, escribe });
+  return el('div', { class: `estado-proyecto tono-${v.tono}` },
+    el('div', { class: 'estado-proyecto-cabeza' }, el('span', { class: 'estado-icono' }, icono(v.nombreIcono, 'icono estado')),
+      el('div', {}, el('span', { class: 'estado-rotulo', texto: t('proyecto.estado') }), el('strong', { class: 'estado-nombre', texto: v.texto }))),
+    paso ? el('div', { class: 'siguiente' },
+      el('span', { class: 'siguiente-rotulo con-icono' }, icono('flecha', 'icono chico'), el('span', { texto: t('siguiente.titulo') })),
+      el('p', { class: 'siguiente-texto', texto: paso }),
+      destino ? el('button', {
+        type: 'button', class: 'chico con-icono',
+        onclick: () => { destino.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+      }, el('span', { texto: t('siguiente.ir') }), icono('flecha', 'icono chico')) : null) : null);
 }
 
 function tarjetaError(mensaje) {
@@ -1348,6 +1448,298 @@ async function pedirYMostrar(metodo, ruta, datos, aviso) {
   dibujarProyecto(r.datos, typeof aviso === 'function' ? aviso(r.datos) : aviso);
 }
 
+// Un cuadro de texto que crece con lo que se escribe (sin barra de desplazamiento adentro).
+function crecer(area) {
+  const ajustar = () => {
+    area.style.height = 'auto';
+    area.style.height = `${Math.min(area.scrollHeight + 2, 640)}px`;
+  };
+  area.addEventListener('input', ajustar);
+  requestAnimationFrame(ajustar);
+  return area;
+}
+
+// Un botón de los que se marcan tocando (negocios, lugares, tamaños…). Marcado: lleno y con ✓; VoiceOver lo lee
+// con aria-pressed.
+function chip(texto, marcado, alTocar, { nombreIcono = null, clase = '' } = {}) {
+  const boton = el('button', { type: 'button', class: `chip ${clase}`.trim(), 'aria-pressed': marcado ? 'true' : 'false', onclick: () => alTocar(boton) },
+    el('span', { class: 'chip-marca' }, icono('marca', 'icono chico')),
+    nombreIcono ? icono(nombreIcono, 'icono chico chip-icono') : null,
+    el('span', { texto }));
+  return boton;
+}
+function marcarChip(boton, marcado) {
+  boton.setAttribute('aria-pressed', marcado ? 'true' : 'false');
+}
+
+// Un paso del creador: número, ícono, título y lo que se toca.
+function pasoCreador(numero, nombreIcono, titulo, ayuda, ...contenido) {
+  return el('fieldset', { class: 'paso' },
+    el('legend', { class: 'paso-titulo' }, el('span', { class: 'paso-numero', texto: String(numero) }), icono(nombreIcono, 'icono paso-icono'), el('span', { texto: titulo })),
+    ayuda ? el('p', { class: 'ayuda', texto: ayuda }) : null,
+    ...contenido);
+}
+
+const nombreProducto = clave => {
+  const propio = PRODUCTOS_CON_OTRAS_PALABRAS[clave];
+  if (propio) return propio[idioma] || propio.es;
+  const x = catalogo.productos.find(p => p.clave === clave);
+  return x ? x[idioma] || x.es : clave;
+};
+const dineroCorto = n => `RD$${numero(n)}`;
+
+// El creador con toques. Todo se elige tocando; lo único que se escribe es qué vende (o qué empleo busca), y
+// también eso tiene sugerencias para tocar. Lo elegido se convierte en una frase sencilla (se ve abajo, en «Así
+// se lo voy a pedir a OPORTIA») que va por el mismo camino que el texto libre: el motor la entiende, se ve «Lo que
+// entendí», las dudas, y nada trabaja hasta aprobarlo.
+// inicial: la elección de partida. claveBorrador: dónde se guarda lo elegido si la sesión termina.
+// alMandar(texto): crea el proyecto o la versión (devuelve MANTENER si ya se fue a otra pantalla). alEscribir(texto): pasa al texto libre con esta frase.
+function crearCreador({ inicial = {}, claveBorrador, textoBoton, alMandar, alEscribir, antes = null }) {
+  let guardada = null;
+  try { guardada = JSON.parse(borrador(claveBorrador) || 'null'); } catch { guardada = null; }
+  const partida = guardada && typeof guardada === 'object' ? guardada : inicial;
+  const x = normalizarEleccion(partida);
+  const st = {
+    tipo: x.tipo,
+    producto: typeof partida.producto === 'string' ? partida.producto.slice(0, MAXIMO_PRODUCTO) : '',
+    sectores: new Set(x.sectores), pais: x.pais, zonas: new Set(x.zonas), tamanos: new Set(x.tamanos),
+    frecuencia: x.frecuencia, salarioMinimo: x.salarioMinimo,
+  };
+  const eleccion = () => ({ ...st, sectores: [...st.sectores], zonas: [...st.zonas], tamanos: [...st.tamanos] });
+  const mensaje = caja();
+
+  // 1. ¿Qué quieres hacer?
+  const opcionTipo = (valor, nombreIcono, titulo, texto) => el('button', {
+    type: 'button', class: 'opcion-grande', 'aria-pressed': st.tipo === valor ? 'true' : 'false', 'data-tipo': valor,
+    onclick: () => { st.tipo = valor; actualizar(); },
+  }, el('span', { class: 'opcion-icono' }, icono(nombreIcono, 'icono grande')),
+  el('span', { class: 'opcion-texto' }, el('strong', { texto: titulo }), el('span', { texto })),
+  el('span', { class: 'opcion-marca' }, icono('marca', 'icono chico')));
+  const vender = opcionTipo('comercial', 'tienda', t('creador.tipo.vender'), t('creador.tipo.vender.texto'));
+  const empleo = opcionTipo('laboral', 'maletin', t('creador.tipo.empleo'), t('creador.tipo.empleo.texto'));
+  // Comprar (buscar proveedores) todavía no existe: se dice claro, sin un botón que no hace nada.
+  const comprar = el('div', { class: 'opcion-grande proxima', 'aria-disabled': 'true' },
+    el('span', { class: 'opcion-icono' }, icono('carrito', 'icono grande')),
+    el('span', { class: 'opcion-texto' }, el('strong', { texto: t('creador.tipo.comprar') }), el('span', { texto: t('creador.tipo.comprar.texto') })),
+    el('span', { class: 'insignia tono-apagado', texto: t('creador.proximamente') }));
+
+  // 2. ¿Qué vendes? / ¿Qué empleo buscas? (el único campo para escribir, con sugerencias para tocar)
+  const producto = el('input', { id: 'creador-producto', type: 'text', maxlength: MAXIMO_PRODUCTO, autocomplete: 'off', value: st.producto, enterkeyhint: 'done' });
+  const etiquetaProducto = el('label', { for: 'creador-producto' });
+  const sugerencias = el('div', { class: 'chips' });
+  const sugerenciasMas = el('div', { class: 'chips', hidden: true });
+  const verMasSugerencias = el('button', { type: 'button', class: 'secundario chico ver-mas', 'aria-expanded': 'false', texto: t('creador.ver_mas_ideas'),
+    onclick: () => { sugerenciasMas.hidden = false; verMasSugerencias.hidden = true; } });
+  const dibujarSugerencias = () => {
+    const lista = st.tipo === 'laboral' ? PUESTOS_SUGERIDOS.map(x => x[idioma] || x.es) : PRODUCTOS_SUGERIDOS.map(nombreProducto);
+    const botones = lista.map(texto => chip(texto, comparable(texto) === comparable(st.producto), () => {
+      st.producto = texto;
+      producto.value = texto;
+      actualizar();
+    }));
+    sugerencias.replaceChildren(...botones.slice(0, 8));
+    sugerenciasMas.replaceChildren(...botones.slice(8));
+    verMasSugerencias.hidden = botones.length <= 8 || !sugerenciasMas.hidden;
+  };
+  producto.addEventListener('input', () => { st.producto = producto.value; actualizar(); });
+  producto.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); producto.blur(); } });
+
+  // 3. ¿A qué negocios? (solo para vender)
+  const avisoMaximo = el('p', { class: 'ayuda aviso-maximo', hidden: true, role: 'status' });
+  const botonesSector = new Map();
+  const todas = chip(t('creador.sectores.todas'), st.sectores.has('todas'), () => {
+    if (st.sectores.has('todas')) st.sectores.delete('todas'); else { st.sectores.clear(); st.sectores.add('todas'); }
+    actualizar();
+  }, { nombreIcono: 'edificio', clase: 'chip-todo' });
+  for (const s of SECTORES_CREADOR) {
+    botonesSector.set(s.clave, chip(nombreSector(s.clave), st.sectores.has(s.clave), () => {
+      st.sectores.delete('todas');
+      if (st.sectores.has(s.clave)) st.sectores.delete(s.clave);
+      else if (st.sectores.size >= MAXIMO_ELEGIDOS) return decir(avisoMaximo, t('creador.maximo.sectores', { n: MAXIMO_ELEGIDOS }), 'aviso-maximo');
+      else st.sectores.add(s.clave);
+      avisoMaximo.hidden = true;
+      actualizar();
+    }));
+  }
+  const listaConMas = (botones, aLaVista, claveMas) => {
+    const vista = botones.slice(0, aLaVista);
+    const resto = el('div', { class: 'chips', hidden: !botones.slice(aLaVista).some(b => b.getAttribute('aria-pressed') === 'true') }, botones.slice(aLaVista));
+    const mas = el('button', { type: 'button', class: 'secundario chico ver-mas', 'aria-expanded': resto.hidden ? 'false' : 'true' });
+    const ponerTexto = () => { mas.textContent = resto.hidden ? t(claveMas, { n: botones.length }) : t('creador.ver_menos'); mas.setAttribute('aria-expanded', resto.hidden ? 'false' : 'true'); };
+    mas.addEventListener('click', () => { resto.hidden = !resto.hidden; ponerTexto(); });
+    ponerTexto();
+    return [el('div', { class: 'chips' }, vista), resto, mas];
+  };
+  const pasoSectores = pasoCreador(3, 'edificio', t('creador.sectores'), t('creador.sectores.ayuda'),
+    el('div', { class: 'chips' }, todas),
+    listaConMas([...botonesSector.values()], SECTORES_A_LA_VISTA, 'creador.ver_todos'),
+    avisoMaximo);
+
+  // 4. ¿Dónde?
+  const avisoZonas = el('p', { class: 'ayuda aviso-maximo', hidden: true, role: 'status' });
+  const pais = chip(t('creador.zonas.pais'), st.pais, () => { st.pais = !st.pais; if (st.pais) st.zonas.clear(); actualizar(); }, { nombreIcono: 'lugar', clase: 'chip-todo' });
+  const botonesZona = new Map(ZONAS_CREADOR.map(z => [z.clave, chip(nombreZona(z.clave), st.zonas.has(z.clave), () => {
+    st.pais = false;
+    if (st.zonas.has(z.clave)) st.zonas.delete(z.clave);
+    else if (st.zonas.size >= MAXIMO_ELEGIDOS) return decir(avisoZonas, t('creador.maximo.zonas', { n: MAXIMO_ELEGIDOS }), 'aviso-maximo');
+    else st.zonas.add(z.clave);
+    avisoZonas.hidden = true;
+    actualizar();
+  })]));
+  const regiones = ZONAS_CREADOR.filter(z => z.tipo === 'region').map(z => botonesZona.get(z.clave));
+  const provincias = ZONAS_CREADOR.filter(z => z.tipo !== 'region').map(z => botonesZona.get(z.clave));
+  const pasoZonas = pasoCreador(4, 'lugar', t('creador.zonas'), t('creador.zonas.ayuda'),
+    el('div', { class: 'chips' }, pais),
+    el('p', { class: 'subtitulo', texto: t('creador.zonas.provincias') }),
+    listaConMas(provincias, ZONAS_A_LA_VISTA, 'creador.ver_todas'),
+    el('p', { class: 'subtitulo', texto: t('creador.zonas.regiones') }),
+    listaConMas(regiones, 3, 'creador.ver_todas'),
+    avisoZonas);
+
+  // 5. Tamaño (vender) o salario (empleo)
+  const botonesTamano = new Map(ORDEN_TAMANOS.map(x => [x, chip(t(`tamano.${x}`), st.tamanos.has(x), () => {
+    if (st.tamanos.has(x)) st.tamanos.delete(x); else st.tamanos.add(x);
+    actualizar();
+  })]));
+  const pasoTamano = pasoCreador(5, 'regla', t('creador.tamanos'), t('creador.tamanos.ayuda'), el('div', { class: 'chips' }, [...botonesTamano.values()]));
+  const sinSalario = chip(t('creador.salario.no_importa'), !st.salarioMinimo, () => { st.salarioMinimo = null; actualizar(); });
+  const botonesSalario = new Map(SALARIOS_SUGERIDOS.map(n => [n, chip(t('creador.salario.desde', { cantidad: dineroCorto(n) }), st.salarioMinimo === n, () => {
+    st.salarioMinimo = st.salarioMinimo === n ? null : n;
+    actualizar();
+  })]));
+  const pasoSalario = pasoCreador(4, 'dinero', t('creador.salario'), t('creador.salario.ayuda'), el('div', { class: 'chips' }, sinSalario, [...botonesSalario.values()]));
+
+  // 6. ¿Cada cuánto?
+  const botonesFrecuencia = new Map(ORDEN_FRECUENCIAS.map(f => [f, chip(t(`frecuencia.${f}`), st.frecuencia === f, () => { st.frecuencia = f; actualizar(); })]));
+  const pasoFrecuencia = pasoCreador(6, 'calendario', t('creador.frecuencia'), t('creador.frecuencia.ayuda'), el('div', { class: 'chips' }, [...botonesFrecuencia.values()]));
+
+  const pasoProducto = pasoCreador(2, 'etiqueta', '', null, etiquetaProducto, producto, el('p', { class: 'ayuda', texto: t('creador.sugerencias') }), sugerencias, sugerenciasMas, verMasSugerencias);
+  const tituloProducto = pasoProducto.querySelector('legend span:last-child');
+
+  // Lo que se va a pedir, siempre a la vista.
+  const frase = el('p', { class: 'vista-previa-texto' });
+  const faltan = el('ul', { class: 'faltan' });
+  const crear = el('button', { type: 'button', class: 'grande con-icono' }, icono('chispa'), el('span', { texto: textoBoton }));
+  const escribir = el('button', { type: 'button', class: 'secundario con-icono' }, icono('lapiz'), el('span', { texto: t('creador.cambiar_texto') }));
+  escribir.addEventListener('click', () => alEscribir(componer(eleccion(), idioma)));
+  crear.addEventListener('click', async () => {
+    const falta = faltaEnEleccion(eleccion());
+    if (falta.length) return decir(mensaje, t('creador.falta_algo'), 'error');
+    crear.disabled = true;
+    mensaje.hidden = true;
+    let mantener = false;
+    try {
+      mantener = (await alMandar(componer(eleccion(), idioma))) === MANTENER;
+      if (mantener) borrador(claveBorrador, '');
+    } catch (error) {
+      decir(mensaje, error.message || t('error.desconocido'), 'error');
+    } finally {
+      if (!mantener) crear.disabled = false;
+    }
+  });
+  const vista = el('section', { class: 'vista-previa', 'aria-live': 'polite' },
+    el('p', { class: 'vista-previa-titulo con-icono' }, icono('ojo', 'icono chico'), el('span', { texto: t('creador.vista') })),
+    frase, faltan);
+
+  let primera = true;
+  function actualizar() {
+    const comercial = st.tipo === 'comercial';
+    vender.setAttribute('aria-pressed', comercial ? 'true' : 'false');
+    empleo.setAttribute('aria-pressed', comercial ? 'false' : 'true');
+    tituloProducto.textContent = t(comercial ? 'creador.producto.vender' : 'creador.producto.empleo');
+    etiquetaProducto.textContent = t(comercial ? 'creador.producto.vender.etiqueta' : 'creador.producto.empleo.etiqueta');
+    producto.placeholder = t(comercial ? 'creador.producto.vender.ejemplo' : 'creador.producto.empleo.ejemplo');
+    pasoSectores.hidden = !comercial;
+    pasoTamano.hidden = !comercial;
+    pasoSalario.hidden = comercial;
+    // Los números de los pasos siguen el orden que se ve.
+    pasoZonas.querySelector('.paso-numero').textContent = comercial ? '4' : '3';
+    pasoSalario.querySelector('.paso-numero').textContent = '4';
+    pasoFrecuencia.querySelector('.paso-numero').textContent = comercial ? '6' : '5';
+    marcarChip(todas, st.sectores.has('todas'));
+    for (const [clave, b] of botonesSector) marcarChip(b, st.sectores.has(clave));
+    marcarChip(pais, st.pais);
+    for (const [clave, b] of botonesZona) marcarChip(b, st.zonas.has(clave));
+    for (const [clave, b] of botonesTamano) marcarChip(b, st.tamanos.has(clave));
+    marcarChip(sinSalario, !st.salarioMinimo);
+    for (const [n, b] of botonesSalario) marcarChip(b, st.salarioMinimo === n);
+    for (const [f, b] of botonesFrecuencia) marcarChip(b, st.frecuencia === f);
+    dibujarSugerencias();
+    const falta = faltaEnEleccion(eleccion());
+    frase.textContent = componer(eleccion(), idioma, { huecos: true });
+    faltan.replaceChildren(...falta.map(f => el('li', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t(`creador.falta.${f === 'producto' && !comercial ? 'empleo' : f}`) }))));
+    crear.classList.toggle('bloqueado', falta.length > 0);
+    crear.setAttribute('aria-disabled', falta.length ? 'true' : 'false');
+    if (!primera) borrador(claveBorrador, JSON.stringify(eleccion()));
+    primera = false;
+  }
+  actualizar();
+
+  return el('div', { class: 'creador' },
+    antes,
+    pasoCreador(1, 'dedo', t('creador.tipo'), null, el('div', { class: 'opciones-grandes' }, vender, empleo, comprar)),
+    pasoProducto,
+    pasoSectores,
+    pasoZonas,
+    pasoTamano,
+    pasoSalario,
+    pasoFrecuencia,
+    vista,
+    el('div', { class: 'acciones-creador' }, crear, escribir),
+    mensaje);
+}
+
+// Escribirlo con mis palabras: el cuadro grande de siempre (crece con lo escrito), con ejemplos para tocar.
+function formularioTextoLibre({ id, clave, inicial = null, textoBoton, alMandar, conEjemplos = true }) {
+  const mensaje = caja();
+  const area = crecer(el('textarea', { id, name: 'instrucciones', rows: 6, required: true, minlength: 10, maxlength: 4000, placeholder: t('proyectos.instrucciones.ejemplo') }));
+  if (inicial) { area.value = inicial; borrador(clave, inicial); } else recordarTexto(area, clave);
+  if (inicial) area.addEventListener('input', () => borrador(clave, area.value));
+  const contador = el('p', { class: 'contador', 'aria-live': 'off' });
+  const contar = () => { contador.textContent = t('proyectos.contador', { n: numero(area.value.length), maximo: numero(4000) }); };
+  area.addEventListener('input', contar);
+  contar();
+  const formulario = el('form', { novalidate: true, class: 'texto-libre' },
+    el('label', { for: id, texto: t('proyectos.instrucciones') }),
+    el('p', { class: 'ayuda', texto: t('proyectos.instrucciones.ayuda') }),
+    area, contador,
+    conEjemplos ? el('details', { class: 'ejemplos' },
+      el('summary', { texto: t('proyectos.ejemplos') }),
+      ['proyectos.ejemplo.1', 'proyectos.ejemplo.2', 'proyectos.ejemplo.3'].map(claveEjemplo => el('div', { class: 'ejemplo' },
+        el('p', { texto: t(claveEjemplo) }),
+        el('button', {
+          type: 'button',
+          class: 'secundario',
+          texto: t('proyectos.usar_ejemplo'),
+          onclick: () => {
+            // Lo que la persona ya escribió no se pierde sin preguntarle.
+            if (area.value.trim() && area.value.trim() !== t(claveEjemplo) && !confirm(t('proyectos.reemplazar_texto'))) return;
+            area.value = t(claveEjemplo);
+            borrador(clave, area.value);
+            area.dispatchEvent(new Event('input'));
+            area.focus();
+          },
+        })))) : null,
+    el('button', { type: 'submit', class: 'grande con-icono' }, icono('chispa'), el('span', { texto: textoBoton })),
+    mensaje);
+  alEnviar(formulario, mensaje, async () => alMandar(area.value));
+  return formulario;
+}
+
+// Cada proyecto, como una tarjeta: nombre, su estado en color (con ícono) y el siguiente paso.
+function filaProyecto(p, puedeEscribir) {
+  const v = visualDeEstado(p);
+  return el('a', { class: `proyecto-fila tono-${v.tono}`, href: `#proyecto/${p.id}` },
+    el('span', { class: 'proyecto-fila-icono' }, icono(iconoTipo(p.tipo))),
+    el('span', { class: 'proyecto-fila-cuerpo' },
+      el('span', { class: 'nombre', texto: p.nombre }),
+      el('span', { class: 'etiquetas' }, etiquetaEstado(p),
+        p.versionPendiente && p.estado !== 'pendiente' && !p.enPapelera ? el('span', { class: 'insignia tono-atencion' }, icono('reloj', 'icono chico'), el('span', { texto: t('proyectos.cambios_pendientes') })) : null),
+      el('span', { class: 'siguiente-corto' }, el('strong', { texto: `${t('siguiente.titulo')}: ` }), el('span', { texto: siguientePaso(p, { escribe: puedeEscribir }) })),
+      el('span', { class: 'suave chico', texto: `${t(`tipo.${p.tipo}`)} · ${t('proyectos.actualizado', { fecha: fecha(p.actualizadoEn) })}` })),
+    icono('flecha', 'icono proyecto-fila-flecha'));
+}
+
 async function pantallaProyectos() {
   const vigente = nuevoTurno();
   let r;
@@ -1364,72 +1756,115 @@ async function pantallaProyectos() {
   const activos = proyectos.filter(p => !p.enPapelera);
   const papelera = proyectos.filter(p => p.enPapelera);
 
-  const fila = p => el('a', { class: 'fila enlace', href: `#proyecto/${p.id}` },
-    el('span', { class: 'nombre', texto: p.nombre }),
-    el('span', { class: 'etiquetas' },
-      el('span', { class: 'etiqueta', texto: t(`tipo.${p.tipo}`) }),
-      etiquetaEstado(p),
-      p.versionPendiente && p.estado !== 'pendiente' && !p.enPapelera ? el('span', { class: 'etiqueta aviso-etiqueta', texto: t('proyectos.cambios_pendientes') }) : null),
-    el('span', { class: 'suave', texto: t('proyectos.actualizado', { fecha: fecha(p.actualizadoEn) }) }));
+  const fila = p => filaProyecto(p, puedeEscribir);
 
   let nuevo;
   if (!puedeEscribir) nuevo = el('p', { class: 'aviso', texto: t('proyectos.solo_lectura') });
   else if (usados >= limite) nuevo = el('p', { class: 'aviso', texto: t('error.limite_de_proyectos') });
-  else {
-    const mensaje = caja();
-    const area = el('textarea', { id: 'campo-instrucciones', name: 'instrucciones', rows: 5, required: true, minlength: 10, maxlength: 4000 });
-    recordarTexto(area, 'nuevo');
-    const formulario = el('form', { novalidate: true },
-      el('label', { for: 'campo-instrucciones', texto: t('proyectos.instrucciones') }),
-      el('p', { class: 'ayuda', texto: t('proyectos.instrucciones.ayuda') }),
-      area,
-      el('details', { class: 'ejemplos' },
-        el('summary', { texto: t('proyectos.ejemplos') }),
-        ['proyectos.ejemplo.1', 'proyectos.ejemplo.2', 'proyectos.ejemplo.3'].map(clave => el('div', { class: 'ejemplo' },
-          el('p', { texto: t(clave) }),
-          el('button', {
-            type: 'button',
-            class: 'secundario',
-            texto: t('proyectos.usar_ejemplo'),
-            onclick: () => {
-              // Lo que la persona ya escribió no se pierde sin preguntarle.
-              if (area.value.trim() && area.value.trim() !== t(clave) && !confirm(t('proyectos.reemplazar_texto'))) return;
-              area.value = t(clave);
-              borrador('nuevo', area.value);
-              area.focus();
-            },
-          })))),
-      el('button', { type: 'submit', texto: t('proyectos.crear') }),
-      mensaje);
-    alEnviar(formulario, mensaje, async datos => {
-      const creado = await api('POST', '/api/proyectos', { instrucciones: datos.get('instrucciones') });
-      if (!creado.ok) throw new Error(textoError(creado.datos.error));
-      borrador('nuevo', '');
-      // El proyecto se dibuja con lo que respondió el servidor (sin pedirlo otra vez) y el botón queda apagado:
-      // así un segundo toque no puede crear otro.
-      if (!vigente()) return MANTENER;
-      history.pushState(null, '', `#proyecto/${creado.datos.proyecto.id}`);
-      turno++;
-      dibujarProyecto(creado.datos, t(creado.datos.repetido ? 'proyecto.listo.repetido' : 'proyecto.listo.creado'));
-      return MANTENER;
-    });
-    nuevo = formulario;
+  else nuevo = el('a', { class: 'boton-enlace grande con-icono', href: '#nuevo' }, icono('mas'), el('span', { texto: t('proyectos.nuevo') }));
+
+  // Cuántos hay en cada estado, de un vistazo (solo los que tienen alguno).
+  const cuenta = new Map();
+  for (const p of activos) {
+    const llave = p.versionPendiente ? 'pendiente' : p.estado;
+    cuenta.set(llave, (cuenta.get(llave) ?? 0) + 1);
   }
+  const resumenEstados = activos.length ? el('div', { class: 'conteo-estados' },
+    ['pendiente', 'en_ejecucion', 'borrador', 'pausado', 'completado', 'con_errores'].filter(e => cuenta.get(e)).map(e => {
+      const v = visualDeEstado({ estado: e, tipo: 'comercial' });
+      return el('span', { class: `insignia tono-${v.tono}` }, icono(v.nombreIcono, 'icono chico'),
+        el('span', { texto: `${numero(cuenta.get(e))} · ${e === 'en_ejecucion' ? t('proyectos.conteo.aprobados') : t(`estado.${e}`)}` }));
+    })) : null;
 
   mostrar(marco('proyectos',
-    el('section', { class: 'tarjeta' },
+    el('section', { class: 'tarjeta cabecera-pantalla' },
       el('h1', { texto: t('proyectos.titulo') }),
-      el('p', { class: 'suave', texto: t('proyectos.texto') }),
-      el('p', { class: 'aviso', texto: t('proyectos.aviso_fase') })),
+      el('p', { class: 'suave', texto: t('proyectos.usados', { usados, limite }) }),
+      el('div', { class: 'medidor-proyectos' }, barra(usados, limite, usados >= limite ? 'atencion' : 'info')),
+      resumenEstados,
+      nuevo),
     el('section', { class: 'tarjeta' },
-      el('h2', { texto: t('proyectos.usados', { usados, limite }) }),
-      activos.length ? activos.map(fila) : el('p', { class: 'suave', texto: t('proyectos.vacio') })),
-    el('section', { class: 'tarjeta' }, el('h2', { texto: t('proyectos.nuevo') }), nuevo),
+      el('h2', { texto: t('proyectos.lista') }),
+      activos.length ? el('div', { class: 'lista-proyectos' }, activos.map(fila)) : el('p', { class: 'suave', texto: t('proyectos.vacio') })),
+    el('section', { class: 'tarjeta nota' }, el('p', { class: 'con-icono-arriba' }, icono('info'), el('span', { texto: t('proyectos.aviso_fase') }))),
     papelera.length ? el('section', { class: 'tarjeta' },
       el('details', {},
-        el('summary', { texto: t('proyectos.papelera', { n: papelera.length }) }),
+        el('summary', { class: 'con-icono' }, icono('papelera'), el('span', { texto: t('proyectos.papelera', { n: papelera.length }) })),
         el('p', { class: 'suave', texto: t('proyectos.papelera.texto') }),
-        papelera.map(fila))) : null));
+        el('div', { class: 'lista-proyectos' }, papelera.map(fila)))) : null));
+}
+
+// Crear un proyecto: tocando (lo normal) o escribiéndolo con sus palabras.
+let modoNuevo = 'toques';
+async function pantallaNuevo(textoInicial = null) {
+  const vigente = nuevoTurno();
+  let r;
+  try {
+    await cargarCatalogo();
+    r = await api('GET', '/api/proyectos');
+    if (!r.ok) throw new Error(textoError(r.datos.error));
+  } catch (error) {
+    if (vigente()) mostrar(marco('proyectos', tarjetaError(error.message)));
+    return;
+  }
+  if (!vigente()) return;
+  const { limite, usados, puedeEscribir } = r.datos;
+  const volver = el('p', {}, el('a', { href: '#proyectos', class: 'volver con-icono' }, el('span', { texto: t('proyecto.volver') })));
+  if (!puedeEscribir || usados >= limite) {
+    mostrar(marco('proyectos', el('section', { class: 'tarjeta' }, volver, el('h1', { texto: t('proyectos.nuevo') }),
+      el('p', { class: 'aviso', texto: t(!puedeEscribir ? 'proyectos.solo_lectura' : 'error.limite_de_proyectos') }))));
+    return;
+  }
+  // Lo que pasa al crear: igual por los dos caminos.
+  const crearCon = async instrucciones => {
+    const creado = await api('POST', '/api/proyectos', { instrucciones });
+    if (!creado.ok) throw new Error(textoError(creado.datos.error));
+    borrador('nuevo', '');
+    // El proyecto se dibuja con lo que respondió el servidor (sin pedirlo otra vez) y el botón queda apagado:
+    // así un segundo toque no puede crear otro.
+    if (!vigente()) return MANTENER;
+    history.pushState(null, '', `#proyecto/${creado.datos.proyecto.id}`);
+    turno++;
+    dibujarProyecto(creado.datos, t(creado.datos.repetido ? 'proyecto.listo.repetido' : 'proyecto.listo.creado'));
+    return MANTENER;
+  };
+  const lugar = el('div', {});
+  const conmutador = grupoDeBotones([['toques', t('creador.modo.toques')], ['texto', t('creador.modo.texto')]], modoNuevo, (valor, marcar) => {
+    modoNuevo = valor;
+    marcar();
+    dibujarModo();
+  });
+  conmutador.classList.add('conmutador');
+  function dibujarModo(texto = null) {
+    if (modoNuevo === 'toques') {
+      lugar.replaceChildren(crearCreador({
+        claveBorrador: 'nuevo-toques',
+        textoBoton: t('creador.crear'),
+        alMandar: crearCon,
+        alEscribir: frase => {
+          const escrito = borrador('nuevo');
+          if (escrito && escrito.trim() && escrito.trim() !== frase && !confirm(t('creador.reemplazar_escrito'))) return;
+          modoNuevo = 'texto';
+          conmutador.querySelectorAll('button').forEach(b => {
+            const marcado = b.textContent === t('creador.modo.texto');
+            b.className = marcado ? '' : 'secundario';
+            b.setAttribute('aria-pressed', marcado ? 'true' : 'false');
+          });
+          dibujarModo(frase);
+          lugar.querySelector('textarea')?.focus();
+        },
+      }));
+    } else {
+      lugar.replaceChildren(formularioTextoLibre({ id: 'campo-instrucciones', clave: 'nuevo', inicial: texto, textoBoton: t('proyectos.crear'), alMandar: crearCon }));
+    }
+  }
+  dibujarModo(textoInicial);
+  mostrar(marco('proyectos',
+    el('section', { class: 'tarjeta cabecera-pantalla' }, volver,
+      el('h1', { texto: t('proyectos.nuevo') }),
+      el('p', { class: 'suave', texto: t('creador.texto') }),
+      conmutador),
+    el('section', { class: 'tarjeta' }, lugar)));
 }
 
 async function pantallaProyecto(id) {
@@ -1545,7 +1980,7 @@ function formularioCampos(c, dudasTodas, alGuardar) {
     laboral,
     linea('exclusiones', t('formulario.exclusiones'), exclusionesDe(c).join(', ')),
     etiqueta('prioridades', t('formulario.prioridades')),
-    el('textarea', { id: id('prioridades'), name: 'prioridades', rows: 3, texto: c.prioridades.join('\n') }),
+    crecer(el('textarea', { id: id('prioridades'), name: 'prioridades', rows: 3, texto: c.prioridades.join('\n'), placeholder: t('formulario.prioridades.ejemplo') })),
     etiqueta('frecuencia', t('campo.frecuencia')), frecuencia,
     etiqueta('autonomia', t('campo.autonomia')), autonomia,
     el('p', { class: 'ayuda', texto: t('autonomia.contactar_siempre') }),
@@ -1631,7 +2066,7 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
   }
   partes.push(resumen(c));
   if (escribe) {
-    const motivo = el('textarea', { id: 'campo-motivo', rows: 2, maxlength: 300 });
+    const motivo = crecer(el('textarea', { id: 'campo-motivo', rows: 2, maxlength: 300, placeholder: t('proyecto.motivo.ejemplo') }));
     const claveMotivo = `motivo|${proyecto.id}|${v.numero}`;
     const motivoRecuperado = recordarTexto(motivo, claveMotivo);
     const bloqueado = v.faltantes.length > 0;
@@ -1689,15 +2124,19 @@ function dibujarProyecto(d, aviso = null) {
   }
 
   const nombre = el('input', { id: 'campo-nombre-proyecto', type: 'text', value: p.nombre, maxlength: 80, autocomplete: 'off' });
+  // La versión que espera se arma antes, para que «Siguiente paso» pueda llevar hasta ella.
+  const tarjetaPendiente = pendiente ? tarjetaVersion(pendiente, { proyecto: p, activa, puedeEscribir, abrirFormulario: () => abrirFormulario?.() }) : null;
+  const botonesEstado = acciones.length ? el('div', { class: 'botones' }, acciones) : null;
   const cabecera = el('section', { class: 'tarjeta' },
-    el('p', {}, el('a', { href: '#proyectos', texto: t('proyecto.volver') })),
+    el('p', {}, el('a', { href: '#proyectos', class: 'volver', texto: t('proyecto.volver') })),
     avisoDeArriba(aviso),
     el('h1', { texto: p.nombre }),
-    el('p', { class: 'etiquetas' }, el('span', { class: 'etiqueta', texto: t(`tipo.${p.tipo}`) }), etiquetaEstado(p),
+    el('p', { class: 'etiquetas' }, etiquetaTipo(p.tipo),
       p.versionActiva ? el('span', { class: 'etiqueta', texto: t('proyecto.version_en_uso', { numero: p.versionActiva }) }) : null),
+    tarjetaEstado(p, { pendiente, escribe: puedeEscribir, destino: p.enPapelera ? null : tarjetaPendiente || botonesEstado }),
     avisoEstado ? el('p', { class: 'aviso', texto: avisoEstado }) : null,
     !puedeEscribir ? el('p', { class: 'suave', texto: t('proyectos.solo_lectura') }) : null,
-    acciones.length ? el('div', { class: 'botones' }, acciones) : null,
+    botonesEstado,
     escribe ? el('details', {},
       el('summary', { texto: t('proyecto.renombrar') }),
       el('label', { for: 'campo-nombre-proyecto', texto: t('proyecto.nombre') }),
@@ -1714,9 +2153,10 @@ function dibujarProyecto(d, aviso = null) {
 
   let modificar = null;
   let detallesCampos = null;
+  let abrirFormulario = null;
   if (escribe) {
     const mensajeModificar = caja();
-    const area = el('textarea', { id: 'campo-reinterpretar', rows: 5, maxlength: 4000, texto: base.instrucciones });
+    const area = crecer(el('textarea', { id: 'campo-reinterpretar', rows: 5, maxlength: 4000, texto: base.instrucciones, placeholder: t('proyectos.instrucciones.ejemplo') }));
     const claveArea = `reescribir|${p.id}`;
     const recuperado = recordarTexto(area, claveArea);
     // Si lo que está ahora se cambió a mano, «Volver a entender» lo reemplaza: se avisa antes, y se pregunta al tocar.
@@ -1726,10 +2166,36 @@ function dibujarProyecto(d, aviso = null) {
       formularioCampos(base.configuracion, base.dudas, async campos => {
         await pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'campos', campos }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero }));
       }));
-    modificar = el('section', { class: 'tarjeta' },
-      el('h2', { texto: t('proyecto.modificar') }),
-      el('p', { class: 'suave', texto: t('formulario.guardar.ayuda') }),
-      el('details', { open: recuperado },
+    // «Cambiar con toques»: el mismo creador de «Nuevo proyecto», con lo que está ahora ya marcado.
+    // Lo que no cabe en los toques (exclusiones, prioridades, lugares escritos a mano…) se avisa antes de reemplazarlo.
+    const { eleccion, quedaFuera } = eleccionDesde(base.configuracion, productoDe(base.configuracion), catalogo.combinaciones?.investigar_y_preparar);
+    const claveToques = `toques|${p.id}`;
+    const detallesToques = el('details', { open: Boolean(borrador(claveToques)) },
+      el('summary', { class: 'con-icono' }, icono('dedo'), el('span', { texto: t('proyecto.modificar.toques') })));
+    detallesToques.append(crearCreador({
+      inicial: eleccion,
+      claveBorrador: claveToques,
+      textoBoton: t('creador.guardar_version'),
+      antes: [
+        conCambiosAMano ? el('p', { class: 'aviso', texto: t('proyecto.reescribir.aviso') }) : null,
+        quedaFuera.length ? el('p', { class: 'aviso', texto: t('creador.queda_fuera', { lista: unir(quedaFuera.map(x => t(`creador.fuera.${x}`))) }) }) : null,
+      ],
+      alMandar: async instrucciones => {
+        if ((conCambiosAMano || quedaFuera.length) && !confirm(t('creador.confirmar_reemplazo'))) return;
+        await pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'instrucciones', instrucciones }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero }));
+        borrador(claveToques, '');
+        return MANTENER;
+      },
+      alEscribir: frase => {
+        area.value = frase;
+        borrador(claveArea, frase);
+        detallesTexto.open = true;
+        area.dispatchEvent(new Event('input'));
+        detallesTexto.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        area.focus({ preventScroll: true });
+      },
+    }));
+    const detallesTexto = el('details', { open: recuperado },
         el('summary', { texto: t('proyecto.modificar.instrucciones') }),
         conCambiosAMano ? el('p', { class: 'aviso', texto: t('proyecto.reescribir.aviso') }) : null,
         el('label', { for: 'campo-reinterpretar', texto: t('proyectos.instrucciones') }),
@@ -1738,12 +2204,19 @@ function dibujarProyecto(d, aviso = null) {
           if (conCambiosAMano && !confirm(t('proyecto.reescribir.confirmar'))) return;
           await pedirYMostrar('POST', `/api/proyectos/${p.id}/versiones`, { modo: 'instrucciones', instrucciones: area.value }, x => t('proyecto.listo.guardada', { numero: x.pendiente.numero }));
           borrador(claveArea, '');
-        })),
+        }));
+    detallesTexto.querySelector('summary').classList.add('con-icono');
+    detallesTexto.querySelector('summary').prepend(icono('lapiz'));
+    modificar = el('section', { class: 'tarjeta' },
+      el('h2', { texto: t('proyecto.modificar') }),
+      el('p', { class: 'suave', texto: t('formulario.guardar.ayuda') }),
+      detallesToques,
+      detallesTexto,
       detallesCampos,
       mensajeModificar);
   }
   // «Responder estas preguntas» abre el formulario y lleva hasta él.
-  const abrirFormulario = detallesCampos ? () => {
+  abrirFormulario = detallesCampos ? () => {
     detallesCampos.open = true;
     detallesCampos.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const primero = detallesCampos.querySelector('legend, label');
@@ -1807,7 +2280,7 @@ function dibujarProyecto(d, aviso = null) {
 
   mostrar(marco('proyectos',
     cabecera,
-    pendiente ? tarjetaVersion(pendiente, { proyecto: p, activa, puedeEscribir, abrirFormulario }) : null,
+    tarjetaPendiente,
     enUso,
     modificar,
     listaVersiones,
@@ -1827,6 +2300,7 @@ async function dibujar() {
   if (seccion === 'configuracion') return pantallaConfiguracion();
   if (seccion === 'admin' && estado.usuario.rol === 'admin') return pantallaAdmin();
   if (seccion === 'proyectos') return pantallaProyectos();
+  if (seccion === 'nuevo') return pantallaNuevo();
   const proyecto = seccion.match(/^proyecto\/(\d+)$/);
   if (proyecto) return pantallaProyecto(proyecto[1]);
   return pantallaInicio();

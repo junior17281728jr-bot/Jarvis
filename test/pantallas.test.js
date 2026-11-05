@@ -116,8 +116,12 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const { TIPOS: TIPOS_TAREA, COMO_TERMINA } = await import('../src/tareas/tipos.js');
   const { MOTIVOS_MODO_SEGURO, QUIEN_QUITA } = await import('../src/tareas/modo-seguro.js');
   const { CLAVES_AVISO, NIVELES } = await import('../src/avisos/avisos.js');
+  // Pase visual (0.3.1): el creador con toques.
+  const { CLAVES_FALTA, CLAVES_QUEDA_FUERA } = await import('../public/creador.js');
   const cat = catalogo();
   const claves = [
+    ...CLAVES_FALTA.map(x => `creador.falta.${x}`),
+    ...CLAVES_QUEDA_FUERA.map(x => `creador.fuera.${x}`),
     ...ESTADOS.map(e => `estado.${e}`),
     ...Object.keys(ACCIONES).map(a => `accion.${a}`),
     ...Object.values(ACCIONES).map(a => `historial.${a.evento}`),
@@ -156,7 +160,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
   const prefijos = new Set(claves.map(c => c.slice(0, c.lastIndexOf('.') + 1)).concat(['estado.', 'tipo.', 'idioma.', 'error.', 'faltante.', 'campo.producto.', 'capacidad.', 'proyecto.aviso_espera.', 'historial.', 'version.estado.', 'version.origen.', 'supuesto.', 'autonomia.', 'plan.',
-    'tareas.fase.', 'tareas.estado.', 'tareas.tipo.', 'tareas.motivo.', 'tareas.evento.', 'tareas.como.', 'tareas.freno.', 'modo_seguro.motivo.', 'modo_seguro.quitado.', 'aviso.', 'aviso.nivel.', 'sistema.semaforo.', 'servidor.semaforo.']));
+    'creador.falta.', 'creador.fuera.', 'tareas.fase.', 'tareas.estado.', 'tareas.tipo.', 'tareas.motivo.', 'tareas.evento.', 'tareas.como.', 'tareas.freno.', 'modo_seguro.motivo.', 'modo_seguro.quitado.', 'aviso.', 'aviso.nivel.', 'sistema.semaforo.', 'servidor.semaforo.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
