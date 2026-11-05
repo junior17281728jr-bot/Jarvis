@@ -2,7 +2,11 @@
 // Lo que dice un proveedor (sus mensajes de error) se lee SOLO en memoria para clasificarlo; nunca se guarda.
 
 const CODIGO = /^[a-z0-9_]{1,60}$/;
-const ID_PETICION = /^[A-Za-z0-9_-]{1,100}$/;
+// El id de una petición, SOLO con la forma que usan los proveedores: req_… (Anthropic y OpenAI), msg_… (un mensaje de
+// Claude) o resp_… (una respuesta de OpenAI), con letras, números y _ (nunca «-»: una clave sk-… nunca cabe aquí).
+// Cualquier otra cosa no se guarda (ia_llamadas.id_peticion queda vacío). Además, src/ia/cliente.js quita todo id que
+// traiga un pedazo de la clave antes de leer la respuesta.
+export const ID_PETICION = /^(?:req|msg|resp)_[A-Za-z0-9_]{1,90}$/;
 
 // Un código corto que sí se puede guardar (detalle de la fila): solo letras minúsculas, números y _.
 export function codigoCorto(valor) {

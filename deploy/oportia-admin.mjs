@@ -8,7 +8,8 @@
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --ia=no            -> apaga la IA (no gasta nada más)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar   -> explica cómo está el archivo que protege las claves (no cambia nada)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=apartar-llave-danada -> si ese archivo está dañado, le cambia el nombre (no lo borra)
-//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar [nombre] -> olvida la cuenta de Tailscale del administrador (la próxima entrada anota la nueva)
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=recuperar-llave -> si falta ese archivo y queda otro nombre con la llave de tus claves, se lo vuelve a poner
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar     -> olvida la cuenta de Tailscale del dueño (el primer administrador; la próxima entrada anota la nueva)
 //
 // Para encender la IA no hay opción de consola, a propósito: gastar dinero se decide en la pantalla, con su aviso.
 //
@@ -29,8 +30,8 @@ import { cerrarTodas } from '../src/cuentas/sesiones.js';
 import { NOMBRE_VALIDO, auditar, buscarPorNombre, crearUsuario, guardarClave, ponerActivo } from '../src/cuentas/usuarios.js';
 import { ponerModoSeguro } from '../src/tareas/modo-seguro.js';
 import { guardarConfigIa, leerConfigIa } from '../src/ia/config.js';
-import { estadoLlave, apartarLlaveDanada, diagnosticoLlave } from '../src/claves/cifrado.js';
-import { reanotarTailscale } from '../src/cuentas/tailscale.js';
+import { estadoLlave, apartarLlaveDanada, diagnosticoLlave, recuperarLlave } from '../src/claves/cifrado.js';
+import { reanotarTailscale, idDelDueno } from '../src/cuentas/tailscale.js';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
@@ -59,10 +60,11 @@ async function principal() {
     if (pedido === '--ia=no') return conBase(config, { abrirSiFalta: true }, db => apagarIa(db, config));
     if (pedido === '--claves=revisar') return revisarClaves(config);
     if (pedido === '--claves=apartar-llave-danada') return apartarLlave(config);
+    if (pedido === '--claves=recuperar-llave') return recuperarLaLlave(config);
     if (pedido === '--tailscale=reanotar') return conBase(config, { abrirSiFalta: false }, db => reanotar(db, (process.argv[3] || '').trim()));
     const m = pedido.match(/^--modo-seguro=(si|no)$/);
     if (!m) {
-      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático), --modo-seguro=no (encenderlo otra vez), --ia=no (apagar la IA), --claves=revisar, --claves=apartar-llave-danada o --tailscale=reanotar.');
+      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático), --modo-seguro=no (encenderlo otra vez), --ia=no (apagar la IA), --claves=revisar, --claves=apartar-llave-danada, --claves=recuperar-llave o --tailscale=reanotar.');
       return 2;
     }
     modoSeguro = m[1] === 'si';
@@ -195,16 +197,55 @@ function apartarLlave(config) {
   return 0;
 }
 
-// --tailscale=reanotar [nombre]: olvida la cuenta de Tailscale guardada del administrador (el primero, o el del nombre).
-// La próxima vez que entre a Claves o a los ajustes de la IA por el enlace https, se anota la cuenta con la que entra.
+// --claves=recuperar-llave: SOLO si falta el archivo de la llave y queda otro nombre (.nueva-…) con la llave con la
+// que se guardaron las claves, le vuelve a poner su nombre (link: no borra ni pisa nada). Queda en la auditoría.
+function recuperarLaLlave(config) {
+  let db;
+  try {
+    db = conectarBase(config, { versionMinima: 5 });
+  } catch (error) {
+    console.error(`No se pudo abrir la base (${error.codigo ?? 'error'}): sin ella no se sabe cuál llave es la de tus claves. No se cambió nada.`);
+    return 1;
+  }
+  try {
+    const huellas = db.prepare("SELECT llave_huella AS h, SUM(estado = 'activa') AS activas, COUNT(*) AS n FROM secretos GROUP BY llave_huella ORDER BY activas DESC, n DESC").all().map(f => f.h);
+    const r = recuperarLlave(config, { huellas });
+    if (!r.recuperada) {
+      const porQue = {
+        llave_sana: 'el archivo de la llave existe y está bien',
+        llave_danada: 'el archivo de la llave existe pero está dañado (primero --claves=apartar-llave-danada)',
+        llave_version_nueva: 'el archivo de la llave lo escribió una versión más nueva de OPORTIA',
+        llave_sin_permiso: 'no se puede leer por permisos (corre esto como sudo -u jarvis …)',
+        sin_llave_que_sirva: 'no queda ningún otro nombre con la llave de tus claves (--claves=revisar lo explica)',
+        ya_existe: 'otro proceso acaba de crear el archivo de la llave',
+      }[r.motivo] ?? 'no se pudo';
+      console.log(`No se recuperó nada: ${porQue}. No se cambió nada.`);
+      return r.motivo === 'llave_sana' ? 0 : 2;
+    }
+    auditar(db, { usuarioId: null, accion: 'llave_recuperada', detalle: JSON.stringify({ archivo: r.archivo, origen: 'consola' }) });
+    console.log(`Listo: la llave volvió a su nombre desde ${r.archivo} (no se borró nada). Tus claves guardadas se pueden leer otra vez.`);
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+// --tailscale=reanotar [nombre]: olvida la cuenta de Tailscale guardada del DUEÑO (el primer administrador: el único
+// que ve las claves y cambia la IA). La próxima vez que el dueño entre a Claves o a los ajustes de la IA por el enlace
+// https, se anota la cuenta con la que entra. [nombre], si se da, tiene que ser el del dueño.
 function reanotar(db, nombre) {
   if (nombre && !NOMBRE_VALIDO.test(nombre)) {
     console.error('Nombre no válido.');
     return 2;
   }
-  const admin = nombre ? buscarPorNombre(db, nombre) : db.prepare("SELECT * FROM usuarios WHERE rol = 'admin' ORDER BY id LIMIT 1").get();
-  if (!admin || admin.rol !== 'admin') {
-    console.error(nombre ? `«${nombre}» no es un administrador.` : 'Todavía no hay administrador.');
+  const id = idDelDueno(db);
+  const admin = id == null ? null : db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id);
+  if (!admin) {
+    console.error('Todavía no hay administrador.');
+    return 2;
+  }
+  if (nombre && buscarPorNombre(db, nombre)?.id !== admin.id) {
+    console.error(`«${nombre}» no es el dueño. Solo la cuenta del dueño («${admin.nombre}», el primer administrador) usa la cuenta de Tailscale guardada: no cambió nada.`);
     return 2;
   }
   const antes = reanotarTailscale(db, { usuarioId: admin.id, origen: 'consola' });

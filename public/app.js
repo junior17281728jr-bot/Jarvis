@@ -7,6 +7,7 @@ import {
 import { ICONOS_SECTOR, ICONOS_PROYECTO, ICONOS_SERVICIOS, MAPA_COLUMNAS, MAPA_FILAS, MAPA_PROVINCIAS, PROVINCIAS_DE_REGION, EDIFICIOS_POR_TAMANO } from './dibujos.js';
 import {
   ATRIBUTOS_CAMPO_CLAVE, MARCAS_GASTO, CAMBIOS_RESALTADOS, partesBarraGasto, controlesProveedores, estadoDeClave, vistaAyudaIa, nombreModelo, leerDolares,
+  textoUsd,
 } from './ia-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
@@ -1126,6 +1127,10 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
     return;
   }
   const planes = Array.isArray(r.datos.planes) ? r.datos.planes : [];
+  // Qué se puede hacer desde esta entrada (fase 1, parte d). cuentas: crear, cambiar planes, reiniciar y volver a activar
+  // (por el enlace público no, mientras alguna cuenta pueda gastar IA). admins: tocar a otro administrador (solo el dueño,
+  // desde su cuenta de Tailscale). Un botón que no serviría no se muestra; una línea corta dice por qué.
+  const permisos = { cuentas: r.datos.permisos?.cuentas !== false, admins: r.datos.permisos?.admins === true };
   const ocupados = new Set(r.datos.usuarios.map(u => String(u.nombre).toLowerCase()));
   const mensaje = caja();
   const completo = el('input', { id: 'campo-nombre-completo', name: 'nombreVisible', type: 'text', maxlength: 80, autocomplete: 'off', autocapitalize: 'words' });
@@ -1143,7 +1148,8 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
     el('label', { for: 'campo-rol', texto: t('admin.nuevo.rol') }),
     el('select', { id: 'campo-rol', name: 'rol' },
       el('option', { value: 'usuario', texto: t('admin.rol.usuario') }),
-      el('option', { value: 'admin', texto: t('admin.rol.admin') })),
+      permisos.admins ? el('option', { value: 'admin', texto: t('admin.rol.admin') }) : null),
+    permisos.admins ? null : el('p', { class: 'ayuda con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.nuevo.rol.solo_dueno') })),
     el('label', { for: 'campo-idioma-nuevo', texto: t('admin.nuevo.idioma') }),
     el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
       el('option', { value: 'es', texto: t('idioma.es') }),
@@ -1175,6 +1181,8 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
   const controlPlan = u => {
     if (u.rol === 'admin' && u.proyectosPermitidos) return el('p', { class: 'suave', texto: t('admin.plan.es_admin', { n: u.proyectosPermitidos }) });
     if (!u.plan || !planes.length) return null;
+    // Por el enlace público (mientras alguna cuenta pueda gastar IA) el plan se ve, pero se cambia desde Tailscale.
+    if (!permisos.cuentas) return el('p', { class: 'suave', texto: t('admin.plan.solo_ver', { plan: t(`plan.${u.plan}`), n: u.proyectosPermitidos }) });
     const id = `plan-${u.id}`;
     const mensajePlan = caja();
     const selector = el('select', { id }, planes.map(x => el('option', { value: x.clave, selected: x.clave === u.plan, texto: t(`plan.${x.clave}`) })));
@@ -1192,9 +1200,16 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
   };
 
   const filas = r.datos.usuarios.map(u => {
-    const acciones = u.id === estado.usuario.id ? el('p', { class: 'suave', texto: t('admin.tu_cuenta') }) : el('div', { class: 'botones' },
+    // A otro administrador solo lo toca el dueño; a una cuenta común, reiniciar y activar necesitan «cuentas».
+    const esOtroAdmin = u.rol === 'admin' && u.id !== estado.usuario.id;
+    const puedeEntrarle = esOtroAdmin ? permisos.admins : permisos.cuentas;
+    const puedeApagarla = esOtroAdmin ? permisos.admins : true;
+    const puedeActivarla = esOtroAdmin ? permisos.admins : permisos.cuentas;
+    const acciones = u.id === estado.usuario.id ? el('p', { class: 'suave', texto: t('admin.tu_cuenta') })
+      : esOtroAdmin && !permisos.admins ? el('p', { class: 'suave con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.otro_admin') }))
+        : el('div', { class: 'botones' },
       // A una cuenta desactivada no se le reinicia la contraseña: no podría entrar con ella.
-      !u.activo ? null : el('button', {
+      !u.activo || !puedeEntrarle ? null : el('button', {
         type: 'button',
         class: 'secundario',
         texto: t('admin.reiniciar'),
@@ -1206,7 +1221,7 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
           await pantallaAdmin(null, { mantenerClave: true });
         },
       }),
-      el('button', {
+      (u.activo ? !puedeApagarla : !puedeActivarla) ? null : el('button', {
         type: 'button',
         class: u.activo ? 'peligro' : 'secundario',
         texto: t(u.activo ? 'admin.desactivar' : 'admin.activar'),
@@ -1230,8 +1245,10 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
   });
 
   // La zona de sistema es larga: arriba van dos atajos grandes a lo de siempre (usuarios y crear uno).
-  const tarjetaUsuarios = el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.usuarios') }), filas);
-  const tarjetaNuevo = el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.nuevo') }), formulario);
+  const soloTailnet = permisos.cuentas ? null : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t('admin.cuentas_solo_tailnet') }));
+  const tarjetaUsuarios = el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.usuarios') }), soloTailnet, filas);
+  const tarjetaNuevo = el('section', { class: 'tarjeta' }, el('h2', { texto: t('admin.nuevo') }),
+    permisos.cuentas ? formulario : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t('admin.cuentas_solo_tailnet') })));
   const atajo = (nombreIcono, texto, destino, despues) => el('button', {
     type: 'button',
     class: 'secundario con-icono atajo',
@@ -1259,12 +1276,9 @@ async function pantallaAdmin(avisoArriba = null, { mantenerClave = false } = {})
 const formatoLocal = () => (idioma === 'en' ? 'en-US' : 'es-DO');
 
 // Dinero de la IA: llega en millonésimas de dólar. «US$0.12» desde un centavo; debajo, hasta 4 decimales («US$0.0022»).
-function usd(micro) {
-  const n = Number(micro) / 1_000_000;
-  if (micro == null || !Number.isFinite(n)) return '—';
-  if (n > 0 && n < 0.0001) return '<US$0.0001';
-  return `US$${new Intl.NumberFormat(formatoLocal(), { minimumFractionDigits: 2, maximumFractionDigits: n > 0 && n < 0.01 ? 4 : 2 }).format(n)}`;
-}
+// usdMaximo: lo MÁXIMO que puede costar (redondeado hacia arriba: nunca se muestra menos de lo que se aparta).
+const usd = micro => textoUsd(micro, formatoLocal());
+const usdMaximo = micro => textoUsd(micro, formatoLocal(), { haciaArriba: true });
 // «2.00»: el tope como se escribe en su cuadro.
 const dolaresParaEscribir = micro => (Number(micro || 0) / 1_000_000).toFixed(2);
 // El día y la hora en RD: «30 de noviembre a las 8:00 p. m.» (el mes de la IA empieza a esa hora en RD).
@@ -1350,7 +1364,10 @@ function azulejoIa(r) {
 }
 function azulejoClaves(ia, claves) {
   const base = { nombreIcono: 'llave', titulo: t('servicios.claves'), destino: '#claves' };
-  if (!ia?.ok || !ia.datos.esDueno || !claves?.ok) return tarjetaResumen({ ...base, valor: t('servicios.claves.tailnet'), tono: 'apagado', iconoTono: 'candado' });
+  if (!ia?.ok || !ia.datos.esDueno || !claves?.ok) {
+    const valor = ia?.ok && ia.datos.motivoDueno === 'solo_el_dueno' ? t('servicios.claves.solo_el_dueno') : t('servicios.claves.tailnet');
+    return tarjetaResumen({ ...base, valor, tono: 'apagado', iconoTono: 'candado' });
+  }
   const activas = (claves.datos.grupos ?? []).flatMap(g => g.usos ?? []).filter(u => u.activa);
   const tonos = activas.map(u => estadoDeClave(u.activa).tono);
   const tono = !activas.length ? 'apagado' : tonos.includes('mal') ? 'mal' : tonos.includes('atencion') ? 'atencion' : 'bien';
@@ -1446,7 +1463,7 @@ function dibujarIa(s, aviso, vigente) {
     encender,
     apagar,
     !s.enTailnet ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t('ia.solo_tailnet') }))
-      : !dueno ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t('ia.solo_dueno') })) : null,
+      : !dueno ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t(s.motivoDueno === 'solo_el_dueno' ? 'ia.solo_el_dueno' : 'ia.solo_dueno') })) : null,
     el('details', { class: 'en-palabras' },
       el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: t('ia.que_es') })),
       el('p', { texto: t('ia.explica') }),
@@ -1641,7 +1658,8 @@ async function pantallaClaves(aviso = null) {
   if (!r.ok) {
     // Por el enlace público, desde otro equipo o por la conexión directa: ni se ven ni se cambian (lo dice y nada más).
     const e = r.datos.error;
-    const texto = e === 'solo_desde_tailnet' ? t('claves.solo_tailnet') : e === 'solo_dueno_tailscale' ? t('claves.solo_dueno') : textoError(e);
+    const texto = e === 'solo_desde_tailnet' ? t('claves.solo_tailnet') : e === 'solo_dueno_tailscale' ? t('claves.solo_dueno')
+      : e === 'solo_el_dueno' ? t('claves.solo_el_dueno') : textoError(e);
     mostrar(marco('admin', cabeza(el('p', { class: 'aviso con-icono-arriba', 'data-foco': true }, icono('candado'), el('span', { texto })))));
     return;
   }
@@ -1832,7 +1850,7 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
     const mensajeIa = caja();
     const boton = el('button', { type: 'button', class: 'con-icono boton-ia' }, icono('chispa'), el('span', { texto: t('ayuda_ia.boton') }));
     boton.addEventListener('click', async () => {
-      if (!confirm(t('ayuda_ia.confirmar', { maximo: usd(d.maximoMicro), proveedor: nombreProveedor(d.proveedor) }))) return;
+      if (!confirm(t('ayuda_ia.confirmar', { maximo: usdMaximo(d.maximoMicro), proveedor: nombreProveedor(d.proveedor) }))) return;
       boton.disabled = true;
       mensajeIa.hidden = true;
       const pantalla = turno;
@@ -1846,7 +1864,7 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
       const e = x.datos.error;
       // El precio subió: se muestra el nuevo y la persona decide otra vez.
       if (e === 'precio_cambio' && Number.isSafeInteger(x.datos.maximoMicro)) {
-        dibujarAyudaIa(bloque, { ...d, maximoMicro: x.datos.maximoMicro }, ctx, el('p', { class: 'aviso', role: 'status', texto: t('ayuda_ia.precio_cambio', { maximo: usd(x.datos.maximoMicro) }) }));
+        dibujarAyudaIa(bloque, { ...d, maximoMicro: x.datos.maximoMicro }, ctx, el('p', { class: 'aviso', role: 'status', texto: t('ayuda_ia.precio_cambio', { maximo: usdMaximo(x.datos.maximoMicro) }) }));
         return;
       }
       if (e === 'ya_hay_otra_en_marcha') return refrescarAyudaIa(bloque, ctx);
@@ -1857,7 +1875,7 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
     });
     partes = [
       el('p', { texto: t('ayuda_ia.texto') }),
-      el('p', { class: 'ayuda-ia-precio' }, el('strong', { texto: t('ayuda_ia.precio', { maximo: usd(d.maximoMicro) }) }),
+      el('p', { class: 'ayuda-ia-precio' }, el('strong', { texto: t('ayuda_ia.precio', { maximo: usdMaximo(d.maximoMicro) }) }),
         d.tipicoMicro != null ? el('span', { class: 'suave', texto: ` · ${t('ayuda_ia.tipico', { tipico: usd(d.tipicoMicro) })}` }) : null),
       boton,
       mensajeIa,
@@ -1865,7 +1883,13 @@ function dibujarAyudaIa(bloque, d, ctx, avisoBloque = null) {
   } else if (vista.vista === 'solo_tailnet') partes = [linea('candado', t('ayuda_ia.solo_tailnet'))];
   else if (vista.vista === 'apagada_admin') partes = [linea('apagado', t('ayuda_ia.apagada_admin'))];
   else if (vista.vista === 'tope_lleno') partes = [linea('atencion', t('ayuda_ia.tope_lleno', { fecha: fechaHora(d.vuelveEl) }))];
-  else if (vista.vista === 'pausa') partes = [linea('pausa', t('ayuda_ia.pausa'))];
+  else if (vista.vista === 'pausa' && vista.enFila) {
+    // El pedido espera en la fila mientras dura la pausa (no se cobra nada). Se sigue preguntando cada 10 s: cuando la
+    // pausa termina, la versión nueva aparece aquí (o, si pasaron más de 15 minutos, se dice que se canceló sin costo).
+    if (!ayudasPedidas.get(proyecto.id) && d.tarea) ayudasPedidas.set(proyecto.id, { tareaId: d.tarea.id, desde: Date.now() });
+    partes = [linea('pausa', t('ayuda_ia.pausa')), linea('reloj', t('ayuda_ia.pausa_en_fila'))];
+    setTimeout(() => refrescarAyudaIa(bloque, ctx), 10_000);
+  } else if (vista.vista === 'pausa') partes = [linea('pausa', t('ayuda_ia.pausa'))];
   else if (vista.vista === 'no_disponible') {
     partes = [linea('info', t('ayuda_ia.no_disponible_admin', { motivo: textoMotivoIa(vista.motivo) }))];
     // Al administrador, si el problema está en la clave o el proveedor, un atajo a Claves (allí se prueba y se reanuda).
@@ -2900,6 +2924,9 @@ function formularioCampos(c, dudasTodas, alGuardar) {
 }
 
 function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario }) {
+  // ¿Cabe otra versión? Si el proyecto llegó a 100, «Volver a la versión sin IA» no se ofrece (no se podría guardar):
+  // una línea dice por qué y qué hacer.
+  const cabeOtra = proyecto.versionesLibres == null || proyecto.versionesLibres > 0;
   const c = v.configuracion;
   const mensaje = caja();
   const esCambio = Boolean(activa);
@@ -2919,8 +2946,9 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario })
     v.ayudaIa ? el('div', { class: 'version-ia' },
       marcaIa(v),
       cambiosDeIa(v.ayudaIa),
-      escribe && v.ayudaIa.base ? botonAccion(t('version.volver_sin_ia', { numero: v.ayudaIa.base }), 'secundario', mensaje, () =>
-        pedirYMostrar('POST', `/api/proyectos/${proyecto.id}/versiones`, { modo: 'version', numero: v.ayudaIa.base }, x => t('proyecto.listo.copiada', { numero: x.pendiente.numero, desde: v.ayudaIa.base })), 'actualizar') : null) : null,
+      escribe && v.ayudaIa.base && cabeOtra ? botonAccion(t('version.volver_sin_ia', { numero: v.ayudaIa.base }), 'secundario', mensaje, () =>
+        pedirYMostrar('POST', `/api/proyectos/${proyecto.id}/versiones`, { modo: 'version', numero: v.ayudaIa.base }, x => t('proyecto.listo.copiada', { numero: x.pendiente.numero, desde: v.ayudaIa.base })), 'actualizar') : null,
+      escribe && v.ayudaIa.base && !cabeOtra ? el('p', { class: 'suave con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('version.volver_sin_ia_lleno', { numero: v.ayudaIa.base }) })) : null) : null,
   ];
   // Lo que falta y lo que el motor no entendió se pregunta; mientras tanto no se puede aprobar.
   const dudasVersion = Array.isArray(v.dudas) ? v.dudas : [];

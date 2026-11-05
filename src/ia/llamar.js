@@ -6,7 +6,9 @@
 //  - Nunca sigue una redirección (redirect: 'manual'): fetch de Node, si la siguiera, mandaría la clave y el pedido
 //    a OTRO servidor. Una respuesta 3xx vuelve como red: 'redireccion' y no se sigue.
 //  - Corta a los timeoutMs (también mientras lee la respuesta) y cuando llega la señal de parar de la tarea.
-//  - Lee como mucho topeBytes (1 MB) de respuesta; más que eso: demasiado: true.
+//  - Lee como mucho topeBytes de respuesta (quien llama pasa el de su propósito; 1 MB si no dice); más que eso:
+//    demasiado: true. Un JSON con más de 64 niveles anidados ([[[[…]]]]) tampoco se lee (profundo: true): con poco
+//    texto ocupa mucha memoria, y ninguna respuesta de verdad se parece a eso.
 //  - De un error solo guarda su nombre y su código (TypeError, ECONNREFUSED…). Nunca su texto: el texto de un error
 //    de cabeceras de Node trae el valor de la cabecera, es decir, la clave.
 //  - textoCorto: si la respuesta no es JSON, sus primeros 2.048 caracteres, SOLO en memoria (para reconocer un error
@@ -18,6 +20,25 @@ const CODIGO = /^[A-Z][A-Z0-9_]{1,39}$/;
 const ANTES_DE_MANDAR = /^(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|EADDRNOTAVAIL|UND_ERR_CONNECT_TIMEOUT|CERT_\w+|ERR_TLS_\w+|UNABLE_TO_\w+|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|ERR_SSL_\w+)$/;
 const CABECERAS_QUE_SE_LEEN = Object.freeze(['retry-after', 'request-id', 'x-request-id', 'content-type']);
 const LARGO_TEXTO_CORTO = 2048;
+export const PROFUNDIDAD_MAXIMA_JSON = 64;
+
+// ¿El texto (JSON) tiene más de «maximo» niveles de [ y { anidados? Mira cada carácter una vez, fuera de los textos.
+export function demasiadoProfundo(texto, maximo = PROFUNDIDAD_MAXIMA_JSON) {
+  let nivel = 0;
+  let enTexto = false;
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto.charCodeAt(i);
+    if (enTexto) {
+      if (c === 92) i += 1; // \ : el siguiente carácter va escapado
+      else if (c === 34) enTexto = false; // "
+    } else if (c === 34) enTexto = true;
+    else if (c === 91 || c === 123) { // [ {
+      nivel += 1;
+      if (nivel > maximo) return true;
+    } else if (c === 93 || c === 125) nivel -= 1; // ] }
+  }
+  return false;
+}
 
 function enModoPrueba() {
   return process.env.OPORTIA_TEST === '1';
@@ -61,7 +82,7 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
   const inicio = Date.now();
   const salida = {
     status: null, json: null, textoCorto: null, cabeceras: {}, red: null, tiempoAgotado: false, abortado: false,
-    demasiado: false, error: null, rechazado: false, msTotal: 0,
+    demasiado: false, profundo: false, error: null, rechazado: false, msTotal: 0,
   };
   const terminar = () => { salida.msTotal = Date.now() - inicio; return salida; };
   if (!destinoPermitido(url, permitido)) {
@@ -96,6 +117,10 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
       return terminar();
     }
     const texto = bytes.toString('utf8');
+    if (demasiadoProfundo(texto)) {
+      salida.profundo = true;
+      return terminar();
+    }
     try {
       salida.json = texto ? JSON.parse(texto) : null;
     } catch {

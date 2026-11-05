@@ -20,7 +20,8 @@ import { encolar } from '../src/tareas/cola.js';
 import { nuevaCorrida, empezarCorrida } from '../src/tareas/corridas.js';
 import { crearSupervisor } from '../src/tareas/supervisor.js';
 import { ponerModoSeguro } from '../src/tareas/modo-seguro.js';
-import { espacioDe, crearProyecto, nuevaVersion, aprobarVersion, moverAPapelera, detalleProyecto, MAXIMO_VERSIONES } from '../src/proyectos/proyectos.js';
+import { espacioDe, crearProyecto, nuevaVersion, aprobarVersion, moverAPapelera, detalleProyecto, baseParaCambiar, MAXIMO_VERSIONES } from '../src/proyectos/proyectos.js';
+import { abrirAviso } from '../src/avisos/avisos.js';
 import { configuracionDesdeCampos, dudas, faltantes } from '../src/motor/interpretar.js';
 import { MOTIVOS, PROPOSITOS } from '../src/ia/propositos.js';
 import { precioDe, costoMicro, reservaMicro } from '../src/ia/precios.js';
@@ -108,6 +109,15 @@ const ESCENAS = [
   ['enorme', 'respuesta_no_valida', 'desconocida', 'reserva', null, null],
   ['cortar', 'sin_red', 'desconocida', 'reserva', 2 * MIN, null],
   ['uso_raro', 'ok', 'hecha', 'cota', 'admin', null],
+  // Ronda 1 de revisión: un lugar que la tabla de precios no conoce (o que no se entiende) es un cobro desconocido.
+  ['geo_desconocido', 'ok', 'hecha', 'cota', 'admin', null],
+  ['geo_raro', 'ok', 'hecha', 'cota', 'admin', null],
+  // 1 MB de arreglos anidados: pasa el tope de lectura de la ayuda (256 KB); 200 KB: no pasa la profundidad máxima.
+  ['profundo', 'respuesta_no_valida', 'desconocida', 'reserva', null, null],
+  [{ tipo: 'profundo', bytes: 200_000 }, 'respuesta_no_valida', 'desconocida', 'reserva', null, null],
+  // Un JSON que no cumple el esquema pedido: no se usa (cuenta lo real) y no crea nada.
+  [{ tipo: 'ok', texto: '[]' }, 'respuesta_no_valida', 'hecha', ok450, null, null],
+  [{ tipo: 'ok', texto: '{"listo":true,"x":1}' }, 'respuesta_no_valida', 'hecha', ok450, null, null],
 ];
 
 test('15. ctx.ia.pedir por el ejecutor: UN pedido, nunca lanza, su costo, su pausa y su aviso al momento; en pausa, el próximo no toca la red', async () => {
@@ -145,7 +155,8 @@ test('15. ctx.ia.pedir por el ejecutor: UN pedido, nunca lanza, su costo, su pau
         else assert.equal(aviso, undefined, `${nombre}: sin aviso del proveedor`);
         if (escena === 'redirige') assert.equal(falso.segundo.peticiones.length, 0, 'la redirección nunca se sigue');
         if (escena === 'geo_us') assert.equal(JSON.parse(fila.detalle).geo, 'us');
-        if (escena === 'uso_raro') assert.equal(avisoAbierto(b, 'ia_costo_mayor')?.nivel, 'grave');
+        if (['uso_raro', 'geo_desconocido', 'geo_raro'].includes(escena)) assert.equal(avisoAbierto(b, 'ia_costo_mayor')?.nivel, 'grave');
+        if (escena === 'geo_desconocido') assert.equal(JSON.parse(fila.detalle).geo, 'eu');
         // El próximo uso: si quedó en pausa, ni reserva ni llama.
         const despues = falso.peticiones.length;
         const otra = await e.terminar(ponerPrueba(b, { paso: 'p2' }));
@@ -322,8 +333,15 @@ test('17. la IA hace una versión nueva que espera aprobación; nunca toca capac
     const p = proyecto(b, `${TALLER}, solo cuando yo lo pida.`);
     const base = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
     assert.deepEqual([base.configuracion.autonomia, base.configuracion.frecuencia], ['solo_cuando_pida', 'manual']);
-    // La IA intenta cambiar lo que no puede (aunque el esquema no lo deja, se prueba con la respuesta tal cual).
+    // La IA intenta cambiar lo que no puede (campos que el esquema no tiene): la respuesta entera no cumple el esquema,
+    // no se usa (cuenta lo que costó) y no crea ninguna versión (ronda 1 de revisión).
     falso.siguiente({ tipo: 'ok', json: respuestaIa({ frecuencia: 'diaria', autonomia: 'aprobar_salidas', capacidades: { contactar: true }, objetivo: 'Otra cosa', ia: { permitida: true, topeMensualUsd: 50 }, zonas: 'Santiago, Miami', sectores: 'Talleres mecánicos, ciclovías flotantes', paisCompleto: true }) });
+    const fuera = await e.terminar(pedirAyuda(b, p));
+    assert.deepEqual([fuera.estado, fuera.resultado.usada, fuera.resultado.motivo, fuera.resultado.numero, fuera.resultado.costoMicro], ['hecha', false, 'respuesta_no_valida', null, ok450]);
+    assert.deepEqual(versiones(b, p).map(v => [v.numero, v.estado]), [[1, 'pendiente']], 'ninguna versión nueva');
+    assert.deepEqual([llamadas(b)[0].estado, llamadas(b)[0].resultado, JSON.parse(llamadas(b)[0].detalle).esquema], ['hecha', 'respuesta_no_valida', 'no_cumple']);
+    // Dentro del esquema, la IA cambia lo que sí puede (todo el país, una zona de fuera, un negocio desconocido).
+    falso.siguiente({ tipo: 'ok', json: respuestaIa({ zonas: 'Santiago, Miami', sectores: 'Talleres mecánicos, ciclovías flotantes', paisCompleto: true }) });
     const t = await e.terminar(pedirAyuda(b, p));
     assert.equal(t.estado, 'hecha');
     assert.equal(t.proyecto_id, null, 'la tarea va sin proyecto (el proyecto todavía no está en marcha)');
@@ -334,7 +352,7 @@ test('17. la IA hace una versión nueva que espera aprobación; nunca toca capac
     assert.equal(v2.origen, 'campos');
     assert.equal(v2.creada_por, b.admin);
     const interp = JSON.parse(v2.interpretacion);
-    assert.equal(interp.ayudaIa.llamadaId, llamadas(b)[0].id);
+    assert.equal(interp.ayudaIa.llamadaId, llamadas(b)[1].id);
     const nueva = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
     const c = nueva.configuracion;
     for (const campo of ['capacidades', 'objetivo', 'autonomia', 'frecuencia', 'ia', 'costoEstimadoUsd']) assert.deepEqual(c[campo], base.configuracion[campo], campo);
@@ -441,7 +459,7 @@ test('17. lo que se manda a la IA: un solo bloque de datos que ningún texto pue
 
 // ---------- 18. Los casos raros de la ayuda: siempre «hecha», sin tocar el proyecto ----------
 
-test('18. antes de pagar: versión cambiada, caducada, precio cambiado, papelera o 100 versiones → 0 pedidos y 0 costo', async () => {
+test('18. antes de pagar: versión cambiada, caducada, precio cambiado, papelera o 99 versiones → 0 pedidos y 0 costo', async () => {
   const falso = await crearProveedorFalso();
   const b = preparar({ iaBases: { anthropic: falso.base } });
   const e = conEjecutor(b, { registro: TIPOS, manejadores: MANEJADORES });
@@ -464,11 +482,12 @@ test('18. antes de pagar: versión cambiada, caducada, precio cambiado, papelera
     const tF = pedirAyuda(b, f);
     moverAPapelera(b.db, { espacio: espacioDe(b.db, { id: b.admin, rol: 'admin' }), proyectoId: f.numero, usuarioId: b.admin, enPapelera: true });
     casos.push([tF, 'en_papelera']);
-    // Ya tiene 100 versiones (la última espera aprobación, pero no cabe otra).
+    // Ya tiene 99 versiones (la última espera aprobación): la de la IA cabría, pero después no cabría «Volver a la
+    // versión sin IA» (ronda 1 de revisión: la ayuda necesita dos lugares).
     const g = proyecto(b, `${TALLER} cinco`);
     const cfg = detalleProyecto(b.db, g.espacioId, g.numero).pendiente.configuracion;
-    for (let i = 1; i < MAXIMO_VERSIONES; i += 1) nuevaVersion(b.db, { espacioId: g.espacioId, proyectoId: g.numero, usuarioId: b.admin, instrucciones: `${TALLER} cinco`, configuracion: cfg, origen: 'campos' });
-    casos.push([pedirAyuda(b, g, { version: MAXIMO_VERSIONES }), 'demasiadas_versiones']);
+    for (let i = 1; i < MAXIMO_VERSIONES - 1; i += 1) nuevaVersion(b.db, { espacioId: g.espacioId, proyectoId: g.numero, usuarioId: b.admin, instrucciones: `${TALLER} cinco`, configuracion: cfg, origen: 'campos' });
+    casos.push([pedirAyuda(b, g, { version: MAXIMO_VERSIONES - 1 }), 'demasiadas_versiones']);
     for (const [id, motivo] of casos) {
       const t = await e.terminar(id);
       assert.equal(t.estado, 'hecha', motivo);
@@ -594,6 +613,136 @@ test('24. sistema.vigilar cierra reservas huérfanas y los avisos de tope de mes
   }
 });
 
+// ---------- Ronda 1 de revisión ----------
+
+// Con 98 versiones la IA hace la 99 y «Volver a la versión sin IA» todavía cabe (la 100); con 99 ya no se ofrece.
+test('18c. la ayuda deja siempre lugar para «Volver a la versión sin IA»: con 98 versiones la IA hace la 99 y volver todavía cabe', async () => {
+  const falso = await crearProveedorFalso();
+  const b = preparar({ iaBases: { anthropic: falso.base } });
+  const e = conEjecutor(b, { registro: TIPOS, manejadores: MANEJADORES });
+  try {
+    const p = proyecto(b, `${TALLER} nueve`);
+    const cfg = detalleProyecto(b.db, p.espacioId, p.numero).pendiente.configuracion;
+    for (let i = 1; i < MAXIMO_VERSIONES - 2; i += 1) nuevaVersion(b.db, { espacioId: p.espacioId, proyectoId: p.numero, usuarioId: b.admin, instrucciones: `${TALLER} nueve`, configuracion: cfg, origen: 'campos' });
+    assert.equal(versiones(b, p).length, 98);
+    falso.siguiente({ tipo: 'ok', json: respuestaIa() });
+    const t = await e.terminar(pedirAyuda(b, p, { version: 98 }));
+    assert.deepEqual([t.resultado.usada, t.resultado.numero], [true, 99]);
+    const d = detalleProyecto(b.db, p.espacioId, p.numero);
+    assert.equal(d.proyecto.versionesLibres, 1, 'queda un lugar');
+    assert.equal(d.pendiente.ayudaIa.base, 98);
+    // «Volver a la versión sin IA» (la ruta usa baseParaCambiar): cabe.
+    assert.doesNotThrow(() => baseParaCambiar(b.db, p.espacioId, p.numero));
+    const v98 = versiones(b, p).find(v => v.numero === 98);
+    nuevaVersion(b.db, { espacioId: p.espacioId, proyectoId: p.numero, usuarioId: b.admin, instrucciones: v98.instrucciones, configuracion: JSON.parse(v98.configuracion), origen: 'campos' });
+    assert.equal(detalleProyecto(b.db, p.espacioId, p.numero).proyecto.versionesLibres, 0);
+    // Con 100 (o 99) ya no se pide ayuda: 0 pedidos y 0 costo.
+    const antes = falso.peticiones.length;
+    const otra = await e.terminar(pedirAyuda(b, p, { version: 100 }));
+    assert.deepEqual([otra.resultado.usada, otra.resultado.motivo, otra.resultado.costoMicro], [false, 'demasiadas_versiones', 0]);
+    assert.equal(falso.peticiones.length, antes);
+  } finally {
+    await e.ejecutor.parar({ esperaMs: 0 });
+    b.db.close();
+    await falso.cerrar();
+  }
+});
+
+// Ayuda sobre una versión que ya hizo la IA: «Volver a la versión sin IA» vuelve a la del motor propio, y la lista de lo
+// que cambió la IA cuenta desde ahí (también lo que cambió la primera vez).
+test('17d. ayuda sobre una versión hecha por la IA: la base es la primera versión SIN IA y los cambios se cuentan desde ella', async () => {
+  const falso = await crearProveedorFalso();
+  const b = preparar({ iaBases: { anthropic: falso.base } });
+  const e = conEjecutor(b, { registro: TIPOS, manejadores: MANEJADORES });
+  try {
+    const p = proyecto(b, `${TALLER} diez`);
+    const v1 = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
+    falso.siguiente({ tipo: 'ok', json: respuestaIa({ sectores: 'Talleres mecánicos, tiendas de bicis' }) });
+    assert.equal((await e.terminar(pedirAyuda(b, p, { version: 1 }))).resultado.numero, 2);
+    const v2 = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
+    assert.equal(v2.ayudaIa.base, 1);
+    assert.ok(v2.ayudaIa.cambios.includes('sectores'));
+    // Otra vez, sobre la versión 2 (que hizo la IA): cambia solo las zonas.
+    falso.siguiente({ tipo: 'ok', json: respuestaIa({ sectores: 'Talleres mecánicos, tiendas de bicis', zonas: 'Santiago, La Vega' }) });
+    assert.equal((await e.terminar(pedirAyuda(b, p, { version: 2 }))).resultado.numero, 3);
+    const v3 = detalleProyecto(b.db, p.espacioId, p.numero).pendiente;
+    assert.equal(v3.ayudaIa.base, 1, '«Volver a la versión sin IA» vuelve a la n.º 1 (la del motor propio), no a la 2');
+    assert.deepEqual(v3.ayudaIa.cambios, cambiosIa(v1.configuracion, v3.configuracion));
+    assert.ok(v3.ayudaIa.cambios.includes('sectores'), 'lo que la IA cambió la primera vez sigue a la vista');
+    assert.ok(v3.ayudaIa.cambios.includes('zonas'));
+    // Las dudas de la base siguen todas.
+    assert.deepEqual(v3.configuracion.noEntendido.slice(0, v2.configuracion.noEntendido.length), v2.configuracion.noEntendido);
+  } finally {
+    await e.ejecutor.parar({ esperaMs: 0 });
+    b.db.close();
+    await falso.cerrar();
+  }
+});
+
+// Una respuesta que no cumple el esquema ([], "hola", 42, {}, un campo de más) nunca crea una versión ni dice «Listo»,
+// y no cierra el aviso abierto del proveedor.
+test('17c. una respuesta que no cumple el esquema no crea versión, no dice «Listo» y no cierra el aviso del proveedor (cuenta lo real)', async () => {
+  const falso = await crearProveedorFalso();
+  try {
+    for (const texto of ['[]', '"hola"', '42', '{}', '{"x":1}', JSON.stringify({ ...respuestaIa(), tamanos: ['enormes'] }), JSON.stringify({ ...respuestaIa(), salarioMinimo: 1.5 })]) {
+      const b = preparar({ iaBases: { anthropic: falso.base } });
+      const e = conEjecutor(b, { registro: TIPOS, manejadores: MANEJADORES });
+      try {
+        const p = proyecto(b, `${TALLER} once`);
+        abrirAviso(b.db, { clave: 'ia_proveedor:anthropic', nivel: 'info', detalle: { proveedor: 'anthropic', motivo: 'sobrecargado', pausa: 'corta', hasta: null }, ahora: Date.now() });
+        falso.siguiente({ tipo: 'ok', texto });
+        const t = await e.terminar(pedirAyuda(b, p));
+        assert.deepEqual([t.estado, t.resultado.usada, t.resultado.motivo, t.resultado.numero, t.resultado.costoMicro], ['hecha', false, 'respuesta_no_valida', null, ok450], texto);
+        assert.deepEqual(versiones(b, p).map(v => [v.numero, v.estado]), [[1, 'pendiente']], `${texto}: ninguna versión nueva`);
+        const [fila] = llamadas(b);
+        assert.deepEqual([fila.estado, fila.resultado, fila.costo_micro], ['hecha', 'respuesta_no_valida', ok450], texto);
+        assert.ok(avisoAbierto(b, 'ia_proveedor:anthropic'), `${texto}: el aviso del proveedor sigue abierto`);
+      } finally {
+        await e.ejecutor.parar({ esperaMs: 0 });
+        b.db.close();
+      }
+    }
+  } finally {
+    await falso.cerrar();
+  }
+});
+
+// Lo que se paga y no sirve (JSON con ```, cortada, rechazada): tres seguidas en una hora pausan la clave hasta que el
+// dueño la revise, con un aviso al momento; un uso bueno entre ellas vuelve a empezar la cuenta.
+test('15b. tres respuestas pagadas que no sirven, seguidas, pausan la clave y avisan; un uso bueno entre ellas reinicia la cuenta', async () => {
+  const falso = await crearProveedorFalso();
+  const b = preparar({ iaBases: { anthropic: falso.base } });
+  let ahora = T0;
+  const escritor = crearEscritor(b.db, { registro: SILENCIO, dormir: async () => {} });
+  const ia = crearClienteIA({ db: b.db, config: b.config, escritor, reloj: () => ahora, registro: SILENCIO });
+  const usar = () => ia.pedir({ proposito: 'interpretar', espacioId: b.espacioAdmin, sistema: 'S', texto: 'T', esquema: ESQUEMA_PRUEBA });
+  const conCercas = { tipo: 'ok', texto: '```json\n{"listo":true}\n```' };
+  try {
+    // Dos que no sirven, una buena, dos que no sirven: nunca tres seguidas, nunca pausa.
+    falso.siguiente(conCercas, 'max_tokens', 'ok', 'refusal', conCercas);
+    const motivos = [];
+    for (let i = 0; i < 5; i += 1) { ahora += 3 * MIN; motivos.push((await usar()).motivo ?? 'ok'); }
+    assert.deepEqual(motivos, ['respuesta_no_valida', 'respuesta_incompleta', 'ok', 'rechazada', 'respuesta_no_valida']);
+    assert.equal(secreto(b).pausa_motivo, null);
+    // La tercera seguida: pausa del dueño y aviso al momento.
+    falso.siguiente(conCercas);
+    ahora += 3 * MIN;
+    assert.equal((await usar()).motivo, 'respuesta_no_valida');
+    assert.deepEqual([secreto(b).pausa_motivo, secreto(b).pausa_hasta], ['fallas_seguidas', null]);
+    const aviso = avisoAbierto(b, 'ia_proveedor:anthropic');
+    assert.equal(aviso?.nivel, 'atencion');
+    assert.equal(JSON.parse(aviso.detalle).motivo, 'fallas_seguidas');
+    // Las siguientes no tocan la red (nada se paga), aunque pase una hora.
+    const antes = falso.peticiones.length;
+    for (let i = 0; i < 3; i += 1) { ahora += 20 * MIN; assert.equal((await usar()).motivo, 'proveedor_en_pausa'); }
+    assert.equal(falso.peticiones.length, antes);
+    assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM ia_llamadas WHERE estado = 'hecha'").get().n, 6, 'solo se pagaron las seis');
+  } finally {
+    b.db.close();
+    await falso.cerrar();
+  }
+});
+
 // ---------- 26. El trabajador REAL, como proceso aparte ----------
 
 test('26. de punta a punta por las pantallas: servidor de verdad + trabajador de verdad (proceso aparte) + proveedor falso; sin «core» y con poca memoria', async () => {
@@ -659,6 +808,71 @@ test('26. de punta a punta por las pantallas: servidor de verdad + trabajador de
         const rssMb = Number(readFileSync(`/proc/${pid}/status`, 'utf8').match(/VmRSS:\s+(\d+) kB/)[1]) / 1024;
         assert.ok(rssMb < 120, `el trabajador usa ${Math.round(rssMb)} MB (su límite es 120)`);
         console.log(`# memoria del trabajador después de la ayuda: ${Math.round(rssMb)} MB`);
+      }
+    });
+  } finally {
+    await supervisor.parar();
+    for (const pid of pids) matarSiVive(pid);
+    db.close();
+    await falso.cerrar();
+  }
+});
+
+// Ronda 1 de revisión: respuestas hostiles de 1 MB o menos (arreglos anidados [[[[…]]]]) ya no suben la memoria del
+// trabajador de verdad: lo que pasa de 256 KB no se lee, y lo que tiene demasiados niveles no se convierte.
+test('26c. el trabajador de verdad con respuestas hostiles (1 MB y 250 KB de arreglos anidados): no se usa, no se sale por memoria', async () => {
+  const falso = await crearProveedorFalso();
+  const config = { ...configDePrueba(), iaBases: { anthropic: falso.base } };
+  const db = abrirBase(config);
+  const pids = new Set();
+  const supervisor = crearSupervisor({
+    db, config, version: '0.4.0-prueba', codigo: `prueba-${randomUUID().slice(0, 8)}`, ruta: join(RAIZ, 'test', 'ia-trabajador.js'),
+    entorno: { OPORTIA_IA_URL_ANTHROPIC: falso.base },
+    tiempos: { revisarCadaMs: 100, modoSeguroCadaMs: 300, reinicioBaseMs: 100, reintentoSenalMs: 100 },
+    tiemposTrabajador: { latidoMs: 200, cicloMs: 100, recuperarCadaMs: 500 },
+    registro: SILENCIO,
+  });
+  const DUENO = { 'Tailscale-User-Login': 'junior@example.com' };
+  try {
+    await conServidor(crearServidor({ db, config, supervisor }), async base => {
+      const pedir = async (metodo, ruta, { datos, galleta } = {}) => {
+        const r = await fetch(`${base}${ruta}`, {
+          method: metodo,
+          headers: { 'X-Oportia': '1', ...(galleta ? { Cookie: galleta } : {}), ...(datos !== undefined ? { 'Content-Type': 'application/json' } : {}), ...DUENO },
+          body: datos !== undefined ? JSON.stringify(datos) : undefined,
+        });
+        const cuerpo = await r.json().catch(() => ({}));
+        return { codigo: r.status, datos: cuerpo, galleta: r.headers.get('set-cookie')?.split(';')[0] ?? null };
+      };
+      const admin = (await pedir('POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: 'una clave bien larga' } })).galleta;
+      const como = (metodo, ruta, datos) => pedir(metodo, ruta, { datos, galleta: admin });
+      assert.equal((await como('POST', '/api/proyectos', { instrucciones: `${TALLER} doce` })).codigo, 201);
+      assert.equal((await como('POST', '/api/admin/claves', { uso: 'ia_anthropic', valor: claveAnthropic() })).datos.prueba.motivo, 'ok');
+      assert.equal((await como('POST', '/api/admin/ia/ajustes', { topeGeneralUsd: '2' })).codigo, 200);
+      assert.equal((await como('POST', '/api/admin/ia/ajustes', { encendida: true, ayudaProyectos: true })).codigo, 200);
+      supervisor.iniciar();
+      const pid = await esperarHasta(() => supervisor.estado().fase === 'esperando' && supervisor.estado().pid, { que: 'el trabajador listo' });
+      pids.add(pid);
+      for (const escena of ['profundo', 'profundo', { tipo: 'profundo', bytes: 250_000 }]) {
+        const ofrecida = await como('GET', '/api/proyectos/1/ayuda-ia');
+        assert.equal(ofrecida.datos.disponible, true, JSON.stringify(ofrecida.datos));
+        falso.siguiente(escena);
+        const pedida = await como('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { maximoMicro: ofrecida.datos.maximoMicro });
+        assert.equal(pedida.codigo, 202);
+        const hecha = await esperarHasta(async () => {
+          const g = await como('GET', '/api/proyectos/1/ayuda-ia');
+          return g.datos.tarea?.id === pedida.datos.tarea.id && g.datos.tarea.estado === 'hecha' ? g : null;
+        }, { que: 'la ayuda terminada', cada: 100 });
+        assert.deepEqual([hecha.datos.tarea.resultado.usada, hecha.datos.tarea.resultado.motivo], [false, 'respuesta_no_valida']);
+      }
+      assert.equal(supervisor.estado().pid, pid, 'el mismo trabajador: nunca se salió');
+      const salidas = db.prepare('SELECT como_termino FROM trabajador_corridas WHERE como_termino IS NOT NULL').all().map(f => f.como_termino);
+      assert.ok(!salidas.includes('memoria'), `salidas: ${salidas.join(', ')}`);
+      assert.equal((await como('GET', '/api/proyectos/1')).datos.pendiente.numero, 1, 'ninguna versión nueva');
+      if (existsSync(`/proc/${pid}/status`)) {
+        const rssMb = Number(readFileSync(`/proc/${pid}/status`, 'utf8').match(/VmRSS:\s+(\d+) kB/)[1]) / 1024;
+        assert.ok(rssMb < 120, `el trabajador usa ${Math.round(rssMb)} MB (su límite es 120)`);
+        console.log(`# memoria del trabajador después de 3 respuestas hostiles: ${Math.round(rssMb)} MB`);
       }
     });
   } finally {

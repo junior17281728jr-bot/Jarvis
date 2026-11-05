@@ -250,7 +250,7 @@ export function detalleProyecto(db, espacioId, numeroProyecto, idioma = null) {
   const historial = db.prepare('SELECT fecha, accion, detalle FROM proyecto_historial WHERE proyecto_id = ? ORDER BY id DESC LIMIT 100').all(p.id)
     .map(h => ({ fecha: h.fecha, accion: h.accion, detalle: detalleDelHistorial(h, idioma) }));
   return {
-    proyecto: proyectoPublico(p, pendienteFila?.numero ?? null, idioma),
+    proyecto: { ...proyectoPublico(p, pendienteFila?.numero ?? null, idioma), versionesLibres: Math.max(0, MAXIMO_VERSIONES - filas.length) },
     activa: (p.version_activa != null && contenido.get(p.version_activa)) || null,
     pendiente: (pendienteFila && contenido.get(pendienteFila.numero)) || null,
     versiones,
@@ -371,14 +371,35 @@ export function nuevaVersion(db, { espacioId, proyectoId, usuarioId, instruccion
 }
 
 // ---------- Para la ayuda de IA (fase 1, parte d): revisar ANTES de pagar ----------
-// ¿Se le puede agregar otra versión a este proyecto? null (sí), 'en_papelera' o 'demasiadas_versiones'. Lo mismo que
-// revisa nuevaVersion, pero sin escribir nada: la ayuda de IA lo mira antes de gastar (en la pantalla, al pedirla y
-// en el trabajador justo antes de llamar). proyectoId: el número del proyecto dentro de su espacio.
-export function puedeTenerOtraVersion(db, { espacioId, proyectoId }) {
+// ¿Se le pueden agregar «libres» versiones más a este proyecto? null (sí), 'en_papelera' o 'demasiadas_versiones'. Lo
+// mismo que revisa nuevaVersion, pero sin escribir nada: la ayuda de IA lo mira antes de gastar (en la pantalla, al
+// pedirla y en el trabajador justo antes de llamar). proyectoId: el número del proyecto dentro de su espacio.
+// La ayuda de IA pide DOS lugares (LUGARES_PARA_AYUDA_IA): el de su versión y uno más para «Volver a la versión sin
+// IA». Así lo que entendió el motor propio siempre se puede volver a usar.
+export const LUGARES_PARA_AYUDA_IA = 2;
+export function puedeTenerOtraVersion(db, { espacioId, proyectoId, libres = 1 }) {
   const p = filaProyecto(db, espacioId, proyectoId);
   if (p.en_papelera === 1) return 'en_papelera';
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM proyecto_versiones WHERE proyecto_id = ?').get(p.id);
-  return n >= MAXIMO_VERSIONES ? 'demasiadas_versiones' : null;
+  return n + Math.max(1, libres) > MAXIMO_VERSIONES ? 'demasiadas_versiones' : null;
+}
+
+// La primera versión SIN IA de la cadena: si la versión la hizo la IA (ayudaIa.base), la base de esa, y así hasta una
+// que no la hizo la IA. Para que «Volver a la versión sin IA» y la lista de lo que cambió la IA siempre se refieran a lo
+// que entendió el motor propio, aunque se haya pedido ayuda sobre una versión que ya hizo la IA. proyectoInternoId: el
+// id interno. Devuelve la versión completa (versionCompleta) o null si no la encuentra.
+export function versionSinIa(db, { proyectoInternoId, numero }) {
+  const vistas = new Set();
+  let actual = numeroDe(numero);
+  while (actual != null && !vistas.has(actual) && vistas.size <= MAXIMO_VERSIONES) {
+    vistas.add(actual);
+    const fila = db.prepare('SELECT * FROM proyecto_versiones WHERE proyecto_id = ? AND numero = ?').get(Number(proyectoInternoId), actual);
+    if (!fila) return null;
+    const ayuda = leerJson(fila.interpretacion, {})?.ayudaIa ?? null;
+    if (!ayuda) return versionCompleta(fila);
+    actual = Number.isSafeInteger(ayuda.base) ? ayuda.base : null;
+  }
+  return null;
 }
 
 // La versión que espera aprobación de un proyecto (completa), su id interno y el número de su última versión.

@@ -357,6 +357,8 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     assert.equal(typeof p.cuentaProyecto, 'boolean');
     assert.ok(Number.isSafeInteger(p.salidaMax) && p.salidaMax >= 16 && p.salidaMax <= 4096, `${id}: salidaMax`);
     assert.ok(Number.isSafeInteger(p.entradaMaxBytes) && p.entradaMaxBytes > 0 && p.entradaMaxBytes <= 200_000, `${id}: entradaMaxBytes`);
+    // Ronda 1 de revisión: lo que se lee de la respuesta tiene su tope (cuida los 120 MB del trabajador).
+    assert.ok(Number.isSafeInteger(p.respuestaMaxBytes) && p.respuestaMaxBytes >= 16_384 && p.respuestaMaxBytes <= 524_288, `${id}: respuestaMaxBytes`);
     assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= 50_000, `${id}: maximoMicro (US$0,05 como mucho por vez)`);
     assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= 60_000, `${id}: timeoutMs`);
     assert.ok(['low', 'medium', 'high'].includes(p.esfuerzo), `${id}: esfuerzo`);

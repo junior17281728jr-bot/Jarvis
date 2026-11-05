@@ -31,11 +31,14 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
 ## Datos en el servidor
 - OPORTIA usa solo su archivo `/var/lib/jarvis/oportia.db` y su carpeta `/var/lib/jarvis/oportia-copias/`.
 - Desde la parte 1d, también `/var/lib/jarvis/oportia-llave-secretos`: la llave que cifra las claves (permisos 600, dueño
-  `jarvis`). Se crea sola al guardar la primera clave y **nunca** se cambia, se sobrescribe ni se borra. Puede haber nombres
-  `oportia-llave-secretos.nueva-…` (un intento de crearla que quedó a medias) y `oportia-llave-secretos.danada-…` (una llave
-  dañada apartada con la consola): también se guardan. **Nunca copies fuera del servidor ningún archivo cuyo nombre
-  empiece con `oportia-llave`** (ni en copias de seguridad, ni por Telegram, ni a GitHub): con esa llave y una copia de la
-  base se podrían leer las claves. Una base copiada a otro servidor necesita que se peguen las claves otra vez.
+  `jarvis`). Se crea sola al guardar la primera clave y **nunca** se cambia, se sobrescribe ni se borra. Al crearla queda
+  también un nombre `oportia-llave-secretos.nueva-…`: es **otro nombre del mismo archivo** (es la llave, no un sobrante; solo
+  si quedó vacío es un intento a medias). También puede haber `oportia-llave-secretos.danada-…` (una llave dañada apartada
+  con la consola). Todos se guardan. **Nunca copies fuera del servidor ningún archivo cuyo nombre empiece con
+  `oportia-llave`** (ni en copias de seguridad, ni por Telegram, ni a GitHub): con esa llave y una copia de la base se
+  podrían leer las claves. La regla es por el comienzo del nombre, nunca por el nombre exacto (en el código:
+  `esArchivoDeLlave` de `src/claves/cifrado.js`, que deben usar las copias de la parte e y el instalador de la parte f).
+  Una base copiada a otro servidor necesita que se peguen las claves otra vez.
 - Nunca abre, cambia ni borra `jarvis.db`, `secrets.env`, `version.txt`, `update.log` ni ningún otro archivo.
 - Antes de cada cambio de la base se guarda una copia completa en `oportia-copias/`.
 
@@ -125,7 +128,13 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   La pantalla muestra el precio máximo y pide confirmar; la IA llena el formulario, el motor propio lo vuelve a leer y sale
   una versión nueva que una persona revisa y aprueba. La IA nunca aprueba, nunca quita las dudas del motor (solo deja una
   pista al lado), nunca cambia la autonomía, la frecuencia, las capacidades ni el permiso de IA, y «Volver a la versión sin
-  IA» siempre está.
+  IA» siempre está: vuelve a lo que entendió el motor propio (aunque se pida ayuda otra vez sobre la versión de la IA), y
+  la ayuda solo se ofrece si al proyecto le quedan dos lugares de sus 100 versiones (el de la IA y el de volver).
+- Una respuesta de la IA que no cumple el formato pedido nunca se usa ni crea nada (se cobra lo que costó). Tres respuestas
+  seguidas que se pagan y no sirven (mal formadas, cortadas o rechazadas) ponen esa clave en pausa y avisan al momento,
+  igual que tres errores. Lo que se lee de una respuesta tiene su tope (256 KB para la ayuda), para cuidar la memoria del
+  trabajador. Un lugar de cobro (`inference_geo`) que la tabla de precios no conoce cuenta como un cobro desconocido: se
+  cuenta al menos lo apartado, la clave queda en pausa y hay aviso grave.
 - Modelo: Claude Haiku 5.5 (US$0.10 por millón de tokens que lee y US$0.50 por millón que escribe; ×1.1 si la cuenta usa
   solo servidores de EE. UU.). Un uso cuesta unos US$0.0005; el máximo que se muestra suele ser US$0.002 y el código nunca
   aparta más de US$0.005. Con un tope de US$2 caben unos 4,000 usos. Probar una clave es gratis (`count_tokens`).
@@ -140,7 +149,15 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   servidor»). De una clave solo se ven sus últimos 4 caracteres; nunca sale en registros, errores, avisos, tareas,
   respuestas de la API ni copias.
 - Solo se ven y se cambian desde la cuenta de Tailscale del dueño, por el enlace https (por el enlace público de Funnel solo
-  se ve el gasto y se puede **apagar** la IA). Cambiar una clave deja la anterior guardada como «reemplazada»; desactivar
+  se ve el gasto y se puede **apagar** la IA). El dueño es **una sola cuenta**: la primera de administrador. Otro
+  administrador (un ayudante) nunca ve las claves ni cambia la IA, desde ningún equipo; solo el dueño, desde su cuenta de
+  Tailscale, crea otro administrador o le reinicia la contraseña, lo desactiva o lo activa.
+- Mientras alguna cuenta tenga presupuesto de IA (un tope de plan mayor que US$0), crear cuentas, cambiar planes,
+  reiniciar contraseñas y volver a activar cuentas se hace desde un equipo con Tailscale: una contraseña de administrador
+  robada, por el enlace público, no puede multiplicar las cuentas que gastan. Con los topes de plan en US$0 (lo que trae
+  OPORTIA) todo sigue como antes.
+- El id de cada petición se guarda solo si tiene la forma de los proveedores (`req_…`, `msg_…`, `resp_…`) y nunca si trae
+  la clave o un pedazo de ella. Cambiar una clave deja la anterior guardada como «reemplazada»; desactivar
   la deja «desactivada»: nunca se borran. Si alguien vio una clave, cámbiala aquí **y anúlala en la página del proveedor**.
 - Lo que queda: quien sea root (o el usuario `jarvis`) en el servidor puede leer la llave y la base, y la memoria de
   intercambio (swap) podría guardar un trozo de memoria. El trabajador corre sin archivos de volcado (`prlimit --core=0`).
@@ -151,12 +168,16 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --ia=no
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=apartar-llave-danada
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=recuperar-llave
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar
 
 `--ia=no` apaga la IA (no hay `--ia=si`: encenderla necesita la pantalla y su aviso). `--claves=revisar` explica en palabras
 simples cómo está el archivo de la llave y no cambia nada. `--claves=apartar-llave-danada` solo hace algo si ese archivo
-está dañado: le cambia el nombre (no lo borra) para que la próxima clave pegada cree una llave nueva. `--tailscale=reanotar`
-olvida la cuenta de Tailscale guardada del administrador (si cambiaste de cuenta); la próxima entrada anota la nueva.
+está dañado: le cambia el nombre (no lo borra) para que la próxima clave pegada cree una llave nueva.
+`--claves=recuperar-llave` solo hace algo si falta el archivo de la llave y queda otro nombre (`.nueva-…`) con la llave con
+la que se guardaron tus claves: se lo vuelve a poner (no borra ni pisa nada; `--claves=revisar` dice si se puede).
+`--tailscale=reanotar` olvida la cuenta de Tailscale guardada del dueño (el primer administrador; si cambiaste de cuenta);
+la próxima entrada del dueño anota la nueva.
 
 ### Precios
 `src/ia/precios.json` es solo datos: precio por millón de tokens, de dónde salió (`fuente`), cuándo se revisó

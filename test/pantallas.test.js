@@ -355,6 +355,72 @@ test('27. la ayuda de IA en un proyecto: nunca un botón que no se puede usar, y
   assert.deepEqual(['2', '2.5', '2,50', 'US$ 3', '$1', '100.00', 'dos', '2.555', '-1', ''].map(leerDolares), ['2', '2.5', '2.50', '3', '1', '100.00', null, null, null, null]);
 });
 
+// Ronda 1 de revisión: el precio MÁXIMO que se ve antes de confirmar nunca es menor que lo que se aparta (y se puede
+// cobrar); lo gastado se redondea normal.
+test('27b. el precio máximo se muestra redondeado hacia arriba: nunca menos de lo que se aparta', async () => {
+  const { textoUsd } = await import('../public/ia-vista.js');
+  const leer = texto => {
+    const m = /^US\$([\d.,]+)$/.exec(texto);
+    assert.ok(m, texto);
+    return Math.round(Number(m[1].replace(/,/g, '')) * 1_000_000);
+  };
+  for (const formato of ['es-DO', 'en-US']) {
+    for (let micro = 1; micro <= 5000; micro++) {
+      const visto = leer(textoUsd(micro, formato, { haciaArriba: true }));
+      assert.ok(visto >= micro, `${formato}: ${micro} µUSD se mostró como ${textoUsd(micro, formato, { haciaArriba: true })}`);
+      assert.ok(visto - micro < 100, `${formato}: ${micro} µUSD, a lo sumo una diezmilésima de más`);
+    }
+    for (const micro of [9999, 10_000, 10_001, 123_456, 2_000_000, 2_000_001]) {
+      const visto = leer(textoUsd(micro, formato, { haciaArriba: true }));
+      assert.ok(visto >= micro && visto - micro < 10_000, `${formato}: ${micro}`);
+    }
+  }
+  assert.equal(textoUsd(1812, 'es-DO', { haciaArriba: true }), 'US$0.0019', 'el caso de la revisión: se aparta 1812 µUSD');
+  assert.equal(textoUsd(1812, 'es-DO'), 'US$0.0018', 'lo gastado se redondea normal');
+  assert.equal(textoUsd(50, 'en-US'), '<US$0.0001');
+  assert.equal(textoUsd(50, 'en-US', { haciaArriba: true }), 'US$0.0001');
+  assert.equal(textoUsd(0, 'en-US', { haciaArriba: true }), 'US$0.00');
+  assert.equal(textoUsd(null, 'en-US'), '—');
+  // Las tres frases de «como máximo» usan el redondeo hacia arriba.
+  for (const clave of ['ayuda_ia.precio', 'ayuda_ia.confirmar', 'ayuda_ia.precio_cambio']) {
+    assert.match(appJs, new RegExp(`t\\('${clave.replace('.', '\\.')}', \\{ maximo: usdMaximo\\(`), clave);
+  }
+  assert.doesNotMatch(appJs, /maximo: usd\(/);
+});
+
+// Ronda 1 de revisión: en modo seguro, una ayuda que ya estaba en la fila dice la pausa (no «sigue en la fila» sin fin).
+test('27c. con el trabajo en pausa y la ayuda en la fila, se ve la pausa y que el pedido espera', async () => {
+  const { vistaAyudaIa } = await import('../public/ia-vista.js');
+  const enPausa = { disponible: false, motivo: 'trabajo_en_pausa', esAdmin: true, tarea: { id: 4, estado: 'lista', resultado: null } };
+  assert.deepEqual([vistaAyudaIa(enPausa).vista, vistaAyudaIa(enPausa).enFila], ['pausa', true]);
+  assert.equal(vistaAyudaIa({ ...enPausa, tarea: { ...enPausa.tarea, estado: 'en_curso' } }).vista, 'pausa');
+  assert.equal(vistaAyudaIa({ ...enPausa, tarea: null }).enFila, false);
+  assert.equal(vistaAyudaIa({ ...enPausa, motivo: 'ok', disponible: true, maximoMicro: 900 }).vista, 'esperando', 'sin pausa, sigue esperando');
+  // Cuando la pausa termina y la ayuda se hizo, la versión nueva aparece (la pantalla siguió preguntando).
+  const lista = vistaAyudaIa({ disponible: true, motivo: 'ok', maximoMicro: 900, esAdmin: true, tarea: { id: 4, estado: 'hecha', resultado: { usada: true, numero: 2, costoMicro: 450 } } }, { seguida: { tareaId: 4 } });
+  assert.deepEqual(lista.lista, { numero: 2, costoMicro: 450 });
+  assert.match(appJs, /vista\.vista === 'pausa' && vista\.enFila\) \{[\s\S]*?t\('ayuda_ia\.pausa_en_fila'\)[\s\S]*?setTimeout\(\(\) => refrescarAyudaIa\(bloque, ctx\), 10_000\)/);
+  for (const idioma of [es, en]) assert.ok(idioma['ayuda_ia.pausa_en_fila']);
+});
+
+// Ronda 1 de revisión: Administrador solo muestra los botones que sirven desde esta entrada (dueño único; cuentas por
+// Tailscale mientras alguna pueda gastar IA) y dice por qué en una línea.
+test('27d. Administrador: «Administrador» como rol solo para el dueño; crear, planes y reiniciar se esconden si no sirven', () => {
+  assert.match(appJs, /permisos\.admins \? el\('option', \{ value: 'admin', texto: t\('admin\.rol\.admin'\) \}\) : null/);
+  assert.match(appJs, /permisos\.cuentas \? formulario : el\('p', \{ class: 'aviso con-icono-arriba' \}, icono\('candado'\), el\('span', \{ texto: t\('admin\.cuentas_solo_tailnet'\) \}\)\)/);
+  assert.match(appJs, /if \(!permisos\.cuentas\) return el\('p', \{ class: 'suave', texto: t\('admin\.plan\.solo_ver'/);
+  assert.match(appJs, /!u\.activo \|\| !puedeEntrarle \? null : el\('button'/);
+  assert.match(appJs, /s\.motivoDueno === 'solo_el_dueno' \? 'ia\.solo_el_dueno' : 'ia\.solo_dueno'/);
+  assert.match(appJs, /e === 'solo_el_dueno' \? t\('claves\.solo_el_dueno'\)/);
+  // «Volver a la versión sin IA» solo si cabe otra versión; si no, una línea dice por qué y qué hacer.
+  assert.match(appJs, /escribe && v\.ayudaIa\.base && cabeOtra \? botonAccion\(t\('version\.volver_sin_ia'/);
+  assert.match(appJs, /escribe && v\.ayudaIa\.base && !cabeOtra \? el\('p'[^\n]*t\('version\.volver_sin_ia_lleno'/);
+  for (const clave of ['version.volver_sin_ia_lleno', 'admin.cuentas_solo_tailnet', 'admin.otro_admin', 'admin.plan.solo_ver', 'admin.nuevo.rol.solo_dueno', 'ia.solo_el_dueno', 'claves.solo_el_dueno',
+    'error.cuentas_solo_tailnet', 'error.solo_el_dueno', 'servicios.claves.solo_el_dueno']) {
+    assert.ok(es[clave] && en[clave], clave);
+  }
+});
+
 test('27. las frases de la IA son cortas y dicen dónde se paga Claude', () => {
   // El recordatorio: la API de Claude se paga aparte, en console.anthropic.com, no con la suscripción del chat.
   for (const idioma of [es, en]) {

@@ -20,6 +20,8 @@ import { definicionUso } from './usos.js';
 import { estadoLlave } from './cifrado.js';
 
 export const PRUEBA_MS = 10_000;
+// Lo más que se lee de la respuesta de una prueba gratis (count_tokens o GET models: unos pocos bytes).
+export const PRUEBA_MAX_BYTES = 65_536;
 
 function probadorIa(id) {
   return async (clave, { db, config, senal = null }) => {
@@ -28,7 +30,7 @@ function probadorIa(id) {
     const p = adaptador.prueba({ modelo });
     const respuesta = await llamarProveedor({
       url: urlDe(adaptador, config, p.ruta), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
-      senal, timeoutMs: PRUEBA_MS, permitido: adaptador.host,
+      senal, timeoutMs: PRUEBA_MS, permitido: adaptador.host, topeBytes: PRUEBA_MAX_BYTES,
     });
     return adaptador.leerPrueba(respuesta);
   };

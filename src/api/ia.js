@@ -13,7 +13,7 @@ import { Limitador } from '../nucleo/limites.js';
 import { vieneDeTailscale } from '../nucleo/red.js';
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
-import { espacioDe, pendienteDeProyecto, puedeTenerOtraVersion } from '../proyectos/proyectos.js';
+import { espacioDe, pendienteDeProyecto, puedeTenerOtraVersion, LUGARES_PARA_AYUDA_IA } from '../proyectos/proyectos.js';
 import { duenoDeTailscale } from '../cuentas/tailscale.js';
 import { PLANES } from '../cuentas/planes.js';
 import { leerConfigIa, guardarConfigIa, usdAMicro, esEspacioAdmin, LIMITES_IA } from '../ia/config.js';
@@ -65,7 +65,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
   const estado = (db, req, usuario) => {
     const espacioAdmin = espacioDe(db, usuario)?.id ?? null;
     const dueno = duenoDeTailscale(db, req, usuario);
-    return estadoIA(db, { config, enTailnet: vieneDeTailscale(req).si, esDueno: dueno.si, espacioAdmin });
+    return estadoIA(db, { config, enTailnet: vieneDeTailscale(req).si, esDueno: dueno.si, motivoDueno: dueno.motivo, espacioAdmin });
   };
 
   rutas.agregar('GET', '/api/admin/ia', ({ db, req, usuario }) => {
@@ -121,7 +121,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     const info = pendienteDeProyecto(db, e.id, numeroProyecto); // 404 si no es de esta cuenta
     const r = { info, motivo: null, d: null };
     if (!info.pendiente) { r.motivo = 'sin_pendiente'; return r; }
-    const no = puedeTenerOtraVersion(db, { espacioId: e.id, proyectoId: numeroProyecto });
+    const no = puedeTenerOtraVersion(db, { espacioId: e.id, proyectoId: numeroProyecto, libres: LUGARES_PARA_AYUDA_IA });
     if (no) { r.motivo = no; return r; }
     const peticion = armarPeticion(info.pendiente, idioma);
     if (!peticion) { r.motivo = 'demasiado_largo'; return r; }

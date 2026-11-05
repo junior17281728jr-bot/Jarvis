@@ -2,7 +2,7 @@
 // Las claves de estas pruebas son FALSAS y se arman al correr: ninguna clave vive en el repositorio.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,8 @@ import { abrirBase } from '../src/nucleo/db.js';
 import { ErrorHttp } from '../src/nucleo/http.js';
 import { crearPrimerAdmin } from '../src/cuentas/usuarios.js';
 import {
-  rutaLlave, estadoLlave, asegurarLlave, leerLlave, apartarLlaveDanada, diagnosticoLlave, huellaDe, ErrorClaves,
+  rutaLlave, estadoLlave, asegurarLlave, leerLlave, apartarLlaveDanada, diagnosticoLlave, huellaDe, ErrorClaves, esArchivoDeLlave, recuperarLlave,
+  PREFIJO_ARCHIVOS_LLAVE,
 } from '../src/claves/cifrado.js';
 import {
   validarValor, guardarSecreto, leerSecreto, listarSecretos, activarSecreto, desactivarSecreto, anotarPrueba, pausarSecreto,
@@ -135,7 +136,66 @@ test('si el proceso se cae mientras crea la llave, el nombre final nunca queda a
   guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic(), usuarioId: admin });
   assert.equal(estadoLlave(config).listo, true);
   assert.equal(statSync(join(carpeta, temporales[0])).size, 0);
-  assert.ok(diagnosticoLlave(config, { db }).some(l => l.includes('temporal')));
+  assert.ok(diagnosticoLlave(config, { db }).some(l => l.includes(temporales[0]) && l.includes('a medias')));
+  db.close();
+});
+
+// Ronda 1 de revisión: el nombre .nueva-… que queda al crear la llave ES la llave (el mismo archivo), no un sobrante:
+// la revisión lo dice así, la regla de las copias es por el comienzo del nombre, y si falta el nombre final se puede
+// recuperar desde él (sin borrar ni pisar nada).
+test('el nombre .nueva-… que queda al crear la llave es la MISMA llave: se dice así, nunca se copia y sirve para recuperarla', () => {
+  const { config, db, admin } = nuevaBase();
+  const { secreto } = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic(), usuarioId: admin });
+  const ruta = rutaLlave(config);
+  const carpeta = dirname(ruta);
+  const otros = readdirSync(carpeta).filter(n => n.startsWith('oportia-llave-secretos.nueva-'));
+  assert.equal(otros.length, 1);
+  const principal = statSync(ruta);
+  const otro = statSync(join(carpeta, otros[0]));
+  assert.deepEqual([otro.ino, otro.nlink, principal.nlink], [principal.ino, 2, 2], 'el mismo archivo, con dos nombres');
+  const texto = diagnosticoLlave(config, { db }).join('\n');
+  assert.match(texto, new RegExp(`${otros[0].replace(/[.]/g, '\\.')}: es OTRO NOMBRE del mismo archivo de la llave`));
+  assert.doesNotMatch(texto, /temporal\(es\)|no se usan/);
+  // La regla para las copias (partes e y f): por el comienzo del nombre, nunca por el nombre exacto.
+  assert.equal(PREFIJO_ARCHIVOS_LLAVE, 'oportia-llave');
+  for (const nombre of ['oportia-llave-secretos', otros[0], 'oportia-llave-secretos.danada-20261110-150000', join(carpeta, otros[0]), 'OPORTIA-LLAVE-SECRETOS']) {
+    assert.equal(esArchivoDeLlave(nombre), true, nombre);
+  }
+  for (const nombre of ['oportia.db', 'oportia.db-wal', 'oportia-copias', 'llave', '']) assert.equal(esArchivoDeLlave(nombre), false, nombre);
+  // Una llave sana nunca se «recupera».
+  assert.equal(recuperarLlave(config, { huellas: [secreto.llaveHuella ?? estadoLlave(config).huella] }).motivo, 'llave_sana');
+  // Si el nombre final se pierde (por ejemplo, alguien lo movió), la llave sigue con su otro nombre: se recupera.
+  const huella = estadoLlave(config).huella;
+  renameSync(ruta, join(carpeta, 'movida-a-mano'));
+  assert.equal(estadoLlave(config).motivo, 'llave_no_existe');
+  const lineas = diagnosticoLlave(config, { db }).join('\n');
+  assert.match(lineas, /es una llave completa de OPORTIA, la misma con la que se guardaron tus claves/);
+  assert.match(lineas, /--claves=recuperar-llave/);
+  assert.equal(recuperarLlave(config, { huellas: ['0000000000000000'] }).motivo, 'sin_llave_que_sirva', 'solo la llave de las claves guardadas');
+  assert.equal(existsSync(ruta), false);
+  const r = recuperarLlave(config, { huellas: [huella] });
+  assert.deepEqual([r.recuperada, r.archivo, r.huella], [true, otros[0], huella]);
+  assert.equal(estadoLlave(config).huella, huella);
+  assert.equal(leerSecreto(db, config, { id: secreto.id }), claveAnthropic(), 'las claves guardadas se leen otra vez');
+  assert.ok(existsSync(join(carpeta, otros[0])) && existsSync(join(carpeta, 'movida-a-mano')), 'nada se borró');
+  db.close();
+});
+
+test('si el archivo de la llave se reemplazó por uno dañado, la revisión dice cuál nombre tiene la llave buena: apartar y recuperar', () => {
+  const { config, db, admin } = nuevaBase();
+  const { secreto } = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic(), usuarioId: admin });
+  const ruta = rutaLlave(config);
+  const carpeta = dirname(ruta);
+  const huella = estadoLlave(config).huella;
+  // Una edición a mano que escribe un archivo NUEVO con el mismo nombre (el viejo queda con su otro nombre).
+  renameSync(ruta, join(carpeta, 'copia-vieja'));
+  writeFileSync(ruta, 'esto no es una llave\n', { mode: 0o600 });
+  assert.equal(estadoLlave(config).motivo, 'llave_danada');
+  assert.match(diagnosticoLlave(config, { db }).join('\n'), /primero --claves=apartar-llave-danada y luego --claves=recuperar-llave/);
+  assert.equal(recuperarLlave(config, { huellas: [huella] }).motivo, 'llave_danada', 'nunca pisa un archivo que existe');
+  assert.equal(apartarLlaveDanada(config).apartada, true);
+  assert.equal(recuperarLlave(config, { huellas: [huella] }).recuperada, true);
+  assert.equal(leerSecreto(db, config, { id: secreto.id }), claveAnthropic());
   db.close();
 });
 

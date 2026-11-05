@@ -3,12 +3,18 @@
 //  - La llave vive en un archivo aparte, junto a la base (en el servidor: /var/lib/jarvis/oportia-llave-secretos),
 //    con permiso 600. La base solo guarda el texto cifrado: una copia de la base sola no sirve para leer las claves.
 //  - Se crea UNA vez, la primera vez que se guarda una clave (nunca al arrancar), y nunca se cambia, se reescribe ni
-//    se borra. Se escribe primero con un nombre temporal y luego se «enlaza» con su nombre final (link): eso pasa
-//    de una sola vez y falla si el nombre ya existe, así el nombre final solo aparece completo y nunca se pisa.
+//    se borra. Se escribe primero con un nombre temporal (oportia-llave-secretos.nueva-…) y luego se «enlaza» con su
+//    nombre final (link): eso pasa de una sola vez y falla si el nombre ya existe, así el nombre final solo aparece
+//    completo y nunca se pisa. Como nada se borra, el nombre temporal QUEDA: es un segundo nombre del MISMO archivo,
+//    es decir, ES la llave (no un sobrante). Por eso la regla de las copias es por el comienzo del nombre, nunca por
+//    el nombre exacto (esArchivoDeLlave).
 //  - Si el archivo está dañado, NO se reemplaza: las pantallas lo dicen y la consola lo explica
 //    (oportia-admin.mjs --claves=revisar) o lo aparta con otro nombre (--claves=apartar-llave-danada), sin borrarlo.
 //  - Ningún archivo cuyo nombre empiece con «oportia-llave» se copia nunca fuera del servidor (copias por Telegram de
-//    la parte e, instalador de la parte f).
+//    la parte e, instalador de la parte f): esArchivoDeLlave(nombre) es la ÚNICA pregunta que deben hacer.
+//  - Si el nombre final falta pero queda otro nombre con una llave completa (.nueva-…) con la que se guardaron las
+//    claves, la consola la puede recuperar (--claves=recuperar-llave): le pone otra vez el nombre final (link, nunca
+//    pisa nada).
 //  - Los errores nunca llevan la clave ni la llave: solo un código corto (ErrorClaves.clave).
 import {
   closeSync, existsSync, fchmodSync, fsyncSync, linkSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeSync,
@@ -20,6 +26,15 @@ import { revisarModoPrueba } from '../nucleo/db.js';
 const NOMBRE_LLAVE = 'oportia-llave-secretos';
 // Para las partes e y f: ningún archivo que empiece así se copia fuera del servidor.
 export const PREFIJO_ARCHIVOS_LLAVE = 'oportia-llave';
+const PREFIJO_TEMPORAL = `${NOMBRE_LLAVE}.nueva-`;
+
+// ¿Este nombre de archivo (sin carpeta) es la llave o uno de sus otros nombres? Las copias de seguridad (parte e) y el
+// instalador (parte f) se lo preguntan a CADA archivo antes de copiarlo: si dice que sí, no se copia nunca. Incluye
+// oportia-llave-secretos, sus nombres .nueva-… (la misma llave) y .danada-… (llaves apartadas).
+export function esArchivoDeLlave(nombre) {
+  const solo = String(nombre ?? '').split(/[\\/]/).pop();
+  return solo.toLowerCase().startsWith(PREFIJO_ARCHIVOS_LLAVE);
+}
 const FORMATO_V1 = /^oportia-llave-v1:([A-Za-z0-9_-]{43})\n$/;
 const CABECERA = /^oportia-llave-v([1-9]\d{0,3}):/;
 const TAMANO_MAXIMO = 4096;
@@ -184,6 +199,51 @@ export function apartarLlaveDanada(config, { ahora = Date.now() } = {}) {
   return { apartada: true, motivo: null, archivo: destino.slice(dirname(destino).length + 1) };
 }
 
+// Los otros nombres de la llave en la carpeta de datos (.nueva-…), cada uno con lo que es:
+//  - 'mismo': otro nombre del MISMO archivo que la llave (mismo inodo): es la llave.
+//  - 'completa': una llave completa de OPORTIA (otro archivo), con su huella.
+//  - 'a_medias': un intento de crearla que quedó a medias (vacío o incompleto): no sirve.
+function otrosNombres(config) {
+  const ruta = rutaLlave(config);
+  const carpeta = dirname(ruta);
+  let principal = null;
+  try { principal = statSync(ruta); } catch { principal = null; }
+  let nombres = [];
+  try { nombres = readdirSync(carpeta).filter(n => n.startsWith(PREFIJO_TEMPORAL)).sort(); } catch { nombres = []; }
+  return nombres.map(nombre => {
+    const completa = join(carpeta, nombre);
+    let info = null;
+    try { info = statSync(completa); } catch { info = null; }
+    if (principal && info && info.dev === principal.dev && info.ino === principal.ino) return { nombre, ruta: completa, tipo: 'mismo', huella: null };
+    try {
+      return { nombre, ruta: completa, tipo: 'completa', huella: leerDelDisco(completa).huella };
+    } catch {
+      return { nombre, ruta: completa, tipo: 'a_medias', huella: null };
+    }
+  });
+}
+
+// Solo desde la consola (--claves=recuperar-llave): si el nombre final de la llave NO existe, y queda otro nombre
+// (.nueva-…) con una llave completa cuya huella es la de las claves guardadas (huellas: las de la base, de la más
+// usada a la menos), le vuelve a poner el nombre final (link: nunca pisa nada, nunca borra). { recuperada, motivo,
+// archivo, huella }.
+export function recuperarLlave(config, { huellas = [] } = {}) {
+  const ruta = rutaLlave(config);
+  const estado = estadoLlave(config);
+  if (estado.motivo !== 'llave_no_existe') return { recuperada: false, motivo: estado.listo ? 'llave_sana' : estado.motivo, archivo: null, huella: null };
+  const completas = otrosNombres(config).filter(o => o.tipo === 'completa');
+  const elegida = huellas.map(h => completas.find(o => o.huella === h)).find(Boolean);
+  if (!elegida) return { recuperada: false, motivo: 'sin_llave_que_sirva', archivo: null, huella: null };
+  try {
+    linkSync(elegida.ruta, ruta);
+  } catch (error) {
+    if (error?.code === 'EEXIST') return { recuperada: false, motivo: 'ya_existe', archivo: null, huella: null };
+    throw error;
+  }
+  leidas.delete(ruta);
+  return { recuperada: true, motivo: null, archivo: elegida.nombre, huella: elegida.huella };
+}
+
 function nombreDeUsuario(uid) {
   try {
     const linea = readFileSync('/etc/passwd', 'utf8').split('\n').find(l => l.split(':')[2] === String(uid));
@@ -230,10 +290,23 @@ export function diagnosticoLlave(config, { db = null } = {}) {
   }
   let nombres = [];
   try { nombres = readdirSync(carpeta); } catch { nombres = []; }
-  const temporales = nombres.filter(n => n.startsWith(`${NOMBRE_LLAVE}.nueva-`)).length;
   const apartadas = nombres.filter(n => n.startsWith(`${NOMBRE_LLAVE}.danada-`));
-  if (temporales) lineas.push(`Hay ${temporales} archivo(s) temporal(es) de cuando se creó la llave (${NOMBRE_LLAVE}.nueva-…): son normales, no se usan y no se borran.`);
+  // Los otros nombres (.nueva-…): uno con el mismo inodo ES la llave; uno con una llave completa puede servir para
+  // recuperarla si falta el nombre final.
+  let huellasGuardadas = new Set();
+  if (db) {
+    try { huellasGuardadas = new Set(db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(f => f.h)); } catch { huellasGuardadas = new Set(); }
+  }
+  for (const o of otrosNombres(config)) {
+    if (o.tipo === 'mismo') lineas.push(`${o.nombre}: es OTRO NOMBRE del mismo archivo de la llave (es la llave, no un sobrante). Es normal, no se borra y nunca se copia.`);
+    else if (o.tipo === 'completa') {
+      const sirve = huellasGuardadas.has(o.huella);
+      lineas.push(`${o.nombre}: es una llave completa de OPORTIA${sirve ? ', la misma con la que se guardaron tus claves' : ''}. No se borra y nunca se copia.`);
+      if (sirve && estado.motivo === 'llave_no_existe') lineas.push('Falta el archivo de la llave, pero esta sirve: --claves=recuperar-llave le vuelve a poner su nombre (no borra ni pisa nada).');
+      if (sirve && estado.motivo === 'llave_danada') lineas.push('El archivo de la llave está dañado, pero esta sirve: primero --claves=apartar-llave-danada y luego --claves=recuperar-llave (no se borra nada).');
+    } else lineas.push(`${o.nombre}: un intento de crear la llave que quedó a medias (vacío o incompleto). No sirve, no se usa y no se borra.`);
+  }
   if (apartadas.length) lineas.push(`Llaves dañadas apartadas antes: ${apartadas.join(', ')}.`);
-  lineas.push('Nunca copies fuera del servidor ningún archivo que empiece con «oportia-llave».');
+  lineas.push('Nunca copies fuera del servidor ningún archivo que empiece con «oportia-llave» (tampoco los .nueva-… ni los .danada-…).');
   return lineas;
 }

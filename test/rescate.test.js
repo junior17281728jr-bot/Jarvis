@@ -244,6 +244,35 @@ test('--claves=apartar-llave-danada solo aparta un archivo DAÑADO, con otro nom
   void config;
 });
 
+// Ronda 1 de revisión: si falta el nombre final de la llave pero queda otro nombre con la llave de las claves.
+test('--claves=recuperar-llave le vuelve a poner su nombre a la llave (desde su otro nombre), sin borrar ni pisar nada', async () => {
+  const { readdirSync, renameSync } = await import('node:fs');
+  const { raiz, archivoEnv } = prepararServidorDePrueba();
+  await baseConIa(raiz);
+  const carpeta = join(raiz, 'jarvis');
+  const ruta = join(carpeta, 'oportia-llave-secretos');
+  let salida = rescatar(archivoEnv, '--claves=recuperar-llave');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /No se recuperó nada: el archivo de la llave existe y está bien/);
+  renameSync(ruta, join(carpeta, 'movida'));
+  salida = rescatar(archivoEnv, '--claves=revisar');
+  assert.match(salida.stdout, /la misma con la que se guardaron tus claves/);
+  salida = rescatar(archivoEnv, '--claves=recuperar-llave');
+  assert.equal(salida.status, 0, salida.stderr);
+  assert.match(salida.stdout, /Listo: la llave volvió a su nombre desde oportia-llave-secretos\.nueva-/);
+  assert.ok(existsSync(ruta) && existsSync(join(carpeta, 'movida')));
+  assert.equal(readdirSync(carpeta).filter(n => n.startsWith('oportia-llave-secretos.nueva-')).length, 1, 'el otro nombre sigue');
+  const db = abrirBase(leerConfig({ DB_PATH: join(carpeta, 'jarvis.db') }));
+  try {
+    assert.equal(JSON.parse(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'llave_recuperada'").get().detalle).origen, 'consola');
+  } finally {
+    db.close();
+  }
+  salida = rescatar(archivoEnv, '--claves=revisar');
+  assert.match(salida.stdout, /Está bien/);
+  assert.match(salida.stdout, /es OTRO NOMBRE del mismo archivo de la llave/);
+});
+
 test('--tailscale=reanotar olvida la cuenta de Tailscale guardada del administrador (queda en la auditoría); la próxima entrada anota la nueva', async () => {
   const { raiz, archivoEnv } = prepararServidorDePrueba();
   const { config } = await baseConIa(raiz);
@@ -261,4 +290,20 @@ test('--tailscale=reanotar olvida la cuenta de Tailscale guardada del administra
   assert.equal(salida.status, 0);
   assert.match(salida.stdout, /no tenía una cuenta de Tailscale guardada/);
   assert.equal(rescatar(archivoEnv, '--tailscale=reanotar', 'nadie').status, 2);
+  // Ronda 1: otro administrador nunca es el dueño (la cuenta de Tailscale guardada es solo la del dueño).
+  const db2 = abrirBase(config);
+  try {
+    db2.prepare("INSERT INTO usuarios (nombre, nombre_visible, clave_hash, rol, idioma, creado_en, tailscale_login) VALUES ('ayudante', 'ayudante', 'x', 'admin', 'es', ?, 'amigo@example.com')").run(new Date().toISOString());
+  } finally {
+    db2.close();
+  }
+  salida = rescatar(archivoEnv, '--tailscale=reanotar', 'ayudante');
+  assert.equal(salida.status, 2);
+  assert.match(salida.stderr, /«ayudante» no es el dueño/);
+  const db3 = abrirBase(config);
+  try {
+    assert.equal(db3.prepare("SELECT tailscale_login FROM usuarios WHERE nombre = 'ayudante'").get().tailscale_login, 'amigo@example.com', 'no cambió nada');
+  } finally {
+    db3.close();
+  }
 });

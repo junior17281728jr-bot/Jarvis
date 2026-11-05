@@ -20,6 +20,7 @@ import { anotarPrueba, anotarUso, pausarSecreto, quitarPausaCorta, secretoUsable
 import { PROPOSITOS, MOTIVOS, ESTADOS_LLAMADA, definicionProposito } from './propositos.js';
 import { precioDe, reservaMicro, costoMicro, cotaMicro, instantaneaPrecio } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
+import { ID_PETICION } from './proveedores/comun.js';
 import { politicaDe, finDePausa, FALLAS_SEGUIDAS } from './politica.js';
 import { leerConfigIa } from './config.js';
 import { gastoMicro, revisarUmbrales } from './gasto.js';
@@ -180,12 +181,18 @@ function avisoProveedor(db, { proveedor, motivo, pausa, hasta, nivel, ahora }) {
   abrirAviso(db, { clave: `ia_proveedor:${proveedor}`, nivel, detalle: { proveedor, motivo, pausa, hasta: hasta == null ? null : iso(hasta) }, ahora });
 }
 
+// Respuestas que se PAGAN pero no sirven (el modelo respondió mal, se cortó o no quiso): para la pausa de «tres
+// seguidas» cuentan como fallas, así un modelo que responde mal una y otra vez no gasta sin freno (fases 2 a 7: los
+// trabajos automáticos piden solos). Un uso bueno entre ellas vuelve a empezar la cuenta.
+export const RESPUESTAS_INSERVIBLES = Object.freeze(['respuesta_no_valida', 'respuesta_incompleta', 'rechazada']);
+const esFalla = ({ estado, resultado }) => ((estado === 'fallida' || estado === 'desconocida') && resultado !== 'interrumpida')
+  || RESPUESTAS_INSERVIBLES.includes(resultado);
+
 // ¿Es la tercera falla seguida de esa clave en una hora (sin un uso bueno entre ellas)?
 function tresFallasSeguidas(db, secretoId, ahora) {
   const ultimas = db.prepare(`SELECT estado, resultado FROM ia_llamadas WHERE secreto_id = ? AND creada_en >= ? AND estado <> 'reservada'
     ORDER BY id DESC LIMIT ?`).all(secretoId, iso(ahora - FALLAS_SEGUIDAS.ventanaMs), FALLAS_SEGUIDAS.veces);
-  return ultimas.length === FALLAS_SEGUIDAS.veces
-    && ultimas.every(u => (u.estado === 'fallida' || u.estado === 'desconocida') && u.resultado !== 'interrumpida');
+  return ultimas.length === FALLAS_SEGUIDAS.veces && ultimas.every(esFalla);
 }
 
 // Anota lo que pasó con una llamada reservada. resultado: lo que devolvió el adaptador (leer): { motivo, estado, uso,
@@ -205,11 +212,15 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
     const pol = politicaDe(motivo);
     let estado = !conocido ? 'desconocida'
       : ESTADOS_LLAMADA.includes(resultado?.estado) && resultado.estado !== 'reservada' ? resultado.estado : pol.estado;
-    const uso = usoValido(resultado?.uso);
+    let uso = usoValido(resultado?.uso);
     if (estado === 'hecha' && !uso) estado = 'desconocida';
     if (tardia && !uso && estado !== 'fallida') return sinCambio;
     const reservado = f.reservado_micro;
     const precio = precioDeLaFila(f);
+    // Un lugar (inference_geo) que la tabla de precios no conoce puede costar más que el más caro conocido: cuenta como
+    // un cobro desconocido (al menos lo apartado), pausa la clave y avisa, como un service_tier o una velocidad nueva.
+    // Si el proveedor no dice el lugar, se usa el multiplicador más alto (src/ia/precios.js).
+    if (uso && precio && typeof uso.geo === 'string' && !Object.hasOwn(precio.geoMil ?? {}, uso.geo)) uso = { ...uso, raro: true };
     let costo;
     if (uso) costo = precio ? (uso.raro ? cotaMicro(precio, uso, reservado) : costoMicro(precio, uso)) : reservado;
     else costo = estado === 'desconocida' ? reservado : 0;
@@ -220,7 +231,7 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
     if (uso?.geo && /^[a-z]{2,20}$/.test(uso.geo)) detalle.geo = uso.geo;
     if (mayor) detalle.motivoInterno = uso.raro ? 'uso_desconocido' : 'costo_mayor';
     const http = Number.isSafeInteger(resultado?.http) ? resultado.http : null;
-    const idPeticion = typeof resultado?.idPeticion === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(resultado.idPeticion) ? resultado.idPeticion : null;
+    const idPeticion = typeof resultado?.idPeticion === 'string' && ID_PETICION.test(resultado.idPeticion) ? resultado.idPeticion : null;
     const duracion = Number.isFinite(duracionMs) ? Math.max(0, Math.round(duracionMs)) : null;
     const cambio = db.prepare(`UPDATE ia_llamadas SET estado = ?, resultado = ?, tokens_entrada = ?, tokens_salida = ?, tokens_cache_lectura = ?,
         tokens_cache_escritura = ?, costo_micro = ?, id_peticion = ?, http = ?, duracion_ms = ?, terminada_en = ?, detalle = ?
@@ -245,7 +256,7 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
         quitarPausaCorta(db, { id: secretoId });
         resolverAviso(db, `ia_proveedor:${proveedor}`, ahora);
       }
-      if ((estado === 'fallida' || estado === 'desconocida') && motivo !== 'interrumpida' && tresFallasSeguidas(db, secretoId, ahora)) {
+      if (esFalla({ estado, resultado: motivo }) && tresFallasSeguidas(db, secretoId, ahora)) {
         if (pausarSecreto(db, { id: secretoId, motivo: 'fallas_seguidas', hastaMs: null, ahora })) {
           avisoProveedor(db, { proveedor, motivo: 'fallas_seguidas', pausa: 'admin', hasta: null, nivel: 'atencion', ahora });
         }

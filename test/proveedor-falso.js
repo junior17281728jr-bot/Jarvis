@@ -5,6 +5,10 @@
 //   falso.siguiente('sin_credito_400', { tipo: 'lento', ms: 200 })   cada pedido toma la siguiente escena (si no hay: 'ok')
 //   falso.peticiones   cada pedido recibido (método, ruta, cabeceras, cuerpo), para revisar qué llegó
 //   falso.segundo.peticiones   lo que llegó al SEGUNDO servidor (127.0.0.2), adonde apunta la escena 'redirige'
+// Escenas de la ronda 1 de revisión: 'geo_desconocido' (un lugar que la tabla de precios no conoce), 'geo_raro' (un lugar
+// que no se entiende), 'profundo' (un 200 bueno con un campo de arreglos anidados de { bytes } bytes: mucha memoria al
+// leerlo), 'eco_id' (devuelve la clave que recibió como id de la petición: cabecera request-id, request_id e id; con
+// { status } y { trozo: true } para mandar solo «req_» + un pedazo de la clave).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
 import { createServer } from 'node:http';
 
@@ -12,6 +16,7 @@ export const ESCENAS = Object.freeze([
   'ok', 'refusal', 'max_tokens', 'incomplete', 'content_filter', 'failed', 'status', 'limite_gasto_400', 'sin_credito_400',
   'sin_credito_texto', 'otro_400', 'limite_tope_429', 'limite_429', 'sin_credito_openai', 'insufficient_quota', 'redirige',
   'geo_us', 'uso_raro', 'uso_raro_herramienta', 'nunca', 'lento', 'json_roto', 'enorme', 'sin_uso', 'uso_enorme', 'cortar', 'eco_clave',
+  'geo_desconocido', 'geo_raro', 'profundo', 'eco_id',
 ]);
 
 const USO_ANTHROPIC = Object.freeze({ input_tokens: 2000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, service_tier: 'standard', inference_geo: 'global' });
@@ -55,6 +60,8 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
   function okAnthropic(escena, cuerpoPedido) {
     const uso = { ...USO_ANTHROPIC, ...(escena.uso ?? {}) };
     if (escena.tipo === 'geo_us') uso.inference_geo = 'us';
+    if (escena.tipo === 'geo_desconocido') uso.inference_geo = 'eu';
+    if (escena.tipo === 'geo_raro') uso.inference_geo = 'EU West';
     if (escena.tipo === 'uso_raro') { uso.cache_creation_input_tokens = 50; uso.cache_creation = { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 50 }; }
     if (escena.tipo === 'uso_raro_herramienta') uso.server_tool_use = { web_search_requests: 1 };
     if (escena.tipo === 'uso_enorme') { uso.input_tokens = 5_000_000; uso.output_tokens = 900_000; }
@@ -119,6 +126,25 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
       case 'limite_429': return enviar(res, 429, esOpenai ? errorOpenai('Rate limit reached', 'requests', 'rate_limit_exceeded') : errorAnthropic(429, 'Number of requests has exceeded your rate limit'), { ...id, 'retry-after': '30' });
       case 'sin_credito_openai': return enviar(res, 429, errorOpenai('You exceeded your current quota.', 'insufficient_quota', 'credit_balance_exhausted'), id);
       case 'insufficient_quota': return enviar(res, 429, errorOpenai('You exceeded your current quota.', 'insufficient_quota', 'insufficient_quota'), id);
+      case 'profundo': {
+        // Un 200 bueno, con un campo de más hecho de arreglos anidados [[[[…]]]]: poco texto, mucha memoria al leerlo.
+        const mitad = Math.max(1, Math.floor((escena.bytes ?? 1_048_000) / 2));
+        const cuerpo = JSON.stringify(esOpenai ? okOpenai({ tipo: 'ok' }, cuerpoPedido) : okAnthropic({ tipo: 'ok' }, cuerpoPedido));
+        res.writeHead(200, { 'content-type': 'application/json', ...id });
+        return res.end(`${cuerpo.slice(0, -1)},"x":${'['.repeat(mitad)}${']'.repeat(mitad)}}`);
+      }
+      case 'eco_id': {
+        // Un proveedor (o algo en el medio) que devuelve la clave que recibió como «id» de la petición.
+        const recibida = String(req.headers['x-api-key'] ?? req.headers.authorization ?? '').replace(/^Bearer /, '');
+        const eco = escena.trozo ? `req_${recibida.replace(/[^A-Za-z0-9]/g, '').slice(5, 40)}` : recibida;
+        const cabeceras = { 'request-id': eco, 'x-request-id': eco };
+        const s = escena.status ?? 401;
+        if (s === 200) {
+          const cuerpo = esOpenai ? okOpenai({ tipo: 'ok' }, cuerpoPedido) : okAnthropic({ tipo: 'ok' }, cuerpoPedido);
+          return enviar(res, 200, { ...cuerpo, id: eco, request_id: eco }, cabeceras);
+        }
+        return enviar(res, s, esOpenai ? { ...errorOpenai('falso', 'invalid_request_error', 'invalid_api_key'), id: eco } : { ...errorAnthropic(s, 'falso'), request_id: eco, id: eco }, cabeceras);
+      }
       case 'eco_clave': {
         // Un proveedor que devuelve la clave que recibió dentro de su mensaje de error: OPORTIA nunca debe guardarlo.
         const recibida = String(req.headers['x-api-key'] ?? req.headers.authorization ?? '');

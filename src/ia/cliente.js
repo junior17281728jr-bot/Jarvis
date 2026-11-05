@@ -26,6 +26,35 @@ import { PROPOSITOS, MOTIVOS, definicionProposito } from './propositos.js';
 import { reservar, liquidar, anotarBloqueo, mesCobro } from './presupuesto.js';
 import { PROVEEDORES, urlDe } from './proveedores/index.js';
 import { llamarProveedor } from './llamar.js';
+import { cumpleEsquema } from './esquema.js';
+
+// Lo que se lee de una respuesta si el propósito no dice otra cosa (src/ia/propositos.js: respuestaMaxBytes).
+export const RESPUESTA_MAX_BYTES = 262_144;
+// Dónde puede venir el «id» de una petición (lo que liquidar guarda en ia_llamadas.id_peticion).
+const CAMPOS_ID = Object.freeze(['request_id', 'id']);
+const CABECERAS_ID = Object.freeze(['request-id', 'x-request-id']);
+const TROZO_CLAVE = 12;
+
+// ¿El texto trae la clave, o un pedazo de 12 caracteres o más de ella? (un proveedor, o algo en el medio, que la
+// devuelve como id). Solo en memoria, mientras la clave existe.
+function traePedazoDeClave(texto, clave) {
+  if (typeof texto !== 'string' || typeof clave !== 'string' || !clave) return false;
+  if (texto.includes(clave)) return true;
+  if (clave.length < TROZO_CLAVE) return false;
+  for (let i = 0; i + TROZO_CLAVE <= clave.length; i++) if (texto.includes(clave.slice(i, i + TROZO_CLAVE))) return true;
+  return false;
+}
+
+// Quita de la respuesta todo «id» que traiga la clave, ANTES de olvidarla: así nunca llega a la base.
+function quitarEcoDeClave(respuesta, clave) {
+  for (const nombre of CABECERAS_ID) {
+    if (traePedazoDeClave(respuesta?.cabeceras?.[nombre], clave)) delete respuesta.cabeceras[nombre];
+  }
+  const json = respuesta?.json;
+  if (json && typeof json === 'object' && !Array.isArray(json)) {
+    for (const campo of CAMPOS_ID) if (traePedazoDeClave(json[campo], clave)) json[campo] = null;
+  }
+}
 
 // Lo que se suma a los bytes del pedido por el «sobre» del proveedor (roles, nombres de campos…).
 export const MARCO_BYTES = 200;
@@ -153,14 +182,19 @@ export function crearClienteIA({
     try {
       respuesta = await llamarProveedor({
         url: urlDe(adaptador, config, p.ruta), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
-        senal, timeoutMs: def.timeoutMs, permitido: adaptador.host,
+        senal, timeoutMs: def.timeoutMs, permitido: adaptador.host, topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES,
       });
+      quitarEcoDeClave(respuesta, clave);
     } finally {
       clave = null;
     }
 
-    // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor).
-    const leido = adaptador.leer(respuesta, { json: Boolean(esquema) });
+    // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor). Lo que no cumple el esquema pedido
+    // no se usa: cuenta como 'respuesta_no_valida' (con su costo real) y no se guarda nada.
+    let leido = adaptador.leer(respuesta, { json: Boolean(esquema) });
+    if (leido.motivo === 'ok' && esquema && !cumpleEsquema(leido.json, esquema)) {
+      leido = { ...leido, motivo: 'respuesta_no_valida', json: null, texto: null, detalle: { ...leido.detalle, esquema: 'no_cumple' } };
+    }
 
     // 6. Anotar lo que costó (siempre, sin cerca) y, si sirvió, guardar lo que hizo (con la cerca, en la misma escritura).
     let cierre;

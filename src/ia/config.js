@@ -85,6 +85,13 @@ export function normalizarConfig(valor) {
   };
 }
 
+// ¿Alguna cuenta (que no es la del administrador) puede gastar IA? Sí, si algún plan tiene un tope mayor que 0. Mientras
+// sea así, lo que da acceso a ese dinero (crear cuentas, cambiar planes, reiniciar o volver a activar una cuenta) solo se
+// hace desde la red de Tailscale (src/api/cuentas.js).
+export function algunTopeDePlan(cfg) {
+  return PLANES.some(plan => (cfg?.topesPlanMicro?.[plan] ?? 0) > 0);
+}
+
 export function leerConfigIa(db) {
   let fila = null;
   try { fila = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(CLAVE_AJUSTE_IA); } catch { fila = null; }

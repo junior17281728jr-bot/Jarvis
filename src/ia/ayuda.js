@@ -15,7 +15,7 @@
 // del programa sigue el camino normal de errores de la fila.
 import { ErrorHttp } from '../nucleo/http.js';
 import { configuracionDesdeCampos } from '../motor/interpretar.js';
-import { pendienteDeProyecto, puedeTenerOtraVersion, nuevaVersion, versionDeLlamadaIa } from '../proyectos/proyectos.js';
+import { pendienteDeProyecto, puedeTenerOtraVersion, nuevaVersion, versionDeLlamadaIa, versionSinIa, LUGARES_PARA_AYUDA_IA } from '../proyectos/proyectos.js';
 import { anotarBloqueo, mesCobro } from './presupuesto.js';
 import { armarPeticion, aCampos, pistasDeDudas, cambiosIa, PROPOSITO_AYUDA } from './interpretar.js';
 
@@ -33,7 +33,8 @@ function revisarBase(db, espacioId, datos) {
   }
   const v = info.pendiente;
   if (!v || v.numero !== datos.version || info.ultima !== datos.version) return { motivo: 'version_cambio' };
-  const no = puedeTenerOtraVersion(db, { espacioId, proyectoId: datos.proyecto });
+  // Dos lugares: la versión que hace la IA y uno para «Volver a la versión sin IA».
+  const no = puedeTenerOtraVersion(db, { espacioId, proyectoId: datos.proyecto, libres: LUGARES_PARA_AYUDA_IA });
   if (no) return { motivo: no };
   return { info };
 }
@@ -66,13 +67,18 @@ async function pasoInterpretar(ctx) {
     if (otra.motivo) throw new ErrorHttp(409, otra.motivo);
     const actual = otra.info.pendiente;
     const configuracion = configuracionDesdeCampos(aCampos(json, actual.configuracion, idioma), actual.configuracion);
+    // «base» y lo que cambió se cuentan desde la primera versión SIN IA de la cadena: si se pidió ayuda sobre una versión
+    // que ya hizo la IA, «Volver a la versión sin IA» vuelve a lo que entendió el motor propio, y la lista muestra todo
+    // lo que la IA cambió (también lo de antes).
+    const sinIa = actual.ayudaIa ? versionSinIa(db, { proyectoInternoId: otra.info.id, numero: actual.numero }) : null;
+    const raiz = sinIa ?? actual;
     const ayudaIa = {
       llamadaId: llamada.id,
       proveedor: llamada.proveedor,
       modelo: llamada.modelo,
       costoMicro: llamada.costoMicro,
-      base: actual.numero,
-      cambios: cambiosIa(actual.configuracion, configuracion),
+      base: raiz.numero,
+      cambios: cambiosIa(raiz.configuracion, configuracion),
       pistas: pistasDeDudas(json, actual.configuracion.noEntendido),
     };
     return nuevaVersion(db, {

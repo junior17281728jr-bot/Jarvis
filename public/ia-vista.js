@@ -84,13 +84,18 @@ export function estadoDeClave(activa, ahora = Date.now()) {
 // seguida: la ayuda que se pidió desde esta pantalla ({ tareaId }), para contar cómo terminó.
 //   vista: 'nada' (no se muestra nada: a esta cuenta no le toca la IA), 'disponible' (con el botón), 'esperando',
 //          'solo_tailnet', 'apagada_admin', 'tope_lleno', 'pausa' o 'no_disponible' (una línea con el motivo).
+//   enFila: true si la ayuda pedida espera en la fila mientras el trabajo automático está en pausa (modo seguro): se
+//          dice la pausa y que el pedido espera, nunca «sigue en la fila» sin decir por qué.
 //   lista: { numero, costoMicro } si la IA hizo una versión nueva (la pantalla vuelve a cargar el proyecto).
 //   fallo: { motivo, costoMicro } si la ayuda que se pidió no pudo (se dice una vez, con lo que costó).
 export function vistaAyudaIa(d, { seguida = null } = {}) {
-  const r = { vista: 'nada', motivo: null, lista: null, fallo: null };
+  const r = { vista: 'nada', motivo: null, lista: null, fallo: null, enFila: false };
   if (!d || typeof d !== 'object') return r;
   const tarea = d.tarea && typeof d.tarea === 'object' ? d.tarea : null;
-  if (tarea && TAREA_VIVA.includes(tarea.estado)) return { ...r, vista: 'esperando' };
+  if (tarea && TAREA_VIVA.includes(tarea.estado)) {
+    if (d.motivo === 'trabajo_en_pausa') return { ...r, vista: 'pausa', motivo: 'trabajo_en_pausa', enFila: true };
+    return { ...r, vista: 'esperando' };
+  }
   if (tarea && seguida && seguida.tareaId === tarea.id) {
     const res = tarea.resultado;
     if (tarea.estado === 'hecha' && res?.usada === true && Number.isSafeInteger(res.numero)) r.lista = { numero: res.numero, costoMicro: res.costoMicro ?? 0 };
@@ -109,6 +114,20 @@ export function vistaAyudaIa(d, { seguida = null } = {}) {
   }
   if (motivo === 'ok') return r; // «ok» sin precio: nunca un botón que no se sabe cuánto cuesta
   return { ...r, vista: 'no_disponible' };
+}
+
+// Dinero de la IA (llega en millonésimas de dólar) escrito para la gente: «US$0.12» desde un centavo; debajo, hasta 4
+// decimales («US$0.0022»). haciaArriba: para lo MÁXIMO que algo puede costar (el precio que se ve antes de confirmar):
+// se redondea hacia arriba, así nunca se muestra menos de lo que se aparta y se puede cobrar. Lo gastado se redondea
+// normal. formato: 'es-DO' o 'en-US'.
+export function textoUsd(micro, formato = 'es-DO', { haciaArriba = false } = {}) {
+  const m = Number(micro);
+  if (micro == null || !Number.isFinite(m)) return '—';
+  const chico = m > 0 && m < 10_000;
+  let n = m / 1_000_000;
+  if (haciaArriba && m > 0) n = chico ? Math.ceil(m / 100) / 10_000 : Math.ceil(m / 10_000) / 100;
+  else if (m > 0 && m < 100) return '<US$0.0001';
+  return `US$${new Intl.NumberFormat(formato, { minimumFractionDigits: 2, maximumFractionDigits: chico ? 4 : 2 }).format(n)}`;
 }
 
 // El nombre de un modelo para la gente: 'claude-haiku-5-5' → «Claude Haiku 5.5», 'gpt-6-luna' → «GPT-6 Luna».

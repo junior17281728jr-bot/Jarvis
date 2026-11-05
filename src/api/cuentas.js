@@ -14,6 +14,8 @@ import {
   avisarClaveReiniciada, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
+import { duenoDeTailscale, exigirDueno } from '../cuentas/tailscale.js';
+import { leerConfigIa, algunTopeDePlan } from '../ia/config.js';
 
 const IDIOMAS = new Set(['es', 'en']);
 
@@ -85,6 +87,17 @@ function arrancando(supervisor) {
   } catch {
     return false;
   }
+}
+
+// Fase 1, parte d. Mientras alguna cuenta pueda gastar IA (un plan con tope mayor que 0), lo que da acceso a ese dinero
+// (crear una cuenta, cambiar su plan, reiniciar su contraseña o volver a activarla) solo se hace desde la red de
+// Tailscale: con una contraseña de administrador robada, por el enlace público, nadie puede multiplicar las cuentas que
+// gastan hasta llenar el tope general. Con todos los topes de plan en US$0 (lo que trae OPORTIA) no cambia nada.
+function cuentasDesdeAqui(db, req) {
+  return vieneDeTailscale(req).si || !algunTopeDePlan(leerConfigIa(db));
+}
+function exigirCuentasDesdeAqui(db, req) {
+  if (!cuentasDesdeAqui(db, req)) throw new ErrorHttp(403, 'cuentas_solo_tailnet');
 }
 
 export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null } = {}) {
@@ -207,13 +220,26 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     return { codigo: 200, datos: { ok: true } };
   }, { permitirConClaveTemporal: true });
 
-  rutas.agregar('GET', '/api/admin/usuarios', ({ db }) => ({ codigo: 200, datos: { usuarios: listarUsuarios(db), planes: planesPublicos() } }), { admin: true });
+  // permisos: qué se puede hacer desde esta entrada (la pantalla solo muestra los botones que sirven).
+  //  - cuentas: crear cuentas, cambiar planes, reiniciar contraseñas y volver a activar (ver cuentasDesdeAqui).
+  //  - admins: crear un administrador, o reiniciar, desactivar o activar a otro: solo el dueño, desde su cuenta de Tailscale.
+  rutas.agregar('GET', '/api/admin/usuarios', ({ db, req, usuario }) => ({
+    codigo: 200,
+    datos: {
+      usuarios: listarUsuarios(db),
+      planes: planesPublicos(),
+      permisos: { cuentas: cuentasDesdeAqui(db, req), admins: duenoDeTailscale(db, req, usuario).si },
+    },
+  }), { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     const nombre = nombreDe(datos);
     const nombreVisible = nombreVisibleDe(datos);
     const rol = datos.rol === 'admin' ? 'admin' : 'usuario';
+    // Otro administrador solo lo crea el dueño, desde su cuenta de Tailscale (nunca por el enlace público).
+    if (rol === 'admin') exigirDueno(db, req, usuario);
+    else exigirCuentasDesdeAqui(db, req);
     // Si el nombre ya existe, se responde antes de calcular nada (la pantalla propone otro: juan.perez2…).
     if (buscarPorNombre(db, nombre)) throw new ErrorHttp(409, 'nombre_ocupado');
     const temporal = claveTemporal();
@@ -222,9 +248,12 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal } };
   }, { admin: true });
 
-  rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, parametros, usuario }) => {
+  rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, req, parametros, usuario }) => {
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
+    // Entrar a la cuenta de otro administrador (o a una que puede gastar IA) tiene las mismas protecciones que crearla.
+    if (destino.rol === 'admin') exigirDueno(db, req, usuario);
+    else exigirCuentasDesdeAqui(db, req);
     const temporal = claveTemporal();
     const claveHash = await hashClave(temporal);
     // Todo junto o nada: la clave nueva, sus sesiones cerradas, el aviso para la persona y la auditoría.
@@ -243,6 +272,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const datos = await leerJson(req);
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
+    exigirCuentasDesdeAqui(db, req);
     const r = cambiarPlan(db, {
       usuario: destino,
       plan: datos.plan,
@@ -257,6 +287,10 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     if (!destino) throw new ErrorHttp(404, 'no_existe');
     const activo = datos.activo === true;
     if (!activo && destino.id === usuario.id) throw new ErrorHttp(400, 'no_puedes_desactivarte');
+    // A otro administrador solo lo desactiva o lo activa el dueño. Desactivar una cuenta común se puede desde cualquier
+    // entrada (protege); volver a activarla le devuelve su presupuesto de IA: las mismas protecciones que crearla.
+    if (destino.rol === 'admin') exigirDueno(db, req, usuario);
+    else if (activo) exigirCuentasDesdeAqui(db, req);
     if (!activo && destino.rol === 'admin' && cuantosAdminsActivos(db) <= 1) throw new ErrorHttp(400, 'ultimo_admin');
     ponerActivo(db, destino.id, activo);
     if (!activo) cerrarTodas(db, destino.id);

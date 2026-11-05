@@ -38,6 +38,9 @@ function leerUso(u) {
   if (u.speed != null && u.speed !== 'standard') raro = true;
   for (const [clave, v] of Object.entries(u)) if (!USO_CONOCIDO.has(clave)) sumar(v);
   const geo = typeof u.inference_geo === 'string' && /^[a-z]{2,20}$/.test(u.inference_geo) ? u.inference_geo : null;
+  // Un lugar que vino pero no se entiende es un cobro desconocido (puede ser más caro): nunca se cuenta de menos.
+  // (Uno que se entiende pero que la tabla de precios no conoce lo revisa liquidar, con el precio de esa llamada.)
+  if (u.inference_geo != null && geo == null) raro = true;
   return { entrada, salida, cacheLectura, cacheEscritura, geo, raro, desconocidos: Math.min(desconocidos, Number.MAX_SAFE_INTEGER) };
 }
 

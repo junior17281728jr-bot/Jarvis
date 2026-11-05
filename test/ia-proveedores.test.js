@@ -18,6 +18,10 @@ import { PROVEEDORES, urlDe } from '../src/ia/proveedores/index.js';
 import { anthropic } from '../src/ia/proveedores/anthropic.js';
 import { openai } from '../src/ia/proveedores/openai.js';
 import { reservar, liquidar } from '../src/ia/presupuesto.js';
+import { crearClienteIA } from '../src/ia/cliente.js';
+import { crearEscritor } from '../src/tareas/escritor.js';
+import { idPeticionDe } from '../src/ia/proveedores/comun.js';
+import { demasiadoProfundo } from '../src/ia/llamar.js';
 
 const MIN = 60_000;
 const ESQUEMA = { type: 'object', additionalProperties: false, properties: { listo: { type: 'boolean' } }, required: ['listo'] };
@@ -323,6 +327,8 @@ const ESCENAS_CLAUDE = [
   ['enorme', 'respuesta_no_valida', 'desconocida', 'reserva', null, null],
   ['cortar', 'sin_red', 'desconocida', 'reserva', 2 * MIN, null],
   ['nunca', 'tiempo_agotado', 'desconocida', 'reserva', 2 * MIN, null],
+  // Ronda 1: 1 MB de arreglos anidados [[[[…]]]] no se lee (mucha memoria): no se usa y cuenta lo apartado.
+  ['profundo', 'respuesta_no_valida', 'desconocida', 'reserva', null, null],
 ];
 
 test('cada respuesta de Claude: UN solo pedido, su costo (0 si el proveedor no cobra), su pausa y su aviso; y la próxima vez no toca la red', async () => {
@@ -380,7 +386,9 @@ test('cada respuesta de Claude: UN solo pedido, su costo (0 si el proveedor no c
 test('un gasto desconocido (caché de 1 hora, herramientas del servidor) o mayor que lo apartado: se cobra la cota, aviso grave y pausa del dueño', async () => {
   const falso = await crearProveedorFalso();
   try {
-    for (const escena of ['uso_raro', 'uso_raro_herramienta', 'uso_enorme']) {
+    // Ronda 1: un lugar (inference_geo) que la tabla de precios no conoce ('eu') o que no se entiende ('EU West') es un
+    // cobro desconocido: puede ser más caro que ×1,1, así que nunca se cuenta de menos.
+    for (const escena of ['uso_raro', 'uso_raro_herramienta', 'uso_enorme', 'geo_desconocido', 'geo_raro']) {
       const b = preparar({ iaBases: { anthropic: falso.base } });
       try {
         falso.siguiente(escena);
@@ -390,6 +398,8 @@ test('un gasto desconocido (caché de 1 hora, herramientas del servidor) o mayor
         assert.ok(u.fila.costo_micro >= u.reserva.llamada.reservadoMicro, `${escena}: nunca se cuenta menos que lo apartado`);
         assert.equal(b.db.prepare("SELECT nivel FROM avisos WHERE clave = 'ia_costo_mayor' AND resuelto_en IS NULL").get().nivel, 'grave');
         assert.equal(b.db.prepare('SELECT pausa_motivo FROM secretos').get().pausa_motivo, 'costo_mayor');
+        if (escena === 'geo_desconocido') assert.deepEqual([JSON.parse(u.fila.detalle).geo, JSON.parse(u.fila.detalle).motivoInterno], ['eu', 'uso_desconocido']);
+        if (escena === 'geo_raro') assert.equal(JSON.parse(u.fila.detalle).geo, undefined);
         const antes = falso.peticiones.length;
         assert.equal((await usarUnaVez(b, { ahora: T0 + 1000 })).reserva.motivo, 'proveedor_en_pausa');
         assert.equal(falso.peticiones.length, antes);
@@ -480,6 +490,90 @@ test('la clave nunca aparece en ninguna fila, en los archivos de la base ni en l
     assert.ok(!escrito.includes(claveAnthropic()));
     for (const f of b.db.prepare('SELECT detalle FROM ia_llamadas WHERE detalle IS NOT NULL').all()) {
       for (const v of Object.values(JSON.parse(f.detalle))) assert.match(String(v), /^[a-z0-9_]{1,60}$/, 'detalle: solo códigos');
+    }
+  } finally {
+    b.db.close();
+    await falso.cerrar();
+  }
+});
+
+// Ronda 1 de revisión: el id de la petición solo se guarda con la forma de los proveedores (req_…, msg_…, resp_…), y
+// nunca uno que traiga la clave o un pedazo de ella (lo quita src/ia/cliente.js antes de olvidar la clave).
+test('el id de la petición: solo req_/msg_/resp_; una clave devuelta como id (cabecera, request_id o id, entera o en pedazos) nunca llega a la base', async () => {
+  const larga = ['sk', 'ant', 'api03', `${'A1b2C3d4'.repeat(11)}Zq`, 'AA'].join('-');
+  for (const malo of [claveAnthropic(), larga, claveOpenai(), 'sk_ant_api03_algo', 'req-abc', 'abc', `req_${'a'.repeat(91)}`, '', null, 7]) {
+    assert.equal(idPeticionDe(malo), null, String(malo));
+  }
+  for (const bueno of ['req_011CSHoEeqs5C35K2UUqR7Fy', 'msg_013Zva2CMHLNnXjNJJKqJ2EF', 'resp_67ccd2bed1ec8190b14f964abc054267', 'req_falso_3']) {
+    assert.equal(idPeticionDe(bueno), bueno);
+  }
+  const falso = await crearProveedorFalso();
+  const b = preparar({ iaBases: { anthropic: falso.base } });
+  let ahora = T0;
+  const silencio = { log() {}, error() {}, warn() {}, info() {} };
+  const escritor = crearEscritor(b.db, { registro: silencio, dormir: async () => {} });
+  const ia = crearClienteIA({ db: b.db, config: b.config, escritor, reloj: () => ahora, registro: silencio });
+  const esquema = { type: 'object', additionalProperties: false, properties: { listo: { type: 'boolean' } }, required: ['listo'] };
+  try {
+    const escenas = [{ tipo: 'eco_id' }, { tipo: 'eco_id', status: 500 }, { tipo: 'eco_id', status: 200 }, { tipo: 'eco_id', trozo: true }, { tipo: 'eco_id', trozo: true, status: 200 }];
+    const resultados = [];
+    for (const escena of escenas) {
+      b.db.prepare("UPDATE secretos SET pausa_motivo = NULL, pausa_hasta = NULL, pausa_desde = NULL, prueba = 'ok'").run();
+      ahora += 10 * MIN;
+      falso.siguiente(escena);
+      resultados.push((await ia.pedir({ proposito: 'interpretar', espacioId: b.espacioAdmin, sistema: 'S', texto: 'T', esquema })).motivo ?? 'ok');
+    }
+    assert.deepEqual(resultados, ['clave_no_valida', 'error_proveedor', 'ok', 'clave_no_valida', 'ok']);
+    assert.equal(falso.peticiones.length, escenas.length, 'un pedido por cada uso');
+    const clave = claveAnthropic();
+    assert.ok(falso.peticiones.every(p => p.cabeceras['x-api-key'] === clave), 'la clave solo llegó al proveedor falso');
+    assert.deepEqual(buscarEnTodo(b.db, b.config, clave), []);
+    const filas = b.db.prepare('SELECT * FROM ia_llamadas ORDER BY id').all();
+    assert.deepEqual(filas.map(f => f.id_peticion), [null, null, null, null, null]);
+    // Ni un pedazo de 12 letras de la clave en ninguna columna.
+    const limpia = clave.replace(/[^A-Za-z0-9]/g, '');
+    for (const f of filas) {
+      for (const [columna, v] of Object.entries(f)) {
+        if (v == null) continue;
+        for (let i = 0; i + 12 <= limpia.length; i++) assert.ok(!String(v).includes(limpia.slice(i, i + 12)), `ia_llamadas.${columna}`);
+      }
+    }
+    // Un id normal sí queda (para buscarlo en la Consola del proveedor si hace falta).
+    b.db.prepare("UPDATE secretos SET pausa_motivo = NULL, pausa_hasta = NULL, pausa_desde = NULL, prueba = 'ok'").run();
+    ahora += 10 * MIN;
+    falso.siguiente('ok');
+    await ia.pedir({ proposito: 'interpretar', espacioId: b.espacioAdmin, sistema: 'S', texto: 'T', esquema });
+    assert.match(b.db.prepare('SELECT id_peticion FROM ia_llamadas ORDER BY id DESC LIMIT 1').get().id_peticion, /^req_falso_\d+$/);
+  } finally {
+    b.db.close();
+    await falso.cerrar();
+  }
+});
+
+// Ronda 1 de revisión: lo que se lee de una respuesta tiene su tope por propósito (256 KB para la ayuda) y un JSON con
+// demasiados niveles anidados no se lee (con poco texto, mucha memoria).
+test('una respuesta enorme o con demasiados niveles anidados no se lee: tope por propósito y profundidad máxima', async () => {
+  assert.equal(demasiadoProfundo('[[[]]]'), false);
+  assert.equal(demasiadoProfundo(`${'['.repeat(65)}${']'.repeat(65)}`), true);
+  assert.equal(demasiadoProfundo(`${'['.repeat(64)}${']'.repeat(64)}`), false);
+  assert.equal(demasiadoProfundo(JSON.stringify({ texto: '['.repeat(500) })), false, 'dentro de un texto no cuenta');
+  assert.equal(demasiadoProfundo(JSON.stringify({ texto: '\\"['.repeat(200) })), false, 'con comillas escapadas tampoco');
+  const { PROPOSITOS } = await import('../src/ia/propositos.js');
+  assert.equal(PROPOSITOS.interpretar.respuestaMaxBytes, 262_144);
+  const falso = await crearProveedorFalso();
+  const b = preparar({ iaBases: { anthropic: falso.base } });
+  const silencio = { log() {}, error() {}, warn() {}, info() {} };
+  let ahora = T0;
+  const ia = crearClienteIA({ db: b.db, config: b.config, escritor: crearEscritor(b.db, { registro: silencio, dormir: async () => {} }), reloj: () => ahora, registro: silencio });
+  const esquema = { type: 'object', additionalProperties: false, properties: { listo: { type: 'boolean' } }, required: ['listo'] };
+  try {
+    for (const escena of [{ tipo: 'profundo', bytes: 300_000 }, { tipo: 'profundo', bytes: 200_000 }]) {
+      ahora += 10 * MIN;
+      falso.siguiente(escena);
+      const r = await ia.pedir({ proposito: 'interpretar', espacioId: b.espacioAdmin, sistema: 'S', texto: 'T', esquema });
+      assert.deepEqual([r.usada, r.motivo], [false, 'respuesta_no_valida'], JSON.stringify(escena));
+      const f = b.db.prepare('SELECT * FROM ia_llamadas ORDER BY id DESC LIMIT 1').get();
+      assert.deepEqual([f.estado, f.costo_micro], ['desconocida', f.reservado_micro], 'sin poder leer lo que gastó, cuenta lo apartado');
     }
   } finally {
     b.db.close();

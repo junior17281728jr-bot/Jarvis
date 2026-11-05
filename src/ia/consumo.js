@@ -40,7 +40,7 @@ function proveedoresPublicos(db, config, cfg, ahora) {
 
 // GET /api/admin/ia: el estado de la IA. esDueno: la persona entra con la cuenta de Tailscale del dueño (ve todo); si
 // no (el enlace público, otro equipo), solo el estado, los números del mes y si puede apagarla.
-export function estadoIA(db, { config, enTailnet = false, esDueno = false, espacioAdmin = null, ahora = Date.now() }) {
+export function estadoIA(db, { config, enTailnet = false, esDueno = false, motivoDueno = null, espacioAdmin = null, ahora = Date.now() }) {
   const cfg = leerConfigIa(db);
   const mes = mesCobro(ahora);
   const usadoMicro = gastoMicro(db, { mes });
@@ -62,6 +62,9 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, espac
   const respuesta = {
     enTailnet,
     esDueno,
+    // Por qué no puede cambiar nada (la pantalla elige la frase): 'solo_desde_tailnet', 'solo_el_dueno' (es otro
+    // administrador, no el dueño) o 'solo_dueno_tailscale' (otra cuenta de Tailscale o sin el enlace https).
+    motivoDueno: esDueno ? null : (['solo_desde_tailnet', 'solo_el_dueno', 'solo_dueno_tailscale'].includes(motivoDueno) ? motivoDueno : null),
     encendida: cfg.encendida,
     ayudaProyectos: cfg.ayudaProyectos,
     estado,
