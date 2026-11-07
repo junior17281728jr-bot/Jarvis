@@ -690,3 +690,176 @@ p.insignia { margin: 0 0 6px; }
 .pastilla.resaltada { background: var(--aviso-fondo); color: var(--aviso-texto); }
 .pastilla.resaltada .icono { color: var(--aviso-texto); }
 .detalle-gasto ul.llamadas li { font-size: 14px; }
+
+/* ---------- Pase de pantallas (versión 0.4.1): también para la PC, y nada que haya que bajar hasta lo último ----------
+   Teléfono: el menú abajo, una columna y, arriba de cada pantalla larga, una fila de pestañas que siempre se ve.
+   Tableta (desde 760 px): el menú arriba y las tarjetas en 2 columnas.
+   PC (desde 1024 px): el menú a la izquierda con íconos y nombres, y el contenido en 2 o 3 columnas, con un ancho máximo. */
+.contenido { min-width: 0; }
+.titulo-pantalla { font-size: 24px; margin: 0 0 6px; }
+h2.titulo-tarjeta { font-size: 22px; }
+h2.separado { margin-top: 18px; }
+.rejilla { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; margin: 0 0 16px; }
+.rejilla > .tarjeta, .rejilla > .zona-sistema > .tarjeta { margin: 0; }
+.zona-sistema { display: contents; }
+.tarjeta[data-ancla], .tarjeta.pendiente, .tarjeta-nuevo { scroll-margin-top: 76px; }
+
+/* Pestañas: siempre arriba (se quedan pegadas al bajar) y, si no caben, se deslizan de lado. */
+.pestanas {
+  position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain;
+  scrollbar-width: none; margin: 0 -16px 14px; padding: 8px 16px; background: var(--fondo);
+}
+.pestanas::-webkit-scrollbar { display: none; }
+a.pestana {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); text-decoration: none; font-weight: 600; font-size: 15px; white-space: nowrap;
+}
+a.pestana .icono { color: var(--suave); }
+a.pestana[aria-current="page"] { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+a.pestana[aria-current="page"] .icono { color: var(--acento-texto); }
+a.pestana:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.punto { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--tono); box-shadow: 0 0 0 2px var(--tarjeta); }
+a.pestana[aria-current="page"] .punto { box-shadow: 0 0 0 2px var(--acento-texto); }
+
+/* «Ver N más» al final de una lista larga. */
+button.ver-mas { width: 100%; justify-content: center; margin-top: 10px; }
+
+/* Administrador */
+.admin-resumen .tarjeta-avisos { order: 2; }
+.atajos-tarjeta .atajos { margin-top: 4px; }
+a.boton-enlace.atajo { margin: 0; justify-content: flex-start; min-height: 52px; padding: 12px 16px; font-size: 17px; }
+.tarjeta.servicios h2 { margin-bottom: 10px; }
+.lista-usuarios { display: grid; gap: 10px; align-items: start; }
+.lista-usuarios > .fila { border: 1px solid var(--borde); border-radius: 14px; padding: 12px 14px; }
+.lista-usuarios > .fila p { margin-bottom: 6px; }
+.lista-usuarios > .fila .botones button, .lista-usuarios > .fila .plan button { margin-top: 6px; }
+details.plegable { margin: 0; }
+details.plegable > summary { padding: 4px 0; color: var(--texto); align-items: center; gap: 10px; }
+details.plegable > summary h2 { margin: 0; font-size: 19px; }
+details.plegable > summary .icono { color: var(--acento); }
+details.plegable[open] > summary { margin-bottom: 4px; }
+
+/* Proyectos */
+.cabecera-proyectos .boton-enlace.grande { margin-top: 12px; }
+.entendi-corto { font-size: 17px; font-weight: 600; line-height: 1.45; margin: 4px 0 6px; overflow-wrap: anywhere; }
+.enlace-linea { margin: 0 0 4px; }
+a.enlace-fuerte { display: inline-flex; min-height: 44px; font-weight: 700; text-decoration: none; gap: 6px; }
+.proyecto-resumen { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; margin: 0 0 16px; }
+.proyecto-resumen > .tarjeta { margin: 0; }
+.proyecto-resumen .estado-proyecto { margin: 0; }
+.proyecto-resumen .area-estado details.en-palabras { margin-top: 10px; }
+.area-acciones h2 { font-size: 17px; margin-bottom: 4px; }
+.area-acciones .botones button { margin-top: 6px; }
+.tarjeta.pendiente .botones button.grande { margin-top: 10px; justify-content: center; }
+.tarjeta.pendiente details.rechazar { margin-top: 4px; }
+.tarjeta.pendiente > h2 { margin-bottom: 4px; }
+.tarjeta.pendiente > p.suave { margin-bottom: 8px; }
+.tarjeta.pendiente .linea-debajo { margin: 8px 0 0; font-size: 15px; }
+.tarjeta.pendiente .dudas { margin-bottom: 12px; }
+.tarjeta.pendiente .dudas button { margin: 0 0 8px; }
+.tarjeta.pendiente .dudas p:last-child, .tarjeta.pendiente .dudas ul:last-child { margin-bottom: 0; }
+.proyecto-cabeza { padding: 12px 16px 14px; }
+.proyecto-cabeza .proyecto-titulo { margin: 0; }
+
+/* Teléfono: lo de arriba más compacto, para que lo importante quepa en la primera pantalla. */
+@media (max-width: 759px) {
+  .encabezado { padding: 8px 0 10px; }
+  .proyecto-titulo { gap: 14px; }
+  .proyecto-titulo h1 { font-size: 20px; line-height: 1.25; }
+  .proyecto-cabeza .etiquetas { gap: 4px; }
+  .proyecto-cabeza .etiqueta.con-icono-chico, .proyecto-cabeza .etiqueta, .proyecto-cabeza .insignia { font-size: 13px; padding: 2px 8px; }
+  .ilustracion.grande { width: 52px; height: 52px; border-radius: 16px; margin-top: 4px; }
+  .ilustracion.grande .ilustracion-tipo { width: 28px; height: 28px; }
+  .ilustracion.grande .ilustracion-sello { width: 26px; height: 26px; right: -6px; bottom: -6px; }
+  .ilustracion.grande .ilustracion-sello .icono { width: 14px; height: 14px; }
+  .entendi-corto { font-size: 16px; font-weight: 500; }
+  .proyecto-cabeza.en-resumen .proyecto-titulo .etiquetas { display: none; }
+  .pestanas { padding: 6px 16px; margin-bottom: 10px; }
+  /* Inicio: la portada más baja y sus dos botones lado a lado. */
+  .tarjeta.portada { padding: 16px; }
+  .tarjeta.portada h1 { font-size: 24px; margin-bottom: 4px; }
+  .tarjeta.portada p { font-size: 15px; margin-bottom: 10px; }
+  .portada-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 0; }
+  .portada-botones a.boton-enlace { justify-content: center; text-align: center; padding: 8px 10px; font-size: 15px; line-height: 1.25; }
+  .pista-punto { width: 36px; height: 36px; }
+  .pista-paso + .pista-paso::before { top: 17px; right: calc(50% + 19px); width: calc(100% - 38px); }
+  .siguiente { margin-top: 10px; padding-top: 10px; }
+  .proyecto-cabeza .volver-linea { margin: -6px 0 0; }
+  .cabecera-pantalla h1 { font-size: 24px; }
+}
+
+/* Tableta y PC: 2 columnas. */
+@media (min-width: 760px) {
+  #app { max-width: 960px; }
+  .pestanas { margin: 0 0 16px; padding: 8px 0; }
+  .rejilla.dos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rejilla > .ancha, .rejilla > .zona-sistema > .ancha { grid-column: 1 / -1; }
+  .lista-proyectos.en-columnas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lista-usuarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cabecera-proyectos { display: flex; align-items: center; gap: 24px; }
+  .cabecera-proyectos-texto { flex: 1; min-width: 0; }
+  .cabecera-proyectos .boton-enlace.grande { width: auto; flex: none; margin: 0; }
+  /* Inicio: la portada y el estado del sistema arriba, lado a lado; lo que espera aprobación a lo ancho. */
+  .pantalla-inicio .portada { order: 1; }
+  .pantalla-inicio .estado-inicio { order: 2; }
+  .pantalla-inicio .inicio-aprobar { order: 3; }
+  .pantalla-inicio .inicio-info { order: 4; }
+  .pantalla-inicio.con-estado .inicio-aprobar { grid-column: 1 / -1; }
+  .pantalla-inicio .inicio-aprobar .lista-proyectos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tarjeta.angosta { max-width: 860px; }
+}
+
+/* PC: el menú a la izquierda (íconos y nombres), el contenido a la derecha con un ancho máximo. */
+@media (min-width: 1024px) {
+  body { padding: 0; }
+  #app { max-width: none; }
+  .marco { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+  .lateral {
+    position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 6px; overflow-y: auto;
+    padding: 20px 14px 18px; background: var(--tarjeta); border-right: 1px solid var(--borde);
+  }
+  .lateral .encabezado { display: contents; }
+  .lateral .marca-enlace { order: 0; padding: 0 10px 18px; }
+  .lateral .menu {
+    order: 1; position: static; display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0;
+    background: transparent; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .lateral .menu a {
+    flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; max-width: none; min-height: 48px; padding: 10px 14px;
+    font-size: 16px; text-align: left; border: 0; border-radius: 12px; background: transparent; color: var(--texto);
+  }
+  .lateral .menu a .menu-icono { width: 22px; height: 22px; color: var(--suave); }
+  .lateral .menu a:hover { background: var(--fondo); }
+  .lateral .menu a[aria-current="page"] { background: var(--acento-suave); color: var(--acento); }
+  .lateral .menu a[aria-current="page"] .menu-icono { color: var(--acento); }
+  .lateral button.salir { order: 2; margin-top: auto; align-self: stretch; justify-content: flex-start; }
+  .contenido { width: 100%; max-width: 1240px; margin: 0 auto; padding: 28px 40px 32px; }
+  .titulo-pantalla { font-size: 28px; }
+  .pestanas { padding: 10px 0; }
+  .lista-proyectos.en-columnas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pantalla-inicio .inicio-aprobar .lista-proyectos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Usuarios: la lista a la izquierda y «Crear un usuario» a la derecha (se queda a la vista al bajar). */
+  .admin-usuarios { grid-template-columns: minmax(0, 1fr) 380px; }
+  .admin-usuarios .tarjeta-nuevo { grid-column: 2; grid-row: 1; position: sticky; top: 76px; }
+  .admin-usuarios .tarjeta-usuarios { grid-column: 1; grid-row: 1; }
+  /* Un proyecto: el estado y lo que se puede hacer a la izquierda; la versión que espera (o la que está en uso) a la derecha. */
+  .proyecto-resumen {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: auto auto 1fr;
+    grid-template-areas: "estado lado" "acciones lado" "papelera lado";
+  }
+  .proyecto-resumen > .area-estado { grid-area: estado; }
+  .proyecto-resumen > .area-lado { grid-area: lado; }
+  .proyecto-resumen > .area-acciones { grid-area: acciones; }
+  .proyecto-resumen > .area-papelera { grid-area: papelera; }
+  .rejilla > .ancha .fichas { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Trabajo: lo de ahora a la izquierda y los errores a la derecha, sin huecos entre las tarjetas. */
+  .zona-trabajo { grid-template-rows: auto auto 1fr; grid-template-areas: "ahora errores" "ahora despues" "cola despues"; }
+  .zona-trabajo .area-ahora { grid-area: ahora; }
+  .zona-trabajo .area-errores { grid-area: errores; }
+  .zona-trabajo .area-cola { grid-area: cola; }
+  .zona-trabajo .area-despues { grid-area: despues; }
+  .proyecto-cabeza { padding: 16px 20px; }
+}
+@media (min-width: 1280px) {
+  .lista-usuarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

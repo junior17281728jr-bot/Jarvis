@@ -439,8 +439,12 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // Lo que una pantalla pide solo después de otra respuesta (o al tocar algo) no se puede adelantar.
   // Administrador pide /api/admin/claves solo si /api/admin/ia dice que quien mira es el dueño (parte 1d).
   const NO_SE_ADELANTA = { admin: new Set(['/api/admin/claves']) };
+  // Las pestañas de Administrador (0.4.1) piden lo mismo que #admin, y las de un proyecto lo mismo que el proyecto.
+  for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
   const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'], ['proyectos', 'pantallaProyectos'],
-    ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves']];
+    ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'],
+    ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
+    ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
@@ -454,7 +458,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // Para los demás: nada de Administrador, y nada que la pantalla no use (Administrador lo ven como Inicio).
     const otros = adelanta(seccion, false);
     for (const ruta of otros) assert.doesNotMatch(ruta, /^\/api\/admin\//, `${seccion}: a quien no es administrador se le adelanta ${ruta}`);
-    const usa = seccion === 'admin' ? pidePantalla('pantallaInicio') : pide;
+    const usa = /^admin(\/|$)/.test(seccion) ? pidePantalla('pantallaInicio') : pide;
     for (const ruta of otros) assert.ok(usa.has(ruta), `${seccion}: se adelanta ${ruta}, que la pantalla no pide`);
   }
   // Sin dirección o con una que no existe se ve Inicio.
