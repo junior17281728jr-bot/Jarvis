@@ -3,6 +3,7 @@
 El crédito se acabó a mitad de la fase 1. Nada se perdió: todo está en estas ramas de GitHub.
 
 ## Estado
+- **7 nov 2026: pantallas 0.4.1 PUBLICADAS** (main = c6b0626): PC con menú al costado y columnas; pestañas en Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #ia, #claves) y en cada proyecto (#proyecto/N, /entendi, /versiones, /historial). 378/378. Siguiente: parte 1e (copias cifradas por Telegram + avisos), intensidad alta + ultracode. Pendiente menor: huecos en la rejilla de IA y gastos en PC.
 - **5 nov 2026: parte 1d PUBLICADA (0.4.0).** main = c5e4c8f (1d + rapidez 0.3.3), 378/378 pruebas, ensayo de vuelta atrás a 0.3.2 y 0.3.3 OK. IA APAGADA, tope US$0. 5 preguntas para Junior en notas/diseno-1d.md §18 (todas con opción segura por defecto; preguntar solo cuando quiera encender la IA). Siguiente: PASADA DE PANTALLAS (PC ancho + pestañas en celular), luego 1e.
 - **5 nov 2026: rapidez 0.3.3 PUBLICADA** (main = 4d84adb): compresión, caché con huella (?v=), pedidos en paralelo; arregla «No se pudo cargar OPORTIA» al abrir en Inicio con proyectos pendientes. La 1d (fase-1d) debe UNIR main 4d84adb antes de publicarse (conflictos probables en public/app.js y src/app.js).
 - **5 nov 2026: pasada visual PUBLICADA.** main = 54d5145 (0.3.1), 214/214. Siguiente: diseñar y construir 1d (IA con topes, 0.4.0). Pendiente menor: productos raros escritos a mano (p. ej. «servicios en Santiago») quedan como duda; no pasa nada mal.
