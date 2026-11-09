@@ -4,7 +4,7 @@
 // ÍNDICE firmado (este archivo).
 //  - Cada parte se describe sola (cabecera de 74 bytes): Telegram puede cambiar el nombre de un archivo, y una copia
 //    guardada a mano desde Telegram Desktop se arma con cualquier nombre y en cualquier orden.
-//  - Telegram: un bot sube hasta 50 MB por archivo y BAJA hasta 20 MB. Las partes son de 4 MiB: se pueden
+//  - Telegram: un bot sube hasta 50 MB por archivo y BAJA hasta 20 MB. Las partes son de 2 MiB: se pueden
 //    bajar otra vez para comprobarlas y para restaurar. El formato acepta cualquier tamaño hasta 20 MB.
 //  - El índice no lleva datos de nadie: fechas, tamaños, hashes e identificadores. Su firma (HMAC con el «sello», que
 //    sale de la clave de recuperación) impide que alguien con el token del bot meta una copia falsa.
@@ -17,7 +17,11 @@ export const FORMATO = 1;
 export const MAGIA_FLUJO = 'OPCFLUJO';
 export const MAGIA_PARTE = 'OPCPARTE';
 export const TROZO = 65_536;                        // bytes de gzip por registro cifrado
-export const TAMANO_PARTE = 4 * 1024 * 1024;         // carga de cada parte (las pruebas pasan otro valor como parámetro)
+// Carga de cada parte: 2 MiB (las pruebas pasan otro valor como parámetro). El diseño empezó con 4 MiB; la medida del
+// paso 2 (test/medir-copia.mjs, base de 200 MB, trabajador de verdad) dio un pico de 115 MB con copia en el servidor y
+// la salida del trabajador por memoria (120 MB) directo a Telegram: con 2 MiB el pico baja (decisión §6.6). El formato no
+// cambia: quien lee acepta cualquier tamaño hasta 20 MB.
+export const TAMANO_PARTE = 2 * 1024 * 1024;
 export const CABECERA_PARTE = 74;
 export const CABECERA_FLUJO_MAX = 4096;
 export const PARTE_MAXIMA = 20_000_000;              // lo más que un bot puede bajar de Telegram

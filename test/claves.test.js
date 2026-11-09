@@ -367,7 +367,7 @@ test('validar: se quitan los espacios de alrededor; las claves raras, de adminis
     ['ia_openai', ['sk', 'admin', 'x'.repeat(40)].join('-'), 'clave_admin'],
     ['ia_openai', `pk-${'x'.repeat(40)}`, 'clave_formato'],
     ['ia_anthropic', 12345, 'clave_formato'],
-    ['telegram_bot', claveAnthropic(), 'uso_no_valido'],
+    ['telegram_bot', claveAnthropic(), 'clave_formato'], // parte e: el uso existe, y una clave de Claude no tiene forma de token de bot
     ['no_existe', claveAnthropic(), 'uso_no_valido'],
   ];
   for (const [uso, valor, clave] of casos) {

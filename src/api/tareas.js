@@ -17,6 +17,9 @@ import { leerModoSeguro, ponerModoSeguro, leerFrenos } from '../tareas/modo-segu
 import { avisosAbiertos, avisosRecientes, marcarVisto } from '../avisos/avisos.js';
 import { medirSalud, evaluarSalud, semaforo, historialSalud } from '../nucleo/salud.js';
 import { espacioDe } from '../proyectos/proyectos.js';
+import { resumenCopias } from '../copias/estado.js';
+import { ultimaVersionMala } from '../copias/vigilar.js';
+import { estadoTelegram } from '../canales/canales.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const DIA_MS = 86_400_000;
@@ -53,7 +56,7 @@ function modoSeguroPublico(m) {
 }
 
 // Todo lo que muestra la zona de sistema de Administrador, en un solo pedido.
-export function estadoDelSistema(db, { supervisor = null, usuario = null, version = '', codigo = '', ahora = Date.now() } = {}) {
+export function estadoDelSistema(db, { supervisor = null, usuario = null, version = '', codigo = '', config = null, ahora = Date.now() } = {}) {
   const espacioAdmin = usuario ? espacioDe(db, usuario)?.id ?? null : null;
   let trabajador;
   try {
@@ -80,19 +83,33 @@ export function estadoDelSistema(db, { supervisor = null, usuario = null, versio
     avisos: { abiertos: avisosAbiertos(db), recientes: avisosRecientes(db, { ahora }) },
     salud: { ...medidas, semaforo: semaforo(problemas), problemas },
     historial: historialSalud(db, { horas: 24 }),
+    // Fase 1, parte e: las copias (el azulejo del Resumen), el Telegram del dueño y la última versión que no se instaló.
+    copias: resumenCopias(db, { ahora }),
+    telegram: telegramResumido(db, config, ahora),
+    actualizaciones: { versionMala: ultimaVersionMala(db) },
   };
+}
+
+function telegramResumido(db, config, ahora) {
+  if (!config) return { listo: false, chat: null };
+  try {
+    const t = estadoTelegram(db, config, { ahora });
+    return { listo: t.listo, motivo: t.motivo, chat: t.chat ? { estado: t.chat.estado, nombre: t.chat.nombre } : null };
+  } catch {
+    return { listo: false, chat: null };
+  }
 }
 
 // opciones.supervisor: el que cuida al trabajador (null en las pruebas que no lo usan).
 // opciones.version y opciones.codigo: la versión de package.json y la huella del código (para el modo seguro).
-export function registrarRutasTareas(rutas, { supervisor = null, limites = crearLimitesTareas(), version = '', codigo = '' } = {}) {
+export function registrarRutasTareas(rutas, { supervisor = null, limites = crearLimitesTareas(), version = '', codigo = '', config = null } = {}) {
   const topes = { ...crearLimitesTareas(), ...limites };
 
   function contarAccion(usuario) {
     if (!topes.acciones.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
   }
 
-  const sistema = (db, usuario) => estadoDelSistema(db, { supervisor, usuario, version, codigo });
+  const sistema = (db, usuario) => estadoDelSistema(db, { supervisor, usuario, version, codigo, config });
 
   rutas.agregar('GET', '/api/admin/sistema', ({ db, usuario }) => ({ codigo: 200, datos: sistema(db, usuario) }), { admin: true });
 

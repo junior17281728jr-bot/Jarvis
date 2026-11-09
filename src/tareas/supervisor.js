@@ -28,7 +28,9 @@ import { enTransaccion } from '../nucleo/db.js';
 import { marcarConErrores } from '../proyectos/proyectos.js';
 
 export const RUTA_TRABAJADOR = fileURLToPath(new URL('./trabajador.js', import.meta.url));
-export const BANDERAS_TRABAJADOR = Object.freeze(['--no-warnings', '--max-old-space-size=64', '--max-semi-space-size=2']);
+// --expose-gc (fase 1, parte e): la copia de cada noche llama a gc() después de cada parte que sube a Telegram (medido:
+// sin eso la memoria del trabajador crece 50-70 MB en 12 partes; con eso, 20-30 MB).
+export const BANDERAS_TRABAJADOR = Object.freeze(['--no-warnings', '--expose-gc', '--max-old-space-size=64', '--max-semi-space-size=2']);
 export const TIEMPOS_SUPERVISOR = Object.freeze({
   listoMaxMs: 30000, // si no avisa «listo» en 30 s, se corta
   vigiaMs: 90000, // si no late en 90 s, se corta (está colgado)

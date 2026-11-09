@@ -6,6 +6,7 @@ import { leerConfig } from './nucleo/config.js';
 import { abrirBase } from './nucleo/db.js';
 import { crearSupervisor, quitarArchivosCore } from './tareas/supervisor.js';
 import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
+import { crearAvisador } from './canales/avisador.js';
 
 // Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
 process.umask(0o027);
@@ -23,6 +24,9 @@ try {
 
 const supervisor = db ? crearSupervisor({ db, config, version: VERSION, codigo: HUELLA }) : null;
 const servidor = crearServidor({ db, config, supervisor });
+// Fase 1, parte e: el que manda los avisos graves al Telegram del dueño. Vive en ESTE proceso (no en el trabajador): así
+// llegan también en modo seguro o con el trabajador caído. Empieza después de abrir el puerto y nunca lo traba.
+const avisador = db ? crearAvisador({ db, config, registro: console }) : null;
 let arranque = null;
 let cerrando = false;
 
@@ -44,6 +48,11 @@ servidor.listen(config.puerto, config.host, () => {
     console.error('No se pudo anotar el arranque:', error);
   }
   supervisor.iniciar();
+  try {
+    avisador?.iniciar();
+  } catch (error) {
+    console.error('No se pudo encender el aviso por Telegram (sigue):', error?.name ?? 'error');
+  }
 });
 
 // Apagado ordenado (systemctl stop/restart, el actualizador): una sola vez.
@@ -65,6 +74,9 @@ async function cerrar() {
   } catch (error) {
     console.error('No se pudo apagar el trabajador:', error);
   }
+  try {
+    await avisador?.parar();
+  } catch { /* nada que esperar */ }
   try { db?.close(); } catch { /* ya cerrada */ }
   process.exit(0);
 }

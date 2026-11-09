@@ -26,10 +26,12 @@ export const USOS = Object.freeze({
       Object.freeze(['sk-admin-', 'clave_admin']),
     ]),
   }),
-  // Parte e: telegram_bot: { grupo: 'avisos', formato: /^\d{6,12}:[A-Za-z0-9_-]{30,}$/ }
+  // Fase 1, parte e: el token del bot de Telegram del dueño (avisos graves y copias de cada noche). Lo da @BotFather:
+  // números, dos puntos y letras. Lo usa SOLO src/canales/credencial.js (la puerta de los canales a esta clave).
+  telegram_bot: Object.freeze({ grupo: 'avisos', formato: /^\d{6,15}:[A-Za-z0-9_-]{30,80}$/, rechazar: Object.freeze([]) }),
 });
 
-export const GRUPOS = Object.freeze(['ia']);
+export const GRUPOS = Object.freeze(['ia', 'avisos']);
 export const LARGO = Object.freeze({ min: 20, max: 500 });
 
 // secretos.estado. «No se puede leer» no se guarda: se calcula (la llave cambió o falta).

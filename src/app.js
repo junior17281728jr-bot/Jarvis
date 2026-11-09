@@ -13,6 +13,8 @@ import { registrarRutasProyectos } from './api/proyectos.js';
 import { registrarRutasTareas } from './api/tareas.js';
 import { registrarRutasIa } from './api/ia.js';
 import { registrarRutasClaves } from './api/claves.js';
+import { registrarRutasCopias } from './api/copias.js';
+import { registrarRutasCanales } from './api/canales.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -92,13 +94,17 @@ function texto(res, codigo, mensaje) {
 // opciones.config: la configuración del servidor (src/nucleo/config.js). La necesitan las claves y la IA (dónde está el
 // archivo que protege las claves; en las pruebas, adónde va el proveedor falso). Sin ella, esas rutas responden 503.
 // opciones.ia: límites de las rutas de la IA y de las claves, y probadores de prueba (solo para pruebas).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, proyectos = {}, tareas = {}, ia = {} } = {}) {
+// opciones.copias: límites de las rutas de las copias y del Telegram (solo para pruebas).
+export function crearServidor({ db = null, config = null, limites, supervisor = null, proyectos = {}, tareas = {}, ia = {}, copias = {} } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
   registrarRutasProyectos(rutas, proyectos);
-  registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, ...tareas });
+  registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
   registrarRutasClaves(rutas, { config, limites: ia.limitesClaves, probadores: ia.probadores });
+  // Fase 1, parte e: las copias cifradas y el Telegram del dueño.
+  registrarRutasCopias(rutas, { config, supervisor, limites: copias.limites, medirDisco: copias.medirDisco ?? null });
+  registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

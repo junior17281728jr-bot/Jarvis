@@ -35,7 +35,7 @@ export { TIEMPOS_TRABAJADOR };
 
 export const SALIDA = Object.freeze({ normal: 0, caida: 1, reemplazada: 3, base_no_compatible: 4, memoria: 75, zombis: 76 });
 // 5: la parte d (la IA opcional: claves cifradas y el libro de gastos). La versión 0.3.2 pide 4 y abre igual una base 5.
-export const VERSION_DE_BASE_NECESARIA = 5;
+export const VERSION_DE_BASE_NECESARIA = 6; // fase 1, parte e: las tablas de las copias y los canales (migración 6)
 
 // Por qué sale → cómo queda anotada la corrida y con qué código.
 const SALIDAS = Object.freeze({

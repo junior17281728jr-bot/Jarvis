@@ -10,7 +10,8 @@ export const UMBRALES = Object.freeze({
   memoriaGraveMb: 32,
   discoAtencionMb: 1024,
   discoGraveMb: 300,
-  baseAtencionMb: 40, // Telegram no deja mandar archivos de más de 50 MB (copias de la parte e)
+  baseAtencionMb: 1024, // las copias van en partes de 2 MiB (parte e): el tamaño ya no choca con Telegram, pero una base
+  // de más de 1 GB tarda mucho en copiarse cada noche con 1 procesador
   walAtencionMb: 64,
   pantallasAtencionMs: 200,
   reiniciosAtencion24h: 3,

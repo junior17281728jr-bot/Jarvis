@@ -867,7 +867,7 @@ test('salud: medir devuelve números y no cambia ningún archivo; los umbrales; 
   assert.deepEqual(caso({ memoria: { disponibleMb: 31 } }), { memoria_baja: 'grave' });
   assert.deepEqual(caso({ disco: { libreMb: 1000 } }), { disco_bajo: 'atencion' });
   assert.deepEqual(caso({ disco: { libreMb: 299 } }), { disco_bajo: 'grave' });
-  assert.deepEqual(caso({ base: { archivoMb: 41, walMb: 65 } }), { base_grande: 'atencion', wal_grande: 'atencion' });
+  assert.deepEqual(caso({ base: { archivoMb: 1025, walMb: 65 } }), { base_grande: 'atencion', wal_grande: 'atencion' });
   assert.deepEqual(caso({ pantallasP99Ms: 201 }), { pantallas_lentas: 'atencion' });
   assert.deepEqual(caso({}, 3), { trabajador_reinicios: 'atencion' });
   assert.deepEqual(caso({ memoria: { disponibleMb: null }, disco: { libreMb: null }, pantallasP99Ms: null }), {}, 'lo que no se pudo medir no alarma');
@@ -1249,7 +1249,7 @@ test('API del administrador: el estado del sistema, el modo seguro con auditorí
     assert.equal(r.datos.trabajador.fase, 'esperando');
     assert.equal(r.datos.modoSeguro.activo, false);
     assert.ok(['verde', 'amarillo', 'rojo'].includes(r.datos.salud.semaforo));
-    assert.deepEqual(r.datos.proximas.map(p => p.programa).sort(), ['sistema.base', 'sistema.vigilar']);
+    assert.deepEqual(r.datos.proximas.map(p => p.programa).sort(), ['copias.hacer', 'sistema.base', 'sistema.vigilar']);
     assert.equal((await pedirApi(base, 'GET', '/api/admin/sistema', { galleta: ana })).codigo, 403);
     assert.equal((await pedirApi(base, 'GET', '/api/admin/sistema')).codigo, 401);
 

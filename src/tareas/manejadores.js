@@ -4,6 +4,8 @@
 //    reservas huérfanas, avisos de tope de meses pasados y la llave de las claves);
 //  - sistema.base (cada madrugada, 4:10): revisa que la base esté sana y después la ordena.
 // En la parte d se suma 'ia.interpretar' (la ayuda de IA en un proyecto que espera aprobación, src/ia/ayuda.js).
+// En la parte e se suma 'copias.hacer' (la copia cifrada de cada noche, src/copias/hacer.js), y vigilar revisa también
+// las copias y LEE update.log (src/copias/vigilar.js).
 // Los proyectos empiezan a tener trabajos en la fase 2 (la búsqueda de clientes).
 //
 // REGLAS PARA ESCRIBIR UN TRABAJO (valen también para la fase 2):
@@ -23,6 +25,9 @@ import { ponerModoSeguro } from './modo-seguro.js';
 import { ErrorTarea } from './tipos.js';
 import { vigilarIA } from '../ia/presupuesto.js';
 import { MANEJADOR_INTERPRETAR } from '../ia/ayuda.js';
+import { MANEJADOR_COPIAS } from '../copias/hacer.js';
+import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
+import { discoLibreMb } from '../nucleo/salud.js';
 
 export const WAL_GRANDE_MB = 64; // con más que esto, vigilar pasa lo pendiente del -wal a la base
 export const PROBLEMAS_A_GUARDAR = 5;
@@ -55,13 +60,24 @@ async function vigilar(ctx) {
   await ctx.escribir(() => sincronizarAvisos(ctx.db, avisos, ahora));
   // La IA (parte d): una sola escritura corta. Sin carpeta de datos (algunas pruebas) no mira la llave.
   const ia = await ctx.escribir(() => vigilarIA(ctx.db, { config: ctx.config, ahora }));
+  // Las copias (parte e): las que quedaron a medias, el recordatorio de la clave, el disco; y las actualizaciones que
+  // no se instalaron o se devolvieron (update.log: solo se LEE, fuera de la escritura).
+  let copias = null;
+  let actualizaciones = null;
+  if (ctx.config?.archivoBase) {
+    let libreMb = null;
+    try { libreMb = discoLibreMb(ctx.config.carpetaDatos ?? ctx.config.carpetaCopias); } catch { libreMb = null; }
+    copias = await ctx.escribir(() => vigilarCopias(ctx.db, ctx.config, { ahora, libreMb }));
+    const leido = leerArchivosDeActualizacion(ctx.config);
+    actualizaciones = await ctx.escribir(() => aplicarActualizaciones(ctx.db, leido, { ahora }));
+  }
   let walMb = tamanoWalMb(ctx.config);
   let checkpoint = null;
   if (walMb > WAL_GRANDE_MB) {
     checkpoint = await pasarWal(ctx);
     walMb = tamanoWalMb(ctx.config);
   }
-  return { listo: true, resultado: { fila, walMb, ia, ...(checkpoint ? { checkpoint } : {}) } };
+  return { listo: true, resultado: { fila, walMb, ia, copias, actualizaciones: actualizaciones ? { abiertos: actualizaciones.abiertos.length, resueltos: actualizaciones.resueltos.length } : null, ...(checkpoint ? { checkpoint } : {}) } };
 }
 
 // sistema.base, paso 1 «revisar»: quick_check SOLO lee. Si encuentra un problema, se abre el aviso grave
@@ -102,4 +118,5 @@ export const MANEJADORES = Object.freeze({
   'sistema.vigilar': Object.freeze({ paso: vigilar }),
   'sistema.base': Object.freeze({ paso: base }),
   'ia.interpretar': MANEJADOR_INTERPRETAR,
+  'copias.hacer': MANEJADOR_COPIAS,
 });

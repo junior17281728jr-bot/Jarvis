@@ -18,6 +18,9 @@ import { PROVEEDORES, urlDe } from '../ia/proveedores/index.js';
 import { leerSecreto, validarValor, anotarPrueba, reanudarSecreto, secretoPublico } from './almacen.js';
 import { definicionUso } from './usos.js';
 import { estadoLlave } from './cifrado.js';
+import { TELEGRAM } from '../canales/telegram.js';
+import { crearCredencial } from '../canales/credencial.js';
+import { trasProbarToken } from '../canales/canales.js';
 
 export const PRUEBA_MS = 10_000;
 // Lo más que se lee de la respuesta de una prueba gratis (count_tokens o GET models: unos pocos bytes).
@@ -36,9 +39,26 @@ function probadorIa(id) {
   };
 }
 
+// Fase 1, parte e: el token del bot de Telegram. getMe y getWebhookInfo (gratis, src/canales/telegram.js). Si pasa, se
+// anota el bot; si el chat unido era de OTRO bot, ese chat queda desvinculado (hay que unirlo otra vez).
+const MOTIVO_DE_CANAL = Object.freeze({
+  ok: 'ok', clave_no_valida: 'clave_no_valida', bot_ocupado: 'bot_ocupado', bloqueado: 'bloqueado', chat_no_existe: 'chat_no_existe',
+  limite: 'limite_proveedor', sin_red: 'sin_red', tiempo_agotado: 'tiempo_agotado', respuesta_no_valida: 'respuesta_no_valida',
+  rechazado: 'rechazada', conflicto: 'bot_ocupado', pedido_no_valido: 'pedido_no_valido',
+});
+
+async function probadorTelegram(token, { db, config, senal = null, secretoId = null }) {
+  const cred = crearCredencial({ token, base: config?.canalesBases?.telegram ?? null, secretoId });
+  const r = await TELEGRAM.probar(cred, { senal });
+  const motivo = MOTIVO_DE_CANAL[r.motivo] ?? 'error_proveedor';
+  if (motivo === 'ok' && r.cuenta && secretoId != null) trasProbarToken(db, { secretoId, cuenta: r.cuenta });
+  return motivo;
+}
+
 export const PROBADORES = Object.freeze({
   ia_anthropic: probadorIa('anthropic'),
   ia_openai: probadorIa('openai'),
+  telegram_bot: probadorTelegram,
 });
 
 const numero = id => {
@@ -67,7 +87,7 @@ export async function probarSecreto(db, config, { id, usuarioId = null, reanudar
   }
   if (!motivo) {
     try {
-      motivo = typeof probador === 'function' ? await probador(valor, { db, config, senal }) : 'error_proveedor';
+      motivo = typeof probador === 'function' ? await probador(valor, { db, config, senal, secretoId: fila.id }) : 'error_proveedor';
     } catch {
       motivo = 'error_proveedor';
     } finally {

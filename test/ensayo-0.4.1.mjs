@@ -9,7 +9,12 @@
 //     copia), su trabajador se conecta (versión mínima 5), la recuperación de corridas, elegir en cada cupo, las claves,
 //     los avisos, la zona de sistema. Nada debe romperse.
 //  3. Vuelve la 0.5.0: abre la base sin cambios que aplicar, y la copia hecha antes de volver atrás se restaura igual.
-// El paso 2 de la parte e agrega aquí la tarea copias.hacer, el bot y los avisos (§16).
+//  4. (paso 2) Lo que deja la tarea copias.hacer en marcha: una clave activa, una copia comprobada, una copia a medias con
+//     su tarea «en curso» de un trabajador muerto y otra en la fila, el token del bot, el chat unido, envíos y avisos
+//     nuevos sin mandar. La 0.4.1 de verdad: abre, recupera, nunca ofrece la tarea de copias, sus claves y su zona de
+//     sistema (también GET /api/admin/claves por su servidor) no se rompen; fila_atrasada puede abrirse y los motivos
+//     nuevos se ven «crudos» (esperado). De vuelta en la 0.5.0, la copia termina comprobada contra el Telegram falso y
+//     solo se mandan los avisos frescos.
 // Nunca usa internet ni una clave de verdad (carga ./ayuda.js primero). Todo en carpetas temporales.
 import './ayuda.js';
 import assert from 'node:assert/strict';
@@ -104,5 +109,110 @@ anotar(`base 6 armada: ${b.tablas.length} tablas con filas (también ${nuevas.jo
   assert.deepEqual(contenido(restaurada), antes);
   restaurada.close();
   anotar(`0.5.0 otra vez: nada que aplicar, las tablas nuevas como estaban, y la copia de antes se restaura igual (${r.tablas} tablas, ${r.filas} filas)`);
+}
+// ---------- 4. La tarea copias.hacer, el bot y los avisos (paso 2) ----------
+{
+  const { montar, MINUTO, HORA } = await import('./copias-tarea-base.js');
+  const { abrirAviso } = await import('../src/avisos/avisos.js');
+  const { encolar } = await import('../src/tareas/cola.js');
+  const { crearAvisador } = await import('../src/canales/avisador.js');
+  const { hashClave } = await import('../src/cuentas/claves.js');
+  const m = await montar({ relleno: 8, manejador: { pasoCortoMs: -1 } });
+  try {
+    // Una copia buena, y otra que queda a medias (subida la parte 1) con su trabajador muerto.
+    assert.equal((await m.terminar(m.pedir())).estado, 'hecha');
+    m.avanzar(HORA);
+    const enCurso = m.pedir();
+    for (let i = 0; i < 40; i++) {
+      await m.ejecutor.ciclo();
+      await new Promise(l => setTimeout(l, 5));
+      const c = m.copias().at(-1);
+      if (m.copias().length === 2 && c.estado === 'escrita' && m.partes(c.id).some(p => p.archivo_id)) break;
+    }
+    // El trabajador «se muere» con la tarea en la mano: se la toma otra vez a la fuerza y no se suelta.
+    m.db.prepare("UPDATE tareas SET estado = 'en_curso', dueno = 'corrida-muerta', tomas = tomas + 1, arriendo_hasta = ? WHERE id = ?").run(new Date(m.t - MINUTO).toISOString(), enCurso);
+    await m.ejecutor.parar({ esperaMs: 0, devolver: false });
+    const enFila = encolar(m.db, { tipo: 'copias.hacer', claveUnica: 'ensayo-en-fila', datos: { origen: 'manual' } }).id;
+    const aMedias = m.copias().at(-1);
+    assert.ok(['haciendo', 'escrita'].includes(aMedias.estado), aMedias.estado);
+    abrirAviso(m.db, { clave: 'copia_atrasada', nivel: 'grave', ahora: m.t });
+    abrirAviso(m.db, { clave: 'actualizacion_revertida:abc1234', nivel: 'grave', ahora: m.t });
+    abrirAviso(m.db, { clave: 'ia_tope:general:2026-11', nivel: 'atencion', detalle: { pct: 80 }, ahora: m.t });
+    abrirAviso(m.db, { clave: 'copias_disco_pronto', nivel: 'atencion', detalle: { dias: 20 }, ahora: m.t - 72 * HORA });
+    m.db.prepare("UPDATE secretos SET prueba = 'bot_ocupado' WHERE uso = 'telegram_bot'").run();
+    m.db.prepare('UPDATE usuarios SET clave_hash = ?, debe_cambiar_clave = 0 WHERE id = ?').run(await hashClave('una clave bien larga'), m.admin);
+    // La 0.4.1 de verdad, con su propia conexión (como el servicio de antes sobre el mismo archivo).
+    const db041 = await de041('src/nucleo/db.js');
+    const corridas041 = await de041('src/tareas/corridas.js');
+    const cola041 = await de041('src/tareas/cola.js');
+    const tipos041 = await de041('src/tareas/tipos.js');
+    const proyectos041 = await de041('src/proyectos/proyectos.js');
+    const avisos041 = await de041('src/avisos/avisos.js');
+    const almacen041 = await de041('src/claves/almacen.js');
+    const tareasApi041 = await de041('src/api/tareas.js');
+    const app041 = await de041('src/app.js');
+    const vieja041 = db041.abrirBase(m.config);
+    try {
+      const corrida = corridas041.nuevaCorrida(vieja041, { version: '0.4.1', codigo: 'vieja' });
+      corridas041.empezarCorrida(vieja041, { corrida, pid: process.pid, vivo: pid => pid === process.pid, registro: tipos041.TIPOS, alFallar: proyectos041.marcarConErrores });
+      cola041.recuperarAbandonadas(vieja041, { yo: corrida, registro: tipos041.TIPOS, alFallar: proyectos041.marcarConErrores });
+      const tipos = cola041.tiposPermitidos({ registro: tipos041.TIPOS });
+      assert.ok(!tipos.includes('copias.hacer'));
+      for (const cupo of Object.keys(tipos041.CUPOS)) {
+        const elegida = cola041.elegir(vieja041, { cupo, tipos, ahora: Date.now() });
+        assert.ok(!elegida || elegida.tipo !== 'copias.hacer', 'la 0.4.1 nunca ofrece la tarea de copias');
+      }
+      assert.ok(!almacen041.listarSecretos(vieja041, m.config).some(s => s.uso === 'telegram_bot'), 'el token del bot no aparece en la 0.4.1');
+      assert.equal(almacen041.estadoAlmacen(vieja041, m.config).listo, true);
+      const abiertos = avisos041.avisosAbiertos(vieja041).map(a => a.clave);
+      for (const k of ['copia_atrasada', 'actualizacion_revertida:abc1234', 'ia_tope:general:2026-11']) assert.ok(abiertos.includes(k), `la 0.4.1 lista ${k} (crudo)`);
+      assert.ok(tareasApi041.estadoDelSistema(vieja041, { version: '0.4.1' }));
+      // Su servidor: GET /api/admin/claves (con la cuenta de Tailscale del dueño) responde bien.
+      const servidor = app041.crearServidor({ db: vieja041, config: m.config });
+      await new Promise(l => servidor.listen(0, '127.0.0.1', l));
+      try {
+        const base = `http://127.0.0.1:${servidor.address().port}`;
+        const dueno = { 'Tailscale-User-Login': 'junior@example.com', 'X-Oportia': '1' };
+        const entrar = await fetch(`${base}/api/entrar`, { method: 'POST', headers: { ...dueno, 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: 'junior', clave: 'una clave bien larga' }) });
+        assert.equal(entrar.status, 200);
+        const galleta = entrar.headers.get('set-cookie').split(';')[0];
+        const claves = await fetch(`${base}/api/admin/claves`, { headers: { ...dueno, Cookie: galleta } });
+        assert.equal(claves.status, 200);
+        const datos = await claves.json();
+        assert.deepEqual(datos.grupos.map(g => g.grupo), ['ia']);
+        const sistema = await fetch(`${base}/api/admin/sistema`, { headers: { ...dueno, Cookie: galleta } });
+        assert.equal(sistema.status, 200);
+      } finally {
+        await new Promise(l => servidor.close(l));
+      }
+      corridas041.terminarCorrida(vieja041, { corrida, como: 'normal', codigo: 0 });
+      assert.deepEqual(vieja041.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(vieja041.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+    } finally {
+      vieja041.close();
+    }
+    const tareaVieja = m.tarea(enCurso);
+    assert.ok(['lista', 'en_curso'].includes(tareaVieja.estado), tareaVieja.estado);
+    anotar(`0.4.1 con la tarea de copias a medias: recupera (queda «${tareaVieja.estado}»), nunca la ofrece, el token del bot no aparece, los avisos nuevos se listan crudos, GET /api/admin/claves y /api/admin/sistema responden; integridad ok`);
+    // De vuelta en la 0.5.0: la copia a medias termina (o empieza otra dentro de la misma tarea) y se comprueba.
+    m.db.prepare("UPDATE tareas SET estado = 'lista', dueno = NULL, arriendo_hasta = NULL WHERE id = ? AND estado = 'en_curso'").run(enCurso);
+    m.db.prepare('UPDATE tareas SET disponible_en = ? WHERE id IN (?, ?)').run(new Date(m.t).toISOString(), enCurso, enFila);
+    m.nuevoEjecutor();
+    const fin = await m.terminar(enCurso);
+    assert.equal(fin.estado, 'hecha');
+    const ultima = m.copias().filter(c => c.tarea_id === enCurso).at(-1);
+    assert.equal(ultima.estado, 'verificada');
+    const deLaFila = await m.terminar(enFila);
+    assert.ok(deLaFila.estado === 'hecha');
+    // Solo los avisos frescos llegan (el de hace 3 días no).
+    const avisador = crearAvisador({ db: m.db, config: m.config, reloj: m.reloj });
+    for (let i = 0; i < 6; i++) await avisador.pasada();
+    const textos = m.falso.mensajes.filter(x => x.text).map(x => x.text);
+    assert.ok(textos.some(t => /abc1234/.test(t)), 'la actualización devuelta llegó');
+    assert.ok(!textos.some(t => /20 días/.test(t)), 'el aviso viejo (más de 48 h) no se manda');
+    anotar(`0.5.0 otra vez: la copia a medias termina «${ultima.estado}» (${ultima.copia === aMedias.copia ? 'la misma copia' : 'otra copia en la misma tarea'}), la de la fila también, y solo los avisos frescos llegan al chat`);
+  } finally {
+    await m.cerrar();
+  }
 }
 console.log(`ENSAYO 0.4.1 OK (${lineas.length} etapas)`);

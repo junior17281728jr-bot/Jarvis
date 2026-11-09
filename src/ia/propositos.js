@@ -56,6 +56,9 @@ export const MOTIVOS = Object.freeze([
   // se ofrece: lo que hiciera la IA no se podría guardar), y la IA respondió lo mismo que entendió OPORTIA (no hace
   // falta una versión nueva).
   'demasiadas_dudas', 'sin_cambios',
+  // Fase 1, parte e: la prueba gratis del token del bot de Telegram (src/claves/probar.js → src/canales/telegram.js):
+  // otro programa usa ese bot (tiene un webhook), el dueño bloqueó al bot, o el chat ya no existe.
+  'bot_ocupado', 'bloqueado', 'chat_no_existe',
 ]);
 
 // Estados de una fila de ia_llamadas (un intento PAGADO, que pasó la reserva):

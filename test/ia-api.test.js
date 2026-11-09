@@ -127,7 +127,7 @@ test('20. claves y ajustes: nunca por el enlace público; solo con la cuenta de 
     assert.equal(lista.codigo, 200);
     assert.equal(lista.datos.duenoTailscale, 'junior@example.com');
     assert.deepEqual(lista.datos.almacen, { listo: true, motivo: 'llave_no_existe' });
-    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai']]]);
+    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai']], ['avisos', ['telegram_bot']]]);
     // Sin ser administrador, ni el dueño de Tailscale entra; sin la cabecera de OPORTIA, nada.
     const maria = await nuevaCuenta('maria');
     assert.equal((await pedir('GET', '/api/admin/claves', { galleta: maria.galleta, cabeceras: DUENO })).datos.error, 'solo_admin');
@@ -365,7 +365,7 @@ test('20. guardar y probar: solo lo público vuelve, la prueba es GRATIS (count_
       assert.deepEqual([r.codigo, r.datos.error], [400, error]);
       assert.ok(!r.texto.includes(valor));
     }
-    assert.equal((await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'telegram_bot', valor: claveAnthropic() } })).datos.error, 'uso_no_valido');
+    assert.equal((await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'telegram_bot', valor: claveAnthropic() } })).datos.error, 'clave_formato');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM secretos').get().n, 0);
     // Una buena: 201, solo lo público, y la prueba gratis (count_tokens con el modelo configurado).
     const g = await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'ia_anthropic', valor: claveAnthropic() } });

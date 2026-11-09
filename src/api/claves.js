@@ -1,6 +1,7 @@
 // Rutas de Administrador → Claves (fase 1, parte d). TODAS son solo para el administrador y solo desde su propia cuenta
 // de Tailscale, por el enlace https (soloDueno): ni por el enlace público, ni desde otro equipo de la red, ni por una
-// conexión directa a la 100.x. La parte e agrega aquí el token del bot de Telegram (mismo almacén, mismas reglas).
+// conexión directa a la 100.x. La parte e agrega aquí el token del bot de Telegram (mismo almacén, mismas reglas; unir
+// el chat y el mensaje de prueba están en src/api/canales.js).
 //  - Una clave pegada se revisa (las de administrador de la cuenta y las de la suscripción nunca se guardan), se cifra,
 //    se guarda (la anterior queda «reemplazada», nunca se borra) y se prueba GRATIS enseguida.
 //  - Lo que vuelve es solo lo público (los últimos 4 caracteres, el estado, la última prueba): nunca la clave.
@@ -15,6 +16,8 @@ import { guardarSecreto, listarSecretos, activarSecreto, desactivarSecreto, esta
 import { probarSecreto } from '../claves/probar.js';
 import { apagarSiNoQuedaProveedor, leerConfigIa } from '../ia/config.js';
 import { loginDeTailscale } from '../cuentas/tailscale.js';
+import { definicionUso } from '../claves/usos.js';
+import { estadoTelegram, trasCambiarToken } from '../canales/canales.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 
@@ -27,7 +30,12 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'almacen_no_disponible'); };
   const contar = usuario => { if (!topes.acciones.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos'); };
   // Dentro de la misma transacción del cambio: si ya no queda un proveedor listo, la IA se apaga.
-  const trasCambio = usuario => d => ({ iaApagada: apagarSiNoQuedaProveedor(d, config, { usuarioId: usuario.id }) });
+  // Parte e: el token del bot de Telegram no toca la IA. Cambiarlo o desactivarlo pausa los mensajes hasta que la prueba
+  // gratis pase con el bot nuevo (si es OTRO bot, el chat queda desvinculado: src/canales/canales.js).
+  const trasCambio = usuario => (d, { uso } = {}) => {
+    if (definicionUso(uso)?.grupo === 'avisos') return { iaApagada: false, telegram: trasCambiarToken(d, { usuarioId: usuario.id }) };
+    return { iaApagada: apagarSiNoQuedaProveedor(d, config, { usuarioId: usuario.id }) };
+  };
 
   rutas.agregar('GET', '/api/admin/claves', ({ db, usuario }) => {
     necesitaConfig();
@@ -38,6 +46,8 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
         almacen: estadoAlmacen(db, config),
         duenoTailscale: loginDeTailscale(db, usuario.id),
         grupos: GRUPOS.map(grupo => ({ grupo, usos: usos.filter(u => u.grupo === grupo).map(({ uso, proveedor, activa, anteriores }) => ({ uso, proveedor, activa, anteriores })) })),
+        // Parte e: el Telegram del dueño (el bot, su chat, si hay un código esperando, los últimos mensajes). Nunca el token.
+        telegram: estadoTelegram(db, config),
       },
     };
   }, { admin: true, soloDueno: true });

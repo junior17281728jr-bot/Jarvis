@@ -32,6 +32,19 @@ export const TIPOS = Object.freeze({
   // paga dos veces (la llamada queda anotada por tarea y paso, src/ia/cliente.js), así que no hace falta que una
   // persona la revise. Va en el carril de la cuenta (sin proyecto): el proyecto todavía no está en marcha.
   'ia.interpretar': Object.freeze({ cupo: 'normal', maxFallos: 2, tiempoPorPasoMs: 90_000, repetible: true, prioridad: 5 }),
+  // Fase 1, parte e: la copia cifrada de cada noche (src/copias/hacer.js): a una carpeta del servidor y al chat privado
+  // del dueño con su bot de Telegram. Pasos: preparar → generar → subir → verificar → indice.
+  //  - «grande»: nunca a la vez que sistema.base (4:10). Los dos frenos (poca memoria, poco disco: < 300 MB) la paran.
+  //  - tiempoPorPasoMs 30 min: el ÚNICO tipo con más de 10 minutos (test/reglas.test.js lo sabe). Solo «generar» sin
+  //    copia en el servidor (las partes van directo a Telegram) puede tardar: se corta sola a los 25 min (la foto de la
+  //    base no puede quedar abierta más). Los demás pasos vuelven en ~60 s con su avance guardado.
+  //  - repetible: true aunque MANDA archivos: es una excepción pensada. Solo manda al chat del propio dueño; repetir un
+  //    paso suma, como mucho, documentos repetidos en silencio y una copia nueva, y los topes de src/copias/hacer.js
+  //    (3 copias por tarea, 3 copias subidas sin éxito por día, 12 esperas o 6 h de esperas por copia) ponen el límite.
+  'copias.hacer': Object.freeze({
+    cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 1_800_000, repetible: true, prioridad: 8,
+    reintentos: Object.freeze({ baseMs: 10 * 60_000, factor: 3, topeMs: 6 * 3_600_000 }), // 10, 30, 90 min…
+  }),
 });
 
 // La definición completa de un tipo (con lo que vale por defecto), o null si este código no lo conoce.
@@ -50,6 +63,8 @@ export function tiposEjecutables(registro = TIPOS, fase = FASE_ACTUAL) {
 export const PROGRAMAS_DEL_SISTEMA = Object.freeze([
   Object.freeze({ programa: 'sistema.vigilar', tipo: 'sistema.vigilar', cada: 'hora', minuto: 7 }),
   Object.freeze({ programa: 'sistema.base', tipo: 'sistema.base', cada: 'diaria', hora: 4, minuto: 10 }),
+  // Después de la revisión de la base (4:10): una base dañada pone el modo seguro y nunca se copia encima de una buena.
+  Object.freeze({ programa: 'copias.hacer', tipo: 'copias.hacer', cada: 'diaria', hora: 4, minuto: 40 }),
 ]);
 
 // Cómo terminó cada vida del trabajador (trabajador_corridas.como_termino). Viven aquí, con los demás datos

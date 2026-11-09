@@ -11,6 +11,10 @@
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=recuperar-llave -> si falta ese archivo y queda otro nombre con la llave de tus claves, se lo vuelve a poner
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=empezar-de-nuevo -> si falta ese archivo y no se puede recuperar, crea uno nuevo (las claves de antes quedan sin poder leerse; nada se borra)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar     -> olvida la cuenta de Tailscale del dueño (el primer administrador; la próxima entrada anota la nueva)
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=estado         -> cómo están las copias de seguridad (no cambia nada)
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=ahora          -> pide una copia ahora (la hace el trabajo automático)
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --telegram=desvincular  -> deja de usar el chat de Telegram unido (no borra nada)
+//   Para recuperar una copia: deploy/oportia-restaurar.mjs (explica su uso al principio del archivo).
 //
 // Para encender la IA no hay opción de consola, a propósito: gastar dinero se decide en la pantalla, con su aviso.
 //
@@ -34,6 +38,11 @@ import { guardarConfigIa, leerConfigIa } from '../src/ia/config.js';
 import { estadoLlave, apartarLlaveDanada, diagnosticoLlave, recuperarLlave, empezarLlaveNueva } from '../src/claves/cifrado.js';
 import { clavesGuardadas } from '../src/claves/almacen.js';
 import { reanotarTailscale, idDelDueno } from '../src/cuentas/tailscale.js';
+import { estadoCopias, tareaDeCopiaViva, llaveActiva } from '../src/copias/estado.js';
+import { estadoTelegram, desvincular } from '../src/canales/canales.js';
+import { discoLibreMb } from '../src/nucleo/salud.js';
+import { encolar } from '../src/tareas/cola.js';
+import { leerModoSeguro } from '../src/tareas/modo-seguro.js';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
@@ -65,9 +74,12 @@ async function principal() {
     if (pedido === '--claves=recuperar-llave') return recuperarLaLlave(config);
     if (pedido === '--claves=empezar-de-nuevo') return empezarDeNuevo(config);
     if (pedido === '--tailscale=reanotar') return conBase(config, { abrirSiFalta: false }, db => reanotar(db, (process.argv[3] || '').trim()));
+    if (pedido === '--copias=estado') return conBase(config, { abrirSiFalta: false }, db => estadoDeCopias(db, config));
+    if (pedido === '--copias=ahora') return conBase(config, { abrirSiFalta: false }, db => copiaAhora(db));
+    if (pedido === '--telegram=desvincular') return conBase(config, { abrirSiFalta: false }, db => dejarTelegram(db));
     const m = pedido.match(/^--modo-seguro=(si|no)$/);
     if (!m) {
-      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático), --modo-seguro=no (encenderlo otra vez), --ia=no (apagar la IA), --claves=revisar, --claves=apartar-llave-danada, --claves=recuperar-llave, --claves=empezar-de-nuevo o --tailscale=reanotar.');
+      console.error('Opción no válida. Usa --modo-seguro=si (pausar el trabajo automático), --modo-seguro=no (encenderlo otra vez), --ia=no (apagar la IA), --claves=revisar, --claves=apartar-llave-danada, --claves=recuperar-llave, --claves=empezar-de-nuevo --tailscale=reanotar, --copias=estado, --copias=ahora o --telegram=desvincular.');
       return 2;
     }
     modoSeguro = m[1] === 'si';
@@ -287,6 +299,65 @@ function reanotar(db, nombre) {
   const antes = reanotarTailscale(db, { usuarioId: admin.id, origen: 'consola' });
   if (antes == null) console.log(`«${admin.nombre}» no tenía una cuenta de Tailscale guardada: no cambió nada.`);
   else console.log(`Listo: se olvidó la cuenta de Tailscale de «${admin.nombre}» (queda en la auditoría). La próxima vez que entre a Claves desde su iPhone o Mac, por el enlace https, se anota la nueva.`);
+  return 0;
+}
+
+const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function fechaRd(iso) {
+  const ms = Date.parse(iso ?? '');
+  if (!Number.isFinite(ms)) return '—';
+  const d = new Date(ms - 4 * 3_600_000);
+  const h = d.getUTCHours();
+  return `${d.getUTCDate()} ${meses[d.getUTCMonth()]}, ${h % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+}
+const megas = bytes => `${Math.max(0, Math.round(((Number(bytes) || 0) / (1024 * 1024)) * 10) / 10)} MB`;
+
+// --copias=estado: cómo están las copias, en palabras simples. No cambia nada.
+function estadoDeCopias(db, config) {
+  let libreMb = null;
+  try { libreMb = discoLibreMb(config.carpetaDatos); } catch { libreMb = null; }
+  const t = estadoTelegram(db, config);
+  const e = estadoCopias(db, { libreMb, telegram: t, modoSeguro: leerModoSeguro(db).activo });
+  console.log(e.clave.activa ? `Clave de recuperación: ${e.clave.huella} (desde el ${fechaRd(e.clave.desde)}).` : 'Clave de recuperación: FALTA (créala en Administrador → Copias, desde Tailscale). Sin ella no hay copias.');
+  console.log(t.chat ? `Telegram: chat de ${t.chat.nombre ?? '—'} (${t.chat.estado}).${t.listo ? '' : ` No llegan mensajes ahora (${t.motivo}).`}` : `Telegram: sin chat unido${t.token ? '' : ' (falta el token del bot)'}.`);
+  console.log(e.ultimaFuera ? `Última copia fuera del servidor: ${fechaRd(e.ultimaFuera.fecha)}, ${megas(e.ultimaFuera.bytes)}, ${e.ultimaFuera.partes} partes, comprobada.` : 'Última copia fuera del servidor: ninguna todavía.');
+  if (e.ultima) console.log(`Última copia (cualquiera): ${fechaRd(e.ultima.fecha)} — ${e.ultima.estado}${e.ultima.motivo ? ` (${e.ultima.motivo})` : ''}.`);
+  if (e.enCurso) console.log(`Ahora mismo: haciendo una copia (paso «${e.enCurso.paso}»).`);
+  console.log(`Próxima copia: ${fechaRd(e.proxima)}.`);
+  const l = e.locales;
+  console.log(`En este servidor: ${l.copias} copias, ${l.mb} MB${l.libreMb != null ? `, ${Math.round(l.libreMb)} MB libres en el disco` : ''}${l.diasRestantes != null ? ` (alcanza para unos ${l.diasRestantes} días)` : ''}.`);
+  if (l.pausadas) console.log('Disco casi lleno: dejé de guardar copias en el servidor. Las de Telegram siguen. Nada se borró.');
+  if (l.frenoDisco) console.log('Disco lleno: las copias están en pausa hasta que haya espacio. Nada se borró.');
+  console.log('Nunca se borra ninguna copia.');
+  return 0;
+}
+
+// --copias=ahora: la pone en la fila (la hace el trabajo automático, en menos de un minuto si está encendido).
+function copiaAhora(db) {
+  if (!llaveActiva(db)) {
+    console.log('Primero crea la clave de recuperación (Administrador → Copias, desde Tailscale). No se pidió nada.');
+    return 2;
+  }
+  if (tareaDeCopiaViva(db)) {
+    console.log('Ya hay una copia en la fila o haciéndose. No se pidió otra.');
+    return 0;
+  }
+  const ahora = Date.now();
+  const r = encolar(db, { tipo: 'copias.hacer', programa: 'copias.hacer', claveUnica: `copias.hacer@manual-${ahora}`, datos: { origen: 'manual' } }, { ahora });
+  if (!r.nueva) {
+    console.log('Ya hay una copia en la fila o haciéndose. No se pidió otra.');
+    return 0;
+  }
+  auditar(db, { usuarioId: null, accion: 'copia_pedida', detalle: 'consola' });
+  console.log(`Listo: la copia quedó en la fila (tarea n.º ${r.id}).${leerModoSeguro(db).activo ? ' OJO: el modo seguro está activado, así que no se hará hasta quitarlo.' : ' El trabajo automático la hace en menos de un minuto.'}`);
+  console.log('Para ver cómo va: sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=estado');
+  return 0;
+}
+
+// --telegram=desvincular: el chat unido queda «desvinculado» (la fila queda: nada se borra). Para unir otro, Claves.
+function dejarTelegram(db) {
+  const r = desvincular(db, { origen: 'consola' });
+  console.log(r.cambiados ? 'Listo: OPORTIA dejó de usar ese chat de Telegram (no se borró nada). Para unir otro: Administrador → Claves.' : 'No había ningún chat de Telegram unido: no cambió nada.');
   return 0;
 }
 

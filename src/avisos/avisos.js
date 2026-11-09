@@ -1,6 +1,6 @@
-// Avisos para el administrador. En la fase 1, parte c se ven en la pantalla de Administrador; en la parte e
-// llegarán también por Telegram (se mandarán los que tengan enviado_en vacío, y los manda el proceso web,
-// porque en modo seguro el trabajador está apagado).
+// Avisos para el administrador. En la fase 1, parte c se ven en la pantalla de Administrador; desde la parte e
+// llegan también por Telegram (src/canales/avisador.js manda los que tienen enviado_en vacío, y los manda el proceso
+// web, porque en modo seguro el trabajador está apagado).
 //  - Hay como mucho UN aviso abierto por clave: si el problema se repite, suma «veces».
 //  - El nivel puede subir pero nunca bajar mientras está abierto; si sube a «grave», se vuelve a mandar.
 //  - Nunca se borran: cuando el problema se arregla quedan «resueltos», y si vuelve, se abre uno nuevo
@@ -14,6 +14,12 @@ export const CLAVES_AVISO = Object.freeze([
   'modo_seguro', 'base_danada', 'tareas_fallidas', 'tareas_revisar', 'fila_atrasada',
   // Fase 1, parte d (IA): un uso costó más de lo apartado; no se puede leer la llave que protege las claves.
   'ia_costo_mayor', 'ia_llave',
+  // Fase 1, parte e (copias y Telegram): falta la clave de recuperación; solo hay copias en el servidor; una copia
+  // falló; ninguna copia comprobada fuera del servidor en 30 horas; el disco no deja guardar copias aquí (las de Telegram
+  // siguen); el disco se llenará pronto al ritmo de hoy; el mensaje fijado del chat no es la última copia; recordar
+  // comprobar la clave cada 90 días; los mensajes no llegan al Telegram (solo en la pantalla).
+  'copias_sin_clave', 'copias_sin_telegram', 'copia_fallida', 'copia_atrasada', 'copias_locales_pausadas', 'copias_disco_pronto',
+  'copia_sin_fijar', 'copias_comprobar_clave', 'telegram_falla',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;
@@ -24,13 +30,17 @@ export const AVISO_IA_PROVEEDOR = /^ia_proveedor:[a-z][a-z0-9_]{1,30}$/;
 // Ronda 3 de revisión: 'ia_llamadas:e<cuenta>' (una cuenta que no es la del administrador usó su parte de las llamadas
 // de IA de una hora; se cierra sola en la revisión de cada hora).
 export const AVISO_IA_LLAMADAS = /^ia_llamadas:e[1-9]\d{0,9}$/;
+// Fase 1, parte e: una actualización que no se instaló (alguna prueba falló) o que no arrancó y se devolvió a la anterior
+// (lo escribe el actualizador del servidor en update.log; el trabajador solo lo LEE: src/copias/vigilar.js).
+export const AVISO_ACTUALIZACION = /^actualizacion_(?:no_instalada|revertida):[0-9a-f]{7}$/;
 
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
 
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
-  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto);
+  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
+    || AVISO_ACTUALIZACION.test(texto);
 }
 
 function textoDetalle(detalle) {

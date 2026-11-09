@@ -52,3 +52,10 @@ function basesDeCanalDePrueba(env) {
   }
   return bases;
 }
+
+// Para un programa de la consola que no abre la base de este servidor (deploy/oportia-restaurar.mjs): solo si está en
+// modo de prueba y adónde va el Telegram FALSO (127.0.0.1, solo en modo de prueba). Nunca otra cosa del entorno.
+export function configDeCanales(env = process.env) {
+  const modoPrueba = env.OPORTIA_TEST === '1' || process.env.OPORTIA_TEST === '1';
+  return Object.freeze({ modoPrueba, canalesBases: Object.freeze(modoPrueba ? basesDeCanalDePrueba(env) : {}) });
+}

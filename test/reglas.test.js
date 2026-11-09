@@ -168,7 +168,11 @@ test('cada tipo de tarea está bien definido, y en src/ no hay tipos de prueba',
     assert.ok(!tipo.startsWith('prueba.'), `${tipo}: los tipos de prueba van en test/, nunca en src/`);
     assert.ok(Object.hasOwn(CUPOS, d.cupo), `${tipo}: cupo desconocido ${d.cupo}`);
     assert.ok(Number.isSafeInteger(d.maxFallos) && d.maxFallos >= 1, `${tipo}: maxFallos debe ser 1 o más`);
-    assert.ok(Number.isFinite(d.tiempoPorPasoMs) && d.tiempoPorPasoMs > 0 && d.tiempoPorPasoMs <= 600_000, `${tipo}: tiempoPorPasoMs debe ser de 10 minutos o menos`);
+    // Decisión pensada (parte e): la ÚNICA excepción es copias.hacer, con 30 minutos. Solo su paso «generar» sin copia en
+    // el servidor (las partes van directo a Telegram) puede tardar, y se corta solo a los 25 min (la foto de la base no
+    // puede quedar abierta más). Sus demás pasos vuelven en ~60 s. Cualquier otro tipo: 10 minutos o menos.
+    const tope = tipo === 'copias.hacer' ? 1_800_000 : 600_000;
+    assert.ok(Number.isFinite(d.tiempoPorPasoMs) && d.tiempoPorPasoMs > 0 && d.tiempoPorPasoMs <= tope, `${tipo}: tiempoPorPasoMs debe ser de ${tope / 60_000} minutos o menos`);
     assert.ok(Number.isSafeInteger(d.fase) && d.fase >= 1, `${tipo}: fase no válida`);
     assert.equal(typeof d.repetible, 'boolean', `${tipo}: repetible debe ser true o false`);
     assert.equal(typeof d.ignoraFrenos, 'boolean', `${tipo}: ignoraFrenos debe ser true o false`);
@@ -542,4 +546,69 @@ test('ningún archivo del repositorio tiene algo con forma de token de bot de Te
   const token = /\b\d{6,15}:[A-Za-z0-9_-]{30,80}\b/;
   const texto = archivos(RAIZ, p => /\.(js|mjs|cjs|json|md|html|css|sh|service|txt)$/.test(p) && !p.endsWith('reglas.test.js'));
   for (const f of texto) assert.doesNotMatch(leer(f), token, `${relative(RAIZ, f)} tiene algo con forma de token de Telegram`);
+});
+
+// ---------- Fase 1, parte e, paso 2: la tarea de las copias, el que manda avisos y las rutas ----------
+
+test('la foto de la base solo la abre la tarea de las copias (src/copias/hacer.js), y el servidor web nunca carga esa tarea', () => {
+  for (const f of codigo) {
+    if (f === de('nucleo', 'db.js') || f === de('copias', 'hacer.js')) continue;
+    assert.doesNotMatch(sinComentarios(leer(f)), /\babrirFotoDeLectura\b/, `${relative(RAIZ, f)} abre una foto de la base`);
+  }
+  assert.match(leer(de('copias', 'hacer.js')), /import \{ abrirFotoDeLectura \} from '\.\.\/nucleo\/db\.js';/);
+  const web = new Set(grafoDeImports(join(SRC, 'server.js')).archivos.map(a => relative(SRC, a)));
+  for (const soloDelTrabajador of [join('copias', 'hacer.js'), join('copias', 'generar.js'), join('copias', 'restaurar.js')]) assert.ok(!web.has(soloDelTrabajador), `el servidor web carga ${soloDelTrabajador}`);
+  const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
+  assert.ok(trabajador.has(join('copias', 'hacer.js')), 'el trabajador hace las copias');
+  assert.ok(!trabajador.has(join('canales', 'avisador.js')), 'los avisos por Telegram los manda el servidor web, no el trabajador');
+  assert.ok(web.has(join('canales', 'avisador.js')));
+});
+
+test('copias.hacer: tiene su manejador, la paran los dos frenos (memoria y disco), y nunca pide una tarea nueva desde adentro (encolar)', async () => {
+  const { definicion, PROGRAMAS_DEL_SISTEMA } = await import('../src/tareas/tipos.js');
+  const { MANEJADORES } = await import('../src/tareas/manejadores.js');
+  const d = definicion('copias.hacer');
+  assert.equal(typeof MANEJADORES['copias.hacer']?.paso, 'function');
+  assert.equal(d.ignoraFrenos, false);
+  assert.equal(d.cupo, 'grande');
+  assert.ok(PROGRAMAS_DEL_SISTEMA.some(p => p.programa === 'copias.hacer' && p.cada === 'diaria' && p.hora === 4 && p.minuto === 40));
+  for (const f of codigoDe('copias')) assert.doesNotMatch(sinComentarios(leer(f)), /\bencolar\b/, `${relative(RAIZ, f)} pide tareas`);
+  const supervisor = leer(de('tareas', 'supervisor.js'));
+  assert.match(supervisor, /BANDERAS_TRABAJADOR = Object\.freeze\(\['--no-warnings', '--expose-gc', '--max-old-space-size=64', '--max-semi-space-size=2'\]\)/);
+  assert.match(leer(de('tareas', 'trabajador.js')), /VERSION_DE_BASE_NECESARIA = 6;/);
+});
+
+test('la clave de prueba nunca puede ser la de un servidor, y las rutas de la clave nunca leen un campo «clave» ni anotan el pedido', () => {
+  const estado = leer(de('copias', 'estado.js'));
+  const confirmar = /export function confirmarClave[\s\S]*?\n}\n/.exec(estado)?.[0] ?? '';
+  assert.match(confirmar, /esClaveDePrueba\(/, 'confirmarClave rechaza PUBLICAS_DE_PRUEBA');
+  assert.match(/export function crearClavePendiente[\s\S]*?\n}\n/.exec(estado)?.[0] ?? '', /esClaveDePrueba\(/);
+  const rutas = leer(de('api', 'copias.js'));
+  assert.doesNotMatch(rutas, /datos\.clave\b|\[['"]clave['"]\]|textoDe\(datos, ['"]clave['"]\)/, 'una ruta lee un campo «clave»');
+  assert.match(rutas, /campos\.length !== 1 \|\| campos\[0\] !== 'verificador'/, 'solo se acepta { verificador }');
+  assert.doesNotMatch(rutas, /registro\?\.error\?\.\([^)]*(?:error\)|datos|req)/, 'nunca se anota el error entero ni el pedido');
+  for (const ruta of ['/api/admin/copias/clave/nueva', '/api/admin/copias/clave/confirmar', '/api/admin/copias/clave/comprobar']) {
+    assert.match(rutas, new RegExp(`'${ruta.replace(/\//g, '\\/')}'[\\s\\S]*?\\}, \\{ admin: true, soloDueno: true \\}\\);`), ruta);
+  }
+  const canales = leer(de('api', 'canales.js'));
+  const deCanales = [...canales.matchAll(/rutas\.agregar\('POST', '([^']+)'[\s\S]*?\}, (\{[^}]*\})\);/g)];
+  assert.equal(deCanales.length, 4);
+  for (const [, ruta, opciones] of deCanales) assert.match(opciones, /admin: true, soloDueno: true/, ruta);
+});
+
+test('el programa para restaurar nunca lee la clave ni el token de la orden ni del entorno, y nunca corre como root', () => {
+  const cli = leer(join(RAIZ, 'deploy', 'oportia-restaurar.mjs'));
+  assert.doesNotMatch(cli, /process\.env/);
+  assert.match(cli, /\/\^--\(\?:clave\|token\|key\)\\b\/i\.test\(a\)/, 'rechaza --clave/--token');
+  assert.match(cli, /process\.getuid\?\.\(\) === 0 && !config\.modoPrueba/);
+  assert.match(cli, /preguntar\('Escribe tu clave de recuperación \(no se muestra\): ', \{ oculto: true \}\)/);
+  assert.doesNotMatch(cli, /\b(?:rmSync|unlinkSync|rmdirSync|writeFileSync)\b/, 'nunca borra ni pisa');
+});
+
+test('el que manda avisos empieza después de abrir el puerto y se apaga antes de cerrar la base', () => {
+  const server = leer(join(SRC, 'server.js'));
+  const listen = server.indexOf('servidor.listen(');
+  assert.ok(listen > 0 && server.indexOf('avisador?.iniciar()') > listen, 'después de listen');
+  assert.ok(server.indexOf('await avisador?.parar()') < server.indexOf('db?.close()', server.indexOf('await avisador?.parar()')), 'antes de cerrar la base');
+  assert.match(leer(de('canales', 'avisador.js')), /temporizador\.unref\?\.\(\);/, 'su reloj nunca deja vivo al proceso');
 });
