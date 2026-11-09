@@ -301,6 +301,15 @@ copias que se quedaron solo en el servidor, el mensaje fijado que cambió, una a
 de `/var/lib/jarvis/update.log` y `version.bad`, sin cambiarlos), los topes y el proveedor de la IA. Un aviso igual no se
 repite; como mucho 10 avisos por hora y 30 por día (las copias no cuentan); lo urgente nunca se calla y cuando se resuelve
 llega «Ya se arregló». Los avisos los manda la parte web, así llegan aunque el trabajo automático esté caído.
+Si Telegram no funciona por horas o días, lo urgente espera hasta 7 días y llega cuando vuelve; lo urgente que se arregló
+solo sin llegar va en un mensaje «No te llegaron a tiempo». Si un mensaje no se acepta (un error raro de Telegram), se
+reintenta con esperas (1, 5, 15 y 60 min) y Claves y Copias dicen «no llega». Si pegas un token nuevo del mismo bot y su
+prueba falla por algo pasajero, se prueba otra vez solo.
+
+Una copia siempre lleva la fecha de su FOTO (cuándo se tomaron los datos), nunca la de cuándo se comprobó: una copia que
+se quedó a medias más de 20 horas (modo seguro, el servidor apagado) no se termina, se hace otra. Si dejas el chat (o unes
+otro) mientras se hace una copia, nada más va al chat viejo. El índice de cada copia queda fijado arriba en el chat; si
+no se pudo fijar, se reintenta, y si nunca se pudo, llega un aviso urgente.
 
 ### Pantallas
 - **Administrador → Copias** (`#copias`): la tarjeta grande (verde: hay una copia comprobada fuera del servidor en las
@@ -316,7 +325,13 @@ llega «Ya se arregló». Los avisos los manda la parte web, así llegan aunque 
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=ahora         # pide una copia ahora
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --telegram=desvincular # deja de usar el chat (no borra nada)
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --telegram --destino=/var/lib/jarvis/recuperada.db
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --telegram --indice=<el …-indice.txt de tu chat> --destino=<archivo nuevo>
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo> [--comprobar] [--anterior]
+
+Con `--telegram` se usa la copia FIJADA en el chat; si es de hace más de 26 horas, pregunta (quizás la de anoche no quedó
+fijada: guarda su «…-indice.txt» y usa `--indice`). Con `--archivos`, una parte dañada o un archivo raro en la carpeta se
+saltan si hay otro bueno; `--anterior` usa la copia buena de antes si la más nueva está dañada o cortada (siempre dice que
+hay una más nueva). Para la carpeta de copias del servidor, usa la carpeta de un mes si son muchísimos archivos.
 
 `oportia-restaurar.mjs` pide la clave y el token sin mostrarlos (nunca en la línea de la orden), nunca corre como root y
 nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe

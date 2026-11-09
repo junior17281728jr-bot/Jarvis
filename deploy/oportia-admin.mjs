@@ -320,7 +320,7 @@ function estadoDeCopias(db, config) {
   const e = estadoCopias(db, { libreMb, telegram: t, modoSeguro: leerModoSeguro(db).activo });
   console.log(e.clave.activa ? `Clave de recuperación: ${e.clave.huella} (desde el ${fechaRd(e.clave.desde)}).` : 'Clave de recuperación: FALTA (créala en Administrador → Copias, desde Tailscale). Sin ella no hay copias.');
   console.log(t.chat ? `Telegram: chat de ${t.chat.nombre ?? '—'} (${t.chat.estado}).${t.listo ? '' : ` No llegan mensajes ahora (${t.motivo}).`}` : `Telegram: sin chat unido${t.token ? '' : ' (falta el token del bot)'}.`);
-  console.log(e.ultimaFuera ? `Última copia fuera del servidor: ${fechaRd(e.ultimaFuera.fecha)}, ${megas(e.ultimaFuera.bytes)}, ${e.ultimaFuera.partes} partes, comprobada.` : 'Última copia fuera del servidor: ninguna todavía.');
+  console.log(e.ultimaFuera ? `Última copia fuera del servidor: la foto del ${fechaRd(e.ultimaFuera.fecha)}, ${megas(e.ultimaFuera.bytes)}, ${e.ultimaFuera.partes} partes, comprobada${e.ultimaFuera.comprobada ? ` el ${fechaRd(e.ultimaFuera.comprobada)}` : ''}.` : 'Última copia fuera del servidor: ninguna todavía.');
   if (e.ultima) console.log(`Última copia (cualquiera): ${fechaRd(e.ultima.fecha)} — ${e.ultima.estado}${e.ultima.motivo ? ` (${e.ultima.motivo})` : ''}.`);
   if (e.enCurso) console.log(`Ahora mismo: haciendo una copia (paso «${e.enCurso.paso}»).`);
   console.log(`Próxima copia: ${fechaRd(e.proxima)}.`);

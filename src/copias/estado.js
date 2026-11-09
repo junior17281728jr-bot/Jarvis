@@ -254,9 +254,11 @@ export function partesDe(db, copiaId) {
   return db.prepare('SELECT * FROM copia_partes WHERE copia_id = ? ORDER BY n, id').all(copiaId);
 }
 
-// La última copia comprobada FUERA del servidor (o null).
+// La última copia comprobada FUERA del servidor (o null): la de la foto MÁS NUEVA, no la que se comprobó al último (una
+// copia a medias que terminó días después sigue siendo de su foto). La frescura siempre se mide por empezada_en: es la
+// hora de la foto (generar la toma justo después, y una copia cuya foto pasó de 20 h nunca se termina: hacer.js).
 export function ultimaFuera(db) {
-  return db.prepare("SELECT * FROM copias WHERE estado = 'verificada' AND fuera = 1 ORDER BY verificada_en DESC, id DESC LIMIT 1").get() ?? null;
+  return db.prepare("SELECT * FROM copias WHERE estado = 'verificada' AND fuera = 1 ORDER BY empezada_en DESC, id DESC LIMIT 1").get() ?? null;
 }
 
 // Cuándo toca la próxima copia de la noche (ISO): la ranura de hoy si todavía no tiene tarea, si no la de mañana.
@@ -290,22 +292,23 @@ export function copiaEnCurso(db) {
 
 function copiaPublica(c) {
   return {
-    fecha: c.verificada_en ?? c.terminada_en ?? c.empezada_en, empezada: c.empezada_en, origen: c.origen, bytes: c.bytes, partes: c.partes,
+    fecha: c.empezada_en, empezada: c.empezada_en, comprobada: c.verificada_en ?? null, origen: c.origen, bytes: c.bytes, partes: c.partes,
     local: c.local === 1, fuera: c.fuera === 1, estado: c.estado, motivo: c.motivo ?? null, fijada: c.fijada === 1, tablas: c.tablas,
   };
 }
 
 // ¿Hay que avisar «copia atrasada»? (lo evalúa el servidor web: src/canales/avisador.js). Regla: hay clave activa Y un
-// chat de Telegram unido Y pasaron más de 30 h desde lo último de: confirmar la clave, unir el chat, la última copia
-// comprobada fuera. Así no hay una falsa alarma justo después de configurar. → { activo, detalle }
+// chat de Telegram unido Y pasaron más de 30 h desde lo último de: confirmar la clave, unir el chat, la FOTO de la última
+// copia comprobada fuera (nunca la hora en que se comprobó: una copia de hace 3 días comprobada hoy sigue atrasada).
+// Así no hay una falsa alarma justo después de configurar. → { activo, detalle }
 export function copiaAtrasada(db, ahora = Date.now()) {
   const llave = llaveActiva(db);
   const canal = db.prepare("SELECT * FROM canales WHERE tipo = 'telegram' AND proposito = 'avisos_dueno' AND estado IN ('activo', 'bloqueado', 'perdido') ORDER BY id DESC LIMIT 1").get();
   if (!llave || !canal) return { activo: false, detalle: null };
   const ultima = ultimaFuera(db);
-  const base = Math.max(Date.parse(llave.confirmada_en ?? 0) || 0, Date.parse(canal.vinculado_en ?? 0) || 0, Date.parse(ultima?.verificada_en ?? 0) || 0);
+  const base = Math.max(Date.parse(llave.confirmada_en ?? 0) || 0, Date.parse(canal.vinculado_en ?? 0) || 0, Date.parse(ultima?.empezada_en ?? 0) || 0);
   const horas = Math.floor((ahora - base) / HORA);
-  return { activo: ahora > base + HORAS_COPIA_VIEJA * HORA, detalle: { horas, desde: ultima?.verificada_en ?? null } };
+  return { activo: ahora > base + HORAS_COPIA_VIEJA * HORA, detalle: { horas, desde: ultima?.empezada_en ?? null } };
 }
 
 // Para el resumen de Administrador (GET /api/admin/sistema → copias): { estado, tono, ultimaFuera, proxima, motivo }.
@@ -314,7 +317,7 @@ export function resumenCopias(db, { ahora = Date.now() } = {}) {
   const canal = db.prepare("SELECT estado FROM canales WHERE tipo = 'telegram' AND proposito = 'avisos_dueno' AND estado IN ('activo', 'bloqueado', 'perdido') ORDER BY id DESC LIMIT 1").get();
   const fuera = ultimaFuera(db);
   const ultima = db.prepare('SELECT * FROM copias ORDER BY id DESC LIMIT 1').get();
-  const reciente = fuera && ahora - Date.parse(fuera.verificada_en) <= HORAS_COPIA_VIEJA * HORA;
+  const reciente = fuera && ahora - Date.parse(fuera.empezada_en) <= HORAS_COPIA_VIEJA * HORA;
   let tono = 'bien';
   let motivo = null;
   if (!llave) { tono = 'atencion'; motivo = 'sin_clave'; }
@@ -323,7 +326,7 @@ export function resumenCopias(db, { ahora = Date.now() } = {}) {
   else if (!reciente) { tono = 'mal'; motivo = 'atrasada'; }
   return {
     estado: tono, tono, motivo, proxima: proximaCopia(db, ahora),
-    ultimaFuera: fuera ? { fecha: fuera.verificada_en, bytes: fuera.bytes, partes: fuera.partes } : null,
+    ultimaFuera: fuera ? { fecha: fuera.empezada_en, comprobada: fuera.verificada_en, bytes: fuera.bytes, partes: fuera.partes } : null,
     ultima: ultima ? copiaPublica(ultima) : null,
   };
 }
@@ -352,7 +355,7 @@ export function estadoCopias(db, { ahora = Date.now(), libreMb = null, baseMb = 
     },
     telegram,
     ultima: ultima ? copiaPublica(ultima) : null,
-    ultimaFuera: fuera ? { fecha: fuera.verificada_en, bytes: fuera.bytes, partes: fuera.partes, estado: fuera.estado, tablas: fuera.tablas } : null,
+    ultimaFuera: fuera ? { fecha: fuera.empezada_en, comprobada: fuera.verificada_en, bytes: fuera.bytes, partes: fuera.partes, estado: fuera.estado, tablas: fuera.tablas } : null,
     proxima: proximaCopia(db, ahora),
     enCurso: enCurso && viva?.estado === 'en_curso' ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de } : enCurso ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de, esperando: true } : null,
     locales: {

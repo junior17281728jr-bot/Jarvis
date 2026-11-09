@@ -28,6 +28,13 @@ export const CLASES_QUE_CUENTAN = Object.freeze(['aviso', 'cierre', 'resumen', '
 export const ESPERAS_TRAS_FALLO_MS = Object.freeze([60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000]);
 export const REINTENTO_BLOQUEADO_MS = 60 * 60_000;
 export const PAUSA_MAXIMA_MS = 60 * 60_000;
+// Ninguna pausa guardada puede pasar de PAUSA_MAXIMA_MS: una que pasa (más este margen) es de un reloj que iba adelantado
+// y se corrigió hacia atrás. Se ignora (si no, los avisos graves quedarían parados todo lo que se movió el reloj).
+export const MARGEN_RELOJ_MS = 60_000;
+// Fallos pasajeros seguidos (red, Telegram caído) desde los que se abre telegram_falla «No llega a Telegram».
+export const FALLOS_PARA_AVISAR = 4;
+// Lo que no es un problema del canal (no cuenta como fallo).
+const NO_ES_DEL_CANAL = Object.freeze(['ok', 'cancelado', 'sin_clave', 'credencial_cambiada']);
 
 const iso = ms => new Date(ms).toISOString();
 const RANGO = { info: 0, atencion: 1, grave: 2 };
@@ -81,10 +88,11 @@ export function anotarEnvio(db, { canalId, clase, avisoId = null, clave = null, 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(canalId, clase, avisoId, clave, nivel, copiaId, resultado, motivo, mensajeId, bytes, iso(ahora));
 }
 
-// Cuántos mensajes de avisos salieron (no cuentan las partes de las copias: una base grande sube ~50 por noche).
-export function enviadosDesde(db, canalId, desdeMs) {
-  return db.prepare(`SELECT COUNT(*) AS n FROM canal_envios WHERE canal_id = ? AND resultado = 'enviado' AND creado_en >= ?
-    AND clase IN (${CLASES_QUE_CUENTAN.map(() => '?').join(', ')})`).get(canalId, iso(desdeMs), ...CLASES_QUE_CUENTAN).n;
+// Cuántos mensajes de avisos salieron (no cuentan las partes de las copias: una base grande sube ~50 por noche). Las filas
+// «del futuro» (anotadas con un reloj adelantado que después se corrigió) no cuentan: si no, los topes quedarían llenos.
+export function enviadosDesde(db, canalId, desdeMs, ahora = Date.now()) {
+  return db.prepare(`SELECT COUNT(*) AS n FROM canal_envios WHERE canal_id = ? AND resultado = 'enviado' AND creado_en >= ? AND creado_en <= ?
+    AND clase IN (${CLASES_QUE_CUENTAN.map(() => '?').join(', ')})`).get(canalId, iso(desdeMs), iso(ahora + MARGEN_RELOJ_MS), ...CLASES_QUE_CUENTAN).n;
 }
 
 // Todo salió bien: el canal vuelve a «activo» y se cierra el aviso de que los mensajes no llegaban.
@@ -99,22 +107,28 @@ export function marcarBien(db, canalId, ahora = Date.now()) {
 // Telegram pidió esperar (429): nadie manda nada por ese canal hasta entonces (ni el servidor web ni el trabajador).
 export function pausarCanal(db, canalId, esperarMs, ahora = Date.now()) {
   const hasta = ahora + Math.min(PAUSA_MAXIMA_MS, Math.max(1000, Number(esperarMs) || 1000));
-  db.prepare('UPDATE canales SET pausa_hasta = CASE WHEN pausa_hasta IS NULL OR pausa_hasta < ? THEN ? ELSE pausa_hasta END WHERE id = ?')
-    .run(iso(hasta), iso(hasta), canalId);
+  // Una pausa guardada más larga que la máxima (reloj corregido hacia atrás) se reemplaza, nunca se respeta.
+  db.prepare('UPDATE canales SET pausa_hasta = CASE WHEN pausa_hasta IS NULL OR pausa_hasta < ? OR pausa_hasta > ? THEN ? ELSE pausa_hasta END WHERE id = ?')
+    .run(iso(hasta), iso(ahora + PAUSA_MAXIMA_MS + MARGEN_RELOJ_MS), iso(hasta), canalId);
   return hasta;
 }
 
+// La pausa del canal (ms) o null. Una pausa que termina más allá de PAUSA_MAXIMA_MS desde ahora no puede ser de verdad
+// (ninguna se guarda así): el reloj iba adelantado y se corrigió. Se ignora.
 export function pausaDe(canal, ahora = Date.now()) {
   const ms = canal?.pausa_hasta ? Date.parse(canal.pausa_hasta) : NaN;
-  return Number.isFinite(ms) && ms > ahora ? ms : null;
+  if (!Number.isFinite(ms) || ms <= ahora) return null;
+  return ms - ahora > PAUSA_MAXIMA_MS + MARGEN_RELOJ_MS ? null : ms;
 }
 
 // Lo que se hace con un problema del canal (lo usan el que manda avisos y las copias). Una sola escritura corta.
 //  bloqueado (403) → «bloqueado» (se vuelve a intentar cada hora) · chat_no_existe → «perdido» (hay que unirlo otra vez)
 //  clave_no_valida (401) → la clave del bot queda marcada (Claves dice «pégala otra vez») · limite (429) → pausa
-//  pasajero (red, Telegram caído) → esperas de 1, 5, 15 y 60 min.
+//  pasajero (red, Telegram caído) → esperas de 1, 5, 15 y 60 min; desde el 4.º seguido, telegram_falla «sin_respuesta».
+//  cualquier otro (un 400 o 404 que no se conoce, 409, 413, un error de aquí) → las mismas esperas Y telegram_falla
+//  «pedido» enseguida: nunca se reintenta cada 15 s sin fin, y las pantallas dicen que no llega.
 export function anotarProblema(db, canal, { motivo, esperarMs = null, secretoId = null, ahora = Date.now() }) {
-  if (!canal) return;
+  if (!canal || NO_ES_DEL_CANAL.includes(motivo)) return;
   const momento = iso(ahora);
   db.prepare('UPDATE canales SET ultimo_error = ?, ultimo_error_en = ? WHERE id = ?').run(motivo, momento, canal.id);
   if (motivo === 'limite') { pausarCanal(db, canal.id, esperarMs, ahora); return; }
@@ -134,11 +148,13 @@ export function anotarProblema(db, canal, { motivo, esperarMs = null, secretoId 
     abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'clave' }, ahora });
     return;
   }
-  if (esPasajero(motivo)) {
-    const fallos = (canal.fallos_seguidos ?? 0) + 1;
-    const espera = ESPERAS_TRAS_FALLO_MS[Math.min(fallos, ESPERAS_TRAS_FALLO_MS.length) - 1];
-    db.prepare('UPDATE canales SET fallos_seguidos = ?, pausa_hasta = ? WHERE id = ?').run(fallos, iso(ahora + espera), canal.id);
-  }
+  // Lo leído antes puede ser viejo (otro proceso anotó otro fallo): se cuenta sobre la fila de ahora.
+  const fila = db.prepare('SELECT fallos_seguidos FROM canales WHERE id = ?').get(canal.id);
+  const fallos = (fila?.fallos_seguidos ?? canal.fallos_seguidos ?? 0) + 1;
+  const espera = ESPERAS_TRAS_FALLO_MS[Math.min(fallos, ESPERAS_TRAS_FALLO_MS.length) - 1];
+  db.prepare('UPDATE canales SET fallos_seguidos = ?, pausa_hasta = ? WHERE id = ?').run(fallos, iso(ahora + espera), canal.id);
+  if (!esPasajero(motivo)) abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'pedido' }, ahora });
+  else if (fallos >= FALLOS_PARA_AVISAR) abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'sin_respuesta' }, ahora });
 }
 
 // ¿Se puede mandar por este canal AHORA? → { si, motivo, canal, secreto }
@@ -272,9 +288,13 @@ async function revisarAhora(db, config, p, { usuarioId, reloj, adaptador }) {
   const r = await conCredencial(db, config, { uso: USO, secretoId: p.secreto_id }, async cred => {
     const lote = await adaptador.recibir(cred, { desde: p.novedades_desde ?? null, limite: 50 });
     if (lote.motivo !== 'ok') return { error: lote.motivo };
+    // Los intentos se cuentan UNO POR UNO (con los de antes): al quinto equivocado el código vence y no se prueba ningún
+    // mensaje más de ese lote (si no, un extraño mandaría 50 códigos entre dos preguntas).
     let encontrado = null;
     let intentos = 0;
+    const previos = p.codigo_intentos ?? 0;
     for (const m of lote.mensajes) {
+      if (previos + intentos >= INTENTOS_MAXIMOS) break;
       const v = mensajeConCodigo(m, { huella: p.codigo_huella, desdeMs: Date.parse(p.codigo_desde) });
       if (v === 'coincide') { encontrado = m; break; }
       if (v === 'intento') intentos += 1;
@@ -368,16 +388,25 @@ export function estadoTelegram(db, config, { ahora = Date.now() } = {}) {
   const desde = ahora - 24 * 3_600_000;
   const ultimoOk = canal ? db.prepare("SELECT creado_en FROM canal_envios WHERE canal_id = ? AND resultado = 'enviado' ORDER BY id DESC LIMIT 1").get(canal.id)?.creado_en ?? null : null;
   let motivo = listo.motivo;
+  let listoSi = listo.si;
   if (!secreto) motivo = 'sin_token';
   else if (secreto.prueba && secreto.prueba !== 'ok' && !canal) motivo = secreto.prueba;
+  // Los mensajes no llegan aunque entre intento e intento parezca listo (un 4xx raro, o Telegram que no responde hace
+  // rato): las pantallas lo dicen («No llega a Telegram»).
+  if (canal && (motivo == null || motivo === 'pausa')) {
+    const falla = db.prepare("SELECT detalle FROM avisos WHERE clave = 'telegram_falla' AND resuelto_en IS NULL").get();
+    let d = null;
+    try { d = JSON.parse(falla?.detalle ?? 'null'); } catch { d = null; }
+    if (['pedido', 'sin_respuesta'].includes(d?.motivo)) { motivo = d.motivo; listoSi = false; }
+  }
   return {
-    listo: listo.si,
+    listo: listoSi,
     motivo,
     bot: bot && secreto && bot.secretoId === secreto.id ? { usuario: bot.usuario, nombre: bot.nombre } : null,
     token: secreto ? { final: secreto.final, prueba: secreto.prueba, probadoEn: secreto.probado_en } : null,
     chat: canal ? { estado: canal.estado, nombre: canal.destino_nombre, vinculadoEn: canal.vinculado_en, problema: canal.estado === 'activo' ? null : canal.estado } : null,
     vinculo: { pendiente: Boolean(pendiente && !pendiente.vencido), hasta: pendiente && !pendiente.vencido ? pendiente.codigo_hasta : null },
-    envios: canal ? { ultimoOk, ultimoError: canal.ultimo_error_en ? { motivo: canal.ultimo_error, en: canal.ultimo_error_en } : null, hoy: enviadosDesde(db, canal.id, desde) } : null,
+    envios: canal ? { ultimoOk, ultimoError: canal.ultimo_error_en ? { motivo: canal.ultimo_error, en: canal.ultimo_error_en } : null, hoy: enviadosDesde(db, canal.id, desde, ahora) } : null,
   };
 }
 

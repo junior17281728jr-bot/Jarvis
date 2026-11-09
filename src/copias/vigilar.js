@@ -17,6 +17,10 @@ const iso = ms => new Date(ms).toISOString();
 export const CLAVE_ACTUALIZACIONES = 'avisos.actualizaciones';
 export const LEER_MAXIMO = 64 * 1024;
 export const COPIA_SIN_TAREA_MS = 2 * 3_600_000;
+// Un «hasta» guardado más de 5 min en el futuro es de un reloj que iba adelantado: se vuelve 7 días atrás y las líneas
+// ya vistas se reconocen por su contenido (las últimas VISTAS_MAX), así nada se avisa dos veces ni se salta.
+export const MARGEN_RELOJ_MS = 5 * 60_000;
+export const VISTAS_MAX = 200;
 
 function tamanoMb(ruta) {
   try { return statSync(ruta).size / MB; } catch { return 0; }
@@ -115,23 +119,34 @@ function leerAjuste(db, clave) {
   try { return JSON.parse(f.valor); } catch { return null; }
 }
 
+const claveDeLinea = l => `${l.fecha}|${l.tipo}|${l.sha}`;
+
 // Abre o resuelve los avisos de las actualizaciones (síncrona: dentro de ctx.escribir). La primera vez solo anota
-// «desde ahora» (no avisa de la historia vieja). → { abiertos, resueltos }
+// «desde ahora» (no avisa de la historia vieja). → { abiertos, resueltos } (y relojAtras: true si el reloj volvió atrás)
 export function aplicarActualizaciones(db, datos, { ahora = Date.now() } = {}) {
   const r = { abiertos: [], resueltos: [] };
   if (!datos) return r;
   const guardado = leerAjuste(db, CLAVE_ACTUALIZACIONES);
-  const hasta = Date.parse(guardado?.hasta ?? '');
+  let hasta = Date.parse(guardado?.hasta ?? '');
+  const vistas = Array.isArray(guardado?.vistas) ? guardado.vistas.map(String).slice(-VISTAS_MAX) : [];
+  const yaVista = new Set(vistas);
   const guardar = valor => db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(CLAVE_ACTUALIZACIONES, JSON.stringify(valor), iso(ahora));
   if (!Number.isFinite(hasta)) {
-    guardar({ hasta: iso(ahora), versionMala: datos.versionMala ?? null });
+    guardar({ hasta: iso(ahora), versionMala: datos.versionMala ?? null, vistas: [] });
     return r;
+  }
+  // El reloj se corrigió hacia atrás: con el «hasta» viejo, las líneas nuevas (con fechas de antes) se saltarían.
+  if (hasta > ahora + MARGEN_RELOJ_MS) {
+    hasta = ahora - 7 * DIA;
+    r.relojAtras = true; // solo aparece cuando pasó
   }
   let nuevoHasta = hasta;
   for (const l of datos.lineas) {
-    if (l.fecha <= hasta) continue;
+    if (l.fecha <= hasta || yaVista.has(claveDeLinea(l))) continue;
     nuevoHasta = Math.max(nuevoHasta, l.fecha);
+    vistas.push(claveDeLinea(l));
+    yaVista.add(claveDeLinea(l));
     if (l.tipo === 'actualizado') {
       for (const a of db.prepare("SELECT id, clave, detalle FROM avisos WHERE resuelto_en IS NULL AND clave LIKE 'actualizacion_%'").all()) {
         let d = null;
@@ -146,7 +161,7 @@ export function aplicarActualizaciones(db, datos, { ahora = Date.now() } = {}) {
     abrirAviso(db, { clave, nivel: l.tipo === 'revertida' ? 'grave' : 'atencion', detalle, ahora });
     r.abiertos.push(clave);
   }
-  guardar({ hasta: iso(nuevoHasta), versionMala: datos.versionMala ?? null });
+  guardar({ hasta: iso(nuevoHasta), versionMala: datos.versionMala ?? null, vistas: vistas.slice(-VISTAS_MAX) });
   return r;
 }
 

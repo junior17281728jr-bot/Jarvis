@@ -6,7 +6,7 @@
 export const HORAS_COPIA_VIEJA = 30; // igual que src/copias/estado.js: sin copia comprobada fuera en 30 h, algo anda mal
 
 // Los problemas del chat que hacen que las próximas copias se queden en este servidor (no «pausa»: esa se va sola).
-const PROBLEMAS_DEL_CHAT = new Set(['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar']);
+const PROBLEMAS_DEL_CHAT = new Set(['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar', 'pedido', 'sin_respuesta']);
 
 // Por qué no se puede «Hacer una copia ahora» (o null si se puede). Además de lo que dice el servidor: con el disco que
 // no deja guardar copias aquí y sin un Telegram listo, no hay adónde mandarla (el servidor respondería sin_destino).
@@ -41,7 +41,7 @@ export function razonNoClave(c) {
 // va después de «:». Cualquier otro se muestra como «otro» (nunca el código tal cual).
 export const MOTIVOS_COPIA = Object.freeze(['telegram_limite_largo', 'telegram_limite', 'telegram_no_responde', 'copia_sin_exito', 'sin_llave',
   'volcado_incompleto', 'volcado_no_soportado', 'volcado_danado', 'fila_muy_grande', 'disco_distinto', 'parte_distinta', 'bot_cambiado',
-  'foto_interrumpida', 'foto_larga', 'tarea_fallida', 'tarea_cancelada', 'tarea_hecha', 'sin_tarea', 'restaurada', 'cancelada', 'otro']);
+  'foto_interrumpida', 'foto_larga', 'foto_vieja', 'chat_cambiado', 'tarea_fallida', 'tarea_cancelada', 'tarea_hecha', 'sin_tarea', 'restaurada', 'cancelada', 'otro']);
 
 // La tarjeta grande de #copias, según GET /api/admin/copias.
 // → { estado, tono, icono, marca, titulo, linea, variables, accion, enlace, razon, progreso }

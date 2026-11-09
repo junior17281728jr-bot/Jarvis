@@ -127,6 +127,21 @@ export function textoResumen(avisos, idioma = 'es') {
   return recortar(lineas.join('\n'));
 }
 
+// Lo grave que no llegó a tiempo (Telegram no funcionaba, o se arregló solo antes de poder mandarlo): UN mensaje que
+// lo nombra (≤ 5 líneas y «y N más»), suena.
+export function textoPerdidos(avisos, idioma = 'es') {
+  const lineas = [frase(idioma, 'telegram.titulo.perdidos'), frase(idioma, avisos.length === 1 ? 'telegram.perdidos_uno' : 'telegram.perdidos', { n: avisos.length })];
+  for (const a of avisos.slice(0, 5)) {
+    const base = baseDeClave(a.clave);
+    const nombre = existeFrase(`telegram.aviso.${base}.titulo`) ? frase(idioma, `telegram.aviso.${base}.titulo`) : frase(idioma, 'telegram.aviso.otro.titulo');
+    const sha = /^actualizacion_/.test(base) && /^[0-9a-f]{7}$/.test(String(a.clave).split(':')[1] ?? '') ? ` (${String(a.clave).split(':')[1]})` : '';
+    lineas.push(`🔴 ${nombre}${sha} · ${fechaRd(a.creado_en ?? a.ultima_vez, idioma)}`);
+  }
+  if (avisos.length > 5) lineas.push(frase(idioma, 'telegram.resumen_mas', { n: avisos.length - 5 }));
+  lineas.push(frase(idioma, 'telegram.miralo'));
+  return recortar(lineas.join('\n'));
+}
+
 export function textoBienvenida(idioma = 'es', { nombre = '', abiertos = 0 } = {}) {
   const lineas = [frase(idioma, 'telegram.bienvenida', { nombre: String(nombre ?? '').slice(0, 40) })];
   if (abiertos > 0) lineas.push(frase(idioma, abiertos === 1 ? 'telegram.bienvenida_abiertos_uno' : 'telegram.bienvenida_abiertos', { n: abiertos }));

@@ -14,6 +14,13 @@
 //    llama a encolar). Topes salidos de las filas: 3 copias por tarea, 3 copias subidas sin éxito por día de RD, 12
 //    esperas o 6 h de esperas por copia. Pasado un tope: la tarea queda «fallida» y el aviso copia_fallida (grave).
 //  - Una copia queda atada a UN bot (su secreto y su id de bot): si el token cambia en medio, se empieza otra copia.
+//  - Y a UN chat: antes de cada envío (y de cada bajada para comprobar) se mira otra vez que su chat siga siendo el chat
+//    en uso del dueño. Si lo dejó o unió otro en medio, nada más va al chat viejo: la copia sigue solo en el servidor
+//    (si sus partes están en el disco) o se empieza otra («chat_cambiado»).
+//  - La frescura es la de la FOTO (empezada_en): una copia cuya foto ya tiene más de 20 h (modo seguro, el trabajador
+//    apagado, una vuelta a 0.4.1 en medio) nunca se termina: se empieza otra con una foto nueva («foto_vieja»).
+//  - El índice se fija arriba en el chat, y la copia queda «verificada» solo cuando el fijado se comprobó; un error
+//    pasajero al fijar se reintenta (1, 5, 15, 30 y 60 min). Si nunca queda fijado: copia_sin_fijar GRAVE.
 //  - Lo que dice Telegram es solo un motivo (src/canales/telegram.js); el token nunca aparece en nada de lo que se guarda.
 import { closeSync, fsyncSync, mkdirSync, openAsBlob, openSync, readFileSync, statSync, writeSync, createReadStream } from 'node:fs';
 import { join } from 'node:path';
@@ -32,7 +39,7 @@ import {
 } from './estado.js';
 import { conCredencial } from '../canales/credencial.js';
 import { ADAPTADORES, esPasajero } from '../canales/canal.js';
-import { USO, canalActivo, pausaDe, pausarCanal, anotarProblema, anotarEnvio, marcarBien } from '../canales/canales.js';
+import { USO, canalActual, canalActivo, pausaDe, pausarCanal, anotarProblema, anotarEnvio, marcarBien } from '../canales/canales.js';
 import { textoCopia, idiomaDelDueno } from '../canales/textos.js';
 
 const MINUTO = 60_000;
@@ -55,6 +62,7 @@ export const OPCIONES_COPIAS = Object.freeze({
   presupuestoFoto: Object.freeze({ walMb: 64, libreMinMb: 500, ms: 25 * MINUTO }),
   pausaArchivosMs: null, // null = la del adaptador (≥ 1,1 s entre documentos)
   reintentosParte: 2,
+  esperasFijarMs: Object.freeze([1, 5, 15, 30, 60].map(m => m * MINUTO)), // fijar el índice: un reintento tras cada espera
 });
 
 function tamanoMb(ruta) {
@@ -91,6 +99,13 @@ export function crearManejadorCopias(opciones = {}) {
   const medirBase = config => (O.baseMb ? O.baseMb(config) : tamanoMb(config.archivoBase));
 
   const filaCopia = (db, id) => (id == null ? null : db.prepare('SELECT * FROM copias WHERE id = ?').get(id) ?? null);
+  // ¿La foto de esta copia ya es vieja? (más de 20 h: una copia así se empieza otra vez, nunca se termina)
+  const fotoVieja = copia => reloj() - Date.parse(copia.empezada_en) > O.caducaMs;
+  // El chat de la copia, SOLO si sigue siendo el chat en uso del dueño (o null: lo dejó, unió otro, o se perdió).
+  const chatDeLaCopia = (db, copia) => {
+    const actual = canalActual(db);
+    return actual && actual.id === copia.canal_id && actual.estado !== 'perdido' ? actual : null;
+  };
 
   // Una copia nueva dentro de la misma tarea (nunca una tarea nueva), no antes de 10 min.
   async function reiniciar(ctx, copia, { motivo, estado = 'interrumpida', esperarMs = 0 }) {
@@ -138,6 +153,16 @@ export function crearManejadorCopias(opciones = {}) {
     const canal = copia.canal_id ? db.prepare('SELECT * FROM canales WHERE id = ?').get(copia.canal_id) : null;
     if (problema === 'cancelado') throw new ErrorCopias('cancelada');
     if (problema === 'bot_cambiado') return reiniciar(ctx, copia, { motivo: 'bot_cambiado' });
+    if (problema === 'chat_cambiado') {
+      // El dueño dejó el chat (o unió otro) en medio: nada más va al chat viejo. Con las partes en el disco, la copia
+      // termina como «solo en el servidor»; si no, se empieza otra (al chat de ahora, si hay uno).
+      const enDisco = partesDe(db, copia.id).every(p => p.archivo_local);
+      if (copia.local === 1 && enDisco) {
+        await ctx.escribir(() => actualizarCopia(db, copia.id, { fuera: false, motivo: 'chat_cambiado' }));
+        return { punto: { paso: 'verificar', copiaId: copia.id, n: 1 }, motivo: 'chat_cambiado' };
+      }
+      return reiniciar(ctx, copia, { motivo: 'chat_cambiado' });
+    }
     if (problema === 'limite') {
       const c = await contarEspera(ctx, copia, punto, esperarMs);
       if (canal) await ctx.escribir(() => pausarCanal(db, canal.id, esperarMs, ahora));
@@ -183,7 +208,8 @@ export function crearManejadorCopias(opciones = {}) {
     if (topes.copiasDeTarea >= TOPES.copiasPorTarea || topes.subidasSinExitoHoy >= TOPES.subidasSinExitoPorDia) await fallar(ctx, null, 'copia_sin_exito');
     const canal = canalActivo(db);
     if (origen === 'noche') {
-      const reciente = db.prepare(`SELECT 1 FROM copias WHERE verificada_en >= ? AND (estado = 'verificada' OR (estado = 'solo_local' AND ? = 0)) LIMIT 1`)
+      // «Reciente» por la hora de la FOTO (nunca por cuándo se comprobó).
+      const reciente = db.prepare(`SELECT 1 FROM copias WHERE empezada_en >= ? AND (estado = 'verificada' OR (estado = 'solo_local' AND ? = 0)) LIMIT 1`)
         .get(iso(ahora - O.recienteMs), canal ? 1 : 0);
       if (reciente) return { listo: true, resultado: { saltada: 'reciente' } };
     }
@@ -265,6 +291,7 @@ export function crearManejadorCopias(opciones = {}) {
     const db = ctx.db;
     const copia = filaCopia(db, punto.copiaId);
     if (!copia || copia.estado !== 'haciendo') return { punto: { paso: 'preparar' } };
+    if (fotoVieja(copia)) return reiniciar(ctx, copia, { motivo: 'foto_vieja' });
     // Una copia nunca mezcla dos fotos: si este paso ya empezó antes (se cortó, se apagó el trabajador), otra copia.
     const primera = await ctx.escribir(() => db.prepare("UPDATE copias SET detalle = 'generando' WHERE id = ? AND detalle IS NULL").run(copia.id).changes === 1);
     if (!primera || partesDe(db, copia.id).length) return reiniciar(ctx, copia, { motivo: 'foto_interrumpida' });
@@ -316,6 +343,8 @@ export function crearManejadorCopias(opciones = {}) {
         return;
       }
       // Directo a Telegram con la foto abierta: el presupuesto se mide ANTES de cada parte. Pasado → la foto se cierra.
+      // Y el chat: si el dueño lo dejó o unió otro, ninguna parte más va al chat viejo.
+      if (!chatDeLaCopia(db, copia)) throw new ErrorCopias('telegram', { motivo: 'chat_cambiado' });
       let libre = null;
       try { libre = medirDisco(config); } catch { libre = null; }
       if (medirWal(config) - walInicio > presupuesto.walMb || (libre != null && libre < presupuesto.libreMinMb) || reloj() - inicio > presupuesto.ms) {
@@ -393,12 +422,13 @@ export function crearManejadorCopias(opciones = {}) {
     const db = ctx.db;
     const copia = filaCopia(db, punto.copiaId);
     if (!copia || !['escrita', 'subida'].includes(copia.estado)) return { punto: { paso: 'preparar' } };
+    if (fotoVieja(copia)) return reiniciar(ctx, copia, { motivo: 'foto_vieja' });
     if (copia.fuera !== 1) return { punto: { paso: 'verificar', copiaId: copia.id, n: 1 } };
+    if (!chatDeLaCopia(db, copia)) return atenderProblema(ctx, copia, punto, { problema: 'chat_cambiado' });
     const pausa = await respetarPausa(ctx, copia, punto);
     if (pausa) return pausa;
     let estadoPunto = { ...punto };
     const r = await conElBot(ctx, copia, async cred => {
-      const canal = db.prepare('SELECT * FROM canales WHERE id = ?').get(copia.canal_id);
       const idioma = idiomaDelDueno(db);
       const limite = reloj() + O.pasoCortoMs;
       let ultimoDocumento = 0;
@@ -410,6 +440,9 @@ export function crearManejadorCopias(opciones = {}) {
           if (hechas > 0 && reloj() > limite) return { punto: { ...estadoPunto, paso: 'subir', n: p.n } };
           const falta = pausaArchivos - (reloj() - ultimoDocumento);
           if (falta > 0) await dormir(falta, ctx.senal);
+          // Antes de CADA parte: ¿sigue siendo el chat del dueño? (pudo dejarlo o unir otro mientras se esperaba)
+          const canal = chatDeLaCopia(db, copia);
+          if (!canal) return { problema: 'chat_cambiado', n: p.n };
           const datos = await openAsBlob(rutaSegura(p.archivo_local));
           const s = await adaptador.enviarArchivo(cred, {
             destino: canal.destino, nombre: nombreParte(copia.copia, copia.empezada_en, p.n), datos, silencioso: true, senal: ctx.senal,
@@ -420,7 +453,7 @@ export function crearManejadorCopias(opciones = {}) {
             const c = await contarEspera(ctx, copia, estadoPunto, s.esperarMs);
             estadoPunto = { ...estadoPunto, ...c };
             if ((s.esperarMs ?? Infinity) <= O.esperaInternaMaxMs) { await dormir(s.esperarMs, ctx.senal); continue; }
-            await ctx.escribir(() => pausarCanal(db, canal.id, s.esperarMs, reloj()));
+            await ctx.escribir(() => pausarCanal(db, copia.canal_id, s.esperarMs, reloj()));
             return { punto: { ...estadoPunto, paso: 'subir', n: p.n }, esperarMs: s.esperarMs, motivo: 'telegram_limite' };
           }
           if (s.motivo !== 'ok') return { problema: s.motivo, esperarMs: s.esperarMs, n: p.n };
@@ -434,7 +467,7 @@ export function crearManejadorCopias(opciones = {}) {
           const momento = reloj();
           await ctx.escribir(() => {
             actualizarParte(db, p.id, { mensaje_id: s.mensajeId, archivo_id: s.archivo.id, archivo_id_unico: s.archivo.idUnico, subida_en: iso(momento) });
-            anotarEnvio(db, { canalId: canal.id, clase: 'copia_parte', copiaId: copia.id, resultado: 'enviado', mensajeId: s.mensajeId, bytes: p.bytes, ahora: momento });
+            anotarEnvio(db, { canalId: copia.canal_id, clase: 'copia_parte', copiaId: copia.id, resultado: 'enviado', mensajeId: s.mensajeId, bytes: p.bytes, ahora: momento });
           });
           globalThis.gc?.();
           hechas += 1;
@@ -471,6 +504,8 @@ export function crearManejadorCopias(opciones = {}) {
     const db = ctx.db;
     const copia = filaCopia(db, punto.copiaId);
     if (!copia || !['escrita', 'subida'].includes(copia.estado)) return { punto: { paso: 'preparar' } };
+    if (fotoVieja(copia)) return reiniciar(ctx, copia, { motivo: 'foto_vieja' });
+    if (copia.fuera === 1 && !chatDeLaCopia(db, copia)) return atenderProblema(ctx, copia, punto, { problema: 'chat_cambiado' });
     const pausa = await respetarPausa(ctx, copia, punto);
     if (pausa) return pausa;
     let estadoPunto = { ...punto };
@@ -485,6 +520,7 @@ export function crearManejadorCopias(opciones = {}) {
           if (h !== p.sha256) return { discoDanado: p.n };
         }
         if (cred) {
+          if (!chatDeLaCopia(db, copia)) return { problema: 'chat_cambiado', n: p.n };
           for (;;) {
             const b = await bajarHash(cred, p.archivo_id, p.bytes, ctx.senal);
             if (b.motivo === 'limite') {
@@ -569,17 +605,21 @@ export function crearManejadorCopias(opciones = {}) {
     const db = ctx.db;
     let copia = filaCopia(db, punto.copiaId);
     if (!copia || !['escrita', 'subida'].includes(copia.estado)) return { punto: { paso: 'preparar' } };
+    if (fotoVieja(copia)) return reiniciar(ctx, copia, { motivo: 'foto_vieja' });
+    if (copia.fuera === 1 && !chatDeLaCopia(db, copia)) return atenderProblema(ctx, copia, punto, { problema: 'chat_cambiado' });
     const llave = llavePorId(db, copia.llave_id);
     if (!llave) return fallar(ctx, copia, 'sin_llave');
     const texto = textoDelIndice(db, copia, llave);
     const hash = sha256Hex(Buffer.from(texto, 'utf8'));
     if (copia.local === 1) guardarIndiceLocal(ctx.config, copia, texto);
     let fijada = false;
+    let sinFijar = null; // por qué no quedó fijado (cuando ya no se reintenta)
     if (copia.fuera === 1) {
       const pausa = await respetarPausa(ctx, copia, punto);
       if (pausa) return pausa;
       const r = await conElBot(ctx, copia, async cred => {
-        const canal = db.prepare('SELECT * FROM canales WHERE id = ?').get(copia.canal_id);
+        let canal = chatDeLaCopia(db, copia);
+        if (!canal) return { problema: 'chat_cambiado' };
         // Subir (una vez: si ya se subió y se anotó, no se repite).
         if (!copia.indice_archivo_id || copia.indice_sha256 !== hash) {
           const s = await adaptador.enviarArchivo(cred, {
@@ -603,12 +643,17 @@ export function crearManejadorCopias(opciones = {}) {
           if (veces > O.reintentosParte) return { distinta: 'indice' };
           return { otraVez: veces };
         }
-        // Fijarlo arriba en el chat, y comprobar que el fijado es el nuestro.
+        // Fijarlo arriba en el chat, y comprobar que el fijado es el nuestro (restaurar desde Telegram lee el fijado).
+        canal = chatDeLaCopia(db, copia);
+        if (!canal) return { problema: 'chat_cambiado' };
         const f = await adaptador.fijar(cred, { destino: canal.destino, mensajeId: copia.indice_mensaje_id, senal: ctx.senal });
-        if (f.motivo === 'ok') {
-          const v = await adaptador.fijado(cred, { destino: canal.destino, senal: ctx.senal });
-          fijada = v.motivo === 'ok' && v.mensajeId === copia.indice_mensaje_id;
-        } else if (f.motivo === 'limite' || f.motivo === 'cancelado') return { problema: f.motivo, esperarMs: f.esperarMs };
+        if (f.motivo === 'limite' || f.motivo === 'cancelado') return { problema: f.motivo, esperarMs: f.esperarMs };
+        if (f.motivo !== 'ok') return { sinFijar: f.motivo };
+        const v = await adaptador.fijado(cred, { destino: canal.destino, senal: ctx.senal });
+        if (v.motivo === 'limite' || v.motivo === 'cancelado') return { problema: v.motivo, esperarMs: v.esperarMs };
+        if (v.motivo !== 'ok') return { sinFijar: v.motivo };
+        if (v.mensajeId !== copia.indice_mensaje_id) return { sinFijar: 'otro_fijado' };
+        fijada = true;
         return { listo: true };
       });
       if (r.problema) return atenderProblema(ctx, copia, punto, r);
@@ -616,6 +661,23 @@ export function crearManejadorCopias(opciones = {}) {
       if (s.problema) return atenderProblema(ctx, copia, punto, s);
       if (s.distinta) return reiniciar(ctx, copia, { motivo: 'parte_distinta:indice', estado: 'fallida' });
       if (s.otraVez) return { punto: { ...punto, paso: 'indice', indiceOtraVez: s.otraVez } };
+      if (s.sinFijar) {
+        // Un error pasajero (Telegram caído, la red, otro mensaje fijado justo ahora) se reintenta con esperas; la copia
+        // NO queda «verificada» mientras tanto. Lo que no se arregla esperando (o los reintentos acabados) termina la
+        // copia sin fijar y abre copia_sin_fijar GRAVE: restaurar desde Telegram tomaría la copia fijada de antes.
+        const veces = (punto.fijarIntentos ?? 0) + 1;
+        const pasajero = esPasajero(s.sinFijar) || s.sinFijar === 'otro_fijado';
+        if (pasajero && veces <= O.esperasFijarMs.length) {
+          const momento = reloj();
+          await ctx.escribir(() => db.prepare('UPDATE canales SET ultimo_error = ?, ultimo_error_en = ? WHERE id = ?').run(`fijar:${s.sinFijar}`.slice(0, 60), iso(momento), copia.canal_id));
+          return { punto: { ...punto, paso: 'indice', fijarIntentos: veces }, esperarMs: O.esperasFijarMs[veces - 1], motivo: 'telegram_fijar' };
+        }
+        if (PROBLEMAS_DEL_CANAL.includes(s.sinFijar) && s.sinFijar !== 'sin_clave') {
+          const canal = db.prepare('SELECT * FROM canales WHERE id = ?').get(copia.canal_id);
+          await ctx.escribir(() => anotarProblema(db, canal, { motivo: s.sinFijar, secretoId: copia.secreto_id, ahora: reloj() }));
+        }
+        sinFijar = s.sinFijar;
+      }
     }
     const ahora = reloj();
     const estado = copia.fuera === 1 ? 'verificada' : 'solo_local';
@@ -625,8 +687,8 @@ export function crearManejadorCopias(opciones = {}) {
       if (copia.fuera === 1) {
         for (const clave of ['copia_atrasada', 'copias_sin_telegram']) resolverAviso(db, clave, ahora);
         if (fijada) resolverAviso(db, 'copia_sin_fijar', ahora);
-        else abrirAviso(db, { clave: 'copia_sin_fijar', nivel: 'atencion', ahora });
-        if (copia.canal_id) marcarBien(db, copia.canal_id, ahora);
+        else abrirAviso(db, { clave: 'copia_sin_fijar', nivel: 'grave', detalle: { motivo: String(sinFijar ?? 'otro_fijado').slice(0, 40) }, ahora });
+        if (copia.canal_id && !PROBLEMAS_DEL_CANAL.includes(sinFijar)) marcarBien(db, copia.canal_id, ahora);
       }
     });
     return { listo: true, resultado: { copia: copia.copia, estado, partes: copia.partes, bytes: copia.bytes, fijada } };

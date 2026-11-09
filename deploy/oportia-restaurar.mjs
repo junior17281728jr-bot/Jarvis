@@ -4,9 +4,12 @@
 // Uso (como el usuario «jarvis», nunca como root):
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo>
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --telegram --destino=<archivo nuevo>
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --telegram --indice=<archivo> --destino=<archivo nuevo>
 //   Opciones:
+//     --indice=<archivo>  con --telegram: el índice («…-indice.txt») que guardaste de tu chat; las partes se bajan con
+//                   tu bot. Sirve cuando la copia fijada en el chat no es la última (no hace falta el código del chat).
 //     --comprobar   descifra y revisa todo, sin escribir la base (solo guarda las partes cifradas que baja)
-//     --anterior    si a la copia más nueva le faltan partes, usar la más nueva COMPLETA (igual pregunta)
+//     --anterior    si a la copia más nueva le faltan partes o tiene una dañada, usar la más nueva BUENA (igual pregunta)
 //     --trabajo=<carpeta>  dónde se guardan las partes que baja de Telegram (por defecto, junto al destino)
 //     --json        la última línea es el resultado en JSON
 //
@@ -14,14 +17,15 @@
 // pantalla. NUNCA van en la línea de la orden (cualquiera los vería con «ps») ni en variables del entorno.
 // Con --telegram muestra un código de 8 cifras: escríbeselo a tu bot desde tu chat privado. Los mensajes de otras
 // personas al bot se ignoran. Después pregunta si el chat que encontró es el tuyo.
-// Una copia de hace más de 30 horas, o si hay una más nueva, nunca se abre sin un «sí» tuyo.
+// Una copia de hace más de 30 horas, si hay una más nueva, o si la copia fijada en el chat es de hace más de 26 horas,
+// nunca se abre sin un «sí» tuyo.
 //
 // Nunca pisa un archivo: si el destino ya existe, no hace nada. Nunca toca el archivo de la llave de las claves: después
 // de recuperar, pega otra vez tus claves (las de la IA y el token del bot) en Administrador → Claves.
 //
 // Códigos de salida: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe ·
 // 6 Telegram o la red · 7 formato nuevo (usa una versión más nueva de OPORTIA) · 8 cancelada por el dueño.
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { configDeCanales } from '../src/nucleo/config.js';
@@ -32,6 +36,7 @@ export const SALIDAS = Object.freeze({ ok: 0, uso: 2, clave: 3, copia: 4, destin
 const DE_ERROR = Object.freeze({
   clave_formato: 'clave', clave_control: 'clave', clave_no_es_de_esta_copia: 'clave',
   destino_existe: 'destino',
+  demasiados_archivos: 'uso',
   telegram: 'telegram', sin_red: 'telegram', codigo_vencido: 'telegram', otro_bot: 'telegram',
   formato_nuevo: 'formato',
   cancelada_por_dueno: 'cancelada', cancelada: 'cancelada',
@@ -41,19 +46,20 @@ const TEXTO_ERROR = Object.freeze({
   clave_control: 'La clave tiene un error: revisa letra por letra.',
   clave_no_es_de_esta_copia: 'Esa clave no abre esta copia (quizás es de una clave anterior).',
   destino_existe: 'El archivo de destino ya existe: no se tocó. Elige otro nombre.',
-  sin_indice: 'No encontré el índice de la copia. Reenvíale a tu bot el mensaje del índice, o usa --archivos.',
-  indice_no_autentico: 'El índice no es de tu clave: no se usa.',
-  indice_danado: 'El índice está dañado.',
+  sin_indice: 'No encontré un índice que sirva. Guarda de tu chat el archivo «…-indice.txt» más nuevo y usa --indice=<ese archivo>, o guarda todos los archivos de una noche y usa --archivos.',
+  indice_no_autentico: 'El índice no es de tu clave (o alguien lo cambió): no se usa. Quita ese archivo de la carpeta, o usa otro índice con --indice.',
+  indice_danado: 'El índice está dañado. Usa otro índice con --indice, o --archivos con las partes.',
+  demasiados_archivos: 'Hay demasiados archivos en esa carpeta. Usa la carpeta de un solo mes (por ejemplo …/oportia-copias/cifradas/2027-12).',
   otro_bot: 'Esa copia se mandó con otro bot: usa el token de ese bot.',
   falta_parte: 'Le falta una parte a la copia más nueva (prueba con --anterior).',
-  parte_danada: 'Una parte está dañada.',
+  parte_danada: 'Una parte está dañada y no hay otra igual buena (prueba con --anterior para usar la copia de antes).',
   parte_de_otra_copia: 'Una parte es de otra copia.',
-  copia_cortada: 'La copia está cortada (le falta el final).',
+  copia_cortada: 'La copia está cortada: le falta el final (prueba con --anterior para usar la copia de antes).',
   copia_danada: 'La copia está dañada.',
   copia_no_autentica: 'La copia no es auténtica: no se abrió.',
   volcado_danado: 'Lo que hay adentro de la copia está dañado.',
   volcado_no_soportado: 'La copia tiene algo que esta versión no sabe abrir.',
-  formato_nuevo: 'Usa una versión más nueva de OPORTIA para abrir esta copia: no está dañada.',
+  formato_nuevo: 'Esta copia es de un formato más nuevo: usa una versión más nueva de OPORTIA. Si nunca actualizaste OPORTIA, puede ser un archivo que puso otra persona: usa --indice o --archivos con los archivos de tu chat.',
   telegram: 'Telegram no dejó seguir (revisa el token del bot).',
   sin_red: 'No hay conexión con Telegram. Prueba otra vez en un momento.',
   codigo_vencido: 'El código venció. Vuelve a empezar.',
@@ -125,11 +131,12 @@ function crearLector(entrada = process.stdin, salida = process.stdout) {
 const si = texto => /^\s*(s[ií]|si|yes|y|s)\s*$/i.test(String(texto ?? ''));
 
 function leerOpciones(argv) {
-  const o = { archivos: null, telegram: false, destino: null, comprobar: false, anterior: false, json: false, trabajo: null, error: null };
+  const o = { archivos: null, telegram: false, indice: null, destino: null, comprobar: false, anterior: false, json: false, trabajo: null, error: null };
   for (const a of argv) {
     let m;
     if ((m = /^--archivos=(.+)$/.exec(a))) o.archivos = m[1];
     else if (a === '--telegram') o.telegram = true;
+    else if ((m = /^--indice=(.+)$/.exec(a))) o.indice = m[1];
     else if ((m = /^--destino=(.+)$/.exec(a))) o.destino = m[1];
     else if ((m = /^--trabajo=(.+)$/.exec(a))) o.trabajo = m[1];
     else if (a === '--comprobar') o.comprobar = true;
@@ -139,6 +146,7 @@ function leerOpciones(argv) {
     else o.error = `Opción no válida: ${a.startsWith('--') ? a.split('=')[0] : 'un texto suelto'}.`;
   }
   if (!o.error && Boolean(o.archivos) === o.telegram) o.error = 'Usa --archivos=<carpeta> o --telegram (uno de los dos).';
+  if (!o.error && o.indice && !o.telegram) o.error = '--indice va con --telegram (con --archivos, pon el índice dentro de la carpeta).';
   if (!o.error && !o.comprobar && !o.destino) o.error = 'Falta --destino=<archivo nuevo> (o usa --comprobar para solo revisar).';
   if (!o.error && o.comprobar && o.destino) o.error = 'Con --comprobar no se escribe ninguna base: quita --destino.';
   return o;
@@ -170,15 +178,29 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
     let carpetaTrabajo = o.trabajo ? resolve(o.trabajo) : null;
     const base = config.canalesBases?.telegram ?? null;
     if (o.telegram) {
+      // Con --indice: el índice que el dueño guardó de su chat (pequeño: como mucho 1 MB). Las partes se bajan por su id.
+      let indiceTexto = null;
+      if (o.indice) {
+        const ruta = resolve(o.indice);
+        let tam = -1;
+        try { tam = statSync(ruta).size; } catch { tam = -1; }
+        if (tam < 0) throw new ErrorCopias('sin_indice');
+        if (tam > 1_000_000) throw new ErrorCopias('indice_danado');
+        indiceTexto = readFileSync(ruta, 'utf8');
+      }
       const token = await lector.preguntar('Pega el token de tu bot (no se muestra): ', { oculto: true });
       if (!token) throw new ErrorCopias('cancelada_por_dueno');
-      const busqueda = await empezarBusquedaDeChat({ token, base });
-      decir(`Escríbele a tu bot (@${busqueda.bot?.usuario ?? 'tu bot'}) este código: ${busqueda.paraMostrar}`);
-      decir('Esperando tu mensaje (10 minutos)…');
-      const chat = await busqueda.esperar({});
-      const respuesta = await lector.preguntar(`Encontré el chat de ${chat.nombre ?? 'alguien'}. ¿Es el tuyo? (sí/no): `);
-      if (!si(respuesta)) throw new ErrorCopias('cancelada_por_dueno');
-      fuente = { tipo: 'telegram', token, chatId: chat.chatId, indiceArchivoId: null };
+      if (indiceTexto != null) {
+        fuente = { tipo: 'telegram', token, chatId: null, indiceTexto };
+      } else {
+        const busqueda = await empezarBusquedaDeChat({ token, base });
+        decir(`Escríbele a tu bot (@${busqueda.bot?.usuario ?? 'tu bot'}) este código: ${busqueda.paraMostrar}`);
+        decir('Esperando tu mensaje (10 minutos)…');
+        const chat = await busqueda.esperar({});
+        const respuesta = await lector.preguntar(`Encontré el chat de ${chat.nombre ?? 'alguien'}. ¿Es el tuyo? (sí/no): `);
+        if (!si(respuesta)) throw new ErrorCopias('cancelada_por_dueno');
+        fuente = { tipo: 'telegram', token, chatId: chat.chatId, indiceArchivoId: null };
+      }
       if (!carpetaTrabajo) carpetaTrabajo = destino ? `${destino}-partes` : mkdtempSync(join(tmpdir(), 'oportia-restaurar-'));
       mkdirSync(carpetaTrabajo, { recursive: true, mode: 0o750 });
     } else {
@@ -192,7 +214,11 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
         decir(`Copia del ${fechaRd(e.creada)} (${haceTexto(e.edadHoras)}).`);
         if (e.hayMasNueva) decir(`⚠ Hay una copia más nueva (del ${fechaRd(e.hayMasNueva.creada)}) que no está completa.`);
         if (e.antigua) decir(`⚠ Esta copia es de ${haceTexto(e.edadHoras)}.`);
-        if (!e.antigua && !e.hayMasNueva) return true;
+        if (e.fijadaVieja) {
+          decir(`⚠ La copia fijada en tu chat es de ${haceTexto(e.edadHoras)}: quizás la de la última noche no quedó fijada.`);
+          decir('  Si en tu chat ves un archivo «…-indice.txt» más nuevo, guárdalo, di «no» y usa --indice=<ese archivo>.');
+        }
+        if (!e.antigua && !e.hayMasNueva && !e.fijadaVieja) return true;
         return si(await lector.preguntar('¿Es esa la que quieres? (sí/no): '));
       },
       alAvanzar: a => { if (a?.paso === 'partes_listas') decir(`Partes: ${a.partes} de ${a.partes}, todas bien.`); },

@@ -826,6 +826,12 @@ function nombreFase(s) {
 }
 
 // Las variables que usa el texto de cada aviso (las que falten salen como «?»).
+// telegram_falla: qué frase va según su motivo (src/canales/canales.js anotarProblema, src/canales/avisador.js).
+const PROBLEMA_DE_FALLA = Object.freeze({
+  bloqueado: 'telegram.problema.bloqueado', perdido: 'telegram.problema.perdido', clave: 'telegram.problema.clave_no_valida',
+  pedido: 'telegram.problema.pedido', sin_respuesta: 'telegram.problema.sin_respuesta', sin_probar: 'telegram.problema.sin_probar',
+});
+
 function textoAviso(a) {
   const d = a.detalle ?? {};
   const v = x => (x == null ? '?' : x);
@@ -856,9 +862,7 @@ function textoAviso(a) {
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
   if (a.clave === 'copias_disco_pronto') return t('aviso.copias_disco_pronto', { dias: v(d.dias) });
   if (a.clave === 'copia_fallida' && d.motivo) return `${t('aviso.copia_fallida')} ${t('copias.por', { motivo: textoMotivoCopia(d.motivo) })}`;
-  if (a.clave === 'telegram_falla' && ['bloqueado', 'perdido', 'clave'].includes(d.motivo)) {
-    return `${t('aviso.telegram_falla')} ${t(d.motivo === 'bloqueado' ? 'telegram.problema.bloqueado' : d.motivo === 'perdido' ? 'telegram.problema.perdido' : 'telegram.problema.clave_no_valida')}`;
-  }
+  if (a.clave === 'telegram_falla' && Object.hasOwn(PROBLEMA_DE_FALLA, d.motivo)) return `${t('aviso.telegram_falla')} ${t(PROBLEMA_DE_FALLA[d.motivo])}`;
   const mb = d.disponibleMb ?? d.libreMb ?? d.archivoMb ?? d.walMb;
   const n = v(d.reinicios24h ?? d.fallidas24h ?? d.revisar);
   const singular = n === 1 && (catalogos[idioma]?.[`aviso.${a.clave}.uno`] != null || catalogos.es?.[`aviso.${a.clave}.uno`] != null);
@@ -2497,7 +2501,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar, ayuda = null, nombre: otr
 // «Dejar de usar este chat». Si algo no deja mandar, una línea roja dice qué pasa y qué hacer.
 // El código vive solo en la memoria de esta pantalla (el servidor guarda solo su huella): al salir de Claves se suelta.
 let vinculoEnPantalla = null; // { codigo, paraMostrar, enlace, hasta, bot } mientras se espera el mensaje
-const ICONO_PROBLEMA_TELEGRAM = { pausa: 'reloj', sin_probar: 'atencion' };
+const ICONO_PROBLEMA_TELEGRAM = { pausa: 'reloj', sin_probar: 'atencion', sin_respuesta: 'reloj' };
 
 // Los pasos para crear el bot, con número (lo que se hace en Telegram, en palabras sencillas).
 function pasosBotFather() {
@@ -2562,7 +2566,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
             const m = x.datos.motivo;
             recargar(m === 'ok' ? { texto: t('telegram.prueba_ok'), clase: 'bien' } : { texto: t('telegram.prueba_mal', { motivo: textoMotivoIa(m) }), clase: 'aviso' });
           }, 'avion_papel'),
-          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar'].includes(v.problema) ? el('button', {
+          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar', 'pedido'].includes(v.problema) ? el('button', {
             type: 'button', class: 'secundario con-icono',
             onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar),
           }, icono('actualizar'), el('span', { texto: t('telegram.unir_otra_vez') })) : null),

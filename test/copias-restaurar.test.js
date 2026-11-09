@@ -284,7 +284,8 @@ test('1.4 una copia hecha con solo la llave pública (sin el sello) nunca se res
   // Con un sello inventado.
   const a = await copiaDeAtacante({ archivo, carpeta: join(carpeta, 'a') });
   await assert.rejects(restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: a.rutas }, destino: join(carpeta, 'a.db') }), codigoDe('copia_no_autentica'));
-  assert.notEqual(marcaDe(join(carpeta, 'a.db')), ID_APLICACION, 'lo que alcanzó a escribir nunca es una base de OPORTIA');
+  // Sin índice, la copia se descifra entera ANTES de escribir nada: el destino ni se crea (y nunca sería de OPORTIA).
+  assert.ok(!existsSync(join(carpeta, 'a.db')) || marcaDe(join(carpeta, 'a.db')) !== ID_APLICACION, 'lo que alcanzó a escribir nunca es una base de OPORTIA');
   // Sin la línea del sello.
   const b = await copiaDeAtacante({ archivo, carpeta: join(carpeta, 'b'), cambiar: l => l.slice(0, -1) });
   await assert.rejects(restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: b.rutas }, destino: null }), codigoDe('copia_no_autentica'));

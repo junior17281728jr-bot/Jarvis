@@ -12,7 +12,7 @@ import { contenido } from './copias-base.js';
 import { montar, ponerToken, unirChat, BOT, BOT2, CHAT, MINUTO, HORA } from './copias-tarea-base.js';
 import { TELEGRAM } from '../src/canales/telegram.js';
 import { restaurarCopia } from '../src/copias/restaurar.js';
-import { planDeDisco, topesDeIntento, estadoCopias, TOPES } from '../src/copias/estado.js';
+import { planDeDisco, topesDeIntento, estadoCopias, TOPES, inicioDiaRd } from '../src/copias/estado.js';
 import { vigilarCopias } from '../src/copias/vigilar.js';
 import { ESTADOS_COPIA, ErrorCopias } from '../src/copias/formato.js';
 import { volcar } from '../src/copias/volcado.js';
@@ -176,6 +176,8 @@ test('2.2 topes: una 4.ª copia en la misma tarea, o una 4.ª copia subida sin �
   // Sin copia en el servidor (disco casi lleno) y Telegram cambia un byte de cada parte que se baja: cada copia falla.
   const b = await montar({ relleno: 4, disco: 1500 });
   try {
+    // Las copias de esta prueba tienen que caer en el MISMO día de RD (el tope es por día): a las 8 de la mañana de RD.
+    b.avanzar(inicioDiaRd(b.t) + 36 * HORA - b.t);
     b.falso.escena('file', 'cambiar_bytes', { veces: 1000 });
     const id = b.pedir();
     const fin = await b.terminar(id);
@@ -517,17 +519,22 @@ test('2.16 el token cambia a OTRO bot entre la parte 2 y la 3: la copia se inter
 
 // ---------- 2.17 El fijado ----------
 
-test('2.17 el fijado: alguien lo quita entre noches → copia_sin_fijar; si fijar no queda fijado → fijada 0; uno bueno lo cierra', async () => {
+test('2.17 el fijado: alguien lo quita entre noches → copia_sin_fijar; si fijar nunca queda fijado → fijada 0 y GRAVE; uno bueno lo cierra', async () => {
   const b = await montar({ relleno: 2 });
   try {
     assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
     assert.equal(b.copias()[0].fijada, 1);
     b.falso.desfijar(CHAT);
-    b.falso.escena('pinChatMessage', 'otro_fijado');
+    // Fijar responde bien, pero el fijado nunca es el nuestro: se reintenta 5 veces (1, 5, 15, 30, 60 min) y se rinde.
+    b.falso.escena('pinChatMessage', 'otro_fijado', { veces: 6 });
     b.avanzar(24 * HORA);
+    const antes = b.t;
     assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
-    assert.ok(b.aviso('copia_sin_fijar'), 'el preparar de la noche siguiente lo notó');
+    assert.equal(b.falso.pedidos.filter(p => p.metodo === 'pinChatMessage').length, 1 + 6, 'la primera noche y 6 intentos');
+    assert.ok(b.t - antes >= 111 * MINUTO, 'con sus esperas');
+    assert.equal(b.aviso('copia_sin_fijar')?.nivel, 'grave', 'nunca quedó fijada: grave');
     assert.equal(b.copias()[1].fijada, 0, 'fijar respondió bien pero el fijado no es el nuestro');
+    assert.equal(b.copias()[1].estado, 'verificada');
     b.avanzar(24 * HORA);
     assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
     assert.equal(b.copias()[2].fijada, 1);

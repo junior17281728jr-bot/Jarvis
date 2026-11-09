@@ -16,7 +16,7 @@ import { createHash, randomBytes } from 'node:crypto';
 export const ESCENAS = Object.freeze([
   'no_autorizado', 'no_existe', 'bloqueado', 'expulsado', 'chat_no_existe', 'muy_grande', 'limite', 'error_500', 'error_502',
   'nunca', 'lento', 'json_roto', 'profundo', 'conflicto', 'redirige', 'cambiar_bytes', 'ruta_vencida', 'sin_ruta', 'sin_tamano',
-  'ruta_rara', 'otro_fijado', 'enorme', 'sin_forma',
+  'ruta_rara', 'otro_fijado', 'enorme', 'sin_forma', 'peer_invalido',
 ]);
 
 const TOKEN = /^(\d{6,15}):([A-Za-z0-9_-]{30,80})$/;
@@ -110,6 +110,7 @@ export async function crearTelegramFalso({ bots = [], chats = [], subirMax = 50 
       case 'bloqueado': error(res, 403, 'Forbidden: bot was blocked by the user'); return true;
       case 'expulsado': error(res, 403, 'Forbidden: bot was kicked from the group chat'); return true;
       case 'chat_no_existe': error(res, 400, 'Bad Request: chat not found'); return true;
+      case 'peer_invalido': error(res, 400, 'Bad Request: PEER_ID_INVALID'); return true; // un 400 que el adaptador no conoce
       case 'muy_grande': error(res, 413, 'Request Entity Too Large'); return true;
       case 'limite': error(res, 429, `Too Many Requests: retry after ${e.segundos ?? 3}`, { retry_after: e.segundos ?? 3 }); return true;
       case 'error_500': responder(res, 500, '<html><body>Internal Server Error</body></html>'); return true;
@@ -285,6 +286,8 @@ export async function crearTelegramFalso({ bots = [], chats = [], subirMax = 50 
       if (!ESCENAS.includes(nombre)) throw new Error(`escena desconocida: ${nombre}`);
       escenas.push({ metodo: metodoDe, nombre, veces: opciones.veces ?? 1, ...opciones });
     },
+    // Quita las escenas que quedan (Telegram «vuelve a funcionar»).
+    sinEscenas() { escenas.splice(0, escenas.length); },
     agregarBot(b) { porToken.set(b.token, { id: b.id, usuario: b.usuario ?? `bot${b.id}`, nombre: b.nombre ?? 'OPORTIA', webhook: b.webhook ?? '' }); },
     ponerWebhook(token, url) { porToken.get(token).webhook = url; },
     agregarChat,
