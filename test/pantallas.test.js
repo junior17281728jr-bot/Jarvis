@@ -127,6 +127,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const { GRUPOS_CAMBIO } = await import('../src/ia/interpretar.js');
   // Ronda 5 de revisión: el permiso de IA de cada cuenta (Administrador → Usuarios).
   const { ACCIONES_CONFIANZA, DESDE } = await import('../src/cuentas/confianza.js');
+  // Fase 1, parte e: las copias y el Telegram.
+  const { MOTIVOS_COPIA, NO_CLAVE } = await import('../public/copias-vista.js');
+  const { ESTADOS_COPIA } = await import('../src/copias/formato.js');
   const cat = catalogo();
   const claves = [
     ...MOTIVOS.map(x => `ia.motivo.${x}`),
@@ -182,6 +185,13 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...NIVELES.map(x => `aviso.nivel.${x}`),
     ...['verde', 'amarillo', 'rojo'].flatMap(x => [`sistema.semaforo.${x}`, `servidor.semaforo.${x}`]),
     'error.ya_hay_otra_en_marcha', 'error.arrancando',
+    ...MOTIVOS_COPIA.map(x => `copias.motivo.${x}`),
+    ...ESTADOS_COPIA.map(x => `copias.estado_fila.${x}`),
+    ...NO_CLAVE.map(x => `copias.clave.no_puede.${x}`),
+    ...['en_marcha', 'modo_seguro', 'sin_clave', 'sin_trabajador', 'disco_lleno', 'sin_destino'].map(x => `copias.no_ahora.${x}`),
+    ...['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar', 'bot_ocupado', 'sin_red', 'pausa'].map(x => `telegram.problema.${x}`),
+    ...[1, 2, 3, 4, 5].map(n => `copias.restaurar.paso${n}`),
+    ...[1, 2, 3, 4].map(n => `telegram.como${n}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -189,7 +199,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     'creador.falta.', 'creador.fuera.', 'tareas.fase.', 'tareas.estado.', 'tareas.tipo.', 'tareas.motivo.', 'tareas.evento.', 'tareas.como.', 'tareas.freno.', 'modo_seguro.motivo.', 'modo_seguro.quitado.', 'aviso.', 'aviso.nivel.', 'sistema.semaforo.', 'servidor.semaforo.',
     // Fase 1, parte d.
     'ia.motivo.', 'ia.proposito.', 'ia.proveedor.', 'ia.estado.', 'ia.estado_llamada.', 'ia.ambito.', 'ia.falta.', 'ia.plan.', 'ia.ayuda.',
-    'claves.uso.', 'claves.donde.', 'claves.estado.', 'claves.grupo.', 'claves.corto.', 'version.campo_ia.']));
+    'claves.uso.', 'claves.donde.', 'claves.estado.', 'claves.grupo.', 'claves.corto.', 'version.campo_ia.',
+    // Fase 1, parte e.
+    'copias.motivo.', 'copias.estado_fila.', 'copias.restaurar.paso', 'telegram.como', 'telegram.problema.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
@@ -466,4 +478,150 @@ test('27. las frases de la IA son cortas y dicen dónde se paga Claude', () => {
   assert.ok('inicio.viene.ia' in es && !appJs.includes("'inicio.viene.ia'"));
   assert.ok(appJs.includes("'inicio.funciona.6'"));
   assert.equal(es['valor.ia.no_permitida'], 'No permitida · tope US$0');
+});
+
+// ---------- Fase 1, parte e: Copias, la clave de recuperación y el Telegram (pruebas 3.1–3.3 del diseño) ----------
+const existe = clave => clave in es && clave in en;
+const hora = h => new Date(Date.now() - h * 3_600_000).toISOString();
+// Una respuesta de GET /api/admin/copias con todo bien (los casos cambian una parte).
+const copiasBien = (cambio = {}) => ({
+  clave: { activa: true, huella: 'A7F3', desde: hora(500), comprobadaEn: null, pendiente: null, anteriores: [] },
+  telegram: { listo: true, motivo: null, chat: { estado: 'activo', nombre: 'Junior', problema: null }, bot: { usuario: 'oportia_junior_bot' } },
+  ultima: { estado: 'verificada', motivo: null }, ultimaFuera: { fecha: hora(3), bytes: 41 * 1024 * 1024, partes: 21 }, proxima: hora(-20),
+  enCurso: null, locales: { activas: true, pausadas: false, frenoDisco: false, copias: 3, mb: 120, libreMb: 7900, pisoMb: 2304, diasRestantes: 300 },
+  fijada: true, recientes: [], modoSeguro: false, puede: { ahora: true, motivoNoAhora: null, crearClave: true, motivoNoClave: null },
+  ...cambio,
+});
+
+test('3.1/3.3 Copias: cada estado de la tarjeta grande tiene sus frases, y un botón solo cuando se puede usar', async () => {
+  const { vistaCopias, vistaDisco, motivoNoAhora } = await import('../public/copias-vista.js');
+  const casos = {
+    bien: copiasBien(),
+    sin_clave: copiasBien({ clave: { activa: false, anteriores: [] }, puede: { ahora: false, motivoNoAhora: 'sin_clave', crearClave: true } }),
+    sin_clave_funnel: copiasBien({ clave: { activa: false, anteriores: [] }, puede: { ahora: false, motivoNoAhora: 'sin_clave', crearClave: false, motivoNoClave: 'solo_desde_tailnet' } }),
+    modo_seguro: copiasBien({ modoSeguro: true, puede: { ahora: false, motivoNoAhora: 'modo_seguro', crearClave: true } }),
+    en_fila: copiasBien({ enCurso: { paso: 'preparar', n: null, de: null, esperando: true }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    haciendo: copiasBien({ enCurso: { paso: 'subir', n: 4, de: 11 }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    haciendo_sin_total: copiasBien({ enCurso: { paso: 'generar', n: 4, de: null }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    comprobando: copiasBien({ enCurso: { paso: 'verificar', n: 2, de: 11 }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    freno_disco: copiasBien({ locales: { activas: true, pausadas: true, frenoDisco: true, libreMb: 250 }, puede: { ahora: false, motivoNoAhora: 'disco_lleno', crearClave: true } }),
+    solo_locales: copiasBien({ telegram: null }),
+    fallo: copiasBien({ ultima: { estado: 'fallida', motivo: 'parte_distinta:3' } }),
+    telegram_problema: copiasBien({ telegram: { listo: false, motivo: 'bloqueado', chat: { estado: 'bloqueado', problema: 'bloqueado' } } }),
+    primera: copiasBien({ ultimaFuera: null, ultima: null }),
+    atrasada: copiasBien({ ultimaFuera: { fecha: hora(80), bytes: 1, partes: 1 } }),
+    sin_fijar: copiasBien({ fijada: false }),
+  };
+  const vistas = {};
+  for (const [nombre, c] of Object.entries(casos)) {
+    const v = vistaCopias(c);
+    vistas[nombre] = v;
+    for (const clave of [v.titulo, v.linea, v.razon, v.enlace?.texto].filter(Boolean)) assert.ok(existe(clave), `${nombre}: falta ${clave}`);
+    assert.ok(['bien', 'atencion', 'mal', 'info', 'apagado'].includes(v.tono), nombre);
+    // La regla de siempre: o hay un botón que sirve, o una línea que dice por qué no (o un enlace adonde arreglarlo).
+    if (motivoNoAhora(c) && v.accion !== 'crear_clave') assert.equal(v.accion, null, `${nombre}: un botón que no puede hacer nada`);
+    if (v.accion && v.accion !== 'crear_clave') assert.equal(motivoNoAhora(c), null, nombre);
+  }
+  assert.deepEqual(Object.fromEntries(Object.entries(vistas).map(([n, v]) => [n, v.estado])), {
+    bien: 'bien', sin_clave: 'sin_clave', sin_clave_funnel: 'sin_clave', modo_seguro: 'modo_seguro', en_fila: 'en_fila', haciendo: 'haciendo',
+    haciendo_sin_total: 'haciendo', comprobando: 'haciendo', freno_disco: 'freno_disco', solo_locales: 'solo_locales', fallo: 'fallo',
+    telegram_problema: 'telegram_problema', primera: 'primera', atrasada: 'atrasada', sin_fijar: 'sin_fijar',
+  });
+  assert.equal(vistas.bien.accion, 'ahora');
+  assert.equal(vistas.fallo.accion, 'otra_vez');
+  assert.equal(vistas.sin_clave.accion, 'crear_clave');
+  // Por el enlace público (o desde otra cuenta) no se ofrece crear la clave: se dice desde dónde.
+  assert.equal(vistas.sin_clave_funnel.accion, null);
+  assert.equal(vistas.sin_clave_funnel.razon, 'copias.clave.no_puede.solo_desde_tailnet');
+  assert.equal(vistas.modo_seguro.accion, null);
+  assert.equal(vistas.modo_seguro.enlace.href, '#admin/trabajo');
+  assert.equal(vistas.freno_disco.accion, null);
+  assert.equal(vistas.freno_disco.enlace.href, '#admin/servidor');
+  assert.equal(vistas.haciendo.accion, null);
+  assert.deepEqual(vistas.haciendo.progreso, { n: 4, de: 11 });
+  assert.equal(vistas.haciendo.linea, 'copias.haciendo');
+  assert.equal(vistas.haciendo_sin_total.linea, 'copias.haciendo_sin_total');
+  assert.equal(vistas.comprobando.linea, 'copias.comprobando');
+  assert.equal(vistas.solo_locales.enlace.href, '#claves');
+  // Sin Telegram y con el disco que ya no deja guardar copias aquí: no hay adónde mandarla (el servidor diría sin_destino).
+  const sinDestino = copiasBien({ telegram: null, locales: { activas: true, pausadas: true, frenoDisco: false, libreMb: 1900 } });
+  assert.equal(motivoNoAhora(sinDestino), 'sin_destino');
+  assert.equal(vistaCopias(sinDestino).accion, null);
+  assert.equal(vistaCopias(sinDestino).razon, 'copias.no_ahora.sin_destino');
+  // El disco: nunca se borra nada; con poco espacio se dice, con menos de 300 MB está en rojo.
+  for (const [locales, tono] of [[{ activas: true }, 'bien'], [{ activas: true, pausadas: true }, 'atencion'], [{ frenoDisco: true }, 'mal'], [{ activas: false }, 'apagado'], [{ activas: true, diasRestantes: 12 }, 'atencion']]) {
+    const v = vistaDisco(locales);
+    assert.equal(v.tono, tono, JSON.stringify(locales));
+    if (v.linea) assert.ok(existe(v.linea), v.linea);
+  }
+});
+
+test('3.1 Copias: el Resumen, Inicio y el Telegram de Claves dicen cosas que existen en los dos idiomas', async () => {
+  const { vistaAzulejoCopias, vistaAzulejoTelegram, vistaTelegram, motivoBase, codigoLegible, cuentaAtras, enlaceSeguro } = await import('../public/copias-vista.js');
+  const resumenes = [null, { motivo: 'sin_clave' }, { motivo: 'solo_locales' }, { motivo: 'fallo', ultimaFuera: { fecha: hora(2) } }, { motivo: 'atrasada', ultimaFuera: null },
+    { motivo: 'atrasada', ultimaFuera: { fecha: hora(50) } }, { motivo: null, tono: 'bien', ultimaFuera: { fecha: hora(2) } }];
+  for (const r of resumenes) {
+    for (const modoSeguro of [false, true]) {
+      const v = vistaAzulejoCopias(r, { modoSeguro });
+      assert.ok(existe(v.valor.clave), v.valor.clave);
+      if (v.detalle) assert.ok(existe(v.detalle), v.detalle);
+    }
+  }
+  // Recién configurado (clave y Telegram, sin ninguna copia todavía): no es una alarma roja.
+  assert.notEqual(vistaAzulejoCopias({ motivo: 'atrasada', tono: 'mal', ultimaFuera: null }).tono, 'mal');
+  const telegrams = [null, { listo: false, chat: null }, { listo: true, chat: { estado: 'activo', nombre: 'Junior' } }, { listo: false, motivo: 'bloqueado', chat: { estado: 'bloqueado' } },
+    { listo: false, motivo: 'perdido', chat: { estado: 'perdido' } }, { listo: false, motivo: 'pausa', chat: { estado: 'activo' } }, { listo: false, motivo: 'sin_probar', chat: { estado: 'activo' } }];
+  for (const tg of telegrams) {
+    const v = vistaAzulejoTelegram(tg);
+    assert.ok(existe(v.valor), v.valor);
+    if (v.detalle) assert.ok(existe(v.detalle), v.detalle);
+  }
+  // Claves → Telegram: ① el bot, ② el chat (solo cuando el bot pasó la prueba), y los problemas.
+  const token = { legible: true, prueba: 'ok' };
+  assert.equal(vistaTelegram({}, { activa: null }).paso, 'bot');
+  assert.equal(vistaTelegram({ bot: null }, { activa: { ...token, prueba: 'clave_no_valida' } }).problema, 'clave_no_valida');
+  assert.equal(vistaTelegram({ bot: null }, { activa: { ...token, prueba: 'bot_ocupado' } }).problema, 'bot_ocupado');
+  assert.equal(vistaTelegram({ bot: { usuario: 'b' }, chat: null }, { activa: token }).paso, 'unir');
+  assert.deepEqual(vistaTelegram({ bot: { usuario: 'b' }, chat: { estado: 'perdido' } }, { activa: token }), { paso: 'unir', tokenBien: true, problema: 'perdido', chat: { estado: 'perdido' } });
+  assert.equal(vistaTelegram({ bot: { usuario: 'b' }, listo: true, chat: { estado: 'activo' } }, { activa: token }).problema, null);
+  assert.equal(vistaTelegram({ bot: { usuario: 'b' }, listo: false, motivo: 'bloqueado', chat: { estado: 'bloqueado', problema: 'bloqueado' } }, { activa: token }).problema, 'bloqueado');
+  assert.equal(vistaTelegram({ bot: { usuario: 'b' }, listo: false, motivo: 'pausa', chat: { estado: 'activo' } }, { activa: token }).problema, 'pausa');
+  // Un motivo desconocido nunca se muestra tal cual.
+  assert.equal(motivoBase('parte_distinta:indice'), 'parte_distinta');
+  assert.equal(motivoBase('algo_nuevo_de_otra_version'), 'otro');
+  assert.equal(codigoLegible('48217730'), '4821 7730');
+  assert.equal(cuentaAtras(new Date(Date.now() + 598_500).toISOString()), '9:58');
+  assert.equal(cuentaAtras(hora(1)), null);
+  // Solo un enlace de t.me con 8 cifras (nunca otra dirección que llegue en una respuesta).
+  assert.equal(enlaceSeguro('https://t.me/oportia_junior_bot?start=48217730'), 'https://t.me/oportia_junior_bot?start=48217730');
+  for (const malo of ['http://t.me/x_bot?start=48217730', 'https://t.me.ejemplo.com/x?start=48217730', 'javascript:alert(1)', 'https://t.me/x_bot?start=4821', null]) assert.equal(enlaceSeguro(malo), null, String(malo));
+  // Lo que manda el Telegram (src/canales/textos.js) existe en los dos idiomas.
+  const textos = readFileSync(join(RAIZ, 'src/canales/textos.js'), 'utf8');
+  for (const m of textos.matchAll(/'(telegram\.[a-z0-9_.]+)'/g)) assert.ok(existe(m[1]) || (existe(`${m[1]}.titulo`) && existe(`${m[1]}.texto`)), `falta ${m[1]}`);
+  // Los avisos de una actualización dicen cuál fue (sus 7 primeras cifras).
+  for (const clave of ['aviso.actualizacion_no_instalada', 'aviso.actualizacion_revertida']) for (const d of [es, en]) assert.match(d[clave], /\{sha\}/, clave);
+  assert.match(appJs, /actualizacion_\(no_instalada\|revertida\):\(\[0-9a-f\]\{7\}\)/);
+});
+
+test('3.2 Copias: íconos propios, y la clave de recuperación nunca se guarda en el navegador ni viaja al confirmarla', async () => {
+  const { ICONOS_SERVICIOS } = await import('../public/dibujos.js');
+  for (const nombre of ['copia', 'nube_candado', 'avion_papel', 'disco', 'clave_recuperacion', 'imprimir', 'copiar']) assert.ok(nombre in ICONOS_SERVICIOS, `falta el ícono ${nombre}`);
+  // Los íconos que nombra la vista de las copias existen.
+  const vista = readFileSync(join(RAIZ, 'public/copias-vista.js'), 'utf8');
+  for (const m of vista.matchAll(/icono: '([a-z_]+)'/g)) assert.ok(m[1] in ICONOS_SERVICIOS || appJs.includes(`  ${m[1]}: [`), `ícono ${m[1]}`);
+  // La pantalla manda SOLO el verificador al confirmar y al comprobar.
+  const envios = [...appJs.matchAll(/api\('POST', '\/api\/admin\/copias\/clave\/(confirmar|comprobar)', (\{[^}]*\})\)/g)];
+  assert.equal(envios.length, 2);
+  for (const e of envios) assert.equal(e[2], '{ verificador: calculado.verificador }', e[1]);
+  // La clave nueva vive en una variable de la pantalla: nunca en localStorage, sessionStorage, la dirección ni un borrador.
+  const bloque = appJs.slice(appJs.indexOf('// ---------- Copias de seguridad (fase 1, parte e)'), appJs.indexOf('// ---------- IA opcional y Claves (fase 1, parte d)'));
+  assert.ok(bloque.length > 1000);
+  assert.doesNotMatch(bloque, /localStorage|sessionStorage|location\.hash\s*=(?!=)|borrador\(|recordarTexto\(/);
+  // Al salir de Copias se suelta (y el código de Telegram al salir de Claves).
+  assert.match(appJs, /if \(seccion !== 'copias'\) claveNueva = null;/);
+  assert.match(appJs, /if \(seccion !== 'claves'\) vinculoEnPantalla = null;/);
+  // La página calcula el verificador sin WebCrypto (también en una dirección http:// de Tailscale).
+  assert.match(appJs, /import \{ leerClave, verificadorDe, grupoDistinto, gruposDeClave \} from '\.\/clave-recuperacion\.js';/);
+  // El enlace al bot pasa siempre por enlaceSeguro.
+  assert.match(appJs, /enlace: enlaceSeguro\(x\.datos\.enlace\)/);
 });

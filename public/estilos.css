@@ -878,3 +878,154 @@ a.enlace-fuerte { display: inline-flex; min-height: 44px; font-weight: 700; text
 @media (min-width: 1280px) {
   .lista-usuarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------- Fase 1, parte e (versión 0.5.0): copias de seguridad, la clave de recuperación y el Telegram ----------
+   Teléfono: la tarjeta grande arriba (con su botón), la clave y el Telegram lado a lado, el disco y lo demás debajo.
+   PC: 3 columnas (la tarjeta grande | la clave y el Telegram | el disco y las últimas copias); «Si un día pierdes el
+   servidor» a lo ancho. */
+.copias-rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; margin: 0 0 16px; }
+.copias-rejilla > .tarjeta { margin: 0; }
+.copias-estado, .copias-disco, .copias-recientes, .copias-gestion, .copias-restaurar { grid-column: 1 / -1; }
+/* En el teléfono y la tableta las columnas no existen: sus tarjetas van en la rejilla, en este orden. */
+.copias-col { display: contents; }
+.copias-estado { order: 1; }
+.copias-mini { order: 2; }
+.copias-disco { order: 3; }
+.copias-recientes { order: 4; }
+.copias-gestion { order: 5; }
+.copias-restaurar { order: 6; }
+.copias-cuando.chico { font-size: 17px; line-height: 1.3; font-weight: 700; }
+.copias-estado { border: 2px solid color-mix(in srgb, var(--tono) 45%, var(--borde)); background: color-mix(in srgb, var(--tono) 7%, var(--tarjeta)); padding: 16px; }
+.copias-estado-cabeza { display: flex; align-items: center; gap: 14px; }
+.copias-estado-texto { min-width: 0; flex: 1; }
+.copias-titulo { margin: 0; font-size: 14px; line-height: 1.25; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: color-mix(in srgb, var(--tono) 88%, var(--texto)); }
+.copias-cuando { margin: 2px 0 0; font-size: 25px; line-height: 1.15; font-weight: 800; letter-spacing: -0.01em; }
+.copias-linea { margin: 12px 0 6px; font-size: 17px; line-height: 1.4; }
+.copias-datos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 4px; font-size: 16px; font-weight: 600; }
+.copias-proxima { color: var(--suave); font-size: 15px; margin: 6px 0 0; }
+.copias-proxima .icono { color: var(--suave); }
+.copias-estado button.grande { margin-top: 12px; }
+.copias-estado a.boton-enlace { margin-top: 10px; display: flex; justify-content: center; }
+.copias-razon { margin: 12px 0 0; font-size: 15px; }
+.copias-dibujo {
+  position: relative; flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+  color: color-mix(in srgb, var(--tono) 88%, var(--texto)); background: color-mix(in srgb, var(--tono) 16%, var(--tarjeta));
+}
+.copias-dibujo .copias-dibujo-icono { width: 34px; height: 34px; stroke-width: 1.8; }
+.copias-marca {
+  position: absolute; right: -4px; bottom: -4px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--tono); color: var(--tarjeta); border: 2.5px solid var(--tarjeta);
+}
+.copias-marca .icono { width: 14px; height: 14px; stroke-width: 3; }
+.copias-anillo { position: absolute; inset: -4px; width: 72px; height: 72px; fill: none; stroke-width: 5; stroke-linecap: round; }
+.copias-anillo-fondo { stroke: color-mix(in srgb, var(--tono) 20%, transparent); }
+.copias-anillo-lleno { stroke: var(--tono); transition: stroke-dasharray 0.4s; }
+@media (prefers-reduced-motion: reduce) { .copias-anillo-lleno { transition: none; } }
+/* Las tarjetas chicas (la clave y el Telegram). */
+.copias-mini { padding: 12px 12px 10px; border-left: 6px solid var(--tono); display: flex; flex-direction: column; gap: 4px; min-height: 118px; }
+.copias-mini p { margin: 0; }
+.copias-mini-titulo { font-size: 14px; font-weight: 700; color: var(--suave); margin: 0; line-height: 1.25; }
+.copias-mini-titulo .icono { color: color-mix(in srgb, var(--tono) 88%, var(--texto)); }
+.copias-mini-valor { font-size: 17px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.copias-mini .suave { font-size: 13px; line-height: 1.3; }
+.copias-mini button.chico { margin-top: auto; align-self: flex-start; padding: 6px 10px; }
+a.copias-mini.enlace-mini { text-decoration: none; color: var(--texto); }
+a.copias-mini .insignia { align-self: flex-start; margin-top: auto; font-size: 13px; padding: 3px 8px; }
+a.copias-mini:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.copias-disco { border-left: 6px solid var(--tono); }
+.copias-disco .copias-mini-titulo { margin-bottom: 6px; }
+.copias-numeros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 8px; }
+.copias-numeros .numero { padding: 8px 4px; }
+.copias-numeros .numero-valor.numero-texto { font-size: 19px; line-height: 1.4; }
+.copias-disco p { margin: 0 0 6px; }
+.copias-disco details { margin: 0; }
+.copias-rejilla > details.tarjeta { padding: 6px 16px; }
+.copias-rejilla > details.tarjeta[open] { padding-bottom: 14px; }
+.copias-rejilla > details.tarjeta > summary .icono { color: var(--acento); }
+/* Las últimas copias: cada una en su fila con su color. */
+ul.lista-copias li.copia-fila { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; }
+.copia-fila-icono { flex: none; margin-top: 2px; }
+.copia-fila-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.copia-fila-cuerpo .suave { font-size: 14px; }
+.copia-fila-donde { display: flex; flex-wrap: wrap; gap: 4px; }
+.copia-fila-donde .etiqueta { font-size: 12.5px; padding: 1px 8px; }
+.copia-fila-estado { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; max-width: 42%; }
+.copia-fila-estado .insignia { font-size: 13px; padding: 2px 8px; }
+/* Pasos con número (cómo crear el bot, cómo recuperar todo). */
+ol.pasos-numerados { list-style: none; padding: 0; margin: 8px 0 10px; display: grid; gap: 8px; }
+ol.pasos-numerados li { display: flex; align-items: flex-start; gap: 10px; margin: 0; line-height: 1.4; }
+ol.pasos-numerados .paso-numero { margin-top: 1px; }
+.paso-numero.apagado { background: var(--apagado-fondo); color: var(--apagado-texto); }
+h2.paso-titulo, h3.paso-titulo { margin: 0 0 6px; }
+.form-clave { margin: 4px 0 8px; }
+.form-clave h3 { margin-top: 6px; }
+input.campo-recuperacion { font: 600 19px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.06em; text-transform: uppercase; }
+input.campo-recuperacion::placeholder { letter-spacing: 0.02em; font-weight: 400; text-transform: none; font-size: 15px; }
+details.cambiar-clave { border-top: 1px solid var(--borde); margin-top: 14px; }
+/* La clave nueva, en grande: 7 grupos de 4 (2 filas en el teléfono, 1 en la PC). */
+.clave-pasos { max-width: 860px; }
+.clave-nueva-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.clave-nueva-cabeza .paso-titulo { margin: 0; }
+p.clave-recuperacion {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin: 10px 0 14px; padding: 16px 10px; border-radius: 14px;
+  background: var(--fondo); border: 2px dashed color-mix(in srgb, var(--acento) 45%, var(--borde));
+  font: 700 28px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; user-select: all; -webkit-user-select: all;
+}
+.clave-grupo { white-space: nowrap; }
+ul.clave-consejos { margin: 0 0 8px; }
+ul.clave-consejos li { margin: 8px 0; }
+ul.clave-consejos .icono { color: var(--acento); }
+.clave-botones button { flex: 1 1 auto; justify-content: center; }
+.clave-nueva > button.secundario { margin-top: 12px; }
+/* Claves → Telegram: los dos pasos con número. */
+.pasos-telegram { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+.paso-telegram > .clave-caja { margin-top: 6px; }
+.paso-telegram.apagado .paso-titulo { color: var(--suave); }
+.ayuda-bot { margin: 4px 0 6px; }
+.ayuda-bot p { margin: 4px 0; }
+.unir-chat { border: 1.5px dashed color-mix(in srgb, var(--acento) 50%, var(--borde)); border-radius: 16px; padding: 14px; background: color-mix(in srgb, var(--acento) 5%, var(--tarjeta)); }
+.unir-chat p { margin: 0 0 8px; }
+p.codigo-grande { margin: 0 0 4px; font: 800 38px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; color: var(--texto); }
+.unir-chat a.boton-enlace.grande { margin: 8px 0 12px; }
+.esperando { font-weight: 700; color: var(--acento); }
+.esperando .icono { color: var(--acento); }
+details.desvincular { border-top: 1px solid var(--borde); margin-top: 12px; }
+details.desvincular summary { color: var(--mal); }
+details.desvincular button { margin-top: 4px; }
+/* La hoja para imprimir: solo se ve al imprimir (y entonces solo ella). */
+.hoja-clave { display: none; }
+@media print {
+  body { background: #ffffff; color: #000000; padding: 0; }
+  body > :not(.hoja-clave) { display: none !important; }
+  .hoja-clave { display: block; color: #000000; font-size: 15px; }
+  .hoja-clave h1 { font-size: 24px; }
+  .hoja-clave .hoja-clave-grupos { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 700 26px/1.4 ui-monospace, Menlo, monospace; letter-spacing: 0.08em; border: 2px solid #000000; border-radius: 10px; padding: 14px; }
+  .hoja-clave .paso-numero { background: #000000; color: #ffffff; }
+}
+
+@media (max-width: 759px) {
+  .copias-estado { padding: 14px; }
+  p.clave-recuperacion { font-size: 24px; letter-spacing: 0.04em; gap: 4px 12px; padding: 12px 6px; margin: 8px 0 10px; }
+  ul.clave-consejos li { margin: 4px 0; font-size: 15px; line-height: 1.4; }
+  .tarjeta.clave-nueva { padding: 14px; }
+  .clave-botones button { padding: 10px 12px; }
+  .copias-cuando { font-size: 23px; }
+  .copias-rejilla > details.tarjeta { padding: 4px 14px; }
+}
+@media (max-width: 359px) {
+  .copias-rejilla { grid-template-columns: minmax(0, 1fr); }
+  p.clave-recuperacion { font-size: 21px; }
+}
+@media (min-width: 760px) {
+  .pasos-telegram { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .copias-rejilla { gap: 16px; }
+}
+@media (min-width: 1024px) {
+  .copias-rejilla { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .copias-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .copias-col > .tarjeta { margin: 0; }
+  .copias-estado { padding: 20px; }
+  .copias-cuando { font-size: 30px; }
+  .copias-mini { min-height: 0; }
+  p.clave-recuperacion { flex-wrap: nowrap; }
+}

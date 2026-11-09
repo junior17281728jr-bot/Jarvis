@@ -87,7 +87,7 @@ test('elegir la compresión: brotli o gzip según el navegador; cualquier otra c
 
 test('los archivos comprimidos (brotli y gzip) se descomprimen exactamente al archivo', async () => {
   await conOportia(async base => {
-    for (const nombre of ['estilos.css', 'i18n/es.json', 'i18n/en.json', 'tema.js', 'creador.js', 'dibujos.js', 'clave-recuperacion.js', 'icono.svg']) {
+    for (const nombre of ['estilos.css', 'i18n/es.json', 'i18n/en.json', 'tema.js', 'creador.js', 'dibujos.js', 'clave-recuperacion.js', 'copias-vista.js', 'icono.svg']) {
       const original = readFileSync(join(PUB, nombre));
       for (const [pide, sale] of [['br', 'br'], ['gzip, deflate', 'gzip'], ['gzip, deflate, br', 'br']]) {
         const r = await pedir(base, `/${nombre}`, { 'accept-encoding': pide });
@@ -96,7 +96,7 @@ test('los archivos comprimidos (brotli y gzip) se descomprimen exactamente al ar
         assert.equal(r.cabeceras.vary, 'Accept-Encoding', nombre);
         assert.ok(r.cuerpo.length < original.length, `${nombre} comprimido no es más chico`);
         assert.equal(Number(r.cabeceras['content-length']), r.cuerpo.length, nombre);
-        // creador.js, dibujos.js y clave-recuperacion.js no importan nada: salen idénticos al archivo.
+        // creador.js, dibujos.js, clave-recuperacion.js y copias-vista.js no importan nada: salen idénticos al archivo.
         assert.ok(descomprimir(r).equals(original), `${nombre} (${sale}) no es el archivo exacto`);
         revisarSeguridad(r, nombre);
       }
@@ -442,7 +442,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // Las pestañas de Administrador (0.4.1) piden lo mismo que #admin, y las de un proyecto lo mismo que el proyecto.
   for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
   const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'], ['proyectos', 'pantallaProyectos'],
-    ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'],
+    ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
     ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
     ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
@@ -461,6 +461,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     const usa = /^admin(\/|$)/.test(seccion) ? pidePantalla('pantallaInicio') : pide;
     for (const ruta of otros) assert.ok(usa.has(ruta), `${seccion}: se adelanta ${ruta}, que la pantalla no pide`);
   }
+  // Fase 1, parte e: Copias pide solo lo suyo (y nada a quien no es administrador).
+  assert.deepEqual([...pedidosAlAbrir('copias', true)], ['/api/admin/copias']);
+  assert.deepEqual([...pedidosAlAbrir('copias', false)], []);
   // Sin dirección o con una que no existe se ve Inicio.
   assert.deepEqual(pedidosAlAbrir('cualquier-cosa', true), pedidosAlAbrir('inicio', true));
   assert.deepEqual(pedidosAlAbrir('proyecto/abc', false), pedidosAlAbrir('inicio', false));

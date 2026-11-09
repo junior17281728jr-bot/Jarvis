@@ -9,6 +9,11 @@ import {
   ATRIBUTOS_CAMPO_CLAVE, MARCAS_GASTO, CAMBIOS_RESALTADOS, partesBarraGasto, controlesProveedores, estadoDeClave, vistaAyudaIa, nombreModelo, leerDolares,
   textoUsd, lineaIaInicio, cosasParaEncender, apagarProveedorApagaIa,
 } from './ia-vista.js';
+import {
+  vistaCopias, vistaDisco, motivoNoAhora, motivoBase, razonNoClave, TONO_COPIA, ICONO_TONO, vistaAzulejoCopias, vistaAzulejoTelegram, vistaTelegram,
+  codigoLegible, cuentaAtras, enlaceSeguro,
+} from './copias-vista.js';
+import { leerClave, verificadorDe, grupoDistinto, gruposDeClave } from './clave-recuperacion.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -502,6 +507,14 @@ function lineaIa(ia) {
     barraGasto({ usadoMicro: ia.usadoMicro, apartadoMicro: ia.apartadoMicro, topeMicro: ia.topeGeneralMicro, lleno: l.lleno }, { conMarcas: false }));
 }
 
+// Las copias en una insignia de Inicio: «Copias: hoy 4:41 a. m.» (verde), «Copias: falta tu clave» (amarillo)…
+function insigniaCopias(s) {
+  if (!s?.copias) return null;
+  const v = vistaAzulejoCopias(s.copias, { modoSeguro: s.modoSeguro?.activo });
+  const valor = v.valor.fecha ? (v.valor.clave === 'copias.azulejo.hace' ? hace(v.valor.fecha) : cuando(v.valor.fecha)) : t(v.valor.clave);
+  return insignia(v.tono === 'info' ? 'info' : v.tono, t('inicio.estado.copias', { estado: valor }));
+}
+
 function estadoEnInicio(s, ia = null) {
   if (!s) return null;
   const graves = (s.avisos?.abiertos ?? []).filter(a => a.nivel === 'grave' && !a.vistoEn).length;
@@ -511,7 +524,8 @@ function estadoEnInicio(s, ia = null) {
     alerta ? el('p', { class: 'alerta-texto con-icono' }, icono('mal', 'icono estado'), el('span', { texto: alerta })) : el('h2', { texto: t('inicio.estado') }),
     el('div', { class: 'etiquetas' },
       insignia(tonoTrabajo(s), t('inicio.estado.trabajo', { estado: nombreFase(s) })),
-      insignia(tonoServidor, t('inicio.estado.servidor', { estado: t(`sistema.semaforo.${s.salud?.semaforo ?? 'amarillo'}`) }))),
+      insignia(tonoServidor, t('inicio.estado.servidor', { estado: t(`sistema.semaforo.${s.salud?.semaforo ?? 'amarillo'}`) })),
+      insigniaCopias(s)),
     lineaIa(ia),
     // Esta tarjeta no se actualiza sola: dice de cuándo son los datos.
     el('p', { class: 'ayuda', texto: t('inicio.estado.actualizado', { hora: cuando(new Date().toISOString()) }) }),
@@ -558,9 +572,9 @@ async function pantallaInicio() {
       aprobar,
       alerta ? null : estadoSistema,
       el('section', { class: 'tarjeta inicio-info' }, el('h2', { texto: t('inicio.funciona') }),
-        lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.6', 'inicio.funciona.2', 'inicio.funciona.3'], 'bien', 'bien')),
+        lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.6', 'inicio.funciona.7', 'inicio.funciona.2', 'inicio.funciona.3'], 'bien', 'bien')),
       el('section', { class: 'tarjeta inicio-info' }, el('h2', { texto: t('inicio.viene') }),
-        lista(['inicio.viene.copias', 'inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado')))));
+        lista(['inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado')))));
 }
 
 // Botones de los que se elige uno (idioma, tema): el elegido se ve lleno y lo dice a VoiceOver (aria-pressed).
@@ -836,6 +850,15 @@ function textoAviso(a) {
   if (a.clave === 'ia_costo_mayor') {
     return t('aviso.ia_costo_mayor', { real: usd(d.realMicro), reservado: usd(d.reservadoMicro), proveedor: nombreProveedor(d.proveedor) });
   }
+  // Fase 1, parte e: una actualización que no se instaló o que se devolvió (con los 7 primeros caracteres de su versión),
+  // las copias y el Telegram.
+  const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
+  if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
+  if (a.clave === 'copias_disco_pronto') return t('aviso.copias_disco_pronto', { dias: v(d.dias) });
+  if (a.clave === 'copia_fallida' && d.motivo) return `${t('aviso.copia_fallida')} ${t('copias.por', { motivo: textoMotivoCopia(d.motivo) })}`;
+  if (a.clave === 'telegram_falla' && ['bloqueado', 'perdido', 'clave'].includes(d.motivo)) {
+    return `${t('aviso.telegram_falla')} ${t(d.motivo === 'bloqueado' ? 'telegram.problema.bloqueado' : d.motivo === 'perdido' ? 'telegram.problema.perdido' : 'telegram.problema.clave_no_valida')}`;
+  }
   const mb = d.disponibleMb ?? d.libreMb ?? d.archivoMb ?? d.walMb;
   const n = v(d.reinicios24h ?? d.fallidas24h ?? d.revisar);
   const singular = n === 1 && (catalogos[idioma]?.[`aviso.${a.clave}.uno`] != null || catalogos.es?.[`aviso.${a.clave}.uno`] != null);
@@ -958,7 +981,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
         el('p', { class: 'suave', texto: a.veces > 1 ? t('aviso.desde_ultima', { desde: fecha(a.creadoEn), ultima: hace(a.ultimaVez) }) : t('aviso.desde', { desde: fecha(a.creadoEn) }) }),
         a.vistoEn ? el('p', { class: 'suave', texto: t('aviso.visto', { fecha: fecha(a.vistoEn) }) })
           : el('button', { type: 'button', class: 'secundario', texto: t('aviso.entendido'), onclick: evento => acciones.visto(a, evento.currentTarget) }))), 3, estadoVista.avisos),
-      el('p', { class: 'ayuda', texto: t('sistema.avisos.telegram') })) : el('span', { hidden: true }, anclaAvisos);
+      el('p', { class: 'ayuda', texto: s.telegram?.listo ? t('sistema.avisos.telegram_si') : t('sistema.avisos.telegram') })) : el('span', { hidden: true }, anclaAvisos);
     return [resumen, avisos];
   }
 
@@ -1069,7 +1092,10 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
       el('li', { texto: tn('servidor.copias', { n: salud.copias?.archivos ?? 0, mb: tamano(salud.copias?.mb ?? 0) }) }),
       el('li', { texto: t('servidor.carga', { a: numero(salud.carga?.m1 ?? 0, 2), b: numero(salud.carga?.m5 ?? 0, 2), c: numero(salud.carga?.m15 ?? 0, 2) }) }),
       el('li', { texto: salud.pantallasP99Ms == null ? t('servidor.pantallas.sin_dato') : t('servidor.pantallas', { ms: numero(salud.pantallasP99Ms, 1) }) }),
-      salud.encendidoDesde ? el('li', { texto: t('servidor.encendido', { fecha: fecha(salud.encendidoDesde) }) }) : null),
+      salud.encendidoDesde ? el('li', { texto: t('servidor.encendido', { fecha: fecha(salud.encendidoDesde) }) }) : null,
+      // Fase 1, parte e: la última versión que el actualizador no instaló (o devolvió), leída de version.bad.
+      s.actualizaciones?.versionMala ? el('li', { class: 'tono-atencion' }, el('span', { class: 'con-icono' }, icono('atencion', 'icono chico tono-color'),
+        el('span', { texto: t('servidor.version_mala', { sha: String(s.actualizaciones.versionMala).slice(0, 7) }) }))) : null),
     detallesHistorial);
   return [servidor, datosServidor];
 }
@@ -1118,11 +1144,13 @@ function crearBloqueFila() {
   return detalles;
 }
 
-// El color del punto de las pestañas Trabajo y Servidor (el mismo de sus tarjetas del resumen).
+// El color del punto de las pestañas Trabajo, Servidor y Copias (el mismo de sus tarjetas del resumen). El de Copias
+// solo se ve cuando algo no está bien (verde no se marca: así el punto llama la atención solo cuando hace falta).
 function tonosDePestanas(s, sinConexion = false) {
   if (!s) return {};
   if (sinConexion) return { trabajo: 'apagado', servidor: 'apagado' };
-  return { trabajo: tonoTrabajo(s), servidor: TONO_SEMAFORO[s.salud?.semaforo] ?? 'atencion' };
+  const copias = vistaAzulejoCopias(s.copias, { modoSeguro: s.modoSeguro?.activo }).tono;
+  return { trabajo: tonoTrabajo(s), servidor: TONO_SEMAFORO[s.salud?.semaforo] ?? 'atencion', copias: ['mal', 'atencion'].includes(copias) ? copias : undefined };
 }
 
 // La zona de sistema de Administrador: se dibuja, se actualiza cada 30 s y maneja sus botones.
@@ -1158,7 +1186,7 @@ function crearZonaSistema(vigente, parte = 'resumen') {
     zona.replaceChildren(...dibujarZonaSistema(datos, { parte, acciones, bloqueFila, mensajeZona, estadoVista, datosDe: ultimosEn ?? Date.now(), sinConexion }).filter(Boolean));
     for (const [id, tono] of Object.entries(tonosDePestanas(datos, sinConexion))) {
       const punto = document.querySelector(`.pestanas [data-pestana="${id}"] .punto`);
-      if (punto) punto.setAttribute('class', `punto tono-${tono}`);
+      if (punto && tono) punto.setAttribute('class', `punto tono-${tono}`);
     }
   }
   async function actualizar() {
@@ -1245,6 +1273,7 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'usuarios', href: '#admin/usuarios', texto: t('admin.pestana.usuarios'), nombreIcono: 'personas' },
       { id: 'trabajo', href: '#admin/trabajo', texto: t('admin.pestana.trabajo'), nombreIcono: 'latido', tono: tonos.trabajo },
       { id: 'servidor', href: '#admin/servidor', texto: t('admin.pestana.servidor'), nombreIcono: 'servidor', tono: tonos.servidor },
+      { id: 'copias', href: '#copias', texto: t('admin.pestana.copias'), nombreIcono: 'copia', tono: tonos.copias },
       { id: 'ia', href: '#ia', texto: t('admin.pestana.ia'), nombreIcono: 'chispa' },
       { id: 'claves', href: '#claves', texto: t('admin.pestana.claves'), nombreIcono: 'llave' },
     ], actual, t('admin.pestanas')),
@@ -1287,7 +1316,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
           onclick: () => { abrirCrearUsuario = true; location.hash = '#admin/usuarios'; },
         }, icono('mas'), el('span', { texto: t('admin.ir.nuevo') }))));
     mostrar(marco('admin', cabecera, aviso,
-      el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves))));
+      el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
   }
@@ -1473,6 +1502,441 @@ function bajarAlAncla() {
   if (ancla) raiz.querySelector(`[data-ancla="${ancla}"]`)?.scrollIntoView({ block: 'start' });
 }
 
+// ---------- Copias de seguridad (fase 1, parte e) ----------
+// #copias: cómo están las copias de un vistazo (una tarjeta grande con su color, su ícono, una palabra y una línea), la
+// clave de recuperación, el Telegram y el disco en tarjetas chicas, y lo largo dentro de «Ver…»: las últimas copias y
+// «Si un día pierdes el servidor». En el teléfono, lo importante en la primera pantalla; en la PC, 3 columnas.
+// Mientras se hace una copia se actualiza cada 3 s (el servidor responde solo con filas de la base: nunca mira la carpeta).
+// La clave de recuperación recién creada vive SOLO en la memoria de esta pantalla hasta que se confirma (o hasta salir de
+// Copias): nunca se guarda en el navegador ni vuelve al servidor. Al confirmarla y al comprobarla, la página calcula su
+// «verificador» (public/clave-recuperacion.js) y manda solo eso.
+let claveNueva = null; // { clave, huella, expira, paso: 1 | 2, antes } mientras se crea una clave
+
+const textoMotivoCopia = motivo => {
+  const base = motivoBase(motivo);
+  return base ? tSi(`copias.motivo.${base}`, t('copias.motivo.otro')) : '';
+};
+// Un día en la hora de RD: «9 nov 2026».
+const diaRd = iso => (iso && Number.isFinite(Date.parse(iso)) ? new Intl.DateTimeFormat(formatoLocal(), { dateStyle: 'medium', timeZone: 'America/Santo_Domingo' }).format(new Date(iso)) : '—');
+// Un día corto (sin el año, si es de este año): «9 nov».
+const diaCorto = iso => {
+  if (!iso || !Number.isFinite(Date.parse(iso))) return '—';
+  const opciones = { day: 'numeric', month: 'short', timeZone: 'America/Santo_Domingo' };
+  if (new Date(iso).getUTCFullYear() !== new Date().getUTCFullYear()) opciones.year = 'numeric';
+  return new Intl.DateTimeFormat(formatoLocal(), opciones).format(new Date(iso));
+};
+// «41 MB» (o «380 KB» para lo que no llega a 1 MB: una copia chica nunca dice «0 MB»).
+const tamanoChico = mb => (mb != null && Number(mb) > 0 && Number(mb) < 1 ? `${numero(Math.max(1, Math.round(Number(mb) * 1024)))} KB` : tamano(mb));
+const tamanoBytes = bytes => (bytes == null ? '—' : tamanoChico(Number(bytes) / (1024 * 1024)));
+// Más de 10 años de disco: no se dice un número enorme.
+const DIAS_MUCHOS = 3650;
+
+// El dibujo grande de la tarjeta: el ícono en un círculo de color, con una marca chica (✔, ! o ✖) o el anillo del avance.
+function dibujoCopia(v) {
+  const caja = el('span', { class: `copias-dibujo tono-${v.tono}`, 'aria-hidden': 'true' }, icono(v.icono, 'icono copias-dibujo-icono'));
+  if (v.progreso) {
+    const anillo = svgEl('svg', { viewBox: '0 0 64 64', class: `copias-anillo${v.progreso.de ? '' : ' girando'}`, 'aria-hidden': 'true', focusable: 'false' });
+    const largo = 2 * Math.PI * 29;
+    const parte = v.progreso.de ? Math.max(0.04, Math.min(1, (v.progreso.n ?? 0) / v.progreso.de)) : 0.25;
+    anillo.append(svgEl('circle', { cx: 32, cy: 32, r: 29, class: 'copias-anillo-fondo' }),
+      svgEl('circle', { cx: 32, cy: 32, r: 29, class: 'copias-anillo-lleno', 'stroke-dasharray': `${(largo * parte).toFixed(1)} ${largo.toFixed(1)}`, transform: 'rotate(-90 32 32)' }));
+    caja.append(anillo);
+  } else if (v.marca) caja.append(el('span', { class: `copias-marca tono-${v.marca}` }, icono(v.marca === 'bien' ? 'marca' : v.marca === 'mal' ? 'mal' : 'atencion', 'icono chico')));
+  return caja;
+}
+
+async function pantallaCopias(aviso = null) {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/admin/copias');
+  if (!vigente()) return;
+  if (!r.ok) {
+    mostrar(marco('admin', cabeceraAdmin('copias'), el('section', { class: 'tarjeta' }, titulo('copia', t('copias.titulo')), el('p', { class: 'mensaje error', 'data-foco': true, texto: textoError(r.datos.error) }))));
+    return;
+  }
+  if (claveNueva && r.datos.puede?.crearClave) return dibujarClaveNueva(r.datos, vigente);
+  claveNueva = null;
+  dibujarCopias(r.datos, aviso, vigente);
+}
+
+function dibujarCopias(datos, aviso, vigente) {
+  const zona = el('div', { class: 'copias-rejilla' });
+  const arriba = el('div', {}, avisoDeArriba(aviso));
+  const mensaje = caja();
+  const ruta = location.hash;
+  // Lo abierto sigue abierto cuando la pantalla se actualiza sola.
+  const abierto = { recientes: pantallaAncha(), restaurar: false, clave: false, cambiar: false };
+  let reloj = null;
+  let anterior = null;
+  const sigue = () => vigente() && location.hash === ruta && zona.isConnected;
+
+  async function actualizar() {
+    const x = await api('GET', '/api/admin/copias');
+    if (!sigue()) return;
+    if (x.ok) pintar(x.datos);
+    else programar(anterior);
+  }
+  function programar(d) {
+    clearTimeout(reloj);
+    if (!d?.enCurso) return;
+    reloj = setTimeout(() => {
+      if (!sigue()) return;
+      if (document.hidden) return programar(d);
+      actualizar();
+    }, 3000);
+  }
+  function pintar(d) {
+    // Al terminar la copia que se estaba haciendo, se dice cómo terminó.
+    if (anterior?.enCurso && !d.enCurso && d.ultima) {
+      const bien = ['verificada', 'solo_local'].includes(d.ultima.estado);
+      decir(mensaje, bien ? t(d.ultima.estado === 'verificada' ? 'copias.lista' : 'copias.lista_local') : t('copias.no_salio', { motivo: textoMotivoCopia(d.ultima.motivo) || t('copias.motivo.otro') }), bien ? 'bien' : 'error');
+    }
+    anterior = d;
+    zona.replaceChildren(...partesDeCopias(d, { abierto, mensaje, actualizar }).filter(Boolean));
+    const v = vistaCopias(d);
+    const punto = document.querySelector('.pestanas [data-pestana="copias"]');
+    if (punto) {
+      punto.querySelector('.punto')?.remove();
+      if (['mal', 'atencion'].includes(v.tono)) punto.append(el('span', { class: `punto tono-${v.tono}`, 'aria-hidden': 'true' }));
+    }
+    programar(d);
+  }
+  mostrar(marco('admin', cabeceraAdmin('copias'), arriba, zona));
+  pintar(datos);
+}
+
+// Las tarjetas de #copias (se vuelven a dibujar cada 3 s mientras se hace una copia).
+function partesDeCopias(d, { abierto, mensaje, actualizar }) {
+  const v = vistaCopias(d);
+  const ahora = Date.now();
+  const f = d.ultimaFuera;
+  // ---- La tarjeta grande ----
+  const lineaPrincipal = v.linea === 'copias.fallo' ? t('copias.fallo', { motivo: textoMotivoCopia(v.variables.motivo) || t('copias.motivo.otro') })
+    : v.linea === 'copias.atrasada' ? t('copias.atrasada', { hace: f ? hace(f.fecha, ahora) : '—' })
+      : v.linea === 'copias.comprobada' ? null : t(v.linea, { n: numero(v.variables.n ?? 0), de: numero(v.variables.de ?? 0) });
+  const botonAhora = el('button', {
+    type: 'button', class: 'grande con-icono centrado',
+    onclick: async evento => {
+      const boton = evento.currentTarget;
+      boton.disabled = true;
+      mensaje.hidden = true;
+      const x = await api('POST', '/api/admin/copias/ahora', {});
+      if (!x.ok) {
+        boton.disabled = false;
+        return decir(mensaje, textoError(x.datos.error), 'error');
+      }
+      decir(mensaje, t('copias.pedida'), 'bien');
+      await actualizar();
+    },
+  }, icono(v.accion === 'otra_vez' ? 'actualizar' : 'copia'), el('span', { texto: t(v.accion === 'otra_vez' ? 'copias.otra_vez' : 'copias.ahora') }));
+  const botonCrear = el('button', {
+    type: 'button', class: 'grande con-icono centrado',
+    onclick: evento => crearClaveNueva(evento.currentTarget, mensaje, null),
+  }, icono('clave_recuperacion'), el('span', { texto: t('copias.clave.crear') }));
+  const conUltima = f && ['bien', 'sin_fijar', 'telegram_problema', 'atrasada', 'fallo'].includes(v.estado);
+  const datosUltima = conUltima ? el('p', { class: 'copias-datos' },
+    el('span', { texto: tn('copias.partes', { n: f.partes ?? 0, mb: tamanoBytes(f.bytes) }) }),
+    v.estado === 'bien' ? el('span', { class: 'insignia tono-bien' }, icono('marca', 'icono chico'), el('span', { texto: t('copias.comprobada') })) : null) : null;
+  const estado = el('section', { class: `tarjeta copias-estado tono-${v.tono}`, 'aria-live': 'polite' },
+    el('div', { class: 'copias-estado-cabeza' },
+      dibujoCopia(v),
+      el('div', { class: 'copias-estado-texto' },
+        el('h2', { class: 'copias-titulo', texto: t(v.titulo) }),
+        conUltima
+          ? el('p', { class: v.estado === 'atrasada' || v.estado === 'fallo' ? 'copias-cuando chico' : 'copias-cuando', texto: v.estado === 'atrasada' || v.estado === 'fallo' ? t('copias.ultima_fuera', { cuando: cuando(f.fecha, ahora) }) : cuando(f.fecha, ahora) })
+          : null)),
+    lineaPrincipal ? el('p', { class: 'copias-linea fuerte', texto: lineaPrincipal }) : null,
+    datosUltima,
+    d.clave?.activa && !d.enCurso && !d.modoSeguro && !d.locales?.frenoDisco && d.proxima ? el('p', { class: 'copias-proxima con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('copias.proxima', { cuando: cuando(d.proxima, ahora) }) })) : null,
+    d.clave?.pendiente && !d.clave.activa ? el('p', { class: 'ayuda', texto: t('copias.clave.pendiente_perdida') }) : null,
+    v.accion === 'crear_clave' ? botonCrear : v.accion ? botonAhora : null,
+    v.razon ? el('p', { class: 'aviso con-icono-arriba copias-razon' }, icono('info', 'icono chico'), el('span', { texto: t(v.razon) })) : null,
+    v.enlace ? el('a', { class: 'boton-enlace secundario con-icono', href: v.enlace.href }, icono('flecha'), el('span', { texto: t(v.enlace.texto) })) : null,
+    mensaje);
+
+  // ---- La clave (tarjeta chica) ----
+  const c = d.clave ?? {};
+  const tarjetaClave = el('section', { class: `tarjeta copias-mini tono-${c.activa ? 'bien' : 'mal'}` },
+    el('p', { class: 'copias-mini-titulo con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: c.activa ? t('copias.clave.mini', { huella: c.huella }) : t('copias.clave.mini_falta') })),
+    el('p', { class: 'copias-mini-valor', texto: c.activa ? t('copias.clave.desde', { fecha: diaCorto(c.desde) }) : t('copias.clave.mini_falta_texto') }),
+    c.activa ? el('p', { class: 'suave', texto: c.comprobadaEn ? t('copias.clave.comprobada_el', { fecha: diaCorto(c.comprobadaEn) }) : t('copias.clave.nunca_comprobada') }) : null,
+    c.activa && d.puede?.crearClave ? el('button', {
+      type: 'button', class: 'secundario chico con-icono',
+      onclick: () => {
+        const destino = document.querySelector('[data-ancla="clave"]');
+        if (destino) { destino.open = true; abierto.clave = true; destino.scrollIntoView({ behavior: 'smooth', block: 'start' }); destino.querySelector('textarea, input')?.focus({ preventScroll: true }); }
+      },
+    }, icono('marca', 'icono chico'), el('span', { texto: t('copias.clave.comprobar') })) : null);
+
+  // ---- El Telegram (tarjeta chica, lleva a Claves) ----
+  const tg = d.telegram ?? null;
+  const vt = vistaAzulejoTelegram(tg);
+  const tarjetaTelegram = el('a', { class: `tarjeta copias-mini enlace-mini tono-${vt.tono}`, href: '#claves' },
+    el('span', { class: 'copias-mini-titulo con-icono' }, icono('avion_papel', 'icono'), el('span', { texto: t('servicios.telegram') })),
+    el('span', { class: 'copias-mini-valor', texto: tg?.chat?.nombre ? t('telegram.azulejo.chat', { nombre: tg.chat.nombre }) : t(vt.valor) }),
+    insignia(vt.tono === 'apagado' ? 'apagado' : vt.tono, vt.valor === 'telegram.azulejo.activo' ? t('telegram.unido') : vt.detalle && vt.detalle !== 'telegram.azulejo.chat' ? t(vt.detalle) : t(vt.valor)));
+
+  // ---- El disco de este servidor ----
+  const l = d.locales ?? {};
+  const vd = vistaDisco(l);
+  const tarjetaDisco = el('section', { class: `tarjeta copias-disco tono-${vd.tono}` },
+    el('p', { class: 'copias-mini-titulo con-icono' }, icono('disco', 'icono'), el('span', { texto: t('copias.aqui.titulo') })),
+    el('div', { class: 'copias-numeros' },
+      cifraGrande(numero(l.copias ?? 0), tn('copias.aqui.copias', { n: l.copias ?? 0 })),
+      cifraGrande(tamanoChico(l.mb ?? 0), t('copias.aqui.ocupan')),
+      cifraGrande(tamano(l.libreMb), t('copias.aqui.libres'), vd.tono === 'bien' ? 'neutro' : vd.tono)),
+    vd.linea ? el('p', { class: `aviso-linea tono-${vd.tono}`, texto: t(vd.linea, { n: numero(l.diasRestantes ?? 0) }) }) : null,
+    l.diasRestantes != null && !l.pausadas && !l.frenoDisco && l.activas !== false
+      ? el('p', { class: 'suave', texto: l.diasRestantes > DIAS_MUCHOS ? t('copias.aqui.dias_muchos') : t('copias.aqui.dias', { n: numero(l.diasRestantes) }) }) : null,
+    el('details', {},
+      el('summary', { class: 'con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.aqui.regla') })),
+      el('p', { class: 'ayuda', texto: t('copias.aqui.regla.texto', { piso: tamano(l.pisoMb) }) })));
+
+  // ---- Las últimas copias ----
+  const recientes = Array.isArray(d.recientes) ? d.recientes : [];
+  const lista = el('ul', { class: 'lista-simple lista-copias' }, recientes.map(x => {
+    const tono = TONO_COPIA[x.estado] ?? 'apagado';
+    return el('li', { class: `copia-fila tono-${tono}` },
+      el('span', { class: 'tono-color copia-fila-icono' }, icono(ICONO_TONO[tono] ?? 'info', 'icono')),
+      el('span', { class: 'copia-fila-cuerpo' },
+        el('span', { class: 'fuerte', texto: cuando(x.fecha, ahora) }),
+        el('span', { class: 'suave', texto: [x.bytes ? tamanoBytes(x.bytes) : null, x.partes ? tn('copias.n_partes', { n: x.partes }) : null, x.origen === 'manual' ? t('copias.origen.manual') : null].filter(Boolean).join(' · ') }),
+        el('span', { class: 'copia-fila-donde' },
+          x.fuera ? el('span', { class: 'etiqueta con-icono-chico' }, icono('avion_papel', 'icono chico'), el('span', { texto: t('copias.donde.telegram') })) : null,
+          x.local ? el('span', { class: 'etiqueta con-icono-chico' }, icono('disco', 'icono chico'), el('span', { texto: t('copias.donde.servidor') })) : null)),
+      el('span', { class: 'copia-fila-estado' },
+        el('span', { class: `insignia tono-${tono}`, texto: tSi(`copias.estado_fila.${x.estado}`, x.estado) }),
+        x.motivo && ['fallida', 'interrumpida', 'saltada'].includes(x.estado) ? el('span', { class: 'suave chico', texto: textoMotivoCopia(x.motivo) }) : null));
+  }));
+  const detallesRecientes = el('details', { class: 'tarjeta copias-recientes', open: abierto.recientes },
+    el('summary', { class: 'con-icono' }, icono('fila', 'icono'), el('span', { texto: t('copias.recientes', { n: numero(recientes.length) }) })),
+    recientes.length ? lista : el('p', { class: 'suave', texto: t('copias.recientes.vacio') }));
+  detallesRecientes.addEventListener('toggle', () => { abierto.recientes = detallesRecientes.open; });
+
+  // ---- La clave: comprobarla, cambiarla, las de antes (solo el dueño desde Tailscale puede comprobar y cambiar) ----
+  const detallesClave = c.activa ? el('details', { class: 'tarjeta copias-gestion', 'data-ancla': 'clave', open: abierto.clave },
+    el('summary', { class: 'con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: t('copias.clave.titulo_gestion', { huella: c.huella }) })),
+    d.puede?.crearClave ? [formularioComprobarClave(), bloqueCambiarClave(c, abierto, mensaje)]
+      : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t(razonNoClave(d)) })),
+    (c.anteriores ?? []).length ? [
+      el('h3', { texto: t('copias.clave.anteriores') }),
+      el('ul', { class: 'lista-simple' }, c.anteriores.map(x => el('li', { texto: t('copias.clave.anterior_linea', { huella: x.huella, desde: diaRd(x.desde), hasta: diaRd(x.hasta) }) }))),
+      el('p', { class: 'ayuda', texto: t('copias.clave.anteriores_ayuda') }),
+    ] : null) : null;
+  detallesClave?.addEventListener('toggle', () => { abierto.clave = detallesClave.open; });
+
+  // ---- Si un día pierdes el servidor ----
+  const detallesRestaurar = el('details', { class: 'tarjeta copias-restaurar', open: abierto.restaurar },
+    el('summary', { class: 'con-icono' }, icono('escudo', 'icono'), el('span', { texto: t('copias.restaurar.titulo') })),
+    pasosRestaurar(),
+    el('p', { class: 'ayuda', texto: t('copias.restaurar.nota') }));
+  detallesRestaurar.addEventListener('toggle', () => { abierto.restaurar = detallesRestaurar.open; });
+
+  // Tres columnas en la PC (cada una con su alto, sin huecos); en el teléfono las columnas no existen (display: contents)
+  // y el orden lo pone estilos.css: la tarjeta grande, la clave y el Telegram, el disco, las últimas copias, la clave.
+  return [
+    el('div', { class: 'copias-col copias-col-1' }, estado, detallesClave),
+    el('div', { class: 'copias-col copias-col-2' }, tarjetaClave, tarjetaTelegram, tarjetaDisco),
+    el('div', { class: 'copias-col copias-col-3' }, detallesRecientes),
+    detallesRestaurar,
+  ];
+}
+
+// Los 5 pasos para recuperar todo en un servidor nuevo (los mismos que en la hoja impresa y en el README).
+function pasosRestaurar() {
+  return el('ol', { class: 'pasos-numerados' }, [1, 2, 3, 4, 5].map(n => el('li', {},
+    el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: String(n) }),
+    el('span', { texto: t(`copias.restaurar.paso${n}`) }))));
+}
+
+// «Comprobar mi clave»: se escribe; la página la revisa y manda solo su verificador.
+function formularioComprobarClave() {
+  const id = 'campo-comprobar-clave';
+  const campoClave = el('input', { ...ATRIBUTOS_CAMPO_RECUPERACION, id });
+  const mensajeComprobar = caja();
+  const formulario = el('form', { class: 'form-clave', novalidate: true },
+    el('h3', { texto: t('copias.clave.comprobar_titulo') }),
+    el('p', { class: 'ayuda', texto: t('copias.clave.comprobar_ayuda') }),
+    el('label', { for: id, texto: t('copias.clave.escribela') }),
+    campoClave,
+    el('button', { type: 'submit', class: 'con-icono' }, icono('marca'), el('span', { texto: t('copias.clave.comprobar_boton') })),
+    mensajeComprobar);
+  alEnviar(formulario, mensajeComprobar, async () => {
+    const escrita = campoClave.value;
+    const calculado = verificadorDe(escrita);
+    if (!calculado.ok) throw new Error(textoError(calculado.error));
+    const x = await api('POST', '/api/admin/copias/clave/comprobar', { verificador: calculado.verificador });
+    if (!x.ok) throw new Error(textoError(x.datos.error));
+    campoClave.value = '';
+    const r = x.datos;
+    if (r.resultado === 'actual') {
+      const u = r.ultimaCopia;
+      decir(mensajeComprobar, u ? t('copias.clave.actual', { huella: r.huella, desde: diaRd(r.desde), mb: tamanoBytes(u.bytes), tablas: numero(u.tablas ?? 0) }) : t('copias.clave.actual_sin_copia', { huella: r.huella, desde: diaRd(r.desde) }), 'bien');
+    } else if (r.resultado === 'anterior') {
+      decir(mensajeComprobar, t('copias.clave.anterior', { huella: r.huella, hasta: diaRd(r.hasta) }), 'bien');
+    } else decir(mensajeComprobar, t('copias.clave.no_es'), 'error');
+  });
+  return formulario;
+}
+
+// «Cambiar mi clave» (cerrado, con su advertencia): las copias de antes siguen necesitando la clave de antes.
+function bloqueCambiarClave(c, abierto, mensaje) {
+  const cambiar = el('details', { class: 'cambiar-clave', open: abierto.cambiar },
+    el('summary', { class: 'con-icono' }, icono('lapiz', 'icono chico'), el('span', { texto: t('copias.clave.cambiar') })),
+    el('p', { class: 'aviso', texto: t('copias.clave.cambiar_aviso', { huella: c.huella }) }),
+    el('button', { type: 'button', class: 'secundario con-icono', onclick: evento => crearClaveNueva(evento.currentTarget, mensaje, c.huella) },
+      icono('clave_recuperacion'), el('span', { texto: t('copias.clave.crear_otra') })));
+  cambiar.addEventListener('toggle', () => { abierto.cambiar = cambiar.open; });
+  return cambiar;
+}
+
+// El cuadro donde se escribe la clave de recuperación: una línea, sin autocompletar, sin corrector, en mayúsculas.
+const ATRIBUTOS_CAMPO_RECUPERACION = Object.freeze({
+  type: 'text', class: 'campo-recuperacion', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'characters', spellcheck: 'false',
+  'data-1p-ignore': 'true', 'data-lpignore': 'true', 'data-form-type': 'other', enterkeyhint: 'done', maxlength: 48, placeholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
+});
+
+// «Crear mi clave de recuperación» (o una nueva, al cambiarla): el servidor la crea y la muestra UNA vez.
+async function crearClaveNueva(boton, mensaje, antes) {
+  if (antes && !confirm(t('copias.clave.cambiar_confirmar', { huella: antes }))) return;
+  boton.disabled = true;
+  mensaje.hidden = true;
+  const x = await api('POST', '/api/admin/copias/clave/nueva', {});
+  if (!x.ok) {
+    boton.disabled = false;
+    return decir(mensaje, textoError(x.datos.error), 'error');
+  }
+  claveNueva = { clave: x.datos.clave, huella: x.datos.huella, expira: x.datos.expira, paso: 1, antes };
+  await pantallaCopias();
+}
+
+// Copiar al portapapeles (en una dirección http:// de Tailscale el navegador no deja usar navigator.clipboard: se
+// copia con el método de antes). → true si se copió.
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch { /* se prueba de la otra forma */ }
+  const area = el('textarea', { class: 'solo-lectores', readonly: true, 'aria-hidden': 'true', tabindex: '-1' });
+  area.value = texto;
+  document.body.append(area);
+  area.select();
+  let copiado = false;
+  try { copiado = document.execCommand('copy'); } catch { copiado = false; }
+  area.value = '';
+  area.remove();
+  return copiado;
+}
+
+// La hoja para imprimir (solo se ve al imprimir: estilos.css, @media print). Se quita sola después.
+function hojaDeLaClave(clave, huella) {
+  return el('section', { class: 'hoja-clave' },
+    el('h1', { texto: t('copias.clave.hoja.titulo') }),
+    el('p', { texto: t('copias.clave.hoja.fecha', { fecha: fecha(new Date().toISOString()), huella }) }),
+    el('p', { class: 'hoja-clave-grupos' }, gruposDeClave(clave).map(g => el('span', { texto: g }))),
+    el('p', { class: 'fuerte', texto: t('copias.clave.unica') }),
+    el('p', { texto: t('copias.clave.no_compartir') }),
+    el('h2', { texto: t('copias.restaurar.titulo') }),
+    pasosRestaurar(),
+    el('p', { class: 'fuerte', texto: t('copias.clave.hoja.guardala') }));
+}
+
+// El paso a paso de la clave nueva: ① verla y guardarla, ② escribirla otra vez mirando el papel.
+function dibujarClaveNueva(datos, vigente) {
+  const n = claveNueva;
+  const mensaje = caja();
+  const cancelar = el('button', {
+    type: 'button', class: 'secundario',
+    texto: t('copias.clave.cancelar'),
+    onclick: () => {
+      if (!confirm(n.antes ? t('copias.clave.cancelar_confirmar_cambio', { huella: n.antes }) : t('copias.clave.cancelar_confirmar'))) return;
+      claveNueva = null;
+      pantallaCopias({ texto: n.antes ? t('copias.clave.cancelada_cambio', { huella: n.antes }) : t('copias.clave.cancelada'), clase: 'aviso' });
+    },
+  });
+  const vence = el('p', { class: 'ayuda con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('copias.clave.vence', { hora: cuando(n.expira) }) }));
+  const cabeza = (numeroPaso, texto) => el('h2', { class: 'paso-titulo' }, el('span', { class: 'paso-numero', texto: String(numeroPaso) }), el('span', { texto }));
+  let tarjeta;
+  if (n.paso === 1) {
+    const grupos = gruposDeClave(n.clave);
+    const botonCopiar = el('button', {
+      type: 'button', class: 'secundario con-icono',
+      onclick: async () => {
+        const copiado = await copiarTexto(grupos.join('-'));
+        decir(mensaje, t(copiado ? 'copias.clave.copiada' : 'copias.clave.no_copiada'), copiado ? 'bien' : 'error');
+      },
+    }, icono('copiar'), el('span', { texto: t('copias.clave.copiar') }));
+    const botonImprimir = el('button', {
+      type: 'button', class: 'secundario con-icono',
+      onclick: () => {
+        const hoja = hojaDeLaClave(n.clave, n.huella);
+        document.body.append(hoja);
+        const quitar = () => hoja.remove();
+        window.addEventListener('afterprint', quitar, { once: true });
+        try { window.print(); } catch { quitar(); }
+        setTimeout(() => { if (!window.matchMedia?.('print').matches) quitar(); }, 60_000);
+      },
+    }, icono('imprimir'), el('span', { texto: t('copias.clave.imprimir') }));
+    tarjeta = el('section', { class: 'tarjeta clave-nueva' },
+      el('div', { class: 'clave-nueva-cabeza' }, cabeza(1, t('copias.clave.tu_clave')), el('span', { class: 'insignia tono-info', texto: t('copias.clave.mini', { huella: n.huella }) })),
+      el('p', { class: 'clave-recuperacion', 'aria-label': t('copias.clave.tu_clave') }, grupos.map(g => el('span', { class: 'clave-grupo', texto: g }))),
+      el('ul', { class: 'lista-iconos clave-consejos' },
+        el('li', {}, icono('lapiz', 'icono'), el('span', { texto: t('copias.clave.guardala') })),
+        el('li', { class: 'fuerte' }, icono('candado', 'icono'), el('span', { texto: t('copias.clave.unica') })),
+        el('li', {}, icono('prohibido', 'icono'), el('span', { texto: t('copias.clave.no_compartir') }))),
+      el('div', { class: 'botones clave-botones' },
+        botonCopiar, botonImprimir,
+        el('button', { type: 'button', class: 'con-icono', onclick: () => { claveNueva.paso = 2; dibujarClaveNueva(datos, vigente); } },
+          el('span', { texto: t('copias.clave.ya_guarde') }), icono('flecha'))),
+      mensaje, vence, cancelar);
+  } else {
+    const id = 'campo-clave-repite';
+    const campoClave = el('input', { ...ATRIBUTOS_CAMPO_RECUPERACION, id, 'aria-describedby': `${id}-ayuda` });
+    const formulario = el('form', { class: 'form-clave', novalidate: true },
+      el('label', { for: id, texto: t('copias.clave.repite') }),
+      el('p', { class: 'ayuda', id: `${id}-ayuda`, texto: t('copias.clave.repite_ayuda') }),
+      campoClave,
+      el('button', { type: 'submit', class: 'grande con-icono centrado' }, icono('marca'), el('span', { texto: t('copias.clave.comprobar_boton') })),
+      mensaje);
+    alEnviar(formulario, mensaje, async () => {
+      const escrita = campoClave.value;
+      // Primero, grupo por grupo contra la que se mostró (sigue en la memoria de esta pantalla).
+      const leida = leerClave(escrita);
+      if (!leida.ok && leida.error === 'clave_formato') throw new Error(textoError('clave_formato'));
+      if (leida.ok) leida.semilla.fill(0);
+      const grupo = grupoDistinto(n.clave, escrita);
+      if (grupo) throw new Error(t('copias.clave.grupo_mal', { n: grupo }));
+      // Coincide: el verificador de lo ESCRITO es lo único que viaja.
+      const calculado = verificadorDe(escrita);
+      if (!calculado.ok) throw new Error(textoError(calculado.error));
+      const x = await api('POST', '/api/admin/copias/clave/confirmar', { verificador: calculado.verificador });
+      if (!x.ok) {
+        if (x.datos.error === 'sin_pendiente') {
+          claveNueva = null;
+          await pantallaCopias({ texto: textoError('sin_pendiente'), clase: 'aviso' });
+          return MANTENER;
+        }
+        throw new Error(textoError(x.datos.error));
+      }
+      campoClave.value = '';
+      claveNueva = null;
+      await pantallaCopias({ texto: t('copias.clave.lista', { huella: x.datos.activa.huella }), clase: 'bien' });
+      return MANTENER;
+    });
+    tarjeta = el('section', { class: 'tarjeta clave-nueva' },
+      el('div', { class: 'clave-nueva-cabeza' }, cabeza(2, t('copias.clave.repite_titulo')), el('span', { class: 'insignia tono-info', texto: t('copias.clave.mini', { huella: n.huella }) })),
+      formulario,
+      el('div', { class: 'botones' },
+        el('button', { type: 'button', class: 'secundario con-icono', onclick: () => { claveNueva.paso = 1; dibujarClaveNueva(datos, vigente); } },
+          icono('ojo'), el('span', { texto: t('copias.clave.ver_otra_vez') })),
+        cancelar),
+      vence);
+  }
+  const porQue = el('section', { class: 'tarjeta nota clave-por-que' },
+    el('p', { class: 'con-icono-arriba' }, icono('info'), el('span', { texto: t(n.antes ? 'copias.clave.por_que_cambio' : 'copias.clave.por_que', { huella: n.antes ?? '' }) })));
+  mostrar(marco('admin', cabeceraAdmin('copias'), el('div', { class: 'rejilla clave-pasos' }, tarjeta, porQue)));
+  if (n.paso === 2) document.getElementById('campo-clave-repite')?.focus({ preventScroll: true });
+}
+
 // ---------- IA opcional y Claves (fase 1, parte d) ----------
 // La IA es una ayuda que cuesta dinero: llega APAGADA y con tope US$0, y OPORTIA funciona completo sin ella. Estas
 // pantallas la muestran de un vistazo (tarjetas de color, números grandes, la barra de lo gastado contra el tope) y dejan
@@ -1590,10 +2054,25 @@ function azulejoClaves(ia, claves) {
     detalle: activas.length ? activas.map(u => t('servicios.claves.una', { nombre: tSi(`claves.corto.${u.uso}`, u.uso), final: u.activa.final })).join(' · ') : t('claves.agregar'),
   });
 }
-function tarjetaServicios(ia, claves) {
+// Fase 1, parte e: las copias fuera del servidor y el Telegram (de GET /api/admin/sistema: no se pide nada más).
+function azulejoCopias(sistema) {
+  const s = sistema?.ok ? sistema.datos : null;
+  const v = vistaAzulejoCopias(s?.copias, { modoSeguro: s?.modoSeguro?.activo });
+  const valor = v.valor.fecha ? (v.valor.clave === 'copias.azulejo.hace' ? hace(v.valor.fecha) : cuando(v.valor.fecha)) : t(v.valor.clave);
+  return tarjetaResumen({ nombreIcono: 'nube_candado', titulo: t('servicios.copias'), valor, detalle: v.detalle ? t(v.detalle) : null, tono: v.tono, destino: '#copias' });
+}
+function azulejoTelegram(sistema) {
+  const tg = sistema?.ok ? sistema.datos.telegram : null;
+  const v = vistaAzulejoTelegram(tg);
+  return tarjetaResumen({
+    nombreIcono: 'avion_papel', titulo: t('servicios.telegram'), valor: t(v.valor), tono: v.tono, destino: '#claves',
+    detalle: v.detalle === 'telegram.azulejo.chat' ? t('telegram.azulejo.chat', { nombre: tg.chat.nombre }) : v.detalle ? t(v.detalle) : null,
+  });
+}
+function tarjetaServicios(ia, claves, sistema = null) {
   return el('section', { class: 'tarjeta servicios' },
     el('h2', { texto: t('servicios.titulo') }),
-    el('div', { class: 'resumen-rejilla rejilla-2' }, azulejoIa(ia), azulejoClaves(ia, claves)));
+    el('div', { class: 'resumen-rejilla rejilla-2' }, azulejoIa(ia), azulejoClaves(ia, claves), azulejoCopias(sistema), azulejoTelegram(sistema)));
 }
 
 // ---- #ia: Administrador → Inteligencia artificial ----
@@ -1863,7 +2342,7 @@ function detalleDelGasto(mes) {
 }
 
 // ---- #claves: Administrador → Claves (solo desde la cuenta de Tailscale del dueño) ----
-const ICONO_GRUPO_CLAVES = { ia: 'chispa' };
+const ICONO_GRUPO_CLAVES = { ia: 'chispa', avisos: 'avion_papel' };
 const ICONO_ESTADO_CLAVE = { activa: 'bien', pausada: 'pausa', no_pasa: 'mal', ilegible: 'mal', ninguna: 'apagado' };
 function textoEstadoClave(estadoClave) {
   if (estadoClave === 'activa') return t('claves.estado.activa');
@@ -1897,16 +2376,19 @@ async function pantallaClaves(aviso = null) {
       el('p', { class: 'suave', texto: t('claves.explica') }),
       d.duenoTailscale ? el('p', { class: 'suave con-icono' }, icono('escudo', 'icono chico'), el('span', { texto: t('claves.dueno', { login: d.duenoTailscale }) })) : null,
       !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null),
-    (d.grupos ?? []).map(g => el('section', { class: 'tarjeta' },
+    // El Telegram primero: es gratis y las copias fuera del servidor lo necesitan (la IA es opcional).
+    [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'avisos') - (a.grupo === 'avisos')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente }) : el('section', { class: 'tarjeta' },
       titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
-      (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa })))))));
+      (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))))));
 }
 
-function cajaDeClave(u, { listo, recargar, abrirPegar }) {
+// ayuda: lo que se muestra al pegar en vez de «dónde se crea» (el Telegram lleva los pasos de @BotFather);
+// nombre: otro nombre arriba (el @usuario del bot).
+function cajaDeClave(u, { listo, recargar, abrirPegar, ayuda = null, nombre: otroNombre = null }) {
   const a = u.activa;
   const { estado: estadoClave, tono } = estadoDeClave(a);
   const mensajeClave = caja();
-  const nombre = tSi(`claves.uso.${u.uso}`, u.uso);
+  const nombre = otroNombre ?? tSi(`claves.uso.${u.uso}`, u.uso);
   const conIaApagada = (texto, x) => [texto, x.datos.iaApagada ? t('claves.ia_apagada') : null].filter(Boolean).join(' ');
   // Cuando la IA se apagó, un atajo para volver a encenderla (ronda 4 de revisión).
   const abrirIa = { href: '#ia', texto: t('ia.abrir') };
@@ -1987,7 +2469,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
     }, icono('llave'), el('span', { texto: t('claves.guardar') }));
     partes.push(el('details', { class: 'clave-pegar', open: abrirPegar },
       el('summary', { class: 'con-icono' }, icono(a ? 'lapiz' : 'mas'), el('span', { texto: a ? t('claves.cambiar') : t('claves.agregar') })),
-      el('p', { class: 'ayuda', id: `${id}-donde`, texto: tSi(`claves.donde.${u.uso}`, '') }),
+      ayuda ? el('div', { id: `${id}-donde` }, ayuda) : el('p', { class: 'ayuda', id: `${id}-donde`, texto: tSi(`claves.donde.${u.uso}`, '') }),
       a ? el('p', { class: 'suave', texto: t('claves.reemplazo') }) : null,
       el('label', { for: id, texto: t('claves.pegar') }),
       area,
@@ -2007,6 +2489,162 @@ function cajaDeClave(u, { listo, recargar, abrirPegar }) {
   }
   partes.push(mensajeClave);
   return el('div', { class: `clave-caja tono-${tono}` }, partes);
+}
+
+// ---- Claves → «Avisos y copias por Telegram» (fase 1, parte e) ----
+// Dos pasos con número: ① tu bot (se crea gratis con @BotFather y su token se pega aquí, como las claves de la IA) y
+// ② tu chat (un código de 8 cifras que se le manda al bot desde tu chat privado). Unido, un mensaje de prueba y
+// «Dejar de usar este chat». Si algo no deja mandar, una línea roja dice qué pasa y qué hacer.
+// El código vive solo en la memoria de esta pantalla (el servidor guarda solo su huella): al salir de Claves se suelta.
+let vinculoEnPantalla = null; // { codigo, paraMostrar, enlace, hasta, bot } mientras se espera el mensaje
+const ICONO_PROBLEMA_TELEGRAM = { pausa: 'reloj', sin_probar: 'atencion' };
+
+// Los pasos para crear el bot, con número (lo que se hace en Telegram, en palabras sencillas).
+function pasosBotFather() {
+  return el('ol', { class: 'pasos-numerados' }, [1, 2, 3, 4].map(n => el('li', {},
+    el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: String(n) }),
+    el('span', { texto: t(`telegram.como${n}`) }))));
+}
+
+function grupoTelegram(g, d, { listo, recargar, vigente }) {
+  const u = (g.usos ?? []).find(x => x.uso === 'telegram_bot') ?? { uso: 'telegram_bot', activa: null, anteriores: [] };
+  const tg = d.telegram ?? {};
+  const v = vistaTelegram(tg, u);
+  const mensaje = caja();
+  const nombreBot = tg.bot?.usuario ? `@${tg.bot.usuario}` : null;
+  const lineaProblema = clave => el('p', { class: `aviso-linea con-icono-arriba tono-${clave === 'pausa' ? 'atencion' : 'mal'}`, role: 'status' },
+    icono(ICONO_PROBLEMA_TELEGRAM[clave] ?? 'mal', 'icono'), el('span', { texto: t(`telegram.problema.${clave}`) }));
+
+  // ① Tu bot: la caja de siempre de una clave (pegar, probar gratis, desactivar), con los pasos de @BotFather.
+  const ayudaBot = u.activa ? el('div', { class: 'ayuda-bot' },
+    el('p', { class: 'fuerte', texto: t('telegram.otra_vez_token') }),
+    el('p', { class: 'ayuda', texto: t('telegram.token_otra_vez_pasos') }),
+    v.tokenBien ? null : pasosBotFather()) : el('div', { class: 'ayuda-bot' }, pasosBotFather());
+  const paso1 = el('div', { class: 'paso-telegram' },
+    el('h3', { class: 'paso-titulo' }, el('span', { class: 'paso-numero', texto: '1' }), el('span', { texto: t('telegram.paso.bot') })),
+    !u.activa ? [el('p', { class: 'suave', texto: t('telegram.paso.bot.explica') }), ayudaBot] : null,
+    cajaDeClave(u, { listo, recargar, abrirPegar: !u.activa, ayuda: u.activa ? ayudaBot : el('span'), nombre: nombreBot }),
+    v.paso === 'bot' && v.problema ? lineaProblema(v.problema) : null);
+
+  // ② Tu chat
+  let paso2;
+  const cabeza2 = el('h3', { class: 'paso-titulo' }, el('span', { class: `paso-numero${v.tokenBien ? '' : ' apagado'}`, texto: '2' }), el('span', { texto: t('telegram.paso.chat') }));
+  if (!v.tokenBien) {
+    const unido = v.chat && v.chat.estado !== 'perdido';
+    paso2 = el('div', { class: 'paso-telegram apagado' }, cabeza2, el('p', { class: 'suave con-icono-arriba' }, icono(unido ? 'pausa' : 'candado', 'icono chico'),
+      el('span', { texto: unido ? t('telegram.paso.chat.en_espera', { nombre: v.chat.nombre || t('telegram.tu_chat') }) : t('telegram.paso.chat.antes') })));
+  } else if (v.paso === 'unir' || vinculoEnPantalla) {
+    paso2 = el('div', { class: 'paso-telegram' }, cabeza2, v.problema ? lineaProblema(v.problema) : null, bloqueUnirChat(tg, { recargar, vigente, mensaje }));
+  } else {
+    const chat = v.chat;
+    const envios = tg.envios ?? {};
+    const desvincular = el('details', { class: 'desvincular' },
+      el('summary', { class: 'con-icono' }, icono('prohibido', 'icono chico'), el('span', { texto: t('telegram.dejar') })),
+      el('p', { class: 'ayuda', texto: t('telegram.dejar.explica') }),
+      botonAccion(t('telegram.dejar.boton'), 'peligro', mensaje, async () => {
+        if (!confirm(t('telegram.dejar.confirmar'))) return;
+        const x = await api('POST', '/api/admin/telegram/desvincular', {});
+        if (!x.ok) throw new Error(textoError(x.datos.error));
+        recargar({ texto: t('telegram.dejar.listo'), clase: 'aviso' });
+      }, 'prohibido'));
+    paso2 = el('div', { class: 'paso-telegram' }, cabeza2,
+      el('div', { class: `clave-caja tono-${v.problema ? (v.problema === 'pausa' ? 'atencion' : 'mal') : 'bien'}` },
+        el('div', { class: 'clave-cabeza' },
+          el('strong', { class: 'clave-nombre', texto: chat?.nombre ? t('telegram.chat_de', { nombre: chat.nombre }) : t('telegram.tu_chat') }),
+          insignia(v.problema ? (v.problema === 'pausa' ? 'atencion' : 'mal') : 'bien', v.problema ? t('telegram.no_llegan') : t('telegram.unido'))),
+        chat?.vinculadoEn ? el('p', { class: 'suave', texto: t('telegram.unido_el', { fecha: diaCorto(chat.vinculadoEn) }) }) : null,
+        v.problema ? lineaProblema(v.problema) : null,
+        el('p', { class: 'suave', texto: [envios.ultimoOk ? t('telegram.ultimo_aviso', { cuando: cuando(envios.ultimoOk) }) : t('telegram.sin_mensajes'), envios.hoy ? tn('telegram.hoy', { n: envios.hoy }) : null].filter(Boolean).join(' · ') }),
+        el('div', { class: 'botones' },
+          botonAccion(t('telegram.prueba'), v.problema ? '' : 'secundario', mensaje, async () => {
+            const x = await api('POST', '/api/admin/telegram/prueba', {});
+            if (!x.ok) throw new Error(textoError(x.datos.error));
+            const m = x.datos.motivo;
+            recargar(m === 'ok' ? { texto: t('telegram.prueba_ok'), clase: 'bien' } : { texto: t('telegram.prueba_mal', { motivo: textoMotivoIa(m) }), clase: 'aviso' });
+          }, 'avion_papel'),
+          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar'].includes(v.problema) ? el('button', {
+            type: 'button', class: 'secundario con-icono',
+            onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar),
+          }, icono('actualizar'), el('span', { texto: t('telegram.unir_otra_vez') })) : null),
+        desvincular,
+        mensaje));
+  }
+  return el('section', { class: 'tarjeta grupo-telegram ancha' },
+    titulo('avion_papel', t('claves.grupo.avisos')),
+    el('p', { class: 'suave', texto: t('telegram.explica') }),
+    el('div', { class: 'pasos-telegram' }, paso1, paso2));
+}
+
+// «Unir mi chat»: pide un código de 8 cifras y espera el mensaje (la pantalla pregunta cada 3 s).
+async function empezarAUnir(boton, mensaje, recargar) {
+  if (boton) boton.disabled = true;
+  mensaje.hidden = true;
+  const x = await api('POST', '/api/admin/telegram/vincular', {});
+  if (!x.ok) {
+    if (boton) boton.disabled = false;
+    return decir(mensaje, textoError(x.datos.error), 'error');
+  }
+  vinculoEnPantalla = { codigo: x.datos.codigo, paraMostrar: x.datos.paraMostrar, enlace: enlaceSeguro(x.datos.enlace), hasta: x.datos.hasta, bot: x.datos.bot };
+  recargar(null);
+}
+
+function bloqueUnirChat(tg, { recargar, vigente, mensaje }) {
+  const vinculo = vinculoEnPantalla;
+  if (!vinculo) {
+    return el('div', {},
+      el('p', { texto: t('telegram.unir.explica') }),
+      tg.vinculo?.pendiente ? el('p', { class: 'ayuda', texto: t('telegram.unir.otro_codigo') }) : null,
+      el('button', { type: 'button', class: 'grande con-icono centrado', onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar) },
+        icono('avion_papel'), el('span', { texto: t('telegram.unir') })),
+      mensaje);
+  }
+  const codigo = codigoLegible(vinculo.codigo || vinculo.paraMostrar);
+  const resto = el('span', { class: 'fuerte', texto: cuentaAtras(vinculo.hasta) ?? '0:00' });
+  const estadoEspera = el('p', { class: 'esperando con-icono', role: 'status' }, el('span', { class: 'girando' }, icono('actualizar', 'icono')), el('span', { texto: t('telegram.esperando') }));
+  const bloque = el('div', { class: 'unir-chat' },
+    el('p', { class: 'ayuda', texto: t('telegram.codigo') }),
+    el('p', { class: 'codigo-grande', 'aria-label': t('telegram.codigo_para_leer', { codigo: String(vinculo.codigo).split('').join(' ') }) }, el('span', { texto: codigo })),
+    el('p', { class: 'suave con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('telegram.vence') }), resto),
+    vinculo.enlace ? el('a', { class: 'boton-enlace grande con-icono', href: vinculo.enlace, target: '_blank', rel: 'noopener noreferrer' },
+      icono('avion_papel'), el('span', { texto: t('telegram.abrir_bot') })) : null,
+    el('ol', { class: 'pasos-numerados' },
+      el('li', {}, el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: '1' }), el('span', { texto: vinculo.enlace ? t('telegram.toca_iniciar') : t('telegram.busca_bot', { bot: vinculo.bot ? `@${vinculo.bot}` : t('telegram.tu_bot') }) })),
+      el('li', {}, el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: '2' }), el('span', { texto: t('telegram.o_escribe', { codigo }) }))),
+    estadoEspera,
+    el('button', {
+      type: 'button', class: 'secundario',
+      texto: t('telegram.unir.cancelar'),
+      onclick: () => { vinculoEnPantalla = null; recargar(null); },
+    }),
+    mensaje);
+  // Cada segundo, lo que falta; cada 3 s, si ya llegó el mensaje (mientras se vea esta pantalla).
+  let preguntando = false;
+  let ultimaPregunta = 0;
+  const reloj = setInterval(async () => {
+    if (!vigente() || !bloque.isConnected || vinculoEnPantalla !== vinculo) { clearInterval(reloj); return; }
+    const falta = cuentaAtras(vinculo.hasta);
+    resto.textContent = falta ?? '0:00';
+    if (document.hidden || preguntando || Date.now() - ultimaPregunta < 3000) return;
+    preguntando = true;
+    ultimaPregunta = Date.now();
+    const x = await api('POST', '/api/admin/telegram/vincular/revisar', {});
+    preguntando = false;
+    if (!vigente() || vinculoEnPantalla !== vinculo) return;
+    if (!x.ok) return;
+    const e = x.datos.estado;
+    if (e === 'vinculado') {
+      clearInterval(reloj);
+      vinculoEnPantalla = null;
+      recargar({ texto: t('telegram.unido_listo', { nombre: x.datos.chat?.nombre || t('telegram.tu_chat') }), clase: 'bien' });
+    } else if (e === 'vencido') {
+      clearInterval(reloj);
+      vinculoEnPantalla = null;
+      recargar({ texto: x.datos.motivo === 'intentos' ? t('telegram.codigo_intentos') : t('telegram.codigo_vencido'), clase: 'aviso' });
+    } else if (x.datos.problema) {
+      decir(mensaje, t(x.datos.problema === 'clave_no_valida' ? 'telegram.problema.clave_no_valida' : x.datos.problema === 'bot_ocupado' ? 'telegram.problema.bot_ocupado' : 'telegram.problema.sin_red'), 'error');
+    }
+  }, 1000);
+  return bloque;
 }
 
 // ---- En un proyecto: «Ayuda de IA» en la versión que espera aprobación ----
@@ -3569,12 +4207,16 @@ async function dibujar() {
   if (estado.usuario.debeCambiarClave) return pantallaClaveObligatoria();
   const seccion = location.hash.replace('#', '') || 'inicio';
   const esAdmin = estado.usuario.rol === 'admin';
-  // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #ia, #claves).
+  // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
-  if (!esAdmin || !(pestanaAdmin || seccion === 'ia' || seccion === 'claves')) claveTemporalVisible = null;
+  if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
+  // La clave de recuperación recién creada vive solo en esta pantalla: al irse de Copias se suelta (fase 1, parte e).
+  if (seccion !== 'copias') claveNueva = null;
+  if (seccion !== 'claves') vinculoEnPantalla = null;
   if (seccion === 'configuracion') return pantallaConfiguracion();
   if (pestanaAdmin && esAdmin) return pantallaAdmin(PESTANAS_ADMIN.includes(pestanaAdmin[1]) ? pestanaAdmin[1] : 'resumen');
+  if (seccion === 'copias' && esAdmin) return pantallaCopias();
   if (seccion === 'ia' && esAdmin) return pantallaIa();
   if (seccion === 'claves' && esAdmin) return pantallaClaves();
   if (seccion === 'proyectos') return pantallaProyectos();
@@ -3593,7 +4235,8 @@ function pedidosAlAbrir(seccion, admin) {
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
   // Las pestañas de Administrador (#admin/usuarios, #admin/trabajo, #admin/servidor) piden lo mismo que #admin.
   if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia'] : [];
-  // Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
+  // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
+  if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
   if (seccion === 'claves') return admin ? ['/api/admin/claves'] : [];
   if (seccion === 'proyectos' || seccion === 'nuevo') return ['/api/catalogo', '/api/proyectos'];

@@ -41,6 +41,8 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
   Una base copiada a otro servidor necesita que se peguen las claves otra vez.
 - Nunca abre, cambia ni borra `jarvis.db`, `secrets.env`, `version.txt`, `update.log` ni ningún otro archivo.
 - Antes de cada cambio de la base se guarda una copia completa en `oportia-copias/`.
+- Desde la parte 1e, las copias de cada noche (cifradas) en `oportia-copias/cifradas/AAAA-MM/`, también para siempre
+  (ver «Copias y avisos por Telegram»).
 
 ## Recuperar el acceso de administrador
 En la Consola de DigitalOcean (nunca como root, para no dañar los permisos de la base):
@@ -232,6 +234,118 @@ capacidades, autonomía, frecuencia ni aprobación, y nunca quita las dudas del 
 borrador; (4) la fase 2 trae el editor del permiso de IA de cada proyecto (cambiarlo es una versión nueva que se aprueba)
 y el costo estimado; (5) la fase 6 trae claves propias por cuenta (`secretos.espacio_id`) y topes por cuenta editables.
 
+## Copias y avisos por Telegram (fase 1, parte e)
+Cada madrugada (4:40 a. m., hora de RD, después de la revisión de la base de las 4:10) OPORTIA hace una copia de toda su
+base, la cierra con candado y la manda en partes a tu chat privado con tu bot de Telegram. Después la baja otra vez para
+comprobar que llegó entera y deja fijado arriba en el chat un «índice» con la lista de partes. Telegram es gratis. El mismo
+bot te avisa al momento de lo grave. Nada se borra. Todo lo lento lo hace el trabajo automático (la tarea
+`copias.hacer`), nunca las pantallas.
+
+### Qué se copia y qué nunca
+- Se copia la base entera (`oportia.db`): una foto coherente tomada dentro de una sola lectura (nunca se copia el `-wal`
+  a mano ni se escribe un archivo sin candado en el disco), con un conteo de filas por tabla que se comprueba en la misma
+  copia.
+- **Nunca** se copia la llave de las claves (`oportia-llave-secretos*`), ni ningún archivo que empiece con
+  `oportia-llave`. Las claves de la IA y el token del bot viajan dentro de la base, pero cifradas con esa llave: en un
+  servidor nuevo no se pueden leer y hay que pegarlas otra vez en Claves.
+- En el servidor quedan las mismas partes cifradas en `/var/lib/jarvis/oportia-copias/cifradas/AAAA-MM/` (cuando el disco
+  lo permite).
+
+### Lo que tienes que guardar tú (solo dos cosas)
+1. **Tu clave de recuperación**: 28 letras y números en 7 grupos («7K2M-Q9TB-…»). OPORTIA te la muestra **una sola vez**
+   en Administrador → Copias, te pide escribirla otra vez para estar seguros, y te ofrece imprimir una hoja. Guárdala en
+   un papel en un lugar seguro y en Contraseñas del iPhone o la Mac (como nota segura). El servidor guarda solo el
+   candado (la parte pública), nunca la clave: si alguien se roba el servidor o tu Telegram, no puede abrir tus copias.
+   Si la pierdes, nadie puede abrirlas, ni tú. Se crea y se comprueba solo desde tu cuenta de Tailscale; la página la
+   revisa sola y manda al servidor solo un «verificador», nunca la clave.
+2. **Tu cuenta de Telegram** (el chat con tu bot tiene todas las copias). No borres los mensajes del bot.
+
+Cada 90 días te llega un recordatorio en silencio para «Comprobar mi clave» (tarda un minuto). «Cambiar mi clave» existe
+por si alguien la vio: las copias de antes siguen necesitando la clave de antes (no la tires).
+
+### Cómo crear el bot y unir tu chat (unos 5 minutos, gratis)
+1. En Telegram busca **@BotFather** (marca azul) y escríbele `/newbot`.
+2. Ponle un nombre y un usuario que termine en «bot». Te da un texto largo con dos puntos (`números:letras`): el token.
+3. En OPORTIA, desde tu cuenta de Tailscale: Administrador → Claves → «Avisos y copias por Telegram» → paso ① → pega el
+   token → «Guardar y probar (gratis)».
+4. Paso ② → «Unir mi chat de Telegram»: sale un código de 8 cifras. Toca «Abrir mi bot en Telegram» y «Iniciar», o
+   escríbele el código al bot. En segundos la pantalla dice «quedó unido» y te llega un mensaje de bienvenida.
+5. «Mandar un mensaje de prueba» cuando quieras comprobar que los avisos llegan.
+
+### Si un día pierdes el servidor
+1. Ten a mano tu clave de recuperación (la del papel o la de Contraseñas).
+2. En Telegram abre @BotFather → /mybots → tu bot → API Token, y cópialo.
+3. En el servidor nuevo, OPORTIA te pedirá ese token y tu clave. Busca sola tu última copia (la que está fijada arriba en el
+   chat con tu bot), la comprueba y la abre. *(La pantalla llega en la parte 1f; hasta entonces Claude lo hace contigo por
+   la consola, con la orden de abajo.)*
+4. Después pega otra vez tus claves de IA y el token del bot en Claves: por seguridad nunca viajan en las copias.
+5. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
+
+Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
+noche y usa `--archivos=`. Una copia de más de 30 horas, o si hay una más nueva, nunca se abre sin un «sí».
+
+### El disco («nunca se borra nada») — ⚠ decisión para Junior
+- Las copias del servidor **nunca se borran**. Se guarda una copia aquí solo si después quedan libres al menos
+  max(2 GB, 2 × la base + el `-wal` + 256 MB) (el espacio que hace falta para mejorar OPORTIA sin riesgo).
+- Si no queda ese espacio: **dejo de guardar copias nuevas aquí, sigo con las de Telegram cada noche y te aviso**. Un mes
+  antes te aviso «al ritmo de hoy, en unos 30 días…».
+- Con menos de 300 MB libres paro **todas** las copias (también las de Telegram) hasta que haya espacio, porque hacerlas
+  podría llenar el disco del todo; eso suena como urgente.
+- Lo que cuesta: con el tiempo el disco se llena de copias viejas y alguien (tú, con ayuda de Claude) tendrá que decidir
+  qué hacer con ellas. Otra opción, solo si la pides: guardar aquí solo las copias de los últimos N días.
+
+### Los avisos que llegan al Telegram
+Solo lo urgente suena (modo seguro, base dañada, una copia que falló o ninguna copia comprobada en 30 horas, una
+actualización devuelta). El resto llega en silencio: el trabajo automático que se reinicia, poco disco o memoria, las
+copias que se quedaron solo en el servidor, el mensaje fijado que cambió, una actualización que no se instaló (leído solo
+de `/var/lib/jarvis/update.log` y `version.bad`, sin cambiarlos), los topes y el proveedor de la IA. Un aviso igual no se
+repite; como mucho 10 avisos por hora y 30 por día (las copias no cuentan); lo urgente nunca se calla y cuando se resuelve
+llega «Ya se arregló». Los avisos los manda la parte web, así llegan aunque el trabajo automático esté caído.
+
+### Pantallas
+- **Administrador → Copias** (`#copias`): la tarjeta grande (verde: hay una copia comprobada fuera del servidor en las
+  últimas 30 horas; amarillo: algo que mirar; rojo: falló, está atrasada o el disco está lleno), con «Hacer una copia
+  ahora» solo cuando se puede (si no, una línea dice por qué), el avance «parte 4 de 11» mientras se hace, tu clave, tu
+  Telegram, el disco de este servidor, las últimas 10 copias y «Si un día pierdes el servidor». En la PC, 3 columnas.
+- **Administrador → Claves**: «Avisos y copias por Telegram» con los pasos ① tu bot y ② tu chat.
+- **Resumen** de Administrador: azulejos «Copias» y «Telegram». **Inicio**: una insignia «Copias: hoy 4:41 a. m.».
+  **Servidor**: «Última versión que no se instaló».
+
+### Desde la consola (cuando las pantallas no abren)
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=estado        # cómo están (no cambia nada)
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=ahora         # pide una copia ahora
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --telegram=desvincular # deja de usar el chat (no borra nada)
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --telegram --destino=/var/lib/jarvis/recuperada.db
+    sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo> [--comprobar] [--anterior]
+
+`oportia-restaurar.mjs` pide la clave y el token sin mostrarlos (nunca en la línea de la orden), nunca corre como root y
+nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe
+· 6 Telegram o la red · 7 formato nuevo · 8 cancelada. La parte 1f pondrá la pantalla y el instalador encima.
+
+### Límites de Telegram y medidas
+- La Bot API deja subir documentos de hasta 50 MB y bajar (para comprobar) hasta 20 MB: cada parte mide **2 MiB** (+74 B
+  de cabecera), así cada una se sube y se vuelve a bajar entera. Cada parte se describe sola (las copias se recuperan
+  aunque Telegram cambie los nombres o el orden).
+- Formato `oportia-copia` v1: X25519 + HKDF-SHA256 + AES-256-GCM en registros de 64 KiB con el último marcado, una línea de
+  sello al final (HMAC) y un índice firmado. Un cambio de formato es un número nuevo, nunca una edición; `test/copia-v1.json`
+  es el vector congelado.
+- Medido en la máquina de pruebas (4 CPU) con una base de 208 MB: pico de unos 110 MB en el trabajador (unos 40 MB sobre lo
+  que usa sin hacer nada), 38 partes, 41–48 s; con partes de 4 MiB el envío directo llegaba al tope de 120 MB del
+  trabajador, por eso son de 2 MiB. En el servidor real (1 vCPU) el trabajador usa unos 46 MB sin hacer nada: una copia
+  debería quedar en 85–90 MB. Si alguna vez se acerca a 120 MB, hay que bajar las partes a 1 MiB.
+
+### Si se filtra el token o la clave
+- **El token del bot**: en @BotFather → /mybots → tu bot → API Token → «Revoke current token», y pega el nuevo en Claves.
+  Con el token alguien podría ver tus copias en el chat (pero no abrirlas sin tu clave) o fijar una copia falsa: OPORTIA
+  revisa cada noche que el fijado sea el suyo, firma cada copia y al recuperar siempre muestra la fecha.
+- **La clave de recuperación**: «Cambiar mi clave» en Copias. Las copias nuevas quedan con la clave nueva; las viejas
+  siguen abriéndose con la vieja (quien la tenga y además tenga tu Telegram podría abrir esas copias viejas).
+
+### Lo que falta (a propósito)
+- La pantalla para recuperar y el instalador de una base recuperada: parte 1f (hoy, la consola).
+- No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
+- No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
+
 ## Estado
 - Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.
 - Fase 1, parte a: cuentas. El primer administrador solo se crea desde Tailscale; contraseñas con scrypt; sesiones en galletas
@@ -294,8 +408,8 @@ y el costo estimado; (5) la fase 6 trae claves propias por cuenta (`secretos.esp
     botón del modo seguro (con confirmación) y la salud del servidor con las últimas 24 muestras.
   - Inicio muestra al administrador el estado en una línea, y una tarjeta roja si el modo seguro está activo o hay un aviso
     grave sin ver.
-  - Los avisos solo se ven en Administrador; por Telegram llegan en la parte e (la tabla `avisos` ya guarda cuántas veces
-    pasó, la primera y la última vez, el detalle y si ya se mandó).
+  - Los avisos se ven en Administrador; desde la parte e, los graves también llegan por Telegram (la tabla `avisos`
+    guarda cuántas veces pasó, la primera y la última vez, el detalle y si ya se mandó).
   - API del administrador: `GET /api/admin/sistema`, `GET /api/admin/tareas`, `POST /api/admin/modo-seguro`,
     `POST /api/admin/tareas/:id/reintentar`, `POST /api/admin/tareas/:id/cancelar` y `POST /api/admin/avisos/:id/visto`
     (30 acciones cada 10 minutos). De las tareas de proyectos el administrador nunca ve datos ni resultados.
@@ -335,5 +449,17 @@ y el costo estimado; (5) la fase 6 trae claves propias por cuenta (`secretos.esp
     `secrets.env` de JARVIS (no), modelo (Haiku 5.5), IA para las otras cuentas (US$0) y ChatGPT como segundo (no).
 - Rapidez (versión 0.3.3, sin cambio de base): por Funnel en el teléfono, volver a abrir OPORTIA pasa de unos 4 s a 1,1-1,2 s (de 6 s a 1,8 s con una red lenta; unos 0,6 s si la conexión sigue abierta) y la primera vez de 4 s a 1,7-2,2 s. Los archivos van comprimidos, con ETag y su huella `?v=` (index.html se revisa siempre: una actualización se ve al instante), y al abrir se pide a la vez lo que necesita la pantalla. Inicio ya no falla al abrir con proyectos esperando aprobación.
 - Pantallas para PC y teléfono (versión 0.4.1, sin cambio de base): en la PC el menú va a la izquierda y las tarjetas en 2 o 3 columnas; en el teléfono nada largo: Administrador va por pestañas (Resumen, Usuarios, Trabajo, Servidor, IA y gastos, Claves: `#admin`, `#admin/usuarios`, `#admin/trabajo`, `#admin/servidor`, `#ia`, `#claves`), cada proyecto también (Resumen con «Aprobar» a la vista, Lo que entendí, Versiones, Historial: `#proyecto/N`, `#proyecto/N/entendi`…), y las listas largas muestran las primeras con «Ver N más».
+- Fase 1, parte e (versión 0.5.0, cambio de base 6): copias cifradas cada madrugada fuera del servidor, por Telegram, y
+  avisos graves al Telegram (ver «Copias y avisos por Telegram»).
+  - Base: tablas `copias`, `copia_partes`, `copias_llaves`, `canales` y `canal_envios` (solo se agregan filas; nada se
+    borra). Una versión 0.4.1 abre esta base sin problema si el actualizador tuviera que volver atrás (`test/ensayo-0.4.1.mjs`).
+  - Telegram es un «canal» genérico (`src/canales/`): los canales de clientes de la fase 3 en adelante (Telegram, WhatsApp,
+    Gmail) agregan un adaptador y nada más. Todo pasa por la única puerta a la red (`src/ia/llamar.js`); las pruebas usan
+    un Telegram falso en 127.0.0.1 (`test/telegram-falso.js`), nunca el de verdad ni un token de verdad.
+  - Pantallas: Administrador → Copias (nueva pestaña), el Telegram en Claves (paso ① el bot, paso ② el chat con un
+    código de 8 cifras), azulejos en el Resumen, una insignia en Inicio y «Última versión que no se instaló» en Servidor.
+  - API: `GET /api/admin/copias`, `POST /api/admin/copias/ahora`, `POST /api/admin/copias/clave/{nueva,confirmar,comprobar}`,
+    `POST /api/admin/telegram/{vincular,vincular/revisar,prueba,desvincular}`; el token va por `POST /api/admin/claves`.
+  - Consola: `oportia-admin.mjs --copias=estado|ahora`, `--telegram=desvincular` y `deploy/oportia-restaurar.mjs`.
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».
