@@ -157,3 +157,35 @@ export function conectarBase({ archivoBase }, { versionMinima = 0 } = {}) {
     throw error;
   }
 }
+
+// Fase 1, parte e: una FOTO de la base para las copias (src/copias/). Abre una conexión aparte, de SOLO LECTURA, y
+// empieza una transacción de lectura: todo lo que se lea con ella ve la base tal como estaba en ese momento (la «foto»
+// del modo WAL), aunque las pantallas y el trabajador sigan escribiendo. Nunca copia el archivo -wal a mano: las filas
+// se leen a través de SQLite. Nunca escribe nada. Mientras está abierta, SQLite no puede pasar el -wal más allá de
+// la foto (crece un poco): quien la usa la cierra apenas termina (cerrar(), en un finally). Es la única función de
+// fuera de este archivo que deja una transacción abierta, y solo de lectura.
+export function abrirFotoDeLectura({ archivoBase }) {
+  revisarModoPrueba(archivoBase);
+  const falla = (codigo, mensaje) => Object.assign(new Error(mensaje), { codigo });
+  if (!existsSync(archivoBase) || statSync(archivoBase).size === 0) throw falla('base_no_existe', `No existe la base ${archivoBase}`);
+  if (leerMarca(archivoBase) !== ID_APLICACION) throw falla('base_ajena', `El archivo ${archivoBase} no es de OPORTIA: no se toca.`);
+  const foto = new DatabaseSync(archivoBase, { readOnly: true });
+  try {
+    foto.exec('PRAGMA busy_timeout = 5000;');
+    foto.exec('BEGIN'); // DEFERRED: la foto empieza con la primera lectura, la de la línea siguiente
+    foto.prepare('SELECT COUNT(*) AS n FROM sqlite_schema').get();
+  } catch (error) {
+    try { foto.close(); } catch { /* ya estaba cerrada */ }
+    throw error;
+  }
+  let cerrada = false;
+  return {
+    db: foto,
+    cerrar() {
+      if (cerrada) return;
+      cerrada = true;
+      try { foto.exec('COMMIT'); } catch { /* solo lectura: nada que guardar */ }
+      try { foto.close(); } catch { /* ya estaba cerrada */ }
+    },
+  };
+}

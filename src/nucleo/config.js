@@ -19,6 +19,11 @@ export function leerConfig(env = process.env) {
   // (test/proveedor-falso.js). Nunca se cambia desde las pantallas.
   config.iaBases = config.modoPrueba ? basesDePrueba(env) : {};
   Object.freeze(config.iaBases);
+  // Fase 1, parte e: lo mismo para los canales (hoy, Telegram: src/canales/telegram.js). En el servidor real queda VACÍO
+  // (el adaptador usa la dirección oficial); solo en modo de prueba puede apuntar al Telegram FALSO en 127.0.0.1
+  // (test/telegram-falso.js). Nunca se cambia desde las pantallas.
+  config.canalesBases = config.modoPrueba ? basesDeCanalDePrueba(env) : {};
+  Object.freeze(config.canalesBases);
   if (config.modoPrueba && (config.archivoBase.startsWith('/var/lib') || config.carpetaCopias.startsWith('/var/lib'))) {
     throw new Error('En modo de prueba no se permite usar /var/lib: las pruebas nunca tocan los datos reales.');
   }
@@ -33,6 +38,17 @@ function basesDePrueba(env) {
   for (const [proveedor, variable] of Object.entries(VARIABLES_DE_PRUEBA)) {
     const valor = String(env[variable] ?? '');
     if (BASE_DE_PRUEBA.test(valor)) bases[proveedor] = valor;
+  }
+  return bases;
+}
+
+const VARIABLES_DE_CANAL_DE_PRUEBA = Object.freeze({ telegram: 'OPORTIA_TELEGRAM_URL' });
+
+function basesDeCanalDePrueba(env) {
+  const bases = {};
+  for (const [canal, variable] of Object.entries(VARIABLES_DE_CANAL_DE_PRUEBA)) {
+    const valor = String(env[variable] ?? '');
+    if (BASE_DE_PRUEBA.test(valor)) bases[canal] = valor;
   }
   return bases;
 }

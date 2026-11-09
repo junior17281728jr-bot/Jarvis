@@ -1,4 +1,10 @@
-// La ÚNICA llamada a la red de la IA (lo comprueba test/reglas.test.js: ningún otro archivo de src/ usa fetch).
+// La ÚNICA llamada a la red de OPORTIA (IA y canales; lo comprueba test/reglas.test.js: ningún otro archivo de src/ usa
+// fetch). Fase 1, parte e: los canales (src/canales/telegram.js) pasan por esta misma puerta, con dos opciones genéricas:
+//  - cuerpoCrudo (un Blob o un Buffer): se manda tal cual, con el Content-Type que pone quien llama (los archivos de
+//    las copias van como multipart armado a mano; nunca pasan por JSON.stringify ni se copian enteros en memoria).
+//  - alTrozo(async Uint8Array): la respuesta se entrega por pedazos a quien llama (a un sha256 o a un archivo) con el
+//    mismo corte de topeBytes, y NO se lee como JSON (salida.bytes = cuántos llegaron). Así se baja un archivo grande
+//    sin tenerlo entero en memoria.
 // llamarProveedor NUNCA lanza: siempre devuelve qué pasó, para que quien la usa siga con el motor propio.
 //  - Destino: en el servidor real, solo https al servidor OFICIAL del proveedor (permitido). En modo de prueba
 //    (OPORTIA_TEST=1) SOLO http://127.0.0.1:<puerto> (el proveedor falso): las direcciones oficiales también se
@@ -78,11 +84,35 @@ async function leerConTope(respuesta, topeBytes) {
   return { bytes: Buffer.concat(partes), demasiado: false };
 }
 
-export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cuerpo = null, senal = null, timeoutMs = 30_000, topeBytes = 1_048_576, permitido = null }) {
+// Pasa la respuesta, por pedazos, a alTrozo (sin guardarla). Más de topeBytes: corta y dice demasiado.
+async function entregarConTope(respuesta, topeBytes, alTrozo) {
+  if (!respuesta.body) return { bytes: 0, demasiado: false };
+  const lector = respuesta.body.getReader();
+  let total = 0;
+  for (;;) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > topeBytes) {
+      try { await lector.cancel(); } catch { /* ya se cortó */ }
+      return { bytes: total, demasiado: true };
+    }
+    try {
+      await alTrozo(value);
+    } catch (error) {
+      // Falló quien recibe (su archivo, su cuenta): se corta y se dice que fue de este lado, no de la red.
+      try { await lector.cancel(); } catch { /* ya se cortó */ }
+      return { bytes: total, demasiado: false, fallo: errorCorto(error) };
+    }
+  }
+  return { bytes: total, demasiado: false };
+}
+
+export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cuerpo = null, cuerpoCrudo = null, alTrozo = null, senal = null, timeoutMs = 30_000, topeBytes = 1_048_576, permitido = null }) {
   const inicio = Date.now();
   const salida = {
     status: null, json: null, textoCorto: null, cabeceras: {}, red: null, tiempoAgotado: false, abortado: false,
-    demasiado: false, profundo: false, error: null, rechazado: false, msTotal: 0,
+    demasiado: false, profundo: false, error: null, rechazado: false, msTotal: 0, bytes: 0,
   };
   const terminar = () => { salida.msTotal = Date.now() - inicio; return salida; };
   if (!destinoPermitido(url, permitido)) {
@@ -99,7 +129,8 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
   let respuesta = null;
   try {
     const opciones = { method: metodo, headers: cabeceras, signal: unida, redirect: 'manual' };
-    if (cuerpo != null) opciones.body = JSON.stringify(cuerpo);
+    if (cuerpoCrudo != null) opciones.body = cuerpoCrudo;
+    else if (cuerpo != null) opciones.body = JSON.stringify(cuerpo);
     respuesta = await fetch(String(url), opciones);
     salida.status = respuesta.status;
     for (const nombre of CABECERAS_QUE_SE_LEEN) {
@@ -111,7 +142,16 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
       try { await respuesta.body?.cancel(); } catch { /* nada que leer */ }
       return terminar();
     }
-    const { bytes, demasiado } = await leerConTope(respuesta, Math.max(1, Number(topeBytes) || 1_048_576));
+    const tope = Math.max(1, Number(topeBytes) || 1_048_576);
+    // Con alTrozo, solo una respuesta 2xx va por pedazos; un error (JSON corto) se lee como siempre, con tope chico.
+    if (typeof alTrozo === 'function' && respuesta.status >= 200 && respuesta.status <= 299) {
+      const entregado = await entregarConTope(respuesta, tope, alTrozo);
+      salida.bytes = entregado.bytes;
+      if (entregado.demasiado) salida.demasiado = true;
+      if (entregado.fallo) { salida.error = entregado.fallo; salida.red = 'local'; salida.falloAlRecibir = true; }
+      return terminar();
+    }
+    const { bytes, demasiado } = await leerConTope(respuesta, typeof alTrozo === 'function' ? Math.min(tope, 262_144) : tope);
     if (demasiado) {
       salida.demasiado = true;
       return terminar();

@@ -51,7 +51,7 @@ test('migración 5: crea las tablas e índices de la IA, sin CHECK, y abrir otra
   for (const i of ['secretos_por_uso', 'ia_llamadas_mes', 'ia_llamadas_espacio', 'ia_llamadas_proyecto', 'ia_llamadas_tarea', 'ia_llamadas_fecha', 'ia_llamadas_reservadas']) {
     assert.ok(nombres('index').has(i), `falta el índice ${i}`);
   }
-  assert.equal(estadoBase(db).version, 5);
+  assert.equal(estadoBase(db).version, Math.max(...MIGRACIONES.map(m => m.id))); // 5 o una más nueva (la 6 es de la parte e)
   const m5 = MIGRACIONES.find(m => m.id === 5);
   assert.equal((m5.sql.match(/\bCHECK\b/gi) || []).length, 0, 'un CHECK nunca se puede ampliar');
   assert.doesNotMatch(m5.sql, /CREATE\s+UNIQUE\s+INDEX/i, 'un índice único nunca se puede quitar');
@@ -74,7 +74,7 @@ test('migración 5: una base en la versión 4 se pone al día con su copia oport
   vieja.prepare('INSERT INTO auditoria (fecha, accion) VALUES (?, ?)').run('2026-11-04', 'dato de 0.3.2');
   vieja.close();
   const db = abrirBase(config);
-  assert.equal(estadoBase(db).version, 5);
+  assert.equal(estadoBase(db).version, Math.max(...MIGRACIONES.map(m => m.id))); // 5 o una más nueva (la 6 es de la parte e)
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE accion = 'dato de 0.3.2'").get().n, 1);
   db.prepare("INSERT INTO ia_bloqueos (mes, ambito, motivo, proposito, veces, primera_vez, ultima_vez) VALUES ('2026-11', 'general', 'ia_apagada', 'interpretar', 1, 'x', 'x')").run();
   db.close();
@@ -87,7 +87,7 @@ test('migración 5: una base en la versión 4 se pone al día con su copia oport
   // Si el actualizador vuelve a 0.3.2 (solo el código): sus migraciones 1–4 abren la base v5 sin tocar nada, y su
   // trabajador (versión mínima 4) se conecta.
   const de032 = abrirBase(config, MIGRACIONES.filter(m => m.id <= 4));
-  assert.equal(estadoBase(de032).version, 5);
+  assert.equal(estadoBase(de032).version, Math.max(...MIGRACIONES.map(m => m.id))); // la 5 (o una más nueva): 0.3.2 no la toca
   assert.equal(de032.prepare('SELECT COUNT(*) AS n FROM ia_bloqueos').get().n, 1, 'las filas nuevas siguen ahí');
   de032.close();
   assert.equal(readdirSync(config.carpetaCopias).length, 1, 'abrirla con 0.3.2 no hizo otra copia');

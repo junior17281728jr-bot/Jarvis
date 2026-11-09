@@ -1,0 +1,236 @@
+// El adaptador de Telegram (un bot de la Bot API): el ÚNICO archivo que nombra el servidor oficial de Telegram
+// (test/reglas.test.js). Es un adaptador de canal genérico (src/canales/canal.js): la fase 3 agrega WhatsApp o Gmail
+// con un archivo igual a este, sin tocar a quien lo usa.
+//  - Toda llamada pasa por la única puerta a la red (src/ia/llamar.js): nunca sigue redirecciones, corta por tiempo y
+//    por tamaño, y de un error guarda solo su nombre y su código. Esto es ESENCIAL aquí: la dirección de cada pedido
+//    lleva el token del bot (…/bot<token>/…), así que nada de lo que devuelve este archivo lleva la dirección, el
+//    texto de un error ni la «description» que manda Telegram: solo un motivo de MOTIVOS_CANAL y datos seguros.
+//  - Cada método RESUELVE siempre (nunca lanza por la red): { motivo, esperarMs?, …datos }.
+//  - Texto plano siempre: nunca se pide formato de texto enriquecido, nunca vista previa de enlaces, y nunca se
+//    protege el contenido (el dueño debe poder guardar los archivos de sus copias).
+//  - Límites de la Bot API (telegram-bot-api.json, Bot API 10.3): un bot sube hasta 50 MB (sendDocument) y baja hasta
+//    20 MB (getFile); texto 1–4096 caracteres, leyenda 0–1024.
+//  - La dirección base solo se cambia en modo de prueba (config.canalesBases, 127.0.0.1): nunca desde las pantallas.
+import { randomBytes } from 'node:crypto';
+import { llamarProveedor } from '../ia/llamar.js';
+
+export const HOST_OFICIAL = 'api.telegram.org';
+const BASE_OFICIAL = `https://${HOST_OFICIAL}`;
+export const LIMITES = Object.freeze({
+  textoMax: 4096, leyendaMax: 1024, subirMaxBytes: 50 * 1000 * 1000, bajarMaxBytes: 20 * 1000 * 1000, pausaArchivosMs: 1100,
+});
+const JSON_MS = 15_000;
+const JSON_TOPE = 262_144;
+const ARCHIVO_MS = 120_000;
+// Un file_path que devuelve getFile: solo letras, números y _ - / . ; sin «..», sin «/» al principio.
+const RUTA_BUENA = /^[A-Za-z0-9_\-/.]{1,256}$/;
+const TOKEN = /^\d{6,15}:[A-Za-z0-9_-]{30,80}$/;
+
+export function rutaValida(ruta) {
+  const r = String(ruta ?? '');
+  return RUTA_BUENA.test(r) && !r.startsWith('/') && !r.split('/').some(s => s === '..' || s === '');
+}
+
+function baseDe(cred) {
+  return process.env.OPORTIA_TEST === '1' && typeof cred?.base === 'string' && cred.base ? cred.base : BASE_OFICIAL;
+}
+
+function tokenDe(cred) {
+  const t = cred?.token;
+  return typeof t === 'string' && TOKEN.test(t) ? t : null;
+}
+
+const numero = v => (Number.isSafeInteger(v) ? v : null);
+const textoCorto = (v, max = 64) => (typeof v === 'string' ? v.slice(0, max) : null);
+
+// Lo que pasó con un pedido, en un motivo (nunca el texto que mandó Telegram).
+function motivoDe(salida, { metodo, descarga = false } = {}) {
+  if (salida.rechazado) return { motivo: 'rechazado' };
+  if (salida.abortado) return { motivo: 'cancelado' };
+  if (salida.tiempoAgotado) return { motivo: 'tiempo_agotado' };
+  if (salida.falloAlRecibir) return { motivo: 'error_local' };
+  if (salida.red === 'redireccion') return { motivo: 'respuesta_no_valida' };
+  if (salida.red) return { motivo: 'sin_red' };
+  const s = salida.status;
+  if (descarga && s >= 200 && s <= 299) return salida.demasiado ? { motivo: 'demasiado_grande' } : { motivo: 'ok' };
+  if (salida.demasiado || salida.profundo) return { motivo: 'respuesta_no_valida' };
+  const j = salida.json;
+  if (s === 200 && j && j.ok === true && Object.hasOwn(j, 'result')) return { motivo: 'ok', resultado: j.result };
+  const descripcion = typeof j?.description === 'string' ? j.description.toLowerCase() : '';
+  if (s === 401 || (s === 404 && metodo === 'getMe')) return { motivo: 'clave_no_valida' };
+  if (s === 403) return { motivo: 'bloqueado' };
+  if (s === 400 && descripcion.includes('chat not found')) return { motivo: 'chat_no_existe' };
+  if (s === 413 || (s === 400 && metodo === 'getFile' && descripcion.includes('too big'))) return { motivo: 'demasiado_grande' };
+  if (s === 409) return { motivo: 'conflicto' };
+  if (s === 429) {
+    const despues = numero(j?.parameters?.retry_after) ?? Number.parseInt(salida.cabeceras?.['retry-after'] ?? '', 10);
+    const segundos = Number.isFinite(despues) && despues > 0 ? Math.min(despues, 3600) : 5;
+    return { motivo: 'limite', esperarMs: segundos * 1000 };
+  }
+  if (s >= 500 && s <= 599) return { motivo: 'error_servidor' };
+  if (s >= 400 && s <= 499) return { motivo: 'pedido_no_valido' };
+  return { motivo: 'respuesta_no_valida' };
+}
+
+async function llamarJson(cred, metodo, parametros = {}, { senal = null, timeoutMs = JSON_MS } = {}) {
+  const token = tokenDe(cred);
+  if (!token) return { motivo: 'clave_no_valida' };
+  const salida = await llamarProveedor({
+    url: `${baseDe(cred)}/bot${token}/${metodo}`, metodo: 'POST', cabeceras: { 'content-type': 'application/json' },
+    cuerpo: parametros, senal, timeoutMs, topeBytes: JSON_TOPE, permitido: HOST_OFICIAL,
+  });
+  return motivoDe(salida, { metodo });
+}
+
+const mal = () => ({ motivo: 'respuesta_no_valida' });
+
+function documentoDe(d) {
+  if (!d || typeof d !== 'object' || typeof d.file_id !== 'string' || !d.file_id || d.file_id.length > 512) return null;
+  return {
+    archivoId: d.file_id,
+    idUnico: textoCorto(d.file_unique_id, 256),
+    nombre: textoCorto(d.file_name, 256),
+    bytes: numero(d.file_size), // opcional en la Bot API: solo se compara cuando viene
+  };
+}
+
+function mensajeDe(u) {
+  const m = u?.message;
+  if (!Number.isSafeInteger(u?.update_id)) return null;
+  if (!m || typeof m !== 'object' || !m.chat || !Number.isSafeInteger(m.chat.id)) return { updateId: u.update_id, fecha: null, chat: null, de: null, texto: null, documento: null };
+  return {
+    updateId: u.update_id,
+    mensajeId: numero(m.message_id),
+    fecha: numero(m.date),
+    chat: { id: String(m.chat.id), tipo: textoCorto(m.chat.type, 20), nombre: textoCorto(m.chat.first_name, 40) },
+    de: m.from && Number.isSafeInteger(m.from.id) ? { id: String(m.from.id), esBot: m.from.is_bot === true, nombre: textoCorto(m.from.first_name, 40) } : null,
+    texto: typeof m.text === 'string' ? m.text.slice(0, 200) : null,
+    documento: documentoDe(m.document),
+  };
+}
+
+// El cuerpo multipart/form-data, armado a mano como un Blob (cabeza, datos, cola): fetch manda el largo exacto y, si
+// los datos vienen de un archivo (openAsBlob), nunca se leen enteros a la memoria.
+function multipart(campos, { nombre, datos }) {
+  const limite = `oportia${randomBytes(8).toString('hex')}`;
+  const seguro = String(nombre ?? 'archivo').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120) || 'archivo';
+  let cabeza = '';
+  for (const [clave, valor] of Object.entries(campos)) {
+    if (valor == null) continue;
+    cabeza += `--${limite}\r\nContent-Disposition: form-data; name="${clave}"\r\n\r\n${String(valor)}\r\n`;
+  }
+  cabeza += `--${limite}\r\nContent-Disposition: form-data; name="document"; filename="${seguro}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+  const cola = `\r\n--${limite}--\r\n`;
+  const cuerpo = new Blob([Buffer.from(cabeza, 'utf8'), datos, Buffer.from(cola, 'utf8')]);
+  return { cuerpo, tipo: `multipart/form-data; boundary=${limite}` };
+}
+
+export const TELEGRAM = Object.freeze({
+  id: 'telegram',
+  nombre: 'Telegram',
+  hostOficial: HOST_OFICIAL,
+  limites: LIMITES,
+
+  // getMe y después getWebhookInfo: un bot con webhook lo usa otro programa (bot_ocupado; OPORTIA nunca se lo quita).
+  async probar(cred, { senal = null } = {}) {
+    const yo = await llamarJson(cred, 'getMe', {}, { senal });
+    if (yo.motivo !== 'ok') return { motivo: yo.motivo, esperarMs: yo.esperarMs };
+    const r = yo.resultado;
+    if (!r || !Number.isSafeInteger(r.id) || r.is_bot !== true) return mal();
+    const cuenta = { id: String(r.id), usuario: textoCorto(r.username, 64), nombre: textoCorto(r.first_name, 64) };
+    const gancho = await llamarJson(cred, 'getWebhookInfo', {}, { senal });
+    if (gancho.motivo !== 'ok') return { motivo: gancho.motivo, esperarMs: gancho.esperarMs, cuenta };
+    if (!gancho.resultado || typeof gancho.resultado.url !== 'string') return { ...mal(), cuenta };
+    if (gancho.resultado.url !== '') return { motivo: 'bot_ocupado', cuenta };
+    return { motivo: 'ok', cuenta };
+  },
+
+  async enviarTexto(cred, { destino, texto, silencioso = true, senal = null }) {
+    const t = String(texto ?? '').slice(0, LIMITES.textoMax);
+    if (!t) return { motivo: 'pedido_no_valido' };
+    const r = await llamarJson(cred, 'sendMessage', {
+      chat_id: String(destino), text: t, disable_notification: Boolean(silencioso), link_preview_options: { is_disabled: true },
+    }, { senal });
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    if (!Number.isSafeInteger(r.resultado?.message_id)) return mal();
+    return { motivo: 'ok', mensajeId: r.resultado.message_id };
+  },
+
+  async enviarArchivo(cred, { destino, nombre, datos, leyenda = '', silencioso = true, senal = null }) {
+    const token = tokenDe(cred);
+    if (!token) return { motivo: 'clave_no_valida' };
+    const bytes = datos?.size ?? datos?.length ?? 0;
+    if (!bytes) return { motivo: 'pedido_no_valido' };
+    if (bytes > LIMITES.subirMaxBytes) return { motivo: 'demasiado_grande' };
+    const { cuerpo, tipo } = multipart({
+      chat_id: String(destino), caption: String(leyenda ?? '').slice(0, LIMITES.leyendaMax) || null,
+      disable_notification: silencioso ? 'true' : 'false',
+    }, { nombre, datos });
+    const salida = await llamarProveedor({
+      url: `${baseDe(cred)}/bot${token}/sendDocument`, metodo: 'POST', cabeceras: { 'content-type': tipo },
+      cuerpoCrudo: cuerpo, senal, timeoutMs: ARCHIVO_MS, topeBytes: JSON_TOPE, permitido: HOST_OFICIAL,
+    });
+    const r = motivoDe(salida, { metodo: 'sendDocument' });
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    const documento = documentoDe(r.resultado?.document);
+    if (!Number.isSafeInteger(r.resultado?.message_id) || !documento) return mal();
+    return { motivo: 'ok', mensajeId: r.resultado.message_id, archivo: { id: documento.archivoId, idUnico: documento.idUnico, bytes: documento.bytes } };
+  },
+
+  async fijar(cred, { destino, mensajeId, senal = null }) {
+    const r = await llamarJson(cred, 'pinChatMessage', { chat_id: String(destino), message_id: mensajeId, disable_notification: true }, { senal });
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    return r.resultado === true ? { motivo: 'ok' } : mal();
+  },
+
+  // getFile: dónde bajar un archivo (válido al menos 1 hora). bytes puede faltar (opcional en la Bot API).
+  async archivo(cred, { archivoId, senal = null }) {
+    if (typeof archivoId !== 'string' || !archivoId || archivoId.length > 512) return { motivo: 'pedido_no_valido' };
+    const r = await llamarJson(cred, 'getFile', { file_id: archivoId }, { senal });
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    const ruta = r.resultado?.file_path;
+    if (!rutaValida(ruta)) return mal();
+    return { motivo: 'ok', ruta, bytes: numero(r.resultado.file_size) };
+  },
+
+  // Baja un archivo por pedazos (alTrozo), sin guardarlo entero. topeBytes: lo más que se acepta.
+  async bajar(cred, { ruta, topeBytes = LIMITES.bajarMaxBytes, alTrozo, senal = null }) {
+    const token = tokenDe(cred);
+    if (!token) return { motivo: 'clave_no_valida' };
+    if (!rutaValida(ruta)) return mal(); // ningún pedido sale con una ruta rara
+    if (typeof alTrozo !== 'function') return { motivo: 'pedido_no_valido' };
+    const salida = await llamarProveedor({
+      url: `${baseDe(cred)}/file/bot${token}/${ruta}`, metodo: 'GET', senal, timeoutMs: ARCHIVO_MS,
+      topeBytes: Math.min(Math.max(1, Number(topeBytes) || 1), LIMITES.bajarMaxBytes), permitido: HOST_OFICIAL, alTrozo,
+    });
+    const r = motivoDe(salida, { metodo: 'file', descarga: true });
+    return r.motivo === 'ok' ? { motivo: 'ok', bytes: salida.bytes } : { motivo: r.motivo, esperarMs: r.esperarMs };
+  },
+
+  // getUpdates (sin esperar: esperaS 0). desde null → sin offset (Telegram da las más viejas sin confirmar).
+  async recibir(cred, { desde = null, limite = 50, esperaS = 0, senal = null } = {}) {
+    const parametros = { limit: Math.max(1, Math.min(100, limite)), timeout: Math.max(0, Math.min(50, esperaS)), allowed_updates: ['message'] };
+    if (desde != null) parametros.offset = desde;
+    const r = await llamarJson(cred, 'getUpdates', parametros, { senal, timeoutMs: JSON_MS + parametros.timeout * 1000 });
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    if (!Array.isArray(r.resultado)) return mal();
+    const mensajes = r.resultado.map(mensajeDe).filter(Boolean);
+    const ids = mensajes.map(m => m.updateId);
+    return { motivo: 'ok', mensajes, siguiente: ids.length ? Math.max(...ids) + 1 : null };
+  },
+
+  // getChat: el mensaje fijado más reciente del chat (pinned_message) y su documento, si tiene.
+  async fijado(cred, { destino, senal = null }) {
+    const r = await llamarJson(cred, 'getChat', { chat_id: String(destino) }, { senal });
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    if (!r.resultado || !Number.isSafeInteger(r.resultado.id)) return mal();
+    const p = r.resultado.pinned_message;
+    return {
+      motivo: 'ok',
+      chat: { id: String(r.resultado.id), tipo: textoCorto(r.resultado.type, 20), nombre: textoCorto(r.resultado.first_name, 40) },
+      mensajeId: p && Number.isSafeInteger(p.message_id) ? p.message_id : null,
+      fecha: p ? numero(p.date) : null,
+      documento: p ? documentoDe(p.document) : null,
+    };
+  },
+});

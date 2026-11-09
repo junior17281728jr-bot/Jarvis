@@ -92,6 +92,7 @@ const MIGRACIONES_PUBLICADAS = {
   3: '7af1fad890803931148e2be3e0e3d90481229546ae8f94bb4cd9d022af9310d1',
   4: '46758487c7db33997048188be268fea4420332e1b08bcc431d82114607529860',
   5: '3c0ca4c956e2b5f453e160785c33587ba23e3b8c22302ba5ea53e42c198df720',
+  6: '5443d09fac022e5aea609fec97efbad138e1657bb7e57358a97e82b9a1c7bdb2',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
@@ -100,6 +101,7 @@ const VERSION_DE_CADA_MIGRACION = {
   3: '0.2.0',
   4: '0.3.0',
   5: '0.4.0',
+  6: '0.5.0',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -261,17 +263,17 @@ test('la migración 5 no tiene CHECK ni índices únicos (nunca se podrían ampl
   assert.doesNotMatch(m.sql, /ADD\s+COLUMN/i);
 });
 
-test('solo src/claves/cifrado.js cifra y descifra, y solo él conoce el nombre del archivo de la llave', () => {
+test('solo src/claves/cifrado.js y src/copias/cifrar.js cifran y descifran, y solo cifrado.js conoce el nombre del archivo de la llave', () => {
   for (const f of deTodo) {
     if (f === de('claves', 'cifrado.js')) continue;
     const texto = leer(f);
-    assert.doesNotMatch(texto, /\bcreate(?:Cipheriv|Decipheriv)\b/, `${relative(RAIZ, f)} cifra o descifra`);
+    if (f !== de('copias', 'cifrar.js')) assert.doesNotMatch(texto, /\bcreate(?:Cipheriv|Decipheriv)\b/, `${relative(RAIZ, f)} cifra o descifra`);
     assert.ok(!texto.includes('oportia-llave-secretos'), `${relative(RAIZ, f)} nombra el archivo de la llave`);
   }
 });
 
-test('solo tres archivos pueden leer una clave descifrada (leerSecreto)', () => {
-  const permitidos = new Set([de('claves', 'almacen.js'), de('claves', 'probar.js'), de('ia', 'cliente.js')]);
+test('solo cuatro archivos pueden leer una clave descifrada (leerSecreto): los tres de la parte d y la credencial de los canales', () => {
+  const permitidos = new Set([de('claves', 'almacen.js'), de('claves', 'probar.js'), de('ia', 'cliente.js'), de('canales', 'credencial.js')]);
   for (const f of deTodo) {
     if (!permitidos.has(f)) assert.doesNotMatch(leer(f), /\bleerSecreto\s*\(/, `${relative(RAIZ, f)} lee una clave descifrada`);
   }
@@ -290,7 +292,7 @@ test('la ÚNICA llamada a la red de src/ es src/ia/llamar.js, nunca sigue redire
   assert.doesNotMatch(texto, /\.message\b/, 'el texto de un error puede traer la clave (Node pone el valor de la cabecera)');
   assert.doesNotMatch(texto, /\bconsole\./);
   // Solo el servidor web abre puertos; los módulos de IA nunca usan node:http/https/net directamente.
-  for (const f of archivos(de('ia')).concat(archivos(de('claves')))) {
+  for (const f of ['ia', 'claves', 'canales', 'copias'].flatMap(c => archivos(de(c)))) {
     assert.doesNotMatch(leer(f), /['"]node:(?:https?|http2|net|tls|dgram)['"]/, `${relative(RAIZ, f)} usa la red sin pasar por llamar.js`);
   }
 });
@@ -439,4 +441,105 @@ test('el trabajador se enciende sin archivos «core» (prlimit --core=0), y la h
   assert.match(supervisor, /const PRLIMIT = \['\/usr\/bin\/prlimit', '\/bin\/prlimit'\]/);
   assert.match(supervisor, /PRLIMIT \? \[PRLIMIT, '--core=0', '--', \.\.\.orden\] : orden/);
   assert.match(leer(de('app.js')), /nombre\.endsWith\('\.js'\) \|\| nombre\.endsWith\('\.json'\)/);
+});
+
+// ---------- Fase 1, parte e: copias cifradas fuera del servidor y el canal de Telegram ----------
+
+const codigoDe = carpeta => archivos(de(carpeta)).filter(f => f.endsWith('.js'));
+const sinComentarios = texto => texto.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+
+test('la migración 6 no tiene CHECK, ni UNIQUE, ni ADD COLUMN (nunca se podrían ampliar ni quitar)', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const m = MIGRACIONES.find(x => x.id === 6);
+  assert.ok(m, 'falta la migración 6');
+  assert.equal((m.sql.match(/\bCHECK\b/gi) || []).length, 0);
+  assert.doesNotMatch(m.sql, /\bUNIQUE\b/i);
+  assert.doesNotMatch(m.sql, /ADD\s+COLUMN/i);
+});
+
+test('solo el adaptador de Telegram (src/canales/telegram.js) nombra el servidor de Telegram y sus métodos', () => {
+  const metodos = /\b(?:sendMessage|sendDocument|getUpdates|getFile|pinChatMessage|getChat|getMe|getWebhookInfo|setWebhook|deleteWebhook|deleteMessage|unpinChatMessage)\b/;
+  for (const f of deTodo) {
+    if (f === de('canales', 'telegram.js')) continue;
+    const texto = leer(f);
+    assert.ok(!texto.includes('api.telegram.org'), `${relative(RAIZ, f)} nombra el servidor de Telegram`);
+    if (f.startsWith(SRC + sep) || f.startsWith(join(RAIZ, 'public') + sep)) assert.doesNotMatch(sinComentarios(texto), metodos, `${relative(RAIZ, f)} llama a Telegram sin el adaptador`);
+  }
+  const telegram = leer(de('canales', 'telegram.js'));
+  assert.match(telegram, /import \{ llamarProveedor \} from '\.\.\/ia\/llamar\.js';/, 'el adaptador pasa por la única puerta a la red');
+  // Nunca: borrar mensajes, quitar el webhook de nadie, proteger el contenido (el dueño debe poder guardar sus copias)
+  // ni pedir formato enriquecido.
+  for (const f of codigo) {
+    assert.doesNotMatch(leer(f), /\b(?:protect_content|deleteWebhook|deleteMessage|parse_mode)\b/, `${relative(RAIZ, f)}`);
+  }
+  // La dirección del Telegram falso solo se acepta en modo de prueba, y solo 127.0.0.1.
+  const config = leer(de('nucleo', 'config.js'));
+  assert.match(config, /config\.canalesBases = config\.modoPrueba \? basesDeCanalDePrueba\(env\) : \{\}/);
+  assert.match(telegram, /process\.env\.OPORTIA_TEST === '1' && typeof cred\?\.base === 'string'/);
+});
+
+test('los canales y las copias nunca escriben en la consola, nunca usan la red sin llamar.js y nunca tocan la llave de las claves', () => {
+  for (const f of [...codigoDe('canales'), ...codigoDe('copias')]) {
+    const texto = leer(f);
+    const nombre = relative(RAIZ, f);
+    assert.doesNotMatch(texto, /\bconsole\./, `${nombre} escribe en la consola (podría llevar un token)`);
+    assert.doesNotMatch(texto, /['"]node:(?:https?|http2|net|tls|dgram|child_process)['"]/, `${nombre} usa la red o procesos por su cuenta`);
+    assert.doesNotMatch(texto, /\b(?:rutaLlave|leerLlave|asegurarLlave|recuperarLlave|empezarLlaveNueva|apartarLlaveDanada)\b/, `${nombre} toca la llave de las claves`);
+  }
+});
+
+test('src/copias/ abre archivos SOLO por rutaSegura (que nunca deja abrir la llave de las claves) y nunca pisa uno', () => {
+  for (const f of codigoDe('copias')) {
+    const nombre = relative(RAIZ, f);
+    for (const linea of sinComentarios(leer(f)).split('\n')) {
+      for (const m of linea.matchAll(/\b(openSync|createReadStream|createWriteStream|readFileSync|openAsBlob|writeFileSync|appendFileSync|copyFileSync|renameSync|truncateSync|ftruncateSync)\(([^)]*)/g)) {
+        assert.ok(!['createWriteStream', 'writeFileSync', 'appendFileSync', 'copyFileSync', 'renameSync', 'truncateSync', 'ftruncateSync'].includes(m[1]), `${nombre}: ${m[1]} puede pisar o cambiar un archivo`);
+        assert.match(m[2], /^rutaSegura\(/, `${nombre}: ${m[1]} sin rutaSegura: ${linea.trim()}`);
+      }
+      for (const m of linea.matchAll(/\bopenSync\(rutaSegura\([^)]*\), '([a-z+]+)'/g)) assert.ok(['r', 'wx'].includes(m[1]), `${nombre}: abre con '${m[1]}' (solo 'r' o 'wx')`);
+    }
+  }
+  const formato = leer(de('copias', 'formato.js'));
+  assert.match(formato, /export function rutaSegura\(ruta\) \{\n  const texto = String\(ruta \?\? ''\);\n  if \(!texto \|\| esArchivoDeLlave\(texto\)\) throw new ErrorCopias\('archivo_de_llave'\);/);
+});
+
+test('solo src/copias/clave.js y src/copias/cifrar.js usan X25519 y HKDF, y la llave efímera fija solo existe en cifrar.js', () => {
+  for (const f of deTodo) {
+    const texto = leer(f);
+    const nombre = relative(RAIZ, f);
+    if (![de('copias', 'clave.js'), de('copias', 'cifrar.js')].includes(f)) {
+      assert.doesNotMatch(texto, /\b(?:diffieHellman|hkdfSync)\b|generateKeyPairSync\(\s*['"]x25519/, `${nombre} usa la criptografía de las copias`);
+    }
+    if (f.startsWith(SRC + sep) && f !== de('copias', 'cifrar.js')) assert.doesNotMatch(texto, /\befimera\b/, `${nombre} pasa una llave efímera (solo para el vector congelado de test/)`);
+  }
+});
+
+test('la página nunca manda la clave: public/clave-recuperacion.js no importa nada ni usa la red', () => {
+  const pagina = leer(join(RAIZ, 'public', 'clave-recuperacion.js'));
+  assert.doesNotMatch(pagina, /^\s*import\b|\bimport\(/m);
+  assert.doesNotMatch(pagina, /\bfetch\b|XMLHttpRequest|sendBeacon|WebSocket|localStorage|sessionStorage|indexedDB/);
+});
+
+test('restaurar nunca corre dentro del servicio, y la foto de la base solo la abren las copias', () => {
+  const web = new Set(grafoDeImports(join(SRC, 'server.js')).archivos.map(a => relative(SRC, a)));
+  const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
+  for (const grafo of [web, trabajador]) assert.ok(!grafo.has(join('copias', 'restaurar.js')), 'el servicio carga restaurar.js');
+  for (const f of codigo) {
+    if (f === de('nucleo', 'db.js') || f.startsWith(de('copias') + sep)) continue;
+    assert.doesNotMatch(leer(f), /\babrirFotoDeLectura\b/, `${relative(RAIZ, f)} abre una foto de la base`);
+  }
+  // El servidor web nunca revisa la carpeta de las copias cifradas (crece cada noche).
+  for (const f of [de('nucleo', 'salud.js'), ...codigoDe('api'), ...codigoDe('canales')]) assert.ok(!leer(f).includes('cifradas'), relative(RAIZ, f));
+});
+
+test('nada borra una copia, una llave pública, un canal ni un envío', () => {
+  for (const f of codigo) {
+    assert.doesNotMatch(leer(f), /\bDELETE\s+FROM\s+(?:copias|copia_partes|copias_llaves|canales|canal_envios)\b/i, relative(RAIZ, f));
+  }
+});
+
+test('ningún archivo del repositorio tiene algo con forma de token de bot de Telegram (las pruebas los arman al correr)', () => {
+  const token = /\b\d{6,15}:[A-Za-z0-9_-]{30,80}\b/;
+  const texto = archivos(RAIZ, p => /\.(js|mjs|cjs|json|md|html|css|sh|service|txt)$/.test(p) && !p.endsWith('reglas.test.js'));
+  for (const f of texto) assert.doesNotMatch(leer(f), token, `${relative(RAIZ, f)} tiene algo con forma de token de Telegram`);
 });

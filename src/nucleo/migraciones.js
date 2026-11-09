@@ -387,4 +387,139 @@ CREATE TABLE IF NOT EXISTS cuentas_confianza (
 CREATE INDEX IF NOT EXISTS cuentas_confianza_usuario ON cuentas_confianza(usuario_id, id);
 `,
   },
+  {
+    id: 6,
+    nombre: 'copias_y_canales',
+    // Fase 1, parte e. Explicaciones FUERA del texto SQL (la huella no depende de ellas).
+    //  - copias_llaves: las llaves PÚBLICAS de las copias (y el «sello», que firma los índices y no abre nada). La clave
+    //    de recuperación del dueño nunca se guarda; «verificador» es el sha256 de un valor derivado de ella que la
+    //    página calcula (sirve para comprobarla sin mandarla). Nunca se borran: las copias viejas necesitan su llave vieja.
+    //  - canales: por dónde OPORTIA habla con alguien (hoy: el chat privado del dueño con su bot de Telegram). Genérico
+    //    para la fase 3+ (tipo, propósito, espacio). Una fila 'pendiente' guarda solo la huella del código de un uso.
+    //  - copias / copia_partes: cada copia cifrada (fuera y/o en el servidor), sus partes, hashes y dónde están. Cada
+    //    copia guarda el secreto y el bot con que se mandó (una copia nunca mezcla dos bots) y el servidor que la hizo.
+    //  - canal_envios: cada mensaje que salió (o no) por un canal: no repetir avisos y los topes por hora y por día.
+    //  - Sin CHECK ni índices únicos: los valores se revisan en el código (un CHECK nunca se puede ampliar).
+    sql: `
+CREATE TABLE IF NOT EXISTS copias_llaves (
+  id INTEGER PRIMARY KEY,
+  formato INTEGER NOT NULL DEFAULT 1,
+  publica TEXT NOT NULL,
+  sello TEXT NOT NULL,
+  huella TEXT NOT NULL,
+  verificador TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'pendiente',
+  creada_por INTEGER REFERENCES usuarios(id),
+  creada_en TEXT NOT NULL,
+  vence_en TEXT,
+  confirmada_en TEXT,
+  reemplazada_en TEXT,
+  comprobada_en TEXT
+);
+CREATE INDEX IF NOT EXISTS copias_llaves_estado ON copias_llaves(estado, id);
+CREATE TABLE IF NOT EXISTS canales (
+  id INTEGER PRIMARY KEY,
+  tipo TEXT NOT NULL,
+  proposito TEXT NOT NULL DEFAULT 'avisos_dueno',
+  espacio_id INTEGER REFERENCES espacios(id),
+  estado TEXT NOT NULL DEFAULT 'pendiente',
+  secreto_id INTEGER REFERENCES secretos(id),
+  cuenta_id TEXT,
+  cuenta_nombre TEXT,
+  destino TEXT,
+  destino_nombre TEXT,
+  codigo_huella TEXT,
+  codigo_desde TEXT,
+  codigo_hasta TEXT,
+  codigo_intentos INTEGER NOT NULL DEFAULT 0,
+  novedades_desde INTEGER,
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL,
+  vinculado_en TEXT,
+  desvinculado_por INTEGER REFERENCES usuarios(id),
+  desvinculado_en TEXT,
+  motivo TEXT,
+  ultimo_ok_en TEXT,
+  ultimo_error TEXT,
+  ultimo_error_en TEXT,
+  fallos_seguidos INTEGER NOT NULL DEFAULT 0,
+  pausa_hasta TEXT
+);
+CREATE INDEX IF NOT EXISTS canales_por_proposito ON canales(tipo, proposito, espacio_id, estado, id);
+CREATE TABLE IF NOT EXISTS copias (
+  id INTEGER PRIMARY KEY,
+  copia TEXT NOT NULL,
+  formato INTEGER NOT NULL DEFAULT 1,
+  origen TEXT NOT NULL DEFAULT 'noche',
+  tarea_id INTEGER REFERENCES tareas(id),
+  estado TEXT NOT NULL DEFAULT 'haciendo',
+  llave_id INTEGER REFERENCES copias_llaves(id),
+  receptor TEXT NOT NULL DEFAULT '',
+  local INTEGER NOT NULL DEFAULT 0,
+  fuera INTEGER NOT NULL DEFAULT 0,
+  canal_id INTEGER REFERENCES canales(id),
+  secreto_id INTEGER REFERENCES secretos(id),
+  cuenta_id TEXT,
+  servidor TEXT,
+  partes INTEGER NOT NULL DEFAULT 0,
+  bytes INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT,
+  volcado_bytes INTEGER,
+  volcado_sha256 TEXT,
+  tablas INTEGER,
+  filas INTEGER,
+  migracion INTEGER,
+  version TEXT,
+  sellado TEXT,
+  indice_sha256 TEXT,
+  indice_mensaje_id INTEGER,
+  indice_archivo_id TEXT,
+  fijada INTEGER NOT NULL DEFAULT 0,
+  motivo TEXT,
+  detalle TEXT,
+  empezada_en TEXT NOT NULL,
+  escrita_en TEXT,
+  subida_en TEXT,
+  verificada_en TEXT,
+  terminada_en TEXT
+);
+CREATE INDEX IF NOT EXISTS copias_por_fecha ON copias(empezada_en);
+CREATE INDEX IF NOT EXISTS copias_por_estado ON copias(estado, verificada_en);
+CREATE INDEX IF NOT EXISTS copias_por_uuid ON copias(copia);
+CREATE TABLE IF NOT EXISTS copia_partes (
+  id INTEGER PRIMARY KEY,
+  copia_id INTEGER NOT NULL REFERENCES copias(id),
+  n INTEGER NOT NULL,
+  desde INTEGER NOT NULL,
+  bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  archivo_local TEXT,
+  mensaje_id INTEGER,
+  archivo_id TEXT,
+  archivo_id_unico TEXT,
+  subida_en TEXT,
+  verificada_en TEXT,
+  intentos INTEGER NOT NULL DEFAULT 0,
+  ultimo_error TEXT
+);
+CREATE INDEX IF NOT EXISTS copia_partes_copia ON copia_partes(copia_id, n);
+CREATE TABLE IF NOT EXISTS canal_envios (
+  id INTEGER PRIMARY KEY,
+  canal_id INTEGER NOT NULL REFERENCES canales(id),
+  clase TEXT NOT NULL,
+  aviso_id INTEGER REFERENCES avisos(id),
+  clave TEXT,
+  nivel TEXT,
+  copia_id INTEGER REFERENCES copias(id),
+  resultado TEXT NOT NULL,
+  motivo TEXT,
+  mensaje_id INTEGER,
+  bytes INTEGER,
+  creado_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS canal_envios_fecha ON canal_envios(canal_id, creado_en);
+CREATE INDEX IF NOT EXISTS canal_envios_aviso ON canal_envios(aviso_id, clase);
+CREATE INDEX IF NOT EXISTS canal_envios_clave ON canal_envios(clave, creado_en);
+`,
+  },
 ];

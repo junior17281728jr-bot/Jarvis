@@ -87,7 +87,7 @@ test('elegir la compresión: brotli o gzip según el navegador; cualquier otra c
 
 test('los archivos comprimidos (brotli y gzip) se descomprimen exactamente al archivo', async () => {
   await conOportia(async base => {
-    for (const nombre of ['estilos.css', 'i18n/es.json', 'i18n/en.json', 'tema.js', 'creador.js', 'dibujos.js', 'icono.svg']) {
+    for (const nombre of ['estilos.css', 'i18n/es.json', 'i18n/en.json', 'tema.js', 'creador.js', 'dibujos.js', 'clave-recuperacion.js', 'icono.svg']) {
       const original = readFileSync(join(PUB, nombre));
       for (const [pide, sale] of [['br', 'br'], ['gzip, deflate', 'gzip'], ['gzip, deflate, br', 'br']]) {
         const r = await pedir(base, `/${nombre}`, { 'accept-encoding': pide });
@@ -96,7 +96,7 @@ test('los archivos comprimidos (brotli y gzip) se descomprimen exactamente al ar
         assert.equal(r.cabeceras.vary, 'Accept-Encoding', nombre);
         assert.ok(r.cuerpo.length < original.length, `${nombre} comprimido no es más chico`);
         assert.equal(Number(r.cabeceras['content-length']), r.cuerpo.length, nombre);
-        // creador.js y dibujos.js no importan nada: salen idénticos al archivo.
+        // creador.js, dibujos.js y clave-recuperacion.js no importan nada: salen idénticos al archivo.
         assert.ok(descomprimir(r).equals(original), `${nombre} (${sale}) no es el archivo exacto`);
         revisarSeguridad(r, nombre);
       }

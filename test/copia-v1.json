@@ -1,0 +1,187 @@
+{
+ "nota": "Copia de OPORTIA formato 1, hecha UNA vez con la clave de prueba (test/copias-base.js) y una llave efímera fija. NUNCA se edita: debe abrirse para siempre (test/copias-restaurar.test.js).",
+ "clave": "737G-KC66-N8JS-RSB8-Z14W-49N9-HMRJ",
+ "huella": "NB5W",
+ "copia": "0e1f2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b",
+ "creada": "2026-11-09T08:40:00.000Z",
+ "partes": [
+  "4f5043504152544500010e1f2a3b4c5d4e6f8a9b0c1d2e3f4a5b0000000100000000000000000000040059b5675bc0a7958928c1836704b27dd31a529b753c279b76dcf4a6fe51f516ef4f5043464c554a4f0001000001497b22666f726d61746f223a312c22617070223a226f706f72746961222c22636f706961223a2230653166326133622d346335642d346536662d386139622d306331643265336634613562222c22637265616461223a22323032362d31312d30395430383a34303a30302e3030305a222c226369667261646f223a227832353531392d686b64662d7368613235362d6165732d3235362d67636d222c226566696d657261223a22414466475042534a75733277666966446634534144324a4750746348475f3943546a744148447455693349222c227265636570746f72223a224e423557222c2274726f7a6f223a36353533362c22636f6d70726573696f6e223a22677a6970222c22636f6e74656e69646f223a226f706f727469612d766f6c6361646f2d7631222c227365727669646f72223a227365727669646f722d64656c2d766563746f72227d800002d85b7db3f48331d477094bef2bf8f40dc0fd6cc6276612d1e171b145e83946f48717950d7c58d8e6be206278dd0312b7890dd91d94b3237d4f99381da8885b3f45a55780b73a41d68bebab7c80a44ecafc4cd3c928f3a80379b94569ccc9b5aca16a5dbfa2ead9d6e2cff954bda80284d11678c90e9a6908b59e075a7098d0af865880b9987bbad6a898c161bd73f2dc01f6df3d0c274b92aaf17a0136f0841d4cf3ab2b1f60afc0cf01332244baf7b6b29aad883805cc238b9aa7a89f96f5657f629c5ca868d834bc77edf1ee9aa6f5899f7f6973c31f24d852f4701e0f0997eba596ea864cd1b5ec34e538fa73c9523bdd56a86aaf7d31a0d407bfeeaab814e03578bbd62a32dc131669db3c1f8d65dd43e511ac8866d6fdf0b1f1635ea13b8eeebc8ab621abe0b4a1d71dbb5a5898bb03de50b1db9bd20434c6a757c75efdb9bffb74e4f76d5c7fdc1b26c1c5083478ce6693288883b5a39fd2f8c719d678c4db8a9d16a83711a3c398c90ce5f3a3665166cb2d89914c008e0ecf58e465c58413dc0da17e4a081710b4f8246d4fb3c8e599351d15f4148b781ad9019d2747d5473fdeae1d173915aa0afbbc13b1292dcf0375d024ad6254ea7688a683faecaa5d68ff9c5660deb66e147f70cf8140a6c51fe6ebe6942193ce068815c0a3aa851d120b21e91a4bd53d19738ea3405f04bd85930994e75e106324f2c0d20dacb96dcd63ffd7f083ac40518fd02301d281827666d5f8b44ec91a7e0474a3bbfe07dd75a38dff2c6b668035d712558a1765c151a36f2b175e452c45ed2e64a9736e437197ade2e9d3e49d0220a5265a070d08af6576d6f74a110e2fa9e063f715f23c8fd60b42b4c94feb02e7399917d987dc87e6cc7b07c77058d5f1cf4ead7d7e9a5be6d1ca646142b65188c213869e2b072ddf3cae07f23c79d8cfb5d47d3259dccfce7340",
+  "4f5043504152544500010e1f2a3b4c5d4e6f8a9b0c1d2e3f4a5b00000002000000000000040000000043a503ddc81217282b87956ab8ec2409dfb47e3370593836fb9a394dd61f220e5f32f29c0cff8037f92c5b448826d64b9cd3e80c8c587ebc1c2c42f18b2c4ea1df974d7d6e6026d1245b9b76272e8385d408228f459c30338e944b6792c71499261e1b0a"
+ ],
+ "indice": "{\"oportia\":\"indice-copia\",\"formato\":1,\"copia\":\"0e1f2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b\",\"creada\":\"2026-11-09T08:40:00.000Z\",\"servidor\":\"servidor-del-vector\",\"version\":\"0.5.0\",\"migracion\":null,\"receptor\":\"NB5W\",\"publica\":\"yUN3Z0y3YtqGEh83TOCN90IyKJY1jJvFyRw1Lss4kSQ\",\"bot\":null,\"anterior\":null,\"flujo\":{\"bytes\":1091,\"sha256\":\"b2cd4af6bbe2ab0ef36e5a936f5a93a1d7fa1e8a9464a0b71d4328dd7508c976\"},\"partes\":[{\"n\":1,\"nombre\":\"oportia-copia-20261109-0440-0e1f2a3b-p001.opc\",\"bytes\":1098,\"sha256\":\"227a4ee33c3a88ecaf5d2e3f377ef0968f9ab5a1bc9bed015bfa6562fc693e2c\",\"telegram\":null},{\"n\":2,\"nombre\":\"oportia-copia-20261109-0440-0e1f2a3b-p002.opc\",\"bytes\":141,\"sha256\":\"0d341cddd8fc5bf76eaac0ff3ed3d3fdcc736f8116f4730316b34fe17413f5cb\",\"telegram\":null}],\"sellado\":\"T1BDRkxVSk8AAQAAAUx7ImZvcm1hdG8iOjEsImFwcCI6Im9wb3J0aWEiLCJjb3BpYSI6IjBlMWYyYTNiLTRjNWQtNGU2Zi04YTliLTBjMWQyZTNmNGE1YiIsImNyZWFkYSI6IjIwMjYtMTEtMDlUMDg6NDA6MDAuMDAwWiIsImNpZnJhZG8iOiJ4MjU1MTktaGtkZi1zaGEyNTYtYWVzLTI1Ni1nY20iLCJlZmltZXJhIjoiNmRWd2lHYjgxOUFvQ2ZjU2l5QThhS0hoNG1oVk9CWkNrb0hpQ2xtdWdrUSIsInJlY2VwdG9yIjoiTkI1VyIsInRyb3pvIjo2NTUzNiwiY29tcHJlc2lvbiI6Im5pbmd1bmEiLCJjb250ZW5pZG8iOiJvcG9ydGlhLXJlc3VtZW4tdjEiLCJzZXJ2aWRvciI6InNlcnZpZG9yLWRlbC12ZWN0b3IifYAAAPaUiUxejGfyDL7KN8tNZS6UQd80RqTVxNlpzSwLhKicn1fJ7EHBBwEqYuGVKcStN2Yt424Yjt8pCPUWdd55oz690nOns0lQZfJzzdNCyJhMhEK_B7pZOLv_Vqbg0zdlx5-Vk61aESwZBz3m_a8Gn59GDqSfzpMPnxjUQTv51r89IMT0pofJMWipAYyRR9WpbRJY5RSK4AFmwowZIB-DASg31nsEAFTQmWX3GnuCEKxKyWqGnW4HZ7jVMwOlRzTmfxeHYkt81Qx4As_fVaC0uks1SzWchPqe-KIAnWtYvKR9fMYapo5GjQarwgwvjy-ezXrum-j1QV66my07eBIZE_-ZcksMBsMq\"}\nOPORTIA-SELLO-1 b7d6ac0040dbbe760b48b2e19f6732c8985d96f026aff4a466115c79d09eabf4\n",
+ "esperado": {
+  "esquema:tipos_texto": "CREATE INDEX tipos_texto ON tipos(texto)",
+  "esquema:dos": "CREATE TABLE dos (a TEXT, b INTEGER, PRIMARY KEY (a, b))",
+  "esquema:tipos": "CREATE TABLE tipos (id INTEGER PRIMARY KEY, entero INTEGER, real REAL, texto TEXT, datos BLOB, nada)",
+  "esquema:unico": "CREATE TABLE unico (id INTEGER PRIMARY KEY, nombre TEXT UNIQUE)",
+  "dos": [
+   [
+    [
+     "__rowid",
+     "int:1"
+    ],
+    [
+     "a",
+     "b"
+    ],
+    [
+     "b",
+     "int:2"
+    ]
+   ],
+   [
+    [
+     "__rowid",
+     "int:2"
+    ],
+    [
+     "a",
+     "a"
+    ],
+    [
+     "b",
+     "int:1"
+    ]
+   ]
+  ],
+  "tipos": [
+   [
+    [
+     "__rowid",
+     "int:1"
+    ],
+    [
+     "id",
+     "int:1"
+    ],
+    [
+     "entero",
+     "int:9223372036854775807"
+    ],
+    [
+     "real",
+     "real:0.1"
+    ],
+    [
+     "texto",
+     "año ñ \"comillas\" \n línea 🙂"
+    ],
+    [
+     "datos",
+     "blob:000102ff"
+    ],
+    [
+     "nada",
+     null
+    ]
+   ],
+   [
+    [
+     "__rowid",
+     "int:2"
+    ],
+    [
+     "id",
+     "int:2"
+    ],
+    [
+     "entero",
+     "int:-9223372036854775808"
+    ],
+    [
+     "real",
+     "real:1e+308"
+    ],
+    [
+     "texto",
+     ""
+    ],
+    [
+     "datos",
+     "blob:"
+    ],
+    [
+     "nada",
+     "int:7"
+    ]
+   ],
+   [
+    [
+     "__rowid",
+     "int:3"
+    ],
+    [
+     "id",
+     "int:3"
+    ],
+    [
+     "entero",
+     "int:42"
+    ],
+    [
+     "real",
+     "real:Infinity"
+    ],
+    [
+     "texto",
+     "x"
+    ],
+    [
+     "datos",
+     null
+    ],
+    [
+     "nada",
+     "real:1.5"
+    ]
+   ],
+   [
+    [
+     "__rowid",
+     "int:4"
+    ],
+    [
+     "id",
+     "int:4"
+    ],
+    [
+     "entero",
+     "int:-1"
+    ],
+    [
+     "real",
+     "real:-Infinity"
+    ],
+    [
+     "texto",
+     ""
+    ],
+    [
+     "datos",
+     "blob:686f6c61"
+    ],
+    [
+     "nada",
+     "texto"
+    ]
+   ]
+  ],
+  "unico": [
+   [
+    [
+     "__rowid",
+     "int:1"
+    ],
+    [
+     "id",
+     "int:1"
+    ],
+    [
+     "nombre",
+     "junior"
+    ]
+   ]
+  ],
+  "application_id": 1330664020
+ }
+}
