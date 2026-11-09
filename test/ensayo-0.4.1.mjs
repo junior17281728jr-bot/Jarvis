@@ -48,6 +48,8 @@ const { abrirBase } = await import('../src/nucleo/db.js');
 const { restaurarCopia } = await import('../src/copias/restaurar.js');
 const b = baseCompleta();
 const config = b.config;
+// Revisión final: la marca de «base recuperada» (ajustarTrasRestaurar) es solo una fila de ajustes: la 0.4.1 la ignora.
+b.db.prepare('INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)').run('claves.restaurada', JSON.stringify({ en: new Date().toISOString(), huellas: ['0123456789abcdef'] }), new Date().toISOString());
 const carpeta = carpetaTemporal('ensayo-0.4.1-copia');
 const copia = await hacerCopia({ config, carpeta: join(carpeta, 'partes'), tamanoParte: 4096 });
 const nuevas = ['copias_llaves', 'canales', 'copias', 'copia_partes', 'canal_envios'];

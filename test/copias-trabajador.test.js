@@ -22,7 +22,7 @@ async function conTrabajador(fn) {
   const pids = new Set();
   const supervisor = crearSupervisor({
     db: b.db, config: b.config, version: '0.5.0-prueba', codigo: `prueba-${randomUUID().slice(0, 8)}`, ruta: join(RAIZ, 'test', 'ia-trabajador.js'),
-    entorno: { OPORTIA_TELEGRAM_URL: b.falso.url },
+    entorno: { OPORTIA_TELEGRAM_URL: b.falso.url, PRUEBA_DISCO_LIBRE_MB: '100000' }, // el disco de la máquina no cambia la prueba
     tiempos: { revisarCadaMs: 100, modoSeguroCadaMs: 300, reinicioBaseMs: 100, reintentoSenalMs: 100 },
     tiemposTrabajador: { latidoMs: 200, cicloMs: 100, recuperarCadaMs: 500 },
     registro: SILENCIO,
@@ -52,6 +52,7 @@ test('2.6 el trabajador de verdad copia una base de 4 MB: sigue latiendo, no se 
     const [c] = b.copias();
     assert.equal(c.estado, 'verificada');
     assert.ok(c.bytes > 3_000_000, `${c.bytes} bytes`);
+    assert.equal(c.local, 1, 'con disco: la copia queda también aquí');
     assert.equal(c.partes, Math.ceil(c.bytes / TAMANO_PARTE));
     assert.ok(c.partes >= 2, 'más de una parte');
     const corridas = b.db.prepare('SELECT como_termino FROM trabajador_corridas WHERE como_termino IS NOT NULL').all().map(x => x.como_termino);

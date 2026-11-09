@@ -10,7 +10,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { spawn, spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { carpetaTemporal } from './ayuda.js';
@@ -18,6 +19,8 @@ import { montar, segundoCodigo, CHAT, HORA } from './copias-tarea-base.js';
 import { crearLector } from '../deploy/oportia-restaurar.mjs';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
+// Las carpetas oportia-restaurar-… que hay en la carpeta temporal del sistema (y en /tmp).
+const sueltasEnTmp = () => [...new Set([tmpdir(), '/tmp'])].flatMap(c => { try { return readdirSync(c).filter(n => n.startsWith('oportia-restaurar-')).map(n => join(c, n)); } catch { return []; } }).sort();
 
 function terminalDeMentira() {
   const entrada = Object.assign(new EventEmitter(), {
@@ -171,8 +174,11 @@ test('ronda 2 (6): en una terminal de verdad, --telegram: el token (oculto), el 
   try {
     assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
     const archivoSegundo = join(carpetaTemporal('pty-segundo'), 'codigo.txt');
+    // Revisión final: la carpeta de trabajo va dentro de las carpetas de prueba (antes quedaba una oportia-restaurar-…
+    // suelta en /tmp en cada corrida, fuera de lo que limpia el actualizador).
+    const sueltasAntes = sueltasEnTmp();
     const r = await enTerminal({
-      argv: ['--telegram', '--comprobar'],
+      argv: ['--telegram', '--comprobar', `--trabajo=${carpetaTemporal('cli-trabajo')}`],
       env: { OPORTIA_TELEGRAM_URL: b.falso.url },
       pasos: [
         { esperar: 'token de tu bot \\(no se muestra\\): ', escribir: `${b.token}\r` },
@@ -192,6 +198,7 @@ test('ronda 2 (6): en una terminal de verdad, --telegram: el token (oculto), el 
     assert.match(r.salida, /Copia comprobada/);
     assert.match(r.salida, /@BotFather.*\/revoke/);
     assert.ok(!r.salida.includes(b.token) && !r.salida.includes(b.claveTexto), 'ni el token ni la clave se ven');
+    assert.deepEqual(sueltasEnTmp(), sueltasAntes, 'no queda ninguna carpeta oportia-restaurar-… suelta en /tmp');
   } finally {
     await b.cerrar();
   }

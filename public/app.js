@@ -11,9 +11,9 @@ import {
 } from './ia-vista.js';
 import {
   vistaCopias, vistaDisco, motivoNoAhora, motivoBase, razonNoClave, TONO_COPIA, ICONO_TONO, vistaAzulejoCopias, vistaAzulejoTelegram, vistaTelegram,
-  codigoLegible, cuentaAtras, enlaceSeguro,
+  codigoLegible, cuentaAtras, enlaceSeguro, fraseMotivoTareaCopia,
 } from './copias-vista.js';
-import { leerClave, verificadorDe, grupoDistinto, gruposDeClave } from './clave-recuperacion.js';
+import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto } from './clave-recuperacion.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -770,12 +770,16 @@ function tSi(clave, respaldo, variables = {}) {
 }
 const nombreTipo = tipo => tSi(`tareas.tipo.${tipo}`, tipo);
 const nombreComo = como => tSi(`tareas.como.${como}`, como);
-function textoMotivo(motivo) {
+// tipo: el de la tarea. Revisión final: los motivos de la tarea de copias (copias.hacer) se dicen con palabras (los de la
+// copia, los de Telegram), nunca con el código tal cual (public/copias-vista.js, fraseMotivoTareaCopia).
+const existeFrase = clave => catalogos[idioma]?.[clave] != null || catalogos.es?.[clave] != null;
+function textoMotivo(motivo, tipo = null) {
   if (!motivo) return '';
   const propio = tSi(`tareas.motivo.${motivo}`, null);
   if (propio) return propio;
   const como = String(motivo).match(/^trabajador_([a-z_]+)$/);
   if (como) return t('tareas.motivo.trabajador', { como: enMinuscula(nombreComo(como[1])) });
+  if (tipo === 'copias.hacer') return t(fraseMotivoTareaCopia(motivo, existeFrase));
   return String(motivo);
 }
 
@@ -1019,7 +1023,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
       conBotones.add(e.tareaId);
       return el('div', { class: 'fila' },
         el('div', { class: 'etiquetas' }, insignia(e.estado === 'fallida' ? 'mal' : 'atencion', tSi(`tareas.estado.${e.estado}`, e.estado)), el('span', { class: 'nombre', texto: nombreTipo(e.tipo) })),
-        el('p', { texto: [tSi(`tareas.evento.${e.evento}`, e.evento), textoMotivo(e.motivo)].filter(Boolean).join(': ') }),
+        el('p', { texto: [tSi(`tareas.evento.${e.evento}`, e.evento), textoMotivo(e.motivo, e.tipo)].filter(Boolean).join(': ') }),
         el('p', { class: 'suave', texto: [fecha(e.fecha), e.intento ? t('tareas.intento', { x: e.intento, y: e.maxFallos }) : null, e.proyecto ? t('tareas.de_proyecto', { proyecto: e.proyecto, cuenta: e.cuenta }) : null].filter(Boolean).join(' · ') }),
         botones ? el('div', { class: 'botones' },
           e.puedeReintentar ? el('button', { type: 'button', texto: t('tareas.reintentar'), onclick: evento => acciones.tarea(e.tareaId, 'reintentar', evento.currentTarget) }) : null,
@@ -1132,7 +1136,7 @@ function crearBloqueFila() {
         el('div', { class: 'etiquetas' },
           el('span', { class: 'etiqueta', texto: tSi(`tareas.estado.${x.estado}`, x.estado) }),
           el('span', { class: 'nombre', texto: `${nombreTipo(x.tipo)} · n.º ${x.id}` })),
-        el('p', { class: 'suave', texto: [fecha(x.terminadaEn ?? x.creadaEn), x.pasos ? tn('tareas.pasos', { n: x.pasos }) : null, x.ultimoError ? textoMotivo(x.ultimoError) : null, x.proyecto ? t('tareas.de_proyecto', { proyecto: x.proyecto, cuenta: x.cuenta }) : null].filter(Boolean).join(' · ') })));
+        el('p', { class: 'suave', texto: [fecha(x.terminadaEn ?? x.creadaEn), x.pasos ? tn('tareas.pasos', { n: x.pasos }) : null, x.ultimoError ? textoMotivo(x.ultimoError, x.tipo) : null, x.proyecto ? t('tareas.de_proyecto', { proyecto: x.proyecto, cuenta: x.cuenta }) : null].filter(Boolean).join(' · ') })));
     }
     if (!lista.childElementCount) lista.append(el('p', { class: 'suave', texto: t('tareas.fila.vacia') }));
     siguiente = r.datos.siguiente;
@@ -1617,8 +1621,9 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   const f = d.ultimaFuera;
   // ---- La tarjeta grande ----
   const lineaPrincipal = v.linea === 'copias.fallo' ? t('copias.fallo', { motivo: textoMotivoCopia(v.variables.motivo) || t('copias.motivo.otro') })
-    : v.linea === 'copias.atrasada' ? t('copias.atrasada', { hace: f ? hace(f.fecha, ahora) : '—' })
-      : v.linea === 'copias.comprobada' ? null : t(v.linea, { n: numero(v.variables.n ?? 0), de: numero(v.variables.de ?? 0) });
+    : v.linea === 'copias.reintentando' ? t('copias.reintentando', { motivo: t(fraseMotivoTareaCopia(v.variables.motivo, existeFrase)), cuando: cuando(v.variables.cuando, ahora) })
+      : v.linea === 'copias.atrasada' ? t('copias.atrasada', { hace: f ? hace(f.fecha, ahora) : '—' })
+        : v.linea === 'copias.comprobada' ? null : t(v.linea, { n: numero(v.variables.n ?? 0), de: numero(v.variables.de ?? 0) });
   const botonAhora = el('button', {
     type: 'button', class: 'grande con-icono centrado',
     onclick: async evento => {
@@ -1638,17 +1643,21 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
     type: 'button', class: 'grande con-icono centrado',
     onclick: evento => crearClaveNueva(evento.currentTarget, mensaje, null),
   }, icono('clave_recuperacion'), el('span', { texto: t('copias.clave.crear') }));
-  const conUltima = f && ['bien', 'sin_fijar', 'telegram_problema', 'atrasada', 'fallo'].includes(v.estado);
+  // Revisión final: mientras una copia espera, se hace o se reintenta, la última buena fuera del servidor (cuándo, cuánto
+  // mide, comprobada) sigue a la vista: nunca desaparece «lo que ya está a salvo».
+  const mientras = ['en_fila', 'haciendo', 'reintentando', 'revisar'].includes(v.estado);
+  const conUltima = f && (['bien', 'sin_fijar', 'telegram_problema', 'atrasada', 'fallo'].includes(v.estado) || mientras);
+  const ultimaChica = ['atrasada', 'fallo'].includes(v.estado) || mientras;
   const datosUltima = conUltima ? el('p', { class: 'copias-datos' },
     el('span', { texto: tn('copias.partes', { n: f.partes ?? 0, mb: tamanoBytes(f.bytes) }) }),
-    v.estado === 'bien' ? el('span', { class: 'insignia tono-bien' }, icono('marca', 'icono chico'), el('span', { texto: t('copias.comprobada') })) : null) : null;
+    v.estado === 'bien' || mientras ? el('span', { class: 'insignia tono-bien' }, icono('marca', 'icono chico'), el('span', { texto: t('copias.comprobada') })) : null) : null;
   const estado = el('section', { class: `tarjeta copias-estado tono-${v.tono}`, 'aria-live': 'polite' },
     el('div', { class: 'copias-estado-cabeza' },
       dibujoCopia(v),
       el('div', { class: 'copias-estado-texto' },
         el('h2', { class: 'copias-titulo', texto: t(v.titulo) }),
         conUltima
-          ? el('p', { class: v.estado === 'atrasada' || v.estado === 'fallo' ? 'copias-cuando chico' : 'copias-cuando', texto: v.estado === 'atrasada' || v.estado === 'fallo' ? t('copias.ultima_fuera', { cuando: cuando(f.fecha, ahora) }) : cuando(f.fecha, ahora) })
+          ? el('p', { class: ultimaChica ? 'copias-cuando chico' : 'copias-cuando', texto: ultimaChica ? t('copias.ultima_fuera', { cuando: cuando(f.fecha, ahora) }) : cuando(f.fecha, ahora) })
           : null)),
     lineaPrincipal ? el('p', { class: 'copias-linea fuerte', texto: lineaPrincipal }) : null,
     datosUltima,
@@ -1689,21 +1698,23 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
     el('p', { class: 'copias-mini-titulo con-icono' }, icono('disco', 'icono'), el('span', { texto: t('copias.aqui.titulo') })),
     el('div', { class: 'copias-numeros' },
       cifraGrande(numero(l.copias ?? 0), tn('copias.aqui.copias', { n: l.copias ?? 0 })),
-      cifraGrande(tamanoChico(l.mb ?? 0), t('copias.aqui.ocupan')),
+      cifraGrande(l.bytes != null ? tamanoBytes(l.bytes) : tamanoChico(l.mb ?? 0), t('copias.aqui.ocupan')),
       cifraGrande(tamano(l.libreMb), t('copias.aqui.libres'), vd.tono === 'bien' ? 'neutro' : vd.tono)),
     vd.linea ? el('p', { class: `aviso-linea tono-${vd.tono}`, texto: t(vd.linea, { n: numero(l.diasRestantes ?? 0) }) }) : null,
     l.diasRestantes != null && !l.pausadas && !l.frenoDisco && l.activas !== false
       ? el('p', { class: 'suave', texto: l.diasRestantes > DIAS_MUCHOS ? t('copias.aqui.dias_muchos') : t('copias.aqui.dias', { n: numero(l.diasRestantes) }) }) : null,
     // Una base restaurada trae las filas de las copias del servidor de antes: sus archivos NO están aquí (ronda 2).
-    l.anterior?.copias ? el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.aqui.anterior', { n: numero(l.anterior.copias), mb: tamanoChico(l.anterior.mb ?? 0) }) })) : null,
+    l.anterior?.copias ? el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.aqui.anterior', { n: numero(l.anterior.copias), mb: l.anterior.bytes != null ? tamanoBytes(l.anterior.bytes) : tamanoChico(l.anterior.mb ?? 0) }) })) : null,
     el('details', {},
       el('summary', { class: 'con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.aqui.regla') })),
       el('p', { class: 'ayuda', texto: t('copias.aqui.regla.texto', { piso: tamano(l.pisoMb) }) })));
 
   // ---- Las últimas copias ----
   const recientes = Array.isArray(d.recientes) ? d.recientes : [];
-  const lista = el('ul', { class: 'lista-simple lista-copias' }, recientes.map(x => {
-    const tono = TONO_COPIA[x.estado] ?? 'apagado';
+  const lista = el('ul', { class: 'lista-simple lista-copias' }, recientes.map((x, i) => {
+    // La copia que espera otro intento se llama igual que en la tarjeta grande («Reintentando»), no «En curso».
+    const reintento = i === 0 && ['reintentando', 'revisar'].includes(v.estado) && ['haciendo', 'escrita', 'subida'].includes(x.estado);
+    const tono = reintento ? 'atencion' : TONO_COPIA[x.estado] ?? 'apagado';
     return el('li', { class: `copia-fila tono-${tono}` },
       el('span', { class: 'tono-color copia-fila-icono' }, icono(ICONO_TONO[tono] ?? 'info', 'icono')),
       el('span', { class: 'copia-fila-cuerpo' },
@@ -1713,7 +1724,7 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
           x.fuera ? el('span', { class: 'etiqueta con-icono-chico' }, icono('avion_papel', 'icono chico'), el('span', { texto: t('copias.donde.telegram') })) : null,
           x.local ? el('span', { class: 'etiqueta con-icono-chico' }, icono('disco', 'icono chico'), el('span', { texto: t('copias.donde.servidor') })) : null)),
       el('span', { class: 'copia-fila-estado' },
-        el('span', { class: `insignia tono-${tono}`, texto: tSi(`copias.estado_fila.${x.estado}`, x.estado) }),
+        el('span', { class: `insignia tono-${tono}`, texto: reintento ? t(v.titulo) : tSi(`copias.estado_fila.${x.estado}`, x.estado) }),
         x.motivo && ['fallida', 'interrumpida', 'saltada'].includes(x.estado) ? el('span', { class: 'suave chico', texto: textoMotivoCopia(x.motivo) }) : null));
   }));
   const detallesRecientes = el('details', { class: 'tarjeta copias-recientes', open: abierto.recientes },
@@ -1724,7 +1735,7 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   // ---- La clave: comprobarla, cambiarla, las de antes (solo el dueño desde Tailscale puede comprobar y cambiar) ----
   const detallesClave = c.activa ? el('details', { class: 'tarjeta copias-gestion', 'data-ancla': 'clave', open: abierto.clave },
     el('summary', { class: 'con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: t('copias.clave.titulo_gestion', { huella: c.huella }) })),
-    d.puede?.crearClave ? [formularioComprobarClave(), bloqueCambiarClave(c, abierto, mensaje)]
+    d.puede?.crearClave ? [formularioComprobarClave([c.huella, ...(c.anteriores ?? []).map(x => x.huella)].filter(Boolean)), bloqueCambiarClave(c, abierto, mensaje)]
       : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t(razonNoClave(d)) })),
     (c.anteriores ?? []).length ? [
       el('h3', { texto: t('copias.clave.anteriores') }),
@@ -1750,15 +1761,17 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   ];
 }
 
-// Los 5 pasos para recuperar todo en un servidor nuevo (los mismos que en la hoja impresa y en el README).
+// Los pasos para recuperar todo en un servidor nuevo: UNA lista para la pantalla y la hoja impresa, con los mismos
+// pasos que el README («Si un día pierdes el servidor»; test/pantallas.test.js compara la cuenta y que esté /revoke).
+const PASOS_RESTAURAR = Object.freeze([1, 2, 3, 4, 5, 6]);
 function pasosRestaurar() {
-  return el('ol', { class: 'pasos-numerados' }, [1, 2, 3, 4, 5].map(n => el('li', {},
+  return el('ol', { class: 'pasos-numerados' }, PASOS_RESTAURAR.map(n => el('li', {},
     el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: String(n) }),
     el('span', { texto: t(`copias.restaurar.paso${n}`) }))));
 }
 
 // «Comprobar mi clave»: se escribe; la página la revisa y manda solo su verificador.
-function formularioComprobarClave() {
+function formularioComprobarClave(huellas = []) {
   const id = 'campo-comprobar-clave';
   const campoClave = el('input', { ...ATRIBUTOS_CAMPO_RECUPERACION, id });
   const mensajeComprobar = caja();
@@ -1771,6 +1784,8 @@ function formularioComprobarClave() {
     mensajeComprobar);
   alEnviar(formulario, mensajeComprobar, async () => {
     const escrita = campoClave.value;
+    const sobra = huellas.find(h => sobraNombreCorto(escrita, h));
+    if (sobra) throw new Error(t('copias.clave.sobra_nombre', { huella: sobra }));
     const calculado = verificadorDe(escrita);
     if (!calculado.ok) throw new Error(textoError(calculado.error));
     const x = await api('POST', '/api/admin/copias/clave/comprobar', { verificador: calculado.verificador });
@@ -1886,8 +1901,11 @@ function dibujarClaveNueva(datos, vigente) {
       },
     }, icono('imprimir'), el('span', { texto: t('copias.clave.imprimir') }));
     tarjeta = el('section', { class: 'tarjeta clave-nueva' },
-      el('div', { class: 'clave-nueva-cabeza' }, cabeza(1, t('copias.clave.tu_clave')), el('span', { class: 'insignia tono-info', texto: t('copias.clave.mini', { huella: n.huella }) })),
+      el('div', { class: 'clave-nueva-cabeza' }, cabeza(1, t('copias.clave.tu_clave'))),
       el('p', { class: 'clave-recuperacion', 'aria-label': t('copias.clave.tu_clave') }, grupos.map(g => el('span', { class: 'clave-grupo', texto: g }))),
+      // Revisión final: el nombre corto va DEBAJO de la clave y dice que no es parte de ella (antes estaba justo encima,
+      // con el mismo formato que los grupos, y se copiaba al papel como si fuera el primero).
+      el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.clave.nombre_corto', { huella: n.huella }) })),
       el('ul', { class: 'lista-iconos clave-consejos' },
         el('li', {}, icono('lapiz', 'icono'), el('span', { texto: t('copias.clave.guardala') })),
         el('li', { class: 'fuerte' }, icono('candado', 'icono'), el('span', { texto: t('copias.clave.unica') })),
@@ -1908,6 +1926,7 @@ function dibujarClaveNueva(datos, vigente) {
       mensaje);
     alEnviar(formulario, mensaje, async () => {
       const escrita = campoClave.value;
+      if (sobraNombreCorto(escrita, n.huella)) throw new Error(t('copias.clave.sobra_nombre', { huella: n.huella }));
       // Primero, grupo por grupo contra la que se mostró (sigue en la memoria de esta pantalla).
       const leida = leerClave(escrita);
       if (!leida.ok && leida.error === 'clave_formato') throw new Error(textoError('clave_formato'));
@@ -2384,7 +2403,9 @@ async function pantallaClaves(aviso = null) {
     cabeza(
       el('p', { class: 'suave', texto: t('claves.explica') }),
       d.duenoTailscale ? el('p', { class: 'suave con-icono' }, icono('escudo', 'icono chico'), el('span', { texto: t('claves.dueno', { login: d.duenoTailscale }) })) : null,
-      !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null),
+      !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null,
+      // Revisión final: una base recuperada de una copia nunca trae la llave de las claves: se pegan otra vez aquí.
+      listo && d.almacen?.motivo === 'restaurada' ? el('p', { class: 'aviso con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('claves.restaurada') })) : null),
     // El Telegram primero: es gratis y las copias fuera del servidor lo necesitan (la IA es opcional).
     [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'avisos') - (a.grupo === 'avisos')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente }) : el('section', { class: 'tarjeta' },
       titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
@@ -2542,7 +2563,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
     const unido = v.chat && v.chat.estado !== 'perdido';
     paso2 = el('div', { class: 'paso-telegram apagado' }, cabeza2, el('p', { class: 'suave con-icono-arriba' }, icono(unido ? 'pausa' : 'candado', 'icono chico'),
       el('span', { texto: unido ? t('telegram.paso.chat.en_espera', { nombre: v.chat.nombre || t('telegram.tu_chat') }) : t('telegram.paso.chat.antes') })));
-  } else if (v.paso === 'unir' || vinculoEnPantalla || tg.vinculo?.porConfirmar) {
+  } else if (v.paso === 'unir' || vinculoEnPantalla || tg.vinculo?.porConfirmar || tg.vinculo?.pendiente) {
     paso2 = el('div', { class: 'paso-telegram' }, cabeza2, v.problema ? lineaProblema(v.problema) : null, bloqueUnirChat(tg, { recargar, vigente, mensaje }));
   } else {
     const chat = v.chat;
@@ -2641,18 +2662,30 @@ function formularioConfirmarChat(nombre, { recargar, mensaje }) {
 }
 
 function bloqueUnirChat(tg, { recargar, vigente, mensaje }) {
-  const vinculo = vinculoEnPantalla;
-  if (vinculo?.confirmar || (!vinculo && tg.vinculo?.porConfirmar)) {
-    return formularioConfirmarChat(vinculo?.confirmar?.nombre ?? tg.vinculo.porConfirmar.nombre, { recargar, mensaje });
+  if (vinculoEnPantalla?.confirmar || (!vinculoEnPantalla && tg.vinculo?.porConfirmar)) {
+    return formularioConfirmarChat(vinculoEnPantalla?.confirmar?.nombre ?? tg.vinculo.porConfirmar.nombre, { recargar, mensaje });
   }
+  // Revisión final: la página se recargó (en el iPhone, la app de la pantalla de inicio suele recargarse al volver de
+  // Telegram) y el servidor todavía espera el código que se pidió. El código no se puede mostrar otra vez (el servidor
+  // guarda solo su huella), pero se sigue esperando el mensaje que el dueño ya mandó; «Pedir otro código» queda aparte.
+  if (!vinculoEnPantalla && tg.vinculo?.pendiente && cuentaAtras(tg.vinculo.hasta)) {
+    vinculoEnPantalla = { codigo: null, paraMostrar: null, enlace: null, hasta: tg.vinculo.hasta, bot: tg.bot?.usuario ?? null, retomado: true };
+  }
+  const vinculo = vinculoEnPantalla;
   if (!vinculo) {
     return el('div', {},
       el('p', { texto: t('telegram.unir.explica') }),
-      tg.vinculo?.pendiente ? el('p', { class: 'ayuda', texto: t('telegram.unir.otro_codigo') }) : null,
       el('button', { type: 'button', class: 'grande con-icono centrado', onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar) },
         icono('avion_papel'), el('span', { texto: t('telegram.unir') })),
       mensaje);
   }
+  // «Cancelar» le dice al servidor que ya no espere ese código (si no, al volver a la pantalla se retomaría).
+  const cancelar = async () => {
+    await api('POST', '/api/admin/telegram/vincular/cancelar', {});
+    vinculoEnPantalla = null;
+    recargar(null);
+  };
+  if (vinculo.retomado) return bloqueEsperandoRetomado(vinculo, { recargar, vigente, mensaje, cancelar });
   const codigo = codigoLegible(vinculo.codigo || vinculo.paraMostrar);
   const resto = el('span', { class: 'fuerte', texto: cuentaAtras(vinculo.hasta) ?? '0:00' });
   const estadoEspera = el('p', { class: 'esperando con-icono', role: 'status' }, el('span', { class: 'girando' }, icono('actualizar', 'icono')), el('span', { texto: t('telegram.esperando') }));
@@ -2669,10 +2702,31 @@ function bloqueUnirChat(tg, { recargar, vigente, mensaje }) {
     el('button', {
       type: 'button', class: 'secundario',
       texto: t('telegram.unir.cancelar'),
-      onclick: () => { vinculoEnPantalla = null; recargar(null); },
+      onclick: cancelar,
     }),
     mensaje);
-  // Cada segundo, lo que falta; cada 3 s, si ya llegó el mensaje (mientras se vea esta pantalla).
+  esperarMensajeDelChat(bloque, vinculo, { recargar, vigente, mensaje, resto });
+  return bloque;
+}
+
+// Lo que se ve al volver a Claves con un código que el servidor todavía espera (ver bloqueUnirChat).
+function bloqueEsperandoRetomado(vinculo, { recargar, vigente, mensaje, cancelar }) {
+  const resto = el('span', { class: 'fuerte', texto: cuentaAtras(vinculo.hasta) ?? '0:00' });
+  const bloque = el('div', { class: 'unir-chat' },
+    el('p', { class: 'esperando con-icono fuerte', role: 'status' }, el('span', { class: 'girando' }, icono('actualizar', 'icono')), el('span', { texto: t('telegram.esperando') })),
+    el('p', { texto: t('telegram.unir.retomado', { bot: vinculo.bot ? `@${vinculo.bot}` : t('telegram.tu_bot') }) }),
+    el('p', { class: 'suave con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('telegram.vence') }), resto),
+    el('div', { class: 'botones' },
+      el('button', { type: 'button', class: 'secundario con-icono', onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar) },
+        icono('actualizar', 'icono chico'), el('span', { texto: t('telegram.unir.pedir_otro') })),
+      el('button', { type: 'button', class: 'secundario', texto: t('telegram.unir.cancelar'), onclick: cancelar })),
+    mensaje);
+  esperarMensajeDelChat(bloque, vinculo, { recargar, vigente, mensaje, resto });
+  return bloque;
+}
+
+// Cada segundo, lo que falta; cada 3 s, si ya llegó el mensaje (mientras se vea esta pantalla y este código).
+function esperarMensajeDelChat(bloque, vinculo, { recargar, vigente, mensaje, resto }) {
   let preguntando = false;
   let ultimaPregunta = 0;
   const reloj = setInterval(async () => {
@@ -2703,7 +2757,6 @@ function bloqueUnirChat(tg, { recargar, vigente, mensaje }) {
       decir(mensaje, t(x.datos.problema === 'clave_no_valida' ? 'telegram.problema.clave_no_valida' : x.datos.problema === 'bot_ocupado' ? 'telegram.problema.bot_ocupado' : 'telegram.problema.sin_red'), 'error');
     }
   }, 1000);
-  return bloque;
 }
 
 // ---- En un proyecto: «Ayuda de IA» en la versión que espera aprobación ----

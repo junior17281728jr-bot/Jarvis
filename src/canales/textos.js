@@ -59,10 +59,13 @@ export function fechaRd(iso, idioma = 'es') {
   }
 }
 
+// «41 MB», «7,8 MB»; debajo de 1 MB, en KB («11 KB», nunca «0 MB»: una copia chica no está vacía).
 export function megas(bytes, idioma = 'es') {
-  const mb = Math.max(0, Number(bytes) || 0) / (1024 * 1024);
-  const n = mb < 10 ? Math.round(mb * 10) / 10 : Math.round(mb);
-  try { return `${new Intl.NumberFormat(idioma === 'en' ? 'en-US' : 'es-DO').format(n)} MB`; } catch { return `${n} MB`; }
+  const b = Math.max(0, Number(bytes) || 0);
+  const formato = n => { try { return new Intl.NumberFormat(idioma === 'en' ? 'en-US' : 'es-DO').format(n); } catch { return String(n); } };
+  if (b < 1024 * 1024) return `${formato(Math.max(1, Math.round(b / 1024)))} KB`;
+  const mb = b / (1024 * 1024);
+  return `${formato(mb < 10 ? Math.round(mb * 10) / 10 : Math.round(mb))} MB`;
 }
 
 const recortar = (texto, max = TEXTO_MAX) => (texto.length > max ? `${texto.slice(0, max - 1)}…` : texto);
@@ -91,6 +94,9 @@ function valoresDe(aviso, idioma) {
   return v;
 }
 
+// Los motivos del modo seguro que son un problema de la base de datos (src/tareas/modo-seguro.js).
+const MODO_SEGURO_POR_LA_BASE = Object.freeze(['base_danada', 'base_no_compatible']);
+
 // El cuerpo de un aviso (sin título): telegram.aviso.<clave>.texto, o telegram.aviso.otro.
 export function cuerpoDeAviso(aviso, idioma) {
   const base = baseDeClave(aviso.clave);
@@ -100,6 +106,8 @@ export function cuerpoDeAviso(aviso, idioma) {
   // El disco de las copias no dejó escribir (no es «casi lleno»: no hay MB libres que decir).
   if (base === 'copias_locales_pausadas' && detalleDe(aviso)?.motivo === 'escribir') texto = frase(idioma, 'telegram.aviso.copias_locales_pausadas.escribir');
   if (base === 'copia_atrasada' && valores.pausa === 'modo_seguro') texto = `${texto} ${frase(idioma, 'telegram.aviso.copia_atrasada.modo_seguro')}`;
+  // Revisión final: el modo seguro por un problema de la base nunca dice que todo está bien: pide revisar antes de quitarlo.
+  if (base === 'modo_seguro' && MODO_SEGURO_POR_LA_BASE.includes(detalleDe(aviso)?.motivo)) texto = frase(idioma, 'telegram.aviso.modo_seguro.base');
   return texto;
 }
 
@@ -171,5 +179,6 @@ export function textoCopia(tipo, idioma = 'es', { creada, n = null, de = null, b
     const clave = de ? 'telegram.copia.parte' : 'telegram.copia.parte_sin_total';
     return recortar(frase(idioma, clave, { fecha: fechaRd(creada, idioma), n, de }), LEYENDA_MAX);
   }
-  return recortar(frase(idioma, 'telegram.copia.leyenda', { fecha: fechaRd(creada, idioma), mb: megas(bytes, idioma), n: partes }), LEYENDA_MAX);
+  // «1 parte» en singular (una copia chica de un servidor nuevo es de una sola parte).
+  return recortar(frase(idioma, Number(partes) === 1 ? 'telegram.copia.leyenda.uno' : 'telegram.copia.leyenda', { fecha: fechaRd(creada, idioma), mb: megas(bytes, idioma), n: partes }), LEYENDA_MAX);
 }

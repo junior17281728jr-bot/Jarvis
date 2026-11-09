@@ -306,7 +306,8 @@ test('2.15 restaurada en un servidor NUEVO: las claves no se pueden leer (sin la
     assert.ok(!existsSync(join(config.carpetaDatos, 'oportia-llave-secretos')), 'la llave de las claves nunca viaja');
     const db = abrirBase(config);
     try {
-      assert.deepEqual(estadoAlmacen(db, config), { listo: false, motivo: 'llave_falta' });
+      // Revisión final: la base quedó marcada como recuperada: Claves deja pegar otra vez (no hace falta la consola).
+      assert.deepEqual(estadoAlmacen(db, config), { listo: true, motivo: 'restaurada' });
       assert.ok(listarSecretos(db, config).filter(u => u.activa).every(u => u.activa.legible === false), 'Claves dice «pégala otra vez»');
       assert.equal(empezarLlaveNueva(config, clavesGuardadas(db)).creada, true);
       // Ronda 3: el sello de la clave de recuperación iba envuelto con la llave del servidor VIEJO: aquí no se abre (nadie

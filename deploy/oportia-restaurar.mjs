@@ -9,7 +9,8 @@
 //     --indice=<archivo>  con --telegram: el índice («…-indice.txt») que guardaste de tu chat; las partes se bajan con
 //                   tu bot. Sirve cuando la copia fijada en el chat no es la última (no hace falta el código del chat).
 //     --comprobar   descifra y revisa todo, sin escribir la base (solo guarda las partes cifradas que baja)
-//     --anterior    si a la copia más nueva le faltan partes o tiene una dañada, usar la más nueva BUENA (igual pregunta)
+//     --anterior    con --archivos: si a la copia más nueva le faltan partes o tiene una dañada, usar la más nueva BUENA
+//                   (igual pregunta). Con --telegram no va: usa --indice=<un índice de antes de tu chat> o --archivos.
 //     --trabajo=<carpeta>  dónde se guardan las partes que baja de Telegram (por defecto, junto al destino)
 //     --json        la última línea es el resultado en JSON
 //
@@ -24,7 +25,8 @@
 // un servidor viejo que siga vivo ya no puede mandar copias a tu chat.
 //
 // Nunca pisa un archivo: si el destino ya existe, no hace nada. Nunca toca el archivo de la llave de las claves: después
-// de recuperar, pega otra vez tus claves (las de la IA y el token del bot) en Administrador → Claves.
+// de recuperar, pega otra vez tus claves (las de la IA y el token del bot) en Administrador → Claves (en una base
+// recuperada se puede sin la consola) y crea en Copias una clave de recuperación nueva.
 //
 // Códigos de salida: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe ·
 // 6 Telegram o la red · 7 formato nuevo (usa una versión más nueva de OPORTIA) · 8 cancelada por el dueño.
@@ -70,6 +72,17 @@ const TEXTO_ERROR = Object.freeze({
   cancelada_por_dueno: 'Cancelado: no se escribió nada.',
   cancelada: 'Cancelado.',
   base_no_valida: 'La base recuperada no pasó la revisión: no se marcó como de OPORTIA.',
+});
+// Revisión final: con --telegram no hay «--anterior» (el índice fijado solo nombra su copia anterior, no dónde está su
+// índice en el chat). La salida es otro índice que el dueño guarda de su chat, o los archivos de una noche.
+const SALIDA_TELEGRAM = 'Usa una copia de antes: en tu chat con el bot, guarda el «…-indice.txt» de una noche anterior y usa --telegram --indice=<ese archivo>; o guarda todos los archivos de una noche (las partes .opc y su índice) en una carpeta y usa --archivos=<carpeta>.';
+const TEXTO_ERROR_TELEGRAM = Object.freeze({
+  falta_parte: `Le falta una parte a esa copia en Telegram. ${SALIDA_TELEGRAM}`,
+  parte_danada: `Una parte de esa copia está dañada en Telegram. ${SALIDA_TELEGRAM}`,
+  copia_cortada: `La copia está cortada: le falta el final. ${SALIDA_TELEGRAM}`,
+  parte_de_otra_copia: `Una parte es de otra copia. ${SALIDA_TELEGRAM}`,
+  copia_danada: `La copia está dañada. ${SALIDA_TELEGRAM}`,
+  volcado_danado: `Lo que hay adentro de la copia está dañado. ${SALIDA_TELEGRAM}`,
 });
 
 const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -178,6 +191,7 @@ function leerOpciones(argv) {
   }
   if (!o.error && Boolean(o.archivos) === o.telegram) o.error = 'Usa --archivos=<carpeta> o --telegram (uno de los dos).';
   if (!o.error && o.indice && !o.telegram) o.error = '--indice va con --telegram (con --archivos, pon el índice dentro de la carpeta).';
+  if (!o.error && o.anterior && o.telegram) o.error = `--anterior va con --archivos. ${SALIDA_TELEGRAM}`;
   if (!o.error && !o.comprobar && !o.destino) o.error = 'Falta --destino=<archivo nuevo> (o usa --comprobar para solo revisar).';
   if (!o.error && o.comprobar && o.destino) o.error = 'Con --comprobar no se escribe ninguna base: quita --destino.';
   return o;
@@ -281,17 +295,25 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
     if (destino) decir(`Base recuperada: ${megas(resultado.bytes)}, ${resultado.tablas} tablas, revisada: bien. Está en ${basename(destino)} (en ${dirname(destino)}).`);
     else decir(`Copia comprobada: ${megas(resultado.bytes)}, ${resultado.tablas} tablas, todo bien. No se escribió ninguna base.`);
     const pegar = [...(resultado.claves?.deIa ?? []).map(u => (u === 'ia_anthropic' ? 'clave de Claude' : u === 'ia_openai' ? 'clave de ChatGPT' : u)), ...(resultado.claves?.telegram ? ['token del bot'] : [])];
-    if (pegar.length) decir(`Tienes que pegar otra vez: ${pegar.join(', ')} (por seguridad nunca viajan en las copias).`);
     if (o.telegram || resultado.claves?.telegram) {
       // Ronda 2: si el servidor viejo sigue vivo (o vuelve de una foto del droplet), seguiría mandando sus copias viejas
       // a tu chat con el mismo bot, y una próxima restauración podría tomar esas. Revocar el token lo apaga.
       decir('IMPORTANTE: en Telegram, abre @BotFather, escribe /revoke y elige tu bot. Te da un token NUEVO: pégalo en');
       decir('  Administrador → Claves del servidor nuevo. Así el servidor viejo (si sigue vivo) ya no puede mandar copias.');
     }
+    if (destino) {
+      // Revisión final: los pasos que siguen, completos. La base queda marcada como recuperada (ajustarTrasRestaurar):
+      // Claves deja pegar otra vez sin pasar por la consola (crea una llave nueva; la de antes nunca viaja en una copia).
+      decir('Después, con OPORTIA abierto sobre esta base:');
+      decir(`  1. En Administrador → Claves pega otra vez ${pegar.length ? pegar.join(', ') : 'tus claves'}${resultado.claves?.telegram || o.telegram ? ' (el token NUEVO)' : ''}: por seguridad nunca viajan en las copias.`);
+      decir('  2. En Administrador → Copias crea una clave de recuperación NUEVA y guarda las dos (la de antes abre las copias de antes).');
+      decir('  Si Claves dijera que falta el archivo que protege las claves: sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar');
+    } else if (pegar.length) decir(`Tienes que pegar otra vez: ${pegar.join(', ')} (por seguridad nunca viajan en las copias).`);
   } catch (error) {
     const clave = error instanceof ErrorCopias ? error.clave : 'error';
     codigo = SALIDAS[DE_ERROR[clave] ?? (error instanceof ErrorCopias ? 'copia' : 'copia')];
-    errores.write(`${TEXTO_ERROR[clave] ?? 'No se pudo recuperar la copia.'} (${clave})\n`);
+    const texto = (o.telegram ? TEXTO_ERROR_TELEGRAM[clave] : null) ?? TEXTO_ERROR[clave] ?? 'No se pudo recuperar la copia.';
+    errores.write(`${texto} (${clave})\n`);
     resultado = { ok: false, error: clave };
   } finally {
     lector.cerrar();

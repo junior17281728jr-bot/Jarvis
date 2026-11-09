@@ -43,6 +43,26 @@ export const MOTIVOS_COPIA = Object.freeze(['telegram_limite_largo', 'telegram_l
   'volcado_incompleto', 'volcado_no_soportado', 'volcado_danado', 'fila_muy_grande', 'disco_distinto', 'parte_distinta', 'bot_cambiado',
   'foto_interrumpida', 'foto_larga', 'foto_vieja', 'chat_cambiado', 'tarea_fallida', 'tarea_cancelada', 'tarea_hecha', 'sin_tarea', 'restaurada', 'cancelada', 'disco_lleno', 'clave_ilegible', 'otro']);
 
+// Revisión final: los motivos que la tarea de copias (copias.hacer) puede dejar en Administrador → Trabajo y que no son
+// motivos de una copia (copias.motivo.*): cada uno tiene su frase tareas.motivo.<código> en los dos idiomas.
+export const MOTIVOS_TAREA_COPIA = Object.freeze(['error_servidor', 'sin_red', 'limite', 'telegram_clave_dudosa', 'telegram_bloqueado',
+  'telegram_chat_no_existe', 'telegram_sin_clave', 'telegram_otro', 'indice_sin_nombre', 'punto_no_valido', 'disco_local', 'telegram',
+  'datos_no_validos', 'copia_no_autentica', 'formato_nuevo', 'volcado_sin_sello']);
+// La frase de un motivo de la tarea de copias (nunca el código tal cual): la suya en tareas.motivo.*, la de la copia en
+// copias.motivo.*, «Telegram no dejó» para otro problema de Telegram, o «algo no salió bien». existe(clave) dice si la
+// frase está. → la clave de la frase.
+export function fraseMotivoTareaCopia(motivo, existe = () => false) {
+  const m = String(motivo ?? '');
+  if (!m) return null;
+  if (existe(`tareas.motivo.${m}`)) return `tareas.motivo.${m}`;
+  const base = motivoBase(m);
+  if (base && base !== 'otro') return `copias.motivo.${base}`;
+  const sinDetalle = m.split(':')[0];
+  if (existe(`tareas.motivo.${sinDetalle}`)) return `tareas.motivo.${sinDetalle}`;
+  if (/^telegram_/.test(m)) return 'tareas.motivo.telegram_otro';
+  return 'copias.motivo.otro';
+}
+
 // La tarjeta grande de #copias, según GET /api/admin/copias.
 // → { estado, tono, icono, marca, titulo, linea, variables, accion, enlace, razon, progreso }
 //   accion: 'ahora' | 'otra_vez' | 'crear_clave' | null (el botón grande) · enlace: { href, texto } (claves de frases)
@@ -65,7 +85,19 @@ export function vistaCopias(c, ahora = Date.now()) {
   if (c.enCurso) {
     const n = Number.isFinite(Number(c.enCurso.n)) && c.enCurso.n != null ? Number(c.enCurso.n) : null;
     const de = Number.isFinite(Number(c.enCurso.de)) && c.enCurso.de ? Number(c.enCurso.de) : null;
-    if (c.enCurso.esperando) return { ...base, estado: 'en_fila', tono: 'info', icono: 'copia', titulo: 'copias.estado.en_fila', linea: 'copias.en_fila', progreso: { n: null, de: null } };
+    // Revisión final: «en la fila» solo para una copia que nunca se empezó. Una que espera otro intento (Telegram no
+    // respondió) dice por qué y a qué hora; una que una persona tiene que mirar lleva a Trabajo.
+    const e = c.enCurso;
+    if (e.esperando && e.revisar) {
+      return { ...base, estado: 'revisar', tono: 'atencion', icono: 'copia', marca: 'atencion', titulo: 'copias.estado.revisar', linea: 'copias.revisar', enlace: { href: '#admin/trabajo', texto: 'copias.ir.trabajo' } };
+    }
+    if (e.esperando && e.motivo && e.disponibleEn) {
+      return {
+        ...base, estado: 'reintentando', tono: 'atencion', icono: 'copia', marca: 'atencion', titulo: 'copias.estado.reintentando', linea: 'copias.reintentando',
+        variables: { motivo: e.motivo, cuando: e.disponibleEn, intento: e.intento ?? null, de: e.maxIntentos ?? null }, progreso: { n: null, de: null },
+      };
+    }
+    if (e.esperando && !(Number(e.tomas) > 0)) return { ...base, estado: 'en_fila', tono: 'info', icono: 'copia', titulo: 'copias.estado.en_fila', linea: 'copias.en_fila', progreso: { n: null, de: null } };
     const paso = c.enCurso.paso;
     const linea = paso === 'indice' ? 'copias.terminando' : n == null || paso === 'preparar' ? 'copias.preparando'
       : paso === 'verificar' ? (de ? 'copias.comprobando' : 'copias.comprobando_sin_total') : de ? 'copias.haciendo' : 'copias.haciendo_sin_total';

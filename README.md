@@ -202,7 +202,10 @@ está dañado: le cambia el nombre (no lo borra) para que la próxima clave pega
 la que se guardaron tus claves: se lo vuelve a poner (no borra ni pisa nada; `--claves=revisar` dice si se puede).
 Mientras falte ese archivo y ya haya claves guardadas, la pantalla Claves no deja pegar otra (así nunca se crea una llave
 nueva encima de la que falta). Si no se puede recuperar, `--claves=empezar-de-nuevo` crea una llave nueva: las claves de
-antes quedan guardadas sin poder leerse y se pegan otra vez.
+antes quedan guardadas sin poder leerse y se pegan otra vez. Una base **recuperada de una copia** (parte e) no necesita
+ese paso: `oportia-restaurar.mjs` la marca como recuperada y, como la llave nunca viaja en una copia, Claves deja pegar
+otra vez las claves que traía (crea una llave nueva). Una clave guardada después con esa llave nueva vuelve a la regla de
+siempre.
 `--tailscale=reanotar` olvida la cuenta de Tailscale guardada del dueño (el primer administrador; si cambiaste de cuenta);
 la próxima entrada del dueño anota la nueva.
 
@@ -287,10 +290,14 @@ de un extraño nunca gastan los tuyos) y el código vence a los 10 minutos.
    servidor viejo, si sigue vivo (o vuelve de una foto del droplet), ya no puede mandar sus copias viejas a tu chat (si lo
    hiciera, el servidor nuevo te avisa urgente «Otro servidor manda copias»).
 5. Después pega otra vez tus claves de IA y el token NUEVO del bot en Claves: por seguridad nunca viajan en las copias.
-   Tu clave de recuperación también hay que darla otra vez en el servidor nuevo (la parte 1f lo hace al instalar; hasta
-   entonces Copias dice «Tu clave ya no sirve en este servidor» y deja crear una nueva: las copias viejas se siguen
-   abriendo con la de antes).
+   En una base recuperada, Claves lo deja hacer enseguida (dice «Esta base se recuperó de una copia»: crea una llave
+   nueva para tus claves, sin pasar por la consola). Luego crea en Copias una clave de recuperación **nueva** (Copias dice
+   «Tu clave ya no sirve en este servidor» y deja crear otra) y guarda las dos: las copias viejas se siguen abriendo con
+   la de antes.
 6. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
+
+Estos 6 pasos son los mismos en la pantalla Copias («Si un día pierdes el servidor») y en la hoja que se imprime con la
+clave (`copias.restaurar.paso1…6`; `test/pantallas.test.js` revisa que sean los mismos que aquí).
 
 Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
 noche y usa `--archivos=`. Una copia de más de 30 horas, si hay una más nueva, si su fecha es del futuro (el reloj del
@@ -349,9 +356,13 @@ no se pudo fijar, se reintenta, y si nunca se pudo, llega un aviso urgente.
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo> [--comprobar] [--anterior]
 
 Con `--telegram` se usa la copia FIJADA en el chat; si es de hace más de 26 horas, pregunta (quizás la de anoche no quedó
-fijada: guarda su «…-indice.txt» y usa `--indice`). Al terminar recuerda revocar el token en @BotFather (`/revoke`). Con `--archivos`, una parte dañada o un archivo raro en la carpeta se
-saltan si hay otro bueno; `--anterior` usa la copia buena de antes si la más nueva está dañada o cortada (siempre dice que
-hay una más nueva). Para la carpeta de copias del servidor, usa la carpeta de un mes si son muchísimos archivos.
+fijada: guarda su «…-indice.txt» y usa `--indice`). Si a esa copia le falta una parte o tiene una dañada, la salida es una
+copia de antes: guarda de tu chat el «…-indice.txt» de una noche anterior y usa `--telegram --indice=<ese archivo>`, o
+guarda los archivos de una noche y usa `--archivos` (`--anterior` va solo con `--archivos`). Al terminar dice los pasos que
+siguen: revocar el token en @BotFather (`/revoke`), pegar otra vez las claves y crear una clave de recuperación nueva. Con
+`--archivos`, una parte dañada o un archivo raro en la carpeta se saltan si hay otro bueno; `--anterior` usa la copia buena
+de antes si la más nueva está dañada o cortada (siempre dice que hay una más nueva). Para la carpeta de copias del
+servidor, usa la carpeta de un mes si son muchísimos archivos.
 
 `oportia-restaurar.mjs` pide la clave y el token sin mostrarlos (nunca en la línea de la orden), nunca corre como root y
 nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe
@@ -367,7 +378,13 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - Medido en la máquina de pruebas (4 CPU) con una base de 208 MB: pico de unos 110 MB en el trabajador (unos 40 MB sobre lo
   que usa sin hacer nada), 38 partes, 41–48 s; con partes de 4 MiB el envío directo llegaba al tope de 120 MB del
   trabajador, por eso son de 2 MiB. En el servidor real (1 vCPU) el trabajador usa unos 46 MB sin hacer nada: una copia
-  debería quedar en 85–90 MB. Si alguna vez se acerca a 120 MB, hay que bajar las partes a 1 MiB.
+  debería quedar en 85–90 MB.
+- Directo a Telegram (cuando el disco no deja guardar copias aquí) la foto queda abierta mientras se sube: con partes de
+  2 MiB, una base de 187 MB llegaba a 112–116 MB (el tope es 120 MB). Por eso, en ese modo cada parte mide **1 MiB** (el
+  formato es el mismo; solo hay el doble de partes) y se limpia la memoria antes y después de cada parte. Medido en la
+  máquina de pruebas (4 CPU) con 194 MB de base: pico de 114 MB con 2 MiB (36 partes, 39 s) → 108 MB con 1 MiB (71 partes,
+  79 s; tarda más por la pausa de 1,1 s entre documentos). Después de publicar, mide en el servidor real con
+  `node --no-warnings test/medir-copia.mjs 200 directo` y anota aquí el pico.
 
 ### Si se filtra el token o la clave
 - **El token del bot**: en @BotFather → /mybots → tu bot → API Token → «Revoke current token», pega el nuevo en Claves
@@ -494,13 +511,32 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
   avisos graves al Telegram (ver «Copias y avisos por Telegram»).
   - Base: tablas `copias`, `copia_partes`, `copias_llaves`, `canales` y `canal_envios` (solo se agregan filas; nada se
     borra). Una versión 0.4.1 abre esta base sin problema si el actualizador tuviera que volver atrás (`test/ensayo-0.4.1.mjs`).
-  - Telegram es un «canal» genérico (`src/canales/`): los canales de clientes de la fase 3 en adelante (Telegram, WhatsApp,
-    Gmail) agregan un adaptador y nada más. Todo pasa por la única puerta a la red (`src/ia/llamar.js`); las pruebas usan
-    un Telegram falso en 127.0.0.1 (`test/telegram-falso.js`), nunca el de verdad ni un token de verdad.
+  - Telegram es un «canal»: la forma de un adaptador (`src/canales/canal.js`) y la tabla `canales` (tipo, propósito,
+    cuenta) son genéricas. Lo que hay hoy en `src/canales/canales.js` (unir el chat con el código, los avisos
+    `telegram_falla`, el estado de la pantalla, el uso `telegram_bot`) es solo para el chat privado del dueño. Los canales
+    de clientes de la fase 3 en adelante (Telegram, WhatsApp, Gmail) agregan su adaptador, su propósito, su uso de clave y
+    su propia forma de unir el canal y de mostrarlo (por ejemplo, el permiso de Gmail o muchos chats por cuenta). Todo pasa
+    por la única puerta a la red (`src/ia/llamar.js`); las pruebas usan un Telegram falso en 127.0.0.1
+    (`test/telegram-falso.js`), nunca el de verdad ni un token de verdad.
   - Pantallas: Administrador → Copias (nueva pestaña), el Telegram en Claves (paso ① el bot, paso ② el chat con un
     código de 8 cifras), azulejos en el Resumen, una insignia en Inicio y «Última versión que no se instaló» en Servidor.
   - API: `GET /api/admin/copias`, `POST /api/admin/copias/ahora`, `POST /api/admin/copias/clave/{nueva,confirmar,comprobar}`,
     `POST /api/admin/telegram/{vincular,vincular/revisar,prueba,desvincular}`; el token va por `POST /api/admin/claves`.
   - Consola: `oportia-admin.mjs --copias=estado|ahora`, `--telegram=desvincular` y `deploy/oportia-restaurar.mjs`.
+  - Preguntas para el dueño (cada una tiene su respuesta segura si no contesta; se pueden cambiar si las pides):
+    1. Tu clave de recuperación: se muestra una vez, se escribe otra vez para comprobarla y se puede imprimir (guárdala en
+       Contraseñas y en un papel).
+    2. Dónde llegan avisos y copias: tu chat privado con tu bot (no un canal aparte).
+    3. **⚠ Disco casi lleno: nunca se borra nada.** Con poco espacio dejo de guardar copias en el servidor, sigo con las de
+       Telegram y te aviso; con menos de 300 MB paro todas (ver «El disco»).
+    4. Sin clave de recuperación no hay ninguna copia de la noche (ni en el servidor ni en Telegram) hasta que la crees.
+    5. Las copias del servidor también van con candado (iguales a las de Telegram).
+    6. Hora de la copia: 4:40 a. m. de RD, todas las noches (después de la revisión de la base de las 4:10).
+    7. Qué avisos van al Telegram: lo urgente con sonido, lo demás en silencio, «Ya se arregló» y «Volvió a pasar»; como
+       mucho 10 por hora y 30 por día (lo urgente nunca se calla); sin recordatorio diario.
+    8. Recordatorio para comprobar tu clave: cada 90 días, en silencio.
+    9. Leer `update.log` y `version.bad` (solo leer) para avisarte de una actualización que falló o se devolvió: sí.
+    10. Copias en modo seguro: en pausa (el aviso urgente llega igual).
+    11. Cambiar la clave de recuperación: solo si tú lo pides (las copias viejas siguen necesitando la clave vieja).
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

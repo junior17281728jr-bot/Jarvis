@@ -137,17 +137,35 @@ function apartadasMs(config) {
   return lista.sort((a, b) => b - a);
 }
 
+// La marca que deja ajustarTrasRestaurar (src/copias/restaurar.js) en una base recuperada: { en, huellas } o null.
+export const CLAVE_RESTAURADA = 'claves.restaurada';
+export function marcaDeRestaurada(db) {
+  try {
+    const v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(CLAVE_RESTAURADA)?.valor ?? 'null');
+    return v && Array.isArray(v.huellas) ? { en: typeof v.en === 'string' ? v.en : null, huellas: v.huellas.filter(h => typeof h === 'string') } : null;
+  } catch {
+    return null;
+  }
+}
+
 // ¿Se puede crear una llave NUEVA (porque falta el archivo)? Ronda 2 de revisión: solo si todavía no hay ninguna clave
 // guardada, o si todas las guardadas son de antes de la última llave dañada que la consola apartó (eso ya fue decidir
 // empezar de nuevo). Si no, crearla en silencio dejaría sin poder leer, para siempre, las claves guardadas con la
 // llave que falta (y cerraría --claves=recuperar-llave). guardadas: { huellas, ultimaMs } de la tabla secretos (las
 // huellas de sus claves y cuándo se guardó la más nueva). { si, motivo, recuperable }: recuperable si queda otro
 // nombre (.nueva-…) con la llave de alguna clave guardada.
-export function permisoLlaveNueva(config, { huellas: guardadas = [], ultimaMs = null } = {}) {
+//  Revisión final de la parte e: una base RECUPERADA de una copia (ajustarTrasRestaurar la marca: «restaurada», con las
+//  huellas de las claves que traía) nunca trae el archivo de la llave (a propósito: no viaja en las copias). Si TODAS
+//  las claves guardadas son de las que traía la copia y no queda ningún otro nombre con su llave, no hay nada que
+//  recuperar: se puede crear una llave nueva y el dueño pega otra vez sus claves en la pantalla (motivo 'restaurada').
+//  Una clave guardada DESPUÉS de restaurar (con otra llave) vuelve a cerrar esa puerta, como siempre.
+export function permisoLlaveNueva(config, { huellas: guardadas = [], ultimaMs = null, restaurada = null } = {}) {
   const lista = (Array.isArray(guardadas) ? guardadas : []).filter(h => typeof h === 'string' && h);
   if (!lista.length) return { si: true, motivo: null, recuperable: false };
   const completas = otrosNombres(config).filter(o => o.tipo === 'completa');
   if (lista.some(h => completas.some(o => o.huella === h))) return { si: false, motivo: LLAVE_FALTA, recuperable: true };
+  const traidas = Array.isArray(restaurada?.huellas) ? restaurada.huellas.filter(h => typeof h === 'string' && h) : null;
+  if (traidas && lista.every(h => traidas.includes(h))) return { si: true, motivo: 'restaurada', recuperable: false };
   const apartada = apartadasMs(config)[0];
   // El nombre guarda solo los segundos: una clave guardada en ese mismo segundo cuenta como de antes.
   if (apartada != null && Number.isFinite(ultimaMs) && apartada + 999 >= ultimaMs) return { si: true, motivo: null, recuperable: false };
@@ -328,10 +346,12 @@ export function diagnosticoLlave(config, { db = null } = {}) {
     try {
       const f = db.prepare('SELECT COUNT(*) AS n, MAX(creado_en) AS ultima FROM secretos').get();
       guardadas = { huellas: db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(x => x.h), ultimaMs: f.ultima ? Date.parse(f.ultima) : null };
+      guardadas.restaurada = marcaDeRestaurada(db);
     } catch { /* la base no está al día: se dice abajo */ }
   }
   const permiso = !info && estado.motivo === 'llave_no_existe' ? permisoLlaveNueva(config, guardadas) : null;
   if (!info && guardadas.huellas.length === 0) lineas.push('No existe todavía. Se crea solo la primera vez que guardes una clave en Administrador → Claves.');
+  else if (!info && permiso?.motivo === 'restaurada') lineas.push('No existe: esta base se recuperó de una copia (la llave nunca viaja en las copias). La próxima clave que pegues en Administrador → Claves crea una nueva; pega otra vez tus claves (las de antes quedan guardadas, sin poder leerse).');
   else if (!info && permiso?.si) lineas.push('No existe: la llave dañada se apartó y la próxima clave que pegues en Administrador → Claves crea una nueva (las claves de antes quedan guardadas, sin poder leerse).');
   else if (!info) {
     lineas.push('FALTA el archivo de la llave, y ya hay claves guardadas con ella. No se borró nada. Mientras falte, OPORTIA no deja pegar claves: así nunca se crea otra llave encima de la que falta.');

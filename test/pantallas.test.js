@@ -191,7 +191,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...['en_marcha', 'modo_seguro', 'sin_clave', 'sin_trabajador', 'disco_lleno', 'sin_destino'].map(x => `copias.no_ahora.${x}`),
     ...['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar', 'bot_ocupado', 'sin_red', 'pausa', 'bot_cambiado'].map(x => `telegram.problema.${x}`),
     'copias.aqui.anterior', 'aviso.copias_locales_pausadas.escribir', 'telegram.aviso.copias_locales_pausadas.escribir', 'ia.motivo.bot_cambiado', 'ia.motivo.sin_probar',
-    ...[1, 2, 3, 4, 5].map(n => `copias.restaurar.paso${n}`),
+    ...[1, 2, 3, 4, 5, 6].map(n => `copias.restaurar.paso${n}`),
     ...[1, 2, 3, 4].map(n => `telegram.como${n}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
@@ -504,6 +504,9 @@ test('3.1/3.3 Copias: cada estado de la tarjeta grande tiene sus frases, y un bo
     sin_clave_funnel: copiasBien({ clave: { activa: false, anteriores: [] }, puede: { ahora: false, motivoNoAhora: 'sin_clave', crearClave: false, motivoNoClave: 'solo_desde_tailnet' } }),
     modo_seguro: copiasBien({ modoSeguro: true, puede: { ahora: false, motivoNoAhora: 'modo_seguro', crearClave: true } }),
     en_fila: copiasBien({ enCurso: { paso: 'preparar', n: null, de: null, esperando: true }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    reintentando: copiasBien({ enCurso: { paso: 'subir', n: 2, de: 5, esperando: true, tomas: 1, motivo: 'error_servidor', disponibleEn: hora(-0.5) }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    revisar: copiasBien({ enCurso: { paso: 'subir', n: 2, de: 5, esperando: true, tomas: 2, revisar: true }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
+    entre_pasos: copiasBien({ enCurso: { paso: 'subir', n: 2, de: 5, esperando: true, tomas: 2, motivo: null, disponibleEn: null }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
     haciendo: copiasBien({ enCurso: { paso: 'subir', n: 4, de: 11 }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
     haciendo_sin_total: copiasBien({ enCurso: { paso: 'generar', n: 4, de: null }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
     comprobando: copiasBien({ enCurso: { paso: 'verificar', n: 2, de: 11 }, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }),
@@ -526,7 +529,8 @@ test('3.1/3.3 Copias: cada estado de la tarjeta grande tiene sus frases, y un bo
     if (v.accion && v.accion !== 'crear_clave') assert.equal(motivoNoAhora(c), null, nombre);
   }
   assert.deepEqual(Object.fromEntries(Object.entries(vistas).map(([n, v]) => [n, v.estado])), {
-    bien: 'bien', sin_clave: 'sin_clave', sin_clave_funnel: 'sin_clave', modo_seguro: 'modo_seguro', en_fila: 'en_fila', haciendo: 'haciendo',
+    bien: 'bien', sin_clave: 'sin_clave', sin_clave_funnel: 'sin_clave', modo_seguro: 'modo_seguro', en_fila: 'en_fila', reintentando: 'reintentando',
+    revisar: 'revisar', entre_pasos: 'haciendo', haciendo: 'haciendo',
     haciendo_sin_total: 'haciendo', comprobando: 'haciendo', freno_disco: 'freno_disco', solo_locales: 'solo_locales', fallo: 'fallo',
     telegram_problema: 'telegram_problema', primera: 'primera', atrasada: 'atrasada', sin_fijar: 'sin_fijar',
   });
@@ -624,7 +628,81 @@ test('3.2 Copias: íconos propios, y la clave de recuperación nunca se guarda e
   assert.match(appJs, /if \(seccion !== 'copias'\) claveNueva = null;/);
   assert.match(appJs, /if \(seccion !== 'claves'\) vinculoEnPantalla = null;/);
   // La página calcula el verificador sin WebCrypto (también en una dirección http:// de Tailscale).
-  assert.match(appJs, /import \{ leerClave, verificadorDe, grupoDistinto, gruposDeClave \} from '\.\/clave-recuperacion\.js';/);
+  assert.match(appJs, /import \{ leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto \} from '\.\/clave-recuperacion\.js';/);
   // El enlace al bot pasa siempre por enlaceSeguro.
   assert.match(appJs, /enlace: enlaceSeguro\(x\.datos\.enlace\)/);
 });
+
+// ---------- Fase 1, parte e — revisión final ----------
+
+test('revisión: los pasos para recuperar son los mismos en la pantalla, la hoja impresa y el README, y dicen /revoke y la clave nueva', () => {
+  const lista = appJs.match(/const PASOS_RESTAURAR = Object\.freeze\(\[([^\]]*)\]\)/)?.[1];
+  assert.ok(lista, 'una sola lista de pasos');
+  const numeros = lista.split(',').map(x => Number(x.trim()));
+  // La pantalla y la hoja dibujan esa lista (pasosRestaurar), nunca otra.
+  assert.match(seccionDe(appJs, 'function hojaDeLaClave('), /pasosRestaurar\(\)/);
+  assert.match(appJs, /PASOS_RESTAURAR\.map\(n =>/);
+  const readme = readFileSync(join(RAIZ, 'README.md'), 'utf8');
+  const seccion = readme.split('### Si un día pierdes el servidor')[1].split('\n\n')[0];
+  const delReadme = [...seccion.matchAll(/^(\d+)\. /gm)].map(m => Number(m[1]));
+  assert.deepEqual(numeros, delReadme, 'los mismos pasos que el README');
+  for (const idioma of [es, en]) {
+    for (const n of numeros) assert.ok(idioma[`copias.restaurar.paso${n}`], `falta copias.restaurar.paso${n}`);
+    const todos = numeros.map(n => idioma[`copias.restaurar.paso${n}`]).join(' ');
+    assert.match(todos, /\/revoke/);
+    assert.match(todos, idioma === es ? /NUEVO/ : /NEW/);
+    assert.match(todos, idioma === es ? /clave de recuperación nueva/ : /new recovery key/);
+  }
+  assert.ok(numeros.findIndex(n => /\/revoke/.test(es[`copias.restaurar.paso${n}`])) < numeros.findIndex(n => /token NUEVO/.test(es[`copias.restaurar.paso${n}`]) && /Claves/.test(es[`copias.restaurar.paso${n}`])), 'revocar antes de pegar el token nuevo');
+});
+
+test('revisión: cada motivo que la tarea de copias puede dejar se dice con palabras en Trabajo (nunca el código)', async () => {
+  const { fraseMotivoTareaCopia, MOTIVOS_TAREA_COPIA } = await import('../public/copias-vista.js');
+  const { MOTIVOS_CANAL, esPasajero } = await import('../src/canales/canal.js');
+  const hacer = readFileSync(join(RAIZ, 'src/copias/hacer.js'), 'utf8');
+  const codigos = new Set([
+    ...[...hacer.matchAll(/new ErrorTarea\('([a-z_]+)'/g)].map(m => m[1]),
+    ...[...hacer.matchAll(/fallar\(ctx, [a-z]+, [`']([a-z_]+)/g)].map(m => m[1]),
+    ...[...hacer.matchAll(/new ErrorCopias\('([a-z_]+)'/g)].map(m => m[1]),
+    ...[...hacer.matchAll(/reiniciar\(ctx, copia, \{ motivo: '([a-z_]+)'/g)].map(m => m[1]),
+    'disco_distinto:abc', 'fila_muy_grande:ajustes', 'parte_distinta:3',
+  ]);
+  assert.ok(codigos.size > 12, 'se encontraron los códigos de hacer.js');
+  // Los de Telegram: un problema pasajero tal cual, los demás como telegram_<problema>.
+  const deTelegram = MOTIVOS_CANAL.filter(m => m !== 'ok').map(m => (esPasajero(m) ? m : `telegram_${m}`));
+  for (const m of MOTIVOS_TAREA_COPIA) assert.ok(existe(`tareas.motivo.${m}`), `falta tareas.motivo.${m}`);
+  for (const codigo of [...codigos, ...deTelegram]) {
+    const frase = fraseMotivoTareaCopia(codigo, existe);
+    assert.ok(existe(frase), `${codigo}: ${frase} no está en los dos idiomas`);
+    if (codigos.has(codigo)) assert.notEqual(frase, 'copias.motivo.otro', `${codigo} no tiene una frase propia`);
+  }
+  // app.js usa esa frase para las tareas de copias (Errores recientes y «Ver la fila»).
+  assert.match(appJs, /textoMotivo\(e\.motivo, e\.tipo\)/);
+  assert.match(appJs, /textoMotivo\(x\.ultimoError, x\.tipo\)/);
+  assert.match(seccionDe(appJs, 'function textoMotivo('), /fraseMotivoTareaCopia\(motivo, existeFrase\)/);
+});
+
+test('revisión: el nombre corto de la clave va debajo de la clave y, si se escribe con ella, se dice qué sobra', async () => {
+  const { sobraNombreCorto, gruposDeClave } = await import('../public/clave-recuperacion.js');
+  const clave = 'P03Z-0NXE-HT8S-8ZX0-4A2M-JAD6-N05E';
+  assert.equal(sobraNombreCorto(`21JE ${clave}`, '21JE'), true);
+  assert.equal(sobraNombreCorto(`21je-${clave.toLowerCase()}`, '21JE'), true);
+  assert.equal(sobraNombreCorto(clave, '21JE'), false);
+  assert.equal(sobraNombreCorto(`ABCD ${clave}`, '21JE'), false);
+  assert.equal(gruposDeClave(clave).length, 7);
+  for (const k of ['copias.clave.nombre_corto', 'copias.clave.sobra_nombre']) assert.ok(existe(k) && es[k].includes('{huella}') && en[k].includes('{huella}'), k);
+  const paso1 = seccionDe(appJs, 'function dibujarClaveNueva(');
+  assert.ok(paso1.indexOf("'copias.clave.nombre_corto'") > paso1.indexOf("class: 'clave-recuperacion'"), 'el nombre corto va después de la clave');
+  assert.match(paso1, /sobraNombreCorto\(escrita, n\.huella\)/);
+});
+
+test('revisión: Claves dice que la base se recuperó; Trabajo menciona la copia de las 4:40; el chat se retoma tras recargar', () => {
+  for (const k of ['claves.restaurada', 'telegram.unir.retomado', 'telegram.unir.pedir_otro', 'copias.estado.reintentando', 'copias.reintentando', 'copias.estado.revisar', 'copias.revisar']) assert.ok(existe(k), k);
+  assert.match(appJs, /d\.almacen\?\.motivo === 'restaurada'/);
+  assert.match(es['tareas.explicacion'], /4:40/);
+  assert.match(en['tareas.explicacion'], /4:40/);
+  const unir = seccionDe(appJs, 'function bloqueUnirChat(');
+  assert.match(unir, /tg\.vinculo\?\.pendiente && cuentaAtras\(tg\.vinculo\.hasta\)/);
+  assert.match(unir, /vincular\/cancelar/, 'cancelar le avisa al servidor (si no, se retomaría)');
+});
+

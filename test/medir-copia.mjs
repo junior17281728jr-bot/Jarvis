@@ -44,7 +44,8 @@ for (const modo of MODOS) {
   const baseMb = Math.round((Number(readFileSync(b.config.archivoBase).length) / 1024 / 1024) * 10) / 10;
   const supervisor = crearSupervisor({
     db: b.db, config: b.config, version: '0.5.0-medida', codigo: `medida-${randomUUID().slice(0, 8)}`, ruta: join(RAIZ, 'test', 'ia-trabajador.js'),
-    entorno: { OPORTIA_TELEGRAM_URL: b.falso.url, ...JSON.parse(process.env.MEDIR_ENTORNO ?? '{}') },
+    // «local» de verdad aunque la máquina tenga poco disco libre (si no, la copia iría directo a Telegram).
+    entorno: { OPORTIA_TELEGRAM_URL: b.falso.url, ...(modo === 'local' ? { PRUEBA_DISCO_LIBRE_MB: '100000' } : {}), ...JSON.parse(process.env.MEDIR_ENTORNO ?? '{}') },
     tiempos: { revisarCadaMs: 200 }, registro: SILENCIO,
   });
   let pid = null;

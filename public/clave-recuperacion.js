@@ -153,3 +153,11 @@ export function gruposDeClave(t) {
   const s = normalizarClave(t);
   return s.match(/.{1,4}/g) ?? [];
 }
+
+// Revisión final: ¿se escribió también el nombre corto de la clave (su huella, «21JE») delante de los 7 grupos? En la
+// pantalla está cerca de la clave y tiene el mismo formato: así se le dice al dueño exactamente qué sobra.
+export function sobraNombreCorto(escrita, huella) {
+  const s = normalizarClave(escrita);
+  const h = normalizarClave(huella);
+  return h.length === 4 && s.length === SIMBOLOS + 4 && s.startsWith(h);
+}

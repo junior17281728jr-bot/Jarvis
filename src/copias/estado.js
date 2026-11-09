@@ -294,8 +294,8 @@ export function copiasLocales(db) {
   for (const f of [...terminadas, ...medias]) sumar(f.aqui === 1 ? aqui : anterior, f);
   const mb = b => Math.round((b / MB) * 10) / 10;
   return {
-    copias: aqui.copias, archivos: aqui.archivos, mb: mb(aqui.bytes),
-    anterior: anterior.copias ? { copias: anterior.copias, archivos: anterior.archivos, mb: mb(anterior.bytes) } : null,
+    copias: aqui.copias, archivos: aqui.archivos, mb: mb(aqui.bytes), bytes: aqui.bytes,
+    anterior: anterior.copias ? { copias: anterior.copias, archivos: anterior.archivos, mb: mb(anterior.bytes), bytes: anterior.bytes } : null,
   };
 }
 
@@ -414,11 +414,22 @@ export function revisarFechasFuturas(db, ahora = Date.now()) {
   return f;
 }
 
+// La copia de la noche no se hace si ya hay una comprobada de hace menos de esto (src/copias/hacer.js la salta).
+export const RECIENTE_MS = 6 * HORA;
+
 // Cuándo toca la próxima copia de la noche (ISO): la ranura de hoy si todavía no tiene tarea, si no la de mañana.
+// Revisión final: si esa copia se va a saltar porque ya hay una comprobada de hace menos de 6 h (la misma regla que
+// hacer.js, con la fecha creíble de la foto), la próxima es la de la noche siguiente: nunca se promete una que no se hará.
 export function proximaCopia(db, ahora = Date.now()) {
   const r = ranura(PROGRAMA_COPIAS, ahora);
   const hecha = db.prepare('SELECT 1 FROM tareas WHERE clave_unica = ?').get(r.clave);
-  return iso(hecha ? r.siguiente : Math.max(r.inicio, ahora));
+  const ms = x => (typeof x === 'number' ? x : Date.parse(x));
+  const siguiente = ms(r.siguiente);
+  const candidatas = hecha ? [siguiente, siguiente + DIA] : [Math.max(ms(r.inicio), ahora), siguiente, siguiente + DIA];
+  const canal = db.prepare("SELECT 1 FROM canales WHERE tipo = 'telegram' AND proposito = 'avisos_dueno' AND estado = 'activo' LIMIT 1").get();
+  const reciente = ultimaCreible(db, { ahora, donde: "estado = 'verificada' OR (estado = 'solo_local' AND ? = 0)", valores: [canal ? 1 : 0] });
+  const proxima = candidatas.find(c => !(reciente && reciente.efectivaMs >= c - RECIENTE_MS)) ?? candidatas.at(-1);
+  return iso(proxima);
 }
 
 // La tarea de copia viva (lista, en curso o por revisar), o null.
@@ -441,6 +452,21 @@ export function copiaEnCurso(db) {
   if (paso === 'subir') return { paso, n: cuenta('AND archivo_id IS NOT NULL'), de, estado: t.estado };
   if (paso === 'verificar') return { paso, n: cuenta('AND verificada_en IS NOT NULL'), de, estado: t.estado };
   return { paso, n: de, de, estado: t.estado };
+}
+
+// Revisión final: una copia que NO se está haciendo en este momento dice por qué espera, para que la pantalla nunca diga
+// «empieza en un momento» de una que espera 30 min tras un fallo de Telegram. tomas: cuántas veces se empezó (0 = nunca:
+// de verdad en la fila); motivo: el último error (si el último paso falló) o el motivo de la espera; disponibleEn: cuándo
+// se intenta otra vez; revisar: una persona tiene que mirarla (Administrador → Trabajo).
+const CODIGO_CORTO = /^[a-z_]{1,60}(?::[a-z0-9_]{1,40})?$/;
+function esperandoPublico(enCurso, tarea, ahora) {
+  const codigo = texto => (typeof texto === 'string' && CODIGO_CORTO.test(texto) ? texto : texto ? 'otro' : null);
+  const motivo = tarea.fallos_seguidos > 0 ? codigo(tarea.ultimo_error) : codigo(tarea.motivo_espera);
+  const ms = Date.parse(tarea.disponible_en ?? '');
+  return {
+    paso: enCurso.paso, n: enCurso.n, de: enCurso.de, esperando: true, tomas: Number(tarea.tomas) || 0, intento: (Number(tarea.fallos_seguidos) || 0) + 1,
+    maxIntentos: Number(tarea.max_fallos) || null, motivo, disponibleEn: Number.isFinite(ms) && ms > ahora ? tarea.disponible_en : null, revisar: tarea.estado === 'revisar',
+  };
 }
 
 function copiaPublica(c) {
@@ -516,10 +542,10 @@ export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopi
     ultima: ultima ? copiaPublica(ultima) : null,
     ultimaFuera: fuera ? { fecha: fuera.empezada_en, comprobada: fuera.verificada_en, bytes: fuera.bytes, partes: fuera.partes, estado: fuera.estado, tablas: fuera.tablas } : null,
     proxima: proximaCopia(db, ahora),
-    enCurso: enCurso && viva?.estado === 'en_curso' ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de } : enCurso ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de, esperando: true } : null,
+    enCurso: enCurso && viva?.estado === 'en_curso' ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de } : enCurso ? esperandoPublico(enCurso, viva, ahora) : null,
     locales: {
       activas: ajustes.local, pausadas: ajustes.local && !plan.local, frenoDisco: plan.freno, copias: locales.copias, archivos: locales.archivos,
-      mb: locales.mb, anterior: locales.anterior, libreMb: plan.libreMb, pisoMb: plan.pisoMb, diasRestantes: diasDeDisco(db, { libreMb: plan.libreMb, pisoMb: plan.pisoMb }),
+      mb: locales.mb, bytes: locales.bytes, anterior: locales.anterior, libreMb: plan.libreMb, pisoMb: plan.pisoMb, diasRestantes: diasDeDisco(db, { libreMb: plan.libreMb, pisoMb: plan.pisoMb }),
     },
     fijada: fuera ? fuera.fijada === 1 : null,
     recientes,

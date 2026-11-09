@@ -48,7 +48,7 @@ import { generarCopia } from './generar.js';
 import { volcar as volcarDeVerdad } from './volcado.js';
 import {
   TOPES, ajustesCopias, servidorId, servidorActual, llaveActiva, llavePorId, planDeDisco, topesDeIntento, empezarCopia, actualizarCopia, guardarParte,
-  actualizarParte, partesDe, ultimaFueraPorId, ultimaCreible, revisarFechasFuturas, selloDe,
+  actualizarParte, partesDe, ultimaFueraPorId, ultimaCreible, revisarFechasFuturas, selloDe, RECIENTE_MS,
 } from './estado.js';
 import { conCredencial } from '../canales/credencial.js';
 import { ADAPTADORES, esPasajero } from '../canales/canal.js';
@@ -75,6 +75,12 @@ const FALLAS_DEL_VOLCADO = Object.freeze(['volcado_incompleto', 'volcado_no_sopo
 export const ERRORES_DE_DISCO = Object.freeze(['ENOSPC', 'EDQUOT', 'EIO', 'EROFS', 'EFBIG']);
 const esErrorDeDisco = error => ERRORES_DE_DISCO.includes(error?.code);
 
+// Revisión final: directo a Telegram (sin copia en el disco, con la foto abierta) cada parte mide como mucho 1 MiB. Medido
+// con una base de 187 MB, con partes de 2 MiB el trabajador llegaba a 112–116 MB (su tope es 120 MB); la parte en la
+// memoria, su envío y lo que el sistema guarda de la respuesta se cuentan dos veces por parte. El formato no cambia
+// (cada parte dice su largo); solo hay el doble de partes.
+export const TAMANO_PARTE_DIRECTO = 1024 * 1024;
+
 export const OPCIONES_COPIAS = Object.freeze({
   tamanoParte: TAMANO_PARTE,
   pasoCortoMs: 60_000, // subir y verificar vuelven cada ~60 s con su avance guardado
@@ -82,7 +88,7 @@ export const OPCIONES_COPIAS = Object.freeze({
   esperaFotoMaxMs: 10_000, // con la foto abierta, solo hasta 10 s
   esperaReinicioMs: 10 * MINUTO, // una copia nueva después de un problema: no antes de 10 min
   caducaMs: 20 * 3_600_000, // una copia de la noche que se toma 20 h tarde ya no se hace (viene otra)
-  recienteMs: 6 * 3_600_000, // la de la noche no se hace si ya hay una comprobada de hace menos de 6 h
+  recienteMs: RECIENTE_MS, // la de la noche no se hace si ya hay una comprobada de hace menos de 6 h
   intentosRedPreparar: 2, esperaRedPrepararMs: 10 * MINUTO, // Telegram no responde al empezar: 2 esperas de 10 min
   presupuestoFoto: Object.freeze({ walMb: 64, libreMinMb: 500, ms: 25 * MINUTO }),
   pausaArchivosMs: null, // null = la del adaptador (≥ 1,1 s entre documentos)
@@ -505,6 +511,7 @@ export function crearManejadorCopias(opciones = {}) {
       }
       const falta = pausaArchivos - (reloj() - ultimoDocumento);
       if (falta > 0) await dormir(falta, ctx.senal);
+      globalThis.gc?.(); // antes de mandarla también: lo de la parte anterior no se suma a esta
       let r;
       for (let vueltas = 0; ; vueltas++) {
         r = await adaptador.enviarArchivo(cred, {
@@ -531,7 +538,7 @@ export function crearManejadorCopias(opciones = {}) {
       inicio = reloj();
       resultado = await generarCopia({
         foto: foto.db, publica, sello, alParte, copia: copia.copia, creada, servidor: copia.servidor, version: ctx.version ?? null,
-        codigo: ctx.codigo ?? null, tamanoParte: O.tamanoParte, ceder: ctx.ceder, senal: ctx.senal, volcar,
+        codigo: ctx.codigo ?? null, tamanoParte: directo ? Math.min(O.tamanoParte, TAMANO_PARTE_DIRECTO) : O.tamanoParte, ceder: ctx.ceder, senal: ctx.senal, volcar,
       });
     } catch (error) {
       foto?.cerrar();

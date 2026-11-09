@@ -14,7 +14,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { MOTIVOS } from '../ia/propositos.js';
 import { USOS, LARGO, ESTADOS_SECRETO, ORIGENES_SECRETO, definicionUso } from './usos.js';
-import { ErrorClaves, asegurarLlave, leerLlave, estadoLlave, cifrar, descifrar, permisoLlaveNueva, ESQUEMA_CIFRADO, LLAVE_FALTA } from './cifrado.js';
+import { ErrorClaves, asegurarLlave, leerLlave, estadoLlave, cifrar, descifrar, permisoLlaveNueva, marcaDeRestaurada, ESQUEMA_CIFRADO, LLAVE_FALTA } from './cifrado.js';
 
 const iso = ms => new Date(ms).toISOString();
 const IMPRIMIBLE = /^[\x21-\x7e]+$/;
@@ -71,9 +71,14 @@ export function secretoPublico(f, { huellaActual = null, ahora = Date.now() } = 
 }
 
 // Las huellas de las claves guardadas y cuándo se guardó la más nueva (para permisoLlaveNueva).
+// restaurada: la marca de una base recuperada de una copia (permisoLlaveNueva deja crear una llave nueva para pegar
+// otra vez las claves que traía).
 export function clavesGuardadas(db) {
   const f = db.prepare('SELECT MAX(creado_en) AS ultima FROM secretos').get();
-  return { huellas: db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(x => x.h), ultimaMs: f?.ultima ? Date.parse(f.ultima) : null };
+  return {
+    huellas: db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(x => x.h), ultimaMs: f?.ultima ? Date.parse(f.ultima) : null,
+    restaurada: marcaDeRestaurada(db),
+  };
 }
 
 // ---------- Datos del servidor envueltos con la llave de las claves (parte e, ronda 3 del equipo rojo) ----------
@@ -126,7 +131,10 @@ export function estadoAlmacen(db, config) {
   const e = estadoLlave(config);
   if (e.listo) return { listo: true, motivo: null };
   if (e.motivo !== 'llave_no_existe') return { listo: false, motivo: e.motivo };
-  return permisoLlaveNueva(config, clavesGuardadas(db)).si ? { listo: true, motivo: 'llave_no_existe' } : { listo: false, motivo: LLAVE_FALTA };
+  // Revisión final: en una base recuperada de una copia, 'restaurada' (listo: la pantalla dice «pega otra vez tus claves»).
+  const permiso = permisoLlaveNueva(config, clavesGuardadas(db));
+  if (!permiso.si) return { listo: false, motivo: LLAVE_FALTA };
+  return { listo: true, motivo: permiso.motivo === 'restaurada' ? 'restaurada' : 'llave_no_existe' };
 }
 
 function huellaDeAhora(config) {

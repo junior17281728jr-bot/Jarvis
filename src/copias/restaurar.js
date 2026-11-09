@@ -46,6 +46,7 @@ import { TELEGRAM } from '../canales/telegram.js';
 import { crearCredencial } from '../canales/credencial.js';
 import { crearCodigo, huellaCodigo, codigoParaMostrar, revisarLote, VIGENCIA_MS, crearCodigoConfirmar, huellaConfirmar, cifrasConfirmar, confirmarCoincide, INTENTOS_CONFIRMAR } from '../canales/vinculo.js';
 import { textoConfirmarVinculo } from '../canales/textos.js';
+import { CLAVE_RESTAURADA } from '../claves/cifrado.js';
 
 const HORA = 3_600_000;
 export const MARCA_EN_CONSTRUCCION = 0x4f505442; // "OPTB"
@@ -387,6 +388,13 @@ export function ajustarTrasRestaurar(db, { ahora = Date.now() } = {}) {
       servidorNuevo = randomUUID();
       guardar(CLAVE_ORIGENES, origenes);
       guardar(CLAVE_SERVIDOR, { id: servidorNuevo, creado: momento });
+      // Revisión final: la marca de «base recuperada», con las huellas de las claves que trae (su llave nunca viaja en
+      // una copia). Con ella, la pantalla Claves deja pegar otra vez las claves (crea una llave nueva) sin pasar por la
+      // consola; una clave guardada después con otra llave vuelve a pedir la consola si esa llave faltara (cifrado.js).
+      const huellas = tablaExiste(db, 'secretos') ? db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(x => x.h).filter(Boolean) : [];
+      const marca = leer(CLAVE_RESTAURADA);
+      const juntas = [...new Set([...(Array.isArray(marca?.huellas) ? marca.huellas : []), ...huellas])];
+      guardar(CLAVE_RESTAURADA, { en: momento, huellas: juntas });
     }
     if (tablaExiste(db, 'auditoria')) {
       db.prepare("INSERT INTO auditoria (fecha, usuario_id, accion, detalle) VALUES (?, NULL, 'base_restaurada', ?)")
