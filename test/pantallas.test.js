@@ -310,7 +310,9 @@ test('27. el cuadro para pegar una clave es una línea de texto tapada (nunca un
   assert.equal(ATRIBUTOS_CAMPO_CLAVE.type, undefined, 'un textarea no lleva type');
   const claves = seccionDe(appJs, '// ---- #claves:');
   assert.match(claves, /el\('textarea', \{ \.\.\.ATRIBUTOS_CAMPO_CLAVE/);
-  assert.doesNotMatch(claves, /password|el\('input'/, 'en Claves no hay ningún campo de contraseña ni otro input');
+  assert.doesNotMatch(claves, /password/, 'en Claves no hay ningún campo de contraseña');
+  // El único input de Claves (ronda 3): el segundo código de 6 cifras que el bot le manda al chat (números, de un uso).
+  assert.deepEqual([...claves.matchAll(/el\('input', \{[^}]*\}/g)].map(m => m[0]), ["el('input', { id, name: 'codigo', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 9, required: true, class: 'codigo-campo' }"]);
   // Se vacía apenas se manda y nunca se vuelve a mostrar (la respuesta solo trae los últimos 4 caracteres).
   assert.match(claves, /const valor = area\.value;\s+area\.value = '';/);
   const css = readFileSync(join(RAIZ, 'public/estilos.css'), 'utf8');

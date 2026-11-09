@@ -830,7 +830,7 @@ function nombreFase(s) {
 const PROBLEMA_DE_FALLA = Object.freeze({
   bloqueado: 'telegram.problema.bloqueado', perdido: 'telegram.problema.perdido', clave: 'telegram.problema.clave_no_valida',
   pedido: 'telegram.problema.pedido', sin_respuesta: 'telegram.problema.sin_respuesta', sin_probar: 'telegram.problema.sin_probar',
-  bot_cambiado: 'telegram.problema.bot_cambiado',
+  bot_cambiado: 'telegram.problema.bot_cambiado', limite: 'telegram.problema.limite',
 });
 
 function textoAviso(a) {
@@ -1654,6 +1654,7 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
     datosUltima,
     d.clave?.activa && !d.enCurso && !d.modoSeguro && !d.locales?.frenoDisco && d.proxima ? el('p', { class: 'copias-proxima con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('copias.proxima', { cuando: cuando(d.proxima, ahora) }) })) : null,
     d.clave?.pendiente && !d.clave.activa ? el('p', { class: 'ayuda', texto: t('copias.clave.pendiente_perdida') }) : null,
+    d.clave?.ilegible && !d.clave.activa ? el('p', { class: 'aviso con-icono-arriba' }, icono('atencion', 'icono chico'), el('span', { texto: t('copias.clave.ilegible', { huella: d.clave.ilegible.huella }) })) : null,
     v.accion === 'crear_clave' ? botonCrear : v.accion ? botonAhora : null,
     v.razon ? el('p', { class: 'aviso con-icono-arriba copias-razon' }, icono('info', 'icono chico'), el('span', { texto: t(v.razon) })) : null,
     v.enlace ? el('a', { class: 'boton-enlace secundario con-icono', href: v.enlace.href }, icono('flecha'), el('span', { texto: t(v.enlace.texto) })) : null,
@@ -2505,7 +2506,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar, ayuda = null, nombre: otr
 // «Dejar de usar este chat». Si algo no deja mandar, una línea roja dice qué pasa y qué hacer.
 // El código vive solo en la memoria de esta pantalla (el servidor guarda solo su huella): al salir de Claves se suelta.
 let vinculoEnPantalla = null; // { codigo, paraMostrar, enlace, hasta, bot } mientras se espera el mensaje
-const ICONO_PROBLEMA_TELEGRAM = { pausa: 'reloj', sin_probar: 'atencion', sin_respuesta: 'reloj' };
+const ICONO_PROBLEMA_TELEGRAM = { pausa: 'reloj', sin_probar: 'atencion', sin_respuesta: 'reloj', limite: 'reloj' };
 
 // Los pasos para crear el bot, con número (lo que se hace en Telegram, en palabras sencillas).
 function pasosBotFather() {
@@ -2541,7 +2542,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
     const unido = v.chat && v.chat.estado !== 'perdido';
     paso2 = el('div', { class: 'paso-telegram apagado' }, cabeza2, el('p', { class: 'suave con-icono-arriba' }, icono(unido ? 'pausa' : 'candado', 'icono chico'),
       el('span', { texto: unido ? t('telegram.paso.chat.en_espera', { nombre: v.chat.nombre || t('telegram.tu_chat') }) : t('telegram.paso.chat.antes') })));
-  } else if (v.paso === 'unir' || vinculoEnPantalla) {
+  } else if (v.paso === 'unir' || vinculoEnPantalla || tg.vinculo?.porConfirmar) {
     paso2 = el('div', { class: 'paso-telegram' }, cabeza2, v.problema ? lineaProblema(v.problema) : null, bloqueUnirChat(tg, { recargar, vigente, mensaje }));
   } else {
     const chat = v.chat;
@@ -2561,6 +2562,8 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
           el('strong', { class: 'clave-nombre', texto: chat?.nombre ? t('telegram.chat_de', { nombre: chat.nombre }) : t('telegram.tu_chat') }),
           insignia(v.problema ? (v.problema === 'pausa' ? 'atencion' : 'mal') : 'bien', v.problema ? t('telegram.no_llegan') : t('telegram.unido'))),
         chat?.vinculadoEn ? el('p', { class: 'suave', texto: t('telegram.unido_el', { fecha: diaCorto(chat.vinculadoEn) }) }) : null,
+        chat?.tokenNuevo && !v.problema ? el('p', { class: 'aviso con-icono-arriba' }, icono('info', 'icono chico'),
+          el('span', { texto: t('telegram.chat_sigue', { nombre: chat.nombre || t('telegram.tu_chat'), fecha: diaCorto(chat.vinculadoEn) }) })) : null,
         v.problema ? lineaProblema(v.problema) : null,
         el('p', { class: 'suave', texto: [envios.ultimoOk ? t('telegram.ultimo_aviso', { cuando: cuando(envios.ultimoOk) }) : t('telegram.sin_mensajes'), envios.hoy ? tn('telegram.hoy', { n: envios.hoy }) : null].filter(Boolean).join(' · ') }),
         el('div', { class: 'botones' },
@@ -2570,7 +2573,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
             const m = x.datos.motivo;
             recargar(m === 'ok' ? { texto: t('telegram.prueba_ok'), clase: 'bien' } : { texto: t('telegram.prueba_mal', { motivo: textoMotivoIa(m) }), clase: 'aviso' });
           }, 'avion_papel'),
-          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar', 'pedido', 'bot_cambiado'].includes(v.problema) ? el('button', {
+          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar', 'pedido', 'bot_cambiado'].includes(v.problema) || chat?.tokenNuevo ? el('button', {
             type: 'button', class: 'secundario con-icono',
             onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar),
           }, icono('actualizar'), el('span', { texto: t('telegram.unir_otra_vez') })) : null),
@@ -2596,8 +2599,52 @@ async function empezarAUnir(boton, mensaje, recargar) {
   recargar(null);
 }
 
+// Ronda 3: el segundo paso. El bot le mandó un código de 6 cifras al chat que escribió el primero; el dueño lo escribe
+// aquí. Si a SU Telegram no le llegó nada, otra persona tiene el token: no escribe nada y cambia el token.
+function formularioConfirmarChat(nombre, { recargar, mensaje }) {
+  const id = 'campo-confirmar-chat';
+  const campo = el('input', { id, name: 'codigo', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 9, required: true, class: 'codigo-campo' });
+  const formulario = el('form', { class: 'unir-chat confirmar-chat' },
+    el('h4', { class: 'con-icono' }, icono('candado', 'icono'), el('span', { texto: t('telegram.confirmar.titulo') })),
+    el('p', { texto: t('telegram.confirmar.explica', { nombre: nombre || t('telegram.tu_chat') }) }),
+    el('label', { for: id, texto: t('telegram.confirmar.campo') }),
+    campo,
+    el('button', { type: 'submit', class: 'grande con-icono centrado' }, icono('bien'), el('span', { texto: t('telegram.confirmar.boton') })),
+    el('p', { class: 'aviso con-icono-arriba' }, icono('atencion', 'icono chico'), el('span', { texto: t('telegram.confirmar.cuidado') })),
+    el('button', { type: 'button', class: 'secundario', texto: t('telegram.unir.cancelar'), onclick: async () => {
+      await api('POST', '/api/admin/telegram/vincular/cancelar', {});
+      vinculoEnPantalla = null;
+      recargar(null);
+    } }),
+    mensaje);
+  formulario.addEventListener('submit', async evento => {
+    evento.preventDefault();
+    const boton = formulario.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    mensaje.hidden = true;
+    const x = await api('POST', '/api/admin/telegram/vincular/confirmar', { codigo: campo.value });
+    boton.disabled = false;
+    if (x.ok && x.datos.estado === 'vinculado') {
+      vinculoEnPantalla = null;
+      recargar({ texto: t('telegram.unido_listo', { nombre: x.datos.chat?.nombre || t('telegram.tu_chat') }), clase: 'bien' });
+      return;
+    }
+    if (x.datos?.error === 'codigo_vencido' || x.datos?.error === 'codigo_intentos') {
+      vinculoEnPantalla = null;
+      recargar({ texto: textoError(x.datos.error), clase: 'aviso' });
+      return;
+    }
+    campo.value = '';
+    decir(mensaje, textoError(x.datos?.error), 'error');
+  });
+  return formulario;
+}
+
 function bloqueUnirChat(tg, { recargar, vigente, mensaje }) {
   const vinculo = vinculoEnPantalla;
+  if (vinculo?.confirmar || (!vinculo && tg.vinculo?.porConfirmar)) {
+    return formularioConfirmarChat(vinculo?.confirmar?.nombre ?? tg.vinculo.porConfirmar.nombre, { recargar, mensaje });
+  }
   if (!vinculo) {
     return el('div', {},
       el('p', { texto: t('telegram.unir.explica') }),
@@ -2640,7 +2687,11 @@ function bloqueUnirChat(tg, { recargar, vigente, mensaje }) {
     if (!vigente() || vinculoEnPantalla !== vinculo) return;
     if (!x.ok) return;
     const e = x.datos.estado;
-    if (e === 'vinculado') {
+    if (e === 'confirmar') {
+      clearInterval(reloj);
+      vinculoEnPantalla = { ...vinculo, confirmar: { nombre: x.datos.chat?.nombre ?? null } };
+      recargar(null);
+    } else if (e === 'vinculado') {
       clearInterval(reloj);
       vinculoEnPantalla = null;
       recargar({ texto: t('telegram.unido_listo', { nombre: x.datos.chat?.nombre || t('telegram.tu_chat') }), clase: 'bien' });

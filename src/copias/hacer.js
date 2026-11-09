@@ -48,7 +48,7 @@ import { generarCopia } from './generar.js';
 import { volcar as volcarDeVerdad } from './volcado.js';
 import {
   TOPES, ajustesCopias, servidorId, servidorActual, llaveActiva, llavePorId, planDeDisco, topesDeIntento, empezarCopia, actualizarCopia, guardarParte,
-  actualizarParte, partesDe, ultimaFueraPorId, ultimaCreible, revisarFechasFuturas,
+  actualizarParte, partesDe, ultimaFueraPorId, ultimaCreible, revisarFechasFuturas, selloDe,
 } from './estado.js';
 import { conCredencial } from '../canales/credencial.js';
 import { ADAPTADORES, esPasajero } from '../canales/canal.js';
@@ -225,6 +225,17 @@ export function crearManejadorCopias(opciones = {}) {
       if (c.agotado) return esperasAgotadas(ctx, copia);
       return { punto: { ...punto, ...sinAgotado(c) }, esperarMs, motivo: 'telegram_limite' };
     }
+    if (problema === 'clave_no_valida') {
+      // Ronda 3: un 401 suelto es una SOSPECHA (el servidor web pregunta con getMe antes de dar el token por malo). La
+      // copia se reintenta como con un error pasajero; en el último intento, si está entera en el disco, queda aquí.
+      await ctx.escribir(() => { if (canal) anotarProblema(db, canal, { motivo: problema, secretoId: copia.secreto_id, ahora }); });
+      const ultimoIntento = (ctx.tarea.intento ?? 1) >= (ctx.tarea.maxFallos ?? 3);
+      if (ultimoIntento) {
+        const r = await quedarseAqui(ctx, copia, 'telegram_clave_dudosa');
+        if (r) return r;
+      }
+      throw new ErrorTarea('telegram_clave_dudosa');
+    }
     if (PROBLEMAS_DEL_CANAL.includes(problema)) {
       // El canal no sirve (bloqueado, chat perdido, token malo): se marca, y si las partes están en el disco, la copia
       // termina igual como «solo en el servidor» (un canal roto nunca pierde la copia local).
@@ -284,6 +295,15 @@ export function crearManejadorCopias(opciones = {}) {
       await ctx.escribir(() => abrirAviso(db, { clave: 'copias_sin_clave', nivel: 'atencion', ahora }));
       return { listo: true, resultado: { saltada: 'sin_clave' } };
     }
+    // Ronda 3: el sello va envuelto con la llave de las claves. Si no se abre (la llave cambió: otro servidor, una llave
+    // nueva), no se puede hacer ninguna copia auténtica: GRAVE, y la pantalla ofrece crear una clave nueva.
+    const selloPrueba = selloDe(ctx.config, llave);
+    if (!selloPrueba) {
+      await ctx.escribir(() => abrirAviso(db, { clave: 'copias_clave_ilegible', nivel: 'grave', detalle: { huella: llave.huella }, ahora }));
+      return { listo: true, resultado: { saltada: 'clave_ilegible' } };
+    }
+    selloPrueba.fill(0);
+    await ctx.escribir(() => resolverAviso(db, 'copias_clave_ilegible', ahora));
     // ¿Cabe una copia en el disco de la carpeta de las copias? (el freno y el piso de la base: el disco de los datos)
     const ultimaLocal = db.prepare("SELECT bytes FROM copias WHERE estado IN ('verificada', 'solo_local') AND bytes > 0 ORDER BY id DESC LIMIT 1").get();
     let libre = null;
@@ -340,7 +360,13 @@ export function crearManejadorCopias(opciones = {}) {
         // copias quedarían solo aquí en silencio hasta copia_atrasada).
         await ctx.escribir(() => abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'bot_cambiado' }, ahora }));
       } else if (PROBLEMAS_DEL_CANAL.includes(problema)) {
-        if (problema !== 'sin_clave') await ctx.escribir(() => anotarProblema(db, canal, { motivo: problema, esperarMs: r.esperarMs, ahora }));
+        // (un token que la base ya da por malo no es una respuesta nueva de Telegram: no se anota otra vez)
+        const deTelegram = r.problema != null;
+        if (problema !== 'sin_clave' && (deTelegram || problema !== 'clave_no_valida')) await ctx.escribir(() => anotarProblema(db, canal, { motivo: problema, esperarMs: r.esperarMs, ahora }));
+        // Un 401 (o 404) a getMe es una sospecha (ronda 3): se espera como con la red, y el servidor web pregunta otra vez.
+        if (problema === 'clave_no_valida' && deTelegram && (punto.intentosRed ?? 0) < O.intentosRedPreparar) {
+          return { punto: { ...punto, paso: 'preparar', intentosRed: (punto.intentosRed ?? 0) + 1 }, esperarMs: O.esperaRedPrepararMs, motivo: 'telegram_clave_dudosa' };
+        }
       } else if ((punto.intentosRed ?? 0) < O.intentosRedPreparar) {
         // Telegram no responde: se espera un poco (2 × 10 min); después, la copia sigue solo en el servidor esta noche.
         return { punto: { ...punto, paso: 'preparar', intentosRed: (punto.intentosRed ?? 0) + 1 }, esperarMs: O.esperaRedPrepararMs, motivo: 'telegram_no_responde' };
@@ -393,7 +419,8 @@ export function crearManejadorCopias(opciones = {}) {
       if (b.motivo !== 'ok') return null;
       const texto = Buffer.concat(pedazos).toString('utf8');
       if (!pareceIndice(texto)) return null;
-      const sello = Buffer.from(llave.sello, 'hex');
+      const sello = selloDe(ctx.config, llave);
+      if (!sello) return null;
       let datos;
       try { datos = leerIndice(texto, { sello }); } finally { sello.fill(0); }
       const propio = servidorActual(ctx.db);
@@ -443,7 +470,8 @@ export function crearManejadorCopias(opciones = {}) {
     const config = ctx.config;
     const directo = cred != null;
     const publica = Buffer.from(llave.publica, 'base64url');
-    const sello = Buffer.from(llave.sello, 'hex');
+    const sello = selloDe(config, llave);
+    if (!sello) return fallar(ctx, copia, 'clave_ilegible');
     const creada = copia.empezada_en;
     const carpeta = join(config.carpetaCopias, 'cifradas', carpetaDelMes(creada));
     const idioma = directo ? idiomaDelDueno(db) : 'es';
@@ -703,7 +731,7 @@ export function crearManejadorCopias(opciones = {}) {
   }
 
   // ---------- 5. indice ----------
-  function textoDelIndice(db, copia, llave) {
+  function textoDelIndice(db, config, copia, llave) {
     const porN = new Map();
     for (const p of partesDe(db, copia.id)) porN.set(p.n, p);
     const partes = [...porN.values()].sort((a, b) => a.n - b.n).map(p => ({
@@ -711,7 +739,8 @@ export function crearManejadorCopias(opciones = {}) {
       telegram: copia.fuera === 1 && p.archivo_id ? { mensaje: p.mensaje_id, archivo: p.archivo_id, unico: p.archivo_id_unico } : null,
     }));
     const anterior = db.prepare("SELECT copia, empezada_en FROM copias WHERE estado = 'verificada' AND fuera = 1 AND id < ? ORDER BY id DESC LIMIT 1").get(copia.id);
-    const sello = Buffer.from(llave.sello, 'hex');
+    const sello = selloDe(config, llave);
+    if (!sello) throw new ErrorCopias('clave_ilegible');
     try {
       return armarIndice({
         copia: copia.copia, creada: copia.empezada_en, servidor: copia.servidor, version: copia.version, migracion: copia.migracion,
@@ -751,7 +780,8 @@ export function crearManejadorCopias(opciones = {}) {
     if (copia.fuera === 1 && !chatDeLaCopia(db, copia)) return atenderProblema(ctx, copia, punto, { problema: 'chat_cambiado' });
     const llave = llavePorId(db, copia.llave_id);
     if (!llave) return fallar(ctx, copia, 'sin_llave');
-    const texto = textoDelIndice(db, copia, llave);
+    let texto;
+    try { texto = textoDelIndice(db, ctx.config, copia, llave); } catch (error) { if (error?.clave === 'clave_ilegible') return fallar(ctx, copia, 'clave_ilegible'); throw error; }
     const hash = sha256Hex(Buffer.from(texto, 'utf8'));
     if (copia.local === 1) {
       try {

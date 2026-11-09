@@ -9,7 +9,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { carpetaTemporal, conServidor, esperarHasta } from './ayuda.js';
-import { montar, ponerToken, unirChat, verificadorDe, BOT, CHAT, EXTRANO, GRUPO, MINUTO, HORA, SILENCIO } from './copias-tarea-base.js';
+import { montar, ponerToken, unirChat, revisarYConfirmar, segundoCodigo, verificadorDe, BOT, CHAT, EXTRANO, GRUPO, MINUTO, HORA, SILENCIO } from './copias-tarea-base.js';
 import { capturarConsola } from './ia-base.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
@@ -56,7 +56,7 @@ test('2.12 unir el chat: offset −1 y confirmar, la primera pregunta sin offset
     assert.equal(b.falso.pedidos.filter(p => p.metodo === 'getUpdates').at(-1).params.offset, undefined, 'la primera pregunta va sin offset');
     // Escrito a mano, con espacios: une.
     b.falso.escribir({ chat: CHAT, texto: ` ${v.paraMostrar} ` });
-    const r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
+    const r = await revisarYConfirmar(b);
     assert.deepEqual(r, { estado: 'vinculado', chat: { nombre: 'Junior' } });
     const c = canalActual(b.db);
     assert.deepEqual([c.estado, c.destino, c.cuenta_id], ['activo', String(CHAT), String(BOT.id)]);
@@ -95,7 +95,7 @@ test('2.12 cinco códigos equivocados de un chat → ese chat ya no une; 50 en t
     b.falso.escribir({ chat: EXTRANO, texto: 'algo' });
     v = await empezarVinculo(b.db, b.config, {});
     b.falso.escribir({ chat: CHAT, texto: `/start ${v.codigo}`, idsAlAzar: true });
-    assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'vinculado');
+    assert.equal((await revisarYConfirmar(b)).estado, 'vinculado');
     // Un bot que usa otro programa (webhook): no se toca, se avisa.
     b.falso.ponerWebhook(b.token, 'https://otro.example.com/gancho');
     await assert.rejects(empezarVinculo(b.db, b.config, {}), e => e instanceof ErrorCanal && e.clave === 'bot_ocupado');
@@ -225,7 +225,7 @@ test('2.13 «Hacer una copia ahora»: falta la clave / en pausa / disco lleno / 
     const ahora = () => pedir('POST', '/api/admin/copias/ahora', { galleta: admin });
     assert.deepEqual([(await ahora()).codigo, (await ahora()).datos.error], [409, 'falta_clave']);
     const { ponerClave } = await import('./copias-tarea-base.js');
-    ponerClave(b.db);
+    ponerClave(b.db, { config: b.config });
     b.disco.libre = 250;
     assert.equal((await ahora()).datos.error, 'disco_lleno');
     b.disco.libre = 1000;
@@ -240,7 +240,7 @@ test('2.13 «Hacer una copia ahora»: falta la clave / en pausa / disco lleno / 
   });
   await conPlataforma(async ({ b, pedir, admin, comoDueno, despertares }) => {
     const { ponerClave } = await import('./copias-tarea-base.js');
-    ponerClave(b.db);
+    ponerClave(b.db, { config: b.config });
     const r = await pedir('POST', '/api/admin/copias/ahora', { galleta: admin, cabeceras: FUNNEL });
     assert.equal(r.codigo, 202, 'pedir una copia no gasta: también por el enlace público');
     assert.equal(despertares.length, 1);
@@ -259,7 +259,12 @@ test('2.13 «Hacer una copia ahora»: falta la clave / en pausa / disco lleno / 
     assert.equal((await comoDueno('POST', '/api/admin/telegram/vincular/revisar', { datos: {} })).datos.estado, 'esperando');
     b.falso.escribir({ chat: CHAT, texto: `/start ${v.datos.codigo}` });
     await new Promise(l => setTimeout(l, 3100));
-    assert.deepEqual((await comoDueno('POST', '/api/admin/telegram/vincular/revisar', { datos: {} })).datos, { estado: 'vinculado', chat: { nombre: 'Junior' } });
+    // Ronda 3: el código solo no une. El bot le manda a ESE chat un segundo código, que se escribe en la pantalla.
+    assert.deepEqual((await comoDueno('POST', '/api/admin/telegram/vincular/revisar', { datos: {} })).datos, { estado: 'confirmar', chat: { nombre: 'Junior' } });
+    assert.equal((await comoDueno('GET', '/api/admin/claves')).datos.telegram.vinculo.porConfirmar.nombre, 'Junior');
+    const mal = await comoDueno('POST', '/api/admin/telegram/vincular/confirmar', { datos: { codigo: '000000' === segundoCodigo(b.falso) ? '111111' : '000000' } });
+    assert.deepEqual([mal.codigo, mal.datos.error], [400, 'codigo_no_coincide']);
+    assert.deepEqual((await comoDueno('POST', '/api/admin/telegram/vincular/confirmar', { datos: { codigo: segundoCodigo(b.falso) } })).datos, { estado: 'vinculado', chat: { nombre: 'Junior' } });
     const claves = (await comoDueno('GET', '/api/admin/claves')).datos;
     assert.deepEqual([claves.telegram.listo, claves.telegram.chat.nombre, claves.telegram.bot.usuario], [true, 'Junior', BOT.usuario]);
     assert.ok(!JSON.stringify(claves).includes(b.token), 'el token nunca vuelve');
@@ -304,6 +309,16 @@ test('2.15 restaurada en un servidor NUEVO: las claves no se pueden leer (sin la
       assert.deepEqual(estadoAlmacen(db, config), { listo: false, motivo: 'llave_falta' });
       assert.ok(listarSecretos(db, config).filter(u => u.activa).every(u => u.activa.legible === false), 'Claves dice «pégala otra vez»');
       assert.equal(empezarLlaveNueva(config, clavesGuardadas(db)).creada, true);
+      // Ronda 3: el sello de la clave de recuperación iba envuelto con la llave del servidor VIEJO: aquí no se abre (nadie
+      // con solo la base puede armar copias). La pantalla dice que la clave ya no sirve aquí; la parte 1f la vuelve a
+      // envolver con la clave del dueño (reenvolverSello), y entonces las copias siguen con la MISMA clave.
+      const { selloDe, llaveActiva: activaDe, estadoCopias, reenvolverSello } = await import('../src/copias/estado.js');
+      const { estadoLlave } = await import('../src/claves/cifrado.js');
+      assert.equal(selloDe(config, activaDe(db)), null);
+      assert.deepEqual(estadoCopias(db, { huellaLlave: estadoLlave(config).huella }).clave.ilegible, { huella: activaDe(db).huella });
+      assert.throws(() => reenvolverSello(db, config, { clave: 'AAAA-BBBB' }), e => ['clave_formato', 'clave_control'].includes(e.clave));
+      assert.equal(reenvolverSello(db, config, { clave: b.claveTexto }).huella, activaDe(db).huella);
+      assert.equal(estadoCopias(db, { huellaLlave: estadoLlave(config).huella }).clave.activa, true);
       const viejo = JSON.parse(b.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(CLAVE_SERVIDOR).valor).id;
       const nuevo = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(CLAVE_SERVIDOR).valor).id;
       assert.notEqual(nuevo, viejo, 'el servidor nuevo tiene otro id');
@@ -371,7 +386,8 @@ test('2.14 la consola: --copias=estado, --copias=ahora y --telegram=desvincular 
 });
 
 // El programa para restaurar, como lo usa Claude en la Consola: la clave (y el token) por la entrada, nunca en la orden.
-function restaurar(argumentos, { entrada = '', env = {}, alSalir = null } = {}) {
+// abierta: la entrada queda abierta (alSalir escribe lo que falta en hijo.stdin y la cierra).
+function restaurar(argumentos, { entrada = '', env = {}, alSalir = null, abierta = false } = {}) {
   return new Promise(listo => {
     const hijo = spawn(process.execPath, ['--no-warnings', 'deploy/oportia-restaurar.mjs', ...argumentos], {
       cwd: RAIZ, env: { PATH: process.env.PATH, OPORTIA_TEST: '1', ...env }, stdio: ['pipe', 'pipe', 'pipe'],
@@ -382,7 +398,8 @@ function restaurar(argumentos, { entrada = '', env = {}, alSalir = null } = {}) 
     hijo.stderr.on('data', d => { stderr += d; });
     const reloj = setTimeout(() => hijo.kill('SIGKILL'), 60_000);
     hijo.on('close', status => { clearTimeout(reloj); listo({ status, stdout, stderr }); });
-    hijo.stdin.end(entrada);
+    if (abierta) hijo.stdin.write(entrada);
+    else hijo.stdin.end(entrada);
   });
 }
 
@@ -446,10 +463,11 @@ test('2.14 oportia-restaurar.mjs por Telegram: el token por la entrada, el códi
     assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
     const destino = join(carpetaTemporal('cli-telegram'), 'recuperada.db');
     let escrito = false;
+    let confirmado = false;
     const r = await restaurar(['--telegram', `--destino=${destino}`], {
-      entrada: `${b.token}\nsí\n${b.claveTexto}\n`,
+      entrada: `${b.token}\nsí\n`, abierta: true,
       env: { OPORTIA_TELEGRAM_URL: b.falso.url },
-      alSalir: texto => {
+      alSalir: (texto, hijo) => {
         const m = /este código: (\d{4} \d{4})/.exec(texto);
         if (m && !escrito) {
           escrito = true;
@@ -457,8 +475,15 @@ test('2.14 oportia-restaurar.mjs por Telegram: el token por la entrada, el códi
           b.falso.escribir({ chat: EXTRANO, texto: '1234 5678' });
           b.falso.escribir({ chat: CHAT, texto: m[1] });
         }
+        // Ronda 3: el bot le mandó a ese chat un segundo código; el dueño lo escribe (primero uno equivocado).
+        if (!confirmado && /código de 6 cifras que te mandó el bot/.test(texto)) {
+          confirmado = true;
+          const bueno = segundoCodigo(b.falso);
+          hijo.stdin.end(`${bueno === '000000' ? '111111' : '000000'}\n${bueno}\n${b.claveTexto}\n`);
+        }
       },
     });
+    assert.match(r.stdout, /Ese no es el código/);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, new RegExp(`@${BOT.usuario}`));
     assert.match(r.stdout, /Encontré el chat de Junior/);

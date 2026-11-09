@@ -592,7 +592,7 @@ test('la clave de prueba nunca puede ser la de un servidor, y las rutas de la cl
   }
   const canales = leer(de('api', 'canales.js'));
   const deCanales = [...canales.matchAll(/rutas\.agregar\('POST', '([^']+)'[\s\S]*?\}, (\{[^}]*\})\);/g)];
-  assert.equal(deCanales.length, 4);
+  assert.equal(deCanales.length, 6, 'vincular, revisar, confirmar (ronda 3), cancelar, prueba y desvincular');
   for (const [, ruta, opciones] of deCanales) assert.match(opciones, /admin: true, soloDueno: true/, ruta);
 });
 

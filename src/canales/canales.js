@@ -6,6 +6,9 @@
 //    como mucho una vez cada 3 s, sin quedarse escuchando: no hay un «escucha» permanente del bot.
 //  - Un mensaje une el chat SOLO si las reglas de src/canales/vinculo.js lo aceptan (chat privado, no un bot, nuevo,
 //    código exacto). A un extraño que le escriba al bot nunca se le contesta.
+//  - Ronda 3 del equipo rojo: el código solo NO basta (quien tenga el token lee los mensajes del bot y puede mandarlo
+//    desde su chat). El bot le manda a ESE chat un segundo código de 6 cifras y el chat queda 'por_confirmar' hasta que
+//    el dueño lo escribe en la pantalla (solo desde Tailscale; 5 intentos, 10 min): confirmarVinculo.
 //  - Nada se borra: un chat que se deja de usar queda «desvinculado»; cada mensaje que sale queda en canal_envios.
 //  - El token nunca entra aquí: solo pasa por src/canales/credencial.js (conCredencial).
 import { enTransaccion } from '../nucleo/db.js';
@@ -15,8 +18,11 @@ import { anotarPrueba, secretoUsable } from '../claves/almacen.js';
 import { estadoLlave } from '../claves/cifrado.js';
 import { conCredencial } from './credencial.js';
 import { ADAPTADORES, CLASES_ENVIO, RESULTADOS_ENVIO, ESTADOS_CANAL, USO_DE_CANAL, esPasajero } from './canal.js';
-import { crearCodigo, huellaCodigo, codigoParaMostrar, revisarLote, leerCuenta, textoCuenta, VIGENCIA_MS } from './vinculo.js';
-import { textoBienvenida, textoPrueba, idiomaDelDueno } from './textos.js';
+import {
+  crearCodigo, huellaCodigo, codigoParaMostrar, revisarLote, leerCuenta, textoCuenta, VIGENCIA_MS,
+  crearCodigoConfirmar, huellaConfirmar, cifrasConfirmar, confirmarCoincide, INTENTOS_CONFIRMAR,
+} from './vinculo.js';
+import { textoBienvenida, textoPrueba, textoConfirmarVinculo, idiomaDelDueno } from './textos.js';
 
 export const TIPO = 'telegram';
 export const PROPOSITO = 'avisos_dueno';
@@ -36,6 +42,14 @@ export const PAUSA_MAXIMA_MS = 60 * 60_000;
 export const MARGEN_RELOJ_MS = 60_000;
 // Fallos pasajeros seguidos (red, Telegram caído) desde los que se abre telegram_falla «No llega a Telegram».
 export const FALLOS_PARA_AVISAR = 4;
+// Ronda 3 del equipo rojo: los 429 seguidos también se cuentan (en fallos_seguidos). Desde el 3.º, la espera es la más
+// larga entre la que pide Telegram y la de los fallos (1, 5, 15, 60 min); desde el 4.º, telegram_falla «limite».
+export const LIMITES_PARA_ESPERAR_MAS = 3;
+// Ronda 3: un 401 (o un 404 a getMe) suelto nunca es un veredicto: queda la SOSPECHA (pausa_motivo 'clave_dudosa') y se
+// pregunta otra vez con getMe (gratis): enseguida, y después de 5 min. Solo dos getMe seguidos con «401» dicen que el
+// token no sirve ('clave_dudosa_1' = ya respondió uno). Mientras, los avisos esperan (nunca se pierden).
+export const ESPERAS_CLAVE_DUDOSA_MS = Object.freeze([15_000, 5 * 60_000, 15 * 60_000, 60 * 60_000]);
+export const esClaveDudosa = canal => String(canal?.pausa_motivo ?? '').startsWith('clave_dudosa');
 // Lo que no es un problema del canal (no cuenta como fallo).
 const NO_ES_DEL_CANAL = Object.freeze(['ok', 'cancelado', 'sin_clave', 'credencial_cambiada']);
 
@@ -73,6 +87,13 @@ export function canalActivo(db) {
   return c?.estado === 'activo' ? c : null;
 }
 
+// El chat que mandó el código y espera que el dueño escriba el segundo código en la pantalla (o null).
+export function canalPorConfirmar(db, ahora = Date.now()) {
+  const p = db.prepare("SELECT * FROM canales WHERE tipo = ? AND proposito = ? AND estado = 'por_confirmar' ORDER BY id DESC LIMIT 1").get(TIPO, PROPOSITO);
+  if (!p) return null;
+  return { ...p, vencido: Date.parse(p.codigo_hasta) <= ahora };
+}
+
 export function canalPendiente(db, ahora = Date.now()) {
   const p = db.prepare("SELECT * FROM canales WHERE tipo = ? AND proposito = ? AND estado = 'pendiente' ORDER BY id DESC LIMIT 1").get(TIPO, PROPOSITO);
   if (!p) return null;
@@ -91,10 +112,10 @@ export function anotarEnvio(db, { canalId, clase, avisoId = null, clave = null, 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(canalId, clase, avisoId, clave, nivel, copiaId, resultado, motivo, mensajeId, bytes, iso(ahora));
 }
 
-// Cuántos mensajes de avisos salieron (no cuentan las partes de las copias: una base grande sube ~50 por noche). Las filas
+// Cuántos mensajes de avisos salieron, también los «dudosos» (no cuentan las partes de las copias: una base grande sube ~50 por noche). Las filas
 // «del futuro» (anotadas con un reloj adelantado que después se corrigió) no cuentan: si no, los topes quedarían llenos.
 export function enviadosDesde(db, canalId, desdeMs, ahora = Date.now()) {
-  return db.prepare(`SELECT COUNT(*) AS n FROM canal_envios WHERE canal_id = ? AND resultado = 'enviado' AND creado_en >= ? AND creado_en <= ?
+  return db.prepare(`SELECT COUNT(*) AS n FROM canal_envios WHERE canal_id = ? AND resultado IN ('enviado', 'dudoso') AND creado_en >= ? AND creado_en <= ?
     AND clase IN (${CLASES_QUE_CUENTAN.map(() => '?').join(', ')})`).get(canalId, iso(desdeMs), iso(ahora + MARGEN_RELOJ_MS), ...CLASES_QUE_CUENTAN).n;
 }
 
@@ -143,7 +164,18 @@ export function anotarProblema(db, canal, { motivo, esperarMs = null, secretoId 
   if (!canal || NO_ES_DEL_CANAL.includes(motivo)) return;
   const momento = iso(ahora);
   db.prepare('UPDATE canales SET ultimo_error = ?, ultimo_error_en = ? WHERE id = ?').run(motivo, momento, canal.id);
-  if (motivo === 'limite') { pausarCanal(db, canal.id, esperarMs, ahora); return; }
+  if (motivo === 'limite') {
+    // Un 429 tras otro (una tormenta): se cuentan y la espera crece; nunca se pregunta cada 15 s por días.
+    // Solo los 429 SEGUIDOS (la pausa de antes también era un 429): otro fallo en medio empieza la cuenta otra vez.
+    const f = db.prepare('SELECT fallos_seguidos, pausa_motivo FROM canales WHERE id = ?').get(canal.id);
+    const seguidos = (f?.pausa_motivo === 'limite' ? (f.fallos_seguidos ?? 0) : 0) + 1;
+    let espera = Math.max(1000, Number(esperarMs) || 5000);
+    if (seguidos >= LIMITES_PARA_ESPERAR_MAS) espera = Math.max(espera, ESPERAS_TRAS_FALLO_MS[Math.min(seguidos - LIMITES_PARA_ESPERAR_MAS + 1, ESPERAS_TRAS_FALLO_MS.length) - 1]);
+    db.prepare('UPDATE canales SET fallos_seguidos = ? WHERE id = ?').run(seguidos, canal.id);
+    pausarCanal(db, canal.id, espera, ahora);
+    if (seguidos >= FALLOS_PARA_AVISAR) abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'limite' }, ahora });
+    return;
+  }
   if (motivo === 'bloqueado') {
     db.prepare("UPDATE canales SET estado = 'bloqueado', pausa_hasta = ?, pausa_motivo = 'bloqueado' WHERE id = ? AND estado IN ('activo', 'bloqueado')").run(iso(ahora + REINTENTO_BLOQUEADO_MS), canal.id);
     abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'bloqueado' }, ahora });
@@ -155,18 +187,65 @@ export function anotarProblema(db, canal, { motivo, esperarMs = null, secretoId 
     return;
   }
   if (motivo === 'clave_no_valida') {
-    const s = secretoId ?? canal.secreto_id;
-    if (s != null) anotarPrueba(db, { id: s, motivo: 'clave_no_valida', ahora });
-    abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'clave' }, ahora });
+    // Una sospecha, no un veredicto (ronda 3): revisarClaveDudosa pregunta con getMe antes de dar el token por malo.
+    const f = db.prepare('SELECT fallos_seguidos, pausa_motivo FROM canales WHERE id = ?').get(canal.id);
+    const fallos = (esClaveDudosa(f) ? (f.fallos_seguidos ?? 0) : 0) + 1;
+    const marca = esClaveDudosa(f) ? f.pausa_motivo : 'clave_dudosa';
+    const espera = esClaveDudosa(f) ? ESPERAS_CLAVE_DUDOSA_MS[Math.min(fallos, ESPERAS_CLAVE_DUDOSA_MS.length) - 1] : 0;
+    db.prepare('UPDATE canales SET fallos_seguidos = ?, pausa_hasta = ?, pausa_motivo = ? WHERE id = ?').run(fallos, iso(ahora + espera), marca, canal.id);
     return;
   }
   // Lo leído antes puede ser viejo (otro proceso anotó otro fallo): se cuenta sobre la fila de ahora.
-  const fila = db.prepare('SELECT fallos_seguidos FROM canales WHERE id = ?').get(canal.id);
-  const fallos = (fila?.fallos_seguidos ?? canal.fallos_seguidos ?? 0) + 1;
+  const fila = db.prepare('SELECT fallos_seguidos, pausa_motivo FROM canales WHERE id = ?').get(canal.id);
+  // Los 429 de antes no cuentan como fallos (ronda 3: se cuentan aparte, mientras la pausa sea 'limite').
+  const fallos = (fila?.pausa_motivo === 'limite' || esClaveDudosa(fila) ? 0 : (fila?.fallos_seguidos ?? canal.fallos_seguidos ?? 0)) + 1;
   const espera = ESPERAS_TRAS_FALLO_MS[Math.min(fallos, ESPERAS_TRAS_FALLO_MS.length) - 1];
   db.prepare("UPDATE canales SET fallos_seguidos = ?, pausa_hasta = ?, pausa_motivo = 'espera' WHERE id = ?").run(fallos, iso(ahora + espera), canal.id);
   if (!esPasajero(motivo)) abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'pedido' }, ahora });
   else if (fallos >= FALLOS_PARA_AVISAR) abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'sin_respuesta' }, ahora });
+}
+
+// La sospecha de un token malo (ronda 3): con la pausa cumplida, getMe (gratis) con la MISMA clave del chat.
+//  ok y el mismo bot → todo bien (marcarBien) · «401» → si ya hubo otro getMe con «401» justo antes, el token no sirve
+//  (Claves dice «pégala otra vez» y telegram_falla «clave»); si no, otra pregunta en 5 min · otra cosa (la red) → se
+//  pregunta otra vez más tarde (15 s, 5, 15, 60 min). → { motivo } o null si no hay sospecha (o todavía no toca).
+export async function revisarClaveDudosa(db, config, { adaptador = ADAPTADORES.telegram, ahora = Date.now } = {}) {
+  const reloj = typeof ahora === 'function' ? ahora : () => ahora;
+  const canal = canalActual(db);
+  if (!canal || !esClaveDudosa(canal) || pausaDe(canal, reloj())) return null;
+  const r = await conCredencial(db, config, { uso: USO, secretoId: canal.secreto_id }, cred => adaptador.probar(cred));
+  const momento = reloj();
+  return enTransaccion(db, () => {
+    const c = db.prepare('SELECT * FROM canales WHERE id = ?').get(canal.id);
+    if (!c || !esClaveDudosa(c)) return { motivo: 'ya_no' };
+    if (r.motivo === 'credencial_cambiada' || r.motivo === 'sin_clave') {
+      // El dueño pegó otro token (o lo quitó): la sospecha era del viejo.
+      db.prepare('UPDATE canales SET pausa_hasta = NULL, pausa_motivo = NULL, fallos_seguidos = 0 WHERE id = ?').run(c.id);
+      return { motivo: 'credencial_cambiada' };
+    }
+    if ((r.motivo === 'ok' || r.motivo === 'bot_ocupado') && r.cuenta) {
+      if (!c.cuenta_id || String(r.cuenta.id) === String(c.cuenta_id)) { marcarBien(db, c.id, momento); return { motivo: 'ok' }; }
+      db.prepare('UPDATE canales SET pausa_hasta = NULL, pausa_motivo = NULL WHERE id = ?').run(c.id);
+      abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'bot_cambiado' }, ahora: momento });
+      return { motivo: 'bot_cambiado' };
+    }
+    if (r.motivo === 'clave_no_valida') {
+      if (c.pausa_motivo === 'clave_dudosa_1') {
+        if (c.secreto_id != null) anotarPrueba(db, { id: c.secreto_id, motivo: 'clave_no_valida', ahora: momento });
+        db.prepare('UPDATE canales SET pausa_hasta = NULL, pausa_motivo = NULL WHERE id = ?').run(c.id);
+        abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'clave' }, ahora: momento });
+        return { motivo: 'clave_no_valida' };
+      }
+      db.prepare("UPDATE canales SET pausa_hasta = ?, pausa_motivo = 'clave_dudosa_1' WHERE id = ?").run(iso(momento + ESPERAS_CLAVE_DUDOSA_MS[1]), c.id);
+      return { motivo: 'clave_dudosa' };
+    }
+    const fallos = (c.fallos_seguidos ?? 0) + 1;
+    const espera = ESPERAS_CLAVE_DUDOSA_MS[Math.min(fallos, ESPERAS_CLAVE_DUDOSA_MS.length) - 1];
+    db.prepare('UPDATE canales SET fallos_seguidos = ?, pausa_hasta = ?, ultimo_error = ?, ultimo_error_en = ? WHERE id = ?')
+      .run(fallos, iso(momento + espera), String(r.motivo ?? 'error').slice(0, 40), iso(momento), c.id);
+    if (fallos >= FALLOS_PARA_AVISAR && esPasajero(r.motivo)) abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'sin_respuesta' }, ahora: momento });
+    return { motivo: r.motivo ?? 'error' };
+  });
 }
 
 // ¿Se puede mandar por este canal AHORA? → { si, motivo, canal, secreto }
@@ -246,7 +325,7 @@ export async function empezarVinculo(db, config, { usuarioId = null, ahora = Dat
   const momento = reloj();
   const hasta = momento + VIGENCIA_MS;
   enTransaccion(db, () => {
-    db.prepare("UPDATE canales SET estado = 'vencido' WHERE tipo = ? AND proposito = ? AND estado = 'pendiente'").run(TIPO, PROPOSITO);
+    db.prepare("UPDATE canales SET estado = 'vencido' WHERE tipo = ? AND proposito = ? AND estado IN ('pendiente', 'por_confirmar')").run(TIPO, PROPOSITO);
     db.prepare(`INSERT INTO canales (tipo, proposito, estado, secreto_id, cuenta_id, cuenta_nombre, codigo_huella, codigo_desde, codigo_hasta,
         codigo_intentos, novedades_desde, creado_por, creado_en)
       VALUES (?, ?, 'pendiente', ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`)
@@ -265,11 +344,18 @@ const revisionesDe = db => {
   return revisiones.get(db);
 };
 
-// POST /api/admin/telegram/vincular/revisar → { estado: 'esperando' | 'vinculado' | 'vencido', chat? }. Como mucho UNA
-// pregunta a Telegram cada 3 s, aunque la pantalla (o varias) pregunten más seguido.
+// POST /api/admin/telegram/vincular/revisar → { estado: 'esperando' | 'confirmar' | 'vinculado' | 'vencido', chat? }.
+// Como mucho UNA pregunta a Telegram cada 3 s, aunque la pantalla (o varias) pregunten más seguido. 'confirmar': falta
+// escribir el segundo código (confirmarVinculo); no se le pregunta nada a Telegram.
 export async function revisarVinculo(db, config, { usuarioId = null, ahora = Date.now, adaptador = ADAPTADORES.telegram, cadaMs = REVISAR_CADA_MS } = {}) {
   const reloj = typeof ahora === 'function' ? ahora : () => ahora;
   const momento = reloj();
+  const porConfirmar = canalPorConfirmar(db, momento);
+  if (porConfirmar) {
+    if (!porConfirmar.vencido) return { estado: 'confirmar', chat: { nombre: porConfirmar.destino_nombre } };
+    db.prepare("UPDATE canales SET estado = 'vencido' WHERE id = ? AND estado = 'por_confirmar'").run(porConfirmar.id);
+    return { estado: 'vencido' };
+  }
   const p = canalPendiente(db, momento);
   if (!p) {
     const unido = canalActual(db);
@@ -315,28 +401,72 @@ async function revisarAhora(db, config, p, { usuarioId, reloj, adaptador }) {
     return { estado: r.vencido ? 'vencido' : 'esperando', ...(r.vencido ? { motivo: 'intentos' } : {}) };
   }
   const m = r.encontrado;
-  const nombre = String(m.de?.nombre ?? m.chat?.nombre ?? '').slice(0, 40) || null;
-  const unido = enTransaccion(db, () => {
-    const sigue = db.prepare("SELECT * FROM canales WHERE id = ? AND estado = 'pendiente'").get(p.id);
-    if (!sigue) return false;
+  // El nombre que da Telegram y su @usuario (único en Telegram: el dueño reconoce el suyo).
+  const usuarioTg = m.de?.usuario ? ` (@${m.de.usuario})` : '';
+  const nombre = `${String(m.de?.nombre ?? m.chat?.nombre ?? '').slice(0, 40)}${usuarioTg}`.trim().slice(0, 80) || null;
+  // Ronda 3: todavía NO se une. El bot le manda a ESE chat un segundo código; el dueño lo escribe en la pantalla.
+  const segundo = crearCodigoConfirmar();
+  const envio = await conCredencial(db, config, { uso: USO, secretoId: p.secreto_id }, cred => adaptador.enviarTexto(cred, {
+    destino: m.chat.id, texto: textoConfirmarVinculo(idiomaDelDueno(db), { codigo: segundo }), silencioso: false,
+  }));
+  if (envio.motivo !== 'ok') {
+    // No salió: no se avanza (la próxima pregunta lee otra vez ese mensaje y prueba de nuevo).
+    return { estado: 'esperando', problema: envio.motivo === 'credencial_cambiada' ? 'sin_token' : envio.motivo };
+  }
+  const listo = enTransaccion(db, () => {
+    const ahoraIso = iso(momento);
+    const cambio = db.prepare(`UPDATE canales SET estado = 'por_confirmar', destino = ?, destino_nombre = ?, codigo_huella = ?, codigo_desde = ?,
+      codigo_hasta = ?, codigo_intentos = 0, codigo_intentos_chats = ?, novedades_desde = ? WHERE id = ? AND estado = 'pendiente'`)
+      .run(String(m.chat.id), nombre, huellaConfirmar(segundo), ahoraIso, iso(momento + VIGENCIA_MS), textoCuenta(r.cuenta), r.siguiente, p.id);
+    if (cambio.changes !== 1) return false;
+    auditar(db, { usuarioId, accion: 'telegram_por_confirmar', detalle: `chat de ${nombre ?? 'Telegram'}` });
+    return true;
+  });
+  if (!listo) return { estado: 'vencido' };
+  revisionesDe(db).delete(p.id);
+  return { estado: 'confirmar', chat: { nombre } };
+}
+
+// POST /api/admin/telegram/vincular/confirmar { codigo } (ronda 3): el segundo código, el que el bot le mandó al chat.
+// Bien → el chat queda unido ('activo') y sale la bienvenida. Errores (ErrorCanal): sin_pendiente · codigo_vencido ·
+// codigo_intentos · codigo_no_coincide (400; quedan intentos).
+export async function confirmarVinculo(db, config, { codigo, usuarioId = null, ahora = Date.now, adaptador = ADAPTADORES.telegram } = {}) {
+  const reloj = typeof ahora === 'function' ? ahora : () => ahora;
+  const momento = reloj();
+  const p = canalPorConfirmar(db, momento);
+  if (!p) throw new ErrorCanal('codigo_vencido');
+  if (p.vencido) {
+    db.prepare("UPDATE canales SET estado = 'vencido' WHERE id = ? AND estado = 'por_confirmar'").run(p.id);
+    throw new ErrorCanal('codigo_vencido');
+  }
+  const bien = confirmarCoincide(cifrasConfirmar(codigo), p.codigo_huella);
+  const r = enTransaccion(db, () => {
+    const sigue = db.prepare("SELECT * FROM canales WHERE id = ? AND estado = 'por_confirmar'").get(p.id);
+    if (!sigue) return { error: 'codigo_vencido' };
+    if (!bien) {
+      const intentos = (sigue.codigo_intentos ?? 0) + 1;
+      const agotado = intentos >= INTENTOS_CONFIRMAR;
+      db.prepare(`UPDATE canales SET codigo_intentos = ?, estado = CASE WHEN ? THEN 'vencido' ELSE estado END WHERE id = ?`).run(intentos, agotado ? 1 : 0, p.id);
+      auditar(db, { usuarioId, accion: 'telegram_confirmar_mal', detalle: agotado ? 'anulado' : `intento ${intentos}` });
+      return { error: agotado ? 'codigo_intentos' : 'codigo_no_coincide', quedan: INTENTOS_CONFIRMAR - intentos };
+    }
     const ahoraIso = iso(momento);
     for (const viejo of db.prepare("SELECT id FROM canales WHERE tipo = ? AND proposito = ? AND estado IN ('activo', 'bloqueado', 'perdido')").all(TIPO, PROPOSITO)) {
       db.prepare("UPDATE canales SET estado = 'desvinculado', desvinculado_en = ?, motivo = 'reemplazado' WHERE id = ?").run(ahoraIso, viejo.id);
     }
-    db.prepare(`UPDATE canales SET estado = 'activo', destino = ?, destino_nombre = ?, vinculado_en = ?, novedades_desde = ?, codigo_intentos = ?,
-      codigo_intentos_chats = ?, fallos_seguidos = 0, pausa_hasta = NULL, pausa_motivo = NULL WHERE id = ?`)
-      .run(String(m.chat.id), nombre, ahoraIso, r.siguiente, r.cuenta.total, textoCuenta(r.cuenta), p.id);
+    db.prepare(`UPDATE canales SET estado = 'activo', vinculado_en = ?, codigo_huella = NULL, fallos_seguidos = 0, pausa_hasta = NULL, pausa_motivo = NULL
+      WHERE id = ?`).run(ahoraIso, p.id);
     // Ronda 2: aquí NO se marca ningún aviso. Lo de antes de la PRIMERA vez que se unió un chat lo marca el que manda
     // avisos («antes_de_conectar», la bienvenida dice cuántos hay); al unir el chat OTRA vez (se perdió, otro bot), lo
     // grave que esperaba sigue pendiente y llega (src/canales/avisador.js).
-    auditar(db, { usuarioId, accion: 'telegram_vinculado', detalle: `chat de ${nombre ?? 'Telegram'}` });
-    return true;
+    auditar(db, { usuarioId, accion: 'telegram_vinculado', detalle: `chat de ${sigue.destino_nombre ?? 'Telegram'}` });
+    return { nombre: sigue.destino_nombre };
   });
-  if (!unido) return { estado: 'vencido' };
-  revisionesDe(db).delete(p.id);
+  if (r.error === 'codigo_no_coincide') { const e = new ErrorCanal('codigo_no_coincide', 400); e.quedan = r.quedan; throw e; }
+  if (r.error) throw new ErrorCanal(r.error);
   // La bienvenida (en silencio no: es la primera vez, que suene). Si no sale, el que manda avisos la manda después.
   await mandarBienvenida(db, config, { canalId: p.id, adaptador, ahora: momento });
-  return { estado: 'vinculado', chat: { nombre } };
+  return { estado: 'vinculado', chat: { nombre: r.nombre } };
 }
 
 // La bienvenida de un chat recién unido: «✅ Listo…» y cuántos avisos hay abiertos. → { motivo }
@@ -369,10 +499,17 @@ export function primerVinculo(db) {
   return db.prepare('SELECT MIN(vinculado_en) AS en FROM canales WHERE tipo = ? AND proposito = ? AND vinculado_en IS NOT NULL').get(TIPO, PROPOSITO)?.en ?? null;
 }
 
+// «Cancelar» mientras se une un chat: el código (y el segundo código) dejan de servir. El chat que ya estaba unido sigue.
+export function cancelarVinculo(db, { usuarioId = null } = {}) {
+  const n = db.prepare("UPDATE canales SET estado = 'vencido' WHERE tipo = ? AND proposito = ? AND estado IN ('pendiente', 'por_confirmar')").run(TIPO, PROPOSITO).changes;
+  if (n) auditar(db, { usuarioId, accion: 'telegram_vinculo_cancelado', detalle: null });
+  return { cancelados: Number(n) };
+}
+
 // «Dejar de usar este chat» (o la consola: --telegram=desvincular). La fila queda; nada se borra.
 export function desvincular(db, { usuarioId = null, origen = 'pantalla', ahora = Date.now() } = {}) {
   return enTransaccion(db, () => {
-    const filas = db.prepare("SELECT id FROM canales WHERE tipo = ? AND proposito = ? AND estado IN ('activo', 'bloqueado', 'perdido', 'pendiente')").all(TIPO, PROPOSITO);
+    const filas = db.prepare("SELECT id FROM canales WHERE tipo = ? AND proposito = ? AND estado IN ('activo', 'bloqueado', 'perdido', 'pendiente', 'por_confirmar')").all(TIPO, PROPOSITO);
     for (const f of filas) {
       db.prepare("UPDATE canales SET estado = 'desvinculado', desvinculado_por = ?, desvinculado_en = ?, motivo = ? WHERE id = ?").run(usuarioId, iso(ahora), origen, f.id);
     }
@@ -423,6 +560,7 @@ export function estadoTelegram(db, config, { ahora = Date.now() } = {}) {
   const bot = botGuardado(db);
   const canal = canalActual(db);
   const pendiente = canalPendiente(db, ahora);
+  const porConfirmar = canalPorConfirmar(db, ahora);
   const listo = listoParaMandar(db, config, ahora);
   const desde = ahora - 24 * 3_600_000;
   // Por su índice (canal_id, creado_en), de atrás hacia adelante: nunca ordena todas las filas del canal (crecen cada noche).
@@ -437,15 +575,23 @@ export function estadoTelegram(db, config, { ahora = Date.now() } = {}) {
     const falla = db.prepare("SELECT detalle FROM avisos WHERE clave = 'telegram_falla' AND resuelto_en IS NULL").get();
     let d = null;
     try { d = JSON.parse(falla?.detalle ?? 'null'); } catch { d = null; }
-    if (['pedido', 'sin_respuesta', 'bot_cambiado'].includes(d?.motivo)) { motivo = d.motivo; listoSi = false; }
+    if (['pedido', 'sin_respuesta', 'bot_cambiado', 'limite'].includes(d?.motivo)) { motivo = d.motivo; listoSi = false; }
   }
   return {
     listo: listoSi,
     motivo,
     bot: bot && secreto && bot.secretoId === secreto.id ? { usuario: bot.usuario, nombre: bot.nombre } : null,
     token: secreto ? { final: secreto.final, prueba: secreto.prueba, probadoEn: secreto.probado_en } : null,
-    chat: canal ? { estado: canal.estado, nombre: canal.destino_nombre, vinculadoEn: canal.vinculado_en, problema: canal.estado === 'activo' ? null : canal.estado } : null,
-    vinculo: { pendiente: Boolean(pendiente && !pendiente.vencido), hasta: pendiente && !pendiente.vencido ? pendiente.codigo_hasta : null },
+    chat: canal ? {
+      estado: canal.estado, nombre: canal.destino_nombre, vinculadoEn: canal.vinculado_en, problema: canal.estado === 'activo' ? null : canal.estado,
+      // Ronda 3: el token de ahora se pegó DESPUÉS de unir este chat (el mismo bot): la pantalla dice qué chat sigue unido
+      // y ofrece unirlo otra vez (si el token se filtró, quien lo tenía pudo unir SU chat).
+      tokenNuevo: Boolean(secreto && canal.vinculado_en && secreto.creado_en > canal.vinculado_en),
+    } : null,
+    vinculo: {
+      pendiente: Boolean(pendiente && !pendiente.vencido), hasta: pendiente && !pendiente.vencido ? pendiente.codigo_hasta : null,
+      porConfirmar: porConfirmar && !porConfirmar.vencido ? { nombre: porConfirmar.destino_nombre, hasta: porConfirmar.codigo_hasta } : null,
+    },
     envios: canal ? { ultimoOk, ultimoError: canal.ultimo_error_en ? { motivo: canal.ultimo_error, en: canal.ultimo_error_en } : null, hoy: enviadosDesde(db, canal.id, desde, ahora) } : null,
   };
 }

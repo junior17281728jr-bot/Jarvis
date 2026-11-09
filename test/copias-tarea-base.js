@@ -13,7 +13,7 @@ import { guardarSecreto } from '../src/claves/almacen.js';
 import { probarSecreto } from '../src/claves/probar.js';
 import { crearClavePendiente, confirmarClave } from '../src/copias/estado.js';
 import { leerClave, derivar } from '../src/copias/clave.js';
-import { empezarVinculo, revisarVinculo } from '../src/canales/canales.js';
+import { empezarVinculo, revisarVinculo, confirmarVinculo } from '../src/canales/canales.js';
 import { crearEjecutor } from '../src/tareas/ejecutor.js';
 import { crearEscritor } from '../src/tareas/escritor.js';
 import { nuevaCorrida } from '../src/tareas/corridas.js';
@@ -38,8 +38,8 @@ export function verificadorDe(texto) {
 }
 
 // Crea y confirma una clave de recuperación de verdad. → su texto (para restaurar en la prueba)
-export function ponerClave(db, { ahora = Date.now(), usuarioId = null } = {}) {
-  const r = crearClavePendiente(db, { usuarioId, ahora });
+export function ponerClave(db, { config, ahora = Date.now(), usuarioId = null } = {}) {
+  const r = crearClavePendiente(db, { config, usuarioId, ahora });
   confirmarClave(db, { verificador: verificadorDe(r.clave), usuarioId, ahora });
   return r.clave;
 }
@@ -50,12 +50,33 @@ export function llenarAlAzar(db, { filas = 16, bytes = 16 * 1024, prefijo = 'pru
   for (let i = 0; i < filas; i++) poner.run(`${prefijo}.${i}.${randomBytes(3).toString('hex')}`, JSON.stringify(randomBytes(bytes).toString('base64')), new Date().toISOString());
 }
 
-// Une el chat del dueño con el bot por el camino de verdad: código de un uso, «/start <código>» desde su chat privado.
+// El segundo código (ronda 3) que el bot le mandó a un chat (el último), o null.
+export function segundoCodigo(falso, chat = CHAT) {
+  const m = falso.mensajes.filter(x => x.chatId === String(chat) && typeof x.text === 'string' && x.text.startsWith('🔐')).at(-1);
+  const c = m ? /(\d{3}) (\d{3})/.exec(m.text) : null;
+  return c ? `${c[1]}${c[2]}` : null;
+}
+
+// Termina de unir un chat que quedó «por confirmar»: escribe en la «pantalla» el segundo código que el bot le mandó.
+export async function confirmarChat(b, { chat = CHAT } = {}) {
+  return confirmarVinculo(b.db, b.config, { codigo: segundoCodigo(b.falso, chat) });
+}
+
+// Pregunta como la pantalla (revisarVinculo) y, si quedó «por confirmar», escribe el segundo código (como el dueño).
+export async function revisarYConfirmar(b, { chat = CHAT, ...opciones } = {}) {
+  const r = await revisarVinculo(b.db, b.config, { cadaMs: 0, ...opciones });
+  return r.estado === 'confirmar' ? confirmarChat(b, { chat }) : r;
+}
+
+// Une el chat del dueño con el bot por el camino de verdad: código de un uso, «/start <código>» desde su chat privado,
+// y el segundo código que el bot le manda a ese chat, escrito en la pantalla (ronda 3).
 export async function unirChat(b, { chat = CHAT, nombre = 'Junior' } = {}) {
   const v = await empezarVinculo(b.db, b.config, {});
   b.falso.escribir({ chat, texto: `/start ${v.codigo}` });
   const r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
-  if (r.estado !== 'vinculado') throw new Error(`no se unió el chat: ${JSON.stringify(r)}`);
+  if (r.estado !== 'confirmar') throw new Error(`no se unió el chat: ${JSON.stringify(r)}`);
+  const c = await confirmarChat(b, { chat });
+  if (c.estado !== 'vinculado') throw new Error(`no se confirmó el chat: ${JSON.stringify(c)}`);
   return { ...v, nombre };
 }
 
@@ -83,7 +104,7 @@ export async function montar({ telegram = true, clave = true, relleno = 16, disc
   const b = { falso, config, db, admin, token, token2, claveTexto: null, disco: { libre: disco, wal: null }, t: Date.now() };
   b.reloj = () => b.t;
   b.avanzar = ms => { b.t += ms; };
-  if (clave) b.claveTexto = ponerClave(db, { usuarioId: admin, ahora: b.t });
+  if (clave) b.claveTexto = ponerClave(db, { config, usuarioId: admin, ahora: b.t });
   if (telegram) {
     b.secretoId = (await ponerToken(b)).id;
     await unirChat(b);

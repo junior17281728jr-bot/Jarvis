@@ -155,6 +155,12 @@ export function textoBienvenida(idioma = 'es', { nombre = '', abiertos = 0 } = {
   return recortar(lineas.join('\n'));
 }
 
+// Ronda 3: el segundo código, que el bot le manda al chat que escribió el primero (se escribe en la pantalla de OPORTIA).
+export function textoConfirmarVinculo(idioma = 'es', { codigo }) {
+  const c = String(codigo ?? '');
+  return recortar(frase(idioma, 'telegram.confirmar_mensaje', { codigo: `${c.slice(0, 3)} ${c.slice(3)}` }));
+}
+
 export function textoPrueba(idioma = 'es', ahora = Date.now()) {
   return recortar(frase(idioma, 'telegram.prueba_mensaje', { fecha: fechaRd(ahora, idioma) }));
 }

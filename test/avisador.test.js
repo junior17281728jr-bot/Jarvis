@@ -17,7 +17,7 @@ import { copiaAtrasada } from '../src/copias/estado.js';
 import { ESTADOS_CANAL, CLASES_ENVIO, RESULTADOS_ENVIO } from '../src/canales/canal.js';
 
 const iso = ms => new Date(ms).toISOString();
-const mensajesDelChat = b => b.falso.mensajes.filter(m => m.chatId === String(CHAT) && m.text && !m.text.startsWith('✅ Listo'));
+const mensajesDelChat = b => b.falso.mensajes.filter(m => m.chatId === String(CHAT) && m.text && !m.text.startsWith('✅ Listo') && !m.text.startsWith('🔐'));
 
 async function conAvisador(fn, opciones = {}) {
   const b = await montar({ relleno: 0, ...opciones });
@@ -208,12 +208,29 @@ test('2.10 errores de Telegram: 429 → pausa; 403 → «bloqueado» y telegram_
     b.avanzar(HORA + 1);
     assert.equal((await b.avisador.pasada()).enviado, 'aviso');
     assert.deepEqual([canal().estado, b.aviso('telegram_falla')], ['activo', null]);
-    // 401: el token ya no sirve.
+    // 401 suelto (ronda 3): una SOSPECHA. getMe pregunta otra vez y, como el token sirve, el aviso llega solo.
+    const prueba = () => b.db.prepare("SELECT prueba FROM secretos WHERE uso = 'telegram_bot' AND estado = 'activa'").get().prueba;
     b.abrir('trabajador_reinicios');
     b.falso.escena('sendMessage', 'no_autorizado');
     assert.equal((await b.avisador.pasada()).motivo, 'clave_no_valida');
-    assert.equal(b.db.prepare("SELECT prueba FROM secretos WHERE uso = 'telegram_bot' AND estado = 'activa'").get().prueba, 'clave_no_valida');
+    assert.equal(prueba(), 'ok', 'un 401 suelto no marca el token');
+    assert.equal(canal().pausa_motivo, 'clave_dudosa');
+    assert.equal((await b.avisador.pasada()).enviado, 'aviso', 'getMe dijo que sirve: llegó');
+    assert.equal(canal().pausa_motivo, null);
+    // El token de verdad ya no sirve: solo después de DOS getMe seguidos con 401 queda «no válido».
+    b.abrir('copias_disco_pronto');
+    b.falso.escena('*', 'no_autorizado', { veces: 1000 });
+    assert.equal((await b.avisador.pasada()).motivo, 'clave_no_valida');
+    assert.equal((await b.avisador.pasada()).motivo, 'pausa', 'el primer getMe con 401: otra pregunta en 5 min');
+    assert.equal(canal().pausa_motivo, 'clave_dudosa_1');
+    assert.equal(prueba(), 'ok');
+    b.avanzar(5 * MINUTO + 1);
+    assert.equal((await b.avisador.pasada()).motivo, 'clave_no_valida');
+    assert.equal(prueba(), 'clave_no_valida');
+    assert.equal(JSON.parse(b.aviso('telegram_falla').detalle).motivo, 'clave');
+    const pedidos = b.falso.pedidos.length;
     assert.equal((await b.avisador.pasada()).motivo, 'clave_no_valida', 'no vuelve a intentar con un token malo');
+    assert.equal(b.falso.pedidos.length, pedidos, 'y no pregunta otra vez hasta dentro de una hora');
     // La base solo tiene los valores que conoce el código (migración 6 no tiene CHECK).
     for (const f of b.db.prepare('SELECT DISTINCT estado FROM canales').all()) assert.ok(ESTADOS_CANAL.includes(f.estado), f.estado);
     for (const f of b.db.prepare('SELECT DISTINCT clase, resultado FROM canal_envios').all()) assert.ok(CLASES_ENVIO.includes(f.clase) && RESULTADOS_ENVIO.includes(f.resultado), JSON.stringify(f));

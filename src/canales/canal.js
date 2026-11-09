@@ -6,7 +6,7 @@
 // bajarMaxBytes, pausaArchivosMs } } y estos métodos. Cada uno RESUELVE siempre (nunca lanza por la red) con
 // { motivo, esperarMs?, …datos }; motivo es uno de MOTIVOS_CANAL.
 //   probar(cred)                                                        → { motivo, cuenta: { id, usuario, nombre } }
-//   enviarTexto(cred, { destino, texto, silencioso })                  → { motivo, mensajeId }
+//   enviarTexto(cred, { destino, texto, silencioso })                  → { motivo, mensajeId, quizas? } (quizas: quizás llegó)
 //   enviarArchivo(cred, { destino, nombre, datos: Blob|Buffer, leyenda, silencioso })
 //                                                                       → { motivo, mensajeId, archivo: { id, idUnico, bytes } }
 //   fijar(cred, { destino, mensajeId })                                 → { motivo }
@@ -28,9 +28,12 @@ export const ADAPTADORES = Object.freeze({ telegram: TELEGRAM });
 // Los valores que se guardan en la base (migración 6 no tiene CHECK: se revisan aquí, y una prueba revisa la base).
 export const TIPOS_CANAL = Object.freeze(['telegram']);
 export const PROPOSITOS_CANAL = Object.freeze(['avisos_dueno']);
-export const ESTADOS_CANAL = Object.freeze(['pendiente', 'vencido', 'activo', 'bloqueado', 'perdido', 'desvinculado']);
+// 'por_confirmar' (ronda 3): el código llegó desde un chat; falta escribir en la pantalla el segundo código que el bot le
+// mandó a ese chat.
+export const ESTADOS_CANAL = Object.freeze(['pendiente', 'por_confirmar', 'vencido', 'activo', 'bloqueado', 'perdido', 'desvinculado']);
 export const CLASES_ENVIO = Object.freeze(['aviso', 'cierre', 'resumen', 'prueba', 'bienvenida', 'copia_parte', 'copia_indice']);
-export const RESULTADOS_ENVIO = Object.freeze(['enviado', 'agrupado', 'silenciado', 'no_va', 'antes_de_conectar', 'fallido', 'vencido']);
+// 'dudoso' (ronda 3): salió y no se sabe si llegó (se cortó la respuesta): cuenta para los topes como uno enviado.
+export const RESULTADOS_ENVIO = Object.freeze(['enviado', 'agrupado', 'silenciado', 'no_va', 'antes_de_conectar', 'fallido', 'vencido', 'dudoso']);
 // Qué uso de clave (src/claves/usos.js, parte e paso 2) guarda el token de cada tipo de canal.
 export const USO_DE_CANAL = Object.freeze({ telegram: 'telegram_bot' });
 

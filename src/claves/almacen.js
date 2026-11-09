@@ -76,6 +76,49 @@ export function clavesGuardadas(db) {
   return { huellas: db.prepare('SELECT DISTINCT llave_huella AS h FROM secretos').all().map(x => x.h), ultimaMs: f?.ultima ? Date.parse(f.ultima) : null };
 }
 
+// ---------- Datos del servidor envueltos con la llave de las claves (parte e, ronda 3 del equipo rojo) ----------
+// Un dato que el servidor necesita y que nunca puede quedar en claro en la base: hoy, el «sello» de las copias (firma los
+// índices y el final de cada copia). Va cifrado con la MISMA llave de las claves, que nunca viaja en una copia ni en la
+// copia de antes de una migración: quien tiene solo la base (una copia vieja, una foto, un archivo restaurado) no puede
+// armar copias que parezcan auténticas. Forma: 'env1.<huella de la llave>.<iv>.<sello AES>.<cifrado>' (base64url).
+export const PREFIJO_ENVUELTO = 'env1.';
+const b64 = b => Buffer.from(b).toString('base64url');
+
+// Envuelve un texto (crea la llave si todavía no hay ninguna, como al guardar la primera clave). Lanza ErrorClaves si
+// la llave está dañada o falta y ya hay claves guardadas (nunca se crea otra en silencio).
+export function envolverDato(db, config, texto, { ref, uso }) {
+  const llave = asegurarLlave(config, { guardadas: clavesGuardadas(db) });
+  try {
+    const p = cifrar(llave.llave, String(texto), { ref: String(ref), uso: String(uso) });
+    return `${PREFIJO_ENVUELTO}${llave.huella}.${b64(p.iv)}.${b64(p.sello)}.${b64(p.cifrado)}`;
+  } finally {
+    llave.llave.fill(0);
+  }
+}
+
+// La huella de la llave con que se envolvió (sin abrir nada), o null si no tiene la forma.
+export function huellaDeEnvuelto(envuelto) {
+  const m = /^env1\.([0-9a-f]{16})\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/.exec(String(envuelto ?? ''));
+  return m ? m[1] : null;
+}
+
+// El texto envuelto, o null si no se puede abrir (otra llave, la llave falta, un byte cambiado, otra fila).
+export function abrirDato(config, envuelto, { ref, uso }) {
+  const huella = huellaDeEnvuelto(envuelto);
+  if (!huella) return null;
+  const [, , iv, sello, cifrado] = String(envuelto).split('.');
+  let llave;
+  try { llave = leerLlave(config); } catch { return null; }
+  try {
+    if (llave.huella !== huella) return null;
+    return descifrar(llave.llave, { iv: Buffer.from(iv, 'base64url'), sello: Buffer.from(sello, 'base64url'), cifrado: Buffer.from(cifrado, 'base64url') }, { ref: String(ref), uso: String(uso) });
+  } catch {
+    return null;
+  } finally {
+    llave.llave.fill(0);
+  }
+}
+
 // Cómo está el almacén para la pantalla Claves: { listo, motivo }. Que el archivo de la llave todavía no exista es lo
 // normal antes de la primera clave (se crea al guardarla). Ronda 2 de revisión: si ya hay claves guardadas, que falte
 // es 'llave_falta' (no listo: no se puede pegar hasta que la consola la recupere o se decida empezar de nuevo).

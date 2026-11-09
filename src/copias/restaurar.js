@@ -19,6 +19,14 @@
 //    aunque su fecha lo diga. Si hay otra copia candidata (más nueva por fecha, u otra «punta» de la cadena: dos
 //    servidores con el mismo bot), alElegir recibe otraCandidata con su fecha y su servidor, y la consola pregunta.
 //  - Los intentos del código del chat se cuentan por chat (src/canales/vinculo.js): un extraño no lo vence.
+// Ronda 3 del equipo rojo:
+//  - Una copia más nueva SIN su índice en la carpeta (el disco no dejó escribirlo, o no se guardó de Telegram) se prueba
+//    entera sin escribir nada; si está completa, se ofrece ELLA (sinIndice: true) y la de índice queda como otraCandidata
+//    ('con_indice_mas_vieja'). Si está cortada o dañada, se usa la de índice y hayMasNueva lo dice.
+//  - Al buscar el chat en un servidor nuevo, el bot le manda a ese chat un segundo código que hay que escribir
+//    (confirmar): quien tenga el token y repita el código del dueño desde SU chat no lo tiene.
+//  - «Auténtica» quiere decir: la hizo un servidor que tenía el sello (envuelto con su llave de las claves). La base sola
+//    ya no alcanza para armar una copia falsa (src/copias/estado.js).
 import { closeSync, createReadStream, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -36,7 +44,8 @@ import { crearDescifrador, abrirSellado, leerCabeceraFlujo } from './cifrar.js';
 import { crearLector, crearAplicador } from './volcado.js';
 import { TELEGRAM } from '../canales/telegram.js';
 import { crearCredencial } from '../canales/credencial.js';
-import { crearCodigo, huellaCodigo, codigoParaMostrar, revisarLote, VIGENCIA_MS } from '../canales/vinculo.js';
+import { crearCodigo, huellaCodigo, codigoParaMostrar, revisarLote, VIGENCIA_MS, crearCodigoConfirmar, huellaConfirmar, cifrasConfirmar, confirmarCoincide, INTENTOS_CONFIRMAR } from '../canales/vinculo.js';
+import { textoConfirmarVinculo } from '../canales/textos.js';
 
 const HORA = 3_600_000;
 export const MARCA_EN_CONSTRUCCION = 0x4f505442; // "OPTB"
@@ -434,16 +443,21 @@ async function elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, aho
     const { autenticos, noAutenticos, descartados } = deIndices;
     let hayMasNueva = null;
     let primerProblema = null;
-    // Partes de una copia que no tiene su índice en la lista: si es más nueva, nunca se pasa por alto en silencio.
+    // Partes de una copia que no tiene su índice en la lista (ronda 3: el disco no dejó escribir el índice, o el dueño no
+    // guardó el «…-indice.txt» de esa noche). Si es más nueva que la elegida, nunca se pasa por alto: se prueba entera
+    // (descifrar y revisar su sello, SIN escribir nada) y, si está completa, se ofrece ELLA primero.
     const conIndice = new Set(autenticos.map(x => x.datos.copia));
-    let sinIndice = null;
+    const sinIndice = [];
     for (const [copia, lista] of partes) {
       const uno = conIndice.has(copia) ? null : lista.find(p => p.n === 1);
       if (!uno) continue;
-      let creada;
-      try { creada = cabeceraDelFlujo(uno.ruta).creada; } catch { continue; }
-      if (!sinIndice || Date.parse(creada) > Date.parse(sinIndice.creada)) sinIndice = { copia, creada };
+      let cabecera;
+      try { cabecera = cabeceraDelFlujo(uno.ruta); } catch { continue; }
+      if (cabecera?.receptor !== llaves.huella || !Number.isFinite(Date.parse(cabecera.creada))) continue; // de otra clave
+      sinIndice.push({ copia, lista, cabecera, fecha: Date.parse(cabecera.creada) });
     }
+    sinIndice.sort((a, b) => b.fecha - a.fecha);
+    const probadas = new Set();
     for (const x of enOrdenDeCadena(autenticos)) {
       const d = x.datos;
       const ordenadas = await ordenarPartes(partes.get(d.copia) ?? [], d);
@@ -455,7 +469,18 @@ async function elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, aho
         continue;
       }
       const resumen = await resumenDe(d, llaves);
-      if (!hayMasNueva && sinIndice && Date.parse(sinIndice.creada) > Date.parse(d.creada)) hayMasNueva = sinIndice;
+      for (const g of sinIndice) {
+        if (g.fecha <= Date.parse(d.creada) || probadas.has(g.copia)) continue;
+        probadas.add(g.copia);
+        const completa = await probarSinIndice(g, { llaves, senal, ahora, alAvanzar });
+        if (!completa.orden) { hayMasNueva ??= { copia: g.copia, creada: g.cabecera.creada }; continue; }
+        // Está completa y su sello es bueno: es la más nueva. La de índice queda como «la otra» (se pregunta siempre).
+        const otra = { copia: d.copia, creada: d.creada, servidor: d.servidor ?? null, motivo: 'con_indice_mas_vieja', futura: Date.parse(d.creada) > ahora + MARGEN_FUTURO_MS };
+        const info = { ...datosParaElegir({ copia: g.copia, creada: g.cabecera.creada, servidor: g.cabecera.servidor, anterior: null, hayMasNueva, ahora, otraCandidata: otra }), sinIndice: true };
+        await preguntar(alElegir, info);
+        const bytes = completa.orden.reduce((s2, p) => s2 + p.cabecera.largo, 0);
+        return { indice: null, resumen: null, orden: completa.orden, info, bytes, noAutenticos, descartados };
+      }
       const otraCandidata = hayMasNueva ? null : otraCandidataDe(d, autenticos, ahora);
       const info = datosParaElegir({ copia: d.copia, creada: d.creada, servidor: d.servidor, anterior: d.anterior, hayMasNueva, ahora, otraCandidata });
       await preguntar(alElegir, info);
@@ -470,6 +495,21 @@ async function elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, aho
     if (deIndices?.problema && error instanceof ErrorCopias && error.clave === 'sin_indice') throw deIndices.problema;
     throw error;
   }
+}
+
+// Una copia SIN índice (sus partes, con la cabecera del flujo de la parte 1): se ordenan sus partes y se descifra entera
+// SIN escribir nada (revisa el sello del flujo, los largos y la última línea). → { orden } o { error }.
+async function probarSinIndice(g, { llaves, senal, ahora, alAvanzar }) {
+  const ordenadas = await ordenarPartes(g.lista, null);
+  if (!ordenadas.orden) return { error: errorDePartes(ordenadas, g.copia) };
+  alAvanzar({ paso: 'revisando', copia: g.copia });
+  try {
+    await aplicarCopia({ elegida: { indice: null, resumen: null, orden: ordenadas.orden, info: { copia: g.copia } }, llaves, destino: null, ajustar: false, senal, ahora, alAvanzar: () => {} });
+  } catch (e) {
+    if (!(e instanceof ErrorCopias) || !SE_PRUEBA_LA_ANTERIOR.includes(e.clave)) throw e;
+    return { error: e };
+  }
+  return { orden: ordenadas.orden };
 }
 
 // Sin índice: las partes solas, ordenadas por su cabecera; la copia se acepta solo si el sello del flujo cuadra. Como
@@ -680,7 +720,32 @@ async function aplicarCopia({ elegida, llaves, destino, ajustar, senal, ahora, a
 }
 
 // ---------- Buscar el chat del dueño en un servidor nuevo (un código de un uso, como al unir el chat) ----------
-// empezarBusquedaDeChat({ token }) → { codigo, paraMostrar, esperar({ senal, hastaMs }) → { chatId, nombre } }.
+// empezarBusquedaDeChat({ token }) → { codigo, paraMostrar, esperar({ senal, hastaMs }) → { chatId, nombre, usuario,
+// confirmar(texto) → true | false } }.
+// Ronda 3 del equipo rojo: quien tenga el token puede leer el código del dueño y mandarlo desde SU chat. Por eso, al
+// encontrar el chat, el bot le manda a ESE chat un segundo código (6 cifras) y la consola le pide al dueño que lo
+// escriba (confirmar; 5 intentos): si el código le llegó a otra persona, el dueño no lo tiene.
+
+// El chat encontrado: le manda el segundo código. → { chatId, nombre, usuario, confirmar }
+async function confirmacionDe(cred, m, { senal }) {
+  const segundo = crearCodigoConfirmar();
+  const huella = huellaConfirmar(segundo);
+  const envio = await TELEGRAM.enviarTexto(cred, { destino: m.chat.id, texto: textoConfirmarVinculo('es', { codigo: segundo }), silencioso: false, senal });
+  await deTelegram(cred, envio.motivo);
+  let intentos = 0;
+  return {
+    chatId: m.chat.id,
+    nombre: m.de?.nombre ?? m.chat.nombre ?? null,
+    usuario: m.de?.usuario ?? null,
+    confirmar(texto) {
+      if (intentos >= INTENTOS_CONFIRMAR) throw new ErrorCopias('codigo_vencido');
+      intentos += 1;
+      const bien = confirmarCoincide(cifrasConfirmar(texto), huella);
+      if (!bien && intentos >= INTENTOS_CONFIRMAR) throw new ErrorCopias('codigo_vencido');
+      return bien;
+    },
+  };
+}
 // Las mismas reglas de src/canales/vinculo.js: chat privado, no un bot, mensaje nuevo, código exacto, 5 intentos por
 // chat y 50 en total.
 // Nunca guarda un «offset» entre corridas: primero confirma lo que había (offset −1), y después pregunta sin offset.
@@ -714,7 +779,7 @@ export async function empezarBusquedaDeChat({ token, base = null, cadaMs = 3000,
           // 5 intentos por chat y 50 en total (un extraño que escribe al bot nunca vence el código del dueño).
           const visto = revisarLote(r.mensajes, { huella, desdeMs, cuenta });
           cuenta = visto.cuenta;
-          if (visto.encontrado) return { chatId: visto.encontrado.chat.id, nombre: visto.encontrado.de?.nombre ?? visto.encontrado.chat.nombre ?? null };
+          if (visto.encontrado) return confirmacionDe(cred, visto.encontrado, { senal });
           if (visto.vencido) throw new ErrorCopias('codigo_vencido');
           if (r.saltado) continue; // un mensaje demasiado grande se saltó: se pregunta otra vez enseguida
         } else if (r.motivo === 'clave_no_valida' || r.motivo === 'conflicto') {

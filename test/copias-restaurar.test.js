@@ -206,10 +206,19 @@ test('1.16 dos noches en la carpeta: si a la más nueva le falta una parte, se d
   const todas = await restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: [join(carpeta, 'todo')] }, destino: null });
   assert.equal(todas.copia, nueva.resultado.copia);
   assert.equal(todas.hayMasNueva, null);
-  // Las partes de la nueva SIN su índice, junto a la vieja con el suyo: se usa la del índice, pero se dice que hay una más nueva.
-  const sinIndice = await restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: [...vieja.partes.map(p => p.ruta), vieja.rutaIndice, ...nueva.partes.map(p => p.ruta)] }, destino: null });
-  assert.equal(sinIndice.copia, vieja.resultado.copia);
-  assert.deepEqual(sinIndice.hayMasNueva, { copia: nueva.resultado.copia, creada: nueva.creada });
+  // Ronda 3: las partes de la nueva SIN su índice, junto a la vieja con el suyo: la nueva está completa (se prueba entera
+  // sin escribir nada), así que se ofrece ELLA, y la del índice queda como «la otra» (se pregunta).
+  let pregunta = null;
+  const sinIndice = await restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: [...vieja.partes.map(p => p.ruta), vieja.rutaIndice, ...nueva.partes.map(p => p.ruta)] }, destino: null, alElegir: async e => { pregunta = e; return true; } });
+  assert.equal(sinIndice.copia, nueva.resultado.copia);
+  assert.equal(sinIndice.autentica, 'flujo');
+  assert.equal(pregunta.sinIndice, true);
+  assert.equal(pregunta.otraCandidata.copia, vieja.resultado.copia);
+  assert.equal(pregunta.otraCandidata.motivo, 'con_indice_mas_vieja');
+  // Si a la nueva sin índice le falta su última parte (está cortada), se usa la del índice y se dice que hay una más nueva.
+  const cortada = await restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: [...vieja.partes.map(p => p.ruta), vieja.rutaIndice, ...nueva.partes.slice(0, -1).map(p => p.ruta)] }, destino: null });
+  assert.equal(cortada.copia, vieja.resultado.copia);
+  assert.deepEqual(cortada.hayMasNueva, { copia: nueva.resultado.copia, creada: nueva.creada });
   db.close();
 });
 
@@ -378,7 +387,13 @@ test('la búsqueda del chat en un servidor nuevo: código de un uso, un extraño
     falso.escribir({ chat: 777, de: 777, texto: busqueda.codigo, esBot: true });
     falso.escribir({ chat: CHAT, texto: `/start ${busqueda.codigo}`, idsAlAzar: true });
     const r = await espera;
-    assert.deepEqual(r, { chatId: String(CHAT), nombre: 'Junior' });
+    assert.deepEqual([r.chatId, r.nombre, r.usuario], [String(CHAT), 'Junior', null]);
+    // Ronda 3: el bot le mandó a ESE chat un segundo código; hasta escribirlo, no se confía en el chat.
+    const m = falso.mensajes.filter(x => x.chatId === String(CHAT) && x.text?.startsWith('🔐')).at(-1);
+    const segundo = /(\d{3}) (\d{3})/.exec(m.text).slice(1).join('');
+    assert.equal(r.confirmar(segundo === '000000' ? '111111' : '000000'), false);
+    assert.equal(r.confirmar(` ${segundo.slice(0, 3)} ${segundo.slice(3)} `), true);
+    assert.equal(falso.mensajes.filter(x => x.chatId === '999').length, 0, 'al extraño no se le manda nada');
     // Cinco intentos equivocados: el código vence.
     const otra = await empezarBusquedaDeChat({ token, base: falso.url, cadaMs: 20 });
     const vence = otra.esperar({ hastaMs: Date.now() + 10_000 });

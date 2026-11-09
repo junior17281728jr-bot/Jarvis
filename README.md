@@ -269,7 +269,9 @@ por si alguien la vio: las copias de antes siguen necesitando la clave de antes 
 3. En OPORTIA, desde tu cuenta de Tailscale: Administrador → Claves → «Avisos y copias por Telegram» → paso ① → pega el
    token → «Guardar y probar (gratis)».
 4. Paso ② → «Unir mi chat de Telegram»: sale un código de 8 cifras. Toca «Abrir mi bot en Telegram» y «Iniciar», o
-   escríbele el código al bot. En segundos la pantalla dice «quedó unido» y te llega un mensaje de bienvenida.
+   escríbele el código al bot. En segundos tu bot te manda **otro código de 6 cifras**: escríbelo en la pantalla y toca
+   «Confirmar». La pantalla dice «quedó unido» y te llega un mensaje de bienvenida. Si el código de 6 cifras NO te llega a
+   tu Telegram, otra persona tiene el token de tu bot: no escribas nada, toca «Cancelar» y cambia el token (abajo).
 5. «Mandar un mensaje de prueba» cuando quieras comprobar que los avisos llegan.
 
 Si alguien más le escribe a tu bot, nunca le contesta ni se une su chat: cada chat tiene 5 intentos para el código (los
@@ -285,6 +287,9 @@ de un extraño nunca gastan los tuyos) y el código vence a los 10 minutos.
    servidor viejo, si sigue vivo (o vuelve de una foto del droplet), ya no puede mandar sus copias viejas a tu chat (si lo
    hiciera, el servidor nuevo te avisa urgente «Otro servidor manda copias»).
 5. Después pega otra vez tus claves de IA y el token NUEVO del bot en Claves: por seguridad nunca viajan en las copias.
+   Tu clave de recuperación también hay que darla otra vez en el servidor nuevo (la parte 1f lo hace al instalar; hasta
+   entonces Copias dice «Tu clave ya no sirve en este servidor» y deja crear una nueva: las copias viejas se siguen
+   abriendo con la de antes).
 6. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
 
 Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
@@ -365,9 +370,15 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
   debería quedar en 85–90 MB. Si alguna vez se acerca a 120 MB, hay que bajar las partes a 1 MiB.
 
 ### Si se filtra el token o la clave
-- **El token del bot**: en @BotFather → /mybots → tu bot → API Token → «Revoke current token», y pega el nuevo en Claves.
-  Con el token alguien podría ver tus copias en el chat (pero no abrirlas sin tu clave) o fijar una copia falsa: OPORTIA
-  revisa cada noche que el fijado sea el suyo, firma cada copia y al recuperar siempre muestra la fecha.
+- **El token del bot**: en @BotFather → /mybots → tu bot → API Token → «Revoke current token», pega el nuevo en Claves
+  **y une tu chat otra vez** (Claves te lo ofrece: «Unir otra vez»). Con el token alguien podría ver tus copias en el chat
+  (pero no abrirlas sin tu clave), fijar un archivo o intentar unir SU chat: para unir un chat hace falta el segundo
+  código, que el bot le manda al chat que escribió el primero, escrito en la pantalla de OPORTIA (solo desde Tailscale).
+  OPORTIA revisa cada noche que el fijado sea el suyo, firma cada copia y al recuperar siempre muestra la fecha.
+- **Qué quiere decir «copia auténtica»**: la hizo tu servidor (o alguien que tuvo tu servidor ENTERO: la base y el archivo
+  de la llave de las claves, por ejemplo una foto del droplet). La base sola no alcanza: el sello que firma las copias va
+  guardado con la llave de las claves, que nunca viaja en una copia. Si el servidor fue atacado, al recuperar elige una
+  copia de ANTES de esa fecha (la consola siempre muestra la fecha y pregunta).
 - **La clave de recuperación**: «Cambiar mi clave» en Copias. Las copias nuevas quedan con la clave nueva; las viejas
   siguen abriéndose con la vieja (quien la tenga y además tenga tu Telegram podría abrir esas copias viejas).
 

@@ -16,7 +16,8 @@
 // La clave de recuperación (y el token del bot, con --telegram) se escriben cuando los pide, sin que se vean en la
 // pantalla. NUNCA van en la línea de la orden (cualquiera los vería con «ps») ni en variables del entorno.
 // Con --telegram muestra un código de 8 cifras: escríbeselo a tu bot desde tu chat privado. Los mensajes de otras
-// personas al bot se ignoran. Después pregunta si el chat que encontró es el tuyo.
+// personas al bot se ignoran. Después pregunta si el chat que encontró es el tuyo, y el bot le manda a ese chat un
+// segundo código de 6 cifras que hay que escribir aquí (si no te llegó a ti, otra persona tiene el token del bot).
 // Una copia de hace más de 30 horas, si hay una más nueva, si la copia fijada en el chat es de hace más de 26 horas, si su
 // fecha es del futuro (reloj adelantado) o si hay otra copia que también parece la última, nunca se abre sin un «sí» tuyo.
 // Después de restaurar desde Telegram: revoca el token del bot en @BotFather (/revoke) y pega el nuevo en Claves, así
@@ -227,8 +228,18 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
         decir(`Escríbele a tu bot (@${busqueda.bot?.usuario ?? 'tu bot'}) este código: ${busqueda.paraMostrar}`);
         decir('Esperando tu mensaje (10 minutos)…');
         const chat = await busqueda.esperar({});
-        const respuesta = await lector.preguntar(`Encontré el chat de ${chat.nombre ?? 'alguien'}. ¿Es el tuyo? (sí/no): `);
+        const respuesta = await lector.preguntar(`Encontré el chat de ${chat.nombre ?? 'alguien'}${chat.usuario ? ` (@${chat.usuario})` : ''}. ¿Es el tuyo? (sí/no): `);
         if (!si(respuesta)) throw new ErrorCopias('cancelada_por_dueno');
+        // Ronda 3: el bot le mandó a ese chat un segundo código. Si a TU Telegram no le llegó, otra persona tiene el token.
+        decir('Tu bot te mandó otro código de 6 cifras a ese chat. Si a tu Telegram no te llegó nada, otra persona tiene el');
+        decir('  token de tu bot: no escribas nada (Enter), y cambia el token en @BotFather (/revoke).');
+        let confirmado = false;
+        while (!confirmado) {
+          const escrito = await lector.preguntar('Escribe el código de 6 cifras que te mandó el bot: ');
+          if (!escrito) throw new ErrorCopias('cancelada_por_dueno');
+          confirmado = chat.confirmar(escrito);
+          if (!confirmado) decir('Ese no es el código. Revisa el último mensaje de tu bot.');
+        }
         fuente = { tipo: 'telegram', token, chatId: chat.chatId, indiceArchivoId: null };
       }
       if (!carpetaTrabajo) carpetaTrabajo = destino ? `${destino}-partes` : mkdtempSync(join(tmpdir(), 'oportia-restaurar-'));
@@ -245,6 +256,9 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
           ? `Copia del ${fechaRd(e.creada)}: esa fecha es del FUTURO (el reloj del servidor que la hizo iba adelantado).`
           : `Copia del ${fechaRd(e.creada)} (${haceTexto(e.edadHoras)}).`);
         if (e.servidor) decir(`  La hizo el servidor «${String(e.servidor).slice(0, 8)}».`);
+        // Ronda 3: «auténtica» quiere decir «la hizo tu servidor» (o alguien que lo tuvo entero).
+        decir('  Si tu servidor fue atacado, usa una copia de ANTES de esa fecha (di «no» y elige otra con --indice o --archivos).');
+        if (e.sinIndice) decir('  Su índice («…-indice.txt») no está en la carpeta, pero la copia está completa y su firma es buena.');
         if (e.hayMasNueva) decir(`⚠ Hay una copia más nueva (del ${fechaRd(e.hayMasNueva.creada)}) que no está completa.`);
         if (e.antigua) decir(`⚠ Esta copia es de ${haceTexto(e.edadHoras)}.`);
         if (e.fijadaVieja) {
@@ -253,9 +267,9 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
         }
         if (e.otraCandidata) {
           const o = e.otraCandidata;
-          decir(o.motivo === 'otra_punta'
-            ? `⚠ Hay OTRA copia que también parece la última: del ${fechaRd(o.creada)}, hecha por el servidor «${String(o.servidor ?? '?').slice(0, 8)}». Quizás dos servidores mandaron copias con el mismo bot.`
-            : `⚠ Hay otra copia con fecha del ${fechaRd(o.creada)}${o.futura ? ' (fecha del futuro: reloj adelantado)' : ''}. Revisa cuál tiene tus datos más nuevos.`);
+          if (o.motivo === 'otra_punta') decir(`⚠ Hay OTRA copia que también parece la última: del ${fechaRd(o.creada)}, hecha por el servidor «${String(o.servidor ?? '?').slice(0, 8)}». Quizás dos servidores mandaron copias con el mismo bot.`);
+          else if (o.motivo === 'con_indice_mas_vieja') decir(`  También hay una copia más vieja CON su índice: la del ${fechaRd(o.creada)}. Esta (la más nueva) tiene tus datos más recientes.`);
+          else decir(`⚠ Hay otra copia con fecha del ${fechaRd(o.creada)}${o.futura ? ' (fecha del futuro: reloj adelantado)' : ''}. Revisa cuál tiene tus datos más nuevos.`);
           decir('  Si quieres la otra, di «no» y deja en la carpeta solo los archivos de esa noche (o usa --indice=<su índice>).');
         }
         if (!e.antigua && !e.hayMasNueva && !e.fijadaVieja && !e.futura && !e.otraCandidata) return true;

@@ -10,6 +10,34 @@
 //    pedir otro, o al llegar a los 50.
 import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
 
+// Ronda 3 del equipo rojo: quien tiene el token del bot lee TODOS los mensajes que le llegan (getUpdates) y puede
+// mandar el código del dueño desde SU chat. Por eso el código solo NO une el chat: el bot le manda a ESE chat un
+// segundo código (6 cifras) y hay que escribirlo en la pantalla de OPORTIA (solo el dueño, desde Tailscale). Si alguien
+// mandó el primer código desde otro chat, el segundo le llega a él, no al dueño.
+export const INTENTOS_CONFIRMAR = 5;
+
+export function crearCodigoConfirmar() {
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+export function huellaConfirmar(codigo) {
+  return createHash('sha256').update(`oportia-vinculo-confirmar-v1|${codigo}`).digest('hex');
+}
+
+// Lo que escribió el dueño en la pantalla → 6 cifras, o null.
+export function cifrasConfirmar(texto) {
+  const limpio = String(texto ?? '').replace(/[\s-]/g, '');
+  return /^\d{6}$/.test(limpio) ? limpio : null;
+}
+
+// ¿Las 6 cifras escritas son las del código guardado (su huella)?
+export function confirmarCoincide(cifras, huella) {
+  if (!cifras) return false;
+  const a = Buffer.from(huellaConfirmar(cifras), 'hex');
+  const b = Buffer.from(String(huella ?? ''), 'hex');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export const INTENTOS_MAXIMOS = 5; // por chat
 export const INTENTOS_TOTALES = 50; // por código, de todos los chats juntos
 export const VIGENCIA_MS = 10 * 60_000;

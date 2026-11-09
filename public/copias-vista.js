@@ -41,7 +41,7 @@ export function razonNoClave(c) {
 // va después de «:». Cualquier otro se muestra como «otro» (nunca el código tal cual).
 export const MOTIVOS_COPIA = Object.freeze(['telegram_limite_largo', 'telegram_limite', 'telegram_no_responde', 'copia_sin_exito', 'sin_llave',
   'volcado_incompleto', 'volcado_no_soportado', 'volcado_danado', 'fila_muy_grande', 'disco_distinto', 'parte_distinta', 'bot_cambiado',
-  'foto_interrumpida', 'foto_larga', 'foto_vieja', 'chat_cambiado', 'tarea_fallida', 'tarea_cancelada', 'tarea_hecha', 'sin_tarea', 'restaurada', 'cancelada', 'disco_lleno', 'otro']);
+  'foto_interrumpida', 'foto_larga', 'foto_vieja', 'chat_cambiado', 'tarea_fallida', 'tarea_cancelada', 'tarea_hecha', 'sin_tarea', 'restaurada', 'cancelada', 'disco_lleno', 'clave_ilegible', 'otro']);
 
 // La tarjeta grande de #copias, según GET /api/admin/copias.
 // → { estado, tono, icono, marca, titulo, linea, variables, accion, enlace, razon, progreso }

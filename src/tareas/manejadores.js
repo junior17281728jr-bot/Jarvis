@@ -71,7 +71,9 @@ async function vigilar(ctx) {
     try { dc = discoDeCopias(ctx.config.carpetaCopias, ctx.config.carpetaDatos); } catch { dc = { libreMb: null, mismoDisco: null }; }
     copias = await ctx.escribir(() => vigilarCopias(ctx.db, ctx.config, { ahora, libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false }));
     const leido = leerArchivosDeActualizacion(ctx.config);
-    actualizaciones = await ctx.escribir(() => aplicarActualizaciones(ctx.db, leido, { ahora }));
+    // La primera lectura empieza cuando arrancó este proceso si el registro no dice cuándo se instaló la versión.
+    const arranque = ahora - process.uptime() * 1000;
+    actualizaciones = await ctx.escribir(() => aplicarActualizaciones(ctx.db, leido, { ahora, arranque }));
   }
   let walMb = tamanoWalMb(ctx.config);
   let checkpoint = null;

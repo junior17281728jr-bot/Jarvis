@@ -302,7 +302,7 @@ export async function crearTelegramFalso({ bots = [], chats = [], subirMax = 50 
         update_id: siguienteUpdate++,
         message: {
           message_id: siguienteMensaje++, date: fecha,
-          from: { id: Number(de ?? chat), is_bot: esBot, first_name: c?.nombre ?? 'Alguien' },
+          from: { id: Number(de ?? chat), is_bot: esBot, first_name: c?.nombre ?? 'Alguien', ...(c?.usuario ? { username: c.usuario } : {}) },
           chat: { id: Number(chat), type: c?.tipo ?? 'private', ...(c?.tipo === 'private' || !c ? { first_name: c?.nombre ?? 'Alguien' } : { title: c.nombre }) },
           ...(texto != null ? { text: texto } : {}),
           ...(documento ? { document: documento } : {}),

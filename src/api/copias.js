@@ -14,8 +14,9 @@ import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { duenoDeTailscale } from '../cuentas/tailscale.js';
 import { ErrorCopias } from '../copias/formato.js';
-import { estadoCopias, crearClavePendiente, confirmarClave, comprobarClave, tareaDeCopiaViva, llaveActiva, planDeDisco, ajustesCopias } from '../copias/estado.js';
+import { estadoCopias, crearClavePendiente, confirmarClave, comprobarClave, tareaDeCopiaViva, llaveActiva, planDeDisco, ajustesCopias, selloLegible } from '../copias/estado.js';
 import { estadoTelegram, canalActivo } from '../canales/canales.js';
+import { estadoLlave } from '../claves/cifrado.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const HORA = 60 * 60 * 1000;
@@ -38,6 +39,7 @@ function errorDeClave(error, registro) {
   if (error instanceof ErrorCopias) {
     if (error.clave === 'sin_pendiente') return new ErrorHttp(409, 'sin_pendiente');
     if (['verificador_formato', 'clave_no_coincide', 'clave_de_prueba'].includes(error.clave)) return new ErrorHttp(400, error.clave);
+    if (error.clave === 'almacen_no_disponible') return new ErrorHttp(503, 'almacen_no_disponible');
   }
   try { registro?.error?.(`Clave de recuperación: ${error instanceof ErrorCopias ? error.clave : 'error'}`); } catch { /* nada */ }
   return new ErrorHttp(500, 'error_interno');
@@ -74,6 +76,11 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
     } catch { return true; }
   };
 
+  // La huella de la llave de las claves (sin leer la llave): para saber si el sello de la clave de recuperación se abre.
+  const huellaDeLaLlave = () => {
+    try { const e = config ? estadoLlave(config) : null; return e?.listo ? e.huella : null; } catch { return null; }
+  };
+
   function estado(db, req, usuario) {
     const libreMb = disco();
     const dc = discoCopias();
@@ -82,6 +89,7 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
     const e = estadoCopias(db, {
       libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, baseMb: config ? tamanoMb(config.archivoBase) : 0, walMb: config ? tamanoMb(`${config.archivoBase}-wal`) : 0,
       telegram: t ? { listo: t.listo, motivo: t.motivo, chat: t.chat, bot: t.bot } : null, modoSeguro, trabajador: trabajadorEncendido(),
+      huellaLlave: huellaDeLaLlave(),
     });
     const dueno = duenoDeTailscale(db, req, usuario);
     return { ...e, puede: { ...e.puede, crearClave: dueno.si, motivoNoClave: dueno.si ? null : dueno.motivo } };
@@ -93,7 +101,7 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
     contar(topes.ahora, usuario);
     if (tareaDeCopiaViva(db)) throw new ErrorHttp(409, 'copia_en_marcha');
     if (leerModoSeguro(db).activo || !trabajadorEncendido()) throw new ErrorHttp(409, 'trabajo_en_pausa');
-    if (!llaveActiva(db)) throw new ErrorHttp(409, 'falta_clave');
+    if (!llaveActiva(db) || !selloLegible(llaveActiva(db), huellaDeLaLlave())) throw new ErrorHttp(409, 'falta_clave');
     const libreMb = disco();
     const dc = discoCopias();
     const plan = planDeDisco({ libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, baseMb: config ? tamanoMb(config.archivoBase) : 0, walMb: config ? tamanoMb(`${config.archivoBase}-wal`) : 0, ajusteLocal: ajustesCopias(db).local });
@@ -111,7 +119,7 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
   rutas.agregar('POST', '/api/admin/copias/clave/nueva', ({ db, usuario }) => {
     try {
       contar(topes.clave, usuario);
-      const r = crearClavePendiente(db, { usuarioId: usuario.id });
+      const r = crearClavePendiente(db, { config, usuarioId: usuario.id });
       return { codigo: 201, datos: { clave: r.clave, huella: r.huella, expira: r.expira }, cabeceras: SIN_CACHE };
     } catch (error) {
       throw errorDeClave(error, registro);

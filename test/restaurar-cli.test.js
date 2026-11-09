@@ -14,7 +14,7 @@ import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { carpetaTemporal } from './ayuda.js';
-import { montar, CHAT, HORA } from './copias-tarea-base.js';
+import { montar, segundoCodigo, CHAT, HORA } from './copias-tarea-base.js';
 import { crearLector } from '../deploy/oportia-restaurar.mjs';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -60,7 +60,8 @@ test('ronda 2 (6): el lector en una terminal: oculta → visible → oculta, tec
 const hayPython = spawnSync('python3', ['-I', '-c', 'import pty, select, json, os; m, s = pty.openpty(); os.close(m); os.close(s)'], { stdio: 'ignore', timeout: 10_000 }).status === 0;
 
 // Corre el programa dentro de una terminal (pty) con python3: cada paso espera un texto (expresión regular) y escribe
-// algo; «avisar» le cuenta a esta prueba lo encontrado (para escribirle al bot el código). → { status, salida, colgado }
+// algo; «avisar» le cuenta a esta prueba lo encontrado (para escribirle al bot el código); «escribirDe» escribe lo que
+// haya en ese archivo (lo deja la prueba en alAviso: el segundo código que el bot le mandó al chat). → { status, salida, colgado }
 function enTerminal({ argv, env, pasos, alAviso = () => {}, msFin = 30_000 }) {
   const carpeta = carpetaTemporal('pty');
   const script = join(carpeta, 'terminal.py');
@@ -98,6 +99,11 @@ for p in c['pasos']:
         print(json.dumps({'avisar': p['avisar'], 'grupos': [g.decode('utf8', 'replace') for g in m.groups()]}), flush=True)
         time.sleep(0.3)
     if 'escribir' in p: os.write(fd, p['escribir'].encode())
+    if 'escribirDe' in p:
+        for _ in range(50):
+            if os.path.exists(p['escribirDe']): break
+            time.sleep(0.1)
+        with open(p['escribirDe'], 'rb') as f: os.write(fd, f.read() + b'\\r')
 fin = time.time() + c['msFin'] / 1000
 estado = None
 while time.time() < fin:
@@ -164,6 +170,7 @@ test('ronda 2 (6): en una terminal de verdad, --telegram: el token (oculto), el 
   const b = await montar({ relleno: 4 });
   try {
     assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
+    const archivoSegundo = join(carpetaTemporal('pty-segundo'), 'codigo.txt');
     const r = await enTerminal({
       argv: ['--telegram', '--comprobar'],
       env: { OPORTIA_TELEGRAM_URL: b.falso.url },
@@ -171,9 +178,13 @@ test('ronda 2 (6): en una terminal de verdad, --telegram: el token (oculto), el 
         { esperar: 'token de tu bot \\(no se muestra\\): ', escribir: `${b.token}\r` },
         { esperar: 'este c\u00f3digo: (\\d{4} \\d{4})', avisar: 'codigo' },
         { esperar: '\u00bfEs el tuyo\\? \\(s\u00ed/no\\): ', escribir: 'si\r', ms: 30_000 },
+        { esperar: 'c\u00f3digo de 6 cifras que te mand\u00f3 el bot: ', avisar: 'segundo', escribirDe: archivoSegundo },
         { esperar: 'clave de recuperaci\u00f3n \\(no se muestra\\): ', escribir: `${b.claveTexto}\r` },
       ],
-      alAviso: x => { if (x.avisar === 'codigo') b.falso.escribir({ chat: CHAT, texto: `/start ${x.grupos[0]}` }); },
+      alAviso: x => {
+        if (x.avisar === 'codigo') b.falso.escribir({ chat: CHAT, texto: `/start ${x.grupos[0]}` });
+        if (x.avisar === 'segundo') writeFileSync(archivoSegundo, segundoCodigo(b.falso));
+      },
     });
     assert.equal(r.colgado, false, r.salida);
     assert.equal(r.status, 0, r.salida);

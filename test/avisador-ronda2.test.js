@@ -10,7 +10,7 @@
 import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { montar, ponerToken, unirChat, BOT, BOT2, CHAT, EXTRANO, MINUTO, HORA } from './copias-tarea-base.js';
+import { montar, ponerToken, unirChat, revisarYConfirmar, segundoCodigo, BOT, BOT2, CHAT, EXTRANO, MINUTO, HORA } from './copias-tarea-base.js';
 import { tokenDePrueba } from './telegram-falso.js';
 import { crearAvisador } from '../src/canales/avisador.js';
 import { frase } from '../src/canales/textos.js';
@@ -23,7 +23,7 @@ import { estadoCopias } from '../src/copias/estado.js';
 
 const DIA = 24 * HORA;
 const iso = ms => new Date(ms).toISOString();
-const textosDelChat = (b, chat = CHAT) => b.falso.mensajes.filter(m => m.chatId === String(chat) && m.text).map(m => m.text);
+const textosDelChat = (b, chat = CHAT) => b.falso.mensajes.filter(m => m.chatId === String(chat) && m.text && !m.text.startsWith('🔐')).map(m => m.text);
 const equivocados = (codigo, n) => Array.from({ length: n }, (_, i) => String((Number(codigo) + 1 + i) % 100_000_000).padStart(8, '0'));
 
 function conPasadas(b, avisador) {
@@ -117,7 +117,7 @@ test('ronda 2 (11): el chat se pierde, se abre modo seguro (grave), el dueño un
     assert.equal(canalActual(b.db).estado, 'perdido');
     abrirAviso(b.db, { clave: 'modo_seguro', nivel: 'grave', detalle: { motivo: 'servicio_inestable' }, ahora: b.t });
     assert.equal((await avisador.pasada()).motivo, 'perdido');
-    b.falso.escena('sendMessage', 'limite', { segundos: 3 });
+    b.falso.escena('sendMessage', 'limite', { segundos: 3, saltar: 1 }); // el segundo código sale; la bienvenida choca
     const antes = textosDelChat(b).length;
     await unirChat(b);
     assert.equal(textosDelChat(b).length, antes, 'la bienvenida no salió (429)');
@@ -225,7 +225,7 @@ test('ronda 2 (13): un extraño manda 40 mensajes de 4096 «ñ» (más de 256 KB
     for (let i = 0; i < 40; i++) b.falso.escribir({ chat: EXTRANO, texto: 'ñ'.repeat(4096) });
     b.falso.escribir({ chat: CHAT, texto: `/start ${v.codigo}` });
     let r = null;
-    for (let i = 0; i < 10 && r?.estado !== 'vinculado'; i++) r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
+    for (let i = 0; i < 10 && r?.estado !== 'vinculado'; i++) r = await revisarYConfirmar(b);
     assert.equal(r.estado, 'vinculado');
     // Uno solo demasiado grande (3 MB): se salta; el cursor nunca se queda atascado.
     v = await empezarVinculo(b.db, b.config, {});
@@ -234,14 +234,14 @@ test('ronda 2 (13): un extraño manda 40 mensajes de 4096 «ñ» (más de 256 KB
     b.falso.escribir({ chat: EXTRANO, texto: 'x'.repeat(3_000_000) });
     b.falso.escribir({ chat: CHAT, texto: `/start ${v.codigo}` });
     r = null;
-    for (let i = 0; i < 6 && r?.estado !== 'vinculado'; i++) r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
+    for (let i = 0; i < 6 && r?.estado !== 'vinculado'; i++) r = await revisarYConfirmar(b);
     assert.equal(r.estado, 'vinculado');
     // Sin cursor todavía (código recién pedido) y el enorme primero: se salta hasta el último, y el «/start» une.
     v = await empezarVinculo(b.db, b.config, {});
     b.falso.escribir({ chat: EXTRANO, texto: 'y'.repeat(3_000_000) });
     b.falso.escribir({ chat: CHAT, texto: `/start ${v.codigo}` });
     r = null;
-    for (let i = 0; i < 4 && r?.estado !== 'vinculado'; i++) r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
+    for (let i = 0; i < 4 && r?.estado !== 'vinculado'; i++) r = await revisarYConfirmar(b);
     assert.equal(r.estado, 'vinculado');
     assert.ok(b.falso.pedidos.filter(p => p.metodo === 'getUpdates').every(p => p.params.limit <= 10), 'de a pocos');
   } finally {

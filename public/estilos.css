@@ -1029,3 +1029,8 @@ details.desvincular button { margin-top: 4px; }
   .copias-mini { min-height: 0; }
   p.clave-recuperacion { flex-wrap: nowrap; }
 }
+
+/* Ronda 3 (parte e): el segundo código del chat, grande y fácil de escribir en el iPhone. */
+.confirmar-chat { display: flex; flex-direction: column; gap: 0.6rem; }
+.confirmar-chat label { font-weight: 600; }
+input.codigo-campo { font-size: 1.8rem; letter-spacing: 0.3em; text-align: center; max-width: 12ch; padding: 0.4rem 0.6rem; font-variant-numeric: tabular-nums; }

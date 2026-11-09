@@ -60,7 +60,9 @@ function motivoDe(salida, { metodo, descarga = false } = {}) {
   const j = salida.json;
   if (s === 200 && j && j.ok === true && Object.hasOwn(j, 'result')) return { motivo: 'ok', resultado: j.result };
   const descripcion = typeof j?.description === 'string' ? j.description.toLowerCase() : '';
-  if (s === 401 || (s === 404 && metodo === 'getMe')) return { motivo: 'clave_no_valida' };
+  // Ronda 3: solo una respuesta de Telegram (JSON con ok:false) dice que el token no sirve; una página de error de en medio
+  // (un 401 o 404 sin ese JSON) es pasajera. Y aun así, quien la recibe la toma como SOSPECHA (src/canales/canales.js).
+  if (s === 401 || (s === 404 && metodo === 'getMe')) return j && j.ok === false ? { motivo: 'clave_no_valida' } : { motivo: 'respuesta_no_valida' };
   if (s === 403) return { motivo: 'bloqueado' };
   if (s === 400 && descripcion.includes('chat not found')) return { motivo: 'chat_no_existe' };
   if (s === 413 || (s === 400 && metodo === 'getFile' && descripcion.includes('too big'))) return { motivo: 'demasiado_grande' };
@@ -84,7 +86,16 @@ async function llamarJson(cred, metodo, parametros = {}, { senal = null, timeout
   });
   // Una respuesta 200 que pasó del tope se distingue (getUpdates la pide más chica); las demás siguen igual.
   if (salida.demasiado && salida.status >= 200 && salida.status <= 299) return { motivo: 'respuesta_no_valida', demasiado: true };
-  return motivoDe(salida, { metodo });
+  const r = motivoDe(salida, { metodo });
+  return quizasEntregado(salida, r.motivo) ? { ...r, quizas: true } : r;
+}
+
+// Ronda 3: el pedido SALIÓ y no se sabe si Telegram lo hizo (se cortó la respuesta, se acabó el tiempo, un 5xx de en
+// medio): un mensaje así quizás llegó. Quien lo manda lo anota «dudoso» (cuenta para los topes y no vuelve a sonar).
+function quizasEntregado(salida, motivo) {
+  if (motivo === 'ok') return false;
+  if (salida.tiempoAgotado || salida.red === 'durante') return true;
+  return Number.isInteger(salida.status) && salida.status >= 500 && salida.status <= 599;
 }
 
 const mal = () => ({ motivo: 'respuesta_no_valida' });
@@ -108,7 +119,10 @@ function mensajeDe(u) {
     mensajeId: numero(m.message_id),
     fecha: numero(m.date),
     chat: { id: String(m.chat.id), tipo: textoCorto(m.chat.type, 20), nombre: textoCorto(m.chat.first_name, 40) },
-    de: m.from && Number.isSafeInteger(m.from.id) ? { id: String(m.from.id), esBot: m.from.is_bot === true, nombre: textoCorto(m.from.first_name, 40) } : null,
+    de: m.from && Number.isSafeInteger(m.from.id) ? {
+      id: String(m.from.id), esBot: m.from.is_bot === true, nombre: textoCorto(m.from.first_name, 40),
+      usuario: typeof m.from.username === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(m.from.username) ? m.from.username : null,
+    } : null,
     texto: typeof m.text === 'string' ? m.text.slice(0, 200) : null,
     documento: documentoDe(m.document),
   };
@@ -156,7 +170,7 @@ export const TELEGRAM = Object.freeze({
     const r = await llamarJson(cred, 'sendMessage', {
       chat_id: String(destino), text: t, disable_notification: Boolean(silencioso), link_preview_options: { is_disabled: true },
     }, { senal });
-    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
+    if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs, ...(r.quizas ? { quizas: true } : {}) };
     if (!Number.isSafeInteger(r.resultado?.message_id)) return mal();
     return { motivo: 'ok', mensajeId: r.resultado.message_id };
   },

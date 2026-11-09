@@ -4,7 +4,13 @@
 // aquí no hay red, ni foto de la base, ni archivos: solo la base y cuentas.
 //  - La clave de recuperación del dueño NUNCA se guarda: de ella quedan la llave pública (para cifrar), el «sello»
 //    (firma los índices; no abre nada), la huella («Clave A7F3») y el sha256 de su «verificador» (la página lo calcula
-//    sola: así el servidor puede comprobar la clave sin verla). El texto de la clave existe solo en la respuesta de
+//    sola: así el servidor puede comprobar la clave sin verla).
+//  - Ronda 3 del equipo rojo: el sello NUNCA queda en claro en la base. Va envuelto con la llave de las claves
+//    (src/claves/almacen.js envolverDato), que nunca viaja en una copia: quien tiene solo la base (una copia vieja, una
+//    foto, el archivo de antes de una migración) no puede armar una copia que parezca auténtica. Si la llave de las
+//    claves cambia (otro servidor, una llave nueva), el sello no se abre: las copias se paran, copias_clave_ilegible
+//    (grave) lo dice y la pantalla ofrece crear una clave nueva (o la parte 1f la vuelve a envolver con la clave del
+//    dueño: reenvolverSello). El texto de la clave existe solo en la respuesta de
 //    «Crear» (crearClavePendiente) y nunca entra en una fila, un registro, un aviso ni la auditoría.
 //  - Nada se borra: una llave vieja queda «anterior» (las copias viejas la necesitan), una copia queda con su estado.
 //  - Los errores son ErrorCopias con un código corto; las rutas los vuelven respuestas HTTP (src/api/copias.js).
@@ -13,7 +19,8 @@ import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { ErrorCopias, CLAVE_SERVIDOR, ESTADOS_COPIA, CABECERA_PARTE } from './formato.js';
-import { crearClave, derivar, esClaveDePrueba, hashVerificador } from './clave.js';
+import { crearClave, derivar, esClaveDePrueba, hashVerificador, leerClave } from './clave.js';
+import { envolverDato, abrirDato, huellaDeEnvuelto } from '../claves/almacen.js';
 import { ranura } from '../tareas/tiempo.js';
 import { PROGRAMAS_DEL_SISTEMA } from '../tareas/tipos.js';
 
@@ -75,6 +82,56 @@ export function servidorActual(db) {
 
 // ---------- La clave de recuperación ----------
 
+const USO_SELLO = 'copias_sello';
+const refSello = publica => `copias-llave|${publica}`;
+
+// Envuelve el sello (hex) de una llave con la llave de las claves. Lanza ErrorCopias('almacen_no_disponible').
+function envolverSello(db, config, publica, selloHex) {
+  try {
+    return envolverDato(db, config, selloHex, { ref: refSello(publica), uso: USO_SELLO });
+  } catch {
+    throw new ErrorCopias('almacen_no_disponible');
+  }
+}
+
+// El sello de una llave (Buffer de 32 bytes: quien lo usa lo borra con fill(0)), o null si no se puede abrir (la llave de
+// las claves cambió o falta). Nunca un sello en claro: uno así (de antes de la ronda 3) no se acepta.
+export function selloDe(config, llave) {
+  const texto = llave ? abrirDato(config, llave.sello, { ref: refSello(llave.publica), uso: USO_SELLO }) : null;
+  if (!texto || !/^[0-9a-f]{64}$/.test(texto)) return null;
+  return Buffer.from(texto, 'hex');
+}
+
+// ¿Se puede abrir el sello con la llave de las claves de ahora? (sin abrir nada: por la huella) huellaLlave: la de
+// estadoLlave(config) o null.
+export function selloLegible(llave, huellaLlave) {
+  return Boolean(llave && huellaLlave && huellaDeEnvuelto(llave.sello) === huellaLlave);
+}
+
+// Para la parte 1f (y la consola): con la clave de recuperación del dueño, vuelve a envolver el sello de SU llave con la
+// llave de las claves de ESTE servidor (después de restaurar en uno nuevo). Nunca guarda la clave. → { huella } o lanza
+// ErrorCopias('clave_no_es_de_esta_copia' | 'almacen_no_disponible').
+export function reenvolverSello(db, config, { clave, ahora = Date.now() }) {
+  const semilla = leerClave(clave);
+  let d;
+  try { d = derivar(semilla); } finally { semilla.fill(0); }
+  try {
+    const publica = d.publica.toString('base64url');
+    const filas = db.prepare("SELECT * FROM copias_llaves WHERE publica = ? AND estado IN ('activa', 'anterior', 'pendiente')").all(publica);
+    if (!filas.length) throw new ErrorCopias('clave_no_es_de_esta_copia', { receptor: d.huella });
+    const envuelto = envolverSello(db, config, publica, d.sello.toString('hex'));
+    enTransaccion(db, () => {
+      for (const f of filas) db.prepare('UPDATE copias_llaves SET sello = ? WHERE id = ?').run(envuelto, f.id);
+      auditar(db, { usuarioId: null, accion: 'clave_recuperacion_reenvuelta', detalle: `Clave ${d.huella}` });
+      resolverAviso(db, 'copias_clave_ilegible', ahora);
+    });
+    return { huella: d.huella };
+  } finally {
+    d.sello.fill(0);
+    d.verificador.fill(0);
+  }
+}
+
 export function llaveActiva(db) {
   return db.prepare("SELECT * FROM copias_llaves WHERE estado = 'activa' ORDER BY id DESC LIMIT 1").get() ?? null;
 }
@@ -92,14 +149,15 @@ export function llavePendiente(db, ahora = Date.now()) {
 
 // «Crear mi clave de recuperación»: crea una clave al azar y guarda SOLO su parte pública, como «pendiente». Devuelve
 // { clave, huella, expira } — la única vez que el texto de la clave sale del servidor (la respuesta va con no-store).
-export function crearClavePendiente(db, { usuarioId = null, ahora = Date.now() } = {}) {
+export function crearClavePendiente(db, { config, usuarioId = null, ahora = Date.now() } = {}) {
+  if (!config) throw new ErrorCopias('almacen_no_disponible');
   const { texto, semilla } = crearClave();
   let d;
   try { d = derivar(semilla); } finally { semilla.fill(0); }
   try {
     const publica = d.publica.toString('base64url');
     if (esClaveDePrueba(publica)) throw new ErrorCopias('clave_de_prueba'); // imposible con 128 bits al azar, pero se revisa
-    const sello = d.sello.toString('hex');
+    const sello = envolverSello(db, config, publica, d.sello.toString('hex'));
     const verificador = createHash('sha256').update(d.verificador).digest('hex');
     const vence = ahora + PENDIENTE_MS;
     enTransaccion(db, () => {
@@ -141,6 +199,7 @@ export function confirmarClave(db, { verificador, usuarioId = null, ahora = Date
     db.prepare("UPDATE copias_llaves SET estado = 'activa', confirmada_en = ?, vence_en = NULL WHERE id = ?").run(momento, p.id);
     auditar(db, { usuarioId, accion: 'clave_recuperacion_confirmada', detalle: `Clave ${p.huella}` });
     resolverAviso(db, 'copias_sin_clave', ahora);
+    resolverAviso(db, 'copias_clave_ilegible', ahora);
     return { huella: p.huella, desde: momento };
   });
   if (r.caducada) throw new ErrorCopias('sin_pendiente');
@@ -429,8 +488,12 @@ export function resumenCopias(db, { ahora = Date.now() } = {}) {
 
 // Todo lo que muestra Administrador → Copias (GET /api/admin/copias). Solo filas de la base y UNA medida del disco
 // (libreMb, que pasa quien llama): nunca mira la carpeta de las copias.
-export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopiasMb, mismoDisco = true, baseMb = 0, walMb = 0, telegram = null, modoSeguro = false, trabajador = true } = {}) {
-  const activa = llaveActiva(db);
+export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopiasMb, mismoDisco = true, baseMb = 0, walMb = 0, telegram = null, modoSeguro = false, trabajador = true, huellaLlave = null } = {}) {
+  const guardada = llaveActiva(db);
+  // Una llave cuyo sello no se abre con la llave de las claves de ahora no sirve para copias nuevas: es como no tener
+  // clave (la pantalla ofrece crear otra y dice por qué).
+  const ilegible = guardada && !selloLegible(guardada, huellaLlave) ? { huella: guardada.huella } : null;
+  const activa = ilegible ? null : guardada;
   const pendiente = llavePendiente(db, ahora);
   const anteriores = db.prepare("SELECT huella, confirmada_en, reemplazada_en FROM copias_llaves WHERE estado = 'anterior' ORDER BY id DESC LIMIT 20").all()
     .map(l => ({ huella: l.huella, desde: l.confirmada_en, hasta: l.reemplazada_en }));
@@ -447,7 +510,7 @@ export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopi
   return {
     clave: {
       activa: Boolean(activa), huella: activa?.huella ?? null, desde: activa?.confirmada_en ?? null, comprobadaEn: activa?.comprobada_en ?? null,
-      pendiente: pendiente ? { huella: pendiente.huella, expira: pendiente.vence_en } : null, anteriores,
+      pendiente: pendiente ? { huella: pendiente.huella, expira: pendiente.vence_en } : null, anteriores, ilegible,
     },
     telegram,
     ultima: ultima ? copiaPublica(ultima) : null,

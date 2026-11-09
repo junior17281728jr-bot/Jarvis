@@ -32,8 +32,8 @@ import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { copiaAtrasada } from '../copias/estado.js';
 import { conCredencial } from './credencial.js';
 import { ADAPTADORES } from './canal.js';
-import { USO, listoParaMandar, anotarEnvio, anotarProblema, marcarBien, enviadosDesde, rangoDe, secretoDelBot, mandarBienvenida, bienvenidaPendiente, primerVinculo, MARGEN_RELOJ_MS } from './canales.js';
-import { textoDeAviso, textoCierre, textoResumen, textoPerdidos, idiomaDelDueno, baseDeClave } from './textos.js';
+import { USO, listoParaMandar, anotarEnvio, anotarProblema, marcarBien, enviadosDesde, rangoDe, secretoDelBot, mandarBienvenida, bienvenidaPendiente, primerVinculo, MARGEN_RELOJ_MS, revisarClaveDudosa, botGuardado } from './canales.js';
+import { textoDeAviso, textoCierre, textoResumen, textoPerdidos, idiomaDelDueno, baseDeClave, frase, TEXTO_MAX } from './textos.js';
 import { probarSecreto } from '../claves/probar.js';
 
 const MINUTO = 60_000;
@@ -43,6 +43,7 @@ export const TOPES_ENVIO = Object.freeze({
   juntarDesde: 3, reaperturasParaJuntar: 3, fallidoMs: 24 * HORA, atrasadaCadaMs: 5 * MINUTO, cadaMs: 15_000,
   frescuraGraveMs: 7 * 24 * HORA, // lo grave espera hasta 7 días a que Telegram vuelva
   reprobarMs: Object.freeze([5 * MINUTO, 5 * MINUTO, 5 * MINUTO, HORA]), // probar otra vez un token nuevo que no pasó por algo pasajero
+  reprobarMaloMs: HORA, // ronda 3: un token que quedó «no sirve» se prueba otra vez cada hora (gratis)
   saltoRelojMs: 10 * MINUTO, // la hora de la pared y la del proceso no cuadran por más que esto: el reloj saltó
   aceptarSaltoMs: 6 * HORA, // una hora nueva que se queda así de tiempo (del proceso) se acepta
   bienvenidaTrasMs: MINUTO, // la bienvenida que no salió se manda desde 1 min después de unir el chat
@@ -51,6 +52,8 @@ export const TOPES_ENVIO = Object.freeze({
 const PRUEBAS_PASAJERAS = Object.freeze(['error_proveedor', 'sin_red', 'tiempo_agotado', 'respuesta_no_valida', 'limite_proveedor', 'error_servidor']);
 // Lo que NO es un problema del canal al mandar (nunca marca un aviso «fallido»).
 const SIN_CANAL = Object.freeze(['ok', 'limite', 'sin_clave', 'credencial_cambiada', 'cancelado']);
+// Lo que pudo haber llegado aunque no hubo respuesta (además de lo que el adaptador marca «quizas»).
+const DUDOSOS = Object.freeze(['tiempo_agotado', 'error_servidor']);
 
 // Lo que va por Telegram (además de TODO lo grave, que va siempre y suena). Ver diseno-1e §7.2.
 export const RUTA_AVISOS = Object.freeze({
@@ -119,6 +122,13 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     if (saltoDesde == null) saltoDesde = m;
     if (m - saltoDesde >= T.aceptarSaltoMs) { baseReloj = { pared: ahora, mono: m }; saltoDesde = null; return true; }
     return false;
+  }
+
+  // ¿El token guardado es del MISMO bot del chat? (lo anotó su última prueba que pasó: telegram.bot)
+  function botDelChat(canal) {
+    const b = botGuardado(db);
+    const s = secretoDelBot(db);
+    return Boolean(b && s && b.secretoId === s.id && canal.cuenta_id && String(b.id) === String(canal.cuenta_id) && canal.secreto_id === s.id);
   }
 
   // Lo que no es grave y pasó de 48 h sin llegar: queda anotado «vencido» (la pantalla lo sigue mostrando).
@@ -191,10 +201,17 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
       ORDER BY a.resuelto_en LIMIT 5`).all(iso(ahora - T.cierreMs));
   }
 
+  // ¿Alguno de estos avisos ya salió una vez sin saber si llegó («dudoso»)? Entonces el siguiente intento no suena.
+  const yaDudoso = avisos => avisos.some(a => db.prepare("SELECT 1 FROM canal_envios WHERE aviso_id = ? AND resultado = 'dudoso' LIMIT 1").get(a.id));
+
   async function mandar(listo, mensaje, ahora, creible = true) {
     const { canal } = listo;
+    // Ronda 3 del equipo rojo: si un intento anterior quizás llegó (se cortó la respuesta), este va en silencio y dice
+    // que es otra vez: el dueño nunca recibe el mismo «URGENTE» sonando cada hora.
+    const repetido = ['aviso', 'resumen', 'perdidos'].includes(mensaje.clase) && yaDudoso(mensaje.avisos);
+    const texto = repetido ? `${frase(idiomaDelDueno(db), 'telegram.repetido')}\n${mensaje.texto}`.slice(0, TEXTO_MAX) : mensaje.texto;
     const r = await conCredencial(db, config, { uso: USO, secretoId: canal.secreto_id }, cred => adaptador.enviarTexto(cred, {
-      destino: canal.destino, texto: mensaje.texto, silencioso: !mensaje.suena,
+      destino: canal.destino, texto, silencioso: repetido || !mensaje.suena,
     }));
     const momento = reloj();
     if (r.motivo === 'ok') {
@@ -213,6 +230,12 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     enTransaccion(db, () => {
       if (r.motivo === 'sin_clave' || r.motivo === 'credencial_cambiada') return;
       anotarProblema(db, canal, { motivo: r.motivo, esperarMs: r.esperarMs, ahora: momento });
+      // Quizás llegó: queda «dudoso» (cuenta para los topes de 10 por hora y 30 por día; el próximo intento no suena).
+      if ((r.quizas || DUDOSOS.includes(r.motivo)) && ['aviso', 'resumen', 'perdidos', 'cierre'].includes(mensaje.clase)) {
+        for (const item of mensaje.avisos) {
+          anotarEnvio(db, { canalId: canal.id, clase: mensaje.clase === 'cierre' ? 'cierre' : 'aviso', avisoId: item.id, clave: item.clave, nivel: item.nivel, resultado: 'dudoso', motivo: r.motivo, ahora: momento });
+        }
+      }
       // Un aviso que NO es grave y no se pudo mandar en 24 h queda «fallido» (sigue en la pantalla). Lo grave nunca:
       // espera (hasta 7 días) a que Telegram vuelva.
       if (creible && !SIN_CANAL.includes(r.motivo) && ['aviso', 'resumen'].includes(mensaje.clase)) {
@@ -231,17 +254,19 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
   // El token se cambió por uno nuevo y su prueba gratis falló por algo pasajero (o no se hizo): se prueba otra vez solo,
   // gratis (getMe), cada 5 min las primeras 3 veces y después cada hora. Si pasa y es el mismo bot, el chat sigue con el
   // token nuevo (trasProbarToken, dentro de probarSecreto); si no pasa, telegram_falla «sin_probar» lo dice.
-  async function reprobar(ahora) {
+  // Ronda 3: un token que quedó «no sirve» (dos getMe seguidos con 401) se prueba otra vez cada hora, gratis, si es el
+  // del bot del chat: un 401 de Telegram que fue un error suyo nunca deja los avisos mudos para siempre.
+  async function reprobar(ahora, { lento = false } = {}) {
     const s = secretoDelBot(db);
     if (!s) return null;
-    if (s.prueba && s.prueba !== 'ok' && !PRUEBAS_PASAJERAS.includes(s.prueba)) return null; // un token malo: el dueño tiene que pegar otro
+    if (!lento && s.prueba && s.prueba !== 'ok' && !PRUEBAS_PASAJERAS.includes(s.prueba)) return null; // un token malo: el dueño tiene que pegar otro
     if (reprobado.secretoId !== s.id) reprobado = { en: -Infinity, veces: 0, secretoId: s.id };
-    const espera = T.reprobarMs[Math.min(reprobado.veces, T.reprobarMs.length - 1)];
+    const espera = lento ? T.reprobarMaloMs : T.reprobarMs[Math.min(reprobado.veces, T.reprobarMs.length - 1)];
     if (ahora - reprobado.en < espera && ahora >= reprobado.en) return null;
     reprobado = { ...reprobado, en: ahora, veces: reprobado.veces + 1 };
     let motivo;
     try { motivo = (await probarSecreto(db, config, { id: s.id, usuarioId: null, ahora: reloj })).motivo; } catch { motivo = 'error_proveedor'; }
-    if (motivo !== 'ok') {
+    if (motivo !== 'ok' && !lento) {
       enTransaccion(db, () => abrirAviso(db, { clave: 'telegram_falla', nivel: 'atencion', detalle: { motivo: 'sin_probar' }, ahora: reloj() }));
       anotar(`reprobar:${motivo}`);
     }
@@ -252,9 +277,14 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     const ahora = reloj();
     const creible = relojCreible(ahora);
     if (creible) revisarAtrasada(ahora);
+    // Una sospecha de token malo (un 401 suelto): getMe otra vez antes de mandar nada (ronda 3).
+    await revisarClaveDudosa(db, config, { adaptador, ahora: reloj });
     let listo = listoParaMandar(db, config, ahora);
     if (!listo.si && listo.motivo === 'sin_probar') {
       const motivo = await reprobar(ahora);
+      if (motivo === 'ok') listo = listoParaMandar(db, config, reloj());
+    } else if (!listo.si && listo.motivo === 'clave_no_valida' && listo.canal && botDelChat(listo.canal)) {
+      const motivo = await reprobar(ahora, { lento: true });
       if (motivo === 'ok') listo = listoParaMandar(db, config, reloj());
     }
     if (!listo.si) return { enviado: null, motivo: listo.motivo };

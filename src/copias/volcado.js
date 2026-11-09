@@ -11,6 +11,10 @@
 //                                                      sha256 de todo lo anterior) — solo quien tiene el sello la arma.
 // Valores: NULL → null; INTEGER → número (o {"i":"…"} si pasa de 2^53−1); REAL → {"r":n} ({"r":"Infinity"},
 // {"r":"-Infinity"}); TEXT → texto; BLOB → {"b":"<base64>"}. Al restaurar, cada uno vuelve con su mismo tipo.
+// Ronda 3 del equipo rojo: el TEXT se lee por sus BYTES (CAST(c AS BLOB)), nunca como lo entrega node:sqlite (que corta
+// en el primer carácter NUL y cambia los bytes que no son UTF-8 por «�»). Un texto UTF-8 válido (con NUL o no) va como
+// texto; uno que NO es UTF-8 válido (solo se escribe con SQL a mano) va como {"x":"<base64 de sus bytes>"} y al restaurar
+// vuelve como TEXT con esos mismos bytes (CAST(? AS TEXT)). Así el volcado nunca pierde nada en silencio.
 // Tablas sin rowid, columnas generadas y tablas virtuales no se pueden volcar así: volcado_no_soportado (una
 // migración que las agregue tendrá que subir el formato).
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
@@ -29,6 +33,24 @@ const SQL_DE = Object.freeze({
 
 const comillas = nombre => `"${String(nombre).replace(/"/g, '""')}"`;
 const esperar = () => new Promise(listo => setImmediate(listo));
+// fatal: un byte que no es UTF-8 lanza (nunca «�»); ignoreBOM: un BOM al principio queda (nunca se come).
+const UTF8_ESTRICTO = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+// Un TEXT leído por sus bytes → texto (UTF-8 válido, aunque tenga NUL) o {"x": base64} (bytes que no son UTF-8).
+function codificarTexto(bytes) {
+  const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  try {
+    return UTF8_ESTRICTO.decode(b);
+  } catch {
+    return { x: b.toString('base64') };
+  }
+}
+
+// Un TEXT con bytes que no son UTF-8 (lo que devuelve decodificar para {"x": …}): el aplicador lo guarda con
+// CAST(? AS TEXT), así vuelve como TEXT con sus mismos bytes.
+export class TextoCrudo {
+  constructor(bytes) { this.bytes = bytes; }
+}
 
 function codificar(v) {
   if (v === null || v === undefined) return null;
@@ -62,6 +84,7 @@ export function decodificar(v) {
       if (v.r === '-0') return -0;
     }
     if (claves.length === 1 && claves[0] === 'b' && typeof v.b === 'string') return Buffer.from(v.b, 'base64');
+    if (claves.length === 1 && claves[0] === 'x' && typeof v.x === 'string') return new TextoCrudo(Buffer.from(v.x, 'base64'));
   }
   throw new ErrorCopias('volcado_danado');
 }
@@ -141,13 +164,20 @@ export async function* volcar(db, { copia, creado = new Date().toISOString(), ve
   for (const t of tablas) {
     yield salir(linea({ t: 'esquema', tipo: 'table', nombre: t.nombre, sql: t.sql }));
     yield salir(linea({ t: 'filas', tabla: t.nombre, columnas: ['rowid', ...t.columnas] }));
-    const consulta = db.prepare(`SELECT rowid, ${t.columnas.map(comillas).join(', ')} FROM ${comillas(t.nombre)} ORDER BY rowid`);
+    // Por cada columna, dos: el valor (el TEXT, por sus bytes) y si era TEXT (un BLOB también llega como bytes).
+    const expresiones = t.columnas.map((c, i) => `CASE WHEN typeof(${comillas(c)}) = 'text' THEN CAST(${comillas(c)} AS BLOB) ELSE ${comillas(c)} END AS v${i}, typeof(${comillas(c)}) = 'text' AS t${i}`);
+    const consulta = db.prepare(`SELECT rowid AS r, ${expresiones.join(', ')} FROM ${comillas(t.nombre)} ORDER BY rowid`);
     consulta.setReadBigInts(true);
     consulta.setReturnArrays?.(true);
     let n = 0;
     for (const fila of consulta.iterate()) {
-      const valores = Array.isArray(fila) ? fila : [fila.rowid, ...t.columnas.map(c => fila[c])];
-      const b = linea(valores.map(codificar));
+      const crudos = Array.isArray(fila) ? fila : [fila.r, ...t.columnas.flatMap((_, i) => [fila[`v${i}`], fila[`t${i}`]])];
+      const valores = [codificar(crudos[0])];
+      for (let i = 0; i < t.columnas.length; i++) {
+        const v = crudos[1 + 2 * i];
+        valores.push(crudos[2 + 2 * i] === 1n && v instanceof Uint8Array ? codificarTexto(v) : codificar(v));
+      }
+      const b = linea(valores);
       if (b.length > lineaMax) throw new ErrorCopias('fila_muy_grande', { tabla: t.nombre });
       n += 1;
       yield salir(b);
@@ -299,6 +329,8 @@ export function crearAplicador(db, { lineasPorLote = 5000, bytesPorLote = 8 * 10
   let bytesLote = 0;
   let insertar = null;
   let columnas = null;
+  let tablaActual = null;
+  let conCrudo = new Map(); // las sentencias con CAST(? AS TEXT) en algunas columnas (por sus posiciones)
   const aplicar = () => {
     if (!lote.length) return;
     const elementos = lote;
@@ -312,11 +344,23 @@ export function crearAplicador(db, { lineasPorLote = 5000, bytesPorLote = 8 * 10
           const reales = db.prepare('SELECT name FROM pragma_table_xinfo(?) WHERE hidden = 0 ORDER BY cid').all(e.tabla).map(c => c.name);
           if (JSON.stringify(['rowid', ...reales]) !== JSON.stringify(e.columnas)) throw new ErrorCopias('volcado_danado');
           columnas = e.columnas;
+          tablaActual = e.tabla;
+          conCrudo = new Map();
           insertar = db.prepare(`INSERT INTO ${comillas(e.tabla)} (${columnas.map(comillas).join(', ')}) VALUES (${columnas.map(() => '?').join(', ')})`);
         } else if (e.t === 'fila') {
-          insertar.run(...e.valores.map(decodificar));
+          const valores = e.valores.map(decodificar);
+          if (!valores.some(v => v instanceof TextoCrudo)) {
+            insertar.run(...valores);
+          } else {
+            const mascara = valores.map(v => (v instanceof TextoCrudo ? '1' : '0')).join('');
+            if (!conCrudo.has(mascara)) {
+              conCrudo.set(mascara, db.prepare(`INSERT INTO ${comillas(tablaActual)} (${columnas.map(comillas).join(', ')}) VALUES (${[...mascara].map(m => (m === '1' ? 'CAST(? AS TEXT)' : '?')).join(', ')})`));
+            }
+            conCrudo.get(mascara).run(...valores.map(v => (v instanceof TextoCrudo ? v.bytes : v)));
+          }
         } else if (e.t === 'fin_filas') {
           insertar = null;
+          conCrudo = new Map();
         }
       }
     });

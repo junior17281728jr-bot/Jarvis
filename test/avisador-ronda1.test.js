@@ -9,7 +9,7 @@
 import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { montar, ponerToken, BOT, CHAT, EXTRANO, MINUTO, HORA } from './copias-tarea-base.js';
+import { montar, ponerToken, revisarYConfirmar, BOT, CHAT, EXTRANO, MINUTO, HORA } from './copias-tarea-base.js';
 import { tokenDePrueba } from './telegram-falso.js';
 import { crearAvisador } from '../src/canales/avisador.js';
 import { frase } from '../src/canales/textos.js';
@@ -18,7 +18,7 @@ import { canalActual, empezarVinculo, revisarVinculo, estadoTelegram, enviadosDe
 import { aplicarActualizaciones } from '../src/copias/vigilar.js';
 
 const iso = ms => new Date(ms).toISOString();
-const textosDelChat = (b, chat = CHAT) => b.falso.mensajes.filter(m => m.chatId === String(chat) && m.text).map(m => m.text);
+const textosDelChat = (b, chat = CHAT) => b.falso.mensajes.filter(m => m.chatId === String(chat) && m.text && !m.text.startsWith('🔐')).map(m => m.text);
 const pedidosDe = (b, metodo) => b.falso.pedidos.filter(p => p.metodo === metodo).length;
 
 async function conAvisador(fn, opciones = {}) {
@@ -52,14 +52,14 @@ test('ronda 1 (8) y ronda 2: 5 códigos equivocados y después el bueno del MISM
     const v = await empezarVinculo(b.db, b.config, {});
     for (const malo of equivocados(v.codigo, 5)) b.falso.escribir({ chat: EXTRANO, texto: malo });
     b.falso.escribir({ chat: EXTRANO, texto: v.codigo });
-    const r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
+    const r = await revisarYConfirmar(b);
     assert.equal(r.estado, 'esperando');
     assert.equal(canalActual(b.db), null, 'ningún chat unido: el extraño gastó sus 5 intentos y su código bueno se ignora');
     const fila = b.db.prepare("SELECT estado, codigo_intentos, codigo_intentos_chats FROM canales ORDER BY id DESC LIMIT 1").get();
     assert.deepEqual([fila.estado, fila.codigo_intentos, JSON.parse(fila.codigo_intentos_chats)], ['pendiente', 5, { [String(EXTRANO)]: 5 }]);
     // El dueño, en su chat, con el mismo código: se une (los intentos del extraño nunca son los suyos).
     b.falso.escribir({ chat: CHAT, texto: `/start ${v.codigo}` });
-    assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'vinculado');
+    assert.equal((await revisarYConfirmar(b)).estado, 'vinculado');
     assert.equal(canalActual(b.db).destino, String(CHAT));
   } finally {
     await b.cerrar();

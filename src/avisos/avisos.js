@@ -24,6 +24,8 @@ export const CLAVES_AVISO = Object.freeze([
   // de restaurar) manda copias al chat con el mismo bot (grave); la última copia quedó solo en el servidor porque
   // Telegram no respondió.
   'copias_fecha_futura', 'copias_otro_servidor', 'copia_solo_local',
+  // Ronda 3: el sello de la clave de recuperación no se abre con la llave de las claves de ahora (grave: no hay copias).
+  'copias_clave_ilegible',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;

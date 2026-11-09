@@ -19,8 +19,12 @@ export const LEER_MAXIMO = 64 * 1024;
 export const COPIA_SIN_TAREA_MS = 2 * 3_600_000;
 // Un «hasta» guardado más de 5 min en el futuro es de un reloj que iba adelantado: se vuelve 7 días atrás y las líneas
 // ya vistas se reconocen por su contenido (las últimas VISTAS_MAX), así nada se avisa dos veces ni se salta.
+// Ronda 3 del equipo rojo: lo que dice si una línea ya se vio es SOLO su contenido (vistas), dentro de una ventana de 7
+// días antes de la más nueva vista: una línea con una hora de antes de la última vista (el reloj se corrigió entre dos
+// corridas del actualizador) igual se avisa. El actualizador escribe como mucho 2 líneas por hora: 336 en 7 días.
 export const MARGEN_RELOJ_MS = 5 * 60_000;
-export const VISTAS_MAX = 200;
+export const VISTAS_MAX = 400;
+export const VENTANA_VISTAS_MS = 7 * DIA;
 
 function tamanoMb(ruta) {
   try { return statSync(ruta).size / MB; } catch { return 0; }
@@ -123,32 +127,44 @@ function leerAjuste(db, clave) {
 
 const claveDeLinea = l => `${l.fecha}|${l.tipo}|${l.sha}`;
 
-// Abre o resuelve los avisos de las actualizaciones (síncrona: dentro de ctx.escribir). La primera vez solo anota
-// «desde ahora» (no avisa de la historia vieja). → { abiertos, resueltos } (y relojAtras: true si el reloj volvió atrás)
-export function aplicarActualizaciones(db, datos, { ahora = Date.now() } = {}) {
+// Abre o resuelve los avisos de las actualizaciones (síncrona: dentro de ctx.escribir). → { abiertos, resueltos } (y
+// relojAtras: true si el reloj volvió atrás).
+// La PRIMERA vez (ronda 3 del equipo rojo) no empieza en «ahora»: empieza cuando se instaló la versión que corre (la
+// última línea «actualizado a …»; si no hay, cuando arrancó el proceso: arranque), nunca más de 24 h atrás. Así una
+// vuelta atrás de minutos antes de la primera lectura se avisa; lo de antes de esa instalación solo se anota como visto.
+export function aplicarActualizaciones(db, datos, { ahora = Date.now(), arranque = null } = {}) {
   const r = { abiertos: [], resueltos: [] };
   if (!datos) return r;
   const guardado = leerAjuste(db, CLAVE_ACTUALIZACIONES);
   let hasta = Date.parse(guardado?.hasta ?? '');
+  let piso = Date.parse(guardado?.piso ?? '');
   const vistas = Array.isArray(guardado?.vistas) ? guardado.vistas.map(String).slice(-VISTAS_MAX) : [];
   const yaVista = new Set(vistas);
   const guardar = valor => db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(CLAVE_ACTUALIZACIONES, JSON.stringify(valor), iso(ahora));
+  const ver = l => { const k = claveDeLinea(l); if (!yaVista.has(k)) { vistas.push(k); yaVista.add(k); } };
   if (!Number.isFinite(hasta)) {
-    guardar({ hasta: iso(ahora), versionMala: datos.versionMala ?? null, vistas: [] });
-    return r;
+    const instalada = datos.lineas.filter(l => l.tipo === 'actualizado' && l.fecha <= ahora + MARGEN_RELOJ_MS).reduce((m, l) => Math.max(m, l.fecha), -Infinity);
+    let inicio = Number.isFinite(instalada) ? instalada : (Number.isFinite(arranque) ? arranque : ahora);
+    inicio = Math.min(ahora, Math.max(ahora - DIA, inicio));
+    // Lo de hasta la instalación queda visto (sin avisar): nunca se avisa la historia vieja.
+    for (const l of datos.lineas) if (l.fecha <= inicio && l.fecha >= inicio - VENTANA_VISTAS_MS) ver(l);
+    piso = inicio;
+    hasta = inicio;
   }
   // El reloj se corrigió hacia atrás: con el «hasta» viejo, las líneas nuevas (con fechas de antes) se saltarían.
   if (hasta > ahora + MARGEN_RELOJ_MS) {
-    hasta = ahora - 7 * DIA;
+    hasta = ahora - VENTANA_VISTAS_MS;
     r.relojAtras = true; // solo aparece cuando pasó
   }
+  if (Number.isFinite(piso) && piso > ahora + MARGEN_RELOJ_MS) piso = NaN; // un piso del reloj adelantado no vale
   let nuevoHasta = hasta;
   for (const l of datos.lineas) {
-    if (l.fecha <= hasta || yaVista.has(claveDeLinea(l))) continue;
+    if (yaVista.has(claveDeLinea(l))) continue;
+    if (Number.isFinite(piso) && l.fecha <= piso) continue; // de antes de la primera lectura
+    if (l.fecha < hasta - VENTANA_VISTAS_MS) continue; // muy vieja (un archivo rotado que trae su historia)
     nuevoHasta = Math.max(nuevoHasta, l.fecha);
-    vistas.push(claveDeLinea(l));
-    yaVista.add(claveDeLinea(l));
+    ver(l);
     if (l.tipo === 'actualizado') {
       for (const a of db.prepare("SELECT id, clave, detalle FROM avisos WHERE resuelto_en IS NULL AND clave LIKE 'actualizacion_%'").all()) {
         let d = null;
@@ -163,13 +179,13 @@ export function aplicarActualizaciones(db, datos, { ahora = Date.now() } = {}) {
     abrirAviso(db, { clave, nivel: l.tipo === 'revertida' ? 'grave' : 'atencion', detalle, ahora });
     r.abiertos.push(clave);
   }
-  guardar({ hasta: iso(nuevoHasta), versionMala: datos.versionMala ?? null, vistas: vistas.slice(-VISTAS_MAX) });
+  guardar({ hasta: iso(nuevoHasta), ...(Number.isFinite(piso) ? { piso: iso(piso) } : {}), versionMala: datos.versionMala ?? null, vistas: vistas.slice(-VISTAS_MAX) });
   return r;
 }
 
 // Las dos cosas juntas (para las pruebas y la consola).
-export function leerActualizaciones(db, config, { ahora = Date.now() } = {}) {
-  return aplicarActualizaciones(db, leerArchivosDeActualizacion(config), { ahora });
+export function leerActualizaciones(db, config, { ahora = Date.now(), arranque = null } = {}) {
+  return aplicarActualizaciones(db, leerArchivosDeActualizacion(config), { ahora, arranque });
 }
 
 // Lo que muestra Administrador → Servidor: la última versión que no se instaló (del version.bad), o null.

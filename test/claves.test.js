@@ -542,6 +542,6 @@ test('la llave nunca queda en la memoria del proceso: solo su huella (y lo leíd
   assert.match(fuente, /huellasLeidas\.set\(ruta, \{ firma: firma\(info\), huella \}\)/, 'lo que se guarda es solo la huella');
   assert.doesNotMatch(fuente, /\.set\(ruta, \{[^}]*llave[^}]*\}\)/);
   const almacen = readFileSync(join(RAIZ, 'src', 'claves', 'almacen.js'), 'utf8');
-  assert.equal((almacen.match(/llave\.llave\.fill\(0\)/g) || []).length, 2, 'guardar y leer borran la llave al terminar');
+  assert.equal((almacen.match(/llave\.llave\.fill\(0\)/g) || []).length, 4, 'guardar y leer (una clave, o un dato envuelto de las copias) borran la llave al terminar');
   db.close();
 });
