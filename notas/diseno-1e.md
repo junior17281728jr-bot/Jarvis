@@ -497,68 +497,117 @@ path encrypts both the big flujo and the tiny sellado. The índice holds no user
 
 ## 6 Cómo se hace una copia (worker task `copias.hacer`)
 
-### 6.1 Type and programme (`src/tareas/tipos.js`, `cola.js`)
+### 6.1 Type and programme (`src/tareas/tipos.js`)
 ```js
-'copias.hacer': Object.freeze({ cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 600_000, repetible: true, prioridad: 8,
-  frenosQueIgnora: Object.freeze(['poco_disco']),
+'copias.hacer': Object.freeze({ cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 1_800_000, repetible: true, prioridad: 8,
   reintentos: Object.freeze({ baseMs: 10 * 60_000, factor: 3, topeMs: 6 * 3_600_000 }) }),   // 10, 30, 90 min…
 PROGRAMAS_DEL_SISTEMA += { programa: 'copias.hacer', tipo: 'copias.hacer', cada: 'diaria', hora: 4, minuto: 40 }
 ```
+- **Both resource brakes apply** (`poca_memoria`, `poco_disco` at `discoMinimoMb` 300): below 300 MB free no copy is
+  claimed at all (rev. 2; a streamed copy holds the snapshot open and would grow the -wal on a nearly full disk). 1c's
+  `disco_bajo` grave already rings; the screen says «Disco lleno: las copias están en pausa»; `copia_atrasada` follows
+  after 30 h. No new generic brake field, `cola.js` is unchanged.
+- `tiempoPorPasoMs` 30 min: only the streaming `generar` can be long, and it closes itself at 25 min (snapshot budget);
+  every other step returns within ≈ 60 s.
 - 4:40 RD = 08:40 UTC, after `sistema.base` 4:10 (both «grande»: never together). A nightly task older than 20 h when it
-  finally runs ends `{ saltada: 'caducada' }`.
-- `POR_DEFECTO.frenosQueIgnora = []` (new generic field); `tiposPermitidos` keeps a type when
-  `!frenoRecursos || def.ignoraFrenos || def.frenosQueIgnora.includes(frenoRecursos)`. Off-site copies need no disk;
-  the memory brake still applies.
+  finally runs ends `{ saltada: 'caducada' }`. A nightly run that finds a copy `verificada` (or `solo_local` when there
+  is no Telegram) in the last 6 h ends `{ saltada: 'reciente' }` (a manual copy at 4:30 must not cause a second full
+  copy right after: `programar` runs a skipped slot «apenas termine la anterior»).
 - `repetible: true` although it sends files out — a conscious, commented exception to «what sends is not repeated»:
-  it sends only to the owner's own chat; a repeat adds at most duplicate silent documents and a new copy id.
+  it sends only to the owner's own chat; a repeat adds at most duplicate silent documents and a new copy id, and the
+  attempt caps of §6.3 bound how many.
 - «Hacer una copia ahora» enqueues the same programme with `claveUnica = 'copias.hacer@manual-<ms>'`, `datos.origen
-  'manual'`; the 1c partial unique index keeps **one live copy** → 409 `copia_en_marcha`.
+  'manual'`; the 1c partial unique index keeps **one live copy** → 409 `copia_en_marcha`. A retry of a failed copy is
+  **never** enqueued from inside the running task (`encolar` would silently return `{ nueva: false }`): it is a restart
+  inside the same task (§6.3).
 - `trabajador.js` `VERSION_DE_BASE_NECESARIA = 6`; `supervisor.js` `BANDERAS_TRABAJADOR += '--expose-gc'` (§6.6).
 
 ### 6.2 Disk policy («nunca se borra nada») — `planDeDisco` in `src/copias/estado.js` (pure)
-- `estimadoMb` = bytes of the last copy, or base size × 0.6. `local = ajuste copias.local !== false AND
-  libreMb − estimadoMb ≥ COPIAS_LIBRE_MINIMO_MB (2048)`.
+- `estimadoMb` = bytes of the last copy, or base size × 0.6. **Floor** `pisoMb = max(2048, 2 × baseMb + walMb + 256)`
+  (room for a future migration's mandatory `VACUUM INTO` pre-copy, WAL bursts and a 1f restore check). `local = ajuste
+  copias.local !== false AND libreMb − estimadoMb ≥ pisoMb`.
 - Not local because of disk → aviso `copias_locales_pausadas` (atención, **sent to Telegram**): «El disco del servidor
   está casi lleno (1,8 GB libres). Dejé de guardar copias en el servidor; las de Telegram siguen todas las noches. Nada
-  se borró.» Resolves by itself when space returns.
+  se borró.» Resolves by itself when space returns. Below the 300 MB brake there are no copies at all (§6.1).
+- **Runway** (computed by `vigilar`): `dias = (libreMb − pisoMb) / mbPorNoche` (average of the last 7 local copies);
+  `dias < 30` → aviso `copias_disco_pronto` (atención, Telegram, silent): «Al ritmo de hoy, en unos 25 días dejaré de
+  guardar copias en el servidor (las de Telegram siguen). Si quieres, Claude puede ayudarte a hacer espacio.»
+  Resolves above 45 days. The disk card shows «alcanza para unos N días».
 - No other disk need: the dump writes no temp file. Local copies, interrupted parts and the 1c pre-migration copies
   are never deleted; the screen shows count, MB and free disk. Today's base (a few MB) → ≈ 1 MB/night → < 0.5 GB/year.
-- Local files: `carpetaCopias/cifradas/` (0640, `openSync(ruta, 'wx')` + `fsyncSync`; never overwrites). They are the
-  SAME encrypted bytes as in Telegram. `salud.js` `copias()` also counts `cifradas/`.
+- Local files: `carpetaCopias/cifradas/<AAAA-MM>/` (0640, `openSync(ruta, 'wx')` + `fsyncSync`; never overwrites). They
+  are the SAME encrypted bytes as in Telegram. Counts and MB come from `copia_partes` rows (`archivo_local IS NOT NULL`,
+  one `SUM(bytes)`), never from listing the folder; `salud.js` `copias()` keeps counting only top-level files (the web
+  process never scans `cifradas/`).
 
 ### 6.3 Steps (`punto.paso`; every write is one short `ctx.escribir`)
-1. **preparar** — `llaveActiva(db)` none → `listo { saltada: 'sin_clave' }` + aviso `copias_sin_clave`. `fuera` = an
-   `activo` canal whose token is usable (`secretoUsable`) and not paused; `local` = §6.2. Neither → `saltada:
-   'sin_destino'`. Only local → aviso `copias_sin_telegram` (panel). Insert the `copias` row (`estado 'haciendo'`, random
-   `copia` UUID, `llave_id`, `receptor`, flags, `origen`) → `{ paso: 'generar', copiaId }`.
-2. **generar** — if the row already has parts (retry after an interruption) it becomes `interrumpida` and a NEW row/UUID
-   is made (a copy never mixes two snapshots). Then `foto = abrirFotoDeLectura(config)` → `volcar(foto)` →
-   `createGzip({ level: 6 })` → `crearCifrador` → `crearPartidor` (ONE reused `Buffer.allocUnsafe(TAMANO_PARTE + 74)`),
-   and for each finished part:
-   - **local** → write the part file (`wx`, fsync) and insert its `copia_partes` row (`archivo_local`);
-   - **fuera only** (local paused) → upload now (§6.4) and insert the row with the Telegram ids.
-   The read transaction is closed in `finally` (short in the normal case: no network inside it). At the end the row
-   gets `bytes, sha256, partes, volcado_*, tablas, filas, sellado, migracion, version`, `estado 'escrita'` (local) or
-   `'subida'`, and → `subir` (local and fuera), else → `verificar`.
-3. **subir** (local and fuera; resumable at part `n`) — skip parts that have `archivo_id`; otherwise upload the part
-   file (§6.4). Returns `{ punto: { paso: 'subir', n: n + 1 } }` until the last, then `verificar`. `estado 'subida'`.
-4. **verificar** (resumable at `n`) — fuera: `getFile(file_id)` (size must match) → download streamed into sha256 with a
-   cap of `bytes + 1` → must equal the part's sha256; local: re-read the file into sha256. On a Telegram mismatch with a
-   local file: clear `archivo_id` (old id kept in `ultimo_error`), `intentos + 1`, back to `subir n` (at most 2 per part);
-   otherwise the copy is `fallida` (`motivo 'parte_distinta:<n>'`), aviso `copia_fallida`, and the step returns
-   `{ listo: true }` with a fresh copy enqueued 10 min later. A local mismatch → `fallida`, grave (disk problem).
-   Up to ≈ 60 s per step call, then it returns the next `n`.
-5. **indice** — build §5.5, sign, write locally (if local), upload (caption §4.5), download it back and compare sha256,
-   `pinChatMessage` (a pin failure is recorded in `detalle`, not fatal: path B′ exists). Row → `estado 'verificada'`
-   (or `'solo_local'` when not fuera), `verificada_en`, `fijada`. Resolve `copia_fallida`, `copia_atrasada`,
-   `copias_sin_clave`, (if fuera) `copias_sin_telegram`. `listo`.
+**Attempt caps (rev. 2).** A «restart» = the current copy row becomes `interrumpida` (or `fallida`) and the step
+returns `{ punto: { paso: 'preparar' }, esperarMs }` (≥ 10 min): a new copy (new UUID) inside the SAME task, never a new
+task. `preparar` counts, from `copias` rows: **≤ 3 copies per task** (`tarea_id`) and **≤ 3 copies with uploaded parts
+per RD day**; over either → `throw new ErrorTarea('copia_sin_exito', { reintentable: false })` → task `fallida`, copy
+row `fallida`, aviso `copia_fallida` (grave). Telegram waits are counted in the punto (`esperas`, total `esperadoMs`):
+after 12 waits or 6 h waited in one copy → `ErrorTarea('telegram_limite_largo', { reintentable: false })`. (Needed
+because a `seguir` result resets `fallos_seguidos` and `noEsFallo` never counts: without these caps a sustained 429, a
+step timeout or a memory exit could re-upload whole copies forever.) The caps are derived from rows, so they also
+survive a worker crash.
 
-Errors inside steps (channel `motivo`, §8.3): `limite` → wait `retry_after` inside the step if ≤ 60 s (abortable), else
-`throw new ErrorTarea('telegram_limite', { esperarMs, noEsFallo: true })`; `sin_red`, `tiempo_agotado`, `error_servidor`,
-`respuesta_no_valida` → retryable `ErrorTarea`; `clave_no_valida`, `bloqueado`, `chat_no_existe` → mark the channel
-(§8.5) and finish as `solo_local` if the parts are on disk (a broken channel never loses the local copy), else
-`fallida`. `ctx.senal` is passed to every network call and to `pipeline(…, { signal })`. The 3rd consecutive failure makes
-the task `fallida`; `vigilar` (hourly) then closes the copy row as `fallida` and opens `copia_fallida` (grave).
+**Bound to one bot (rev. 2).** `preparar` stores the active `telegram_bot` `secreto_id` and the bot id from `getMe`
+(`cuenta_id`) on the row. Every later step uses `conCredencial(db, config, { secretoId })` (refuses if that row is no
+longer the active one: `credencial_cambiada`) and calls `getMe` once per step call; a changed secret or bot id →
+restart (`interrumpida`, motivo `bot_cambiado`). So the file_ids of one copy always belong to one bot.
+
+**Shared flood pause.** On a 429 the worker also writes `canales.pausa_hasta` (like the web sender), and every step
+first honours it (returns `{ punto, esperarMs }` until then, counted as a wait).
+
+1. **preparar** — caps (above). Nightly + a copy verified < 6 h ago → `saltada: 'reciente'`. `llaveActiva(db)` none →
+   `listo { saltada: 'sin_clave' }` + aviso `copias_sin_clave`. `fuera` = an `activo` canal whose token is usable
+   (`secretoUsable`), not paused and `getMe` ok; `local` = §6.2. Neither → `saltada: 'sin_destino'`. Only local → aviso
+   `copias_sin_telegram` (panel). If fuera and the last verified copy has an `indice_mensaje_id`: `fijado(destino)` must
+   still be that message, else aviso `copia_sin_fijar` (atención, Telegram: «El mensaje fijado en tu chat ya no es la
+   última copia») — catches an unpin between nights; not fatal. Insert the `copias` row (`estado 'haciendo'`, random
+   `copia` UUID, `llave_id`, `receptor`, `secreto_id`, `cuenta_id`, `servidor`, flags, `origen`, `tarea_id`) →
+   `{ paso: 'generar', copiaId }`.
+2. **generar** — if the row already has parts (re-run after an interruption) → restart (a copy never mixes two
+   snapshots; it counts toward the caps). Then `foto = abrirFotoDeLectura(config)` → `contarFilas(foto)` (§5.3) →
+   `volcar(foto)` → `createGzip({ level: 6 })` → `crearCifrador` → each encrypted record goes to BOTH
+   (a) `crearPartidor` (ONE reused `Buffer.allocUnsafe(TAMANO_PARTE + 74)`) and (b) the **in-step check**:
+   `crearDescifrador({ llaveDeCopia, hashCabecera })` → `createGunzip()` → line splitter → `JSON.parse` of every line,
+   per-table row counts, sha256 of B, seal line present and correct. For each finished part:
+   - **local** → write the part file (`wx`, fsync) and insert its `copia_partes` row (`archivo_local`); no network while
+     the snapshot is open;
+   - **fuera only** (local paused, streaming) → upload now (§6.4) and insert the row with the Telegram ids, under the
+     **snapshot budget**, measured before every part: WAL grown ≤ 64 MB since `BEGIN`, free disk ≥ 500 MB
+     (`discoMinimoMb` + 200), ≤ 25 min since `BEGIN`; a 429 is waited inside only if `retry_after` ≤ 10 s. A breach, a
+     longer 429 or any network error → close the snapshot → restart (motivo `foto_larga` / `telegram_limite` /
+     the error) with `esperarMs = max(retry_after, 10 min)`: the snapshot cannot resume.
+   The read transaction is closed in `finally`; the record key is zeroed. At the end the three counts (dumper `n`,
+   independent `COUNT(*)`, check's parsed rows) and the two volcado hashes must agree, else the copy is `fallida`
+   (`volcado_incompleto`, grave, `reintentable: false`: a code bug does not fix itself). The row gets `bytes, sha256,
+   partes, volcado_*, tablas, filas, sellado, migracion, version`, `estado 'escrita'` (local) or `'subida'`, and →
+   `subir` (local and fuera), else → `verificar`.
+3. **subir** (local and fuera; resumable at part `n`) — skip parts that have `archivo_id`; otherwise upload the part
+   file (§6.4); a 429 ≤ 60 s is waited inside (abortable), a longer one returns `{ punto: { paso: 'subir', n, esperas +
+   1 }, esperarMs }`. A returned `document.file_size` that is present and ≠ bytes sent counts as a mismatch (re-upload,
+   ≤ 2 per part); missing → the download hash decides. Returns `{ punto: { paso: 'subir', n: n + 1 } }` until the last,
+   then `verificar`. `estado 'subida'`.
+4. **verificar** (resumable at `n`) — fuera: `getFile(file_id)` (`file_size` present and ≠ → mismatch; missing → ok)
+   → download streamed into sha256 with a cap of `bytes + 1` → must equal the part's sha256; local: re-read the file
+   into sha256. On a Telegram mismatch with a local file: clear `archivo_id` (old id kept in `ultimo_error`), `intentos +
+   1`, back to `subir n` (at most 2 per part); otherwise the copy is `fallida` (`motivo 'parte_distinta:<n>'`) →
+   restart after 10 min (subject to the caps; aviso `copia_fallida` only when the caps end the task). A local mismatch
+   → `fallida`, grave, `reintentable: false` (disk problem). Up to ≈ 60 s per step call, then it returns the next `n`.
+5. **indice** — build §5.5 (`bot`, `anterior`), sign, write locally (if local), upload (caption §4.5), download it back
+   and compare sha256, `pinChatMessage`, then `fijado(destino)` must return our message, else aviso `copia_sin_fijar`
+   (atención, Telegram) and `fijada = 0` (not fatal: path B′ exists). Row → `estado 'verificada'` (or `'solo_local'`
+   when not fuera), `verificada_en`, `fijada`. Resolve `copia_fallida`, `copia_atrasada`, `copias_sin_clave`, (if fuera)
+   `copias_sin_telegram`, (if pinned) `copia_sin_fijar`. `listo`.
+
+Errors inside steps (channel `motivo`, §8.3): `limite` → as above; `sin_red`, `tiempo_agotado`, `error_servidor`,
+`respuesta_no_valida` → retryable `ErrorTarea` in local mode (resumes at `n`), restart in streaming mode;
+`clave_no_valida`, `bloqueado`, `chat_no_existe` → mark the channel (as in §7.3 step 6) and finish as `solo_local` if the parts are on
+disk (a broken channel never loses the local copy), else `fallida`. `ctx.senal` is passed to every network call and to
+`pipeline(…, { signal })`. The 3rd consecutive failure makes the task `fallida`; `vigilar` (hourly) then closes the
+copy row as `fallida` and opens `copia_fallida` (grave).
 
 Copy states (exported list, checked by a test): `haciendo · escrita · subida · verificada · solo_local · fallida ·
 interrumpida · saltada`.
@@ -568,18 +617,22 @@ interrumpida · saltada`.
   `new Blob([cabeza, datos, cola])` with `Content-Type: multipart/form-data; boundary=oportia<16 hex>` set by us
   (fields `chat_id`, `caption`, `disable_notification`, `document` with its file name). `datos` is
   `await openAsBlob(ruta)` (file-backed: never read into memory) for parts on disk, or the reused part buffer when
-  streaming. `fetch` sets the exact Content-Length (measured). Returned `document.file_size` must equal the bytes sent.
-  ≥ 1.1 s between documents. After each part: `globalThis.gc?.()`.
+  streaming. `fetch` sets the exact Content-Length (measured). A returned `document.file_size` must equal the bytes
+  sent **when present** (optional in the spec). ≥ 1.1 s between documents. After each part: `globalThis.gc?.()`.
 - Download: `canal.bajar({ ruta, topeBytes, alTrozo })` streams chunks to a sha256 (or to a file in the restorer); the
-  body is never kept.
+  body is never kept. `ruta` (`file_path` from `getFile`) must match `^[A-Za-z0-9_\-\/.]{1,256}$` with no `..` segment
+  and no leading `/`, else `respuesta_no_valida`.
 
-### 6.5 Monitoring (`src/copias/vigilar.js`, called by `sistema.vigilar` hourly, each part one short write)
-- `copia_atrasada` (grave): key active AND canal `activo` AND no `verificada` copy in the last 30 h. Catches a scheduler
-  that silently stopped. Resolves when one is verified.
-- Copy rows `haciendo|escrita|subida` whose task is `fallida|cancelada|revisar` or that have no live task for > 2 h →
-  `fallida` (motivo = the task's error clave) or `interrumpida`, + aviso `copia_fallida`.
-- `copias_comprobar_clave` (atención, silent Telegram): 90 days since the key's `comprobada_en` (or `confirmada_en`).
-- `leerActualizaciones` (§7.4).
+### 6.5 Monitoring
+- **`copia_atrasada` (grave) is evaluated by the web sender** (§7.3 step 0), not by the worker: it must fire exactly
+  when the worker is dead or in safe mode. Rule: key `activa` AND canal `activo` AND `now > base + 30 h`, where
+  `base = max(key confirmada_en, canal vinculado_en, last off-site verificada_en)` — no false alarm right after setup.
+  Resolves when one is verified. In safe mode its text says why («las copias están en pausa por el modo seguro»).
+- `src/copias/vigilar.js` (called by `sistema.vigilar` hourly, each part one short write): copy rows
+  `haciendo|escrita|subida` whose task is `fallida|cancelada|revisar` or that have no live task for > 2 h → `fallida`
+  (motivo = the task's error clave) or `interrumpida`, + aviso `copia_fallida`; `copias_comprobar_clave` (atención,
+  silent Telegram): 90 days since the key's `comprobada_en` (or `confirmada_en`); the runway aviso (§6.2);
+  `leerActualizaciones` (§7.4).
 
 ### 6.6 Memory and time budget (512 MB, 1 vCPU)
 | Measurement | Result |
@@ -587,11 +640,15 @@ interrumpida · saltada`.
 | «restaurar» prototype, full dump+gzip+encrypt+parts, `--max-old-space-size=64` | 282 MB compressible base: 15.4 s, peak RSS 85 MB; 91 MB incompressible: 11.8 s, 16 parts, 83 MB (node alone 41 MB) |
 | «simple», upload+verify one 4 MiB part with gc after it | 58 → 87 MB |
 | **judge**, 12 uploads of 4 MiB, `Blob([cabeza, datos, cola])`, worker flags | file-backed: +53 MB without gc, **+22 MB with `gc()`**; buffer-backed: +72 / **+29 MB** |
-Inside the worker (idle ≈ 46 MB, self-exit at 120 MB RSS) the estimate is ≈ 90–100 MB in the streaming case.
-**Step 2 must measure it inside the real worker child (test 2.6, 20 MB base) and `test/medir-copia.mjs` (200 MB base,
-manual, numbers recorded in the README); if the peak passes 105 MB, set `TAMANO_PARTE` to 2 MiB** (constant; format
-unchanged). CPU: gzip level 6 + JSON on 1 vCPU, niced: seconds to tens of seconds; the step yields every ≈ 50 ms so
-heartbeats never stop.
+Inside the worker (idle ≈ 46 MB, self-exit at 120 MB RSS) the estimate is ≈ 90–100 MB in the streaming case; the
+in-step check adds one gunzip window and one line (normally < 1 KB, ≤ 8 MiB by `LINEA_MAX`) and ≈ 30–50 % CPU time.
+**The precise measurement is NOT in the test suite** (the updater runs the suite on the live 512 MB server; a flaky
+RSS bound would put a good version in `version.bad` forever). `test/medir-copia.mjs` (outside the suite, like the
+ensayo) runs a real worker child on a 200 MB base in local and streaming mode and prints peak RSS and time; it must be
+run before the step-2 commit, the numbers go into the README, and **if the peak passes 105 MB, `TAMANO_PARTE` becomes
+2 MiB** (constant; format unchanged) — decided then, before publishing. The suite only has generous, load-independent
+checks (§13: small bases, buffer reuse, a wide ceiling). CPU: gzip level 6 + JSON on 1 vCPU, niced: seconds to tens of
+seconds; the step yields every ≈ 50 ms, so the 15 s heartbeat never stops (the vigía cuts after 90 s).
 
 ---
 
@@ -608,25 +665,35 @@ timeout, `unref`'d timer, never awaited by a request, starts after `listen`, swa
 | any aviso at `grave` (modo_seguro automático, base_danada, memoria_baja/disco_bajo grave, ia_costo_mayor, ia_llave, copia_atrasada, copia_fallida, actualizacion_revertida:*, ia_tope at 100 %) | yes | **yes** |
 | `trabajador_reinicios`, `disco_bajo`, `memoria_baja` (atención), `copias_locales_pausadas`, `copias_sin_clave`, `actualizacion_no_instalada:*` | yes | silent |
 | `ia_tope:*` at 50/80 % (re-armed by 1d's `reenviar`), `ia_proveedor:*` (any level) | yes | silent |
-| `copias_comprobar_clave` (every 90 days) | yes | silent |
+| `copias_comprobar_clave` (every 90 days), `copias_disco_pronto`, `copia_sin_fijar` | yes | silent |
 | everything else (manual safe mode `info`, `tareas_*`, `fila_atrasada`, `freno:*`, `pantallas_lentas`, `wal_grande`, `base_grande`, `ia_llamadas:*`, `copias_sin_telegram`, `telegram_falla`) | no (screen only) | — |
 
 ### 7.3 One pass every 15 s (at most ONE message per pass)
+0. **Backup staleness** (at most once per 5 min; one `SELECT` on `copias`/`copias_llaves`/`canales`): the
+   `copia_atrasada` rule of §6.5 → `abrirAviso`/`resolverAviso` from the web process. It works with the worker dead or
+   in safe mode, which is exactly when backups silently stop.
 1. No `activo` canal, token not usable, or `canales.pausa_hasta` in the future → nothing (the panel shows why).
 2. Candidates: `SELECT … FROM avisos WHERE enviado_en IS NULL AND resuelto_en IS NULL AND nivel IN ('grave','atencion',
    'info') AND ultima_vez >= now − 48 h ORDER BY (grave first), ultima_vez LIMIT 20`, filtered by `vaPorTelegram`:
    - not routed → `enviado_en = now` + `canal_envios` `resultado 'no_va'` (1c/1d re-arm it on grave or `reenviar`);
-   - **flapping**: another row of the same `clave` was `enviado` in the last 6 h at the same or higher level →
-     `'silenciado'`, no message;
+   - **flapping** (non-grave only): another row of the same `clave` was `enviado` in the last 6 h at the same or higher
+     level → `'silenciado'`, no message;
+   - **a grave is never silenced**: if another row of the same `clave` was sent in the last 6 h (typically followed by
+     its «Ya se arregló»), the message is titled «🔴 OPORTIA · Volvió a pasar» and still rings; when the same grave
+     clave reopens ≥ 3 times in 6 h, the repeats are merged into one ringing message at most every 30 min («Volvió a
+     pasar 3 veces desde las 2:00»), marked `agrupado`;
    - the same row re-armed (`reenviar`, or raised to grave) → sent again, not sooner than 30 min after its last send;
    - avisos that existed before the chat was linked → `'antes_de_conectar'` (the welcome message gives their count).
 3. **Closing notice**: an aviso sent at `grave` and resolved in the last 24 h with no `cierre` row → «Ya se arregló».
-4. **Limits per canal** (counted in `canal_envios`): ≤ 10 per hour, ≤ 30 per day (graves are never dropped: they wait).
+4. **Limits per canal**: ≤ 10 per hour, ≤ 30 per day, counted ONLY over `canal_envios` rows with `resultado 'enviado'`
+   and `clase IN ('aviso','cierre','resumen','bienvenida','prueba')` — never `copia_parte`/`copia_indice` (a 200 MB base
+   uploads ≈ 50 parts a night). Graves are never dropped: they wait.
    If ≥ 3 routed candidates are due → ONE `resumen` message («3 avisos de OPORTIA: …», ≤ 5 lines + «y N más»), all
    marked `agrupado`.
 5. **Send, then mark** (`UPDATE avisos SET enviado_en = ? WHERE id = ? AND enviado_en IS NULL` + `canal_envios` in one
    transaction): a crash in between may repeat one message, never lose one.
-6. **Errors** (§8.3): `limite` → `canales.pausa_hasta = now + retry_after` (≤ 1 h); `bloqueado` (403) → canal
+6. **Errors** (§8.3): `limite` → `canales.pausa_hasta = now + retry_after` (≤ 1 h; the worker writes and honours the
+   same field, §6.3); `bloqueado` (403) → canal
    `bloqueado` + aviso `telegram_falla` («Desbloquea tu bot en Telegram»); `chat_no_existe` → `perdido` + `telegram_falla`
    («Une tu chat otra vez»); `clave_no_valida` (401) → `anotarPrueba(…, 'clave_no_valida')` on the secret (1d store) +
    `telegram_falla` («Pega otra vez el token»); `sin_red/tiempo_agotado/error_servidor` → `fallos_seguidos` backoff 1, 5,
@@ -643,7 +710,8 @@ timeout, `unref`'d timer, never awaited by a request, starts after `listen`, swa
 - `^(\S+) versión ([0-9a-f]{7}): alguna prueba falló, NO se instaló$` → `abrirAviso('actualizacion_no_instalada:<sha7>', 'atencion')`;
 - `^(\S+) versión ([0-9a-f]{7}) no arrancó: volví a la anterior$` → `abrirAviso('actualizacion_revertida:<sha7>', 'grave')`;
 - `^(\S+) actualizado a ([0-9a-f]{7})$` → resolve open `actualizacion_*` older than that line.
-Only lines with a date newer than `ajustes['avisos.actualizaciones'].hasta` count; the first run sets `hasta = now` (no
+Dates come from `date -Is` (with an offset): they are compared as `Date.parse` values, never as strings. Only lines
+with a date newer than `ajustes['avisos.actualizaciones'].hasta` count; the first run sets `hasta = now` (no
 history flood). `version.bad` (40 hex) is read only to add the full SHA to `detalle` and to show «Última versión que no
 se instaló» in `#admin/servidor`. Missing/unreadable files → nothing. Neither file is ever written (the arranque test
 keeps proving the service never writes outside its files). README line «Nunca abre … update.log» becomes «solo LEE
@@ -675,8 +743,9 @@ export const TIPOS_CANAL = ['telegram'], PROPOSITOS = ['avisos_dueno'], ESTADOS_
   'copia_parte', 'copia_indice'], RESULTADOS_ENVIO = ['enviado', 'agrupado', 'silenciado', 'no_va', 'antes_de_conectar',
   'fallido'];
 ```
-`cred` comes only from `src/canales/credencial.js` → `conCredencial(db, config, uso, fn)`: reads the active
-`telegram_bot` secret with `leerSecreto`, calls `fn(token)`, drops it. The token never enters a result, log, error,
+`cred` comes only from `src/canales/credencial.js` → `conCredencial(db, config, { uso, secretoId = null }, fn)`: reads the
+active `telegram_bot` secret with `leerSecreto` (with `secretoId`: exactly that row, refused with `credencial_cambiada`
+if it is no longer the active one — a copy stays bound to one bot, §6.3), calls `fn(token)`, drops it. The token never enters a result, log, error,
 aviso or DB row.
 
 ### 8.2 Network (the existing door `src/ia/llamar.js`, two generic options, nothing else changes)
@@ -698,7 +767,9 @@ aviso or DB row.
   `chat_no_existe`; 400 on `getFile` with `too big`, or 413 → `demasiado_grande` (never retried with the same bytes);
   other 400 → `pedido_no_valido`; 409 → `conflicto`; 429 → `limite`, `esperarMs = min(parameters.retry_after ||
   retry-after header, 3600) × 1000`; 5xx → `error_servidor`; 3xx (never followed) → `respuesta_no_valida`; network →
-  `sin_red` / `tiempo_agotado`; `destinoPermitido` false → `rechazado`.
+  `sin_red` / `tiempo_agotado`; `destinoPermitido` false → `rechazado`. `getFile` without `file_path`, or a
+  `file_path` failing the §6.4 pattern → `respuesta_no_valida`; `file_size` is optional everywhere (compared only when
+  present).
 - `probar` = `getMe` then `getWebhookInfo` (non-empty `url` → `bot_ocupado`). Registered as `PROBADORES.telegram_bot`
   (1d map) mapping to 1d `MOTIVOS` (`propositos.js` gains `bot_ocupado`, `bloqueado`, `chat_no_existe`); on `ok` it
   stores `canales.cuenta_*` and, if the bot id changed, marks the active canal `desvinculado` (`motivo 'bot_cambiado'`).
@@ -706,13 +777,19 @@ aviso or DB row.
   ['ia', 'avisos']`.
 
 ### 8.4 Vincular (link the owner's chat) — `src/canales/canales.js` (web, on demand)
-1. `POST /api/admin/telegram/vincular`: `probar` must be `ok` (gives `@usuario`); `recibir({ desde: -1 })` forgets old
-   updates; code = 8 digits (`randomInt(0, 1e8)`, zero-padded, shown «4821 7730»); a new `canales` row `estado
+1. `POST /api/admin/telegram/vincular`: `probar` must be `ok` (gives `@usuario`); `recibir({ desde: -1 })` returns the
+   newest pending update (possibly weeks old); if there is one, `recibir({ desde: u.updateId + 1, limite: 1 })` confirms it
+   so the queue is empty; `novedades_desde = NULL` (never derived from an old update: after a week without updates
+   Telegram picks the next `update_id` at random, possibly LOWER). Code = 8 digits (`randomInt(0, 1e8)`, zero-padded, shown «4821 7730»); a new `canales` row `estado
    'pendiente'` with `codigo_huella = sha256('oportia-vinculo-v1|' + code)`, `codigo_desde`, `codigo_hasta = +10 min`,
    `novedades_desde`; older `pendiente` rows → `vencido`. Returns `{ codigo, enlace: 'https://t.me/<usuario>?start=<code>',
    hasta }` (`no-store`).
 2. While waiting, the screen calls `POST /api/admin/telegram/vincular/revisar` every 3 s; the server calls `getUpdates`
-   at most once per 3 s (`timeout 0`, `limit 50`, `allowed_updates ['message']`) and stores `novedades_desde = last + 1`.
+   at most once per 3 s (`timeout 0`, `limit 50`, `allowed_updates ['message']`): WITHOUT `offset` while
+   `novedades_desde` is NULL (Telegram returns the earliest unconfirmed updates, whatever their ids), then with
+   `offset = novedades_desde`, which is set to `max(update_id) + 1` of the batch just seen (fresh ids within the same
+   10-minute window are sequential). A stored `novedades_desde` whose row is older than 6 days is ignored (NULL). The
+   `date ≥ codigo_desde − 5 s` filter (step 3) is what rejects old messages.
    (On the iPhone the page sleeps while Junior is in Telegram; when he comes back it polls again and finds the message.)
 3. A message links only if `chat.type === 'private'`, `!from.is_bot`, `date ≥ codigo_desde − 5 s`, and its text after
    removing a leading `/start`, spaces and dashes is exactly the 8 digits; hashes compared with `timingSafeEqual`. Wrong
@@ -729,8 +806,10 @@ aviso or DB row.
 
 ## 9 Restaurar (the contract 1f wraps) — `src/copias/restaurar.js`
 
-Imports only `node:` modules, `formato.js`, `clave.js`, `cifrar.js`, `volcado.js`, `indice.js`, `src/nucleo/db.js`, and
-`src/canales/telegram.js` for the Telegram source. Never imported by `server.js`'s or the worker's graph (rule test).
+Imports only `node:` modules, `formato.js` (part/flujo headers and `armarIndice`/`leerIndice`), `clave.js`, `cifrar.js`,
+`volcado.js`, `src/nucleo/db.js`,
+`src/canales/telegram.js` and the pure `src/canales/vinculo.js` (the code-matching rules of §8.4, shared with
+`canales.js`) for the Telegram source. Never imported by `server.js`'s or the worker's graph (rule test).
 ```js
 export async function restaurarCopia({
   clave,              // the typed recovery key. Never stored, never logged; derived buffers zeroed.
@@ -738,50 +817,75 @@ export async function restaurarCopia({
                       // | { tipo: 'telegram', token, chatId, indiceArchivoId = null }   (null → pinned índice)
   destino,            // path of a NEW file (opened 'wx'); never the live oportia.db; null = only check
   carpetaTrabajo,     // where downloaded (encrypted) parts are kept; nothing deleted
+  alElegir = async (elegida) => true,  // called BEFORE any part is downloaded/applied with
+                      // { copia, creada, edadHoras, antigua (> 30 h), hayMasNueva: { copia, creada } | null, servidor, anterior };
+                      // false → ErrorCopias('cancelada_por_dueno'). The CLI asks «¿Es esa?» when antigua or hayMasNueva.
+  aceptarAnterior = false,  // archivos: if the newest índice's parts are incomplete, use the newest complete copy (else falta_parte)
+  ajustar = true,     // run ajustarTrasRestaurar before the marker (tests of exact equality pass false)
   senal = null, alAvanzar = () => {}, base = null /* tests only: fake Telegram on 127.0.0.1 */, tamanoMaximoParte = 20_000_000,
-}) → { ok: true, copia, creada, servidor, version, migracion, receptor, autentica: true | 'sin_indice',
+}) → { ok: true, copia, creada, edadHoras, antigua, hayMasNueva, servidor, anterior, version, migracion, receptor,
+       autentica: 'indice+flujo' | 'flujo', copiaEnCurso /* the copias row of this very copy, as restored */,
        tablas, filas, bytes, archivo: destino, claves: { guardadas, deIa: [...usos], telegram: true|false } }
 // throws ErrorCopias(clave): clave_formato | clave_control | clave_no_es_de_esta_copia {receptor} | sin_indice |
-//   indice_no_autentico | indice_danado | falta_parte {n} | parte_danada {n} | parte_de_otra_copia {n} | copia_cortada |
-//   copia_danada | volcado_danado | volcado_no_soportado | formato_nuevo {formato} | destino_existe | base_no_valida {detalle} |
-//   telegram {motivo} | sin_red
+//   indice_no_autentico | indice_danado | otro_bot | falta_parte {n, copia} | parte_danada {n} | parte_de_otra_copia {n} |
+//   copia_cortada | copia_danada | copia_no_autentica | volcado_danado | volcado_no_soportado | formato_nuevo {formato} |
+//   destino_existe | base_no_valida {detalle} | cancelada_por_dueno | telegram {motivo} | sin_red
+export function empezarBusquedaDeChat({ token, base = null }) → { codigo, esperar({ senal, hastaMs }) → { chatId, nombre } }
+                      // one-time 8-digit code, same rules as linking (§8.4: private chat, not a bot, fresh, exact code,
+                      // 5 wrong tries, no offset kept across runs); used by the CLI and 1f
+export function ajustarTrasRestaurar(db, { ahora }) → { copiasInterrumpidas, tareasCanceladas, servidorNuevo }
 ```
 Order (each line is a test):
 1. `leerClave` → `derivar` (a typo fails fast; the checksum names it).
-2. Índice: archivos → the file whose first line parses as `indice-copia` (several → the newest `creada` whose parts are
-   present); telegram → `fijado(chatId)` → `archivo` → `bajar` (≤ 1 MB); not an índice → `sin_indice` (1f then asks to
-   forward it, path B′).
+2. Índice: archivos → the files whose first line parses as `indice-copia`; the newest `creada` is chosen; if its parts
+   are not all present → `falta_parte { n, copia }` unless `aceptarAnterior`, then the newest complete one with
+   `hayMasNueva` set (never silently). Telegram → `fijado(chatId)` → `archivo` → `bajar` (≤ 1 MB); not an índice →
+   `sin_indice` (1f then asks to forward it, path B′). The token's bot id (`getMe`) must equal `indice.bot`
+   (`otro_bot`).
 3. `OPORTIA-SELLO-1` = HMAC(sello, line 1) with `timingSafeEqual` (else `indice_no_autentico`); `publica` must be this
    key's (else `clave_no_es_de_esta_copia` naming «A7F3»: «esta copia se hizo con tu clave anterior»). No índice at all
-   (manual path) is allowed: `autentica: 'sin_indice'`, parts ordered by their headers (1f warns «se abre igual, pero
-   revisa que sea tuya»).
-4. Parts: download (`getFile` + `/file/…`, ≤ 20 MB, into `carpetaTrabajo` with `wx`) or open; sha256 of each file =
-   índice; header magic/formato/copia/n/desde/largo/sha256 agree; `n` and `desde` contiguous; a duplicate identical
-   part is tolerated.
-5. Stream payloads in order → flujo header → record key → decrypt (tags first) → `createGunzip()` → split on byte 0x0A
-   and decode whole lines only (UTF-8 split across chunks broke 75 rows in the «restaurar» prototype) → `JSON.parse`.
-6. Apply into `destino` (new connection, `PRAGMA foreign_keys = OFF`, one `aplicarEnTransaccion`): tables → rows (one
-   prepared INSERT per table) → `fin_filas.n` checked → indexes/triggers/views → `fin` checked.
-7. Check: volcado length+sha256 = sealed `resumen.volcado`; per-table counts = `resumen.porTabla`; `PRAGMA
-   integrity_check` = ok; `PRAGMA foreign_key_check` empty; then, LAST, `PRAGMA application_id = 0x4F505254` and
+   (manual path) is allowed: parts are ordered by their headers and the copy is accepted only if the stream seal
+   (§5.3) verifies at the end: `autentica: 'flujo'`. There is no unauthenticated path.
+4. `alElegir(…)` with the date and age (from the índice, or from the flujo header when there is none). A copy older
+   than 30 h, or with a newer one known, is never opened without a «sí» from the owner.
+5. Parts: download (`getFile` + `/file/…`, ≤ 20 MB, `file_path` checked as §6.4, into `carpetaTrabajo` with `wx`) or
+   open; sha256 of each file = índice; header magic/formato/copia/n/desde/largo/sha256 agree; `n` and `desde`
+   contiguous; a duplicate identical part is tolerated.
+6. Stream payloads in order → flujo header → record key → decrypt (tags first) → `createGunzip()` → split on byte 0x0A
+   and decode whole lines only (UTF-8 split across chunks broke 75 rows in the «restaurar» prototype; a line longer than
+   `LINEA_MAX` or more decompressed bytes than `resumen.volcado.bytes` → `volcado_danado`) → `JSON.parse`.
+7. Apply into `destino` (new connection, `PRAGMA foreign_keys = OFF`): lines are batched (≤ 5 000 lines / 8 MiB) and each
+   batch is applied with the existing synchronous `enTransaccion` (no async transaction anywhere): tables → rows (one
+   prepared INSERT per table) → `fin_filas.n` checked → indexes/triggers/views → `fin` checked → seal line checked.
+8. Check: volcado (B) length+sha256 = sealed `resumen.volcado`; per-table counts = `resumen.porTabla`; seal line ok;
+   `PRAGMA integrity_check` = ok; `PRAGMA foreign_key_check` empty; then `ajustarTrasRestaurar` (if `ajustar`): the
+   copias rows of this copy and any other `haciendo|escrita|subida` → `interrumpida` (motivo `restaurada`, no aviso),
+   live `copias.hacer` tasks → `cancelada` (+ event), `servidor.id` → a new UUID with the old one appended to
+   `servidor.origenes`, an `auditoria` row `base_restaurada`; then, LAST, `PRAGMA application_id = 0x4F505254` and
    `PRAGMA journal_mode = WAL`. Until that line the file is not an OPORTIA base (`abrirBase` refuses it).
-8. Count restored `secretos` by `uso` → `claves` (what the owner must paste again).
+9. Count restored `secretos` by `uso` → `claves` (what the owner must paste again).
 Memory: one part (normally 4 MiB) + gunzip window + one line (measured 67–80 MB RSS).
 
-CLI `deploy/oportia-restaurar.mjs` (1e ships it; 1f's installer and screen call the same function):
+The new `servidor.id` means a resurrected old server and the new one never pin índices under the same id; every
+índice and restore result carries `servidor`, so 1f can say «esta copia viene del servidor viejo».
+
+CLI `deploy/oportia-restaurar.mjs` (1e ships it; 1f's installer and screen call the same functions):
 ```
 sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo>
 sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --telegram --destino=<archivo nuevo>
-     (asks the token, then «Escríbele cualquier cosa a tu bot en Telegram»; the chat id comes from getUpdates)
+     (asks the token, shows «Escríbele a tu bot este código: 4821 7730», then «Encontré el chat de Junior. ¿Es el
+      tuyo? (sí/no)»; strangers writing to the bot are ignored)
    --comprobar   decrypt and check only (destino null: nothing written except downloaded encrypted parts)
+   --anterior    allow the newest COMPLETE copy when the newest one is missing parts (still asks)
    --json        last line is the result as JSON
 ```
 Key and token are read from **stdin** (hidden on a TTY), NEVER from argv (`ps` shows it) or the environment. Simple
-Spanish lines («Partes: 11 de 11, todas bien», «La clave corresponde (A7F3)», «Base recuperada: 41 MB, 26 tablas,
-revisada: bien», «Tienes que pegar otra vez: clave de Claude, token del bot»). Exit codes: 0 ok · 2 uso · 3 clave ·
-4 copia incompleta o dañada · 5 destino existe · 6 Telegram/red · 7 formato nuevo. Refuses to run as root (like
-`oportia-admin.mjs`) and refuses a `--destino` that exists. In test mode (`OPORTIA_TEST=1`) the Telegram base comes from
-`OPORTIA_TELEGRAM_URL` (127.0.0.1 only). It never touches a key file.
+Spanish lines («Copia del 9 nov, 4:41 a. m. (hace 6 horas)», «Partes: 11 de 11, todas bien», «La clave corresponde
+(A7F3)», «Base recuperada: 41 MB, 26 tablas, revisada: bien», «Tienes que pegar otra vez: clave de Claude, token del
+bot»). An old copy prints «⚠ Esta copia es de hace 7 días» and asks. Exit codes: 0 ok · 2 uso · 3 clave · 4 copia
+incompleta, dañada o no auténtica · 5 destino existe · 6 Telegram/red · 7 formato nuevo · 8 cancelada por el dueño.
+Refuses to run as root (like `oportia-admin.mjs`) and refuses a `--destino` that exists. In test mode
+(`OPORTIA_TEST=1`) the Telegram base comes from `OPORTIA_TELEGRAM_URL` (127.0.0.1 only). It never touches a key file.
 
 1f adds on top: the screen; placing the file as `oportia.db` on a server that has none (service stopped); calling
 `empezarLlaveNueva` when the master key file is absent; then the normal `abrirBase` (migrations 7+ if any).
@@ -792,13 +896,15 @@ revisada: bien», «Tienes que pegar otra vez: clave de Claude, token del bot»)
 
 Append to `MIGRACIONES` in `src/nucleo/migraciones.js`; explanations in a JS comment OUTSIDE the template (as in 4 and 5).
 The template text starts with its leading newline and ends with a newline before the closing backtick (same layout as
-migration 5). **sha256 = `29aabed7d8f44e0c5cf4242a39e39a6baaf56f537850801f679442e6cfcd0c4b`** (3599 bytes, computed by
-the judge). Add `6: '29aabed7…0c4b'` (full value) to `MIGRACIONES_PUBLICADAS` and `6: '0.5.0'` to
+migration 5). **sha256 = `5443d09fac022e5aea609fec97efbad138e1657bb7e57358a97e82b9a1c7bdb2`** (3709 bytes, recomputed in
+revision 2 after adding `copias_llaves.verificador` and `copias.secreto_id`, `cuenta_id`, `servidor`; the old
+`29aabed7…` value is void). Add `6: '5443d09f…bdb2'` (full value) to `MIGRACIONES_PUBLICADAS` and `6: '0.5.0'` to
 `VERSION_DE_CADA_MIGRACION` in `test/reglas.test.js`; `package.json` → `0.5.0`.
 
-Checked by the judge: the rules regex gives false; **0 CHECK, 0 UNIQUE, 0 ADD COLUMN**; applies on top of 1–5 through the
-real `abrirBase` (the pre-migration copy `oportia-antes-m6-*.db` is made); running the text twice changes nothing; the
-**0.4.1 `abrirBase` (migrations 1–5) opens the v6 base, applies nothing, `foreign_key_check` empty**.
+Re-checked in revision 2 (Node 22, the real `abrirBase` of `c6b0626` in a temp folder): the rules regex gives false;
+**0 CHECK, 0 UNIQUE, 0 ADD COLUMN**; applies on top of 1–5 (the pre-migration copy `oportia-antes-m6-*.db` is made);
+running the text twice changes nothing; the **0.4.1 `abrirBase` (migrations 1–5) opens the v6 base, applies nothing,
+`foreign_key_check` empty**. This is the last chance to change the schema of 1e: after publishing it is frozen.
 If a builder changes one byte, recompute the fingerprint and re-run these checks.
 
 ```js
@@ -807,10 +913,12 @@ If a builder changes one byte, recompute the fingerprint and re-run these checks
     nombre: 'copias_y_canales',
     // Fase 1, parte e. Explicaciones FUERA del texto SQL (la huella no depende de ellas).
     //  - copias_llaves: las llaves PÚBLICAS de las copias (y el «sello», que firma los índices y no abre nada). La clave
-    //    de recuperación del dueño nunca se guarda. Nunca se borran: las copias viejas necesitan su llave vieja.
+    //    de recuperación del dueño nunca se guarda; «verificador» es el sha256 de un valor derivado de ella que la
+    //    página calcula (sirve para comprobarla sin mandarla). Nunca se borran: las copias viejas necesitan su llave vieja.
     //  - canales: por dónde OPORTIA habla con alguien (hoy: el chat privado del dueño con su bot de Telegram). Genérico
     //    para la fase 3+ (tipo, propósito, espacio). Una fila 'pendiente' guarda solo la huella del código de un uso.
-    //  - copias / copia_partes: cada copia cifrada (fuera y/o en el servidor), sus partes, hashes y dónde están.
+    //  - copias / copia_partes: cada copia cifrada (fuera y/o en el servidor), sus partes, hashes y dónde están. Cada
+    //    copia guarda el secreto y el bot con que se mandó (una copia nunca mezcla dos bots) y el servidor que la hizo.
     //  - canal_envios: cada mensaje que salió (o no) por un canal: no repetir avisos y los topes por hora y por día.
     //  - Sin CHECK ni índices únicos: los valores se revisan en el código (un CHECK nunca se puede ampliar).
     sql: `
@@ -820,6 +928,7 @@ CREATE TABLE IF NOT EXISTS copias_llaves (
   publica TEXT NOT NULL,
   sello TEXT NOT NULL,
   huella TEXT NOT NULL,
+  verificador TEXT NOT NULL,
   estado TEXT NOT NULL DEFAULT 'pendiente',
   creada_por INTEGER REFERENCES usuarios(id),
   creada_en TEXT NOT NULL,
@@ -870,6 +979,9 @@ CREATE TABLE IF NOT EXISTS copias (
   local INTEGER NOT NULL DEFAULT 0,
   fuera INTEGER NOT NULL DEFAULT 0,
   canal_id INTEGER REFERENCES canales(id),
+  secreto_id INTEGER REFERENCES secretos(id),
+  cuenta_id TEXT,
+  servidor TEXT,
   partes INTEGER NOT NULL DEFAULT 0,
   bytes INTEGER NOT NULL DEFAULT 0,
   sha256 TEXT,
@@ -940,9 +1052,10 @@ Values checked in code (exported lists + a test that the base holds only them):
 | `canal_envios.clase / resultado` | `CLASES_ENVIO` / `RESULTADOS_ENVIO` (§8.1) |
 | `copias.estado` | §6.3 list; `copias.origen`: `noche` · `manual` |
 | `secretos.uso` | + `telegram_bot` (grupo `avisos`) |
-| `avisos.clave` | + `copias_sin_clave`, `copias_sin_telegram`, `copia_fallida`, `copia_atrasada`, `copias_locales_pausadas`, `copias_comprobar_clave`, `telegram_falla`, and regex `^actualizacion_(?:no_instalada|revertida):[0-9a-f]{7}$` |
+| `avisos.clave` | + `copias_sin_clave`, `copias_sin_telegram`, `copia_fallida`, `copia_atrasada`, `copias_locales_pausadas`, `copias_disco_pronto`, `copia_sin_fijar`, `copias_comprobar_clave`, `telegram_falla`, and regex `^actualizacion_(?:no_instalada|revertida):[0-9a-f]{7}$` |
 Settings in `ajustes` (1c upsert pattern + an `auditoria` row; never returned raw): `copias.ajustes` `{ local: true }`;
-`servidor.id` (random UUID made once; goes into every copy); `avisos.actualizaciones` `{ hasta }`.
+`servidor.id` (random UUID made once; goes into every copy; replaced by `ajustarTrasRestaurar`, the old ones kept in
+`servidor.origenes`); `avisos.actualizaciones` `{ hasta }`.
 Growth: ~1 copy row + ~1–20 part rows + a few envio rows per night → < 2 MB/year.
 
 ---
@@ -953,37 +1066,44 @@ Growth: ~1 copy row + ~1–20 part rows + a few envio rows per night → < 2 MB/
 ```
 src/copias/formato.js     constants (magias, FORMATO=1, TROZO=65536, TAMANO_PARTE, CABECERA_MAX, límites), part/flujo-header
                           (de)serializers, nombres (RD time), armarIndice/leerIndice (with sello), ErrorCopias
-src/copias/clave.js       crearClave() → { texto, semilla }; leerClave(texto) → semilla; derivar(semilla) → { privada, publica, sello, huella }; huellaDe(publica)
-src/copias/cifrar.js      crearCifrador({ publica, cabeceraExtra, efimera? /*tests*/ }) → { cabecera, trozo(buf, ultimo) };
-                          crearDescifrador({ privada }) → Transform; sellar(json, publica); abrirSellado(texto, privada)
-src/copias/volcado.js     async *volcar(foto, { ceder, senal, copia, version, codigo }); crearAplicador(db) → { linea(texto), terminar() }
-src/copias/estado.js      llaveActiva, crearClavePendiente, confirmarClave, comprobarClave, planDeDisco (pure), empezarCopia,
+src/copias/clave.js       crearClave() → { texto, semilla }; leerClave(texto) → semilla; derivar(semilla) → { privada, publica, sello, verificador, huella };
+                          huellaDe(publica); hashVerificador(hex); PUBLICAS_DE_PRUEBA
+src/copias/cifrar.js      crearCifrador({ publica, cabeceraExtra, efimera? /*frozen vector only*/ }) → { cabecera, hashCabecera, llaveDeCopia, trozo(buf, ultimo), cerrar() };
+                          crearDescifrador({ privada } | { llaveDeCopia, hashCabecera }) → Transform; sellar(json, publica); abrirSellado(texto, privada)
+src/copias/volcado.js     async *volcar(foto, { ceder, senal, copia, version, codigo, sello, hashCabecera }) (ends with the seal line);
+                          contarFilas(foto); crearLector({ lineaMax, bytesMax }) (line splitter + counts + B hash + seal check, used by the
+                          in-step check AND the restorer); crearAplicador(db) → { lote(lineas) /* one sync enTransaccion */, terminar() }
+src/copias/estado.js      llaveActiva, crearClavePendiente, confirmarClave(verificadorHex), comprobarClave(verificadorHex), planDeDisco (pure), topesDeIntento, empezarCopia,
                           guardarParte, terminarCopia, estadoCopias (GET /api/admin/copias), resumenCopias (sistema), proximaCopia
 src/copias/hacer.js       MANEJADOR_COPIAS (preparar/generar/subir/verificar/indice) + crearPartidor
-src/copias/vigilar.js     vigilarCopias(db, config, ahora); leerActualizaciones(db, config, ahora)
-src/copias/restaurar.js   restaurarCopia (§9)
+src/copias/vigilar.js     vigilarCopias(db, config, ahora) (stuck rows, 90 days, runway); leerActualizaciones(db, config, ahora);
+                          copiaAtrasada(db, ahora) (pure query, called by the WEB avisador)
+src/copias/restaurar.js   restaurarCopia, empezarBusquedaDeChat, ajustarTrasRestaurar (§9)
 src/canales/canal.js      MOTIVOS_CANAL, ADAPTADORES, lists (§8.1)
 src/canales/telegram.js   TELEGRAM adapter (§8.3)
-src/canales/credencial.js conCredencial(db, config, uso, fn) — the only leerSecreto caller in src/canales
+src/canales/credencial.js conCredencial(db, config, { uso, secretoId }, fn) — the only leerSecreto caller in src/canales
+src/canales/vinculo.js    pure code rules: crearCodigo, huellaCodigo, mensajeConCodigo(m, { huella, desde }) (linking + restore CLI)
 src/canales/canales.js    canalActivo, empezarVinculo, revisarVinculo, desvincular, anotarEnvio, anotarFallo, enviosRecientes
 src/canales/avisador.js   crearAvisador({ db, config, reloj, adaptador }) → { iniciar, parar, pasada } ; RUTA_AVISOS, TOPES_ENVIO, vaPorTelegram
 src/canales/textos.js     textoDeAviso(aviso, idioma), textoCopia(...) from public/i18n/*.json
 src/api/copias.js         routes §12
 src/api/canales.js        Telegram routes §12
 deploy/oportia-restaurar.mjs   CLI §9
+public/clave-recuperacion.js   page-side leerClave + pure-JS SHA-256/HMAC/HKDF → verificador (§5.1); imports nothing; imported by
+                          app.js like `creador.js`/`dibujos.js` (the 0.3.3 server adds its `?v=` fingerprint and modulepreload
+                          automatically); added to the compressed-files list in `test/archivos.test.js`
 test/telegram-falso.js    fake Bot API server §13.1
 test/copias-base.js       helpers (small bases with every type, fixed TEST key, fake canal)
 test/copia-v1.json        frozen vector (made once by a scratch script; never edited)
 test/copias.test.js, test/copias-restaurar.test.js, test/telegram.test.js, test/avisador.test.js, test/copias-api.test.js
 test/ensayo-0.4.1.mjs     rollback rehearsal (outside the suite, like ensayo-0.3.2.mjs)
-test/medir-copia.mjs      200 MB measurement (outside the suite)
+test/medir-copia.mjs      200 MB measurement in a real worker child, local + streaming (outside the suite; decides 4 vs 2 MiB)
 ```
 ### 11.2 Changed files
-`src/nucleo/migraciones.js` (m6) · `src/nucleo/db.js` (`abrirFotoDeLectura`, `aplicarEnTransaccion`) · `src/nucleo/config.js`
-(`canalesBases`) · `src/nucleo/salud.js` (`copias()` counts `cifradas/`; `baseAtencionMb: 1024` + comment) ·
+`src/nucleo/migraciones.js` (m6) · `src/nucleo/db.js` (`abrirFotoDeLectura` only) · `src/nucleo/config.js`
+(`canalesBases`) · `src/nucleo/salud.js` (`baseAtencionMb: 1024` + comment; `copias()` unchanged: never scans `cifradas/`) ·
 `src/ia/llamar.js` (`cuerpoCrudo`, `alTrozo`, comment) · `src/ia/propositos.js` (`MOTIVOS` + `bot_ocupado`, `bloqueado`,
-`chat_no_existe`) · `src/tareas/tipos.js` (type, programme, `POR_DEFECTO.frenosQueIgnora`) · `src/tareas/cola.js`
-(`tiposPermitidos`) · `src/tareas/manejadores.js` (`'copias.hacer'`; `vigilar` calls `vigilarCopias` + `leerActualizaciones`)
+`chat_no_existe`) · `src/tareas/tipos.js` (type, programme) · `src/tareas/manejadores.js` (`'copias.hacer'`; `vigilar` calls `vigilarCopias` + `leerActualizaciones`)
 · `src/tareas/trabajador.js` (`VERSION_DE_BASE_NECESARIA = 6`) · `src/tareas/supervisor.js` (`--expose-gc`) ·
 `src/avisos/avisos.js` (keys + regex) · `src/claves/usos.js` (`telegram_bot`, `GRUPOS`) · `src/claves/probar.js`
 (`PROBADORES.telegram_bot` → `src/canales/telegram.js`) · `src/api/claves.js` (`trasCambio` for `telegram_bot`;
@@ -998,8 +1118,8 @@ test/medir-copia.mjs      200 MB measurement (outside the suite)
 | Work | Process |
 |---|---|
 | nightly/manual copy, verification, índice, pin; `vigilarCopias`; `leerActualizaciones` | worker (niced child, cupo grande / vigilar) |
-| alert sender (every 15 s); linking (`getUpdates` on demand); test message; free token test | web (small async I/O) |
-| create / confirm / check the recovery key (instant crypto, < 5 ms) | web |
+| alert sender (every 15 s) incl. `copia_atrasada` (every 5 min); linking (`getUpdates` on demand); test message; free token test | web (small async I/O) |
+| create the recovery key (instant crypto, < 5 ms); confirm / check by verificador hash | web (the typed key stays in the page) |
 | restore | CLI / 1f installer, never inside the running service |
 
 ---
@@ -1007,18 +1127,19 @@ test/medir-copia.mjs      200 MB measurement (outside the suite)
 ## 12 API (JSON; POSTs need `X-Oportia` + same Origin as today; no DELETE route)
 | Route | Access | Answer |
 |---|---|---|
-| `GET /api/admin/copias` | admin, any entrance (read-only) | `{ clave: { activa, huella, desde, comprobadaEn, pendiente, anteriores: [{ huella, desde, hasta }] }, telegram: { listo, motivo, chat, bot }, ultima, ultimaFuera: { fecha, bytes, partes, estado }, proxima, enCurso: { paso, n, de } \| null, locales: { activas, pausadas, archivos, mb, libreMb, minimoMb }, recientes: [≤ 10 { fecha, origen, bytes, partes, local, fuera, estado, motivo }], modoSeguro, puede: { ahora, motivoNoAhora, crearClave } }` |
-| `POST /api/admin/copias/ahora` | admin, limiter 6/h | `202 { tarea }`; `409 copia_en_marcha / falta_clave / sin_destino / trabajo_en_pausa` |
+| `GET /api/admin/copias` | admin, any entrance (read-only) | `{ clave: { activa, huella, desde, comprobadaEn, pendiente, anteriores: [{ huella, desde, hasta }] }, telegram: { listo, motivo, chat, bot }, ultima, ultimaFuera: { fecha, bytes, partes, estado }, proxima, enCurso: { paso, n, de \| null } \| null, locales: { activas, pausadas, frenoDisco, archivos, mb, libreMb, pisoMb, diasRestantes } (from DB rows + one `statfs`, never a folder scan), fijada, recientes: [≤ 10 { fecha, origen, bytes, partes, local, fuera, estado, motivo }], modoSeguro, puede: { ahora, motivoNoAhora, crearClave } }` |
+| `POST /api/admin/copias/ahora` | admin, limiter 6/h | `202 { tarea }`; `409 copia_en_marcha / falta_clave / sin_destino / trabajo_en_pausa / disco_lleno` |
 | `POST /api/admin/copias/clave/nueva` | admin + soloDueno, limiter 10/10 min | `201 { clave, huella, expira }`, `Cache-Control: no-store` — the ONLY response that ever carries the key |
-| `POST /api/admin/copias/clave/confirmar` `{ clave }` | admin + soloDueno | `{ activa: { huella, desde } }`; `400 clave_formato / clave_control / clave_no_coincide`; `409 sin_pendiente` |
-| `POST /api/admin/copias/clave/comprobar` `{ clave }` | admin + soloDueno, limiter 10/10 min | `{ resultado: 'actual'\|'anterior'\|'no_es', huella, desde, hasta, ultimaCopia: { bytes, tablas } }` |
+| `POST /api/admin/copias/clave/confirmar` `{ verificador }` (64 hex, computed in the page) | admin + soloDueno | `{ activa: { huella, desde } }`; `400 verificador_formato / clave_no_coincide`; `409 sin_pendiente` (format and control-symbol errors are shown by the page itself) |
+| `POST /api/admin/copias/clave/comprobar` `{ verificador }` | admin + soloDueno, limiter 10/10 min | `{ resultado: 'actual'\|'anterior'\|'no_es', huella, desde, hasta, ultimaCopia: { bytes, tablas } }` |
 | `POST /api/admin/telegram/vincular` | admin + soloDueno, limiter | `201 { codigo, enlace, hasta }`; `409 sin_token / clave_no_valida / bot_ocupado` |
 | `POST /api/admin/telegram/vincular/revisar` | admin + soloDueno (≤ 1 Telegram call / 3 s) | `{ estado: 'esperando'\|'vinculado'\|'vencido', chat? }` |
 | `POST /api/admin/telegram/prueba` | admin + soloDueno, limiter 5/10 min | `{ motivo }` |
 | `POST /api/admin/telegram/desvincular` | admin + soloDueno | `{ chat: { estado: 'desvinculado' } }` |
 | `GET /api/admin/claves` (1d) | unchanged guard | + `telegram: { bot, chat: { estado, nombre, vinculadoEn, problema }, vinculo: { pendiente, hasta }, envios: { ultimoOk, ultimoError, hoy } }` |
 | `GET /api/admin/sistema` (1c) | unchanged | + `copias: { estado, ultimaFuera, proxima, tono }`, `telegram: { listo, chat }` |
-The token itself goes through the existing `POST /api/admin/claves { uso: 'telegram_bot', valor }` (1d).
+The token itself goes through the existing `POST /api/admin/claves { uso: 'telegram_bot', valor }` (1d). Every
+`clave/*` route catches its own errors and logs only a short code (no request body, no error object).
 `pedidosAlAbrir` adds `if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];` and
 `test/archivos.test.js` gets that exact case plus `['copias', 'pantallaCopias']` in `PANTALLAS`.
 
@@ -1039,22 +1160,32 @@ User, Message (`message_id`, `chat`, `date`, `document{file_name,mime_type,file_
 the user»; 403 «Forbidden: bot was kicked from the group chat»; 400 «Bad Request: chat not found»; 413; 429 with
 `retry_after`; 500/502 (HTML body); never answers (timeout); slow body; malformed JSON (`{"ok":tr`); too deep
 (`[[[[…]]]]`); 409 «Conflict»; webhook set; `cambiar_bytes` (download flips one byte); `file_path` expired (404 once);
-`sin_ruta` (no `file_path`). It records every request and never prints tokens.
+`sin_ruta` (no `file_path`); `sin_tamano` (Document/File without `file_size`); `ruta_rara` (`file_path` with `..`);
+`ids_al_azar` (the next `update_id` jumps DOWN to a random value, as after a week idle); `desfijar` (someone unpins);
+`otro_fijado` (pin succeeds but `getChat` shows another message); a stranger's private chat writing at the same time.
+It records every request and never prints tokens.
 
 ### 13.2 Step 1 — core (`copias.test.js`, `copias-restaurar.test.js`, `telegram.test.js`)
 1.1 Migration 6: fingerprint, version map, idempotent, rules regex, 0 CHECK, 0 UNIQUE, no ADD COLUMN.
 1.2 Recovery key: 1 000 keys round-trip; every single-symbol typo caught except ≤ 1/1024; O/I/L/spaces/dashes
-    normalised; pad bits; `derivar` deterministic; huella stable.
+    normalised; pad bits; `derivar` deterministic; huella stable; **`public/clave-recuperacion.js` (imported in Node)
+    gives the same normalisation, control errors and verificador as `src/copias/clave.js` for the same 1 000 keys and
+    the frozen vector**; `confirmarClave` refuses `PUBLICAS_DE_PRUEBA`.
 1.3 X25519 + HKDF + GCM: the exact calls of §5.2 match a fixed vector; all-zero shared secret refused.
 1.4 Flujo: truncation at every record boundary → `copia_cortada`; a record after the last, a cleared «último» bit,
     swapped records, a changed header byte, a flipped ciphertext byte → refused; formato 2 → `formato_nuevo`; L > 4096.
+    Stream seal: missing, wrong, or not the last line → `copia_no_autentica`; a valid stream built by a test «attacker»
+    who has only the public key (fresh ephemeral, any volcado) → `copia_no_autentica`, with or without índice.
 1.5 Partes: sizes, contiguous `desde`, header fields; part from another copy refused; missing part named; identical
     duplicate tolerated.
-1.6 Volcado fidelity on a base with every type: INTEGER near ±2^63, REAL (0.1, 1.0, −0.0, 1e308, ±Inf), TEXT with
+1.6 Volcado fidelity (UNIQUE columns present: their `sqlite_autoindex_*`/NULL-sql rows are skipped and rebuilt) on a
+    base with every type: INTEGER near ±2^63, REAL (0.1, 1.0, −0.0, 1e308, ±Inf), TEXT with
     accents/emoji/newlines/quotes, BLOB incl. empty, NULL, composite-PK table (rowid kept), schema text with newlines →
     identical rows (`setReadBigInts` comparison), identical `sqlite_schema`, `application_id`.
 1.7 Consistency: rows written by another connection during the dump are absent from the copy, present in the live base.
-1.8 WITHOUT ROWID / generated column / virtual table → `volcado_no_soportado` (synthetic base).
+1.8 WITHOUT ROWID / generated column / virtual table → `volcado_no_soportado` (synthetic base); a row whose line
+    exceeds `LINEA_MAX` (test passes a small limit) → `fila_muy_grande:<tabla>`; restorer: a too-long line and more
+    decompressed bytes than `resumen.volcado.bytes` → `volcado_danado`.
 1.9 UTF-8 split across gunzip chunks (forced tiny chunks): no corruption.
 1.10 Índice: HMAC verified; one byte changed → `indice_no_autentico`; other key → `clave_no_es_de_esta_copia`.
 1.11 Sellado opens with the key only; counts match.
@@ -1065,48 +1196,81 @@ the user»; 403 «Forbidden: bot was kicked from the group chat»; 400 «Bad Req
      `topeBytes`; real mode refuses any host but the `permitido` one; test mode only 127.0.0.1.
 1.15 **Full round trip** (the scope's test): v6 base with rows in every table (incl. a `secretos` row and BLOBs) →
      dump → encrypt → parts of 64 KiB → fake-Telegram upload → `getFile` + download → verify hashes → índice uploaded,
-     verified, pinned → `restaurarCopia` (telegram source, pinned índice) → decrypt → open → EVERY table equal
+     verified, pinned → `restaurarCopia` (telegram source, pinned índice, `ajustar: false`) → decrypt → open → EVERY table equal
      (`SELECT * ORDER BY rowid`), schema text, `application_id`, `integrity_check` ok.
-1.16 Same from files only, parts shuffled and renamed; and without the índice (`autentica: 'sin_indice'`); and `--comprobar`.
+1.16 Same from files only, parts shuffled and renamed; without the índice (`autentica: 'flujo'`); `--comprobar`; two
+     copies in the folder with a part of the newest missing → `falta_parte {copia}`, with `aceptarAnterior` → the older
+     one AND `hayMasNueva` set; `alElegir` receives the age and returning false → `cancelada_por_dueno`, nothing written;
+     a token of another bot → `otro_bot`.
+1.16b `ajustarTrasRestaurar`: a snapshot taken during `generar` restores with its own copy row `interrumpida`
+     (no aviso), its task `cancelada`, a new `servidor.id`, the old one in `servidor.origenes`; `vigilarCopias` on it
+     opens nothing.
 1.17 Never overwrites: existing destino → `destino_existe`, untouched; abort in the middle → a file WITHOUT the OPRT
      marker that `abrirBase` refuses.
 1.18 Master key never copied: a base with secrets and `oportia-llave-secretos` (+ `.nueva-…`) beside it → no part,
      índice or volcado line contains the key file's bytes or name; the copias code never opens a path for which
      `esArchivoDeLlave` is true.
-1.19 Memory: a child with the worker flags (+ `--expose-gc`) copies a 40 MB incompressible base; peak RSS growth < 60 MB.
+1.19 Memory, load-independent (runs in the production updater): a 4 MB incompressible base, 64 KiB parts → the
+     partidor allocates its part buffer exactly once (injected allocator counts calls); after the copy no part buffer
+     is reachable (`WeakRef` + `gc()` in a child with the worker flags); the child's peak RSS stays under the worker's
+     own 120 MB self-exit (wide margin). The precise 200 MB measurement lives in `test/medir-copia.mjs` (§6.6).
+1.20 `file_path` validation: `../x`, `/x`, 300 chars, `a b` → `respuesta_no_valida`, no request made.
 
 ### 13.3 Step 2 — integration (`copias.test.js`, `avisador.test.js`, `copias-api.test.js`, worker tests)
 2.1 `copias.hacer` in the real executor, local + fuera: preparar → generar → subir → verificar → indice; rows/states;
     one live copy only (409).
-2.2 Interrupted in `generar` (signal) → row `interrumpida`, retry makes a NEW uuid; interrupted in `subir` after part 2
-    → the next run uploads only 3..n; a crash between upload and DB write → one duplicate document, still verified.
-2.3 `cambiar_bytes` → re-upload from the local file, ok; fuera-only mismatch → `fallida` + `copia_fallida` + a fresh copy
-    later; 429 → waits `retry_after`, no failure counted; 5xx ×3 → `fallida` + grave aviso via `vigilar`.
-2.4 Disk policy (injected `discoLibreMb`): below minimum → no local files, off-site streamed, `copias_locales_pausadas`
-    sent; back above → resolved; the `poco_disco` brake does not stop `copias.hacer`; the memory brake does.
+2.2 Interrupted in `generar` (signal) → row `interrumpida`, retry makes a NEW uuid in the SAME task; interrupted in
+    `subir` after part 2 → the next run uploads only 3..n; a crash between upload and DB write → one duplicate document,
+    still verified. Caps: a fourth copy in one task, or a fourth uploaded copy in one RD day → task `fallida` +
+    `copia_fallida`; `encolar` is never called from the handler (spy).
+2.3 `cambiar_bytes` → re-upload from the local file, ok; fuera-only mismatch → copy `fallida` + restart 10 min later in
+    the same task; mismatch every time → stops at the cap with `copia_fallida`; 429 → waits `retry_after`, no failure
+    counted; 429 forever (local mode) → after 12 waits `telegram_limite_largo`; 429 with `retry_after` 120 in streaming
+    mode → restart, and repeated → capped; the worker's 429 writes `canales.pausa_hasta` and the web sender waits too;
+    5xx ×3 → `fallida` + grave aviso via `vigilar`; `sin_tamano` → still verified by hash.
+2.4 Disk policy (injected `discoLibreMb`, base and WAL sizes): floor = `max(2048, 2×base+WAL+256)`; below it → no local
+    files, off-site streamed, `copias_locales_pausadas` sent; back above → resolved; below 300 MB the `poco_disco`
+    brake stops `copias.hacer` (and the memory brake too); runway < 30 days → `copias_disco_pronto`. Streaming with a
+    writer connection active: the injected WAL growth passes 64 MB (or free disk drops under 500 MB) → snapshot closed
+    within one part, row `interrumpida` (`foto_larga`), restart; the live base never sees SQLITE_FULL.
 2.5 No key → `saltada` + `copias_sin_clave`; no Telegram → `solo_local` + `copias_sin_telegram`; neither → `sin_destino`;
     `bloqueado` during a copy → channel `bloqueado`, copy `solo_local`.
-2.6 Real worker child (`test/ia-trabajador.js` style) copies a 20 MB base: heartbeats continue (no `colgado`), RSS
-    measured and reported, < 110 MB; the worker flags include `--expose-gc`.
+2.6 Real worker child (`test/ia-trabajador.js` style) copies a 4 MB base: heartbeats continue (no `colgado`), no
+    memory self-exit, RSS reported (not asserted tightly); the worker flags include `--expose-gc`.
 2.7 Nightly slot 4:40 RD (UTC−4) via `ranura`; a slot older than 20 h → `caducada`.
-2.8 `vigilarCopias`: no verified off-site copy in 30 h → `copia_atrasada` (grave), resolved after a good copy; stuck rows
-    → `interrumpida`/`fallida`; 90-day `copias_comprobar_clave`.
+2.8 `copia_atrasada` from the WEB avisador: worker in safe mode for 31 h (fake clock) → the grave reaches the fake chat;
+    fresh setup (key + link at 15:00) → nothing until 30 h after linking; resolved after a good copy. `vigilarCopias`:
+    stuck rows → `interrumpida`/`fallida`; 90-day `copias_comprobar_clave`.
+2.8b In-step check: an injected dumper that drops one row (or one table) → copy `fallida` `volcado_incompleto`, never
+    `verificada`; a corrupted record fed to the checker → `fallida`.
 2.9 `leerActualizaciones`: the 3 line shapes → avisos/resolution; first run silent; partial last line; rotated file;
     unreadable file → nothing; both files byte-identical and same mtime after.
 2.10 Sender: routing table; dedup (same aviso twice → one message); escalation to grave → sent again; `reenviar`
      (ia_tope 50→80) → sent again ≥ 30 min later; flapping silenced; resolved before sending → not sent; > 48 h → not
-     sent; 10/h and 30/day; ≥ 3 due → one resumen; closing notice once for graves; only grave rings; send-then-mark;
+     sent; 10/h and 30/day counted over alert classes only (50 `copia_parte` rows today → an aviso is still sent); ≥ 3
+     due → one resumen; closing notice once for graves; grave → «Ya se arregló» → same grave again → sent, ringing,
+     «Volvió a pasar»; 3 reopenings in 6 h → merged, ≤ 1 per 30 min; only grave rings; send-then-mark;
      429 → canal pause; 403 → `bloqueado` + `telegram_falla`; 401 → secret marked `clave_no_valida`; backoff.
 2.11 The sender works with the worker in safe mode: the safe-mode aviso reaches the fake chat.
 2.12 Linking: code; `/start CODE` from a private chat links; typed code with spaces; group chat, bot sender, stale
-     message (before the code), wrong code ×5 → `vencido`, expired code; `offset=-1` sent; webhook → `bot_ocupado`;
+     message (before the code), wrong code ×5 → `vencido`, expired code; `offset=-1` sent then confirmed, first poll
+     without offset; `ids_al_azar` (Junior's `/start` gets a LOWER id than the old one) → still links; webhook →
+     `bot_ocupado`;
      a second link replaces the first (`desvinculado`); new bot id → `desvinculado`.
 2.13 Routes: access (admin / soloDueno / Funnel → 403 / other login → 403), limiters; the key appears ONLY in
      `clave/nueva` (scan every other response and the audit table); `no-store`; confirm/check flows; `ahora` 409s.
 2.14 Console `--copias=estado|ahora`, `--telegram=desvincular`; `oportia-restaurar.mjs` end to end against the fake
-     server and from files (stdin key; a key in argv refused; exit codes; refuses root).
+     server (one-time code; a stranger writing at the same time is ignored; chat name confirmation) and from files
+     (stdin key; a key in argv refused; an old copy asks and «no» → exit 8; exit codes; refuses root).
 2.15 Restored base on a "new server": secrets unreadable → Claves says «pégala otra vez»; `empezarLlaveNueva` allowed;
      after pasting a token of the same bot, the canal keeps working and the next copy goes to the same chat.
+2.16 Token changed (another bot) between `subir` part 2 and 3 → row `interrumpida` `bot_cambiado`, the new copy uses
+     only the new bot; every file_id of a verified copy downloads with ONE token.
+2.17 Pin: `desfijar` between nights → next `preparar` opens `copia_sin_fijar`; `otro_fijado` → `fijada = 0` +
+     `copia_sin_fijar`; a good pin resolves it.
+2.18 A manual copy verified at 4:30 → the 4:40 nightly ends `saltada: 'reciente'` (one copy that night).
+2.19 The page never sends the key: confirm/check bodies carry only `verificador`; a body with a `clave` field is refused
+     (400) and never logged; the server log of the whole suite run never contains a test key text.
 
 ### 13.4 Step 3 — screens (`pantallas.test.js`, `archivos.test.js`, Playwright review)
 3.1 Every new key in es.json AND en.json; a `telegram.aviso.<clave>` for each routed clave/prefix; a check that every
@@ -1130,11 +1294,19 @@ the user»; 403 «Forbidden: bot was kicked from the group chat»; 400 «Bad Req
 - `src/copias/restaurar.js` imported by neither the web nor the worker graph; the web graph never loads
   `src/copias/hacer.js`; the worker graph still never loads `node:http`, `src/app.js`, `src/api/`.
 - Every `openSync|createReadStream|readFileSync|openAsBlob` in `src/copias` passes the `esArchivoDeLlave` guard.
-- `copias.hacer` has its handler; `frenosQueIgnora ⊂ FRENOS_DE_RECURSOS`.
+- `copias.hacer` has its handler and ignores no resource brake; `src/copias/hacer.js` never calls `encolar`.
+- `efimera` appears in `src/` only inside `src/copias/cifrar.js` (no `src/` call passes it); `PUBLICAS_DE_PRUEBA` is
+  checked by `confirmarClave`.
+- No new `BEGIN`/`COMMIT` outside `db.js` (the restorer batches with `enTransaccion`); `abrirFotoDeLectura` is imported
+  only by `src/copias/hacer.js`.
+- The web graph never calls `readdirSync` on `cifradas/` (no `cifradas` string in `src/nucleo/salud.js`,
+  `src/api/`, `src/canales/`).
+- `public/clave-recuperacion.js` imports nothing and has no `fetch`; the `clave/confirmar|comprobar` handlers never read
+  a `clave` field.
 - `deploy/oportia-restaurar.mjs` never reads the key/token from `process.argv`/`process.env`.
 - (unchanged and still true: no `rmSync/unlinkSync/limpiar` — 1e deletes nothing.)
 
-### 13.6 Before every commit (updater-like run; < 60 s added by 1e: small bases, 64 KiB parts, in-process fake server)
+### 13.6 Before every commit (updater-like run; < 60 s added by 1e: small bases ≤ 4 MB, 64 KiB parts, in-process fake server, no tight RSS bounds — the updater runs this suite on the live 512 MB server)
 ```
 D=$(mktemp -d) && git -C /tmp/claude-0/-home-user/3844f319-6552-52e5-ac47-cb93f37f0012/scratchpad/wt-1e archive HEAD | tar -x -C "$D" && cd "$D" && env -i PATH=/usr/local/bin:/usr/bin:/bin:/opt/node22/bin timeout 900 node --no-warnings --test test/*.test.js
 ps -eo pid,args | grep '[t]rabajador.js'     # must print nothing
@@ -1146,11 +1318,17 @@ ps -eo pid,args | grep '[t]rabajador.js'     # must print nothing
 - What leaves the server: only encrypted parts and índices (to the owner's own private chat) and alert texts with
   numbers and keys. Never user data in clear, never a secret in clear, never the master key file.
 - A leaked bot token lets someone download ENCRYPTED copies (useless without the recovery key) or spam the chat; a
-  forged copy is refused (índice HMAC). Fix: @BotFather → revoke → paste the new token (same bot → same file_ids).
+  forged copy is refused (índice HMAC and the stream seal, with or without índice). They can also unpin newer índices
+  (no rights needed in private chats): the next copy notices (`copia_sin_fijar`) and every restore shows the copy's age
+  and asks before opening an old one. Fix: @BotFather → revoke → paste the new token (same bot → same file_ids).
 - A leaked recovery key + access to the chat = the base can be read. Fix: «Cambiar mi clave» (new copies safe); old
   copies stay readable to whoever has both — the owner may delete those Telegram messages himself (OPORTIA never deletes).
   Said plainly on the screen.
 - Whoever steals the server has the live base anyway; the sello there could forge copies only for that server.
+- The recovery key reaches the server exactly once (in memory, while «Crear» answers); confirming and checking send
+  only the verificador (a one-way derivation that opens nothing). Its routes never log bodies or error objects.
+- `efimera` (fixed ephemeral key) exists only for the frozen vector; a rules test keeps it out of `src/` calls, and the
+  TEST key published in `test/` can never become an active key (`PUBLICAS_DE_PRUEBA`).
 - The restored base keeps sessions; users stay logged in only if the cookie domain is the same (1f note).
 - Restore never overwrites, never runs inside the service, never touches a key file.
 
@@ -1160,12 +1338,19 @@ ps -eo pid,args | grep '[t]rabajador.js'     # must print nothing
 | Owner loses the recovery key | re-typing confirmation, printable sheet, 90-day check reminder, old keys listed; the local base on the server still exists |
 | Telegram changes the 20/50 MB limits or deletes files | 4 MiB parts (5× margin, constant); local encrypted copies; `copia_atrasada` within 30 h; restore from saved files |
 | Owner pins something else / deletes the pin | paths B′ (forward the índice) and B″ (files) |
-| Worker RSS near the 120 MB cap | gc after each part (measured); real-worker test 2.6; fallback 2 MiB parts; a memory exit costs one attempt and resumes at the same part |
+| Worker RSS near the 120 MB cap | gc after each part (measured); `test/medir-copia.mjs` before publishing; fallback 2 MiB parts; a memory exit costs one attempt (resumes at the same part in local mode, a capped restart in streaming mode) |
+| A flaky test blocks a good version forever (`version.bad` is never retried) | the suite has no load-dependent bounds: small bases, buffer-reuse checks, wide ceilings; precise measurements outside the suite |
+| Endless re-uploads (429 storms, timeouts, mismatches) | ≤ 3 copies per task, ≤ 3 uploaded copies per RD day, ≤ 12 waits / 6 h per copy, all derived from rows; restarts inside the same task, never `encolar` |
+| A dump bug produces an incomplete copy that still «verifies» | independent `COUNT(*)` in the same snapshot + in-step decrypt/gunzip/parse check; test with a row-dropping dumper |
 | Dump fidelity | typed JSON + bound parameters; tests 1.6–1.9; runtime refusal of unsupported table kinds; frozen vector |
-| Long read transaction holds checkpoints | short in the normal case (no network inside it); `vigilar` checkpoints later |
+| Long read transaction holds checkpoints | short in the normal case (no network inside it); streaming only above the 300 MB brake and under the snapshot budget (WAL +64 MB, free ≥ 500 MB, 25 min); `vigilar` checkpoints later |
 | Duplicate uploads after interruptions | harmless, silent, own chat; the índice points only to verified parts |
-| Alert flood | dedup per news, 48 h freshness, flapping silence, 10/h, 30/day, resumen |
-| Disk fills with never-deleted local copies | local paused below 2 GB, alert, off-site continues (owner decision 3) |
+| Alert flood | dedup per news, 48 h freshness, flapping silence (non-grave), 10/h, 30/day over alert classes, resumen, merged «Volvió a pasar» |
+| A grave hidden after «Ya se arregló» | graves are never silenced; a reopening is sent as «Volvió a pasar» and rings |
+| Backups stop silently while the worker is down | `copia_atrasada` is evaluated by the web sender |
+| Token changed during a copy | copy bound to `secreto_id` + bot id; mismatch → restart |
+| Restored base raises false alarms / shares the old server id | `ajustarTrasRestaurar` |
+| Disk fills with never-deleted local copies | local paused below `max(2 GB, 2×base+WAL+256 MB)` (room for a migration's pre-copy), runway alert 30 days ahead, alert, off-site continues; below 300 MB no copies (owner decision 3) |
 | Token leak through errors/logs | `llamar.js` keeps only error name/code; no `console.` in canales/copias; tests scan every result for the token |
 | Another program uses the bot (webhook) | `bot_ocupado`, nothing changed automatically |
 | The very first 0.5.0 install fails and rolls back | cannot be reported (0.4.1 has no sender); later failures are read by the stable older code. README gap |
@@ -1182,6 +1367,9 @@ ps -eo pid,args | grep '[t]rabajador.js'     # must print nothing
 - `telegram_bot` secret: 0.4.1's `listarSecretos` iterates its own `USOS` → ignored; `estadoAlmacen` still counts it as a
   saved key (correct: the master key must not be recreated).
 - New tables, `ajustes` keys and `cifradas/` files are ignored (0.4.1's `copias()` counts top-level files only).
+- Expected and harmless on 0.4.1 (written into the rehearsal as expectations, not failures): a `lista` `copias.hacer`
+  is never claimed, so 0.4.1's `vigilar` may open `fila_atrasada` (atención, screen only); a `telegram_bot` secret whose
+  last test is `bot_ocupado`/`bloqueado`/`chat_no_existe` (new MOTIVOS) is shown with 0.4.1's raw fallback text.
 - No alerts and no copies while on 0.4.1 (accepted; 0.5.0 shows the gap as `copia_atrasada` when it returns).
 - 1e adds nothing at web start that can fail `/api/setup`: the avisador starts after `listen`, lazily, swallowing
   errors; a failed migration 6 rolls back inside its transaction (pre-migration copy kept).
@@ -1190,24 +1378,27 @@ ps -eo pid,args | grep '[t]rabajador.js'     # must print nothing
   `en_curso` of a dead run and one `lista`, a `telegram_bot` secret, an active canal, envios, avisos `copia_atrasada`,
   `actualizacion_revertida:abc1234`, `ia_tope:…` unsent); run 0.4.1's real code (`git archive c6b0626`): `abrirBase`,
   worker recovery, `elegir` per cupo, `listarSecretos`, `estadoAlmacen`, `estadoDelSistema`, `GET /api/admin/claves`,
-  avisos listing → nothing throws, the copy task is never offered; back on 0.5.0 the copy finishes `verificada` against
-  the fake Telegram, and only fresh avisos are sent.
+  avisos listing → nothing throws, the copy task is never offered, `fila_atrasada` may open and the new motivos render
+  raw (both expected); back on 0.5.0 the copy finishes `verificada` against the fake Telegram (as a restart in the same
+  task when its row had parts), and only fresh avisos are sent.
 
 ---
 
 ## 17 Textos (every key in BOTH `es.json` and `en.json`; full list built in step 3)
 Groups: `admin.pestana.copias`, `servicios.copias`, `servicios.telegram`, `copias.tono.{bien,atencion,mal}`;
-`copias.{titulo,fuera.titulo,comprobada,ultima,proxima,partes,ahora,haciendo,sin_clave,solo_locales,pausa_modo_seguro,
-disco_lleno,fallo}`, `copias.no_ahora.{en_marcha,modo_seguro,sin_clave,sin_trabajador}`, `copias.estado.<each state>`,
+`copias.{titulo,fuera.titulo,comprobada,ultima,proxima,partes,ahora,haciendo,haciendo_sin_total,sin_clave,solo_locales,
+pausa_modo_seguro,disco_lleno,freno_disco,sin_fijar,fallo}`, `copias.no_ahora.{en_marcha,modo_seguro,sin_clave,
+sin_trabajador,disco_lleno}`, `copias.aqui.dias`, `copias.estado.<each state>`,
 `copias.motivo.<each motivo>`, `copias.aqui.{titulo,resumen,pausadas}`, `copias.restaurar.{titulo,paso1..paso5}`;
 `copias.clave.{crear,guardala,unica,no_compartir,copiar,imprimir,ya_guarde,repite,comprobar,grupo_mal,no_valida,lista,
 cambiar,cambiar_aviso,actual,anterior,no_es,hoja.titulo}`; `telegram.{grupo,crear_bot,como1..como4,pega,guardar_probar,
 bot,unir,codigo,vence,abrir_bot,toca_iniciar,o_escribe,esperando,unido,prueba,prueba_ok,dejar,ultimo_aviso,
-problema.{bloqueado,perdido,clave,sin_red,bot_ocupado}}`; Telegram messages `telegram.titulo.{grave,atencion,cierre}`,
+problema.{bloqueado,perdido,clave,sin_red,bot_ocupado}}`; Telegram messages `telegram.titulo.{grave,atencion,cierre,volvio}`,
 `telegram.aviso.<every routed clave and prefix>.{titulo,texto}`, `telegram.aviso.otro`, `telegram.resumen`,
-`telegram.bienvenida`, `telegram.prueba_mensaje`, `telegram.copia.{parte,leyenda}`, `telegram.recordar_clave`;
-`avisos.clave.<each new clave>`; `error.{copia_en_marcha,falta_clave,sin_destino,trabajo_en_pausa,clave_formato,
-clave_control,clave_no_coincide,sin_pendiente,sin_token,bot_ocupado}`.
+`telegram.bienvenida`, `telegram.prueba_mensaje`, `telegram.copia.{parte,parte_sin_total,leyenda}`, `telegram.recordar_clave`;
+`avisos.clave.<each new clave>`; `error.{copia_en_marcha,falta_clave,sin_destino,trabajo_en_pausa,disco_lleno,
+clave_formato,clave_control,clave_no_coincide,verificador_formato,sin_pendiente,sin_token,bot_ocupado}` (the CLI's
+Spanish lines live in the CLI, like `oportia-admin.mjs`).
 
 | Key | es | en |
 |---|---|---|
@@ -1215,6 +1406,11 @@ clave_control,clave_no_coincide,sin_pendiente,sin_token,bot_ocupado}`.
 | `copias.fuera.titulo` | Copia fuera del servidor | Off-server backup |
 | `copias.ahora` | Hacer una copia ahora | Back up now |
 | `copias.haciendo` | Haciendo la copia… parte {n} de {de} | Backing up… part {n} of {de} |
+| `copias.haciendo_sin_total` | Haciendo la copia… parte {n} | Backing up… part {n} |
+| `copias.freno_disco` | Disco lleno: las copias están en pausa hasta que haya espacio. Nada se borró. | Disk full: backups are paused until there is space. Nothing was deleted. |
+| `copias.sin_fijar` | El mensaje fijado en tu chat no es la última copia. | The pinned message in your chat is not the latest backup. |
+| `copias.aqui.dias` | Alcanza para unos {n} días | Enough for about {n} days |
+| `telegram.titulo.volvio` | 🔴 OPORTIA · Volvió a pasar | 🔴 OPORTIA · It happened again |
 | `copias.sin_clave` | Tus copias necesitan tu clave de recuperación | Your backups need your recovery key |
 | `copias.solo_locales` | Solo hay copias en este servidor. Si el servidor se pierde, se pierden. | Backups are only on this server. If the server is lost, they are lost. |
 | `copias.disco_lleno` | Disco casi lleno: dejé de guardar copias aquí. Las de Telegram siguen. Nada se borró. | Disk almost full: I stopped keeping backups here. Telegram backups continue. Nothing was deleted. |
@@ -1222,7 +1418,7 @@ clave_control,clave_no_coincide,sin_pendiente,sin_token,bot_ocupado}`.
 | `copias.clave.lista` | Coincide. Tus copias quedan protegidas con la clave {huella}. | It matches. Your backups are protected with key {huella}. |
 | `telegram.grupo` | Avisos y copias por Telegram | Alerts and backups on Telegram |
 | `telegram.esperando` | Esperando tu mensaje… | Waiting for your message… |
-| `telegram.copia.leyenda` | ✔ Copia de OPORTIA del {fecha} — {mb}, {n} partes, comprobada. No borres estos mensajes. | ✔ OPORTIA backup of {fecha} — {mb}, {n} parts, verified. Do not delete these messages. |
+| `telegram.copia.leyenda` | Copia de OPORTIA del {fecha} — {mb}, {n} partes. No borres estos mensajes: con tu clave de recuperación se recupera todo. | OPORTIA backup of {fecha} — {mb}, {n} parts. Do not delete these messages: with your recovery key everything can be recovered. |
 | `telegram.aviso.otro.titulo` | OPORTIA tiene un aviso: abre Administrador | OPORTIA has an alert: open Administrator |
 
 ---
@@ -1236,18 +1432,21 @@ Claude-Session: https://claude.ai/code/session_01RVTxHvB4G1P1e1VpxsmTfM
 Never push; never touch other branches or worktrees; stop every server you start.
 
 **Step 1 — core (no worker task, no UI):** migration 6 + fingerprint + `VERSION_DE_CADA_MIGRACION[6]` + `package.json`
-0.5.0; `db.js` (`abrirFotoDeLectura`, `aplicarEnTransaccion`); `config.js` (`canalesBases`); `llamar.js` (`cuerpoCrudo`,
-`alTrozo`); `src/copias/{formato,clave,cifrar,volcado,restaurar}.js` + the partidor; `src/canales/{canal,telegram,
-credencial}.js`; `test/telegram-falso.js`, `test/copias-base.js`, `test/copia-v1.json` (generated once by a scratch
-script, then frozen); tests 1.1–1.19; the §13.5 rules that apply to these files. Record 1.19's numbers in the commit.
+0.5.0 (fingerprint `5443d09f…bdb2`, §10); `db.js` (`abrirFotoDeLectura`); `config.js` (`canalesBases`); `llamar.js`
+(`cuerpoCrudo`, `alTrozo`); `src/copias/{formato,clave,cifrar,volcado,restaurar}.js` + the partidor; `src/canales/{canal,
+telegram,credencial,vinculo}.js`; `public/clave-recuperacion.js` (+ its line in `test/archivos.test.js`);
+`test/telegram-falso.js`, `test/copias-base.js`, `test/copia-v1.json` (generated once by a scratch script, with the
+stream seal, then frozen); tests 1.1–1.20 (+1.16b); the §13.5 rules that apply to these files.
 Commit «Fase 1e (paso 1 de 3): migración 6, formato de copia cifrada, clave de recuperación, restaurar, adaptador de
 Telegram y servidor falso».
 
 **Step 2 — integration:** `src/copias/{estado,hacer,vigilar}.js`; `src/canales/{canales,avisador,textos}.js` (with the
-`telegram.*` keys added to both i18n files); `tipos.js`/`cola.js`/`manejadores.js`/`trabajador.js`/`supervisor.js`;
+`telegram.*` keys added to both i18n files); `tipos.js`/`manejadores.js`/`trabajador.js`/`supervisor.js` (`cola.js`
+unchanged);
 `avisos.js`; `usos.js`/`probar.js`/`propositos.js`; `src/api/{copias,canales}.js`, `api/claves.js`, `api/tareas.js`,
-`app.js`, `server.js`; `salud.js`; `deploy/oportia-admin.mjs`, `deploy/oportia-restaurar.mjs`; tests 2.1–2.15 and the
-remaining rules; `test/medir-copia.mjs` (numbers into the README draft; apply the 2 MiB fallback if §6.6 asks);
+`app.js`, `server.js`; `salud.js`; `deploy/oportia-admin.mjs`, `deploy/oportia-restaurar.mjs`; tests 2.1–2.19 (+2.8b)
+and the remaining rules; `test/medir-copia.mjs` run on a 200 MB base in local and streaming mode (numbers into the
+commit message and the README draft; the 4 vs 2 MiB decision of §6.6 is made HERE, before anything is published);
 `test/ensayo-0.4.1.mjs` run.
 Commit «Fase 1e (paso 2 de 3): copias de cada noche en el trabajador, avisos al Telegram, unir el chat, rutas y consola».
 
@@ -1268,8 +1467,13 @@ Commit «Fase 1e (paso 3 de 3): pantalla de Copias, clave de recuperación, Tele
 2. **Dónde llegan avisos y copias.** *Por defecto: tu chat privado con tu bot* (las copias en silencio, el «índice» de
    la última fijado arriba; solo lo urgente suena). Otra opción para más adelante: un canal privado aparte para copias.
 3. **⚠ Disco casi lleno (decisión importante).** *Por defecto: nunca se borra nada.* Cuando quedarían menos de 2 GB
-   libres, dejo de guardar copias nuevas en el servidor, sigo con las de Telegram cada noche y te aviso. Otra opción
-   (solo si tú la pides): guardar en el servidor solo las copias de los últimos N días.
+   libres (o más, si la base crece: siempre dejo espacio para dos veces la base, que hace falta para mejorar OPORTIA
+   sin riesgo), dejo de guardar copias nuevas en el servidor, sigo con las de Telegram cada noche y te aviso. Un mes
+   antes te aviso «al ritmo de hoy, en unos 30 días…». Si el disco llega a casi nada (menos de 300 MB), también paro
+   las de Telegram hasta que haya espacio, porque hacerlas en ese momento podría llenar el disco del todo; eso suena
+   como urgente. Lo que cuesta no borrar: con el tiempo el disco del servidor se llena de copias viejas y alguien
+   (tú, con ayuda de Claude) tendrá que decidir qué hacer. Otra opción (solo si tú la pides): guardar en el servidor
+   solo las copias de los últimos N días.
 4. **Sin clave de recuperación no hay copias nocturnas.** *Por defecto: ninguna copia hasta que crees tu clave* (una
    copia sin candado sería un archivo que nunca se puede borrar). Mientras falte, Administrador y Telegram te lo
    recuerdan. Siguen existiendo las copias automáticas de antes de cada cambio de base.
@@ -1279,7 +1483,8 @@ Commit «Fase 1e (paso 3 de 3): pantalla de Copias, clave de recuperación, Tele
    las 4:10.
 7. **Qué avisos te llegan al Telegram.** *Por defecto: la tabla del §7.2* — lo urgente con sonido; caídas del
    trabajador, disco, memoria, copias, actualizaciones y topes/proveedor de la IA en silencio; «Ya se arregló» cuando un
-   urgente se resuelve; como mucho 10 por hora y 30 por día. Recordatorio diario de lo urgente que sigue abierto: *no*.
+   urgente se resuelve, y «Volvió a pasar» (con sonido) si vuelve después; como mucho 10 avisos por hora y 30 por día
+   (las copias no cuentan); lo urgente nunca se calla. Recordatorio diario de lo urgente que sigue abierto: *no*.
 8. **Recordatorio para comprobar tu clave.** *Por defecto: cada 90 días, un mensaje en silencio.*
 9. **Leer `update.log` y `version.bad` (solo leer, nunca cambiarlos)** para avisarte de una actualización que falló o se
    devolvió. *Por defecto: sí.*
@@ -1287,3 +1492,39 @@ Commit «Fase 1e (paso 3 de 3): pantalla de Copias, clave de recuperación, Tele
     llega igual porque lo manda la parte web).
 11. **Cambiar la clave de recuperación.** *Por defecto: solo si tú lo pides* (por ejemplo, si crees que alguien la
     vio); las copias viejas siguen necesitando la clave vieja.
+
+---
+
+## 20 Changelog — revision 2 (review round on the judge's merge)
+Each criticism was checked against `wt-1e` (`c6b0626`), the saved spec and a temp-folder experiment (migration 6 applied
+through the real `abrirBase`). Accepted unless marked otherwise.
+
+| # | Criticism | Verdict | What changed |
+|---|---|---|---|
+| 1 | Low disk: copy ignores the 300 MB brake and keeps the snapshot open during uploads → -wal grows on a full disk | **real** (`frenosQueIgnora`, §6.3 step 2) | `frenosQueIgnora` dropped (no generic field, `cola.js` unchanged): below 300 MB no copy. Streaming only between the brake and the floor, under a snapshot budget measured each part (WAL +64 MB, free ≥ 500 MB, 25 min; 429 waited inside only ≤ 10 s); a breach closes the snapshot and restarts. §6.1, §6.3, test 2.4 |
+| 2 | Flapping silence hides a grave that comes back after «Ya se arregló» | **real** | flapping silence only for non-graves; graves send «Volvió a pasar» and ring; repeats merged ≤ 1/30 min. §7.3, test 2.10 |
+| 3 | Retries loop forever; «fresh copy 10 min later» is a silent no-op | **real** (`seguir` resets `fallos_seguidos`; `noEsFallo` never counts; partial unique index + `ON CONFLICT DO NOTHING`) | restarts inside the same task (`{punto:{paso:'preparar'}, esperarMs}`), never `encolar`; caps derived from rows (≤ 3 copies/task, ≤ 3 uploaded copies/RD day) and waits counted in the punto (≤ 12 / 6 h) → non-retryable failure. §6.1, §6.3, tests 2.2, 2.3, rule |
+| 4 | Tight RSS tests run in the production updater; one flake → `version.bad` forever | **real** (cloud-init skips a bad SHA) | 1.19 and 2.6 reduced to 4 MB bases, buffer-reuse/no-retention checks and a wide ceiling; the 200 MB measurement and the 4 vs 2 MiB decision moved to `test/medir-copia.mjs`, run before the step-2 commit. §6.6, §13, §18 |
+| 5 | `copia_atrasada` only in the worker: silent when it is down; false grave right after setup | **real** | evaluated by the web avisador every 5 min with base = max(key confirmada_en, canal vinculado_en, last verificada_en) + 30 h. §6.5, §7.3 step 0, test 2.8 |
+| 6 | Rate limits would count nightly part uploads | **real** (`CLASES_ENVIO` includes `copia_parte`) | limits count only `aviso`, `cierre`, `resumen`, `bienvenida`, `prueba` rows with `resultado 'enviado'`. §7.3, test 2.10 |
+| 7 | «Comprobada» does not prove completeness or decryptability | **real** | independent `COUNT(*)` per table in the same snapshot + in-step decrypt/gunzip/parse with the copy's own key (tee); mismatch → `fallida volcado_incompleto`; «comprobada» redefined. §5.2, §5.3, §5.6, §6.3, test 2.8b |
+| 8 | getUpdates ids restart at random after a week idle; stored offset can hide the linking message | **real** (spec Update.update_id) | after `offset=-1`, confirm it, poll WITHOUT offset, then offset only from ids seen in this window; stale (> 6 days) offsets ignored; fake scene `ids_al_azar`. §2.1, §8.4, test 2.12 |
+| 9 | Token change mid-copy mixes file_ids of two bots | **real** | `copias.secreto_id` + `cuenta_id` (migration 6); `conCredencial({ secretoId })`; getMe per step; change → restart; `bot` in the índice, restore refuses another bot (`otro_bot`). §6.3, §8.1, §9, test 2.16 |
+| 10 | Restore: chat from any sender, older copy opened silently, pin failures unnoticed, archivos fallback silent | **real**, (b) **partly** | one-time code for the CLI/1f (`empezarBusquedaDeChat`), chat name confirmed; `alElegir` with date/age, confirmation > 30 h; `anterior` in the índice; pin verified each night via `getChat` and before each copy → `copia_sin_fijar`; archivos mode fails `falta_parte` unless `aceptarAnterior`, then reports `hayMasNueva`. *Not adopted:* «confirm when a newer copy id is referenced» from an old índice — a bot cannot list chat history and an older índice cannot reference newer ones; the nightly pin check + age confirmation cover it. §3, §5.5, §6.3, §9, tests 1.16, 2.14, 2.17 |
+| 11 | No-índice path accepts a forged copy encrypted to the public key | **real** (X25519 with an ephemeral key is not sender authentication) | stream seal line HMAC(sello, …, hashCabecera, sha256(B)) as the last plaintext line; no unauthenticated restore path (`autentica: 'indice+flujo' \| 'flujo'`, else `copia_no_autentica`); frozen vector includes it. §5.3, §9, test 1.4 |
+| 12 | Recovery key repeatedly POSTed to the live server | **real** (`app.js` logs full error objects) | page-side verificador (`public/clave-recuperacion.js`, pure JS — not WebCrypto, because a plain-`http` tailnet address is not a secure context); `copias_llaves.verificador` in migration 6; routes take only `verificador`, catch-and-log-code. The server still sees the key once at creation (generation stays server-side: X25519 in the page would be a second implementation of the part that must never be wrong). §4.3, §5.1, §12, tests 1.2, 2.19 |
+| 13 | Web process would scan an ever-growing `cifradas/` | **real** (`medirSalud` runs in the supervisor = web process) | numbers from `copia_partes` rows (one `SUM`); `salud.js` `copias()` unchanged; monthly subfolders. §6.2, §11.2, rule |
+| 14 | Async restore transaction contradicts `enTransaccion` | **real** | `aplicarEnTransaccion` removed; the restorer batches ≤ 5 000 lines / 8 MiB per synchronous `enTransaccion` (safe: marker last). §5.3, §9 step 7 |
+| 15 | Fixed 2 GB floor ignores base size | **real** (pre-migration `VACUUM INTO` needs ≈ base size) | floor = max(2048, 2×base+WAL+256) MB; runway aviso `copias_disco_pronto` < 30 days; decision 3 states the trade-off. §6.2, §19 |
+| 16 | Restored base carries the in-flight copy row/task and the old `servidor.id` | **real** | `ajustarTrasRestaurar` (1e, called by the CLI and 1f): in-flight rows `interrumpida` without aviso, task `cancelada`, new `servidor.id` with `servidor.origenes`; `copias.servidor` column; result exposes `servidor`, `copiaEnCurso`. §3, §9, test 1.16b |
+| 17 | Optional `file_size` treated as mandatory | **real** (spec: Optional) | compared only when present; fake scene `sin_tamano`. §2.1, §6.3, §6.4, test 2.3 |
+| 18 | Format/UX inconsistencies | **real** (all six) | (a) captions/progress without a total in streaming; (b) índice caption without «comprobada»/✔; (c) `sqlite_`-named and NULL-sql schema rows skipped; (d) `LINEA_MAX` 8 MiB both sides + decompressed cap; (e) `file_path` pattern; (f) timing text fixed (latido 15 s, vigía 90 s). §1, §4.5, §5.3, §6.4, §9 |
+| 19 | Test-only crypto parameters; rehearsal gaps; date parsing; shared flood pause | **real** | rules test for `efimera`, `PUBLICAS_DE_PRUEBA` refused; rehearsal expects `fila_atrasada` and raw new motivos on 0.4.1; `Date.parse` for update.log; the worker writes and honours `canales.pausa_hasta`. §5.1, §5.2, §6.3, §7.4, §13.5, §16 |
+| 20 | Manual copy shortly before 4:40 → double copy | **real** (`programar` runs a skipped slot right after) | nightly `preparar` ends `saltada: 'reciente'` when a copy was verified < 6 h ago. §6.1, test 2.18 |
+
+Migration 6 changed (`copias_llaves.verificador`, `copias.secreto_id`, `cuenta_id`, `servidor`): new fingerprint
+`5443d09fac022e5aea609fec97efbad138e1657bb7e57358a97e82b9a1c7bdb2` (3709 bytes), re-checked: rules regex false, 0 CHECK,
+0 UNIQUE, 0 ADD COLUMN, applies over 1–5 with the pre-migration copy, idempotent, 0.4.1's `abrirBase` opens it and
+applies nothing, `foreign_key_check` empty. New avisos claves: `copias_disco_pronto`, `copia_sin_fijar`. New files:
+`public/clave-recuperacion.js`, `src/canales/vinculo.js`. Removed from the plan: `POR_DEFECTO.frenosQueIgnora`,
+`tiposPermitidos` change, `aplicarEnTransaccion`, `salud.js` scanning `cifradas/`, the RSS bounds inside the suite.
