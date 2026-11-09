@@ -17,8 +17,10 @@
 // pantalla. NUNCA van en la línea de la orden (cualquiera los vería con «ps») ni en variables del entorno.
 // Con --telegram muestra un código de 8 cifras: escríbeselo a tu bot desde tu chat privado. Los mensajes de otras
 // personas al bot se ignoran. Después pregunta si el chat que encontró es el tuyo.
-// Una copia de hace más de 30 horas, si hay una más nueva, o si la copia fijada en el chat es de hace más de 26 horas,
-// nunca se abre sin un «sí» tuyo.
+// Una copia de hace más de 30 horas, si hay una más nueva, si la copia fijada en el chat es de hace más de 26 horas, si su
+// fecha es del futuro (reloj adelantado) o si hay otra copia que también parece la última, nunca se abre sin un «sí» tuyo.
+// Después de restaurar desde Telegram: revoca el token del bot en @BotFather (/revoke) y pega el nuevo en Claves, así
+// un servidor viejo que siga vivo ya no puede mandar copias a tu chat.
 //
 // Nunca pisa un archivo: si el destino ya existe, no hace nada. Nunca toca el archivo de la llave de las claves: después
 // de recuperar, pega otra vez tus claves (las de la IA y el token del bot) en Administrador → Claves.
@@ -28,6 +30,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { configDeCanales } from '../src/nucleo/config.js';
 import { restaurarCopia, empezarBusquedaDeChat } from '../src/copias/restaurar.js';
 import { ErrorCopias } from '../src/copias/formato.js';
@@ -80,51 +83,78 @@ const haceTexto = horas => (horas < 1 ? 'hace menos de una hora' : horas < 48 ? 
 const megas = bytes => `${Math.max(1, Math.round((Number(bytes) || 0) / (1024 * 1024)))} MB`;
 
 // Lee la entrada línea por línea (las respuestas, la clave y el token). En una terminal, lo oculto no se muestra.
-function crearLector(entrada = process.stdin, salida = process.stdout) {
+// UN solo lector para todo el programa (ronda 2: antes, una pregunta oculta quitaba el lector y la siguiente pregunta
+// se quedaba esperando para siempre). En una terminal en modo crudo cada tecla llega sola: el mismo lector la junta; en
+// lo oculto no la repite en la pantalla, en lo visible sí. Lo que llega después del Enter queda para la próxima pregunta.
+export function crearLector(entrada = process.stdin, salida = process.stdout) {
   let pendiente = '';
   const lineas = [];
   const esperando = [];
   let fin = false;
+  let crudo = null; // { oculto } mientras una pregunta usa el modo crudo de la terminal
   const entregar = () => {
     while (esperando.length && (lineas.length || fin)) esperando.shift()(lineas.length ? lineas.shift() : null);
   };
-  entrada.setEncoding?.('utf8');
-  entrada.on('data', pedazo => {
-    pendiente += pedazo;
-    let i;
-    while ((i = pendiente.search(/\r?\n|\r/)) >= 0) {
-      lineas.push(pendiente.slice(0, i));
-      pendiente = pendiente.slice(i + (pendiente[i] === '\r' && pendiente[i + 1] === '\n' ? 2 : 1));
+  const alDato = pedazo => {
+    const texto = String(pedazo);
+    if (!crudo) {
+      pendiente += texto;
+      let i;
+      while ((i = pendiente.search(/\r?\n|\r/)) >= 0) {
+        lineas.push(pendiente.slice(0, i));
+        pendiente = pendiente.slice(i + (pendiente[i] === '\r' && pendiente[i + 1] === '\n' ? 2 : 1));
+      }
+      entregar();
+      return;
     }
-    entregar();
-  });
+    // Modo crudo: tecla por tecla (Enter, Ctrl+C, borrar). Lo que sigue al Enter se guarda para después.
+    for (let k = 0; k < texto.length; k++) {
+      const c = texto[k];
+      if (c === '\r' || c === '\n') {
+        const linea = pendiente;
+        pendiente = '';
+        let resto = texto.slice(k + 1);
+        if (c === '\r' && resto[0] === '\n') resto = resto.slice(1);
+        salida.write('\n');
+        lineas.push(linea);
+        crudo = null;
+        entregar();
+        if (resto) alDato(resto);
+        return;
+      }
+      if (c === '\u0003') { pendiente = ''; crudo = null; fin = true; salida.write('\n'); entregar(); return; }
+      if (c === '\u007f' || c === '\b') {
+        if (pendiente) { pendiente = pendiente.slice(0, -1); if (!crudo.oculto) salida.write('\b \b'); }
+        continue;
+      }
+      if (c < ' ') continue; // otras teclas de control (flechas…): nada
+      pendiente += c;
+      if (!crudo.oculto) salida.write(c);
+    }
+  };
+  entrada.setEncoding?.('utf8');
+  entrada.on('data', alDato);
   entrada.on('end', () => { if (pendiente) lineas.push(pendiente); pendiente = ''; fin = true; entregar(); });
   entrada.on('error', () => { fin = true; entregar(); });
   return {
     async preguntar(texto, { oculto = false } = {}) {
+      if (lineas.length || fin) {
+        salida.write(texto);
+        return new Promise(listo => { esperando.push(listo); entregar(); });
+      }
+      const tty = entrada.isTTY && typeof entrada.setRawMode === 'function';
+      // En una terminal, lo oculto va en modo crudo (sin eco), puesto ANTES de mostrar la pregunta: así nada de lo que se
+      // escriba después de verla sale en la pantalla. Lo visible, con la línea normal de la terminal.
+      if (tty && oculto) { entrada.setRawMode(true); crudo = { oculto: true }; }
       salida.write(texto);
-      const tty = oculto && entrada.isTTY && typeof entrada.setRawMode === 'function';
-      if (tty) entrada.setRawMode(true);
       try {
-        if (!tty) return await new Promise(listo => { esperando.push(listo); entregar(); });
-        return await new Promise(listo => {
-          let escrito = '';
-          const alTecla = tecla => {
-            for (const c of String(tecla)) {
-              if (c === '\r' || c === '\n') { entrada.off('data', alTecla); salida.write('\n'); listo(escrito); return; }
-              if (c === '\u0003') { entrada.off('data', alTecla); listo(null); return; }
-              if (c === '\u007f' || c === '\b') escrito = escrito.slice(0, -1);
-              else escrito += c;
-            }
-          };
-          entrada.removeAllListeners('data');
-          entrada.on('data', alTecla);
-        });
+        return await new Promise(listo => { esperando.push(listo); entregar(); });
       } finally {
-        if (tty) entrada.setRawMode(false);
+        crudo = null;
+        if (tty && oculto) entrada.setRawMode(false);
       }
     },
-    cerrar() { try { entrada.pause?.(); entrada.destroy?.(); } catch { /* ya cerrada */ } },
+    cerrar() { try { entrada.off?.('data', alDato); entrada.pause?.(); entrada.destroy?.(); } catch { /* ya cerrada */ } },
   };
 }
 
@@ -211,14 +241,24 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
     resultado = await restaurarCopia({
       clave, fuente, destino, carpetaTrabajo, aceptarAnterior: o.anterior, base,
       alElegir: async e => {
-        decir(`Copia del ${fechaRd(e.creada)} (${haceTexto(e.edadHoras)}).`);
+        decir(e.futura
+          ? `Copia del ${fechaRd(e.creada)}: esa fecha es del FUTURO (el reloj del servidor que la hizo iba adelantado).`
+          : `Copia del ${fechaRd(e.creada)} (${haceTexto(e.edadHoras)}).`);
+        if (e.servidor) decir(`  La hizo el servidor «${String(e.servidor).slice(0, 8)}».`);
         if (e.hayMasNueva) decir(`⚠ Hay una copia más nueva (del ${fechaRd(e.hayMasNueva.creada)}) que no está completa.`);
         if (e.antigua) decir(`⚠ Esta copia es de ${haceTexto(e.edadHoras)}.`);
         if (e.fijadaVieja) {
           decir(`⚠ La copia fijada en tu chat es de ${haceTexto(e.edadHoras)}: quizás la de la última noche no quedó fijada.`);
           decir('  Si en tu chat ves un archivo «…-indice.txt» más nuevo, guárdalo, di «no» y usa --indice=<ese archivo>.');
         }
-        if (!e.antigua && !e.hayMasNueva && !e.fijadaVieja) return true;
+        if (e.otraCandidata) {
+          const o = e.otraCandidata;
+          decir(o.motivo === 'otra_punta'
+            ? `⚠ Hay OTRA copia que también parece la última: del ${fechaRd(o.creada)}, hecha por el servidor «${String(o.servidor ?? '?').slice(0, 8)}». Quizás dos servidores mandaron copias con el mismo bot.`
+            : `⚠ Hay otra copia con fecha del ${fechaRd(o.creada)}${o.futura ? ' (fecha del futuro: reloj adelantado)' : ''}. Revisa cuál tiene tus datos más nuevos.`);
+          decir('  Si quieres la otra, di «no» y deja en la carpeta solo los archivos de esa noche (o usa --indice=<su índice>).');
+        }
+        if (!e.antigua && !e.hayMasNueva && !e.fijadaVieja && !e.futura && !e.otraCandidata) return true;
         return si(await lector.preguntar('¿Es esa la que quieres? (sí/no): '));
       },
       alAvanzar: a => { if (a?.paso === 'partes_listas') decir(`Partes: ${a.partes} de ${a.partes}, todas bien.`); },
@@ -228,6 +268,12 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
     else decir(`Copia comprobada: ${megas(resultado.bytes)}, ${resultado.tablas} tablas, todo bien. No se escribió ninguna base.`);
     const pegar = [...(resultado.claves?.deIa ?? []).map(u => (u === 'ia_anthropic' ? 'clave de Claude' : u === 'ia_openai' ? 'clave de ChatGPT' : u)), ...(resultado.claves?.telegram ? ['token del bot'] : [])];
     if (pegar.length) decir(`Tienes que pegar otra vez: ${pegar.join(', ')} (por seguridad nunca viajan en las copias).`);
+    if (o.telegram || resultado.claves?.telegram) {
+      // Ronda 2: si el servidor viejo sigue vivo (o vuelve de una foto del droplet), seguiría mandando sus copias viejas
+      // a tu chat con el mismo bot, y una próxima restauración podría tomar esas. Revocar el token lo apaga.
+      decir('IMPORTANTE: en Telegram, abre @BotFather, escribe /revoke y elige tu bot. Te da un token NUEVO: pégalo en');
+      decir('  Administrador → Claves del servidor nuevo. Así el servidor viejo (si sigue vivo) ya no puede mandar copias.');
+    }
   } catch (error) {
     const clave = error instanceof ErrorCopias ? error.clave : 'error';
     codigo = SALIDAS[DE_ERROR[clave] ?? (error instanceof ErrorCopias ? 'copia' : 'copia')];
@@ -245,7 +291,10 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
   return codigo;
 }
 
-principal().then(codigo => { process.exitCode = codigo; }).catch(error => {
-  process.stderr.write(`No se pudo completar (${error?.name ?? 'error'}).\n`);
-  process.exitCode = 1;
-});
+// Corre solo cuando es el programa (las pruebas importan crearLector sin correrlo).
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  principal().then(codigo => { process.exitCode = codigo; }).catch(error => {
+    process.stderr.write(`No se pudo completar (${error?.name ?? 'error'}).\n`);
+    process.exitCode = 1;
+  });
+}

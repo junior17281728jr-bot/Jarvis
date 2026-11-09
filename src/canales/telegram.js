@@ -21,6 +21,9 @@ export const LIMITES = Object.freeze({
 });
 const JSON_MS = 15_000;
 const JSON_TOPE = 262_144;
+// getUpdates: un mensaje de texto puede tener 4.096 caracteres (hasta ~16 KB en UTF-8) más su «respuesta a» y datos:
+// con 10 por pedido, 2 MB nunca se pasan. Si igual se pasa, se pide de a UNO; si UNO solo se pasa, se salta (ronda 2).
+const UPDATES_TOPE = 2 * 1024 * 1024;
 const ARCHIVO_MS = 120_000;
 // Un file_path que devuelve getFile: solo letras, números y _ - / . ; sin «..», sin «/» al principio.
 const RUTA_BUENA = /^[A-Za-z0-9_\-/.]{1,256}$/;
@@ -72,13 +75,15 @@ function motivoDe(salida, { metodo, descarga = false } = {}) {
   return { motivo: 'respuesta_no_valida' };
 }
 
-async function llamarJson(cred, metodo, parametros = {}, { senal = null, timeoutMs = JSON_MS } = {}) {
+async function llamarJson(cred, metodo, parametros = {}, { senal = null, timeoutMs = JSON_MS, topeBytes = JSON_TOPE } = {}) {
   const token = tokenDe(cred);
   if (!token) return { motivo: 'clave_no_valida' };
   const salida = await llamarProveedor({
     url: `${baseDe(cred)}/bot${token}/${metodo}`, metodo: 'POST', cabeceras: { 'content-type': 'application/json' },
-    cuerpo: parametros, senal, timeoutMs, topeBytes: JSON_TOPE, permitido: HOST_OFICIAL,
+    cuerpo: parametros, senal, timeoutMs, topeBytes, permitido: HOST_OFICIAL,
   });
+  // Una respuesta 200 que pasó del tope se distingue (getUpdates la pide más chica); las demás siguen igual.
+  if (salida.demasiado && salida.status >= 200 && salida.status <= 299) return { motivo: 'respuesta_no_valida', demasiado: true };
   return motivoDe(salida, { metodo });
 }
 
@@ -207,11 +212,26 @@ export const TELEGRAM = Object.freeze({
     return r.motivo === 'ok' ? { motivo: 'ok', bytes: salida.bytes } : { motivo: r.motivo, esperarMs: r.esperarMs };
   },
 
-  // getUpdates (sin esperar: esperaS 0). desde null → sin offset (Telegram da las más viejas sin confirmar).
-  async recibir(cred, { desde = null, limite = 50, esperaS = 0, senal = null } = {}) {
-    const parametros = { limit: Math.max(1, Math.min(100, limite)), timeout: Math.max(0, Math.min(50, esperaS)), allowed_updates: ['message'] };
-    if (desde != null) parametros.offset = desde;
-    const r = await llamarJson(cred, 'getUpdates', parametros, { senal, timeoutMs: JSON_MS + parametros.timeout * 1000 });
+  // getUpdates (sin esperar: esperaS 0). desde null → sin offset (Telegram da las más viejas sin confirmar). Nunca se queda
+  // atascado por una respuesta demasiado grande (ronda 2: un extraño que manda muchos mensajes largos): se pide de a uno,
+  // y si uno solo no cabe, se salta (saltado: true; el cursor sigue). → { motivo, mensajes, siguiente, saltado? }
+  async recibir(cred, { desde = null, limite = 10, esperaS = 0, senal = null } = {}) {
+    const pedir = async (offset, cuantos) => {
+      const parametros = { limit: Math.max(1, Math.min(100, cuantos)), timeout: Math.max(0, Math.min(50, esperaS)), allowed_updates: ['message'] };
+      if (offset != null) parametros.offset = offset;
+      return llamarJson(cred, 'getUpdates', parametros, { senal, timeoutMs: JSON_MS + parametros.timeout * 1000, topeBytes: UPDATES_TOPE });
+    };
+    let r = await pedir(desde, limite);
+    if (r.demasiado && limite > 1) r = await pedir(desde, 1);
+    if (r.demasiado) {
+      // Uno solo no cabe. Con un cursor, se salta ese (el siguiente número). Sin cursor, se pide el ÚLTIMO (offset −1:
+      // Telegram da por vistos los de antes) y se sigue después de él; ese último sí se revisa. Lo de en medio se pierde
+      // (el dueño puede mandar otra vez su código).
+      if (desde != null && desde >= 0) return { motivo: 'ok', mensajes: [], siguiente: desde + 1, saltado: true };
+      const ultimo = await pedir(-1, 1);
+      if (ultimo.motivo !== 'ok' || !Array.isArray(ultimo.resultado) || !Number.isSafeInteger(ultimo.resultado[0]?.update_id)) return mal();
+      return { motivo: 'ok', mensajes: ultimo.resultado.map(mensajeDe).filter(Boolean), siguiente: ultimo.resultado[0].update_id + 1, saltado: true };
+    }
     if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs };
     if (!Array.isArray(r.resultado)) return mal();
     const mensajes = r.resultado.map(mensajeDe).filter(Boolean);

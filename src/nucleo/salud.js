@@ -2,7 +2,7 @@
 // /sys y del tamaño de los archivos); lo único que escribe es guardarMuestra, una fila por hora en la base.
 // Nunca abre, cambia ni borra ningún archivo: solo pregunta su tamaño.
 import { readFileSync, statSync, statfsSync, readdirSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { totalmem, freemem, loadavg, uptime } from 'node:os';
 
 export const UMBRALES = Object.freeze({
@@ -101,6 +101,26 @@ export function memoriaDisponibleMb() {
 // Disco libre (en MB) donde está esa carpeta, o null si no se puede leer.
 export function discoLibreMb(carpeta) {
   return disco(carpeta).libreMb;
+}
+
+// Ronda 2 del equipo rojo: el disco de la carpeta de las COPIAS (OPORTIA_COPIAS puede estar en otro disco, o en uno
+// lleno), que puede no existir todavía: se mide la carpeta más cercana que exista hacia arriba. mismoDisco: si es el
+// mismo disco que el de los datos (null si no se sabe). → { libreMb, mismoDisco }
+export function discoDeCopias(carpetaCopias, carpetaDatos = null) {
+  let ruta = carpetaCopias ? resolve(String(carpetaCopias)) : null;
+  for (let i = 0; ruta && i < 64 && !existsSync(ruta); i++) {
+    const arriba = dirname(ruta);
+    ruta = arriba === ruta ? null : arriba;
+  }
+  if (!ruta || !existsSync(ruta)) return { libreMb: null, mismoDisco: null };
+  let libreMb = null;
+  try {
+    const s = statfsSync(ruta);
+    libreMb = redondear((s.bavail * s.bsize) / MB);
+  } catch { libreMb = null; }
+  let mismoDisco = null;
+  try { if (carpetaDatos) mismoDisco = statSync(ruta).dev === statSync(carpetaDatos).dev; } catch { mismoDisco = null; }
+  return { libreMb, mismoDisco };
 }
 
 // Todas las medidas de una vez. Lo que no se puede leer queda en null (nunca se inventa un número).

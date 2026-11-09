@@ -170,7 +170,7 @@ export function crearEjecutor({
     const ctx = Object.freeze({
       tarea: Object.freeze({
         id: tarea.id, tipo: tarea.tipo, datos: tarea.datos, punto: tarea.punto, pasos: tarea.pasos,
-        espacioId: tarea.espacioId, proyectoId: tarea.proyectoId, intento: tarea.intento,
+        espacioId: tarea.espacioId, proyectoId: tarea.proyectoId, intento: tarea.intento, maxFallos: tarea.maxFallos,
       }),
       senal: controlador.signal,
       db,

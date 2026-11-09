@@ -52,7 +52,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   assert.equal((m.sql.match(/\bCHECK\b/gi) || []).length, 0);
   assert.doesNotMatch(m.sql, /\bUNIQUE\b/i);
   assert.doesNotMatch(m.sql, /ADD\s+COLUMN/i);
-  assert.equal(Buffer.byteLength(m.sql), 3709);
+  assert.equal(Buffer.byteLength(m.sql), 3760);
   const config = configDePrueba();
   const db = abrirBase(config);
   assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 6);

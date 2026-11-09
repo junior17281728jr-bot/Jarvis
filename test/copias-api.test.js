@@ -70,13 +70,21 @@ test('2.12 unir el chat: offset −1 y confirmar, la primera pregunta sin offset
   }
 });
 
-test('2.12 cinco códigos equivocados → vencido; un código vencido no une; tras una semana sin mensajes (ids al azar, más bajos) igual une; un webhook → bot_ocupado', async () => {
+test('2.12 cinco códigos equivocados de un chat → ese chat ya no une; 50 en total → vencido; un código vencido no une; tras una semana sin mensajes (ids al azar, más bajos) igual une; un webhook → bot_ocupado', async () => {
   const b = await montar({ telegram: false, relleno: 0 });
   try {
     await ponerToken(b);
     let v = await empezarVinculo(b.db, b.config, {});
     for (let i = 0; i < 5; i++) b.falso.escribir({ chat: CHAT, texto: String(10_000_000 + i) });
-    assert.deepEqual(await revisarVinculo(b.db, b.config, { cadaMs: 0 }), { estado: 'vencido', motivo: 'intentos' });
+    assert.deepEqual(await revisarVinculo(b.db, b.config, { cadaMs: 0 }), { estado: 'esperando' });
+    b.falso.escribir({ chat: CHAT, texto: v.codigo });
+    assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'esperando', 'ese chat gastó sus 5 intentos: se ignora');
+    assert.equal(canalActual(b.db), null);
+    // 50 equivocados en total (10 chats × 5): el código vence.
+    for (let c = 1; c <= 9; c++) for (let i = 0; i < 5; i++) b.falso.escribir({ chat: 5_560_000 + c, texto: String(20_000_000 + c * 10 + i) });
+    for (let k = 0; k < 6; k++) await revisarVinculo(b.db, b.config, { cadaMs: 0 });
+    assert.deepEqual(await revisarVinculo(b.db, b.config, { cadaMs: 0 }), { estado: 'vencido' });
+    assert.equal(b.db.prepare('SELECT codigo_intentos FROM canales ORDER BY id DESC LIMIT 1').get().codigo_intentos, 50);
     b.falso.escribir({ chat: CHAT, texto: v.codigo });
     assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'vencido', 'ya no sirve');
     // Uno nuevo que vence a los 10 minutos.

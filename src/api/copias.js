@@ -9,7 +9,7 @@
 import { statSync } from 'node:fs';
 import { ErrorHttp, leerJson } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
-import { discoLibreMb } from '../nucleo/salud.js';
+import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { duenoDeTailscale } from '../cuentas/tailscale.js';
@@ -59,6 +59,13 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
   const disco = () => {
     try { return medirDisco ? medirDisco() : config ? discoLibreMb(config.carpetaDatos ?? config.carpetaCopias) : null; } catch { return null; }
   };
+  // El disco de la carpeta de las copias (puede ser otro: OPORTIA_COPIAS). En las pruebas, el mismo número.
+  const discoCopias = () => {
+    try {
+      if (medirDisco) return { libreMb: medirDisco(), mismoDisco: true };
+      return config ? discoDeCopias(config.carpetaCopias, config.carpetaDatos) : { libreMb: null, mismoDisco: null };
+    } catch { return { libreMb: null, mismoDisco: null }; }
+  };
   const contar = (tope, usuario) => { if (!tope.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos'); };
   const trabajadorEncendido = () => {
     try {
@@ -69,10 +76,11 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
 
   function estado(db, req, usuario) {
     const libreMb = disco();
+    const dc = discoCopias();
     const t = config ? estadoTelegram(db, config) : null;
     const modoSeguro = leerModoSeguro(db).activo;
     const e = estadoCopias(db, {
-      libreMb, baseMb: config ? tamanoMb(config.archivoBase) : 0, walMb: config ? tamanoMb(`${config.archivoBase}-wal`) : 0,
+      libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, baseMb: config ? tamanoMb(config.archivoBase) : 0, walMb: config ? tamanoMb(`${config.archivoBase}-wal`) : 0,
       telegram: t ? { listo: t.listo, motivo: t.motivo, chat: t.chat, bot: t.bot } : null, modoSeguro, trabajador: trabajadorEncendido(),
     });
     const dueno = duenoDeTailscale(db, req, usuario);
@@ -87,7 +95,8 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
     if (leerModoSeguro(db).activo || !trabajadorEncendido()) throw new ErrorHttp(409, 'trabajo_en_pausa');
     if (!llaveActiva(db)) throw new ErrorHttp(409, 'falta_clave');
     const libreMb = disco();
-    const plan = planDeDisco({ libreMb, baseMb: config ? tamanoMb(config.archivoBase) : 0, walMb: config ? tamanoMb(`${config.archivoBase}-wal`) : 0, ajusteLocal: ajustesCopias(db).local });
+    const dc = discoCopias();
+    const plan = planDeDisco({ libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, baseMb: config ? tamanoMb(config.archivoBase) : 0, walMb: config ? tamanoMb(`${config.archivoBase}-wal`) : 0, ajusteLocal: ajustesCopias(db).local });
     if (plan.freno) throw new ErrorHttp(409, 'disco_lleno');
     if (!plan.local && !canalActivo(db)) throw new ErrorHttp(409, 'sin_destino');
     const ahora = Date.now();

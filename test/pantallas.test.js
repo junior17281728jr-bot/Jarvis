@@ -189,7 +189,8 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...ESTADOS_COPIA.map(x => `copias.estado_fila.${x}`),
     ...NO_CLAVE.map(x => `copias.clave.no_puede.${x}`),
     ...['en_marcha', 'modo_seguro', 'sin_clave', 'sin_trabajador', 'disco_lleno', 'sin_destino'].map(x => `copias.no_ahora.${x}`),
-    ...['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar', 'bot_ocupado', 'sin_red', 'pausa'].map(x => `telegram.problema.${x}`),
+    ...['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar', 'bot_ocupado', 'sin_red', 'pausa', 'bot_cambiado'].map(x => `telegram.problema.${x}`),
+    'copias.aqui.anterior', 'aviso.copias_locales_pausadas.escribir', 'telegram.aviso.copias_locales_pausadas.escribir', 'ia.motivo.bot_cambiado', 'ia.motivo.sin_probar',
     ...[1, 2, 3, 4, 5].map(n => `copias.restaurar.paso${n}`),
     ...[1, 2, 3, 4].map(n => `telegram.como${n}`),
   ];

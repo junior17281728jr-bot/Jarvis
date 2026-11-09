@@ -45,7 +45,7 @@ function equivocados(codigo, n) {
   return Array.from({ length: n }, (_, i) => String((Number(codigo) + 1 + i) % 100_000_000).padStart(8, '0'));
 }
 
-test('ronda 1 (8): 5 códigos equivocados y después el bueno, en el MISMO lote: el código vence (un extraño nunca une su chat)', async () => {
+test('ronda 1 (8) y ronda 2: 5 códigos equivocados y después el bueno del MISMO chat, en el mismo lote: ese chat nunca se une; el del dueño sí', async () => {
   const b = await montar({ telegram: false, relleno: 0 });
   try {
     await ponerToken(b);
@@ -53,22 +53,13 @@ test('ronda 1 (8): 5 códigos equivocados y después el bueno, en el MISMO lote:
     for (const malo of equivocados(v.codigo, 5)) b.falso.escribir({ chat: EXTRANO, texto: malo });
     b.falso.escribir({ chat: EXTRANO, texto: v.codigo });
     const r = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
-    assert.equal(r.estado, 'vencido');
-    assert.equal(canalActual(b.db), null, 'ningún chat unido');
-    const fila = b.db.prepare("SELECT estado, codigo_intentos FROM canales ORDER BY id DESC LIMIT 1").get();
-    assert.deepEqual([fila.estado, fila.codigo_intentos], ['vencido', 5]);
-    // Con 4 equivocados, el bueno todavía sirve (y en dos lotes también se cuentan juntos).
-    const v2 = await empezarVinculo(b.db, b.config, {});
-    for (const malo of equivocados(v2.codigo, 3)) b.falso.escribir({ chat: EXTRANO, texto: malo });
-    assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'esperando');
-    for (const malo of equivocados(v2.codigo, 2)) b.falso.escribir({ chat: EXTRANO, texto: malo });
-    b.falso.escribir({ chat: CHAT, texto: v2.codigo });
-    assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'vencido', '3 + 2 = 5 equivocados: vence antes de ver el bueno');
-    const v3 = await empezarVinculo(b.db, b.config, {});
-    for (const malo of equivocados(v3.codigo, 4)) b.falso.escribir({ chat: EXTRANO, texto: malo });
-    b.falso.escribir({ chat: CHAT, texto: v3.codigo });
-    const r3 = await revisarVinculo(b.db, b.config, { cadaMs: 0 });
-    assert.equal(r3.estado, 'vinculado');
+    assert.equal(r.estado, 'esperando');
+    assert.equal(canalActual(b.db), null, 'ningún chat unido: el extraño gastó sus 5 intentos y su código bueno se ignora');
+    const fila = b.db.prepare("SELECT estado, codigo_intentos, codigo_intentos_chats FROM canales ORDER BY id DESC LIMIT 1").get();
+    assert.deepEqual([fila.estado, fila.codigo_intentos, JSON.parse(fila.codigo_intentos_chats)], ['pendiente', 5, { [String(EXTRANO)]: 5 }]);
+    // El dueño, en su chat, con el mismo código: se une (los intentos del extraño nunca son los suyos).
+    b.falso.escribir({ chat: CHAT, texto: `/start ${v.codigo}` });
+    assert.equal((await revisarVinculo(b.db, b.config, { cadaMs: 0 })).estado, 'vinculado');
     assert.equal(canalActual(b.db).destino, String(CHAT));
   } finally {
     await b.cerrar();

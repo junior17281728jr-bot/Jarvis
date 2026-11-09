@@ -103,7 +103,7 @@ test('ronda 1 (1): una copia comprobada HOY pero con foto de hace 40 h está atr
     const noche = await b.terminar(b.pedir({ origen: 'noche' }));
     assert.equal(noche.resultado.saltada, undefined, JSON.stringify(noche.resultado));
     assert.equal(b.copias().at(-1).estado, 'verificada');
-    assert.equal(ultimaFuera(b.db).id, b.copias().at(-1).id, 'la última es la de la foto más nueva');
+    assert.equal(ultimaFuera(b.db, b.t).id, b.copias().at(-1).id, 'la última es la de la foto más nueva');
     // Y con una foto de hace 2 h, la de la noche sí se salta.
     b.avanzar(2 * HORA);
     assert.equal((await b.terminar(b.pedir({ origen: 'noche' }))).resultado.saltada, 'reciente');

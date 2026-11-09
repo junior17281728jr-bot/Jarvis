@@ -272,21 +272,33 @@ por si alguien la vio: las copias de antes siguen necesitando la clave de antes 
    escríbele el código al bot. En segundos la pantalla dice «quedó unido» y te llega un mensaje de bienvenida.
 5. «Mandar un mensaje de prueba» cuando quieras comprobar que los avisos llegan.
 
+Si alguien más le escribe a tu bot, nunca le contesta ni se une su chat: cada chat tiene 5 intentos para el código (los
+de un extraño nunca gastan los tuyos) y el código vence a los 10 minutos.
+
 ### Si un día pierdes el servidor
 1. Ten a mano tu clave de recuperación (la del papel o la de Contraseñas).
 2. En Telegram abre @BotFather → /mybots → tu bot → API Token, y cópialo.
 3. En el servidor nuevo, OPORTIA te pedirá ese token y tu clave. Busca sola tu última copia (la que está fijada arriba en el
    chat con tu bot), la comprueba y la abre. *(La pantalla llega en la parte 1f; hasta entonces Claude lo hace contigo por
    la consola, con la orden de abajo.)*
-4. Después pega otra vez tus claves de IA y el token del bot en Claves: por seguridad nunca viajan en las copias.
-5. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
+4. **Enseguida, revoca el token del bot**: en @BotFather escribe `/revoke`, elige tu bot y te da un token NUEVO. Así el
+   servidor viejo, si sigue vivo (o vuelve de una foto del droplet), ya no puede mandar sus copias viejas a tu chat (si lo
+   hiciera, el servidor nuevo te avisa urgente «Otro servidor manda copias»).
+5. Después pega otra vez tus claves de IA y el token NUEVO del bot en Claves: por seguridad nunca viajan en las copias.
+6. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
 
 Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
-noche y usa `--archivos=`. Una copia de más de 30 horas, o si hay una más nueva, nunca se abre sin un «sí».
+noche y usa `--archivos=`. Una copia de más de 30 horas, si hay una más nueva, si su fecha es del futuro (el reloj del
+servidor iba adelantado) o si hay otra copia que también parece la última (dos servidores con el mismo bot), nunca se abre
+sin un «sí». En una base recuperada, Copias muestra aparte «del servidor anterior» las copias cuyos archivos se quedaron
+en el servidor viejo.
 
 ### El disco («nunca se borra nada») — ⚠ decisión para Junior
 - Las copias del servidor **nunca se borran**. Se guarda una copia aquí solo si después quedan libres al menos
-  max(2 GB, 2 × la base + el `-wal` + 256 MB) (el espacio que hace falta para mejorar OPORTIA sin riesgo).
+  max(2 GB, 2 × la base + el `-wal` + 256 MB) (el espacio que hace falta para mejorar OPORTIA sin riesgo). Se mide el
+  disco de la carpeta de las copias (`OPORTIA_COPIAS` puede estar en otro disco: entonces basta con 256 MB libres allí).
+- Si el disco no deja escribir una copia (lleno a la mitad, sin espacio para archivos, un error del disco), esa copia
+  sigue directo a Telegram esa misma noche y te aviso; lo que alcanzó a escribirse se queda (nada se borra).
 - Si no queda ese espacio: **dejo de guardar copias nuevas aquí, sigo con las de Telegram cada noche y te aviso**. Un mes
   antes te aviso «al ritmo de hoy, en unos 30 días…».
 - Con menos de 300 MB libres paro **todas** las copias (también las de Telegram) hasta que haya espacio, porque hacerlas
@@ -304,7 +316,10 @@ llega «Ya se arregló». Los avisos los manda la parte web, así llegan aunque 
 Si Telegram no funciona por horas o días, lo urgente espera hasta 7 días y llega cuando vuelve; lo urgente que se arregló
 solo sin llegar va en un mensaje «No te llegaron a tiempo». Si un mensaje no se acepta (un error raro de Telegram), se
 reintenta con esperas (1, 5, 15 y 60 min) y Claves y Copias dicen «no llega». Si pegas un token nuevo del mismo bot y su
-prueba falla por algo pasajero, se prueba otra vez solo.
+prueba falla por algo pasajero, se prueba otra vez solo; «Mandar un mensaje de prueba» también lo prueba primero, y si
+es el token de OTRO bot, el chat queda para unirlo otra vez (nunca se manda nada por otro bot). Si Telegram no responde
+mientras se hace una copia, la copia queda al menos en este servidor (comprobada) y te aviso. Un reloj que salta hacia
+adelante no da por vencido ningún aviso. Si se pierde el chat y lo unes otra vez, lo urgente que esperaba llega.
 
 Una copia siempre lleva la fecha de su FOTO (cuándo se tomaron los datos), nunca la de cuándo se comprobó: una copia que
 se quedó a medias más de 20 horas (modo seguro, el servidor apagado) no se termina, se hace otra. Si dejas el chat (o unes
@@ -329,7 +344,7 @@ no se pudo fijar, se reintenta, y si nunca se pudo, llega un aviso urgente.
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo> [--comprobar] [--anterior]
 
 Con `--telegram` se usa la copia FIJADA en el chat; si es de hace más de 26 horas, pregunta (quizás la de anoche no quedó
-fijada: guarda su «…-indice.txt» y usa `--indice`). Con `--archivos`, una parte dañada o un archivo raro en la carpeta se
+fijada: guarda su «…-indice.txt» y usa `--indice`). Al terminar recuerda revocar el token en @BotFather (`/revoke`). Con `--archivos`, una parte dañada o un archivo raro en la carpeta se
 saltan si hay otro bueno; `--anterior` usa la copia buena de antes si la más nueva está dañada o cortada (siempre dice que
 hay una más nueva). Para la carpeta de copias del servidor, usa la carpeta de un mes si son muchísimos archivos.
 

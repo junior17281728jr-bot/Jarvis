@@ -19,13 +19,20 @@
 //  - Si el dueño pegó un token nuevo del MISMO bot y su prueba falló por algo pasajero, se prueba otra vez solo (gratis,
 //    cada 5 min las primeras veces y después cada hora) hasta que pase: los avisos nunca quedan mudos por eso.
 //  - Un reloj que se corrige hacia atrás no frena nada: lo «del futuro» no cuenta para los topes ni para «hace poco».
+// Ronda 2 del equipo rojo:
+//  - Un reloj que SALTA hacia adelante (mala hora del NTP) no vence ni marca nada: se compara con el reloj del proceso
+//    (que nunca salta); mientras no cuadran, nada queda «vencido», «fallido», «perdido» ni «atrasado». Si la hora nueva
+//    se queda 6 h seguidas (era la buena), se acepta.
+//  - «Antes de conectar» es antes de la PRIMERA vez que se unió un chat del dueño: al unirlo OTRA vez (se perdió, otro
+//    bot), lo grave que esperaba llega, y lo que se arregló mientras tanto va en «No te llegaron a tiempo».
+//  - La bienvenida que no salió al unir el chat se manda en la próxima pasada (dice cuántos avisos hay abiertos).
 import { enTransaccion } from '../nucleo/db.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { copiaAtrasada } from '../copias/estado.js';
 import { conCredencial } from './credencial.js';
 import { ADAPTADORES } from './canal.js';
-import { USO, listoParaMandar, anotarEnvio, anotarProblema, marcarBien, enviadosDesde, rangoDe, secretoDelBot, MARGEN_RELOJ_MS } from './canales.js';
+import { USO, listoParaMandar, anotarEnvio, anotarProblema, marcarBien, enviadosDesde, rangoDe, secretoDelBot, mandarBienvenida, bienvenidaPendiente, primerVinculo, MARGEN_RELOJ_MS } from './canales.js';
 import { textoDeAviso, textoCierre, textoResumen, textoPerdidos, idiomaDelDueno, baseDeClave } from './textos.js';
 import { probarSecreto } from '../claves/probar.js';
 
@@ -36,6 +43,9 @@ export const TOPES_ENVIO = Object.freeze({
   juntarDesde: 3, reaperturasParaJuntar: 3, fallidoMs: 24 * HORA, atrasadaCadaMs: 5 * MINUTO, cadaMs: 15_000,
   frescuraGraveMs: 7 * 24 * HORA, // lo grave espera hasta 7 días a que Telegram vuelva
   reprobarMs: Object.freeze([5 * MINUTO, 5 * MINUTO, 5 * MINUTO, HORA]), // probar otra vez un token nuevo que no pasó por algo pasajero
+  saltoRelojMs: 10 * MINUTO, // la hora de la pared y la del proceso no cuadran por más que esto: el reloj saltó
+  aceptarSaltoMs: 6 * HORA, // una hora nueva que se queda así de tiempo (del proceso) se acepta
+  bienvenidaTrasMs: MINUTO, // la bienvenida que no salió se manda desde 1 min después de unir el chat
 });
 // Lo que dice la prueba de un token cuando falló por algo que se arregla solo (src/claves/probar.js).
 const PRUEBAS_PASAJERAS = Object.freeze(['error_proveedor', 'sin_red', 'tiempo_agotado', 'respuesta_no_valida', 'limite_proveedor', 'error_servidor']);
@@ -45,7 +55,8 @@ const SIN_CANAL = Object.freeze(['ok', 'limite', 'sin_clave', 'credencial_cambia
 // Lo que va por Telegram (además de TODO lo grave, que va siempre y suena). Ver diseno-1e §7.2.
 export const RUTA_AVISOS = Object.freeze({
   claves: Object.freeze(['trabajador_reinicios', 'disco_bajo', 'memoria_baja', 'copias_locales_pausadas', 'copias_sin_clave', 'copias_comprobar_clave',
-    'copias_disco_pronto', 'copia_sin_fijar', 'copia_fallida', 'copia_atrasada', 'ia_costo_mayor', 'ia_llave', 'base_danada']),
+    'copias_disco_pronto', 'copia_sin_fijar', 'copia_fallida', 'copia_atrasada', 'ia_costo_mayor', 'ia_llave', 'base_danada',
+    'copias_fecha_futura', 'copias_otro_servidor', 'copia_solo_local']),
   prefijos: Object.freeze(['actualizacion_no_instalada', 'actualizacion_revertida', 'ia_tope', 'ia_proveedor']),
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».
 });
@@ -61,8 +72,13 @@ export function vaPorTelegram(aviso) {
 
 const iso = ms => new Date(ms).toISOString();
 
-export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTADORES.telegram, registro = null, topes = {} } = {}) {
+// monotono: el reloj del proceso (nunca salta). Por defecto, el de verdad si el reloj de pared es el de verdad; con un reloj
+// de mentira (pruebas), ninguno, salvo que la prueba pase el suyo.
+export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTADORES.telegram, registro = null, topes = {}, monotono = undefined } = {}) {
   const T = { ...TOPES_ENVIO, ...topes };
+  const mono = monotono === undefined ? (reloj === Date.now ? () => performance.now() : null) : monotono;
+  let baseReloj = null; // { pared, mono } de la última pasada en que los dos relojes cuadraban
+  let saltoDesde = null; // desde cuándo (reloj del proceso) no cuadran
   let temporizador = null;
   let enMarcha = null;
   let ultimaAtrasada = -Infinity;
@@ -92,29 +108,44 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
   const ultimoEnvioDe = (ahora, sql, ...valores) => db.prepare(`SELECT creado_en FROM canal_envios WHERE resultado IN ('enviado', 'agrupado') AND creado_en <= ?
     AND ${sql} ORDER BY creado_en DESC, id DESC LIMIT 1`).get(iso(ahora + MARGEN_RELOJ_MS), ...valores)?.creado_en ?? null;
 
+  // ¿La hora de la pared es creíble? Se compara lo que avanzó con lo que avanzó el reloj del proceso desde la última
+  // pasada en que cuadraban. Sin reloj del proceso (pruebas con reloj de mentira), siempre.
+  function relojCreible(ahora) {
+    if (!mono) return true;
+    const m = mono();
+    if (!baseReloj) { baseReloj = { pared: ahora, mono: m }; return true; }
+    const diferencia = (ahora - baseReloj.pared) - (m - baseReloj.mono);
+    if (Math.abs(diferencia) <= T.saltoRelojMs) { baseReloj = { pared: ahora, mono: m }; saltoDesde = null; return true; }
+    if (saltoDesde == null) saltoDesde = m;
+    if (m - saltoDesde >= T.aceptarSaltoMs) { baseReloj = { pared: ahora, mono: m }; saltoDesde = null; return true; }
+    return false;
+  }
+
   // Lo que no es grave y pasó de 48 h sin llegar: queda anotado «vencido» (la pantalla lo sigue mostrando).
-  function vencerViejos(canal, ahora) {
+  function vencerViejos(canal, ahora, primero) {
     const viejos = db.prepare(`SELECT * FROM avisos WHERE enviado_en IS NULL AND resuelto_en IS NULL AND nivel <> 'grave' AND ultima_vez < ?
       ORDER BY id LIMIT 20`).all(iso(ahora - T.frescuraMs));
     for (const a of viejos) {
       if (!vaPorTelegram(a).va) marcarSinMandar(canal, a, 'no_va', ahora);
-      else if (canal.vinculado_en && a.creado_en < canal.vinculado_en) marcarSinMandar(canal, a, 'antes_de_conectar', ahora);
+      else if (primero && a.creado_en < primero) marcarSinMandar(canal, a, 'antes_de_conectar', ahora);
       else marcarSinMandar(canal, a, 'vencido', ahora);
     }
   }
 
   // Lo grave que nunca llegó: se arregló solo antes de poder mandarlo, o esperó más de 7 días (Telegram caído, el bot
-  // bloqueado). Va todo junto en UN mensaje «No te llegaron a tiempo». Solo lo de después de unir el chat.
-  function perdidos(canal, ahora) {
-    if (!canal.vinculado_en) return [];
+  // bloqueado, el chat perdido hasta unirlo otra vez). Va todo junto en UN mensaje «No te llegaron a tiempo». Solo lo de
+  // después de la PRIMERA vez que se unió un chat.
+  function perdidos(canal, ahora, primero) {
+    if (!primero) return [];
     return db.prepare(`SELECT * FROM avisos WHERE enviado_en IS NULL AND nivel = 'grave' AND creado_en >= ?
       AND ((resuelto_en IS NOT NULL AND resuelto_en >= ?) OR (resuelto_en IS NULL AND ultima_vez < ?))
-      ORDER BY creado_en, id LIMIT 20`).all(canal.vinculado_en, iso(ahora - T.frescuraGraveMs), iso(ahora - T.frescuraGraveMs));
+      ORDER BY creado_en, id LIMIT 20`).all(primero, iso(ahora - T.frescuraGraveMs), iso(ahora - T.frescuraGraveMs));
   }
 
   // Lo que toca mandar ahora: [{ a, titulo, suena, veces, desde }] (lo grave primero). Lo grave espera hasta 7 días.
-  function pendientes(canal, ahora) {
-    vencerViejos(canal, ahora);
+  // creible: false si el reloj acaba de saltar (entonces nada se vence).
+  function pendientes(canal, ahora, primero, creible = true) {
+    if (creible) vencerViejos(canal, ahora, primero);
     const candidatos = db.prepare(`SELECT * FROM avisos WHERE enviado_en IS NULL AND resuelto_en IS NULL
       AND (ultima_vez >= ? OR (nivel = 'grave' AND ultima_vez >= ?))
       ORDER BY CASE nivel WHEN 'grave' THEN 0 ELSE 1 END, ultima_vez, id LIMIT 20`).all(iso(ahora - T.frescuraMs), iso(ahora - T.frescuraGraveMs));
@@ -125,7 +156,7 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     for (const a of candidatos) {
       const ruta = vaPorTelegram(a);
       if (!ruta.va) { marcarSinMandar(canal, a, 'no_va', ahora); continue; }
-      if (canal.vinculado_en && a.ultima_vez < canal.vinculado_en) { marcarSinMandar(canal, a, 'antes_de_conectar', ahora); continue; }
+      if (primero && a.ultima_vez < primero) { marcarSinMandar(canal, a, 'antes_de_conectar', ahora); continue; }
       // La misma fila, otra vez (subió a grave, o una noticia nueva): no antes de 30 min desde la última vez.
       const mismo = ultimoEnvioDe(ahora, 'aviso_id = ?', a.id);
       if (mismo && hacePoco(mismo, T.reenvioMinMs)) continue;
@@ -160,7 +191,7 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
       ORDER BY a.resuelto_en LIMIT 5`).all(iso(ahora - T.cierreMs));
   }
 
-  async function mandar(listo, mensaje, ahora) {
+  async function mandar(listo, mensaje, ahora, creible = true) {
     const { canal } = listo;
     const r = await conCredencial(db, config, { uso: USO, secretoId: canal.secreto_id }, cred => adaptador.enviarTexto(cred, {
       destino: canal.destino, texto: mensaje.texto, silencioso: !mensaje.suena,
@@ -184,7 +215,7 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
       anotarProblema(db, canal, { motivo: r.motivo, esperarMs: r.esperarMs, ahora: momento });
       // Un aviso que NO es grave y no se pudo mandar en 24 h queda «fallido» (sigue en la pantalla). Lo grave nunca:
       // espera (hasta 7 días) a que Telegram vuelva.
-      if (!SIN_CANAL.includes(r.motivo) && ['aviso', 'resumen'].includes(mensaje.clase)) {
+      if (creible && !SIN_CANAL.includes(r.motivo) && ['aviso', 'resumen'].includes(mensaje.clase)) {
         for (const item of mensaje.avisos) {
           if (item.nivel !== 'grave' && Date.parse(item.ultima_vez) < momento - T.fallidoMs) {
             db.prepare('UPDATE avisos SET enviado_en = ? WHERE id = ? AND enviado_en IS NULL').run(iso(momento), item.id);
@@ -219,7 +250,8 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
 
   async function pasadaDeVerdad() {
     const ahora = reloj();
-    revisarAtrasada(ahora);
+    const creible = relojCreible(ahora);
+    if (creible) revisarAtrasada(ahora);
     let listo = listoParaMandar(db, config, ahora);
     if (!listo.si && listo.motivo === 'sin_probar') {
       const motivo = await reprobar(ahora);
@@ -227,8 +259,17 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     }
     if (!listo.si) return { enviado: null, motivo: listo.motivo };
     const { canal } = listo;
-    const toca = pendientes(canal, ahora);
-    const sinLlegar = toca.length ? [] : perdidos(canal, ahora);
+    // La bienvenida que no salió al unir el chat va primero (1 min después de unirlo: la manda quien lo unió).
+    if (bienvenidaPendiente(db, canal)) {
+      if (ahora - Date.parse(canal.vinculado_en) < T.bienvenidaTrasMs && ahora >= Date.parse(canal.vinculado_en)) return { enviado: null, motivo: 'bienvenida_pendiente' };
+      if (enviadosDesde(db, canal.id, ahora - HORA, ahora) >= T.porHora || enviadosDesde(db, canal.id, ahora - 24 * HORA, ahora) >= T.porDia) return { enviado: null, motivo: 'tope' };
+      const b = await mandarBienvenida(db, config, { canalId: canal.id, adaptador, ahora: reloj() });
+      if (b.motivo !== 'ok') anotar(`bienvenida:${b.motivo}`);
+      return { enviado: b.motivo === 'ok' ? 'bienvenida' : null, motivo: b.motivo === 'ok' ? null : b.motivo };
+    }
+    const primero = primerVinculo(db);
+    const toca = pendientes(canal, ahora, primero, creible);
+    const sinLlegar = toca.length || !creible ? [] : perdidos(canal, ahora, primero);
     const porCerrar = toca.length || sinLlegar.length ? [] : cierres(ahora);
     if (!toca.length && !sinLlegar.length && !porCerrar.length) return { enviado: null, motivo: 'nada' };
     if (enviadosDesde(db, canal.id, ahora - HORA, ahora) >= T.porHora || enviadosDesde(db, canal.id, ahora - 24 * HORA, ahora) >= T.porDia) {
@@ -247,7 +288,7 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
       const a = porCerrar[0];
       mensaje = { clase: 'cierre', avisos: [a], suena: false, texto: textoCierre(a, idioma) };
     }
-    return mandar(listo, mensaje, ahora);
+    return mandar(listo, mensaje, ahora, creible);
   }
 
   // Una pasada (la usan el temporizador y las pruebas). Nunca lanza.

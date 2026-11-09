@@ -20,6 +20,10 @@ export const CLAVES_AVISO = Object.freeze([
   // comprobar la clave cada 90 días; los mensajes no llegan al Telegram (solo en la pantalla).
   'copias_sin_clave', 'copias_sin_telegram', 'copia_fallida', 'copia_atrasada', 'copias_locales_pausadas', 'copias_disco_pronto',
   'copia_sin_fijar', 'copias_comprobar_clave', 'telegram_falla',
+  // Ronda 2 del equipo rojo: una copia con fecha del futuro (el reloj iba adelantado); OTRO servidor (el viejo, después
+  // de restaurar) manda copias al chat con el mismo bot (grave); la última copia quedó solo en el servidor porque
+  // Telegram no respondió.
+  'copias_fecha_futura', 'copias_otro_servidor', 'copia_solo_local',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;

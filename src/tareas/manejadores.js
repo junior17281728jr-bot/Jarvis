@@ -27,7 +27,7 @@ import { vigilarIA } from '../ia/presupuesto.js';
 import { MANEJADOR_INTERPRETAR } from '../ia/ayuda.js';
 import { MANEJADOR_COPIAS } from '../copias/hacer.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
-import { discoLibreMb } from '../nucleo/salud.js';
+import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 
 export const WAL_GRANDE_MB = 64; // con más que esto, vigilar pasa lo pendiente del -wal a la base
 export const PROBLEMAS_A_GUARDAR = 5;
@@ -67,7 +67,9 @@ async function vigilar(ctx) {
   if (ctx.config?.archivoBase) {
     let libreMb = null;
     try { libreMb = discoLibreMb(ctx.config.carpetaDatos ?? ctx.config.carpetaCopias); } catch { libreMb = null; }
-    copias = await ctx.escribir(() => vigilarCopias(ctx.db, ctx.config, { ahora, libreMb }));
+    let dc = { libreMb: null, mismoDisco: null };
+    try { dc = discoDeCopias(ctx.config.carpetaCopias, ctx.config.carpetaDatos); } catch { dc = { libreMb: null, mismoDisco: null }; }
+    copias = await ctx.escribir(() => vigilarCopias(ctx.db, ctx.config, { ahora, libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false }));
     const leido = leerArchivosDeActualizacion(ctx.config);
     actualizaciones = await ctx.escribir(() => aplicarActualizaciones(ctx.db, leido, { ahora }));
   }

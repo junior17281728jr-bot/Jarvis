@@ -70,9 +70,14 @@ const recortar = (texto, max = TEXTO_MAX) => (texto.length > max ? `${texto.slic
 // La clave base de un aviso (sin lo que va después de «:»).
 export const baseDeClave = clave => String(clave ?? '').split(':')[0];
 
+function detalleDe(aviso) {
+  if (aviso?.detalle && typeof aviso.detalle === 'object') return aviso.detalle;
+  try { return JSON.parse(aviso?.detalle ?? 'null'); } catch { return null; }
+}
+
 function valoresDe(aviso, idioma) {
   const v = {};
-  const d = aviso?.detalle && typeof aviso.detalle === 'object' ? aviso.detalle : (() => { try { return JSON.parse(aviso?.detalle ?? 'null'); } catch { return null; } })();
+  const d = detalleDe(aviso);
   for (const nombre of NUMEROS_SEGUROS) {
     const x = d?.[nombre];
     if (typeof x === 'number' && Number.isFinite(x)) v[nombre] = Math.round(x * 10) / 10;
@@ -92,6 +97,8 @@ export function cuerpoDeAviso(aviso, idioma) {
   const clave = existeFrase(`telegram.aviso.${base}.texto`) ? `telegram.aviso.${base}` : 'telegram.aviso.otro';
   const valores = valoresDe(aviso, idioma);
   let texto = frase(idioma, `${clave}.texto`, valores);
+  // El disco de las copias no dejó escribir (no es «casi lleno»: no hay MB libres que decir).
+  if (base === 'copias_locales_pausadas' && detalleDe(aviso)?.motivo === 'escribir') texto = frase(idioma, 'telegram.aviso.copias_locales_pausadas.escribir');
   if (base === 'copia_atrasada' && valores.pausa === 'modo_seguro') texto = `${texto} ${frase(idioma, 'telegram.aviso.copia_atrasada.modo_seguro')}`;
   return texto;
 }

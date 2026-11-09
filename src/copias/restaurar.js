@@ -13,6 +13,12 @@
 //    salta si hay otra buena con ese número; un archivo que parece índice y no se entiende se ignora (y se cuenta). Con
 //    aceptarAnterior, una copia dañada o cortada deja probar la anterior (siempre se dice que hay una más nueva).
 //  - Sin índice no se sabe cuántas partes tiene una copia: se descifra entera SIN escribir nada antes de preguntar.
+// Ronda 2 del equipo rojo:
+//  - Una copia con fecha del futuro (reloj adelantado) nunca se elige en silencio: alElegir recibe futura: true. Con
+//    índices, el orden de verdad es la cadena («anterior»): una copia que otra nombra como su anterior NO es la más nueva
+//    aunque su fecha lo diga. Si hay otra copia candidata (más nueva por fecha, u otra «punta» de la cadena: dos
+//    servidores con el mismo bot), alElegir recibe otraCandidata con su fecha y su servidor, y la consola pregunta.
+//  - Los intentos del código del chat se cuentan por chat (src/canales/vinculo.js): un extraño no lo vence.
 import { closeSync, createReadStream, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -30,13 +36,15 @@ import { crearDescifrador, abrirSellado, leerCabeceraFlujo } from './cifrar.js';
 import { crearLector, crearAplicador } from './volcado.js';
 import { TELEGRAM } from '../canales/telegram.js';
 import { crearCredencial } from '../canales/credencial.js';
-import { crearCodigo, huellaCodigo, mensajeConCodigo, codigoParaMostrar, INTENTOS_MAXIMOS, VIGENCIA_MS } from '../canales/vinculo.js';
+import { crearCodigo, huellaCodigo, codigoParaMostrar, revisarLote, VIGENCIA_MS } from '../canales/vinculo.js';
 
 const HORA = 3_600_000;
 export const MARCA_EN_CONSTRUCCION = 0x4f505442; // "OPTB"
 export const HORAS_ANTIGUA = 30;
 // La copia fijada en el chat es de hace más de 26 h: quizás la de la última noche no quedó fijada (se pregunta siempre).
 export const HORAS_FIJADA_VIEJA = 26;
+// Una copia con fecha más de 5 min después de ahora es de un reloj adelantado (futura: siempre se pregunta).
+export const MARGEN_FUTURO_MS = 5 * 60_000;
 // Cada noche deja unas 20–60 partes en el servidor (nunca se borran): 200.000 archivos son unos 10 años de copias.
 // Por cada archivo se guarda solo su ruta, su tamaño y dos números (memoria acotada).
 export const MAX_ARCHIVOS = 200_000;
@@ -236,9 +244,40 @@ async function bajarParte(cred, { parte, copia, creada, carpeta, tope, senal }) 
 // ---------- Elegir la copia ----------
 
 // fijadaVieja: la copia sale del mensaje FIJADO en Telegram y es de hace más de 26 h (la de anoche pudo no quedar fijada).
-function datosParaElegir({ copia, creada, servidor, anterior, hayMasNueva, ahora, fijadaVieja = false }) {
-  const edadHoras = Math.max(0, Math.round(((ahora - Date.parse(creada)) / HORA) * 10) / 10);
-  return { copia, creada, edadHoras, antigua: edadHoras > HORAS_ANTIGUA, hayMasNueva, servidor: servidor ?? null, anterior: anterior ?? null, fijadaVieja };
+// futura: la fecha de la copia es del futuro (el reloj del servidor que la hizo iba adelantado): se pregunta siempre.
+// otraCandidata: { copia, creada, servidor, motivo } otra copia que también podría ser la más nueva (se pregunta siempre).
+function datosParaElegir({ copia, creada, servidor, anterior, hayMasNueva, ahora, fijadaVieja = false, otraCandidata = null }) {
+  const ms = Date.parse(creada);
+  const futura = Number.isFinite(ms) && ms > ahora + MARGEN_FUTURO_MS;
+  const edadHoras = Math.max(0, Math.round(((ahora - ms) / HORA) * 10) / 10);
+  return {
+    copia, creada, edadHoras, antigua: edadHoras > HORAS_ANTIGUA, hayMasNueva, servidor: servidor ?? null, anterior: anterior ?? null, fijadaVieja,
+    futura, otraCandidata: otraCandidata ?? null,
+  };
+}
+
+// Los índices auténticos en el orden de verdad: primero las «puntas» de la cadena (ninguna otra copia dice que esta fue
+// su anterior), por fecha; después las demás, por fecha. Una copia que otra nombra como anterior es más vieja que esa,
+// diga lo que diga su fecha (un reloj adelantado). → la lista ordenada
+function enOrdenDeCadena(autenticos) {
+  const seguidas = new Set(autenticos.map(x => x.datos.anterior?.copia).filter(Boolean));
+  const porFecha = (a, b) => Date.parse(b.datos.creada) - Date.parse(a.datos.creada);
+  return [...autenticos.filter(x => !seguidas.has(x.datos.copia)).sort(porFecha), ...autenticos.filter(x => seguidas.has(x.datos.copia)).sort(porFecha)];
+}
+
+// Otra copia que también podría ser «la más nueva» frente a la elegida: otra punta de la cadena hecha por OTRO servidor
+// (dos servidores con el mismo bot y la misma clave: el viejo revivió), o una con fecha más nueva que la cadena dice más
+// vieja (un reloj adelantado). Solo las copias que fueron a Telegram (bot) forman la cadena. → o null
+function otraCandidataDe(elegida, autenticos, ahora) {
+  const seguidas = new Set(autenticos.map(x => x.datos.anterior?.copia).filter(Boolean));
+  const otras = autenticos.filter(x => x.datos.copia !== elegida.copia);
+  const punta = otras.filter(x => !seguidas.has(x.datos.copia) && x.datos.bot && x.datos.servidor && x.datos.servidor !== elegida.servidor)
+    .sort((a, b) => Date.parse(b.datos.creada) - Date.parse(a.datos.creada))[0];
+  const masNuevaPorFecha = otras.filter(x => Date.parse(x.datos.creada) > Date.parse(elegida.creada)).sort((a, b) => Date.parse(b.datos.creada) - Date.parse(a.datos.creada))[0];
+  const x = punta ?? masNuevaPorFecha;
+  if (!x) return null;
+  const futura = Date.parse(x.datos.creada) > ahora + MARGEN_FUTURO_MS;
+  return { copia: x.datos.copia, creada: x.datos.creada, servidor: x.datos.servidor ?? null, motivo: punta ? 'otra_punta' : 'fecha_mas_nueva', futura };
 }
 
 // Los índices de ESTA clave, auténticos, del más nuevo al más viejo. Nunca lanza por un archivo que parece índice y no
@@ -405,7 +444,7 @@ async function elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, aho
       try { creada = cabeceraDelFlujo(uno.ruta).creada; } catch { continue; }
       if (!sinIndice || Date.parse(creada) > Date.parse(sinIndice.creada)) sinIndice = { copia, creada };
     }
-    for (const x of autenticos) {
+    for (const x of enOrdenDeCadena(autenticos)) {
       const d = x.datos;
       const ordenadas = await ordenarPartes(partes.get(d.copia) ?? [], d);
       if (!ordenadas.orden) {
@@ -417,7 +456,8 @@ async function elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, aho
       }
       const resumen = await resumenDe(d, llaves);
       if (!hayMasNueva && sinIndice && Date.parse(sinIndice.creada) > Date.parse(d.creada)) hayMasNueva = sinIndice;
-      const info = datosParaElegir({ copia: d.copia, creada: d.creada, servidor: d.servidor, anterior: d.anterior, hayMasNueva, ahora });
+      const otraCandidata = hayMasNueva ? null : otraCandidataDe(d, autenticos, ahora);
+      const info = datosParaElegir({ copia: d.copia, creada: d.creada, servidor: d.servidor, anterior: d.anterior, hayMasNueva, ahora, otraCandidata });
       await preguntar(alElegir, info);
       return { indice: d, resumen, orden: ordenadas.orden, info, bytes: d.flujo.bytes, noAutenticos, descartados };
     }
@@ -470,7 +510,12 @@ async function elegirSinIndice({ partes, llaves, aceptarAnterior, alElegir, ahor
       hayMasNueva ??= { copia: g.copia, creada: g.cabecera?.creada ?? null };
       continue;
     }
-    const info = datosParaElegir({ copia: g.copia, creada: g.cabecera.creada, servidor: g.cabecera.servidor, anterior: null, hayMasNueva, ahora });
+    // Sin índice no hay cadena: si esta copia dice ser del futuro, se nombra la siguiente por fecha (la consola pregunta).
+    const siguiente = mias.find(o => o !== g && o.cabecera && o.fecha < g.fecha);
+    const futura = g.fecha > ahora + MARGEN_FUTURO_MS;
+    const otraCandidata = futura && !hayMasNueva && siguiente
+      ? { copia: siguiente.copia, creada: siguiente.cabecera.creada, servidor: siguiente.cabecera.servidor ?? null, motivo: 'fecha_mas_vieja', futura: false } : null;
+    const info = datosParaElegir({ copia: g.copia, creada: g.cabecera.creada, servidor: g.cabecera.servidor, anterior: null, hayMasNueva, ahora, otraCandidata });
     await preguntar(alElegir, info);
     const bytes = ordenadas.orden.reduce((s, p) => s + p.cabecera.largo, 0);
     return { indice: null, resumen: null, orden: ordenadas.orden, info, bytes };
@@ -636,7 +681,8 @@ async function aplicarCopia({ elegida, llaves, destino, ajustar, senal, ahora, a
 
 // ---------- Buscar el chat del dueño en un servidor nuevo (un código de un uso, como al unir el chat) ----------
 // empezarBusquedaDeChat({ token }) → { codigo, paraMostrar, esperar({ senal, hastaMs }) → { chatId, nombre } }.
-// Las mismas reglas de src/canales/vinculo.js: chat privado, no un bot, mensaje nuevo, código exacto, 5 intentos.
+// Las mismas reglas de src/canales/vinculo.js: chat privado, no un bot, mensaje nuevo, código exacto, 5 intentos por
+// chat y 50 en total.
 // Nunca guarda un «offset» entre corridas: primero confirma lo que había (offset −1), y después pregunta sin offset.
 export async function empezarBusquedaDeChat({ token, base = null, cadaMs = 3000, ahora = Date.now }) {
   const cred = crearCredencial({ token: String(token ?? '').trim(), base });
@@ -658,18 +704,19 @@ export async function empezarBusquedaDeChat({ token, base = null, cadaMs = 3000,
     bot: yo.cuenta,
     async esperar({ senal = null, hastaMs = desdeMs + VIGENCIA_MS } = {}) {
       let desde = null;
-      let intentos = 0;
+      let cuenta = { total: 0, porChat: {} };
       for (;;) {
         if (senal?.aborted) throw new ErrorCopias('cancelada');
         if (ahora() > hastaMs) throw new ErrorCopias('codigo_vencido');
-        const r = await TELEGRAM.recibir(cred, { desde, limite: 50, senal });
+        const r = await TELEGRAM.recibir(cred, { desde, limite: 10, senal });
         if (r.motivo === 'ok') {
           if (r.siguiente != null) desde = r.siguiente;
-          for (const m of r.mensajes) {
-            const v = mensajeConCodigo(m, { huella, desdeMs });
-            if (v === 'coincide') return { chatId: m.chat.id, nombre: m.de?.nombre ?? m.chat.nombre ?? null };
-            if (v === 'intento' && ++intentos >= INTENTOS_MAXIMOS) throw new ErrorCopias('codigo_vencido');
-          }
+          // 5 intentos por chat y 50 en total (un extraño que escribe al bot nunca vence el código del dueño).
+          const visto = revisarLote(r.mensajes, { huella, desdeMs, cuenta });
+          cuenta = visto.cuenta;
+          if (visto.encontrado) return { chatId: visto.encontrado.chat.id, nombre: visto.encontrado.de?.nombre ?? visto.encontrado.chat.nombre ?? null };
+          if (visto.vencido) throw new ErrorCopias('codigo_vencido');
+          if (r.saltado) continue; // un mensaje demasiado grande se saltó: se pregunta otra vez enseguida
         } else if (r.motivo === 'clave_no_valida' || r.motivo === 'conflicto') {
           await deTelegram(cred, r.motivo);
         }

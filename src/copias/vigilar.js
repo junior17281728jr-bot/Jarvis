@@ -9,7 +9,7 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { abrirAviso, resolverAviso, AVISO_ACTUALIZACION } from '../avisos/avisos.js';
 import { rutaSegura } from './formato.js';
-import { DISCO, DIAS_COMPROBAR_CLAVE, llaveActiva, planDeDisco, ajustesCopias, diasDeDisco, actualizarCopia } from './estado.js';
+import { DISCO, DIAS_COMPROBAR_CLAVE, llaveActiva, planDeDisco, ajustesCopias, diasDeDisco, actualizarCopia, revisarFechasFuturas } from './estado.js';
 
 const DIA = 86_400_000;
 const MB = 1024 * 1024;
@@ -28,7 +28,7 @@ function tamanoMb(ruta) {
 
 // Las copias, el recordatorio de la clave y el disco. Síncrona: se llama dentro de ctx.escribir.
 // libreMb: el disco libre (lo mide quien llama). → { fallidas, interrumpidas, comprobarClave, dias }
-export function vigilarCopias(db, config, { ahora = Date.now(), libreMb = null } = {}) {
+export function vigilarCopias(db, config, { ahora = Date.now(), libreMb = null, libreCopiasMb, mismoDisco = true } = {}) {
   const r = { fallidas: 0, interrumpidas: 0, comprobarClave: false, dias: null };
   const enCurso = db.prepare(`SELECT c.id, c.empezada_en, t.estado AS tarea_estado, t.ultimo_error AS tarea_error FROM copias c
     LEFT JOIN tareas t ON t.id = c.tarea_id WHERE c.estado IN ('haciendo', 'escrita', 'subida')`).all();
@@ -43,6 +43,8 @@ export function vigilarCopias(db, config, { ahora = Date.now(), libreMb = null }
       r.interrumpidas += 1;
     }
   }
+  // Ronda 2: una copia con una fecha del futuro (el reloj del servidor iba adelantado): copias_fecha_futura.
+  revisarFechasFuturas(db, ahora);
   // Cada 90 días, un recordatorio en silencio: «Comprueba tu clave de recuperación».
   const llave = llaveActiva(db);
   if (llave) {
@@ -53,7 +55,7 @@ export function vigilarCopias(db, config, { ahora = Date.now(), libreMb = null }
   } else resolverAviso(db, 'copias_comprobar_clave', ahora);
   // El disco: ¿pueden volver las copias del servidor? ¿Cuántos días alcanza al ritmo de hoy?
   const ajustes = ajustesCopias(db);
-  const plan = planDeDisco({ libreMb, baseMb: tamanoMb(config.archivoBase), walMb: tamanoMb(`${config.archivoBase}-wal`), ajusteLocal: ajustes.local });
+  const plan = planDeDisco({ libreMb, libreCopiasMb, mismoDisco, baseMb: tamanoMb(config.archivoBase), walMb: tamanoMb(`${config.archivoBase}-wal`), ajusteLocal: ajustes.local });
   if (plan.local) resolverAviso(db, 'copias_locales_pausadas', ahora);
   if (ajustes.local) {
     r.dias = diasDeDisco(db, { libreMb: plan.libreMb, pisoMb: plan.pisoMb });

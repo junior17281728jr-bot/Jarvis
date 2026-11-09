@@ -40,7 +40,7 @@ import { clavesGuardadas } from '../src/claves/almacen.js';
 import { reanotarTailscale, idDelDueno } from '../src/cuentas/tailscale.js';
 import { estadoCopias, tareaDeCopiaViva, llaveActiva } from '../src/copias/estado.js';
 import { estadoTelegram, desvincular } from '../src/canales/canales.js';
-import { discoLibreMb } from '../src/nucleo/salud.js';
+import { discoLibreMb, discoDeCopias } from '../src/nucleo/salud.js';
 import { encolar } from '../src/tareas/cola.js';
 import { leerModoSeguro } from '../src/tareas/modo-seguro.js';
 
@@ -316,8 +316,10 @@ const megas = bytes => `${Math.max(0, Math.round(((Number(bytes) || 0) / (1024 *
 function estadoDeCopias(db, config) {
   let libreMb = null;
   try { libreMb = discoLibreMb(config.carpetaDatos); } catch { libreMb = null; }
+  let dc = { libreMb: null, mismoDisco: null };
+  try { dc = discoDeCopias(config.carpetaCopias, config.carpetaDatos); } catch { dc = { libreMb: null, mismoDisco: null }; }
   const t = estadoTelegram(db, config);
-  const e = estadoCopias(db, { libreMb, telegram: t, modoSeguro: leerModoSeguro(db).activo });
+  const e = estadoCopias(db, { libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, telegram: t, modoSeguro: leerModoSeguro(db).activo });
   console.log(e.clave.activa ? `Clave de recuperación: ${e.clave.huella} (desde el ${fechaRd(e.clave.desde)}).` : 'Clave de recuperación: FALTA (créala en Administrador → Copias, desde Tailscale). Sin ella no hay copias.');
   console.log(t.chat ? `Telegram: chat de ${t.chat.nombre ?? '—'} (${t.chat.estado}).${t.listo ? '' : ` No llegan mensajes ahora (${t.motivo}).`}` : `Telegram: sin chat unido${t.token ? '' : ' (falta el token del bot)'}.`);
   console.log(e.ultimaFuera ? `Última copia fuera del servidor: la foto del ${fechaRd(e.ultimaFuera.fecha)}, ${megas(e.ultimaFuera.bytes)}, ${e.ultimaFuera.partes} partes, comprobada${e.ultimaFuera.comprobada ? ` el ${fechaRd(e.ultimaFuera.comprobada)}` : ''}.` : 'Última copia fuera del servidor: ninguna todavía.');
@@ -326,6 +328,7 @@ function estadoDeCopias(db, config) {
   console.log(`Próxima copia: ${fechaRd(e.proxima)}.`);
   const l = e.locales;
   console.log(`En este servidor: ${l.copias} copias, ${l.mb} MB${l.libreMb != null ? `, ${Math.round(l.libreMb)} MB libres en el disco` : ''}${l.diasRestantes != null ? ` (alcanza para unos ${l.diasRestantes} días)` : ''}.`);
+  if (l.anterior) console.log(`Copias del servidor anterior (sus archivos NO están aquí; solo quedan sus filas): ${l.anterior.copias} copias, ${l.anterior.mb} MB.`);
   if (l.pausadas) console.log('Disco casi lleno: dejé de guardar copias en el servidor. Las de Telegram siguen. Nada se borró.');
   if (l.frenoDisco) console.log('Disco lleno: las copias están en pausa hasta que haya espacio. Nada se borró.');
   console.log('Nunca se borra ninguna copia.');

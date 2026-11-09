@@ -399,6 +399,9 @@ CREATE INDEX IF NOT EXISTS cuentas_confianza_usuario ON cuentas_confianza(usuari
     //  - copias / copia_partes: cada copia cifrada (fuera y/o en el servidor), sus partes, hashes y dónde están. Cada
     //    copia guarda el secreto y el bot con que se mandó (una copia nunca mezcla dos bots) y el servidor que la hizo.
     //  - canal_envios: cada mensaje que salió (o no) por un canal: no repetir avisos y los topes por hora y por día.
+    //  - canales.pausa_motivo: por qué hay pausa ('limite': Telegram pidió esperar, un 429; 'espera': las esperas tras
+    //    fallos; 'bloqueado'). Solo un 429 frena una copia. canales.codigo_intentos_chats: los intentos equivocados del
+    //    código de un uso POR chat (JSON { chat: n }): un extraño nunca gasta los del dueño.
     //  - Sin CHECK ni índices únicos: los valores se revisan en el código (un CHECK nunca se puede ampliar).
     sql: `
 CREATE TABLE IF NOT EXISTS copias_llaves (
@@ -443,7 +446,9 @@ CREATE TABLE IF NOT EXISTS canales (
   ultimo_error TEXT,
   ultimo_error_en TEXT,
   fallos_seguidos INTEGER NOT NULL DEFAULT 0,
-  pausa_hasta TEXT
+  pausa_hasta TEXT,
+  pausa_motivo TEXT,
+  codigo_intentos_chats TEXT
 );
 CREATE INDEX IF NOT EXISTS canales_por_proposito ON canales(tipo, proposito, espacio_id, estado, id);
 CREATE TABLE IF NOT EXISTS copias (

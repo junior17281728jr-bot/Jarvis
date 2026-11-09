@@ -830,6 +830,7 @@ function nombreFase(s) {
 const PROBLEMA_DE_FALLA = Object.freeze({
   bloqueado: 'telegram.problema.bloqueado', perdido: 'telegram.problema.perdido', clave: 'telegram.problema.clave_no_valida',
   pedido: 'telegram.problema.pedido', sin_respuesta: 'telegram.problema.sin_respuesta', sin_probar: 'telegram.problema.sin_probar',
+  bot_cambiado: 'telegram.problema.bot_cambiado',
 });
 
 function textoAviso(a) {
@@ -861,6 +862,7 @@ function textoAviso(a) {
   const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
   if (a.clave === 'copias_disco_pronto') return t('aviso.copias_disco_pronto', { dias: v(d.dias) });
+  if (a.clave === 'copias_locales_pausadas' && d.motivo === 'escribir') return t('aviso.copias_locales_pausadas.escribir');
   if (a.clave === 'copia_fallida' && d.motivo) return `${t('aviso.copia_fallida')} ${t('copias.por', { motivo: textoMotivoCopia(d.motivo) })}`;
   if (a.clave === 'telegram_falla' && Object.hasOwn(PROBLEMA_DE_FALLA, d.motivo)) return `${t('aviso.telegram_falla')} ${t(PROBLEMA_DE_FALLA[d.motivo])}`;
   const mb = d.disponibleMb ?? d.libreMb ?? d.archivoMb ?? d.walMb;
@@ -1691,6 +1693,8 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
     vd.linea ? el('p', { class: `aviso-linea tono-${vd.tono}`, texto: t(vd.linea, { n: numero(l.diasRestantes ?? 0) }) }) : null,
     l.diasRestantes != null && !l.pausadas && !l.frenoDisco && l.activas !== false
       ? el('p', { class: 'suave', texto: l.diasRestantes > DIAS_MUCHOS ? t('copias.aqui.dias_muchos') : t('copias.aqui.dias', { n: numero(l.diasRestantes) }) }) : null,
+    // Una base restaurada trae las filas de las copias del servidor de antes: sus archivos NO están aquí (ronda 2).
+    l.anterior?.copias ? el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.aqui.anterior', { n: numero(l.anterior.copias), mb: tamanoChico(l.anterior.mb ?? 0) }) })) : null,
     el('details', {},
       el('summary', { class: 'con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.aqui.regla') })),
       el('p', { class: 'ayuda', texto: t('copias.aqui.regla.texto', { piso: tamano(l.pisoMb) }) })));
@@ -2566,7 +2570,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
             const m = x.datos.motivo;
             recargar(m === 'ok' ? { texto: t('telegram.prueba_ok'), clase: 'bien' } : { texto: t('telegram.prueba_mal', { motivo: textoMotivoIa(m) }), clase: 'aviso' });
           }, 'avion_papel'),
-          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar', 'pedido'].includes(v.problema) ? el('button', {
+          ['perdido', 'bloqueado', 'clave_no_valida', 'sin_probar', 'pedido', 'bot_cambiado'].includes(v.problema) ? el('button', {
             type: 'button', class: 'secundario con-icono',
             onclick: evento => empezarAUnir(evento.currentTarget, mensaje, recargar),
           }, icono('actualizar'), el('span', { texto: t('telegram.unir_otra_vez') })) : null),

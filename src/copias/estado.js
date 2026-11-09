@@ -12,7 +12,7 @@ import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
-import { ErrorCopias, CLAVE_SERVIDOR, ESTADOS_COPIA } from './formato.js';
+import { ErrorCopias, CLAVE_SERVIDOR, ESTADOS_COPIA, CABECERA_PARTE } from './formato.js';
 import { crearClave, derivar, esClaveDePrueba, hashVerificador } from './clave.js';
 import { ranura } from '../tareas/tiempo.js';
 import { PROGRAMAS_DEL_SISTEMA } from '../tareas/tipos.js';
@@ -28,6 +28,12 @@ export const DISCO = Object.freeze({ pisoMinimoMb: 2048, margenMb: 256, frenoMb:
 // sobreviven a una caída del trabajador.
 export const TOPES = Object.freeze({ copiasPorTarea: 3, subidasSinExitoPorDia: 3, esperasPorCopia: 12, esperaTotalMs: 6 * 3_600_000 });
 export const PROGRAMA_COPIAS = PROGRAMAS_DEL_SISTEMA.find(p => p.programa === 'copias.hacer');
+// Ronda 2 del equipo rojo: una copia (o una clave, o un chat) con una fecha más de 5 min DESPUÉS de ahora es de un reloj
+// que iba adelantado y se corrigió: nunca cuenta como «reciente» ni como la última copia (si no, las copias de cada
+// noche se apagarían en silencio todo lo que se adelantó el reloj, con las pantallas en verde).
+export const MARGEN_FUTURO_MS = 5 * 60_000;
+// Cuántas copias (las últimas por id) se miran para saber su fecha creíble (cada noche hace 1–3).
+export const VENTANA_CREIBLE = 400;
 
 const MB = 1024 * 1024;
 const HORA = 3_600_000;
@@ -59,6 +65,12 @@ export function servidorId(db, { ahora = Date.now() } = {}) {
   const id = randomUUID();
   guardarAjuste(db, CLAVE_SERVIDOR, { id, creado: iso(ahora) }, ahora);
   return id;
+}
+
+// El id de este servidor SIN crearlo (para leer desde el servidor web): null si todavía no hay ninguno.
+export function servidorActual(db) {
+  const a = leerAjuste(db, CLAVE_SERVIDOR);
+  return a?.id ? String(a.id) : null;
 }
 
 // ---------- La clave de recuperación ----------
@@ -162,24 +174,35 @@ export function comprobarClave(db, { verificador, ahora = Date.now() }) {
 }
 
 // ---------- El disco («nunca se borra nada») ----------
-// Pura. libreMb: disco libre; baseMb/walMb: la base y su -wal; ultimaCopiaMb: lo que midió la última copia.
+// Pura. libreMb: disco libre de los DATOS (donde están la base y su -wal); libreCopiasMb: el del disco de la carpeta de
+// las copias (si no se pasa, es el mismo); mismoDisco: false si las copias están en otro disco; baseMb/walMb: la base y su
+// -wal; ultimaCopiaMb: lo que midió la última copia.
 //  - piso = max(2 GB, 2 × base + wal + 256 MB): espacio para la copia obligatoria de antes de una migración futura, para
-//    los picos del -wal y para revisar una restauración (1f).
-//  - local: se guarda una copia en el servidor solo si después queda al menos el piso.
-//  - freno: con menos de 300 MB libres el trabajador no toma copias (el freno «poco_disco» de la parte c).
+//    los picos del -wal y para revisar una restauración (1f). En el disco de los datos.
+//  - local: se guarda una copia en el servidor solo si después queda al menos el piso (copias en el mismo disco) o al
+//    menos 256 MB en el disco de las copias (copias en otro disco).
+//  - freno: con menos de 300 MB libres para los datos el trabajador no toma copias (el freno «poco_disco» de la parte c).
 // Una medida que no se pudo leer (null) nunca frena (como en la parte c).
-export function planDeDisco({ libreMb = null, baseMb = 0, walMb = 0, ultimaCopiaMb = null, ajusteLocal = true } = {}) {
+export function planDeDisco({ libreMb = null, libreCopiasMb, mismoDisco = true, baseMb = 0, walMb = 0, ultimaCopiaMb = null, ajusteLocal = true } = {}) {
   const base = Math.max(0, Number(baseMb) || 0);
   const wal = Math.max(0, Number(walMb) || 0);
   const estimadoMb = ultimaCopiaMb != null && Number.isFinite(Number(ultimaCopiaMb)) ? Number(ultimaCopiaMb) : base * DISCO.fraccionEstimada;
-  const pisoMb = Math.max(DISCO.pisoMinimoMb, 2 * base + wal + DISCO.margenMb);
+  const pisoDatosMb = Math.max(DISCO.pisoMinimoMb, 2 * base + wal + DISCO.margenMb);
+  const otroDisco = mismoDisco === false;
   const medido = libreMb != null && Number.isFinite(Number(libreMb));
   const libre = medido ? Number(libreMb) : null;
+  const copiasMb = libreCopiasMb === undefined ? libreMb : libreCopiasMb;
+  const copiasMedido = copiasMb != null && Number.isFinite(Number(copiasMb));
+  const libreCopias = copiasMedido ? Number(copiasMb) : null;
+  const pisoMb = otroDisco ? DISCO.margenMb : pisoDatosMb;
   const freno = medido && libre < DISCO.frenoMb;
-  const cabe = !medido || libre - estimadoMb >= pisoMb;
+  const cabe = !copiasMedido || libreCopias - estimadoMb >= pisoMb;
   const local = ajusteLocal !== false && cabe && !freno;
   const motivo = ajusteLocal === false ? 'apagado' : freno ? 'freno' : !cabe ? 'disco' : null;
-  return { estimadoMb: Math.round(estimadoMb * 100) / 100, pisoMb: Math.round(pisoMb), libreMb: libre, local, freno, motivo };
+  return {
+    estimadoMb: Math.round(estimadoMb * 100) / 100, pisoMb: Math.round(pisoMb), libreMb: copiasMedido ? libreCopias : libre, libreDatosMb: libre,
+    otroDisco, local, freno, motivo,
+  };
 }
 
 // Cuántos días alcanza el disco para guardar copias aquí, al ritmo de las últimas 7 copias locales (null si no se sabe).
@@ -192,11 +215,29 @@ export function diasDeDisco(db, { libreMb, pisoMb }) {
   return Math.max(0, Math.floor((libreMb - pisoMb) / mbPorNoche));
 }
 
-// Las copias guardadas en el servidor, desde las filas (nunca mirando la carpeta: crece cada noche).
+// Las copias guardadas en ESTE servidor, desde las filas (nunca mirando la carpeta: crece cada noche). Las de un servidor
+// anterior (una base restaurada en un servidor nuevo trae sus filas, pero sus archivos se quedaron allá) van aparte en
+// «anterior»: nunca se cuentan como si estuvieran aquí. Se cuenta desde «copias» (una fila por copia), no desde
+// copia_partes (una fila por parte, ~50 por noche: con años de copias, una pantalla tardaría demasiado): las copias
+// terminadas guardan su total; solo las que quedaron a medias se cuentan parte por parte (por su índice: CROSS JOIN
+// hace que SQLite empiece por «copias», nunca recorriendo todas las partes).
 export function copiasLocales(db) {
-  const f = db.prepare(`SELECT COUNT(DISTINCT copia_id) AS copias, COUNT(*) AS archivos, COALESCE(SUM(bytes), 0) AS bytes
-    FROM copia_partes WHERE archivo_local IS NOT NULL`).get();
-  return { copias: f.copias, archivos: f.archivos, mb: Math.round((f.bytes / MB) * 10) / 10 };
+  const servidor = servidorActual(db);
+  const vacio = () => ({ copias: 0, archivos: 0, bytes: 0 });
+  const aqui = vacio();
+  const anterior = vacio();
+  const sumar = (destino, f) => { destino.copias += f.copias ?? 0; destino.archivos += f.archivos ?? 0; destino.bytes += f.bytes ?? 0; };
+  const terminadas = db.prepare(`SELECT (servidor IS NOT NULL AND servidor = ?) AS aqui, COUNT(*) AS copias, COALESCE(SUM(partes), 0) AS archivos,
+    COALESCE(SUM(bytes + partes * ?), 0) AS bytes FROM copias WHERE local = 1 AND estado IN ('verificada', 'solo_local') AND partes > 0 GROUP BY 1`).all(servidor, CABECERA_PARTE);
+  const medias = db.prepare(`SELECT (c.servidor IS NOT NULL AND c.servidor = ?) AS aqui, COUNT(DISTINCT p.copia_id) AS copias, COUNT(*) AS archivos,
+    COALESCE(SUM(p.bytes), 0) AS bytes FROM copias c CROSS JOIN copia_partes p ON p.copia_id = c.id
+    WHERE c.local = 1 AND NOT (c.estado IN ('verificada', 'solo_local') AND c.partes > 0) AND p.archivo_local IS NOT NULL GROUP BY 1`).all(servidor);
+  for (const f of [...terminadas, ...medias]) sumar(f.aqui === 1 ? aqui : anterior, f);
+  const mb = b => Math.round((b / MB) * 10) / 10;
+  return {
+    copias: aqui.copias, archivos: aqui.archivos, mb: mb(aqui.bytes),
+    anterior: anterior.copias ? { copias: anterior.copias, archivos: anterior.archivos, mb: mb(anterior.bytes) } : null,
+  };
 }
 
 // ---------- Topes de intentos ----------
@@ -254,11 +295,64 @@ export function partesDe(db, copiaId) {
   return db.prepare('SELECT * FROM copia_partes WHERE copia_id = ? ORDER BY n, id').all(copiaId);
 }
 
-// La última copia comprobada FUERA del servidor (o null): la de la foto MÁS NUEVA, no la que se comprobó al último (una
-// copia a medias que terminó días después sigue siendo de su foto). La frescura siempre se mide por empezada_en: es la
-// hora de la foto (generar la toma justo después, y una copia cuya foto pasó de 20 h nunca se termina: hacer.js).
-export function ultimaFuera(db) {
-  return db.prepare("SELECT * FROM copias WHERE estado = 'verificada' AND fuera = 1 ORDER BY empezada_en DESC, id DESC LIMIT 1").get() ?? null;
+// La copia más nueva que cumple «donde» (SQL sobre copias), por su fecha CREÍBLE (o null). La fecha de una copia es la de
+// su FOTO (empezada_en): una copia a medias que terminó días después sigue siendo de su foto. Pero el reloj puede ir
+// adelantado (un servidor que despertó con la hora mal, y después la hora se corrigió): por eso
+//  - una copia con fecha más de 5 min después de «ahora» es del futuro: no cuenta;
+//  - las filas se numeran en orden (copias.id): una copia hecha DESPUÉS (id mayor) con una fecha más vieja prueba que
+//    la fecha de esta no es de verdad, y su fecha creíble baja a esa. Así una copia del reloj adelantado nunca vuelve a
+//    parecer «la más nueva» cuando el reloj de verdad llega a su fecha.
+// Devuelve la fila con efectivaMs (la fecha creíble, en ms).
+export function ultimaCreible(db, { ahora = Date.now(), donde = '1', valores = [] } = {}) {
+  const tope = ahora + MARGEN_FUTURO_MS;
+  const todas = db.prepare('SELECT id, empezada_en FROM copias ORDER BY id DESC LIMIT ?').all(VENTANA_CREIBLE);
+  const creible = new Map();
+  let menorDespues = Infinity;
+  for (const c of todas) {
+    const ms = Date.parse(c.empezada_en);
+    const propia = Number.isFinite(ms) ? ms : -Infinity;
+    creible.set(c.id, Math.min(propia, menorDespues));
+    menorDespues = Math.min(menorDespues, propia);
+  }
+  const desdeId = todas.length ? todas[todas.length - 1].id : 0;
+  let mejor = null;
+  for (const c of db.prepare(`SELECT * FROM copias WHERE id >= ? AND (${donde}) ORDER BY id DESC`).all(desdeId, ...valores)) {
+    const efectiva = creible.get(c.id);
+    if (efectiva == null || !Number.isFinite(efectiva) || efectiva > tope) continue;
+    if (!mejor || efectiva > mejor.efectivaMs) mejor = { ...c, efectivaMs: efectiva };
+  }
+  if (mejor || todas.length < VENTANA_CREIBLE) return mejor;
+  // Más atrás de la ventana (cientos de copias sin ninguna que sirva): la más nueva por fecha que no es del futuro.
+  const vieja = db.prepare(`SELECT * FROM copias WHERE id < ? AND empezada_en <= ? AND (${donde}) ORDER BY empezada_en DESC, id DESC LIMIT 1`)
+    .get(desdeId, iso(Math.min(tope, menorDespues)), ...valores);
+  return vieja ? { ...vieja, efectivaMs: Date.parse(vieja.empezada_en) } : null;
+}
+
+// La última copia comprobada FUERA del servidor (o null), por su fecha creíble (ver ultimaCreible).
+export function ultimaFuera(db, ahora = Date.now()) {
+  return ultimaCreible(db, { ahora, donde: "estado = 'verificada' AND fuera = 1" });
+}
+
+// La última copia comprobada fuera del servidor por ORDEN (id), sin mirar la fecha: la que fijó su índice al último.
+export function ultimaFueraPorId(db) {
+  return db.prepare("SELECT * FROM copias WHERE estado = 'verificada' AND fuera = 1 ORDER BY id DESC LIMIT 1").get() ?? null;
+}
+
+// Las copias con una fecha del futuro (más de 5 min después de ahora) → { n, hasta } (hasta: la fecha más lejana).
+export function copiasDelFuturo(db, ahora = Date.now()) {
+  const f = db.prepare('SELECT COUNT(*) AS n, MAX(empezada_en) AS hasta FROM copias WHERE empezada_en > ?').get(iso(ahora + MARGEN_FUTURO_MS));
+  return { n: f.n, hasta: f.hasta ?? null };
+}
+
+// Abre (o cierra) el aviso copias_fecha_futura: una copia tiene una fecha del futuro (el reloj del servidor iba
+// adelantado). Las copias de cada noche siguen igual; el aviso dice que revisen la hora del servidor. Síncrona.
+export function revisarFechasFuturas(db, ahora = Date.now()) {
+  const f = copiasDelFuturo(db, ahora);
+  if (f.n > 0) {
+    const dias = Math.max(0, Math.round(((Date.parse(f.hasta) - ahora) / DIA) * 10) / 10);
+    abrirAviso(db, { clave: 'copias_fecha_futura', nivel: 'atencion', detalle: { n: f.n, dias }, ahora });
+  } else resolverAviso(db, 'copias_fecha_futura', ahora);
+  return f;
 }
 
 // Cuándo toca la próxima copia de la noche (ISO): la ranura de hoy si todavía no tiene tarea, si no la de mañana.
@@ -305,8 +399,10 @@ export function copiaAtrasada(db, ahora = Date.now()) {
   const llave = llaveActiva(db);
   const canal = db.prepare("SELECT * FROM canales WHERE tipo = 'telegram' AND proposito = 'avisos_dueno' AND estado IN ('activo', 'bloqueado', 'perdido') ORDER BY id DESC LIMIT 1").get();
   if (!llave || !canal) return { activo: false, detalle: null };
-  const ultima = ultimaFuera(db);
-  const base = Math.max(Date.parse(llave.confirmada_en ?? 0) || 0, Date.parse(canal.vinculado_en ?? 0) || 0, Date.parse(ultima?.empezada_en ?? 0) || 0);
+  const ultima = ultimaFuera(db, ahora);
+  // Una fecha del futuro (reloj adelantado) nunca cuenta: si no, «atrasada» quedaría callada todo lo que se adelantó.
+  const creible = texto => { const ms = Date.parse(texto ?? ''); return Number.isFinite(ms) && ms <= ahora + MARGEN_FUTURO_MS ? ms : 0; };
+  const base = Math.max(creible(llave.confirmada_en), creible(canal.vinculado_en), ultima?.efectivaMs ?? 0);
   const horas = Math.floor((ahora - base) / HORA);
   return { activo: ahora > base + HORAS_COPIA_VIEJA * HORA, detalle: { horas, desde: ultima?.empezada_en ?? null } };
 }
@@ -315,9 +411,9 @@ export function copiaAtrasada(db, ahora = Date.now()) {
 export function resumenCopias(db, { ahora = Date.now() } = {}) {
   const llave = llaveActiva(db);
   const canal = db.prepare("SELECT estado FROM canales WHERE tipo = 'telegram' AND proposito = 'avisos_dueno' AND estado IN ('activo', 'bloqueado', 'perdido') ORDER BY id DESC LIMIT 1").get();
-  const fuera = ultimaFuera(db);
+  const fuera = ultimaFuera(db, ahora);
   const ultima = db.prepare('SELECT * FROM copias ORDER BY id DESC LIMIT 1').get();
-  const reciente = fuera && ahora - Date.parse(fuera.empezada_en) <= HORAS_COPIA_VIEJA * HORA;
+  const reciente = fuera && ahora - fuera.efectivaMs <= HORAS_COPIA_VIEJA * HORA;
   let tono = 'bien';
   let motivo = null;
   if (!llave) { tono = 'atencion'; motivo = 'sin_clave'; }
@@ -333,17 +429,17 @@ export function resumenCopias(db, { ahora = Date.now() } = {}) {
 
 // Todo lo que muestra Administrador → Copias (GET /api/admin/copias). Solo filas de la base y UNA medida del disco
 // (libreMb, que pasa quien llama): nunca mira la carpeta de las copias.
-export function estadoCopias(db, { ahora = Date.now(), libreMb = null, baseMb = 0, walMb = 0, telegram = null, modoSeguro = false, trabajador = true } = {}) {
+export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopiasMb, mismoDisco = true, baseMb = 0, walMb = 0, telegram = null, modoSeguro = false, trabajador = true } = {}) {
   const activa = llaveActiva(db);
   const pendiente = llavePendiente(db, ahora);
   const anteriores = db.prepare("SELECT huella, confirmada_en, reemplazada_en FROM copias_llaves WHERE estado = 'anterior' ORDER BY id DESC LIMIT 20").all()
     .map(l => ({ huella: l.huella, desde: l.confirmada_en, hasta: l.reemplazada_en }));
-  const fuera = ultimaFuera(db);
+  const fuera = ultimaFuera(db, ahora);
   const ultima = db.prepare('SELECT * FROM copias ORDER BY id DESC LIMIT 1').get();
   const recientes = db.prepare('SELECT * FROM copias ORDER BY id DESC LIMIT 10').all().map(copiaPublica);
   const ultimaLocal = db.prepare("SELECT bytes FROM copias WHERE estado IN ('verificada', 'solo_local') AND bytes > 0 ORDER BY id DESC LIMIT 1").get();
   const ajustes = ajustesCopias(db);
-  const plan = planDeDisco({ libreMb, baseMb, walMb, ultimaCopiaMb: ultimaLocal ? ultimaLocal.bytes / MB : null, ajusteLocal: ajustes.local });
+  const plan = planDeDisco({ libreMb, libreCopiasMb, mismoDisco, baseMb, walMb, ultimaCopiaMb: ultimaLocal ? ultimaLocal.bytes / MB : null, ajusteLocal: ajustes.local });
   const locales = copiasLocales(db);
   const enCurso = copiaEnCurso(db);
   const viva = tareaDeCopiaViva(db);
@@ -360,7 +456,7 @@ export function estadoCopias(db, { ahora = Date.now(), libreMb = null, baseMb = 
     enCurso: enCurso && viva?.estado === 'en_curso' ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de } : enCurso ? { paso: enCurso.paso, n: enCurso.n, de: enCurso.de, esperando: true } : null,
     locales: {
       activas: ajustes.local, pausadas: ajustes.local && !plan.local, frenoDisco: plan.freno, copias: locales.copias, archivos: locales.archivos,
-      mb: locales.mb, libreMb: plan.libreMb, pisoMb: plan.pisoMb, diasRestantes: diasDeDisco(db, { libreMb: plan.libreMb, pisoMb: plan.pisoMb }),
+      mb: locales.mb, anterior: locales.anterior, libreMb: plan.libreMb, pisoMb: plan.pisoMb, diasRestantes: diasDeDisco(db, { libreMb: plan.libreMb, pisoMb: plan.pisoMb }),
     },
     fijada: fuera ? fuera.fijada === 1 : null,
     recientes,

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { carpetaTemporal } from './ayuda.js';
+import { carpetaTemporal, esperarHasta } from './ayuda.js';
 import { contenido } from './copias-base.js';
 import { montar, ponerToken, unirChat, BOT, BOT2, CHAT, MINUTO, HORA } from './copias-tarea-base.js';
 import { TELEGRAM } from '../src/canales/telegram.js';
@@ -224,14 +224,18 @@ test('2.3 un byte cambiado al bajar: se sube otra vez desde el disco y se compru
   }
 });
 
-test('2.3 tormenta de 429 (con copia en el servidor): cada espera cuenta; a las 12 la tarea falla con telegram_limite_largo; el 429 pausa también al que manda avisos', async () => {
+test('2.3 tormenta de 429 (con copia en el servidor): cada espera cuenta; a las 12 la copia (entera en el disco) queda solo en el servidor, comprobada (ronda 2); el 429 pausa también al que manda avisos', async () => {
   const b = await montar({ relleno: 4 });
   try {
     b.falso.escena('sendDocument', 'limite', { segundos: 120, veces: 1000 });
     const id = b.pedir();
     const fin = await b.terminar(id);
-    assert.deepEqual([fin.estado, fin.ultimo_error], ['fallida', 'telegram_limite_largo']);
-    assert.equal(b.aviso('copia_fallida')?.nivel, 'grave');
+    assert.equal(fin.estado, 'hecha');
+    const [c] = b.copias();
+    assert.deepEqual([c.estado, c.fuera, c.local, c.motivo], ['solo_local', 0, 1, 'telegram_limite_largo']);
+    assert.ok(b.partes(c.id).every(p => p.verificada_en && existsSync(p.archivo_local)), 'comprobada en el disco');
+    assert.equal(b.aviso('copia_solo_local')?.nivel, 'atencion');
+    assert.equal(b.aviso('copia_fallida'), null);
     assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM tarea_eventos WHERE tarea_id = ? AND evento = 'error'").get(id).n, 0, 'las esperas no cuentan como fallos');
     const canal = b.db.prepare("SELECT * FROM canales WHERE estado = 'activo'").get();
     assert.ok(canal.pausa_hasta, 'el trabajador anotó la pausa en el canal');
@@ -260,25 +264,41 @@ test('2.3 sin copia en el servidor (directo a Telegram): un 429 largo cierra la 
   }
 });
 
-test('2.3 Telegram caído (500 tres veces seguidas): la tarea queda fallida y vigilar cierra la copia con copia_fallida (grave); las partes del disco quedan', async () => {
+test('2.3 Telegram caído (500 tres veces seguidas): en el último intento la copia (entera en el disco) queda solo en el servidor (ronda 2); una tarea fallida con su copia a medias: vigilar la cierra con copia_fallida (grave); nada se borra', async () => {
   const b = await montar({ relleno: 4 });
   try {
     b.falso.escena('sendDocument', 'error_500', { veces: 3 });
     const id = b.pedir();
     const fin = await b.terminar(id);
-    assert.deepEqual([fin.estado, fin.ultimo_error], ['fallida', 'error_servidor']);
-    assert.equal(b.copias()[0].estado, 'escrita');
-    vigilarCopias(b.db, b.config, { ahora: b.t, libreMb: 100_000 });
+    assert.equal(fin.estado, 'hecha');
     const [c] = b.copias();
-    assert.deepEqual([c.estado, c.motivo], ['fallida', 'error_servidor']);
-    assert.equal(b.aviso('copia_fallida')?.nivel, 'grave');
+    assert.deepEqual([c.estado, c.fuera, c.motivo], ['solo_local', 0, 'telegram_no_responde']);
+    assert.equal(b.aviso('copia_solo_local')?.nivel, 'atencion');
+    assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM tarea_eventos WHERE tarea_id = ? AND evento = 'error'").get(id).n, 2, 'dos reintentos antes');
     assert.ok(b.partes(c.id).every(p => existsSync(p.archivo_local)), 'nada se borró');
-    // Días después, con Telegram de vuelta, la copia de la noche funciona sola.
+    // Una copia a medias cuya tarea quedó fallida (por otra cosa): vigilar la cierra con copia_fallida (grave).
+    b.avanzar(HORA);
+    b.falso.escena('sendDocument', 'error_500', { veces: 1 });
+    const id2 = b.pedir();
+    for (let i = 0; i < 40 && JSON.parse(b.tarea(id2).punto ?? '{}').paso !== 'subir'; i++) {
+      await b.ejecutor.ciclo();
+      await esperarHasta(() => !b.ejecutor.estado().enCurso.length, { que: 'el paso', cada: 5, ms: 60_000 });
+      const f = b.tarea(id2);
+      if (f.estado === 'lista' && Date.parse(f.disponible_en) > b.t) b.t = Date.parse(f.disponible_en) + 1;
+    }
+    b.db.prepare("UPDATE tareas SET estado = 'fallida', ultimo_error = 'error_servidor' WHERE id = ?").run(id2);
+    vigilarCopias(b.db, b.config, { ahora: b.t, libreMb: 100_000 });
+    const c2 = b.copias().at(-1);
+    assert.deepEqual([c2.estado, c2.motivo], ['fallida', 'error_servidor']);
+    assert.equal(b.aviso('copia_fallida')?.nivel, 'grave');
+    assert.ok(b.partes(c2.id).every(p => existsSync(p.archivo_local)), 'nada se borró');
+    // Días después, con Telegram de vuelta, la copia de la noche funciona sola (y cierra los avisos).
     b.avanzar(3 * 24 * HORA);
     const otra = await b.terminar(b.pedir({}));
     assert.equal(otra.estado, 'hecha');
     assert.equal(b.copias().at(-1).estado, 'verificada');
     assert.equal(b.aviso('copia_fallida'), null, 'una copia buena cierra el aviso');
+    assert.equal(b.aviso('copia_solo_local'), null);
   } finally {
     await b.cerrar();
   }
