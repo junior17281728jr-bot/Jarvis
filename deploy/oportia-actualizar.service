@@ -1,0 +1,12 @@
+[Unit]
+Description=OPORTIA: buscar e instalar la versión nueva (pruebas primero)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/oportia/oportia-lanzador.sh
+Nice=5
+# El lanzador corta al actualizador a los 2400 s: siempre le sobra tiempo para anotar lo que pasó.
+TimeoutStartSec=2700
+KillMode=control-group

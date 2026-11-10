@@ -119,6 +119,58 @@ export function leerArchivosDeActualizacion(config) {
   return { lineas: lineasDeActualizacion(log.texto, { desdeElPrincipio: log.desdeElPrincipio }), versionMala: sha };
 }
 
+// ---------- Fase 1, parte f: el estado que publica el actualizador nuevo ----------
+// El actualizador (root) deja en <datos>/actualizador.json una copia de su estado después de CADA corrida. Aquí solo se
+// LEE (≤ 4 KB, un archivo normal) y solo se aceptan los campos conocidos con su forma; cualquier otra cosa → null.
+// Sin archivo (servidor con el actualizador de antes, o después de «sudo oportia volver») → null. Nunca escribe.
+export const RESULTADOS_DEL_ACTUALIZADOR = Object.freeze(['al_dia', 'hay_nueva', 'actualizado', 'no_instalada', 'revertida', 'revertida_sin_arrancar', 'sin_red', 'sin_disco', 'mala_conocida']);
+const ESTADO_MAXIMO = 4096;
+const SHA40 = /^[0-9a-f]{40}$/;
+
+export function entenderEstadoDelActualizador(texto) {
+  let j;
+  try { j = JSON.parse(String(texto ?? '')); } catch { return null; }
+  if (!j || typeof j !== 'object' || Array.isArray(j) || j.contrato !== 1) return null;
+  const revisado = typeof j.revisado === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(j.revisado) ? Date.parse(j.revisado) : NaN;
+  if (!Number.isFinite(revisado)) return null;
+  if (!RESULTADOS_DEL_ACTUALIZADOR.includes(j.resultado)) return null;
+  const sha = v => (v == null ? null : (typeof v === 'string' && SHA40.test(v) ? v : undefined));
+  const version = sha(j.version);
+  const vista = sha(j.vista);
+  if (version === undefined || vista === undefined) return null;
+  const megas = v => (Number.isSafeInteger(v) && v >= 0 ? v : undefined);
+  const libreMb = megas(j.libre_mb);
+  const ocupaMb = megas(j.ocupa_mb);
+  if (libreMb === undefined || ocupaMb === undefined) return null;
+  if (!['encendido', 'pendiente', 'no_aplica'].includes(j.enlace)) return null;
+  if (typeof j.actualizador !== 'string' || !/^(?:[0-9a-f]{7})?$/.test(j.actualizador)) return null;
+  return { contrato: 1, revisado: new Date(revisado).toISOString(), resultado: j.resultado, version, vista, actualizador: j.actualizador || null, libreMb, ocupaMb, enlace: j.enlace };
+}
+
+export function leerEstadoDelActualizador(config) {
+  const carpeta = config?.carpetaDatos;
+  if (!carpeta) return null;
+  const ruta = join(carpeta, 'actualizador.json');
+  let fd;
+  try {
+    fd = openSync(rutaSegura(ruta), 'r');
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > ESTADO_MAXIMO) return null;
+    const bufer = Buffer.alloc(info.size);
+    let leido = 0;
+    while (leido < info.size) {
+      const n = readSync(fd, bufer, leido, info.size - leido, leido);
+      if (n <= 0) break;
+      leido += n;
+    }
+    return entenderEstadoDelActualizador(bufer.subarray(0, leido).toString('utf8'));
+  } catch {
+    return null;
+  } finally {
+    if (fd != null) { try { closeSync(fd); } catch { /* ya cerrado */ } }
+  }
+}
+
 function leerAjuste(db, clave) {
   const f = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave);
   if (!f) return null;

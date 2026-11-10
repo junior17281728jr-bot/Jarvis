@@ -1,0 +1,11 @@
+[Unit]
+Description=OPORTIA: revisar si hay versión nueva cada 30 minutos
+
+[Timer]
+OnBootSec=3min
+OnCalendar=*:07,37
+RandomizedDelaySec=120
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

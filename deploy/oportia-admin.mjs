@@ -13,6 +13,7 @@
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --tailscale=reanotar     -> olvida la cuenta de Tailscale del dueño (el primer administrador; la próxima entrada anota la nueva)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=estado         -> cómo están las copias de seguridad (no cambia nada)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=ahora          -> pide una copia ahora (la hace el trabajo automático)
+//   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=antes-de-cambio -> una copia completa de la base en el servidor, en un archivo NUEVO (la pide «sudo oportia pasar» antes de cambiar nada)
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --telegram=desvincular  -> deja de usar el chat de Telegram unido (no borra nada)
 //   Para recuperar una copia: deploy/oportia-restaurar.mjs (explica su uso al principio del archivo).
 //
@@ -26,9 +27,10 @@
 // Qué hace: genera una contraseña temporal, cierra las sesiones abiertas de esa cuenta y te pide
 // cambiarla al entrar. No borra nada. Se ejecuta como el usuario «jarvis» (nunca como root) para que
 // los archivos de la base sigan siendo de quien debe.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { leerConfig } from '../src/nucleo/config.js';
-import { abrirBase, conectarBase } from '../src/nucleo/db.js';
+import { abrirBase, conectarBase, revisarModoPrueba } from '../src/nucleo/db.js';
 import { MIGRACIONES } from '../src/nucleo/migraciones.js';
 import { hashClave, claveTemporal } from '../src/cuentas/claves.js';
 import { cerrarTodas } from '../src/cuentas/sesiones.js';
@@ -76,6 +78,7 @@ async function principal() {
     if (pedido === '--tailscale=reanotar') return conBase(config, { abrirSiFalta: false }, db => reanotar(db, (process.argv[3] || '').trim()));
     if (pedido === '--copias=estado') return conBase(config, { abrirSiFalta: false }, db => estadoDeCopias(db, config));
     if (pedido === '--copias=ahora') return conBase(config, { abrirSiFalta: false }, db => copiaAhora(db));
+    if (pedido === '--copias=antes-de-cambio') return conBase(config, { abrirSiFalta: false }, db => copiaAntesDeCambio(db, config));
     if (pedido === '--telegram=desvincular') return conBase(config, { abrirSiFalta: false }, db => dejarTelegram(db));
     const m = pedido.match(/^--modo-seguro=(si|no)$/);
     if (!m) {
@@ -311,6 +314,38 @@ function fechaRd(iso) {
   return `${d.getUTCDate()} ${meses[d.getUTCMonth()]}, ${h % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`;
 }
 const megas = bytes => `${Math.max(0, Math.round(((Number(bytes) || 0) / (1024 * 1024)) * 10) / 10)} MB`;
+
+// --copias=antes-de-cambio (parte 1f): una copia COMPLETA de la base, en el servidor, en un archivo nuevo de la carpeta
+// de las copias (oportia-antes-de-1f-<fecha>.db). La pide «sudo oportia pasar» antes de cambiar el actualizador (los
+// datos no se tocan en ese cambio; la copia es por si acaso). Nunca pisa un archivo: si el nombre existe, no hace nada.
+// Exige disco libre de sobra (2 veces la base + 300 MB). Salidas: 0 hecha · 4 poco disco · 5 el archivo ya existe · 1 otra cosa.
+function copiaAntesDeCambio(db, config) {
+  const sello = new Date().toISOString().replace(/[:.]/g, '-');
+  const destino = join(config.carpetaCopias, `oportia-antes-de-1f-${sello}.db`);
+  revisarModoPrueba(destino);
+  if (existsSync(destino)) {
+    console.error(`Ya existe ${destino}: no se tocó. Prueba otra vez en un momento.`);
+    return 5;
+  }
+  const tamano = ruta => { try { return statSync(ruta).size; } catch { return 0; } };
+  const baseMb = (tamano(config.archivoBase) + tamano(`${config.archivoBase}-wal`)) / (1024 * 1024);
+  let libreMb = null;
+  try { libreMb = discoDeCopias(config.carpetaCopias, config.carpetaDatos).libreMb; } catch { libreMb = null; }
+  if (libreMb == null) { try { libreMb = discoLibreMb(config.carpetaDatos); } catch { libreMb = null; } }
+  if (libreMb != null && libreMb < 2 * baseMb + 300) {
+    console.error(`No hay disco libre de sobra para la copia (hay ${Math.round(libreMb)} MB; hacen falta ${Math.round(2 * baseMb + 300)} MB). No se cambió nada.`);
+    return 4;
+  }
+  mkdirSync(config.carpetaCopias, { recursive: true });
+  try {
+    db.exec(`VACUUM INTO '${destino.replace(/'/g, "''")}'`);
+  } catch {
+    console.error('No se pudo hacer la copia de la base. No se cambió nada.');
+    return 1;
+  }
+  console.log(`Copia de la base hecha: ${destino} (${megas(tamano(destino))}).`);
+  return 0;
+}
 
 // --copias=estado: cómo están las copias, en palabras simples. No cambia nada.
 function estadoDeCopias(db, config) {

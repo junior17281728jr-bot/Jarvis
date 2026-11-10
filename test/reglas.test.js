@@ -612,3 +612,202 @@ test('el que manda avisos empieza después de abrir el puerto y se apaga antes d
   assert.ok(server.indexOf('await avisador?.parar()') < server.indexOf('db?.close()', server.indexOf('await avisador?.parar()')), 'antes de cerrar la base');
   assert.match(leer(de('canales', 'avisador.js')), /temporizador\.unref\?\.\(\);/, 'su reloj nunca deja vivo al proceso');
 });
+
+// ---------- Fase 1, parte f: los programas del servidor (deploy/*.sh), sus unidades y el texto de instalación ----------
+// Estas reglas solo LEEN los archivos (y «bash -n» solo revisa la escritura): nunca corren un programa del servidor.
+
+const DEPLOY = join(RAIZ, 'deploy');
+const programas = readdirSync(DEPLOY).filter(n => n.endsWith('.sh')).sort();
+const programa = nombre => readFileSync(join(DEPLOY, nombre), 'utf8');
+// Las líneas con código (sin las de comentario), con su número.
+const lineasDeCodigo = texto => texto.split('\n').map((l, i) => ({ l, n: i + 1 })).filter(x => !x.l.trim().startsWith('#'));
+const REPO_OFICIAL = 'junior17281728jr-bot/Jarvis';
+const BASH = ['/bin/bash', '/usr/bin/bash'].find(p => existsSync(p));
+
+test('1f: están todos los programas del servidor, cada uno con su cabecera estricta y todo su cuerpo dentro de principal (sin leer la entrada)', () => {
+  assert.deepEqual(programas, ['cloud-init.sh', 'install.sh', 'oportia-actualizar.sh', 'oportia-comun.sh', 'oportia-lanzador.sh', 'oportia-orden.sh', 'oportia-recuperar.sh', 'oportia-servidor.sh', 'oportia.sh']);
+  for (const nombre of programas) {
+    const texto = programa(nombre);
+    assert.ok(texto.startsWith('#!/bin/bash\n'), `${nombre}: primera línea`);
+    assert.doesNotMatch(texto, /^\s*set\s+-[a-z]*x|set -o xtrace|\bxtrace\b/m, `${nombre}: nunca «set -x» (escribiría secretos en los registros)`);
+    assert.ok(!texto.includes('$HOME') && !texto.includes('${HOME'), `${nombre}: no usa HOME (systemd no lo pone)`);
+    assert.doesNotMatch(lineasDeCodigo(texto).map(x => x.l).join('\n'), /\beval\b/, `${nombre}: sin eval`);
+    if (nombre === 'oportia-comun.sh') continue; // solo funciones: lo cargan los otros
+    assert.match(texto, /^set -euo pipefail$/m, `${nombre}: set -euo pipefail`);
+    assert.match(texto, /^IFS=\$'\\n\\t'$/m, `${nombre}: IFS`);
+    assert.ok(texto.endsWith('\nprincipal "$@" </dev/null\nexit $?\n'), `${nombre}: termina en principal "$@" </dev/null`);
+    // Fuera de las funciones solo hay asignaciones, «export», «declare» y la cabecera: nada que haga cosas.
+    let dentro = false;
+    for (const { l, n } of lineasDeCodigo(texto)) {
+      if (/^[a-z_]+\(\) \{$/.test(l) || /^[a-z_]+\(\) \{ .* \}$/.test(l)) { dentro = !/\}$/.test(l); continue; }
+      if (dentro) { if (l === '}') dentro = false; continue; }
+      if (!l.trim()) continue;
+      assert.match(l, /^(?:[A-Z_0-9]+=.*|export [A-Z_ =.0-9a-zA-Z-]+|declare -a [A-Z_]+=\(\)|set -euo pipefail|umask 0(?:22|77)|if \[ "\$\{OPORTIA_PRUEBA:-\}" != "1" \]; then PATH=\S+; fi|principal "\$@" <\/dev\/null|exit \$\?)$/, `${nombre}:${n}: código fuera de una función: ${l}`);
+    }
+  }
+});
+
+test('1f: cada programa del servidor está bien escrito (bash -n)', { skip: BASH ? false : 'no hay bash' }, async () => {
+  const { spawnSync } = await import('node:child_process');
+  for (const nombre of programas) {
+    const r = spawnSync(BASH, ['-n', join(DEPLOY, nombre)], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `${nombre}: ${r.stderr}`);
+  }
+});
+
+test('1f: en los programas del servidor la palabra rm solo existe dentro de borrar_lo_mio, y nunca hay otra orden que destruya', () => {
+  for (const nombre of programas) {
+    let funcion = null;
+    for (const { l, n } of lineasDeCodigo(programa(nombre))) {
+      const m = /^([a-z_]+)\(\) \{/.exec(l);
+      if (m) funcion = m[1];
+      if (/(?:^|[\s;&|(])rm(?:\s|$)/.test(l)) assert.equal(funcion, 'borrar_lo_mio', `${nombre}:${n}: rm fuera de borrar_lo_mio: ${l.trim()}`);
+      assert.doesNotMatch(l, /(?:^|[\s;&|(])(?:rmdir|shred|truncate|mkfs\S*|wipefs|userdel|deluser|find\s.*-delete|git\s+clean)(?:\s|$)|--remove-files|\bfunnel reset\b|\bufw (?:--force )?reset\b|\bapt-get\b.*\b(?:remove|purge|autoremove)\b|\bdd\b.*\bof=\/dev\//, `${nombre}:${n}: orden que destruye: ${l.trim()}`);
+    }
+    const cuerpo = /\nborrar_lo_mio\(\) \{\n([\s\S]*?)\n\}\n/.exec(programa(nombre))?.[1] ?? null;
+    if (cuerpo == null) continue;
+    assert.equal((cuerpo.match(/(?:^|[\s;&|(])rm(?:\s|$)/gm) || []).length, 1, `${nombre}: un solo rm`);
+    assert.match(cuerpo, /rm -rf --one-file-system -- "\$(?:ruta|D)"$/m, `${nombre}: el borrado no cruza a otros discos y nunca toma una opción por nombre`);
+  }
+});
+
+test('1f: toda ruta del sistema de los programas sale del prefijo $RAIZ (en las pruebas nunca pueden tocar el servidor)', () => {
+  const carpetas = /\/(?:etc|opt|var|usr|run|root|tmp|home|swapfile|boot|lib|sbin|bin|srv|mnt)(?![\w-])/g;
+  for (const nombre of programas) {
+    for (const { l, n } of lineasDeCodigo(programa(nombre))) {
+      if (n === 1) continue; // #!/bin/bash
+      for (const m of l.matchAll(carpetas)) {
+        const antes = l.slice(0, m.index);
+        const palabra = antes.slice(Math.max(antes.lastIndexOf(' '), antes.lastIndexOf('\t')) + 1);
+        if (/\$\{?[A-Za-z_]/.test(palabra)) continue; // sale del prefijo $RAIZ, o de una variable (todas salen de él; HOME y las del entorno están prohibidas arriba)
+        if (/:\/\/[^\s"']*$/.test(antes)) continue; // una dirección https://…
+        if (/(?:^|[\s"'(])"?PATH=\S*$/.test(antes)) continue; // el PATH de la cabecera y el de las pruebas de la versión nueva
+        assert.fail(`${nombre}:${n}: ruta del sistema sin $RAIZ: ${l.trim()}`);
+      }
+      assert.doesNotMatch(l, /\/dev\/(?!null\b|tty\b|zero\b)/, `${nombre}:${n}: solo /dev/null, /dev/tty y /dev/zero`);
+    }
+  }
+});
+
+test('1f: los comandos del sistema pasan por «sistema» y solo los de la lista; nunca «curl … | bash» fuera de las líneas documentadas', () => {
+  const comun = programa('oportia-comun.sh');
+  const lista = /^ORDENES_DEL_SISTEMA=" ([a-z -]+) "$/m.exec(comun)?.[1].split(' ');
+  assert.deepEqual(lista, ['systemctl', 'apt-get', 'dpkg', 'tailscale', 'ufw', 'useradd', 'id', 'runuser', 'setpriv', 'swapon', 'mkswap', 'fallocate', 'curl', 'hostnamectl', 'ss', 'chown', 'chgrp', 'df', 'uname']);
+  for (const nombre of programas) {
+    for (const { l, n } of lineasDeCodigo(programa(nombre))) {
+      for (const m of l.matchAll(/\b(?:sistema|hay_orden)\s+([a-z][a-z-]*)\b|\bsistema_con_tope\s+\d+\s+([a-z][a-z-]*)\b/g)) {
+        const orden = m[1] ?? m[2];
+        assert.ok(lista.includes(orden), `${nombre}:${n}: «${orden}» no está en la lista de órdenes del sistema`);
+      }
+      // Lo que cambia el sistema nunca se llama directo (sin «sistema» delante).
+      assert.doesNotMatch(l, /(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+|\belse\s+|!\s+)(?:systemctl|apt-get|apt|dpkg|tailscale|ufw|useradd|usermod|runuser|setpriv|swapon|mkswap|fallocate|curl|wget|hostnamectl|chown|chgrp|reboot|shutdown|crontab|sysctl|iptables|nft)\s/, `${nombre}:${n}: comando del sistema sin «sistema»: ${l.trim()}`);
+      if (/\|\s*(?:sudo\s+)?(?:bash|sh)\b/.test(l)) {
+        assert.ok(l.includes(`https://raw.githubusercontent.com/${REPO_OFICIAL}/main/deploy/cloud-init.sh | sudo bash -s -- `), `${nombre}:${n}: «| bash» que no es la línea documentada`);
+      }
+    }
+  }
+  // cloud-init.sh (que llega solo, sin los demás) tiene su propia lista, más corta.
+  assert.match(programa('cloud-init.sh'), /case "\$orden" in\n\s+apt-get\|curl\) ;;\n\s+\*\) fallar/);
+});
+
+test('1f: los bloques compartidos son idénticos, el repositorio es el mismo en todos lados y el contrato del actualizador es el 1', () => {
+  const bloque = (nombre, cual) => new RegExp(`\\n# >>> ${cual} [^\\n]*\\n[\\s\\S]*?\\n# <<< ${cual}\\n`).exec(programa(nombre))?.[0] ?? null;
+  const base = bloque('oportia-comun.sh', 'base');
+  assert.ok(base && base.length > 3000);
+  assert.equal(bloque('oportia-actualizar.sh', 'base'), base, 'el bloque «base» del actualizador');
+  assert.equal(bloque('oportia-lanzador.sh', 'base'), base, 'el bloque «base» del lanzador');
+  const salud = bloque('oportia-comun.sh', 'salud');
+  assert.ok(salud && salud.length > 2000);
+  assert.equal(bloque('oportia-actualizar.sh', 'salud'), salud, 'el bloque «salud» del actualizador');
+  // El actualizador y el lanzador son un solo archivo cada uno: no cargan otros.
+  for (const nombre of ['oportia-actualizar.sh', 'oportia-lanzador.sh', 'oportia-orden.sh', 'cloud-init.sh']) assert.doesNotMatch(lineasDeCodigo(programa(nombre)).map(x => x.l).join('\n'), /^\s*(?:\.|source)\s/m, `${nombre} carga otro archivo`);
+  assert.match(programa('oportia-actualizar.sh'), /^CONTRATO=1$/m);
+  assert.match(base, /^CONTRATO_DEL_LANZADOR=1$/m);
+  // El mismo repositorio en todos los archivos que lo nombran.
+  const conRepo = [...programas.map(n => join(DEPLOY, n)), join(RAIZ, 'README.md'), join(RAIZ, 'public', 'i18n', 'es.json'), join(RAIZ, 'public', 'i18n', 'en.json'), join(DEPLOY, 'LEEME.md')];
+  let veces = 0;
+  for (const f of conRepo) {
+    for (const m of leer(f).matchAll(/([A-Za-z0-9._-]+)\/Jarvis\b(?!-)/g)) {
+      veces += 1;
+      assert.equal(`${m[1]}/Jarvis`, REPO_OFICIAL, `${relative(RAIZ, f)} nombra otro repositorio: ${m[0]}`);
+    }
+  }
+  assert.ok(veces >= 4);
+  // El juego de programas que root guarda es el mismo en los programas y en la ayuda de las pruebas.
+  const juego = /^JUEGO="([^"]+)"$/m.exec(base)?.[1].split(' ');
+  assert.ok(juego.length >= 12);
+  for (const n of juego) assert.ok(existsSync(join(DEPLOY, n)), `el juego nombra ${n}, que no existe`);
+  for (const n of programas.filter(x => x !== 'cloud-init.sh')) assert.ok(juego.includes(n), `${n} no está en el juego`);
+  assert.match(leer(join(RAIZ, 'test', 'raiz-falsa.js')), new RegExp(`JUEGO = \\[${juego.map(n => `'${n.replace(/\./g, '\\.')}'`).join(', ')}\\]`));
+});
+
+test('1f: las unidades: el servicio apaga TODO su grupo (nunca KillMode=process), sin archivos core y sin metadatos; el actualizador con tope y sin frenar el disco', () => {
+  const unidades = readdirSync(DEPLOY).filter(n => /\.(?:service|timer)$/.test(n)).sort();
+  assert.deepEqual(unidades, ['jarvis.service', 'oportia-actualizar.service', 'oportia-actualizar.timer']);
+  for (const n of unidades) assert.doesNotMatch(leer(join(DEPLOY, n)), /^KillMode=(?!control-group$)/m, `${n}: KillMode`);
+  const servicio = leer(join(DEPLOY, 'jarvis.service'));
+  for (const linea of ['KillMode=control-group', 'User=jarvis', 'LimitCORE=0', 'IPAddressDeny=169.254.169.254', 'ProtectSystem=strict', 'ReadWritePaths=/var/lib/jarvis', 'NoNewPrivileges=true', 'ExecStart=/usr/bin/node --no-warnings src/server.js', 'EnvironmentFile=/opt/jarvis/.env']) {
+    assert.match(servicio, new RegExp(`^${linea.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}$`, 'm'), `jarvis.service: ${linea}`);
+  }
+  const actualizar = leer(join(DEPLOY, 'oportia-actualizar.service'));
+  assert.match(actualizar, /^Type=oneshot$/m);
+  assert.match(actualizar, /^ExecStart=\/usr\/local\/lib\/oportia\/oportia-lanzador\.sh$/m);
+  assert.match(actualizar, /^KillMode=control-group$/m);
+  assert.doesNotMatch(actualizar, /IOSchedulingClass|^User=/m);
+  const tope = Number(/^TOPE_ACTUALIZADOR=(\d+)$/m.exec(programa('oportia-lanzador.sh'))[1]);
+  const delServicio = Number(/^TimeoutStartSec=(\d+)$/m.exec(actualizar)[1]);
+  const pruebas = Number(/^TOPE_PRUEBAS=(\d+)$/m.exec(programa('oportia-actualizar.sh'))[1]);
+  assert.equal(pruebas, 900);
+  assert.ok(2 * pruebas + 300 <= tope && tope + 60 <= delServicio, 'el lanzador siempre sobrevive al actualizador, y systemd al lanzador');
+  const reloj = leer(join(DEPLOY, 'oportia-actualizar.timer'));
+  assert.match(reloj, /^OnCalendar=\*:07,37$/m);
+  assert.match(reloj, /^WantedBy=timers\.target$/m);
+  assert.doesNotMatch(reloj, /Persistent=/);
+});
+
+test('1f: Node llega con versión y huellas FIJAS, y el instalador las comprueba antes de abrir nada', () => {
+  const pin = leer(join(DEPLOY, 'node.pin'));
+  assert.match(pin, /^NODE_VERSION=22\.\d+\.\d+\nNODE_SHA256_X64=[0-9a-f]{64}\nNODE_SHA256_ARM64=[0-9a-f]{64}\n$/);
+  const instalador = programa('install.sh');
+  const comprobar = instalador.indexOf('sha256sum -c -');
+  assert.ok(comprobar > 0 && comprobar < instalador.indexOf('tar --no-same-owner -xJf'), 'la huella se comprueba ANTES de abrir el paquete');
+  assert.doesNotMatch(instalador, /nodesource|setup_\d+\.x/i);
+  // Las pruebas de la versión nueva nunca corren como root.
+  const actualizador = programa('oportia-actualizar.sh');
+  assert.match(actualizador, /sistema setpriv --reuid=nobody --regid=nogroup --clear-groups \\\n\s+env -i /);
+  assert.equal((actualizador.match(/--test /g) || []).length, 1, 'un solo sitio corre las pruebas');
+});
+
+test('1f: el texto de instalación es pequeño, trae el marcador de la clave y cada «sudo oportia …» que se le muestra al dueño existe', () => {
+  const nube = programa('cloud-init.sh');
+  assert.ok(Buffer.byteLength(nube) <= 8192, `cloud-init.sh pesa ${Buffer.byteLength(nube)} bytes (tope: 8 KB)`);
+  assert.equal(nube.split('\n')[3], 'TS_AUTHKEY="PEGA_AQUI"');
+  assert.equal(nube.split('\n')[4], `REPO="${REPO_OFICIAL}"`);
+  assert.match(nube, /unset TS_AUTHKEY/);
+  // Las palabras que reparte la orden corta.
+  const reparto = programa('oportia.sh');
+  const palabras = new Set([...reparto.matchAll(/^\s{4}([a-z|-]+)\) (?:exec bash|ayuda)/gm)].flatMap(m => m[1].split('|')).filter(p => !p.startsWith('-')));
+  assert.deepEqual([...palabras].sort(), ['actualizar', 'ayuda', 'estado', 'pasar', 'probar-copia', 'recuperar', 'revisar', 'servicio', 'tailscale', 'volver']);
+  const conOrdenes = [...programas.map(n => join(DEPLOY, n)), join(DEPLOY, 'LEEME.md'), join(RAIZ, 'README.md'), join(RAIZ, 'public', 'i18n', 'es.json'), join(RAIZ, 'public', 'i18n', 'en.json'), join(RAIZ, 'public', 'app.js'), join(RAIZ, 'deploy', 'oportia-admin.mjs'), join(RAIZ, 'deploy', 'oportia-restaurar.mjs')];
+  let vistas = 0;
+  for (const f of conOrdenes) {
+    for (const m of leer(f).matchAll(/sudo oportia ([a-z][a-z-]*)/g)) {
+      vistas += 1;
+      assert.ok(palabras.has(m[1]), `${relative(RAIZ, f)} muestra «sudo oportia ${m[1]}», que no existe (ningún botón muerto)`);
+    }
+    for (const m of leer(f).matchAll(/sudo oportia [a-z-]+ (--[a-z-]+)/g)) assert.ok(['--reintentar', '--simulacro'].includes(m[1]), `${relative(RAIZ, f)}: opción ${m[1]}`);
+  }
+  assert.ok(vistas >= 15);
+  // Las opciones de install.sh que nombra la línea de arreglo existen.
+  assert.match(programa('install.sh'), /--solo-actualizador\) SOLO_ACTUALIZADOR=si ;;/);
+  assert.match(programa('oportia-orden.sh'), /cloud-init\.sh \| sudo bash -s -- --solo-actualizador"/);
+});
+
+test('1f: nadie dice que el instalador está «probado» sin decir «en simulación» (hasta que se haga el simulacro en un servidor de verdad)', () => {
+  for (const f of [join(DEPLOY, 'LEEME.md'), join(RAIZ, 'README.md'), join(RAIZ, 'public', 'i18n', 'es.json'), join(RAIZ, 'public', 'i18n', 'en.json')]) {
+    for (const [i, linea] of leer(f).split('\n').entries()) {
+      if (!/instalador|install\.sh|cloud-init|cortafuegos|firewall|systemd|texto de instalación|installer/i.test(linea)) continue;
+      if (/\b(?:probad[oa]s?|tested|verificad[oa]s?)\b/i.test(linea)) assert.match(linea, /simulaci|simulat|sin verificar|no (?:está|se ha) probad|not (?:yet )?tested/i, `${relative(RAIZ, f)}:${i + 1}: dice «probado» sin «simulación»: ${linea.trim().slice(0, 160)}`);
+    }
+  }
+});

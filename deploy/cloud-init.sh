@@ -1,110 +1,181 @@
 #!/bin/bash
-# JARVIS: instalación automática al crear la máquina en Oracle Cloud. No hace falta computadora:
-# se pega en "Cloud-init script" al crear la instancia y todo se instala solo (unos 10 minutos).
-# Antes de pegarlo, cambia PEGA_AQUI por tu clave de Tailscale (empieza con tskey-auth-).
+# OPORTIA: instalación automática en un Droplet NUEVO de DigitalOcean (Ubuntu 24.04). Tarda unos 15 minutos.
+# Antes de pegarlo: cambia PEGA_AQUI por tu clave de Tailscale (una «Auth key» de UN solo uso; empieza con tskey-auth-).
 TS_AUTHKEY="PEGA_AQUI"
 REPO="junior17281728jr-bot/Jarvis"
 
-# En Google Cloud este script corre en cada arranque: si ya se instaló, no hace nada
-[ -f /var/lib/jarvis/.instalado ] && exit 0
-exec > /var/log/jarvis-install.log 2>&1
-set -eux
-export DEBIAN_FRONTEND=noninteractive
+# De aquí para abajo no hay nada que cambiar. Este texto solo baja OPORTIA de GitHub (una versión exacta) y corre su
+# instalador (deploy/install.sh), que es idempotente y nunca borra ni pisa datos. También sirve con una palabra al final:
+#   curl -fsSL https://raw.githubusercontent.com/junior17281728jr-bot/Jarvis/main/deploy/cloud-init.sh | sudo bash -s -- revisar
+#   (revisar · pasar · --solo-actualizador y las demás opciones de install.sh)
+set -euo pipefail
+IFS=$'\n\t'
+umask 077
+export LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+if [ "${OPORTIA_PRUEBA:-}" != "1" ]; then PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; fi
+export PATH
+RAIZ="${OPORTIA_RAIZ:-}"
+REGISTRO="$RAIZ/var/log/oportia-instalar.log"
+D=""
 
-# Memoria de apoyo para las máquinas pequeñas (1 GB)
-if [ "$(free -m | awk '/Mem:/{print $2}')" -lt 2000 ] && [ ! -f /swapfile ]; then
-  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab
-fi
+decir() {
+  printf '%s\n' "$*"
+  printf '%s %s\n' "$(date -Is)" "$*" >> "$REGISTRO" 2>/dev/null || true
+}
 
-apt-get update -y
-apt-get install -y curl ca-certificates tar
+fallar() {
+  decir "✖ $*"
+  exit 1
+}
 
-# Descarga el programa (reintenta por si la red tarda en arrancar)
-mkdir -p /root/jarvis-src && cd /root/jarvis-src
-SHA=""
-for i in 1 2 3 4 5 6; do SHA=$(curl -fsSL -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/main") && break; sleep 20; done
-REF="${SHA:-refs/heads/main}"
-for i in 1 2 3 4 5 6; do curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$REF" -o jarvis.tgz && break; sleep 20; done
-tar xzf jarvis.tgz --strip-components=1
+sistema() {
+  local orden="$1"
+  shift
+  case "$orden" in
+    apt-get|curl) ;;
+    *) fallar "orden no permitida: $orden" ;;
+  esac
+  if [ "${OPORTIA_PRUEBA:-}" = "1" ]; then
+    [ -x "$OPORTIA_FALSOS/$orden" ] || fallar "falta el comando falso $orden"
+    "$OPORTIA_FALSOS/$orden" "$@"
+  else
+    "$orden" "$@"
+  fi
+}
 
-# Instala Node, crea el usuario, corre las pruebas y deja el servicio encendido
-OLLAMA=no bash deploy/install.sh
+# El único borrado: la carpeta temporal PROPIA donde estuvo la clave (se vacía antes).
+borrar_lo_mio() {
+  if [ -n "$D" ] && [ -d "$D" ] && [ ! -L "$D" ] && [[ "$D" =~ ^"$RAIZ/root"/oportia-clave\.[A-Za-z0-9]{6}$ ]]; then
+    if [ -f "$D/clave" ] && [ ! -L "$D/clave" ]; then : > "$D/clave"; fi
+    rm -rf --one-file-system -- "$D"
+  fi
+}
 
-# Escucha solo dentro de tu red privada (Tailscale). Oracle sigue bloqueando el internet público.
-sed -i 's/^HOST=.*/HOST=0.0.0.0/' /opt/jarvis/.env
-systemctl restart jarvis
+al_salir() {
+  local codigo=$?
+  trap - EXIT
+  borrar_lo_mio || true
+  exit "$codigo"
+}
 
-# Tailscale: tu red privada para entrar desde el celular, la Mac o tu amigo
-curl -fsSL https://tailscale.com/install.sh | sh
-iptables -I INPUT -i tailscale0 -j ACCEPT || true
-(command -v netfilter-persistent && netfilter-persistent save) || true
-set +x  # la clave de Tailscale no se escribe en el registro
-if [ "$TS_AUTHKEY" != "PEGA_AQUI" ]; then
-  tailscale up --authkey="$TS_AUTHKEY" --hostname=jarvis --ssh
-fi
-set -x
+revisar_modo() {
+  if [ "${OPORTIA_PRUEBA:-}" = "1" ]; then
+    if [ -z "$RAIZ" ] || [ -z "${OPORTIA_FALSOS:-}" ] || [ ! -d "${OPORTIA_FALSOS:-}" ]; then echo "Modo de prueba incompleto; no hice nada." >&2; exit 1; fi
+    case "$(realpath -- "$RAIZ")" in
+      "$(realpath -- "${TMPDIR:-$RAIZ/tmp}")"/?*) return 0 ;;
+    esac
+    echo "La raíz de prueba no está en la carpeta temporal; no hice nada." >&2
+    exit 1
+  fi
+  # De verdad: nunca desde una copia del repositorio (la carpeta de una prueba, o la carpeta de la app).
+  if [ -n "$RAIZ" ] || { [ -f "$0" ] && [ -e "$(dirname -- "$0")/oportia-actualizar.sh" ]; }; then
+    echo "Este texto se pega al crear el servidor, o se corre con la línea de curl; no hice nada." >&2
+    exit 1
+  fi
+  if [ "$EUID" != "0" ]; then echo "Hace falta ser administrador (sudo); no hice nada." >&2; exit 1; fi
+}
 
-# Enlace público https (Tailscale Funnel) para abrirlo en la TV o cualquier navegador.
-# El primer usuario solo se puede crear desde tu red privada (Tailscale); después todo pide contraseña.
-grep -q '^SETUP_TAILNET_ONLY=' /opt/jarvis/.env || echo 'SETUP_TAILNET_ONLY=1' >> /opt/jarvis/.env
-systemctl restart jarvis
-cat > /usr/local/bin/jarvis-enlace <<'SH'
-#!/bin/bash
-# Activa el enlace público si Tailscale lo permite y lo guarda para que JARVIS lo muestre en Ajustes
-OUT=/var/lib/jarvis/public-url.txt
-if ! tailscale funnel status 2>/dev/null | grep -q 'Funnel on'; then
-  timeout 25 tailscale funnel --bg 8080 >/var/lib/jarvis/funnel.log 2>&1 || timeout 25 tailscale serve --bg 8080 >/dev/null 2>&1 || true
-fi
-if tailscale funnel status 2>/dev/null | grep -q 'Funnel on'; then
-  NAME=$(tailscale status --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')
-  [ -n "$NAME" ] && echo "https://$NAME" > "$OUT" && chmod 644 "$OUT"
-else
-  rm -f "$OUT"
-fi
-SH
-chmod 755 /usr/local/bin/jarvis-enlace
-echo '*/10 * * * * root /usr/local/bin/jarvis-enlace' > /etc/cron.d/jarvis-enlace
-/usr/local/bin/jarvis-enlace || true
+# Quita espacios, saltos y comillas (rectas o curvas: el iPhone las cambia) de los extremos.
+limpiar() {
+  local t="$1" q cambio=si
+  t="${t//[$' \t\r\n']/}"
+  while [ "$cambio" = si ]; do
+    cambio=no
+    # shellcheck disable=SC1112
+    for q in '"' "'" '“' '”' '‘' '’' '«' '»'; do
+      if [[ "$t" == "$q"* ]]; then t="${t#"$q"}"; cambio=si; fi
+      if [[ "$t" == *"$q" ]]; then t="${t%"$q"}"; cambio=si; fi
+    done
+  done
+  printf '%s' "$t"
+}
 
-# Actualizaciones automáticas de seguridad del sistema
-apt-get install -y unattended-upgrades || true
+intentar() {
+  local veces="$1" pausa="$2" n=1
+  shift 2
+  if [ "${OPORTIA_PRUEBA:-}" = "1" ]; then pausa=0; fi
+  until "$@"; do
+    if [ "$n" -ge "$veces" ]; then return 1; fi
+    n=$((n + 1))
+    sleep "$pausa"
+  done
+}
 
-# Actualizaciones automáticas de JARVIS: cada 30 minutos mira si hay una versión nueva en GitHub.
-# Solo la instala si TODAS las pruebas pasan, y si el programa no arranca bien vuelve solo a la versión anterior.
-# Tus datos (usuarios, historial, claves) no se tocan.
-[ -n "$SHA" ] && echo "$SHA" > /var/lib/jarvis/version.txt
-cat > /usr/local/bin/jarvis-actualizar <<SH
-#!/bin/bash
-REPO="$REPO"
-SH
-cat >> /usr/local/bin/jarvis-actualizar <<'SH'
-set -uo pipefail
-LOG=/var/lib/jarvis/update.log; VER=/var/lib/jarvis/version.txt
-exec 9>/run/jarvis-actualizar.lock; flock -n 9 || exit 0
-NEW=$(curl -fsS -m 20 -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/main") || exit 0
-[[ "$NEW" =~ ^[0-9a-f]{40}$ ]] || exit 0
-[ "$NEW" = "$(cat "$VER" 2>/dev/null)" ] && exit 0
-[ "$NEW" = "$(cat /var/lib/jarvis/version.bad 2>/dev/null)" ] && exit 0
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-curl -fsSL -m 120 "https://codeload.github.com/$REPO/tar.gz/$NEW" -o "$TMP/j.tgz" || exit 0
-mkdir "$TMP/src" && tar xzf "$TMP/j.tgz" -C "$TMP/src" --strip-components=1 || exit 0
-if ! (cd "$TMP/src" && timeout 900 node --no-warnings --test test/*.test.js > "$TMP/test.log" 2>&1); then
-  echo "$(date -Is) versión ${NEW:0:7}: alguna prueba falló, NO se instaló" >> "$LOG"; echo "$NEW" > /var/lib/jarvis/version.bad; exit 0
-fi
-rm -rf /opt/jarvis.anterior && cp -a /opt/jarvis /opt/jarvis.anterior
-for d in src public deploy; do rm -rf "/opt/jarvis/$d"; cp -r "$TMP/src/$d" /opt/jarvis/; done
-cp "$TMP/src/package.json" "$TMP/src/GUIA.md" /opt/jarvis/ 2>/dev/null || true
-systemctl restart jarvis
-for i in $(seq 1 20); do sleep 3; curl -fsS -m 5 http://127.0.0.1:8080/api/setup >/dev/null 2>&1 && break; done
-if curl -fsS -m 5 http://127.0.0.1:8080/api/setup >/dev/null 2>&1; then
-  echo "$NEW" > "$VER"; echo "$(date -Is) actualizado a ${NEW:0:7}" >> "$LOG"
-else
-  rm -rf /opt/jarvis && mv /opt/jarvis.anterior /opt/jarvis && systemctl restart jarvis
-  echo "$NEW" > /var/lib/jarvis/version.bad
-  echo "$(date -Is) versión ${NEW:0:7} no arrancó: volví a la anterior" >> "$LOG"
-fi
-SH
-chmod 755 /usr/local/bin/jarvis-actualizar
-echo '*/30 * * * * root /usr/local/bin/jarvis-actualizar' > /etc/cron.d/jarvis-actualizar
+pedir_sha() {
+  SHA="$(sistema curl -fsSL -m 30 -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/main" 2>/dev/null)" || return 1
+  [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+}
 
-curl -fsS http://127.0.0.1:8080/api/setup && touch /var/lib/jarvis/.instalado && echo "JARVIS LISTO"
+principal() {
+  local clave="$TS_AUTHKEY" argumento modo="instalar" carpeta codigo=0 aviso_clave="" destino
+  local -a opciones=()
+  unset TS_AUTHKEY
+  revisar_modo
+  for argumento in "$@"; do
+    case "$argumento" in
+      revisar|pasar) modo="$argumento" ;;
+      --*) opciones+=("$argumento") ;;
+      *) echo "No entiendo «$argumento». Va sin nada, o con: revisar · pasar · --solo-actualizador (u otra opción de install.sh)." >&2; exit 2 ;;
+    esac
+  done
+  mkdir -p -- "$RAIZ/var/log" "$RAIZ/root"
+  touch -- "$REGISTRO"
+  chmod 600 "$REGISTRO"
+  trap al_salir EXIT
+  if [ "$#" -eq 0 ]; then
+    if [ -e "$RAIZ/var/lib/oportia-actualizador/instalado" ]; then
+      decir "OPORTIA ya está instalado en este servidor: no hice nada."
+      exit 0
+    fi
+    # 1) La clave de Tailscale: a un archivo propio (600), nunca a la pantalla, al registro ni a la línea de una orden.
+    clave="$(limpiar "$clave")"
+    if [ "$clave" != "PEGA_AQUI" ] && [ -n "$clave" ]; then
+      if [[ "$clave" =~ ^tskey-[a-z]+-[A-Za-z0-9-]+$ ]]; then
+        D="$(mktemp -d "$RAIZ/root/oportia-clave.XXXXXX")"
+        printf '%s' "$clave" > "$D/clave"
+        chmod 600 "$D/clave"
+        opciones+=("--clave-tailscale=$D/clave")
+      else
+        aviso_clave="⚠ La clave de Tailscale que pegaste no tiene la forma correcta (debe empezar con tskey-auth-). El servidor quedó instalado pero SIN Tailscale. Crea otra clave y corre: sudo oportia tailscale"
+        decir "$aviso_clave"
+      fi
+    fi
+  fi
+  clave=""
+
+  # 2) Lo mínimo para bajar (al arrancar, el sistema puede tener ocupado el instalador de paquetes: se espera).
+  if ! command -v tar >/dev/null 2>&1 || { [ "${OPORTIA_PRUEBA:-}" != "1" ] && ! command -v curl >/dev/null 2>&1; }; then
+    intentar 3 20 sistema apt-get -o DPkg::Lock::Timeout=600 update || fallar "No pude actualizar la lista de paquetes"
+    intentar 3 20 sistema apt-get -o DPkg::Lock::Timeout=600 install -y ca-certificates curl tar || fallar "No pude instalar curl y tar"
+  fi
+
+  # 3) y 4) La versión EXACTA de main, y su código a una carpeta de root.
+  SHA=""
+  intentar 6 20 pedir_sha || fallar "No pude preguntar a GitHub cuál es la última versión. Prueba otra vez en unos minutos."
+  carpeta="$RAIZ/root/oportia-instalador-${SHA:0:7}"
+  if [ -e "$carpeta" ] && [ ! -f "$carpeta/.completa" ]; then
+    destino="$carpeta.apartada-$(date +%Y%m%d-%H%M%S)"
+    mv -nT -- "$carpeta" "$destino"
+    if [ -e "$carpeta" ]; then fallar "No pude apartar $carpeta"; fi
+  fi
+  if [ ! -d "$carpeta" ]; then
+    mkdir -m 700 -- "$carpeta"
+    intentar 6 20 sistema curl -fsSL -m 300 -o "$carpeta/.codigo.tgz" "https://codeload.github.com/$REPO/tar.gz/$SHA" || fallar "No pude bajar OPORTIA de GitHub."
+    tar --no-same-owner --no-same-permissions -xzf "$carpeta/.codigo.tgz" -C "$carpeta" --strip-components=1
+    chmod -R go-w -- "$carpeta"
+    [ -f "$carpeta/deploy/install.sh" ] || fallar "Lo que bajé de GitHub no trae el instalador."
+    : > "$carpeta/.completa"
+  fi
+
+  # 5) El instalador (o revisar/pasar) corre desde esa carpeta de root. Recibe la RUTA de la clave, nunca la clave.
+  if [ "$modo" = "instalar" ]; then
+    bash "$carpeta/deploy/install.sh" "--sha=$SHA" "${opciones[@]}" || codigo=$?
+  else
+    bash "$carpeta/deploy/oportia-servidor.sh" "$modo" || codigo=$?
+  fi
+  if [ -n "$aviso_clave" ]; then decir "$aviso_clave"; fi
+  exit "$codigo"
+}
+
+principal "$@" </dev/null
+exit $?

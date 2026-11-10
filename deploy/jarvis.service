@@ -11,6 +11,8 @@ EnvironmentFile=/opt/jarvis/.env
 ExecStart=/usr/bin/node --no-warnings src/server.js
 Restart=always
 RestartSec=5
+# Nunca «process»: el trabajador es otro proceso del mismo servicio y debe apagarse con él.
+KillMode=control-group
 # Permisos mínimos
 NoNewPrivileges=true
 ProtectSystem=strict
@@ -19,6 +21,8 @@ ReadWritePaths=/var/lib/jarvis
 PrivateTmp=true
 # Sin archivos «core»: una caída nunca deja en el disco una copia de la memoria (con una clave descifrada)
 LimitCORE=0
+# El servicio (lo que mira a internet) no puede leer los metadatos de la máquina, donde queda el texto de instalación.
+IPAddressDeny=169.254.169.254
 
 [Install]
 WantedBy=multi-user.target

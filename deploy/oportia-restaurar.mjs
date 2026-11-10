@@ -1,5 +1,5 @@
 // Recuperar una copia cifrada de OPORTIA (fase 1, parte e) en un archivo NUEVO. La parte 1f pone la pantalla y el
-// instalador encima de esto; mientras tanto, Claude lo usa desde la Consola del servidor.
+// instalador encima de esto (deploy/oportia-recuperar.sh: «sudo oportia recuperar»); también se puede usar a mano.
 //
 // Uso (como el usuario «jarvis», nunca como root):
 //   sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-restaurar.mjs --archivos=<carpeta> --destino=<archivo nuevo>

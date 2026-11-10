@@ -22,3 +22,24 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: node --no-warnings --test test/*.test.js
+
+  # Fase 1, parte f: los programas del servidor (deploy/*.sh). Todo en SIMULACIÓN: una raíz falsa con comandos falsos
+  # (test/raiz-falsa.js). No instala nada de verdad, no toca ningún servidor y no usa ninguna clave.
+  instalador:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Escritura de cada programa (bash -n)
+        run: for f in deploy/*.sh; do bash -n "$f"; done
+      - name: shellcheck
+        run: shellcheck -S warning -x deploy/*.sh
+      - name: Ensayo del instalador en raíz falsa
+        run: node --no-warnings test/ensayo-instalar.mjs
+      - name: Lo mismo, como root (las pruebas bajan a «nobody» con setpriv)
+        run: |
+          sudo mkdir -m 711 /tmp/oportia-ci && sudo cp -r . /tmp/oportia-ci/src && sudo mkdir -m 755 /tmp/oportia-ci/t
+          cd /tmp/oportia-ci/src && sudo env "PATH=$PATH" TMPDIR=/tmp/oportia-ci/t node --no-warnings --test test/actualizador.test.js test/instalar.test.js
