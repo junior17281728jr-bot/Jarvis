@@ -79,3 +79,8 @@ Con la API de Claude o ChatGPT y SI ÉL LE DA LA OPCIÓN (autonomía alta por pr
 - CANALES: un correo propio para el vendedor, WhatsApp, y Facebook como opción (lo que sea posible y permitido: WhatsApp Business oficial se paga por conversación; Facebook/Instagram no permiten sacar datos con robots: usar lo público de su web y la API oficial de mensajes).
 - INTELIGENTE y NATURAL: que se sienta como una persona que sabe vender software, que aprenda de cada conversación (qué mensajes funcionan) y mejore. Su meta es conseguir clientes y ventas; puede salirse del guion y buscar caminos propios para lograrlo.
 - Límites que Claude le explicó: creativo sí, pero sin mentir (si le preguntan, dice que es el asistente de Junior), sin inventar precios, sin spam y dentro de la ley; lo que cueste dinero, con su permiso.
+
+## Más de la meta (10 nov 2026) — el vendedor debe saber qué se puede hacer y cuánto cuesta
+- Los programas que se venden los CONSTRUYE CLAUDE (no Junior ni el cliente). El vendedor debe saber por dentro si lo que pide un cliente SE PUEDE hacer, y no equivocarse ni prometer de más.
+- «Catálogo de lo que se puede hacer» mantenido por Claude: cada función con si se puede, cuánto tarda y qué COSTO trae (ej.: WhatsApp oficial cuesta por conversación; IA por uso; servidor; correo), y qué no tiene costo. Si el vendedor no está seguro: «déjame confirmarlo» y consulta (a Claude/Junior), nunca inventa.
+- MODELO DE COBRO: el cliente paga una MENSUALIDAD para que su programa funcione (servidor, mantenimiento, mejoras), por CONTRATO, y el precio sube o baja según su CONSUMO (usuarios, mensajes, IA, almacenamiento). El vendedor calcula la cotización con una tabla de precios que Junior aprueba; prepara el borrador de contrato; Junior firma.
