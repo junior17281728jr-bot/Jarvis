@@ -216,7 +216,7 @@ function entrada(texto) {
 // foco vuelve al botón. Los textos están en ayuda.<tema>.* y todos se ven juntos en la pantalla Ayuda (#ayuda).
 let hojaAyuda = null;
 function cerrarAyuda() {
-  if (hojaAyuda?.open) hojaAyuda.close();
+  if (hojaAyuda) hojaAyuda.close();
 }
 function ejemploDeAyuda(tema) {
   return TEMAS_CON_EJEMPLO.includes(tema) ? el('p', { class: 'ayuda-ejemplo' }, el('strong', { texto: `${t('ayuda.ejemplo')} ` }), el('span', { texto: t(`ayuda.${tema}.ejemplo`) })) : null;
@@ -245,7 +245,11 @@ function abrirAyuda(tema, boton = null) {
   hojaAyuda = hoja;
   if (boton) boton.setAttribute('aria-expanded', 'true');
   if (typeof hoja.showModal === 'function') hoja.showModal();
-  else hoja.setAttribute('open', '');
+  else {
+    // Un navegador muy viejo, sin <dialog>: la hoja se ve igual y «Entendido» la cierra.
+    hoja.close = () => hoja.dispatchEvent(new Event('close'));
+    hoja.setAttribute('open', '');
+  }
 }
 // conTexto: el botón lleva también el nombre de la palabra («(i) Clave de recuperación»), para la fila de palabras.
 function queEs(tema, { conTexto = false } = {}) {
