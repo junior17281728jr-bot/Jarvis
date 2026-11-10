@@ -443,6 +443,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
   const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'], ['proyectos', 'pantallaProyectos'],
     ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
+    // Fase 1, parte f: «Si un día pierdes el servidor» tiene dirección propia y es la misma pantalla Copias.
+    ['copias/recuperar', 'pantallaCopias'],
     ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
     ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto'],
     // Claridad (0.5.1): la Ayuda no pide nada (sus textos llegan con el idioma).
@@ -466,6 +468,12 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // Fase 1, parte e: Copias pide solo lo suyo (y nada a quien no es administrador).
   assert.deepEqual([...pedidosAlAbrir('copias', true)], ['/api/admin/copias']);
   assert.deepEqual([...pedidosAlAbrir('copias', false)], []);
+  // Fase 1, parte f: #copias/recuperar adelanta lo mismo que Copias; el texto de instalación no se adelanta (se pide al
+  // abrir la tarjeta, fuera de la pantalla) y nadie más que el administrador lo recibe.
+  assert.deepEqual([...pedidosAlAbrir('copias/recuperar', true)], ['/api/admin/copias']);
+  assert.deepEqual([...pedidosAlAbrir('copias/recuperar', false)], []);
+  assert.match(dibujar, /const seccion = direccion === 'copias\/recuperar' \? 'copias' : direccion;/);
+  for (const [, cuerpo] of app.matchAll(/^(?:async )?function pantalla[A-Za-z]+\([^\n]*\) \{\n([\s\S]*?)\n\}$/gm)) assert.doesNotMatch(cuerpo, /\/api\/servidor\/instalacion/);
   // Claridad (0.5.1): la Ayuda no adelanta nada; Administrador adelanta también los proyectos (para «Primeros pasos»).
   assert.deepEqual([...pedidosAlAbrir('ayuda', true)], []);
   assert.deepEqual([...pedidosAlAbrir('ayuda', false)], []);

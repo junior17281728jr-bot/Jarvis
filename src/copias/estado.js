@@ -108,6 +108,23 @@ export function selloLegible(llave, huellaLlave) {
   return Boolean(llave && huellaLlave && huellaDeEnvuelto(llave.sello) === huellaLlave);
 }
 
+// Fase 1, parte f: lo que falta volver a poner en una base RECUPERADA de una copia (la marca «claves.restaurada» la deja
+// ajustarTrasRestaurar). Solo lee. huellaLlave: la de la llave de las claves de este servidor (o null si no hay).
+//  - token: el token del bot que traía la copia no se puede leer aquí (hay que revocarlo y pegar el NUEVO);
+//  - claves: alguna clave de IA activa que traía la copia no se puede leer aquí (se pega otra vez);
+//  - clave: la clave de recuperación que traía ya no sirve en este servidor (se crea una nueva).
+// → null si la base no es recuperada o si ya no falta nada.
+export function pendientesTrasRecuperar(db, { huellaLlave = null, usos = {} } = {}) {
+  let marca;
+  try { marca = JSON.parse(db.prepare("SELECT valor FROM ajustes WHERE clave = 'claves.restaurada'").get()?.valor ?? 'null'); } catch { marca = null; }
+  if (!marca || !Array.isArray(marca.huellas)) return null;
+  const activas = db.prepare("SELECT uso, llave_huella FROM secretos WHERE estado = 'activa'").all();
+  const ilegible = grupo => activas.some(f => usos[f.uso]?.grupo === grupo && (!huellaLlave || f.llave_huella !== huellaLlave));
+  const llave = llaveActiva(db);
+  const r = { en: typeof marca.en === 'string' ? marca.en : null, token: ilegible('avisos'), claves: ilegible('ia'), clave: Boolean(llave) && !selloLegible(llave, huellaLlave) };
+  return r.token || r.claves || r.clave ? r : null;
+}
+
 // Para la parte 1f (y la consola): con la clave de recuperación del dueño, vuelve a envolver el sello de SU llave con la
 // llave de las claves de ESTE servidor (después de restaurar en uno nuevo). Nunca guarda la clave. → { huella } o lanza
 // ErrorCopias('clave_no_es_de_esta_copia' | 'almacen_no_disponible').

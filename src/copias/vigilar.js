@@ -171,6 +171,53 @@ export function leerEstadoDelActualizador(config) {
   }
 }
 
+// Las últimas líneas «<fecha> aviso: <texto>» que el actualizador nuevo dejó en update.log (para la tarjeta
+// «Actualizaciones» de Administrador → Servidor: se muestran como texto, nunca abren un aviso). Pura.
+export const AVISOS_DEL_ACTUALIZADOR_MAX = 3;
+export function avisosDelActualizador(texto, { desdeElPrincipio = true } = {}) {
+  const lineas = String(texto ?? '').split('\n');
+  lineas.pop();
+  if (!desdeElPrincipio) lineas.shift();
+  const salida = [];
+  for (const linea of lineas) {
+    const m = /^(\S+) aviso: (.+)$/.exec(linea);
+    if (!m || !Number.isFinite(Date.parse(m[1]))) continue;
+    // Solo letras, números y signos corrientes (nada de caracteres de control), y como mucho 200 caracteres.
+    const dicho = m[2].replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').trim().slice(0, 200);
+    if (dicho) salida.push({ fecha: new Date(Date.parse(m[1])).toISOString(), texto: dicho });
+  }
+  return salida.slice(-AVISOS_DEL_ACTUALIZADOR_MAX);
+}
+
+// Lo que muestra la tarjeta «Actualizaciones»: el estado del actualizador nuevo (o null: el servidor usa el de antes) y
+// sus últimos avisos. SOLO LEE.
+export function resumenDelActualizador(config) {
+  const estado = leerEstadoDelActualizador(config);
+  let avisos = [];
+  if (config?.carpetaDatos) {
+    const log = leerFinal(join(config.carpetaDatos, 'update.log'));
+    if (log) avisos = avisosDelActualizador(log.texto, { desdeElPrincipio: log.desdeElPrincipio });
+  }
+  return { estado, avisos };
+}
+
+// El aviso «el actualizador lleva horas sin revisar» (síncrona: dentro de ctx.escribir). Solo existe con el actualizador
+// NUEVO (el que deja actualizador.json): sin archivo no hay nada que vigilar y el aviso se resuelve (así «sudo oportia
+// volver» no deja un aviso falso). Tras un apagón largo o un salto del reloj el archivo se ve viejo unos minutos, hasta
+// que el temporizador corre: por eso solo se avisa si ESTE proceso lleva más de 45 minutos encendido.
+// estado: lo que devolvió leerEstadoDelActualizador (leído fuera de la escritura). → 'abierto' | 'resuelto' | 'espera' | null
+export const ACTUALIZADOR_PARADO_MS = 3 * 3_600_000;
+export const ACTUALIZADOR_ENCENDIDO_MS = 45 * 60_000;
+export function vigilarActualizador(db, estado, { ahora = Date.now(), encendidoMs = 0 } = {}) {
+  if (!estado) return resolverAviso(db, 'actualizador_parado', ahora) ? 'resuelto' : null;
+  const revisado = Date.parse(estado.revisado);
+  const viejo = Number.isFinite(revisado) && revisado <= ahora + MARGEN_RELOJ_MS && ahora - revisado > ACTUALIZADOR_PARADO_MS;
+  if (!viejo) return resolverAviso(db, 'actualizador_parado', ahora) ? 'resuelto' : null;
+  if (!(encendidoMs > ACTUALIZADOR_ENCENDIDO_MS)) return 'espera';
+  abrirAviso(db, { clave: 'actualizador_parado', nivel: 'atencion', detalle: { revisado: estado.revisado }, ahora });
+  return 'abierto';
+}
+
 function leerAjuste(db, clave) {
   const f = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave);
   if (!f) return null;

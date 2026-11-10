@@ -2,11 +2,39 @@
 
 Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue retirado de este servidor el 3 de noviembre de 2026; su código completo está en la rama `jarvis-archivo`.
 
+**¿Perdiste el servidor?** Aquí está el **[Texto de instalación](https://raw.githubusercontent.com/junior17281728jr-bot/Jarvis/main/deploy/cloud-init.sh)** (ábrelo, toca la pantalla → Seleccionar todo →
+Copiar) y los pasos están más abajo, en «Si un día pierdes el servidor».
+
 ## Cómo se actualiza el servidor (léelo antes de cambiar algo)
-- Un servidor de DigitalOcean revisa la rama `main` cada 30 minutos (`/usr/local/bin/jarvis-actualizar`, ver `deploy/cloud-init.sh`).
-- Descarga `main`, corre `node --test test/*.test.js` (si una prueba falla, NO instala esa versión) y copia solo `src/`, `public/`, `deploy/` y `package.json` a `/opt/jarvis`.
-- Reinicia el servicio `jarvis` (`node --no-warnings src/server.js`, usuario `jarvis`, solo puede escribir en `/var/lib/jarvis`).
-- Después de reiniciar, `http://127.0.0.1:8080/api/setup` debe responder en el primer minuto; si no, vuelve sola a la versión anterior. Si falla más tarde, no vuelve sola.
+Hay dos actualizadores. Los dos hacen lo mismo de siempre: **pruebas primero, mirar la salud después de reiniciar, y si no
+queda sana volver al CÓDIGO anterior; los datos nunca se tocan.**
+
+- **El de antes** (`/usr/local/bin/jarvis-actualizar`, lo corre `cron` cada 30 minutos): es el que usa hoy el servidor de
+  producción. Vive fuera del repositorio y no se actualiza solo. Descarga `main`, corre `node --test test/*.test.js` como
+  root (tope 900 s; si una prueba falla NO instala esa versión), copia `src/`, `public/`, `deploy/` y `package.json` a
+  `/opt/jarvis`, reinicia y mira `http://127.0.0.1:8080/api/setup` un minuto. **La versión 0.6.0 funciona igual con él.**
+- **El nuevo** (parte 1f, en `deploy/`; ver `deploy/LEEME.md`): el que trae un servidor recién instalado, y al que el de
+  hoy pasa cuando Junior lo decida («Pasar el servidor de hoy», más abajo).
+  - `oportia-actualizar.timer` corre cada 30 minutos (y 3 minutos después de encender) un **lanzador** fijo y pequeño
+    (`/usr/local/sbin/oportia-lanzador`): candados, tope de tiempo y vigilancia. Si el actualizador falla 3 veces
+    seguidas, el lanzador vuelve al actualizador de antes y lo anota.
+  - El actualizador (`oportia-actualizar.sh`) vive en carpetas de root por versión (`/usr/local/lib/oportia/v-<versión>/`,
+    con `actual` y `anterior`): **root nunca ejecuta nada de `/opt/jarvis`**.
+  - Una corrida: baja la versión exacta de `main` → corre **todas** las pruebas como `nobody` (nunca como root; si fallan,
+    las repite una vez antes de marcarla) → arma el código al lado y cambia de nombre (el código vivo nunca queda a
+    medias) → reinicia → mira la salud **dentro** de la ventana de arranque de 90 s → si no queda sana, vuelve al código
+    anterior. Después de una actualización sana **se actualiza a sí mismo** (solo si el actualizador nuevo pasa su propia
+    comprobación; el de antes queda guardado).
+  - Limpia **solo** su carpeta temporal (`/tmp/oportia-corrida.*`) y las carpetas de código que él mismo armó (llevan su
+    marca). Todo lo demás se aparta con otro nombre; nada se borra.
+  - Escribe en `update.log` las mismas 3 líneas de siempre (`actualizado a …`, `… alguna prueba falló, NO se instaló`,
+    `… no arrancó: volví a la anterior`), que OPORTIA lee para avisar, y deja su estado en `actualizador.json` (OPORTIA
+    solo lo LEE: Administrador → Servidor → «Actualizaciones»). Si ese archivo lleva más de 3 horas sin cambiar, llega el
+    aviso «El actualizador lleva más de 3 horas sin revisar».
+  - Si algún día el actualizador nuevo no responde, esta línea lo vuelve a poner sin depender de él:
+    `curl -fsSL https://raw.githubusercontent.com/junior17281728jr-bot/Jarvis/main/deploy/cloud-init.sh | sudo bash -s -- --solo-actualizador`
+- El servicio es `jarvis` (`node --no-warnings src/server.js`, usuario `jarvis`, solo puede escribir en `/var/lib/jarvis`;
+  `KillMode=control-group`: al parar se apagan la app y su trabajador juntos).
 - Desde la parte 1c, durante los primeros 90 segundos `/api/setup` responde 503 «arrancando» hasta que el trabajo automático
   avisa que está listo. Si una versión nueva trae un trabajador que no arranca, sigue en 503 y el actualizador vuelve solo a la
   versión anterior. Se vuelve atrás el CÓDIGO, nunca los datos.
@@ -15,10 +43,70 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
   **nunca** abre ese archivo ni lee claves de variables de entorno: sus claves se pegan una vez en Administrador → Claves y
   se guardan cifradas (ver «IA opcional y claves»).
 
+### Las órdenes cortas del servidor (`sudo oportia …`)
+Existen en un servidor instalado con la parte 1f (o después de «pasar»). Se pegan en la **Consola** del Droplet, en
+DigitalOcean. Cada una dice lo que va a hacer antes de hacerlo.
+
+| Orden | Qué hace |
+|---|---|
+| `sudo oportia estado` | Cómo está el servidor. No cambia nada. |
+| `sudo oportia actualizar` | Busca e instala la versión nueva ahora (`--reintentar` prueba otra vez una que falló). |
+| `sudo oportia recuperar` | Trae tus datos desde tu última copia (Telegram o archivos). Aparta lo que haya; nunca lo pisa. |
+| `sudo oportia probar-copia` | Comprueba que tu copia y tu clave sirven. No cambia nada. |
+| `sudo oportia tailscale` | Une el servidor a tu red privada y enciende el enlace (pide la clave sin mostrarla). |
+| `sudo oportia revisar` | Mira si este servidor puede pasar al actualizador nuevo. No cambia nada. |
+| `sudo oportia pasar` | Pasa al actualizador nuevo (hace una copia antes; si algo falla, vuelve solo). |
+| `sudo oportia volver` | Vuelve al actualizador de antes. |
+| `sudo oportia servicio` | Pone el archivo del servicio de esta versión (con copia; si no arranca, devuelve el de antes). |
+| `sudo oportia ayuda` | Esta lista. |
+
+### Instalar un servidor nuevo
+**Ensayado solo en simulación** (una raíz falsa con comandos falsos y un contenedor de Ubuntu desechable): el primer uso
+en un servidor real será el simulacro con Junior (lista más abajo). Lo que hace Junior son los 7 pasos de «Si un día
+pierdes el servidor»; esto es lo que pasa por dentro.
+
+- `deploy/cloud-init.sh` es el **texto de instalación**: se pega en «User data» al crear un Droplet de DigitalOcean
+  (Ubuntu 24.04), cambiando `PEGA_AQUI` por una clave de Tailscale de **un solo uso** (nunca va en el repositorio; el texto
+  la guarda en un archivo temporal de root, se la pasa a Tailscale y lo quita siempre al salir; nunca aparece en un
+  registro). Baja OPORTIA de GitHub por su versión exacta y corre `deploy/install.sh`.
+- `deploy/install.sh`, en este orden: memoria de apoyo (swap de 1 GB, para los 512 MB) → paquetes y actualizaciones de
+  seguridad automáticas (`unattended-upgrades`, sin reinicios solos) → Node 22 (la versión y la huella sha256 fijas de
+  `deploy/node.pin`; si la huella no coincide, se detiene) → usuario `jarvis` → `/opt/jarvis`, `/var/lib/jarvis` y el
+  servicio → cortafuegos (solo un servidor NUEVO: entra la red de Tailscale y el 22 con límite para la Consola; si al
+  encenderlo no ve su propia regla, se apaga solo) → Tailscale y el enlace https (Funnel → `127.0.0.1:8080`) → el
+  actualizador nuevo → la app (la instala el mismo actualizador, pruebas primero) → el temporizador.
+- **Se puede correr otra vez**: lo que ya está no se toca. Nunca pisa, cambia de dueño ni borra datos o configuración que
+  ya existan (`oportia.db`, la llave, las copias, el `.env`, la unidad del servicio, el Node que ya usa el servicio). En un
+  servidor que ya tiene OPORTIA no enciende el cortafuegos ni el temporizador, y deja la unidad nueva como «propuesta».
+- Opciones: `--sin-tailscale`, `--sin-cortafuegos`, `--con-cortafuegos`, `--solo-actualizador`, `--swap-mb=2048`.
+- El registro queda en `/var/log/oportia-instalar.log` (sin secretos).
+- Qué **no** se ha ensayado de verdad: systemd, el cortafuegos, Tailscale y Funnel, cloud-init de DigitalOcean, la Consola
+  con el cortafuegos puesto y la suite en 512 MB. Eso es el simulacro.
+- El `cloud-init.sh` de Oracle (JARVIS) quedó en la historia: `git show 54b9bb9:deploy/cloud-init.sh`.
+
+### Pasar el servidor de hoy al actualizador nuevo
+**Lo decide Junior; no es obligatorio.** Dejarlo como está sigue valiendo: la 0.6.0 funciona con el actualizador de antes.
+Conviene pasarlo porque el de antes deja ~300 MB de pruebas en `/tmp` por cada versión, no se puede arreglar a distancia y
+nada avisa si deja de correr. El cambio toca **solo** quién actualiza (cron → temporizador): ni datos, ni red, ni
+cortafuegos, ni Tailscale, ni Node, ni el `.env`, ni el servicio; **no reinicia la app**. Nunca se corre `install.sh`
+completo en producción.
+
+Orden: publicar la 0.6.0 → ver que producción la instaló → simulacro → ① → ②. En la Consola del Droplet, una orden a la vez
+(también están con botón «Copiar» en Administrador → Servidor → «Actualizaciones»):
+
+1. **Mirar** (no cambia nada): `curl -fsSL https://raw.githubusercontent.com/junior17281728jr-bot/Jarvis/main/deploy/cloud-init.sh | sudo bash -s -- revisar` — termina con «✔ Listo para pasar» o «✖ No
+   lo pases todavía: …».
+2. **Pasar**: la misma línea terminada en `pasar`. Primero hace una copia (del código, el `.env`, la unidad, el cron y el
+   actualizador de antes, y una copia de la base en `oportia-copias/`), después instala el actualizador nuevo, lo prueba
+   sin instalar nada, mueve el archivo de cron al respaldo y enciende el temporizador. Si algo falla, vuelve solo.
+3. **Volver** (si hiciera falta): `sudo oportia volver` — devuelve el cron idéntico y apaga el temporizador.
+
+`/usr/local/bin/jarvis-actualizar` se queda donde está, intacto.
+
 ## Reglas que no se rompen
 - **Nunca revertir `main` a una versión anterior a la 0.0.2.** Las versiones anteriores borraban `/var/lib/jarvis` al arrancar.
 - El programa nunca borra archivos de datos, solo usa módulos de Node (no hay `npm install` en el servidor) y no importa nada fuera de `src/`. `test/reglas.test.js` lo comprueba.
-- Las pruebas corren en el servidor real, como root y con la app funcionando: no usan internet, no tocan `/var/lib/jarvis`, no usan el puerto 8080 y están todas en `test/` sin subcarpetas.
+- Las pruebas corren en el servidor real con la app funcionando (como root con el actualizador de antes; como `nobody` con el nuevo): no usan internet, no tocan `/var/lib/jarvis`, no usan el puerto 8080 y están todas en `test/` sin subcarpetas.
 - Un cambio por cada ventana de 30 minutos.
 
 ## Ramas
@@ -40,6 +128,11 @@ Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue 
   `esArchivoDeLlave` de `src/claves/cifrado.js`, que deben usar las copias de la parte e y el instalador de la parte f).
   Una base copiada a otro servidor necesita que se peguen las claves otra vez.
 - Nunca abre, cambia ni borra `jarvis.db`, `secrets.env`, `version.txt`, `update.log` ni ningún otro archivo.
+- Desde la parte 1f, **solo lee** `actualizador.json` (lo deja el actualizador nuevo después de cada corrida). Y pueden
+  aparecer, hechas por `sudo oportia recuperar`: `apartado-<fecha>/` (la base —y su llave, si era de otra base— que había
+  antes de recuperar: apartada, nunca borrada) y `recuperar-<fecha>/` (las partes bajadas de la copia). Todo se guarda.
+- Fuera de `/var/lib/jarvis`, de root: `/var/lib/oportia-actualizador/` (el estado del actualizador nuevo, sus respaldos
+  y registros) y `/usr/local/lib/oportia/` (sus programas, por versión).
 - Antes de cada cambio de la base se guarda una copia completa en `oportia-copias/`.
 - Desde la parte 1e, las copias de cada noche (cifradas) en `oportia-copias/cifradas/AAAA-MM/`, también para siempre
   (ver «Copias y avisos por Telegram»).
@@ -254,7 +347,7 @@ bot te avisa al momento de lo grave. Nada se borra. Todo lo lento lo hace el tra
 - En el servidor quedan las mismas partes cifradas en `/var/lib/jarvis/oportia-copias/cifradas/AAAA-MM/` (cuando el disco
   lo permite).
 
-### Lo que tienes que guardar tú (solo dos cosas)
+### Lo que tienes que guardar tú (tres cosas, y una nota)
 1. **Tu clave de recuperación**: 28 letras y números en 7 grupos («7K2M-Q9TB-…»). OPORTIA te la muestra **una sola vez**
    en Administrador → Copias, te pide escribirla otra vez para estar seguros, y te ofrece imprimir una hoja. Guárdala en
    un papel en un lugar seguro y en Contraseñas del iPhone o la Mac (como nota segura). El servidor guarda solo el
@@ -262,6 +355,12 @@ bot te avisa al momento de lo grave. Nada se borra. Todo lo lento lo hace el tra
    Si la pierdes, nadie puede abrirlas, ni tú. Se crea y se comprueba solo desde tu cuenta de Tailscale; la página la
    revisa sola y manda al servidor solo un «verificador», nunca la clave.
 2. **Tu cuenta de Telegram** (el chat con tu bot tiene todas las copias). No borres los mensajes del bot.
+3. **Tu cuenta de Tailscale** (con la que entras hoy): el servidor nuevo se une a esa misma red privada.
+
+Y **hoy**, una nota: en Administrador → Copias → «Si un día pierdes el servidor» pulsa «Copiar el texto de instalación» y
+guárdalo en Notas con el nombre «OPORTIA servidor nuevo». Si un día el servidor no está, esa pantalla tampoco (el texto
+también está siempre en el enlace de arriba de esta página). Para crear el servidor hace falta además tu cuenta de
+DigitalOcean.
 
 Cada 90 días te llega un recordatorio en silencio para «Comprobar mi clave» (tarda un minuto). «Cambiar mi clave» existe
 por si alguien la vio: las copias de antes siguen necesitando la clave de antes (no la tires).
@@ -281,29 +380,73 @@ Si alguien más le escribe a tu bot, nunca le contesta ni se une su chat: cada c
 de un extraño nunca gastan los tuyos) y el código vence a los 10 minutos.
 
 ### Si un día pierdes el servidor
-1. Ten a mano tu clave de recuperación (la del papel o la de Contraseñas).
-2. En Telegram abre @BotFather → /mybots → tu bot → API Token, y cópialo.
-3. En el servidor nuevo, OPORTIA te pedirá ese token y tu clave. Busca sola tu última copia (la que está fijada arriba en el
-   chat con tu bot), la comprueba y la abre. *(La pantalla llega en la parte 1f; hasta entonces Claude lo hace contigo por
-   la consola, con la orden de abajo.)*
-4. **Enseguida, revoca el token del bot**: en @BotFather escribe `/revoke`, elige tu bot y te da un token NUEVO. Así el
-   servidor viejo, si sigue vivo (o vuelve de una foto del droplet), ya no puede mandar sus copias viejas a tu chat (si lo
-   hiciera, el servidor nuevo te avisa urgente «Otro servidor manda copias»).
-5. Después pega otra vez tus claves de IA y el token NUEVO del bot en Claves: por seguridad nunca viajan en las copias.
-   En una base recuperada, Claves lo deja hacer enseguida (dice «Esta base se recuperó de una copia»: crea una llave
-   nueva para tus claves, sin pasar por la consola). Luego crea en Copias una clave de recuperación **nueva** (Copias dice
-   «Tu clave ya no sirve en este servidor» y deja crear otra) y guarda las dos: las copias viejas se siguen abriendo con
-   la de antes.
-6. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
+1. **Ten a mano tres cosas**: tu clave de recuperación, tu Telegram y el texto de instalación (el de tus Notas; también
+   está en el enlace de arriba del todo de esta página).
+2. **Tailscale: una clave de un solo uso.** En login.tailscale.com → *Machines* quita el servidor viejo «jarvis». En
+   *Settings → Keys → Generate auth key* deja todo apagado (Reusable: no, Ephemeral: no) y cópiala: empieza con `tskey-auth-`.
+3. **DigitalOcean: crea el servidor.** *Create → Droplets*, en este orden:
+   - *Region*: la que ya viene marcada.
+   - *Image*: Ubuntu 24.04 (LTS).
+   - *Size*: Basic → Regular → el más barato (512 MB).
+   - *Authentication*: **Password**. Usa la contraseña fuerte que te propone el iPhone y guárdala en Contraseñas como «root servidor».
+   - *Advanced options → Add Initialization scripts*: pega el texto de instalación y cambia `PEGA_AQUI` por tu clave de
+     Tailscale (deja las comillas como están; si el iPhone las cambia, no importa).
+   - *Hostname*: jarvis → **Create Droplet**. Espera 15 minutos y después borra esa clave en Tailscale (*Settings → Keys → Revoke*).
+4. **Trae tu última copia.** Abre el Droplet → **Console** y pega `sudo oportia recuperar`. Te pide el token de tu bot
+   (@BotFather → /mybots → tu bot → API Token) y tu clave de recuperación. Lo que pegas no se ve: pega y pulsa Enter.
+   Busca sola tu última copia, la comprueba y la pone; si ya había una base, la aparta (nunca la pisa ni la borra).
+5. **Cambia el token del bot enseguida**: en @BotFather escribe `/revoke`, elige tu bot y te da un token NUEVO. Así el
+   servidor viejo, si sigue vivo (o vuelve de una foto del droplet), ya no puede mandar nada a tu chat.
+6. **Entra y pega tus claves.** Entra con tu usuario y contraseña de siempre. En Claves pega el token NUEVO del bot y tus
+   claves de IA (por seguridad nunca viajan en las copias). En Copias crea una clave de recuperación **nueva** y guarda
+   las dos: las copias viejas se siguen abriendo con la de antes. «Primeros pasos» te lo recuerda hasta que esté hecho.
+7. **No borres los mensajes del bot**: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
 
-Estos 6 pasos son los mismos en la pantalla Copias («Si un día pierdes el servidor») y en la hoja que se imprime con la
-clave (`copias.restaurar.paso1…6`; `test/pantallas.test.js` revisa que sean los mismos que aquí).
+Estos 7 pasos son los mismos en la pantalla Copias («Si un día pierdes el servidor», dirección `#copias/recuperar`) y en
+la hoja que se imprime con la clave (`copias.restaurar.paso1…7`; `test/pantallas.test.js` revisa que sean los mismos que
+aquí). **Se ensayaron en simulación, todavía no en un servidor real**: el primer uso real será un ensayo con Junior, y
+los nombres exactos del formulario de DigitalOcean (paso 3) se corrigen con lo que se vea ese día.
 
-Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
-noche y usa `--archivos=`. Una copia de más de 30 horas, si hay una más nueva, si su fecha es del futuro (el reloj del
-servidor iba adelantado) o si hay otra copia que también parece la última (dos servidores con el mismo bot), nunca se abre
-sin un «sí». En una base recuperada, Copias muestra aparte «del servidor anterior» las copias cuyos archivos se quedaron
-en el servidor viejo.
+**Si algo no sale**
+- A los 15 minutos `oportia` «no existe»: pega `sudo tail -n 30 /var/log/oportia-instalar.log` y mándale a Claude lo que salga.
+- «Esa clave no abrió la copia»: se puede intentar otra vez (hasta 3); no cambia nada mientras tanto.
+- La app no arranca con la copia: `sudo oportia recuperar` deshace solo (devuelve lo que había) y dice dónde quedó cada archivo.
+- Solo quieres comprobar que tu copia abre, sin cambiar nada: `sudo oportia probar-copia`.
+- Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
+  noche, mándalos al servidor (Compartir → Tailscale → jarvis) y en `sudo oportia recuperar` elige «De archivos».
+
+Una copia de más de 30 horas, si hay una más nueva, si su fecha es del futuro (el reloj del servidor iba adelantado) o si
+hay otra copia que también parece la última (dos servidores con el mismo bot), nunca se abre sin un «sí». En una base
+recuperada, Copias muestra aparte «del servidor anterior» las copias cuyos archivos se quedaron en el servidor viejo.
+
+#### El simulacro (lista de comprobación)
+`bash test/simulacro.sh` corre todo lo que se puede ensayar **sin** un servidor (los programas en una raíz falsa, la ida
+y vuelta copia → cifrar → recuperar → comparar, y un contenedor de Ubuntu desechable si hay Docker) y al final imprime
+esta misma lista. No contacta GitHub, Tailscale, Telegram ni DigitalOcean y no usa ninguna clave.
+
+Hoy, sin costo:
+- [ ] Copiar el texto de instalación y guardarlo en Notas.
+- [ ] Tener a mano la clave de recuperación (papel y Contraseñas) y comprobarla en Copias → «Comprobar mi clave».
+- [ ] `sudo oportia probar-copia` en producción (cuando exista `oportia` allí, después de «pasar»).
+
+Completo, en un Droplet de ensayo (cuesta centavos: se paga por hora y se destruye al terminar; **solo con permiso de Junior**):
+- [ ] Crear la clave de Tailscale de un solo uso.
+- [ ] Crear el Droplet siguiendo el paso 3 al pie de la letra y anotar cada nombre del formulario que no coincida (con un
+      nombre de máquina de ensayo; el instalador avisará que no se llama «jarvis»: es lo esperado).
+- [ ] A los 15 minutos abre el enlace https.
+- [ ] `sudo oportia estado`: todo en verde.
+- [ ] La Consola web sigue entrando con el cortafuegos puesto.
+- [ ] `sudo tail -n 30 /var/log/oportia-instalar.log`: cuánto tardaron las pruebas; `free -m` (¿alcanzó 1 GB de swap?).
+- [ ] `sudo systemctl start oportia-actualizar.service` y `journalctl -u oportia-actualizar -n 30`.
+- [ ] `tailscale serve status` y `tailscale funnel status`: copiar el texto exacto.
+- [ ] Borrar la clave en Tailscale → Keys.
+- [ ] `sudo oportia recuperar --simulacro`: entra con su usuario y ve sus proyectos. **No pega el token ni hace /revoke**
+      (es un ensayo: ese servidor queda en modo seguro y no manda nada al chat).
+- [ ] Reiniciar el Droplet: vuelve solo y el enlace sigue.
+- [ ] `systemd-cgls -u jarvis.service` muestra 2 procesos de node, y `sudo systemctl stop jarvis` no deja ninguno.
+- [ ] Destruir el Droplet y quitar la máquina en Tailscale.
+
+Lo que salga distinto se corrige antes de tocar producción o de reconstruir de verdad.
 
 ### El disco («nunca se borra nada») — ⚠ decisión para Junior
 - Las copias del servidor **nunca se borran**. Se guarda una copia aquí solo si después quedan libres al menos
@@ -342,10 +485,15 @@ no se pudo fijar, se reintenta, y si nunca se pudo, llega un aviso urgente.
 - **Administrador → Copias** (`#copias`): la tarjeta grande (verde: hay una copia comprobada fuera del servidor en las
   últimas 30 horas; amarillo: algo que mirar; rojo: falló, está atrasada o el disco está lleno), con «Hacer una copia
   ahora» solo cuando se puede (si no, una línea dice por qué), el avance «parte 4 de 11» mientras se hace, tu clave, tu
-  Telegram, el disco de este servidor, las últimas 10 copias y «Si un día pierdes el servidor». En la PC, 3 columnas.
+  Telegram, el disco de este servidor, las últimas 10 copias y «Si un día pierdes el servidor» (parte 1f; dirección
+  propia `#copias/recuperar`: «Hazlo hoy» con «Copiar el texto de instalación», las tres cosas que hay que guardar, los 7
+  pasos y cada orden de una línea con su botón «Copiar»). En la PC, 3 columnas.
 - **Administrador → Claves**: «Avisos y copias por Telegram» con los pasos ① tu bot y ② tu chat.
 - **Resumen** de Administrador: azulejos «Copias» y «Telegram». **Inicio**: una insignia «Copias: hoy 4:41 a. m.».
-  **Servidor**: «Última versión que no se instaló».
+  **Servidor**: «Última versión que no se instaló» y, desde la parte 1f, la tarjeta «Actualizaciones» (con el actualizador
+  nuevo: cuándo revisó y qué pasó; con el de antes: las tres órdenes para pasarlo, con «Copiar»).
+- **Primeros pasos** (parte 1f): en una base recuperada de una copia, primero lo que falta volver a poner (el token nuevo
+  del bot, las claves de IA y una clave de recuperación nueva), hasta que esté hecho.
 
 ### Desde la consola (cuando las pantallas no abren)
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --copias=estado        # cómo están (no cambia nada)
@@ -366,7 +514,8 @@ servidor, usa la carpeta de un mes si son muchísimos archivos.
 
 `oportia-restaurar.mjs` pide la clave y el token sin mostrarlos (nunca en la línea de la orden), nunca corre como root y
 nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe
-· 6 Telegram o la red · 7 formato nuevo · 8 cancelada. La parte 1f pondrá la pantalla y el instalador encima.
+· 6 Telegram o la red · 7 formato nuevo · 8 cancelada. Desde la parte 1f, `sudo oportia recuperar` lo envuelve: corre
+este programa como `jarvis`, aparta la base que haya, pone la recuperada, arranca y mira la salud (si no arranca, deshace).
 
 ### Límites de Telegram y medidas
 - La Bot API deja subir documentos de hasta 50 MB y bajar (para comprobar) hasta 20 MB: cada parte mide **2 MiB** (+74 B
@@ -400,7 +549,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
   siguen abriéndose con la vieja (quien la tenga y además tenga tu Telegram podría abrir esas copias viejas).
 
 ### Lo que falta (a propósito)
-- La pantalla para recuperar y el instalador de una base recuperada: parte 1f (hoy, la consola).
+- El simulacro en un servidor de ensayo (parte 1f): hasta hacerlo, instalar y recuperar están ensayados solo en simulación.
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
@@ -539,5 +688,22 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
     10. Copias en modo seguro: en pausa (el aviso urgente llega igual).
     11. Cambiar la clave de recuperación: solo si tú lo pides (las copias viejas siguen necesitando la clave vieja).
 - Claridad (versión 0.5.1, sin cambio de base): cada pantalla y pestaña empieza con una línea que dice para qué sirve; «Primeros pasos» en Inicio (y en una línea en Administrador → Resumen) con el avance sacado de datos de verdad; el botón (i) «¿Qué es esto?» junto a títulos y palabras, y la pantalla Ayuda (`#ayuda`, con buscador) que las lista todas; listas vacías con su dibujo y su botón; avisos cortos en vez de `alert()`; «IA y gastos» sin huecos en la PC. Solo pantallas (`public/guia.js` es nuevo); Administrador pide también `GET /api/proyectos`.
+- Fase 1, parte f (versión 0.6.0, sin cambio de base: sigue en la 6): instalar, actualizar y recuperar el servidor.
+  - `deploy/`: el texto de instalación (`cloud-init.sh`) e `install.sh` para reconstruir un servidor pegando un solo texto;
+    el actualizador nuevo dentro del repositorio (lanzador, temporizador, pruebas como `nobody`, se actualiza a sí mismo);
+    `sudo oportia recuperar` / `probar-copia` (envuelven `oportia-restaurar.mjs`: nunca pisan una base, la apartan);
+    `revisar` / `pasar` / `volver` para el servidor de hoy; el `cloud-init.sh` de Oracle quedó en la historia.
+  - Pantallas: Copias → «Si un día pierdes el servidor» (`#copias/recuperar`: «Hazlo hoy», las tres cosas que hay que
+    guardar, 7 pasos, órdenes con «Copiar»); Servidor → «Actualizaciones»; «Primeros pasos» en una base recuperada; dos
+    palabras nuevas en la Ayuda («Si pierdo el servidor», «Actualizador»); aviso «El actualizador lleva más de 3 horas
+    sin revisar»; el aviso de poco disco empieza en 1,5 GB libres (antes 1 GB), porque nada se borra nunca.
+  - API: `GET /api/servidor/instalacion` (solo administrador: el texto de instalación, un archivo público);
+    `GET /api/admin/sistema` trae además `actualizaciones.estado`, `actualizaciones.avisos` y `recuperada`.
+  - **Todo lo del servidor está ensayado solo en simulación** (raíz falsa y contenedor desechable; `bash test/simulacro.sh`).
+    El primer uso real será el simulacro con Junior en un Droplet de ensayo.
+  - Decisiones para Junior (cada una con su respuesta segura si no contesta): pasar el servidor de hoy al actualizador
+    nuevo (todavía no: cuando él diga, después del simulacro); cambiar el archivo del servicio en producción (no, salvo
+    que `revisar` encuentre algo peligroso); hacer el simulacro en un Droplet de ensayo (no sin su permiso); swap de 1 GB
+    (2 GB si el simulacro lo pide); no se borran las carpetas viejas de pruebas en `/tmp` de producción.
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

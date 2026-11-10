@@ -26,7 +26,7 @@ import { ErrorTarea } from './tipos.js';
 import { vigilarIA } from '../ia/presupuesto.js';
 import { MANEJADOR_INTERPRETAR } from '../ia/ayuda.js';
 import { MANEJADOR_COPIAS } from '../copias/hacer.js';
-import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
+import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones, leerEstadoDelActualizador, vigilarActualizador } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 
 export const WAL_GRANDE_MB = 64; // con más que esto, vigilar pasa lo pendiente del -wal a la base
@@ -74,6 +74,9 @@ async function vigilar(ctx) {
     // La primera lectura empieza cuando arrancó este proceso si el registro no dice cuándo se instaló la versión.
     const arranque = ahora - process.uptime() * 1000;
     actualizaciones = await ctx.escribir(() => aplicarActualizaciones(ctx.db, leido, { ahora, arranque }));
+    // Fase 1, parte f: el actualizador nuevo publica su estado; si lleva más de 3 h sin revisar, se avisa.
+    const estadoActualizador = leerEstadoDelActualizador(ctx.config);
+    await ctx.escribir(() => vigilarActualizador(ctx.db, estadoActualizador, { ahora, encendidoMs: process.uptime() * 1000 }));
   }
   let walMb = tamanoWalMb(ctx.config);
   let checkpoint = null;

@@ -118,6 +118,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const { TIPOS: TIPOS_TAREA, COMO_TERMINA } = await import('../src/tareas/tipos.js');
   const { MOTIVOS_MODO_SEGURO, QUIEN_QUITA } = await import('../src/tareas/modo-seguro.js');
   const { CLAVES_AVISO, NIVELES } = await import('../src/avisos/avisos.js');
+  const { RESULTADOS_DEL_ACTUALIZADOR } = await import('../src/copias/vigilar.js');
   // Pase visual (0.3.1): el creador con toques.
   const { CLAVES_FALTA, CLAVES_QUEDA_FUERA } = await import('../public/creador.js');
   // Fase 1, parte d: la IA opcional y las Claves.
@@ -191,7 +192,11 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...['en_marcha', 'modo_seguro', 'sin_clave', 'sin_trabajador', 'disco_lleno', 'sin_destino'].map(x => `copias.no_ahora.${x}`),
     ...['bloqueado', 'perdido', 'clave_no_valida', 'sin_token', 'sin_probar', 'bot_ocupado', 'sin_red', 'pausa', 'bot_cambiado'].map(x => `telegram.problema.${x}`),
     'copias.aqui.anterior', 'aviso.copias_locales_pausadas.escribir', 'telegram.aviso.copias_locales_pausadas.escribir', 'ia.motivo.bot_cambiado', 'ia.motivo.sin_probar',
-    ...[1, 2, 3, 4, 5, 6].map(n => `copias.restaurar.paso${n}`),
+    ...[1, 2, 3, 4, 5, 6, 7].flatMap(n => [`copias.restaurar.paso${n}`, `copias.restaurar.paso${n}.titulo`]),
+    ...['a', 'b', 'c', 'd', 'e', 'f'].map(x => `copias.restaurar.paso3.${x}`),
+    // Fase 1, parte f: lo que dice la tarjeta «Actualizaciones» por cada resultado del actualizador, y sus tres órdenes.
+    ...RESULTADOS_DEL_ACTUALIZADOR.map(x => `servidor.actualizador.resultado.${x}`),
+    ...[1, 2, 3].map(n => `servidor.actualizador.pasar.${n}`),
     ...[1, 2, 3, 4].map(n => `telegram.como${n}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
@@ -205,6 +210,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     'copias.motivo.', 'copias.estado_fila.', 'copias.restaurar.paso', 'telegram.como', 'telegram.problema.',
     // Claridad (0.5.1): las explicaciones de la Ayuda y los pasos de la guía (sus frases se revisan más abajo, en «claridad: …»).
     'ayuda.', 'guia.paso.']));
+  assert.ok(prefijos.has('copias.restaurar.paso3.') && prefijos.has('servidor.actualizador.resultado.') && prefijos.has('servidor.actualizador.pasar.'));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
@@ -259,6 +265,13 @@ test('pase visual 2: cada negocio del motor tiene su ícono, y el mapa tiene las
 
 const iaVistaJs = readFileSync(join(RAIZ, 'public/ia-vista.js'), 'utf8');
 // Un trozo de app.js: desde una línea que empieza con «desde» hasta la siguiente sección («// ---------- »).
+// El cuerpo de una función de primer nivel de public/app.js (hasta su llave de cierre en la columna 0).
+function funcionDe(texto, nombre) {
+  const cuerpo = new RegExp(`^(?:async )?function ${nombre}\\([^\\n]*\\) \\{\\n[\\s\\S]*?\\n\\}$`, 'm').exec(texto)?.[0];
+  assert.ok(cuerpo, `no encontré la función ${nombre}`);
+  return cuerpo;
+}
+
 function seccionDe(texto, desde) {
   const inicio = texto.indexOf(desde);
   assert.ok(inicio >= 0, `no encontré ${desde}`);
@@ -829,4 +842,149 @@ test('claridad: cada pantalla y pestaña empieza con una línea corta (12 palabr
     assert.match(appJs, new RegExp(`vacio\\('[a-z_]+', t\\('${clave.replaceAll('.', '\\.')}'`), `${clave} no se muestra con vacio(…)`);
   }
   assert.doesNotMatch(appJs, /\balert\(/);
+});
+
+// ---------- Fase 1, parte f (0.6.0): «Si un día pierdes el servidor», las órdenes para copiar y «Actualizaciones» ----------
+test('1f: «Si un día pierdes el servidor»: 7 pasos cortos con título, el formulario de DigitalOcean campo por campo y la línea «en simulación»', () => {
+  const tarjeta = funcionDe(appJs, 'tarjetaSiPierdoElServidor');
+  const pasos = funcionDe(appJs, 'pasosRestaurar');
+  for (const [nombre, idioma] of [['es', es], ['en', en]]) {
+    for (let n = 1; n <= 7; n++) {
+      const titulo = idioma[`copias.restaurar.paso${n}.titulo`];
+      const texto = idioma[`copias.restaurar.paso${n}`];
+      assert.ok(titulo && titulo.split(/\s+/).length <= 8, `copias.restaurar.paso${n}.titulo (${nombre}) es corto`);
+      assert.ok(texto && texto.length <= 240, `copias.restaurar.paso${n} (${nombre}) es largo: ${texto?.length}`);
+    }
+    assert.equal(idioma['copias.restaurar.paso8'], undefined);
+    assert.equal(idioma['copias.restaurar.nota'], undefined, 'ya no dice «llega en la 1f»');
+    for (const x of ['a', 'b', 'c', 'd', 'e', 'f']) assert.ok(idioma[`copias.restaurar.paso3.${x}`].length <= 150, `copias.restaurar.paso3.${x} (${nombre})`);
+    // El paso 3 nombra lo que se cambia en el texto; el 4, de dónde sale el token y que lo pegado no se ve.
+    assert.match(idioma['copias.restaurar.paso3.e'], /PEGA_AQUI/);
+    assert.match(idioma['copias.restaurar.paso3.f'], /Revoke/);
+    assert.match(idioma['copias.restaurar.paso4'], /@BotFather → \/mybots/);
+    assert.match(idioma['copias.restaurar.paso4'], nombre === 'es' ? /no se ve/ : /not shown/);
+    assert.match(idioma['copias.restaurar.simulado'], nombre === 'es' ? /en simulación, todavía no en un servidor de verdad/ : /in simulation, not yet on a real server/);
+    assert.match(idioma['copias.instalacion.texto'], /Notas|Notes/);
+    // Lo que hay que conservar: la clave de recuperación, la cuenta de Tailscale y el chat de Telegram.
+    assert.match(idioma['copias.guardar.clave'], nombre === 'es' ? /clave de recuperación/ : /recovery key/);
+    assert.match(idioma['copias.guardar.tailscale'], /Tailscale/);
+    assert.match(idioma['copias.guardar.telegram'], /Telegram/);
+  }
+  // La tarjeta: su «¿Qué es esto?», lo de hoy, lo que se guarda, los pasos con botones y la línea «en simulación».
+  assert.match(tarjeta, /queEs\('servidor_nuevo'\)/);
+  assert.match(tarjeta, /t\('copias\.instalacion\.hoy'\)/);
+  assert.match(tarjeta, /GUARDAR_SIEMPRE\.map/);
+  assert.match(tarjeta, /pasosRestaurar\(\{ conBotones: true \}\)/);
+  assert.match(tarjeta, /t\('copias\.restaurar\.simulado'\)/);
+  assert.match(tarjeta, /'data-ancla': 'recuperar'/);
+  assert.match(appJs, /const GUARDAR_SIEMPRE = Object\.freeze\(\[\['clave_recuperacion', 'copias\.guardar\.clave'\], \['candado', 'copias\.guardar\.tailscale'\], \['avion_papel', 'copias\.guardar\.telegram'\]\]\);/);
+  // Con #copias/recuperar va abierta y primero; en la hoja impresa los pasos van sin botones.
+  assert.match(appJs, /restaurar: ruta === '#copias\/recuperar'/);
+  assert.match(tarjeta, /const primero = location\.hash === '#copias\/recuperar';/);
+  assert.match(pasos, /n === 4 \? ordenParaCopiar\(ORDENES\.recuperar, \{ conBoton: conBotones \}\) : null/);
+  assert.match(seccionDe(appJs, 'function hojaDeLaClave('), /t\('copias\.clave\.hoja\.instalacion', \{ enlace: ENLACE_TEXTO_INSTALACION \}\)/);
+  const estilos = readFileSync(join(RAIZ, 'public/estilos.css'), 'utf8');
+  assert.match(estilos, /\.copias-restaurar\.primero \{ order: -1; \}/);
+  assert.match(estilos, /code\.orden-texto \{[^}]*overflow-wrap: anywhere;/, 'una orden larga se parte: nunca ensancha la página');
+  // El README: los mismos 7 pasos, lo que hay que guardar y la lista del simulacro (con su programa).
+  const readme = readFileSync(join(RAIZ, 'README.md'), 'utf8');
+  assert.match(readme, /### Lo que tienes que guardar tú \(tres cosas, y una nota\)/);
+  for (const frase of ['**Tu clave de recuperación**', '**Tu cuenta de Telegram**', '**Tu cuenta de Tailscale**', '#### El simulacro (lista de comprobación)', 'bash test/simulacro.sh', '### Instalar un servidor nuevo',
+    '### Pasar el servidor de hoy al actualizador nuevo', 'sudo oportia recuperar --simulacro', 'git show 54b9bb9:deploy/cloud-init.sh']) assert.ok(readme.includes(frase), `el README no dice «${frase}»`);
+  assert.doesNotMatch(readme, /llega en la parte 1f|La parte 1f pondrá/);
+  assert.ok(readFileSync(join(RAIZ, 'test/simulacro.sh'), 'utf8').includes('sudo oportia recuperar --simulacro'));
+});
+
+test('1f: los botones «Copiar» solo copian texto de verdad: cada orden existe, el repositorio es el del texto de instalación y ningún botón nace apagado', () => {
+  const nube = readFileSync(join(RAIZ, 'deploy/cloud-init.sh'), 'utf8');
+  const repo = /^REPO="([^"]+)"$/m.exec(nube)[1];
+  assert.match(appJs, new RegExp(`const REPO_OPORTIA = '${repo.replace('/', '\\/')}';`));
+  assert.match(appJs, /const ENLACE_TEXTO_INSTALACION = `https:\/\/raw\.githubusercontent\.com\/\$\{REPO_OPORTIA\}\/main\/deploy\/cloud-init\.sh`;/);
+  const enlace = `https://raw.githubusercontent.com/${repo}/main/deploy/cloud-init.sh`;
+  // Las órdenes: una línea cada una, y las mismas que documenta el README (y el propio cloud-init.sh).
+  const bloque = /const ORDENES = Object\.freeze\(\{\n([\s\S]*?)\n\}\);/.exec(appJs)[1];
+  const ordenes = Object.fromEntries([...bloque.matchAll(/^ {2}([A-Za-z]+): (['`])(.+)\2,$/gm)].map(m => [m[1], m[3].replaceAll('${ENLACE_TEXTO_INSTALACION}', enlace)]));
+  assert.deepEqual(Object.keys(ordenes).sort(), ['pasar', 'probarCopia', 'recuperar', 'registro', 'revisar', 'volver']);
+  const readme = readFileSync(join(RAIZ, 'README.md'), 'utf8');
+  for (const [nombre, orden] of Object.entries(ordenes)) {
+    assert.doesNotMatch(orden, /\n|&&|;/, `${nombre}: una sola orden`);
+    assert.ok(orden.length <= 130, `${nombre}: ${orden.length} caracteres`);
+    if (nombre !== 'pasar') assert.ok(readme.includes(orden), `el README no trae la orden «${orden}»`);
+  }
+  assert.equal(ordenes.revisar, `curl -fsSL ${enlace} | sudo bash -s -- revisar`);
+  assert.equal(ordenes.pasar, `curl -fsSL ${enlace} | sudo bash -s -- pasar`);
+  assert.ok(nube.includes(ordenes.revisar), 'la línea de «revisar» es la que documenta el texto de instalación');
+  assert.match(readFileSync(join(RAIZ, 'deploy/install.sh'), 'utf8'), /\/var\/log\/oportia-instalar\.log/);
+  // Cada «Copiar» de una orden recibe una orden de la lista (o la que le pasa la lista de «pasar»), nunca un texto suelto.
+  const usos = [...appJs.matchAll(/ordenParaCopiar\(([^,)]+)/g)].map(m => m[1]).filter(x => x !== 'orden');
+  assert.ok(usos.length >= 3);
+  for (const uso of usos) assert.match(uso, /^ORDENES\.(recuperar|probarCopia|registro)$/, uso);
+  assert.match(appJs, /\[ORDENES\.revisar, ORDENES\.pasar, ORDENES\.volver\]\.map\(\(orden, i\) =>/);
+  // Ningún botón de estas tarjetas nace apagado ni «para después», y copiar no espera a la red en el mismo toque.
+  const copiar = funcionDe(appJs, 'ordenParaCopiar');
+  const tarjeta = funcionDe(appJs, 'tarjetaSiPierdoElServidor');
+  const actualizaciones = funcionDe(appJs, 'tarjetaActualizaciones');
+  for (const fuente of [copiar, tarjeta, actualizaciones]) assert.doesNotMatch(fuente, /disabled|proximamente\(/);
+  assert.match(copiar, /const copiado = await copiarTexto\(orden\);/);
+  assert.match(tarjeta, /const texto = textoInstalacion \?\? await pedirTextoDeInstalacion\(\);/);
+  assert.match(tarjeta, /if \(abierto\.restaurar\) pedirTextoDeInstalacion\(\);/, 'el texto se pide al abrir la tarjeta, no al tocar «Copiar»');
+  assert.match(tarjeta, /if \(!texto\) return decir\(mensaje, textoError\('sin_instalador'\), 'error'\);/);
+  assert.match(tarjeta, /href: ENLACE_TEXTO_INSTALACION, target: '_blank', rel: 'noopener noreferrer'/);
+});
+
+test('1f: el servidor entrega el texto de instalación solo al administrador, y Servidor → «Actualizaciones» tiene sus dos estados', async () => {
+  const { textoDeInstalacion } = await import('../src/api/tareas.js');
+  const { RESULTADOS_DEL_ACTUALIZADOR } = await import('../src/copias/vigilar.js');
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const nube = readFileSync(join(RAIZ, 'deploy/cloud-init.sh'), 'utf8');
+  assert.equal(textoDeInstalacion(), nube);
+  assert.equal(textoDeInstalacion(new URL('file:///no/existe/cloud-init.sh')), null);
+  assert.equal(textoDeInstalacion(new URL('../package.json', import.meta.url)), null, 'solo un texto de instalación');
+  const config = configDePrueba();
+  config.carpetaDatos = join(config.raiz, 'datos');
+  const db = abrirBase(config);
+  await conServidor(crearServidor({ db, config }), async base => {
+    const dueno = { 'Tailscale-User-Login': 'junior@example.com', 'X-Oportia': '1', 'Content-Type': 'application/json' };
+    assert.equal((await fetch(`${base}/api/servidor/instalacion`)).status, 401, 'sin entrar, nada');
+    const creado = await fetch(`${base}/api/primer-admin`, { method: 'POST', headers: dueno, body: JSON.stringify({ nombre: 'junior', clave: 'una clave bien larga' }) });
+    const galleta = creado.headers.get('set-cookie').split(';')[0];
+    const r = await fetch(`${base}/api/servidor/instalacion`, { headers: { ...dueno, Cookie: galleta } });
+    assert.equal(r.status, 200);
+    const { texto } = await r.json();
+    assert.equal(texto, nube, 'es el archivo del repositorio, entero');
+    assert.match(texto, /^TS_AUTHKEY="PEGA_AQUI"$/m, 'sin ninguna clave: el dueño la escribe al pegarlo');
+    assert.doesNotMatch(texto, /tskey-auth-[A-Za-z0-9]{8,}/);
+    // Sin actualizador nuevo (el servidor de hoy): estado null, sin avisos, y la base no es recuperada.
+    const sistema = async () => (await fetch(`${base}/api/admin/sistema`, { headers: { ...dueno, Cookie: galleta } })).json();
+    let s = await sistema();
+    assert.deepEqual(s.actualizaciones, { versionMala: null, estado: null, avisos: [] });
+    assert.equal(s.recuperada, null);
+    // Con el estado que publica el actualizador nuevo y una línea «aviso:» en el registro.
+    mkdirSync(config.carpetaDatos, { recursive: true });
+    writeFileSync(join(config.carpetaDatos, 'actualizador.json'), JSON.stringify({ contrato: 1, revisado: '2026-11-10T12:00:00Z', resultado: 'hay_nueva', version: 'a'.repeat(40), vista: 'b'.repeat(40), actualizador: 'abc1234', libre_mb: 5120, ocupa_mb: 140, enlace: 'pendiente' }));
+    writeFileSync(join(config.carpetaDatos, 'update.log'), '2026-11-10T11:00:00+00:00 aviso: el enlace público sigue pendiente\n');
+    s = await sistema();
+    assert.deepEqual(s.actualizaciones.estado, { contrato: 1, revisado: '2026-11-10T12:00:00.000Z', resultado: 'hay_nueva', version: 'a'.repeat(40), vista: 'b'.repeat(40), actualizador: 'abc1234', libreMb: 5120, ocupaMb: 140, enlace: 'pendiente' });
+    assert.deepEqual(s.actualizaciones.avisos, [{ fecha: '2026-11-10T11:00:00.000Z', texto: 'el enlace público sigue pendiente' }]);
+  });
+  db.close();
+  assert.match(readFileSync(join(RAIZ, 'src/api/tareas.js'), 'utf8'), /rutas\.agregar\('GET', '\/api\/servidor\/instalacion', \(\) => \{[\s\S]*?\}, \{ admin: true \}\);/);
+  // La tarjeta: con el actualizador nuevo dice cuándo revisó y qué pasó; con el de antes, las tres órdenes; siempre el enlace a los pasos.
+  const tarjeta = funcionDe(appJs, 'tarjetaActualizaciones');
+  assert.match(tarjeta, /t\('servidor\.actualizador\.nuevo', \{ hace: cuando\(e\.revisado\) \}\)/);
+  assert.match(tarjeta, /tSi\(`servidor\.actualizador\.resultado\.\$\{e\.resultado\}`, e\.resultado\)/);
+  assert.match(tarjeta, /t\('servidor\.actualizador\.viejo'\)/);
+  assert.match(tarjeta, /t\('servidor\.actualizador\.enlace_pendiente'\)/);
+  assert.match(tarjeta, /href: '#copias\/recuperar'/);
+  assert.match(tarjeta, /titulo\('actualizar', t\('servidor\.actualizador\.titulo'\), undefined, 'actualizador'\)/);
+  assert.match(appJs, /return \[servidor, datosServidor, tarjetaActualizaciones\(s\.actualizaciones \?\? \{\}, estadoVista\)\];/);
+  for (const idioma of [es, en]) {
+    for (const x of RESULTADOS_DEL_ACTUALIZADOR) assert.ok(idioma[`servidor.actualizador.resultado.${x}`].split(/\s+/).length <= 22, x);
+    assert.ok(idioma['aviso.actualizador_parado'] && idioma['telegram.aviso.actualizador_parado.titulo'] && idioma['telegram.aviso.actualizador_parado.texto']);
+    assert.ok(idioma['error.sin_instalador']);
+  }
+  // «Primeros pasos» en una base recuperada: los tres pasos tienen sus frases y la tarjeta dice por qué van primero.
+  for (const id of ['recuperada_token', 'recuperada_claves', 'recuperada_clave']) for (const idioma of [es, en]) assert.ok(idioma[`guia.paso.${id}`] && idioma[`guia.paso.${id}.linea`], id);
+  assert.match(es['guia.paso.recuperada_token.linea'], /\/revoke.*NUEVO/);
+  assert.match(seccionDe(appJs, 'function tarjetaGuia('), /g\.pasos\.some\(p => p\.grupo === 'recuperada'\) \? el\('p', \{ class: 'aviso con-icono-arriba guia-recuperada' \}/);
 });

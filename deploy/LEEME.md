@@ -23,6 +23,12 @@ GitHub siguen siendo de mentira): el primer uso en un servidor de verdad será u
 | `oportia-admin.mjs` | La consola de rescate (contraseña temporal, modo seguro, claves, copias…). |
 | `jarvis.service` | La unidad del servicio (el nombre «jarvis» se conserva). `KillMode=control-group`: el trabajador se apaga con el servicio. |
 
+Para ensayar todo lo que se puede **sin** un servidor: `bash test/simulacro.sh` (la escritura de cada programa, el
+instalador entero en una raíz falsa, las pruebas de actualizar / pasar / volver / recuperar y, si hay Docker, el
+contenedor desechable); al final imprime la lista de comprobación del simulacro en un Droplet de ensayo (la misma del
+README, «El simulacro»). Las órdenes de una línea que el dueño copia están también en la app: Administrador → Copias →
+«Si un día pierdes el servidor» y Administrador → Servidor → «Actualizaciones».
+
 Reglas que cumplen todos los `.sh` (las comprueba `test/reglas.test.js`): `set -euo pipefail`; todo dentro de
 `principal "$@" </dev/null`; las rutas salen de un solo prefijo (`$RAIZ`, vacío en el servidor); los comandos del sistema
 pasan por `sistema` (en las pruebas solo existen los falsos); el único borrado es `borrar_lo_mio` (su carpeta temporal

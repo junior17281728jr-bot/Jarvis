@@ -8,7 +8,7 @@ import { totalmem, freemem, loadavg, uptime } from 'node:os';
 export const UMBRALES = Object.freeze({
   memoriaAtencionMb: 64,
   memoriaGraveMb: 32,
-  discoAtencionMb: 1024,
+  discoAtencionMb: 1536, // fase 1, parte f: nada se borra nunca (respaldos, bases apartadas, copias): se avisa con 1,5 GB libres
   discoGraveMb: 300,
   baseAtencionMb: 1024, // las copias van en partes de 2 MiB (parte e): el tamaño ya no choca con Telegram, pero una base
   // de más de 1 GB tarda mucho en copiarse cada noche con 1 procesador

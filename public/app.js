@@ -646,6 +646,8 @@ function tarjetaGuia(pasos) {
       el('h2', { id: 'guia-titulo', class: 'con-icono' }, icono('bandera'), el('span', { texto: t('guia.titulo') })),
       el('span', { class: 'guia-cuenta', texto: t('guia.progreso', { hechos: numero(g.hechos), total: numero(g.total) }) })),
     el('div', { class: 'guia-barra' }, barra(g.hechos, g.total, 'bien')),
+    // Fase 1, parte f: en una base recuperada de una copia, primero va lo que falta volver a poner.
+    g.pasos.some(p => p.grupo === 'recuperada') ? el('p', { class: 'aviso con-icono-arriba guia-recuperada' }, icono('info', 'icono chico'), el('span', { texto: t('guia.recuperada') })) : null,
     lista);
 }
 // La misma guía en una línea, arriba de Administrador → Resumen: cuántos pasos van y el botón del que sigue.
@@ -1273,7 +1275,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
       barra(memoria.disponibleMb, memoria.totalMb, memoria.disponibleMb != null && memoria.disponibleMb < 64 ? 'mal' : memoria.disponibleMb != null && memoria.disponibleMb < 128 ? 'atencion' : 'bien')),
     el('div', { class: 'medidor' },
       el('div', { class: 'medidor-texto' }, el('span', { texto: t('servidor.disco') }), el('strong', { texto: t('servidor.de', { a: tamano(salud.disco?.libreMb), b: tamano(salud.disco?.totalMb) }) })),
-      barra(salud.disco?.libreMb, salud.disco?.totalMb, salud.disco?.libreMb != null && salud.disco.libreMb < 300 ? 'mal' : salud.disco?.libreMb != null && salud.disco.libreMb < 1024 ? 'atencion' : 'bien')),
+      barra(salud.disco?.libreMb, salud.disco?.totalMb, salud.disco?.libreMb != null && salud.disco.libreMb < 300 ? 'mal' : salud.disco?.libreMb != null && salud.disco.libreMb < 1536 ? 'atencion' : 'bien')),
     actualizado,
     mensajeZona);
   const datosServidor = el('section', { class: 'tarjeta' },
@@ -1290,7 +1292,44 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
       s.actualizaciones?.versionMala ? el('li', { class: 'tono-atencion' }, el('span', { class: 'con-icono' }, icono('atencion', 'icono chico tono-color'),
         el('span', { texto: t('servidor.version_mala', { sha: String(s.actualizaciones.versionMala).slice(0, 7) }) }))) : null),
     detallesHistorial);
-  return [servidor, datosServidor];
+  return [servidor, datosServidor, tarjetaActualizaciones(s.actualizaciones ?? {}, estadoVista)];
+}
+
+// Administrador → Servidor → «Actualizaciones» (fase 1, parte f). Con el actualizador NUEVO (el que publica su estado en
+// actualizador.json): cuándo revisó, qué versión hay y qué pasó. Sin él (el servidor de hoy): lo dice, y las tres
+// órdenes de una línea para pasarlo cuando el dueño lo decida. Los botones solo copian texto.
+function tarjetaActualizaciones(a, estadoVista) {
+  const e = a.estado ?? null;
+  const avisos = Array.isArray(a.avisos) ? a.avisos : [];
+  let cuerpo;
+  if (e) {
+    const mal = ['no_instalada', 'revertida', 'revertida_sin_arrancar', 'sin_disco', 'mala_conocida'].includes(e.resultado);
+    cuerpo = [
+      el('p', { class: 'con-icono fuerte actualizador-estado' }, icono('bien', 'icono tono-color tono-bien'), el('span', { texto: t('servidor.actualizador.nuevo', { hace: cuando(e.revisado) }) })),
+      el('p', { class: mal ? 'aviso-linea tono-atencion' : null, texto: tSi(`servidor.actualizador.resultado.${e.resultado}`, e.resultado) }),
+      el('ul', { class: 'lista-simple datos-servidor' },
+        e.version ? el('li', { texto: t('servidor.actualizador.version', { sha: String(e.version).slice(0, 7) }) }) : null,
+        el('li', { texto: t('servidor.actualizador.disco', { libre: tamano(e.libreMb), ocupa: tamano(e.ocupaMb) }) }),
+        e.enlace === 'pendiente' ? el('li', { class: 'tono-atencion', texto: t('servidor.actualizador.enlace_pendiente') }) : null),
+    ];
+  } else {
+    const pasar = el('details', { class: 'actualizador-pasar', open: estadoVista.pasarAbierto },
+      el('summary', { texto: t('servidor.actualizador.pasar') }),
+      el('p', { class: 'ayuda', texto: t('servidor.actualizador.pasar.texto') }),
+      el('ol', { class: 'pasos-numerados pasos-recuperar' }, [ORDENES.revisar, ORDENES.pasar, ORDENES.volver].map((orden, i) => el('li', {},
+        el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: String(i + 1) }),
+        el('div', { class: 'paso-cuerpo' }, el('strong', { texto: t(`servidor.actualizador.pasar.${i + 1}`) }), ordenParaCopiar(orden))))));
+    pasar.addEventListener('toggle', () => { estadoVista.pasarAbierto = pasar.open; });
+    cuerpo = [el('p', { class: 'con-icono fuerte actualizador-estado' }, icono('info', 'icono'), el('span', { texto: t('servidor.actualizador.viejo') })), pasar];
+  }
+  return el('section', { class: 'tarjeta ancha tarjeta-actualizaciones', 'data-ancla': 'actualizaciones' },
+    titulo('actualizar', t('servidor.actualizador.titulo'), undefined, 'actualizador'),
+    cuerpo,
+    avisos.length ? [
+      el('h3', { texto: t('servidor.actualizador.avisos') }),
+      el('ul', { class: 'lista-simple actualizador-avisos' }, avisos.map(x => el('li', { class: 'suave', texto: t('servidor.actualizador.aviso_linea', { cuando: cuando(x.fecha), texto: x.texto }) }))),
+    ] : null,
+    el('p', { class: 'actualizador-enlace' }, el('a', { class: 'enlace-fuerte con-icono', href: '#copias/recuperar' }, icono('escudo', 'icono chico'), el('span', { texto: t('servidor.actualizador.si_pierdo') }))));
 }
 
 // «Ver la fila»: las 25 tareas más nuevas, con un filtro de botones (sin escribir) y «Ver más».
@@ -1774,7 +1813,7 @@ function dibujarCopias(datos, aviso, vigente) {
   const mensaje = caja();
   const ruta = location.hash;
   // Lo abierto sigue abierto cuando la pantalla se actualiza sola.
-  const abierto = { recientes: pantallaAncha(), restaurar: false, clave: false, cambiar: false };
+  const abierto = { recientes: pantallaAncha(), restaurar: ruta === '#copias/recuperar', clave: false, cambiar: false };
   let reloj = null;
   let anterior = null;
   const sigue = () => vigente() && location.hash === ruta && zona.isConnected;
@@ -1944,12 +1983,8 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
     ] : null) : null;
   detallesClave?.addEventListener('toggle', () => { abierto.clave = detallesClave.open; });
 
-  // ---- Si un día pierdes el servidor ----
-  const detallesRestaurar = el('details', { class: 'tarjeta copias-restaurar', open: abierto.restaurar },
-    el('summary', { class: 'con-icono' }, icono('escudo', 'icono'), el('span', { texto: t('copias.restaurar.titulo') })),
-    pasosRestaurar(),
-    el('p', { class: 'ayuda', texto: t('copias.restaurar.nota') }));
-  detallesRestaurar.addEventListener('toggle', () => { abierto.restaurar = detallesRestaurar.open; });
+  // ---- Si un día pierdes el servidor (fase 1, parte f) ----
+  const detallesRestaurar = tarjetaSiPierdoElServidor(abierto);
 
   // Tres columnas en la PC (cada una con su alto, sin huecos); en el teléfono las columnas no existen (display: contents)
   // y el orden lo pone estilos.css: la tarjeta grande, la clave y el Telegram, el disco, las últimas copias, la clave.
@@ -1961,13 +1996,116 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   ];
 }
 
+// ---------- Fase 1, parte f: «Si un día pierdes el servidor» y las órdenes de una línea ----------
+// El repositorio público de OPORTIA (el mismo nombre que deploy/cloud-init.sh; test/pantallas.test.js lo compara) y la
+// dirección del «texto de instalación»: lo que se pega al crear un servidor nuevo.
+const REPO_OPORTIA = 'junior17281728jr-bot/Jarvis';
+const ENLACE_TEXTO_INSTALACION = `https://raw.githubusercontent.com/${REPO_OPORTIA}/main/deploy/cloud-init.sh`;
+// Las órdenes que el dueño pega en la consola del servidor. Cada una existe de verdad (test/reglas.test.js revisa que
+// cada «sudo oportia …» esté en deploy/oportia.sh; las de curl son las que documenta deploy/cloud-init.sh).
+const ORDENES = Object.freeze({
+  recuperar: 'sudo oportia recuperar',
+  probarCopia: 'sudo oportia probar-copia',
+  registro: 'sudo tail -n 30 /var/log/oportia-instalar.log',
+  revisar: `curl -fsSL ${ENLACE_TEXTO_INSTALACION} | sudo bash -s -- revisar`,
+  pasar: `curl -fsSL ${ENLACE_TEXTO_INSTALACION} | sudo bash -s -- pasar`,
+  volver: 'sudo oportia volver',
+});
+
+// Una orden de una línea con su botón «Copiar». El botón copia ese texto y nada más (nunca queda apagado); la orden se
+// puede seleccionar a mano si el navegador no deja copiar. conBoton: false para la hoja impresa.
+function ordenParaCopiar(orden, { conBoton = true } = {}) {
+  const texto = el('code', { class: 'orden-texto', texto: orden });
+  if (!conBoton) return el('div', { class: 'orden' }, texto);
+  const dicho = el('span', { class: 'orden-dicho', role: 'status' });
+  const boton = el('button', {
+    type: 'button', class: 'secundario chico con-icono orden-copiar', 'aria-label': t('orden.copiar_esta', { orden }),
+    onclick: async () => {
+      const copiado = await copiarTexto(orden);
+      dicho.textContent = t(copiado ? 'orden.copiada' : 'orden.no_copiada');
+      dicho.className = `orden-dicho ${copiado ? 'bien' : 'error'}`;
+    },
+  }, icono('copiar'), el('span', { texto: t('orden.copiar') }));
+  return el('div', { class: 'orden' }, texto, boton, dicho);
+}
+
+// El texto de instalación se pide UNA vez, al abrir la tarjeta, y queda en la memoria de la página (es un archivo
+// público, sin secretos): así «Copiar» copia en el mismo toque (en el iPhone, copiar después de esperar a la red falla).
+let textoInstalacion = null;
+let pedidoInstalacion = null;
+function pedirTextoDeInstalacion() {
+  if (!pedidoInstalacion) {
+    pedidoInstalacion = api('GET', '/api/servidor/instalacion').then(x => {
+      if (x.ok && typeof x.datos.texto === 'string' && x.datos.texto) textoInstalacion = x.datos.texto;
+      else pedidoInstalacion = null; // la próxima vez se pide otra vez
+      return textoInstalacion;
+    });
+  }
+  return pedidoInstalacion;
+}
+
+// Lo que el dueño tiene que conservar para poder recuperar todo: [ícono, frase].
+const GUARDAR_SIEMPRE = Object.freeze([['clave_recuperacion', 'copias.guardar.clave'], ['candado', 'copias.guardar.tailscale'], ['avion_papel', 'copias.guardar.telegram']]);
+
+// La tarjeta de Copias. Con la dirección #copias/recuperar va abierta y primero (en el teléfono, lo de «Hazlo hoy» cabe
+// en la primera pantalla); en la PC usa el ancho: a la izquierda lo de hoy, a la derecha los 7 pasos.
+function tarjetaSiPierdoElServidor(abierto) {
+  const primero = location.hash === '#copias/recuperar';
+  const mensaje = caja();
+  const botonTexto = el('button', {
+    type: 'button', class: 'con-icono',
+    onclick: async () => {
+      const texto = textoInstalacion ?? await pedirTextoDeInstalacion();
+      if (!texto) return decir(mensaje, textoError('sin_instalador'), 'error');
+      const copiado = await copiarTexto(texto);
+      decir(mensaje, t(copiado ? 'copias.instalacion.copiado' : 'copias.instalacion.no_copiado'), copiado ? 'bien' : 'error');
+    },
+  }, icono('copiar'), el('span', { texto: t('copias.instalacion.copiar') }));
+  const siFalla = el('details', { class: 'recuperar-si-falla', open: abierto.siFalla },
+    el('summary', { class: 'con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.restaurar.si_falla') })),
+    el('p', { class: 'ayuda', texto: t('copias.restaurar.si_falla.registro') }), ordenParaCopiar(ORDENES.registro),
+    el('p', { class: 'ayuda', texto: t('copias.restaurar.si_falla.probar') }), ordenParaCopiar(ORDENES.probarCopia));
+  siFalla.addEventListener('toggle', () => { abierto.siFalla = siFalla.open; });
+  const tarjeta = el('details', { class: `tarjeta copias-restaurar${primero ? ' primero' : ''}`, 'data-ancla': 'recuperar', open: abierto.restaurar },
+    el('summary', { class: 'con-icono' }, icono('escudo', 'icono'), el('span', { texto: t('copias.restaurar.titulo') }), queEs('servidor_nuevo')),
+    el('div', { class: 'recuperar-rejilla' },
+      el('div', { class: 'recuperar-hoy' },
+        el('section', { class: 'recuperar-caja', 'aria-labelledby': 'recuperar-hoy-titulo' },
+          el('h3', { class: 'con-icono', id: 'recuperar-hoy-titulo' }, icono('bandera'), el('span', { texto: t('copias.instalacion.hoy') })),
+          el('p', { texto: t('copias.instalacion.texto') }),
+          botonTexto, mensaje,
+          el('p', { class: 'suave chico' }, el('span', { texto: t('copias.instalacion.github') }), ' ',
+            el('a', { href: ENLACE_TEXTO_INSTALACION, target: '_blank', rel: 'noopener noreferrer', texto: t('copias.instalacion.enlace') }))),
+        // Lo de hoy va primero (en el teléfono cabe en la primera pantalla); después, lo que hay que conservar.
+        el('h3', { texto: t('copias.guardar.titulo') }),
+        el('p', { class: 'recuperar-linea', texto: t('copias.restaurar.linea') }),
+        el('ul', { class: 'lista-simple guardar-lista' }, GUARDAR_SIEMPRE.map(([nombreIcono, frase]) => el('li', { class: 'con-icono-arriba' }, icono(nombreIcono), el('span', { texto: t(frase) }))))),
+      el('div', { class: 'recuperar-pasos' },
+        el('h3', { texto: t('copias.restaurar.pasos') }),
+        pasosRestaurar({ conBotones: true }),
+        el('p', { class: 'ayuda con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('copias.restaurar.simulado') })),
+        siFalla)));
+  tarjeta.addEventListener('toggle', () => {
+    abierto.restaurar = tarjeta.open;
+    if (tarjeta.open) pedirTextoDeInstalacion();
+  });
+  if (abierto.restaurar) pedirTextoDeInstalacion();
+  return tarjeta;
+}
+
 // Los pasos para recuperar todo en un servidor nuevo: UNA lista para la pantalla y la hoja impresa, con los mismos
 // pasos que el README («Si un día pierdes el servidor»; test/pantallas.test.js compara la cuenta y que esté /revoke).
-const PASOS_RESTAURAR = Object.freeze([1, 2, 3, 4, 5, 6]);
-function pasosRestaurar() {
-  return el('ol', { class: 'pasos-numerados' }, PASOS_RESTAURAR.map(n => el('li', {},
+// Cada paso: un título corto y su explicación; el 3 trae el formulario de DigitalOcean campo por campo y el 4 la orden.
+const PASOS_RESTAURAR = Object.freeze([1, 2, 3, 4, 5, 6, 7]);
+const LINEAS_DEL_PASO_3 = Object.freeze(['a', 'b', 'c', 'd', 'e', 'f']);
+function pasosRestaurar({ conBotones = false } = {}) {
+  return el('ol', { class: 'pasos-numerados pasos-recuperar' }, PASOS_RESTAURAR.map(n => el('li', {},
     el('span', { class: 'paso-numero', 'aria-hidden': 'true', texto: String(n) }),
-    el('span', { texto: t(`copias.restaurar.paso${n}`) }))));
+    el('div', { class: 'paso-cuerpo' },
+      el('strong', { texto: t(`copias.restaurar.paso${n}.titulo`) }),
+      el('span', { texto: t(`copias.restaurar.paso${n}`) }),
+      n === 3 ? el('ul', { class: 'paso-lineas' }, LINEAS_DEL_PASO_3.map(x => el('li', { texto: t(`copias.restaurar.paso3.${x}`) }))) : null,
+      n === 4 ? ordenParaCopiar(ORDENES.recuperar, { conBoton: conBotones }) : null))));
 }
 
 // «Comprobar mi clave»: se escribe; la página la revisa y manda solo su verificador.
@@ -2061,6 +2199,7 @@ function hojaDeLaClave(clave, huella) {
     el('p', { texto: t('copias.clave.no_compartir') }),
     el('h2', { texto: t('copias.restaurar.titulo') }),
     pasosRestaurar(),
+    el('p', { texto: t('copias.clave.hoja.instalacion', { enlace: ENLACE_TEXTO_INSTALACION }) }),
     el('p', { class: 'fuerte', texto: t('copias.clave.hoja.guardala') }));
 }
 
@@ -4529,7 +4668,9 @@ async function dibujar() {
     return pantallaEntrar();
   }
   if (estado.usuario.debeCambiarClave) return pantallaClaveObligatoria();
-  const seccion = location.hash.replace('#', '') || 'inicio';
+  // #copias/recuperar es la pantalla Copias con «Si un día pierdes el servidor» abierta y primero (fase 1, parte f).
+  const direccion = location.hash.replace('#', '') || 'inicio';
+  const seccion = direccion === 'copias/recuperar' ? 'copias' : direccion;
   const esAdmin = estado.usuario.rol === 'admin';
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
@@ -4563,7 +4704,8 @@ function pedidosAlAbrir(seccion, admin) {
   // Las pestañas de Administrador (#admin/usuarios, #admin/trabajo, #admin/servidor) piden lo mismo que #admin.
   if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/proyectos'] : [];
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
-  if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
+  // (#copias/recuperar es la misma pantalla con «Si un día pierdes el servidor» abierta.)
+  if (seccion === 'copias' || seccion === 'copias/recuperar') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
   if (seccion === 'claves') return admin ? ['/api/admin/claves'] : [];
   if (seccion === 'proyectos' || seccion === 'nuevo') return ['/api/catalogo', '/api/proyectos'];

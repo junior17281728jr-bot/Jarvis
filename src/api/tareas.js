@@ -6,6 +6,7 @@
 //    el número de proyecto y de cuenta, y una clave de error. Nunca sus datos ni sus resultados.
 //  - Cada acción deja una fila de auditoría con el administrador que la hizo.
 import { dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { ErrorHttp, leerJson } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { FASE_ACTUAL } from '../tareas/tipos.js';
@@ -17,8 +18,10 @@ import { leerModoSeguro, ponerModoSeguro, leerFrenos } from '../tareas/modo-segu
 import { avisosAbiertos, avisosRecientes, marcarVisto } from '../avisos/avisos.js';
 import { medirSalud, evaluarSalud, semaforo, historialSalud } from '../nucleo/salud.js';
 import { espacioDe } from '../proyectos/proyectos.js';
-import { resumenCopias } from '../copias/estado.js';
-import { ultimaVersionMala } from '../copias/vigilar.js';
+import { resumenCopias, pendientesTrasRecuperar } from '../copias/estado.js';
+import { ultimaVersionMala, resumenDelActualizador } from '../copias/vigilar.js';
+import { estadoLlave } from '../claves/cifrado.js';
+import { USOS } from '../claves/usos.js';
 import { estadoTelegram } from '../canales/canales.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
@@ -86,8 +89,39 @@ export function estadoDelSistema(db, { supervisor = null, usuario = null, versio
     // Fase 1, parte e: las copias (el azulejo del Resumen), el Telegram del dueño y la última versión que no se instaló.
     copias: resumenCopias(db, { ahora }),
     telegram: telegramResumido(db, config, ahora),
-    actualizaciones: { versionMala: ultimaVersionMala(db) },
+    // Fase 1, parte f: además, lo que publica el actualizador nuevo (null: el servidor usa el de antes) y sus avisos.
+    actualizaciones: { versionMala: ultimaVersionMala(db), ...actualizadorResumido(config) },
+    // Fase 1, parte f: en una base recuperada de una copia, lo que falta volver a poner (o null).
+    recuperada: recuperadaResumida(db, config),
   };
+}
+
+function actualizadorResumido(config) {
+  try { return resumenDelActualizador(config); } catch { return { estado: null, avisos: [] }; }
+}
+
+function recuperadaResumida(db, config) {
+  try {
+    let huellaLlave = null;
+    try { const e = config ? estadoLlave(config) : null; huellaLlave = e?.listo ? e.huella : null; } catch { huellaLlave = null; }
+    return pendientesTrasRecuperar(db, { huellaLlave, usos: USOS });
+  } catch {
+    return null;
+  }
+}
+
+// El «texto de instalación» (deploy/cloud-init.sh): lo que se pega al crear un servidor nuevo. Es un archivo público del
+// repositorio (no trae secretos: la clave de Tailscale la escribe el dueño al pegarlo). Se lee del disco en cada pedido
+// (≤ 16 KB); si esta instalación no lo tiene → null y la pantalla muestra el enlace a GitHub.
+export const TEXTO_INSTALACION_MAXIMO = 16 * 1024;
+const RUTA_TEXTO_INSTALACION = new URL('../../deploy/cloud-init.sh', import.meta.url);
+export function textoDeInstalacion(ruta = RUTA_TEXTO_INSTALACION) {
+  try {
+    const texto = readFileSync(ruta, 'utf8');
+    return texto.length > 0 && Buffer.byteLength(texto) <= TEXTO_INSTALACION_MAXIMO && texto.startsWith('#!/bin/bash\n') ? texto : null;
+  } catch {
+    return null;
+  }
 }
 
 function telegramResumido(db, config, ahora) {
@@ -112,6 +146,13 @@ export function registrarRutasTareas(rutas, { supervisor = null, limites = crear
   const sistema = (db, usuario) => estadoDelSistema(db, { supervisor, usuario, version, codigo, config });
 
   rutas.agregar('GET', '/api/admin/sistema', ({ db, usuario }) => ({ codigo: 200, datos: sistema(db, usuario) }), { admin: true });
+
+  // Fase 1, parte f: el texto de instalación, para que el dueño lo guarde HOY (Copias → «Si un día pierdes el servidor»).
+  rutas.agregar('GET', '/api/servidor/instalacion', () => {
+    const texto = textoDeInstalacion();
+    if (!texto) throw new ErrorHttp(404, 'sin_instalador');
+    return { codigo: 200, datos: { texto } };
+  }, { admin: true });
 
   // La fila completa, de a 25 (las más nuevas primero). ?estado=fallida filtra; ?antes=<id> trae las siguientes.
   rutas.agregar('GET', '/api/admin/tareas', ({ db, req, usuario }) => {

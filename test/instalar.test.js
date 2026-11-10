@@ -16,9 +16,11 @@ import { abrirBase, conectarBase, ID_APLICACION } from '../src/nucleo/db.js';
 import { restaurarCopia } from '../src/copias/restaurar.js';
 import { hashClave } from '../src/cuentas/claves.js';
 import { guardarClave } from '../src/cuentas/usuarios.js';
-import { esArchivoDeLlave } from '../src/claves/cifrado.js';
+import { esArchivoDeLlave, estadoLlave } from '../src/claves/cifrado.js';
 import { estadoAlmacen, guardarSecreto, listarSecretos } from '../src/claves/almacen.js';
-import { leerEstadoDelActualizador } from '../src/copias/vigilar.js';
+import { leerEstadoDelActualizador, vigilarActualizador, avisosDelActualizador, lineasDeActualizacion } from '../src/copias/vigilar.js';
+import { pendientesTrasRecuperar } from '../src/copias/estado.js';
+import { vaPorTelegram } from '../src/canales/avisador.js';
 
 const saltar = motivoParaSaltar() ?? false;
 const DATOS = 'var/lib/jarvis';
@@ -672,4 +674,110 @@ test('1f instalar 6: la consola hace la copia «antes de cambio» en un archivo 
   });
   assert.equal(sin.status, 1);
   assert.match(sin.stderr, /No se pudo abrir la base/);
+});
+
+// ---------- 7. El vigilante del actualizador nuevo y lo que falta en una base recuperada (paso 2 de la parte 1f) ----------
+const estadoDelActualizador = revisado => JSON.stringify({
+  contrato: 1, revisado: new Date(revisado).toISOString().replace(/\.\d{3}Z$/, 'Z'), resultado: 'al_dia', version: sha('a'), vista: sha('a'), actualizador: 'abc1234', libre_mb: 5000, ocupa_mb: 120, enlace: 'encendido',
+});
+
+test('1f instalar 7: «actualizador parado»: no avisa con el servicio recién encendido ni con el reloj adelantado; avisa a los 45 min; se resuelve al revisar y sin archivo', () => {
+  const config = configDePrueba();
+  config.carpetaDatos = join(config.raiz, 'datos');
+  const db = abrirBase(config);
+  const archivo = join(config.carpetaDatos, 'actualizador.json');
+  const HORA = 3_600_000;
+  const t = Date.parse('2026-11-10T12:00:00Z');
+  const abiertos = () => db.prepare("SELECT clave, nivel FROM avisos WHERE resuelto_en IS NULL AND clave = 'actualizador_parado'").all();
+  const mirar = (ahora, encendidoMs) => vigilarActualizador(db, leerEstadoDelActualizador(config), { ahora, encendidoMs });
+  try {
+    // Sin archivo (el actualizador de antes): nada que vigilar.
+    assert.equal(mirar(t, 10 * HORA), null);
+    assert.deepEqual(abiertos(), []);
+    // Fresco: nada.
+    writeFileSync(archivo, estadoDelActualizador(t - 20 * 60_000));
+    assert.equal(mirar(t, 10 * HORA), null);
+    // Viejo (4 h), pero el servicio lleva 10 minutos encendido (un apagón largo: el temporizador ya va a correr): espera.
+    writeFileSync(archivo, estadoDelActualizador(t - 4 * HORA));
+    assert.equal(mirar(t, 10 * 60_000), 'espera');
+    assert.deepEqual(abiertos(), []);
+    // Viejo y el servicio lleva más de 45 minutos: avisa (atención, va por Telegram en silencio).
+    assert.equal(mirar(t, 46 * 60_000), 'abierto');
+    assert.deepEqual(abiertos().map(a => ({ ...a })), [{ clave: 'actualizador_parado', nivel: 'atencion' }]);
+    assert.deepEqual(vaPorTelegram({ clave: 'actualizador_parado', nivel: 'atencion' }), { va: true, suena: false });
+    // Otra hora igual: sigue siendo UN aviso abierto.
+    mirar(t + HORA, 2 * HORA);
+    assert.equal(abiertos().length, 1);
+    // El actualizador volvió a revisar: se resuelve solo.
+    writeFileSync(archivo, estadoDelActualizador(t + HORA));
+    assert.equal(mirar(t + HORA + 60_000, 3 * HORA), 'resuelto');
+    assert.deepEqual(abiertos(), []);
+    // Una fecha «revisado» del futuro (el reloj saltó): no es «parado».
+    writeFileSync(archivo, estadoDelActualizador(t + 9 * HORA));
+    assert.equal(mirar(t, 10 * HORA), null);
+    // Parado otra vez, y después «sudo oportia volver» aparta el archivo: el aviso se resuelve (ningún aviso falso).
+    writeFileSync(archivo, estadoDelActualizador(t - 5 * HORA));
+    assert.equal(mirar(t, 10 * HORA), 'abierto');
+    rmSync(archivo);
+    assert.equal(mirar(t, 10 * HORA), 'resuelto');
+    assert.deepEqual(abiertos(), []);
+    // Un archivo que no es lo esperado (una carpeta, basura): como si no hubiera.
+    mkdirSync(archivo);
+    assert.equal(mirar(t, 10 * HORA), null);
+  } finally {
+    db.close();
+  }
+  // Las líneas «aviso:» del registro: las 3 últimas, como texto, sin caracteres de control y con tope de 200.
+  const registro = ['2026-11-10T10:00:00+00:00 actualizado a abc1234', '2026-11-10T10:30:00+00:00 aviso: uno', 'basura aviso: sin fecha', '2026-11-10T11:00:00+00:00 aviso: dos\u0007',
+    '2026-11-10T11:30:00+00:00 aviso: tres', `2026-11-10T12:00:00+00:00 aviso: ${'x'.repeat(300)}`, '2026-11-10T12:30:00+00:00 aviso: a medias'].join('\n');
+  const dichos = avisosDelActualizador(registro);
+  assert.deepEqual(dichos.map(a => a.texto.slice(0, 5)), ['dos', 'tres', 'xxxxx']);
+  assert.equal(dichos[2].texto.length, 200);
+  assert.equal(dichos[0].fecha, '2026-11-10T11:00:00.000Z');
+  assert.deepEqual(lineasDeActualizacion(registro).map(l => l.tipo), ['actualizado'], 'las líneas «aviso:» nunca abren un aviso');
+});
+
+test('1f instalar 7b: una base recuperada dice lo que falta (token nuevo, claves de IA, clave de recuperación nueva) y deja de decirlo cuando está hecho', async () => {
+  const { pasosAdmin, resumenGuia } = await import('../public/guia.js');
+  const { USOS } = await import('../src/claves/usos.js');
+  const o = await servidorViejo();
+  const carpeta = join(carpetaTemporal('1f-falta'), 'jarvis');
+  mkdirSync(carpeta, { recursive: true });
+  const archivo = join(carpeta, 'oportia.db');
+  const hecho = await restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'archivos', archivos: o.archivos }, destino: archivo });
+  assert.equal(hecho.ok, true);
+  const config = { archivoBase: archivo, carpetaCopias: join(carpeta, 'oportia-copias'), carpetaDatos: carpeta };
+  const db = abrirBase(config);
+  try {
+    // Una base que NO es recuperada: nada.
+    const otra = abrirBase(configDePrueba());
+    assert.equal(pendientesTrasRecuperar(otra, { huellaLlave: null, usos: USOS }), null);
+    otra.close();
+    // (La base de prueba trae una clave de recuperación «pendiente»: se deja como la activa del servidor de antes.)
+    db.prepare("UPDATE copias_llaves SET estado = 'activa'").run();
+    // Recién recuperada, sin llave en el servidor nuevo: faltan las claves de IA y la clave de recuperación.
+    const falta = pendientesTrasRecuperar(db, { huellaLlave: null, usos: USOS });
+    assert.equal(falta.claves, true, 'la clave de IA que traía la copia no se puede leer aquí');
+    assert.equal(falta.clave, true, 'la clave de recuperación de antes ya no sirve en este servidor');
+    assert.equal(typeof falta.token, 'boolean');
+    // «Primeros pasos» lo pone primero, con enlaces a pantallas que existen.
+    const sistema = { copias: { motivo: null, ultimaFuera: { fecha: '2026-11-09T08:41:00Z' } }, telegram: { chat: { estado: 'activo' } }, recuperada: falta };
+    const g = resumenGuia(pasosAdmin({ sistema, ia: null, proyectos: [{ id: 1, versionActiva: 1 }] }));
+    assert.deepEqual(g.pasos.slice(0, 3).map(p => p.id), ['recuperada_token', 'recuperada_claves', 'recuperada_clave']);
+    assert.deepEqual(g.pasos.slice(0, 3).map(p => p.destino), ['#claves', '#claves', '#copias']);
+    assert.equal(g.completa, false);
+    assert.equal(g.siguiente.grupo, 'recuperada');
+    // Se pega la clave de IA otra vez (se crea la llave nueva de este servidor): ese paso queda hecho.
+    assert.equal(estadoAlmacen(db, config).motivo, 'restaurada');
+    guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropicFalsa() });
+    const huellaLlave = estadoLlave(config).huella;
+    const despues = pendientesTrasRecuperar(db, { huellaLlave, usos: USOS });
+    assert.equal(despues.claves, false);
+    assert.equal(despues.clave, true, 'la clave de recuperación sigue pendiente hasta crear una nueva');
+    // Sin la marca de «recuperada» (o cuando ya no falta nada) deja de llegar: la guía vuelve a ser la de siempre.
+    db.prepare("UPDATE copias_llaves SET estado = 'anterior' WHERE estado = 'activa'").run();
+    assert.equal(pendientesTrasRecuperar(db, { huellaLlave, usos: USOS }), null);
+  } finally {
+    db.close();
+  }
 });

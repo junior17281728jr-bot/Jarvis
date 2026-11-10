@@ -6,7 +6,7 @@
 export const TEMAS_AYUDA = Object.freeze([
   'proyecto', 'entendi', 'duda', 'aprobar', 'version', 'autonomia', 'papelera', 'fase',
   'trabajo_automatico', 'modo_seguro', 'aviso', 'servidor',
-  'copia', 'copia_comprobada', 'clave_recuperacion', 'telegram', 'token',
+  'copia', 'copia_comprobada', 'clave_recuperacion', 'telegram', 'token', 'servidor_nuevo', 'actualizador',
   'ia', 'tope', 'clave_api', 'plan', 'clave_temporal', 'tailscale',
 ]);
 // Las que traen ejemplo.
@@ -39,7 +39,16 @@ export function pasosAdmin({ sistema = null, ia = null, proyectos = [] } = {}) {
   const chat = sistema.telegram?.chat ?? null;
   const hayTelegram = Boolean(chat) && chat.estado !== 'perdido';
   const hayCopia = Boolean(sistema.copias.ultimaFuera);
+  // Fase 1, parte f: en una base recuperada de una copia va primero lo que falta volver a poner (sistema.recuperada
+  // deja de llegar cuando ya no falta nada): el token NUEVO del bot, las claves de IA y una clave de recuperación nueva.
+  const r = sistema.recuperada ?? null;
+  const trasRecuperar = r ? [
+    { id: 'recuperada_token', icono: 'avion_papel', tema: 'token', hecho: !r.token, destino: '#claves', grupo: 'recuperada' },
+    { id: 'recuperada_claves', icono: 'llave', tema: 'clave_api', hecho: !r.claves, destino: '#claves', grupo: 'recuperada' },
+    { id: 'recuperada_clave', icono: 'clave_recuperacion', tema: 'clave_recuperacion', hecho: !r.clave, destino: '#copias', grupo: 'recuperada' },
+  ] : [];
   const pasos = [
+    ...trasRecuperar,
     { id: 'clave', icono: 'llave', tema: 'clave_recuperacion', hecho: hayClave, destino: '#copias' },
     { id: 'telegram', icono: 'avion_papel', tema: 'telegram', hecho: hayTelegram, destino: '#claves' },
     { id: 'copia', icono: 'nube_candado', tema: 'copia_comprobada', hecho: hayCopia, destino: '#copias', necesita: !hayClave ? 'clave' : !hayTelegram ? 'telegram' : null },
