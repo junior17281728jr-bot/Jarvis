@@ -14,6 +14,7 @@ import {
   codigoLegible, cuentaAtras, enlaceSeguro, fraseMotivoTareaCopia,
 } from './copias-vista.js';
 import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto } from './clave-recuperacion.js';
+import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosUsuario, resumenGuia, buscarTemas } from './guia.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -202,6 +203,83 @@ function decir(cajaMensaje, texto, clase) {
   cajaMensaje.className = `mensaje ${clase}`;
   cajaMensaje.textContent = texto;
   cajaMensaje.hidden = false;
+}
+
+// ---------- Claridad (0.5.1): la línea de cada pantalla, «¿Qué es esto?», listas vacías que enseñan y avisos cortos ----------
+// Debajo del título de cada pantalla o pestaña: para qué sirve, en una línea corta.
+function entrada(texto) {
+  return el('p', { class: 'entrada', texto });
+}
+
+// «¿Qué es esto?»: un botón (i) junto a un título o una palabra. Al tocarlo se abre una hoja con la explicación en
+// palabras sencillas (abajo en el teléfono, al centro en la PC). «Entendido», Escape o tocar fuera la cierran, y el
+// foco vuelve al botón. Los textos están en ayuda.<tema>.* y todos se ven juntos en la pantalla Ayuda (#ayuda).
+let hojaAyuda = null;
+function cerrarAyuda() {
+  if (hojaAyuda?.open) hojaAyuda.close();
+}
+function ejemploDeAyuda(tema) {
+  return TEMAS_CON_EJEMPLO.includes(tema) ? el('p', { class: 'ayuda-ejemplo' }, el('strong', { texto: `${t('ayuda.ejemplo')} ` }), el('span', { texto: t(`ayuda.${tema}.ejemplo`) })) : null;
+}
+function abrirAyuda(tema, boton = null) {
+  cerrarAyuda();
+  const hoja = el('dialog', { class: 'hoja-ayuda', 'aria-labelledby': 'hoja-ayuda-titulo' });
+  hoja.append(el('div', { class: 'hoja-ayuda-dentro' },
+    el('div', { class: 'hoja-ayuda-cabeza' }, el('span', { class: 'hoja-ayuda-icono' }, icono('info')), el('h2', { id: 'hoja-ayuda-titulo', texto: t(`ayuda.${tema}.titulo`) })),
+    el('p', { class: 'hoja-ayuda-texto', texto: t(`ayuda.${tema}.texto`) }),
+    ejemploDeAyuda(tema),
+    el('div', { class: 'hoja-ayuda-botones' },
+      el('button', { type: 'button', class: 'grande', autofocus: true, texto: t('ayuda.entendido'), onclick: () => hoja.close() }),
+      location.hash === '#ayuda' ? null : el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda', onclick: () => hoja.close() }, icono('info'), el('span', { texto: t('ayuda.ver_toda') })))));
+  // Tocar fuera de la hoja (el fondo oscuro) también la cierra.
+  hoja.addEventListener('click', evento => { if (evento.target === hoja) hoja.close(); });
+  hoja.addEventListener('close', () => {
+    hoja.remove();
+    if (hojaAyuda === hoja) hojaAyuda = null;
+    if (boton) boton.setAttribute('aria-expanded', 'false');
+    // El botón pudo volver a dibujarse mientras tanto (la zona de sistema se actualiza sola): se busca el de ahora.
+    const vuelve = boton?.isConnected ? boton : raiz.querySelector(`button.que-es[data-ayuda="${tema}"]`);
+    if (vuelve) { try { vuelve.focus({ preventScroll: true }); } catch { vuelve.focus(); } }
+  });
+  document.body.append(hoja);
+  hojaAyuda = hoja;
+  if (boton) boton.setAttribute('aria-expanded', 'true');
+  if (typeof hoja.showModal === 'function') hoja.showModal();
+  else hoja.setAttribute('open', '');
+}
+// conTexto: el botón lleva también el nombre de la palabra («(i) Clave de recuperación»), para la fila de palabras.
+function queEs(tema, { conTexto = false } = {}) {
+  const nombre = t(`ayuda.${tema}.titulo`);
+  const boton = el('button', {
+    type: 'button', class: conTexto ? 'que-es con-texto' : 'que-es', 'data-ayuda': tema, 'aria-haspopup': 'dialog', 'aria-expanded': 'false',
+    'aria-label': t('ayuda.que_es', { que: nombre }),
+    onclick: evento => { evento.preventDefault(); evento.stopPropagation(); abrirAyuda(tema, boton); },
+  }, icono('info'), conTexto ? el('span', { texto: nombre }) : null);
+  return boton;
+}
+// Las palabras de una pantalla que se pueden tocar para leer qué significan (una fila que se desliza de lado).
+function palabras(temas) {
+  return el('div', { class: 'palabras', role: 'group', 'aria-label': t('ayuda.palabras') }, temas.map(tema => queEs(tema, { conTexto: true })));
+}
+
+// Una lista vacía que enseña: un dibujo, una línea y (si se puede) el botón para empezar.
+function vacio(nombreIcono, texto, accion = null, clase = '') {
+  return el('div', { class: `vacio ${clase}`.trim() }, el('span', { class: 'vacio-icono' }, icono(nombreIcono)), el('p', { class: 'vacio-texto', texto }), accion);
+}
+
+// Un aviso corto que se ve abajo unos segundos (y lo lee VoiceOver): qué pasó después de una acción, o qué hacer si falló.
+let cajaAvisos = null;
+function avisar(texto, tono = 'bien') {
+  if (!cajaAvisos?.isConnected) {
+    cajaAvisos = el('div', { class: 'avisos-flotantes', role: 'status', 'aria-live': 'polite' });
+    document.body.append(cajaAvisos);
+  }
+  const aviso = el('div', { class: `aviso-flotante tono-${tono}`, role: tono === 'mal' ? 'alert' : null },
+    icono(tono === 'mal' ? 'mal' : tono === 'bien' ? 'bien' : 'info'),
+    el('span', { class: 'aviso-flotante-texto', texto }),
+    el('button', { type: 'button', class: 'aviso-flotante-cerrar', 'aria-label': t('aviso.cerrar'), texto: '×', onclick: () => aviso.remove() }));
+  cajaAvisos.replaceChildren(aviso);
+  setTimeout(() => aviso.remove(), tono === 'mal' ? 12000 : 6000);
 }
 
 // ---- Pase de pantallas (0.4.1): pestañas, listas cortas y lo que se ve en la PC ----
@@ -417,7 +495,7 @@ function pantallaClaveObligatoria() {
 async function salir() {
   const r = await api('POST', '/api/salir', {});
   // Si el servidor no pudo cerrar la sesión, no se finge que se cerró.
-  if (!r.ok && r.codigo !== 401) return alert(textoError(r.datos.error));
+  if (!r.ok && r.codigo !== 401) return avisar(textoError(r.datos.error), 'mal');
   estado.usuario = null;
   sesionTerminada = null;
   avisosCuenta = { avisos: [], recientes: [] };
@@ -483,6 +561,7 @@ function marco(seccion, ...contenido) {
     el('div', { class: 'lateral' },
       el('header', { class: 'encabezado' },
         el('a', { href: '#inicio', class: 'marca-enlace', 'aria-label': t('menu.inicio') }, marcaConLogo()),
+        el('a', { href: '#ayuda', class: 'ayuda-enlace', 'aria-current': seccion === 'ayuda' ? 'page' : null }, icono('info', 'icono menu-icono'), el('span', { texto: t('menu.ayuda') })),
         el('button', { type: 'button', class: 'secundario chico con-icono salir', onclick: salir }, icono('salir'), el('span', { texto: t('menu.salir') }))),
       el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
         enlaces.map(([id, clave, nombreIcono]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null },
@@ -529,7 +608,50 @@ function estadoEnInicio(s, ia = null) {
     lineaIa(ia),
     // Esta tarjeta no se actualiza sola: dice de cuándo son los datos.
     el('p', { class: 'ayuda', texto: t('inicio.estado.actualizado', { hora: cuando(new Date().toISOString()) }) }),
-    el('a', { class: 'boton-enlace', href: '#admin', texto: t('inicio.alerta.ver') }));
+    el('a', { class: alerta ? 'boton-enlace' : 'boton-enlace secundario', href: '#admin', texto: t('inicio.alerta.ver') }));
+}
+
+// ---------- «Primeros pasos» (0.5.1) ----------
+// La guía de Inicio: cada paso es una fila grande que lleva a donde se hace. Lo hecho y lo que falta salen de datos
+// de verdad (public/guia.js). Cuando está completa queda en una sola línea («todo listo») que se puede abrir.
+function tarjetaGuia(pasos) {
+  const g = resumenGuia(pasos);
+  if (!g.total) return null;
+  const marcaDe = p => (p.estado === 'ahora' ? el('span', { class: 'guia-ir' }, el('span', { texto: t('guia.ir') }), icono('flecha', 'icono chico'))
+    : p.estado === 'hecho' ? null
+      : el('span', { class: 'insignia tono-apagado guia-chip', texto: p.estado === 'opcional' ? t('guia.estado.opcional') : t('guia.estado.luego') }));
+  const lista = el('ol', { class: 'guia-pasos' }, g.pasos.map(p => el('li', { class: `guia-paso ${p.estado}` },
+    el('a', { class: 'guia-enlace', href: p.destino, 'aria-current': p.estado === 'ahora' ? 'step' : null },
+      el('span', { class: 'guia-icono' }, icono(p.estado === 'hecho' ? 'marca' : p.icono)),
+      el('span', { class: 'guia-texto' },
+        el('span', { class: 'guia-titulo', texto: t(`guia.paso.${p.id}`) }),
+        el('span', { class: 'guia-linea', texto: p.estado === 'hecho' ? t('guia.estado.hecho') : t(`guia.paso.${p.id}.linea`) })),
+      marcaDe(p)),
+    queEs(p.tema))));
+  if (g.completa) {
+    return el('details', { class: 'tarjeta guia completa' },
+      el('summary', { class: 'con-icono' }, icono('bien'), el('span', { texto: t('guia.listo') })),
+      lista);
+  }
+  return el('section', { class: 'tarjeta guia', 'aria-labelledby': 'guia-titulo' },
+    el('div', { class: 'guia-cabeza' },
+      el('h2', { id: 'guia-titulo', class: 'con-icono' }, icono('bandera'), el('span', { texto: t('guia.titulo') })),
+      el('span', { class: 'guia-cuenta', texto: t('guia.progreso', { hechos: numero(g.hechos), total: numero(g.total) }) })),
+    el('div', { class: 'guia-barra' }, barra(g.hechos, g.total, 'bien')),
+    lista);
+}
+// La misma guía en una línea, arriba de Administrador → Resumen: cuántos pasos van y el botón del que sigue.
+function guiaCompacta(pasos) {
+  const g = resumenGuia(pasos);
+  if (!g.total) return null;
+  if (g.completa) return el('p', { class: 'guia-compacta completa con-icono' }, icono('bien'), el('span', { texto: t('guia.listo') }));
+  return el('section', { class: 'tarjeta guia-compacta', 'aria-label': t('guia.titulo') },
+    el('div', { class: 'guia-compacta-texto' },
+      el('strong', { class: 'con-icono' }, icono('bandera'), el('span', { texto: t('guia.compacta', { hechos: numero(g.hechos), total: numero(g.total) }) })),
+      el('div', { class: 'guia-barra' }, barra(g.hechos, g.total, 'bien')),
+      el('span', { class: 'suave', texto: t('guia.sigue', { paso: t(`guia.paso.${g.siguiente.id}`) }) })),
+    el('a', { class: 'boton-enlace con-icono', href: g.siguiente.destino }, el('span', { texto: t('guia.continuar') }), icono('flecha')),
+    el('a', { class: 'enlace-fuerte guia-ver', href: '#inicio', texto: t('guia.ver_pasos') }));
 }
 
 async function pantallaInicio() {
@@ -553,9 +675,17 @@ async function pantallaInicio() {
         // Muchos esperando: se ven los primeros y «Ver N más».
         verMas(el('div', { class: 'lista-proyectos' }), pendientes.map(p => filaProyecto(p, escribe)), 3),
         // Antes de aprobar, sin rodeos: aprobar guarda el proyecto, pero todavía no busca.
-        el('p', { class: 'suave', texto: t('inicio.aprobar.fase') }),
+        el('p', { class: 'suave con-ayuda' }, el('span', { texto: t('inicio.aprobar.fase') }), queEs('fase')),
       ]
-        : el('p', { class: 'suave', texto: t('inicio.aprobar.vacio') }));
+        : el('p', { class: 'suave con-icono' }, icono('bien', 'icono chico'), el('span', { texto: t('inicio.aprobar.vacio') })));
+  // «Primeros pasos»: para el administrador, también lo que protege sus datos; para los demás, sus proyectos.
+  const guia = !r.ok ? null : tarjetaGuia(esAdmin
+    ? pasosAdmin({ sistema: sistema?.ok ? sistema.datos : null, ia: ia?.ok ? ia.datos : null, proyectos: r.datos.proyectos })
+    : pasosUsuario({ proyectos: r.datos.proyectos, puedeEscribir: escribe }));
+  const guiaLista = Boolean(guia?.classList.contains('completa'));
+  // «Ya funciona» y «Próximamente»: en el teléfono van cerradas (lo primero es lo que hay que hacer); en la PC, abiertas.
+  const informacion = (nombreIcono, textoTitulo, contenido) => el('section', { class: 'tarjeta inicio-info' },
+    el('details', { class: 'plegable', open: pantallaAncha() }, el('summary', { class: 'con-icono' }, icono(nombreIcono), el('h2', { texto: textoTitulo })), contenido));
   // El estado del sistema (solo el administrador): si hay una alerta va primero; si todo va bien, después de lo que
   // espera aprobación (en el teléfono lo primero que se ve es lo que hay que hacer).
   const estadoSistema = sistema?.ok ? estadoEnInicio(sistema.datos, ia?.ok ? ia.datos : null) : null;
@@ -569,12 +699,14 @@ async function pantallaInicio() {
         el('div', { class: 'portada-botones' },
           puedeCrear ? el('a', { class: 'boton-enlace claro con-icono', href: '#nuevo' }, icono('mas'), el('span', { texto: t('proyectos.nuevo') })) : null,
           r.ok ? el('a', { class: 'boton-enlace borde con-icono', href: '#proyectos' }, icono('carpeta'), el('span', { texto: t('inicio.ir_proyectos', { usados: r.datos.usados, limite: r.datos.limite }) })) : null)),
+      guiaLista ? null : guia,
       aprobar,
       alerta ? null : estadoSistema,
-      el('section', { class: 'tarjeta inicio-info' }, el('h2', { texto: t('inicio.funciona') }),
+      informacion('bien', t('inicio.funciona'),
         lista(['inicio.funciona.1', 'inicio.funciona.4', 'inicio.funciona.5', 'inicio.funciona.6', 'inicio.funciona.7', 'inicio.funciona.2', 'inicio.funciona.3'], 'bien', 'bien')),
-      el('section', { class: 'tarjeta inicio-info' }, el('h2', { texto: t('inicio.viene') }),
-        lista(['inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado')))));
+      informacion('reloj', t('inicio.viene'),
+        lista(['inicio.viene.clientes', 'inicio.viene.empleos'], 'reloj', 'apagado')),
+      guiaLista ? guia : null)));
 }
 
 // Botones de los que se elige uno (idioma, tema): el elegido se ve lleno y lo dice a VoiceOver (aria-pressed).
@@ -613,6 +745,7 @@ async function pantallaConfiguracion() {
   const lista = reinicios.ok ? reinicios.datos.reinicios : null;
   mostrar(marco('configuracion',
     el('h1', { class: 'titulo-pantalla', texto: t('config.titulo') }),
+    entrada(t('config.linea')),
     el('div', { class: 'rejilla dos' },
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('config.cuenta') }),
@@ -630,7 +763,44 @@ async function pantallaConfiguracion() {
           : lista.length ? [
             el('p', { class: 'suave', texto: t('config.reinicios.texto') }),
             verMas(el('ul', {}), lista.map(x => el('li', { texto: t('config.reinicios.linea', { fecha: fecha(x.fecha) }) })), 5),
-          ] : el('p', { class: 'suave', texto: t('config.reinicios.vacio') })))));
+          ] : vacio('candado', t('config.reinicios.vacio'), null, 'en-linea')),
+      el('section', { class: 'tarjeta' },
+        titulo('info', t('ayuda.titulo')),
+        el('p', { class: 'suave', texto: t('config.ayuda.texto') }),
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda' }, icono('info'), el('span', { texto: t('config.ayuda.abrir') }))))));
+}
+
+// ---------- Ayuda (0.5.1): todas las explicaciones de «¿Qué es esto?», con un buscador ----------
+// No pide nada al servidor: los textos ya están cargados. Se filtra mientras se escribe (sin tildes ni mayúsculas).
+function pantallaAyuda() {
+  nuevoTurno();
+  const temas = TEMAS_AYUDA.map(id => ({ id, titulo: t(`ayuda.${id}.titulo`), texto: t(`ayuda.${id}.texto`), ejemplo: TEMAS_CON_EJEMPLO.includes(id) ? t(`ayuda.${id}.ejemplo`) : '' }))
+    .sort((a, b) => a.titulo.localeCompare(b.titulo, idioma));
+  const lista = el('div', { class: 'glosario' });
+  const cuenta = el('p', { class: 'suave glosario-cuenta', role: 'status' });
+  const buscador = el('input', { id: 'campo-buscar-ayuda', type: 'search', autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'search', placeholder: t('ayuda.buscar.muestra') });
+  const pintar = () => {
+    const escrito = buscador.value.trim();
+    const hallados = buscarTemas(temas, escrito);
+    lista.replaceChildren(...hallados.map(x => el('article', { class: 'tarjeta termino', 'data-tema': x.id },
+      el('h2', { class: 'con-icono' }, icono('info'), el('span', { texto: x.titulo })),
+      el('p', { texto: x.texto }),
+      ejemploDeAyuda(x.id))));
+    if (!hallados.length) {
+      lista.append(vacio('buscar', t('ayuda.buscar.vacio', { texto: escrito }),
+        el('button', { type: 'button', class: 'secundario', texto: t('ayuda.buscar.borrar'), onclick: () => { buscador.value = ''; pintar(); buscador.focus(); } })));
+    }
+    cuenta.textContent = escrito ? tn('ayuda.buscar.cuenta', { n: hallados.length }) : t('ayuda.todas', { n: temas.length });
+  };
+  buscador.addEventListener('input', pintar);
+  pintar();
+  mostrar(marco('ayuda',
+    el('h1', { class: 'titulo-pantalla', texto: t('ayuda.titulo') }),
+    entrada(t('ayuda.linea')),
+    el('section', { class: 'tarjeta buscador-ayuda' },
+      el('label', { for: 'campo-buscar-ayuda', class: 'con-icono' }, icono('buscar'), el('span', { texto: t('ayuda.buscar') })),
+      buscador, cuenta),
+    lista));
 }
 
 function bloqueClaveTemporal(textoClave, nombre, temporal, usuario = nombre) {
@@ -916,8 +1086,9 @@ function barra(libre, total, tono) {
   return el('span', { class: 'barra', 'aria-hidden': 'true' }, lleno);
 }
 
-function titulo(nombreIcono, texto, id) {
-  return el('h2', { class: 'con-icono', id }, icono(nombreIcono), el('span', { texto }));
+// tema: la palabra que explica el botón (i) de al lado (ver queEs).
+function titulo(nombreIcono, texto, id, tema = null) {
+  return el('h2', { class: 'con-icono', id }, icono(nombreIcono), el('span', { texto }), tema ? queEs(tema) : null);
 }
 
 // Lo que dice el modo seguro, en palabras sencillas.
@@ -984,14 +1155,18 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
 
     // ---- Avisos (solo si hay abiertos): los primeros a la vista y «Ver N más» ----
     const avisos = abiertos.length ? el('section', { class: 'tarjeta ancha tarjeta-avisos', 'data-ancla': 'avisos' }, anclaAvisos,
-      titulo('campana', t('sistema.avisos')),
+      titulo('campana', t('sistema.avisos'), undefined, 'aviso'),
       verMas(el('div', {}), abiertos.map(a => el('div', { class: `aviso-sistema tono-${tonoAviso(a.nivel)}` },
         el('div', { class: 'aviso-cabeza' }, insignia(tonoAviso(a.nivel), t(`aviso.nivel.${a.nivel}`)), a.veces > 1 ? el('span', { class: 'suave', texto: t('aviso.veces', { n: a.veces }) }) : null),
         el('p', { class: 'aviso-texto', texto: textoAviso(a) }),
         el('p', { class: 'suave', texto: a.veces > 1 ? t('aviso.desde_ultima', { desde: fecha(a.creadoEn), ultima: hace(a.ultimaVez) }) : t('aviso.desde', { desde: fecha(a.creadoEn) }) }),
         a.vistoEn ? el('p', { class: 'suave', texto: t('aviso.visto', { fecha: fecha(a.vistoEn) }) })
           : el('button', { type: 'button', class: 'secundario', texto: t('aviso.entendido'), onclick: evento => acciones.visto(a, evento.currentTarget) }))), 3, estadoVista.avisos),
-      el('p', { class: 'ayuda', texto: s.telegram?.listo ? t('sistema.avisos.telegram_si') : t('sistema.avisos.telegram') })) : el('span', { hidden: true }, anclaAvisos);
+      el('p', { class: 'ayuda', texto: s.telegram?.listo ? t('sistema.avisos.telegram_si') : t('sistema.avisos.telegram') }))
+      // Sin avisos: se dice (con su dibujo) en vez de no mostrar nada.
+      : el('section', { class: 'tarjeta ancha tarjeta-avisos', 'data-ancla': 'avisos' }, anclaAvisos,
+        titulo('campana', t('sistema.avisos'), undefined, 'aviso'),
+        vacio('bien', t('sistema.avisos.vacio'), null, 'en-linea'));
     return [resumen, avisos];
   }
 
@@ -1006,7 +1181,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
     const m = s.modoSeguro ?? {};
     const explicacion = explicacionModoSeguro(m);
     const bloqueModoSeguro = el('div', { class: `modo-seguro tono-${m.activo ? (m.origen === 'automatico' ? 'mal' : 'atencion') : 'bien'}` },
-      el('div', { class: 'con-icono fuerte' }, icono('escudo'), el('span', { texto: t(m.activo ? 'modo_seguro.activo' : 'modo_seguro.apagado') })),
+      el('div', { class: 'con-icono fuerte' }, icono('escudo'), el('span', { texto: t(m.activo ? 'modo_seguro.activo' : 'modo_seguro.apagado') }), queEs('modo_seguro')),
       el('p', { texto: t(m.activo ? 'modo_seguro.activo.texto' : 'modo_seguro.apagado.texto') }),
       explicacion ? el('p', { class: m.activo ? '' : 'suave', texto: explicacion }) : null,
       el('button', {
@@ -1031,7 +1206,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
     });
 
     const ahora = el('section', { class: 'tarjeta area-ahora' },
-      el('div', { class: 'resumen-encabezado' }, titulo('latido', t('sistema.trabajo')), botonActualizar()),
+      el('div', { class: 'resumen-encabezado' }, titulo('latido', t('sistema.trabajo'), undefined, 'trabajo_automatico'), botonActualizar()),
       lineaSinConexion,
       el('div', { class: `estado-grande tono-${tono}` }, icono(sinConexion ? 'sin_conexion' : tono, 'icono estado'), el('span', { texto: valorTrabajo })),
       el('p', { class: 'fuerte', texto: enCurso.length ? t('tareas.ahora', { que: enCurso.map(x => `${nombreTipo(x.tipo)} (${hace(x.desde)})`).join(', ') }) : t('tareas.ahora.nada') }),
@@ -1057,7 +1232,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
     const tarjetaErrores = el('section', { class: 'tarjeta area-errores', 'data-ancla': 'errores' },
       titulo('atencion', t('tareas.errores')),
       errores.length ? verMas(el('div', {}), errores, 3, estadoVista.errores)
-        : el('p', { class: 'con-icono tono-bien tono-color' }, icono('bien', 'icono chico'), el('span', { texto: t('tareas.errores.vacio') })));
+        : vacio('bien', t('tareas.errores.vacio'), null, 'en-linea'));
     const despues = el('section', { class: 'tarjeta area-despues' },
       titulo('reloj', t('tareas.proximas')),
       verMas(el('ul', { class: 'lista-simple' }), (s.proximas ?? []).map(p => el('li', {
@@ -1081,7 +1256,7 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
     }))) : el('p', { class: 'suave', texto: t('servidor.sin_muestras') }));
   detallesHistorial.addEventListener('toggle', () => { estadoVista.historialAbierto = detallesHistorial.open; });
   const servidor = el('section', { class: 'tarjeta' },
-    el('div', { class: 'resumen-encabezado' }, titulo('servidor', t('sistema.servidor')), botonActualizar()),
+    el('div', { class: 'resumen-encabezado' }, titulo('servidor', t('sistema.servidor'), undefined, 'servidor'), botonActualizar()),
     lineaSinConexion,
     el('div', { class: `estado-grande tono-${tonoServidor}` }, icono(sinConexion ? 'sin_conexion' : tonoServidor, 'icono estado'), el('span', { texto: sinConexion ? t('sistema.sin_conexion.valor') : t(`servidor.semaforo.${salud.semaforo ?? 'amarillo'}`) })),
     (salud.problemas ?? []).map(p => el('p', { class: `aviso-linea tono-${tonoAviso(p.nivel)}`, texto: textoAviso({ clave: p.clave, detalle: p.detalle }) })),
@@ -1275,6 +1450,12 @@ function crearZonaSistema(vigente, parte = 'resumen') {
 // Arriba de todas, el título y la fila de pestañas (siempre a la vista); debajo, la contraseña temporal recién creada
 // (sigue a la vista en todas las pestañas hasta «Ya se la di» o hasta salir de Administrador).
 const PESTANAS_ADMIN = ['resumen', 'usuarios', 'trabajo', 'servidor'];
+// Debajo de las pestañas: para qué sirve cada una, en una línea, y las palabras que conviene conocer ahí.
+const LINEA_ADMIN = {
+  resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
+  copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
+};
+const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
 function cabeceraAdmin(actual, tonos = {}) {
   return [
     el('h1', { class: 'titulo-pantalla', texto: t('admin.titulo') }),
@@ -1287,6 +1468,8 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'ia', href: '#ia', texto: t('admin.pestana.ia'), nombreIcono: 'chispa' },
       { id: 'claves', href: '#claves', texto: t('admin.pestana.claves'), nombreIcono: 'llave' },
     ], actual, t('admin.pestanas')),
+    LINEA_ADMIN[actual] ? entrada(LINEA_ADMIN[actual]()) : null,
+    PALABRAS_ADMIN[actual] ? palabras(PALABRAS_ADMIN[actual]) : null,
     seccionClaveTemporal(),
   ];
 }
@@ -1299,7 +1482,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const vigente = nuevoTurno();
   const conZona = pestana !== 'usuarios';
   const sistema = crearZonaSistema(vigente, pestana);
-  const [r, datosSistema, ia] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia')]);
+  // Los proyectos, solo para «Primeros pasos» (los mismos pasos que en Inicio).
+  const [r, datosSistema, ia, misProyectos] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/proyectos')]);
   // Las claves solo se piden desde la cuenta de Tailscale del dueño (por el enlace público ni se preguntan).
   const claves = ia.ok && ia.datos.esDueno ? await api('GET', '/api/admin/claves') : null;
   if (!vigente()) return;
@@ -1325,7 +1509,9 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
           class: 'secundario con-icono atajo',
           onclick: () => { abrirCrearUsuario = true; location.hash = '#admin/usuarios'; },
         }, icono('mas'), el('span', { texto: t('admin.ir.nuevo') }))));
-    mostrar(marco('admin', cabecera, aviso,
+    const guia = datosSistema.ok && misProyectos.ok
+      ? guiaCompacta(pasosAdmin({ sistema: datosSistema.datos, ia: ia.ok ? ia.datos : null, proyectos: misProyectos.datos.proyectos })) : null;
+    mostrar(marco('admin', cabecera, aviso, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
@@ -1455,7 +1641,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         onclick: async () => {
           if (!confirm(t('admin.confirmar_reiniciar', { nombre: u.nombre }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/reiniciar-clave`, {});
-          if (!x.ok) return alert(textoError(x.datos.error));
+          if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
           claveTemporalVisible = { textoClave: 'admin.reiniciada', nombre: u.nombreVisible || x.datos.nombre, temporal: x.datos.claveTemporal, usuario: x.datos.nombre };
           await pantallaAdmin('usuarios');
         },
@@ -1467,7 +1653,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         onclick: async () => {
           if (u.activo && !confirm(t('admin.confirmar_desactivar', { nombre: u.nombre }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/activo`, { activo: !u.activo });
-          if (!x.ok) return alert(textoError(x.datos.error));
+          if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+          avisar(u.activo ? t('admin.listo.desactivada', { nombre: u.nombreVisible || u.nombre }) : t('admin.listo.activada', { nombre: u.nombreVisible || u.nombre }));
           await pantallaAdmin('usuarios');
         },
       }));
@@ -1475,7 +1662,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       el('div', {},
         el('span', { class: 'nombre', texto: u.nombreVisible || u.nombre }),
         el('span', { class: 'etiqueta', texto: t(u.rol === 'admin' ? 'admin.rol.admin' : 'admin.rol.usuario') }),
-        el('span', { class: `etiqueta ${u.activo ? 'bien' : 'mal'}`, texto: t(u.activo ? 'admin.activo' : 'admin.inactivo') })),
+        insignia(u.activo ? 'bien' : 'apagado', t(u.activo ? 'admin.activo' : 'admin.inactivo'))),
       u.nombreVisible && u.nombreVisible !== u.nombre ? el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }) : null,
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
@@ -1490,7 +1677,12 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const tarjetaUsuarios = el('section', { class: 'tarjeta tarjeta-usuarios' },
     el('h2', { class: 'con-icono' }, icono('personas'), el('span', { texto: t('admin.usuarios.n', { n: numero(r.datos.usuarios.length) }) })),
     soloTailnet,
-    verMas(el('div', { class: 'lista-usuarios' }), filas, 4));
+    verMas(el('div', { class: 'lista-usuarios' }), filas, 4),
+    // Solo está el administrador: se enseña para qué sirve crear otra cuenta, con el botón que abre el formulario.
+    r.datos.usuarios.length <= 1 ? vacio('personas', t('admin.usuarios.solo_tu'), permisos.cuentas ? el('button', {
+      type: 'button', class: 'secundario con-icono',
+      onclick: () => { plegable.open = true; tarjetaNuevo.scrollIntoView({ block: 'start' }); completo.focus({ preventScroll: true }); },
+    }, icono('mas'), el('span', { texto: t('admin.ir.nuevo') })) : null) : null);
   const abrir = abrirCrearUsuario;
   abrirCrearUsuario = false;
   const plegable = el('details', { class: 'plegable', open: abrir || pantallaAncha() },
@@ -1729,7 +1921,7 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   }));
   const detallesRecientes = el('details', { class: 'tarjeta copias-recientes', open: abierto.recientes },
     el('summary', { class: 'con-icono' }, icono('fila', 'icono'), el('span', { texto: t('copias.recientes', { n: numero(recientes.length) }) })),
-    recientes.length ? lista : el('p', { class: 'suave', texto: t('copias.recientes.vacio') }));
+    recientes.length ? lista : vacio('copia', t('copias.recientes.vacio'), null, 'en-linea'));
   detallesRecientes.addEventListener('toggle', () => { abierto.recientes = detallesRecientes.open; });
 
   // ---- La clave: comprobarla, cambiarla, las de antes (solo el dueño desde Tailscale puede comprobar y cambiar) ----
@@ -2179,7 +2371,7 @@ function dibujarIa(s, aviso, vigente) {
   }, icono('encendido'), el('span', { texto: t('ia.apagar') })) : null;
   const tarjetaEstadoIa = el('section', { class: 'tarjeta' },
     avisoDeArriba(aviso),
-    el('h2', { class: 'con-icono titulo-tarjeta' }, icono('chispa', 'icono grande'), el('span', { texto: t('ia.titulo') })),
+    el('h2', { class: 'con-icono titulo-tarjeta' }, icono('chispa', 'icono grande'), el('span', { texto: t('ia.titulo') }), queEs('ia')),
     el('div', { class: `estado-grande tono-${tono}` }, icono('encendido', 'icono estado'), el('span', { texto: nombreEstado })),
     el('p', { class: 'fuerte', texto: textoEstado }),
     s.estado === 'sin_uso' && dueno ? el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, icono('llave'), el('span', { texto: t('ia.ir_claves') })) : null,
@@ -2224,7 +2416,7 @@ function dibujarIa(s, aviso, vigente) {
   const planes = Object.keys(s.topesPlanMicro ?? {});
   const camposPlan = planes.map(plan => el('input', { id: `ia-tope-${plan}`, type: 'text', inputmode: 'decimal', autocomplete: 'off', value: dolaresParaEscribir(s.topesPlanMicro[plan]) }));
   const tarjetaTope = el('section', { class: 'tarjeta' },
-    titulo('dinero', t('ia.tope.titulo')),
+    titulo('dinero', t('ia.tope.titulo'), undefined, 'tope'),
     el('label', { for: 'ia-tope', texto: t('ia.tope.etiqueta') }),
     el('div', { class: 'campo-dinero' }, el('span', { class: 'campo-dinero-signo', 'aria-hidden': 'true', texto: 'US$' }), campoTope),
     el('p', { class: 'ayuda', id: 'ia-tope-ayuda', texto: t('ia.tope.ayuda') }),
@@ -2288,7 +2480,7 @@ function dibujarIa(s, aviso, vigente) {
   // ---- 5. Los proveedores (el interruptor «Usar …» solo existe si su precio oficial está confirmado) ----
   const mensajeProveedores = caja();
   const tarjetaProveedores = el('section', { class: 'tarjeta' },
-    titulo('ajustes', t('ia.proveedores.titulo')),
+    titulo('ajustes', t('ia.proveedores.titulo'), undefined, 'token'),
     controlesProveedores(proveedores).map(c => {
       const p = proveedores.find(x => x.id === c.id);
       const nombre = nombreProveedor(c.id);
@@ -2319,7 +2511,11 @@ function dibujarIa(s, aviso, vigente) {
       el('p', { class: 'suave', texto: t('ia.pago.limite.por_que') }),
       el('p', { texto: t('ia.pago.openai') })));
 
-  mostrar(marco('admin', cabeceraAdmin('ia'), el('div', { class: 'rejilla dos' }, tarjetaEstadoIa, tarjetaGasto, tarjetaTope, tarjetaAyuda, tarjetaProveedores, tarjetaPago)));
+  // En la PC, dos columnas, cada una con su alto (sin huecos entre tarjetas); en el teléfono las columnas no existen
+  // (display: contents) y el orden de siempre lo pone estilos.css.
+  mostrar(marco('admin', cabeceraAdmin('ia'), el('div', { class: 'rejilla dos columnas-libres' },
+    el('div', { class: 'columna' }, tarjetaEstadoIa, tarjetaTope, tarjetaProveedores),
+    el('div', { class: 'columna' }, tarjetaGasto, tarjetaAyuda, tarjetaPago))));
 }
 
 // «Ver el detalle» del gasto (desde Tailscale): por cuenta, por proyecto y por uso, las veces sin IA, los últimos usos y
@@ -2386,7 +2582,7 @@ async function pantallaClaves(aviso = null) {
   if (!vigente()) return;
   const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
     avisoDeArriba(aviso),
-    el('h2', { class: 'con-icono titulo-tarjeta' }, icono('llave', 'icono grande'), el('span', { texto: t('claves.titulo') })),
+    el('h2', { class: 'con-icono titulo-tarjeta' }, icono('llave', 'icono grande'), el('span', { texto: t('claves.titulo') }), queEs('clave_api')),
     ...hijos);
   if (!r.ok) {
     // Por el enlace público, desde otro equipo o por la conexión directa: ni se ven ni se cambian (lo dice y nada más).
@@ -2602,7 +2798,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
         mensaje));
   }
   return el('section', { class: 'tarjeta grupo-telegram ancha' },
-    titulo('avion_papel', t('claves.grupo.avisos')),
+    titulo('avion_papel', t('claves.grupo.avisos'), undefined, 'telegram'),
     el('p', { class: 'suave', texto: t('telegram.explica') }),
     el('div', { class: 'pasos-telegram' }, paso1, paso2));
 }
@@ -3672,22 +3868,25 @@ async function pantallaProyectos() {
     el('section', { class: 'tarjeta cabecera-pantalla cabecera-proyectos' },
       el('div', { class: 'cabecera-proyectos-texto' },
         el('h1', { texto: t('proyectos.titulo') }),
-        el('p', { class: 'suave', texto: t('proyectos.usados', { usados, limite }) }),
+        entrada(t('proyectos.linea')),
+        el('p', { class: 'suave con-ayuda' }, el('span', { texto: t('proyectos.usados', { usados, limite }) }), queEs('plan')),
         el('div', { class: 'medidor-proyectos' }, barra(usados, limite, usados >= limite ? 'atencion' : 'info')),
         resumenEstados),
       nuevo),
     el('section', { class: 'tarjeta' },
       el('h2', { texto: t('proyectos.lista') }),
-      activos.length ? verMas(el('div', { class: 'lista-proyectos en-columnas' }), activos.map(fila), 6) : el('p', { class: 'suave', texto: t('proyectos.vacio') })),
+      activos.length ? verMas(el('div', { class: 'lista-proyectos en-columnas' }), activos.map(fila), 6)
+        : vacio('carpeta', t('proyectos.vacio'), puedeEscribir && usados < limite
+          ? el('a', { class: 'boton-enlace secundario con-icono', href: '#nuevo' }, icono('mas'), el('span', { texto: t('proyectos.vacio.crear') })) : null)),
     el('div', { class: 'rejilla dos' },
       el('section', { class: 'tarjeta nota' },
-        el('p', { class: 'con-icono-arriba' }, icono('candado'), el('span', { texto: t('proyectos.aviso_fase.corto') })),
+        el('p', { class: 'con-icono-arriba' }, icono('candado'), el('span', { texto: t('proyectos.aviso_fase.corto') }), queEs('fase')),
         el('details', { class: 'en-palabras' }, el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: t('proyecto.mas_info') })),
           el('p', { texto: t('proyectos.aviso_fase') }))),
       papelera.length ? el('section', { class: 'tarjeta' },
         el('details', {},
           el('summary', { class: 'con-icono' }, icono('papelera'), el('span', { texto: t('proyectos.papelera', { n: papelera.length }) })),
-          el('p', { class: 'suave', texto: t('proyectos.papelera.texto') }),
+          el('p', { class: 'suave con-ayuda' }, el('span', { texto: t('proyectos.papelera.texto') }), queEs('papelera')),
           verMas(el('div', { class: 'lista-proyectos' }), papelera.map(fila), 5))) : null)));
 }
 
@@ -3761,7 +3960,7 @@ async function pantallaNuevo(textoInicial = null) {
   mostrar(marco('proyectos',
     el('section', { class: 'tarjeta cabecera-pantalla angosta' }, volver,
       el('h1', { texto: t('proyectos.nuevo') }),
-      el('p', { class: 'suave', texto: t('creador.texto') }),
+      entrada(t('creador.texto')),
       conmutador),
     el('section', { class: 'tarjeta angosta' }, lugar)));
 }
@@ -3947,7 +4146,7 @@ function tarjetaVersion(v, { proyecto, activa, puedeEscribir, abrirFormulario, v
   const subtituloArriba = !enAcciones || !escribe;
   const partes = [
     el('h2', { class: 'con-icono' }, icono(enAcciones ? 'reloj' : 'ojo'),
-      el('span', { texto: enAcciones ? t('proyecto.pendiente.espera', { numero: v.numero }) : t('proyecto.pendiente.titulo', { numero: v.numero }) })),
+      el('span', { texto: enAcciones ? t('proyecto.pendiente.espera', { numero: v.numero }) : t('proyecto.pendiente.titulo', { numero: v.numero }) }), queEs(enAcciones ? 'aprobar' : 'version')),
     subtituloArriba ? el('p', { class: 'suave', texto: subtitulo }) : null,
     // Fase 1, parte d: si la hizo la IA, se dice arriba (con qué modelo y cuánto costó), qué cambió y cómo volver.
     v.ayudaIa ? el('div', { class: 'version-ia' },
@@ -4084,7 +4283,10 @@ function dibujarProyecto(d, aviso = null) {
     { id: 'versiones', href: direccionProyecto(p.id, 'versiones'), texto: t('proyecto.pestana.versiones', { n: numero(versiones.length) }), nombreIcono: 'fila' },
     { id: 'historial', href: direccionProyecto(p.id, 'historial'), texto: t('proyecto.pestana.historial'), nombreIcono: 'reloj' },
   ], pestana, t('proyecto.pestanas'));
-  const dibujarPestana = (...contenido) => mostrar(marco('proyectos', cabecera, filaPestanas, ...contenido));
+  // Debajo de las pestañas: para qué sirve cada una, en una línea.
+  const lineaPestana = { resumen: () => t('proyecto.linea.resumen'), entendi: () => t('proyecto.linea.entendi'), versiones: () => t('proyecto.linea.versiones'), historial: () => t('proyecto.linea.historial') }[pestana];
+  const dibujarPestana = (...contenido) => mostrar(marco('proyectos', cabecera, filaPestanas, lineaPestana ? entrada(lineaPestana()) : null,
+    pestana === 'entendi' ? palabras(['entendi', 'duda', 'autonomia']) : null, ...contenido));
 
   // Las versiones viejas llegan sin su contenido (así el proyecto abre rápido); se abren una por una.
   const contenidoVersion = v => [
@@ -4117,7 +4319,7 @@ function dibujarProyecto(d, aviso = null) {
         mensajeReusar);
     };
     dibujarPestana(el('section', { class: 'tarjeta angosta' },
-      el('h2', { class: 'con-icono' }, icono('fila'), el('span', { texto: t('proyecto.versiones') })),
+      el('h2', { class: 'con-icono' }, icono('fila'), el('span', { texto: t('proyecto.versiones') }), queEs('version')),
       verMas(el('div', {}), versiones.map(v => el('details', { class: 'version' },
         el('summary', { texto: t('version.linea', { numero: v.numero, estado: t(`version.estado.${v.estado}`), fecha: fecha(v.creadaEn) }) }),
         el('p', { class: 'suave', texto: v.ayudaIa ? t('version.origen_ia') : t(`version.origen.${v.origen}`) }),
@@ -4130,9 +4332,9 @@ function dibujarProyecto(d, aviso = null) {
   if (pestana === 'historial') {
     dibujarPestana(el('section', { class: 'tarjeta angosta' },
       el('h2', { class: 'con-icono' }, icono('reloj'), el('span', { texto: t('proyecto.historial') })),
-      verMas(el('ul', { class: 'historial' }), historial.map(h => el('li', {},
+      historial.length ? verMas(el('ul', { class: 'historial' }), historial.map(h => el('li', {},
         el('span', { texto: h.accion === 'version_nueva' && h.detalle?.conIa ? t('historial.version_nueva.ia', h.detalle) : t(`historial.${h.accion}`, h.detalle || {}) }),
-        el('span', { class: 'suave', texto: ` · ${fecha(h.fecha)}` }))), 12)));
+        el('span', { class: 'suave', texto: ` · ${fecha(h.fecha)}` }))), 12) : vacio('reloj', t('proyecto.historial.vacio'))));
     return;
   }
 
@@ -4294,10 +4496,10 @@ function dibujarProyecto(d, aviso = null) {
       ? [el('p', { class: 'suave', texto: t('proyecto.restaurar.texto') }),
         botonAccion(t('proyectos.restaurar'), '', mensajePapelera, () =>
           pedirYMostrar('POST', `/api/proyectos/${p.id}/papelera`, { enPapelera: false }, t('proyecto.listo.restaurado')), 'actualizar')]
-      : botonAccion(t('proyecto.papelera'), 'peligro', mensajePapelera, async () => {
+      : el('div', { class: 'con-ayuda' }, botonAccion(t('proyecto.papelera'), 'peligro', mensajePapelera, async () => {
         if (!confirm(t('proyecto.confirmar_papelera', { nombre: p.nombre }))) return;
         await pedirYMostrar('POST', `/api/proyectos/${p.id}/papelera`, { enPapelera: true }, t('proyecto.listo.papelera'));
-      }, 'papelera'),
+      }, 'papelera'), queEs('papelera')),
     mensajePapelera) : null;
 
   // En el teléfono, la versión que espera va primero (aprobar se ve al abrir); en la PC, a la derecha del estado.
@@ -4312,6 +4514,8 @@ function dibujarProyecto(d, aviso = null) {
 // ---------- Arranque ----------
 async function dibujar() {
   turno++;
+  // Una explicación abierta («¿Qué es esto?») no sigue a la persona a otra pantalla.
+  cerrarAyuda();
   if (!estado.usuario) {
     if (estado.setup?.necesitaAdmin) return estado.setup.puedeCrearAdmin ? pantallaCrearAdmin() : pantallaAbreTailscale();
     return pantallaEntrar();
@@ -4327,6 +4531,7 @@ async function dibujar() {
   if (seccion !== 'copias') claveNueva = null;
   if (seccion !== 'claves') vinculoEnPantalla = null;
   if (seccion === 'configuracion') return pantallaConfiguracion();
+  if (seccion === 'ayuda') return pantallaAyuda();
   if (pestanaAdmin && esAdmin) return pantallaAdmin(PESTANAS_ADMIN.includes(pestanaAdmin[1]) ? pestanaAdmin[1] : 'resumen');
   if (seccion === 'copias' && esAdmin) return pantallaCopias();
   if (seccion === 'ia' && esAdmin) return pantallaIa();
@@ -4344,9 +4549,11 @@ async function dibujar() {
 // algo más al empezar, va aquí también (test/archivos.test.js lo revisa).
 function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'configuracion') return ['/api/yo/reinicios'];
+  // La Ayuda no pide nada: sus textos llegan con el idioma.
+  if (seccion === 'ayuda') return [];
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
   // Las pestañas de Administrador (#admin/usuarios, #admin/trabajo, #admin/servidor) piden lo mismo que #admin.
-  if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia'] : [];
+  if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/proyectos'] : [];
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
   if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];

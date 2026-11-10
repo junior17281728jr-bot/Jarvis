@@ -444,7 +444,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'], ['proyectos', 'pantallaProyectos'],
     ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
     ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
-    ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto']];
+    ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto'],
+    // Claridad (0.5.1): la Ayuda no pide nada (sus textos llegan con el idioma).
+    ['ayuda', 'pantallaAyuda']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
@@ -464,6 +466,10 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // Fase 1, parte e: Copias pide solo lo suyo (y nada a quien no es administrador).
   assert.deepEqual([...pedidosAlAbrir('copias', true)], ['/api/admin/copias']);
   assert.deepEqual([...pedidosAlAbrir('copias', false)], []);
+  // Claridad (0.5.1): la Ayuda no adelanta nada; Administrador adelanta también los proyectos (para «Primeros pasos»).
+  assert.deepEqual([...pedidosAlAbrir('ayuda', true)], []);
+  assert.deepEqual([...pedidosAlAbrir('ayuda', false)], []);
+  assert.ok(pedidosAlAbrir('admin', true).includes('/api/proyectos'));
   // Sin dirección o con una que no existe se ve Inicio.
   assert.deepEqual(pedidosAlAbrir('cualquier-cosa', true), pedidosAlAbrir('inicio', true));
   assert.deepEqual(pedidosAlAbrir('proyecto/abc', false), pedidosAlAbrir('inicio', false));

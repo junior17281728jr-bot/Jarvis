@@ -538,5 +538,6 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
     9. Leer `update.log` y `version.bad` (solo leer) para avisarte de una actualización que falló o se devolvió: sí.
     10. Copias en modo seguro: en pausa (el aviso urgente llega igual).
     11. Cambiar la clave de recuperación: solo si tú lo pides (las copias viejas siguen necesitando la clave vieja).
+- Claridad (versión 0.5.1, sin cambio de base): cada pantalla y pestaña empieza con una línea que dice para qué sirve; «Primeros pasos» en Inicio (y en una línea en Administrador → Resumen) con el avance sacado de datos de verdad; el botón (i) «¿Qué es esto?» junto a títulos y palabras, y la pantalla Ayuda (`#ayuda`, con buscador) que las lista todas; listas vacías con su dibujo y su botón; avisos cortos en vez de `alert()`; «IA y gastos» sin huecos en la PC. Solo pantallas (`public/guia.js` es nuevo); Administrador pide también `GET /api/proyectos`.
 
 Plan completo: «OPORTIA: arquitectura y plan» y «OPORTIA: evaluación y plan ampliado».

@@ -202,7 +202,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     'ia.motivo.', 'ia.proposito.', 'ia.proveedor.', 'ia.estado.', 'ia.estado_llamada.', 'ia.ambito.', 'ia.falta.', 'ia.plan.', 'ia.ayuda.',
     'claves.uso.', 'claves.donde.', 'claves.estado.', 'claves.grupo.', 'claves.corto.', 'version.campo_ia.',
     // Fase 1, parte e.
-    'copias.motivo.', 'copias.estado_fila.', 'copias.restaurar.paso', 'telegram.como', 'telegram.problema.']));
+    'copias.motivo.', 'copias.estado_fila.', 'copias.restaurar.paso', 'telegram.como', 'telegram.problema.',
+    // Claridad (0.5.1): las explicaciones de la Ayuda y los pasos de la guía (sus frases se revisan más abajo, en «claridad: …»).
+    'ayuda.', 'guia.paso.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
@@ -706,3 +708,125 @@ test('revisión: Claves dice que la base se recuperó; Trabajo menciona la copia
   assert.match(unir, /vincular\/cancelar/, 'cancelar le avisa al servidor (si no, se retomaría)');
 });
 
+
+// ---------- Claridad (0.5.1): «Primeros pasos», «¿Qué es esto?», la Ayuda y la línea de cada pantalla ----------
+test('claridad: «Primeros pasos» del administrador sale de datos de verdad (clave, Telegram, copia, proyecto, aprobar; la IA es opcional)', async () => {
+  const { pasosAdmin, resumenGuia } = await import('../public/guia.js');
+  const estados = datos => Object.fromEntries(resumenGuia(pasosAdmin(datos)).pasos.map(p => [p.id, p.estado]));
+  const nuevo = { sistema: { copias: { motivo: 'sin_clave', ultimaFuera: null }, telegram: { listo: false, chat: null } }, ia: { encendida: false }, proyectos: [] };
+  assert.deepEqual(estados(nuevo), { clave: 'ahora', telegram: 'luego', copia: 'luego', proyecto: 'luego', aprobar: 'luego', ia: 'opcional' });
+  let g = resumenGuia(pasosAdmin(nuevo));
+  assert.deepEqual([g.hechos, g.total, g.completa, g.siguiente.id, g.siguiente.destino], [0, 5, false, 'clave', '#copias']);
+  // Con la clave creada sigue el Telegram; la copia espera a los dos.
+  const conClave = { ...nuevo, sistema: { copias: { motivo: 'solo_locales', ultimaFuera: null }, telegram: { listo: false, chat: null } } };
+  assert.deepEqual(estados(conClave), { clave: 'hecho', telegram: 'ahora', copia: 'luego', proyecto: 'luego', aprobar: 'luego', ia: 'opcional' });
+  assert.equal(pasosAdmin(conClave).find(p => p.id === 'copia').necesita, 'telegram');
+  // Un chat perdido no cuenta como unido; uno bloqueado sí (sigue unido, aunque no deje mandar).
+  const perdido = { ...conClave, sistema: { ...conClave.sistema, telegram: { listo: false, chat: { estado: 'perdido' } } } };
+  assert.equal(estados(perdido).telegram, 'ahora');
+  const unido = { ...conClave, sistema: { copias: { motivo: 'atrasada', ultimaFuera: null }, telegram: { listo: true, chat: { estado: 'activo', nombre: 'Junior' } } } };
+  assert.deepEqual(estados(unido), { clave: 'hecho', telegram: 'hecho', copia: 'ahora', proyecto: 'luego', aprobar: 'luego', ia: 'opcional' });
+  // Un proyecto que espera aprobación: el paso «aprobar» lleva a ese proyecto.
+  const conProyecto = { ...unido, sistema: { ...unido.sistema, copias: { motivo: null, ultimaFuera: { fecha: '2026-11-09T08:41:00Z' } } },
+    proyectos: [{ id: 9, enPapelera: true, versionPendiente: 1, versionActiva: null }, { id: 4, enPapelera: false, versionPendiente: 1, versionActiva: null }] };
+  g = resumenGuia(pasosAdmin(conProyecto));
+  assert.deepEqual([g.hechos, g.total, g.siguiente.id, g.siguiente.destino], [4, 5, 'aprobar', '#proyecto/4']);
+  // Todo hecho: completa aunque la IA siga apagada (es opcional); con la IA encendida, también ese paso queda hecho.
+  const listo = { ...conProyecto, proyectos: [{ id: 4, enPapelera: false, versionPendiente: null, versionActiva: 1 }] };
+  g = resumenGuia(pasosAdmin(listo));
+  assert.deepEqual([g.hechos, g.total, g.completa, g.siguiente], [5, 5, true, null]);
+  assert.equal(estados(listo).ia, 'opcional');
+  assert.equal(estados({ ...listo, ia: { encendida: true } }).ia, 'hecho');
+  // Un proyecto aprobado que se mandó a la papelera no devuelve la guía al principio.
+  assert.equal(resumenGuia(pasosAdmin({ ...listo, proyectos: [{ id: 4, enPapelera: true, versionPendiente: null, versionActiva: 1 }] })).completa, true);
+  // Si el estado del sistema no llegó, solo se muestran los pasos de los proyectos (nunca un paso inventado).
+  assert.deepEqual(pasosAdmin({ sistema: null, ia: null, proyectos: [] }).map(p => p.id), ['proyecto', 'aprobar']);
+});
+
+test('claridad: la guía de las demás cuentas (crear, revisar, aprobar); quien solo puede ver no tiene pasos', async () => {
+  const { pasosUsuario, resumenGuia } = await import('../public/guia.js');
+  let g = resumenGuia(pasosUsuario({ proyectos: [] }));
+  assert.deepEqual(g.pasos.map(p => `${p.id}:${p.estado}`), ['proyecto:ahora', 'revisar:luego', 'aprobar:luego']);
+  assert.equal(g.siguiente.destino, '#nuevo');
+  g = resumenGuia(pasosUsuario({ proyectos: [{ id: 3, enPapelera: false, versionPendiente: 1, versionActiva: null }] }));
+  assert.deepEqual(g.pasos.map(p => `${p.id}:${p.estado}`), ['proyecto:hecho', 'revisar:ahora', 'aprobar:luego']);
+  assert.equal(g.siguiente.destino, '#proyecto/3/entendi');
+  g = resumenGuia(pasosUsuario({ proyectos: [{ id: 3, enPapelera: false, versionPendiente: null, versionActiva: 1 }] }));
+  assert.equal(g.completa, true);
+  assert.deepEqual(pasosUsuario({ proyectos: [], puedeEscribir: false }), []);
+  assert.equal(resumenGuia([]).completa, false);
+});
+
+test('claridad: cada palabra de la Ayuda tiene su explicación en los dos idiomas, y las pantallas solo usan palabras que existen', async () => {
+  const { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, buscarTemas } = await import('../public/guia.js');
+  assert.ok(TEMAS_AYUDA.length >= 20);
+  assert.equal(new Set(TEMAS_AYUDA).size, TEMAS_AYUDA.length);
+  for (const tema of TEMAS_AYUDA) {
+    for (const [nombre, idioma] of [['es', es], ['en', en]]) {
+      assert.ok(idioma[`ayuda.${tema}.titulo`], `falta ayuda.${tema}.titulo (${nombre})`);
+      const texto = idioma[`ayuda.${tema}.texto`];
+      assert.ok(texto, `falta ayuda.${tema}.texto (${nombre})`);
+      // Corta: 2 o 3 frases (4 como mucho) y sin palabras de programador.
+      const frases = texto.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚ¿«“])/).length;
+      assert.ok(frases >= 2 && frases <= 4, `ayuda.${tema}.texto (${nombre}) tiene ${frases} frases`);
+      assert.ok(texto.length <= 260, `ayuda.${tema}.texto (${nombre}) es larga: ${texto.length}`);
+      assert.equal(Boolean(idioma[`ayuda.${tema}.ejemplo`]), TEMAS_CON_EJEMPLO.includes(tema), `ayuda.${tema}.ejemplo (${nombre})`);
+    }
+  }
+  for (const tema of TEMAS_CON_EJEMPLO) assert.ok(TEMAS_AYUDA.includes(tema), tema);
+  // No queda una explicación suelta que ninguna pantalla muestre.
+  for (const clave of Object.keys(es)) {
+    const m = /^ayuda\.([a-z_]+)\.(titulo|texto|ejemplo)$/.exec(clave);
+    if (m) assert.ok(TEMAS_AYUDA.includes(m[1]), `sobra ${clave}`);
+  }
+  // Los botones (i) de las pantallas: queEs('…'), titulo(…, '…') y palabras([…]) nombran palabras de la lista.
+  const usadas = new Set();
+  for (const m of appJs.matchAll(/queEs\('([a-z_]+)'/g)) usadas.add(m[1]);
+  for (const m of appJs.matchAll(/titulo\([^\n]*?, undefined, '([a-z_]+)'\)/g)) usadas.add(m[1]);
+  for (const m of appJs.matchAll(/(?:palabras\(|PALABRAS_ADMIN = )([^\n]*)/g)) for (const x of m[1].matchAll(/'([a-z_]+)'/g)) usadas.add(x[1]);
+  for (const m of readFileSync(join(RAIZ, 'public/guia.js'), 'utf8').matchAll(/tema: '([a-z_]+)'/g)) usadas.add(m[1]);
+  assert.ok(usadas.size >= 15, `pocas palabras con botón: ${usadas.size}`);
+  for (const tema of usadas) assert.ok(TEMAS_AYUDA.includes(tema), `la pantalla usa la palabra «${tema}», que no está en la Ayuda`);
+  for (const tema of TEMAS_AYUDA) assert.ok(usadas.has(tema), `«${tema}» está en la Ayuda pero ningún botón (i) la abre`);
+  // El buscador: sin tildes ni mayúsculas; primero lo que coincide en el título.
+  const temas = TEMAS_AYUDA.map(id => ({ id, titulo: es[`ayuda.${id}.titulo`], texto: es[`ayuda.${id}.texto`], ejemplo: es[`ayuda.${id}.ejemplo`] ?? '' }));
+  assert.equal(buscarTemas(temas, '').length, temas.length);
+  assert.deepEqual(buscarTemas(temas, 'AUTONOMIA').map(x => x.id), ['autonomia']);
+  assert.deepEqual(buscarTemas(temas, 'copia').slice(0, 2).map(x => x.id).sort(), ['copia', 'copia_comprobada']);
+  assert.ok(buscarTemas(temas, 'botfather').some(x => x.id === 'token'));
+  assert.deepEqual(buscarTemas(temas, 'zzzz'), []);
+  // La hoja es accesible: un <dialog> de verdad (Escape la cierra), el botón dice si está abierta y el foco vuelve.
+  const abrir = seccionDe(appJs, 'function abrirAyuda(');
+  assert.match(abrir, /el\('dialog', \{ class: 'hoja-ayuda', 'aria-labelledby': 'hoja-ayuda-titulo' \}\)/);
+  assert.match(abrir, /hoja\.showModal\(\)/);
+  assert.match(abrir, /setAttribute\('aria-expanded', 'true'\)/);
+  assert.match(abrir, /setAttribute\('aria-expanded', 'false'\)/);
+  assert.match(abrir, /vuelve\.focus\(/);
+  assert.match(seccionDe(appJs, 'function queEs('), /'aria-haspopup': 'dialog', 'aria-expanded': 'false'/);
+  assert.match(seccionDe(appJs, 'async function dibujar('), /cerrarAyuda\(\);/);
+});
+
+test('claridad: cada pantalla y pestaña empieza con una línea corta (12 palabras como mucho) y cada paso de la guía tiene sus frases', async () => {
+  const { pasosAdmin, pasosUsuario } = await import('../public/guia.js');
+  const lineas = ['inicio.texto', 'config.linea', 'ayuda.linea', 'proyectos.linea', 'creador.texto', 'proyecto.linea.resumen', 'proyecto.linea.entendi', 'proyecto.linea.versiones',
+    'proyecto.linea.historial', ...['resumen', 'usuarios', 'trabajo', 'servidor', 'copias', 'ia', 'claves'].map(x => `admin.linea.${x}`)];
+  for (const clave of lineas) {
+    for (const [nombre, idioma] of [['es', es], ['en', en]]) {
+      assert.ok(idioma[clave], `falta ${clave} (${nombre})`);
+      assert.ok(idioma[clave].split(/\s+/).length <= 12, `${clave} (${nombre}) pasa de 12 palabras`);
+    }
+    assert.ok(appJs.includes(`'${clave}'`), `ninguna pantalla muestra ${clave}`);
+  }
+  // Las siete pestañas de Administrador y las cuatro de un proyecto tienen su línea.
+  assert.match(appJs, /LINEA_ADMIN\[actual\] \? entrada\(LINEA_ADMIN\[actual\]\(\)\) : null/);
+  assert.match(appJs, /lineaPestana \? entrada\(lineaPestana\(\)\) : null/);
+  const todos = { sistema: { copias: { motivo: null, ultimaFuera: null }, telegram: { chat: null } }, ia: { encendida: false }, proyectos: [] };
+  const ids = new Set([...pasosAdmin(todos), ...pasosUsuario({ proyectos: [] })].map(p => p.id));
+  assert.deepEqual([...ids].sort(), ['aprobar', 'clave', 'copia', 'ia', 'proyecto', 'revisar', 'telegram']);
+  for (const id of ids) for (const idioma of [es, en]) assert.ok(idioma[`guia.paso.${id}`] && idioma[`guia.paso.${id}.linea`], `guia.paso.${id}`);
+  // Las listas vacías enseñan (un dibujo, una línea y, si se puede, el botón) y los errores ya no salen en un alert().
+  for (const clave of ['proyectos.vacio', 'admin.usuarios.solo_tu', 'copias.recientes.vacio', 'sistema.avisos.vacio', 'proyecto.historial.vacio', 'config.reinicios.vacio', 'ayuda.buscar.vacio']) {
+    assert.match(appJs, new RegExp(`vacio\\('[a-z_]+', t\\('${clave.replaceAll('.', '\\.')}'`), `${clave} no se muestra con vacio(…)`);
+  }
+  assert.doesNotMatch(appJs, /\balert\(/);
+});
