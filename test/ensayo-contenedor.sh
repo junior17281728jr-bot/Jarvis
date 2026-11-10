@@ -18,6 +18,7 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/oportia-ensayo.XXXXXX")"
 E="$T/ensayo"
 A="$(printf 'a%.0s' {1..40})"; B="$(printf 'b%.0s' {1..40})"; C="$(printf 'c%.0s' {1..40})"; D="$(printf 'd%.0s' {1..40})"
 BIEN=0
+VERSION="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$REPO/package.json" | head -n 1)"
 
 terminar() {
   local codigo=$?
@@ -31,7 +32,7 @@ trap terminar EXIT
 en() { docker exec "$NOMBRE" "$@"; }
 bien() { BIEN=$((BIEN + 1)); echo "  ✔ $1"; }
 mal() { echo "  ✖ $1"; exit 1; }
-comprobar() { local que="$1"; shift; if "$@" >/dev/null 2>&1; then bien "$que"; else mal "$que"; fi; }
+comprobar() { local que="$1" visto; shift; if visto="$("$@" 2>&1)"; then bien "$que"; else printf '%s\n' "$visto" | tail -n 20; mal "$que"; fi; }
 contiene() { local que="$1" texto="$2" patron="$3"; if grep -qE -- "$patron" <<< "$texto"; then bien "$que"; else echo "$texto" | tail -n 40; mal "$que"; fi; }
 
 echo "== Preparo las versiones (GitHub de mentira) =="
@@ -136,7 +137,8 @@ chmod 755 "$E/falsos"/*
 echo "== Enciendo el contenedor ($IMAGEN) =="
 RED=()
 if [ -n "${HTTPS_PROXY:-}" ]; then RED=(--network host -e "HTTPS_PROXY=$HTTPS_PROXY" -e "https_proxy=$HTTPS_PROXY" -e CURL_CA_BUNDLE=/ensayo/ca.crt -e NODE_EXTRA_CA_CERTS=/ensayo/ca.crt); fi
-docker run -d --name "$NOMBRE" "${RED[@]}" -v "$E:/ensayo:ro" "$IMAGEN" sleep infinity >/dev/null
+# (--init: un proceso 1 que recoge a los procesos terminados, como hace systemd en un servidor)
+docker run -d --init --name "$NOMBRE" "${RED[@]}" -v "$E:/ensayo:ro" "$IMAGEN" sleep infinity >/dev/null
 en bash -c 'cp /ensayo/falsos/* /usr/local/bin/ && mkdir -p /run/systemd/system /run/ensayo'
 if [ -n "${HTTPS_PROXY:-}" ]; then
   # (solo para el ensayo detrás de un proxy: apt por https y con su certificado)
@@ -154,7 +156,7 @@ comprobar "la carpeta de datos es de jarvis y cerrada (750)" en bash -c '[ "$(st
 comprobar "el .env es root:jarvis 640" en bash -c '[ "$(stat -c "%U:%G %a" /opt/jarvis/.env)" = "root:jarvis 640" ]'
 comprobar "el código es de root y jarvis no puede escribirlo" en bash -c '[ "$(stat -c "%U %a" /opt/jarvis/src)" = "root 755" ] && ! runuser -u jarvis -- touch /opt/jarvis/src/x 2>/dev/null'
 comprobar "la app corre como jarvis (servidor y trabajador)" en bash -c '[ "$(ps -eo user:20,args | grep -c "^jarvis .*node")" -ge 2 ]'
-comprobar "la app contesta 200 como OPORTIA 0.6.0" en bash -c '/usr/bin/curl -fsS http://127.0.0.1:8080/api/setup | grep -q "\"app\":\"oportia\",\"version\":\"0.6.0\""'
+comprobar "la app contesta 200 como OPORTIA $VERSION" en bash -c 'r="$(/usr/bin/curl -fsS http://127.0.0.1:8080/api/setup)" && grep -q "\"app\":\"oportia\"" <<< "$r" && grep -q "\"version\":\"'"$VERSION"'\"" <<< "$r" || { echo "$r"; exit 1; }'
 comprobar "las pruebas de la app corrieron como nobody (y pasaron)" en bash -c 'grep -q "actualizado a aaaaaaa" /var/lib/jarvis/update.log && [ ! -e /var/lib/jarvis/version.bad ]'
 comprobar "no quedó ninguna carpeta de corrida en la carpeta temporal" en bash -c '! ls -d /tmp/oportia-corrida.* 2>/dev/null | grep -q .'
 comprobar "la orden corta existe y dice el estado" en bash -c 'oportia estado | grep -q "La app contesta:.*sí"'
@@ -184,7 +186,8 @@ SALIDA="$(actualizar "$C")"
 contiene "volvió al código anterior" "$SALIDA" 'no arrancó bien: vuelvo al código anterior'
 comprobar "línea exacta, version.bad, el código anterior de vuelta y la app sana otra vez" en bash -c 'grep -qE "^\S+ versión ccccccc no arrancó: volví a la anterior$" /var/lib/jarvis/update.log && [ "$(cat /var/lib/jarvis/version.bad)" = "'"$C"'" ] && [ "$(cat /var/lib/jarvis/version.txt)" = "'"$A"'" ] && grep -q "abrirBase" /opt/jarvis/src/server.js && /usr/bin/curl -fsS http://127.0.0.1:8080/api/setup | grep -q oportia'
 comprobar "estado «revertida», sin carpetas a medias, y los datos siguen (1 usuario)" en bash -c 'grep -q "\"resultado\":\"revertida\"" /var/lib/jarvis/actualizador.json && [ ! -e /opt/jarvis.mala ] && [ ! -e /opt/jarvis.previa ] && [ ! -e /opt/jarvis.nueva ] && cd /opt/jarvis && runuser -u jarvis -- /usr/bin/node --no-warnings deploy/oportia-base.mjs /var/lib/jarvis/oportia.db | grep -q "^base 1 "'
-comprobar "al apagar la versión mala no quedó ningún proceso suyo" en bash -c '[ "$(ps -eo user:20,args | grep -c "^jarvis .*node")" -eq 2 ]'
+# (Todo lo que corre como «jarvis» debe ser del servicio de AHORA: su misma sesión. La app puede tener más de dos procesos un momento.)
+comprobar "al apagar la versión mala no quedó ningún proceso suyo" en bash -c 'p="$(cat /run/ensayo/jarvis.pid)"; ps -eo user:20,sid,pid,etime,args | grep "^jarvis " | grep -v "<defunct>" > /tmp/de-jarvis.txt; [ "$(grep -c node /tmp/de-jarvis.txt)" -ge 2 ] && ! awk -v p="$p" "\$2 != p" /tmp/de-jarvis.txt | grep -q . || { echo "servicio $p"; cat /tmp/de-jarvis.txt; exit 1; }'
 
 echo "== 5. Una versión buena con el actualizador cambiado → se instala y el actualizador se renueva =="
 SALIDA="$(actualizar "$D")"

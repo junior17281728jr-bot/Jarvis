@@ -5,7 +5,8 @@
 // Reglas: nunca la red, nunca un comando del sistema de verdad, y NUNCA como root: si quien corre las pruebas es root
 // (el actualizador de antes las corre así), cada programa baja a «nobody» con setpriv y la raíz falsa es de «nobody»:
 // una ruta que se escapara de la raíz fallaría con «Permission denied». Si no se puede (falta setpriv, o «nobody» no
-// puede entrar a la carpeta temporal), las pruebas se SALTAN con su motivo: nunca fallan por el entorno.
+// puede entrar a la carpeta temporal o no puede leer la carpeta del código), las pruebas se SALTAN con su motivo: nunca
+// fallan por el entorno.
 import './ayuda.js';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -37,6 +38,12 @@ export function motivoParaSaltar() {
       execFileSync('chown', [`${NADIE}:${NADIE}`, carpeta]);
       const r = spawnSync('setpriv', [...comoNadie, BASH, '-c', `: > "${carpeta}/puedo" && "${process.execPath}" --version`], { stdio: 'ignore' });
       if (r.status !== 0) motivo = 'quien corre las pruebas es root y «nobody» no puede entrar a la carpeta temporal (o usar node): los programas del servidor nunca se prueban como root';
+      else {
+        // El actualizador de antes baja el código a una carpeta SOLO de root (mktemp -d) y deja la carpeta temporal en la
+        // del sistema: «nobody» escribe en la temporal pero no puede leer los programas. Eso también es «no se puede».
+        const lee = spawnSync('setpriv', [...comoNadie, BASH, '-c', '[ -r "$1/deploy/oportia-comun.sh" ] && [ -r "$1/src/server.js" ] && [ -r "$1/test/ayuda.js" ] && [ -r "$1/package.json" ]', 'leer', REPO], { stdio: 'ignore' });
+        if (lee.status !== 0) motivo = 'quien corre las pruebas es root y «nobody» no puede leer la carpeta del código: los programas del servidor nunca se prueban como root';
+      }
     }
   }
   return motivo;

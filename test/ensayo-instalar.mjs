@@ -7,7 +7,7 @@
 import './ayuda.js';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { carpetaTemporal, huellas } from './ayuda.js';
 import { crearRaiz, motivoParaSaltar, sha, DEPLOY } from './raiz-falsa.js';
@@ -258,6 +258,38 @@ paso('EXISTENTE (un servidor lleno, como el de hoy): huellas idénticas de TODO 
   assert.equal(readdirSync(r.en(EST, 'propuestos')).length, 1);
   assert.ok(!existsSync(r.g('habilitada.oportia-actualizar.timer')), 'el temporizador NO se enciende mientras exista el cron de antes');
   assert.ok(existsSync(r.en('usr/local/sbin/oportia')), 'lo nuevo (la orden y el juego) sí quedó puesto, sin uso');
+});
+
+paso('Node que ya había: el del servicio (fuera de la ruta de siempre) no se toca ni se baja otro; un enlace corto que ya existe nunca se cambia de sitio', () => {
+  // (a) Un servidor con OPORTIA cuyo servicio usa el Node de su carpeta propia, sin el programa en la ruta de siempre.
+  const r = droplet();
+  execFileSync('mv', [join(r.guion, 'tailscale.guardado'), join(r.falsos, 'tailscale')]);
+  r.guionar('ts-estado', 'Running');
+  r.guionar('usuario.jarvis');
+  r.guionar('swap', '/swapfile file 2G 0B -2\n');
+  for (const p of ['ca-certificates', 'curl', 'tar', 'xz-utils', 'util-linux', 'coreutils', 'iproute2', 'unattended-upgrades']) r.guionar(`dpkg.${p}`);
+  r.ponerApp({ version: '0.5.1', sha: sha('5'), marca: false });
+  mkdirSync(r.en('opt/node-de-antes/bin'), { recursive: true });
+  writeFileSync(r.en('opt/node-de-antes/bin/node'), `#!/bin/bash\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+  symlinkSync('node-de-antes', r.en('opt/node22'));
+  writeFileSync(r.en('etc/systemd/system/jarvis.service'), '[Unit]\nDescription=la unidad de antes\n[Service]\nUser=jarvis\nExecStart=/opt/node22/bin/node --no-warnings src/server.js\n');
+  writeFileSync(r.en('etc/cron.d/jarvis-actualizar'), '*/30 * * * * root /usr/local/bin/jarvis-actualizar\n');
+  const x = r.instalar();
+  assert.equal(x.codigo, 0, x.salida);
+  assert.match(x.salida, /✔ Node: ya estaba \(el que usa el servicio, v\d+\.[\d.]+\), no lo toqué/);
+  assert.equal(readlinkSync(r.en('opt/node22')), 'node-de-antes', 'el enlace del Node de antes sigue apuntando a lo mismo');
+  assert.ok(!existsSync(r.en('usr/bin/node')) && !existsSync(r.en(`opt/node-v${VERSION_NODE}-linux-x64`)), 'no se puso otro Node');
+  assert.ok(!r.llamadas().some(l => l.includes('nodejs.org')), 'no se bajó Node');
+  // (b) Un servidor nuevo donde el enlace corto ya existe y apunta a otra cosa: se instala Node sin mover ese enlace.
+  const n = droplet();
+  mkdirSync(n.en('opt/otra-cosa'), { recursive: true });
+  symlinkSync('otra-cosa', n.en('opt/node22'));
+  const y = n.instalar();
+  assert.equal(y.codigo, 0, y.salida);
+  assert.equal(readlinkSync(n.en('opt/node22')), 'otra-cosa', 'un enlace que ya existía no se cambia de sitio');
+  assert.equal(readlinkSync(n.en('usr/bin/node')), n.en(`opt/node-v${VERSION_NODE}-linux-x64/bin/node`));
+  assert.match(y.salida, /✔ Node 22\.99\.0: instalado \(huella comprobada\)/);
+  assert.match(y.salida, /✔ La app: instalada y sana/);
 });
 
 paso('--solo-actualizador: solo el juego, el lanzador, la orden y las unidades; nada más', () => {

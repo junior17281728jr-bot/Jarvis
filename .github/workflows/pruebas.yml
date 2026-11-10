@@ -23,11 +23,12 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --no-warnings --test test/*.test.js
 
-  # Fase 1, parte f: los programas del servidor (deploy/*.sh). Todo en SIMULACIÓN: una raíz falsa con comandos falsos
-  # (test/raiz-falsa.js). No instala nada de verdad, no toca ningún servidor y no usa ninguna clave.
+  # Fase 1, parte f: los programas del servidor (deploy/*.sh). En SIMULACIÓN: una raíz falsa con comandos falsos
+  # (test/raiz-falsa.js) y, al final, un contenedor Ubuntu desechable (apt, useradd y Node de verdad; systemd, ufw,
+  # Tailscale y GitHub de mentira). No toca ningún servidor y no usa ninguna clave.
   instalador:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -43,3 +44,5 @@ jobs:
         run: |
           sudo mkdir -m 711 /tmp/oportia-ci && sudo cp -r . /tmp/oportia-ci/src && sudo mkdir -m 755 /tmp/oportia-ci/t
           cd /tmp/oportia-ci/src && sudo env "PATH=$PATH" TMPDIR=/tmp/oportia-ci/t node --no-warnings --test test/actualizador.test.js test/instalar.test.js
+      - name: Ensayo en un contenedor Ubuntu desechable (instalar dos veces, actualizar, volver atrás y recuperar)
+        run: bash test/ensayo-contenedor.sh ubuntu:24.04

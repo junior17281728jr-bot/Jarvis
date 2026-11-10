@@ -2,13 +2,14 @@
 
 Todo lo que hay aquí sirve para **instalar, actualizar y recuperar** el servidor. Nada de esta carpeta borra datos.
 El instalador, el cortafuegos, Tailscale y systemd están probados **solo en simulación** (una raíz falsa con comandos
-falsos, y un contenedor de Ubuntu): el primer uso en un servidor de verdad será un ensayo con Junior.
+falsos, y un contenedor de Ubuntu desechable con `test/ensayo-contenedor.sh`, donde systemd, el cortafuegos, Tailscale y
+GitHub siguen siendo de mentira): el primer uso en un servidor de verdad será un ensayo con Junior.
 
 | Archivo | Para qué |
 |---|---|
 | `cloud-init.sh` | El **texto de instalación**: se pega en «User data» al crear un Droplet nuevo de DigitalOcean (cambiando `PEGA_AQUI` por una clave de Tailscale de un solo uso). Baja OPORTIA de GitHub por su versión exacta a una carpeta de root y corre `install.sh`. También es la línea con `curl … \| sudo bash -s -- revisar\|pasar\|--solo-actualizador`. |
 | `install.sh` | El instalador. Idempotente: correrlo otra vez no cambia nada. Nunca pisa, cambia de dueño ni borra datos o configuración que ya existan. Orden: swap → paquetes → Node (versión y huella fijas de `node.pin`) → usuario `jarvis` → carpetas y servicio → cortafuegos → Tailscale y enlace → actualizador → la app (la instala el mismo actualizador, pruebas primero) → temporizador → actualizaciones de seguridad → informe. |
-| `node.pin` | La versión de Node y sus huellas sha256 (x64 y arm64). Subir Node = cambiar este archivo y correr el instalador a mano. |
+| `node.pin` | La versión de Node y sus huellas sha256 (x64 y arm64). Solo vale para un servidor nuevo: en uno que ya tiene Node (el del servicio, o el de la ruta de siempre) el instalador no lo toca ni mueve su enlace; subirlo ahí se hace a mano, con Claude. |
 | `oportia-actualizar.sh` | El actualizador: baja la versión nueva, corre **todas** sus pruebas como `nobody`, la arma al lado, cambia de nombre, mira la salud dentro de la ventana de arranque y, si no queda sana, vuelve al código anterior. Solo cambia código; nunca datos. Se actualiza a sí mismo después de una actualización sana. |
 | `oportia-lanzador.sh` | Fijo y pequeño: candados, tope de tiempo y vigilancia del actualizador (3 fallos seguidos → vuelve al juego de antes). |
 | `oportia-actualizar.service` · `.timer` | Lo que corre el lanzador cada 30 minutos. |

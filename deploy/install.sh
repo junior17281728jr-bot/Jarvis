@@ -114,8 +114,26 @@ node_alcanza() {
   ' "$AQUI/../package.json" 2>/dev/null
 }
 
+# El node que usa el servicio que YA hay en este servidor (el de su ExecStart), si existe. Sin salida = no hay.
+node_del_servicio() {
+  local unidad="$UNIDADES/jarvis.service" ruta=""
+  [ -f "$unidad" ] || return 1
+  ruta="$(sed -n 's/^ExecStart=\([^[:space:]]*\/node\)[[:space:]].*$/\1/p' "$unidad" | head -n 1)"
+  if [ -z "$ruta" ] || [ ! -x "$RAIZ$ruta" ]; then return 1; fi
+  printf '%s' "$RAIZ$ruta"
+}
+
 paso_node() {
-  local version sha_x64 sha_arm64 sha nombre destino enlace="$RAIZ/opt/node22" n=1
+  local version sha_x64 sha_arm64 sha nombre destino enlace="$RAIZ/opt/node22" n=1 del_servicio=""
+  # Un servidor cuyo servicio ya corre con SU Node (aunque no esté en la ruta de siempre): ese Node no se toca.
+  del_servicio="$(node_del_servicio || true)"
+  if [ -n "$del_servicio" ] && [ "$del_servicio" != "$RAIZ/usr/bin/node" ]; then
+    if node_alcanza "$del_servicio"; then
+      anotar "✔ Node: ya estaba (el que usa el servicio, $("$del_servicio" --version 2>/dev/null || true)), no lo toqué"
+      return 0
+    fi
+    fallar "El servicio de este servidor usa un Node más viejo del que OPORTIA necesita, y yo no lo puse: no lo reemplazo. Avísale a Claude."
+  fi
   if [ -x "$RAIZ/usr/bin/node" ]; then
     if node_alcanza "$RAIZ/usr/bin/node"; then
       anotar "✔ Node: ya estaba ($("$RAIZ/usr/bin/node" --version 2>/dev/null || true)), no lo toqué"
@@ -148,9 +166,15 @@ paso_node() {
     [ -x "$PROPIA/node/$nombre/bin/node" ] || fallar "El paquete de Node no trae el programa."
     mover_sin_pisar "$PROPIA/node/$nombre" "$destino" || fallar "No pude poner Node en $destino"
   fi
-  if [ ! -e "$enlace" ] || [ -L "$enlace" ]; then ln -sfn -- "$destino" "$enlace"; fi
+  # El enlace corto solo se crea si falta: uno que ya exista (de quien sea) nunca se cambia de sitio.
+  if ! existe "$enlace"; then ln -s -- "$destino" "$enlace"; fi
   mkdir -p -- "$RAIZ/usr/bin"
-  ln -s -- "$enlace/bin/node" "$RAIZ/usr/bin/node"
+  if [ "$(realpath -- "$enlace" 2>/dev/null || true)" = "$(realpath -- "$destino")" ]; then
+    ln -s -- "$enlace/bin/node" "$RAIZ/usr/bin/node"
+  else
+    decir "  Ya había algo en ${enlace#"$RAIZ"} y no lo toqué: el programa node apunta directo a ${destino#"$RAIZ"}"
+    ln -s -- "$destino/bin/node" "$RAIZ/usr/bin/node"
+  fi
   "$RAIZ/usr/bin/node" -e 'require("node:sqlite")' 2>/dev/null || fallar "El Node instalado no arranca bien."
   anotar "✔ Node $version: instalado (huella comprobada)"
 }
