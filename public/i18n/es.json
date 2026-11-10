@@ -1606,5 +1606,6 @@
   "ayuda.clave_temporal.texto": "Es la contraseña que el administrador le da a una persona para que entre la primera vez (o si olvidó la suya). Al entrar, OPORTIA le pide cambiarla por una propia.",
   "ayuda.clave_temporal.ejemplo": "Díctasela por teléfono: se deja de mostrar al salir de Administrador.",
   "ayuda.tailscale.titulo": "Tailscale",
-  "ayuda.tailscale.texto": "Es la red privada que une tus equipos (tu iPhone y tu PC) con el servidor. Lo más delicado, como las claves, la clave de recuperación o crear cuentas, solo se hace entrando por ahí, no por el enlace público."
+  "ayuda.tailscale.texto": "Es la red privada que une tus equipos (tu iPhone y tu PC) con el servidor. Lo más delicado, como las claves, la clave de recuperación o crear cuentas, solo se hace entrando por ahí, no por el enlace público.",
+  "entrar.linea": "Escribe tu usuario y tu contraseña para entrar."
 }

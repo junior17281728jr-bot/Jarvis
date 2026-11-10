@@ -808,7 +808,7 @@ test('claridad: cada palabra de la Ayuda tiene su explicación en los dos idioma
 
 test('claridad: cada pantalla y pestaña empieza con una línea corta (12 palabras como mucho) y cada paso de la guía tiene sus frases', async () => {
   const { pasosAdmin, pasosUsuario } = await import('../public/guia.js');
-  const lineas = ['inicio.texto', 'config.linea', 'ayuda.linea', 'proyectos.linea', 'creador.texto', 'proyecto.linea.resumen', 'proyecto.linea.entendi', 'proyecto.linea.versiones',
+  const lineas = ['entrar.linea', 'inicio.texto', 'config.linea', 'ayuda.linea', 'proyectos.linea', 'creador.texto', 'proyecto.linea.resumen', 'proyecto.linea.entendi', 'proyecto.linea.versiones',
     'proyecto.linea.historial', ...['resumen', 'usuarios', 'trabajo', 'servidor', 'copias', 'ia', 'claves'].map(x => `admin.linea.${x}`)];
   for (const clave of lineas) {
     for (const [nombre, idioma] of [['es', es], ['en', en]]) {

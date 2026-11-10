@@ -454,7 +454,7 @@ function pantallaEntrar() {
   mostrar(el('section', { class: 'tarjeta centrada' },
     marcaConLogo(), el('p', { class: 'suave', texto: t('app.lema') }),
     aviso ? el('p', { class: 'aviso', role: 'status', texto: aviso }) : null,
-    el('h1', { texto: t('entrar.titulo') }), formulario, el('p', { class: 'ayuda', texto: t('entrar.olvide') }),
+    el('h1', { texto: t('entrar.titulo') }), entrada(t('entrar.linea')), formulario, el('p', { class: 'ayuda', texto: t('entrar.olvide') }),
     selectorIdioma(() => pantallaEntrar())), pie());
 }
 
@@ -620,7 +620,11 @@ function tarjetaGuia(pasos) {
   const marcaDe = p => (p.estado === 'ahora' ? el('span', { class: 'guia-ir' }, el('span', { texto: t('guia.ir') }), icono('flecha', 'icono chico'))
     : p.estado === 'hecho' ? null
       : el('span', { class: 'insignia tono-apagado guia-chip', texto: p.estado === 'opcional' ? t('guia.estado.opcional') : t('guia.estado.luego') }));
-  const lista = el('ol', { class: 'guia-pasos' }, g.pasos.map(p => el('li', { class: `guia-paso ${p.estado}` },
+  // Mientras falte algo, primero va lo que toca ahora, después lo que sigue y al final lo ya hecho (como una lista
+  // de pendientes): así el paso de ahora se ve al abrir, también en el teléfono. Completa, en su orden de siempre.
+  const ORDEN = { ahora: 0, luego: 1, opcional: 2, hecho: 3 };
+  const enOrden = g.completa ? g.pasos : [...g.pasos].sort((a, b) => ORDEN[a.estado] - ORDEN[b.estado]);
+  const lista = el('ol', { class: 'guia-pasos' }, enOrden.map(p => el('li', { class: `guia-paso ${p.estado}` },
     el('a', { class: 'guia-enlace', href: p.destino, 'aria-current': p.estado === 'ahora' ? 'step' : null },
       el('span', { class: 'guia-icono' }, icono(p.estado === 'hecho' ? 'marca' : p.icono)),
       el('span', { class: 'guia-texto' },

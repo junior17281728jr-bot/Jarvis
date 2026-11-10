@@ -1185,8 +1185,10 @@ a.ayuda-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset:
   .columnas-libres > .columna { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
   /* Inicio: la guía a lo ancho, debajo de la portada y el estado; completa, al final. */
   .pantalla-inicio .guia { order: 3; grid-column: 1 / -1; }
-  .pantalla-inicio .inicio-aprobar { order: 4; }
-  .pantalla-inicio:not(.con-estado) .inicio-aprobar { order: 2; }
+  .pantalla-inicio .inicio-aprobar { order: 4; grid-column: 1 / -1; }
+  /* Sin el estado del sistema (las cuentas que no son de administrador), la portada va a lo ancho: antes lo que
+     espera aprobación quedaba en media pantalla, con sus proyectos apretados en 3 columnas. */
+  .pantalla-inicio:not(.con-estado) .portada { grid-column: 1 / -1; }
   .pantalla-inicio .inicio-info { order: 5; }
   .pantalla-inicio .guia.completa { order: 6; }
 }

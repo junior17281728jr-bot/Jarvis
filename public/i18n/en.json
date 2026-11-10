@@ -1606,5 +1606,6 @@
   "ayuda.clave_temporal.texto": "It is the password the administrator gives a person to sign in the first time (or if they forgot theirs). On signing in, OPORTIA asks them to change it for their own.",
   "ayuda.clave_temporal.ejemplo": "Read it to them over the phone: it stops being shown when you leave Administrator.",
   "ayuda.tailscale.titulo": "Tailscale",
-  "ayuda.tailscale.texto": "It is the private network that connects your devices (your iPhone and your PC) to the server. The most sensitive things, such as keys, the recovery key or creating accounts, can only be done through it, not through the public link."
+  "ayuda.tailscale.texto": "It is the private network that connects your devices (your iPhone and your PC) to the server. The most sensitive things, such as keys, the recovery key or creating accounts, can only be done through it, not through the public link.",
+  "entrar.linea": "Type your username and password to sign in."
 }
