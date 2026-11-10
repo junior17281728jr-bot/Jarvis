@@ -63,3 +63,8 @@ Plan: PASADA DE DISEÑO DE PANTALLAS justo después de publicar la 1d (intensida
 - PC/Mac: diseño ancho de verdad (menú lateral o barra arriba, 2-3 columnas, tarjetas en rejilla, nada estirado ni perdido en el centro).
 - Celular: ninguna pantalla larga. Administrador partido en pestañas/subpáginas (Resumen, Usuarios, Trabajo automático, Servidor, IA y gastos, Claves); proyecto con pestañas (Resumen, Lo que entendí, Versiones, Historial); acciones principales siempre arriba o fijas; lo largo plegado.
 - Regla para todo lo nuevo: lo importante en la primera pantalla, sin bajar.
+
+## Estado 10 nov 2026, 01:05 UTC
+- Límite SEMANAL de Claude agotado; se reinicia el 10 nov a las 17:00 UTC. Recordatorio programado a las 17:15 UTC para retomar.
+- 1e casi lista en fase-1e (5ef4c13 en GitHub): falta terminar «arreglar» (textos del modo seguro, memoria al subir directo, próxima copia, README, suite x3 + taskset, ensayo) y «revisar-de-nuevo». Retomar con resumeFromRunId wf_85321498-9bd.
+- Pedido de Junior (10 nov): «Termina y dale una revisión visual y mejóralo: más claro, mejor de usar, sencillo y que se sepa más de las cosas». Después de publicar la 1e (0.5.0): pasada visual de TODAS las pantallas (una línea que diga qué es y qué hacer, «¿Qué es esto?» plegable, estados con iconos y colores, menos texto, PC y celular) → 0.5.1. Luego pedirle crear el bot de Telegram.
