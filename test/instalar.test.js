@@ -21,6 +21,7 @@ import { estadoAlmacen, guardarSecreto, listarSecretos } from '../src/claves/alm
 import { leerEstadoDelActualizador, vigilarActualizador, avisosDelActualizador, lineasDeActualizacion } from '../src/copias/vigilar.js';
 import { pendientesTrasRecuperar } from '../src/copias/estado.js';
 import { vaPorTelegram } from '../src/canales/avisador.js';
+import { tokenDePrueba } from './telegram-falso.js';
 
 const saltar = motivoParaSaltar() ?? false;
 const DATOS = 'var/lib/jarvis';
@@ -65,7 +66,8 @@ async function servidorNuevoConCopia() {
 
 // Enciende el servidor de VERDAD (src/server.js, con su trabajador) sobre esa carpeta de datos y comprueba que queda
 // sano dentro de la puerta de arranque y que la contraseña de siempre entra.
-async function arrancaYEntra(carpetaDatos) {
+// revisar(pedir): opcional; pedir(ruta) trae una respuesta de la API con la sesión del administrador que acaba de entrar.
+async function arrancaYEntra(carpetaDatos, revisar = null) {
   const hijo = spawn(process.execPath, ['--no-warnings', 'src/server.js'], {
     cwd: REPO,
     env: { PATH: process.env.PATH, TMPDIR: process.env.TMPDIR ?? '', OPORTIA_TEST: '1', PORT: '0', HOST: '127.0.0.1', DB_PATH: join(carpetaDatos, 'jarvis.db') },
@@ -94,6 +96,14 @@ async function arrancaYEntra(carpetaDatos) {
     pidTrabajador = Number((await esperarHasta(() => salida.match(/\[tareas\] trabajador \S* listo \(pid (\d+)\)/), { que: `el trabajador listo: ${salida}` }))[1]);
     const entrar = await fetch(`http://127.0.0.1:${puerto}/api/entrar`, { method: 'POST', headers: { 'X-Oportia': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: 'junior', clave: CONTRASENA }) });
     assert.equal(entrar.status, 200, 'la misma contraseña entra');
+    if (revisar) {
+      const galleta = entrar.headers.get('set-cookie').split(';')[0];
+      await revisar(async ruta => {
+        const x = await fetch(`http://127.0.0.1:${puerto}${ruta}`, { headers: { 'X-Oportia': '1', Cookie: galleta } });
+        assert.equal(x.status, 200, ruta);
+        return x.json();
+      });
+    }
     hijo.kill('SIGTERM');
     await Promise.race([salio, new Promise(listo => setTimeout(listo, 15_000))]);
   } finally {
@@ -112,7 +122,12 @@ test('1f instalar 1a: la base recuperada ARRANCA como servidor en una carpeta nu
   assert.ok(!readdirSync(r.en(DATOS)).some(n => n.startsWith('apartado-')), 'no había nada que apartar');
   assert.deepEqual(llavesDe(r.en(DATOS)), [], 'un servidor nuevo no trae la llave de las claves');
   assert.deepEqual(r.llamadas().filter(l => /^systemctl (stop|start|restart)/.test(l)), ['systemctl stop jarvis', 'systemctl start jarvis']);
-  await arrancaYEntra(r.en(DATOS));
+  // La app misma dice lo que falta volver a poner (paso 2 de la 1f): llega por la ruta de verdad, con la sesión de siempre.
+  let dicho = null;
+  await arrancaYEntra(r.en(DATOS), async pedir => { dicho = (await pedir('/api/admin/sistema')).recuperada; });
+  assert.ok(dicho, 'GET /api/admin/sistema dice que la base es recuperada y falta algo');
+  assert.equal(dicho.claves, true, 'falta pegar otra vez la clave de IA que traía la copia');
+  assert.equal(typeof dicho.en, 'string');
   const db = conectarBase(r.config);
   try {
     assert.equal(Number(db.prepare('SELECT COUNT(*) AS n FROM usuarios').get().n), o.usuarios);
@@ -774,6 +789,15 @@ test('1f instalar 7b: una base recuperada dice lo que falta (token nuevo, claves
     const despues = pendientesTrasRecuperar(db, { huellaLlave, usos: USOS });
     assert.equal(despues.claves, false);
     assert.equal(despues.clave, true, 'la clave de recuperación sigue pendiente hasta crear una nueva');
+    // El token del bot: si la copia traía uno (cifrado con la llave del servidor de antes), falta hasta pegar el NUEVO.
+    assert.equal(despues.token, false, 'esta copia no traía token');
+    const fila = db.prepare("SELECT id FROM secretos WHERE estado = 'activa' AND uso NOT IN ('ia_anthropic')").get();
+    assert.ok(fila, 'la base de prueba trae otra clave activa, de otra llave');
+    db.prepare("UPDATE secretos SET uso = 'telegram_bot', espacio_id = NULL WHERE id = ?").run(fila.id);
+    assert.equal(pendientesTrasRecuperar(db, { huellaLlave, usos: USOS }).token, true, 'el token de antes no se puede leer aquí: falta revocarlo y pegar el nuevo');
+    assert.equal(resumenGuia(pasosAdmin({ sistema: { ...sistema, recuperada: pendientesTrasRecuperar(db, { huellaLlave, usos: USOS }) }, ia: null, proyectos: [] })).siguiente.id, 'recuperada_token');
+    guardarSecreto(db, config, { uso: 'telegram_bot', valor: tokenDePrueba(1) });
+    assert.equal(pendientesTrasRecuperar(db, { huellaLlave, usos: USOS }).token, false, 'con el token nuevo pegado, ese paso queda hecho');
     // Sin la marca de «recuperada» (o cuando ya no falta nada) deja de llegar: la guía vuelve a ser la de siempre.
     db.prepare("UPDATE copias_llaves SET estado = 'anterior' WHERE estado = 'activa'").run();
     assert.equal(pendientesTrasRecuperar(db, { huellaLlave, usos: USOS }), null);

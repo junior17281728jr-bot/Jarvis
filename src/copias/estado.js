@@ -118,7 +118,8 @@ export function pendientesTrasRecuperar(db, { huellaLlave = null, usos = {} } = 
   let marca;
   try { marca = JSON.parse(db.prepare("SELECT valor FROM ajustes WHERE clave = 'claves.restaurada'").get()?.valor ?? 'null'); } catch { marca = null; }
   if (!marca || !Array.isArray(marca.huellas)) return null;
-  const activas = db.prepare("SELECT uso, llave_huella FROM secretos WHERE estado = 'activa'").all();
+  // Las claves del servidor (sin espacio), las mismas que muestra Administrador → Claves: pegar una nueva reemplaza a la de antes.
+  const activas = db.prepare("SELECT uso, llave_huella FROM secretos WHERE estado = 'activa' AND espacio_id IS NULL").all();
   const ilegible = grupo => activas.some(f => usos[f.uso]?.grupo === grupo && (!huellaLlave || f.llave_huella !== huellaLlave));
   const llave = llaveActiva(db);
   const r = { en: typeof marca.en === 'string' ? marca.en : null, token: ilegible('avisos'), claves: ilegible('ia'), clave: Boolean(llave) && !selloLegible(llave, huellaLlave) };
