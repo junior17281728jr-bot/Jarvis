@@ -1,0 +1,111 @@
+/* Escenas de Factores Humanos (materia 1): colores propios con prefijo --clfh-, claro y oscuro.
+   La carga visuales-fh.js la primera vez que se monta una escena fh-*, o se enlaza a mano junto a clase.css.
+   Claro / oscuro: html[data-tema="oscuro"], o «auto»/sin tema siguiendo al equipo. */
+.clase-fh {
+  --clfh-tinta: #0b1f3a;
+  --clfh-tinta-suave: #3d5674;
+  --clfh-tinta-clara: #ffffff;
+  --clfh-naranja: #f97316;
+  --clfh-naranja-texto: #c2410c;
+  --clfh-azul: #1f6fd1;
+  --clfh-azul-claro: #7fb8f5;
+  --clfh-bien: #15803d;
+  --clfh-mal: #dc2626;
+  --clfh-ambar: #d97706;
+  --clfh-tarjeta: #ffffff;
+  --clfh-borde: rgba(11, 31, 58, 0.14);
+  --clfh-cielo-1: #5aa7ea;
+  --clfh-cielo-2: #dcefff;
+  --clfh-cielo-3: #ffe9cf;
+  --clfh-nube: #ffffff;
+  --clfh-tierra-1: #6f9f63;
+  --clfh-tierra-2: #4d7c48;
+  --clfh-monte-1: #7d97b8;
+  --clfh-monte-2: #5c7699;
+  --clfh-avion: #ffffff;
+  --clfh-avion-detalle: #2a3f5c;
+  --clfh-cabina-1: #0e1726;
+  --clfh-cabina-2: #182335;
+  --clfh-cabina-3: #26354d;
+  --clfh-panel: #f2f6fb;
+  --clfh-piel: #e7b58f;
+  --clfh-pelo: #3b2a20;
+  --clfh-noche-1: #050b18;
+  --clfh-noche-2: #12234a;
+  --clfh-carne: #f4c7b8;
+  --clfh-carne-2: #e79c88;
+  --clfh-hueso: #f4ead8;
+  --clfh-velo: rgba(255, 255, 255, 0.72);
+  --clfh-silueta: #1c2c47;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--clfh-cielo-2);
+}
+:root[data-tema="oscuro"] .clase-fh {
+  --clfh-tinta: #eef3fb;
+  --clfh-tinta-suave: #a9bad3;
+  --clfh-naranja: #fb923c;
+  --clfh-naranja-texto: #fdba74;
+  --clfh-azul: #6aa8ff;
+  --clfh-azul-claro: #a9cbff;
+  --clfh-bien: #4ade80;
+  --clfh-mal: #f87171;
+  --clfh-ambar: #fbbf24;
+  --clfh-tarjeta: #13203a;
+  --clfh-borde: rgba(238, 243, 251, 0.16);
+  --clfh-cielo-1: #071430;
+  --clfh-cielo-2: #1d3f72;
+  --clfh-cielo-3: #4a3a5e;
+  --clfh-nube: #c4d3ea;
+  --clfh-tierra-1: #23412f;
+  --clfh-tierra-2: #172c21;
+  --clfh-monte-1: #263b5e;
+  --clfh-monte-2: #1a2b47;
+  --clfh-avion: #e9eef6;
+  --clfh-panel: #1a2740;
+  --clfh-velo: rgba(7, 20, 48, 0.7);
+  --clfh-silueta: #dbe6f7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:is([data-tema="auto"], :not([data-tema])) .clase-fh {
+    --clfh-tinta: #eef3fb;
+    --clfh-tinta-suave: #a9bad3;
+    --clfh-naranja: #fb923c;
+    --clfh-naranja-texto: #fdba74;
+    --clfh-azul: #6aa8ff;
+    --clfh-azul-claro: #a9cbff;
+    --clfh-bien: #4ade80;
+    --clfh-mal: #f87171;
+    --clfh-ambar: #fbbf24;
+    --clfh-tarjeta: #13203a;
+    --clfh-borde: rgba(238, 243, 251, 0.16);
+    --clfh-cielo-1: #071430;
+    --clfh-cielo-2: #1d3f72;
+    --clfh-cielo-3: #4a3a5e;
+    --clfh-nube: #c4d3ea;
+    --clfh-tierra-1: #23412f;
+    --clfh-tierra-2: #172c21;
+    --clfh-monte-1: #263b5e;
+    --clfh-monte-2: #1a2b47;
+    --clfh-avion: #e9eef6;
+    --clfh-panel: #1a2740;
+    --clfh-velo: rgba(7, 20, 48, 0.7);
+  --clfh-silueta: #dbe6f7;
+  }
+}
+.clase-fh .clase-fh-lienzo { aspect-ratio: 16 / 9; }
+.clase-fh-texto { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+.clase-fh-sombra { filter: drop-shadow(0 3px 8px rgba(6, 18, 40, 0.22)); }
+.clase-fh-sin-sombra .clase-fh-sombra { filter: none; }
+
+/* ---------- Página de prueba y captura (demo-fh.html): no la usa la app ---------- */
+.demo-fh-escenario { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #071430; }
+.demo-fh-capa { position: absolute; inset: 0; }
+.demo-fh-capa > .clase-fh { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.demo-fh-capa > .clase-fh .clase-fh-lienzo { width: 100%; height: 100%; }
+.demo-fh-captura, .demo-fh-captura body { margin: 0; overflow: hidden; background: #071430; }
+.demo-fh-captura .demo-fh-escenario { width: 100vw; height: 100vh; aspect-ratio: auto; }
+.demo-fh-barra { position: absolute; left: 0; bottom: 0; height: 4px; width: 100%; background: rgba(255, 255, 255, 0.12); }
+.demo-fh-barra-llena { height: 100%; width: 100%; background: #f97316; transform-origin: 0 50%; }
+@media (prefers-reduced-motion: reduce) {
+  .clase-fh * { transition: none !important; animation: none !important; }
+}
