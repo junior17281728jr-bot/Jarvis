@@ -45,3 +45,7 @@ Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la 
 - Lista de Chequeo Alarus — 3 págs.
 - Calendario de Materia Privado G80 (ENLS-2-CMPP): orientación 6 oct; cada materia con sus horas y SU EXAMEN propio (01 a 11) y 12 Examen Final; examen oral individual antes del teórico del IDAC; repetir examen 2 veces = tutoría; ~2 h de clase por día. (Calendario 2025-2026.)
 FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» completo (en su Drive personal solo hay págs. 451-500), «POH ALARUS 2» (el manual completo del avión).
+- 11 nov 2026 (Junior): el «Private Pilot Handbook» es el Jeppesen de 470 págs (español), pero está incompleto: COMPLETARLO con el de inglés (743, completo). Las clases van en español.
+- TODA la clase se basa en prepararse para el Test Guide.
+- POH: el Test Guide no lo cubre: CREAR preguntas del POH «tal cual» el texto del POH, llenando lo más posible; el avión es el ALARUS CH 2000 (Zenair): hay que BUSCAR su POH (solo tenemos la lista de chequeo de 3 págs). Las preguntas creadas se marcan como «del POH», nunca como del Test Guide.
+- Las preguntas del Test Guide son SIEMPRE las mismas en todo (práctica, exámenes por materia, final): solo cambia el orden, para comparar resultados.
