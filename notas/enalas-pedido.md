@@ -51,3 +51,5 @@ FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» comp
 - Las preguntas del Test Guide son SIEMPRE las mismas en todo (práctica, exámenes por materia, final): solo cambia el orden, para comparar resultados.
 
 - 11 nov 2026: Junior NO da la clave de ElevenLabs. Plan: Claude escribe el TEXTO de narración de cada clase; él lo pasa por ElevenLabs y sube el audio (mp3) desde el administrador cuando quiera. Mientras, la clase muestra subtítulos y puede leerse con la voz gratis del navegador (speechSynthesis). Publicar por etapas (1, 2, 3…) en su servidor para que vaya viendo las animaciones en la página.
+
+- 11 nov 2026: audio ElevenLabs de Junior (6 min 18 s, resumido por el límite gratis) = el VIDEO RESUMEN de toda la materia que se ve ANTES de la clase; las preguntas van al inicio de cada una. Guardado en contenido-enalas/audios/materia-01-elevenlabs.mp3.
