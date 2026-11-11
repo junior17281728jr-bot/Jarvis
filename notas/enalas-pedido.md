@@ -29,7 +29,7 @@ Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la 
 - 11 nov 2026: Junior aclara que el uso es PRIVADO, para él y estudiantes amigos suyos, NO para vender: usar todo el material de sus libros sin recortes. Aun así, el material nunca va a GitHub (repo público): solo en el servidor privado.
 
 - 11 nov 2026: IA en la academia: debe funcionar TODO sin API, pero con la API de Claude o ChatGPT es mucho mejor (usar los adaptadores de la 1d con tope). Al entrar, cada usuario ve si tiene un instructor IA dándole seguimiento (con API: «Tu instructor IA te acompaña»; sin API: «Instructor automático»).
-- 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Hecho: copias locales quitadas; etiquetas oportia-0.5.1 y oportia-1f-sin-publicar en GitHub como respaldo (no ocupan espacio). La academia nueva sale de main quitando proyectos/motor de clientes.
+- 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Hecho: copias locales quitadas. RESPALDO = las ramas en GitHub: main (54b9bb9, OPORTIA 0.5.1) y fase-1f (cfd27d6, 1f sin publicar). Las etiquetas NO se pudieron subir (403). No borrar ninguna rama remota. La academia nueva sale de main quitando proyectos/motor de clientes.
 
 - 11 nov 2026: IA en la academia: debe funcionar TODO sin API, pero con la API de Claude o ChatGPT es mucho mejor (adaptadores de la 1d, con tope). Al entrar, cada usuario ve si tiene un instructor IA dándole seguimiento.
-- 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Copias locales quitadas; etiquetas oportia-0.5.1 y oportia-1f-sin-publicar en GitHub como respaldo (no ocupan espacio).
+- 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Copias locales quitadas. RESPALDO = las ramas en GitHub: main (54b9bb9, OPORTIA 0.5.1) y fase-1f (cfd27d6, 1f sin publicar). Las etiquetas NO se pudieron subir (403). No borrar ninguna rama remota.
