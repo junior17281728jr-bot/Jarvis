@@ -33,3 +33,5 @@ Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la 
 
 - 11 nov 2026: IA en la academia: debe funcionar TODO sin API, pero con la API de Claude o ChatGPT es mucho mejor (adaptadores de la 1d, con tope). Al entrar, cada usuario ve si tiene un instructor IA dándole seguimiento.
 - 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Copias locales quitadas. RESPALDO = las ramas en GitHub: main (54b9bb9, OPORTIA 0.5.1) y fase-1f (cfd27d6, 1f sin publicar). Las etiquetas NO se pudieron subir (403). No borrar ninguna rama remota.
+
+- 11 nov 2026: hay libros en inglés y en español con el mismo contenido: usar los dos; si el español tiene mala traducción, guiarse por el inglés. LO ÚNICO QUE NO SE TOCA es el Test Guide: pregunta tal cual y su respuesta tal cual, como saldrá en el examen. Las explicaciones deben buscar la forma más fácil de explicar ESA pregunta con ESA respuesta.
