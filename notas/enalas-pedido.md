@@ -35,3 +35,13 @@ Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la 
 - 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Copias locales quitadas. RESPALDO = las ramas en GitHub: main (54b9bb9, OPORTIA 0.5.1) y fase-1f (cfd27d6, 1f sin publicar). Las etiquetas NO se pudieron subir (403). No borrar ninguna rama remota.
 
 - 11 nov 2026: hay libros en inglés y en español con el mismo contenido: usar los dos; si el español tiene mala traducción, guiarse por el inglés. LO ÚNICO QUE NO SE TOCA es el Test Guide: pregunta tal cual y su respuesta tal cual, como saldrá en el examen. Las explicaciones deben buscar la forma más fácil de explicar ESA pregunta con ESA respuesta.
+
+## Documentos recibidos (11 nov 2026) — carpeta Drive de Junior, bajados a scratchpad/contenido-enalas/pdf (FUERA de git)
+- TEST GUIDE JEPPESEN PILOTO PRIVADO AVION — 290 págs, con texto.
+- Folleto de fig PP — 73 págs, ESCANEADO (sin texto): figuras del Test Guide.
+- Jeppesen piloto Privado español — 470 págs, con texto.
+- Jeppesen Private Pilot Manual (GFD, inglés) — 743 págs, con texto.
+- Guion básico de RADs — 20 págs (Regulaciones Aeronáuticas Dominicanas).
+- Lista de Chequeo Alarus — 3 págs.
+- Calendario de Materia Privado G80 (ENLS-2-CMPP): orientación 6 oct; cada materia con sus horas y SU EXAMEN propio (01 a 11) y 12 Examen Final; examen oral individual antes del teórico del IDAC; repetir examen 2 veces = tutoría; ~2 h de clase por día. (Calendario 2025-2026.)
+FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» completo (en su Drive personal solo hay págs. 451-500), «POH ALARUS 2» (el manual completo del avión).
