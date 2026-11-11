@@ -6,6 +6,8 @@ import { montarEscenario } from './escenario.js';
 import { montarMeteo } from './meteo.js';
 import { montarTitulo } from './titulo.js';
 import { montarCartel } from './cartel.js';
+// Las escenas del video de la materia 1 (Factores humanos): tipos «fh-…».
+import { VISUALES_FH } from './visuales-fh.js';
 
 export const VISUALES = {
   titulo: (c, p, o) => montarTitulo(c, { ...p, ...o }),
@@ -17,4 +19,5 @@ export const VISUALES = {
   meteo: (c, p, o) => montarMeteo(c, { ...p, ...o }),
   // El escenario recibe los datos del escenario en parametros y espera la respuesta del alumno.
   escenario: (c, p, o) => montarEscenario(c, p, o),
+  ...VISUALES_FH,
 };
