@@ -12,7 +12,7 @@ import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCort
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
 import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
 import { leccionDeVideo } from './academia-video.js';
-import { sonar, sonidosEncendidos, encenderSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
+import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -173,14 +173,18 @@ function adelantar(ruta) {
 function deMemoria(ruta) {
   const g = memoria.get(ruta);
   if (!g || g.usuario !== estado.usuario?.id) return null;
-  if (Date.now() - g.en > FRESCO_MS) {
+  // Recién llegado (es el redibujo que pidió este mismo refresco, o un pedido de hace un instante): no se vuelve a preguntar.
+  if (!repintarEnFondo && Date.now() - g.en > 300) {
     // Se dibuja con lo guardado y se pregunta al servidor; si cambió y la persona sigue en la misma pantalla (que no sea
     // una de estudio, donde no se interrumpe), se vuelve a dibujar.
     const direccion = location.hash;
     const vez = turno;
     pedirYGuardar(ruta).then(r => {
-      if (!r.ok || JSON.stringify(r.datos) === JSON.stringify(g.respuesta.datos)) return;
-      if (location.hash !== direccion || turno !== vez || document.body.classList.contains('modo-estudio')) return;
+      // Si ya no se puede (la sesión terminó, la cuenta se apagó…), se olvida lo guardado y se hace lo mismo que api().
+      if (!r.ok) { memoria.delete(ruta); revisarSesion(r, ruta); return; }
+      // El estado del sistema cambia a cada rato (horas, latidos): se guarda, pero no redibuja la pantalla por sí solo.
+      if (ruta === '/api/admin/sistema' || JSON.stringify(r.datos) === JSON.stringify(g.respuesta.datos)) return;
+      if (location.hash !== direccion || turno !== vez || document.body.classList.contains('modo-estudio') || formularioEnUso()) return;
       repintarEnFondo = true;
       dibujar();
     });
@@ -188,17 +192,31 @@ function deMemoria(ruta) {
   return structuredClone(g.respuesta);
 }
 
-async function api(metodo, ruta, datos) {
+// ¿Hay algo a medio hacer en la pantalla (escribiendo, archivos elegidos, una ventana abierta)? Entonces no se redibuja.
+function formularioEnUso() {
+  const activo = document.activeElement;
+  if (activo && raiz.contains(activo) && /^(INPUT|TEXTAREA|SELECT)$/.test(activo.tagName)) return true;
+  if (document.querySelector('dialog[open]')) return true;
+  return [...raiz.querySelectorAll('input, textarea')].some(x => (x.type === 'file' ? x.files?.length > 0 : x.value !== x.defaultValue));
+}
+
+// fresco: true para lo que se pregunta cada tanto (la zona del sistema, una copia en marcha): nunca de la memoria.
+async function api(metodo, ruta, datos, { fresco = false } = {}) {
   const adelantado = metodo === 'GET' && datos === undefined ? adelantados.get(ruta) : undefined;
   if (adelantado) adelantados.delete(ruta);
-  const guardable = metodo === 'GET' && datos === undefined && EN_MEMORIA.test(ruta);
+  const guardable = metodo === 'GET' && datos === undefined && EN_MEMORIA.test(ruta) && !fresco;
   if (!guardable && metodo !== 'GET') vaciarMemoria();
   const guardada = guardable && !adelantado ? deMemoria(ruta) : null;
   if (guardada) return guardada;
   const respuesta = await (adelantado ?? (guardable ? pedirYGuardar(ruta) : pedirAlServidor(metodo, ruta, datos)));
-  if (adelantado && guardable && respuesta.ok && estado.usuario) memoria.set(ruta, { respuesta, en: Date.now(), usuario: estado.usuario.id });
+  if ((fresco || (adelantado && guardable)) && respuesta.ok && estado.usuario && EN_MEMORIA.test(ruta)) memoria.set(ruta, { respuesta, en: Date.now(), usuario: estado.usuario.id });
   if (metodo !== 'GET' && /^\/api\/academia\//.test(ruta) && /\/(?:terminar|plan|visto|leido|grupo)$/.test(ruta)) adelantar('/api/academia/camino');
-  // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
+  revisarSesion(respuesta, ruta);
+  return respuesta;
+}
+
+// Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
+function revisarSesion(respuesta, ruta) {
   const error = respuesta.datos?.error;
   if (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') vaciarMemoria();
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
@@ -1361,7 +1379,7 @@ function crearZonaSistema(vigente, parte = 'resumen') {
   }
   async function actualizar() {
     if (ocupado) return;
-    const r = await api('GET', '/api/admin/sistema');
+    const r = await api('GET', '/api/admin/sistema', undefined, { fresco: true });
     if (!vigente()) return;
     if (!r.ok) {
       if (!ultimos) zona.replaceChildren(el('section', { class: 'tarjeta' }, el('h2', { texto: t('sistema.titulo') }), el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })));
@@ -1745,7 +1763,7 @@ function dibujarCopias(datos, aviso, vigente) {
   const sigue = () => vigente() && location.hash === ruta && zona.isConnected;
 
   async function actualizar() {
-    const x = await api('GET', '/api/admin/copias');
+    const x = await api('GET', '/api/admin/copias', undefined, { fresco: true });
     if (!sigue()) return;
     if (x.ok) pintar(x.datos);
     else programar(anterior);
@@ -2426,28 +2444,7 @@ function dibujarIa(s, aviso, vigente) {
       el('summary', { class: 'con-icono' }, icono('calendario'), el('span', { texto: t('ia.mes.titulo') })),
       el('p', { texto: t('ia.mes.texto') })));
 
-  // ---- 4. «Ayuda en proyectos»: el «sí» del dueño a la ayuda de la fase 1 ----
-  const mensajeAyuda = caja();
-  const ayudaEncendida = s.ayudaProyectos === true;
-  const tarjetaAyuda = el('section', { class: 'tarjeta' },
-    titulo('chispa', t('ia.ayuda.titulo')),
-    el('p', { class: 'etiquetas' }, insignia(ayudaEncendida ? 'bien' : 'apagado', ayudaEncendida ? t('ia.ayuda.encendida') : t('ia.ayuda.apagada'))),
-    el('p', { texto: t('ia.ayuda.texto') }),
-    ayudaEncendida ? [
-      !s.encendida ? el('p', { class: 'suave', texto: t('ia.ayuda.necesita_ia') }) : null,
-      el('button', {
-        type: 'button', class: 'secundario con-icono',
-        onclick: evento => cambiar(evento.currentTarget, mensajeAyuda, '/api/admin/ia/ajustes', { ayudaProyectos: false }, `${t('ia.ayuda.titulo')}: ${t('ia.ayuda.apagada')}`),
-      }, icono('encendido'), el('span', { texto: t('ia.ayuda.apagar') })),
-    ] : s.encendida ? el('button', {
-      type: 'button', class: 'con-icono',
-      onclick: evento => {
-        if (!confirm(t('ia.ayuda.confirmar'))) return;
-        cambiar(evento.currentTarget, mensajeAyuda, '/api/admin/ia/ajustes', { ayudaProyectos: true }, `${t('ia.ayuda.titulo')}: ${t('ia.ayuda.encendida')}`);
-      },
-    }, icono('encendido'), el('span', { texto: t('ia.ayuda.encender') }))
-      : el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('ia.ayuda.necesita_ia') })),
-    mensajeAyuda);
+  // ---- 4. (0.8.0: «Ayuda en proyectos» se quitó con los proyectos de OPORTIA) ----
 
   // ---- 5. Los proveedores (el interruptor «Usar …» solo existe si su precio oficial está confirmado) ----
   const mensajeProveedores = caja();
@@ -2487,7 +2484,7 @@ function dibujarIa(s, aviso, vigente) {
   // (display: contents) y el orden de siempre lo pone estilos.css.
   mostrar(marco('admin', cabeceraAdmin('ia'), el('div', { class: 'rejilla dos columnas-libres' },
     el('div', { class: 'columna' }, tarjetaEstadoIa, tarjetaTope, tarjetaProveedores),
-    el('div', { class: 'columna' }, tarjetaGasto, tarjetaAyuda, tarjetaPago))));
+    el('div', { class: 'columna' }, tarjetaGasto, tarjetaPago))));
 }
 
 // «Ver el detalle» del gasto (desde Tailscale): por cuenta, por proyecto y por uso, las veces sin IA, los últimos usos y
@@ -4558,4 +4555,6 @@ async function iniciar() {
 }
 
 window.addEventListener('hashchange', () => { repintarEnFondo = false; if (estado.usuario) dibujar(); });
+// 0.8.0: el audio de los sonidos se despierta con el primer toque (el iPhone no deja sonar si se crea después de esperar).
+prepararSonidos();
 iniciar().catch(() => pantallaNoArranco());

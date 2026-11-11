@@ -34,6 +34,16 @@ function elContexto() {
   return contexto;
 }
 
+// El iPhone solo deja sonar un contexto de audio creado o reanudado DENTRO de un toque. Los sonidos suenan muchas veces
+// después de esperar al servidor (COMPROBAR): por eso, con cada toque o tecla, el contexto se crea o se reanuda ya.
+export function prepararSonidos() {
+  const despertar = () => { if (sonidosEncendidos() && (!contexto || contexto.state !== 'running')) elContexto(); };
+  try {
+    document.addEventListener('pointerdown', despertar, { capture: true, passive: true });
+    document.addEventListener('keydown', despertar, { capture: true });
+  } catch { /* sin documento: nada */ }
+}
+
 // Llamarla dentro del toque (o justo después): suena el efecto si los sonidos están encendidos.
 export function sonar(nombre) {
   const notas = EFECTOS[nombre];
@@ -42,6 +52,7 @@ export function sonar(nombre) {
   const cuenta = document.documentElement.dataset;
   cuenta.sonidos = String(Number(cuenta.sonidos || 0) + 1);
   cuenta.ultimoSonido = nombre;
+  cuenta[`s${nombre}`] = String(Number(cuenta[`s${nombre}`] || 0) + 1);
   const c = elContexto();
   if (!c) return false;
   try {
