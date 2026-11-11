@@ -34,7 +34,7 @@ export const ARCHIVO_FIGURA = /^[a-z0-9][a-z0-9._-]{0,80}\.(png|jpg|jpeg|webp)$/
 // un paquete sin audio es igual que antes, y uno cuyo audio todavía no llegó se usa igual (el reproductor no sale).
 export const ARCHIVO_AUDIO = /^[a-z0-9][a-z0-9._-]{0,80}\.mp3$/i;
 // 0.7.2: el tipo de un dibujo (public/clase/visuales.js: titulo, ala, motor, instrumentos, escenario, meteo…).
-export const TIPO_VISUAL = /^[a-z][a-z0-9_]{0,39}$/;
+export const TIPO_VISUAL = /^[a-z][a-z0-9_-]{0,39}$/;
 const LETRA = /^[A-F]$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 
