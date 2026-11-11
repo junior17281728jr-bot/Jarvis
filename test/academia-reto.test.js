@@ -136,6 +136,7 @@ test('Modo reto: enunciado y correcta tal cual + las 2 del reto mezcladas; nada 
     assert.equal(x.reto.length, 2);
     for (const o of x.reto) assert.equal(o.porque, DE(q0.id).reto.opciones.find(y => y.texto === o.texto).porque_es_incorrecta);
     assert.equal(x.explicacion, DE(q0.id).original.explicacion, 'la explicación original, tal cual');
+    assert.equal(x.letraOriginal, DE(q0.id).original.correcta, 'la letra del Test Guide, para avisar que las letras cambian');
     // En la base queda la opción de verdad (R1 o R2), nunca la letra que se vio.
     const guardada = db.prepare('SELECT elegida FROM academia_respuestas WHERE intento_id = ? AND pregunta = ?').get(intento.id, q0.id).elegida;
     assert.match(guardada, /^R[12]$/);

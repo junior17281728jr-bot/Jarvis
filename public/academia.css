@@ -752,3 +752,4 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .respuesta-opciones li.es-correcta { border-color: var(--verde); background: var(--verde-suave); }
 .respuesta-sello { grid-column: 2; font: 800 12px/1 var(--letra-redonda); letter-spacing: 0.08em; color: var(--verde-texto); }
 .respuesta-idea { grid-column: 2; font-size: 14px; opacity: 0.85; }
+.nota-letras { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--morado-suave); color: var(--morado-texto); font-weight: 700; }

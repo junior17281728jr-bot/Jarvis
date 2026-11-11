@@ -1679,5 +1679,6 @@
   "error.sin_errores": "You have no missed questions to practice here.",
   "acad.motivo.reto_no_valido": "Challenge mode must have exactly 2 options",
   "reto.hecho": "Challenge mode done!",
-  "errores.hecho": "Mistakes practiced!"
+  "errores.hecho": "Mistakes practiced!",
+  "reto.letras": "In Challenge mode the letters change: here the right one is {aqui}; in the Test Guide (and the explanations) it is {original}."
 }

@@ -3838,6 +3838,9 @@ function tarjetaPregunta(q) {
 function partesRespuesta(q, resp) {
   const opcion = letra => q.opciones.find(o => o.letra === letra)?.texto ?? '';
   return [
+    // 0.8.0: en Modo reto las letras cambian; las explicaciones hablan de la letra del Test Guide.
+    resp.modo === 'reto' && resp.letraOriginal && resp.letraOriginal !== resp.correcta
+      ? el('p', { class: 'nota-letras con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('reto.letras', { aqui: resp.correcta, original: resp.letraOriginal }) })) : null,
     resp.explicacion ? el('section', { class: 'caja-hoja caja-original' },
       el('h3', { class: 'con-icono' }, icono('libro', 'icono chico'), el('span', { texto: q.origen === 'poh' ? t('acad.explicacion_poh') : t('acad.explicacion_original') })),
       talCual('p', resp.explicacion)) : null,

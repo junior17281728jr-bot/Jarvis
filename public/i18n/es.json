@@ -1679,5 +1679,6 @@
   "error.sin_errores": "No tienes preguntas falladas para practicar aquí.",
   "acad.motivo.reto_no_valido": "el Modo reto debe traer exactamente 2 opciones",
   "reto.hecho": "¡Modo reto terminado!",
-  "errores.hecho": "¡Errores practicados!"
+  "errores.hecho": "¡Errores practicados!",
+  "reto.letras": "En Modo reto las letras cambian: aquí la correcta es la {aqui}; en el Test Guide (y en las explicaciones) es la {original}."
 }

@@ -99,7 +99,8 @@ export function retroalimentacion(paquete, id, elegida, { intentoId = null, modo
   if (vistas) {
     const mala = opcionRetoDe(q, elegida);
     return {
-      ...base, modo: MODO_RETO, elegida: letraDeClave(vistas, elegida), acierto: elegida === correcta, correcta: letraDeClave(vistas, correcta),
+      // letraOriginal: la letra de la correcta en el Test Guide (las explicaciones la nombran así; aquí se vio con otra).
+      ...base, modo: MODO_RETO, elegida: letraDeClave(vistas, elegida), acierto: elegida === correcta, correcta: letraDeClave(vistas, correcta), letraOriginal: correcta,
       idea: elegida !== correcta ? mala?.porque_es_incorrecta ?? null : null,
       trampa: elegida !== correcta ? mala?.trampa ?? null : null,
       reto: vistas.filter(o => o.clave !== correcta).map(o => {
