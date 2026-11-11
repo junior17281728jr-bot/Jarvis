@@ -33,6 +33,14 @@ export function ajustesAcademia(db) {
     umbral: Number.isSafeInteger(umbral) && umbral >= 50 && umbral <= 100 ? umbral : UMBRAL_POR_DEFECTO,
   };
 }
+// 0.7.2: el panel «Grupo» que ven los alumnos (encendido salvo que el administrador lo apague). Va aparte de los
+// ajustes de arriba (su forma no cambia).
+export const grupoEncendido = db => leerAjuste(db, 'academia.grupo') !== '0';
+export function encenderGrupo(db, encendido) {
+  if (typeof encendido !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+  guardarAjuste(db, 'academia.grupo', encendido ? '1' : '0');
+  return encendido;
+}
 export function guardarAjustesAcademia(db, { nombre, umbral }) {
   if (nombre !== undefined) {
     if (typeof nombre !== 'string' || !nombre.trim() || nombre.length > 60 || /[\u0000-\u001f]/.test(nombre)) throw new ErrorHttp(400, 'nombre_no_valido');
@@ -84,15 +92,21 @@ export function retroalimentacion(paquete, id, elegida) {
   };
 }
 const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(s => ({
-  titulo: s.titulo, texto: s.texto, nota: s.nota ?? null, fuentes: (s.fuentes ?? []).map(f => fuenteDe(paquete, f, pid)),
+  titulo: s.titulo, texto: s.texto ?? null, nota: s.nota ?? null, fuentes: (s.fuentes ?? []).map(f => fuenteDe(paquete, f, pid)),
+  // 0.7.2: una tarjeta ya partida trae sus partes; las secciones de texto largo las parte la pantalla (public/tarjetas.js).
+  ...(s.tipo === 'tarjeta' ? {
+    tipo: 'tarjeta', puntos: [...s.puntos], recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null,
+    ingles: Array.isArray(s.ingles) ? s.ingles.map(w => ({ palabra: w.palabra, pronunciacion: w.pronunciacion ?? null, significado: w.significado ?? null, ejemplo: w.ejemplo ?? null })) : [],
+    visual: s.visual ? { tipo: s.visual.tipo, parametros: s.visual.parametros ?? {} } : null,
+  } : {}),
 }));
 
-function temasAprobados(db, usuarioId) {
+export function temasAprobados(db, usuarioId) {
   const filas = db.prepare(`SELECT materia, tema, MAX(aprobado) AS aprobado, MAX(CASE WHEN total > 0 THEN aciertos * 100 / total END) AS mejor
     FROM academia_intentos WHERE usuario_id = ? AND tipo = 'tema' AND terminado_en IS NOT NULL GROUP BY materia, tema`).all(usuarioId);
   return new Map(filas.map(f => [`${f.materia}/${f.tema}`, { aprobado: f.aprobado === 1, mejor: f.mejor }]));
 }
-function examenes(db, usuarioId) {
+export function examenes(db, usuarioId) {
   const filas = db.prepare(`SELECT materia, MAX(aprobado) AS aprobado, MAX(CASE WHEN total > 0 THEN aciertos * 100 / total END) AS mejor, COUNT(*) AS veces
     FROM academia_intentos WHERE usuario_id = ? AND tipo = 'examen' AND terminado_en IS NOT NULL GROUP BY materia`).all(usuarioId);
   return new Map(filas.map(f => [f.materia, { aprobado: f.aprobado === 1, mejor: f.mejor, veces: f.veces }]));
@@ -127,10 +141,13 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const aprobados = temasAprobados(db, usuarioId);
   const deExamen = examenes(db, usuarioId);
   let anteriorAprobado = true;
+  const vistos = videosVistos(db, usuarioId);
+  const leidos = temasLeidos(db, usuarioId);
   const materias = paquete.materias.map(m => {
     const temas = m.temas.map(t => {
       const a = aprobados.get(`${m.id}/${t.id}`);
-      const aprobado = a?.aprobado === true;
+      // 0.7.2: un tema SIN preguntas se aprueba al terminar de leer su lección (si no, el camino quedaba trancado ahí).
+      const aprobado = a?.aprobado === true || (!t.preguntas.length && leidos.has(`${m.id}/${t.id}`));
       const estadoTema = aprobado ? 'aprobado' : anteriorAprobado ? 'abierto' : 'bloqueado';
       anteriorAprobado = aprobado;
       return { id: t.id, titulo: t.titulo, estado: estadoTema, mejor: a?.mejor ?? null, preguntas: t.preguntas.length };
@@ -140,12 +157,69 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const ex = deExamen.get(m.id);
     const aprobadosN = temas.filter(t => t.estado === 'aprobado').length;
     const audio = audioDe(paquete, m.paquete, m.audio);
+    const video = resumenVideo(paquete, m, vistos);
     return {
-      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), ...(audio ? { audio } : {}),
+      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), ...(audio ? { audio } : {}), ...(video ? { video } : {}),
       examen: { disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0 },
     };
   });
   return { ...base, paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra }, materias, repaso: repasoPendiente(db, usuarioId, paquete, ahoraMs).length };
+}
+
+// ---------- 0.7.2: el «Video resumen» de cada materia ----------
+// Lo que el camino necesita saber del video (sin las escenas): cuántas escenas, si tiene su narración y cuánto dura.
+function videoDeMateria(paquete, m) {
+  const v = m?.video ?? null;
+  const audio = audioDe(paquete, m?.paquete, v?.audio) ?? (v ? null : audioDe(paquete, m?.paquete, m?.audio));
+  const escenas = Array.isArray(v?.escenas) ? v.escenas : [];
+  if (!escenas.length && !audio) return null;
+  return { v, audio, escenas };
+}
+function resumenVideo(paquete, m, vistos = []) {
+  const x = videoDeMateria(paquete, m);
+  if (!x) return null;
+  const duracion = x.escenas.length ? Math.round(Math.max(...x.escenas.map(e => e.fin_s))) : null;
+  return { escenas: x.escenas.length, audio: Boolean(x.audio), duracion, visto: vistos.includes(m.id) };
+}
+// El video de una materia para el reproductor: las escenas con sus tiempos y la narración (si ya llegó el mp3).
+export function videoMateria(db, usuarioId, paquete, materia) {
+  if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
+  const m = paquete.materias.find(x => x.id === materia);
+  const x = m && m.temas.length ? videoDeMateria(paquete, m) : null;
+  if (!x) throw new ErrorHttp(404, 'no_existe');
+  return {
+    materia, titulo: x.v?.titulo ?? null, audio: x.audio, visto: videosVistos(db, usuarioId).includes(materia),
+    escenas: x.escenas.map((e, i) => ({
+      id: `escena-${i + 1}`, inicio_s: e.inicio_s, fin_s: e.fin_s, subtitulo: e.subtitulo ?? '', texto_pantalla: e.texto_pantalla ?? '',
+      texto_narracion: e.texto_narracion ?? null, visual: e.visual?.tipo ? { tipo: e.visual.tipo, parametros: e.visual.parametros ?? {} } : null,
+    })),
+  };
+}
+// Los videos que el alumno ya vio (en ajustes, sin cambio de base): el círculo del video sale dorado.
+const claveVistos = usuarioId => `academia.videos_vistos.${Number(usuarioId)}`;
+export function videosVistos(db, usuarioId) {
+  try { const l = JSON.parse(leerAjuste(db, claveVistos(usuarioId)) ?? '[]'); return Array.isArray(l) ? l.filter(x => typeof x === 'string') : []; } catch { return []; }
+}
+export function marcarVideoVisto(db, usuarioId, paquete, materia) {
+  videoMateria(db, usuarioId, paquete, materia); // que exista
+  const vistos = videosVistos(db, usuarioId);
+  if (!vistos.includes(materia)) guardarAjuste(db, claveVistos(usuarioId), JSON.stringify([...vistos, materia].slice(-20)));
+  return { visto: true };
+}
+
+// ---------- 0.7.2: los temas sin preguntas se aprueban al leer la lección completa ----------
+const claveLeidos = usuarioId => `academia.temas_leidos.${Number(usuarioId)}`;
+export function temasLeidos(db, usuarioId) {
+  try { const l = JSON.parse(leerAjuste(db, claveLeidos(usuarioId)) ?? '[]'); return new Set(Array.isArray(l) ? l.filter(x => typeof x === 'string') : []); } catch { return new Set(); }
+}
+export function marcarTemaLeido(db, usuarioId, paquete, materia, tema) {
+  if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
+  const { t } = buscarTema(paquete, materia, tema);
+  if (estadoDelTema(db, usuarioId, paquete, materia, tema) === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
+  const leidos = temasLeidos(db, usuarioId);
+  const clave = `${materia}/${t.id}`;
+  if (!leidos.has(clave)) guardarAjuste(db, claveLeidos(usuarioId), JSON.stringify([...leidos, clave].slice(-3000)));
+  return { leido: true, estado: estadoDelTema(db, usuarioId, paquete, materia, tema) };
 }
 
 function buscarTema(paquete, materia, tema) {
@@ -290,7 +364,7 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
 }
 
 // Cómo va cada materia: «dominio» = preguntas cuya ÚLTIMA respuesta fue correcta, sobre todas las de la materia.
-function porMateria(db, usuarioId, paquete) {
+export function porMateria(db, usuarioId, paquete) {
   const ultima = new Map();
   for (const r of db.prepare('SELECT pregunta, materia, correcta FROM academia_respuestas WHERE usuario_id = ? ORDER BY id').all(usuarioId)) ultima.set(r.pregunta, r);
   const totales = new Map(db.prepare('SELECT materia, COUNT(*) AS n, COALESCE(SUM(correcta), 0) AS bien FROM academia_respuestas WHERE usuario_id = ? GROUP BY materia').all(usuarioId).map(f => [f.materia, f]));

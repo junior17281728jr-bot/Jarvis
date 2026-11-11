@@ -4,10 +4,15 @@
 //
 // API: montarReproductor(contenedor, leccion, opciones) → { reproducir(), pausar(), ir(i), siguiente(), anterior(),
 //        velocidad(v), voz(b), get estado, destruir() }
-//   leccion: { id?, titulo?, escenas: [{ id, subtitulo, texto_narracion, audio_url?, duracion_s?,
-//              visual: { tipo: 'titulo'|'ala'|'motor'|'instrumentos'|'escenario'|'meteo', parametros } }] }
+//   leccion: { id?, titulo?, audio_url?, escenas: [{ id, subtitulo, texto_narracion, audio_url?, duracion_s?, inicio_s?, fin_s?,
+//              visual: { tipo: 'titulo'|'cartel'|'ala'|'motor'|'instrumentos'|'escenario'|'meteo', parametros } }] }
+//   0.7.2: con leccion.audio_url, UNA sola narración para toda la lección (el «Video resumen» de una materia): cada
+//   escena dura fin_s − inicio_s y el reloj sale del audio (currentTime − inicio_s); tocar una escena salta el audio a su
+//   inicio. El audio nunca se recarga entre escenas (así sigue sin cortes y el iPhone no pide permiso otra vez).
+//   Un visual.tipo que no está en visuales usa «cartel» (si existe): nunca queda una escena en blanco.
 //   opciones: { inicio: {indice, tiempo}, onProgreso(p), onFin(p), autoAvance: true, voz: false, velocidad: 1,
-//               visuales: {tipo: montar}, textos }
+//               visuales: {tipo: montar}, textos, audio: HTMLAudioElement (0.7.2: el de leccion.audio_url, ya empezado
+//               dentro de un toque) }
 //   onProgreso recibe { leccionId, indice, escenaId, tiempo, porcentaje (0..100), completado }: se guarda y luego
 //   se pasa como opciones.inicio para seguir donde quedó.
 // Lógica pura (para las pruebas): Secuencia, estimarDuracion, dividirFrases, tiemposFrases, fraseEn, duracionEscena,
@@ -55,6 +60,7 @@ export function fraseEn(tiempos, t) {
 
 export function duracionEscena(escena, duracionAudio = null) {
   if (Number.isFinite(duracionAudio) && duracionAudio > 0) return duracionAudio;
+  if (Number.isFinite(escena?.inicio_s) && Number.isFinite(escena?.fin_s) && escena.fin_s > escena.inicio_s) return escena.fin_s - escena.inicio_s;
   if (Number.isFinite(escena?.duracion_s) && escena.duracion_s > 0) return escena.duracion_s;
   return estimarDuracion(escena?.texto_narracion || escena?.subtitulo || '');
 }
@@ -180,6 +186,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
   let frases = [], tiempos = [], fraseActual = -1;
   let hablando = false, esperaVoz = 0, utterancia = null;
   let audio = null, audioListo = false, audioFallo = false;
+  const audioUnico = typeof leccion.audio_url === 'string' && leccion.audio_url ? leccion.audio_url : null;
 
   const raiz = el('section', { class: 'clase-rep', 'aria-label': leccion.titulo ? `${T.etiqueta}: ${leccion.titulo}` : T.etiqueta, tabindex: -1 }, contenedor);
   const escenario = el('div', { class: 'clase-rep-escenario' }, raiz);
@@ -233,12 +240,12 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
     visual = null;
     probando = false;
     while (lugarVisual.firstChild) lugarVisual.removeChild(lugarVisual.firstChild);
-    const montar = visuales[e.visual.tipo];
+    const montar = visuales[e.visual.tipo] ?? visuales.cartel;
     const marco = el('div', { class: 'clase-rep-marco' }, lugarVisual);
     if (montar) {
       try {
         visual = montar(marco, e.visual.parametros || {}, {
-          modo: 'explicacion',
+          modo: 'explicacion', indice: seq.indice,
           alResolver: () => { seq.responder(); avisar(); pintar(); },
         });
       } catch (error) {
@@ -249,7 +256,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
       el('p', { class: 'clase-rep-sinvisual' }, marco, e.subtitulo);
     }
     visual?.pausar?.(!reproduciendo && e.visual.tipo !== 'escenario');
-    bProbar.hidden = !visual?.modo || ['titulo', 'escenario'].includes(e.visual.tipo);
+    bProbar.hidden = !visual?.modo || ['titulo', 'cartel', 'escenario'].includes(e.visual.tipo) || !visuales[e.visual.tipo];
     bProbar.textContent = T.probar;
     chipEscena.textContent = `${T.escena} ${seq.indice + 1} ${T.de} ${seq.total}${e.subtitulo ? ` · ${e.subtitulo}` : ''}`;
     tituloEscena.textContent = e.subtitulo;
@@ -270,6 +277,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
   // ---------- Audio grabado ----------
   function prepararAudio(e) {
     detenerVoz();
+    if (audioUnico) return prepararAudioUnico(e);
     audioListo = false; audioFallo = false;
     if (!e.audio_url) { if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load?.(); } return; }
     if (!audio) {
@@ -286,7 +294,33 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
     if (seq.tiempo > 0) { try { audio.currentTime = seq.tiempo; } catch { /* aún no cargó */ } }
     if (reproduciendo) audio.play().catch(() => { audioFallo = true; });
   }
-  const usaAudio = () => Boolean(seq.escena.audio_url) && !audioFallo;
+  // Una sola narración para toda la lección: se crea una vez; al cambiar de escena solo se mueve si hace falta.
+  function prepararAudioUnico(e) {
+    if (!audio) {
+      // opciones.audio: un audio que la pantalla ya empezó dentro de un toque (el iPhone lo exige); si no, uno nuevo.
+      const dado = opciones.audio instanceof (globalThis.HTMLMediaElement ?? Object) ? opciones.audio : null;
+      audio = dado ?? new Audio();
+      audio.preload = 'auto';
+      audio.addEventListener('loadedmetadata', () => { audioListo = true; ajustarAudio(seq.escena); });
+      audio.addEventListener('canplay', () => { audioListo = true; });
+      audio.addEventListener('error', () => { audioFallo = true; audioListo = false; });
+      if (!dado) audio.src = audioUnico;
+      else if (audio.readyState >= 1) audioListo = true;
+    }
+    audio.playbackRate = velocidad;
+    ajustarAudio(e);
+    if (reproduciendo && audio.paused) tocarAudio();
+  }
+  function ajustarAudio(e) {
+    if (!audio || !audioUnico) return;
+    const deseado = (Number(e.inicio_s) || 0) + seq.tiempo;
+    if (Math.abs((audio.currentTime || 0) - deseado) > 0.6) { try { audio.currentTime = deseado; } catch { /* aún no cargó */ } }
+  }
+  // El navegador puede negar el sonido sin un toque (iPhone): entonces queda en pausa con el botón grande, sin fallar.
+  function tocarAudio() {
+    audio.play().catch(error => { if (error?.name === 'NotAllowedError') pausar(); else if (error?.name !== 'AbortError') audioFallo = true; });
+  }
+  const usaAudio = () => (audioUnico ? true : Boolean(seq.escena.audio_url)) && !audioFallo;
 
   // ---------- Voz del navegador ----------
   function decir(texto) {
@@ -305,7 +339,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
     } catch { hablando = false; }
   }
   function detenerVoz() { if (hayVoz) { try { speechSynthesis.cancel(); } catch { /* nada */ } } hablando = false; }
-  function reiniciarNarracion() { fraseActual = -1; detenerVoz(); if (audio && usaAudio()) { try { audio.currentTime = 0; } catch { /* nada */ } } pintar(); }
+  function reiniciarNarracion() { fraseActual = -1; detenerVoz(); if (audio && usaAudio()) { try { audio.currentTime = audioUnico ? Number(seq.escena.inicio_s) || 0 : 0; } catch { /* nada */ } } pintar(); }
 
   function ponerVoz(si) {
     conVoz = Boolean(si) && hayVoz;
@@ -327,7 +361,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
     reproduciendo = true;
     if (probando) salirDePrueba();
     visual?.pausar?.(false);
-    if (usaAudio() && audio) audio.play().catch(() => { audioFallo = true; });
+    if (usaAudio() && audio) { if (audioUnico) { ajustarAudio(seq.escena); tocarAudio(); } else audio.play().catch(() => { audioFallo = true; }); }
     else if (conVoz && fraseActual >= 0) decir(frases[fraseActual]);
     bucle.iniciar();
     pintarBotones();
@@ -364,7 +398,12 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
   const bucle = crearBucle(raiz, dt => {
     if (!reproduciendo) return;
     let evento;
-    if (usaAudio() && audio && audioListo && !audio.paused) {
+    if (audioUnico && usaAudio() && audio && audioListo && !audio.paused) {
+      const t = audio.currentTime - (Number(seq.escena.inicio_s) || 0);
+      evento = audio.ended || t >= seq.duracion ? seq.avanzar(seq.duracion) : (seq.tiempo = Math.max(0, t), seq.avanzar(0));
+    } else if (audioUnico && usaAudio()) {
+      evento = null; // esperando que cargue (o que suene) la narración
+    } else if (usaAudio() && audio && audioListo && !audio.paused) {
       seq.tiempo = Math.min(audio.currentTime, seq.duracion);
       evento = audio.ended ? seq.avanzar(seq.duracion) : seq.avanzar(0);
     } else if (usaAudio() && !audioListo) {
@@ -381,7 +420,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
   });
 
   function manejar(evento) {
-    if (evento === 'escena') { entrarEscena(); if (reproduciendo && usaAudio()) audio.play().catch(() => { audioFallo = true; }); avisar(); }
+    if (evento === 'escena') { entrarEscena(); if (reproduciendo && usaAudio() && !audioUnico) audio.play().catch(() => { audioFallo = true; }); avisar(); }
     else if (evento === 'fin') {
       reproduciendo = false; bucle.detener(); detenerVoz(); audio?.pause();
       finTarjeta.hidden = false; pintar(); pintarBotones();
@@ -442,8 +481,8 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
     velocidad: ponerVelocidad,
     voz: ponerVoz,
     // Para pruebas y capturas: poner el reloj en un punto exacto de la escena actual.
-    buscar(segundos) { seq.tiempo = limitar(segundos, 0, seq.duracion); fraseActual = -1; pintar(); },
-    get estado() { return { ...seq.progreso(), duracion: seq.duracion, reproduciendo, velocidad, voz: conVoz }; },
-    destruir() { pausar(); bucle.destruir(); visual?.destruir?.(); audio?.pause(); raiz.remove(); },
+    buscar(segundos) { seq.tiempo = limitar(segundos, 0, seq.duracion); fraseActual = -1; ajustarAudio(seq.escena); pintar(); },
+    get estado() { return { ...seq.progreso(), duracion: seq.duracion, reproduciendo, velocidad, voz: conVoz, audio: audio ? { tiempo: audio.currentTime, pausado: audio.paused, fallo: audioFallo } : null }; },
+    destruir() { pausar(); bucle.destruir(); visual?.destruir?.(); if (audio) { audio.pause(); audio.removeAttribute('src'); try { audio.load(); } catch { /* nada */ } } raiz.remove(); },
   };
 }

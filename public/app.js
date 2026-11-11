@@ -15,6 +15,8 @@ import {
 } from './copias-vista.js';
 import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto } from './clave-recuperacion.js';
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosUsuario, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
+import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
+import { leccionDeVideo } from './academia-video.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -190,6 +192,10 @@ async function refrescarSetup() {
 function mostrar(...contenido) {
   // Las partes que no aplican llegan como null: no se muestran.
   raiz.replaceChildren(...contenido.flat(Infinity).filter(parte => parte != null && parte !== false));
+  // 0.7.2: las pantallas de estudio (lección, video, preguntas) ocupan toda la pantalla, sin el menú de abajo.
+  document.body.classList.toggle('modo-estudio', Boolean(raiz.querySelector(':scope > .inmersivo')));
+  document.querySelectorAll('body > .figura-grande').forEach(x => x.remove());
+  document.body.style.paddingBottom = '';
   window.scrollTo(0, 0);
   // Para quien usa VoiceOver: después de dibujar, el foco va al mensaje nuevo (si hay) o al título de la pantalla.
   const foco = raiz.querySelector('[data-foco]') || raiz.querySelector('h1');
@@ -936,6 +942,22 @@ const ICONOS = {
   trofeo: [['path', { d: 'M8 4h8v5a4 4 0 0 1-8 0z' }], ['path', { d: 'M8 6H5a3 3 0 0 0 3 4' }], ['path', { d: 'M16 6h3a3 3 0 0 1-3 4' }], ['line', { x1: 12, y1: 13, x2: 12, y2: 17 }], ['path', { d: 'M8 20h8l-1-3H9z' }]],
   subir: [['path', { d: 'M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3' }], ['polyline', { points: '7 9 12 4 17 9' }], ['line', { x1: 12, y1: 4, x2: 12, y2: 16 }]],
   cerrar: [['line', { x1: 6, y1: 6, x2: 18, y2: 18 }], ['line', { x1: 18, y1: 6, x2: 6, y2: 18 }]],
+  // Academia 0.7.2: un ícono por materia y los de las tarjetas.
+  cerebro: [['path', { d: 'M9 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3 3 0 0 0 6.5 18 3 3 0 0 0 12 19V5.5A3 3 0 0 0 9 4.5z' }], ['path', { d: 'M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3 3 0 0 1-2.5 5.3A3 3 0 0 1 12 19' }], ['path', { d: 'M8 10h2M14 13h2' }]],
+  motor: [['rect', { x: 5, y: 9, width: 10, height: 8, rx: 1 }], ['path', { d: 'M15 11h3l2-2v8l-2-2h-3' }], ['path', { d: 'M8 9V6h4v3' }], ['path', { d: 'M2.5 11v4' }]],
+  ala: [['path', { d: 'M2.5 14c4-4.5 11-6 19-5-5 1.5-8.5 3.5-10.5 7-3 .2-6-.6-8.5-2z' }], ['path', { d: 'M4 18h9M7 21h9' }]],
+  torre: [['path', { d: 'M8 21l1.5-10h5L16 21' }], ['path', { d: 'M6.5 11h11l-1.5-4h-8z' }], ['path', { d: 'M12 7V3M9.5 4.5 12 3l2.5 1.5' }]],
+  manual: [['path', { d: 'M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z' }], ['path', { d: 'M5 18a2 2 0 0 1 2-2h11' }], ['path', { d: 'M9 8h5M9 11h3' }]],
+  radio: [['rect', { x: 4, y: 9, width: 16, height: 11, rx: 2 }], ['path', { d: 'M8 9l8-5' }], ['circle', { cx: 9, cy: 14.5, r: 2 }], ['path', { d: 'M14 13h3M14 16h3' }]],
+  nube: [['path', { d: 'M7 18h10a4 4 0 0 0 .5-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z' }]],
+  velocimetro: [['path', { d: 'M4 17a8 8 0 1 1 16 0' }], ['path', { d: 'M12 17l4-5' }], ['circle', { cx: 12, cy: 17, r: 1.3 }], ['path', { d: 'M6.5 11.5l1.2.8M12 7.5V9M17.5 11.5l-1.2.8' }]],
+  brujula: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M15.5 8.5l-2 5-5 2 2-5z' }]],
+  video: [['rect', { x: 3, y: 6, width: 13, height: 12, rx: 2.5 }], ['path', { d: 'M16 10.5l5-3v9l-5-3z' }], ['path', { d: 'M8.5 9.5v5l4-2.5z' }]],
+  medalla: [['circle', { cx: 12, cy: 15, r: 5.5 }], ['path', { d: 'M8.5 10.5 6 3h4l2 4 2-4h4l-2.5 7.5' }], ['path', { d: 'M12 12.5l.8 1.7 1.8.2-1.3 1.2.3 1.8-1.6-.9-1.6.9.3-1.8-1.3-1.2 1.8-.2z' }]],
+  bombilla: [['path', { d: 'M9 18h6M10 21h4' }], ['path', { d: 'M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z' }]],
+  altavoz: [['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }], ['path', { d: 'M15.5 9a4 4 0 0 1 0 6' }], ['path', { d: 'M18 6.5a7.5 7.5 0 0 1 0 11' }]],
+  tarjetas: [['rect', { x: 6, y: 3, width: 12, height: 15, rx: 2 }], ['path', { d: 'M4 7v12a2 2 0 0 0 2 2h9' }]],
+  lupa: [['circle', { cx: 10.5, cy: 10.5, r: 6 }], ['path', { d: 'M15 15l5.5 5.5M8 10.5h5M10.5 8v5' }]],
 };
 // Un elemento SVG con sus atributos (siempre con createElementNS: nunca se arma con texto).
 function svgEl(etiqueta, atributos = {}) {
@@ -3691,9 +3713,9 @@ function crearCreador({ inicial = {}, claveBorrador, textoBoton, alMandar, alEsc
   const pasoZonas = pasoCreador(4, 'lugar', t('creador.zonas'), t('creador.zonas.ayuda'),
     el('div', { class: 'chips' }, pais),
     mapaCaja,
-    el('p', { class: 'subtitulo', texto: t('creador.zonas.provincias') }),
+    el('p', { class: 'bajada', texto: t('creador.zonas.provincias') }),
     listaConMas(provincias, ZONAS_A_LA_VISTA, 'creador.ver_todas'),
-    el('p', { class: 'subtitulo', texto: t('creador.zonas.regiones') }),
+    el('p', { class: 'bajada', texto: t('creador.zonas.regiones') }),
     listaConMas(regiones, 3, 'creador.ver_todas'),
     avisoZonas);
 
@@ -4538,12 +4560,35 @@ function dibujarProyecto(d, aviso = null) {
     papelera));
 }
 
-// ---------- Academia (etapa 1, 0.7.0) ----------
-// El camino tipo Duolingo: las 11 materias de ENALAS en su orden, cada tema un círculo que se abre al aprobar el
-// anterior. Las preguntas del Test Guide se muestran TAL CUAL (textContent, con sus saltos de línea): solo cambia el
-// orden de las preguntas. Lo agregado para entender (explicación sencilla, idea equivocada, inglés) va siempre aparte.
+// ---------- Academia (0.7.2): una app de aviación tipo Duolingo ----------
+// El camino: cada materia con su color y su ícono, un círculo por tema en un sendero que serpentea, el «Video resumen»
+// al empezar cada materia y el trofeo del examen al final. La lección va en TARJETAS (una idea por pantalla, con
+// «CONTINUAR» abajo). Las preguntas del Test Guide se muestran TAL CUAL (textContent, con sus saltos de línea): solo
+// cambia el orden de las preguntas. Lo agregado para entender (explicación sencilla, idea equivocada, inglés) va
+// siempre aparte. Las pantallas de estudio (lección, video, preguntas) ocupan toda la pantalla, sin el menú de abajo.
 const nombreMateria = id => tSi(`acad.materia.${id}`, id);
 const pctTexto = n => t('acad.pct', { n: numero(n ?? 0) });
+// El color y el ícono de cada materia (estilos: .mc-0 … .mc-10).
+const ICONO_MATERIA = {
+  factores_humanos: 'cerebro', sistemas: 'motor', aerodinamica: 'ala', ambiente_vuelo: 'torre', rad: 'libro', poh: 'manual',
+  comunicacion: 'radio', meteorologia: 'nube', rendimiento: 'velocimetro', navegacion: 'brujula', sms: 'escudo',
+};
+const ORDEN_MATERIAS = Object.keys(ICONO_MATERIA);
+const claseMateria = id => `mc-${Math.max(0, ORDEN_MATERIAS.indexOf(id))}`;
+// Los textos de cada plan de estudio y de cada ritmo (claves enteras: test/pantallas.test.js las revisa).
+const TEXTOS_PLAN = {
+  un_mes: { nombre: 'acad.plan.un_mes', linea: 'acad.plan.un_mes.linea', corto: 'acad.plan.corto.un_mes', icono: 'avion' },
+  dos_meses: { nombre: 'acad.plan.dos_meses', linea: 'acad.plan.dos_meses.linea', corto: 'acad.plan.corto.dos_meses', icono: 'nube' },
+  repaso_15: { nombre: 'acad.plan.repaso_15', linea: 'acad.plan.repaso_15.linea', corto: 'acad.plan.corto.repaso_15', icono: 'rayo' },
+};
+const TEXTO_RITMO = { adelantado: 'acad.plan.ritmo.adelantado', a_tiempo: 'acad.plan.ritmo.a_tiempo', atrasado: 'acad.plan.ritmo.atrasado', terminado: 'acad.plan.ritmo.terminado' };
+const textoPlan = (id, cual) => tSi(TEXTOS_PLAN[id]?.[cual] ?? '', id);
+// «Visión en vuelo y visión nocturna (vision in flight / night vision)» → título y el inglés aparte.
+function partirTitulo(titulo) {
+  const m = /^(.*\S)\s*\(([^()]*[A-Za-z][^()]*)\)\s*$/.exec(String(titulo ?? ''));
+  if (m && pareceIngles(m[2], { titulo: true })) return { es: m[1], en: m[2] };
+  return { es: String(titulo ?? ''), en: null };
+}
 
 // Un texto del paquete tal cual (respeta saltos de línea y espacios: estilos.css .tal-cual).
 function talCual(etiqueta, texto, clase = '') {
@@ -4553,10 +4598,17 @@ function lineaFuente(f) {
   const partes = [f.libro, f.capitulo, f.seccion, f.pagina ? t('acad.pagina', { n: f.pagina }) : null].filter(Boolean);
   return el('p', { class: 'fuente con-icono-chico' }, icono('libro', 'icono chico'), el('span', { texto: partes.join(' · ') }));
 }
+// Un texto con los términos en inglés como fichas y las cifras resaltadas (public/tarjetas.js: los trozos juntos dicen
+// exactamente el texto).
+function textoRico(etiqueta, texto, clase = '') {
+  return el(etiqueta, { class: clase || null }, resaltar(texto).map(x => x.ingles
+    ? el('span', { class: 'termino-en', lang: 'en', texto: x.texto.slice(1, -1) })
+    : x.cifra ? el('strong', { class: 'cifra', texto: x.texto }) : x.texto));
+}
 function cifras(c) {
   return el('div', { class: 'acad-cifras' },
-    el('span', { class: `acad-cifra fuego${c.racha ? '' : ' cero'}`, title: t('acad.racha') }, icono('fuego'), el('strong', { texto: numero(c.racha ?? 0) }), el('span', { class: 'suave', texto: tn('acad.dias', { n: c.racha ?? 0 }) })),
-    el('span', { class: 'acad-cifra estrella', title: t('acad.puntos') }, icono('estrella'), el('strong', { texto: numero(c.puntos ?? 0) }), el('span', { class: 'suave', texto: t('acad.pts') })),
+    chipCifra(`fuego${c.racha ? '' : ' cero'}`, 'fuego', numero(c.racha ?? 0), t('acad.racha')),
+    chipCifra('estrella', 'estrella', numero(c.puntos ?? 0), t('acad.puntos')),
     queEs('racha'));
 }
 function avisoMuestra(paquete) {
@@ -4571,30 +4623,258 @@ async function empezarIntento(datos, boton = null) {
 }
 function botonRepaso(n, clase = '') {
   if (!n) return null;
-  return el('button', { type: 'button', class: `con-icono ${clase}`.trim(), onclick: evento => empezarIntento({ tipo: 'repaso' }, evento.currentTarget) },
+  return el('button', { type: 'button', class: `boton-3d naranja con-icono ${clase}`.trim(), onclick: evento => empezarIntento({ tipo: 'repaso' }, evento.currentTarget) },
     icono('actualizar'), el('span', { texto: tn('acad.repasar', { n }) }));
 }
 
-function nodoTema(m, tema, i) {
-  const contenido = [
-    el('span', { class: 'nodo-circulo' }, icono(tema.estado === 'aprobado' ? 'marca' : tema.estado === 'bloqueado' ? 'candado' : 'play')),
-    el('span', { class: 'nodo-titulo', texto: tema.titulo }),
-    tema.mejor != null ? el('span', { class: 'nodo-mejor', texto: t('acad.mejor', { n: numero(tema.mejor) }) }) : null,
-  ];
-  const clase = `nodo ${tema.estado} lado-${i % 4}`;
-  // Un tema cerrado no es un botón: se ve, pero no se toca.
-  if (tema.estado === 'bloqueado') return el('li', { class: clase }, el('div', { class: 'nodo-dentro', 'aria-label': t('acad.tema_cerrado', { tema: tema.titulo }) }, contenido));
-  return el('li', { class: clase }, el('a', { class: 'nodo-dentro', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}`, 'aria-current': tema.estado === 'abierto' ? 'step' : null }, contenido));
+// ---- Piezas que se repiten ----
+// El medidor de preparación (un altímetro de media luna): 0-69 naranja, 70-89 azul, 90+ verde.
+function medidor(pct, { chico = false, etiqueta = t('acad.preparacion') } = {}) {
+  const valor = Math.max(0, Math.min(100, Number(pct) || 0));
+  const tono = valor >= 90 ? 'verde' : valor >= 70 ? 'azul' : 'naranja';
+  const s = svgEl('svg', { viewBox: '0 0 120 70', class: `medidor-arco tono-${tono}`, 'aria-hidden': 'true', focusable: 'false' });
+  s.append(svgEl('path', { d: 'M12 62a48 48 0 0 1 96 0', class: 'medidor-pista' }));
+  const lleno = svgEl('path', { d: 'M12 62a48 48 0 0 1 96 0', class: 'medidor-lleno', pathLength: 100 });
+  // El hueco más largo que el arco: el trazo no se repite al final (con 0 no se ve nada).
+  lleno.style.strokeDasharray = `${valor} 200`;
+  if (!valor) lleno.style.opacity = '0';
+  s.append(lleno);
+  for (let k = 0; k <= 10; k++) {
+    const a = Math.PI - (k / 10) * Math.PI;
+    const r1 = k % 5 ? 40 : 36;
+    s.append(svgEl('line', { x1: (60 + Math.cos(a) * r1).toFixed(1), y1: (62 - Math.sin(a) * r1).toFixed(1), x2: (60 + Math.cos(a) * 43).toFixed(1), y2: (62 - Math.sin(a) * 43).toFixed(1), class: 'medidor-marca' }));
+  }
+  const ang = Math.PI - (valor / 100) * Math.PI;
+  s.append(svgEl('line', { x1: 60, y1: 62, x2: (60 + Math.cos(ang) * 34).toFixed(1), y2: (62 - Math.sin(ang) * 34).toFixed(1), class: 'medidor-aguja' }));
+  s.append(svgEl('circle', { cx: 60, cy: 62, r: 5, class: 'medidor-eje' }));
+  return el('div', { class: `medidor${chico ? ' chico' : ''}`, role: 'img', 'aria-label': `${etiqueta}: ${pctTexto(valor)}` },
+    s, el('strong', { class: 'medidor-valor', texto: pctTexto(valor) }), chico ? null : el('span', { class: 'medidor-etiqueta', texto: etiqueta }));
 }
-function nodoExamen(m) {
-  const ex = m.examen;
-  const contenido = [
-    el('span', { class: 'nodo-circulo' }, icono(ex.aprobado ? 'marca' : ex.disponible ? 'trofeo' : 'candado')),
-    el('span', { class: 'nodo-titulo', texto: t('acad.examen') }),
-    el('span', { class: 'nodo-mejor', texto: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : tn('acad.n_preguntas', { n: ex.preguntas }) }),
+function chipCifra(clase, nombreIcono, valor, titulo) {
+  return el('span', { class: `chip-cifra ${clase}`, title: titulo, 'aria-label': `${titulo}: ${valor}` }, icono(nombreIcono, 'icono'), el('strong', { texto: valor }));
+}
+// «2026-12-11» → «11 dic» (sin año: la fecha está cerca).
+function fechaCortaDia(dia) {
+  try { return new Intl.DateTimeFormat(formatoLocal(), { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${dia}T12:00:00Z`)).replace('.', ''); } catch { return dia; }
+}
+// La barra de arriba del camino: el plan, la racha, los puntos y la preparación.
+function barraCabina(c) {
+  const plan = c.plan?.elegido ? el('a', { class: 'chip-plan', href: '#progreso', 'aria-label': `${textoPlan(c.plan.elegido, 'corto')} · ${t('acad.plan.fin_estimado')}: ${diaRd(`${c.plan.fin}T12:00:00Z`)}` },
+    icono('calendario', 'icono'),
+    el('span', { class: 'chip-plan-texto', 'aria-hidden': 'true' }, el('span', { class: 'chip-plan-nombre', texto: textoPlan(c.plan.elegido, 'corto') }),
+      el('strong', { texto: t('acad.plan.fin_corto', { fecha: fechaCortaDia(c.plan.fin) }) }))) : null;
+  return el('header', { class: 'cabina' },
+    el('div', { class: 'cabina-izq' }, plan),
+    el('div', { class: 'cabina-der' },
+      chipCifra(`fuego${c.racha ? '' : ' cero'}`, 'fuego', numero(c.racha ?? 0), t('acad.racha')),
+      chipCifra('estrella', 'estrella', numero(c.puntos ?? 0), t('acad.puntos')),
+      el('a', { class: 'cabina-medidor', href: '#progreso', 'aria-label': t('acad.preparacion') }, medidor(c.preparacion?.pct ?? 0, { chico: true }))));
+}
+
+// ---- Elegir el plan de estudio (la primera vez) ----
+function elegirPlanVista(plan, { alListo, cancelar = null } = {}) {
+  let elegido = plan.elegido ?? 'un_mes';
+  const tarjetas = plan.opciones.map(o => {
+    const b = el('button', {
+      type: 'button', class: `plan-opcion${o.recomendado ? ' recomendado' : ''}`, 'aria-pressed': String(o.id === elegido),
+      onclick: () => { elegido = o.id; for (const x of tarjetas) x.setAttribute('aria-pressed', String(x.dataset.plan === elegido)); },
+      'data-plan': o.id,
+    },
+    el('span', { class: 'plan-icono' }, icono(TEXTOS_PLAN[o.id]?.icono ?? 'avion')),
+    el('span', { class: 'plan-texto' },
+      el('strong', { texto: textoPlan(o.id, 'nombre') }),
+      el('span', { texto: textoPlan(o.id, 'linea') }),
+      el('span', { class: 'plan-fecha', texto: t('acad.plan.terminas', { fecha: diaRd(`${o.fin}T12:00:00Z`) }) })),
+    o.recomendado ? el('span', { class: 'plan-sello', texto: t('acad.plan.recomendado') }) : null);
+    return b;
+  });
+  const boton = el('button', {
+    type: 'button', class: 'boton-3d grande',
+    onclick: async evento => {
+      evento.currentTarget.disabled = true;
+      const r = await api('POST', '/api/academia/plan', { plan: elegido });
+      evento.currentTarget.disabled = false;
+      if (!r.ok) return avisar(textoError(r.datos.error), 'mal');
+      alListo(r.datos.plan);
+    },
+  }, el('span', { texto: t('acad.continuar') }));
+  return el('section', { class: 'plan-elegir', 'aria-labelledby': 'plan-titulo' },
+    el('div', { class: 'plan-cielo', 'aria-hidden': 'true' }, avionSvg('plan-avion')),
+    el('p', { class: 'antetitulo', texto: t('acad.plan.ante') }),
+    el('h1', { id: 'plan-titulo', class: 'titulo-grande', texto: t('acad.plan.titulo') }),
+    el('p', { class: 'bajada', texto: t('acad.plan.linea') }),
+    el('div', { class: 'plan-opciones', role: 'group', 'aria-label': t('acad.plan.titulo') }, tarjetas),
+    el('div', { class: 'botones-pie' }, cancelar ? el('button', { type: 'button', class: 'boton-3d blanco', onclick: cancelar, texto: t('acad.cancelar') }) : null, boton));
+}
+// Una avioneta de lado (para las celebraciones y los marcadores).
+function avionSvg(clase = '') {
+  // Mira a la derecha: cola con su timón a la izquierda, ala alta, cabina y hélice adelante.
+  const s = svgEl('svg', { viewBox: '0 0 64 32', class: `avioneta ${clase}`.trim(), 'aria-hidden': 'true', focusable: 'false' });
+  s.append(svgEl('path', { d: 'M5 6h6l7 8H8z', class: 'avioneta-ala' }));
+  s.append(svgEl('path', { d: 'M6 14h40c6 0 12 1.6 12 4.5S52 23 46 23H14c-5 0-8-2.5-8-5z', class: 'avioneta-cuerpo' }));
+  s.append(svgEl('path', { d: 'M24 12.5h17l-2 3H26z', class: 'avioneta-ala' }));
+  s.append(svgEl('path', { d: 'M44 16.5h6.5', class: 'avioneta-ventana' }));
+  s.append(svgEl('path', { d: 'M27 23l-3 6h5l5-6', class: 'avioneta-rueda' }));
+  s.append(svgEl('path', { d: 'M61 11v15', class: 'avioneta-helice' }));
+  return s;
+}
+
+// ---- El camino ----
+// Las estrellas de un tema aprobado según su mejor nota: 1 (aprobado), 2 (95 % o más), 3 (100 %).
+const estrellasDe = mejor => (mejor >= 100 ? 3 : mejor >= 95 ? 2 : 1);
+const DESVIOS = 8; // el sendero serpentea: .desvio-0 … .desvio-7 (estilos)
+function nodoCamino({ clase, href = null, nombreIcono, titulo, detalle = null, etiqueta, actual = false, estrellas = 0, burbuja = null, i }) {
+  const circulo = el('span', { class: 'nodo-boton' }, icono(nombreIcono, 'icono nodo-icono'));
+  const partes = [
+    burbuja ? el('span', { class: 'nodo-burbuja', 'aria-hidden': 'true', texto: burbuja }) : null,
+    el('span', { class: 'nodo-aro' }, circulo, actual ? el('span', { class: 'nodo-avion', 'aria-hidden': 'true' }, avionSvg()) : null),
+    estrellas ? el('span', { class: 'nodo-estrellas', 'aria-hidden': 'true' }, [1, 2, 3].map(k => icono('estrella', `icono estrella-${k <= estrellas ? 'llena' : 'vacia'}`))) : null,
+    el('span', { class: 'nodo-nombre', texto: titulo }),
+    detalle ? el('span', { class: 'nodo-detalle', texto: detalle }) : null,
   ];
-  if (!ex.disponible) return el('li', { class: 'nodo examen bloqueado' }, el('div', { class: 'nodo-dentro', 'aria-label': t('acad.examen_cerrado') }, contenido));
-  return el('li', { class: `nodo examen ${ex.aprobado ? 'aprobado' : 'abierto'}` }, el('a', { class: 'nodo-dentro', href: `#examen/${encodeURIComponent(m.id)}` }, contenido));
+  const dentro = href
+    ? el('a', { class: 'nodo-dentro', href, 'aria-label': etiqueta, 'aria-current': actual ? 'step' : null }, partes)
+    : el('div', { class: 'nodo-dentro', 'aria-label': etiqueta, role: 'img' }, partes);
+  return el('li', { class: `nodo ${clase} desvio-${i % DESVIOS}${actual ? ' actual' : ''}` }, dentro);
+}
+
+function senderoMateria(m, n, siguiente) {
+  const nodos = [];
+  let i = 0;
+  // El «Video resumen», lo primero de cada materia.
+  if (m.video) {
+    const visto = m.video.visto;
+    const actualVideo = !visto && siguiente?.tipo === 'video' && siguiente.materia === m.id;
+    nodos.push(nodoCamino({
+      clase: `video ${visto ? 'hecho' : 'abierto'}`, href: `#video/${encodeURIComponent(m.id)}`, nombreIcono: 'video', i: i++,
+      titulo: t('acad.video.nodo'), detalle: m.video.duracion ? t('acad.video.minutos', { n: numero(Math.max(1, Math.round(m.video.duracion / 60))) }) : null,
+      etiqueta: t('acad.video.de', { materia: nombreMateria(m.id) }), actual: actualVideo, burbuja: actualVideo ? t('acad.ver') : null,
+    }));
+  }
+  m.temas.forEach(tema => {
+    const actual = siguiente?.tipo === 'tema' && siguiente.materia === m.id && siguiente.tema === tema.id;
+    const { es } = partirTitulo(tema.titulo);
+    if (tema.estado === 'bloqueado') {
+      nodos.push(nodoCamino({ clase: 'bloqueado', nombreIcono: 'candado', titulo: es, etiqueta: t('acad.tema_cerrado', { tema: es }), i: i++ }));
+    } else {
+      const hecho = tema.estado === 'aprobado';
+      nodos.push(nodoCamino({
+        clase: hecho ? 'hecho' : 'abierto', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}`, i: i++,
+        nombreIcono: hecho ? 'marca' : 'estrella', titulo: es, etiqueta: hecho ? t('acad.tema_hecho', { tema: es, n: numero(tema.mejor ?? 0) }) : t('acad.tema_abierto', { tema: es }),
+        actual, estrellas: hecho ? estrellasDe(tema.mejor ?? 0) : 0, burbuja: actual ? t('acad.empezar') : null,
+      }));
+    }
+  });
+  const ex = m.examen;
+  const actualEx = siguiente?.tipo === 'examen' && siguiente.materia === m.id;
+  nodos.push(nodoCamino({
+    clase: `examen ${ex.aprobado ? 'hecho' : ex.disponible ? 'abierto' : 'bloqueado'}`, href: ex.disponible ? `#examen/${encodeURIComponent(m.id)}` : null, i: i++,
+    nombreIcono: 'trofeo', titulo: t('acad.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : tn('acad.n_preguntas', { n: ex.preguntas }),
+    etiqueta: ex.disponible ? t('acad.examen_de', { materia: nombreMateria(m.id) }) : t('acad.examen_cerrado'), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
+  }));
+  return el('ol', { class: 'sendero', 'aria-label': nombreMateria(m.id) }, nodos);
+}
+
+function bannerMateria(m, n, { vacia = false } = {}) {
+  const hechos = m.temas.filter(x => x.estado === 'aprobado').length;
+  return el('header', { class: 'banner-materia' },
+    el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[m.id] ?? 'avion')),
+    el('div', { class: 'banner-texto' },
+      el('p', { class: 'banner-ante', texto: t('acad.materia_n', { n: numero(n + 1) }) }),
+      el('h2', { id: `materia-${m.id}`, class: 'banner-titulo', texto: nombreMateria(m.id) }),
+      vacia ? el('p', { class: 'banner-linea', texto: t('acad.pronto.linea') })
+        : el('div', { class: 'banner-avance' }, el('span', { class: 'banner-barra' }, barraLlena(m.pct)), el('span', { texto: t('acad.temas_de', { n: numero(hechos), total: numero(m.temas.length) }) }))),
+    vacia ? el('span', { class: 'banner-pronto', texto: t('acad.pronto') }) : null);
+}
+function barraLlena(pct) {
+  const lleno = el('span', { class: 'barra-relleno' });
+  lleno.style.width = `${Math.max(0, Math.min(100, Number(pct) || 0))}%`;
+  return lleno;
+}
+
+// Lo que toca ahora: el primer video sin ver de una materia abierta, el primer tema abierto o el examen disponible.
+function pasoQueToca(c) {
+  for (const m of c.materias) {
+    if (!m.temas.length) continue;
+    if (m.estado === 'bloqueada') return null;
+    if (m.video && !m.video.visto && m.temas.every(x => x.estado !== 'aprobado')) return { tipo: 'video', materia: m.id };
+    const abierto = m.temas.find(x => x.estado === 'abierto');
+    if (abierto) return { tipo: 'tema', materia: m.id, tema: abierto.id };
+    if (m.examen.disponible && !m.examen.aprobado) return { tipo: 'examen', materia: m.id };
+  }
+  return null;
+}
+
+// Una avioneta sobre cada materia donde hay pilotos (con cuántos son); la tuya, en verde.
+function porMateriaDeRuta(lista) {
+  const grupos = new Map();
+  for (const x of lista) {
+    const k = Math.min(x.lugar, ORDEN_MATERIAS.length - 1);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(x);
+  }
+  return [...grupos].map(([k, pilotos]) => ({ lugar: (k / (ORDEN_MATERIAS.length - 1)) * 100, pilotos }));
+}
+const colorDe = nombre => [...String(nombre ?? '')].reduce((n, c) => n + c.codePointAt(0), 0) % 6;
+// El grupo en una franja: las 11 materias como puntos de una ruta y cada compañero como una avioneta.
+function rutaGrupo(g, { compacta = false } = {}) {
+  const lista = g.companeros;
+  const ruta = el('div', { class: 'ruta-grupo', role: 'img', 'aria-label': t('acad.grupo.ruta', { n: numero(lista.length) }) },
+    el('span', { class: 'ruta-linea' }),
+    Array.from({ length: g.materias }, (_, k) => {
+      const p = el('span', { class: 'ruta-punto', texto: numero(k + 1) });
+      p.style.left = `${(k / (g.materias - 1)) * 100}%`;
+      return p;
+    }),
+    porMateriaDeRuta(lista).map(({ lugar, pilotos }) => {
+      const conmigo = pilotos.some(x => x.tu);
+      const nombres = pilotos.map(x => x.nombre).join(', ');
+      const a = el('span', { class: `ruta-avion${conmigo ? ' tu' : ''}`, title: nombres }, avionSvg(),
+        el('span', { class: 'ruta-inicial', texto: pilotos.length > 1 ? numero(pilotos.length) : (pilotos[0].nombre || '?').trim().charAt(0).toUpperCase() }));
+      a.style.left = `${lugar}%`;
+      return a;
+    }));
+  if (compacta) return ruta;
+  return ruta;
+}
+function filaCompanero(x) {
+  return el('li', { class: `companero${x.tu ? ' tu' : ''}` },
+    el('span', { class: `companero-avatar color-${colorDe(x.nombre)}`, 'aria-hidden': 'true' }, avionSvg(), el('span', { texto: (x.nombre || '?').trim().charAt(0).toUpperCase() })),
+    el('span', { class: 'companero-texto' },
+      el('strong', { texto: x.tu ? t('acad.grupo.tu', { nombre: x.nombre }) : x.nombre }),
+      el('span', { class: 'suave', texto: x.lugar >= ORDEN_MATERIAS.length ? t('acad.grupo.terminado') : t('acad.grupo.en_materia', { n: numero(x.lugar + 1), materia: nombreMateria(x.materia) }) }),
+      el('span', { class: 'companero-chips' },
+        chipCifra(`fuego mini${x.racha ? '' : ' cero'}`, 'fuego', numero(x.racha), t('acad.racha')),
+        chipCifra('medalla mini', 'medalla', numero(x.medallas), t('acad.grupo.medallas')))),
+    el('span', { class: 'companero-pct', texto: pctTexto(x.pct) }));
+}
+// El panel «Grupo» (en Progreso entero; en el camino, la franja y un enlace).
+function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
+  if (!g?.activo) return null;
+  const cabeza = el('div', { class: 'panel-cabeza' },
+    el('span', { class: 'panel-icono' }, icono('personas')),
+    el('div', {}, el('h2', { texto: t('acad.grupo.titulo') }), el('p', { class: 'suave', texto: tn('acad.grupo.n_pilotos', { n: g.companeros.length }) })),
+    el('span', { class: 'panel-ver-flecha', 'aria-hidden': 'true' }, icono('flecha', 'icono')));
+  if (compacto) {
+    return el('a', { class: 'panel panel-grupo compacto', href: '#progreso', 'aria-label': t('acad.grupo.ver') }, cabeza, rutaGrupo(g, { compacta: true }));
+  }
+  const ocultar = el('button', {
+    type: 'button', class: 'boton-texto con-icono', 'aria-pressed': String(g.oculto),
+    onclick: async evento => {
+      evento.currentTarget.disabled = true;
+      const r = await api('POST', '/api/academia/grupo', { oculto: !g.oculto });
+      if (!r.ok) { evento.currentTarget.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
+      alCambiar?.(r.datos.grupo);
+    },
+  }, icono(g.oculto ? 'ojo' : 'candado', 'icono chico'), el('span', { texto: t(g.oculto ? 'acad.grupo.mostrarme' : 'acad.grupo.ocultarme') }));
+  return el('section', { class: 'panel panel-grupo', 'aria-labelledby': 'grupo-titulo' },
+    el('div', { class: 'panel-cabeza' },
+      el('span', { class: 'panel-icono' }, icono('personas')),
+      el('div', {}, el('h2', { id: 'grupo-titulo', texto: t('acad.grupo.titulo') }), el('p', { class: 'suave', texto: t('acad.grupo.linea') }))),
+    rutaGrupo(g),
+    el('ul', { class: 'lista-companeros' }, g.companeros.map(filaCompanero)),
+    el('p', { class: 'suave chica', texto: g.oculto ? t('acad.grupo.estas_oculto') : t('acad.grupo.privado') }),
+    ocultar);
 }
 
 async function pantallaInicio() {
@@ -4604,37 +4884,230 @@ async function pantallaInicio() {
   const esAdmin = estado.usuario.rol === 'admin';
   if (!r.ok) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const c = r.datos;
-  const cabeza = el('section', { class: 'tarjeta acad-portada' },
-    el('div', { class: 'acad-portada-fila' },
-      el('div', {},
-        el('h1', { texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
-        entrada(t('acad.linea'))),
-      cifras(c)),
-    c.repaso ? el('div', { class: 'botones' }, botonRepaso(c.repaso)) : null);
   if (!c.paquete) {
-    return mostrar(marco('inicio', cabeza,
-      el('section', { class: 'tarjeta' }, vacio('libro', t(esAdmin ? 'acad.sin_paquete.admin' : 'acad.sin_paquete'),
-        esAdmin ? el('a', { class: 'boton-enlace con-icono', href: '#contenido' }, icono('subir'), el('span', { texto: t('acad.subir_paquete') })) : null))));
+    return mostrar(marco('inicio', barraCabina(c),
+      el('section', { class: 'panel bienvenida' },
+        el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
+        vacio('libro', t(esAdmin ? 'acad.sin_paquete.admin' : 'acad.sin_paquete'),
+          esAdmin ? el('a', { class: 'boton-enlace con-icono', href: '#contenido' }, icono('subir'), el('span', { texto: t('acad.subir_paquete') })) : null))));
   }
-  const camino = el('div', { class: 'camino' }, c.materias.map((m, n) => el('section', { class: `tarjeta materia ${m.estado}`, 'aria-labelledby': `materia-${m.id}` },
-    el('div', { class: 'materia-cabeza' },
-      el('span', { class: 'materia-numero', texto: numero(n + 1) }),
-      el('h2', { id: `materia-${m.id}`, texto: nombreMateria(m.id) }),
-      m.estado === 'vacia' ? el('span', { class: 'insignia tono-apagado', texto: t('acad.pronto') }) : el('span', { class: 'materia-pct', texto: pctTexto(m.pct) })),
-    m.estado === 'vacia' ? null : el('div', { class: 'guia-barra' }, barra(m.pct, 100, 'bien')),
-    m.estado === 'vacia' ? null : reproductor(m.audio),
-    m.estado === 'vacia' ? null : el('ol', { class: 'nodos' }, m.temas.map((tema, i) => nodoTema(m, tema, i)), nodoExamen(m)))));
-  mostrar(marco('inicio', cabeza, avisoMuestra(c.paquete), camino));
+  // La primera vez: elegir el plan de estudio (1 mes recomendado, 2 meses o repaso de 15 días).
+  if (!c.plan?.elegido) {
+    return mostrar(marco('inicio', elegirPlanVista(c.plan, { alListo: () => pantallaInicio() })));
+  }
+  const siguiente = pasoQueToca(c);
+  const materias = c.materias.map((m, n) => {
+    const vacia = !m.temas.length;
+    return el('section', { class: `materia-bloque ${claseMateria(m.id)} ${vacia ? 'vacia' : m.estado}`, 'aria-labelledby': `materia-${m.id}` },
+      bannerMateria(m, n, { vacia }),
+      vacia ? null : senderoMateria(m, n, siguiente));
+  });
+  const hola = el('div', { class: 'saludo' },
+    el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
+    el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
+    c.repaso ? botonRepaso(c.repaso, 'chico') : null);
+  mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }), el('div', { class: 'camino' }, materias)));
+  // Baja hasta el paso que toca (si está más abajo).
+  const actual = raiz.querySelector('.nodo.actual');
+  if (actual && actual.getBoundingClientRect().top > window.innerHeight * 0.75) actual.scrollIntoView({ block: 'center' });
 }
 
-// ---- La lección de un tema: una sección por pantalla, con de dónde sale ----
-// 0.7.1: la narración (mp3) de una materia o un tema, si el paquete la trae. El servidor la da por partes (Range), así
-// el iPhone la reproduce; no se baja nada hasta que la persona toca «play» (preload="none").
-function reproductor(audio) {
-  if (!audio?.ref) return null;
-  return el('div', { class: 'acad-audio' },
-    el('p', { class: 'con-icono suave' }, icono('play'), el('span', { texto: audio.titulo || t('acad.audio.escuchar') })),
-    el('audio', { controls: true, preload: 'none', src: `/api/academia/audio/${encodeURIComponent(audio.ref)}`, 'aria-label': audio.titulo || t('acad.audio.escuchar') }));
+// ---- Pantallas de estudio (lección, video, preguntas): arriba la X y la barra de combustible; abajo un botón grande ----
+function combustible() {
+  const relleno = el('span', { class: 'combustible-relleno' });
+  const avion = el('span', { class: 'combustible-avion', 'aria-hidden': 'true' }, avionSvg());
+  const nodo = el('div', { class: 'combustible', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': t('acad.avance') },
+    el('span', { class: 'combustible-pista' }, relleno), avion);
+  return {
+    nodo,
+    poner(hechos, total) {
+      const pct = total ? Math.max(0, Math.min(100, (hechos / total) * 100)) : 0;
+      relleno.style.width = `${pct}%`;
+      avion.style.left = `${pct}%`;
+      nodo.setAttribute('aria-valuenow', String(Math.round(pct)));
+    },
+  };
+}
+function marcoEstudio({ clase = '', barra = null, cuenta = null, cuerpo, pie, salir = '#inicio' }) {
+  return el('div', { class: `inmersivo ${clase}`.trim() },
+    el('header', { class: 'estudio-arriba' },
+      el('a', { class: 'estudio-salir', href: salir, 'aria-label': t('acad.salir_practica') }, icono('cerrar')),
+      barra, cuenta),
+    el('main', { class: 'estudio-cuerpo' }, cuerpo),
+    el('footer', { class: 'estudio-pie' }, pie));
+}
+// El botón grande de abajo (CONTINUAR / COMPROBAR / GIRAR), con su color.
+function botonGrande(texto, alPulsar, { tono = 'verde', deshabilitado = false } = {}) {
+  return el('button', { type: 'button', class: `boton-3d grande ${tono}`, disabled: deshabilitado, onclick: alPulsar }, el('span', { texto }));
+}
+// La hoja que sube desde abajo con la respuesta (verde o roja).
+function hojaRespuesta({ acierto, titulo, partes, boton }) {
+  return el('section', { class: `hoja-respuesta ${acierto ? 'bien' : 'mal'}`, role: 'status', 'aria-live': 'polite', 'data-foco': true },
+    el('div', { class: 'hoja-cabeza' },
+      el('span', { class: 'hoja-icono' }, icono(acierto ? 'marca' : 'cerrar')),
+      el('h2', { class: 'hoja-titulo', texto: titulo })),
+    el('div', { class: 'hoja-cuerpo' }, partes),
+    el('div', { class: 'hoja-pie' }, boton));
+}
+// Poner la hoja y dejar a la vista, justo arriba de ella, las opciones (con la correcta y la elegida marcadas).
+function ponerHoja(raizEstudio, hoja) {
+  quitarHojaDe(raizEstudio);
+  raizEstudio.append(hoja);
+  requestAnimationFrame(() => {
+    const alto = hoja.offsetHeight;
+    document.body.style.paddingBottom = `${alto + 16}px`;
+    const opciones = raizEstudio.querySelector('.opciones-cartas');
+    if (opciones) {
+      const r = opciones.getBoundingClientRect();
+      const libre = window.innerHeight - alto;
+      if (r.bottom > libre - 8) window.scrollBy({ top: r.bottom - libre + 16, behavior: prefiereQuieto() ? 'auto' : 'smooth' });
+    }
+  });
+}
+function quitarHojaDe(raizEstudio) {
+  raizEstudio.querySelector('.hoja-respuesta')?.remove();
+  document.body.style.paddingBottom = '';
+}
+// La celebración al acertar: una explosión de colores y una avioneta que da una vuelta (sin sonido).
+function celebrar(contenedor) {
+  if (prefiereQuieto()) return;
+  const capa = el('div', { class: 'celebracion', 'aria-hidden': 'true' },
+    Array.from({ length: 18 }, (_, k) => {
+      const p = el('span', { class: `confeti c${k % 6}` });
+      p.style.setProperty('--ang', `${(k / 18) * 360}deg`);
+      p.style.setProperty('--dist', `${90 + (k % 4) * 28}px`);
+      return p;
+    }),
+    el('span', { class: 'celebracion-avion' }, avionSvg()));
+  contenedor.append(capa);
+  setTimeout(() => capa.remove(), 1800);
+}
+function sacudir(nodo) {
+  if (!nodo || prefiereQuieto()) return;
+  nodo.classList.remove('sacudir');
+  void nodo.offsetWidth;
+  nodo.classList.add('sacudir');
+}
+const prefiereQuieto = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
+// Deslizar a la izquierda = seguir; a la derecha = volver.
+function alDeslizar(nodo, { izquierda, derecha }) {
+  let x0 = null;
+  let y0 = null;
+  nodo.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  nodo.addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
+    if (dx < 0) izquierda?.(); else derecha?.();
+  }, { passive: true });
+}
+// Pronunciar una palabra en inglés con la voz del navegador (si tiene).
+function pronunciar(texto) {
+  try {
+    if (typeof speechSynthesis === 'undefined') return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(texto);
+    u.lang = 'en-US';
+    u.rate = 0.85;
+    speechSynthesis.speak(u);
+  } catch { /* sin voz */ }
+}
+const hayVoz = () => typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance === 'function';
+function fichaIngles(w, { conBoton = true } = {}) {
+  return el('span', { class: 'ficha-ingles', lang: 'en' },
+    el('strong', { texto: w.palabra }),
+    w.pronunciacion ? el('span', { class: 'ficha-pron', lang: 'es', texto: w.pronunciacion }) : null,
+    conBoton && hayVoz() ? el('button', { type: 'button', class: 'ficha-oir', 'aria-label': t('acad.oir', { palabra: w.palabra }), onclick: () => pronunciar(w.palabra) }, icono('altavoz', 'icono chico')) : null);
+}
+
+// ---- La lección de un tema, en tarjetas ----
+// Los dibujos de las clases (public/clase) se cargan solo cuando una tarjeta los usa.
+let visualesClase = null;
+const cargarVisuales = () => (visualesClase ??= import('./clase/visuales.js').then(m => m.VISUALES).catch(() => ({})));
+// De dónde sale la tarjeta, abajo y en chico: la primera fuente; las demás, al tocar «y N fuentes más».
+function fuentesDe(lista) {
+  if (!lista?.length) return null;
+  if (lista.length === 1) return el('footer', { class: 'tarjeta-fuentes' }, lineaFuente(lista[0]));
+  return el('footer', { class: 'tarjeta-fuentes' }, lineaFuente(lista[0]),
+    el('details', { class: 'mas-fuentes' }, el('summary', { texto: tn('acad.mas_fuentes', { n: lista.length - 1 }) }), lista.slice(1).map(lineaFuente)));
+}
+const ETIQUETA_ESTILO = { normal: 'acad.tarjeta.concepto', analogia: 'acad.tarjeta.analogia', resumen: 'acad.tarjeta.resumen' };
+
+function vistaTarjeta(p, { materia }) {
+  const { es, en } = partirTitulo(p.titulo);
+  const visual = p.visual ? el('div', { class: 'tarjeta-visual' }) : null;
+  let montado = null;
+  if (visual) {
+    cargarVisuales().then(V => {
+      if (!visual.isConnected) return;
+      const montar = V[p.visual.tipo] ?? V.cartel;
+      try { montado = montar?.(visual, p.visual.parametros ?? {}, { modo: 'interactivo' }); } catch { visual.remove(); }
+    });
+  }
+  const nodo = el('article', { class: `tarjeta-leccion estilo-${p.estilo ?? 'normal'} ${claseMateria(materia)}` },
+    el('div', { class: 'tarjeta-sello' },
+      el('span', { class: 'sello', texto: t(ETIQUETA_ESTILO[p.estilo] ?? ETIQUETA_ESTILO.normal) }),
+      p.parte ? el('span', { class: 'sello-parte', texto: t('acad.de', { n: numero(p.parte), total: numero(p.partes) }) }) : null),
+    el('h2', { class: 'tarjeta-titulo', texto: es }),
+    en ? el('p', { class: 'tarjeta-en', lang: 'en', texto: en }) : null,
+    visual,
+    p.texto ? textoRico('p', p.texto, 'tarjeta-texto') : null,
+    p.puntos?.length ? el('ul', { class: 'tarjeta-puntos' }, p.puntos.map(x => textoRico('li', x))) : null,
+    p.recuerda ? el('aside', { class: 'recuerda' }, el('p', { class: 'recuerda-titulo con-icono' }, icono('bombilla', 'icono'), el('span', { texto: t('acad.recuerda') })), textoRico('p', p.recuerda)) : null,
+    p.ejemplo ? el('aside', { class: 'caja-ejemplo' }, el('p', { class: 'caja-ejemplo-titulo', texto: t('acad.ejemplo') }), textoRico('p', p.ejemplo)) : null,
+    p.ingles?.length ? el('div', { class: 'tarjeta-fichas', 'aria-label': t('acad.ingles') }, p.ingles.map(w => fichaIngles(w))) : null,
+    p.nota ? el('p', { class: 'nota-tarjeta con-icono-arriba' }, icono('info', 'icono chico'), talCual('span', p.nota)) : null,
+    fuentesDe(p.fuentes));
+  return { nodo, destruir: () => montado?.destruir?.() };
+}
+
+function vistaGirar(p, alGirar) {
+  let girada = false;
+  const carta = el('button', { type: 'button', class: 'carta', 'aria-pressed': 'false', 'aria-label': t('acad.girar.ayuda') },
+    el('span', { class: 'carta-cara frente' },
+      el('span', { class: 'carta-etiqueta', texto: t('acad.girar.si_te_preguntan') }),
+      el('span', { class: 'carta-texto', texto: p.pregunta }),
+      el('span', { class: 'carta-toca con-icono' }, icono('actualizar', 'icono chico'), el('span', { texto: t('acad.girar.toca') }))),
+    el('span', { class: 'carta-cara atras' },
+      el('span', { class: 'carta-etiqueta', texto: t('acad.recuerda') }),
+      textoRico('span', p.respuesta, 'carta-texto')));
+  const girar = () => { girada = !girada; carta.classList.toggle('girada', girada); carta.setAttribute('aria-pressed', String(girada)); if (girada) alGirar(); };
+  carta.addEventListener('click', girar);
+  const nodo = el('article', { class: 'tarjeta-girar' },
+    el('div', { class: 'tarjeta-sello' }, el('span', { class: 'sello tg', texto: t('acad.girar.sello') }), el('span', { class: 'sello-parte', texto: t('acad.de', { n: numero(p.indice), total: numero(p.total) }) })),
+    el('h2', { class: 'tarjeta-titulo chica', texto: t('acad.girar.titulo') }),
+    el('div', { class: 'carta-marco' }, carta),
+    fuentesDe(p.fuentes));
+  return { nodo, girar };
+}
+
+function vistaVocabulario(p) {
+  return el('article', { class: 'tarjeta-leccion estilo-ingles' },
+    el('div', { class: 'tarjeta-sello' }, el('span', { class: 'sello ingles', texto: t('acad.ingles') }), p.parte ? el('span', { class: 'sello-parte', texto: t('acad.de', { n: numero(p.parte), total: numero(p.partes) }) }) : null),
+    el('h2', { class: 'tarjeta-titulo', texto: t('acad.vocabulario.titulo') }),
+    el('ul', { class: 'lista-vocabulario' }, p.palabras.map(w => el('li', { class: 'palabra' },
+      el('div', { class: 'palabra-cabeza' }, fichaIngles(w)),
+      el('p', { class: 'palabra-significado', texto: w.significado }),
+      w.ejemplo ? el('p', { class: 'palabra-ejemplo', lang: 'en', texto: w.ejemplo }) : null))),
+    fuentesDe(p.fuentes));
+}
+
+// Una situación de vuelo (PRÁCTICA: no cuenta para la nota): elegir, COMPROBAR y ver la consecuencia.
+function vistaSituacion(p, { alElegir }) {
+  let elegida = null;
+  const botones = p.opciones.map(o => el('button', {
+    type: 'button', class: 'opcion-carta', 'aria-pressed': 'false', 'data-letra': o.letra,
+    onclick: () => { elegida = o.letra; for (const b of botones) b.setAttribute('aria-pressed', String(b.dataset.letra === elegida)); alElegir(elegida); },
+  }, el('span', { class: 'opcion-letra', texto: o.letra }), el('span', { class: 'opcion-texto', texto: o.texto })));
+  const nodo = el('article', { class: 'tarjeta-pregunta practica-vuelo' },
+    el('div', { class: 'insignia-pregunta practica' }, icono('avion', 'icono chico'), el('span', { texto: t('acad.practica.sello') })),
+    el('p', { class: 'situacion-texto', texto: p.situacion }),
+    el('p', { class: 'pregunta-ayuda', texto: t('acad.practica.que_haces') }),
+    el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones),
+    fuentesDe(p.fuentes));
+  return { nodo, botones, elegida: () => elegida };
 }
 
 async function pantallaTema(materia, tema) {
@@ -4643,35 +5116,201 @@ async function pantallaTema(materia, tema) {
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const l = r.datos;
+  const { es, en } = partirTitulo(l.titulo);
+  const pantallas = [{ tipo: 'portada' }, ...partirLeccion(l.secciones), { tipo: 'fin' }];
   let paso = 0;
-  const zona = el('div', { class: 'leccion' });
-  const pintar = () => {
-    const s = l.secciones[paso];
-    const ultimo = paso === l.secciones.length - 1;
-    zona.replaceChildren(
-      el('div', { class: 'puntos-paso', 'aria-label': t('acad.paso', { n: paso + 1, total: l.secciones.length }) },
-        l.secciones.map((_, i) => el('span', { class: i === paso ? 'punto actual' : i < paso ? 'punto hecho' : 'punto' }))),
-      el('article', { class: 'tarjeta seccion-leccion' },
-        el('h2', { texto: s.titulo }),
-        talCual('p', s.texto, 'leccion-texto'),
-        s.nota ? el('p', { class: 'aviso con-icono-arriba' }, icono('info'), talCual('span', s.nota)) : null,
-        s.fuentes.map(lineaFuente)),
-      el('div', { class: 'botones leccion-botones' },
-        paso > 0 ? el('button', { type: 'button', class: 'secundario', texto: t('acad.atras'), onclick: () => { paso -= 1; pintar(); } }) : null,
-        ultimo
-          ? el('button', { type: 'button', class: 'grande con-icono', onclick: evento => empezarIntento({ tipo: 'tema', materia, tema }, evento.currentTarget) },
-            icono('play'), el('span', { texto: tn('acad.empezar_preguntas', { n: l.preguntas }) }))
-          : el('button', { type: 'button', class: 'grande con-icono', onclick: () => { paso += 1; pintar(); window.scrollTo(0, 0); } }, el('span', { texto: t('acad.siguiente') }), icono('flecha'))));
+  let actual = null; // { destruir }
+  const barraAvance = combustible();
+  const cuenta = el('span', { class: 'estudio-cuenta' });
+  const cuerpo = el('div', { class: 'estudio-tarjeta' });
+  const pie = el('div', { class: 'estudio-botones' });
+  // La narración del tema (si el paquete la trae): arriba de las tarjetas, sigue sonando al pasar de una a otra.
+  const audioTema = l.audio?.ref ? el('div', { class: 'audio-tema' },
+    el('p', { class: 'con-icono' }, icono('altavoz', 'icono chico'), el('span', { texto: l.audio.titulo || t('acad.audio.escuchar') })),
+    el('audio', { controls: true, preload: 'none', src: `/api/academia/audio/${encodeURIComponent(l.audio.ref)}`, 'aria-label': l.audio.titulo || t('acad.audio.escuchar') })) : null;
+  const raizEstudio = marcoEstudio({ clase: `leccion-tarjetas ${claseMateria(materia)}`, barra: barraAvance.nodo, cuenta, cuerpo: [audioTema, cuerpo], pie });
+  const sigue = () => vigente() && cuerpo.isConnected;
+  const ir = n => {
+    if (n < 0 || n >= pantallas.length) return;
+    paso = n;
+    pintar();
+    window.scrollTo(0, 0);
   };
+  const atras = () => (paso > 0 ? el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.atras'), onclick: () => ir(paso - 1) }, icono('flecha', 'icono volver-icono')) : null);
+  const pintar = () => {
+    actual?.destruir?.();
+    actual = null;
+    quitarHojaDe(raizEstudio);
+    const p = pantallas[paso];
+    barraAvance.poner(paso, pantallas.length - 1);
+    cuenta.textContent = paso > 0 && paso < pantallas.length - 1 ? t('acad.de', { n: numero(paso), total: numero(pantallas.length - 2) }) : '';
+    let nodo;
+    let botones = [];
+    if (p.tipo === 'portada') {
+      nodo = el('article', { class: 'portada-tema' },
+        el('span', { class: 'portada-icono', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[materia] ?? 'avion')),
+        el('p', { class: 'antetitulo', texto: nombreMateria(materia) }),
+        el('h1', { class: 'titulo-grande', texto: es }),
+        en ? el('p', { class: 'tarjeta-en', lang: 'en', texto: en }) : null,
+        el('ul', { class: 'portada-datos' },
+          el('li', {}, icono('tarjetas', 'icono'), el('span', { texto: tn('acad.n_tarjetas', { n: pantallas.length - 2 }) })),
+          el('li', {}, icono('trofeo', 'icono'), el('span', { texto: tn('acad.n_preguntas_tg', { n: l.preguntas }) }))),
+        el('p', { class: 'bajada', texto: t('acad.portada.linea') }));
+      botones = [botonGrande(t('acad.empezar'), () => ir(1))];
+    } else if (p.tipo === 'fin') {
+      nodo = el('article', { class: 'fin-leccion' },
+        el('div', { class: 'fin-cielo', 'aria-hidden': 'true' }, avionSvg('fin-avion')),
+        el('h1', { class: 'titulo-grande', texto: t('acad.fin.titulo') }),
+        el('p', { class: 'bajada', texto: l.preguntas ? tn('acad.fin.linea', { n: l.preguntas }) : t('acad.fin.sin_preguntas') }));
+      botones = [atras(), l.preguntas
+        ? botonGrande(t('acad.empezar_preguntas_corto'), evento => empezarIntento({ tipo: 'tema', materia, tema }, evento.currentTarget))
+        : botonGrande(t('acad.seguir'), async evento => {
+          evento.currentTarget.disabled = true;
+          await api('POST', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}/leido`, {});
+          location.hash = '#inicio';
+        })];
+      setTimeout(() => { if (sigue()) celebrar(cuerpo); }, 150);
+    } else if (p.tipo === 'girar') {
+      const v = vistaGirar(p, () => { boton.replaceWith(continuar); });
+      nodo = v.nodo;
+      const continuar = botonGrande(t('acad.continuar'), () => ir(paso + 1));
+      const boton = botonGrande(t('acad.girar.boton'), () => v.girar(), { tono: 'azul' });
+      botones = [atras(), boton];
+    } else if (p.tipo === 'situacion') {
+      const comprobar = botonGrande(t('acad.comprobar'), () => {
+        const letra = v.elegida();
+        if (!letra) return;
+        const o = p.opciones.find(x => x.letra === letra);
+        const correcta = p.opciones.find(x => x.correcta);
+        for (const b of v.botones) {
+          b.disabled = true;
+          b.classList.toggle('es-correcta', b.dataset.letra === correcta.letra);
+          b.classList.toggle('es-mala', b.dataset.letra === letra && !o.correcta);
+        }
+        if (o.correcta) celebrar(cuerpo); else sacudir(v.nodo.querySelector(`[data-letra="${letra}"]`));
+        pie.replaceChildren();
+        ponerHoja(raizEstudio, hojaRespuesta({
+          acierto: o.correcta,
+          titulo: o.correcta ? t('acad.practica.bien') : t('acad.practica.mejor', { letra: correcta.letra }),
+          partes: [
+            o.consecuencia ? el('section', { class: 'caja-hoja' }, el('h3', { texto: t('acad.practica.consecuencia') }), el('p', { texto: o.consecuencia })) : null,
+            !o.correcta && correcta.consecuencia ? el('section', { class: 'caja-hoja' }, el('h3', { texto: t('acad.practica.la_mejor', { letra: correcta.letra }) }), el('p', { texto: `${correcta.texto} — ${correcta.consecuencia}` })) : null,
+            p.recuerda ? el('section', { class: 'caja-hoja recuerda-hoja' }, el('h3', { class: 'con-icono' }, icono('bombilla', 'icono chico'), el('span', { texto: t('acad.recuerda') })), textoRico('p', p.recuerda)) : null,
+          ],
+          boton: botonGrande(t('acad.continuar'), () => ir(paso + 1), { tono: o.correcta ? 'verde' : 'rojo' }),
+        }));
+      }, { deshabilitado: true });
+      const v = vistaSituacion(p, { alElegir: () => { comprobar.disabled = false; } });
+      nodo = v.nodo;
+      botones = [atras(), comprobar];
+    } else if (p.tipo === 'vocabulario') {
+      nodo = vistaVocabulario(p);
+      botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
+    } else {
+      const v = vistaTarjeta(p, { materia });
+      nodo = v.nodo;
+      actual = v;
+      botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
+    }
+    cuerpo.replaceChildren(nodo);
+    pie.replaceChildren(...botones.filter(Boolean));
+  };
+  alDeslizar(cuerpo, {
+    izquierda: () => { if (['tarjeta', 'vocabulario', 'portada'].includes(pantallas[paso].tipo) || (pantallas[paso].tipo === 'girar' && cuerpo.querySelector('.carta.girada'))) ir(paso + 1); },
+    derecha: () => { if (!raizEstudio.querySelector('.hoja-respuesta')) ir(paso - 1); },
+  });
   pintar();
-  mostrar(marco('inicio', volverAlCamino(),
-    el('p', { class: 'suave materia-chica', texto: nombreMateria(materia) }),
-    el('h1', { class: 'titulo-pantalla', texto: l.titulo }),
-    reproductor(l.audio),
-    zona));
+  mostrar(raizEstudio);
 }
 function volverAlCamino() {
   return el('a', { class: 'volver con-icono', href: '#inicio' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.volver') }));
+}
+
+// ---- El «Video resumen» de una materia (lo primero de su camino) ----
+// La narración (mp3) suena entera y las escenas se cambian solas según su tiempo (public/clase/reproductor.js). Antes
+// de empezar se ve el cartel con el botón grande: el iPhone solo deja sonar el audio después de un toque.
+const TEXTOS_REPRODUCTOR = {
+  reproducir: 'clase.rep.reproducir', pausar: 'clase.rep.pausar', anterior: 'clase.rep.anterior', siguiente: 'clase.rep.siguiente', velocidad: 'clase.rep.velocidad',
+  voz: 'clase.rep.voz', escena: 'clase.rep.escena', de: 'clase.rep.de', probar: 'clase.rep.probar', volver: 'clase.rep.volver', fin: 'clase.rep.fin',
+  repetir: 'clase.rep.repetir', responde: 'clase.rep.responde', continuar: 'clase.rep.continuar', sinVoz: 'clase.rep.sinVoz', irA: 'clase.rep.irA', etiqueta: 'clase.rep.etiqueta',
+};
+const textosReproductor = () => Object.fromEntries(Object.entries(TEXTOS_REPRODUCTOR).map(([k, clave]) => [k, t(clave)]));
+async function duracionDe(url) {
+  return new Promise(listo => {
+    const a = new Audio();
+    const fin = valor => { a.removeAttribute('src'); listo(valor); };
+    const espera = setTimeout(() => fin(null), 6000);
+    a.preload = 'metadata';
+    a.addEventListener('loadedmetadata', () => { clearTimeout(espera); fin(Number.isFinite(a.duration) ? a.duration : null); });
+    a.addEventListener('error', () => { clearTimeout(espera); fin(null); });
+    a.src = url;
+  });
+}
+function triangulo() {
+  const s = svgEl('svg', { viewBox: '0 0 24 24', class: 'icono-play', 'aria-hidden': 'true', focusable: 'false' });
+  s.append(svgEl('path', { d: 'M8 5.2v13.6c0 .8.9 1.3 1.6.8l10.2-6.8a1 1 0 0 0 0-1.6L9.6 4.4c-.7-.5-1.6 0-1.6.8z' }));
+  return s;
+}
+async function pantallaVideo(materia) {
+  const vigente = nuevoTurno();
+  const r = await api('GET', `/api/academia/video/${encodeURIComponent(materia)}`);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  const v = r.datos;
+  const audioUrl = v.audio?.ref ? `/api/academia/audio/${encodeURIComponent(v.audio.ref)}` : null;
+  const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
+  const total = v.escenas.length ? Math.max(...v.escenas.map(e => e.fin_s)) : null;
+  const barraAvance = combustible();
+  const lugar = el('div', { class: 'video-lugar' });
+  const pie = el('div', { class: 'estudio-botones' });
+  const raizEstudio = marcoEstudio({ clase: `video-materia ${claseMateria(materia)}${audioUrl ? ' con-audio' : ''}`, barra: barraAvance.nodo, cuerpo: lugar, pie });
+  // El reproductor se pide ya (no al tocar): así el toque llega al audio sin esperar la red.
+  const moduloReproductor = import('./clase/reproductor.js');
+  let reproductor = null;
+  let reloj = null;
+  const marcarVisto = () => api('POST', `/api/academia/video/${encodeURIComponent(materia)}/visto`, {});
+  const seguir = botonGrande(t('acad.video.ir_temas'), async evento => { evento.currentTarget.disabled = true; await marcarVisto(); location.hash = '#inicio'; });
+  const empezar = async () => {
+      poster.disabled = true;
+      ver.disabled = true;
+      // El iPhone solo deja sonar un audio que empezó DENTRO del toque: se crea y se le da «play» aquí, antes de esperar nada,
+      // y el reproductor usa este mismo audio.
+      const audioDelToque = audioUrl ? new Audio(audioUrl) : null;
+      if (audioDelToque) { audioDelToque.preload = 'auto'; audioDelToque.play().catch(() => {}); }
+      const [{ montarReproductor }, duracion] = await Promise.all([moduloReproductor, !v.escenas.length && audioUrl ? duracionDe(audioUrl) : null]);
+      if (!lugar.isConnected) return;
+      const leccion = leccionDeVideo(v, { titulo, antetitulo: nombreMateria(materia), audioUrl, duracionAudio: duracion });
+      lugar.replaceChildren();
+      raizEstudio.classList.add('reproduciendo');
+      pie.replaceChildren();
+      reproductor = montarReproductor(lugar, leccion, {
+        textos: textosReproductor(), audio: audioDelToque,
+        onProgreso: p => barraAvance.poner(p.porcentaje, 100),
+        // Al terminar: queda visto (el círculo sale dorado) y abajo, «IR A LOS TEMAS».
+        onFin: () => { marcarVisto(); celebrar(lugar); raizEstudio.classList.remove('reproduciendo'); pie.replaceChildren(seguir); },
+      });
+      reproductor.reproducir();
+      // La barra de arriba avanza con el video.
+      reloj = setInterval(() => { if (!lugar.isConnected) return clearInterval(reloj); barraAvance.poner(reproductor.estado.porcentaje, 100); }, 500);
+      raizEstudio.reproductor = reproductor; // para las pruebas en el navegador (no es global)
+  };
+  const ver = botonGrande(t('acad.video.ver'), () => empezar(), { tono: 'naranja' });
+  const poster = el('button', {
+    type: 'button', class: 'video-poster', onclick: () => empezar(),
+  },
+  el('span', { class: 'video-poster-cielo', 'aria-hidden': 'true' }, avionSvg('video-poster-avion')),
+  el('span', { class: 'video-poster-ante', texto: t('acad.video.ante', { n: numero(ORDEN_MATERIAS.indexOf(materia) + 1) }) }),
+  el('span', { class: 'video-poster-titulo', texto: titulo }),
+  el('span', { class: 'video-poster-play', 'aria-hidden': 'true' }, triangulo()),
+  el('span', { class: 'video-poster-datos', texto: [total ? t('acad.video.minutos', { n: numero(Math.max(1, Math.round(total / 60))) }) : null, v.escenas.length ? tn('acad.video.escenas', { n: v.escenas.length }) : null, audioUrl ? t('acad.video.con_voz') : t('acad.video.sin_voz')].filter(Boolean).join(' · ') }));
+  lugar.append(poster, el('p', { class: 'video-nota suave', texto: audioUrl ? t('acad.video.nota') : t('acad.video.nota_sin_audio') }),
+    v.visto ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { location.hash = '#inicio'; }, texto: t('acad.video.ya_lo_vi') }) : null);
+  pie.append(ver);
+  barraAvance.poner(0, 100);
+  mostrar(raizEstudio);
+  // Al salir de la pantalla, el audio se apaga.
+  const alSalir = () => setTimeout(() => { if (!lugar.isConnected) { reproductor?.destruir(); window.removeEventListener('hashchange', alSalir); } });
+  window.addEventListener('hashchange', alSalir);
 }
 
 // ---- El examen de una materia (como en ENALAS: todas sus preguntas, mezcladas) ----
@@ -4682,52 +5321,86 @@ async function pantallaExamen(materia) {
   const m = r.ok ? r.datos.materias.find(x => x.id === materia) : null;
   if (!m) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }))));
   mostrar(marco('inicio', volverAlCamino(),
-    el('h1', { class: 'titulo-pantalla', texto: t('acad.examen_de', { materia: nombreMateria(materia) }) }),
-    entrada(t('acad.examen.linea')),
-    el('section', { class: 'tarjeta examen-intro' },
-      el('span', { class: 'examen-icono' }, icono('trofeo')),
-      el('p', { class: 'grande-texto', texto: tn('acad.n_preguntas', { n: m.examen.preguntas }) }),
-      el('p', { texto: t('acad.necesitas', { n: numero(r.datos.umbral) }) }),
-      m.examen.mejor != null ? el('p', { class: 'suave', texto: t('acad.mejor', { n: numero(m.examen.mejor) }) }) : null,
+    el('section', { class: `examen-portada ${claseMateria(materia)}` },
+      el('span', { class: 'examen-trofeo', 'aria-hidden': 'true' }, icono('trofeo')),
+      el('p', { class: 'antetitulo', texto: t('acad.examen.ante') }),
+      el('h1', { class: 'titulo-grande', texto: nombreMateria(materia) }),
+      el('p', { class: 'bajada', texto: t('acad.examen.linea') }),
+      el('ul', { class: 'portada-datos' },
+        el('li', {}, icono('fila', 'icono'), el('span', { texto: tn('acad.n_preguntas', { n: m.examen.preguntas }) })),
+        el('li', {}, icono('bandera', 'icono'), el('span', { texto: t('acad.necesitas', { n: numero(r.datos.umbral) }) })),
+        m.examen.mejor != null ? el('li', {}, icono('estrella', 'icono'), el('span', { texto: t('acad.mejor', { n: numero(m.examen.mejor) }) })) : null),
       m.examen.disponible
-        ? el('button', { type: 'button', class: 'grande con-icono', onclick: evento => empezarIntento({ tipo: 'examen', materia }, evento.currentTarget) }, icono('play'), el('span', { texto: t('acad.empezar_examen') }))
+        ? el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: evento => empezarIntento({ tipo: 'examen', materia }, evento.currentTarget) }, el('span', { texto: t('acad.empezar_examen') }))
         : el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }))));
 }
 
-// ---- Practicar: una pregunta por pantalla ----
+// ---- Las preguntas: una por pantalla, como un ejercicio de Duolingo ----
+// La figura original, con «tocar para ampliar» (a pantalla completa, se puede mover y acercar con dos dedos).
+function figuraPregunta(q) {
+  if (!q.figura) return null;
+  const src = `/api/academia/figuras/${encodeURIComponent(q.figura.ref ?? q.figura.numero)}`;
+  const nombre = t('acad.figura', { n: q.figura.numero });
+  const abrir = () => {
+    const cerrar = () => capa.remove();
+    const capa = el('div', { class: 'figura-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': nombre },
+      el('div', { class: 'figura-grande-barra' }, el('span', { texto: q.figura.titulo || nombre }),
+        el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
+      el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
+    capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+    document.body.append(capa);
+    capa.querySelector('button').focus();
+  };
+  return el('figure', { class: 'q-figura' },
+    el('button', { type: 'button', class: 'q-figura-boton', 'aria-label': t('acad.figura.ampliar', { figura: nombre }), onclick: abrir },
+      el('img', { src, alt: nombre, loading: 'lazy' }),
+      el('span', { class: 'q-figura-lupa', 'aria-hidden': 'true' }, icono('lupa', 'icono chico'))),
+    el('figcaption', { texto: q.figura.titulo || nombre }));
+}
+// La insignia de arriba: «TEST GUIDE · Pregunta 10-5» (el número tal cual) o «POH».
+function insigniaPregunta(q) {
+  if (q.origen === 'poh') return el('div', { class: 'insignia-pregunta poh' }, icono('manual', 'icono chico'), el('span', { texto: t('acad.origen.poh_corto') }));
+  return el('div', { class: 'insignia-pregunta tg' }, icono('libro', 'icono chico'),
+    el('span', { texto: t('acad.origen.test_guide_sello') }), q.numero ? el('span', { class: 'insignia-numero' }, `${t('acad.pregunta')} `, talCual('span', q.numero)) : null);
+}
 function tarjetaPregunta(q) {
-  const cabeza = q.origen === 'poh'
-    ? [insignia('info', t('acad.origen.poh')), q.fuente ? lineaFuente(q.fuente) : null]
-    : [el('span', { class: 'chip-tg', texto: t('acad.origen.test_guide') }), q.numero ? el('strong', { class: 'q-numero', texto: t('acad.pregunta_n', { n: q.numero }) }) : null,
-      q.seccion ? talCual('span', q.seccion, 'suave q-seccion') : null];
   return [
-    el('div', { class: 'q-cabeza' }, cabeza),
+    el('div', { class: 'q-cabeza' }, insigniaPregunta(q), q.seccion ? talCual('span', q.seccion, 'q-seccion') : null),
+    q.origen === 'poh' && q.fuente ? lineaFuente(q.fuente) : null,
     talCual('p', q.enunciado, 'q-enunciado'),
-    q.figura ? el('figure', { class: 'q-figura' },
-      el('img', { src: `/api/academia/figuras/${encodeURIComponent(q.figura.ref ?? q.figura.numero)}`, alt: t('acad.figura', { n: q.figura.numero }), loading: 'lazy' }),
-      el('figcaption', { texto: q.figura.titulo || t('acad.figura', { n: q.figura.numero }) })) : null,
+    figuraPregunta(q),
+  ];
+}
+// Lo que se ve después de responder (en la hoja de abajo y en la lista de falladas).
+function partesRespuesta(q, resp) {
+  const opcion = letra => q.opciones.find(o => o.letra === letra)?.texto ?? '';
+  return [
+    resp.explicacion ? el('section', { class: 'caja-hoja caja-original' },
+      el('h3', { class: 'con-icono' }, icono('libro', 'icono chico'), el('span', { texto: q.origen === 'poh' ? t('acad.explicacion_poh') : t('acad.explicacion_original') })),
+      talCual('p', resp.explicacion)) : null,
+    el('section', { class: 'caja-hoja caja-sencilla' },
+      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('acad.explicacion_sencilla') })),
+      talCual('p', resp.sencilla)),
+    resp.idea ? el('section', { class: 'caja-hoja caja-idea' },
+      el('h3', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('acad.por_que_elegiste') })),
+      el('p', { class: 'suave' }, el('strong', { texto: `${resp.elegida}. ` }), talCual('span', opcion(resp.elegida))),
+      talCual('p', resp.idea)) : null,
+    resp.ingles?.length ? el('section', { class: 'caja-hoja caja-ingles' },
+      el('h3', { class: 'con-icono' }, icono('avion', 'icono chico'), el('span', { texto: t('acad.ingles') })),
+      el('ul', { class: 'lista-ingles' }, resp.ingles.map(w => el('li', {},
+        fichaIngles(w), el('span', { class: 'ingles-significado', texto: w.significado }), w.ejemplo ? el('em', { class: 'ingles-ejemplo', lang: 'en', texto: w.ejemplo }) : null)))) : null,
   ];
 }
 function bloqueRespuesta(q, resp) {
-  const opcion = letra => q.opciones.find(o => o.letra === letra)?.texto ?? '';
-  return el('div', { class: 'retro', 'data-foco': true },
-    el('p', { class: `retro-titulo con-icono ${resp.acierto ? 'tono-bien' : 'tono-mal'}`, role: 'status' },
-      icono(resp.acierto ? 'bien' : 'mal'), el('span', { texto: resp.acierto ? t('acad.correcto') : t('acad.incorrecto', { letra: resp.correcta }) })),
-    resp.explicacion ? el('section', { class: 'caja-original' },
-      el('h3', { class: 'con-icono' }, icono('libro', 'icono chico'), el('span', { texto: q.origen === 'poh' ? t('acad.explicacion_poh') : t('acad.explicacion_original') })),
-      talCual('p', resp.explicacion)) : null,
-    el('section', { class: 'caja-sencilla' },
-      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('acad.explicacion_sencilla') })),
-      talCual('p', resp.sencilla)),
-    resp.idea ? el('section', { class: 'caja-idea' },
-      el('h3', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('acad.por_que_confunde', { letra: resp.elegida }) })),
-      el('p', { class: 'suave', texto: `${resp.elegida}. ${opcion(resp.elegida)}` }),
-      talCual('p', resp.idea)) : null,
-    resp.ingles?.length ? el('section', { class: 'caja-ingles' },
-      el('h3', { class: 'con-icono' }, icono('avion', 'icono chico'), el('span', { texto: t('acad.ingles') })),
-      el('ul', { class: 'lista-ingles' }, resp.ingles.map(w => el('li', {},
-        el('strong', { texto: w.palabra }), el('span', { class: 'suave', texto: ` /${w.pronunciacion}/ ` }), el('span', { texto: `— ${w.significado}` }),
-        el('em', { class: 'ingles-ejemplo', texto: w.ejemplo }))))) : null);
+  return el('div', { class: 'retro' },
+    el('p', { class: `retro-titulo con-icono ${resp.acierto ? 'tono-bien' : 'tono-mal'}` },
+      icono(resp.acierto ? 'bien' : 'mal'), el('span', { texto: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }) })),
+    partesRespuesta(q, resp));
+}
+function opcionesFijas(q, resp) {
+  return el('div', { class: 'opciones-cartas' }, q.opciones.map(o => el('div', { class: `opcion-carta fija${o.letra === resp.correcta ? ' es-correcta' : ''}${o.letra === resp.elegida && !resp.acierto ? ' es-mala' : ''}` },
+    el('span', { class: 'opcion-letra', texto: o.letra }), talCual('span', o.texto, 'opcion-texto'),
+    o.letra === resp.correcta ? icono('marca', 'icono opcion-marca') : o.letra === resp.elegida ? icono('cerrar', 'icono opcion-marca') : null)));
 }
 
 async function pantallaPractica(id) {
@@ -4736,47 +5409,68 @@ async function pantallaPractica(id) {
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const intento = r.datos;
-  const zona = el('div', { class: 'practica' });
-  const barraAvance = el('div', { class: 'guia-barra practica-barra' });
-  const cuenta = el('span', { class: 'practica-cuenta suave' });
+  const barraAvance = combustible();
+  const cuenta = el('span', { class: 'estudio-cuenta' });
+  const zona = el('div', { class: 'estudio-tarjeta' });
+  const pie = el('div', { class: 'estudio-botones' });
+  const tituloIntento = intento.tipo === 'repaso' ? t('acad.repaso') : intento.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(intento.materia) }) : nombreMateria(intento.materia);
+  const raizEstudio = marcoEstudio({ clase: `practica-tg ${intento.materia ? claseMateria(intento.materia) : ''}`, barra: barraAvance.nodo, cuenta, cuerpo: zona, pie });
   const avance = () => {
     const hechas = intento.preguntas.filter(q => q.respuesta).length;
-    barraAvance.replaceChildren(barra(hechas, intento.total, 'bien'));
+    barraAvance.poner(hechas, intento.total);
     cuenta.textContent = t('acad.de', { n: numero(hechas), total: numero(intento.total) });
   };
   const sigue = () => vigente() && zona.isConnected;
+  const quitarHoja = () => quitarHojaDe(raizEstudio);
   const pintarPregunta = i => {
+    quitarHoja();
     const q = intento.preguntas[i];
     avance();
+    let elegida = null;
     const botones = q.opciones.map(o => el('button', {
-      type: 'button', class: 'opcion', 'data-letra': o.letra,
-      onclick: async () => {
-        for (const b of botones) b.disabled = true;
-        const x = await api('POST', `/api/academia/intentos/${intento.id}/responder`, { pregunta: q.id, elegida: o.letra });
-        if (!sigue()) return;
-        if (!x.ok) { for (const b of botones) b.disabled = false; return avisar(textoError(x.datos.error), 'mal'); }
-        q.respuesta = x.datos.respuesta;
-        pintarRespondida(i);
-      },
+      type: 'button', class: 'opcion-carta', 'data-letra': o.letra, 'aria-pressed': 'false',
+      onclick: () => { elegida = o.letra; for (const b of botones) b.setAttribute('aria-pressed', String(b.dataset.letra === elegida)); comprobar.disabled = false; },
     }, el('span', { class: 'opcion-letra', texto: o.letra }), talCual('span', o.texto, 'opcion-texto')));
-    zona.replaceChildren(el('article', { class: 'tarjeta pregunta' }, tarjetaPregunta(q), el('div', { class: 'opciones', role: 'group', 'aria-label': t('acad.elige') }, botones)));
+    const comprobar = botonGrande(t('acad.comprobar'), async () => {
+      if (!elegida) return;
+      comprobar.disabled = true;
+      for (const b of botones) b.disabled = true;
+      const x = await api('POST', `/api/academia/intentos/${intento.id}/responder`, { pregunta: q.id, elegida });
+      if (!sigue()) return;
+      if (!x.ok) { comprobar.disabled = false; for (const b of botones) b.disabled = false; return avisar(textoError(x.datos.error), 'mal'); }
+      q.respuesta = x.datos.respuesta;
+      pintarRespondida(i, true);
+    }, { deshabilitado: true });
+    zona.replaceChildren(el('article', { class: 'tarjeta-pregunta' },
+      el('p', { class: 'pregunta-de', texto: tituloIntento }),
+      tarjetaPregunta(q), el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones)));
+    pie.replaceChildren(comprobar);
   };
-  const pintarRespondida = i => {
+  const pintarRespondida = (i, recien = false) => {
+    quitarHoja();
     const q = intento.preguntas[i];
     avance();
     const resp = q.respuesta;
-    const opciones = q.opciones.map(o => el('div', { class: `opcion fija${o.letra === resp.correcta ? ' es-correcta' : ''}${o.letra === resp.elegida && !resp.acierto ? ' es-mala' : ''}` },
-      el('span', { class: 'opcion-letra', texto: o.letra }), talCual('span', o.texto, 'opcion-texto'),
-      o.letra === resp.correcta ? icono('bien', 'icono opcion-marca') : o.letra === resp.elegida ? icono('mal', 'icono opcion-marca') : null));
     const siguiente = intento.preguntas.findIndex(x => !x.respuesta);
-    zona.replaceChildren(
-      el('article', { class: 'tarjeta pregunta' }, tarjetaPregunta(q), el('div', { class: 'opciones' }, opciones), bloqueRespuesta(q, resp)),
-      el('div', { class: 'botones practica-botones' },
-        siguiente >= 0
-          ? el('button', { type: 'button', class: 'grande con-icono', onclick: () => { pintarPregunta(siguiente); window.scrollTo(0, 0); } }, el('span', { texto: t('acad.siguiente') }), icono('flecha'))
-          : el('button', { type: 'button', class: 'grande con-icono', onclick: evento => terminarYMostrar(evento.currentTarget) }, icono('bandera'), el('span', { texto: t('acad.ver_resultado') }))));
-    const foco = zona.querySelector('.retro');
-    if (foco) { foco.setAttribute('tabindex', '-1'); try { foco.focus({ preventScroll: true }); } catch { foco.focus(); } }
+    zona.replaceChildren(el('article', { class: 'tarjeta-pregunta' },
+      el('p', { class: 'pregunta-de', texto: tituloIntento }),
+      tarjetaPregunta(q), opcionesFijas(q, resp)));
+    pie.replaceChildren();
+    const boton = siguiente >= 0
+      ? botonGrande(t('acad.continuar'), () => { pintarPregunta(siguiente); window.scrollTo(0, 0); }, { tono: resp.acierto ? 'verde' : 'rojo' })
+      : botonGrande(t('acad.ver_resultado'), evento => terminarYMostrar(evento.currentTarget), { tono: resp.acierto ? 'verde' : 'rojo' });
+    ponerHoja(raizEstudio, hojaRespuesta({
+      acierto: resp.acierto,
+      titulo: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }),
+      partes: partesRespuesta(q, resp),
+      boton,
+    }));
+    if (recien) {
+      if (resp.acierto) celebrar(zona);
+      else sacudir(zona.querySelector('.es-mala'));
+    }
+    const hoja = raizEstudio.querySelector('.hoja-respuesta');
+    if (hoja) { hoja.setAttribute('tabindex', '-1'); try { hoja.focus({ preventScroll: true }); } catch { hoja.focus(); } }
   };
   const terminarYMostrar = async boton => {
     if (boton) boton.disabled = true;
@@ -4787,43 +5481,63 @@ async function pantallaPractica(id) {
     pintarResultado(x.datos);
   };
   const pintarResultado = res => {
-    barraAvance.replaceChildren(barra(1, 1, res.aprobado === false ? 'atencion' : 'bien'));
+    quitarHoja();
+    barraAvance.poner(1, 1);
     cuenta.textContent = '';
-    const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: res.aprobado ? 'secundario con-icono' : 'grande con-icono',
-      onclick: evento => empezarIntento({ tipo: res.tipo, materia: res.materia, tema: res.tema }, evento.currentTarget) },
-    icono('actualizar'), el('span', { texto: t('acad.otra_vez') }));
+    const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: `boton-3d ${res.aprobado ? 'blanco' : 'grande naranja'}`,
+      onclick: evento => empezarIntento({ tipo: res.tipo, materia: res.materia, tema: res.tema }, evento.currentTarget) }, el('span', { texto: t('acad.otra_vez') }));
     const titulo = res.aprobado == null ? t('acad.repaso_hecho') : res.aprobado ? (res.tipo === 'examen' ? t('acad.examen_aprobado') : t('acad.tema_aprobado')) : t('acad.no_aprobado');
-    zona.replaceChildren(
-      el('section', { class: `tarjeta resultado ${res.aprobado === false ? 'falta' : 'bien'}`, 'data-foco': true },
-        el('div', { class: 'resultado-circulo' }, el('strong', { texto: pctTexto(res.pct) }), el('span', { class: 'suave', texto: t('acad.de', { n: numero(res.aciertos), total: numero(res.total) }) })),
-        el('h1', { texto: titulo }),
-        res.aprobado === false ? el('p', { texto: t('acad.necesitas', { n: numero(res.umbral) }) }) : el('p', { class: 'con-icono resultado-puntos' }, icono('estrella'), el('span', { texto: t('acad.ganaste', { n: numero(res.puntos) }) })),
-        el('div', { class: 'botones' }, res.aprobado === false ? otraVez : el('a', { class: 'boton-enlace grande con-icono', href: '#inicio' }, icono('flecha'), el('span', { texto: t('acad.seguir') })),
-          res.aprobado === false ? el('a', { class: 'boton-enlace secundario', href: '#inicio', texto: t('acad.volver') }) : otraVez)),
-      res.reexplicacion?.length ? el('section', { class: 'tarjeta caja-sencilla reexplicacion' },
+    zona.replaceChildren(...[
+      el('section', { class: `resultado-vuelo ${res.aprobado === false ? 'falta' : 'bien'}`, 'data-foco': true },
+        medidor(res.pct, { etiqueta: t('acad.resultado.nota') }),
+        el('h1', { class: 'titulo-grande', texto: titulo }),
+        el('p', { class: 'bajada', texto: t('acad.resultado.de', { n: numero(res.aciertos), total: numero(res.total) }) }),
+        res.aprobado === false ? el('p', { class: 'resultado-necesitas', texto: t('acad.necesitas', { n: numero(res.umbral) }) })
+          : el('p', { class: 'resultado-puntos con-icono' }, icono('estrella'), el('span', { texto: t('acad.ganaste', { n: numero(res.puntos) }) }))),
+      res.reexplicacion?.length ? el('section', { class: 'panel caja-sencilla reexplicacion' },
         el('h2', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('acad.mas_facil') })),
-        res.reexplicacion.map(s => el('div', { class: 'reexplicacion-parte' }, el('h3', { texto: s.titulo }), talCual('p', s.texto), s.fuentes.map(lineaFuente)))) : null,
-      res.falladas.length ? el('section', { class: 'tarjeta falladas' },
+        res.reexplicacion.map(s => el('div', { class: 'reexplicacion-parte' }, el('h3', { texto: s.titulo }), talCual('p', s.texto ?? (s.puntos ?? []).join('\n')), s.fuentes.map(lineaFuente)))) : null,
+      res.falladas.length ? el('section', { class: 'panel falladas' },
         el('h2', { class: 'con-icono' }, icono('mal'), el('span', { texto: tn('acad.fallaste', { n: res.falladas.length }) })),
         res.falladas.map(q => el('details', { class: 'fallada', open: res.falladas.length <= 3 },
-          el('summary', {}, el('span', { class: 'q-numero', texto: q.numero ? t('acad.pregunta_n', { n: q.numero }) : t('acad.origen.poh') }), talCual('span', q.enunciado, 'fallada-enunciado')),
-          el('div', { class: 'fallada-dentro' }, tarjetaPregunta(q).slice(2), bloqueRespuesta(q, q.respuesta))))) : null);
+          el('summary', {}, el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')), talCual('span', q.enunciado, 'fallada-enunciado')),
+          el('div', { class: 'fallada-dentro' }, tarjetaPregunta(q).slice(3), opcionesFijas(q, q.respuesta), bloqueRespuesta(q, q.respuesta))))) : null].filter(Boolean));
+    pie.classList.add('apilados');
+    pie.replaceChildren(...[res.aprobado === false ? otraVez : el('a', { class: 'boton-3d grande', href: '#inicio' }, el('span', { texto: t('acad.seguir') })),
+      res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez].filter(Boolean));
+    if (res.aprobado !== false) celebrar(zona);
     window.scrollTo(0, 0);
   };
-  const tituloIntento = intento.tipo === 'repaso' ? t('acad.repaso') : intento.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(intento.materia) }) : nombreMateria(intento.materia);
-  mostrar(marco('inicio',
-    el('div', { class: 'practica-cabeza' },
-      el('a', { class: 'cerrar-practica', href: '#inicio', 'aria-label': t('acad.salir_practica') }, icono('cerrar')),
-      barraAvance, cuenta),
-    el('p', { class: 'suave materia-chica', texto: tituloIntento }),
-    zona));
+  mostrar(raizEstudio);
   // Al volver a un intento a medias (por ejemplo, después de recargar): sigue en la primera sin responder.
   const pendiente = intento.preguntas.findIndex(q => !q.respuesta);
   if (pendiente >= 0) pintarPregunta(pendiente);
   else await terminarYMostrar(null);
 }
 
-// ---- Mi progreso ----
+// ---- Mi progreso: el plan de estudio, la preparación, el grupo y cada materia ----
+function panelPlan(plan, { alCambiar }) {
+  if (!plan?.elegido) return null;
+  const tono = { adelantado: 'bien', a_tiempo: 'info', atrasado: 'atencion', terminado: 'bien' }[plan.ritmo] ?? 'info';
+  const caja = el('section', { class: 'panel panel-plan', 'aria-labelledby': 'plan-panel-titulo' });
+  const dibujarPanel = () => caja.replaceChildren(
+    el('div', { class: 'panel-cabeza' },
+      el('span', { class: 'panel-icono naranja' }, icono('calendario')),
+      el('div', {}, el('h2', { id: 'plan-panel-titulo', texto: t('acad.plan.tu_plan', { plan: textoPlan(plan.elegido, 'nombre') }) }),
+        el('p', { class: 'suave', texto: t('acad.plan.desde', { fecha: diaRd(`${plan.desde}T12:00:00Z`) }) }))),
+    el('div', { class: 'plan-fechas' },
+      el('div', { class: 'plan-fecha-caja' }, el('span', { class: 'suave', texto: t('acad.plan.fin_estimado') }), el('strong', { texto: diaRd(`${plan.fin}T12:00:00Z`) })),
+      el('div', { class: 'plan-fecha-caja' }, el('span', { class: 'suave', texto: t('acad.plan.meta_hoy') }), el('strong', { texto: tn('acad.plan.pasos', { n: plan.metaHoy }) }))),
+    el('div', { class: 'plan-barra' }, barraLlena(plan.pct)),
+    el('p', { class: 'suave chica', texto: t('acad.plan.hechos', { n: numero(plan.hechos), total: numero(plan.total) }) }),
+    insignia(tono, tSi(TEXTO_RITMO[plan.ritmo] ?? '', plan.ritmo)),
+    el('p', { class: 'suave chica', texto: t('acad.plan.se_adapta') }),
+    el('button', { type: 'button', class: 'boton-texto con-icono', onclick: () => caja.replaceChildren(elegirPlanVista(plan, { alListo: nuevo => alCambiar(nuevo), cancelar: dibujarPanel })) },
+      icono('lapiz', 'icono chico'), el('span', { texto: t('acad.plan.cambiar') })));
+  dibujarPanel();
+  return caja;
+}
+
 async function pantallaProgreso() {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/progreso');
@@ -4832,18 +5546,32 @@ async function pantallaProgreso() {
   const p = r.datos;
   const materias = p.materias.length
     ? el('div', { class: 'rejilla dos' }, p.materias.map(m => tarjetaMateria(m)))
-    : el('section', { class: 'tarjeta' }, vacio('grafica', t('acad.progreso.vacio')));
-  mostrar(marco('progreso',
-    el('h1', { class: 'titulo-pantalla', texto: t('acad.progreso') }),
-    entrada(t('acad.progreso.linea')),
-    el('section', { class: 'tarjeta acad-portada' }, el('div', { class: 'acad-portada-fila' }, cifras(p), botonRepaso(p.repaso))),
+    : el('section', { class: 'panel' }, vacio('grafica', t('acad.progreso.vacio')));
+  let grupo = null;
+  const alCambiarGrupo = g => { const nuevo = panelGrupo(g, { alCambiar: alCambiarGrupo }); if (nuevo && grupo) grupo.replaceWith(nuevo); grupo = nuevo; };
+  grupo = panelGrupo(p.grupo, { alCambiar: alCambiarGrupo });
+  mostrar(marco('progreso', barraCabina(p),
+    el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
+    el('p', { class: 'bajada', texto: t('acad.progreso.linea') }),
+    el('section', { class: 'panel panel-preparacion' },
+      medidor(p.preparacion?.pct ?? 0),
+      el('div', {},
+        el('h2', { texto: t('acad.preparacion.titulo') }),
+        el('p', { class: 'suave', texto: t('acad.preparacion.linea', { n: numero(p.preparacion?.bien ?? 0), total: numero(p.preparacion?.total ?? 0) }) }),
+        el('p', { class: 'suave chica', texto: t('acad.preparacion.estimacion') }),
+        botonRepaso(p.repaso))),
+    panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
+    grupo,
+    p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
     materias,
     listaDebiles(p.debiles, t('acad.debiles'), 'acad.debiles.vacio')));
 }
 function tarjetaMateria(m, { conExamen = true } = {}) {
-  return el('section', { class: 'tarjeta materia-progreso' },
-    el('div', { class: 'materia-cabeza' }, el('h2', { texto: nombreMateria(m.id) }), el('span', { class: 'materia-pct', texto: pctTexto(m.pct) })),
-    el('div', { class: 'guia-barra' }, barra(m.pct, 100, 'bien')),
+  return el('section', { class: `panel materia-progreso ${claseMateria(m.id)}` },
+    el('div', { class: 'materia-cabeza' },
+      el('span', { class: 'banner-icono chico', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[m.id] ?? 'avion')),
+      el('h2', { texto: nombreMateria(m.id) }), el('span', { class: 'materia-pct', texto: pctTexto(m.pct) })),
+    el('div', { class: 'plan-barra' }, barraLlena(m.pct)),
     el('div', { class: 'etiquetas' },
       insignia('bien', t('acad.bien', { n: numero(m.bien) })),
       insignia('mal', t('acad.mal', { n: numero(m.mal) })),
@@ -4851,10 +5579,10 @@ function tarjetaMateria(m, { conExamen = true } = {}) {
     conExamen && m.examen?.mejor != null ? el('p', { class: 'suave con-icono-chico' }, icono('trofeo', 'icono chico'), el('span', { texto: t('acad.examen_mejor', { n: numero(m.examen.mejor) }) })) : null);
 }
 function listaDebiles(lista, tituloTexto, claveVacio, { conFallos = false } = {}) {
-  return el('section', { class: 'tarjeta debiles' },
+  return el('section', { class: 'panel debiles' },
     el('h2', { class: 'con-icono' }, icono('atencion'), el('span', { texto: tituloTexto }), queEs('repaso')),
     lista.length ? verMas(el('ul', { class: 'lista-debiles' }), lista.map(q => el('li', {},
-      el('span', { class: 'q-numero', texto: q.numero ? t('acad.pregunta_n', { n: q.numero }) : t('acad.origen.poh') }),
+      el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')),
       el('span', { class: 'insignia tono-apagado', texto: nombreMateria(q.materia) }),
       talCual('span', q.enunciado, 'debil-enunciado'),
       el('span', { class: 'suave', texto: conFallos ? tn('acad.fallos_de', { n: q.fallos, veces: q.veces }) : tn('acad.fallos', { n: q.fallos }) }))), 5)
@@ -4939,7 +5667,17 @@ async function pantallaContenido() {
       avisar(t('acad.ajustes.listo'));
       await pantallaContenido();
     }, 'marca')),
-    mensajeAjustes);
+    mensajeAjustes,
+    // 0.7.2: el panel «Grupo» que ven los alumnos (se puede apagar).
+    el('div', { class: 'ajuste-grupo' },
+      el('p', { class: 'etiqueta-campo', texto: t('acad.grupo.admin') }),
+      grupoDeBotones([['si', t('acad.grupo.admin.encendido')], ['no', t('acad.grupo.admin.apagado')]], r.datos.grupo !== false ? 'si' : 'no', async (valor, marcar) => {
+        const x = await api('POST', '/api/admin/academia/grupo', { encendido: valor === 'si' });
+        if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+        marcar();
+        avisar(t(x.datos.grupo ? 'acad.grupo.admin.encendido' : 'acad.grupo.admin.apagado'));
+      }),
+      el('p', { class: 'suave chica', texto: t('acad.grupo.admin.linea') })));
   // Subir.
   const mensajeSubir = caja();
   const progresoSubida = el('p', { class: 'suave', role: 'status' });
@@ -5145,6 +5883,9 @@ async function dibujar() {
   if (practica) return pantallaPractica(practica[1]);
   const examen = seccion.match(/^examen\/([a-z0-9_-]+)$/);
   if (examen) return pantallaExamen(examen[1]);
+  // 0.7.2: el «Video resumen» de una materia.
+  const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
+  if (video) return pantallaVideo(video[1]);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   const alumno = seccion.match(/^alumno\/(\d+)$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1]);
@@ -5180,6 +5921,8 @@ function pedidosAlAbrir(seccion, admin) {
   const practica = seccion.match(/^practica\/(\d+)$/);
   if (practica) return [`/api/academia/intentos/${encodeURIComponent(practica[1])}`];
   if (/^examen\/[a-z0-9_-]+$/.test(seccion)) return ['/api/academia/camino'];
+  const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
+  if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)$/);
   if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}`, '/api/admin/sistema'] : [];

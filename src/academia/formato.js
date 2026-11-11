@@ -25,6 +25,7 @@ export const LIMITES = Object.freeze({
   texto: 60_000,
   corto: 400,
   errores: 50,
+  escenas: 300, // 0.7.2: escenas del video resumen de una materia
 });
 
 export const ID_VALIDO = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -32,6 +33,8 @@ export const ARCHIVO_FIGURA = /^[a-z0-9][a-z0-9._-]{0,80}\.(png|jpg|jpeg|webp)$/
 // 0.7.1: una materia o un tema puede traer su narración en mp3 («audio»: { archivo, titulo?, sha256? }). Es opcional:
 // un paquete sin audio es igual que antes, y uno cuyo audio todavía no llegó se usa igual (el reproductor no sale).
 export const ARCHIVO_AUDIO = /^[a-z0-9][a-z0-9._-]{0,80}\.mp3$/i;
+// 0.7.2: el tipo de un dibujo (public/clase/visuales.js: titulo, ala, motor, instrumentos, escenario, meteo…).
+export const TIPO_VISUAL = /^[a-z][a-z0-9_]{0,39}$/;
 const LETRA = /^[A-F]$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 
@@ -81,6 +84,25 @@ export function revisarPaquete(p) {
       for (const campo of ['capitulo', 'seccion', 'pagina']) texto(f[campo], `${r}.${campo}`, { obligatorio: campo === 'pagina', max: LIMITES.corto });
     });
   };
+  // 0.7.2: un dibujo de las clases (public/clase): { tipo, parametros? }. Un tipo que la app no conoce se ve como una
+  // tarjeta con el texto (no es error): así un paquete nuevo no rompe una app vieja.
+  const visual = (v, ruta) => {
+    if (v == null) return;
+    if (!esObjeto(v)) return mal(ruta, 'no_es_objeto');
+    if (typeof v.tipo !== 'string' || !TIPO_VISUAL.test(v.tipo)) mal(`${ruta}.tipo`, 'tipo_desconocido');
+    if (v.parametros != null && !esObjeto(v.parametros)) mal(`${ruta}.parametros`, 'no_es_objeto');
+    else if (v.parametros != null && JSON.stringify(v.parametros).length > LIMITES.texto) mal(`${ruta}.parametros`, 'muy_largo');
+  };
+  const palabrasIngles = (lista, ruta, obligatorios) => {
+    if (lista == null) return;
+    if (!Array.isArray(lista) || lista.length > 20) return mal(ruta, 'no_es_lista');
+    lista.forEach((w, j) => {
+      const rw = `${ruta}[${j}]`;
+      if (!esObjeto(w)) return mal(rw, 'no_es_objeto');
+      texto(w.palabra, `${rw}.palabra`, { max: LIMITES.corto });
+      for (const campo of ['pronunciacion', 'significado', 'ejemplo']) texto(w[campo], `${rw}.${campo}`, { obligatorio: obligatorios.includes(campo), max: 2000 });
+    });
+  };
   const secciones = (lista, ruta, { obligatorio }) => {
     if (lista == null && !obligatorio) return 0;
     if (!Array.isArray(lista) || (obligatorio && !lista.length)) { mal(ruta, 'falta'); return 0; }
@@ -89,7 +111,19 @@ export function revisarPaquete(p) {
       const r = `${ruta}[${i}]`;
       if (!esObjeto(s)) return mal(r, 'no_es_objeto');
       texto(s.titulo, `${r}.titulo`, { max: LIMITES.corto });
-      texto(s.texto, `${r}.texto`);
+      if (s.tipo != null && s.tipo !== 'tarjeta') mal(`${r}.tipo`, 'tipo_desconocido');
+      if (s.tipo === 'tarjeta') {
+        // 0.7.2: una tarjeta ya partida (una idea por pantalla): 1 a 6 puntos cortos, «Recuerda», ejemplo, inglés y dibujo.
+        if (!Array.isArray(s.puntos) || !s.puntos.length || s.puntos.length > 6) mal(`${r}.puntos`, s.puntos == null ? 'falta' : 'no_es_lista');
+        else s.puntos.forEach((x, k) => texto(x, `${r}.puntos[${k}]`, { max: 2000 }));
+        texto(s.texto, `${r}.texto`, { obligatorio: false });
+        texto(s.recuerda, `${r}.recuerda`, { obligatorio: false, max: 2000 });
+        texto(s.ejemplo, `${r}.ejemplo`, { obligatorio: false, max: 2000 });
+        palabrasIngles(s.ingles, `${r}.ingles`, []);
+        visual(s.visual, `${r}.visual`);
+      } else {
+        texto(s.texto, `${r}.texto`);
+      }
       texto(s.nota, `${r}.nota`, { obligatorio: false });
       fuentes(s.fuentes, `${r}.fuentes`, { obligatorio: true });
     });
@@ -149,15 +183,7 @@ export function revisarPaquete(p) {
         texto(idea, `${r}.errores.${letra}`);
       }
     }
-    if (q.ingles != null) {
-      if (!Array.isArray(q.ingles) || q.ingles.length > 20) mal(`${r}.ingles`, 'no_es_lista');
-      else q.ingles.forEach((w, j) => {
-        const rw = `${r}.ingles[${j}]`;
-        if (!esObjeto(w)) return mal(rw, 'no_es_objeto');
-        texto(w.palabra, `${rw}.palabra`, { max: LIMITES.corto });
-        for (const campo of ['pronunciacion', 'significado', 'ejemplo']) texto(w[campo], `${rw}.${campo}`, { max: 2000 });
-      });
-    }
+    palabrasIngles(q.ingles, `${r}.ingles`, ['pronunciacion', 'significado', 'ejemplo']);
   });
 
   // 0.7.1: la narración (mp3) de una materia o de un tema. El mismo archivo puede servir a dos lugares.
@@ -176,6 +202,29 @@ export function revisarPaquete(p) {
     }
   };
 
+  // 0.7.2: el «Video resumen» de una materia (lo primero del camino de la materia): su narración (un mp3, como «audio»)
+  // y las escenas con su tiempo dentro de ese mp3. Sin escenas se ve una sola escena con el título; sin audio, las
+  // escenas van por su tiempo con subtítulos. Los campos de más que traiga una escena se ignoran.
+  const video = (v, ruta) => {
+    if (v == null) return;
+    if (!esObjeto(v)) return mal(ruta, 'no_es_objeto');
+    texto(v.titulo, `${ruta}.titulo`, { obligatorio: false, max: LIMITES.corto });
+    audio(v.audio, `${ruta}.audio`);
+    if (v.escenas == null) { if (v.audio == null) mal(`${ruta}.escenas`, 'falta'); return; }
+    if (!Array.isArray(v.escenas) || v.escenas.length > LIMITES.escenas) return mal(`${ruta}.escenas`, 'no_es_lista');
+    v.escenas.forEach((e, k) => {
+      const re = `${ruta}.escenas[${k}]`;
+      if (!esObjeto(e)) return mal(re, 'no_es_objeto');
+      const inicio = e.inicio_s, fin = e.fin_s;
+      if (typeof inicio !== 'number' || !Number.isFinite(inicio) || inicio < 0 || inicio > 36_000) mal(`${re}.inicio_s`, 'tiempo_no_valido');
+      else if (typeof fin !== 'number' || !Number.isFinite(fin) || fin <= inicio || fin > 36_000) mal(`${re}.fin_s`, 'tiempo_no_valido');
+      texto(e.subtitulo, `${re}.subtitulo`, { obligatorio: e.texto_pantalla == null, max: LIMITES.corto });
+      texto(e.texto_pantalla, `${re}.texto_pantalla`, { obligatorio: false, max: 2000 });
+      texto(e.texto_narracion, `${re}.texto_narracion`, { obligatorio: false, max: 20_000 });
+      visual(e.visual, `${re}.visual`);
+    });
+  };
+
   // Materias (de las 11, en su orden; puede faltar alguna) → temas → secciones y las preguntas del tema.
   const usadas = new Map();
   let temas = 0;
@@ -191,6 +240,7 @@ export function revisarPaquete(p) {
     else if (lugar < ultima) mal(`${r}.id`, 'fuera_de_orden');
     else { ultima = lugar; materiasVistas.add(m.id); }
     audio(m.audio, `${r}.audio`);
+    video(m.video, `${r}.video`);
     if (!Array.isArray(m.temas)) return mal(`${r}.temas`, 'falta');
     if (m.temas.length > LIMITES.temasPorMateria) mal(`${r}.temas`, 'demasiados');
     const ids = new Set();
@@ -230,7 +280,7 @@ export function revisarPaquete(p) {
 export function audiosDe(p) {
   const vistos = new Map();
   for (const m of p?.materias ?? []) {
-    for (const a of [m?.audio, ...(m?.temas ?? []).map(t => t?.audio)]) {
+    for (const a of [m?.audio, m?.video?.audio, ...(m?.temas ?? []).map(t => t?.audio)]) {
       if (a?.archivo && !vistos.has(a.archivo.toLowerCase())) vistos.set(a.archivo.toLowerCase(), { archivo: a.archivo, sha256: a.sha256 ?? null });
     }
   }
@@ -248,7 +298,7 @@ export function indexarPaquete(p) {
       for (const qid of t.preguntas) deTema.set(qid, { materia: idMateria, tema: t.id });
       return { id: t.id, titulo: t.titulo, secciones: t.secciones, reexplicacion: t.reexplicacion ?? [], preguntas: [...t.preguntas], audio: t.audio ?? null };
     });
-    return { id: idMateria, temas, audio: m?.audio ?? null };
+    return { id: idMateria, temas, audio: m?.audio ?? null, video: m?.video ?? null };
   });
   const figuras = new Map((p.figuras ?? []).map(f => [f.numero, f]));
   const libros = new Map(p.libros.map(l => [l.id, l]));

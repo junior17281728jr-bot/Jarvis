@@ -5,9 +5,12 @@ import { montarInstrumentos } from './instrumentos.js';
 import { montarEscenario } from './escenario.js';
 import { montarMeteo } from './meteo.js';
 import { montarTitulo } from './titulo.js';
+import { montarCartel } from './cartel.js';
 
 export const VISUALES = {
   titulo: (c, p, o) => montarTitulo(c, { ...p, ...o }),
+  // 0.7.2: la escena sin dibujo propio (y la que usa el reproductor para un tipo que no conoce).
+  cartel: (c, p, o) => montarCartel(c, { variante: o?.indice, ...p, ...o }),
   ala: (c, p, o) => montarAla(c, { ...p, ...o }),
   motor: (c, p, o) => montarMotor(c, { ...p, ...o }),
   instrumentos: (c, p, o) => montarInstrumentos(c, { ...p, ...o }),

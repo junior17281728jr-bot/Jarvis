@@ -531,6 +531,28 @@
 .clase-titulo-ante { margin: 0; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #fdba74; }
 .clase-titulo-grande { margin: 2px 0 0; font-size: clamp(1.4rem, 5vw, 2.3rem); line-height: 1.1; letter-spacing: -0.01em; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4); }
 
+/* ---------- Letrero (0.7.2): la escena sin dibujo propio, con el cielo del momento, un ícono y la frase clave ---------- */
+.clase-letrero { position: relative; }
+.clase-letrero-arriba { stop-color: #2563eb; }
+.clase-letrero-abajo { stop-color: #93c5fd; }
+.clase-letrero-amanecer .clase-letrero-arriba { stop-color: #1e3a8a; }
+.clase-letrero-amanecer .clase-letrero-abajo { stop-color: #fdba74; }
+.clase-letrero-tarde .clase-letrero-arriba { stop-color: #7c2d92; }
+.clase-letrero-tarde .clase-letrero-abajo { stop-color: #fb923c; }
+.clase-letrero-noche .clase-letrero-arriba { stop-color: #020617; }
+.clase-letrero-noche .clase-letrero-abajo { stop-color: #1e3a8a; }
+.clase-letrero-estrellas circle { fill: #ffffff; opacity: 0; }
+.clase-letrero-noche .clase-letrero-estrellas circle { opacity: 0.8; }
+.clase-letrero-noche .clase-titulo-nubes { opacity: 0.18; }
+.clase-letrero-tierra { fill: #1f3b2d; }
+.clase-letrero-noche .clase-letrero-tierra { fill: #0b1a14; }
+.clase-letrero-placa-halo { fill: rgba(255, 255, 255, 0.18); }
+.clase-letrero-placa-fondo { fill: #ff8a1f; }
+.clase-letrero-icono path { fill: none; stroke: #ffffff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.clase-letrero-texto { padding-top: 28px; }
+.clase-letrero-titulo { margin: 2px 0 0; font-size: clamp(1.15rem, 4vw, 1.6rem); line-height: 1.15; color: #fff; }
+.clase-letrero-frase { margin: 6px 0 0; font-size: clamp(1rem, 3.6vw, 1.35rem); line-height: 1.3; font-weight: 700; color: #fde68a; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); }
+
 /* ---------- Reproductor ---------- */
 .clase-rep {
   display: flex; flex-direction: column; width: 100%; min-width: 0;

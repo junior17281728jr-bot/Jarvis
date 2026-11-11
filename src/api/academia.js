@@ -17,7 +17,8 @@ import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia } from '../academia/progreso.js';
+import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, marcarTemaLeido } from '../academia/progreso.js';
+import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 
 export function crearLimitesAcademia() {
   return {
@@ -52,10 +53,40 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   const activo = db => { necesitaConfig(); return paqueteActivo(db, config); };
 
   // ---------- El alumno ----------
-  rutas.agregar('GET', '/api/academia/camino', ({ db, usuario }) => ({ codigo: 200, datos: camino(db, usuario.id, activo(db), reloj()) }));
+  // 0.7.2: el camino y el progreso traen también el plan de estudio, el panel «Grupo» y la preparación (una sola
+  // respuesta: la pantalla no pide nada más al abrir).
+  rutas.agregar('GET', '/api/academia/camino', ({ db, usuario }) => {
+    const p = activo(db);
+    return { codigo: 200, datos: { ...camino(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()) } };
+  });
+
+  rutas.agregar('POST', '/api/academia/plan', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { plan: elegirPlan(db, usuario.id, activo(db), textoDe(datos, 'plan'), reloj()) } };
+  });
+
+  rutas.agregar('POST', '/api/academia/grupo', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    ocultarEnGrupo(db, usuario.id, datos?.oculto);
+    return { codigo: 200, datos: { grupo: grupoDe(db, usuario.id, activo(db), reloj()) } };
+  });
+
+  // El «Video resumen» de una materia (escenas + la narración en mp3, si ya llegó) y «ya lo vi».
+  rutas.agregar('GET', '/api/academia/video/:materia', ({ db, usuario, parametros }) =>
+    ({ codigo: 200, datos: videoMateria(db, usuario.id, activo(db), parametros.materia) }));
+  rutas.agregar('POST', '/api/academia/video/:materia/visto', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    return { codigo: 200, datos: marcarVideoVisto(db, usuario.id, activo(db), parametros.materia) };
+  });
 
   rutas.agregar('GET', '/api/academia/temas/:materia/:tema', ({ db, usuario, parametros }) =>
     ({ codigo: 200, datos: leccion(db, usuario.id, activo(db), parametros.materia, parametros.tema) }));
+
+  // 0.7.2: «terminé de leer la lección» (un tema sin preguntas se aprueba así).
+  rutas.agregar('POST', '/api/academia/temas/:materia/:tema/leido', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    return { codigo: 200, datos: marcarTemaLeido(db, usuario.id, activo(db), parametros.materia, parametros.tema) };
+  });
 
   rutas.agregar('POST', '/api/academia/intentos', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
@@ -77,7 +108,10 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return { codigo: 200, datos: terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
   });
 
-  rutas.agregar('GET', '/api/academia/progreso', ({ db, usuario }) => ({ codigo: 200, datos: progreso(db, usuario.id, activo(db), reloj()) }));
+  rutas.agregar('GET', '/api/academia/progreso', ({ db, usuario }) => {
+    const p = activo(db);
+    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()) } };
+  });
 
   // Una figura del paquete en uso (solo con la sesión abierta; nunca sale de public/).
   rutas.agregar('GET', '/api/academia/figuras/:numero', ({ db, parametros }) => {
@@ -122,7 +156,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return {
       codigo: 200,
       datos: {
-        ajustes: ajustesAcademia(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
+        ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
         limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes },
       },
     };
@@ -186,6 +220,12 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     if (leerModoSeguro(db).activo || !trabajadorEncendido()) throw new ErrorHttp(409, 'trabajo_en_pausa');
     const { id } = revisarYa(db, usuario);
     return { codigo: 202, datos: { tarea: { id }, drive: estadoDrive(db) } };
+  }, { admin: true });
+
+  // 0.7.2: encender o apagar el panel «Grupo» que ven los alumnos.
+  rutas.agregar('POST', '/api/admin/academia/grupo', async ({ db, req }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { grupo: encenderGrupo(db, datos?.encendido) } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/academia/ajustes', async ({ db, req }) => {

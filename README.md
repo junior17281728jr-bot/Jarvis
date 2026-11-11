@@ -408,7 +408,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.7.1; cambio de base 7 en la 0.7.0)
+## Academia (etapa 1, versión 0.7.2; cambio de base 7 en la 0.7.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -438,8 +438,46 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
 - Un alumno nunca lee lo de otro: todas sus rutas usan la sesión (nunca un id que mande la pantalla); el intento de otro
   responde 404 y lo de Administrador 403 (`test/academia.test.js`).
 - Escondido para después (código guardado, sin enlaces ni botones): los proyectos de OPORTIA (`PROYECTOS_VISIBLES` en
-  `public/app.js`). Todavía no hay: clases en video/voz, animaciones 3D, simulaciones, salas en vivo, examen final de 200,
-  instructor con IA. Las copias cifradas guardan la base (el progreso); los paquetes no van en la copia: se vuelven a subir.
+  `public/app.js`). Todavía no hay: salas en vivo, examen final de 200, instructor con IA. Las copias cifradas guardan la base (el progreso); los paquetes no van en la copia: se vuelven a subir.
+
+### Lo que ve el alumno (0.7.2): una app de aviación tipo Duolingo
+- **Estilo** (`public/academia.css`, después de `estilos.css` y `clase/clase.css`): cielo de fondo, acentos de cabina oscura,
+  naranja para lo que se toca, letra redonda, botones «3D» que se hunden, un color y un ícono por materia, claro y oscuro, y
+  con «reducir movimiento» nada se anima. Las pantallas de estudio (lección, video, preguntas) ocupan toda la pantalla: arriba
+  la X y la barra de «combustible» con la avioneta, abajo un botón grande (CONTINUAR / COMPROBAR / GIRAR).
+- **Camino**: barra de cabina (plan, racha, puntos y el medidor de preparación), el banner de cada materia («Materia 1 ·
+  Factores humanos»), un sendero de círculos que serpentea: el **Video resumen** primero, cada tema (dorado con estrellas al
+  aprobarlo, gris con candado si está cerrado, el que toca late con «EMPEZAR» y la avioneta al lado) y el trofeo del
+  **Examen de materia** al final.
+- **Lección en tarjetas** (`public/tarjetas.js`, lógica pura y probada): una idea por pantalla. Las secciones de texto largo
+  se parten solas por párrafos, viñetas y frases (3 frases o ~360 letras como máximo); la frase clave («evita», «siempre»,
+  «por lo menos»…) va en el recuadro **Recuerda**; los términos en inglés entre paréntesis salen como fichas y las cifras
+  resaltadas. «Si te preguntan: … Recuerda: …» → tarjetas para **girar**; «Escenario N: … A) … → …» → **PRÁCTICA · Situación de
+  vuelo** (elegir, COMPROBAR, la consecuencia; no cuenta para la nota); «• Palabra (pronunciación): significado. Ejemplo: …» →
+  tarjetas de vocabulario con «oír» (voz del navegador). Si un patrón no se reconoce, el texto sale como tarjeta normal:
+  nunca se pierde nada. Un tema **sin preguntas** se aprueba al terminar de leer su lección
+  (`POST /api/academia/temas/:materia/:tema/leido`; antes el camino quedaba trancado ahí).
+- **Preguntas del Test Guide**: insignia «TEST GUIDE · Pregunta 10-5» (el número tal cual), enunciado y opciones TAL CUAL en
+  tarjetas grandes, figura original con «tocar para ampliar», COMPROBAR y la hoja de abajo verde («¡Correcto!») o roja
+  («Respuesta correcta: B») con la explicación ORIGINAL, aparte la «Explicación sencilla» y, si falló, «Por qué elegiste esa».
+  Acertar: confeti y una avioneta que da una vuelta (sin sonido); fallar: la opción tiembla. El 90 %, «otra vez» en otro
+  orden, la fila de repaso y el examen de materia siguen igual.
+- **Video resumen** (`public/clase/reproductor.js`, de la rama `academia-visual`): la narración de la materia suena entera y
+  las escenas cambian solas según su tiempo dentro del mp3. Una escena cuyo dibujo no sirve (o de un tipo que la app no
+  conoce, o un escenario sin opciones) usa el **cartel** (`public/clase/cartel.js`: cielo, ícono según el tema y el título);
+  un video nunca se queda esperando. Si la materia tiene audio pero no escenas: una sola escena con el título. Al terminar,
+  el círculo del video sale dorado.
+- **Plan de estudio** (la primera vez que entra): «1 mes» (recomendado), «2 meses» o «Repaso 15 días». La fecha estimada de fin
+  mezcla el ritmo del plan con el ritmo real (temas y exámenes aprobados por día): si avanza más rápido, termina antes. Se ve
+  en la barra del camino y en Progreso (meta de hoy, adelantado / a tiempo / atrasado, cambiar de plan).
+- **Grupo** (camino y Progreso): cada compañero como una avioneta sobre la ruta de las 11 materias, con su materia actual, %
+  del camino, racha y medallas (exámenes aprobados + temas al 100 %). NUNCA notas, errores, respuestas ni conexión. Cada
+  alumno se puede ocultar; el administrador lo apaga en Contenido → Ajustes (`POST /api/admin/academia/grupo`).
+- Rutas nuevas del alumno: `POST /api/academia/plan` `{ plan }`, `POST /api/academia/grupo` `{ oculto }`,
+  `GET /api/academia/video/:materia`, `POST /api/academia/video/:materia/visto`. El plan, el grupo y la preparación llegan
+  dentro de `GET /api/academia/camino` y `GET /api/academia/progreso` (ninguna pantalla pide nada más al abrir). Todo se
+  guarda en `ajustes` (`academia.plan.<id>`, `academia.grupo_oculto.<id>`, `academia.grupo`, `academia.videos_vistos.<id>`,
+  `academia.temas_leidos.<id>`): sin cambio de base.
 
 ### Formato del paquete, versión 1
 Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
@@ -456,8 +494,18 @@ otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde l
       "temas": [ { "id": "hipoxia", "titulo": "…",
         "secciones": [ { "titulo": "…", "texto": "…", "nota": "diferencias entre libros (opcional)",
                          "fuentes": [ { "libro": "jeppesen-es", "capitulo": "…", "seccion": "…", "pagina": "…" } ] } ],
+        // 0.7.2 (opcional): una sección ya partida en tarjeta. Las secciones de texto de siempre siguen sirviendo.
+        //   { "tipo": "tarjeta", "titulo": "…", "puntos": ["…", …] (1 a 6), "recuerda": "…", "ejemplo": "…",
+        //     "ingles": [ { "palabra": "…", "pronunciacion": "…", "significado": "…" } ],
+        //     "visual": { "tipo": "ala" | "motor" | "instrumentos" | "meteo" | "escenario" | "titulo" | "cartel", "parametros": { … } },
+        //     "fuentes": [ … ] }
         "reexplicacion": [ …secciones más sencillas, para cuando no aprueba (opcional)… ],
-        "preguntas": [ "tg-0001", … ] } ] } ],
+        "preguntas": [ "tg-0001", … ] } ],
+      // 0.7.2 (opcional): el «Video resumen», lo primero del camino de la materia. El mp3 se sube y se baja de Drive como
+      // los otros audios. Sin «escenas» (solo el audio): una escena con el título. Lo de más que traiga una escena se ignora.
+      "video": { "titulo": "…" (opcional), "audio": { "archivo": "materia-01.mp3" },
+                 "escenas": [ { "inicio_s": 0, "fin_s": 44.07, "subtitulo": "…", "texto_pantalla": "…",
+                                "texto_narracion": "…" (opcional), "visual": { "tipo": "…", "parametros": { … } } } ] } } ],
   "preguntas": [
     { "id": "tg-0001", "origen": "test_guide" | "poh",
       "original": {                   // TAL CUAL del Test Guide (o del texto del POH)
@@ -518,6 +566,8 @@ carpeta cada hora (a los :23) y con «Buscar ahora» (`src/academia/sincronizar.
 - Las pruebas (`test/drive.test.js`) usan un Drive FALSO en 127.0.0.1 (`config.driveBases`, solo en modo de prueba).
 
 ### Vuelta atrás
+La 0.7.2 tampoco cambia la base (plan, grupo, videos vistos y temas leídos van en `ajustes`); una 0.7.1 con un paquete que
+trae `video` o secciones `tarjeta` lo rechaza al revisarlo, pero sigue usando las versiones que ya tenía.
 La 0.7.1 no cambia la base: todo lo nuevo va en `ajustes`. Si se vuelve a la 0.7.0, usa la última versión puesta en uso
 (`academia.paquete_activo`) sola, y no revisa Drive; al volver a la 0.7.1, todo sigue.
 El cambio de base 7 solo agrega 4 tablas `academia_*` (sin CHECK, sin UNIQUE). `test/ensayo-0.5.1.mjs` (a mano, necesita la

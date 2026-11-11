@@ -586,3 +586,24 @@ test('drive: el trabajador solo lee el manifiesto de una versión; el servidor w
     db.close();
   });
 });
+
+test('drive 0.7.2: el mp3 del «Video resumen» de una materia (materia.video.audio) se baja como los otros audios', async () => {
+  await conDrive(async drive => {
+    const p = paqueteMuestra();
+    p.edicion = 'muestra-video';
+    p.materias[0].video = { audio: { archivo: 'video-factores.mp3' }, escenas: [{ inicio_s: 0, fin_s: 9, subtitulo: 'Empieza' }] };
+    carpetaBasica(drive, p);
+    const audio = mp3(3000);
+    drive.poner(RAIZ, { id: 'archivoVideoAudio001', nombre: 'video-factores.mp3' }, { cuerpo: audio, tipo: 'audio/mpeg' });
+    const { config, db } = prepararBase(drive);
+    const r = await revisar(db, config);
+    assert.deepEqual(r.errores, []);
+    assert.equal(r.activados.length, 1);
+    const fila = db.prepare('SELECT * FROM academia_paquetes').get();
+    assert.equal(fila.estado, 'listo');
+    const carpeta = join(dirname(config.archivoBase), 'academia', 'paquetes', fila.carpeta);
+    assert.ok(readFileSync(join(carpeta, 'audio', 'video-factores.mp3')).equals(audio));
+    assert.equal(paqueteActivo(db, config).materias.find(m => m.id === 'factores_humanos').video.audio.archivo, 'video-factores.mp3');
+    db.close();
+  });
+});

@@ -412,7 +412,7 @@ function componer(config, vivas, filas) {
   const libros = new Map();
   const materias = MATERIAS.map(idMateria => {
     const usada = deMateria.get(idMateria);
-    if (!usada) return { id: idMateria, temas: [], audio: null, paquete: null };
+    if (!usada) return { id: idMateria, temas: [], audio: null, video: null, paquete: null };
     const { pid, m, indice } = usada;
     const temas = m.temas.map(t => {
       const suyas = t.preguntas.filter(qid => !preguntas.has(qid)); // un id repetido entre versiones: vale el primero
@@ -425,7 +425,7 @@ function componer(config, vivas, filas) {
     });
     for (const [n, f] of indice.figuras) if (!figuras.has(n)) figuras.set(n, f);
     for (const [n, l] of indice.libros) if (!libros.has(n)) libros.set(n, l);
-    return { id: idMateria, temas, audio: m.audio, paquete: pid };
+    return { id: idMateria, temas, audio: m.audio, video: m.video ?? null, paquete: pid };
   });
   // La versión «principal» (su nombre, su id en los intentos): la última puesta en uso que da alguna materia.
   const principal = [...vivas].reverse().find(e => porPaquete.has(e.id)).id;
@@ -463,7 +463,7 @@ export function rutaAudio(paquete, ref) {
   const p = paquete?.porPaquete?.get(pid);
   if (!p) return null;
   // Solo un audio que nombra una materia o un tema EN USO de esa versión.
-  const nombrado = paquete.materias.some(x => x.paquete === pid && (x.audio?.archivo === m[2] || x.temas.some(t => t.audio?.archivo === m[2])));
+  const nombrado = paquete.materias.some(x => x.paquete === pid && (x.audio?.archivo === m[2] || x.video?.audio?.archivo === m[2] || x.temas.some(t => t.audio?.archivo === m[2])));
   if (!nombrado) return null;
   const ruta = join(p.carpeta, 'audio', m[2]);
   try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: 'audio/mpeg' } : null; } catch { return null; }
