@@ -11,7 +11,7 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso']);
 export const ESTADOS_TEMA = Object.freeze(['bloqueado', 'abierto', 'aprobado']);
 export const ESTADOS_MATERIA = Object.freeze(['vacia', 'bloqueada', 'abierta', 'aprobada']);
-export const NOMBRE_POR_DEFECTO = 'Academia ENALAS';
+export const NOMBRE_POR_DEFECTO = 'Academia de Aviación';
 export const UMBRAL_POR_DEFECTO = 90;
 export const PUNTOS_POR_ACIERTO = 10;
 // Repaso espaciado (cajas): fallar la manda a la caja 1 (para hoy); acertar la sube, y vuelve a salir después de

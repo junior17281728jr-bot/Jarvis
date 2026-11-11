@@ -189,9 +189,9 @@ test('sin paquete: el alumno ve el camino vacío (sin errores) y el nombre de la
     const c = await pedir(base, 'GET', '/api/academia/camino', { galleta: ana });
     assert.equal(c.codigo, 200);
     assert.equal(c.datos.paquete, null);
-    assert.equal(c.datos.nombre, 'Academia ENALAS');
+    assert.equal(c.datos.nombre, 'Academia de Aviación');
     assert.equal(c.datos.umbral, 90);
-    assert.equal((await pedir(base, 'GET', '/api/setup')).datos.nombreApp, 'Academia ENALAS');
+    assert.equal((await pedir(base, 'GET', '/api/setup')).datos.nombreApp, 'Academia de Aviación');
     assert.equal((await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'repaso' } })).codigo, 409);
     // Solo el administrador cambia el nombre y el %.
     assert.equal((await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: ana, datos: { umbral: 50 } })).codigo, 403);

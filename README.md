@@ -1,6 +1,6 @@
-# Academia ENALAS (sobre OPORTIA)
+# Academia de Aviación (sobre OPORTIA)
 
-Desde la versión 0.7.0 la app abre como **Academia ENALAS**: un profesor de aviación tipo Duolingo para el examen de piloto
+Desde la versión 0.7.0 la app abre como **Academia de Aviación**: un profesor de aviación tipo Duolingo para el examen de piloto
 privado (uso privado del dueño y sus amigos). Todo lo de OPORTIA sigue funcionando por debajo (cuentas, administrador,
 servidor, copias, IA con topes, Telegram, ayuda); los proyectos quedan escondidos. Ver «Academia (etapa 1)» más abajo.
 
@@ -434,7 +434,7 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   todos sus temas. **Progreso**: % por materia (preguntas cuya última respuesta fue correcta), y lo que más cuesta.
 - **Administrador → Alumnos**: quién está en línea (actividad en los últimos 10 minutos), su última actividad, aciertos y
   errores por materia y las preguntas que falla. **Administrador → Contenido**: subir, versiones, poner una en uso, el nombre
-  de la app (por defecto «Academia ENALAS») y el %.
+  de la app (por defecto «Academia de Aviación») y el %.
 - Un alumno nunca lee lo de otro: todas sus rutas usan la sesión (nunca un id que mande la pantalla); el intento de otro
   responde 404 y lo de Administrador 403 (`test/academia.test.js`).
 - Escondido para después (código guardado, sin enlaces ni botones): los proyectos de OPORTIA (`PROYECTOS_VISIBLES` en
