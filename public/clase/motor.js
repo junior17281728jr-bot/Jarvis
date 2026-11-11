@@ -138,7 +138,7 @@ export function montarMotor(contenedor, opciones = {}) {
     svg('rect', { x: x - 5, y: 4, width: 10, height: CAMARA - 12, rx: 3, fill: metalV }, mueve);
     svg('path', { d: `M${x - 26} ${CAMARA - 4}L${x + 26} ${CAMARA - 4}L${x + 9} ${CAMARA - 16}L${x - 9} ${CAMARA - 16}Z`, fill: metalH, class: 'clase-valvula-cabeza' }, mueve);
     const resorte = svg('path', { class: 'clase-resorte' }, g);
-    svg('rect', { x: x - 30, y: CAMARA - 30, width: 60, height: 44, class: 'clase-zona-toque' }, g);
+    svg('rect', { x: x - 36, y: CAMARA - 52, width: 72, height: 70, class: 'clase-zona-toque' }, g);
     return { g, mueve, resorte, x };
   };
   const vAdm = valvula(EJE_X - 81, 'clase-valvula-adm');
@@ -150,7 +150,7 @@ export function montarMotor(contenedor, opciones = {}) {
   svg('rect', { x: EJE_X - 15, y: 38, width: 30, height: 18, rx: 2, fill: metalH }, gBujia);
   svg('rect', { x: EJE_X - 8, y: 56, width: 16, height: CAMARA - 58, fill: metalV }, gBujia);
   svg('rect', { x: EJE_X - 2, y: CAMARA - 2, width: 4, height: 8, class: 'clase-electrodo' }, gBujia);
-  svg('rect', { x: EJE_X - 22, y: 0, width: 44, height: CAMARA + 6, class: 'clase-zona-toque' }, gBujia);
+  svg('rect', { x: EJE_X - 34, y: 0, width: 68, height: CAMARA + 6, class: 'clase-zona-toque' }, gBujia);
   const chispa = svg('path', { d: estrella(EJE_X, CAMARA + 10, 22, 8), class: 'clase-chispa', opacity: 0 }, lienzo);
 
   // Pistón, biela y cigüeñal.

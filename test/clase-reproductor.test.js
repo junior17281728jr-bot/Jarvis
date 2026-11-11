@@ -49,12 +49,24 @@ test('la secuencia avanza sola de escena en escena y espera la respuesta en un e
   assert.equal(s.indice, 2);
   assert.equal(s.avanzar(9), null, 'el escenario no termina sin respuesta');
   assert.equal(s.esperando, true);
+  assert.equal(s.continuar(), null, 'sin responder no se puede seguir');
   s.responder();
-  assert.equal(s.avanzar(0.1), 'fin');
+  assert.equal(s.avanzar(0.1), null, 'respondido, igual espera «Continuar» para leer la consecuencia');
+  assert.equal(s.continuar(), 'fin');
   assert.equal(s.terminada, true);
   assert.equal(s.progreso().porcentaje, 100);
   assert.equal(s.progreso().completado, true);
   assert.equal(s.avanzar(1), null);
+});
+
+test('un escenario en medio de la lección: tras responder, «Continuar» pasa a la escena siguiente', () => {
+  const l = { escenas: [leccion.escenas[2], leccion.escenas[0]] };
+  const s = new Secuencia(l);
+  s.avanzar(10);
+  s.responder();
+  assert.equal(s.indice, 0);
+  assert.equal(s.continuar(), 'escena');
+  assert.equal(s.indice, 1);
 });
 
 test('progreso y reanudar donde quedó', () => {

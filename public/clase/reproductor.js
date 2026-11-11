@@ -22,7 +22,7 @@ export const TEXTOS_REPRODUCTOR = {
   etiqueta: 'Reproductor de la clase', reproducir: 'Reproducir', pausar: 'Pausar', anterior: 'Escena anterior',
   siguiente: 'Escena siguiente', velocidad: 'Velocidad', voz: 'Leer en voz alta', escena: 'Escena', de: 'de',
   probar: 'Probar tú', volver: 'Volver a la clase', fin: 'Fin de la clase', repetir: 'Ver otra vez',
-  responde: 'Responde para seguir', sinVoz: 'Este navegador no tiene voz', irA: 'Ir a la escena',
+  responde: 'Responde para seguir', continuar: 'Continuar', sinVoz: 'Este navegador no tiene voz', irA: 'Ir a la escena',
 };
 
 export const siguienteVelocidad = v => VELOCIDADES[(VELOCIDADES.indexOf(v) + 1) % VELOCIDADES.length] ?? 1;
@@ -105,14 +105,23 @@ export class Secuencia {
     if (this.tiempo > 3 && !this.terminada) { this.tiempo = 0; return false; } // primero vuelve al inicio de la escena
     return this.ir(this.indice - 1);
   }
-  responder() { this.respondidas.add(this.indice); this.esperando = false; }
+  responder() { this.respondidas.add(this.indice); }
+  // Después de responder un escenario, el alumno sigue cuando quiere (lee la consecuencia y el concepto).
+  continuar() {
+    if (this.pideRespuesta || this.terminada) return null;
+    this.esperando = false;
+    if (this.indice < this.total - 1) { this.ir(this.indice + 1); return 'escena'; }
+    this.tiempo = this.duracion;
+    this.terminada = true;
+    return 'fin';
+  }
   // Avanza el reloj (dt ya multiplicado por la velocidad). Devuelve 'escena' si cambió de escena, 'fin' al terminar.
   avanzar(dt) {
     if (this.terminada) return null;
     this.tiempo += Math.max(0, dt);
     if (this.tiempo < this.duracion) return null;
     this.tiempo = this.duracion;
-    if (this.pideRespuesta) { this.esperando = true; return null; }
+    if (this.escena.visual?.tipo === 'escenario') { this.esperando = true; return null; } // espera «Continuar»
     if (this.indice < this.total - 1 && this.autoAvance) { this.ir(this.indice + 1); return 'escena'; }
     if (this.indice < this.total - 1) return null;
     this.terminada = true;
@@ -169,7 +178,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
   let conVoz = Boolean(opciones.voz) && hayVoz;
   let visual = null, probando = false;
   let frases = [], tiempos = [], fraseActual = -1;
-  let hablando = false, esperaVoz = 0;
+  let hablando = false, esperaVoz = 0, utterancia = null;
   let audio = null, audioListo = false, audioFallo = false;
 
   const raiz = el('section', { class: 'clase-rep', 'aria-label': leccion.titulo ? `${T.etiqueta}: ${leccion.titulo}` : T.etiqueta, tabindex: -1 }, contenedor);
@@ -188,6 +197,8 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
   const tituloEscena = el('p', { class: 'clase-rep-subtitulo' }, subtitulos);
   const textoEscena = el('p', { class: 'clase-rep-texto', 'aria-live': 'polite' }, subtitulos);
   const avisoRespuesta = el('p', { class: 'clase-rep-aviso', hidden: true }, subtitulos, T.responde);
+  const bContinuar = el('button', { type: 'button', class: 'clase-boton clase-boton-principal clase-rep-continuar', hidden: true }, subtitulos, T.continuar);
+  bContinuar.addEventListener('click', () => { const ev = seq.continuar(); if (ev) { manejar(ev); if (ev === 'escena' && !reproduciendo) reproducir(); } });
 
   const barra = el('div', { class: 'clase-rep-barra', role: 'group', 'aria-label': `${T.escena}s` }, raiz);
   const segmentos = seq.leccion.escenas.map((e, i) => {
@@ -228,7 +239,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
       try {
         visual = montar(marco, e.visual.parametros || {}, {
           modo: 'explicacion',
-          alResolver: () => { seq.responder(); avisoRespuesta.hidden = true; if (seq.tiempo >= seq.duracion && reproduciendo) { if (seq.avanzar(0.001) === 'escena') entrarEscena(); avisar(); } },
+          alResolver: () => { seq.responder(); avisar(); pintar(); },
         });
       } catch (error) {
         el('p', { class: 'clase-rep-sinvisual' }, marco, e.subtitulo);
@@ -287,7 +298,8 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
       const voz = elegirVoz();
       if (voz) { u.voice = voz; u.lang = voz.lang; }
       u.rate = velocidad;
-      u.onend = u.onerror = () => { hablando = false; };
+      u.onend = u.onerror = () => { if (utterancia === u) hablando = false; };
+      utterancia = u;
       hablando = true; esperaVoz = 0;
       speechSynthesis.speak(u);
     } catch { hablando = false; }
@@ -364,10 +376,18 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
       if (conVoz && hablando && actual && seq.tiempo + paso >= actual.fin - 0.05 && esperaVoz < 6) { esperaVoz += dt; paso = 0; }
       evento = seq.avanzar(paso);
     }
-    if (evento === 'escena') { entrarEscena(); if (usaAudio()) audio.play().catch(() => { audioFallo = true; }); avisar(); }
-    else if (evento === 'fin') { reproduciendo = false; bucle.detener(); detenerVoz(); finTarjeta.hidden = false; pintarBotones(); const p = seq.progreso(); opciones.onProgreso?.(p); opciones.onFin?.(p); }
+    manejar(evento);
     pintar();
   });
+
+  function manejar(evento) {
+    if (evento === 'escena') { entrarEscena(); if (reproduciendo && usaAudio()) audio.play().catch(() => { audioFallo = true; }); avisar(); }
+    else if (evento === 'fin') {
+      reproduciendo = false; bucle.detener(); detenerVoz(); audio?.pause();
+      finTarjeta.hidden = false; pintar(); pintarBotones();
+      const p = seq.progreso(); opciones.onProgreso?.(p); opciones.onFin?.(p);
+    }
+  }
 
   function pintar() {
     const t = seq.tiempo, d = seq.duracion;
@@ -378,7 +398,9 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
       [...textoEscena.children].forEach((s, k) => { s.classList.toggle('clase-rep-frase-actual', k === i); s.classList.toggle('clase-rep-frase-dicha', k < i); });
       if (reproduciendo && i >= 0) decir(frases[i]);
     }
-    avisoRespuesta.hidden = !(seq.esperando && seq.pideRespuesta);
+    const esEscenario = seq.escena.visual?.tipo === 'escenario';
+    avisoRespuesta.hidden = !(esEscenario && seq.pideRespuesta && seq.tiempo >= seq.duracion);
+    bContinuar.hidden = !(esEscenario && !seq.pideRespuesta && !seq.terminada);
     segmentos.forEach((s, k) => {
       const lleno = k < seq.indice || seq.terminada ? 1 : k > seq.indice ? 0 : t / d;
       s.relleno.style.transform = `scaleX(${limitar(lleno, 0, 1).toFixed(4)})`;
@@ -421,7 +443,7 @@ export function montarReproductor(contenedor, leccion, opciones = {}) {
     voz: ponerVoz,
     // Para pruebas y capturas: poner el reloj en un punto exacto de la escena actual.
     buscar(segundos) { seq.tiempo = limitar(segundos, 0, seq.duracion); fraseActual = -1; pintar(); },
-    get estado() { return { ...seq.progreso(), reproduciendo, velocidad, voz: conVoz }; },
+    get estado() { return { ...seq.progreso(), duracion: seq.duracion, reproduciendo, velocidad, voz: conVoz }; },
     destruir() { pausar(); bucle.destruir(); visual?.destruir?.(); audio?.pause(); raiz.remove(); },
   };
 }

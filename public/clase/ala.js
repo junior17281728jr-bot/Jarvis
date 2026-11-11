@@ -237,8 +237,8 @@ export function montarAla(contenedor, opciones = {}) {
   let lineasDibujadas = [], remolinos = [], ultimoAlfa = null, estado = estadoAla(alfa, { angulo_critico: critico });
   let fase = 0;
 
-  function dibujarGeometria() {
-    const geo = lineasDeCorriente(alfa);
+  function dibujarGeometria(alfaGeo) {
+    const geo = lineasDeCorriente(alfaGeo);
     const perfil = geo.perfil.map(aPantalla);
     const ba = aPantalla(geo.ba), bs = aPantalla(geo.bs);
     // Extrusión: copias del perfil hacia el fondo, más oscuras atrás (efecto de profundidad).
@@ -275,15 +275,15 @@ export function montarAla(contenedor, opciones = {}) {
     presionAlta.setAttribute('cx', f1(centro[0])); presionAlta.setAttribute('cy', f1(centro[1] + 42));
     presionAlta.setAttribute('rx', 170); presionAlta.setAttribute('ry', 56);
 
-    // Líneas de corriente.
-    while (grupoLineas.firstChild) grupoLineas.removeChild(grupoLineas.firstChild);
+    // Líneas de corriente: los trazos se crean una sola vez y se reutilizan (los guiones no saltan al mover el ángulo).
     const arriba = geo.lineas.filter(l => l.arriba).sort((a, b) => a.psi - b.psi);
-    lineasDibujadas = geo.lineas.map(l => {
+    lineasDibujadas = geo.lineas.map((l, i) => {
       const pts = l.puntos.map(aPantalla).filter(([x, y]) => x > -40 && x < ANCHO + 40 && y > -60 && y < ALTO + 60);
       const rango = l.arriba ? arriba.indexOf(l) : -1;
-      const base = svg('path', { class: 'clase-linea-base' }, grupoLineas);
-      const guiones = svg('path', { class: `clase-linea-guion${l.arriba ? ' clase-linea-arriba' : ''}` }, grupoLineas);
-      return { pts, rango, base, guiones, rapidez: l.rapidez, desplazamiento: Math.random() * 40 };
+      const previa = lineasDibujadas[i];
+      const base = previa?.base || svg('path', { class: 'clase-linea-base' }, grupoLineas);
+      const guiones = previa?.guiones || svg('path', { class: 'clase-linea-guion' }, grupoLineas);
+      return { pts, rango, base, guiones, rapidez: l.rapidez, desplazamiento: previa ? previa.desplazamiento : (i * 13) % 32 };
     });
     // Datos de la separación (en pantalla): desde un punto del extradós hacia atrás, el aire ya no sigue al ala.
     const extrados = perfil.slice(0, Math.floor(perfil.length / 2)); // del borde de salida al de ataque, por arriba
@@ -294,17 +294,16 @@ export function montarAla(contenedor, opciones = {}) {
       puntoSep = extrados.reduce((m, p) => (Math.abs(p[0] - objetivoX) < Math.abs(m[0] - objetivoX) ? p : m), extrados[0]);
     }
     geometria = { ba, bs, ux, uy, puntoSep, extrados };
-    // Remolinos en la zona separada.
-    while (grupoRemolinos.firstChild) grupoRemolinos.removeChild(grupoRemolinos.firstChild);
-    remolinos = [];
-    if (estado.perdida) {
+    // Remolinos en la zona separada (se crean al entrar en pérdida y se quitan al salir).
+    if (!estado.perdida && remolinos.length) { while (grupoRemolinos.firstChild) grupoRemolinos.removeChild(grupoRemolinos.firstChild); remolinos = []; }
+    if (estado.perdida && !remolinos.length) {
       for (let i = 0; i < 4; i++) {
         const g = svg('g', {}, grupoRemolinos);
         svg('path', { d: espiral(16 + i * 2), class: 'clase-remolino' }, g);
-        remolinos.push({ g, avance: i / 4, giro: Math.random() * 360 });
+        remolinos.push({ g, avance: i / 4, giro: i * 90 });
       }
     }
-    ultimoAlfa = alfa;
+    ultimoAlfa = alfaGeo;
   }
   let geometria = null;
 
@@ -361,7 +360,9 @@ export function montarAla(contenedor, opciones = {}) {
 
   function actualizar() {
     estado = estadoAla(alfa, { angulo_critico: critico });
-    if (ultimoAlfa === null || Math.abs(alfa - ultimoAlfa) > 0.01) dibujarGeometria();
+    // El flujo se recalcula cada 0,25° (a ojo no se nota y ahorra trabajo mientras el ángulo cambia).
+    const alfaGeo = Math.round(alfa * 4) / 4;
+    if (ultimoAlfa !== alfaGeo || estado.perdida !== (remolinos.length > 0)) dibujarGeometria(alfaGeo);
     trazarLineas();
     const { ba, bs, ux, uy } = geometria;
     // Centro de presión ≈ un cuarto de la cuerda; sustentación perpendicular al viento, resistencia paralela.

@@ -70,6 +70,7 @@ export function montarMeteo(contenedor, opciones = {}) {
   };
   const cielo = grad('linearGradient', { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, 'clase-cielo-arriba'], [1, 'clase-cielo-abajo']]);
   const burbujaG = grad('radialGradient', { cx: 0.5, cy: 0.5, r: 0.5 }, [[0, 'clase-burbuja-1'], [1, 'clase-burbuja-2']]);
+  const burbujaFria = grad('radialGradient', { cx: 0.5, cy: 0.5, r: 0.5 }, [[0, 'clase-burbuja-fria-1'], [1, 'clase-burbuja-fria-2']]);
   const nubeG = grad('linearGradient', { x1: 0, y1: 0, x2: 0, y2: 1 }, [[0, 'clase-nube-1'], [1, 'clase-nube-2']]);
   const frioG = grad('linearGradient', { x1: 0, y1: 0, x2: 1, y2: 0 }, [[0, 'clase-frio-1'], [1, 'clase-frio-2']]);
 
@@ -157,7 +158,7 @@ export function montarMeteo(contenedor, opciones = {}) {
       partes.burbuja.setAttribute('cy', f1(y));
       partes.burbuja.setAttribute('r', f1(r));
       partes.burbuja.setAttribute('opacity', f1(e.etapa === 'calienta' ? e.calor * 0.6 : 1 - e.nube));
-      partes.burbuja.setAttribute('class', `clase-burbuja${e.subida > 0.6 ? ' clase-burbuja-fria' : ''}`);
+      partes.burbuja.setAttribute('fill', e.subida > 0.6 ? burbujaFria : burbujaG);
       partes.nube.setAttribute('transform', `translate(320 ${NIVEL}) scale(${f1(0.15 + 0.85 * e.nube)} ${f1(0.08 + 0.92 * e.nube)})`);
       partes.nube.setAttribute('opacity', f1(Math.min(1, e.nube * 3)));
       partes.flechas.forEach((f, i) => {
