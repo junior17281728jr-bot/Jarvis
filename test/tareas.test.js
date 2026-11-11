@@ -9,13 +9,13 @@ import { join, relative, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { abrirBase, estadoBase, enTransaccion, conectarBase } from '../src/nucleo/db.js';
 import { MIGRACIONES } from '../src/nucleo/migraciones.js';
-import { marcarConErrores } from '../src/proyectos/proyectos.js';
+import { marcarConErrores } from '../src/tareas/al-fallar.js';
 import { TIPOS, CUPOS, PROGRAMAS_DEL_SISTEMA, ErrorTarea, esperar, definicion, tiposEjecutables } from '../src/tareas/tipos.js';
-import { ranura, horarioRepartido } from '../src/tareas/tiempo.js';
+import { ranura } from '../src/tareas/tiempo.js';
 import { crearEscritor } from '../src/tareas/escritor.js';
 import {
   ESTADOS_TAREA, EVENTOS, encolar, elegir, marcarTomada, guardarPaso, normalizarSalida, salidaDeError, escritorDeTarea,
-  devolverLasMias, recuperarAbandonadas, recuperarVencidas, programar, programasDeProyectos, proximasEjecuciones,
+  devolverLasMias, recuperarAbandonadas, recuperarVencidas, programar, proximasEjecuciones,
   reintentar, cancelar, resumenFila, erroresRecientes, listarTareas, tareasDelEspacio, tiposPermitidos, esperaDeReintento,
 } from '../src/tareas/cola.js';
 import { nuevaCorrida, empezarCorrida, terminarCorrida, marcarListo, latir, salidasAnormales, COMO_TERMINA } from '../src/tareas/corridas.js';
@@ -603,10 +603,6 @@ test('ranuras en hora de República Dominicana (UTC−4) y horario repartido de 
   assert.equal(iso(r.siguiente), '2027-01-01T06:00:00.000Z');
   assert.equal(ranura({ programa: 'proyecto:5', cada: 'mensual', hora: 2 }, Date.parse('2026-12-01T05:59:00Z')).clave, 'proyecto:5@M2026-11');
   assert.equal(ranura({ programa: 'proyecto:5', cada: 'manual' }, T0), null);
-  for (let id = 0; id <= 1000; id++) {
-    const { hora, minuto } = horarioRepartido(id);
-    assert.ok(hora >= 1 && hora <= 5 && minuto >= 0 && minuto <= 59, `proyecto ${id}: ${hora}:${minuto}`);
-  }
 });
 
 // ---------- 14. Programar ----------
@@ -634,36 +630,6 @@ test('programar: tras 3 días apagado se hace una sola vez, la misma ranura no d
   const proximas = proximasEjecuciones(db, { programas: vigilar, ahora: T0 + 3 * DIA });
   assert.equal(proximas[0].proximaEn, new Date(ranura(vigilar[0], T0 + 3 * DIA).siguiente).toISOString());
   assert.equal(proximas[0].ultimoEstado, 'lista');
-  db.close();
-});
-
-test('programasDeProyectos: vacío en la fase 1; con tipos de la fase 2 solo entran los proyectos que de verdad corren', () => {
-  const { db } = nuevaBase();
-  const cuenta = crearCuenta(db);
-  const conVersion = (estado, config, { papelera = 0 } = {}) => {
-    const id = crearProyecto(db, cuenta, { estado, papelera });
-    db.prepare("INSERT INTO proyecto_versiones (proyecto_id, numero, instrucciones, configuracion, estado, creada_en) VALUES (?, 1, 'x', ?, 'aprobada', 'x')")
-      .run(id, JSON.stringify(config));
-    db.prepare('UPDATE proyectos SET version_activa = 1 WHERE id = ?').run(id);
-    return id;
-  };
-  const comercial = { tipo: 'comercial', frecuencia: 'semanal', capacidades: { investigar: true } };
-  const corre = conVersion('en_ejecucion', comercial);
-  conVersion('pausado', comercial);
-  conVersion('en_ejecucion', comercial, { papelera: 1 });
-  conVersion('en_ejecucion', { ...comercial, frecuencia: 'manual' });
-  conVersion('en_ejecucion', { tipo: 'laboral', frecuencia: 'diaria', capacidades: { investigar: true } }); // laboral llega en la fase 6
-  conVersion('en_ejecucion', { ...comercial, capacidades: { investigar: false, correos: true } }); // correos llega en la fase 3
-  crearProyecto(db, cuenta); // sin versión aprobada
-  assert.deepEqual(programasDeProyectos(db), []);
-  const registro = { ...TIPOS, 'proyecto.investigar': { fase: 2 }, 'proyecto.correos': { fase: 3 } };
-  const lista = programasDeProyectos(db, { registro, fase: 2 });
-  assert.equal(lista.length, 1);
-  assert.equal(lista[0].programa, `proyecto:${corre}`);
-  assert.equal(lista[0].tipo, 'proyecto.investigar');
-  assert.equal(lista[0].cada, 'semanal');
-  assert.equal(lista[0].proyectoId, corre);
-  assert.deepEqual({ hora: lista[0].hora, minuto: lista[0].minuto }, horarioRepartido(corre));
   db.close();
 });
 

@@ -383,15 +383,15 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
   for (const id of Object.keys(USOS)) assert.match(id, /^[a-z_]+$/, `uso de clave raro: ${id}`);
 });
 
-test('el servidor web nunca carga el camino PAGADO de la IA (src/ia/cliente.js ni src/ia/ayuda.js): solo el trabajador gasta', () => {
+test('el servidor web nunca carga el camino PAGADO de la IA (src/ia/cliente.js): solo el trabajador gasta', () => {
   const { archivos } = grafoDeImports(join(SRC, 'server.js'));
   const delServidor = new Set(archivos.map(a => relative(SRC, a)));
-  for (const soloDelTrabajador of [join('ia', 'cliente.js'), join('ia', 'ayuda.js')]) {
+  for (const soloDelTrabajador of [join('ia', 'cliente.js')]) {
     assert.ok(!delServidor.has(soloDelTrabajador), `el servidor web carga ${soloDelTrabajador}`);
   }
-  // Y el trabajador sí los carga (si no, la ayuda nunca correría).
+  // Y el trabajador sí lo carga (0.8.0: la ayuda de los proyectos se quitó; el cliente queda para la IA de la academia).
   const delTrabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
-  for (const archivo of [join('ia', 'cliente.js'), join('ia', 'ayuda.js')]) assert.ok(delTrabajador.has(archivo), `el trabajador no carga ${archivo}`);
+  for (const archivo of [join('ia', 'cliente.js')]) assert.ok(delTrabajador.has(archivo), `el trabajador no carga ${archivo}`);
   // La prueba gratis de una clave (servidor web) nunca usa el camino pagado ni crea una reserva.
   const probar = leer(de('claves', 'probar.js')).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
   assert.doesNotMatch(probar, /\breservar\s*\(|\bliquidar\s*\(|\/v1\/messages['"`]|\/v1\/responses/, 'la prueba gratis no gasta');
@@ -639,7 +639,7 @@ test('el repositorio no tiene libros, paquetes de contenido, imágenes de libros
     assert.ok(!/^paquete.*\.json$/.test(base), `${nombre}: un paquete de contenido vive solo en el servidor`);
     if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|heic|avif)$/.test(base)) assert.ok(IMAGENES_PERMITIDAS.has(nombre), `${nombre}: una imagen nueva (¿una figura de un libro?) no va en el repositorio`);
     const bytes = statSync(join(RAIZ, nombre)).size;
-    const tope = 600_000; // el más grande hoy (test/motor-casos.js) pesa unos 390 KB
+    const tope = 600_000;
     assert.ok(bytes <= tope, `${nombre} pesa ${bytes} bytes: demasiado grande para el repositorio`);
   }
 });

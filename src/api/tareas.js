@@ -16,7 +16,7 @@ import { ultimasCorridas, reiniciosDesde } from '../tareas/corridas.js';
 import { leerModoSeguro, ponerModoSeguro, leerFrenos } from '../tareas/modo-seguro.js';
 import { avisosAbiertos, avisosRecientes, marcarVisto } from '../avisos/avisos.js';
 import { medirSalud, evaluarSalud, semaforo, historialSalud } from '../nucleo/salud.js';
-import { espacioDe } from '../proyectos/proyectos.js';
+import { espacioDe } from '../cuentas/espacios.js';
 import { resumenCopias } from '../copias/estado.js';
 import { ultimaVersionMala } from '../copias/vigilar.js';
 import { estadoTelegram } from '../canales/canales.js';

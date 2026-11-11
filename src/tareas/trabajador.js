@@ -23,7 +23,7 @@ import { pathToFileURL } from 'node:url';
 import { leerConfig } from '../nucleo/config.js';
 import { conectarBase } from '../nucleo/db.js';
 import { memoriaPropiaMb } from '../nucleo/salud.js';
-import { marcarConErrores } from '../proyectos/proyectos.js';
+import { marcarConErrores } from './al-fallar.js';
 import { TIPOS } from './tipos.js';
 import { crearEscritor } from './escritor.js';
 import { empezarCorrida, marcarListo, latir, terminarCorrida } from './corridas.js';

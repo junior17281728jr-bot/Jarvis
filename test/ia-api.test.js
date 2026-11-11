@@ -11,9 +11,7 @@ import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { Limitador } from '../src/nucleo/limites.js';
 import { ponerModoSeguro } from '../src/tareas/modo-seguro.js';
-import { nuevaVersion, detalleProyecto, MAXIMO_VERSIONES } from '../src/proyectos/proyectos.js';
 import { precioDe, reservaMicro } from '../src/ia/precios.js';
-import { armarPeticion } from '../src/ia/interpretar.js';
 import { crearClienteIA } from '../src/ia/cliente.js';
 import { crearEscritor } from '../src/tareas/escritor.js';
 import { leerLlave, cifrar } from '../src/claves/cifrado.js';
@@ -262,96 +260,6 @@ test('20c. con un tope de plan mayor que US$0, el enlace público no crea cuenta
 // administrador robada crea cuentas (o les pone plan, o reinicia la de una clienta) por el enlace público, y espera a que
 // el dueño ponga un tope de plan más adelante. Se revisa al GASTAR: esas cuentas no gastan ni un centavo hasta que el
 // dueño, desde su cuenta de Tailscale, les da permiso.
-test('20d. cuentas creadas o tocadas por el enlace público con los topes en US$0 no gastan cuando el dueño pone un tope después (0 pedidos pagados)', async () => {
-  await conPlataforma(async ({ db, config, falso, admin, pedir, comoDueno, nuevaCuenta }) => {
-    await encender(comoDueno);
-    const ana = await nuevaCuenta('ana'); // creada por Junior desde su Tailscale: tiene permiso
-    const maria = await nuevaCuenta('maria');
-    // 1. Con los topes de plan en US$0, por el enlace público y con la galleta robada.
-    const titeres = [];
-    for (const nombre of ['titere1', 'titere2', 'titere3']) {
-      const c = await pedir('POST', '/api/admin/usuarios', { datos: { nombre }, galleta: admin, cabeceras: FUNNEL });
-      assert.equal(c.codigo, 201);
-      assert.equal((await pedir('POST', `/api/admin/usuarios/${c.datos.id}/plan`, { datos: { plan: 'pago' }, galleta: admin, cabeceras: FUNNEL })).codigo, 200);
-      titeres.push(c.datos);
-    }
-    // ... y se queda con la cuenta de una clienta de verdad (reinicia su contraseña).
-    const reinicio = await pedir('POST', `/api/admin/usuarios/${maria.id}/reiniciar-clave`, { datos: {}, galleta: admin, cabeceras: FUNNEL });
-    assert.equal(reinicio.codigo, 200);
-    // 2. Más tarde, Junior pone topes de plan desde su Tailscale.
-    assert.equal((await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { topesPlanUsd: { pago: '0.01', prueba: '0.01' } } })).codigo, 200);
-    // 3. Cada títere entra por el enlace público, cambia su contraseña, crea un proyecto y pide ayuda.
-    const escritor = crearEscritor(db, { registro: SILENCIO, dormir: async () => {} });
-    const cliente = crearClienteIA({ db, config, escritor });
-    const entrarYPedir = async (nombre, temporal) => {
-      const e = await pedir('POST', '/api/entrar', { datos: { nombre, clave: temporal }, cabeceras: FUNNEL });
-      assert.equal((await pedir('POST', '/api/yo/clave', { datos: { actual: temporal, nueva: CLAVE }, galleta: e.galleta, cabeceras: FUNNEL })).codigo, 200);
-      const g = (await pedir('POST', '/api/entrar', { datos: { nombre, clave: CLAVE }, cabeceras: FUNNEL })).galleta;
-      const pr = await pedir('POST', '/api/proyectos', { datos: { instrucciones: `${TALLER} ${nombre}` }, galleta: g, cabeceras: FUNNEL });
-      assert.equal(pr.codigo, 201);
-      const numero = pr.datos.numero ?? 1;
-      const ayuda = await pedir('GET', `/api/proyectos/${numero}/ayuda-ia`, { galleta: g, cabeceras: FUNNEL });
-      const pedido = await pedir('POST', `/api/proyectos/${numero}/versiones/1/ayuda-ia`, { datos: { maximoMicro: 5000 }, galleta: g, cabeceras: FUNNEL });
-      // El camino del trabajador (reservar), como si la tarea ya estuviera en la fila.
-      const espacioId = db.prepare("SELECT espacio_id FROM miembros WHERE usuario_id = (SELECT id FROM usuarios WHERE nombre = ?) AND rol = 'dueno'").get(nombre).espacio_id;
-      falso.siguiente('ok');
-      const directo = await cliente.pedir({ proposito: 'interpretar', espacioId, sistema: 'S', texto: 'T' });
-      return { ayuda, pedido, directo, espacioId };
-    };
-    for (const [nombre, temporal] of [...titeres.map(t => [t.nombre, t.claveTemporal]), ['maria', reinicio.datos.claveTemporal]]) {
-      const r = await entrarYPedir(nombre, temporal);
-      assert.deepEqual(r.ayuda.datos, { disponible: false }, `${nombre}: la ayuda ni se ofrece`);
-      assert.deepEqual([r.pedido.codigo, r.pedido.datos.error], [409, 'ia_no_disponible'], nombre);
-      assert.deepEqual([r.directo.usada, r.directo.motivo], [false, 'cuenta_sin_permiso'], nombre);
-    }
-    const pagados = () => falso.peticiones.filter(p => p.ruta === '/v1/messages' || p.ruta === '/v1/responses').length;
-    assert.equal(pagados(), 0, 'ningún pedido pagado al proveedor');
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ia_llamadas').get().n, 0, 'nada gastó');
-    assert.ok(db.prepare("SELECT SUM(veces) AS n FROM ia_bloqueos WHERE motivo = 'cuenta_sin_permiso'").get().n >= 4);
-    // Lo que ve Junior: de dónde vino el último cambio de cada cuenta, y cuántas esperan su permiso.
-    const lista = (await comoDueno('GET', '/api/admin/usuarios')).datos.usuarios;
-    const de = nombre => lista.find(u => u.nombre === nombre).ia;
-    assert.deepEqual([de('titere1').permitida, de('titere1').ultimo.accion, de('titere1').ultimo.desde], [false, 'plan', 'internet']);
-    assert.deepEqual([de('maria').permitida, de('maria').ultimo.accion, de('maria').ultimo.desde], [false, 'clave_reiniciada', 'internet']);
-    assert.deepEqual([de('ana').permitida, de('ana').ultimo.accion], [true, 'clave_cambiada'], 'cambiar SU contraseña no le quita el permiso');
-    assert.equal(lista.find(u => u.nombre === 'junior').ia, undefined, 'la cuenta del administrador no pasa por aquí');
-    assert.deepEqual((await comoDueno('GET', '/api/admin/ia')).datos.cuentas, { permitidas: 1, sinPermiso: 4 });
-    // 4. El permiso solo lo da el dueño, desde su cuenta de Tailscale.
-    const titere1 = titeres[0].id;
-    for (const [cabeceras, error] of [[FUNNEL, 'solo_desde_tailnet'], [{}, 'solo_desde_tailnet'], [OTRO_LOGIN, 'solo_dueno_tailscale']]) {
-      const r = await pedir('POST', `/api/admin/usuarios/${titere1}/ia`, { datos: { permitida: true }, galleta: admin, cabeceras });
-      assert.deepEqual([r.codigo, r.datos.error], [403, error], JSON.stringify(cabeceras));
-    }
-    assert.equal((await comoDueno('POST', `/api/admin/usuarios/${titere1}/ia`, { datos: { permitida: 'si' } })).codigo, 400);
-    const junior = db.prepare("SELECT id FROM usuarios WHERE nombre = 'junior'").get().id;
-    assert.equal((await comoDueno('POST', `/api/admin/usuarios/${junior}/ia`, { datos: { permitida: true } })).codigo, 400);
-    const dado = await comoDueno('POST', `/api/admin/usuarios/${titere1}/ia`, { datos: { permitida: true } });
-    assert.equal(dado.codigo, 200, dado.texto);
-    assert.deepEqual([dado.datos.ia.permitida, dado.datos.ia.ultimo.accion, dado.datos.ia.ultimo.desde], [true, 'permitida', 'tailnet']);
-    const espacio1 = db.prepare("SELECT espacio_id FROM miembros WHERE usuario_id = ? AND rol = 'dueno'").get(titere1).espacio_id;
-    falso.siguiente('ok');
-    assert.equal((await cliente.pedir({ proposito: 'interpretar', espacioId: espacio1, sistema: 'S', texto: 'T' })).motivo !== 'cuenta_sin_permiso', true, 'con el permiso, sí');
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ia_llamadas WHERE espacio_id = ?').get(espacio1).n, 1);
-    // 5. Un cambio que no quedó anotado (por ejemplo, la versión anterior del código si el actualizador vuelve atrás)
-    // le quita el permiso: la huella ya no es la misma.
-    db.prepare("UPDATE usuarios SET clave_hash = 'otra' WHERE id = ?").run(titere1);
-    const sinAnotar = reservar(db, { config, proposito: 'interpretar', espacioId: espacio1, entradaMax: 4000 });
-    assert.deepEqual([sinAnotar.ok, sinAnotar.motivo], [false, 'cuenta_sin_permiso']);
-    const visto = (await comoDueno('GET', '/api/admin/usuarios')).datos.usuarios.find(u => u.id === titere1).ia;
-    assert.deepEqual([visto.permitida, visto.ultimo.vigente], [false, false]);
-    // 6. Quitar el permiso protege: se puede desde cualquier entrada (también por el enlace público).
-    assert.equal((await comoDueno('POST', `/api/admin/usuarios/${ana.id}/ia`, { datos: { permitida: true } })).datos.ia.permitida, true);
-    const quitado = await pedir('POST', `/api/admin/usuarios/${ana.id}/ia`, { datos: { permitida: false }, galleta: admin, cabeceras: FUNNEL });
-    assert.deepEqual([quitado.codigo, quitado.datos.ia.permitida], [200, false]);
-    assert.deepEqual(db.prepare("SELECT accion FROM auditoria WHERE accion LIKE 'ia_cuenta_%' ORDER BY id").all().map(f => f.accion),
-      ['ia_cuenta_permitida', 'ia_cuenta_permitida', 'ia_cuenta_retirada']);
-    // Una cuenta desactivada no recibe permiso (primero se activa).
-    assert.equal((await comoDueno('POST', `/api/admin/usuarios/${maria.id}/activo`, { datos: { activo: false } })).codigo, 200);
-    assert.deepEqual((await comoDueno('POST', `/api/admin/usuarios/${maria.id}/ia`, { datos: { permitida: true } })).datos.error, 'cuenta_inactiva');
-    assert.equal(pagados(), 1, 'el único pedido pagado fue el de la cuenta a la que Junior dio permiso');
-  });
-});
-
 test('20. guardar y probar: solo lo público vuelve, la prueba es GRATIS (count_tokens / GET models) y cada respuesta tiene su motivo', async () => {
   await conPlataforma(async ({ db, falso, comoDueno }) => {
     // Las claves que nunca se guardan (ni siquiera se cifran: el archivo de la llave no se crea).
@@ -503,128 +411,15 @@ test('21. encender necesita clave probada, tope y precio; la ayuda necesita la I
   });
 });
 
-// ---------- 19. La ayuda en un proyecto, por las rutas ----------
-
-test('19. la ayuda en un proyecto: el precio que se ve es el que se aparta; la cuenta del administrador solo desde Tailscale; la fila', async () => {
-  await conPlataforma(async ({ db, admin, pedir, comoDueno, despertares, nuevaCuenta }) => {
-    const creado = await pedir('POST', '/api/proyectos', { datos: { instrucciones: TALLER }, galleta: admin });
-    assert.equal(creado.codigo, 201);
-    // Con la IA apagada: una sola línea para el administrador (sin botón).
-    let g = await comoDueno('GET', '/api/proyectos/1/ayuda-ia');
-    assert.deepEqual([g.datos.disponible, g.datos.motivo, g.datos.esAdmin], [false, 'ia_apagada', true]);
-    await encender(comoDueno, { ayuda: false });
-    g = await comoDueno('GET', '/api/proyectos/1/ayuda-ia');
-    assert.deepEqual([g.datos.disponible, g.datos.motivo], [false, 'ayuda_no_activada']);
-    assert.equal((await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: 5000 } })).datos.error, 'ia_no_disponible');
-    await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { ayudaProyectos: true } });
-    g = await comoDueno('GET', '/api/proyectos/1/ayuda-ia');
-    assert.equal(g.datos.disponible, true, g.texto);
-    const version = detalleProyecto(db, db.prepare('SELECT espacio_id FROM proyectos').get().espacio_id, 1).pendiente;
-    const esperado = reservaMicro(HAIKU, { entradaMax: armarPeticion(version, 'es').entradaMax, salidaMax: 2048 });
-    assert.deepEqual([g.datos.maximoMicro, g.datos.proveedor, g.datos.modelo, g.datos.version, g.datos.tipicoMicro, g.datos.topeMicro], [esperado, 'anthropic', 'claude-haiku-5-5', 1, 500, 2_000_000]);
-    assert.ok(esperado > 1000 && esperado < 5000, `como máximo ${esperado} µUSD`);
-    // Por el enlace público: no (la cuenta del administrador se paga con el tope general).
-    const publico = await pedir('GET', '/api/proyectos/1/ayuda-ia', { galleta: admin, cabeceras: FUNNEL });
-    assert.deepEqual([publico.datos.disponible, publico.datos.motivo, publico.datos.esAdmin, 'maximoMicro' in publico.datos], [false, 'solo_tailnet', true, false]);
-    assert.equal((await pedir('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado }, galleta: admin, cabeceras: FUNNEL })).datos.error, 'solo_desde_tailnet');
-    // El precio cambió (la persona vio uno menor): 409 con el nuevo, y la pantalla vuelve a preguntar.
-    let p = await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado - 1 } });
-    assert.deepEqual([p.codigo, p.datos.error, p.datos.maximoMicro], [409, 'precio_cambio', esperado]);
-    assert.equal((await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: '5000' } })).codigo, 400);
-    assert.equal((await comoDueno('POST', '/api/proyectos/1/versiones/2/ayuda-ia', { datos: { maximoMicro: esperado } })).datos.error, 'version_no_pendiente');
-    assert.equal((await comoDueno('POST', '/api/proyectos/7/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado } })).codigo, 404);
-    // En modo seguro, no (el trabajador está apagado).
-    ponerModoSeguro(db, { activo: true, origen: 'admin' });
-    assert.equal((await comoDueno('GET', '/api/proyectos/1/ayuda-ia')).datos.motivo, 'trabajo_en_pausa');
-    assert.equal((await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado } })).datos.error, 'trabajo_en_pausa');
-    ponerModoSeguro(db, { activo: false, origen: 'admin' });
-    // Ahora sí: 202, a la fila (sin proyecto en la tarea), y se despierta al trabajador.
-    p = await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado } });
-    assert.equal(p.codigo, 202, p.texto);
-    const tarea = db.prepare('SELECT * FROM tareas WHERE id = ?').get(p.datos.tarea.id);
-    assert.deepEqual([tarea.tipo, tarea.estado, tarea.proyecto_id, tarea.programa], ['ia.interpretar', 'lista', null, `ia.interpretar:p${db.prepare('SELECT id FROM proyectos').get().id}`]);
-    const datos = JSON.parse(tarea.datos);
-    assert.deepEqual([datos.proyecto, datos.version, datos.maximoMicro, datos.idioma], [1, 1, esperado, 'es']);
-    assert.equal(despertares.length, 1);
-    assert.equal((await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado } })).datos.error, 'ya_hay_otra_en_marcha');
-    g = await comoDueno('GET', '/api/proyectos/1/ayuda-ia');
-    assert.deepEqual(g.datos.tarea, { id: tarea.id, estado: 'lista', resultado: null });
-    // Otra cuenta no ve ni pide la ayuda de este proyecto (su proyecto 1 no existe).
-    const maria = await nuevaCuenta('maria');
-    assert.equal((await pedir('GET', '/api/proyectos/1/ayuda-ia', { galleta: maria.galleta })).codigo, 404);
-    // Alguien que solo puede ver (lector) no la pide.
-    const lector = await nuevaCuenta('lector');
-    db.prepare("UPDATE miembros SET rol = 'lector', espacio_id = (SELECT espacio_id FROM miembros WHERE usuario_id = (SELECT id FROM usuarios WHERE nombre = 'junior')) WHERE usuario_id = ?").run(lector.id);
-    assert.equal((await pedir('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: esperado }, galleta: lector.galleta, cabeceras: DUENO })).datos.error, 'solo_lectura');
-  });
-});
-
-test('19. papelera y 99 versiones (sin lugar para volver): no se ofrece ni se acepta; y el tope de pedidos (10 cada 10 minutos)', async () => {
-  await conPlataforma(async ({ db, admin, pedir, comoDueno }) => {
-    await encender(comoDueno);
-    await pedir('POST', '/api/proyectos', { datos: { instrucciones: TALLER }, galleta: admin });
-    await pedir('POST', '/api/proyectos', { datos: { instrucciones: PANELES }, galleta: admin });
-    const espacioId = db.prepare('SELECT espacio_id FROM proyectos LIMIT 1').get().espacio_id;
-    const { configuracion } = detalleProyecto(db, espacioId, 2).pendiente;
-    // Ronda 1: con 98 versiones todavía se ofrece (la de la IA sería la 99 y «Volver» la 100); con 99, ya no.
-    for (let i = 1; i < MAXIMO_VERSIONES - 2; i += 1) nuevaVersion(db, { espacioId, proyectoId: 2, usuarioId: 1, instrucciones: PANELES, configuracion, origen: 'campos' });
-    assert.equal((await comoDueno('GET', '/api/proyectos/2/ayuda-ia')).datos.motivo, 'ok');
-    nuevaVersion(db, { espacioId, proyectoId: 2, usuarioId: 1, instrucciones: PANELES, configuracion, origen: 'campos' });
-    assert.equal((await comoDueno('GET', '/api/proyectos/2')).datos.proyecto.versionesLibres, 1);
-    assert.equal((await comoDueno('GET', '/api/proyectos/2/ayuda-ia')).datos.motivo, 'demasiadas_versiones');
-    assert.equal((await comoDueno('POST', `/api/proyectos/2/versiones/${MAXIMO_VERSIONES - 1}/ayuda-ia`, { datos: { maximoMicro: 5000 } })).datos.error, 'demasiadas_versiones');
-    assert.equal((await pedir('POST', '/api/proyectos/1/papelera', { datos: { enPapelera: true }, galleta: admin })).codigo, 200);
-    assert.equal((await comoDueno('GET', '/api/proyectos/1/ayuda-ia')).datos.motivo, 'en_papelera');
-    assert.equal((await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: 5000 } })).datos.error, 'en_papelera');
-    // El tope: 10 pedidos cada 10 minutos por persona (ya van 2: el GET no cuenta).
-    const codigos = [];
-    for (let i = 0; i < 9; i += 1) codigos.push((await comoDueno('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: 5000 } })).codigo);
-    assert.deepEqual(codigos.slice(-1), [429]);
-    assert.equal(codigos.filter(c => c === 429).length, 1);
-  });
-});
-
-test('19. otra cuenta: sin presupuesto de IA solo recibe { disponible: false } (nada del dueño); con tope, solo motivos suyos', async () => {
-  await conPlataforma(async ({ db, comoDueno, pedir, nuevaCuenta }) => {
-    const s = await encender(comoDueno);
-    const maria = await nuevaCuenta('maria');
-    assert.equal((await pedir('POST', '/api/proyectos', { datos: { instrucciones: TALLER }, galleta: maria.galleta })).codigo, 201);
-    // Tope de su plan en US$0 (lo normal): solo { disponible: false }, también con la clave del dueño sin saldo.
-    let g = await pedir('GET', '/api/proyectos/1/ayuda-ia', { galleta: maria.galleta });
-    assert.deepEqual(g.datos, { disponible: false });
-    db.prepare("UPDATE secretos SET pausa_motivo = 'sin_credito', pausa_desde = ?, pausa_hasta = NULL WHERE id = ?").run(new Date().toISOString(), s.id);
-    await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { topesPlanUsd: { prueba: '1' } } });
-    g = await pedir('GET', '/api/proyectos/1/ayuda-ia', { galleta: maria.galleta });
-    assert.deepEqual(g.datos, { disponible: false }, 'la clave del dueño en pausa no se cuenta');
-    assert.equal((await pedir('POST', '/api/proyectos/1/versiones/1/ayuda-ia', { datos: { maximoMicro: 5000 }, galleta: maria.galleta })).datos.error, 'ia_no_disponible');
-    // Con tope y la clave lista: ve su precio, su tope y su gasto; nunca el del dueño.
-    db.prepare('UPDATE secretos SET pausa_motivo = NULL, pausa_desde = NULL WHERE id = ?').run(s.id);
-    const mes = mesCobro(Date.now());
-    const espacioAdmin = db.prepare("SELECT espacio_id FROM miembros WHERE usuario_id = (SELECT id FROM usuarios WHERE nombre = 'junior')").get().espacio_id;
-    for (let i = 0; i < 3; i += 1) {
-      db.prepare(`INSERT INTO ia_llamadas (mes, estado, resultado, proposito, proveedor, modelo, espacio_id, reservado_micro, costo_micro, creada_en)
-        VALUES (?, 'hecha', 'ok', 'interpretar', 'anthropic', 'claude-haiku-5-5', ?, 2000, 999, ?)`).run(mes, espacioAdmin, new Date(Date.now() - 2 * 3_600_000).toISOString());
-    }
-    g = await pedir('GET', '/api/proyectos/1/ayuda-ia', { galleta: maria.galleta });
-    assert.equal(g.datos.disponible, true, g.texto);
-    assert.deepEqual([g.datos.topeMicro, g.datos.usadoMicro, g.datos.tipicoMicro, g.datos.proveedor, 'modelo' in g.datos, 'esAdmin' in g.datos], [1_000_000, 0, 500, 'anthropic', false, false], 'su costo típico sale solo de sus propios usos');
-    assert.equal((await comoDueno('GET', '/api/proyectos/1/ayuda-ia')).codigo, 404, 'el proyecto 1 del administrador no existe');
-    // El tope general lleno: para ella es solo «no disponible» (no se le dice que es el del dueño).
-    db.prepare(`INSERT INTO ia_llamadas (mes, estado, resultado, proposito, proveedor, modelo, reservado_micro, costo_micro, creada_en)
-      VALUES (?, 'hecha', 'ok', 'interpretar', 'anthropic', 'claude-haiku-5-5', 2000, 1999000, ?)`).run(mes, new Date(Date.now() - 2 * 3_600_000).toISOString());
-    g = await pedir('GET', '/api/proyectos/1/ayuda-ia', { galleta: maria.galleta });
-    assert.deepEqual([g.datos.disponible, g.datos.motivo], [false, 'no_disponible']);
-    assert.ok(!g.texto.includes('tope_general') && !g.texto.includes('sin_credito'));
-  });
-});
-
 // ---------- 22. El detalle del gasto ----------
 
 test('22. el detalle del gasto: las sumas cuadran con las filas, otra cuenta solo con números, y el enlace público solo ve el total', async () => {
   await conPlataforma(async ({ db, admin, pedir, comoDueno, nuevaCuenta }) => {
     await encender(comoDueno);
     const maria = await nuevaCuenta('maria');
-    await pedir('POST', '/api/proyectos', { datos: { instrucciones: TALLER }, galleta: maria.galleta });
+    // 0.8.0: los proyectos se quitaron; una fila vieja de la base (escrita a mano) sigue contando en el detalle.
+    const espacioMaria = db.prepare("SELECT m.espacio_id AS e FROM miembros m JOIN usuarios u ON u.id = m.usuario_id WHERE u.nombre = 'maria'").get().e;
+    db.prepare("INSERT INTO proyectos (espacio_id, numero, nombre, creado_en, actualizado_en) VALUES (?, 1, ?, 'x', 'x')").run(espacioMaria, TALLER);
     const proyecto = db.prepare('SELECT id, espacio_id FROM proyectos').get();
     const mes = mesCobro(Date.now());
     const poner = (estado, reservado, costo, extra = {}) => db.prepare(`INSERT INTO ia_llamadas (mes, estado, resultado, proposito, proveedor, modelo, espacio_id, proyecto_id, reservado_micro, costo_micro, creada_en, detalle)

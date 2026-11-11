@@ -4,7 +4,8 @@
 // Las palabras que se explican con el botón (i) y en la pantalla Ayuda. Cada una tiene en los textos
 // ayuda.<tema>.titulo y ayuda.<tema>.texto (2 o 3 frases) y, si ayuda, ayuda.<tema>.ejemplo.
 export const TEMAS_AYUDA = Object.freeze([
-  'proyecto', 'entendi', 'duda', 'aprobar', 'version', 'autonomia', 'papelera', 'fase',
+  // 0.8.0: sin duda, version, autonomia, papelera ni fase (eran de las pantallas de los proyectos, que se quitaron).
+  'proyecto', 'entendi', 'aprobar',
   'trabajo_automatico', 'modo_seguro', 'aviso', 'servidor',
   'copia', 'copia_comprobada', 'clave_recuperacion', 'telegram', 'token',
   'ia', 'tope', 'clave_api', 'plan', 'clave_temporal', 'tailscale',
@@ -12,7 +13,7 @@ export const TEMAS_AYUDA = Object.freeze([
   'paquete', 'racha', 'repaso',
 ]);
 // Las que traen ejemplo.
-export const TEMAS_CON_EJEMPLO = Object.freeze(['proyecto', 'duda', 'version', 'autonomia', 'modo_seguro', 'copia_comprobada', 'clave_recuperacion', 'token', 'tope', 'clave_temporal']);
+export const TEMAS_CON_EJEMPLO = Object.freeze(['proyecto', 'modo_seguro', 'copia_comprobada', 'clave_recuperacion', 'token', 'tope', 'clave_temporal']);
 
 const lista = v => (Array.isArray(v) ? v : []);
 
@@ -65,11 +66,6 @@ export function pasosAcademia(pasos, { contenido = null, usuarios = [] } = {}) {
   ];
   const ia = propios.findIndex(p => p.id === 'ia');
   return ia < 0 ? [...propios, ...deAcademia] : [...propios.slice(0, ia), ...deAcademia, ...propios.slice(ia)];
-}
-
-// Para las demás cuentas. Quien solo puede ver (lector) no tiene pasos: no puede crear ni aprobar.
-export function pasosUsuario({ proyectos = [], puedeEscribir = true } = {}) {
-  return puedeEscribir ? pasosDeProyectos(proyectos, { conRevisar: true }) : [];
 }
 
 // Cada paso con su estado («hecho», «ahora»: el primero que falta, «luego») y la cuenta «hechos de total».

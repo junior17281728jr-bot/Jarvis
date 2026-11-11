@@ -16,13 +16,13 @@ import { dirname } from 'node:path';
 import { TIPOS, CUPOS, PROGRAMAS_DEL_SISTEMA, ErrorTarea, definicion, tiposEjecutables } from './tipos.js';
 import {
   elegir, marcarTomada, guardarPaso, normalizarSalida, salidaDeError, escritorDeTarea, devolverLasMias,
-  recuperarAbandonadas, recuperarVencidas, programar, programasDeProyectos, tiposPermitidos,
+  recuperarAbandonadas, recuperarVencidas, programar, tiposPermitidos,
 } from './cola.js';
 import { marcarPerdidas, contarPaso } from './corridas.js';
 import { ranura } from './tiempo.js';
 import { leerModoSeguro, leerFrenos, frenarTipo, soltarFreno, crearCuentaDeFallos } from './modo-seguro.js';
 import { MANEJADORES } from './manejadores.js';
-import { marcarConErrores } from '../proyectos/proyectos.js';
+import { marcarConErrores } from './al-fallar.js';
 import { crearClienteIA } from '../ia/cliente.js';
 import { memoriaDisponibleMb as memoriaDelServidor, discoLibreMb as discoDelServidor } from '../nucleo/salud.js';
 
@@ -148,7 +148,7 @@ export function crearEjecutor({
   async function programarAhora() {
     const ahora = reloj();
     ultimaProgramacion = mono();
-    const lista = programas ?? [...PROGRAMAS_DEL_SISTEMA, ...programasDeProyectos(db, { registro })];
+    const lista = programas ?? PROGRAMAS_DEL_SISTEMA;
     const tipos = [...conManejador];
     // Si todas las ranuras de ahora ya están hechas, no se toca la base.
     const pendientes = lista.filter(plan => {

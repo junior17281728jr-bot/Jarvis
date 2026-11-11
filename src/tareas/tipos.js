@@ -27,10 +27,8 @@ export const TIPOS = Object.freeze({
   'sistema.vigilar': Object.freeze({ cupo: 'normal', maxFallos: 2, tiempoPorPasoMs: 30_000, ignoraFrenos: true, prioridad: 10 }),
   // Cada madrugada: revisa que la base esté sana y luego la ordena.
   'sistema.base': Object.freeze({ cupo: 'grande', maxFallos: 2, tiempoPorPasoMs: 300_000, prioridad: 10 }),
-  // Fase 1, parte d: «Pedir ayuda a la IA» en un proyecto que espera aprobación (src/ia/ayuda.js). Un solo paso, que
-  // como mucho hace UNA llamada pagada. Es «repetible»: si se interrumpe a mitad (un reinicio normal), repetirlo nunca
-  // paga dos veces (la llamada queda anotada por tarea y paso, src/ia/cliente.js), así que no hace falta que una
-  // persona la revise. Va en el carril de la cuenta (sin proyecto): el proyecto todavía no está en marcha.
+  // Fase 1, parte d: «Pedir ayuda a la IA» en un proyecto. 0.8.0: retirada con los proyectos de OPORTIA; el tipo sigue
+  // registrado para las filas viejas de la base (una que quede en la fila termina sola, sin llamar a la IA).
   'ia.interpretar': Object.freeze({ cupo: 'normal', maxFallos: 2, tiempoPorPasoMs: 90_000, repetible: true, prioridad: 5 }),
   // Fase 1, parte e: la copia cifrada de cada noche (src/copias/hacer.js): a una carpeta del servidor y al chat privado
   // del dueño con su bot de Telegram. Pasos: preparar → generar → subir → verificar → indice.

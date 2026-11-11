@@ -9,7 +9,7 @@ import { PLANES } from '../cuentas/planes.js';
 
 const TOPE_PROYECTO_MAXIMO_MICRO = 100_000_000;
 
-// ¿El dueño de ese espacio es administrador? (la misma pregunta que limiteActual en src/proyectos/proyectos.js)
+// ¿El dueño de ese espacio es administrador? (la misma pregunta que hacía limiteActual de los proyectos de OPORTIA, quitados en la 0.8.0)
 export function esEspacioAdmin(db, espacioId) {
   const fila = db.prepare(`SELECT (SELECT u.rol FROM miembros d JOIN usuarios u ON u.id = d.usuario_id
       WHERE d.espacio_id = e.id AND d.rol = 'dueno' ORDER BY d.usuario_id LIMIT 1) AS rol_dueno

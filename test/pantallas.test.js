@@ -108,23 +108,17 @@ test('las pantallas nunca convierten texto en código (sin innerHTML, eval ni sc
 });
 
 test('las frases que las pantallas arman por partes (estados, capacidades, historial…) existen en los dos idiomas', async () => {
-  const { catalogo } = await import('../src/motor/interpretar.js');
-  const { ESTADOS, ACCIONES, ESTADOS_VERSION, ORIGENES } = await import('../src/proyectos/proyectos.js');
   const { PLANES } = await import('../src/cuentas/planes.js');
-  const { FUENTES } = await import('../src/motor/diccionarios.js');
   // Fase 1, parte c: la zona de sistema de Administrador.
   const { FASES_TRABAJADOR } = await import('../src/tareas/supervisor.js');
   const { ESTADOS_TAREA, EVENTOS } = await import('../src/tareas/cola.js');
   const { TIPOS: TIPOS_TAREA, COMO_TERMINA } = await import('../src/tareas/tipos.js');
   const { MOTIVOS_MODO_SEGURO, QUIEN_QUITA } = await import('../src/tareas/modo-seguro.js');
   const { CLAVES_AVISO, NIVELES } = await import('../src/avisos/avisos.js');
-  // Pase visual (0.3.1): el creador con toques.
-  const { CLAVES_FALTA, CLAVES_QUEDA_FUERA } = await import('../public/creador.js');
   // Fase 1, parte d: la IA opcional y las Claves.
   const { MOTIVOS, PROPOSITOS, ESTADOS_LLAMADA } = await import('../src/ia/propositos.js');
   const { PROVEEDORES } = await import('../src/ia/proveedores/index.js');
   const { USOS, GRUPOS, ESTADOS_SECRETO } = await import('../src/claves/usos.js');
-  const { GRUPOS_CAMBIO } = await import('../src/ia/interpretar.js');
   // Ronda 5 de revisión: el permiso de IA de cada cuenta (Administrador → Usuarios).
   const { ACCIONES_CONFIANZA, DESDE } = await import('../src/cuentas/confianza.js');
   // Fase 1, parte e: las copias y el Telegram.
@@ -140,7 +134,6 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const MOTIVOS_DRIVE = [...new Set([...textoDrive.matchAll(/(?:motivo: |error\([^,]+, |ultimo = )'([a-z_]+)'/g)].map(m => m[1]))];
   assert.ok(MOTIVOS_DRIVE.length > 15, `motivos de Drive: ${MOTIVOS_DRIVE.length}`);
   assert.ok(MOTIVOS_PAQUETE.length > 20, `motivos del paquete: ${MOTIVOS_PAQUETE.length}`);
-  const cat = catalogo();
   const claves = [
     ...MOTIVOS.map(x => `ia.motivo.${x}`),
     ...Object.keys(PROPOSITOS).map(x => `ia.proposito.${x}`),
@@ -154,31 +147,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...Object.keys(USOS).flatMap(x => [`claves.uso.${x}`, `claves.donde.${x}`, `claves.corto.${x}`]),
     ...GRUPOS.map(x => `claves.grupo.${x}`),
     ...[...ESTADOS_SECRETO, 'ninguna', 'pausada', 'no_pasa', 'ilegible'].map(x => `claves.estado.${x}`),
-    ...GRUPOS_CAMBIO.map(x => `version.campo_ia.${x}`),
     ...ACCIONES_CONFIANZA.map(x => `admin.ia.accion.${x}`),
     ...DESDE.map(x => `admin.ia.desde.${x}`),
     'historial.version_nueva.ia', 'aviso.ia_tope', 'aviso.ia_tope.lleno', 'aviso.ia_proveedor', 'aviso.ia_proveedor.admin',
-    ...CLAVES_FALTA.map(x => `creador.falta.${x}`),
-    ...CLAVES_QUEDA_FUERA.map(x => `creador.fuera.${x}`),
-    ...ESTADOS.map(e => `estado.${e}`),
-    ...Object.keys(ACCIONES).map(a => `accion.${a}`),
-    ...Object.values(ACCIONES).map(a => `historial.${a.evento}`),
-    ...['creado', 'version_nueva', 'aprobada', 'rechazada', 'renombrado', 'a_papelera', 'restaurado', 'con_errores'].map(h => `historial.${h}`),
-    ...cat.tipos.flatMap(x => [`tipo.${x}`, `campo.producto.${x}`, `faltante.producto.${x}`, `proyecto.aviso_espera.${x}`, `proyecto.entendi.${x}`]),
-    ...cat.tamanos.map(x => `tamano.${x}`),
-    ...cat.frecuencias.map(x => `frecuencia.${x}`),
-    ...cat.capacidades.flatMap(x => [`capacidad.${x.clave}`, `capacidad.${x.clave}.ayuda`]),
-    ...Object.keys(cat.combinaciones).map(x => `combinacion.${x}`),
-    ...Object.values(FUENTES).flat().map(x => `fuente.${x}`),
-    ...['sectores', 'zonas', 'capacidades'].map(x => `faltante.${x}`),
-    ...cat.supuestos.map(x => `supuesto.${x}`),
-    ...cat.dudas.map(x => `duda.${x}`),
-    'duda.sugerencia', 'faltante.dudas',
-    ...ESTADOS_VERSION.map(x => `version.estado.${x}`),
-    ...ORIGENES.map(x => `version.origen.${x}`),
-    ...cat.autonomias.map(x => `autonomia.${x}`),
-    ...cat.autonomias.map(x => `autonomia.corta.${x}`),
-    'autonomia.contactar_siempre',
     ...PLANES.map(x => `plan.${x}`),
     'aviso.clave_reiniciada',
     ...[...FASES_TRABAJADOR, 'sin_supervisor'].map(x => `tareas.fase.${x}`),
@@ -229,49 +200,8 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
 });
 
 test('los mensajes que dicen un número de tope usan el número que de verdad tiene el servidor', async () => {
-  const { MAXIMO_VERSIONES } = await import('../src/proyectos/proyectos.js');
-  for (const idioma of [es, en]) assert.ok(idioma['error.demasiadas_versiones'].includes(String(MAXIMO_VERSIONES)), 'error.demasiadas_versiones');
   const { LIMITE_POR_PLAN } = await import('../src/cuentas/planes.js');
   for (const [plan, n] of Object.entries(LIMITE_POR_PLAN)) for (const idioma of [es, en]) assert.match(idioma[`plan.${plan}`], new RegExp(`\\b${n}\\b`), `plan.${plan}`);
-});
-
-test('pase visual 2: cada negocio del motor tiene su ícono, y el mapa tiene las 32 provincias y las mismas regiones', async () => {
-  const { ICONOS_SECTOR, ICONOS_PROYECTO, ICONOS_SERVICIOS, MAPA_PROVINCIAS, MAPA_COLUMNAS, MAPA_FILAS, PROVINCIAS_DE_REGION, EDIFICIOS_POR_TAMANO } = await import('../public/dibujos.js');
-  const { SECTORES } = await import('../src/motor/diccionarios.js');
-  const { PROVINCIAS, REGIONES } = await import('../src/motor/lugares.js');
-  const { ZONAS_CREADOR, ORDEN_TAMANOS } = await import('../public/creador.js');
-  const sectores = SECTORES.map(s => s.clave).filter(s => s !== 'todas');
-  assert.equal(sectores.length, 37);
-  for (const s of sectores) assert.ok(Array.isArray(ICONOS_SECTOR[s]) && ICONOS_SECTOR[s].length, `falta el ícono de ${s}`);
-  assert.deepEqual(Object.keys(ICONOS_SECTOR).sort(), [...sectores].sort(), 'un ícono de un negocio que el motor no conoce');
-  for (const forma of [...Object.values(ICONOS_SECTOR), ...Object.values(ICONOS_PROYECTO), ...Object.values(ICONOS_SERVICIOS)]) {
-    for (const [etiqueta, atributos] of forma) {
-      assert.ok(['path', 'circle', 'rect', 'line', 'polyline', 'ellipse'].includes(etiqueta), etiqueta);
-      for (const v of Object.values(atributos)) assert.match(String(v), /^[-\d.\sMmLlHhVvCcSsQqTtAaZz,]+$/, 'solo números y órdenes de dibujo');
-    }
-  }
-  // El mapa: las 32 provincias, cada una una vez, en una casilla distinta dentro de la rejilla, y todas se pueden tocar en el creador.
-  assert.equal(MAPA_PROVINCIAS.length, 32);
-  assert.deepEqual(MAPA_PROVINCIAS.map(p => p.clave).sort(), PROVINCIAS.map(p => p.clave).sort());
-  assert.equal(new Set(MAPA_PROVINCIAS.map(p => `${p.columna},${p.fila}`)).size, 32);
-  assert.equal(new Set(MAPA_PROVINCIAS.map(p => p.letras)).size, 32, 'dos casillas con las mismas letras');
-  for (const p of MAPA_PROVINCIAS) {
-    assert.ok(p.columna >= 0 && p.columna < MAPA_COLUMNAS && p.fila >= 0 && p.fila < MAPA_FILAS, p.clave);
-    assert.ok(p.letras.length <= 3, p.clave);
-    assert.ok(ZONAS_CREADOR.some(z => z.clave === p.clave && z.tipo === 'provincia'), `${p.clave} no se puede elegir tocando`);
-  }
-  assert.deepEqual(Object.fromEntries(REGIONES.map(r => [r.clave, [...r.provincias].sort()])), Object.fromEntries(Object.entries(PROVINCIAS_DE_REGION).map(([k, v]) => [k, [...v].sort()])));
-  assert.deepEqual(Object.keys(EDIFICIOS_POR_TAMANO), ORDEN_TAMANOS);
-  // app.js usa íconos que existen (también los que guarda en tablas, como { activa: 'bien' }).
-  const existe = nombre => appJs.includes(`  ${nombre}: [`) || nombre in ICONOS_PROYECTO || nombre in ICONOS_SERVICIOS;
-  for (const m of appJs.matchAll(/icono\('([a-z_-]+)'/g)) assert.ok(existe(m[1]), `falta el ícono ${m[1]}`);
-  for (const tabla of ['ICONO_GRUPO_CLAVES', 'ICONO_ESTADO_CLAVE']) {
-    const cuerpo = appJs.match(new RegExp(`const ${tabla} = \\{([^}]*)\\}`))?.[1];
-    assert.ok(cuerpo, tabla);
-    for (const m of cuerpo.matchAll(/'([a-z_-]+)'/g)) assert.ok(existe(m[1]), `falta el ícono ${m[1]} (${tabla})`);
-  }
-  // Ningún nombre se repite entre las tablas de íconos (uno taparía al otro).
-  for (const nombre of Object.keys(ICONOS_SERVICIOS)) assert.ok(!appJs.includes(`  ${nombre}: [`) && !(nombre in ICONOS_PROYECTO), `ícono repetido: ${nombre}`);
 });
 
 // ---------- Fase 1, parte d: las pantallas de la IA opcional y de Claves ----------
@@ -342,68 +272,18 @@ test('27. el cuadro para pegar una clave es una línea de texto tapada (nunca un
   assert.match(appJs, /ia\.ok && ia\.datos\.esDueno \? await api\('GET', '\/api\/admin\/claves'\)/);
 });
 
-test('27. la ayuda de IA en un proyecto: nunca un botón que no se puede usar, y nada para quien no tiene IA', async () => {
-  const { vistaAyudaIa, partesBarraGasto, estadoDeClave, nombreModelo, leerDolares } = await import('../public/ia-vista.js');
-  const ok = { disponible: true, motivo: 'ok', maximoMicro: 2200, tipicoMicro: 450, proveedor: 'anthropic', esAdmin: true, tarea: null };
-  assert.equal(vistaAyudaIa(ok).vista, 'disponible');
-  // Una cuenta sin presupuesto de IA solo recibe { disponible: false }: no se muestra nada.
-  assert.equal(vistaAyudaIa({ disponible: false }).vista, 'nada');
-  assert.equal(vistaAyudaIa(null).vista, 'nada');
-  // Sin precio no hay botón (aunque diga «ok»).
-  assert.notEqual(vistaAyudaIa({ ...ok, maximoMicro: null }).vista, 'disponible');
-  assert.notEqual(vistaAyudaIa({ ...ok, disponible: false }).vista, 'disponible');
-  const casos = {
-    solo_tailnet: 'solo_tailnet', ia_apagada: 'ia_apagada_admin', ayuda_no_activada: 'apagada_admin', tope_general: 'tope_lleno', tope_espacio: 'tope_lleno',
-    trabajo_en_pausa: 'pausa', proveedor_en_pausa: 'no_disponible', sin_clave: 'no_disponible', demasiadas_llamadas: 'no_disponible', sin_pendiente: 'nada',
-  };
-  for (const [motivo, vista] of Object.entries(casos)) assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo }).vista, vista, motivo);
-  // Ronda 2: si solo ESTE pedido no cabe en lo que queda del tope (uno más corto sí), no se dice «Tope lleno, vuelve
-  // el…»: se dice que este pedido no cabe.
-  for (const motivo of ['tope_general', 'tope_espacio', 'tope_proyecto']) {
-    assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo, topeLleno: false }).vista, 'no_cabe', motivo);
-    assert.equal(vistaAyudaIa({ ...ok, disponible: false, motivo, topeLleno: true }).vista, 'tope_lleno', motivo);
+test('0.8.0: los íconos que quedan (pantallas y servicios) son solo líneas con números, sin nada de afuera', async () => {
+  const { ICONOS_PROYECTO, ICONOS_SERVICIOS } = await import('../public/dibujos.js');
+  for (const forma of [...Object.values(ICONOS_PROYECTO), ...Object.values(ICONOS_SERVICIOS)]) {
+    for (const [etiqueta, atributos] of forma) {
+      assert.ok(['path', 'circle', 'rect', 'line', 'polyline', 'ellipse'].includes(etiqueta), etiqueta);
+      for (const v of Object.values(atributos)) assert.match(String(v), /^[-\d.\sMmLlHhVvCcSsQqTtAaZz,]+$/, 'solo números y órdenes de dibujo');
+    }
   }
-  assert.match(appJs, /vista\.vista === 'no_cabe'\) partes = \[linea\('atencion', t\('ayuda_ia\.no_cabe'\)\)\]/);
-  // Otra cuenta (con presupuesto, fase 6): nunca el estado del dueño; un motivo extraño sale como «no disponible».
-  assert.equal(vistaAyudaIa({ disponible: false, motivo: 'no_disponible', tarea: null }).vista, 'no_disponible');
-  assert.equal(vistaAyudaIa({ disponible: false, motivo: 'ia_apagada' }).vista, 'no_disponible', 'solo el administrador ve «está apagada»');
-  // Esperando, lista o no se pudo.
-  assert.equal(vistaAyudaIa({ ...ok, tarea: { id: 7, estado: 'lista', resultado: null } }).vista, 'esperando');
-  assert.equal(vistaAyudaIa({ ...ok, tarea: { id: 7, estado: 'en_curso', resultado: null } }).vista, 'esperando');
-  const lista = vistaAyudaIa({ ...ok, tarea: { id: 7, estado: 'hecha', resultado: { usada: true, numero: 3, costoMicro: 420 } } }, { seguida: { tareaId: 7 } });
-  assert.deepEqual(lista.lista, { numero: 3, costoMicro: 420 });
-  const fallo = vistaAyudaIa({ ...ok, disponible: false, motivo: 'proveedor_en_pausa', tarea: { id: 8, estado: 'hecha', resultado: { usada: false, motivo: 'sin_credito', costoMicro: 0 } } }, { seguida: { tareaId: 8 } });
-  assert.deepEqual([fallo.vista, fallo.fallo], ['no_disponible', { motivo: 'sin_credito', costoMicro: 0 }]);
-  // Una ayuda vieja que no se pidió desde esta pantalla no se cuenta otra vez.
-  assert.equal(vistaAyudaIa({ ...ok, tarea: { id: 9, estado: 'hecha', resultado: { usada: false, motivo: 'sin_credito' } } }).fallo, null);
-  // Todo motivo que puede salir tiene su texto, y app.js usa la decisión para el botón.
-  const { MOTIVOS } = await import('../src/ia/propositos.js');
-  for (const m of MOTIVOS) assert.ok(`ia.motivo.${m}` in es && `ia.motivo.${m}` in en, m);
-  assert.match(appJs, /vista\.vista === 'disponible'\) \{\s+const mensajeIa = caja\(\);\s+const boton = /);
-  // La barra del gasto: lo real y lo apartado, en verde, amarillo desde el 80 % y rojo al llegar.
-  assert.deepEqual(partesBarraGasto({ usadoMicro: 0, apartadoMicro: 0, topeMicro: 0 }), { realPct: 0, apartadoPct: 0, pct: 0, tono: 'bien' });
-  assert.equal(partesBarraGasto({ usadoMicro: 500_000, topeMicro: 2_000_000 }).realPct, 25);
-  assert.equal(partesBarraGasto({ usadoMicro: 1_700_000, topeMicro: 2_000_000 }).tono, 'atencion');
-  assert.equal(partesBarraGasto({ usadoMicro: 2_000_000, topeMicro: 2_000_000 }).tono, 'mal');
-  assert.equal(partesBarraGasto({ usadoMicro: 3_000_000, topeMicro: 2_000_000 }).realPct, 100, 'nunca más ancha que la barra');
-  const conApartado = partesBarraGasto({ usadoMicro: 1_000_000, apartadoMicro: 400_000, topeMicro: 2_000_000 });
-  assert.deepEqual([conApartado.realPct, conApartado.apartadoPct], [30, 20]);
-  assert.ok(partesBarraGasto({ usadoMicro: 450, topeMicro: 2_000_000 }).realPct > 0, 'un uso chiquito se ve');
-  // El estado de una clave.
-  assert.equal(estadoDeClave(null).estado, 'ninguna');
-  assert.equal(estadoDeClave({ legible: false }).estado, 'ilegible');
-  assert.equal(estadoDeClave({ legible: true, prueba: 'ok', pausa: { motivo: 'sin_credito', hasta: null } }).estado, 'pausada');
-  assert.equal(estadoDeClave({ legible: true, prueba: 'ok', pausa: { motivo: 'sobrecargado', hasta: '2000-01-01T00:00:00Z' } }).estado, 'activa', 'una pausa corta vencida ya no cuenta');
-  assert.deepEqual(estadoDeClave({ legible: true, prueba: 'clave_no_valida', pausa: null }), { estado: 'no_pasa', tono: 'mal' });
-  assert.deepEqual(estadoDeClave({ legible: true, prueba: 'ok', pausa: null }), { estado: 'activa', tono: 'bien' });
-  // Nombres de modelos y dólares escritos a mano.
-  assert.equal(nombreModelo('claude-haiku-5-5'), 'Claude Haiku 5.5');
-  assert.equal(nombreModelo('gpt-6-luna'), 'GPT-6 Luna');
-  assert.deepEqual(['2', '2.5', '2,50', 'US$ 3', '$1', '100.00', 'dos', '2.555', '-1', ''].map(leerDolares), ['2', '2.5', '2.50', '3', '1', '100.00', null, null, null, null]);
+  // Cada ícono que nombra una pantalla existe (si no, se dibujaría la marca de «bien» en su lugar).
+  for (const nombre of ['rayo', 'libro', 'lupa', 'estrella', 'candado', 'buscar']) assert.ok(ICONOS_PROYECTO[nombre] || appJs.includes(`  ${nombre}: [`), nombre);
 });
 
-// Ronda 1 de revisión: el precio MÁXIMO que se ve antes de confirmar nunca es menor que lo que se aparta (y se puede
-// cobrar); lo gastado se redondea normal.
 test('27b. el precio máximo se muestra redondeado hacia arriba: nunca menos de lo que se aparta', async () => {
   const { textoUsd } = await import('../public/ia-vista.js');
   const leer = texto => {
@@ -428,37 +308,16 @@ test('27b. el precio máximo se muestra redondeado hacia arriba: nunca menos de 
   assert.equal(textoUsd(50, 'en-US', { haciaArriba: true }), 'US$0.0001');
   assert.equal(textoUsd(0, 'en-US', { haciaArriba: true }), 'US$0.00');
   assert.equal(textoUsd(null, 'en-US'), '—');
-  // Las tres frases de «como máximo» usan el redondeo hacia arriba.
-  for (const clave of ['ayuda_ia.precio', 'ayuda_ia.confirmar', 'ayuda_ia.precio_cambio']) {
-    assert.match(appJs, new RegExp(`t\\('${clave.replace('.', '\\.')}', \\{ maximo: usdMaximo\\(`), clave);
-  }
   assert.doesNotMatch(appJs, /maximo: usd\(/);
 });
 
 // Ronda 1 de revisión: en modo seguro, una ayuda que ya estaba en la fila dice la pausa (no «sigue en la fila» sin fin).
-test('27c. con el trabajo en pausa y la ayuda en la fila, se ve la pausa y que el pedido espera', async () => {
-  const { vistaAyudaIa } = await import('../public/ia-vista.js');
-  const enPausa = { disponible: false, motivo: 'trabajo_en_pausa', esAdmin: true, tarea: { id: 4, estado: 'lista', resultado: null } };
-  assert.deepEqual([vistaAyudaIa(enPausa).vista, vistaAyudaIa(enPausa).enFila], ['pausa', true]);
-  assert.equal(vistaAyudaIa({ ...enPausa, tarea: { ...enPausa.tarea, estado: 'en_curso' } }).vista, 'pausa');
-  assert.equal(vistaAyudaIa({ ...enPausa, tarea: null }).enFila, false);
-  assert.equal(vistaAyudaIa({ ...enPausa, motivo: 'ok', disponible: true, maximoMicro: 900 }).vista, 'esperando', 'sin pausa, sigue esperando');
-  // Cuando la pausa termina y la ayuda se hizo, la versión nueva aparece (la pantalla siguió preguntando).
-  const lista = vistaAyudaIa({ disponible: true, motivo: 'ok', maximoMicro: 900, esAdmin: true, tarea: { id: 4, estado: 'hecha', resultado: { usada: true, numero: 2, costoMicro: 450 } } }, { seguida: { tareaId: 4 } });
-  assert.deepEqual(lista.lista, { numero: 2, costoMicro: 450 });
-  assert.match(appJs, /vista\.vista === 'pausa' && vista\.enFila\) \{[\s\S]*?t\('ayuda_ia\.pausa_en_fila'\)[\s\S]*?setTimeout\(\(\) => refrescarAyudaIa\(bloque, ctx\), 10_000\)/);
-  for (const idioma of [es, en]) assert.ok(idioma['ayuda_ia.pausa_en_fila']);
-});
-
-// Ronda 5 de revisión: el permiso de IA de cada cuenta común. «Permitir IA» solo aparece para el dueño desde su cuenta de
-// Tailscale (y con la cuenta activa); «Quitar IA», desde cualquier entrada. Antes de dar permiso se ve de dónde vino el
-// último cambio de la cuenta. La pantalla de la IA dice cuántas cuentas esperan el permiso.
 test('27e. Administrador: el permiso de IA de cada cuenta (dar solo el dueño desde Tailscale, quitar desde cualquier entrada)', () => {
   assert.match(appJs, /if \(u\.rol === 'admin' \|\| !u\.ia\) return null;/);
   assert.match(appJs, /const boton = permitida \? botonAccion\(t\('admin\.ia\.quitar'\)[^\n]*\n\s*: u\.activo && permisos\.admins \? botonAccion\(t\('admin\.ia\.permitir'\)/);
   assert.match(appJs, /if \(permitir && !confirm\(t\('admin\.ia\.confirmar', \{ nombre: u\.nombreVisible \|\| u\.nombre, origen \}\)\)\) return;/);
   assert.match(appJs, /api\('POST', `\/api\/admin\/usuarios\/\$\{u\.id\}\/ia`, \{ permitida: permitir \}\)/);
-  assert.match(appJs, /controlPlan\(u\),\n\s*controlIa\(u\),/);
+  assert.match(appJs, /\n\s*controlIa\(u\),/);
   assert.match(appJs, /t\('ia\.planes\.cuentas', \{ si: numero\(s\.cuentas\.permitidas \?\? 0\), no: numero\(s\.cuentas\.sinPermiso \?\? 0\) \}\)/);
   for (const clave of ['admin.ia.permitida', 'admin.ia.sin_permiso', 'admin.ia.solo_dueno', 'admin.ia.sin_historia', 'admin.ia.cambio_sin_anotar', 'ia.planes.ir_permisos', 'error.cuenta_inactiva', 'ia.motivo.cuenta_sin_permiso']) {
     assert.ok(es[clave] && en[clave], clave);
@@ -470,13 +329,9 @@ test('27e. Administrador: el permiso de IA de cada cuenta (dar solo el dueño de
 test('27d. Administrador: «Administrador» como rol solo para el dueño; crear, planes y reiniciar se esconden si no sirven', () => {
   assert.match(appJs, /permisos\.admins \? el\('option', \{ value: 'admin', texto: t\('admin\.rol\.admin'\) \}\) : null/);
   assert.match(appJs, /permisos\.cuentas \? formulario : el\('p', \{ class: 'aviso con-icono-arriba' \}, icono\('candado'\), el\('span', \{ texto: t\('admin\.cuentas_solo_tailnet'\) \}\)\)/);
-  assert.match(appJs, /if \(!permisos\.cuentas\) return el\('p', \{ class: 'suave', texto: t\('admin\.plan\.solo_ver'/);
   assert.match(appJs, /!u\.activo \|\| !puedeEntrarle \? null : el\('button'/);
   assert.match(appJs, /s\.motivoDueno === 'solo_el_dueno' \? 'ia\.solo_el_dueno' : 'ia\.solo_dueno'/);
   assert.match(appJs, /e === 'solo_el_dueno' \? t\('claves\.solo_el_dueno'\)/);
-  // «Volver a la versión sin IA» solo si cabe otra versión; si no, una línea dice por qué y qué hacer.
-  assert.match(appJs, /escribe && v\.ayudaIa\.base && cabeOtra \? botonAccion\(t\('version\.volver_sin_ia'/);
-  assert.match(appJs, /escribe && v\.ayudaIa\.base && !cabeOtra \? el\('p'[^\n]*t\('version\.volver_sin_ia_lleno'/);
   for (const clave of ['version.volver_sin_ia_lleno', 'admin.cuentas_solo_tailnet', 'admin.otro_admin', 'admin.plan.solo_ver', 'admin.nuevo.rol.solo_dueno', 'ia.solo_el_dueno', 'claves.solo_el_dueno',
     'error.cuentas_solo_tailnet', 'error.solo_el_dueno', 'servicios.claves.solo_el_dueno']) {
     assert.ok(es[clave] && en[clave], clave);
@@ -500,7 +355,6 @@ test('27. las frases de la IA son cortas y dicen dónde se paga Claude', () => {
   }
   // inicio.viene.ia ya no se muestra (la IA ya llegó), pero la frase sigue en los archivos (nunca se borra nada).
   assert.ok('inicio.viene.ia' in es && !appJs.includes("'inicio.viene.ia'"));
-  assert.ok(appJs.includes("'inicio.funciona.6'"));
   assert.equal(es['valor.ia.no_permitida'], 'No permitida · tope US$0');
 });
 
@@ -762,20 +616,6 @@ test('claridad: «Primeros pasos» del administrador sale de datos de verdad (cl
   assert.deepEqual(pasosAdmin({ sistema: null, ia: null, proyectos: [] }).map(p => p.id), ['proyecto', 'aprobar']);
 });
 
-test('claridad: la guía de las demás cuentas (crear, revisar, aprobar); quien solo puede ver no tiene pasos', async () => {
-  const { pasosUsuario, resumenGuia } = await import('../public/guia.js');
-  let g = resumenGuia(pasosUsuario({ proyectos: [] }));
-  assert.deepEqual(g.pasos.map(p => `${p.id}:${p.estado}`), ['proyecto:ahora', 'revisar:luego', 'aprobar:luego']);
-  assert.equal(g.siguiente.destino, '#nuevo');
-  g = resumenGuia(pasosUsuario({ proyectos: [{ id: 3, enPapelera: false, versionPendiente: 1, versionActiva: null }] }));
-  assert.deepEqual(g.pasos.map(p => `${p.id}:${p.estado}`), ['proyecto:hecho', 'revisar:ahora', 'aprobar:luego']);
-  assert.equal(g.siguiente.destino, '#proyecto/3/entendi');
-  g = resumenGuia(pasosUsuario({ proyectos: [{ id: 3, enPapelera: false, versionPendiente: null, versionActiva: 1 }] }));
-  assert.equal(g.completa, true);
-  assert.deepEqual(pasosUsuario({ proyectos: [], puedeEscribir: false }), []);
-  assert.equal(resumenGuia([]).completa, false);
-});
-
 test('claridad: cada palabra de la Ayuda tiene su explicación en los dos idiomas, y las pantallas solo usan palabras que existen', async () => {
   const { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, buscarTemas } = await import('../public/guia.js');
   assert.ok(TEMAS_AYUDA.length >= 20);
@@ -810,7 +650,7 @@ test('claridad: cada palabra de la Ayuda tiene su explicación en los dos idioma
   // El buscador: sin tildes ni mayúsculas; primero lo que coincide en el título.
   const temas = TEMAS_AYUDA.map(id => ({ id, titulo: es[`ayuda.${id}.titulo`], texto: es[`ayuda.${id}.texto`], ejemplo: es[`ayuda.${id}.ejemplo`] ?? '' }));
   assert.equal(buscarTemas(temas, '').length, temas.length);
-  assert.deepEqual(buscarTemas(temas, 'AUTONOMIA').map(x => x.id), ['autonomia']);
+  assert.equal(buscarTemas(temas, 'TELEGRAM')[0].id, 'telegram');
   assert.deepEqual(buscarTemas(temas, 'copia').slice(0, 2).map(x => x.id).sort(), ['copia', 'copia_comprobada']);
   assert.ok(buscarTemas(temas, 'botfather').some(x => x.id === 'token'));
   assert.deepEqual(buscarTemas(temas, 'zzzz'), []);
@@ -826,9 +666,10 @@ test('claridad: cada palabra de la Ayuda tiene su explicación en los dos idioma
 });
 
 test('claridad: cada pantalla y pestaña empieza con una línea corta (12 palabras como mucho) y cada paso de la guía tiene sus frases', async () => {
-  const { pasosAdmin, pasosUsuario } = await import('../public/guia.js');
-  const lineas = ['entrar.linea', 'inicio.texto', 'config.linea', 'ayuda.linea', 'proyectos.linea', 'creador.texto', 'proyecto.linea.resumen', 'proyecto.linea.entendi', 'proyecto.linea.versiones',
-    'proyecto.linea.historial', ...['resumen', 'usuarios', 'trabajo', 'servidor', 'copias', 'ia', 'claves'].map(x => `admin.linea.${x}`)];
+  const { pasosAdmin } = await import('../public/guia.js');
+  // 0.8.0: sin las líneas de los proyectos (se quitaron); con las pestañas de la academia.
+  const lineas = ['entrar.linea', 'config.linea', 'ayuda.linea',
+    ...['resumen', 'usuarios', 'trabajo', 'servidor', 'copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas'].map(x => `admin.linea.${x}`)];
   for (const clave of lineas) {
     for (const [nombre, idioma] of [['es', es], ['en', en]]) {
       assert.ok(idioma[clave], `falta ${clave} (${nombre})`);
@@ -836,15 +677,14 @@ test('claridad: cada pantalla y pestaña empieza con una línea corta (12 palabr
     }
     assert.ok(appJs.includes(`'${clave}'`), `ninguna pantalla muestra ${clave}`);
   }
-  // Las siete pestañas de Administrador y las cuatro de un proyecto tienen su línea.
+  // Las pestañas de Administrador tienen su línea.
   assert.match(appJs, /LINEA_ADMIN\[actual\] \? entrada\(LINEA_ADMIN\[actual\]\(\)\) : null/);
-  assert.match(appJs, /lineaPestana \? entrada\(lineaPestana\(\)\) : null/);
   const todos = { sistema: { copias: { motivo: null, ultimaFuera: null }, telegram: { chat: null } }, ia: { encendida: false }, proyectos: [] };
-  const ids = new Set([...pasosAdmin(todos), ...pasosUsuario({ proyectos: [] })].map(p => p.id));
-  assert.deepEqual([...ids].sort(), ['aprobar', 'clave', 'copia', 'ia', 'proyecto', 'revisar', 'telegram']);
+  const ids = new Set(pasosAdmin(todos).map(p => p.id));
+  assert.deepEqual([...ids].sort(), ['aprobar', 'clave', 'copia', 'ia', 'proyecto', 'telegram']);
   for (const id of ids) for (const idioma of [es, en]) assert.ok(idioma[`guia.paso.${id}`] && idioma[`guia.paso.${id}.linea`], `guia.paso.${id}`);
   // Las listas vacías enseñan (un dibujo, una línea y, si se puede, el botón) y los errores ya no salen en un alert().
-  for (const clave of ['proyectos.vacio', 'admin.usuarios.solo_tu', 'copias.recientes.vacio', 'sistema.avisos.vacio', 'proyecto.historial.vacio', 'config.reinicios.vacio', 'ayuda.buscar.vacio']) {
+  for (const clave of ['admin.usuarios.solo_tu', 'copias.recientes.vacio', 'sistema.avisos.vacio', 'config.reinicios.vacio', 'ayuda.buscar.vacio']) {
     assert.match(appJs, new RegExp(`vacio\\('[a-z_]+', t\\('${clave.replaceAll('.', '\\.')}'`), `${clave} no se muestra con vacio(…)`);
   }
   assert.doesNotMatch(appJs, /\balert\(/);

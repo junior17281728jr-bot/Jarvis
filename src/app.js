@@ -9,7 +9,6 @@ import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido, vieneDe
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
-import { registrarRutasProyectos } from './api/proyectos.js';
 import { registrarRutasTareas } from './api/tareas.js';
 import { registrarRutasIa } from './api/ia.js';
 import { registrarRutasClaves } from './api/claves.js';
@@ -80,7 +79,7 @@ function detalleSeguro(detalle) {
 // Respuestas que viajan comprimidas si el navegador sabe (de 7 a 30 KB bajan a 1-6 KB): las grandes que piden
 // las pantallas y que no llevan ningún secreto (ver enviarJson en src/nucleo/http.js). Una ruta nueva no se
 // comprime hasta que se agregue aquí.
-const RESPUESTAS_COMPRIMIBLES = new Set(['/api/catalogo', '/api/proyectos', '/api/proyectos/:id', '/api/proyectos/:id/versiones/:numero',
+const RESPUESTAS_COMPRIMIBLES = new Set([
   '/api/admin/sistema', '/api/admin/tareas', '/api/admin/usuarios',
   // Academia (0.7.0): ninguna lleva secretos.
   '/api/academia/camino', '/api/academia/temas/:materia/:tema', '/api/academia/intentos/:id', '/api/academia/progreso', '/api/admin/academia/alumnos',
@@ -93,17 +92,15 @@ function texto(res, codigo, mensaje) {
 
 // opciones.db: la base abierta (null si no se pudo abrir). opciones.limites: límites de cuentas (para pruebas).
 // opciones.supervisor: el que cuida al trabajador (src/tareas/supervisor.js); null en las pruebas que no lo usan.
-// opciones.proyectos: límites o motor de las rutas de proyectos (solo para pruebas).
 // opciones.tareas: límites de las rutas del sistema (solo para pruebas).
 // opciones.config: la configuración del servidor (src/nucleo/config.js). La necesitan las claves y la IA (dónde está el
 // archivo que protege las claves; en las pruebas, adónde va el proveedor falso). Sin ella, esas rutas responden 503.
 // opciones.ia: límites de las rutas de la IA y de las claves, y probadores de prueba (solo para pruebas).
 // opciones.copias: límites de las rutas de las copias y del Telegram (solo para pruebas).
 // opciones.academia: límites, azar y reloj de las rutas de la Academia (solo para pruebas).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, proyectos = {}, tareas = {}, ia = {}, copias = {}, academia = {} } = {}) {
+export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {} } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
-  registrarRutasProyectos(rutas, proyectos);
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
   registrarRutasClaves(rutas, { config, limites: ia.limitesClaves, probadores: ia.probadores });

@@ -50,7 +50,8 @@ export function puntosDebiles(db, usuarioId, paquete) {
   }
   const lista = [...porPregunta.values()].filter(p => p.fallos > 0).map(p => {
     const superada = p.ultimas.length === 2 && p.ultimas.every(Boolean);
-    const { ultimas, ...resto } = p;
+    const resto = { ...p };
+    delete resto.ultimas;
     return { ...resto, superada };
   });
   const orden = (a, b) => Number(a.superada) - Number(b.superada) || b.fallos - a.fallos || String(b.ultima).localeCompare(String(a.ultima)) || a.pregunta.localeCompare(b.pregunta);

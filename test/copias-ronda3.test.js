@@ -21,7 +21,7 @@ import { hacerCopia, CLAVE_DE_PRUEBA, llavesDePrueba } from './copias-base.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { textoDe } from '../src/nucleo/http.js';
 import { crearPrimerAdmin } from '../src/cuentas/usuarios.js';
-import { espacioDe, crearProyecto } from '../src/proyectos/proyectos.js';
+import { espacioDe } from '../src/cuentas/espacios.js';
 import { restaurarCopia } from '../src/copias/restaurar.js';
 import { leerClave, derivar } from '../src/copias/clave.js';
 import { TELEGRAM } from '../src/canales/telegram.js';
@@ -44,7 +44,10 @@ test('ronda 3 (1): unas instrucciones con un NUL (y textos que no son UTF-8, o c
   const id = crearPrimerAdmin(db, { nombre: 'junior', claveHash: 'x' });
   const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(id);
   const instrucciones = JSON.parse('{"i":"Buscar trabajos de contabilidad en Santiago\\u0000 y en La Vega, salario desde 30000"}').i;
-  crearProyecto(db, { espacio: espacioDe(db, usuario), usuarioId: id, instrucciones });
+  // 0.8.0: los proyectos se quitaron, pero sus tablas siguen (y van en la copia): una fila escrita a mano.
+  const espacio = espacioDe(db, usuario).id;
+  const proyecto = Number(db.prepare("INSERT INTO proyectos (espacio_id, numero, nombre, creado_en, actualizado_en) VALUES (?, 1, 'p', 'x', 'x')").run(espacio).lastInsertRowid);
+  db.prepare("INSERT INTO proyecto_versiones (proyecto_id, numero, instrucciones, configuracion, creada_en) VALUES (?, 1, ?, '{}', 'x')").run(proyecto, instrucciones);
   // Lo que solo se escribe con SQL a mano: bytes que no son UTF-8, una mitad de surrogate, un BOM al principio, vacío.
   db.exec(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES
     ('raro.no_utf8', CAST(x'ff80c0' AS TEXT), 'x'), ('raro.surrogate', CAST(x'eda080' AS TEXT), 'x'),

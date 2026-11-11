@@ -13,9 +13,8 @@
 import { enTransaccion } from '../nucleo/db.js';
 import { ErrorHttp } from '../nucleo/http.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { CAPACIDADES } from '../motor/diccionarios.js';
 import { TIPOS, CUPOS, FASE_ACTUAL, POR_DEFECTO, PROGRAMAS_DEL_SISTEMA, ANORMALES, ErrorTarea, definicion, tiposEjecutables } from './tipos.js';
-import { ranura, horarioRepartido } from './tiempo.js';
+import { ranura } from './tiempo.js';
 
 export const ESTADOS_TAREA = Object.freeze(['lista', 'en_curso', 'hecha', 'fallida', 'cancelada', 'revisar']);
 export const VIVAS = Object.freeze(['lista', 'en_curso', 'revisar']);
@@ -36,7 +35,6 @@ export const ESPERA_MAXIMA_MS = 7 * 86_400_000;
 export const ATRASO_MS = 2 * 3_600_000;
 
 const CLAVE_PUBLICA = /^[a-z_]{1,60}$/;
-const FRECUENCIAS_DE_PROYECTO = new Set(['diaria', 'semanal', 'mensual']);
 
 const iso = ms => new Date(ms).toISOString();
 const falla = (codigo, mensaje) => Object.assign(new Error(mensaje), { codigo });
@@ -468,32 +466,6 @@ export function programar(db, { programas = PROGRAMAS_DEL_SISTEMA, tipos = null,
     }
   }
   return { creadas, saltadas };
-}
-
-// Programas de los proyectos (fase 2). Un proyecto entra si está en ejecución, fuera de la papelera, con una
-// versión aprobada, una frecuencia que no es «manual» y al menos una capacidad encendida que ya existe en esta
-// fase y tiene su tipo 'proyecto.<capacidad>' registrado. En la fase 1 no hay ninguno.
-export function programasDeProyectos(db, { registro = TIPOS, fase = FASE_ACTUAL, capacidades = CAPACIDADES } = {}) {
-  const deProyecto = new Set(tiposEjecutables(registro, fase).filter(t => t.startsWith('proyecto.')));
-  if (!deProyecto.size) return [];
-  const filas = db.prepare(`SELECT p.id, p.espacio_id, p.tipo, v.configuracion FROM proyectos p
-    JOIN proyecto_versiones v ON v.proyecto_id = p.id AND v.numero = p.version_activa
-    WHERE p.estado = 'en_ejecucion' AND p.en_papelera = 0 AND p.version_activa IS NOT NULL ORDER BY p.id`).all();
-  const programas = [];
-  for (const p of filas) {
-    const config = leerJson(p.configuracion, {});
-    if (!FRECUENCIAS_DE_PROYECTO.has(config?.frecuencia)) continue;
-    const tipoProyecto = config.tipo ?? p.tipo;
-    const encendidas = capacidades
-      .filter(c => config.capacidades?.[c.clave] === true && (c.desde?.[tipoProyecto] ?? Infinity) <= fase && deProyecto.has(`proyecto.${c.clave}`))
-      .map(c => c.clave);
-    if (!encendidas.length) continue;
-    programas.push({
-      programa: `proyecto:${p.id}`, tipo: `proyecto.${encendidas[0]}`, cada: config.frecuencia, ...horarioRepartido(p.id),
-      espacioId: p.espacio_id, proyectoId: p.id, datos: { capacidades: encendidas },
-    });
-  }
-  return programas;
 }
 
 // Cuándo toca cada programa la próxima vez, y cómo le fue la última.

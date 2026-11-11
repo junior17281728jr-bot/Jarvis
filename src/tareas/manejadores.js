@@ -3,7 +3,7 @@
 //  - sistema.vigilar (cada hora, a los :07): revisa la fila y abre o resuelve sus avisos (y, desde la parte d, la IA:
 //    reservas huérfanas, avisos de tope de meses pasados y la llave de las claves);
 //  - sistema.base (cada madrugada, 4:10): revisa que la base esté sana y después la ordena.
-// En la parte d se suma 'ia.interpretar' (la ayuda de IA en un proyecto que espera aprobación, src/ia/ayuda.js).
+// En la parte d se sumó 'ia.interpretar' (la ayuda de IA en un proyecto); desde la 0.8.0 está retirada (termina sola).
 // En la parte e se suma 'copias.hacer' (la copia cifrada de cada noche, src/copias/hacer.js), y vigilar revisa también
 // las copias y LEE update.log (src/copias/vigilar.js).
 // En la 0.7.1 se suma 'academia.drive' (trae los paquetes de la carpeta de Google Drive, src/academia/sincronizar.js).
@@ -25,7 +25,6 @@ import { sincronizarAvisos, abrirAviso, resolverAviso } from '../avisos/avisos.j
 import { ponerModoSeguro } from './modo-seguro.js';
 import { ErrorTarea } from './tipos.js';
 import { vigilarIA } from '../ia/presupuesto.js';
-import { MANEJADOR_INTERPRETAR } from '../ia/ayuda.js';
 import { MANEJADOR_COPIAS } from '../copias/hacer.js';
 import { MANEJADOR_DRIVE } from '../academia/sincronizar.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
@@ -120,10 +119,14 @@ async function base(ctx) {
   throw new ErrorTarea('punto_no_valido', { reintentable: false });
 }
 
+// 0.8.0: la ayuda de IA de los proyectos de OPORTIA se quitó. Una tarea vieja de ese tipo que quede en la fila termina
+// enseguida, sin llamar a la IA ni gastar nada.
+const ayudaRetirada = async () => ({ listo: true, resultado: { usada: false, numero: null, costoMicro: 0, motivo: 'retirada' } });
+
 export const MANEJADORES = Object.freeze({
   'sistema.vigilar': Object.freeze({ paso: vigilar }),
   'sistema.base': Object.freeze({ paso: base }),
-  'ia.interpretar': MANEJADOR_INTERPRETAR,
+  'ia.interpretar': Object.freeze({ paso: ayudaRetirada }),
   'copias.hacer': MANEJADOR_COPIAS,
   'academia.drive': MANEJADOR_DRIVE,
 });

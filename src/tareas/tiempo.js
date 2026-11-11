@@ -43,14 +43,6 @@ export function ranura({ programa, cada, hora = 0, minuto = 0 }, ahoraMs) {
   return { clave: `${programa}@M${fechaLocal(mes).slice(0, 7)}`, inicio: aUtc(mes + desfase), siguiente: aUtc(proximo + desfase) };
 }
 
-// Hora repartida para los proyectos (fase 2): entre la 1:00 y las 5:59 de la madrugada, según su número, para
-// que no arranquen todos a la vez ni de día.
-export function horarioRepartido(proyectoId) {
-  const n = Math.abs(Math.trunc(Number(proyectoId) || 0));
-  const minutos = 60 + ((n * 37) % 300);
-  return { hora: Math.floor(minutos / 60), minuto: minutos % 60 };
-}
-
 // ---------- Fase 1, parte d: el mes de cobro de la IA ----------
 // El mes de la IA es el mismo con el que cobra el proveedor (su factura, su límite de gasto y su tope por nivel):
 // el mes del calendario en hora universal (UTC), que empieza el día 1 a las 00:00 UTC. En RD eso es a las

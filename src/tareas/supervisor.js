@@ -25,7 +25,7 @@ import { leerModoSeguro, ponerModoSeguro, revisarAlArrancar } from './modo-segur
 import { sincronizarAvisos } from '../avisos/avisos.js';
 import { medirSalud, evaluarSalud, guardarMuestra } from '../nucleo/salud.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { marcarConErrores } from '../proyectos/proyectos.js';
+import { marcarConErrores } from './al-fallar.js';
 
 export const RUTA_TRABAJADOR = fileURLToPath(new URL('./trabajador.js', import.meta.url));
 // --expose-gc (fase 1, parte e): la copia de cada noche llama a gc() después de cada parte que sube a Telegram (medido:

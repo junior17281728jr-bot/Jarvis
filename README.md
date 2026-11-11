@@ -2,7 +2,7 @@
 
 Desde la versión 0.7.0 la app abre como **Academia de Aviación**: un profesor de aviación tipo Duolingo para el examen de piloto
 privado (uso privado del dueño y sus amigos). Todo lo de OPORTIA sigue funcionando por debajo (cuentas, administrador,
-servidor, copias, IA con topes, Telegram, ayuda); los proyectos quedan escondidos. Ver «Academia (etapa 1)» más abajo.
+servidor, copias, IA con topes, Telegram, ayuda). Desde la 0.8.0 los proyectos de OPORTIA ya no están (ver «Academia (etapa 1)»).
 
 Antes: plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue retirado de este servidor el 3 de noviembre de 2026; su código completo está en la rama `jarvis-archivo`.
 
@@ -408,7 +408,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.7.2; cambio de base 7 en la 0.7.0)
+## Academia (etapa 1, versión 0.8.0; cambio de base 7 en la 0.7.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -437,8 +437,11 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   de la app (por defecto «Academia de Aviación») y el %.
 - Un alumno nunca lee lo de otro: todas sus rutas usan la sesión (nunca un id que mande la pantalla); el intento de otro
   responde 404 y lo de Administrador 403 (`test/academia.test.js`).
-- Escondido para después (código guardado, sin enlaces ni botones): los proyectos de OPORTIA (`PROYECTOS_VISIBLES` en
-  `public/app.js`). Todavía no hay: salas en vivo, examen final de 200, instructor con IA. Las copias cifradas guardan la base (el progreso); los paquetes no van en la copia: se vuelven a subir.
+- 0.8.0: se QUITARON los proyectos de OPORTIA (pantallas, creador, motor de clientes, sus rutas `/api/proyectos…` y
+  `/api/catalogo`, y la ayuda de IA de los proyectos). Sus tablas siguen en la base (las migraciones solo agregan) y van en
+  las copias; una tarea vieja `ia.interpretar` que quede en la fila termina sola sin llamar a la IA. Siguen las cuentas, el
+  administrador, las copias, las claves de IA, Telegram y Drive. Todavía no hay: salas en vivo, examen final de 200,
+  instructor con IA. Las copias cifradas guardan la base (el progreso); los paquetes no van en la copia: se vuelven a subir.
 
 ### Lo que ve el alumno (0.7.2): una app de aviación tipo Duolingo
 - **Estilo** (`public/academia.css`, después de `estilos.css` y `clase/clase.css`): cielo de fondo, acentos de cabina oscura,
@@ -478,6 +481,35 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   dentro de `GET /api/academia/camino` y `GET /api/academia/progreso` (ninguna pantalla pide nada más al abrir). Todo se
   guarda en `ajustes` (`academia.plan.<id>`, `academia.grupo_oculto.<id>`, `academia.grupo`, `academia.videos_vistos.<id>`,
   `academia.temas_leidos.<id>`): sin cambio de base.
+
+### Lo nuevo de la 0.8.0
+- **Dos modos de práctica.** «Original» = las 3 opciones TAL CUAL del Test Guide (es el que aprueba temas y el único de los
+  exámenes). «Modo reto» (si la pregunta trae `reto`): el enunciado y la respuesta correcta tal cual + las 2 opciones nuevas
+  del paquete, mezcladas (A, B, C) con un orden que sale del intento y la pregunta (al recargar se ve igual). Antes de
+  responder no viaja nada que diga cuál es la original; en la base se guarda la opción de verdad (la letra original de la
+  correcta, o `R1`/`R2`). Al responder: por qué es incorrecta cada opción del reto y la trampa que tiende. Se practica desde
+  cada tema («Practicar ya»: Original o Modo reto) y desde cada materia abierta (Modo reto de sus temas abiertos). No aprueba
+  nada (es práctica). `POST /api/academia/intentos { tipo: 'reto', materia, tema? }`.
+- **Revisión completa** al terminar cualquier intento (`terminar` trae `revision`): cada pregunta con lo que eligió, la
+  correcta, la explicación original y la sencilla; filtro «Solo las que fallé» y «Practicar mis errores»
+  (`{ tipo: 'errores', intento }`: las falladas de ese intento, que tiene que ser suyo).
+- **Memoria de errores** (`src/academia/memoria.js`): cada respuesta queda para siempre en `academia_respuestas` (pregunta,
+  opción, acierto, fecha) y su intento dice el modo. De ahí se calcula, cada vez, lo que más falla: por pregunta («superada»
+  con 2 aciertos seguidos), por idea equivocada (la del paquete para esa opción o la trampa del reto) y por tema. El repaso
+  empieza por lo más fallado; cada materia y cada tema muestran «Tu punto débil» con un ejercicio rápido
+  (`{ tipo: 'errores', materia, tema? }`); Progreso tiene «Mis puntos débiles»; el administrador ve lo mismo de cada alumno.
+  Sin cambio de base.
+- **Administrador → Respuestas** (`GET /api/admin/academia/respuestas`, solo administrador: 403 para los alumnos): la clave
+  completa con buscador (número o texto). Su pantalla (`public/admin-respuestas.js`) solo se carga ahí.
+- **Modo estudiante**: «Estudiar como estudiante» en Administrador muestra su propio camino como a un alumno (sus datos de
+  estudio siempre fueron los de su cuenta); una banda arriba lleva de vuelta. Se recuerda en esa pestaña del navegador.
+- **Sonidos** (`public/sonidos.js`, Web Audio, sin archivos): acierto, error, toque, tema terminado, racha y nivel. Se apagan en
+  Configuración (por cuenta, en ese navegador). No se cambia `navigator.audioSession` (la narración sigue sonando); en el
+  iPhone respetan el interruptor de silencio como todo Web Audio.
+- **Velocidad**: lo ya cargado queda en memoria (solo en la pestaña) y la pantalla sale enseguida; se vuelve a pedir en el
+  fondo y, si cambió, se redibuja sin moverse. Cualquier cambio (POST) lo vacía; al salir o cambiar de cuenta también. Se
+  adelanta el próximo tema y el progreso. Medido en un iPhone 13 emulado (150 ms de red, CPU ×4): de ~200-290 ms a
+  30-150 ms al volver a una pantalla ya vista.
 
 ### Formato del paquete, versión 1
 Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
@@ -569,6 +601,8 @@ carpeta cada hora (a los :23) y con «Buscar ahora» (`src/academia/sincronizar.
 - Las pruebas (`test/drive.test.js`) usan un Drive FALSO en 127.0.0.1 (`config.driveBases`, solo en modo de prueba).
 
 ### Vuelta atrás
+La 0.8.0 no cambia la base. Si se vuelve a la 0.7.2: los intentos «reto» y «errores» quedan en la base y la 0.7.2 los
+ignora para aprobar (solo mira «tema» y «examen»); sus respuestas siguen contando para puntos y racha.
 La 0.7.2 tampoco cambia la base (plan, grupo, videos vistos y temas leídos van en `ajustes`); una 0.7.1 con un paquete que
 trae `video` o secciones `tarjeta` lo rechaza al revisarlo, pero sigue usando las versiones que ya tenía.
 La 0.7.1 no cambia la base: todo lo nuevo va en `ajustes`. Si se vuelve a la 0.7.0, usa la última versión puesta en uso

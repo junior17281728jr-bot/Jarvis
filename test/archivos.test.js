@@ -12,6 +12,7 @@ import { runInNewContext } from 'node:vm';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
+import { crearUsuario } from '../src/cuentas/usuarios.js';
 import { servirArchivo, elegirCodificacion, enviarJson } from '../src/nucleo/http.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,7 +53,7 @@ function revisarSeguridad(r, que) {
 async function conOportia(fn) {
   const db = abrirBase(configDePrueba());
   try {
-    await conServidor(crearServidor({ db }), base => fn(base));
+    await conServidor(crearServidor({ db }), base => fn(base, db));
   } finally {
     db.close();
   }
@@ -87,7 +88,7 @@ test('elegir la compresión: brotli o gzip según el navegador; cualquier otra c
 
 test('los archivos comprimidos (brotli y gzip) se descomprimen exactamente al archivo', async () => {
   await conOportia(async base => {
-    for (const nombre of ['estilos.css', 'i18n/es.json', 'i18n/en.json', 'tema.js', 'creador.js', 'dibujos.js', 'clave-recuperacion.js', 'copias-vista.js', 'icono.svg']) {
+    for (const nombre of ['estilos.css', 'i18n/es.json', 'i18n/en.json', 'tema.js', 'dibujos.js', 'clave-recuperacion.js', 'copias-vista.js', 'icono.svg']) {
       const original = readFileSync(join(PUB, nombre));
       for (const [pide, sale] of [['br', 'br'], ['gzip, deflate', 'gzip'], ['gzip, deflate, br', 'br']]) {
         const r = await pedir(base, `/${nombre}`, { 'accept-encoding': pide });
@@ -96,7 +97,7 @@ test('los archivos comprimidos (brotli y gzip) se descomprimen exactamente al ar
         assert.equal(r.cabeceras.vary, 'Accept-Encoding', nombre);
         assert.ok(r.cuerpo.length < original.length, `${nombre} comprimido no es más chico`);
         assert.equal(Number(r.cabeceras['content-length']), r.cuerpo.length, nombre);
-        // creador.js, dibujos.js, clave-recuperacion.js y copias-vista.js no importan nada: salen idénticos al archivo.
+        // dibujos.js, clave-recuperacion.js y copias-vista.js no importan nada: salen idénticos al archivo.
         assert.ok(descomprimir(r).equals(original), `${nombre} (${sale}) no es el archivo exacto`);
         revisarSeguridad(r, nombre);
       }
@@ -250,22 +251,24 @@ test('servirArchivo sigue sin dejar salir de la carpeta (ni con dependencias de 
 });
 
 test('las respuestas grandes de la API viajan comprimidas; las chicas, las POST y las de error, no', async () => {
-  await conOportia(async base => {
+  await conOportia(async (base, db) => {
     const json = { 'content-type': 'application/json', 'x-oportia': '1', ...DESDE_TAILSCALE };
     const alta = await pedir(base, '/api/primer-admin', json, 'POST', JSON.stringify({ nombre: 'junior', clave: 'una clave bien larga' }));
     assert.equal(alta.codigo, 201);
     const galleta = alta.cabeceras['set-cookie'][0].split(';')[0];
     assert.equal(alta.cabeceras['content-encoding'], undefined, 'una respuesta con galleta nunca se comprime');
-    const plano = await pedir(base, '/api/catalogo', { cookie: galleta });
+    // 0.8.0: el catálogo de los proyectos se quitó: la lista de usuarios (con varias cuentas pasa de 1 KB) es la grande.
+    for (let i = 0; i < 25; i += 1) crearUsuario(db, { nombre: `alumno.numero${i}`, nombreVisible: `Alumno de prueba número ${i}`, claveHash: 'x', debeCambiarClave: false });
+    const plano = await pedir(base, '/api/admin/usuarios', { cookie: galleta });
     assert.equal(plano.cabeceras['content-encoding'], undefined);
     for (const [pide, sale] of [['br', 'br'], ['gzip, deflate', 'gzip'], ['gzip, deflate, br', 'br'], ['zstd', undefined]]) {
-      const r = await pedir(base, '/api/catalogo', { cookie: galleta, 'accept-encoding': pide });
+      const r = await pedir(base, '/api/admin/usuarios', { cookie: galleta, 'accept-encoding': pide });
       assert.equal(r.codigo, 200);
       assert.equal(r.cabeceras['content-encoding'], sale, pide);
       assert.equal(r.cabeceras.vary, 'Accept-Encoding');
       assert.equal(r.cabeceras['cache-control'], 'no-store', 'la API nunca se guarda');
       assert.deepEqual(JSON.parse(descomprimir(r)), JSON.parse(plano.cuerpo), pide);
-      revisarSeguridad(r, `/api/catalogo ${pide}`);
+      revisarSeguridad(r, `/api/admin/usuarios ${pide}`);
     }
     // Chica (menos de 1 KB): sin comprimir.
     const setup = await pedir(base, '/api/setup', { 'accept-encoding': 'br' });
@@ -279,7 +282,7 @@ test('las respuestas grandes de la API viajan comprimidas; las chicas, las POST 
     assert.ok(JSON.parse(nueva.cuerpo).claveTemporal);
     assert.equal(nueva.cabeceras['content-encoding'], undefined);
     // Un error: sin comprimir.
-    const error = await pedir(base, '/api/proyectos/999', { cookie: galleta, 'accept-encoding': 'br' });
+    const error = await pedir(base, '/api/no-existe/999', { cookie: galleta, 'accept-encoding': 'br' });
     assert.equal(error.codigo, 404);
     assert.equal(error.cabeceras['content-encoding'], undefined);
     // Las que sí están en la lista (si pasan de 1 KB) se comprimen.
@@ -423,12 +426,11 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   assert.ok(fuente, 'falta pedidosAlAbrir en public/app.js');
   const pedidosAlAbrir = runInNewContext(`${fuente}\npedidosAlAbrir;`);
   const funcion = nombre => /^(?:async )?function [A-Za-z]+\([^\n]*\) \{\n[\s\S]*?\n\}$/m.exec(app.slice(app.search(new RegExp(`^(?:async )?function ${nombre}\\(`, 'm'))))?.[0] ?? '';
-  // Lo que pide una pantalla con GET (lo que va dentro de ${…} se escribe :n), y el catálogo si lo carga.
+  // Lo que pide una pantalla con GET (lo que va dentro de ${…} se escribe :n).
   const pidePantalla = nombre => {
     const cuerpo = funcion(nombre);
     assert.ok(cuerpo, `falta ${nombre} en public/app.js`);
     const rutas = new Set([...cuerpo.matchAll(/\bapi\('GET', (['`])(.+?)\1\)/g)].map(m => m[2].replace(/\$\{[^}]*\}/g, ':n')));
-    if (/\bcargarCatalogo\(\)/.test(cuerpo)) rutas.add('/api/catalogo');
     return rutas;
   };
   const adelanta = (seccion, admin) => {
@@ -441,10 +443,10 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   const NO_SE_ADELANTA = { admin: new Set(['/api/admin/claves']) };
   // Las pestañas de Administrador (0.4.1) piden lo mismo que #admin, y las de un proyecto lo mismo que el proyecto.
   for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
-  const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'], ['proyectos', 'pantallaProyectos'],
-    ['nuevo', 'pantallaNuevo'], ['proyecto/7', 'pantallaProyecto'], ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
+  // 0.8.0: los proyectos de OPORTIA se quitaron (sus direcciones viejas muestran el camino: ver más abajo).
+  const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'],
+    ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
     ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
-    ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto'],
     // Claridad (0.5.1): la Ayuda no pide nada (sus textos llegan con el idioma).
     ['ayuda', 'pantallaAyuda'],
     // Academia (0.7.0): el progreso, un tema, practicar, el examen de una materia; y lo del administrador.
@@ -457,11 +459,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
     assert.ok(PANTALLAS.some(([s]) => s === seccion), `dibujar conoce la pantalla «${seccion}»: agrégala a pedidosAlAbrir (public/app.js) y a esta prueba`);
   }
-  // Academia (0.7.0): los proyectos están escondidos: sus direcciones muestran el camino (Inicio) y adelantan lo de Inicio.
-  const ESCONDIDAS = /^(proyectos|nuevo|proyecto\/)/;
   for (const [seccion, nombre] of PANTALLAS) {
     assert.match(dibujar, new RegExp(`return ${nombre}\\(`), `dibujar no lleva a ${nombre}`);
-    const pide = new Set([...pidePantalla(ESCONDIDAS.test(seccion) ? 'pantallaInicio' : nombre)].filter(ruta => !NO_SE_ADELANTA[seccion]?.has(ruta)));
+    const pide = new Set([...pidePantalla(nombre)].filter(ruta => !NO_SE_ADELANTA[seccion]?.has(ruta)));
     // Para el administrador: exactamente lo que pide la pantalla.
     assert.deepEqual([...adelanta(seccion, true)].sort(), [...pide].sort(), `${seccion} (administrador): lo adelantado no es lo que pide ${nombre}. Si la pantalla pide algo nuevo al empezar, agrégalo a pedidosAlAbrir en public/app.js`);
     // Para los demás: nada de Administrador, y nada que la pantalla no use (Administrador lo ven como Inicio).
@@ -474,7 +474,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   assert.deepEqual([...pedidosAlAbrir('copias', true)], ['/api/admin/copias']);
   assert.deepEqual([...pedidosAlAbrir('copias', false)], []);
   // Claridad (0.5.1): la Ayuda no adelanta nada. Academia (0.7.0): Administrador adelanta el contenido (para «Primeros
-  // pasos»), Inicio es el camino, y los proyectos (escondidos) muestran el camino.
+  // pasos»), Inicio es el camino, y las direcciones de los proyectos (quitados en la 0.8.0) muestran el camino.
   assert.deepEqual([...pedidosAlAbrir('ayuda', true)], []);
   assert.deepEqual([...pedidosAlAbrir('ayuda', false)], []);
   assert.ok(pedidosAlAbrir('admin', true).includes('/api/admin/academia'));
