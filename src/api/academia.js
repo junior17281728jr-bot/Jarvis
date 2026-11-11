@@ -5,18 +5,48 @@
 //    de la app, el % para aprobar y lo de cada alumno.
 //  - El paquete se sube en partes: primero el JSON (un pedido), después cada figura (un pedido por figura, el cuerpo es
 //    la imagen tal cual y se escribe por partes en el disco). Ver src/academia/paquetes.js.
+//  - 0.7.1: la carpeta de Google Drive (pegar el enlace, «Probar», «Guardar», «Buscar ahora») y la narración en mp3,
+//    que se sirve por partes (Range) para que el iPhone la pueda reproducir.
 import { createReadStream } from 'node:fs';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
-import { leerCuerpo, subirJson, subirFigura, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura } from '../academia/paquetes.js';
+import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio } from '../academia/paquetes.js';
+import { idDeCarpeta, enlaceDeCarpeta, basesDrive, recorrerCarpeta, PAQUETE_EN_DRIVE } from '../academia/drive.js';
+import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '../academia/drive-estado.js';
+import { encolar } from '../tareas/cola.js';
+import { leerModoSeguro } from '../tareas/modo-seguro.js';
+import { auditar } from '../cuentas/usuarios.js';
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia } from '../academia/progreso.js';
 
 export function crearLimitesAcademia() {
-  return { subidas: new Limitador({ maximo: 3000, ventanaMs: 60 * 60 * 1000 }), intentos: new Limitador({ maximo: 300, ventanaMs: 60 * 60 * 1000 }) };
+  return {
+    subidas: new Limitador({ maximo: 3000, ventanaMs: 60 * 60 * 1000 }), intentos: new Limitador({ maximo: 300, ventanaMs: 60 * 60 * 1000 }),
+    drive: new Limitador({ maximo: 60, ventanaMs: 60 * 60 * 1000 }),
+  };
 }
 
-export function registrarRutasAcademia(rutas, { config = null, limites = {}, azar = Math.random, reloj = Date.now } = {}) {
+// Un pedido «Range: bytes=…» (uno solo) → { inicio, fin } dentro del archivo; null si no hay; 'no' si no se puede dar.
+export function rangoPedido(cabecera, tamano) {
+  if (cabecera == null || cabecera === '') return null;
+  const m = /^bytes=(\d{0,15})-(\d{0,15})$/.exec(String(cabecera).trim());
+  if (!m || (m[1] === '' && m[2] === '') || tamano <= 0) return 'no';
+  let inicio;
+  let fin;
+  if (m[1] === '') { // los últimos N bytes
+    const n = Number(m[2]);
+    if (n <= 0) return 'no';
+    inicio = Math.max(0, tamano - n);
+    fin = tamano - 1;
+  } else {
+    inicio = Number(m[1]);
+    fin = m[2] === '' ? tamano - 1 : Math.min(Number(m[2]), tamano - 1);
+  }
+  if (inicio >= tamano || fin < inicio) return 'no';
+  return { inicio, fin };
+}
+
+export function registrarRutasAcademia(rutas, { config = null, supervisor = null, limites = {}, azar = Math.random, reloj = Date.now } = {}) {
   const topes = { ...crearLimitesAcademia(), ...limites };
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'academia_no_disponible'); };
   const activo = db => { necesitaConfig(); return paqueteActivo(db, config); };
@@ -64,10 +94,98 @@ export function registrarRutasAcademia(rutas, { config = null, limites = {}, aza
     };
   });
 
+  // La narración (mp3) de una materia o un tema en uso, por partes (Range): el iPhone primero pide «bytes=0-1».
+  rutas.agregar('GET', '/api/academia/audio/:ref', ({ db, req, parametros }) => {
+    const a = rutaAudio(activo(db), parametros.ref);
+    if (!a) throw new ErrorHttp(404, 'no_existe');
+    const rango = rangoPedido(req.headers.range, a.bytes);
+    const comunes = { ...CABECERAS_SEGURIDAD, 'Content-Type': a.tipo, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600' };
+    return {
+      codigo: 200,
+      enviar: res => {
+        if (rango === 'no') {
+          res.writeHead(416, { ...comunes, 'Content-Range': `bytes */${a.bytes}`, 'Content-Length': 0 });
+          return res.end();
+        }
+        const { inicio, fin } = rango ?? { inicio: 0, fin: a.bytes - 1 };
+        res.writeHead(rango ? 206 : 200, { ...comunes, 'Content-Length': fin - inicio + 1, ...(rango ? { 'Content-Range': `bytes ${inicio}-${fin}/${a.bytes}` } : {}) });
+        const flujo = createReadStream(a.ruta, { start: inicio, end: fin });
+        flujo.on('error', () => res.destroy());
+        flujo.pipe(res);
+      },
+    };
+  });
+
   // ---------- El administrador ----------
   rutas.agregar('GET', '/api/admin/academia', ({ db }) => {
     necesitaConfig();
-    return { codigo: 200, datos: { ajustes: ajustesAcademia(db), paquetes: listarPaquetes(db, config), limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes } } };
+    return {
+      codigo: 200,
+      datos: {
+        ajustes: ajustesAcademia(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
+        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes },
+      },
+    };
+  }, { admin: true });
+
+  // ---------- La carpeta de Google Drive (0.7.1) ----------
+  const trabajadorEncendido = () => {
+    try {
+      const fase = supervisor?.estado ? supervisor.estado().fase : null;
+      return fase == null || !['modo_seguro', 'parando'].includes(fase);
+    } catch { return true; }
+  };
+  // Pide una revisión ya (la hace el trabajador). → { id, nueva }.
+  const revisarYa = (db, usuario) => {
+    const ahora = reloj();
+    const r = encolar(db, { tipo: 'academia.drive', programa: PROGRAMA_DRIVE, claveUnica: `academia.drive@manual-${ahora}`, datos: { origen: 'manual', forzar: true }, creadaPor: usuario.id }, { ahora });
+    try { supervisor?.despertar?.(); } catch { /* el trabajador la toma en su próxima vuelta */ }
+    return r;
+  };
+  const enlaceDe = datos => {
+    const id = idDeCarpeta(textoDe(datos, 'enlace'));
+    if (!id) throw new ErrorHttp(400, 'enlace_no_valido');
+    return id;
+  };
+
+  // «Probar»: lee la carpeta (y sus subcarpetas de primer nivel) y dice qué hay. No guarda nada.
+  rutas.agregar('POST', '/api/admin/academia/drive/probar', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    const datos = await leerJson(req);
+    const id = enlaceDe(datos);
+    if (!topes.drive.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    const r = await recorrerCarpeta(id, { bases: basesDrive(config), profundidad: 1, maxCarpetas: 8 });
+    if (!r.ok) return { codigo: 200, datos: { ok: false, motivo: r.motivo } };
+    const paquetes = r.archivos.filter(a => PAQUETE_EN_DRIVE.test(a.nombre)).map(a => a.nombre).slice(0, 20);
+    return { codigo: 200, datos: { ok: true, carpetas: r.carpetas, archivos: r.archivos.length, paquetes } };
+  }, { admin: true });
+
+  // «Guardar»: el enlace queda en los ajustes de la base (nunca en el repositorio). Vacío = dejar de usar Drive.
+  rutas.agregar('POST', '/api/admin/academia/drive', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    const datos = await leerJson(req);
+    if (!textoDe(datos, 'enlace').trim()) {
+      guardarCarpetaDrive(db, null);
+      auditar(db, { usuarioId: usuario.id, accion: 'academia_drive_quitado' });
+      return { codigo: 200, datos: { drive: estadoDrive(db) } };
+    }
+    const id = enlaceDe(datos);
+    guardarCarpetaDrive(db, id);
+    auditar(db, { usuarioId: usuario.id, accion: 'academia_drive_guardado' });
+    // La primera revisión, enseguida (si el trabajo está en pausa, la hará la revisión de cada hora).
+    if (!leerModoSeguro(db).activo && trabajadorEncendido()) { try { revisarYa(db, usuario); } catch { /* la hará la de cada hora */ } }
+    return { codigo: 200, datos: { drive: estadoDrive(db), enlace: enlaceDeCarpeta(id) } };
+  }, { admin: true });
+
+  // «Buscar ahora».
+  rutas.agregar('POST', '/api/admin/academia/drive/buscar', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    await leerJson(req);
+    if (!carpetaDrive(db)) throw new ErrorHttp(409, 'sin_carpeta');
+    if (!topes.drive.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    if (leerModoSeguro(db).activo || !trabajadorEncendido()) throw new ErrorHttp(409, 'trabajo_en_pausa');
+    const { id } = revisarYa(db, usuario);
+    return { codigo: 202, datos: { tarea: { id }, drive: estadoDrive(db) } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/academia/ajustes', async ({ db, req }) => {
@@ -84,7 +202,7 @@ export function registrarRutasAcademia(rutas, { config = null, limites = {}, aza
     if (!tipo.startsWith('application/json')) throw new ErrorHttp(415, 'formato_no_valido');
     if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
     const cuerpo = await leerCuerpo(req, LIMITES.jsonBytes);
-    const r = subirJson(db, config, { cuerpo, usuarioId: usuario.id });
+    const r = await subirJson(db, config, { cuerpo, usuarioId: usuario.id });
     return { codigo: r.codigo, datos: r.datos };
   }, { admin: true });
 
@@ -95,9 +213,17 @@ export function registrarRutasAcademia(rutas, { config = null, limites = {}, aza
     return { codigo: r.ya ? 200 : 201, datos: r };
   }, { admin: true });
 
+  // 0.7.1: la narración (mp3) de una materia o un tema, igual que una figura (el cuerpo es el archivo tal cual).
+  rutas.agregar('POST', '/api/admin/academia/paquetes/:id/audio/:archivo', async ({ db, req, usuario, parametros }) => {
+    necesitaConfig();
+    if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    const r = await subirRecurso(db, config, { clase: 'audio', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
+    return { codigo: r.ya ? 200 : 201, datos: r };
+  }, { admin: true });
+
   rutas.agregar('POST', '/api/admin/academia/paquetes/:id/activar', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
-    return { codigo: 200, datos: { paquete: activarPaquete(db, { paqueteId: parametros.id, usuarioId: usuario.id }) } };
+    return { codigo: 200, datos: { paquete: activarPaquete(db, { paqueteId: parametros.id, usuarioId: usuario.id, config }) } };
   }, { admin: true });
 
   rutas.agregar('GET', '/api/admin/academia/alumnos', ({ db }) => ({ codigo: 200, datos: { alumnos: alumnos(db, activo(db), reloj()), ajustes: ajustesAcademia(db) } }), { admin: true });

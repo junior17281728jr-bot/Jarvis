@@ -652,3 +652,47 @@ test('el paquete de muestra de las pruebas está marcado como «muestra» y nunc
   for (const q of p.preguntas) assert.match(q.id, /^muestra-/);
   for (const f of archivos(join(RAIZ, 'public'))) assert.ok(!/academia-muestra/.test(f), 'la muestra no va en public/');
 });
+
+// ---------- Academia 0.7.1: el contenido llega solo desde Google Drive ----------
+
+test('solo src/academia/drive.js nombra los servidores de Google Drive, y pasa por la única puerta a la red', () => {
+  const google = /drive\.google\.com|drive\.usercontent\.google\.com|googleapis\.com|googleusercontent\.com/;
+  const drive = de('academia', 'drive.js');
+  for (const f of deTodo) {
+    if (f === drive || f.startsWith(join(RAIZ, 'public') + sep)) continue;
+    assert.doesNotMatch(leer(f), google, `${relative(RAIZ, f)} nombra un servidor de Google`);
+  }
+  const texto = leer(drive);
+  assert.match(texto, /import \{ llamarProveedor \} from '\.\.\/ia\/llamar\.js';/);
+  assert.match(texto, /export const HOST_LISTA = 'drive\.google\.com';\nexport const HOST_BAJAR = 'drive\.usercontent\.google\.com';/);
+  // Las redirecciones se siguen solo dentro de los dos servidores (o del Drive falso de las pruebas, en 127.0.0.1).
+  assert.match(texto, /if \(!permitidos\.has\(u\.origin\) \|\| u\.username \|\| u\.password\) return/);
+  assert.match(texto, /process\.env\.OPORTIA_TEST === '1' && BASE_DE_PRUEBA\.test/);
+  assert.match(leer(de('nucleo', 'config.js')), /config\.driveBases = config\.modoPrueba \? basesDeDriveDePrueba\(env\) : \{\}/);
+  // El enlace de la carpeta del dueño vive en la base: ningún archivo del repositorio trae un enlace de una carpeta.
+  for (const f of archivos(RAIZ, p => /\.(js|mjs|json|md|html|sh|service|txt)$/.test(p))) {
+    assert.doesNotMatch(leer(f), /drive\.google\.com\/drive\/(?:u\/\d\/)?folders\/(?!\$\{|…|<|RAIZ)[A-Za-z0-9_-]{25,}/, `${relative(RAIZ, f)} trae el enlace de una carpeta de Drive`);
+  }
+});
+
+test('la revisión de Drive es una tarea del trabajador (el servidor web nunca la carga) y no hay cambio de base nuevo', async () => {
+  const web = new Set(grafoDeImports(join(SRC, 'server.js')).archivos.map(a => relative(SRC, a)));
+  assert.ok(!web.has(join('academia', 'sincronizar.js')), 'el servidor web carga la tarea de Drive');
+  const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
+  assert.ok(trabajador.has(join('academia', 'sincronizar.js')));
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 7, 'la 0.7.1 no cambia la base (todo va en ajustes)');
+});
+
+test('el trabajador nunca lee un paquete entero (src/academia/sincronizar.js): lo revisa el servidor web, que lo enciende y lo apaga como a los avisos', () => {
+  const sincronizar = sinComentarios(leer(de('academia', 'sincronizar.js')));
+  assert.doesNotMatch(sincronizar, /\b(?:revisarJson|guardarJson|subirJson|leerJsonDe|indexarPaquete|revisarPaquete|paqueteActivo|readFileSync|JSON\.parse)\b/, 'sincronizar.js lee un paquete');
+  assert.match(sincronizar, /manifiesto\(config, fila, null, \{ soloArchivo: true \}\)/);
+  const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
+  assert.ok(trabajador.has(join('academia', 'importador.js')), 'comparte las claves del trato');
+  const server = leer(join(SRC, 'server.js'));
+  const listen = server.indexOf('servidor.listen(');
+  assert.ok(server.indexOf('importador?.iniciar()') > listen, 'empieza después de abrir el puerto');
+  assert.ok(server.indexOf('await importador?.parar()') < server.indexOf('db?.close()', server.indexOf('await importador?.parar()')), 'se apaga antes de cerrar la base');
+  assert.match(leer(de('academia', 'importador.js')), /temporizador\.unref\?\.\(\);/);
+});

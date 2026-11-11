@@ -1355,3 +1355,20 @@ label.elegir-archivos { display: inline-flex; margin: 8px 0 0; }
 .subir-paquete input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .subir-paquete input[type="file"]:focus-visible + p, label.elegir-archivos:focus-within { outline: 2px solid var(--acento); }
 label.elegir-archivos { cursor: pointer; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--borde); color: var(--acento); min-height: 48px; align-items: center; gap: 8px; font-weight: 600; }
+/* 0.7.1: la carpeta de Google Drive (Administrador → Contenido) y la narración en mp3. */
+.drive-estado { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 12px; margin: 4px 0 12px; background: color-mix(in srgb, var(--tono) 10%, transparent); }
+.drive-estado > .icono { width: 26px; height: 26px; color: var(--tono); margin-top: 2px; }
+.drive-estado p { margin: 0; }
+.drive-ultima { font-weight: 600; }
+.drive-resumen { margin-top: 2px; overflow-wrap: anywhere; }
+.drive input[type="url"] { width: 100%; box-sizing: border-box; }
+.drive-prueba:empty { display: none; }
+ul.lista-drive { list-style: none; padding: 0; margin: 8px 0 0; }
+ul.lista-drive li { border-top: 1px solid var(--borde); padding: 8px 0; margin: 0; overflow-wrap: anywhere; }
+ul.lista-drive li:first-child { border-top: 0; }
+.drive-fila { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.drive-linea { margin: 4px 0 0; font-size: 14px; white-space: pre-wrap; }
+.drive-historial { margin-top: 12px; }
+.acad-audio { margin: 8px 0 12px; }
+.acad-audio p { margin: 0 0 6px; }
+.acad-audio audio { width: 100%; max-width: 520px; }

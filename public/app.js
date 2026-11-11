@@ -4622,11 +4622,21 @@ async function pantallaInicio() {
       el('h2', { id: `materia-${m.id}`, texto: nombreMateria(m.id) }),
       m.estado === 'vacia' ? el('span', { class: 'insignia tono-apagado', texto: t('acad.pronto') }) : el('span', { class: 'materia-pct', texto: pctTexto(m.pct) })),
     m.estado === 'vacia' ? null : el('div', { class: 'guia-barra' }, barra(m.pct, 100, 'bien')),
+    m.estado === 'vacia' ? null : reproductor(m.audio),
     m.estado === 'vacia' ? null : el('ol', { class: 'nodos' }, m.temas.map((tema, i) => nodoTema(m, tema, i)), nodoExamen(m)))));
   mostrar(marco('inicio', cabeza, avisoMuestra(c.paquete), camino));
 }
 
 // ---- La lección de un tema: una sección por pantalla, con de dónde sale ----
+// 0.7.1: la narración (mp3) de una materia o un tema, si el paquete la trae. El servidor la da por partes (Range), así
+// el iPhone la reproduce; no se baja nada hasta que la persona toca «play» (preload="none").
+function reproductor(audio) {
+  if (!audio?.ref) return null;
+  return el('div', { class: 'acad-audio' },
+    el('p', { class: 'con-icono suave' }, icono('play'), el('span', { texto: audio.titulo || t('acad.audio.escuchar') })),
+    el('audio', { controls: true, preload: 'none', src: `/api/academia/audio/${encodeURIComponent(audio.ref)}`, 'aria-label': audio.titulo || t('acad.audio.escuchar') }));
+}
+
 async function pantallaTema(materia, tema) {
   const vigente = nuevoTurno();
   const r = await api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`);
@@ -4657,6 +4667,7 @@ async function pantallaTema(materia, tema) {
   mostrar(marco('inicio', volverAlCamino(),
     el('p', { class: 'suave materia-chica', texto: nombreMateria(materia) }),
     el('h1', { class: 'titulo-pantalla', texto: l.titulo }),
+    reproductor(l.audio),
     zona));
 }
 function volverAlCamino() {
@@ -4693,7 +4704,7 @@ function tarjetaPregunta(q) {
     el('div', { class: 'q-cabeza' }, cabeza),
     talCual('p', q.enunciado, 'q-enunciado'),
     q.figura ? el('figure', { class: 'q-figura' },
-      el('img', { src: `/api/academia/figuras/${encodeURIComponent(q.figura.numero)}`, alt: t('acad.figura', { n: q.figura.numero }), loading: 'lazy' }),
+      el('img', { src: `/api/academia/figuras/${encodeURIComponent(q.figura.ref ?? q.figura.numero)}`, alt: t('acad.figura', { n: q.figura.numero }), loading: 'lazy' }),
       el('figcaption', { texto: q.figura.titulo || t('acad.figura', { n: q.figura.numero }) })) : null,
   ];
 }
@@ -4932,7 +4943,7 @@ async function pantallaContenido() {
   // Subir.
   const mensajeSubir = caja();
   const progresoSubida = el('p', { class: 'suave', role: 'status' });
-  const archivos = el('input', { id: 'campo-paquete', type: 'file', multiple: true, accept: '.json,application/json,image/png,image/jpeg,image/webp' });
+  const archivos = el('input', { id: 'campo-paquete', type: 'file', multiple: true, accept: '.json,application/json,image/png,image/jpeg,image/webp,.mp3,audio/mpeg' });
   archivos.addEventListener('change', () => { progresoSubida.textContent = tn('acad.subir.elegidos', { n: archivos.files.length }); });
   const tarjetaSubir = el('section', { class: 'tarjeta subir-paquete' },
     el('h2', { class: 'con-icono' }, icono('subir'), el('span', { texto: t('acad.subir_paquete') }), queEs('paquete')),
@@ -4963,6 +4974,14 @@ async function pantallaContenido() {
         if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
         hechas += 1;
       }
+      // 0.7.1: la narración (mp3), si el paquete la nombra y se eligió.
+      for (const nombre of j.datos.faltanAudio ?? []) {
+        const f = porNombre.get(nombre);
+        if (!f) continue;
+        progresoSubida.textContent = t('acad.subir.audio', { nombre });
+        const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/audio/${encodeURIComponent(nombre)}`, f, 'audio/mpeg');
+        if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
+      }
       progresoSubida.textContent = '';
       avisar(sinArchivo.length ? tn('acad.subir.faltan', { n: sinArchivo.length }) : t('acad.subir.listo'), sinArchivo.length ? 'info' : 'bien');
       await pantallaContenido();
@@ -4976,9 +4995,11 @@ async function pantallaContenido() {
         el('span', { class: 'nombre', texto: p.nombre }),
         p.activo ? insignia('bien', t('acad.paquete.en_uso')) : insignia(p.estado === 'listo' ? 'info' : 'atencion', tSi(`acad.paquete.estado.${p.estado}`, p.estado)),
         p.muestra ? el('span', { class: 'etiqueta', texto: t('acad.paquete.muestra') }) : null),
+      p.enUso?.length ? el('p', { class: 'suave', texto: t('acad.paquete.da', { materias: p.enUso.map(nombreMateria).join(', ') }) }) : null,
       el('p', { class: 'suave', texto: t('acad.paquete.cuenta', { version: p.id, edicion: p.edicion || '—', temas: numero(p.temas), preguntas: numero(p.preguntas), figuras: numero(p.figuras) }) }),
       el('p', { class: 'suave', texto: t('acad.paquete.subido', { fecha: fecha(p.subidoEn) }) }),
       p.faltan?.length ? el('p', { class: 'aviso', texto: tn('acad.subir.faltan', { n: p.faltan.length }) }) : null,
+      p.faltanAudio?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_audio', { n: p.faltanAudio.length }) }) : null,
       p.estado === 'listo' && !p.activo ? el('div', { class: 'botones' }, botonAccion(t('acad.paquete.usar'), 'secundario', mensaje, async () => {
         const x = await api('POST', `/api/admin/academia/paquetes/${p.id}/activar`, {});
         if (!x.ok) throw new Error(textoError(x.datos.error));
@@ -4990,7 +5011,88 @@ async function pantallaContenido() {
   const tarjetaVersiones = el('section', { class: 'tarjeta' },
     el('h2', { class: 'con-icono' }, icono('libro'), el('span', { texto: t('acad.versiones') })),
     paquetes.length ? verMas(el('div', { class: 'lista-usuarios' }), paquetes.map(filaPaquete), 4) : vacio('libro', t('acad.versiones.vacio')));
-  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaSubir, tarjetaVersiones, tarjetaAjustes)));
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes)));
+}
+
+// ---- 0.7.1: la carpeta de Google Drive (el contenido llega solo, cada hora) ----
+// Lo que dice una revisión en una línea: «Factores humanos actualizada», «Sin cambios», «2 problemas».
+function resumenRevision(r) {
+  if (!r.ok) return tSi(`acad.drive.motivo.${r.motivo}`, t('acad.drive.motivo.no_responde'));
+  const partes = [];
+  const materias = [...new Set(r.activados.flatMap(a => a.materias ?? []))];
+  if (materias.length) partes.push(tn('acad.drive.actualizadas', { n: materias.length, materias: materias.map(nombreMateria).join(', ') }));
+  else if (r.nuevos.length) partes.push(tn('acad.drive.nuevos', { n: r.nuevos.length }));
+  if (r.completados && !materias.length) partes.push(tn('acad.drive.completados', { n: r.completados }));
+  if (r.rechazados.length) partes.push(tn('acad.drive.rechazados', { n: r.rechazados.length }));
+  if (r.errores.length) partes.push(tn('acad.drive.errores', { n: r.errores.length }));
+  if (r.parcial) partes.push(t('acad.drive.parcial'));
+  if (!partes.length) partes.push(r.paquetes ? t('acad.drive.sin_cambios') : t('acad.drive.sin_paquetes'));
+  return partes.join(' · ');
+}
+const tonoRevision = r => (!r.ok ? 'mal' : r.rechazados.length || r.errores.length ? 'atencion' : 'bien');
+function detalleRevision(r) {
+  const lineas = [];
+  if (r.ok) lineas.push(t('acad.drive.encontrado', { carpetas: numero(r.carpetas), archivos: numero(r.archivos), paquetes: numero(r.paquetes) }));
+  for (const n of r.nuevos) lineas.push(t('acad.drive.nuevo', { archivo: n.archivo, version: n.version }));
+  for (const x of r.rechazados) {
+    lineas.push(t('acad.drive.rechazado', { archivo: x.archivo }));
+    for (const e of x.errores ?? []) lineas.push(`  ${e.ruta || '—'}: ${tSi(`acad.motivo.${e.motivo}`, e.motivo)}`);
+  }
+  for (const e of r.errores) lineas.push(`${e.archivo}: ${tSi(`acad.drive.motivo.${e.motivo}`, tSi(`error.${e.motivo}`, e.motivo))}`);
+  return lineas;
+}
+function tarjetaDrive(d) {
+  const mensaje = caja();
+  const prueba = el('div', { class: 'drive-prueba', role: 'status' });
+  const campo = el('input', { id: 'campo-drive', type: 'url', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://drive.google.com/drive/folders/…', value: d?.carpeta?.enlace ?? '' });
+  const u = d?.ultima;
+  const estadoLinea = d?.carpeta
+    ? el('div', { class: `drive-estado tono-${u ? tonoRevision(u) : 'apagado'}` },
+      icono(u ? tonoRevision(u) : 'reloj'),
+      el('div', {},
+        el('p', { class: 'drive-ultima', texto: u ? t('acad.drive.ultima', { cuando: cuando(u.en) }) : t('acad.drive.nunca') }),
+        u ? el('p', { class: 'drive-resumen', texto: resumenRevision(u) }) : null,
+        d.enMarcha ? el('p', { class: 'suave', texto: t('acad.drive.en_marcha') }) : null))
+    : el('p', { class: 'ayuda', texto: t('acad.drive.ayuda') });
+  const historial = d?.revisiones?.length
+    ? el('details', { class: 'plegable drive-historial' },
+      el('summary', { texto: t('acad.drive.historial') }),
+      el('ul', { class: 'lista-drive' }, d.revisiones.map(r => el('li', {},
+        el('div', { class: 'drive-fila' }, insignia(tonoRevision(r), cuando(r.en)), el('span', { texto: resumenRevision(r) })),
+        detalleRevision(r).map(linea => el('p', { class: 'suave drive-linea', texto: linea }))))))
+    : null;
+  return el('section', { class: 'tarjeta drive' },
+    el('h2', { class: 'con-icono' }, icono('carpeta'), el('span', { texto: t('acad.drive.titulo') })),
+    estadoLinea,
+    el('label', { for: 'campo-drive', texto: t('acad.drive.enlace') }), campo,
+    prueba,
+    el('div', { class: 'botones' },
+      botonAccion(t('acad.drive.probar'), 'secundario', mensaje, async () => {
+        prueba.replaceChildren(el('p', { class: 'suave', texto: t('acad.drive.probando') }));
+        const x = await api('POST', '/api/admin/academia/drive/probar', { enlace: campo.value });
+        if (!x.ok) { prueba.replaceChildren(); throw new Error(textoError(x.datos.error)); }
+        if (!x.datos.ok) {
+          prueba.replaceChildren(el('p', { class: 'mensaje error', texto: tSi(`acad.drive.motivo.${x.datos.motivo}`, t('acad.drive.motivo.no_responde')) }));
+          return;
+        }
+        prueba.replaceChildren(
+          el('p', { class: 'mensaje bien', texto: t('acad.drive.probar_bien', { carpetas: numero(x.datos.carpetas), archivos: numero(x.datos.archivos), paquetes: numero(x.datos.paquetes.length) }) }),
+          x.datos.paquetes.length ? el('ul', { class: 'lista-drive' }, x.datos.paquetes.map(n => el('li', { class: 'suave', texto: n }))) : null);
+      }, 'buscar'),
+      botonAccion(t('acad.drive.guardar'), '', mensaje, async () => {
+        const x = await api('POST', '/api/admin/academia/drive', { enlace: campo.value });
+        if (!x.ok) throw new Error(textoError(x.datos.error));
+        avisar(x.datos.drive.carpeta ? t('acad.drive.guardado') : t('acad.drive.quitado'));
+        await pantallaContenido();
+      }, 'marca'),
+      d?.carpeta ? botonAccion(t('acad.drive.buscar'), 'secundario', mensaje, async () => {
+        const x = await api('POST', '/api/admin/academia/drive/buscar', {});
+        if (!x.ok) throw new Error(textoError(x.datos.error));
+        avisar(t('acad.drive.buscando'), 'info');
+        await pantallaContenido();
+      }, 'actualizar') : null),
+    mensaje,
+    historial);
 }
 // Un archivo tal cual en el cuerpo del pedido (el navegador lo manda por partes; nunca se lee entero aquí).
 async function subirArchivo(ruta, archivo, tipo) {

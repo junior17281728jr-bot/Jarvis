@@ -26,6 +26,10 @@ export function leerConfig(env = process.env) {
   // (test/telegram-falso.js). Nunca se cambia desde las pantallas.
   config.canalesBases = config.modoPrueba ? basesDeCanalDePrueba(env) : {};
   Object.freeze(config.canalesBases);
+  // Academia (0.7.1): lo mismo para Google Drive (src/academia/drive.js). En el servidor real queda VACÍO (se usan las
+  // direcciones oficiales); solo en modo de prueba puede apuntar al Drive FALSO en 127.0.0.1.
+  config.driveBases = config.modoPrueba ? basesDeDriveDePrueba(env) : {};
+  Object.freeze(config.driveBases);
   if (config.modoPrueba && (config.archivoBase.startsWith('/var/lib') || config.carpetaCopias.startsWith('/var/lib'))) {
     throw new Error('En modo de prueba no se permite usar /var/lib: las pruebas nunca tocan los datos reales.');
   }
@@ -51,6 +55,15 @@ function basesDeCanalDePrueba(env) {
   for (const [canal, variable] of Object.entries(VARIABLES_DE_CANAL_DE_PRUEBA)) {
     const valor = String(env[variable] ?? '');
     if (BASE_DE_PRUEBA.test(valor)) bases[canal] = valor;
+  }
+  return bases;
+}
+
+function basesDeDriveDePrueba(env) {
+  const bases = {};
+  for (const [parte, variable] of Object.entries({ lista: 'OPORTIA_DRIVE_URL_LISTA', bajar: 'OPORTIA_DRIVE_URL_BAJAR' })) {
+    const valor = String(env[variable] ?? '');
+    if (BASE_DE_PRUEBA.test(valor)) bases[parte] = valor;
   }
   return bases;
 }

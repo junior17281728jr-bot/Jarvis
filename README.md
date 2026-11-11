@@ -408,7 +408,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.7.0, cambio de base 7)
+## Academia (etapa 1, versión 0.7.1; cambio de base 7 en la 0.7.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -445,7 +445,7 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
 Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
 errores salen con su ruta exacta (`materias[0].temas[1].preguntas[5]: pregunta_desconocida`). Los textos se guardan y se
 muestran tal cual (sin recortar ni normalizar). Subir el mismo JSON otra vez sigue la misma versión (para completar figuras);
-otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; una sola está en uso.
+otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde la 0.7.1 puede haber varias en uso (cada materia, de la última puesta en uso que la trae: ver «El contenido llega solo desde Google Drive»).
 ```
 {
   "formato": "academia-enalas", "version": 1,
@@ -476,7 +476,50 @@ creadas del POH llevan `origen: "poh"` y nunca se muestran como del Test Guide. 
 (el JSON), `POST /api/admin/academia/paquetes/:id/figuras/:archivo` (una figura, el cuerpo es la imagen), `POST
 /api/admin/academia/paquetes/:id/activar`.
 
+### El contenido llega solo desde Google Drive (0.7.1)
+El dueño tiene una carpeta de Google Drive compartida como «cualquier persona con el enlace»; ahí (o en sus subcarpetas, hasta
+dos niveles) se ponen los `paquete-*.json` con sus figuras y sus audios. En **Administrador → Contenido → Carpeta de Drive** se
+pega el enlace UNA vez («Probar» dice qué encuentra; «Guardar»). El enlace no es secreto pero NUNCA va al repositorio: queda en
+los ajustes de la base (`academia.drive.carpeta`, solo el id). Desde ahí, la tarea `academia.drive` del trabajador revisa la
+carpeta cada hora (a los :23) y con «Buscar ahora» (`src/academia/sincronizar.js`):
+- **Sin cuenta ni clave**: lista con `https://drive.google.com/embeddedfolderview?id=<carpeta>` (una página HTML de la que
+  solo se sacan los enlaces `/file/d/<id>` y `/drive/folders/<id>` con su nombre) y baja con
+  `https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t`, por la única puerta a la red
+  (`src/ia/llamar.js`). Las redirecciones se siguen (hasta 3) SOLO dentro de esos dos servidores; a cualquier otro (por ejemplo,
+  la página para entrar con una cuenta, si la carpeta dejó de ser pública) no. `src/academia/drive.js` es el único archivo que
+  los nombra (`test/reglas.test.js`). Se probó contra un Drive falso con un HTML escrito para imitar al de Google: si Google
+  cambia su página, «Probar» lo muestra (0 archivos) y la revisión lo anota; nada de lo que está en uso se quita.
+- **Topes**: JSON 12 MB, imagen 8 MB, mp3 40 MB (cada uno se escribe por pedazos al disco, nunca entero en memoria salvo el JSON
+  al revisarlo), 400 MB por revisión, 40 carpetas, 500 entradas por carpeta, 2 MB de página, 10 minutos por revisión. Lo que
+  no alcanza sigue en la próxima: nada se repite.
+- **Cada paquete** por su huella: si es nuevo se revisa con el mismo revisor y entra como **versión nueva** (nunca pisa otra);
+  si la lista dice la misma fecha que la vez anterior ni se baja. Uno mal armado no entra y se informa (con sus errores) en
+  cada revisión mientras siga en la carpeta, sin volver a revisarlo.
+- **Quién revisa el JSON**: el trabajador lo baja y lo deja en `academia/drive/entrante.json`; lo revisa y lo guarda el
+  servidor web (`src/academia/importador.js`, cada 5 s, una sola vez aunque se caiga a mitad), y la misma tarea sigue
+  después (figuras, audios, ponerla en uso). Por qué: medido con un JSON de 12 MB con tildes, revisarlo sube la memoria
+  del trabajador de ~70 a ~140 MB, y el trabajador sale solo a los 120 MB (eso cuenta para el modo seguro). Así el
+  trabajador queda en ~96 MB como máximo mientras baja (y ~75 MB después). El trabajador solo lee el `manifiesto.json`
+  de cada versión (qué figuras, audios y materias nombra; unos pocos KB), que el servidor web escribe.
+  Las figuras y audios se buscan por nombre en el árbol (primero junto al paquete, después debajo de su carpeta, después en el
+  resto; dos con el mismo nombre al mismo nivel solo se aceptan si el paquete trae su `sha256`). Una versión que queda
+  «lista» se **pone en uso sola**, una vez (si después el administrador pone otra, se respeta).
+- **Varias versiones en uso**: cada materia sale de la versión puesta en uso MÁS RECIENTEMENTE entre las que la traen (con un
+  tema o más). Un paquete de la materia 1 y después otro de la materia 2 se suman; una versión nueva de la materia 1 tapa a la
+  vieja. La lista va en `ajustes` (`academia.en_uso`), sin cambio de base; `academia.paquete_activo` sigue diciendo la última.
+  Con varias, una figura se pide como `<versión>~<número>` (dos versiones pueden tener la figura «1»).
+- **Lo que se ve**: Contenido muestra «Última revisión: hoy 3:10 p. m. · Factores humanos actualizada», las revisiones de antes
+  (qué encontró, qué entró, qué falló) y qué materias da cada versión. Si la carpeta no se puede leer se abre el aviso
+  `drive_sin_acceso` (solo en la pantalla) y se cierra solo al volver. Los alumnos no ven nada de esto.
+- **Audio**: una materia o un tema puede traer `"audio": { "archivo": "resumen.mp3", "titulo": "…" (opcional), "sha256": "…"
+  (opcional) }`. Es opcional: sin el archivo el contenido se usa igual y el reproductor no sale. Se sirve solo con la sesión
+  abierta, por partes (`Range`, como lo pide el iPhone): `GET /api/academia/audio/<versión>~<archivo>`. A mano se sube con
+  `POST /api/admin/academia/paquetes/:id/audio/:archivo` (o eligiéndolo junto con el JSON en Contenido → Subir).
+- Las pruebas (`test/drive.test.js`) usan un Drive FALSO en 127.0.0.1 (`config.driveBases`, solo en modo de prueba).
+
 ### Vuelta atrás
+La 0.7.1 no cambia la base: todo lo nuevo va en `ajustes`. Si se vuelve a la 0.7.0, usa la última versión puesta en uso
+(`academia.paquete_activo`) sola, y no revisa Drive; al volver a la 0.7.1, todo sigue.
 El cambio de base 7 solo agrega 4 tablas `academia_*` (sin CHECK, sin UNIQUE). `test/ensayo-0.5.1.mjs` (a mano, necesita la
 historia de git) comprueba que la 0.5.1 abre una base 7 sin tocarla, que su trabajador, su servidor y sus copias funcionan, que
 restaura una copia de la 0.7.0 igual, y que al volver la 0.7.0 todo sigue. (`test/ensayo-0.4.1.mjs` ya no aplica: espera la base 6.)

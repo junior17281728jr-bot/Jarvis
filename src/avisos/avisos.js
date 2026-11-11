@@ -26,6 +26,8 @@ export const CLAVES_AVISO = Object.freeze([
   'copias_fecha_futura', 'copias_otro_servidor', 'copia_solo_local',
   // Ronda 3: el sello de la clave de recuperación no se abre con la llave de las claves de ahora (grave: no hay copias).
   'copias_clave_ilegible',
+  // Academia (0.7.1): la carpeta de Google Drive del contenido no se puede leer (solo en la pantalla).
+  'drive_sin_acceso',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;

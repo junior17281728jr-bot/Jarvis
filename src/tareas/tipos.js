@@ -45,6 +45,10 @@ export const TIPOS = Object.freeze({
     cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 1_800_000, repetible: true, prioridad: 8,
     reintentos: Object.freeze({ baseMs: 10 * 60_000, factor: 3, topeMs: 6 * 3_600_000 }), // 10, 30, 90 min…
   }),
+  // Academia (0.7.1): trae los paquetes de la carpeta de Google Drive del dueño (src/academia/sincronizar.js). Un paso,
+  // cortado a los 10 min (lo que no alcanza, en la revisión siguiente: nada se repite ni se pisa). «repetible»: solo LEE
+  // de Drive y agrega versiones nuevas (por su huella): repetirlo nunca crea dos veces la misma.
+  'academia.drive': Object.freeze({ cupo: 'normal', maxFallos: 3, tiempoPorPasoMs: 600_000, repetible: true, prioridad: 3 }),
 });
 
 // La definición completa de un tipo (con lo que vale por defecto), o null si este código no lo conoce.
@@ -65,6 +69,8 @@ export const PROGRAMAS_DEL_SISTEMA = Object.freeze([
   Object.freeze({ programa: 'sistema.base', tipo: 'sistema.base', cada: 'diaria', hora: 4, minuto: 10 }),
   // Después de la revisión de la base (4:10): una base dañada pone el modo seguro y nunca se copia encima de una buena.
   Object.freeze({ programa: 'copias.hacer', tipo: 'copias.hacer', cada: 'diaria', hora: 4, minuto: 40 }),
+  // Academia (0.7.1): cada hora, a los :23, mira la carpeta de Drive (sin carpeta guardada no hace nada).
+  Object.freeze({ programa: 'academia.drive', tipo: 'academia.drive', cada: 'hora', minuto: 23 }),
 ]);
 
 // Cómo terminó cada vida del trabajador (trabajador_corridas.como_termino). Viven aquí, con los demás datos

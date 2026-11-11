@@ -6,7 +6,7 @@
 // nunca viajan antes de responder: la nota la pone el servidor.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { leerAjuste, guardarAjuste } from './paquetes.js';
+import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe } from './paquetes.js';
 
 export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso']);
 export const ESTADOS_TEMA = Object.freeze(['bloqueado', 'abierto', 'aprobado']);
@@ -58,12 +58,17 @@ export function vistaPregunta(paquete, id) {
     id, origen: q.origen, materia: lugar?.materia ?? null, tema: lugar?.tema ?? null,
     numero: o.numero ?? null, seccion: o.seccion ?? null, enunciado: o.enunciado, pagina: o.pagina ?? null,
     opciones: o.opciones.map(op => ({ letra: op.letra, texto: op.texto })),
-    figura: o.figura != null ? { numero: o.figura, titulo: paquete.figuras.get(o.figura)?.titulo ?? null } : null,
-    fuente: q.origen === 'poh' && q.fuente ? fuenteDe(paquete, q.fuente) : null,
+    figura: o.figura != null ? figuraVista(paquete, id, o.figura) : null,
+    fuente: q.origen === 'poh' && q.fuente ? fuenteDe(paquete, q.fuente, paquete.dePaquete?.get(id)) : null,
   };
 }
-function fuenteDe(paquete, f) {
-  return { libro: paquete.libros.get(f.libro)?.titulo ?? f.libro, capitulo: f.capitulo ?? null, seccion: f.seccion ?? null, pagina: f.pagina ?? null };
+// 0.7.1: con varias versiones en uso, la figura lleva «ref» (de qué versión es); con una sola, igual que antes.
+function figuraVista(paquete, id, numero) {
+  const ref = refFigura(paquete, id, numero);
+  return { numero, titulo: figuraDe(paquete, id, numero)?.titulo ?? null, ...(ref ? { ref } : {}) };
+}
+function fuenteDe(paquete, f, pid = null) {
+  return { libro: librosDe(paquete, pid).get(f.libro)?.titulo ?? f.libro, capitulo: f.capitulo ?? null, seccion: f.seccion ?? null, pagina: f.pagina ?? null };
 }
 // Lo que se ve DESPUÉS de responder.
 export function retroalimentacion(paquete, id, elegida) {
@@ -78,8 +83,8 @@ export function retroalimentacion(paquete, id, elegida) {
     ingles: Array.isArray(q.ingles) ? q.ingles : [],
   };
 }
-const vistaSecciones = (paquete, lista) => (lista ?? []).map(s => ({
-  titulo: s.titulo, texto: s.texto, nota: s.nota ?? null, fuentes: (s.fuentes ?? []).map(f => fuenteDe(paquete, f)),
+const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(s => ({
+  titulo: s.titulo, texto: s.texto, nota: s.nota ?? null, fuentes: (s.fuentes ?? []).map(f => fuenteDe(paquete, f, pid)),
 }));
 
 function temasAprobados(db, usuarioId) {
@@ -134,8 +139,9 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const estadoMateria = !temas.length ? 'vacia' : todos ? 'aprobada' : temas.some(t => t.estado !== 'bloqueado') ? 'abierta' : 'bloqueada';
     const ex = deExamen.get(m.id);
     const aprobadosN = temas.filter(t => t.estado === 'aprobado').length;
+    const audio = audioDe(paquete, m.paquete, m.audio);
     return {
-      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length),
+      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), ...(audio ? { audio } : {}),
       examen: { disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0 },
     };
   });
@@ -159,7 +165,8 @@ export function leccion(db, usuarioId, paquete, materia, tema) {
   const { t } = buscarTema(paquete, materia, tema);
   const estadoTema = estadoDelTema(db, usuarioId, paquete, materia, tema);
   if (estadoTema === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
-  return { materia, tema: t.id, titulo: t.titulo, estado: estadoTema, secciones: vistaSecciones(paquete, t.secciones), preguntas: t.preguntas.length };
+  const audio = audioDe(paquete, t.paquete, t.audio);
+  return { materia, tema: t.id, titulo: t.titulo, estado: estadoTema, secciones: vistaSecciones(paquete, t.secciones, t.paquete), preguntas: t.preguntas.length, ...(audio ? { audio } : {}) };
 }
 
 // Baraja (Fisher-Yates) con el azar que se le dé (las pruebas usan uno fijo).
@@ -274,7 +281,7 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
   let reexplicacion = [];
   if (fila.tipo === 'tema' && fila.aprobado !== 1) {
     const t = paquete.materias.find(m => m.id === fila.materia)?.temas.find(x => x.id === fila.tema);
-    reexplicacion = vistaSecciones(paquete, t?.reexplicacion);
+    reexplicacion = vistaSecciones(paquete, t?.reexplicacion, t?.paquete);
   }
   return {
     id: fila.id, tipo: fila.tipo, materia: fila.materia, tema: fila.tema, total: fila.total, aciertos: fila.aciertos, pct: pct(fila.aciertos, fila.total),

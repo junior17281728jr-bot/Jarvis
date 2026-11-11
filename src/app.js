@@ -111,7 +111,7 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasCopias(rutas, { config, supervisor, limites: copias.limites, medirDisco: copias.medirDisco ?? null });
   registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
   // Academia (0.7.0): el contenido vive en la carpeta de datos del servidor (src/academia/paquetes.js).
-  registrarRutasAcademia(rutas, { config, ...academia });
+  registrarRutasAcademia(rutas, { config, supervisor, ...academia });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

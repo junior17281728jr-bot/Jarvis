@@ -15,6 +15,8 @@ export const VERSION_FORMATO = 1;
 export const LIMITES = Object.freeze({
   jsonBytes: 12 * 1024 * 1024,
   figuraBytes: 8 * 1024 * 1024,
+  audioBytes: 40 * 1024 * 1024, // 0.7.1: la narración (mp3) de una materia o de un tema
+  audios: 500,
   figurasBytes: 400 * 1024 * 1024,
   figuras: 2000,
   preguntas: 5000,
@@ -27,6 +29,9 @@ export const LIMITES = Object.freeze({
 
 export const ID_VALIDO = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const ARCHIVO_FIGURA = /^[a-z0-9][a-z0-9._-]{0,80}\.(png|jpg|jpeg|webp)$/i;
+// 0.7.1: una materia o un tema puede traer su narración en mp3 («audio»: { archivo, titulo?, sha256? }). Es opcional:
+// un paquete sin audio es igual que antes, y uno cuyo audio todavía no llegó se usa igual (el reproductor no sale).
+export const ARCHIVO_AUDIO = /^[a-z0-9][a-z0-9._-]{0,80}\.mp3$/i;
 const LETRA = /^[A-F]$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 
@@ -155,6 +160,22 @@ export function revisarPaquete(p) {
     }
   });
 
+  // 0.7.1: la narración (mp3) de una materia o de un tema. El mismo archivo puede servir a dos lugares.
+  const audios = new Map();
+  const audio = (a, ruta) => {
+    if (a == null) return;
+    if (!esObjeto(a)) return mal(ruta, 'no_es_objeto');
+    if (typeof a.archivo !== 'string' || !ARCHIVO_AUDIO.test(a.archivo)) return mal(`${ruta}.archivo`, 'archivo_no_valido');
+    if (a.sha256 != null && (typeof a.sha256 !== 'string' || !SHA256.test(a.sha256))) mal(`${ruta}.sha256`, 'no_valido');
+    texto(a.titulo, `${ruta}.titulo`, { obligatorio: false, max: LIMITES.corto });
+    const ya = audios.get(a.archivo.toLowerCase());
+    if (ya && ya.sha256 !== (a.sha256 ?? null)) mal(`${ruta}.sha256`, 'no_valido');
+    else if (!ya) {
+      if (audios.size >= LIMITES.audios) return mal(ruta, 'demasiados');
+      audios.set(a.archivo.toLowerCase(), { archivo: a.archivo, sha256: a.sha256 ?? null });
+    }
+  };
+
   // Materias (de las 11, en su orden; puede faltar alguna) → temas → secciones y las preguntas del tema.
   const usadas = new Map();
   let temas = 0;
@@ -169,6 +190,7 @@ export function revisarPaquete(p) {
     else if (materiasVistas.has(m.id)) mal(`${r}.id`, 'repetido');
     else if (lugar < ultima) mal(`${r}.id`, 'fuera_de_orden');
     else { ultima = lugar; materiasVistas.add(m.id); }
+    audio(m.audio, `${r}.audio`);
     if (!Array.isArray(m.temas)) return mal(`${r}.temas`, 'falta');
     if (m.temas.length > LIMITES.temasPorMateria) mal(`${r}.temas`, 'demasiados');
     const ids = new Set();
@@ -179,6 +201,7 @@ export function revisarPaquete(p) {
       texto(t.titulo, `${rt}.titulo`, { max: LIMITES.corto });
       secciones(t.secciones, `${rt}.secciones`, { obligatorio: true });
       secciones(t.reexplicacion, `${rt}.reexplicacion`, { obligatorio: false });
+      audio(t.audio, `${rt}.audio`);
       temas += 1;
       if (!Array.isArray(t.preguntas)) return mal(`${rt}.preguntas`, 'falta');
       t.preguntas.forEach((qid, k) => {
@@ -197,7 +220,21 @@ export function revisarPaquete(p) {
     errores,
     resumen: ok ? { nombre: p.nombre, edicion: p.edicion ?? null, muestra: p.muestra === true, materias: materiasVistas.size, temas, preguntas: preguntas.size, figuras: figuras.size } : null,
     figuras: ok ? [...figuras.values()] : [],
+    audios: ok ? [...audios.values()] : [],
+    // Las materias que el paquete TRAE (con un tema o más): las que da cuando está en uso junto con otros.
+    materias: ok ? p.materias.filter(m => m.temas.length > 0).map(m => m.id) : [],
   };
+}
+
+// Los audios que nombra un paquete YA REVISADO (sin repetir), sin volver a revisarlo entero.
+export function audiosDe(p) {
+  const vistos = new Map();
+  for (const m of p?.materias ?? []) {
+    for (const a of [m?.audio, ...(m?.temas ?? []).map(t => t?.audio)]) {
+      if (a?.archivo && !vistos.has(a.archivo.toLowerCase())) vistos.set(a.archivo.toLowerCase(), { archivo: a.archivo, sha256: a.sha256 ?? null });
+    }
+  }
+  return [...vistos.values()];
 }
 
 // El paquete ya revisado, listo para usar: materias en el orden fijo, preguntas por id y figuras por número.
@@ -209,9 +246,9 @@ export function indexarPaquete(p) {
     const m = p.materias.find(x => x.id === idMateria);
     const temas = (m?.temas ?? []).map(t => {
       for (const qid of t.preguntas) deTema.set(qid, { materia: idMateria, tema: t.id });
-      return { id: t.id, titulo: t.titulo, secciones: t.secciones, reexplicacion: t.reexplicacion ?? [], preguntas: [...t.preguntas] };
+      return { id: t.id, titulo: t.titulo, secciones: t.secciones, reexplicacion: t.reexplicacion ?? [], preguntas: [...t.preguntas], audio: t.audio ?? null };
     });
-    return { id: idMateria, temas };
+    return { id: idMateria, temas, audio: m?.audio ?? null };
   });
   const figuras = new Map((p.figuras ?? []).map(f => [f.numero, f]));
   const libros = new Map(p.libros.map(l => [l.id, l]));

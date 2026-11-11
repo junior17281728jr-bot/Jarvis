@@ -10,7 +10,9 @@
 //    (OPORTIA_TEST=1) SOLO http://127.0.0.1:<puerto> (el proveedor falso): las direcciones oficiales también se
 //    rechazan, antes de tocar la red (las pruebas corren en el servidor, que sí tiene internet).
 //  - Nunca sigue una redirección (redirect: 'manual'): fetch de Node, si la siguiera, mandaría la clave y el pedido
-//    a OTRO servidor. Una respuesta 3xx vuelve como red: 'redireccion' y no se sigue.
+//    a OTRO servidor. Una respuesta 3xx vuelve como red: 'redireccion' y no se sigue. Academia (0.7.1): trae también
+//    salida.ubicacion (la cabecera Location, hasta 2.048 caracteres) para que QUIEN LLAMA decida si sigue, con su
+//    propia lista de servidores (src/academia/drive.js solo sigue dentro de los dos de Google Drive).
 //  - Corta a los timeoutMs (también mientras lee la respuesta) y cuando llega la señal de parar de la tarea.
 //  - Lee como mucho topeBytes de respuesta (quien llama pasa el de su propósito; 1 MB si no dice); más que eso:
 //    demasiado: true. Un JSON con más de 64 niveles anidados ([[[[…]]]]) tampoco se lee (profundo: true): con poco
@@ -26,6 +28,7 @@ const CODIGO = /^[A-Z][A-Z0-9_]{1,39}$/;
 const ANTES_DE_MANDAR = /^(?:ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|EADDRNOTAVAIL|UND_ERR_CONNECT_TIMEOUT|CERT_\w+|ERR_TLS_\w+|UNABLE_TO_\w+|DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|ERR_SSL_\w+)$/;
 const CABECERAS_QUE_SE_LEEN = Object.freeze(['retry-after', 'request-id', 'x-request-id', 'content-type']);
 const LARGO_TEXTO_CORTO = 2048;
+const LARGO_UBICACION = 2048;
 export const PROFUNDIDAD_MAXIMA_JSON = 64;
 
 // ¿El texto (JSON) tiene más de «maximo» niveles de [ y { anidados? Mira cada carácter una vez, fuera de los textos.
@@ -112,7 +115,7 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
   const inicio = Date.now();
   const salida = {
     status: null, json: null, textoCorto: null, cabeceras: {}, red: null, tiempoAgotado: false, abortado: false,
-    demasiado: false, profundo: false, error: null, rechazado: false, msTotal: 0, bytes: 0,
+    demasiado: false, profundo: false, error: null, rechazado: false, msTotal: 0, bytes: 0, ubicacion: null,
   };
   const terminar = () => { salida.msTotal = Date.now() - inicio; return salida; };
   if (!destinoPermitido(url, permitido)) {
@@ -139,6 +142,8 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
     }
     if (respuesta.status >= 300 && respuesta.status <= 399) {
       salida.red = 'redireccion';
+      const ubicacion = respuesta.headers.get('location');
+      if (ubicacion != null && ubicacion.length <= LARGO_UBICACION) salida.ubicacion = String(ubicacion);
       try { await respuesta.body?.cancel(); } catch { /* nada que leer */ }
       return terminar();
     }

@@ -6,6 +6,7 @@
 // En la parte d se suma 'ia.interpretar' (la ayuda de IA en un proyecto que espera aprobación, src/ia/ayuda.js).
 // En la parte e se suma 'copias.hacer' (la copia cifrada de cada noche, src/copias/hacer.js), y vigilar revisa también
 // las copias y LEE update.log (src/copias/vigilar.js).
+// En la 0.7.1 se suma 'academia.drive' (trae los paquetes de la carpeta de Google Drive, src/academia/sincronizar.js).
 // Los proyectos empiezan a tener trabajos en la fase 2 (la búsqueda de clientes).
 //
 // REGLAS PARA ESCRIBIR UN TRABAJO (valen también para la fase 2):
@@ -26,6 +27,7 @@ import { ErrorTarea } from './tipos.js';
 import { vigilarIA } from '../ia/presupuesto.js';
 import { MANEJADOR_INTERPRETAR } from '../ia/ayuda.js';
 import { MANEJADOR_COPIAS } from '../copias/hacer.js';
+import { MANEJADOR_DRIVE } from '../academia/sincronizar.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 
@@ -123,4 +125,5 @@ export const MANEJADORES = Object.freeze({
   'sistema.base': Object.freeze({ paso: base }),
   'ia.interpretar': MANEJADOR_INTERPRETAR,
   'copias.hacer': MANEJADOR_COPIAS,
+  'academia.drive': MANEJADOR_DRIVE,
 });

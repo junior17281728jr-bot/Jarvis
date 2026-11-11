@@ -1249,7 +1249,7 @@ test('API del administrador: el estado del sistema, el modo seguro con auditorí
     assert.equal(r.datos.trabajador.fase, 'esperando');
     assert.equal(r.datos.modoSeguro.activo, false);
     assert.ok(['verde', 'amarillo', 'rojo'].includes(r.datos.salud.semaforo));
-    assert.deepEqual(r.datos.proximas.map(p => p.programa).sort(), ['copias.hacer', 'sistema.base', 'sistema.vigilar']);
+    assert.deepEqual(r.datos.proximas.map(p => p.programa).sort(), ['academia.drive', 'copias.hacer', 'sistema.base', 'sistema.vigilar']);
     assert.equal((await pedirApi(base, 'GET', '/api/admin/sistema', { galleta: ana })).codigo, 403);
     assert.equal((await pedirApi(base, 'GET', '/api/admin/sistema')).codigo, 401);
 

@@ -135,6 +135,10 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   const { ESTADOS_PAQUETE } = await import('../src/academia/paquetes.js');
   const formatoAcademia = readFileSync(join(RAIZ, 'src/academia/formato.js'), 'utf8');
   const MOTIVOS_PAQUETE = [...new Set([...formatoAcademia.matchAll(/(?:mal\([^,]+, |motivo: )'([a-z_]+)'/g)].map(m => m[1])), 'json_no_valido'];
+  // 0.7.1: cada motivo de la carpeta de Google Drive (src/academia/drive.js y la tarea que la revisa).
+  const textoDrive = ['drive.js', 'sincronizar.js', 'importador.js'].map(f => readFileSync(join(RAIZ, 'src/academia', f), 'utf8')).join('\n');
+  const MOTIVOS_DRIVE = [...new Set([...textoDrive.matchAll(/(?:motivo: |error\([^,]+, |ultimo = )'([a-z_]+)'/g)].map(m => m[1]))];
+  assert.ok(MOTIVOS_DRIVE.length > 15, `motivos de Drive: ${MOTIVOS_DRIVE.length}`);
   assert.ok(MOTIVOS_PAQUETE.length > 20, `motivos del paquete: ${MOTIVOS_PAQUETE.length}`);
   const cat = catalogo();
   const claves = [
@@ -203,6 +207,7 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...MATERIAS.map(x => `acad.materia.${x}`),
     ...MOTIVOS_PAQUETE.map(x => `acad.motivo.${x}`),
     ...ESTADOS_PAQUETE.map(x => `acad.paquete.estado.${x}`),
+    ...MOTIVOS_DRIVE.map(x => `acad.drive.motivo.${x}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -216,7 +221,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // Claridad (0.5.1): las explicaciones de la Ayuda y los pasos de la guía (sus frases se revisan más abajo, en «claridad: …»).
     'ayuda.', 'guia.paso.',
     // Academia (0.7.0).
-    'acad.materia.', 'acad.motivo.', 'acad.paquete.estado.']));
+    'acad.materia.', 'acad.motivo.', 'acad.paquete.estado.',
+    // Academia (0.7.1).
+    'acad.drive.motivo.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
