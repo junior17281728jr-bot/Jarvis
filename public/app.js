@@ -17,6 +17,7 @@ import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCort
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosUsuario, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
 import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
 import { leccionDeVideo } from './academia-video.js';
+import { sonar, sonidosEncendidos, encenderSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -165,12 +166,64 @@ async function pedirAlServidor(metodo, ruta, datos) {
 // Pedidos GET que iniciar() hace por adelantado (ruta -> respuesta en camino): solo los usa la primera pantalla.
 const adelantados = new Map();
 
+// 0.8.0: lo ya cargado queda en memoria (solo en esta pestaña, nunca en el disco) y la pantalla se dibuja enseguida con
+// eso; a la vez se pide de nuevo y, si cambió, la pantalla se vuelve a dibujar sola (sin moverse de donde estaba).
+// Solo las lecturas de la academia y de Administrador; nunca un intento (las preguntas que se responden). Cualquier
+// cambio (POST) lo vacía y vuelve a pedir el camino, y se vacía al salir o al cambiar de cuenta.
+const EN_MEMORIA = /^\/api\/(?:academia\/(?:camino|progreso|temas\/[^/]+\/[^/]+|video\/[^/]+)|admin\/(?:academia(?:\/alumnos(?:\/\d+)?|\/respuestas)?|sistema|usuarios|ia|copias|claves)|yo\/reinicios)$/;
+const FRESCO_MS = 2500;
+const memoria = new Map(); // ruta -> { respuesta, en, usuario }
+const enCamino = new Map(); // ruta -> pedido que ya salió (no se pide dos veces lo mismo)
+let repintarEnFondo = false;
+function vaciarMemoria() { memoria.clear(); }
+function pedirYGuardar(ruta) {
+  if (enCamino.has(ruta)) return enCamino.get(ruta);
+  const de = estado.usuario?.id ?? null;
+  const p = pedirAlServidor('GET', ruta).then(r => {
+    enCamino.delete(ruta);
+    if (r.ok && de != null && de === estado.usuario?.id) memoria.set(ruta, { respuesta: r, en: Date.now(), usuario: de });
+    return r;
+  });
+  enCamino.set(ruta, p);
+  return p;
+}
+// Adelantar algo que la persona seguramente abre después (el próximo tema, el progreso): sin esperar, sin dibujar.
+function adelantar(ruta) {
+  if (!EN_MEMORIA.test(ruta) || !estado.usuario) return;
+  const g = memoria.get(ruta);
+  if (!g || Date.now() - g.en > FRESCO_MS) pedirYGuardar(ruta);
+}
+function deMemoria(ruta) {
+  const g = memoria.get(ruta);
+  if (!g || g.usuario !== estado.usuario?.id) return null;
+  if (Date.now() - g.en > FRESCO_MS) {
+    // Se dibuja con lo guardado y se pregunta al servidor; si cambió y la persona sigue en la misma pantalla (que no sea
+    // una de estudio, donde no se interrumpe), se vuelve a dibujar.
+    const direccion = location.hash;
+    const vez = turno;
+    pedirYGuardar(ruta).then(r => {
+      if (!r.ok || JSON.stringify(r.datos) === JSON.stringify(g.respuesta.datos)) return;
+      if (location.hash !== direccion || turno !== vez || document.body.classList.contains('modo-estudio')) return;
+      repintarEnFondo = true;
+      dibujar();
+    });
+  }
+  return structuredClone(g.respuesta);
+}
+
 async function api(metodo, ruta, datos) {
   const adelantado = metodo === 'GET' && datos === undefined ? adelantados.get(ruta) : undefined;
   if (adelantado) adelantados.delete(ruta);
-  const respuesta = await (adelantado ?? pedirAlServidor(metodo, ruta, datos));
+  const guardable = metodo === 'GET' && datos === undefined && EN_MEMORIA.test(ruta);
+  if (!guardable && metodo !== 'GET') vaciarMemoria();
+  const guardada = guardable && !adelantado ? deMemoria(ruta) : null;
+  if (guardada) return guardada;
+  const respuesta = await (adelantado ?? (guardable ? pedirYGuardar(ruta) : pedirAlServidor(metodo, ruta, datos)));
+  if (adelantado && guardable && respuesta.ok && estado.usuario) memoria.set(ruta, { respuesta, en: Date.now(), usuario: estado.usuario.id });
+  if (metodo !== 'GET' && /^\/api\/academia\//.test(ruta) && /\/(?:terminar|plan|visto|leido|grupo)$/.test(ruta)) adelantar('/api/academia/camino');
   // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
   const error = respuesta.datos?.error;
+  if (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') vaciarMemoria();
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
     // Se recuerda de quién era: si entra la misma persona, vuelve a la misma pantalla (la dirección no cambia).
     sesionTerminada = estado.usuario.id;
@@ -190,8 +243,17 @@ async function refrescarSetup() {
 }
 
 function mostrar(...contenido) {
+  // 0.8.0: al volver a dibujar en el fondo (llegó algo nuevo del servidor) no se mueve la página ni el foco.
+  const enFondo = repintarEnFondo;
+  repintarEnFondo = false;
+  const y = window.scrollY;
   // Las partes que no aplican llegan como null: no se muestran.
   raiz.replaceChildren(...contenido.flat(Infinity).filter(parte => parte != null && parte !== false));
+  if (enFondo) {
+    document.body.classList.toggle('modo-estudio', Boolean(raiz.querySelector(':scope > .inmersivo')));
+    window.scrollTo(0, y);
+    return true;
+  }
   // 0.7.2: las pantallas de estudio (lección, video, preguntas) ocupan toda la pantalla, sin el menú de abajo.
   document.body.classList.toggle('modo-estudio', Boolean(raiz.querySelector(':scope > .inmersivo')));
   document.querySelectorAll('body > .figura-grande').forEach(x => x.remove());
@@ -427,6 +489,7 @@ function pantallaCrearAdmin() {
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.setup = { ...estado.setup, necesitaAdmin: false, puedeCrearAdmin: false };
     estado.usuario = r.datos.usuario;
+    vaciarMemoria();
     location.hash = '#inicio';
     await dibujar();
   });
@@ -446,6 +509,7 @@ function pantallaEntrar() {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.usuario = r.datos.usuario;
+    vaciarMemoria();
     recordarAdmin(estado.usuario);
     avisosCuenta = leerAvisos(r.datos);
     if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
@@ -510,6 +574,7 @@ async function salir() {
   // Si el servidor no pudo cerrar la sesión, no se finge que se cerró.
   if (!r.ok && r.codigo !== 401) return avisar(textoError(r.datos.error), 'mal');
   estado.usuario = null;
+  vaciarMemoria();
   sesionTerminada = null;
   avisosCuenta = { avisos: [], recientes: [] };
   borradores.clear();
@@ -565,12 +630,34 @@ function marcaConLogo() {
   return el('div', { class: 'marca con-logo' }, logo(), el('span', { texto: nombreApp() }));
 }
 
+// 0.8.0: «Modo estudiante» del administrador: ve SU camino, su progreso y sus exámenes igual que un alumno (sus datos de
+// estudio son los de su propia cuenta: siempre lo fueron). Es solo cómo se ve: se recuerda en esta pestaña del navegador.
+const claveEstudiante = () => `op_estudiante.${estado.usuario?.id ?? 'x'}`;
+function enModoEstudiante() {
+  if (estado.usuario?.rol !== 'admin') return false;
+  try { return sessionStorage.getItem(claveEstudiante()) === '1'; } catch { return modoEstudianteSinAlmacen; }
+}
+let modoEstudianteSinAlmacen = false;
+function ponerModoEstudiante(si) {
+  modoEstudianteSinAlmacen = si;
+  try { if (si) sessionStorage.setItem(claveEstudiante(), '1'); else sessionStorage.removeItem(claveEstudiante()); } catch { /* sin almacenamiento: solo en memoria */ }
+}
+// ¿Se ve como administrador? (no en Modo estudiante)
+const verComoAdmin = () => estado.usuario?.rol === 'admin' && !enModoEstudiante();
+function bandaEstudiante() {
+  if (!enModoEstudiante()) return null;
+  return el('div', { class: 'banda-estudiante', role: 'status' },
+    icono('personas', 'icono chico'),
+    el('span', { texto: t('estudiante.banda') }),
+    el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => { ponerModoEstudiante(false); location.hash = '#admin'; } }, el('span', { texto: t('estudiante.volver') })));
+}
+
 // En el teléfono: arriba la marca y «Salir»; abajo (como las apps del iPhone) el menú con íconos, siempre a mano.
 // En la PC (pantalla ancha) el mismo menú va a la izquierda, con sus nombres, y el contenido al lado (estilos.css).
 function marco(seccion, ...contenido) {
   // Academia (0.7.0): «Proyectos» queda escondido (su código sigue, para más adelante).
   const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['configuracion', 'menu.configuracion', 'ajustes']];
-  if (estado.usuario.rol === 'admin') enlaces.push(['admin', 'menu.admin', 'escudo']);
+  if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo']);
   return el('div', { class: 'marco' },
     el('div', { class: 'lateral' },
       el('header', { class: 'encabezado' },
@@ -581,6 +668,7 @@ function marco(seccion, ...contenido) {
         enlaces.map(([id, clave, nombreIcono]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null },
           icono(nombreIcono, 'icono menu-icono'), el('span', { texto: t(clave) }))))),
     el('main', { class: 'contenido' },
+      bandaEstudiante(),
       avisosDeCuenta(),
       ...contenido,
       pie()));
@@ -761,6 +849,12 @@ async function pantallaConfiguracion() {
     ponerTema(valor);
     marcar();
   });
+  // 0.8.0: los sonidos de la academia (encendidos por defecto; uno por cuenta, en este navegador).
+  const botonesSonidos = grupoDeBotones([['si', t('sonidos.encendidos')], ['no', t('sonidos.apagados')]], sonidosEncendidos() ? 'si' : 'no', (valor, marcar) => {
+    encenderSonidos(valor === 'si');
+    marcar();
+    sonar('bien');
+  });
   const lista = reinicios.ok ? reinicios.datos.reinicios : null;
   mostrar(marco('configuracion',
     el('h1', { class: 'titulo-pantalla', texto: t('config.titulo') }),
@@ -774,7 +868,10 @@ async function pantallaConfiguracion() {
         el('p', { class: 'suave', texto: t(estado.usuario.rol === 'admin' ? 'config.rol.admin' : 'config.rol.usuario') })),
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('idioma.titulo') }), botonesIdioma, mensajeIdioma,
-        el('h2', { class: 'separado', texto: t('tema.titulo') }), botonesTema, el('p', { class: 'ayuda', texto: t('tema.ayuda') })),
+        el('h2', { class: 'separado', texto: t('tema.titulo') }), botonesTema, el('p', { class: 'ayuda', texto: t('tema.ayuda') }),
+        el('h2', { class: 'separado con-icono', id: 'titulo-sonidos' }, icono('altavoz', 'icono chico'), el('span', { texto: t('sonidos.titulo') })),
+        el('div', { class: 'ajuste-sonidos', role: 'group', 'aria-labelledby': 'titulo-sonidos' }, botonesSonidos),
+        el('p', { class: 'ayuda', texto: t('sonidos.ayuda') })),
       el('section', { class: 'tarjeta' }, el('h2', { texto: t('clave.titulo') }), formularioClave({})),
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('config.reinicios') }),
@@ -1495,17 +1592,23 @@ const PESTANAS_ADMIN = ['resumen', 'usuarios', 'trabajo', 'servidor'];
 const LINEA_ADMIN = {
   resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
-  alumnos: () => t('admin.linea.alumnos'), contenido: () => t('admin.linea.contenido'),
+  alumnos: () => t('admin.linea.alumnos'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
 };
 const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
 function cabeceraAdmin(actual, tonos = {}) {
   return [
-    el('h1', { class: 'titulo-pantalla', texto: t('admin.titulo') }),
+    el('div', { class: 'admin-arriba' },
+      el('h1', { class: 'titulo-pantalla', texto: t('admin.titulo') }),
+      // 0.8.0: estudiar como un alumno (su propio camino) y volver.
+      el('button', { type: 'button', class: 'boton-3d blanco chico con-icono boton-estudiante', onclick: () => { ponerModoEstudiante(true); location.hash = '#inicio'; } },
+        icono('avion', 'icono chico'), el('span', { texto: t('estudiante.entrar') }))),
     pestanas([
       { id: 'resumen', href: '#admin', texto: t('admin.pestana.resumen'), nombreIcono: 'escudo' },
       // Academia (0.7.0): lo de la academia va primero.
       { id: 'alumnos', href: '#alumnos', texto: t('admin.pestana.alumnos'), nombreIcono: 'grafica' },
       { id: 'contenido', href: '#contenido', texto: t('admin.pestana.contenido'), nombreIcono: 'libro' },
+      // 0.8.0: la clave completa (cada pregunta con su respuesta y sus explicaciones).
+      { id: 'respuestas', href: '#respuestas', texto: t('admin.pestana.respuestas'), nombreIcono: 'marca' },
       { id: 'usuarios', href: '#admin/usuarios', texto: t('admin.pestana.usuarios'), nombreIcono: 'personas' },
       { id: 'trabajo', href: '#admin/trabajo', texto: t('admin.pestana.trabajo'), nombreIcono: 'latido', tono: tonos.trabajo },
       { id: 'servidor', href: '#admin/servidor', texto: t('admin.pestana.servidor'), nombreIcono: 'servidor', tono: tonos.servidor },
@@ -4877,13 +4980,37 @@ function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
     ocultar);
 }
 
+// 0.8.0: debajo del banner de una materia abierta: «Tu punto débil» (con un ejercicio rápido) y el Modo reto de la materia.
+function cajaDebil(debil, datosIntento) {
+  if (!debil) return null;
+  return el('aside', { class: 'caja-debil', 'aria-label': t('debil.titulo') },
+    el('span', { class: 'caja-debil-icono', 'aria-hidden': 'true' }, icono('atencion')),
+    el('div', { class: 'caja-debil-texto' },
+      el('p', { class: 'caja-debil-ante', texto: t('debil.titulo') }),
+      talCual('p', debil.idea || debil.enunciado, 'caja-debil-idea'),
+      el('p', { class: 'suave chica', texto: [debil.numero ? t('acad.pregunta_n', { n: debil.numero }) : null, tn('debil.fallos', { n: debil.fallos })].filter(Boolean).join(' · ') })),
+    el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: evento => { sonar('toque'); empezarIntento(datosIntento, evento.currentTarget); } }, el('span', { texto: t('debil.practicar') })));
+}
+function botonReto(n, datosIntento, clase = '') {
+  if (!n) return null;
+  return el('button', { type: 'button', class: `boton-3d morado chico con-icono boton-reto ${clase}`.trim(), onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'reto', ...datosIntento }, evento.currentTarget); } },
+    icono('rayo', 'icono chico'), el('span', { texto: tn('reto.practicar', { n }) }));
+}
+function extrasMateria(m) {
+  const debil = cajaDebil(m.debil, { tipo: 'errores', materia: m.id });
+  const reto = botonReto(m.reto, { materia: m.id });
+  if (!debil && !reto) return null;
+  return el('div', { class: 'materia-extras' }, debil, reto ? el('div', { class: 'materia-reto' }, el('p', { class: 'suave chica', texto: t('reto.linea_materia') }), reto) : null);
+}
+
 async function pantallaInicio() {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/camino');
   if (!vigente()) return;
-  const esAdmin = estado.usuario.rol === 'admin';
+  const esAdmin = verComoAdmin();
   if (!r.ok) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const c = r.datos;
+  estudioHoy = c.hoy ?? null;
   if (!c.paquete) {
     return mostrar(marco('inicio', barraCabina(c),
       el('section', { class: 'panel bienvenida' },
@@ -4900,15 +5027,19 @@ async function pantallaInicio() {
     const vacia = !m.temas.length;
     return el('section', { class: `materia-bloque ${claseMateria(m.id)} ${vacia ? 'vacia' : m.estado}`, 'aria-labelledby': `materia-${m.id}` },
       bannerMateria(m, n, { vacia }),
+      vacia || m.estado === 'bloqueada' ? null : extrasMateria(m),
       vacia ? null : senderoMateria(m, n, siguiente));
   });
   const hola = el('div', { class: 'saludo' },
     el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
     el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
     c.repaso ? botonRepaso(c.repaso, 'chico') : null);
-  mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }), el('div', { class: 'camino' }, materias)));
+  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }), el('div', { class: 'camino' }, materias)));
+  // 0.8.0: el próximo tema y el progreso se piden ya (sin esperar): al tocarlos se abren enseguida.
+  if (siguiente?.tipo === 'tema') adelantar(`/api/academia/temas/${encodeURIComponent(siguiente.materia)}/${encodeURIComponent(siguiente.tema)}`);
+  adelantar('/api/academia/progreso');
   // Baja hasta el paso que toca (si está más abajo).
-  const actual = raiz.querySelector('.nodo.actual');
+  const actual = enFondo ? null : raiz.querySelector('.nodo.actual');
   if (actual && actual.getBoundingClientRect().top > window.innerHeight * 0.75) actual.scrollIntoView({ block: 'center' });
 }
 
@@ -4937,8 +5068,15 @@ function marcoEstudio({ clase = '', barra = null, cuenta = null, cuerpo, pie, sa
     el('footer', { class: 'estudio-pie' }, pie));
 }
 // El botón grande de abajo (CONTINUAR / COMPROBAR / GIRAR), con su color.
-function botonGrande(texto, alPulsar, { tono = 'verde', deshabilitado = false } = {}) {
-  return el('button', { type: 'button', class: `boton-3d grande ${tono}`, disabled: deshabilitado, onclick: alPulsar }, el('span', { texto }));
+// 0.8.0: con un «toque» suave (sonido = null para COMPROBAR: ahí suena el acierto o el error).
+function botonGrande(texto, alPulsar, { tono = 'verde', deshabilitado = false, sonido = 'toque' } = {}) {
+  return el('button', { type: 'button', class: `boton-3d grande ${tono}`, disabled: deshabilitado, onclick: evento => { if (sonido) sonar(sonido); return alPulsar(evento); } }, el('span', { texto }));
+}
+// 0.8.0: la racha sube con la primera respuesta del día (el camino dice si hoy ya estudió).
+let estudioHoy = null;
+function anotarRespuestaDelDia() {
+  if (estudioHoy === false) setTimeout(() => sonar('racha'), 650);
+  estudioHoy = true;
 }
 // La hoja que sube desde abajo con la respuesta (verde o roja).
 function hojaRespuesta({ acierto, titulo, partes, boton }) {
@@ -5155,7 +5293,15 @@ async function pantallaTema(materia, tema) {
         el('ul', { class: 'portada-datos' },
           el('li', {}, icono('tarjetas', 'icono'), el('span', { texto: tn('acad.n_tarjetas', { n: pantallas.length - 2 }) })),
           el('li', {}, icono('trofeo', 'icono'), el('span', { texto: tn('acad.n_preguntas_tg', { n: l.preguntas }) }))),
-        el('p', { class: 'bajada', texto: t('acad.portada.linea') }));
+        el('p', { class: 'bajada', texto: t('acad.portada.linea') }),
+        // 0.8.0: el punto débil del alumno en este tema (con un ejercicio rápido) y practicar ya, en los dos modos.
+        cajaDebil(l.debil, { tipo: 'errores', materia, tema }),
+        l.preguntas ? el('div', { class: 'practicar-ya' },
+          el('p', { class: 'suave chica', texto: t('reto.practicar_ya') }),
+          el('div', { class: 'practicar-ya-botones' },
+            el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'tema', materia, tema }, evento.currentTarget); } },
+              icono('libro', 'icono chico'), el('span', { texto: t('reto.original') })),
+            botonReto(l.reto, { materia, tema }))) : null);
       botones = [botonGrande(t('acad.empezar'), () => ir(1))];
     } else if (p.tipo === 'fin') {
       nodo = el('article', { class: 'fin-leccion' },
@@ -5167,8 +5313,11 @@ async function pantallaTema(materia, tema) {
         : botonGrande(t('acad.seguir'), async evento => {
           evento.currentTarget.disabled = true;
           await api('POST', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}/leido`, {});
+          sonar('tema');
           location.hash = '#inicio';
         })];
+      // 0.8.0: además del examen del tema (Original, el que aprueba), el Modo reto.
+      if (l.preguntas && l.reto) nodo.append(el('div', { class: 'fin-reto' }, el('p', { class: 'suave chica', texto: t('reto.linea_tema') }), botonReto(l.reto, { materia, tema })));
       setTimeout(() => { if (sigue()) celebrar(cuerpo); }, 150);
     } else if (p.tipo === 'girar') {
       const v = vistaGirar(p, () => { boton.replaceWith(continuar); });
@@ -5187,6 +5336,7 @@ async function pantallaTema(materia, tema) {
           b.classList.toggle('es-correcta', b.dataset.letra === correcta.letra);
           b.classList.toggle('es-mala', b.dataset.letra === letra && !o.correcta);
         }
+        sonar(o.correcta ? 'bien' : 'mal');
         if (o.correcta) celebrar(cuerpo); else sacudir(v.nodo.querySelector(`[data-letra="${letra}"]`));
         pie.replaceChildren();
         ponerHoja(raizEstudio, hojaRespuesta({
@@ -5199,7 +5349,7 @@ async function pantallaTema(materia, tema) {
           ],
           boton: botonGrande(t('acad.continuar'), () => ir(paso + 1), { tono: o.correcta ? 'verde' : 'rojo' }),
         }));
-      }, { deshabilitado: true });
+      }, { deshabilitado: true, sonido: null });
       const v = vistaSituacion(p, { alElegir: () => { comprobar.disabled = false; } });
       nodo = v.nodo;
       botones = [atras(), comprobar];
@@ -5363,9 +5513,11 @@ function insigniaPregunta(q) {
   return el('div', { class: 'insignia-pregunta tg' }, icono('libro', 'icono chico'),
     el('span', { texto: t('acad.origen.test_guide_sello') }), q.numero ? el('span', { class: 'insignia-numero' }, `${t('acad.pregunta')} `, talCual('span', q.numero)) : null);
 }
+// 0.8.0: en Modo reto, arriba la insignia «MODO RETO» (las opciones no son las del Test Guide; el enunciado sí).
 function tarjetaPregunta(q) {
   return [
-    el('div', { class: 'q-cabeza' }, insigniaPregunta(q), q.seccion ? talCual('span', q.seccion, 'q-seccion') : null),
+    el('div', { class: 'q-cabeza' }, insigniaPregunta(q), q.modo === 'reto' ? el('span', { class: 'insignia-reto con-icono' }, icono('rayo', 'icono chico'), el('span', { texto: t('reto.sello') })) : null,
+      q.seccion ? talCual('span', q.seccion, 'q-seccion') : null),
     q.origen === 'poh' && q.fuente ? lineaFuente(q.fuente) : null,
     talCual('p', q.enunciado, 'q-enunciado'),
     figuraPregunta(q),
@@ -5384,7 +5536,15 @@ function partesRespuesta(q, resp) {
     resp.idea ? el('section', { class: 'caja-hoja caja-idea' },
       el('h3', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('acad.por_que_elegiste') })),
       el('p', { class: 'suave' }, el('strong', { texto: `${resp.elegida}. ` }), talCual('span', opcion(resp.elegida))),
-      talCual('p', resp.idea)) : null,
+      talCual('p', resp.idea),
+      resp.trampa ? el('p', { class: 'suave chica' }, el('strong', { texto: `${t('reto.trampa')}: ` }), talCual('span', resp.trampa)) : null) : null,
+    // 0.8.0: en Modo reto, por qué es incorrecta CADA opción nueva (y la trampa que tiende).
+    resp.modo === 'reto' && resp.reto?.length ? el('section', { class: 'caja-hoja caja-reto' },
+      el('h3', { class: 'con-icono' }, icono('rayo', 'icono chico'), el('span', { texto: t('reto.por_que') })),
+      el('ul', { class: 'lista-reto' }, resp.reto.map(o => el('li', {},
+        el('p', {}, el('strong', { texto: `${o.letra}. ` }), talCual('span', o.texto)),
+        o.porque ? talCual('p', o.porque, 'reto-porque') : null,
+        o.trampa ? el('p', { class: 'suave chica' }, el('strong', { texto: `${t('reto.trampa')}: ` }), talCual('span', o.trampa)) : null)))) : null,
     resp.ingles?.length ? el('section', { class: 'caja-hoja caja-ingles' },
       el('h3', { class: 'con-icono' }, icono('avion', 'icono chico'), el('span', { texto: t('acad.ingles') })),
       el('ul', { class: 'lista-ingles' }, resp.ingles.map(w => el('li', {},
@@ -5403,6 +5563,40 @@ function opcionesFijas(q, resp) {
     o.letra === resp.correcta ? icono('marca', 'icono opcion-marca') : o.letra === resp.elegida ? icono('cerrar', 'icono opcion-marca') : null)));
 }
 
+// 0.8.0: la revisión completa al terminar (examen, tema, reto, repaso): cada pregunta con lo que eligió, la correcta, la
+// explicación original y la sencilla; arriba el filtro «Solo las que fallé».
+function revisionCompleta(res) {
+  const lista = res.revision ?? res.falladas ?? [];
+  if (!lista.length) return null;
+  const malas = lista.filter(q => !q.respuesta?.acierto).length;
+  let soloMalas = malas > 0 && lista.length > 6;
+  const filas = lista.map((q, k) => {
+    const bien = q.respuesta?.acierto;
+    const d = el('details', { class: `revision-fila ${bien ? 'bien' : 'mal'}`, 'data-bien': bien ? '1' : '0' },
+      el('summary', {},
+        el('span', { class: `revision-marca ${bien ? 'tono-bien' : 'tono-mal'}`, 'aria-label': t(bien ? 'acad.correcto' : 'revision.fallada') }, icono(bien ? 'marca' : 'cerrar', 'icono chico')),
+        el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : q.origen === 'poh' ? t('acad.origen.poh_corto') : numero(k + 1)),
+        talCual('span', q.enunciado, 'revision-enunciado'),
+        el('span', { class: 'revision-letras suave chica', texto: bien ? t('revision.tu_respuesta', { letra: q.respuesta.elegida }) : t('revision.tu_y_correcta', { letra: q.respuesta?.elegida ?? '—', correcta: q.respuesta?.correcta ?? '—' }) })),
+      el('div', { class: 'revision-dentro' }, tarjetaPregunta(q).slice(3), opcionesFijas(q, q.respuesta), bloqueRespuesta(q, q.respuesta)));
+    return d;
+  });
+  const cajaLista = el('div', { class: 'revision-lista' }, filas);
+  const pintarFiltro = () => {
+    for (const f of filas) f.hidden = soloMalas && f.dataset.bien === '1';
+    todas.setAttribute('aria-pressed', String(!soloMalas));
+    fallas.setAttribute('aria-pressed', String(soloMalas));
+  };
+  const todas = el('button', { type: 'button', class: 'filtro', onclick: () => { soloMalas = false; pintarFiltro(); } }, el('span', { texto: t('revision.todas', { n: numero(lista.length) }) }));
+  const fallas = el('button', { type: 'button', class: 'filtro', disabled: !malas, onclick: () => { soloMalas = true; pintarFiltro(); } }, el('span', { texto: t('revision.solo_falle', { n: numero(malas) }) }));
+  pintarFiltro();
+  return el('section', { class: 'panel revision', 'aria-labelledby': 'revision-titulo' },
+    el('h2', { id: 'revision-titulo', class: 'con-icono' }, icono('lupa'), el('span', { texto: t('revision.titulo') })),
+    el('p', { class: 'suave', texto: t('revision.linea', { bien: numero(lista.length - malas), mal: numero(malas) }) }),
+    el('div', { class: 'filtros', role: 'group', 'aria-label': t('revision.filtro') }, todas, fallas),
+    cajaLista);
+}
+
 async function pantallaPractica(id) {
   const vigente = nuevoTurno();
   const r = await api('GET', `/api/academia/intentos/${encodeURIComponent(id)}`);
@@ -5413,7 +5607,8 @@ async function pantallaPractica(id) {
   const cuenta = el('span', { class: 'estudio-cuenta' });
   const zona = el('div', { class: 'estudio-tarjeta' });
   const pie = el('div', { class: 'estudio-botones' });
-  const tituloIntento = intento.tipo === 'repaso' ? t('acad.repaso') : intento.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(intento.materia) }) : nombreMateria(intento.materia);
+  const tituloIntento = intento.tipo === 'repaso' ? t('acad.repaso') : intento.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(intento.materia) })
+    : intento.tipo === 'reto' ? t('reto.de', { materia: nombreMateria(intento.materia) }) : intento.tipo === 'errores' ? t('errores.titulo') : nombreMateria(intento.materia);
   const raizEstudio = marcoEstudio({ clase: `practica-tg ${intento.materia ? claseMateria(intento.materia) : ''}`, barra: barraAvance.nodo, cuenta, cuerpo: zona, pie });
   const avance = () => {
     const hechas = intento.preguntas.filter(q => q.respuesta).length;
@@ -5439,8 +5634,10 @@ async function pantallaPractica(id) {
       if (!sigue()) return;
       if (!x.ok) { comprobar.disabled = false; for (const b of botones) b.disabled = false; return avisar(textoError(x.datos.error), 'mal'); }
       q.respuesta = x.datos.respuesta;
+      sonar(q.respuesta.acierto ? 'bien' : 'mal');
+      anotarRespuestaDelDia();
       pintarRespondida(i, true);
-    }, { deshabilitado: true });
+    }, { deshabilitado: true, sonido: null });
     zona.replaceChildren(el('article', { class: 'tarjeta-pregunta' },
       el('p', { class: 'pregunta-de', texto: tituloIntento }),
       tarjetaPregunta(q), el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones)));
@@ -5486,7 +5683,7 @@ async function pantallaPractica(id) {
     cuenta.textContent = '';
     const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: `boton-3d ${res.aprobado ? 'blanco' : 'grande naranja'}`,
       onclick: evento => empezarIntento({ tipo: res.tipo, materia: res.materia, tema: res.tema }, evento.currentTarget) }, el('span', { texto: t('acad.otra_vez') }));
-    const titulo = res.aprobado == null ? t('acad.repaso_hecho') : res.aprobado ? (res.tipo === 'examen' ? t('acad.examen_aprobado') : t('acad.tema_aprobado')) : t('acad.no_aprobado');
+    const titulo = res.tipo === 'reto' ? t('reto.hecho') : res.tipo === 'errores' ? t('errores.hecho') : res.aprobado == null ? t('acad.repaso_hecho') : res.aprobado ? (res.tipo === 'examen' ? t('acad.examen_aprobado') : t('acad.tema_aprobado')) : t('acad.no_aprobado');
     zona.replaceChildren(...[
       el('section', { class: `resultado-vuelo ${res.aprobado === false ? 'falta' : 'bien'}`, 'data-foco': true },
         medidor(res.pct, { etiqueta: t('acad.resultado.nota') }),
@@ -5497,15 +5694,16 @@ async function pantallaPractica(id) {
       res.reexplicacion?.length ? el('section', { class: 'panel caja-sencilla reexplicacion' },
         el('h2', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('acad.mas_facil') })),
         res.reexplicacion.map(s => el('div', { class: 'reexplicacion-parte' }, el('h3', { texto: s.titulo }), talCual('p', s.texto ?? (s.puntos ?? []).join('\n')), s.fuentes.map(lineaFuente)))) : null,
-      res.falladas.length ? el('section', { class: 'panel falladas' },
-        el('h2', { class: 'con-icono' }, icono('mal'), el('span', { texto: tn('acad.fallaste', { n: res.falladas.length }) })),
-        res.falladas.map(q => el('details', { class: 'fallada', open: res.falladas.length <= 3 },
-          el('summary', {}, el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')), talCual('span', q.enunciado, 'fallada-enunciado')),
-          el('div', { class: 'fallada-dentro' }, tarjetaPregunta(q).slice(3), opcionesFijas(q, q.respuesta), bloqueRespuesta(q, q.respuesta))))) : null].filter(Boolean));
+      revisionCompleta(res)].filter(Boolean));
+    // 0.8.0: «Practicar mis errores»: las que falló en este intento, otra vez (Original).
+    const errores = res.falladas.length ? el('button', { type: 'button', class: 'boton-3d naranja con-icono',
+      onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'errores', intento: res.id }, evento.currentTarget); } }, icono('actualizar', 'icono chico'), el('span', { texto: tn('errores.practicar', { n: res.falladas.length }) })) : null;
     pie.classList.add('apilados');
     pie.replaceChildren(...[res.aprobado === false ? otraVez : el('a', { class: 'boton-3d grande', href: '#inicio' }, el('span', { texto: t('acad.seguir') })),
+      errores,
       res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez].filter(Boolean));
     if (res.aprobado !== false) celebrar(zona);
+    sonar(res.aprobado && res.tipo === 'examen' ? 'nivel' : res.aprobado ? 'tema' : res.aprobado === false ? 'mal' : 'bien');
     window.scrollTo(0, 0);
   };
   mostrar(raizEstudio);
@@ -5544,6 +5742,7 @@ async function pantallaProgreso() {
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const p = r.datos;
+  estudioHoy = p.hoy ?? estudioHoy;
   const materias = p.materias.length
     ? el('div', { class: 'rejilla dos' }, p.materias.map(m => tarjetaMateria(m)))
     : el('section', { class: 'panel' }, vacio('grafica', t('acad.progreso.vacio')));
@@ -5563,8 +5762,43 @@ async function pantallaProgreso() {
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
     grupo,
     p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
+    panelPuntosDebiles(p.puntosDebiles, { conBoton: true }),
     materias,
     listaDebiles(p.debiles, t('acad.debiles'), 'acad.debiles.vacio')));
+}
+// 0.8.0: «Mis puntos débiles» (la memoria de errores: para siempre). Las ideas equivocadas que más elige, los temas donde
+// más falla y las preguntas que más falla; con «Practicar mis errores». El administrador ve lo mismo de cada alumno.
+function panelPuntosDebiles(pd, { conBoton = false, titulo = t('debil.panel') } = {}) {
+  if (!pd) return null;
+  const cabeza = el('div', { class: 'panel-cabeza' },
+    el('span', { class: 'panel-icono naranja' }, icono('atencion')),
+    el('div', {}, el('h2', { id: 'debiles-titulo', texto: titulo }),
+      el('p', { class: 'suave', texto: pd.total ? t('debil.memoria', { n: numero(pd.total), mal: numero(pd.fallos) }) : t('debil.vacio') })));
+  if (!pd.preguntas.length) return el('section', { class: 'panel panel-debiles', 'aria-labelledby': 'debiles-titulo' }, cabeza, pd.total ? vacio('bien', t('debil.nada')) : null);
+  const ideas = pd.ideas.filter(x => !x.superada).slice(0, 3);
+  const temas = pd.temas.slice(0, 4);
+  return el('section', { class: 'panel panel-debiles', 'aria-labelledby': 'debiles-titulo' },
+    cabeza,
+    ideas.length ? el('div', { class: 'debiles-ideas' },
+      el('h3', { texto: t('debil.ideas') }),
+      el('ul', {}, ideas.map(x => el('li', { class: 'debil-idea' },
+        talCual('p', x.idea),
+        el('p', { class: 'suave chica', texto: [x.numero ? t('acad.pregunta_n', { n: x.numero }) : null, nombreMateria(x.materia), x.modo === 'reto' ? t('reto.sello') : null, tn('debil.fallos', { n: x.fallos })].filter(Boolean).join(' · ') }))))) : null,
+    temas.length ? el('div', { class: 'debiles-temas' },
+      el('h3', { texto: t('debil.temas') }),
+      el('ul', {}, temas.map(x => el('li', {},
+        el('span', { class: 'debil-tema-nombre', texto: partirTitulo(x.titulo).es }),
+        el('span', { class: 'plan-barra chica' }, barraLlena(x.pct)),
+        el('span', { class: 'suave chica', texto: t('debil.tema_fallos', { mal: numero(x.fallos), n: numero(x.respuestas) }) }))))) : null,
+    el('div', { class: 'debiles-preguntas' },
+      el('h3', { texto: t('debil.preguntas') }),
+      verMas(el('ul', { class: 'lista-debiles' }), pd.preguntas.map(q => el('li', { class: q.superada ? 'superada' : null },
+        el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')),
+        q.superada ? insignia('bien', t('debil.superada')) : el('span', { class: 'insignia tono-apagado', texto: nombreMateria(q.materia) }),
+        talCual('span', q.enunciado, 'debil-enunciado'),
+        el('span', { class: 'suave', texto: tn('acad.fallos_de', { n: q.fallos, veces: q.veces }) }))), 4)),
+    conBoton ? el('button', { type: 'button', class: 'boton-3d naranja con-icono', onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'errores' }, evento.currentTarget); } },
+      icono('actualizar', 'icono chico'), el('span', { texto: t('debil.practicar_todo') })) : null);
 }
 function tarjetaMateria(m, { conExamen = true } = {}) {
   return el('section', { class: `panel materia-progreso ${claseMateria(m.id)}` },
@@ -5634,13 +5868,25 @@ async function pantallaAlumno(id) {
         insignia('bien', t('acad.bien', { n: numero(a.aciertos) })), insignia('mal', t('acad.mal', { n: numero(a.errores) })),
         insignia('info', t('acad.temas_de', { n: numero(a.temasAprobados), total: numero(a.temas) })))),
     d.materias.length ? el('div', { class: 'rejilla dos' }, d.materias.map(m => tarjetaMateria(m, { conExamen: false }))) : null,
+    panelPuntosDebiles(d.puntosDebiles, { titulo: t('debil.panel_alumno') }),
     listaDebiles(d.falladas, t('acad.falladas'), 'acad.falladas.vacio', { conFallos: true }),
     d.intentos.length ? el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, icono('reloj'), el('span', { texto: t('acad.intentos') })),
       el('ul', { class: 'lista-intentos' }, d.intentos.map(x => el('li', {},
         insignia(x.aprobado == null ? 'info' : x.aprobado ? 'bien' : 'mal', pctTexto(x.pct)),
-        el('span', { texto: x.tipo === 'repaso' ? t('acad.repaso') : x.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(x.materia) }) : `${nombreMateria(x.materia)} · ${x.tema}` }),
+        el('span', { texto: x.tipo === 'repaso' ? t('acad.repaso') : x.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(x.materia) })
+          : x.tipo === 'errores' ? t('errores.titulo') : x.tipo === 'reto' ? `${t('reto.sello')} · ${nombreMateria(x.materia)}${x.tema ? ` · ${x.tema}` : ''}` : `${nombreMateria(x.materia)} · ${x.tema}` }),
         el('span', { class: 'suave', texto: cuando(x.fecha) }))))) : null));
+}
+
+// ---- 0.8.0: Administrador → Respuestas: la clave completa (se dibuja en public/admin-respuestas.js, que solo se carga aquí) ----
+async function pantallaRespuestas() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/respuestas'), api('GET', '/api/admin/sistema'), import('./admin-respuestas.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('respuestas', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaRespuestas(r.datos, { el, t, tn, icono, talCual, numero, nombreMateria, partirTitulo, insignia, vacio, figuraPregunta, claseMateria })));
 }
 
 // ---- Administrador: el contenido (subir un paquete, ponerlo en uso, el nombre de la app y el % para aprobar) ----
@@ -5860,10 +6106,13 @@ async function dibujar() {
     return pantallaEntrar();
   }
   if (estado.usuario.debeCambiarClave) return pantallaClaveObligatoria();
+  ponerUsuarioSonidos(estado.usuario.id);
   const seccion = location.hash.replace('#', '') || 'inicio';
   const esAdmin = estado.usuario.rol === 'admin';
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
+  // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas'].includes(seccion) || /^alumno\//.test(seccion))) ponerModoEstudiante(false);
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
   // La clave de recuperación recién creada vive solo en esta pantalla: al irse de Copias se suelta (fase 1, parte e).
@@ -5890,6 +6139,7 @@ async function dibujar() {
   const alumno = seccion.match(/^alumno\/(\d+)$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1]);
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
+  if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   // Los proyectos de OPORTIA están escondidos: sus direcciones llevan al camino.
   if (seccion === 'proyectos' && PROYECTOS_VISIBLES) return pantallaProyectos();
   if (seccion === 'nuevo' && PROYECTOS_VISIBLES) return pantallaNuevo();
@@ -5927,6 +6177,7 @@ function pedidosAlAbrir(seccion, admin) {
   const alumno = seccion.match(/^alumno\/(\d+)$/);
   if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}`, '/api/admin/sistema'] : [];
   if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
+  if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
 }
@@ -5998,5 +6249,5 @@ async function iniciar() {
   await primera;
 }
 
-window.addEventListener('hashchange', () => { if (estado.usuario) dibujar(); });
+window.addEventListener('hashchange', () => { repintarEnFondo = false; if (estado.usuario) dibujar(); });
 iniciar().catch(() => pantallaNoArranco());

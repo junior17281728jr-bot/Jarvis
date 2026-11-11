@@ -449,7 +449,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     ['ayuda', 'pantallaAyuda'],
     // Academia (0.7.0): el progreso, un tema, practicar, el examen de una materia; y lo del administrador.
     ['progreso', 'pantallaProgreso'], ['tema/7/7', 'pantallaTema'], ['practica/7', 'pantallaPractica'], ['examen/7', 'pantallaExamen'],
-    ['alumnos', 'pantallaAlumnos'], ['alumno/7', 'pantallaAlumno'], ['contenido', 'pantallaContenido']];
+    ['alumnos', 'pantallaAlumnos'], ['alumno/7', 'pantallaAlumno'], ['contenido', 'pantallaContenido'],
+    // 0.8.0: Administrador → Respuestas (la clave completa).
+    ['respuestas', 'pantallaRespuestas']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
@@ -480,6 +482,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   for (const escondida of ['proyectos', 'nuevo', 'proyecto/3']) assert.deepEqual(pedidosAlAbrir(escondida, true), pedidosAlAbrir('inicio', true), escondida);
   assert.deepEqual([...pedidosAlAbrir('alumnos', false)], []);
   assert.deepEqual([...pedidosAlAbrir('contenido', false)], []);
+  assert.deepEqual([...pedidosAlAbrir('respuestas', false)], []);
   // Sin dirección o con una que no existe se ve Inicio.
   assert.deepEqual(pedidosAlAbrir('cualquier-cosa', true), pedidosAlAbrir('inicio', true));
   assert.deepEqual(pedidosAlAbrir('proyecto/abc', false), pedidosAlAbrir('inicio', false));
