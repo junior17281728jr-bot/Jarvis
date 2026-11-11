@@ -30,3 +30,6 @@ Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la 
 
 - 11 nov 2026: IA en la academia: debe funcionar TODO sin API, pero con la API de Claude o ChatGPT es mucho mejor (usar los adaptadores de la 1d con tope). Al entrar, cada usuario ve si tiene un instructor IA dándole seguimiento (con API: «Tu instructor IA te acompaña»; sin API: «Instructor automático»).
 - 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Hecho: copias locales quitadas; etiquetas oportia-0.5.1 y oportia-1f-sin-publicar en GitHub como respaldo (no ocupan espacio). La academia nueva sale de main quitando proyectos/motor de clientes.
+
+- 11 nov 2026: IA en la academia: debe funcionar TODO sin API, pero con la API de Claude o ChatGPT es mucho mejor (adaptadores de la 1d, con tope). Al entrar, cada usuario ve si tiene un instructor IA dándole seguimiento.
+- 11 nov 2026: Junior pide sacar lo útil de OPORTIA y BORRAR lo demás. Copias locales quitadas; etiquetas oportia-0.5.1 y oportia-1f-sin-publicar en GitHub como respaldo (no ocupan espacio).
