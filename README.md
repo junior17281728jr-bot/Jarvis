@@ -515,7 +515,10 @@ otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde l
       "fuente": { "libro": "poh", "capitulo": "…", "seccion": "…", "pagina": "…" },   // obligatoria si origen = poh
       "sencilla": "Explicación sencilla (aparte, nunca mezclada con la original)",
       "errores": { "A": "idea equivocada de quien elige A", "C": "…" },              // solo opciones incorrectas
-      "ingles": [ { "palabra": "…", "pronunciacion": "…", "significado": "…", "ejemplo": "…" } ] } ],
+      "ingles": [ { "palabra": "…", "pronunciacion": "…", "significado": "…", "ejemplo": "…" } ],
+      // 0.8.0 (opcional): el «Modo reto»: EXACTAMENTE 2 opciones incorrectas nuevas (más engañosas), distintas entre sí
+      // y de las originales; «porque_es_incorrecta» obligatorio, «trampa» (la idea equivocada que tiende) opcional.
+      "reto": { "opciones": [ { "texto": "…", "porque_es_incorrecta": "…", "trampa": "…" }, { "texto": "…", "porque_es_incorrecta": "…" } ] } } ],
   "figuras": [ { "numero": "12", "archivo": "figura-12.png", "titulo": "…" (opcional), "sha256": "…" (opcional) } ]
 }
 ```

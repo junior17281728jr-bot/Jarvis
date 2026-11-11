@@ -17,7 +17,7 @@ import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, marcarTemaLeido } from '../academia/progreso.js';
+import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, marcarTemaLeido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 
 export function crearLimitesAcademia() {
@@ -91,7 +91,10 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('POST', '/api/academia/intentos', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     if (!topes.intentos.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
-    const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null };
+    // 0.8.0: «intento» (opcional, con tipo «errores»): practicar las falladas de ese intento (tiene que ser suyo).
+    const base = datos?.intento;
+    if (base != null && !Number.isSafeInteger(base)) throw new ErrorHttp(400, 'datos_no_validos');
+    const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null };
     return { codigo: 201, datos: crearIntento(db, usuario.id, activo(db), pedido, { azar, ahoraMs: reloj() }) };
   });
 
@@ -267,6 +270,9 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   }, { admin: true });
 
   rutas.agregar('GET', '/api/admin/academia/alumnos', ({ db }) => ({ codigo: 200, datos: { alumnos: alumnos(db, activo(db), reloj()), ajustes: ajustesAcademia(db) } }), { admin: true });
+
+  // 0.8.0: «Respuestas»: la clave completa de lo que está en uso (solo el administrador: 403 para los alumnos).
+  rutas.agregar('GET', '/api/admin/academia/respuestas', ({ db }) => ({ codigo: 200, datos: claveDeRespuestas(activo(db)) }), { admin: true });
 
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id', ({ db, parametros }) =>
     ({ codigo: 200, datos: detalleAlumno(db, activo(db), parametros.id, reloj()) }), { admin: true });

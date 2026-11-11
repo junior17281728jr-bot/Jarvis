@@ -36,6 +36,8 @@ export const ARCHIVO_AUDIO = /^[a-z0-9][a-z0-9._-]{0,80}\.mp3$/i;
 // 0.7.2: el tipo de un dibujo (public/clase/visuales.js: titulo, ala, motor, instrumentos, escenario, meteo…).
 export const TIPO_VISUAL = /^[a-z][a-z0-9_-]{0,39}$/;
 const LETRA = /^[A-F]$/;
+// 0.8.0: cuántas opciones nuevas trae el «Modo reto» de una pregunta (con la correcta, 3 como en el Test Guide).
+export const RETO_OPCIONES = 2;
 const SHA256 = /^[a-f0-9]{64}$/;
 
 const esObjeto = v => v != null && typeof v === 'object' && !Array.isArray(v);
@@ -184,6 +186,28 @@ export function revisarPaquete(p) {
       }
     }
     palabrasIngles(q.ingles, `${r}.ingles`, ['pronunciacion', 'significado', 'ejemplo']);
+    // 0.8.0: «Modo reto» (opcional): EXACTAMENTE 2 opciones incorrectas nuevas, más engañosas, que se muestran junto al
+    // enunciado y la respuesta correcta TAL CUAL. Cada una con por qué es incorrecta (y la trampa que tiende, opcional).
+    // Nunca pueden ser iguales entre sí ni a una opción original.
+    if (q.reto != null) {
+      const rr = `${r}.reto`;
+      if (!esObjeto(q.reto)) mal(rr, 'no_es_objeto');
+      else if (!Array.isArray(q.reto.opciones) || q.reto.opciones.length !== RETO_OPCIONES) mal(`${rr}.opciones`, 'reto_no_valido');
+      else {
+        const vistos = new Set((Array.isArray(o.opciones) ? o.opciones : []).map(op => (typeof op?.texto === 'string' ? op.texto.trim().toLowerCase() : null)).filter(Boolean));
+        q.reto.opciones.forEach((op, j) => {
+          const ro = `${rr}.opciones[${j}]`;
+          if (!esObjeto(op)) return mal(ro, 'no_es_objeto');
+          if (texto(op.texto, `${ro}.texto`, { max: LIMITES.corto * 5 })) {
+            const clave = op.texto.trim().toLowerCase();
+            if (vistos.has(clave)) mal(`${ro}.texto`, 'repetido');
+            vistos.add(clave);
+          }
+          texto(op.porque_es_incorrecta, `${ro}.porque_es_incorrecta`);
+          texto(op.trampa, `${ro}.trampa`, { obligatorio: false });
+        });
+      }
+    }
   });
 
   // 0.7.1: la narración (mp3) de una materia o de un tema. El mismo archivo puede servir a dos lugares.

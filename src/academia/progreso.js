@@ -7,8 +7,14 @@
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe } from './paquetes.js';
+import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
+import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
 
-export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso']);
+// 0.8.0: «reto» = practicar un tema (o toda una materia, sin tema) en Modo reto; «errores» = practicar lo que más se
+// falla (de un intento, de un tema, de una materia o de todo). Los dos son práctica: no aprueban temas ni exámenes
+// (eso solo lo hacen «tema» y «examen», siempre con las 3 opciones originales del Test Guide).
+export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso', 'reto', 'errores']);
+export const modoDeTipo = tipo => (tipo === 'reto' ? MODO_RETO : MODO_ORIGINAL);
 export const ESTADOS_TEMA = Object.freeze(['bloqueado', 'abierto', 'aprobado']);
 export const ESTADOS_MATERIA = Object.freeze(['vacia', 'bloqueada', 'abierta', 'aprobada']);
 export const NOMBRE_POR_DEFECTO = 'Academia de Aviación';
@@ -57,15 +63,18 @@ const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
 const aprueba = (aciertos, total, umbral) => total > 0 && aciertos * 100 >= umbral * total;
 
 // Una pregunta para mostrar ANTES de responder: lo original, sin la respuesta ni las explicaciones.
-export function vistaPregunta(paquete, id) {
+// 0.8.0: en Modo reto (intento de tipo «reto»), las opciones son la correcta tal cual y las 2 del reto, mezcladas (A, B, C).
+export function vistaPregunta(paquete, id, { intentoId = null, modo = MODO_ORIGINAL } = {}) {
   const q = paquete?.preguntas.get(id);
   if (!q) return { id, falta: true };
   const o = q.original;
   const lugar = paquete.deTema.get(id);
+  const reto = modo === MODO_RETO ? opcionesReto(q, intentoId, id) : null;
   return {
     id, origen: q.origen, materia: lugar?.materia ?? null, tema: lugar?.tema ?? null,
     numero: o.numero ?? null, seccion: o.seccion ?? null, enunciado: o.enunciado, pagina: o.pagina ?? null,
-    opciones: o.opciones.map(op => ({ letra: op.letra, texto: op.texto })),
+    ...(reto ? { modo: MODO_RETO } : {}),
+    opciones: reto ? reto.map(op => ({ letra: op.letra, texto: op.texto })) : o.opciones.map(op => ({ letra: op.letra, texto: op.texto })),
     figura: o.figura != null ? figuraVista(paquete, id, o.figura) : null,
     fuente: q.origen === 'poh' && q.fuente ? fuenteDe(paquete, q.fuente, paquete.dePaquete?.get(id)) : null,
   };
@@ -78,18 +87,28 @@ function figuraVista(paquete, id, numero) {
 function fuenteDe(paquete, f, pid = null) {
   return { libro: librosDe(paquete, pid).get(f.libro)?.titulo ?? f.libro, capitulo: f.capitulo ?? null, seccion: f.seccion ?? null, pagina: f.pagina ?? null };
 }
-// Lo que se ve DESPUÉS de responder.
-export function retroalimentacion(paquete, id, elegida) {
+// Lo que se ve DESPUÉS de responder. «elegida» es la opción de verdad guardada (en Modo reto, la letra original de la
+// correcta o R1/R2); lo que vuelve usa las letras que se VIERON. En Modo reto trae además por qué cada opción del reto es
+// incorrecta (y la trampa que tiende).
+export function retroalimentacion(paquete, id, elegida, { intentoId = null, modo = MODO_ORIGINAL } = {}) {
   const q = paquete?.preguntas.get(id);
   if (!q) return null;
   const correcta = q.original.correcta;
-  return {
-    elegida, acierto: elegida === correcta, correcta,
-    explicacion: q.original.explicacion ?? null,
-    sencilla: q.sencilla,
-    idea: elegida !== correcta ? q.errores?.[elegida] ?? null : null,
-    ingles: Array.isArray(q.ingles) ? q.ingles : [],
-  };
+  const base = { explicacion: q.original.explicacion ?? null, sencilla: q.sencilla, ingles: Array.isArray(q.ingles) ? q.ingles : [] };
+  const vistas = modo === MODO_RETO ? opcionesReto(q, intentoId, id) : null;
+  if (vistas) {
+    const mala = opcionRetoDe(q, elegida);
+    return {
+      ...base, modo: MODO_RETO, elegida: letraDeClave(vistas, elegida), acierto: elegida === correcta, correcta: letraDeClave(vistas, correcta),
+      idea: elegida !== correcta ? mala?.porque_es_incorrecta ?? null : null,
+      trampa: elegida !== correcta ? mala?.trampa ?? null : null,
+      reto: vistas.filter(o => o.clave !== correcta).map(o => {
+        const r = opcionRetoDe(q, o.clave);
+        return { letra: o.letra, texto: o.texto, porque: r?.porque_es_incorrecta ?? null, trampa: r?.trampa ?? null };
+      }),
+    };
+  }
+  return { ...base, elegida, acierto: elegida === correcta, correcta, idea: elegida !== correcta ? q.errores?.[elegida] ?? null : null };
 }
 const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(s => ({
   titulo: s.titulo, texto: s.texto ?? null, nota: s.nota ?? null, fuentes: (s.fuentes ?? []).map(f => fuenteDe(paquete, f, pid)),
@@ -126,9 +145,10 @@ export function puntosYRacha(db, usuarioId, ahoraMs = Date.now()) {
   return { puntos, racha, hoy: dias[0] === diaDe(ahoraMs) };
 }
 
+// 0.8.0: el repaso empieza por lo que MÁS se ha fallado (la memoria de errores), y después por lo que venció antes.
 function repasoPendiente(db, usuarioId, paquete, ahoraMs) {
   if (!paquete) return [];
-  return db.prepare('SELECT pregunta FROM academia_repaso WHERE usuario_id = ? AND caja < ? AND vence_en <= ? ORDER BY vence_en, pregunta LIMIT 200')
+  return db.prepare('SELECT pregunta FROM academia_repaso WHERE usuario_id = ? AND caja < ? AND vence_en <= ? ORDER BY fallos DESC, vence_en, pregunta LIMIT 200')
     .all(usuarioId, CAJA_DOMINADA, new Date(ahoraMs).toISOString()).map(f => f.pregunta).filter(id => paquete.preguntas.has(id));
 }
 
@@ -143,6 +163,7 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   let anteriorAprobado = true;
   const vistos = videosVistos(db, usuarioId);
   const leidos = temasLeidos(db, usuarioId);
+  const memoria = puntosDebiles(db, usuarioId, paquete);
   const materias = paquete.materias.map(m => {
     const temas = m.temas.map(t => {
       const a = aprobados.get(`${m.id}/${t.id}`);
@@ -158,8 +179,13 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const aprobadosN = temas.filter(t => t.estado === 'aprobado').length;
     const audio = audioDe(paquete, m.paquete, m.audio);
     const video = resumenVideo(paquete, m, vistos);
+    // 0.8.0: cuántas preguntas tienen Modo reto (de los temas abiertos) y el punto débil del alumno en la materia.
+    const abiertos = new Set(temas.filter(t => t.estado !== 'bloqueado').map(t => t.id));
+    const retoN = m.temas.filter(t => abiertos.has(t.id)).reduce((n, t) => n + t.preguntas.filter(id => tieneReto(paquete.preguntas.get(id))).length, 0);
+    const debil = debilDe(memoria, paquete, { materia: m.id });
     return {
       id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), ...(audio ? { audio } : {}), ...(video ? { video } : {}),
+      reto: retoN, ...(debil ? { debil } : {}),
       examen: { disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0 },
     };
   });
@@ -240,7 +266,12 @@ export function leccion(db, usuarioId, paquete, materia, tema) {
   const estadoTema = estadoDelTema(db, usuarioId, paquete, materia, tema);
   if (estadoTema === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
   const audio = audioDe(paquete, t.paquete, t.audio);
-  return { materia, tema: t.id, titulo: t.titulo, estado: estadoTema, secciones: vistaSecciones(paquete, t.secciones, t.paquete), preguntas: t.preguntas.length, ...(audio ? { audio } : {}) };
+  // 0.8.0: cuántas tienen Modo reto y el punto débil del alumno en este tema («Tu punto débil: …»).
+  const debil = debilDe(puntosDebiles(db, usuarioId, paquete), paquete, { materia, tema: t.id });
+  return {
+    materia, tema: t.id, titulo: t.titulo, estado: estadoTema, secciones: vistaSecciones(paquete, t.secciones, t.paquete), preguntas: t.preguntas.length,
+    reto: t.preguntas.filter(id => tieneReto(paquete.preguntas.get(id))).length, ...(audio ? { audio } : {}), ...(debil ? { debil } : {}),
+  };
 }
 
 // Baraja (Fisher-Yates) con el azar que se le dé (las pruebas usan uno fijo).
@@ -253,7 +284,7 @@ function barajar(lista, azar) {
   return copia;
 }
 
-export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
+export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   if (!TIPOS_INTENTO.includes(tipo)) throw new ErrorHttp(400, 'datos_no_validos');
   let ids;
@@ -268,15 +299,44 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
     if (!c.examen.disponible) throw new ErrorHttp(403, 'examen_bloqueado');
     ids = m.temas.flatMap(t => t.preguntas);
     tema = null;
+  } else if (tipo === 'reto') {
+    // Un tema abierto, o toda una materia (las preguntas de sus temas abiertos): solo las que traen su Modo reto.
+    const m = paquete.materias.find(x => x.id === materia);
+    if (!m || !m.temas.length) throw new ErrorHttp(404, 'no_existe');
+    const c = camino(db, usuarioId, paquete, ahoraMs).materias.find(x => x.id === materia);
+    let temas;
+    if (tema) {
+      const { t } = buscarTema(paquete, materia, tema);
+      if (c.temas.find(x => x.id === t.id)?.estado === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
+      temas = [t];
+    } else {
+      const abiertos = new Set(c.temas.filter(x => x.estado !== 'bloqueado').map(x => x.id));
+      temas = m.temas.filter(t => abiertos.has(t.id));
+      if (!temas.length) throw new ErrorHttp(403, 'tema_bloqueado');
+      tema = null;
+    }
+    ids = temas.flatMap(t => t.preguntas).filter(id => tieneReto(paquete.preguntas.get(id)));
+    if (!ids.length) throw new ErrorHttp(409, 'sin_reto');
+  } else if (tipo === 'errores') {
+    // «Practicar mis errores»: las falladas de un intento suyo, o lo que más falla (de un tema, una materia o todo).
+    ids = preguntasParaPracticar(db, usuarioId, paquete, { intento: intentoBase, materia, tema });
+    if (intentoBase != null) {
+      const f = intentoDe(db, usuarioId, intentoBase);
+      materia = f.materia;
+      tema = f.tema;
+    }
+    if (!ids.length) throw new ErrorHttp(409, 'sin_errores');
   } else {
     ids = repasoPendiente(db, usuarioId, paquete, ahoraMs).slice(0, REPASO_MAXIMO);
     materia = null;
     tema = null;
   }
   if (!ids.length) throw new ErrorHttp(409, tipo === 'repaso' ? 'repaso_vacio' : 'sin_preguntas');
-  let orden = barajar(ids, azar);
+  // 0.8.0: el repaso y «practicar mis errores» van en orden de prioridad (lo más fallado primero), sin mezclar.
+  const porPrioridad = tipo === 'repaso' || tipo === 'errores';
+  let orden = porPrioridad ? [...ids] : barajar(ids, azar);
   // Las mismas preguntas, en OTRO orden que la vez anterior (el azar puede repetir uno: entonces se corre una).
-  const anterior = db.prepare('SELECT orden FROM academia_intentos WHERE usuario_id = ? AND tipo = ? AND materia IS ? AND tema IS ? ORDER BY id DESC LIMIT 1')
+  const anterior = porPrioridad ? null : db.prepare('SELECT orden FROM academia_intentos WHERE usuario_id = ? AND tipo = ? AND materia IS ? AND tema IS ? ORDER BY id DESC LIMIT 1')
     .get(usuarioId, tipo, materia, tema);
   if (anterior && orden.length > 1 && anterior.orden === JSON.stringify(orden)) orden = [...orden.slice(1), orden[0]];
   const { umbral } = ajustesAcademia(db);
@@ -297,10 +357,11 @@ export function verIntento(db, usuarioId, paquete, intentoId) {
   const fila = intentoDe(db, usuarioId, intentoId);
   const respuestas = new Map(db.prepare('SELECT pregunta, elegida FROM academia_respuestas WHERE intento_id = ?').all(fila.id).map(f => [f.pregunta, f.elegida]));
   const orden = JSON.parse(fila.orden);
+  const como = { intentoId: fila.id, modo: modoDeTipo(fila.tipo) };
   return {
-    id: fila.id, tipo: fila.tipo, materia: fila.materia, tema: fila.tema, total: fila.total, respondidas: fila.respondidas, aciertos: fila.aciertos,
+    id: fila.id, tipo: fila.tipo, modo: como.modo, materia: fila.materia, tema: fila.tema, total: fila.total, respondidas: fila.respondidas, aciertos: fila.aciertos,
     umbral: fila.umbral, terminado: fila.terminado_en != null,
-    preguntas: orden.map(id => ({ ...vistaPregunta(paquete, id), respuesta: respuestas.has(id) ? retroalimentacion(paquete, id, respuestas.get(id)) : null })),
+    preguntas: orden.map(id => ({ ...vistaPregunta(paquete, id, como), respuesta: respuestas.has(id) ? retroalimentacion(paquete, id, respuestas.get(id), como) : null })),
   };
 }
 
@@ -323,20 +384,25 @@ export function responder(db, usuarioId, paquete, intentoId, { pregunta, elegida
   return enTransaccion(db, () => {
     const fila = intentoDe(db, usuarioId, intentoId);
     if (typeof pregunta !== 'string' || !JSON.parse(fila.orden).includes(pregunta)) throw new ErrorHttp(400, 'pregunta_no_es_del_intento');
+    const como = { intentoId: fila.id, modo: modoDeTipo(fila.tipo) };
     const ya = db.prepare('SELECT elegida FROM academia_respuestas WHERE intento_id = ? AND pregunta = ?').get(fila.id, pregunta);
     // Dos toques seguidos: la primera respuesta es la que vale.
-    if (ya) return { respuesta: retroalimentacion(paquete, pregunta, ya.elegida), respondidas: fila.respondidas, aciertos: fila.aciertos, total: fila.total };
+    if (ya) return { respuesta: retroalimentacion(paquete, pregunta, ya.elegida, como), respondidas: fila.respondidas, aciertos: fila.aciertos, total: fila.total };
     if (fila.terminado_en) throw new ErrorHttp(409, 'intento_terminado');
     const q = paquete.preguntas.get(pregunta);
     if (!q) throw new ErrorHttp(409, 'pregunta_no_disponible');
-    if (typeof elegida !== 'string' || !q.original.opciones.some(o => o.letra === elegida)) throw new ErrorHttp(400, 'opcion_no_valida');
+    // En Modo reto llega la letra que se vio: se guarda la opción de verdad (la correcta original, R1 o R2).
+    const vistas = como.modo === MODO_RETO ? opcionesReto(q, fila.id, pregunta) : null;
+    if (como.modo === MODO_RETO && !vistas) throw new ErrorHttp(409, 'pregunta_no_disponible');
+    if (typeof elegida !== 'string' || !(vistas ? vistas.some(o => o.letra === elegida) : q.original.opciones.some(o => o.letra === elegida))) throw new ErrorHttp(400, 'opcion_no_valida');
+    if (vistas) elegida = claveDeLetra(vistas, elegida);
     const acierto = elegida === q.original.correcta;
     const lugar = paquete.deTema.get(pregunta);
     db.prepare(`INSERT INTO academia_respuestas (intento_id, usuario_id, pregunta, materia, tema, elegida, correcta, dia, creada_en)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(fila.id, usuarioId, pregunta, lugar?.materia ?? null, lugar?.tema ?? null, elegida, acierto ? 1 : 0, diaDe(ahoraMs), new Date(ahoraMs).toISOString());
     db.prepare('UPDATE academia_intentos SET respondidas = respondidas + 1, aciertos = aciertos + ? WHERE id = ?').run(acierto ? 1 : 0, fila.id);
     anotarRepaso(db, usuarioId, pregunta, lugar, acierto, ahoraMs);
-    return { respuesta: retroalimentacion(paquete, pregunta, elegida), respondidas: fila.respondidas + 1, aciertos: fila.aciertos + (acierto ? 1 : 0), total: fila.total };
+    return { respuesta: retroalimentacion(paquete, pregunta, elegida, como), respondidas: fila.respondidas + 1, aciertos: fila.aciertos + (acierto ? 1 : 0), total: fila.total };
   });
 }
 
@@ -346,20 +412,24 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
     const f = intentoDe(db, usuarioId, intentoId);
     if (f.terminado_en) return f;
     if (f.respondidas < f.total) throw new ErrorHttp(409, 'faltan_respuestas');
-    const aprobado = f.tipo === 'repaso' ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
+    const aprobado = ['repaso', 'reto', 'errores'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
   });
   const respuestas = db.prepare('SELECT pregunta, elegida, correcta FROM academia_respuestas WHERE intento_id = ? ORDER BY id').all(fila.id);
-  const falladas = respuestas.filter(r => r.correcta !== 1).map(r => ({ ...vistaPregunta(paquete, r.pregunta), respuesta: retroalimentacion(paquete, r.pregunta, r.elegida) }));
+  const como = { intentoId: fila.id, modo: modoDeTipo(fila.tipo) };
+  // 0.8.0: la revisión completa (cada pregunta con lo que eligió, la correcta y las explicaciones), en el orden del intento.
+  const elegidas = new Map(respuestas.map(r => [r.pregunta, r.elegida]));
+  const revision = JSON.parse(fila.orden).filter(id => elegidas.has(id)).map(id => ({ ...vistaPregunta(paquete, id, como), respuesta: retroalimentacion(paquete, id, elegidas.get(id), como) }));
+  const falladas = revision.filter(q => q.respuesta && !q.respuesta.acierto);
   let reexplicacion = [];
   if (fila.tipo === 'tema' && fila.aprobado !== 1) {
     const t = paquete.materias.find(m => m.id === fila.materia)?.temas.find(x => x.id === fila.tema);
     reexplicacion = vistaSecciones(paquete, t?.reexplicacion, t?.paquete);
   }
   return {
-    id: fila.id, tipo: fila.tipo, materia: fila.materia, tema: fila.tema, total: fila.total, aciertos: fila.aciertos, pct: pct(fila.aciertos, fila.total),
-    umbral: fila.umbral, aprobado: fila.aprobado == null ? null : fila.aprobado === 1, puntos: fila.aciertos * PUNTOS_POR_ACIERTO, falladas, reexplicacion,
+    id: fila.id, tipo: fila.tipo, modo: como.modo, materia: fila.materia, tema: fila.tema, total: fila.total, aciertos: fila.aciertos, pct: pct(fila.aciertos, fila.total),
+    umbral: fila.umbral, aprobado: fila.aprobado == null ? null : fila.aprobado === 1, puntos: fila.aciertos * PUNTOS_POR_ACIERTO, falladas, revision, reexplicacion,
   };
 }
 
@@ -389,6 +459,18 @@ export function progreso(db, usuarioId, paquete, ahoraMs = Date.now()) {
     nombre: c.nombre, umbral: c.umbral, puntos: c.puntos, racha: c.racha, repaso: c.repaso, paquete: c.paquete,
     materias: porMateria(db, usuarioId, paquete).map(m => ({ ...m, examen: c.materias.find(x => x.id === m.id)?.examen ?? null, temas: c.materias.find(x => x.id === m.id)?.temas.map(t => ({ id: t.id, titulo: t.titulo, estado: t.estado, mejor: t.mejor })) ?? [] })),
     debiles: debiles(db, usuarioId, paquete),
+    // 0.8.0: «Mis puntos débiles» (la memoria de errores: por pregunta, por idea equivocada y por tema).
+    puntosDebiles: resumenDebiles(puntosDebiles(db, usuarioId, paquete), paquete),
+  };
+}
+
+// Lo que se muestra de la memoria de errores (los primeros de cada lista, con la pregunta para mostrar).
+export function resumenDebiles(memoria, paquete, { limite = 10 } = {}) {
+  return {
+    total: memoria.respuestas, fallos: memoria.fallos,
+    preguntas: memoria.preguntas.slice(0, limite).map(x => ({ ...vistaPregunta(paquete, x.pregunta), veces: x.veces, fallos: x.fallos, ultima: x.ultima, superada: x.superada })),
+    ideas: memoria.ideas.slice(0, limite),
+    temas: memoria.temas.slice(0, limite),
   };
 }
 
@@ -433,5 +515,33 @@ export function detalleAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
   const intentos = db.prepare(`SELECT id, tipo, materia, tema, total, aciertos, aprobado, terminado_en FROM academia_intentos
     WHERE usuario_id = ? AND terminado_en IS NOT NULL ORDER BY id DESC LIMIT 20`).all(u.id)
     .map(f => ({ tipo: f.tipo, materia: f.materia, tema: f.tema, total: f.total, aciertos: f.aciertos, pct: pct(f.aciertos, f.total), aprobado: f.aprobado == null ? null : f.aprobado === 1, fecha: f.terminado_en }));
-  return { alumno: fila, materias: porMateria(db, u.id, paquete), falladas, intentos, ...puntosYRacha(db, u.id, ahoraMs) };
+  return { alumno: fila, materias: porMateria(db, u.id, paquete), falladas, intentos, ...puntosYRacha(db, u.id, ahoraMs), puntosDebiles: resumenDebiles(puntosDebiles(db, u.id, paquete), paquete) };
+}
+
+// ---------- 0.8.0: la clave completa (solo para el administrador) ----------
+// Cada materia → tema → pregunta: el enunciado y las opciones TAL CUAL, la correcta, la explicación original, la sencilla,
+// las ideas equivocadas de cada opción y las 2 opciones del Modo reto (con por qué son incorrectas).
+export function claveDeRespuestas(paquete) {
+  if (!paquete) return { paquete: null, materias: [] };
+  return {
+    paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra },
+    materias: paquete.materias.filter(m => m.temas.length).map(m => ({
+      id: m.id,
+      temas: m.temas.map(t => ({
+        id: t.id, titulo: t.titulo,
+        preguntas: t.preguntas.map(id => {
+          const q = paquete.preguntas.get(id);
+          const o = q.original;
+          return {
+            id, origen: q.origen, numero: o.numero ?? null, seccion: o.seccion ?? null, enunciado: o.enunciado, pagina: o.pagina ?? null,
+            opciones: o.opciones.map(op => ({ letra: op.letra, texto: op.texto })), correcta: o.correcta, explicacion: o.explicacion ?? null,
+            figura: o.figura != null ? figuraVista(paquete, id, o.figura) : null,
+            fuente: q.origen === 'poh' && q.fuente ? fuenteDe(paquete, q.fuente, paquete.dePaquete?.get(id)) : null,
+            sencilla: q.sencilla, errores: q.errores ?? {},
+            reto: tieneReto(q) ? q.reto.opciones.map(r => ({ texto: r.texto, porque: r.porque_es_incorrecta, trampa: r.trampa ?? null })) : [],
+          };
+        }),
+      })),
+    })),
+  };
 }
