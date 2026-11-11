@@ -44,11 +44,12 @@ test('los rótulos entran y salen a tiempo, y el ancho estimado crece con el tex
   assert.ok(NOMBRES_ICONOS.includes('reloj') && NOMBRES_ICONOS.includes('copa'));
 });
 
-test('el registro fh tiene las 13 escenas, no pisa los tipos de visuales.js y no toca el DOM al importar', () => {
+test('el registro fh tiene las 13 escenas, está dentro del registro de visuales.js sin pisar los tipos de antes y no toca el DOM al importar', () => {
   const tipos = Object.keys(VISUALES_FH);
   assert.equal(tipos.length, 13);
   assert.ok(tipos.every(t => t.startsWith('fh-') && typeof VISUALES_FH[t] === 'function'));
-  assert.ok(tipos.every(t => !(t in VISUALES)));
+  assert.ok(tipos.every(t => VISUALES[t] === VISUALES_FH[t]), 'visuales.js incluye las escenas fh tal cual');
+  for (const base of ['titulo', 'cartel', 'ala', 'motor', 'instrumentos', 'meteo', 'escenario']) assert.ok(!tipos.includes(base));
   assert.doesNotThrow(() => cargarEstilosFH(), 'sin document no hace nada');
 });
 
