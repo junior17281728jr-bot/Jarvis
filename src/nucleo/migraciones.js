@@ -527,4 +527,85 @@ CREATE INDEX IF NOT EXISTS canal_envios_aviso ON canal_envios(aviso_id, clase);
 CREATE INDEX IF NOT EXISTS canal_envios_clave ON canal_envios(clave, creado_en);
 `,
   },
+  {
+    id: 7,
+    nombre: 'academia',
+    // Academia (etapa 1, 0.7.0). Explicaciones FUERA del texto SQL (la huella no depende de ellas).
+    //  - academia_paquetes: cada paquete de contenido subido (los libros y el Test Guide NUNCA van al repositorio: viven
+    //    solo en la carpeta de datos del servidor, OPORTIA_DATOS/academia/paquetes/<id>/). Nunca se borra ni se pisa uno:
+    //    subir otro crea una versión nueva; el que está en uso se guarda en ajustes ('academia.paquete_activo').
+    //    estado: 'incompleto' (faltan figuras) | 'listo'. huella: sha256 del JSON tal cual se subió.
+    //  - academia_intentos: cada práctica de un tema, examen de materia o repaso, con el orden en que salieron las preguntas.
+    //  - academia_respuestas: cada respuesta (la pregunta va por su id del paquete, que no cambia entre versiones).
+    //    dia: la fecha en Santo Domingo (para la racha).
+    //  - academia_repaso: la fila de repaso de cada alumno (cajas de repaso espaciado).
+    //  - Sin CHECK, sin UNIQUE y sin ADD COLUMN: los valores se revisan en el código (src/academia/).
+    sql: `
+CREATE TABLE IF NOT EXISTS academia_paquetes (
+  id INTEGER PRIMARY KEY,
+  huella TEXT NOT NULL,
+  nombre TEXT NOT NULL DEFAULT '',
+  edicion TEXT,
+  carpeta TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'incompleto',
+  muestra INTEGER NOT NULL DEFAULT 0,
+  bytes INTEGER NOT NULL DEFAULT 0,
+  materias INTEGER NOT NULL DEFAULT 0,
+  temas INTEGER NOT NULL DEFAULT 0,
+  preguntas INTEGER NOT NULL DEFAULT 0,
+  figuras INTEGER NOT NULL DEFAULT 0,
+  subido_por INTEGER REFERENCES usuarios(id),
+  subido_en TEXT NOT NULL,
+  listo_en TEXT,
+  activado_en TEXT,
+  detalle TEXT
+);
+CREATE INDEX IF NOT EXISTS academia_paquetes_huella ON academia_paquetes(huella);
+CREATE TABLE IF NOT EXISTS academia_intentos (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  paquete_id INTEGER REFERENCES academia_paquetes(id),
+  tipo TEXT NOT NULL,
+  materia TEXT,
+  tema TEXT,
+  orden TEXT NOT NULL DEFAULT '[]',
+  total INTEGER NOT NULL DEFAULT 0,
+  respondidas INTEGER NOT NULL DEFAULT 0,
+  aciertos INTEGER NOT NULL DEFAULT 0,
+  umbral INTEGER,
+  aprobado INTEGER,
+  empezado_en TEXT NOT NULL,
+  terminado_en TEXT
+);
+CREATE INDEX IF NOT EXISTS academia_intentos_usuario ON academia_intentos(usuario_id, tipo, materia, tema);
+CREATE TABLE IF NOT EXISTS academia_respuestas (
+  id INTEGER PRIMARY KEY,
+  intento_id INTEGER NOT NULL REFERENCES academia_intentos(id),
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  pregunta TEXT NOT NULL,
+  materia TEXT,
+  tema TEXT,
+  elegida TEXT NOT NULL,
+  correcta INTEGER NOT NULL DEFAULT 0,
+  dia TEXT NOT NULL,
+  creada_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_respuestas_intento ON academia_respuestas(intento_id, pregunta);
+CREATE INDEX IF NOT EXISTS academia_respuestas_usuario ON academia_respuestas(usuario_id, pregunta);
+CREATE INDEX IF NOT EXISTS academia_respuestas_dia ON academia_respuestas(usuario_id, dia);
+CREATE TABLE IF NOT EXISTS academia_repaso (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  pregunta TEXT NOT NULL,
+  materia TEXT,
+  tema TEXT,
+  caja INTEGER NOT NULL DEFAULT 1,
+  vence_en TEXT NOT NULL,
+  fallos INTEGER NOT NULL DEFAULT 0,
+  aciertos INTEGER NOT NULL DEFAULT 0,
+  actualizado_en TEXT NOT NULL,
+  PRIMARY KEY (usuario_id, pregunta)
+);
+CREATE INDEX IF NOT EXISTS academia_repaso_vence ON academia_repaso(usuario_id, vence_en);
+`,
+  },
 ];

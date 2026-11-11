@@ -93,6 +93,7 @@ const MIGRACIONES_PUBLICADAS = {
   4: '46758487c7db33997048188be268fea4420332e1b08bcc431d82114607529860',
   5: '3c0ca4c956e2b5f453e160785c33587ba23e3b8c22302ba5ea53e42c198df720',
   6: '48eec04a1f2cd75ea034303c3790cb8cfa1b51bd638ec211b226eb284b71d8cf',
+  7: 'aaa760fd017924fa94476da7b6f9250ffed18273d692690317adee944d5cef38',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
@@ -102,6 +103,7 @@ const VERSION_DE_CADA_MIGRACION = {
   4: '0.3.0',
   5: '0.4.0',
   6: '0.5.0',
+  7: '0.7.0',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -611,4 +613,42 @@ test('el que manda avisos empieza después de abrir el puerto y se apaga antes d
   assert.ok(listen > 0 && server.indexOf('avisador?.iniciar()') > listen, 'después de listen');
   assert.ok(server.indexOf('await avisador?.parar()') < server.indexOf('db?.close()', server.indexOf('await avisador?.parar()')), 'antes de cerrar la base');
   assert.match(leer(de('canales', 'avisador.js')), /temporizador\.unref\?\.\(\);/, 'su reloj nunca deja vivo al proceso');
+});
+
+// ---------- Academia (etapa 1, 0.7.0): el repositorio es PÚBLICO ----------
+
+test('la migración 7 (academia) no tiene CHECK, ni UNIQUE, ni ADD COLUMN, y el trabajador sigue pidiendo la base 6', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const m = MIGRACIONES.find(x => x.id === 7);
+  assert.ok(m, 'falta la migración 7');
+  assert.equal((m.sql.match(/\bCHECK\b/gi) || []).length, 0);
+  assert.doesNotMatch(m.sql, /\bUNIQUE\b/i);
+  assert.doesNotMatch(m.sql, /ADD\s+COLUMN|WITHOUT\s+ROWID|VIRTUAL|GENERATED/i);
+  for (const tabla of m.sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)) assert.match(tabla[1], /^academia_/, `tabla ${tabla[1]}`);
+});
+
+// Ningún libro, pregunta del Test Guide ni imagen de un libro entra NUNCA al repositorio: el contenido se sube como
+// «paquete» a la carpeta de datos del servidor (OPORTIA_DATOS/academia/). Esta prueba falla si aparece algo así.
+const IMAGENES_PERMITIDAS = new Set(['public/icono-180.png', 'public/icono.svg']);
+test('el repositorio no tiene libros, paquetes de contenido, imágenes de libros ni archivos grandes', () => {
+  const todos = archivos(RAIZ).map(f => relative(RAIZ, f).split(sep).join('/'));
+  assert.ok(todos.length > 50);
+  for (const nombre of todos) {
+    const base = nombre.split('/').at(-1).toLowerCase();
+    assert.ok(!/\.(pdf|epub|djvu|docx?|pptx?|xlsx?|zip|7z|rar|tar|gz|tgz)$/.test(base), `${nombre}: un documento o archivo comprimido no va en el repositorio`);
+    assert.ok(!/^paquete.*\.json$/.test(base), `${nombre}: un paquete de contenido vive solo en el servidor`);
+    if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|heic|avif)$/.test(base)) assert.ok(IMAGENES_PERMITIDAS.has(nombre), `${nombre}: una imagen nueva (¿una figura de un libro?) no va en el repositorio`);
+    const bytes = statSync(join(RAIZ, nombre)).size;
+    const tope = 600_000; // el más grande hoy (test/motor-casos.js) pesa unos 390 KB
+    assert.ok(bytes <= tope, `${nombre} pesa ${bytes} bytes: demasiado grande para el repositorio`);
+  }
+});
+
+test('el paquete de muestra de las pruebas está marcado como «muestra» y nunca se sirve desde public/', async () => {
+  const { paqueteMuestra } = await import('./academia-muestra.js');
+  const p = paqueteMuestra();
+  assert.equal(p.muestra, true);
+  assert.match(p.nombre, /muestra/i);
+  for (const q of p.preguntas) assert.match(q.id, /^muestra-/);
+  for (const f of archivos(join(RAIZ, 'public'))) assert.ok(!/academia-muestra/.test(f), 'la muestra no va en public/');
 });

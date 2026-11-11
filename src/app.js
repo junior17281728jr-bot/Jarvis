@@ -15,6 +15,7 @@ import { registrarRutasIa } from './api/ia.js';
 import { registrarRutasClaves } from './api/claves.js';
 import { registrarRutasCopias } from './api/copias.js';
 import { registrarRutasCanales } from './api/canales.js';
+import { registrarRutasAcademia } from './api/academia.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,7 +81,10 @@ function detalleSeguro(detalle) {
 // las pantallas y que no llevan ningún secreto (ver enviarJson en src/nucleo/http.js). Una ruta nueva no se
 // comprime hasta que se agregue aquí.
 const RESPUESTAS_COMPRIMIBLES = new Set(['/api/catalogo', '/api/proyectos', '/api/proyectos/:id', '/api/proyectos/:id/versiones/:numero',
-  '/api/admin/sistema', '/api/admin/tareas', '/api/admin/usuarios']);
+  '/api/admin/sistema', '/api/admin/tareas', '/api/admin/usuarios',
+  // Academia (0.7.0): ninguna lleva secretos.
+  '/api/academia/camino', '/api/academia/temas/:materia/:tema', '/api/academia/intentos/:id', '/api/academia/progreso', '/api/admin/academia/alumnos',
+  '/api/admin/academia/alumnos/:id', '/api/admin/academia']);
 
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });
@@ -95,7 +99,8 @@ function texto(res, codigo, mensaje) {
 // archivo que protege las claves; en las pruebas, adónde va el proveedor falso). Sin ella, esas rutas responden 503.
 // opciones.ia: límites de las rutas de la IA y de las claves, y probadores de prueba (solo para pruebas).
 // opciones.copias: límites de las rutas de las copias y del Telegram (solo para pruebas).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, proyectos = {}, tareas = {}, ia = {}, copias = {} } = {}) {
+// opciones.academia: límites, azar y reloj de las rutas de la Academia (solo para pruebas).
+export function crearServidor({ db = null, config = null, limites, supervisor = null, proyectos = {}, tareas = {}, ia = {}, copias = {}, academia = {} } = {}) {
   const rutas = crearRuteador();
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
   registrarRutasProyectos(rutas, proyectos);
@@ -105,6 +110,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   // Fase 1, parte e: las copias cifradas y el Telegram del dueño.
   registrarRutasCopias(rutas, { config, supervisor, limites: copias.limites, medirDisco: copias.medirDisco ?? null });
   registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
+  // Academia (0.7.0): el contenido vive en la carpeta de datos del servidor (src/academia/paquetes.js).
+  registrarRutasAcademia(rutas, { config, ...academia });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
@@ -132,6 +139,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
 
     try {
       const r = await encontrada.manejador({ db, req, res, usuario, token, parametros: encontrada.parametros, cliente: clienteDe(req), https: esHttps(req) });
+      // Academia (0.7.0): una figura del paquete se manda tal cual (una imagen, no JSON).
+      if (typeof r.enviar === 'function') return r.enviar(res);
       enviarJson(res, r.codigo, r.datos, r.cabeceras, { comprimir: RESPUESTAS_COMPRIMIBLES.has(encontrada.patron) });
     } catch (error) {
       // detalle: solo datos simples que la pantalla necesita (por ejemplo, qué falta para encender la IA).

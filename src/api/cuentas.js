@@ -1,6 +1,7 @@
 // Rutas de cuentas: crear el primer administrador, entrar, salir, cambiar la clave y administrar usuarios.
 // Las respuestas de error llevan una CLAVE (por ejemplo 'credenciales'); las pantallas la traducen.
 // Los textos que llegan se leen con textoDe: un valor que no es texto se responde con 400, nunca con 500.
+import { ajustesAcademia } from '../academia/progreso.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { Limitador } from '../nucleo/limites.js';
@@ -122,6 +123,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
         base: { estado: 'ok', version: db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v ?? 0 },
         necesitaAdmin,
         puedeCrearAdmin: necesitaAdmin && vieneDeTailscale(req).si,
+        // Academia (0.7.0): el nombre de la app (lo cambia el administrador), también para la pantalla de entrar.
+        nombreApp: ajustesAcademia(db).nombre,
       },
     };
   }, { publica: true });

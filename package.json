@@ -1,7 +1,7 @@
 {
   "name": "oportia",
-  "version": "0.5.1",
-  "description": "OPORTIA (en construcción): plataforma de inteligencia de oportunidades. JARVIS fue retirado: su código está en la rama jarvis-archivo.",
+  "version": "0.7.0",
+  "description": "Academia ENALAS (sobre OPORTIA): profesor de aviación tipo Duolingo para piloto privado. El contenido (libros, Test Guide) vive solo en el servidor, nunca en este repositorio.",
   "type": "module",
   "main": "src/server.js",
   "engines": {

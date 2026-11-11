@@ -55,7 +55,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   assert.equal(Buffer.byteLength(m.sql), 3760);
   const config = configDePrueba();
   const db = abrirBase(config);
-  assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 6);
+  assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 7); // 0.7.0: la 7 (academia) también
   for (const t of ['copias_llaves', 'canales', 'copias', 'copia_partes', 'canal_envios']) {
     assert.ok(db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?").get(t), t);
   }
@@ -450,7 +450,7 @@ test('1.11 el resumen sellado solo se abre con la clave, y sus cuentas son las d
   assert.equal(resumen.copia, c.copia);
   assert.deepEqual(resumen.porTabla, c.porTabla);
   assert.equal(resumen.filas, c.filas);
-  assert.equal(resumen.migracion, 6);
+  assert.equal(resumen.migracion, 7);
   await assert.rejects(abrirSellado(c.sellado, derivar(crearClave().semilla).privada), codigoDe('clave_no_es_de_esta_copia'));
   const s = sellar('x'.repeat(TROZO), c.llaves.publica, { copia: c.copia, creada: c.creada });
   assert.equal((await abrirSellado(s, c.llaves.privada)).texto.length, TROZO, 'un resumen de 64 KiB justos');

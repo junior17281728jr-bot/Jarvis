@@ -8,6 +8,8 @@ export const TEMAS_AYUDA = Object.freeze([
   'trabajo_automatico', 'modo_seguro', 'aviso', 'servidor',
   'copia', 'copia_comprobada', 'clave_recuperacion', 'telegram', 'token',
   'ia', 'tope', 'clave_api', 'plan', 'clave_temporal', 'tailscale',
+  // Academia (0.7.0).
+  'paquete', 'racha', 'repaso',
 ]);
 // Las que traen ejemplo.
 export const TEMAS_CON_EJEMPLO = Object.freeze(['proyecto', 'duda', 'version', 'autonomia', 'modo_seguro', 'copia_comprobada', 'clave_recuperacion', 'token', 'tope', 'clave_temporal']);
@@ -48,6 +50,21 @@ export function pasosAdmin({ sistema = null, ia = null, proyectos = [] } = {}) {
   // La IA es opcional: se muestra, pero no cuenta para «2 de 5».
   if (ia) pasos.push({ id: 'ia', icono: 'chispa', tema: 'ia', hecho: ia.encendida === true, destino: '#ia', opcional: true });
   return pasos;
+}
+
+// Academia (0.7.0): los pasos del administrador sin los de los proyectos (escondidos), y con los de la academia antes
+// de la IA (opcional): poner en uso un paquete de contenido y crear la cuenta de un alumno.
+// contenido: GET /api/admin/academia; usuarios: la lista de GET /api/admin/usuarios.
+const DE_PROYECTOS = new Set(['proyecto', 'revisar', 'aprobar']);
+export function pasosAcademia(pasos, { contenido = null, usuarios = [] } = {}) {
+  const propios = lista(pasos).filter(p => !DE_PROYECTOS.has(p.id));
+  const hayPaquete = lista(contenido?.paquetes).some(p => p && p.activo);
+  const deAcademia = [
+    { id: 'paquete', icono: 'subir', tema: 'paquete', hecho: hayPaquete, destino: '#contenido' },
+    { id: 'alumno', icono: 'personas', tema: 'clave_temporal', hecho: lista(usuarios).length > 1, destino: '#admin/usuarios' },
+  ];
+  const ia = propios.findIndex(p => p.id === 'ia');
+  return ia < 0 ? [...propios, ...deAcademia] : [...propios.slice(0, ia), ...deAcademia, ...propios.slice(ia)];
 }
 
 // Para las demás cuentas. Quien solo puede ver (lector) no tiene pasos: no puede crear ni aprobar.

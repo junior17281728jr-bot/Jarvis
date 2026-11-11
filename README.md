@@ -1,6 +1,10 @@
-# OPORTIA (en construcción)
+# Academia ENALAS (sobre OPORTIA)
 
-Plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue retirado de este servidor el 3 de noviembre de 2026; su código completo está en la rama `jarvis-archivo`.
+Desde la versión 0.7.0 la app abre como **Academia ENALAS**: un profesor de aviación tipo Duolingo para el examen de piloto
+privado (uso privado del dueño y sus amigos). Todo lo de OPORTIA sigue funcionando por debajo (cuentas, administrador,
+servidor, copias, IA con topes, Telegram, ayuda); los proyectos quedan escondidos. Ver «Academia (etapa 1)» más abajo.
+
+Antes: plataforma de inteligencia de oportunidades comerciales y laborales. JARVIS fue retirado de este servidor el 3 de noviembre de 2026; su código completo está en la rama `jarvis-archivo`.
 
 ## Cómo se actualiza el servidor (léelo antes de cambiar algo)
 - Un servidor de DigitalOcean revisa la rama `main` cada 30 minutos (`/usr/local/bin/jarvis-actualizar`, ver `deploy/cloud-init.sh`).
@@ -403,6 +407,79 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - La pantalla para recuperar y el instalador de una base recuperada: parte 1f (hoy, la consola).
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
+
+## Academia (etapa 1, versión 0.7.0, cambio de base 7)
+
+**Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
+un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
+vive solo en el servidor: `OPORTIA_DATOS/academia/paquetes/<versión>-<huella>/` (`paquete.json` y `figuras/`), o en
+`OPORTIA_ACADEMIA` si se define. `test/reglas.test.js` falla si el repositorio tiene un `*.pdf` (u otro documento), un
+`paquete*.json`, una imagen nueva o un archivo grande. Las pruebas usan solo `test/academia-muestra.js`: una muestra ORIGINAL,
+escrita con palabras propias (2 temas, 10 preguntas, una figura dibujada por código), marcada `muestra: true`.
+
+Para probar la muestra a mano: `node --input-type=module -e "import('./test/academia-muestra.js').then(m => m.escribirMuestra('/una/carpeta'))"`
+deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Contenido → Subir, y después «Poner en uso».
+
+### Qué hay
+- **Camino**: las 11 materias de ENALAS en su orden fijo; cada tema es un círculo que se abre al aprobar el anterior (las
+  materias sin contenido se saltan y dicen «Pronto»). Racha (días seguidos, hora de Santo Domingo) y puntos (10 por acierto).
+- **Tema**: la lección por partes (cada parte dice libro, capítulo, sección y página) → las preguntas del tema. Cada pregunta
+  se ve TAL CUAL (número, sección, enunciado, opciones en su orden, figura). Al responder: correcta/incorrecta, la
+  **explicación original** (con su etiqueta) y debajo, aparte, la **explicación sencilla**; si eligió mal, la idea equivocada
+  de esa opción; y las palabras de inglés aeronáutico. La nota la pone el servidor: la respuesta nunca viaja antes.
+- **Aprobar** necesita el 90 % (Contenido → Ajustes, de 50 a 100). Si no llega: la lista de lo fallado con su idea equivocada,
+  la explicación «más fácil» del tema y «Otra vez»: las MISMAS preguntas en otro orden (nunca el mismo orden seguido).
+- **Repaso**: lo fallado entra en una fila de repaso espaciado (vuelve en 1, 2, 4, 8 y 16 días si se acierta; fallar la
+  devuelve a hoy). **Examen de materia** (como en ENALAS): todas las preguntas de la materia, mezcladas; se abre al aprobar
+  todos sus temas. **Progreso**: % por materia (preguntas cuya última respuesta fue correcta), y lo que más cuesta.
+- **Administrador → Alumnos**: quién está en línea (actividad en los últimos 10 minutos), su última actividad, aciertos y
+  errores por materia y las preguntas que falla. **Administrador → Contenido**: subir, versiones, poner una en uso, el nombre
+  de la app (por defecto «Academia ENALAS») y el %.
+- Un alumno nunca lee lo de otro: todas sus rutas usan la sesión (nunca un id que mande la pantalla); el intento de otro
+  responde 404 y lo de Administrador 403 (`test/academia.test.js`).
+- Escondido para después (código guardado, sin enlaces ni botones): los proyectos de OPORTIA (`PROYECTOS_VISIBLES` en
+  `public/app.js`). Todavía no hay: clases en video/voz, animaciones 3D, simulaciones, salas en vivo, examen final de 200,
+  instructor con IA. Las copias cifradas guardan la base (el progreso); los paquetes no van en la copia: se vuelven a subir.
+
+### Formato del paquete, versión 1
+Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
+errores salen con su ruta exacta (`materias[0].temas[1].preguntas[5]: pregunta_desconocida`). Los textos se guardan y se
+muestran tal cual (sin recortar ni normalizar). Subir el mismo JSON otra vez sigue la misma versión (para completar figuras);
+otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; una sola está en uso.
+```
+{
+  "formato": "academia-enalas", "version": 1,
+  "nombre": "…", "edicion": "…" (opcional), "muestra": false (opcional),
+  "libros": [ { "id": "jeppesen-es", "titulo": "…", "idioma": "es" | "en" } ],
+  "materias": [                       // de las 11, en este orden (pueden faltar): factores_humanos, sistemas, aerodinamica,
+    { "id": "factores_humanos",       // ambiente_vuelo, rad, poh, comunicacion, meteorologia, rendimiento, navegacion, sms
+      "temas": [ { "id": "hipoxia", "titulo": "…",
+        "secciones": [ { "titulo": "…", "texto": "…", "nota": "diferencias entre libros (opcional)",
+                         "fuentes": [ { "libro": "jeppesen-es", "capitulo": "…", "seccion": "…", "pagina": "…" } ] } ],
+        "reexplicacion": [ …secciones más sencillas, para cuando no aprueba (opcional)… ],
+        "preguntas": [ "tg-0001", … ] } ] } ],
+  "preguntas": [
+    { "id": "tg-0001", "origen": "test_guide" | "poh",
+      "original": {                   // TAL CUAL del Test Guide (o del texto del POH)
+        "numero": "…", "seccion": "…", "enunciado": "…",
+        "opciones": [ { "letra": "A", "texto": "…" }, … ], "correcta": "B",
+        "explicacion": "…", "figura": "12" | null, "pagina": "…" },
+      "fuente": { "libro": "poh", "capitulo": "…", "seccion": "…", "pagina": "…" },   // obligatoria si origen = poh
+      "sencilla": "Explicación sencilla (aparte, nunca mezclada con la original)",
+      "errores": { "A": "idea equivocada de quien elige A", "C": "…" },              // solo opciones incorrectas
+      "ingles": [ { "palabra": "…", "pronunciacion": "…", "significado": "…", "ejemplo": "…" } ] } ],
+  "figuras": [ { "numero": "12", "archivo": "figura-12.png", "titulo": "…" (opcional), "sha256": "…" (opcional) } ]
+}
+```
+Cada pregunta está en un solo tema; su `id` no cambia entre versiones (el progreso se guarda por ese id). Las preguntas
+creadas del POH llevan `origen: "poh"` y nunca se muestran como del Test Guide. Rutas: `POST /api/admin/academia/paquetes`
+(el JSON), `POST /api/admin/academia/paquetes/:id/figuras/:archivo` (una figura, el cuerpo es la imagen), `POST
+/api/admin/academia/paquetes/:id/activar`.
+
+### Vuelta atrás
+El cambio de base 7 solo agrega 4 tablas `academia_*` (sin CHECK, sin UNIQUE). `test/ensayo-0.5.1.mjs` (a mano, necesita la
+historia de git) comprueba que la 0.5.1 abre una base 7 sin tocarla, que su trabajador, su servidor y sus copias funcionan, que
+restaura una copia de la 0.7.0 igual, y que al volver la 0.7.0 todo sigue. (`test/ensayo-0.4.1.mjs` ya no aplica: espera la base 6.)
 
 ## Estado
 - Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.

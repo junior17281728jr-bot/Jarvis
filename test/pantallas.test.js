@@ -130,6 +130,12 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   // Fase 1, parte e: las copias y el Telegram.
   const { MOTIVOS_COPIA, NO_CLAVE } = await import('../public/copias-vista.js');
   const { ESTADOS_COPIA } = await import('../src/copias/formato.js');
+  // Academia (0.7.0).
+  const { MATERIAS } = await import('../src/academia/formato.js');
+  const { ESTADOS_PAQUETE } = await import('../src/academia/paquetes.js');
+  const formatoAcademia = readFileSync(join(RAIZ, 'src/academia/formato.js'), 'utf8');
+  const MOTIVOS_PAQUETE = [...new Set([...formatoAcademia.matchAll(/(?:mal\([^,]+, |motivo: )'([a-z_]+)'/g)].map(m => m[1])), 'json_no_valido'];
+  assert.ok(MOTIVOS_PAQUETE.length > 20, `motivos del paquete: ${MOTIVOS_PAQUETE.length}`);
   const cat = catalogo();
   const claves = [
     ...MOTIVOS.map(x => `ia.motivo.${x}`),
@@ -193,6 +199,10 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     'copias.aqui.anterior', 'aviso.copias_locales_pausadas.escribir', 'telegram.aviso.copias_locales_pausadas.escribir', 'ia.motivo.bot_cambiado', 'ia.motivo.sin_probar',
     ...[1, 2, 3, 4, 5, 6].map(n => `copias.restaurar.paso${n}`),
     ...[1, 2, 3, 4].map(n => `telegram.como${n}`),
+    // Academia (0.7.0): las 11 materias, cada motivo de un paquete mal armado y cada estado de una versión.
+    ...MATERIAS.map(x => `acad.materia.${x}`),
+    ...MOTIVOS_PAQUETE.map(x => `acad.motivo.${x}`),
+    ...ESTADOS_PAQUETE.map(x => `acad.paquete.estado.${x}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -204,7 +214,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // Fase 1, parte e.
     'copias.motivo.', 'copias.estado_fila.', 'copias.restaurar.paso', 'telegram.como', 'telegram.problema.',
     // Claridad (0.5.1): las explicaciones de la Ayuda y los pasos de la guía (sus frases se revisan más abajo, en «claridad: …»).
-    'ayuda.', 'guia.paso.']));
+    'ayuda.', 'guia.paso.',
+    // Academia (0.7.0).
+    'acad.materia.', 'acad.motivo.', 'acad.paquete.estado.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });

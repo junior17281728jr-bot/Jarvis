@@ -86,7 +86,7 @@ test('1.15 la vuelta completa por Telegram: subir, bajar y comprobar cada parte,
     assert.equal(r.autentica, 'indice+flujo');
     assert.equal(r.copia, c.resultado.copia);
     assert.equal(r.partes, c.partes.length);
-    assert.equal(r.migracion, 6);
+    assert.equal(r.migracion, 7);
     assert.equal(r.version, '0.5.0');
     assert.equal(r.servidor, 'servidor-de-prueba');
     assert.deepEqual(r.claves.deIa, ['ia_anthropic']);
@@ -107,7 +107,7 @@ test('1.15 la vuelta completa por Telegram: subir, bajar y comprobar cada parte,
     for (const n of bajadas) assert.equal(readFileSync(join(carpeta, 'partes', n)).indexOf('junior'), -1);
     // La base restaurada abre como una base de OPORTIA más (sin cambios que aplicar) y el trabajador se conecta.
     const abierta = abrirBase({ archivoBase: destino, carpetaCopias: join(carpeta, 'copias') });
-    assert.equal(abierta.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 6);
+    assert.equal(abierta.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 7);
     abierta.close();
     assert.ok(!existsSync(join(carpeta, 'copias')), 'nada que copiar antes de cambios: no había cambios');
     conectarBase({ archivoBase: destino }, { versionMinima: 6 }).close();

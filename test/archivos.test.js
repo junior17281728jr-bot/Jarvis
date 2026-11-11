@@ -434,7 +434,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   const adelanta = (seccion, admin) => {
     const lista = pedidosAlAbrir(seccion, admin);
     assert.equal(new Set(lista).size, lista.length, `${seccion}: un pedido repetido`);
-    return new Set(lista.map(ruta => ruta.replace(/\/7$/, '/:n')));
+    return new Set(lista.map(ruta => ruta.replace(/\/7(?=\/|$)/g, '/:n')));
   };
   // Lo que una pantalla pide solo después de otra respuesta (o al tocar algo) no se puede adelantar.
   // Administrador pide /api/admin/claves solo si /api/admin/ia dice que quien mira es el dueño (parte 1d).
@@ -446,15 +446,20 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
     ['proyecto/7/entendi', 'pantallaProyecto'], ['proyecto/7/versiones', 'pantallaProyecto'], ['proyecto/7/historial', 'pantallaProyecto'],
     // Claridad (0.5.1): la Ayuda no pide nada (sus textos llegan con el idioma).
-    ['ayuda', 'pantallaAyuda']];
+    ['ayuda', 'pantallaAyuda'],
+    // Academia (0.7.0): el progreso, un tema, practicar, el examen de una materia; y lo del administrador.
+    ['progreso', 'pantallaProgreso'], ['tema/7/7', 'pantallaTema'], ['practica/7', 'pantallaPractica'], ['examen/7', 'pantallaExamen'],
+    ['alumnos', 'pantallaAlumnos'], ['alumno/7', 'pantallaAlumno'], ['contenido', 'pantallaContenido']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
     assert.ok(PANTALLAS.some(([s]) => s === seccion), `dibujar conoce la pantalla «${seccion}»: agrégala a pedidosAlAbrir (public/app.js) y a esta prueba`);
   }
+  // Academia (0.7.0): los proyectos están escondidos: sus direcciones muestran el camino (Inicio) y adelantan lo de Inicio.
+  const ESCONDIDAS = /^(proyectos|nuevo|proyecto\/)/;
   for (const [seccion, nombre] of PANTALLAS) {
     assert.match(dibujar, new RegExp(`return ${nombre}\\(`), `dibujar no lleva a ${nombre}`);
-    const pide = new Set([...pidePantalla(nombre)].filter(ruta => !NO_SE_ADELANTA[seccion]?.has(ruta)));
+    const pide = new Set([...pidePantalla(ESCONDIDAS.test(seccion) ? 'pantallaInicio' : nombre)].filter(ruta => !NO_SE_ADELANTA[seccion]?.has(ruta)));
     // Para el administrador: exactamente lo que pide la pantalla.
     assert.deepEqual([...adelanta(seccion, true)].sort(), [...pide].sort(), `${seccion} (administrador): lo adelantado no es lo que pide ${nombre}. Si la pantalla pide algo nuevo al empezar, agrégalo a pedidosAlAbrir en public/app.js`);
     // Para los demás: nada de Administrador, y nada que la pantalla no use (Administrador lo ven como Inicio).
@@ -466,10 +471,15 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // Fase 1, parte e: Copias pide solo lo suyo (y nada a quien no es administrador).
   assert.deepEqual([...pedidosAlAbrir('copias', true)], ['/api/admin/copias']);
   assert.deepEqual([...pedidosAlAbrir('copias', false)], []);
-  // Claridad (0.5.1): la Ayuda no adelanta nada; Administrador adelanta también los proyectos (para «Primeros pasos»).
+  // Claridad (0.5.1): la Ayuda no adelanta nada. Academia (0.7.0): Administrador adelanta el contenido (para «Primeros
+  // pasos»), Inicio es el camino, y los proyectos (escondidos) muestran el camino.
   assert.deepEqual([...pedidosAlAbrir('ayuda', true)], []);
   assert.deepEqual([...pedidosAlAbrir('ayuda', false)], []);
-  assert.ok(pedidosAlAbrir('admin', true).includes('/api/proyectos'));
+  assert.ok(pedidosAlAbrir('admin', true).includes('/api/admin/academia'));
+  assert.deepEqual([...pedidosAlAbrir('inicio', false)], ['/api/academia/camino']);
+  for (const escondida of ['proyectos', 'nuevo', 'proyecto/3']) assert.deepEqual(pedidosAlAbrir(escondida, true), pedidosAlAbrir('inicio', true), escondida);
+  assert.deepEqual([...pedidosAlAbrir('alumnos', false)], []);
+  assert.deepEqual([...pedidosAlAbrir('contenido', false)], []);
   // Sin dirección o con una que no existe se ve Inicio.
   assert.deepEqual(pedidosAlAbrir('cualquier-cosa', true), pedidosAlAbrir('inicio', true));
   assert.deepEqual(pedidosAlAbrir('proyecto/abc', false), pedidosAlAbrir('inicio', false));

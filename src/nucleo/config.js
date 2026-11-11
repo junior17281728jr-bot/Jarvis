@@ -12,6 +12,8 @@ export function leerConfig(env = process.env) {
     archivoBase: resolve(env.OPORTIA_DB || join(carpetaDatos, 'oportia.db')),
     // Carpeta propia para las copias: nunca se escribe en las carpetas de JARVIS.
     carpetaCopias: resolve(env.OPORTIA_COPIAS || join(carpetaDatos, 'oportia-copias')),
+    // Academia (0.7.0): los paquetes de contenido (libros, Test Guide, figuras). Solo en el servidor, nunca en el repositorio.
+    carpetaAcademia: resolve(env.OPORTIA_ACADEMIA || join(carpetaDatos, 'academia')),
     modoPrueba: env.OPORTIA_TEST === '1' || process.env.OPORTIA_TEST === '1',
   };
   // Direcciones de los proveedores de IA. En el servidor real queda VACÍO: cada adaptador usa su dirección oficial
