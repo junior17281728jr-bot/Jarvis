@@ -18,3 +18,10 @@ Junior cambia el rumbo: OPORTIA pasa a ser un profesor de aviación tipo Duoling
 - NUNCA subir libros, preguntas ni imágenes de los libros a GitHub (repo público): viven solo en el servidor privado.
 - No prometer video real: animaciones/3D dentro de la app sincronizadas con voz.
 - ElevenLabs y la API de Claude son de pago: avisar antes.
+
+## Visión de Junior (11 nov 2026): academia de aviación con IA
+- Un instructor personal por estudiante que OBSERVA cómo piensa, detecta POR QUÉ se equivoca, descubre qué no entiende y elige la mejor forma de enseñarlo (texto → animación 3D → simulación → ejemplo práctico, según lo que necesite).
+- «Cerebro educativo» de cada estudiante que evoluciona con él (modelo del alumno: dominio por concepto, errores típicos/conceptos erróneos, qué formato le sirve, memoria y repaso).
+- Aprender juntos: competir, resolver situaciones de vuelo en grupo, comparar conocimientos; el administrador observa a todos.
+- Meta: no solo aprobar el examen, sino comprender, recordar y decidir como piloto.
+Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la idea equivocada que la explica (preparado al procesar los libros) → diagnóstico sin IA en vivo; con la API de Claude (opcional, con tope): preguntas de «¿por qué elegiste esa?», diálogo socrático y elección de formato. Simulaciones de decisión por materia; salas: carrera, «resolver juntos», duelos.
