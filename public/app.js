@@ -1492,7 +1492,8 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'claves', href: '#claves', texto: t('admin.pestana.claves'), nombreIcono: 'llave' },
     ], actual, t('admin.pestanas')),
     LINEA_ADMIN[actual] ? entrada(LINEA_ADMIN[actual]()) : null,
-    PALABRAS_ADMIN[actual] ? palabras(PALABRAS_ADMIN[actual]) : null,
+    // Academia (0.7.0): «plan» es de los proyectos (escondidos).
+    PALABRAS_ADMIN[actual] ? palabras(PALABRAS_ADMIN[actual].filter(x => PROYECTOS_VISIBLES || !TEMAS_DE_PROYECTOS.includes(x))) : null,
     seccionClaveTemporal(),
   ];
 }
@@ -5098,7 +5099,7 @@ function recordarAdmin(usuario) {
 // (en el iPhone, la app de la pantalla de inicio no tiene botón de recargar).
 function pantallaNoArranco(detalle) {
   mostrar(el('section', { class: 'tarjeta centrada' },
-    el('p', { class: 'mensaje error', texto: detalle || 'No se pudo cargar OPORTIA. / OPORTIA could not load.' }),
+    el('p', { class: 'mensaje error', texto: detalle || 'No se pudo cargar la academia. / The academy could not load.' }),
     el('button', { type: 'button', texto: 'Reintentar / Retry', onclick: () => location.reload() })));
 }
 

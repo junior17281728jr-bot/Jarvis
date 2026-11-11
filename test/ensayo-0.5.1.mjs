@@ -18,7 +18,8 @@ import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { carpetaTemporal, conServidor } from './ayuda.js';
-import { baseCompleta, hacerCopia, CLAVE_DE_PRUEBA, contenido, llavesDePrueba } from './copias-base.js';
+import { baseCompleta, hacerCopia, CLAVE_DE_PRUEBA, contenido, llavesDePrueba, llenarTodas } from './copias-base.js';
+import { configDePrueba } from './ayuda.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,6 +49,31 @@ const de051 = ruta => import(pathToFileURL(join(vieja, ruta)).href);
 assert.equal(JSON.parse(readFileSync(join(vieja, 'package.json'), 'utf8')).version, '0.5.1');
 console.log(`Ensayo de vuelta atrás: 0.7.0 → 0.5.1 (${VERSION_ANTERIOR}) → 0.7.0`);
 
+// ---------- 0. Lo que pasa hoy en el servidor: una base 6 de la 0.5.1, con datos, se abre con la 0.7.0 ----------
+{
+  const { abrirBase: abrir070 } = await import('../src/nucleo/db.js');
+  const db051 = await de051('src/nucleo/db.js');
+  const usuarios051 = await de051('src/cuentas/usuarios.js');
+  const c = configDePrueba();
+  const vieja6 = db051.abrirBase(c);
+  usuarios051.crearPrimerAdmin(vieja6, { nombre: 'junior', claveHash: 'x' });
+  llenarTodas(vieja6, { filasPorTabla: 2 });
+  const antes6 = contenido(vieja6);
+  assert.equal(vieja6.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 6);
+  vieja6.close();
+  const nueva = abrir070(c);
+  try {
+    assert.equal(nueva.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 7);
+    const copias = readdirSync(c.carpetaCopias).filter(n => /^oportia-antes-m7-/.test(n));
+    assert.equal(copias.length, 1, 'copia completa antes del cambio 7');
+    const despues = contenido(nueva);
+    for (const [clave, valor] of Object.entries(antes6)) if (clave !== 'oportia_migraciones') assert.deepEqual(despues[clave], valor, clave);
+    for (const t of ['academia_paquetes', 'academia_intentos', 'academia_respuestas', 'academia_repaso']) assert.ok(`esquema:${t}` in despues, t);
+    assert.equal(nueva.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');
+  } finally { nueva.close(); }
+  anotar('0.5.1 → 0.7.0: una base 6 con filas en todas sus tablas pasa a la 7 con su copia «antes-m7», todo lo de antes igual y las 4 tablas nuevas');
+}
+
 // ---------- 1. Una base 7 con lo de la academia ----------
 const { abrirBase } = await import('../src/nucleo/db.js');
 const { crearServidor } = await import('../src/app.js');
@@ -65,7 +91,7 @@ await conServidor(crearServidor({ db: b.db, config }), async base => {
   assert.equal(s.codigo, 201, JSON.stringify(s.datos));
   assert.equal((await pedir(base, 'POST', `/api/admin/academia/paquetes/${s.datos.paquete.id}/figuras/figura-m1.png`, { galleta: admin, cabeceras: { 'Content-Type': 'image/png' }, cuerpo: figuraMuestraPng() })).codigo, 201);
   assert.equal((await pedir(base, 'POST', `/api/admin/academia/paquetes/${s.datos.paquete.id}/activar`, { galleta: admin, datos: {} })).codigo, 200);
-  const i = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'hipoxia' } })).datos;
+  const i = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' } })).datos;
   for (const q of i.preguntas.slice(0, 3)) assert.equal((await pedir(base, 'POST', `/api/academia/intentos/${i.id}/responder`, { galleta: ana, datos: { pregunta: q.id, elegida: 'A' } })).codigo, 200);
 });
 for (const t of nuevas) assert.ok(b.db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n > 0, t);

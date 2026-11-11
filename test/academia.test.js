@@ -217,17 +217,17 @@ test('camino y tema: lección con sus fuentes, preguntas tal cual sin la respues
     assert.equal(fh.examen.disponible, false);
     assert.ok(c.datos.materias.slice(1).every(m => m.estado === 'vacia'));
     // El segundo tema está cerrado: ni su lección ni sus preguntas.
-    assert.equal((await pedir(base, 'GET', '/api/academia/temas/factores_humanos/ilusiones', { galleta: ana })).codigo, 403);
-    assert.equal((await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'ilusiones' } })).codigo, 403);
+    assert.equal((await pedir(base, 'GET', '/api/academia/temas/factores_humanos/muestra-ilusiones', { galleta: ana })).codigo, 403);
+    assert.equal((await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-ilusiones' } })).codigo, 403);
     assert.equal((await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'examen', materia: 'factores_humanos' } })).codigo, 403);
     // La lección: secciones con libro, capítulo, sección y página.
-    const l = await pedir(base, 'GET', '/api/academia/temas/factores_humanos/hipoxia', { galleta: ana });
+    const l = await pedir(base, 'GET', '/api/academia/temas/factores_humanos/muestra-hipoxia', { galleta: ana });
     assert.equal(l.codigo, 200);
     assert.equal(l.datos.secciones.length, 3);
     assert.deepEqual(l.datos.secciones[0].fuentes[0], { libro: 'Libro de muestra (inventado para las pruebas)', capitulo: 'Capítulo de muestra', seccion: 'Muestra', pagina: '1' });
     assert.equal(l.datos.secciones[0].texto, paqueteMuestra().materias[0].temas[0].secciones[0].texto, 'el texto llega tal cual (con su salto de línea)');
     // Practicar: las 5 preguntas del tema, tal cual, sin la respuesta.
-    const i1 = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'hipoxia' } })).datos;
+    const i1 = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' } })).datos;
     assert.equal(i1.total, 5);
     const crudo = JSON.stringify(i1);
     assert.doesNotMatch(crudo, /"correcta"|Explicación de la muestra|sencilla|"errores"/, 'la respuesta no viaja antes de responder');
@@ -273,7 +273,7 @@ test('camino y tema: lección con sus fuentes, preguntas tal cual sin la respues
     assert.deepEqual(c2.datos.materias[0].temas.map(t => t.estado), ['abierto', 'bloqueado']);
     assert.equal(c2.datos.materias[0].temas[0].mejor, 80);
     // Otra vez: las MISMAS preguntas, en otro orden.
-    const i2 = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'hipoxia' } })).datos;
+    const i2 = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' } })).datos;
     assert.deepEqual(i2.preguntas.map(x => x.id).sort(), i1.preguntas.map(x => x.id).sort());
     assert.notDeepEqual(i2.preguntas.map(x => x.id), i1.preguntas.map(x => x.id));
     const fin2 = (await responderTodo(base, ana, i2, { bien: 5 })).datos;
@@ -295,7 +295,7 @@ test('repaso espaciado, examen de materia (todas sus preguntas, mezcladas) y pro
     await activarMuestra(base, admin);
     const nuevo = datos => pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos });
     // Tema 1 con 2 fallos (60 %), luego aprobado; tema 2 aprobado.
-    const a = (await nuevo({ tipo: 'tema', materia: 'factores_humanos', tema: 'hipoxia' })).datos;
+    const a = (await nuevo({ tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' })).datos;
     assert.equal((await responderTodo(base, ana, a, { bien: 3 })).datos.aprobado, false);
     const camino1 = (await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).datos;
     assert.equal(camino1.repaso, 2);
@@ -308,7 +308,7 @@ test('repaso espaciado, examen de materia (todas sus preguntas, mezcladas) y pro
     // Pasados 2 días vuelven a tocar (caja 2 = 1 día).
     ahora += 2 * 24 * 3600 * 1000;
     assert.equal((await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).datos.repaso, 2);
-    for (const tema of ['hipoxia', 'ilusiones']) {
+    for (const tema of ['muestra-hipoxia', 'muestra-ilusiones']) {
       const i = (await nuevo({ tipo: 'tema', materia: 'factores_humanos', tema })).datos;
       assert.equal((await responderTodo(base, ana, i, { bien: 5 })).datos.aprobado, true, tema);
     }
@@ -352,7 +352,7 @@ test('racha: días seguidos en Santo Domingo; un día sin estudiar la corta', ()
 test('ningún alumno lee lo de otro: intentos ajenos «no existen» y las rutas del administrador dicen que no', async () => {
   await conAcademia(async ({ base, admin, ana, beto }) => {
     await activarMuestra(base, admin);
-    const i = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'hipoxia' } })).datos;
+    const i = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' } })).datos;
     await responderTodo(base, ana, i, { bien: 2 });
     // Beto no ve, no responde y no termina el intento de Ana.
     assert.equal((await pedir(base, 'GET', `/api/academia/intentos/${i.id}`, { galleta: beto })).codigo, 404);

@@ -72,7 +72,7 @@ export function paqueteMuestra() {
       id: 'factores_humanos',
       temas: [
         {
-          id: 'hipoxia', titulo: 'La hipoxia (muestra)',
+          id: 'muestra-hipoxia', titulo: 'La hipoxia (muestra)',
           secciones: [
             { titulo: '¿Qué es?', texto: 'Muestra: la hipoxia es cuando al cuerpo le falta oxígeno.\nArriba hay menos presión de aire, y cada respiración trae menos oxígeno.', fuentes: fuente('1') },
             { titulo: 'Cómo se nota', texto: 'Muestra: al principio no se siente mal. Puedes sentirte muy confiado y decidir peor sin darte cuenta.', fuentes: fuente('2', 'Señales') },
@@ -84,7 +84,7 @@ export function paqueteMuestra() {
           preguntas: ['muestra-h1', 'muestra-h2', 'muestra-h3', 'muestra-h4', 'muestra-h5'],
         },
         {
-          id: 'ilusiones', titulo: 'Ilusiones visuales (muestra)',
+          id: 'muestra-ilusiones', titulo: 'Ilusiones visuales (muestra)',
           secciones: [
             { titulo: 'Los ojos se engañan', texto: 'Muestra: la forma de la pista, la luz y la niebla pueden hacer creer que vas más alto o más bajo.', fuentes: fuente('4', 'Ilusiones') },
             { titulo: 'La defensa', texto: 'Muestra: revisa los instrumentos y usa las luces de aproximación cuando las haya.', fuentes: fuente('5', 'Ilusiones') },
