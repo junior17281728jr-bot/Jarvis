@@ -1790,5 +1790,7 @@
   "acad.motivo.pregunta_en_dos_temas": "la pregunta está en dos temas",
   "acad.motivo.pregunta_sin_tema": "la pregunta no está en ningún tema",
   "acad.motivo.json_no_valido": "no es un JSON válido",
-  "acad.dias.uno": "día"
+  "acad.dias.uno": "día",
+  "acad.subir.elegidos": "{n} archivos elegidos",
+  "acad.subir.elegidos.uno": "1 archivo elegido"
 }

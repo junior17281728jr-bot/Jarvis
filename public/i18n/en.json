@@ -1790,5 +1790,7 @@
   "acad.motivo.pregunta_en_dos_temas": "the question is in two topics",
   "acad.motivo.pregunta_sin_tema": "the question is in no topic",
   "acad.motivo.json_no_valido": "not valid JSON",
-  "acad.dias.uno": "day"
+  "acad.dias.uno": "day",
+  "acad.subir.elegidos": "{n} files chosen",
+  "acad.subir.elegidos.uno": "1 file chosen"
 }

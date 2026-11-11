@@ -4932,6 +4932,7 @@ async function pantallaContenido() {
   const mensajeSubir = caja();
   const progresoSubida = el('p', { class: 'suave', role: 'status' });
   const archivos = el('input', { id: 'campo-paquete', type: 'file', multiple: true, accept: '.json,application/json,image/png,image/jpeg,image/webp' });
+  archivos.addEventListener('change', () => { progresoSubida.textContent = tn('acad.subir.elegidos', { n: archivos.files.length }); });
   const tarjetaSubir = el('section', { class: 'tarjeta subir-paquete' },
     el('h2', { class: 'con-icono' }, icono('subir'), el('span', { texto: t('acad.subir_paquete') }), queEs('paquete')),
     el('p', { class: 'ayuda', texto: t('acad.subir.ayuda', { mb: numero(Math.round(limites.jsonBytes / 1048576)), mbf: numero(Math.round(limites.figuraBytes / 1048576)) }) }),

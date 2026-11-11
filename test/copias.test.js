@@ -66,7 +66,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   db.close();
   // La 0.4.1 (migraciones 1–5) abre esta base sin aplicar nada, y su trabajador (versión mínima 5) se conecta.
   const db41 = abrirBase(config, MIGRACIONES.filter(x => x.id <= 5));
-  assert.equal(db41.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, 6);
+  assert.equal(db41.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, 7); // 0.7.0: con la 7 (academia)
   db41.close();
   conectarBase(config, { versionMinima: 5 }).close();
 });

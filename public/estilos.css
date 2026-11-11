@@ -1351,3 +1351,7 @@ label.elegir-archivos { display: inline-flex; margin: 8px 0 0; }
 }
 .materia-pct { white-space: nowrap; }
 .marca.con-logo { letter-spacing: 0.04em; }
+/* El campo de archivos del navegador queda escondido (dice «Choose Files» en inglés): se toca la etiqueta, que es un botón. */
+.subir-paquete input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.subir-paquete input[type="file"]:focus-visible + p, label.elegir-archivos:focus-within { outline: 2px solid var(--acento); }
+label.elegir-archivos { cursor: pointer; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--borde); color: var(--acento); min-height: 48px; align-items: center; gap: 8px; font-weight: 600; }

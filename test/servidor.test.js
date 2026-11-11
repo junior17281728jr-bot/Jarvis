@@ -50,11 +50,11 @@ test('una ruta /api desconocida responde 404 en JSON', async () => {
   db.close();
 });
 
-test('la página principal dice OPORTIA', async () => {
+test('la página principal dice Academia ENALAS (0.7.0)', async () => {
   await conServidor(crearServidor(), async base => {
     const r = await fetch(`${base}/`);
     assert.equal(r.status, 200);
-    assert.match(await r.text(), /OPORTIA/);
+    assert.match(await r.text(), /Academia ENALAS/);
   });
 });
 
