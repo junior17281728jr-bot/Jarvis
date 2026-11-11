@@ -119,9 +119,11 @@ test('1.15 la vuelta completa por Telegram: subir, bajar y comprobar cada parte,
     const token2 = tokenDePrueba(2);
     falso.agregarBot({ token: token2, id: BOT + 1 });
     await assert.rejects(restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'telegram', token: token2, chatId: CHAT }, destino: join(carpeta, 'x.db'), carpetaTrabajo: join(carpeta, 'p2'), base: falso.url }), codigoDe('otro_bot'));
-    // El índice que Telegram devuelve cambiado: no es auténtico.
+    // El índice que Telegram devuelve cambiado: se rechaza. Según qué bytes cambie el Telegram falso (al azar), el
+    // índice deja de parecer un índice («sin_indice») o parece uno pero no es auténtico: las dos respuestas lo rechazan.
     falso.escena('file', 'cambiar_bytes');
-    await assert.rejects(restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'telegram', token, chatId: CHAT }, destino: null, carpetaTrabajo: join(carpeta, 'p3'), base: falso.url }), codigoDe('indice_no_autentico'));
+    await assert.rejects(restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'telegram', token, chatId: CHAT }, destino: null, carpetaTrabajo: join(carpeta, 'p3'), base: falso.url }),
+      e => ['indice_no_autentico', 'sin_indice'].includes(e?.clave));
     // Una parte que Telegram devuelve cambiada: se nota (y nada queda como base).
     falso.escena('file', 'cambiar_bytes', { saltar: 2 });
     await assert.rejects(restaurarCopia({ clave: CLAVE_DE_PRUEBA, fuente: { tipo: 'telegram', token, chatId: CHAT }, destino: join(carpeta, 'y.db'), carpetaTrabajo: join(carpeta, 'p3'), base: falso.url }), codigoDe('parte_danada'));
