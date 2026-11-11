@@ -59,3 +59,9 @@ FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» comp
 - 11 nov 2026 — Junior: la página va LENTA al cambiar de apartado; optimizar velocidad y almacenamiento, borrar lo que no se use (código de proyectos/motor de clientes de OPORTIA), mejorar la interfaz. Hacerlo justo después del rediseño (mismos archivos): medir cambio de pantalla en iPhone, cargar por partes, caché en el navegador, menos pedidos, quitar código muerto.
 - 11 nov 2026 — PREGUNTAS EN DOS MODOS (decisión de Junior): «Original» = las 3 opciones tal cual del Test Guide (simulacro del examen); «Modo reto» = enunciado y respuesta correcta TAL CUAL + 2 incorrectas NUEVAS escritas por Claude, más engañosas y plausibles (que no se pueda adivinar descartando). Etiquetar claro «Modo reto». Las dos se practican.
 - 11 nov 2026 — Explicaciones: más claras, más visuales, más «Recuerda», TODO lo hablado (animaciones/3D por tarjeta, situaciones de vuelo, inglés con pronunciación, idea equivocada por opción, «¿Por qué elegiste esa?», repaso, juegos); y más ENTRETENIDO (gamificación, minijuegos, retos, sonidos opcionales, celebraciones).
+- 11 nov 2026 — Junior pide:
+  1. SONIDOS y efectos (acierto, error, racha, subir de nivel, botones), con interruptor para apagarlos.
+  2. ADMIN «Modo estudiante»: desde Administrador poder jugar/estudiar como un usuario normal (su propio camino, sin mezclar con su vista de admin).
+  3. ADMIN «Respuestas»: ver las respuestas correctas de cada materia/tema/pregunta (clave completa, con explicaciones).
+  4. ESTUDIANTE al terminar cada examen: ver su resultado completo, lo que sacó bien y lo que sacó mal, con la respuesta correcta y la explicación.
+  5. «MEMORIA DE ERRORES» permanente: lo que más falla cada estudiante se guarda PARA SIEMPRE (historial de errores por pregunta y por concepto/idea equivocada), el sistema lo entrena más (repaso dirigido) y en cada etapa le da retroalimentación de sus puntos débiles («Tu punto débil: …»).
