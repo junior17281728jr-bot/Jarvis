@@ -49,3 +49,5 @@ FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» comp
 - TODA la clase se basa en prepararse para el Test Guide.
 - POH: el Test Guide no lo cubre: CREAR preguntas del POH «tal cual» el texto del POH, llenando lo más posible; el avión es el ALARUS CH 2000 (Zenair): hay que BUSCAR su POH (solo tenemos la lista de chequeo de 3 págs). Las preguntas creadas se marcan como «del POH», nunca como del Test Guide.
 - Las preguntas del Test Guide son SIEMPRE las mismas en todo (práctica, exámenes por materia, final): solo cambia el orden, para comparar resultados.
+
+- 11 nov 2026: Junior NO da la clave de ElevenLabs. Plan: Claude escribe el TEXTO de narración de cada clase; él lo pasa por ElevenLabs y sube el audio (mp3) desde el administrador cuando quiera. Mientras, la clase muestra subtítulos y puede leerse con la voz gratis del navegador (speechSynthesis). Publicar por etapas (1, 2, 3…) en su servidor para que vaya viendo las animaciones en la página.
