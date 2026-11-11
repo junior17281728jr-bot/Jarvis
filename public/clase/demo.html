@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es" data-tema="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Clases visuales · galería</title>
+  <link rel="stylesheet" href="clase.css">
+  <script type="module" src="demo.js"></script>
+</head>
+<body class="clase-raiz demo-cuerpo">
+  <header class="demo-cabeza">
+    <div>
+      <p class="demo-antetitulo">Academia de aviación · prueba</p>
+      <h1>Clases visuales</h1>
+      <p class="demo-lema">Galería de las piezas de clase: el reproductor tipo película y las animaciones que se pueden tocar. Textos de muestra.</p>
+    </div>
+    <div class="demo-tema" role="group" aria-label="Tema">
+      <button type="button" class="clase-boton" data-tema="claro">Claro</button>
+      <button type="button" class="clase-boton" data-tema="oscuro">Oscuro</button>
+      <button type="button" class="clase-boton" data-tema="auto">Auto</button>
+    </div>
+  </header>
+  <nav class="demo-indice" aria-label="Piezas">
+    <a href="#reproductor">Reproductor</a>
+    <a href="#ala">Ala</a>
+    <a href="#motor">Motor</a>
+    <a href="#instrumentos">Instrumentos</a>
+    <a href="#escenario">Escenario</a>
+    <a href="#meteo">Meteorología</a>
+  </nav>
+  <main class="demo-galeria">
+    <section id="reproductor" class="demo-seccion"><h2>Reproductor de clase</h2><p>Escenas narradas con subtítulos, barra de avance, velocidad y voz del navegador.</p><div class="demo-hueco" data-pieza="reproductor"></div></section>
+    <section id="ala" class="demo-seccion"><h2>El ala y la pérdida</h2><p>Mueve el ángulo de ataque y mira qué hace el aire.</p><div class="demo-hueco" data-pieza="ala"></div></section>
+    <section id="motor" class="demo-seccion"><h2>Motor de cuatro tiempos</h2><p>Toca una pieza para ver su nombre.</p><div class="demo-hueco" data-pieza="motor"></div></section>
+    <section id="instrumentos" class="demo-seccion"><h2>Los seis instrumentos básicos</h2><p>Mira un ascenso en viraje o simula la falla de un instrumento.</p><div class="demo-hueco" data-pieza="instrumentos"></div></section>
+    <section id="escenario" class="demo-seccion"><h2>Escenario de decisión</h2><p>Elige qué harías y mira la consecuencia.</p><div class="demo-hueco" data-pieza="escenario"></div></section>
+    <section id="meteo" class="demo-seccion"><h2>Meteorología</h2><p>Cómo nace una nube y cómo pasa un frente.</p><div class="demo-hueco" data-pieza="meteo"></div></section>
+  </main>
+  <footer class="demo-pie"><p>Página de prueba: no forma parte de la app.</p></footer>
+</body>
+</html>
