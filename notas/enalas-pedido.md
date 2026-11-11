@@ -25,3 +25,5 @@ Junior cambia el rumbo: OPORTIA pasa a ser un profesor de aviación tipo Duoling
 - Aprender juntos: competir, resolver situaciones de vuelo en grupo, comparar conocimientos; el administrador observa a todos.
 - Meta: no solo aprobar el examen, sino comprender, recordar y decidir como piloto.
 Implementación propuesta: cada opción incorrecta del Test Guide se mapea a la idea equivocada que la explica (preparado al procesar los libros) → diagnóstico sin IA en vivo; con la API de Claude (opcional, con tope): preguntas de «¿por qué elegiste esa?», diálogo socrático y elección de formato. Simulaciones de decisión por materia; salas: carrera, «resolver juntos», duelos.
+
+- 11 nov 2026: Junior aclara que el uso es PRIVADO, para él y estudiantes amigos suyos, NO para vender: usar todo el material de sus libros sin recortes. Aun así, el material nunca va a GitHub (repo público): solo en el servidor privado.
