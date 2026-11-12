@@ -57,6 +57,8 @@ body::before {
   background-color: var(--fondo);
   background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), var(--foto-mini);
   background-size: cover; background-position: center 35%; background-repeat: no-repeat;
+  /* Su propia capa: al cambiar de pantalla o al bajar no se vuelve a pintar la foto (medido: no hace más lento el cambio). */
+  will-change: transform; transform: translateZ(0);
 }
 /* La foto de verdad (WebP, y JPEG para el navegador que no lo lee): la del teléfono y la de la computadora. */
 :root.fondo-listo body::before {
