@@ -205,7 +205,7 @@ test('sin paquete: el alumno ve el camino vacío (sin errores) y el nombre de la
     assert.equal((await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: ana, datos: { umbral: 50 } })).codigo, 403);
     assert.equal((await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: admin, datos: { umbral: 20 } })).codigo, 400);
     const r = await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: admin, datos: { nombre: 'Escuela de Junior', umbral: 80 } });
-    assert.deepEqual(r.datos.ajustes, { nombre: 'Escuela de Junior', umbral: 80, examenSegundos: 90 });
+    assert.deepEqual(r.datos.ajustes, { nombre: 'Escuela de Junior', umbral: 80, examenSegundos: 90, practicaModo: 'original' });
     assert.equal((await pedir(base, 'GET', '/api/setup')).datos.nombreApp, 'Escuela de Junior');
   });
 });

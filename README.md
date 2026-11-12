@@ -408,7 +408,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.8.0; cambio de base 7 en la 0.7.0)
+## Academia (etapa 1, versión 0.12.0; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -685,6 +685,48 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.12.0: «¿De dónde salió?», ir directo al examen, el humor del instructor y lo EXTRA — cambio de base 9
+- **«¿De dónde salió?»** (`public/origen-vista.js`): en la esquina de cada pregunta (temas, prácticas, la hoja de la
+  respuesta, la revisión y el resultado; **nunca durante el examen con reloj**) un botón abre una hoja con la fuente: libro,
+  capítulo y sección, número y página del PDF, y la **página real del libro** (una imagen del paquete, que vive solo en el
+  servidor), que se amplía con el mismo visor de las figuras. Sin imagen, solo la referencia. **La imagen se da solo
+  después de responder** (en la página del Test Guide está la respuesta): `GET /api/academia/paginas/:pregunta` responde 403
+  si esa persona nunca respondió la pregunta (`academia_respuestas`) o si tiene abierto un examen con reloj que la trae;
+  el administrador la ve siempre. Antes de responder, la hoja dice que la página se abre al responder.
+- **Ir directo al examen** (`src/academia/saltos.js`): un examen cerrado (faltan temas) se abre igual con «Ir directo al
+  examen» y una hoja para confirmar: «Si saltas las clases y te quemas, el instructor te lo va a recordar».
+  `POST /api/academia/intentos { tipo: 'examen', materia, saltar: true }` (sin `saltar` sigue el 403 `examen_bloqueado`).
+  Saltar **no abre ni aprueba ningún tema**: el camino sigue en su orden. Se guarda en `ajustes`: el orden de cada materia
+  (`academia.saltos.<id>`: `examen_antes` / `temas_antes`, fijado con su primer examen) y la foto de cada salto
+  (`academia.salto.<intento>`: cuántos temas le faltaban), para que «saltaste 6 temas» no cambie después. Si se quema:
+  el resultado y «Tu instructor dice…» lo dicen claro («Tú lo quisiste: saltaste 6 temas y te quemaste con 62 %. Ahora
+  toca hacer las etapas…») con el botón al tema que toca; si pasa, igual le recomienda hacer los temas. «¿Estás listo?»
+  tiene la regla nueva **clases** (✘ mientras falten temas de una materia en la que se saltó las clases; una materia así
+  nunca sale «lista»). La ficha del administrador muestra **«Saltó las clases»** (cada vez, con cuántos temas y cómo le fue)
+  y el orden de cada materia.
+- **El humor del instructor** (`src/academia/humor.js`, textos `humor.<tipo>.<n>` en `public/i18n`): 40 frases cortas de
+  vacilón suave entre panas (se quemó: 12; se saltó las clases y se quemó: 10; perdió la racha: 9; volvió después de días:
+  9). Nunca sobre raza, religión, sexo, cuerpo ni familia y sin malas palabras fuertes (`test/ronda-012.test.js` lo revisa en
+  los dos idiomas con una lista de palabras prohibidas). Cada alumno tiene su «bolsa» por tipo: salen todas sin repetir (y
+  nunca la misma dos veces seguidas); el mismo resultado vuelve con la misma frase; la de la racha o el regreso es una por
+  día, en Inicio. Con la IA encendida, el consejo de la IA viene en ese tono con las mismas reglas (se guarda aparte). Se
+  apaga para todos en Contenido → Ajustes («Humor del instructor», `POST /api/admin/academia/humor`) y cada alumno para sí en
+  Configuración (`GET/POST /api/academia/humor`). Encendido por defecto.
+- **Lo EXTRA** (`src/academia/extra.js`, `public/extra-vista.js`, `#extra/<materia>`): una materia del paquete puede traer
+  `extra: { tarjetas, preguntas }` (ver el formato). Se ve en el camino (un nodo «Extra (opcional)» después del examen) y al
+  aprobar el examen («¿Quieres estudiar algo extra?»), siempre marcado **«Extra — no es del Test Guide»**: tarjetas
+  «profundiza» por tema y rondas de 10 preguntas por nivel (básico, intermedio, avanzado). Al responder: por qué su opción
+  no, la explicación y la fuente (libro, página y la cita corta). Sus respuestas van en su propia tabla
+  (`academia_extra_respuestas`): **nunca cuentan** para la preparación, los exámenes, los puntos, la racha, la memoria de
+  errores, las fallas, los reportes ni el «Aprendizaje»; se ven aparte en Progreso y en la ficha del alumno. Rutas:
+  `GET /api/academia/extra/:materia`, `POST …/ronda { nivel?, tema? }`, `POST …/responder { pregunta, elegida }`.
+- **Modo de práctica por defecto** (Contenido → Ajustes): «Original» (por defecto) o «Reto», **solo para el intento de cada
+  tema**; los exámenes siempre van en Original. El modo se fija al crear el intento (`academia_intentos.modo`, cambio de base
+  9): cambiar el ajuste no mueve un intento ya empezado. En «Reto», las preguntas sin `reto` salen en Original; un tema
+  hecho en Modo reto también se aprueba con el mismo % (la respuesta correcta es la del Test Guide).
+- **Cambio de base 9** (solo agrega): la tabla `academia_extra_respuestas` y la columna `academia_intentos.modo` (sin
+  NOT NULL). Ver «Vuelta atrás».
+
 ### Formato del paquete, versión 1
 Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
 errores salen con su ruta exacta (`materias[0].temas[1].preguntas[5]: pregunta_desconocida`). Los textos se guardan y se
@@ -725,9 +767,28 @@ otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde l
       // 0.8.0 (opcional): el «Modo reto»: EXACTAMENTE 2 opciones incorrectas nuevas (más engañosas), distintas entre sí
       // y de las originales; «porque_es_incorrecta» obligatorio, «trampa» (la idea equivocada que tiende) opcional.
       "reto": { "opciones": [ { "texto": "…", "porque_es_incorrecta": "…", "trampa": "…" }, { "texto": "…", "porque_es_incorrecta": "…" } ] } } ],
-  "figuras": [ { "numero": "12", "archivo": "figura-12.png", "titulo": "…" (opcional), "sha256": "…" (opcional) } ]
+  "figuras": [ { "numero": "12", "archivo": "figura-12.png", "titulo": "…" (opcional), "sha256": "…" (opcional) } ],
+  // 0.12.0 (opcional): las PÁGINAS reales del libro («¿De dónde salió?»). Cada pregunta nombra la suya en
+  // «original.pagina_imagen» (el archivo). PNG, JPG o WEBP; se recomienda ≤ 150 KB (tope: 1 MB cada una). Son opcionales
+  // como el audio: sin ellas la versión queda «lista» y se ve solo la referencia en texto.
+  "paginas": [ { "archivo": "tg-p231.webp", "libro": "<id de libro>", "pagina": "231", "sha256": "…" (opcional) } ]
+}
+// 0.12.0 (opcional), dentro de cada materia: lo EXTRA (NO es del Test Guide; nunca se mezcla con «preguntas»).
+"extra": {
+  "tarjetas": [ { "tipo": "tarjeta", "subtipo": "profundiza", "origen": "extra", "tema": "<id de un tema de la materia>",
+                  …como una sección «tarjeta» (titulo, puntos 1–6, recuerda, ejemplo, ingles, fuentes con libro y pagina)… } ],
+  "preguntas": [ { "id": "x-01-t03-05", "origen": "extra", "tema": "<id de un tema de la materia>",
+                   "nivel": "basico" | "intermedio" | "avanzado", "enunciado": "…",
+                   "opciones": [ { "letra": "A", "texto": "…" }, … ], "correcta": "A", "explicacion": "…",
+                   "porque_incorrectas": { "B": "…", "C": "…" },          // exactamente las letras incorrectas
+                   "fuente": { "libro": "<id de libro>", "pagina": "…", "cita_corta": "… (hasta 25 palabras)", "verificado_en": "…" (opcional) },
+                   "fuente_secundaria": { …igual… } (opcional) } ]
 }
 ```
+Los ids de lo extra no pueden repetir los de «preguntas»; cada libro que nombran (tarjetas, preguntas, páginas) tiene que
+estar en «libros». La página de una pregunta se sube como una figura: `POST /api/admin/academia/paquetes/:id/paginas/:archivo`
+(o eligiéndola junto con el JSON en Contenido → Subir), y llega desde Drive igual que las figuras y los audios (carpeta
+`paginas/` de la versión; el manifiesto dice `paginas`; uno escrito por una versión de antes se vuelve a armar solo).
 Cada pregunta está en un solo tema; su `id` no cambia entre versiones (el progreso se guarda por ese id). Las preguntas
 creadas del POH llevan `origen: "poh"` y nunca se muestran como del Test Guide. Rutas: `POST /api/admin/academia/paquetes`
 (el JSON), `POST /api/admin/academia/paquetes/:id/figuras/:archivo` (una figura, el cuerpo es la imagen), `POST
@@ -775,6 +836,11 @@ carpeta cada hora (a los :23) y con «Buscar ahora» (`src/academia/sincronizar.
 - Las pruebas (`test/drive.test.js`) usan un Drive FALSO en 127.0.0.1 (`config.driveBases`, solo en modo de prueba).
 
 ### Vuelta atrás
+La 0.12.0 agrega el cambio de base 9 (la tabla `academia_extra_respuestas` y la columna `academia_intentos.modo`, sin NOT
+NULL). Una 0.11.1 abre esa base sin tocarlas (ensayado: `/api/setup` dice `estado: ok`, se entra y el camino abre): no ve lo
+extra, ni los saltos (quedan en `ajustes`), ni el humor; un tema hecho en Modo reto por defecto lo ve como Original (si
+alguna respuesta fue a una opción del reto, la ve mal). Un paquete con `paginas`/`extra` que ya estaba en uso sigue
+sirviendo en la 0.11.1 (ignora esos campos); al volver la 0.12.0 todo sigue.
 La 0.10.0 agrega el cambio de base 8 (solo 3 tablas nuevas `academia_fallas`, `academia_ia_minutos`, `academia_pagos`, sin
 CHECK ni UNIQUE). Una 0.9.0 abre esa base sin tocarlas (nunca las lee); sus fallas, minutos y pagos quedan ahí para cuando
 vuelva la 0.10.0. El trabajador sigue pidiendo la base 6.

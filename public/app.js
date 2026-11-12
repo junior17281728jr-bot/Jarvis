@@ -19,6 +19,7 @@ import { dibujarAvatar } from './avatares.js';
 import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
+import { botonOrigen } from './origen-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -781,7 +782,8 @@ function grupoDeBotones(opciones, elegido, alElegir) {
 async function pantallaConfiguracion() {
   const vigente = nuevoTurno();
   // 0.9.0: «Mi perfil» (public/perfil-vista.js solo se carga aquí).
-  const [reinicios, perfil, vistaPerfil] = await Promise.all([api('GET', '/api/yo/reinicios'), api('GET', '/api/yo/perfil'), import('./perfil-vista.js')]);
+  const [reinicios, perfil, vistaPerfil, humorEstado] = await Promise.all([api('GET', '/api/yo/reinicios'), api('GET', '/api/yo/perfil'), import('./perfil-vista.js'),
+    api('GET', '/api/academia/humor')]);
   if (!vigente()) return;
   const mensajeIdioma = caja();
   const botonesIdioma = grupoDeBotones(['es', 'en'].map(v => [v, t(`idioma.${v}`)]), idioma, async valor => {
@@ -802,6 +804,13 @@ async function pantallaConfiguracion() {
     marcar();
     sonar('bien');
   });
+  // 0.12.0: el humor del instructor (encendido por defecto; el administrador lo puede apagar para todos).
+  const humor = humorEstado?.ok ? humorEstado.datos : null;
+  const botonesHumor = humor ? grupoDeBotones([['si', t('humor.encendido')], ['no', t('humor.apagado')]], humor.encendido ? 'si' : 'no', async (valor, marcar) => {
+    const x = await api('POST', '/api/academia/humor', { encendido: valor === 'si' });
+    if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+    marcar();
+  }) : null;
   const lista = reinicios.ok ? reinicios.datos.reinicios : null;
   const alGuardarPerfil = p => {
     Object.assign(estado.usuario, { nombre: p.nombre, nombreVisible: p.nombreVisible, avatar: p.avatar });
@@ -824,7 +833,11 @@ async function pantallaConfiguracion() {
         el('h2', { class: 'separado', texto: t('tema.titulo') }), botonesTema, el('p', { class: 'ayuda', texto: t('tema.ayuda') }),
         el('h2', { class: 'separado con-icono', id: 'titulo-sonidos' }, icono('altavoz', 'icono chico'), el('span', { texto: t('sonidos.titulo') })),
         el('div', { class: 'ajuste-sonidos', role: 'group', 'aria-labelledby': 'titulo-sonidos' }, botonesSonidos),
-        el('p', { class: 'ayuda', texto: t('sonidos.ayuda') })),
+        el('p', { class: 'ayuda', texto: t('sonidos.ayuda') }),
+        botonesHumor ? [
+          el('h2', { class: 'separado con-icono', id: 'titulo-humor' }, icono('chispa', 'icono chico'), el('span', { texto: t('humor.config.titulo') })),
+          el('div', { class: 'ajuste-humor', role: 'group', 'aria-labelledby': 'titulo-humor' }, botonesHumor),
+          el('p', { class: 'ayuda', texto: humor.permitido ? t('humor.config.ayuda') : t('humor.admin_apagado') })] : null),
       el('section', { class: 'tarjeta' }, el('h2', { texto: t('clave.titulo') }), formularioClave({})),
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('config.reinicios') }),
@@ -3368,11 +3381,20 @@ function senderoMateria(m, n, siguiente) {
   });
   const ex = m.examen;
   const actualEx = siguiente?.tipo === 'examen' && siguiente.materia === m.id;
+  // 0.12.0: un examen cerrado igual se abre («Ir directo al examen», con su aviso en la portada).
+  const directo = !ex.disponible && ex.saltable;
   nodos.push(nodoCamino({
-    clase: `examen ${ex.aprobado ? 'hecho' : ex.disponible ? 'abierto' : 'bloqueado'}`, href: ex.disponible ? `#examen/${encodeURIComponent(m.id)}` : null, i: i++,
-    nombreIcono: 'trofeo', titulo: t('acad.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : tn('acad.n_preguntas', { n: ex.preguntas }),
-    etiqueta: ex.disponible ? t('acad.examen_de', { materia: nombreMateria(m.id) }) : t('acad.examen_cerrado'), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
+    clase: `examen ${ex.aprobado ? 'hecho' : ex.disponible ? 'abierto' : 'bloqueado'}${directo ? ' directo' : ''}`, href: ex.disponible || directo ? `#examen/${encodeURIComponent(m.id)}` : null, i: i++,
+    nombreIcono: 'trofeo', titulo: t('acad.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : directo ? t('acad.saltar.detalle') : tn('acad.n_preguntas', { n: ex.preguntas }),
+    etiqueta: ex.disponible ? t('acad.examen_de', { materia: nombreMateria(m.id) }) : directo ? `${t('acad.examen_cerrado')} ${t('acad.saltar.detalle')}` : t('acad.examen_cerrado'), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
   }));
+  // 0.12.0: lo EXTRA de la materia (opcional; recomendado después del examen).
+  if (m.extra) {
+    nodos.push(nodoCamino({
+      clase: `extra ${m.extra.recomendado ? 'abierto' : 'opcional'}`, href: `#extra/${encodeURIComponent(m.id)}`, i: i++, nombreIcono: 'chispa',
+      titulo: t('extra.nodo'), detalle: t('extra.sello'), etiqueta: `${t('extra.titulo')} ${t('extra.sello')}`,
+    }));
+  }
   return el('ol', { class: 'sendero', 'aria-label': nombreMateria(m.id) }, nodos);
 }
 
@@ -3527,7 +3549,9 @@ async function pantallaInicio() {
   const hola = el('div', { class: 'saludo' },
     el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
     el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
-    c.repaso ? botonRepaso(c.repaso, 'chico') : null);
+    c.repaso ? botonRepaso(c.repaso, 'chico') : null,
+    // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
+    lineaHumorVista(c.humor));
   const enFondo = mostrar(marco('inicio', barraCabina(c), hola, instructorUi().enInicio(), avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }),
     // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
     plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente })));
@@ -3986,6 +4010,14 @@ async function pantallaVideo(materia) {
 }
 
 // ---- El examen de una materia (como en ENALAS: todas sus preguntas, mezcladas) ----
+async function pantallaExtra(materia) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', `/api/academia/extra/${encodeURIComponent(materia)}`), import('./extra-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir });
+}
+
 async function pantallaExamen(materia) {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/camino');
@@ -4015,27 +4047,58 @@ async function pantallaExamen(materia) {
           el('li', { texto: t('examen.reglas.5', { n: numero(r.datos.umbral) }) }))),
       m.examen.disponible
         ? el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: evento => empezarIntento({ tipo: 'examen', materia }, evento.currentTarget) }, el('span', { texto: t('acad.empezar_examen') }))
-        : el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }))));
+        : m.examen.saltable ? saltarAlExamen(m) : el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }))));
+}
+// 0.12.0: «Ir directo al examen» sin terminar los temas: primero el aviso (una hoja para confirmar), después el examen.
+function saltarAlExamen(m) {
+  const total = m.temas.length;
+  const abrir = evento => {
+    const desde = evento.currentTarget;
+    const cerrar = () => { capa.remove(); try { desde.focus({ preventScroll: true }); } catch { /* ya no está */ } };
+    const si = el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: e => { sonar('toque'); cerrar(); empezarIntento({ tipo: 'examen', materia: m.id, saltar: true }, e.currentTarget); } }, el('span', { texto: t('acad.saltar.si') }));
+    const sigue = m.temas.find(x => x.estado === 'abierto');
+    const no = sigue ? el('a', { class: 'boton-3d blanco', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(sigue.id)}`, onclick: () => capa.remove() }, el('span', { texto: t('acad.saltar.no') }))
+      : el('button', { type: 'button', class: 'boton-3d blanco', onclick: cerrar }, el('span', { texto: t('acad.saltar.no') }));
+    const hoja = el('div', { class: 'saltar-hoja', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'saltar-titulo', 'aria-describedby': 'saltar-aviso' },
+      el('span', { class: 'saltar-icono', 'aria-hidden': 'true' }, icono('atencion')),
+      el('h2', { id: 'saltar-titulo', texto: t('acad.saltar.titulo') }),
+      el('p', { id: 'saltar-aviso', class: 'saltar-aviso', texto: t('acad.saltar.aviso') }),
+      el('p', { class: 'suave', texto: t('acad.saltar.linea', { n: numero(m.examen.pendientes ?? total), total: numero(total) }) }),
+      el('div', { class: 'saltar-botones' }, si, no));
+    const capa = el('div', { class: 'origen-capa saltar-capa', onclick: e => { if (e.target === capa) cerrar(); } }, hoja);
+    capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+    document.body.append(capa);
+    si.focus();
+  };
+  return el('div', { class: 'saltar-caja' },
+    el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }),
+    el('button', { type: 'button', class: 'boton-3d grande blanco con-icono', onclick: abrir }, icono('rayo', 'icono chico'), el('span', { texto: t('acad.saltar.boton') })),
+    el('p', { class: 'suave chica', texto: t('acad.saltar.aviso') }));
 }
 
 // ---- Las preguntas: una por pantalla, como un ejercicio de Duolingo ----
 // La figura original, con «tocar para ampliar» (a pantalla completa, se puede mover y acercar con dos dedos).
+// 0.12.0: el visor a pantalla completa, aparte: lo usan las figuras y la página del libro («¿De dónde salió?»).
+function abrirImagenGrande({ src, nombre, titulo }) {
+  const antes = document.activeElement;
+  const cerrar = () => { capa.remove(); try { antes?.focus({ preventScroll: true }); } catch { /* ya no está */ } };
+  const capa = el('div', { class: 'figura-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': nombre },
+    el('div', { class: 'figura-grande-barra' }, el('span', { texto: titulo || nombre }),
+      el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
+    el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
+  capa.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); } });
+  document.body.append(capa);
+  // 0.9.1: abre ajustada a la pantalla, con − / + y «Ajustar» (public/clase/realce.js).
+  visorFigura(capa, { t });
+  capa.querySelector('button').focus();
+}
+// 0.12.0: el botón «¿De dónde salió?» de una pregunta (public/origen-vista.js).
+const origenDe = q => botonOrigen(q, { el, t, icono, talCual, abrirImagenGrande });
 function figuraPregunta(q) {
   if (!q.figura) return null;
   const src = `/api/academia/figuras/${encodeURIComponent(q.figura.ref ?? q.figura.numero)}`;
   const nombre = t('acad.figura', { n: q.figura.numero });
-  const abrir = () => {
-    const cerrar = () => capa.remove();
-    const capa = el('div', { class: 'figura-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': nombre },
-      el('div', { class: 'figura-grande-barra' }, el('span', { texto: q.figura.titulo || nombre }),
-        el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
-      el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
-    capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
-    document.body.append(capa);
-    // 0.9.1: abre ajustada a la pantalla, con − / + y «Ajustar» (public/clase/realce.js).
-    visorFigura(capa, { t });
-    capa.querySelector('button').focus();
-  };
+  const abrir = () => abrirImagenGrande({ src, nombre, titulo: q.figura.titulo || nombre });
   return el('figure', { class: 'q-figura' },
     el('button', { type: 'button', class: 'q-figura-boton', 'aria-label': t('acad.figura.ampliar', { figura: nombre }), onclick: abrir },
       el('img', { src, alt: nombre, loading: 'lazy' }),
@@ -4049,10 +4112,11 @@ function insigniaPregunta(q) {
     el('span', { texto: t('acad.origen.test_guide_sello') }), q.numero ? el('span', { class: 'insignia-numero' }, `${t('acad.pregunta')} `, talCual('span', q.numero)) : null);
 }
 // 0.8.0: en Modo reto, arriba la insignia «MODO RETO» (las opciones no son las del Test Guide; el enunciado sí).
-function tarjetaPregunta(q) {
+// 0.12.0: con «origen» (lo normal) lleva en la esquina «¿De dónde salió?»; el examen con reloj lo pide sin él.
+function tarjetaPregunta(q, { origen = true } = {}) {
   return [
     el('div', { class: 'q-cabeza' }, insigniaPregunta(q), q.modo === 'reto' ? el('span', { class: 'insignia-reto con-icono' }, icono('rayo', 'icono chico'), el('span', { texto: t('reto.sello') })) : null,
-      q.seccion ? talCual('span', q.seccion, 'q-seccion') : null),
+      q.seccion ? talCual('span', q.seccion, 'q-seccion') : null, origen ? origenDe(q) : null),
     q.origen === 'poh' && q.fuente ? lineaFuente(q.fuente) : null,
     talCual('p', q.enunciado, 'q-enunciado'),
     figuraPregunta(q),
@@ -4094,7 +4158,7 @@ function revisionCompleta(res) {
         el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : q.origen === 'poh' ? t('acad.origen.poh_corto') : numero(k + 1)),
         talCual('span', q.enunciado, 'revision-enunciado'),
         el('span', { class: 'revision-letras suave chica', texto: bien ? t('revision.tu_respuesta', { letra: q.respuesta.elegida }) : t('revision.tu_y_correcta', { letra: q.respuesta?.elegida ?? '—', correcta: q.respuesta?.correcta ?? '—' }) })),
-      el('div', { class: 'revision-dentro' }, tarjetaPregunta(q).slice(3), opcionesFijas(q, q.respuesta), bloqueRespuesta(q, q.respuesta),
+      el('div', { class: 'revision-dentro' }, el('div', { class: 'revision-origen' }, origenDe(q)), tarjetaPregunta(q).slice(3), opcionesFijas(q, q.respuesta), bloqueRespuesta(q, q.respuesta),
         q.respuesta && res.id ? instructorUi().explicar(res.id, q) : null));
     return d;
   });
@@ -4114,6 +4178,32 @@ function revisionCompleta(res) {
     cajaLista);
 }
 
+// 0.12.0: lo que el resultado agrega arriba: si fue directo al examen («Tú lo quisiste…» o «pasaste, pero haz las
+// clases») con el botón a la etapa que toca; la frase de humor si se quemó; y lo extra si aprobó el examen.
+function lineaHumorVista(h) {
+  if (!h?.clave) return null;
+  return el('p', { class: 'humor-linea con-icono', role: 'note' }, icono('chispa', 'icono chico'),
+    el('span', { class: 'solo-lectores', texto: `${t('humor.sello')}: ` }), el('span', { texto: t(h.clave) }));
+}
+function panelesResultado(res) {
+  const lista = [];
+  if (res.humor) lista.push(lineaHumorVista(res.humor));
+  const s = res.salto;
+  if (s && (res.aprobado === false || s.pendientes > 0)) {
+    const texto = res.aprobado === false ? t('salto.quemado', { n: numero(s.saltados), pct: numero(res.pct) }) : t('salto.paso', { pct: numero(res.pct), faltan: numero(s.pendientes) });
+    lista.push(el('section', { class: `panel panel-salto ${res.aprobado === false ? 'quemado' : 'paso'}`, 'aria-labelledby': 'salto-titulo' },
+      el('h2', { id: 'salto-titulo', class: 'con-icono' }, icono('atencion'), el('span', { texto: t('salto.titulo') })),
+      el('p', { texto }),
+      s.siguiente ? el('a', { class: 'boton-3d naranja con-icono', href: `#tema/${encodeURIComponent(res.materia)}/${encodeURIComponent(s.siguiente.tema)}` },
+        icono('estrella', 'icono chico'), el('span', { texto: t('salto.ir') })) : null));
+  }
+  if (res.tipo === 'examen' && res.aprobado && res.materia) {
+    lista.push(el('a', { class: 'extra-invitacion con-icono', href: `#extra/${encodeURIComponent(res.materia)}` }, icono('chispa'),
+      el('span', {}, el('strong', { texto: t('extra.titulo') }), el('span', { class: 'extra-sello', texto: t('extra.sello') }))));
+  }
+  return lista;
+}
+
 async function pantallaPractica(id) {
   const vigente = nuevoTurno();
   const r = await api('GET', `/api/academia/intentos/${encodeURIComponent(id)}`);
@@ -4125,7 +4215,9 @@ async function pantallaPractica(id) {
     const vista = await import('./examen-vista.js');
     if (!vigente()) return;
     return vista.examenConReloj(intento, {
-      el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, sonar, medidor, celebrar, marcoEstudio, tarjetaPregunta,
+      el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, sonar, medidor, celebrar, marcoEstudio,
+      // 0.12.0: durante el examen con reloj, sin «¿De dónde salió?» (en la revisión del resultado, sí).
+      tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }), panelesResultado,
       revisionCompleta, claseMateria, empezarIntento, vigente,
     });
   }
@@ -4225,6 +4317,7 @@ async function pantallaPractica(id) {
         res.reexplicacion.map(s => el('div', { class: 'reexplicacion-parte' }, el('h3', { texto: s.titulo }), talCual('p', s.texto ?? (s.puntos ?? []).join('\n')), s.fuentes.map(lineaFuente)))) : null,
       // 0.9.0: después de un examen, el consejo del instructor (con IA, además el suyo).
       // 0.10.0: si no aprobó, el «Plan para pasar la próxima vez» (con el consejo del instructor IA adentro).
+      ...panelesResultado(res),
       res.aprobado === false ? instructorUi().planParaPasar(res) : res.tipo === 'examen' ? instructorUi().consejoExamen(res.id) : null,
       instructorUi().resultadoRefuerzo(res),
       revisionCompleta(res)].filter(Boolean));
@@ -4300,7 +4393,25 @@ async function pantallaProgreso() {
     p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
     panelPuntosDebiles(p.puntosDebiles, { conBoton: true }),
     materias,
+    panelExtra(p.extra),
     listaDebiles(p.debiles, t('acad.debiles'), 'acad.debiles.vacio')));
+}
+// 0.12.0: lo EXTRA va aparte (nunca se suma al Test Guide): por materia y por nivel. Lo usa también la ficha del alumno.
+function panelExtra(lista, { titulo = t('extra.progreso.titulo'), enlaces = true } = {}) {
+  if (!lista?.length) return null;
+  return el('section', { class: 'panel panel-extra', 'aria-labelledby': 'extra-progreso-titulo' },
+    el('div', { class: 'panel-cabeza' },
+      el('span', { class: 'panel-icono' }, icono('chispa')),
+      el('div', {}, el('h2', { id: 'extra-progreso-titulo', texto: titulo }), el('p', { class: 'extra-sello', texto: t('extra.sello') }))),
+    el('ul', { class: 'extra-progreso' }, lista.map(x => el('li', {},
+      el('div', { class: 'extra-progreso-cabeza' }, enlaces ? el('a', { href: `#extra/${encodeURIComponent(x.materia)}`, texto: nombreMateria(x.materia) }) : el('strong', { texto: nombreMateria(x.materia) }),
+        el('span', { class: 'suave chica', texto: t('extra.progreso.linea', { bien: numero(x.bien), n: numero(x.preguntas), respuestas: numero(x.respuestas) }) })),
+      el('div', { class: 'extra-progreso-niveles' }, x.niveles.filter(n => n.preguntas).map(n => {
+        const barra = el('span', { class: 'barra-relleno' });
+        barra.style.width = `${n.pct}%`;
+        return el('span', { class: 'extra-progreso-nivel' }, el('span', { class: 'chica', texto: `${t(`extra.nivel.${n.nivel}`)} ${numero(n.bien)}/${numero(n.preguntas)}` }), el('span', { class: 'banner-barra' }, barra));
+      }))))),
+    el('p', { class: 'suave chica', texto: t('extra.progreso.nota') }));
 }
 // 0.8.0: «Mis puntos débiles» (la memoria de errores: para siempre). Las ideas equivocadas que más elige, los temas donde
 // más falla y las preguntas que más falla; con «Practicar mis errores». El administrador ve lo mismo de cada alumno.
@@ -4364,7 +4475,7 @@ function listaDebiles(lista, tituloTexto, claveVacio, { conFallos = false } = {}
 // por pregunta (#alumno/N/intento/M) y la comparación lado a lado (#comparar/2,5).
 const piezasAlumnos = () => ({
   el, t, tn, icono, insignia, numero, pctTexto, fecha, hace, cuando, fechaCortaDia, nombreMateria, claseMateria, talCual, tarjetaPregunta,
-  panelPuntosDebiles, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
+  panelPuntosDebiles, panelExtra, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
   // 0.9.2: la cuenta del alumno desde su ficha (bloquear, nombre, contraseña) y los tiempos del examen.
   api, avisar, caja, botonAccion, textoError, yoId: estado.usuario?.id, recargar: () => dibujar(),
   // 0.10.0: las fallas registradas del alumno y su Profesor virtual (dar o quitar).
@@ -4549,14 +4660,19 @@ async function pantallaContenido() {
   const campoUmbral = el('input', { id: 'campo-umbral', type: 'number', min: 50, max: 100, step: 1, value: ajustes.umbral, inputmode: 'numeric' });
   // 0.9.2: el reloj del examen de materia (segundos por pregunta).
   const campoSegundos = el('input', { id: 'campo-examen-segundos', type: 'number', min: 20, max: 600, step: 5, value: ajustes.examenSegundos ?? 90, inputmode: 'numeric' });
+  // 0.12.0: el «Modo de práctica por defecto» de los temas (los exámenes siempre en Original).
+  const campoModo = el('select', { id: 'campo-practica-modo' },
+    ['original', 'reto'].map(v => el('option', { value: v, selected: (ajustes.practicaModo ?? 'original') === v, texto: t(`acad.modo.${v}`) })));
   const tarjetaAjustes = el('section', { class: 'tarjeta' },
     el('h2', { class: 'con-icono' }, icono('ajustes'), el('span', { texto: t('acad.ajustes') })),
     el('label', { for: 'campo-nombre-app', texto: t('acad.ajustes.nombre') }), campoNombre,
     el('label', { for: 'campo-umbral', texto: t('acad.ajustes.umbral') }), campoUmbral,
     el('label', { for: 'campo-examen-segundos', texto: t('acad.ajustes.examen_segundos') }), campoSegundos,
     el('p', { class: 'ayuda', texto: t('acad.ajustes.examen_segundos.ayuda') }),
+    el('label', { for: 'campo-practica-modo', texto: t('acad.ajustes.practica_modo') }), campoModo,
+    el('p', { class: 'ayuda', texto: t('acad.ajustes.practica_modo.ayuda') }),
     el('div', { class: 'botones' }, botonAccion(t('acad.ajustes.guardar'), '', mensajeAjustes, async () => {
-      const x = await api('POST', '/api/admin/academia/ajustes', { nombre: campoNombre.value, umbral: Number(campoUmbral.value), examenSegundos: Number(campoSegundos.value) });
+      const x = await api('POST', '/api/admin/academia/ajustes', { nombre: campoNombre.value, umbral: Number(campoUmbral.value), examenSegundos: Number(campoSegundos.value), practicaModo: campoModo.value });
       if (!x.ok) throw new Error(textoError(x.datos.error));
       if (estado.setup) estado.setup.nombreApp = x.datos.ajustes.nombre;
       ponerTitulo();
@@ -4573,7 +4689,17 @@ async function pantallaContenido() {
         marcar();
         avisar(t(x.datos.grupo ? 'acad.grupo.admin.encendido' : 'acad.grupo.admin.apagado'));
       }),
-      el('p', { class: 'suave chica', texto: t('acad.grupo.admin.linea') })));
+      el('p', { class: 'suave chica', texto: t('acad.grupo.admin.linea') })),
+    // 0.12.0: el humor del instructor, para todos (cada alumno lo puede apagar para sí).
+    el('div', { class: 'ajuste-grupo' },
+      el('p', { class: 'etiqueta-campo', texto: t('acad.humor.admin') }),
+      grupoDeBotones([['si', t('acad.humor.encendido')], ['no', t('acad.humor.apagado')]], r.datos.humor !== false ? 'si' : 'no', async (valor, marcar) => {
+        const x = await api('POST', '/api/admin/academia/humor', { encendido: valor === 'si' });
+        if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+        marcar();
+        avisar(t(x.datos.humor ? 'acad.humor.encendido' : 'acad.humor.apagado'));
+      }),
+      el('p', { class: 'suave chica', texto: t('acad.humor.admin.linea') })));
   // Subir.
   const mensajeSubir = caja();
   const progresoSubida = el('p', { class: 'suave', role: 'status' });
@@ -4616,6 +4742,14 @@ async function pantallaContenido() {
         const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/audio/${encodeURIComponent(nombre)}`, f, 'audio/mpeg');
         if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
       }
+      // 0.12.0: las páginas del libro («¿De dónde salió?»), si el paquete las nombra y se eligieron.
+      const paginas = (j.datos.faltanPaginas ?? []).filter(nombre => porNombre.has(nombre));
+      for (const [k, nombre] of paginas.entries()) {
+        const f = porNombre.get(nombre);
+        progresoSubida.textContent = t('acad.subir.paginas', { n: numero(k + 1), total: numero(paginas.length) });
+        const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/paginas/${encodeURIComponent(nombre)}`, f, f.type || 'application/octet-stream');
+        if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
+      }
       progresoSubida.textContent = '';
       // 0.9.0: las opciones del Modo reto que parecen fáciles (no impiden usar el paquete; scripts/reto-faciles.mjs las lista).
       const faciles = new Set((j.datos.avisos ?? []).map(a => a.ruta)).size;
@@ -4636,6 +4770,7 @@ async function pantallaContenido() {
       el('p', { class: 'suave', texto: t('acad.paquete.subido', { fecha: fecha(p.subidoEn) }) }),
       p.faltan?.length ? el('p', { class: 'aviso', texto: tn('acad.subir.faltan', { n: p.faltan.length }) }) : null,
       p.faltanAudio?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_audio', { n: p.faltanAudio.length }) }) : null,
+      p.faltanPaginas?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_paginas', { n: p.faltanPaginas.length }) }) : null,
       p.estado === 'listo' && !p.activo ? el('div', { class: 'botones' }, botonAccion(t('acad.paquete.usar'), 'secundario', mensaje, async () => {
         const x = await api('POST', `/api/admin/academia/paquetes/${p.id}/activar`, {});
         if (!x.ok) throw new Error(textoError(x.datos.error));
@@ -4792,6 +4927,9 @@ async function dibujar() {
   // 0.7.2: el «Video resumen» de una materia.
   const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
   if (video) return pantallaVideo(video[1]);
+  // 0.12.0: lo EXTRA de una materia (public/extra-vista.js, solo se carga ahí).
+  const extra = seccion.match(/^extra\/([a-z0-9_-]+)$/);
+  if (extra) return pantallaExtra(extra[1]);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad))?$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1], alumno[2] ?? 'resumen');
@@ -4835,7 +4973,7 @@ async function dibujar() {
 // y no después: por la red del teléfono eso es un viaje de ida y vuelta menos (150-400 ms). Si una pantalla pide
 // algo más al empezar, va aquí también (test/archivos.test.js lo revisa).
 function pedidosAlAbrir(seccion, admin) {
-  if (seccion === 'configuracion') return ['/api/yo/reinicios', '/api/yo/perfil'];
+  if (seccion === 'configuracion') return ['/api/yo/reinicios', '/api/yo/perfil', '/api/academia/humor'];
   if (seccion === 'terminos') return ['/api/terminos'];
   // La Ayuda no pide nada: sus textos llegan con el idioma.
   if (seccion === 'ayuda') return [];
@@ -4855,6 +4993,9 @@ function pedidosAlAbrir(seccion, admin) {
   if (/^examen\/[a-z0-9_-]+$/.test(seccion)) return ['/api/academia/camino'];
   const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
   if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
+  // 0.12.0: lo extra de una materia.
+  const extra = seccion.match(/^extra\/([a-z0-9_-]+)$/);
+  if (extra) return [`/api/academia/extra/${encodeURIComponent(extra[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad))?$/);
   if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}/ficha`, '/api/admin/sistema'] : [];

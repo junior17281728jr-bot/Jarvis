@@ -101,6 +101,7 @@ const MIGRACIONES_PUBLICADAS = {
   6: '48eec04a1f2cd75ea034303c3790cb8cfa1b51bd638ec211b226eb284b71d8cf',
   7: 'aaa760fd017924fa94476da7b6f9250ffed18273d692690317adee944d5cef38',
   8: 'bf9fe1f66e10367de3008a33fae5deb1c9ed4b1254219fbb1390c41327538845',
+  9: '114b00980f736729c7b9f3aab26b2bfdd5dcde0389af20369e181424725668f5',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
@@ -112,6 +113,7 @@ const VERSION_DE_CADA_MIGRACION = {
   6: '0.5.0',
   7: '0.7.0',
   8: '0.10.0',
+  9: '0.12.0',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -713,8 +715,8 @@ test('la revisión de Drive es una tarea del trabajador (el servidor web nunca l
   const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
   assert.ok(trabajador.has(join('academia', 'sincronizar.js')));
   const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
-  // La 0.7.1 no cambió la base (todo fue a ajustes); la siguiente es la 8 (0.10.0, el Instructor).
-  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 8, 'después de la 7 solo está la 8 (el Instructor)');
+  // La 0.7.1 no cambió la base (todo fue a ajustes); después vinieron la 8 (0.10.0, el Instructor) y la 9 (0.12.0, lo extra).
+  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 9, 'después de la 7 solo están la 8 (el Instructor) y la 9 (lo extra)');
 });
 
 test('el trabajador nunca lee un paquete entero (src/academia/sincronizar.js): lo revisa el servidor web, que lo enciende y lo apaga como a los avisos', () => {

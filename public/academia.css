@@ -753,3 +753,92 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .respuesta-sello { grid-column: 2; font: 800 12px/1 var(--letra-redonda); letter-spacing: 0.08em; color: var(--verde-texto); }
 .respuesta-idea { grid-column: 2; font-size: 14px; opacity: 0.85; }
 .nota-letras { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--morado-suave); color: var(--morado-texto); font-weight: 700; }
+
+/* ---------- 0.12.0: «¿De dónde salió?», ir directo al examen, el humor y lo EXTRA ---------- */
+.origen-boton {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 10px; border-radius: 12px;
+  border: 2px solid var(--linea); background: var(--tarjeta); color: var(--texto); font: 800 13px/1.1 var(--letra-redonda); cursor: pointer;
+}
+.origen-boton .icono { width: 16px; height: 16px; color: var(--azul); }
+.origen-boton:hover, .origen-boton:focus-visible { border-color: var(--azul); }
+@media (max-width: 420px) { .origen-boton-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .origen-boton { min-width: 40px; justify-content: center; } }
+.revision-origen { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.origen-capa { position: fixed; inset: 0; z-index: 45; background: rgba(4, 10, 20, 0.55); display: flex; align-items: flex-end; justify-content: center; }
+@media (min-width: 760px) { .origen-capa { align-items: center; } }
+.origen-hoja {
+  width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto; background: var(--tarjeta); color: var(--texto); outline: none;
+  border-radius: 24px 24px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
+  animation: sube 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+@media (min-width: 760px) { .origen-hoja { border-radius: 24px; } }
+.origen-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; }
+.origen-cabeza h2 { margin: 0; font-size: 19px; }
+.origen-datos { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: 6px 12px; margin: 0 0 12px; font-size: 15px; }
+.origen-fila { display: contents; }
+.origen-datos dt { color: var(--suave); font-weight: 800; }
+.origen-datos dd { margin: 0; font-weight: 700; }
+.origen-nota { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--azul) 10%, var(--tarjeta)); font-size: 15px; }
+.origen-nota .icono { width: 16px; height: 16px; }
+.origen-figura { margin: 0; }
+.origen-imagen-boton { position: relative; display: block; width: 100%; padding: 0; margin: 0; border: 2px solid var(--linea); border-radius: 14px; overflow: hidden; background: #ffffff; cursor: zoom-in; }
+.origen-imagen { display: block; width: 100%; height: auto; max-height: 60vh; object-fit: contain; object-position: top; }
+.origen-figura figcaption { margin-top: 4px; }
+
+.saltar-caja { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.saltar-hoja {
+  width: 100%; max-width: 520px; background: var(--tarjeta); color: var(--texto); border-radius: 24px 24px 0 0; text-align: center;
+  padding: 22px 18px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2); animation: sube 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+@media (min-width: 760px) { .saltar-hoja { border-radius: 24px; } }
+.saltar-hoja h2 { margin: 6px 0; font-size: 22px; }
+.saltar-icono { display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in srgb, var(--naranja) 20%, var(--tarjeta)); color: var(--naranja-borde); }
+.saltar-icono .icono { width: 30px; height: 30px; }
+.saltar-aviso { font-size: 18px; font-weight: 800; margin: 8px 0; }
+.saltar-botones { display: grid; gap: 10px; margin-top: 14px; }
+.saltar-botones .boton-3d { width: 100%; }
+.nodo.examen.directo .nodo-boton { background: var(--tarjeta); box-shadow: 0 7px 0 var(--gris-nodo-borde); color: var(--naranja-borde); border: 3px dashed var(--naranja); }
+.nodo.extra .nodo-boton { border-radius: 22px; width: 76px; background: var(--morado); box-shadow: 0 7px 0 var(--morado-borde); color: #ffffff; }
+.nodo.extra.opcional .nodo-boton { background: var(--morado-suave); color: var(--morado-texto); border: 3px dashed var(--morado); }
+.nodo.extra .nodo-detalle { color: var(--morado-texto); font-weight: 800; }
+
+.humor-linea {
+  display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; padding: 10px 14px; border-radius: 14px; font-weight: 700; font-size: 16px;
+  background: color-mix(in srgb, var(--oro) 22%, var(--tarjeta)); border-left: 5px solid var(--oro-borde); color: var(--texto);
+}
+.humor-linea .icono { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--oro-borde); }
+.panel-salto { border-left: 6px solid var(--naranja); }
+.panel-salto.quemado { border-left-color: var(--rojo); }
+.panel-salto h2 { margin: 0 0 6px; font-size: 18px; }
+.panel-salto p { font-size: 17px; font-weight: 700; margin: 0 0 12px; }
+
+.extra-sello { display: inline-block; margin: 4px 0 0; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; background: var(--morado-suave); color: var(--morado-texto); }
+.extra-sello.grande { font-size: 14px; padding: 6px 12px; }
+.extra-sello .icono { width: 16px; height: 16px; }
+.extra-invitacion { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 10px 0; border-radius: 18px; border: 2px dashed var(--morado); background: var(--tarjeta); color: var(--texto); text-decoration: none; }
+.extra-invitacion > span { display: grid; gap: 4px; justify-items: start; }
+.extra-invitacion .icono { width: 26px; height: 26px; color: var(--morado); }
+.extra-portada { text-align: center; padding: 18px 0 6px; display: grid; justify-items: center; gap: 4px; }
+.extra-niveles-lista { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.extra-nivel { border: 2px solid var(--linea); border-radius: 16px; padding: 12px; display: grid; gap: 6px; background: var(--tarjeta); }
+.extra-nivel-cabeza { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.extra-nivel .barra-relleno, .extra-progreso-nivel .barra-relleno { background: var(--morado); }
+.extra-tema { border-top: 1px solid var(--linea); padding: 8px 0; }
+.extra-tema summary { cursor: pointer; display: flex; justify-content: space-between; gap: 8px; font-weight: 800; padding: 6px 0; min-height: 36px; align-items: center; }
+.extra-tarjetas { display: grid; gap: 10px; }
+.extra-tarjeta { border-left: 5px solid var(--morado); background: color-mix(in srgb, var(--morado-suave) 50%, var(--tarjeta)); border-radius: 14px; padding: 12px 14px; }
+.extra-tarjeta h4 { margin: 4px 0 6px; font-size: 17px; }
+.extra-tarjeta ul { margin: 0 0 6px; padding-left: 20px; }
+.extra-tarjeta-sello { margin: 0; }
+.extra-recuerda { margin: 6px 0; }
+.extra-ingles { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.ficha-ingles-mini { padding: 3px 8px; border-radius: 8px; background: var(--tarjeta); border: 1px solid var(--linea); font-size: 13px; }
+.extra-fuente { margin: 4px 0 0; }
+.extra-cita { display: block; margin-top: 4px; font-style: italic; }
+.insignia-pregunta.extra { background: var(--morado-suave); color: var(--morado-texto); }
+.insignia-nivel { padding: 4px 10px; border-radius: 10px; font-size: 12px; font-weight: 800; border: 2px solid var(--morado); color: var(--morado-texto); }
+.panel-extra .panel-icono { background: var(--morado-suave); color: var(--morado-texto); }
+.extra-progreso { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 10px; }
+.extra-progreso-cabeza { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
+.extra-progreso-niveles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 6px; }
+.extra-progreso-nivel { display: grid; gap: 4px; }
+.ficha-saltos-lista { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }

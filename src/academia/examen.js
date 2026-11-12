@@ -39,7 +39,7 @@ export function examenDe(db, fila) {
 }
 
 // «Empezar examen»: si ya hay uno abierto de esa materia con tiempo, sigue ese (no se empieza otro reloj).
-export function crearExamen(db, usuarioId, paquete, materia, { azar, ahoraMs = Date.now() } = {}) {
+export function crearExamen(db, usuarioId, paquete, materia, { azar, ahoraMs = Date.now(), saltar = false } = {}) {
   cerrarVencidos(db, usuarioId, paquete, ahoraMs);
   const abiertos = db.prepare("SELECT * FROM academia_intentos WHERE usuario_id = ? AND tipo = 'examen' AND materia IS ? AND terminado_en IS NULL ORDER BY id DESC").all(usuarioId, materia);
   for (const f of abiertos) {
@@ -47,7 +47,7 @@ export function crearExamen(db, usuarioId, paquete, materia, { azar, ahoraMs = D
     if (e && ahoraMs < finDe(f, e)) return { codigo: 200, datos: vistaExamen(db, usuarioId, paquete, f.id, { ahoraMs }) };
   }
   return enTransaccion(db, () => {
-    const i = crearIntento(db, usuarioId, paquete, { tipo: 'examen', materia }, { azar, ahoraMs });
+    const i = crearIntento(db, usuarioId, paquete, { tipo: 'examen', materia, saltar }, { azar, ahoraMs });
     const { examenSegundos } = ajustesAcademia(db);
     escribir(db, i.id, { v: 1, limiteMs: i.total * examenSegundos * 1000, respuestas: {}, marcadas: [], tiempos: {} });
     return { codigo: 201, datos: vistaExamen(db, usuarioId, paquete, i.id, { ahoraMs }) };

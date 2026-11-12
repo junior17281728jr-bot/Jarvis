@@ -12,6 +12,7 @@
 //  - Lo que responde se guarda en «ajustes» (sin cambio de base): una explicación por (pregunta, opción, estilo, idioma,
 //    modelo, huella del texto de la pregunta), compartida (no tiene nada del alumno); el consejo y las dudas, por alumno.
 import { createHash } from 'node:crypto';
+import { REGLAS_IA } from './humor.js';
 
 export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat']);
 // Lo más largo que se guarda de cada parte (lo que pase de ahí se corta: nunca una pantalla enorme).
@@ -104,12 +105,14 @@ export const ESQUEMA_CONSEJO = Object.freeze({
   properties: { titulo: { type: 'string' }, consejo: { type: 'string' }, pasos: { type: 'array', items: { type: 'string' } } },
 });
 // cifras: lo que sale de resumenModelo (src/academia/instructor.js) + ideas (textos del paquete) + examen (si hubo uno).
-export function armarConsejo({ cifras, idioma = 'es' }) {
+export function armarConsejo({ cifras, idioma = 'es', humor = false }) {
   const sistema = [
     ...COMUN(idioma),
     'Tu tarea: darle a UN alumno su consejo personal de estudio para esta semana, a partir de sus cifras, para que apruebe el examen del Test Guide y entienda (no solo memorice).',
     'Sé concreto: nombra los temas y las ideas equivocadas que te damos; di qué hacer primero (repasar lo que vence, releer una tarjeta, hacer el Modo reto, bajar la prisa, estudiar a su mejor hora). Nada de frases vacías.',
     'Campos: titulo (hasta 80 caracteres), consejo (hasta 700), pasos = de 2 a 4 pasos cortos (hasta 160 cada uno).',
+    // 0.12.0: el «vacilón» del instructor (si el administrador y el alumno lo tienen encendido), con sus reglas.
+    ...(humor ? [REGLAS_IA] : []),
   ].join('\n');
   return { sistema, texto: bloque(cifras), esquema: ESQUEMA_CONSEJO };
 }

@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { ErrorTarea } from '../tareas/tipos.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import {
-  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, declarado, rutaDeRecurso,
+  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, declarado, rutaDeRecurso,
   manifiesto, jsonEntero, guardarAjuste, RECURSOS,
 } from './paquetes.js';
 import { basesDrive, recorrerCarpeta, bajarArchivo, TOPES_DRIVE, PAQUETE_EN_DRIVE } from './drive.js';
@@ -132,8 +132,8 @@ export function crearSincronizador({ topes = {} } = {}) {
 
     // 3. Las figuras y los audios de una versión que faltan (de su manifiesto: el JSON entero nunca se lee aquí).
     async function completar(fila, paquete) {
-      for (const clase of ['figura', 'audio']) {
-        const faltan = clase === 'figura' ? figurasQueFaltan(config, fila) : audiosQueFaltan(config, fila);
+      for (const clase of ['figura', 'audio', 'pagina']) {
+        const faltan = clase === 'figura' ? figurasQueFaltan(config, fila) : clase === 'audio' ? audiosQueFaltan(config, fila) : paginasQueFaltan(config, fila);
         for (const archivo of faltan) {
           if (!queda()) { informe.parcial = true; return; }
           const lista = candidatos(arbol.archivos, archivo, paquete.camino);
@@ -151,12 +151,12 @@ export function crearSincronizador({ topes = {} } = {}) {
             let ultimo = null;
             for (const c of (d?.sha256 ? lista : lista.slice(0, 1))) {
               if (!queda()) { informe.parcial = true; break; }
-              const tope = Math.min(RECURSOS[clase].tope, clase === 'figura' ? T.imagen : T.audio);
+              const tope = Math.min(RECURSOS[clase].tope, clase === 'audio' ? T.audio : T.imagen);
               // Su propio «.part» (la pantalla, en el otro proceso, usa «<archivo>.part»): nunca escriben el mismo.
               const b = await bajarArchivo(c.id, { bases, ruta: `${destino}.drive.part`, tope, senal });
               informe.bytes += b.bytes ?? 0;
               if (!b.ok) { ultimo = b.motivo; continue; }
-              if (d?.sha256 && b.huella !== d.sha256) { ultimo = clase === 'figura' ? 'figura_distinta' : 'audio_distinto'; continue; }
+              if (d?.sha256 && b.huella !== d.sha256) { ultimo = clase === 'figura' ? 'figura_distinta' : clase === 'audio' ? 'audio_distinto' : 'pagina_distinta'; continue; }
               try {
                 await aceptarRecurso(db, config, { fila, clase, archivo, parcial: `${destino}.drive.part`, huella: b.huella, bytes: b.bytes, escribir: ctx.escribir });
                 listo = true;

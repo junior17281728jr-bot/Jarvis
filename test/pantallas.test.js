@@ -179,6 +179,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...MOTIVOS_PAQUETE.map(x => `acad.motivo.${x}`),
     ...ESTADOS_PAQUETE.map(x => `acad.paquete.estado.${x}`),
     ...MOTIVOS_DRIVE.map(x => `acad.drive.motivo.${x}`),
+    // Academia (0.12.0): los niveles de lo extra y el modo de práctica por defecto.
+    ...['basico', 'intermedio', 'avanzado'].map(x => `extra.nivel.${x}`),
+    ...['original', 'reto'].map(x => `acad.modo.${x}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -194,7 +197,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // Academia (0.7.0).
     'acad.materia.', 'acad.motivo.', 'acad.paquete.estado.',
     // Academia (0.7.1).
-    'acad.drive.motivo.']));
+    'acad.drive.motivo.',
+    // Academia (0.12.0).
+    'extra.nivel.', 'acad.modo.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });

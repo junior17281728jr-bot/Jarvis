@@ -15,7 +15,7 @@ import { pipeline } from 'node:stream/promises';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion, revisarModoPrueba } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { revisarPaquete, indexarPaquete, audiosDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, MATERIAS } from './formato.js';
+import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, MATERIAS } from './formato.js';
 
 const ahora = () => new Date().toISOString();
 export const AJUSTE_ACTIVO = 'academia.paquete_activo';
@@ -72,6 +72,7 @@ const desdeDatos = datos => ({
   figuras: (datos.figuras ?? []).map(f => ({ archivo: f.archivo, sha256: f.sha256 ?? null })),
   audios: audiosDe(datos),
   materias: materiasDe(datos),
+  paginas: paginasDe(datos), // 0.12.0
 });
 export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = false } = {}) {
   const carpeta = carpetaDe(config, fila);
@@ -80,13 +81,27 @@ export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = f
   let m = null;
   if (datosYaLeidos) m = desdeDatos(datosYaLeidos);
   else {
+    let viejo = false;
     try {
       const leido = JSON.parse(readFileSync(join(carpeta, 'manifiesto.json'), 'utf8'));
       if (Array.isArray(leido?.figuras) && Array.isArray(leido?.audios) && Array.isArray(leido?.materias)) m = leido;
     } catch { m = null; }
+    // 0.12.0: un manifiesto escrito por una versión de antes no dice «paginas». El trabajador lo usa así (sin páginas,
+    // que son opcionales); el servidor web lo vuelve a armar desde el JSON y lo reescribe (la versión no cambia).
+    if (m && !Array.isArray(m.paginas)) {
+      if (soloArchivo) return { ...m, paginas: [] }; // sin guardarlo en memoria: cuando el web lo reescriba, se lee el nuevo
+      else { m = null; viejo = true; }
+    }
     if (!m) {
       if (soloArchivo) return null;
       m = desdeDatos(leerJsonDe(config, fila));
+      if (viejo) {
+        try {
+          const temporal = join(carpeta, `manifiesto.json.${process.pid}.tmp`);
+          writeFileSync(temporal, JSON.stringify(m), { mode: 0o640 });
+          renameSync(temporal, join(carpeta, 'manifiesto.json'));
+        } catch { /* se arma otra vez la próxima */ }
+      }
     }
   }
   if (!existsSync(join(carpeta, 'manifiesto.json'))) {
@@ -96,7 +111,10 @@ export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = f
   manifiestos.set(clave, m);
   return m;
 }
-export const tieneManifiesto = (config, fila) => existsSync(join(carpetaDe(config, fila), 'manifiesto.json'));
+// 0.12.0: uno escrito por una versión de antes (sin «paginas») cuenta como que falta: el servidor web lo vuelve a armar.
+export function tieneManifiesto(config, fila) {
+  try { return Array.isArray(JSON.parse(readFileSync(join(carpetaDe(config, fila), 'manifiesto.json'), 'utf8'))?.paginas); } catch { return false; }
+}
 
 // La huella de un archivo, leyéndolo de a 1 MB (sin tenerlo entero en memoria).
 export function huellaDeArchivo(ruta) {
@@ -125,15 +143,17 @@ export function listarPaquetes(db, config) {
   return filas.map(f => {
     let faltan = [];
     let faltanAudio = [];
+    let faltanPaginas = [];
     const enUso = (compuesto?.materias ?? []).filter(m => m.paquete === f.id).map(m => m.id);
     // Solo se mira lo que falta en las incompletas y en las que están en uso (las demás quedan guardadas tal cual).
     if (f.estado === 'incompleto' || enUso.length) {
       try {
         if (f.estado === 'incompleto') faltan = figurasQueFaltan(config, f);
         faltanAudio = audiosQueFaltan(config, f);
+        faltanPaginas = paginasQueFaltan(config, f);
       } catch { faltan = []; }
     }
-    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio };
+    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas };
   });
 }
 
@@ -164,7 +184,7 @@ const enSeguida = (db, trabajo) => enTransaccion(db, trabajo);
 export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = null, origen = 'manual', escribir = trabajo => enSeguida(db, trabajo) }) {
   const { revision, huella } = revisado;
   const ya = db.prepare("SELECT * FROM academia_paquetes WHERE huella = ? AND estado <> 'fallido' ORDER BY id DESC LIMIT 1").get(huella);
-  if (ya && jsonEntero(config, ya)) return { codigo: 200, datos: { paquete: vista(ya), repetido: true, faltan: ya.estado === 'listo' ? [] : figurasQueFaltan(config, ya), faltanAudio: audiosQueFaltan(config, ya), avisos: revision.avisos ?? [] } };
+  if (ya && jsonEntero(config, ya)) return { codigo: 200, datos: { paquete: vista(ya), repetido: true, faltan: ya.estado === 'listo' ? [] : figurasQueFaltan(config, ya), faltanAudio: audiosQueFaltan(config, ya), faltanPaginas: paginasQueFaltan(config, ya), avisos: revision.avisos ?? [] } };
   if (ya) await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'fallido', detalle = 'no_se_pudo_guardar' WHERE id = ?").run(ya.id));
   const r = revision.resumen;
   const fila = await escribir(() => {
@@ -182,6 +202,7 @@ export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = nu
     mkdirSync(carpeta); // nueva: si ya existiera, falla (nunca se escribe en la carpeta de otra versión)
     mkdirSync(join(carpeta, 'figuras'));
     mkdirSync(join(carpeta, 'audio'));
+    mkdirSync(join(carpeta, 'paginas'));
     writeFileSync(join(carpeta, 'paquete.json'), cuerpo, { flag: 'wx', mode: 0o640 });
   } catch {
     await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'fallido', detalle = 'no_se_pudo_guardar' WHERE id = ?").run(fila.id));
@@ -191,7 +212,7 @@ export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = nu
   const faltan = revision.figuras.map(f => f.archivo);
   if (!faltan.length) await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'listo', listo_en = ? WHERE id = ?").run(ahora(), fila.id));
   // 0.9.0: las opciones del Modo reto que parecen fáciles (avisos: no impiden usarlo; ver src/academia/reto-calidad.js).
-  return { codigo: 201, datos: { paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)), repetido: false, faltan, faltanAudio: revision.audios.map(a => a.archivo), avisos: revision.avisos ?? [] } };
+  return { codigo: 201, datos: { paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)), repetido: false, faltan, faltanAudio: revision.audios.map(a => a.archivo), faltanPaginas: (revision.paginas ?? []).map(g => g.archivo), avisos: revision.avisos ?? [] } };
 }
 
 // Sube el JSON (la ruta del administrador). { codigo, datos }: 422 con la lista de errores si no está bien armado.
@@ -224,7 +245,22 @@ function primerosBytes(ruta, n = 16) {
 export const RECURSOS = Object.freeze({
   figura: Object.freeze({ carpeta: 'figuras', patron: ARCHIVO_FIGURA, tope: LIMITES.figuraBytes, declarados: datos => datos.figuras ?? [], tipo: tipoDeFigura, valido: (cabeza, archivo) => esImagenDeTipo(cabeza, tipoDeFigura(archivo)), noValido: 'imagen_no_valida' }),
   audio: Object.freeze({ carpeta: 'audio', patron: ARCHIVO_AUDIO, tope: LIMITES.audioBytes, declarados: datos => audiosDe(datos), tipo: () => 'audio/mpeg', valido: cabeza => esMp3(cabeza), noValido: 'audio_no_valido' }),
+  // 0.12.0: la página real del libro de una pregunta (opcional como el audio: sin ella se ve la referencia en texto).
+  pagina: Object.freeze({ carpeta: 'paginas', patron: ARCHIVO_FIGURA, tope: LIMITES.paginaBytes, declarados: datos => paginasDe(datos), tipo: tipoDeFigura, valido: (cabeza, archivo) => esImagenDeTipo(cabeza, tipoDeFigura(archivo)), noValido: 'imagen_no_valida' }),
 });
+// La lista del manifiesto de cada clase.
+const LISTA_DE = Object.freeze({ figura: 'figuras', audio: 'audios', pagina: 'paginas' });
+const NO_ESTA = Object.freeze({ figura: 'figura_no_esta_en_el_paquete', audio: 'audio_no_esta_en_el_paquete', pagina: 'pagina_no_esta_en_el_paquete' });
+const DISTINTO = Object.freeze({ figura: 'figura_distinta', audio: 'audio_distinto', pagina: 'pagina_distinta' });
+
+// 0.12.0: las páginas que el paquete nombra y todavía no están en su carpeta.
+export function paginasQueFaltan(config, fila, datos = null) {
+  try {
+    const lista = datos ? RECURSOS.pagina.declarados(datos) : manifiesto(config, fila).paginas ?? [];
+    const carpeta = join(carpetaDe(config, fila), 'paginas');
+    return lista.filter(a => !existsSync(join(carpeta, a.archivo))).map(a => a.archivo);
+  } catch { return []; }
+}
 
 // Los audios que el paquete nombra y todavía no están en su carpeta.
 export function audiosQueFaltan(config, fila, datos = null) {
@@ -239,7 +275,7 @@ export function audiosQueFaltan(config, fila, datos = null) {
 export function declarado(config, fila, clase, archivo, datos = null) {
   const r = RECURSOS[clase];
   if (!r || typeof archivo !== 'string' || !r.patron.test(archivo)) return null;
-  const lista = datos ? r.declarados(datos) : manifiesto(config, fila)[clase === 'figura' ? 'figuras' : 'audios'];
+  const lista = datos ? r.declarados(datos) : manifiesto(config, fila)[LISTA_DE[clase]] ?? [];
   return lista.find(f => f.archivo === archivo) ?? null;
 }
 export const rutaDeRecurso = (config, fila, clase, archivo) => join(carpetaDe(config, fila), RECURSOS[clase].carpeta, archivo);
@@ -258,10 +294,10 @@ export function apartarRecurso(fila, clase, archivo) {
 export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial, huella, bytes, usuarioId = null, escribir = trabajo => enSeguida(db, trabajo) }) {
   const r = RECURSOS[clase];
   const d = declarado(config, fila, clase, archivo);
-  if (!d) throw new ErrorHttp(400, clase === 'figura' ? 'figura_no_esta_en_el_paquete' : 'audio_no_esta_en_el_paquete');
+  if (!d) throw new ErrorHttp(400, NO_ESTA[clase]);
   const destino = rutaDeRecurso(config, fila, clase, archivo);
   if (!bytes || bytes > r.tope || !r.valido(primerosBytes(parcial), archivo)) throw new ErrorHttp(422, r.noValido);
-  if (d.sha256 && huella !== d.sha256) throw new ErrorHttp(422, clase === 'figura' ? 'figura_distinta' : 'audio_distinto');
+  if (d.sha256 && huella !== d.sha256) throw new ErrorHttp(422, DISTINTO[clase]);
   if (existsSync(destino)) throw new ErrorHttp(409, 'ya_hay_otra_en_marcha');
   renameSync(parcial, destino);
   const faltan = figurasQueFaltan(config, fila);
@@ -271,7 +307,7 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
       auditar(db, { usuarioId, accion: 'academia_paquete_listo', detalle: String(fila.id) });
     });
   }
-  return { faltan, faltanAudio: audiosQueFaltan(config, fila) };
+  return { faltan, faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila) };
 }
 
 // Sube UNA figura o UN audio del paquete (cuerpo = el archivo tal cual). Solo los que el paquete nombra y faltan.
@@ -280,9 +316,9 @@ export async function subirRecurso(db, config, { clase, paqueteId, archivo, req,
   const fila = db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(Number(paqueteId));
   if (!fila || fila.estado === 'fallido') throw new ErrorHttp(404, 'no_existe');
   if (typeof archivo !== 'string' || !r.patron.test(archivo)) throw new ErrorHttp(400, 'archivo_no_valido');
-  if (!declarado(config, fila, clase, archivo)) throw new ErrorHttp(400, clase === 'figura' ? 'figura_no_esta_en_el_paquete' : 'audio_no_esta_en_el_paquete');
+  if (!declarado(config, fila, clase, archivo)) throw new ErrorHttp(400, NO_ESTA[clase]);
   const destino = rutaDeRecurso(config, fila, clase, archivo);
-  if (existsSync(destino)) return { ya: true, faltan: figurasQueFaltan(config, fila), faltanAudio: audiosQueFaltan(config, fila), paquete: vista(fila) };
+  if (existsSync(destino)) return { ya: true, faltan: figurasQueFaltan(config, fila), faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), paquete: vista(fila) };
   const tipoPedido = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   if (tipoPedido !== r.tipo(archivo) && tipoPedido !== 'application/octet-stream' && !(clase === 'audio' && tipoPedido === 'audio/mp3')) throw new ErrorHttp(415, 'formato_no_valido');
   const largo = Number(req.headers['content-length']);
@@ -290,7 +326,7 @@ export async function subirRecurso(db, config, { clase, paqueteId, archivo, req,
   const soltar = apartarRecurso(fila, clase, archivo);
   let resultado;
   try {
-    mkdirSync(dirname(destino), { recursive: true }); // las versiones de la 0.7.0 no tienen la carpeta «audio»
+    mkdirSync(dirname(destino), { recursive: true }); // las versiones de antes no tienen la carpeta «audio» ni «paginas»
     const parcial = `${destino}.part`;
     const hash = createHash('sha256');
     let bytes = 0;
@@ -402,7 +438,7 @@ function componer(config, vivas, filas) {
       usada = true;
     }
     if (!usada) continue;
-    porPaquete.set(e.id, { carpeta: join(carpetaAcademia(config), 'paquetes', fila.carpeta), figuras: indice.figuras, libros: indice.libros });
+    porPaquete.set(e.id, { carpeta: join(carpetaAcademia(config), 'paquetes', fila.carpeta), figuras: indice.figuras, libros: indice.libros, paginas: indice.paginas ?? new Map() });
     datosDe.set(e.id, { nombre: indice.nombre, edicion: indice.edicion, muestra: indice.muestra });
   }
   if (!deMateria.size) return null;
@@ -413,7 +449,7 @@ function componer(config, vivas, filas) {
   const libros = new Map();
   const materias = MATERIAS.map(idMateria => {
     const usada = deMateria.get(idMateria);
-    if (!usada) return { id: idMateria, temas: [], audio: null, video: null, paquete: null };
+    if (!usada) return { id: idMateria, temas: [], audio: null, video: null, paquete: null, extra: { tarjetas: [], preguntas: [] } };
     const { pid, m, indice } = usada;
     const temas = m.temas.map(t => {
       const suyas = t.preguntas.filter(qid => !preguntas.has(qid)); // un id repetido entre versiones: vale el primero
@@ -426,7 +462,7 @@ function componer(config, vivas, filas) {
     });
     for (const [n, f] of indice.figuras) if (!figuras.has(n)) figuras.set(n, f);
     for (const [n, l] of indice.libros) if (!libros.has(n)) libros.set(n, l);
-    return { id: idMateria, temas, audio: m.audio, video: m.video ?? null, paquete: pid };
+    return { id: idMateria, temas, audio: m.audio, video: m.video ?? null, paquete: pid, extra: m.extra ?? { tarjetas: [], preguntas: [] } };
   });
   // La versión «principal» (su nombre, su id en los intentos): la última puesta en uso que da alguna materia.
   const principal = [...vivas].reverse().find(e => porPaquete.has(e.id)).id;
@@ -478,4 +514,20 @@ export function rutaFigura(paquete, numero) {
   if (!f) return null;
   const ruta = join(p ? p.carpeta : paquete.carpeta, 'figuras', f.archivo);
   try { return statSync(ruta).isFile() ? { ruta, tipo: tipoDeFigura(f.archivo), bytes: statSync(ruta).size } : null; } catch { return null; }
+}
+
+// 0.12.0: la página real del libro de una pregunta en uso: { archivo, libro, pagina } (o null). «existe» dice si su imagen
+// ya llegó a la carpeta de su versión.
+export function paginaDe(paquete, qid) {
+  const q = paquete?.preguntas?.get(qid);
+  const nombre = q?.original?.pagina_imagen;
+  if (typeof nombre !== 'string') return null;
+  const pid = paquete.dePaquete?.get(qid);
+  const p = pid != null ? paquete.porPaquete?.get(pid) : null;
+  const g = p?.paginas?.get(nombre.toLowerCase());
+  if (!g || !ARCHIVO_FIGURA.test(g.archivo)) return null;
+  const ruta = join(p.carpeta, 'paginas', g.archivo);
+  let bytes = 0;
+  try { const st = statSync(ruta); bytes = st.isFile() ? st.size : 0; } catch { bytes = 0; }
+  return { archivo: g.archivo, libro: g.libro, pagina: g.pagina, libroTitulo: p.libros?.get(g.libro)?.titulo ?? g.libro, existe: bytes > 0, ruta, bytes, tipo: tipoDeFigura(g.archivo) };
 }

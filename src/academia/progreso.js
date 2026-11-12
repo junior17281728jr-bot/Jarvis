@@ -6,7 +6,10 @@
 // nunca viajan antes de responder: la nota la pone el servidor.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe } from './paquetes.js';
+import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe } from './paquetes.js';
+import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe } from './saltos.js';
+import { lineaHumor } from './humor.js';
+import { resumenExtra } from './extra.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
 import { preguntasDelInstructor } from './practica.js';
@@ -20,6 +23,11 @@ import { nombresLegales } from '../cuentas/terminos.js';
 // y lo nuevo de sus temas abiertos, mezclado. También es práctica, con las 3 opciones originales.
 export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso', 'reto', 'errores', 'instructor']);
 export const modoDeTipo = tipo => (tipo === 'reto' ? MODO_RETO : MODO_ORIGINAL);
+// 0.12.0: el modo de un intento ya creado: el de su tipo, o «reto» si un tema se hizo en Modo reto (el administrador lo
+// puso por defecto para las prácticas de tema; se fija al crear el intento en academia_intentos.modo).
+export const modoDeFila = fila => (fila?.tipo === 'reto' || fila?.modo === MODO_RETO ? MODO_RETO : MODO_ORIGINAL);
+// 0.12.0: «Modo de práctica por defecto» de los temas (los exámenes siempre van en Original).
+export const MODOS_PRACTICA = Object.freeze([MODO_ORIGINAL, MODO_RETO]);
 export const ESTADOS_TEMA = Object.freeze(['bloqueado', 'abierto', 'aprobado']);
 export const ESTADOS_MATERIA = Object.freeze(['vacia', 'bloqueada', 'abierta', 'aprobada']);
 export const NOMBRE_POR_DEFECTO = 'Academia de Aviación';
@@ -44,7 +52,9 @@ export function ajustesAcademia(db) {
   const nombre = leerAjuste(db, 'academia.nombre');
   const umbral = Number(leerAjuste(db, 'academia.aprobar_pct'));
   const segundos = Number(leerAjuste(db, 'academia.examen_segundos'));
+  const modo = leerAjuste(db, 'academia.practica_modo');
   return {
+    practicaModo: modo === MODO_RETO ? MODO_RETO : MODO_ORIGINAL,
     nombre: nombre && nombre.trim() ? nombre : NOMBRE_POR_DEFECTO,
     umbral: Number.isSafeInteger(umbral) && umbral >= 50 && umbral <= 100 ? umbral : UMBRAL_POR_DEFECTO,
     examenSegundos: Number.isSafeInteger(segundos) && segundos >= EXAMEN_SEGUNDOS_MIN && segundos <= EXAMEN_SEGUNDOS_MAX ? segundos : EXAMEN_SEGUNDOS_POR_DEFECTO,
@@ -58,7 +68,11 @@ export function encenderGrupo(db, encendido) {
   guardarAjuste(db, 'academia.grupo', encendido ? '1' : '0');
   return encendido;
 }
-export function guardarAjustesAcademia(db, { nombre, umbral, examenSegundos }) {
+export function guardarAjustesAcademia(db, { nombre, umbral, examenSegundos, practicaModo }) {
+  if (practicaModo !== undefined) {
+    if (!MODOS_PRACTICA.includes(practicaModo)) throw new ErrorHttp(400, 'datos_no_validos');
+    guardarAjuste(db, 'academia.practica_modo', practicaModo);
+  }
   if (examenSegundos !== undefined) {
     if (!Number.isSafeInteger(examenSegundos) || examenSegundos < EXAMEN_SEGUNDOS_MIN || examenSegundos > EXAMEN_SEGUNDOS_MAX) throw new ErrorHttp(400, 'examen_segundos_no_valido');
     guardarAjuste(db, 'academia.examen_segundos', examenSegundos);
@@ -92,7 +106,14 @@ export function vistaPregunta(paquete, id, { intentoId = null, modo = MODO_ORIGI
     opciones: reto ? reto.map(op => ({ letra: op.letra, texto: op.texto })) : o.opciones.map(op => ({ letra: op.letra, texto: op.texto })),
     figura: o.figura != null ? figuraVista(paquete, id, o.figura) : null,
     fuente: q.origen === 'poh' && q.fuente ? fuenteDe(paquete, q.fuente, paquete.dePaquete?.get(id)) : null,
+    // 0.12.0: «¿De dónde salió?»: la página real del libro (si el paquete la trae). La imagen se pide aparte
+    // (GET /api/academia/paginas/:pregunta) y solo se da DESPUÉS de responder: en esa página está la respuesta.
+    paginaLibro: paginaVista(paquete, id),
   };
+}
+function paginaVista(paquete, id) {
+  const g = paginaDe(paquete, id);
+  return g ? { libro: g.libroTitulo, pagina: g.pagina, imagen: g.existe } : null;
 }
 // 0.7.1: con varias versiones en uso, la figura lleva «ref» (de qué versión es); con una sola, igual que antes.
 function figuraVista(paquete, id, numero) {
@@ -171,8 +192,8 @@ function repasoPendiente(db, usuarioId, paquete, ahoraMs) {
 // El camino: las 11 materias en su orden, cada tema con su estado. Un tema se abre cuando se aprobó el anterior
 // (las materias sin contenido en el paquete se saltan). El examen de una materia se abre con todos sus temas aprobados.
 export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
-  const { nombre, umbral, examenSegundos } = ajustesAcademia(db);
-  const base = { nombre, umbral, examenSegundos, ...puntosYRacha(db, usuarioId, ahoraMs) };
+  const { nombre, umbral, examenSegundos, practicaModo } = ajustesAcademia(db);
+  const base = { nombre, umbral, examenSegundos, practicaModo, ...puntosYRacha(db, usuarioId, ahoraMs) };
   if (!paquete) return { ...base, paquete: null, materias: [], repaso: 0 };
   const aprobados = temasAprobados(db, usuarioId);
   const deExamen = examenes(db, usuarioId);
@@ -180,6 +201,7 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const vistos = videosVistos(db, usuarioId);
   const leidos = temasLeidos(db, usuarioId);
   const memoria = puntosDebiles(db, usuarioId, paquete);
+  const saltos = saltosDe(db, usuarioId);
   const materias = paquete.materias.map(m => {
     const temas = m.temas.map(t => {
       const a = aprobados.get(`${m.id}/${t.id}`);
@@ -202,7 +224,14 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     return {
       id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), ...(audio ? { audio } : {}), ...(video ? { video } : {}),
       reto: retoN, ...(debil ? { debil } : {}),
-      examen: { disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0 },
+      examen: {
+        disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0,
+        // 0.12.0: «Ir directo al examen» sin terminar los temas (con su aviso). El orden queda guardado.
+        saltable: !todos && temas.length > 0, pendientes: temas.filter(t => t.estado !== 'aprobado').length,
+      },
+      orden: saltos.orden[m.id] ?? null, saltos: saltos.eventos.filter(e => e.materia === m.id).length,
+      // 0.12.0: lo EXTRA (no es del Test Guide): cuántas tarjetas y preguntas trae; se ofrece después del examen.
+      ...(m.extra?.preguntas?.length || m.extra?.tarjetas?.length ? { extra: { preguntas: m.extra.preguntas.length, tarjetas: m.extra.tarjetas.length, recomendado: ex?.aprobado === true } } : {}),
     };
   });
   return { ...base, paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra }, materias, repaso: repasoPendiente(db, usuarioId, paquete, ahoraMs).length };
@@ -300,10 +329,11 @@ function barajar(lista, azar) {
   return copia;
 }
 
-export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
+export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   if (!TIPOS_INTENTO.includes(tipo)) throw new ErrorHttp(400, 'datos_no_validos');
   let ids;
+  let salto = null;
   if (tipo === 'tema') {
     const { t } = buscarTema(paquete, materia, tema);
     if (estadoDelTema(db, usuarioId, paquete, materia, tema) === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
@@ -312,9 +342,11 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
     const m = paquete.materias.find(x => x.id === materia);
     if (!m || !m.temas.length) throw new ErrorHttp(404, 'no_existe');
     const c = camino(db, usuarioId, paquete, ahoraMs).materias.find(x => x.id === materia);
-    if (!c.examen.disponible) throw new ErrorHttp(403, 'examen_bloqueado');
+    // 0.12.0: sin todos los temas, solo si pidió «Ir directo al examen» (saltar: true); queda anotado como salto.
+    if (!c.examen.disponible && saltar !== true) throw new ErrorHttp(403, 'examen_bloqueado');
     ids = m.temas.flatMap(t => t.preguntas);
     tema = null;
+    salto = c.examen.disponible ? null : { pendientes: c.temas.filter(t => t.estado !== 'aprobado').length, total: c.temas.length };
   } else if (tipo === 'reto') {
     // Un tema abierto, o toda una materia (las preguntas de sus temas abiertos): solo las que traen su Modo reto.
     const m = paquete.materias.find(x => x.id === materia);
@@ -362,10 +394,17 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
   const anterior = porPrioridad ? null : db.prepare('SELECT orden FROM academia_intentos WHERE usuario_id = ? AND tipo = ? AND materia IS ? AND tema IS ? ORDER BY id DESC LIMIT 1')
     .get(usuarioId, tipo, materia, tema);
   if (anterior && orden.length > 1 && anterior.orden === JSON.stringify(orden)) orden = [...orden.slice(1), orden[0]];
-  const { umbral } = ajustesAcademia(db);
-  const r = db.prepare(`INSERT INTO academia_intentos (usuario_id, paquete_id, tipo, materia, tema, orden, total, umbral, empezado_en)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(usuarioId, paquete.id, tipo, materia, tema, JSON.stringify(orden), orden.length, umbral, new Date(ahoraMs).toISOString());
-  return verIntento(db, usuarioId, paquete, Number(r.lastInsertRowid));
+  const { umbral, practicaModo } = ajustesAcademia(db);
+  // 0.12.0: un tema en Modo reto si el administrador lo puso por defecto (las preguntas sin reto salen en Original).
+  const modo = tipo === 'tema' && practicaModo === MODO_RETO && ids.some(id => tieneReto(paquete.preguntas.get(id))) ? MODO_RETO : null;
+  const r = db.prepare(`INSERT INTO academia_intentos (usuario_id, paquete_id, tipo, materia, tema, orden, total, umbral, empezado_en, modo)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(usuarioId, paquete.id, tipo, materia, tema, JSON.stringify(orden), orden.length, umbral, new Date(ahoraMs).toISOString(), modo);
+  const nuevo = Number(r.lastInsertRowid);
+  if (tipo === 'examen') {
+    anotarOrden(db, usuarioId, materia, salto ? 'examen_antes' : 'temas_antes');
+    if (salto) registrarSalto(db, usuarioId, { materia, intento: nuevo, ...salto, en: new Date(ahoraMs).toISOString() });
+  }
+  return verIntento(db, usuarioId, paquete, nuevo);
 }
 
 // Un intento del alumno que entró (si es de otro: «no existe»).
@@ -380,7 +419,7 @@ export function verIntento(db, usuarioId, paquete, intentoId) {
   const fila = intentoDe(db, usuarioId, intentoId);
   const respuestas = new Map(db.prepare('SELECT pregunta, elegida FROM academia_respuestas WHERE intento_id = ?').all(fila.id).map(f => [f.pregunta, f.elegida]));
   const orden = JSON.parse(fila.orden);
-  const como = { intentoId: fila.id, modo: modoDeTipo(fila.tipo) };
+  const como = { intentoId: fila.id, modo: modoDeFila(fila) };
   return {
     id: fila.id, tipo: fila.tipo, modo: como.modo, materia: fila.materia, tema: fila.tema, total: fila.total, respondidas: fila.respondidas, aciertos: fila.aciertos,
     umbral: fila.umbral, terminado: fila.terminado_en != null,
@@ -407,7 +446,7 @@ export function responder(db, usuarioId, paquete, intentoId, { pregunta, elegida
   return enTransaccion(db, () => {
     const fila = intentoDe(db, usuarioId, intentoId);
     if (typeof pregunta !== 'string' || !JSON.parse(fila.orden).includes(pregunta)) throw new ErrorHttp(400, 'pregunta_no_es_del_intento');
-    const como = { intentoId: fila.id, modo: modoDeTipo(fila.tipo) };
+    const como = { intentoId: fila.id, modo: modoDeFila(fila) };
     const ya = db.prepare('SELECT elegida FROM academia_respuestas WHERE intento_id = ? AND pregunta = ?').get(fila.id, pregunta);
     // Dos toques seguidos: la primera respuesta es la que vale.
     if (ya) return { respuesta: retroalimentacion(paquete, pregunta, ya.elegida, como), respondidas: fila.respondidas, aciertos: fila.aciertos, total: fila.total };
@@ -416,7 +455,8 @@ export function responder(db, usuarioId, paquete, intentoId, { pregunta, elegida
     if (!q) throw new ErrorHttp(409, 'pregunta_no_disponible');
     // En Modo reto llega la letra que se vio: se guarda la opción de verdad (la correcta original, R1 o R2).
     const vistas = como.modo === MODO_RETO ? opcionesReto(q, fila.id, pregunta) : null;
-    if (como.modo === MODO_RETO && !vistas) throw new ErrorHttp(409, 'pregunta_no_disponible');
+    // (un tema en Modo reto por defecto: la pregunta sin reto se responde en Original)
+    if (como.modo === MODO_RETO && !vistas && fila.tipo === 'reto') throw new ErrorHttp(409, 'pregunta_no_disponible');
     if (typeof elegida !== 'string' || !(vistas ? vistas.some(o => o.letra === elegida) : q.original.opciones.some(o => o.letra === elegida))) throw new ErrorHttp(400, 'opcion_no_valida');
     if (vistas) elegida = claveDeLetra(vistas, elegida);
     const acierto = elegida === q.original.correcta;
@@ -432,16 +472,18 @@ export function responder(db, usuarioId, paquete, intentoId, { pregunta, elegida
 // permitirFaltantes (0.9.2, solo el examen con reloj): se entrega aunque falten respuestas (cuentan como malas).
 export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now(), permitirFaltantes = false } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
+  let recien = false;
   const fila = enTransaccion(db, () => {
     const f = intentoDe(db, usuarioId, intentoId);
     if (f.terminado_en) return f;
+    recien = true;
     if (f.respondidas < f.total && !permitirFaltantes) throw new ErrorHttp(409, 'faltan_respuestas');
     const aprobado = ['repaso', 'reto', 'errores', 'instructor'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
   });
   const respuestas = db.prepare('SELECT pregunta, elegida, correcta FROM academia_respuestas WHERE intento_id = ? ORDER BY id').all(fila.id);
-  const como = { intentoId: fila.id, modo: modoDeTipo(fila.tipo) };
+  const como = { intentoId: fila.id, modo: modoDeFila(fila) };
   // 0.8.0: la revisión completa (cada pregunta con lo que eligió, la correcta y las explicaciones), en el orden del intento.
   const elegidas = new Map(respuestas.map(r => [r.pregunta, r.elegida]));
   const revision = JSON.parse(fila.orden).filter(id => elegidas.has(id)).map(id => ({ ...vistaPregunta(paquete, id, como), respuesta: retroalimentacion(paquete, id, elegidas.get(id), como) }));
@@ -454,7 +496,26 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
   return {
     id: fila.id, tipo: fila.tipo, modo: como.modo, materia: fila.materia, tema: fila.tema, total: fila.total, aciertos: fila.aciertos, pct: pct(fila.aciertos, fila.total),
     umbral: fila.umbral, aprobado: fila.aprobado == null ? null : fila.aprobado === 1, puntos: fila.aciertos * PUNTOS_POR_ACIERTO, falladas, revision, reexplicacion,
+    ...extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs),
   };
+}
+
+// 0.12.0: lo que el resultado agrega: si fue un examen «directo» (saltó las clases), cuántos temas saltó, cuántos faltan
+// ahora y el primero que toca; y una línea de humor si se quemó (si el humor está encendido para él).
+function extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs) {
+  const extra = {};
+  const s = fila.tipo === 'examen' ? saltoDeIntento(db, usuarioId, fila.id) : null;
+  if (s) {
+    const c = camino(db, usuarioId, paquete, ahoraMs).materias.find(m => m.id === fila.materia);
+    const pendientes = c ? c.temas.filter(t => t.estado !== 'aprobado') : [];
+    const sigue = c?.temas.find(t => t.estado === 'abierto') ?? null;
+    extra.salto = { saltados: s.pendientes, total: s.total, pendientes: pendientes.length, siguiente: sigue ? { tema: sigue.id, titulo: sigue.titulo } : null };
+  }
+  if (fila.aprobado === 0) {
+    const h = lineaHumor(db, usuarioId, s ? 'salto' : 'quemado', { recien, referencia: `i${fila.id}`, ahoraMs });
+    if (h) extra.humor = h;
+  }
+  return extra;
 }
 
 // Cómo va cada materia: «dominio» = preguntas cuya ÚLTIMA respuesta fue correcta, sobre todas las de la materia.
@@ -485,6 +546,8 @@ export function progreso(db, usuarioId, paquete, ahoraMs = Date.now()) {
     debiles: debiles(db, usuarioId, paquete),
     // 0.8.0: «Mis puntos débiles» (la memoria de errores: por pregunta, por idea equivocada y por tema).
     puntosDebiles: resumenDebiles(puntosDebiles(db, usuarioId, paquete), paquete),
+    // 0.12.0: lo EXTRA va aparte (no cuenta para nada del Test Guide).
+    extra: paquete ? resumenExtra(db, usuarioId, paquete) : [],
   };
 }
 

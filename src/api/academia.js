@@ -11,7 +11,9 @@ import { createReadStream } from 'node:fs';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
-import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio } from '../academia/paquetes.js';
+import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, paginaDe } from '../academia/paquetes.js';
+import { extraDeMateria, rondaExtra, responderExtra } from '../academia/extra.js';
+import { humorDelDia, humorDelAdmin, humorDelAlumno, encenderHumorAdmin, encenderHumorAlumno } from '../academia/humor.js';
 import { idDeCarpeta, enlaceDeCarpeta, basesDrive, recorrerCarpeta, PAQUETE_EN_DRIVE } from '../academia/drive.js';
 import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '../academia/drive-estado.js';
 import { encolar } from '../tareas/cola.js';
@@ -58,7 +60,60 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   // respuesta: la pantalla no pide nada más al abrir).
   rutas.agregar('GET', '/api/academia/camino', ({ db, usuario }) => {
     const p = activo(db);
-    return { codigo: 200, datos: { ...camino(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()) } };
+    // 0.12.0: la frase de humor del día (racha perdida o el regreso), si el humor está encendido para él.
+    let humor = null;
+    try { humor = p ? humorDelDia(db, usuario.id, reloj()) : null; } catch { humor = null; }
+    return { codigo: 200, datos: { ...camino(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), humor } };
+  });
+
+  // 0.12.0: el humor del instructor (Configuración): si el administrador lo permite y si el alumno lo quiere.
+  rutas.agregar('GET', '/api/academia/humor', ({ db, usuario }) => ({ codigo: 200, datos: { permitido: humorDelAdmin(db), encendido: humorDelAlumno(db, usuario.id) } }));
+  rutas.agregar('POST', '/api/academia/humor', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    encenderHumorAlumno(db, usuario.id, datos?.encendido);
+    return { codigo: 200, datos: { permitido: humorDelAdmin(db), encendido: humorDelAlumno(db, usuario.id) } };
+  });
+
+  // 0.12.0: «¿De dónde salió?»: la imagen de la PÁGINA real del libro de una pregunta. En esa página está la
+  // respuesta, así que solo se da a quien ya respondió esa pregunta (en academia_respuestas: un examen con reloj no
+  // escribe ahí hasta entregar) y nunca mientras tenga abierto un examen con reloj que la trae. El administrador, siempre.
+  rutas.agregar('GET', '/api/academia/paginas/:pregunta', ({ db, usuario, parametros }) => {
+    const p = activo(db);
+    const g = paginaDe(p, parametros.pregunta);
+    if (!g || !g.existe) throw new ErrorHttp(404, 'no_existe');
+    if (usuario.rol !== 'admin') {
+      const respondida = db.prepare('SELECT 1 FROM academia_respuestas WHERE usuario_id = ? AND pregunta = ? LIMIT 1').get(usuario.id, parametros.pregunta);
+      if (!respondida) throw new ErrorHttp(403, 'pagina_despues_de_responder');
+      for (const f of db.prepare("SELECT * FROM academia_intentos WHERE usuario_id = ? AND tipo = 'examen' AND terminado_en IS NULL").all(usuario.id)) {
+        const e = examenDe(db, f);
+        if (e && reloj() <= finDe(f, e) + GRACIA_MS && JSON.parse(f.orden).includes(parametros.pregunta)) throw new ErrorHttp(403, 'pagina_en_examen');
+      }
+    }
+    return {
+      codigo: 200,
+      enviar: res => {
+        res.writeHead(200, { ...CABECERAS_SEGURIDAD, 'Content-Type': g.tipo, 'Content-Length': g.bytes, 'Cache-Control': 'private, max-age=3600' });
+        const flujo = createReadStream(g.ruta);
+        flujo.on('error', () => res.destroy());
+        flujo.pipe(res);
+      },
+    };
+  });
+
+  // 0.12.0: lo EXTRA de una materia (no es del Test Guide): la pantalla, una ronda por nivel y responder.
+  rutas.agregar('GET', '/api/academia/extra/:materia', ({ db, usuario, parametros }) => {
+    const p = activo(db);
+    const c = camino(db, usuario.id, p, reloj()).materias.find(m => m.id === parametros.materia);
+    return { codigo: 200, datos: extraDeMateria(db, usuario.id, p, parametros.materia, { examenAprobado: c?.examen?.aprobado === true }) };
+  });
+  rutas.agregar('POST', '/api/academia/extra/:materia/ronda', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: rondaExtra(db, usuario.id, activo(db), parametros.materia, { nivel: textoDe(datos, 'nivel') || null, tema: textoDe(datos, 'tema') || null }, { azar }) };
+  });
+  rutas.agregar('POST', '/api/academia/extra/:materia/responder', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    if (!topes.intentos.permitir(`x${usuario.id}`)) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 200, datos: responderExtra(db, usuario.id, activo(db), parametros.materia, { pregunta: textoDe(datos, 'pregunta'), elegida: textoDe(datos, 'elegida') }, { ahoraMs: reloj() }) };
   });
 
   rutas.agregar('POST', '/api/academia/plan', async ({ db, req, usuario }) => {
@@ -97,7 +152,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     if (base != null && !Number.isSafeInteger(base)) throw new ErrorHttp(400, 'datos_no_validos');
     const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null };
     // 0.9.2: el examen de materia va con reloj (src/academia/examen.js); si hay uno abierto con tiempo, sigue ese (200).
-    if (pedido.tipo === 'examen') return crearExamen(db, usuario.id, activo(db), pedido.materia, { azar, ahoraMs: reloj() });
+    // 0.12.0: «saltar: true» = «Ir directo al examen» sin terminar los temas (queda anotado; src/academia/saltos.js).
+    if (pedido.tipo === 'examen') return crearExamen(db, usuario.id, activo(db), pedido.materia, { azar, ahoraMs: reloj(), saltar: datos?.saltar === true });
     return { codigo: 201, datos: crearIntento(db, usuario.id, activo(db), pedido, { azar, ahoraMs: reloj() }) };
   });
 
@@ -184,8 +240,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return {
       codigo: 200,
       datos: {
-        ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
-        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes },
+        ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
+        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, paginaBytes: LIMITES.paginaBytes },
       },
     };
   }, { admin: true });
@@ -256,12 +312,19 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return { codigo: 200, datos: { grupo: encenderGrupo(db, datos?.encendido) } };
   }, { admin: true });
 
+  // 0.12.0: el humor del instructor para todos (encendido por defecto).
+  rutas.agregar('POST', '/api/admin/academia/humor', async ({ db, req }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { humor: encenderHumorAdmin(db, datos?.encendido) } };
+  }, { admin: true });
+
   rutas.agregar('POST', '/api/admin/academia/ajustes', async ({ db, req }) => {
     const datos = await leerJson(req);
     const pedido = {};
     if (Object.hasOwn(datos, 'nombre')) pedido.nombre = datos.nombre;
     if (Object.hasOwn(datos, 'umbral')) pedido.umbral = datos.umbral;
     if (Object.hasOwn(datos, 'examenSegundos')) pedido.examenSegundos = datos.examenSegundos;
+    if (Object.hasOwn(datos, 'practicaModo')) pedido.practicaModo = datos.practicaModo;
     return { codigo: 200, datos: { ajustes: guardarAjustesAcademia(db, pedido) } };
   }, { admin: true });
 
@@ -287,6 +350,14 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     necesitaConfig();
     if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
     const r = await subirRecurso(db, config, { clase: 'audio', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
+    return { codigo: r.ya ? 200 : 201, datos: r };
+  }, { admin: true });
+
+  // 0.12.0: la imagen de una página del libro («¿De dónde salió?»), igual que una figura.
+  rutas.agregar('POST', '/api/admin/academia/paquetes/:id/paginas/:archivo', async ({ db, req, usuario, parametros }) => {
+    necesitaConfig();
+    if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    const r = await subirRecurso(db, config, { clase: 'pagina', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
     return { codigo: r.ya ? 200 : 201, datos: r };
   }, { admin: true });
 

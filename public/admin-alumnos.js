@@ -262,7 +262,26 @@ function pestanaResumen(d, h) {
         el('dt', { texto: t('ficha.ultima_actividad') }), el('dd', { texto: act.ultimaActividad ? h.fecha(act.ultimaActividad) : t('admin.nunca') })),
       el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/actividad`, texto: t('ficha.ver_sesiones') })),
     ultimosIntentos(d, h),
+    saltosAlumno(d, h),
+    h.panelExtra ? h.panelExtra(d.extra, { titulo: t('alumnos.extra.titulo'), enlaces: false }) : null,
   ];
+}
+// 0.12.0: «Saltó las clases»: cada vez que fue directo al examen (con cuántos temas sin hacer y cómo le fue) y el orden
+// de cada materia (examen antes o después de los temas).
+function saltosAlumno(d, h) {
+  const { el, t, numero } = h;
+  const s = d.saltos;
+  if (!s) return null;
+  const ordenes = Object.entries(s.orden ?? {});
+  return el('section', { class: 'tarjeta ficha-saltos' },
+    el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: t('alumnos.saltos.titulo') })),
+    ordenes.length ? el('p', { class: 'etiquetas' }, ordenes.map(([m, o]) => h.insignia(o === 'examen_antes' ? 'atencion' : 'bien', `${h.nombreMateria(m)}: ${t(`alumnos.orden.${o}`)}`))) : null,
+    s.eventos?.length ? el('ul', { class: 'ficha-saltos-lista' }, s.eventos.map(e => el('li', {},
+      el('a', { href: `#alumno/${d.alumno.id}/intento/${e.intento}`, texto: t('alumnos.saltos.linea', { fecha: h.fecha(e.en), materia: h.nombreMateria(e.materia), n: numero(e.pendientes), total: numero(e.total) }) }),
+      ' ',
+      !e.terminado ? h.insignia('apagado', t('alumnos.saltos.abierto'))
+        : e.aprobado ? h.insignia('bien', t('alumnos.saltos.aprobo', { pct: numero(e.pct ?? 0) })) : h.insignia('mal', t('alumnos.saltos.quemado', { pct: numero(e.pct ?? 0) })))))
+      : el('p', { class: 'suave', texto: t('alumnos.saltos.vacio') }));
 }
 function ultimosIntentos(d, h) {
   const lista = d.intentos.filter(x => x.terminadoSi).slice(0, 5);

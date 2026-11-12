@@ -13,7 +13,7 @@ const PRACTICA_MAXIMA = 10;
 export function puntosDebiles(db, usuarioId, paquete) {
   const vacio = { respuestas: 0, fallos: 0, preguntas: [], ideas: [], temas: [] };
   if (!paquete) return vacio;
-  const filas = db.prepare(`SELECT r.pregunta, r.elegida, r.correcta, r.creada_en, i.tipo FROM academia_respuestas r
+  const filas = db.prepare(`SELECT r.pregunta, r.elegida, r.correcta, r.creada_en, i.tipo, i.modo FROM academia_respuestas r
     JOIN academia_intentos i ON i.id = r.intento_id WHERE r.usuario_id = ? ORDER BY r.id`).all(usuarioId);
   const porPregunta = new Map();
   const ideas = new Map();
@@ -39,7 +39,7 @@ export function puntosDebiles(db, usuarioId, paquete) {
       const idea = ideaDe(q, f.elegida);
       if (idea) {
         const ki = `${f.pregunta}\u0000${f.elegida}`;
-        const x = ideas.get(ki) ?? { pregunta: f.pregunta, opcion: f.elegida, modo: f.tipo === 'reto' ? MODO_RETO : MODO_ORIGINAL, idea, materia: lugar?.materia ?? null, tema: lugar?.tema ?? null, numero: q.original.numero ?? null, fallos: 0, ultima: null };
+        const x = ideas.get(ki) ?? { pregunta: f.pregunta, opcion: f.elegida, modo: f.tipo === 'reto' || f.modo === MODO_RETO ? MODO_RETO : MODO_ORIGINAL, idea, materia: lugar?.materia ?? null, tema: lugar?.tema ?? null, numero: q.original.numero ?? null, fallos: 0, ultima: null };
         x.fallos += 1;
         x.ultima = f.creada_en;
         ideas.set(ki, x);

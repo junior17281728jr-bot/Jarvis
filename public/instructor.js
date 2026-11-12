@@ -191,7 +191,9 @@ export function crearInstructor(h) {
       };
       const accion = v.siguiente?.accion;
       const boton = !accion || alumno ? null : accion.tipo === 'intento' ? el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: e => empezarIntento(accion.datos, e.currentTarget) }, el('span', { texto: tx('listo.hacer') }))
-        : accion.tipo === 'refuerzo' ? el('a', { class: 'boton-3d naranja chico', href: '#inicio' }, el('span', { texto: tx('listo.hacer') })) : null;
+        : accion.tipo === 'refuerzo' ? el('a', { class: 'boton-3d naranja chico', href: '#inicio' }, el('span', { texto: tx('listo.hacer') }))
+          // 0.12.0: «hacer las clases» que se saltó: el tema que toca.
+          : accion.tipo === 'tema' ? el('a', { class: 'boton-3d naranja chico', href: `#tema/${encodeURIComponent(accion.materia)}/${encodeURIComponent(accion.tema)}` }, el('span', { texto: tx('listo.hacer') })) : null;
       lugar.append(
         el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: tx('listo.titulo') })),
         el('p', { class: `veredicto veredicto-${v.nivel}`, texto: tx(`listo.nivel.${v.nivel}`) }),

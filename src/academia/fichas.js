@@ -6,13 +6,15 @@
 //  - acierto: respuestas correctas sobre todas las respuestas que dio (también las repetidas);
 //  - nota promedio: el promedio de la nota (%) de sus temas y exámenes TERMINADOS (la práctica no cuenta).
 import { ErrorHttp } from '../nucleo/http.js';
-import { porMateria, puntosYRacha, examenes, temasAprobados, verIntento, resumenDebiles, modoDeTipo, PUNTOS_POR_ACIERTO } from './progreso.js';
+import { porMateria, puntosYRacha, examenes, temasAprobados, verIntento, resumenDebiles, modoDeFila, PUNTOS_POR_ACIERTO } from './progreso.js';
 import { puntosDebiles } from './memoria.js';
 import { planDe, preparacionDe } from './plan.js';
 import { actividadDe } from '../cuentas/historial.js';
 import { leerPerfil } from '../cuentas/perfil.js';
 import { cerrarVencidos, tiemposDe, leerExamen } from './examen.js';
 import { nombreLegalDe, estadoTerminos, verificacionDe, tutorAutorizoPagos } from '../cuentas/terminos.js';
+import { historialSaltos } from './saltos.js';
+import { resumenExtra } from './extra.js';
 
 export const MAXIMO_COMPARAR = 6;
 export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
@@ -46,9 +48,9 @@ export function tiempoDeEstudio(fechas) {
 // Todos sus intentos (sin tope: los totales y las notas por tema salen de aquí); la pantalla recibe los 500 más nuevos.
 function intentosDe(db, alumnoId, paquete) {
   const titulos = titulosDe(paquete);
-  return db.prepare(`SELECT id, tipo, materia, tema, total, respondidas, aciertos, aprobado, empezado_en, terminado_en FROM academia_intentos
+  return db.prepare(`SELECT id, tipo, modo, materia, tema, total, respondidas, aciertos, aprobado, empezado_en, terminado_en FROM academia_intentos
     WHERE usuario_id = ? ORDER BY id DESC`).all(alumnoId).map(f => ({
-    id: f.id, tipo: f.tipo, modo: modoDeTipo(f.tipo), materia: f.materia, tema: f.tema,
+    id: f.id, tipo: f.tipo, modo: modoDeFila(f), materia: f.materia, tema: f.tema,
     temaTitulo: f.tema ? titulos.get(`${f.materia}/${f.tema}`) ?? null : null,
     total: f.total, respondidas: f.respondidas, aciertos: f.aciertos, pct: pct(f.aciertos, f.total),
     aprobado: f.aprobado == null ? null : f.aprobado === 1, empezado: f.empezado_en, terminado: f.terminado_en, terminadoSi: f.terminado_en != null,
@@ -130,6 +132,9 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     materias: paquete ? materiasDe(db, u.id, paquete, intentos) : [],
     puntosDebiles: resumenDebiles(puntosDebiles(db, u.id, paquete), paquete),
     actividad: actividadCompleta(db, u, ahoraMs, resumen.ultimaRespuesta),
+    // 0.12.0: «saltó las clases» (cada vez que fue directo al examen, y cómo le fue) y lo EXTRA (aparte del Test Guide).
+    saltos: historialSaltos(db, u.id),
+    extra: paquete ? resumenExtra(db, u.id, paquete) : [],
   };
 }
 

@@ -31,6 +31,7 @@ import { armarChat } from '../academia/instructor-ia.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 import { iaPermitida } from '../cuentas/terminos.js';
+import { humorActivo } from '../academia/humor.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const HORA = 60 * 60 * 1000;
@@ -147,7 +148,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const ahora = reloj();
     const donde = materia && tema ? { materia, tema } : null;
     const datos = consejoInstructor(db, usuario.id, p, ahora, donde);
-    const guardado = leerGuardado(db, `academia.ia.consejo.${usuario.id}.${semanaDe(ahora)}`);
+    // 0.12.0: con el humor encendido, el consejo de la IA va guardado aparte (en ese tono).
+    const guardado = leerGuardado(db, `academia.ia.consejo.${usuario.id}.${semanaDe(ahora)}${humorActivo(db, usuario.id) ? '-humor' : ''}`);
     // 0.10.0: su plan de refuerzo (las fallas que todavía tiene) y, al abrir un tema, el refuerzo de ese tema.
     const fallas = p ? fallasDe(db, usuario.id, p, ahora) : [];
     const refuerzo = donde && p ? refuerzoDeTema(db, usuario.id, p, materia, tema, ahora) : null;
@@ -202,7 +204,9 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     }
     const base = consejoInstructor(db, usuario.id, p, ahora);
     const instructor = estadoInstructor(db, req, usuario, ahora);
-    const clave = `academia.ia.consejo.${usuario.id}.${examen ? `examen-${examen.id}` : semanaDe(ahora)}`;
+    // 0.12.0: con el humor encendido para él, el consejo de la IA viene en ese tono (y se guarda aparte).
+    const conHumor = humorActivo(db, usuario.id);
+    const clave = `academia.ia.consejo.${usuario.id}.${examen ? `examen-${examen.id}` : semanaDe(ahora)}${conHumor ? '-humor' : ''}`;
     const ya = leerGuardado(db, clave);
     let ia;
     if (ya) ia = lista(ya);
@@ -220,7 +224,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
         consejo_basico: base.consejo?.clave ?? null,
         examen: examen ? { materia: examen.materia, pct: examen.total ? Math.floor((examen.aciertos * 100) / examen.total) : 0, aprobado: examen.aprobado === 1, temas_fallados: falladas.map(f => ({ tema: titulo(examen.materia, f.tema), errores: f.n })) } : null,
       };
-      const pedido = armarConsejo({ cifras, idioma: usuario.idioma });
+      const pedido = armarConsejo({ cifras, idioma: usuario.idioma, humor: conHumor });
       ia = pedirIa(db, usuario, { uso: 'instructor_consejo', sistema: pedido.sistema, texto: pedido.texto, clave });
     }
     return { codigo: 200, datos: { instructor, ...base, ia } };

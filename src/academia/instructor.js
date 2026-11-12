@@ -16,6 +16,7 @@ import { camino, diaDe } from './progreso.js';
 import { planDe } from './plan.js';
 import { puntosDebiles } from './memoria.js';
 import { ideaDe, opcionRetoDe, MODO_RETO } from './reto.js';
+import { historialSaltos } from './saltos.js';
 
 // Una respuesta MALA dada en menos de esto (desde la anterior del mismo intento): «con prisa».
 export const PRISA_MS = 7000;
@@ -63,7 +64,7 @@ export function modeloAlumno(db, usuarioId, paquete, ahoraMs = Date.now()) {
     hora: null, formatos: { original: { n: 0, bien: 0, pct: 0 }, reto: { n: 0, bien: 0, pct: 0 } }, repasoHoy: 0, estilo: 'claro', hoy: 0,
   };
   if (!paquete) return vacio;
-  const filas = db.prepare(`SELECT r.id, r.intento_id, r.pregunta, r.elegida, r.correcta, r.creada_en, i.tipo, i.empezado_en FROM academia_respuestas r
+  const filas = db.prepare(`SELECT r.id, r.intento_id, r.pregunta, r.elegida, r.correcta, r.creada_en, i.tipo, i.modo, i.empezado_en FROM academia_respuestas r
     JOIN academia_intentos i ON i.id = r.intento_id WHERE r.usuario_id = ? ORDER BY r.id`).all(usuarioId).filter(f => paquete.preguntas.has(f.pregunta));
   if (!filas.length) return { ...vacio, repasoHoy: repasoHoy(db, usuarioId, paquete, ahoraMs) };
   const ultima = new Map();
@@ -71,12 +72,12 @@ export function modeloAlumno(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const porOpcion = new Map();
   for (const f of filas) {
     ultima.set(f.pregunta, f.correcta === 1);
-    const fmt = f.tipo === 'reto' ? formatos.reto : formatos.original;
+    const fmt = f.tipo === 'reto' || f.modo === MODO_RETO ? formatos.reto : formatos.original;
     fmt.n += 1;
     fmt.bien += f.correcta;
     if (f.correcta !== 1) {
       const k = `${f.pregunta}\u0000${f.elegida}`;
-      porOpcion.set(k, { pregunta: f.pregunta, opcion: f.elegida, veces: (porOpcion.get(k)?.veces ?? 0) + 1, modo: f.tipo === 'reto' ? MODO_RETO : 'original' });
+      porOpcion.set(k, { pregunta: f.pregunta, opcion: f.elegida, veces: (porOpcion.get(k)?.veces ?? 0) + 1, modo: f.tipo === 'reto' || f.modo === MODO_RETO ? MODO_RETO : 'original' });
     }
   }
   // La prisa: entre las últimas respuestas, las MALAS que llegaron en pocos segundos (desde la anterior del intento).
@@ -181,7 +182,28 @@ function siguientePaso(c) {
   return null;
 }
 
+// 0.12.0: si se saltó las clases de una materia («Ir directo al examen») y le faltan temas: se lo dice claro (si se quemó,
+// «tú lo quisiste»; si pasó, que igual haga las clases) y el botón lleva al tema que toca.
+function consejoSalto(db, usuarioId, c) {
+  const vistas = new Set();
+  for (const e of historialSaltos(db, usuarioId).eventos) {
+    if (!e.terminado || vistas.has(e.materia)) continue;
+    vistas.add(e.materia);
+    const m = c.materias.find(x => x.id === e.materia);
+    const faltan = m ? m.temas.filter(t => t.estado !== 'aprobado') : [];
+    if (!faltan.length) continue;
+    const t = m.temas.find(x => x.estado === 'abierto');
+    return {
+      clave: e.aprobado ? 'salto_paso' : 'salto_quemado', vars: { n: e.pendientes, pct: e.pct ?? 0, faltan: faltan.length, tema: t?.titulo ?? '' },
+      accion: t ? { tipo: 'tema', materia: m.id, tema: t.id } : null, ...(t ? { tema: { materia: m.id, tema: t.id } } : {}),
+    };
+  }
+  return null;
+}
+
 function consejoGeneral(db, usuarioId, modelo, paquete, c, ahoraMs) {
+  const salto = consejoSalto(db, usuarioId, c);
+  if (salto) return salto;
   const sigue = siguientePaso(c);
   const irAlSiguiente = sigue?.tipo === 'tema' ? { tipo: 'tema', materia: sigue.materia, tema: sigue.tema } : sigue ? { tipo: 'examen', materia: sigue.materia } : null;
   if (!modelo.respuestas) {
@@ -253,12 +275,12 @@ export function resumenModelo(m) {
 export function respuestaDelAlumno(db, usuarioId, paquete, intentoId, preguntaId) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   const id = Number(intentoId);
-  const intento = Number.isSafeInteger(id) ? db.prepare('SELECT id, tipo FROM academia_intentos WHERE id = ? AND usuario_id = ?').get(id, usuarioId) : null;
+  const intento = Number.isSafeInteger(id) ? db.prepare('SELECT id, tipo, modo FROM academia_intentos WHERE id = ? AND usuario_id = ?').get(id, usuarioId) : null;
   if (!intento || typeof preguntaId !== 'string') throw new ErrorHttp(404, 'no_existe');
   const r = db.prepare('SELECT elegida, correcta FROM academia_respuestas WHERE intento_id = ? AND usuario_id = ? AND pregunta = ? ORDER BY id LIMIT 1').get(intento.id, usuarioId, preguntaId);
   const q = paquete.preguntas.get(preguntaId);
   if (!r || !q) throw new ErrorHttp(404, 'no_existe');
-  return { intento, q, elegida: r.elegida, acierto: r.correcta === 1, modo: intento.tipo === 'reto' ? MODO_RETO : 'original' };
+  return { intento, q, elegida: r.elegida, acierto: r.correcta === 1, modo: intento.tipo === 'reto' || intento.modo === MODO_RETO ? MODO_RETO : 'original' };
 }
 
 // Cuántas veces eligió esa misma opción mala en esa pregunta (en todos sus intentos).

@@ -88,7 +88,7 @@ test('listo: un alumno nuevo está «Todavía no» (cada regla con su número) y
   await conAcademia(async c => {
     const v = await preparado(c, c.ana);
     assert.equal(v.nivel, 'todavia');
-    assert.deepEqual(v.reglas.map(r => [r.id, r.ok]), [['materias', false], ['acierto', false], ['cobertura', false], ['constancia', false], ['memoria', false], ['fallas', true], ['tiempo', false]]);
+    assert.deepEqual(v.reglas.map(r => [r.id, r.ok]), [['materias', false], ['acierto', false], ['cobertura', false], ['constancia', false], ['memoria', false], ['fallas', true], ['tiempo', false], ['clases', true]]);
     assert.equal(v.probabilidad, null);
     assert.equal(v.siguiente.regla, 'acierto', 'el primer paso que depende de él');
     assert.equal(v.porMateria.length, 1);

@@ -216,6 +216,8 @@ export function examenConReloj(intento, h) {
           el('li', {}, h.icono('reloj', 'icono'), el('span', { texto: t('examen.tiempo_usado', { usado: relojTexto((ex.tiempoUsado ?? 0) * 1000), limite: relojTexto((ex.limiteSegundos ?? 0) * 1000) }) })),
           el('li', {}, h.icono('fila', 'icono'), el('span', { texto: t('examen.promedio', { s: numero(Math.round((ex.tiempoUsado ?? 0) / Math.max(1, res.total))) }) })),
           ex.sinResponder ? el('li', {}, h.icono('atencion', 'icono'), el('span', { texto: h.tn('examen.sin_responder', { n: ex.sinResponder }) })) : null)),
+      // 0.12.0: «Tú lo quisiste…» si fue directo al examen, la frase de humor y lo extra (si aprobó).
+      ...(h.panelesResultado ? h.panelesResultado(res) : []),
       el('section', { class: 'panel examen-tiempos', 'aria-labelledby': 'examen-tiempos-titulo' },
         el('h2', { id: 'examen-tiempos-titulo', class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('examen.tiempos') })),
         el('p', { class: 'suave chica', texto: t('examen.tiempos.linea') }),

@@ -5,11 +5,13 @@
 //  - constancia: los 3 últimos exámenes de materia con 90 % o más (no basta uno);
 //  - memoria: ≥ 80 % de las preguntas acertadas otra vez 2 días o más después de acertarlas la primera vez;
 //  - fallas: ninguna falla registrada sin superar;
-//  - tiempo: 7 días o más desde que empezó y 5 días distintos de estudio (no todo de un tirón).
+//  - tiempo: 7 días o más desde que empezó y 5 días distintos de estudio (no todo de un tirón);
+//  - clases (0.12.0): si se saltó las clases de una materia («Ir directo al examen»), tiene que hacer sus temas después.
 // «Listo para presentarte» con todo ✔; «Casi» con 80 % o más y como mucho 2 ✘; si no, «Todavía no». La probabilidad es una
 // ESTIMACIÓN basada en su práctica: nunca garantiza el resultado del examen oficial.
 // Además: por materia, y «aprobaste, pero te recomiendo repetirlo» cuando un aprobado tiene señales de suerte.
-import { diaDe, examenes } from './progreso.js';
+import { diaDe, examenes, camino } from './progreso.js';
+import { saltosDe } from './saltos.js';
 import { porMateria } from './progreso.js';
 
 // materias: las 11 de ENALAS con contenido (con menos, nunca «Listo»: faltaría lo que no se ha podido estudiar).
@@ -42,6 +44,12 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const dias = [...new Set(filas.map(f => f.dia))];
   const desde = dias.length ? diasEntre(dias[0], diaDe(ahoraMs)) : 0;
   const conContenido = materias.length;
+  // 0.12.0: las materias en las que se saltó las clases y todavía le faltan temas.
+  const saltadas = new Set(saltosDe(db, usuarioId).eventos.map(e => e.materia));
+  const sinClases = saltadas.size && paquete ? camino(db, usuarioId, paquete, ahoraMs).materias
+    .filter(m => saltadas.has(m.id) && m.temas.some(t => t.estado !== 'aprobado'))
+    .map(m => ({ materia: m.id, n: m.temas.filter(t => t.estado !== 'aprobado').length, tema: m.temas.find(t => t.estado === 'abierto')?.id ?? null })) : [];
+  const faltanClases = new Map(sinClases.map(x => [x.materia, x.n]));
   const materiasVistas = materias.filter(m => m.bien + m.mal > 0).length;
   const reglas = [
     { id: 'materias', ok: conContenido >= R.materias, valor: conContenido, meta: R.materias, n: conContenido },
@@ -51,6 +59,7 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
     { id: 'memoria', ok: pct(retenidas.size, total) >= R.memoria, valor: pct(retenidas.size, total), meta: R.memoria, n: total },
     { id: 'fallas', ok: activas === 0, valor: activas, meta: 0, n: activas, donde: fallas.map(f => ({ materia: f.materia, n: f.n })) },
     { id: 'tiempo', ok: desde >= R.dias && dias.length >= R.diasEstudio, valor: desde, meta: R.dias, n: dias.length, diasEstudio: R.diasEstudio },
+    { id: 'clases', ok: sinClases.length === 0, valor: sinClases.reduce((n, x) => n + x.n, 0), meta: 0, n: sinClases.length, donde: sinClases },
   ];
   const malas = reglas.filter(r => !r.ok);
   const nivel = !malas.length ? 'listo' : pct(bien, total) >= R.casi && malas.length <= 2 ? 'casi' : 'todavia';
@@ -58,7 +67,8 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
   // La probabilidad: el promedio de sus últimos exámenes (o su acierto), menos 5 por cada regla que no cumple.
   const base = ultimos.length ? Math.floor(ultimos.reduce((n, x) => n + pct(x.aciertos, x.total), 0) / ultimos.length) : pct(bien, total);
   const probabilidad = filas.length ? Math.max(1, Math.min(99, base - 5 * malas.length)) : null;
-  const ACCION = { materias: null, cobertura: { tipo: 'intento', datos: { tipo: 'instructor' } }, acierto: { tipo: 'intento', datos: { tipo: 'instructor' } }, constancia: { tipo: 'examen' }, memoria: { tipo: 'intento', datos: { tipo: 'repaso' } }, fallas: { tipo: 'refuerzo' }, tiempo: { tipo: 'seguir' } };
+  const ACCION = { materias: null, cobertura: { tipo: 'intento', datos: { tipo: 'instructor' } }, acierto: { tipo: 'intento', datos: { tipo: 'instructor' } }, constancia: { tipo: 'examen' }, memoria: { tipo: 'intento', datos: { tipo: 'repaso' } }, fallas: { tipo: 'refuerzo' }, tiempo: { tipo: 'seguir' },
+    clases: sinClases[0]?.tema ? { tipo: 'tema', materia: sinClases[0].materia, tema: sinClases[0].tema } : { tipo: 'seguir' } };
   // El paso que más importa: el primero que el alumno puede hacer (que falten materias no depende de él).
   const suya = malas.find(r => r.id !== 'materias') ?? malas[0];
   const siguiente = suya ? { regla: suya.id, accion: ACCION[suya.id] } : null;
@@ -69,8 +79,9 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const cob = pct(m.bien + m.mal, m.preguntas);
     const e = ex.get(m.id);
     const fa = fallasPor.get(m.id) ?? 0;
-    const listo = p >= R.acierto && cob >= R.cobertura && e?.aprobado === true && fa === 0;
-    return { materia: m.id, pct: p, cobertura: cob, examen: e?.mejor ?? null, aprobado: e?.aprobado === true, fallas: fa, nivel: listo ? 'listo' : p >= R.casi ? 'casi' : 'todavia', n: m.preguntas };
+    const clases = faltanClases.get(m.id) ?? 0;
+    const listo = p >= R.acierto && cob >= R.cobertura && e?.aprobado === true && fa === 0 && clases === 0;
+    return { materia: m.id, pct: p, cobertura: cob, examen: e?.mejor ?? null, aprobado: e?.aprobado === true, fallas: fa, clases, nivel: listo ? 'listo' : p >= R.casi ? 'casi' : 'todavia', n: m.preguntas };
   });
   return { nivel, reglas, siguiente, probabilidad, porMateria: porMateriaV, suerte: aprobadosConSuerte(db, usuarioId, paquete, fallasPor) };
 }

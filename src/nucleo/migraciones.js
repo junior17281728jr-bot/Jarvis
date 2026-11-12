@@ -677,4 +677,32 @@ CREATE INDEX IF NOT EXISTS academia_pagos_usuario ON academia_pagos(usuario_id, 
 CREATE INDEX IF NOT EXISTS academia_pagos_estado ON academia_pagos(estado, id);
 `,
   },
+  {
+    id: 9,
+    nombre: 'academia_extra_y_modo',
+    // Academia (0.12.0). Solo agrega (sin CHECK, sin UNIQUE; los valores se revisan en src/academia/). Nada se borra nunca.
+    //  - academia_extra_respuestas: las respuestas del contenido EXTRA de una materia (src/academia/extra.js), que NO es
+    //    del Test Guide. Van aparte a propósito: nada de lo que cuenta para la preparación, los puntos, la racha, la
+    //    memoria de errores, las fallas o los reportes lee esta tabla (y una 0.11.1 que vuelva atrás tampoco la conoce).
+    //    nivel: 'basico' | 'intermedio' | 'avanzado'. correcta: 1 si acertó.
+    //  - academia_intentos.modo: el modo con que se hizo un intento de tema (NULL = el de su tipo, como antes; 'reto' =
+    //    un tema hecho en Modo reto porque el administrador lo puso «por defecto»). Se fija al crear el intento.
+    sql: `
+CREATE TABLE IF NOT EXISTS academia_extra_respuestas (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  paquete_id INTEGER,
+  materia TEXT NOT NULL,
+  tema TEXT,
+  pregunta TEXT NOT NULL,
+  nivel TEXT,
+  elegida TEXT NOT NULL,
+  correcta INTEGER NOT NULL DEFAULT 0,
+  dia TEXT NOT NULL,
+  creada_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_extra_usuario ON academia_extra_respuestas(usuario_id, materia, pregunta);
+ALTER TABLE academia_intentos ADD COLUMN modo TEXT;
+`,
+  },
 ];
