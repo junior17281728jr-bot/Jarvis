@@ -14,16 +14,9 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from './usuarios.js';
 
-export const TERMINOS_V1 = Object.freeze([
-  { titulo: '1. Fin educativo', texto: 'Esta academia es una herramienta de estudio privada, hecha para fines de estudio por y para estudiantes. No es un producto comercial y no se vende el contenido.' },
-  { titulo: '2. No es material oficial', texto: 'No pertenece ni está aprobada por ninguna escuela, autoridad de aviación ni editorial. No reemplaza tus clases, a tu instructor, los libros originales, el manual del avión ni las regulaciones vigentes. Siempre estudia el material oficial.' },
-  { titulo: '3. Exactitud', texto: 'El contenido se tomó de los libros con cuidado, pero puede tener errores: ante cualquier duda manda el libro original y tu instructor. Las explicaciones de la inteligencia artificial pueden equivocarse. Nada aquí es instrucción de vuelo ni sirve para operar una aeronave.' },
-  { titulo: '4. Pagos', texto: 'La academia ya funciona completa y gratis con su propio instructor (el sistema que sigue tu estudio, te refuerza y te prepara). Lo que se paga es opcional: tiempo con un instructor de inteligencia artificial más personalizado, que se adapta a tus problemas y a tu forma de aprender. No se paga por las preguntas ni por el contenido de los libros. Lo que se paga ayuda a mantener el sistema funcionando para ti y para futuros estudiantes.' },
-  { titulo: '5. Contenido de terceros', texto: 'Los libros y materiales de estudio pertenecen a sus autores. Son solo para tu estudio personal: está prohibido copiar, descargar en masa o compartir el contenido fuera de la academia.' },
-  { titulo: '6. Privacidad', texto: 'Guardamos tu usuario, tu progreso y tus respuestas para seguir tu estudio; solo tú y el administrador los ven. Los comprobantes de pago solo los ve el administrador. A la inteligencia artificial no se envía tu nombre.' },
-  { titulo: '7. Responsabilidad', texto: 'Usas la academia bajo tu propia responsabilidad. El creador no se hace responsable por resultados de exámenes ni por decisiones de vuelo.' },
-  { titulo: '8. Reglas', texto: 'El administrador puede bloquear las cuentas que no cumplan estas reglas.' },
-]);
+import { TERMINOS_V1, PRIVACIDAD_V1, REEMBOLSO } from './textos-legales.js';
+
+export { TERMINOS_V1, PRIVACIDAD_V1, REEMBOLSO };
 
 // 0.9.2: la declaración que va justo antes de «Leí y acepto» (es parte de lo que se firma).
 export const DECLARACION = 'Declaro que los datos que escribí son verdaderos y que esta firma es mía. Si uso un nombre o una firma que no son míos, la responsabilidad es solo mía y el administrador puede bloquear mi cuenta.';
@@ -53,42 +46,55 @@ const escribir = (db, clave, valor) => db.prepare(`INSERT INTO ajustes (clave, v
 const json = texto => { try { return JSON.parse(texto ?? 'null'); } catch { return null; } };
 const ahora = () => new Date().toISOString();
 
-export function versionTerminos(db) {
-  const v = Number(leer(db, 'academia.terminos.version'));
+// ---------- Los textos (por versiones) ----------
+// 'terminos' (Términos de uso y aviso) y 'privacidad' (Aviso de privacidad). Cada uno con su versión; firmar acepta los
+// dos en sus versiones de ese momento.
+const DOCS = { terminos: { clave: 'academia.terminos', v1: TERMINOS_V1 }, privacidad: { clave: 'academia.privacidad', v1: PRIVACIDAD_V1 } };
+export const DOCUMENTOS = Object.freeze(Object.keys(DOCS));
+const docDe = doc => { if (!DOCS[doc]) throw new ErrorHttp(400, 'terminos_no_validos'); return DOCS[doc]; };
+export function versionDoc(db, doc) {
+  const v = Number(leer(db, `${docDe(doc).clave}.version`));
   return Number.isSafeInteger(v) && v >= 1 ? v : 1;
 }
-export function terminosVersion(db, version) {
-  const t = json(leer(db, `academia.terminos.v${Number(version)}`));
-  if (t && Array.isArray(t.secciones)) return { version: Number(version), secciones: t.secciones, publicadoEn: t.publicadoEn ?? null };
-  return Number(version) === 1 ? { version: 1, secciones: TERMINOS_V1.map(s => ({ ...s })), publicadoEn: null } : null;
+export function docVersion(db, doc, version) {
+  const d = docDe(doc);
+  const t = json(leer(db, `${d.clave}.v${Number(version)}`));
+  if (t && Array.isArray(t.secciones)) return { doc, version: Number(version), secciones: t.secciones, publicadoEn: t.publicadoEn ?? null };
+  return Number(version) === 1 ? { doc, version: 1, secciones: d.v1.map(x => ({ ...x })), publicadoEn: null } : null;
 }
-export const terminosActuales = db => terminosVersion(db, versionTerminos(db));
+export const docActual = (db, doc) => docVersion(db, doc, versionDoc(db, doc));
+export const versionTerminos = db => versionDoc(db, 'terminos');
+export const terminosVersion = (db, version) => docVersion(db, 'terminos', version);
+export const terminosActuales = db => docActual(db, 'terminos');
+const huellaSecciones = d => sha256(JSON.stringify(d.secciones.map(x => [x.titulo, x.texto])));
 
-// El administrador publica un texto nuevo: [{ titulo, texto }] (1 a 30 partes). Crea la versión siguiente.
-export function publicarTerminos(db, secciones, { hechoPor }) {
-  if (!Array.isArray(secciones) || !secciones.length || secciones.length > 30) throw new ErrorHttp(400, 'terminos_no_validos');
-  const limpias = secciones.map(s => {
-    if (!s || typeof s.titulo !== 'string' || typeof s.texto !== 'string') throw new ErrorHttp(400, 'terminos_no_validos');
-    const titulo = s.titulo.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120);
-    const texto = s.texto.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 4000);
+// El administrador publica un texto nuevo: [{ titulo, texto }] (1 a 40 partes). Crea la versión siguiente.
+export function publicarDoc(db, doc, secciones, { hechoPor }) {
+  const d = docDe(doc);
+  if (!Array.isArray(secciones) || !secciones.length || secciones.length > 40) throw new ErrorHttp(400, 'terminos_no_validos');
+  const limpias = secciones.map(x => {
+    if (!x || typeof x.titulo !== 'string' || typeof x.texto !== 'string') throw new ErrorHttp(400, 'terminos_no_validos');
+    const titulo = x.titulo.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160);
+    const texto = x.texto.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 6000);
     if (!titulo || !texto) throw new ErrorHttp(400, 'terminos_no_validos');
     return { titulo, texto };
   });
   return enTransaccion(db, () => {
-    const version = versionTerminos(db) + 1;
-    escribir(db, `academia.terminos.v${version}`, JSON.stringify({ secciones: limpias, publicadoEn: ahora(), por: hechoPor }));
-    escribir(db, 'academia.terminos.version', String(version));
-    auditar(db, { usuarioId: hechoPor, accion: 'terminos_publicados', detalle: `v${version}` });
-    return terminosActuales(db);
+    const version = versionDoc(db, doc) + 1;
+    escribir(db, `${d.clave}.v${version}`, JSON.stringify({ secciones: limpias, publicadoEn: ahora(), por: hechoPor }));
+    escribir(db, `${d.clave}.version`, String(version));
+    auditar(db, { usuarioId: hechoPor, accion: `${doc}_publicados`, detalle: `v${version}` });
+    return docActual(db, doc);
   });
 }
+export const publicarTerminos = (db, secciones, opciones) => publicarDoc(db, 'terminos', secciones, opciones);
 
-// ---------- El nombre legal ----------
+// ---------- El nombre legal y la fecha de nacimiento ----------
 const PARTE = /^[\p{L}](?:[\p{L}\p{M}' -]*[\p{L}\p{M}])?$/u;
-function parteDe(valor) {
-  if (typeof valor !== 'string') throw new ErrorHttp(400, 'nombre_legal_no_valido');
+function parteDe(valor, { maximo = 60, error = 'nombre_legal_no_valido' } = {}) {
+  if (typeof valor !== 'string') throw new ErrorHttp(400, error);
   const limpio = valor.normalize('NFC').replace(/\s+/g, ' ').trim();
-  if (limpio.length < 2 || limpio.length > 60 || !PARTE.test(limpio)) throw new ErrorHttp(400, 'nombre_legal_no_valido');
+  if (limpio.length < 2 || limpio.length > maximo || !PARTE.test(limpio)) throw new ErrorHttp(400, error);
   return limpio;
 }
 export function nombreLegalDe(db, usuarioId) {
@@ -115,26 +121,104 @@ export function ponerNombreLegal(db, usuarioId, { nombre, apellido }, { por, hec
   if (por === 'admin') auditar(db, { usuarioId: hechoPor, accion: 'nombre_legal_puesto', detalle: `${id}: ${n} ${a}` });
   return nombreLegalDe(db, id);
 }
+const DIA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+const hoySD = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
+export function edadEn(nacimiento, hoy) {
+  const [a, m, d] = nacimiento.split('-').map(Number);
+  const [ha, hm, hd] = hoy.split('-').map(Number);
+  return ha - a - (hm < m || (hm === m && hd < d) ? 1 : 0);
+}
+function nacimientoDe(valor, ahoraMs) {
+  if (typeof valor !== 'string' || !DIA_ISO.test(valor) || new Date(`${valor}T00:00:00Z`).toISOString().slice(0, 10) !== valor) throw new ErrorHttp(400, 'nacimiento_no_valido');
+  const edad = edadEn(valor, hoySD(ahoraMs));
+  if (edad < 5 || edad > 110) throw new ErrorHttp(400, 'nacimiento_no_valido');
+  return { nacimiento: valor, edad, menor: edad < 18 };
+}
+export const nacimientoGuardado = (db, id) => leer(db, `cuenta.nacimiento.${Number(id)}`);
 
-// ---------- Aceptar ----------
+// ---------- Consentimientos que leen otras partes de la app ----------
+// IA: si aceptó enviar sus datos de estudio (sin nombre) al proveedor de IA en el extranjero. Sin aceptar: la app
+// funciona igual, sin las funciones de IA.
+export const consienteIa = (db, id) => leer(db, `cuenta.consentimiento_ia.${Number(id)}`) === '1';
+export function ponerConsentimientoIa(db, id, permitido) {
+  if (typeof permitido !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+  escribir(db, `cuenta.consentimiento_ia.${Number(id)}`, permitido ? '1' : '0');
+  auditar(db, { usuarioId: Number(id), accion: permitido ? 'ia_consentida' : 'ia_retirada' });
+  return permitido;
+}
+// Menor de edad: firmó con su padre, madre o tutor. Sus pagos solo si el administrador marcó «el tutor autorizó pagos».
+export const esMenor = (db, id) => leer(db, `cuenta.menor.${Number(id)}`) === '1';
+export const tutorAutorizoPagos = (db, id) => leer(db, `cuenta.tutor_pagos.${Number(id)}`) === '1';
+export const pagosPermitidos = (db, id) => !esMenor(db, id) || tutorAutorizoPagos(db, id);
+export function ponerTutorPagos(db, id, autorizado, { hechoPor }) {
+  if (typeof autorizado !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+  escribir(db, `cuenta.tutor_pagos.${Number(id)}`, autorizado ? '1' : '0');
+  auditar(db, { usuarioId: hechoPor, accion: 'tutor_pagos', detalle: `${id}: ${autorizado ? 'sí' : 'no'}` });
+  return autorizado;
+}
+// «Cómo verifiqué su identidad» (nota del administrador; sale en el contrato).
+export function verificacionDe(db, id) {
+  const v = json(leer(db, `cuenta.verificacion.${Number(id)}`));
+  return v && typeof v.nota === 'string' ? v : null;
+}
+export function ponerVerificacion(db, id, nota, { hechoPor }) {
+  if (typeof nota !== 'string') throw new ErrorHttp(400, 'datos_no_validos');
+  const limpio = nota.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(Number(id))) throw new ErrorHttp(404, 'no_existe');
+  const v = { nota: limpio, por: hechoPor, en: ahora() };
+  escribir(db, `cuenta.verificacion.${Number(id)}`, JSON.stringify(v));
+  auditar(db, { usuarioId: hechoPor, accion: 'identidad_verificada', detalle: `${id}: ${limpio.slice(0, 80)}` });
+  return v;
+}
+
+// ---------- Aceptar (= firmar) ----------
 export function firmasDe(db, usuarioId) {
   const l = json(leer(db, `cuenta.terminos.${Number(usuarioId)}`));
-  return Array.isArray(l) ? l.filter(f => f && Number.isSafeInteger(f.version) && typeof f.en === 'string') : [];
+  return Array.isArray(l) ? l.filter(f => f && Number.isSafeInteger(f.version) && typeof f.en === 'string').map((f, k) => ({ ...f, n: f.n ?? k + 1 })) : [];
 }
 export function estadoTerminos(db, usuarioId) {
-  const version = versionTerminos(db);
+  const version = versionDoc(db, 'terminos');
+  const versionPrivacidad = versionDoc(db, 'privacidad');
   const firmas = firmasDe(db, usuarioId);
   const ultima = firmas.at(-1) ?? null;
-  return { version, pendiente: !firmas.some(f => f.version === version), ultima, nombreLegal: nombreLegalDe(db, usuarioId) };
+  const alDia = firmas.some(f => f.version === version && (f.versionPrivacidad ?? 1) === versionPrivacidad);
+  return {
+    version, versionPrivacidad, pendiente: !alDia, ultima: ultima ? { n: ultima.n, version: ultima.version, versionPrivacidad: ultima.versionPrivacidad ?? null, firmado: ultima.firmado, en: ultima.en } : null,
+    nombreLegal: nombreLegalDe(db, usuarioId), nacimiento: nacimientoGuardado(db, usuarioId), menor: esMenor(db, usuarioId), aceptoIa: consienteIa(db, usuarioId),
+  };
 }
-// firma: el PNG (ya revisado con firmaDe); config: dónde guardarlo; ip y navegador: de dónde se firmó.
-export function aceptarTerminos(db, usuarioId, { version, nombre, apellido, acepto, firma }, { config, ip = null, navegador = null } = {}) {
+function guardarPng(db, config, png, archivo, claveCopia) {
+  const carpeta = carpetaFirmas(config);
+  mkdirSync(carpeta, { recursive: true, mode: 0o700 });
+  if (!existsSync(join(carpeta, archivo))) writeFileSync(join(carpeta, archivo), png, { flag: 'wx', mode: 0o600 });
+  escribir(db, claveCopia, png.toString('base64'));
+}
+// datos: { version, versionPrivacidad, nombre, apellido, nacimiento, acepto, aceptoPrivacidad, aceptoIa, firma,
+//          tutor?: { nombre, relacion, contacto, acepto, firma } } (el tutor, solo si es menor de 18).
+export function aceptarTerminos(db, usuarioId, datos, { config, ip = null, navegador = null, ahoraMs = Date.now() } = {}) {
+  const { version, versionPrivacidad = 1, nombre, apellido, nacimiento, acepto, aceptoPrivacidad, aceptoIa, firma, tutor } = datos ?? {};
   if (acepto !== true) throw new ErrorHttp(400, 'terminos_sin_aceptar');
+  if (aceptoPrivacidad !== true) throw new ErrorHttp(400, 'privacidad_sin_aceptar');
+  if (typeof aceptoIa !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+  const nac = nacimientoDe(nacimiento, ahoraMs);
   const png = firmaDe(firma);
+  let tutorDatos = null;
+  let pngTutor = null;
+  if (nac.menor) {
+    if (!tutor || typeof tutor !== 'object') throw new ErrorHttp(400, 'tutor_falta');
+    if (tutor.acepto !== true) throw new ErrorHttp(400, 'tutor_falta');
+    tutorDatos = {
+      nombre: parteDe(tutor.nombre, { maximo: 120, error: 'tutor_falta' }),
+      relacion: parteDe(tutor.relacion, { maximo: 40, error: 'tutor_falta' }),
+      contacto: (() => { const c = String(tutor.contacto ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim(); if (c.length < 5 || c.length > 120) throw new ErrorHttp(400, 'tutor_falta'); return c; })(),
+    };
+    pngTutor = firmaDe(tutor.firma);
+  }
   const id = Number(usuarioId);
   return enTransaccion(db, () => {
-    const actual = versionTerminos(db);
-    if (version !== actual) throw new ErrorHttp(409, 'terminos_cambiaron');
+    const actual = versionDoc(db, 'terminos');
+    const actualPrivacidad = versionDoc(db, 'privacidad');
+    if (version !== actual || versionPrivacidad !== actualPrivacidad) throw new ErrorHttp(409, 'terminos_cambiaron');
     const antes = nombreLegalDe(db, id);
     let legal;
     if (antes?.confirmado) {
@@ -144,65 +228,81 @@ export function aceptarTerminos(db, usuarioId, { version, nombre, apellido, acep
     } else {
       legal = ponerNombreLegal(db, id, { nombre, apellido }, { por: 'persona' });
     }
+    escribir(db, `cuenta.nacimiento.${id}`, nac.nacimiento);
+    escribir(db, `cuenta.menor.${id}`, nac.menor ? '1' : '0');
+    escribir(db, `cuenta.consentimiento_ia.${id}`, aceptoIa ? '1' : '0');
     const firmas = firmasDe(db, id);
-    if (!firmas.some(f => f.version === actual)) {
+    if (!firmas.some(f => f.version === actual && (f.versionPrivacidad ?? 1) === actualPrivacidad)) {
       const u = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(id);
+      const n = (firmas.at(-1)?.n ?? 0) + 1;
       const huellaFirma = sha256(png);
-      const en = ahora();
       // El PNG: en la carpeta privada (nunca se pisa ni se borra) y una copia en la base (va en las copias cifradas).
-      const archivo = `${id}-v${actual}-${huellaFirma.slice(0, 16)}.png`;
-      const carpeta = carpetaFirmas(config);
-      mkdirSync(carpeta, { recursive: true, mode: 0o700 });
-      if (!existsSync(join(carpeta, archivo))) writeFileSync(join(carpeta, archivo), png, { flag: 'wx', mode: 0o600 });
-      escribir(db, `cuenta.firma.${id}.v${actual}`, png.toString('base64'));
+      const archivo = `${id}-f${n}-${huellaFirma.slice(0, 16)}.png`;
+      guardarPng(db, config, png, archivo, `cuenta.firma.${id}.${n}`);
+      let tutorFirma = null;
+      if (tutorDatos) {
+        const h = sha256(pngTutor);
+        const a = `${id}-f${n}-tutor-${h.slice(0, 16)}.png`;
+        guardarPng(db, config, pngTutor, a, `cuenta.firma_tutor.${id}.${n}`);
+        tutorFirma = { ...tutorDatos, firmaSha256: h, archivo: a };
+      }
       firmas.push({
-        version: actual, firmado: legal.completo, en, usuario: u?.nombre ?? null, usuarioId: id,
-        textoSha256: huellaTexto(terminosVersion(db, actual)), firmaSha256: huellaFirma, archivo,
+        n, version: actual, versionPrivacidad: actualPrivacidad, firmado: legal.completo, en: ahora(), usuario: u?.nombre ?? null, usuarioId: id,
+        nacimiento: nac.nacimiento, menor: nac.menor, aceptoIa,
+        textoSha256: huellaTexto(docVersion(db, 'terminos', actual)), privacidadSha256: huellaSecciones(docVersion(db, 'privacidad', actualPrivacidad)),
+        firmaSha256: huellaFirma, archivo, tutor: tutorFirma,
         ip: ip ? String(ip).slice(0, 80) : null, navegador: navegador ? String(navegador).slice(0, 300) : null,
       });
       escribir(db, `cuenta.terminos.${id}`, JSON.stringify(firmas));
-      auditar(db, { usuarioId: id, accion: 'terminos_aceptados', detalle: `v${actual}: ${legal.completo} (firma ${huellaFirma.slice(0, 12)})` });
+      auditar(db, { usuarioId: id, accion: 'terminos_aceptados', detalle: `v${actual}/p${actualPrivacidad}: ${legal.completo} (firma ${huellaFirma.slice(0, 12)})${nac.menor ? ' con tutor' : ''}` });
     }
     return estadoTerminos(db, id);
   });
 }
 
-// ---------- Los contratos firmados (solo el administrador) ----------
-// Cada firma de cada versión queda para siempre (aunque la cuenta se bloquee o el texto cambie).
+// ---------- Los contratos firmados ----------
+// Cada firma queda para siempre (aunque la cuenta se bloquee o el texto cambie). n = el número de firma de esa persona.
 export function contratos(db) {
   const lista = [];
-  for (const f of db.prepare("SELECT clave, valor FROM ajustes WHERE clave LIKE 'cuenta.terminos.%'").all()) {
+  for (const f of db.prepare("SELECT clave FROM ajustes WHERE clave LIKE 'cuenta.terminos.%'").all()) {
     const usuarioId = Number(f.clave.slice('cuenta.terminos.'.length));
     if (!Number.isSafeInteger(usuarioId)) continue;
     const u = db.prepare('SELECT nombre, activo FROM usuarios WHERE id = ?').get(usuarioId);
     for (const x of firmasDe(db, usuarioId)) {
-      lista.push({ usuarioId, version: x.version, firmado: x.firmado, usuario: u?.nombre ?? x.usuario ?? null, bloqueado: u ? u.activo !== 1 : null, en: x.en, conFirma: Boolean(x.firmaSha256) });
+      lista.push({ usuarioId, n: x.n, version: x.version, versionPrivacidad: x.versionPrivacidad ?? null, firmado: x.firmado, usuario: u?.nombre ?? x.usuario ?? null,
+        bloqueado: u ? u.activo !== 1 : null, en: x.en, conFirma: Boolean(x.firmaSha256), menor: x.menor === true });
     }
   }
   return lista.sort((a, b) => b.en.localeCompare(a.en));
 }
-export function pngDeFirma(db, config, usuarioId, version) {
-  const x = firmasDe(db, usuarioId).find(f => f.version === Number(version));
-  if (!x?.firmaSha256) return null;
+export function pngDeFirma(db, config, usuarioId, n, { tutor = false } = {}) {
+  const x = firmasDe(db, usuarioId).find(f => f.n === Number(n));
+  const datos = tutor ? x?.tutor : x;
+  if (!datos?.firmaSha256) return null;
   let png = null;
-  try { if (x.archivo && /^[0-9]+-v[0-9]+-[0-9a-f]{16}\.png$/.test(x.archivo)) png = readFileSync(join(carpetaFirmas(config), x.archivo)); } catch { png = null; }
-  if (!png || sha256(png) !== x.firmaSha256) {
-    const copia = leer(db, `cuenta.firma.${Number(usuarioId)}.v${Number(version)}`);
+  try { if (datos.archivo && /^[0-9]+-[fv][0-9]+-(?:tutor-)?[0-9a-f]{16}\.png$/.test(datos.archivo)) png = readFileSync(join(carpetaFirmas(config), datos.archivo)); } catch { png = null; }
+  if (!png || sha256(png) !== datos.firmaSha256) {
+    const copia = leer(db, `cuenta.${tutor ? 'firma_tutor' : 'firma'}.${Number(usuarioId)}.${Number(n)}`) ?? (tutor ? null : leer(db, `cuenta.firma.${Number(usuarioId)}.v${x.version}`));
     png = copia ? Buffer.from(copia, 'base64') : null;
   }
-  return png && sha256(png) === x.firmaSha256 ? png : null;
+  return png && sha256(png) === datos.firmaSha256 ? png : null;
 }
-export function contrato(db, config, usuarioId, version) {
-  const x = firmasDe(db, usuarioId).find(f => f.version === Number(version));
+export function contrato(db, config, usuarioId, n) {
+  const x = firmasDe(db, usuarioId).find(f => f.n === Number(n));
   if (!x) throw new ErrorHttp(404, 'no_existe');
-  const terminos = terminosVersion(db, x.version);
+  const terminos = docVersion(db, 'terminos', x.version);
+  const privacidad = x.versionPrivacidad ? docVersion(db, 'privacidad', x.versionPrivacidad) : null;
   const u = db.prepare('SELECT nombre, activo FROM usuarios WHERE id = ?').get(Number(usuarioId));
-  const textoAlDia = x.textoSha256 ? huellaTexto(terminos) === x.textoSha256 : null;
   return {
-    usuarioId: Number(usuarioId), usuario: u?.nombre ?? x.usuario ?? null, bloqueado: u ? u.activo !== 1 : null,
-    version: x.version, firmado: x.firmado, en: x.en, ip: x.ip ?? null, navegador: x.navegador ?? null,
-    textoSha256: x.textoSha256 ?? null, firmaSha256: x.firmaSha256 ?? null, textoVerificado: textoAlDia,
-    firmaVerificada: x.firmaSha256 ? Boolean(pngDeFirma(db, config, usuarioId, x.version)) : null,
-    terminos, declaracion: DECLARACION,
+    usuarioId: Number(usuarioId), n: x.n, usuario: u?.nombre ?? x.usuario ?? null, bloqueado: u ? u.activo !== 1 : null,
+    version: x.version, versionPrivacidad: x.versionPrivacidad ?? null, firmado: x.firmado, en: x.en, ip: x.ip ?? null, navegador: x.navegador ?? null,
+    nacimiento: x.nacimiento ?? null, menor: x.menor === true, aceptoIa: x.aceptoIa ?? null,
+    textoSha256: x.textoSha256 ?? null, privacidadSha256: x.privacidadSha256 ?? null, firmaSha256: x.firmaSha256 ?? null,
+    textoVerificado: x.textoSha256 ? huellaTexto(terminos) === x.textoSha256 : null,
+    privacidadVerificada: x.privacidadSha256 && privacidad ? huellaSecciones(privacidad) === x.privacidadSha256 : null,
+    firmaVerificada: x.firmaSha256 ? Boolean(pngDeFirma(db, config, usuarioId, x.n)) : null,
+    tutor: x.tutor ? { nombre: x.tutor.nombre, relacion: x.tutor.relacion, contacto: x.tutor.contacto, firmaSha256: x.tutor.firmaSha256, firmaVerificada: Boolean(pngDeFirma(db, config, usuarioId, x.n, { tutor: true })) } : null,
+    verificacion: verificacionDe(db, usuarioId),
+    terminos, privacidad, declaracion: DECLARACION,
   };
 }

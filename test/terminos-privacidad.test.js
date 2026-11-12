@@ -43,6 +43,8 @@ function png(ancho = 240, alto = 80, { ruido = false } = {}) {
 }
 const FIRMA_PNG = png();
 const FIRMA = `data:image/png;base64,${FIRMA_PNG.toString('base64')}`;
+// Lo demás que se firma (0.9.2, informe legal): privacidad, fecha de nacimiento (mayor de edad) y el permiso de IA.
+const FIRMAR = { versionPrivacidad: 1, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
 const mala = id => ['A', 'B', 'C'].find(l => l !== DE(id).original.correcta);
 
 async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerpo } = {}) {
@@ -104,18 +106,18 @@ test('términos: sin aceptar, /api/yo lo dice; se firma con Nombre y Apellido de
     assert.deepEqual([yo.terminos.version, yo.terminos.pendiente, yo.terminos.nombreLegal], [1, true, null]);
     assert.equal((await pedir(base, 'GET', '/api/yo/terminos')).codigo, 401);
     const aceptar = (galleta, datos) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos });
-    assert.equal((await aceptar(ana, { version: 1, nombre: 'Ana', apellido: 'Pérez', acepto: false, firma: FIRMA })).datos.error, 'terminos_sin_aceptar');
+    assert.equal((await aceptar(ana, { version: 1, nombre: 'Ana', apellido: 'Pérez', acepto: false, firma: FIRMA, ...FIRMAR })).datos.error, 'terminos_sin_aceptar');
     for (const [nombre, apellido] of [['A', 'Pérez'], ['Ana', ''], ['Ana1', 'Pérez'], ['Ana', '<b>'], ['x'.repeat(61), 'Pérez']]) {
-      assert.equal((await aceptar(ana, { version: 1, nombre, apellido, acepto: true, firma: FIRMA })).datos.error, 'nombre_legal_no_valido', `${nombre} ${apellido}`);
+      assert.equal((await aceptar(ana, { version: 1, nombre, apellido, acepto: true, firma: FIRMA, ...FIRMAR })).datos.error, 'nombre_legal_no_valido', `${nombre} ${apellido}`);
     }
-    assert.equal((await aceptar(ana, { version: 2, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: FIRMA })).datos.error, 'terminos_cambiaron');
-    const ok = await aceptar(ana, { version: 1, nombre: '  Ana  María ', apellido: 'Pérez-Gómez', acepto: true, firma: FIRMA });
+    assert.equal((await aceptar(ana, { version: 2, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: FIRMA, ...FIRMAR })).datos.error, 'terminos_cambiaron');
+    const ok = await aceptar(ana, { version: 1, nombre: '  Ana  María ', apellido: 'Pérez-Gómez', acepto: true, firma: FIRMA, ...FIRMAR });
     assert.equal(ok.codigo, 200);
     assert.equal(ok.datos.estado.pendiente, false);
     assert.equal(ok.datos.estado.ultima.firmado, 'Ana María Pérez-Gómez');
     assert.equal(ok.datos.estado.ultima.version, 1);
     assert.ok(ok.datos.estado.ultima.en);
-    assert.match(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'terminos_aceptados'").get().detalle, /^v1: Ana María Pérez-Gómez \(firma [0-9a-f]{12}\)$/);
+    assert.match(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'terminos_aceptados'").get().detalle, /^v1\/p1: Ana María Pérez-Gómez \(firma [0-9a-f]{12}\)$/);
     // Ya confirmado: la persona no lo cambia (solo el administrador).
     // El administrador lo ve en la ficha y en las listas.
     const f = (await pedir(base, 'GET', `/api/admin/academia/alumnos/${ids.ana}/ficha`, { galleta: admin })).datos.alumno;
@@ -133,10 +135,10 @@ test('términos: sin aceptar, /api/yo lo dice; se firma con Nombre y Apellido de
     assert.equal((await pedir(base, 'POST', '/api/admin/terminos', { galleta: admin, datos: { secciones: nueva } })).datos.terminos.version, 2);
     const yo2 = (await pedir(base, 'GET', '/api/yo', { galleta: ana })).datos.terminos;
     assert.deepEqual([yo2.version, yo2.pendiente, yo2.ultima.version], [2, true, 1]);
-    assert.equal((await aceptar(ana, { version: 2, nombre: 'Otra', apellido: 'Persona', acepto: true, firma: FIRMA })).datos.error, 'nombre_legal_fijo');
-    assert.equal((await aceptar(ana, { version: 2, nombre: 'Ana María', apellido: 'Pérez-Gómez', acepto: true, firma: FIRMA })).datos.estado.pendiente, false);
+    assert.equal((await aceptar(ana, { version: 2, nombre: 'Otra', apellido: 'Persona', acepto: true, firma: FIRMA, ...FIRMAR })).datos.error, 'nombre_legal_fijo');
+    assert.equal((await aceptar(ana, { version: 2, nombre: 'Ana María', apellido: 'Pérez-Gómez', acepto: true, firma: FIRMA, ...FIRMAR })).datos.estado.pendiente, false);
     const adm = (await pedir(base, 'GET', '/api/admin/terminos', { galleta: admin })).datos;
-    assert.deepEqual([adm.terminos.version, adm.versiones.length, adm.aceptaron], [2, 2, 1]);
+    assert.deepEqual([adm.terminos.version, adm.versiones.terminos.length, adm.privacidad.version, adm.aceptaron], [2, 2, 1, 1]);
     assert.equal((await pedir(base, 'GET', '/api/admin/terminos', { galleta: beto })).codigo, 403);
     // La versión 1 sigue guardada tal cual.
     assert.equal((await pedir(base, 'GET', '/api/terminos')).datos.terminos.secciones[0].titulo, '1. Uno');
@@ -242,7 +244,7 @@ test('reporte: solo el administrador; ranking por puntaje, por alumno, grupo y c
 
 test('firma dibujada: obligatoria (un PNG de 50 KB o menos); queda con fecha, versión, huellas, IP y navegador; los contratos nunca se borran', async () => {
   await conAcademia(async ({ base, db, admin, ana, beto, ids, config }) => {
-    const aceptar = (galleta, datos, cabeceras = {}) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos: { version: 1, nombre: 'Ana', apellido: 'Pérez', acepto: true, ...datos }, cabeceras });
+    const aceptar = (galleta, datos, cabeceras = {}) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos: { version: 1, nombre: 'Ana', apellido: 'Pérez', acepto: true, ...FIRMAR, ...datos }, cabeceras });
     assert.equal((await aceptar(ana, { firma: undefined })).datos.error, 'firma_falta');
     assert.equal((await aceptar(ana, { firma: 'data:image/png;base64,AAAA' })).datos.error, 'firma_falta');
     assert.equal((await aceptar(ana, { firma: `data:image/jpeg;base64,${FIRMA_PNG.toString('base64')}` })).datos.error, 'firma_falta');
@@ -283,7 +285,7 @@ test('firma dibujada: obligatoria (un PNG de 50 KB o menos); queda con fecha, ve
     // Nunca se borran: otra versión, bloquear la cuenta, y aunque falte el archivo (queda la copia en la base).
     await pedir(base, 'POST', '/api/admin/terminos', { galleta: admin, datos: { secciones: [{ titulo: '1. Nuevo', texto: 'Otro texto.' }] } });
     const otra = png(260, 90);
-    assert.equal((await pedir(base, 'POST', '/api/yo/terminos', { galleta: ana, datos: { version: 2, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: `data:image/png;base64,${otra.toString('base64')}` } })).codigo, 200);
+    assert.equal((await pedir(base, 'POST', '/api/yo/terminos', { galleta: ana, datos: { version: 2, nombre: 'Ana', apellido: 'Pérez', acepto: true, ...FIRMAR, firma: `data:image/png;base64,${otra.toString('base64')}` } })).codigo, 200);
     await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/activo`, { galleta: admin, datos: { activo: false } });
     const despues = (await pedir(base, 'GET', '/api/admin/contratos', { galleta: admin })).datos.contratos;
     assert.deepEqual(despues.map(x => x.version).sort(), [1, 2]);

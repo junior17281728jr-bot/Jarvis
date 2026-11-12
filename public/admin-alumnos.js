@@ -99,6 +99,20 @@ function cuentaAlumno(h, a) {
     h.avisar(t('cuenta.legal.listo'));
     await h.recargar();
   }, 'lapiz');
+  const mensajeVerificacion = h.caja();
+  const campoVerificacion = el('input', { id: 'campo-ficha-verificacion', type: 'text', maxlength: 300, value: a.verificacion?.nota ?? '', placeholder: t('cuenta.verificacion.muestra'), autocomplete: 'off' });
+  const guardarVerificacion = h.botonAccion(t('cuenta.nombre.guardar'), 'secundario', mensajeVerificacion, async () => {
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/verificacion`, { nota: campoVerificacion.value });
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    h.avisar(t('cuenta.verificacion.listo'));
+    await h.recargar();
+  }, 'marca');
+  const mensajeTutor = h.caja();
+  const botonTutorPagos = h.botonAccion(t(a.tutorPagos ? 'cuenta.tutor_pagos.quitar' : 'cuenta.tutor_pagos.dar'), 'secundario', mensajeTutor, async () => {
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/tutor-pagos`, { autorizado: !a.tutorPagos });
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    await h.recargar();
+  });
   const mensajeClave = h.caja();
   const campoClave = el('input', { id: 'campo-ficha-clave', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' });
   const ponerClave = yo ? null : h.botonAccion(t('cuenta.clave.poner'), 'secundario', mensajeClave, async () => {
@@ -114,7 +128,9 @@ function cuentaAlumno(h, a) {
       el('h2', { id: 'ficha-cuenta-titulo', class: 'con-icono' }, h.icono('ajustes'), el('span', { texto: t('cuenta.titulo') })),
       el('span', { class: 'etiquetas' },
         a.activo ? h.insignia('bien', t('admin.activo')) : h.insignia('mal', t('admin.inactivo')),
-        a.pendiente ? h.insignia('atencion', t('admin.pendiente')) : null)),
+        a.pendiente ? h.insignia('atencion', t('admin.pendiente')) : null,
+        a.terminos?.menor ? h.insignia('atencion', t('contratos.menor')) : null,
+        a.terminos && !a.terminos.aceptoIa ? h.insignia('apagado', t('cuenta.sin_ia')) : null)),
     a.activo ? null : el('p', { class: 'aviso', texto: t('cuenta.bloqueada.linea') }),
     bloquear ? el('div', { class: 'botones' }, bloquear) : el('p', { class: 'suave chica', texto: t('admin.tu_cuenta') }),
     mensaje,
@@ -124,6 +140,15 @@ function cuentaAlumno(h, a) {
       el('label', { for: 'campo-ficha-usuario', texto: t('cuenta.nombre.usuario') }), campoUsuario,
       el('p', { class: 'ayuda', texto: t('cuenta.nombre.ayuda') }),
       el('div', { class: 'botones' }, guardarNombre), mensajeNombre),
+    // 0.9.2: «Cómo verifiqué su identidad» (sale en el contrato) y, si es menor, si el tutor autorizó pagos.
+    el('details', { class: 'ficha-cuenta-mas' },
+      el('summary', { texto: t('cuenta.verificacion.titulo') }),
+      a.verificacion ? el('p', { class: 'suave chica', texto: t('cuenta.verificacion.actual', { nota: a.verificacion.nota, fecha: h.fecha(a.verificacion.en) }) }) : null,
+      el('label', { for: 'campo-ficha-verificacion', texto: t('cuenta.verificacion.nota') }), campoVerificacion,
+      el('div', { class: 'botones' }, guardarVerificacion), mensajeVerificacion),
+    a.terminos?.menor ? el('div', { class: 'ficha-cuenta-menor' },
+      el('p', { texto: t(a.tutorPagos ? 'cuenta.tutor_pagos.si' : 'cuenta.tutor_pagos.no') }),
+      el('div', { class: 'botones' }, botonTutorPagos), mensajeTutor) : null,
     el('details', { class: 'ficha-cuenta-mas' },
       el('summary', { texto: t('cuenta.legal.titulo') }),
       el('label', { for: 'campo-ficha-legal-n', texto: t('terminos.nombre') }), campoLegalN,

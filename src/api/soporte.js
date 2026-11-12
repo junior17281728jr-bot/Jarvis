@@ -23,6 +23,13 @@ export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, 
     const datos = await leerJson(req);
     return { codigo: 201, datos: { ticket: crearTicket(db, usuario.id, { categoria: textoDe(datos, 'categoria'), texto: textoDe(datos, 'texto'), contexto: datos?.contexto }, { ahoraMs: reloj() }) } };
   });
+  // «Mis datos»: pedir acceso, corrección, borrado u oposición (queda como mensaje de ayuda «Datos personales»).
+  rutas.agregar('POST', '/api/yo/datos', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    const pedido = textoDe(datos, 'pedido');
+    const texto = textoDe(datos, 'texto').trim() || `Pedido: ${pedido}`;
+    return { codigo: 201, datos: { ticket: crearTicket(db, usuario.id, { categoria: 'datos', pedido, texto, contexto: { pantalla: 'mis-datos' } }, { ahoraMs: reloj() }) } };
+  });
   rutas.agregar('GET', '/api/soporte/:id', ({ db, usuario, parametros }) => ({ codigo: 200, datos: { ticket: verTicket(db, usuario.id, parametros.id, { ahoraMs: reloj() }) } }));
   rutas.agregar('POST', '/api/soporte/:id/mensajes', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);

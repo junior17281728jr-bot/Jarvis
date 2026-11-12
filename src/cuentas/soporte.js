@@ -6,13 +6,24 @@
 //  - cuando el administrador responde, la persona ve un aviso al entrar (avisos_cuenta 'soporte_respondido').
 // Cada persona solo ve los suyos; el administrador, todos.
 import { createHash } from 'node:crypto';
-import { mkdirSync, createWriteStream, renameSync, unlinkSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { avisarCuenta, auditar } from './usuarios.js';
 
-export const CATEGORIAS_SOPORTE = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'otro']);
+export const CATEGORIAS_SOPORTE = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'datos', 'otro']);
+// 0.9.2: «Mis datos» (acceso, corrección o borrado): se responde en 10 días hábiles o menos (Ley 172-13).
+export const PEDIDOS_DATOS = Object.freeze(['acceso', 'correccion', 'supresion', 'oposicion']);
+export function diasHabiles(desdeMs, n) {
+  let d = new Date(desdeMs - 4 * 3600 * 1000);
+  let faltan = n;
+  while (faltan > 0) {
+    d = new Date(d.getTime() + 24 * 3600 * 1000);
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) faltan -= 1;
+  }
+  return d.toISOString().slice(0, 10);
+}
 export const ESTADOS_SOPORTE = Object.freeze(['nuevo', 'revision', 'resuelto']);
 export const IMAGENES_MAXIMAS = 3;
 export const IMAGEN_MAXIMA = 5 * 1024 * 1024;
@@ -52,7 +63,7 @@ export function vistaTicket(db, t, { conHilo = true } = {}) {
   const ultimo = t.mensajes.at(-1);
   return {
     id: t.id, usuarioId: t.usuarioId, usuario: u?.nombre ?? null, nombreVisible: u?.nombre_visible || u?.nombre || null,
-    categoria: t.categoria, estado: t.estado, creado: t.creado, actualizado: t.actualizado, contexto: t.contexto,
+    categoria: t.categoria, pedido: t.pedido ?? null, vence: t.vence ?? null, estado: t.estado, creado: t.creado, actualizado: t.actualizado, contexto: t.contexto,
     resumen: t.mensajes[0]?.texto.slice(0, 140) ?? '', mensajes: conHilo ? t.mensajes.map((m, k) => ({ k, de: m.de, texto: m.texto, en: m.en, imagenes: (m.imagenes ?? []).map((_, i) => i) })) : undefined,
     respuestas: t.mensajes.filter(m => m.de === 'admin').length, ultimoDe: ultimo?.de ?? null,
     sinLeerAlumno: Boolean(ultimo && ultimo.de === 'admin' && (Number(t.vistosAlumno) || 0) < t.mensajes.length),
@@ -61,7 +72,8 @@ export function vistaTicket(db, t, { conHilo = true } = {}) {
 }
 
 // contexto: { pantalla, version, navegador, pregunta } (lo pone la app sola). La hora la pone el servidor.
-export function crearTicket(db, usuarioId, { categoria, texto, contexto }, { ahoraMs = Date.now() } = {}) {
+export function crearTicket(db, usuarioId, { categoria, texto, contexto, pedido = null }, { ahoraMs = Date.now() } = {}) {
+  if (categoria === 'datos' && !PEDIDOS_DATOS.includes(pedido)) throw new ErrorHttp(400, 'soporte_categoria');
   if (!CATEGORIAS_SOPORTE.includes(categoria)) throw new ErrorHttp(400, 'soporte_categoria');
   const limpio = textoLargo(texto);
   if (limpio.length < 3) throw new ErrorHttp(400, 'soporte_texto');
@@ -77,6 +89,7 @@ export function crearTicket(db, usuarioId, { categoria, texto, contexto }, { aho
       id, usuarioId: Number(usuarioId), categoria, estado: 'nuevo', creado: en, actualizado: en,
       contexto: { pantalla: unaLinea(c.pantalla, 120) || null, version: unaLinea(c.version, 20) || null, navegador: unaLinea(c.navegador, 300) || null, pregunta: unaLinea(c.pregunta, 60) || null, hora: en },
       mensajes: [{ de: 'alumno', autorId: Number(usuarioId), texto: limpio, en, imagenes: [] }],
+      ...(categoria === 'datos' ? { pedido, vence: diasHabiles(ahoraMs, 10) } : {}),
       vistoAlumno: en, vistosAlumno: 1, vistoAdmin: null,
     };
     guardar(db, t);
@@ -101,37 +114,32 @@ export async function subirImagen(db, config, usuarioId, id, req, { ahoraMs = Da
   if (ahoraMs - Date.parse(t.creado) > MINUTOS_PARA_CAPTURAS * 60 * 1000) throw new ErrorHttp(409, 'soporte_imagenes');
   const largo = Number(req.headers['content-length']);
   if (Number.isFinite(largo) && largo > IMAGEN_MAXIMA) throw new ErrorHttp(413, 'demasiado_grande');
-  const carpeta = join(carpetaSoporte(config), String(t.id));
-  mkdirSync(carpeta, { recursive: true, mode: 0o700 });
-  const k = primero.imagenes.length;
-  const temporal = join(carpeta, `.${k}-${process.pid}-${Date.now()}.parte`);
-  const huella = createHash('sha256');
+  // Se lee entera en memoria (5 MB como mucho) y solo se escribe si es una imagen de verdad: nunca queda basura.
+  const partes = [];
   let bytes = 0;
-  let cabeza = Buffer.alloc(0);
   await new Promise((ok, mal) => {
-    const salida = createWriteStream(temporal, { flags: 'wx', mode: 0o600 });
-    let fallo = null;
+    let fallo = false;
     req.on('data', parte => {
       if (fallo) return;
       bytes += parte.length;
-      if (cabeza.length < 16) cabeza = Buffer.concat([cabeza, parte]).subarray(0, 16);
-      if (bytes > IMAGEN_MAXIMA) { fallo = new ErrorHttp(413, 'demasiado_grande'); salida.destroy(); req.destroy(); return mal(fallo); }
-      huella.update(parte);
-      salida.write(parte);
+      if (bytes > IMAGEN_MAXIMA) { fallo = true; req.destroy(); return mal(new ErrorHttp(413, 'demasiado_grande')); }
+      partes.push(parte);
     });
-    req.on('end', () => { if (!fallo) salida.end(ok); });
-    req.on('error', e => { fallo = e; salida.destroy(); mal(e); });
-  }).catch(e => { try { unlinkSync(temporal); } catch { /* nada que limpiar */ } throw e; });
-  const tipo = tipoImagen(cabeza);
-  if (!tipo || bytes < 16) { try { unlinkSync(temporal); } catch { /* nada */ } throw new ErrorHttp(415, 'soporte_imagen_tipo'); }
-  const archivo = `${k}.${tipo.ext}`;
-  const final = join(carpeta, archivo);
+    req.on('end', () => { if (!fallo) ok(); });
+    req.on('error', e => { if (!fallo) { fallo = true; mal(e); } });
+  });
+  const datos = Buffer.concat(partes);
+  const tipo = tipoImagen(datos.subarray(0, 16));
+  if (!tipo || datos.length < 16) throw new ErrorHttp(415, 'soporte_imagen_tipo');
+  const carpeta = join(carpetaSoporte(config), String(t.id));
+  mkdirSync(carpeta, { recursive: true, mode: 0o700 });
   return enTransaccion(db, () => {
     const actual = propio(db, usuarioId, id);
     const lista = actual.mensajes[0].imagenes ?? [];
-    if (lista.length >= IMAGENES_MAXIMAS || existsSync(final)) { try { unlinkSync(temporal); } catch { /* nada */ } throw new ErrorHttp(409, 'soporte_imagenes'); }
-    renameSync(temporal, final);
-    lista.push({ archivo, tipo: tipo.tipo, bytes, sha256: huella.digest('hex') });
+    const archivo = `${lista.length}.${tipo.ext}`;
+    if (lista.length >= IMAGENES_MAXIMAS || existsSync(join(carpeta, archivo))) throw new ErrorHttp(409, 'soporte_imagenes');
+    writeFileSync(join(carpeta, archivo), datos, { flag: 'wx', mode: 0o600 });
+    lista.push({ archivo, tipo: tipo.tipo, bytes: datos.length, sha256: createHash('sha256').update(datos).digest('hex') });
     actual.mensajes[0].imagenes = lista;
     guardar(db, actual);
     return { imagenes: lista.length };

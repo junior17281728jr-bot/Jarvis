@@ -13,35 +13,54 @@ export function vistaListaContratos(datos, h) {
       el('p', { class: 'suave', texto: t('contratos.linea') }),
       lista.length ? el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos/todos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.todos', { n: numero(lista.length) }) })) : null,
       lista.length ? el('ul', { class: 'contratos-lista' }, lista.map(c => el('li', {},
-        el('a', { class: 'ficha-intento', href: `#contrato/${c.usuarioId}/${c.version}` },
+        el('a', { class: 'ficha-intento', href: `#contrato/${c.usuarioId}/${c.n}` },
           el('span', { class: 'ficha-nota', texto: `v${c.version}` }),
           el('span', { class: 'ficha-intento-texto' },
             el('strong', { texto: c.firmado }),
-            el('span', { class: 'suave chica', texto: [`@${c.usuario ?? '—'}`, h.fecha(c.en), c.bloqueado ? t('admin.inactivo') : null, c.conFirma ? null : t('contratos.sin_dibujo')].filter(Boolean).join(' · ') })),
+            el('span', { class: 'suave chica', texto: [`@${c.usuario ?? '—'}`, h.fecha(c.en), c.bloqueado ? t('admin.inactivo') : null, c.menor ? t('contratos.menor') : null, c.conFirma ? null : t('contratos.sin_dibujo')].filter(Boolean).join(' · ') })),
           h.icono('flecha', 'icono chico'))))) : h.vacio('manual', t('contratos.vacio'))),
   ];
 }
 
-// Un contrato como documento (para ver e imprimir).
-export function documentoContrato(c, h) {
+// Un contrato como documento (para ver e imprimir). firma(c, tutor) → la dirección de la imagen de la firma.
+const firmaAdmin = (c, tutor) => `/api/admin/contratos/${c.usuarioId}/${c.n}/${tutor ? 'firma-tutor' : 'firma'}`;
+const marca = (si, h) => (si === true ? '☑' : si === false ? '☐' : '—');
+export function documentoContrato(c, h, { firma = firmaAdmin } = {}) {
   const { el, t, numero } = h;
+  const huella = (x, ok) => (x ? `${x} ${ok ? '✓' : '✗'}` : '—');
+  const texto = d => el('div', { class: 'contrato-texto' }, d.secciones.map(x => el('section', {}, el('h3', { texto: x.titulo }), h.talCual('p', x.texto))));
   return el('article', { class: 'reporte-hoja contrato-hoja' },
     el('header', { class: 'reporte-cabeza' },
-      el('div', {}, el('p', { class: 'reporte-app', texto: h.nombreApp }), el('h1', { texto: t('terminos.titulo') })),
-      el('div', { class: 'reporte-cabeza-datos' }, el('p', { texto: t('terminos.version', { n: numero(c.version) }) }), el('p', { texto: `@${c.usuario ?? '—'}` }))),
-    el('div', { class: 'contrato-texto' }, c.terminos.secciones.map(s => el('section', {}, el('h3', { texto: s.titulo }), h.talCual('p', s.texto)))),
+      el('div', {}, el('p', { class: 'reporte-app', texto: h.nombreApp }), el('h1', { texto: t('contratos.documento') })),
+      el('div', { class: 'reporte-cabeza-datos' },
+        el('p', { texto: t('contratos.versiones', { t: numero(c.version), p: c.versionPrivacidad ? numero(c.versionPrivacidad) : '—' }) }),
+        el('p', { texto: `@${c.usuario ?? '—'} · ${t('contratos.firma_n', { n: numero(c.n) })}` }))),
+    el('h2', { class: 'contrato-titulo', texto: t('terminos.titulo') }), texto(c.terminos),
+    c.privacidad ? [el('h2', { class: 'contrato-titulo', texto: t('privacidad.titulo') }), texto(c.privacidad)] : null,
     el('p', { class: 'terminos-declaracion', texto: c.declaracion }),
-    el('p', { class: 'contrato-acepto', texto: t('terminos.yo_acepto', { nombre: c.firmado, n: numero(c.version) }) }),
+    el('ul', { class: 'contrato-casillas' },
+      el('li', { texto: `${marca(true)} ${t('terminos.yo_acepto', { nombre: c.firmado, n: numero(c.version) })}` }),
+      c.versionPrivacidad ? el('li', { texto: `${marca(true)} ${t('terminos.acepto_privacidad', { n: numero(c.versionPrivacidad) })}` }) : null,
+      c.aceptoIa != null ? el('li', { texto: `${marca(c.aceptoIa)} ${t('terminos.acepto_ia')}` }) : null),
     el('div', { class: 'contrato-firma' },
-      c.firmaSha256 ? el('img', { src: `/api/admin/contratos/${c.usuarioId}/${c.version}/firma`, alt: t('contratos.firma_de', { nombre: c.firmado }) }) : el('p', { class: 'suave', texto: t('contratos.sin_dibujo') }),
+      c.firmaSha256 ? el('img', { src: firma(c, false), alt: t('contratos.firma_de', { nombre: c.firmado }) }) : el('p', { class: 'suave', texto: t('contratos.sin_dibujo') }),
       el('p', { class: 'contrato-nombre', texto: c.firmado })),
+    c.tutor ? el('section', { class: 'contrato-tutor' },
+      el('h3', { texto: t('terminos.tutor.titulo') }),
+      el('p', { texto: `${marca(true)} ${t('terminos.tutor.acepto')}` }),
+      el('p', { texto: t('contratos.tutor', { nombre: c.tutor.nombre, relacion: c.tutor.relacion, contacto: c.tutor.contacto }) }),
+      el('div', { class: 'contrato-firma' }, el('img', { src: firma(c, true), alt: t('contratos.firma_de', { nombre: c.tutor.nombre }) }), el('p', { class: 'contrato-nombre', texto: c.tutor.nombre }))) : null,
     el('dl', { class: 'ficha-datos contrato-datos' },
       el('dt', { texto: t('contratos.fecha') }), el('dd', { texto: `${h.fecha(c.en)} (${c.en})` }),
       el('dt', { texto: t('contratos.usuario') }), el('dd', { texto: `@${c.usuario ?? '—'} (id ${c.usuarioId})` }),
+      el('dt', { texto: t('terminos.nacimiento') }), el('dd', { texto: c.nacimiento ? `${c.nacimiento}${c.menor ? ` · ${t('contratos.menor')}` : ''}` : '—' }),
       el('dt', { texto: 'IP' }), el('dd', { texto: c.ip ?? '—' }),
       el('dt', { texto: t('contratos.navegador') }), el('dd', { texto: c.navegador ?? '—' }),
-      el('dt', { texto: t('contratos.huella_texto') }), el('dd', { class: 'contrato-huella', texto: c.textoSha256 ? `${c.textoSha256} ${c.textoVerificado ? '✓' : '✗'}` : '—' }),
-      el('dt', { texto: t('contratos.huella_firma') }), el('dd', { class: 'contrato-huella', texto: c.firmaSha256 ? `${c.firmaSha256} ${c.firmaVerificada ? '✓' : '✗'}` : '—' })),
+      c.verificacion !== undefined ? [el('dt', { texto: t('contratos.verificacion') }), el('dd', { texto: c.verificacion ? `${c.verificacion.nota} (${h.fecha(c.verificacion.en)})` : t('contratos.sin_verificar') })] : null,
+      el('dt', { texto: t('contratos.huella_texto') }), el('dd', { class: 'contrato-huella', texto: huella(c.textoSha256, c.textoVerificado) }),
+      el('dt', { texto: t('contratos.huella_privacidad') }), el('dd', { class: 'contrato-huella', texto: huella(c.privacidadSha256, c.privacidadVerificada) }),
+      el('dt', { texto: t('contratos.huella_firma') }), el('dd', { class: 'contrato-huella', texto: huella(c.firmaSha256, c.firmaVerificada) }),
+      c.tutor ? [el('dt', { texto: t('contratos.huella_tutor') }), el('dd', { class: 'contrato-huella', texto: huella(c.tutor.firmaSha256, c.tutor.firmaVerificada) })] : null),
     el('p', { class: 'reporte-pie suave chica', texto: t('contratos.pie') }));
 }
 
@@ -62,7 +81,7 @@ export function vistaTodos(datos, h) {
   (async () => {
     const docs = [];
     for (const c of datos.contratos) {
-      const r = await h.api('GET', `/api/admin/contratos/${c.usuarioId}/${c.version}`);
+      const r = await h.api('GET', `/api/admin/contratos/${c.usuarioId}/${c.n}`);
       if (r.ok) docs.push(documentoContrato(r.datos.contrato, h));
     }
     hoja.replaceChildren(...(docs.length ? docs : [el('p', { class: 'suave', texto: t('contratos.vacio') })]));

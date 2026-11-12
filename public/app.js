@@ -458,7 +458,8 @@ async function pantallaLeerTerminos() {
   const [r, vista] = await Promise.all([api('GET', '/api/terminos'), import('./terminos-vista.js')]);
   if (!vigente()) return;
   const volver = el('a', { class: 'volver con-icono', href: estado.usuario ? '#inicio' : '#' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.volver') }));
-  const cuerpo = r.ok ? [el('h1', { texto: t('terminos.titulo') }), el('p', { class: 'suave', texto: t('terminos.version', { n: numero(r.datos.terminos.version) }) }), vista.textoTerminos(piezasTerminos(), r.datos.terminos)]
+  const cuerpo = r.ok ? [el('h1', { texto: t('terminos.titulo') }), el('p', { class: 'suave', texto: t('terminos.version', { n: numero(r.datos.terminos.version) }) }), vista.textoTerminos(piezasTerminos(), r.datos.terminos),
+    el('h2', { class: 'terminos-subtitulo', texto: t('privacidad.titulo') }), el('p', { class: 'suave', texto: t('terminos.version', { n: numero(r.datos.privacidad.version) }) }), vista.textoTerminos(piezasTerminos(), r.datos.privacidad)]
     : [el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })];
   const tarjeta = el('section', { class: 'tarjeta terminos-pantalla' }, volver, ...cuerpo);
   if (estado.usuario && !estado.terminos?.pendiente) return mostrar(marco('ayuda', tarjeta));
@@ -822,6 +823,12 @@ async function pantallaConfiguracion() {
             el('p', { class: 'suave', texto: t('config.reinicios.texto') }),
             verMas(el('ul', {}), lista.map(x => el('li', { texto: t('config.reinicios.linea', { fecha: fecha(x.fecha) }) })), 5),
           ] : vacio('candado', t('config.reinicios.vacio'), null, 'en-linea')),
+      // 0.9.2: mis documentos firmados y mis datos personales.
+      el('section', { class: 'tarjeta' },
+        titulo('manual', t('documentos.titulo')),
+        el('p', { class: 'suave', texto: t('documentos.linea') }),
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#mis-documentos' }, icono('manual'), el('span', { texto: t('documentos.ver') })),
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#mis-datos' }, icono('candado'), el('span', { texto: t('datos.titulo') }))),
       // 0.9.2: escribirle al administrador.
       el('section', { class: 'tarjeta' },
         titulo('chispa', t('soporte.titulo')),
@@ -4371,6 +4378,67 @@ async function pantallaSoporteTicket(id) {
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   mostrar(marco('admin', cabecera, vista.vistaAdminTicket(r.datos, piezasSoporte())));
 }
+// 0.9.2: «Mis documentos» (su copia de cada firma) y «Mis datos» (pedir acceso, corrección o borrado; permiso de IA).
+async function pantallaMisDocumentos() {
+  const vigente = nuevoTurno();
+  const [r, y] = await Promise.all([api('GET', '/api/yo/documentos'), api('GET', '/api/yo/terminos')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('configuracion', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('configuracion',
+    el('a', { class: 'volver con-icono', href: '#configuracion' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('config.titulo') })),
+    el('section', { class: 'tarjeta' },
+      el('h1', { class: 'titulo-pantalla', texto: t('documentos.titulo') }),
+      el('p', { class: 'suave', texto: t('documentos.linea') }),
+      r.datos.documentos.length ? el('ul', { class: 'contratos-lista' }, [...r.datos.documentos].reverse().map(d => el('li', {},
+        el('a', { class: 'ficha-intento', href: `#mi-documento/${d.n}` },
+          el('span', { class: 'ficha-nota', texto: `v${d.version}` }),
+          el('span', { class: 'ficha-intento-texto' }, el('strong', { texto: t('documentos.firmado', { nombre: d.firmado }) }), el('span', { class: 'suave chica', texto: fecha(d.en) })),
+          icono('flecha', 'icono chico'))))) : vacio('manual', t('documentos.vacio')),
+      y.ok ? el('a', { class: 'enlace-fuerte', href: '#terminos', texto: t('documentos.leer') }) : null)));
+}
+async function pantallaMiDocumento(n) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', `/api/yo/documentos/${encodeURIComponent(n)}`), import('./contratos-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('configuracion', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  const h = { el, t, numero, icono, talCual, fecha, api, nombreApp: estado.setup?.nombreApp ?? '' };
+  mostrar(marco('configuracion',
+    el('div', { class: 'botones reporte-acciones' },
+      el('a', { class: 'volver con-icono', href: '#mis-documentos' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('documentos.titulo') })),
+      el('button', { type: 'button', class: 'secundario con-icono', onclick: () => window.print() }, icono('manual'), el('span', { texto: t('reporte.pdf') }))),
+    vista.documentoContrato(r.datos.contrato, h, { firma: (c, tutor) => `/api/yo/documentos/${c.n}/${tutor ? 'firma-tutor' : 'firma'}` })));
+}
+async function pantallaMisDatos() {
+  const vigente = nuevoTurno();
+  const y = await api('GET', '/api/yo/terminos');
+  if (!vigente()) return;
+  const mensaje = caja();
+  const TEXTOS = { acceso: ['datos.pedido.acceso', 'datos.pedido.acceso.texto'], correccion: ['datos.pedido.correccion', 'datos.pedido.correccion.texto'],
+    supresion: ['datos.pedido.supresion', 'datos.pedido.supresion.texto'], oposicion: ['datos.pedido.oposicion', 'datos.pedido.oposicion.texto'] };
+  const pedir = pedido => botonAccion(t(TEXTOS[pedido][0]), 'secundario', mensaje, async () => {
+    const r = await api('POST', '/api/yo/datos', { pedido, texto: t(TEXTOS[pedido][1]) });
+    if (!r.ok) throw new Error(textoError(r.datos.error));
+    avisar(t('datos.enviado'));
+    location.hash = `#ayuda-mia/${r.datos.ticket.id}`;
+  });
+  const ia = y.ok && y.datos.estado.aceptoIa;
+  const mensajeIa = caja();
+  mostrar(marco('configuracion',
+    el('a', { class: 'volver con-icono', href: '#configuracion' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('config.titulo') })),
+    el('section', { class: 'tarjeta' },
+      el('h1', { class: 'titulo-pantalla', texto: t('datos.titulo') }),
+      el('p', { class: 'suave', texto: t('datos.linea') }),
+      el('div', { class: 'botones apilados' }, ['acceso', 'correccion', 'supresion', 'oposicion'].map(pedir)),
+      mensaje),
+    el('section', { class: 'tarjeta' },
+      el('h2', { texto: t('datos.ia.titulo') }),
+      el('p', { class: 'suave', texto: t(ia ? 'datos.ia.si' : 'datos.ia.no') }),
+      el('div', { class: 'botones' }, botonAccion(t(ia ? 'datos.ia.retirar' : 'datos.ia.dar'), 'secundario', mensajeIa, async () => {
+        const r = await api('POST', '/api/yo/consentimiento-ia', { permitido: !ia });
+        if (!r.ok) throw new Error(textoError(r.datos.error));
+        await pantallaMisDatos();
+      })), mensajeIa)));
+}
 async function pantallaComparar(ids) {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/comparar/${ids}`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
@@ -4657,6 +4725,10 @@ async function dibujar() {
   const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);
   if (ticketAdmin && esAdmin) return pantallaSoporteTicket(ticketAdmin[1]);
   if (seccion === 'ayuda-mia') return pantallaMiAyuda();
+  if (seccion === 'mis-documentos') return pantallaMisDocumentos();
+  if (seccion === 'mis-datos') return pantallaMisDatos();
+  const miDocumento = seccion.match(/^mi-documento\/(\d+)$/);
+  if (miDocumento) return pantallaMiDocumento(miDocumento[1]);
   const ayudaPregunta = seccion.match(/^ayuda-mia\/pregunta\/([a-z0-9_.-]+)$/i);
   if (ayudaPregunta) return pantallaMiAyuda(ayudaPregunta[1]);
   const miTicket = seccion.match(/^ayuda-mia\/(\d+)$/);
@@ -4707,6 +4779,10 @@ function pedidosAlAbrir(seccion, admin) {
   const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);
   if (ticketAdmin) return admin ? [`/api/admin/soporte/${encodeURIComponent(ticketAdmin[1])}`, '/api/admin/sistema'] : [];
   if (seccion === 'ayuda-mia' || /^ayuda-mia\/pregunta\//i.test(seccion)) return ['/api/soporte'];
+  if (seccion === 'mis-documentos') return ['/api/yo/documentos', '/api/yo/terminos'];
+  if (seccion === 'mis-datos') return ['/api/yo/terminos'];
+  const miDocumento = seccion.match(/^mi-documento\/(\d+)$/);
+  if (miDocumento) return [`/api/yo/documentos/${encodeURIComponent(miDocumento[1])}`];
   const miTicket = seccion.match(/^ayuda-mia\/(\d+)$/);
   if (miTicket) return [`/api/soporte/${encodeURIComponent(miTicket[1])}`];
   if (seccion === 'contratos' || seccion === 'contratos/todos') return admin ? ['/api/admin/contratos', '/api/admin/sistema'] : [];

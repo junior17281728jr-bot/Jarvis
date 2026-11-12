@@ -118,7 +118,7 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).
   registrarRutasPerfil(rutas, { config, limites: academia.limitesPerfil, reloj: academia.reloj });
   // 0.9.2: «Términos de uso y aviso» y el nombre legal.
-  registrarRutasTerminos(rutas, { config });
+  registrarRutasTerminos(rutas, { config, reloj: academia.reloj });
   // 0.9.2: «Ayuda / Soporte» (escribirle al administrador).
   registrarRutasSoporte(rutas, { config, reloj: academia.reloj, limites: academia.limitesSoporte });
   const sw = readFileSync(join(PUB, 'sw.js'));

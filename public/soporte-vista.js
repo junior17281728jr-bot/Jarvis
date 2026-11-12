@@ -4,7 +4,7 @@
 // Las piezas de dibujo llegan de app.js en «h» (este módulo no importa nada).
 
 export const CATEGORIAS = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'otro']);
-const TEXTO_CATEGORIA = { app: 'soporte.cat.app', pregunta: 'soporte.cat.pregunta', cuenta: 'soporte.cat.cuenta', pagos: 'soporte.cat.pagos', otro: 'soporte.cat.otro' };
+const TEXTO_CATEGORIA = { datos: 'soporte.cat.datos', app: 'soporte.cat.app', pregunta: 'soporte.cat.pregunta', cuenta: 'soporte.cat.cuenta', pagos: 'soporte.cat.pagos', otro: 'soporte.cat.otro' };
 const TEXTO_ESTADO = { nuevo: 'soporte.estado.nuevo', revision: 'soporte.estado.revision', resuelto: 'soporte.estado.resuelto' };
 const TONO_ESTADO = { nuevo: 'atencion', revision: 'info', resuelto: 'bien' };
 export const IMAGEN_MAXIMA = 5 * 1024 * 1024;
@@ -47,7 +47,7 @@ function filaTicket(h, x, href) {
       el('strong', { texto: t(TEXTO_CATEGORIA[x.categoria] ?? 'soporte.cat.otro') }),
       el('span', { class: 'ficha-intento-lugar', texto: x.resumen }),
       el('span', { class: 'suave chica', texto: [x.usuario && href.startsWith('#soporte') ? `@${x.usuario}` : null, h.fecha(x.actualizado)].filter(Boolean).join(' · ') })),
-    el('span', { class: 'ficha-intento-estado' }, insigniaEstado(h, x.estado), x.sinLeerAlumno && !href.startsWith('#soporte') ? h.insignia('bien', t('soporte.nueva_respuesta')) : null, h.icono('flecha', 'icono chico'))));
+    el('span', { class: 'ficha-intento-estado' }, insigniaEstado(h, x.estado), x.vence && x.estado !== 'resuelto' ? h.insignia('atencion', t('soporte.vence', { fecha: x.vence })) : null, x.sinLeerAlumno && !href.startsWith('#soporte') ? h.insignia('bien', t('soporte.nueva_respuesta')) : null, h.icono('flecha', 'icono chico'))));
 }
 
 // ---------- La persona: escribir y ver los suyos ----------
@@ -147,6 +147,7 @@ export function vistaAdminTicket(datos, h) {
     el('section', { class: 'tarjeta' },
       el('div', { class: 'ficha-cuenta-cabeza' },
         el('h1', { class: 'ficha-nombre', texto: `#${x.id} · ${t(TEXTO_CATEGORIA[x.categoria] ?? 'soporte.cat.otro')}` }), insigniaEstado(h, x.estado)),
+      x.vence ? el('p', { class: 'aviso', texto: t('soporte.vence', { fecha: x.vence }) }) : null,
       el('p', { class: 'suave' }, el('a', { href: `#alumno/${x.usuarioId}`, texto: `${x.nombreVisible ?? ''} (@${x.usuario ?? '—'})` })),
       contextoDe(h, x.contexto),
       hilo(h, x, '/api/admin/soporte'),
