@@ -511,6 +511,39 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   adelanta el próximo tema y el progreso. Medido en un iPhone 13 emulado (150 ms de red, CPU ×4): de ~200-290 ms a
   30-150 ms al volver a una pantalla ya vista.
 
+### Lo nuevo de la 0.9.2 (sin cambio de base: todo en «ajustes», la auditoría y la carpeta de datos)
+- **Examen de materia con reloj** (`src/academia/examen.js`, `public/examen-vista.js`): portada con reglas y «Práctica de
+  estudio, no examen oficial»; tiempo = preguntas × segundos por pregunta (Contenido → Ajustes, de 20 a 600, 90 por
+  defecto), fijo al empezar. Cuenta atrás (avisos a 5 y 1 min), rejilla para saltar, «revisar después», respuestas que se
+  cambian y confirmar antes de entregar (cuántas faltan). **Cambio de comportamiento**: en el examen no se ve si acertó
+  hasta entregar; las respuestas se guardan en `ajustes` (`academia.examen.<intento>`) y pasan a `academia_respuestas`
+  al entregar (los puntos, el repaso y la memoria no saben nada antes). En 0 se entrega solo; las sin responder cuentan
+  como malas; un examen vencido se entrega solo al mirarlo. El resultado y la ficha muestran el tiempo usado y el de
+  cada pregunta. Los temas siguen sin reloj; los exámenes empezados antes siguen como antes.
+- **Cuentas**: contraseñas libres desde 4 caracteres (solo se rechazan las peores: 1234, 0000, abcd, aaaa, el propio
+  usuario); el freno de la entrada (5 malas = 15 min) es lo que las protege. El administrador crea una cuenta **sin
+  contraseña** (la crea la persona la primera vez que entra: `POST /api/crear-clave`), con la que él pone, o con la
+  temporal de siempre; y puede ponerle contraseña a cualquiera. **Ojo: el sitio es público (Funnel): una cuenta sin
+  contraseña la toma quien entre primero con ese usuario; avisa a la persona enseguida** (la pantalla lo recuerda).
+- **Bloquear sin borrar**: «Bloquear cuenta» / «Desbloquear» en Usuarios y en la ficha (se cierran sus sesiones; al
+  entrar con su contraseña ve «Tu cuenta está bloqueada. Habla con el administrador.»; su progreso queda).
+- **El administrador cambia el usuario y el nombre** de alguien (`POST /api/admin/usuarios/:id/nombre`): la sesión
+  sigue y la persona ve «El administrador cambió tu usuario a …».
+- **Perfil privado** (Configuración → Mi perfil; es el mismo interruptor de «ocultarme» del Grupo): no aparece para los
+  otros alumnos. Las notas y errores de un alumno nunca salen en las rutas de otro; el administrador ve todo.
+- **Reporte** (Alumnos → «Descargar reporte», `src/academia/reporte.js`, `public/reporte-vista.js`): partes a elegir
+  (Ranking, Por alumno, Resumen del grupo, Comparación; se recuerda la última elección), fechas, incluir bloqueados;
+  puntaje = 60 % preparación + 25 % nota promedio + 15 % acierto; gráficos SVG propios; «Descargar PDF» (imprimir, A4) y
+  «Descargar CSV».
+- **Términos de uso y aviso** (`src/cuentas/terminos.js`): cada persona, al entrar, escribe su Nombre y Apellido de
+  verdad, lee el texto (no nombra ninguna organización), la declaración y **firma con el dedo** (PNG ≤ 50 KB). Cada firma
+  guarda versión y SHA-256 del texto exacto, nombre como firmó, usuario, fecha y hora del servidor, IP, navegador y
+  SHA-256 de la firma; el PNG va en `OPORTIA_DATOS/firmas/` (nunca se borra) y una copia en la base (así va en las copias
+  cifradas). El administrador edita el texto (cada cambio es una versión nueva y todos firman otra vez) y ve
+  **«Contratos firmados»** (cada uno como documento, PDF de uno o de todos). Pie con «Términos y aviso».
+- Volver a la 0.9.0 es seguro: no hay migración nueva. (La 0.9.0 no conoce el examen con reloj: un examen a medias
+  quedaría sin respuestas guardadas en la base.)
+
 ### Lo nuevo de la 0.9.0: cada alumno con más claridad, comparar y el perfil propio (sin cambio de base)
 - **Administrador → Alumnos** (`public/admin-alumnos.js`, solo se carga ahí; estilos en `public/alumnos.css`): cada alumno con
   su avatar, `@usuario`, % y última actividad. Se marcan de 2 a 6 y «Comparar». Desde Administrador → Usuarios, «Ver su ficha».
