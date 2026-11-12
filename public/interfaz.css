@@ -445,3 +445,7 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
   .cabina, .estudio-arriba, .estudio-pie, .pestanas, .menu, .lateral { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
   .titulo-pantalla::after { display: none; }
 }
+/* 0.11.1: lo de la 0.10/0.11 con texto chico: la insignia del instructor y los avisos naranjas en el oscuro. */
+.insignia-instructor { color: var(--suave); }
+:root[data-tema="oscuro"] { --naranja-borde: #e07a1a; }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] { --naranja-borde: #e07a1a; } }
