@@ -1,0 +1,52 @@
+/* Academia 0.9.0: el «Instructor» (public/instructor.js). Va después de academia.css: usa sus colores y sus botones. */
+.instructor-lugar:empty, .instructor-tema:empty { display: none; }
+.instructor-tarjeta { margin: 0 0 16px; border: 2px solid color-mix(in srgb, var(--azul) 35%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--azul) 10%, var(--tarjeta)), var(--tarjeta)); text-align: left; }
+.instructor-cabeza { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.instructor-cabeza h2 { margin: 0 0 4px; font-size: 20px; }
+.instructor-avatar { flex: none; width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; background: var(--azul); color: #fff;
+  box-shadow: 0 4px 0 var(--azul-borde); }
+.instructor-avatar .icono { width: 28px; height: 28px; }
+.instructor-consejo { font-size: 18px; line-height: 1.45; margin: 6px 0 12px; }
+.instructor-accion { margin-bottom: 10px; }
+.instructor-notas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.instructor-notas li { font-size: 15px; color: var(--suave); align-items: flex-start; }
+.instructor-ia { margin-top: 10px; }
+.insignia-instructor { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 800;
+  background: var(--gris-nodo); color: var(--gris-nodo-texto); }
+.insignia-instructor .icono { width: 16px; height: 16px; }
+.insignia-instructor.modo-ia { background: color-mix(in srgb, var(--verde) 20%, var(--tarjeta)); color: var(--verde-texto); }
+.insignia-instructor.modo-espera { background: color-mix(in srgb, var(--oro) 25%, var(--tarjeta)); color: var(--texto, inherit); }
+.instructor-mini { margin: 14px 0 0; padding: 12px 14px; border-radius: 16px; text-align: left;
+  background: color-mix(in srgb, var(--azul) 10%, var(--tarjeta)); border: 2px solid color-mix(in srgb, var(--azul) 30%, transparent); }
+.instructor-mini p { margin: 6px 0 8px; }
+.instructor-mini-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.instructor-mini-cabeza > .icono { width: 20px; height: 20px; color: var(--azul); }
+.instructor-explica { margin: 4px 0 10px; }
+.boton-explicar { width: 100%; justify-content: center; }
+.caja-instructor { border: 2px solid color-mix(in srgb, var(--azul) 30%, transparent); text-align: left; }
+.instructor-pasos, .instructor-bloques { margin: 10px 0; padding-left: 22px; }
+.instructor-bloques { padding-left: 0; }
+.instructor-pasos li { margin: 0 0 8px; font-size: 17px; line-height: 1.45; }
+.instructor-tarjeta-lectura { margin: 8px 0; }
+.instructor-tarjeta-lectura summary { cursor: pointer; font-weight: 800; }
+.lista-puntos { margin: 6px 0; padding-left: 20px; }
+.lista-puntos li { margin: 0 0 4px; }
+.recuerda-linea { padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--oro) 18%, transparent); }
+.caja-ia { border: 2px dashed color-mix(in srgb, var(--verde) 45%, transparent); }
+.lista-terminos { margin: 8px 0; padding-left: 18px; }
+.lista-terminos li { margin: 0 0 4px; }
+.instructor-escribiendo { color: var(--suave); }
+.instructor-escribiendo .icono { animation: instructor-latido 1.2s ease-in-out infinite; }
+@keyframes instructor-latido { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .instructor-escribiendo .icono { animation: none; } }
+.instructor-duda { margin: 16px 0 0; text-align: left; }
+.instructor-duda summary { cursor: pointer; font-weight: 800; }
+.instructor-duda textarea { width: 100%; box-sizing: border-box; margin: 8px 0; font: inherit; border-radius: 12px; padding: 10px; }
+.duda-salida { margin-top: 10px; }
+.instructor-examen { margin: 0 0 14px; text-align: center; }
+.modelos-instructor { border: 0; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.modelos-instructor legend { font-weight: 800; margin-bottom: 6px; }
+.opcion-radio { display: flex; gap: 8px; align-items: flex-start; }
+.instructor-alumnos { margin-top: 12px; }
+.lista-simple { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
