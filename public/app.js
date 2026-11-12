@@ -3535,7 +3535,7 @@ async function pantallaInicio() {
   if (siguiente?.tipo === 'tema') adelantar(`/api/academia/temas/${encodeURIComponent(siguiente.materia)}/${encodeURIComponent(siguiente.tema)}`);
   adelantar('/api/academia/progreso');
   // Baja hasta el paso que toca (si está más abajo).
-  const actual = enFondo ? null : raiz.querySelector('.nodo.actual');
+  const actual = enFondo ? null : raiz.querySelector('.materia-bloque:not(.plegada) .nodo.actual');
   if (actual && actual.getBoundingClientRect().top > window.innerHeight * 0.75) actual.scrollIntoView({ block: 'center' });
 }
 

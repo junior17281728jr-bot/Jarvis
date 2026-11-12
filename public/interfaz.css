@@ -60,36 +60,34 @@ body::before {
   /* Su propia capa: al cambiar de pantalla o al bajar no se vuelve a pintar la foto (medido: no hace más lento el cambio). */
   will-change: transform; transform: translateZ(0);
 }
-/* La foto de verdad (WebP, y JPEG para el navegador que no lo lee): la del teléfono y la de la computadora. */
-:root.fondo-listo body::before {
-  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/dia-900.jpg), var(--foto-mini);
-  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/dia-900.webp) type("image/webp"), url(/fondos/dia-900.jpg) type("image/jpeg")), var(--foto-mini);
-}
-:root.fondo-listo[data-tema="oscuro"] body::before {
-  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-900.jpg), var(--foto-mini);
-  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-900.webp) type("image/webp"), url(/fondos/amanecer-900.jpg) type("image/jpeg")), var(--foto-mini);
-}
+/* La foto de verdad: primero el JPEG (lo lee cualquier navegador); donde se entiende image-set con type(), el WebP
+   (más liviano). Va en @supports porque una regla con var() no se descarta al leerla: sin @supports, un navegador
+   sin type() se quedaba sin foto. La del teléfono (900 px) y la de la computadora (1920 px). */
+:root.fondo-listo body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/dia-900.jpg), var(--foto-mini); }
+:root.fondo-listo[data-tema="oscuro"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-900.jpg), var(--foto-mini); }
 @media (prefers-color-scheme: dark) {
-  :root.fondo-listo[data-tema="auto"] body::before {
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-900.jpg), var(--foto-mini);
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-900.webp) type("image/webp"), url(/fondos/amanecer-900.jpg) type("image/jpeg")), var(--foto-mini);
-  }
+  :root.fondo-listo[data-tema="auto"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-900.jpg), var(--foto-mini); }
 }
 @media (min-width: 760px) {
-  body::before { background-position: center 40%; }
-  :root.fondo-listo body::before {
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/dia-1920.jpg), var(--foto-mini);
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/dia-1920.webp) type("image/webp"), url(/fondos/dia-1920.jpg) type("image/jpeg")), var(--foto-mini);
-  }
-  :root.fondo-listo[data-tema="oscuro"] body::before {
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-1920.jpg), var(--foto-mini);
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-1920.webp) type("image/webp"), url(/fondos/amanecer-1920.jpg) type("image/jpeg")), var(--foto-mini);
-  }
+  :root.fondo-listo body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/dia-1920.jpg), var(--foto-mini); }
+  :root.fondo-listo[data-tema="oscuro"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-1920.jpg), var(--foto-mini); }
 }
 @media (min-width: 760px) and (prefers-color-scheme: dark) {
-  :root.fondo-listo[data-tema="auto"] body::before {
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-1920.jpg), var(--foto-mini);
-    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-1920.webp) type("image/webp"), url(/fondos/amanecer-1920.jpg) type("image/jpeg")), var(--foto-mini);
+  :root.fondo-listo[data-tema="auto"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-1920.jpg), var(--foto-mini); }
+}
+@media (min-width: 760px) { body::before { background-position: center 40%; } }
+@supports (background-image: image-set(url("a.webp") type("image/webp"))) {
+  :root.fondo-listo body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/dia-900.webp) type("image/webp"), url(/fondos/dia-900.jpg) type("image/jpeg")), var(--foto-mini); }
+  :root.fondo-listo[data-tema="oscuro"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-900.webp) type("image/webp"), url(/fondos/amanecer-900.jpg) type("image/jpeg")), var(--foto-mini); }
+  @media (prefers-color-scheme: dark) {
+    :root.fondo-listo[data-tema="auto"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-900.webp) type("image/webp"), url(/fondos/amanecer-900.jpg) type("image/jpeg")), var(--foto-mini); }
+  }
+  @media (min-width: 760px) {
+    :root.fondo-listo body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/dia-1920.webp) type("image/webp"), url(/fondos/dia-1920.jpg) type("image/jpeg")), var(--foto-mini); }
+    :root.fondo-listo[data-tema="oscuro"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-1920.webp) type("image/webp"), url(/fondos/amanecer-1920.jpg) type("image/jpeg")), var(--foto-mini); }
+  }
+  @media (min-width: 760px) and (prefers-color-scheme: dark) {
+    :root.fondo-listo[data-tema="auto"] body::before { background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-1920.webp) type("image/webp"), url(/fondos/amanecer-1920.jpg) type("image/jpeg")), var(--foto-mini); }
   }
 }
 /* Estudiando (lección, preguntas, video): la foto casi no se ve, para no distraer. */
@@ -110,8 +108,9 @@ body.modo-estudio::before { --velo-1: var(--velo-estudio); --velo-2: var(--velo-
   .cabina, .estudio-arriba, .estudio-pie, .pestanas, .menu, .lateral { background: var(--tarjeta); }
 }
 @media (prefers-reduced-transparency: reduce) {
-  :root { --velo-1: var(--fondo); --velo-2: var(--fondo); --velo-3: var(--fondo); --vidrio: var(--tarjeta); --vidrio-barra: var(--tarjeta); --vidrio-borde: var(--borde); }
-  body::before, :root.fondo-listo body::before { background-image: none; }
+  /* !important: así también manda sobre las reglas del tema oscuro y del automático (más específicas). */
+  :root { --vidrio: var(--tarjeta) !important; --vidrio-barra: var(--tarjeta) !important; --vidrio-borde: var(--borde) !important; }
+  body::before, :root.fondo-listo body::before { background-image: none !important; }
   .cabina, .estudio-arriba, .estudio-pie, .pestanas, .menu, .lateral { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 
@@ -447,5 +446,8 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
 }
 /* 0.11.1: lo de la 0.10/0.11 con texto chico: la insignia del instructor y los avisos naranjas en el oscuro. */
 .insignia-instructor { color: var(--suave); }
-:root[data-tema="oscuro"] { --naranja-borde: #e07a1a; }
-@media (prefers-color-scheme: dark) { :root[data-tema="auto"] { --naranja-borde: #e07a1a; } }
+/* (Solo el texto: el borde 3D de los botones naranjas sigue oscuro.) */
+:root[data-tema="oscuro"] :is(.antetitulo, .cifra, .caja-hoja.caja-idea h3, .caja-debil-ante, .tono-atencion, .aviso-texto) { color: #f59a3c; }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] :is(.antetitulo, .cifra, .caja-hoja.caja-idea h3, .caja-debil-ante, .tono-atencion, .aviso-texto) { color: #f59a3c; } }
+/* El % de cada materia sobre su color: grande (texto grande pide 3:1). */
+.materia-pct { font-size: 19px; }
