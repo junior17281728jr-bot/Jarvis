@@ -721,5 +721,5 @@ export function crearInstructor(h) {
       el('a', { class: 'boton-3d', href: '#inicio' }, el('span', { texto: tx('profesor.ir_inicio') })));
   }
 
-  return Object.freeze({ textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  return Object.freeze({ lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
 }

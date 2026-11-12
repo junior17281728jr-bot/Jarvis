@@ -12,6 +12,7 @@
 export function crearTutor(h) {
   const { el, t, icono, api, talCual, numero, nombreMateria, empezarIntento, avisar, textoError, mostrar, marco } = h;
   const ui = () => h.instructorUi();
+  const reemplazar = (nodo, ...hijos) => { nodo.replaceChildren(...hijos.flat(Infinity).filter(x => x != null && x !== false)); return nodo; };
   const anexar = (nodo, ...hijos) => { nodo.append(...hijos.flat(Infinity).filter(x => x != null && x !== false)); return nodo; };
   // «IA»: una insignia pequeña donde de verdad se usó la IA.
   const insigniaIa = () => el('span', { class: 'insignia-ia', title: t('tutor.ia_usada'), 'aria-label': t('tutor.ia_usada'), texto: 'IA' });
@@ -219,7 +220,7 @@ export function crearTutor(h) {
         if (!r.ok) { for (const b of botones) b.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
         botones[r.datos.correcta]?.classList.add('es-correcta');
         if (!r.datos.acierto) botones[i].classList.add('es-mala');
-        salida.replaceChildren(el('p', { class: r.datos.acierto ? 'tono-bien fuerte' : 'tono-mal fuerte', texto: t(r.datos.acierto ? 'acad.practica.bien' : 'tutor.o.mal') }), r.datos.explicacion ? talCual('p', r.datos.explicacion, 'chica') : null);
+        reemplazar(salida, el('p', { class: r.datos.acierto ? 'tono-bien fuerte' : 'tono-mal fuerte', texto: t(r.datos.acierto ? 'acad.practica.bien' : 'tutor.o.mal') }), r.datos.explicacion ? talCual('p', r.datos.explicacion, 'chica') : null);
       } }, talCual('span', o)));
       return el('article', { class: 'pregunta-personal caja-hoja' },
         el('p', { class: 'sello-personal chica con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('tutor.o.sello') }), insigniaIa()),
