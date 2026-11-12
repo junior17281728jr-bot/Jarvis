@@ -94,6 +94,7 @@ const MIGRACIONES_PUBLICADAS = {
   5: '3c0ca4c956e2b5f453e160785c33587ba23e3b8c22302ba5ea53e42c198df720',
   6: '48eec04a1f2cd75ea034303c3790cb8cfa1b51bd638ec211b226eb284b71d8cf',
   7: 'aaa760fd017924fa94476da7b6f9250ffed18273d692690317adee944d5cef38',
+  8: 'bf9fe1f66e10367de3008a33fae5deb1c9ed4b1254219fbb1390c41327538845',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
@@ -104,6 +105,7 @@ const VERSION_DE_CADA_MIGRACION = {
   5: '0.4.0',
   6: '0.5.0',
   7: '0.7.0',
+  8: '0.10.0',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -627,6 +629,16 @@ test('la migración 7 (academia) no tiene CHECK, ni UNIQUE, ni ADD COLUMN, y el 
   for (const tabla of m.sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)) assert.match(tabla[1], /^academia_/, `tabla ${tabla[1]}`);
 });
 
+test('la migración 8 (el Instructor) solo agrega tablas academia_ sin CHECK, ni UNIQUE, ni ADD COLUMN', async () => {
+  const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
+  const m = MIGRACIONES.find(x => x.id === 8);
+  assert.ok(m, 'falta la migración 8');
+  assert.equal((m.sql.match(/\bCHECK\b/gi) || []).length, 0);
+  assert.doesNotMatch(m.sql, /\bUNIQUE\b|ADD\s+COLUMN|DROP|RENAME|WITHOUT\s+ROWID|VIRTUAL|GENERATED/i);
+  const tablas = [...m.sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map(x => x[1]);
+  assert.deepEqual(tablas, ['academia_fallas', 'academia_ia_minutos', 'academia_pagos']);
+});
+
 // Ningún libro, pregunta del Test Guide ni imagen de un libro entra NUNCA al repositorio: el contenido se sube como
 // «paquete» a la carpeta de datos del servidor (OPORTIA_DATOS/academia/). Esta prueba falla si aparece algo así.
 const IMAGENES_PERMITIDAS = new Set(['public/icono-180.png', 'public/icono.svg']);
@@ -695,7 +707,8 @@ test('la revisión de Drive es una tarea del trabajador (el servidor web nunca l
   const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
   assert.ok(trabajador.has(join('academia', 'sincronizar.js')));
   const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
-  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 7, 'la 0.7.1 no cambia la base (todo va en ajustes)');
+  // La 0.7.1 no cambió la base (todo fue a ajustes); la siguiente es la 8 (0.10.0, el Instructor).
+  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 8, 'después de la 7 solo está la 8 (el Instructor)');
 });
 
 test('el trabajador nunca lee un paquete entero (src/academia/sincronizar.js): lo revisa el servidor web, que lo enciende y lo apaga como a los avisos', () => {

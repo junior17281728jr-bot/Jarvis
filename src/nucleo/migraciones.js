@@ -608,4 +608,73 @@ CREATE TABLE IF NOT EXISTS academia_repaso (
 CREATE INDEX IF NOT EXISTS academia_repaso_vence ON academia_repaso(usuario_id, vence_en);
 `,
   },
+  {
+    id: 8,
+    nombre: 'academia_instructor',
+    // Academia (0.10.0): el Instructor. Explicaciones FUERA del texto SQL (la huella no depende de ellas). Solo agrega
+    // tablas (sin CHECK, sin UNIQUE, sin ADD COLUMN: los valores se revisan en src/academia/). Nada se borra nunca.
+    //  - academia_fallas: las «fallas registradas» de cada alumno (src/academia/fallas.js): la misma pregunta (o el mismo
+    //    tema en un examen) fallada varias veces. estado: 'activa' → 'refuerzo' (ya se le reforzó) → 'superada' (3
+    //    aciertos seguidos en 2 días distintos o más). Una superada queda en el historial; si vuelve a fallar, es otra.
+    //    refuerzo: JSON con lo que se hizo (la tarjeta que se puso primero, las preguntas extra, cuándo se repasa).
+    //  - academia_ia_minutos: el libro del «tiempo con IA» de cada alumno (src/academia/tiempo-ia.js): cada fila suma o
+    //    resta minutos (motivo: 'regalo' | 'uso' | 'devolucion' | 'pago' | 'ajuste'). El saldo es la suma y nunca baja de 0.
+    //  - academia_pagos: los comprobantes de transferencia que sube un alumno para pedir más tiempo con IA. La imagen
+    //    vive en la carpeta de datos (academia/pagos/), nunca en la base ni en el repositorio. estado: 'revision' |
+    //    'aprobado' | 'rechazado'.
+    sql: `
+CREATE TABLE IF NOT EXISTS academia_fallas (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  clave TEXT NOT NULL,
+  materia TEXT,
+  tema TEXT,
+  pregunta TEXT,
+  opcion TEXT,
+  idea TEXT,
+  origen TEXT NOT NULL DEFAULT 'pregunta',
+  fallos INTEGER NOT NULL DEFAULT 0,
+  aciertos INTEGER NOT NULL DEFAULT 0,
+  dias TEXT NOT NULL DEFAULT '[]',
+  estado TEXT NOT NULL DEFAULT 'activa',
+  refuerzo TEXT,
+  primera_en TEXT NOT NULL,
+  ultima_en TEXT NOT NULL,
+  refuerzo_en TEXT,
+  superada_en TEXT,
+  actualizado_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_fallas_usuario ON academia_fallas(usuario_id, estado, clave);
+CREATE TABLE IF NOT EXISTS academia_ia_minutos (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  minutos INTEGER NOT NULL,
+  motivo TEXT NOT NULL,
+  referencia TEXT,
+  tarea_id INTEGER,
+  hecho_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_ia_minutos_usuario ON academia_ia_minutos(usuario_id, referencia);
+CREATE TABLE IF NOT EXISTS academia_pagos (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  paquete TEXT NOT NULL,
+  minutos INTEGER NOT NULL DEFAULT 0,
+  precio TEXT,
+  archivo TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  bytes INTEGER NOT NULL DEFAULT 0,
+  nota TEXT,
+  estado TEXT NOT NULL DEFAULT 'revision',
+  motivo TEXT,
+  revisado_por INTEGER REFERENCES usuarios(id),
+  revisado_en TEXT,
+  visto_en TEXT,
+  creado_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_pagos_usuario ON academia_pagos(usuario_id, id);
+CREATE INDEX IF NOT EXISTS academia_pagos_estado ON academia_pagos(estado, id);
+`,
+  },
 ];

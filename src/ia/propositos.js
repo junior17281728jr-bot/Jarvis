@@ -20,6 +20,19 @@
 //  - alFaltar: qué hace quien la usa cuando la IA no está: 'motor_propio' (sigue con el motor, lo normal).
 //  - ajuste: el interruptor propio del dueño que este uso necesita, además de la IA encendida.
 //  - tarea: el tipo de tarea del trabajador que hace este uso.
+//  - modeloAjuste (0.9.0, opcional): el ajuste de la configuración con el modelo de Claude de este uso (si no, el de
+//    Claude de siempre). El instructor usa «instructorModelo»: Sonnet 5.5 o Haiku 5.5.
+// 0.9.0: los tres usos del «Instructor con IA» de la academia (src/academia/instructor-ia.js). Los paga la cuenta del
+// alumno (dentro del tope de su plan y del general, y solo con el permiso de IA del dueño para esa cuenta) y solo con
+// «Instructor con IA» encendido. El tamaño está pensado para Sonnet 5.5 (el más caro de los dos): lo peor que puede
+// costar una vez (toda la entrada al precio más caro, toda la salida, el lugar más caro y un 5 % más) es ~US$0.045 con
+// Sonnet y ~US$0.002 con Haiku; lo normal, ~US$0.011 y ~US$0.0006. entradaMinBytes: el pedido más corto de verdad (el
+// consejo sin cifras; test/instructor-ia.test.js lo comprueba).
+const INSTRUCTOR = Object.freeze({
+  fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 2048, entradaMaxBytes: 7_000, entradaMinBytes: 2_200, respuestaMaxBytes: 65_536,
+  maximoMicro: 50_000, tipicoMicro: 11_000, esfuerzo: 'low', timeoutMs: 50_000, alFaltar: 'motor_propio',
+  ajuste: 'instructorIa', modeloAjuste: 'instructorModelo', tarea: 'academia.instructor',
+});
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -28,6 +41,15 @@ export const PROPOSITOS = Object.freeze({
     maximoMicro: 5_000, tipicoMicro: 500, esfuerzo: 'low', timeoutMs: 45_000, alFaltar: 'motor_propio',
     ajuste: 'ayudaProyectos', tarea: 'ia.interpretar',
   }),
+  // «Explícamelo de otra forma» en una pregunta ya respondida (se guarda por pregunta, opción y estilo: la misma
+  // explicación sirve a todos los alumnos que eligieron eso y no se vuelve a pagar).
+  instructor_explicar: INSTRUCTOR,
+  // El consejo de estudio de la semana (o después de un examen), con las cifras del alumno (nunca su nombre).
+  instructor_consejo: INSTRUCTOR,
+  // Una duda escrita sobre un tema: la IA solo puede usar las tarjetas de ese tema que se le mandan.
+  instructor_duda: INSTRUCTOR,
+  // 0.10.0: el «Profesor virtual» (un chat): su modelo, tarjetas y preguntas que ya respondió (nunca su nombre).
+  instructor_chat: INSTRUCTOR,
 });
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las

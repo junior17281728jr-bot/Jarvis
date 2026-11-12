@@ -55,7 +55,7 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
       banner.querySelector('.banner-texto')?.append(el('div', { class: 'materia-estado' },
         el('span', { class: `materia-estado-chip estado-${m.estado}` }, icono(estado[0], 'icono chico'), el('span', { texto: estado[1] })),
         el('span', { class: 'materia-pct', texto: `${numero(m.pct ?? 0)} %` })),
-      insignias.childNodes.length ? insignias : null);
+      insignias);
     }
     if (!m.temas?.length) return; // «Pronto»: no hay nada que abrir.
     // El sendero (y lo de la materia) va dentro de un cuerpo que se pliega.

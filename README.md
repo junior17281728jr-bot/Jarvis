@@ -564,6 +564,77 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   Pruebas: `test/admin-alumnos.test.js`.
 - Volver a la 0.8.1 es seguro: no hay migración nueva; la 0.8.1 ignora las filas `salida` y `cuenta.perfil.*`.
 
+### Lo nuevo de la 0.10.0: el Instructor (sin IA siempre; con IA si el dueño quiere) — cambio de base 8
+**Sin IA (gratis, siempre funciona):** el «cerebro de la academia» (`src/academia/instructor.js`, `fallas.js`, `practica.js`)
+sale de las respuestas que ya están en la base:
+- **Modelo de cada alumno**: dominio por tema, la idea equivocada que más elige (la del paquete para esa opción), si repite
+  la MISMA opción mala, si responde con prisa (malas en menos de 7 s), a qué hora estudia, Test Guide contra Modo reto, su
+  ritmo contra el plan. De ahí su **estilo**: paso a paso, con un ejemplo de vuelo, claro o técnico.
+- **«Tu instructor dice…»** en Inicio y al empezar cada tema: UN paso concreto con su botón (repasar lo que vence, la
+  tarjeta que explica su error, el Modo reto, el tema que sigue, el examen). Cada alumno ve **«Instructor: modo básico (sin
+  IA)»**, **«Instructor con IA: te da seguimiento»** o **«IA en espera»**.
+- **Práctica del instructor** (`{ tipo: 'instructor' }`, con `materia` y `tema` = el refuerzo de ese tema): sus fallas
+  primero, lo que vence hoy, lo débil, lo nuevo, mezclado (nunca dos seguidas del mismo tema). Siempre las 3 opciones
+  originales; no aprueba nada. Los temas y los exámenes siguen igual (su orden y el 90 %).
+- **«Explícamelo de otra forma»** en cada pregunta respondida: la respuesta del Test Guide, la que eligió, la idea exacta que
+  la confundió (o la trampa del reto), la explicación sencilla y la tarjeta de la lección que mejor lo explica. Solo de una
+  pregunta que respondió en SU intento (la opción sale de la base): nunca se puede sacar una respuesta antes.
+- **Fallas registradas** (tabla `academia_fallas`): la misma pregunta fallada 3 veces (o 2 del mismo tema en un examen o
+  en el examen de un tema; los dos números los pone el dueño en Administrador → Pagos) queda como falla: activa → en
+  refuerzo → superada (3 aciertos seguidos en 2 días distintos). Nunca se borra. Al crearse, ella y las preguntas que más se
+  le parecen del mismo tema van al repaso de hoy; al abrir el tema, la tarjeta que la explica sale primero («Refuerzo para
+  ti»). Inicio muestra arriba **«Tu plan de refuerzo»** («Debes repasar: … (fallaste 4 veces)», «Repasar ahora»), el camino
+  marca «Refuerzo» en esos temas, Progreso tiene **«Lo que hicimos por ti»** y la ficha del alumno (Débiles) sus fallas.
+- **Plan para pasar la próxima vez** al no aprobar un tema o un examen: en qué falló (por tema, con la idea), qué releer, las
+  preguntas del Test Guide para practicar, videos y cuándo volver a tomarlo (después del refuerzo).
+- **Dudas** en cada tema: la tarjeta que más se parece a lo que escribió.
+
+**Con IA (solo si el dueño lo enciende):** Administrador → Inteligencia artificial → «Instructor con IA para los alumnos»
+(necesita la IA encendida) y su modelo: **Claude Sonnet 5.5** (recomendado) o **Haiku 5.5** (unas 20 veces más barato).
+La IA explica de otra forma, responde dudas solo con las tarjetas del tema, da el consejo de la semana o del examen y es el
+**Profesor virtual** (un chat, `#profesor`). Reglas: lo hace el trabajador (tarea `academia.instructor`; el servidor web arma el
+pedido y nunca llama a la IA); la pregunta y sus opciones viajan TAL CUAL y la IA debe devolver cuál es la correcta: si no
+coincide con el Test Guide, su respuesta no se usa ni se guarda; nunca se manda el nombre ni el usuario del alumno; las
+explicaciones se guardan (en `ajustes`) por pregunta, opción, estilo y modelo, y otro alumno que elige lo mismo no se vuelve a
+pagar; ante cualquier error o tope, sigue lo básico. Lo peor que cuesta un uso con Sonnet es ~US$0.045 (lo normal ~US$0.011);
+con Haiku ~US$0.002 (~US$0.0006). Lo paga **la cuenta del alumno**: para que un alumno tenga IA hacen falta la IA encendida,
+el instructor encendido, un **tope de plan mayor que US$0** y **«Permitir IA»** para esa cuenta (desde Tailscale). Si falta
+algo, ese alumno ve «modo básico». La cuenta del administrador gasta solo desde Tailscale. «Ver cómo trabaja» (en la misma
+pantalla) muestra una pregunta sin IA y con IA lado a lado; «Conectar la IA» explica paso a paso cómo poner las claves.
+
+**Tiempo con IA y pagos** (tablas `academia_ia_minutos` y `academia_pagos`): un «minuto de instructor IA» = un uso (una
+explicación, una duda, un consejo o un mensaje al Profesor virtual). Cada alumno empieza con 20 minutos de regalo (el dueño lo
+cambia, y también el saldo de cada uno). Se cobra al pedir y se devuelve solo si la IA no respondió; nunca baja de 0; sin
+minutos no se llama a la IA y sigue el básico. «Pedir más tiempo con IA» (`#tiempo-ia`) muestra los datos para transferir que
+el dueño escribe en Administrador → Pagos (solo en la base; nunca en el repositorio), los paquetes y la espera («En revisión —
+la verificación puede tardar hasta 24 horas», editable). El alumno sube la foto del comprobante (JPG, PNG o WEBP de verdad,
+hasta 5 MB; queda en `OPORTIA_DATOS/academia/pagos/`, no va en las copias; la ven solo él y el administrador). Administrador →
+Pagos (con el número de pendientes): aprobar (suma los minutos una vez) o rechazar con un motivo que el alumno ve. Ojo: los
+minutos solos no encienden la IA de un alumno (también hacen falta su tope de plan y «Permitir IA»); Pagos lo dice al lado de
+cada saldo y al aprobar. Cualquier administrador puede aprobar o rechazar; cambiar datos y saldos es solo del dueño. Cambiar los
+datos de pago, el regalo, un saldo, los umbrales de fallas o dar el Profesor virtual es solo del dueño desde Tailscale. El
+Profesor virtual es para quien tiene un pago aprobado o a quien el dueño se lo da; nunca muestra un enlace que escriba la IA:
+solo los videos de YouTube que el dueño elige por tema (Administrador → Pagos → Videos) y un enlace a la búsqueda de YouTube.
+
+**¿Estás listo para el examen oficial?** (Progreso, y la ficha de cada alumno): un veredicto estricto sobre el banco del Test
+Guide —«Todavía no», «Casi» o «Listo para presentarte»— con «Cómo lo pienso» (cada regla ✔/✘ con su número: acierto ≥ 90 %,
+cobertura ≥ 95 %, las 11 materias con contenido (con menos, nunca «Listo»), 3 exámenes recientes ≥ 90 %, memoria ≥ 80 % acertadas otra vez 2 días después, sin fallas activas, 7 días y 5
+días de estudio), el paso que más importa, la probabilidad estimada (con el aviso de que no garantiza nada), cada materia, y
+«Aprobaste, pero te recomiendo repetirlo porque…» cuando un aprobado tiene señales de suerte (`src/academia/preparado.js`).
+
+**Administrador → Aprendizaje** (`src/academia/aprendizaje.js`, de todos o de un alumno): acierto la primera vez contra las
+siguientes y por semana, retención a 2 y 7 días, de falladas a dominadas, cada tema con y sin el video visto, «Clases para
+mejorar», fallas superadas (y en cuántos días), acierto antes y después del refuerzo, «Explícamelo» con IA y sin IA, las
+preguntas más difíciles con la opción mala más elegida, minutos de estudio por día, rachas y plan. Cada número lleva su n;
+con menos de 10, «aún sin datos suficientes».
+
+**Modo reto más difícil:** al subir un paquete, las opciones del reto que parecen fáciles (largo muy distinto de la correcta,
+«siempre/nunca», cifras o unidades distintas, fuera del tema, casi iguales) salen como avisos; repetir una opción original
+(sin mirar mayúsculas, tildes ni signos) es un error. `node scripts/reto-faciles.mjs paquete.json [--md|--json]` las lista
+para volver a escribirlas (no cambia nada; el enunciado, las opciones y la respuesta del Test Guide nunca se tocan).
+
+Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/instructor-ia.test.js` (con el proveedor falso).
+
 ### Formato del paquete, versión 1
 Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
 errores salen con su ruta exacta (`materias[0].temas[1].preguntas[5]: pregunta_desconocida`). Los textos se guardan y se
@@ -654,6 +725,9 @@ carpeta cada hora (a los :23) y con «Buscar ahora» (`src/academia/sincronizar.
 - Las pruebas (`test/drive.test.js`) usan un Drive FALSO en 127.0.0.1 (`config.driveBases`, solo en modo de prueba).
 
 ### Vuelta atrás
+La 0.10.0 agrega el cambio de base 8 (solo 3 tablas nuevas `academia_fallas`, `academia_ia_minutos`, `academia_pagos`, sin
+CHECK ni UNIQUE). Una 0.9.0 abre esa base sin tocarlas (nunca las lee); sus fallas, minutos y pagos quedan ahí para cuando
+vuelva la 0.10.0. El trabajador sigue pidiendo la base 6.
 La 0.8.0 no cambia la base. Si se vuelve a la 0.7.2: los intentos «reto» y «errores» quedan en la base y la 0.7.2 los
 ignora para aprobar (solo mira «tema» y «examen»); sus respuestas siguen contando para puntos y racha.
 La 0.7.2 tampoco cambia la base (plan, grupo, videos vistos y temas leídos van en `ajustes`); una 0.7.1 con un paquete que

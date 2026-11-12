@@ -223,7 +223,8 @@ ol.sendero::before {
 .materia-pct { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
 .materia-insignias { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .materia-insignia.hecho { background: rgba(255, 255, 255, 0.24); }
-.materia-insignia.debil { background: var(--naranja); color: var(--naranja-texto); }
+.materia-insignia.debil, .materia-insignia.refuerzo { background: var(--naranja); color: var(--naranja-texto); }
+.materia-insignias:empty { display: none; }
 .materia-bloque.vacia .materia-estado-chip, .materia-bloque.vacia .materia-insignia { background: rgba(0, 0, 0, 0.06); }
 /* El cuerpo se abre y se cierra con una animación suave (solo al tocar: al entrar ya está como debe). */
 .materia-cuerpo { display: grid; grid-template-rows: 1fr; }
