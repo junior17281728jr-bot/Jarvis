@@ -72,7 +72,7 @@ export function examenConReloj(intento, h) {
     for (const s of [...avisos]) {
       if (resta <= s * 1000) {
         avisos.delete(s);
-        h.avisar(t(s >= 60 ? 'examen.aviso_min' : 'examen.aviso_seg', { n: numero(Math.round(s / 60)) }), 'mal');
+        h.avisar(t(s > 60 ? 'examen.aviso_min' : 'examen.aviso_seg', { n: numero(Math.round(s / 60)) }), 'mal');
         h.sonar('mal');
       }
     }

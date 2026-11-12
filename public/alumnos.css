@@ -283,6 +283,8 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
   html, body { background: #ffffff !important; }
   /* Solo en las pantallas con una hoja para imprimir (reporte, contratos, mis documentos). */
   .marco:has(.reporte-hoja) > .lateral, .marco:has(.reporte-hoja) .menu, .contenido:has(.reporte-hoja) > *:not(.reporte-hoja), .aviso-flotante { display: none !important; }
+  /* estilos.css esconde todo lo que no es la hoja de la clave de recuperación: aquí se muestra la app con su hoja. */
+  body:has(.reporte-hoja) > #app { display: block !important; }
   .marco:has(.reporte-hoja) { display: block !important; }
   .contenido:has(.reporte-hoja) { padding: 0 !important; max-width: none !important; }
   .reporte-hoja { box-shadow: none; border-radius: 0; padding: 0; margin: 0; }

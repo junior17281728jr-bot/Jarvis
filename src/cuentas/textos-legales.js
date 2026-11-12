@@ -16,7 +16,7 @@ export const TERMINOS_V1 = Object.freeze([
   },
   {
     "titulo": "4. Contenido y derechos de terceros",
-    "texto": "4.1. Parte del material de estudio puede basarse en obras protegidas por derechos de autor que pertenecen a terceros (Ley núm. 65-00 sobre Derecho de Autor). Ese material se ofrece solo para el estudio personal del usuario dentro de la Plataforma.\n4.2. Queda prohibido:\n• (a) copiar, descargar de forma masiva, exportar, fotografiar o capturar de forma sistemática el contenido;\n• (b) publicarlo, compartirlo, venderlo o distribuirlo por cualquier medio;\n• (c) usarlo para crear otros productos o servicios;\n• (d) intentar eludir las medidas de acceso.\n4.3. Ningún pago hecho a la Plataforma es un pago por el contenido. El material de estudio es el mismo para todos los usuarios, haya pagado o no.\n4.4. Si una persona cree que algún contenido infringe sus derechos, puede escribir a el formulario «Ayuda» de la app (Configuración → Ayuda). El Administrador revisará el aviso y, si corresponde, retirará el contenido sin demora."
+    "texto": "4.1. Parte del material de estudio puede basarse en obras protegidas por derechos de autor que pertenecen a terceros (Ley núm. 65-00 sobre Derecho de Autor). Ese material se ofrece solo para el estudio personal del usuario dentro de la Plataforma.\n4.2. Queda prohibido:\n• (a) copiar, descargar de forma masiva, exportar, fotografiar o capturar de forma sistemática el contenido;\n• (b) publicarlo, compartirlo, venderlo o distribuirlo por cualquier medio;\n• (c) usarlo para crear otros productos o servicios;\n• (d) intentar eludir las medidas de acceso.\n4.3. Ningún pago hecho a la Plataforma es un pago por el contenido. El material de estudio es el mismo para todos los usuarios, haya pagado o no.\n4.4. Si una persona cree que algún contenido infringe sus derechos, puede escribir en el formulario «Ayuda» de la app (Configuración → Ayuda). El Administrador revisará el aviso y, si corresponde, retirará el contenido sin demora."
   },
   {
     "titulo": "5. Uso aceptable",
@@ -52,7 +52,7 @@ export const TERMINOS_V1 = Object.freeze([
   },
   {
     "titulo": "13. Ley aplicable",
-    "texto": "Estos términos se rigen por las leyes de la República Dominicana. Antes de cualquier reclamo, las partes intentarán resolver las diferencias de forma amistosa escribiendo a el formulario «Ayuda» de la app (Configuración → Ayuda)."
+    "texto": "Estos términos se rigen por las leyes de la República Dominicana. Antes de cualquier reclamo, las partes intentarán resolver las diferencias de forma amistosa escribiendo en el formulario «Ayuda» de la app (Configuración → Ayuda)."
   }
 ]);
 
@@ -75,7 +75,7 @@ export const PRIVACIDAD_V1 = Object.freeze([
   },
   {
     "titulo": "5. Quién recibe sus datos y envío al extranjero",
-    "texto": "5.1. Para que la Plataforma funcione usamos proveedores tecnológicos que actúan por nuestra cuenta:\n• proveedores de inteligencia artificial, ubicados en Estados Unidos de América;\n• proveedores de alojamiento y almacenamiento de datos, que pueden estar ubicados en Estados Unidos de América.\n5.2. Qué se envía a los proveedores de IA: el texto de las preguntas que usted hace al tutor, el contexto de estudio necesario para responderle y estadísticas de estudio sin su nombre ni su usuario. Tenga en cuenta que, si usted escribe datos personales en el chat, esos datos también se enviarán. Los comprobantes de pago nunca se envían a los proveedores de IA.\n5.3. Este envío es una transferencia internacional de datos. Usted la autoriza de forma expresa al marcar la casilla correspondiente.\n5.4. Si desea conocer el nombre de los proveedores que usamos en cada momento, solicítelo a el formulario «Ayuda» de la app (Configuración → Ayuda) y se lo informaremos.\n5.5. Solo entregaremos sus datos a una autoridad cuando una ley o una orden judicial lo exija."
+    "texto": "5.1. Para que la Plataforma funcione usamos proveedores tecnológicos que actúan por nuestra cuenta:\n• proveedores de inteligencia artificial, ubicados en Estados Unidos de América;\n• proveedores de alojamiento y almacenamiento de datos, que pueden estar ubicados en Estados Unidos de América.\n5.2. Qué se envía a los proveedores de IA: el texto de las preguntas que usted hace al tutor, el contexto de estudio necesario para responderle y estadísticas de estudio sin su nombre ni su usuario. Tenga en cuenta que, si usted escribe datos personales en el chat, esos datos también se enviarán. Los comprobantes de pago nunca se envían a los proveedores de IA.\n5.3. Este envío es una transferencia internacional de datos. Usted la autoriza de forma expresa al marcar la casilla correspondiente.\n5.4. Si desea conocer el nombre de los proveedores que usamos en cada momento, solicítelo en el formulario «Ayuda» de la app (Configuración → Ayuda) y se lo informaremos.\n5.5. Solo entregaremos sus datos a una autoridad cuando una ley o una orden judicial lo exija."
   },
   {
     "titulo": "6. Cuánto tiempo los guardamos",
@@ -87,7 +87,7 @@ export const PRIVACIDAD_V1 = Object.freeze([
   },
   {
     "titulo": "8. Sus derechos",
-    "texto": "Usted, o su padre, madre o tutor si es menor, puede en cualquier momento:\n• acceder a sus datos y recibir una copia;\n• rectificar los datos que sean incorrectos;\n• cancelar o suprimir sus datos y cerrar su cuenta;\n• oponerse a usos concretos o retirar su consentimiento, incluido el envío al extranjero.\nEscriba a el formulario «Ayuda» de la app (Configuración → Ayuda) indicando su nombre de usuario y lo que solicita. Responderemos en un plazo no mayor de 10 días hábiles. Si no recibe respuesta o no está de acuerdo, puede ejercer las acciones que le reconoce la ley, incluida la acción de habeas data ante los tribunales."
+    "texto": "Usted, o su padre, madre o tutor si es menor, puede en cualquier momento:\n• acceder a sus datos y recibir una copia;\n• rectificar los datos que sean incorrectos;\n• cancelar o suprimir sus datos y cerrar su cuenta;\n• oponerse a usos concretos o retirar su consentimiento, incluido el envío al extranjero.\nEscriba en el formulario «Ayuda» de la app (Configuración → Ayuda) indicando su nombre de usuario y lo que solicita. Responderemos en un plazo no mayor de 10 días hábiles. Si no recibe respuesta o no está de acuerdo, puede ejercer las acciones que le reconoce la ley, incluida la acción de habeas data ante los tribunales."
   },
   {
     "titulo": "9. Menores de edad",

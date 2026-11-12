@@ -230,7 +230,7 @@
   "examen.se_acabo": "Se acabó el tiempo: entregando…",
   "examen.se_acabo_linea": "Se acabó el tiempo y el examen se entregó solo.",
   "examen.aviso_min": "Quedan {n} minutos.",
-  "examen.aviso_seg": "Queda menos de 1 minuto.",
+  "examen.aviso_seg": "Queda 1 minuto.",
   "examen.confirmar.titulo": "¿Entregar el examen?",
   "examen.confirmar.linea": "Respondiste {n} de {total}.",
   "examen.confirmar.sin": "Quedan {n} sin responder: contarán como malas.",

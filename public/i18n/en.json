@@ -230,7 +230,7 @@
   "examen.se_acabo": "Time is up: submitting…",
   "examen.se_acabo_linea": "Time ran out and the exam was submitted automatically.",
   "examen.aviso_min": "{n} minutes left.",
-  "examen.aviso_seg": "Less than 1 minute left.",
+  "examen.aviso_seg": "1 minute left.",
   "examen.confirmar.titulo": "Submit the exam?",
   "examen.confirmar.linea": "You answered {n} of {total}.",
   "examen.confirmar.sin": "{n} unanswered: they will count as wrong.",
