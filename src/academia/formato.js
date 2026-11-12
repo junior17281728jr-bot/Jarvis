@@ -3,6 +3,8 @@
 // repositorio (es público). Aquí solo se revisa que esté bien armado; nunca se cambia ni se recorta un texto: lo del
 // Test Guide se guarda y se muestra tal cual (sin trim, sin normalizar).
 
+import { normalizar, retosFaciles } from './reto-calidad.js';
+
 // Las 11 materias de ENALAS (piloto privado), en el orden fijo de la escuela. Sus nombres están en public/i18n.
 export const MATERIAS = Object.freeze([
   'factores_humanos', 'sistemas', 'aerodinamica', 'ambiente_vuelo', 'rad', 'poh',
@@ -41,8 +43,12 @@ export const RETO_OPCIONES = 2;
 const SHA256 = /^[a-f0-9]{64}$/;
 
 const esObjeto = v => v != null && typeof v === 'object' && !Array.isArray(v);
+// 0.9.0: cuántos avisos del Modo reto (opciones que parecen fáciles) se devuelven como mucho.
+const AVISOS_MAXIMOS = 200;
 
-// Revisa el paquete ya leído (JSON.parse). Devuelve { ok, errores: [{ ruta, motivo }], resumen, figuras }.
+// Revisa el paquete ya leído (JSON.parse). Devuelve { ok, errores: [{ ruta, motivo }], resumen, figuras, avisos }.
+// 0.9.0: avisos = las opciones del Modo reto que parecen FÁCILES (src/academia/reto-calidad.js): no impiden subirlo (se
+// vuelven a escribir con calma: scripts/reto-faciles.mjs las lista), pero se dicen: [{ ruta, motivo }].
 // Las rutas dicen exactamente dónde está el problema («materias[2].temas[0].preguntas[5]»), para quien arma el paquete.
 export function revisarPaquete(p) {
   const errores = [];
@@ -59,7 +65,7 @@ export function revisarPaquete(p) {
     if (typeof v !== 'string' || !ID_VALIDO.test(v)) { mal(ruta, 'id_no_valido'); return false; }
     return true;
   };
-  if (!esObjeto(p)) return { ok: false, errores: [{ ruta: '', motivo: 'no_es_objeto' }] };
+  if (!esObjeto(p)) return { ok: false, errores: [{ ruta: '', motivo: 'no_es_objeto' }], avisos: [] };
   if (p.formato !== FORMATO) mal('formato', 'formato_desconocido');
   if (p.version !== VERSION_FORMATO) mal('version', 'version_desconocida');
   texto(p.nombre, 'nombre', { max: LIMITES.corto });
@@ -194,12 +200,13 @@ export function revisarPaquete(p) {
       if (!esObjeto(q.reto)) mal(rr, 'no_es_objeto');
       else if (!Array.isArray(q.reto.opciones) || q.reto.opciones.length !== RETO_OPCIONES) mal(`${rr}.opciones`, 'reto_no_valido');
       else {
-        const vistos = new Set((Array.isArray(o.opciones) ? o.opciones : []).map(op => (typeof op?.texto === 'string' ? op.texto.trim().toLowerCase() : null)).filter(Boolean));
+        // 0.9.0: «la misma frase» sin mirar mayúsculas, tildes, signos ni espacios («Siempre.» = «siempre»).
+        const vistos = new Set((Array.isArray(o.opciones) ? o.opciones : []).map(op => (typeof op?.texto === 'string' ? normalizar(op.texto) : null)).filter(Boolean));
         q.reto.opciones.forEach((op, j) => {
           const ro = `${rr}.opciones[${j}]`;
           if (!esObjeto(op)) return mal(ro, 'no_es_objeto');
           if (texto(op.texto, `${ro}.texto`, { max: LIMITES.corto * 5 })) {
-            const clave = op.texto.trim().toLowerCase();
+            const clave = normalizar(op.texto);
             if (vistos.has(clave)) mal(`${ro}.texto`, 'repetido');
             vistos.add(clave);
           }
@@ -289,6 +296,9 @@ export function revisarPaquete(p) {
   for (const qid of preguntas.keys()) if (!usadas.has(qid)) mal(`preguntas[${[...preguntas.keys()].indexOf(qid)}]`, 'pregunta_sin_tema');
 
   const ok = errores.length === 0;
+  // 0.9.0: con el paquete bien armado, las opciones del Modo reto que parecen fáciles (con el vocabulario de su tema).
+  const indice = new Map(ok ? p.preguntas.map((q, i) => [q.id, i]) : []);
+  const avisos = ok ? retosFaciles(p).flatMap(x => x.opciones.flatMap(op => op.motivos.map(motivo => ({ ruta: `preguntas[${indice.get(x.pregunta)}].reto.opciones[${op.indice}].texto`, motivo })))).slice(0, AVISOS_MAXIMOS) : [];
   return {
     ok,
     errores,
@@ -297,6 +307,7 @@ export function revisarPaquete(p) {
     audios: ok ? [...audios.values()] : [],
     // Las materias que el paquete TRAE (con un tema o más): las que da cuando está en uso junto con otros.
     materias: ok ? p.materias.filter(m => m.temas.length > 0).map(m => m.id) : [],
+    avisos,
   };
 }
 
