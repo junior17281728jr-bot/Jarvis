@@ -3,6 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { baseDePruebas } from './ayuda.js';
+
+const RAIZ = baseDePruebas();
 
 test('ningún botón vuelve a encenderse con evento.currentTarget después de esperar', () => {
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
