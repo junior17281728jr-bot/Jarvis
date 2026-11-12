@@ -3102,9 +3102,10 @@ function elegirPlanVista(plan, { alListo, cancelar = null } = {}) {
   const boton = el('button', {
     type: 'button', class: 'boton-3d grande',
     onclick: async evento => {
-      evento.currentTarget.disabled = true;
+      const yo = evento.currentTarget; // después del await, currentTarget ya es null
+      yo.disabled = true;
       const r = await api('POST', '/api/academia/plan', { plan: elegido });
-      evento.currentTarget.disabled = false;
+      yo.disabled = false;
       if (!r.ok) return avisar(textoError(r.datos.error), 'mal');
       alListo(r.datos.plan);
     },
@@ -3272,9 +3273,10 @@ function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
   const ocultar = el('button', {
     type: 'button', class: 'boton-texto con-icono', 'aria-pressed': String(g.oculto),
     onclick: async evento => {
-      evento.currentTarget.disabled = true;
+      const yo = evento.currentTarget;
+      yo.disabled = true;
       const r = await api('POST', '/api/academia/grupo', { oculto: !g.oculto });
-      if (!r.ok) { evento.currentTarget.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
+      if (!r.ok) { yo.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
       alCambiar?.(r.datos.grupo);
     },
   }, icono(g.oculto ? 'ojo' : 'candado', 'icono chico'), el('span', { texto: t(g.oculto ? 'acad.grupo.mostrarme' : 'acad.grupo.ocultarme') }));
