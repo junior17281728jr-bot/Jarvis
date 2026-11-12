@@ -147,6 +147,9 @@ const TIPOS = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  // 0.9.1: las fotos de fondo (public/fondos/).
+  '.webp': 'image/webp',
+  '.jpg': 'image/jpeg',
   '.webmanifest': 'application/manifest+json',
 };
 
@@ -188,6 +191,19 @@ function versionarImportaciones(texto, completa, carpeta, enCamino, usa) {
     return `${antes}${comilla}${especificador}?v=${entrada.huella}${comilla}`;
   });
   return { nuevo, modulos };
+}
+
+// 0.9.1: en un .css, cada url(/…) de un archivo de public/ (las fotos de fondo) lleva su huella: así la foto se
+// guarda un año (immutable) y, si cambia, cambia la huella del .css que la nombra.
+function versionarEstilos(texto, carpeta, enCamino, usa) {
+  return texto.replace(/url\((['"]?)(\/[^'"?#)\s]+)\1\)/g, (todo, comilla, direccion) => {
+    const destino = normalize(join(carpeta, direccion));
+    if (!dentroDe(carpeta, destino) || enCamino.has(destino)) return todo;
+    const entrada = leerEntrada(carpeta, destino, enCamino);
+    if (!entrada) return todo;
+    usa.push([destino, entrada.huella]);
+    return `url(${comilla}${direccion}?v=${entrada.huella}${comilla})`;
+  });
 }
 
 // index.html: cada src="/…" y href="/…" de un archivo de public/ lleva su huella, y después de cada
@@ -251,6 +267,9 @@ function leerEntrada(carpeta, completa, enCamino = new Set()) {
       const r = versionarImportaciones(contenido.toString('utf8'), completa, carpeta, enCamino, usa);
       contenido = Buffer.from(r.nuevo, 'utf8');
       modulos = r.modulos;
+    } else if (extname(completa) === '.css') {
+      const texto = contenido.toString('utf8');
+      if (texto.includes('url(/') || texto.includes("url('/") || texto.includes('url("/')) contenido = Buffer.from(versionarEstilos(texto, carpeta, enCamino, usa), 'utf8');
     } else if (extname(completa) === '.html') {
       contenido = Buffer.from(versionarPagina(contenido.toString('utf8'), completa, carpeta, enCamino, usa), 'utf8');
     }

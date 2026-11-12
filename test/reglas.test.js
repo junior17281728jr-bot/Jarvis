@@ -637,8 +637,12 @@ test('el repositorio no tiene libros, paquetes de contenido, imágenes de libros
     const base = nombre.split('/').at(-1).toLowerCase();
     assert.ok(!/\.(pdf|epub|djvu|docx?|pptx?|xlsx?|zip|7z|rar|tar|gz|tgz)$/.test(base), `${nombre}: un documento o archivo comprimido no va en el repositorio`);
     assert.ok(!/^paquete.*\.json$/.test(base), `${nombre}: un paquete de contenido vive solo en el servidor`);
-    if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|heic|avif)$/.test(base)) assert.ok(IMAGENES_PERMITIDAS.has(nombre), `${nombre}: una imagen nueva (¿una figura de un libro?) no va en el repositorio`);
     const bytes = statSync(join(RAIZ, nombre)).size;
+    // 0.9.1: las fotos de fondo (fotos libres de Wikimedia Commons, con sus créditos en public/fondos/CREDITOS.md):
+    // solo .webp y .jpg, directo en public/fondos/, y livianas (la del teléfono ≤ 90 KB, la de la computadora ≤ 220 KB).
+    const fondo = /^public\/fondos\/[a-z0-9-]+\.(webp|jpg)$/.test(nombre);
+    if (fondo) assert.ok(bytes <= (/-900\./.test(nombre) ? 90_000 : 220_000), `${nombre} pesa ${bytes} bytes: una foto de fondo debe ser liviana`);
+    if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|heic|avif)$/.test(base)) assert.ok(IMAGENES_PERMITIDAS.has(nombre) || fondo, `${nombre}: una imagen nueva (¿una figura de un libro?) no va en el repositorio`);
     const tope = 600_000;
     assert.ok(bytes <= tope, `${nombre} pesa ${bytes} bytes: demasiado grande para el repositorio`);
   }
@@ -651,6 +655,16 @@ test('el paquete de muestra de las pruebas está marcado como «muestra» y nunc
   assert.match(p.nombre, /muestra/i);
   for (const q of p.preguntas) assert.match(q.id, /^muestra-/);
   for (const f of archivos(join(RAIZ, 'public'))) assert.ok(!/academia-muestra/.test(f), 'la muestra no va en public/');
+});
+
+test('las fotos de fondo (public/fondos/) son pocas y cada una tiene su crédito (autor y licencia)', () => {
+  // Las fotos de fondo tienen sus créditos (autor y licencia) y son pocas.
+  const fondos = readdirSync(join(RAIZ, 'public', 'fondos'));
+  assert.ok(fondos.includes('CREDITOS.md'));
+  assert.ok(fondos.filter(n => /\.(webp|jpg)$/.test(n)).length <= 12, 'demasiadas fotos de fondo');
+  const creditos = readFileSync(join(RAIZ, 'public', 'fondos', 'CREDITOS.md'), 'utf8');
+  for (const n of fondos.filter(x => /\.(webp|jpg)$/.test(x))) assert.ok(creditos.includes(`\`${n.replace(/\.(webp|jpg)$/, '')}.*\``), `${n} sin crédito`);
+  assert.match(creditos, /Licencia/);
 });
 
 // ---------- Academia 0.7.1: el contenido llega solo desde Google Drive ----------

@@ -225,6 +225,32 @@ test('un archivo que cambia tiene otro ETag, y también los que lo nombran (app.
   });
 });
 
+// 0.9.1: las fotos de fondo se nombran desde un .css con url(/…): llevan su huella y se guardan un año.
+test('una foto nombrada con url(/…) en un .css lleva su huella; la foto se guarda un año y no se comprime', async () => {
+  const foto = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 5, 6, 7, 8]);
+  const hoja = 'body::before { background-image: url(/fondos/f.webp); }\n.b { background: url("/fondos/g.jpg"); }\n.c { background: url(/no-existe.webp); }\n.d { background: url(data:image/webp;base64,AAAA); }\n';
+  await conCarpeta({ 'e.css': hoja, 'fondos/f.webp': foto, 'fondos/g.jpg': Buffer.from([0xff, 0xd8, 0xff, 9]) }, async (base, escribir) => {
+    const css = (await pedir(base, '/e.css')).cuerpo.toString();
+    const huella = ruta => pedir(base, ruta).then(r => /^"([A-Za-z0-9_-]{22})"$/.exec(r.cabeceras.etag)[1]);
+    const hf = await huella('/fondos/f.webp');
+    assert.ok(css.includes(`url(/fondos/f.webp?v=${hf})`), css);
+    assert.ok(css.includes(`url("/fondos/g.jpg?v=${await huella('/fondos/g.jpg')}")`), css);
+    assert.ok(css.includes('url(/no-existe.webp)') && css.includes('url(data:image/webp;base64,AAAA)'), 'lo que no es un archivo de la carpeta queda igual');
+    const r = await pedir(base, `/fondos/f.webp?v=${hf}`, { 'accept-encoding': 'br, gzip' });
+    assert.equal(r.cabeceras['content-type'], 'image/webp');
+    assert.equal(r.cabeceras['cache-control'], 'max-age=31536000, immutable');
+    assert.equal(r.cabeceras['content-encoding'], undefined);
+    assert.ok(r.cuerpo.equals(foto));
+    assert.equal((await pedir(base, '/fondos/g.jpg')).cabeceras['content-type'], 'image/jpeg');
+    // Si la foto cambia, cambia la huella del .css que la nombra.
+    const etagCss = (await pedir(base, '/e.css')).cabeceras.etag;
+    escribir('fondos/f.webp', Buffer.from([0x52, 0x49, 0x46, 0x46, 9, 9, 9, 9, 9, 9, 9, 9]));
+    const nuevo = await pedir(base, '/e.css', { 'if-none-match': etagCss });
+    assert.equal(nuevo.codigo, 200);
+    assert.ok(nuevo.cuerpo.toString().includes(`url(/fondos/f.webp?v=${await huella('/fondos/f.webp')})`));
+  });
+});
+
 test('servirArchivo sigue sin dejar salir de la carpeta (ni con dependencias de index.html o de app.js)', async () => {
   const fuera = carpetaTemporal('fuera');
   writeFileSync(join(fuera, 'secreto.js'), "export const secreto = 'no';\n");
