@@ -1,8 +1,13 @@
 // Los TEXTOS que salen por un canal (hoy: Telegram). Salen de las mismas frases de las pantallas
-// (public/i18n/es.json y en.json, claves telegram.*), en el idioma del dueño. Texto plano, nunca formato enriquecido.
+// (public/i18n/es.json y en.json, claves telegram.*), en el idioma del dueño. Se arman como texto plano (y se cortan así);
+// 0.12.8 (pedido del dueño: «mensajes limpios»): al mandarlos van en HTML (comoHtml): TODO escapado y el título en negrita,
+// con un emoji por tipo (📄 contrato, 💳 comprobante, 📊 resumen, 🤖 gasto de la IA, ⚠️ alerta).
 //  - Un aviso dice solo su clave, su nivel, la hora y números seguros (MB libres, horas, días, %, la versión corta).
 //    Nunca datos de una persona, nombres de proyectos, correos, claves ni el «detalle» completo del aviso. Única excepción
 //    (0.12.3, pedido del dueño): el comprobante de pago nuevo dice el nombre del alumno, el paquete y el monto.
+//    Segunda excepción (0.12.8, pedido del dueño): al firmar un alumno, el bot le manda al dueño su nombre, la versión, la
+//    fecha y el documento firmado (con la firma) como archivo; y los comandos del dueño (/alumno, /pagos, /contratos)
+//    responden con nombres. SOLO al chat unido del dueño (src/canales/bot.js); el archivo en la app sigue siendo la fuente.
 //  - Lo más largo que sale es 1.000 caracteres (Telegram acepta 4.096); una leyenda, 300 (acepta 1.024).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -71,6 +76,19 @@ export function megas(bytes, idioma = 'es') {
 
 const recortar = (texto, max = TEXTO_MAX) => (texto.length > max ? `${texto.slice(0, max - 1)}…` : texto);
 
+// 0.12.8: el formato HTML de Telegram. Se escapa TODO (también lo que escribió una persona: un nombre «<b>»).
+export const escaparHtml = texto => String(texto ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Lo más largo que Telegram acepta (4.096): un HTML más largo no se manda así (se manda el texto plano, que ya está cortado).
+export const HTML_MAX = 4096;
+// Un mensaje plano (ya cortado) → HTML: la primera línea (el título) en negrita; antes, si hay, una línea sin negrita
+// («(Otra vez…)»). Nunca corta nada: lo plano ya viene corto.
+export function comoHtml(texto, { antes = null } = {}) {
+  const [titulo, ...resto] = String(texto ?? '').split('\n');
+  return [...(antes ? [escaparHtml(antes)] : []), `<b>${escaparHtml(titulo)}</b>`, ...resto.map(escaparHtml)].join('\n');
+}
+// El título de un mensaje nuevo (comandos, contratos): «📄 Contrato firmado».
+export const tituloHtml = (emoji, titulo) => `<b>${escaparHtml(`${emoji} ${titulo}`)}</b>`;
+
 // La clave base de un aviso (sin lo que va después de «:»).
 export const baseDeClave = clave => String(clave ?? '').split(':')[0];
 
@@ -105,6 +123,10 @@ function valoresDe(aviso, idioma) {
     v.mes = usd(d?.mesMicro);
     if (Number.isSafeInteger(d?.dias)) v.dias = d.dias;
     if (Number.isSafeInteger(d?.n)) v.n = d.n;
+  }
+  if (partes[0] === 'cuenta_compartida') {
+    v.alumno = typeof d?.alumno === 'string' ? d.alumno.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 60) || '?' : '?';
+    v.veces = Number.isSafeInteger(d?.veces) ? d.veces : '?';
   }
   if (partes[0] === 'pago_recibido') {
     const corto = (x, max) => (typeof x === 'string' ? x.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '');
@@ -142,7 +164,10 @@ export function cuerpoDeAviso(aviso, idioma) {
 // Un aviso completo: título («🔴 OPORTIA · URGENTE», «Volvió a pasar»…), el texto, dónde mirarlo y la hora.
 export function textoDeAviso(aviso, idioma = 'es', { titulo = null, veces = null, desde = null } = {}) {
   const tipo = titulo ?? (aviso.nivel === 'grave' ? 'grave' : 'atencion');
-  const lineas = [frase(idioma, `telegram.titulo.${tipo}`)];
+  // 0.12.8: un emoji por tipo: 💳 un comprobante nuevo, 🤖 el gasto de la IA; lo demás que no es grave, ⚠️.
+  const base = baseDeClave(aviso.clave);
+  const propio = tipo === 'atencion' ? (base === 'pago_recibido' ? 'pago' : ['ia_tope', 'ia_resumen'].includes(base) ? 'ia' : null) : null;
+  const lineas = [frase(idioma, `telegram.titulo.${propio ?? tipo}`)];
   if (tipo === 'volvio' && veces >= 3) lineas.push(frase(idioma, 'telegram.volvio_veces', { n: veces, desde: fechaRd(desde, idioma) }));
   lineas.push(cuerpoDeAviso(aviso, idioma));
   lineas.push(frase(idioma, 'telegram.miralo'));

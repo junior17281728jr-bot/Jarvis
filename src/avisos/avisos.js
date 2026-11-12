@@ -47,6 +47,8 @@ export const AVISO_ACTUALIZACION = /^actualizacion_(?:no_instalada|revertida):[0
 // ('cambio_admin:<acción>:<n.º de la auditoría>', src/cuentas/confirmar.js) y un comprobante de pago que subió un alumno
 // ('pago_recibido:<n.º del pago>'). Se resuelven al tocar «Entendido» (el comprobante, también al aprobarlo o rechazarlo).
 export const AVISO_HECHO = /^(?:cambio_admin:[a-z_]{1,40}:[1-9]\d{0,15}|pago_recibido:[1-9]\d{0,15})$/;
+// 0.12.8: un alumno cuya cuenta se abrió en otro dispositivo más de 3 veces en un día ('cuenta_compartida:<id>:<día>').
+export const AVISO_CUENTA_COMPARTIDA = /^cuenta_compartida:[1-9]\d{0,9}:\d{4}-\d{2}-\d{2}$/;
 
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
@@ -54,7 +56,7 @@ const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion'
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
   return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_RESUMEN.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
-    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto);
+    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto) || AVISO_CUENTA_COMPARTIDA.test(texto);
 }
 
 function textoDetalle(detalle) {

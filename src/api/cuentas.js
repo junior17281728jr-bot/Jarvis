@@ -1,6 +1,7 @@
 // Rutas de cuentas: crear el primer administrador, entrar, salir, cambiar la clave y administrar usuarios.
 // Las respuestas de error llevan una CLAVE (por ejemplo 'credenciales'); las pantallas la traducen.
 // Los textos que llegan se leen con textoDe: un valor que no es texto se responde con 400, nunca con 500.
+import { cerrarOtrosEquipos } from '../cuentas/un-dispositivo.js';
 import { ajustesAcademia } from '../academia/progreso.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
@@ -177,6 +178,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       avisarCuenta(db, usuario.id, 'codigo_respaldo_usado');
     }
     const sesion = crearSesion(db, usuario.id, req.headers['user-agent']);
+    // 0.12.8: un alumno, un dispositivo a la vez: las otras sesiones de su cuenta se cierran (nunca se borran).
+    cerrarOtrosEquipos(db, usuario.id, sesion.token);
     registrarAcceso(db, usuario.id);
     auditar(db, { usuarioId: usuario.id, accion: 'entrada' });
     // «avisos»: por ejemplo, que el administrador reinició su contraseña. La pantalla los muestra y luego avisa
@@ -215,6 +218,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     });
     if (!puesta) throw new ErrorHttp(409, 'ya_tiene_clave');
     const sesion = crearSesion(db, usuario.id, req.headers['user-agent']);
+    // 0.12.8: un alumno, un dispositivo a la vez: las otras sesiones de su cuenta se cierran (nunca se borran).
+    cerrarOtrosEquipos(db, usuario.id, sesion.token);
     registrarAcceso(db, usuario.id);
     auditar(db, { usuarioId: usuario.id, accion: 'entrada' });
     return { codigo: 200, datos: avisosParaLaPantalla(db, buscarPorId(db, usuario.id)), cabeceras: { 'Set-Cookie': textoGalleta(sesion.token, { segura: https }) } };

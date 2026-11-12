@@ -6,6 +6,7 @@
 //  - p<proyecto>: fase 2. El tope de la versión APROBADA del proyecto (configuracion.ia). Una versión que espera
 //    aprobación nunca cuenta: el permiso de IA de un proyecto solo vale cuando una persona aprobó esa versión.
 import { PLANES } from '../cuentas/planes.js';
+import { topeDeAlumnoMicro } from './tope-alumno.js';
 
 const TOPE_PROYECTO_MAXIMO_MICRO = 100_000_000;
 
@@ -17,13 +18,19 @@ export function esEspacioAdmin(db, espacioId) {
   return fila?.rol_dueno === 'admin';
 }
 
-// { admin, plan, topeMicro } de un espacio. Un plan desconocido cuenta con tope 0.
-export function topeEspacioMicro(db, cfg, espacioId) {
+// { admin, plan, topeMicro, fuente? } de un espacio. Un plan desconocido cuenta con tope 0.
+// 0.12.8: la cuenta de un alumno con la IA por plan tiene el tope que sale de su plan de IA, su prueba, su tope personal
+// o su pausa (src/ia/tope-alumno.js; fuente dice de dónde salió), con el instructor con IA encendido. El tope general
+// sigue mandando.
+export function topeEspacioMicro(db, cfg, espacioId, ahora = Date.now()) {
   const fila = db.prepare('SELECT plan FROM espacios WHERE id = ?').get(Number(espacioId));
   if (!fila) return { admin: false, plan: null, topeMicro: 0 };
   if (esEspacioAdmin(db, espacioId)) return { admin: true, plan: fila.plan, topeMicro: cfg.topeGeneralMicro };
   const plan = PLANES.includes(fila.plan) ? fila.plan : null;
-  return { admin: false, plan, topeMicro: plan ? (cfg.topesPlanMicro?.[plan] ?? 0) : 0 };
+  const deCuenta = plan ? (cfg.topesPlanMicro?.[plan] ?? 0) : 0;
+  // Solo con el instructor con IA encendido (la IA de los alumnos es la suya; sin él, el tope de siempre).
+  const alumno = cfg?.instructorIa ? topeDeAlumnoMicro(db, espacioId, deCuenta, ahora) : null;
+  return alumno ? { admin: false, plan, topeMicro: alumno.topeMicro, fuente: alumno.fuente } : { admin: false, plan, topeMicro: deCuenta };
 }
 
 // Lo que dice la versión APROBADA de un proyecto sobre la IA. { activo, permitida, topeMicro, espacioId }.

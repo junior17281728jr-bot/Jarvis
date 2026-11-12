@@ -33,7 +33,7 @@ import { copiaAtrasada } from '../copias/estado.js';
 import { conCredencial } from './credencial.js';
 import { ADAPTADORES } from './canal.js';
 import { USO, listoParaMandar, anotarEnvio, anotarProblema, marcarBien, enviadosDesde, rangoDe, secretoDelBot, mandarBienvenida, bienvenidaPendiente, primerVinculo, MARGEN_RELOJ_MS, revisarClaveDudosa, botGuardado } from './canales.js';
-import { textoDeAviso, textoCierre, textoResumen, textoPerdidos, idiomaDelDueno, baseDeClave, frase, TEXTO_MAX } from './textos.js';
+import { textoDeAviso, textoCierre, textoResumen, textoPerdidos, idiomaDelDueno, baseDeClave, frase, TEXTO_MAX, comoHtml, HTML_MAX } from './textos.js';
 import { probarSecreto } from '../claves/probar.js';
 
 const MINUTO = 60_000;
@@ -64,7 +64,9 @@ export const RUTA_AVISOS = Object.freeze({
     // 0.12.7: el resumen de un día con gasto de IA (en silencio; un día sin gasto no tiene).
     'ia_resumen',
     // 0.12.3: un cambio delicado del administrador y un comprobante de pago nuevo.
-    'cambio_admin', 'pago_recibido']),
+    'cambio_admin', 'pago_recibido',
+    // 0.12.8: una cuenta de alumno abierta en otro dispositivo más de 3 veces en un día (quizás la comparte).
+    'cuenta_compartida']),
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».
 });
 
@@ -213,9 +215,13 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     // Ronda 3 del equipo rojo: si un intento anterior quizás llegó (se cortó la respuesta), este va en silencio y dice
     // que es otra vez: el dueño nunca recibe el mismo «URGENTE» sonando cada hora.
     const repetido = ['aviso', 'resumen', 'perdidos'].includes(mensaje.clase) && yaDudoso(mensaje.avisos);
-    const texto = repetido ? `${frase(idiomaDelDueno(db), 'telegram.repetido')}\n${mensaje.texto}`.slice(0, TEXTO_MAX) : mensaje.texto;
+    const plano = repetido ? `${frase(idiomaDelDueno(db), 'telegram.repetido')}\n${mensaje.texto}`.slice(0, TEXTO_MAX) : mensaje.texto;
+    // 0.12.8: en HTML (todo escapado, el título en negrita). Se corta el texto PLANO; si escapado pasara del tope de
+    // Telegram (nunca con 1.000 letras, salvo un nombre lleno de «&»), va plano: lo grave siempre llega.
+    const html = comoHtml(mensaje.texto, { antes: repetido ? frase(idiomaDelDueno(db), 'telegram.repetido') : null });
+    const conHtml = html.length <= HTML_MAX;
     const r = await conCredencial(db, config, { uso: USO, secretoId: canal.secreto_id }, cred => adaptador.enviarTexto(cred, {
-      destino: canal.destino, texto, silencioso: repetido || !mensaje.suena,
+      destino: canal.destino, texto: conHtml ? html : plano, html: conHtml, silencioso: repetido || !mensaje.suena,
     }));
     const momento = reloj();
     if (r.motivo === 'ok') {

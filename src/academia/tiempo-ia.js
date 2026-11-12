@@ -32,6 +32,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, carpetaAcademia } from './paquetes.js';
 import { leerGuardado } from './instructor-ia.js';
+import { PRESUPUESTOS_POR_DEFECTO, presupuestosDe } from '../ia/tope-alumno.js';
 
 export const CLAVE_PAGOS = 'academia.pagos.config';
 export const RECIBO_MAX_BYTES = 5 * 1024 * 1024;
@@ -48,6 +49,8 @@ export const PLANES_IA = Object.freeze([
 export const CONFIG_PAGOS = Object.freeze({
   minutosRegalo: 20, minutosPorUso: 1,
   modo: 'planes', pruebaDias: 5, pruebaUsosDia: 20, planDias: 30, avisoRenovarDias: 3, tasaRd: '', planes: PLANES_IA,
+  // 0.12.8: el presupuesto de IA (US$ al mes) de la cuenta de cada alumno según su plan (src/ia/tope-alumno.js).
+  presupuestos: PRESUPUESTOS_POR_DEFECTO,
   // 0.12.3 (auditoría P2-2): sin banco por defecto (ni el nombre de ninguno); vacío queda vacío.
   banco: '', tipoCuenta: '', numero: '', titular: '', documento: '', instrucciones: '', espera: ESPERA_POR_DEFECTO,
   paquetes: Object.freeze([]),
@@ -81,6 +84,7 @@ function normalizarPagos(v) {
     planDias: entero(x.planDias, 1, 366, d.planDias), avisoRenovarDias: entero(x.avisoRenovarDias, 0, 30, d.avisoRenovarDias),
     tasaRd: /^\d{1,4}(?:\.\d{1,2})?$/.test(String(x.tasaRd ?? '')) ? String(x.tasaRd) : '',
     planes: normalizarPlanes(x.planes),
+    presupuestos: presupuestosDe(x),
   };
 }
 export function leerConfigPagos(db) {
@@ -92,7 +96,7 @@ export function leerConfigPagos(db) {
 export function revisarConfigPagos(cambios) {
   if (!cambios || typeof cambios !== 'object' || Array.isArray(cambios)) throw new ErrorHttp(400, 'datos_no_validos');
   const campos = ['minutosRegalo', 'minutosPorUso', 'banco', 'tipoCuenta', 'numero', 'titular', 'documento', 'instrucciones', 'espera', 'paquetes',
-    'modo', 'pruebaDias', 'pruebaUsosDia', 'planDias', 'avisoRenovarDias', 'tasaRd', 'planes'];
+    'modo', 'pruebaDias', 'pruebaUsosDia', 'planDias', 'avisoRenovarDias', 'tasaRd', 'planes', 'presupuestos'];
   if (Object.keys(cambios).some(k => !campos.includes(k))) throw new ErrorHttp(400, 'datos_no_validos');
   if ('minutosRegalo' in cambios && entero(cambios.minutosRegalo, 0, 100_000, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
   if ('minutosPorUso' in cambios && entero(cambios.minutosPorUso, 1, 60, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
@@ -105,6 +109,11 @@ export function revisarConfigPagos(cambios) {
     if (!Array.isArray(cambios.planes) || cambios.planes.some(p => !PLANES_IA.some(b => b.id === p?.id) || !texto(p?.nombre, 40)
       || !PRECIO_USD.test(String(p?.precioUsd ?? '')) || entero(p?.usos, 1, 100_000, null) == null)) throw new ErrorHttp(400, 'plan_no_valido');
   }
+  if ('presupuestos' in cambios) {
+    const p = cambios.presupuestos;
+    if (!p || typeof p !== 'object' || Array.isArray(p) || Object.keys(p).some(k => !Object.hasOwn(PRESUPUESTOS_POR_DEFECTO, k))
+      || Object.values(p).some(v => !/^\d{1,2}(?:\.\d{1,2})?$/.test(String(v)) || Number(v) > 20)) throw new ErrorHttp(400, 'presupuesto_no_valido');
+  }
   if ('paquetes' in cambios) {
     if (!Array.isArray(cambios.paquetes)) throw new ErrorHttp(400, 'paquete_pago_no_valido');
     if (cambios.paquetes.length > 8) throw new ErrorHttp(400, 'paquetes_demasiados');
@@ -114,7 +123,8 @@ export function revisarConfigPagos(cambios) {
 }
 export function guardarConfigPagos(db, cambios) {
   revisarConfigPagos(cambios);
-  const nueva = normalizarPagos({ ...leerConfigPagos(db), ...cambios });
+  const antes = leerConfigPagos(db);
+  const nueva = normalizarPagos({ ...antes, ...cambios, ...(cambios.presupuestos ? { presupuestos: { ...antes.presupuestos, ...cambios.presupuestos } } : {}) });
   guardarAjuste(db, CLAVE_PAGOS, JSON.stringify(nueva));
   return nueva;
 }

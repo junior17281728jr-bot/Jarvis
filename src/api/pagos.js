@@ -38,7 +38,10 @@ export function iaDeAlumno(db, usuario, { estricto = true } = {}) {
   if (usuario?.rol !== 'admin' && !iaPermitida(db, usuario.id, { estricto })) falta.push('sin_consentimiento');
   const e = espacioDe(db, usuario);
   if (e && !esEspacioAdmin(db, e.id)) {
-    if (!(topeEspacioMicro(db, cfg, e.id).topeMicro > 0)) falta.push('sin_presupuesto');
+    // 0.12.8: el administrador pausó la IA de este alumno (IA por alumno): para él no hay IA, ni se le vende.
+    const tope = topeEspacioMicro(db, cfg, e.id);
+    if (tope.fuente === 'pausa') falta.push('pausada');
+    else if (!(tope.topeMicro > 0)) falta.push('sin_presupuesto');
     if (!espacioConfirmado(db, e.id)) falta.push('cuenta_sin_permiso');
   }
   return { listo: falta.length === 0, falta };
@@ -135,7 +138,11 @@ export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj 
         const d = derechoIa(db, u.id, ahora);
         return { id: u.id, nombre: u.nombre_visible || u.nombre, minutos: d.minutos, ia: iaDeAlumno(db, { ...u, rol: 'usuario' }, { estricto }), derecho: { fuente: d.fuente, motivo: d.motivo, plan: d.plan, prueba: d.prueba } };
       });
-    return { codigo: 200, datos: { config: leerConfigPagos(db), pagos: pagosParaRevisar(db), pendientes: pagosPendientes(db), alumnos, fallas: leerConfigFallas(db) } };
+    // 0.12.8: lo que de verdad costó un uso de la IA del instructor en los últimos 30 días (para el presupuesto por plan).
+    const costo = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(costo_micro), 0) AS c FROM ia_llamadas WHERE proposito LIKE 'instructor%'
+      AND estado <> 'reservada' AND costo_micro IS NOT NULL AND creada_en >= ?`).get(new Date(ahora - 30 * DIA).toISOString());
+    const estimado = { llamadas: costo.n, porUsoMicro: costo.n ? Math.round(costo.c / costo.n) : null };
+    return { codigo: 200, datos: { config: leerConfigPagos(db), pagos: pagosParaRevisar(db), pendientes: pagosPendientes(db), alumnos, fallas: leerConfigFallas(db), estimado } };
   }, { admin: true });
   rutas.agregar('GET', '/api/admin/academia/pagos/pendientes', ({ db }) => ({ codigo: 200, datos: { pendientes: pagosPendientes(db) } }), { admin: true });
   // 0.12.3: todos los comprobantes, de siempre (los más nuevos primero, de a 100: ?antes=<n.º>), para verlos y bajarlos.

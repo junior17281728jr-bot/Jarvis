@@ -13,7 +13,7 @@ const TEXTO_PESTANA = { resumen: 'ficha.pestana.resumen', examenes: 'ficha.pesta
 const ICONO_PESTANA = { resumen: 'grafica', examenes: 'libro', materias: 'bandera', debiles: 'atencion', actividad: 'reloj' };
 const TEXTO_TIPO = { tema: 'ficha.tipo.tema', examen: 'ficha.tipo.examen', reto: 'ficha.tipo.reto', repaso: 'ficha.tipo.repaso', errores: 'ficha.tipo.errores' };
 const TEXTO_ESTADO = { en_linea: 'ficha.sesion.en_linea', abierta: 'ficha.sesion.abierta', vencida: 'ficha.sesion.vencida', cerrada: 'ficha.sesion.cerrada' };
-const TEXTO_MOTIVO = { salir: 'ficha.motivo.salir', cerrada: 'ficha.motivo.cerrada', bloqueo: 'ficha.motivo.bloqueo' };
+const TEXTO_MOTIVO = { salir: 'ficha.motivo.salir', cerrada: 'ficha.motivo.cerrada', bloqueo: 'ficha.motivo.bloqueo', otro_equipo: 'ficha.motivo.otro_equipo' };
 const TEXTO_RITMO = { adelantado: 'ficha.ritmo.adelantado', a_tiempo: 'ficha.ritmo.a_tiempo', atrasado: 'ficha.ritmo.atrasado', terminado: 'ficha.ritmo.terminado' };
 const TEXTO_PLAN = { un_mes: 'acad.plan.un_mes', dos_meses: 'acad.plan.dos_meses', repaso_15: 'acad.plan.repaso_15' };
 

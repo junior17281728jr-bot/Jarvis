@@ -11,6 +11,30 @@
 // Límites reales: un documento de más de 50 MB → 413; getFile de más de 20 MB → 400 «Bad Request: file is too big»
 // (las pruebas pueden bajarlos con { subirMax, bajarMax } para no mover archivos enormes).
 import { createServer } from 'node:http';
+
+// 0.12.8: el formato HTML de Telegram (parse_mode: 'HTML'), como lo lee Telegram: solo estas etiquetas, bien cerradas, y
+// «<», «>», «&» escapados. Algo mal → 400 «can't parse entities» (como el de verdad). → el texto que se ve, o null.
+const ETIQUETAS = new Set(['b', 'strong', 'i', 'em', 'u', 's', 'code', 'pre']);
+export function leerHtmlTelegram(html) {
+  const abiertas = [];
+  let visto = '';
+  for (let i = 0; i < html.length;) {
+    const c = html[i];
+    if (c === '<') {
+      const m = /^<(\/?)([a-z]+)>/.exec(html.slice(i));
+      if (!m || !ETIQUETAS.has(m[2])) return null;
+      if (m[1]) { if (abiertas.pop() !== m[2]) return null; } else abiertas.push(m[2]);
+      i += m[0].length;
+    } else if (c === '&') {
+      const m = /^&(lt|gt|amp|quot);/.exec(html.slice(i));
+      if (!m) return null;
+      visto += { lt: '<', gt: '>', amp: '&', quot: '"' }[m[1]];
+      i += m[0].length;
+    } else if (c === '>') return null;
+    else { visto += c; i += 1; }
+  }
+  return abiertas.length ? null : visto;
+}
 import { createHash, randomBytes } from 'node:crypto';
 
 export const ESCENAS = Object.freeze([
@@ -156,9 +180,14 @@ export async function crearTelegramFalso({ bots = [], chats = [], subirMax = 50 
       case 'sendMessage': {
         const chat = chatDe(params.chat_id, res);
         if (!chat) return;
-        const texto = String(params.text ?? '');
+        let texto = String(params.text ?? '');
         if (!texto) return error(res, 400, 'Bad Request: message text is empty');
         if (texto.length > 4096) return error(res, 400, 'Bad Request: message is too long');
+        if (params.parse_mode != null) {
+          if (params.parse_mode !== 'HTML') return error(res, 400, 'Bad Request: unsupported parse_mode');
+          texto = leerHtmlTelegram(texto);
+          if (texto == null) return error(res, 400, "Bad Request: can't parse entities");
+        }
         const m = mensajeDe(chat, { from: { id: bot.id, is_bot: true, first_name: bot.nombre, username: bot.usuario }, text: texto });
         mensajes.push({ ...m, chatId: String(chat.id), silencioso: params.disable_notification === true || params.disable_notification === 'true', params });
         return ok(res, m);
@@ -176,9 +205,14 @@ export async function crearTelegramFalso({ bots = [], chats = [], subirMax = 50 
         porRuta.set(ruta, id);
         const documento = { file_name: doc.nombre, mime_type: 'application/octet-stream', file_id: id, file_unique_id: unico, file_size: doc.datos.length };
         if (escena?.nombre === 'sin_tamano') delete documento.file_size;
-        const m = mensajeDe(chat, { from: { id: bot.id, is_bot: true, first_name: bot.nombre, username: bot.usuario }, document: documento, ...(params.caption ? { caption: params.caption } : {}) });
-        mensajes.push({ ...m, chatId: String(chat.id), silencioso: params.disable_notification === 'true' });
-        documentos.push({ chatId: String(chat.id), mensajeId: m.message_id, nombre: doc.nombre, bytes: doc.datos.length, sha256: createHash('sha256').update(doc.datos).digest('hex'), leyenda: params.caption ?? null, archivoId: id, silencioso: params.disable_notification === 'true' });
+        let leyenda = params.caption ?? null;
+        if (leyenda != null && params.parse_mode != null) {
+          leyenda = params.parse_mode === 'HTML' ? leerHtmlTelegram(leyenda) : null;
+          if (leyenda == null) return error(res, 400, "Bad Request: can't parse entities");
+        }
+        const m = mensajeDe(chat, { from: { id: bot.id, is_bot: true, first_name: bot.nombre, username: bot.usuario }, document: documento, ...(leyenda ? { caption: leyenda } : {}) });
+        mensajes.push({ ...m, chatId: String(chat.id), silencioso: params.disable_notification === 'true', params });
+        documentos.push({ chatId: String(chat.id), mensajeId: m.message_id, nombre: doc.nombre, bytes: doc.datos.length, sha256: createHash('sha256').update(doc.datos).digest('hex'), leyenda, leyendaHtml: params.caption ?? null, datos: doc.datos, archivoId: id, silencioso: params.disable_notification === 'true' });
         return ok(res, m);
       }
       case 'getFile': {

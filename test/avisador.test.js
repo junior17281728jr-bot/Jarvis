@@ -59,7 +59,10 @@ test('2.10 un aviso grave llega sonando y una sola vez; uno de atención en sile
     assert.equal(m.length, 1, 'uno por pasada');
     assert.match(m[0].text, /URGENTE/);
     assert.equal(m[0].silencioso, false);
-    assert.equal(m[0].params.parse_mode, undefined, 'texto plano');
+    // 0.12.8: en HTML (el título en negrita, todo escapado).
+    assert.equal(m[0].params.parse_mode, 'HTML');
+    assert.match(m[0].params.text, /^<b>🔴 URGENTE<\/b>\n/);
+    assert.match(m[0].text, /^🔴 URGENTE\n/, 'Telegram lo muestra sin las etiquetas');
     assert.deepEqual(m[0].params.link_preview_options, { is_disabled: true });
     assert.ok(b.db.prepare("SELECT 1 FROM canal_envios WHERE clave = 'fila_atrasada' AND resultado = 'no_va'").get());
     await b.avisador.pasada();

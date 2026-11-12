@@ -7,6 +7,7 @@ import { abrirBase } from './nucleo/db.js';
 import { crearSupervisor, quitarArchivosCore } from './tareas/supervisor.js';
 import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
 import { crearAvisador } from './canales/avisador.js';
+import { crearBot } from './canales/bot.js';
 import { crearImportador } from './academia/importador.js';
 
 // Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
@@ -28,6 +29,8 @@ const servidor = crearServidor({ db, config, supervisor });
 // Fase 1, parte e: el que manda los avisos graves al Telegram del dueño. Vive en ESTE proceso (no en el trabajador): así
 // llegan también en modo seguro o con el trabajador caído. Empieza después de abrir el puerto y nunca lo traba.
 const avisador = db ? crearAvisador({ db, config, registro: console }) : null;
+// 0.12.8: el bot del dueño (sus comandos y los contratos firmados), también en este proceso y después de abrir el puerto.
+const bot = db ? crearBot({ db, config }) : null;
 // Academia (0.7.1): el que entra al contenido los paquetes que el trabajador trae de Google Drive (src/academia/importador.js).
 // También en este proceso: revisar un JSON de 12 MB pasaría el tope de memoria del trabajador.
 const importador = db ? crearImportador({ db, config, supervisor, registro: console }) : null;
@@ -58,6 +61,11 @@ servidor.listen(config.puerto, config.host, () => {
     console.error('No se pudo encender el aviso por Telegram (sigue):', error?.name ?? 'error');
   }
   try {
+    bot?.iniciar();
+  } catch (error) {
+    console.error('No se pudo encender el bot de Telegram (sigue):', error?.name ?? 'error');
+  }
+  try {
     importador?.iniciar();
   } catch (error) {
     console.error('No se pudo encender el que trae el contenido de Drive (sigue):', error?.name ?? 'error');
@@ -85,6 +93,9 @@ async function cerrar() {
   }
   try {
     await avisador?.parar();
+  } catch { /* nada que esperar */ }
+  try {
+    await bot?.parar();
   } catch { /* nada que esperar */ }
   try {
     await importador?.parar();

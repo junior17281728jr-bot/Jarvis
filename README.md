@@ -701,6 +701,62 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.12.11 (dinero, IA por alumno, Telegram y un dispositivo a la vez) — sin cambio de base
+- **El tope de cada alumno sale de su plan** (`src/ia/tope-alumno.js`, con el instructor con IA encendido y la IA por
+  plan): el tope US$ del mes de su cuenta es el **presupuesto de IA de su plan** (por defecto IA Estándar **US$4**, IA
+  Plus **US$8**; la prueba gratis y quien todavía no tiene nada, **US$1**, así puede comprar). Con minutos de antes, el
+  mayor entre ese y el tope del plan de su cuenta. El administrador puede ponerle un **tope personal** (hasta US$20) o
+  **pausar su IA** (tope 0; para él no hay IA a la vista ni se le vende: `pagos.admin.falta.pausada`). El tope general
+  del dueño sigue mandando. Con Sonnet 5.5 un uso cuesta ≈ US$0.01: 800 usos de Plus pueden pasar de US$8; el
+  formulario lo dice con el costo REAL de los últimos 30 días («el presupuesto no alcanza»). Con Haiku 5.5 sobra.
+- **Planes de IA (Pagos)**: nombres, precio US$, usos, presupuesto de cada plan, días y tope diario de la prueba, tasa
+  RD$ y el modo (planes/minutos), con la contraseña como los demás datos de pago. Con planes, el campo «minutos de
+  regalo» ya no sale (el número queda guardado).
+- **IA por alumno** (`#ia-alumnos`, Dinero e IA): por alumno su plan o prueba, usos y US$ del mes contra su tope, si
+  pagó este mes (fecha y monto del último comprobante aprobado), cuándo vence; tope personal en la misma tarjeta, «Dar
+  la prueba otra vez», «Regalar usos» (van al libro como `regalo_usos`, se gastan después del plan y de la prueba) y
+  «Pausar IA». Ordena por gasto (o nombre, o vence) y termina con los totales.
+- **Registro de la IA** (`#ia-registro`, `#ia-registro/<alumno>`): la meta de la IA con él, su foco (Mi repaso), la
+  próxima clase preparada y cada llamada (fecha, tipo, trozo del texto, costo); y la **biblioteca** de lo guardado y
+  compartido (cualquier `academia.ia.<tipo>.<…>` sin número de alumno: explicaciones, mini-clases y las familias
+  nuevas), con el texto completo, veces reutilizada, ahorro (lo que costó × veces), buscar y **ocultar** una mala: una
+  marca `academia.ia.oculto.<…>` con la fecha de ESA generación y una copia del texto (`src/academia/ocultos.js`);
+  `leerGuardado` la da por no guardada (se pide otra; la nueva no queda oculta). Nunca se borra nada.
+- **El bot del dueño** (`src/canales/bot.js`, en el proceso web junto al avisador): cada 20 s pregunta a Telegram
+  (getUpdates sin esperar, sin webhooks) **solo** con el chat unido y listo, **nunca mientras se une un chat**; contesta
+  solo al chat unido del dueño (privado, no un bot, mismo id; a nadie más, ni «no»), solo mensajes de los últimos 10
+  min y de después de unir el chat; cursor en `telegram.bot.cursor` (uno de más de un día no se usa). Comandos:
+  `/resumen`, `/gastos`, `/pagos`, `/alumno <usuario>`, `/contratos <usuario>|todos` (también `/firmas`), `/ayuda`.
+  Topes propios (30 respuestas y 60 archivos por hora; clases `comando` y `contrato` de `canal_envios`, que **no** gastan
+  los 10/h y 30/día de los avisos graves). **Al restaurar en un servidor nuevo con el mismo bot**, apaga antes el
+  servidor viejo (o manda el código otra vez si no llega): su bot también lee los mensajes del chat. Para el menú del
+  bot, en @BotFather → `/setcommands`:
+
+      resumen - Cómo va hoy
+      gastos - Gasto de la IA del mes
+      pagos - Comprobantes de pago
+      alumno - Un alumno (escribe su usuario)
+      contratos - Contratos firmados (usuario o todos)
+      ayuda - Los comandos
+
+- **Al firmar (o volver a firmar)**, el bot manda al chat del dueño el nombre, la versión, la fecha y el **documento
+  firmado con la firma adentro** como archivo `contrato-<usuario>-v<versión>-<fecha>.html` (no hay generador de PDF sin
+  dependencias: es una página sola que se imprime como PDF desde el teléfono; `src/cuentas/contrato-archivo.js`). La
+  firma deja una marca `telegram.contrato.pendiente.<id>.<n>` y el bot la manda en su próxima pasada (nunca frena la
+  firma; llega aunque se reinicie; a los 7 días sin poder salir queda «vencida»). **Excepción documentada** a «sin datos
+  personales en Telegram» (pedido del dueño), solo al chat del dueño; el archivo de la app sigue siendo la fuente.
+- **«Enviar a mi Telegram»** en cada contrato (archivo de Contratos, el contrato abierto y la ficha del alumno) y
+  «Enviar todos a mi Telegram»; se reenvía las veces que quiera (3 s entre uno y otro: «Espera N s»); «Enviado ✔» o el
+  error claro con «Ir a Claves y Telegram». En Claves y Telegram: **«Probar el bot»** y los comandos para @BotFather.
+- **Mensajes del bot en HTML** (`parse_mode: 'HTML'`, solo en `src/canales/telegram.js`): el título en negrita con un
+  emoji por tipo (📄 contrato, 💳 comprobante, 📊 resumen, 🤖 gasto de la IA, ⚠️ alerta; lo grave sigue 🔴) y TODO lo
+  demás escapado. Se corta el texto plano antes de escapar; si escapado pasara de 4.096, va plano (lo grave siempre llega).
+- Rutas nuevas: `GET /api/admin/academia/ia-alumnos`, `POST /api/admin/academia/alumnos/:id/{regalo,pausa,tope}`,
+  `GET /api/admin/academia/ia-registro?alumno=`, `GET /api/admin/academia/ia-biblioteca?buscar=`,
+  `POST /api/admin/academia/ia-biblioteca/ocultar`, `POST /api/admin/telegram/contratos[/:usuario/:n]`,
+  `POST /api/admin/telegram/probar-bot`.
+- Pruebas: `test/ia3-bot.test.js` (Telegram falso, que ahora lee el HTML como Telegram y rechaza uno mal armado) y
+  `test/ia3-admin.test.js` (proveedor falso).
 ### Lo nuevo de la 0.12.9: el tutor IA del alumno (memoria, «¿Tomo el examen?», la clase a su medida, planes) — sin cambio de base
 Todo lo nuevo se guarda en «ajustes» (filas que se agregan, nunca se borran) y sigue las reglas de siempre: el Test Guide
 tal cual; lo que la IA diga de una respuesta del Test Guide se revisa contra la clave; nunca el nombre del alumno al

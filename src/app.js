@@ -22,6 +22,8 @@ import { registrarRutasPagos } from './api/pagos.js';
 import { registrarRutasPerfil } from './api/perfil.js';
 import { registrarRutasTerminos } from './api/terminos.js';
 import { registrarRutasSoporte } from './api/soporte.js';
+import { registrarRutasIaAlumnos } from './api/ia-alumnos.js';
+import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
 import { estadoTerminos } from './cuentas/terminos.js';
@@ -138,6 +140,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasTerminos(rutas, { config, reloj: academia.reloj });
   // 0.9.2: «Ayuda / Soporte» (escribirle al administrador).
   registrarRutasSoporte(rutas, { config, reloj: academia.reloj, limites: academia.limitesSoporte });
+  // 0.12.8: IA por alumno, Registro de la IA y «Enviar a mi Telegram» (Administrador → Dinero e IA).
+  registrarRutasIaAlumnos(rutas, { config, reloj: academia.reloj, adaptador: copias.adaptador, topesBot: academia.topesBot });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
@@ -152,7 +156,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     const token = leerGalleta(req);
     const usuario = leerSesion(db, token);
     const { opciones } = encontrada;
-    if (!opciones.publica && !usuario) return enviarJson(res, 401, { error: 'no_has_entrado' });
+    // 0.12.8: si su sesión se cerró porque la cuenta (de un alumno) se abrió en otro dispositivo, se dice.
+    if (!opciones.publica && !usuario) return enviarJson(res, 401, { error: token && cerradaPorOtroEquipo(db, token) ? 'sesion_otro_equipo' : 'no_has_entrado' });
     if (usuario?.debeCambiarClave && !opciones.publica && !opciones.permitirConClaveTemporal) return enviarJson(res, 403, { error: 'debe_cambiar_clave' });
     if (opciones.admin && usuario?.rol !== 'admin') return enviarJson(res, 403, { error: 'solo_admin' });
     // 0.11.0: lo de estudiar (/api/academia/…, /api/soporte…) espera a que firme los términos en uso. Quedan libres: entrar,

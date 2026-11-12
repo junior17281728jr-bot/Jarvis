@@ -6,8 +6,10 @@
 //    lleva el token del bot (…/bot<token>/…), así que nada de lo que devuelve este archivo lleva la dirección, el
 //    texto de un error ni la «description» que manda Telegram: solo un motivo de MOTIVOS_CANAL y datos seguros.
 //  - Cada método RESUELVE siempre (nunca lanza por la red): { motivo, esperarMs?, …datos }.
-//  - Texto plano siempre: nunca se pide formato de texto enriquecido, nunca vista previa de enlaces, y nunca se
-//    protege el contenido (el dueño debe poder guardar los archivos de sus copias).
+//  - Texto plano, salvo que quien manda pida { html: true } (0.12.8, pedido del dueño: «mensajes del bot limpios»): entonces
+//    va con el formato HTML de Telegram, y quien arma el texto ya escapó TODO lo que viene de una persona (escaparHtml de
+//    src/canales/textos.js) y lo cortó ANTES de escapar (un corte a la mitad de una etiqueta deja el mensaje sin mandar).
+//    Nunca vista previa de enlaces, y nunca se protege el contenido (el dueño debe poder guardar los archivos de sus copias).
 //  - Límites de la Bot API (telegram-bot-api.json, Bot API 10.3): un bot sube hasta 50 MB (sendDocument) y baja hasta
 //    20 MB (getFile); texto 1–4096 caracteres, leyenda 0–1024.
 //  - La dirección base solo se cambia en modo de prueba (config.canalesBases, 127.0.0.1): nunca desde las pantallas.
@@ -164,26 +166,31 @@ export const TELEGRAM = Object.freeze({
     return { motivo: 'ok', cuenta };
   },
 
-  async enviarTexto(cred, { destino, texto, silencioso = true, senal = null }) {
-    const t = String(texto ?? '').slice(0, LIMITES.textoMax);
+  async enviarTexto(cred, { destino, texto, silencioso = true, html = false, senal = null }) {
+    const crudo = String(texto ?? '');
+    // Con formato, un texto más largo que el tope no se corta aquí (quedaría una etiqueta abierta): no sale.
+    if (html && crudo.length > LIMITES.textoMax) return { motivo: 'pedido_no_valido' };
+    const t = crudo.slice(0, LIMITES.textoMax);
     if (!t) return { motivo: 'pedido_no_valido' };
     const r = await llamarJson(cred, 'sendMessage', {
       chat_id: String(destino), text: t, disable_notification: Boolean(silencioso), link_preview_options: { is_disabled: true },
+      ...(html ? { parse_mode: 'HTML' } : {}),
     }, { senal });
     if (r.motivo !== 'ok') return { motivo: r.motivo, esperarMs: r.esperarMs, ...(r.quizas ? { quizas: true } : {}) };
     if (!Number.isSafeInteger(r.resultado?.message_id)) return mal();
     return { motivo: 'ok', mensajeId: r.resultado.message_id };
   },
 
-  async enviarArchivo(cred, { destino, nombre, datos, leyenda = '', silencioso = true, senal = null }) {
+  async enviarArchivo(cred, { destino, nombre, datos, leyenda = '', silencioso = true, html = false, senal = null }) {
     const token = tokenDe(cred);
     if (!token) return { motivo: 'clave_no_valida' };
     const bytes = datos?.size ?? datos?.length ?? 0;
     if (!bytes) return { motivo: 'pedido_no_valido' };
     if (bytes > LIMITES.subirMaxBytes) return { motivo: 'demasiado_grande' };
+    if (html && String(leyenda ?? '').length > LIMITES.leyendaMax) return { motivo: 'pedido_no_valido' };
     const { cuerpo, tipo } = multipart({
       chat_id: String(destino), caption: String(leyenda ?? '').slice(0, LIMITES.leyendaMax) || null,
-      disable_notification: silencioso ? 'true' : 'false',
+      disable_notification: silencioso ? 'true' : 'false', parse_mode: html && leyenda ? 'HTML' : null,
     }, { nombre, datos });
     const salida = await llamarProveedor({
       url: `${baseDe(cred)}/bot${token}/sendDocument`, metodo: 'POST', cabeceras: { 'content-type': tipo },

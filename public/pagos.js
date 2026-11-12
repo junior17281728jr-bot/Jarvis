@@ -191,7 +191,8 @@ export function crearPagos(h) {
     const campos = {
       banco: campo('banco', c.banco), tipoCuenta: campo('tipoCuenta', c.tipoCuenta), numero: campo('numero', c.numero, { max: 60 }), titular: campo('titular', c.titular),
       documento: campo('documento', c.documento, { max: 40 }), espera: campo('espera', c.espera, { max: 300 }),
-      minutosRegalo: campo('minutosRegalo', c.minutosRegalo, { tipo: 'number' }), minutosPorUso: campo('minutosPorUso', c.minutosPorUso, { tipo: 'number' }),
+      // 0.12.8: con planes, sin «minutos de regalo» (una cuenta nueva tiene la prueba gratis; el número queda guardado).
+      ...(c.modo === 'planes' ? {} : { minutosRegalo: campo('minutosRegalo', c.minutosRegalo, { tipo: 'number' }) }), minutosPorUso: campo('minutosPorUso', c.minutosPorUso, { tipo: 'number' }),
     };
     const instrucciones = el('textarea', { id: 'pago-instrucciones', rows: 3, maxlength: 1000 });
     instrucciones.value = c.instrucciones ?? '';
@@ -267,6 +268,9 @@ export function crearPagos(h) {
         const x = await api('POST', '/api/admin/academia/fallas/ajustes', { umbral: Number(umbral.value) });
         avisar(x.ok ? tx('pagos.guardado') : textoError(x.datos.error), x.ok ? 'bien' : 'mal');
       } }, el('span', { texto: tx('pagos.guardar') })));
+    // 0.12.8: el formulario de los planes (nombres, precios, usos, prueba, tasa, modo y presupuesto de IA por plan).
+    const planesForm = el('div', { class: 'planes-lugar' });
+    import('./admin-ia.js').then(m => planesForm.replaceChildren(m.formularioPlanes(c, d.estimado, { el, t, icono, api, avisar, numero, textoError, recargar: () => pantallaPagosAdmin() })));
     const pendientes = d.pagos.filter(p => p.estado === 'revision');
     const resueltos = d.pagos.filter(p => p.estado !== 'revision');
     // 0.12.3: todos los comprobantes, de siempre (nunca se borran): verlos y bajarlos uno por uno, de a 100.
@@ -294,7 +298,7 @@ export function crearPagos(h) {
         pendientes.length ? el('ul', { class: 'lista-pagos' }, pendientes.map(filaPago)) : el('p', { class: 'suave', texto: tx('pagos.ninguno') }),
         resueltos.length ? el('details', {}, el('summary', { texto: tx('pagos.resueltos', { n: numero(resueltos.length) }) }), el('ul', { class: 'lista-pagos' }, resueltos.map(filaPago))) : null,
         todos),
-      el('div', { class: 'rejilla dos' }, ajustes, el('div', {}, saldos, fallas))));
+      el('div', { class: 'rejilla dos' }, ajustes, el('div', {}, planesForm, saldos, fallas))));
   }
 
   // Los videos de YouTube que el administrador elige por tema (el Profesor virtual los muestra primero). 0.12.5: es su

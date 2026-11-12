@@ -3,7 +3,8 @@
 // trabajador (las copias de cada noche). Genérico: la fase 3 agrega canales de clientes con otro «proposito» y su cuenta.
 //  - Unir el chat (vincular): el dueño pide un código de 8 cifras de UN uso (10 min; 5 intentos por chat y 50 en total;
 //    solo se guarda su huella) y se lo manda a su bot. La pantalla pregunta cada 3 s (revisarVinculo) y el servidor le pregunta a Telegram
-//    como mucho una vez cada 3 s, sin quedarse escuchando: no hay un «escucha» permanente del bot.
+//    como mucho una vez cada 3 s, sin quedarse escuchando. 0.12.8: con el chat unido, el bot del dueño
+//    (src/canales/bot.js) pregunta cada 20 s por sus comandos, pero NUNCA mientras se une un chat.
 //  - Un mensaje une el chat SOLO si las reglas de src/canales/vinculo.js lo aceptan (chat privado, no un bot, nuevo,
 //    código exacto). A un extraño que le escriba al bot nunca se le contesta.
 //  - Ronda 3 del equipo rojo: el código solo NO basta (quien tenga el token lee los mensajes del bot y puede mandarlo

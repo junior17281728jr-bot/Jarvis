@@ -36,6 +36,8 @@ const catalogos = {};
 let idioma = 'es';
 let estado = { setup: null, usuario: null };
 let avisoEntrar = null; // mensaje para la pantalla de entrar (por ejemplo, «tu sesión terminó»)
+// 0.12.8: la sesión se cerró porque la cuenta (de un alumno) se abrió en otro dispositivo: primero se dice, con «Entrar aquí».
+let otroEquipo = false;
 let idiomaElegidoAlEntrar = false; // la persona tocó Español/English antes de entrar
 let turno = 0;
 let avisosCuenta = { avisos: [], recientes: [] }; // avisos de la cuenta (por ejemplo, «el administrador reinició tu contraseña»)
@@ -246,7 +248,8 @@ async function api(metodo, ruta, datos, { fresco = false } = {}) {
 
 // Si la sesión terminó (por ejemplo, se cambió la contraseña en otro equipo), se vuelve a la pantalla de entrar.
 function revisarSesion(respuesta, ruta) {
-  const error = respuesta.datos?.error;
+  let error = respuesta.datos?.error;
+  if (error === 'sesion_otro_equipo') { otroEquipo = true; error = 'no_has_entrado'; }
   if (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') vaciarMemoria();
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
     // Se recuerda de quién era: si entra la misma persona, vuelve a la misma pantalla (la dirección no cambia).
@@ -569,6 +572,15 @@ function pantallaEntrar() {
     if (!r.ok) throw new Error(textoError(r.datos.error));
     await entrarCon(r);
   });
+  if (otroEquipo) {
+    otroEquipo = false;
+    avisoEntrar = null;
+    return mostrar(el('section', { class: 'tarjeta centrada otro-equipo' },
+      marcaConLogo(),
+      el('h1', { texto: t('otro_equipo.titulo') }),
+      el('p', { class: 'aviso con-icono-arriba', role: 'alert', 'data-foco': true }, icono('candado'), el('span', { texto: t('otro_equipo.linea') })),
+      el('button', { type: 'button', class: 'boton-3d grande', onclick: () => pantallaEntrar() }, el('span', { texto: t('otro_equipo.entrar') }))), pie());
+  }
   const aviso = avisoEntrar;
   avisoEntrar = null;
   mostrar(el('section', { class: 'tarjeta centrada' },
@@ -1183,6 +1195,7 @@ function textoAviso(a) {
   // 0.12.3: un cambio delicado del administrador y un comprobante de pago nuevo.
   const cambio = /^cambio_admin:([a-z_]+):\d+$/.exec(String(a.clave));
   if (cambio) return t('aviso.cambio_admin', { que: tSi(`admin.cambio.${cambio[1]}`, cambio[1]), cuenta: d.cuenta ? ` (${d.cuenta})` : '' });
+  if (String(a.clave).startsWith('cuenta_compartida:')) return t('aviso.cuenta_compartida', { alumno: v(d.alumno), veces: v(d.veces) });
   if (String(a.clave).startsWith('pago_recibido:')) return t('aviso.pago_recibido', { alumno: v(d.alumno), minutos: v(d.minutos), precio: v(d.precio) });
   const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
@@ -1630,6 +1643,9 @@ const GRUPOS_ADMIN = [
     { id: 'ia', href: '#ia', clave: 'admin.pestana.ia', icono: 'chispa' },
     { id: 'claves', href: '#claves', clave: 'admin.pestana.claves_telegram', icono: 'llave' },
     { id: 'ia-demo', href: '#ia-demo', clave: 'admin.pestana.ia_demo', icono: 'ojo' },
+    // 0.12.8: la IA de cada alumno (dinero y topes) y lo que la IA hizo (public/admin-ia.js).
+    { id: 'ia-alumnos', href: '#ia-alumnos', clave: 'admin.pestana.ia_alumnos', icono: 'personas' },
+    { id: 'ia-registro', href: '#ia-registro', clave: 'admin.pestana.ia_registro', icono: 'manual' },
   ] },
   { id: 'sistema', clave: 'admin.grupo.sistema', icono: 'servidor', pestanas: [
     { id: 'resumen', href: '#admin', clave: 'admin.pestana.resumen', icono: 'escudo' },
@@ -1744,6 +1760,22 @@ async function pantallaIaDemo() {
   // 0.12.5: dentro de «Dinero e IA», con la cabecera de Administrador.
   if (!r.ok) return mostrar(marco('admin', cabeceraAdmin('ia-demo'), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, numero, mostrar, marco: (seccion, ...resto) => marco(seccion, cabeceraAdmin('ia-demo'), ...resto), instructorUi, tutorUi, vistaPlanes });
+}
+// 0.12.8: «IA por alumno» y «Registro de la IA» (public/admin-ia.js, solo se carga aquí).
+const piezasIa = (recargar = () => dibujar()) => ({ el, t, tSi, icono, api, avisar, numero, fecha, talCual, textoError, confirmar, insignia, vacio, recargar });
+async function pantallaIaAlumnos() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-alumnos'), import('./admin-ia.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('ia-alumnos'), r.ok ? vista.pantallaIaAlumnos(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
+async function pantallaRegistroIa(alumno = null) {
+  const vigente = nuevoTurno();
+  // Se pide al abrir (no se adelanta): puede leer todo lo que la IA guardó.
+  const ruta = alumno ? `/api/admin/academia/ia-registro?alumno=${encodeURIComponent(alumno)}` : '/api/admin/academia/ia-registro';
+  const [r, vista] = await Promise.all([api('GET', ruta), import('./admin-ia.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('ia-registro'), r.ok ? vista.pantallaRegistroIa(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
 async function pantallaProfesor() {
   const vigente = nuevoTurno();
@@ -2007,6 +2039,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   plegable.append(permisos.cuentas ? formulario : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t('admin.cuentas_solo_tailnet') })));
   mostrar(marco('admin', cabecera, aviso,
     el('div', { class: 'rejilla admin-usuarios' }, tarjetaNuevo, tarjetaUsuarios)));
+  // 0.12.8: «Un solo dispositivo a la vez para alumnos» (public/admin-ia.js).
+  import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.admin-usuarios'); if (rejilla) rejilla.append(m.tarjetaUnDispositivo(piezasIa())); });
   if (abrir && permisos.cuentas) {
     tarjetaNuevo.scrollIntoView({ block: 'start' });
     completo.focus({ preventScroll: true });
@@ -2924,6 +2958,8 @@ async function pantallaClaves(aviso = null) {
     [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'avisos') - (a.grupo === 'avisos')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente }) : el('section', { class: 'tarjeta' },
       titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
       (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))))));
+  // 0.12.8: «Probar el bot» y los comandos para @BotFather (public/admin-ia.js).
+  import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.dos'); if (vigente() && rejilla) rejilla.append(m.tarjetaBot(piezasIa())); });
 }
 
 // ayuda: lo que se muestra al pegar en vez de «dónde se crea» (el Telegram lleva los pasos de @BotFather);
@@ -5113,7 +5149,10 @@ async function pantallaAlumnos() {
 async function pantallaAlumno(id, pestana = 'resumen') {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/ficha`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
-  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaFicha(d, pestana, h));
+  if (!vigente()) return;
+  dibujarDeAlumnos(r, s, (d, h) => vista.vistaFicha(d, pestana, h));
+  // 0.12.8: sus contratos («Enviar a mi Telegram») y su IA, al final de la ficha.
+  if (r.ok) import('./admin-ia.js').then(m => { const main = raiz.querySelector('main.contenido'); if (vigente() && main) main.insertBefore(m.fichaIa(id, piezasIa()), main.lastElementChild); });
 }
 async function pantallaIntentoAlumno(id, intento) {
   const vigente = nuevoTurno();
@@ -5129,20 +5168,23 @@ async function pantallaReporte() {
   dibujarDeAlumnos(datos, s, (d, h) => vista.pantallaReporte(d, { ...h, decir, fechaDia }));
 }
 // 0.9.2: los contratos firmados (public/contratos-vista.js, solo se carga aquí).
-const piezasContratos = h => ({ ...h, nombreApp: estado.setup?.nombreApp ?? '' });
+const piezasContratos = h => ({ ...h, nombreApp: estado.setup?.nombreApp ?? '', telegram: opciones => adminIaCargado?.botonTelegram(h, opciones) ?? null });
+// 0.12.8: «Enviar a mi Telegram» en los contratos (public/admin-ia.js se carga junto con la vista).
+let adminIaCargado = null;
+const cargarAdminIa = () => import('./admin-ia.js').then(m => { adminIaCargado = m; return m; });
 async function pantallaContratos() {
   const vigente = nuevoTurno();
-  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js'), cargarAdminIa()]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaListaContratos(d, piezasContratos(h)));
 }
 async function pantallaContrato(usuario, version) {
   const vigente = nuevoTurno();
-  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/contratos/${encodeURIComponent(usuario)}/${encodeURIComponent(version)}`), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/contratos/${encodeURIComponent(usuario)}/${encodeURIComponent(version)}`), api('GET', '/api/admin/sistema'), import('./contratos-vista.js'), cargarAdminIa()]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaContrato(d, piezasContratos(h)));
 }
 async function pantallaContratosTodos() {
   const vigente = nuevoTurno();
-  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js'), cargarAdminIa()]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaTodos(d, piezasContratos(h)));
 }
 // 0.9.2: «Ayuda / Soporte» (public/soporte-vista.js, solo se carga aquí).
@@ -5590,7 +5632,7 @@ async function dibujar() {
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'contenido/terminos', 'contenido/videos'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5659,6 +5701,10 @@ async function dibujar() {
   if (seccion === 'aprendizaje' && esAdmin) return pantallaAprendizaje();
   // 0.12.4: la «Vista de prueba de la IA» (solo el administrador; sin IA, sin costo, sin guardar nada).
   if (seccion === 'ia-demo' && esAdmin) return pantallaIaDemo();
+  // 0.12.8: IA por alumno y Registro de la IA (public/admin-ia.js).
+  if (seccion === 'ia-alumnos' && esAdmin) return pantallaIaAlumnos();
+  const registroIa = seccion.match(/^ia-registro(?:\/(\d+))?$/);
+  if (registroIa && esAdmin) return pantallaRegistroIa(registroIa[1] ?? null);
   const aprendizajeDe = seccion.match(/^aprendizaje\/(\d+)$/);
   if (aprendizajeDe && esAdmin) return pantallaAprendizaje(aprendizajeDe[1]);
   // 0.12.2: «Mi repaso» y la mini-clase de un punto. Las direcciones viejas del refuerzo (#refuerzo/…) llevan a «Mi repaso».
@@ -5730,6 +5776,8 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'pagos') return admin ? ['/api/admin/academia/pagos'] : [];
   if (seccion === 'profesor') return ['/api/academia/profesor'];
   if (seccion === 'ia-demo') return admin ? ['/api/admin/academia/ia-demo'] : [];
+  if (seccion === 'ia-alumnos') return admin ? ['/api/admin/academia/ia-alumnos'] : [];
+  if (/^ia-registro(?:\/\d+)?$/.test(seccion)) return [];
   if (seccion === 'aprendizaje') return [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
@@ -5806,6 +5854,7 @@ async function iniciar() {
   }
   // Si hubo que esperar al servidor, la cuenta se vuelve a pedir (la primera respuesta puede ser vieja).
   const yo = intento ? await api('GET', '/api/yo') : await pedidoYo;
+  if (!yo.ok && yo.datos?.error === 'sesion_otro_equipo') otroEquipo = true;
   if (yo.ok) {
     estado.usuario = yo.datos.usuario;
     recordarAdmin(estado.usuario);

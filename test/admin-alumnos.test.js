@@ -2,6 +2,7 @@
 // pregunta, por materia, actividad con entradas y salidas), «Comparar», y «Mi perfil» (nombre para mostrar, avatar,
 // meta y cambiar el nombre de usuario). Lo del administrador: 401 sin sesión y 403 para los alumnos. Un alumno nunca ve
 // lo de otro. Usa solo el paquete de MUESTRA (test/academia-muestra.js).
+import { ponerUnDispositivo } from '../src/cuentas/un-dispositivo.js';
 import { configDePrueba, conServidor } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -167,6 +168,8 @@ test('la ficha: resumen, cada intento (lo que eligió y la correcta), por materi
 
 test('actividad: la última entrada, la última salida y cada sesión con su entrada y su salida', async () => {
   await conAcademia(async ({ base, db, admin, ana, ids }) => {
+    // 0.12.8: aquí la misma alumna entra varias veces a la vez (lo de «un solo dispositivo» se prueba en test/un-dispositivo.test.js).
+    ponerUnDispositivo(db, false);
     const a0 = (await pedir(base, 'GET', `/api/admin/academia/alumnos/${ids.ana}/ficha`, { galleta: admin })).datos.actividad;
     assert.ok(a0.ultimaEntrada);
     assert.equal(a0.ultimaSalida, null);
@@ -265,6 +268,7 @@ test('mi perfil: nombre para mostrar, avatar y meta; el avatar sale arriba, en e
 
 test('cambiar el nombre de usuario: con la contraseña, libre (sin importar mayúsculas), y la sesión sigue', async () => {
   await conAcademia(async ({ base, db, ana, ids }) => {
+    ponerUnDispositivo(db, false); // 0.12.8: varias sesiones de la misma alumna (test/un-dispositivo.test.js prueba lo otro)
     const cambiar = (galleta, nombre, clave = CLAVE) => pedir(base, 'POST', '/api/yo/usuario', { galleta, datos: { nombre, clave } });
     assert.equal((await cambiar(null, 'ana2')).codigo, 401);
     assert.equal((await cambiar(ana, 'ana2', 'mala')).datos.error, 'clave_actual_incorrecta');

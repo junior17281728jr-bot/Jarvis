@@ -491,9 +491,12 @@ test('solo el adaptador de Telegram (src/canales/telegram.js) nombra el servidor
   assert.match(telegram, /import \{ llamarProveedor \} from '\.\.\/ia\/llamar\.js';/, 'el adaptador pasa por la única puerta a la red');
   // Nunca: borrar mensajes, quitar el webhook de nadie, proteger el contenido (el dueño debe poder guardar sus copias)
   // ni pedir formato enriquecido.
+  // 0.12.8 (pedido del dueño): el formato HTML de Telegram, SOLO en el adaptador y solo «HTML» (quien arma el texto escapa).
   for (const f of codigo) {
-    assert.doesNotMatch(leer(f), /\b(?:protect_content|deleteWebhook|deleteMessage|parse_mode)\b/, `${relative(RAIZ, f)}`);
+    assert.doesNotMatch(leer(f), /\b(?:protect_content|deleteWebhook|deleteMessage)\b/, `${relative(RAIZ, f)}`);
+    if (f !== de('canales', 'telegram.js')) assert.doesNotMatch(leer(f), /\bparse_mode\b/, `${relative(RAIZ, f)}`);
   }
+  assert.deepEqual([...telegram.matchAll(/parse_mode: ([^,}]+)/g)].map(m => m[1].trim()), ["'HTML'", "html && leyenda ? 'HTML' : null"]);
   // La dirección del Telegram falso solo se acepta en modo de prueba, y solo 127.0.0.1.
   const config = leer(de('nucleo', 'config.js'));
   assert.match(config, /config\.canalesBases = config\.modoPrueba \? basesDeCanalDePrueba\(env\) : \{\}/);

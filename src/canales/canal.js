@@ -31,7 +31,9 @@ export const PROPOSITOS_CANAL = Object.freeze(['avisos_dueno']);
 // 'por_confirmar' (ronda 3): el código llegó desde un chat; falta escribir en la pantalla el segundo código que el bot le
 // mandó a ese chat.
 export const ESTADOS_CANAL = Object.freeze(['pendiente', 'por_confirmar', 'vencido', 'activo', 'bloqueado', 'perdido', 'desvinculado']);
-export const CLASES_ENVIO = Object.freeze(['aviso', 'cierre', 'resumen', 'prueba', 'bienvenida', 'copia_parte', 'copia_indice']);
+// 0.12.8: 'comando' (lo que el bot contesta al dueño, y «Probar el bot») y 'contrato' (un contrato firmado como archivo):
+// con sus propios topes (src/canales/bot.js), nunca en los de los avisos.
+export const CLASES_ENVIO = Object.freeze(['aviso', 'cierre', 'resumen', 'prueba', 'bienvenida', 'copia_parte', 'copia_indice', 'comando', 'contrato']);
 // 'dudoso' (ronda 3): salió y no se sabe si llegó (se cortó la respuesta): cuenta para los topes como uno enviado.
 export const RESULTADOS_ENVIO = Object.freeze(['enviado', 'agrupado', 'silenciado', 'no_va', 'antes_de_conectar', 'fallido', 'vencido', 'dudoso']);
 // Qué uso de clave (src/claves/usos.js, parte e paso 2) guarda el token de cada tipo de canal.

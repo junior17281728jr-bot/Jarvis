@@ -10,6 +10,7 @@ import {
   contratos, contrato, pngDeFirma, ponerConsentimientoIa, ponerVerificacion, ponerTutorPagos, ponerNacimiento, nombreLegalDe, queCambio,
 } from '../cuentas/terminos.js';
 import { ponerNombreVisible } from '../cuentas/perfil.js';
+import { marcarContratoPorMandar } from '../canales/bot.js';
 
 const LIMITE_CUERPO_FIRMA = 240 * 1024;
 
@@ -32,7 +33,11 @@ export function registrarRutasTerminos(rutas, { config = null, reloj = Date.now 
   rutas.agregar('POST', '/api/yo/terminos', async ({ db, req, usuario, cliente }) => {
     necesitaConfig();
     const datos = await leerJson(req, LIMITE_CUERPO_FIRMA);
+    const antes = firmasDe(db, usuario.id).length;
     const estado = aceptarTerminos(db, usuario.id, datos, { config, ip: cliente, navegador: req.headers['user-agent'] ?? null, ahoraMs: reloj() });
+    // 0.12.8: una firma nueva va al Telegram del dueño (la manda el bot en su próxima pasada; nunca frena la firma).
+    const despues = firmasDe(db, usuario.id);
+    if (despues.length > antes) marcarContratoPorMandar(db, usuario.id, despues.at(-1).n, reloj());
     return { codigo: 200, datos: { estado } };
   });
 

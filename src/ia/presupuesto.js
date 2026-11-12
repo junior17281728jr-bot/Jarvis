@@ -137,7 +137,7 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   if (general.usadoMicro + reserva > general.topeMicro) return no('tope_general', 'general', { ...base, ...general });
   let espacio = null;
   if (espacioId != null) {
-    const t = topeEspacioMicro(db, cfg, espacioId);
+    const t = topeEspacioMicro(db, cfg, espacioId, ahora);
     if (!t.admin) {
       espacio = { usadoMicro: gastoMicro(db, { mes, espacioId }), topeMicro: t.topeMicro };
       if (espacio.usadoMicro + reserva > espacio.topeMicro) return no('tope_espacio', `e${espacioId}`, { ...base, ...espacio });
@@ -449,7 +449,7 @@ export function disponibilidad(db, { config, espacioId, proposito, entradaMax, s
   const cfg = leerConfigIa(db);
   const mes = mesCobro(ahora);
   const r = evaluar(db, { config, cfg, def, espacioId, proyectoId: null, entradaMax, salidaMax: salida, maximoConfirmadoMicro: null, ahora });
-  const t = espacioId != null ? topeEspacioMicro(db, cfg, espacioId) : { admin: true };
+  const t = espacioId != null ? topeEspacioMicro(db, cfg, espacioId, ahora) : { admin: true };
   const usadoMicro = t.admin ? gastoMicro(db, { mes }) : gastoMicro(db, { mes, espacioId });
   const topeMicro = t.admin ? cfg.topeGeneralMicro : t.topeMicro;
   const proveedor = r.ok ? r.eleccion.proveedor : (r.proveedor ?? null);

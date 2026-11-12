@@ -452,3 +452,38 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
   .contrato-tabla, .contrato-firmas, .contrato-firma { break-inside: avoid; }
   .contrato-doc h2 { break-after: avoid; }
 }
+
+/* 0.12.8: IA por alumno, Registro de la IA, planes, «Enviar a mi Telegram» y el bot (public/admin-ia.js). */
+.ia-alumnos-barra { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .5rem 0 .75rem; }
+.ia-alumnos-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: .75rem; }
+.ia-alumno { border: 1px solid var(--borde, #d6dbe4); border-radius: 14px; padding: .75rem; display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+.ia-alumno.pausada { opacity: .85; border-style: dashed; }
+.ia-alumno p { margin: 0; overflow-wrap: anywhere; }
+.ia-alumno-cabeza { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .35rem; }
+.ia-alumno-barra { width: 100%; height: .5rem; }
+.ia-alumno-tope, .ia-alumno-regalo { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.ia-alumno-tope input, .ia-alumno-regalo input { width: 6.5rem; min-height: 44px; }
+.ia-alumno-acciones { flex-wrap: wrap; gap: .4rem; }
+.ia-alumno-acciones button, .ia-alumno-tope button, .ia-alumno-regalo button { min-height: 44px; }
+.ia-alumnos-totales { display: flex; flex-wrap: wrap; gap: .25rem .75rem; margin-top: .9rem; padding-top: .6rem; border-top: 2px solid var(--borde, #d6dbe4); }
+.registro-datos { display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr); gap: .3rem .75rem; margin: .5rem 0; }
+.registro-datos dt { font-weight: 600; }
+.registro-datos dd { margin: 0; overflow-wrap: anywhere; }
+.registro-llamadas { list-style: none; padding: 0; margin: .5rem 0; display: flex; flex-direction: column; gap: .5rem; }
+.registro-llamadas li { border-bottom: 1px solid var(--borde, #e3e7ee); padding-bottom: .4rem; }
+.registro-llamadas p { margin: 0; overflow-wrap: anywhere; }
+.biblioteca-buscar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .5rem 0; }
+.biblioteca-buscar input { flex: 1 1 12rem; min-height: 44px; min-width: 0; }
+.biblioteca-item { border: 1px solid var(--borde, #d6dbe4); border-radius: 12px; padding: .5rem .75rem; margin: .5rem 0; }
+.biblioteca-item.oculta { border-style: dashed; }
+.biblioteca-item summary { cursor: pointer; }
+.biblioteca-corto { margin: .25rem 0 0; }
+.biblioteca-texto { white-space: pre-wrap; overflow-wrap: anywhere; }
+.planes-form fieldset.planes-plan { border: 1px solid var(--borde, #d6dbe4); border-radius: 12px; margin: .6rem 0; padding: .5rem .75rem; min-width: 0; }
+.campo-planes { display: flex; flex-direction: column; gap: .2rem; margin: .4rem 0; }
+.campo-planes input, .campo-planes select { min-height: 44px; max-width: 100%; }
+.telegram-envio { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.telegram-estado:empty { display: none; }
+.ficha-ia-firma { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem; padding: .35rem 0; }
+.contratos-lista li { display: flex; flex-direction: column; gap: .3rem; }
+.bot-comandos { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; padding: .5rem; border-radius: 8px; border: 1px solid var(--borde, #d6dbe4); }
