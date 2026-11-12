@@ -142,7 +142,7 @@ export function crearSincronizador({ topes = {} } = {}) {
           if (!queda()) { informe.parcial = true; return; }
           const esMp4 = clase === 'video' && ARCHIVO_MP4.test(archivo);
           // Un mp4 tarda: solo se empieza si al paso le queda su tiempo entero (si no, en la próxima revisión).
-          if (esMp4 && quedaMs() < T.videoMs + 60_000) { informe.parcial = true; return; }
+          if (esMp4 && quedaMs() < T.videoMs + 30_000) { informe.parcial = true; return; }
           const lista = candidatos(arbol.archivos, archivo, paquete.camino);
           if (!lista.length) { error(archivo, 'no_esta_en_drive'); continue; }
           const d = declarado(config, fila, clase, archivo);

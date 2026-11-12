@@ -4256,7 +4256,7 @@ async function pantallaExtra(materia) {
   const [r, vista] = await Promise.all([api('GET', `/api/academia/extra/${encodeURIComponent(materia)}`), import('./extra-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir });
+  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir, vistaClip });
 }
 
 async function pantallaExamen(materia) {

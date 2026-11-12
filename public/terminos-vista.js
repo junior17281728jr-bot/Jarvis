@@ -196,9 +196,24 @@ export function padFirma(h, { id = 'propia' } = {}) {
       marco,
       el('div', { class: 'firma-pie' }, el('span', { class: 'suave chica', texto: t('firma.ayuda') }), el('span', { class: 'firma-botones' }, deshacer, borrar))),
     vacia,
-    png: () => lienzo.toDataURL('image/png'),
+    png: () => pngChico(lienzo),
     alCambiar: fn => { alCambiar = fn; },
   };
+}
+// La imagen de la firma cabe en el tope del servidor (50 KB): si una firma muy cargada pesa más, se guarda más chica.
+export const FIRMA_BYTES = 46_000;
+const bytesDe = url => Math.floor(((url.length - url.indexOf(',') - 1) * 3) / 4);
+function pngChico(lienzo) {
+  let url = lienzo.toDataURL('image/png');
+  for (const ancho of [480, 360, 240]) {
+    if (bytesDe(url) <= FIRMA_BYTES) break;
+    const chico = document.createElement('canvas');
+    chico.width = ancho;
+    chico.height = Math.round((ancho * lienzo.height) / lienzo.width);
+    chico.getContext('2d').drawImage(lienzo, 0, 0, chico.width, chico.height);
+    url = chico.toDataURL('image/png');
+  }
+  return url;
 }
 
 // Edad cumplida en una fecha (AAAA-MM-DD).

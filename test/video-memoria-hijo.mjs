@@ -1,9 +1,13 @@
-// Un proceso hijo para test/video-mp4.test.js (no es un archivo *.test.js): con --expose-gc, sube un mp4 de 48 MB por la
-// API del administrador (generado por pedazos) y lo baja entero y por partes, midiendo la memoria de búferes que queda
-// VIVA (después de gc) mientras pasa. Imprime una línea JSON. Nunca usa internet (carga ./ayuda.js primero).
+// Un proceso hijo para test/video-mp4.test.js (no es un archivo *.test.js), con las banderas de memoria del trabajador:
+// sube un mp4 de 32 MB por la API del administrador (generado por pedazos), lo baja entero, y lo baja como lo hace Drive
+// (bajarArchivo, de un Drive falso en 127.0.0.1), midiendo la memoria de búferes que queda VIVA (después de gc) mientras
+// pasa. Imprime una línea JSON. Nunca usa internet (carga ./ayuda.js primero).
 import './ayuda.js';
 import { Readable } from 'node:stream';
-import { request } from 'node:http';
+import { request, createServer } from 'node:http';
+import { join } from 'node:path';
+import { statSync } from 'node:fs';
+import { bajarArchivo } from '../src/academia/drive.js';
 import { configDePrueba, conServidor } from './ayuda.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
@@ -11,7 +15,7 @@ import { crearUsuario } from '../src/cuentas/usuarios.js';
 import { hashClave } from '../src/cuentas/claves.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 
-const TOTAL = 48 * 1024 * 1024;
+const TOTAL = 32 * 1024 * 1024;
 const CLAVE = 'una clave bien larga';
 const byteEn = i => (i * 7 + 3) % 251;
 const CABEZA = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypisom', 'latin1'), Buffer.alloc(12)]);
@@ -73,6 +77,21 @@ await conServidor(crearServidor({ db, config }), async base => {
   Object.assign(salida, { bajada: res.status, visto, mal });
 });
 db.close();
+salida.picoServidorMb = Math.round((pico / 1048576) * 10) / 10;
+// Como Drive: el trabajador baja el mp4 directo al disco.
+pico = 0;
+const falso = createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': TOTAL }); flujoMp4(TOTAL, 64 * 1024).pipe(res); });
+const puerto = await new Promise(ok => falso.listen(0, '127.0.0.1', () => ok(falso.address().port)));
+globalThis.gc();
+base0 = process.memoryUsage().arrayBuffers;
+const ruta = join(config.raiz, 'drive-video.part');
+const bases = { lista: `http://127.0.0.1:${puerto}`, bajar: `http://127.0.0.1:${puerto}` };
+const medidor = setInterval(medir, 50);
+const b = await bajarArchivo('archivoVideoMp400001', { bases, ruta, tope: 150 * 1024 * 1024, espacio: () => null });
+clearInterval(medidor);
+medir();
+await new Promise(ok => falso.close(ok));
+Object.assign(salida, { drive: b.ok, driveBytes: statSync(ruta).size });
 salida.picoMb = Math.round((pico / 1048576) * 10) / 10;
 salida.maxRssMb = Math.round(process.resourceUsage().maxRSS / 1024);
 console.log(JSON.stringify(salida));

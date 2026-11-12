@@ -31,6 +31,7 @@ export function pantallaExtra(datos, h) {
   const tarjeta = c => el('article', { class: 'extra-tarjeta' },
     el('p', { class: 'extra-tarjeta-sello' }, el('span', { class: 'sello', texto: t('extra.profundiza') })),
     el('h4', { texto: c.titulo }),
+    c.clip?.url && h.vistaClip ? h.vistaClip(c.clip).nodo : null, // 0.12.1: el ejemplo en video corto
     c.puntos?.length ? el('ul', {}, c.puntos.map(p => el('li', { texto: p }))) : null,
     c.recuerda ? el('p', { class: 'extra-recuerda' }, el('strong', { texto: `${t('acad.recuerda')}: ` }), el('span', { texto: c.recuerda })) : null,
     c.ejemplo ? el('p', { class: 'suave', texto: c.ejemplo }) : null,

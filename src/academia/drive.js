@@ -34,7 +34,9 @@ export const TOPES_DRIVE = Object.freeze({
   imagen: LIMITES.figuraBytes, // 8 MB
   audio: LIMITES.audioBytes, // 40 MB
   video: LIMITES.videoBytes, // 0.12.1: 150 MB (el mp4 del video resumen)
-  videoMs: 840_000, // 0.12.1: 14 minutos para bajar un mp4 (150 MB a ~1,5 Mbit/s): la puerta deja hasta 15 con alTrozo
+  // 0.12.1: 7 minutos y medio para bajar un mp4 (90 MB a ~1,6 MB/s sobra; 150 MB pide ~2,7 Mbit/s). El paso de la tarea
+  // dura 10 minutos (src/tareas/tipos.js): el mp4 solo se empieza si al paso le queda este tiempo y medio minuto más.
+  videoMs: 450_000,
   porRevision: 400 * 1024 * 1024, // lo que se baja como mucho en una revisión (lo demás, en la siguiente)
 });
 

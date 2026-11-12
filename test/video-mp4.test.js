@@ -18,6 +18,9 @@ import { hashClave } from '../src/cuentas/claves.js';
 import { revisarPaquete, videosDe, LIMITES } from '../src/academia/formato.js';
 import { esMp4, revisarEspacio } from '../src/academia/paquetes.js';
 import { crearSincronizador } from '../src/academia/sincronizar.js';
+import { definicion } from '../src/tareas/tipos.js';
+import { BANDERAS_TRABAJADOR } from '../src/tareas/supervisor.js';
+import { TOPES_DRIVE } from '../src/academia/drive.js';
 import { importarEntrante } from '../src/academia/importador.js';
 import { guardarCarpetaDrive, leerRevisiones } from '../src/academia/drive-estado.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
@@ -260,19 +263,22 @@ test('video 0.12.1: subir el mp4 y su portada, el reproductor de escenas mientra
   db.close();
 });
 
-test('video 0.12.1: sin pasar nunca el archivo entero por la memoria (subirlo y servirlo de 48 MB, por pedazos)', () => {
-  // En un proceso hijo con --expose-gc: mide los búferes que quedan VIVOS mientras pasa (entero serían 48 MB).
-  const r = spawnSync(process.execPath, ['--no-warnings', '--expose-gc', join(RAIZ_SRC, '..', 'test', 'video-memoria-hijo.mjs')], {
+test('video 0.12.1: sin pasar nunca el archivo entero por la memoria (subirlo, servirlo y bajarlo de Drive, 32 MB por pedazos)', () => {
+  // En un proceso hijo con las banderas del trabajador: mide los búferes que quedan VIVOS mientras pasa (entero serían 32 MB).
+  const r = spawnSync(process.execPath, [...BANDERAS_TRABAJADOR, join(RAIZ_SRC, '..', 'test', 'video-memoria-hijo.mjs')], {
     encoding: 'utf8', timeout: 240_000, env: { PATH: process.env.PATH, OPORTIA_TEST: '1', ...(process.env.TMPDIR ? { TMPDIR: process.env.TMPDIR } : {}) },
   });
   assert.equal(r.status, 0, r.stderr);
   const m = JSON.parse(r.stdout.trim().split('\n').at(-1));
   assert.equal(m.subida, 201);
   assert.equal(m.bajada, 200);
-  assert.equal(m.visto, 48 * 1024 * 1024);
+  assert.equal(m.visto, 32 * 1024 * 1024);
   assert.equal(m.mal, 0);
-  assert.ok(m.picoMb < 16, `quedaron vivos ${m.picoMb} MB de búferes`);
-  assert.ok(m.maxRssMb < 200, `el proceso usó ${m.maxRssMb} MB`);
+  assert.equal(m.drive, true);
+  assert.equal(m.driveBytes, 32 * 1024 * 1024);
+  // Servidor y quien pide están en el mismo proceso (los dos lados cuentan): entero serían 32 MB o más.
+  assert.ok(m.picoServidorMb < 24, `quedaron vivos ${m.picoServidorMb} MB de búferes (servidor)`);
+  assert.ok(m.picoMb < 16, `quedaron vivos ${m.picoMb} MB de búferes (Drive)`);
   // Y el código que lo hace nunca lee un video entero: por pedazos (createReadStream, pipeline), nunca readFile.
   const api = readFileSync(join(RAIZ_SRC, 'api', 'academia.js'), 'utf8');
   const enviar = api.slice(api.indexOf('export function enviarPorPartes'), api.indexOf('export function registrarRutasAcademia'));
@@ -316,7 +322,9 @@ async function conDrive(fn) {
   };
   try { await fn(estado); } finally { await Promise.all([lista, bajar].map(s => new Promise(ok => s.close(ok)))); }
 }
-async function revisar(db, config, { quedaMs = 900_000 } = {}) {
+// Como el trabajador: cada paso con el tiempo de verdad de la tarea (10 minutos).
+const PASO_MS = definicion('academia.drive').tiempoPorPasoMs;
+async function revisar(db, config, { quedaMs = PASO_MS } = {}) {
   const paso = crearSincronizador();
   let punto = null;
   for (let i = 0; i < 50; i++) {
@@ -328,6 +336,10 @@ async function revisar(db, config, { quedaMs = 900_000 } = {}) {
   }
   assert.fail('la revisión no terminó');
 }
+
+test('video 0.12.1: el mp4 cabe en un paso de la tarea (con su margen)', () => {
+  assert.ok(TOPES_DRIVE.videoMs + 30_000 < PASO_MS - 60_000, `${TOPES_DRIVE.videoMs} ms en un paso de ${PASO_MS} ms`);
+});
 
 test('video 0.12.1: Drive baja el mp4 por su nombre (por pedazos, con confirm=t), mira antes el espacio libre y espera tiempo para empezarlo', async () => {
   await conDrive(async drive => {

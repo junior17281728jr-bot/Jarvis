@@ -698,7 +698,8 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   `video/mp4`): `GET /api/academia/videos/<versión>~<archivo>?v=<huella>`. Un archivo de una versión nunca cambia y la dirección
   lleva su huella (tamaño y fecha), así que se guarda un año en el aparato (`private, max-age=31536000, immutable`, con ETag).
 - Llegan como el audio: desde Drive (por su nombre, al final, después de lo chico; `confirm=t`, por pedazos directo al disco, hasta
-  **150 MB**, 14 minutos para bajarlo, y solo se empieza si al paso le queda ese tiempo: si no, en la revisión siguiente) o a mano
+  **150 MB**, 7 minutos y medio para bajarlo, y solo se empieza si al paso de 10 minutos le queda ese tiempo y medio minuto
+  más: si no, en la revisión siguiente, donde lo demás ya está y llega al principio del paso) o a mano
   (`POST /api/admin/academia/paquetes/:id/video/:archivo`, o eligiéndolo junto con el JSON en Contenido → Subir). Antes de
   escribir un mp4 se mira el disco: hace falta el **doble** de lo que pesa libre (con el largo que dice el pedido o Drive; si no lo
   dicen, el doble del tope). Si no hay: a mano, `507 sin_espacio_disco` con los MB que faltan; desde Drive, la revisión lo dice

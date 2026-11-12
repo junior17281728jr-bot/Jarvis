@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PASOS_FIRMA, RESUMEN_FIRMA, indiceDe, progresoLectura, lecturaCompleta, parteValida, edad } from '../public/terminos-vista.js';
-import { TERMINOS_V1, PRIVACIDAD_V1 } from '../src/cuentas/terminos.js';
+import { PASOS_FIRMA, RESUMEN_FIRMA, FIRMA_BYTES, indiceDe, progresoLectura, lecturaCompleta, parteValida, edad } from '../public/terminos-vista.js';
+import { TERMINOS_V1, PRIVACIDAD_V1, FIRMA_MAXIMA } from '../src/cuentas/terminos.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const idioma = l => JSON.parse(readFileSync(join(RAIZ, 'public', 'i18n', `${l}.json`), 'utf8'));
@@ -77,6 +77,10 @@ test('firma 0.12.1: la pantalla manda al servidor lo mismo de siempre y solo dej
   const pad = codigo.slice(codigo.indexOf('export function padFirma'), codigo.indexOf('export function edad'));
   assert.doesNotMatch(pad, /fillText|firma\.aqui'\)\s*\)/);
   assert.match(pad, /trazos\.pop\(\)/, 'Deshacer quita el último trazo');
+  // La firma grande (720 × 240) siempre cabe en el tope del servidor: si pesa más, se guarda más chica.
+  assert.ok(FIRMA_BYTES < FIRMA_MAXIMA);
+  assert.match(codigo, /png: \(\) => pngChico\(lienzo\)/);
+  assert.match(codigo, /for \(const ancho of \[480, 360, 240\]\)/);
   assert.doesNotMatch(codigo, /innerHTML/);
   // Lo de siempre sigue igual.
   assert.equal(parteValida('  Ana   María '), 'Ana María');
