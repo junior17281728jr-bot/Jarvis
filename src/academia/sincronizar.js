@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { ErrorTarea } from '../tareas/tipos.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import {
-  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, videosQueFaltan, declarado, rutaDeRecurso,
+  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, videosQueFaltan, clipsQueFaltan, declarado, rutaDeRecurso,
   manifiesto, jsonEntero, guardarAjuste, topeDe, DISTINTO,
 } from './paquetes.js';
 import { espacioLibre } from './espacio.js';
@@ -135,8 +135,8 @@ export function crearSincronizador({ topes = {} } = {}) {
     // 3. Las figuras y los audios de una versión que faltan (de su manifiesto: el JSON entero nunca se lee aquí).
     async function completar(fila, paquete) {
       // 0.12.1: el video (mp4 y su portada) al final: lo chico llega primero.
-      const QUE_FALTA = { figura: figurasQueFaltan, audio: audiosQueFaltan, pagina: paginasQueFaltan, video: videosQueFaltan };
-      for (const clase of ['figura', 'audio', 'pagina', 'video']) {
+      const QUE_FALTA = { figura: figurasQueFaltan, audio: audiosQueFaltan, pagina: paginasQueFaltan, clip: clipsQueFaltan, video: videosQueFaltan };
+      for (const clase of ['figura', 'audio', 'pagina', 'clip', 'video']) {
         const faltan = QUE_FALTA[clase](config, fila);
         for (const archivo of faltan) {
           if (!queda()) { informe.parcial = true; return; }

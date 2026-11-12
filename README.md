@@ -711,6 +711,28 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   `ffmpeg -i entrada.mov -c:v libx264 -profile:v high -pix_fmt yuv420p -crf 23 -c:a aac -b:a 128k -movflags +faststart video-materia-01.mp4`.
 - Cada versión nueva del JSON es una carpeta nueva: el mp4 se vuelve a bajar en ella (y la vieja queda: nunca se borra nada).
   Con videos de 60–90 MB, conviene mirar el disco de vez en cuando.
+- **El clip de una tarjeta** (opcional): `"clip": { "archivo": "clip-motor.mp4", "poster": "clip-motor.jpg" (opcional), "alt": "…",
+  "sha256": "…" (opcional) }` en una sección `tarjeta` (de un tema, de su reexplicación o de lo extra): un ejemplo en video que
+  va con el texto de la tarjeta. MP4 corto (**≤ 8 s, ≤ 600 KB, 720p o 540p**), en bucle; el poster hasta 1 MB. Al subirlo (a mano
+  o desde Drive) se lee entero (es chico) y se revisa cuánto dura y su tamaño (`clip_muy_largo`, `clip_muy_grande`). Va en la
+  carpeta `clips/` de la versión; se sube con `POST /api/admin/academia/paquetes/:id/clips/:archivo` (o junto con el JSON), llega
+  de Drive por su nombre como las figuras, y se sirve solo con la sesión, por partes y guardado un año:
+  `GET /api/academia/clips/<versión>~<archivo>?v=<huella>`. En la tarjeta sale arriba, **mudo, en bucle y solo** (`autoplay muted
+  loop playsinline`), se pausa cuando sale de la pantalla (IntersectionObserver); con «reducir movimiento» no arranca solo (el
+  poster con ▶). «Ampliar» lo abre en grande. Si el clip trae pista de sonido (motor, viento…) y los sonidos de la app están
+  encendidos, sale un parlante para oírlo; la elección se recuerda por cuenta en el aparato. Si la tarjeta trae `visual` y
+  `clip`, **se ve el clip** (mientras el clip no llegó, el dibujo). Exportar: `ffmpeg -i x.mov -t 8 -vf scale=-2:540 -c:v libx264
+  -pix_fmt yuv420p -crf 30 -c:a aac -b:a 48k -movflags +faststart clip.mp4` (o `-an` si va mudo).
+- **Firmar los términos, por pasos** (`public/terminos-vista.js`): «1 Tus datos → 2 Lee → 3 Firma → 4 Listo», con la barra de
+  avance y, en cada paso, qué pasa ahora y qué viene después. En «Lee»: primero **«Lo importante en 1 minuto»** (qué es, no es
+  oficial, puede tener errores, pagar es opcional y solo por la IA, tus datos y quién los ve, firmar es aceptar, menores con
+  tutor), después el texto completo en partes plegables con **índice** (tocar salta ahí), la barra de lectura, «Bajar al final»
+  y «Descargar o imprimir»; las casillas se pueden marcar solo al llegar al final (o al abrir cada parte). En «Firma»: la frase
+  «Yo, Nombre Apellido, leí y acepto…», la declaración y un recuadro grande con renglón, «Firma aquí», **Deshacer** y Borrar
+  (el renglón no sale en la imagen); si es menor, la parte del padre, madre o tutor. En «Listo»: lo que firmó y **«Descargar mi
+  copia»**. Leer los términos desde el pie usa lo mismo (sin casillas). **Mis documentos** muestra el mismo resumen y cada copia;
+  el documento (alumno y Administrador → Contratos) tiene cabecera, resumen, índice, partes numeradas, el recuadro de la firma
+  y los datos de la firma en una tabla (también al imprimir o guardar en PDF). El servidor recibe y guarda lo mismo de antes.
 
 ### Lo nuevo de la 0.12.0: «¿De dónde salió?», ir directo al examen, el humor del instructor y lo EXTRA — cambio de base 9
 - **«¿De dónde salió?»** (`public/origen-vista.js`): en la esquina de cada pregunta (temas, prácticas, la hoja de la
@@ -773,6 +795,7 @@ otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde l
         //   { "tipo": "tarjeta", "titulo": "…", "puntos": ["…", …] (1 a 6), "recuerda": "…", "ejemplo": "…",
         //     "ingles": [ { "palabra": "…", "pronunciacion": "…", "significado": "…" } ],
         //     "visual": { "tipo": "ala" | "motor" | "instrumentos" | "meteo" | "escenario" | "titulo" | "cartel", "parametros": { … } },
+        //     "clip": { "archivo": "clip-x.mp4", "poster": "clip-x.jpg", "alt": "…" } (0.12.1, opcional; manda sobre «visual»),
         //     "fuentes": [ … ] }
         "reexplicacion": [ …secciones más sencillas, para cuando no aprueba (opcional)… ],
         "preguntas": [ "tg-0001", … ] } ],

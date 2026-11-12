@@ -876,3 +876,18 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
   .video-mp4 > .video-marco { grid-column: 1; grid-row: 1 / span 4; }
   .video-mp4 > :not(.video-marco) { grid-column: 2; }
 }
+
+/* ---------- 0.12.1: el clip de una tarjeta (ejemplo en video corto, mudo y en bucle) ---------- */
+.tarjeta-clip { margin: 4px 0 12px; }
+.clip-lienzo { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 18px; overflow: hidden; background: #0b1220; }
+.clip-video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.clip-play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(15, 23, 42, 0.55); color: #ffffff; cursor: pointer; opacity: 0; transition: opacity 0.2s; }
+.clip-play .icono-play { width: 30px; height: 30px; fill: currentColor; margin-left: 4px; }
+.clip-play .icono { width: 30px; height: 30px; }
+.tarjeta-clip.pausado .clip-play, .clip-play:focus-visible, .clip-lienzo:hover .clip-play { opacity: 1; }
+.clip-botones { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; }
+.clip-parlante, .clip-ampliar { width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(15, 23, 42, 0.6); color: #ffffff; cursor: pointer; }
+.clip-parlante[aria-pressed="true"] { background: var(--naranja); color: var(--naranja-texto); }
+.clip-grande-lienzo { display: grid; place-items: center; }
+.clip-grande-video { max-width: 100%; max-height: 100%; width: 100%; background: #000000; }
+@media (prefers-reduced-motion: reduce) { .clip-play { transition: none; } }

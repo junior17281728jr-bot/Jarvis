@@ -469,8 +469,8 @@ async function pantallaLeerTerminos() {
   const [r, vista] = await Promise.all([api('GET', '/api/terminos'), import('./terminos-vista.js')]);
   if (!vigente()) return;
   const volver = el('a', { class: 'volver con-icono', href: estado.usuario ? '#inicio' : '#' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.volver') }));
-  const cuerpo = r.ok ? [el('h1', { texto: t('terminos.titulo') }), el('p', { class: 'suave', texto: t('terminos.version', { n: numero(r.datos.terminos.version) }) }), vista.textoTerminos(piezasTerminos(), r.datos.terminos),
-    el('h2', { class: 'terminos-subtitulo', texto: t('privacidad.titulo') }), el('p', { class: 'suave', texto: t('terminos.version', { n: numero(r.datos.privacidad.version) }) }), vista.textoTerminos(piezasTerminos(), r.datos.privacidad)]
+  // 0.12.1: lo mismo que se lee al firmar: «Lo importante en 1 minuto», el índice, las partes plegables y «Bajar al final».
+  const cuerpo = r.ok ? [el('h1', { texto: t('terminos.titulo') }), el('p', { class: 'suave', texto: t('lee.leer_linea') }), vista.lecturaTerminos(piezasTerminos(), r.datos).nodo]
     : [el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })];
   const tarjeta = el('section', { class: 'tarjeta terminos-pantalla' }, volver, ...cuerpo);
   if (estado.usuario && !estado.terminos?.pendiente) return mostrar(marco('ayuda', tarjeta));
@@ -482,7 +482,8 @@ async function pantallaTerminos() {
   if (!vigente()) return;
   if (!r.ok) return mostrar(el('section', { class: 'tarjeta centrada' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }), el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir })));
   mostrar(vista.pantallaAceptar(r.datos, piezasTerminos(), {
-    alListo: async nuevo => { estado.terminos = nuevo; if (!location.hash) history.replaceState(null, '', '#inicio'); await dibujar(); },
+    // 0.12.1: «Descargar mi copia» (paso 4) entra directo a su documento.
+    alListo: async (nuevo, destino = null) => { estado.terminos = nuevo; if (destino) history.replaceState(null, '', destino); else if (!location.hash) history.replaceState(null, '', '#inicio'); await dibujar(); },
     salir,
   }), pie());
 }
@@ -1035,6 +1036,7 @@ const ICONOS = {
   medalla: [['circle', { cx: 12, cy: 15, r: 5.5 }], ['path', { d: 'M8.5 10.5 6 3h4l2 4 2-4h4l-2.5 7.5' }], ['path', { d: 'M12 12.5l.8 1.7 1.8.2-1.3 1.2.3 1.8-1.6-.9-1.6.9.3-1.8-1.3-1.2 1.8-.2z' }]],
   bombilla: [['path', { d: 'M9 18h6M10 21h4' }], ['path', { d: 'M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z' }]],
   altavoz: [['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }], ['path', { d: 'M15.5 9a4 4 0 0 1 0 6' }], ['path', { d: 'M18 6.5a7.5 7.5 0 0 1 0 11' }]],
+  silencio: [['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }], ['line', { x1: 16, y1: 9.5, x2: 21, y2: 14.5 }], ['line', { x1: 21, y1: 9.5, x2: 16, y2: 14.5 }]],
   tarjetas: [['rect', { x: 6, y: 3, width: 12, height: 15, rx: 2 }], ['path', { d: 'M4 7v12a2 2 0 0 0 2 2h9' }]],
   lupa: [['circle', { cx: 10.5, cy: 10.5, r: 6 }], ['path', { d: 'M15 15l5.5 5.5M8 10.5h5M10.5 8v5' }]],
 };
@@ -3694,9 +3696,85 @@ function fuentesDe(lista) {
 }
 const ETIQUETA_ESTILO = { normal: 'acad.tarjeta.concepto', analogia: 'acad.tarjeta.analogia', resumen: 'acad.tarjeta.resumen' };
 
+// 0.12.1: el clip de una tarjeta: un ejemplo en video corto, mudo y en bucle, arriba de la tarjeta. Suena solo si la
+// persona lo pide (el parlante, si el clip trae sonido y los sonidos de la app están encendidos; se recuerda por cuenta).
+// Se pausa fuera de la pantalla; con «reducir movimiento» no arranca solo (el poster con ▶). Tocar «Ampliar» lo agranda.
+const claveSonidoClip = () => `op_clip_sonido.${estado.usuario?.id ?? 0}`;
+function sonidoClipElegido() { try { return localStorage.getItem(claveSonidoClip()) === '1'; } catch { return false; } }
+function vistaClip(c) {
+  const reducir = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const video = el('video', {
+    class: 'clip-video', muted: true, loop: true, autoplay: !reducir, playsinline: true, 'webkit-playsinline': true, preload: reducir ? 'none' : 'metadata',
+    poster: c.poster || null, src: c.url, 'aria-label': c.alt || null, disablepictureinpicture: true, controlslist: 'nodownload',
+  });
+  video.muted = true;
+  video.defaultMuted = true;
+  let pausadoAMano = reducir;
+  const conSonido = c.sonido === true && sonidosEncendidos();
+  const jugar = () => video.play().catch(() => {});
+  const pintar = () => {
+    marco.classList.toggle('pausado', video.paused);
+    reproducir.setAttribute('aria-label', t(video.paused ? 'clip.reproducir' : 'clip.pausar'));
+    reproducir.replaceChildren(video.paused ? triangulo() : icono('pausa', 'icono'));
+    if (parlante) {
+      parlante.setAttribute('aria-pressed', String(!video.muted));
+      parlante.setAttribute('aria-label', t(video.muted ? 'clip.sonido_encender' : 'clip.sonido_apagar'));
+      parlante.replaceChildren(icono(video.muted ? 'silencio' : 'altavoz', 'icono chico'));
+    }
+  };
+  const reproducir = el('button', { type: 'button', class: 'clip-play', onclick: () => { if (video.paused) { pausadoAMano = false; jugar(); } else { pausadoAMano = true; video.pause(); } } });
+  const parlante = conSonido ? el('button', { type: 'button', class: 'clip-parlante', onclick: () => {
+    video.muted = !video.muted;
+    try { localStorage.setItem(claveSonidoClip(), video.muted ? '0' : '1'); } catch { /* vale solo ahora */ }
+    if (!video.muted && video.paused) { pausadoAMano = false; jugar(); }
+    pintar();
+  } }) : null;
+  const ampliar = el('button', { type: 'button', class: 'clip-ampliar', 'aria-label': t('clip.ampliar'), onclick: () => abrirClipGrande(c, video) }, icono('expandir', 'icono chico'));
+  const marco = el('figure', { class: 'tarjeta-clip pausado' },
+    el('div', { class: 'clip-lienzo' }, video, reproducir, el('div', { class: 'clip-botones' }, parlante, ampliar)),
+    c.alt ? el('figcaption', { class: 'solo-lectores', texto: c.alt }) : null);
+  for (const ev of ['play', 'pause', 'volumechange']) video.addEventListener(ev, pintar);
+  // Si la persona eligió oírlo, se le pone el sonido al arrancar (si el navegador no lo deja, sigue mudo).
+  video.addEventListener('playing', () => {
+    if (!conSonido || !video.muted || !sonidoClipElegido()) return;
+    video.muted = false;
+    setTimeout(() => { if (video.paused && !pausadoAMano) { video.muted = true; jugar(); } }, 150);
+  }, { once: true });
+  // Solo se mueve mientras se ve.
+  let observador = null;
+  if (typeof IntersectionObserver === 'function') {
+    observador = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && e.intersectionRatio >= 0.5) { if (!pausadoAMano) jugar(); } else if (!video.paused) video.pause();
+    }, { threshold: [0, 0.5] });
+    observador.observe(marco);
+  } else if (!reducir) jugar();
+  pintar();
+  return { nodo: marco, destruir: () => { observador?.disconnect(); video.pause(); video.removeAttribute('src'); video.load(); } };
+}
+// El clip en grande (con los controles del teléfono), sobre la pantalla; se cierra con ✕, Escape o al cambiar de pantalla.
+function abrirClipGrande(c, chico) {
+  const antes = document.activeElement;
+  chico.pause();
+  const grande = el('video', { class: 'clip-grande-video', controls: true, loop: true, playsinline: true, autoplay: true, poster: c.poster || null, src: c.url, 'aria-label': c.alt || null });
+  grande.muted = chico.muted;
+  grande.currentTime = chico.currentTime || 0;
+  const cerrar = () => { grande.pause(); capa.remove(); try { antes?.focus({ preventScroll: true }); } catch { /* ya no está */ } };
+  const capa = el('div', { class: 'figura-grande clip-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': c.alt || t('clip.ampliar') },
+    el('div', { class: 'figura-grande-barra' }, el('span', { texto: c.alt || '' }),
+      el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
+    el('div', { class: 'figura-grande-lienzo clip-grande-lienzo' }, grande));
+  capa.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); } });
+  window.addEventListener('hashchange', () => capa.remove(), { once: true });
+  document.body.append(capa);
+  grande.play().catch(() => {});
+  capa.querySelector('button').focus();
+}
+
 function vistaTarjeta(p, { materia }) {
   const { es, en } = partirTitulo(p.titulo);
-  const visual = p.visual ? el('div', { class: 'tarjeta-visual' }) : null;
+  // 0.12.1: si la tarjeta trae clip (y ya llegó), el clip manda sobre el dibujo.
+  const clip = p.clip?.url ? vistaClip(p.clip) : null;
+  const visual = p.visual && !clip ? el('div', { class: 'tarjeta-visual' }) : null;
   let montado = null;
   if (visual) {
     cargarVisuales().then(V => {
@@ -3711,6 +3789,7 @@ function vistaTarjeta(p, { materia }) {
       p.parte ? el('span', { class: 'sello-parte', texto: t('acad.de', { n: numero(p.parte), total: numero(p.partes) }) }) : null),
     el('h2', { class: 'tarjeta-titulo', texto: es }),
     en ? el('p', { class: 'tarjeta-en', lang: 'en', texto: en }) : null,
+    clip?.nodo ?? null,
     visual,
     p.texto ? textoRico('p', p.texto, 'tarjeta-texto') : null,
     p.puntos?.length ? el('ul', { class: 'tarjeta-puntos' }, p.puntos.map(x => textoRico('li', x))) : null,
@@ -3720,7 +3799,7 @@ function vistaTarjeta(p, { materia }) {
     p.nota ? el('p', { class: 'nota-tarjeta con-icono-arriba' }, icono('info', 'icono chico'), talCual('span', p.nota)) : null,
     fuentesDe(p.fuentes));
   // 0.9.1: un ícono por punto, los puntos entran uno tras otro y las fichas EN · ES (public/clase/realce.js).
-  return { nodo: realzarTarjeta(nodo, p), destruir: () => montado?.destruir?.() };
+  return { nodo: realzarTarjeta(nodo, p), destruir: () => { montado?.destruir?.(); clip?.destruir(); } };
 }
 
 function vistaGirar(p, alGirar) {
@@ -3975,6 +4054,7 @@ function pantallaVideoMp4(materia, v) {
     poster: mp4.portada || null, src: mp4.url, 'aria-label': titulo, controlslist: 'nodownload', disablepictureinpicture: null,
   });
   let visto = v.visto === true;
+  let saltado = false;
   let velocidad = leerVelocidadVideo();
   const guardada = posicionMasNueva(v.posicion, leerVideoLocal(mp4.ref));
   const desde = inicioDesde(guardada, duracion);
@@ -3984,9 +4064,12 @@ function pantallaVideoMp4(materia, v) {
   // Dónde quedó: en este aparato a cada rato, y en el servidor cada 15 s, al pausar y al salir.
   let ultimoEnviado = -1;
   let ultimoEnvioMs = 0;
+  let cerrado = false; // al salir se suelta el video (vuelve a 0): eso ya no es «dónde quedó»
   const guardarPosicion = (forzar = false) => {
     const s = video.currentTime;
-    if (!Number.isFinite(s) || video.seeking) return;
+    if (cerrado || !Number.isFinite(s) || video.seeking || video.readyState < 1) return;
+    // Antes de que salte a donde quedó, el 0 del principio no pisa lo guardado.
+    if (desde > 0 && !saltado) return;
     guardarVideoLocal(mp4.ref, s);
     if (!forzar && Date.now() - ultimoEnvioMs < 15_000) return;
     if (Math.abs(s - ultimoEnviado) < 1) return;
@@ -4013,7 +4096,7 @@ function pantallaVideoMp4(materia, v) {
       try { localStorage.setItem('op_video_velocidad', String(x)); } catch { /* vale solo ahora */ }
       for (const b of botonesVelocidad) b.setAttribute('aria-pressed', String(Number(b.dataset.vel) === x));
     },
-    texto: `${numero(x)}×`,
+    texto: `${numero(x, 2)}×`,
   }));
   const pantallaCompleta = el('button', {
     type: 'button', class: 'boton-texto video-completa con-icono',
@@ -4026,7 +4109,7 @@ function pantallaVideoMp4(materia, v) {
     },
   }, icono('expandir'), el('span', { texto: t('acad.video.pantalla_completa') }));
   const notaSeguir = desde > 0 ? el('p', { class: 'video-sigue suave', role: 'status', texto: t('acad.video.sigue_desde', { tiempo: relojVideo(desde) }) }) : null;
-  const desdeCero = desde > 0 ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { video.currentTime = 0; video.play().catch(() => {}); notaSeguir?.remove(); desdeCero.remove(); }, texto: t('acad.video.desde_cero') }) : null;
+  const desdeCero = desde > 0 ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { saltado = true; video.currentTime = 0; video.play().catch(() => {}); notaSeguir?.remove(); desdeCero.remove(); }, texto: t('acad.video.desde_cero') }) : null;
 
   // Capítulos: tocar uno salta ahí (y empieza a sonar: es un toque).
   const filasCapitulos = capitulos.map((c, k) => el('li', {},
@@ -4049,6 +4132,7 @@ function pantallaVideoMp4(materia, v) {
     video.defaultPlaybackRate = velocidad;
     // Saltar a donde quedó solo cuando el video ya sabe cuánto dura (si no, el iPhone lo ignora).
     if (desde > 0 && video.currentTime < 1) video.currentTime = desde;
+    saltado = true;
   }, { once: true });
   video.addEventListener('play', () => { video.playbackRate = velocidad; });
   video.addEventListener('timeupdate', () => {
@@ -4066,7 +4150,7 @@ function pantallaVideoMp4(materia, v) {
     lugar.append(el('p', { class: 'mensaje error video-error', role: 'alert', texto: t('acad.video.no_carga') }));
   });
 
-  lugar.append(
+  lugar.append(...[
     el('div', { class: 'video-marco' }, video),
     el('div', { class: 'video-cabeza' },
       el('p', { class: 'video-poster-ante', texto: t('acad.video.ante', { n: numero(ORDEN_MATERIAS.indexOf(materia) + 1) }) }),
@@ -4078,7 +4162,7 @@ function pantallaVideoMp4(materia, v) {
       pantallaCompleta),
     capitulos.length ? el('section', { class: 'video-capitulos', 'aria-labelledby': 'titulo-capitulos' },
       el('h2', { id: 'titulo-capitulos', texto: t('acad.video.capitulos_titulo') }),
-      el('ol', {}, filasCapitulos)) : null);
+      el('ol', {}, filasCapitulos)) : null].filter(Boolean));
   barraAvance.poner(desde, duracion || 1);
   marcarCapitulo();
   if (visto) ponerSeguir();
@@ -4092,6 +4176,7 @@ function pantallaVideoMp4(materia, v) {
   const alSalir = () => setTimeout(() => {
     if (lugar.isConnected) return;
     guardarPosicion(true);
+    cerrado = true;
     video.pause();
     video.removeAttribute('src');
     video.load();
@@ -4730,9 +4815,14 @@ async function pantallaSoporteTicket(id) {
 // 0.9.2: «Mis documentos» (su copia de cada firma) y «Mis datos» (pedir acceso, corrección o borrado; permiso de IA).
 async function pantallaMisDocumentos() {
   const vigente = nuevoTurno();
-  const [r, y] = await Promise.all([api('GET', '/api/yo/documentos'), api('GET', '/api/yo/terminos')]);
+  const [r, y, vista] = await Promise.all([api('GET', '/api/yo/documentos'), api('GET', '/api/yo/terminos'), import('./terminos-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('configuracion', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  // 0.12.1: lo que firmó, en corto (lo mismo que se ve al firmar), y cada copia con «Descargar PDF».
+  const resumen = el('section', { class: 'tarjeta lee-resumen', 'aria-labelledby': 'doc-resumen-titulo' },
+    el('h2', { id: 'doc-resumen-titulo', class: 'con-icono' }, icono('chispa'), el('span', { texto: t('documentos.resumen') })),
+    el('ul', {}, vista.RESUMEN_FIRMA.map(k => el('li', {}, el('strong', { texto: t(`lee.resumen.${k}`) }), el('span', { texto: t(`lee.resumen.${k}.texto`) })))),
+    el('p', { class: 'suave chica', texto: t('lee.resumen.nota') }));
   mostrar(marco('configuracion',
     el('a', { class: 'volver con-icono', href: '#configuracion' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('config.titulo') })),
     el('section', { class: 'tarjeta' },
@@ -4741,9 +4831,10 @@ async function pantallaMisDocumentos() {
       r.datos.documentos.length ? el('ul', { class: 'contratos-lista' }, [...r.datos.documentos].reverse().map(d => el('li', {},
         el('a', { class: 'ficha-intento', href: `#mi-documento/${d.n}` },
           el('span', { class: 'ficha-nota', texto: `v${d.version}` }),
-          el('span', { class: 'ficha-intento-texto' }, el('strong', { texto: t('documentos.firmado', { nombre: d.firmado }) }), el('span', { class: 'suave chica', texto: fecha(d.en) })),
-          icono('flecha', 'icono chico'))))) : vacio('manual', t('documentos.vacio')),
-      y.ok ? el('a', { class: 'enlace-fuerte', href: '#terminos', texto: t('documentos.leer') }) : null)));
+          el('span', { class: 'ficha-intento-texto' }, el('strong', { texto: t('documentos.firmado', { nombre: d.firmado }) }), el('span', { class: 'suave chica', texto: `${fecha(d.en)} · ${t('contratos.versiones', { t: numero(d.version), p: d.versionPrivacidad ? numero(d.versionPrivacidad) : '—' })}` })),
+          el('span', { class: 'documento-descargar suave chica con-icono' }, icono('manual', 'icono chico'), el('span', { texto: t('documentos.descargar') })))))) : vacio('manual', t('documentos.vacio')),
+      y.ok ? el('a', { class: 'enlace-fuerte', href: '#terminos', texto: t('documentos.leer') }) : null),
+    resumen));
 }
 async function pantallaMiDocumento(n) {
   const vigente = nuevoTurno();
@@ -4902,6 +4993,13 @@ async function pantallaContenido() {
         if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
       }
       // 0.12.1: el video resumen (mp4) y su portada, si el paquete los nombra y se eligieron (el mp4 va por partes al disco).
+      for (const nombre of j.datos.faltanClips ?? []) {
+        const f = porNombre.get(nombre);
+        if (!f) continue;
+        progresoSubida.textContent = t('acad.subir.clip', { nombre });
+        const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/clips/${encodeURIComponent(nombre)}`, f, /\.mp4$/i.test(nombre) ? 'video/mp4' : f.type || 'application/octet-stream');
+        if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
+      }
       for (const nombre of j.datos.faltanVideo ?? []) {
         const f = porNombre.get(nombre);
         if (!f) continue;
@@ -4939,6 +5037,7 @@ async function pantallaContenido() {
       p.faltanAudio?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_audio', { n: p.faltanAudio.length }) }) : null,
       p.faltanPaginas?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_paginas', { n: p.faltanPaginas.length }) }) : null,
       p.faltanVideo?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_video', { n: p.faltanVideo.length }) }) : null,
+      p.faltanClips?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_clips', { n: p.faltanClips.length }) }) : null,
       p.estado === 'listo' && !p.activo ? el('div', { class: 'botones' }, botonAccion(t('acad.paquete.usar'), 'secundario', mensaje, async () => {
         const x = await api('POST', `/api/admin/academia/paquetes/${p.id}/activar`, {});
         if (!x.ok) throw new Error(textoError(x.datos.error));

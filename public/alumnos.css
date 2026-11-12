@@ -345,3 +345,110 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
 /* ---------- 0.11.0 ---------- */
 .aviso-funnel { border-left: 5px solid var(--naranja); font-size: 15px; }
 .terminos-revisa ul { margin: 6px 0; padding-left: 20px; display: grid; gap: 3px; font-size: 14px; }
+
+/* ---------- 0.12.1: firmar por pasos (1 Tus datos → 2 Lee → 3 Firma → 4 Listo) ---------- */
+.firma-flujo { max-width: 760px; width: 100%; margin-inline: auto; text-align: left; }
+.firma-pasos { margin: 6px 0 14px; }
+.firma-pasos ol { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 0; margin: 0; }
+.firma-pasos li { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--suave); text-align: center; }
+.firma-paso-n { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--linea); color: var(--texto); font-weight: 800; font-size: 15px; border: 2px solid transparent; }
+.firma-pasos li.actual { color: var(--texto); }
+.firma-pasos li.actual .firma-paso-n { background: var(--naranja); color: var(--naranja-texto); border-color: var(--naranja-borde); box-shadow: 0 0 0 4px color-mix(in srgb, var(--naranja) 22%, transparent); }
+.firma-pasos li.hecho .firma-paso-n { background: var(--verde-suave); color: var(--verde-texto); }
+.firma-pasos-barra { height: 6px; margin: 10px 17px 0; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.firma-pasos-barra > span { display: block; height: 100%; background: linear-gradient(90deg, var(--verde, #58cc02), var(--naranja)); border-radius: inherit; transition: width 0.4s ease; }
+.firma-intro { margin: 4px 0 14px; }
+.firma-intro .antetitulo { margin: 0 0 2px; }
+.firma-intro h1 { margin: 0 0 6px; font-size: clamp(22px, 6vw, 30px); line-height: 1.15; outline: none; }
+.firma-intro-linea { margin: 0; font-size: 16px; line-height: 1.45; }
+.firma-intro-despues { margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; background: var(--vidrio); border: 1px solid var(--vidrio-borde); }
+.firma-datos { display: grid; gap: 6px; }
+.firma-datos input { min-height: 48px; font-size: 17px; }
+.firma-flujo .botones.apilados { display: grid; gap: 10px; margin-top: 16px; }
+
+/* Paso 2: lo importante, el índice, las partes plegables y la barra de lectura */
+.lee { display: grid; gap: 14px; }
+.lee-resumen { border-radius: 20px; padding: 14px 16px; background: color-mix(in srgb, var(--naranja) 9%, var(--tarjeta)); border: 2px solid color-mix(in srgb, var(--naranja) 45%, transparent); text-align: left; }
+.lee-resumen h2 { margin: 0 0 8px; font-size: 19px; }
+.lee-resumen ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.lee-resumen li { display: grid; gap: 1px; padding-left: 26px; position: relative; line-height: 1.4; }
+.lee-resumen li::before { content: '✓'; position: absolute; left: 2px; top: 0; font-weight: 900; color: var(--naranja-borde); }
+.lee-resumen .suave { margin: 10px 0 0; }
+.lee-indice { border-radius: 18px; padding: 12px 14px; background: var(--vidrio); border: 1px solid var(--vidrio-borde); }
+.lee-indice h2 { margin: 0 0 6px; font-size: 17px; }
+.lee-indice-doc { margin: 8px 0 2px; font-weight: 800; font-size: 14px; color: var(--suave); }
+.lee-indice ol { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 2px; }
+.lee-indice-ir { width: 100%; min-height: 40px; padding: 6px 8px; border: 0; border-radius: 10px; background: transparent; color: var(--texto); text-decoration: underline; text-underline-offset: 3px; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.lee-indice-ir:hover, .lee-indice-ir:focus-visible { background: color-mix(in srgb, var(--naranja) 10%, transparent); }
+.lee-indice-pie { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-top: 8px; border-top: 1px solid var(--borde); padding-top: 6px; }
+.lee-barra-fila { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 8px 2px; background: color-mix(in srgb, var(--tarjeta) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.lee-barra { flex: 1; height: 8px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.lee-barra-relleno { display: block; height: 100%; width: 0; background: var(--naranja); border-radius: inherit; }
+.lee-barra-cuenta { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.terminos-texto.plegable { max-height: none; overflow: visible; padding: 0; border: 0; background: transparent; display: grid; gap: 8px; }
+.lee-parte { border: 1px solid var(--borde); border-radius: 14px; background: var(--tarjeta); scroll-margin-top: 56px; }
+.lee-parte > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; cursor: pointer; list-style: none; }
+.lee-parte > summary::-webkit-details-marker { display: none; }
+.lee-parte > summary::after { content: '▾'; margin-left: auto; color: var(--suave); transition: transform 0.2s; }
+.lee-parte:not([open]) > summary::after { transform: rotate(-90deg); }
+.lee-parte > summary h3 { margin: 0; font-size: 16px; color: var(--texto); }
+.lee-parte-n { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--linea); font-size: 13px; font-weight: 800; }
+.lee-parte-texto { padding: 0 14px 12px 14px; }
+.lee-parte-texto p { margin: 0; line-height: 1.55; }
+.lee-doc { display: grid; gap: 6px; scroll-margin-top: 56px; }
+.lee-doc .terminos-subtitulo { margin-top: 6px; }
+.lee-fin { padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--borde); text-align: center; scroll-margin-top: 56px; }
+.lee-fin p { margin: 0; }
+.lee-bajar { position: sticky; bottom: 12px; justify-self: end; z-index: 3; min-height: 44px; background: var(--tarjeta); border: 1px solid var(--borde); box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18); }
+.lee-bajar-icono { transform: rotate(90deg); }
+.lee-casillas { margin-top: 14px; padding: 12px 14px; border-radius: 18px; background: var(--vidrio); border: 1px solid var(--vidrio-borde); }
+.lee-casillas h2 { margin: 0 0 4px; font-size: 18px; }
+.lee-candado { margin: 0 0 4px; font-weight: 700; }
+.terminos-acepto.bloqueada { opacity: 0.55; cursor: not-allowed; }
+
+/* Paso 3: la frase «Yo, …» y la firma grande con renglón */
+.firma-yo { display: grid; gap: 8px; margin-bottom: 8px; }
+.firma-yo-frase { margin: 0; font-size: 18px; font-weight: 800; line-height: 1.4; }
+.firma-marco { position: relative; width: 100%; max-width: 720px; aspect-ratio: 3 / 1; min-height: 150px; border-radius: 18px; background: #ffffff; border: 2px solid var(--borde); box-shadow: inset 0 2px 6px rgba(15, 23, 42, 0.06); overflow: hidden; }
+.firma-marco::after { content: ''; position: absolute; left: 7%; right: 5%; bottom: 26%; border-bottom: 2px solid #94a3b8; pointer-events: none; }
+.firma-aqui { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); color: #cbd5e1; font-size: clamp(20px, 6vw, 32px); font-weight: 800; letter-spacing: 0.04em; pointer-events: none; transition: opacity 0.2s; }
+.firma-x { position: absolute; left: 3%; bottom: 25%; color: #64748b; font-weight: 800; font-size: 20px; pointer-events: none; }
+.firma-marco.con-trazo .firma-aqui { opacity: 0; }
+.firma-marco .firma-lienzo { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; border: 0; border-radius: 0; background: transparent; }
+.firma-marco:focus-within { border-color: var(--naranja); }
+.firma-pie { max-width: 720px; flex-wrap: wrap; }
+.firma-botones { display: inline-flex; gap: 6px; }
+.firma-botones button { min-height: 40px; }
+.firma-deshacer-icono { transform: scaleX(-1); }
+
+/* Paso 4: listo */
+.firma-listo { display: grid; justify-items: center; gap: 12px; padding: 8px 0; }
+.firma-listo-sello { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; background: var(--verde-suave); color: var(--verde-texto); font-size: 44px; font-weight: 900; box-shadow: 0 0 0 10px color-mix(in srgb, var(--verde-suave) 50%, transparent); }
+.firma-listo-datos { width: 100%; }
+
+/* El documento firmado (pantalla y PDF) */
+.contrato-cabeza { border-bottom: 3px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; }
+.contrato-estado { display: inline-block; margin: 4px 0 0; padding: 2px 10px; border-radius: 99px; background: #dcfce7; color: #14532d; font-size: 13px; font-weight: 800; }
+.contrato-tabla { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+.contrato-tabla caption { text-align: left; font-weight: 800; font-size: 15px; padding: 0 0 6px; }
+.contrato-tabla th, .contrato-tabla td { text-align: left; vertical-align: top; padding: 6px 8px; border: 1px solid #e2e8f0; }
+.contrato-tabla th { width: 34%; background: #f8fafc; font-weight: 700; }
+.contrato-indice { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; }
+.contrato-indice-titulo { margin: 0 0 4px; font-weight: 800; }
+.contrato-indice > ol { margin: 0; padding-left: 18px; }
+.contrato-indice ol ul { columns: 2 220px; margin: 2px 0 6px; padding-left: 4px; list-style: none; }
+.contrato-indice a { color: inherit; }
+.contrato-texto h3 { display: flex; gap: 6px; }
+.contrato-n { color: #64748b; }
+.contrato-firmas { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0; }
+.contrato-firma { margin: 0; display: grid; gap: 4px; min-width: 240px; max-width: 360px; flex: 1; }
+.contrato-firma-caja { display: grid; place-items: center; min-height: 110px; padding: 6px; border: 1.5px solid #0f172a; border-radius: 8px; background: #ffffff; }
+.contrato-firma-caja img { width: 320px; max-width: 100%; height: auto; border: 0; }
+.contrato-firma figcaption { display: flex; justify-content: space-between; gap: 8px; border-top: 2px solid #0f172a; padding-top: 4px; }
+.documento-descargar { margin-left: auto; white-space: nowrap; }
+@media print {
+  .lee-bajar, .lee-indice-pie, .lee-barra-fila, .firma-pasos, .contrato-indice a { box-shadow: none; }
+  .lee-bajar, .lee-barra-fila, .lee-indice-pie { display: none !important; }
+  .contrato-tabla, .contrato-firmas, .contrato-firma { break-inside: avoid; }
+  .contrato-doc h2 { break-after: avoid; }
+}

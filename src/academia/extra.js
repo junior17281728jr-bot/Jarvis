@@ -9,7 +9,7 @@
 //  - Como en todo lo demás: la respuesta correcta no viaja antes de responder.
 import { ErrorHttp } from '../nucleo/http.js';
 import { NIVELES_EXTRA } from './formato.js';
-import { librosDe } from './paquetes.js';
+import { librosDe, clipDe } from './paquetes.js';
 
 const POR_RONDA = 10;
 const pct = (a, b) => (b > 0 ? Math.floor((a * 100) / b) : 0);
@@ -49,6 +49,7 @@ export function extraDeMateria(db, usuarioId, paquete, materia, { examenAprobado
     tarjetas: tarjetas.filter(c => c.tema === t.id).map(c => ({
       titulo: c.titulo, puntos: c.puntos ?? [], recuerda: c.recuerda ?? null, ejemplo: c.ejemplo ?? null, ingles: Array.isArray(c.ingles) ? c.ingles : [],
       fuentes: (c.fuentes ?? []).map(f => fuenteVista(paquete, m, f)),
+      clip: clipDe(paquete, m.paquete, c.clip), // 0.12.1
     })),
     preguntas: preguntas.filter(q => q.tema === t.id).length,
   })).filter(t => t.tarjetas.length || t.preguntas);

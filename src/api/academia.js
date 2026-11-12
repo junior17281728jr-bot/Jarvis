@@ -12,7 +12,7 @@ import { pipeline } from 'node:stream/promises';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
-import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, rutaVideo, paginaDe } from '../academia/paquetes.js';
+import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, rutaVideo, rutaClip, paginaDe } from '../academia/paquetes.js';
 import { extraDeMateria, rondaExtra, responderExtra } from '../academia/extra.js';
 import { humorDelDia, humorDelAdmin, humorDelAlumno, encenderHumorAdmin, encenderHumorAlumno } from '../academia/humor.js';
 import { idDeCarpeta, enlaceDeCarpeta, basesDrive, recorrerCarpeta, PAQUETE_EN_DRIVE } from '../academia/drive.js';
@@ -257,6 +257,13 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return { codigo: 200, enviar: res => enviarPorPartes(res, req, { ...v, cache: 'private, max-age=31536000, immutable' }) };
   });
 
+  // 0.12.1: el clip de una tarjeta (mp4 corto, mudo, en bucle) y su poster: como el video, por partes y guardado un año.
+  rutas.agregar('GET', '/api/academia/clips/:ref', ({ db, req, parametros }) => {
+    const c = rutaClip(activo(db), parametros.ref);
+    if (!c) throw new ErrorHttp(404, 'no_existe');
+    return { codigo: 200, enviar: res => enviarPorPartes(res, req, { ...c, cache: 'private, max-age=31536000, immutable' }) };
+  });
+
   // ---------- El administrador ----------
   rutas.agregar('GET', '/api/admin/academia', ({ db }) => {
     necesitaConfig();
@@ -264,7 +271,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
       codigo: 200,
       datos: {
         ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
-        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, videoBytes: LIMITES.videoBytes, paginaBytes: LIMITES.paginaBytes },
+        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, videoBytes: LIMITES.videoBytes, clipBytes: LIMITES.clipBytes, paginaBytes: LIMITES.paginaBytes },
       },
     };
   }, { admin: true });
@@ -382,6 +389,14 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     necesitaConfig();
     if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
     const r = await subirRecurso(db, config, { clase: 'video', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
+    return { codigo: r.ya ? 200 : 201, datos: r };
+  }, { admin: true });
+
+  // 0.12.1: el clip de una tarjeta (≤ 8 s, ≤ 600 KB, hasta 720p) y su poster, igual que una figura.
+  rutas.agregar('POST', '/api/admin/academia/paquetes/:id/clips/:archivo', async ({ db, req, usuario, parametros }) => {
+    necesitaConfig();
+    if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    const r = await subirRecurso(db, config, { clase: 'clip', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
     return { codigo: r.ya ? 200 : 201, datos: r };
   }, { admin: true });
 

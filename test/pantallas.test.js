@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
+import { RESUMEN_FIRMA, PASOS_FIRMA } from '../public/terminos-vista.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
@@ -182,6 +183,10 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // Academia (0.12.0): los niveles de lo extra y el modo de práctica por defecto.
     ...['basico', 'intermedio', 'avanzado'].map(x => `extra.nivel.${x}`),
     ...['original', 'reto'].map(x => `acad.modo.${x}`),
+    // 0.12.1: firmar por pasos y «Lo importante en 1 minuto».
+    ...RESUMEN_FIRMA.flatMap(x => [`lee.resumen.${x}`, `lee.resumen.${x}.texto`]),
+    ...PASOS_FIRMA.flatMap(x => [`firma.paso.${x}`, `firma.${x}.titulo`, `firma.${x}.linea`]),
+    ...PASOS_FIRMA.filter(x => x !== 'listo').map(x => `firma.${x}.despues`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -199,7 +204,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // Academia (0.7.1).
     'acad.drive.motivo.',
     // Academia (0.12.0).
-    'extra.nivel.', 'acad.modo.']));
+    'extra.nivel.', 'acad.modo.',
+    // 0.12.1.
+    'lee.resumen.', 'firma.paso.', 'firma.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });

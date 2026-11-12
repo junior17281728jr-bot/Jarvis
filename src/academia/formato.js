@@ -22,6 +22,11 @@ export const LIMITES = Object.freeze({
   // 0.12.1: el video resumen ya editado (mp4) de una materia y su portada (una imagen). Se recomienda 60–90 MB.
   videoBytes: 150 * 1024 * 1024,
   capitulos: 100,
+  // 0.12.1: el «clip» de una tarjeta: un ejemplo en video corto, mudo y en bucle (≤ 8 s, ≤ 600 KB, hasta 720p).
+  clipBytes: 600 * 1024,
+  clipSegundos: 8,
+  clipPosterBytes: 1024 * 1024,
+  clips: 2000,
   figurasBytes: 400 * 1024 * 1024,
   figuras: 2000,
   preguntas: 5000,
@@ -133,6 +138,26 @@ export function revisarPaquete(p) {
       for (const campo of ['pronunciacion', 'significado', 'ejemplo']) texto(w[campo], `${rw}.${campo}`, { obligatorio: obligatorios.includes(campo), max: 2000 });
     });
   };
+  // 0.12.1: el clip de una tarjeta: { archivo (mp4), poster? (imagen), alt (lo que se ve, para quien no lo ve), sha256? }.
+  // El mismo archivo puede servir a dos tarjetas. Si la tarjeta trae «visual» y «clip», se ve el clip.
+  const clipsVistos = new Map();
+  const clip = (c, ruta) => {
+    if (c == null) return;
+    if (!esObjeto(c)) return mal(ruta, 'no_es_objeto');
+    if (typeof c.archivo !== 'string' || !ARCHIVO_MP4.test(c.archivo)) mal(`${ruta}.archivo`, 'archivo_no_valido');
+    if (c.poster != null && (typeof c.poster !== 'string' || !ARCHIVO_FIGURA.test(c.poster))) mal(`${ruta}.poster`, 'archivo_no_valido');
+    if (c.sha256 != null && (typeof c.sha256 !== 'string' || !SHA256.test(c.sha256))) mal(`${ruta}.sha256`, 'no_valido');
+    texto(c.alt, `${ruta}.alt`, { max: LIMITES.corto });
+    for (const [a, sha] of [[c.archivo, c.sha256 ?? null], [c.poster, null]]) {
+      if (typeof a !== 'string' || !ARCHIVO_VIDEO.test(a)) continue;
+      const ya = clipsVistos.get(a.toLowerCase());
+      if (ya && sha && ya.sha256 && ya.sha256 !== sha) mal(`${ruta}.sha256`, 'no_valido');
+      else if (!ya) {
+        if (clipsVistos.size >= LIMITES.clips) return mal(ruta, 'demasiados');
+        clipsVistos.set(a.toLowerCase(), { archivo: a, sha256: sha });
+      }
+    }
+  };
   const secciones = (lista, ruta, { obligatorio }) => {
     if (lista == null && !obligatorio) return 0;
     if (!Array.isArray(lista) || (obligatorio && !lista.length)) { mal(ruta, 'falta'); return 0; }
@@ -151,6 +176,7 @@ export function revisarPaquete(p) {
         texto(s.ejemplo, `${r}.ejemplo`, { obligatorio: false, max: 2000 });
         palabrasIngles(s.ingles, `${r}.ingles`, []);
         visual(s.visual, `${r}.visual`);
+        clip(s.clip, `${r}.clip`);
       } else {
         texto(s.texto, `${r}.texto`);
       }
@@ -457,6 +483,7 @@ export function revisarPaquete(p) {
     paginas: ok ? [...paginas.values()] : [],
     audios: ok ? [...audios.values()] : [],
     videos: ok ? [...videos.values()] : [], // 0.12.1: los mp4 y sus portadas
+    clips: ok ? [...clipsVistos.values()] : [], // 0.12.1: los clips de las tarjetas y sus posters
     // Las materias que el paquete TRAE (con un tema o más): las que da cuando está en uso junto con otros.
     materias: ok ? p.materias.filter(m => m.temas.length > 0).map(m => m.id) : [],
     avisos,
@@ -482,6 +509,25 @@ export function videosDe(p) {
     if (typeof x?.archivo !== 'string' || !ARCHIVO_MP4.test(x.archivo)) continue;
     if (!vistos.has(x.archivo.toLowerCase())) vistos.set(x.archivo.toLowerCase(), { archivo: x.archivo, sha256: x.sha256 ?? null });
     if (typeof x.portada === 'string' && ARCHIVO_FIGURA.test(x.portada) && !vistos.has(x.portada.toLowerCase())) vistos.set(x.portada.toLowerCase(), { archivo: x.portada, sha256: null });
+  }
+  return [...vistos.values()];
+}
+
+// 0.12.1: los clips (y sus posters) de las tarjetas que nombra un paquete YA REVISADO (temas, reexplicación y lo extra).
+export function clipsDe(p) {
+  const vistos = new Map();
+  const de = lista => {
+    for (const s of Array.isArray(lista) ? lista : []) {
+      const c = s?.tipo === 'tarjeta' ? s.clip : null;
+      if (!c || typeof c !== 'object') continue;
+      for (const [a, sha] of [[c.archivo, c.sha256 ?? null], [c.poster, null]]) {
+        if (typeof a === 'string' && ARCHIVO_VIDEO.test(a) && !vistos.has(a.toLowerCase())) vistos.set(a.toLowerCase(), { archivo: a, sha256: sha });
+      }
+    }
+  };
+  for (const m of p?.materias ?? []) {
+    for (const t of m?.temas ?? []) { de(t?.secciones); de(t?.reexplicacion); }
+    de(m?.extra?.tarjetas);
   }
   return [...vistos.values()];
 }

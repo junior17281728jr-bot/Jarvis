@@ -15,8 +15,9 @@ import { pipeline } from 'node:stream/promises';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion, revisarModoPrueba } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS } from './formato.js';
+import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, clipsDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS } from './formato.js';
 import { espacioLibre } from './espacio.js';
+import { datosMp4 } from './mp4.js';
 
 const ahora = () => new Date().toISOString();
 export const AJUSTE_ACTIVO = 'academia.paquete_activo';
@@ -75,6 +76,7 @@ const desdeDatos = datos => ({
   materias: materiasDe(datos),
   paginas: paginasDe(datos), // 0.12.0
   videos: videosDe(datos), // 0.12.1
+  clips: clipsDe(datos), // 0.12.1
 });
 export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = false } = {}) {
   const carpeta = carpetaDe(config, fila);
@@ -90,8 +92,8 @@ export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = f
     } catch { m = null; }
     // 0.12.0: un manifiesto escrito por una versión de antes no dice «paginas». El trabajador lo usa así (sin páginas,
     // que son opcionales); el servidor web lo vuelve a armar desde el JSON y lo reescribe (la versión no cambia).
-    if (m && (!Array.isArray(m.paginas) || !Array.isArray(m.videos))) {
-      if (soloArchivo) return { ...m, paginas: m.paginas ?? [], videos: m.videos ?? [] }; // sin guardarlo en memoria: cuando el web lo reescriba, se lee el nuevo
+    if (m && (!Array.isArray(m.paginas) || !Array.isArray(m.videos) || !Array.isArray(m.clips))) {
+      if (soloArchivo) return { ...m, paginas: m.paginas ?? [], videos: m.videos ?? [], clips: m.clips ?? [] }; // sin guardarlo en memoria: cuando el web lo reescriba, se lee el nuevo
       else { m = null; viejo = true; }
     }
     if (!m) {
@@ -115,7 +117,7 @@ export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = f
 }
 // 0.12.0: uno escrito por una versión de antes (sin «paginas») cuenta como que falta: el servidor web lo vuelve a armar.
 export function tieneManifiesto(config, fila) {
-  try { const m = JSON.parse(readFileSync(join(carpetaDe(config, fila), 'manifiesto.json'), 'utf8')); return Array.isArray(m?.paginas) && Array.isArray(m?.videos); } catch { return false; }
+  try { const m = JSON.parse(readFileSync(join(carpetaDe(config, fila), 'manifiesto.json'), 'utf8')); return Array.isArray(m?.paginas) && Array.isArray(m?.videos) && Array.isArray(m?.clips); } catch { return false; }
 }
 
 // La huella de un archivo, leyéndolo de a 1 MB (sin tenerlo entero en memoria).
@@ -147,6 +149,7 @@ export function listarPaquetes(db, config) {
     let faltanAudio = [];
     let faltanPaginas = [];
     let faltanVideo = [];
+    let faltanClips = [];
     const enUso = (compuesto?.materias ?? []).filter(m => m.paquete === f.id).map(m => m.id);
     // Solo se mira lo que falta en las incompletas y en las que están en uso (las demás quedan guardadas tal cual).
     if (f.estado === 'incompleto' || enUso.length) {
@@ -155,9 +158,10 @@ export function listarPaquetes(db, config) {
         faltanAudio = audiosQueFaltan(config, f);
         faltanPaginas = paginasQueFaltan(config, f);
         faltanVideo = videosQueFaltan(config, f);
+        faltanClips = clipsQueFaltan(config, f);
       } catch { faltan = []; }
     }
-    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas, faltanVideo };
+    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas, faltanVideo, faltanClips };
   });
 }
 
@@ -188,7 +192,7 @@ const enSeguida = (db, trabajo) => enTransaccion(db, trabajo);
 export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = null, origen = 'manual', escribir = trabajo => enSeguida(db, trabajo) }) {
   const { revision, huella } = revisado;
   const ya = db.prepare("SELECT * FROM academia_paquetes WHERE huella = ? AND estado <> 'fallido' ORDER BY id DESC LIMIT 1").get(huella);
-  if (ya && jsonEntero(config, ya)) return { codigo: 200, datos: { paquete: vista(ya), repetido: true, faltan: ya.estado === 'listo' ? [] : figurasQueFaltan(config, ya), faltanAudio: audiosQueFaltan(config, ya), faltanPaginas: paginasQueFaltan(config, ya), faltanVideo: videosQueFaltan(config, ya), avisos: revision.avisos ?? [] } };
+  if (ya && jsonEntero(config, ya)) return { codigo: 200, datos: { paquete: vista(ya), repetido: true, faltan: ya.estado === 'listo' ? [] : figurasQueFaltan(config, ya), faltanAudio: audiosQueFaltan(config, ya), faltanPaginas: paginasQueFaltan(config, ya), faltanVideo: videosQueFaltan(config, ya), faltanClips: clipsQueFaltan(config, ya), avisos: revision.avisos ?? [] } };
   if (ya) await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'fallido', detalle = 'no_se_pudo_guardar' WHERE id = ?").run(ya.id));
   const r = revision.resumen;
   const fila = await escribir(() => {
@@ -208,6 +212,7 @@ export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = nu
     mkdirSync(join(carpeta, 'audio'));
     mkdirSync(join(carpeta, 'paginas'));
     mkdirSync(join(carpeta, 'video'));
+    mkdirSync(join(carpeta, 'clips'));
     writeFileSync(join(carpeta, 'paquete.json'), cuerpo, { flag: 'wx', mode: 0o640 });
   } catch {
     await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'fallido', detalle = 'no_se_pudo_guardar' WHERE id = ?").run(fila.id));
@@ -217,7 +222,7 @@ export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = nu
   const faltan = revision.figuras.map(f => f.archivo);
   if (!faltan.length) await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'listo', listo_en = ? WHERE id = ?").run(ahora(), fila.id));
   // 0.9.0: las opciones del Modo reto que parecen fáciles (avisos: no impiden usarlo; ver src/academia/reto-calidad.js).
-  return { codigo: 201, datos: { paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)), repetido: false, faltan, faltanAudio: revision.audios.map(a => a.archivo), faltanPaginas: (revision.paginas ?? []).map(g => g.archivo), faltanVideo: (revision.videos ?? []).map(g => g.archivo), avisos: revision.avisos ?? [] } };
+  return { codigo: 201, datos: { paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)), repetido: false, faltan, faltanAudio: revision.audios.map(a => a.archivo), faltanPaginas: (revision.paginas ?? []).map(g => g.archivo), faltanVideo: (revision.videos ?? []).map(g => g.archivo), faltanClips: (revision.clips ?? []).map(g => g.archivo), avisos: revision.avisos ?? [] } };
 }
 
 // Sube el JSON (la ruta del administrador). { codigo, datos }: 422 con la lista de errores si no está bien armado.
@@ -262,7 +267,20 @@ export const RECURSOS = Object.freeze({
   // 0.12.1: el video resumen editado (mp4, hasta 150 MB) y su portada (una imagen, hasta 8 MB). Opcional como el audio.
   // Antes de escribir uno grande se mira el espacio libre del disco (hace falta el doble de lo que pesa).
   video: Object.freeze({ carpeta: 'video', patron: ARCHIVO_VIDEO, tope: LIMITES.videoBytes, topeDe: archivo => (esMp4DeNombre(archivo) ? LIMITES.videoBytes : LIMITES.figuraBytes), declarados: datos => videosDe(datos), tipo: tipoDeVideo, valido: (cabeza, archivo) => (esMp4DeNombre(archivo) ? esMp4(cabeza) : esImagenDeTipo(cabeza, tipoDeVideo(archivo))), noValido: 'mp4_no_valido', espacio: true }),
+  // 0.12.1: el clip de una tarjeta (mp4 mudo en bucle, ≤ 8 s, ≤ 600 KB, hasta 720p) y su poster (una imagen, ≤ 1 MB).
+  // Como es chico, al terminar de llegar se lee entero para mirar cuánto dura y su tamaño (revisar).
+  clip: Object.freeze({ carpeta: 'clips', patron: ARCHIVO_VIDEO, tope: LIMITES.clipBytes, topeDe: archivo => (esMp4DeNombre(archivo) ? LIMITES.clipBytes : LIMITES.clipPosterBytes), declarados: datos => clipsDe(datos), tipo: tipoDeVideo, valido: (cabeza, archivo) => (esMp4DeNombre(archivo) ? esMp4(cabeza) : esImagenDeTipo(cabeza, tipoDeVideo(archivo))), noValido: 'clip_no_valido', revisar: (ruta, archivo) => (esMp4DeNombre(archivo) ? revisarClip(ruta) : null) }),
 });
+// 0.12.1: un clip: hasta 8 s (con medio segundo de gracia) y hasta 1280 × 720 (de pie o acostado). → motivo o null.
+export function revisarClip(ruta) {
+  let b;
+  try { if (statSync(ruta).size > LIMITES.clipBytes) return 'clip_no_valido'; b = readFileSync(ruta); } catch { return 'clip_no_valido'; }
+  const d = datosMp4(b);
+  if (!d) return 'clip_no_valido';
+  if (d.duracion_s > LIMITES.clipSegundos + 0.5) return 'clip_muy_largo';
+  if (Math.max(d.ancho, d.alto) > 1280 || Math.min(d.ancho, d.alto) > 720) return 'clip_muy_grande';
+  return null;
+}
 // El tope de un archivo de esa clase (el video y su portada tienen topes distintos).
 export const topeDe = (clase, archivo) => (RECURSOS[clase].topeDe ? RECURSOS[clase].topeDe(archivo) : RECURSOS[clase].tope);
 
@@ -274,9 +292,18 @@ export function revisarEspacio(carpeta, bytes, { libre = espacioLibre } = {}) {
   if (hay < 2 * bytes) throw new ErrorHttp(507, 'sin_espacio_disco', { necesarioMb: Math.ceil((2 * bytes) / 1_048_576), libreMb: Math.floor(hay / 1_048_576) });
 }
 // La lista del manifiesto de cada clase.
-const LISTA_DE = Object.freeze({ figura: 'figuras', audio: 'audios', pagina: 'paginas', video: 'videos' });
-const NO_ESTA = Object.freeze({ figura: 'figura_no_esta_en_el_paquete', audio: 'audio_no_esta_en_el_paquete', pagina: 'pagina_no_esta_en_el_paquete', video: 'video_no_esta_en_el_paquete' });
-export const DISTINTO = Object.freeze({ figura: 'figura_distinta', audio: 'audio_distinto', pagina: 'pagina_distinta', video: 'video_distinto' });
+const LISTA_DE = Object.freeze({ figura: 'figuras', audio: 'audios', pagina: 'paginas', video: 'videos', clip: 'clips' });
+const NO_ESTA = Object.freeze({ figura: 'figura_no_esta_en_el_paquete', audio: 'audio_no_esta_en_el_paquete', pagina: 'pagina_no_esta_en_el_paquete', video: 'video_no_esta_en_el_paquete', clip: 'clip_no_esta_en_el_paquete' });
+export const DISTINTO = Object.freeze({ figura: 'figura_distinta', audio: 'audio_distinto', pagina: 'pagina_distinta', video: 'video_distinto', clip: 'clip_distinto' });
+
+// 0.12.1: los clips de las tarjetas (y sus posters) que el paquete nombra y todavía no están en su carpeta.
+export function clipsQueFaltan(config, fila, datos = null) {
+  try {
+    const lista = datos ? RECURSOS.clip.declarados(datos) : manifiesto(config, fila).clips ?? [];
+    const carpeta = join(carpetaDe(config, fila), 'clips');
+    return lista.filter(a => !existsSync(join(carpeta, a.archivo))).map(a => a.archivo);
+  } catch { return []; }
+}
 
 // 0.12.1: los archivos de «video/» (mp4 y portadas) que el paquete nombra y todavía no están en su carpeta.
 export function videosQueFaltan(config, fila, datos = null) {
@@ -332,6 +359,8 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
   const destino = rutaDeRecurso(config, fila, clase, archivo);
   if (!bytes || bytes > topeDe(clase, archivo) || !r.valido(primerosBytes(parcial), archivo)) throw new ErrorHttp(422, r.noValido);
   if (d.sha256 && huella !== d.sha256) throw new ErrorHttp(422, DISTINTO[clase]);
+  const motivo = r.revisar ? r.revisar(parcial, archivo) : null;
+  if (motivo) throw new ErrorHttp(422, motivo);
   if (existsSync(destino)) throw new ErrorHttp(409, 'ya_hay_otra_en_marcha');
   renameSync(parcial, destino);
   const faltan = figurasQueFaltan(config, fila);
@@ -341,7 +370,7 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
       auditar(db, { usuarioId, accion: 'academia_paquete_listo', detalle: String(fila.id) });
     });
   }
-  return { faltan, faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila) };
+  return { faltan, faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila), faltanClips: clipsQueFaltan(config, fila) };
 }
 
 // Sube UNA figura o UN audio del paquete (cuerpo = el archivo tal cual). Solo los que el paquete nombra y faltan.
@@ -352,7 +381,7 @@ export async function subirRecurso(db, config, { clase, paqueteId, archivo, req,
   if (typeof archivo !== 'string' || !r.patron.test(archivo)) throw new ErrorHttp(400, 'archivo_no_valido');
   if (!declarado(config, fila, clase, archivo)) throw new ErrorHttp(400, NO_ESTA[clase]);
   const destino = rutaDeRecurso(config, fila, clase, archivo);
-  if (existsSync(destino)) return { ya: true, faltan: figurasQueFaltan(config, fila), faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila), paquete: vista(fila) };
+  if (existsSync(destino)) return { ya: true, faltan: figurasQueFaltan(config, fila), faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila), faltanClips: clipsQueFaltan(config, fila), paquete: vista(fila) };
   const tipoPedido = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   if (tipoPedido !== r.tipo(archivo) && tipoPedido !== 'application/octet-stream' && !(clase === 'audio' && tipoPedido === 'audio/mp3')) throw new ErrorHttp(415, 'formato_no_valido');
   const largo = Number(req.headers['content-length']);
@@ -574,6 +603,49 @@ export function rutaVideo(paquete, ref) {
   if (!nombrado) return null;
   const ruta = join(p.carpeta, 'video', m[2]);
   try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${pid}-${huellaCorta(st)}"` } : null; } catch { return null; }
+}
+
+// 0.12.1: el clip de una tarjeta, si ya llegó: { url, poster, alt } (con la huella en la dirección, como el video).
+export function clipDe(paquete, pid, c) {
+  if (!paquete || pid == null || typeof c?.archivo !== 'string' || !ARCHIVO_MP4.test(c.archivo)) return null;
+  const p = paquete.porPaquete?.get(pid);
+  if (!p) return null;
+  const url = archivo => {
+    try { const st = statSync(join(p.carpeta, 'clips', archivo)); return st.isFile() && st.size ? `/api/academia/clips/${encodeURIComponent(`${pid}~${archivo}`)}?v=${huellaCorta(st)}` : null; } catch { return null; }
+  };
+  const video = url(c.archivo);
+  if (!video) return null;
+  return { url: video, poster: typeof c.poster === 'string' && ARCHIVO_FIGURA.test(c.poster) ? url(c.poster) : null, alt: c.alt ?? '', sonido: clipConSonido(join(p.carpeta, 'clips', c.archivo)) };
+}
+// ¿El clip trae una pista de sonido? (lo lee una vez: un archivo de una versión nunca cambia; ≤ 600 KB).
+const sonidoDeClip = new Map();
+function clipConSonido(ruta) {
+  if (sonidoDeClip.has(ruta)) return sonidoDeClip.get(ruta);
+  let si = false;
+  try { if (statSync(ruta).size <= LIMITES.clipBytes) si = datosMp4(readFileSync(ruta))?.audio === true; } catch { si = false; }
+  if (sonidoDeClip.size >= 500) sonidoDeClip.clear();
+  sonidoDeClip.set(ruta, si);
+  return si;
+}
+// Los clips que nombran las tarjetas EN USO de cada versión: Set de «<versión>~<archivo>» (se arma una vez por contenido).
+const clipsEnUso = new WeakMap();
+export function rutaClip(paquete, ref) {
+  const m = /^(\d{1,12})~(.+)$/s.exec(String(ref));
+  if (!m || !ARCHIVO_VIDEO.test(m[2])) return null;
+  const p = paquete?.porPaquete?.get(Number(m[1]));
+  if (!p) return null;
+  if (!clipsEnUso.has(paquete)) {
+    const nombres = new Set();
+    for (const x of paquete.materias) {
+      if (x.paquete == null) continue;
+      const listas = [...x.temas.flatMap(t => [t.secciones, t.reexplicacion]), x.extra?.tarjetas];
+      for (const c of clipsDe({ materias: [{ temas: listas.map(l => ({ secciones: l })) }] })) nombres.add(`${x.paquete}~${c.archivo}`);
+    }
+    clipsEnUso.set(paquete, nombres);
+  }
+  if (!clipsEnUso.get(paquete).has(`${m[1]}~${m[2]}`)) return null;
+  const ruta = join(p.carpeta, 'clips', m[2]);
+  try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${m[1]}-${huellaCorta(st)}"` } : null; } catch { return null; }
 }
 
 // La ruta de una figura del paquete en uso (o null).

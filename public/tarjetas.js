@@ -225,7 +225,7 @@ export function partirLeccion(secciones) {
     if (s.tipo === 'tarjeta') {
       pantallas.push({
         tipo: 'tarjeta', estilo: 'normal', titulo: s.titulo, parte: null, partes: null, puntos: [...(s.puntos ?? [])],
-        recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null, ingles: s.ingles ?? [], visual: s.visual ?? null,
+        recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null, ingles: s.ingles ?? [], visual: s.visual ?? null, clip: s.clip ?? null,
         texto: s.texto ?? null, nota: s.nota ?? null, fuentes: s.fuentes ?? [],
       });
       continue;

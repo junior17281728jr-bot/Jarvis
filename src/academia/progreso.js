@@ -6,7 +6,7 @@
 // nunca viajan antes de responder: la nota la pone el servidor.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De } from './paquetes.js';
+import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De, clipDe } from './paquetes.js';
 import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe } from './saltos.js';
 import { lineaHumor } from './humor.js';
 import { resumenExtra } from './extra.js';
@@ -154,6 +154,8 @@ const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(s => ({
     tipo: 'tarjeta', puntos: [...s.puntos], recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null,
     ingles: Array.isArray(s.ingles) ? s.ingles.map(w => ({ palabra: w.palabra, pronunciacion: w.pronunciacion ?? null, significado: w.significado ?? null, ejemplo: w.ejemplo ?? null })) : [],
     visual: s.visual ? { tipo: s.visual.tipo, parametros: s.visual.parametros ?? {} } : null,
+    // 0.12.1: el ejemplo en video corto (solo si ya llegó; si no, se ve el dibujo o nada).
+    clip: clipDe(paquete, pid, s.clip),
   } : {}),
 }));
 
