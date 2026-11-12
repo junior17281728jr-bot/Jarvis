@@ -182,7 +182,8 @@ test('actividad: la última entrada, la última salida y cada sesión con su ent
     assert.equal(a1.sesiones.length, 1);
     assert.deepEqual([a1.sesiones[0].estado, a1.sesiones[0].motivo], ['cerrada', 'salir']);
     assert.equal(a1.sesiones[0].entrada, a0.sesiones[0].entrada);
-    assert.equal(a1.sesiones[0].salida, a1.ultimaSalida);
+    // La salida de la sesión y la «última salida» (de las visitas, 0.12.4) se anotan con milisegundos de diferencia.
+    assert.ok(Math.abs(Date.parse(a1.sesiones[0].salida) - Date.parse(a1.ultimaSalida)) <= 2000, `${a1.sesiones[0].salida} vs ${a1.ultimaSalida}`);
     // Entra otra vez y deja la sesión abierta; y una sesión vieja que venció sin «Salir».
     await entrar(base, 'ana');
     db.prepare("INSERT INTO sesiones (token_hash, usuario_id, creada_en, vence_en, ultimo_uso, navegador) VALUES ('viejo', ?, '2026-01-01T10:00:00.000Z', '2026-01-31T10:00:00.000Z', '2026-01-02T11:00:00.000Z', 'Windows Chrome/1')").run(ids.ana);
