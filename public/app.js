@@ -4322,6 +4322,7 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
       if (l.preguntas && l.reto) nodo.append(el('div', { class: 'fin-reto' }, el('p', { class: 'suave chica', texto: t('reto.linea_tema') }), botonReto(l.reto, { materia, tema })));
       // 0.9.0: «¿Tienes una duda de este tema?» (sin IA: la tarjeta que más se parece; con IA, además su respuesta).
       nodo.append(instructorUi().cajaDuda(materia, tema));
+      if (l.extra) nodo.append(enlaceProfundizar(materia, tema)); // 0.12.12
       setTimeout(() => { if (sigue()) celebrar(cuerpo); }, 150);
     } else if (p.tipo === 'girar') {
       const v = vistaGirar(p, () => { boton.replaceWith(continuar); });
@@ -4660,12 +4661,23 @@ async function pantallaVideo(materia, { modo = null, tema = null } = {}) {
 }
 
 // ---- El examen de una materia (como en ENALAS: todas sus preguntas, mezcladas) ----
-async function pantallaExtra(materia) {
+// 0.12.12: «Profundizar en este tema» (al final de la clase y del resultado de su práctica): solo si el tema trae tarjetas extra.
+function enlaceProfundizar(materia, tema) {
+  return el('a', { class: 'boton-texto con-icono enlace-profundizar', href: `#extra/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}` },
+    icono('chispa', 'icono chico'), el('span', { texto: t('extra.profundizar_tema') }));
+}
+// Al terminar la práctica de un tema (no al abrir la pantalla): se pregunta si el tema trae tarjetas extra.
+function ofrecerProfundizar(lugar, materia, tema, sigue) {
+  api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`).then(l => {
+    if (l.ok && l.datos.extra && sigue()) lugar.append(enlaceProfundizar(materia, tema));
+  });
+}
+async function pantallaExtra(materia, tema = null) {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', `/api/academia/extra/${encodeURIComponent(materia)}`), import('./extra-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir, vistaClip, vistaFoto });
+  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir, vistaClip, vistaFoto }, { tema });
 }
 
 async function pantallaExamen(materia) {
@@ -5036,6 +5048,8 @@ async function pantallaPractica(id) {
       errores,
       res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez, aMiRepaso]).filter(Boolean));
     if (res.aprobado !== false && llego) celebrar(zona);
+    // 0.12.12: «Profundizar en este tema», si el tema trae tarjetas extra (la lección suele estar en memoria).
+    if (res.tipo === 'tema' && res.materia && res.tema) ofrecerProfundizar(zona, res.materia, res.tema, sigue);
     sonar(res.aprobado && res.tipo === 'examen' ? 'nivel' : res.aprobado ? 'tema' : res.aprobado === false ? 'mal' : llego ? 'bien' : 'toque');
     window.scrollTo(0, 0);
   };
@@ -5702,8 +5716,9 @@ async function dibujar() {
   const video = seccion.match(/^video\/([a-z0-9_-]+)(?:\/(primera|tema)\/([a-z0-9_-]+))?$/);
   if (video) return pantallaVideo(video[1], { modo: video[2] ?? null, tema: video[3] ?? null });
   // 0.12.0: lo EXTRA de una materia (public/extra-vista.js, solo se carga ahí).
-  const extra = seccion.match(/^extra\/([a-z0-9_-]+)$/);
-  if (extra) return pantallaExtra(extra[1]);
+  // 0.12.12: #extra/<materia>/<tema> = «Profundizar en este tema» (abre las tarjetas de ese tema).
+  const extra = seccion.match(/^extra\/([a-z0-9_-]+)(?:\/([a-z0-9_-]+))?$/);
+  if (extra) return pantallaExtra(extra[1], extra[2] ?? null);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad))?$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1], alumno[2] ?? 'resumen');
@@ -5782,7 +5797,7 @@ function pedidosAlAbrir(seccion, admin) {
   const video = seccion.match(/^video\/([a-z0-9_-]+)(?:\/(?:primera|tema)\/[a-z0-9_-]+)?$/);
   if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
   // 0.12.0: lo extra de una materia.
-  const extra = seccion.match(/^extra\/([a-z0-9_-]+)$/);
+  const extra = seccion.match(/^extra\/([a-z0-9_-]+)(?:\/[a-z0-9_-]+)?$/);
   if (extra) return [`/api/academia/extra/${encodeURIComponent(extra[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad))?$/);

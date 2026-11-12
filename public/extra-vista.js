@@ -5,7 +5,7 @@
 
 const NIVELES = ['basico', 'intermedio', 'avanzado'];
 
-export function pantallaExtra(datos, h) {
+export function pantallaExtra(datos, h, { tema = null } = {}) {
   const { el, t, tn, numero, icono, mostrar, marco, volverAlCamino, nombreMateria, claseMateria } = h;
   const materia = datos.materia;
   if (!datos.hay) {
@@ -38,7 +38,10 @@ export function pantallaExtra(datos, h) {
     c.ejemplo ? el('p', { class: 'suave', texto: c.ejemplo }) : null,
     c.ingles?.length ? el('p', { class: 'extra-ingles' }, c.ingles.map(w => el('span', { class: 'ficha-ingles-mini', texto: `${w.palabra} · ${w.significado ?? ''}` }))) : null,
     (c.fuentes ?? []).filter(Boolean).map(f => el('p', { class: 'extra-fuente suave chica', texto: t('extra.fuente', { libro: f.libro, pagina: f.pagina ?? '' }) })));
-  const temas = datos.temas.filter(x => x.tarjetas.length).map((x, k) => el('details', { class: 'extra-tema', open: k === 0 },
+  // 0.12.12: desde «Profundizar en este tema» se abre (y se muestra) el de ese tema; si no, el primero.
+  const conTarjetas = datos.temas.filter(x => x.tarjetas.length);
+  const abrir = conTarjetas.some(x => x.id === tema) ? tema : conTarjetas[0]?.id;
+  const temas = conTarjetas.map(x => el('details', { class: 'extra-tema', open: x.id === abrir, 'data-tema': x.id },
     el('summary', {}, el('span', { texto: x.titulo }), el('span', { class: 'suave chica', texto: tn('extra.n_tarjetas', { n: x.tarjetas.length }) })),
     el('div', { class: 'extra-tarjetas' }, x.tarjetas.map(tarjeta))));
   mostrar(marco('inicio', volverAlCamino(),
@@ -55,6 +58,7 @@ export function pantallaExtra(datos, h) {
     temas.length ? el('section', { class: 'panel extra-profundiza', 'aria-labelledby': 'extra-tarjetas-titulo' },
       el('h2', { id: 'extra-tarjetas-titulo', class: 'con-icono' }, icono('libro'), el('span', { texto: t('extra.tarjetas') })),
       temas) : null));
+  if (tema && abrir === tema) temas.find(x => x.dataset.tema === tema)?.scrollIntoView({ block: 'start' });
 }
 
 function ronda(r, pedido, h) {

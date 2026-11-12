@@ -428,6 +428,8 @@ export function leccion(db, usuarioId, paquete, materia, tema) {
     reto: t.preguntas.filter(id => tieneReto(paquete.preguntas.get(id))).length, ...(audio ? { audio } : {}), ...(debil ? { debil } : {}),
     // 0.12.2: el video de su materia (ofrecerlo la primera vez; el capítulo de este tema).
     ...((v => (v ? { video: v } : {}))(videoDeLeccion(db, usuarioId, paquete, paquete.materias.find(x => x.id === materia), t))),
+    // 0.12.12: cuántas tarjetas extra («Profundizar») trae este tema (0: no se ofrece «Profundizar en este tema»).
+    extra: (paquete.materias.find(x => x.id === materia)?.extra?.tarjetas ?? []).filter(c => c.tema === t.id).length,
     // 0.12.2: dónde quedó la última vez (la pantalla de su clase), para seguir ahí.
     paso: (({ paso, max, total } = {}) => (total ? { paso, max, total } : null))(pasosDeTemas(db, usuarioId)[`${materia}/${t.id}`]),
   };

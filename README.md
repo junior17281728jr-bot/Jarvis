@@ -724,6 +724,9 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   persona y «Minutos [ ] PONER» en una fila, con su línea de «para qué sirve»; toques de 44 px («¿De dónde salió?»,
   «Reportar un error», «Oír», el índice de Mis documentos); CONTINUAR con el nombre del tema entero; letras de las
   opciones respondidas legibles; «Bajar al final» no tapa el texto; el corte del gasto de IA dice «1 de diciembre».
+- **«Profundizar · más allá del Test Guide»**: lo extra de cada materia se llama así para el alumno (mismo contenido). Al
+  final de la clase y del resultado de la práctica de un tema, «Profundizar en este tema» (solo si el tema trae tarjetas
+  extra: la lección dice cuántas, `extra`) abre `#extra/<materia>/<tema>` con ese tema abierto.
   Pruebas: `test/navegacion-rapida.test.js` y `test/qa-visual-01212.test.js`.
 
 ### Lo nuevo de la 0.12.11 (dinero, IA por alumno, Telegram y un dispositivo a la vez) — sin cambio de base

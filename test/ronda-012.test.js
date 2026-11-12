@@ -294,6 +294,11 @@ test('extra: se estudia aparte (tarjetas y rondas por nivel), la respuesta no vi
     assert.equal(x.recomendado, false, 'siempre visible, recomendado después del examen');
     assert.deepEqual(x.niveles.map(n => [n.nivel, n.preguntas]), [['basico', 1], ['intermedio', 1], ['avanzado', 1]]);
     assert.equal(x.temas[0].tarjetas[0].fuentes[0].libro, 'Libro extra de muestra (inventado)');
+    // 0.12.12: la lección dice cuántas tarjetas para profundizar trae su tema («Profundizar en este tema»; 0 = no se ofrece).
+    const temaConExtra = x.temas.find(tm => tm.tarjetas.length).id;
+    const leccion = await pedir(c.base, 'GET', `/api/academia/temas/${MATERIA}/${temaConExtra}`, { galleta: c.ana });
+    assert.equal(leccion.codigo, 200);
+    assert.equal(leccion.datos.extra, 1);
     const ronda = (await pedir(c.base, 'POST', `/api/academia/extra/${MATERIA}/ronda`, { galleta: c.ana, datos: { nivel: 'intermedio' } })).datos;
     assert.deepEqual(ronda.preguntas.map(q => q.id), ['x-m-02']);
     assert.ok(!JSON.stringify(ronda).includes('"correcta"') && !JSON.stringify(ronda).includes('porque'), 'la correcta no viaja antes');

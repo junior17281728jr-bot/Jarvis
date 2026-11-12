@@ -109,3 +109,17 @@ test('Grupo, Comparar, video, toques y contraste (CSS y textos)', () => {
   }
   assert.deepEqual(Object.keys(es).sort(), Object.keys(en).sort());
 });
+
+test('«Profundizar · más allá del Test Guide»: los textos, la dirección por tema y el enlace al final de la clase y de la práctica', () => {
+  const app = leer('public/app.js');
+  const vista = leer('public/extra-vista.js');
+  assert.equal(es['extra.titulo'], 'Profundizar · más allá del Test Guide');
+  assert.match(en['extra.titulo'], /beyond the Test Guide/);
+  for (const k of ['extra.profundizar_tema', 'extra.nodo', 'extra.abrir', 'extra.de', 'extra.sello']) assert.match(es[k], /Profundizar/, k);
+  assert.match(app, /const extra = seccion\.match\(\/\^extra\\\/\(\[a-z0-9_-\]\+\)\(\?:\\\/\(\[a-z0-9_-\]\+\)\)\?\$\/\);\n  if \(extra\) return pantallaExtra\(extra\[1\], extra\[2\] \?\? null\);/);
+  assert.match(app, /if \(l\.extra\) nodo\.append\(enlaceProfundizar\(materia, tema\)\);/);
+  assert.match(app, /if \(res\.tipo === 'tema' && res\.materia && res\.tema\) ofrecerProfundizar\(zona, res\.materia, res\.tema, sigue\);/);
+  assert.match(app, /if \(l\.ok && l\.datos\.extra && sigue\(\)\) lugar\.append\(enlaceProfundizar\(materia, tema\)\);/);
+  assert.match(vista, /export function pantallaExtra\(datos, h, \{ tema = null \} = \{\}\)/);
+  assert.match(vista, /open: x\.id === abrir, 'data-tema': x\.id/);
+});
