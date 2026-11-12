@@ -341,14 +341,15 @@ test('una versión nueva de los términos dice qué cambió (la nota del adminis
     const quien = idDe(db, 'admin2');
     publicarDoc(db, 'terminos', [{ titulo: 'Uno', texto: 'Texto uno' }, { titulo: 'Dos', texto: 'Texto dos' }], { hechoPor: quien });
     publicarDoc(db, 'terminos', [{ titulo: 'Uno', texto: 'Texto uno cambiado' }, { titulo: 'Tres', texto: 'Nuevo' }], { hechoPor: quien, cambios: 'Aclaramos la parte uno.' });
-    const c = queCambio(db, 'terminos', 2);
-    assert.deepEqual([c.desde, c.version, c.notas.map(n => n.texto), c.nuevas, c.cambiadas, c.quitadas], [2, 3, ['Aclaramos la parte uno.'], ['Tres'], ['Uno'], ['Dos']]);
-    assert.equal(queCambio(db, 'terminos', 3), null, 'al día: nada');
+    // 0.12.7: el código ya trae la versión 2 de los términos, así que estas son la 3 y la 4.
+    const c = queCambio(db, 'terminos', 3);
+    assert.deepEqual([c.desde, c.version, c.notas.map(n => n.texto), c.nuevas, c.cambiadas, c.quitadas], [3, 4, ['Aclaramos la parte uno.'], ['Tres'], ['Uno'], ['Dos']]);
+    assert.equal(queCambio(db, 'terminos', 4), null, 'al día: nada');
     // La versión 2 del aviso de privacidad que trae el código tiene su «Qué cambió» (en los dos idiomas).
     const p = queCambio(db, 'privacidad', 1);
     assert.deepEqual([p.notas[0]?.clave, p.cambiadas.length], ['terminos.cambio.privacidad_v2', 1]);
     const sinNota = queCambio(db, 'terminos', 1);
-    assert.ok(sinNota.notas.length === 1, 'las notas de las versiones que no firmó');
+    assert.deepEqual(sinNota.notas.map(n => n.clave ?? n.texto), ['terminos.cambio.terminos_v2', 'Aclaramos la parte uno.'], 'las notas de las versiones que no firmó (0.12.7: también la de la v2 del código)');
   } finally {
     db.close();
   }
