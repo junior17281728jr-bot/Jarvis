@@ -87,7 +87,8 @@ const RESPUESTAS_COMPRIMIBLES = new Set([
   '/api/academia/camino', '/api/academia/temas/:materia/:tema', '/api/academia/intentos/:id', '/api/academia/progreso', '/api/admin/academia/alumnos',
   '/api/admin/academia/alumnos/:id', '/api/admin/academia', '/api/admin/academia/respuestas',
   // 0.9.0: la ficha de un alumno, uno de sus intentos y «Comparar».
-  '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids']);
+  '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids',
+  '/api/admin/academia/reporte']);
 
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });

@@ -1,5 +1,6 @@
-// Pruebas de la 0.9.2: «Términos de uso y aviso» (nombre legal, firma por versión, publicar otra versión) y el perfil
-// privado (no aparece para los otros alumnos; el administrador ve todo). Usa solo el paquete de MUESTRA.
+// Pruebas de la 0.9.2: «Términos de uso y aviso» (nombre legal, firma por versión, publicar otra versión), el perfil
+// privado (no aparece para los otros alumnos; el administrador ve todo) y el Reporte del administrador. Usa solo el
+// paquete de MUESTRA.
 import { configDePrueba, conServidor } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,6 +10,7 @@ import { crearUsuario } from '../src/cuentas/usuarios.js';
 import { hashClave } from '../src/cuentas/claves.js';
 import { TERMINOS_V1 } from '../src/cuentas/terminos.js';
 import { parteValida } from '../public/terminos-vista.js';
+import { csvDe } from '../public/reporte-vista.js';
 import { crearLimitesCuentas } from '../src/api/cuentas.js';
 import { Limitador } from '../src/nucleo/limites.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
@@ -158,4 +160,58 @@ test('perfil privado: no aparece para los otros alumnos (Grupo); el administrado
 test('los nombres de verdad: de 2 a 60, letras, espacios, tildes y guiones', () => {
   for (const bueno of ['Ana', 'José Luis', 'Pérez-Gómez', 'O\'Neil', 'Ñuñez']) assert.ok(parteValida(bueno), bueno);
   for (const malo of ['A', '', '1234', 'Ana2', 'x'.repeat(61), '-Ana', '<b>']) assert.equal(parteValida(malo), null, malo);
+});
+
+test('reporte: solo el administrador; ranking por puntaje, por alumno, grupo y comparar; filtros; se recuerda la elección; los privados salen', async () => {
+  await conAcademia(async ({ base, db, admin, ana, beto, ids }) => {
+    await hacerTema(base, ana, 5);
+    await hacerTema(base, beto, 2);
+    await pedir(base, 'POST', '/api/yo/perfil', { galleta: ana, datos: { privado: true } });
+    const ruta = '/api/admin/academia/reporte?secciones=ranking,alumnos,grupo,comparar';
+    for (const r of [ruta, '/api/admin/academia/reporte/opciones']) {
+      assert.equal((await pedir(base, 'GET', r)).codigo, 401, r);
+      assert.equal((await pedir(base, 'GET', r, { galleta: ana })).codigo, 403, r);
+    }
+    assert.equal((await pedir(base, 'POST', '/api/admin/academia/reporte/opciones', { galleta: beto, datos: { secciones: ['ranking'] } })).codigo, 403);
+    const d = (await pedir(base, 'GET', ruta, { galleta: admin })).datos;
+    assert.deepEqual(d.ranking.map(x => x.id), [ids.ana, ids.beto], 'Ana (privada) sale y va primero');
+    assert.ok(d.ranking[0].puntaje > d.ranking[1].puntaje);
+    const a = d.alumnos.find(x => x.id === ids.ana);
+    assert.equal(a.preparacion, 50);
+    assert.equal(a.pctAcierto, 100);
+    assert.equal(a.puntaje, Math.round(0.6 * 50 + 0.25 * 100 + 0.15 * 100));
+    assert.ok(d.alumnos.find(x => x.id === ids.beto).reforzar.temas.length >= 1);
+    assert.equal(d.grupo.alumnos, 2);
+    assert.equal(d.grupo.dificiles[0].tema, 'muestra-hipoxia');
+    assert.deepEqual(d.comparar, [ids.ana, ids.beto]);
+    // Solo lo que se pide.
+    const solo = (await pedir(base, 'GET', '/api/admin/academia/reporte?secciones=grupo', { galleta: admin })).datos;
+    assert.deepEqual([solo.ranking, solo.alumnos, solo.comparar], [null, null, null]);
+    assert.ok(solo.grupo);
+    // Fechas: un período sin respuestas no cuenta respuestas (la preparación es la de hoy).
+    const viejo = (await pedir(base, 'GET', '/api/admin/academia/reporte?secciones=alumnos&desde=2020-01-01&hasta=2020-01-31', { galleta: admin })).datos;
+    assert.equal(viejo.alumnos.find(x => x.id === ids.ana).respuestas, 0);
+    assert.equal((await pedir(base, 'GET', '/api/admin/academia/reporte?secciones=nada', { galleta: admin })).datos.error, 'reporte_no_valido');
+    assert.equal((await pedir(base, 'GET', '/api/admin/academia/reporte?secciones=grupo&desde=2026-02-01&hasta=2026-01-01', { galleta: admin })).codigo, 400);
+    // Bloqueados: fuera salvo que se pidan.
+    await pedir(base, 'POST', `/api/admin/usuarios/${ids.beto}/activo`, { galleta: admin, datos: { activo: false } });
+    assert.deepEqual((await pedir(base, 'GET', '/api/admin/academia/reporte?secciones=ranking', { galleta: admin })).datos.ranking.map(x => x.id), [ids.ana]);
+    assert.deepEqual((await pedir(base, 'GET', '/api/admin/academia/reporte?secciones=ranking&bloqueados=1', { galleta: admin })).datos.ranking.map(x => x.id), [ids.ana, ids.beto]);
+    // Comparar a quienes elija.
+    assert.deepEqual((await pedir(base, 'GET', `/api/admin/academia/reporte?secciones=comparar&bloqueados=1&comparar=${ids.beto}`, { galleta: admin })).datos.comparar, [ids.beto]);
+    // La última elección, por administrador.
+    const opciones = { secciones: ['ranking', 'comparar'], bloqueados: true, comparar: [ids.ana], desde: '2026-11-01', hasta: null };
+    assert.deepEqual((await pedir(base, 'POST', '/api/admin/academia/reporte/opciones', { galleta: admin, datos: opciones })).datos.opciones, opciones);
+    assert.deepEqual((await pedir(base, 'GET', '/api/admin/academia/reporte/opciones', { galleta: admin })).datos.opciones, opciones);
+    assert.equal((await pedir(base, 'POST', '/api/admin/academia/reporte/opciones', { galleta: admin, datos: { secciones: ['x'] } })).codigo, 400);
+    assert.ok(db.prepare("SELECT 1 FROM ajustes WHERE clave = 'academia.reporte.1'").get());
+    // El CSV lleva las mismas partes.
+    const t = (clave, v = {}) => `${clave}${Object.keys(v).length ? JSON.stringify(v) : ''}`;
+    const csv = csvDe(d, t, id => id);
+    assert.ok(csv.startsWith('\ufeff'));
+    assert.match(csv, /reporte\.seccion\.ranking/);
+    assert.match(csv, /reporte\.seccion\.comparar/);
+    assert.match(csv, /\r\n1;ana;ana;\d+\r\n/);
+    assert.doesNotMatch(csvDe(solo, t, id => id), /reporte\.seccion\.ranking/);
+  });
 });

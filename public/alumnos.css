@@ -232,3 +232,60 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
 .ficha-legal { font-weight: 700; margin: 2px 0; }
 .tono-atencion { color: var(--naranja-borde); }
 .examen-no-oficial { justify-content: center; font-size: 14px; opacity: 0.9; }
+
+/* ---------- 0.9.2: el Reporte (pantalla y papel A4) ---------- */
+.ficha-reporte { margin: 0 0 12px; }
+.reporte-grupo { border: 1px solid var(--borde); border-radius: 14px; padding: 8px 12px; margin: 10px 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.reporte-grupo legend { font-weight: 800; padding: 0 4px; }
+.reporte-casilla { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
+.reporte-casilla input { width: 20px; height: 20px; accent-color: var(--naranja); }
+.reporte-casilla.chica { min-height: 32px; font-size: 14px; }
+.reporte-comparar-lista { display: flex; flex-wrap: wrap; gap: 2px 12px; width: 100%; }
+.reporte-fechas { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.reporte-fechas label { display: grid; gap: 4px; font-weight: 700; }
+.reporte-hoja { background: #ffffff; color: #0f172a; border-radius: 18px; padding: 20px 18px; margin-top: 14px; box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08); }
+.reporte-cabeza { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; border-bottom: 3px solid #1c8fe0; padding-bottom: 10px; }
+.reporte-cabeza h1 { margin: 0; font: 800 26px var(--letra-redonda); }
+.reporte-app { margin: 0; font-weight: 800; color: #1c8fe0; text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; }
+.reporte-cabeza-datos p { margin: 0; font-size: 13px; color: #475569; text-align: right; }
+.reporte-seccion { margin-top: 20px; }
+.reporte-seccion h2 { font: 800 20px var(--letra-redonda); margin: 0 0 6px; color: #0f172a; border-left: 6px solid #ff8a1f; padding-left: 8px; }
+.reporte-formula { font-size: 13px; color: #475569; background: #f1f5f9; border-radius: 10px; padding: 8px 10px; }
+.reporte-grafico { width: 100%; height: auto; display: block; margin: 8px 0; }
+.reporte-grafico .rg-guia { stroke: #e2e8f0; stroke-width: 1; }
+.reporte-grafico .rg-escala { font: 10px system-ui, sans-serif; fill: #94a3b8; }
+.reporte-grafico .rg-etiqueta { font: 600 13px system-ui, sans-serif; fill: #0f172a; }
+.reporte-grafico .rg-valor { font: 800 13px system-ui, sans-serif; fill: #0f172a; }
+.reporte-grafico .rg-pista { fill: #eef2f7; }
+.reporte-grafico .rg-medalla { font: 800 12px system-ui, sans-serif; fill: #ffffff; }
+.reporte-grafico .rg-lugar { font: 700 12px system-ui, sans-serif; fill: #64748b; }
+.reporte-podio { list-style: none; padding: 0; margin: 10px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.reporte-podio li { display: grid; justify-items: center; text-align: center; gap: 4px; padding: 12px; border-radius: 14px; border: 2px solid #e2e8f0; }
+.reporte-podio .lugar-1 { border-color: #d4a017; background: #fff8e1; }
+.reporte-podio .lugar-2 { border-color: #9aa4b2; background: #f4f6f8; }
+.reporte-podio .lugar-3 { border-color: #b8733d; background: #fbefe6; }
+.reporte-medalla { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; background: #64748b; }
+.lugar-1 .reporte-medalla { background: #d4a017; } .lugar-2 .reporte-medalla { background: #9aa4b2; } .lugar-3 .reporte-medalla { background: #b8733d; }
+.reporte-alumno { border: 1px solid #e2e8f0; border-radius: 14px; padding: 12px; margin: 10px 0; break-inside: avoid; page-break-inside: avoid; }
+.reporte-alumno-cabeza { display: flex; align-items: center; gap: 10px; }
+.reporte-alumno-cabeza > div { flex: 1; min-width: 0; }
+.reporte-alumno-cabeza h3 { margin: 0; font-size: 17px; }
+.reporte-alumno-cabeza p { margin: 0; }
+.reporte-puntaje { font: 800 24px var(--letra-redonda); color: #1c8fe0; }
+.reporte-cifras { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.reporte-cifras li { font-size: 13px; padding: 3px 9px; border-radius: 99px; background: #f1f5f9; }
+.reporte-reforzar h4 { margin: 6px 0 2px; font-size: 14px; }
+.reporte-reforzar ul { margin: 0; padding-left: 20px; font-size: 13px; }
+.reporte-tabla td, .reporte-tabla th { white-space: normal; }
+.reporte-pie { margin-top: 18px; text-align: center; color: #64748b; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: #ffffff !important; }
+  .marco > .lateral, .menu, .contenido > *:not(.reporte-hoja), .aviso-flotante { display: none !important; }
+  .marco { display: block !important; }
+  .contenido { padding: 0 !important; max-width: none !important; }
+  .reporte-hoja { box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
+  .reporte-hoja, .reporte-hoja * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .reporte-seccion { break-before: auto; }
+  .reporte-seccion h2 { break-after: avoid; }
+}

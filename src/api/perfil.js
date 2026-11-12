@@ -11,6 +11,7 @@ import { duenoDeTailscale } from '../cuentas/tailscale.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { fichaAlumno, intentoDeAlumno, compararAlumnos } from '../academia/fichas.js';
+import { reporteAcademia, opcionesReporte, guardarOpcionesReporte } from '../academia/reporte.js';
 
 export function crearLimitesPerfil() {
   return {
@@ -80,6 +81,25 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
 
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/intentos/:intento', ({ db, parametros }) =>
     ({ codigo: 200, datos: intentoDeAlumno(db, activo(db), parametros.id, parametros.intento) }), { admin: true });
+
+  // 0.9.2: el Reporte. ?secciones=ranking,alumnos,grupo,comparar&desde=AAAA-MM-DD&hasta=…&bloqueados=1&comparar=todos|2,5
+  rutas.agregar('GET', '/api/admin/academia/reporte', ({ db, req }) => {
+    const q = new URL(req.url, 'http://x').searchParams;
+    const lista = nombre => (q.get(nombre) ?? '').split(',').filter(Boolean);
+    const comparar = q.get('comparar');
+    const opciones = {
+      secciones: q.has('secciones') ? lista('secciones') : undefined,
+      desde: q.get('desde') || null, hasta: q.get('hasta') || null, bloqueados: q.get('bloqueados') === '1',
+      comparar: comparar && comparar !== 'todos' ? lista('comparar').map(n => (/^\d{1,9}$/.test(n) ? Number(n) : -1)) : 'todos',
+    };
+    return { codigo: 200, datos: reporteAcademia(db, activo(db), opciones, reloj()) };
+  }, { admin: true });
+  // La última elección de cada administrador (qué partes, fechas, bloqueados, a quiénes comparar).
+  rutas.agregar('GET', '/api/admin/academia/reporte/opciones', ({ db, usuario }) => ({ codigo: 200, datos: { opciones: opcionesReporte(db, usuario.id) } }), { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/reporte/opciones', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { opciones: guardarOpcionesReporte(db, usuario.id, datos) } };
+  }, { admin: true });
 
   // :ids = «2,5,7» (de 2 a 6 cuentas distintas).
   rutas.agregar('GET', '/api/admin/academia/comparar/:ids', ({ db, parametros }) =>
