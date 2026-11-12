@@ -78,3 +78,8 @@ Plan: la palabra que suena es la que se ve; un plano por frase (60+ planos en 6:
 - Interfaz: foto real de avión de fondo, más profesional; clases más visuales e interactivas (sin minijuegos).
 - Test Guide: auditoría completa de las 748 preguntas e imágenes.
 - Futuro: «después otras preguntas porque quiero abarcar más» (preguntas fuera del Test Guide, marcadas aparte).
+
+## 12 nov 2026 — Ronda siguiente (después de unir las ramas de ahora)
+1. «¿De dónde salió?»: en cada pregunta (práctica, examen y revisión) un botón en la esquina que muestra la fuente (Test Guide, capítulo, sección, número, página) y abre la PÁGINA REAL del libro (imagen de la página del Test Guide en el paquete, solo en el servidor privado), para comprobar que es verdad.
+2. Saltar etapas: se puede ir directo al examen de una etapa/materia sin hacer los temas. El sistema guarda el orden (examen antes de temas o después) y lo sabe. Si se «quema» después de saltar: se lo reclama («tú lo quisiste, sabías las consecuencias») y lo motiva a hacer las etapas.
+3. Tono con humor entre panas cuando se quema: chistes y vacilón suaves (nada ofensivo: sin insultos de raza, religión, sexo, ni groserías fuertes), que motiven. Interruptor del admin para el humor (encendido/apagado) y opción del alumno para apagarlo.
