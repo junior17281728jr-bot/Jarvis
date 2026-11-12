@@ -69,3 +69,12 @@ FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» comp
 ## 12 nov 2026 — Video: cada frase con su imagen en 3D
 Junior: «el video con el audio debe enseñar visualmente lo que se va hablando… si hablo de un ojo, enseñar en 3D un ojo, la córnea y todo eso, y cómo se vería en caso del fallo… si hablo de un hombre dentro de un carro, en primera persona dentro de un carro».
 Plan: la palabra que suena es la que se ve; un plano por frase (60+ planos en 6:18), nada quieto más de 6–8 s; 3D estilizado (three.js, render fuera del repo), MP4 por Drive. Primero un piloto de 30–45 s de la parte del ojo para que Junior lo apruebe.
+
+## 12 nov 2026 — Más pedidos (resumen)
+- Admin: ficha por alumno, comparar, entradas/salidas (0.9.0 hecho); cambiar nombres/usuarios; bloquear cuenta; contraseñas de mínimo 4 que pone cada alumno; examen con reloj y cuadrícula; privacidad (solo el admin ve resultados; «Privado» oculta al alumno del grupo); reporte descargable (ranking, por alumno, grupo, comparación opcional; PDF y CSV).
+- Instructor: fallas registradas (3 fallos → falla; nunca se borra; «superada»), «Tu plan de refuerzo» arriba en Inicio, «Lo que hicimos por ti», plan al reprobar (en qué falló, qué estudiar, YouTube curado o búsqueda, volver a tomar el examen). Todo orientado al Test Guide.
+- IA: 20 min gratis por alumno (configurable), compra por transferencia Banco Popular con comprobante y aprobación en Admin → Pagos; guía para conectar Claude/ChatGPT con «Probar conexión»; «Ver cómo trabaja»; comparación Básico vs Con IA; «Profesor virtual» (chat de pago) que conoce sus fallas y recomienda videos (sin enlaces inventados).
+- Video: más claro; la imagen se queda mientras habla la voz (voz a velocidad normal).
+- Interfaz: foto real de avión de fondo, más profesional; clases más visuales e interactivas (sin minijuegos).
+- Test Guide: auditoría completa de las 748 preguntas e imágenes.
+- Futuro: «después otras preguntas porque quiero abarcar más» (preguntas fuera del Test Guide, marcadas aparte).
