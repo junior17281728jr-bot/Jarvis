@@ -10,7 +10,11 @@ import { PROPOSITOS } from './propositos.js';
 
 export const GASTO_SQL = "COALESCE(SUM(CASE estado WHEN 'reservada' THEN reservado_micro ELSE COALESCE(costo_micro, 0) END), 0)";
 const UMBRALES = Object.freeze([50, 80, 100]);
-const NIVELES_GENERAL = Object.freeze({ 50: 'info', 80: 'atencion', 100: 'grave' });
+// 0.12.7 (pedido del dueño): el tope GENERAL (el del mes del dueño) avisa cada 10 % (10, 20 … 100), cada uno una vez por
+// mes, por la pantalla y por Telegram (en silencio; el 100 %, la IA queda en modo básico, suena). Los topes de cada
+// cuenta siguen en 50, 80 y 100 %.
+const UMBRALES_GENERAL = Object.freeze([10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+const NIVELES_GENERAL = Object.freeze(Object.fromEntries(UMBRALES_GENERAL.map(u => [u, u >= 100 ? 'grave' : 'atencion'])));
 const NIVELES_OTROS = Object.freeze({ 50: 'info', 80: 'atencion', 100: 'atencion' });
 
 // Lo ya cerrado (sin lo que está en curso): solo crece durante el mes. Sirve para saber si un tope está LLENO de
@@ -110,7 +114,7 @@ export function revisarUmbrales(db, { mes, ambitos, ahora = Date.now(), cfg, pro
     const usado = gastoMicro(db, filtroDeAmbito(mes, ambito));
     const pct = Math.floor((100 * usado) / tope);
     const lleno = pct >= 100 || topeLleno(db, { cfg, ambito, mes, propositos });
-    const umbral = lleno ? 100 : [...UMBRALES].reverse().find(u => pct >= u) ?? null;
+    const umbral = lleno ? 100 : [...(ambito === 'general' ? UMBRALES_GENERAL : UMBRALES)].reverse().find(u => pct >= u) ?? null;
     if (umbral == null) continue;
     const clave = claveAvisoTope(ambito, mes);
     const abierto = db.prepare('SELECT detalle FROM avisos WHERE clave = ? AND resuelto_en IS NULL').get(clave);
@@ -118,10 +122,34 @@ export function revisarUmbrales(db, { mes, ambitos, ahora = Date.now(), cfg, pro
     const niveles = ambito === 'general' ? NIVELES_GENERAL : NIVELES_OTROS;
     const [anio, mesNumero] = mes.split('-').map(Number);
     const vuelveEl = new Date(inicioMesSiguienteCobro(Date.UTC(anio, mesNumero - 1, 15))).toISOString();
-    abrirAviso(db, { clave, nivel: niveles[umbral], detalle: { ambito, mes, umbral, pct, usadoMicro: usado, topeMicro: tope, vuelveEl }, reenviar: true, ahora });
+    // 0.12.7: cuántos días quedan del mes de cobro (para «quedan 18 días»).
+    const dias = Math.max(0, Math.ceil((Date.parse(vuelveEl) - ahora) / 86_400_000));
+    abrirAviso(db, { clave, nivel: niveles[umbral], detalle: { ambito, mes, umbral, pct, usadoMicro: usado, topeMicro: tope, vuelveEl, dias }, reenviar: true, ahora });
     abiertos.push(clave);
   }
   return abiertos;
+}
+
+// 0.12.7: el resumen de AYER (día de RD) si ayer se gastó algo: lo llama la vigilancia de cada hora (src/ia/presupuesto.js,
+// vigilarIA; solo la base, nunca la red). Uno por día; un día sin gasto no tiene ninguno. Solo números (nunca un nombre).
+export function resumenDelDia(db, { ahora = Date.now(), cfg }) {
+  const hoy = new Date(ahora - 4 * 3_600_000).toISOString().slice(0, 10);
+  const inicioHoy = Date.parse(`${hoy}T04:00:00Z`);
+  const inicioAyer = inicioHoy - 86_400_000;
+  const dia = new Date(inicioAyer).toISOString().slice(0, 10);
+  const clave = `ia_resumen:${dia}`;
+  if (db.prepare('SELECT 1 FROM avisos WHERE clave = ?').get(clave)) return null;
+  const f = db.prepare(`SELECT ${GASTO_SQL} AS g, COUNT(*) AS n FROM ia_llamadas WHERE creada_en >= ? AND creada_en < ? AND estado <> 'reservada'`)
+    .get(new Date(inicioAyer).toISOString(), new Date(inicioHoy).toISOString());
+  if (!(f.g > 0)) return null;
+  const mes = new Date(ahora).toISOString().slice(0, 7); // el mes de cobro (src/tareas/tiempo.js, mesCobro)
+  const usadoMes = gastoMicro(db, { mes });
+  const tope = cfg?.topeGeneralMicro ?? 0;
+  const dias = Math.max(0, Math.ceil((inicioMesSiguienteCobro(ahora) - ahora) / 86_400_000));
+  // Los anteriores ya se leyeron (o no hace falta): se cierran para que la lista no crezca.
+  for (const a of db.prepare("SELECT clave FROM avisos WHERE resuelto_en IS NULL AND substr(clave, 1, 11) = 'ia_resumen:'").all()) resolverAviso(db, a.clave, ahora);
+  abrirAviso(db, { clave, nivel: 'atencion', detalle: { dia, usadoMicro: f.g, n: f.n, mesMicro: usadoMes, topeMicro: tope, pct: tope > 0 ? Math.floor((100 * usadoMes) / tope) : 0, dias }, ahora });
+  return clave;
 }
 
 // Cierra los avisos de tope del mes de cobro que cumplan el filtro (por ámbito). Devuelve los ámbitos cerrados.

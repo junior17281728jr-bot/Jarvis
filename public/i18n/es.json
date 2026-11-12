@@ -1098,7 +1098,7 @@
   "telegram.aviso.actualizacion_revertida.titulo": "Una actualización",
   "telegram.aviso.actualizacion_revertida.texto": "La actualización {sha} no arrancó y el servidor volvió a la versión de antes. Tus datos están bien.",
   "telegram.aviso.ia_tope.titulo": "El tope de la IA",
-  "telegram.aviso.ia_tope.texto": "La IA llegó a una parte de su tope de este mes. La app sigue con su motor propio.",
+  "telegram.aviso.ia_tope.texto": "IA: llevas el {pct} % del límite del mes ({usado} de {tope}) · quedan {dias} días.",
   "telegram.aviso.ia_proveedor.titulo": "La IA",
   "telegram.aviso.ia_proveedor.texto": "{proveedor} no se pudo usar. La app sigue con su motor propio.",
   "telegram.aviso.ia_costo_mayor.titulo": "La IA",
@@ -3137,5 +3137,10 @@
   "uso.cache.sin": "Caché del proveedor: todavía sin llamadas este mes.",
   "uso.cache.nota": "Aparte, las explicaciones y mini-clases se guardan en la app y se reutilizan entre alumnos sin volver a pagar.",
   "uso.reposo.bien": "0 llamadas cuando nadie estudia: todas las de este mes salieron de algo que hizo una persona.",
-  "uso.reposo.mal": "{n} llamadas de este mes no salieron de algo que hizo una persona. Revísalo."
+  "uso.reposo.mal": "{n} llamadas de este mes no salieron de algo que hizo una persona. Revísalo.",
+  "telegram.aviso.ia_tope.lleno": "IA: llegaste al 100 % del límite del mes ({usado} de {tope}). La IA quedó en pausa: todos siguen con el instructor básico, sin errores, hasta que empiece el mes nuevo (quedan {dias} días) o subas el tope.",
+  "telegram.aviso.ia_tope.cuenta": "La IA de una cuenta llegó a una parte de su tope de este mes. La app sigue con su motor propio.",
+  "telegram.aviso.ia_resumen.titulo": "El gasto de la IA de ayer",
+  "telegram.aviso.ia_resumen.texto": "IA ayer: {usado} en {n} llamadas. En el mes: {mes} de {tope} ({pct} %) · quedan {dias} días.",
+  "aviso.ia_resumen": "IA ayer: {usado} en {n} llamadas. En el mes: {mes} de {tope} ({pct} %)."
 }

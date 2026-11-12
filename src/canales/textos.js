@@ -97,6 +97,15 @@ function valoresDe(aviso, idioma) {
   if (partes[0] === 'cambio_admin' && /^[a-z_]{1,40}$/.test(partes[1] ?? '')) {
     v.que = existeFrase(`admin.cambio.${partes[1]}`) ? frase(idioma, `admin.cambio.${partes[1]}`) : partes[1];
   }
+  // 0.12.7: el gasto de la IA en dinero («US$4,00») y los días que quedan del mes (solo números del dueño, nunca un nombre).
+  if (partes[0] === 'ia_tope' || partes[0] === 'ia_resumen') {
+    const usd = x => (Number.isSafeInteger(x) && x >= 0 ? `US$${new Intl.NumberFormat(idioma === 'en' ? 'en-US' : 'es-DO', { minimumFractionDigits: 2, maximumFractionDigits: x < 10_000 ? 4 : 2 }).format(x / 1_000_000)}` : '?');
+    v.usado = usd(d?.usadoMicro);
+    v.tope = usd(d?.topeMicro);
+    v.mes = usd(d?.mesMicro);
+    if (Number.isSafeInteger(d?.dias)) v.dias = d.dias;
+    if (Number.isSafeInteger(d?.n)) v.n = d.n;
+  }
   if (partes[0] === 'pago_recibido') {
     const corto = (x, max) => (typeof x === 'string' ? x.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '');
     v.alumno = corto(d?.alumno, 60) || '?';
@@ -116,6 +125,13 @@ export function cuerpoDeAviso(aviso, idioma) {
   const valores = valoresDe(aviso, idioma);
   let texto = frase(idioma, `${clave}.texto`, valores);
   // El disco de las copias no dejó escribir (no es «casi lleno»: no hay MB libres que decir).
+  // 0.12.7: el tope general cada 10 % («llevas el 40 %… quedan 18 días»), y al 100 % que la IA quedó en modo básico;
+  // los topes de una cuenta, con el texto de siempre.
+  if (base === 'ia_tope') {
+    const d = detalleDe(aviso);
+    if (d?.ambito !== 'general') texto = frase(idioma, 'telegram.aviso.ia_tope.cuenta', valores);
+    else if (Number(d?.umbral) >= 100) texto = frase(idioma, 'telegram.aviso.ia_tope.lleno', valores);
+  }
   if (base === 'copias_locales_pausadas' && detalleDe(aviso)?.motivo === 'escribir') texto = frase(idioma, 'telegram.aviso.copias_locales_pausadas.escribir');
   if (base === 'copia_atrasada' && valores.pausa === 'modo_seguro') texto = `${texto} ${frase(idioma, 'telegram.aviso.copia_atrasada.modo_seguro')}`;
   // Revisión final: el modo seguro por un problema de la base nunca dice que todo está bien: pide revisar antes de quitarlo.

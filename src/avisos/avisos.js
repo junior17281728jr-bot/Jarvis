@@ -34,6 +34,8 @@ const FRENO = /^freno:[a-z0-9._-]{1,60}$/;
 // Fase 1, parte d: 'ia_tope:<general|e<cuenta>|p<proyecto>>:<AAAA-MM>' (50, 80 y 100 % de un tope de IA en un mes
 // de cobro: UNA fila por tope y por mes, que sube de nivel) y 'ia_proveedor:<proveedor>' (el proveedor no se pudo usar).
 export const AVISO_IA_TOPE = /^ia_tope:(?:general|[ep][1-9]\d{0,9}):\d{4}-(?:0[1-9]|1[0-2])$/;
+// 0.12.7: el resumen de un día CON gasto de IA ('ia_resumen:<AAAA-MM-DD>', día de RD). Un día sin gasto no tiene ninguno.
+export const AVISO_IA_RESUMEN = /^ia_resumen:\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 export const AVISO_IA_PROVEEDOR = /^ia_proveedor:[a-z][a-z0-9_]{1,30}$/;
 // Ronda 3 de revisión: 'ia_llamadas:e<cuenta>' (una cuenta que no es la del administrador usó su parte de las llamadas
 // de IA de una hora; se cierra sola en la revisión de cada hora).
@@ -51,7 +53,7 @@ const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion'
 
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
-  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
+  return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_RESUMEN.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
     || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto);
 }
 

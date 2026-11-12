@@ -523,9 +523,9 @@ test('política: cada motivo con política existe y tiene su estado; las pausas 
   assert.equal(politicaDe('inventado').estado, 'desconocida');
 });
 
-// ---------- 11. Avisos al 50 / 80 / 100 % ----------
+// ---------- 11. Avisos del tope general cada 10 % (0.12.7; antes 50 / 80 / 100 %) ----------
 
-test('avisos de tope: UNA fila por tope y mes, sube 50 → 80 → 100 (lleno), cada subida se vuelve a mandar; repetir no escribe', () => {
+test('avisos de tope: UNA fila por tope y mes, sube cada 10 % hasta 100 (lleno), cada subida se vuelve a mandar; repetir no escribe', () => {
   const b = preparar({ tope: 10_000 });
   const { db } = b;
   const clave = 'ia_tope:general:2026-11';
@@ -536,19 +536,22 @@ test('avisos de tope: UNA fila por tope y mes, sube 50 → 80 → 100 (lleno), c
       liquidar(db, { llamadaId: r.llamada.id, resultado: bien(usoDe(0, 2000)), ahora }); // 1.000 µUSD cada uno
     }
   };
+  // 0.12.7: el tope general avisa cada 10 % (en silencio por Telegram: «atencion»), cada uno una vez por mes.
   gastar(4);
-  assert.equal(avisoDe(db, clave), undefined, 'al 40 % todavía no');
+  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 40, 'al 40 % ya avisa');
   gastar(1);
   let a = avisoDe(db, clave);
-  assert.equal(a.nivel, 'info');
+  assert.equal(a.nivel, 'atencion');
   assert.equal(JSON.parse(a.detalle).umbral, 50);
+  assert.ok(Number.isSafeInteger(JSON.parse(a.detalle).dias), 'dice cuántos días quedan');
   assert.equal(JSON.parse(a.detalle).vuelveEl, '2026-12-01T00:00:00.000Z');
   db.prepare('UPDATE avisos SET enviado_en = ?, visto_en = ?, visto_por = ? WHERE id = ?').run('mandado', 'visto', b.admin, a.id);
-  gastar(1);
+  // Repetir el mismo 10 % no escribe nada.
+  liquidar(db, { llamadaId: reservarUno(b, { entradaMax: PROPOSITOS.interpretar.entradaMinBytes }).llamada.id, resultado: bien(usoDe(0, 100)), ahora: T0 }); // 50 µUSD: 50,5 %
   const igual = avisoDe(db, clave);
-  assert.equal(igual.veces, 1, 'al 60 % no se escribe nada');
-  assert.equal(igual.enviado_en, 'mandado');
-  gastar(2);
+  assert.equal(JSON.parse(igual.detalle).umbral, 50);
+  assert.equal(igual.enviado_en, 'mandado', 'el mismo 10 %: no se vuelve a mandar');
+  gastar(3);
   a = avisoDe(db, clave);
   assert.equal(a.id, igual.id, 'la misma fila');
   assert.equal(a.nivel, 'atencion');
@@ -563,7 +566,7 @@ test('avisos de tope: UNA fila por tope y mes, sube 50 → 80 → 100 (lleno), c
   assert.equal(estadoIA(db, { config: b.config, ahora: T0 }).estado, 'encendida');
   const corta = reservarUno(b, { entradaMax: PROPOSITOS.interpretar.entradaMinBytes });
   assert.equal(corta.ok, true, 'uno más corto sí cabe');
-  liquidar(db, { llamadaId: corta.llamada.id, resultado: bien(usoDe(0, 1000)), ahora: T0 }); // 500 µUSD: 8.500
+  liquidar(db, { llamadaId: corta.llamada.id, resultado: bien(usoDe(0, 900)), ahora: T0 }); // 450 µUSD: 8.500
   // Lo que queda (1.500) ya no alcanza ni para el pedido más corto: ahora sí está lleno (aunque el número diga 85 %).
   assert.ok(10_000 - 8_500 < reservaMinimaMicro(precioDe('anthropic', 'claude-haiku-5-5')));
   a = avisoDe(db, clave);
@@ -572,18 +575,19 @@ test('avisos de tope: UNA fila por tope y mes, sube 50 → 80 → 100 (lleno), c
   assert.equal(estadoIA(db, { config: b.config, ahora: T0 }).estado, 'tope_lleno');
   assert.equal(reservarUno(b, { entradaMax: PROPOSITOS.interpretar.entradaMinBytes }).motivo, 'tope_general');
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM avisos WHERE clave LIKE 'ia_tope:%'").get().n, 1, 'una sola fila en todo el mes');
-  // Subir el tope cierra el «lleno» (queda en la historia) y vuelve a mirar: 8.500 de 20.000 = 42 %, nada abierto.
+  // Subir el tope cierra el «lleno» (queda en la historia) y vuelve a mirar: 8.500 de 20.000 = 42 % (0.12.7: un aviso
+  // nuevo del 40 %, en otra fila).
   guardarConfigIa(db, { topeGeneralMicro: 20_000 }, { config: b.config, ahora: T0 + 1000 });
-  assert.equal(avisoDe(db, clave), undefined);
+  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 40);
   assert.ok(db.prepare('SELECT resuelto_en FROM avisos WHERE id = ?').get(a.id).resuelto_en);
   // Bajarlo abre uno nuevo (otra fila): con 8.500 de 10.000 ya no cabe ningún uso, así que es el del 100 %.
   guardarConfigIa(db, { topeGeneralMicro: 10_000 }, { config: b.config, ahora: T0 + 2000 });
   assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 100);
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM avisos WHERE clave = ?').get(clave).n, 2);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM avisos WHERE clave = ?').get(clave).n, 3);
   // Un mes de cobro nuevo empieza limpio, y la vigilancia cierra los del mes pasado.
   const diciembre = Date.parse('2026-12-02T12:00:00Z');
   gastar(5, diciembre);
-  assert.equal(JSON.parse(avisoDe(db, 'ia_tope:general:2026-12').detalle).umbral, 50);
+  assert.equal(JSON.parse(avisoDe(db, 'ia_tope:general:2026-12').detalle).umbral, 50, 'el mes nuevo empieza de cero');
   vigilarIA(db, { config: b.config, ahora: diciembre });
   assert.equal(avisoDe(db, clave), undefined);
   assert.ok(avisoDe(db, 'ia_tope:general:2026-12'));
@@ -603,13 +607,13 @@ test('un pedido grande frenado al 75 % no llena el tope: uno corto se acepta, na
     liquidar(db, { llamadaId: r.llamada.id, resultado: bien(usoDe(0, salida)), ahora: T0 });
   };
   for (let i = 0; i < 5; i++) usar(4_200, 3_000); // 1.500 µUSD cada uno: 7.500 (75 %)
-  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 50);
+  assert.equal(JSON.parse(avisoDe(db, clave).detalle).umbral, 70);
   // Un pedido largo (instrucciones largas) ya no cabe.
   const larga = reservarUno(b, { entradaMax: 20_000 });
   assert.deepEqual([larga.ok, larga.motivo], [false, 'tope_general']);
   assert.equal(veces(db, 'tope_general'), 1, 'se cuenta la vez sin IA');
   let a = avisoDe(db, clave);
-  assert.deepEqual([a.nivel, JSON.parse(a.detalle).umbral], ['info', 50], 'el aviso NO dice «se llegó al tope, queda en pausa»');
+  assert.deepEqual([a.nivel, JSON.parse(a.detalle).umbral], ['atencion', 70], 'el aviso NO dice «se llegó al tope, queda en pausa»');
   const estado = estadoIA(db, { config: b.config, ahora: T0 });
   assert.deepEqual([estado.estado, estado.pct], ['encendida', 75], 'las pantallas no dicen «Tope lleno»');
   assert.equal(topeLleno(db, { cfg: leerConfigIa(db), ambito: 'general', mes: '2026-11' }), false);

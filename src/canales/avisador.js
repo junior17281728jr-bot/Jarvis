@@ -61,6 +61,8 @@ export const RUTA_AVISOS = Object.freeze({
     'copias_disco_pronto', 'copia_sin_fijar', 'copia_fallida', 'copia_atrasada', 'ia_costo_mayor', 'ia_llave', 'base_danada',
     'copias_fecha_futura', 'copias_otro_servidor', 'copia_solo_local']),
   prefijos: Object.freeze(['actualizacion_no_instalada', 'actualizacion_revertida', 'ia_tope', 'ia_proveedor',
+    // 0.12.7: el resumen de un día con gasto de IA (en silencio; un día sin gasto no tiene).
+    'ia_resumen',
     // 0.12.3: un cambio delicado del administrador y un comprobante de pago nuevo.
     'cambio_admin', 'pago_recibido']),
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».

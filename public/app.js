@@ -1156,6 +1156,8 @@ function textoAviso(a) {
   if (String(a.clave).startsWith('freno:')) {
     return t('aviso.freno', { tipo: nombreTipo(String(a.clave).slice(6)), hora: d.hasta ? cuando(d.hasta) : '?' });
   }
+  // 0.12.7: el resumen de un día con gasto de IA.
+  if (String(a.clave).startsWith('ia_resumen:')) return t('aviso.ia_resumen', { usado: usd(d.usadoMicro), n: v(d.n), mes: usd(d.mesMicro), tope: usd(d.topeMicro), pct: v(d.pct) });
   // Fase 1, parte d: los avisos de la IA (topes al 50, 80 y 100 %, un proveedor con problemas, un uso que costó más).
   if (String(a.clave).startsWith('ia_tope:')) {
     const ambito = textoAmbito(d.ambito ?? String(a.clave).split(':')[1]);

@@ -1098,7 +1098,7 @@
   "telegram.aviso.actualizacion_revertida.titulo": "An update",
   "telegram.aviso.actualizacion_revertida.texto": "Update {sha} did not start and the server went back to the previous version. Your data is fine.",
   "telegram.aviso.ia_tope.titulo": "The AI cap",
-  "telegram.aviso.ia_tope.texto": "The AI reached part of its cap this month. The app keeps working with its own engine.",
+  "telegram.aviso.ia_tope.texto": "AI: you have used {pct}% of this month's limit ({usado} of {tope}) · {dias} days left.",
   "telegram.aviso.ia_proveedor.titulo": "The AI",
   "telegram.aviso.ia_proveedor.texto": "{proveedor} could not be used. The app keeps working with its own engine.",
   "telegram.aviso.ia_costo_mayor.titulo": "The AI",
@@ -3137,5 +3137,10 @@
   "uso.cache.sin": "Provider cache: no calls yet this month.",
   "uso.cache.nota": "Separately, explanations and mini-classes are stored in the app and reused across students without paying again.",
   "uso.reposo.bien": "0 calls when nobody studies: every call this month came from something a person did.",
-  "uso.reposo.mal": "{n} calls this month did not come from something a person did. Check it."
+  "uso.reposo.mal": "{n} calls this month did not come from something a person did. Check it.",
+  "telegram.aviso.ia_tope.lleno": "AI: you reached 100% of this month's limit ({usado} of {tope}). AI is paused: everyone keeps the basic instructor, with no errors, until the new month starts ({dias} days left) or you raise the cap.",
+  "telegram.aviso.ia_tope.cuenta": "An account's AI reached part of its cap for this month. The app keeps working with its own engine.",
+  "telegram.aviso.ia_resumen.titulo": "Yesterday's AI spending",
+  "telegram.aviso.ia_resumen.texto": "AI yesterday: {usado} in {n} calls. This month: {mes} of {tope} ({pct}%) · {dias} days left.",
+  "aviso.ia_resumen": "AI yesterday: {usado} in {n} calls. This month: {mes} of {tope} ({pct}%)."
 }

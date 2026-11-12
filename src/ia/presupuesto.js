@@ -23,7 +23,7 @@ import { PROVEEDORES } from './proveedores/index.js';
 import { ID_PETICION, TOKENS_MAX } from './proveedores/comun.js';
 import { politicaDe, finDePausa, FALLAS_SEGUIDAS, FALLAS_SEGUIDAS_INSTRUCTOR, PASAJEROS } from './politica.js';
 import { leerConfigIa } from './config.js';
-import { gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro } from './gasto.js';
+import { gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro, resumenDelDia } from './gasto.js';
 import { topeEspacioMicro, iaDeVersionActiva, esEspacioAdmin } from './topes.js';
 import { espacioConfirmado } from '../cuentas/confianza.js';
 
@@ -404,6 +404,8 @@ export function vigilarIA(db, { config, ahora = Date.now() }) {
     }
     const cfg = leerConfigIa(db);
     revisarUmbrales(db, { mes, ambitos: ['general'], ahora, cfg });
+    // 0.12.7: el resumen de ayer, solo si ayer se gastó algo (un día sin gasto no manda nada).
+    const resumen = resumenDelDia(db, { ahora, cfg });
     // Ronda 3: el aviso de una cuenta que usó su parte de llamadas se cierra cuando ya vuelve a tener.
     for (const a of db.prepare("SELECT clave FROM avisos WHERE resuelto_en IS NULL AND substr(clave, 1, 12) = 'ia_llamadas:'").all()) {
       const m = /^ia_llamadas:e([1-9]\d{0,9})$/.exec(a.clave);
@@ -424,7 +426,7 @@ export function vigilarIA(db, { config, ahora = Date.now() }) {
     } else {
       resolverAviso(db, 'ia_llave', ahora);
     }
-    return { barridas, avisosCerrados: cerrados, llave };
+    return { barridas, avisosCerrados: cerrados, llave, resumen };
   });
 }
 
