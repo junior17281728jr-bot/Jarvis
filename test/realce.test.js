@@ -26,3 +26,14 @@ test('la ficha de inglés: la palabra en español sale del significado y la abre
   assert.equal(abreviaturaDe({ palabra: 'Carbon monoxide', significado: 'Monóxido de carbono (CO): gas sin olor' }), 'CO');
   assert.equal(abreviaturaDe({ palabra: 'Retina', significado: 'Retina: la película del ojo' }), null);
 });
+
+test('el visor de la figura abre ajustada a la pantalla; «alto» y «ancho» para las figuras altas o anchas', async () => {
+  const { anchoFigura, ZOOMS } = await import('../public/clase/realce.js');
+  const lugar = { libreAncho: 370, libreAlto: 560, natAncho: 1200, natAlto: 3000 }; // una figura alta (varias juntas)
+  assert.equal(anchoFigura(lugar, 'pantalla', 1), 224); // entra entera: manda el alto
+  assert.equal(anchoFigura(lugar, 'alto', 1), 224);
+  assert.equal(anchoFigura(lugar, 'ancho', 1), 370); // al ancho: se baja para leerla
+  assert.equal(anchoFigura(lugar, 'pantalla', 2), 448);
+  assert.equal(anchoFigura({ ...lugar, natAncho: 0 }, 'pantalla', 1), null); // la imagen aún no llegó
+  assert.deepEqual(ZOOMS.slice(0, 2), [1, 1.5]);
+});

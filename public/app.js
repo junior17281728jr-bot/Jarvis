@@ -14,7 +14,7 @@ import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
 import { leccionDeVideo } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { dibujarAvatar } from './avatares.js';
-import { realzarTarjeta, figuraAmpliable } from './clase/realce.js';
+import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
 
@@ -3830,9 +3830,11 @@ function figuraPregunta(q) {
     const capa = el('div', { class: 'figura-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': nombre },
       el('div', { class: 'figura-grande-barra' }, el('span', { texto: q.figura.titulo || nombre }),
         el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
-      el('div', { class: 'figura-grande-lienzo' }, figuraAmpliable(el('img', { src, alt: nombre }))));
+      el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
     capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
     document.body.append(capa);
+    // 0.9.1: abre ajustada a la pantalla, con − / + y «Ajustar» (public/clase/realce.js).
+    visorFigura(capa, { t });
     capa.querySelector('button').focus();
   };
   return el('figure', { class: 'q-figura' },

@@ -115,15 +115,86 @@ export function realzarTarjeta(nodo, p) {
   return nodo;
 }
 
-// La figura a pantalla completa: tocarla la acerca (2×) o la vuelve a encajar en la pantalla.
-export function figuraAmpliable(img) {
-  if (!img) return img;
-  img.classList.add('figura-encaja');
-  img.addEventListener('click', () => {
-    const cerca = img.classList.toggle('figura-cerca');
-    img.classList.toggle('figura-encaja', !cerca);
-    // El foco sigue dentro de la ventana (así Escape la cierra).
-    img.closest('[role="dialog"]')?.querySelector('button')?.focus({ preventScroll: true });
+// El visor de la figura a pantalla completa (0.9.1, después de revisar el Test Guide): abre AJUSTADA a la pantalla
+// (entera, sin cortar), con botones − / + y «Ajustar» (pantalla → alto → ancho, para las figuras altas o anchas),
+// doble toque para acercar o volver a ajustar, y se mueve arrastrando (o con dos dedos). El fondo es opaco.
+// Accesible: Escape cierra (app.js), el tabulador no sale de la ventana y el foco nunca queda fuera.
+export const ZOOMS = [1, 1.5, 2, 3, 4];
+const MODOS = ['pantalla', 'alto', 'ancho'];
+// El ancho (px) de la figura para un modo y un zoom, según el lugar libre y su tamaño natural.
+export function anchoFigura({ libreAncho, libreAlto, natAncho, natAlto }, modo, zoom) {
+  if (!natAncho || !natAlto || !libreAncho || !libreAlto) return null;
+  const porAncho = libreAncho / natAncho;
+  const porAlto = libreAlto / natAlto;
+  const escala = modo === 'ancho' ? porAncho : modo === 'alto' ? porAlto : Math.min(porAncho, porAlto);
+  return Math.max(40, Math.round(natAncho * escala * zoom));
+}
+
+function iconoVisor(d) {
+  const raiz = svg('svg', { viewBox: '0 0 24 24', class: 'visor-icono', 'aria-hidden': 'true', focusable: 'false' });
+  for (const x of d) svg('path', { d: x }, raiz);
+  return raiz;
+}
+
+export function visorFigura(capa, { t }) {
+  const img = capa?.querySelector('.figura-grande-lienzo img');
+  const lienzo = capa?.querySelector('.figura-grande-lienzo');
+  if (!img || !lienzo) return capa;
+  capa.classList.add('visor');
+  let modo = 'pantalla';
+  let paso = 0;
+  // Lo que hace «Ajustar» al tocarlo: con zoom, volver a la pantalla; si no, el modo que sigue.
+  const siguienteModo = () => (paso > 0 ? modo : MODOS[(MODOS.indexOf(modo) + 1) % MODOS.length]);
+  const etiquetaModo = () => { const m = paso > 0 ? 'pantalla' : siguienteModo(); return t(m === 'pantalla' ? 'figura.ajustar' : m === 'alto' ? 'figura.ajustar_alto' : 'figura.ajustar_ancho'); };
+  const menos = el('button', { type: 'button', class: 'visor-boton', 'aria-label': t('figura.alejar') });
+  menos.append(iconoVisor(['M5 12h14']));
+  const mas = el('button', { type: 'button', class: 'visor-boton', 'aria-label': t('figura.acercar') });
+  mas.append(iconoVisor(['M5 12h14', 'M12 5v14']));
+  const ajustar = el('button', { type: 'button', class: 'visor-boton visor-ajustar' });
+  const cuanto = el('span', { class: 'visor-zoom', 'aria-live': 'polite' });
+  const barra = el('div', { class: 'visor-barra', role: 'toolbar', 'aria-label': t('figura.controles') });
+  barra.append(menos, cuanto, mas, ajustar);
+  capa.append(barra);
+  const pintar = () => {
+    const ancho = anchoFigura({ libreAncho: lienzo.clientWidth - 20, libreAlto: lienzo.clientHeight - 20, natAncho: img.naturalWidth, natAlto: img.naturalHeight }, modo, ZOOMS[paso]);
+    if (ancho) img.style.setProperty('width', `${ancho}px`);
+    img.classList.toggle('figura-cerca', paso > 0 || modo !== 'pantalla');
+    menos.disabled = paso === 0;
+    mas.disabled = paso === ZOOMS.length - 1;
+    cuanto.textContent = `${Math.round(ZOOMS[paso] * 100)} %`;
+    ajustar.setAttribute('aria-label', etiquetaModo());
+    ajustar.replaceChildren(iconoVisor(['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5']), el('span', {}, null, etiquetaModo()));
+  };
+  const enfocar = () => capa.querySelector('.figura-grande-barra button')?.focus({ preventScroll: true });
+  menos.addEventListener('click', () => { paso = Math.max(0, paso - 1); pintar(); });
+  mas.addEventListener('click', () => { paso = Math.min(ZOOMS.length - 1, paso + 1); pintar(); });
+  // «Ajustar»: vuelve al tamaño de la pantalla; si ya está ajustada, prueba al alto y luego al ancho.
+  ajustar.addEventListener('click', () => {
+    modo = paso > 0 ? 'pantalla' : siguienteModo();
+    paso = 0;
+    pintar();
   });
-  return img;
+  img.addEventListener('dblclick', () => { paso = paso === 0 ? 2 : 0; pintar(); enfocar(); });
+  // Arrastrar para moverla (con el ratón; con el dedo el navegador ya desplaza).
+  let arrastre = null;
+  lienzo.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') arrastre = { x: e.clientX, y: e.clientY, l: lienzo.scrollLeft, t: lienzo.scrollTop }; });
+  lienzo.addEventListener('pointermove', e => { if (arrastre) { lienzo.scrollLeft = arrastre.l - (e.clientX - arrastre.x); lienzo.scrollTop = arrastre.t - (e.clientY - arrastre.y); } });
+  for (const fin of ['pointerup', 'pointerleave', 'pointercancel']) lienzo.addEventListener(fin, () => { arrastre = null; });
+  // El tabulador da vueltas dentro de la ventana.
+  capa.addEventListener('keydown', e => {
+    if (e.key === '+' || e.key === '=') { mas.click(); return; }
+    if (e.key === '-') { menos.click(); return; }
+    if (e.key !== 'Tab') return;
+    const enfocables = [...capa.querySelectorAll('button:not(:disabled)')];
+    if (!enfocables.length) return;
+    const primero = enfocables[0];
+    const ultimo = enfocables.at(-1);
+    if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+    else if (!capa.contains(document.activeElement)) { e.preventDefault(); primero.focus(); }
+  });
+  capa.addEventListener('pointerup', () => { if (!capa.contains(document.activeElement)) enfocar(); });
+  if (img.complete && img.naturalWidth) pintar(); else img.addEventListener('load', pintar, { once: true });
+  pintar();
+  return capa;
 }
