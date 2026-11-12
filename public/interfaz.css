@@ -15,12 +15,12 @@
   --radio-tarjeta: 20px;
   --radio-control: 14px;
   /* El velo sobre la foto (de arriba a abajo) y el vidrio de tarjetas y barras. */
-  --velo-1: rgba(243, 246, 251, 0.62);
+  --velo-1: rgba(243, 246, 251, 0.72);
   --velo-2: rgba(243, 246, 251, 0.85);
   --velo-3: rgba(243, 246, 251, 0.93);
   --velo-estudio: rgba(243, 246, 251, 0.90);
   --vidrio: color-mix(in srgb, var(--tarjeta) 90%, transparent);
-  --vidrio-barra: color-mix(in srgb, var(--tarjeta) 76%, transparent);
+  --vidrio-barra: color-mix(in srgb, var(--tarjeta) 86%, transparent);
   --vidrio-borde: color-mix(in srgb, var(--borde) 80%, transparent);
   --sombra-suave: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.07);
   --desenfoque: saturate(160%) blur(16px);
@@ -429,3 +429,8 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
 :root[data-tema="claro"] .estilo-normal .sello, :root[data-tema="claro"] .nodo-burbuja { color: var(--mc-borde, var(--azul)); }
 @media (prefers-color-scheme: light) { :root[data-tema="auto"] .estilo-normal .sello, :root[data-tema="auto"] .nodo-burbuja { color: var(--mc-borde, var(--azul)); } }
 .materia-bloque.vacia .banner-pronto { color: var(--texto); }
+/* Los términos en inglés dentro del texto, y la burbuja del paso actual en el oscuro. */
+:root[data-tema="claro"] .termino-en { color: #0f5c99; }
+@media (prefers-color-scheme: light) { :root[data-tema="auto"] .termino-en { color: #0f5c99; } }
+:root[data-tema="oscuro"] .nodo-burbuja { color: color-mix(in srgb, var(--mc, var(--verde)) 55%, #ffffff); }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] .nodo-burbuja { color: color-mix(in srgb, var(--mc, var(--verde)) 55%, #ffffff); } }
