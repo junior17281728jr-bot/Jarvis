@@ -17,6 +17,71 @@ export function textoTerminos(h, terminos) {
     terminos.secciones.map(s => el('section', {}, el('h3', { texto: s.titulo }), h.talCual('p', s.texto))));
 }
 
+// 0.9.2: la firma dibujada con el dedo o el ratón. → { nodo, vacia(), png() }.
+// «Vacía» = menos de 20 puntos o un trazo de menos de 60 × 15 (un toque suelto no es una firma).
+export function padFirma(h) {
+  const { el, t } = h;
+  const ANCHO = 480;
+  const ALTO = 160;
+  const lienzo = el('canvas', { class: 'firma-lienzo', width: ANCHO, height: ALTO, 'aria-label': t('firma.lienzo'), role: 'img' });
+  const ctx = lienzo.getContext('2d');
+  let puntos = 0;
+  let caja = null;
+  let trazando = false;
+  let alCambiar = () => {};
+  const limpiar = () => {
+    ctx.clearRect(0, 0, ANCHO, ALTO);
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(20, ALTO - 34); ctx.lineTo(ANCHO - 20, ALTO - 34); ctx.stroke();
+    puntos = 0;
+    caja = null;
+    alCambiar();
+  };
+  const punto = e => {
+    const r = lienzo.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) * ANCHO) / r.width, y: ((e.clientY - r.top) * ALTO) / r.height };
+  };
+  const anotar = p => {
+    puntos += 1;
+    caja = caja ? { x1: Math.min(caja.x1, p.x), y1: Math.min(caja.y1, p.y), x2: Math.max(caja.x2, p.x), y2: Math.max(caja.y2, p.y) } : { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+  };
+  lienzo.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    lienzo.setPointerCapture?.(e.pointerId);
+    trazando = true;
+    const p = punto(e);
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    anotar(p);
+  });
+  lienzo.addEventListener('pointermove', e => {
+    if (!trazando) return;
+    e.preventDefault();
+    const p = punto(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    anotar(p);
+  });
+  const soltar = () => { if (trazando) { trazando = false; alCambiar(); } };
+  lienzo.addEventListener('pointerup', soltar);
+  lienzo.addEventListener('pointercancel', soltar);
+  lienzo.addEventListener('pointerleave', soltar);
+  const borrar = el('button', { type: 'button', class: 'secundario chico', onclick: limpiar, texto: t('firma.borrar') });
+  const vacia = () => puntos < 20 || !caja || caja.x2 - caja.x1 < 60 || caja.y2 - caja.y1 < 15;
+  limpiar();
+  return {
+    nodo: el('div', { class: 'firma' }, el('p', { class: 'firma-titulo', texto: t('firma.titulo') }), lienzo, el('div', { class: 'firma-pie' }, el('span', { class: 'suave chica', texto: t('firma.ayuda') }), borrar)),
+    vacia,
+    png: () => lienzo.toDataURL('image/png'),
+    alCambiar: fn => { alCambiar = fn; },
+  };
+}
+
 // La pantalla para aceptar. datos = GET /api/yo/terminos. alListo(estado) cuando aceptó.
 export function pantallaAceptar(datos, h, { alListo, salir }) {
   const { el, t } = h;
@@ -47,10 +112,15 @@ export function pantallaAceptar(datos, h, { alListo, salir }) {
   const paso2 = (nombre, apellido) => {
     const acepto = el('input', { id: 'campo-acepto', type: 'checkbox' });
     const boton = el('button', { type: 'button', class: 'boton-3d grande', disabled: true, texto: t('terminos.aceptar') });
-    acepto.addEventListener('change', () => { boton.disabled = !acepto.checked; });
+    // 0.9.2: la firma dibujada es obligatoria.
+    const pad = padFirma(h);
+    const pintarBoton = () => { boton.disabled = !acepto.checked || pad.vacia(); };
+    pad.alCambiar(pintarBoton);
+    acepto.addEventListener('change', pintarBoton);
     boton.addEventListener('click', async () => {
+      if (pad.vacia()) return h.decir(mensaje, t('error.firma_falta'), 'error');
       boton.disabled = true;
-      const r = await h.api('POST', '/api/yo/terminos', { version: datos.terminos.version, nombre, apellido, acepto: acepto.checked });
+      const r = await h.api('POST', '/api/yo/terminos', { version: datos.terminos.version, nombre, apellido, acepto: acepto.checked, firma: pad.png() });
       if (!r.ok) { boton.disabled = false; return h.decir(mensaje, h.textoError(r.datos.error), 'error'); }
       alListo(r.datos.estado);
     });
@@ -58,6 +128,8 @@ export function pantallaAceptar(datos, h, { alListo, salir }) {
       el('h1', { texto: t('terminos.titulo') }),
       el('p', { class: 'suave', texto: t('terminos.version', { n: h.numero(datos.terminos.version) }) }),
       textoTerminos(h, datos.terminos),
+      el('p', { class: 'terminos-declaracion', texto: datos.declaracion ?? '' }),
+      pad.nodo,
       el('label', { class: 'terminos-acepto', for: 'campo-acepto' }, acepto, el('span', { texto: t('terminos.yo_acepto', { nombre: `${nombre} ${apellido}`, n: h.numero(datos.terminos.version) }) })),
       el('div', { class: 'botones apilados' }, boton,
         el('button', { type: 'button', class: 'secundario', texto: t('terminos.cambiar_nombre'), onclick: paso1, hidden: fijo || null }),

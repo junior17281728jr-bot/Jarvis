@@ -4303,6 +4303,23 @@ async function pantallaReporte() {
   const datos = o.ok && r.ok ? { ok: true, datos: { opciones: o.datos.opciones, alumnos: r.datos.alumnos } } : (o.ok ? r : o);
   dibujarDeAlumnos(datos, s, (d, h) => vista.pantallaReporte(d, { ...h, decir, fechaDia }));
 }
+// 0.9.2: los contratos firmados (public/contratos-vista.js, solo se carga aquí).
+const piezasContratos = h => ({ ...h, nombreApp: estado.setup?.nombreApp ?? '' });
+async function pantallaContratos() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaListaContratos(d, piezasContratos(h)));
+}
+async function pantallaContrato(usuario, version) {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/contratos/${encodeURIComponent(usuario)}/${encodeURIComponent(version)}`), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaContrato(d, piezasContratos(h)));
+}
+async function pantallaContratosTodos() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaTodos(d, piezasContratos(h)));
+}
 async function pantallaComparar(ids) {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/comparar/${ids}`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
@@ -4551,7 +4568,7 @@ async function dibujar() {
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte'].includes(seccion) || /^(?:alumno|comparar)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos'].includes(seccion) || /^(?:alumno|comparar|contrato)\//.test(seccion))) ponerModoEstudiante(false);
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
   // La clave de recuperación recién creada vive solo en esta pantalla: al irse de Copias se suelta (fase 1, parte e).
@@ -4584,6 +4601,10 @@ async function dibujar() {
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   if (seccion === 'reporte' && esAdmin) return pantallaReporte();
+  if (seccion === 'contratos' && esAdmin) return pantallaContratos();
+  if (seccion === 'contratos/todos' && esAdmin) return pantallaContratosTodos();
+  const contrato = seccion.match(/^contrato\/(\d+)\/(\d+)$/);
+  if (contrato && esAdmin) return pantallaContrato(contrato[1], contrato[2]);
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
   return pantallaInicio();
 }
@@ -4622,6 +4643,9 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema', '/api/admin/terminos'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
+  if (seccion === 'contratos' || seccion === 'contratos/todos') return admin ? ['/api/admin/contratos', '/api/admin/sistema'] : [];
+  const contrato = seccion.match(/^contrato\/(\d+)\/(\d+)$/);
+  if (contrato) return admin ? [`/api/admin/contratos/${encodeURIComponent(contrato[1])}/${encodeURIComponent(contrato[2])}`, '/api/admin/sistema'] : [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
 }

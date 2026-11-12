@@ -178,7 +178,10 @@ export function vistaListaAlumnos(datos, h) {
     el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: tn('acad.alumnos.n', { n: lista.length }) }), el('span', { class: 'insignia tono-bien', texto: tn('acad.alumnos.en_linea', { n: enLinea }) })),
     lista.length > 1 ? el('div', { class: 'ficha-comparar-barra' }, boton, ayuda) : null,
     // 0.9.2: el Reporte (ranking, por alumno, grupo, comparar; PDF y CSV).
-    el('a', { class: 'boton-enlace secundario con-icono ficha-reporte', href: '#reporte' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('reporte.boton') })),
+    el('div', { class: 'botones ficha-reporte' },
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#reporte' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('reporte.boton') })),
+      // 0.9.2: los contratos firmados (términos aceptados con la firma dibujada).
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.titulo') }))),
     lista.length ? h.verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 12) : h.vacio('personas', t('admin.usuarios.solo_tu')));
 }
 

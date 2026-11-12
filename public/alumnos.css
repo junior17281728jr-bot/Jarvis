@@ -289,3 +289,25 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
   .reporte-seccion { break-before: auto; }
   .reporte-seccion h2 { break-after: avoid; }
 }
+
+/* ---------- 0.9.2: la firma dibujada y los contratos firmados ---------- */
+.terminos-declaracion { font-weight: 700; text-align: left; padding: 10px 12px; border-left: 4px solid var(--naranja); background: color-mix(in srgb, var(--naranja) 8%, var(--tarjeta)); border-radius: 8px; }
+.firma { margin: 12px 0; text-align: left; }
+.firma-titulo { font-weight: 800; margin: 0 0 4px; }
+.firma-lienzo { display: block; width: 100%; max-width: 520px; aspect-ratio: 3 / 1; background: #ffffff; border: 2px dashed var(--borde); border-radius: 14px; touch-action: none; cursor: crosshair; }
+.firma-pie { display: flex; justify-content: space-between; align-items: center; gap: 8px; max-width: 520px; margin-top: 4px; }
+.contratos-lista { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+.contrato-texto section h3 { margin: 12px 0 2px; font-size: 15px; }
+.contrato-texto p { margin: 0; font-size: 14px; line-height: 1.45; }
+.contrato-hoja .terminos-declaracion { background: #fff7ed; color: #0f172a; }
+.contrato-acepto { font-weight: 700; margin: 14px 0 6px; }
+.contrato-firma { display: grid; justify-items: start; gap: 2px; margin: 8px 0 12px; }
+.contrato-firma img { width: 300px; max-width: 100%; height: auto; border-bottom: 2px solid #0f172a; }
+.contrato-nombre { margin: 0; font-weight: 700; }
+.contrato-datos dd { font-size: 13px; }
+.contrato-huella { font-family: ui-monospace, Menlo, monospace; font-size: 11px !important; word-break: break-all; }
+.contratos-todos > .contrato-hoja { box-shadow: none; border-bottom: 2px dashed #cbd5e1; border-radius: 0; margin: 0 0 24px; padding-bottom: 24px; }
+@media print {
+  .contratos-todos > .contrato-hoja { break-after: page; border: 0; }
+  .contrato-hoja { break-inside: auto; }
+}
