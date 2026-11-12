@@ -8,10 +8,11 @@
 //  - 0.7.1: la carpeta de Google Drive (pegar el enlace, «Probar», «Guardar», «Buscar ahora») y la narración en mp3,
 //    que se sirve por partes (Range) para que el iPhone la pueda reproducir.
 import { createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
-import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, paginaDe } from '../academia/paquetes.js';
+import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, rutaVideo, paginaDe } from '../academia/paquetes.js';
 import { extraDeMateria, rondaExtra, responderExtra } from '../academia/extra.js';
 import { humorDelDia, humorDelAdmin, humorDelAlumno, encenderHumorAdmin, encenderHumorAlumno } from '../academia/humor.js';
 import { idDeCarpeta, enlaceDeCarpeta, basesDrive, recorrerCarpeta, PAQUETE_EN_DRIVE } from '../academia/drive.js';
@@ -19,7 +20,7 @@ import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, marcarTemaLeido, claveDeRespuestas } from '../academia/progreso.js';
+import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
 
@@ -27,6 +28,7 @@ export function crearLimitesAcademia() {
   return {
     subidas: new Limitador({ maximo: 3000, ventanaMs: 60 * 60 * 1000 }), intentos: new Limitador({ maximo: 300, ventanaMs: 60 * 60 * 1000 }),
     drive: new Limitador({ maximo: 60, ventanaMs: 60 * 60 * 1000 }),
+    posiciones: new Limitador({ maximo: 600, ventanaMs: 60 * 60 * 1000 }), // 0.12.1: cada ~15 s mirando un video
   };
 }
 
@@ -48,6 +50,28 @@ export function rangoPedido(cabecera, tamano) {
   }
   if (inicio >= tamano || fin < inicio) return 'no';
   return { inicio, fin };
+}
+
+// Manda un archivo entero o la parte pedida (Range: 206; imposible: 416), por pedazos desde el disco (nunca entero en
+// memoria). Con pipeline: si quien mira corta (el video salta a otro minuto todo el tiempo), el archivo se cierra.
+// 0.12.1: lo usan la narración (mp3) y el video (mp4).
+export function enviarPorPartes(res, req, { ruta, bytes, tipo, cache = 'private, max-age=3600', etiqueta = null }) {
+  const comunes = { ...CABECERAS_SEGURIDAD, 'Content-Type': tipo, 'Accept-Ranges': 'bytes', 'Cache-Control': cache, ...(etiqueta ? { ETag: etiqueta } : {}) };
+  if (etiqueta && req.headers['if-none-match'] === etiqueta && !req.headers.range) {
+    res.writeHead(304, comunes);
+    return res.end();
+  }
+  // Un «If-Range» que no es esta versión del archivo: va entero.
+  const ifRange = req.headers['if-range'];
+  const rango = ifRange && etiqueta && ifRange !== etiqueta ? null : rangoPedido(req.headers.range, bytes);
+  if (rango === 'no') {
+    res.writeHead(416, { ...comunes, 'Content-Range': `bytes */${bytes}`, 'Content-Length': 0 });
+    return res.end();
+  }
+  const { inicio, fin } = rango ?? { inicio: 0, fin: bytes - 1 };
+  res.writeHead(rango ? 206 : 200, { ...comunes, 'Content-Length': fin - inicio + 1, ...(rango ? { 'Content-Range': `bytes ${inicio}-${fin}/${bytes}` } : {}) });
+  if (req.method === 'HEAD') return res.end();
+  pipeline(createReadStream(ruta, { start: inicio, end: fin, highWaterMark: 256 * 1024 }), res).catch(() => res.destroy());
 }
 
 export function registrarRutasAcademia(rutas, { config = null, supervisor = null, limites = {}, azar = Math.random, reloj = Date.now } = {}) {
@@ -134,6 +158,12 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     await leerJson(req);
     return { codigo: 200, datos: marcarVideoVisto(db, usuario.id, activo(db), parametros.materia) };
   });
+  // 0.12.1: dónde quedó en el video (para seguir desde ahí, también en otro aparato): { segundos }.
+  rutas.agregar('POST', '/api/academia/video/:materia/posicion', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    if (!topes.posiciones.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 200, datos: guardarPosicionVideo(db, usuario.id, activo(db), parametros.materia, datos?.segundos, reloj()) };
+  });
 
   rutas.agregar('GET', '/api/academia/temas/:materia/:tema', ({ db, usuario, parametros }) =>
     ({ codigo: 200, datos: leccion(db, usuario.id, activo(db), parametros.materia, parametros.tema) }));
@@ -216,22 +246,15 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('GET', '/api/academia/audio/:ref', ({ db, req, parametros }) => {
     const a = rutaAudio(activo(db), parametros.ref);
     if (!a) throw new ErrorHttp(404, 'no_existe');
-    const rango = rangoPedido(req.headers.range, a.bytes);
-    const comunes = { ...CABECERAS_SEGURIDAD, 'Content-Type': a.tipo, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=3600' };
-    return {
-      codigo: 200,
-      enviar: res => {
-        if (rango === 'no') {
-          res.writeHead(416, { ...comunes, 'Content-Range': `bytes */${a.bytes}`, 'Content-Length': 0 });
-          return res.end();
-        }
-        const { inicio, fin } = rango ?? { inicio: 0, fin: a.bytes - 1 };
-        res.writeHead(rango ? 206 : 200, { ...comunes, 'Content-Length': fin - inicio + 1, ...(rango ? { 'Content-Range': `bytes ${inicio}-${fin}/${a.bytes}` } : {}) });
-        const flujo = createReadStream(a.ruta, { start: inicio, end: fin });
-        flujo.on('error', () => res.destroy());
-        flujo.pipe(res);
-      },
-    };
+    return { codigo: 200, enviar: res => enviarPorPartes(res, req, a) };
+  });
+
+  // 0.12.1: el video resumen editado (mp4) de una materia en uso, y su portada. Por partes (Range), como el audio. Un
+  // archivo de una versión nunca cambia y la dirección lleva su huella (?v=): se guarda un año en el aparato.
+  rutas.agregar('GET', '/api/academia/videos/:ref', ({ db, req, parametros }) => {
+    const v = rutaVideo(activo(db), parametros.ref);
+    if (!v) throw new ErrorHttp(404, 'no_existe');
+    return { codigo: 200, enviar: res => enviarPorPartes(res, req, { ...v, cache: 'private, max-age=31536000, immutable' }) };
   });
 
   // ---------- El administrador ----------
@@ -241,7 +264,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
       codigo: 200,
       datos: {
         ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
-        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, paginaBytes: LIMITES.paginaBytes },
+        limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, videoBytes: LIMITES.videoBytes, paginaBytes: LIMITES.paginaBytes },
       },
     };
   }, { admin: true });
@@ -350,6 +373,15 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     necesitaConfig();
     if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
     const r = await subirRecurso(db, config, { clase: 'audio', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
+    return { codigo: r.ya ? 200 : 201, datos: r };
+  }, { admin: true });
+
+  // 0.12.1: el video resumen (mp4, hasta 150 MB) y su portada, igual que el audio: por pedazos al disco, nunca entero en
+  // memoria, y solo si el disco tiene el doble de lo que pesa libre (si no: 507 «sin_espacio», con los MB).
+  rutas.agregar('POST', '/api/admin/academia/paquetes/:id/video/:archivo', async ({ db, req, usuario, parametros }) => {
+    necesitaConfig();
+    if (!topes.subidas.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    const r = await subirRecurso(db, config, { clase: 'video', paqueteId: parametros.id, archivo: parametros.archivo, req, usuarioId: usuario.id });
     return { codigo: r.ya ? 200 : 201, datos: r };
   }, { admin: true });
 

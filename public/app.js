@@ -11,7 +11,7 @@ import {
 import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto } from './clave-recuperacion.js';
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
 import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
-import { leccionDeVideo } from './academia-video.js';
+import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capituloEn, reloj as relojVideo, VELOCIDADES, velocidadValida } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
 import { crearPagos } from './pagos.js';
@@ -1020,6 +1020,7 @@ const ICONOS = {
   trofeo: [['path', { d: 'M8 4h8v5a4 4 0 0 1-8 0z' }], ['path', { d: 'M8 6H5a3 3 0 0 0 3 4' }], ['path', { d: 'M16 6h3a3 3 0 0 1-3 4' }], ['line', { x1: 12, y1: 13, x2: 12, y2: 17 }], ['path', { d: 'M8 20h8l-1-3H9z' }]],
   subir: [['path', { d: 'M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3' }], ['polyline', { points: '7 9 12 4 17 9' }], ['line', { x1: 12, y1: 4, x2: 12, y2: 16 }]],
   cerrar: [['line', { x1: 6, y1: 6, x2: 18, y2: 18 }], ['line', { x1: 18, y1: 6, x2: 6, y2: 18 }]],
+  expandir: [['polyline', { points: '4 9 4 4 9 4' }], ['polyline', { points: '15 4 20 4 20 9' }], ['polyline', { points: '20 15 20 20 15 20' }], ['polyline', { points: '9 20 4 20 4 15' }]],
   // Academia 0.7.2: un ícono por materia y los de las tarjetas.
   cerebro: [['path', { d: 'M9 4.5a3 3 0 0 0-3 3 3 3 0 0 0-2 5.2A3 3 0 0 0 6.5 18 3 3 0 0 0 12 19V5.5A3 3 0 0 0 9 4.5z' }], ['path', { d: 'M15 4.5a3 3 0 0 1 3 3 3 3 0 0 1 2 5.2 3 3 0 0 1-2.5 5.3A3 3 0 0 1 12 19' }], ['path', { d: 'M8 10h2M14 13h2' }]],
   motor: [['rect', { x: 5, y: 9, width: 10, height: 8, rx: 1 }], ['path', { d: 'M15 11h3l2-2v8l-2-2h-3' }], ['path', { d: 'M8 9V6h4v3' }], ['path', { d: 'M2.5 11v4' }]],
@@ -3947,12 +3948,167 @@ function triangulo() {
   s.append(svgEl('path', { d: 'M8 5.2v13.6c0 .8.9 1.3 1.6.8l10.2-6.8a1 1 0 0 0 0-1.6L9.6 4.4c-.7-.5-1.6 0-1.6.8z' }));
   return s;
 }
+// 0.12.1: el video resumen editado (mp4): el reproductor del teléfono (controles propios, sin salir de la app en el
+// iPhone), la portada, los capítulos (tocar uno salta ahí), 1× / 1,25× / 1,5×, pantalla completa, y sigue donde lo dejó
+// (en este aparato y en el servidor, para otro aparato). Al llegar al 90 % queda visto (el mismo «ya lo vi» de siempre).
+const claveVideoLocal = ref => `op_video.${estado.usuario?.id ?? 0}.${ref}`;
+function leerVideoLocal(ref) {
+  try { const p = JSON.parse(localStorage.getItem(claveVideoLocal(ref)) ?? 'null'); return p && Number.isFinite(p.s) ? p : null; } catch { return null; }
+}
+function guardarVideoLocal(ref, s) {
+  try { localStorage.setItem(claveVideoLocal(ref), JSON.stringify({ s: Math.round(s * 10) / 10, en: new Date().toISOString() })); } catch { /* sin almacenamiento: queda en el servidor */ }
+}
+function leerVelocidadVideo() {
+  try { return velocidadValida(localStorage.getItem('op_video_velocidad')); } catch { return 1; }
+}
+function pantallaVideoMp4(materia, v) {
+  const mp4 = v.mp4;
+  const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
+  const duracion = Number(mp4.duracion_s) || 0;
+  const capitulos = Array.isArray(mp4.capitulos) ? mp4.capitulos : [];
+  const barraAvance = combustible();
+  const lugar = el('div', { class: 'video-lugar video-mp4' });
+  const pie = el('div', { class: 'estudio-botones' });
+  const raizEstudio = marcoEstudio({ clase: `video-materia con-mp4 ${claseMateria(materia)}`, barra: barraAvance.nodo, cuerpo: lugar, pie });
+  const video = el('video', {
+    class: 'video-mp4-pantalla', controls: true, playsinline: true, 'webkit-playsinline': true, preload: 'metadata',
+    poster: mp4.portada || null, src: mp4.url, 'aria-label': titulo, controlslist: 'nodownload', disablepictureinpicture: null,
+  });
+  let visto = v.visto === true;
+  let velocidad = leerVelocidadVideo();
+  const guardada = posicionMasNueva(v.posicion, leerVideoLocal(mp4.ref));
+  const desde = inicioDesde(guardada, duracion);
+  const seguir = botonGrande(t('acad.video.ir_temas'), () => { location.hash = '#inicio'; });
+  const ponerSeguir = () => { if (visto && !pie.contains(seguir)) pie.replaceChildren(seguir); };
+
+  // Dónde quedó: en este aparato a cada rato, y en el servidor cada 15 s, al pausar y al salir.
+  let ultimoEnviado = -1;
+  let ultimoEnvioMs = 0;
+  const guardarPosicion = (forzar = false) => {
+    const s = video.currentTime;
+    if (!Number.isFinite(s) || video.seeking) return;
+    guardarVideoLocal(mp4.ref, s);
+    if (!forzar && Date.now() - ultimoEnvioMs < 15_000) return;
+    if (Math.abs(s - ultimoEnviado) < 1) return;
+    ultimoEnviado = s;
+    ultimoEnvioMs = Date.now();
+    // Sin api(): guardar la posición no tiene que vaciar lo que la app ya tiene en memoria.
+    pedirAlServidor('POST', `/api/academia/video/${encodeURIComponent(materia)}/posicion`, { segundos: Math.round(s * 10) / 10 });
+  };
+  const marcarVisto = () => {
+    if (visto) return;
+    visto = true;
+    api('POST', `/api/academia/video/${encodeURIComponent(materia)}/visto`, {});
+    ponerSeguir();
+    avisar(t('acad.video.visto'));
+  };
+
+  // Velocidad.
+  const botonesVelocidad = VELOCIDADES.map(x => el('button', {
+    type: 'button', class: 'video-vel', 'aria-pressed': String(x === velocidad), 'data-vel': String(x),
+    onclick: () => {
+      velocidad = x;
+      video.playbackRate = x;
+      video.defaultPlaybackRate = x;
+      try { localStorage.setItem('op_video_velocidad', String(x)); } catch { /* vale solo ahora */ }
+      for (const b of botonesVelocidad) b.setAttribute('aria-pressed', String(Number(b.dataset.vel) === x));
+    },
+    texto: `${numero(x)}×`,
+  }));
+  const pantallaCompleta = el('button', {
+    type: 'button', class: 'boton-texto video-completa con-icono',
+    onclick: () => {
+      // El iPhone no deja poner en pantalla completa otra cosa que el video mismo (webkitEnterFullscreen).
+      const marco = video.parentElement;
+      if (marco?.requestFullscreen && document.fullscreenEnabled) marco.requestFullscreen().catch(() => video.webkitEnterFullscreen?.());
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+      else video.requestFullscreen?.();
+    },
+  }, icono('expandir'), el('span', { texto: t('acad.video.pantalla_completa') }));
+  const notaSeguir = desde > 0 ? el('p', { class: 'video-sigue suave', role: 'status', texto: t('acad.video.sigue_desde', { tiempo: relojVideo(desde) }) }) : null;
+  const desdeCero = desde > 0 ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { video.currentTime = 0; video.play().catch(() => {}); notaSeguir?.remove(); desdeCero.remove(); }, texto: t('acad.video.desde_cero') }) : null;
+
+  // Capítulos: tocar uno salta ahí (y empieza a sonar: es un toque).
+  const filasCapitulos = capitulos.map((c, k) => el('li', {},
+    el('button', {
+      type: 'button', class: 'video-capitulo', 'data-indice': String(k),
+      onclick: () => { video.currentTime = c.inicio_s; video.play().catch(() => {}); },
+    },
+    el('span', { class: 'video-capitulo-tiempo', texto: relojVideo(c.inicio_s) }),
+    el('span', { class: 'video-capitulo-titulo', texto: c.titulo }))));
+  let capituloActual = -2;
+  const marcarCapitulo = () => {
+    const i = capituloEn(capitulos, video.currentTime);
+    if (i === capituloActual) return;
+    capituloActual = i;
+    filasCapitulos.forEach((li, k) => { const b = li.firstChild; if (k === i) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+  };
+
+  video.addEventListener('loadedmetadata', () => {
+    video.playbackRate = velocidad;
+    video.defaultPlaybackRate = velocidad;
+    // Saltar a donde quedó solo cuando el video ya sabe cuánto dura (si no, el iPhone lo ignora).
+    if (desde > 0 && video.currentTime < 1) video.currentTime = desde;
+  }, { once: true });
+  video.addEventListener('play', () => { video.playbackRate = velocidad; });
+  video.addEventListener('timeupdate', () => {
+    const d = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : duracion;
+    barraAvance.poner(video.currentTime, d || 1);
+    marcarCapitulo();
+    guardarPosicion();
+    if (cuentaComoVisto(video.currentTime, d)) marcarVisto();
+  });
+  video.addEventListener('pause', () => guardarPosicion(true));
+  video.addEventListener('ended', () => { marcarVisto(); guardarPosicion(true); celebrar(lugar); });
+  video.addEventListener('error', () => {
+    if (!lugar.isConnected) return;
+    lugar.querySelector('.video-error')?.remove();
+    lugar.append(el('p', { class: 'mensaje error video-error', role: 'alert', texto: t('acad.video.no_carga') }));
+  });
+
+  lugar.append(
+    el('div', { class: 'video-marco' }, video),
+    el('div', { class: 'video-cabeza' },
+      el('p', { class: 'video-poster-ante', texto: t('acad.video.ante', { n: numero(ORDEN_MATERIAS.indexOf(materia) + 1) }) }),
+      el('h1', { class: 'video-mp4-titulo', texto: titulo }),
+      el('p', { class: 'suave video-mp4-datos', texto: [duracion ? t('acad.video.minutos', { n: numero(Math.max(1, Math.round(duracion / 60))) }) : null, capitulos.length ? tn('acad.video.capitulos', { n: capitulos.length }) : null, visto ? t('acad.video.ya_visto') : null].filter(Boolean).join(' · ') })),
+    notaSeguir ? el('div', { class: 'video-sigue-fila' }, notaSeguir, desdeCero) : null,
+    el('div', { class: 'video-controles' },
+      el('div', { class: 'video-velocidades', role: 'group', 'aria-label': t('acad.video.velocidad') }, el('span', { class: 'suave chica', texto: t('acad.video.velocidad') }), botonesVelocidad),
+      pantallaCompleta),
+    capitulos.length ? el('section', { class: 'video-capitulos', 'aria-labelledby': 'titulo-capitulos' },
+      el('h2', { id: 'titulo-capitulos', texto: t('acad.video.capitulos_titulo') }),
+      el('ol', {}, filasCapitulos)) : null);
+  barraAvance.poner(desde, duracion || 1);
+  marcarCapitulo();
+  if (visto) ponerSeguir();
+  mostrar(raizEstudio);
+  raizEstudio.video = video; // para las pruebas en el navegador (no es global)
+  // Al salir (otra pantalla, otra app o cerrar): se guarda dónde quedó y el video se apaga (sin seguir bajando).
+  const alOcultar = () => { if (document.visibilityState === 'hidden') guardarPosicion(true); };
+  const alSalirDePagina = () => guardarPosicion(true);
+  document.addEventListener('visibilitychange', alOcultar);
+  window.addEventListener('pagehide', alSalirDePagina);
+  const alSalir = () => setTimeout(() => {
+    if (lugar.isConnected) return;
+    guardarPosicion(true);
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    document.removeEventListener('visibilitychange', alOcultar);
+    window.removeEventListener('pagehide', alSalirDePagina);
+    window.removeEventListener('hashchange', alSalir);
+  });
+  window.addEventListener('hashchange', alSalir);
+}
 async function pantallaVideo(materia) {
   const vigente = nuevoTurno();
   const r = await api('GET', `/api/academia/video/${encodeURIComponent(materia)}`);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const v = r.datos;
+  // 0.12.1: con el video editado (mp4) ya en el servidor, ese; si no, el reproductor de escenas de siempre.
+  if (v.mp4?.url) return pantallaVideoMp4(materia, v);
   const audioUrl = v.audio?.ref ? `/api/academia/audio/${encodeURIComponent(v.audio.ref)}` : null;
   const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
   const total = v.escenas.length ? Math.max(...v.escenas.map(e => e.fin_s)) : null;
@@ -4706,7 +4862,7 @@ async function pantallaContenido() {
   // Subir.
   const mensajeSubir = caja();
   const progresoSubida = el('p', { class: 'suave', role: 'status' });
-  const archivos = el('input', { id: 'campo-paquete', type: 'file', multiple: true, accept: '.json,application/json,image/png,image/jpeg,image/webp,.mp3,audio/mpeg' });
+  const archivos = el('input', { id: 'campo-paquete', type: 'file', multiple: true, accept: '.json,application/json,image/png,image/jpeg,image/webp,.mp3,audio/mpeg,.mp4,video/mp4' });
   archivos.addEventListener('change', () => { progresoSubida.textContent = tn('acad.subir.elegidos', { n: archivos.files.length }); });
   const tarjetaSubir = el('section', { class: 'tarjeta subir-paquete' },
     el('h2', { class: 'con-icono' }, icono('subir'), el('span', { texto: t('acad.subir_paquete') }), queEs('paquete')),
@@ -4745,6 +4901,14 @@ async function pantallaContenido() {
         const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/audio/${encodeURIComponent(nombre)}`, f, 'audio/mpeg');
         if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
       }
+      // 0.12.1: el video resumen (mp4) y su portada, si el paquete los nombra y se eligieron (el mp4 va por partes al disco).
+      for (const nombre of j.datos.faltanVideo ?? []) {
+        const f = porNombre.get(nombre);
+        if (!f) continue;
+        progresoSubida.textContent = t('acad.subir.video', { nombre, mb: numero(Math.round(f.size / 1048576)) });
+        const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/video/${encodeURIComponent(nombre)}`, f, /\.mp4$/i.test(nombre) ? 'video/mp4' : f.type || 'application/octet-stream');
+        if (!x.ok) throw new Error(`${nombre}: ${x.datos.error === 'sin_espacio_disco' ? t('error.sin_espacio_disco', { necesario: numero(x.datos.necesarioMb ?? 0), libre: numero(x.datos.libreMb ?? 0) }) : textoError(x.datos.error)}`);
+      }
       // 0.12.0: las páginas del libro («¿De dónde salió?»), si el paquete las nombra y se eligieron.
       const paginas = (j.datos.faltanPaginas ?? []).filter(nombre => porNombre.has(nombre));
       for (const [k, nombre] of paginas.entries()) {
@@ -4774,6 +4938,7 @@ async function pantallaContenido() {
       p.faltan?.length ? el('p', { class: 'aviso', texto: tn('acad.subir.faltan', { n: p.faltan.length }) }) : null,
       p.faltanAudio?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_audio', { n: p.faltanAudio.length }) }) : null,
       p.faltanPaginas?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_paginas', { n: p.faltanPaginas.length }) }) : null,
+      p.faltanVideo?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_video', { n: p.faltanVideo.length }) }) : null,
       p.estado === 'listo' && !p.activo ? el('div', { class: 'botones' }, botonAccion(t('acad.paquete.usar'), 'secundario', mensaje, async () => {
         const x = await api('POST', `/api/admin/academia/paquetes/${p.id}/activar`, {});
         if (!x.ok) throw new Error(textoError(x.datos.error));

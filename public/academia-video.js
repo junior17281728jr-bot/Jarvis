@@ -53,3 +53,45 @@ export function leccionDeVideo(video, { titulo = '', antetitulo = '', audioUrl =
     : [{ id: 'escena-1', inicio_s: 0, fin_s: Number.isFinite(duracionAudio) && duracionAudio > 0 ? duracionAudio : 60, subtitulo: titulo, texto_narracion: '', visual: { tipo: 'titulo', parametros: { titulo, antetitulo } } }];
   return { id: `video-${video?.materia ?? ''}`, titulo, ...(audioUrl ? { audio_url: audioUrl } : {}), escenas: lista };
 }
+
+// ---------- 0.12.1: el video resumen editado (mp4) ----------
+// Lógica pura del reproductor de video (test/video-mp4.test.js): dónde seguir, cuándo cuenta como visto, el capítulo
+// que se está viendo y el tiempo «m:ss».
+export const VISTO_DESDE = 0.9; // visto al llegar al 90 % (lo mismo que llegar al final con el reproductor de escenas)
+export const VELOCIDADES = Object.freeze([1, 1.25, 1.5]);
+
+// La posición guardada más reciente entre la del servidor y la de este aparato: { s, en } o null.
+export function posicionMasNueva(servidor, local) {
+  const vale = p => p && Number.isFinite(p.s) && p.s >= 0;
+  const a = vale(servidor) ? servidor : null;
+  const b = vale(local) ? local : null;
+  if (!a || !b) return a ?? b;
+  return String(b.en ?? '') > String(a.en ?? '') ? b : a;
+}
+// Desde dónde empezar: lo guardado menos 3 s (para retomar el hilo); desde 0 si era muy al principio o ya casi al final.
+export function inicioDesde(posicion, duracion) {
+  const s = Number(posicion?.s);
+  const d = Number(duracion);
+  if (!Number.isFinite(s) || s < 5) return 0;
+  if (Number.isFinite(d) && d > 0 && s >= d * 0.97) return 0;
+  return Math.max(0, Math.floor(s - 3));
+}
+export function cuentaComoVisto(tiempo, duracion) {
+  const t = Number(tiempo);
+  const d = Number(duracion);
+  return Number.isFinite(t) && Number.isFinite(d) && d > 0 && t >= d * VISTO_DESDE;
+}
+// El índice del capítulo que se está viendo (o -1 antes del primero).
+export function capituloEn(capitulos, tiempo) {
+  let i = -1;
+  (capitulos ?? []).forEach((c, k) => { if (Number(tiempo) >= c.inicio_s) i = k; });
+  return i;
+}
+export function reloj(segundos) {
+  const s = Math.max(0, Math.floor(Number(segundos) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+export const velocidadValida = v => (VELOCIDADES.includes(Number(v)) ? Number(v) : 1);

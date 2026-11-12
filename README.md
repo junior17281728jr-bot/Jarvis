@@ -408,7 +408,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.0; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.1; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -685,6 +685,33 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.12.1: el «Video resumen» editado (mp4) — sin cambio de base
+- Una materia puede traer su video ya editado: `video.mp4 = { archivo, duracion_s, portada?, capitulos?: [{ inicio_s, titulo }],
+  sha256? }` (ver el formato). Cuando el archivo ya está en el servidor, «Video resumen» abre el **reproductor del teléfono**
+  (`<video playsinline controls preload="metadata">` con la portada): capítulos debajo (tocar uno salta ahí; el que se está
+  viendo queda marcado), 1× / 1,25× / 1,5× (se recuerda), pantalla completa (en el iPhone, la del video) y **sigue donde lo
+  dejó** («Sigues desde 3:12…», con «Ver desde el principio»): en este aparato (`localStorage`) y en el servidor
+  (`POST /api/academia/video/:materia/posicion { segundos }`, en `ajustes` `academia.video_posicion.<id>`; vale la más nueva).
+  Al llegar al **90 %** queda visto (el mismo `POST …/visto` de siempre: el círculo sale dorado). Mientras el mp4 no llegó
+  (o si el paquete no lo trae), se ve el reproductor de escenas de antes, igual que siempre.
+- El mp4 y su portada van en la carpeta `video/` de la versión. Se sirven solo con la sesión, por partes (`Range`, 206/416,
+  `video/mp4`): `GET /api/academia/videos/<versión>~<archivo>?v=<huella>`. Un archivo de una versión nunca cambia y la dirección
+  lleva su huella (tamaño y fecha), así que se guarda un año en el aparato (`private, max-age=31536000, immutable`, con ETag).
+- Llegan como el audio: desde Drive (por su nombre, al final, después de lo chico; `confirm=t`, por pedazos directo al disco, hasta
+  **150 MB**, 14 minutos para bajarlo, y solo se empieza si al paso le queda ese tiempo: si no, en la revisión siguiente) o a mano
+  (`POST /api/admin/academia/paquetes/:id/video/:archivo`, o eligiéndolo junto con el JSON en Contenido → Subir). Antes de
+  escribir un mp4 se mira el disco: hace falta el **doble** de lo que pesa libre (con el largo que dice el pedido o Drive; si no lo
+  dicen, el doble del tope). Si no hay: a mano, `507 sin_espacio_disco` con los MB que faltan; desde Drive, la revisión lo dice
+  («no hay espacio en el disco del servidor…») y no se escribe nada. Nunca pasa entero por la memoria (el servidor tiene 512 MB):
+  `test/video-mp4.test.js` lo mide con 48 MB en un proceso aparte.
+- Subirlo a mano usa un solo pedido: Node corta los pedidos de más de 5 minutos, así que un video grande con una conexión lenta
+  conviene ponerlo en la carpeta de Drive.
+- **Cómo exportar el mp4** para que suene en el iPhone: H.264 (perfil main o high) + AAC, `yuv420p`, 1280×720, `+faststart`
+  (el índice al principio: así empieza enseguida y se puede saltar sin bajarlo entero). Por ejemplo:
+  `ffmpeg -i entrada.mov -c:v libx264 -profile:v high -pix_fmt yuv420p -crf 23 -c:a aac -b:a 128k -movflags +faststart video-materia-01.mp4`.
+- Cada versión nueva del JSON es una carpeta nueva: el mp4 se vuelve a bajar en ella (y la vieja queda: nunca se borra nada).
+  Con videos de 60–90 MB, conviene mirar el disco de vez en cuando.
+
 ### Lo nuevo de la 0.12.0: «¿De dónde salió?», ir directo al examen, el humor del instructor y lo EXTRA — cambio de base 9
 - **«¿De dónde salió?»** (`public/origen-vista.js`): en la esquina de cada pregunta (temas, prácticas, la hoja de la
   respuesta, la revisión y el resultado; **nunca durante el examen con reloj**) un botón abre una hoja con la fuente: libro,
@@ -753,7 +780,12 @@ otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde l
       // los otros audios. Sin «escenas» (solo el audio): una escena con el título. Lo de más que traiga una escena se ignora.
       "video": { "titulo": "…" (opcional), "audio": { "archivo": "materia-01.mp3" },
                  "escenas": [ { "inicio_s": 0, "fin_s": 44.07, "subtitulo": "…", "texto_pantalla": "…",
-                                "texto_narracion": "…" (opcional), "visual": { "tipo": "…", "parametros": { … } } } ] } } ],
+                                "texto_narracion": "…" (opcional), "visual": { "tipo": "…", "parametros": { … } } } ],
+                 // 0.12.1 (opcional): el video ya editado. Con el archivo en el servidor se ve este en vez de las escenas
+                 // (que quedan como respaldo: conviene dejarlas). Basta con «mp4» (sin escenas ni audio).
+                 "mp4": { "archivo": "video-materia-01.mp4", "duracion_s": 642.5, "portada": "video-materia-01.jpg" (opcional),
+                          "sha256": "…" (opcional), "capitulos": [ { "inicio_s": 0, "titulo": "…" }, { "inicio_s": 75, "titulo": "…" } ] (opcional) } } } ],
+                 // capítulos: en orden, cada uno después del anterior y antes de duracion_s (hasta 100). mp4 hasta 150 MB.
   "preguntas": [
     { "id": "tg-0001", "origen": "test_guide" | "poh",
       "original": {                   // TAL CUAL del Test Guide (o del texto del POH)
@@ -836,6 +868,9 @@ carpeta cada hora (a los :23) y con «Buscar ahora» (`src/academia/sincronizar.
 - Las pruebas (`test/drive.test.js`) usan un Drive FALSO en 127.0.0.1 (`config.driveBases`, solo en modo de prueba).
 
 ### Vuelta atrás
+La 0.12.1 no cambia la base (las posiciones del video van en `ajustes`). Si se vuelve a la 0.12.0: ignora `video.mp4` y sigue
+mostrando las escenas; una materia que SOLO trae `mp4` (sin escenas ni audio) no tiene video en la 0.12.0, y un paquete así
+lo rechaza al revisarlo (sigue usando las versiones que ya tenía). Al volver la 0.12.1, todo sigue.
 La 0.12.0 agrega el cambio de base 9 (la tabla `academia_extra_respuestas` y la columna `academia_intentos.modo`, sin NOT
 NULL). Una 0.11.1 abre esa base sin tocarlas (ensayado: `/api/setup` dice `estado: ok`, se entra y el camino abre): no ve lo
 extra, ni los saltos (quedan en `ajustes`), ni el humor; un tema hecho en Modo reto por defecto lo ve como Original (si

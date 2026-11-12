@@ -19,6 +19,9 @@ export const LIMITES = Object.freeze({
   figuraBytes: 8 * 1024 * 1024,
   audioBytes: 40 * 1024 * 1024, // 0.7.1: la narración (mp3) de una materia o de un tema
   audios: 500,
+  // 0.12.1: el video resumen ya editado (mp4) de una materia y su portada (una imagen). Se recomienda 60–90 MB.
+  videoBytes: 150 * 1024 * 1024,
+  capitulos: 100,
   figurasBytes: 400 * 1024 * 1024,
   figuras: 2000,
   preguntas: 5000,
@@ -46,6 +49,12 @@ export const ARCHIVO_FIGURA = /^[a-z0-9][a-z0-9._-]{0,80}\.(png|jpg|jpeg|webp)$/
 // 0.7.1: una materia o un tema puede traer su narración en mp3 («audio»: { archivo, titulo?, sha256? }). Es opcional:
 // un paquete sin audio es igual que antes, y uno cuyo audio todavía no llegó se usa igual (el reproductor no sale).
 export const ARCHIVO_AUDIO = /^[a-z0-9][a-z0-9._-]{0,80}\.mp3$/i;
+// 0.12.1: el video resumen editado de una materia («video.mp4»: { archivo, duracion_s, portada?, capitulos?, sha256? }).
+// El mp4 y su portada (una imagen) van en la carpeta «video/» de la versión. Opcional: sin el archivo se ve el reproductor
+// de escenas de siempre (si la materia lo trae).
+export const ARCHIVO_MP4 = /^[a-z0-9][a-z0-9._-]{0,80}\.mp4$/i;
+// Lo que puede ir en «video/»: el mp4 o la imagen de su portada.
+export const ARCHIVO_VIDEO = /^[a-z0-9][a-z0-9._-]{0,80}\.(mp4|png|jpg|jpeg|webp)$/i;
 // 0.7.2: el tipo de un dibujo (public/clase/visuales.js: titulo, ala, motor, instrumentos, escenario, meteo…).
 export const TIPO_VISUAL = /^[a-z][a-z0-9_-]{0,39}$/;
 const LETRA = /^[A-F]$/;
@@ -265,6 +274,43 @@ export function revisarPaquete(p) {
     }
   };
 
+  // 0.12.1: el mp4 del video resumen: { archivo, duracion_s, portada?, capitulos?: [{ inicio_s, titulo }], sha256? }.
+  // Los capítulos van en orden, cada uno empieza después del anterior y antes del final.
+  const videos = new Map();
+  const mp4 = (x, ruta) => {
+    if (x == null) return;
+    if (!esObjeto(x)) return mal(ruta, 'no_es_objeto');
+    if (typeof x.archivo !== 'string' || !ARCHIVO_MP4.test(x.archivo)) mal(`${ruta}.archivo`, 'archivo_no_valido');
+    else if (videos.has(x.archivo.toLowerCase())) mal(`${ruta}.archivo`, 'repetido');
+    const dura = x.duracion_s;
+    const durOk = typeof dura === 'number' && Number.isFinite(dura) && dura > 0 && dura <= 36_000;
+    if (!durOk) mal(`${ruta}.duracion_s`, 'tiempo_no_valido');
+    if (x.sha256 != null && (typeof x.sha256 !== 'string' || !SHA256.test(x.sha256))) mal(`${ruta}.sha256`, 'no_valido');
+    let portadaOk = true;
+    if (x.portada != null) {
+      if (typeof x.portada !== 'string' || !ARCHIVO_FIGURA.test(x.portada)) { mal(`${ruta}.portada`, 'archivo_no_valido'); portadaOk = false; }
+      else if (videos.has(x.portada.toLowerCase())) { mal(`${ruta}.portada`, 'repetido'); portadaOk = false; }
+    }
+    if (x.capitulos != null) {
+      if (!Array.isArray(x.capitulos) || x.capitulos.length > LIMITES.capitulos) mal(`${ruta}.capitulos`, 'no_es_lista');
+      else {
+        let antes = -1;
+        x.capitulos.forEach((c, k) => {
+          const rc = `${ruta}.capitulos[${k}]`;
+          if (!esObjeto(c)) return mal(rc, 'no_es_objeto');
+          const i = c.inicio_s;
+          if (typeof i !== 'number' || !Number.isFinite(i) || i < 0 || i <= antes || (durOk && i >= dura)) mal(`${rc}.inicio_s`, 'tiempo_no_valido');
+          else antes = i;
+          texto(c.titulo, `${rc}.titulo`, { max: LIMITES.corto });
+        });
+      }
+    }
+    if (typeof x.archivo === 'string' && ARCHIVO_MP4.test(x.archivo) && !videos.has(x.archivo.toLowerCase())) {
+      videos.set(x.archivo.toLowerCase(), { archivo: x.archivo, sha256: x.sha256 ?? null });
+      if (portadaOk && typeof x.portada === 'string') videos.set(x.portada.toLowerCase(), { archivo: x.portada, sha256: null });
+    }
+  };
+
   // 0.7.2: el «Video resumen» de una materia (lo primero del camino de la materia): su narración (un mp3, como «audio»)
   // y las escenas con su tiempo dentro de ese mp3. Sin escenas se ve una sola escena con el título; sin audio, las
   // escenas van por su tiempo con subtítulos. Los campos de más que traiga una escena se ignoran.
@@ -273,7 +319,8 @@ export function revisarPaquete(p) {
     if (!esObjeto(v)) return mal(ruta, 'no_es_objeto');
     texto(v.titulo, `${ruta}.titulo`, { obligatorio: false, max: LIMITES.corto });
     audio(v.audio, `${ruta}.audio`);
-    if (v.escenas == null) { if (v.audio == null) mal(`${ruta}.escenas`, 'falta'); return; }
+    mp4(v.mp4, `${ruta}.mp4`);
+    if (v.escenas == null) { if (v.audio == null && v.mp4 == null) mal(`${ruta}.escenas`, 'falta'); return; }
     if (!Array.isArray(v.escenas) || v.escenas.length > LIMITES.escenas) return mal(`${ruta}.escenas`, 'no_es_lista');
     v.escenas.forEach((e, k) => {
       const re = `${ruta}.escenas[${k}]`;
@@ -409,6 +456,7 @@ export function revisarPaquete(p) {
     figuras: ok ? [...figuras.values()] : [],
     paginas: ok ? [...paginas.values()] : [],
     audios: ok ? [...audios.values()] : [],
+    videos: ok ? [...videos.values()] : [], // 0.12.1: los mp4 y sus portadas
     // Las materias que el paquete TRAE (con un tema o más): las que da cuando está en uso junto con otros.
     materias: ok ? p.materias.filter(m => m.temas.length > 0).map(m => m.id) : [],
     avisos,
@@ -422,6 +470,18 @@ export function audiosDe(p) {
     for (const a of [m?.audio, m?.video?.audio, ...(m?.temas ?? []).map(t => t?.audio)]) {
       if (a?.archivo && !vistos.has(a.archivo.toLowerCase())) vistos.set(a.archivo.toLowerCase(), { archivo: a.archivo, sha256: a.sha256 ?? null });
     }
+  }
+  return [...vistos.values()];
+}
+
+// 0.12.1: los archivos de «video/» que nombra un paquete YA REVISADO: cada mp4 y su portada (sin repetir).
+export function videosDe(p) {
+  const vistos = new Map();
+  for (const m of p?.materias ?? []) {
+    const x = m?.video?.mp4;
+    if (typeof x?.archivo !== 'string' || !ARCHIVO_MP4.test(x.archivo)) continue;
+    if (!vistos.has(x.archivo.toLowerCase())) vistos.set(x.archivo.toLowerCase(), { archivo: x.archivo, sha256: x.sha256 ?? null });
+    if (typeof x.portada === 'string' && ARCHIVO_FIGURA.test(x.portada) && !vistos.has(x.portada.toLowerCase())) vistos.set(x.portada.toLowerCase(), { archivo: x.portada, sha256: null });
   }
   return [...vistos.values()];
 }

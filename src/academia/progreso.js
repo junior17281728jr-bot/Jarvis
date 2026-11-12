@@ -6,7 +6,7 @@
 // nunca viajan antes de responder: la nota la pone el servidor.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe } from './paquetes.js';
+import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De } from './paquetes.js';
 import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe } from './saltos.js';
 import { lineaHumor } from './humor.js';
 import { resumenExtra } from './extra.js';
@@ -239,18 +239,20 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
 
 // ---------- 0.7.2: el «Video resumen» de cada materia ----------
 // Lo que el camino necesita saber del video (sin las escenas): cuántas escenas, si tiene su narración y cuánto dura.
+// 0.12.1: con el mp4 ya en su carpeta, el video es ese (mp4); si no, las escenas de siempre (o nada).
 function videoDeMateria(paquete, m) {
   const v = m?.video ?? null;
   const audio = audioDe(paquete, m?.paquete, v?.audio) ?? (v ? null : audioDe(paquete, m?.paquete, m?.audio));
   const escenas = Array.isArray(v?.escenas) ? v.escenas : [];
-  if (!escenas.length && !audio) return null;
-  return { v, audio, escenas };
+  const mp4 = mp4De(paquete, m?.paquete, v?.mp4);
+  if (!escenas.length && !audio && !mp4) return null;
+  return { v, audio, escenas, mp4 };
 }
 function resumenVideo(paquete, m, vistos = []) {
   const x = videoDeMateria(paquete, m);
   if (!x) return null;
-  const duracion = x.escenas.length ? Math.round(Math.max(...x.escenas.map(e => e.fin_s))) : null;
-  return { escenas: x.escenas.length, audio: Boolean(x.audio), duracion, visto: vistos.includes(m.id) };
+  const duracion = x.mp4 ? Math.round(x.mp4.duracion_s) : x.escenas.length ? Math.round(Math.max(...x.escenas.map(e => e.fin_s))) : null;
+  return { escenas: x.escenas.length, audio: Boolean(x.audio), ...(x.mp4 ? { mp4: true } : {}), duracion, visto: vistos.includes(m.id) };
 }
 // El video de una materia para el reproductor: las escenas con sus tiempos y la narración (si ya llegó el mp3).
 export function videoMateria(db, usuarioId, paquete, materia) {
@@ -258,8 +260,11 @@ export function videoMateria(db, usuarioId, paquete, materia) {
   const m = paquete.materias.find(x => x.id === materia);
   const x = m && m.temas.length ? videoDeMateria(paquete, m) : null;
   if (!x) throw new ErrorHttp(404, 'no_existe');
+  const { bytes, ...mp4 } = x.mp4 ?? {};
   return {
     materia, titulo: x.v?.titulo ?? null, audio: x.audio, visto: videosVistos(db, usuarioId).includes(materia),
+    // 0.12.1: el video editado (o null) y dónde lo dejó la última vez (segundos, o null).
+    mp4: x.mp4 ? mp4 : null, posicion: x.mp4 ? posicionVideo(db, usuarioId, materia, x.mp4.ref) : null,
     escenas: x.escenas.map((e, i) => ({
       id: `escena-${i + 1}`, inicio_s: e.inicio_s, fin_s: e.fin_s, subtitulo: e.subtitulo ?? '', texto_pantalla: e.texto_pantalla ?? '',
       texto_narracion: e.texto_narracion ?? null, visual: e.visual?.tipo ? { tipo: e.visual.tipo, parametros: e.visual.parametros ?? {} } : null,
@@ -270,6 +275,28 @@ export function videoMateria(db, usuarioId, paquete, materia) {
 const claveVistos = usuarioId => `academia.videos_vistos.${Number(usuarioId)}`;
 export function videosVistos(db, usuarioId) {
   try { const l = JSON.parse(leerAjuste(db, claveVistos(usuarioId)) ?? '[]'); return Array.isArray(l) ? l.filter(x => typeof x === 'string') : []; } catch { return []; }
+}
+// 0.12.1: dónde quedó cada alumno en el mp4 de cada materia (en ajustes, sin cambio de base): { materia: { ref, s, en } }.
+// Si el mp4 cambia (otra versión), la posición de antes no vale.
+const clavePosiciones = usuarioId => `academia.video_posicion.${Number(usuarioId)}`;
+function posiciones(db, usuarioId) {
+  try { const o = JSON.parse(leerAjuste(db, clavePosiciones(usuarioId)) ?? '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; }
+}
+function posicionVideo(db, usuarioId, materia, ref) {
+  const p = posiciones(db, usuarioId)[materia];
+  return p && p.ref === ref && Number.isFinite(p.s) ? { s: p.s, en: typeof p.en === 'string' ? p.en : null } : null;
+}
+export function guardarPosicionVideo(db, usuarioId, paquete, materia, segundos, ahoraMs = Date.now()) {
+  const v = videoMateria(db, usuarioId, paquete, materia);
+  if (!v.mp4) throw new ErrorHttp(404, 'no_existe');
+  const s = Number(segundos);
+  if (!Number.isFinite(s) || s < 0 || s > 36_000) throw new ErrorHttp(400, 'datos_no_validos');
+  const todas = posiciones(db, usuarioId);
+  todas[materia] = { ref: v.mp4.ref, s: Math.round(Math.min(s, v.mp4.duracion_s) * 10) / 10, en: new Date(ahoraMs).toISOString() };
+  // Solo las materias que existen (son 11): nunca crece.
+  const limpio = Object.fromEntries(Object.entries(todas).filter(([k]) => paquete.materias.some(x => x.id === k)));
+  guardarAjuste(db, clavePosiciones(usuarioId), JSON.stringify(limpio));
+  return { posicion: { s: todas[materia].s, en: todas[materia].en } };
 }
 export function marcarVideoVisto(db, usuarioId, paquete, materia) {
   videoMateria(db, usuarioId, paquete, materia); // que exista

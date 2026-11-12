@@ -15,7 +15,8 @@ import { pipeline } from 'node:stream/promises';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion, revisarModoPrueba } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, MATERIAS } from './formato.js';
+import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS } from './formato.js';
+import { espacioLibre } from './espacio.js';
 
 const ahora = () => new Date().toISOString();
 export const AJUSTE_ACTIVO = 'academia.paquete_activo';
@@ -73,6 +74,7 @@ const desdeDatos = datos => ({
   audios: audiosDe(datos),
   materias: materiasDe(datos),
   paginas: paginasDe(datos), // 0.12.0
+  videos: videosDe(datos), // 0.12.1
 });
 export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = false } = {}) {
   const carpeta = carpetaDe(config, fila);
@@ -88,8 +90,8 @@ export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = f
     } catch { m = null; }
     // 0.12.0: un manifiesto escrito por una versión de antes no dice «paginas». El trabajador lo usa así (sin páginas,
     // que son opcionales); el servidor web lo vuelve a armar desde el JSON y lo reescribe (la versión no cambia).
-    if (m && !Array.isArray(m.paginas)) {
-      if (soloArchivo) return { ...m, paginas: [] }; // sin guardarlo en memoria: cuando el web lo reescriba, se lee el nuevo
+    if (m && (!Array.isArray(m.paginas) || !Array.isArray(m.videos))) {
+      if (soloArchivo) return { ...m, paginas: m.paginas ?? [], videos: m.videos ?? [] }; // sin guardarlo en memoria: cuando el web lo reescriba, se lee el nuevo
       else { m = null; viejo = true; }
     }
     if (!m) {
@@ -113,7 +115,7 @@ export function manifiesto(config, fila, datosYaLeidos = null, { soloArchivo = f
 }
 // 0.12.0: uno escrito por una versión de antes (sin «paginas») cuenta como que falta: el servidor web lo vuelve a armar.
 export function tieneManifiesto(config, fila) {
-  try { return Array.isArray(JSON.parse(readFileSync(join(carpetaDe(config, fila), 'manifiesto.json'), 'utf8'))?.paginas); } catch { return false; }
+  try { const m = JSON.parse(readFileSync(join(carpetaDe(config, fila), 'manifiesto.json'), 'utf8')); return Array.isArray(m?.paginas) && Array.isArray(m?.videos); } catch { return false; }
 }
 
 // La huella de un archivo, leyéndolo de a 1 MB (sin tenerlo entero en memoria).
@@ -144,6 +146,7 @@ export function listarPaquetes(db, config) {
     let faltan = [];
     let faltanAudio = [];
     let faltanPaginas = [];
+    let faltanVideo = [];
     const enUso = (compuesto?.materias ?? []).filter(m => m.paquete === f.id).map(m => m.id);
     // Solo se mira lo que falta en las incompletas y en las que están en uso (las demás quedan guardadas tal cual).
     if (f.estado === 'incompleto' || enUso.length) {
@@ -151,9 +154,10 @@ export function listarPaquetes(db, config) {
         if (f.estado === 'incompleto') faltan = figurasQueFaltan(config, f);
         faltanAudio = audiosQueFaltan(config, f);
         faltanPaginas = paginasQueFaltan(config, f);
+        faltanVideo = videosQueFaltan(config, f);
       } catch { faltan = []; }
     }
-    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas };
+    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas, faltanVideo };
   });
 }
 
@@ -184,7 +188,7 @@ const enSeguida = (db, trabajo) => enTransaccion(db, trabajo);
 export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = null, origen = 'manual', escribir = trabajo => enSeguida(db, trabajo) }) {
   const { revision, huella } = revisado;
   const ya = db.prepare("SELECT * FROM academia_paquetes WHERE huella = ? AND estado <> 'fallido' ORDER BY id DESC LIMIT 1").get(huella);
-  if (ya && jsonEntero(config, ya)) return { codigo: 200, datos: { paquete: vista(ya), repetido: true, faltan: ya.estado === 'listo' ? [] : figurasQueFaltan(config, ya), faltanAudio: audiosQueFaltan(config, ya), faltanPaginas: paginasQueFaltan(config, ya), avisos: revision.avisos ?? [] } };
+  if (ya && jsonEntero(config, ya)) return { codigo: 200, datos: { paquete: vista(ya), repetido: true, faltan: ya.estado === 'listo' ? [] : figurasQueFaltan(config, ya), faltanAudio: audiosQueFaltan(config, ya), faltanPaginas: paginasQueFaltan(config, ya), faltanVideo: videosQueFaltan(config, ya), avisos: revision.avisos ?? [] } };
   if (ya) await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'fallido', detalle = 'no_se_pudo_guardar' WHERE id = ?").run(ya.id));
   const r = revision.resumen;
   const fila = await escribir(() => {
@@ -203,6 +207,7 @@ export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = nu
     mkdirSync(join(carpeta, 'figuras'));
     mkdirSync(join(carpeta, 'audio'));
     mkdirSync(join(carpeta, 'paginas'));
+    mkdirSync(join(carpeta, 'video'));
     writeFileSync(join(carpeta, 'paquete.json'), cuerpo, { flag: 'wx', mode: 0o640 });
   } catch {
     await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'fallido', detalle = 'no_se_pudo_guardar' WHERE id = ?").run(fila.id));
@@ -212,7 +217,7 @@ export async function guardarJson(db, config, { cuerpo, revisado, usuarioId = nu
   const faltan = revision.figuras.map(f => f.archivo);
   if (!faltan.length) await escribir(() => db.prepare("UPDATE academia_paquetes SET estado = 'listo', listo_en = ? WHERE id = ?").run(ahora(), fila.id));
   // 0.9.0: las opciones del Modo reto que parecen fáciles (avisos: no impiden usarlo; ver src/academia/reto-calidad.js).
-  return { codigo: 201, datos: { paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)), repetido: false, faltan, faltanAudio: revision.audios.map(a => a.archivo), faltanPaginas: (revision.paginas ?? []).map(g => g.archivo), avisos: revision.avisos ?? [] } };
+  return { codigo: 201, datos: { paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)), repetido: false, faltan, faltanAudio: revision.audios.map(a => a.archivo), faltanPaginas: (revision.paginas ?? []).map(g => g.archivo), faltanVideo: (revision.videos ?? []).map(g => g.archivo), avisos: revision.avisos ?? [] } };
 }
 
 // Sube el JSON (la ruta del administrador). { codigo, datos }: 422 con la lista de errores si no está bien armado.
@@ -235,6 +240,13 @@ export function esMp3(cabeza) {
   if (cabeza.length >= 3 && cabeza.toString('latin1', 0, 3) === 'ID3') return true;
   return cabeza.length >= 2 && cabeza[0] === 0xff && (cabeza[1] & 0xe0) === 0xe0;
 }
+// 0.12.1: un mp4 (o mov/m4v): la caja «ftyp» al empezar (bytes 4 a 8).
+export function esMp4(cabeza) {
+  return cabeza.length >= 12 && cabeza.toString('latin1', 4, 8) === 'ftyp';
+}
+const TIPOS_VIDEO = { mp4: 'video/mp4', ...TIPOS_IMAGEN };
+export const tipoDeVideo = archivo => TIPOS_VIDEO[String(archivo).split('.').pop().toLowerCase()] ?? null;
+const esMp4DeNombre = archivo => ARCHIVO_MP4.test(String(archivo));
 function primerosBytes(ruta, n = 16) {
   const fd = openSync(ruta, 'r');
   try { const b = Buffer.alloc(n); const leidos = readSync(fd, b, 0, n, 0); return b.subarray(0, leidos); } finally { closeSync(fd); }
@@ -247,11 +259,33 @@ export const RECURSOS = Object.freeze({
   audio: Object.freeze({ carpeta: 'audio', patron: ARCHIVO_AUDIO, tope: LIMITES.audioBytes, declarados: datos => audiosDe(datos), tipo: () => 'audio/mpeg', valido: cabeza => esMp3(cabeza), noValido: 'audio_no_valido' }),
   // 0.12.0: la página real del libro de una pregunta (opcional como el audio: sin ella se ve la referencia en texto).
   pagina: Object.freeze({ carpeta: 'paginas', patron: ARCHIVO_FIGURA, tope: LIMITES.paginaBytes, declarados: datos => paginasDe(datos), tipo: tipoDeFigura, valido: (cabeza, archivo) => esImagenDeTipo(cabeza, tipoDeFigura(archivo)), noValido: 'imagen_no_valida' }),
+  // 0.12.1: el video resumen editado (mp4, hasta 150 MB) y su portada (una imagen, hasta 8 MB). Opcional como el audio.
+  // Antes de escribir uno grande se mira el espacio libre del disco (hace falta el doble de lo que pesa).
+  video: Object.freeze({ carpeta: 'video', patron: ARCHIVO_VIDEO, tope: LIMITES.videoBytes, topeDe: archivo => (esMp4DeNombre(archivo) ? LIMITES.videoBytes : LIMITES.figuraBytes), declarados: datos => videosDe(datos), tipo: tipoDeVideo, valido: (cabeza, archivo) => (esMp4DeNombre(archivo) ? esMp4(cabeza) : esImagenDeTipo(cabeza, tipoDeVideo(archivo))), noValido: 'mp4_no_valido', espacio: true }),
 });
+// El tope de un archivo de esa clase (el video y su portada tienen topes distintos).
+export const topeDe = (clase, archivo) => (RECURSOS[clase].topeDe ? RECURSOS[clase].topeDe(archivo) : RECURSOS[clase].tope);
+
+// 0.12.1: ¿hay lugar para escribir «bytes» en esa carpeta? Hace falta el DOBLE libre (el «.part» y lo que el disco
+// necesita para seguir). bytes desconocido: el tope de su clase. Sin poder medirlo, se deja pasar (como antes).
+export function revisarEspacio(carpeta, bytes, { libre = espacioLibre } = {}) {
+  const hay = libre(carpeta);
+  if (hay == null) return;
+  if (hay < 2 * bytes) throw new ErrorHttp(507, 'sin_espacio_disco', { necesarioMb: Math.ceil((2 * bytes) / 1_048_576), libreMb: Math.floor(hay / 1_048_576) });
+}
 // La lista del manifiesto de cada clase.
-const LISTA_DE = Object.freeze({ figura: 'figuras', audio: 'audios', pagina: 'paginas' });
-const NO_ESTA = Object.freeze({ figura: 'figura_no_esta_en_el_paquete', audio: 'audio_no_esta_en_el_paquete', pagina: 'pagina_no_esta_en_el_paquete' });
-const DISTINTO = Object.freeze({ figura: 'figura_distinta', audio: 'audio_distinto', pagina: 'pagina_distinta' });
+const LISTA_DE = Object.freeze({ figura: 'figuras', audio: 'audios', pagina: 'paginas', video: 'videos' });
+const NO_ESTA = Object.freeze({ figura: 'figura_no_esta_en_el_paquete', audio: 'audio_no_esta_en_el_paquete', pagina: 'pagina_no_esta_en_el_paquete', video: 'video_no_esta_en_el_paquete' });
+export const DISTINTO = Object.freeze({ figura: 'figura_distinta', audio: 'audio_distinto', pagina: 'pagina_distinta', video: 'video_distinto' });
+
+// 0.12.1: los archivos de «video/» (mp4 y portadas) que el paquete nombra y todavía no están en su carpeta.
+export function videosQueFaltan(config, fila, datos = null) {
+  try {
+    const lista = datos ? RECURSOS.video.declarados(datos) : manifiesto(config, fila).videos ?? [];
+    const carpeta = join(carpetaDe(config, fila), 'video');
+    return lista.filter(a => !existsSync(join(carpeta, a.archivo))).map(a => a.archivo);
+  } catch { return []; }
+}
 
 // 0.12.0: las páginas que el paquete nombra y todavía no están en su carpeta.
 export function paginasQueFaltan(config, fila, datos = null) {
@@ -296,7 +330,7 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
   const d = declarado(config, fila, clase, archivo);
   if (!d) throw new ErrorHttp(400, NO_ESTA[clase]);
   const destino = rutaDeRecurso(config, fila, clase, archivo);
-  if (!bytes || bytes > r.tope || !r.valido(primerosBytes(parcial), archivo)) throw new ErrorHttp(422, r.noValido);
+  if (!bytes || bytes > topeDe(clase, archivo) || !r.valido(primerosBytes(parcial), archivo)) throw new ErrorHttp(422, r.noValido);
   if (d.sha256 && huella !== d.sha256) throw new ErrorHttp(422, DISTINTO[clase]);
   if (existsSync(destino)) throw new ErrorHttp(409, 'ya_hay_otra_en_marcha');
   renameSync(parcial, destino);
@@ -307,7 +341,7 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
       auditar(db, { usuarioId, accion: 'academia_paquete_listo', detalle: String(fila.id) });
     });
   }
-  return { faltan, faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila) };
+  return { faltan, faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila) };
 }
 
 // Sube UNA figura o UN audio del paquete (cuerpo = el archivo tal cual). Solo los que el paquete nombra y faltan.
@@ -318,22 +352,25 @@ export async function subirRecurso(db, config, { clase, paqueteId, archivo, req,
   if (typeof archivo !== 'string' || !r.patron.test(archivo)) throw new ErrorHttp(400, 'archivo_no_valido');
   if (!declarado(config, fila, clase, archivo)) throw new ErrorHttp(400, NO_ESTA[clase]);
   const destino = rutaDeRecurso(config, fila, clase, archivo);
-  if (existsSync(destino)) return { ya: true, faltan: figurasQueFaltan(config, fila), faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), paquete: vista(fila) };
+  if (existsSync(destino)) return { ya: true, faltan: figurasQueFaltan(config, fila), faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila), paquete: vista(fila) };
   const tipoPedido = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
   if (tipoPedido !== r.tipo(archivo) && tipoPedido !== 'application/octet-stream' && !(clase === 'audio' && tipoPedido === 'audio/mp3')) throw new ErrorHttp(415, 'formato_no_valido');
   const largo = Number(req.headers['content-length']);
-  if (Number.isFinite(largo) && largo > r.tope) throw new ErrorHttp(413, 'demasiado_grande');
+  const tope = topeDe(clase, archivo);
+  if (Number.isFinite(largo) && largo > tope) throw new ErrorHttp(413, 'demasiado_grande');
+  mkdirSync(dirname(destino), { recursive: true }); // las versiones de antes no tienen la carpeta «audio», «paginas» ni «video»
+  // 0.12.1: un video grande solo si el disco tiene el doble libre (con el largo que dice el pedido; si no, con el tope).
+  if (r.espacio) revisarEspacio(dirname(destino), Number.isFinite(largo) && largo > 0 ? largo : tope, { libre: config?.espacioLibre ?? espacioLibre });
   const soltar = apartarRecurso(fila, clase, archivo);
   let resultado;
   try {
-    mkdirSync(dirname(destino), { recursive: true }); // las versiones de antes no tienen la carpeta «audio» ni «paginas»
     const parcial = `${destino}.part`;
     const hash = createHash('sha256');
     let bytes = 0;
     await pipeline(req, async function* contar(fuente) {
       for await (const parte of fuente) {
         bytes += parte.length;
-        if (bytes > r.tope) throw new ErrorHttp(413, 'demasiado_grande');
+        if (bytes > tope) throw new ErrorHttp(413, 'demasiado_grande');
         hash.update(parte);
         yield parte;
       }
@@ -504,6 +541,39 @@ export function rutaAudio(paquete, ref) {
   if (!nombrado) return null;
   const ruta = join(p.carpeta, 'audio', m[2]);
   try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: 'audio/mpeg' } : null; } catch { return null; }
+}
+
+// 0.12.1: el mp4 del video resumen de una materia en uso, si ya llegó: { ref, url, portada, duracion_s, capitulos }.
+// La dirección lleva la huella (tamaño y fecha del archivo: una versión nunca cambia sus archivos), así se guarda mucho.
+const huellaCorta = st => `${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}`;
+export function mp4De(paquete, pid, mp4) {
+  if (!paquete || pid == null || typeof mp4?.archivo !== 'string' || !ARCHIVO_MP4.test(mp4.archivo)) return null;
+  const p = paquete.porPaquete?.get(pid);
+  if (!p) return null;
+  let st;
+  try { st = statSync(join(p.carpeta, 'video', mp4.archivo)); if (!st.isFile() || !st.size) return null; } catch { return null; }
+  const ref = `${pid}~${mp4.archivo}`;
+  let portada = null;
+  if (typeof mp4.portada === 'string' && ARCHIVO_FIGURA.test(mp4.portada)) {
+    try {
+      const sp = statSync(join(p.carpeta, 'video', mp4.portada));
+      if (sp.isFile() && sp.size) portada = `/api/academia/videos/${encodeURIComponent(`${pid}~${mp4.portada}`)}?v=${huellaCorta(sp)}`;
+    } catch { portada = null; }
+  }
+  const capitulos = Array.isArray(mp4.capitulos) ? mp4.capitulos.map(c => ({ inicio_s: c.inicio_s, titulo: c.titulo })) : [];
+  return { ref, url: `/api/academia/videos/${encodeURIComponent(ref)}?v=${huellaCorta(st)}`, portada, duracion_s: mp4.duracion_s, capitulos, bytes: st.size };
+}
+// La ruta del mp4 (o de su portada) de una materia EN USO de esa versión (o null). etiqueta: para el ETag.
+export function rutaVideo(paquete, ref) {
+  const m = /^(\d{1,12})~(.+)$/s.exec(String(ref));
+  if (!m || !ARCHIVO_VIDEO.test(m[2])) return null;
+  const pid = Number(m[1]);
+  const p = paquete?.porPaquete?.get(pid);
+  if (!p) return null;
+  const nombrado = paquete.materias.some(x => x.paquete === pid && (x.video?.mp4?.archivo === m[2] || x.video?.mp4?.portada === m[2]));
+  if (!nombrado) return null;
+  const ruta = join(p.carpeta, 'video', m[2]);
+  try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${pid}-${huellaCorta(st)}"` } : null; } catch { return null; }
 }
 
 // La ruta de una figura del paquete en uso (o null).

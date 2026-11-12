@@ -19,9 +19,11 @@ import { join } from 'node:path';
 import { ErrorTarea } from '../tareas/tipos.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import {
-  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, declarado, rutaDeRecurso,
-  manifiesto, jsonEntero, guardarAjuste, RECURSOS,
+  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, videosQueFaltan, declarado, rutaDeRecurso,
+  manifiesto, jsonEntero, guardarAjuste, topeDe, DISTINTO,
 } from './paquetes.js';
+import { espacioLibre } from './espacio.js';
+import { ARCHIVO_MP4 } from './formato.js';
 import { basesDrive, recorrerCarpeta, bajarArchivo, TOPES_DRIVE, PAQUETE_EN_DRIVE } from './drive.js';
 import { carpetaDrive, leerMemoria, guardarMemoria, anotarRevision } from './drive-estado.js';
 import { AJUSTE_ENTRANTE, leerEntrante, leerImportado, rutaEntrante } from './importador.js';
@@ -132,10 +134,15 @@ export function crearSincronizador({ topes = {} } = {}) {
 
     // 3. Las figuras y los audios de una versión que faltan (de su manifiesto: el JSON entero nunca se lee aquí).
     async function completar(fila, paquete) {
-      for (const clase of ['figura', 'audio', 'pagina']) {
-        const faltan = clase === 'figura' ? figurasQueFaltan(config, fila) : clase === 'audio' ? audiosQueFaltan(config, fila) : paginasQueFaltan(config, fila);
+      // 0.12.1: el video (mp4 y su portada) al final: lo chico llega primero.
+      const QUE_FALTA = { figura: figurasQueFaltan, audio: audiosQueFaltan, pagina: paginasQueFaltan, video: videosQueFaltan };
+      for (const clase of ['figura', 'audio', 'pagina', 'video']) {
+        const faltan = QUE_FALTA[clase](config, fila);
         for (const archivo of faltan) {
           if (!queda()) { informe.parcial = true; return; }
+          const esMp4 = clase === 'video' && ARCHIVO_MP4.test(archivo);
+          // Un mp4 tarda: solo se empieza si al paso le queda su tiempo entero (si no, en la próxima revisión).
+          if (esMp4 && quedaMs() < T.videoMs + 60_000) { informe.parcial = true; return; }
           const lista = candidatos(arbol.archivos, archivo, paquete.camino);
           if (!lista.length) { error(archivo, 'no_esta_en_drive'); continue; }
           const d = declarado(config, fila, clase, archivo);
@@ -151,12 +158,15 @@ export function crearSincronizador({ topes = {} } = {}) {
             let ultimo = null;
             for (const c of (d?.sha256 ? lista : lista.slice(0, 1))) {
               if (!queda()) { informe.parcial = true; break; }
-              const tope = Math.min(RECURSOS[clase].tope, clase === 'audio' ? T.audio : T.imagen);
+              const tope = Math.min(topeDe(clase, archivo), clase === 'audio' ? T.audio : esMp4 ? T.video : T.imagen);
+              // 0.12.1: antes de escribir un mp4, el disco tiene que tener el doble de lo que pesa (si no, se dice).
+              const libre = config?.espacioLibre ?? espacioLibre;
+              const espacio = esMp4 ? bytes => { const hay = libre(join(destino, '..')); return hay != null && hay < 2 * bytes ? 'sin_espacio_disco' : null; } : null;
               // Su propio «.part» (la pantalla, en el otro proceso, usa «<archivo>.part»): nunca escriben el mismo.
-              const b = await bajarArchivo(c.id, { bases, ruta: `${destino}.drive.part`, tope, senal });
+              const b = await bajarArchivo(c.id, { bases, ruta: `${destino}.drive.part`, tope, senal, espacio, ...(esMp4 ? { timeoutMs: T.videoMs } : {}) });
               informe.bytes += b.bytes ?? 0;
-              if (!b.ok) { ultimo = b.motivo; continue; }
-              if (d?.sha256 && b.huella !== d.sha256) { ultimo = clase === 'figura' ? 'figura_distinta' : clase === 'audio' ? 'audio_distinto' : 'pagina_distinta'; continue; }
+              if (!b.ok) { ultimo = b.motivo; if (b.motivo === 'sin_espacio_disco') break; continue; }
+              if (d?.sha256 && b.huella !== d.sha256) { ultimo = DISTINTO[clase]; continue; }
               try {
                 await aceptarRecurso(db, config, { fila, clase, archivo, parcial: `${destino}.drive.part`, huella: b.huella, bytes: b.bytes, escribir: ctx.escribir });
                 listo = true;

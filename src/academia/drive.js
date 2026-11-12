@@ -33,6 +33,8 @@ export const TOPES_DRIVE = Object.freeze({
   json: LIMITES.jsonBytes, // 12 MB
   imagen: LIMITES.figuraBytes, // 8 MB
   audio: LIMITES.audioBytes, // 40 MB
+  video: LIMITES.videoBytes, // 0.12.1: 150 MB (el mp4 del video resumen)
+  videoMs: 840_000, // 0.12.1: 14 minutos para bajar un mp4 (150 MB a ~1,5 Mbit/s): la puerta deja hasta 15 con alTrozo
   porRevision: 400 * 1024 * 1024, // lo que se baja como mucho en una revisión (lo demás, en la siguiente)
 });
 
@@ -101,7 +103,7 @@ export function leerListado(html, { propia = null, maximo = TOPES_DRIVE.entradas
 }
 
 // Un pedido GET a Drive, siguiendo redirecciones SOLO dentro de los servidores permitidos. Nunca lanza.
-async function pedirDrive(url, { bases, senal, timeoutMs, topeBytes, alTrozo = null }) {
+async function pedirDrive(url, { bases, senal, timeoutMs, topeBytes, alTrozo = null, alEmpezar = null }) {
   const permitidos = new Set([new URL(bases.lista).origin, new URL(bases.bajar).origin]);
   let actual = url;
   for (let salto = 0; salto <= TOPES_DRIVE.saltos; salto++) {
@@ -110,8 +112,9 @@ async function pedirDrive(url, { bases, senal, timeoutMs, topeBytes, alTrozo = n
     if (!permitidos.has(u.origin) || u.username || u.password) return { motivo: salto ? 'redireccion_no_permitida' : 'destino_no_permitido' };
     const r = await llamarProveedor({
       url: u.href, metodo: 'GET', cabeceras: { Accept: '*/*', 'User-Agent': 'Mozilla/5.0 (compatible; Academia)' },
-      senal, timeoutMs, topeBytes, alTrozo, permitido: u.hostname,
+      senal, timeoutMs, topeBytes, alTrozo, alEmpezar, permitido: u.hostname,
     });
+    if (r.cortado) return { motivo: r.cortado };
     if (r.red === 'redireccion') {
       if (!r.ubicacion) return { motivo: 'redireccion_no_permitida' };
       actual = new URL(r.ubicacion, u).href;
@@ -187,7 +190,9 @@ export async function recorrerCarpeta(raiz, { bases, senal = null, profundidad =
 // Baja un archivo directo al disco (ruta, abierta con 'w': se reusa siempre el mismo «.part»), con su tope.
 // → { ok: true, bytes, huella } o { ok: false, motivo }. Una página HTML en vez del archivo (aviso de Google, cuota)
 // es «no_disponible»: nunca se toma por el archivo.
-export async function bajarArchivo(id, { bases, ruta, tope, senal = null }) {
+// 0.12.1: timeoutMs (el video tarda más) y espacio(bytes) → motivo o null: se llama con lo que dice el servidor que pesa
+// (o con el tope si no lo dice), ANTES de escribir nada.
+export async function bajarArchivo(id, { bases, ruta, tope, senal = null, timeoutMs = TOPES_DRIVE.bajarMs, espacio = null }) {
   if (!ID_DRIVE.test(String(id))) return { ok: false, motivo: 'no_existe' };
   const hash = createHash('sha256');
   let archivo = null;
@@ -196,7 +201,8 @@ export async function bajarArchivo(id, { bases, ruta, tope, senal = null }) {
     archivo = await open(ruta, 'w', 0o640);
     const destino = archivo;
     const { r, motivo } = await pedirDrive(`${bases.bajar}/download?id=${encodeURIComponent(id)}&export=download&confirm=t`, {
-      bases, senal, timeoutMs: TOPES_DRIVE.bajarMs, topeBytes: tope,
+      bases, senal, timeoutMs, topeBytes: tope,
+      alEmpezar: espacio ? ({ largo }) => (largo != null && largo > tope ? 'demasiado_grande' : espacio(largo ?? tope)) : null,
       alTrozo: async trozo => {
         hash.update(trozo);
         const antes = bytes;

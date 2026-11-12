@@ -111,7 +111,12 @@ async function entregarConTope(respuesta, topeBytes, alTrozo) {
   return { bytes: total, demasiado: false };
 }
 
-export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cuerpo = null, cuerpoCrudo = null, alTrozo = null, senal = null, timeoutMs = 30_000, topeBytes = 1_048_576, permitido = null }) {
+// 0.12.1: un archivo grande que se baja por pedazos (alTrozo) puede tardar más: hasta 15 minutos (un video de 150 MB).
+// alEmpezar({ largo }): antes de recibir el cuerpo (con el largo que dice el servidor, o null); si devuelve un motivo
+// (texto), no se baja nada y salida.cortado lo dice (por ejemplo, «sin_espacio_disco»).
+export const TOPE_MS = 120_000;
+export const TOPE_MS_POR_PEDAZOS = 900_000;
+export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cuerpo = null, cuerpoCrudo = null, alTrozo = null, alEmpezar = null, senal = null, timeoutMs = 30_000, topeBytes = 1_048_576, permitido = null }) {
   const inicio = Date.now();
   const salida = {
     status: null, json: null, textoCorto: null, cabeceras: {}, red: null, tiempoAgotado: false, abortado: false,
@@ -127,7 +132,7 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
     salida.abortado = true;
     return terminar();
   }
-  const limite = AbortSignal.timeout(Math.max(1, Math.min(120_000, Number(timeoutMs) || 30_000)));
+  const limite = AbortSignal.timeout(Math.max(1, Math.min(typeof alTrozo === 'function' ? TOPE_MS_POR_PEDAZOS : TOPE_MS, Number(timeoutMs) || 30_000)));
   const unida = senal ? AbortSignal.any([senal, limite]) : limite;
   let respuesta = null;
   try {
@@ -150,6 +155,16 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
     const tope = Math.max(1, Number(topeBytes) || 1_048_576);
     // Con alTrozo, solo una respuesta 2xx va por pedazos; un error (JSON corto) se lee como siempre, con tope chico.
     if (typeof alTrozo === 'function' && respuesta.status >= 200 && respuesta.status <= 299) {
+      if (typeof alEmpezar === 'function') {
+        const dicho = respuesta.headers.get('content-length');
+        const largo = dicho != null && /^\d{1,15}$/.test(dicho.trim()) ? Number(dicho) : null;
+        const motivo = await alEmpezar({ largo });
+        if (typeof motivo === 'string' && motivo) {
+          try { await respuesta.body?.cancel(); } catch { /* nada que leer */ }
+          salida.cortado = motivo;
+          return terminar();
+        }
+      }
       const entregado = await entregarConTope(respuesta, tope, alTrozo);
       salida.bytes = entregado.bytes;
       if (entregado.demasiado) salida.demasiado = true;
