@@ -16,6 +16,7 @@ import { registrarRutasCopias } from './api/copias.js';
 import { registrarRutasCanales } from './api/canales.js';
 import { registrarRutasAcademia } from './api/academia.js';
 import { registrarRutasPerfil } from './api/perfil.js';
+import { registrarRutasTerminos } from './api/terminos.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -114,6 +115,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasAcademia(rutas, { config, supervisor, ...academia });
   // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).
   registrarRutasPerfil(rutas, { config, limites: academia.limitesPerfil, reloj: academia.reloj });
+  // 0.9.2: «Términos de uso y aviso» y el nombre legal.
+  registrarRutasTerminos(rutas);
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

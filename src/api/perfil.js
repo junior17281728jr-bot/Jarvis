@@ -34,7 +34,7 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
     const datos = await leerJson(req);
     if (!topes.cambios.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
     const pedido = {};
-    for (const campo of ['nombreVisible', 'avatar', 'meta']) if (Object.hasOwn(datos ?? {}, campo)) pedido[campo] = datos[campo];
+    for (const campo of ['nombreVisible', 'avatar', 'meta', 'privado']) if (Object.hasOwn(datos ?? {}, campo)) pedido[campo] = datos[campo];
     return { codigo: 200, datos: { perfil: guardarPerfil(db, usuario.id, pedido) } };
   });
 

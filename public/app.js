@@ -446,7 +446,33 @@ function selectorIdioma(alCambiar) {
 }
 
 function pie() {
-  return el('p', { class: 'pie', texto: estado.setup?.version ? t('app.version', { version: estado.setup.version }) : '' });
+  // 0.9.2: «Términos y aviso» siempre a mano (también antes de entrar).
+  return el('p', { class: 'pie' },
+    el('span', { texto: estado.setup?.version ? t('app.version', { version: estado.setup.version }) : '' }),
+    el('a', { class: 'pie-terminos', href: '#terminos', texto: t('terminos.pie') }));
+}
+// 0.9.2: los términos (public/terminos-vista.js, solo se carga aquí).
+const piezasTerminos = () => ({ el, t, numero, icono, talCual, api, caja, decir, avisar, textoError, botonAccion, marcaConLogo });
+async function pantallaLeerTerminos() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/terminos'), import('./terminos-vista.js')]);
+  if (!vigente()) return;
+  const volver = el('a', { class: 'volver con-icono', href: estado.usuario ? '#inicio' : '#' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.volver') }));
+  const cuerpo = r.ok ? [el('h1', { texto: t('terminos.titulo') }), el('p', { class: 'suave', texto: t('terminos.version', { n: numero(r.datos.terminos.version) }) }), vista.textoTerminos(piezasTerminos(), r.datos.terminos)]
+    : [el('p', { class: 'mensaje error', texto: textoError(r.datos.error) })];
+  const tarjeta = el('section', { class: 'tarjeta terminos-pantalla' }, volver, ...cuerpo);
+  if (estado.usuario && !estado.terminos?.pendiente) return mostrar(marco('ayuda', tarjeta));
+  mostrar(tarjeta, pie());
+}
+async function pantallaTerminos() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/yo/terminos'), import('./terminos-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(el('section', { class: 'tarjeta centrada' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }), el('button', { type: 'button', class: 'secundario', texto: t('menu.salir'), onclick: salir })));
+  mostrar(vista.pantallaAceptar(r.datos, piezasTerminos(), {
+    alListo: async nuevo => { estado.terminos = nuevo; if (!location.hash) history.replaceState(null, '', '#inicio'); await dibujar(); },
+    salir,
+  }), pie());
 }
 
 // ---------- Pantallas sin sesión ----------
@@ -542,6 +568,7 @@ function pantallaCrearClave(nombre) {
 }
 async function entrarCon(r) {
   estado.usuario = r.datos.usuario;
+  estado.terminos = r.datos.terminos ?? null;
   vaciarMemoria();
   recordarAdmin(estado.usuario);
   avisosCuenta = leerAvisos(r.datos);
@@ -1613,6 +1640,13 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     completo,
     el('label', { for: 'campo-nombre', texto: t('admin.nuevo.nombre') }),
     usuario,
+    // 0.9.2: su Nombre y Apellido de verdad (opcional: si no, lo escribe la persona al aceptar los términos).
+    el('details', { class: 'plegable-chico' },
+      el('summary', { texto: t('admin.nuevo.legal') }),
+      el('label', { for: 'campo-legal-nuevo-n', texto: t('terminos.nombre') }),
+      el('input', { id: 'campo-legal-nuevo-n', name: 'legalNombre', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' }),
+      el('label', { for: 'campo-legal-nuevo-a', texto: t('terminos.apellido') }),
+      el('input', { id: 'campo-legal-nuevo-a', name: 'legalApellido', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' })),
     el('p', { class: 'ayuda', texto: t('admin.nuevo.nombre.ayuda') }),
     el('label', { for: 'campo-rol', texto: t('admin.nuevo.rol') }),
     el('select', { id: 'campo-rol', name: 'rol' },
@@ -1637,7 +1671,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     const clave = String(datos.get('claveAdmin') ?? '');
     if (modo === 'admin' && clave.length < 4) throw new Error(t('error.clave_corta'));
     const creado = await api('POST', '/api/admin/usuarios', { nombre, nombreVisible: String(datos.get('nombreVisible')).trim(), rol: datos.get('rol'), idioma: datos.get('idioma'),
-      ...(modo === 'alumno' ? { sinClave: true } : modo === 'admin' ? { clave } : {}) });
+      ...(modo === 'alumno' ? { sinClave: true } : modo === 'admin' ? { clave } : {}),
+      ...(String(datos.get('legalNombre') ?? '').trim() && String(datos.get('legalApellido') ?? '').trim() ? { nombreLegal: { nombre: String(datos.get('legalNombre')), apellido: String(datos.get('legalApellido')) } } : {}) });
     if (creado.datos.error === 'nombre_ocupado') {
       // Ya existe: se propone el siguiente libre (juan.perez2…) y el administrador decide.
       ocupados.add(nombre);
@@ -1729,6 +1764,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         insignia(u.activo ? 'bien' : 'mal', t(u.activo ? 'admin.activo' : 'admin.inactivo')),
         u.pendiente ? insignia('atencion', t('admin.pendiente')) : null),
       u.nombreVisible && u.nombreVisible !== u.nombre ? el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }) : null,
+      u.nombreLegal ? el('p', { class: 'suave', texto: t('admin.nombre_legal', { nombre: u.nombreLegal }) }) : null,
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       el('a', { class: 'enlace-fuerte con-icono-chico ficha-enlace', href: `#alumno/${u.id}` }, icono('grafica', 'icono chico'), el('span', { texto: t('ficha.ver') })),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
@@ -3346,16 +3382,9 @@ function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
   if (compacto) {
     return el('a', { class: 'panel panel-grupo compacto', href: '#progreso', 'aria-label': t('acad.grupo.ver') }, cabeza, rutaGrupo(g, { compacta: true }));
   }
-  const ocultar = el('button', {
-    type: 'button', class: 'boton-texto con-icono', 'aria-pressed': String(g.oculto),
-    onclick: async evento => {
-      const yo = evento.currentTarget;
-      yo.disabled = true;
-      const r = await api('POST', '/api/academia/grupo', { oculto: !g.oculto });
-      if (!r.ok) { yo.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
-      alCambiar?.(r.datos.grupo);
-    },
-  }, icono(g.oculto ? 'ojo' : 'candado', 'icono chico'), el('span', { texto: t(g.oculto ? 'acad.grupo.mostrarme' : 'acad.grupo.ocultarme') }));
+  // 0.9.2: un solo interruptor, «Perfil privado», en Configuración → Mi perfil.
+  const ocultar = el('a', { class: 'boton-texto con-icono', href: '#configuracion' },
+    icono(g.oculto ? 'ojo' : 'candado', 'icono chico'), el('span', { texto: t(g.oculto ? 'acad.grupo.privado_si' : 'acad.grupo.privado_cambiar') }));
   return el('section', { class: 'panel panel-grupo', 'aria-labelledby': 'grupo-titulo' },
     el('div', { class: 'panel-cabeza' },
       el('span', { class: 'panel-icono' }, icono('personas')),
@@ -3862,6 +3891,7 @@ async function pantallaExamen(materia) {
       el('p', { class: 'antetitulo', texto: t('acad.examen.ante') }),
       el('h1', { class: 'titulo-grande', texto: nombreMateria(materia) }),
       el('p', { class: 'bajada', texto: t('acad.examen.linea') }),
+      el('p', { class: 'examen-no-oficial con-icono-chico' }, icono('info', 'icono chico'), el('span', { texto: t('examen.no_oficial') })),
       el('ul', { class: 'portada-datos' },
         el('li', {}, icono('fila', 'icono'), el('span', { texto: tn('acad.n_preguntas', { n: m.examen.preguntas }) })),
         // 0.9.2: el tiempo del examen (preguntas × segundos por pregunta, de los ajustes).
@@ -4284,7 +4314,8 @@ async function pantallaRespuestas() {
 // ---- Administrador: el contenido (subir un paquete, ponerlo en uso, el nombre de la app y el % para aprobar) ----
 async function pantallaContenido() {
   const vigente = nuevoTurno();
-  const [r, s] = await Promise.all([api('GET', '/api/admin/academia'), api('GET', '/api/admin/sistema')]);
+  // 0.9.2: también los «Términos de uso y aviso» (public/terminos-vista.js).
+  const [r, s, tr, vistaTerminos] = await Promise.all([api('GET', '/api/admin/academia'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/terminos'), import('./terminos-vista.js')]);
   if (!vigente()) return;
   const cabecera = cabeceraAdmin('contenido', tonosDePestanas(s.ok ? s.datos : null));
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
@@ -4391,7 +4422,8 @@ async function pantallaContenido() {
   const tarjetaVersiones = el('section', { class: 'tarjeta' },
     el('h2', { class: 'con-icono' }, icono('libro'), el('span', { texto: t('acad.versiones') })),
     paquetes.length ? verMas(el('div', { class: 'lista-usuarios' }), paquetes.map(filaPaquete), 4) : vacio('libro', t('acad.versiones.vacio')));
-  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes)));
+  const tarjetaTerminos = tr.ok ? vistaTerminos.tarjetaAdminTerminos(tr.datos, piezasTerminos(), { alPublicar: () => pantallaContenido() }) : null;
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes, tarjetaTerminos)));
 }
 
 // ---- 0.7.1: la carpeta de Google Drive (el contenido llega solo, cada hora) ----
@@ -4497,11 +4529,14 @@ async function dibujar() {
   turno++;
   // Una explicación abierta («¿Qué es esto?») no sigue a la persona a otra pantalla.
   cerrarAyuda();
+  if (location.hash === '#terminos') return pantallaLeerTerminos();
   if (!estado.usuario) {
     if (estado.setup?.necesitaAdmin) return estado.setup.puedeCrearAdmin ? pantallaCrearAdmin() : pantallaAbreTailscale();
     return pantallaEntrar();
   }
   if (estado.usuario.debeCambiarClave) return pantallaClaveObligatoria();
+  // 0.9.2: sin aceptar los términos en uso no se sigue.
+  if (estado.terminos?.pendiente) return pantallaTerminos();
   ponerUsuarioSonidos(estado.usuario.id);
   const seccion = location.hash.replace('#', '') || 'inicio';
   const esAdmin = estado.usuario.rol === 'admin';
@@ -4549,6 +4584,7 @@ async function dibujar() {
 // algo más al empezar, va aquí también (test/archivos.test.js lo revisa).
 function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'configuracion') return ['/api/yo/reinicios', '/api/yo/perfil'];
+  if (seccion === 'terminos') return ['/api/terminos'];
   // La Ayuda no pide nada: sus textos llegan con el idioma.
   if (seccion === 'ayuda') return [];
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
@@ -4574,7 +4610,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (intentoAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(intentoAlumno[1])}/intentos/${encodeURIComponent(intentoAlumno[2])}`, '/api/admin/sistema'] : [];
   const comparar = seccion.match(/^comparar\/(\d+(?:,\d+){1,9})$/);
   if (comparar) return admin ? [`/api/admin/academia/comparar/${comparar[1]}`, '/api/admin/sistema'] : [];
-  if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
+  if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema', '/api/admin/terminos'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
@@ -4637,6 +4673,7 @@ async function iniciar() {
     estado.usuario = yo.datos.usuario;
     recordarAdmin(estado.usuario);
     avisosCuenta = leerAvisos(yo.datos);
+    estado.terminos = yo.datos.terminos ?? null;
     if (estado.usuario.idioma !== idioma) await cargarIdioma(estado.usuario.idioma);
   }
   if (!yo.ok || intento || location.hash !== direccionAlAbrir) adelantados.clear();

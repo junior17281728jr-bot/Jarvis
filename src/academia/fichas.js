@@ -12,6 +12,7 @@ import { planDe, preparacionDe } from './plan.js';
 import { actividadDe } from '../cuentas/historial.js';
 import { leerPerfil } from '../cuentas/perfil.js';
 import { cerrarVencidos, tiemposDe, leerExamen } from './examen.js';
+import { nombreLegalDe, estadoTerminos } from '../cuentas/terminos.js';
 
 export const MAXIMO_COMPARAR = 6;
 export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
@@ -103,7 +104,9 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
 
 function cabeceraDe(db, u) {
   const perfil = leerPerfil(db, u.id);
-  return { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, activo: u.activo === 1, pendiente: u.pendiente === 1, creadoEn: u.creado_en, avatar: perfil.avatar, meta: perfil.meta };
+  return { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, activo: u.activo === 1, pendiente: u.pendiente === 1, creadoEn: u.creado_en, avatar: perfil.avatar, meta: perfil.meta,
+    // 0.9.2: su nombre legal y los términos que aceptó (versión, nombre tal como firmó, fecha).
+    nombreLegal: nombreLegalDe(db, u.id), terminos: (e => ({ version: e.version, pendiente: e.pendiente, ultima: e.ultima }))(estadoTerminos(db, u.id)) };
 }
 // La última actividad: la de sus sesiones o su última respuesta (lo más nuevo).
 function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {

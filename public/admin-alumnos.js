@@ -57,6 +57,10 @@ function cabezaAlumno(h, a, act) {
     h.el('div', { class: 'ficha-cabeza-texto' },
       h.el('h1', { class: 'ficha-nombre con-icono' }, h.el('span', { class: `punto-linea${act?.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), h.el('span', { texto: nombreDe(a) })),
       h.el('p', { class: 'suave', texto: [`@${a.nombre}`, a.rol === 'admin' ? h.t('admin.rol.admin') : h.t('admin.rol.usuario'), a.activo ? null : h.t('admin.inactivo')].filter(Boolean).join(' · ') }),
+      a.nombreLegal ? h.el('p', { class: 'ficha-legal', texto: h.t('admin.nombre_legal', { nombre: a.nombreLegal.completo }) }) : null,
+      a.terminos ? h.el('p', { class: `suave chica ${a.terminos.pendiente ? 'tono-atencion' : ''}`.trim(), texto: a.terminos.ultima
+        ? h.t(a.terminos.pendiente ? 'ficha.terminos.vieja' : 'ficha.terminos.si', { n: h.numero(a.terminos.ultima.version), cuando: h.fecha(a.terminos.ultima.en), nombre: a.terminos.ultima.firmado, actual: h.numero(a.terminos.version) })
+        : h.t('ficha.terminos.no') }) : null,
       a.meta ? h.el('p', { class: 'ficha-meta con-icono-chico' }, h.icono('bandera', 'icono chico'), h.el('span', { texto: a.meta })) : null,
       h.el('p', { class: 'suave chica', texto: act?.enLinea ? h.t('acad.en_linea') : act?.ultimaActividad ? h.t('acad.ultima', { cuando: h.hace(act.ultimaActividad) }) : h.t('admin.nunca') })));
 }
@@ -86,6 +90,15 @@ function cuentaAlumno(h, a) {
     h.avisar(datos.nombre ? t('cuenta.nombre.listo_usuario', { usuario: r.datos.nombre }) : t('cuenta.nombre.listo'));
     await h.recargar();
   }, 'lapiz');
+  const mensajeLegal = h.caja();
+  const campoLegalN = el('input', { id: 'campo-ficha-legal-n', type: 'text', maxlength: 60, value: a.nombreLegal?.nombre ?? '', autocomplete: 'off' });
+  const campoLegalA = el('input', { id: 'campo-ficha-legal-a', type: 'text', maxlength: 60, value: a.nombreLegal?.apellido ?? '', autocomplete: 'off' });
+  const guardarLegal = h.botonAccion(t('cuenta.nombre.guardar'), 'secundario', mensajeLegal, async () => {
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/nombre-legal`, { nombre: campoLegalN.value, apellido: campoLegalA.value });
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    h.avisar(t('cuenta.legal.listo'));
+    await h.recargar();
+  }, 'lapiz');
   const mensajeClave = h.caja();
   const campoClave = el('input', { id: 'campo-ficha-clave', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' });
   const ponerClave = yo ? null : h.botonAccion(t('cuenta.clave.poner'), 'secundario', mensajeClave, async () => {
@@ -111,6 +124,12 @@ function cuentaAlumno(h, a) {
       el('label', { for: 'campo-ficha-usuario', texto: t('cuenta.nombre.usuario') }), campoUsuario,
       el('p', { class: 'ayuda', texto: t('cuenta.nombre.ayuda') }),
       el('div', { class: 'botones' }, guardarNombre), mensajeNombre),
+    el('details', { class: 'ficha-cuenta-mas' },
+      el('summary', { texto: t('cuenta.legal.titulo') }),
+      el('label', { for: 'campo-ficha-legal-n', texto: t('terminos.nombre') }), campoLegalN,
+      el('label', { for: 'campo-ficha-legal-a', texto: t('terminos.apellido') }), campoLegalA,
+      el('p', { class: 'ayuda', texto: t('cuenta.legal.ayuda') }),
+      el('div', { class: 'botones' }, guardarLegal), mensajeLegal),
     ponerClave ? el('details', { class: 'ficha-cuenta-mas' },
       el('summary', { texto: t('cuenta.clave.titulo') }),
       el('label', { for: 'campo-ficha-clave', texto: t('cuenta.clave.nueva') }), campoClave,
@@ -148,6 +167,7 @@ export function vistaListaAlumnos(datos, h) {
             el('span', { class: 'nombre', texto: nombreDe(a) }),
             a.rol === 'admin' ? el('span', { class: 'etiqueta', texto: t('admin.rol.admin') }) : null,
             el('span', { class: 'alumno-pct', texto: a.respuestas ? h.pctTexto(a.pct) : '—' })),
+          a.nombreLegal ? el('p', { class: 'suave chica', texto: a.nombreLegal }) : null,
           el('p', { class: 'suave chica', texto: `@${a.nombre} · ${a.enLinea ? t('acad.en_linea') : a.ultimaActividad ? t('acad.ultima', { cuando: h.hace(a.ultimaActividad) }) : t('admin.nunca')}` }),
           el('div', { class: 'etiquetas' },
             h.insignia('bien', t('acad.bien', { n: numero(a.aciertos) })),

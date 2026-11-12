@@ -18,6 +18,7 @@ import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 import { duenoDeTailscale, exigirDueno } from '../cuentas/tailscale.js';
 import { leerConfigIa, algunTopeDePlan } from '../ia/config.js';
 import { leerPerfil, avataresDe } from '../cuentas/perfil.js';
+import { estadoTerminos, nombresLegales, ponerNombreLegal } from '../cuentas/terminos.js';
 import { anotarConfianza, cuentaConfirmada, seguirConfianza, estadoConfianza, ponerPermisoIa } from '../cuentas/confianza.js';
 
 const IDIOMAS = new Set(['es', 'en']);
@@ -76,7 +77,8 @@ function usuarioPublico(u) {
 function avisosParaLaPantalla(db, usuario) {
   const avisos = avisosSinVer(db, usuario.id);
   // 0.9.0: con su avatar (Configuración → Mi perfil), para la barra de arriba.
-  return { usuario: { ...usuarioPublico(usuario), avatar: leerPerfil(db, usuario.id).avatar }, avisos, reiniciosRecientes: avisos.some(a => a.tipo === 'clave_reiniciada') ? reiniciosRecientes(db, usuario.id) : [] };
+  // 0.9.2: «terminos»: si le falta aceptar la versión en uso (la pantalla no deja seguir sin aceptar).
+  return { usuario: { ...usuarioPublico(usuario), avatar: leerPerfil(db, usuario.id).avatar }, terminos: estadoTerminos(db, usuario.id), avisos, reiniciosRecientes: avisos.some(a => a.tipo === 'clave_reiniciada') ? reiniciosRecientes(db, usuario.id) : [] };
 }
 
 // La puerta de arranque: los primeros 90 s después de encender el servicio, /api/setup responde 503
@@ -281,7 +283,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     datos: {
       // ia (solo de las cuentas comunes): si puede gastar IA y de dónde vino su último cambio (src/cuentas/confianza.js).
       // 0.9.0: avatar (el que eligió en Configuración → Mi perfil, o null).
-      usuarios: (avatares => listarUsuarios(db).map(u => ({ ...(u.rol === 'admin' ? u : { ...u, ia: estadoConfianza(db, u.id) }), avatar: avatares.get(u.id) ?? null })))(avataresDe(db)),
+      // 0.9.2: nombreLegal (Nombre y Apellido de verdad, el de la firma de los términos).
+      usuarios: ((avatares, legales) => listarUsuarios(db).map(u => ({ ...(u.rol === 'admin' ? u : { ...u, ia: estadoConfianza(db, u.id) }), avatar: avatares.get(u.id) ?? null, nombreLegal: legales.get(u.id) ?? null })))(avataresDe(db), nombresLegales(db)),
       planes: planesPublicos(),
       permisos: { cuentas: cuentasDesdeAqui(db, req), admins: duenoDeTailscale(db, req, usuario).si },
     },
@@ -306,11 +309,14 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       const problema = problemaDeClave(datos.clave, [nombre, nombreVisible]);
       if (problema) throw new ErrorHttp(400, problema);
     }
+    // 0.9.2: su Nombre y Apellido de verdad (opcional; la persona lo confirma al aceptar los términos).
+    const legal = datos.nombreLegal && (datos.nombreLegal.nombre || datos.nombreLegal.apellido) ? { nombre: datos.nombreLegal.nombre, apellido: datos.nombreLegal.apellido } : null;
     const temporal = sinClave || propia ? null : claveTemporal();
     const claveHash = sinClave ? clavePendiente() : await hashClave(propia ? datos.clave : temporal);
     const id = enTransaccion(db, () => {
       const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), debeCambiarClave: Boolean(temporal), creadoPor: usuario.id });
       if (nuevo && rol === 'usuario') anotarOrigen(db, req, { usuarioId: nuevo, accion: 'creada', hechoPor: usuario.id });
+      if (nuevo && legal) ponerNombreLegal(db, nuevo, legal, { por: 'admin', hechoPor: usuario.id });
       return nuevo;
     });
     if (!id) throw new ErrorHttp(409, 'nombre_ocupado');

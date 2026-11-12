@@ -48,11 +48,16 @@ export function avataresDe(db) {
   return m;
 }
 
+// 0.9.2: «Perfil privado»: el mismo interruptor que «ocultarme» del panel Grupo (academia.grupo_oculto.<id>). Privado =
+// no aparece para los otros alumnos (Grupo ni ningún ranking); el administrador siempre ve todo.
+const clavePrivado = id => `academia.grupo_oculto.${Number(id)}`;
+export const esPrivado = (db, id) => db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clavePrivado(id))?.valor === '1';
+
 export function perfilDe(db, usuarioId) {
   const u = db.prepare('SELECT id, nombre, nombre_visible FROM usuarios WHERE id = ?').get(Number(usuarioId));
   if (!u) throw new ErrorHttp(404, 'no_existe');
   return {
-    nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, ...leerPerfil(db, u.id),
+    nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, ...leerPerfil(db, u.id), privado: esPrivado(db, u.id),
     opciones: { formas: [...FORMAS_AVATAR], colores: [...COLORES_AVATAR], metaMaxima: META_MAXIMA, nombreVisibleMaximo: NOMBRE_VISIBLE_MAXIMO },
   };
 }
@@ -82,6 +87,11 @@ export function guardarPerfil(db, usuarioId, datos) {
         db.prepare('UPDATE usuarios SET nombre_visible = ? WHERE id = ?').run(visible, id);
         auditar(db, { usuarioId: id, accion: 'nombre_visible_cambiado', detalle: visible });
       }
+    }
+    if (Object.hasOwn(datos, 'privado')) {
+      if (typeof datos.privado !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+      db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
+        ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(clavePrivado(id), datos.privado ? '1' : '0', new Date().toISOString());
     }
     if (nuevo.avatar !== actual.avatar || nuevo.meta !== actual.meta) {
       db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
