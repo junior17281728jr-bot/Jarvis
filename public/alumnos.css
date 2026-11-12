@@ -281,9 +281,10 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
 @media print {
   @page { size: A4; margin: 12mm; }
   html, body { background: #ffffff !important; }
-  .marco > .lateral, .menu, .contenido > *:not(.reporte-hoja), .aviso-flotante { display: none !important; }
-  .marco { display: block !important; }
-  .contenido { padding: 0 !important; max-width: none !important; }
+  /* Solo en las pantallas con una hoja para imprimir (reporte, contratos, mis documentos). */
+  .marco:has(.reporte-hoja) > .lateral, .marco:has(.reporte-hoja) .menu, .contenido:has(.reporte-hoja) > *:not(.reporte-hoja), .aviso-flotante { display: none !important; }
+  .marco:has(.reporte-hoja) { display: block !important; }
+  .contenido:has(.reporte-hoja) { padding: 0 !important; max-width: none !important; }
   .reporte-hoja { box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
   .reporte-hoja, .reporte-hoja * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .reporte-seccion { break-before: auto; }

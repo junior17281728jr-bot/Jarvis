@@ -1650,10 +1650,18 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     el('label', { for: 'campo-clave-nueva-admin', texto: t('admin.nuevo.clave.escribe') }),
     el('input', { id: 'campo-clave-nueva-admin', name: 'claveAdmin', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' }));
   const ayudaModo = el('p', { class: 'ayuda con-icono-arriba' }, icono('atencion', 'icono chico'), el('span', { texto: t('admin.nuevo.clave.alumno.ayuda') }));
-  modoClave.addEventListener('change', () => {
+  const pintarModo = () => {
     claveAdmin.hidden = modoClave.value !== 'admin';
     ayudaModo.hidden = modoClave.value !== 'alumno';
-  });
+  };
+  modoClave.addEventListener('change', pintarModo);
+  // Un administrador nunca se crea sin contraseña (lo podría tomar cualquiera desde internet).
+  const alCambiarRol = evento => {
+    const esAdmin = evento.target.value === 'admin';
+    modoClave.querySelector('option[value="alumno"]').disabled = esAdmin;
+    if (esAdmin && modoClave.value === 'alumno') modoClave.value = 'temporal';
+    pintarModo();
+  };
   const formulario = el('form', { novalidate: true },
     el('label', { for: 'campo-nombre-completo', texto: t('admin.nuevo.nombre_completo') }),
     completo,
@@ -1668,7 +1676,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       el('input', { id: 'campo-legal-nuevo-a', name: 'legalApellido', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' })),
     el('p', { class: 'ayuda', texto: t('admin.nuevo.nombre.ayuda') }),
     el('label', { for: 'campo-rol', texto: t('admin.nuevo.rol') }),
-    el('select', { id: 'campo-rol', name: 'rol' },
+    el('select', { id: 'campo-rol', name: 'rol', onchange: alCambiarRol },
       el('option', { value: 'usuario', texto: t('admin.rol.usuario') }),
       permisos.admins ? el('option', { value: 'admin', texto: t('admin.rol.admin') }) : null),
     permisos.admins ? null : el('p', { class: 'ayuda con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.nuevo.rol.solo_dueno') })),

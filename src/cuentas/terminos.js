@@ -135,6 +135,15 @@ function nacimientoDe(valor, ahoraMs) {
   return { nacimiento: valor, edad, menor: edad < 18 };
 }
 export const nacimientoGuardado = (db, id) => leer(db, `cuenta.nacimiento.${Number(id)}`);
+// El administrador corrige la fecha de nacimiento (y con ella si es menor).
+export function ponerNacimiento(db, id, valor, { hechoPor, ahoraMs = Date.now() }) {
+  const nac = nacimientoDe(valor, ahoraMs);
+  if (!db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(Number(id))) throw new ErrorHttp(404, 'no_existe');
+  escribir(db, `cuenta.nacimiento.${Number(id)}`, nac.nacimiento);
+  escribir(db, `cuenta.menor.${Number(id)}`, nac.menor ? '1' : '0');
+  auditar(db, { usuarioId: hechoPor, accion: 'nacimiento_corregido', detalle: `${id}: ${nac.nacimiento}` });
+  return nac;
+}
 
 // ---------- Consentimientos que leen otras partes de la app ----------
 // IA: si aceptó enviar sus datos de estudio (sin nombre) al proveedor de IA en el extranjero. Sin aceptar: la app
@@ -142,6 +151,7 @@ export const nacimientoGuardado = (db, id) => leer(db, `cuenta.nacimiento.${Numb
 export const consienteIa = (db, id) => leer(db, `cuenta.consentimiento_ia.${Number(id)}`) === '1';
 export function ponerConsentimientoIa(db, id, permitido) {
   if (typeof permitido !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+  if (!firmasDe(db, id).length) throw new ErrorHttp(409, 'terminos_pendientes');
   escribir(db, `cuenta.consentimiento_ia.${Number(id)}`, permitido ? '1' : '0');
   auditar(db, { usuarioId: Number(id), accion: permitido ? 'ia_consentida' : 'ia_retirada' });
   return permitido;
@@ -228,11 +238,14 @@ export function aceptarTerminos(db, usuarioId, datos, { config, ip = null, naveg
     } else {
       legal = ponerNombreLegal(db, id, { nombre, apellido }, { por: 'persona' });
     }
-    escribir(db, `cuenta.nacimiento.${id}`, nac.nacimiento);
-    escribir(db, `cuenta.menor.${id}`, nac.menor ? '1' : '0');
-    escribir(db, `cuenta.consentimiento_ia.${id}`, aceptoIa ? '1' : '0');
+    // La fecha de nacimiento firmada no cambia sola (si está mal, la corrige el administrador).
+    const nacAntes = nacimientoGuardado(db, id);
+    if (nacAntes && nacAntes !== nac.nacimiento) throw new ErrorHttp(409, 'nacimiento_fijo');
     const firmas = firmasDe(db, id);
     if (!firmas.some(f => f.version === actual && (f.versionPrivacidad ?? 1) === actualPrivacidad)) {
+      escribir(db, `cuenta.nacimiento.${id}`, nac.nacimiento);
+      escribir(db, `cuenta.menor.${id}`, nac.menor ? '1' : '0');
+      escribir(db, `cuenta.consentimiento_ia.${id}`, aceptoIa ? '1' : '0');
       const u = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(id);
       const n = (firmas.at(-1)?.n ?? 0) + 1;
       const huellaFirma = sha256(png);

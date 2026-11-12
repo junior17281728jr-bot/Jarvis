@@ -185,3 +185,25 @@ test('días hábiles: se saltan sábados y domingos', async () => {
   assert.equal(diasHabiles(Date.parse('2026-11-12T15:00:00Z'), 10), '2026-11-26');
   assert.equal(diasHabiles(Date.parse('2026-11-14T15:00:00Z'), 1), '2026-11-16', 'del sábado al lunes');
 });
+
+test('arreglos: un administrador nunca sin contraseña; la fecha de nacimiento firmada no se cambia sola; IA solo con firma', async () => {
+  await conAcademia(async ({ base, db, admin, ana, beto, ids }) => {
+    // Un administrador sin contraseña: no (lo tomaría cualquiera); y crear-clave nunca toma un administrador.
+    assert.equal((await pedir(base, 'POST', '/api/admin/usuarios', { galleta: admin, cabeceras: { 'Tailscale-User-Login': 'junior@example.com' }, datos: { nombre: 'admin2', rol: 'admin', sinClave: true } })).datos.error, 'admin_sin_clave');
+    db.prepare("UPDATE usuarios SET clave_hash = 'pendiente$abc' WHERE id = 1").run();
+    assert.equal((await pedir(base, 'POST', '/api/crear-clave', { datos: { nombre: 'junior', nueva: 'sol1' } })).datos.error, 'ya_tiene_clave');
+    // IA: sin firma no se puede dar el permiso.
+    assert.equal((await pedir(base, 'POST', '/api/yo/consentimiento-ia', { galleta: ana, datos: { permitido: true } })).datos.error, 'terminos_pendientes');
+    // Una menor firma con su tutor; volver a «firmar» con otra fecha no la hace mayor.
+    const { pagosPermitidos, esMenor } = await import('../src/cuentas/terminos.js');
+    assert.equal((await firmar(base, ana, { nacimiento: '2012-03-01', tutor: TUTOR })).codigo, 200);
+    assert.equal((await firmar(base, ana, { nacimiento: '1990-01-01' })).datos.error, 'nacimiento_fijo');
+    assert.equal((await firmar(base, ana, { nacimiento: '2012-03-01', tutor: TUTOR })).codigo, 200, 'otra vez lo mismo: nada cambia');
+    assert.deepEqual([esMenor(db, ids.ana), pagosPermitidos(db, ids.ana)], [true, false]);
+    assert.equal((await pedir(base, 'GET', '/api/admin/contratos', { galleta: admin })).datos.contratos.length, 1);
+    // El administrador la corrige.
+    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/nombre-legal`, { galleta: beto, datos: { nacimiento: '1990-01-01' } })).codigo, 403);
+    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/nombre-legal`, { galleta: admin, datos: { nacimiento: '1990-01-01' } })).datos.nacimiento.menor, false);
+    assert.equal(esMenor(db, ids.ana), false);
+  });
+});

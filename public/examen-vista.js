@@ -40,7 +40,8 @@ export function examenConReloj(intento, h) {
     cola = cola.then(async () => {
       const r = await h.api('POST', `/api/academia/intentos/${intento.id}/examen`, datos);
       if (!r.ok && sigue()) {
-        if (r.datos.error === 'tiempo_agotado' || r.datos.error === 'intento_terminado') return entregar({ solo: true });
+        // Fuera de la cola: entregar espera a la cola, y esto corre dentro de ella.
+        if (r.datos.error === 'tiempo_agotado' || r.datos.error === 'intento_terminado') { setTimeout(() => entregar({ solo: true }), 0); return; }
         h.avisar(h.textoError(r.datos.error), 'mal');
       }
       if (r.ok && Number.isFinite(r.datos.restanteMs)) fin = performance.now() + r.datos.restanteMs;

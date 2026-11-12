@@ -7,7 +7,7 @@
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import {
   docActual, docVersion, versionDoc, DOCUMENTOS, estadoTerminos, aceptarTerminos, publicarDoc, ponerNombreLegal, firmasDe, DECLARACION, REEMBOLSO,
-  contratos, contrato, pngDeFirma, ponerConsentimientoIa, ponerVerificacion, ponerTutorPagos,
+  contratos, contrato, pngDeFirma, ponerConsentimientoIa, ponerVerificacion, ponerTutorPagos, ponerNacimiento, nombreLegalDe,
 } from '../cuentas/terminos.js';
 
 const LIMITE_CUERPO_FIRMA = 240 * 1024;
@@ -77,7 +77,11 @@ export function registrarRutasTerminos(rutas, { config = null, reloj = Date.now 
     const datos = await leerJson(req);
     const id = Number(parametros.id);
     if (!Number.isSafeInteger(id)) throw new ErrorHttp(404, 'no_existe');
-    return { codigo: 200, datos: { nombreLegal: ponerNombreLegal(db, id, { nombre: textoDe(datos, 'nombre'), apellido: textoDe(datos, 'apellido') }, { por: 'admin', hechoPor: usuario.id }) } };
+    // 0.9.2: «nacimiento» (opcional): corregir la fecha de nacimiento (y con ella si es menor).
+    const hay = campo => Object.hasOwn(datos ?? {}, campo);
+    const nombreLegal = hay('nombre') || hay('apellido') ? ponerNombreLegal(db, id, { nombre: textoDe(datos, 'nombre'), apellido: textoDe(datos, 'apellido') }, { por: 'admin', hechoPor: usuario.id }) : nombreLegalDe(db, id);
+    const nacimiento = hay('nacimiento') ? ponerNacimiento(db, id, textoDe(datos, 'nacimiento'), { hechoPor: usuario.id, ahoraMs: reloj() }) : null;
+    return { codigo: 200, datos: { nombreLegal, ...(nacimiento ? { nacimiento } : {}) } };
   }, { admin: true });
   rutas.agregar('POST', '/api/admin/usuarios/:id/verificacion', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);

@@ -201,7 +201,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const datos = await leerJson(req);
     const nombre = textoDe(datos, 'nombre').trim().toLowerCase().slice(0, 40);
     const usuario = nombre ? buscarPorNombre(db, nombre) : null;
-    if (!usuario || !esPendiente(usuario.clave_hash)) throw new ErrorHttp(409, 'ya_tiene_clave');
+    if (!usuario || !esPendiente(usuario.clave_hash) || usuario.rol === 'admin') throw new ErrorHttp(409, 'ya_tiene_clave');
     if (usuario.activo !== 1) throw new ErrorHttp(403, 'cuenta_bloqueada');
     const problema = problemaDeClave(datos.nueva, [usuario.nombre, usuario.nombre_visible]);
     if (problema) throw new ErrorHttp(400, problema);
@@ -305,6 +305,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const sinClave = datos.sinClave === true;
     const propia = datos.clave !== undefined && datos.clave !== null && datos.clave !== '';
     if (sinClave && propia) throw new ErrorHttp(400, 'datos_no_validos');
+    // Un administrador sin contraseña lo podría tomar cualquiera desde internet: nunca.
+    if (sinClave && rol === 'admin') throw new ErrorHttp(400, 'admin_sin_clave');
     if (propia) {
       const problema = problemaDeClave(datos.clave, [nombre, nombreVisible]);
       if (problema) throw new ErrorHttp(400, problema);
