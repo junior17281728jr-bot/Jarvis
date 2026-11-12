@@ -52,11 +52,14 @@ export function anotarBloqueo(db, { mes, ambito, motivo, proposito, ahora = Date
 
 // El primer proveedor (en el orden de la configuración) que se puede usar ahora mismo. Sin red: solo mira la base,
 // la tabla de precios y la llave. { ok, proveedor, modelo, precio, secreto, adaptador } o { ok: false, motivo }.
-export function elegirProveedor(db, config, cfg, ahora = Date.now()) {
+// 0.9.0: modelos = { anthropic: '…' } usa otro modelo de ese proveedor (el del instructor de la academia: el propósito
+// dice de qué ajuste sale, modeloAjuste). Con la misma clave y el mismo precio confirmado que pide cualquier modelo.
+export function elegirProveedor(db, config, cfg, ahora = Date.now(), modelos = null) {
   const llave = estadoLlave(config);
   let primero = null;
   for (const id of cfg.orden) {
-    const p = cfg.proveedores[id];
+    const p0 = cfg.proveedores[id];
+    const p = p0 && typeof modelos?.[id] === 'string' ? { ...p0, modelo: modelos[id] } : p0;
     const adaptador = PROVEEDORES[id];
     if (!p?.usar || !adaptador) continue;
     const precio = precioDe(id, p.modelo);
@@ -102,6 +105,12 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
   return { partes, todas, deCuentas, deLaCuenta, cuenta };
 }
 
+// El modelo propio de un propósito (0.9.0: el instructor de la academia usa cfg.instructorModelo con Claude), o null.
+export function modelosDe(def, cfg) {
+  const modelo = def?.modeloAjuste ? cfg?.[def.modeloAjuste] : null;
+  return typeof modelo === 'string' ? { anthropic: modelo } : null;
+}
+
 // Todas las revisiones de reservar, SIN escribir nada (también las usa disponibilidad, para las pantallas).
 function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, salidaMax, maximoConfirmadoMicro, ahora }) {
   const mes = mesCobro(ahora);
@@ -111,7 +120,7 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   // Ronda 5 de revisión: una cuenta común gasta solo con el permiso de IA vigente (src/cuentas/confianza.js): se mira
   // AQUÍ, al gastar, y no solo al crear la cuenta o cambiar su plan.
   if (espacioId != null && !esEspacioAdmin(db, espacioId) && !espacioConfirmado(db, espacioId)) return no('cuenta_sin_permiso', `e${espacioId}`);
-  const eleccion = elegirProveedor(db, config, cfg, ahora);
+  const eleccion = elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg));
   if (!eleccion.ok) return no(eleccion.motivo);
   const reserva = reservaMicro(eleccion.precio, { entradaMax, salidaMax });
   const base = { proveedor: eleccion.proveedor, modelo: eleccion.modelo, reserva };

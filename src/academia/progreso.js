@@ -9,11 +9,14 @@ import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe } from './paquetes.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
+import { preguntasDelInstructor } from './practica.js';
 
 // 0.8.0: «reto» = practicar un tema (o toda una materia, sin tema) en Modo reto; «errores» = practicar lo que más se
 // falla (de un intento, de un tema, de una materia o de todo). Los dos son práctica: no aprueban temas ni exámenes
 // (eso solo lo hacen «tema» y «examen», siempre con las 3 opciones originales del Test Guide).
-export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso', 'reto', 'errores']);
+// 0.9.0: «instructor» = la Práctica del instructor (src/academia/practica.js): lo que vence en el repaso, lo que más falla
+// y lo nuevo de sus temas abiertos, mezclado. También es práctica, con las 3 opciones originales.
+export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso', 'reto', 'errores', 'instructor']);
 export const modoDeTipo = tipo => (tipo === 'reto' ? MODO_RETO : MODO_ORIGINAL);
 export const ESTADOS_TEMA = Object.freeze(['bloqueado', 'abierto', 'aprobado']);
 export const ESTADOS_MATERIA = Object.freeze(['vacia', 'bloqueada', 'abierta', 'aprobada']);
@@ -327,6 +330,12 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
       tema = f.tema;
     }
     if (!ids.length) throw new ErrorHttp(409, 'sin_errores');
+  } else if (tipo === 'instructor') {
+    const c = camino(db, usuarioId, paquete, ahoraMs);
+    const abiertos = new Set(c.materias.flatMap(m => m.temas.filter(t => t.estado !== 'bloqueado').map(t => `${m.id}/${t.id}`)));
+    ids = preguntasDelInstructor(db, usuarioId, paquete, abiertos, ahoraMs);
+    materia = null;
+    tema = null;
   } else {
     ids = repasoPendiente(db, usuarioId, paquete, ahoraMs).slice(0, REPASO_MAXIMO);
     materia = null;
@@ -334,7 +343,7 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
   }
   if (!ids.length) throw new ErrorHttp(409, tipo === 'repaso' ? 'repaso_vacio' : 'sin_preguntas');
   // 0.8.0: el repaso y «practicar mis errores» van en orden de prioridad (lo más fallado primero), sin mezclar.
-  const porPrioridad = tipo === 'repaso' || tipo === 'errores';
+  const porPrioridad = tipo === 'repaso' || tipo === 'errores' || tipo === 'instructor';
   let orden = porPrioridad ? [...ids] : barajar(ids, azar);
   // Las mismas preguntas, en OTRO orden que la vez anterior (el azar puede repetir uno: entonces se corre una).
   const anterior = porPrioridad ? null : db.prepare('SELECT orden FROM academia_intentos WHERE usuario_id = ? AND tipo = ? AND materia IS ? AND tema IS ? ORDER BY id DESC LIMIT 1')
@@ -413,7 +422,7 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
     const f = intentoDe(db, usuarioId, intentoId);
     if (f.terminado_en) return f;
     if (f.respondidas < f.total) throw new ErrorHttp(409, 'faltan_respuestas');
-    const aprobado = ['repaso', 'reto', 'errores'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
+    const aprobado = ['repaso', 'reto', 'errores', 'instructor'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
   });

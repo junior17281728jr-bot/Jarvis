@@ -5,7 +5,7 @@
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { estadoLlave } from '../claves/cifrado.js';
 import { secretoUsable } from '../claves/almacen.js';
-import { leerConfigIa, faltaParaEncender } from './config.js';
+import { leerConfigIa, faltaParaEncender, MODELOS_INSTRUCTOR } from './config.js';
 import { precioDe, filaDe, precioPublico } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
 import { PROPOSITOS } from './propositos.js';
@@ -68,6 +68,9 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
     motivoDueno: esDueno ? null : (['solo_desde_tailnet', 'solo_el_dueno', 'solo_dueno_tailscale'].includes(motivoDueno) ? motivoDueno : null),
     encendida: cfg.encendida,
     ayudaProyectos: cfg.ayudaProyectos,
+    // 0.9.0: el instructor con IA de la academia (y su modelo).
+    instructorIa: cfg.instructorIa,
+    instructorModelo: cfg.instructorModelo,
     estado,
     motivo,
     mes,
@@ -90,6 +93,9 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
     tipicoMicro: espacioAdmin != null ? tipicoMicro(db, { proposito: 'interpretar', espacioId: espacioAdmin }) : PROPOSITOS.interpretar.tipicoMicro,
     // Ronda 5 de revisión: cuántas cuentas comunes activas tienen el permiso de IA y cuántas lo esperan.
     cuentas: resumenConfianza(db),
+    // 0.9.0: los modelos que puede usar el instructor, con su precio (para elegir) y lo que suele costar una vez.
+    modelosInstructor: MODELOS_INSTRUCTOR.map(m => ({ modelo: m, precio: precioPublico(filaDe('anthropic', m)), confirmado: precioDe('anthropic', m) != null })),
+    tipicoInstructorMicro: espacioAdmin != null ? tipicoMicro(db, { proposito: 'instructor_explicar', espacioId: espacioAdmin }) : PROPOSITOS.instructor_explicar.tipicoMicro,
   };
 }
 

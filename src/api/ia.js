@@ -3,6 +3,7 @@
 //    entrada: apagar nunca gasta) y cambiar los ajustes (solo desde la cuenta de Tailscale del dueño: soloDueno).
 //  - El detalle del gasto: solo desde la red de Tailscale (soloTailnet), y solo números y claves.
 //  - 0.8.0: la «ayuda de IA» en los proyectos de OPORTIA se quitó junto con los proyectos.
+//  - 0.9.0: «Instructor con IA» de la academia (instructorIa, instructorModelo), con las mismas reglas del dueño.
 // Este archivo NUNCA llama a la IA (eso lo hace solo el trabajador: src/ia/cliente.js).
 import { ErrorHttp, leerJson } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
@@ -53,10 +54,13 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     contar(topes.ajustes, usuario);
     const cambios = {};
     for (const campo of Object.keys(datos)) {
-      if (!['encendida', 'ayudaProyectos', 'topeGeneralUsd', 'topesPlanUsd', 'usar'].includes(campo)) throw new ErrorHttp(400, 'datos_no_validos');
+      if (!['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'topeGeneralUsd', 'topesPlanUsd', 'usar'].includes(campo)) throw new ErrorHttp(400, 'datos_no_validos');
     }
     if ('encendida' in datos) cambios.encendida = datos.encendida;
     if ('ayudaProyectos' in datos) cambios.ayudaProyectos = datos.ayudaProyectos;
+    // 0.9.0: el instructor con IA de la academia (encenderlo y su modelo: Sonnet 5.5 o Haiku 5.5).
+    if ('instructorIa' in datos) cambios.instructorIa = datos.instructorIa;
+    if ('instructorModelo' in datos) cambios.instructorModelo = datos.instructorModelo;
     if ('topeGeneralUsd' in datos) cambios.topeGeneralMicro = usdAMicro(datos.topeGeneralUsd, LIMITES_IA.topeGeneralMaxMicro);
     if ('topesPlanUsd' in datos) {
       const t = datos.topesPlanUsd;

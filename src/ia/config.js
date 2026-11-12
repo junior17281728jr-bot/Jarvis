@@ -32,6 +32,12 @@ export const LIMITES_IA = Object.freeze({
   llamadasPorHoraMax: 600,
 });
 export const ORIGENES_CAMBIO = Object.freeze(['pantalla', 'consola', 'automatico']);
+// 0.9.0: el «Instructor con IA» de la academia (src/academia/instructor-ia.js). Llega APAGADO (instructorIa: false) y
+// usa su propio modelo de Claude: Sonnet 5.5 (recomendado: explica mejor) o Haiku 5.5 (unas 20 veces más barato). Solo
+// se puede elegir un modelo con su precio confirmado en src/ia/precios.json. ChatGPT sigue sin gastar mientras su
+// precio no esté confirmado.
+export const MODELOS_INSTRUCTOR = Object.freeze(['claude-sonnet-5-5', 'claude-haiku-5-5']);
+export const MODELO_INSTRUCTOR = 'claude-sonnet-5-5';
 
 export const CONFIG_POR_DEFECTO = Object.freeze({
   version: 1,
@@ -45,6 +51,8 @@ export const CONFIG_POR_DEFECTO = Object.freeze({
   orden: Object.freeze(['anthropic', 'openai']),
   llamadasPorHora: 30,
   ayudaProyectos: false,
+  instructorIa: false,
+  instructorModelo: MODELO_INSTRUCTOR,
   cambiadoEn: null,
   cambiadoPor: null,
   origen: null,
@@ -82,6 +90,8 @@ export function normalizarConfig(valor) {
     orden,
     llamadasPorHora: Number.isSafeInteger(llamadas) && llamadas >= LIMITES_IA.llamadasPorHoraMin && llamadas <= LIMITES_IA.llamadasPorHoraMax ? llamadas : d.llamadasPorHora,
     ayudaProyectos: v.ayudaProyectos === true,
+    instructorIa: v.instructorIa === true,
+    instructorModelo: MODELOS_INSTRUCTOR.includes(v.instructorModelo) ? v.instructorModelo : MODELO_INSTRUCTOR,
     cambiadoEn: typeof v.cambiadoEn === 'string' ? v.cambiadoEn.slice(0, 40) : null,
     cambiadoPor: Number.isSafeInteger(v.cambiadoPor) ? v.cambiadoPor : null,
     origen: ORIGENES_CAMBIO.includes(v.origen) ? v.origen : null,
@@ -154,6 +164,14 @@ function cambiosValidados(cfg, cambios) {
     if (typeof cambios.ayudaProyectos !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     nueva.ayudaProyectos = cambios.ayudaProyectos;
   }
+  if ('instructorIa' in cambios) {
+    if (typeof cambios.instructorIa !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+    nueva.instructorIa = cambios.instructorIa;
+  }
+  if ('instructorModelo' in cambios) {
+    if (!MODELOS_INSTRUCTOR.includes(cambios.instructorModelo)) throw new ErrorHttp(400, 'datos_no_validos');
+    nueva.instructorModelo = cambios.instructorModelo;
+  }
   if ('topeGeneralMicro' in cambios) {
     if (!topeValido(cambios.topeGeneralMicro, LIMITES_IA.topeGeneralMaxMicro)) throw new ErrorHttp(400, 'tope_no_valido');
     nueva.topeGeneralMicro = cambios.topeGeneralMicro;
@@ -174,7 +192,7 @@ function cambiosValidados(cfg, cambios) {
       nueva.proveedores[id].usar = valor;
     }
   }
-  const otras = Object.keys(cambios).filter(k => !['encendida', 'ayudaProyectos', 'topeGeneralMicro', 'topesPlanMicro', 'usar'].includes(k));
+  const otras = Object.keys(cambios).filter(k => !['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'topeGeneralMicro', 'topesPlanMicro', 'usar'].includes(k));
   if (otras.length) throw new ErrorHttp(400, 'datos_no_validos');
   return nueva;
 }
@@ -183,7 +201,7 @@ function cambiosValidados(cfg, cambios) {
 function diferencias(antes, despues) {
   const a = {};
   const d = {};
-  for (const campo of ['encendida', 'ayudaProyectos', 'topeGeneralMicro', 'llamadasPorHora']) {
+  for (const campo of ['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'topeGeneralMicro', 'llamadasPorHora']) {
     if (antes[campo] !== despues[campo]) { a[campo] = antes[campo]; d[campo] = despues[campo]; }
   }
   for (const plan of PLANES) {
@@ -195,7 +213,7 @@ function diferencias(antes, despues) {
   return { antes: a, despues: d, hay: Object.keys(d).length > 0 };
 }
 
-// Guarda cambios de la configuración. cambios: { encendida?, ayudaProyectos?, topeGeneralMicro?, topesPlanMicro?,
+// Guarda cambios de la configuración. cambios: { encendida?, ayudaProyectos?, instructorIa?, instructorModelo?, topeGeneralMicro?, topesPlanMicro?,
 // usar?: { anthropic?, openai? } } (topes en µUSD; las rutas pasan los dólares por usdAMicro).
 // 400 datos_no_validos / tope_no_valido · 409 ia_falta (detalle: { faltan }). Devuelve la configuración nueva.
 // informe (opcional): si el cambio apagó la IA sin pedirlo, queda informe.apagadaPor = [lo que falta] (para la pantalla).
@@ -222,6 +240,9 @@ export function guardarConfigIa(db, cambios, { config, usuarioId = null, origen 
       }
     }
     if (nueva.ayudaProyectos && !antes.ayudaProyectos && !nueva.encendida) falta(['encendida']);
+    // 0.9.0: el instructor con IA, igual que la ayuda: necesita la IA encendida, y su modelo, el precio confirmado.
+    if (nueva.instructorIa && !antes.instructorIa && !nueva.encendida) falta(['encendida']);
+    if (nueva.instructorModelo !== antes.instructorModelo && precioDe('anthropic', nueva.instructorModelo) == null) falta(['precio']);
     const cambio = diferencias(antes, nueva);
     if (!cambio.hay) return antes;
     nueva.cambiadoEn = new Date(ahora).toISOString();

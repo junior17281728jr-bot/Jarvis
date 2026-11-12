@@ -15,6 +15,7 @@ import { registrarRutasClaves } from './api/claves.js';
 import { registrarRutasCopias } from './api/copias.js';
 import { registrarRutasCanales } from './api/canales.js';
 import { registrarRutasAcademia } from './api/academia.js';
+import { registrarRutasInstructor } from './api/instructor.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -109,6 +110,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
   // Academia (0.7.0): el contenido vive en la carpeta de datos del servidor (src/academia/paquetes.js).
   registrarRutasAcademia(rutas, { config, supervisor, ...academia });
+  // Academia (0.9.0): el instructor (sin IA siempre; con IA solo si el dueño lo enciende).
+  registrarRutasInstructor(rutas, { config, supervisor, reloj: academia.reloj, limites: academia.limitesInstructor });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
