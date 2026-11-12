@@ -7,12 +7,12 @@ import { enTransaccion } from '../nucleo/db.js';
 import { Limitador } from '../nucleo/limites.js';
 import { createHash } from 'node:crypto';
 import { vieneDeTailscale } from '../nucleo/red.js';
-import { hashClave, verificarClave, problemaDeClave, claveTemporal } from '../cuentas/claves.js';
+import { hashClave, verificarClave, problemaDeClave, claveTemporal, clavePendiente, esPendiente } from '../cuentas/claves.js';
 import { crearSesion, cerrarSesion, cerrarTodas, textoGalleta } from '../cuentas/sesiones.js';
 import {
   NOMBRE_VALIDO, auditar, hayAdmin, crearPrimerAdmin, crearUsuario, buscarPorNombre, buscarPorId,
   listarUsuarios, guardarClave, ponerActivo, ponerIdioma, registrarAcceso, cuantosAdminsActivos,
-  avisarClaveReiniciada, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
+  avisarClaveReiniciada, avisarCuenta, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 import { duenoDeTailscale, exigirDueno } from '../cuentas/tailscale.js';
@@ -76,7 +76,7 @@ function usuarioPublico(u) {
 function avisosParaLaPantalla(db, usuario) {
   const avisos = avisosSinVer(db, usuario.id);
   // 0.9.0: con su avatar (Configuración → Mi perfil), para la barra de arriba.
-  return { usuario: { ...usuarioPublico(usuario), avatar: leerPerfil(db, usuario.id).avatar }, avisos, reiniciosRecientes: avisos.length ? reiniciosRecientes(db, usuario.id) : [] };
+  return { usuario: { ...usuarioPublico(usuario), avatar: leerPerfil(db, usuario.id).avatar }, avisos, reiniciosRecientes: avisos.some(a => a.tipo === 'clave_reiniciada') ? reiniciosRecientes(db, usuario.id) : [] };
 }
 
 // La puerta de arranque: los primeros 90 s después de encender el servicio, /api/setup responde 503
@@ -154,6 +154,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const nombre = textoDe(datos, 'nombre').trim().toLowerCase().slice(0, 40);
     const clave = textoDe(datos, 'clave');
     const usuario = nombre ? buscarPorNombre(db, nombre) : null;
+    // 0.9.2: una cuenta creada sin contraseña: la persona crea la suya (POST /api/crear-clave). Bloqueada: lo dice.
+    if (usuario && esPendiente(usuario.clave_hash)) throw new ErrorHttp(usuario.activo === 1 ? 409 : 403, usuario.activo === 1 ? 'crear_clave' : 'cuenta_bloqueada');
     const cuenta = llaveDeCuenta(nombre, usuario);
     const lugar = `${cuenta}|${cliente}`;
     const desdeInternet = !vieneDeTailscale(req).si;
@@ -164,6 +166,13 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     limites.fallosPorCuentaYLugar.permitir(lugar);
     if (desdeInternet) limites.fallosPorCuentaDesdeInternet.permitir(cuenta);
     const correcta = await verificarClave(clave, usuario?.clave_hash);
+    // 0.9.2: con la contraseña correcta, una cuenta bloqueada (desactivada) lo dice: «habla con el administrador».
+    if (usuario && correcta && usuario.activo !== 1) {
+      limites.fallosPorCuentaYLugar.olvidar(lugar);
+      if (desdeInternet) limites.fallosPorCuentaDesdeInternet.descontar(cuenta);
+      auditar(db, { usuarioId: usuario.id, accion: 'entrada_bloqueada', detalle: nombre });
+      throw new ErrorHttp(403, 'cuenta_bloqueada');
+    }
     if (!usuario || !correcta || usuario.activo !== 1) {
       auditar(db, { usuarioId: usuario?.id ?? null, accion: 'entrada_fallida', detalle: nombre });
       throw new ErrorHttp(401, 'credenciales');
@@ -181,6 +190,32 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       datos: avisosParaLaPantalla(db, usuario),
       cabeceras: { 'Set-Cookie': textoGalleta(sesion.token, { segura: https }) },
     };
+  }, { publica: true });
+
+  // 0.9.2: la primera vez de una cuenta creada sin contraseña: la persona pone la suya (4 o más) y entra.
+  // La primera que llega con ese usuario se la queda: por eso el administrador avisa a la persona enseguida.
+  rutas.agregar('POST', '/api/crear-clave', async ({ db, req, cliente, https }) => {
+    if (!limites.entrarPorCliente.permitir(cliente)) throw new ErrorHttp(429, 'demasiados_intentos');
+    const datos = await leerJson(req);
+    const nombre = textoDe(datos, 'nombre').trim().toLowerCase().slice(0, 40);
+    const usuario = nombre ? buscarPorNombre(db, nombre) : null;
+    if (!usuario || !esPendiente(usuario.clave_hash)) throw new ErrorHttp(409, 'ya_tiene_clave');
+    if (usuario.activo !== 1) throw new ErrorHttp(403, 'cuenta_bloqueada');
+    const problema = problemaDeClave(datos.nueva, [usuario.nombre, usuario.nombre_visible]);
+    if (problema) throw new ErrorHttp(400, problema);
+    const claveHash = await hashClave(datos.nueva);
+    const puesta = enTransaccion(db, () => {
+      // Solo si sigue pendiente (dos a la vez: gana la primera).
+      const r = db.prepare('UPDATE usuarios SET clave_hash = ?, debe_cambiar_clave = 0 WHERE id = ? AND clave_hash = ?').run(claveHash, usuario.id, usuario.clave_hash);
+      if (r.changes !== 1) return false;
+      auditar(db, { usuarioId: usuario.id, accion: 'clave_creada' });
+      return true;
+    });
+    if (!puesta) throw new ErrorHttp(409, 'ya_tiene_clave');
+    const sesion = crearSesion(db, usuario.id, req.headers['user-agent']);
+    registrarAcceso(db, usuario.id);
+    auditar(db, { usuarioId: usuario.id, accion: 'entrada' });
+    return { codigo: 200, datos: avisosParaLaPantalla(db, buscarPorId(db, usuario.id)), cabeceras: { 'Set-Cookie': textoGalleta(sesion.token, { segura: https }) } };
   }, { publica: true });
 
   rutas.agregar('POST', '/api/salir', ({ db, token, https }) => {
@@ -262,15 +297,24 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     else exigirCuentasDesdeAqui(db, req);
     // Si el nombre ya existe, se responde antes de calcular nada (la pantalla propone otro: juan.perez2…).
     if (buscarPorNombre(db, nombre)) throw new ErrorHttp(409, 'nombre_ocupado');
-    const temporal = claveTemporal();
-    const claveHash = await hashClave(temporal);
+    // 0.9.2: «sinClave»: la persona pone la suya al entrar la primera vez; «clave»: la pone el administrador. Si no,
+    // como siempre: una contraseña temporal que hay que cambiar al entrar.
+    const sinClave = datos.sinClave === true;
+    const propia = datos.clave !== undefined && datos.clave !== null && datos.clave !== '';
+    if (sinClave && propia) throw new ErrorHttp(400, 'datos_no_validos');
+    if (propia) {
+      const problema = problemaDeClave(datos.clave, [nombre, nombreVisible]);
+      if (problema) throw new ErrorHttp(400, problema);
+    }
+    const temporal = sinClave || propia ? null : claveTemporal();
+    const claveHash = sinClave ? clavePendiente() : await hashClave(propia ? datos.clave : temporal);
     const id = enTransaccion(db, () => {
-      const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), creadoPor: usuario.id });
+      const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), debeCambiarClave: Boolean(temporal), creadoPor: usuario.id });
       if (nuevo && rol === 'usuario') anotarOrigen(db, req, { usuarioId: nuevo, accion: 'creada', hechoPor: usuario.id });
       return nuevo;
     });
     if (!id) throw new ErrorHttp(409, 'nombre_ocupado');
-    return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal } };
+    return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal, pendiente: sinClave } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, req, parametros, usuario }) => {
@@ -290,6 +334,29 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       auditar(db, { usuarioId: usuario.id, accion: 'clave_reiniciada', detalle: destino.nombre });
     });
     return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, claveTemporal: temporal } };
+  }, { admin: true });
+
+  // 0.9.2: el administrador le pone una contraseña a alguien (la que la persona le pidió). Igual que reiniciarla: se
+  // cierran sus sesiones y la persona ve el aviso; pero no tiene que cambiarla al entrar.
+  rutas.agregar('POST', '/api/admin/usuarios/:id/clave', async ({ db, req, parametros, usuario }) => {
+    const datos = await leerJson(req);
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    // La suya, el administrador la cambia en Configuración (con la actual).
+    if (destino.id === usuario.id) throw new ErrorHttp(400, 'tu_clave_en_configuracion');
+    if (destino.rol === 'admin') exigirDueno(db, req, usuario);
+    else exigirCuentasDesdeAqui(db, req);
+    const problema = problemaDeClave(datos.clave, [destino.nombre, destino.nombre_visible]);
+    if (problema) throw new ErrorHttp(400, problema);
+    const claveHash = await hashClave(datos.clave);
+    enTransaccion(db, () => {
+      guardarClave(db, destino.id, claveHash, { debeCambiarClave: false });
+      if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'clave_reiniciada', hechoPor: usuario.id });
+      cerrarTodas(db, destino.id);
+      avisarClaveReiniciada(db, destino.id);
+      auditar(db, { usuarioId: usuario.id, accion: 'clave_puesta', detalle: destino.nombre });
+    });
+    return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre } };
   }, { admin: true });
 
   // «Proyectos permitidos»: el plan de la cuenta (prueba = 1, pago = 5, empresarial = 20). Nunca por debajo de los

@@ -6,7 +6,9 @@ import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { verificarClave } from '../cuentas/claves.js';
 import { buscarPorId } from '../cuentas/usuarios.js';
-import { perfilDe, guardarPerfil, cambiarNombreUsuario } from '../cuentas/perfil.js';
+import { perfilDe, guardarPerfil, cambiarNombreUsuario, ponerNombreVisible } from '../cuentas/perfil.js';
+import { duenoDeTailscale } from '../cuentas/tailscale.js';
+import { enTransaccion } from '../nucleo/db.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { fichaAlumno, intentoDeAlumno, compararAlumnos } from '../academia/fichas.js';
 
@@ -48,6 +50,29 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
     }
     return { codigo: 200, datos: { perfil: cambiarNombreUsuario(db, usuario.id, textoDe(datos, 'nombre')) } };
   });
+
+  // ---------- 0.9.2: el administrador cambia el nombre de usuario y el nombre para mostrar de alguien ----------
+  // Las sesiones de la persona siguen abiertas (van por el id); al entrar ve «El administrador cambió tu usuario a …».
+  // A otro administrador solo lo toca el dueño (desde su cuenta de Tailscale), igual que reiniciarle la contraseña.
+  rutas.agregar('POST', '/api/admin/usuarios/:id/nombre', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (destino.rol === 'admin' && destino.id !== usuario.id) {
+      const dueno = duenoDeTailscale(db, req, usuario);
+      if (!dueno.si) throw new ErrorHttp(403, dueno.motivo);
+    }
+    const cambiaUsuario = Object.hasOwn(datos ?? {}, 'nombre') && textoDe(datos, 'nombre').trim().toLowerCase() !== destino.nombre.toLowerCase();
+    const cambiaVisible = Object.hasOwn(datos ?? {}, 'nombreVisible');
+    if (!cambiaUsuario && !cambiaVisible) throw new ErrorHttp(400, 'nombre_igual');
+    const perfil = enTransaccion(db, () => {
+      let p = null;
+      if (cambiaUsuario) p = cambiarNombreUsuario(db, destino.id, textoDe(datos, 'nombre'), { hechoPor: usuario.id });
+      if (cambiaVisible) p = ponerNombreVisible(db, destino.id, datos.nombreVisible, { hechoPor: usuario.id });
+      return p;
+    });
+    return { codigo: 200, datos: { id: destino.id, nombre: perfil.nombre, nombreVisible: perfil.nombreVisible } };
+  }, { admin: true });
 
   // ---------- El administrador: la ficha de cada alumno y comparar ----------
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/ficha', ({ db, parametros }) =>

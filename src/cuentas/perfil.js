@@ -7,7 +7,7 @@
 //    por el id de la cuenta, así que siguen abiertas; el nombre nuevo tiene que estar libre (sin importar mayúsculas).
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { NOMBRE_VALIDO, auditar } from './usuarios.js';
+import { NOMBRE_VALIDO, auditar, avisarCuenta } from './usuarios.js';
 
 // Las mismas listas que dibuja public/avatares.js (test/admin-alumnos.test.js revisa que coincidan).
 export const FORMAS_AVATAR = Object.freeze(['avioneta', 'jet', 'helicoptero', 'globo', 'alas', 'brujula']);
@@ -93,7 +93,8 @@ export function guardarPerfil(db, usuarioId, datos) {
 }
 
 // El nombre de usuario (con el que se entra). La contraseña ya se revisó en la ruta (src/api/perfil.js).
-export function cambiarNombreUsuario(db, usuarioId, nombreNuevo) {
+// 0.9.2: hechoPor = el administrador que lo cambió (la auditoría lo nombra y la persona ve un aviso al entrar).
+export function cambiarNombreUsuario(db, usuarioId, nombreNuevo, { hechoPor = null } = {}) {
   const nombre = typeof nombreNuevo === 'string' ? nombreNuevo.trim().toLowerCase() : '';
   if (!NOMBRE_VALIDO.test(nombre)) throw new ErrorHttp(400, 'nombre_no_valido');
   const id = Number(usuarioId);
@@ -106,7 +107,27 @@ export function cambiarNombreUsuario(db, usuarioId, nombreNuevo) {
     db.prepare('UPDATE usuarios SET nombre = ? WHERE id = ?').run(nombre, id);
     // Si el nombre para mostrar era el usuario de antes (nunca se puso otro), sigue al nuevo.
     if (!u.nombre_visible || u.nombre_visible === u.nombre) db.prepare('UPDATE usuarios SET nombre_visible = ? WHERE id = ?').run(nombre, id);
-    auditar(db, { usuarioId: id, accion: 'nombre_usuario_cambiado', detalle: `${u.nombre} -> ${nombre}` });
+    const porOtro = hechoPor != null && hechoPor !== id;
+    auditar(db, { usuarioId: porOtro ? hechoPor : id, accion: 'nombre_usuario_cambiado', detalle: `${u.nombre} -> ${nombre}${porOtro ? ' (por el administrador)' : ''}` });
+    if (porOtro) avisarCuenta(db, id, 'usuario_cambiado');
+    return perfilDe(db, id);
+  });
+}
+
+// 0.9.2: el administrador cambia el nombre para mostrar de alguien (la persona ve un aviso al entrar).
+export function ponerNombreVisible(db, usuarioId, texto, { hechoPor }) {
+  if (typeof texto !== 'string') throw new ErrorHttp(400, 'datos_no_validos');
+  const visible = unaLinea(texto, NOMBRE_VISIBLE_MAXIMO);
+  if (!visible) throw new ErrorHttp(400, 'nombre_visible_vacio');
+  const id = Number(usuarioId);
+  return enTransaccion(db, () => {
+    const u = db.prepare('SELECT id, nombre, nombre_visible FROM usuarios WHERE id = ?').get(id);
+    if (!u) throw new ErrorHttp(404, 'no_existe');
+    if (visible !== (u.nombre_visible || u.nombre)) {
+      db.prepare('UPDATE usuarios SET nombre_visible = ? WHERE id = ?').run(visible, id);
+      auditar(db, { usuarioId: hechoPor, accion: 'nombre_visible_cambiado', detalle: `${u.nombre}: ${visible}` });
+      if (hechoPor !== id) avisarCuenta(db, id, 'nombre_cambiado');
+    }
     return perfilDe(db, id);
   });
 }

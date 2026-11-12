@@ -164,3 +164,54 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
 @media (min-width: 1100px) {
   .ficha-resumen .ficha-cifras { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* ---------- 0.9.2: la cuenta en la ficha (bloquear, nombre, contraseña) ---------- */
+.ficha-cuenta-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ficha-cuenta-cabeza h2 { margin: 0; }
+.ficha-cuenta-mas { margin-top: 10px; border-top: 1px solid var(--linea); padding-top: 8px; }
+.ficha-cuenta-mas summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; }
+
+/* ---------- 0.9.2: el examen de materia con reloj (public/examen-vista.js) ---------- */
+.examen-reglas { margin: 14px auto 6px; max-width: 560px; text-align: left; padding: 14px 16px; border-radius: 16px; background: color-mix(in srgb, var(--tarjeta) 88%, transparent); border: 1px solid var(--borde); }
+.examen-reglas h2 { margin: 0 0 6px; font-size: 17px; }
+.examen-reglas ol { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: 15px; }
+.examen-reloj { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px; background: var(--cabina); color: #ffffff; font: 800 18px var(--letra-redonda); font-variant-numeric: tabular-nums; flex: none; }
+.examen-reloj.poco { background: var(--oro-borde); }
+.examen-reloj.muy-poco { background: var(--rojo); animation: examen-latido 1s ease-in-out infinite; }
+@keyframes examen-latido { 50% { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .examen-reloj.muy-poco { animation: none; } }
+.examen-con-reloj .estudio-arriba { gap: 10px; }
+.examen-con-reloj .estudio-arriba .examen-reloj { margin-right: auto; }
+.examen-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.examen-marcar { min-height: 40px; padding: 6px 12px; border-radius: 99px; border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); font-weight: 700; cursor: pointer; }
+.examen-marcar[aria-pressed="true"] { border-color: var(--oro-borde); background: color-mix(in srgb, var(--oro) 25%, var(--tarjeta)); }
+.examen-navegador { margin-bottom: 12px; border-radius: 16px; border: 1px solid var(--borde); background: var(--tarjeta); padding: 4px 12px 10px; }
+.examen-navegador summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.examen-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; margin: 6px 0; }
+.examen-celda { position: relative; min-height: 44px; border-radius: 12px; border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); font-weight: 800; cursor: pointer; display: grid; place-items: center; }
+.examen-celda.respondida { background: var(--azul); border-color: var(--azul-borde); color: #ffffff; }
+.examen-celda.marcada { border-color: var(--oro-borde); box-shadow: inset 0 0 0 2px var(--oro); }
+.examen-celda.actual { outline: 3px solid var(--naranja); outline-offset: 1px; }
+.examen-celda-marca { position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; color: var(--oro-borde); }
+.examen-celda.respondida .examen-celda-marca { color: var(--oro); }
+.examen-celda.mini { display: inline-block; width: 16px; min-height: 16px; height: 16px; border-radius: 5px; vertical-align: middle; cursor: default; }
+.examen-leyenda { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 4px 0 0; }
+.examen-pie { display: grid; gap: 8px; }
+.examen-nav { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+.examen-entregar-chico { justify-self: center; }
+.examen-confirmar { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(15, 23, 32, 0.55); }
+.examen-confirmar .tarjeta { max-width: 440px; width: 100%; }
+.examen-datos { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; justify-items: center; }
+.examen-datos li { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.examen-tiempos-lista { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.examen-tiempo { display: grid; grid-template-columns: 30px minmax(0, 1fr) minmax(60px, 34%) 56px; align-items: center; gap: 8px; font-size: 14px; }
+.examen-tiempo-n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--linea); }
+.examen-tiempo.bien .examen-tiempo-n { background: var(--verde-suave); color: var(--verde-texto); }
+.examen-tiempo.mal .examen-tiempo-n { background: var(--rojo-suave); color: var(--rojo-texto); }
+.examen-tiempo-texto { display: flex; flex-direction: column; min-width: 0; }
+.examen-tiempo-barra { display: block; height: 10px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.examen-tiempo-relleno { display: block; height: 100%; border-radius: 99px; background: var(--azul); }
+.examen-tiempo-relleno.mal { background: var(--rojo); }
+.examen-tiempo-relleno.sin { background: var(--gris-nodo-borde); }
+.examen-tiempo-s { text-align: right; font-variant-numeric: tabular-nums; }
+.examen-tiempo-total { display: flex; justify-content: space-between; font-weight: 800; border-top: 1px solid var(--linea); padding-top: 8px; margin: 0; }

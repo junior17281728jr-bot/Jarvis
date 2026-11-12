@@ -465,15 +465,15 @@ function pantallaCrearAdmin() {
   const formulario = el('form', { novalidate: true },
     campo('nombre', t('setup.nombre'), 'text', { autocomplete: 'username', maxlength: 40 }),
     el('p', { class: 'ayuda', texto: t('setup.nombre.ayuda') }),
-    campo('clave', t('setup.clave'), 'password', { autocomplete: 'new-password', minlength: 6 }),
-    campo('clave2', t('setup.clave2'), 'password', { autocomplete: 'new-password', minlength: 6 }),
+    campo('clave', t('setup.clave'), 'password', { autocomplete: 'new-password', minlength: 4 }),
+    campo('clave2', t('setup.clave2'), 'password', { autocomplete: 'new-password', minlength: 4 }),
     el('p', { class: 'ayuda', texto: t('setup.clave.ayuda') }),
     el('button', { type: 'submit', texto: t('setup.boton') }),
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
     // Se revisa aquí antes de enviar, para que un error al escribir no gaste intentos.
     if (!/^[a-z0-9][a-z0-9._-]{2,39}$/i.test(String(datos.get('nombre')).trim())) throw new Error(t('error.nombre_no_valido'));
-    if (String(datos.get('clave')).length < 6) throw new Error(t('error.clave_corta'));
+    if (String(datos.get('clave')).length < 4) throw new Error(t('error.clave_corta'));
     if (datos.get('clave') !== datos.get('clave2')) throw new Error(t('setup.claves_distintas'));
     const r = await api('POST', '/api/primer-admin', { nombre: String(datos.get('nombre')).trim(), clave: datos.get('clave'), idioma });
     if (r.datos.error === 'ya_existe_admin') {
@@ -503,24 +503,10 @@ function pantallaEntrar() {
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
     const r = await api('POST', '/api/entrar', { nombre: datos.get('nombre'), clave: datos.get('clave') });
+    // 0.9.2: una cuenta creada sin contraseña: la persona crea la suya aquí mismo.
+    if (!r.ok && r.datos.error === 'crear_clave') return pantallaCrearClave(String(datos.get('nombre')).trim());
     if (!r.ok) throw new Error(textoError(r.datos.error));
-    estado.usuario = r.datos.usuario;
-    vaciarMemoria();
-    recordarAdmin(estado.usuario);
-    avisosCuenta = leerAvisos(r.datos);
-    if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
-      // Eligió un idioma en esta pantalla: se guarda en su cuenta.
-      const cambio = await api('POST', '/api/yo/idioma', { idioma });
-      if (cambio.ok) estado.usuario.idioma = idioma;
-    } else if (estado.usuario.idioma !== idioma) {
-      await cargarIdioma(estado.usuario.idioma);
-      guardarIdioma(estado.usuario.idioma);
-    }
-    // La misma persona vuelve a donde estaba (y a lo que estaba escribiendo); otra persona empieza en Inicio.
-    const otraPersona = sesionTerminada != null && sesionTerminada !== estado.usuario.id;
-    sesionTerminada = null;
-    if (otraPersona || !location.hash) history.replaceState(null, '', '#inicio');
-    await dibujar();
+    await entrarCon(r);
   });
   const aviso = avisoEntrar;
   avisoEntrar = null;
@@ -530,13 +516,56 @@ function pantallaEntrar() {
     el('h1', { texto: t('entrar.titulo') }), entrada(t('entrar.linea')), formulario, el('p', { class: 'ayuda', texto: t('entrar.olvide') }),
     selectorIdioma(() => pantallaEntrar())), pie());
 }
+// 0.9.2: «Crea tu contraseña» (la primera vez de una cuenta que el administrador creó solo con el nombre).
+function pantallaCrearClave(nombre) {
+  const mensaje = caja();
+  const formulario = el('form', { novalidate: true },
+    campo('nueva', t('clave.nueva'), 'password', { autocomplete: 'new-password', minlength: 4 }),
+    campo('nueva2', t('clave.nueva2'), 'password', { autocomplete: 'new-password', minlength: 4 }),
+    el('p', { class: 'ayuda', texto: t('setup.clave.ayuda') }),
+    el('button', { type: 'submit', texto: t('crear_clave.boton') }),
+    mensaje);
+  alEnviar(formulario, mensaje, async datos => {
+    if (String(datos.get('nueva')).length < 4) throw new Error(t('error.clave_corta'));
+    if (datos.get('nueva') !== datos.get('nueva2')) throw new Error(t('setup.claves_distintas'));
+    const r = await api('POST', '/api/crear-clave', { nombre, nueva: datos.get('nueva') });
+    if (!r.ok) throw new Error(textoError(r.datos.error));
+    await entrarCon(r);
+  });
+  mostrar(el('section', { class: 'tarjeta centrada' },
+    marcaConLogo(),
+    el('h1', { texto: t('crear_clave.titulo') }),
+    el('p', { texto: t('crear_clave.linea', { nombre }) }),
+    formulario,
+    el('button', { type: 'button', class: 'secundario', texto: t('crear_clave.otro'), onclick: () => pantallaEntrar() })), pie());
+  formulario.querySelector('input')?.focus();
+}
+async function entrarCon(r) {
+  estado.usuario = r.datos.usuario;
+  vaciarMemoria();
+  recordarAdmin(estado.usuario);
+  avisosCuenta = leerAvisos(r.datos);
+  if (idiomaElegidoAlEntrar && estado.usuario.idioma !== idioma) {
+    // Eligió un idioma en esta pantalla: se guarda en su cuenta.
+    const cambio = await api('POST', '/api/yo/idioma', { idioma });
+    if (cambio.ok) estado.usuario.idioma = idioma;
+  } else if (estado.usuario.idioma !== idioma) {
+    await cargarIdioma(estado.usuario.idioma);
+    guardarIdioma(estado.usuario.idioma);
+  }
+  // La misma persona vuelve a donde estaba (y a lo que estaba escribiendo); otra persona empieza en Inicio.
+  const otraPersona = sesionTerminada != null && sesionTerminada !== estado.usuario.id;
+  sesionTerminada = null;
+  if (otraPersona || !location.hash) history.replaceState(null, '', '#inicio');
+  await dibujar();
+}
 
 function formularioClave({ alTerminar }) {
   const mensaje = caja();
   const formulario = el('form', { novalidate: true },
     campo('actual', t('clave.actual'), 'password', { autocomplete: 'current-password' }),
-    campo('nueva', t('clave.nueva'), 'password', { autocomplete: 'new-password', minlength: 6 }),
-    campo('nueva2', t('clave.nueva2'), 'password', { autocomplete: 'new-password', minlength: 6 }),
+    campo('nueva', t('clave.nueva'), 'password', { autocomplete: 'new-password', minlength: 4 }),
+    campo('nueva2', t('clave.nueva2'), 'password', { autocomplete: 'new-password', minlength: 4 }),
     el('p', { class: 'ayuda', texto: t('setup.clave.ayuda') }),
     el('button', { type: 'submit', texto: t('clave.boton') }),
     mensaje);
@@ -586,7 +615,8 @@ async function salir() {
 // otra persona. Y cada vez que hay uno nuevo se listan todos los reinicios recientes, también los ya vistos: así la
 // dueña ve la fecha de un reinicio que no pidió aunque otro lo haya «visto» antes.
 function leerAvisos(datos) {
-  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && a.tipo === 'clave_reiniciada' && Number.isSafeInteger(a.id));
+  // 0.9.2: también «el administrador cambió tu usuario» y «… tu nombre» (se muestra el de ahora).
+  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado'].includes(a.tipo) && Number.isSafeInteger(a.id));
   const recientes = (Array.isArray(datos?.reiniciosRecientes) ? datos.reiniciosRecientes : []).filter(x => x && typeof x.fecha === 'string');
   return { avisos, recientes };
 }
@@ -598,11 +628,16 @@ function avisosDeCuenta({ marcar = true } = {}) {
     avisosCuenta = { avisos: [], recientes: [] };
     api('POST', '/api/yo/avisos/vistos', { hasta: Math.max(...avisos.map(a => a.id)) });
   }
-  const fechas = recientes.length ? recientes.map(x => x.fecha) : avisos.map(a => a.fecha).reverse();
+  const reinicios = avisos.filter(a => a.tipo === 'clave_reiniciada');
+  const nombres = avisos.filter(a => a.tipo !== 'clave_reiniciada');
+  const fechas = !reinicios.length ? [] : recientes.length ? recientes.map(x => x.fecha) : reinicios.map(a => a.fecha).reverse();
   return el('section', { class: 'tarjeta', role: 'alert' },
+    nombres.map(a => el('p', { class: 'aviso', texto: a.tipo === 'usuario_cambiado'
+      ? t('aviso.usuario_cambiado', { nombre: estado.usuario?.nombre ?? '', fecha: fecha(a.fecha) })
+      : t('aviso.nombre_cambiado', { nombre: estado.usuario?.nombreVisible ?? '', fecha: fecha(a.fecha) }) })),
     fechas.length > 1 ? el('p', { class: 'suave', texto: t('aviso.clave_reiniciada.recientes', { dias: 90 }) }) : null,
     fechas.map(f => el('p', { class: 'aviso', texto: t('aviso.clave_reiniciada', { fecha: fecha(f) }) })),
-    el('p', { class: 'suave', texto: t(fechas.length > 1 ? 'aviso.clave_reiniciada.que_hacer_varios' : 'aviso.clave_reiniciada.que_hacer') }));
+    fechas.length ? el('p', { class: 'suave', texto: t(fechas.length > 1 ? 'aviso.clave_reiniciada.que_hacer_varios' : 'aviso.clave_reiniciada.que_hacer') }) : null);
 }
 
 // La marca de OPORTIA: un círculo (el radar que encuentra oportunidades) con un punto en el centro.
@@ -854,8 +889,11 @@ let claveTemporalVisible = null;
 
 function seccionClaveTemporal() {
   if (!claveTemporalVisible) return null;
-  const { textoClave, nombre, temporal, usuario } = claveTemporalVisible;
-  const seccion = el('section', { class: 'tarjeta' }, bloqueClaveTemporal(textoClave, nombre, temporal, usuario));
+  const { textoClave, nombre, temporal, usuario, pendiente } = claveTemporalVisible;
+  // 0.9.2: sin contraseña (la crea la persona al entrar) o con la que puso el administrador: no hay nada que copiar.
+  const seccion = el('section', { class: 'tarjeta' }, temporal ? bloqueClaveTemporal(textoClave, nombre, temporal, usuario)
+    : el('div', { class: 'aviso con-icono-arriba', role: 'status', 'data-foco': true }, icono(pendiente ? 'atencion' : 'bien'),
+      el('span', { texto: pendiente ? t('admin.creado_sin_clave', { nombre, usuario }) : t('admin.creado_con_clave', { nombre, usuario }) })));
   seccion.append(el('button', {
     type: 'button',
     class: 'secundario',
@@ -1558,6 +1596,18 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   let usuarioAMano = false;
   completo.addEventListener('input', () => { if (!usuarioAMano) usuario.value = usuarioLibre(usuarioPropuesto(completo.value), ocupados); });
   usuario.addEventListener('input', () => { usuarioAMano = usuario.value.trim() !== ''; });
+  const modoClave = el('select', { id: 'campo-clave-modo', name: 'modoClave' },
+    el('option', { value: 'alumno', texto: t('admin.nuevo.clave.alumno') }),
+    el('option', { value: 'temporal', texto: t('admin.nuevo.clave.temporal') }),
+    el('option', { value: 'admin', texto: t('admin.nuevo.clave.admin') }));
+  const claveAdmin = el('div', { hidden: true },
+    el('label', { for: 'campo-clave-nueva-admin', texto: t('admin.nuevo.clave.escribe') }),
+    el('input', { id: 'campo-clave-nueva-admin', name: 'claveAdmin', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' }));
+  const ayudaModo = el('p', { class: 'ayuda con-icono-arriba' }, icono('atencion', 'icono chico'), el('span', { texto: t('admin.nuevo.clave.alumno.ayuda') }));
+  modoClave.addEventListener('change', () => {
+    claveAdmin.hidden = modoClave.value !== 'admin';
+    ayudaModo.hidden = modoClave.value !== 'alumno';
+  });
   const formulario = el('form', { novalidate: true },
     el('label', { for: 'campo-nombre-completo', texto: t('admin.nuevo.nombre_completo') }),
     completo,
@@ -1573,12 +1623,21 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
       el('option', { value: 'es', texto: t('idioma.es') }),
       el('option', { value: 'en', texto: t('idioma.en') })),
+    // 0.9.2: la contraseña: temporal (como siempre), que la cree el alumno al entrar, o la pone el administrador.
+    el('label', { for: 'campo-clave-modo', texto: t('admin.nuevo.clave') }),
+    modoClave,
+    claveAdmin,
+    ayudaModo,
     el('button', { type: 'submit', texto: t('admin.nuevo.boton') }),
     mensaje);
   alEnviar(formulario, mensaje, async datos => {
     const nombre = String(datos.get('nombre')).trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(nombre)) throw new Error(t('error.nombre_no_valido'));
-    const creado = await api('POST', '/api/admin/usuarios', { nombre, nombreVisible: String(datos.get('nombreVisible')).trim(), rol: datos.get('rol'), idioma: datos.get('idioma') });
+    const modo = datos.get('modoClave');
+    const clave = String(datos.get('claveAdmin') ?? '');
+    if (modo === 'admin' && clave.length < 4) throw new Error(t('error.clave_corta'));
+    const creado = await api('POST', '/api/admin/usuarios', { nombre, nombreVisible: String(datos.get('nombreVisible')).trim(), rol: datos.get('rol'), idioma: datos.get('idioma'),
+      ...(modo === 'alumno' ? { sinClave: true } : modo === 'admin' ? { clave } : {}) });
     if (creado.datos.error === 'nombre_ocupado') {
       // Ya existe: se propone el siguiente libre (juan.perez2…) y el administrador decide.
       ocupados.add(nombre);
@@ -1589,7 +1648,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       throw new Error(t('admin.nombre_ocupado_propuesta', { nombre: otro }));
     }
     if (!creado.ok) throw new Error(textoError(creado.datos.error));
-    claveTemporalVisible = { textoClave: 'admin.creado', nombre: creado.datos.nombreVisible || creado.datos.nombre, temporal: creado.datos.claveTemporal, usuario: creado.datos.nombre };
+    claveTemporalVisible = { textoClave: 'admin.creado', nombre: creado.datos.nombreVisible || creado.datos.nombre, temporal: creado.datos.claveTemporal, usuario: creado.datos.nombre, pendiente: creado.datos.pendiente === true };
     await pantallaAdmin('usuarios');
     return MANTENER;
   });
@@ -1654,7 +1713,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         class: u.activo ? 'peligro' : 'secundario',
         texto: t(u.activo ? 'admin.desactivar' : 'admin.activar'),
         onclick: async () => {
-          if (u.activo && !confirm(t('admin.confirmar_desactivar', { nombre: u.nombre }))) return;
+          if (!confirm(t(u.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: u.nombreVisible || u.nombre }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/activo`, { activo: !u.activo });
           if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
           avisar(u.activo ? t('admin.listo.desactivada', { nombre: u.nombreVisible || u.nombre }) : t('admin.listo.activada', { nombre: u.nombreVisible || u.nombre }));
@@ -1667,7 +1726,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         dibujarAvatar(u.avatar ?? null, { nombre: u.nombreVisible || u.nombre, tamano: 'chico' }),
         el('span', { class: 'nombre', texto: u.nombreVisible || u.nombre }),
         el('span', { class: 'etiqueta', texto: t(u.rol === 'admin' ? 'admin.rol.admin' : 'admin.rol.usuario') }),
-        insignia(u.activo ? 'bien' : 'apagado', t(u.activo ? 'admin.activo' : 'admin.inactivo'))),
+        insignia(u.activo ? 'bien' : 'mal', t(u.activo ? 'admin.activo' : 'admin.inactivo')),
+        u.pendiente ? insignia('atencion', t('admin.pendiente')) : null),
       u.nombreVisible && u.nombreVisible !== u.nombre ? el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }) : null,
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       el('a', { class: 'enlace-fuerte con-icono-chico ficha-enlace', href: `#alumno/${u.id}` }, icono('grafica', 'icono chico'), el('span', { texto: t('ficha.ver') })),
@@ -3804,8 +3864,18 @@ async function pantallaExamen(materia) {
       el('p', { class: 'bajada', texto: t('acad.examen.linea') }),
       el('ul', { class: 'portada-datos' },
         el('li', {}, icono('fila', 'icono'), el('span', { texto: tn('acad.n_preguntas', { n: m.examen.preguntas }) })),
+        // 0.9.2: el tiempo del examen (preguntas × segundos por pregunta, de los ajustes).
+        el('li', {}, icono('reloj', 'icono'), el('span', { texto: t('examen.portada.tiempo', { min: numero(Math.ceil((m.examen.preguntas * (r.datos.examenSegundos ?? 90)) / 60)) }) })),
         el('li', {}, icono('bandera', 'icono'), el('span', { texto: t('acad.necesitas', { n: numero(r.datos.umbral) }) })),
         m.examen.mejor != null ? el('li', {}, icono('estrella', 'icono'), el('span', { texto: t('acad.mejor', { n: numero(m.examen.mejor) }) })) : null),
+      el('section', { class: 'examen-reglas', 'aria-labelledby': 'examen-reglas-titulo' },
+        el('h2', { id: 'examen-reglas-titulo', texto: t('examen.reglas.titulo') }),
+        el('ol', {},
+          el('li', { texto: t('examen.reglas.1', { min: numero(Math.ceil((m.examen.preguntas * (r.datos.examenSegundos ?? 90)) / 60)), seg: numero(r.datos.examenSegundos ?? 90) }) }),
+          el('li', { texto: t('examen.reglas.2') }),
+          el('li', { texto: t('examen.reglas.3') }),
+          el('li', { texto: t('examen.reglas.4') }),
+          el('li', { texto: t('examen.reglas.5', { n: numero(r.datos.umbral) }) }))),
       m.examen.disponible
         ? el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: evento => empezarIntento({ tipo: 'examen', materia }, evento.currentTarget) }, el('span', { texto: t('acad.empezar_examen') }))
         : el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }))));
@@ -3932,6 +4002,15 @@ async function pantallaPractica(id) {
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const intento = r.datos;
+  // 0.9.2: el examen de materia con reloj va aparte (public/examen-vista.js, solo se carga para un examen).
+  if (intento.examen?.reloj) {
+    const vista = await import('./examen-vista.js');
+    if (!vigente()) return;
+    return vista.examenConReloj(intento, {
+      el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, sonar, medidor, celebrar, marcoEstudio, tarjetaPregunta,
+      revisionCompleta, claseMateria, empezarIntento, vigente,
+    });
+  }
   const barraAvance = combustible();
   const cuenta = el('span', { class: 'estudio-cuenta' });
   const zona = el('div', { class: 'estudio-tarjeta' });
@@ -4158,6 +4237,8 @@ function listaDebiles(lista, tituloTexto, claveVacio, { conFallos = false } = {}
 const piezasAlumnos = () => ({
   el, t, tn, icono, insignia, numero, pctTexto, fecha, hace, cuando, fechaCortaDia, nombreMateria, claseMateria, talCual, tarjetaPregunta,
   panelPuntosDebiles, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
+  // 0.9.2: la cuenta del alumno desde su ficha (bloquear, nombre, contraseña) y los tiempos del examen.
+  api, avisar, caja, botonAccion, textoError, yoId: estado.usuario?.id, recargar: () => dibujar(),
 });
 // Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
 function dibujarDeAlumnos(r, s, dibujarCon) {
@@ -4212,12 +4293,16 @@ async function pantallaContenido() {
   const mensajeAjustes = caja();
   const campoNombre = el('input', { id: 'campo-nombre-app', type: 'text', maxlength: 60, value: ajustes.nombre, autocomplete: 'off' });
   const campoUmbral = el('input', { id: 'campo-umbral', type: 'number', min: 50, max: 100, step: 1, value: ajustes.umbral, inputmode: 'numeric' });
+  // 0.9.2: el reloj del examen de materia (segundos por pregunta).
+  const campoSegundos = el('input', { id: 'campo-examen-segundos', type: 'number', min: 20, max: 600, step: 5, value: ajustes.examenSegundos ?? 90, inputmode: 'numeric' });
   const tarjetaAjustes = el('section', { class: 'tarjeta' },
     el('h2', { class: 'con-icono' }, icono('ajustes'), el('span', { texto: t('acad.ajustes') })),
     el('label', { for: 'campo-nombre-app', texto: t('acad.ajustes.nombre') }), campoNombre,
     el('label', { for: 'campo-umbral', texto: t('acad.ajustes.umbral') }), campoUmbral,
+    el('label', { for: 'campo-examen-segundos', texto: t('acad.ajustes.examen_segundos') }), campoSegundos,
+    el('p', { class: 'ayuda', texto: t('acad.ajustes.examen_segundos.ayuda') }),
     el('div', { class: 'botones' }, botonAccion(t('acad.ajustes.guardar'), '', mensajeAjustes, async () => {
-      const x = await api('POST', '/api/admin/academia/ajustes', { nombre: campoNombre.value, umbral: Number(campoUmbral.value) });
+      const x = await api('POST', '/api/admin/academia/ajustes', { nombre: campoNombre.value, umbral: Number(campoUmbral.value), examenSegundos: Number(campoSegundos.value) });
       if (!x.ok) throw new Error(textoError(x.datos.error));
       if (estado.setup) estado.setup.nombreApp = x.datos.ajustes.nombre;
       ponerTitulo();

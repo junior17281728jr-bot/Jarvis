@@ -18,6 +18,14 @@ const TEXTO_RITMO = { adelantado: 'ficha.ritmo.adelantado', a_tiempo: 'ficha.rit
 const TEXTO_PLAN = { un_mes: 'acad.plan.un_mes', dos_meses: 'acad.plan.dos_meses', repaso_15: 'acad.plan.repaso_15' };
 
 // ---------- Piezas ----------
+// «1:05» (minutos:segundos) o «1 h 02:05».
+export function reloj(segundos) {
+  const n = Math.max(0, Math.round(Number(segundos) || 0));
+  const h = Math.floor(n / 3600);
+  const m = Math.floor((n % 3600) / 60);
+  const s = String(n % 60).padStart(2, '0');
+  return h ? `${h} h ${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
 const nombreDe = a => a.nombreVisible || a.nombre;
 function horas(h, minutos) {
   if (minutos == null) return '—';
@@ -51,6 +59,63 @@ function cabezaAlumno(h, a, act) {
       h.el('p', { class: 'suave', texto: [`@${a.nombre}`, a.rol === 'admin' ? h.t('admin.rol.admin') : h.t('admin.rol.usuario'), a.activo ? null : h.t('admin.inactivo')].filter(Boolean).join(' · ') }),
       a.meta ? h.el('p', { class: 'ficha-meta con-icono-chico' }, h.icono('bandera', 'icono chico'), h.el('span', { texto: a.meta })) : null,
       h.el('p', { class: 'suave chica', texto: act?.enLinea ? h.t('acad.en_linea') : act?.ultimaActividad ? h.t('acad.ultima', { cuando: h.hace(act.ultimaActividad) }) : h.t('admin.nunca') })));
+}
+
+// 0.9.2: la cuenta: bloquear / desbloquear (sin borrar nada), cambiar su nombre y su usuario, ponerle una contraseña.
+function cuentaAlumno(h, a) {
+  const { el, t } = h;
+  const yo = a.id === h.yoId;
+  const mensaje = h.caja();
+  const bloquear = yo ? null : h.botonAccion(t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), a.activo ? 'peligro' : 'secundario', mensaje, async () => {
+    if (!confirm(t(a.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: nombreDe(a) }))) return;
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/activo`, { activo: !a.activo });
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    h.avisar(t(a.activo ? 'admin.listo.desactivada' : 'admin.listo.activada', { nombre: nombreDe(a) }));
+    await h.recargar();
+  }, a.activo ? 'candado' : 'ojo');
+  const mensajeNombre = h.caja();
+  const campoVisible = el('input', { id: 'campo-ficha-visible', type: 'text', maxlength: 80, value: nombreDe(a), autocomplete: 'off' });
+  const campoUsuario = el('input', { id: 'campo-ficha-usuario', type: 'text', maxlength: 40, value: a.nombre, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' });
+  const guardarNombre = h.botonAccion(t('cuenta.nombre.guardar'), '', mensajeNombre, async () => {
+    const datos = {};
+    if (campoVisible.value.trim() !== nombreDe(a)) datos.nombreVisible = campoVisible.value;
+    if (campoUsuario.value.trim().toLowerCase() !== a.nombre.toLowerCase()) datos.nombre = campoUsuario.value.trim();
+    if (!Object.keys(datos).length) throw new Error(t('error.nombre_igual'));
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/nombre`, datos);
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    h.avisar(datos.nombre ? t('cuenta.nombre.listo_usuario', { usuario: r.datos.nombre }) : t('cuenta.nombre.listo'));
+    await h.recargar();
+  }, 'lapiz');
+  const mensajeClave = h.caja();
+  const campoClave = el('input', { id: 'campo-ficha-clave', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' });
+  const ponerClave = yo ? null : h.botonAccion(t('cuenta.clave.poner'), 'secundario', mensajeClave, async () => {
+    if (campoClave.value.length < 4) throw new Error(t('error.clave_corta'));
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/clave`, { clave: campoClave.value });
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    campoClave.value = '';
+    h.avisar(t('cuenta.clave.lista', { nombre: nombreDe(a) }));
+    await h.recargar();
+  }, 'candado');
+  return el('section', { class: 'tarjeta ficha-cuenta', 'aria-labelledby': 'ficha-cuenta-titulo' },
+    el('div', { class: 'ficha-cuenta-cabeza' },
+      el('h2', { id: 'ficha-cuenta-titulo', class: 'con-icono' }, h.icono('ajustes'), el('span', { texto: t('cuenta.titulo') })),
+      el('span', { class: 'etiquetas' },
+        a.activo ? h.insignia('bien', t('admin.activo')) : h.insignia('mal', t('admin.inactivo')),
+        a.pendiente ? h.insignia('atencion', t('admin.pendiente')) : null)),
+    a.activo ? null : el('p', { class: 'aviso', texto: t('cuenta.bloqueada.linea') }),
+    bloquear ? el('div', { class: 'botones' }, bloquear) : el('p', { class: 'suave chica', texto: t('admin.tu_cuenta') }),
+    mensaje,
+    el('details', { class: 'ficha-cuenta-mas' },
+      el('summary', { texto: t('cuenta.nombre.titulo') }),
+      el('label', { for: 'campo-ficha-visible', texto: t('perfil.nombre') }), campoVisible,
+      el('label', { for: 'campo-ficha-usuario', texto: t('cuenta.nombre.usuario') }), campoUsuario,
+      el('p', { class: 'ayuda', texto: t('cuenta.nombre.ayuda') }),
+      el('div', { class: 'botones' }, guardarNombre), mensajeNombre),
+    ponerClave ? el('details', { class: 'ficha-cuenta-mas' },
+      el('summary', { texto: t('cuenta.clave.titulo') }),
+      el('label', { for: 'campo-ficha-clave', texto: t('cuenta.clave.nueva') }), campoClave,
+      el('p', { class: 'ayuda', texto: t('cuenta.clave.ayuda') }),
+      el('div', { class: 'botones' }, ponerClave), mensajeClave) : null);
 }
 
 // ---------- La lista de alumnos (con «Comparar») ----------
@@ -107,6 +172,7 @@ export function vistaFicha(d, pestana, h) {
     el('div', { class: 'ficha-arriba' },
       el('a', { class: 'volver con-icono', href: '#alumnos' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') }))),
     cabezaAlumno(h, a, d.actividad),
+    cuentaAlumno(h, a),
     fila,
     el('div', { class: 'ficha-cuerpo', 'data-pestana': actual }, cuerpo),
   ];
@@ -166,7 +232,8 @@ function filaIntento(h, alumnoId, x) {
       el('span', { class: 'ficha-intento-texto' },
         el('strong', { texto: tipo }),
         lugar ? el('span', { class: 'ficha-intento-lugar', texto: lugar }) : null,
-        el('span', { class: 'suave chica', texto: [h.fecha(x.terminado ?? x.empezado), t('ficha.de', { bien: h.numero(x.aciertos), total: h.numero(x.total) })].join(' · ') })),
+        el('span', { class: 'suave chica', texto: [h.fecha(x.terminado ?? x.empezado), t('ficha.de', { bien: h.numero(x.aciertos), total: h.numero(x.total) }),
+          x.segundos != null ? (x.limiteSegundos ? t('ficha.tiempo_de', { usado: reloj(x.segundos), limite: reloj(x.limiteSegundos) }) : t('ficha.tiempo_usado', { usado: reloj(x.segundos) })) : null].filter(Boolean).join(' · ') })),
       el('span', { class: 'ficha-intento-estado' },
         !x.terminadoSi ? h.insignia('apagado', t('ficha.sin_terminar'))
           : x.aprobado === true ? h.insignia('bien', t('ficha.aprobado'))
@@ -282,7 +349,8 @@ export function vistaIntento(v, h) {
         el('summary', { texto: t('ficha.p.explicacion') }),
         r.explicacion ? el('section', { class: 'caja-hoja caja-original' }, el('h3', { texto: q.origen === 'poh' ? t('acad.explicacion_poh') : t('acad.explicacion_original') }), h.talCual('p', r.explicacion)) : null,
         r.sencilla ? el('section', { class: 'caja-hoja caja-sencilla' }, el('h3', { texto: t('acad.explicacion_sencilla') }), h.talCual('p', r.sencilla)) : null) : null,
-      q.respondidaEn ? el('p', { class: 'suave chica', texto: t('ficha.p.cuando', { cuando: h.fecha(q.respondidaEn) }) }) : null);
+      q.respondidaEn || q.segundos != null ? el('p', { class: 'suave chica', texto: [q.respondidaEn ? t('ficha.p.cuando', { cuando: h.fecha(q.respondidaEn) }) : null,
+        q.segundos != null ? t('ficha.p.segundos', { tiempo: reloj(q.segundos) }) : null].filter(Boolean).join(' · ') }) : null);
   };
   const pintar = () => lista.replaceChildren(...v.preguntas.map((q, k) => (soloMalas && !(q.respuesta && !q.respuesta.acierto) ? null : pregunta(q, k))).filter(Boolean));
   pintar();
@@ -297,6 +365,8 @@ export function vistaIntento(v, h) {
       el('div', { class: 'ficha-intento-nota' },
         el('strong', { class: `ficha-nota grande tono-${v.terminado ? tonoNota(v.pct) : 'apagado'}`, texto: h.pctTexto(v.pct) }),
         el('span', { class: 'suave chica', texto: t('ficha.de', { bien: numero(v.aciertos), total: numero(v.total) }) }),
+        v.segundos != null ? el('span', { class: 'suave chica con-icono-chico' }, h.icono('reloj', 'icono chico'),
+          el('span', { texto: v.examen ? t('ficha.tiempo_de', { usado: reloj(v.segundos), limite: reloj(v.examen.limiteSegundos) }) : t('ficha.tiempo_usado', { usado: reloj(v.segundos) }) })) : null,
         v.aprobado === true ? h.insignia('bien', t('ficha.aprobado')) : v.aprobado === false ? h.insignia('mal', t('ficha.no_aprobado', { umbral: numero(v.umbral ?? 90) })) : h.insignia('info', t('ficha.practica')))),
     el('section', { class: 'tarjeta' },
       el('div', { class: 'ficha-filtros' }, filtro, el('span', { class: 'suave chica', texto: t('ficha.p.resumen', { n: numero(respondidas.length), total: numero(v.total), mal: numero(malas) }) })),
