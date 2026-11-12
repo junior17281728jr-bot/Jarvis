@@ -1,4 +1,4 @@
-# Fotos de fondo de la Academia (0.9.1)
+# Fotos de fondo de la Academia (0.10.1)
 
 Dos fotos reales de Wikimedia Commons, editadas para el fondo: recortadas, reducidas, un poco desenfocadas y
 guardadas en WebP y JPEG (`*-900` para el teléfono, `*-1920` para la computadora). La pantalla las muestra muy
