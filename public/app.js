@@ -1518,6 +1518,8 @@ function crearZonaSistema(vigente, parte = 'resumen') {
       const punto = document.querySelector(`.pestanas [data-pestana="${id}"] .punto`);
       if (punto && tono) punto.setAttribute('class', `punto tono-${tono}`);
     }
+    // 0.12.5: y el «Pendiente» de los grupos (sin conexión no se sabe: queda lo de antes).
+    if (!sinConexion) { ultimosPendientes.tonos = tonosDePestanas(datos); pintarPendientes(pendientesDeGrupos(ultimosPendientes.tonos, ultimosPendientes.pagos)); }
   }
   async function actualizar() {
     if (ocupado) return;
@@ -1591,46 +1593,118 @@ function crearZonaSistema(vigente, parte = 'resumen') {
 }
 
 // Administrador va por pestañas, cada una con su dirección: Resumen (#admin), Usuarios (#admin/usuarios),
-// Trabajo (#admin/trabajo), Servidor (#admin/servidor), y las pantallas de la IA (#ia) y de las Claves (#claves).
-// Arriba de todas, el título y la fila de pestañas (siempre a la vista); debajo, la contraseña temporal recién creada
-// (sigue a la vista en todas las pestañas hasta «Ya se la di» o hasta salir de Administrador).
-const PESTANAS_ADMIN = ['resumen', 'usuarios', 'trabajo', 'servidor'];
+// Trabajo (#admin/trabajo), Servidor (#admin/servidor), Cambios importantes (#admin/cambios, 0.12.5), y las pantallas de
+// la IA (#ia) y de las Claves (#claves).
+// Arriba de todas, el título, los 4 grupos y la fila corta de su grupo (siempre a la vista); debajo, la contraseña
+// temporal recién creada (sigue a la vista en todas las pestañas hasta «Ya se la di» o hasta salir de Administrador).
+const PESTANAS_ADMIN = ['resumen', 'usuarios', 'trabajo', 'servidor', 'cambios'];
+// 0.12.5: «hay demasiadas cosas para el admin»: 4 grupos, cada uno con su fila corta. Las direcciones de siempre siguen
+// iguales (cada pestaña es la misma pantalla); solo cambia dónde está el botón. El grupo abre en su primera pestaña.
+const GRUPOS_ADMIN = [
+  { id: 'alumnos', clave: 'admin.grupo.alumnos', icono: 'personas', pestanas: [
+    { id: 'alumnos', href: '#alumnos', clave: 'admin.pestana.alumnos', icono: 'grafica' },
+    { id: 'usuarios', href: '#admin/usuarios', clave: 'admin.pestana.usuarios', icono: 'personas' },
+    // 0.8.0: los Exámenes del Test Guide de cada materia y la clave completa.
+    { id: 'respuestas', href: '#respuestas', clave: 'admin.pestana.respuestas', icono: 'marca' },
+    // 0.10.0: ¿aprenden de verdad? ¿funciona la adaptación?
+    { id: 'aprendizaje', href: '#aprendizaje', clave: 'admin.pestana.aprendizaje', icono: 'grafica' },
+    // 0.9.2: «Ayuda»: los mensajes de los alumnos (con cuántos esperan respuesta).
+    { id: 'soporte', href: '#soporte', clave: 'admin.pestana.soporte', icono: 'chispa' },
+  ] },
+  { id: 'contenido', clave: 'admin.grupo.contenido', icono: 'libro', pestanas: [
+    { id: 'contenido', href: '#contenido', clave: 'admin.pestana.paquetes', icono: 'carpeta' },
+    { id: 'terminos', href: '#contenido/terminos', clave: 'admin.pestana.terminos', icono: 'manual' },
+    { id: 'videos', href: '#contenido/videos', clave: 'admin.pestana.videos', icono: 'video' },
+  ] },
+  { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
+    // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
+    { id: 'pagos', href: '#pagos', clave: 'admin.pestana.pagos', icono: 'recibo' },
+    { id: 'ia', href: '#ia', clave: 'admin.pestana.ia', icono: 'chispa' },
+    { id: 'claves', href: '#claves', clave: 'admin.pestana.claves_telegram', icono: 'llave' },
+    { id: 'ia-demo', href: '#ia-demo', clave: 'admin.pestana.ia_demo', icono: 'ojo' },
+  ] },
+  { id: 'sistema', clave: 'admin.grupo.sistema', icono: 'servidor', pestanas: [
+    { id: 'resumen', href: '#admin', clave: 'admin.pestana.resumen', icono: 'escudo' },
+    { id: 'trabajo', href: '#admin/trabajo', clave: 'admin.pestana.trabajo', icono: 'latido' },
+    { id: 'servidor', href: '#admin/servidor', clave: 'admin.pestana.servidor', icono: 'servidor' },
+    { id: 'copias', href: '#copias', clave: 'admin.pestana.copias', icono: 'copia' },
+    { id: 'cambios', href: '#admin/cambios', clave: 'admin.pestana.cambios', icono: 'escudo' },
+  ] },
+];
+const grupoDePestana = actual => GRUPOS_ADMIN.find(g => g.pestanas.some(x => x.id === actual)) ?? GRUPOS_ADMIN[3];
+// 0.12.5: las direcciones que se dicen con el nombre del grupo (o de una pestaña bajo #admin/…) llevan a su pantalla.
+const REDIRECCIONES_ADMIN = Object.freeze({
+  'admin/alumnos': '#alumnos', 'admin/contenido': '#contenido', 'admin/dinero': '#pagos', 'admin/sistema': '#admin',
+  'admin/respuestas': '#respuestas', 'admin/aprendizaje': '#aprendizaje', 'admin/soporte': '#soporte', 'admin/ayuda': '#soporte',
+  'admin/paquetes': '#contenido', 'admin/terminos': '#contenido/terminos', 'admin/videos': '#contenido/videos', 'contenido/paquetes': '#contenido',
+  'admin/pagos': '#pagos', 'admin/ia': '#ia', 'admin/claves': '#claves', 'admin/telegram': '#claves', 'admin/copias': '#copias', 'admin/resumen': '#admin',
+  'terminos-admin': '#contenido/terminos', 'videos': '#contenido/videos', 'cambios': '#admin/cambios',
+});
 // Debajo de las pestañas: para qué sirve cada una, en una línea, y las palabras que conviene conocer ahí.
 const LINEA_ADMIN = {
   resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
   alumnos: () => t('admin.linea.alumnos'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
-  soporte: () => t('admin.linea.soporte'),
+  soporte: () => t('admin.linea.soporte'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
 };
 const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
+// 0.12.5: «Pendiente» sobre un grupo cuando algo espera al administrador: comprobantes por revisar (Dinero e IA), mensajes
+// de ayuda sin responder (Alumnos), o un aviso del trabajo, del servidor o de las copias (Sistema).
+function pendientesDeGrupos(tonos = {}, pagos = 0) {
+  const alerta = x => ['mal', 'atencion'].includes(x);
+  return { alumnos: (tonos.soportePendientes ?? 0) > 0, dinero: pagos > 0, sistema: alerta(tonos.trabajo) || alerta(tonos.servidor) || alerta(tonos.copias), contenido: false };
+}
+function pintarPendientes(pendientes) {
+  for (const [id, si] of Object.entries(pendientes)) {
+    const marca = document.querySelector(`.grupos-admin [data-grupo="${id}"] .grupo-pendiente`);
+    if (marca) marca.hidden = !si;
+  }
+}
+const ultimosPendientes = { tonos: null, pagos: 0 };
 function cabeceraAdmin(actual, tonos = {}) {
+  const grupo = grupoDePestana(actual);
+  const conTonos = tonos && Object.keys(tonos).length > 0;
+  if (conTonos) ultimosPendientes.tonos = tonos;
+  const tonosVistos = conTonos ? tonos : ultimosPendientes.tonos ?? {};
+  const inicial = pendientesDeGrupos(tonosVistos, ultimosPendientes.pagos);
+  const grupos = el('nav', { class: 'grupos-admin', 'aria-label': t('admin.grupos') },
+    GRUPOS_ADMIN.map(g => el('a', { href: g.pestanas[0].href, class: 'grupo-admin', 'data-grupo': g.id, 'aria-current': g === grupo ? 'page' : null },
+      icono(g.icono, 'icono'),
+      el('span', { class: 'grupo-admin-texto', texto: t(g.clave) }),
+      el('span', { class: 'grupo-pendiente', hidden: !inicial[g.id], texto: t('admin.grupo.pendiente') }))));
+  // Lo que falta saber llega después (sin esperar): los comprobantes en revisión y, si esta pantalla no lo pidió, el estado
+  // del sistema. El número de comprobantes va también sobre la pestaña «Pagos» (si se ve).
+  requestAnimationFrame(() => {
+    api('GET', '/api/admin/academia/pagos/pendientes').then(r => {
+      if (!r.ok || !grupos.isConnected) return;
+      ultimosPendientes.pagos = r.datos.pendientes ?? 0;
+      pintarPendientes(pendientesDeGrupos(ultimosPendientes.tonos ?? tonosVistos, ultimosPendientes.pagos));
+      const a = raiz.querySelector('.pestanas a[data-pestana="pagos"]');
+      if (a && ultimosPendientes.pagos > 0 && !a.querySelector('.contador-pendientes')) {
+        a.append(el('span', { class: 'contador-pendientes', 'aria-label': t('pagos.pendientes', { n: ultimosPendientes.pagos }), texto: String(ultimosPendientes.pagos) }));
+      }
+    });
+    if (!conTonos) {
+      api('GET', '/api/admin/sistema').then(r => {
+        if (!r.ok || !grupos.isConnected) return;
+        ultimosPendientes.tonos = tonosDePestanas(r.datos);
+        pintarPendientes(pendientesDeGrupos(ultimosPendientes.tonos, ultimosPendientes.pagos));
+      });
+    }
+  });
+  const fila = grupo.pestanas.map(x => ({
+    id: x.id, href: x.href, nombreIcono: x.icono,
+    texto: x.id === 'soporte' && tonosVistos.soportePendientes ? `${t(x.clave)} (${numero(tonosVistos.soportePendientes)})` : t(x.clave),
+    tono: ['trabajo', 'servidor', 'copias', 'soporte'].includes(x.id) ? tonosVistos[x.id] : undefined,
+  }));
   return [
     el('div', { class: 'admin-arriba' },
       el('h1', { class: 'titulo-pantalla', texto: t('admin.titulo') }),
       // 0.8.0: estudiar como un alumno (su propio camino) y volver.
       el('button', { type: 'button', class: 'boton-3d blanco chico con-icono boton-estudiante', onclick: () => { ponerModoEstudiante(true); location.hash = '#inicio'; } },
         icono('avion', 'icono chico'), el('span', { texto: t('estudiante.entrar') }))),
-    pestanas([
-      { id: 'resumen', href: '#admin', texto: t('admin.pestana.resumen'), nombreIcono: 'escudo' },
-      // Academia (0.7.0): lo de la academia va primero.
-      { id: 'alumnos', href: '#alumnos', texto: t('admin.pestana.alumnos'), nombreIcono: 'grafica' },
-      { id: 'contenido', href: '#contenido', texto: t('admin.pestana.contenido'), nombreIcono: 'libro' },
-      // 0.8.0: la clave completa (cada pregunta con su respuesta y sus explicaciones).
-      { id: 'respuestas', href: '#respuestas', texto: t('admin.pestana.respuestas'), nombreIcono: 'marca' },
-      // 0.9.2: «Ayuda»: los mensajes de los alumnos (con cuántos esperan respuesta).
-      { id: 'soporte', href: '#soporte', texto: tonos.soportePendientes ? `${t('admin.pestana.soporte')} (${numero(tonos.soportePendientes)})` : t('admin.pestana.soporte'), nombreIcono: 'chispa', tono: tonos.soporte },
-      // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
-      { id: 'pagos', href: '#pagos', texto: t('admin.pestana.pagos'), nombreIcono: 'dinero' },
-      // 0.10.0: ¿aprenden de verdad? ¿funciona la adaptación?
-      { id: 'aprendizaje', href: '#aprendizaje', texto: t('admin.pestana.aprendizaje'), nombreIcono: 'grafica' },
-      { id: 'usuarios', href: '#admin/usuarios', texto: t('admin.pestana.usuarios'), nombreIcono: 'personas' },
-      { id: 'trabajo', href: '#admin/trabajo', texto: t('admin.pestana.trabajo'), nombreIcono: 'latido', tono: tonos.trabajo },
-      { id: 'servidor', href: '#admin/servidor', texto: t('admin.pestana.servidor'), nombreIcono: 'servidor', tono: tonos.servidor },
-      { id: 'copias', href: '#copias', texto: t('admin.pestana.copias'), nombreIcono: 'copia', tono: tonos.copias },
-      { id: 'ia', href: '#ia', texto: t('admin.pestana.ia'), nombreIcono: 'chispa' },
-      { id: 'claves', href: '#claves', texto: t('admin.pestana.claves'), nombreIcono: 'llave' },
-    ], actual, t('admin.pestanas')),
-    contadorPagos(),
+    grupos,
+    pestanas(fila, actual, t('admin.pestanas_de', { grupo: t(grupo.clave) })),
     LINEA_ADMIN[actual] ? entrada(LINEA_ADMIN[actual]()) : null,
     // Academia (0.7.0): «plan» es de los proyectos (escondidos).
     PALABRAS_ADMIN[actual] ? palabras(PALABRAS_ADMIN[actual].filter(x => !TEMAS_DE_PROYECTOS.includes(x))) : null,
@@ -1659,8 +1733,9 @@ async function pantallaIaDemo() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-demo'), import('./ia-demo-vista.js')]);
   if (!vigente()) return;
-  if (!r.ok) return mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, mostrar, marco, instructorUi });
+  // 0.12.5: dentro de «Dinero e IA», con la cabecera de Administrador.
+  if (!r.ok) return mostrar(marco('admin', cabeceraAdmin('ia-demo'), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, mostrar, marco: (seccion, ...resto) => marco(seccion, cabeceraAdmin('ia-demo'), ...resto), instructorUi });
 }
 async function pantallaProfesor() {
   const vigente = nuevoTurno();
@@ -1674,11 +1749,6 @@ async function pantallaProfesor() {
   if (r.ok) r.datos.historial = instructorUi().historialParaChat(r.datos.historial);
   pagosUi().pantallaProfesor(r);
 }
-// 0.10.0: el número de comprobantes en revisión, sobre la pestaña «Pagos» (se pone cuando llega).
-function contadorPagos() {
-  requestAnimationFrame(() => { const a = raiz.querySelector('.pestanas a[data-pestana="pagos"]'); if (a && !a.querySelector('.contador-pendientes')) pagosUi().contarPendientes(a); });
-  return null;
-}
 // «Crear un usuario» desde el Resumen: la pestaña Usuarios abre el formulario y pone el cursor en el nombre.
 let abrirCrearUsuario = false;
 
@@ -1686,7 +1756,7 @@ let abrirCrearUsuario = false;
 // Todas piden lo mismo al empezar (así cada pestaña muestra el color del trabajo y del servidor en la fila de arriba).
 async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const vigente = nuevoTurno();
-  const conZona = pestana !== 'usuarios';
+  const conZona = pestana !== 'usuarios' && pestana !== 'cambios';
   const sistema = crearZonaSistema(vigente, pestana);
   // El contenido de la academia, solo para «Primeros pasos».
   const [r, datosSistema, ia, contenido] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia')]);
@@ -1700,6 +1770,11 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   if (pestana === 'trabajo' || pestana === 'servidor') {
     mostrar(marco('admin', cabecera, aviso, el('div', { class: `rejilla dos zona-${pestana}` }, sistema.zona)));
     bajarAlAncla();
+    return;
+  }
+  // 0.12.5: «Cambios importantes» (antes, debajo de Usuarios) es su propia pestaña de Sistema.
+  if (pestana === 'cambios') {
+    mostrar(marco('admin', cabecera, aviso, tarjetaCambiosImportantes(vigente)));
     return;
   }
   if (pestana === 'resumen') {
@@ -1922,25 +1997,31 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     el('summary', { class: 'con-icono' }, icono('mas'), el('h2', { texto: t('admin.nuevo') })));
   const tarjetaNuevo = el('section', { class: 'tarjeta tarjeta-nuevo' }, plegable);
   plegable.append(permisos.cuentas ? formulario : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t('admin.cuentas_solo_tailnet') })));
-  // 0.12.3: los cambios delicados (datos de pago, claves, contraseñas de otros, administradores), con la hora.
-  const tarjetaCambios = el('section', { class: 'tarjeta tarjeta-cambios' },
-    el('h2', { class: 'con-icono' }, icono('escudo'), el('span', { texto: t('admin.cambios.titulo') })),
-    el('p', { class: 'ayuda', texto: t('admin.cambios.linea') }));
-  api('GET', '/api/admin/cambios').then(c => {
-    if (!vigente() || !c.ok) return;
-    const lista = c.datos.cambios;
-    tarjetaCambios.append(...[].concat(lista.length
-      ? verMas(el('ul', { class: 'lista-simple lista-cambios' }), lista.map(x => el('li', {},
-        el('strong', { texto: tSi(`admin.cambio.${x.accion}`, x.accion) }),
-        el('span', { class: 'suave', texto: ` · ${fecha(x.fecha)}${x.cuenta ? ` · ${x.cuenta}` : ''}${x.por ? ` · ${t('admin.cambios.por', { nombre: x.por })}` : ''}${x.como === 'tailscale' ? ` · ${t('admin.cambios.tailscale')}` : ''}` }))), 5)
-      : el('p', { class: 'suave', texto: t('admin.cambios.ninguno') })));
-  });
   mostrar(marco('admin', cabecera, aviso,
-    el('div', { class: 'rejilla admin-usuarios' }, tarjetaNuevo, tarjetaUsuarios), tarjetaCambios));
+    el('div', { class: 'rejilla admin-usuarios' }, tarjetaNuevo, tarjetaUsuarios)));
   if (abrir && permisos.cuentas) {
     tarjetaNuevo.scrollIntoView({ block: 'start' });
     completo.focus({ preventScroll: true });
   }
+}
+
+// 0.12.3: los cambios delicados (datos de pago, claves, contraseñas de otros, administradores), con la hora.
+// 0.12.5: en su pestaña (Sistema → Cambios importantes, #admin/cambios).
+function tarjetaCambiosImportantes(vigente) {
+  const tarjetaCambios = el('section', { class: 'tarjeta tarjeta-cambios' },
+    el('h2', { class: 'con-icono' }, icono('escudo'), el('span', { texto: t('admin.cambios.titulo') })),
+    el('p', { class: 'ayuda', texto: t('admin.cambios.linea') }));
+  api('GET', '/api/admin/cambios').then(c => {
+    if (!vigente() || !tarjetaCambios.isConnected) return;
+    if (!c.ok) { tarjetaCambios.append(el('p', { class: 'mensaje error', texto: textoError(c.datos.error) })); return; }
+    const lista = c.datos.cambios;
+    tarjetaCambios.append(...[].concat(lista.length
+      ? verMas(el('ul', { class: 'lista-simple lista-cambios' }), lista.map(x => el('li', {},
+        el('strong', { texto: tSi(`admin.cambio.${x.accion}`, x.accion) }),
+        el('span', { class: 'suave', texto: ` · ${fecha(x.fecha)}${x.cuenta ? ` · ${x.cuenta}` : ''}${x.por ? ` · ${t('admin.cambios.por', { nombre: x.por })}` : ''}${x.como === 'tailscale' ? ` · ${t('admin.cambios.tailscale')}` : ''}` }))), 20)
+      : el('p', { class: 'suave', texto: t('admin.cambios.ninguno') })));
+  });
+  return tarjetaCambios;
 }
 
 // Al llegar a una pestaña desde una tarjeta del resumen con «ancla» (por ejemplo, los errores): baja hasta esa parte.
@@ -2046,6 +2127,9 @@ function dibujarCopias(datos, aviso, vigente) {
       punto.querySelector('.punto')?.remove();
       if (['mal', 'atencion'].includes(v.tono)) punto.append(el('span', { class: `punto tono-${v.tono}`, 'aria-hidden': 'true' }));
     }
+    // 0.12.5: el «Pendiente» del grupo Sistema sigue a las copias.
+    ultimosPendientes.tonos = { ...(ultimosPendientes.tonos ?? {}), copias: ['mal', 'atencion'].includes(v.tono) ? v.tono : undefined };
+    pintarPendientes(pendientesDeGrupos(ultimosPendientes.tonos, ultimosPendientes.pagos));
     programar(d);
   }
   mostrar(marco('admin', cabeceraAdmin('copias'), arriba, zona));
@@ -3538,7 +3622,68 @@ function rutaGrupo(g, { compacta = false } = {}) {
   if (compacta) return ruta;
   return ruta;
 }
-function filaCompanero(x) {
+// 0.12.5: la ruta de cada materia, tema por tema: cada compañero es una avioneta (con su inicial) en el tema donde va.
+// Solo el tema y lo terminado/dominado (sin notas). Los de «Perfil privado» no llegan (el servidor no los manda).
+function rutasDeTemas(g) {
+  const mapa = Array.isArray(g.mapa) ? g.mapa : [];
+  if (!mapa.length) return null;
+  const donde = new Map();
+  for (const x of g.companeros) if (x.ruta?.actual) donde.set(x.ruta.actual, [...(donde.get(x.ruta.actual) ?? []), x]);
+  const yo = g.companeros.find(x => x.tu)?.ruta ?? null;
+  const filas = mapa.map(m => {
+    const n = m.temas.length;
+    const posicion = k => (n === 1 ? 50 : (k * 100) / (n - 1));
+    const enLaMateria = m.temas.flatMap(tm => donde.get(`${m.materia}/${tm.id}`) ?? []);
+    const pista = el('div', { class: 'ruta-temas-pista' },
+      el('span', { class: 'ruta-temas-linea', 'aria-hidden': 'true' }),
+      m.temas.map((tm, k) => {
+        const clave = `${m.materia}/${tm.id}`;
+        const nivel = yo?.dominados.includes(clave) ? 'dominado' : yo?.terminados.includes(clave) ? 'terminado' : '';
+        const punto = el('span', { class: `ruta-temas-punto ${nivel}`.trim(), title: partirTitulo(tm.titulo).es, texto: n <= 12 ? numero(k + 1) : '' });
+        punto.style.setProperty('--x', `${posicion(k)}%`);
+        return punto;
+      }),
+      m.temas.flatMap((tm, k) => (donde.get(`${m.materia}/${tm.id}`) ?? []).map((x, fila) => {
+        const avion = el('span', { class: `ruta-temas-avion color-${colorDe(x.nombre)}${x.tu ? ' tu' : ''}`, title: `${x.nombre}: ${partirTitulo(tm.titulo).es}` },
+          avionSvg(), el('span', { class: 'ruta-temas-inicial', texto: (x.nombre || '?').trim().charAt(0).toUpperCase() }));
+        avion.style.setProperty('--x', `${posicion(k)}%`);
+        avion.style.setProperty('--fila', String(Math.min(fila, 3)));
+        return avion;
+      })));
+    pista.style.setProperty('--filas', String(Math.min(4, Math.max(1, ...m.temas.map(tm => (donde.get(`${m.materia}/${tm.id}`) ?? []).length)))));
+    const resumen = enLaMateria.length ? enLaMateria.map(x => `${x.nombre} (${partirTitulo(m.temas.find(tm => x.ruta.actual === `${m.materia}/${tm.id}`)?.titulo ?? '').es})`).join(', ') : t('acad.grupo.ruta_nadie');
+    return el('li', { class: `ruta-temas-materia ${claseMateria(m.materia)}` },
+      el('p', { class: 'ruta-temas-nombre' }, el('strong', { texto: nombreMateria(m.materia) }), el('span', { class: 'suave chica', texto: tn('acad.n_temas', { n: n }) })),
+      el('div', { role: 'img', 'aria-label': t('acad.grupo.ruta_materia', { materia: nombreMateria(m.materia), quienes: resumen }) }, pista));
+  });
+  return el('div', { class: 'ruta-temas' },
+    el('h3', { class: 'ruta-temas-titulo', texto: t('acad.grupo.ruta_temas') }),
+    el('ul', { class: 'ruta-temas-lista' }, filas),
+    el('p', { class: 'leyenda-camino' },
+      el('span', { class: 'leyenda-item' }, el('span', { class: 'leyenda-punto morado', 'aria-hidden': 'true' }), el('span', { texto: t('acad.grupo.leyenda_terminado') })),
+      el('span', { class: 'leyenda-item' }, el('span', { class: 'leyenda-punto dorado', 'aria-hidden': 'true' }), el('span', { texto: t('acad.grupo.leyenda_dominado') }))));
+}
+// 0.12.5: lo que terminó (morado) y dominó (dorado) cada compañero, un punto por tema (las materias, separadas), y su
+// avioneta en el tema donde va. Un SVG chico, sin notas.
+function cadenaCompanero(x, mapa) {
+  if (!x.ruta || !Array.isArray(mapa) || !mapa.length) return null;
+  const temas = mapa.flatMap((m, i) => m.temas.map((tm, k) => ({ clave: `${m.materia}/${tm.id}`, corte: i > 0 && k === 0 })));
+  const paso = temas.length > 40 ? 6 : 12;
+  let xPos = 6;
+  const ancho = 12 + temas.length * paso + mapa.length * 8;
+  const svg = svgEl('svg', { class: 'cadena-temas', viewBox: `0 0 ${ancho} 22`, width: Math.round(ancho * 1.6), height: 35, 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'xMinYMid meet' });
+  for (const tm of temas) {
+    if (tm.corte) xPos += 8;
+    const nivel = x.ruta.dominados.includes(tm.clave) ? 'dominado' : x.ruta.terminados.includes(tm.clave) ? 'terminado' : 'pendiente';
+    svg.append(svgEl('circle', { cx: xPos, cy: 14, r: paso > 6 ? 4.2 : 2.4, class: `cadena-punto ${nivel}` }));
+    if (tm.clave === x.ruta.actual) svg.append(svgEl('path', { d: `M${xPos - 5} 4.5h7.5l2.5 2-2.5 2H${xPos - 5}z M${xPos - 2} 2.5l2 2h-2.5z`, class: 'cadena-avion' }));
+    xPos += paso;
+  }
+  const hechos = x.ruta.terminados.length + x.ruta.dominados.length;
+  return el('span', { class: 'cadena-caja', title: t('acad.grupo.cadena', { hechos: numero(hechos), total: numero(temas.length), dominados: numero(x.ruta.dominados.length) }) }, svg,
+    el('span', { class: 'solo-lectores', texto: t('acad.grupo.cadena', { hechos: numero(hechos), total: numero(temas.length), dominados: numero(x.ruta.dominados.length) }) }));
+}
+function filaCompanero(x, mapa = null) {
   return el('li', { class: `companero${x.tu ? ' tu' : ''}` },
     // 0.9.0: el avatar que eligió; sin avatar, la avioneta con su inicial de siempre.
     x.avatar ? el('span', { class: 'companero-avatar con-avatar', 'aria-hidden': 'true' }, dibujarAvatar(x.avatar, { nombre: x.nombre, tamano: 'medio' }))
@@ -3548,7 +3693,8 @@ function filaCompanero(x) {
       el('span', { class: 'suave', texto: x.lugar >= ORDEN_MATERIAS.length ? t('acad.grupo.terminado') : t('acad.grupo.en_materia', { n: numero(x.lugar + 1), materia: nombreMateria(x.materia) }) }),
       el('span', { class: 'companero-chips' },
         chipCifra(`fuego mini${x.racha ? '' : ' cero'}`, 'fuego', numero(x.racha), t('acad.racha')),
-        chipCifra('medalla mini', 'medalla', numero(x.medallas), t('acad.grupo.medallas')))),
+        chipCifra('medalla mini', 'medalla', numero(x.medallas), t('acad.grupo.medallas'))),
+      cadenaCompanero(x, mapa)),
     el('span', { class: 'companero-pct', texto: pctTexto(x.pct) }));
 }
 // El panel «Grupo» (en Progreso entero; en el camino, la franja y un enlace).
@@ -3569,7 +3715,8 @@ function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
       el('span', { class: 'panel-icono' }, icono('personas')),
       el('div', {}, el('h2', { id: 'grupo-titulo', texto: t('acad.grupo.titulo') }), el('p', { class: 'suave', texto: t('acad.grupo.linea') }))),
     rutaGrupo(g),
-    el('ul', { class: 'lista-companeros' }, g.companeros.map(filaCompanero)),
+    rutasDeTemas(g),
+    el('ul', { class: 'lista-companeros' }, g.companeros.map(x => filaCompanero(x, g.mapa))),
     el('p', { class: 'suave chica', texto: g.oculto ? t('acad.grupo.estas_oculto') : t('acad.grupo.privado') }),
     ocultar);
 }
@@ -3882,11 +4029,37 @@ function abrirClipGrande(c, chico) {
   capa.querySelector('button').focus();
 }
 
+// 0.12.5: la foto del libro de una tarjeta (solo llega si ya está en el servidor): debajo del título (al lado en la
+// pantalla ancha), con su pie «pie · Libro, p. N»; tocarla la abre en el visor a pantalla completa (acercar con dos dedos).
+// mini: la tarjeta ya muestra un clip → una miniatura «Ver foto del libro». Si la imagen no carga, la foto se quita sola.
+function pieFoto(f) {
+  const libro = f.libro ? (f.pagina ? t('foto.libro_pagina', { libro: f.libro, pagina: f.pagina }) : f.libro) : f.pagina ? t('foto.pagina', { pagina: f.pagina }) : null;
+  return [f.pie, libro].filter(Boolean).join(' · ');
+}
+function vistaFoto(f, { mini = false } = {}) {
+  const pie = pieFoto(f);
+  const abrir = () => abrirImagenGrande({ src: f.url, nombre: f.alt || t('foto.titulo'), titulo: pie || f.alt || t('foto.titulo') });
+  const img = el('img', { src: f.url, alt: f.alt || '', loading: 'lazy', decoding: 'async' });
+  const figura = mini
+    ? el('figure', { class: 'tarjeta-foto mini' },
+      el('button', { type: 'button', class: 'tarjeta-foto-mini-boton', onclick: abrir },
+        el('span', { class: 'tarjeta-foto-miniatura' }, img),
+        el('span', { class: 'tarjeta-foto-mini-texto' }, el('strong', { texto: t('foto.ver') }), pie ? el('span', { class: 'suave chica', texto: pie }) : null)))
+    : el('figure', { class: 'tarjeta-foto' },
+      el('button', { type: 'button', class: 'tarjeta-foto-boton', 'aria-label': t('foto.ampliar', { alt: f.alt || t('foto.titulo') }), onclick: abrir },
+        img, el('span', { class: 'q-figura-lupa', 'aria-hidden': 'true' }, icono('lupa', 'icono chico'))),
+      pie ? el('figcaption', { class: 'tarjeta-foto-pie', texto: pie }) : null);
+  img.addEventListener('error', () => { figura.closest('.tarjeta-leccion')?.classList.remove('con-foto'); figura.remove(); }, { once: true });
+  return figura;
+}
+
 function vistaTarjeta(p, { materia }) {
   const { es, en } = partirTitulo(p.titulo);
   // 0.12.1: si la tarjeta trae clip (y ya llegó), el clip manda sobre el dibujo.
   const clip = p.clip?.url ? vistaClip(p.clip) : null;
   const visual = p.visual && !clip ? el('div', { class: 'tarjeta-visual' }) : null;
+  // 0.12.5: la foto del libro; con un clip que ya llegó, solo una miniatura.
+  const foto = p.imagen?.url ? vistaFoto(p.imagen, { mini: Boolean(clip) }) : null;
   let montado = null;
   if (visual) {
     cargarVisuales().then(V => {
@@ -3895,13 +4068,14 @@ function vistaTarjeta(p, { materia }) {
       try { montado = montar?.(visual, p.visual.parametros ?? {}, { modo: 'interactivo' }); } catch { visual.remove(); }
     });
   }
-  const nodo = el('article', { class: `tarjeta-leccion estilo-${p.estilo ?? 'normal'} ${claseMateria(materia)}` },
+  const nodo = el('article', { class: `tarjeta-leccion estilo-${p.estilo ?? 'normal'} ${claseMateria(materia)}${foto && !clip ? ' con-foto' : ''}` },
     el('div', { class: 'tarjeta-sello' },
       el('span', { class: 'sello', texto: t(ETIQUETA_ESTILO[p.estilo] ?? ETIQUETA_ESTILO.normal) }),
       p.parte ? el('span', { class: 'sello-parte', texto: t('acad.de', { n: numero(p.parte), total: numero(p.partes) }) }) : null),
     el('h2', { class: 'tarjeta-titulo', texto: es }),
     en ? el('p', { class: 'tarjeta-en', lang: 'en', texto: en }) : null,
     clip?.nodo ?? null,
+    foto,
     visual,
     p.texto ? textoRico('p', p.texto, 'tarjeta-texto') : null,
     p.puntos?.length ? el('ul', { class: 'tarjeta-puntos' }, p.puntos.map(x => textoRico('li', x))) : null,
@@ -4368,7 +4542,7 @@ async function pantallaExtra(materia) {
   const [r, vista] = await Promise.all([api('GET', `/api/academia/extra/${encodeURIComponent(materia)}`), import('./extra-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir, vistaClip });
+  vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir, vistaClip, vistaFoto });
 }
 
 async function pantallaExamen(materia) {
@@ -5041,8 +5215,8 @@ async function pantallaRespuestas() {
 // ---- Administrador: el contenido (subir un paquete, ponerlo en uso, el nombre de la app y el % para aprobar) ----
 async function pantallaContenido() {
   const vigente = nuevoTurno();
-  // 0.9.2: también los «Términos de uso y aviso» (public/terminos-vista.js).
-  const [r, s, tr, vistaTerminos] = await Promise.all([api('GET', '/api/admin/academia'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/terminos'), import('./terminos-vista.js')]);
+  // 0.12.5: los «Términos de uso y aviso» van en su pestaña (Contenido → Términos, #contenido/terminos).
+  const [r, s] = await Promise.all([api('GET', '/api/admin/academia'), api('GET', '/api/admin/sistema')]);
   if (!vigente()) return;
   const cabecera = cabeceraAdmin('contenido', tonosDePestanas(s.ok ? s.datos : null));
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
@@ -5150,6 +5324,14 @@ async function pantallaContenido() {
         const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/video/${encodeURIComponent(nombre)}`, f, /\.mp4$/i.test(nombre) ? 'video/mp4' : f.type || 'application/octet-stream');
         if (!x.ok) throw new Error(`${nombre}: ${x.datos.error === 'sin_espacio_disco' ? t('error.sin_espacio_disco', { necesario: numero(x.datos.necesarioMb ?? 0), libre: numero(x.datos.libreMb ?? 0) }) : textoError(x.datos.error)}`);
       }
+      // 0.12.5: las fotos del libro de las tarjetas, si el paquete las nombra y se eligieron.
+      const fotos = (j.datos.faltanFotos ?? []).filter(nombre => porNombre.has(nombre));
+      for (const [k, nombre] of fotos.entries()) {
+        const f = porNombre.get(nombre);
+        progresoSubida.textContent = t('acad.subir.fotos', { n: numero(k + 1), total: numero(fotos.length) });
+        const x = await subirArchivo(`/api/admin/academia/paquetes/${j.datos.paquete.id}/fotos/${encodeURIComponent(nombre)}`, f, f.type || 'application/octet-stream');
+        if (!x.ok) throw new Error(`${nombre}: ${textoError(x.datos.error)}`);
+      }
       // 0.12.0: las páginas del libro («¿De dónde salió?»), si el paquete las nombra y se eligieron.
       const paginas = (j.datos.faltanPaginas ?? []).filter(nombre => porNombre.has(nombre));
       for (const [k, nombre] of paginas.entries()) {
@@ -5175,7 +5357,7 @@ async function pantallaContenido() {
         p.muestra ? el('span', { class: 'etiqueta', texto: t('acad.paquete.muestra') }) : null),
       p.enUso?.length ? el('p', { class: 'suave', texto: t('acad.paquete.da', { materias: p.enUso.map(nombreMateria).join(', ') }) }) : null,
       el('p', { class: 'suave', texto: [t('acad.paquete.cuenta', { version: p.id, temas: numero(p.temas), preguntas: numero(p.preguntas) }), p.edicion ? t('acad.paquete.edicion', { edicion: p.edicion }) : null,
-        ...[['figuras', p.figuras], ['paginas', p.recursos?.paginas], ['clips', p.recursos?.clips], ['videos', p.recursos?.videos], ['audios', p.recursos?.audios]]
+        ...[['figuras', p.figuras], ['paginas', p.recursos?.paginas], ['clips', p.recursos?.clips], ['fotos', p.recursos?.fotos], ['videos', p.recursos?.videos], ['audios', p.recursos?.audios]]
           .filter(([, n]) => n > 0).map(([que, n]) => tn(`acad.paquete.n_${que}`, { n: numero(n) }))].filter(Boolean).join(' · ') }),
       el('p', { class: 'suave', texto: t('acad.paquete.subido', { fecha: fecha(p.subidoEn) }) }),
       p.faltan?.length ? el('p', { class: 'aviso', texto: tn('acad.subir.faltan', { n: p.faltan.length }) }) : null,
@@ -5183,6 +5365,7 @@ async function pantallaContenido() {
       p.faltanPaginas?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_paginas', { n: p.faltanPaginas.length }) }) : null,
       p.faltanVideo?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_video', { n: p.faltanVideo.length }) }) : null,
       p.faltanClips?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_clips', { n: p.faltanClips.length }) }) : null,
+      p.faltanFotos?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_fotos', { n: p.faltanFotos.length }) }) : null,
       p.estado === 'listo' && !p.activo ? el('div', { class: 'botones' }, botonAccion(t('acad.paquete.usar'), 'secundario', mensaje, async () => {
         const x = await api('POST', `/api/admin/academia/paquetes/${p.id}/activar`, {});
         if (!x.ok) throw new Error(textoError(x.datos.error));
@@ -5194,8 +5377,25 @@ async function pantallaContenido() {
   const tarjetaVersiones = el('section', { class: 'tarjeta' },
     el('h2', { class: 'con-icono' }, icono('libro'), el('span', { texto: t('acad.versiones') })),
     paquetes.length ? verMas(el('div', { class: 'lista-usuarios' }), paquetes.map(filaPaquete), 4) : vacio('libro', t('acad.versiones.vacio')));
-  const tarjetaTerminos = tr.ok ? vistaTerminos.tarjetaAdminTerminos(tr.datos, piezasTerminos(), { alPublicar: () => pantallaContenido() }) : null;
-  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes, tarjetaTerminos)));
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes)));
+}
+// 0.12.5: Contenido → Términos (0.9.2: los «Términos de uso y aviso», public/terminos-vista.js).
+async function pantallaTerminosAdmin() {
+  const vigente = nuevoTurno();
+  const [tr, s, vistaTerminos] = await Promise.all([api('GET', '/api/admin/terminos'), api('GET', '/api/admin/sistema'), import('./terminos-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('terminos', tonosDePestanas(s.ok ? s.datos : null));
+  if (!tr.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(tr.datos.error) }))));
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla admin-una' }, vistaTerminos.tarjetaAdminTerminos(tr.datos, piezasTerminos(), { alPublicar: () => pantallaTerminosAdmin() }))));
+}
+// 0.12.5: Contenido → Videos de YouTube por tema (antes, dentro de Pagos).
+async function pantallaVideosAdmin() {
+  const vigente = nuevoTurno();
+  const [v, s] = await Promise.all([api('GET', '/api/admin/academia/videos'), api('GET', '/api/admin/sistema')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('videos', tonosDePestanas(s.ok ? s.datos : null));
+  mostrar(marco('admin', cabecera, v.ok ? null : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(v.datos.error) })),
+    el('div', { class: 'rejilla admin-una' }, pagosUi().videosAdmin(v))));
 }
 
 // ---- 0.7.1: la carpeta de Google Drive (el contenido llega solo, cada hora) ----
@@ -5318,9 +5518,11 @@ async function dibujar() {
   const seccion = location.hash.replace('#', '') || 'inicio';
   const esAdmin = estado.usuario.rol === 'admin';
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
+  // 0.12.5: las direcciones con el nombre de un grupo (o de una pestaña bajo #admin/…) llevan a su pantalla.
+  if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'contenido/terminos', 'contenido/videos'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5357,6 +5559,8 @@ async function dibujar() {
   const comparar = seccion.match(/^comparar\/(\d+(?:,\d+){1,9})$/);
   if (comparar && esAdmin) return pantallaComparar(comparar[1]);
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
+  if (seccion === 'contenido/terminos' && esAdmin) return pantallaTerminosAdmin();
+  if (seccion === 'contenido/videos' && esAdmin) return pantallaVideosAdmin();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   if (seccion === 'reporte' && esAdmin) return pantallaReporte();
   if (seccion === 'soporte' && esAdmin) return pantallaSoporte();
@@ -5430,7 +5634,10 @@ function pedidosAlAbrir(seccion, admin) {
   if (intentoAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(intentoAlumno[1])}/intentos/${encodeURIComponent(intentoAlumno[2])}`, '/api/admin/sistema'] : [];
   const comparar = seccion.match(/^comparar\/(\d+(?:,\d+){1,9})$/);
   if (comparar) return admin ? [`/api/admin/academia/comparar/${comparar[1]}`, '/api/admin/sistema'] : [];
-  if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema', '/api/admin/terminos'] : [];
+  if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
+  // 0.12.5: Contenido → Términos y Contenido → Videos de YouTube.
+  if (seccion === 'contenido/terminos') return admin ? ['/api/admin/terminos', '/api/admin/sistema'] : [];
+  if (seccion === 'contenido/videos') return admin ? ['/api/admin/academia/videos', '/api/admin/sistema'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'soporte') return admin ? ['/api/admin/soporte', '/api/admin/sistema'] : [];

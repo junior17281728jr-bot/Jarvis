@@ -878,6 +878,27 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .clip-grande-video { max-width: 100%; max-height: 100%; width: 100%; background: #000000; }
 @media (prefers-reduced-motion: reduce) { .clip-play { transition: none; } }
 
+/* ---------- 0.12.5: la foto del libro de una tarjeta ---------- */
+.tarjeta-foto { margin: 4px 0 14px; }
+.tarjeta-foto-boton { position: relative; display: block; width: 100%; margin: 0; padding: 0; border: 1px solid var(--linea); border-radius: 18px; overflow: hidden;
+  background: #ffffff; cursor: zoom-in; box-shadow: var(--sombra-suave); }
+.tarjeta-foto-boton img { display: block; width: 100%; height: auto; max-height: 52vh; object-fit: contain; }
+.tarjeta-foto-boton:focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; }
+.tarjeta-foto-pie { font-size: 13px; line-height: 1.35; color: var(--suave); margin-top: 6px; overflow-wrap: anywhere; }
+.tarjeta-foto.mini { margin: 0 0 12px; }
+.tarjeta-foto-mini-boton { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px 8px 8px; text-align: left;
+  border: 1px solid var(--linea); border-radius: 14px; background: var(--tarjeta); color: var(--texto); cursor: zoom-in; }
+.tarjeta-foto-miniatura { flex: none; width: 64px; height: 48px; border-radius: 10px; overflow: hidden; background: #ffffff; }
+.tarjeta-foto-miniatura img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tarjeta-foto-mini-texto { display: grid; gap: 2px; min-width: 0; }
+.tarjeta-foto-mini-texto > span { overflow-wrap: anywhere; }
+@media (min-width: 900px) {
+  .tarjeta-leccion.con-foto { display: flow-root; }
+  .tarjeta-leccion.con-foto > .tarjeta-foto { float: right; width: 44%; margin: 4px 0 12px 20px; }
+  .tarjeta-leccion.con-foto > .tarjeta-foto img { max-height: 420px; }
+  .extra-tarjeta .tarjeta-foto:not(.mini) { max-width: 520px; }
+}
+
 /* 0.12.2: «Mi repaso», su mini-clase, el ánimo después de equivocarse y el curso entero en «Mi progreso». */
 .entrada-mi-repaso { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--linea);
   background: var(--tarjeta); color: var(--texto); text-decoration: none; min-height: 44px; }
@@ -980,3 +1001,42 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .nodo.nivel-nuevo:not(.bloqueado) .nodo-icono, .nodo.nivel-empezado:not(.bloqueado) .nodo-icono { fill: none; }
 .nodo.nivel-nuevo:not(.bloqueado) .nodo-boton::before, .nodo.nivel-empezado:not(.bloqueado) .nodo-boton::before { display: none; }
 .nodo.actual .nodo-aro::before { border-color: color-mix(in srgb, var(--verde) 35%, transparent); }
+
+/* ---------- 0.12.5: el Grupo, tema por tema (una ruta por materia, cada compañero una avioneta) ---------- */
+.ruta-temas { margin: 14px 0 4px; }
+.ruta-temas-titulo { font-size: 16px; margin: 0 0 8px; }
+.ruta-temas-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ruta-temas-materia { border: 2px solid var(--linea); border-radius: 16px; padding: 8px 10px 4px; background: var(--tarjeta); }
+.ruta-temas-nombre { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0; }
+.ruta-temas-nombre strong { font-size: 14px; }
+.ruta-temas-pista { --filas: 1; --alto: 26px; position: relative; height: calc(var(--filas) * var(--alto) + 34px); margin: 0 22px; }
+.ruta-temas-linea { position: absolute; left: 0; right: 0; top: calc(var(--filas) * var(--alto) + 18px); border-top: 3px dashed var(--linea); }
+.ruta-temas-punto {
+  position: absolute; left: var(--x); top: calc(var(--filas) * var(--alto) + 9px); transform: translateX(-50%); width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 10px; font-weight: 800; background: var(--tarjeta); border: 2px solid var(--linea); color: var(--suave);
+}
+.ruta-temas-punto.terminado { background: var(--morado); border-color: var(--morado-borde); color: #ffffff; }
+.ruta-temas-punto.dominado { background: var(--oro); border-color: var(--oro-borde); color: #3b2a00; }
+.ruta-temas-avion {
+  --fila: 0; position: absolute; left: var(--x); top: calc((var(--filas) - 1 - var(--fila)) * var(--alto) + 2px); transform: translateX(-50%);
+  width: 38px; z-index: calc(4 - var(--fila)); animation: avion-flota 3.2s ease-in-out infinite;
+}
+.ruta-temas-avion .avioneta { width: 38px; height: auto; display: block; }
+.ruta-temas-avion.tu .avioneta-ala { fill: var(--verde); }
+.ruta-temas-avion.color-0 .avioneta-ala { fill: #ff8a1f; } .ruta-temas-avion.color-1 .avioneta-ala { fill: #1c8fe0; } .ruta-temas-avion.color-2 .avioneta-ala { fill: #d64a8e; }
+.ruta-temas-avion.color-3 .avioneta-ala { fill: #9b5de5; } .ruta-temas-avion.color-4 .avioneta-ala { fill: #0e9f7e; } .ruta-temas-avion.color-5 .avioneta-ala { fill: #e5484d; }
+.ruta-temas-avion.tu.color-0 .avioneta-ala, .ruta-temas-avion.tu.color-1 .avioneta-ala, .ruta-temas-avion.tu.color-2 .avioneta-ala,
+.ruta-temas-avion.tu.color-3 .avioneta-ala, .ruta-temas-avion.tu.color-4 .avioneta-ala, .ruta-temas-avion.tu.color-5 .avioneta-ala { fill: var(--verde); }
+.ruta-temas-inicial {
+  position: absolute; right: -6px; top: -6px; min-width: 17px; height: 17px; padding: 0 3px; border-radius: 99px; display: grid; place-items: center;
+  font-size: 10px; font-weight: 800; background: var(--cabina); color: #ffffff;
+}
+.ruta-temas-avion.tu .ruta-temas-inicial { background: var(--verde-borde); }
+@keyframes avion-flota { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+.cadena-caja { display: block; margin-top: 4px; max-width: 100%; }
+.cadena-temas { display: block; height: auto; max-width: 100%; }
+.cadena-punto.pendiente { fill: var(--linea); }
+.cadena-punto.terminado { fill: var(--morado); }
+.cadena-punto.dominado { fill: var(--oro); stroke: var(--oro-borde); stroke-width: 1; }
+.cadena-avion { fill: var(--cabina); }
+@media (prefers-reduced-motion: reduce) { .ruta-temas-avion { animation: none; } }

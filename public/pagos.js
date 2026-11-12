@@ -264,14 +264,15 @@ export function crearPagos(h) {
         pendientes.length ? el('ul', { class: 'lista-pagos' }, pendientes.map(filaPago)) : el('p', { class: 'suave', texto: tx('pagos.ninguno') }),
         resueltos.length ? el('details', {}, el('summary', { texto: tx('pagos.resueltos', { n: numero(resueltos.length) }) }), el('ul', { class: 'lista-pagos' }, resueltos.map(filaPago))) : null,
         todos),
-      el('div', { class: 'rejilla dos' }, ajustes, el('div', {}, saldos, fallas, videosAdmin()))));
+      el('div', { class: 'rejilla dos' }, ajustes, el('div', {}, saldos, fallas))));
   }
 
-  // Los videos de YouTube que el administrador elige por tema (el Profesor virtual los muestra primero).
-  function videosAdmin() {
-    const area = el('textarea', { rows: 4, id: 'videos-lista', 'aria-describedby': 'videos-ayuda' });
-    api('GET', '/api/admin/academia/videos').then(r => { if (r.ok) area.value = r.datos.videos.map(v => [v.materia, v.tema, v.titulo, v.url].join(' | ')).join('\n'); });
-    return el('section', { class: 'tarjeta' },
+  // Los videos de YouTube que el administrador elige por tema (el Profesor virtual los muestra primero). 0.12.5: es su
+  // propia pestaña (Contenido → Videos de YouTube, #contenido/videos); r = lo que respondió GET /api/admin/academia/videos.
+  function videosAdmin(r) {
+    const area = el('textarea', { rows: 8, id: 'videos-lista', 'aria-describedby': 'videos-ayuda' });
+    if (r?.ok) area.value = r.datos.videos.map(v => [v.materia, v.tema, v.titulo, v.url].join(' | ')).join('\n');
+    return el('section', { class: 'tarjeta tarjeta-videos' },
       el('h2', { class: 'con-icono' }, icono('video'), el('span', { texto: tx('videos.titulo') })),
       el('label', { for: 'videos-lista', texto: tx('videos.etiqueta') }), area,
       el('p', { id: 'videos-ayuda', class: 'ayuda', texto: tx('videos.ayuda') }),
@@ -367,5 +368,5 @@ export function crearPagos(h) {
         el('p', { class: 'suave chica', texto: tx('profesor.reglas') }))));
   }
 
-  return Object.freeze({ comparacion, pantallaTiempo, pantallaPagosAdmin, contarPendientes, pantallaProfesor });
+  return Object.freeze({ comparacion, pantallaTiempo, pantallaPagosAdmin, contarPendientes, pantallaProfesor, videosAdmin });
 }

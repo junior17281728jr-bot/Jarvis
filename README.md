@@ -413,7 +413,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.4; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.5; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -647,7 +647,7 @@ minutos solos no encienden la IA de un alumno (también hacen falta su tope de p
 cada saldo y al aprobar. Cualquier administrador puede aprobar o rechazar; cambiar datos y saldos es solo del dueño. Cambiar los
 datos de pago, el regalo, un saldo, los umbrales de fallas o dar el Profesor virtual es solo del dueño desde Tailscale. El
 Profesor virtual es para quien tiene un pago aprobado o a quien el dueño se lo da; nunca muestra un enlace que escriba la IA:
-solo los videos de YouTube que el dueño elige por tema (Administrador → Pagos → Videos) y un enlace a la búsqueda de YouTube.
+solo los videos de YouTube que el dueño elige por tema (Administrador → Contenido → Videos de YouTube; antes en Pagos) y un enlace a la búsqueda de YouTube.
 
 **¿Estás listo para el examen oficial?** (Progreso, y la ficha de cada alumno): un veredicto estricto sobre el banco del Test
 Guide —«Todavía no», «Casi» o «Listo para presentarte»— con «Cómo lo pienso» (cada regla ✔/✘ con su número: acierto ≥ 90 %,
@@ -691,6 +691,37 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.5: la foto del libro en las tarjetas y Administrador en 4 grupos — sin cambio de base
+- **La foto del libro de una tarjeta** (opcional; temas, reexplicación y lo extra): `"imagen": { "archivo": "foto-ala.webp",
+  "alt": "…", "pie": "…" (opcional), "pagina": "12" (opcional), "libro": "<id de libro>" (opcional), "sha256": "…" (opcional) }`.
+  Es una clase de archivo más, como las páginas: va en la carpeta `fotos/` de la versión (WebP, JPEG o PNG; se recomienda
+  ≤ 200 KB, tope 1 MB cada una, hasta 2000 por paquete; el mismo archivo puede servir a varias tarjetas), se sube con
+  `POST /api/admin/academia/paquetes/:id/fotos/:archivo` (o eligiéndola junto con el JSON en Contenido → Subir), llega de
+  Drive por su nombre (clase `foto`; como siempre, si dos archivos se llaman igual al mismo nivel hace falta su `sha256`), se
+  guarda una sola vez en el almacén y se sirve solo con la sesión y solo si la nombra una tarjeta en uso:
+  `GET /api/academia/fotos/<versión>~<archivo>?v=<huella>` (guardada un año). Mientras no llega, la tarjeta se ve igual,
+  sin foto (nunca un error); la versión no la espera para quedar «lista». En la tarjeta sale debajo del título (al lado en
+  la pantalla ancha), redondeada, con `loading="lazy"` y su `alt`, y el pie chico «pie · Libro, p. N» (el libro es el
+  `titulo` de «libros», nunca su id; sin `pagina`, sin «p.»). Tocarla abre el visor de las figuras (acercar con dos dedos).
+  Con un clip que ya llegó se ve el clip, y la foto como miniatura «Ver foto del libro». Un manifiesto de antes (sin
+  `fotos`) se vuelve a armar solo.
+- **Administrador en 4 grupos**, cada uno con su fila corta: **Alumnos** (Alumnos, Usuarios, Respuestas —los Exámenes del
+  Test Guide—, Aprendizaje, Ayuda), **Contenido** (Paquetes y Drive, Términos, Videos de YouTube), **Dinero e IA** (Pagos,
+  IA y gastos, Claves y Telegram, Vista de prueba de la IA) y **Sistema** (Resumen, Trabajo, Servidor, Copias, Cambios
+  importantes). «Pendiente» sobre un grupo cuando algo espera: comprobantes por revisar, mensajes de Ayuda sin responder, o
+  un aviso del trabajo, del servidor o de las copias. Todas las direcciones de antes siguen iguales (`#admin`,
+  `#admin/usuarios`, `#alumnos`, `#pagos`, `#copias`, `#ia`, `#claves`…); son nuevas `#contenido/terminos`,
+  `#contenido/videos` y `#admin/cambios` (lo que antes estaba dentro de Contenido, de Pagos y de Usuarios), y las del nombre
+  de un grupo (`#admin/alumnos`, `#admin/contenido`, `#admin/dinero`, `#admin/sistema`, `#admin/pagos`…) llevan a su pantalla.
+  No se quitó nada. Las instrucciones ya no nombran «oportia» (el espacio de la IA y el ejemplo del bot de Telegram).
+- **El Grupo, tema por tema** (Progreso → Grupo): debajo de la ruta de las materias, una ruta por materia con un punto por
+  tema y cada compañero como una avioneta (con su inicial) en el tema donde va; tus temas terminados en morado y dominados en
+  dorado (los colores del Camino), y en la fila de cada compañero una cadena chica de puntos con lo que él terminó (morado)
+  y dominó (dorado). El servidor manda solo eso (`grupo.mapa`: materias y temas; `companeros[].ruta`: `actual`,
+  `terminados`, `dominados`, ids «materia/tema»): ninguna nota nueva. «Perfil privado» sigue igual: quien lo tiene no
+  llega a los demás; los nombres, «Nombre A.» como en la 0.12.3.
+- Pruebas: `test/fotos.test.js`, `test/grupo-ruta.test.js`; versión 0.12.5.
 
 ### Lo nuevo de la 0.12.4: sin clave de IA, ningún error; con clave, la IA más útil — sin cambio de base
 - **Sin IA para un alumno por algo que no se pasa solo** (sin clave, la IA apagada, sin su permiso o retirado, sin
@@ -975,6 +1006,8 @@ otro JSON es una versión nueva. Nunca se pisa ni se borra una versión; desde l
         //     "ingles": [ { "palabra": "…", "pronunciacion": "…", "significado": "…" } ],
         //     "visual": { "tipo": "ala" | "motor" | "instrumentos" | "meteo" | "escenario" | "titulo" | "cartel", "parametros": { … } },
         //     "clip": { "archivo": "clip-x.mp4", "poster": "clip-x.jpg", "alt": "…" } (0.12.1, opcional; manda sobre «visual»),
+        //     "imagen": { "archivo": "foto-x.webp", "alt": "…", "pie": "…" (opcional), "pagina": "…" (opcional),
+        //                 "libro": "<id de libro>" (opcional; si no, el de la primera fuente), "sha256": "…" (opcional) } (0.12.5),
         //     "fuentes": [ … ] }
         "reexplicacion": [ …secciones más sencillas, para cuando no aprueba (opcional)… ],
         "preguntas": [ "tg-0001", … ] } ],

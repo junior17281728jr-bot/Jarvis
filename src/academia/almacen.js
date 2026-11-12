@@ -1,4 +1,4 @@
-// Academia (0.12.1): un archivo del paquete (figura, mp3, mp4, clip, página) se guarda UNA vez aunque lo nombren muchas
+// Academia (0.12.1): un archivo del paquete (figura, mp3, mp4, clip, página, foto) se guarda UNA vez aunque lo nombren muchas
 // versiones. El disco del servidor es chico: cada versión nueva del JSON es una carpeta nueva, y sin esto el mismo video
 // de 90 MB se bajaba y se guardaba otra vez en cada una.
 //  - academia/almacen/<sha256>: un enlace duro (hard link) a cada archivo ya aceptado, por su huella. Las carpetas de las
@@ -15,7 +15,7 @@ import { join } from 'node:path';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 // Las carpetas de archivos de cada versión (las de RECURSOS en src/academia/paquetes.js).
-export const CARPETAS_DE_ARCHIVOS = Object.freeze(['figuras', 'audio', 'paginas', 'video', 'clips']);
+export const CARPETAS_DE_ARCHIVOS = Object.freeze(['figuras', 'audio', 'paginas', 'video', 'clips', 'fotos']);
 const MAX_DRIVE = 5000;
 
 export const carpetaAlmacen = academia => join(academia, 'almacen');

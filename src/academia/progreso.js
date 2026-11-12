@@ -6,7 +6,7 @@
 // nunca viajan antes de responder: la nota la pone el servidor.
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De, clipDe } from './paquetes.js';
+import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De, clipDe, fotoDe } from './paquetes.js';
 import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe } from './saltos.js';
 import { lineaHumor, QUEMADO_SUAVE } from './humor.js';
 import { resumenVisitas } from '../cuentas/visitas.js';
@@ -159,6 +159,8 @@ export const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(
     visual: s.visual ? { tipo: s.visual.tipo, parametros: s.visual.parametros ?? {} } : null,
     // 0.12.1: el ejemplo en video corto (solo si ya llegó; si no, se ve el dibujo o nada).
     clip: clipDe(paquete, pid, s.clip),
+    // 0.12.5: la foto del libro (solo si ya llegó; si no, la tarjeta se ve sin ella).
+    imagen: fotoDe(paquete, pid, s.imagen, s.fuentes),
   } : {}),
 }));
 
@@ -377,7 +379,7 @@ export function guardarPasoTema(db, usuarioId, paquete, materia, tema, { paso, t
 }
 // El avance de un tema para el Camino: nivel 'nuevo' | 'empezado' | 'terminado' (vio todas sus tarjetas e hizo su
 // práctica) | 'dominado' (aprobó su práctica); pct = 60 % las tarjetas vistas + 40 % la práctica hecha (100 aprobado).
-function avanceTema(p, intento, aprobado, sinPreguntas) {
+export function avanceTema(p, intento, aprobado, sinPreguntas) {
   if (aprobado) return { nivel: 'dominado', pct: 100 };
   const tarjetas = p && p.total > 1 ? Math.min(1, (Number(p.max) || 0) / (p.total - 1)) : 0;
   const practica = Boolean(intento) || sinPreguntas;

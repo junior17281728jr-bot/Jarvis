@@ -27,6 +27,9 @@ export const LIMITES = Object.freeze({
   clipSegundos: 8,
   clipPosterBytes: 1024 * 1024,
   clips: 2000,
+  // 0.12.5: la «imagen» de una tarjeta: una foto del libro (WebP, JPEG o PNG; se recomienda ≤ 200 KB, tope 1 MB).
+  fotoBytes: 1024 * 1024,
+  fotos: 2000,
   figurasBytes: 400 * 1024 * 1024,
   figuras: 2000,
   preguntas: 5000,
@@ -158,6 +161,28 @@ export function revisarPaquete(p) {
       }
     }
   };
+  // 0.12.5: la foto del libro de una tarjeta: { archivo (imagen), alt, pie?, pagina?, libro?, sha256? }. Va en «fotos/».
+  // libro: el id de un libro de «libros» (si no viene, el de la primera fuente de la tarjeta). El mismo archivo puede
+  // servir a dos tarjetas. Si todavía no llegó, la tarjeta se ve sin ella.
+  const fotosVistas = new Map();
+  const imagen = (x, ruta) => {
+    if (x == null) return;
+    if (!esObjeto(x)) return mal(ruta, 'no_es_objeto');
+    const archivoOk = typeof x.archivo === 'string' && ARCHIVO_FIGURA.test(x.archivo);
+    if (!archivoOk) mal(`${ruta}.archivo`, 'archivo_no_valido');
+    texto(x.alt, `${ruta}.alt`, { max: LIMITES.corto });
+    texto(x.pie, `${ruta}.pie`, { obligatorio: false, max: LIMITES.corto });
+    texto(x.pagina, `${ruta}.pagina`, { obligatorio: false, max: 40 });
+    if (x.libro != null && !libros.has(x.libro)) mal(`${ruta}.libro`, 'libro_desconocido');
+    if (x.sha256 != null && (typeof x.sha256 !== 'string' || !SHA256.test(x.sha256))) mal(`${ruta}.sha256`, 'no_valido');
+    if (!archivoOk) return;
+    const ya = fotosVistas.get(x.archivo.toLowerCase());
+    if (ya && x.sha256 && ya.sha256 && ya.sha256 !== x.sha256) mal(`${ruta}.sha256`, 'no_valido');
+    else if (!ya) {
+      if (fotosVistas.size >= LIMITES.fotos) return mal(ruta, 'demasiadas');
+      fotosVistas.set(x.archivo.toLowerCase(), { archivo: x.archivo, sha256: x.sha256 ?? null });
+    } else if (!ya.sha256 && x.sha256) ya.sha256 = x.sha256;
+  };
   const secciones = (lista, ruta, { obligatorio }) => {
     if (lista == null && !obligatorio) return 0;
     if (!Array.isArray(lista) || (obligatorio && !lista.length)) { mal(ruta, 'falta'); return 0; }
@@ -177,6 +202,7 @@ export function revisarPaquete(p) {
         palabrasIngles(s.ingles, `${r}.ingles`, []);
         visual(s.visual, `${r}.visual`);
         clip(s.clip, `${r}.clip`);
+        imagen(s.imagen, `${r}.imagen`);
       } else {
         texto(s.texto, `${r}.texto`);
       }
@@ -484,6 +510,7 @@ export function revisarPaquete(p) {
     audios: ok ? [...audios.values()] : [],
     videos: ok ? [...videos.values()] : [], // 0.12.1: los mp4 y sus portadas
     clips: ok ? [...clipsVistos.values()] : [], // 0.12.1: los clips de las tarjetas y sus posters
+    fotos: ok ? [...fotosVistas.values()] : [], // 0.12.5: las fotos del libro de las tarjetas
     // Las materias que el paquete TRAE (con un tema o más): las que da cuando está en uso junto con otros.
     materias: ok ? p.materias.filter(m => m.temas.length > 0).map(m => m.id) : [],
     avisos,
@@ -523,6 +550,25 @@ export function clipsDe(p) {
       for (const [a, sha] of [[c.archivo, c.sha256 ?? null], [c.poster, null]]) {
         if (typeof a === 'string' && ARCHIVO_VIDEO.test(a) && !vistos.has(a.toLowerCase())) vistos.set(a.toLowerCase(), { archivo: a, sha256: sha });
       }
+    }
+  };
+  for (const m of p?.materias ?? []) {
+    for (const t of m?.temas ?? []) { de(t?.secciones); de(t?.reexplicacion); }
+    de(m?.extra?.tarjetas);
+  }
+  return [...vistos.values()];
+}
+
+// 0.12.5: las fotos del libro de las tarjetas que nombra un paquete YA REVISADO (temas, reexplicación y lo extra).
+export function fotosDe(p) {
+  const vistos = new Map();
+  const de = lista => {
+    for (const s of Array.isArray(lista) ? lista : []) {
+      const x = s?.tipo === 'tarjeta' ? s.imagen : null;
+      if (typeof x?.archivo !== 'string' || !ARCHIVO_FIGURA.test(x.archivo)) continue;
+      const ya = vistos.get(x.archivo.toLowerCase());
+      if (!ya) vistos.set(x.archivo.toLowerCase(), { archivo: x.archivo, sha256: x.sha256 ?? null });
+      else if (!ya.sha256 && x.sha256) ya.sha256 = x.sha256;
     }
   };
   for (const m of p?.materias ?? []) {

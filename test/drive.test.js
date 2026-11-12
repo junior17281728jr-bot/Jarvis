@@ -569,7 +569,7 @@ test('drive: el trabajador solo lee el manifiesto de una versión; el servidor w
     await revisar(db, config);
     const fila = db.prepare('SELECT * FROM academia_paquetes').get();
     const carpeta = join(dirname(config.archivoBase), 'academia', 'paquetes', fila.carpeta);
-    assert.deepEqual(JSON.parse(readFileSync(join(carpeta, 'manifiesto.json'), 'utf8')), { figuras: [{ archivo: 'figura-m1.png', sha256: null }], audios: [], materias: ['factores_humanos'], paginas: [], videos: [], clips: [] });
+    assert.deepEqual(JSON.parse(readFileSync(join(carpeta, 'manifiesto.json'), 'utf8')), { figuras: [{ archivo: 'figura-m1.png', sha256: null }], audios: [], materias: ['factores_humanos'], paginas: [], videos: [], clips: [], fotos: [] });
     // Una versión subida a mano con la 0.7.0 (sin manifiesto): el que importa se lo arma en su pasada.
     const vieja = paqueteMuestra();
     vieja.edicion = 'de-la-0.7.0';

@@ -721,6 +721,30 @@ a.pestana:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px;
 .punto { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--tono); box-shadow: 0 0 0 2px var(--tarjeta); }
 a.pestana[aria-current="page"] .punto { box-shadow: 0 0 0 2px var(--acento-texto); }
 
+/* 0.12.5: Administrador en 4 grupos (Alumnos, Contenido, Dinero e IA, Sistema); debajo, la fila corta del grupo. */
+.grupos-admin { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 10px 0 4px; }
+a.grupo-admin {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 60px; min-width: 0;
+  padding: 8px 4px; border-radius: 16px; border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto);
+  text-decoration: none; font-weight: 700; font-size: 13px; line-height: 1.15; text-align: center;
+}
+a.grupo-admin .icono { width: 22px; height: 22px; color: var(--suave); }
+.grupo-admin-texto { overflow-wrap: anywhere; }
+a.grupo-admin[aria-current="page"] { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
+a.grupo-admin[aria-current="page"] .icono { color: var(--acento-texto); }
+a.grupo-admin:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.grupo-pendiente {
+  position: absolute; top: -7px; right: -2px; padding: 1px 6px; border-radius: 999px; background: var(--aviso-fondo); color: var(--aviso-texto);
+  border: 1px solid currentColor; font-size: 10px; font-weight: 800; line-height: 1.4; white-space: nowrap; max-width: calc(100% + 4px); overflow: hidden; text-overflow: ellipsis;
+}
+.grupo-pendiente[hidden] { display: none; }
+@media (min-width: 760px) {
+  .grupos-admin { gap: 10px; margin-top: 14px; }
+  a.grupo-admin { flex-direction: row; min-height: 52px; font-size: 15px; gap: 8px; padding: 8px 12px; }
+  .grupo-pendiente { position: static; font-size: 11px; }
+  .rejilla.admin-una { max-width: 760px; }
+}
+
 /* «Ver N más» al final de una lista larga. */
 button.ver-mas { width: 100%; justify-content: center; margin-top: 10px; }
 

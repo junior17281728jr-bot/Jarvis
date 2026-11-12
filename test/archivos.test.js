@@ -469,7 +469,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // 0.12.3: «Cambios importantes» (solo en la pestaña Usuarios, después de dibujarla).
   const NO_SE_ADELANTA = { admin: new Set(['/api/admin/claves', '/api/admin/cambios']) };
   // Las pestañas de Administrador (0.4.1) piden lo mismo que #admin, y las de un proyecto lo mismo que el proyecto.
-  for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
+  for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor', 'admin/cambios']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
   // 0.8.0: los proyectos de OPORTIA se quitaron (sus direcciones viejas muestran el camino: ver más abajo).
   const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'],
     ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
@@ -488,7 +488,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     ['soporte', 'pantallaSoporte'], ['soporte/7', 'pantallaSoporteTicket'], ['ayuda-mia', 'pantallaMiAyuda'], ['ayuda-mia/7', 'pantallaMiTicket'],
     ['mis-documentos', 'pantallaMisDocumentos'], ['mis-datos', 'pantallaMisDatos'], ['mi-documento/7', 'pantallaMiDocumento'],
     // 0.10.0: Pagos (administrador) y el Profesor virtual.
-    ['pagos', 'pantallaPagos'], ['profesor', 'pantallaProfesor'], ['aprendizaje', 'pantallaAprendizaje']];
+    ['pagos', 'pantallaPagos'], ['profesor', 'pantallaProfesor'], ['aprendizaje', 'pantallaAprendizaje'],
+    // 0.12.5: Administrador en 4 grupos: Contenido → Términos y Videos de YouTube; Sistema → Cambios importantes.
+    ['contenido/terminos', 'pantallaTerminosAdmin'], ['contenido/videos', 'pantallaVideosAdmin'], ['admin/cambios', 'pantallaAdmin']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {

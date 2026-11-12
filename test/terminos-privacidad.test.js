@@ -180,7 +180,7 @@ test('perfil privado: no aparece para los otros alumnos (Grupo); el administrado
     // Sin privado, del compañero solo llegan los campos del Grupo (nunca notas ni errores).
     await pedir(base, 'POST', '/api/yo/perfil', { galleta: ana, datos: { privado: false } });
     const comp = (await pedir(base, 'GET', '/api/academia/progreso', { galleta: beto })).datos.grupo.companeros.find(x => x.nombre === 'ana');
-    assert.deepEqual(Object.keys(comp).sort(), ['avatar', 'lugar', 'materia', 'medallas', 'nombre', 'pct', 'racha', 'tu']);
+    assert.deepEqual(Object.keys(comp).sort(), ['avatar', 'lugar', 'materia', 'medallas', 'nombre', 'pct', 'racha', 'ruta', 'tu']);
   });
 });
 

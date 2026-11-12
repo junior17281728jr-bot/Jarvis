@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { ErrorTarea } from '../tareas/tipos.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import {
-  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, videosQueFaltan, clipsQueFaltan, declarado, rutaDeRecurso,
+  carpetaAcademia, aceptarRecurso, activarPaquete, apartarRecurso, figurasQueFaltan, audiosQueFaltan, paginasQueFaltan, videosQueFaltan, clipsQueFaltan, fotosQueFaltan, declarado, rutaDeRecurso,
   manifiesto, jsonEntero, guardarAjuste, topeDe, DISTINTO,
 } from './paquetes.js';
 import { espacioLibre } from './espacio.js';
@@ -148,8 +148,9 @@ export function crearSincronizador({ topes = {} } = {}) {
         return enAlmacen(academiaDir, h) ? h : null;
       };
       // 0.12.1: el video (mp4 y su portada) al final: lo chico llega primero.
-      const QUE_FALTA = { figura: figurasQueFaltan, audio: audiosQueFaltan, pagina: paginasQueFaltan, clip: clipsQueFaltan, video: videosQueFaltan };
-      for (const clase of ['figura', 'audio', 'pagina', 'clip', 'video']) {
+      const QUE_FALTA = { figura: figurasQueFaltan, audio: audiosQueFaltan, pagina: paginasQueFaltan, clip: clipsQueFaltan, foto: fotosQueFaltan, video: videosQueFaltan };
+      // 0.12.5: las fotos del libro de las tarjetas («fotos/»), como las páginas.
+      for (const clase of ['figura', 'audio', 'pagina', 'foto', 'clip', 'video']) {
         const faltan = QUE_FALTA[clase](config, fila);
         for (const archivo of faltan) {
           if (!queda()) { informe.parcial = true; return; }

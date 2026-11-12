@@ -11,7 +11,7 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { MATERIAS } from './formato.js';
 import { avataresDe } from '../cuentas/perfil.js';
 import { nombreLegalDe } from '../cuentas/terminos.js';
-import { grupoEncendido, temasAprobados, temasLeidos, examenes, puntosYRacha, porMateria, diaDe } from './progreso.js';
+import { grupoEncendido, temasAprobados, temasLeidos, examenes, puntosYRacha, porMateria, diaDe, pasosDeTemas, avanceTema } from './progreso.js';
 
 export const PLANES_ESTUDIO = Object.freeze({ un_mes: 30, dos_meses: 60, repaso_15: 15 });
 export const PLAN_RECOMENDADO = 'un_mes';
@@ -106,6 +106,34 @@ export function nombreParaElGrupo(legal, visible) {
   return `${legal.nombre} ${legal.apellido.slice(0, 1).toUpperCase()}.`;
 }
 
+// 0.12.5: la «ruta» del curso para el Grupo: las materias con contenido y sus temas (id y título), en orden.
+export function mapaDelGrupo(paquete) {
+  return (paquete?.materias ?? []).filter(m => m.temas.length).map(m => ({ materia: m.id, temas: m.temas.map(t => ({ id: t.id, titulo: t.titulo })) }));
+}
+// 0.12.5: dónde va un compañero en esa ruta, SIN notas: el tema en que está (el primero que no aprobó, como el Camino;
+// null si aprobó todos) y qué temas terminó (vio la clase e hizo la práctica: morado) o dominó (aprobó: dorado).
+// Solo ids «<materia>/<tema>»: ni porcentajes, ni intentos, ni respuestas.
+export function rutaDeCompanero(db, usuarioId, paquete) {
+  const aprobados = temasAprobados(db, usuarioId);
+  const leidos = temasLeidos(db, usuarioId);
+  const pasos = pasosDeTemas(db, usuarioId);
+  let actual = null;
+  const terminados = [];
+  const dominados = [];
+  for (const m of paquete?.materias ?? []) {
+    for (const t of m.temas) {
+      const k = `${m.id}/${t.id}`;
+      const a = aprobados.get(k);
+      const aprobado = a?.aprobado === true || (!t.preguntas.length && leidos.has(k));
+      const nivel = avanceTema(pasos[k] ?? null, a, aprobado, !t.preguntas.length).nivel;
+      if (nivel === 'dominado') dominados.push(k);
+      else if (nivel === 'terminado') terminados.push(k);
+      if (!aprobado && actual == null) actual = k;
+    }
+  }
+  return { actual, terminados, dominados };
+}
+
 // Lo que ve un alumno del grupo. Solo estos campos, a propósito (test/academia-plan.test.js lo cuida).
 export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const grupo = grupoEncendido(db);
@@ -134,10 +162,12 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
       pct: total ? Math.min(100, Math.floor((hechos * 100) / total)) : 0,
       racha: puntosYRacha(db, u.id, ahoraMs).racha,
       medallas: [...deExamen.values()].filter(x => x.aprobado).length + perfectos,
+      // 0.12.5: su avión en la ruta del curso (solo el tema y qué temas terminó o dominó).
+      ruta: rutaDeCompanero(db, u.id, paquete),
     });
   }
   companeros.sort((a, b) => b.pct - a.pct || a.nombre.localeCompare(b.nombre));
-  return { activo: true, oculto: yoOculto, materias: MATERIAS.length, companeros };
+  return { activo: true, oculto: yoOculto, materias: MATERIAS.length, mapa: mapaDelGrupo(paquete), companeros };
 }
 
 // La preparación para el examen (estimación): preguntas cuya ÚLTIMA respuesta fue correcta, sobre todas las del
