@@ -224,7 +224,7 @@ function pestanaMaterias(d, h) {
 
 function pestanaDebiles(d, h) {
   // 0.10.0: además, sus fallas registradas (activas, en refuerzo y superadas) y su Profesor virtual.
-  return [h.panelPuntosDebiles(d.puntosDebiles, { titulo: h.t('debil.panel_alumno') }), h.fallasAlumno?.(d.alumno.id) ?? null, h.profesorAlumno?.(d.alumno.id) ?? null];
+  return [h.preparadoAlumno?.(d.alumno.id) ?? null, h.panelPuntosDebiles(d.puntosDebiles, { titulo: h.t('debil.panel_alumno') }), h.fallasAlumno?.(d.alumno.id) ?? null, h.profesorAlumno?.(d.alumno.id) ?? null];
 }
 
 function pestanaActividad(d, h) {

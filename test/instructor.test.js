@@ -318,9 +318,23 @@ test('scripts/reto-faciles.mjs: lista las opciones fáciles de un paquete (texto
 test('las frases del instructor (public/instructor.js y los consejos) existen en los dos idiomas, y sin innerHTML', () => {
   const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
   const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
-  const js = readFileSync(join(RAIZ, 'public/instructor.js'), 'utf8');
+  const js = ['instructor.js', 'pagos.js', 'aprendizaje.js'].map(f => readFileSync(join(RAIZ, 'public', f), 'utf8')).join('\n');
   assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|eval\(|new Function/);
-  const claves = [...js.matchAll(/\btx\('([a-z0-9_.]+)'/g)].map(m => m[1]);
+  const claves = [...js.matchAll(/\b(?:tx|t)\('([a-z0-9_.]+)'/g)].map(m => m[1]);
+  // Las que se arman por partes (0.10.0).
+  for (let n = 1; n <= 4; n++) claves.push(`vender.basico.${n}`);
+  for (let n = 1; n <= 6; n++) claves.push(`vender.ia.${n}`);
+  for (let n = 1; n <= 5; n++) claves.push(`conectar.claude.${n}`);
+  for (let n = 1; n <= 3; n++) claves.push(`conectar.openai.${n}`, `profesor.chip.${n}`);
+  for (const x of ['banco', 'tipo', 'numero', 'titular', 'documento']) claves.push(`pago.campo.${x}`);
+  for (const x of ['revision', 'aprobado', 'rechazado']) claves.push(`pago.estado.${x}`);
+  for (const x of ['activa', 'refuerzo', 'superada']) claves.push(`falla.estado.${x}`);
+  for (const x of ['admin', 'regalo', 'pago']) claves.push(`profesor.admin.si.${x}`);
+  for (const x of ['todavia', 'casi', 'listo']) claves.push(`listo.nivel.${x}`);
+  for (const x of ['acierto', 'cobertura', 'constancia', 'memoria', 'fallas', 'tiempo']) claves.push(`listo.regla.${x}`, `listo.paso.${x}`);
+  for (const x of ['nuevas', 'despues', 'justo', 'fallas']) claves.push(`listo.suerte.${x}`);
+  for (const x of ['banco', 'tipoCuenta', 'numero', 'titular', 'documento', 'espera', 'minutosRegalo', 'minutosPorUso', 'instrucciones', 'paquetes']) claves.push(`pagos.campo.${x}`);
+  claves.push('hicimos.linea', 'hicimos.linea_examen', 'refuerzo.resultado', 'refuerzo.resultado.bien');
   const fuente = readFileSync(join(RAIZ, 'src/academia/instructor.js'), 'utf8');
   for (const m of fuente.matchAll(/clave: '([a-z_]+)'/g)) claves.push(`instr.c.${m[1]}`, `instr.o.${m[1]}`);
   for (const modo of ['basico', 'ia', 'espera']) claves.push(`instr.modo.${modo}`, `instr.modo.${modo}.corto`, `instr.modo.${modo}.ayuda`);

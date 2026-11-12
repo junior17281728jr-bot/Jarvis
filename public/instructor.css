@@ -124,3 +124,25 @@
 .chip { padding: 8px 12px; border-radius: 999px; border: 2px solid var(--linea); background: var(--tarjeta); font: inherit; font-weight: 700; cursor: pointer; }
 .chat-escribir { display: flex; gap: 8px; align-items: flex-end; }
 .chat-escribir textarea { flex: 1; font: inherit; border-radius: 14px; padding: 10px; }
+.preparado { text-align: left; }
+.veredicto { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 900; font-size: 18px; }
+.veredicto-todavia { background: var(--rojo-suave); color: var(--rojo-texto); }
+.veredicto-casi { background: color-mix(in srgb, var(--oro) 30%, var(--tarjeta)); }
+.veredicto-listo { background: var(--verde-suave); color: var(--verde-texto); }
+.lista-reglas { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 6px; }
+.regla { display: flex; gap: 8px; align-items: flex-start; }
+.regla-marca { font-weight: 900; width: 1.2em; }
+.regla.ok .regla-marca { color: var(--verde-texto); }
+.regla.no .regla-marca { color: var(--rojo-texto); }
+.siguiente-paso { padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--naranja) 14%, transparent); }
+.cifras-aprendizaje { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.cifra-aprendizaje { display: grid; gap: 2px; padding: 10px; border-radius: 14px; background: var(--gris-nodo); }
+.cifra-aprendizaje strong { font-size: 24px; }
+.cifra-aprendizaje.pocos strong { opacity: 0.55; }
+.grafica { margin: 12px 0 0; overflow-x: auto; }
+.grafica-barras { width: 100%; max-width: 640px; height: auto; }
+.grafica-barras .barra { fill: var(--azul); }
+.grafica-barras .barra.pocos { fill: var(--gris-nodo-borde); }
+.grafica-barras .barra-etiqueta { font-size: 10px; fill: var(--suave, #667); }
+.lista-dificiles li { margin-bottom: 8px; }
+.plan-pasar { text-align: left; }

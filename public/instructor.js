@@ -173,6 +173,40 @@ export function crearInstructor(h) {
     });
     return lugar;
   }
+  // «¿Estás listo para el examen oficial?»: el veredicto, «Cómo lo pienso» (cada regla ✔/✘ con su número), el paso que
+  // más importa, la probabilidad (una estimación), cada materia y los aprobados que conviene repetir.
+  function preparado(url = '/api/academia/preparado', { alumno = false } = {}) {
+    const lugar = el('section', { class: 'panel preparado', 'aria-label': tx('listo.titulo') });
+    api('GET', url).then(r => {
+      if (!lugar.isConnected || !r.ok) return;
+      const v = r.datos;
+      const linea = x => {
+        const vars = { valor: numero(x.valor), meta: numero(x.meta), n: numero(x.n), materias: numero(x.materias ?? 0), de: numero(x.deMaterias ?? 0), dias: numero(x.diasEstudio ?? 0),
+          donde: (x.donde ?? []).map(d => `${nombreMateria(d.materia)} (${d.n})`).join(', ') };
+        return el('li', { class: `regla ${x.ok ? 'ok' : 'no'}` }, el('span', { class: 'regla-marca', 'aria-hidden': 'true', texto: x.ok ? '✔' : '✘' }),
+          el('span', { class: 'solo-lectores', texto: x.ok ? tx('listo.cumple') : tx('listo.no_cumple') }), el('span', { texto: tx(`listo.regla.${x.id}`, vars) }));
+      };
+      const accion = v.siguiente?.accion;
+      const boton = !accion || alumno ? null : accion.tipo === 'intento' ? el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: e => empezarIntento(accion.datos, e.currentTarget) }, el('span', { texto: tx('listo.hacer') }))
+        : accion.tipo === 'refuerzo' ? el('a', { class: 'boton-3d naranja chico', href: '#inicio' }, el('span', { texto: tx('listo.hacer') })) : null;
+      lugar.append(
+        el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: tx('listo.titulo') })),
+        el('p', { class: `veredicto veredicto-${v.nivel}`, texto: tx(`listo.nivel.${v.nivel}`) }),
+        v.probabilidad != null ? el('p', { class: 'fuerte', texto: tx('listo.probabilidad', { n: numero(v.probabilidad) }) }) : null,
+        el('p', { class: 'suave chica', texto: tx('listo.aviso') }),
+        el('h3', { texto: tx('listo.como') }),
+        el('ul', { class: 'lista-reglas' }, v.reglas.map(linea)),
+        v.siguiente ? el('p', { class: 'siguiente-paso' }, el('strong', { texto: `${tx('listo.siguiente')} ` }), el('span', { texto: tx(`listo.paso.${v.siguiente.regla}`) })) : null,
+        boton,
+        v.suerte?.length ? el('div', { class: 'suerte' }, v.suerte.map(x => el('p', { class: 'aviso' },
+          el('strong', { texto: `${tx('listo.suerte', { lugar: nombreMateria(x.materia), pct: numero(x.pct) })} ` }),
+          el('span', { texto: x.razones.map(z => tx(`listo.suerte.${z.id}`, { n: numero(z.n ?? 0), de: numero(z.de ?? 0), pct: numero(z.pct ?? 0), umbral: numero(z.umbral ?? 0) })).join(' ') })))) : null,
+        v.porMateria?.length ? el('details', {}, el('summary', { texto: tx('listo.por_materia') }),
+          el('ul', { class: 'lista-simple' }, v.porMateria.map(m => el('li', {}, el('strong', { texto: `${nombreMateria(m.materia)}: ` }),
+            el('span', { texto: `${tx(`listo.nivel.${m.nivel}`)} · ${tx('listo.materia', { pct: numero(m.pct), cob: numero(m.cobertura), fallas: numero(m.fallas), n: numero(m.n) })}` }))))) : null);
+    });
+    return lugar;
+  }
   // Después de una práctica de refuerzo: «Bien: 2 de 3 — lo repasamos otra vez el jueves».
   function resultadoRefuerzo(res) {
     if (res.tipo !== 'instructor' || !res.tema) return null;
@@ -470,5 +504,5 @@ export function crearInstructor(h) {
       mensaje);
   }
 
-  return Object.freeze({ planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, planRefuerzo, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, alEmpezarTema, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  return Object.freeze({ preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, planRefuerzo, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, alEmpezarTema, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
 }

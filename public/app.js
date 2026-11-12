@@ -1489,6 +1489,8 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'respuestas', href: '#respuestas', texto: t('admin.pestana.respuestas'), nombreIcono: 'marca' },
       // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
       { id: 'pagos', href: '#pagos', texto: t('admin.pestana.pagos'), nombreIcono: 'dinero' },
+      // 0.10.0: ¿aprenden de verdad? ¿funciona la adaptación?
+      { id: 'aprendizaje', href: '#aprendizaje', texto: t('admin.pestana.aprendizaje'), nombreIcono: 'grafica' },
       { id: 'usuarios', href: '#admin/usuarios', texto: t('admin.pestana.usuarios'), nombreIcono: 'personas' },
       { id: 'trabajo', href: '#admin/trabajo', texto: t('admin.pestana.trabajo'), nombreIcono: 'latido', tono: tonos.trabajo },
       { id: 'servidor', href: '#admin/servidor', texto: t('admin.pestana.servidor'), nombreIcono: 'servidor', tono: tonos.servidor },
@@ -1509,6 +1511,17 @@ async function pantallaPagos() {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/admin/academia/pagos');
   if (vigente()) pagosUi().pantallaPagosAdmin(r);
+}
+async function pantallaAprendizaje(alumno = null) {
+  const vigente = nuevoTurno();
+  // Se calcula al abrir (no se adelanta): puede leer todas las respuestas.
+  const ruta = alumno ? `/api/admin/academia/aprendizaje?alumno=${encodeURIComponent(alumno)}` : '/api/admin/academia/aprendizaje';
+  const [r, vista] = await Promise.all([api('GET', ruta), import('./aprendizaje.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('aprendizaje'),
+    alumno ? el('a', { class: 'volver con-icono', href: `#alumno/${encodeURIComponent(alumno)}` }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('aprendizaje.volver') })) : null,
+    el('h2', { class: 'titulo-pantalla', texto: alumno ? t('aprendizaje.de_alumno') : t('aprendizaje.titulo') }),
+    r.ok ? vista.vistaAprendizaje(r.datos, { el, t, numero }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
 async function pantallaProfesor() {
   const vigente = nuevoTurno();
@@ -4141,7 +4154,8 @@ async function pantallaProgreso() {
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
     el('p', { class: 'bajada', texto: t('acad.progreso.linea') }),
-    // 0.10.0: «Lo que hicimos por ti» (sus fallas registradas y cómo se le reforzaron).
+    // 0.10.0: «¿Estás listo para el examen oficial?» y «Lo que hicimos por ti» (sus fallas y cómo se le reforzaron).
+    instructorUi().preparado(),
     instructorUi().loQueHicimos(),
     el('section', { class: 'panel panel-preparacion' },
       medidor(p.preparacion?.pct ?? 0),
@@ -4223,6 +4237,8 @@ const piezasAlumnos = () => ({
   // 0.10.0: las fallas registradas del alumno y su Profesor virtual (dar o quitar).
   fallasAlumno: id => instructorUi().loQueHicimos({ titulo: t('ficha.fallas'), url: `/api/admin/academia/alumnos/${encodeURIComponent(id)}/fallas` }),
   profesorAlumno: id => instructorUi().profesorAdmin(id),
+  preparadoAlumno: id => [instructorUi().preparado(`/api/admin/academia/alumnos/${encodeURIComponent(id)}/preparado`, { alumno: true }),
+    el('a', { class: 'boton-enlace secundario', href: `#aprendizaje/${encodeURIComponent(id)}`, texto: t('aprendizaje.de_alumno') })],
 });
 // Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
 function dibujarDeAlumnos(r, s, dibujarCon) {
@@ -4526,6 +4542,9 @@ async function dibujar() {
   if (seccion === 'tiempo-ia') return pagosUi().pantallaTiempo();
   if (seccion === 'pagos' && esAdmin) return pantallaPagos();
   if (seccion === 'profesor') return pantallaProfesor();
+  if (seccion === 'aprendizaje' && esAdmin) return pantallaAprendizaje();
+  const aprendizajeDe = seccion.match(/^aprendizaje\/(\d+)$/);
+  if (aprendizajeDe && esAdmin) return pantallaAprendizaje(aprendizajeDe[1]);
   const refuerzo = seccion.match(/^refuerzo\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
   if (refuerzo) return pantallaTema(refuerzo[1], refuerzo[2], { soloRefuerzo: true });
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
@@ -4567,6 +4586,7 @@ function pedidosAlAbrir(seccion, admin) {
   // 0.10.0: Pagos (administrador) y el Profesor virtual.
   if (seccion === 'pagos') return admin ? ['/api/admin/academia/pagos'] : [];
   if (seccion === 'profesor') return ['/api/academia/profesor'];
+  if (seccion === 'aprendizaje') return [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
 }

@@ -28,6 +28,8 @@ import { sincronizarFallas, refuerzoDeTema, fallasDe, planParaPasar } from '../a
 import { tiempoDe } from './pagos.js';
 import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
+import { veredicto } from '../academia/preparado.js';
+import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const HORA = 60 * 60 * 1000;
@@ -177,6 +179,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       const ya = leerGuardado(db, pedido.clave);
       ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones } });
     } else if (datos.ia === true) ia = { estado: 'no', motivo: instructor.motivo };
+    // 0.10.0: para «Aprendizaje»: ¿acertó la siguiente vez después de que se lo explicaron (con IA o sin IA)?
+    anotarExplicado(db, usuario.id, { pregunta: r.q.id, ia: ia?.estado === 'pendiente' || ia?.estado === 'lista', ahora });
     return { codigo: 200, datos: { instructor, basica, ia } };
   });
 
@@ -255,6 +259,32 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   });
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/plan/:intento', ({ db, parametros }) =>
     ({ codigo: 200, datos: conVideos(db, planParaPasar(db, Number(parametros.id), activo(db), parametros.intento, reloj())) }), { admin: true });
+
+  // ---------- 0.10.0: «¿Estás listo para el examen oficial?» (el alumno; el administrador, de cada alumno) ----------
+  rutas.agregar('GET', '/api/academia/preparado', ({ db, usuario }) => {
+    contar(topes.lecturas, usuario);
+    const p = activo(db);
+    if (p) sincronizarFallas(db, usuario.id, p, reloj());
+    return { codigo: 200, datos: p ? veredicto(db, usuario.id, p, reloj()) : { nivel: 'todavia', reglas: [], porMateria: [], suerte: [], probabilidad: null, siguiente: null } };
+  });
+  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/preparado', ({ db, parametros }) => {
+    const id = Number(parametros.id);
+    if (!Number.isSafeInteger(id) || !db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(id)) throw new ErrorHttp(404, 'no_existe');
+    const p = activo(db);
+    if (!p) throw new ErrorHttp(409, 'sin_paquete');
+    sincronizarFallas(db, id, p, reloj());
+    return { codigo: 200, datos: veredicto(db, id, p, reloj()) };
+  }, { admin: true });
+  // Administrador → «Aprendizaje» (de todos, o de un alumno con ?alumno=N).
+  rutas.agregar('GET', '/api/admin/academia/aprendizaje', ({ db, req }) => {
+    const p = activo(db);
+    if (!p) throw new ErrorHttp(409, 'sin_paquete');
+    const alumno = new URL(req.url, 'http://x').searchParams.get('alumno');
+    const id = alumno == null || alumno === '' ? null : Number(alumno);
+    if (id != null && (!Number.isSafeInteger(id) || !db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(id))) throw new ErrorHttp(404, 'no_existe');
+    for (const u of db.prepare("SELECT id FROM usuarios WHERE activo = 1").all()) sincronizarFallas(db, u.id, p, reloj());
+    return { codigo: 200, datos: estadisticas(db, p, { usuarioId: id, ahoraMs: reloj() }) };
+  }, { admin: true });
 
   // ---------- ¿Ya llegó lo de la IA? (solo una tarea suya) ----------
   rutas.agregar('GET', '/api/academia/instructor/tareas/:id', ({ db, usuario, parametros }) => {

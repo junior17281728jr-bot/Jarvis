@@ -594,6 +594,18 @@ datos de pago, el regalo, un saldo, los umbrales de fallas o dar el Profesor vir
 Profesor virtual es para quien tiene un pago aprobado o a quien el dueño se lo da; nunca muestra un enlace que escriba la IA:
 solo los videos de YouTube que el dueño elige por tema (Administrador → Pagos → Videos) y un enlace a la búsqueda de YouTube.
 
+**¿Estás listo para el examen oficial?** (Progreso, y la ficha de cada alumno): un veredicto estricto sobre el banco del Test
+Guide —«Todavía no», «Casi» o «Listo para presentarte»— con «Cómo lo pienso» (cada regla ✔/✘ con su número: acierto ≥ 90 %,
+cobertura ≥ 95 %, 3 exámenes recientes ≥ 90 %, memoria ≥ 80 % acertadas otra vez 2 días después, sin fallas activas, 7 días y 5
+días de estudio), el paso que más importa, la probabilidad estimada (con el aviso de que no garantiza nada), cada materia, y
+«Aprobaste, pero te recomiendo repetirlo porque…» cuando un aprobado tiene señales de suerte (`src/academia/preparado.js`).
+
+**Administrador → Aprendizaje** (`src/academia/aprendizaje.js`, de todos o de un alumno): acierto la primera vez contra las
+siguientes y por semana, retención a 2 y 7 días, de falladas a dominadas, cada tema con y sin el video visto, «Clases para
+mejorar», fallas superadas (y en cuántos días), acierto antes y después del refuerzo, «Explícamelo» con IA y sin IA, las
+preguntas más difíciles con la opción mala más elegida, minutos de estudio por día, rachas y plan. Cada número lleva su n;
+con menos de 10, «aún sin datos suficientes».
+
 **Modo reto más difícil:** al subir un paquete, las opciones del reto que parecen fáciles (largo muy distinto de la correcta,
 «siempre/nunca», cifras o unidades distintas, fuera del tema, casi iguales) salen como avisos; repetir una opción original
 (sin mirar mayúsculas, tildes ni signos) es un error. `node scripts/reto-faciles.mjs paquete.json [--md|--json]` las lista
