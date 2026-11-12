@@ -14,7 +14,7 @@
 //  4. Una versión que queda «lista» se pone en uso SOLA, una vez (si el administrador después pone otra, se respeta).
 //     Varias versiones se suman: cada materia sale de la última puesta en uso que la trae (src/academia/paquetes.js).
 //  5. Se anota la revisión (cuándo, qué encontró, qué entró, qué falló): Administrador → Contenido la muestra.
-import { mkdirSync, existsSync, renameSync } from 'node:fs';
+import { mkdirSync, existsSync, renameSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { ErrorTarea } from '../tareas/tipos.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
@@ -23,6 +23,8 @@ import {
   manifiesto, jsonEntero, guardarAjuste, topeDe, DISTINTO,
 } from './paquetes.js';
 import { espacioLibre } from './espacio.js';
+import { enAlmacen, enlazarDesdeAlmacen, leerDrive, anotarDrive, claveDrive, indexarVersiones } from './almacen.js';
+import { huellaDeArchivo } from './paquetes.js';
 import { ARCHIVO_MP4 } from './formato.js';
 import { basesDrive, recorrerCarpeta, bajarArchivo, TOPES_DRIVE, PAQUETE_EN_DRIVE } from './drive.js';
 import { carpetaDrive, leerMemoria, guardarMemoria, anotarRevision } from './drive-estado.js';
@@ -134,6 +136,17 @@ export function crearSincronizador({ topes = {} } = {}) {
 
     // 3. Las figuras y los audios de una versión que faltan (de su manifiesto: el JSON entero nunca se lee aquí).
     async function completar(fila, paquete) {
+      // 0.12.1: un archivo que ya está guardado (por su sha256, o por ser el mismo archivo de Drive con la misma fecha) se
+      // enlaza y no se baja otra vez (src/academia/almacen.js). Las versiones de antes se indexan una vez.
+      const academiaDir = carpetaAcademia(config);
+      let indexado = false;
+      const deDrive = leerDrive(academiaDir);
+      const yaGuardado = (d, c) => {
+        const h = d?.sha256 ?? deDrive[claveDrive(c.id, c.modificado)] ?? null;
+        if (!h) return null;
+        if (!enAlmacen(academiaDir, h) && !indexado) { indexado = true; indexarVersiones(academiaDir, huellaDeArchivo); }
+        return enAlmacen(academiaDir, h) ? h : null;
+      };
       // 0.12.1: el video (mp4 y su portada) al final: lo chico llega primero.
       const QUE_FALTA = { figura: figurasQueFaltan, audio: audiosQueFaltan, pagina: paginasQueFaltan, clip: clipsQueFaltan, video: videosQueFaltan };
       for (const clase of ['figura', 'audio', 'pagina', 'clip', 'video']) {
@@ -142,7 +155,11 @@ export function crearSincronizador({ topes = {} } = {}) {
           if (!queda()) { informe.parcial = true; return; }
           const esMp4 = clase === 'video' && ARCHIVO_MP4.test(archivo);
           // Un mp4 tarda: solo se empieza si al paso le queda su tiempo entero (si no, en la próxima revisión).
-          if (esMp4 && quedaMs() < T.videoMs + 30_000) { informe.parcial = true; return; }
+          // (Si ya está guardado, no hace falta esperar tiempo para bajarlo: se mira más abajo.)
+          const candidatosYa = candidatos(arbol.archivos, archivo, paquete.camino);
+          const dYa = declarado(config, fila, clase, archivo);
+          const reusable = candidatosYa.length && (dYa?.sha256 || candidatosYa.length === 1 || candidatosYa[0].nivel !== candidatosYa[1].nivel) ? yaGuardado(dYa, candidatosYa[0]) : null;
+          if (esMp4 && !reusable && quedaMs() < T.videoMs + 30_000) { informe.parcial = true; return; }
           const lista = candidatos(arbol.archivos, archivo, paquete.camino);
           if (!lista.length) { error(archivo, 'no_esta_en_drive'); continue; }
           const d = declarado(config, fila, clase, archivo);
@@ -154,6 +171,16 @@ export function crearSincronizador({ topes = {} } = {}) {
           let soltar;
           try { soltar = apartarRecurso(fila, clase, archivo); } catch { continue; }
           try {
+            // Ya guardado: un enlace, sin bajar nada.
+            if (reusable && enlazarDesdeAlmacen(academiaDir, reusable, `${destino}.drive.part`)) {
+              try {
+                const bytes = statSync(`${destino}.drive.part`).size;
+                await aceptarRecurso(db, config, { fila, clase, archivo, parcial: `${destino}.drive.part`, huella: reusable, bytes, escribir: ctx.escribir });
+                informe.completados += 1;
+                informe.reusados = (informe.reusados ?? 0) + 1;
+                continue;
+              } catch { /* se baja como siempre */ }
+            }
             let listo = false;
             let ultimo = null;
             for (const c of (d?.sha256 ? lista : lista.slice(0, 1))) {
@@ -167,6 +194,7 @@ export function crearSincronizador({ topes = {} } = {}) {
               informe.bytes += b.bytes ?? 0;
               if (!b.ok) { ultimo = b.motivo; if (b.motivo === 'sin_espacio_disco') break; continue; }
               if (d?.sha256 && b.huella !== d.sha256) { ultimo = DISTINTO[clase]; continue; }
+              anotarDrive(academiaDir, claveDrive(c.id, c.modificado), b.huella);
               try {
                 await aceptarRecurso(db, config, { fila, clase, archivo, parcial: `${destino}.drive.part`, huella: b.huella, bytes: b.bytes, escribir: ctx.escribir });
                 listo = true;

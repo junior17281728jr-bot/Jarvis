@@ -18,6 +18,7 @@ import { auditar } from '../cuentas/usuarios.js';
 import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, clipsDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS } from './formato.js';
 import { espacioLibre } from './espacio.js';
 import { datosMp4 } from './mp4.js';
+import { enAlmacen, enlazarDesdeAlmacen, guardarEnAlmacen, indexarVersiones } from './almacen.js';
 
 const ahora = () => new Date().toISOString();
 export const AJUSTE_ACTIVO = 'academia.paquete_activo';
@@ -362,7 +363,13 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
   const motivo = r.revisar ? r.revisar(parcial, archivo) : null;
   if (motivo) throw new ErrorHttp(422, motivo);
   if (existsSync(destino)) throw new ErrorHttp(409, 'ya_hay_otra_en_marcha');
+  // 0.12.1: si ese mismo contenido ya está guardado (de otra versión), el «.part» pasa a ser un enlace a ese: una sola copia.
+  const academia = carpetaAcademia(config);
+  if (enAlmacen(academia, huella)) {
+    try { if (statSync(parcial).ino !== statSync(enAlmacen(academia, huella)).ino) enlazarDesdeAlmacen(academia, huella, parcial); } catch { /* queda su copia */ }
+  }
   renameSync(parcial, destino);
+  guardarEnAlmacen(academia, destino, huella);
   const faltan = figurasQueFaltan(config, fila);
   if (!faltan.length && fila.estado !== 'listo') {
     await escribir(() => {
@@ -388,6 +395,24 @@ export async function subirRecurso(db, config, { clase, paqueteId, archivo, req,
   const tope = topeDe(clase, archivo);
   if (Number.isFinite(largo) && largo > tope) throw new ErrorHttp(413, 'demasiado_grande');
   mkdirSync(dirname(destino), { recursive: true }); // las versiones de antes no tienen la carpeta «audio», «paginas» ni «video»
+  // 0.12.1: si el paquete dice su sha256 y ese contenido ya está guardado (otra versión), se enlaza sin recibir nada.
+  const d = declarado(config, fila, clase, archivo);
+  if (d?.sha256) {
+    const academia = carpetaAcademia(config);
+    if (!enAlmacen(academia, d.sha256)) indexarVersiones(academia, huellaDeArchivo);
+    const ya = enAlmacen(academia, d.sha256);
+    if (ya) {
+      const soltarYa = apartarRecurso(fila, clase, archivo);
+      try {
+        const parcial = `${destino}.part`;
+        if (enlazarDesdeAlmacen(academia, d.sha256, parcial)) {
+          req.resume(); // lo que mande el pedido no hace falta
+          const res = await aceptarRecurso(db, config, { fila, clase, archivo, parcial, huella: d.sha256, bytes: statSync(parcial).size, usuarioId });
+          return { ya: false, reusado: true, ...res, paquete: vista(db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(fila.id)) };
+        }
+      } finally { soltarYa(); }
+    }
+  }
   // 0.12.1: un video grande solo si el disco tiene el doble libre (con el largo que dice el pedido; si no, con el tope).
   if (r.espacio) revisarEspacio(dirname(destino), Number.isFinite(largo) && largo > 0 ? largo : tope, { libre: config?.espacioLibre ?? espacioLibre });
   const soltar = apartarRecurso(fila, clase, archivo);

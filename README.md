@@ -710,8 +710,13 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **Cómo exportar el mp4** para que suene en el iPhone: H.264 (perfil main o high) + AAC, `yuv420p`, 1280×720, `+faststart`
   (el índice al principio: así empieza enseguida y se puede saltar sin bajarlo entero). Por ejemplo:
   `ffmpeg -i entrada.mov -c:v libx264 -profile:v high -pix_fmt yuv420p -crf 23 -c:a aac -b:a 128k -movflags +faststart video-materia-01.mp4`.
-- Cada versión nueva del JSON es una carpeta nueva: el mp4 se vuelve a bajar en ella (y la vieja queda: nunca se borra nada).
-  Con videos de 60–90 MB, conviene mirar el disco de vez en cuando.
+- **Cada archivo se guarda y se baja una sola vez** (`src/academia/almacen.js`): cada versión nueva del JSON es una carpeta
+  nueva, pero una figura, mp3, mp4, clip o página que ya está guardada (por el `sha256` que dice el paquete, o por ser el mismo
+  archivo de Drive —su id y su fecha en la lista— que la vez anterior) no se vuelve a bajar: la carpeta de la versión nueva
+  recibe un **enlace duro** al mismo archivo (`academia/almacen/<sha256>` lleva otro). Si llega igual (sin huella conocida,
+  o subido a mano sin `sha256`), al aceptarlo se cambia por un enlace al que ya estaba: el disco guarda una sola copia. Subido
+  a mano con `sha256`, ni se recibe. Los archivos de versiones de antes se indexan una vez (su huella, leída por partes).
+  Nunca se borra nada y cada versión lo sirve igual. Si el disco no permite enlaces duros, queda una copia por versión.
 - **El clip de una tarjeta** (opcional): `"clip": { "archivo": "clip-motor.mp4", "poster": "clip-motor.jpg" (opcional), "alt": "…",
   "sha256": "…" (opcional) }` en una sección `tarjeta` (de un tema, de su reexplicación o de lo extra): un ejemplo en video que
   va con el texto de la tarjeta. MP4 corto (**≤ 8 s, ≤ 600 KB, 720p o 540p**), en bucle; el poster hasta 1 MB. Al subirlo (a mano
