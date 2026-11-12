@@ -55,6 +55,10 @@ export function pantallaIaDemo(d, h) {
       tu.pintarTarjetaIa({ demo: true, terminos: [], tipo: 'profundizar', porQue: t('demo.r.tutor_profundo'), ejemplo: t('demo.r.mini_ejemplo'), trampa: t('demo.r.mini_trampa'), recuerda: t('demo.r.recuerda', { correcta: q.correctaTexto }) }),
       tu.paraElExamen({ respondidas: q.numero ? [{ numero: q.numero, enunciado: q.enunciado, respuesta: q.correctaTexto }] : [], otras: ['2', '3'], tema: d.tema }),
       tu.pintarBasica({ recuerda: d.basica.tarjeta?.recuerda ?? null, sencilla: d.basica.sencilla ? [d.basica.sencilla] : [], reexplicacion: [] })),
+    // H: la pista después de un error en la práctica y «Ver en la clase».
+    seccion(t('demo.tutor.h_titulo'), el('p', { class: 'suave chica', texto: t('demo.tutor.h') }),
+      el('div', { class: 'tutor-pista' }, el('p', { class: 'con-icono' }, icono('bombilla', 'icono chico'), talCual('span', t('demo.r.recuerda', { correcta: q.correctaTexto })), tu.insigniaIa()),
+        el('a', { class: 'enlace-fuerte chica', href: '#ia-demo', texto: t('tutor.h.ver_clase', { titulo: d.tarjetas?.[0]?.titulo ?? d.tema }) }))),
     seccion(t('tutor.o.titulo'), el('p', { class: 'suave chica', texto: t('tutor.o.linea') }),
       tu.pintarPersonalizadas({ clave: 'demo', preguntas: [{ i: 0, enunciado: t('demo.r.personal'), opciones: [q.correctaTexto, t('demo.r.personal_mala1'), t('demo.r.personal_mala2')], entrena: q.numero ?? '1' }] })),
     seccion(t('tutor.memoria.titulo'), tu.pintarMemoria([

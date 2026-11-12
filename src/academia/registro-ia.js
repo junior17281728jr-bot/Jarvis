@@ -15,10 +15,13 @@
 //   ocultar(db, clave, oculto = true)    → { clave, oculto }   «ocultar» uno malo: se MARCA (academia.ia_oculto.<…> = su
 //                                          fecha); leerGuardado deja de mostrarlo a los alumnos. Nunca se borra.
 //   contarReuso(db, clave)               → las veces que lo guardado sirvió a otro pedido (lo llama el instructor).
+//   analisisTestGuide(db, paquete, materia, tema) → el «Análisis del Test Guide» de un tema (sin IA): [{ numero, tarjeta,
+//                                          tarjetaTitulo, trampas, dificultad: { n, malPct } | null }] (dificultad = lo que
+//                                          fallan TODOS los alumnos en su primera y demás respuestas, sin nombres).
 //
 // Los textos son lo que escribió la IA ya revisado (nunca lo que se le preguntó ni el nombre del alumno).
 import { CLAVE_GUARDADO } from './instructor-ia.js';
-import { memoriaTutor, prioridad, preguntasDeMateria } from './tutor.js';
+import { memoriaTutor, prioridad, preguntasDeMateria, analisisTema, dificultades } from './tutor.js';
 import { leerPuntero, proximoTema } from './preparar-clase.js';
 
 export const TIPOS_COMPARTIDOS = Object.freeze({ explica: 'explicacion', miniclase: 'miniclase', tarjeta: 'explicar_mejor', profundiza: 'profundizar', personal: 'pregunta_personalizada' });
@@ -123,4 +126,11 @@ export function metaDe(db, usuarioId, paquete, ahora = Date.now()) {
     meta: 'tutor.meta.texto', foco: paquete ? prioridad(db, usuarioId, paquete, ahora) : null,
     proximaClase: sigue ? { ...sigue, preguntasMateria: preguntasDeMateria(paquete, sigue.materia), preparada: pt?.tema === `${sigue.materia}/${sigue.tema}` ? { dia: pt.dia, clave: pt.clave } : null } : null,
   };
+}
+
+export function analisisTestGuide(db, paquete, materia, tema) {
+  const a = analisisTema(paquete, materia, tema);
+  if (!a) return null;
+  const dif = dificultades(db, a.preguntas.map(x => x.id));
+  return { materia, tema, titulo: a.titulo, numero: a.numero, preguntas: a.preguntas.map(x => ({ numero: x.numero, tarjeta: x.tarjeta, tarjetaTitulo: x.tarjetaTitulo, trampas: x.trampas, dificultad: dif.get(x.id) ?? null })) };
 }

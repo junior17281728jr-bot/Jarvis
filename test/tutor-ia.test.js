@@ -12,7 +12,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conInstructor, pedir, pedidosIa, cuerpoDe, datosDe, sistemaDe, DE, NOMBRES, mala, nuevo, MUESTRA } from './instructor-ia-base.js';
 import { revisarRespuesta, leerGuardado } from '../src/academia/instructor-ia.js';
-import { biblioteca, ocultar, generadoPara, metaDe } from '../src/academia/registro-ia.js';
+import { biblioteca, ocultar, generadoPara, metaDe, analisisTestGuide } from '../src/academia/registro-ia.js';
+import { anotarIntento } from '../src/academia/tutor.js';
+import { darProfesor } from '../src/academia/profesor.js';
+import { paqueteActivo } from '../src/academia/paquetes.js';
 import { memoriaTutor, coberturaTestGuide, preferencias } from '../src/academia/tutor.js';
 import { guardarConfigIa } from '../src/ia/config.js';
 // Sin «Preparar la próxima clase» (tiene su prueba): así la fila solo tiene lo que estas pruebas piden.
@@ -50,6 +53,17 @@ test('(N) sin IA para él: nada de IA (tutor, tarjeta, personalizadas, pista) y 
     assert.equal(ex.datos.examenIa, null, '«¿Tomo el examen?» sin IA sí, el porqué con IA no');
     assert.equal(c.falso.peticiones.length, 0);
   }, { encender: false });
+});
+
+test('(N) con la IA encendida pero SIN el permiso de IA del dueño para esa cuenta: tampoco nada de IA', async () => {
+  await conInstructor(async c => {
+    await temaEntero(c, c.z);
+    assert.deepEqual((await pedir(c.base, 'GET', '/api/academia/tutor', { galleta: c.z })).datos, { ia: false });
+    const t = await pedir(c.base, 'POST', '/api/academia/tutor/tarjeta', { galleta: c.z, datos: { ...TEMA, tarjeta: 2, tipo: 'profundizar', ia: true } });
+    assert.equal(t.datos.ia, null);
+    assert.equal((await pedir(c.base, 'POST', '/api/academia/tutor/personalizadas', { galleta: c.z, datos: TEMA })).datos.ia, null);
+    assert.equal(c.falso.peticiones.length, 0);
+  }, { permitir: false });
 });
 
 test('(T, G, M, S, U) memoria del tutor, primer mensaje del Profesor y «¿Tomo el examen?» sin llamar a la IA', async () => {
@@ -92,6 +106,14 @@ test('(T, G, M, S, U) memoria del tutor, primer mensaje del Profesor y «¿Tomo 
     assert.equal(cont.cobertura.preguntas, 10);
     assert.deepEqual(cont.cobertura, coberturaTestGuide(null) && cont.cobertura);
     assert.ok(cont.cobertura.cubiertas + cont.cobertura.materias[0].faltan.length === 10);
+    // L: la dificultad (lo que fallan todos) en el análisis para el administrador.
+    const an = analisisTestGuide(c.db, paqueteActivo(c.db, c.config), TEMA.materia, TEMA.tema);
+    assert.equal(an.preguntas.length, 5);
+    assert.ok(an.preguntas.every(x => x.dificultad?.malPct === 100 && x.dificultad.n === 3), JSON.stringify(an.preguntas[0]));
+    // T: un examen de la materia (también el del reloj) deja su fila «examen».
+    const ex = c.db.prepare("INSERT INTO academia_intentos (usuario_id, tipo, materia, total, respondidas, aciertos, aprobado, empezado_en, terminado_en) VALUES (?, 'examen', 'factores_humanos', 10, 10, 9, 1, '2026-11-10T14:00:00Z', '2026-11-10T14:20:00Z')").run(z).lastInsertRowid;
+    const fila = anotarIntento(c.db, z, paqueteActivo(c.db, c.config), Number(ex));
+    assert.deepEqual([fila.tipo, fila.pct, fila.minutos, fila.conclusion.clave], ['examen', 90, 20, 'examen_bien']);
     // El registro: meta, foco y próxima clase.
     const m = metaDe(c.db, z, null);
     assert.equal(m.meta, 'tutor.meta.texto');
@@ -145,6 +167,16 @@ test('(J, K, I) «Explícamelo mejor»: compartido, sin la respuesta del Test Gu
     // F: «Te lo expliqué de otra forma: …» en la tarjeta del tutor.
     const d = (await pedir(c.base, 'GET', '/api/academia/tutor', { galleta: c.z })).datos;
     assert.ok(d.novedades.some(n => n.tipo === 'explicamos' && n.href.startsWith('#tema/factores_humanos/muestra-hipoxia/1')), JSON.stringify(d.novedades));
+    // G: «Explícame la clase de <tema>»: el chat lleva ESE tema como contexto (y cabe en lo que se puede mandar).
+    darProfesor(c.db, idDe(c, 'zoelia'), true);
+    const chat = await pedir(c.base, 'POST', '/api/academia/profesor', { galleta: c.z, datos: { mensaje: 'Explícame la clase de La hipoxia a mi manera', ...TEMA } });
+    assert.equal(chat.codigo, 200, JSON.stringify(chat.datos));
+    assert.equal(chat.datos.ia.estado, 'pendiente');
+    const tc = JSON.parse(c.db.prepare('SELECT datos FROM tareas WHERE id = ?').get(chat.datos.ia.tarea).datos);
+    const dc = datosDe(tc.texto);
+    assert.equal(dc.material.tema, 'La hipoxia (muestra)');
+    assert.ok(Array.isArray(dc.alumno.memoria) && dc.alumno.memoria.length >= 1, 'T: lo que recuerda va en el pedido');
+    for (const n of NOMBRES) assert.ok(!JSON.stringify(tc).toLowerCase().includes(n));
     // I: las señales (solo números).
     for (const tipo of ['entendi', 'duda', 'duda', 'duda', 'ejemplo', 'ejemplo']) assert.equal((await pedir(c.base, 'POST', '/api/academia/tutor/senal', { galleta: c.z, datos: { tipo } })).codigo, 200);
     const a = (await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${idDe(c, 'zoelia')}/tutor`, { galleta: c.admin })).datos;

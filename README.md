@@ -709,7 +709,7 @@ visible** (las rutas devuelven `ia: false` / `ia: null` y solo queda lo gratis, 
 en masa y nada llama a la IA si nadie estudia.
 - **Sin IA (para todos)** — `src/academia/tutor.js`:
   - **Análisis del Test Guide** por tema (una vez por versión del paquete, en memoria): cada pregunta del tema, la
-    tarjeta que la explica, sus trampas típicas (las ideas equivocadas del paquete) y su dificultad (lo que fallan todos).
+    tarjeta que la explica, sus trampas típicas (las ideas equivocadas del paquete) y su dificultad (lo que fallan todos; para el administrador, `analisisTestGuide` en `src/academia/registro-ia.js`).
     **Cobertura** en Contenido: «32/32 preguntas del Test Guide cubiertas» y cuáles faltan (la materia 1 de verdad: 32/32).
   - **Peso en el examen**: «Mi repaso» (y con él la preparación y el plan de hoy) pone primero lo que falla y más sale
     en el Test Guide: «Empieza por aquí: lo fallaste y salen 3 preguntas… Todo es importante, pero esto pesa más».

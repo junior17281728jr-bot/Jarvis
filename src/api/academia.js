@@ -241,7 +241,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
       ? entregarExamen(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() })
       : terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() });
     // 0.12.9 (T): la memoria del tutor (sin IA; una fila por intento terminado), ANTES de preparar la próxima clase.
-    try { anotarIntento(db, usuario.id, activo(db), fin.id, reloj()); } catch { /* nunca molesta al alumno */ }
+    try { anotarIntento(db, usuario.id, activo(db), Number(parametros.id), reloj()); } catch { /* nunca molesta al alumno */ }
     finDeSesion(db, usuario, 'terminar'); // 0.12.7: preparar su próxima clase (si hace falta)
     return { codigo: 200, datos: fin };
   });
