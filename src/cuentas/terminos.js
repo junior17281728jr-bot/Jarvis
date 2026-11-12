@@ -1,9 +1,14 @@
 // Academia 0.9.2: «Términos de uso y aviso» y el nombre legal de cada persona. Sin cambio de base (todo en «ajustes»).
 //  - El texto va por versiones (academia.terminos.v<N>, nunca se pisa una; academia.terminos.version dice cuál está en
-//    uso). Sin nada guardado, la versión 1 es el texto de abajo. Publicar uno nuevo crea la versión siguiente y todos
-//    tienen que aceptarlo otra vez.
+//    uso). Sin nada guardado, las versiones son las del código (src/cuentas/textos-legales.js) y la que está en uso es la
+//    última de ellas. Publicar uno nuevo crea la versión siguiente y todos tienen que aceptarlo otra vez.
+//  - 0.12.3: el Aviso de privacidad trae su versión 2 en el código (los comprobantes ya no se borran a los 30 días). La 1
+//    sigue igual, para las firmas que la aceptaron. Si el administrador ya había publicado textos suyos, mandan esos
+//    (nada se pisa): la versión del código solo se usa donde no hay nada guardado.
 //  - Antes de aceptar, la persona escribe su Nombre y Apellido de verdad (cuenta.nombre_legal.<id>). Si el administrador
 //    ya lo puso, se le muestra para confirmar. Una vez que la persona lo confirmó, solo el administrador lo cambia.
+//    0.12.3: al confirmarlo la primera vez, un alumno queda con ese nombre también en la app (nombre_visible); desde ahí
+//    tampoco lo cambia él en Configuración (solo el administrador: Usuarios o la ficha del alumno).
 //  - Cada aceptación queda como una firma (cuenta.terminos.<id>: versión, nombre tal como firmó, fecha y hora) y en la
 //    auditoría («terminos_aceptados»).
 // El texto no nombra ninguna escuela, autoridad, editorial ni empresa (pedido de Junior).
@@ -14,9 +19,9 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from './usuarios.js';
 
-import { TERMINOS_V1, PRIVACIDAD_V1, REEMBOLSO } from './textos-legales.js';
+import { TERMINOS_V1, PRIVACIDAD_V1, PRIVACIDAD_V2, REEMBOLSO } from './textos-legales.js';
 
-export { TERMINOS_V1, PRIVACIDAD_V1, REEMBOLSO };
+export { TERMINOS_V1, PRIVACIDAD_V1, PRIVACIDAD_V2, REEMBOLSO };
 
 // 0.9.2: la declaración que va justo antes de «Leí y acepto» (es parte de lo que se firma).
 export const DECLARACION = 'Declaro que los datos que escribí son verdaderos y que esta firma es mía. Si uso un nombre o una firma que no son míos, la responsabilidad es solo mía y el administrador puede bloquear mi cuenta.';
@@ -49,18 +54,21 @@ const ahora = () => new Date().toISOString();
 // ---------- Los textos (por versiones) ----------
 // 'terminos' (Términos de uso y aviso) y 'privacidad' (Aviso de privacidad). Cada uno con su versión; firmar acepta los
 // dos en sus versiones de ese momento.
-const DOCS = { terminos: { clave: 'academia.terminos', v1: TERMINOS_V1 }, privacidad: { clave: 'academia.privacidad', v1: PRIVACIDAD_V1 } };
+// defectos: las versiones que trae el código (la 1, la 2…), nunca cambian una vez publicadas.
+const DOCS = { terminos: { clave: 'academia.terminos', defectos: [TERMINOS_V1] }, privacidad: { clave: 'academia.privacidad', defectos: [PRIVACIDAD_V1, PRIVACIDAD_V2] } };
 export const DOCUMENTOS = Object.freeze(Object.keys(DOCS));
 const docDe = doc => { if (!DOCS[doc]) throw new ErrorHttp(400, 'terminos_no_validos'); return DOCS[doc]; };
 export function versionDoc(db, doc) {
-  const v = Number(leer(db, `${docDe(doc).clave}.version`));
-  return Number.isSafeInteger(v) && v >= 1 ? v : 1;
+  const d = docDe(doc);
+  const v = Number(leer(db, `${d.clave}.version`));
+  return Number.isSafeInteger(v) && v >= 1 ? v : d.defectos.length;
 }
 export function docVersion(db, doc, version) {
   const d = docDe(doc);
   const t = json(leer(db, `${d.clave}.v${Number(version)}`));
   if (t && Array.isArray(t.secciones)) return { doc, version: Number(version), secciones: t.secciones, publicadoEn: t.publicadoEn ?? null };
-  return Number(version) === 1 ? { doc, version: 1, secciones: d.v1.map(x => ({ ...x })), publicadoEn: null } : null;
+  const n = Number(version);
+  return Number.isSafeInteger(n) && n >= 1 && n <= d.defectos.length ? { doc, version: n, secciones: d.defectos[n - 1].map(x => ({ ...x })), publicadoEn: null } : null;
 }
 export const docActual = (db, doc) => docVersion(db, doc, versionDoc(db, doc));
 export const versionTerminos = db => versionDoc(db, 'terminos');
@@ -244,6 +252,13 @@ export function aceptarTerminos(db, usuarioId, datos, { config, ip = null, naveg
       legal = antes;
     } else {
       legal = ponerNombreLegal(db, id, { nombre, apellido }, { por: 'persona' });
+      // 0.12.3: la primera vez que un alumno confirma su Nombre y Apellido, ese es también su nombre en la app (el que ve
+      // el administrador en Usuarios, su ficha y los reportes). Desde ahí solo el administrador lo cambia.
+      const cuenta = db.prepare('SELECT rol, nombre_visible FROM usuarios WHERE id = ?').get(id);
+      if (cuenta?.rol === 'usuario' && cuenta.nombre_visible !== legal.completo) {
+        db.prepare('UPDATE usuarios SET nombre_visible = ? WHERE id = ?').run(legal.completo, id);
+        auditar(db, { usuarioId: id, accion: 'nombre_visible_cambiado', detalle: legal.completo });
+      }
     }
     // La fecha de nacimiento firmada no cambia sola (si está mal, la corrige el administrador).
     const nacAntes = nacimientoGuardado(db, id);

@@ -2,7 +2,9 @@
 //  - Ver cómo están las copias: cualquier administrador, desde cualquier entrada (solo lee filas de la base y UNA medida
 //    del disco: nunca mira la carpeta de las copias).
 //  - «Hacer una copia ahora»: la pone en la fila del trabajador (nunca la hace el servidor web).
-//  - La clave de recuperación: solo el dueño, desde su cuenta de Tailscale (soloDueno). «Crear» es la ÚNICA respuesta que
+//  - La clave de recuperación: el administrador con su sesión (0.12.3: también por el enlace público; antes solo el dueño
+//    desde su cuenta de Tailscale). Crear una pide su contraseña otra vez; ponerla en uso deja un aviso y una línea en la
+//    auditoría (nunca la clave). «Crear» es la ÚNICA respuesta que
 //    lleva la clave (una vez, sin guardar en caché). Confirmar y comprobar reciben SOLO el «verificador» que calcula la
 //    página: el texto de la clave nunca vuelve al servidor. Estas rutas atrapan sus propios errores y anotan solo un
 //    código corto (nunca el pedido ni el error entero).
@@ -12,7 +14,7 @@ import { Limitador } from '../nucleo/limites.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
-import { duenoDeTailscale } from '../cuentas/tailscale.js';
+import { anotarCambioAdmin } from '../cuentas/confirmar.js';
 import { ErrorCopias } from '../copias/formato.js';
 import { estadoCopias, crearClavePendiente, confirmarClave, comprobarClave, tareaDeCopiaViva, llaveActiva, planDeDisco, ajustesCopias, selloLegible } from '../copias/estado.js';
 import { estadoTelegram, canalActivo } from '../canales/canales.js';
@@ -91,8 +93,9 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
       telegram: t ? { listo: t.listo, motivo: t.motivo, chat: t.chat, bot: t.bot } : null, modoSeguro, trabajador: trabajadorEncendido(),
       huellaLlave: huellaDeLaLlave(),
     });
-    const dueno = duenoDeTailscale(db, req, usuario);
-    return { ...e, puede: { ...e.puede, crearClave: dueno.si, motivoNoClave: dueno.si ? null : dueno.motivo } };
+    // 0.12.3: cualquier administrador con su sesión (crear una pide la contraseña otra vez).
+    const admin = usuario?.rol === 'admin';
+    return { ...e, puede: { ...e.puede, crearClave: admin, motivoNoClave: admin ? null : 'solo_admin' } };
   }
 
   rutas.agregar('GET', '/api/admin/copias', ({ db, req, usuario }) => ({ codigo: 200, datos: estado(db, req, usuario) }), { admin: true });
@@ -116,9 +119,10 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
     return { codigo: 202, datos: { tarea: { id, estado: 'lista' } } };
   }, { admin: true });
 
-  rutas.agregar('POST', '/api/admin/copias/clave/nueva', ({ db, usuario }) => {
+  rutas.agregar('POST', '/api/admin/copias/clave/nueva', async ({ db, usuario, confirmar }) => {
     try {
       contar(topes.clave, usuario);
+      await confirmar();
       const r = crearClavePendiente(db, { config, usuarioId: usuario.id });
       return { codigo: 201, datos: { clave: r.clave, huella: r.huella, expira: r.expira }, cabeceras: SIN_CACHE };
     } catch (error) {
@@ -131,6 +135,7 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
       const verificador = await soloVerificador(req);
       contar(topes.clave, usuario);
       const r = confirmarClave(db, { verificador, usuarioId: usuario.id });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'clave_copias' });
       return { codigo: 200, datos: { activa: { huella: r.huella, desde: r.desde } }, cabeceras: SIN_CACHE };
     } catch (error) {
       throw errorDeClave(error, registro);

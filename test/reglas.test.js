@@ -25,13 +25,10 @@ function archivos(dir, filtro = () => true) {
 const codigo = archivos(SRC, p => /\.(js|mjs|cjs)$/.test(p));
 
 test('el programa nunca borra archivos ni carpetas de datos', () => {
+  // 0.12.3: sin excepciones. La de la 0.11.0 (la imagen del comprobante de pago a los 30 días, src/academia/recibos.js)
+  // se quitó: los comprobantes se guardan para siempre.
+  assert.ok(!existsSync(join(SRC, 'academia', 'recibos.js')), 'ya no existe el borrado de comprobantes');
   for (const f of codigo) {
-    // 0.11.0: la única excepción: la imagen del comprobante de pago se borra a los 30 días (lo promete el Aviso de
-    // privacidad); el registro del pago queda. Solo ese archivo, y solo con unlinkSync.
-    if (relative(SRC, f) === join('academia', 'recibos.js')) {
-      assert.doesNotMatch(readFileSync(f, 'utf8'), /\b(rmSync|rmdirSync|limpiar)\b|\brm\(|\bunlink\(/);
-      continue;
-    }
     const texto = readFileSync(f, 'utf8');
     assert.doesNotMatch(texto, /\b(rmSync|rmdirSync|unlinkSync|limpiar)\b|\brm\(|\bunlink\(/, `${relative(RAIZ, f)} contiene una orden de borrado`);
   }
@@ -407,14 +404,21 @@ test('el servidor web nunca carga el camino PAGADO de la IA (src/ia/cliente.js):
   assert.doesNotMatch(probar, /\breservar\s*\(|\bliquidar\s*\(|\/v1\/messages['"`]|\/v1\/responses/, 'la prueba gratis no gasta');
 });
 
-test('las rutas que cambian claves o lo que gasta piden la cuenta de Tailscale del dueño, y el detalle del gasto la red de Tailscale', () => {
+// 0.12.3: ya nada es «solo desde Tailscale» para el administrador (pedido del dueño): toda ruta de claves es de
+// administrador; las que cambian una clave piden la contraseña otra vez (confirmar()) y dejan un aviso (anotarCambioAdmin).
+test('las rutas de claves son de administrador; las que cambian una clave piden la contraseña otra vez y dejan un aviso', () => {
   const claves = leer(de('api', 'claves.js'));
-  const rutas = [...claves.matchAll(/rutas\.agregar\('(GET|POST)', '([^']+)'[\s\S]*?\}, (\{[^}]*\})\);/g)];
+  const rutas = [...claves.matchAll(/rutas\.agregar\('(GET|POST)', '([^']+)'([\s\S]*?)\}, (\{[^}]*\})\);/g)];
   assert.ok(rutas.length >= 4, 'no se encontraron las rutas de claves');
-  for (const [, metodo, ruta, opciones] of rutas) assert.match(opciones, /admin: true, soloDueno: true/, `${metodo} ${ruta}`);
+  for (const [, metodo, ruta, , opciones] of rutas) assert.match(opciones, /admin: true/, `${metodo} ${ruta}`);
+  for (const [, metodo, ruta, cuerpo] of rutas.filter(([, m, r]) => m === 'POST' && (r === '/api/admin/claves' || r.endsWith('/activa')))) {
+    assert.match(cuerpo, /await confirmar\(\)/, `${metodo} ${ruta} pide la contraseña otra vez`);
+    assert.match(cuerpo, /anotarCambioAdmin\(/, `${metodo} ${ruta} deja un aviso`);
+  }
+  assert.doesNotMatch(leer(join(SRC, 'app.js')), /solo_desde_tailnet/, 'ningún «solo desde Tailscale» general');
   const ia = leer(de('api', 'ia.js'));
   assert.match(ia, /'\/api\/admin\/ia\/ajustes'[\s\S]*?\{ admin: true, soloDueno: true \}\);/);
-  assert.match(ia, /'\/api\/admin\/ia\/consumo'[\s\S]*?\{ admin: true, soloTailnet: true \}\);/);
+  assert.match(ia, /'\/api\/admin\/ia\/consumo'[\s\S]*?\{ admin: true \}\);/);
   // Apagar sí se puede desde cualquier entrada (nunca gasta).
   assert.match(ia, /'\/api\/admin\/ia\/apagar'[\s\S]*?\{ admin: true \}\);/);
   // Encender la IA desde la consola no existe (gastar se decide en la pantalla, con su aviso).

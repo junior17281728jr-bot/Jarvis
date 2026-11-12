@@ -1,7 +1,8 @@
-// Rutas de Administrador → Claves (fase 1, parte d). TODAS son solo para el administrador y solo desde su propia cuenta
-// de Tailscale, por el enlace https (soloDueno): ni por el enlace público, ni desde otro equipo de la red, ni por una
-// conexión directa a la 100.x. La parte e agrega aquí el token del bot de Telegram (mismo almacén, mismas reglas; unir
-// el chat y el mensaje de prueba están en src/api/canales.js).
+// Rutas de Administrador → Claves (fase 1, parte d). TODAS son solo para el administrador. 0.12.3 (pedido del dueño): con
+// su sesión, también por el enlace público (antes, solo desde su cuenta de Tailscale). Pegar una clave (o el token del bot)
+// y activarla o desactivarla pide su contraseña otra vez en ese pedido (confirmar(), src/cuentas/confirmar.js; desde su
+// cuenta de Tailscale no) y deja un aviso y una línea en la auditoría (nunca la clave). La parte e agrega aquí el token
+// del bot de Telegram (mismo almacén, mismas reglas; unir el chat y el mensaje de prueba están en src/api/canales.js).
 //  - Una clave pegada se revisa (las de administrador de la cuenta y las de la suscripción nunca se guardan), se cifra,
 //    se guarda (la anterior queda «reemplazada», nunca se borra) y se prueba GRATIS enseguida.
 //  - Lo que vuelve es solo lo público (los últimos 4 caracteres, el estado, la última prueba): nunca la clave.
@@ -18,6 +19,7 @@ import { apagarSiNoQuedaProveedor, leerConfigIa } from '../ia/config.js';
 import { loginDeTailscale } from '../cuentas/tailscale.js';
 import { definicionUso } from '../claves/usos.js';
 import { estadoTelegram, trasCambiarToken } from '../canales/canales.js';
+import { anotarCambioAdmin } from '../cuentas/confirmar.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 
@@ -52,7 +54,7 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
     };
   }, { admin: true, soloDueno: true });
 
-  rutas.agregar('POST', '/api/admin/claves', async ({ db, req, usuario }) => {
+  rutas.agregar('POST', '/api/admin/claves', async ({ db, req, usuario, confirmar }) => {
     necesitaConfig();
     const datos = await leerJson(req);
     contar(usuario);
@@ -60,7 +62,9 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
     let valor = textoDe(datos, 'valor');
     let guardada;
     try {
+      const confirmado = await confirmar();
       guardada = guardarSecreto(db, config, { uso, valor, usuarioId: usuario.id, trasCambio: trasCambio(usuario) });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: definicionUso(uso)?.grupo === 'avisos' ? 'token_telegram' : 'clave_ia', detalle: { uso }, como: confirmado.como });
     } finally {
       valor = null;
       datos.valor = null;
@@ -79,13 +83,15 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
     return { codigo: 200, datos: { secreto: r.secreto, prueba: { motivo: r.motivo }, reanudada: r.reanudada, iaEncendida: leerConfigIa(db).encendida } };
   }, { admin: true, soloDueno: true });
 
-  rutas.agregar('POST', '/api/admin/claves/:id/activa', async ({ db, req, usuario, parametros }) => {
+  rutas.agregar('POST', '/api/admin/claves/:id/activa', async ({ db, req, usuario, parametros, confirmar }) => {
     necesitaConfig();
     const datos = await leerJson(req);
     if (typeof datos.activa !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     contar(usuario);
+    const confirmado = await confirmar();
     const cambiar = datos.activa ? activarSecreto : desactivarSecreto;
     const r = cambiar(db, config, { id: parametros.id, usuarioId: usuario.id, trasCambio: trasCambio(usuario) });
+    anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'clave_ia_activa', detalle: { uso: r.secreto?.uso ?? null, activa: datos.activa ? 1 : 0 }, como: confirmado.como });
     return { codigo: 200, datos: { secreto: r.secreto, iaApagada: r.efecto?.iaApagada === true } };
   }, { admin: true, soloDueno: true });
 }

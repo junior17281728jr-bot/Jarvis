@@ -44,7 +44,8 @@ function png(ancho = 240, alto = 80, { ruido = false } = {}) {
 const FIRMA_PNG = png();
 const FIRMA = `data:image/png;base64,${FIRMA_PNG.toString('base64')}`;
 // Lo demás que se firma (0.9.2, informe legal): privacidad, fecha de nacimiento (mayor de edad) y el permiso de IA.
-const FIRMAR = { versionPrivacidad: 1, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
+// 0.12.3: el Aviso de privacidad en uso es la versión 2 (la 1 queda para las firmas de antes).
+const FIRMAR = { versionPrivacidad: 2, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
 const mala = id => ['A', 'B', 'C'].find(l => l !== DE(id).original.correcta);
 
 async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerpo } = {}) {
@@ -117,7 +118,7 @@ test('términos: sin aceptar, /api/yo lo dice; se firma con Nombre y Apellido de
     assert.equal(ok.datos.estado.ultima.firmado, 'Ana María Pérez-Gómez');
     assert.equal(ok.datos.estado.ultima.version, 1);
     assert.ok(ok.datos.estado.ultima.en);
-    assert.match(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'terminos_aceptados'").get().detalle, /^v1\/p1: Ana María Pérez-Gómez \(firma [0-9a-f]{12}\)$/);
+    assert.match(db.prepare("SELECT detalle FROM auditoria WHERE accion = 'terminos_aceptados'").get().detalle, /^v1\/p2: Ana María Pérez-Gómez \(firma [0-9a-f]{12}\)$/);
     // Ya confirmado: la persona no lo cambia (solo el administrador).
     // El administrador lo ve en la ficha y en las listas.
     const f = (await pedir(base, 'GET', `/api/admin/academia/alumnos/${ids.ana}/ficha`, { galleta: admin })).datos.alumno;
@@ -138,7 +139,7 @@ test('términos: sin aceptar, /api/yo lo dice; se firma con Nombre y Apellido de
     assert.equal((await aceptar(ana, { version: 2, nombre: 'Otra', apellido: 'Persona', acepto: true, firma: FIRMA, ...FIRMAR })).datos.error, 'nombre_legal_fijo');
     assert.equal((await aceptar(ana, { version: 2, nombre: 'Ana María', apellido: 'Pérez-Gómez', acepto: true, firma: FIRMA, ...FIRMAR })).datos.estado.pendiente, false);
     const adm = (await pedir(base, 'GET', '/api/admin/terminos', { galleta: admin })).datos;
-    assert.deepEqual([adm.terminos.version, adm.versiones.terminos.length, adm.privacidad.version, adm.aceptaron], [2, 2, 1, 1]);
+    assert.deepEqual([adm.terminos.version, adm.versiones.terminos.length, adm.privacidad.version, adm.aceptaron], [2, 2, 2, 1]); // 0.12.3: la privacidad en uso es la 2
     assert.equal((await pedir(base, 'GET', '/api/admin/terminos', { galleta: beto })).codigo, 403);
     // La versión 1 sigue guardada tal cual.
     assert.equal((await pedir(base, 'GET', '/api/terminos')).datos.terminos.secciones[0].titulo, '1. Uno');

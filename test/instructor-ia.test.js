@@ -133,9 +133,11 @@ test('la IA del instructor llega APAGADA, y solo el dueño (desde Tailscale, con
     assert.equal(sinIa.codigo, 409);
     assert.deepEqual(sinIa.datos.faltan, ['encendida']);
     guardarConfigIa(c.db, { encendida: true }, { config: c.config, usuarioId: c.adminId });
-    // Un alumno no puede; el administrador por el enlace público tampoco; un modelo que no es de la lista, tampoco.
+    // Un alumno no puede; un modelo que no es de la lista, tampoco. 0.12.3: el administrador por el enlace público, sí
+    // (con su sesión); apagarlo otra vez, también.
     assert.equal((await pedir(c.base, 'POST', '/api/admin/ia/ajustes', { galleta: c.z, datos: { instructorIa: true } })).codigo, 403);
-    assert.equal((await pedir(c.base, 'POST', '/api/admin/ia/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { instructorIa: true } })).codigo, 403);
+    assert.equal((await pedir(c.base, 'POST', '/api/admin/ia/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { instructorIa: true } })).codigo, 200);
+    assert.equal((await pedir(c.base, 'POST', '/api/admin/ia/ajustes', { galleta: c.admin, cabeceras: FUNNEL, datos: { instructorIa: false } })).codigo, 200);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/ia/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { instructorModelo: 'claude-opus-5-5' } })).codigo, 400);
     const r = await pedir(c.base, 'POST', '/api/admin/ia/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { instructorIa: true, instructorModelo: 'claude-haiku-5-5' } });
     assert.equal(r.codigo, 200);

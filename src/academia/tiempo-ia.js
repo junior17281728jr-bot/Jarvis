@@ -28,7 +28,8 @@ export const ESPERA_POR_DEFECTO = 'En revisión — la verificación puede tarda
 
 export const CONFIG_PAGOS = Object.freeze({
   minutosRegalo: 20, minutosPorUso: 1,
-  banco: 'Banco Popular', tipoCuenta: '', numero: '', titular: '', documento: '', instrucciones: '', espera: ESPERA_POR_DEFECTO,
+  // 0.12.3 (auditoría P2-2): sin banco por defecto (ni el nombre de ninguno); vacío queda vacío.
+  banco: '', tipoCuenta: '', numero: '', titular: '', documento: '', instrucciones: '', espera: ESPERA_POR_DEFECTO,
   paquetes: Object.freeze([]),
 });
 const texto = (v, max, d = '') => (typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, max) : d);
@@ -43,7 +44,7 @@ function normalizarPagos(v) {
     .filter(p => ID_PAQUETE.test(p.id) && p.minutos > 0 && p.precio);
   return {
     minutosRegalo: entero(x.minutosRegalo, 0, 100_000, d.minutosRegalo), minutosPorUso: entero(x.minutosPorUso, 1, 60, d.minutosPorUso),
-    banco: texto(x.banco, TEXTO_CORTO, d.banco) || d.banco, tipoCuenta: texto(x.tipoCuenta, TEXTO_CORTO), numero: texto(x.numero, 60), titular: texto(x.titular, TEXTO_CORTO),
+    banco: texto(x.banco, TEXTO_CORTO, d.banco), tipoCuenta: texto(x.tipoCuenta, TEXTO_CORTO), numero: texto(x.numero, 60), titular: texto(x.titular, TEXTO_CORTO),
     documento: texto(x.documento, 40), instrucciones: texto(x.instrucciones, TEXTO_LARGO), espera: texto(x.espera, 300) || d.espera,
     paquetes: [...new Map(paquetes.map(p => [p.id, p])).values()],
   };
@@ -52,14 +53,23 @@ export function leerConfigPagos(db) {
   try { return normalizarPagos(JSON.parse(leerAjuste(db, CLAVE_PAGOS) ?? 'null')); } catch { return normalizarPagos(null); }
 }
 // Solo el administrador (src/api/pagos.js). Un campo que no se manda queda como estaba.
-export function guardarConfigPagos(db, cambios) {
+// Revisa lo que llegó sin guardar nada (lanza ErrorHttp). 0.12.3: un paquete malo (por ejemplo la línea «350», sin
+// precio) dice CUÁL: 400 paquete_linea_no_valida { linea: n.º del paquete, desde 1 }; más de 8: paquetes_demasiados.
+export function revisarConfigPagos(cambios) {
   if (!cambios || typeof cambios !== 'object' || Array.isArray(cambios)) throw new ErrorHttp(400, 'datos_no_validos');
   const campos = ['minutosRegalo', 'minutosPorUso', 'banco', 'tipoCuenta', 'numero', 'titular', 'documento', 'instrucciones', 'espera', 'paquetes'];
   if (Object.keys(cambios).some(k => !campos.includes(k))) throw new ErrorHttp(400, 'datos_no_validos');
   if ('minutosRegalo' in cambios && entero(cambios.minutosRegalo, 0, 100_000, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
   if ('minutosPorUso' in cambios && entero(cambios.minutosPorUso, 1, 60, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
-  if ('paquetes' in cambios && (!Array.isArray(cambios.paquetes) || cambios.paquetes.length > 8
-    || cambios.paquetes.some(p => !ID_PAQUETE.test(String(p?.id ?? '')) || entero(p?.minutos, 1, 100_000, null) == null || !texto(p?.precio, 40)))) throw new ErrorHttp(400, 'paquete_pago_no_valido');
+  if ('paquetes' in cambios) {
+    if (!Array.isArray(cambios.paquetes)) throw new ErrorHttp(400, 'paquete_pago_no_valido');
+    if (cambios.paquetes.length > 8) throw new ErrorHttp(400, 'paquetes_demasiados');
+    const malo = cambios.paquetes.findIndex(p => !ID_PAQUETE.test(String(p?.id ?? '')) || entero(p?.minutos, 1, 100_000, null) == null || !texto(p?.precio, 40));
+    if (malo >= 0) throw new ErrorHttp(400, 'paquete_linea_no_valida', { linea: malo + 1 });
+  }
+}
+export function guardarConfigPagos(db, cambios) {
+  revisarConfigPagos(cambios);
   const nueva = normalizarPagos({ ...leerConfigPagos(db), ...cambios });
   guardarAjuste(db, CLAVE_PAGOS, JSON.stringify(nueva));
   return nueva;
@@ -210,7 +220,25 @@ export function marcarPagosVistos(db, usuarioId, ahora = Date.now()) {
 export function pagosParaRevisar(db) {
   return db.prepare(`SELECT p.*, u.nombre, u.nombre_visible FROM academia_pagos p JOIN usuarios u ON u.id = p.usuario_id
     ORDER BY CASE p.estado WHEN 'revision' THEN 0 ELSE 1 END, p.id DESC LIMIT 200`).all()
-    .map(f => ({ ...vistaPago(f), alumno: { id: f.usuario_id, nombre: f.nombre_visible || f.nombre } }));
+    .map(f => ({ ...vistaPago(f), alumno: { id: f.usuario_id, nombre: f.nombre_visible || f.nombre }, imagen: !String(f.archivo).startsWith('borrado-') }));
+}
+// 0.12.3: todos los comprobantes, de siempre (se guardan para siempre), los más nuevos primero, de a 100.
+// imagen: si el archivo está en el servidor (los de antes de la 0.12.3 pudieron borrarse a los 30 días: «borrado-…»).
+export function todosLosPagos(db, config, { antes = null, limite = 100 } = {}) {
+  const filas = db.prepare(`SELECT p.*, u.nombre, u.nombre_visible FROM academia_pagos p JOIN usuarios u ON u.id = p.usuario_id
+    WHERE (? IS NULL OR p.id < ?) ORDER BY p.id DESC LIMIT ?`).all(antes, antes, limite + 1);
+  const pagos = filas.slice(0, limite).map(f => ({
+    ...vistaPago(f), alumno: { id: f.usuario_id, nombre: f.nombre_visible || f.nombre },
+    imagen: Boolean(config) && /^[0-9]+-[0-9]+-[a-f0-9]{12}\.(?:jpg|png|webp)$/.test(f.archivo) && existsSync(join(carpetaPagos(config), f.archivo)),
+  }));
+  return { pagos, total: db.prepare('SELECT COUNT(*) AS n FROM academia_pagos').get().n, siguiente: filas.length > limite ? pagos.at(-1).id : null };
+}
+// El nombre con que se baja un comprobante: «comprobante-12-juan.perez-2026-11-12.jpg» (solo letras simples).
+export function nombreParaBajar(db, id) {
+  const f = db.prepare('SELECT p.id, p.creado_en, p.tipo, u.nombre FROM academia_pagos p JOIN usuarios u ON u.id = p.usuario_id WHERE p.id = ?').get(Number(id));
+  if (!f) return null;
+  const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[f.tipo] ?? 'jpg';
+  return `comprobante-${f.id}-${String(f.nombre).replace(/[^a-z0-9._-]/gi, '_').slice(0, 40)}-${String(f.creado_en).slice(0, 10)}.${ext}`;
 }
 export const pagosPendientes = db => db.prepare("SELECT COUNT(*) AS n FROM academia_pagos WHERE estado = 'revision'").get().n;
 

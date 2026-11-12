@@ -1,7 +1,8 @@
 // Los TEXTOS que salen por un canal (hoy: Telegram). Salen de las mismas frases de las pantallas
 // (public/i18n/es.json y en.json, claves telegram.*), en el idioma del dueño. Texto plano, nunca formato enriquecido.
 //  - Un aviso dice solo su clave, su nivel, la hora y números seguros (MB libres, horas, días, %, la versión corta).
-//    Nunca datos de una persona, nombres de proyectos, correos, claves ni el «detalle» completo del aviso.
+//    Nunca datos de una persona, nombres de proyectos, correos, claves ni el «detalle» completo del aviso. Única excepción
+//    (0.12.3, pedido del dueño): el comprobante de pago nuevo dice el nombre del alumno, el paquete y el monto.
 //  - Lo más largo que sale es 1.000 caracteres (Telegram acepta 4.096); una leyenda, 300 (acepta 1.024).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -91,6 +92,17 @@ function valoresDe(aviso, idioma) {
     v.proveedor = existeFrase(`ia.proveedor.${partes[1]}`) ? frase(idioma, `ia.proveedor.${partes[1]}`) : partes[1];
   }
   if (d?.modoSeguro === true) v.pausa = 'modo_seguro';
+  // 0.12.3: qué cambió el administrador (la frase de esa acción; nunca un valor) y, de un comprobante nuevo, el nombre
+  // del alumno, el paquete y el monto (lo pidió el dueño: es lo que necesita para revisarlo).
+  if (partes[0] === 'cambio_admin' && /^[a-z_]{1,40}$/.test(partes[1] ?? '')) {
+    v.que = existeFrase(`admin.cambio.${partes[1]}`) ? frase(idioma, `admin.cambio.${partes[1]}`) : partes[1];
+  }
+  if (partes[0] === 'pago_recibido') {
+    const corto = (x, max) => (typeof x === 'string' ? x.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '');
+    v.alumno = corto(d?.alumno, 60) || '?';
+    v.precio = corto(d?.precio, 40) || '?';
+    v.minutos = Number.isSafeInteger(d?.minutos) ? d.minutos : '?';
+  }
   return v;
 }
 

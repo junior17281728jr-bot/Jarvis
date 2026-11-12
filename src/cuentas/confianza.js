@@ -18,7 +18,8 @@
 import { createHash } from 'node:crypto';
 import { enTransaccion } from '../nucleo/db.js';
 
-export const ACCIONES_CONFIANZA = Object.freeze(['creada', 'plan', 'clave_reiniciada', 'activada', 'clave_cambiada', 'permitida', 'retirada']);
+// 0.12.3: 'desactivada' (bloquearla deja anotado si tenía permiso, así volver a activarla no se lo quita).
+export const ACCIONES_CONFIANZA = Object.freeze(['creada', 'plan', 'clave_reiniciada', 'activada', 'clave_cambiada', 'permitida', 'retirada', 'desactivada']);
 export const DESDE = Object.freeze(['tailnet', 'internet']);
 
 const ahora = () => new Date().toISOString();

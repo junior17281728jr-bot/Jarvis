@@ -466,7 +466,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   };
   // Lo que una pantalla pide solo después de otra respuesta (o al tocar algo) no se puede adelantar.
   // Administrador pide /api/admin/claves solo si /api/admin/ia dice que quien mira es el dueño (parte 1d).
-  const NO_SE_ADELANTA = { admin: new Set(['/api/admin/claves']) };
+  // 0.12.3: «Cambios importantes» (solo en la pestaña Usuarios, después de dibujarla).
+  const NO_SE_ADELANTA = { admin: new Set(['/api/admin/claves', '/api/admin/cambios']) };
   // Las pestañas de Administrador (0.4.1) piden lo mismo que #admin, y las de un proyecto lo mismo que el proyecto.
   for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
   // 0.8.0: los proyectos de OPORTIA se quitaron (sus direcciones viejas muestran el camino: ver más abajo).

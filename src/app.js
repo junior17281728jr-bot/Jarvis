@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, extname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido, vieneDeTailscale } from './nucleo/red.js';
+import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido } from './nucleo/red.js';
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
@@ -21,6 +21,7 @@ import { registrarRutasPerfil } from './api/perfil.js';
 import { registrarRutasTerminos } from './api/terminos.js';
 import { registrarRutasSoporte } from './api/soporte.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
+import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
 import { estadoTerminos } from './cuentas/terminos.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -107,8 +108,10 @@ function texto(res, codigo, mensaje) {
 // opciones.ia: límites de las rutas de la IA y de las claves, y probadores de prueba (solo para pruebas).
 // opciones.copias: límites de las rutas de las copias y del Telegram (solo para pruebas).
 // opciones.academia: límites, azar y reloj de las rutas de la Academia (solo para pruebas).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {} } = {}) {
+// opciones.confirmar: límites de la contraseña que se pide otra vez para lo delicado (solo para pruebas).
+export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {} } = {}) {
   const rutas = crearRuteador();
+  const limitesConfirmar = { ...crearLimitesConfirmar(), ...confirmar };
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
@@ -151,16 +154,16 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     if (usuario && config && config.terminosObligatorios !== false && /^\/api\/(?:academia\/|soporte(?:\/|$))/.test(ruta) && estadoTerminos(db, usuario.id).pendiente) {
       return enviarJson(res, 403, { error: 'terminos_pendientes' });
     }
-    // Fase 1, parte d. soloTailnet: solo desde la red de Tailscale (nunca por el enlace público de Funnel).
-    // soloDueno: además, con la cuenta de Tailscale del administrador que entró (las claves y lo que gasta dinero).
-    if (opciones.soloTailnet && !vieneDeTailscale(req).si) return enviarJson(res, 403, { error: 'solo_desde_tailnet' });
-    if (opciones.soloDueno) {
-      const dueno = duenoDeTailscale(db, req, usuario, { anotar: true });
-      if (!dueno.si) return enviarJson(res, 403, { error: dueno.motivo });
-    }
+    // 0.12.3: ya nada es «solo desde Tailscale» para un administrador con su sesión (pedido del dueño): lo que antes era
+    // soloTailnet / soloDueno ahora es solo { admin: true }. Lo delicado pide, en ese pedido, su contraseña otra vez
+    // (confirmar(), src/cuentas/confirmar.js). soloDueno solo anota la cuenta de Tailscale del dueño si todavía no la tiene
+    // (con ella, desde su red, no se le pide la contraseña otra vez). Crear el PRIMER administrador sigue siendo solo
+    // desde Tailscale (src/api/cuentas.js).
+    if (opciones.soloDueno && usuario?.rol === 'admin') duenoDeTailscale(db, req, usuario, { anotar: true });
+    const confirmar = () => confirmarClave({ db, req, usuario, token, limites: limitesConfirmar });
 
     try {
-      const r = await encontrada.manejador({ db, req, res, usuario, token, parametros: encontrada.parametros, cliente: clienteDe(req), https: esHttps(req) });
+      const r = await encontrada.manejador({ db, req, res, usuario, token, parametros: encontrada.parametros, cliente: clienteDe(req), https: esHttps(req), confirmar });
       // Academia (0.7.0): una figura del paquete se manda tal cual (una imagen, no JSON).
       if (typeof r.enviar === 'function') return r.enviar(res);
       enviarJson(res, r.codigo, r.datos, r.cabeceras, { comprimir: RESPUESTAS_COMPRIMIBLES.has(encontrada.patron) });

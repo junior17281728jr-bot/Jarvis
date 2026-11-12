@@ -99,5 +99,12 @@ export const PRIVACIDAD_V1 = Object.freeze([
   }
 ]);
 
+// 0.12.3: la versión 2 del Aviso de privacidad. Igual que la 1, salvo el punto 6: la imagen del comprobante de pago YA NO se
+// borra sola a los 30 días (el dueño los guarda para siempre, junto con el registro del pago). La versión 1 queda tal cual
+// (la firmaron personas y el archivo de contratos la muestra así): NUNCA se cambia una versión ya publicada; un texto
+// nuevo es una versión nueva y cada persona lo acepta otra vez al entrar.
+const PLAZOS_V2 = "• Cuenta, progreso y respuestas: se guardan mientras exista la cuenta, aunque no la use. Nunca se borran solos: solo cuando usted o el Administrador lo piden. Al borrar a pedido se eliminan sus datos personales (nombre, usuario, fecha de nacimiento, mensajes); se conserva la constancia de aceptación de los términos (la firma y su registro) mientras la ley lo exija.\n• Registros de acceso (entradas y salidas, IP, navegador): mientras exista la cuenta.\n• Conversaciones con el tutor de IA: se guardan los últimos 30 mensajes; los anteriores se borran solos.\n• Comprobantes de pago (la imagen que usted sube) y el registro de cada pago (fecha, monto, referencia, estado): se guardan como constancia del pago, de forma privada (solo los ven usted y el Administrador), por lo menos 5 años por posibles obligaciones fiscales. No se borran solos; puede pedir que se borren (punto 8) cuando la ley ya no obligue a conservarlos.\n• Prueba de aceptación de términos: mientras dure la cuenta y hasta 5 años después (en el caso de menores, hasta 5 años después de cumplir 18).";
+export const PRIVACIDAD_V2 = Object.freeze(PRIVACIDAD_V1.map(x => Object.freeze(x.titulo.startsWith('6.') ? { titulo: x.titulo, texto: PLAZOS_V2 } : { ...x })));
+
 // La política de reembolso (cláusula 9), también para la pantalla de pagos.
 export const REEMBOLSO = "9.1. Si el usuario lo pide dentro de los 7 días siguientes a la activación, se le devolverá la parte no usada de su aporte.\n9.2. Se devolverá el aporte completo si el tiempo adicional no pudo usarse por causas atribuibles al Administrador, o si la Plataforma cierra o el servicio de IA deja de funcionar de forma prolongada.\n9.3. Si el Administrador cierra una cuenta por incumplimiento de estos términos, se devolverá la parte no usada, salvo en caso de fraude.\n9.4. Los reembolsos se hacen por transferencia en un plazo de 15 días. Se solicitan en el formulario «Ayuda» de la app (Configuración → Ayuda).";

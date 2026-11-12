@@ -15,6 +15,7 @@ import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capitul
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
 import { crearPagos } from './pagos.js';
+import { pedirClaveAdmin, cabeceraDeClave, ERRORES_CONFIRMAR } from './confirmar-clave.js';
 import { dibujarAvatar } from './avatares.js';
 import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
@@ -134,8 +135,8 @@ function el(etiqueta, propiedades = {}, ...hijos) {
 }
 
 // El pedido tal cual, sin mirar la respuesta (eso lo hace api). Nunca falla: sin red responde «sin_conexion».
-async function pedirAlServidor(metodo, ruta, datos) {
-  const opciones = { method: metodo, credentials: 'same-origin', headers: { 'X-Oportia': '1' } };
+async function pedirAlServidor(metodo, ruta, datos, extra = null) {
+  const opciones = { method: metodo, credentials: 'same-origin', headers: { 'X-Oportia': '1', ...(extra ?? {}) } };
   if (datos !== undefined) {
     opciones.headers['Content-Type'] = 'application/json';
     opciones.body = JSON.stringify(datos);
@@ -217,7 +218,13 @@ async function api(metodo, ruta, datos, { fresco = false } = {}) {
   if (!guardable && metodo !== 'GET') vaciarMemoria();
   const guardada = guardable && !adelantado ? deMemoria(ruta) : null;
   if (guardada) return guardada;
-  const respuesta = await (adelantado ?? (guardable ? pedirYGuardar(ruta) : pedirAlServidor(metodo, ruta, datos)));
+  let respuesta = await (adelantado ?? (guardable ? pedirYGuardar(ruta) : pedirAlServidor(metodo, ruta, datos)));
+  // 0.12.3: lo delicado del administrador pide su contraseña otra vez: se pide aquí y se repite el mismo pedido.
+  while (metodo !== 'GET' && ERRORES_CONFIRMAR.includes(respuesta.datos?.error)) {
+    const clave = await pedirClaveAdmin({ el, t }, { error: respuesta.datos.error === 'confirmar_clave' ? null : respuesta.datos.error, quedan: respuesta.datos.quedan });
+    if (clave == null) { respuesta = { ok: false, codigo: 0, datos: { error: 'confirmar_cancelado' } }; break; }
+    respuesta = await pedirAlServidor(metodo, ruta, datos, { 'X-Confirmar-Clave': cabeceraDeClave(clave) });
+  }
   if ((fresco || (adelantado && guardable)) && respuesta.ok && estado.usuario && EN_MEMORIA.test(ruta)) memoria.set(ruta, { respuesta, en: Date.now(), usuario: estado.usuario.id });
   if (metodo !== 'GET' && /^\/api\/academia\//.test(ruta) && /\/(?:terminar|plan|visto|leido|grupo)$/.test(ruta)) adelantar('/api/academia/camino');
   revisarSesion(respuesta, ruta);
@@ -1155,6 +1162,10 @@ function textoAviso(a) {
   }
   // Fase 1, parte e: una actualización que no se instaló o que se devolvió (con los 7 primeros caracteres de su versión),
   // las copias y el Telegram.
+  // 0.12.3: un cambio delicado del administrador y un comprobante de pago nuevo.
+  const cambio = /^cambio_admin:([a-z_]+):\d+$/.exec(String(a.clave));
+  if (cambio) return t('aviso.cambio_admin', { que: tSi(`admin.cambio.${cambio[1]}`, cambio[1]), cuenta: d.cuenta ? ` (${d.cuenta})` : '' });
+  if (String(a.clave).startsWith('pago_recibido:')) return t('aviso.pago_recibido', { alumno: v(d.alumno), minutos: v(d.minutos), precio: v(d.precio) });
   const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
   if (a.clave === 'copias_disco_pronto') return t('aviso.copias_disco_pronto', { dias: v(d.dias) });
@@ -1698,12 +1709,18 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const permisos = { cuentas: r.datos.permisos?.cuentas !== false, admins: r.datos.permisos?.admins === true };
   const ocupados = new Set(r.datos.usuarios.map(u => String(u.nombre).toLowerCase()));
   const mensaje = caja();
-  const completo = el('input', { id: 'campo-nombre-completo', name: 'nombreVisible', type: 'text', maxlength: 80, autocomplete: 'off', autocapitalize: 'words' });
+  // 0.12.3: crear un usuario pide solo el nombre de usuario (y el rol). Lo demás va en «Más opciones»: su nombre se lo
+  // pone el alumno la primera vez que entra (antes de firmar), y eso es lo que se ve aquí después.
   const usuario = el('input', { id: 'campo-nombre', name: 'nombre', type: 'text', maxlength: 40, required: true, autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', autocomplete: 'off' });
-  // Mientras el administrador no escriba el usuario a mano, se va proponiendo solo.
+  const legalNombre = el('input', { id: 'campo-legal-nuevo-n', name: 'legalNombre', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' });
+  const legalApellido = el('input', { id: 'campo-legal-nuevo-a', name: 'legalApellido', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' });
+  // Mientras el administrador no escriba el usuario a mano, se propone solo con el nombre y apellido (si los escribe).
   let usuarioAMano = false;
-  completo.addEventListener('input', () => { if (!usuarioAMano) usuario.value = usuarioLibre(usuarioPropuesto(completo.value), ocupados); });
+  const proponer = () => { if (!usuarioAMano) usuario.value = usuarioLibre(usuarioPropuesto(`${legalNombre.value} ${legalApellido.value}`.trim()), ocupados); };
+  legalNombre.addEventListener('input', proponer);
+  legalApellido.addEventListener('input', proponer);
   usuario.addEventListener('input', () => { usuarioAMano = usuario.value.trim() !== ''; });
+  const completo = usuario;
   const modoClave = el('select', { id: 'campo-clave-modo', name: 'modoClave' },
     el('option', { value: 'alumno', texto: t('admin.nuevo.clave.alumno') }),
     el('option', { value: 'temporal', texto: t('admin.nuevo.clave.temporal') }),
@@ -1725,32 +1742,32 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     if (esAdmin && modoClave.value === 'alumno') modoClave.value = 'temporal';
     pintarModo();
   };
+  const ayudaRol = el('p', { class: 'ayuda con-icono-arriba', hidden: true }, icono('candado', 'icono chico'), el('span', { texto: t('admin.nuevo.rol.admin_clave') }));
   const formulario = el('form', { novalidate: true },
-    el('label', { for: 'campo-nombre-completo', texto: t('admin.nuevo.nombre_completo') }),
-    completo,
     el('label', { for: 'campo-nombre', texto: t('admin.nuevo.nombre') }),
     usuario,
-    // 0.9.2: su Nombre y Apellido de verdad (opcional: si no, lo escribe la persona al aceptar los términos).
-    el('details', { class: 'plegable-chico' },
-      el('summary', { texto: t('admin.nuevo.legal') }),
-      el('label', { for: 'campo-legal-nuevo-n', texto: t('terminos.nombre') }),
-      el('input', { id: 'campo-legal-nuevo-n', name: 'legalNombre', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' }),
-      el('label', { for: 'campo-legal-nuevo-a', texto: t('terminos.apellido') }),
-      el('input', { id: 'campo-legal-nuevo-a', name: 'legalApellido', type: 'text', maxlength: 60, autocomplete: 'off', autocapitalize: 'words' })),
     el('p', { class: 'ayuda', texto: t('admin.nuevo.nombre.ayuda') }),
     el('label', { for: 'campo-rol', texto: t('admin.nuevo.rol') }),
-    el('select', { id: 'campo-rol', name: 'rol', onchange: alCambiarRol },
+    el('select', { id: 'campo-rol', name: 'rol', onchange: evento => { ayudaRol.hidden = evento.target.value !== 'admin'; alCambiarRol(evento); } },
       el('option', { value: 'usuario', texto: t('admin.rol.usuario') }),
       permisos.admins ? el('option', { value: 'admin', texto: t('admin.rol.admin') }) : null),
-    permisos.admins ? null : el('p', { class: 'ayuda con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.nuevo.rol.solo_dueno') })),
-    el('label', { for: 'campo-idioma-nuevo', texto: t('admin.nuevo.idioma') }),
-    el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
-      el('option', { value: 'es', texto: t('idioma.es') }),
-      el('option', { value: 'en', texto: t('idioma.en') })),
-    // 0.9.2: la contraseña: temporal (como siempre), que la cree el alumno al entrar, o la pone el administrador.
-    el('label', { for: 'campo-clave-modo', texto: t('admin.nuevo.clave') }),
-    modoClave,
-    claveAdmin,
+    ayudaRol,
+    el('details', { class: 'plegable-chico mas-opciones' },
+      el('summary', { texto: t('admin.nuevo.mas') }),
+      // 0.9.2: su Nombre y Apellido de verdad (opcional: si no, lo escribe la persona la primera vez que entra).
+      el('p', { class: 'ayuda', texto: t('admin.nuevo.legal.ayuda') }),
+      el('label', { for: 'campo-legal-nuevo-n', texto: t('terminos.nombre') }),
+      legalNombre,
+      el('label', { for: 'campo-legal-nuevo-a', texto: t('terminos.apellido') }),
+      legalApellido,
+      el('label', { for: 'campo-idioma-nuevo', texto: t('admin.nuevo.idioma') }),
+      el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
+        el('option', { value: 'es', texto: t('idioma.es') }),
+        el('option', { value: 'en', texto: t('idioma.en') })),
+      // 0.9.2: la contraseña: que la cree el alumno al entrar (lo de siempre), temporal, o la pone el administrador.
+      el('label', { for: 'campo-clave-modo', texto: t('admin.nuevo.clave') }),
+      modoClave,
+      claveAdmin),
     ayudaModo,
     el('button', { type: 'submit', texto: t('admin.nuevo.boton') }),
     mensaje);
@@ -1760,7 +1777,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     const modo = datos.get('modoClave');
     const clave = String(datos.get('claveAdmin') ?? '');
     if (modo === 'admin' && clave.length < 4) throw new Error(t('error.clave_corta'));
-    const creado = await api('POST', '/api/admin/usuarios', { nombre, nombreVisible: String(datos.get('nombreVisible')).trim(), rol: datos.get('rol'), idioma: datos.get('idioma'),
+    const legalCompleto = `${String(datos.get('legalNombre') ?? '').trim()} ${String(datos.get('legalApellido') ?? '').trim()}`.trim();
+    const creado = await api('POST', '/api/admin/usuarios', { nombre, ...(legalCompleto ? { nombreVisible: legalCompleto } : {}), rol: datos.get('rol'), idioma: datos.get('idioma'),
       ...(modo === 'alumno' ? { sinClave: true } : modo === 'admin' ? { clave } : {}),
       ...(String(datos.get('legalNombre') ?? '').trim() && String(datos.get('legalApellido') ?? '').trim() ? { nombreLegal: { nombre: String(datos.get('legalNombre')), apellido: String(datos.get('legalApellido')) } } : {}) });
     if (creado.datos.error === 'nombre_ocupado') {
@@ -1880,8 +1898,21 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     el('summary', { class: 'con-icono' }, icono('mas'), el('h2', { texto: t('admin.nuevo') })));
   const tarjetaNuevo = el('section', { class: 'tarjeta tarjeta-nuevo' }, plegable);
   plegable.append(permisos.cuentas ? formulario : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t('admin.cuentas_solo_tailnet') })));
+  // 0.12.3: los cambios delicados (datos de pago, claves, contraseñas de otros, administradores), con la hora.
+  const tarjetaCambios = el('section', { class: 'tarjeta tarjeta-cambios' },
+    el('h2', { class: 'con-icono' }, icono('escudo'), el('span', { texto: t('admin.cambios.titulo') })),
+    el('p', { class: 'ayuda', texto: t('admin.cambios.linea') }));
+  api('GET', '/api/admin/cambios').then(c => {
+    if (!vigente() || !c.ok) return;
+    const lista = c.datos.cambios;
+    tarjetaCambios.append(...[].concat(lista.length
+      ? verMas(el('ul', { class: 'lista-simple lista-cambios' }), lista.map(x => el('li', {},
+        el('strong', { texto: tSi(`admin.cambio.${x.accion}`, x.accion) }),
+        el('span', { class: 'suave', texto: ` · ${fecha(x.fecha)}${x.cuenta ? ` · ${x.cuenta}` : ''}${x.por ? ` · ${t('admin.cambios.por', { nombre: x.por })}` : ''}${x.como === 'tailscale' ? ` · ${t('admin.cambios.tailscale')}` : ''}` }))), 5)
+      : el('p', { class: 'suave', texto: t('admin.cambios.ninguno') })));
+  });
   mostrar(marco('admin', cabecera, aviso,
-    el('div', { class: 'rejilla admin-usuarios' }, tarjetaNuevo, tarjetaUsuarios)));
+    el('div', { class: 'rejilla admin-usuarios' }, tarjetaNuevo, tarjetaUsuarios), tarjetaCambios));
   if (abrir && permisos.cuentas) {
     tarjetaNuevo.scrollIntoView({ block: 'start' });
     completo.focus({ preventScroll: true });
@@ -2569,8 +2600,8 @@ function dibujarIa(s, aviso, vigente) {
     listaParaEncender,
     encender,
     apagar,
-    !s.enTailnet ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t('ia.solo_tailnet') }))
-      : !dueno ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t(s.motivoDueno === 'solo_el_dueno' ? 'ia.solo_el_dueno' : 'ia.solo_dueno') })) : null,
+    // 0.12.3: el administrador cambia la IA con su sesión, también por el enlace público.
+    !dueno ? el('p', { class: 'suave con-icono-arriba' }, icono('candado'), el('span', { texto: t(s.motivoDueno === 'solo_el_dueno' ? 'ia.solo_el_dueno' : 'ia.solo_dueno') })) : null,
     el('details', { class: 'en-palabras' },
       el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: t('ia.que_es') })),
       el('p', { texto: t('ia.explica') }),
@@ -2594,7 +2625,7 @@ function dibujarIa(s, aviso, vigente) {
       numeroGrande(s.bloqueosMes ?? 0, t('ia.gasto.sin_ia'), 'atencion'),
       cifraGrande(usd(s.tipicoMicro), t('ia.gasto.tipico'))) : null,
     dueno && sinNada ? el('p', { class: 'suave', texto: t('ia.gasto.vacio') }) : null,
-    dueno && s.enTailnet ? detalleDelGasto(s.mes) : null);
+    dueno ? detalleDelGasto(s.mes) : null);
   if (!dueno) {
     mostrar(marco('admin', cabeceraAdmin('ia'), el('div', { class: 'rejilla dos' }, tarjetaEstadoIa, tarjetaGasto)));
     return;
@@ -4921,11 +4952,20 @@ async function pantallaComparar(ids) {
 // ---- 0.8.0: Administrador → Respuestas: la clave completa (se dibuja en public/admin-respuestas.js, que solo se carga aquí) ----
 async function pantallaRespuestas() {
   const vigente = nuevoTurno();
-  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/respuestas'), api('GET', '/api/admin/sistema'), import('./admin-respuestas.js')]);
+  const [r, s, vista, ex, vistaAlumnos] = await Promise.all([api('GET', '/api/admin/academia/respuestas'), api('GET', '/api/admin/sistema'), import('./admin-respuestas.js'),
+    api('GET', '/api/admin/academia/examenes'), import('./admin-alumnos.js')]);
   if (!vigente()) return;
   const cabecera = cabeceraAdmin('respuestas', tonosDePestanas(s.ok ? s.datos : null));
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  mostrar(marco('admin', cabecera, vista.vistaRespuestas(r.datos, { el, t, tn, icono, talCual, numero, nombreMateria, partirTitulo, insignia, vacio, figuraPregunta, claseMateria })));
+  // 0.12.3: arriba, los Exámenes del Test Guide de cada materia (todos los alumnos, por materia); la clave completa, debajo y plegada.
+  const examenes = el('section', { class: 'tarjeta' },
+    el('h2', { class: 'con-icono' }, icono('libro'), el('span', { texto: t('examenes.titulo') })),
+    el('p', { class: 'suave', texto: t('examenes.linea_todos') }),
+    ex.ok ? vistaAlumnos.vistaExamenesTG(ex.datos, piezasAlumnos()) : el('p', { class: 'mensaje error', texto: textoError(ex.datos.error) }));
+  const clave = el('details', { class: 'tarjeta plegable-chico respuestas-clave' },
+    el('summary', { texto: t('respuestas.clave_titulo') }),
+    vista.vistaRespuestas(r.datos, { el, t, tn, icono, talCual, numero, nombreMateria, partirTitulo, insignia, vacio, figuraPregunta, claseMateria }));
+  mostrar(marco('admin', cabecera, examenes, clave));
 }
 
 // ---- Administrador: el contenido (subir un paquete, ponerlo en uso, el nombre de la app y el % para aprobar) ----
@@ -5312,7 +5352,7 @@ function pedidosAlAbrir(seccion, admin) {
   const comparar = seccion.match(/^comparar\/(\d+(?:,\d+){1,9})$/);
   if (comparar) return admin ? [`/api/admin/academia/comparar/${comparar[1]}`, '/api/admin/sistema'] : [];
   if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema', '/api/admin/terminos'] : [];
-  if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
+  if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'soporte') return admin ? ['/api/admin/soporte', '/api/admin/sistema'] : [];
   const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);

@@ -11,6 +11,9 @@ import { hashClave } from '../src/cuentas/claves.js';
 import { saldoIa, cobrarUso, ajustarSaldo, guardarConfigPagos } from '../src/academia/tiempo-ia.js';
 import { busquedaYoutube, ENLACE_YOUTUBE } from '../src/academia/profesor.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
+import { guardarSecreto, anotarPrueba } from '../src/claves/almacen.js';
+import { guardarConfigIa } from '../src/ia/config.js';
+import { claveAnthropic, permitirIa } from './ia-base.js';
 
 const DUENO = { 'Tailscale-User-Login': 'junior@example.com' };
 const FUNNEL = { 'Tailscale-Funnel-Request': '?1' };
@@ -106,7 +109,8 @@ test('tiempo con IA: 20 minutos de regalo, cobrar nunca deja menos de 0, el admi
     assert.throws(() => cobrarUso(c.db, c.ids.ana, { referencia: 'prueba:x' }), e => e.clave === 'sin_minutos');
     assert.equal(saldoIa(c.db, c.ids.ana).minutos, 0);
     assert.throws(() => ajustarSaldo(c.db, c.ids.ana, -5, 1), e => e.clave === 'datos_no_validos');
-    assert.equal((await pedir(c.base, 'POST', `/api/admin/academia/alumnos/${c.ids.ana}/minutos`, { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { minutos: 50 } })).codigo, 403);
+    // 0.12.3: también por el enlace público, con la sesión del administrador.
+    assert.equal((await pedir(c.base, 'POST', `/api/admin/academia/alumnos/${c.ids.ana}/minutos`, { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { minutos: 40 } })).datos.tiempo.minutos, 40);
     assert.equal((await pedir(c.base, 'POST', `/api/admin/academia/alumnos/${c.ids.ana}/minutos`, { galleta: c.ana, datos: { minutos: 50 } })).codigo, 403);
     assert.equal((await pedir(c.base, 'POST', `/api/admin/academia/alumnos/${c.ids.ana}/minutos`, { galleta: c.admin, cabeceras: DUENO, datos: { minutos: 50 } })).datos.tiempo.minutos, 50);
     // El regalo de los nuevos lo pone el dueño.
@@ -120,14 +124,21 @@ test('tiempo con IA: 20 minutos de regalo, cobrar nunca deja menos de 0, el admi
 
 test('pagos: el alumno sube su comprobante (imagen de verdad, hasta 5 MB), solo él y el administrador lo ven; aprobar suma una vez; rechazar con motivo', async () => {
   await conAcademia(async c => {
-    // Los datos para pagar: solo el dueño, desde Tailscale (datos inventados de prueba).
-    const datosPago = { banco: 'Banco Popular', tipoCuenta: 'Ahorro', numero: '000-PRUEBA', titular: 'Titular de Prueba', paquetes: [{ id: 'p60', minutos: 60, precio: 'RD$1' }] };
-    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: datosPago })).codigo, 403);
+    // Los datos para pagar (datos inventados de prueba). 0.12.3: por el enlace público, con la contraseña otra vez.
+    const datosPago = { banco: 'Banco de Prueba', tipoCuenta: 'Ahorro', numero: '000-PRUEBA', titular: 'Titular de Prueba', paquetes: [{ id: 'p60', minutos: 60, precio: 'RD$1' }] };
+    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: datosPago })).datos.error, 'confirmar_clave');
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: c.ana, datos: datosPago })).codigo, 403);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { ...datosPago, paquetes: [{ id: 'x', minutos: 0, precio: '' }] } })).codigo, 400);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: datosPago })).codigo, 200);
     const t = (await pedir(c.base, 'GET', '/api/academia/tiempo-ia', { galleta: c.ana })).datos;
     assert.deepEqual([t.pagar.listo, t.pagar.numero, t.pagar.paquetes[0].minutos], [true, '000-PRUEBA', 60]);
+    // 0.12.3: solo se paga si la IA le sirve a esa cuenta (encendida con el instructor, su tope y «Permitir IA»).
+    const adminId = c.db.prepare("SELECT id FROM usuarios WHERE nombre = 'junior'").get().id;
+    anotarPrueba(c.db, { id: guardarSecreto(c.db, c.config, { uso: 'ia_anthropic', valor: claveAnthropic(), usuarioId: adminId }).secreto.id, motivo: 'ok' });
+    guardarConfigIa(c.db, { topeGeneralMicro: 2_000_000, topesPlanMicro: { prueba: 500_000 } }, { config: c.config, usuarioId: adminId });
+    guardarConfigIa(c.db, { encendida: true }, { config: c.config, usuarioId: adminId });
+    guardarConfigIa(c.db, { instructorIa: true }, { config: c.config, usuarioId: adminId });
+    permitirIa(c.db, c.ids.ana, adminId);
     const subir = (galleta, cuerpo, tipo = 'image/png', paquete = 'p60') => pedir(c.base, 'POST', `/api/academia/pagos?paquete=${paquete}&nota=ref%20123`, { galleta, cabeceras: { 'Content-Type': tipo }, cuerpo });
     assert.equal((await subir(c.ana, Buffer.from('no soy una imagen'))).codigo, 400, 'se revisan los primeros bytes');
     assert.equal((await subir(c.ana, PNG, 'application/pdf')).codigo, 415);

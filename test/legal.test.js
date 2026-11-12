@@ -44,7 +44,8 @@ function png(ancho = 240, alto = 80, { ruido = false } = {}) {
 const FIRMA_PNG = png();
 const FIRMA = `data:image/png;base64,${FIRMA_PNG.toString('base64')}`;
 // Lo demás que se firma (0.9.2, informe legal): privacidad, fecha de nacimiento (mayor de edad) y el permiso de IA.
-const FIRMAR = { versionPrivacidad: 1, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
+// 0.12.3: el Aviso de privacidad en uso es la versión 2 (la 1 queda para las firmas de antes).
+const FIRMAR = { versionPrivacidad: 2, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
 const mala = id => ['A', 'B', 'C'].find(l => l !== DE(id).original.correcta);
 
 async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerpo } = {}) {
@@ -95,7 +96,7 @@ test('privacidad y las tres casillas: términos y privacidad obligatorias, IA op
   await conAcademia(async ({ base, db, admin, ana, beto, ids }) => {
     const textos = (await pedir(base, 'GET', '/api/terminos')).datos;
     assert.equal(textos.terminos.version, 1);
-    assert.equal(textos.privacidad.version, 1);
+    assert.equal(textos.privacidad.version, 2, '0.12.3: la versión 2 del aviso de privacidad');
     assert.ok(textos.privacidad.secciones.length >= 8);
     assert.match(textos.reembolso, /7 días/);
     assert.doesNotMatch(JSON.stringify(textos), /ENALAS|IDAC|Jeppesen|Anthropic|OpenAI|Banco Popular|\[correo|\[nombre/i);
@@ -103,7 +104,7 @@ test('privacidad y las tres casillas: términos y privacidad obligatorias, IA op
     assert.equal((await firmar(base, ana, { aceptoIa: 'si' })).datos.error, 'datos_no_validos');
     assert.equal((await firmar(base, ana, { nacimiento: '2030-01-01' })).datos.error, 'nacimiento_no_valido');
     assert.equal((await firmar(base, ana, { nacimiento: '2000-02-30' })).datos.error, 'nacimiento_no_valido');
-    assert.equal((await firmar(base, ana, { versionPrivacidad: 2 })).datos.error, 'terminos_cambiaron');
+    assert.equal((await firmar(base, ana, { versionPrivacidad: 1 })).datos.error, 'terminos_cambiaron'); // 0.12.3: la 1 ya no está en uso
     const r = await firmar(base, ana, { aceptoIa: false });
     assert.equal(r.codigo, 200, JSON.stringify(r.datos));
     assert.deepEqual([r.datos.estado.pendiente, r.datos.estado.aceptoIa, r.datos.estado.menor, r.datos.estado.nacimiento], [false, false, false, '2000-05-10']);
@@ -114,10 +115,10 @@ test('privacidad y las tres casillas: términos y privacidad obligatorias, IA op
     assert.equal(consienteIa(db, ids.ana), true);
     assert.equal((await pedir(base, 'POST', '/api/yo/consentimiento-ia', { datos: { permitido: true } })).codigo, 401);
     // Otra versión del aviso de privacidad: todos firman otra vez.
-    assert.equal((await pedir(base, 'POST', '/api/admin/terminos', { galleta: admin, datos: { doc: 'privacidad', secciones: [{ titulo: '1. Nuevo', texto: 'Texto.' }] } })).datos.privacidad.version, 2);
+    assert.equal((await pedir(base, 'POST', '/api/admin/terminos', { galleta: admin, datos: { doc: 'privacidad', secciones: [{ titulo: '1. Nuevo', texto: 'Texto.' }] } })).datos.privacidad.version, 3); // 0.12.3: la 2 la trae el código
     assert.equal((await pedir(base, 'POST', '/api/admin/terminos', { galleta: admin, datos: { doc: 'otro', secciones: [{ titulo: '1', texto: 'x' }] } })).codigo, 400);
     assert.equal((await pedir(base, 'GET', '/api/yo', { galleta: ana })).datos.terminos.pendiente, true);
-    assert.equal((await firmar(base, ana, { versionPrivacidad: 2 })).datos.estado.pendiente, false);
+    assert.equal((await firmar(base, ana, { versionPrivacidad: 3 })).datos.estado.pendiente, false);
     assert.equal((await pedir(base, 'GET', '/api/admin/contratos', { galleta: admin })).datos.contratos.length, 2);
     // Beto no firmó: sigue pendiente.
     assert.equal((await pedir(base, 'GET', '/api/yo', { galleta: beto })).datos.terminos.pendiente, true);

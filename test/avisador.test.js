@@ -133,7 +133,7 @@ test('2.10 topes: 10 por hora y 30 por día SOLO de avisos (50 partes de copias 
     const r = await b.avisador.pasada();
     assert.deepEqual([r.enviado, r.suena, r.avisos.length], ['resumen', true, 3]);
     const ultimo = mensajesDelChat(b).at(-1);
-    assert.match(ultimo.text, /^3 avisos de OPORTIA:/);
+    assert.match(ultimo.text, /^3 avisos de la app:/); // 0.12.3: sin «OPORTIA»
     assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM canal_envios WHERE resultado = 'agrupado'").get().n, 3);
     assert.equal(b.db.prepare('SELECT COUNT(*) AS n FROM avisos WHERE enviado_en IS NULL AND resuelto_en IS NULL').get().n, 0);
     // 30 por día.
@@ -249,7 +249,7 @@ test('2.11 con el trabajador en modo seguro, el aviso grave del modo seguro lleg
     const r = await b.avisador.pasada();
     assert.deepEqual([r.enviado, r.suena], ['aviso', true]);
     const m = mensajesDelChat(b).at(-1);
-    assert.match(m.text, /OPORTIA · URGENTE/);
+    assert.match(m.text, /🔴 URGENTE/); // 0.12.3: sin «OPORTIA»
     assert.match(m.text, /modo seguro/);
     // El temporizador de verdad también arranca y para sin trabar nada.
     const real = crearAvisador({ db: b.db, config: b.config, topes: { cadaMs: 20 } });

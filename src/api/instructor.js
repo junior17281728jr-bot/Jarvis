@@ -11,7 +11,6 @@
 //  - A un alumno nunca se le cuenta el estado del dueño (saldo, claves, pausas): solo «con IA», «en espera» o «básico».
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
-import { vieneDeTailscale } from '../nucleo/red.js';
 import { espacioDe } from '../cuentas/espacios.js';
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
@@ -86,12 +85,12 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     if (!e) return basico('no_disponible');
     const admin = esEspacioAdmin(db, e.id);
     const decir = (modo, motivo) => ({ modo, motivo: admin || MOTIVOS_ALUMNO.has(motivo) ? motivo : 'no_disponible', ...(admin ? { modelo: cfg.instructorModelo } : {}) });
-    if (admin && !vieneDeTailscale(req).si) return decir('basico', 'solo_tailnet');
+    // 0.12.3: el instructor con IA del administrador también por el enlace público (antes, solo desde Tailscale).
     const d = disponibilidad(db, { config, espacioId: e.id, proposito: 'instructor_explicar', entradaMax: TAMANO_TIPICO, ahora });
     if (d.disponible) {
       if (leerModoSeguro(db).activo || !trabajadorEncendido()) return decir('espera', 'trabajo_en_pausa');
       // 0.10.0: su tiempo con IA. Sin minutos, el instructor básico (gratis) hasta que pida más.
-      const tiempo = tiempoDe(db, usuario, ahora);
+      const tiempo = tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false });
       if (!tiempo.ilimitado && tiempo.minutos < tiempo.porUso) return decir('basico', 'sin_minutos');
       return decir('ia', 'ok');
     }
@@ -159,7 +158,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       codigo: 200,
       datos: {
         instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(guardado) : null,
-        tiempo: tiempoDe(db, usuario, ahora), pagos: novedadesPagos(db, usuario.id),
+        tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), pagos: novedadesPagos(db, usuario.id),
         plan: fallas.filter(f => f.estado !== 'superada' && f.cuenta), recientes: fallas.slice(0, 3), ...(donde ? { refuerzo } : {}),
       },
     };
@@ -362,7 +361,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   rutas.agregar('GET', '/api/academia/profesor', ({ db, req, usuario }) => {
     contar(topes.lecturas, usuario);
     const ahora = reloj();
-    return { codigo: 200, datos: { permiso: permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }), instructor: estadoInstructor(db, req, usuario, ahora), tiempo: tiempoDe(db, usuario, ahora), historial: historialParaVer(db, usuario.id) } };
+    return { codigo: 200, datos: { permiso: permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }), instructor: estadoInstructor(db, req, usuario, ahora), tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), historial: historialParaVer(db, usuario.id) } };
   });
   rutas.agregar('POST', '/api/academia/profesor', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
@@ -406,7 +405,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
     const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje } });
     if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar });
-    return { codigo: 200, datos: { instructor, ia, videos, buscar, tiempo: tiempoDe(db, usuario, ahora) } };
+    return { codigo: 200, datos: { instructor, ia, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
   });
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/profesor', ({ db, parametros }) => {
     const id = Number(parametros.id);

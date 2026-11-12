@@ -167,6 +167,8 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
 - Cifradas con AES-256-GCM en la base (`secretos`); la llave está en el archivo `oportia-llave-secretos` (ver «Datos en el
   servidor»). De una clave solo se ven sus últimos 4 caracteres; nunca sale en registros, errores, avisos, tareas,
   respuestas de la API ni copias.
+- **Desde la 0.12.3** (pedido del dueño) todo lo de esta lista se hace también por el enlace público, con la sesión de
+  administrador; lo delicado pide la contraseña otra vez (ver «Lo nuevo de la 0.12.3»). Lo que sigue es cómo era hasta la 0.12.2.
 - Solo se ven y se cambian desde la cuenta de Tailscale del dueño, por el enlace https (por el enlace público de Funnel solo
   se ve el gasto y se puede **apagar** la IA). El dueño es **una sola cuenta**: la primera de administrador. Otro
   administrador (un ayudante) nunca ve las claves ni cambia la IA, desde ningún equipo; solo el dueño, desde su cuenta de
@@ -408,7 +410,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.2; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.3; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -686,6 +688,62 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.3: el administrador hace todo desde el enlace público, comprobantes para siempre — sin cambio de base
+- **Todo desde el enlace público** (pedido del dueño): un administrador con su sesión (contraseña) hace TODO sin Tailscale:
+  datos del banco y paquetes, cuentas, planes, contraseñas, bloquear y desbloquear, «Permitir IA», crear otro administrador,
+  las claves de la IA, el token del bot y unir el chat de Telegram, la IA, la clave de recuperación de las copias. Lo que
+  antes era `soloTailnet` / `soloDueno` / «el dueño desde su cuenta de Tailscale» ahora es solo `{ admin: true }`. **Crear el
+  PRIMER administrador sigue siendo solo desde Tailscale** (`/api/primer-admin`, por seguridad al instalar).
+- **Lo delicado pide la contraseña otra vez, en ese pedido** (`src/cuentas/confirmar.js`): los datos de pago y los paquetes,
+  pegar/activar/desactivar una clave (también el token del bot), empezar a unir un chat de Telegram, la contraseña de otra
+  persona (reiniciarla o ponerla), crear un administrador, bloquear o renombrar a otro administrador y crear la clave de
+  recuperación. La pantalla abre una ventanita («Confirma con tu contraseña») y repite el mismo pedido con la cabecera
+  `X-Confirmar-Clave` (base64; nunca se guarda). Sin ella: `403 confirmar_clave`; mala: `403 clave_confirmar_incorrecta`
+  (con `quedan`); 5 malas en 15 minutos cierran esa sesión (`429 demasiados_intentos_clave`) y dejan un aviso. Desde la
+  cuenta de Tailscale del dueño no se pide (Tailscale ya dijo quién es).
+- **Cada cambio delicado** deja una línea en la auditoría (`cambio_admin`: hora, quién y QUÉ cambió, por ejemplo los nombres
+  de los campos de pago o el uso de una clave; nunca un valor secreto) y un aviso `cambio_admin:<acción>:<n.º>` (en la
+  pantalla y, si está unido, por Telegram). Administrador → Usuarios → «Cambios importantes» los muestra. «Entendido» los cierra.
+- **Un comprobante nuevo avisa** (`pago_recibido:<n.º>`): en la pantalla y por Telegram, con el nombre del alumno, el paquete
+  y el monto (la única excepción a «Telegram no lleva datos de una persona»). Aprobarlo o rechazarlo lo cierra.
+- **Los comprobantes se guardan para siempre**: se quitó el borrado de las imágenes a los 30 días (`src/academia/recibos.js` y
+  su paso en la revisión de cada hora); el programa vuelve a no borrar nunca un archivo (`test/reglas.test.js`, sin
+  excepciones). Pagos → «Todos los comprobantes» (de a 100, `GET /api/admin/academia/pagos/todos`) los muestra todos, cada uno
+  con «Bajar» (`…/:id/recibo?bajar=1`, `Content-Disposition: attachment`). Los que ya se habían borrado salen como «Imagen no
+  disponible» (el registro siempre quedó).
+- **Aviso de privacidad, versión 2** (`PRIVACIDAD_V2` en `src/cuentas/textos-legales.js`): igual que la 1 salvo el punto 6 (los
+  comprobantes ya no se borran solos). La versión 1 queda tal cual (`test/admin3.test.js` fija su huella): las firmas que la
+  aceptaron siguen valiendo y «Mis documentos» / Contratos la muestran como se firmó. Sin nada guardado, la versión en uso es
+  la última del código (la 2), así que cada persona acepta otra vez al entrar. Si el administrador ya había publicado un aviso
+  suyo, manda el suyo (nada se pisa): **revísalo** por si todavía promete borrar los comprobantes.
+- **Paquetes**: cada línea `minutos | precio`. Una línea mala (por ejemplo «350») se dice en la misma pantalla, con su número
+  («Línea 2 («350»): Cada línea: minutos | precio. Ejemplo: 60 | RD$350»), y el servidor responde `400 paquete_linea_no_valida`
+  con `linea` (o `paquetes_demasiados`, más de 8). Nada se guarda.
+- **Crear un usuario** pide solo el nombre de usuario (y el rol). En «Más opciones»: nombre y apellido, idioma y contraseña. La
+  primera vez que el alumno entra (elige su cuenta y crea su contraseña), el paso «Tus datos» de la firma le pide su nombre y
+  apellido (si el administrador los escribió, salen escritos y los puede corregir): eso es a la vez su nombre en la app (el
+  que se ve en Usuarios, su ficha y los reportes) y el de los contratos. Desde ahí él ya no lo cambia (Configuración dice «Tu
+  nombre lo cambia el administrador»; `403 nombre_lo_cambia_admin`); el administrador sí (Usuarios / ficha del alumno → nombre
+  legal, que cambia los dos). Las cuentas que ya existían no cambian.
+- **No se cobra lo que no se puede dar** (auditoría P1-2): «Tiempo con instructor IA» solo vende y muestra minutos si el
+  instructor IA le sirve a ESA cuenta (la IA y el instructor encendidos, un tope de su plan, «Permitir IA» y su propio permiso
+  de IA en Mis datos); si no, dice por qué («autorízalo en Mis datos» o «todavía no está disponible; todo lo demás es gratis»).
+  El servidor responde `409 pago_ia_no_disponible { falta }` al subir un comprobante, y aprobar uno cuando sus minutos no le
+  servirían responde `409 ia_no_lista_alumno { falta }` hasta que el administrador lo confirma (`{ aunAsi: true }`); los
+  comprobantes ya subidos quedan. Pagos le habla al administrador con sus propias frases («esta cuenta no tiene tope de IA»…).
+  «Comprar» dentro de esa misma pantalla baja a «Sube tu comprobante». El banco ya no trae uno por defecto: vacío queda vacío.
+- **Exámenes del Test Guide** (Administrador → Respuestas, arriba; y la ficha de cada alumno → Exámenes): solo el examen de
+  cada materia, agrupado por materia (intentos, mejor, último, aprobados), cada fila con alumno · fecha · nota · aprobado ·
+  tiempo · «Directo» (si fue sin terminar los temas), los más nuevos primero y con filtro por alumno; tocar uno abre cada
+  pregunta. Los temas y las prácticas van aparte, plegados («Prácticas y temas»), sin los sin terminar salvo «Mostrar sin
+  terminar». `GET /api/admin/academia/examenes[?alumno=n]` (solo lee). La clave de respuestas sigue, plegada, debajo.
+- «Permitir IA»: lo que hace el administrador con su sesión (reiniciar o poner una contraseña, el plan, bloquear y
+  desbloquear) ya no le quita a una cuenta el permiso que tenía; una cuenta nueva creada desde internet sigue empezando sin
+  él. Los minutos («Te quedan N min») se muestran solo si la IA le sirve a esa cuenta (`tiempo.activo` es por cuenta).
+- En el Grupo, los compañeros ven de un alumno con su nombre de verdad solo «Nombre A.» (él y el administrador, todo).
+- Ningún texto de las pantallas dice «OPORTIA» (se dice «la app»).
+- Pruebas: `test/admin3.test.js`.
 
 ### Lo nuevo de la 0.12.2: «Mi repaso» (errores por concepto, con mini-clase), el Camino y el Progreso del curso entero — sin cambio de base
 - **Por qué:** un alumno falló 2 preguntas en el primer examen del tema 1 y la app ya lo trataba como «falla» (la regla vieja

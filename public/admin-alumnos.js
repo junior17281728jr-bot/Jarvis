@@ -310,24 +310,90 @@ function filaIntento(h, alumnoId, x) {
         h.icono('flecha', 'icono chico'))));
 }
 
+// 0.12.3: «Exámenes del Test Guide» (el examen de cada materia, lo que le interesa al administrador): agrupados por materia,
+// con cuántos intentos, la mejor y la última nota y cuántos aprobaron; cada fila: alumno · fecha · nota · aprobó · tiempo
+// · «directo». Los temas y las prácticas van aparte, plegados («Prácticas y temas»), sin los sin terminar salvo que se pida.
+// Lógica pura (test/admin3.test.js): el resumen de un grupo después de filtrar por alumno.
+export function resumenExamenes(filas) {
+  const n = filas.length;
+  const aprobados = filas.filter(x => x.aprobado).length;
+  return { intentos: n, mejor: n ? Math.max(...filas.map(x => x.pct)) : null, ultima: n ? filas[0].pct : null, aprobados, tasa: n ? Math.round((aprobados * 100) / n) : null };
+}
+export function vistaExamenesTG(datos, h, { conAlumno = true } = {}) {
+  const { el, t, numero } = h;
+  const zona = el('div', { class: 'examenes-tg' });
+  let alumno = '';
+  const elegir = conAlumno && datos.alumnos.length > 1 ? el('select', { id: 'examenes-alumno', 'aria-label': t('examenes.filtro_alumno'), onchange: e => { alumno = e.currentTarget.value; pintar(); } },
+    el('option', { value: '', texto: t('examenes.todos_alumnos') }), datos.alumnos.map(a => el('option', { value: String(a.id), texto: a.nombre }))) : null;
+  const fila = x => el('li', {},
+    el('a', { class: 'ficha-intento', href: `#alumno/${x.alumno.id}/intento/${x.intento}` },
+      el('span', { class: `ficha-nota tono-${tonoNota(x.pct)}`, texto: h.pctTexto(x.pct) }),
+      el('span', { class: 'ficha-intento-texto' },
+        conAlumno ? el('strong', { texto: x.alumno.nombre }) : el('strong', { texto: h.fecha(x.fecha) }),
+        el('span', { class: 'suave chica', texto: [conAlumno ? h.fecha(x.fecha) : null, t('ficha.de', { bien: numero(x.aciertos), total: numero(x.total) }), t('ficha.tiempo_usado', { usado: reloj(x.segundos) })].filter(Boolean).join(' · ') })),
+      el('span', { class: 'ficha-intento-estado' },
+        x.directo ? h.insignia('atencion', t('examenes.directo')) : null,
+        x.aprobado ? h.insignia('bien', t('ficha.aprobado')) : h.insignia('mal', t('ficha.no_aprobado')),
+        h.icono('flecha', 'icono chico'))));
+  const pintar = () => {
+    // Solo las materias con exámenes, cada una con lo suyo; las demás, en una línea al final («más ordenada»).
+    const deCada = datos.materias.map(m => ({ m, filas: alumno ? m.filas.filter(x => String(x.alumno.id) === alumno) : m.filas }));
+    const sinIntentos = deCada.filter(x => !x.filas.length).map(x => h.nombreMateria(x.m.id));
+    const grupos = deCada.filter(x => x.filas.length).map(({ m, filas }) => {
+      const r = resumenExamenes(filas);
+      return el('section', { class: `panel examenes-materia ${h.claseMateria(m.id)}` },
+        el('div', { class: 'materia-cabeza' },
+          el('span', { class: 'banner-icono chico', 'aria-hidden': 'true' }, h.icono(h.ICONO_MATERIA?.[m.id] ?? 'avion')),
+          el('h3', { texto: h.nombreMateria(m.id) })),
+        el('p', { class: 'suave chica', texto: r.intentos ? t('examenes.materia.linea', { n: numero(r.intentos), mejor: h.pctTexto(r.mejor), ultima: h.pctTexto(r.ultima), aprobados: numero(r.aprobados), tasa: h.pctTexto(r.tasa) }) : t('examenes.sin_intentos') }),
+        filas.length ? h.verMas(el('ul', { class: 'ficha-intentos' }), filas.map(fila), 5) : null);
+    });
+    zona.replaceChildren(...grupos, ...(sinIntentos.length ? [el('p', { class: 'suave chica', texto: t('examenes.sin_intentos_lista', { lista: sinIntentos.join(' · ') }) })] : []));
+  };
+  pintar();
+  if (!datos.materias.some(m => m.filas.length)) return el('div', {}, h.vacio('libro', t('examenes.vacio'), null, 'en-linea'));
+  return el('div', {},
+    elegir ? el('label', { for: 'examenes-alumno', class: 'suave', texto: t('examenes.filtro_alumno') }) : null, elegir,
+    datos.enCurso ? el('p', { class: 'suave chica', texto: t('examenes.en_curso', { n: numero(datos.enCurso) }) }) : null,
+    zona);
+}
+
 function pestanaExamenes(d, h) {
   const { el, t } = h;
   if (!d.intentos.length) return el('section', { class: 'tarjeta' }, h.vacio('libro', t('ficha.intentos.vacio')));
-  const tipos = ['todos', 'tema', 'examen', 'reto', 'repaso', 'errores'].filter(x => x === 'todos' || d.intentos.some(i => i.tipo === x));
+  // Los exámenes del Test Guide (lo de siempre primero).
+  const zonaTG = el('div', {}, el('p', { class: 'cargando', texto: t('examenes.cargando') }));
+  h.api('GET', `/api/admin/academia/examenes?alumno=${encodeURIComponent(d.alumno.id)}`).then(r => {
+    zonaTG.replaceChildren(r.ok ? vistaExamenesTG(r.datos, h, { conAlumno: false }) : el('p', { class: 'mensaje error', texto: h.textoError(r.datos.error) }));
+  });
+  // Prácticas y temas: plegadas, sin los sin terminar salvo que se pida.
+  const otros = d.intentos.filter(x => x.tipo !== 'examen');
+  const tipos = ['todos', 'tema', 'reto', 'repaso', 'errores'].filter(x => x === 'todos' || otros.some(i => i.tipo === x));
   const lista = el('ul', { class: 'ficha-intentos' });
   let filtro = 'todos';
+  let conSinTerminar = false;
+  const sinTerminar = otros.filter(x => !x.terminadoSi).length;
   const botones = tipos.map(x => el('button', { type: 'button', class: 'ficha-filtro', 'aria-pressed': String(x === filtro), texto: x === 'todos' ? t('ficha.filtro.todos') : t(TEXTO_TIPO[x]), onclick: () => { filtro = x; pintar(); } }));
+  const verSin = sinTerminar ? el('button', { type: 'button', class: 'ficha-filtro', 'aria-pressed': 'false', texto: t('examenes.mostrar_sin_terminar', { n: h.numero(sinTerminar) }), onclick: () => { conSinTerminar = !conSinTerminar; pintar(); } }) : null;
   const pintar = () => {
     botones.forEach((b, k) => b.setAttribute('aria-pressed', String(tipos[k] === filtro)));
-    const elegidos = d.intentos.filter(x => filtro === 'todos' || x.tipo === filtro);
-    lista.replaceChildren(...elegidos.map(x => filaIntento(h, d.alumno.id, x)));
+    verSin?.setAttribute('aria-pressed', String(conSinTerminar));
+    const elegidos = otros.filter(x => (filtro === 'todos' || x.tipo === filtro) && (conSinTerminar || x.terminadoSi));
+    lista.replaceChildren(...(elegidos.length ? elegidos.map(x => filaIntento(h, d.alumno.id, x)) : [el('li', { class: 'suave', texto: t('examenes.otros.vacio') })]));
   };
   pintar();
-  return el('section', { class: 'tarjeta' },
-    el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: h.tn('ficha.intentos.n', { n: d.intentosTotal ?? d.intentos.length }) })),
-    el('p', { class: 'suave', texto: t('ficha.intentos.linea') }),
-    el('div', { class: 'ficha-filtros', role: 'group', 'aria-label': t('ficha.filtro') }, botones),
-    lista);
+  return [
+    el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: t('examenes.titulo') })),
+      el('p', { class: 'suave', texto: t('examenes.linea') }),
+      zonaTG),
+    otros.length ? el('section', { class: 'tarjeta' },
+      el('details', { class: 'plegable-chico' },
+        el('summary', { texto: h.tn('examenes.otros', { n: otros.filter(x => x.terminadoSi).length }) }),
+        el('p', { class: 'suave', texto: t('ficha.intentos.linea') }),
+        el('div', { class: 'ficha-filtros', role: 'group', 'aria-label': t('ficha.filtro') }, botones, verSin),
+        lista)) : null,
+  ];
 }
 
 function pestanaMaterias(d, h) {

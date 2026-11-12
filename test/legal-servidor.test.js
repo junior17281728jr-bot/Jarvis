@@ -44,7 +44,8 @@ function png(ancho = 240, alto = 80, { ruido = false } = {}) {
 const FIRMA_PNG = png();
 const FIRMA = `data:image/png;base64,${FIRMA_PNG.toString('base64')}`;
 // Lo demás que se firma (0.9.2, informe legal): privacidad, fecha de nacimiento (mayor de edad) y el permiso de IA.
-const FIRMAR = { versionPrivacidad: 1, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
+// 0.12.3: el Aviso de privacidad en uso es la versión 2 (la 1 queda para las firmas de antes).
+const FIRMAR = { versionPrivacidad: 2, nacimiento: '2000-05-10', aceptoPrivacidad: true, aceptoIa: true };
 const mala = id => ['A', 'B', 'C'].find(l => l !== DE(id).original.correcta);
 
 async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerpo } = {}) {
@@ -157,38 +158,12 @@ test('pagos: un menor sin la autorización de su tutor no puede pedir tiempo con
   });
 });
 
-test('la imagen de un comprobante se borra 30 días después de revisarlo; el registro del pago queda', async () => {
-  const { borrarRecibosVencidos } = await import('../src/academia/recibos.js');
-  const { carpetaPagos } = await import('../src/academia/tiempo-ia.js');
-  const { mkdirSync, writeFileSync, existsSync } = await import('node:fs');
-  const config = configDePrueba();
-  const db = abrirBase(config);
-  db.prepare("INSERT INTO usuarios (nombre, clave_hash, creado_en) VALUES ('ana', 'x', '2026-01-01')").run();
-  mkdirSync(carpetaPagos(config), { recursive: true });
-  const ahora = Date.parse('2026-11-12T15:00:00Z');
-  const filas = [['aprobado', 31], ['rechazado', 40], ['aprobado', 10], ['revision', null]].map(([estado, dias], k) => {
-    const archivo = `1-${1000 + k}-${'a'.repeat(11)}${k}.png`;
-    writeFileSync(join(carpetaPagos(config), archivo), FIRMA_PNG);
-    const revisado = dias == null ? null : new Date(ahora - dias * 24 * 3600 * 1000).toISOString();
-    const id = Number(db.prepare(`INSERT INTO academia_pagos (usuario_id, paquete, minutos, precio, archivo, tipo, bytes, estado, revisado_en, creado_en)
-      VALUES (1, 'p30', 30, 'RD$100', ?, 'image/png', 10, ?, ?, '2026-09-01T00:00:00Z')`).run(archivo, estado, revisado).lastInsertRowid);
-    return { id, archivo };
-  });
-  assert.equal(await borrarRecibosVencidos(db, config, { ahoraMs: ahora }), 2);
-  const fila = id => db.prepare('SELECT * FROM academia_pagos WHERE id = ?').get(id);
-  for (const k of [0, 1]) {
-    assert.equal(existsSync(join(carpetaPagos(config), filas[k].archivo)), false, 'la imagen se borró');
-    assert.equal(fila(filas[k].id).archivo, `borrado-${filas[k].archivo}`);
-    assert.deepEqual([fila(filas[k].id).minutos, fila(filas[k].id).precio], [30, 'RD$100'], 'el registro queda');
-  }
-  for (const k of [2, 3]) assert.ok(existsSync(join(carpetaPagos(config), filas[k].archivo)), 'todavía no');
-  assert.equal(await borrarRecibosVencidos(db, config, { ahoraMs: ahora }), 0, 'una sola vez');
-  db.close();
-});
+// 0.12.3: los comprobantes ya no se borran (se quitó src/academia/recibos.js): lo prueba test/admin3.test.js.
 
-test('el aviso de privacidad dice lo que la app hace: nada se borra solo salvo las imágenes de comprobantes', async () => {
-  const { PRIVACIDAD_V1 } = await import('../src/cuentas/textos-legales.js');
-  const plazos = PRIVACIDAD_V1.find(x => x.titulo.startsWith('6.')).texto;
+test('el aviso de privacidad dice lo que la app hace: nada se borra solo (0.12.3: tampoco los comprobantes, versión 2)', async () => {
+  const { PRIVACIDAD_V2 } = await import('../src/cuentas/textos-legales.js');
+  const plazos = PRIVACIDAD_V2.find(x => x.titulo.startsWith('6.')).texto;
+  assert.doesNotMatch(plazos, /se borra sola/);
   assert.match(plazos, /Nunca se borran solos/);
   assert.match(plazos, /se conserva la constancia de aceptación/);
   assert.doesNotMatch(plazos, /12 meses de inactividad/);

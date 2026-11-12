@@ -2,12 +2,39 @@
 // Sin librerías; todo texto con textContent (nunca como código). app.js le pasa sus ayudas. Los datos de la cuenta para
 // transferir los pone el administrador: viven solo en la base del servidor.
 
+// 0.12.3: el campo «Paquetes» (una línea por paquete: «minutos | precio»). Lógica pura (test/admin3.test.js).
+// → { paquetes: [{ id, minutos, precio }], error: null } o { paquetes: null, error: { linea, texto, motivo } }.
+// linea: el número de la línea en el campo (desde 1, contando las vacías); motivo: 'formato' | 'repetido' | 'demasiados'.
+export const PAQUETES_MAX = 8;
+export function leerPaquetes(texto) {
+  const paquetes = [];
+  const lineas = String(texto ?? '').split('\n');
+  for (let i = 0; i < lineas.length; i++) {
+    const crudo = lineas[i].trim();
+    if (!crudo) continue;
+    const malo = motivo => ({ paquetes: null, error: { linea: i + 1, texto: crudo.slice(0, 60), motivo } });
+    const partes = crudo.split('|').map(x => x.trim());
+    if (partes.length !== 2 || !/^\d{1,6}$/.test(partes[0]) || !partes[1] || partes[1].length > 40) return malo('formato');
+    const minutos = Number(partes[0]);
+    if (minutos < 1 || minutos > 100_000) return malo('formato');
+    if (paquetes.some(p => p.minutos === minutos)) return malo('repetido');
+    if (paquetes.length >= PAQUETES_MAX) return malo('demasiados');
+    paquetes.push({ id: `p${minutos}`, minutos, precio: partes[1], linea: i + 1 });
+  }
+  return { paquetes: paquetes.map(({ id, minutos, precio }) => ({ id, minutos, precio })), lineas: paquetes.map(p => p.linea), error: null };
+}
+
 export function crearPagos(h) {
   const { el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi } = h;
   const tx = (clave, vars = {}) => t(clave, vars);
+  // 0.12.3 (auditoría P1-3): agregar hijos sin que un null salga escrito «null» en la pantalla.
+  const anexar = (nodo, ...hijos) => nodo.append(...hijos.filter(x => x != null && x !== false));
+  const cambiarHijos = (nodo, ...hijos) => nodo.replaceChildren(...hijos.filter(x => x != null && x !== false));
 
   // «Instructor básico (gratis)» contra «Instructor con IA»: lo que de verdad hace cada uno.
-  function comparacion(pagar = null) {
+  // irA: en «Tiempo con instructor IA» mismo, «Comprar» baja a «Sube tu comprobante» (antes llevaba a la misma pantalla);
+  // sin un lugar donde comprar (sin datos de pago, o la IA no está lista), no se muestra.
+  function comparacion(pagar = null, { irA = undefined } = {}) {
     const lista = (clave, n) => el('ul', { class: 'lista-beneficios' }, Array.from({ length: n }, (_, i) => el('li', { class: 'con-icono' }, icono('marca', 'icono chico'), el('span', { texto: tx(`${clave}.${i + 1}`) }))));
     return el('section', { class: 'panel comparacion-ia' },
       el('h2', { texto: tx('vender.titulo') }),
@@ -17,7 +44,9 @@ export function crearPagos(h) {
         el('div', { class: 'comparacion-ia-col' }, el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx('vender.ia') })), lista('vender.ia', 6))),
       pagar?.paquetes?.length ? el('ul', { class: 'lista-paquetes' }, pagar.paquetes.map(p => el('li', {}, el('strong', { texto: tx('pago.paquete', { n: numero(p.minutos) }) }), talCual('span', ` · ${p.precio}`)))) : null,
       el('p', { class: 'suave chica', texto: tx('vender.honesto') }),
-      el('a', { class: 'boton-3d naranja', href: '#tiempo-ia' }, el('span', { texto: tx('vender.comprar') })));
+      irA === null ? null
+        : irA ? el('button', { type: 'button', class: 'boton-3d naranja', onclick: () => { irA.scrollIntoView({ behavior: 'smooth', block: 'start' }); irA.querySelector('input')?.focus({ preventScroll: true }); } }, el('span', { texto: tx('vender.comprar') }))
+          : el('a', { class: 'boton-3d naranja', href: '#tiempo-ia' }, el('span', { texto: tx('vender.comprar') })));
   }
 
   // ---------- El alumno: «Pedir más tiempo con IA» ----------
@@ -72,10 +101,21 @@ export function crearPagos(h) {
           el('p', { class: `estado-pago tono-${p.estado === 'aprobado' ? 'bien' : p.estado === 'rechazado' ? 'mal' : 'atencion'}`, texto: p.estado === 'revision' ? pg.espera : tx(`pago.estado.${p.estado}`) }),
           p.motivo ? el('p', { class: 'suave' }, el('span', { texto: `${tx('pago.motivo')} ` }), talCual('span', p.motivo)) : null))))) : null;
     if (d.novedades.length) api('POST', '/api/academia/tiempo-ia/visto', {});
-    mostrar(marco('inicio',
-      el('a', { class: 'volver con-icono', href: '#inicio' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: tx('acad.volver') })),
-      el('section', { class: 'panel tiempo-cabeza' }, el('h1', { class: 'titulo-grande', texto: tx('tiempo.titulo') }), instructorUi().medidorTiempo({ ...d.tiempo, activo: true }, { conBoton: false }), el('p', { class: 'suave', texto: tx('tiempo.que_es', { n: numero(d.tiempo.porUso) }) })),
-      comparacion(pg), datosCuenta, subir, historial));
+    const volver = el('a', { class: 'volver con-icono', href: '#inicio' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: tx('acad.volver') }));
+    // 0.12.3 (auditoría P1-2): si el instructor IA no le sirve ahora (apagado, sin tope, sin «Permitir IA» o sin su
+    // permiso), no se vende nada ni se muestran minutos: solo se dice por qué (y lo que ya subió sigue a la vista).
+    if (d.venta && !d.venta.listo && !d.tiempo.ilimitado) {
+      const sinPermiso = d.venta.falta?.includes('sin_consentimiento');
+      return mostrar(marco('inicio', volver,
+        el('section', { class: 'panel tiempo-cabeza' }, el('h1', { class: 'titulo-grande', texto: tx('tiempo.titulo') }),
+          el('p', { class: 'aviso con-icono-arriba' }, icono('info'), el('span', { texto: tx(sinPermiso ? 'tiempo.sin_consentimiento' : 'tiempo.no_disponible') })),
+          sinPermiso ? el('a', { class: 'boton-3d blanco', href: '#mis-datos' }, el('span', { texto: tx('tiempo.ir_mis_datos') })) : null),
+        historial));
+    }
+    mostrar(marco('inicio', volver,
+      el('section', { class: 'panel tiempo-cabeza' }, el('h1', { class: 'titulo-grande', texto: tx('tiempo.titulo') }), instructorUi().medidorTiempo(d.tiempo, { conBoton: false }), el('p', { class: 'suave', texto: tx('tiempo.que_es', { n: numero(d.tiempo.porUso) }) })),
+      // El administrador no compra (su tiempo no tiene límite): ve la pantalla como vista previa, sin «Comprar» ni subir.
+      comparacion(pg, { irA: d.tiempo.ilimitado ? null : subir ?? null }), datosCuenta, d.tiempo.ilimitado ? null : subir, historial));
   }
 
   // ---------- El administrador: «Pagos» ----------
@@ -94,19 +134,27 @@ export function crearPagos(h) {
       let motivo = '';
       if (!aprobar) { motivo = prompt(tx('pagos.motivo_pedir')) ?? ''; if (!motivo.trim()) return; }
       boton.disabled = true;
-      const x = await api('POST', `/api/admin/academia/pagos/${p.id}/${aprobar ? 'aprobar' : 'rechazar'}`, aprobar ? {} : { motivo });
+      let x = await api('POST', `/api/admin/academia/pagos/${p.id}/${aprobar ? 'aprobar' : 'rechazar'}`, aprobar ? {} : { motivo });
+      // 0.12.3: sus minutos no le servirían ahora: se dice por qué (al administrador) y solo se aprueba si lo confirma.
+      if (aprobar && x.datos?.error === 'ia_no_lista_alumno') {
+        const falta = (x.datos.falta ?? []).map(f => tx(`pagos.admin.falta.${f}`)).join(' · ');
+        if (!confirm(tx('pagos.aprobar_sin_ia', { alumno: p.alumno.nombre, falta }))) { boton.disabled = false; return; }
+        x = await api('POST', `/api/admin/academia/pagos/${p.id}/aprobar`, { aunAsi: true });
+      }
       if (!x.ok) { boton.disabled = false; return avisar(textoError(x.datos.error), 'mal'); }
-      const falta = aprobar && x.datos.ia && !x.datos.ia.listo ? ` ${tx('pagos.falta_ia', { falta: x.datos.ia.falta.map(f => tx(`instr.motivo.${f}`)).join(', ') })}` : '';
+      const falta = aprobar && x.datos.ia && !x.datos.ia.listo ? ` ${tx('pagos.falta_ia', { falta: x.datos.ia.falta.map(f => tx(`pagos.admin.falta.${f}`)).join(', ') })}` : '';
       avisar((aprobar ? tx('pagos.aprobado', { n: numero(p.minutos), alumno: p.alumno.nombre }) : tx('pagos.rechazado')) + falta, falta ? 'info' : 'bien');
       pantallaPagosAdmin();
     };
     const filaPago = p => el('li', { class: `pago pago-${p.estado}` },
-      el('button', { type: 'button', class: 'recibo-boton', 'aria-label': tx('pago.ampliar'), onclick: () => ampliar(`/api/admin/academia/pagos/${p.id}/recibo`) },
-        el('img', { src: `/api/admin/academia/pagos/${p.id}/recibo`, alt: tx('pago.foto'), loading: 'lazy', class: 'recibo-mini' })),
+      p.imagen === false ? el('span', { class: 'recibo-mini recibo-sin-imagen suave chica', texto: tx('pagos.sin_imagen') })
+        : el('button', { type: 'button', class: 'recibo-boton', 'aria-label': tx('pago.ampliar'), onclick: () => ampliar(`/api/admin/academia/pagos/${p.id}/recibo`) },
+          el('img', { src: `/api/admin/academia/pagos/${p.id}/recibo`, alt: tx('pago.foto'), loading: 'lazy', class: 'recibo-mini' })),
       el('div', { class: 'pago-datos' },
         el('p', {}, el('strong', { texto: p.alumno.nombre }), el('span', { texto: ` · ${tx('pago.paquete', { n: numero(p.minutos) })}` }), p.precio ? talCual('span', ` · ${p.precio}`) : null),
         el('p', { class: 'suave chica', texto: fecha(p.fecha) }),
         p.nota ? el('p', { class: 'suave' }, el('span', { texto: `${tx('pago.nota')}: ` }), talCual('span', p.nota)) : null,
+        p.imagen === false ? null : el('a', { class: 'enlace-fuerte chica', href: `/api/admin/academia/pagos/${p.id}/recibo?bajar=1`, download: '' }, el('span', { texto: tx('pagos.bajar') })),
         p.estado === 'revision' ? el('div', { class: 'botones' },
           el('button', { type: 'button', class: 'boton-3d chico', onclick: e => resolver(p, true, e.currentTarget) }, el('span', { texto: tx('pagos.aprobar') })),
           el('button', { type: 'button', class: 'boton-3d rojo chico', onclick: e => resolver(p, false, e.currentTarget) }, el('span', { texto: tx('pagos.rechazar') })))
@@ -120,19 +168,33 @@ export function crearPagos(h) {
     };
     const instrucciones = el('textarea', { id: 'pago-instrucciones', rows: 3, maxlength: 1000 });
     instrucciones.value = c.instrucciones ?? '';
-    const paquetesTexto = el('textarea', { id: 'pago-paquetes', rows: 3, 'aria-describedby': 'pago-paquetes-ayuda' });
+    const paquetesTexto = el('textarea', { id: 'pago-paquetes', rows: 3, 'aria-describedby': 'pago-paquetes-ayuda pago-paquetes-error' });
     paquetesTexto.value = c.paquetes.map(p => `${p.minutos} | ${p.precio}`).join('\n');
+    // 0.12.3: una línea mala («350», sin precio) se dice aquí mismo, con su número, y no se guarda nada.
+    const errorPaquetes = el('p', { id: 'pago-paquetes-error', class: 'mensaje error', role: 'alert', hidden: true });
+    const marcarPaquetes = (error = null) => {
+      errorPaquetes.hidden = !error;
+      errorPaquetes.textContent = error ? tx(`pagos.paquetes.error.${error.motivo}`, { n: numero(error.linea), linea: error.texto ?? '', max: numero(PAQUETES_MAX) }) : '';
+      if (error) paquetesTexto.setAttribute('aria-invalid', 'true'); else paquetesTexto.removeAttribute('aria-invalid');
+    };
+    paquetesTexto.addEventListener('input', () => { if (!errorPaquetes.hidden && !leerPaquetes(paquetesTexto.value).error) marcarPaquetes(); });
     const guardar = el('button', {
       type: 'button', class: 'boton-3d',
       onclick: async () => {
-        const paquetes = paquetesTexto.value.split('\n').map(l => l.split('|').map(x => x.trim())).filter(x => x[0])
-          .map(([m, precio]) => ({ id: `p${Number(m)}`, minutos: Number(m), precio: precio ?? '' }));
-        const datos = { paquetes, instrucciones: instrucciones.value };
+        const leidos = leerPaquetes(paquetesTexto.value);
+        if (leidos.error) { marcarPaquetes(leidos.error); paquetesTexto.focus(); return; }
+        marcarPaquetes();
+        const datos = { paquetes: leidos.paquetes, instrucciones: instrucciones.value };
         for (const [k, nodo] of Object.entries(campos)) datos[k] = nodo.type === 'number' ? Number(nodo.value) : nodo.value;
         guardar.disabled = true;
         const x = await api('POST', '/api/admin/academia/pagos/ajustes', datos);
         guardar.disabled = false;
-        if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+        if (!x.ok && x.datos.error === 'paquete_linea_no_valida') {
+          const k = Number(x.datos.linea) - 1;
+          marcarPaquetes({ linea: leidos.lineas[k] ?? x.datos.linea, texto: paquetesTexto.value.split('\n')[(leidos.lineas[k] ?? 1) - 1]?.trim() ?? '', motivo: 'formato' });
+          return;
+        }
+        if (!x.ok) return x.datos.error === 'confirmar_cancelado' ? null : avisar(textoError(x.datos.error), 'mal');
         avisar(tx('pagos.guardado'), 'bien');
         pantallaPagosAdmin();
       },
@@ -142,6 +204,7 @@ export function crearPagos(h) {
       el('h2', { class: 'con-icono' }, icono('dinero'), el('span', { texto: tx('pagos.ajustes') })),
       el('p', { class: 'suave', texto: tx('pagos.minuto') }),
       ...Object.entries(campos).flatMap(([k, nodo]) => etiqueta(k, nodo)), ...etiqueta('instrucciones', instrucciones), ...etiqueta('paquetes', paquetesTexto),
+      errorPaquetes,
       el('p', { id: 'pago-paquetes-ayuda', class: 'ayuda', texto: tx('pagos.paquetes_ayuda') }),
       el('p', { class: 'suave chica con-icono' }, icono('candado', 'icono chico'), el('span', { texto: tx('pagos.solo_dueno') })), guardar);
     // El saldo de cada alumno (se puede dejar en un número).
@@ -150,7 +213,7 @@ export function crearPagos(h) {
       el('ul', { class: 'lista-simple' }, d.alumnos.map(a => {
         const n = el('input', { type: 'number', min: 0, value: a.minutos, 'aria-label': tx('pagos.minutos_de', { alumno: a.nombre }), class: 'campo-corto' });
         return el('li', { class: 'fila-saldo' }, el('span', { texto: a.nombre }),
-          el('span', { class: `chica tono-${a.ia?.listo ? 'bien' : 'atencion'}`, texto: a.ia?.listo ? tx('pagos.ia_lista') : tx('pagos.falta_ia', { falta: (a.ia?.falta ?? []).map(f => tx(`instr.motivo.${f}`)).join(', ') }) }), n,
+          el('span', { class: `chica tono-${a.ia?.listo ? 'bien' : 'atencion'}`, texto: a.ia?.listo ? tx('pagos.ia_lista') : tx('pagos.falta_ia', { falta: (a.ia?.falta ?? []).map(f => tx(`pagos.admin.falta.${f}`)).join(', ') }) }), n,
           el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async e => {
             e.currentTarget.disabled = true;
             const x = await api('POST', `/api/admin/academia/alumnos/${a.id}/minutos`, { minutos: Number(n.value) });
@@ -171,11 +234,31 @@ export function crearPagos(h) {
       } }, el('span', { texto: tx('pagos.guardar') })));
     const pendientes = d.pagos.filter(p => p.estado === 'revision');
     const resueltos = d.pagos.filter(p => p.estado !== 'revision');
+    // 0.12.3: todos los comprobantes, de siempre (nunca se borran): verlos y bajarlos uno por uno, de a 100.
+    const listaTodos = el('ul', { class: 'lista-pagos' });
+    const masTodos = el('button', { type: 'button', class: 'boton-3d blanco chico', hidden: true }, el('span', { texto: tx('pagos.todos.mas') }));
+    const resumenTodos = el('p', { class: 'suave' });
+    let antes = null;
+    const cargarTodos = async () => {
+      masTodos.disabled = true;
+      const x = await api('GET', `/api/admin/academia/pagos/todos${antes ? `?antes=${antes}` : ''}`);
+      masTodos.disabled = false;
+      if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+      listaTodos.append(...x.datos.pagos.map(filaPago));
+      resumenTodos.textContent = tx('pagos.todos.cuantos', { n: numero(x.datos.total) });
+      antes = x.datos.siguiente;
+      masTodos.hidden = !antes;
+    };
+    masTodos.addEventListener('click', cargarTodos);
+    const todos = el('details', { class: 'pagos-todos', ontoggle: e => { if (e.currentTarget.open && !listaTodos.childElementCount) cargarTodos(); } },
+      el('summary', { texto: tx('pagos.todos') }),
+      el('p', { class: 'ayuda', texto: tx('pagos.todos.linea') }), resumenTodos, listaTodos, masTodos);
     mostrar(marco('admin', cabeceraAdmin('pagos'),
       el('section', { class: 'tarjeta' },
         el('h2', { class: 'con-icono' }, icono('recibo'), el('span', { texto: tx('pagos.pendientes', { n: numero(pendientes.length) }) })),
         pendientes.length ? el('ul', { class: 'lista-pagos' }, pendientes.map(filaPago)) : el('p', { class: 'suave', texto: tx('pagos.ninguno') }),
-        resueltos.length ? el('details', {}, el('summary', { texto: tx('pagos.resueltos', { n: numero(resueltos.length) }) }), el('ul', { class: 'lista-pagos' }, resueltos.map(filaPago))) : null),
+        resueltos.length ? el('details', {}, el('summary', { texto: tx('pagos.resueltos', { n: numero(resueltos.length) }) }), el('ul', { class: 'lista-pagos' }, resueltos.map(filaPago))) : null,
+        todos),
       el('div', { class: 'rejilla dos' }, ajustes, el('div', {}, saldos, fallas, videosAdmin()))));
   }
 
@@ -227,11 +310,12 @@ export function crearPagos(h) {
     const d = r.datos;
     const volver = el('a', { class: 'volver con-icono', href: '#inicio' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: tx('acad.volver') }));
     if (!d.permiso.permitido) {
-      return mostrar(marco('inicio', volver, el('section', { class: 'panel' }, el('h1', { class: 'titulo-grande', texto: tx('profesor.titulo') }), el('p', { texto: tx('profesor.sin_permiso') })), comparacion()));
+      // 0.12.3: «Comprar» solo si el instructor IA le sirve a esta cuenta (si no, no se vende).
+      return mostrar(marco('inicio', volver, el('section', { class: 'panel' }, el('h1', { class: 'titulo-grande', texto: tx('profesor.titulo') }), el('p', { texto: tx('profesor.sin_permiso') })), comparacion(null, { irA: d.tiempo?.activo ? undefined : null })));
     }
     const lista = el('div', { class: 'chat-lista', 'aria-live': 'polite' }, d.historial.flatMap(burbujas));
     const entradaTexto = el('textarea', { rows: 2, maxlength: 500, 'aria-label': tx('profesor.escribe'), placeholder: tx('profesor.escribe') });
-    const medidor = el('div', { class: 'chat-tiempo' }, instructorUi().medidorTiempo({ ...d.tiempo, activo: true }));
+    const medidor = el('div', { class: 'chat-tiempo' }, instructorUi().medidorTiempo(d.tiempo));
     const mandar = async texto => {
       const mensaje = String(texto ?? entradaTexto.value).trim();
       if (mensaje.length < 2) return entradaTexto.focus();
@@ -244,9 +328,9 @@ export function crearPagos(h) {
       const nodos = burbujas(m);
       lista.append(...nodos);
       const caja = nodos[1];
-      if (x.datos.tiempo) medidor.replaceChildren(instructorUi().medidorTiempo({ ...x.datos.tiempo, activo: true }) ?? '');
+      if (x.datos.tiempo) cambiarHijos(medidor, instructorUi().medidorTiempo(x.datos.tiempo));
       if (x.datos.ia.estado === 'no') {
-        caja.replaceChildren(x.datos.ia.motivo === 'sin_minutos' ? instructorUi().sinMinutos() : el('p', { class: 'suave', texto: tx('profesor.no') }),
+        cambiarHijos(caja, x.datos.ia.motivo === 'sin_minutos' ? instructorUi().sinMinutos() : el('p', { class: 'suave', texto: tx('profesor.no') }),
           x.datos.basica ? el('p', {}, el('strong', { texto: `${tx('profesor.basico')} ` }), el('span', { texto: tx(`instr.c.${x.datos.basica.clave}`, x.datos.basica.vars ?? {}) })) : null,
           ...[...(x.datos.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')), ...(x.datos.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))]);
       } else if (x.datos.ia.estado === 'pendiente') {
@@ -254,7 +338,7 @@ export function crearPagos(h) {
           if (!caja.isConnected) return;
           const y = await api('GET', '/api/academia/profesor');
           const ultimo = y.ok ? y.datos.historial.at(-1) : null;
-          if (ultimo?.respuesta || ultimo?.estado === 'no') { caja.replaceWith(...burbujas(ultimo).slice(1)); medidor.replaceChildren(instructorUi().medidorTiempo({ ...y.datos.tiempo, activo: true }) ?? ''); return; }
+          if (ultimo?.respuesta || ultimo?.estado === 'no') { caja.replaceWith(...burbujas(ultimo).slice(1)); cambiarHijos(medidor, instructorUi().medidorTiempo(y.datos.tiempo)); return; }
           if (n < 60) setTimeout(() => vuelta(n + 1), 2000);
         };
         setTimeout(vuelta, 2000);

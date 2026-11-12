@@ -125,6 +125,8 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
   // Fase 1, parte e: las copias y el Telegram.
   const { MOTIVOS_COPIA, NO_CLAVE } = await import('../public/copias-vista.js');
   const { ESTADOS_COPIA } = await import('../src/copias/formato.js');
+  // 0.12.3: cada cambio delicado del administrador (aviso y «Cambios importantes»).
+  const { ACCIONES_ADMIN } = await import('../src/cuentas/confirmar.js');
   // Academia (0.7.0).
   const { MATERIAS } = await import('../src/academia/formato.js');
   const { ESTADOS_PAQUETE } = await import('../src/academia/paquetes.js');
@@ -189,6 +191,10 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...PASOS_FIRMA.filter(x => x !== 'listo').map(x => `firma.${x}.despues`),
     // 0.12.2: el avance de cada nodo del Camino.
     ...['nuevo', 'empezado', 'terminado', 'dominado'].map(x => `camino.nivel.${x}`),
+    // 0.12.3.
+    ...ACCIONES_ADMIN.map(x => `admin.cambio.${x}`),
+    ...['ia_apagada', 'sin_presupuesto', 'cuenta_sin_permiso', 'sin_consentimiento'].map(x => `pagos.admin.falta.${x}`),
+    ...['formato', 'repetido', 'demasiados'].map(x => `pagos.paquetes.error.${x}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -210,7 +216,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // 0.12.1.
     'lee.resumen.', 'firma.paso.', 'firma.',
     // 0.12.2.
-    'camino.nivel.']));
+    'camino.nivel.',
+    // 0.12.3.
+    'admin.cambio.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
@@ -249,11 +257,10 @@ test('27. «Usar …» de un proveedor solo existe con su precio confirmado (con
     assert.equal(s.proveedores.find(p => p.id === 'openai').precio?.confirmado, false, 'el precio de ChatGPT sigue sin confirmar');
     assert.deepEqual([porId.openai.conInterruptor, porId.openai.etiqueta, porId.openai.estado], [false, null, 'sin_precio'], 'sin precio no hay interruptor para ChatGPT');
     assert.deepEqual([porId.anthropic.conInterruptor, porId.anthropic.etiqueta], [true, 'ia.proveedor.usar']);
-    // Por el enlace público: ni la lista de proveedores llega.
+    // 0.12.3: por el enlace público, el administrador con su sesión ve lo mismo (los mismos controles).
     const publico = await (await fetch(`${base}/api/admin/ia`, { headers: { 'Tailscale-Funnel-Request': '?1', Cookie: galleta } })).json();
-    assert.equal(publico.esDueno, false);
-    assert.equal(publico.proveedores, undefined);
-    assert.deepEqual(controlesProveedores(publico.proveedores), []);
+    assert.equal(publico.esDueno, true);
+    assert.deepEqual(controlesProveedores(publico.proveedores), controlesProveedores(s.proveedores));
   });
   db.close();
   // Con los dos precios confirmados, el segundo dice que solo se usa cuando el primero no está.

@@ -16,6 +16,7 @@ import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 
 const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
 const CLAVE = 'una clave bien larga';
+const CONFIRMA = { 'X-Confirmar-Clave': Buffer.from('una clave bien larga').toString('base64') }; // 0.12.3
 const MUESTRA = paqueteMuestra();
 const DE = id => MUESTRA.preguntas.find(q => q.id === id);
 const mala = id => ['A', 'B', 'C'].find(l => l !== DE(id).original.correcta);
@@ -220,7 +221,9 @@ test('el administrador pone una contraseña: se cierran las sesiones de la perso
     assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/clave`, { datos: { clave: 'pepe' } })).codigo, 401);
     assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/clave`, { galleta: admin, datos: { clave: '1111' } })).datos.error, 'clave_obvia');
     assert.equal((await pedir(base, 'POST', '/api/admin/usuarios/1/clave', { galleta: admin, datos: { clave: 'pepe' } })).datos.error, 'tu_clave_en_configuracion');
-    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/clave`, { galleta: admin, datos: { clave: 'pepe' } })).codigo, 200);
+    // 0.12.3: la contraseña de otra persona, con la del administrador otra vez.
+    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/clave`, { galleta: admin, datos: { clave: 'pepe' } })).datos.error, 'confirmar_clave');
+    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${ids.ana}/clave`, { galleta: admin, datos: { clave: 'pepe' }, cabeceras: CONFIRMA })).codigo, 200);
     assert.equal((await pedir(base, 'GET', '/api/yo', { galleta: ana })).codigo, 401);
     const e = await entrar(base, 'ana', 'pepe');
     assert.equal(e.codigo, 200);
@@ -279,8 +282,10 @@ test('el administrador cambia el usuario y el nombre de alguien: la sesión sigu
     const fila = db.prepare("SELECT usuario_id, detalle FROM auditoria WHERE accion = 'nombre_usuario_cambiado'").get();
     assert.equal(fila.usuario_id, 1, 'la auditoría nombra al administrador');
     assert.match(fila.detalle, /ana -> ana\.nueva/);
-    // A otro administrador solo lo cambia el dueño (desde su cuenta de Tailscale).
+    // 0.12.3: a otro administrador, con la contraseña otra vez (también por el enlace público), y queda un aviso.
     const otro = crearUsuario(db, { nombre: 'admin2', claveHash: await hashClave(CLAVE), rol: 'admin', debeCambiarClave: false });
-    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${otro}/nombre`, { galleta: admin, datos: { nombre: 'admin3' } })).datos.error, 'solo_desde_tailnet');
+    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${otro}/nombre`, { galleta: admin, datos: { nombre: 'admin3' } })).datos.error, 'confirmar_clave');
+    assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${otro}/nombre`, { galleta: admin, datos: { nombre: 'admin3' }, cabeceras: CONFIRMA })).codigo, 200);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM avisos WHERE clave LIKE 'cambio_admin:admin_nombre:%'").get().n, 1);
   });
 });

@@ -10,6 +10,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { MATERIAS } from './formato.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { nombreLegalDe } from '../cuentas/terminos.js';
 import { grupoEncendido, temasAprobados, temasLeidos, examenes, puntosYRacha, porMateria, diaDe } from './progreso.js';
 
 export const PLANES_ESTUDIO = Object.freeze({ un_mes: 30, dos_meses: 60, repaso_15: 15 });
@@ -94,6 +95,12 @@ export function ocultarEnGrupo(db, usuarioId, oculto) {
   guardarAjuste(db, claveOculto(usuarioId), oculto ? '1' : '0');
 }
 
+// 0.12.3: si el nombre en la app es su nombre legal completo, a los compañeros solo «Nombre A.».
+export function nombreParaElGrupo(legal, visible) {
+  if (!legal || visible !== legal.completo) return visible;
+  return `${legal.nombre} ${legal.apellido.slice(0, 1).toUpperCase()}.`;
+}
+
 // Lo que ve un alumno del grupo. Solo estos campos, a propósito (test/academia-plan.test.js lo cuida).
 export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const grupo = grupoEncendido(db);
@@ -102,6 +109,7 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const filas = db.prepare("SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE activo = 1 ORDER BY id").all();
   const companeros = [];
   const avatares = avataresDe(db);
+  const legales = new Map(filas.map(u => [u.id, nombreLegalDe(db, u.id)]));
   for (const u of filas) {
     const soyYo = u.id === usuarioId;
     // Un administrador sale solo si también estudia (eligió un plan); cualquiera se puede ocultar.
@@ -111,7 +119,9 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const perfectos = [...temasAprobados(db, u.id).values()].filter(x => x.aprobado && x.mejor === 100).length;
     companeros.push({
       tu: soyYo,
-      nombre: u.nombre_visible || u.nombre,
+      // 0.12.3: el nombre en la app de un alumno es su Nombre y Apellido de verdad (lo confirma al firmar): a los demás
+      // del grupo solo se les muestra el nombre y la inicial del apellido («Ana María P.»). Él y el administrador, todo.
+      nombre: soyYo ? u.nombre_visible || u.nombre : nombreParaElGrupo(legales.get(u.id), u.nombre_visible || u.nombre),
       // 0.9.0: el avatar que eligió (o null). Su «meta» NO va aquí: es solo suya y del administrador.
       avatar: avatares.get(u.id) ?? null,
       materia: actual ?? MATERIAS[MATERIAS.length - 1],

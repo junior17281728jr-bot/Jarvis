@@ -114,9 +114,11 @@ test('regla: 3 errores en preguntas RELACIONADAS (el mismo concepto, varios inte
     const r = await repaso(c, c.ana);
     assert.equal(r.paraRepasar.length, 1);
     assert.deepEqual([r.paraRepasar[0].clave, r.paraRepasar[0].practicar, r.paraRepasar[0].miniclase], [QUE_ES, { tipo: 'errores', concepto: QUE_ES }, false]);
-    // Solo para Ana; el umbral lo cambia solo el dueño (y se sigue leyendo la configuración guardada de antes).
+    // Solo para Ana; el umbral lo cambia el administrador (y se sigue leyendo la configuración guardada de antes).
     assert.deepEqual(await fallas(c, c.beto), []);
-    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { umbral: 4 } })).codigo, 403);
+    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.ana, datos: { umbral: 4 } })).codigo, 403);
+    // 0.12.3: el administrador también por el enlace público, con su sesión.
+    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { umbral: 5 } })).datos.fallas.umbral, 5);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { umbral: 1 } })).codigo, 400);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { umbral: 4 } })).datos.fallas.umbral, 4);
     guardarAjuste(c.db, 'academia.fallas.config', JSON.stringify({ umbral: 3, examen: 2 }));

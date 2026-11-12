@@ -41,6 +41,10 @@ export const AVISO_IA_LLAMADAS = /^ia_llamadas:e[1-9]\d{0,9}$/;
 // Fase 1, parte e: una actualización que no se instaló (alguna prueba falló) o que no arrancó y se devolvió a la anterior
 // (lo escribe el actualizador del servidor en update.log; el trabajador solo lo LEE: src/copias/vigilar.js).
 export const AVISO_ACTUALIZACION = /^actualizacion_(?:no_instalada|revertida):[0-9a-f]{7}$/;
+// 0.12.3: avisos de UN hecho (cada uno con su propia clave): un cambio delicado del administrador
+// ('cambio_admin:<acción>:<n.º de la auditoría>', src/cuentas/confirmar.js) y un comprobante de pago que subió un alumno
+// ('pago_recibido:<n.º del pago>'). Se resuelven al tocar «Entendido» (el comprobante, también al aprobarlo o rechazarlo).
+export const AVISO_HECHO = /^(?:cambio_admin:[a-z_]{1,40}:[1-9]\d{0,15}|pago_recibido:[1-9]\d{0,15})$/;
 
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
@@ -48,7 +52,7 @@ const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion'
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
   return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
-    || AVISO_ACTUALIZACION.test(texto);
+    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto);
 }
 
 function textoDetalle(detalle) {
@@ -117,6 +121,8 @@ export function marcarVisto(db, { id, usuarioId = null, ahora = Date.now() }) {
       db.prepare('UPDATE avisos SET visto_en = ?, visto_por = ? WHERE id = ? AND visto_en IS NULL').run(iso(ahora), usuarioId, numero);
       auditar(db, { usuarioId, accion: 'aviso_visto', detalle: `${aviso.clave} (n.º ${numero})` });
     }
+    // 0.12.3: un aviso de un hecho ya visto no queda abierto para siempre.
+    if (AVISO_HECHO.test(String(aviso.clave))) db.prepare('UPDATE avisos SET resuelto_en = ? WHERE id = ? AND resuelto_en IS NULL').run(iso(ahora), numero);
     return true;
   });
 }

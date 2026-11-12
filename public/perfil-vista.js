@@ -11,7 +11,9 @@ export function tarjetasPerfil(perfil, h, { alGuardar } = {}) {
   let forma = inicial[0];
   let color = inicial[1] ?? colores[0];
   const vista = el('div', { class: 'perfil-vista', 'aria-live': 'polite' });
-  const campoNombre = el('input', { id: 'campo-perfil-nombre', type: 'text', maxlength: nombreVisibleMaximo, value: perfil.nombreVisible, autocomplete: 'name', autocapitalize: 'words' });
+  // 0.12.3: un alumno que ya confirmó su Nombre y Apellido no lo cambia aquí (lo cambia el administrador).
+  const nombreFijo = perfil.nombreFijo === true;
+  const campoNombre = el('input', { id: 'campo-perfil-nombre', type: 'text', maxlength: nombreVisibleMaximo, value: perfil.nombreVisible, autocomplete: 'name', autocapitalize: 'words', readonly: nombreFijo || null, 'aria-describedby': nombreFijo ? 'perfil-nombre-fijo' : null });
   const campoMeta = el('input', { id: 'campo-perfil-meta', type: 'text', maxlength: metaMaxima, value: perfil.meta ?? '', autocomplete: 'off', placeholder: t('perfil.meta.muestra') });
   const cuenta = el('span', { class: 'suave chica perfil-cuenta' });
   const avatarActual = () => (forma ? `${forma}-${color}` : null);
@@ -48,7 +50,7 @@ export function tarjetasPerfil(perfil, h, { alGuardar } = {}) {
   // 0.9.2: «Perfil privado» (el mismo de «ocultarme» del Grupo).
   const privado = el('input', { id: 'campo-perfil-privado', type: 'checkbox', checked: perfil.privado === true });
   const guardar = h.botonAccion(t('perfil.guardar'), '', mensaje, async () => {
-    const r = await h.api('POST', '/api/yo/perfil', { nombreVisible: campoNombre.value, avatar: avatarActual(), meta: campoMeta.value, privado: privado.checked });
+    const r = await h.api('POST', '/api/yo/perfil', { ...(nombreFijo ? {} : { nombreVisible: campoNombre.value }), avatar: avatarActual(), meta: campoMeta.value, privado: privado.checked });
     if (!r.ok) throw new Error(h.textoError(r.datos.error));
     h.avisar(t('perfil.listo'));
     alGuardar?.(r.datos.perfil);
@@ -72,6 +74,7 @@ export function tarjetasPerfil(perfil, h, { alGuardar } = {}) {
       el('p', { class: 'suave', texto: t('perfil.linea') }),
       vista,
       el('label', { for: 'campo-perfil-nombre', texto: t('perfil.nombre') }), campoNombre,
+      nombreFijo ? el('p', { id: 'perfil-nombre-fijo', class: 'ayuda con-icono-arriba' }, h.icono('candado', 'icono chico'), el('span', { texto: t('perfil.nombre.fijo') })) : null,
       el('label', { for: 'campo-perfil-meta', texto: t('perfil.meta') }), campoMeta, cuenta,
       el('p', { class: 'ayuda', texto: t('perfil.meta.ayuda') }),
       el('h3', { id: 'titulo-avatar', texto: t('perfil.avatar') }),

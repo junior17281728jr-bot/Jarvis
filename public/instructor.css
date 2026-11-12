@@ -146,3 +146,12 @@
 .grafica-barras .barra-etiqueta { font-size: 10px; fill: var(--suave, #667); }
 .lista-dificiles li { margin-bottom: 8px; }
 .plan-pasar { text-align: left; }
+
+/* 0.12.3: la contraseña otra vez para lo delicado del administrador, los comprobantes de siempre y los cambios. */
+.confirmar-clave { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(15, 23, 32, 0.55); }
+.confirmar-clave .confirmar-clave-caja { max-width: 420px; width: 100%; display: grid; gap: 8px; }
+.confirmar-clave .confirmar-clave-caja input { width: 100%; box-sizing: border-box; }
+.recibo-sin-imagen { display: grid; place-items: center; text-align: center; padding: 6px; box-sizing: border-box; }
+.pagos-todos { margin-top: 12px; }
+.lista-cambios li { padding: 6px 0; border-bottom: 1px solid var(--gris-nodo, #e5e7eb); overflow-wrap: anywhere; }
+.tarjeta-cambios { margin-top: 16px; }

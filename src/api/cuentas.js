@@ -15,8 +15,7 @@ import {
   avisarClaveReiniciada, avisarCuenta, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
-import { duenoDeTailscale, exigirDueno } from '../cuentas/tailscale.js';
-import { leerConfigIa, algunTopeDePlan } from '../ia/config.js';
+import { anotarCambioAdmin, historialAdmin } from '../cuentas/confirmar.js';
 import { leerPerfil, avataresDe } from '../cuentas/perfil.js';
 import { estadoTerminos, nombresLegales, ponerNombreLegal } from '../cuentas/terminos.js';
 import { anotarConfianza, cuentaConfirmada, seguirConfianza, estadoConfianza, ponerPermisoIa } from '../cuentas/confianza.js';
@@ -95,21 +94,17 @@ function arrancando(supervisor) {
   }
 }
 
-// Fase 1, parte d. Mientras alguna cuenta pueda gastar IA (un plan con tope mayor que 0), lo que da acceso a ese dinero
-// (crear una cuenta, cambiar su plan, reiniciar su contraseña o volver a activarla) solo se hace desde la red de
-// Tailscale: con una contraseña de administrador robada, por el enlace público, nadie puede multiplicar las cuentas que
-// gastan hasta llenar el tope general. Con todos los topes de plan en US$0 (lo que trae OPORTIA) no cambia nada.
-function cuentasDesdeAqui(db, req) {
-  return vieneDeTailscale(req).si || !algunTopeDePlan(leerConfigIa(db));
-}
-function exigirCuentasDesdeAqui(db, req) {
-  if (!cuentasDesdeAqui(db, req)) throw new ErrorHttp(403, 'cuentas_solo_tailnet');
-}
-// Ronda 5 de revisión: lo de arriba solo mira los topes de AHORA. Por eso cada uno de esos cambios, además, queda anotado
-// con de dónde vino (src/cuentas/confianza.js): una cuenta tocada desde internet no gasta IA (aunque el dueño ponga un
-// tope de plan más adelante) hasta que el dueño, desde su cuenta de Tailscale, le da permiso.
-function anotarOrigen(db, req, { usuarioId, accion, hechoPor }) {
-  anotarConfianza(db, { usuarioId, accion, desdeTailnet: vieneDeTailscale(req).si, hechoPor });
+// 0.12.3 (pedido del dueño): el administrador, con su sesión, administra las cuentas también por el enlace público (antes,
+// mientras alguna cuenta podía gastar IA, crear, cambiar planes, reiniciar contraseñas y volver a activar era solo desde
+// Tailscale). Lo delicado (la contraseña de otra persona, crear o tocar a otro administrador) pide su contraseña otra vez
+// en ese pedido (confirmar(), src/cuentas/confirmar.js) y deja un aviso y una línea en la auditoría.
+// Ronda 5 de revisión (sigue): cada cambio queda anotado con de dónde vino (src/cuentas/confianza.js). 0.12.3: lo que hace
+// el administrador con su sesión (reiniciar o poner una contraseña, cambiar el plan, bloquear y desbloquear) NO le quita a
+// la cuenta el «Permitir IA» que ya tenía (teniaPermiso: cuentaConfirmada ANTES del cambio); una cuenta nueva creada
+// desde internet sigue empezando sin él hasta que el administrador lo da (también por el enlace público).
+function anotarOrigen(db, req, { usuarioId, accion, hechoPor, teniaPermiso = false }) {
+  const desdeTailnet = vieneDeTailscale(req).si;
+  anotarConfianza(db, { usuarioId, accion, desdeTailnet, confiable: desdeTailnet || teniaPermiso === true, hechoPor });
 }
 
 export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null } = {}) {
@@ -276,9 +271,9 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   }, { permitirConClaveTemporal: true });
 
   // permisos: qué se puede hacer desde esta entrada (la pantalla solo muestra los botones que sirven).
-  //  - cuentas: crear cuentas, cambiar planes, reiniciar contraseñas y volver a activar (ver cuentasDesdeAqui).
-  //  - admins: crear un administrador, o reiniciar, desactivar o activar a otro: solo el dueño, desde su cuenta de Tailscale.
-  rutas.agregar('GET', '/api/admin/usuarios', ({ db, req, usuario }) => ({
+  //  - cuentas: crear cuentas, cambiar planes, reiniciar contraseñas y volver a activar.
+  //  - admins: crear un administrador, o reiniciar, desactivar o activar a otro (con la contraseña otra vez).
+  rutas.agregar('GET', '/api/admin/usuarios', ({ db }) => ({
     codigo: 200,
     datos: {
       // ia (solo de las cuentas comunes): si puede gastar IA y de dónde vino su último cambio (src/cuentas/confianza.js).
@@ -286,20 +281,23 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       // 0.9.2: nombreLegal (Nombre y Apellido de verdad, el de la firma de los términos).
       usuarios: ((avatares, legales) => listarUsuarios(db).map(u => ({ ...(u.rol === 'admin' ? u : { ...u, ia: estadoConfianza(db, u.id) }), avatar: avatares.get(u.id) ?? null, nombreLegal: legales.get(u.id) ?? null })))(avataresDe(db), nombresLegales(db)),
       planes: planesPublicos(),
-      permisos: { cuentas: cuentasDesdeAqui(db, req), admins: duenoDeTailscale(db, req, usuario).si },
+      // 0.12.3: siempre todo (lo delicado pide la contraseña otra vez). Se dejan los dos para las pantallas viejas.
+      permisos: { cuentas: true, admins: true },
     },
   }), { admin: true });
 
-  rutas.agregar('POST', '/api/admin/usuarios', async ({ db, req, usuario }) => {
+  // 0.12.3: los últimos cambios delicados (hora, quién y qué; nunca un secreto), para Administrador → Usuarios.
+  rutas.agregar('GET', '/api/admin/cambios', ({ db }) => ({ codigo: 200, datos: { cambios: historialAdmin(db, { limite: 50 }) } }), { admin: true });
+
+  rutas.agregar('POST', '/api/admin/usuarios', async ({ db, req, usuario, confirmar }) => {
     const datos = await leerJson(req);
     const nombre = nombreDe(datos);
     const nombreVisible = nombreVisibleDe(datos);
     const rol = datos.rol === 'admin' ? 'admin' : 'usuario';
-    // Otro administrador solo lo crea el dueño, desde su cuenta de Tailscale (nunca por el enlace público).
-    if (rol === 'admin') exigirDueno(db, req, usuario);
-    else exigirCuentasDesdeAqui(db, req);
     // Si el nombre ya existe, se responde antes de calcular nada (la pantalla propone otro: juan.perez2…).
     if (buscarPorNombre(db, nombre)) throw new ErrorHttp(409, 'nombre_ocupado');
+    // 0.12.3: otro administrador, con la contraseña del que lo crea otra vez (también por el enlace público).
+    const confirmado = rol === 'admin' ? await confirmar() : null;
     // 0.9.2: «sinClave»: la persona pone la suya al entrar la primera vez; «clave»: la pone el administrador. Si no,
     // como siempre: una contraseña temporal que hay que cambiar al entrar.
     const sinClave = datos.sinClave === true;
@@ -319,50 +317,53 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), debeCambiarClave: Boolean(temporal), creadoPor: usuario.id });
       if (nuevo && rol === 'usuario') anotarOrigen(db, req, { usuarioId: nuevo, accion: 'creada', hechoPor: usuario.id });
       if (nuevo && legal) ponerNombreLegal(db, nuevo, legal, { por: 'admin', hechoPor: usuario.id });
+      if (nuevo && rol === 'admin') anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'admin_creado', detalle: { cuenta: nombre }, como: confirmado?.como });
       return nuevo;
     });
     if (!id) throw new ErrorHttp(409, 'nombre_ocupado');
     return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal, pendiente: sinClave } };
   }, { admin: true });
 
-  rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, req, parametros, usuario }) => {
+  rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, req, parametros, usuario, confirmar }) => {
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
-    // Entrar a la cuenta de otro administrador (o a una que puede gastar IA) tiene las mismas protecciones que crearla.
-    if (destino.rol === 'admin') exigirDueno(db, req, usuario);
-    else exigirCuentasDesdeAqui(db, req);
+    // 0.12.3: la contraseña de otra persona, con la del administrador otra vez.
+    const confirmado = await confirmar();
     const temporal = claveTemporal();
     const claveHash = await hashClave(temporal);
     // Todo junto o nada: la clave nueva, sus sesiones cerradas, el aviso para la persona y la auditoría.
     enTransaccion(db, () => {
+      const teniaPermiso = cuentaConfirmada(db, destino.id);
       guardarClave(db, destino.id, claveHash, { debeCambiarClave: true });
-      if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'clave_reiniciada', hechoPor: usuario.id });
+      if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'clave_reiniciada', hechoPor: usuario.id, teniaPermiso });
       cerrarTodas(db, destino.id);
       avisarClaveReiniciada(db, destino.id);
       auditar(db, { usuarioId: usuario.id, accion: 'clave_reiniciada', detalle: destino.nombre });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'clave_otro', detalle: { cuenta: destino.nombre, como: 'reiniciada' }, como: confirmado.como });
     });
     return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, claveTemporal: temporal } };
   }, { admin: true });
 
   // 0.9.2: el administrador le pone una contraseña a alguien (la que la persona le pidió). Igual que reiniciarla: se
   // cierran sus sesiones y la persona ve el aviso; pero no tiene que cambiarla al entrar.
-  rutas.agregar('POST', '/api/admin/usuarios/:id/clave', async ({ db, req, parametros, usuario }) => {
+  rutas.agregar('POST', '/api/admin/usuarios/:id/clave', async ({ db, req, parametros, usuario, confirmar }) => {
     const datos = await leerJson(req);
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
     // La suya, el administrador la cambia en Configuración (con la actual).
     if (destino.id === usuario.id) throw new ErrorHttp(400, 'tu_clave_en_configuracion');
-    if (destino.rol === 'admin') exigirDueno(db, req, usuario);
-    else exigirCuentasDesdeAqui(db, req);
     const problema = problemaDeClave(datos.clave, [destino.nombre, destino.nombre_visible]);
     if (problema) throw new ErrorHttp(400, problema);
+    const confirmado = await confirmar();
     const claveHash = await hashClave(datos.clave);
     enTransaccion(db, () => {
+      const teniaPermiso = cuentaConfirmada(db, destino.id);
       guardarClave(db, destino.id, claveHash, { debeCambiarClave: false });
-      if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'clave_reiniciada', hechoPor: usuario.id });
+      if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'clave_reiniciada', hechoPor: usuario.id, teniaPermiso });
       cerrarTodas(db, destino.id);
       avisarClaveReiniciada(db, destino.id);
       auditar(db, { usuarioId: usuario.id, accion: 'clave_puesta', detalle: destino.nombre });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'clave_otro', detalle: { cuenta: destino.nombre, como: 'puesta' }, como: confirmado.como });
     });
     return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre } };
   }, { admin: true });
@@ -373,52 +374,50 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const datos = await leerJson(req);
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
-    exigirCuentasDesdeAqui(db, req);
+    const teniaPermiso = cuentaConfirmada(db, destino.id);
     const r = cambiarPlan(db, {
       usuario: destino,
       plan: datos.plan,
       alCambiar: (antes, ahora) => {
         auditar(db, { usuarioId: usuario.id, accion: 'plan_cambiado', detalle: `${destino.nombre}: ${antes} -> ${ahora}` });
-        if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'plan', hechoPor: usuario.id });
+        if (destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'plan', hechoPor: usuario.id, teniaPermiso });
       },
     });
     return { codigo: 200, datos: { id: destino.id, nombre: destino.nombre, plan: r.ahora, proyectosPermitidos: r.limite } };
   }, { admin: true });
 
-  rutas.agregar('POST', '/api/admin/usuarios/:id/activo', async ({ db, req, parametros, usuario }) => {
+  rutas.agregar('POST', '/api/admin/usuarios/:id/activo', async ({ db, req, parametros, usuario, confirmar }) => {
     const datos = await leerJson(req);
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
     const activo = datos.activo === true;
     if (!activo && destino.id === usuario.id) throw new ErrorHttp(400, 'no_puedes_desactivarte');
-    // A otro administrador solo lo desactiva o lo activa el dueño. Desactivar una cuenta común se puede desde cualquier
-    // entrada (protege); volver a activarla le devuelve su presupuesto de IA: las mismas protecciones que crearla.
-    if (destino.rol === 'admin') exigirDueno(db, req, usuario);
-    else if (activo) exigirCuentasDesdeAqui(db, req);
     if (!activo && destino.rol === 'admin' && cuantosAdminsActivos(db) <= 1) throw new ErrorHttp(400, 'ultimo_admin');
+    // 0.12.3: bloquear o desbloquear una cuenta común, con la sesión; a otro administrador, con la contraseña otra vez.
+    const confirmado = destino.rol === 'admin' ? await confirmar() : null;
     enTransaccion(db, () => {
+      const teniaPermiso = cuentaConfirmada(db, destino.id);
       ponerActivo(db, destino.id, activo);
-      // Volver a activar una cuenta común queda anotado (solo si de verdad estaba desactivada).
-      if (activo && destino.activo !== 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'activada', hechoPor: usuario.id });
+      // Volver a activar una cuenta común queda anotado (solo si de verdad estaba desactivada); bloquearla también (0.12.3).
+      if (activo && destino.activo !== 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'activada', hechoPor: usuario.id, teniaPermiso });
+      if (!activo && destino.activo === 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'desactivada', hechoPor: usuario.id, teniaPermiso });
       if (!activo) cerrarTodas(db, destino.id);
       auditar(db, { usuarioId: usuario.id, accion: activo ? 'usuario_activado' : 'usuario_desactivado', detalle: destino.nombre });
+      if (destino.rol === 'admin') anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'admin_activo', detalle: { cuenta: destino.nombre, activo: activo ? 1 : 0 }, como: confirmado?.como });
     });
     return { codigo: 200, datos: { ok: true } };
   }, { admin: true });
 
-  // Ronda 5 de revisión: el permiso de IA de una cuenta común. Darlo solo lo hace el dueño, desde su cuenta de Tailscale
-  // (la pantalla le muestra antes cuándo y desde dónde se tocó la cuenta por última vez). Quitarlo protege: se puede desde
-  // cualquier entrada. Las dos cosas quedan en la auditoría.
+  // Ronda 5 de revisión: el permiso de IA de una cuenta común (la pantalla muestra antes cuándo y desde dónde se tocó la
+  // cuenta por última vez). 0.12.3: darlo y quitarlo, con la sesión del administrador (también por el enlace público).
+  // Las dos cosas quedan en la auditoría.
   rutas.agregar('POST', '/api/admin/usuarios/:id/ia', async ({ db, req, parametros, usuario }) => {
     const datos = await leerJson(req);
     if (typeof datos.permitida !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
     if (destino.rol !== 'usuario') throw new ErrorHttp(400, 'datos_no_validos');
-    if (datos.permitida) {
-      exigirDueno(db, req, usuario);
-      if (destino.activo !== 1) throw new ErrorHttp(409, 'cuenta_inactiva');
-    }
+    if (datos.permitida && destino.activo !== 1) throw new ErrorHttp(409, 'cuenta_inactiva');
     enTransaccion(db, () => {
       ponerPermisoIa(db, { usuarioId: destino.id, permitida: datos.permitida, hechoPor: usuario.id, desdeTailnet: vieneDeTailscale(req).si });
       auditar(db, { usuarioId: usuario.id, accion: datos.permitida ? 'ia_cuenta_permitida' : 'ia_cuenta_retirada', detalle: destino.nombre });

@@ -9,6 +9,8 @@ import { hashClave, verificarClave, claveValida, claveTemporal, claveObvia, prob
 
 const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
 const CLAVE = 'una clave bien larga';
+// 0.12.3: la contraseña de otra persona pide la del administrador otra vez (por el enlace público).
+const CONFIRMA = { 'X-Confirmar-Clave': Buffer.from('una clave bien larga').toString('base64') };
 
 function nuevaBase() {
   return abrirBase(configDePrueba());
@@ -282,7 +284,7 @@ test('reiniciar una clave cierra las sesiones de ese usuario; desactivar impide 
     let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'pedro', clave: creado.datos.claveTemporal } });
     const galletaPedro = r.galleta;
 
-    r = await pedir(base, 'POST', `/api/admin/usuarios/${id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin });
+    r = await pedir(base, 'POST', `/api/admin/usuarios/${id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin, cabeceras: CONFIRMA });
     assert.equal(r.codigo, 200);
     r = await pedir(base, 'GET', '/api/yo', { galleta: galletaPedro });
     assert.equal(r.codigo, 401, 'su sesión vieja se cerró');
@@ -328,8 +330,8 @@ test('cuando el administrador reinicia una contraseña, la persona lo ve al entr
     await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: creado.datos.claveTemporal, nueva: 'la clave de bob 2026' }, galleta: r.galleta });
 
     // El administrador reinicia la contraseña de Bob dos veces.
-    for (let i = 0; i < 2; i++) assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).codigo, 200);
-    const temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    for (let i = 0; i < 2; i++) assert.equal((await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin, cabeceras: CONFIRMA })).codigo, 200);
+    const temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin, cabeceras: CONFIRMA })).datos.claveTemporal;
     r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
     assert.equal(r.codigo, 200);
     assert.equal(r.datos.avisos.length, 3);
@@ -378,7 +380,7 @@ test('si otro entra con la contraseña reiniciada y «ve» el aviso, la dueña i
     let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: creado.datos.claveTemporal } });
     await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: creado.datos.claveTemporal, nueva: 'la clave de bob 2026' }, galleta: r.galleta });
     // 1. Sin que Bob lo pida, el administrador reinicia su contraseña y entra con la temporal.
-    let temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    let temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin, cabeceras: CONFIRMA })).datos.claveTemporal;
     r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
     let galleta = r.galleta;
     const primero = r.datos.avisos[0].id;
@@ -387,7 +389,7 @@ test('si otro entra con la contraseña reiniciada y «ve» el aviso, la dueña i
     assert.equal((await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'la clave del intruso' }, galleta })).codigo, 200);
     assert.equal((await pedir(base, 'POST', '/api/yo/avisos/vistos', { datos: { hasta: primero }, galleta })).codigo, 200);
     // 3. Bob ya no puede entrar, pide un reinicio y entra.
-    temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin })).datos.claveTemporal;
+    temporal = (await pedir(base, 'POST', `/api/admin/usuarios/${creado.datos.id}/reiniciar-clave`, { datos: {}, galleta: galletaAdmin, cabeceras: CONFIRMA })).datos.claveTemporal;
     r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'bob', clave: temporal } });
     assert.equal(r.datos.avisos.length, 1, 'el aviso nuevo es solo el que pidió');
     assert.equal(r.datos.reiniciosRecientes.length, 2, 'pero la pantalla le muestra los dos reinicios, con su fecha');

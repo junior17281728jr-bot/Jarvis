@@ -9,6 +9,7 @@ import {
   docActual, docVersion, versionDoc, DOCUMENTOS, estadoTerminos, aceptarTerminos, publicarDoc, ponerNombreLegal, firmasDe, DECLARACION, REEMBOLSO,
   contratos, contrato, pngDeFirma, ponerConsentimientoIa, ponerVerificacion, ponerTutorPagos, ponerNacimiento, nombreLegalDe,
 } from '../cuentas/terminos.js';
+import { ponerNombreVisible } from '../cuentas/perfil.js';
 
 const LIMITE_CUERPO_FIRMA = 240 * 1024;
 
@@ -80,6 +81,12 @@ export function registrarRutasTerminos(rutas, { config = null, reloj = Date.now 
     // 0.9.2: «nacimiento» (opcional): corregir la fecha de nacimiento (y con ella si es menor).
     const hay = campo => Object.hasOwn(datos ?? {}, campo);
     const nombreLegal = hay('nombre') || hay('apellido') ? ponerNombreLegal(db, id, { nombre: textoDe(datos, 'nombre'), apellido: textoDe(datos, 'apellido') }, { por: 'admin', hechoPor: usuario.id }) : nombreLegalDe(db, id);
+    // 0.12.3: el Nombre y Apellido de un alumno que ya lo confirmó es también su nombre en la app: si el administrador lo
+    // corrige, se corrige en los dos lados (antes de confirmarlo, el alumno lo ve escrito al firmar y lo puede arreglar).
+    if ((hay('nombre') || hay('apellido')) && nombreLegal?.confirmado) {
+      const cuenta = db.prepare('SELECT rol, nombre_visible FROM usuarios WHERE id = ?').get(id);
+      if (cuenta?.rol === 'usuario' && cuenta.nombre_visible !== nombreLegal.completo) ponerNombreVisible(db, id, nombreLegal.completo, { hechoPor: usuario.id });
+    }
     const nacimiento = hay('nacimiento') ? ponerNacimiento(db, id, textoDe(datos, 'nacimiento'), { hechoPor: usuario.id, ahoraMs: reloj() }) : null;
     return { codigo: 200, datos: { nombreLegal, ...(nacimiento ? { nacimiento } : {}) } };
   }, { admin: true });

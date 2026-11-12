@@ -172,13 +172,17 @@ test('2.13 Copias: verlo es para cualquier administrador; la clave, solo el due�
       assert.equal((await pedir('GET', '/api/admin/copias')).codigo, 401);
       const estado = (await comoDueno('GET', '/api/admin/copias')).datos;
       assert.deepEqual([estado.clave.activa, estado.puede.ahora, estado.puede.motivoNoAhora, estado.puede.crearClave], [false, false, 'sin_clave', true]);
-      for (const ruta of ['/api/admin/copias/clave/nueva', '/api/admin/copias/clave/confirmar', '/api/admin/copias/clave/comprobar', '/api/admin/telegram/vincular', '/api/admin/telegram/prueba', '/api/admin/telegram/desvincular']) {
-        for (const cabeceras of [FUNNEL, { ...DUENO, ...FUNNEL }]) {
+      // 0.12.3: por el enlace público (o desde otra cuenta de Tailscale) también, con la sesión de administrador; crear la
+      // clave y empezar a unir un chat piden además la contraseña otra vez.
+      for (const ruta of ['/api/admin/copias/clave/nueva', '/api/admin/telegram/vincular']) {
+        for (const cabeceras of [FUNNEL, { ...DUENO, ...FUNNEL }, OTRO_LOGIN]) {
           const r = await pedir('POST', ruta, { datos: {}, galleta: admin, cabeceras });
-          assert.deepEqual([r.codigo, r.datos.error], [403, 'solo_desde_tailnet'], `${ruta} por el enlace público`);
+          assert.deepEqual([r.codigo, r.datos.error], [403, 'confirmar_clave'], `${ruta} por el enlace público`);
         }
-        const otro = await pedir('POST', ruta, { datos: {}, galleta: admin, cabeceras: OTRO_LOGIN });
-        assert.deepEqual([otro.codigo, otro.datos.error], [403, 'solo_dueno_tailscale'], `${ruta} desde otra cuenta de Tailscale`);
+      }
+      for (const ruta of ['/api/admin/copias/clave/confirmar', '/api/admin/copias/clave/comprobar']) {
+        const r = await pedir('POST', ruta, { datos: {}, galleta: admin, cabeceras: FUNNEL });
+        assert.deepEqual([r.codigo, r.datos.error], [400, 'verificador_formato'], `${ruta} por el enlace público`);
       }
       // Crear: la ÚNICA respuesta con la clave, sin caché.
       const nueva = await comoDueno('POST', '/api/admin/copias/clave/nueva', { datos: {} });

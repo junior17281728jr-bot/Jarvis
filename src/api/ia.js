@@ -1,7 +1,8 @@
 // Rutas de la IA opcional (fase 1, parte d). Los errores son claves; las pantallas las traducen.
 //  - Administrador → Inteligencia artificial: ver el estado (también por el enlace público), APAGAR (desde cualquier
-//    entrada: apagar nunca gasta) y cambiar los ajustes (solo desde la cuenta de Tailscale del dueño: soloDueno).
-//  - El detalle del gasto: solo desde la red de Tailscale (soloTailnet), y solo números y claves.
+//    entrada: apagar nunca gasta) y cambiar los ajustes. 0.12.3: todo con la sesión de administrador, también por el
+//    enlace público (antes los ajustes eran solo desde la cuenta de Tailscale del dueño y el detalle, desde Tailscale).
+//  - El detalle del gasto: solo números y claves.
 //  - 0.8.0: la «ayuda de IA» en los proyectos de OPORTIA se quitó junto con los proyectos.
 //  - 0.9.0: «Instructor con IA» de la academia (instructorIa, instructorModelo), con las mismas reglas del dueño.
 // Este archivo NUNCA llama a la IA (eso lo hace solo el trabajador: src/ia/cliente.js).
@@ -9,7 +10,6 @@ import { ErrorHttp, leerJson } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { vieneDeTailscale } from '../nucleo/red.js';
 import { espacioDe } from '../cuentas/espacios.js';
-import { duenoDeTailscale } from '../cuentas/tailscale.js';
 import { PLANES } from '../cuentas/planes.js';
 import { guardarConfigIa, usdAMicro, LIMITES_IA } from '../ia/config.js';
 import { estadoIA, consumoIA } from '../ia/consumo.js';
@@ -30,8 +30,8 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
   const contar = (tope, usuario) => { if (!tope.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos'); };
   const estado = (db, req, usuario) => {
     const espacioAdmin = espacioDe(db, usuario)?.id ?? null;
-    const dueno = duenoDeTailscale(db, req, usuario);
-    return estadoIA(db, { config, enTailnet: vieneDeTailscale(req).si, esDueno: dueno.si, motivoDueno: dueno.motivo, espacioAdmin });
+    // 0.12.3: esDueno (ve todo y cambia todo): cualquier administrador con su sesión, también por el enlace público.
+    return estadoIA(db, { config, enTailnet: vieneDeTailscale(req).si, esDueno: usuario?.rol === 'admin', motivoDueno: null, espacioAdmin });
   };
 
   rutas.agregar('GET', '/api/admin/ia', ({ db, req, usuario }) => {
@@ -84,5 +84,5 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     const consulta = new URL(req.url, 'http://x').searchParams;
     const espacioAdmin = espacioDe(db, usuario)?.id ?? null;
     return { codigo: 200, datos: consumoIA(db, { mes: consulta.get('mes'), antesDe: consulta.get('antes'), espacioAdmin }) };
-  }, { admin: true, soloTailnet: true });
+  }, { admin: true });
 }
