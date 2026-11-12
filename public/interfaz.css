@@ -409,3 +409,12 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
   .punto-realzado, .tarjeta-realzada .recuerda { animation: none !important; }
   .menu a, a.pestana, .materia-cuerpo, .materia-cuerpo-dentro, .materia-plegar-flecha { transition: none !important; }
 }
+
+/* ---------- Contraste AA en el tema claro (medido por píxeles sobre la foto) ----------
+   El azul y el naranja de los textos chicos, un poco más oscuros; el color de la materia en sellos y burbujas, su tono
+   oscuro. En el oscuro ya cumplen. */
+:root[data-tema="claro"] { --azul: #1471b8; --naranja-borde: #a34d00; }
+@media (prefers-color-scheme: light) { :root[data-tema="auto"] { --azul: #1471b8; --naranja-borde: #a34d00; } }
+:root[data-tema="claro"] .estilo-normal .sello, :root[data-tema="claro"] .nodo-burbuja { color: var(--mc-borde, var(--azul)); }
+@media (prefers-color-scheme: light) { :root[data-tema="auto"] .estilo-normal .sello, :root[data-tema="auto"] .nodo-burbuja { color: var(--mc-borde, var(--azul)); } }
+.materia-bloque.vacia .banner-pronto { color: var(--texto); }

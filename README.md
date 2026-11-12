@@ -511,6 +511,26 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   adelanta el próximo tema y el progreso. Medido en un iPhone 13 emulado (150 ms de red, CPU ×4): de ~200-290 ms a
   30-150 ms al volver a una pantalla ya vista.
 
+### Lo nuevo de la 0.9.1: la interfaz más profesional, el camino plegable y la explicación más clara (sin cambio de base)
+- **Foto de fondo real** (`public/fondos/`, créditos y licencias en `public/fondos/CREDITOS.md`): una Cessna 172 de día en el
+  tema claro (dominio público) y el amanecer bajo el ala de un 172 en el oscuro (Don Ramey Logan, CC BY 4.0), ya desenfocadas,
+  en WebP y JPEG, de 900 px (teléfono) y 1920 px (computadora). Un velo del color del fondo deja todo el texto en AA. Primero se
+  ve una versión diminuta; la foto se pide cuando el navegador está libre (`public/tema.js`), nunca con «ahorro de datos», y se
+  guarda un año: el servidor pone la huella también en los `url(/…)` de un `.css` (`src/nucleo/http.js`). El crédito sale en
+  Configuración → Ayuda.
+- **`public/interfaz.css`** (va al final, no cambia ninguna clase): vidrio en barras y tarjetas (sólido con «reducir
+  transparencia» o sin `backdrop-filter`), escala de espacios, títulos, menú, pestañas, la línea de pista del camino, el Grupo a
+  la derecha en pantallas anchas y botones de color con texto AA.
+- **Las clases** (`public/clase/realce.js`): cada punto con un ícono según de qué habla y entrando uno tras otro, «Recuerda»
+  destacado, fichas EN · ES (la abreviatura solo si viene en el paquete) y la figura a pantalla completa encaja y se acerca al tocarla.
+- **El camino plegable** (`public/camino-plegable.js`): cada materia es una tarjeta (número, nombre, ícono, %, estado, video,
+  punto débil, y `.materia-insignias` para más) que abre o cierra su sendero. Al entrar solo está abierta la actual; lo que se
+  abre o cierra se recuerda por cuenta en el navegador; «Ver todas / Cerrar todas». Una materia bloqueada se abre para ver sus
+  temas (con cuántas preguntas), pero siguen cerrados: el orden 1 → 11 no cambia.
+- **Después de responder** (`public/respuesta-vista.js`): la opción correcta con su texto, la explicación sencilla primero (cada
+  línea con rótulo, «✔», «Por qué:», «Piensa así:», «Truco para recordar:», en su fila con ícono), «Por qué tu opción no»
+  resaltado y la explicación del Test Guide TAL CUAL en un bloque que se abre.
+
 ### Lo nuevo de la 0.9.0: cada alumno con más claridad, comparar y el perfil propio (sin cambio de base)
 - **Administrador → Alumnos** (`public/admin-alumnos.js`, solo se carga ahí; estilos en `public/alumnos.css`): cada alumno con
   su avatar, `@usuario`, % y última actividad. Se marcan de 2 a 6 y «Comparar». Desde Administrador → Usuarios, «Ver su ficha».
