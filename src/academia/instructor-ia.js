@@ -14,7 +14,9 @@
 import { createHash } from 'node:crypto';
 import { REGLAS_IA } from './humor.js';
 
-export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat', 'instructor_miniclase', 'instructor_plan', 'instructor_preparar']);
+export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat', 'instructor_miniclase', 'instructor_plan', 'instructor_preparar',
+  // 0.12.9: «Explícamelo mejor» y «Profundizar» de una tarjeta de la clase, y las «Preguntas personalizadas».
+  'instructor_tarjeta', 'instructor_profundizar', 'instructor_personal']);
 // Lo más largo que se guarda de cada parte (lo que pase de ahí se corta: nunca una pantalla enorme).
 const TOPE = Object.freeze({ explicacion: 2400, corto: 900, termino: 120, terminos: 8, pasos: 4, duda: 600 });
 export const DUDA_MAX_LETRAS = 500;
@@ -35,6 +37,8 @@ const COMUN = (idioma) => [
   `Eres el instructor de tierra de una academia de piloto privado que prepara el examen escrito de la FAA con las preguntas del Test Guide.`,
   // 0.12.7 (pedido del dueño): la meta, en cada uso de la IA.
   'Tu meta: que este alumno apruebe el examen del Test Guide y llegue a ser piloto privado. Todo lo que expliques lo ata a lo que pregunta el Test Guide; de una pregunta que todavía no respondió solo puedes decir su número o su tema, nunca su respuesta.',
+  // 0.12.9 (K, S): cada explicación termina ligada al examen; primero lo que más pesa; paciencia de verdad.
+  'Cada explicación termina diciendo para qué le sirve en el examen (qué tipo de pregunta del Test Guide ayuda a responder). Si hay que elegir, empieza por lo que más falla y más sale en el Test Guide: todo es importante, pero eso pesa más. Tu tono: «Tengo tiempo para explicártelo las veces que haga falta».',
   idioma === 'en' ? 'Answer in clear English.' : 'Responde en español claro (de República Dominicana, neutro).',
   'Cada término técnico va así: el término en inglés, su traducción al español y su abreviatura si la tiene, por ejemplo «hipoxia (hypoxia)» o «indicador de velocidad (airspeed indicator, ASI)».',
   'Cómo enseñas: (a) lo importante primero, en una o dos frases; (b) un ejemplo concreto de vuelo (en la cabina, en el circuito de tránsito, en la preparación antes del vuelo) que el alumno pueda imaginar; (c) la trampa típica del examen y cómo reconocerla al leer el enunciado; (d) una frase corta para recordar. Hablas de tú, con calma y sin regañar; corriges la idea, nunca a la persona.',
@@ -241,13 +245,15 @@ export function armarPlanDia({ cifras, acciones, idioma = 'es', humor = false })
 // La respuesta se revisa: tarjetas que no existen se descartan; citar o decir la respuesta de una pregunta que no ha
 // respondido, o contradecir la del Test Guide de una fallada, la deja sin usar (se pagó y no sirvió).
 export const ESQUEMA_PREPARAR = Object.freeze({
-  type: 'object', additionalProperties: false, required: ['intro', 'tarjetas', 'analogias', 'plan', 'cita_test_guide'],
+  type: 'object', additionalProperties: false, required: ['intro', 'tarjetas', 'analogias', 'plan', 'cita_test_guide', 'examen_porque', 'examen_pasos', 'conclusion'],
   properties: {
     intro: { type: 'string' },
     tarjetas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['tarjeta', 'porque'], properties: { tarjeta: { type: 'string' }, porque: { type: 'string' } } } },
     analogias: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['idea', 'analogia'], properties: { idea: { type: 'string' }, analogia: { type: 'string' } } } },
     plan: { type: 'array', items: { type: 'string' } },
     cita_test_guide: CITAS,
+    // 0.12.9 (U, T): el porqué de «¿Tomo el examen?» a su estilo + 3 pasos, y la conclusión de su memoria pulida.
+    examen_porque: { type: 'string' }, examen_pasos: { type: 'array', items: { type: 'string' } }, conclusion: { type: 'string' },
   },
 });
 // material: { titulo, tarjetas: [{ id, titulo, texto }], preguntas: [{ numero, enunciado, opciones: [texto] }] }.
@@ -257,6 +263,7 @@ export function prefijoPreparar({ material, idioma = 'es' }) {
     'Tu tarea: preparar la PRÓXIMA clase de UN alumno: el tema que te damos abajo. Con sus cifras y sus errores (vienen en el mensaje), escribe lo que verá al empezar la clase.',
     'REGLAS FIJAS: (1) Las preguntas del Test Guide de abajo van TAL CUAL y SIN su respuesta: NUNCA digas, insinúes ni descartes opciones de una pregunta que el alumno no ha respondido. (2) De las preguntas que ya FALLÓ te damos en el mensaje la respuesta del Test Guide: es la correcta; nunca la contradigas. (3) Usa solo el material dado; no inventes reglas ni números. (4) En el campo «tarjeta» pon el id de una tarjeta de abajo (t1, t2…), nunca inventes una; en el texto nómbralas por su título, nunca por el id. (5) Nunca nombres opciones por letra.',
     'Campos: intro = una introducción personal a esta clase (hasta 600 caracteres: qué va a aprender y por qué le sirve a ÉL, según sus errores); tarjetas = de 1 a 4 {tarjeta: el id de una tarjeta de abajo, porque: por qué debe fijarse en ella (hasta 160)}; analogias = 1 o 2 {idea: la idea equivocada suya que corrige, analogia: una comparación de la vida diaria o de vuelo (hasta 400)}; plan = exactamente 3 pasos cortos para la clase (hasta 160 cada uno).',
+    'examen_porque = con «examen_de_la_materia» del mensaje (SÍ o TODAVÍA NO y sus razones, ya decididas: no las cambies), explica en 1 o 2 frases a su estilo por qué (hasta 300); examen_pasos = exactamente 3 pasos cortos de qué hacer antes de tomarlo (hasta 140 cada uno); conclusion = una línea de lo que aprendiste de él en su «memoria» (hasta 200), sin nombres.',
     'cita_test_guide: si mencionas una pregunta que el alumno YA FALLÓ, pon {numero, respuesta} con la respuesta del Test Guide copiada TAL CUAL (la de «respuesta_del_test_guide»); nunca cites una que no ha respondido; si no mencionas ninguna, [].',
     'MATERIAL DEL TEMA (el mismo para todos los alumnos):',
     bloque({ tema: material.titulo, tarjetas: material.tarjetas, preguntas_del_test_guide: material.preguntas }),
@@ -265,9 +272,120 @@ export function prefijoPreparar({ material, idioma = 'es' }) {
 }
 // alumno: cifras; falladas: [{ numero, eligio, respuesta_del_test_guide, idea }]; sinResponder: [números];
 // conceptos: [{ concepto, tema, fallos, idea }].
-export function armarPreparar({ alumno, falladas = [], sinResponder = [], conceptos = [] }) {
-  const texto = bloque({ alumno, preguntas_que_fallo: falladas, preguntas_sin_responder: sinResponder, conceptos_debiles: conceptos });
+export function armarPreparar({ alumno, falladas = [], sinResponder = [], conceptos = [], memoria = [], examen = null }) {
+  const texto = bloque({ alumno, preguntas_que_fallo: falladas, preguntas_sin_responder: sinResponder, conceptos_debiles: conceptos, memoria, examen_de_la_materia: examen });
   return { texto, citas: claveDeCitas(falladas.map(f => ({ numero: f.numero, respuesta_del_test_guide: f.respuesta_del_test_guide, opciones: f.opciones ?? [] }))) };
+}
+
+// ---------- 8. (0.12.9) «Explícamelo mejor» y «Profundizar» de una tarjeta de la clase (J) ----------
+// Se guardan COMPARTIDOS (nada del alumno): «mejor» por (tarjeta, estilo, idioma, modelo) y «profundizar» por (tarjeta,
+// idioma, modelo). Como lo ven todos, las preguntas del Test Guide de esa tarjeta van SIN su respuesta y se revisa que la
+// IA nunca la diga (como si nadie las hubiera respondido). El «Para el examen» del final (qué preguntas del Test Guide
+// ayuda: citadas solo las que ESE alumno ya respondió) lo pone la app, nunca la IA (src/academia/tutor.js, paraElExamen).
+export const ESQUEMA_TARJETA = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['explicacion', 'ejemplo', 'recuerda', 'terminos'],
+  properties: { explicacion: { type: 'string' }, ejemplo: { type: 'string' }, recuerda: { type: 'string' }, terminos: TERMINOS },
+});
+export const ESQUEMA_PROFUNDIZAR = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['por_que_pasa', 'ejemplo_vuelo', 'trampa_examen', 'recuerda', 'terminos'],
+  properties: { por_que_pasa: { type: 'string' }, ejemplo_vuelo: { type: 'string' }, trampa_examen: { type: 'string' }, recuerda: { type: 'string' }, terminos: TERMINOS },
+});
+// tarjeta: { titulo, texto }; tema: título; preguntas: [{ numero, enunciado, opciones: [texto] }] (las del Test Guide que
+// explica esa tarjeta, SIN la respuesta); trampas: ideas equivocadas del paquete (opcional).
+export function armarTarjeta({ tipo = 'mejor', tarjeta, tema, preguntas = [], trampas = [], estilo = 'claro', idioma = 'es', modelo = '' }) {
+  const e = ESTILOS[estilo] ? estilo : 'claro';
+  const profundo = tipo === 'profundizar';
+  const sistema = [
+    ...COMUN(idioma),
+    profundo
+      ? 'Tu tarea: PROFUNDIZAR en UNA tarjeta de la clase para un alumno que quiere entenderla de verdad: la capa más honda (por qué pasa, la física o la fisiología detrás), un ejemplo de un vuelo real y la trampa típica del examen.'
+      : 'Tu tarea: explicar MEJOR, de otra forma, UNA tarjeta de la clase a un alumno al que no le quedó clara.',
+    'REGLAS FIJAS: (1) Usa solo el material de la tarjeta y las ideas equivocadas que te damos; no inventes reglas ni números. (2) Las preguntas del Test Guide de abajo van SIN su respuesta: NUNCA digas, insinúes ni descartes una opción de ellas; puedes decir de qué tratan o su número. (3) Nunca escribas enlaces.',
+    ...(profundo ? [] : [`Estilo: ${estiloDe(e)}`]),
+    profundo
+      ? 'Campos: por_que_pasa (hasta 800 caracteres); ejemplo_vuelo = un ejemplo concreto de un vuelo real (hasta 500); trampa_examen = cómo el examen intenta engañar con esto y cómo reconocerlo, sin decir la respuesta de ninguna pregunta (hasta 400); recuerda = una frase (hasta 200); terminos = hasta 5 {ingles, espanol, abreviatura}.'
+      : 'Campos: explicacion = la tarjeta explicada de otra forma (hasta 900 caracteres); ejemplo = un ejemplo concreto de vuelo (hasta 400); recuerda = una frase para recordar (hasta 200); terminos = hasta 5 {ingles, espanol, abreviatura}.',
+    'MATERIAL (el mismo para todos los alumnos):',
+    bloque({ tema, tarjeta: { titulo: tarjeta.titulo, texto: String(tarjeta.texto ?? '').slice(0, 4000) }, ideas_equivocadas_tipicas: trampas.slice(0, 6), preguntas_del_test_guide_de_esta_tarjeta: preguntas }),
+  ].join('\n');
+  const contenido = huella(JSON.stringify([tema, tarjeta.titulo, tarjeta.texto, preguntas, trampas]));
+  const clave = profundo
+    ? `academia.ia.profundiza.${huella([contenido, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`
+    : `academia.ia.tarjeta.${huella([contenido, e, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`;
+  // Lo que se revisa: las preguntas como «sin responder» (sus opciones), para que nunca diga una respuesta.
+  const sinResponder = preguntas.map(q => ({ numero: q.numero, opciones: q.opciones }));
+  return { sistema, texto: bloque({ pedido: profundo ? 'profundizar' : 'explicar_mejor', estilo: profundo ? null : e }), clave, esquema: profundo ? ESQUEMA_PROFUNDIZAR : ESQUEMA_TARJETA, sinResponder, estilo: e };
+}
+const diceRespuesta = (texto, sin) => {
+  const t = plano(texto);
+  for (const q of Array.isArray(sin) ? sin : []) {
+    for (const o of Array.isArray(q?.opciones) ? q.opciones : []) {
+      const p = plano(o);
+      if (p.length >= 6 && [`correcta es ${p}`, `respuesta es ${p}`, `correct answer is ${p}`, `answer is ${p}`, `la respuesta ${p}`].some(f => t.includes(f))) return true;
+    }
+  }
+  return false;
+};
+const sinEnlaces = t => t.replace(/https?:\/\/\S+|www\.\S+/gi, '').trim();
+function revisarTarjeta(datos, json) {
+  const profundo = datos.uso === 'instructor_profundizar';
+  const r = profundo
+    ? { porQue: sinEnlaces(limpio(json?.por_que_pasa, TOPE.explicacion)), ejemplo: sinEnlaces(limpio(json?.ejemplo_vuelo, TOPE.corto)), trampa: sinEnlaces(limpio(json?.trampa_examen, TOPE.corto)), recuerda: limpio(json?.recuerda, 300), terminos: terminosDe(json?.terminos) }
+    : { explicacion: sinEnlaces(limpio(json?.explicacion, TOPE.explicacion)), ejemplo: sinEnlaces(limpio(json?.ejemplo, TOPE.corto)), recuerda: limpio(json?.recuerda, 300), terminos: terminosDe(json?.terminos) };
+  if (!(profundo ? r.porQue : r.explicacion)) throw noSirve();
+  if (diceRespuesta(Object.values(r).filter(x => typeof x === 'string').join('\n'), datos.sinResponder)) throw noSirve();
+  return { ...r, tipo: profundo ? 'profundizar' : 'mejor', tarjeta: typeof datos.tarjetaTitulo === 'string' ? datos.tarjetaTitulo.slice(0, 200) : null };
+}
+
+// ---------- 9. (0.12.9) «Preguntas personalizadas» (O): hechas a su confusión, NO son del Test Guide ----------
+// Compartidas por (tema, confusión = los conceptos que falló, idioma, modelo). Las preguntas del Test Guide que se mandan
+// (con su respuesta) son SOLO de conceptos en los que el alumno ya respondió todas: así nada adelanta una respuesta que no
+// vio (src/api/tutor.js lo revisa al pedir). Se revisa: 3 opciones distintas, una sola correcta, ligada a una pregunta
+// del Test Guide que se le dio, sin copiar un enunciado del Test Guide, y coherente con su clave (la correcta nunca es
+// una opción mala del Test Guide; si una opción ES la respuesta del Test Guide, tiene que ser la correcta).
+export const ESQUEMA_PERSONAL = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['preguntas'],
+  properties: {
+    preguntas: {
+      type: 'array', items: {
+        type: 'object', additionalProperties: false, required: ['enunciado', 'opciones', 'correcta', 'explicacion', 'entrena'],
+        properties: { enunciado: { type: 'string' }, opciones: { type: 'array', items: { type: 'string' } }, correcta: { type: 'string', enum: ['1', '2', '3'] }, explicacion: { type: 'string' }, entrena: { type: 'string' } },
+      },
+    },
+  },
+});
+// conceptos: [{ clave, nombre, tarjeta: { titulo, texto } }]; preguntas: [{ numero, enunciado, opciones, respuesta_del_test_guide }].
+export function armarPersonal({ tema, conceptos, preguntas, idioma = 'es', modelo = '' }) {
+  const sistema = [
+    ...COMUN(idioma),
+    'Tu tarea: escribir de 2 a 3 PREGUNTAS DE PRÁCTICA nuevas (no son del Test Guide) para alumnos que confundieron estos conceptos. Cada una entrena el mismo dato que una pregunta del Test Guide que te damos, pero con otras palabras y otra situación de vuelo.',
+    'REGLAS FIJAS: (1) Exactamente 3 opciones por pregunta, distintas, y UNA sola correcta, coherente con la respuesta del Test Guide que te damos (nunca la contradigas). (2) No copies el enunciado de una pregunta del Test Guide. (3) Usa solo el material dado. (4) entrena = el número de la pregunta del Test Guide cuyo dato entrena. (5) Nunca escribas enlaces.',
+    'Campos: preguntas = [{enunciado (hasta 300), opciones (3 textos de hasta 140), correcta ("1", "2" o "3"), explicacion = por qué es la correcta (hasta 400), entrena}].',
+    'MATERIAL:',
+    bloque({ tema, conceptos: conceptos.map(c => ({ concepto: c.nombre, tarjeta: c.tarjeta ? { titulo: c.tarjeta.titulo, texto: String(c.tarjeta.texto ?? '').slice(0, 2500) } : null })), preguntas_del_test_guide: preguntas }),
+  ].join('\n');
+  const confusion = conceptos.map(c => c.clave).sort().join(',');
+  const clave = `academia.ia.personal.${huella([tema, confusion, huella(JSON.stringify([conceptos, preguntas])), idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`;
+  return { sistema, texto: bloque({ pedido: 'preguntas_personalizadas', cuantas: 3 }), clave, esquema: ESQUEMA_PERSONAL, clavePreguntas: preguntas.map(q => ({ numero: String(q.numero), enunciado: q.enunciado, correcta: q.respuesta_del_test_guide, otras: (q.opciones ?? []).filter(o => o !== q.respuesta_del_test_guide) })) };
+}
+function revisarPersonal(datos, json) {
+  const clave = Array.isArray(datos.clavePreguntas) ? datos.clavePreguntas : [];
+  const buenas = [];
+  for (const x of (Array.isArray(json?.preguntas) ? json.preguntas : []).slice(0, 4)) {
+    const enunciado = sinEnlaces(limpio(x?.enunciado, 400));
+    const opciones = (Array.isArray(x?.opciones) ? x.opciones : []).map(o => sinEnlaces(limpio(o, 200)));
+    const k = clave.find(c => c.numero === String(x?.entrena ?? '').trim());
+    const i = Number(x?.correcta) - 1;
+    if (!enunciado || opciones.length !== 3 || opciones.some(o => !o) || new Set(opciones.map(plano)).size !== 3 || ![0, 1, 2].includes(i) || !k) continue;
+    if (clave.some(c => plano(c.enunciado) === plano(enunciado))) continue;
+    // Coherente con la clave del Test Guide: la correcta nunca es una opción mala; la respuesta del Test Guide, si está, es la correcta.
+    if (k.otras.some(o => plano(o) === plano(opciones[i]))) throw noSirve();
+    const conRespuesta = opciones.findIndex(o => mismaRespuesta(o, k.correcta) && plano(o).length >= 4);
+    if (conRespuesta >= 0 && conRespuesta !== i) throw noSirve();
+    buenas.push({ enunciado, opciones, correcta: i, explicacion: sinEnlaces(limpio(x?.explicacion, 600)), entrena: k.numero });
+  }
+  if (!buenas.length) throw noSirve();
+  return { preguntas: buenas.slice(0, 3), tema: typeof datos.tema === 'string' ? datos.tema : null };
 }
 
 // ---------- Revisar lo que cita del Test Guide (chat y dudas) ----------
@@ -345,6 +463,8 @@ export function revisarRespuesta(datos, json) {
     return r;
   }
   if (datos.uso === 'instructor_preparar') return revisarPreparar(datos, json);
+  if (datos.uso === 'instructor_tarjeta' || datos.uso === 'instructor_profundizar') return revisarTarjeta(datos, json);
+  if (datos.uso === 'instructor_personal') return revisarPersonal(datos, json);
   if (datos.uso === 'instructor_plan') {
     // Solo acciones que existen en la app (las que mandó el servidor): una que no está se descarta; ninguna, no sirve.
     const validas = new Set((datos.acciones ?? []).map(String));
@@ -382,10 +502,26 @@ function revisarPreparar(datos, json) {
     }
   }
   const citas = revisarCitas(datos.citas, json?.cita_test_guide, todo);
-  return { intro, tarjetas, analogias, plan, citas, tema: typeof datos.tema === 'string' ? datos.tema : null };
+  // 0.12.9: lo del examen y la memoria (si vienen): las mismas reglas del Test Guide que lo demás.
+  const examenPasos = (Array.isArray(json?.examen_pasos) ? json.examen_pasos : []).slice(0, 3).map(x => limpio(x, 200)).filter(Boolean);
+  const examenPorque = limpio(json?.examen_porque, 400);
+  const conclusion = limpio(json?.conclusion, 260);
+  if (examenPorque || examenPasos.length || conclusion) {
+    const extra = plano([examenPorque, ...examenPasos, conclusion].join('\n'));
+    for (const q of sin) for (const o of Array.isArray(q?.opciones) ? q.opciones : []) {
+      const p = plano(o);
+      if (p.length >= 6 && [`correcta es ${p}`, `respuesta es ${p}`, `correct answer is ${p}`, `answer is ${p}`].some(f => extra.includes(f))) throw noSirve();
+    }
+    revisarCitas(datos.citas, [], [examenPorque, ...examenPasos, conclusion].join('\n'));
+  }
+  return { intro, tarjetas, analogias, plan, citas, tema: typeof datos.tema === 'string' ? datos.tema : null,
+    examen: examenPorque || examenPasos.length ? { materia: typeof datos.tema === 'string' ? datos.tema.split('/')[0] : null, porque: examenPorque, pasos: examenPasos } : null, conclusion: conclusion || null };
 }
 export function esquemaDe(datos) {
   if (datos?.uso === 'instructor_preparar') return ESQUEMA_PREPARAR;
+  if (datos?.uso === 'instructor_tarjeta') return ESQUEMA_TARJETA;
+  if (datos?.uso === 'instructor_profundizar') return ESQUEMA_PROFUNDIZAR;
+  if (datos?.uso === 'instructor_personal') return ESQUEMA_PERSONAL;
   if (datos?.uso === 'instructor_explicar') return esquemaExplicar(Number(datos.opciones) || 3);
   if (datos?.uso === 'instructor_consejo') return ESQUEMA_CONSEJO;
   if (datos?.uso === 'instructor_duda') return ESQUEMA_DUDA;
@@ -395,18 +531,26 @@ export function esquemaDe(datos) {
   return null;
 }
 
-export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|preparado\.[1-9]\d{0,9}\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
+export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|tarjeta\.[a-f0-9]{32}|profundiza\.[a-f0-9]{32}|personal\.[a-f0-9]{32}|preparado\.[1-9]\d{0,9}\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
 
 export function leerGuardado(db, clave) {
   if (typeof clave !== 'string' || !CLAVE_GUARDADO.test(clave)) return null;
   const f = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave);
   if (!f) return null;
-  try { const v = JSON.parse(f.valor); return v && typeof v === 'object' ? v : null; } catch { return null; }
+  let v = null;
+  try { v = JSON.parse(f.valor); } catch { return null; }
+  if (!v || typeof v !== 'object') return null;
+  // 0.12.9: el administrador puede «ocultar» uno malo (src/academia/registro-ia.js): se marca, nunca se borra. La marca
+  // vale para ESA versión (su «en»): si se vuelve a pedir y se guarda una nueva, la nueva se ve.
+  const oculto = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`academia.ia_oculto.${clave.slice('academia.ia.'.length)}`)?.valor;
+  if (oculto && oculto === String(v.en ?? '')) return null;
+  return v;
 }
 // Dentro de la escritura que anota el costo (src/ia/cliente.js, guardar). Nunca guarda lo que se le preguntó.
 export function guardarRespuesta(db, datos, json, llamada, ahora = Date.now()) {
   if (typeof datos?.clave !== 'string' || !CLAVE_GUARDADO.test(datos.clave)) throw noSirve();
-  const valor = { ...revisarRespuesta(datos, json), proveedor: llamada?.proveedor ?? null, modelo: llamada?.modelo ?? null, en: new Date(ahora).toISOString() };
+  // 0.12.9: también lo que costó (para el «Registro de la IA»: costo y ahorro de lo reutilizado).
+  const valor = { ...revisarRespuesta(datos, json), proveedor: llamada?.proveedor ?? null, modelo: llamada?.modelo ?? null, costoMicro: Number.isSafeInteger(llamada?.costoMicro) ? llamada.costoMicro : null, en: new Date(ahora).toISOString() };
   db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(datos.clave, JSON.stringify(valor), valor.en);
   return { clave: datos.clave };

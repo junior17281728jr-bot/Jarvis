@@ -200,8 +200,12 @@ export function miRepaso(db, usuarioId, paquete, ahoraMs = Date.now()) {
       dias: r.dias ?? null, ronda: Number(r.ronda) || 0, miniclase: Boolean(r.miniclase?.pendiente),
       // Repasar: un concepto, con sus preguntas; una falla de antes, con la Práctica del instructor de su tema (como siempre).
       practicar: f.origen === 'concepto' && c ? { tipo: 'errores', concepto: c.clave } : { tipo: 'instructor', materia: f.materia, tema: f.tema },
+      // 0.12.9 (S): su peso en el examen = cuántas preguntas del Test Guide salen de ese concepto.
+      peso: c?.preguntas?.length ?? 1,
     };
-  }).filter(x => temaDe(paquete, x.materia, x.tema));
+  }).filter(x => temaDe(paquete, x.materia, x.tema))
+    // 0.12.9 (S): primero lo que falla y MÁS sale en el Test Guide (a igual peso, lo más reciente primero, como antes).
+    .map((x, i) => ({ x, i })).sort((a, b) => b.x.peso - a.x.peso || a.i - b.i).map(({ x }) => x);
   const enRepaso = new Set(paraRepasar.map(x => x.clave).filter(Boolean));
   // «Tus errores»: la memoria de errores (cada pregunta que falló alguna vez), por tema → concepto.
   const memoria = puntosDebiles(db, usuarioId, paquete);

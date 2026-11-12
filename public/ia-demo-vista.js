@@ -4,6 +4,7 @@
 // administrador. No llama a la IA, no cobra minutos, no guarda nada. Todo texto con textContent.
 export function pantallaIaDemo(d, h) {
   const { el, t, icono, talCual, mostrar, marco, instructorUi } = h;
+  const tu = h.tutorUi?.();
   const ui = instructorUi();
   const demo = extra => ({ estado: 'lista', demo: true, terminos: [], ...extra });
   const q = d.pregunta;
@@ -36,6 +37,35 @@ export function pantallaIaDemo(d, h) {
     analogias: [{ idea: d.basica.idea ?? '', analogia: t('demo.r.para_ti_analogia') }],
     plan: [t('demo.r.para_ti_1'), t('demo.r.para_ti_2'), t('demo.r.para_ti_3')],
   }) });
+  // 0.12.9: el tutor del alumno (F–J, M, O, T, U) y la página de planes (X), con datos de DEMOSTRACIÓN.
+  const temaDemo = { materia: d.materia ?? 'factores_humanos', tema: d.temaId ?? '', titulo: d.tema, numero: 1 };
+  const tutorDemo = tu ? {
+    ia: true,
+    apertura: { fallaste: [d.concepto], tema: temaDemo, preguntasMateria: d.preguntasMateria ?? 0, prioridad: { concepto: d.concepto, n: 3 }, practicar: null, videos: [], buscar: null },
+    novedades: [{ tipo: 'reforzamos', vars: { que: d.concepto }, href: '#ia-demo' }, { tipo: 'preparada', vars: { tema: d.tema }, href: '#ia-demo' }, { tipo: 'profundizamos', vars: { que: d.tarjetas?.[0]?.titulo ?? d.concepto }, href: '#ia-demo' }],
+    examen: { oficial: { si: false, pct: 64, porques: [{ clave: 'acierto.no', vars: { valor: 64, meta: 90 } }, { clave: 'fallas.no', vars: { n: 2 } }] }, materia: { materia: temaDemo.materia, si: false, pct: 72, porques: [{ clave: 'acierto.no', vars: { valor: 72, meta: 90 } }, { clave: 'memoria.mal', vars: { mal: d.concepto } }] } },
+    examenIa: { porque: t('demo.r.tutor_examen'), pasos: [t('demo.r.para_ti_1'), t('demo.r.para_ti_2'), t('demo.r.para_ti_3')] },
+  } : null;
+  const ahoraIso = new Date().toISOString();
+  const partesTutor = tu ? [
+    seccion(t('tutor.titulo'), el('p', { class: 'suave chica', texto: t('demo.tutor.linea') }), tu.pintarTarjeta(tutorDemo)),
+    seccion(t('profesor.titulo'), el('div', { class: 'chat-lista' }, tu.pintarApertura(tutorDemo, () => {}))),
+    seccion(t('tutor.j.pregunta'), el('p', { class: 'suave chica', texto: t('demo.tutor.j') }),
+      tu.pintarTarjetaIa({ demo: true, terminos: [], tipo: 'mejor', explicacion: t('demo.r.mini', { concepto: d.concepto }), ejemplo: t('demo.r.mini_ejemplo'), recuerda: t('demo.r.recuerda', { correcta: q.correctaTexto }) }),
+      tu.pintarTarjetaIa({ demo: true, terminos: [], tipo: 'profundizar', porQue: t('demo.r.tutor_profundo'), ejemplo: t('demo.r.mini_ejemplo'), trampa: t('demo.r.mini_trampa'), recuerda: t('demo.r.recuerda', { correcta: q.correctaTexto }) }),
+      tu.paraElExamen({ respondidas: q.numero ? [{ numero: q.numero, enunciado: q.enunciado, respuesta: q.correctaTexto }] : [], otras: ['2', '3'], tema: d.tema }),
+      tu.pintarBasica({ recuerda: d.basica.tarjeta?.recuerda ?? null, sencilla: d.basica.sencilla ? [d.basica.sencilla] : [], reexplicacion: [] })),
+    seccion(t('tutor.o.titulo'), el('p', { class: 'suave chica', texto: t('tutor.o.linea') }),
+      tu.pintarPersonalizadas({ clave: 'demo', preguntas: [{ i: 0, enunciado: t('demo.r.personal'), opciones: [q.correctaTexto, t('demo.r.personal_mala1'), t('demo.r.personal_mala2')], entrena: q.numero ?? '1' }] })),
+    seccion(t('tutor.memoria.titulo'), tu.pintarMemoria([
+      { tipo: 'tema', temaTitulo: d.tema, pct: 60, minutos: 12, mal: [d.concepto], bien: [], tgMal: [q.numero ?? '1'], conclusion: { clave: 'reforzar', vars: { mal: d.concepto, pct: 60 } }, en: ahoraIso },
+      { tipo: 'clase', temaTitulo: d.tema, conclusion: { clave: 'clase', vars: { tema: d.tema } }, en: ahoraIso }])),
+    tu.pintarExamen({ oficial: tutorDemo.examen.oficial, materias: [tutorDemo.examen.materia], examenIa: tutorDemo.examenIa }),
+  ] : [];
+  const planesDemo = h.vistaPlanes ? seccion(t('planes.titulo'), h.vistaPlanes({
+    pagar: { planes: [{ id: 'estandar', nombre: 'IA Estándar', precioUsd: '12', precioRd: null, usos: 300 }, { id: 'plus', nombre: 'IA Plus', precioUsd: '20', precioRd: null, usos: 800 }], planDias: 30, pruebaDias: 5, pruebaUsosDia: 20 },
+    tiempo: { prueba: { empezada: true, quedanDias: 3, porDia: 20 } },
+  }, h)) : null;
   mostrar(marco('admin', banner,
     el('h1', { class: 'titulo-pantalla', texto: t('demo.vista.titulo') }),
     el('p', { class: 'suave', texto: t('demo.vista.linea') }),
@@ -50,5 +80,6 @@ export function pantallaIaDemo(d, h) {
     seccion(t('mini.ia_clase'), mini),
     seccion(t('instr.hoy.titulo'), plan),
     seccion(t('instr.examen.boton'), consejo),
+    ...partesTutor, planesDemo,
     el('div', { class: 'botones' }, salir())));
 }

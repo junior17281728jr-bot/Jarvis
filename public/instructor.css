@@ -176,3 +176,65 @@
 .para-ti-tarjetas { margin: 0.25rem 0 0.5rem; padding-left: 1.1rem; }
 .para-ti-tarjetas li { margin: 0.2rem 0; }
 .para-ti-analogia { margin: 0.5rem 0; }
+/* 0.12.9: el tutor del alumno (public/tutor-vista.js) y la página de planes (public/planes-vista.js). */
+.insignia-ia { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 900; letter-spacing: 0.04em;
+  vertical-align: middle; background: color-mix(in srgb, var(--verde) 22%, var(--tarjeta)); color: var(--texto); border: 1px solid color-mix(in srgb, var(--verde) 50%, transparent); }
+.insignia-basico { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 800; background: var(--gris-nodo); color: var(--suave); }
+.tutor-tarjeta { text-align: left; border: 2px solid color-mix(in srgb, var(--verde) 40%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--verde) 10%, var(--tarjeta)), var(--tarjeta)); }
+.tutor-tarjeta.compacta { margin: 12px 0; padding: 12px; }
+.tutor-cabeza { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; }
+.tutor-cabeza h2 { margin: 0; font-size: 19px; display: inline; }
+.tutor-meta { margin: 6px 0; font-weight: 700; }
+.tutor-prioridad { margin: 6px 0 2px; }
+.tutor-novedades { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
+.tutor-novedades a { width: 100%; justify-content: flex-start; text-align: left; box-sizing: border-box; }
+.tutor-examen-linea { display: block; margin: 8px 0; padding: 8px 12px; border-radius: 12px; text-decoration: none; color: var(--texto); background: var(--gris-nodo); }
+.tutor-enlaces { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+.tutor-apertura { border: 2px solid color-mix(in srgb, var(--verde) 45%, transparent); }
+.tutor-apertura-botones { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.entendiste { margin: 14px 0 0; padding-top: 10px; border-top: 1px dashed var(--borde); text-align: left; }
+.entendiste-fila { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.boton-emoji { font-size: 24px; line-height: 1; min-width: 48px; min-height: 44px; border-radius: 14px; border: 2px solid var(--borde); background: var(--tarjeta); cursor: pointer; }
+.boton-emoji:active { transform: translateY(1px); }
+.entendiste-botones { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.entendiste-salida { margin-top: 8px; }
+.para-examen { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--azul, var(--info)) 10%, var(--tarjeta)); }
+.para-examen p { margin: 0 0 6px; }
+.tutor-pista { margin: 6px 0; text-align: left; }
+.tutor-pista p { margin: 0 0 4px; }
+.tutor-examenes { text-align: left; }
+.tutor-examen { padding: 10px 12px; border-radius: 12px; background: var(--gris-nodo); }
+.tutor-examen p { margin: 0 0 4px; }
+.veredicto-corto { font-weight: 900; }
+.veredicto-corto.si { color: var(--bien); }
+.veredicto-corto.no { color: var(--atencion); }
+.tomo-examen-nodo { list-style: none; text-align: center; margin: -4px 0 10px; }
+.chip-tomo { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 800; text-decoration: none; color: var(--texto); background: var(--gris-nodo); }
+.memoria-lista { list-style: none; margin: 10px 0 0; padding: 0 0 0 14px; border-left: 3px solid color-mix(in srgb, var(--verde) 40%, transparent); display: grid; gap: 12px; }
+.memoria-entrada p { margin: 0 0 4px; }
+.memoria-cabeza { font-size: 15px; }
+.personalizadas { display: grid; gap: 14px; margin-top: 10px; }
+.pregunta-personal { text-align: left; }
+.sello-personal { margin: 0 0 6px; color: var(--suave); }
+.opciones-personal { display: grid; gap: 8px; margin: 8px 0; }
+.opcion-personal { text-align: left; padding: 12px; border-radius: 14px; border: 2px solid var(--borde); background: var(--tarjeta); font: inherit; color: var(--texto); cursor: pointer; }
+.opcion-personal.es-correcta { border-color: var(--bien); background: color-mix(in srgb, var(--bien) 12%, var(--tarjeta)); }
+.opcion-personal.es-mala { border-color: var(--mal); background: color-mix(in srgb, var(--mal) 10%, var(--tarjeta)); }
+.repaso-peso { margin: 4px 0; }
+.cobertura-tg ul { margin-top: 8px; }
+.planes-ia { text-align: left; }
+.planes-ia .titulo-grande { margin: 2px 0 6px; }
+.planes-prueba { padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--verde) 14%, var(--tarjeta)); font-weight: 700; }
+.planes-tarjetas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+@media (max-width: 560px) { .planes-tarjetas { grid-template-columns: 1fr; } }
+.plan-tarjeta { padding: 14px; border-radius: 18px; border: 2px solid var(--borde); background: var(--tarjeta); }
+.plan-tarjeta.plus { border-color: color-mix(in srgb, var(--verde) 55%, transparent); }
+.plan-tarjeta h3 { margin: 0 0 6px; font-size: 18px; }
+.plan-tarjeta p { margin: 0 0 4px; }
+.plan-precio { font-size: 20px; }
+.planes-ejemplo { margin: 12px 0; }
+.sello-ejemplo { display: inline-block; margin: 0 0 8px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 900; background: var(--aviso-fondo); color: var(--aviso-texto); }
+.burbuja-ejemplo { margin: 0 0 6px; padding: 8px 12px; border-radius: 14px; background: var(--gris-nodo); }
+.planes-pasos { margin: 6px 0 12px; padding-left: 22px; }
+.planes-pasos li { margin: 0 0 6px; }

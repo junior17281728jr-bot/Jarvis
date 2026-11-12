@@ -22,6 +22,7 @@ import { miRepaso } from './fallas.js';
 import { ideaDe } from './reto.js';
 import { conceptoDePregunta, nombreConcepto } from './conceptos.js';
 import { prefijoPreparar, armarPreparar, leerGuardado } from './instructor-ia.js';
+import { memoriaParaIa, tomoExamen, leerSenales, preferencias } from './tutor.js';
 
 export const PREPARAR = Object.freeze({ activoMs: 48 * 3_600_000, caducaMs: 2 * 3_600_000, tarjetasMaxBytes: 18_000, conceptos: 5, temasFlojos: 6 });
 const clavePuntero = id => `academia.preparar.ultimo.${Number(id)}`;
@@ -116,7 +117,13 @@ export function datosPreparacion(db, usuarioId, p, { idioma = 'es', ahora = Date
   if (!material) return null;
   const prefijo = prefijoPreparar({ material, idioma: idioma === 'en' ? 'en' : 'es' });
   const ins = insumosAlumno(db, usuarioId, p, sigue.materia, sigue.tema, ahora);
-  const pedido = armarPreparar({ alumno: ins.alumno, falladas: ins.falladas.map(({ id, opciones, ...resto }) => resto), sinResponder: ins.sinResponder.map(x => x.numero), conceptos: ins.conceptos });
+  // 0.12.9 (T, U, I): sus últimas entradas de la memoria del tutor (sin fechas: así la huella solo cambia cuando estudia),
+  // el «¿Tomo el examen?» de la materia (ya decidido sin IA: la IA solo lo explica a su estilo) y sus preferencias.
+  const memoria = memoriaParaIa(db, usuarioId, 3, ahora).map(({ hace_dias, ...x }) => x);
+  const ex = tomoExamen(db, usuarioId, p, ahora).materias.find(m => m.materia === sigue.materia);
+  const examen = ex ? { decision: ex.si ? 'SI' : 'TODAVIA_NO', pct: ex.pct, razones: ex.porques.map(x => ({ razon: x.clave, ...x.vars })) } : null;
+  const alumno = { ...ins.alumno, preferencias: preferencias(leerSenales(db, usuarioId)) };
+  const pedido = armarPreparar({ alumno, falladas: ins.falladas.map(({ id, opciones, ...resto }) => resto), sinResponder: ins.sinResponder.map(x => x.numero), conceptos: ins.conceptos, memoria, examen });
   // Las citas se revisan contra la clave de las falladas (con sus opciones, para reconocer una contradicción).
   const citas = armarPreparar({ falladas: ins.falladas }).citas;
   return {

@@ -220,28 +220,36 @@ export function partirLeccion(secciones) {
       });
     });
   };
-  for (const s of lista) {
-    if (!s || typeof s !== 'object') continue;
+  // 0.12.9: cada pantalla sabe de qué tarjeta (sección) salió («seccion», desde 0): para «¿Lo entendiste?» y #tema/…/<n>.
+  const marcar = (desde, k) => { for (let j = desde; j < pantallas.length; j++) pantallas[j].seccion = k; };
+  for (let k = 0; k < lista.length; k++) {
+    const desde = pantallas.length;
+    unaSeccion(lista[k]);
+    marcar(desde, k);
+  }
+  return pantallas;
+  function unaSeccion(s) {
+    if (!s || typeof s !== 'object') return;
     if (s.tipo === 'tarjeta') {
       pantallas.push({
         tipo: 'tarjeta', estilo: 'normal', titulo: s.titulo, parte: null, partes: null, puntos: [...(s.puntos ?? [])],
         recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null, ingles: s.ingles ?? [], visual: s.visual ?? null, clip: s.clip ?? null, imagen: s.imagen ?? null,
         texto: s.texto ?? null, nota: s.nota ?? null, fuentes: s.fuentes ?? [],
       });
-      continue;
+      return;
     }
     const texto = s.texto ?? '';
     const claves = leerPreguntasClave(texto);
     if (claves) {
       claves.tarjetas.forEach((c, i) => pantallas.push({ tipo: 'girar', titulo: s.titulo, indice: i + 1, total: claves.tarjetas.length, pregunta: c.pregunta, respuesta: c.respuesta, fuentes: s.fuentes ?? [] }));
       if (claves.resto) generica(s, claves.resto);
-      continue;
+      return;
     }
     const escenas = leerEscenarios(texto);
     if (escenas) {
       escenas.escenarios.forEach((e, i) => pantallas.push({ tipo: 'situacion', titulo: s.titulo, indice: i + 1, total: escenas.escenarios.length, ...e, fuentes: s.fuentes ?? [] }));
       if (escenas.resto) generica(s, escenas.resto);
-      continue;
+      return;
     }
     if (tituloComo(s.titulo, /ingl[eé]s/i)) {
       const v = leerPalabras(texto);
@@ -250,14 +258,13 @@ export function partirLeccion(secciones) {
         for (let i = 0; i < v.palabras.length; i += MAX_PALABRAS_POR_TARJETA) grupos.push(v.palabras.slice(i, i + MAX_PALABRAS_POR_TARJETA));
         grupos.forEach((g, i) => pantallas.push({ tipo: 'vocabulario', titulo: s.titulo, parte: grupos.length > 1 ? i + 1 : null, partes: grupos.length > 1 ? grupos.length : null, palabras: g, fuentes: s.fuentes ?? [] }));
         if (v.resto) generica(s, v.resto);
-        continue;
+        return;
       }
     }
-    if (tituloComo(s.titulo, /^resumen\b/i)) { generica(s, texto, { estilo: 'resumen', sinRecuerda: true }); continue; }
-    if (tituloComo(s.titulo, /analog/i)) { generica(s, texto, { estilo: 'analogia', sinRecuerda: true }); continue; }
+    if (tituloComo(s.titulo, /^resumen\b/i)) { generica(s, texto, { estilo: 'resumen', sinRecuerda: true }); return; }
+    if (tituloComo(s.titulo, /analog/i)) { generica(s, texto, { estilo: 'analogia', sinRecuerda: true }); return; }
     generica(s, texto);
   }
-  return pantallas;
 }
 
 // Todo el texto de las pantallas, junto (para las pruebas: nada se pierde al partir).

@@ -52,6 +52,12 @@ const PREPARAR = Object.freeze({
   ...INSTRUCTOR, entradaMaxBytes: 32_768, maximoMicro: 8_000, tipicoMicro: 1_500, ajuste: Object.freeze(['instructorIa', 'prepararClase']),
   modelo: 'claude-haiku-5-5', cachear: true, timeoutMs: 60_000,
 });
+// 0.12.9: lo que el alumno pide DENTRO de la clase (J) y las «Preguntas personalizadas» (O): se guarda COMPARTIDO (por
+// tarjeta + estilo + idioma; por tema + confusión), así que se paga una vez y lo reutilizan todos. Siempre Claude Haiku 5.5
+// (modelo fijo y barato) con el sistema (el material, igual para todos) marcado para la caché de 5 minutos. Se cobra un uso
+// al alumno, como una explicación. Lo peor con Haiku 5.5: 16 384 bytes (~4 100 tokens) × US$0.125/M + 4 096 × US$0.50/M,
+// ×1,1 ×1,05 ≈ US$0.003 (máximo 8 000 µUSD); lo normal ≈ US$0.0012.
+const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro: 1_200, modelo: 'claude-haiku-5-5', cachear: true });
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -75,6 +81,10 @@ export const PROPOSITOS = Object.freeze({
   instructor_plan: INSTRUCTOR,
   // 0.12.7: «Preparado para ti» (ver PREPARAR).
   instructor_preparar: PREPARAR,
+  // 0.12.9: «Explícamelo mejor» y «Profundizar» de una tarjeta, y las «Preguntas personalizadas» (ver CLASE_IA).
+  instructor_tarjeta: CLASE_IA,
+  instructor_profundizar: CLASE_IA,
+  instructor_personal: CLASE_IA,
 });
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las

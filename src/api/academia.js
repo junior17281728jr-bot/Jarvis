@@ -20,6 +20,7 @@ import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
+import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tutor.js';
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
@@ -185,6 +186,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('POST', '/api/academia/temas/:materia/:tema/leido', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
     const leido = marcarTemaLeido(db, usuario.id, activo(db), parametros.materia, parametros.tema);
+    // 0.12.9 (T): la memoria del tutor (sin IA; una fila por clase leída).
+    try { anotarClase(db, usuario.id, activo(db), parametros.materia, parametros.tema, reloj()); } catch { /* nunca molesta al alumno */ }
     finDeSesion(db, usuario, 'leido'); // 0.12.7: preparar su próxima clase (si hace falta)
     return { codigo: 200, datos: leido };
   });
@@ -237,6 +240,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const fin = examenDe(db, filaPropia(db, usuario, parametros.id))
       ? entregarExamen(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() })
       : terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() });
+    // 0.12.9 (T): la memoria del tutor (sin IA; una fila por intento terminado), ANTES de preparar la próxima clase.
+    try { anotarIntento(db, usuario.id, activo(db), fin.id, reloj()); } catch { /* nunca molesta al alumno */ }
     finDeSesion(db, usuario, 'terminar'); // 0.12.7: preparar su próxima clase (si hace falta)
     return { codigo: 200, datos: fin };
   });
@@ -298,6 +303,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
       codigo: 200,
       datos: {
         ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
+        // 0.12.9 (R): cuántas preguntas del Test Guide del paquete activo explica alguna tarjeta, y cuáles faltan.
+        cobertura: (() => { try { const p = activo(db); return p ? coberturaTestGuide(p) : null; } catch { return null; } })(),
         limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, videoBytes: LIMITES.videoBytes, clipBytes: LIMITES.clipBytes, paginaBytes: LIMITES.paginaBytes, fotoBytes: LIMITES.fotoBytes },
       },
     };

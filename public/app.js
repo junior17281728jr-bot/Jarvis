@@ -24,6 +24,8 @@ import { partesClaras } from './respuesta-vista.js';
 import { botonOrigen } from './origen-vista.js';
 import { panelCurso, panelRepasoResumen } from './progreso-vista.js';
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
+import { crearTutor } from './tutor-vista.js';
+import { vistaPlanes } from './planes-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -1741,7 +1743,7 @@ async function pantallaIaDemo() {
   if (!vigente()) return;
   // 0.12.5: dentro de «Dinero e IA», con la cabecera de Administrador.
   if (!r.ok) return mostrar(marco('admin', cabeceraAdmin('ia-demo'), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, mostrar, marco: (seccion, ...resto) => marco(seccion, cabeceraAdmin('ia-demo'), ...resto), instructorUi });
+  vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, numero, mostrar, marco: (seccion, ...resto) => marco(seccion, cabeceraAdmin('ia-demo'), ...resto), instructorUi, tutorUi, vistaPlanes });
 }
 async function pantallaProfesor() {
   const vigente = nuevoTurno();
@@ -3377,7 +3379,11 @@ let ayudasInstructor = null;
 const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor }));
 // 0.10.0: tiempo con IA, pagos y Profesor virtual (public/pagos.js).
 let ayudasPagos = null;
-const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi, confirmar }));
+const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi, confirmar, vistaPlanes, tutorUi }));
+// 0.12.9: el tutor del alumno (public/tutor-vista.js). El nombre lo pone la app (nunca va a la IA).
+let ayudasTutor = null;
+const tutorUi = () => (ayudasTutor ??= crearTutor({ el, t, icono, api, talCual, numero, nombreMateria, empezarIntento, avisar, textoError, mostrar, marco, instructorUi,
+  nombre: () => estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }));
 async function empezarIntento(datos, boton = null) {
   if (boton) boton.disabled = true;
   const r = await api('POST', '/api/academia/intentos', datos);
@@ -3555,6 +3561,8 @@ function senderoMateria(m, n, siguiente) {
     avance: ex.avance ?? null, nombreIcono: 'trofeo', titulo: t('acad.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : directo ? t('acad.saltar.detalle') : tn('acad.n_preguntas', { n: ex.preguntas }),
     etiqueta: ex.disponible ? t('acad.examen_de', { materia: nombreMateria(m.id) }) : directo ? `${t('acad.examen_cerrado')} ${t('acad.saltar.detalle')}` : t('acad.examen_cerrado'), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
   }));
+  // 0.12.9 (U): el lugar de «¿Tomo el examen? SÍ / TODAVÍA NO · %» (lo llena rellenarTomoExamen).
+  nodos.push(el('li', { class: 'tomo-examen-nodo', 'data-materia': m.id, hidden: true }));
   // 0.12.0: lo EXTRA de la materia (opcional; recomendado después del examen).
   if (m.extra) {
     nodos.push(nodoCamino({
@@ -3563,6 +3571,19 @@ function senderoMateria(m, n, siguiente) {
     }));
   }
   return el('ol', { class: 'sendero', 'aria-label': nombreMateria(m.id) }, nodos);
+}
+
+function rellenarTomoExamen() {
+  api('GET', '/api/academia/tutor/examen').then(r => {
+    if (!r.ok) return;
+    for (const x of r.datos.materias ?? []) {
+      const lugar = raiz.querySelector(`.tomo-examen-nodo[data-materia="${CSS.escape(x.materia)}"]`);
+      if (!lugar) continue;
+      lugar.hidden = false;
+      lugar.replaceChildren(el('a', { class: `chip-tomo tono-${x.si ? 'bien' : 'atencion'}`, href: '#tutor/examen' },
+        el('span', { texto: t('tutor.examen.chip', { decision: t(x.si ? 'tutor.examen.si' : 'tutor.examen.todavia'), pct: numero(x.pct ?? 0) }) })));
+    }
+  }).catch(() => {});
 }
 
 function bannerMateria(m, n, { vacia = false } = {}) {
@@ -3818,7 +3839,8 @@ async function pantallaInicio() {
     entradaMiRepaso(),
     // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
     lineaHumorVista(c.humor));
-  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, instructorUi().enInicio(), avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }),
+  tutorUi().olvidar();
+  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, tutorUi().tarjetaTutor(), instructorUi().enInicio(), avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }),
     // 0.12.2: qué quiere decir el color de cada nodo (una vez, arriba del Camino).
     leyendaCamino(),
     // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
@@ -3826,6 +3848,8 @@ async function pantallaInicio() {
   // 0.8.0: el próximo tema y el progreso se piden ya (sin esperar): al tocarlos se abren enseguida.
   if (siguiente?.tipo === 'tema') adelantar(`/api/academia/temas/${encodeURIComponent(siguiente.materia)}/${encodeURIComponent(siguiente.tema)}`);
   adelantar('/api/academia/progreso');
+  // 0.12.9 (U): «¿Tomo el examen?» junto al nodo del examen de cada materia (sin IA; se llena cuando llega).
+  rellenarTomoExamen();
   // Baja hasta el paso que toca (si está más abajo).
   const actual = enFondo ? null : raiz.querySelector('.materia-bloque:not(.plegada) .nodo.actual');
   if (actual && actual.getBoundingClientRect().top > window.innerHeight * 0.75) actual.scrollIntoView({ block: 'center' });
@@ -4141,7 +4165,7 @@ function vistaSituacion(p, { alElegir }) {
   return { nodo, botones, elegida: () => elegida };
 }
 
-async function pantallaTema(materia, tema) {
+async function pantallaTema(materia, tema, irATarjeta = null) {
   const vigente = nuevoTurno();
   // 0.12.2: la clase es siempre la normal: ninguna tarjeta de refuerzo delante ni consejo de errores en la portada (eso
   // vive en «Mi repaso»), así que solo se pide la lección.
@@ -4160,9 +4184,14 @@ async function pantallaTema(materia, tema) {
   const pantallas = [{ tipo: 'portada' }, ...partirLeccion(l.secciones), { tipo: 'fin' }];
   // 0.12.2: sigue donde quedó (la misma tarjeta), si la clase no cambió desde entonces.
   let paso = l.paso && l.paso.total === pantallas.length && l.paso.paso > 0 && l.paso.paso < pantallas.length ? l.paso.paso : 0;
-  if (paso) avisar(t('acad.tema.sigues', { n: numero(Math.min(paso, pantallas.length - 2)), total: numero(pantallas.length - 2) }));
+  // 0.12.9 (H, F): #tema/<materia>/<tema>/<n> abre directo la tarjeta n (la que explica una pregunta).
+  const directo = irATarjeta ? pantallas.findIndex(x => x.seccion === irATarjeta - 1) : -1;
+  if (directo > 0) paso = directo;
+  else if (paso) avisar(t('acad.tema.sigues', { n: numero(Math.min(paso, pantallas.length - 2)), total: numero(pantallas.length - 2) }));
   let guardado = -1;
   let actual = null; // { destruir }
+  let inicioTarjeta = 0;
+  const tiempos = [];
   const barraAvance = combustible();
   const cuenta = el('span', { class: 'estudio-cuenta' });
   const cuerpo = el('div', { class: 'estudio-tarjeta' });
@@ -4181,6 +4210,7 @@ async function pantallaTema(materia, tema) {
   };
   const atras = () => (paso > 0 ? el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.atras'), onclick: () => ir(paso - 1) }, icono('flecha', 'icono volver-icono')) : null);
   const pintar = () => {
+    if (inicioTarjeta) { const ms = Date.now() - inicioTarjeta; if (ms > 2_000 && ms < 600_000) tiempos.push(ms); inicioTarjeta = 0; }
     actual?.destruir?.();
     actual = null;
     quitarHojaDe(raizEstudio);
@@ -4208,8 +4238,10 @@ async function pantallaTema(materia, tema) {
         el('p', { class: 'bajada', texto: t('acad.portada.linea') }),
         // 0.12.7: «Preparado para ti» (lo que la IA preparó para ESTA clase, o la versión básica), sin esperar.
         instructorUi().paraTi(materia, tema),
+        // 0.12.9 (F): «Tu tutor IA» (solo con IA), lo que pasó de verdad.
+        tutorUi().tarjetaTutor({ compacta: true }),
         // 0.12.2: la explicación en video de ESTE tema (su capítulo del mp4), solo si el paquete lo trae.
-        l.video?.capitulo ? el('a', { class: 'boton-3d blanco chico con-icono boton-video-tema', href: `#video/${encodeURIComponent(materia)}/tema/${encodeURIComponent(tema)}` },
+        l.video?.capitulo ? el('a', { class: 'boton-3d blanco chico con-icono boton-video-tema', href: `#video/${encodeURIComponent(materia)}/tema/${encodeURIComponent(tema)}`, onclick: () => { api('POST', '/api/academia/tutor/senal', { tipo: 'visual' }).catch(() => {}); } },
           icono('video', 'icono chico'), el('span', { texto: t('acad.video.explicacion') })) : null);
       botones = [botonGrande(t('acad.empezar'), () => ir(1))];
     } else if (p.tipo === 'fin') {
@@ -4271,7 +4303,16 @@ async function pantallaTema(materia, tema) {
       const v = vistaTarjeta(p, { materia });
       nodo = v.nodo;
       actual = v;
+      // 0.12.9 (J): «¿Lo entendiste?» 👍/🤔 en cada tarjeta (con IA: «Explícamelo mejor» / «Profundizar»; sin IA, lo gratis).
+      if (Number.isInteger(p.seccion) && (!p.parte || p.parte === p.partes)) nodo.append(tutorUi().entendiste(materia, tema, p.seccion + 1));
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
+    }
+    // 0.12.9 (I): cuánto tarda en cada tarjeta (solo el promedio, al terminar la clase).
+    if (p.tipo === 'tarjeta') inicioTarjeta = Date.now();
+    else if (p.tipo === 'fin' && tiempos.length) {
+      const ms = Math.round(tiempos.reduce((a, b) => a + b, 0) / tiempos.length);
+      tiempos.length = 0;
+      api('POST', '/api/academia/tutor/senal', { tipo: 'tiempo', ms }).catch(() => {});
     }
     cuerpo.replaceChildren(nodo);
     pie.replaceChildren(...botones.filter(Boolean));
@@ -4861,7 +4902,7 @@ async function pantallaPractica(id) {
       titulo: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }),
       // 0.9.0: «Explícamelo de otra forma» (la pregunta y sus opciones quedan tal cual arriba); 0.9.2: «Reportar un error».
       // 0.12.0: «¿De dónde salió?» también aquí (arriba puede quedar tapado por la hoja): ya respondió, se ve la página.
-      partes: [...partesRespuesta(q, resp, { enHoja: true }), el('div', { class: 'hoja-origen' }, origenDe(q)), instructorUi().explicar(intento.id, q), enlaceReportar(q.id)],
+      partes: [...partesRespuesta(q, resp, { enHoja: true }), resp.acierto ? null : tutorUi().pista(intento.id, q.id), el('div', { class: 'hoja-origen' }, origenDe(q)), instructorUi().explicar(intento.id, q), enlaceReportar(q.id)].filter(Boolean),
       boton,
     }));
     if (recien) {
@@ -4881,6 +4922,7 @@ async function pantallaPractica(id) {
   };
   const pintarResultado = res => {
     quitarHoja();
+    tutorUi().olvidar();
     barraAvance.poner(1, 1);
     cuenta.textContent = '';
     const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: `boton-3d ${res.aprobado ? 'blanco' : 'grande naranja'}`,
@@ -4902,6 +4944,9 @@ async function pantallaPractica(id) {
       // 0.9.0: después de un examen, el consejo del instructor (con IA, además el suyo).
       // 0.10.0: si no aprobó, el «Plan para pasar la próxima vez» (con el consejo del instructor IA adentro).
       ...panelesResultado(res),
+      // 0.12.9 (F, H, O): «Tu tutor preparó tu próxima clase» (si corrió) y sus preguntas personalizadas (solo con IA).
+      tutorUi().tarjetaTutor({ compacta: true }),
+      res.tipo === 'tema' && res.falladas?.length ? tutorUi().botonPersonalizadas(res.materia, res.tema) : null,
       res.aprobado === false ? instructorUi().planParaPasar(res) : res.tipo === 'examen' ? instructorUi().consejoExamen(res.id) : null,
       instructorUi().resultadoRefuerzo(res),
       revisionCompleta(res)].filter(Boolean));
@@ -4938,8 +4983,10 @@ function panelPlan(plan, { alCambiar }) {
       el('div', {}, el('h2', { id: 'plan-panel-titulo', texto: t('acad.plan.tu_plan', { plan: textoPlan(plan.elegido, 'nombre') }) }),
         el('p', { class: 'suave', texto: t('acad.plan.desde', { fecha: diaRd(`${plan.desde}T12:00:00Z`) }) }))),
     el('div', { class: 'plan-fechas' },
-      el('div', { class: 'plan-fecha-caja' }, el('span', { class: 'suave', texto: t('acad.plan.fin_estimado') }), el('strong', { texto: diaRd(`${plan.fin}T12:00:00Z`) })),
+      // 0.12.9 (P): la fecha es un ESTIMADO a su ritmo, nunca un límite («≈ 18 dic»).
+      el('div', { class: 'plan-fecha-caja' }, el('span', { class: 'suave', texto: t('acad.plan.fin_estimado') }), el('strong', { texto: t('acad.plan.aprox', { fecha: diaRd(`${plan.fin}T12:00:00Z`) }) })),
       el('div', { class: 'plan-fecha-caja' }, el('span', { class: 'suave', texto: t('acad.plan.meta_hoy') }), el('strong', { texto: tn('acad.plan.pasos', { n: plan.metaHoy }) }))),
+    el('p', { class: 'chica', texto: t('acad.plan.estimado_linea', { plan: textoPlan(plan.elegido, 'nombre'), fecha: fechaCortaDia(plan.fin) }) }),
     el('div', { class: 'plan-barra' }, barraLlena(plan.pct)),
     el('p', { class: 'suave chica', texto: t('acad.plan.hechos', { n: numero(plan.hechos), total: numero(plan.total) }) }),
     insignia(tono, tSi(TEXTO_RITMO[plan.ritmo] ?? '', plan.ritmo)),
@@ -4971,6 +5018,8 @@ async function pantallaProgreso() {
     p.repaso ? el('div', { class: 'progreso-repaso-espaciado' }, botonRepaso(p.repaso), queEs('repaso')) : null,
     // 0.10.0: «¿Estás listo para el examen oficial?» y «Lo que hicimos por ti» (sus fallas y cómo se le reforzaron).
     instructorUi().preparado(),
+    // 0.12.9 (U): «¿Tomo el examen final?» por materia y el oficial (sin IA; con IA, además el porqué a su estilo).
+    tutorUi().examen(),
     panelRepasoResumen(p.miRepaso, ayudas),
     instructorUi().loQueHicimos(),
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
@@ -5042,6 +5091,8 @@ const piezasAlumnos = () => ({
   fallasAlumno: id => instructorUi().loQueHicimos({ titulo: t('ficha.fallas'), url: `/api/admin/academia/alumnos/${encodeURIComponent(id)}/fallas` }),
   profesorAlumno: id => instructorUi().profesorAdmin(id),
   preparadoAlumno: id => [instructorUi().preparado(`/api/admin/academia/alumnos/${encodeURIComponent(id)}/preparado`, { alumno: true }),
+    // 0.12.9 (T, U): lo que su tutor recuerda de él y «¿Tomo el examen?».
+    tutorUi().adminAlumno(id),
     el('a', { class: 'boton-enlace secundario', href: `#aprendizaje/${encodeURIComponent(id)}`, texto: t('aprendizaje.de_alumno') })],
 });
 // Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
@@ -5385,7 +5436,16 @@ async function pantallaContenido() {
   const tarjetaVersiones = el('section', { class: 'tarjeta' },
     el('h2', { class: 'con-icono' }, icono('libro'), el('span', { texto: t('acad.versiones') })),
     paquetes.length ? verMas(el('div', { class: 'lista-usuarios' }), paquetes.map(filaPaquete), 4) : vacio('libro', t('acad.versiones.vacio')));
-  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes)));
+  // 0.12.9 (R): cuántas preguntas del Test Guide explica alguna tarjeta (y cuáles faltan), del paquete en uso.
+  const cob = r.datos.cobertura;
+  const tarjetaCobertura = cob?.preguntas ? el('section', { class: 'tarjeta cobertura-tg' },
+    el('h2', { class: 'con-icono' }, icono('libro'), el('span', { texto: t('contenido.cobertura.titulo') })),
+    el('p', { class: `fuerte tono-${cob.cubiertas === cob.preguntas ? 'bien' : 'atencion'}`, texto: t('contenido.cobertura', { cubiertas: numero(cob.cubiertas), preguntas: numero(cob.preguntas) }) }),
+    el('ul', { class: 'lista-simple chica' }, cob.materias.filter(m => m.preguntas).map(m => el('li', {},
+      el('span', { texto: `${nombreMateria(m.materia)}: ${t('contenido.cobertura', { cubiertas: numero(m.cubiertas), preguntas: numero(m.preguntas) })}` }),
+      m.faltan.length ? el('span', { class: 'suave', texto: ` · ${t('contenido.cobertura.faltan', { numeros: m.faltan.join(', ') })}` }) : null))),
+    el('p', { class: 'ayuda', texto: t('contenido.cobertura.ayuda') })) : null;
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes, tarjetaCobertura)));
 }
 // 0.12.5: Contenido → Términos (0.9.2: los «Términos de uso y aviso», public/terminos-vista.js).
 async function pantallaTerminosAdmin() {
@@ -5545,8 +5605,13 @@ async function dibujar() {
   if (seccion === 'claves' && esAdmin) return pantallaClaves();
   // Academia (0.7.0): el camino (Inicio), un tema, practicar, el examen de una materia y el progreso; lo del administrador.
   if (seccion === 'progreso') return pantallaProgreso();
-  const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
-  if (tema) return pantallaTema(tema[1], tema[2]);
+  const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/(\d{1,3}))?$/);
+  if (tema) return pantallaTema(tema[1], tema[2], tema[3] ? Number(tema[3]) : null);
+  // 0.12.9: el tutor: lo que recuerda de él, «¿Tomo el examen?» y sus preguntas personalizadas.
+  if (seccion === 'tutor/memoria') return tutorUi().pantallaMemoria();
+  if (seccion === 'tutor/examen') return tutorUi().pantallaExamen();
+  const personal = seccion.match(/^tutor\/preguntas\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
+  if (personal) return tutorUi().pantallaPersonalizadas(personal[1], personal[2]);
   const practica = seccion.match(/^practica\/(\d+)$/);
   if (practica) return pantallaPractica(practica[1]);
   const examen = seccion.match(/^examen\/([a-z0-9_-]+)$/);
@@ -5621,7 +5686,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'claves') return admin ? ['/api/admin/claves'] : [];
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso'];
-  const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
+  const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);
   if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
   const practica = seccion.match(/^practica\/(\d+)$/);
   if (practica) return [`/api/academia/intentos/${encodeURIComponent(practica[1])}`];

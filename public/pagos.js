@@ -135,7 +135,9 @@ export function crearPagos(h) {
       el('section', { class: 'panel tiempo-cabeza' }, el('h1', { class: 'titulo-grande', texto: tx('tiempo.titulo') }), instructorUi().medidorTiempo(d.tiempo, { conBoton: false }),
         el('p', { class: 'suave', texto: pg.modo === 'planes' ? tx('plan.que_es', { dias: numero(pg.pruebaDias), por_dia: numero(pg.pruebaUsosDia), plan_dias: numero(pg.planDias) }) : tx('tiempo.que_es', { n: numero(d.tiempo.porUso) }) })),
       // El administrador no compra (su tiempo no tiene límite): ve la pantalla como vista previa, sin «Comprar» ni subir.
-      comparacion(pg, { irA: d.tiempo.ilimitado ? null : subir ?? null }), datosCuenta, d.tiempo.ilimitado ? null : subir, historial));
+      // 0.12.9 (X): con planes, la página de planes del tutor IA (public/planes-vista.js); con minutos, la de siempre.
+      pg.modo === 'planes' && h.vistaPlanes ? h.vistaPlanes(d, h, { irA: d.tiempo.ilimitado ? null : subir ?? null }) : comparacion(pg, { irA: d.tiempo.ilimitado ? null : subir ?? null }),
+      datosCuenta, d.tiempo.ilimitado ? null : subir, historial));
   }
 
   // ---------- El administrador: «Pagos» ----------
@@ -354,11 +356,12 @@ export function crearPagos(h) {
     const lista = el('div', { class: 'chat-lista', 'aria-live': 'polite' }, d.historial.flatMap(burbujas));
     const entradaTexto = el('textarea', { rows: 2, maxlength: 500, 'aria-label': tx('profesor.escribe'), placeholder: tx('profesor.escribe') });
     const medidor = el('div', { class: 'chat-tiempo' }, instructorUi().medidorTiempo(d.tiempo));
-    const mandar = async texto => {
+    // 0.12.9 (G): donde = { materia, tema } cuando el mensaje sale de «Explícame la clase de…».
+    const mandar = async (texto, donde = null) => {
       const mensaje = String(texto ?? entradaTexto.value).trim();
       if (mensaje.length < 2) return entradaTexto.focus();
       boton.disabled = true;
-      const x = await api('POST', '/api/academia/profesor', { mensaje });
+      const x = await api('POST', '/api/academia/profesor', { mensaje, ...(donde ?? {}) });
       boton.disabled = false;
       if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
       entradaTexto.value = '';
@@ -386,6 +389,8 @@ export function crearPagos(h) {
       caja.scrollIntoView?.({ block: 'nearest' });
     };
     const boton = el('button', { type: 'button', class: 'boton-3d', onclick: () => mandar() }, el('span', { texto: tx('profesor.enviar') }));
+    // 0.12.9 (G, M, Y): el primer mensaje del tutor (sin llamar a la IA), arriba de la conversación.
+    h.tutorUi?.().ponerApertura(lista, mandar);
     mostrar(marco('inicio', volver,
       el('section', { class: 'panel chat' },
         el('div', { class: 'chat-cabeza' }, el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('cerebro')),

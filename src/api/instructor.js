@@ -20,6 +20,7 @@ import { PROPOSITOS } from '../ia/propositos.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { camino } from '../academia/progreso.js';
 import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, reexplicarSinIa, dudaSinIa, tarjetasParaDuda } from '../academia/instructor.js';
+import { cortarBytes } from '../academia/instructor.js';
 import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS, preguntaSinIa, armarMiniClase, armarPlanDia } from '../academia/instructor-ia.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { cobrarUso, yaPagado, ponerTareaAlUso, novedadesPagos } from '../academia/tiempo-ia.js';
@@ -35,6 +36,9 @@ import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 import { iaPermitida } from '../cuentas/terminos.js';
 import { humorActivo } from '../academia/humor.js';
 import { guardarAjuste, leerAjuste } from '../academia/paquetes.js';
+import { contarReuso } from '../academia/registro-ia.js';
+import { registrarRutasTutor, personalParaVer, progresoPersonal } from './tutor.js';
+import { memoriaParaIa, leerSenales, preferencias, preguntasDeMateria } from '../academia/tutor.js';
 import { datosPreparacion, leerPuntero, guardarPuntero, ultimaActividad, preparadoConIa, preparadoBasico, diaRd, PREPARAR } from '../academia/preparar-clase.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
@@ -129,6 +133,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   }
   // Lo que ya estaba guardado (otro alumno pidió lo mismo): no costó, pero es un uso de su tiempo con IA (una vez).
   function deGuardado(db, usuario, clave, guardado) {
+    // 0.12.9: para el «Registro de la IA»: cuántas veces lo guardado sirvió otra vez (el ahorro).
+    try { contarReuso(db, clave); } catch { /* solo una cuenta */ }
     const e = espacioDe(db, usuario);
     if (!esEspacioAdmin(db, e.id) && !yaPagado(db, usuario.id, clave)) {
       try { cobrarUso(db, usuario.id, { referencia: clave, ahora: reloj() }); } catch (error) {
@@ -189,6 +195,9 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       }
     };
   }
+
+  // 0.12.9: el tutor del alumno (src/api/tutor.js), con el mismo estado de la IA, el mismo cobro y la misma fila.
+  registrarRutasTutor(rutas, { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj, config });
 
   // «Preparado para ti» al abrir un tema: lo de la IA si se preparó ESE tema y la IA está para él; si no, lo básico.
   rutas.agregar('GET', '/api/academia/instructor/preparado/:materia/:tema', ({ db, req, usuario, parametros }) => {
@@ -342,7 +351,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   // ---------- 0.12.2: «Mi repaso» (todo lo que falló, y los conceptos para repasar) y la mini-clase de un concepto ----------
   rutas.agregar('GET', '/api/academia/mi-repaso', ({ db, usuario }) => {
     contar(topes.lecturas, usuario);
-    return { codigo: 200, datos: miRepaso(db, usuario.id, activo(db), reloj()) };
+    // 0.12.9 (O): las preguntas personalizadas cuentan en el progreso de «Mi repaso» (nunca en el % del Test Guide).
+    return { codigo: 200, datos: { ...miRepaso(db, usuario.id, activo(db), reloj()), personal: progresoPersonal(db, usuario.id) } };
   });
   rutas.agregar('GET', '/api/academia/mi-repaso/clase', ({ db, req, usuario }) => {
     contar(topes.lecturas, usuario);
@@ -463,6 +473,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     try { clave = JSON.parse(f.datos)?.clave ?? null; } catch { clave = null; }
     try { resultado = f.resultado ? JSON.parse(f.resultado) : null; } catch { resultado = null; }
     const guardado = f.estado === 'hecha' ? leerGuardado(db, clave) : null;
+    // 0.12.9: las preguntas personalizadas viajan SIN la correcta (se revisa al responder).
+    if (guardado && /^academia\.ia\.personal\./.test(clave)) return { codigo: 200, datos: { estado: 'lista', clave, ...personalParaVer(guardado) } };
     if (guardado) return { codigo: 200, datos: lista(guardado) };
     const motivo = typeof resultado?.motivo === 'string' ? resultado.motivo : 'no_disponible';
     const admin = esEspacioAdmin(db, e.id);
@@ -519,6 +531,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
         demo: true, basica, tema: tema?.titulo ?? '', concepto: c ? nombreConcepto(c) : tema?.titulo ?? '',
         // 0.12.7: para «Preparado para ti» (demostración): los títulos de las primeras tarjetas de ese tema.
         tarjetas: (tema?.secciones ?? []).slice(0, 2).map((x, i) => ({ numero: i + 1, titulo: String(x.titulo ?? '') })),
+        // 0.12.9: para el tutor de demostración (las N preguntas de la materia y dónde está ese tema).
+        materia: lugar?.materia ?? null, temaId: lugar?.tema ?? null, preguntasMateria: lugar ? preguntasDeMateria(p, lugar.materia) : 0,
         pregunta: { id: q.id, numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })), correcta: correcta?.letra ?? null, correctaTexto: correcta?.texto ?? '' },
         acciones: accionesDeHoy(db, usuario.id, p, ahora).map(a => ({ id: a.id, clave: a.clave, vars: a.vars })),
       },
@@ -545,7 +559,14 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const c = camino(db, usuario.id, p, ahora);
     const abiertos = new Set(c.materias.flatMap(m => m.temas.filter(t => t.estado !== 'bloqueado').map(t => `${m.id}/${t.id}`)));
     const fallas = fallasDe(db, usuario.id, p, ahora).filter(f => f.estado !== 'superada');
-    const ctx = contextoChat(db, usuario.id, p, mensaje, abiertos, fallas);
+    // 0.12.9 (G): «Explícame la clase de <tema>»: el tema lo dice el botón (abierto); si no, el que más se parece.
+    const forzado = typeof datos?.materia === 'string' && typeof datos?.tema === 'string' && abiertos.has(`${datos.materia}/${datos.tema}`)
+      ? p.materias.find(m => m.id === datos.materia)?.temas.find(t => t.id === datos.tema) : null;
+    const ctx = forzado ? {
+      materia: datos.materia, tema: datos.tema, temaTitulo: forzado.titulo,
+      material: { tema: forzado.titulo, tarjetas: (forzado.secciones ?? []).slice(0, 6).map(s => ({ titulo: s.titulo ?? '', texto: cortarBytes([s.texto, ...(s.puntos ?? []), s.recuerda].filter(Boolean).join('\n'), 1500) })) },
+      preguntas: respondidasParecidas(db, usuario.id, p, forzado.titulo, { donde: { materia: datos.materia, tema: datos.tema }, cuantas: 3 }),
+    } : contextoChat(db, usuario.id, p, mensaje, abiertos, fallas);
     const videos = ctx.materia ? videosDeTema(db, ctx.materia, ctx.tema).map(v => ({ titulo: v.titulo, url: v.url })) : [];
     const buscar = ctx.temaTitulo ? [{ texto: ctx.temaTitulo, url: busquedaYoutube(ctx.temaTitulo) }] : [];
     // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual. 0.12.4: el mensaje y la
@@ -560,11 +581,15 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const alumno = {
       ...resumenModelo(m), ideas: m.ideas.map(x => x.idea).filter(Boolean),
       fallas: fallas.slice(0, 5).map(f => ({ tema: f.temaTitulo, idea: f.idea, fallos: f.fallos, aciertos: f.aciertos, estado: f.estado })),
+      // 0.12.9 (T, I): lo que el tutor recuerda de él (sin nombres) y sus señales de estilo (solo números).
+      memoria: memoriaParaIa(db, usuario.id, 3, ahora), preferencias: preferencias(leerSenales(db, usuario.id)),
     };
     alumno.temas = [...alumno.temas].sort((a, b) => a.pct - b.pct).slice(0, 6); // solo los más flojos (cuida el tamaño)
     let historial = historialParaVer(db, usuario.id).filter(x => x.respuesta).map(x => ({ alumno: x.pregunta, profesor: x.respuesta.respuesta })).slice(-6);
     // Que quepa en lo que se puede mandar: primero se quita historial, después preguntas, después se acortan las tarjetas.
-    const cabe = x => Buffer.byteLength(x.sistema) + Buffer.byteLength(x.texto) <= PROPOSITOS.instructor_chat.entradaMaxBytes;
+    // (y que los datos de la tarea —sistema, texto, la pregunta y las citas, como JSON— quepan en sus 16 000 letras)
+    const cabe = x => Buffer.byteLength(x.sistema) + Buffer.byteLength(x.texto) <= PROPOSITOS.instructor_chat.entradaMaxBytes
+      && JSON.stringify([x.sistema, x.texto, mensaje, x.citas]).length <= 14_500;
     let preguntas = ctx.preguntas;
     let material = ctx.material;
     let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma });

@@ -15,10 +15,13 @@ export function pantallaMiRepaso(d, h) {
   const mas = Math.max(1, (d.umbral ?? 3) - 1);
   const boton = (texto, datos, clase = 'boton-3d naranja chico') => el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento(datos, e.currentTarget); } }, el('span', { texto }));
   // Lo principal, corto: «Repasa: <punto> · Tema <n> <tema>»; debajo, por qué está aquí y cómo va.
-  const fila = x => el('li', { class: 'repaso-punto' },
+  // 0.12.9 (S): primero lo que falla y más sale en el Test Guide; el primero dice por qué.
+  const fila = (x, i) => el('li', { class: 'repaso-punto' },
     el('p', { class: 'antetitulo', texto: nombreMateria(x.materia) }),
     el('h3', { class: 'repaso-punto-titulo' }, talCual('span', lineaRepasa(x, t, numero))),
+    i === 0 && x.peso > 1 ? el('p', { class: 'repaso-peso fuerte chica', texto: t('mirepaso.empieza', { n: numero(x.peso) }) }) : null,
     el('p', { class: 'chica', texto: t('mirepaso.porque', { n: numero(x.fallos), concepto: x.concepto }) }),
+    x.peso > 1 ? el('p', { class: 'suave chica', texto: t('mirepaso.peso', { n: numero(x.peso) }) }) : null,
     el('p', { class: 'suave chica', texto: t('mirepaso.vas', { n: numero(x.aciertos), meta: numero(x.meta.aciertos) }) }),
     x.miniclase && x.clave ? el('p', { class: 'aviso chica con-icono' }, icono('bombilla', 'icono chico'), el('span', { texto: t('mirepaso.miniclase_primero') })) : null,
     el('div', { class: 'botones' },
@@ -54,6 +57,8 @@ export function pantallaMiRepaso(d, h) {
     el('section', { class: 'mi-repaso' },
       el('h1', { class: 'titulo-grande', texto: t('mirepaso.titulo') }),
       el('p', { class: 'bajada', texto: t('mirepaso.linea') }),
+      // 0.12.9 (O): las preguntas personalizadas cuentan aquí (nunca en el % del Test Guide).
+      d.personal?.respondidas ? el('p', { class: 'chica con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('mirepaso.personal', { n: numero(d.personal.bien), de: numero(d.personal.respondidas) }) })) : null,
       paraRepasar, errores)));
 }
 

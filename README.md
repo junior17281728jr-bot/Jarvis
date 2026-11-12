@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.7; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.9; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,64 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.9: el tutor IA del alumno (memoria, «¿Tomo el examen?», la clase a su medida, planes) — sin cambio de base
+Todo lo nuevo se guarda en «ajustes» (filas que se agregan, nunca se borran) y sigue las reglas de siempre: el Test Guide
+tal cual; lo que la IA diga de una respuesta del Test Guide se revisa contra la clave; nunca el nombre del alumno al
+proveedor (el «¡Hola, piloto Juan!» lo pone la pantalla alrededor del texto); **sin IA para ese alumno, nada de IA
+visible** (las rutas devuelven `ia: false` / `ia: null` y solo queda lo gratis, marcado «Modo básico»); nada se calcula
+en masa y nada llama a la IA si nadie estudia.
+- **Sin IA (para todos)** — `src/academia/tutor.js`:
+  - **Análisis del Test Guide** por tema (una vez por versión del paquete, en memoria): cada pregunta del tema, la
+    tarjeta que la explica, sus trampas típicas (las ideas equivocadas del paquete) y su dificultad (lo que fallan todos).
+    **Cobertura** en Contenido: «32/32 preguntas del Test Guide cubiertas» y cuáles faltan (la materia 1 de verdad: 32/32).
+  - **Peso en el examen**: «Mi repaso» (y con él la preparación y el plan de hoy) pone primero lo que falla y más sale
+    en el Test Guide: «Empieza por aquí: lo fallaste y salen 3 preguntas… Todo es importante, pero esto pesa más».
+  - **Memoria del tutor**: una fila por intento terminado y por clase leída (qué hizo, nota, conceptos y números del Test
+    Guide bien/mal, minutos, una conclusión). «Lo que tu tutor recuerda de ti» (`#tutor/memoria`) y en la ficha del alumno.
+    Los pedidos a la IA (preparación y Profesor) llevan las últimas 3 entradas (sin nombres).
+  - **¿Tomo el examen final?** por materia y el oficial: SÍ / TODAVÍA NO + % (de `preparado.js`) + 2–4 porqués, en el
+    nodo del examen del Camino, en Progreso, en la tarjeta del tutor y en la ficha del alumno (`#tutor/examen`).
+  - **Señales de estilo** (solo números): 👍/🤔, «Explícamelo mejor», «Profundizar», abrir el video, tiempo en tarjetas.
+  - **Plan de estudio**: la fecha es un estimado («≈ 18 dic, a tu ritmo»), nunca un límite.
+  - En la práctica, después de un error: **una pista de una línea** (la explicación compartida ya guardada para su
+    estilo si existe, si no la idea clave de la tarjeta) y **«Ver en la clase»** a la tarjeta exacta (`#tema/<m>/<t>/<n>`).
+- **Con IA (solo si la IA está para él)**:
+  - **Tarjeta «Tu tutor IA»** en Inicio, la clase y el resultado de la práctica, con cosas que pasaron de verdad (hoy
+    reforzamos…, preparé tu próxima clase…, profundizamos en…), cada una un botón; su meta («Mi meta contigo: que
+    apruebes el Test Guide y llegues a ser piloto. Para eso analicé las N preguntas…») y por dónde empezar.
+  - **Profesor proactivo**: el primer mensaje («¡Hola, piloto Juan! Vi que fallaste A y B (Tema n). ¿Empezamos por
+    eso?») sale de «Mi repaso» y del Camino **sin llamar a la IA**, con «Sí, practiquemos», «Explícame la clase de…» (el
+    chat con ESE tema como contexto), «Llévame a la clase» y «Recomiéndame un video» (primero los del administrador;
+    después la búsqueda de YouTube; nunca un enlace inventado).
+  - **En cada tarjeta de la clase**: «¿Lo entendiste?» 👍/🤔 → «Explícamelo mejor» (compartido por tarjeta + estilo +
+    idioma) y «Profundizar» (por qué pasa, un vuelo real, la trampa del examen; por tarjeta + idioma). Lo que va al
+    proveedor lleva las preguntas del Test Guide de esa tarjeta **sin la respuesta**, y si la IA dice una, no se usa. El
+    «Para el examen» del final lo pone la app: citadas solo las que ese alumno ya respondió; de las demás, el número.
+    Sin IA, 🤔 muestra la «sencilla» de lo ya respondido y la reexplicación del tema («Modo básico»).
+  - **Preguntas personalizadas** (`#tutor/preguntas/<m>/<t>`) tras practicar un tema: hechas a su confusión (compartidas
+    por tema + conceptos confundidos), marcadas «Pregunta personalizada (no es del Test Guide)», ligadas al número de la
+    pregunta que entrenan y revisadas contra la clave (una sola correcta, nunca una opción mala del Test Guide). Solo con
+    conceptos en los que ya respondió todo. La correcta no viaja antes de responder. Cuentan en «Mi repaso», nunca en el %.
+  - **La preparación** (la misma llamada de la 0.12.7) además escribe el porqué de «¿Tomo el examen?» a su estilo con 3
+    pasos, y pule la conclusión de su memoria.
+  - Tres usos nuevos (`instructor_tarjeta`, `instructor_profundizar`, `instructor_personal`): siempre **Claude Haiku
+    5.5**, el material marcado para la caché de 5 minutos, un uso del plan del alumno; lo guardado se reutiliza sin pagar.
+- **Planes** (`#tiempo-ia`, `public/planes-vista.js`): «Tu tutor IA personal», los días de prueba que le quedan, IA
+  Estándar / IA Plus, «Sin IA (gratis, siempre)» contra «Con tu tutor IA» con funciones que existen, un ejemplo estático
+  marcado «Ejemplo», 3 pasos para pagar; sin presión falsa.
+- **Para el «Registro de la IA»** (la pantalla la hace otra rama): `src/academia/registro-ia.js` —
+  `generadoPara`, `preparacionesDe`, `memoriaDe`, `metaDe`, `biblioteca` (lo compartido con texto, veces reutilizado,
+  costo y ahorro), `ocultar` (marca, no borra; `leerGuardado` deja de mostrarlo) y `contarReuso`. Lo guardado ahora
+  también anota su costo (`costoMicro`).
+- **Cuánto cuesta** (Haiku 5.5: US$0.10 / 0.50 por millón; caché: lectura 0.01, escritura 0.125), medido con el paquete
+  de verdad de la materia 1: el pedido de una tarjeta pesa 3,2–6,6 KB (~1 100 tokens de media), el prefijo de preparar
+  6,5–17 KB (~3 100). Para **10 alumnos × 1 tema al día** (cada uno: 1 preparación, 4 tarjetas, 2 «explícamelo», 1
+  ronda de preguntas personalizadas y 3 mensajes al Profesor con Haiku): sin compartir nada ≈ US$0.006 por alumno y día
+  → **≈ US$0.06 al día, ≈ US$1.70 al mes**; compartiendo lo guardado (mismo tema, 2–3 estilos) ≈ **US$0.035 al día,
+  ≈ US$1 al mes**. La caché del proveedor ahorra poco más (casi nunca hay dos pedidos iguales en 5 minutos); el ahorro
+  de verdad es lo guardado en la app. Con la IA en EE. UU., ×1,1.
+- Pruebas: `test/tutor-ia.test.js` (proveedor falso).
 
 ### Lo nuevo de la 0.12.7: la IA solo trabaja cuando alguien estudia, prepara la próxima clase, avisa el gasto y va por plan — sin cambio de base
 - **Auditoría: quién puede llamar a la IA** (el único camino que gasta es `ctx.ia.pedir` dentro de la tarea

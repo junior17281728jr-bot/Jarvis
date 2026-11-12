@@ -22,7 +22,7 @@ const idDe = (c, nombre) => c.db.prepare('SELECT id FROM usuarios WHERE nombre =
 const tareasPreparar = c => c.db.prepare("SELECT * FROM tareas WHERE tipo = 'academia.instructor' AND datos LIKE '%instructor_preparar%' ORDER BY id").all();
 const preparadoFalso = (extra = {}) => ({
   tipo: 'ok',
-  json: { intro: 'Hoy vemos la hipoxia: ya te costó una vez, vamos con calma.', tarjetas: [{ tarjeta: 't1', porque: 'Explica tu error.' }, { tarjeta: 't99', porque: 'inventada' }], analogias: [{ idea: 'que se siente enseguida', analogia: 'Como subir una montaña sin darte cuenta.' }], plan: ['Lee la t1.', 'Responde las del tema.', 'Repasa en Mi repaso.'], cita_test_guide: [], ...extra },
+  json: { intro: 'Hoy vemos la hipoxia: ya te costó una vez, vamos con calma.', tarjetas: [{ tarjeta: 't1', porque: 'Explica tu error.' }, { tarjeta: 't99', porque: 'inventada' }], analogias: [{ idea: 'que se siente enseguida', analogia: 'Como subir una montaña sin darte cuenta.' }], plan: ['Lee la t1.', 'Responde las del tema.', 'Repasa en Mi repaso.'], cita_test_guide: [], examen_porque: 'Todavía no: te falta practicar el tema.', examen_pasos: ['Repasa la t1.', 'Haz la práctica.', 'Vuelve a mirar Mi repaso.'], conclusion: 'Le cuesta la hipoxia; mejora con ejemplos.', ...extra },
 });
 // Responde mal una pregunta del tema 1 y «cierra la app» (fin de la sesión).
 async function estudiarYSalir(c, galleta) {
