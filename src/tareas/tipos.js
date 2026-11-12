@@ -47,6 +47,10 @@ export const TIPOS = Object.freeze({
   // cortado a los 10 min (lo que no alcanza, en la revisión siguiente: nada se repite ni se pisa). «repetible»: solo LEE
   // de Drive y agrega versiones nuevas (por su huella): repetirlo nunca crea dos veces la misma.
   'academia.drive': Object.freeze({ cupo: 'normal', maxFallos: 3, tiempoPorPasoMs: 600_000, repetible: true, prioridad: 3 }),
+  // Academia (0.9.0): el «Instructor con IA» (src/academia/instructor-tarea.js). Un paso: una llamada a la IA con lo
+  // que armó el servidor web (el trabajador nunca abre el paquete). «repetible»: la llamada se anota por tarea y paso,
+  // así un reinicio a mitad nunca paga dos veces; una que se pidió hace más de 5 minutos termina sin llamar.
+  'academia.instructor': Object.freeze({ cupo: 'normal', maxFallos: 1, tiempoPorPasoMs: 90_000, repetible: true, prioridad: 6, reintentos: Object.freeze({ baseMs: 30_000 }) }),
 });
 
 // La definición completa de un tipo (con lo que vale por defecto), o null si este código no lo conoce.

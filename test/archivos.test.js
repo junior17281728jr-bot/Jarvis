@@ -459,7 +459,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.9.2: el Reporte.
     ['reporte', 'pantallaReporte'], ['contratos', 'pantallaContratos'], ['contratos/todos', 'pantallaContratosTodos'], ['contrato/7/7', 'pantallaContrato'],
     ['soporte', 'pantallaSoporte'], ['soporte/7', 'pantallaSoporteTicket'], ['ayuda-mia', 'pantallaMiAyuda'], ['ayuda-mia/7', 'pantallaMiTicket'],
-    ['mis-documentos', 'pantallaMisDocumentos'], ['mis-datos', 'pantallaMisDatos'], ['mi-documento/7', 'pantallaMiDocumento']];
+    ['mis-documentos', 'pantallaMisDocumentos'], ['mis-datos', 'pantallaMisDatos'], ['mi-documento/7', 'pantallaMiDocumento'],
+    // 0.10.0: Pagos (administrador) y el Profesor virtual.
+    ['pagos', 'pantallaPagos'], ['profesor', 'pantallaProfesor'], ['aprendizaje', 'pantallaAprendizaje']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {

@@ -15,6 +15,8 @@ import { registrarRutasClaves } from './api/claves.js';
 import { registrarRutasCopias } from './api/copias.js';
 import { registrarRutasCanales } from './api/canales.js';
 import { registrarRutasAcademia } from './api/academia.js';
+import { registrarRutasInstructor } from './api/instructor.js';
+import { registrarRutasPagos } from './api/pagos.js';
 import { registrarRutasPerfil } from './api/perfil.js';
 import { registrarRutasTerminos } from './api/terminos.js';
 import { registrarRutasSoporte } from './api/soporte.js';
@@ -115,6 +117,10 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
   // Academia (0.7.0): el contenido vive en la carpeta de datos del servidor (src/academia/paquetes.js).
   registrarRutasAcademia(rutas, { config, supervisor, ...academia });
+  // Academia (0.9.0): el instructor (sin IA siempre; con IA solo si el dueño lo enciende).
+  registrarRutasInstructor(rutas, { config, supervisor, reloj: academia.reloj, limites: academia.limitesInstructor });
+  // 0.10.0: el tiempo con IA de cada alumno, sus pagos por transferencia y las fallas registradas.
+  registrarRutasPagos(rutas, { config, reloj: academia.reloj, limites: academia.limitesPagos });
   // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).
   registrarRutasPerfil(rutas, { config, limites: academia.limitesPerfil, reloj: academia.reloj });
   // 0.9.2: «Términos de uso y aviso» y el nombre legal.
