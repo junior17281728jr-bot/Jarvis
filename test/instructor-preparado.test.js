@@ -78,7 +78,9 @@ const preparado = (c, galleta) => pedir(c.base, 'GET', '/api/academia/preparado'
 const regla = (v, id) => v.reglas.find(r => r.id === id);
 async function todoBien(c, galleta, datos) {
   const i = (await nuevo(c, galleta, datos)).datos;
-  for (const q of i.preguntas) { c.reloj.avanzar(30_000); await pedir(c.base, 'POST', `/api/academia/intentos/${i.id}/responder`, { galleta, datos: { pregunta: q.id, elegida: DE(q.id).original.correcta } }); }
+  // 0.9.2: el examen de materia va con reloj: se guarda sin corregir (…/examen) y cuenta al entregar.
+  const ruta = i.examen?.reloj ? 'examen' : 'responder';
+  for (const q of i.preguntas) { c.reloj.avanzar(30_000); await pedir(c.base, 'POST', `/api/academia/intentos/${i.id}/${ruta}`, { galleta, datos: { pregunta: q.id, elegida: DE(q.id).original.correcta } }); }
   return (await pedir(c.base, 'POST', `/api/academia/intentos/${i.id}/terminar`, { galleta, datos: {} })).datos;
 }
 

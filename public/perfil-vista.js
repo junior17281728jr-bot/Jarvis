@@ -45,8 +45,10 @@ export function tarjetasPerfil(perfil, h, { alGuardar } = {}) {
   pintarOpciones();
   pintarVista();
   const mensaje = h.caja();
+  // 0.9.2: «Perfil privado» (el mismo de «ocultarme» del Grupo).
+  const privado = el('input', { id: 'campo-perfil-privado', type: 'checkbox', checked: perfil.privado === true });
   const guardar = h.botonAccion(t('perfil.guardar'), '', mensaje, async () => {
-    const r = await h.api('POST', '/api/yo/perfil', { nombreVisible: campoNombre.value, avatar: avatarActual(), meta: campoMeta.value });
+    const r = await h.api('POST', '/api/yo/perfil', { nombreVisible: campoNombre.value, avatar: avatarActual(), meta: campoMeta.value, privado: privado.checked });
     if (!r.ok) throw new Error(h.textoError(r.datos.error));
     h.avisar(t('perfil.listo'));
     alGuardar?.(r.datos.perfil);
@@ -76,6 +78,8 @@ export function tarjetasPerfil(perfil, h, { alGuardar } = {}) {
       el('div', { class: 'perfil-opciones', role: 'group', 'aria-labelledby': 'titulo-avatar' }, botonesForma),
       el('h3', { id: 'titulo-color', texto: t('perfil.color') }),
       el('div', { class: 'perfil-colores', role: 'group', 'aria-labelledby': 'titulo-color' }, botonesColor),
+      el('label', { class: 'perfil-privado', for: 'campo-perfil-privado' }, privado,
+        el('span', {}, el('strong', { texto: t('perfil.privado') }), el('span', { class: 'suave chica', texto: t('perfil.privado.ayuda') }))),
       el('div', { class: 'botones' }, guardar), mensaje),
     el('section', { class: 'tarjeta', 'aria-labelledby': 'titulo-usuario' },
       el('h2', { id: 'titulo-usuario', class: 'con-icono' }, h.icono('lapiz', 'icono chico'), el('span', { texto: t('perfil.usuario.titulo') })),

@@ -251,6 +251,9 @@ export function crearInstructor(h) {
         icono('ojo', 'icono chico'), talCual('span', tx(`instr.o.${o.clave}`, { ...o.vars, franja: o.vars?.franja ? tx(`instr.franja.${o.vars.franja}`) : '' }))))) : null,
       medidorTiempo(d.tiempo),
       d.instructor?.motivo === 'sin_minutos' ? sinMinutos() : null,
+      // 0.11.0: activó la academia sin IA.
+      d.instructor?.motivo === 'sin_consentimiento' ? el('p', { class: 'suave chica con-icono' }, icono('info', 'icono chico'),
+        el('span', { texto: `${tx('instr.motivo.sin_consentimiento')} ` }), el('a', { href: '#mis-datos', texto: tx('datos.titulo') })) : null,
       d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
       zonaIa);
   }

@@ -84,6 +84,14 @@ async function responderTodo(base, galleta, intento, { bien }) {
   let n = 0;
   for (const q of intento.preguntas) {
     const letra = n < bien ? correcta(q.id) : ['A', 'B', 'C'].find(l => l !== correcta(q.id));
+    // 0.9.2: el examen de materia (con reloj) guarda sin decir nada; se ve todo al entregar.
+    if (intento.examen) {
+      const r = await pedir(base, 'POST', `/api/academia/intentos/${intento.id}/examen`, { galleta, datos: { pregunta: q.id, elegida: letra } });
+      assert.equal(r.codigo, 200, JSON.stringify(r.datos));
+      assert.equal(r.datos.respuesta, undefined);
+      n += 1;
+      continue;
+    }
     const r = await pedir(base, 'POST', `/api/academia/intentos/${intento.id}/responder`, { galleta, datos: { pregunta: q.id, elegida: letra } });
     assert.equal(r.codigo, 200, JSON.stringify(r.datos));
     assert.equal(r.datos.respuesta.acierto, n < bien);
@@ -197,7 +205,7 @@ test('sin paquete: el alumno ve el camino vacío (sin errores) y el nombre de la
     assert.equal((await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: ana, datos: { umbral: 50 } })).codigo, 403);
     assert.equal((await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: admin, datos: { umbral: 20 } })).codigo, 400);
     const r = await pedir(base, 'POST', '/api/admin/academia/ajustes', { galleta: admin, datos: { nombre: 'Escuela de Junior', umbral: 80 } });
-    assert.deepEqual(r.datos.ajustes, { nombre: 'Escuela de Junior', umbral: 80 });
+    assert.deepEqual(r.datos.ajustes, { nombre: 'Escuela de Junior', umbral: 80, examenSegundos: 90 });
     assert.equal((await pedir(base, 'GET', '/api/setup')).datos.nombreApp, 'Escuela de Junior');
   });
 });

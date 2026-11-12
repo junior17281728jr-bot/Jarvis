@@ -36,7 +36,8 @@ export function carpetaTemporal(nombre = 'oportia') {
 
 export function configDePrueba() {
   const raiz = carpetaTemporal();
-  return { archivoBase: join(raiz, 'datos', 'oportia.db'), carpetaCopias: join(raiz, 'datos', 'oportia-copias'), raiz };
+  // terminosObligatorios: false: estas pruebas no son de los términos (las de los términos lo ponen en true).
+  return { archivoBase: join(raiz, 'datos', 'oportia.db'), carpetaCopias: join(raiz, 'datos', 'oportia-copias'), raiz, terminosObligatorios: false };
 }
 
 export async function conServidor(servidor, fn) {

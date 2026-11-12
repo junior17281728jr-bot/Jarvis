@@ -437,3 +437,11 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
 @media (prefers-color-scheme: light) { :root[data-tema="auto"] .termino-en { color: #0f5c99; } }
 :root[data-tema="oscuro"] .nodo-burbuja { color: color-mix(in srgb, var(--mc, var(--verde)) 55%, #ffffff); }
 @media (prefers-color-scheme: dark) { :root[data-tema="auto"] .nodo-burbuja { color: color-mix(in srgb, var(--mc, var(--verde)) 55%, #ffffff); } }
+
+/* ---------- Al imprimir (reporte, contratos, la clave de recuperación): sin foto, sin vidrio, sin sombras ---------- */
+@media print {
+  body::before, :root.fondo-listo body::before { display: none !important; background: none !important; }
+  .tarjeta, .panel, .tarjeta-leccion, .tarjeta-pregunta { background: #ffffff !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .cabina, .estudio-arriba, .estudio-pie, .pestanas, .menu, .lateral { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .titulo-pantalla::after { display: none; }
+}

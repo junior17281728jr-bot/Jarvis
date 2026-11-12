@@ -45,35 +45,21 @@ test('contraseñas: se guardan con scrypt y solo la correcta coincide', async ()
   assert.equal(await verificarClave('otra clave distinta', guardado), false);
   assert.equal(await verificarClave(CLAVE, 'basura'), false);
   assert.equal(await verificarClave(CLAVE), false, 'sin usuario nunca coincide');
-  assert.equal(claveValida('corta'), false);
-  assert.equal(claveValida('seis66'), true, 'desde 6 caracteres');
+  assert.equal(claveValida('abc'), false);
+  assert.equal(claveValida('sol1'), true, '0.9.2: desde 4 caracteres');
   assert.match(claveTemporal(), /^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
 });
 
-test('contraseñas obvias: la lista corta, un carácter repetido y el nombre de la persona no sirven', () => {
-  for (const c of ['123456', '111111', '000000', '123123', '654321', 'abcdef', 'qwerty', 'password', 'contraseña', 'CONTRASEÑA', 'Qwerty', 'zzzzzzz'])
+test('0.9.2: contraseñas libres desde 4 caracteres; solo las peores no sirven', () => {
+  for (const c of ['1234', '0000', 'abcd', 'aaaa', '4321', '123456', '111111', 'qwerty', 'password', 'contraseña', 'CONTRASEÑA', 'zzzzzzz', 'abcdef'])
     assert.equal(claveObvia(c), true, c);
-  assert.equal(claveObvia('Junior', ['junior']), true);
-  assert.equal(claveObvia('junior123', ['junior']), true);
+  assert.equal(claveObvia('Junior', ['junior']), true, 'su propio usuario');
   assert.equal(claveObvia('Juan Pérez', ['juan.perez', 'Juan Pérez']), true);
-  assert.equal(claveObvia('juanperez1', ['juan.perez', 'Juan Pérez']), true);
-  assert.equal(claveObvia('maria2026', ['maria.gomez', 'María Gómez']), true, 'una parte del nombre con números');
   assert.equal(claveObvia('Gómez', ['maria.gomez', 'María Gómez']), true);
-  for (const c of ['mango verde', 'Casa2024!', 'tres gatos']) assert.equal(claveObvia(c, ['junior', 'Juan Pérez']), false, c);
-  assert.equal(problemaDeClave('12345'), 'clave_corta');
-  assert.equal(problemaDeClave('123456'), 'clave_obvia');
-});
-
-test('contraseñas obvias: las de la lista con números o signos alrededor, series, teclado y repeticiones tampoco sirven', () => {
-  const malas = ['password123', 'qwerty1', 'iloveyou1', 'teamo123', 'Oportia2026', 'jarvis', 'Jarvis123', '123321', '102030', '1q2w3e',
-    '123qwe', 'qwertyuiop', 'asdf1234', '111222', '000001', 'abcabc', 'aaa111', '1234567a', 'dominicana', 'santiago', 'hola123', 'p4ssw0rd',
-    'teamo!', 'Santo Domingo 2026', '123abc', 'a12345', '654321a', 'zxcvbn', 'mariposa1', 'princesa2025', 'holahola', '112233', '7890123',
-    'abccba', '1qaz2wsx', '!@#$%^', 'hola!!', 'contraseña', 'cont rasena'];
-  for (const c of malas) assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), 'clave_obvia', c);
-  const buenas = ['mango verde', 'Casa2024!', 'tres gatos', 'mango7', 'Gato-azul-9', 'pan con queso', 'casa de mi abuela 1975', 'x9k2mq',
-    'perro2019', 'Bávaro azul', 'la clave de bob 2026'];
-  for (const c of buenas) assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), null, c);
-  assert.equal(problemaDeClave('mango verde', ['junior']), null);
+  for (const c of ['pepe', 'sol1', 'hola', 'mango', '1a2b', 'junior123', 'Casa2024!', 'tres gatos', 'teamo', 'p4ss'])
+    assert.equal(problemaDeClave(c, ['junior', 'Junior Pérez']), null, c);
+  assert.equal(problemaDeClave('abc'), 'clave_corta');
+  assert.equal(problemaDeClave('1234'), 'clave_obvia');
 });
 
 test('sin administrador, /api/setup lo dice, y solo se puede crear desde Tailscale', async () => {
@@ -89,7 +75,7 @@ test('sin administrador, /api/setup lo dice, y solo se puede crear desde Tailsca
     assert.equal(r.codigo, 403, 'desde internet (sin Tailscale) no');
     r = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: { ...DESDE_TAILSCALE, 'Tailscale-Funnel-Request': '?1' } });
     assert.equal(r.codigo, 403, 'un visitante de Funnel no');
-    r = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: 'corta' }, cabeceras: DESDE_TAILSCALE });
+    r = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: 'abc' }, cabeceras: DESDE_TAILSCALE });
     assert.equal(r.datos.error, 'clave_corta');
 
     r = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });
@@ -204,7 +190,7 @@ test('con una sesión abierta no se puede adivinar la contraseña actual: 5 fall
 test('al crear el primer administrador, los errores al escribir no cuentan como intentos', async () => {
   const db = nuevaBase();
   await conServidor(crearServidor({ db }), async base => {
-    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'corta' }, { nombre: 'junior', clave: '123456' }, { nombre: 'junior', clave: 'Junior2024' }, { nombre: 'junior', clave: 'otra' }]) {
+    for (const datos of [{ nombre: 'Júnior', clave: CLAVE }, { nombre: 'junior perez', clave: CLAVE }, { nombre: 'ju', clave: CLAVE }, { nombre: 'junior', clave: 'abc' }, { nombre: 'junior', clave: '123456' }, { nombre: 'junior', clave: 'Junior' }, { nombre: 'junior', clave: '0000' }]) {
       const r = await pedir(base, 'POST', '/api/primer-admin', { datos, cabeceras: DESDE_TAILSCALE });
       assert.equal(r.codigo, 400);
     }
@@ -280,12 +266,12 @@ test('el nombre completo que escribe el administrador queda como nombre visible;
     r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'juan.perez', clave: temporal } });
     assert.equal(r.datos.usuario.nombreVisible, 'Juan Pérez');
     const galleta = r.galleta;
-    for (const [nueva, error] of [['12345', 'clave_corta'], ['123456', 'clave_obvia'], ['juanperez', 'clave_obvia'], ['Juan Pérez 1', 'clave_obvia']]) {
+    for (const [nueva, error] of [['abc', 'clave_corta'], ['1234', 'clave_obvia'], ['juanperez', 'clave_obvia'], ['Juan Pérez', 'clave_obvia']]) {
       r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva }, galleta });
       assert.equal(r.datos.error, error, nueva);
     }
-    r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'mango7' }, galleta });
-    assert.equal(r.codigo, 200, '6 caracteres que no son obvios sirven');
+    r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: temporal, nueva: 'sol1' }, galleta });
+    assert.equal(r.codigo, 200, '0.9.2: 4 caracteres que no son de los peores sirven');
   });
 });
 

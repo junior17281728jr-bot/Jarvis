@@ -11,6 +11,7 @@ import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraD
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
 import { preguntasDelInstructor } from './practica.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { nombresLegales } from '../cuentas/terminos.js';
 
 // 0.8.0: «reto» = practicar un tema (o toda una materia, sin tema) en Modo reto; «errores» = practicar lo que más se
 // falla (de un intento, de un tema, de una materia o de todo). Los dos son práctica: no aprueban temas ni exámenes
@@ -35,12 +36,18 @@ const DIA_MS = 24 * 3600 * 1000;
 // El día en Santo Domingo (UTC-4 todo el año, sin horario de verano): la racha cuenta los días de allá.
 export const diaDe = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
 
+// 0.9.2: el examen de materia lleva reloj: tantos segundos por pregunta (lo cambia el administrador).
+export const EXAMEN_SEGUNDOS_POR_DEFECTO = 90;
+export const EXAMEN_SEGUNDOS_MIN = 20;
+export const EXAMEN_SEGUNDOS_MAX = 600;
 export function ajustesAcademia(db) {
   const nombre = leerAjuste(db, 'academia.nombre');
   const umbral = Number(leerAjuste(db, 'academia.aprobar_pct'));
+  const segundos = Number(leerAjuste(db, 'academia.examen_segundos'));
   return {
     nombre: nombre && nombre.trim() ? nombre : NOMBRE_POR_DEFECTO,
     umbral: Number.isSafeInteger(umbral) && umbral >= 50 && umbral <= 100 ? umbral : UMBRAL_POR_DEFECTO,
+    examenSegundos: Number.isSafeInteger(segundos) && segundos >= EXAMEN_SEGUNDOS_MIN && segundos <= EXAMEN_SEGUNDOS_MAX ? segundos : EXAMEN_SEGUNDOS_POR_DEFECTO,
   };
 }
 // 0.7.2: el panel «Grupo» que ven los alumnos (encendido salvo que el administrador lo apague). Va aparte de los
@@ -51,7 +58,11 @@ export function encenderGrupo(db, encendido) {
   guardarAjuste(db, 'academia.grupo', encendido ? '1' : '0');
   return encendido;
 }
-export function guardarAjustesAcademia(db, { nombre, umbral }) {
+export function guardarAjustesAcademia(db, { nombre, umbral, examenSegundos }) {
+  if (examenSegundos !== undefined) {
+    if (!Number.isSafeInteger(examenSegundos) || examenSegundos < EXAMEN_SEGUNDOS_MIN || examenSegundos > EXAMEN_SEGUNDOS_MAX) throw new ErrorHttp(400, 'examen_segundos_no_valido');
+    guardarAjuste(db, 'academia.examen_segundos', examenSegundos);
+  }
   if (nombre !== undefined) {
     if (typeof nombre !== 'string' || !nombre.trim() || nombre.length > 60 || /[\u0000-\u001f]/.test(nombre)) throw new ErrorHttp(400, 'nombre_no_valido');
     guardarAjuste(db, 'academia.nombre', nombre.trim());
@@ -160,8 +171,8 @@ function repasoPendiente(db, usuarioId, paquete, ahoraMs) {
 // El camino: las 11 materias en su orden, cada tema con su estado. Un tema se abre cuando se aprobó el anterior
 // (las materias sin contenido en el paquete se saltan). El examen de una materia se abre con todos sus temas aprobados.
 export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
-  const { nombre, umbral } = ajustesAcademia(db);
-  const base = { nombre, umbral, ...puntosYRacha(db, usuarioId, ahoraMs) };
+  const { nombre, umbral, examenSegundos } = ajustesAcademia(db);
+  const base = { nombre, umbral, examenSegundos, ...puntosYRacha(db, usuarioId, ahoraMs) };
   if (!paquete) return { ...base, paquete: null, materias: [], repaso: 0 };
   const aprobados = temasAprobados(db, usuarioId);
   const deExamen = examenes(db, usuarioId);
@@ -377,7 +388,7 @@ export function verIntento(db, usuarioId, paquete, intentoId) {
   };
 }
 
-function anotarRepaso(db, usuarioId, q, lugar, acierto, ahoraMs) {
+export function anotarRepaso(db, usuarioId, q, lugar, acierto, ahoraMs) {
   const ya = db.prepare('SELECT * FROM academia_repaso WHERE usuario_id = ? AND pregunta = ?').get(usuarioId, q);
   const momento = new Date(ahoraMs).toISOString();
   if (!acierto) {
@@ -418,12 +429,13 @@ export function responder(db, usuarioId, paquete, intentoId, { pregunta, elegida
   });
 }
 
-export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now() } = {}) {
+// permitirFaltantes (0.9.2, solo el examen con reloj): se entrega aunque falten respuestas (cuentan como malas).
+export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now(), permitirFaltantes = false } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   const fila = enTransaccion(db, () => {
     const f = intentoDe(db, usuarioId, intentoId);
     if (f.terminado_en) return f;
-    if (f.respondidas < f.total) throw new ErrorHttp(409, 'faltan_respuestas');
+    if (f.respondidas < f.total && !permitirFaltantes) throw new ErrorHttp(409, 'faltan_respuestas');
     const aprobado = ['repaso', 'reto', 'errores', 'instructor'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
@@ -505,13 +517,14 @@ export function alumnos(db, paquete, ahoraMs = Date.now()) {
   const resp = db.prepare('SELECT usuario_id AS id, materia, COUNT(*) AS n, COALESCE(SUM(correcta), 0) AS bien FROM academia_respuestas GROUP BY usuario_id, materia').all();
   const totalTemas = (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0);
   const avatares = avataresDe(db);
+  const legales = nombresLegales(db);
   return db.prepare('SELECT id, nombre, nombre_visible, rol, activo FROM usuarios ORDER BY rol, nombre').all().map(u => {
     const ultima = actividad.get(u.id) ?? null;
     const suyas = resp.filter(r => r.id === u.id);
     const n = suyas.reduce((s, r) => s + r.n, 0);
     const bien = suyas.reduce((s, r) => s + r.bien, 0);
     return {
-      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null,
+      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null, nombreLegal: legales.get(u.id) ?? null,
       ultimaActividad: ultima, enLinea: Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS),
       respuestas: n, aciertos: bien, errores: n - bien, pct: pct(bien, n), temasAprobados: temasHechos.get(u.id) ?? 0, temas: totalTemas,
       materias: suyas.filter(r => r.materia).map(r => ({ id: r.materia, respuestas: r.n, aciertos: r.bien, errores: r.n - r.bien, pct: pct(r.bien, r.n) })),

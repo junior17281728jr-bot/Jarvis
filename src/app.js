@@ -18,7 +18,10 @@ import { registrarRutasAcademia } from './api/academia.js';
 import { registrarRutasInstructor } from './api/instructor.js';
 import { registrarRutasPagos } from './api/pagos.js';
 import { registrarRutasPerfil } from './api/perfil.js';
+import { registrarRutasTerminos } from './api/terminos.js';
+import { registrarRutasSoporte } from './api/soporte.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
+import { estadoTerminos } from './cuentas/terminos.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
@@ -88,7 +91,8 @@ const RESPUESTAS_COMPRIMIBLES = new Set([
   '/api/academia/camino', '/api/academia/temas/:materia/:tema', '/api/academia/intentos/:id', '/api/academia/progreso', '/api/admin/academia/alumnos',
   '/api/admin/academia/alumnos/:id', '/api/admin/academia', '/api/admin/academia/respuestas',
   // 0.9.0: la ficha de un alumno, uno de sus intentos y «Comparar».
-  '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids']);
+  '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids',
+  '/api/admin/academia/reporte']);
 
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });
@@ -120,6 +124,10 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasPagos(rutas, { config, reloj: academia.reloj, limites: academia.limitesPagos });
   // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).
   registrarRutasPerfil(rutas, { config, limites: academia.limitesPerfil, reloj: academia.reloj });
+  // 0.9.2: «Términos de uso y aviso» y el nombre legal.
+  registrarRutasTerminos(rutas, { config, reloj: academia.reloj });
+  // 0.9.2: «Ayuda / Soporte» (escribirle al administrador).
+  registrarRutasSoporte(rutas, { config, reloj: academia.reloj, limites: academia.limitesSoporte });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
@@ -137,6 +145,12 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     if (!opciones.publica && !usuario) return enviarJson(res, 401, { error: 'no_has_entrado' });
     if (usuario?.debeCambiarClave && !opciones.publica && !opciones.permitirConClaveTemporal) return enviarJson(res, 403, { error: 'debe_cambiar_clave' });
     if (opciones.admin && usuario?.rol !== 'admin') return enviarJson(res, 403, { error: 'solo_admin' });
+    // 0.11.0: lo de estudiar (/api/academia/…, /api/soporte…) espera a que firme los términos en uso. Quedan libres: entrar,
+    // salir, /api/yo/… (su firma, su perfil, sus documentos), /api/terminos y lo del administrador (para que arregle
+    // los textos). config.terminosObligatorios === false solo lo ponen las pruebas que no son de los términos.
+    if (usuario && config && config.terminosObligatorios !== false && /^\/api\/(?:academia\/|soporte(?:\/|$))/.test(ruta) && estadoTerminos(db, usuario.id).pendiente) {
+      return enviarJson(res, 403, { error: 'terminos_pendientes' });
+    }
     // Fase 1, parte d. soloTailnet: solo desde la red de Tailscale (nunca por el enlace público de Funnel).
     // soloDueno: además, con la cuenta de Tailscale del administrador que entró (las claves y lo que gasta dinero).
     if (opciones.soloTailnet && !vieneDeTailscale(req).si) return enviarJson(res, 403, { error: 'solo_desde_tailnet' });
