@@ -155,7 +155,7 @@ export function pantallaRegistroIa(d, h) {
     el('dl', { class: 'registro-datos' },
       el('dt', { texto: t('ia3.registro.meta') }), el('dd', { texto: h.tSi(g.meta, t('tutor.meta.texto')) }),
       el('dt', { texto: t('ia3.registro.foco') }), el('dd', { texto: g.foco ? t('ia3.registro.foco_concepto', { concepto: g.foco.concepto, tema: g.foco.temaTitulo ?? '', n: h.numero(g.foco.n ?? 1) }) : t('ia3.registro.sin_foco') }),
-      el('dt', { texto: t('ia3.registro.proxima') }), el('dd', { texto: g.proximaClase ? t(g.proximaClase.preparada ? 'ia3.registro.proxima_lista' : 'ia3.registro.proxima_espera', { tema: g.proximaClase.titulo ?? '—', dia: g.proximaClase.preparada?.dia ?? '' }) : t('ia3.registro.sin_proxima') }),
+      el('dt', { texto: t('ia3.registro.proxima') }), el('dd', { texto: g.proximaClase ? t(g.proximaClase.preparada ? 'ia3.registro.proxima_lista' : 'ia3.registro.proxima_sin', { tema: g.proximaClase.titulo ?? '—', dia: g.proximaClase.preparada?.dia ?? '' }) : t('ia3.registro.sin_proxima') }),
       el('dt', { texto: t('ia3.registro.costo') }), el('dd', { texto: t('ia3.registro.costo_linea', { n: h.numero(g.llamadas), costo: usd(g.costoMicro) }) })),
     el('h3', { texto: t('ia3.registro.generado', { n: h.numero(g.generado.length) }) }),
     g.generado.length ? el('ul', { class: 'registro-llamadas' }, g.generado.map(x => el('li', {},

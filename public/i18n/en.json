@@ -3447,7 +3447,6 @@
   "ia3.registro.sin_foco": "Nothing pending in My review.",
   "ia3.registro.proxima": "Next class prepared",
   "ia3.registro.proxima_lista": "{tema} · ready ({dia})",
-  "ia3.registro.proxima_espera": "{tema} · on its way ({dia})",
   "ia3.registro.sin_proxima": "None yet.",
   "ia3.registro.generado": "What the AI generated just for them ({n})",
   "ia3.registro.nada": "Nothing yet.",
@@ -3511,5 +3510,6 @@
   "ia3.tipo.consejo": "Weekly tip",
   "ia3.tipo.plan_de_hoy": "Today's plan",
   "ia3.tipo.duda": "Question",
-  "ia3.tipo.profesor": "Virtual teacher"
+  "ia3.tipo.profesor": "Virtual teacher",
+  "ia3.registro.proxima_sin": "{tema} · not prepared yet (prepared when a session ends)"
 }

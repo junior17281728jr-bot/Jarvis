@@ -3447,7 +3447,6 @@
   "ia3.registro.sin_foco": "Nada pendiente en Mi repaso.",
   "ia3.registro.proxima": "Próxima clase preparada",
   "ia3.registro.proxima_lista": "{tema} · lista ({dia})",
-  "ia3.registro.proxima_espera": "{tema} · en camino ({dia})",
   "ia3.registro.sin_proxima": "Ninguna todavía.",
   "ia3.registro.generado": "Lo que la IA generó solo para él ({n})",
   "ia3.registro.nada": "Todavía nada.",
@@ -3511,5 +3510,6 @@
   "ia3.tipo.consejo": "Consejo de la semana",
   "ia3.tipo.plan_de_hoy": "Plan de hoy",
   "ia3.tipo.duda": "Duda",
-  "ia3.tipo.profesor": "Profesor virtual"
+  "ia3.tipo.profesor": "Profesor virtual",
+  "ia3.registro.proxima_sin": "{tema} · todavía sin preparar (se prepara al terminar una sesión)"
 }
