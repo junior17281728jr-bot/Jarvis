@@ -436,7 +436,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   const adelanta = (seccion, admin) => {
     const lista = pedidosAlAbrir(seccion, admin);
     assert.equal(new Set(lista).size, lista.length, `${seccion}: un pedido repetido`);
-    return new Set(lista.map(ruta => ruta.replace(/\/7(?=\/|$)/g, '/:n')));
+    return new Set(lista.map(ruta => ruta.replace(/\/7(?:,7)*(?=\/|$)/g, '/:n')));
   };
   // Lo que una pantalla pide solo después de otra respuesta (o al tocar algo) no se puede adelantar.
   // Administrador pide /api/admin/claves solo si /api/admin/ia dice que quien mira es el dueño (parte 1d).
@@ -453,7 +453,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     ['progreso', 'pantallaProgreso'], ['tema/7/7', 'pantallaTema'], ['practica/7', 'pantallaPractica'], ['examen/7', 'pantallaExamen'],
     ['alumnos', 'pantallaAlumnos'], ['alumno/7', 'pantallaAlumno'], ['contenido', 'pantallaContenido'],
     // 0.8.0: Administrador → Respuestas (la clave completa).
-    ['respuestas', 'pantallaRespuestas']];
+    ['respuestas', 'pantallaRespuestas'],
+    // 0.9.0: la ficha de un alumno por pestañas, uno de sus intentos y «Comparar».
+    ['alumno/7/examenes', 'pantallaAlumno'], ['alumno/7/actividad', 'pantallaAlumno'], ['alumno/7/intento/7', 'pantallaIntentoAlumno'], ['comparar/7,7', 'pantallaComparar']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {
@@ -483,6 +485,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   assert.deepEqual([...pedidosAlAbrir('alumnos', false)], []);
   assert.deepEqual([...pedidosAlAbrir('contenido', false)], []);
   assert.deepEqual([...pedidosAlAbrir('respuestas', false)], []);
+  for (const s of ['alumno/7/materias', 'alumno/7/intento/3', 'comparar/2,3']) assert.deepEqual([...pedidosAlAbrir(s, false)], [], s);
   // Sin dirección o con una que no existe se ve Inicio.
   assert.deepEqual(pedidosAlAbrir('cualquier-cosa', true), pedidosAlAbrir('inicio', true));
   assert.deepEqual(pedidosAlAbrir('proyecto/abc', false), pedidosAlAbrir('inicio', false));

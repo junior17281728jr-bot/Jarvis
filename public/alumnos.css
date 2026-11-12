@@ -1,0 +1,165 @@
+/* Academia 0.9.0: los avatares (public/avatares.js), «Mi perfil» (public/perfil-vista.js) y lo del administrador sobre
+   cada alumno: la ficha por pestañas, cada intento pregunta por pregunta y «Comparar» (public/admin-alumnos.js).
+   Va después de academia.css y usa sus colores. Claro y oscuro igual que el resto. */
+
+/* ---------- Avatares ---------- */
+.avatar { display: block; flex: none; border-radius: 50%; }
+.avatar-chico { width: 32px; height: 32px; }
+.avatar-medio { width: 44px; height: 44px; }
+.avatar-grande { width: 76px; height: 76px; }
+.avatar .av-fondo { fill: var(--av); }
+.avatar .av-lleno { fill: #ffffff; stroke: none; }
+.avatar .av-linea { fill: none; stroke: #ffffff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.avatar .av-linea-suave { fill: none; stroke: var(--av); stroke-width: 1.6; stroke-linecap: round; opacity: 0.85; }
+.avatar .av-aguja { fill: var(--av); stroke: none; }
+.avatar .av-letra { fill: #ffffff; font: 800 22px var(--letra-redonda); }
+.av-azul { --av: #1c8fe0; }
+.av-rojo { --av: #e5484d; }
+.av-verde { --av: #3f9a0a; }
+.av-naranja { --av: #f07a10; }
+.av-morado { --av: #8b5cf6; }
+.av-amarillo { --av: #d39e00; }
+
+/* La barra de arriba: el avatar lleva a Configuración. */
+a.avatar-enlace { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border-radius: 50%; margin-left: auto; }
+a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.encabezado a.avatar-enlace + .salir { margin-left: 0; }
+@media (min-width: 1024px) {
+  .lateral a.avatar-enlace { order: 0; align-self: flex-start; margin: 0 10px 12px; }
+}
+.companero-avatar.con-avatar { background: transparent; }
+.companero-avatar.con-avatar .avatar { width: 46px; height: 46px; }
+
+/* Administrador → Usuarios: avatar y nombre en una fila. */
+.fila-cuenta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ficha-enlace { display: inline-flex; margin: 4px 0; }
+
+/* ---------- Mi perfil ---------- */
+.perfil-vista { display: flex; align-items: center; gap: 14px; padding: 12px; margin: 10px 0 6px; border-radius: 16px; background: color-mix(in srgb, var(--cielo-1) 12%, var(--tarjeta)); }
+.perfil-vista > div { display: flex; flex-direction: column; min-width: 0; }
+.perfil-vista strong { font: 800 18px var(--letra-redonda); overflow-wrap: anywhere; }
+.perfil-meta-vista { font-size: 14px; overflow-wrap: anywhere; }
+.perfil-cuenta { display: block; text-align: right; margin-top: 2px; }
+.perfil-opciones, .perfil-colores { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+.perfil-opcion, .perfil-color {
+  min-width: 52px; min-height: 52px; padding: 4px; border-radius: 16px; border: 2px solid var(--borde); background: var(--tarjeta);
+  display: grid; place-items: center; cursor: pointer; color: inherit;
+}
+.perfil-opcion[aria-pressed="true"], .perfil-color[aria-pressed="true"] { border-color: var(--naranja); box-shadow: 0 0 0 3px color-mix(in srgb, var(--naranja) 30%, transparent); }
+.perfil-muestra { display: block; width: 30px; height: 30px; border-radius: 50%; background: var(--av); }
+.tarjeta-perfil h3 { margin: 14px 0 0; font-size: 15px; }
+
+/* ---------- Lista de alumnos con «Comparar» ---------- */
+.ficha-comparar-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 8px 0 12px; }
+.ficha-comparar-boton[aria-disabled="true"] { opacity: 0.5; pointer-events: auto; }
+.ficha-fila { display: flex; align-items: center; gap: 10px; }
+.ficha-marcar-caja { display: grid; place-items: center; min-width: 44px; min-height: 44px; flex: none; cursor: pointer; }
+.ficha-marcar { width: 22px; height: 22px; accent-color: var(--naranja); }
+.ficha-fila-enlace { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.ficha-fila-texto { flex: 1; min-width: 0; }
+.ficha-fila-texto .alumno-cabeza { display: flex; align-items: center; gap: 8px; }
+.ficha-fila-texto .alumno-pct { margin-left: auto; }
+
+/* ---------- La ficha de un alumno ---------- */
+.ficha-cabeza { display: flex; align-items: center; gap: 16px; }
+.ficha-cabeza-texto { min-width: 0; }
+.ficha-nombre { margin: 0; font: 800 22px var(--letra-redonda); overflow-wrap: anywhere; }
+.ficha-cabeza-texto p { margin: 2px 0; }
+.ficha-meta { font-weight: 600; overflow-wrap: anywhere; }
+.ficha-cuerpo { display: grid; gap: 14px; }
+.ficha-resumen { display: grid; gap: 14px; }
+.ficha-resumen-medidor { display: grid; justify-items: center; text-align: center; }
+.ficha-cifras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ficha-cifra { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto; column-gap: 10px; padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--cielo-1) 8%, var(--tarjeta)); border: 1px solid var(--borde); min-width: 0; }
+.ficha-cifra-icono { grid-row: 1 / span 3; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb, var(--naranja) 18%, var(--tarjeta)); color: var(--naranja-borde); }
+.ficha-cifra-valor { font: 800 20px var(--letra-redonda); overflow-wrap: anywhere; }
+.ficha-cifra-texto { font-size: 13px; font-weight: 700; }
+.ficha-cifra .chica { font-size: 12px; }
+.ficha-linea-barra { display: flex; align-items: center; gap: 10px; }
+.ficha-barra { flex: 1; display: block; height: 12px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.ficha-datos { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0; }
+.ficha-datos dt { font-weight: 700; font-size: 14px; }
+.ficha-datos dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.ficha-intentos { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.ficha-intento { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--borde); color: inherit; text-decoration: none; background: var(--tarjeta); min-height: 56px; }
+.ficha-intento:hover { border-color: var(--azul); }
+.ficha-intento-texto { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ficha-intento-lugar { font-size: 14px; overflow-wrap: anywhere; }
+.ficha-intento-estado { grid-column: 2; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+@media (min-width: 720px) {
+  .ficha-intento { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .ficha-intento-estado { grid-column: auto; }
+}
+.ficha-nota { flex: none; min-width: 58px; text-align: center; padding: 6px 4px; border-radius: 12px; font: 800 17px var(--letra-redonda); background: var(--apagado-fondo); }
+.ficha-nota.grande { font-size: 30px; min-width: 96px; padding: 10px 8px; }
+.ficha-nota.tono-bien, td.tono-bien { background: var(--verde-suave); color: var(--verde-texto); }
+.ficha-nota.tono-info, td.tono-info { background: color-mix(in srgb, var(--azul) 16%, var(--tarjeta)); color: var(--azul-borde); }
+.ficha-nota.tono-mal, td.tono-mal { background: var(--rojo-suave); color: var(--rojo-texto); }
+.ficha-filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.ficha-filtro { min-height: 40px; padding: 6px 14px; border-radius: 99px; border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); font-weight: 700; cursor: pointer; }
+.ficha-filtro[aria-pressed="true"] { border-color: var(--naranja); background: color-mix(in srgb, var(--naranja) 16%, var(--tarjeta)); }
+.ficha-tabla-envoltura { overflow-x: auto; margin-top: 8px; }
+.ficha-tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ficha-tabla th, .ficha-tabla td { padding: 8px 6px; border-bottom: 1px solid var(--linea); text-align: left; vertical-align: middle; }
+.ficha-tabla thead th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--suave); }
+.ficha-tabla td { text-align: center; white-space: nowrap; font-weight: 700; }
+.ficha-tabla tbody th { font-weight: 600; }
+.ficha-fila-examen th { font-weight: 800; }
+.ficha-sello { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; background: var(--verde-suave); color: var(--verde-texto); }
+.ficha-sesiones { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 10px; }
+.ficha-sesion { padding: 10px 12px; border-radius: 14px; border: 1px solid var(--borde); }
+.ficha-sesion.estado-en_linea { border-color: #22c55e; }
+.ficha-sesion-cabeza { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ficha-cifras.tres { grid-template-columns: minmax(0, 1fr); }
+
+/* Un intento, pregunta por pregunta. */
+.ficha-intento-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.ficha-intento-nota { display: grid; justify-items: center; gap: 4px; }
+.ficha-preguntas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 14px; }
+.ficha-pregunta { padding: 14px; border-radius: 16px; border: 2px solid var(--borde); }
+.ficha-pregunta.estado-bien { border-color: var(--verde); }
+.ficha-pregunta.estado-mal { border-color: var(--rojo); }
+.ficha-pregunta-cabeza { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ficha-pregunta-n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--cabina); color: #ffffff; }
+.ficha-opciones { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; }
+.ficha-opciones li { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--borde); }
+.ficha-opciones li.es-correcta { background: var(--verde-suave); border-color: var(--verde); }
+.ficha-opciones li.es-mala { background: var(--rojo-suave); border-color: var(--rojo); }
+.ficha-opciones .opcion-texto { flex: 1; min-width: 0; }
+.ficha-opcion-sellos { display: flex; flex-direction: column; gap: 4px; flex: none; }
+.ficha-sello.elegida { background: var(--cabina); color: #ffffff; }
+.ficha-sello.correcta { background: var(--verde); color: #ffffff; }
+.ficha-opciones li.es-mala .ficha-sello.elegida { background: var(--rojo); }
+.ficha-idea { color: var(--rojo-texto); font-weight: 600; }
+.ficha-explicacion summary { cursor: pointer; font-weight: 700; min-height: 40px; display: flex; align-items: center; }
+
+/* ---------- Comparar ---------- */
+.comparar-cabezas { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.comparar-cabeza { display: grid; justify-items: center; text-align: center; gap: 2px; color: inherit; text-decoration: none; border-top: 5px solid var(--cmp); }
+.comparar-pct { font: 800 24px var(--letra-redonda); margin-top: 4px; }
+.comparar-bloque { margin: 14px 0 0; }
+.comparar-bloque h3 { margin: 0 0 6px; font-size: 15px; }
+.comparar-barras { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.comparar-fila { display: grid; grid-template-columns: minmax(90px, 30%) 1fr auto; align-items: center; gap: 10px; }
+.comparar-quien { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; font-weight: 700; }
+.comparar-quien > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comparar-barra { display: block; height: 14px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.comparar-barra .barra-relleno { background: var(--cmp); }
+.comparar-valor { font-size: 14px; min-width: 56px; text-align: right; }
+.comparar-fila.mejor .comparar-valor::after { content: " ★"; color: var(--oro-borde); }
+.color-0 { --cmp: #1c8fe0; } .color-1 { --cmp: #ff8a1f; } .color-2 { --cmp: #8b5cf6; }
+.color-3 { --cmp: #0e9f7e; } .color-4 { --cmp: #e5484d; } .color-5 { --cmp: #d39e00; }
+.comparar-debiles { display: grid; gap: 12px; }
+.comparar-debil h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 15px; }
+.comparar-debil ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
+
+@media (min-width: 720px) {
+  .ficha-cifras { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ficha-cifras.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ficha-resumen { grid-template-columns: 220px 1fr; align-items: center; }
+  .ficha-resumen .ficha-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .comparar-debiles { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .ficha-resumen .ficha-cifras { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
