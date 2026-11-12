@@ -14,6 +14,9 @@ import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
 import { leccionDeVideo } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { dibujarAvatar } from './avatares.js';
+import { realzarTarjeta, figuraAmpliable } from './clase/realce.js';
+import { plegarCamino } from './camino-plegable.js';
+import { partesClaras } from './respuesta-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -761,7 +764,8 @@ async function pantallaConfiguracion() {
       el('section', { class: 'tarjeta' },
         titulo('info', t('ayuda.titulo')),
         el('p', { class: 'suave', texto: t('config.ayuda.texto') }),
-        el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda' }, icono('info'), el('span', { texto: t('config.ayuda.abrir') }))))));
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda' }, icono('info'), el('span', { texto: t('config.ayuda.abrir') })),
+        el('p', { class: 'credito-fotos', texto: t('config.fotos_fondo') })))));
 }
 
 // ---------- Ayuda (0.5.1): todas las explicaciones de «¿Qué es esto?», con un buscador ----------
@@ -3181,7 +3185,8 @@ function senderoMateria(m, n, siguiente) {
     const actual = siguiente?.tipo === 'tema' && siguiente.materia === m.id && siguiente.tema === tema.id;
     const { es } = partirTitulo(tema.titulo);
     if (tema.estado === 'bloqueado') {
-      nodos.push(nodoCamino({ clase: 'bloqueado', nombreIcono: 'candado', titulo: es, etiqueta: t('acad.tema_cerrado', { tema: es }), i: i++ }));
+      // 0.9.1: también cuántas preguntas tiene (la vista previa de una materia bloqueada).
+      nodos.push(nodoCamino({ clase: 'bloqueado', nombreIcono: 'candado', titulo: es, detalle: tema.preguntas ? tn('acad.n_preguntas', { n: tema.preguntas }) : null, etiqueta: t('acad.tema_cerrado', { tema: es }), i: i++ }));
     } else {
       const hecho = tema.estado === 'aprobado';
       nodos.push(nodoCamino({
@@ -3360,7 +3365,9 @@ async function pantallaInicio() {
     el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
     el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
     c.repaso ? botonRepaso(c.repaso, 'chico') : null);
-  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }), el('div', { class: 'camino' }, materias)));
+  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }),
+    // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
+    plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente })));
   // 0.8.0: el próximo tema y el progreso se piden ya (sin esperar): al tocarlos se abren enseguida.
   if (siguiente?.tipo === 'tema') adelantar(`/api/academia/temas/${encodeURIComponent(siguiente.materia)}/${encodeURIComponent(siguiente.tema)}`);
   adelantar('/api/academia/progreso');
@@ -3524,7 +3531,8 @@ function vistaTarjeta(p, { materia }) {
     p.ingles?.length ? el('div', { class: 'tarjeta-fichas', 'aria-label': t('acad.ingles') }, p.ingles.map(w => fichaIngles(w))) : null,
     p.nota ? el('p', { class: 'nota-tarjeta con-icono-arriba' }, icono('info', 'icono chico'), talCual('span', p.nota)) : null,
     fuentesDe(p.fuentes));
-  return { nodo, destruir: () => montado?.destruir?.() };
+  // 0.9.1: un ícono por punto, los puntos entran uno tras otro y las fichas EN · ES (public/clase/realce.js).
+  return { nodo: realzarTarjeta(nodo, p), destruir: () => montado?.destruir?.() };
 }
 
 function vistaGirar(p, alGirar) {
@@ -3822,7 +3830,7 @@ function figuraPregunta(q) {
     const capa = el('div', { class: 'figura-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': nombre },
       el('div', { class: 'figura-grande-barra' }, el('span', { texto: q.figura.titulo || nombre }),
         el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
-      el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
+      el('div', { class: 'figura-grande-lienzo' }, figuraAmpliable(el('img', { src, alt: nombre }))));
     capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
     document.body.append(capa);
     capa.querySelector('button').focus();
@@ -3850,35 +3858,9 @@ function tarjetaPregunta(q) {
   ];
 }
 // Lo que se ve después de responder (en la hoja de abajo y en la lista de falladas).
-function partesRespuesta(q, resp) {
-  const opcion = letra => q.opciones.find(o => o.letra === letra)?.texto ?? '';
-  return [
-    // 0.8.0: en Modo reto las letras cambian; las explicaciones hablan de la letra del Test Guide.
-    resp.modo === 'reto' && resp.letraOriginal && resp.letraOriginal !== resp.correcta
-      ? el('p', { class: 'nota-letras con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('reto.letras', { aqui: resp.correcta, original: resp.letraOriginal }) })) : null,
-    resp.explicacion ? el('section', { class: 'caja-hoja caja-original' },
-      el('h3', { class: 'con-icono' }, icono('libro', 'icono chico'), el('span', { texto: q.origen === 'poh' ? t('acad.explicacion_poh') : t('acad.explicacion_original') })),
-      talCual('p', resp.explicacion)) : null,
-    el('section', { class: 'caja-hoja caja-sencilla' },
-      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('acad.explicacion_sencilla') })),
-      talCual('p', resp.sencilla)),
-    resp.idea ? el('section', { class: 'caja-hoja caja-idea' },
-      el('h3', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('acad.por_que_elegiste') })),
-      el('p', { class: 'suave' }, el('strong', { texto: `${resp.elegida}. ` }), talCual('span', opcion(resp.elegida))),
-      talCual('p', resp.idea),
-      resp.trampa ? el('p', { class: 'suave chica' }, el('strong', { texto: `${t('reto.trampa')}: ` }), talCual('span', resp.trampa)) : null) : null,
-    // 0.8.0: en Modo reto, por qué es incorrecta CADA opción nueva (y la trampa que tiende).
-    resp.modo === 'reto' && resp.reto?.length ? el('section', { class: 'caja-hoja caja-reto' },
-      el('h3', { class: 'con-icono' }, icono('rayo', 'icono chico'), el('span', { texto: t('reto.por_que') })),
-      el('ul', { class: 'lista-reto' }, resp.reto.map(o => el('li', {},
-        el('p', {}, el('strong', { texto: `${o.letra}. ` }), talCual('span', o.texto)),
-        o.porque ? talCual('p', o.porque, 'reto-porque') : null,
-        o.trampa ? el('p', { class: 'suave chica' }, el('strong', { texto: `${t('reto.trampa')}: ` }), talCual('span', o.trampa)) : null)))) : null,
-    resp.ingles?.length ? el('section', { class: 'caja-hoja caja-ingles' },
-      el('h3', { class: 'con-icono' }, icono('avion', 'icono chico'), el('span', { texto: t('acad.ingles') })),
-      el('ul', { class: 'lista-ingles' }, resp.ingles.map(w => el('li', {},
-        fichaIngles(w), el('span', { class: 'ingles-significado', texto: w.significado }), w.ejemplo ? el('em', { class: 'ingles-ejemplo', lang: 'en', texto: w.ejemplo }) : null)))) : null,
-  ];
+// 0.9.1: primero el resultado y la explicación sencilla; lo tuyo resaltado; el Test Guide tal cual, plegado (public/respuesta-vista.js).
+function partesRespuesta(q, resp, opciones = {}) {
+  return partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta });
 }
 function bloqueRespuesta(q, resp) {
   return el('div', { class: 'retro' },
@@ -3988,7 +3970,7 @@ async function pantallaPractica(id) {
     ponerHoja(raizEstudio, hojaRespuesta({
       acierto: resp.acierto,
       titulo: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }),
-      partes: partesRespuesta(q, resp),
+      partes: partesRespuesta(q, resp, { enHoja: true }),
       boton,
     }));
     if (recien) {

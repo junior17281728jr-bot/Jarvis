@@ -1,0 +1,411 @@
+/* Academia 0.9.1: la interfaz más profesional. Va al final (después de alumnos.css) y solo agrega o ajusta estilos:
+   no cambia ninguna clase. Tres partes:
+   1. La foto de fondo: una avioneta real (de día en el tema claro, el amanecer bajo el ala en el oscuro), fija, ya
+      desenfocada en el archivo y tapada por un velo del color del fondo, así todo el texto cumple el contraste AA.
+      Primero se ve una versión diminuta (dentro de este archivo); la foto se pide después de la primera pantalla
+      (tema.js pone «fondo-listo»). Créditos: public/fondos/CREDITOS.md.
+   2. Vidrio: las barras (menú, cabina, pestañas, arriba y abajo del estudio) son translúcidas con desenfoque; las
+      tarjetas, casi opacas. Con «reducir transparencia» (o sin backdrop-filter) todo es sólido.
+   3. El pulido: escala de espacios, títulos, menú, botones, tarjetas, el camino, el plan, las clases (puntos con
+      ícono, «Recuerda», fichas EN · ES), las preguntas, la hoja de la respuesta y la figura. */
+
+:root {
+  /* Escala de espacios (4 · 8 · 12 · 16 · 24 · 32) y radios. */
+  --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px;
+  --radio-tarjeta: 20px;
+  --radio-control: 14px;
+  /* El velo sobre la foto (de arriba a abajo) y el vidrio de tarjetas y barras. */
+  --velo-1: rgba(243, 246, 251, 0.62);
+  --velo-2: rgba(243, 246, 251, 0.85);
+  --velo-3: rgba(243, 246, 251, 0.93);
+  --velo-estudio: rgba(243, 246, 251, 0.90);
+  --vidrio: color-mix(in srgb, var(--tarjeta) 90%, transparent);
+  --vidrio-barra: color-mix(in srgb, var(--tarjeta) 76%, transparent);
+  --vidrio-borde: color-mix(in srgb, var(--borde) 80%, transparent);
+  --sombra-suave: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.07);
+  --desenfoque: saturate(160%) blur(16px);
+  /* La versión diminuta de la foto (24 px), mientras llega la de verdad. */
+  --foto-mini: url("data:image/webp;base64,UklGRrwAAABXRUJQVlA4ILAAAABQBQCdASoYABIAPpE8mEelo6KhMAgAsBIJYwCxHy/luBf3IdR167U4lzlVzM4otIrvdsAA3UdlKvrOwbdHsdcjgVBzHCXqTKCSE++eVS6AdvzyCWYMlpkApbHbdNmdMZ7MjdpYEiTQbvTMvvWopNjWNDtDYZwsAwjhEY7eD7Oryyl/zW6YZCvFxzjCwciT0s5prhHqK3aftMi1aaqBkujv8uRIuD/S2mPz6lBCrgAAAA==");
+}
+:root[data-tema="oscuro"] {
+  --velo-1: rgba(8, 12, 24, 0.50);
+  --velo-2: rgba(8, 12, 24, 0.76);
+  --velo-3: rgba(8, 12, 24, 0.90);
+  --velo-estudio: rgba(8, 12, 24, 0.88);
+  --vidrio: color-mix(in srgb, var(--tarjeta) 88%, transparent);
+  --vidrio-barra: color-mix(in srgb, var(--tarjeta) 72%, transparent);
+  --sombra-suave: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.28);
+  --foto-mini: url("data:image/webp;base64,UklGRoQAAABXRUJQVlA4IHgAAADQAwCdASoYAAsAPpE4l0eloyIhMAgAsBIJZQCdEf/gO69lQHhm7GAA/vM3sftK4sMqeEVV86+ilhmwr0g+gDYHQEdCUKJ1DKeG2XTQFa8lChWCPiWjOrzXi4XdmcTaM8CF0yZM+VZ5b8c3aZmdZqyAoRsinE0AAAA=");
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-tema="auto"] {
+    --velo-1: rgba(8, 12, 24, 0.50);
+    --velo-2: rgba(8, 12, 24, 0.76);
+    --velo-3: rgba(8, 12, 24, 0.90);
+    --velo-estudio: rgba(8, 12, 24, 0.88);
+    --vidrio: color-mix(in srgb, var(--tarjeta) 88%, transparent);
+    --vidrio-barra: color-mix(in srgb, var(--tarjeta) 72%, transparent);
+    --sombra-suave: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px rgba(0, 0, 0, 0.28);
+    --foto-mini: url("data:image/webp;base64,UklGRoQAAABXRUJQVlA4IHgAAADQAwCdASoYAAsAPpE4l0eloyIhMAgAsBIJZQCdEf/gO69lQHhm7GAA/vM3sftK4sMqeEVV86+ilhmwr0g+gDYHQEdCUKJ1DKeG2XTQFa8lChWCPiWjOrzXi4XdmcTaM8CF0yZM+VZ5b8c3aZmdZqyAoRsinE0AAAA=");
+  }
+}
+
+/* ---------- 1. La foto de fondo ---------- */
+body { background: var(--fondo); }
+body::before {
+  content: ""; position: fixed; left: 0; right: 0; top: 0; z-index: -1; height: 100vh; height: 100lvh; pointer-events: none;
+  background-color: var(--fondo);
+  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), var(--foto-mini);
+  background-size: cover; background-position: center 35%; background-repeat: no-repeat;
+}
+/* La foto de verdad (WebP, y JPEG para el navegador que no lo lee): la del teléfono y la de la computadora. */
+:root.fondo-listo body::before {
+  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/dia-900.jpg), var(--foto-mini);
+  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/dia-900.webp) type("image/webp"), url(/fondos/dia-900.jpg) type("image/jpeg")), var(--foto-mini);
+}
+:root.fondo-listo[data-tema="oscuro"] body::before {
+  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-900.jpg), var(--foto-mini);
+  background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-900.webp) type("image/webp"), url(/fondos/amanecer-900.jpg) type("image/jpeg")), var(--foto-mini);
+}
+@media (prefers-color-scheme: dark) {
+  :root.fondo-listo[data-tema="auto"] body::before {
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-900.jpg), var(--foto-mini);
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-900.webp) type("image/webp"), url(/fondos/amanecer-900.jpg) type("image/jpeg")), var(--foto-mini);
+  }
+}
+@media (min-width: 760px) {
+  body::before { background-position: center 40%; }
+  :root.fondo-listo body::before {
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/dia-1920.jpg), var(--foto-mini);
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/dia-1920.webp) type("image/webp"), url(/fondos/dia-1920.jpg) type("image/jpeg")), var(--foto-mini);
+  }
+  :root.fondo-listo[data-tema="oscuro"] body::before {
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-1920.jpg), var(--foto-mini);
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-1920.webp) type("image/webp"), url(/fondos/amanecer-1920.jpg) type("image/jpeg")), var(--foto-mini);
+  }
+}
+@media (min-width: 760px) and (prefers-color-scheme: dark) {
+  :root.fondo-listo[data-tema="auto"] body::before {
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), url(/fondos/amanecer-1920.jpg), var(--foto-mini);
+    background-image: linear-gradient(180deg, var(--velo-1) 0, var(--velo-2) 38%, var(--velo-3) 100%), image-set(url(/fondos/amanecer-1920.webp) type("image/webp"), url(/fondos/amanecer-1920.jpg) type("image/jpeg")), var(--foto-mini);
+  }
+}
+/* Estudiando (lección, preguntas, video): la foto casi no se ve, para no distraer. */
+body.modo-estudio { background: var(--fondo); }
+body.modo-estudio::before { --velo-1: var(--velo-estudio); --velo-2: var(--velo-estudio); --velo-3: var(--velo-estudio); }
+/* Antes de entrar (sin sesión): la tarjeta centrada sobre la foto. */
+
+/* ---------- 2. Vidrio ---------- */
+.tarjeta, .panel, .plan-opcion, .opcion-carta, .examen-portada, .audio-tema, .companero, .portada-datos li { background-color: var(--vidrio); }
+.tarjeta { border-color: var(--vidrio-borde); box-shadow: var(--sombra-suave); border-radius: var(--radio-tarjeta); }
+.cabina, .estudio-arriba, .estudio-pie, .pestanas { background: var(--vidrio-barra); -webkit-backdrop-filter: var(--desenfoque); backdrop-filter: var(--desenfoque); }
+.menu { background: var(--vidrio-barra); }
+@media (min-width: 1024px) {
+  .lateral { background: var(--vidrio-barra); -webkit-backdrop-filter: var(--desenfoque); backdrop-filter: var(--desenfoque); border-right-color: var(--vidrio-borde); }
+}
+/* Sin desenfoque (navegador viejo) las barras van sólidas: el texto nunca queda sobre la foto sin velo. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .cabina, .estudio-arriba, .estudio-pie, .pestanas, .menu, .lateral { background: var(--tarjeta); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --velo-1: var(--fondo); --velo-2: var(--fondo); --velo-3: var(--fondo); --vidrio: var(--tarjeta); --vidrio-barra: var(--tarjeta); --vidrio-borde: var(--borde); }
+  body::before, :root.fondo-listo body::before { background-image: none; }
+  .cabina, .estudio-arriba, .estudio-pie, .pestanas, .menu, .lateral { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* ---------- 3. Pulido general ---------- */
+/* Títulos: una jerarquía clara (pantalla › tarjeta › sección) y la línea de cada pantalla. */
+.titulo-pantalla { font-size: clamp(26px, 6.4vw, 32px); line-height: 1.12; font-weight: 800; letter-spacing: -0.02em; margin: var(--e2) 0 var(--e1); }
+.titulo-pantalla::after {
+  content: ""; display: block; width: 44px; height: 4px; margin-top: var(--e2); border-radius: 99px;
+  background: linear-gradient(90deg, var(--naranja) 0 60%, transparent 60% 70%, var(--naranja) 70% 100%);
+}
+.entrada { font-size: 16px; margin-bottom: var(--e4); }
+.tarjeta h2, .panel h2 { letter-spacing: -0.01em; }
+.tarjeta > h2:first-child, .tarjeta > .con-icono:first-child { margin-bottom: var(--e3); }
+h2.con-icono > .icono:first-child { width: 22px; height: 22px; color: var(--acento); }
+.saludo .titulo-grande { letter-spacing: -0.02em; }
+.pie { opacity: 0.85; }
+
+/* El encabezado del teléfono: la marca más firme. */
+.encabezado .marca { font-weight: 800; }
+.encabezado .logo { filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.18)); }
+
+/* El menú de abajo (teléfono): vidrio, la sección actual con su píldora y una rayita arriba (como un indicador). */
+.menu { border-top-color: var(--vidrio-borde); box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
+.menu a { position: relative; transition: color 0.15s ease, background 0.15s ease; }
+.menu a[aria-current="page"] { font-weight: 800; }
+.menu a[aria-current="page"]::before {
+  content: ""; position: absolute; top: -7px; left: 50%; width: 28px; height: 3px; margin-left: -14px; border-radius: 0 0 4px 4px; background: var(--acento);
+}
+.menu a:active { transform: scale(0.97); }
+
+/* La barra lateral (computadora): la marca arriba, la sección con una barra a la izquierda. */
+@media (min-width: 1024px) {
+  .lateral .menu a[aria-current="page"]::before { top: 10px; bottom: 10px; left: 0; width: 3px; height: auto; margin: 0; border-radius: 0 4px 4px 0; }
+  .lateral .menu a:hover, .lateral a.ayuda-enlace:hover { background: color-mix(in srgb, var(--acento) 8%, transparent); }
+  .contenido { padding-top: var(--e6); }
+}
+
+/* Botones: misma altura y radio; el foco siempre visible. */
+button, a.boton-enlace { border-radius: var(--radio-control); }
+button:focus-visible, a.boton-enlace:focus-visible, .opcion-carta:focus-visible, .plan-opcion:focus-visible, a.panel:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+.boton-3d { letter-spacing: 0.05em; }
+/* Los botones de color con letra blanca, un poco más oscuros: el texto cumple AA (4.5:1) a cualquier tamaño. */
+.boton-3d { --b: #368300; --b-borde: #245800; }
+.boton-3d.azul { --b: #1471b8; --b-borde: #0d4f82; }
+.boton-3d.rojo { --b: #d42f2f; --b-borde: #9b1c1c; }
+.boton-3d.morado { --b: #7c3fc9; --b-borde: #5a2a96; }
+/* Cifras de la cabina en claro: el texto más oscuro que su ícono (AA sobre el vidrio). */
+.chip-cifra.fuego strong { color: #c2410c; }
+.chip-cifra.estrella strong { color: #8f6400; }
+:root[data-tema="oscuro"] .chip-cifra.fuego strong { color: #ff9a3c; }
+:root[data-tema="oscuro"] .chip-cifra.estrella strong { color: var(--oro); }
+@media (prefers-color-scheme: dark) {
+  :root[data-tema="auto"] .chip-cifra.fuego strong { color: #ff9a3c; }
+  :root[data-tema="auto"] .chip-cifra.estrella strong { color: var(--oro); }
+}
+/* «Pronto»: gris, pero legible. */
+.materia-bloque.vacia .banner-materia { color: var(--suave); }
+
+/* Pestañas de Administrador: píldoras sobre el vidrio. */
+.pestanas { border-bottom: 1px solid var(--vidrio-borde); }
+a.pestana { background: var(--vidrio); border-color: var(--vidrio-borde); transition: background 0.15s ease; }
+a.pestana:hover { background: var(--tarjeta); }
+
+/* Listas vacías: el ícono en su anillo, como un instrumento apagado. */
+.vacio-icono { box-shadow: 0 0 0 6px color-mix(in srgb, var(--acento) 8%, transparent), inset 0 0 0 2px color-mix(in srgb, var(--acento) 25%, transparent); }
+
+/* La barra de cabina (arriba del camino): vidrio con el borde de abajo fino. */
+.cabina { border-bottom: 1px solid var(--vidrio-borde); }
+.chip-plan { box-shadow: 0 3px 0 #000000, 0 6px 16px rgba(0, 0, 0, 0.18); }
+
+/* Paneles (Grupo, Progreso, punto débil): más aire y una sombra suave además del borde 3D. */
+.panel { border-color: var(--vidrio-borde); box-shadow: 0 4px 0 var(--linea), var(--sombra-suave); }
+
+/* El camino: una línea central de pista (discontinua) detrás de los pasos. */
+ol.sendero { position: relative; }
+ol.sendero::before {
+  content: ""; position: absolute; top: 34px; bottom: 30px; left: 50%; width: 0; margin-left: -2px; z-index: -1;
+  border-left: 4px dashed color-mix(in srgb, var(--suave) 30%, transparent);
+}
+.sendero .nodo-nombre { text-shadow: 0 1px 0 color-mix(in srgb, var(--fondo) 80%, transparent); }
+.sendero .nodo-nombre, .sendero .nodo-detalle { padding: 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--fondo) 72%, transparent); }
+.banner-materia { box-shadow: 0 5px 0 var(--mc-borde), 0 12px 28px color-mix(in srgb, var(--mc) 30%, transparent); }
+.banner-materia::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; pointer-events: none;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.5) 0 14px, transparent 14px 26px);
+}
+.materia-bloque.vacia .banner-materia { box-shadow: 0 5px 0 var(--gris-nodo-borde); }
+.materia-bloque.vacia .banner-materia::before { display: none; }
+
+/* ---------- Las materias plegables (public/camino-plegable.js) ---------- */
+.camino-controles { display: flex; justify-content: flex-end; margin: 0 0 var(--e2); }
+.camino-todas { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--vidrio); border: 1px solid var(--vidrio-borde); }
+.camino-todas .icono { width: 18px; height: 18px; }
+.materia-bloque { margin-bottom: var(--e4); }
+.materia-bloque.abierta { margin-bottom: var(--e5); }
+.banner-materia.plegable { padding-right: 60px; min-height: 96px; }
+.materia-plegar {
+  position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; margin: 0; padding: 0 16px 0 0;
+  min-height: 0; border: 0; border-radius: inherit; background: transparent; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.materia-plegar:focus-visible { outline: 3px solid var(--acento); outline-offset: 3px; }
+.banner-materia.plegable:active { transform: translateY(2px); }
+.materia-plegar-flecha { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: rgba(0, 0, 0, 0.18); transition: transform 0.3s ease; transform: rotate(90deg); }
+.materia-bloque.abierta .materia-plegar-flecha { transform: rotate(-90deg); }
+.materia-plegar-flecha .icono { width: 20px; height: 20px; stroke-width: 2.6; }
+.materia-estado { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.materia-estado-chip, .materia-insignia {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em;
+  background: rgba(0, 0, 0, 0.22); color: inherit; line-height: 1.4;
+}
+.materia-estado-chip .icono, .materia-insignia .icono { width: 14px; height: 14px; }
+.materia-pct { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+.materia-insignias { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.materia-insignia.hecho { background: rgba(255, 255, 255, 0.24); }
+.materia-insignia.debil { background: var(--naranja); color: var(--naranja-texto); }
+.materia-bloque.vacia .materia-estado-chip, .materia-bloque.vacia .materia-insignia { background: rgba(0, 0, 0, 0.06); }
+/* El cuerpo se abre y se cierra con una animación suave (solo al tocar: al entrar ya está como debe). */
+.materia-cuerpo { display: grid; grid-template-rows: 1fr; }
+.materia-bloque.plegada .materia-cuerpo { grid-template-rows: 0fr; }
+.materia-cuerpo-dentro { min-height: 0; overflow: hidden; padding: 0 6px; margin: 0 -6px; }
+.materia-bloque.plegada .materia-cuerpo-dentro { visibility: hidden; }
+.camino-animado .materia-cuerpo { transition: grid-template-rows 0.35s cubic-bezier(0.3, 0.9, 0.3, 1); }
+.camino-animado .materia-cuerpo-dentro { transition: visibility 0s linear 0.35s; }
+.camino-animado .materia-bloque.abierta .materia-cuerpo-dentro { transition-delay: 0s; }
+.materia-vista-previa { margin: var(--e3) 0 0; padding: 10px 12px; border-radius: 14px; font-size: 14px; color: var(--suave); background: var(--vidrio); border: 1px dashed var(--borde); }
+.materia-vista-previa .icono { width: 16px; height: 16px; flex: none; }
+.materia-bloque.bloqueada .sendero .nodo-detalle { color: var(--suave); }
+
+/* El plan (la primera vez): las opciones como tarjetas de vidrio. */
+.plan-opcion { border-color: var(--vidrio-borde); box-shadow: 0 4px 0 var(--linea), var(--sombra-suave); }
+.plan-opcion[aria-pressed="true"] { background: color-mix(in srgb, var(--azul) 12%, var(--tarjeta)); }
+
+/* Configuración: el crédito de las fotos, chico. */
+.credito-fotos { margin: var(--e4) 0 0; padding-top: var(--e3); border-top: 1px dashed var(--borde); font-size: 12.5px; line-height: 1.4; color: var(--suave); }
+
+/* Computadora ancha: en el camino, el Grupo a la derecha (se queda a la vista) y el camino en el centro. */
+@media (min-width: 1200px) {
+  .contenido:has(> .camino) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); column-gap: var(--e6); align-items: start; }
+  .contenido:has(> .camino) > * { grid-column: 1; }
+  .contenido:has(> .camino) > .cabina { grid-column: 1 / -1; }
+  .contenido:has(> .camino) > .panel-grupo { grid-column: 2; grid-row: 2 / span 3; position: sticky; top: 92px; max-width: none; margin: 0; }
+  .contenido:has(> .camino) > .saludo, .contenido:has(> .camino) > .camino, .contenido:has(> .camino) > .acad-muestra { max-width: 640px; margin-left: auto; margin-right: auto; width: 100%; }
+  .contenido:has(> .camino) > .pie { grid-column: 1 / -1; }
+}
+
+/* ---------- Las clases ---------- */
+/* La barra de avance como una pista: la línea central discontinua en el fondo. */
+.combustible-pista { background: color-mix(in srgb, var(--linea) 90%, transparent); }
+.combustible-pista::after {
+  content: ""; position: absolute; left: 8px; right: 8px; top: 50%; height: 2px; margin-top: -1px; pointer-events: none;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--suave) 45%, transparent) 0 10px, transparent 10px 20px);
+}
+.estudio-arriba, .estudio-pie { border-color: var(--vidrio-borde); }
+.estudio-pie { border-top-width: 1px; box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.06); }
+
+/* Cada tarjeta de la lección: una tarjeta de verdad (vidrio) con su sello y su título. */
+.tarjeta-leccion, .tarjeta-girar, .tarjeta-pregunta {
+  background: var(--vidrio); border: 1px solid var(--vidrio-borde); border-radius: 24px; padding: var(--e4) var(--e4) var(--e5); box-shadow: var(--sombra-suave);
+}
+.tarjeta-leccion { border-top: 5px solid var(--mc, var(--azul)); }
+.tarjeta-leccion.estilo-analogia { border-top-color: #9b5de5; }
+.tarjeta-leccion.estilo-resumen { border-top-color: var(--verde); }
+.tarjeta-leccion.estilo-ingles { border-top-color: var(--azul); }
+.tarjeta-titulo { letter-spacing: -0.015em; }
+.tarjeta-visual { border: 0; box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14); margin: var(--e3) 0 var(--e2); }
+.portada-tema, .fin-leccion { background: var(--vidrio); border: 1px solid var(--vidrio-borde); border-radius: 26px; padding: var(--e5) var(--e4); box-shadow: var(--sombra-suave); }
+
+/* Un ícono por punto (public/clase/realce.js) y los puntos entran uno tras otro. */
+.tarjeta-realzada ul.tarjeta-puntos { gap: var(--e3); }
+.tarjeta-puntos li.punto-realzado { position: relative; min-height: 52px; padding: 10px var(--e3) 10px 58px; border-radius: 16px; background: color-mix(in srgb, var(--mc, var(--azul)) 6%, transparent); }
+.tarjeta-puntos li.punto-realzado::before, .tarjeta-puntos li.punto-realzado::after { display: none; }
+.punto-marca {
+  position: absolute; left: 10px; top: 10px; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--mc, var(--azul)); color: #ffffff; box-shadow: 0 3px 0 var(--mc-borde, var(--azul-borde)); font: 800 16px/1 var(--letra-redonda);
+}
+.punto-dibujo { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.punto-marca.punto-alerta { background: var(--naranja); color: var(--naranja-texto); box-shadow: 0 3px 0 var(--naranja-borde); }
+.estilo-resumen .punto-marca { background: var(--verde); box-shadow: 0 3px 0 var(--verde-borde); }
+.mc-8 .punto-marca:not(.punto-alerta) { color: #2b1d00; }
+.punto-realzado { animation: entra-punto 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.05) backwards; animation-delay: calc(120ms + var(--i, 0) * 110ms); }
+@keyframes entra-punto { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* «Recuerda»: la caja amarilla, con el ícono en su círculo y una franja como cinta de advertencia. */
+.tarjeta-realzada .recuerda {
+  position: relative; padding: var(--e4) var(--e4) var(--e4) 18px; border: 0; border-radius: 18px; overflow: hidden;
+  background: color-mix(in srgb, var(--oro) 20%, var(--tarjeta)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--oro) 65%, var(--tarjeta)), 0 4px 0 color-mix(in srgb, var(--oro-borde) 55%, transparent);
+  animation: entra-punto 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.05) backwards; animation-delay: calc(160ms + var(--n-puntos, 0) * 110ms);
+}
+.tarjeta-realzada .recuerda::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+  background: repeating-linear-gradient(-45deg, var(--oro) 0 8px, #1f2937 8px 16px);
+}
+.tarjeta-realzada .recuerda .recuerda-titulo .icono { width: 26px; height: 26px; padding: 4px; border-radius: 50%; background: var(--oro); color: #2b1d00; }
+.tarjeta-realzada .caja-ejemplo { border-left: 5px solid var(--azul); }
+
+/* Fichas de inglés: EN · palabra · pronunciación | ES · término | abreviatura. */
+.tarjeta-realzada .tarjeta-fichas { gap: var(--e2); }
+.ficha-realzada { gap: 6px; padding: 6px 6px 6px 8px; border-width: 1.5px; border-radius: 14px; background: var(--vidrio); flex-wrap: wrap; }
+.ficha-idioma {
+  display: inline-grid; place-items: center; min-width: 26px; height: 20px; padding: 0 5px; border-radius: 6px; font: 800 10.5px/1 var(--letra-redonda); letter-spacing: 0.08em;
+  background: var(--azul-borde); color: #ffffff;
+}
+.ficha-idioma.es { background: color-mix(in srgb, var(--naranja-borde) 90%, #000000); }
+.ficha-es { display: inline-flex; align-items: center; gap: 6px; padding-left: 8px; border-left: 1.5px solid var(--linea); font-weight: 700; font-size: 15px; }
+.ficha-abrev { padding: 1px 7px; border-radius: 6px; border: 1.5px dashed var(--suave); font: 800 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: none; color: var(--texto); }
+:root[data-tema="oscuro"] .ficha-idioma { background: #1d5f99; }
+
+/* Tarjeta para girar y vocabulario: el mismo vidrio. */
+.tarjeta-girar .carta-cara.frente { background: linear-gradient(160deg, #18263a, var(--cabina) 70%); }
+.lista-vocabulario .palabra { border-radius: 16px; }
+
+/* ---------- Las preguntas ---------- */
+.tarjeta-pregunta .q-enunciado { font-size: clamp(19px, 5vw, 22px); letter-spacing: -0.005em; }
+.tarjeta-pregunta .q-cabeza { padding-bottom: var(--e3); border-bottom: 1px dashed var(--borde); }
+.pregunta-de { display: flex; align-items: center; gap: 6px; }
+.pregunta-de::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--naranja); box-shadow: 0 0 0 3px color-mix(in srgb, var(--naranja) 25%, transparent); }
+.opcion-carta { border-width: 2px; box-shadow: 0 4px 0 var(--linea), 0 6px 16px rgba(15, 23, 42, 0.05); }
+.opcion-carta:hover:not(:disabled):not(.fija) { border-color: color-mix(in srgb, var(--azul) 45%, var(--linea)); }
+.opcion-carta .opcion-letra { font-size: 17px; }
+.opcion-carta.es-correcta { background: var(--verde-suave); }
+.opcion-carta.es-mala { background: var(--rojo-suave); }
+
+/* La figura: un marco con «tocar para ampliar»; a pantalla completa encaja y, al tocarla, se acerca (2×). */
+.q-figura-boton { border-width: 1px; box-shadow: var(--sombra-suave); }
+.q-figura-boton::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+.q-figura-lupa { width: 40px; height: 40px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); }
+.figura-grande { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.figura-grande-lienzo { align-items: center; }
+.figura-grande-lienzo img.figura-encaja { width: auto; max-width: 100%; max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); cursor: zoom-in; object-fit: contain; }
+.figura-grande-lienzo img.figura-cerca { width: 220%; max-width: none; max-height: none; cursor: zoom-out; }
+.figura-grande-lienzo:has(img.figura-cerca) { align-items: flex-start; justify-content: flex-start; }
+@media (min-width: 900px) { .figura-grande-lienzo img.figura-cerca { width: auto; max-width: none; height: 180vh; } }
+
+/* La hoja de la respuesta: una manija arriba, la cabeza fija y cada explicación en su tarjeta. */
+.hoja-respuesta { border-top: 1px solid color-mix(in srgb, var(--h) 30%, transparent); box-shadow: 0 -12px 36px rgba(15, 23, 42, 0.22); }
+.hoja-respuesta::before { content: ""; display: block; width: 44px; height: 5px; margin: 8px auto 0; border-radius: 99px; background: color-mix(in srgb, var(--h) 35%, transparent); }
+.hoja-cabeza { padding-top: var(--e2); }
+.hoja-icono { box-shadow: 0 0 0 4px color-mix(in srgb, var(--h) 18%, transparent); }
+.caja-hoja { background: color-mix(in srgb, var(--tarjeta) 88%, transparent); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }
+.caja-hoja h3 { display: flex; align-items: center; gap: 6px; }
+
+/* La explicación después de responder (public/respuesta-vista.js): resultado grande, la sencilla primero, lo tuyo
+   resaltado y el Test Guide tal cual, plegado. Letra cómoda en el teléfono; el botón de abajo siempre a la vista. */
+.hoja-respuesta { max-height: min(78vh, 720px); }
+.hoja-titulo { font-size: 24px; }
+.resp-correcta { margin: 0 0 var(--e3); padding: var(--e3) var(--e4); border-radius: 18px; background: var(--tarjeta); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--verde) 70%, var(--tarjeta)), 0 4px 0 color-mix(in srgb, var(--verde-borde) 60%, transparent); }
+.resp-correcta-rotulo { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--verde-texto); }
+.resp-correcta-opcion { display: flex; align-items: flex-start; gap: 12px; }
+.resp-correcta .opcion-letra, .tuya-opcion .opcion-letra {
+  flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-size: 17px; color: #ffffff; background: #368300;
+}
+.resp-correcta-texto { font-size: 19px; line-height: 1.4; font-weight: 700; padding-top: 3px; }
+.caja-hoja.caja-sencilla.principal { padding: var(--e4); border-left: 0; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--azul) 45%, transparent); }
+.caja-hoja.principal h3 { font-size: 14px; color: var(--azul); }
+:root[data-tema="oscuro"] .caja-hoja.principal h3 { color: #8cc8ff; }
+.sencilla-filas { display: grid; gap: 10px; }
+.sencilla-fila { margin: 0; font-size: 18px; line-height: 1.5; }
+.sencilla-fila:not(.tipo-texto) { display: flex; align-items: flex-start; gap: 10px; }
+.sencilla-icono { flex: none; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; margin-top: 1px; background: color-mix(in srgb, var(--azul) 14%, var(--tarjeta)); color: var(--azul); }
+.sencilla-icono .icono { width: 18px; height: 18px; }
+.sencilla-rotulo { color: var(--texto); }
+.tipo-correcta .sencilla-icono { background: color-mix(in srgb, var(--verde) 20%, var(--tarjeta)); color: var(--verde-texto); }
+.tipo-piensa .sencilla-icono { background: color-mix(in srgb, var(--oro) 30%, var(--tarjeta)); color: #6b4a00; }
+.tipo-truco .sencilla-icono { background: color-mix(in srgb, #9b5de5 18%, var(--tarjeta)); color: #6a2fc0; }
+:root[data-tema="oscuro"] .tipo-piensa .sencilla-icono { color: var(--oro); }
+:root[data-tema="oscuro"] .tipo-truco .sencilla-icono { color: #c7b3ff; }
+.caja-hoja.caja-tuya { border-left: 5px solid var(--rojo); background: color-mix(in srgb, var(--rojo) 7%, var(--tarjeta)); }
+.caja-hoja.caja-tuya h3 { color: var(--rojo-texto); }
+.tuya-opcion { display: flex; align-items: flex-start; gap: 10px; font-weight: 700; }
+.tuya-opcion .opcion-letra { background: #d42f2f; }
+.tuya-opcion > span:last-child { padding-top: 4px; }
+.tuya-trampa { font-size: 15px !important; color: var(--suave); }
+details.plegable-hoja { padding: 0; }
+details.plegable-hoja > summary {
+  display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px 14px; margin: 0; list-style: none; cursor: pointer;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--texto);
+}
+details.plegable-hoja > summary::-webkit-details-marker { display: none; }
+details.plegable-hoja > summary::after { content: "›"; margin-left: auto; font-size: 22px; line-height: 1; transition: transform 0.15s; }
+details.plegable-hoja[open] > summary::after { transform: rotate(90deg); }
+details.plegable-hoja > :not(summary) { padding: 0 14px 12px; }
+details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
+.caja-hoja.caja-original { border-left: 5px solid var(--cabina); }
+:root[data-tema="oscuro"] .caja-hoja.caja-original { border-left-color: #94a3b8; }
+.resp-figura { margin: 0 0 10px; max-width: 240px; }
+.resp-figura .q-figura-boton img { max-height: 140px; }
+.nota-letras { font-size: 15px; }
+
+/* Resultado y revisión. */
+.resultado-vuelo { background: var(--vidrio); border: 1px solid var(--vidrio-borde); border-radius: 26px; box-shadow: var(--sombra-suave); padding: var(--e5) var(--e4); }
+
+/* ---------- Movimiento reducido: nada se anima ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .punto-realzado, .tarjeta-realzada .recuerda { animation: none !important; }
+  .menu a, a.pestana, .materia-cuerpo, .materia-cuerpo-dentro, .materia-plegar-flecha { transition: none !important; }
+}
