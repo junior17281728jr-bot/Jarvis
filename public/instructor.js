@@ -107,7 +107,7 @@ export function crearInstructor(h) {
         el('span', { class: 'instructor-avatar refuerzo', 'aria-hidden': 'true' }, icono('atencion')),
         el('div', {}, el('h2', { id: 'plan-refuerzo-titulo', texto: tx('refuerzo.plan.titulo') }), el('p', { class: 'suave chica', texto: tx('refuerzo.plan.linea') }))),
       el('ul', { class: 'plan-refuerzo-lista' }, plan.slice(0, 4).map((f, i) => el('li', {},
-        el('p', {}, el('strong', { texto: `${tx('refuerzo.debes')} ` }), talCual('span', lugarDe(f)), el('span', { class: 'suave', texto: ` ${tx('refuerzo.fallaste', { n: numero(f.fallos) })}` })),
+        el('p', {}, el('strong', { texto: `${tx('refuerzo.debes')} ` }), talCual('span', lugarDe(f)), el('span', { class: 'suave', texto: ` ${tx(f.origen === 'examen' ? 'refuerzo.fallaste_examen' : 'refuerzo.fallaste', { n: numero(f.fallos) })}` })),
         f.idea ? talCual('p', f.idea, 'suave chica') : null,
         el('p', { class: 'chica', texto: tx('refuerzo.progreso', { n: numero(f.aciertos), meta: numero(f.meta.aciertos) }) }),
         el('a', { class: `boton-3d ${i === 0 ? 'naranja' : 'blanco'} chico`, href: `#refuerzo/${encodeURIComponent(f.materia)}/${encodeURIComponent(f.tema)}` }, el('span', { texto: tx('refuerzo.repasar') }))))));

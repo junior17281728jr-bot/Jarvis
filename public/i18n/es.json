@@ -2047,6 +2047,7 @@
   "aprendizaje.minutos": "Minutos de estudio por día (barra llena = 2 horas)",
   "aprendizaje.racha": "Racha promedio: {n} días",
   "aprendizaje.plan": "Plan: {a} a tiempo o adelantados · {b} atrasados · {s} sin plan",
+  "refuerzo.fallaste_examen": "(fallaste {n} preguntas de este tema en un examen)",
   "instr.titulo": "Tu instructor dice…",
   "instr.modo.basico": "Instructor: modo básico (sin IA)",
   "instr.modo.basico.corto": "Modo básico (sin IA)",

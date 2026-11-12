@@ -2047,6 +2047,7 @@
   "aprendizaje.minutos": "Study minutes per day (full bar = 2 hours)",
   "aprendizaje.racha": "Average streak: {n} days",
   "aprendizaje.plan": "Plan: {a} on time or ahead · {b} behind · {s} without plan",
+  "refuerzo.fallaste_examen": "(missed {n} questions of this topic in an exam)",
   "instr.titulo": "Your instructor says…",
   "instr.modo.basico": "Instructor: basic mode (no AI)",
   "instr.modo.basico.corto": "Basic mode (no AI)",
