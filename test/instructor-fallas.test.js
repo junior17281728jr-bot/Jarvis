@@ -40,6 +40,9 @@ function azarFijo(semilla = 7) {
 async function conAcademia(fn) {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.12.7: estas pruebas son del «tiempo con IA» por minutos (el modo de antes, que sigue existiendo); los planes y la
+  // prueba gratis se prueban en test/planes-ia.test.js.
+  guardarConfigPagos(db, { modo: 'minutos' });
   let ahora = T0;
   const reloj = () => ahora;
   reloj.avanzar = ms => { ahora += ms; };

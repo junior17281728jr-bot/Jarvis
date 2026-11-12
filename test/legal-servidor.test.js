@@ -90,7 +90,7 @@ async function conAcademia(fn) {
   });
   db.close();
 }
-const firmar = (base, galleta, datos = {}) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos: { version: 1, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: FIRMA, ...FIRMAR, ...datos } });
+const firmar = (base, galleta, datos = {}) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos: { version: 2, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: FIRMA, ...FIRMAR, ...datos } });
 const TUTOR = { nombre: 'Rosa Pérez', relacion: 'Madre', contacto: 'rosa@example.com', acepto: true, firma: FIRMA };
 
 test('términos en el servidor: lo de estudiar espera la firma; entrar, /api/yo, los textos y lo del administrador no', async () => {
@@ -109,7 +109,7 @@ test('términos en el servidor: lo de estudiar espera la firma; entrar, /api/yo,
     assert.equal((await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).codigo, 200);
     await pedir(base, 'POST', '/api/admin/terminos', { galleta: admin, datos: { secciones: [{ titulo: '1. Nuevo', texto: 'Otro texto.' }] } });
     assert.equal((await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).datos.error, 'terminos_pendientes');
-    assert.equal((await firmar(base, ana, { version: 2 })).codigo, 200);
+    assert.equal((await firmar(base, ana, { version: 3 })).codigo, 200); // 0.12.7: el código ya trae la v2
     assert.equal((await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).codigo, 200);
     assert.equal((await pedir(base, 'GET', '/api/academia/camino', { galleta: beto })).datos.error, 'terminos_pendientes', 'cada uno firma lo suyo');
     assert.equal((await pedir(base, 'POST', '/api/salir', { galleta: beto, datos: {} })).codigo, 200, 'salir no espera la firma');

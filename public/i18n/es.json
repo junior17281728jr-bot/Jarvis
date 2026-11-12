@@ -3142,5 +3142,6 @@
   "telegram.aviso.ia_tope.cuenta": "La IA de una cuenta llegó a una parte de su tope de este mes. La app sigue con su motor propio.",
   "telegram.aviso.ia_resumen.titulo": "El gasto de la IA de ayer",
   "telegram.aviso.ia_resumen.texto": "IA ayer: {usado} en {n} llamadas. En el mes: {mes} de {tope} ({pct} %) · quedan {dias} días.",
-  "aviso.ia_resumen": "IA ayer: {usado} en {n} llamadas. En el mes: {mes} de {tope} ({pct} %)."
+  "aviso.ia_resumen": "IA ayer: {usado} en {n} llamadas. En el mes: {mes} de {tope} ({pct} %).",
+  "terminos.cambio.terminos_v2": "La IA ahora es por plan mensual: 5 días de prueba gratis; US$12 o US$20 al mes. Solo cambió el punto 8; lo demás sigue igual."
 }

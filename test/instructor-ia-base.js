@@ -7,6 +7,7 @@ import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
 import { hashClave } from '../src/cuentas/claves.js';
 import { guardarSecreto, anotarPrueba } from '../src/claves/almacen.js';
+import { guardarConfigPagos } from '../src/academia/tiempo-ia.js';
 import { guardarConfigIa } from '../src/ia/config.js';
 import { crearEjecutor } from '../src/tareas/ejecutor.js';
 import { crearEscritor } from '../src/tareas/escritor.js';
@@ -46,7 +47,7 @@ export const explicacionFalsa = (correcta, extra = {}) => ({
   json: { opcion_correcta: correcta, explicacion: 'Arriba hay menos presión y por eso entra menos oxígeno (oxygen).', por_que_no: 'Esa opción confunde la idea.', recuerda: 'Menos presión, menos oxígeno.', terminos: [{ ingles: 'hypoxia', espanol: 'hipoxia', abreviatura: '' }], ...extra },
 });
 
-export async function conInstructor(fn, { modelo = 'claude-sonnet-5-5', topePlan = 1_000_000, permitir = true, encender = true } = {}) {
+export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-sonnet-5-5', topePlan = 1_000_000, permitir = true, encender = true } = {}) {
   const falso = await crearProveedorFalso();
   const config = { ...configDePrueba(), iaBases: { anthropic: falso.base, openai: falso.base } };
   const db = abrirBase(config);
@@ -76,6 +77,9 @@ export async function conInstructor(fn, { modelo = 'claude-sonnet-5-5', topePlan
       const s = await pedir(base, 'POST', '/api/admin/academia/paquetes', { galleta: admin, cabeceras: { 'Content-Type': 'application/json' }, cuerpo: JSON.stringify(MUESTRA) });
       for (const archivo of s.datos.faltan) await pedir(base, 'POST', `/api/admin/academia/paquetes/${s.datos.paquete.id}/figuras/${archivo}`, { galleta: admin, cabeceras: { 'Content-Type': 'image/png' }, cuerpo: figuraMuestraPng() });
       await pedir(base, 'POST', `/api/admin/academia/paquetes/${s.datos.paquete.id}/activar`, { galleta: admin, datos: {} });
+      // 0.12.7: estas pruebas son del «tiempo con IA» por minutos (el modo de antes, que sigue existiendo); los planes y la
+      // prueba gratis se prueban en test/planes-ia.test.js.
+      guardarConfigPagos(db, { modo: pagos });
       const secretoId = guardarSecreto(db, config, { uso: 'ia_anthropic', valor: claveAnthropic(), usuarioId: adminId }).secreto.id;
       anotarPrueba(db, { id: secretoId, motivo: 'ok' });
       guardarConfigIa(db, { topeGeneralMicro: 2_000_000, topesPlanMicro: { prueba: topePlan } }, { config, usuarioId: adminId });

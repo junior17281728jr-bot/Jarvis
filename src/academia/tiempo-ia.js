@@ -11,6 +11,20 @@
 //    sea una imagen) y queda «En revisión». El administrador lo aprueba (suma los minutos, una sola vez) o lo rechaza
 //    con un motivo que el alumno ve. La imagen vive en la carpeta de datos (academia/pagos/) y solo la ven el
 //    administrador y ese alumno. Nada se borra.
+//  - 0.12.7 (pedido del dueño): la IA va por PLAN (modo 'planes', el de siempre desde ahora; 'minutos' es lo de antes):
+//      · PRUEBA GRATIS de 5 días desde su PRIMER uso de la IA (no desde que se creó la cuenta: así nadie la pierde sin
+//        verla), con un tope de usos por día (20) que cuida el presupuesto. Es para quien nunca pagó IA (un comprobante
+//        aprobado); el administrador puede darla otra vez.
+//      · Después, sin plan: lo básico (sin errores, como en la 0.12.4). Dos planes de 30 días desde que se aprueba el
+//        comprobante: «IA Estándar» (US$12, 300 usos) e «IA Plus» (US$20, 800 usos); nombres, precios, usos y el precio
+//        en RD$ (opcional) los cambia el administrador. Si se le acaban los usos antes, puede pasar a Plus pagando la
+//        diferencia (sigue la misma fecha de vencimiento). Tres días antes de vencer, la app lo recuerda.
+//      · Los minutos que alguien ya tenía (regalo, pagados o puestos por el administrador) se siguen usando hasta que se
+//        acaben: se gasta primero el plan, después la prueba, después esos minutos. Nada se borra; lo nuevo va en el
+//        mismo libro (motivos 'uso_plan', 'uso_prueba' y sus devoluciones) y en «ajustes».
+//      · Con planes, una cuenta nueva ya no recibe los 20 minutos de regalo (si no, la IA seguiría después de la prueba).
+//      · Lo de siempre sigue mandando: sin la IA encendida, su tope de plan, «Permitir IA» y su permiso, no hay IA
+//        aunque tenga prueba o plan.
 import { randomBytes } from 'node:crypto';
 import { writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,8 +40,14 @@ const TEXTO_CORTO = 120;
 const TEXTO_LARGO = 1000;
 export const ESPERA_POR_DEFECTO = 'En revisión — la verificación puede tardar hasta 24 horas.';
 
+// 0.12.7: los planes de IA por defecto (el administrador los cambia en Pagos).
+export const PLANES_IA = Object.freeze([
+  Object.freeze({ id: 'estandar', nombre: 'IA Estándar', precioUsd: '12', usos: 300 }),
+  Object.freeze({ id: 'plus', nombre: 'IA Plus', precioUsd: '20', usos: 800 }),
+]);
 export const CONFIG_PAGOS = Object.freeze({
   minutosRegalo: 20, minutosPorUso: 1,
+  modo: 'planes', pruebaDias: 5, pruebaUsosDia: 20, planDias: 30, avisoRenovarDias: 3, tasaRd: '', planes: PLANES_IA,
   // 0.12.3 (auditoría P2-2): sin banco por defecto (ni el nombre de ninguno); vacío queda vacío.
   banco: '', tipoCuenta: '', numero: '', titular: '', documento: '', instrucciones: '', espera: ESPERA_POR_DEFECTO,
   paquetes: Object.freeze([]),
@@ -35,6 +55,15 @@ export const CONFIG_PAGOS = Object.freeze({
 const texto = (v, max, d = '') => (typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, max) : d);
 const entero = (v, min, max, d) => (Number.isSafeInteger(v) && v >= min && v <= max ? v : d);
 const ID_PAQUETE = /^[a-z0-9_-]{1,20}$/;
+const PRECIO_USD = /^\d{1,4}(?:\.\d{1,2})?$/;
+function normalizarPlanes(lista) {
+  const d = Object.fromEntries(PLANES_IA.map(p => [p.id, p]));
+  const dados = Array.isArray(lista) ? lista : [];
+  return PLANES_IA.map(base => {
+    const x = dados.find(p => p?.id === base.id) ?? {};
+    return { id: base.id, nombre: texto(x.nombre, 40) || d[base.id].nombre, precioUsd: PRECIO_USD.test(String(x.precioUsd ?? '')) ? String(x.precioUsd) : d[base.id].precioUsd, usos: entero(x.usos, 1, 100_000, d[base.id].usos) };
+  });
+}
 
 function normalizarPagos(v) {
   const d = CONFIG_PAGOS;
@@ -47,6 +76,11 @@ function normalizarPagos(v) {
     banco: texto(x.banco, TEXTO_CORTO, d.banco), tipoCuenta: texto(x.tipoCuenta, TEXTO_CORTO), numero: texto(x.numero, 60), titular: texto(x.titular, TEXTO_CORTO),
     documento: texto(x.documento, 40), instrucciones: texto(x.instrucciones, TEXTO_LARGO), espera: texto(x.espera, 300) || d.espera,
     paquetes: [...new Map(paquetes.map(p => [p.id, p])).values()],
+    modo: x.modo === 'minutos' ? 'minutos' : 'planes',
+    pruebaDias: entero(x.pruebaDias, 0, 60, d.pruebaDias), pruebaUsosDia: entero(x.pruebaUsosDia, 1, 1000, d.pruebaUsosDia),
+    planDias: entero(x.planDias, 1, 366, d.planDias), avisoRenovarDias: entero(x.avisoRenovarDias, 0, 30, d.avisoRenovarDias),
+    tasaRd: /^\d{1,4}(?:\.\d{1,2})?$/.test(String(x.tasaRd ?? '')) ? String(x.tasaRd) : '',
+    planes: normalizarPlanes(x.planes),
   };
 }
 export function leerConfigPagos(db) {
@@ -57,10 +91,20 @@ export function leerConfigPagos(db) {
 // precio) dice CUÁL: 400 paquete_linea_no_valida { linea: n.º del paquete, desde 1 }; más de 8: paquetes_demasiados.
 export function revisarConfigPagos(cambios) {
   if (!cambios || typeof cambios !== 'object' || Array.isArray(cambios)) throw new ErrorHttp(400, 'datos_no_validos');
-  const campos = ['minutosRegalo', 'minutosPorUso', 'banco', 'tipoCuenta', 'numero', 'titular', 'documento', 'instrucciones', 'espera', 'paquetes'];
+  const campos = ['minutosRegalo', 'minutosPorUso', 'banco', 'tipoCuenta', 'numero', 'titular', 'documento', 'instrucciones', 'espera', 'paquetes',
+    'modo', 'pruebaDias', 'pruebaUsosDia', 'planDias', 'avisoRenovarDias', 'tasaRd', 'planes'];
   if (Object.keys(cambios).some(k => !campos.includes(k))) throw new ErrorHttp(400, 'datos_no_validos');
   if ('minutosRegalo' in cambios && entero(cambios.minutosRegalo, 0, 100_000, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
   if ('minutosPorUso' in cambios && entero(cambios.minutosPorUso, 1, 60, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
+  if ('modo' in cambios && !['planes', 'minutos'].includes(cambios.modo)) throw new ErrorHttp(400, 'datos_no_validos');
+  for (const [k, min, max] of [['pruebaDias', 0, 60], ['pruebaUsosDia', 1, 1000], ['planDias', 1, 366], ['avisoRenovarDias', 0, 30]]) {
+    if (k in cambios && entero(cambios[k], min, max, null) == null) throw new ErrorHttp(400, 'datos_no_validos');
+  }
+  if ('tasaRd' in cambios && cambios.tasaRd !== '' && !/^\d{1,4}(?:\.\d{1,2})?$/.test(String(cambios.tasaRd))) throw new ErrorHttp(400, 'datos_no_validos');
+  if ('planes' in cambios) {
+    if (!Array.isArray(cambios.planes) || cambios.planes.some(p => !PLANES_IA.some(b => b.id === p?.id) || !texto(p?.nombre, 40)
+      || !PRECIO_USD.test(String(p?.precioUsd ?? '')) || entero(p?.usos, 1, 100_000, null) == null)) throw new ErrorHttp(400, 'plan_no_valido');
+  }
   if ('paquetes' in cambios) {
     if (!Array.isArray(cambios.paquetes)) throw new ErrorHttp(400, 'paquete_pago_no_valido');
     if (cambios.paquetes.length > 8) throw new ErrorHttp(400, 'paquetes_demasiados');
@@ -76,7 +120,19 @@ export function guardarConfigPagos(db, cambios) {
 }
 // Lo que ve un alumno para pagar (solo lectura): los datos de la cuenta, los paquetes y qué esperar.
 export function datosParaPagar(cfg) {
-  return { banco: cfg.banco, tipoCuenta: cfg.tipoCuenta, numero: cfg.numero, titular: cfg.titular, documento: cfg.documento, instrucciones: cfg.instrucciones, espera: cfg.espera, paquetes: cfg.paquetes, listo: Boolean(cfg.numero && cfg.titular && cfg.paquetes.length) };
+  const conPlanes = cfg.modo === 'planes';
+  return {
+    banco: cfg.banco, tipoCuenta: cfg.tipoCuenta, numero: cfg.numero, titular: cfg.titular, documento: cfg.documento, instrucciones: cfg.instrucciones, espera: cfg.espera,
+    // 0.12.7: con planes, lo que se vende son los planes (los paquetes de minutos quedan para el modo de antes).
+    paquetes: conPlanes ? [] : cfg.paquetes, modo: cfg.modo, planes: conPlanes ? cfg.planes.map(p => ({ ...p, precioRd: precioRd(cfg, p.precioUsd) })) : [],
+    planDias: cfg.planDias, pruebaDias: cfg.pruebaDias, pruebaUsosDia: cfg.pruebaUsosDia,
+    listo: Boolean(cfg.numero && cfg.titular && (conPlanes || cfg.paquetes.length)),
+  };
+}
+// El precio en RD$ (si el administrador puso la tasa), redondeado al peso: «720».
+function precioRd(cfg, usd) {
+  const tasa = Number(cfg.tasaRd);
+  return tasa > 0 ? String(Math.round(Number(usd) * tasa)) : null;
 }
 
 // ---------- El saldo ----------
@@ -85,19 +141,26 @@ function anotar(db, { usuarioId, minutos, motivo, referencia = null, tareaId = n
   db.prepare('INSERT INTO academia_ia_minutos (usuario_id, minutos, motivo, referencia, tarea_id, hecho_por, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(usuarioId, minutos, motivo, referencia, tareaId, hechoPor, iso(ahora));
 }
-const sumaDe = (db, usuarioId) => db.prepare('SELECT COALESCE(SUM(minutos), 0) AS n FROM academia_ia_minutos WHERE usuario_id = ?').get(usuarioId).n;
+// 0.12.7: los usos del plan y de la prueba van en el mismo libro con sus motivos, pero NO son minutos: no cuentan en el saldo.
+const FAMILIAS = Object.freeze({ minutos: ['uso', 'devolucion'], plan: ['uso_plan', 'devolucion_plan'], prueba: ['uso_prueba', 'devolucion_prueba'] });
+const NO_MINUTOS = "('uso_plan', 'devolucion_plan', 'uso_prueba', 'devolucion_prueba')";
+const TODOS_LOS_USOS = "('uso', 'devolucion', 'uso_plan', 'devolucion_plan', 'uso_prueba', 'devolucion_prueba')";
+const sumaDe = (db, usuarioId) => db.prepare(`SELECT COALESCE(SUM(minutos), 0) AS n FROM academia_ia_minutos WHERE usuario_id = ? AND motivo NOT IN ${NO_MINUTOS}`).get(usuarioId).n;
 
 // Devuelve los usos que la IA no llegó a responder (la tarea terminó sin nada guardado). Una sola vez cada uno.
 function devolverSinRespuesta(db, usuarioId, ahora) {
+  for (const [uso, devolucion] of Object.values(FAMILIAS)) devolverFamilia(db, usuarioId, ahora, uso, devolucion);
+}
+function devolverFamilia(db, usuarioId, ahora, motivoUso, motivoDevolucion) {
   const usos = db.prepare(`SELECT u.referencia, u.tarea_id, -SUM(u.minutos) AS debe FROM academia_ia_minutos u
-    WHERE u.usuario_id = ? AND u.tarea_id IS NOT NULL AND u.motivo IN ('uso', 'devolucion') GROUP BY u.tarea_id HAVING SUM(u.minutos) < 0`).all(usuarioId);
+    WHERE u.usuario_id = ? AND u.tarea_id IS NOT NULL AND u.motivo IN (?, ?) GROUP BY u.tarea_id HAVING SUM(u.minutos) < 0`).all(usuarioId, motivoUso, motivoDevolucion);
   for (const u of usos) {
     const t = db.prepare('SELECT estado, datos FROM tareas WHERE id = ?').get(u.tarea_id);
     if (!t || ['lista', 'en_curso'].includes(t.estado)) continue;
     let clave = null;
     try { clave = JSON.parse(t.datos)?.clave ?? null; } catch { clave = null; }
     if (t.estado === 'hecha' && leerGuardado(db, clave)) continue;
-    anotar(db, { usuarioId, minutos: u.debe, motivo: 'devolucion', referencia: u.referencia, tareaId: u.tarea_id, ahora });
+    anotar(db, { usuarioId, minutos: u.debe, motivo: motivoDevolucion, referencia: u.referencia, tareaId: u.tarea_id, ahora });
   }
 }
 
@@ -105,8 +168,9 @@ function devolverSinRespuesta(db, usuarioId, ahora) {
 export function saldoIa(db, usuarioId, ahora = Date.now()) {
   const cfg = leerConfigPagos(db);
   return enTransaccion(db, () => {
+    // 0.12.7: con planes, una cuenta nueva ya no recibe minutos de regalo (tiene la prueba gratis); lo ya dado sigue.
     const regalo = db.prepare("SELECT 1 FROM academia_ia_minutos WHERE usuario_id = ? AND motivo = 'regalo' LIMIT 1").get(usuarioId);
-    if (!regalo) anotar(db, { usuarioId, minutos: cfg.minutosRegalo, motivo: 'regalo', ahora });
+    if (!regalo && cfg.modo !== 'planes') anotar(db, { usuarioId, minutos: cfg.minutosRegalo, motivo: 'regalo', ahora });
     devolverSinRespuesta(db, usuarioId, ahora);
     return { minutos: Math.max(0, sumaDe(db, usuarioId)), porUso: cfg.minutosPorUso };
   });
@@ -114,19 +178,82 @@ export function saldoIa(db, usuarioId, ahora = Date.now()) {
 
 // ¿Ya pagó esto (la misma explicación, la misma duda)? Entonces verlo otra vez no se cobra.
 export function yaPagado(db, usuarioId, referencia) {
-  return db.prepare("SELECT COALESCE(SUM(minutos), 0) AS n FROM academia_ia_minutos WHERE usuario_id = ? AND referencia = ? AND motivo IN ('uso', 'devolucion')").get(usuarioId, referencia).n < 0;
+  return db.prepare(`SELECT COALESCE(SUM(minutos), 0) AS n FROM academia_ia_minutos WHERE usuario_id = ? AND referencia = ? AND motivo IN ${TODOS_LOS_USOS}`).get(usuarioId, referencia).n < 0;
 }
+
+// ---------- 0.12.7: la prueba gratis y los planes ----------
+const DIA_MS = 86_400_000;
+const clavePlan = id => `academia.ia.plan.${Number(id)}`;
+const clavePrueba = id => `academia.ia.prueba.${Number(id)}`;
+const jsonDe = texto => { try { const v = JSON.parse(texto ?? 'null'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+const inicioDiaRd = ms => Date.parse(`${new Date(ms - 4 * 3_600_000).toISOString().slice(0, 10)}T04:00:00Z`);
+// Cuántos usos de esa familia ('plan' | 'prueba') desde «desde» (lo devuelto ya está restado).
+function usosDesde(db, usuarioId, familia, desdeMs) {
+  const [uso, devolucion] = FAMILIAS[familia];
+  return -db.prepare('SELECT COALESCE(SUM(minutos), 0) AS n FROM academia_ia_minutos WHERE usuario_id = ? AND motivo IN (?, ?) AND creado_en >= ?').get(usuarioId, uso, devolucion, iso(desdeMs)).n;
+}
+export const leerPlan = (db, usuarioId) => jsonDe(leerAjuste(db, clavePlan(usuarioId)));
+export const leerPrueba = (db, usuarioId) => jsonDe(leerAjuste(db, clavePrueba(usuarioId)));
+// ¿Ya pagó IA alguna vez (un comprobante aprobado)? Entonces la prueba gratis no le toca (salvo que el administrador la dé).
+const pagoAntes = (db, usuarioId) => Boolean(db.prepare("SELECT 1 FROM academia_pagos WHERE usuario_id = ? AND estado = 'aprobado' LIMIT 1").get(usuarioId));
+
+// El derecho de un alumno a la IA AHORA. → { fuente: 'plan' | 'prueba' | 'minutos' | null, motivo (si null:
+// 'prueba_terminada' | 'limite_diario' | 'sin_usos_plan' | 'sin_plan'), plan, prueba, minutos, porUso }.
+export function derechoIa(db, usuarioId, ahora = Date.now()) {
+  const cfg = leerConfigPagos(db);
+  const { minutos, porUso } = saldoIa(db, usuarioId, ahora);
+  if (cfg.modo !== 'planes') return { modo: 'minutos', fuente: minutos >= porUso ? 'minutos' : null, motivo: minutos >= porUso ? null : 'sin_minutos', plan: null, prueba: null, minutos, porUso };
+  const pl = leerPlan(db, usuarioId);
+  let plan = null;
+  if (pl && Date.parse(pl.hasta) > ahora) {
+    const usados = usosDesde(db, usuarioId, 'plan', Date.parse(pl.desde));
+    plan = { id: pl.plan, nombre: pl.nombre, usos: pl.usos, usados, quedan: Math.max(0, pl.usos - usados), desde: pl.desde, hasta: pl.hasta,
+      dias: Math.max(0, Math.ceil((Date.parse(pl.hasta) - ahora) / DIA_MS)), renovar: Date.parse(pl.hasta) - ahora <= cfg.avisoRenovarDias * DIA_MS };
+  } else if (pl) plan = { id: pl.plan, nombre: pl.nombre, vencido: true, hasta: pl.hasta };
+  const pr = leerPrueba(db, usuarioId);
+  const elegible = pr?.dada === true || !pagoAntes(db, usuarioId);
+  let prueba = null;
+  if (elegible && cfg.pruebaDias > 0) {
+    const desde = pr?.desde ? Date.parse(pr.desde) : null;
+    const hasta = desde != null ? desde + cfg.pruebaDias * DIA_MS : null;
+    const hoy = usosDesde(db, usuarioId, 'prueba', Math.max(inicioDiaRd(ahora), desde ?? 0));
+    prueba = { empezada: desde != null, desde: pr?.desde ?? null, hasta: hasta != null ? iso(hasta) : null, dias: cfg.pruebaDias,
+      quedanDias: hasta != null ? Math.max(0, Math.ceil((hasta - ahora) / DIA_MS)) : cfg.pruebaDias, terminada: hasta != null && hasta <= ahora,
+      hoy, porDia: cfg.pruebaUsosDia };
+  }
+  const base = { modo: 'planes', plan, prueba, minutos, porUso };
+  if (plan && !plan.vencido && plan.quedan > 0) return { ...base, fuente: 'plan', motivo: null };
+  if (prueba && !prueba.terminada && prueba.hoy < prueba.porDia) return { ...base, fuente: 'prueba', motivo: null };
+  if (minutos >= porUso) return { ...base, fuente: 'minutos', motivo: null };
+  const motivo = plan && !plan.vencido ? 'sin_usos_plan' : prueba && !prueba.terminada ? 'limite_diario' : prueba?.terminada ? 'prueba_terminada' : 'sin_plan';
+  return { ...base, fuente: null, motivo };
+}
+
 // Cobra un uso, o lanza 'sin_minutos' (nunca deja el saldo en menos de 0). Dentro de la escritura de quien llama.
+// 0.12.7: con planes, primero el plan, después la prueba (su primer uso la empieza), después los minutos de antes.
 export function cobrarUso(db, usuarioId, { referencia, tareaId = null, ahora = Date.now() }) {
   return enTransaccion(db, () => {
-    const { minutos, porUso } = saldoIa(db, usuarioId, ahora);
-    if (minutos < porUso) throw new ErrorHttp(409, 'sin_minutos');
-    anotar(db, { usuarioId, minutos: -porUso, motivo: 'uso', referencia, tareaId, ahora });
-    return minutos - porUso;
+    const d = derechoIa(db, usuarioId, ahora);
+    if (!d.fuente) throw new ErrorHttp(409, 'sin_minutos');
+    if (d.fuente === 'minutos') {
+      anotar(db, { usuarioId, minutos: -d.porUso, motivo: 'uso', referencia, tareaId, ahora });
+      return d.minutos - d.porUso;
+    }
+    if (d.fuente === 'prueba' && !d.prueba.empezada) {
+      guardarAjuste(db, clavePrueba(usuarioId), JSON.stringify({ ...(leerPrueba(db, usuarioId) ?? {}), desde: iso(ahora) }));
+    }
+    anotar(db, { usuarioId, minutos: -1, motivo: FAMILIAS[d.fuente][0], referencia, tareaId, ahora });
+    return d.fuente === 'plan' ? d.plan.quedan - 1 : d.prueba.porDia - d.prueba.hoy - 1;
   });
 }
 export function ponerTareaAlUso(db, usuarioId, referencia, tareaId) {
-  db.prepare("UPDATE academia_ia_minutos SET tarea_id = ? WHERE id = (SELECT MAX(id) FROM academia_ia_minutos WHERE usuario_id = ? AND referencia = ? AND motivo = 'uso')").run(tareaId, usuarioId, referencia);
+  db.prepare(`UPDATE academia_ia_minutos SET tarea_id = ? WHERE id = (SELECT MAX(id) FROM academia_ia_minutos WHERE usuario_id = ? AND referencia = ? AND motivo IN ('uso', 'uso_plan', 'uso_prueba'))`).run(tareaId, usuarioId, referencia);
+}
+// El administrador le da la prueba gratis otra vez (empieza en su próximo uso). Queda en «ajustes» (nada se borra).
+export function darPruebaOtraVez(db, usuarioId, adminId, ahora = Date.now()) {
+  if (!db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(usuarioId)) throw new ErrorHttp(404, 'no_existe');
+  guardarAjuste(db, clavePrueba(usuarioId), JSON.stringify({ dada: true, desde: null, por: adminId, en: iso(ahora) }));
+  return derechoIa(db, usuarioId, ahora);
 }
 
 // El administrador deja el saldo de un alumno en «minutos» (una fila de ajuste con la diferencia).
@@ -154,6 +281,21 @@ function esImagen(cabeza, tipo) {
   return false;
 }
 
+// 0.12.7: lo que se paga: un paquete de minutos (modo de antes), un plan ('plan:estandar', 'plan:plus') o pasar a Plus
+// pagando la diferencia ('plan:plus:mejora', solo con un plan Estándar vigente). → { id, minutos (usos), precio } o null.
+function elegirLoQuePaga(db, cfg, usuarioId, paquete, ahora) {
+  if (cfg.modo !== 'planes') return cfg.paquetes.find(x => x.id === paquete) ?? null;
+  const m = /^plan:([a-z]+)(:mejora)?$/.exec(String(paquete));
+  const plan = m ? cfg.planes.find(x => x.id === m[1]) : null;
+  if (!plan) return null;
+  if (!m[2]) return { id: `plan:${plan.id}`, minutos: plan.usos, precio: `US$${plan.precioUsd}` };
+  const d = derechoIa(db, usuarioId, ahora);
+  const actual = d.plan && !d.plan.vencido ? cfg.planes.find(x => x.id === d.plan.id) : null;
+  if (plan.id !== 'plus' || !actual || actual.id === 'plus') return null;
+  const dif = Math.max(0, Math.round((Number(plan.precioUsd) - Number(actual.precioUsd)) * 100) / 100);
+  return { id: `plan:${plan.id}:mejora`, minutos: plan.usos, precio: `US$${dif}` };
+}
+
 // Sube un comprobante: el cuerpo del pedido es la imagen tal cual. → la fila nueva (vista del alumno).
 export async function subirRecibo(db, config, { usuarioId, req, paquete, nota = '', ahora = Date.now() }) {
   const tipo = String(req.headers['content-type'] || '').toLowerCase().split(';')[0].trim();
@@ -162,7 +304,7 @@ export async function subirRecibo(db, config, { usuarioId, req, paquete, nota = 
   const largo = Number(req.headers['content-length']);
   if (Number.isFinite(largo) && largo > RECIBO_MAX_BYTES) throw new ErrorHttp(413, 'demasiado_grande');
   const cfg = leerConfigPagos(db);
-  const p = cfg.paquetes.find(x => x.id === paquete);
+  const p = elegirLoQuePaga(db, cfg, usuarioId, paquete, ahora);
   if (!p) throw new ErrorHttp(400, 'paquete_pago_no_valido');
   const pendientes = db.prepare("SELECT COUNT(*) AS n FROM academia_pagos WHERE usuario_id = ? AND estado = 'revision'").get(usuarioId).n;
   if (pendientes >= PAGOS_EN_REVISION_MAX) throw new ErrorHttp(409, 'muchos_en_revision');
@@ -242,6 +384,19 @@ export function nombreParaBajar(db, id) {
 }
 export const pagosPendientes = db => db.prepare("SELECT COUNT(*) AS n FROM academia_pagos WHERE estado = 'revision'").get().n;
 
+// 0.12.7: aprobar un plan lo deja vigente 30 días desde HOY (o, al pasar a Plus, hasta la misma fecha que tenía, con los
+// usos de Plus contados desde el principio de ese plan).
+function activarPlan(db, f, adminId, ahora) {
+  const cfg = leerConfigPagos(db);
+  const m = /^plan:([a-z]+)(:mejora)?$/.exec(f.paquete);
+  const plan = cfg.planes.find(x => x.id === m?.[1]) ?? { id: m?.[1] ?? 'estandar', nombre: m?.[1] ?? '', usos: f.minutos };
+  const antes = leerPlan(db, f.usuario_id);
+  const sigue = m?.[2] && antes && Date.parse(antes.hasta) > ahora;
+  const valor = sigue ? { ...antes, plan: plan.id, nombre: plan.nombre, usos: f.minutos, pago: f.id, mejoraEn: iso(ahora) }
+    : { plan: plan.id, nombre: plan.nombre, usos: f.minutos, desde: iso(ahora), hasta: iso(ahora + cfg.planDias * DIA_MS), pago: f.id, por: adminId };
+  guardarAjuste(db, clavePlan(f.usuario_id), JSON.stringify(valor));
+}
+
 // Aprobar suma los minutos del paquete UNA sola vez (solo si sigue «en revisión»).
 export function resolverPago(db, { id, adminId, aprobar, motivo = '', ahora = Date.now() }) {
   return enTransaccion(db, () => {
@@ -253,7 +408,8 @@ export function resolverPago(db, { id, adminId, aprobar, motivo = '', ahora = Da
     if (!aprobar && !razon) throw new ErrorHttp(400, 'falta_motivo');
     db.prepare('UPDATE academia_pagos SET estado = ?, motivo = ?, revisado_por = ?, revisado_en = ? WHERE id = ?')
       .run(aprobar ? 'aprobado' : 'rechazado', aprobar ? null : razon, adminId, iso(ahora), f.id);
-    if (aprobar) {
+    if (aprobar && String(f.paquete).startsWith('plan:')) activarPlan(db, f, adminId, ahora);
+    else if (aprobar) {
       saldoIa(db, f.usuario_id, ahora); // que tenga su regalo antes de sumar
       anotar(db, { usuarioId: f.usuario_id, minutos: f.minutos, motivo: 'pago', referencia: `pago:${f.id}`, hechoPor: adminId, ahora });
     }

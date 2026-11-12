@@ -3142,5 +3142,6 @@
   "telegram.aviso.ia_tope.cuenta": "An account's AI reached part of its cap for this month. The app keeps working with its own engine.",
   "telegram.aviso.ia_resumen.titulo": "Yesterday's AI spending",
   "telegram.aviso.ia_resumen.texto": "AI yesterday: {usado} in {n} calls. This month: {mes} of {tope} ({pct}%) · {dias} days left.",
-  "aviso.ia_resumen": "AI yesterday: {usado} in {n} calls. This month: {mes} of {tope} ({pct}%)."
+  "aviso.ia_resumen": "AI yesterday: {usado} in {n} calls. This month: {mes} of {tope} ({pct}%).",
+  "terminos.cambio.terminos_v2": "AI is now a monthly plan: a 5-day free trial; US$12 or US$20 a month. Only point 8 changed; everything else stays the same."
 }

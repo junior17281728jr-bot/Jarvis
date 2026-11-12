@@ -17,7 +17,7 @@ import { espacioDe } from '../cuentas/espacios.js';
 import { esEspacioAdmin, leerConfigIa } from '../ia/config.js';
 import {
   leerConfigPagos, guardarConfigPagos, revisarConfigPagos, todosLosPagos, nombreParaBajar, datosParaPagar, saldoIa, ajustarSaldo, movimientos, subirRecibo, pagosDe, rutaRecibo,
-  novedadesPagos, marcarPagosVistos, pagosParaRevisar, pagosPendientes, resolverPago, RECIBO_MAX_BYTES,
+  novedadesPagos, marcarPagosVistos, pagosParaRevisar, pagosPendientes, resolverPago, RECIBO_MAX_BYTES, derechoIa, darPruebaOtraVez,
 } from '../academia/tiempo-ia.js';
 import { leerConfigFallas, guardarConfigFallas, fallasDe } from '../academia/fallas.js';
 import { paqueteActivo } from '../academia/paquetes.js';
@@ -60,8 +60,11 @@ export function tiempoDe(db, usuario, ahora = Date.now(), { estricto = true } = 
   const e = espacioDe(db, usuario);
   const cfg = leerConfigIa(db);
   const activo = cfg.encendida && cfg.instructorIa;
-  if (e && esEspacioAdmin(db, e.id)) return { ilimitado: true, minutos: null, porUso: leerConfigPagos(db).minutosPorUso, activo };
-  return { ilimitado: false, ...saldoIa(db, usuario.id, ahora), activo: activo && iaDeAlumno(db, usuario, { estricto }).listo };
+  if (e && esEspacioAdmin(db, e.id)) return { ilimitado: true, minutos: null, porUso: leerConfigPagos(db).minutosPorUso, activo, puede: true };
+  // 0.12.7: su derecho a la IA (plan, prueba gratis o minutos de antes): puede = le queda al menos un uso ahora.
+  const d = derechoIa(db, usuario.id, ahora);
+  return { ilimitado: false, minutos: d.minutos, porUso: d.porUso, activo: activo && iaDeAlumno(db, usuario, { estricto }).listo,
+    puede: d.fuente != null, modo: d.modo, fuente: d.fuente, motivo: d.motivo, plan: d.plan, prueba: d.prueba };
 }
 
 export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj = Date.now } = {}) {
@@ -127,7 +130,11 @@ export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj 
   rutas.agregar('GET', '/api/admin/academia/pagos', ({ db }) => {
     const ahora = reloj();
     const alumnos = db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' AND activo = 1 ORDER BY nombre").all()
-      .map(u => ({ id: u.id, nombre: u.nombre_visible || u.nombre, minutos: saldoIa(db, u.id, ahora).minutos, ia: iaDeAlumno(db, { ...u, rol: 'usuario' }, { estricto }) }));
+      .map(u => {
+        // 0.12.7: su plan, su prueba gratis (días que le quedan) y sus usos.
+        const d = derechoIa(db, u.id, ahora);
+        return { id: u.id, nombre: u.nombre_visible || u.nombre, minutos: d.minutos, ia: iaDeAlumno(db, { ...u, rol: 'usuario' }, { estricto }), derecho: { fuente: d.fuente, motivo: d.motivo, plan: d.plan, prueba: d.prueba } };
+      });
     return { codigo: 200, datos: { config: leerConfigPagos(db), pagos: pagosParaRevisar(db), pendientes: pagosPendientes(db), alumnos, fallas: leerConfigFallas(db) } };
   }, { admin: true });
   rutas.agregar('GET', '/api/admin/academia/pagos/pendientes', ({ db }) => ({ codigo: 200, datos: { pendientes: pagosPendientes(db) } }), { admin: true });
@@ -179,6 +186,11 @@ export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj 
     const datos = await leerJson(req);
     return { codigo: 200, datos: { tiempo: ajustarSaldo(db, Number(parametros.id), datos?.minutos, usuario.id, reloj()) } };
   }, { admin: true, soloDueno: true });
+  // 0.12.7: darle la prueba gratis otra vez (empieza en su próximo uso de la IA).
+  rutas.agregar('POST', '/api/admin/academia/alumnos/:id/prueba', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    return { codigo: 200, datos: { derecho: darPruebaOtraVez(db, Number(parametros.id), usuario.id, reloj()) } };
+  }, { admin: true });
   rutas.agregar('POST', '/api/admin/academia/fallas/ajustes', async ({ db, req }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { fallas: guardarConfigFallas(db, { umbral: datos?.umbral, examen: datos?.examen }) } };

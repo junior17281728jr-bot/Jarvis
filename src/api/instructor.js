@@ -95,7 +95,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       if (leerModoSeguro(db).activo || !trabajadorEncendido()) return decir('espera', 'trabajo_en_pausa');
       // 0.10.0: su tiempo con IA. Sin minutos, el instructor básico (gratis) hasta que pida más.
       const tiempo = tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false });
-      if (!tiempo.ilimitado && tiempo.minutos < tiempo.porUso) return decir('basico', 'sin_minutos');
+      // 0.12.7: sin plan, sin prueba (o sin sus usos de hoy) y sin minutos de antes: lo básico (la clave de siempre).
+      if (!tiempo.ilimitado && !tiempo.puede) return decir('basico', 'sin_minutos');
       return decir('ia', 'ok');
     }
     // Un tope de plan en US$0 no se llena: esa cuenta no tiene presupuesto de IA (básico, no «en espera»).

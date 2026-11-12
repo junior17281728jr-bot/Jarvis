@@ -89,13 +89,13 @@ async function conAcademia(fn) {
   });
   db.close();
 }
-const firmar = (base, galleta, datos = {}) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos: { version: 1, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: FIRMA, ...FIRMAR, ...datos } });
+const firmar = (base, galleta, datos = {}) => pedir(base, 'POST', '/api/yo/terminos', { galleta, datos: { version: 2, nombre: 'Ana', apellido: 'Pérez', acepto: true, firma: FIRMA, ...FIRMAR, ...datos } });
 const TUTOR = { nombre: 'Rosa Pérez', relacion: 'Madre', contacto: 'rosa@example.com', acepto: true, firma: FIRMA };
 
 test('privacidad y las tres casillas: términos y privacidad obligatorias, IA opcional (sin ella la app sigue); se puede retirar', async () => {
   await conAcademia(async ({ base, db, admin, ana, beto, ids }) => {
     const textos = (await pedir(base, 'GET', '/api/terminos')).datos;
-    assert.equal(textos.terminos.version, 1);
+    assert.equal(textos.terminos.version, 2, '0.12.7: la versión 2 de los términos (la IA por plan)');
     assert.equal(textos.privacidad.version, 2, '0.12.3: la versión 2 del aviso de privacidad');
     assert.ok(textos.privacidad.secciones.length >= 8);
     assert.match(textos.reembolso, /7 días/);

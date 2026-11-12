@@ -10,6 +10,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { leerGuardado } from './instructor-ia.js';
 import { cortarBytes } from './instructor.js';
+import { derechoIa } from './tiempo-ia.js';
 
 const claveHistorial = id => `academia.profesor.historial.${Number(id)}`;
 const clavePermiso = id => `academia.profesor.permitido.${Number(id)}`;
@@ -28,7 +29,12 @@ export function permisoProfesor(db, usuarioId, { admin = false } = {}) {
   if (admin) return { permitido: true, por: 'admin' };
   if (leerAjuste(db, clavePermiso(usuarioId)) === '1') return { permitido: true, por: 'regalo' };
   if (leerAjuste(db, clavePermiso(usuarioId)) === '0') return { permitido: false, por: 'quitado' };
-  const pago = db.prepare("SELECT 1 FROM academia_pagos WHERE usuario_id = ? AND estado = 'aprobado' LIMIT 1").get(usuarioId);
+  // 0.12.7: con planes, el Profesor va con un plan vigente o con la prueba gratis (mientras dure); quien pagó minutos
+  // antes lo sigue teniendo (como hasta ahora).
+  const d = derechoIa(db, usuarioId);
+  if (d.modo === 'planes' && d.plan && !d.plan.vencido) return { permitido: true, por: 'plan' };
+  if (d.modo === 'planes' && d.prueba && !d.prueba.terminada) return { permitido: true, por: 'prueba' };
+  const pago = db.prepare("SELECT 1 FROM academia_pagos WHERE usuario_id = ? AND estado = 'aprobado' AND paquete NOT LIKE 'plan:%' LIMIT 1").get(usuarioId);
   return pago ? { permitido: true, por: 'pago' } : { permitido: false, por: null };
 }
 // El administrador lo da (true), lo quita (false) o lo deja como diga su pago (null).

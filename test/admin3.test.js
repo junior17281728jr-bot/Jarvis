@@ -3,6 +3,7 @@
 // Tailscale; un comprobante nuevo avisa al administrador y nunca se borra; los paquetes dicen qué línea está mal; el
 // alumno pone su nombre y apellido la primera vez y después solo el administrador lo cambia; la versión 2 del Aviso de
 // privacidad (la 1 queda tal cual para las firmas).
+import { guardarConfigPagos as modoPagos } from '../src/academia/tiempo-ia.js';
 import { configDePrueba, conServidor } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -77,6 +78,9 @@ async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerp
 async function conPlataforma(fn, { terminos = false, confirmar = {} } = {}) {
   const config = { ...configDePrueba(), terminosObligatorios: terminos };
   const db = abrirBase(config);
+  // 0.12.7: estas pruebas son del «tiempo con IA» por minutos (el modo de antes, que sigue existiendo); los planes y la
+  // prueba gratis se prueban en test/planes-ia.test.js.
+  modoPagos(db, { modo: 'minutos' });
   const limites = { ...crearLimitesCuentas(), entrarPorCliente: new Limitador({ maximo: 1000, ventanaMs: 60_000 }) };
   const servidor = crearServidor({ db, config, limites, confirmar, ia: { probadores: { telegram_bot: async () => 'ok' } } });
   await conServidor(servidor, async base => {

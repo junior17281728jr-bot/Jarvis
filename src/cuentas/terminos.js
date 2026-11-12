@@ -19,9 +19,9 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from './usuarios.js';
 
-import { TERMINOS_V1, PRIVACIDAD_V1, PRIVACIDAD_V2, REEMBOLSO } from './textos-legales.js';
+import { TERMINOS_V1, TERMINOS_V2, PRIVACIDAD_V1, PRIVACIDAD_V2, REEMBOLSO } from './textos-legales.js';
 
-export { TERMINOS_V1, PRIVACIDAD_V1, PRIVACIDAD_V2, REEMBOLSO };
+export { TERMINOS_V1, TERMINOS_V2, PRIVACIDAD_V1, PRIVACIDAD_V2, REEMBOLSO };
 
 // 0.9.2: la declaración que va justo antes de «Leí y acepto» (es parte de lo que se firma).
 export const DECLARACION = 'Declaro que los datos que escribí son verdaderos y que esta firma es mía. Si uso un nombre o una firma que no son míos, la responsabilidad es solo mía y el administrador puede bloquear mi cuenta.';
@@ -57,7 +57,8 @@ const ahora = () => new Date().toISOString();
 // defectos: las versiones que trae el código (la 1, la 2…), nunca cambian una vez publicadas.
 // cambios (0.12.4): «Qué cambió» de cada versión que trae el código: la clave de su frase en public/i18n (null = la primera).
 const DOCS = {
-  terminos: { clave: 'academia.terminos', defectos: [TERMINOS_V1], cambios: [null] },
+  // 0.12.7: la versión 2 de los Términos (el punto 8: la IA por plan mensual, con 5 días de prueba gratis).
+  terminos: { clave: 'academia.terminos', defectos: [TERMINOS_V1, TERMINOS_V2], cambios: [null, 'terminos.cambio.terminos_v2'] },
   privacidad: { clave: 'academia.privacidad', defectos: [PRIVACIDAD_V1, PRIVACIDAD_V2], cambios: [null, 'terminos.cambio.privacidad_v2'] },
 };
 export const DOCUMENTOS = Object.freeze(Object.keys(DOCS));
