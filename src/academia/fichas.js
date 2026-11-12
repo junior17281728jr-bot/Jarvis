@@ -11,6 +11,7 @@ import { puntosDebiles } from './memoria.js';
 import { planDe, preparacionDe } from './plan.js';
 import { actividadDe } from '../cuentas/historial.js';
 import { leerPerfil } from '../cuentas/perfil.js';
+import { cerrarVencidos, tiemposDe, leerExamen } from './examen.js';
 
 export const MAXIMO_COMPARAR = 6;
 export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
@@ -22,7 +23,7 @@ const CALIFICADOS = ['tema', 'examen'];
 
 function cuentaDe(db, alumnoId) {
   const id = Number(alumnoId);
-  const u = Number.isSafeInteger(id) && id > 0 ? db.prepare('SELECT id, nombre, nombre_visible, rol, activo, creado_en FROM usuarios WHERE id = ?').get(id) : null;
+  const u = Number.isSafeInteger(id) && id > 0 ? db.prepare("SELECT id, nombre, nombre_visible, rol, activo, creado_en, (clave_hash LIKE 'pendiente$%') AS pendiente FROM usuarios WHERE id = ?").get(id) : null;
   if (!u) throw new ErrorHttp(404, 'no_existe');
   return u;
 }
@@ -50,6 +51,9 @@ function intentosDe(db, alumnoId, paquete) {
     temaTitulo: f.tema ? titulos.get(`${f.materia}/${f.tema}`) ?? null : null,
     total: f.total, respondidas: f.respondidas, aciertos: f.aciertos, pct: pct(f.aciertos, f.total),
     aprobado: f.aprobado == null ? null : f.aprobado === 1, empezado: f.empezado_en, terminado: f.terminado_en, terminadoSi: f.terminado_en != null,
+    // 0.9.2: el tiempo que usó (de empezar a terminar) y, si fue examen con reloj, su límite.
+    segundos: f.terminado_en ? Math.max(0, Math.round((Date.parse(f.terminado_en) - Date.parse(f.empezado_en)) / 1000)) : null,
+    limiteSegundos: f.tipo === 'examen' ? (e => (e ? Math.round(e.limiteMs / 1000) : null))(leerExamen(db, f.id)) : null,
   }));
 }
 
@@ -99,7 +103,7 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
 
 function cabeceraDe(db, u) {
   const perfil = leerPerfil(db, u.id);
-  return { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, activo: u.activo === 1, creadoEn: u.creado_en, avatar: perfil.avatar, meta: perfil.meta };
+  return { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, activo: u.activo === 1, pendiente: u.pendiente === 1, creadoEn: u.creado_en, avatar: perfil.avatar, meta: perfil.meta };
 }
 // La última actividad: la de sus sesiones o su última respuesta (lo más nuevo).
 function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {
@@ -110,6 +114,7 @@ function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {
 
 export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
   const u = cuentaDe(db, alumnoId);
+  cerrarVencidos(db, u.id, paquete, ahoraMs);
   const intentos = intentosDe(db, u.id, paquete);
   const resumen = resumenDe(db, u.id, paquete, intentos, ahoraMs);
   return {
@@ -127,8 +132,10 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
 // Si una pregunta ya no está en el contenido en uso, igual se ve lo que eligió (la letra guardada).
 export function intentoDeAlumno(db, paquete, alumnoId, intentoId) {
   const u = cuentaDe(db, alumnoId);
+  cerrarVencidos(db, u.id, paquete, Date.now());
   const v = verIntento(db, u.id, paquete, intentoId); // 404 si el intento no es de ese alumno
-  const f = db.prepare('SELECT empezado_en, terminado_en, aprobado FROM academia_intentos WHERE id = ?').get(v.id);
+  const f = db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(v.id);
+  const reloj = tiemposDe(db, f);
   const guardadas = new Map(db.prepare('SELECT pregunta, elegida, correcta, creada_en FROM academia_respuestas WHERE intento_id = ?').all(v.id).map(r => [r.pregunta, r]));
   const titulos = titulosDe(paquete);
   return {
@@ -136,9 +143,11 @@ export function intentoDeAlumno(db, paquete, alumnoId, intentoId) {
     alumno: { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre },
     temaTitulo: v.tema ? titulos.get(`${v.materia}/${v.tema}`) ?? null : null,
     pct: pct(v.aciertos, v.total), aprobado: f.aprobado == null ? null : f.aprobado === 1, empezado: f.empezado_en, terminadoEn: f.terminado_en,
+    segundos: f.terminado_en ? Math.max(0, Math.round((Date.parse(f.terminado_en) - Date.parse(f.empezado_en)) / 1000)) : null,
+    examen: reloj,
     preguntas: v.preguntas.map(q => {
       const g = guardadas.get(q.id);
-      const base = { ...q, respondidaEn: g?.creada_en ?? null };
+      const base = { ...q, respondidaEn: g?.creada_en ?? null, segundos: reloj ? reloj.tiempos[q.id] ?? 0 : null };
       if (!q.respuesta && g) base.respuesta = { elegida: g.elegida, acierto: g.correcta === 1, correcta: null, sinContenido: true };
       return base;
     }),

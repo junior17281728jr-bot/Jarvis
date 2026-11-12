@@ -19,6 +19,7 @@ import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, marcarTemaLeido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
+import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
 
 export function crearLimitesAcademia() {
   return {
@@ -95,19 +96,43 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const base = datos?.intento;
     if (base != null && !Number.isSafeInteger(base)) throw new ErrorHttp(400, 'datos_no_validos');
     const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null };
+    // 0.9.2: el examen de materia va con reloj (src/academia/examen.js); si hay uno abierto con tiempo, sigue ese (200).
+    if (pedido.tipo === 'examen') return crearExamen(db, usuario.id, activo(db), pedido.materia, { azar, ahoraMs: reloj() });
     return { codigo: 201, datos: crearIntento(db, usuario.id, activo(db), pedido, { azar, ahoraMs: reloj() }) };
   });
 
-  rutas.agregar('GET', '/api/academia/intentos/:id', ({ db, usuario, parametros }) =>
-    ({ codigo: 200, datos: verIntento(db, usuario.id, activo(db), parametros.id) }));
+  // Un examen con reloj que ya venció se entrega solo al mirarlo.
+  const filaPropia = (db, usuario, id) => {
+    const n = Number(id);
+    return Number.isSafeInteger(n) ? db.prepare('SELECT * FROM academia_intentos WHERE id = ? AND usuario_id = ?').get(n, usuario.id) : null;
+  };
+  rutas.agregar('GET', '/api/academia/intentos/:id', ({ db, usuario, parametros }) => {
+    const p = activo(db);
+    const f = filaPropia(db, usuario, parametros.id);
+    const e = examenDe(db, f);
+    if (!e) return { codigo: 200, datos: verIntento(db, usuario.id, p, parametros.id) };
+    if (!f.terminado_en && reloj() > finDe(f, e) + GRACIA_MS) cerrarVencidos(db, usuario.id, p, reloj());
+    return { codigo: 200, datos: vistaExamen(db, usuario.id, p, f.id, { ahoraMs: reloj() }) };
+  });
+
+  // 0.9.2: guardar (o cambiar) una respuesta del examen, marcar «revisar después» y los segundos en cada pregunta.
+  rutas.agregar('POST', '/api/academia/intentos/:id/examen', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    const pedido = { pregunta: textoDe(datos, 'pregunta') };
+    for (const campo of ['elegida', 'marcada', 'segundos']) if (Object.hasOwn(datos ?? {}, campo)) pedido[campo] = datos[campo];
+    return { codigo: 200, datos: guardarEnExamen(db, usuario.id, activo(db), parametros.id, pedido, { ahoraMs: reloj() }) };
+  });
 
   rutas.agregar('POST', '/api/academia/intentos/:id/responder', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
+    // El examen con reloj no dice nada antes de entregar: sus respuestas van por …/examen.
+    if (examenDe(db, filaPropia(db, usuario, parametros.id))) throw new ErrorHttp(409, 'examen_con_reloj');
     return { codigo: 200, datos: responder(db, usuario.id, activo(db), parametros.id, { pregunta: textoDe(datos, 'pregunta'), elegida: textoDe(datos, 'elegida') }, { ahoraMs: reloj() }) };
   });
 
   rutas.agregar('POST', '/api/academia/intentos/:id/terminar', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
+    if (examenDe(db, filaPropia(db, usuario, parametros.id))) return { codigo: 200, datos: entregarExamen(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
     return { codigo: 200, datos: terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
   });
 
@@ -236,6 +261,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const pedido = {};
     if (Object.hasOwn(datos, 'nombre')) pedido.nombre = datos.nombre;
     if (Object.hasOwn(datos, 'umbral')) pedido.umbral = datos.umbral;
+    if (Object.hasOwn(datos, 'examenSegundos')) pedido.examenSegundos = datos.examenSegundos;
     return { codigo: 200, datos: { ajustes: guardarAjustesAcademia(db, pedido) } };
   }, { admin: true });
 

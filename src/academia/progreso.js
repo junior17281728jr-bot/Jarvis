@@ -32,12 +32,18 @@ const DIA_MS = 24 * 3600 * 1000;
 // El día en Santo Domingo (UTC-4 todo el año, sin horario de verano): la racha cuenta los días de allá.
 export const diaDe = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
 
+// 0.9.2: el examen de materia lleva reloj: tantos segundos por pregunta (lo cambia el administrador).
+export const EXAMEN_SEGUNDOS_POR_DEFECTO = 90;
+export const EXAMEN_SEGUNDOS_MIN = 20;
+export const EXAMEN_SEGUNDOS_MAX = 600;
 export function ajustesAcademia(db) {
   const nombre = leerAjuste(db, 'academia.nombre');
   const umbral = Number(leerAjuste(db, 'academia.aprobar_pct'));
+  const segundos = Number(leerAjuste(db, 'academia.examen_segundos'));
   return {
     nombre: nombre && nombre.trim() ? nombre : NOMBRE_POR_DEFECTO,
     umbral: Number.isSafeInteger(umbral) && umbral >= 50 && umbral <= 100 ? umbral : UMBRAL_POR_DEFECTO,
+    examenSegundos: Number.isSafeInteger(segundos) && segundos >= EXAMEN_SEGUNDOS_MIN && segundos <= EXAMEN_SEGUNDOS_MAX ? segundos : EXAMEN_SEGUNDOS_POR_DEFECTO,
   };
 }
 // 0.7.2: el panel «Grupo» que ven los alumnos (encendido salvo que el administrador lo apague). Va aparte de los
@@ -48,7 +54,11 @@ export function encenderGrupo(db, encendido) {
   guardarAjuste(db, 'academia.grupo', encendido ? '1' : '0');
   return encendido;
 }
-export function guardarAjustesAcademia(db, { nombre, umbral }) {
+export function guardarAjustesAcademia(db, { nombre, umbral, examenSegundos }) {
+  if (examenSegundos !== undefined) {
+    if (!Number.isSafeInteger(examenSegundos) || examenSegundos < EXAMEN_SEGUNDOS_MIN || examenSegundos > EXAMEN_SEGUNDOS_MAX) throw new ErrorHttp(400, 'examen_segundos_no_valido');
+    guardarAjuste(db, 'academia.examen_segundos', examenSegundos);
+  }
   if (nombre !== undefined) {
     if (typeof nombre !== 'string' || !nombre.trim() || nombre.length > 60 || /[\u0000-\u001f]/.test(nombre)) throw new ErrorHttp(400, 'nombre_no_valido');
     guardarAjuste(db, 'academia.nombre', nombre.trim());
@@ -157,8 +167,8 @@ function repasoPendiente(db, usuarioId, paquete, ahoraMs) {
 // El camino: las 11 materias en su orden, cada tema con su estado. Un tema se abre cuando se aprobó el anterior
 // (las materias sin contenido en el paquete se saltan). El examen de una materia se abre con todos sus temas aprobados.
 export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
-  const { nombre, umbral } = ajustesAcademia(db);
-  const base = { nombre, umbral, ...puntosYRacha(db, usuarioId, ahoraMs) };
+  const { nombre, umbral, examenSegundos } = ajustesAcademia(db);
+  const base = { nombre, umbral, examenSegundos, ...puntosYRacha(db, usuarioId, ahoraMs) };
   if (!paquete) return { ...base, paquete: null, materias: [], repaso: 0 };
   const aprobados = temasAprobados(db, usuarioId);
   const deExamen = examenes(db, usuarioId);
@@ -367,7 +377,7 @@ export function verIntento(db, usuarioId, paquete, intentoId) {
   };
 }
 
-function anotarRepaso(db, usuarioId, q, lugar, acierto, ahoraMs) {
+export function anotarRepaso(db, usuarioId, q, lugar, acierto, ahoraMs) {
   const ya = db.prepare('SELECT * FROM academia_repaso WHERE usuario_id = ? AND pregunta = ?').get(usuarioId, q);
   const momento = new Date(ahoraMs).toISOString();
   if (!acierto) {
@@ -408,12 +418,13 @@ export function responder(db, usuarioId, paquete, intentoId, { pregunta, elegida
   });
 }
 
-export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now() } = {}) {
+// permitirFaltantes (0.9.2, solo el examen con reloj): se entrega aunque falten respuestas (cuentan como malas).
+export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now(), permitirFaltantes = false } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   const fila = enTransaccion(db, () => {
     const f = intentoDe(db, usuarioId, intentoId);
     if (f.terminado_en) return f;
-    if (f.respondidas < f.total) throw new ErrorHttp(409, 'faltan_respuestas');
+    if (f.respondidas < f.total && !permitirFaltantes) throw new ErrorHttp(409, 'faltan_respuestas');
     const aprobado = ['repaso', 'reto', 'errores'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
