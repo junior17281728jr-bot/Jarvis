@@ -122,6 +122,8 @@ export function figuraAmpliable(img) {
   img.addEventListener('click', () => {
     const cerca = img.classList.toggle('figura-cerca');
     img.classList.toggle('figura-encaja', !cerca);
+    // El foco sigue dentro de la ventana (así Escape la cierra).
+    img.closest('[role="dialog"]')?.querySelector('button')?.focus({ preventScroll: true });
   });
   return img;
 }

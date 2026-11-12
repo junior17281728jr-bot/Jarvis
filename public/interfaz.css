@@ -189,7 +189,6 @@ ol.sendero::before {
   content: ""; position: absolute; top: 34px; bottom: 30px; left: 50%; width: 0; margin-left: -2px; z-index: -1;
   border-left: 4px dashed color-mix(in srgb, var(--suave) 30%, transparent);
 }
-.sendero .nodo-nombre { text-shadow: 0 1px 0 color-mix(in srgb, var(--fondo) 80%, transparent); }
 .sendero .nodo-nombre, .sendero .nodo-detalle { padding: 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--fondo) 72%, transparent); }
 .banner-materia { box-shadow: 0 5px 0 var(--mc-borde), 0 12px 28px color-mix(in srgb, var(--mc) 30%, transparent); }
 .banner-materia::before {
@@ -342,7 +341,7 @@ ol.sendero::before {
 .figura-grande { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .figura-grande-lienzo { align-items: center; }
 .figura-grande-lienzo img.figura-encaja { width: auto; max-width: 100%; max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); cursor: zoom-in; object-fit: contain; }
-.figura-grande-lienzo img.figura-cerca { width: 220%; max-width: none; max-height: none; cursor: zoom-out; }
+.figura-grande-lienzo img.figura-cerca { flex: none; width: 220%; max-width: none; max-height: none; cursor: zoom-out; }
 .figura-grande-lienzo:has(img.figura-cerca) { align-items: flex-start; justify-content: flex-start; }
 @media (min-width: 900px) { .figura-grande-lienzo img.figura-cerca { width: auto; max-width: none; height: 180vh; } }
 
