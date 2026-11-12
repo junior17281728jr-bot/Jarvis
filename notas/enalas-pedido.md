@@ -65,3 +65,7 @@ FALTAN: «10 FACTORES HUMANOS.pdf» (materia 1), «Private Pilot Handbook» comp
   3. ADMIN «Respuestas»: ver las respuestas correctas de cada materia/tema/pregunta (clave completa, con explicaciones).
   4. ESTUDIANTE al terminar cada examen: ver su resultado completo, lo que sacó bien y lo que sacó mal, con la respuesta correcta y la explicación.
   5. «MEMORIA DE ERRORES» permanente: lo que más falla cada estudiante se guarda PARA SIEMPRE (historial de errores por pregunta y por concepto/idea equivocada), el sistema lo entrena más (repaso dirigido) y en cada etapa le da retroalimentación de sus puntos débiles («Tu punto débil: …»).
+
+## 12 nov 2026 — Video: cada frase con su imagen en 3D
+Junior: «el video con el audio debe enseñar visualmente lo que se va hablando… si hablo de un ojo, enseñar en 3D un ojo, la córnea y todo eso, y cómo se vería en caso del fallo… si hablo de un hombre dentro de un carro, en primera persona dentro de un carro».
+Plan: la palabra que suena es la que se ve; un plano por frase (60+ planos en 6:18), nada quieto más de 6–8 s; 3D estilizado (three.js, render fuera del repo), MP4 por Drive. Primero un piloto de 30–45 s de la parte del ojo para que Junior lo apruebe.
