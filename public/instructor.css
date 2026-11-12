@@ -97,7 +97,10 @@
   background: var(--rojo); color: #fff; font-size: 12px; font-weight: 900; }
 .campo-corto { width: 6em; }
 .fila-saldo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.fila-saldo span:first-child { flex: 1; min-width: 8em; }
+.fila-saldo > span:first-child { flex: 1; min-width: 8em; }
+/* 0.12.12: «Minutos [0] PONER» juntos, en una fila. */
+.minutos-fila { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.minutos-fila .campo-corto { width: 6em; margin: 0; }
 .lista-fallas { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; }
 .falla { padding: 10px 12px; border-radius: 14px; background: var(--tarjeta); border-left: 5px solid var(--naranja); }
 .falla p { margin: 0 0 4px; }

@@ -39,10 +39,14 @@ const raices = texto => new Set(String(texto ?? '').normalize('NFD').replace(/[�
 const textoDeSeccion = s => [s?.titulo, s?.texto, ...(Array.isArray(s?.puntos) ? s.puntos : []), s?.recuerda, s?.ejemplo].filter(x => typeof x === 'string').join(' ');
 
 // La sección (tarjeta) de un tema que más palabras comparte con un texto: { indice, titulo, puntos, texto, recuerda } o null.
+// 0.12.12: las tarjetas de repaso («Para el Test Guide (n)», «Resumen», «Qué vas a aprender») citan las preguntas casi
+// tal cual y siempre ganaban: el «concepto» de Mi repaso y de la mini-clase salía «Para el Test Guide». No son candidatas.
+export const TARJETA_DE_REPASO = /^\s*(?:para el test guide|trampas del test guide|resumen|qu[eé] vas a aprender|for the test guide|summary|what you(?:'|’)ll learn)\b/i;
 export function tarjetaPara(tema, texto) {
   const buscadas = raices(texto);
   let mejor = null;
   (tema?.secciones ?? []).forEach((s, indice) => {
+    if (TARJETA_DE_REPASO.test(String(s?.titulo ?? ''))) return;
     const propias = raices(textoDeSeccion(s));
     let n = 0;
     for (const p of buscadas) if (propias.has(p)) n += 1;

@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.9; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.12; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,31 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.12: la X de la clase y cambiar de pantalla sin trabarse; arreglos de la revisión visual — sin cambio de base
+- **La X de la clase «no funcionaba»**: cada tarjeta anota dónde va (POST `…/paso`) y ese POST vaciaba TODA la memoria de la
+  app. Al tocar la X, Inicio ya no tenía el camino guardado y esperaba al servidor **con la clase todavía a la vista y sin
+  ninguna señal**; tocar la X otra vez no hacía nada (la dirección ya era `#inicio`) y un pedido que no contestaba (servidor
+  ocupado, red del teléfono, Funnel) la dejaba así para siempre. Ahora (`public/navegacion.js`):
+  - las señales de la clase y del tutor (`…/paso`, `tutor/senal`, `tutor/tarjeta`) **no vacían la memoria**: `…/paso` solo
+    quita esa lección (para seguir en la tarjeta buena) y marca el camino y el progreso para revisarse por detrás; la
+    clase deja el camino pedido si se entró directo;
+  - si la pantalla nueva tarda más de 150 ms, **una barra fina arriba** («cargando», `aria-busy`), que se va al dibujar;
+  - tocar la X otra vez **vuelve a pedir**; toda lectura tiene **tope de 25 s** («No hay conexión», nunca colgada);
+  - al salir de la clase se apaga el clip de la tarjeta; el video resumen (mp4) y el de escenas se apagan al empezar la
+    otra pantalla (antes: recién al cambiar de pantalla otra vez; el mp4 seguía bajando y la voz seguía sonando); el clip
+    en grande suelta su video al cerrarse. «Mi repaso» y el humor quedan en memoria. El aviso corto ya no tapa CONTINUAR.
+- **Medido** (Playwright, CPU ×4, red 300 ms / 1,6 Mbit/s, servidor en 1 CPU con el paquete real de la materia 1): la X
+  de la clase a Inicio pasó de **≈ 475 ms a ≈ 130 ms** (iPhone 13 y 1280 px); con el camino sin contestar, de **nunca**
+  a **≈ 90-130 ms**. El servidor no era el problema: cada ruta tarda 1-6 ms y todo va comprimido (br) y con caché.
+- **Revisión visual**: «null» bajo los botones en la última pregunta del examen; `profesor.admin.si.prueba`/`plan` sin
+  traducir (y «Lo tiene.» para cualquier otro); el concepto de Mi repaso y de la mini-clase ya no es «Para el Test
+  Guide» (`tarjetaPara` no toma las tarjetas de repaso); el avioncito del Grupo en oscuro; «1 % del curso» con su nombre;
+  Comparar en el iPhone con el nombre entero; el video resumen más ancho en la PC; Pagos del administrador en tercera
+  persona y «Minutos [ ] PONER» en una fila, con su línea de «para qué sirve»; toques de 44 px («¿De dónde salió?»,
+  «Reportar un error», «Oír», el índice de Mis documentos); CONTINUAR con el nombre del tema entero; letras de las
+  opciones respondidas legibles; «Bajar al final» no tapa el texto; el corte del gasto de IA dice «1 de diciembre».
+  Pruebas: `test/navegacion-rapida.test.js` y `test/qa-visual-01212.test.js`.
 
 ### Lo nuevo de la 0.12.11 (dinero, IA por alumno, Telegram y un dispositivo a la vez) — sin cambio de base
 - **El tope de cada alumno sale de su plan** (`src/ia/tope-alumno.js`, con el instructor con IA encendido y la IA por

@@ -158,7 +158,8 @@ export function examenConReloj(intento, h) {
       ? el('button', { type: 'button', class: 'boton-3d grande', onclick: () => ir(actual + 1) }, el('span', { texto: t('examen.siguiente') }))
       : el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: confirmar }, el('span', { texto: t('examen.entregar') }));
     const entregarYa = actual < preguntas.length - 1 ? el('button', { type: 'button', class: 'boton-texto examen-entregar-chico', onclick: confirmar }, el('span', { texto: t('examen.entregar') })) : null;
-    pie.replaceChildren(el('div', { class: 'examen-nav' }, anterior, siguiente), entregarYa);
+    // 0.12.12: en la última pregunta entregarYa es null (antes se escribía «null» debajo de los botones).
+    pie.replaceChildren(...[el('div', { class: 'examen-nav' }, anterior, siguiente), entregarYa].filter(Boolean));
   };
 
   function confirmar() {

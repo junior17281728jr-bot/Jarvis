@@ -26,6 +26,7 @@ import { panelCurso, panelRepasoResumen } from './progreso-vista.js';
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
+import { olvidar, crearEspera, conTope } from './navegacion.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -154,12 +155,17 @@ async function pedirAlServidor(metodo, ruta, datos, extra = null) {
     opciones.headers['Content-Type'] = 'application/json';
     opciones.body = JSON.stringify(datos);
   }
+  // 0.12.12: una lectura que no contesta en 25 s se corta («sin conexión»): la pantalla no se queda colgada para siempre.
+  const tope = metodo === 'GET' ? conTope(25_000) : null;
+  if (tope) opciones.signal = tope.senal;
   try {
     const r = await fetch(ruta, opciones);
     const cuerpo = await r.json().catch(() => ({}));
     return { ok: r.ok, codigo: r.status, datos: cuerpo };
   } catch {
     return { ok: false, codigo: 0, datos: { error: 'sin_conexion' } };
+  } finally {
+    tope?.soltar();
   }
 }
 
@@ -170,7 +176,8 @@ const adelantados = new Map();
 // eso; a la vez se pide de nuevo y, si cambió, la pantalla se vuelve a dibujar sola (sin moverse de donde estaba).
 // Solo las lecturas de la academia y de Administrador; nunca un intento (las preguntas que se responden). Cualquier
 // cambio (POST) lo vacía y vuelve a pedir el camino, y se vacía al salir o al cambiar de cuenta.
-const EN_MEMORIA = /^\/api\/(?:academia\/(?:camino|progreso|temas\/[^/]+\/[^/]+|video\/[^/]+)|admin\/(?:academia(?:\/alumnos(?:\/\d+(?:\/ficha|\/intentos\/\d+)?)?|\/respuestas|\/comparar\/[\d,]+)?|sistema|usuarios|ia|copias|claves)|yo\/(?:reinicios|perfil))$/;
+// 0.12.12: también «Mi repaso» y el humor (Configuración): volver a esas pantallas se dibuja enseguida.
+const EN_MEMORIA = /^\/api\/(?:academia\/(?:camino|progreso|mi-repaso|humor|temas\/[^/]+\/[^/]+|video\/[^/]+)|admin\/(?:academia(?:\/alumnos(?:\/\d+(?:\/ficha|\/intentos\/\d+)?)?|\/respuestas|\/comparar\/[\d,]+)?|sistema|usuarios|ia|copias|claves)|yo\/(?:reinicios|perfil))$/;
 const FRESCO_MS = 2500;
 const memoria = new Map(); // ruta -> { respuesta, en, usuario }
 const enCamino = new Map(); // ruta -> pedido que ya salió (no se pide dos veces lo mismo)
@@ -230,7 +237,9 @@ async function api(metodo, ruta, datos, { fresco = false } = {}) {
   const adelantado = metodo === 'GET' && datos === undefined ? adelantados.get(ruta) : undefined;
   if (adelantado) adelantados.delete(ruta);
   const guardable = metodo === 'GET' && datos === undefined && EN_MEMORIA.test(ruta) && !fresco;
-  if (!guardable && metodo !== 'GET') vaciarMemoria();
+  // 0.12.12: un cambio vacía la memoria, salvo las señales de la clase (public/navegacion.js): así la X de la clase vuelve a
+  // Inicio enseguida con lo guardado, y lo revisa con el servidor por detrás.
+  if (!guardable && metodo !== 'GET') olvidar(memoria, ruta);
   const guardada = guardable && !adelantado ? deMemoria(ruta) : null;
   if (guardada) return guardada;
   let respuesta = await (adelantado ?? (guardable ? pedirYGuardar(ruta) : pedirAlServidor(metodo, ruta, datos)));
@@ -274,7 +283,10 @@ async function refrescarSetup() {
   if (setup.ok) estado.setup = setup.datos;
 }
 
+// 0.12.12: la barra de «cargando» arriba cuando la pantalla nueva tarda (public/navegacion.js); mostrar() la quita.
+const espera = crearEspera(document.body);
 function mostrar(...contenido) {
+  espera.terminar();
   // 0.8.0: al volver a dibujar en el fondo (llegó algo nuevo del servidor) no se mueve la página ni el foco.
   const enFondo = repintarEnFondo;
   repintarEnFondo = false;
@@ -1670,6 +1682,7 @@ const LINEA_ADMIN = {
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
   alumnos: () => t('admin.linea.alumnos'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
   soporte: () => t('admin.linea.soporte'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
+  pagos: () => t('admin.linea.pagos'), // 0.12.12
 };
 const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
 // 0.12.5: «Pendiente» sobre un grupo cuando algo espera al administrador: comprobantes por revisar (Dinero e IA), mensajes
@@ -2547,6 +2560,12 @@ function fechaHora(iso) {
   if (!iso || !Number.isFinite(Date.parse(iso))) return '';
   return new Intl.DateTimeFormat(formatoLocal(), { day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'America/Santo_Domingo' }).format(new Date(iso));
 }
+// 0.12.12: el corte del mes de cobro es a las 00:00 UTC: se dice el día («1 de diciembre»), no la hora en RD (que lo
+// mostraba como «30 de noviembre a las 8:00 p. m.»).
+function diaDeCobro(iso) {
+  if (!iso || !Number.isFinite(Date.parse(iso))) return '';
+  return new Intl.DateTimeFormat(formatoLocal(), { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(iso));
+}
 // Un mes de cobro 'AAAA-MM' en palabras: «noviembre» (o «noviembre de 2026»).
 function nombreMes(mes, conAnio = false) {
   const m = /^(\d{4})-(\d{2})$/.exec(String(mes ?? ''));
@@ -2771,7 +2790,7 @@ function dibujarIa(s, aviso, vigente) {
       el('span', { class: 'gasto-de', texto: t('ia.gasto.de', { tope }) })),
     barraGasto({ usadoMicro: s.usadoMicro, apartadoMicro: s.apartadoMicro, topeMicro: s.topeGeneralMicro, lleno }),
     s.apartadoMicro > 0 ? el('p', { class: 'ayuda', texto: t('ia.gasto.apartado', { monto: usd(s.apartadoMicro) }) }) : null,
-    el('p', { class: 'suave con-icono' }, icono('calendario', 'icono chico'), el('span', { texto: t('ia.gasto.reinicia', { fecha: fechaHora(s.vuelveEl) }) })),
+    el('p', { class: 'suave con-icono' }, icono('calendario', 'icono chico'), el('span', { texto: t('ia.gasto.reinicia', { fecha: diaDeCobro(s.vuelveEl) }) })),
     dueno ? el('div', { class: 'numeros' },
       numeroGrande(s.llamadasMes ?? 0, t('ia.gasto.usos'), 'info'),
       numeroGrande(s.bloqueosMes ?? 0, t('ia.gasto.sin_ia'), 'atencion'),
@@ -3550,7 +3569,7 @@ function nodoCamino({ clase, href = null, nombreIcono, titulo, detalle = null, e
     burbuja ? el('span', { class: 'nodo-burbuja', 'aria-hidden': 'true', texto: burbuja }) : null,
     el('span', { class: 'nodo-aro' }, avance ? anilloAvance(avance.pct) : null, circulo, actual ? el('span', { class: 'nodo-avion', 'aria-hidden': 'true' }, avionSvg()) : null),
     estrellas ? el('span', { class: 'nodo-estrellas', 'aria-hidden': 'true' }, [1, 2, 3].map(k => icono('estrella', `icono estrella-${k <= estrellas ? 'llena' : 'vacia'}`))) : null,
-    el('span', { class: 'nodo-nombre', texto: titulo }),
+    el('span', { class: 'nodo-nombre', title: titulo, texto: titulo }),
     detalle ? el('span', { class: 'nodo-detalle', texto: detalle }) : null,
   ];
   const dentro = href
@@ -3758,7 +3777,9 @@ function filaCompanero(x, mapa = null) {
         chipCifra(`fuego mini${x.racha ? '' : ' cero'}`, 'fuego', numero(x.racha), t('acad.racha')),
         chipCifra('medalla mini', 'medalla', numero(x.medallas), t('acad.grupo.medallas'))),
       cadenaCompanero(x, mapa)),
-    el('span', { class: 'companero-pct', texto: pctTexto(x.pct) }));
+    // 0.12.12: qué es ese número (el camino del curso hecho), no confundirlo con la preparación de arriba.
+    el('span', { class: 'companero-pct', title: t('acad.grupo.pct_de', { pct: pctTexto(x.pct) }) },
+      el('strong', { texto: pctTexto(x.pct) }), el('span', { class: 'companero-pct-de', texto: t('acad.grupo.pct_curso') })));
 }
 // El panel «Grupo» (en Progreso entero; en el camino, la franja y un enlace).
 function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
@@ -3910,7 +3931,9 @@ function combustible() {
 function marcoEstudio({ clase = '', barra = null, cuenta = null, cuerpo, pie, salir = '#inicio' }) {
   return el('div', { class: `inmersivo ${clase}`.trim() },
     el('header', { class: 'estudio-arriba' },
-      el('a', { class: 'estudio-salir', href: salir, 'aria-label': t('acad.salir_practica') }, icono('cerrar')),
+      // 0.12.12: si la dirección ya es la de salir (la pantalla de antes sigue esperando al servidor), tocar la X otra vez la
+      // vuelve a pedir en vez de no hacer nada.
+      el('a', { class: 'estudio-salir', href: salir, 'aria-label': t('acad.salir_practica'), onclick: evento => { if (location.hash === salir) { evento.preventDefault(); espera.empezar(); dibujar(); } } }, icono('cerrar')),
       barra, cuenta),
     el('main', { class: 'estudio-cuerpo' }, cuerpo),
     el('footer', { class: 'estudio-pie' }, pie));
@@ -4083,13 +4106,15 @@ function abrirClipGrande(c, chico) {
   const grande = el('video', { class: 'clip-grande-video', controls: true, loop: true, playsinline: true, autoplay: true, poster: c.poster || null, src: c.url, 'aria-label': c.alt || null });
   grande.muted = chico.muted;
   grande.currentTime = chico.currentTime || 0;
-  const cerrar = () => { grande.pause(); capa.remove(); try { antes?.focus({ preventScroll: true }); } catch { /* ya no está */ } };
+  // 0.12.12: al cerrar (o al cambiar de pantalla) el video se suelta: no sigue bajando por detrás.
+  const soltar = () => { grande.pause(); grande.removeAttribute('src'); grande.load(); capa.remove(); };
+  const cerrar = () => { soltar(); try { antes?.focus({ preventScroll: true }); } catch { /* ya no está */ } };
   const capa = el('div', { class: 'figura-grande clip-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': c.alt || t('clip.ampliar') },
     el('div', { class: 'figura-grande-barra' }, el('span', { texto: c.alt || '' }),
       el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
     el('div', { class: 'figura-grande-lienzo clip-grande-lienzo' }, grande));
   capa.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); } });
-  window.addEventListener('hashchange', () => capa.remove(), { once: true });
+  window.addEventListener('hashchange', soltar, { once: true });
   document.body.append(capa);
   grande.play().catch(() => {});
   capa.querySelector('button').focus();
@@ -4359,6 +4384,16 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
   });
   pintar();
   mostrar(raizEstudio);
+  // 0.12.12: al irse (la X, el menú, atrás) se apaga el clip o el dibujo de la tarjeta (el clip no sigue bajando), y el
+  // camino queda guardado para que la X dibuje Inicio enseguida (aunque se haya entrado directo a la clase).
+  const alSalir = () => setTimeout(() => {
+    if (vigente()) return;
+    actual?.destruir?.();
+    actual = null;
+    window.removeEventListener('hashchange', alSalir);
+  });
+  window.addEventListener('hashchange', alSalir);
+  if (!memoria.has('/api/academia/camino')) adelantar('/api/academia/camino');
 }
 function volverAlCamino() {
   return el('a', { class: 'volver con-icono', href: '#inicio' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.volver') }));
@@ -4402,7 +4437,7 @@ function guardarVideoLocal(ref, s) {
 function leerVelocidadVideo() {
   try { return velocidadValida(localStorage.getItem('op_video_velocidad')); } catch { return 1; }
 }
-function pantallaVideoMp4(materia, v, { volver = '#inicio', saltar = null, tema = null } = {}) {
+function pantallaVideoMp4(materia, v, { volver = '#inicio', saltar = null, tema = null, vigente = () => true } = {}) {
   const mp4 = v.mp4;
   const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
   const duracion = Number(mp4.duracion_s) || 0;
@@ -4540,8 +4575,10 @@ function pantallaVideoMp4(materia, v, { volver = '#inicio', saltar = null, tema 
   const alSalirDePagina = () => guardarPosicion(true);
   document.addEventListener('visibilitychange', alOcultar);
   window.addEventListener('pagehide', alSalirDePagina);
+  // 0.12.12: «se fue» = otra pantalla empezó (vigente() ya es falso), aunque la nueva todavía no se dibujó: antes se miraba
+  // si seguía en la página, y en ese momento siempre seguía, así que el video seguía bajando hasta el próximo cambio.
   const alSalir = () => setTimeout(() => {
-    if (lugar.isConnected) return;
+    if (lugar.isConnected && vigente()) return;
     guardarPosicion(true);
     cerrado = true;
     video.pause();
@@ -4563,7 +4600,7 @@ async function pantallaVideo(materia, { modo = null, tema = null } = {}) {
   // 0.12.2: de dónde vino (un tema) y a dónde vuelve; «Saltar video» la primera vez.
   const volver = tema ? `#tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}` : '#inicio';
   const saltar = modo === 'primera' ? el('a', { class: 'boton-3d blanco', href: volver }, el('span', { texto: t('acad.video.saltar') })) : null;
-  if (v.mp4?.url) return pantallaVideoMp4(materia, v, { volver, saltar, tema: modo === 'tema' ? tema : null });
+  if (v.mp4?.url) return pantallaVideoMp4(materia, v, { volver, saltar, tema: modo === 'tema' ? tema : null, vigente });
   const audioUrl = v.audio?.ref ? `/api/academia/audio/${encodeURIComponent(v.audio.ref)}` : null;
   const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
   const total = v.escenas.length ? Math.max(...v.escenas.map(e => e.fin_s)) : null;
@@ -4617,7 +4654,8 @@ async function pantallaVideo(materia, { modo = null, tema = null } = {}) {
   barraAvance.poner(0, 100);
   mostrar(raizEstudio);
   // Al salir de la pantalla, el audio se apaga.
-  const alSalir = () => setTimeout(() => { if (!lugar.isConnected) { reproductor?.destruir(); window.removeEventListener('hashchange', alSalir); } });
+  // 0.12.12: la voz se apaga al empezar la otra pantalla (no recién cuando se dibuja: antes seguía sonando).
+  const alSalir = () => setTimeout(() => { if (!lugar.isConnected || !vigente()) { clearInterval(reloj); reproductor?.destruir(); window.removeEventListener('hashchange', alSalir); } });
   window.addEventListener('hashchange', alSalir);
 }
 
@@ -5870,7 +5908,7 @@ async function iniciar() {
   await primera;
 }
 
-window.addEventListener('hashchange', () => { repintarEnFondo = false; if (estado.usuario) dibujar(); });
+window.addEventListener('hashchange', () => { repintarEnFondo = false; if (estado.usuario) { espera.empezar(); dibujar(); } });
 // 0.8.0: el audio de los sonidos se despierta con el primer toque (el iPhone no deja sonar si se crea después de esperar).
 prepararSonidos();
 // 0.12.4: al cerrar o esconder la app, un aviso corto para la ficha del administrador («Última salida (cerró la app)»).

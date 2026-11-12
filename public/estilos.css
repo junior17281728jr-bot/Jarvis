@@ -708,6 +708,7 @@ h2.separado { margin-top: 18px; }
 .pestanas {
   position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain;
   scrollbar-width: none; margin: 0 -16px 14px; padding: 8px 16px; background: var(--fondo);
+  scroll-padding-inline: 16px; /* 0.12.12 */
 }
 .pestanas::-webkit-scrollbar { display: none; }
 a.pestana {
@@ -1121,6 +1122,16 @@ dialog.hoja-ayuda[open] { animation: hoja-sube 0.18s ease-out; }
 }
 .aviso-flotante-texto { min-width: 0; padding: 8px 0; }
 button.aviso-flotante-cerrar { flex: none; width: 44px; height: 44px; min-height: 44px; margin: 0; padding: 0; background: transparent; color: inherit; font-size: 24px; line-height: 1; }
+/* 0.12.12: en la clase (y en las preguntas) el aviso va encima del botón grande de abajo, no tapándolo. */
+body.modo-estudio .avisos-flotantes { bottom: calc(96px + env(safe-area-inset-bottom)); }
+/* 0.12.12: la pantalla nueva tarda (public/navegacion.js): una barra fina arriba, sobre todo, mientras la de antes espera. */
+body.cambiando-pantalla { cursor: progress; }
+body.cambiando-pantalla::after {
+  content: ''; position: fixed; top: 0; left: 0; width: 40%; height: 3px; z-index: 1000; pointer-events: none;
+  border-radius: 0 3px 3px 0; background: var(--acento); animation: cambiando-pantalla 1.1s ease-in-out infinite;
+}
+@keyframes cambiando-pantalla { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { body.cambiando-pantalla::after { animation: none; width: 100%; opacity: 0.7; } }
 
 /* «Primeros pasos» */
 .guia-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

@@ -10,6 +10,8 @@
 // Lo que escribe la IA siempre va en su propia caja «Tu instructor IA», nunca mezclado con lo del Test Guide.
 
 const ESPERA_MS = 2000;
+// 0.12.12: por qué un alumno tiene el Profesor (src/academia/profesor.js); otro valor → «Lo tiene.» (nunca una clave a la vista).
+export const PERMISOS_PROFESOR = Object.freeze(['admin', 'regalo', 'pago', 'plan', 'prueba']);
 const ESPERA_MAXIMA_MS = 120_000;
 
 export function crearInstructor(h) {
@@ -138,17 +140,19 @@ export function crearInstructor(h) {
   }
   // «Te quedan 12 min de instructor IA» (solo si el dueño encendió el instructor con IA).
   // 0.12.7: con planes, su estado: el plan (usos y días), la prueba gratis (días y usos de hoy) o los usos de antes.
-  function textoPlan(tiempo) {
+  // 0.12.12: { admin: true } = lo mismo en tercera persona, para la lista de Pagos del administrador («Tiene…», no «Tienes…»).
+  function textoPlan(tiempo, { admin = false } = {}) {
+    const k = clave => (admin ? clave.replace(/^plan\./, 'plan.admin.') : clave);
     if (tiempo.fuente === 'plan' || (tiempo.plan && !tiempo.plan.vencido)) {
-      return [tx('plan.estado.plan', { nombre: tiempo.plan.nombre, n: numero(tiempo.plan.quedan ?? 0), dias: numero(tiempo.plan.dias ?? 0) }), tiempo.plan.renovar ? tx('plan.renovar', { dias: numero(tiempo.plan.dias ?? 0) }) : null];
+      return [tx(k('plan.estado.plan'), { nombre: tiempo.plan.nombre, n: numero(tiempo.plan.quedan ?? 0), dias: numero(tiempo.plan.dias ?? 0) }), tiempo.plan.renovar ? tx(k('plan.renovar'), { dias: numero(tiempo.plan.dias ?? 0) }) : null];
     }
     if (tiempo.fuente === 'prueba' || (tiempo.prueba && !tiempo.prueba.terminada && tiempo.motivo === 'limite_diario')) {
       const p = tiempo.prueba;
-      return [p.empezada ? tx('plan.estado.prueba', { dias: numero(p.quedanDias), hoy: numero(p.hoy), por_dia: numero(p.porDia) }) : tx('plan.estado.prueba_nueva', { dias: numero(p.dias), por_dia: numero(p.porDia) }),
-        tiempo.motivo === 'limite_diario' ? tx('plan.limite_diario') : null];
+      return [p.empezada ? tx(k('plan.estado.prueba'), { dias: numero(p.quedanDias), hoy: numero(p.hoy), por_dia: numero(p.porDia) }) : tx(k('plan.estado.prueba_nueva'), { dias: numero(p.dias), por_dia: numero(p.porDia) }),
+        tiempo.motivo === 'limite_diario' ? tx(k('plan.limite_diario')) : null];
     }
-    if (tiempo.fuente === 'minutos') return [tx('plan.estado.minutos', { n: numero(tiempo.minutos) })];
-    return [tx(tiempo.motivo === 'prueba_terminada' ? 'plan.estado.prueba_terminada' : 'plan.estado.sin_plan')];
+    if (tiempo.fuente === 'minutos') return [tx(k('plan.estado.minutos'), { n: numero(tiempo.minutos) })];
+    return [tx(k(tiempo.motivo === 'prueba_terminada' ? 'plan.estado.prueba_terminada' : 'plan.estado.sin_plan'))];
   }
   function medidorTiempo(tiempo, { conBoton = true } = {}) {
     if (!tiempo?.activo) return null;
@@ -558,7 +562,7 @@ export function crearInstructor(h) {
         pintar();
       };
       anexar(lugar,
-        el('p', { texto: r.datos.permiso.permitido ? tx(`profesor.admin.si.${r.datos.permiso.por}`) : tx('profesor.admin.no') }),
+        el('p', { texto: r.datos.permiso.permitido ? tx(PERMISOS_PROFESOR.includes(r.datos.permiso.por) ? `profesor.admin.si.${r.datos.permiso.por}` : 'profesor.admin.si.otro') : tx('profesor.admin.no') }),
         el('div', { class: 'botones' },
           el('button', { type: 'button', class: 'boton-3d chico', onclick: () => poner(true) }, el('span', { texto: tx('profesor.admin.dar') })),
           el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => poner(null) }, el('span', { texto: tx('profesor.admin.pago') })),

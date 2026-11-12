@@ -243,19 +243,21 @@ export function crearPagos(h) {
         return el('li', { class: 'fila-saldo' }, el('span', { texto: a.nombre }),
           el('span', { class: `chica tono-${a.ia?.listo ? 'bien' : 'atencion'}`, texto: a.ia?.listo ? tx('pagos.ia_lista') : tx('pagos.falta_ia', { falta: (a.ia?.falta ?? []).map(f => tx(`pagos.admin.falta.${f}`)).join(', ') }) }),
           // 0.12.7: su plan, su prueba gratis (días que le quedan) o sus usos de antes, y «Dar la prueba otra vez».
-          a.derecho && d.config.modo === 'planes' ? el('span', { class: 'chica', texto: instructorUi().textoPlan({ ...a.derecho, modo: 'planes', minutos: a.minutos }).filter(Boolean).join(' · ') }) : null,
+          a.derecho && d.config.modo === 'planes' ? el('span', { class: 'chica', texto: instructorUi().textoPlan({ ...a.derecho, modo: 'planes', minutos: a.minutos }, { admin: true }).filter(Boolean).join(' · ') }) : null,
           a.derecho && d.config.modo === 'planes' ? el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async e => {
             e.currentTarget.disabled = true;
             const x = await api('POST', `/api/admin/academia/alumnos/${a.id}/prueba`, {});
             avisar(x.ok ? tx('plan.admin.prueba_lista', { alumno: a.nombre }) : textoError(x.datos.error), x.ok ? 'bien' : 'mal');
             pantallaPagosAdmin();
-          } }, el('span', { texto: tx('plan.admin.dar_prueba') })) : null, n,
+          } }, el('span', { texto: tx('plan.admin.dar_prueba') })) : null,
+          // 0.12.12: el número con su nombre y «Poner» al lado (antes: un «0» suelto y el botón en otra línea).
+          el('label', { class: 'minutos-fila' }, el('span', { class: 'chica', texto: tx('pagos.minutos_campo') }), n,
           el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async e => {
             e.currentTarget.disabled = true;
             const x = await api('POST', `/api/admin/academia/alumnos/${a.id}/minutos`, { minutos: Number(n.value) });
             if (!x.ok) avisar(textoError(x.datos.error), 'mal'); else avisar(tx('pagos.saldo_listo'), 'bien');
             pantallaPagosAdmin();
-          } }, el('span', { texto: tx('pagos.poner') })));
+          } }, el('span', { texto: tx('pagos.poner') }))));
       })));
     // «Mi repaso»: cuántos errores en cosas de un mismo punto lo ponen ahí. (0.12.2: la regla vieja de «2 de un tema en un
     // examen» ya no crea nada; su número se guarda igual, sin cambiarlo, por si se vuelve a una versión de antes.)

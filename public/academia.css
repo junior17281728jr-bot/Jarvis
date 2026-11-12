@@ -295,7 +295,8 @@ ul.lista-companeros { list-style: none; padding: 0; margin: 10px 0 6px; display:
 .companero-texto strong { font-size: 16px; }
 .companero-texto .suave { font-size: 13px; }
 .companero-chips { display: flex; gap: 10px; margin-top: 2px; }
-.companero-pct { flex: none; font-weight: 800; font-size: 20px; color: var(--azul); }
+.companero-pct { flex: none; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; font-weight: 800; font-size: 20px; color: var(--azul); }
+.companero-pct-de { font-size: 11px; font-weight: 700; color: var(--suave); }
 .panel-grupo.compacto { padding: 12px 14px 6px; }
 .panel-grupo.compacto .panel-cabeza { margin-bottom: 0; }
 .panel-grupo.compacto .panel-icono { width: 38px; height: 38px; border-radius: 12px; }
@@ -447,6 +448,9 @@ ul.tarjeta-puntos { list-style: none; padding: 0; margin: 14px 0 6px; display: g
 .ficha-pron { color: var(--suave); font-size: 13px; font-weight: 700; }
 .ficha-pron::before { content: "· "; }
 .ficha-oir { margin: 0; width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 9px; background: color-mix(in srgb, var(--azul) 14%, var(--tarjeta)); color: var(--azul); display: grid; place-items: center; cursor: pointer; }
+/* 0.12.12: el botón se ve de 32 px, pero se toca en 44 (el área de toque crece hacia afuera). */
+.ficha-oir { position: relative; }
+.ficha-oir::after { content: ''; position: absolute; inset: -6px; }
 .nota-tarjeta { font-size: 14px; color: var(--suave); margin: 14px 0 0; }
 .tarjeta-fuentes { margin-top: 20px; padding-top: 10px; border-top: 2px dashed var(--linea); }
 .tarjeta-fuentes .fuente { font-size: 12.5px; line-height: 1.35; }
@@ -521,9 +525,9 @@ ul.lista-vocabulario { list-style: none; padding: 0; margin: 8px 0 0; display: g
 .opcion-carta[aria-pressed="true"] { border-color: var(--azul); background: color-mix(in srgb, var(--azul) 11%, var(--tarjeta)); box-shadow: 0 4px 0 var(--azul-borde); }
 .opcion-carta[aria-pressed="true"] .opcion-letra { border-color: var(--azul); background: var(--azul); color: #ffffff; }
 .opcion-carta.es-correcta { border-color: var(--verde); background: var(--verde-suave); box-shadow: 0 4px 0 var(--verde-borde); }
-.opcion-carta.es-correcta .opcion-letra { border-color: var(--verde); background: var(--verde); color: #ffffff; }
+.opcion-carta.es-correcta .opcion-letra { border-color: var(--verde); background: var(--verde); color: #0f1720; } /* 0.12.12: letra oscura (blanco sobre verde: 2,5:1) */
 .opcion-carta.es-mala { border-color: var(--rojo); background: var(--rojo-suave); box-shadow: 0 4px 0 var(--rojo-borde); }
-.opcion-carta.es-mala .opcion-letra { border-color: var(--rojo); background: var(--rojo); color: #ffffff; }
+.opcion-carta.es-mala .opcion-letra { border-color: var(--rojo); background: var(--rojo); color: #0f1720; }
 .opcion-carta .opcion-marca { flex: none; width: 26px; height: 26px; margin-top: 4px; stroke-width: 3; }
 .opcion-carta.es-correcta .opcion-marca { color: var(--verde-texto); }
 .opcion-carta.es-mala .opcion-marca { color: var(--rojo-texto); }
@@ -658,6 +662,8 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 }
 @media (min-width: 1024px) {
   body.modo-estudio #app { max-width: 820px; }
+  /* 0.12.12: en la pantalla ancha el nombre del tema del Camino cabe (antes se cortaba a 2 líneas de 168 px). */
+  .nodo-nombre { max-width: 220px; -webkit-line-clamp: 3; }
 }
 
 /* ---------- Movimiento reducido: nada se anima ---------- */
@@ -742,12 +748,12 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 
 /* ---------- 0.12.0: «¿De dónde salió?», ir directo al examen, el humor y lo EXTRA ---------- */
 .origen-boton {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 10px; border-radius: 12px;
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 10px; border-radius: 12px; /* 0.12.12: 44 px para el dedo */
   border: 2px solid var(--linea); background: var(--tarjeta); color: var(--texto); font: 800 13px/1.1 var(--letra-redonda); cursor: pointer;
 }
 .origen-boton .icono { width: 16px; height: 16px; color: var(--azul); }
 .origen-boton:hover, .origen-boton:focus-visible { border-color: var(--azul); }
-@media (max-width: 420px) { .origen-boton-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .origen-boton { min-width: 40px; justify-content: center; } }
+@media (max-width: 420px) { .origen-boton-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } .origen-boton { min-width: 44px; justify-content: center; } }
 .revision-origen { display: flex; justify-content: flex-end; margin: 0 0 6px; }
 .origen-capa { position: fixed; inset: 0; z-index: 45; background: rgba(4, 10, 20, 0.55); display: flex; align-items: flex-end; justify-content: center; }
 @media (min-width: 760px) { .origen-capa { align-items: center; } }
@@ -845,6 +851,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .video-sigue { margin: 0; font-weight: 700; }
 .video-controles { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .video-velocidades { display: flex; align-items: center; gap: 6px; }
+.video-velocidades > span, .video-velocidades > .video-vel { margin: 0; } /* 0.12.12: «Velocidad» a la altura de 1× / 1.25× / 1.5× (los botones traían margen arriba) */
 .video-vel { min-width: 58px; min-height: 44px; padding: 0 12px; border-radius: 14px; border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); font: inherit; font-weight: 800; cursor: pointer; }
 .video-vel[aria-pressed="true"] { background: var(--naranja); border-color: var(--naranja-borde); color: #ffffff; }
 .video-completa { min-height: 44px; }
@@ -857,8 +864,10 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .video-capitulo[aria-current="true"] { background: color-mix(in srgb, var(--naranja) 18%, transparent); font-weight: 800; }
 .video-capitulo-tiempo { flex: none; min-width: 3.4em; font-variant-numeric: tabular-nums; color: var(--naranja); font-weight: 800; }
 .video-capitulo-titulo { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 0.12.12: en la pantalla ancha el video resumen usa más ancho (antes: 760 px con los capítulos apretados al lado). */
 @media (min-width: 1000px) {
-  .video-mp4 { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px 20px; align-items: start; }
+  body.modo-estudio:has(.video-mp4) #app { max-width: 1180px; }
+  .video-mp4 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 14px 20px; align-items: start; }
   .video-mp4 > .video-marco { grid-column: 1; grid-row: 1 / span 4; }
   .video-mp4 > :not(.video-marco) { grid-column: 2; }
 }
@@ -973,7 +982,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .leyenda-punto.dorado { background: var(--oro); box-shadow: 0 2px 0 var(--oro-borde); }
 .leyenda-punto.anillo { border: 3px solid var(--verde); border-right-color: var(--linea); }
 .boton-continuar { margin: 10px 0 0; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
-.boton-continuar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.boton-continuar span { white-space: normal; text-wrap: balance; text-align: left; } /* 0.12.12: el nombre del tema entero (antes «VISIÓN EN VUELO Y V…») */
 .boton-video-tema { margin-top: 12px; }
 /* 0.12.2: «¿Estás listo?» más visual: el medidor con la probabilidad, baldosas por regla y un solo botón. */
 .listo-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 6px 0 10px; }
@@ -1039,4 +1048,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .cadena-punto.terminado { fill: var(--morado); }
 .cadena-punto.dominado { fill: var(--oro); stroke: var(--oro-borde); stroke-width: 1; }
 .cadena-avion { fill: var(--cabina); }
+/* 0.12.12: en oscuro --cabina es casi negro sobre fondo oscuro: el avioncito «estás aquí» va del color del texto. */
+:root[data-tema="oscuro"] .cadena-avion { fill: var(--texto); }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] .cadena-avion { fill: var(--texto); } }
 @media (prefers-reduced-motion: reduce) { .ruta-temas-avion { animation: none; } }
