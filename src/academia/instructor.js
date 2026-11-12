@@ -237,7 +237,8 @@ function consejoGeneral(db, usuarioId, modelo, paquete, c, ahoraMs) {
 
 function consejoDeTema(modelo, paquete, materia, t) {
   const r = modelo.repetidas.find(x => x.materia === materia && x.tema === t.id) ?? null;
-  const idea = r ?? modelo.ideas.find(x => x.materia === materia && x.tema === t.id) ?? null;
+  // 0.12.2: una sola equivocación no es «lo que te confunde»: hace falta que la repita (la misma opción, o la idea 2 veces).
+  const idea = r ?? modelo.ideas.find(x => x.materia === materia && x.tema === t.id && x.fallos >= 2) ?? null;
   const dominio = modelo.temas.find(x => x.materia === materia && x.tema === t.id) ?? null;
   if (idea) {
     const tarjeta = tarjetaPara(t, [idea.idea, paquete.preguntas.get(idea.pregunta)?.original.explicacion].join(' '));
@@ -257,7 +258,7 @@ function observaciones(m) {
   if (m.hora && m.hora.n >= 10) lista.push({ clave: 'hora', vars: { franja: m.hora.franja, pct: m.hora.pct } });
   if (m.prisa.rapidasMal) lista.push({ clave: 'rapidas', vars: { n: m.prisa.rapidasMal } });
   if (m.formatos.reto.n >= 3) lista.push({ clave: 'formatos', vars: { original: m.formatos.original.pct, reto: m.formatos.reto.pct } });
-  if (m.ideas[0]) lista.push({ clave: 'idea', vars: { idea: m.ideas[0].idea, n: m.ideas[0].fallos } });
+  // (0.12.2: la idea equivocada ya no va aquí: lo largo de un error se ve en la mini-clase de «Mi repaso»)
   return lista.slice(0, 4);
 }
 

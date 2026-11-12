@@ -686,20 +686,6 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .materia-reto { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 14px; border-radius: 16px;
   background: var(--morado-suave); border: 2px solid color-mix(in srgb, var(--morado) 30%, transparent); }
 .materia-reto p { margin: 0; flex: 1 1 200px; color: var(--morado-texto); }
-.caja-debil { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--naranja) 12%, var(--tarjeta));
-  border: 2px solid color-mix(in srgb, var(--naranja) 40%, transparent); text-align: left; }
-.caja-debil-icono { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--naranja); color: var(--naranja-texto); }
-.caja-debil-texto { flex: 1; min-width: 0; }
-.caja-debil-texto p { margin: 0; }
-.caja-debil-ante { font: 800 12px/1.2 var(--letra-redonda); letter-spacing: 0.08em; text-transform: uppercase; color: var(--naranja-borde); }
-:root[data-tema="oscuro"] .caja-debil-ante { color: var(--naranja); }
-.caja-debil-idea { font-weight: 700; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.caja-debil .boton-3d { flex: none; }
-@media (max-width: 420px) { .caja-debil { flex-wrap: wrap; } .caja-debil .boton-3d { width: 100%; } }
-.portada-tema .caja-debil { margin: 14px 0 0; }
-.practicar-ya { margin-top: 14px; }
-.practicar-ya p { margin: 0 0 8px; }
-.practicar-ya-botones { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .fin-reto { margin-top: 16px; display: grid; justify-items: center; gap: 8px; }
 .fin-reto p { margin: 0; }
 
@@ -891,3 +877,106 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .clip-grande-lienzo { display: grid; place-items: center; }
 .clip-grande-video { max-width: 100%; max-height: 100%; width: 100%; background: #000000; }
 @media (prefers-reduced-motion: reduce) { .clip-play { transition: none; } }
+
+/* 0.12.2: «Mi repaso», su mini-clase, el ánimo después de equivocarse y el curso entero en «Mi progreso». */
+.entrada-mi-repaso { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--linea);
+  background: var(--tarjeta); color: var(--texto); text-decoration: none; min-height: 44px; }
+.entrada-mi-repaso > span:nth-child(2) { flex: 1; min-width: 0; }
+.entrada-mi-repaso .icono { flex: none; width: 22px; height: 22px; color: var(--naranja-borde); }
+.mi-repaso-cuenta { flex: none; }
+.mi-repaso h1 { margin-bottom: 4px; }
+.lista-repaso { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 12px; }
+.repaso-punto, .repaso-concepto, .repasa-fila { border: 2px solid var(--linea); border-radius: 16px; padding: 12px 14px; background: var(--tarjeta); display: grid; gap: 6px; }
+.repaso-punto p, .repaso-concepto p { margin: 0; }
+.repaso-punto-titulo { margin: 0; font-size: 18px; line-height: 1.3; overflow-wrap: anywhere; }
+.repaso-tema { margin-top: 14px; }
+.repaso-tema h3 { margin: 2px 0 0; }
+.repaso-errores > .boton-3d { margin: 6px 0 4px; }
+.lista-repaso .botones, .mini-pie { display: flex; flex-wrap: wrap; gap: 8px; }
+.repasa-fila { grid-template-columns: 1fr auto; align-items: center; }
+@media (max-width: 420px) { .repasa-fila { grid-template-columns: 1fr; } }
+.mini-clase { display: grid; gap: 12px; }
+.mini-clase > * { margin: 0; }
+.mini-tarjetas { display: grid; gap: 12px; }
+.mini-pregunta p { margin: 6px 0; overflow-wrap: anywhere; }
+.mini-pie { margin-top: 6px; align-items: center; }
+.animo-linea, .aviso-repaso {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 10px 0; padding: 10px 14px; border-radius: 14px; font-weight: 700; font-size: 16px;
+  background: color-mix(in srgb, var(--verde, #3a9d4a) 14%, var(--tarjeta)); border-left: 5px solid var(--verde-borde, var(--linea)); color: var(--texto);
+}
+.aviso-repaso { background: color-mix(in srgb, var(--naranja) 12%, var(--tarjeta)); border-left-color: var(--naranja-borde); }
+.animo-linea .icono, .aviso-repaso .icono { flex: none; width: 18px; height: 18px; margin-top: 2px; }
+.enlace-animo { font-weight: 800; }
+.panel-repaso.bien { border-left: 6px solid var(--verde-borde, var(--linea)); }
+.falla-porque summary { cursor: pointer; font-weight: 700; min-height: 32px; }
+.panel-curso h2 { margin: 0 0 4px; }
+.curso-resumen { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 8px 0; }
+.curso-datos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; flex: 1 1 240px; min-width: 0; }
+.curso-dato { display: grid; grid-template-columns: 22px auto 1fr; align-items: baseline; gap: 8px; }
+.curso-dato-valor { white-space: nowrap; }
+.curso-dato-texto { min-width: 0; overflow-wrap: anywhere; }
+.curso-materias, .curso-temas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.curso-materia { border: 2px solid var(--linea); border-radius: 14px; padding: 10px 12px; background: var(--tarjeta); }
+.curso-materia.pronto { opacity: 0.8; }
+.curso-materia-cabeza { display: grid; gap: 2px; cursor: pointer; }
+.curso-materia.pronto .curso-materia-cabeza { cursor: default; }
+.curso-materia-cabeza .banner-pronto { justify-self: start; }
+.curso-materia-datos { margin: 8px 0; }
+.curso-tema { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid var(--linea); }
+.curso-tema.aprobado > span:first-child { font-weight: 700; }
+.curso-materia .banner-pronto { background: var(--linea); color: var(--texto); }
+.progreso-repaso-espaciado { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.insignia-repaso { margin-left: 8px; }
+.mini-clase > .sello-refuerzo { justify-self: start; }
+.curso-materia.pronto { padding: 8px 12px; } .curso-materia.pronto .curso-materia-cabeza { grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+
+/* 0.12.2: el Camino — morado = terminada (vio sus tarjetas e hizo su práctica), dorado = dominada (aprobó), y un anillo
+   alrededor de cada nodo (y de cada materia) que muestra cuánto lleva. */
+.anillo-avance { position: absolute; inset: -8px; width: calc(100% + 16px); height: calc(100% + 16px); transform: rotate(-90deg); pointer-events: none; overflow: visible; }
+.anillo-avance circle { fill: none; stroke-width: 6; }
+.anillo-pista { stroke: color-mix(in srgb, var(--linea) 85%, transparent); }
+.anillo-lleno { stroke: var(--mc, var(--verde)); stroke-linecap: round; transition: stroke-dasharray 0.4s ease; }
+.nodo.nivel-terminado .anillo-lleno { stroke: var(--morado); }
+.nodo.nivel-dominado .anillo-lleno { stroke: var(--oro-borde); }
+.nodo.nivel-terminado .nodo-boton, .nodo.video.nivel-terminado .nodo-boton, .nodo.examen.nivel-terminado .nodo-boton { background: var(--morado); box-shadow: 0 7px 0 var(--morado-borde); color: #ffffff; }
+.nodo.nivel-dominado .nodo-boton, .nodo.video.nivel-dominado .nodo-boton, .nodo.examen.nivel-dominado .nodo-boton { background: var(--oro); box-shadow: 0 7px 0 var(--oro-borde); color: #6b4300; }
+.nodo.actual .nodo-aro::before { inset: -14px; }
+.banner-icono { position: relative; }
+.anillo-materia { inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); }
+.anillo-materia .anillo-pista { stroke: rgba(255, 255, 255, 0.3); }
+.anillo-materia .anillo-lleno { stroke: #ffffff; }
+.leyenda-camino { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 0 4px; font-size: 13px; font-weight: 700; color: var(--suave); }
+.leyenda-item { display: inline-flex; align-items: center; gap: 6px; }
+.leyenda-punto { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.leyenda-punto.morado { background: var(--morado); box-shadow: 0 2px 0 var(--morado-borde); }
+.leyenda-punto.dorado { background: var(--oro); box-shadow: 0 2px 0 var(--oro-borde); }
+.leyenda-punto.anillo { border: 3px solid var(--verde); border-right-color: var(--linea); }
+.boton-continuar { margin: 10px 0 0; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.boton-continuar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.boton-video-tema { margin-top: 12px; }
+/* 0.12.2: «¿Estás listo?» más visual: el medidor con la probabilidad, baldosas por regla y un solo botón. */
+.listo-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 6px 0 10px; }
+.listo-veredicto { flex: 1 1 180px; min-width: 0; }
+.listo-veredicto p { margin: 2px 0; }
+.listo-veredicto .veredicto { font-size: 22px; font-weight: 800; }
+.baldosas { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.baldosa { display: grid; gap: 4px; padding: 10px 12px; border-radius: 14px; border: 2px solid var(--linea); background: var(--tarjeta); min-width: 0; }
+.baldosa.ok { border-color: color-mix(in srgb, var(--verde) 55%, transparent); background: color-mix(in srgb, var(--verde) 10%, var(--tarjeta)); }
+.baldosa-cabeza { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--suave); }
+.baldosa-cabeza .icono { width: 16px; height: 16px; flex: none; }
+.baldosa.ok .baldosa-cabeza { color: var(--verde-borde); }
+:root[data-tema="oscuro"] .baldosa.ok .baldosa-cabeza { color: var(--verde); }
+.baldosa-valor { font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
+.baldosa-barra { display: block; height: 6px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.baldosa-relleno { display: block; height: 100%; border-radius: 99px; background: var(--naranja); }
+.baldosa.ok .baldosa-relleno { background: var(--verde); }
+.listo-siguiente { display: grid; gap: 6px; justify-items: start; margin: 4px 0 10px; }
+.listo-como summary { cursor: pointer; font-weight: 700; min-height: 32px; }
+/* Sin terminar, el nodo es neutro (el color de la materia podría confundirse con «morado = terminada»); el anillo verde. */
+.anillo-lleno { stroke: var(--verde); }
+.nodo.nivel-nuevo:not(.bloqueado) .nodo-boton, .nodo.nivel-empezado:not(.bloqueado) .nodo-boton {
+  background: var(--tarjeta); color: var(--texto); box-shadow: 0 7px 0 var(--linea); border: 3px solid var(--linea);
+}
+.nodo.nivel-nuevo:not(.bloqueado) .nodo-icono, .nodo.nivel-empezado:not(.bloqueado) .nodo-icono { fill: none; }
+.nodo.nivel-nuevo:not(.bloqueado) .nodo-boton::before, .nodo.nivel-empezado:not(.bloqueado) .nodo-boton::before { display: none; }
+.nodo.actual .nodo-aro::before { border-color: color-mix(in srgb, var(--verde) 35%, transparent); }

@@ -2,7 +2,7 @@
 // app.js le pasa sus ayudas (el, t, icono, api…) y usa lo que devuelve en sus pantallas:
 //  - insignia(estado): «Instructor: modo básico (sin IA)» / «Instructor con IA» / «Instructor IA en espera».
 //  - enInicio(): la tarjeta «Tu instructor dice…» con UN siguiente paso (y el consejo de la semana con IA).
-//  - alEmpezarTema(materia, tema): el consejo del tema y «¿Tienes una duda?».
+//  - cajaDuda(materia, tema): «¿Tienes una duda?» al final de un tema.
 //  - explicar(intentoId, q): «Explícamelo de otra forma» (la pregunta y sus opciones quedan TAL CUAL arriba: esto
 //    solo agrega una explicación aparte, del paquete o de la IA, marcada como tal).
 //  - consejoExamen(intentoId): el consejo después de un examen.
@@ -16,6 +16,8 @@ export function crearInstructor(h) {
   const { el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError } = h;
   const nombreMateria = id => (h.nombreMateria ? h.nombreMateria(id) : id);
   const tx = (clave, vars = {}) => t(clave, vars);
+  // 0.12.2: append() escribe «null» si le llega un null (se veía «null» junto a «HACERLO AHORA»): solo lo que existe.
+  const anexar = (nodo, ...hijos) => nodo.append(...hijos.filter(x => x != null && x !== false));
 
   // ---------- ¿Te sigue un instructor con IA? ----------
   function insignia(estado, { compacta = false } = {}) {
@@ -100,48 +102,40 @@ export function crearInstructor(h) {
 
   // ---------- 0.10.0: el plan de refuerzo (sus fallas registradas) ----------
   const lugarDe = f => `${nombreMateria(f.materia)} → ${f.temaTitulo}`;
-  function planRefuerzo(plan) {
-    if (!plan?.length) return null;
-    return el('section', { class: 'panel plan-refuerzo', 'aria-labelledby': 'plan-refuerzo-titulo' },
-      el('div', { class: 'instructor-cabeza' },
-        el('span', { class: 'instructor-avatar refuerzo', 'aria-hidden': 'true' }, icono('atencion')),
-        el('div', {}, el('h2', { id: 'plan-refuerzo-titulo', texto: tx('refuerzo.plan.titulo') }), el('p', { class: 'suave chica', texto: tx('refuerzo.plan.linea') }))),
-      el('ul', { class: 'plan-refuerzo-lista' }, plan.slice(0, 4).map((f, i) => el('li', {},
-        el('p', {}, el('strong', { texto: `${tx('refuerzo.debes')} ` }), talCual('span', lugarDe(f)), el('span', { class: 'suave', texto: ` ${tx(f.origen === 'examen' ? 'refuerzo.fallaste_examen' : 'refuerzo.fallaste', { n: numero(f.fallos) })}` })),
-        f.idea ? talCual('p', f.idea, 'suave chica') : null,
-        el('p', { class: 'chica', texto: tx('refuerzo.progreso', { n: numero(f.aciertos), meta: numero(f.meta.aciertos) }) }),
-        el('a', { class: `boton-3d ${i === 0 ? 'naranja' : 'blanco'} chico`, href: `#refuerzo/${encodeURIComponent(f.materia)}/${encodeURIComponent(f.tema)}` }, el('span', { texto: tx('refuerzo.repasar') }))))));
-  }
-  // «Refuerzo» en el círculo del camino de cada tema con una falla viva.
-  function marcarCamino(plan) {
-    for (const f of plan ?? []) {
-      const nodo = document.querySelector(`a.nodo-dentro[href="#tema/${f.materia}/${f.tema}"]`);
-      if (nodo && !nodo.querySelector('.nodo-refuerzo')) nodo.append(el('span', { class: 'nodo-refuerzo', texto: tx('refuerzo.sello') }));
-      // 0.10.1: también en la tarjeta de su materia (se ve aunque la materia esté plegada: public/camino-plegable.js).
-      const lugar = document.getElementById(`materia-${f.materia}`)?.closest('.materia-bloque')?.querySelector('.materia-insignias');
-      if (lugar && !lugar.querySelector('.refuerzo')) lugar.append(el('span', { class: 'materia-insignia refuerzo' }, icono('atencion', 'icono chico'), el('span', { texto: tx('refuerzo.sello') })));
-    }
-  }
   // «Lo que hicimos por ti»: una falla en frases (lo que pasó, lo que hicimos, cómo va).
-  function frasesFalla(f) {
-    const hecho = [
+  // 0.12.2: un concepto (más de 2 errores en cosas de un mismo punto) va a «Mi repaso»; las de antes dicen lo de antes.
+  // 0.12.2: lo principal, corto y para hacer: «Repasa: <punto> · Tema <n> <tema>» con su botón (la mini-clase en «Mi
+  // repaso»). El porqué (las veces, la idea equivocada, lo que hicimos) va plegado en «¿Por qué me equivoqué?».
+  const lineaRepasa = f => tx(f.temaNumero ? 'repasa.linea' : 'repasa.linea_sin_numero', { concepto: f.concepto || f.tarjeta || f.temaTitulo || '', n: numero(f.temaNumero ?? 0), tema: f.temaTitulo ?? '' });
+  const aMiniClase = clave => (clave ? `#mi-repaso/clase/${String(clave).replace(/^c:/, '')}` : '#mi-repaso');
+  function frasesFalla(f, { conBoton = true } = {}) {
+    const concepto = f.origen === 'concepto';
+    const hecho = concepto ? [tx('hicimos.miniclase'), tx('hicimos.seguimos_concepto', { aciertos: numero(f.meta.aciertos) })] : [
       f.tarjeta ? tx('hicimos.tarjeta', { tarjeta: f.tarjeta }) : null,
       f.extras ? tx('hicimos.extras', { n: numero(f.extras) }) : null,
       tx('hicimos.seguimos', { aciertos: numero(f.meta.aciertos), dias: numero(f.meta.dias) }),
     ].filter(Boolean);
+    const viva = f.estado !== 'superada';
     return el('li', { class: `falla falla-${f.estado}` },
-      el('p', {}, el('strong', { texto: tx(f.origen === 'examen' ? 'hicimos.linea_examen' : 'hicimos.linea', { n: numero(f.fallos), lugar: lugarDe(f), numero: f.numero ?? '' }) })),
-      f.idea ? el('p', { class: 'suave' }, el('span', { texto: `${tx('hicimos.idea')} ` }), talCual('span', f.idea)) : null,
-      el('p', {}, el('span', { texto: `${tx('hicimos.por_eso')} ` }), el('span', { texto: hecho.join('; ') + '.' })),
-      el('p', { class: `falla-estado tono-${f.estado === 'superada' ? 'bien' : 'atencion'}`, texto: f.estado === 'superada'
-        ? tx('hicimos.superada', { n: numero(f.fallos), meta: numero(f.meta.aciertos) })
-        : tx('hicimos.vas', { n: numero(f.aciertos), meta: numero(f.meta.aciertos), estado: tx(`falla.estado.${f.estado}`) }) }));
+      el('p', { class: 'fuerte' }, talCual('span', lineaRepasa(f))),
+      el('p', { class: `falla-estado chica tono-${viva ? 'atencion' : 'bien'}`, texto: viva
+        ? tx('hicimos.vas', { n: numero(f.aciertos), meta: numero(f.meta.aciertos), estado: tx(`falla.estado.${f.estado}`) })
+        : tx('hicimos.superada', { n: numero(f.fallos), meta: numero(f.meta.aciertos) }) }),
+      conBoton && viva ? el('a', { class: 'boton-3d blanco chico', href: aMiniClase(f.conceptoClave) }, el('span', { texto: tx('mirepaso.repasar') })) : null,
+      el('details', { class: 'falla-porque' },
+        el('summary', { texto: tx('repasa.por_que') }),
+        el('p', { texto: concepto ? tx('hicimos.linea_concepto', { n: numero(f.fallos), concepto: f.concepto ?? '', lugar: lugarDe(f) })
+          : tx(f.origen === 'examen' ? 'hicimos.linea_examen' : 'hicimos.linea', { n: numero(f.fallos), lugar: lugarDe(f), numero: f.numero ?? '' }) }),
+        f.idea ? el('p', { class: 'suave' }, el('span', { texto: `${tx('hicimos.idea')} ` }), talCual('span', f.idea)) : null,
+        el('p', {}, el('span', { texto: `${tx('hicimos.por_eso')} ` }), el('span', { texto: hecho.join('; ') + '.' }))));
   }
   function loQueHicimos({ titulo = tx('hicimos.titulo'), url = '/api/academia/instructor/fallas' } = {}) {
     const lugar = el('section', { class: 'panel lo-que-hicimos', 'aria-label': titulo }, el('h2', { class: 'con-icono' }, icono('cerebro'), el('span', { texto: titulo })));
     api('GET', url).then(r => {
       if (!lugar.isConnected || !r.ok) return;
-      lugar.append(r.datos.fallas.length ? el('ul', { class: 'lista-fallas' }, r.datos.fallas.map(frasesFalla)) : el('p', { class: 'suave', texto: tx('hicimos.vacio') }));
+      // (el administrador mira las de un alumno: sin el botón de repasar, que es del alumno)
+      const conBoton = url === '/api/academia/instructor/fallas';
+      lugar.append(r.datos.fallas.length ? el('ul', { class: 'lista-fallas' }, r.datos.fallas.map(f => frasesFalla(f, { conBoton }))) : el('p', { class: 'suave', texto: tx('hicimos.vacio') }));
     });
     return lugar;
   }
@@ -154,16 +148,20 @@ export function crearInstructor(h) {
       const d = r.datos;
       const enlace = v => el('a', { class: 'con-icono', href: v.url, target: '_blank', rel: 'noopener noreferrer' }, icono('video', 'icono chico'), el('span', { texto: v.titulo ?? tx('profesor.buscar', { texto: v.texto }) }));
       const otraVez = d.intento.tipo === 'examen' ? { href: `#examen/${encodeURIComponent(d.intento.materia)}` } : { datos: { tipo: d.intento.tipo, materia: d.intento.materia, tema: d.intento.tema } };
-      lugar.append(
+      anexar(lugar,
         el('h2', { class: 'con-icono' }, icono('cerebro'), el('span', { texto: tx('plan.titulo') })),
         el('p', { class: 'suave', texto: tx('plan.animo') }),
         el('h3', { texto: tx('plan.fallaste') }),
         el('ul', { class: 'lista-fallas' }, d.temas.map(x => el('li', { class: 'falla' },
-          el('p', {}, el('strong', { texto: `${nombreMateria(x.materia)} → ` }), talCual('strong', x.titulo), el('span', { texto: ` · ${tx('plan.n_fallos', { n: numero(x.fallos) })}` })),
-          x.ideas.map(i => el('p', { class: 'suave' }, el('span', { texto: `${tx('hicimos.idea')} ` }), talCual('span', i))),
+          // 0.12.2: corto y para hacer: «Repasa: <punto> · Tema <n> <tema>»; las ideas equivocadas, plegadas.
+          el('p', { class: 'fuerte' }, talCual('span', lineaRepasa({ concepto: x.tarjeta?.titulo || x.titulo, temaNumero: x.temaNumero, temaTitulo: x.titulo }))),
+          el('p', { class: 'suave chica', texto: `${nombreMateria(x.materia)} · ${tx('plan.n_fallos', { n: numero(x.fallos) })}` }),
+          x.ideas.length ? el('details', { class: 'falla-porque' }, el('summary', { texto: tx('repasa.por_que') }),
+            x.ideas.map(i => el('p', { class: 'suave' }, el('span', { texto: `${tx('hicimos.idea')} ` }), talCual('span', i)))) : null,
           el('p', { class: 'fuerte', texto: tx('plan.estudiar') }),
           el('div', { class: 'botones' },
-            el('a', { class: 'boton-3d naranja chico', href: `#refuerzo/${encodeURIComponent(x.materia)}/${encodeURIComponent(x.tema)}` }, el('span', { texto: x.tarjeta ? tx('plan.releer', { tarjeta: x.tarjeta.titulo }) : tx('refuerzo.repasar') })),
+            // 0.12.2: releer = la mini-clase de ese punto, en «Mi repaso» (la clase normal no cambia).
+            el('a', { class: 'boton-3d naranja chico', href: x.concepto ? `#mi-repaso/clase/${String(x.concepto).replace(/^c:/, '')}` : '#mi-repaso' }, el('span', { texto: x.tarjeta ? tx('plan.releer', { tarjeta: x.tarjeta.titulo }) : tx('refuerzo.repasar') })),
             el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: e => empezarIntento({ tipo: 'instructor', materia: x.materia, tema: x.tema }, e.currentTarget) }, el('span', { texto: tx('plan.practicar', { n: numero(x.preguntas.length) }) }))),
           el('details', {}, el('summary', { texto: tx('plan.preguntas') }), el('ul', {}, x.preguntas.map(q => talCual('li', `${q.numero ? `${q.numero} · ` : ''}${q.enunciado}`)))),
           el('div', { class: 'videos' }, [...x.videos, ...x.buscar].map(enlace)),
@@ -178,6 +176,32 @@ export function crearInstructor(h) {
   }
   // «¿Estás listo para el examen oficial?»: el veredicto, «Cómo lo pienso» (cada regla ✔/✘ con su número), el paso que
   // más importa, la probabilidad (una estimación), cada materia y los aprobados que conviene repetir.
+  // 0.12.2: más visual y menos lectura: un medidor grande con la probabilidad y el veredicto; cada regla en una baldosa
+  // (icono, nombre corto, valor → meta y una barrita; verde si se cumple); las explicaciones largas, plegadas en «¿Cómo lo
+  // pienso?»; y UN botón con el paso que más importa (siempre lleva a algún lado: nunca un «null»).
+  const ICONO_REGLA = { materias: 'libro', acierto: 'estrella', cobertura: 'ojo', constancia: 'trofeo', memoria: 'cerebro', fallas: 'actualizar', tiempo: 'calendario', clases: 'video' };
+  function baldosa(x) {
+    const n = v => numero(v ?? 0);
+    const pctDe = (a, b) => (b > 0 ? Math.max(0, Math.min(100, Math.round((a * 100) / b))) : x.ok ? 100 : 0);
+    const valores = {
+      materias: [`${n(x.valor)}/${n(x.meta)}`, pctDe(x.valor, x.meta)],
+      acierto: [tx('listo.tile.de_a', { valor: n(x.valor), meta: n(x.meta) }), pctDe(x.valor, x.meta)],
+      cobertura: [tx('listo.tile.de_a', { valor: n(x.valor), meta: n(x.meta) }), pctDe(x.valor, x.meta)],
+      constancia: [`${n(x.valor)}/${n(x.meta)}`, pctDe(x.valor, x.meta)],
+      memoria: [tx('listo.tile.de_a', { valor: n(x.valor), meta: n(x.meta) }), pctDe(x.valor, x.meta)],
+      fallas: [x.ok ? '0 ✔' : n(x.valor), x.ok ? 100 : 0],
+      tiempo: [tx('listo.tile.tiempo', { dias: n(x.valor), meta: n(x.meta), estudio: n(x.n), metaEstudio: n(x.diasEstudio) }), Math.min(pctDe(x.valor, x.meta), pctDe(x.n, x.diasEstudio))],
+      clases: [x.ok ? '0 ✔' : n(x.valor), x.ok ? 100 : 0],
+    };
+    const [valor, pct] = valores[x.id] ?? [x.ok ? '✔' : '✘', x.ok ? 100 : 0];
+    const barra = el('span', { class: 'baldosa-relleno' });
+    barra.style.width = `${pct}%`;
+    return el('li', { class: `baldosa ${x.ok ? 'ok' : 'no'}` },
+      el('span', { class: 'baldosa-cabeza' }, icono(ICONO_REGLA[x.id] ?? 'info', 'icono chico'), el('span', { class: 'baldosa-nombre', texto: tx(x.id === 'tiempo' ? 'listo.tile.tiempo.nombre' : `listo.tile.${x.id}`) })),
+      el('strong', { class: 'baldosa-valor', texto: valor }),
+      el('span', { class: 'baldosa-barra', 'aria-hidden': 'true' }, barra),
+      el('span', { class: 'solo-lectores', texto: x.ok ? tx('listo.cumple') : tx('listo.no_cumple') }));
+  }
   function preparado(url = '/api/academia/preparado', { alumno = false } = {}) {
     const lugar = el('section', { class: 'panel preparado', 'aria-label': tx('listo.titulo') });
     api('GET', url).then(r => {
@@ -190,19 +214,26 @@ export function crearInstructor(h) {
           el('span', { class: 'solo-lectores', texto: x.ok ? tx('listo.cumple') : tx('listo.no_cumple') }), el('span', { texto: tx(`listo.regla.${x.id}`, vars) }));
       };
       const accion = v.siguiente?.accion;
-      const boton = !accion || alumno ? null : accion.tipo === 'intento' ? el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: e => empezarIntento(accion.datos, e.currentTarget) }, el('span', { texto: tx('listo.hacer') }))
-        : accion.tipo === 'refuerzo' ? el('a', { class: 'boton-3d naranja chico', href: '#inicio' }, el('span', { texto: tx('listo.hacer') }))
-          // 0.12.0: «hacer las clases» que se saltó: el tema que toca.
-          : accion.tipo === 'tema' ? el('a', { class: 'boton-3d naranja chico', href: `#tema/${encodeURIComponent(accion.materia)}/${encodeURIComponent(accion.tema)}` }, el('span', { texto: tx('listo.hacer') })) : null;
-      lugar.append(
+      const clase = 'boton-3d naranja con-icono listo-cta';
+      const texto = v.siguiente ? tx(`listo.cta.${v.siguiente.regla}`) : '';
+      const contenido = [icono('flecha', 'icono chico'), el('span', { texto })];
+      const boton = !v.siguiente || alumno ? null
+        : accion?.tipo === 'intento' ? el('button', { type: 'button', class: clase, onclick: e => empezarIntento(accion.datos, e.currentTarget) }, contenido)
+          : accion?.tipo === 'tema' ? el('a', { class: clase, href: `#tema/${encodeURIComponent(accion.materia)}/${encodeURIComponent(accion.tema)}` }, contenido)
+            : el('a', { class: clase, href: accion?.tipo === 'refuerzo' ? '#mi-repaso' : '#inicio' }, contenido);
+      const medidor = h.medidor && v.probabilidad != null ? h.medidor(v.probabilidad, { etiqueta: tx('listo.medidor') }) : null;
+      anexar(lugar,
         el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: tx('listo.titulo') })),
-        el('p', { class: `veredicto veredicto-${v.nivel}`, texto: tx(`listo.nivel.${v.nivel}`) }),
-        v.probabilidad != null ? el('p', { class: 'fuerte', texto: tx('listo.probabilidad', { n: numero(v.probabilidad) }) }) : null,
-        el('p', { class: 'suave chica', texto: tx('listo.aviso') }),
-        el('h3', { texto: tx('listo.como') }),
-        el('ul', { class: 'lista-reglas' }, v.reglas.map(linea)),
-        v.siguiente ? el('p', { class: 'siguiente-paso' }, el('strong', { texto: `${tx('listo.siguiente')} ` }), el('span', { texto: tx(`listo.paso.${v.siguiente.regla}`) })) : null,
-        boton,
+        el('div', { class: 'listo-cabeza' },
+          medidor,
+          el('div', { class: 'listo-veredicto' },
+            el('p', { class: `veredicto veredicto-${v.nivel}`, texto: tx(`listo.nivel.${v.nivel}`) }),
+            // (sin medidor, la probabilidad en texto)
+            v.probabilidad != null && !medidor ? el('p', { class: 'chica', texto: tx('listo.probabilidad', { n: numero(v.probabilidad) }) }) : null,
+            el('p', { class: 'suave chica', texto: tx('listo.aviso') }))),
+        el('ul', { class: 'baldosas' }, v.reglas.map(baldosa)),
+        boton ? el('div', { class: 'listo-siguiente' }, el('span', { class: 'suave chica', texto: tx('listo.siguiente') }), boton) : null,
+        el('details', { class: 'listo-como' }, el('summary', { texto: tx('listo.como_pregunta') }), el('ul', { class: 'lista-reglas' }, v.reglas.map(linea))),
         v.suerte?.length ? el('div', { class: 'suerte' }, v.suerte.map(x => el('p', { class: 'aviso' },
           el('strong', { texto: `${tx('listo.suerte', { lugar: nombreMateria(x.materia), pct: numero(x.pct) })} ` }),
           el('span', { texto: x.razones.map(z => tx(`listo.suerte.${z.id}`, { n: numero(z.n ?? 0), de: numero(z.de ?? 0), pct: numero(z.pct ?? 0), umbral: numero(z.umbral ?? 0) })).join(' ') })))) : null,
@@ -274,25 +305,15 @@ export function crearInstructor(h) {
     const lugar = el('div', { class: 'instructor-lugar' });
     api('GET', '/api/academia/instructor').then(r => {
       if (!lugar.isConnected || !r.ok) return;
-      lugar.replaceChildren(...[planRefuerzo(r.datos.plan), avisoPagos(r.datos.pagos), tarjetaInicio(r.datos)].filter(Boolean));
-      marcarCamino(r.datos.plan);
+      // 0.12.2: el plan de refuerzo ya no va en Inicio ni marca el Camino: es «Mi repaso» (con su número en la entrada).
+      lugar.replaceChildren(...[avisoPagos(r.datos.pagos), tarjetaInicio(r.datos)].filter(Boolean));
+      const cuenta = document.querySelector('.entrada-mi-repaso .mi-repaso-cuenta');
+      const n = (r.datos.plan ?? []).length;
+      if (cuenta && n) { cuenta.textContent = numero(n); cuenta.setAttribute('aria-label', tx('mirepaso.cuenta', { n: numero(n) })); cuenta.hidden = false; }
     });
     return lugar;
   }
 
-  // ---------- Al empezar un tema: el consejo del tema y «¿Tienes una duda?» ----------
-  function alEmpezarTema(materia, tema) {
-    const lugar = el('div', { class: 'instructor-tema' });
-    api('GET', `/api/academia/instructor/tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`).then(r => {
-      if (!lugar.isConnected || !r.ok) return;
-      const c = r.datos.consejo;
-      lugar.replaceChildren(el('aside', { class: 'instructor-mini' },
-        el('div', { class: 'instructor-mini-cabeza' }, icono('cerebro', 'icono chico'), el('strong', { texto: tx('instr.titulo') }), insignia(r.datos.instructor, { compacta: true })),
-        c ? talCual('p', textoConsejo(c)) : null,
-        c?.accion ? botonAccion(c.accion, 'boton-3d blanco chico') : null));
-    });
-    return lugar;
-  }
   function cajaDuda(materia, tema) {
     const area = el('textarea', { rows: 2, maxlength: 500, 'aria-label': tx('instr.duda.etiqueta'), placeholder: tx('instr.duda.ejemplo') });
     const salida = el('div', { class: 'duda-salida', 'aria-live': 'polite' });
@@ -326,7 +347,7 @@ export function crearInstructor(h) {
   }
 
   // ---------- «Explícamelo de otra forma» ----------
-  function explicar(intentoId, q) {
+  function explicar(intentoId, q, { etiqueta = tx('instr.explicar') } = {}) {
     const lugar = el('div', { class: 'instructor-explica' });
     const boton = el('button', {
       type: 'button', class: 'boton-3d blanco chico con-icono boton-explicar',
@@ -338,7 +359,7 @@ export function crearInstructor(h) {
         boton.remove();
         lugar.replaceChildren(vistaExplicacion(r.datos));
       },
-    }, icono('cerebro', 'icono chico'), el('span', { texto: tx('instr.explicar') }));
+    }, icono('cerebro', 'icono chico'), el('span', { texto: etiqueta }));
     lugar.append(boton);
     return lugar;
   }
@@ -401,7 +422,7 @@ export function crearInstructor(h) {
         lugar.replaceChildren(lugar.firstChild);
         pintar();
       };
-      lugar.append(
+      anexar(lugar,
         el('p', { texto: r.datos.permiso.permitido ? tx(`profesor.admin.si.${r.datos.permiso.por}`) : tx('profesor.admin.no') }),
         el('div', { class: 'botones' },
           el('button', { type: 'button', class: 'boton-3d chico', onclick: () => poner(true) }, el('span', { texto: tx('profesor.admin.dar') })),
@@ -512,5 +533,5 @@ export function crearInstructor(h) {
       mensaje);
   }
 
-  return Object.freeze({ preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, planRefuerzo, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, alEmpezarTema, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  return Object.freeze({ preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
 }

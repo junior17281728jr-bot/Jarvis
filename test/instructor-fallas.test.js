@@ -1,7 +1,6 @@
-// Academia 0.10.0 (sin IA): las «fallas registradas» (umbral, nunca se borran, superada con 3 aciertos en 2 días, cada
-// alumno las suyas), el refuerzo en la clase («Refuerzo para ti» y las preguntas extra en el repaso), el «Plan para pasar
-// la próxima vez», y el tiempo con IA con sus pagos por transferencia (subir el comprobante, quién lo ve, aprobar una sola
-// vez, rechazar con motivo, nunca menos de 0 minutos, solo el dueño cambia los datos de pago). Paquete de MUESTRA.
+// Academia 0.10.0 (sin IA): el «Plan para pasar la próxima vez» y el tiempo con IA con sus pagos por transferencia (subir
+// el comprobante, quién lo ve, aprobar una sola vez, rechazar con motivo, nunca menos de 0 minutos, solo el dueño cambia
+// los datos de pago). 0.12.2: las fallas («Mi repaso», por concepto) están en test/mi-repaso.test.js. Paquete de MUESTRA.
 import { configDePrueba, conServidor } from './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +18,6 @@ const CLAVE = 'una clave bien larga';
 const MUESTRA = paqueteMuestra();
 const DE = id => MUESTRA.preguntas.find(q => q.id === id);
 const T0 = Date.parse('2026-11-12T14:00:00Z');
-const DIA = 86_400_000;
 const PNG = figuraMuestraPng();
 
 async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerpo } = {}) {
@@ -60,88 +58,10 @@ async function conAcademia(fn) {
 }
 const nuevo = (c, galleta, datos) => pedir(c.base, 'POST', '/api/academia/intentos', { galleta, datos });
 const mala = id => ['A', 'B', 'C'].find(l => l !== DE(id).original.correcta);
-// Un intento del tema 1: la pregunta «id» como diga «bien», las demás bien. Termina el intento.
-async function vuelta(c, galleta, id, { bien }) {
-  const i = (await nuevo(c, galleta, { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' })).datos;
-  for (const q of i.preguntas) {
-    c.reloj.avanzar(30_000);
-    const letra = q.id === id && !bien ? mala(q.id) : DE(q.id).original.correcta;
-    await pedir(c.base, 'POST', `/api/academia/intentos/${i.id}/responder`, { galleta, datos: { pregunta: q.id, elegida: letra } });
-  }
-  return (await pedir(c.base, 'POST', `/api/academia/intentos/${i.id}/terminar`, { galleta, datos: {} })).datos;
-}
 const fallasDe = (c, galleta) => pedir(c.base, 'GET', '/api/academia/instructor/fallas', { galleta }).then(r => r.datos.fallas);
 
-test('fallas: la misma pregunta fallada 3 veces queda registrada (2 no), con su idea; un examen con 2 del mismo tema también', async () => {
-  await conAcademia(async c => {
-    const id = 'muestra-h2';
-    await vuelta(c, c.ana, id, { bien: false });
-    await vuelta(c, c.ana, id, { bien: false });
-    assert.deepEqual((await fallasDe(c, c.ana)).filter(f => f.origen === 'pregunta'), [], 'con 2 todavía no');
-    await vuelta(c, c.ana, id, { bien: false });
-    const [f] = (await fallasDe(c, c.ana)).filter(x => x.origen === 'pregunta');
-    assert.deepEqual([f.estado, f.fallos, f.materia, f.tema, f.idea], ['activa', 3, 'factores_humanos', 'muestra-hipoxia', DE(id).errores[mala(id)]]);
-    assert.ok(f.extras > 0, 'preguntas extra del mismo tema');
-    // Las extras están en el repaso de hoy.
-    assert.ok(c.db.prepare('SELECT COUNT(*) AS n FROM academia_repaso WHERE usuario_id = ? AND vence_en <= ?').get(c.ids.ana, new Date(c.reloj()).toISOString()).n >= 1 + f.extras);
-    // Beto no tiene ninguna, ni ve las de Ana.
-    assert.deepEqual(await fallasDe(c, c.beto), []);
-    assert.equal((await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${c.ids.ana}/fallas`, { galleta: c.beto })).codigo, 403);
-    assert.equal((await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${c.ids.ana}/fallas`, { galleta: c.admin, cabeceras: DUENO })).datos.fallas.length >= 1, true);
-    // El umbral lo cambia solo el dueño.
-    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: { ...DUENO, ...FUNNEL }, datos: { umbral: 2 } })).codigo, 403);
-    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { umbral: 2 } })).codigo, 200);
-    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/fallas/ajustes', { galleta: c.admin, cabeceras: DUENO, datos: { umbral: 1 } })).codigo, 400);
-  });
-});
-
-test('fallas: se supera con 3 aciertos seguidos en 2 días distintos (fallar reinicia), y nunca se borra', async () => {
-  await conAcademia(async c => {
-    const id = 'muestra-h2';
-    for (let k = 0; k < 3; k++) await vuelta(c, c.ana, id, { bien: false });
-    await vuelta(c, c.ana, id, { bien: true });
-    await vuelta(c, c.ana, id, { bien: true });
-    await vuelta(c, c.ana, id, { bien: true });
-    let [f] = (await fallasDe(c, c.ana)).filter(x => x.origen === 'pregunta');
-    assert.equal(f.aciertos, 3);
-    assert.notEqual(f.estado, 'superada', 'tres el mismo día no alcanzan');
-    await vuelta(c, c.ana, id, { bien: false });
-    [f] = (await fallasDe(c, c.ana)).filter(x => x.origen === 'pregunta');
-    assert.deepEqual([f.aciertos, f.fallos], [0, 4], 'fallar otra vez vuelve a empezar');
-    await vuelta(c, c.ana, id, { bien: true });
-    await vuelta(c, c.ana, id, { bien: true });
-    c.reloj.avanzar(DIA);
-    await vuelta(c, c.ana, id, { bien: true });
-    [f] = (await fallasDe(c, c.ana)).filter(x => x.origen === 'pregunta');
-    assert.equal(f.estado, 'superada');
-    // Se queda en el historial; si vuelve a fallar 3 veces, es otra falla (la vieja sigue ahí).
-    for (let k = 0; k < 3; k++) await vuelta(c, c.ana, id, { bien: false });
-    const todas = (await fallasDe(c, c.ana)).filter(x => x.origen === 'pregunta');
-    assert.deepEqual(todas.map(x => x.estado).sort(), ['activa', 'superada']);
-    assert.equal(c.db.prepare('SELECT COUNT(*) AS n FROM academia_fallas WHERE usuario_id = ?').get(c.ids.ana).n >= 2, true);
-  });
-});
-
-test('refuerzo: la tarjeta de su falla sale primero («Refuerzo para ti»), el plan de refuerzo la muestra y la práctica empieza por ella', async () => {
-  await conAcademia(async c => {
-    const id = 'muestra-h2';
-    for (let k = 0; k < 3; k++) await vuelta(c, c.ana, id, { bien: false });
-    const ini = (await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.ana })).datos;
-    assert.equal(ini.plan.length >= 1, true);
-    assert.equal(ini.plan[0].tema, 'muestra-hipoxia');
-    const t = (await pedir(c.base, 'GET', '/api/academia/instructor?materia=factores_humanos&tema=muestra-hipoxia', { galleta: c.ana })).datos;
-    assert.ok(t.refuerzo?.tarjeta?.titulo, 'la tarjeta que se pone primero');
-    assert.equal(MUESTRA.materias[0].temas[0].secciones[t.refuerzo.tarjeta.indice].titulo, t.refuerzo.tarjeta.titulo);
-    const [f] = (await fallasDe(c, c.ana)).filter(x => x.origen === 'pregunta');
-    assert.deepEqual([f.estado, f.tarjeta], ['refuerzo', t.refuerzo.tarjeta.titulo]);
-    // «Repasar ahora»: la práctica de refuerzo de ese tema, con la fallada primero, en Original (tal cual).
-    const p = (await nuevo(c, c.ana, { tipo: 'instructor', materia: 'factores_humanos', tema: 'muestra-hipoxia' })).datos;
-    assert.equal(p.preguntas[0].id, id);
-    assert.ok(p.preguntas.every(q => q.id.startsWith('muestra-h')));
-    assert.deepEqual(p.preguntas[0].opciones, DE(id).original.opciones.map(o => ({ letra: o.letra, texto: o.texto })));
-    assert.equal((await nuevo(c, c.ana, { tipo: 'instructor', materia: 'factores_humanos', tema: 'muestra-ilusiones' })).codigo, 403, 'un tema cerrado no');
-  });
-});
+// 0.12.2: las reglas de las fallas (por concepto, «Mi repaso», la mini-clase y las fallas de antes) se prueban en
+// test/mi-repaso.test.js. Aquí queda el «Plan para pasar», el tiempo con IA y los pagos.
 
 test('«Plan para pasar la próxima vez»: en qué falló por tema, la tarjeta, las preguntas, videos solo de YouTube; solo su intento', async () => {
   await conAcademia(async c => {
@@ -167,8 +87,12 @@ test('«Plan para pasar la próxima vez»: en qué falló por tema, la tarjeta, 
     for (const q of p.preguntas) await pedir(c.base, 'POST', `/api/academia/intentos/${p.id}/responder`, { galleta: c.ana, datos: { pregunta: q.id, elegida: DE(q.id).original.correcta } });
     await pedir(c.base, 'POST', `/api/academia/intentos/${p.id}/terminar`, { galleta: c.ana, datos: {} });
     assert.equal((await pedir(c.base, 'GET', `/api/academia/instructor/plan/${i.id}`, { galleta: c.ana })).datos.otraVez.listo, true);
-    // También queda en su plan de refuerzo (falla del tema) y el administrador lo ve.
-    assert.ok((await fallasDe(c, c.ana)).some(f => f.origen === 'examen' && f.tema === 'muestra-hipoxia'));
+    // 0.12.2: con 3 errores en cosas de un mismo punto («¿Qué es?»), ese punto entra a «Mi repaso» (y ya no se crea la
+    // falla vieja de «2 de un tema en un intento»). El administrador lo ve.
+    const fallas = await fallasDe(c, c.ana);
+    assert.ok(fallas.some(f => f.origen === 'concepto' && f.tema === 'muestra-hipoxia' && f.concepto === '¿Qué es?'));
+    assert.ok(!fallas.some(f => f.origen === 'examen' || f.origen === 'pregunta'));
+    assert.ok(x.concepto?.startsWith('c:factores_humanos/muestra-hipoxia/'), 'el plan lleva a la mini-clase de ese punto');
     assert.equal((await pedir(c.base, 'GET', `/api/academia/instructor/plan/${i.id}`, { galleta: c.beto })).codigo, 404);
     assert.equal((await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${c.ids.ana}/plan/${i.id}`, { galleta: c.admin, cabeceras: DUENO })).codigo, 200);
   });

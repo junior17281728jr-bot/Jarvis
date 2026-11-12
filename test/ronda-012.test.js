@@ -254,7 +254,12 @@ test('humor: sin repetir hasta que salen todas; el administrador lo apaga para t
     const res = await hacerIntento(c, c.ana, { tipo: 'tema', materia: MATERIA, tema: 'muestra-hipoxia' }, q => mala(q));
     assert.equal(res.aprobado, false);
     assert.equal(res.humor, undefined);
-    // Beto sí lo tiene… hasta que el administrador lo apaga para todos.
+    // Beto sí lo tiene… hasta que el administrador lo apaga para todos. 0.12.2: la primera vez que no aprueba (y la
+    // segunda) no hay «te quemaste», solo ánimo; el humor llega cuando ya no aprobó lo mismo 2 veces antes.
+    for (let k = 0; k < 2; k++) {
+      const b = await hacerIntento(c, c.beto, { tipo: 'tema', materia: MATERIA, tema: 'muestra-hipoxia' }, q => mala(q));
+      assert.deepEqual([b.aprobado, b.humor, b.animo], [false, undefined, true], `vez ${k + 1}: sin humor, con ánimo`);
+    }
     assert.match((await hacerIntento(c, c.beto, { tipo: 'tema', materia: MATERIA, tema: 'muestra-hipoxia' }, q => mala(q))).humor.clave, /^humor\.quemado\.\d+$/);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/humor', { galleta: c.admin, cabeceras: DUENO, datos: { encendido: false } })).datos.humor, false);
     assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/humor', { galleta: c.beto, datos: { encendido: true } })).codigo, 403);

@@ -20,7 +20,7 @@ import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, claveDeRespuestas } from '../academia/progreso.js';
+import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
 
@@ -168,6 +168,19 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('GET', '/api/academia/temas/:materia/:tema', ({ db, usuario, parametros }) =>
     ({ codigo: 200, datos: leccion(db, usuario.id, activo(db), parametros.materia, parametros.tema) }));
 
+  // 0.12.2: el video de la materia ya se ofreció (la primera vez que entró): nunca más se muestra solo.
+  rutas.agregar('POST', '/api/academia/video/:materia/ofrecido', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    return { codigo: 200, datos: marcarVideoOfrecido(db, usuario.id, activo(db), parametros.materia) };
+  });
+
+  // 0.12.2: dónde quedó en la clase de un tema ({ paso, total }): para seguir ahí y para el anillo del Camino.
+  rutas.agregar('POST', '/api/academia/temas/:materia/:tema/paso', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    if (!topes.posiciones.permitir(`t${usuario.id}`)) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 200, datos: guardarPasoTema(db, usuario.id, activo(db), parametros.materia, parametros.tema, { paso: datos?.paso, total: datos?.total }, reloj()) };
+  });
+
   // 0.7.2: «terminé de leer la lección» (un tema sin preguntas se aprueba así).
   rutas.agregar('POST', '/api/academia/temas/:materia/:tema/leido', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
@@ -180,7 +193,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     // 0.8.0: «intento» (opcional, con tipo «errores»): practicar las falladas de ese intento (tiene que ser suyo).
     const base = datos?.intento;
     if (base != null && !Number.isSafeInteger(base)) throw new ErrorHttp(400, 'datos_no_validos');
-    const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null };
+    // 0.12.2: «concepto» (opcional, con tipo «errores»): repasar un concepto de «Mi repaso» (su clave).
+    const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null, concepto: textoDe(datos, 'concepto') || null };
     // 0.9.2: el examen de materia va con reloj (src/academia/examen.js); si hay uno abierto con tiempo, sigue ese (200).
     // 0.12.0: «saltar: true» = «Ir directo al examen» sin terminar los temas (queda anotado; src/academia/saltos.js).
     if (pedido.tipo === 'examen') return crearExamen(db, usuario.id, activo(db), pedido.materia, { azar, ahoraMs: reloj(), saltar: datos?.saltar === true });

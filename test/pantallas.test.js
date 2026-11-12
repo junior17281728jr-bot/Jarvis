@@ -187,6 +187,8 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...RESUMEN_FIRMA.flatMap(x => [`lee.resumen.${x}`, `lee.resumen.${x}.texto`]),
     ...PASOS_FIRMA.flatMap(x => [`firma.paso.${x}`, `firma.${x}.titulo`, `firma.${x}.linea`]),
     ...PASOS_FIRMA.filter(x => x !== 'listo').map(x => `firma.${x}.despues`),
+    // 0.12.2: el avance de cada nodo del Camino.
+    ...['nuevo', 'empezado', 'terminado', 'dominado'].map(x => `camino.nivel.${x}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.
@@ -206,7 +208,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // Academia (0.12.0).
     'extra.nivel.', 'acad.modo.',
     // 0.12.1.
-    'lee.resumen.', 'firma.paso.', 'firma.']));
+    'lee.resumen.', 'firma.paso.', 'firma.',
+    // 0.12.2.
+    'camino.nivel.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });

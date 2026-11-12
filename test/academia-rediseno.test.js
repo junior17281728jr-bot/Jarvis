@@ -188,7 +188,7 @@ test('servidor: video resumen (con su mp3 por partes), plan de estudio, grupo si
     // El camino trae el video (aún sin su mp3), el plan sin elegir y el grupo.
     let c = (await pedir(base, 'GET', '/api/academia/camino', { galleta: g.ana })).datos;
     const m = c.materias.find(x => x.id === 'factores_humanos');
-    assert.deepEqual(m.video, { escenas: 2, audio: false, duracion: 21, visto: false });
+    assert.deepEqual(m.video, { escenas: 2, audio: false, duracion: 21, visto: false, pct: 0 });
     assert.equal(c.plan.elegido, null);
     assert.deepEqual(c.plan.opciones.map(o => [o.id, o.dias, o.recomendado]), [['un_mes', 30, true], ['dos_meses', 60, false], ['repaso_15', 15, false]]);
     assert.equal(c.preparacion.pct, 0);

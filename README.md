@@ -408,7 +408,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.1; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.2; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -611,6 +611,8 @@ sale de las respuestas que ya están en la base:
   le parecen del mismo tema van al repaso de hoy; al abrir el tema, la tarjeta que la explica sale primero («Refuerzo para
   ti»). Inicio muestra arriba **«Tu plan de refuerzo»** («Debes repasar: … (fallaste 4 veces)», «Repasar ahora»), el camino
   marca «Refuerzo» en esos temas, Progreso tiene **«Lo que hicimos por ti»** y la ficha del alumno (Débiles) sus fallas.
+  **Desde la 0.12.2 las fallas nuevas son por concepto y viven en «Mi repaso»** (ver «Lo nuevo de la 0.12.2»); las de antes
+  se siguen leyendo y superando igual.
 - **Plan para pasar la próxima vez** al no aprobar un tema o un examen: en qué falló (por tema, con la idea), qué releer, las
   preguntas del Test Guide para practicar, videos y cuándo volver a tomarlo (después del refuerzo).
 - **Dudas** en cada tema: la tarjeta que más se parece a lo que escribió.
@@ -684,6 +686,72 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.2: «Mi repaso» (errores por concepto, con mini-clase), el Camino y el Progreso del curso entero — sin cambio de base
+- **Por qué:** un alumno falló 2 preguntas en el primer examen del tema 1 y la app ya lo trataba como «falla» (la regla vieja
+  «2 del mismo tema en un intento»), con «Tu plan de refuerzo», «Punto débil» en el Camino, la tarjeta de refuerzo metida en
+  su clase y un «te quemaste» del humor. Ahora una o dos equivocaciones nunca son una falla, y lo de los errores vive aparte.
+- **Concepto** (`src/academia/conceptos.js`): cada pregunta pertenece a la tarjeta de su tema que la explica (`tarjetaPara`
+  con el enunciado, la opción correcta y la explicación; con menos de 2 palabras en común, al concepto «general» del tema).
+  Preguntas del mismo concepto = «relacionadas». Clave estable: `c:<materia>/<tema>/<título de la tarjeta normalizado>`.
+  Se calcula en memoria por paquete; nada nuevo en la base.
+- **Regla:** cuando el alumno suma **más de 2 errores (3, el umbral de Administrador → Pagos)** en preguntas de un mismo
+  concepto (en todos sus intentos desde la última vez que lo superó; no tiene que ser la misma pregunta), ese concepto entra
+  a «Mi repaso» (fila nueva en `academia_fallas` con `origen = 'concepto'`). El resultado del intento lo dice en una línea:
+  «Fallaste 3 veces cosas de «¿Qué es?» (en 1 día(s)): lo vamos a reforzar en «Mi repaso»». Ya **no** se crean las fallas
+  viejas («la misma pregunta 3 veces» ni «2 de un tema en un intento»); el número `examen` de la configuración se sigue
+  leyendo y guardando sin cambios (una 0.12.1 que vuelva atrás lo usa), pero no hace nada.
+- **«Mi repaso»** (`#mi-repaso`, `public/mi-repaso-vista.js`; entrada siempre visible en Inicio con el número de puntos, y en
+  el resultado de cada intento): arriba **«Para repasar»** («Repasa: <punto> · Tema <n> <tema>», por qué está ahí y cómo va,
+  «Repasar» y «Mini-clase»); debajo **«Tus errores»**: cada pregunta fallada, por tema → concepto, lo más nuevo primero, con
+  «Practicar mis errores» (todo) y «Practicar» / «Mini-clase» por concepto. Sin errores, un mensaje amable (nunca un botón
+  muerto). `GET /api/academia/mi-repaso`.
+- **Repasar un concepto:** `POST /api/academia/intentos { tipo: 'errores', concepto }`: sus preguntas del Test Guide tal cual
+  (las falladas primero, hasta 10). Si falla una **en ese repaso**, antes de intentarlo otra vez sale la **mini-clase**
+  (`#mi-repaso/clase/<materia>/<tema>/<punto>`, `GET /api/academia/mi-repaso/clase?concepto=`): la tarjeta del concepto (con su
+  clip o dibujo; el concepto general muestra el «más fácil» del tema), la pregunta que falló con lo que eligió, la correcta,
+  la explicación sencilla y la original; desde la 2.ª ronda fallada también «Por qué tu opción no» (la idea equivocada) y desde
+  la 3.ª el «más fácil». **«Explícamelo de otra forma (IA)»** solo si el alumno tiene de verdad el instructor con IA (minutos,
+  permiso y clave): usa el mismo «Explícamelo» de siempre (mismo cobro y devolución); si no, no hay botón. Se **supera** con
+  3 aciertos seguidos de ese concepto (en 1 día basta: así se entiende mejor; las fallas viejas siguen pidiendo 2 días).
+- **La clase normal no cambia:** abrir un tema ya no pone ninguna tarjeta «Refuerzo para ti» delante ni marca la falla; el
+  Camino no muestra «Punto débil» ni «Refuerzo». Las direcciones viejas `#refuerzo/<materia>/<tema>` llevan a «Mi repaso».
+  «Releer «tarjeta»» del «Plan para pasar» abre la mini-clase de ese concepto.
+- **Tono:** después de equivocarse, «Normal, a todos les pasa: vamos a practicarlo.» El humor «te quemaste» sale solo al
+  saltarse las clases (como antes) o si ya no aprobó lo mismo 2 veces antes (nunca la primera vez). El consejo «En este tema te
+  confunde esto» pide la misma idea equivocada 2 veces. En listas de errores la línea principal es corta («Repasa: <punto> ·
+  Tema <n> <tema>», con su botón); la idea equivocada va plegada en «¿Por qué me equivoqué?» o en la mini-clase.
+- **Mi progreso:** arriba **«Tu curso completo»**: las 11 materias del programa (las que no tienen clases, «pronto»), con
+  cada número diciendo qué cuenta (temas aprobados, exámenes de etapa aprobados, preguntas del Test Guide dominadas y materias
+  con clases); cada materia se abre con sus datos y sus temas. «Mis puntos débiles» y «Lo que más te cuesta» se juntaron con
+  «Mi repaso» (un resumen con su botón). Arreglado: junto a «HACERLO AHORA» salía el texto «null» (un `append(null)`).
+- **La portada de cada clase, limpia:** el título, cuántas tarjetas, cómo se usa y EMPEZAR. Se quitaron «Practicar ya, sin
+  leer la lección» (Original y Modo reto), «Tu punto débil», el consejo del instructor y «N preguntas del Test Guide». El
+  Test Guide va al final de la materia: el nodo del Camino ahora se llama **«Examen del Test Guide»** (y así su portada y su
+  resultado), con «Puedes ir directo» como antes. Al final de las tarjetas, el botón dice «Práctica del tema». El Modo reto
+  sigue a mano en Inicio (debajo del banner de cada materia) y al final de cada clase.
+- **El video de la materia es opcional:** nunca es «lo que toca» (antes, sin verlo, el Camino volvía a mandar al video). Se
+  ofrece solo **la primera vez** que entra a una materia (sin nada hecho en ella), con «Saltar video»
+  (`POST /api/academia/video/:materia/ofrecido`); visto o saltado, nunca más se muestra solo. En la portada de cada tema,
+  **«Ver la explicación en video»** abre el mp4 en el capítulo de ESE tema (capítulo 0 = introducción, tema n = capítulo n de
+  `video.mp4.capitulos`); sin mp4 o sin ese capítulo, no hay botón. Al terminar o salir, vuelve al tema.
+- **Sigue donde quedó:** la clase anota en qué tarjeta va (`POST /api/academia/temas/:materia/:tema/paso { paso, total }`, en
+  `ajustes`) y al volver sigue ahí («Sigues donde te quedaste: tarjeta 2 de 3»). En Inicio, **«Continuar: <tema>»** lleva a
+  la última clase abierta sin aprobar. Tocar un nodo del Camino abre ESE nodo (su tema, el video o el examen), nunca otro.
+- **Colores y anillos del Camino:** morado = terminada (vio todas sus tarjetas e hizo su práctica), dorado = dominada (aprobó
+  la práctica o el examen); sin empezar, el color de siempre. Cada nodo (y cada materia) tiene un **anillo** con su avance
+  (tarjetas vistas 60 % + práctica hecha 40 %; el video, hasta dónde llegó; el examen, su mejor nota). Una leyenda arriba.
+- **«¿Estás listo para el examen oficial?»** más visual: un medidor con la probabilidad y el veredicto, una baldosa por regla
+  (nombre corto, valor → meta y una barrita; verde si se cumple), las explicaciones largas plegadas en «¿Cómo lo pienso?» y un
+  solo botón con el paso que más importa (siempre lleva a algún lado).
+- **Las fallas de antes** (filas `pregunta` / `examen`): nunca se borran ni se reescriben; salen en «Mi repaso» (se repasan
+  con la Práctica del instructor de su tema) y en «Lo que hicimos por ti», y se superan como antes.
+- Pruebas: `test/mi-repaso.test.js` (el caso del dueño, la regla, el repaso con su mini-clase, las fallas viejas y que ninguna
+  pantalla diga «null»/«undefined») y `test/camino-avance.test.js` (el video opcional y su capítulo, seguir en la misma tarjeta,
+  «Continuar» y los colores y anillos de cada nodo).
+- Si la tarjeta que explica una pregunta no se parece a ella (pocas palabras en común), la pregunta cae en el concepto
+  «general» del tema: con un paquete donde pase mucho, la regla se parece a «3 errores en el tema». Conviene que las tarjetas
+  usen las palabras de sus preguntas.
 
 ### Lo nuevo de la 0.12.1: el «Video resumen» editado (mp4) — sin cambio de base
 - Una materia puede traer su video ya editado: `video.mp4 = { archivo, duracion_s, portada?, capitulos?: [{ inicio_s, titulo }],

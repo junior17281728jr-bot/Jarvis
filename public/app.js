@@ -20,6 +20,8 @@ import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
 import { botonOrigen } from './origen-vista.js';
+import { panelCurso, panelRepasoResumen } from './progreso-vista.js';
+import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -3225,7 +3227,7 @@ function avisoMuestra(paquete) {
 }
 // 0.9.0: el «Instructor» (public/instructor.js) usa las mismas ayudas que estas pantallas.
 let ayudasInstructor = null;
-const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria }));
+const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor }));
 // 0.10.0: tiempo con IA, pagos y Profesor virtual (public/pagos.js).
 let ayudasPagos = null;
 const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi }));
@@ -3339,11 +3341,25 @@ function avionSvg(clase = '') {
 // Las estrellas de un tema aprobado según su mejor nota: 1 (aprobado), 2 (95 % o más), 3 (100 %).
 const estrellasDe = mejor => (mejor >= 100 ? 3 : mejor >= 95 ? 2 : 1);
 const DESVIOS = 8; // el sendero serpentea: .desvio-0 … .desvio-7 (estilos)
-function nodoCamino({ clase, href = null, nombreIcono, titulo, detalle = null, etiqueta, actual = false, estrellas = 0, burbuja = null, i }) {
+// 0.12.2: el anillo de avance alrededor de un nodo (o de la materia): pct de 0 a 100.
+function anilloAvance(pct, clase = '') {
+  const s = svgEl('svg', { viewBox: '0 0 100 100', class: `anillo-avance ${clase}`.trim(), 'aria-hidden': 'true', focusable: 'false' });
+  s.append(svgEl('circle', { cx: 50, cy: 50, r: 46, class: 'anillo-pista' }));
+  const lleno = svgEl('circle', { cx: 50, cy: 50, r: 46, class: 'anillo-lleno', pathLength: 100 });
+  const v = Math.max(0, Math.min(100, Number(pct) || 0));
+  lleno.style.strokeDasharray = `${v} 200`;
+  if (!v) lleno.style.opacity = '0';
+  s.append(lleno);
+  return s;
+}
+function nodoCamino({ clase, href = null, nombreIcono, titulo, detalle = null, etiqueta, actual = false, estrellas = 0, burbuja = null, i, avance = null }) {
   const circulo = el('span', { class: 'nodo-boton' }, icono(nombreIcono, 'icono nodo-icono'));
+  // 0.12.2: el color del nodo (morado = terminada, dorado = dominada) y su anillo de avance.
+  if (avance) clase = `${clase} nivel-${avance.nivel}`;
+  if (avance && etiqueta) etiqueta = `${etiqueta} ${t(`camino.nivel.${avance.nivel}`, { pct: numero(avance.pct) })}`;
   const partes = [
     burbuja ? el('span', { class: 'nodo-burbuja', 'aria-hidden': 'true', texto: burbuja }) : null,
-    el('span', { class: 'nodo-aro' }, circulo, actual ? el('span', { class: 'nodo-avion', 'aria-hidden': 'true' }, avionSvg()) : null),
+    el('span', { class: 'nodo-aro' }, avance ? anilloAvance(avance.pct) : null, circulo, actual ? el('span', { class: 'nodo-avion', 'aria-hidden': 'true' }, avionSvg()) : null),
     estrellas ? el('span', { class: 'nodo-estrellas', 'aria-hidden': 'true' }, [1, 2, 3].map(k => icono('estrella', `icono estrella-${k <= estrellas ? 'llena' : 'vacia'}`))) : null,
     el('span', { class: 'nodo-nombre', texto: titulo }),
     detalle ? el('span', { class: 'nodo-detalle', texto: detalle }) : null,
@@ -3363,6 +3379,7 @@ function senderoMateria(m, n, siguiente) {
     const actualVideo = !visto && siguiente?.tipo === 'video' && siguiente.materia === m.id;
     nodos.push(nodoCamino({
       clase: `video ${visto ? 'hecho' : 'abierto'}`, href: `#video/${encodeURIComponent(m.id)}`, nombreIcono: 'video', i: i++,
+      avance: { nivel: visto ? 'terminado' : (m.video.pct ?? 0) > 0 ? 'empezado' : 'nuevo', pct: m.video.pct ?? (visto ? 100 : 0) },
       titulo: t('acad.video.nodo'), detalle: m.video.duracion ? t('acad.video.minutos', { n: numero(Math.max(1, Math.round(m.video.duracion / 60))) }) : null,
       etiqueta: t('acad.video.de', { materia: nombreMateria(m.id) }), actual: actualVideo, burbuja: actualVideo ? t('acad.ver') : null,
     }));
@@ -3378,7 +3395,7 @@ function senderoMateria(m, n, siguiente) {
       nodos.push(nodoCamino({
         clase: hecho ? 'hecho' : 'abierto', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}`, i: i++,
         nombreIcono: hecho ? 'marca' : 'estrella', titulo: es, etiqueta: hecho ? t('acad.tema_hecho', { tema: es, n: numero(tema.mejor ?? 0) }) : t('acad.tema_abierto', { tema: es }),
-        actual, estrellas: hecho ? estrellasDe(tema.mejor ?? 0) : 0, burbuja: actual ? t('acad.empezar') : null,
+        actual, estrellas: hecho ? estrellasDe(tema.mejor ?? 0) : 0, burbuja: actual ? t(tema.paso?.paso ? 'acad.seguir_aqui' : 'acad.empezar') : null, avance: tema.avance ?? null,
       }));
     }
   });
@@ -3388,7 +3405,7 @@ function senderoMateria(m, n, siguiente) {
   const directo = !ex.disponible && ex.saltable;
   nodos.push(nodoCamino({
     clase: `examen ${ex.aprobado ? 'hecho' : ex.disponible ? 'abierto' : 'bloqueado'}${directo ? ' directo' : ''}`, href: ex.disponible || directo ? `#examen/${encodeURIComponent(m.id)}` : null, i: i++,
-    nombreIcono: 'trofeo', titulo: t('acad.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : directo ? t('acad.saltar.detalle') : tn('acad.n_preguntas', { n: ex.preguntas }),
+    avance: ex.avance ?? null, nombreIcono: 'trofeo', titulo: t('acad.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : directo ? t('acad.saltar.detalle') : tn('acad.n_preguntas', { n: ex.preguntas }),
     etiqueta: ex.disponible ? t('acad.examen_de', { materia: nombreMateria(m.id) }) : directo ? `${t('acad.examen_cerrado')} ${t('acad.saltar.detalle')}` : t('acad.examen_cerrado'), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
   }));
   // 0.12.0: lo EXTRA de la materia (opcional; recomendado después del examen).
@@ -3404,7 +3421,8 @@ function senderoMateria(m, n, siguiente) {
 function bannerMateria(m, n, { vacia = false } = {}) {
   const hechos = m.temas.filter(x => x.estado === 'aprobado').length;
   return el('header', { class: 'banner-materia' },
-    el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[m.id] ?? 'avion')),
+    // 0.12.2: el anillo de la materia (el avance de todos sus nodos).
+    el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, vacia ? null : anilloAvance(m.avance ?? 0, 'anillo-materia'), icono(ICONO_MATERIA[m.id] ?? 'avion')),
     el('div', { class: 'banner-texto' },
       el('p', { class: 'banner-ante', texto: t('acad.materia_n', { n: numero(n + 1) }) }),
       el('h2', { id: `materia-${m.id}`, class: 'banner-titulo', texto: nombreMateria(m.id) }),
@@ -3418,12 +3436,12 @@ function barraLlena(pct) {
   return lleno;
 }
 
-// Lo que toca ahora: el primer video sin ver de una materia abierta, el primer tema abierto o el examen disponible.
+// Lo que toca ahora: el primer tema abierto o el examen disponible (el video es opcional).
 function pasoQueToca(c) {
   for (const m of c.materias) {
     if (!m.temas.length) continue;
     if (m.estado === 'bloqueada') return null;
-    if (m.video && !m.video.visto && m.temas.every(x => x.estado !== 'aprobado')) return { tipo: 'video', materia: m.id };
+    // 0.12.2: el video es opcional: nunca es «lo que toca» (antes, sin verlo, el Camino mandaba al video otra vez).
     const abierto = m.temas.find(x => x.estado === 'abierto');
     if (abierto) return { tipo: 'tema', materia: m.id, tema: abierto.id };
     if (m.examen.disponible && !m.examen.aprobado) return { tipo: 'examen', materia: m.id };
@@ -3499,27 +3517,58 @@ function panelGrupo(g, { compacto = false, alCambiar = null } = {}) {
     ocultar);
 }
 
-// 0.8.0: debajo del banner de una materia abierta: «Tu punto débil» (con un ejercicio rápido) y el Modo reto de la materia.
-function cajaDebil(debil, datosIntento) {
-  if (!debil) return null;
-  return el('aside', { class: 'caja-debil', 'aria-label': t('debil.titulo') },
-    el('span', { class: 'caja-debil-icono', 'aria-hidden': 'true' }, icono('atencion')),
-    el('div', { class: 'caja-debil-texto' },
-      el('p', { class: 'caja-debil-ante', texto: t('debil.titulo') }),
-      talCual('p', debil.idea || debil.enunciado, 'caja-debil-idea'),
-      el('p', { class: 'suave chica', texto: [debil.numero ? t('acad.pregunta_n', { n: debil.numero }) : null, tn('debil.fallos', { n: debil.fallos })].filter(Boolean).join(' · ') })),
-    el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: evento => { sonar('toque'); empezarIntento(datosIntento, evento.currentTarget); } }, el('span', { texto: t('debil.practicar') })));
-}
 function botonReto(n, datosIntento, clase = '') {
   if (!n) return null;
   return el('button', { type: 'button', class: `boton-3d morado chico con-icono boton-reto ${clase}`.trim(), onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'reto', ...datosIntento }, evento.currentTarget); } },
     icono('rayo', 'icono chico'), el('span', { texto: tn('reto.practicar', { n }) }));
 }
+// 0.12.2: el «punto débil» ya no sale en el Camino (lo de los errores está en «Mi repaso»): aquí, solo el Modo reto.
 function extrasMateria(m) {
-  const debil = cajaDebil(m.debil, { tipo: 'errores', materia: m.id });
   const reto = botonReto(m.reto, { materia: m.id });
-  if (!debil && !reto) return null;
-  return el('div', { class: 'materia-extras' }, debil, reto ? el('div', { class: 'materia-reto' }, el('p', { class: 'suave chica', texto: t('reto.linea_materia') }), reto) : null);
+  if (!reto) return null;
+  return el('div', { class: 'materia-extras' }, el('div', { class: 'materia-reto' }, el('p', { class: 'suave chica', texto: t('reto.linea_materia') }), reto));
+}
+
+// 0.12.2: «Continuar»: la clase donde quedó (si no, lo que toca). Y la leyenda de los colores del Camino.
+function botonContinuar(c, siguiente) {
+  const donde = c.continuar ?? (siguiente?.tipo === 'tema' ? siguiente : null);
+  const m = donde ? c.materias.find(x => x.id === donde.materia) : null;
+  const tema = m?.temas.find(x => x.id === donde.tema);
+  if (tema) {
+    return el('a', { class: 'boton-3d grande boton-continuar con-icono', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}` },
+      icono('flecha', 'icono chico'), el('span', { texto: t('acad.continuar_tema', { tema: partirTitulo(tema.titulo).es }) }));
+  }
+  if (siguiente?.tipo === 'examen') return el('a', { class: 'boton-3d grande boton-continuar', href: `#examen/${encodeURIComponent(siguiente.materia)}` }, el('span', { texto: t('acad.examen.nodo') }));
+  return null;
+}
+function leyendaCamino() {
+  const punto = clase => el('span', { class: `leyenda-punto ${clase}`, 'aria-hidden': 'true' });
+  return el('p', { class: 'leyenda-camino' },
+    el('span', { class: 'leyenda-item' }, punto('morado'), el('span', { texto: t('camino.leyenda.terminada') })),
+    el('span', { class: 'leyenda-item' }, punto('dorado'), el('span', { texto: t('camino.leyenda.dominada') })),
+    el('span', { class: 'leyenda-item' }, punto('anillo'), el('span', { texto: t('camino.leyenda.anillo') })));
+}
+
+// 0.12.2: la entrada a «Mi repaso» en Inicio (public/instructor.js pone el número cuando llega).
+function entradaMiRepaso() {
+  return el('a', { class: 'entrada-mi-repaso con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'),
+    el('span', {}, el('strong', { texto: t('mirepaso.titulo') }), el('span', { class: 'suave chica', texto: ` · ${t('mirepaso.entrada')}` })),
+    el('span', { class: 'mi-repaso-cuenta insignia tono-atencion', hidden: true }));
+}
+async function pantallaMiRepaso() {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/academia/mi-repaso');
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  vistaMiRepaso(r.datos, { el, t, tn, numero, icono, talCual, mostrar, marco, volverAlCamino, nombreMateria, empezarIntento, sonar, vacio, insignia });
+}
+async function pantallaMiniClase(clave) {
+  const vigente = nuevoTurno();
+  const r = await api('GET', `/api/academia/mi-repaso/clase?concepto=${encodeURIComponent(clave)}`);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  vistaMiniClase(r.datos, { el, t, numero, icono, talCual, mostrar, marco, nombreMateria, empezarIntento, partirLeccion, vistaTarjeta, botonGrande, instructorUi });
+  window.scrollTo(0, 0);
 }
 
 async function pantallaInicio() {
@@ -3552,10 +3601,16 @@ async function pantallaInicio() {
   const hola = el('div', { class: 'saludo' },
     el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
     el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
+    // 0.12.2: «Continuar» = donde quedó (la última clase que abrió, en su tarjeta); tocar un nodo abre ESE nodo.
+    botonContinuar(c, siguiente),
     c.repaso ? botonRepaso(c.repaso, 'chico') : null,
+    // 0.12.2: «Mi repaso» (todo lo que falló), siempre visible; el número de puntos para repasar llega con el instructor.
+    entradaMiRepaso(),
     // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
     lineaHumorVista(c.humor));
   const enFondo = mostrar(marco('inicio', barraCabina(c), hola, instructorUi().enInicio(), avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }),
+    // 0.12.2: qué quiere decir el color de cada nodo (una vez, arriba del Camino).
+    leyendaCamino(),
     // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
     plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente })));
   // 0.8.0: el próximo tema y el progreso se piden ya (sin esperar): al tocarlos se abren enseguida.
@@ -3849,23 +3904,27 @@ function vistaSituacion(p, { alElegir }) {
   return { nodo, botones, elegida: () => elegida };
 }
 
-async function pantallaTema(materia, tema, { soloRefuerzo = false } = {}) {
+async function pantallaTema(materia, tema) {
   const vigente = nuevoTurno();
-  // 0.10.0: junto con la lección, el refuerzo del instructor para este tema (sus fallas registradas).
-  const [r, ins] = await Promise.all([api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`),
-    api('GET', `/api/academia/instructor/tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`)]);
+  // 0.12.2: la clase es siempre la normal: ninguna tarjeta de refuerzo delante ni consejo de errores en la portada (eso
+  // vive en «Mi repaso»), así que solo se pide la lección.
+  const r = await api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const l = r.datos;
+  // 0.12.2: la PRIMERA vez que entra a la materia, su video (con «Saltar video»); después nunca más solo.
+  if (l.video?.ofrecer) {
+    await api('POST', `/api/academia/video/${encodeURIComponent(materia)}/ofrecido`, {});
+    if (!vigente()) return;
+    history.replaceState(null, '', `#video/${encodeURIComponent(materia)}/primera/${encodeURIComponent(tema)}`);
+    return pantallaVideo(materia, { modo: 'primera', tema });
+  }
   const { es, en } = partirTitulo(l.titulo);
-  // La tarjeta que explica su falla sale PRIMERO, marcada «Refuerzo para ti» (y en «Repasar ahora», solo esa).
-  const refuerzo = ins.ok ? ins.datos.refuerzo : null;
-  const seccionRefuerzo = refuerzo?.tarjeta ? l.secciones[refuerzo.tarjeta.indice] : null;
-  const deRefuerzo = seccionRefuerzo ? partirLeccion([seccionRefuerzo]).map(p => ({ ...p, refuerzo: true })) : [];
-  const pantallas = soloRefuerzo
-    ? [{ tipo: 'portada', refuerzo: true }, ...(deRefuerzo.length ? deRefuerzo : partirLeccion(l.secciones)), { tipo: 'fin', refuerzo: true }]
-    : [{ tipo: 'portada' }, ...deRefuerzo, ...partirLeccion(l.secciones), { tipo: 'fin' }];
-  let paso = 0;
+  const pantallas = [{ tipo: 'portada' }, ...partirLeccion(l.secciones), { tipo: 'fin' }];
+  // 0.12.2: sigue donde quedó (la misma tarjeta), si la clase no cambió desde entonces.
+  let paso = l.paso && l.paso.total === pantallas.length && l.paso.paso > 0 && l.paso.paso < pantallas.length ? l.paso.paso : 0;
+  if (paso) avisar(t('acad.tema.sigues', { n: numero(Math.min(paso, pantallas.length - 2)), total: numero(pantallas.length - 2) }));
+  let guardado = -1;
   let actual = null; // { destruir }
   const barraAvance = combustible();
   const cuenta = el('span', { class: 'estudio-cuenta' });
@@ -3891,40 +3950,28 @@ async function pantallaTema(materia, tema, { soloRefuerzo = false } = {}) {
     const p = pantallas[paso];
     barraAvance.poner(paso, pantallas.length - 1);
     cuenta.textContent = paso > 0 && paso < pantallas.length - 1 ? t('acad.de', { n: numero(paso), total: numero(pantallas.length - 2) }) : '';
+    // 0.12.2: anota dónde va (sin esperar; si falla, no pasa nada: es solo para seguir ahí y para el anillo del Camino).
+    if (paso !== guardado) {
+      guardado = paso;
+      api('POST', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}/paso`, { paso, total: pantallas.length });
+    }
     let nodo;
     let botones = [];
-    if (p.tipo === 'portada' && p.refuerzo) {
-      nodo = el('article', { class: 'portada-tema portada-refuerzo' },
-        el('span', { class: 'sello-refuerzo', texto: t('refuerzo.para_ti') }),
-        el('p', { class: 'antetitulo', texto: nombreMateria(materia) }),
-        el('h1', { class: 'titulo-grande', texto: es }),
-        el('p', { class: 'bajada', texto: refuerzo ? tn('refuerzo.portada', { n: refuerzo.fallos }) : t('refuerzo.portada_sin') }),
-        refuerzo?.idea ? talCual('p', refuerzo.idea, 'caja-debil-idea') : null);
-      botones = [botonGrande(t('acad.empezar'), () => ir(1))];
-    } else if (p.tipo === 'fin' && p.refuerzo) {
-      nodo = el('article', { class: 'fin-leccion' },
-        el('h1', { class: 'titulo-grande', texto: t('refuerzo.fin') }),
-        el('p', { class: 'bajada', texto: t('refuerzo.fin_linea') }));
-      botones = [atras(), botonGrande(t('refuerzo.preguntas'), evento => empezarIntento({ tipo: 'instructor', materia, tema }, evento.currentTarget))];
-    } else if (p.tipo === 'portada') {
+    if (p.tipo === 'portada') {
+      // 0.12.2: la portada de la clase, limpia: el título, cuántas tarjetas, cómo se usa y EMPEZAR. Sin «Practicar ya»
+      // (el Test Guide va al final de la materia: «Examen del Test Guide» en el Camino), sin «Tu punto débil» ni el consejo
+      // del instructor (lo de los errores vive en «Mi repaso»), y sin contar las preguntas del Test Guide.
       nodo = el('article', { class: 'portada-tema' },
         el('span', { class: 'portada-icono', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[materia] ?? 'avion')),
         el('p', { class: 'antetitulo', texto: nombreMateria(materia) }),
         el('h1', { class: 'titulo-grande', texto: es }),
         en ? el('p', { class: 'tarjeta-en', lang: 'en', texto: en }) : null,
         el('ul', { class: 'portada-datos' },
-          el('li', {}, icono('tarjetas', 'icono'), el('span', { texto: tn('acad.n_tarjetas', { n: pantallas.length - 2 }) })),
-          el('li', {}, icono('trofeo', 'icono'), el('span', { texto: tn('acad.n_preguntas_tg', { n: l.preguntas }) }))),
+          el('li', {}, icono('tarjetas', 'icono'), el('span', { texto: tn('acad.n_tarjetas', { n: pantallas.length - 2 }) }))),
         el('p', { class: 'bajada', texto: t('acad.portada.linea') }),
-        // 0.8.0: el punto débil del alumno en este tema (con un ejercicio rápido) y practicar ya, en los dos modos.
-        cajaDebil(l.debil, { tipo: 'errores', materia, tema }),
-        instructorUi().alEmpezarTema(materia, tema),
-        l.preguntas ? el('div', { class: 'practicar-ya' },
-          el('p', { class: 'suave chica', texto: t('reto.practicar_ya') }),
-          el('div', { class: 'practicar-ya-botones' },
-            el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'tema', materia, tema }, evento.currentTarget); } },
-              icono('libro', 'icono chico'), el('span', { texto: t('reto.original') })),
-            botonReto(l.reto, { materia, tema }))) : null);
+        // 0.12.2: la explicación en video de ESTE tema (su capítulo del mp4), solo si el paquete lo trae.
+        l.video?.capitulo ? el('a', { class: 'boton-3d blanco chico con-icono boton-video-tema', href: `#video/${encodeURIComponent(materia)}/tema/${encodeURIComponent(tema)}` },
+          icono('video', 'icono chico'), el('span', { texto: t('acad.video.explicacion') })) : null);
       botones = [botonGrande(t('acad.empezar'), () => ir(1))];
     } else if (p.tipo === 'fin') {
       nodo = el('article', { class: 'fin-leccion' },
@@ -3987,7 +4034,6 @@ async function pantallaTema(materia, tema, { soloRefuerzo = false } = {}) {
       actual = v;
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
     }
-    if (p.refuerzo && p.tipo !== 'portada' && p.tipo !== 'fin') nodo.prepend(el('span', { class: 'sello-refuerzo', texto: t('refuerzo.para_ti') }));
     cuerpo.replaceChildren(nodo);
     pie.replaceChildren(...botones.filter(Boolean));
   };
@@ -4040,7 +4086,7 @@ function guardarVideoLocal(ref, s) {
 function leerVelocidadVideo() {
   try { return velocidadValida(localStorage.getItem('op_video_velocidad')); } catch { return 1; }
 }
-function pantallaVideoMp4(materia, v) {
+function pantallaVideoMp4(materia, v, { volver = '#inicio', saltar = null, tema = null } = {}) {
   const mp4 = v.mp4;
   const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
   const duracion = Number(mp4.duracion_s) || 0;
@@ -4048,7 +4094,7 @@ function pantallaVideoMp4(materia, v) {
   const barraAvance = combustible();
   const lugar = el('div', { class: 'video-lugar video-mp4' });
   const pie = el('div', { class: 'estudio-botones' });
-  const raizEstudio = marcoEstudio({ clase: `video-materia con-mp4 ${claseMateria(materia)}`, barra: barraAvance.nodo, cuerpo: lugar, pie });
+  const raizEstudio = marcoEstudio({ clase: `video-materia con-mp4 ${claseMateria(materia)}`, barra: barraAvance.nodo, cuerpo: lugar, pie, salir: volver });
   const video = el('video', {
     class: 'video-mp4-pantalla', controls: true, playsinline: true, 'webkit-playsinline': true, preload: 'metadata',
     poster: mp4.portada || null, src: mp4.url, 'aria-label': titulo, controlslist: 'nodownload', disablepictureinpicture: null,
@@ -4057,9 +4103,13 @@ function pantallaVideoMp4(materia, v) {
   let saltado = false;
   let velocidad = leerVelocidadVideo();
   const guardada = posicionMasNueva(v.posicion, leerVideoLocal(mp4.ref));
-  const desde = inicioDesde(guardada, duracion);
-  const seguir = botonGrande(t('acad.video.ir_temas'), () => { location.hash = '#inicio'; });
-  const ponerSeguir = () => { if (visto && !pie.contains(seguir)) pie.replaceChildren(seguir); };
+  // 0.12.2: desde un tema («Ver la explicación en video»): su capítulo (el tema n es el capítulo n; el 0 es la introducción).
+  const indiceTema = tema ? (Array.isArray(v.temas) ? v.temas.indexOf(tema) : -1) : -1;
+  const capituloTema = indiceTema >= 0 ? capitulos[indiceTema + 1] ?? null : null;
+  const desde = capituloTema ? capituloTema.inicio_s : inicioDesde(guardada, duracion);
+  const seguir = botonGrande(t(volver === '#inicio' ? 'acad.video.ir_temas' : 'acad.video.volver_tema'), () => { location.hash = volver; });
+  // (desde un tema, volver a él está siempre a mano; desde el Camino, al terminar de verlo)
+  const ponerSeguir = () => { if ((visto || volver !== '#inicio') && !pie.contains(seguir)) pie.replaceChildren(seguir); };
 
   // Dónde quedó: en este aparato a cada rato, y en el servidor cada 15 s, al pausar y al salir.
   let ultimoEnviado = -1;
@@ -4108,7 +4158,7 @@ function pantallaVideoMp4(materia, v) {
       else video.requestFullscreen?.();
     },
   }, icono('expandir'), el('span', { texto: t('acad.video.pantalla_completa') }));
-  const notaSeguir = desde > 0 ? el('p', { class: 'video-sigue suave', role: 'status', texto: t('acad.video.sigue_desde', { tiempo: relojVideo(desde) }) }) : null;
+  const notaSeguir = desde > 0 ? el('p', { class: 'video-sigue suave', role: 'status', texto: capituloTema ? t('acad.video.desde_capitulo', { titulo: capituloTema.titulo, tiempo: relojVideo(desde) }) : t('acad.video.sigue_desde', { tiempo: relojVideo(desde) }) }) : null;
   const desdeCero = desde > 0 ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { saltado = true; video.currentTime = 0; video.play().catch(() => {}); notaSeguir?.remove(); desdeCero.remove(); }, texto: t('acad.video.desde_cero') }) : null;
 
   // Capítulos: tocar uno salta ahí (y empieza a sonar: es un toque).
@@ -4165,7 +4215,8 @@ function pantallaVideoMp4(materia, v) {
       el('ol', {}, filasCapitulos)) : null].filter(Boolean));
   barraAvance.poner(desde, duracion || 1);
   marcarCapitulo();
-  if (visto) ponerSeguir();
+  if (saltar) pie.replaceChildren(saltar);
+  else ponerSeguir();
   mostrar(raizEstudio);
   raizEstudio.video = video; // para las pruebas en el navegador (no es global)
   // Al salir (otra pantalla, otra app o cerrar): se guarda dónde quedó y el video se apaga (sin seguir bajando).
@@ -4186,27 +4237,30 @@ function pantallaVideoMp4(materia, v) {
   });
   window.addEventListener('hashchange', alSalir);
 }
-async function pantallaVideo(materia) {
+async function pantallaVideo(materia, { modo = null, tema = null } = {}) {
   const vigente = nuevoTurno();
   const r = await api('GET', `/api/academia/video/${encodeURIComponent(materia)}`);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const v = r.datos;
   // 0.12.1: con el video editado (mp4) ya en el servidor, ese; si no, el reproductor de escenas de siempre.
-  if (v.mp4?.url) return pantallaVideoMp4(materia, v);
+  // 0.12.2: de dónde vino (un tema) y a dónde vuelve; «Saltar video» la primera vez.
+  const volver = tema ? `#tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}` : '#inicio';
+  const saltar = modo === 'primera' ? el('a', { class: 'boton-3d blanco', href: volver }, el('span', { texto: t('acad.video.saltar') })) : null;
+  if (v.mp4?.url) return pantallaVideoMp4(materia, v, { volver, saltar, tema: modo === 'tema' ? tema : null });
   const audioUrl = v.audio?.ref ? `/api/academia/audio/${encodeURIComponent(v.audio.ref)}` : null;
   const titulo = v.titulo || t('acad.video.titulo', { materia: nombreMateria(materia) });
   const total = v.escenas.length ? Math.max(...v.escenas.map(e => e.fin_s)) : null;
   const barraAvance = combustible();
   const lugar = el('div', { class: 'video-lugar' });
   const pie = el('div', { class: 'estudio-botones' });
-  const raizEstudio = marcoEstudio({ clase: `video-materia ${claseMateria(materia)}${audioUrl ? ' con-audio' : ''}`, barra: barraAvance.nodo, cuerpo: lugar, pie });
+  const raizEstudio = marcoEstudio({ clase: `video-materia ${claseMateria(materia)}${audioUrl ? ' con-audio' : ''}`, barra: barraAvance.nodo, cuerpo: lugar, pie, salir: volver });
   // El reproductor se pide ya (no al tocar): así el toque llega al audio sin esperar la red.
   const moduloReproductor = import('./clase/reproductor.js');
   let reproductor = null;
   let reloj = null;
   const marcarVisto = () => api('POST', `/api/academia/video/${encodeURIComponent(materia)}/visto`, {});
-  const seguir = botonGrande(t('acad.video.ir_temas'), async evento => { evento.currentTarget.disabled = true; await marcarVisto(); location.hash = '#inicio'; });
+  const seguir = botonGrande(t('acad.video.ir_temas'), async evento => { evento.currentTarget.disabled = true; await marcarVisto(); location.hash = volver; });
   const empezar = async () => {
       poster.disabled = true;
       ver.disabled = true;
@@ -4243,6 +4297,7 @@ async function pantallaVideo(materia) {
   lugar.append(poster, el('p', { class: 'video-nota suave', texto: audioUrl ? t('acad.video.nota') : t('acad.video.nota_sin_audio') }),
     v.visto ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { location.hash = '#inicio'; }, texto: t('acad.video.ya_lo_vi') }) : null);
   pie.append(ver);
+  if (saltar) pie.append(saltar);
   barraAvance.poner(0, 100);
   mostrar(raizEstudio);
   // Al salir de la pantalla, el audio se apaga.
@@ -4431,6 +4486,8 @@ function lineaHumorVista(h) {
 function panelesResultado(res) {
   const lista = [];
   if (res.humor) lista.push(lineaHumorVista(res.humor));
+  // 0.12.2: ánimo después de equivocarse, y lo que pasó con «Mi repaso» (un punto que entró, o cómo va su repaso).
+  lista.push(...panelesRepaso(res, { el, t, numero, icono, talCual }));
   const s = res.salto;
   if (s && (res.aprobado === false || s.pendientes > 0)) {
     const texto = res.aprobado === false ? t('salto.quemado', { n: numero(s.saltados), pct: numero(res.pct) }) : t('salto.paso', { pct: numero(res.pct), faltan: numero(s.pendientes) });
@@ -4569,9 +4626,13 @@ async function pantallaPractica(id) {
     const errores = res.falladas.length ? el('button', { type: 'button', class: 'boton-3d naranja con-icono',
       onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'errores', intento: res.id }, evento.currentTarget); } }, icono('actualizar', 'icono chico'), el('span', { texto: tn('errores.practicar', { n: res.falladas.length }) })) : null;
     pie.classList.add('apilados');
-    pie.replaceChildren(...[res.aprobado === false ? otraVez : el('a', { class: 'boton-3d grande', href: '#inicio' }, el('span', { texto: t('acad.seguir') })),
+    // 0.12.2: el repaso de un punto de «Mi repaso»: si falló, la mini-clase antes de intentarlo otra vez.
+    const deRepaso = botonesRepaso(res, { el, t, empezarIntento });
+    // «Mi repaso» siempre a mano (todo lo fallado, para practicarlo).
+    const aMiRepaso = el('a', { class: 'boton-texto con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('mirepaso.titulo') }));
+    pie.replaceChildren(...(deRepaso ? [...deRepaso] : [res.aprobado === false ? otraVez : el('a', { class: 'boton-3d grande', href: '#inicio' }, el('span', { texto: t('acad.seguir') })),
       errores,
-      res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez].filter(Boolean));
+      res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez, aMiRepaso]).filter(Boolean));
     if (res.aprobado !== false) celebrar(zona);
     sonar(res.aprobado && res.tipo === 'examen' ? 'nivel' : res.aprobado ? 'tema' : res.aprobado === false ? 'mal' : 'bien');
     window.scrollTo(0, 0);
@@ -4613,32 +4674,26 @@ async function pantallaProgreso() {
   if (!r.ok) return mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const p = r.datos;
   estudioHoy = p.hoy ?? estudioHoy;
-  const materias = p.materias.length
-    ? el('div', { class: 'rejilla dos' }, p.materias.map(m => tarjetaMateria(m)))
-    : el('section', { class: 'panel' }, vacio('grafica', t('acad.progreso.vacio')));
   let grupo = null;
   const alCambiarGrupo = g => { const nuevo = panelGrupo(g, { alCambiar: alCambiarGrupo }); if (nuevo && grupo) grupo.replaceWith(nuevo); grupo = nuevo; };
   grupo = panelGrupo(p.grupo, { alCambiar: alCambiarGrupo });
+  // 0.12.2: arriba, el curso ENTERO (las 11 materias, con cada número diciendo qué cuenta) y, por materia, sus temas;
+  // «Mis puntos débiles» se juntó con «Mi repaso» (aquí, en corto, con su botón).
+  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual };
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
     el('p', { class: 'bajada', texto: t('acad.progreso.linea') }),
+    p.curso?.conClases ? panelCurso(p.curso, ayudas) : el('section', { class: 'panel' }, vacio('grafica', t('acad.progreso.vacio'))),
+    // El repaso espaciado (lo que vence hoy) es otra cosa que «Mi repaso»: su (i) lo explica.
+    p.repaso ? el('div', { class: 'progreso-repaso-espaciado' }, botonRepaso(p.repaso), queEs('repaso')) : null,
     // 0.10.0: «¿Estás listo para el examen oficial?» y «Lo que hicimos por ti» (sus fallas y cómo se le reforzaron).
     instructorUi().preparado(),
+    panelRepasoResumen(p.miRepaso, ayudas),
     instructorUi().loQueHicimos(),
-    el('section', { class: 'panel panel-preparacion' },
-      medidor(p.preparacion?.pct ?? 0),
-      el('div', {},
-        el('h2', { texto: t('acad.preparacion.titulo') }),
-        el('p', { class: 'suave', texto: t('acad.preparacion.linea', { n: numero(p.preparacion?.bien ?? 0), total: numero(p.preparacion?.total ?? 0) }) }),
-        el('p', { class: 'suave chica', texto: t('acad.preparacion.estimacion') }),
-        botonRepaso(p.repaso))),
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
     grupo,
     p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
-    panelPuntosDebiles(p.puntosDebiles, { conBoton: true }),
-    materias,
-    panelExtra(p.extra),
-    listaDebiles(p.debiles, t('acad.debiles'), 'acad.debiles.vacio')));
+    panelExtra(p.extra)));
 }
 // 0.12.0: lo EXTRA va aparte (nunca se suma al Test Guide): por materia y por nivel. Lo usa también la ficha del alumno.
 function panelExtra(lista, { titulo = t('extra.progreso.titulo'), enlaces = true } = {}) {
@@ -4688,30 +4743,8 @@ function panelPuntosDebiles(pd, { conBoton = false, titulo = t('debil.panel') } 
         q.superada ? insignia('bien', t('debil.superada')) : el('span', { class: 'insignia tono-apagado', texto: nombreMateria(q.materia) }),
         talCual('span', q.enunciado, 'debil-enunciado'),
         el('span', { class: 'suave', texto: tn('acad.fallos_de', { n: q.fallos, veces: q.veces }) }))), 4)),
-    conBoton ? el('button', { type: 'button', class: 'boton-3d naranja con-icono', onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'errores' }, evento.currentTarget); } },
-      icono('actualizar', 'icono chico'), el('span', { texto: t('debil.practicar_todo') })) : null);
-}
-function tarjetaMateria(m, { conExamen = true } = {}) {
-  return el('section', { class: `panel materia-progreso ${claseMateria(m.id)}` },
-    el('div', { class: 'materia-cabeza' },
-      el('span', { class: 'banner-icono chico', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[m.id] ?? 'avion')),
-      el('h2', { texto: nombreMateria(m.id) }), el('span', { class: 'materia-pct', texto: pctTexto(m.pct) })),
-    el('div', { class: 'plan-barra' }, barraLlena(m.pct)),
-    el('div', { class: 'etiquetas' },
-      insignia('bien', t('acad.bien', { n: numero(m.bien) })),
-      insignia('mal', t('acad.mal', { n: numero(m.mal) })),
-      insignia('apagado', t('acad.sin_ver', { n: numero(m.sinVer) }))),
-    conExamen && m.examen?.mejor != null ? el('p', { class: 'suave con-icono-chico' }, icono('trofeo', 'icono chico'), el('span', { texto: t('acad.examen_mejor', { n: numero(m.examen.mejor) }) })) : null);
-}
-function listaDebiles(lista, tituloTexto, claveVacio, { conFallos = false } = {}) {
-  return el('section', { class: 'panel debiles' },
-    el('h2', { class: 'con-icono' }, icono('atencion'), el('span', { texto: tituloTexto }), queEs('repaso')),
-    lista.length ? verMas(el('ul', { class: 'lista-debiles' }), lista.map(q => el('li', {},
-      el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')),
-      el('span', { class: 'insignia tono-apagado', texto: nombreMateria(q.materia) }),
-      talCual('span', q.enunciado, 'debil-enunciado'),
-      el('span', { class: 'suave', texto: conFallos ? tn('acad.fallos_de', { n: q.fallos, veces: q.veces }) : tn('acad.fallos', { n: q.fallos }) }))), 5)
-      : vacio('bien', t(claveVacio)));
+    // 0.12.2: todo lo de los errores, en un solo lugar: «Mi repaso».
+    conBoton ? el('a', { class: 'boton-3d naranja con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('debil.practicar_todo') })) : null);
 }
 
 // ---- Administrador: alumnos (0.9.0: public/admin-alumnos.js, que solo se carga aquí) ----
@@ -5192,8 +5225,10 @@ async function dibujar() {
   const examen = seccion.match(/^examen\/([a-z0-9_-]+)$/);
   if (examen) return pantallaExamen(examen[1]);
   // 0.7.2: el «Video resumen» de una materia.
-  const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
-  if (video) return pantallaVideo(video[1]);
+  // 0.12.2: …/primera/<tema> = la primera vez que entra a la materia (con «Saltar video»); …/tema/<tema> = desde el capítulo
+  // de ese tema. Al terminar o salir, vuelve a ese tema.
+  const video = seccion.match(/^video\/([a-z0-9_-]+)(?:\/(primera|tema)\/([a-z0-9_-]+))?$/);
+  if (video) return pantallaVideo(video[1], { modo: video[2] ?? null, tema: video[3] ?? null });
   // 0.12.0: lo EXTRA de una materia (public/extra-vista.js, solo se carga ahí).
   const extra = seccion.match(/^extra\/([a-z0-9_-]+)$/);
   if (extra) return pantallaExtra(extra[1]);
@@ -5230,8 +5265,10 @@ async function dibujar() {
   if (seccion === 'aprendizaje' && esAdmin) return pantallaAprendizaje();
   const aprendizajeDe = seccion.match(/^aprendizaje\/(\d+)$/);
   if (aprendizajeDe && esAdmin) return pantallaAprendizaje(aprendizajeDe[1]);
-  const refuerzo = seccion.match(/^refuerzo\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
-  if (refuerzo) return pantallaTema(refuerzo[1], refuerzo[2], { soloRefuerzo: true });
+  // 0.12.2: «Mi repaso» y la mini-clase de un punto. Las direcciones viejas del refuerzo (#refuerzo/…) llevan a «Mi repaso».
+  if (seccion === 'mi-repaso' || /^refuerzo\/[a-z0-9_-]+\/[a-z0-9_-]+$/.test(seccion)) return pantallaMiRepaso();
+  const miniClase = seccion.match(/^mi-repaso\/clase\/([a-z0-9_-]+\/[a-z0-9_-]+\/[a-z0-9-]+)$/);
+  if (miniClase) return pantallaMiniClase(`c:${miniClase[1]}`);
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
   return pantallaInicio();
 }
@@ -5254,11 +5291,15 @@ function pedidosAlAbrir(seccion, admin) {
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
-  if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`, `/api/academia/instructor/tema/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
+  if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
   const practica = seccion.match(/^practica\/(\d+)$/);
   if (practica) return [`/api/academia/intentos/${encodeURIComponent(practica[1])}`];
   if (/^examen\/[a-z0-9_-]+$/.test(seccion)) return ['/api/academia/camino'];
-  const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
+  // 0.12.2: «Mi repaso» y la mini-clase de un punto.
+  if (seccion === 'mi-repaso' || /^refuerzo\/[a-z0-9_-]+\/[a-z0-9_-]+$/.test(seccion)) return ['/api/academia/mi-repaso'];
+  const miniClase = seccion.match(/^mi-repaso\/clase\/([a-z0-9_-]+\/[a-z0-9_-]+\/[a-z0-9-]+)$/);
+  if (miniClase) return [`/api/academia/mi-repaso/clase?concepto=${encodeURIComponent(`c:${miniClase[1]}`)}`];
+  const video = seccion.match(/^video\/([a-z0-9_-]+)(?:\/(?:primera|tema)\/[a-z0-9_-]+)?$/);
   if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
   // 0.12.0: lo extra de una materia.
   const extra = seccion.match(/^extra\/([a-z0-9_-]+)$/);

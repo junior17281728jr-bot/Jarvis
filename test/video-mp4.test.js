@@ -166,7 +166,7 @@ test('video 0.12.1: subir el mp4 y su portada, el reproductor de escenas mientra
 
     // Sin el mp4: el reproductor de escenas de siempre (lo de antes no cambia).
     let c = (await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).datos;
-    assert.deepEqual(c.materias[0].video, { escenas: 1, audio: false, duracion: 12, visto: false });
+    assert.deepEqual(c.materias[0].video, { escenas: 1, audio: false, duracion: 12, visto: false, pct: 0 });
     let v = (await pedir(base, 'GET', '/api/academia/video/factores_humanos', { galleta: ana })).datos;
     assert.equal(v.mp4, null);
     assert.equal(v.escenas.length, 1);
@@ -198,7 +198,7 @@ test('video 0.12.1: subir el mp4 y su portada, el reproductor de escenas mientra
 
     // Ya está: el camino y el video lo dicen (con la duración del mp4) y traen la dirección con su huella.
     c = (await pedir(base, 'GET', '/api/academia/camino', { galleta: ana })).datos;
-    assert.deepEqual(c.materias[0].video, { escenas: 1, audio: false, mp4: true, duracion: 20, visto: false });
+    assert.deepEqual(c.materias[0].video, { escenas: 1, audio: false, mp4: true, duracion: 20, visto: false, pct: 0 });
     v = (await pedir(base, 'GET', '/api/academia/video/factores_humanos', { galleta: ana })).datos;
     assert.equal(v.mp4.ref, `${id}~video-materia-01.mp4`);
     assert.match(v.mp4.url, new RegExp(`^/api/academia/videos/${id}~video-materia-01\\.mp4\\?v=[a-z0-9]+-[a-z0-9]+$`));

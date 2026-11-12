@@ -24,7 +24,8 @@ import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, ree
 import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS } from '../academia/instructor-ia.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { cobrarUso, yaPagado, ponerTareaAlUso, novedadesPagos } from '../academia/tiempo-ia.js';
-import { sincronizarFallas, refuerzoDeTema, fallasDe, planParaPasar } from '../academia/fallas.js';
+import { sincronizarFallas, fallasDe, planParaPasar, miRepaso, miniClase } from '../academia/fallas.js';
+import { conceptoDePregunta } from '../academia/conceptos.js';
 import { tiempoDe } from './pagos.js';
 import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
@@ -150,9 +151,10 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const datos = consejoInstructor(db, usuario.id, p, ahora, donde);
     // 0.12.0: con el humor encendido, el consejo de la IA va guardado aparte (en ese tono).
     const guardado = leerGuardado(db, `academia.ia.consejo.${usuario.id}.${semanaDe(ahora)}${humorActivo(db, usuario.id) ? '-humor' : ''}`);
-    // 0.10.0: su plan de refuerzo (las fallas que todavía tiene) y, al abrir un tema, el refuerzo de ese tema.
+    // 0.10.0: su plan de refuerzo (las fallas que todavía tiene). 0.12.2: abrir un tema ya no pone ninguna tarjeta de
+    // refuerzo en la clase (la clase sigue normal: lo de los errores vive en «Mi repaso»), así que «refuerzo» va vacío.
     const fallas = p ? fallasDe(db, usuario.id, p, ahora) : [];
-    const refuerzo = donde && p ? refuerzoDeTema(db, usuario.id, p, materia, tema, ahora) : null;
+    const refuerzo = null;
     return {
       codigo: 200,
       datos: {
@@ -175,7 +177,9 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const basica = reexplicarSinIa(db, usuario.id, p, r, modelo.estilo);
     // 0.10.0: si esa pregunta es una de sus fallas registradas, se le dice (y cuántas veces).
     sincronizarFallas(db, usuario.id, p, ahora);
-    const falla = db.prepare("SELECT fallos, estado FROM academia_fallas WHERE usuario_id = ? AND clave = ? AND estado <> 'superada' ORDER BY id DESC LIMIT 1").get(usuario.id, `q:${r.q.id}`);
+    // 0.12.2: también si su concepto está en «Mi repaso».
+    const falla = db.prepare("SELECT fallos, estado FROM academia_fallas WHERE usuario_id = ? AND clave IN (?, ?) AND estado <> 'superada' ORDER BY id DESC LIMIT 1")
+      .get(usuario.id, `q:${r.q.id}`, conceptoDePregunta(p, r.q.id)?.clave ?? '');
     if (falla) basica.falla = { fallos: falla.fallos, estado: falla.estado };
     const instructor = estadoInstructor(db, req, usuario, ahora);
     let ia = null;
@@ -259,6 +263,19 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   rutas.agregar('GET', '/api/academia/instructor/fallas', ({ db, usuario }) => {
     contar(topes.lecturas, usuario);
     return { codigo: 200, datos: { fallas: fallasDe(db, usuario.id, activo(db), reloj()) } };
+  });
+
+  // ---------- 0.12.2: «Mi repaso» (todo lo que falló, y los conceptos para repasar) y la mini-clase de un concepto ----------
+  rutas.agregar('GET', '/api/academia/mi-repaso', ({ db, usuario }) => {
+    contar(topes.lecturas, usuario);
+    return { codigo: 200, datos: miRepaso(db, usuario.id, activo(db), reloj()) };
+  });
+  rutas.agregar('GET', '/api/academia/mi-repaso/clase', ({ db, req, usuario }) => {
+    contar(topes.lecturas, usuario);
+    const ahora = reloj();
+    const datos = miniClase(db, usuario.id, activo(db), new URL(req.url, 'http://x').searchParams.get('concepto') ?? '', ahora);
+    // «Explícamelo de otra forma (IA)» solo si de verdad hay instructor con IA para él (minutos, permiso y clave).
+    return { codigo: 200, datos: { ...datos, ia: estadoInstructor(db, req, usuario, ahora).modo === 'ia' } };
   });
 
   // ---------- 0.10.0: «Plan para pasar la próxima vez» (un intento suyo terminado) ----------

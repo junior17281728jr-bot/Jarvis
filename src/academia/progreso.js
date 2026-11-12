@@ -13,6 +13,8 @@ import { resumenExtra } from './extra.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
 import { preguntasDelInstructor } from './practica.js';
+import { preguntasDeConcepto, empezarRepaso, repasoDelResultado, miRepaso } from './fallas.js';
+import { MATERIAS } from './formato.js';
 import { avataresDe } from '../cuentas/perfil.js';
 import { nombresLegales } from '../cuentas/terminos.js';
 
@@ -147,7 +149,7 @@ export function retroalimentacion(paquete, id, elegida, { intentoId = null, modo
   }
   return { ...base, elegida, acierto: elegida === correcta, correcta, idea: elegida !== correcta ? q.errores?.[elegida] ?? null : null };
 }
-const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(s => ({
+export const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(s => ({
   titulo: s.titulo, texto: s.texto ?? null, nota: s.nota ?? null, fuentes: (s.fuentes ?? []).map(f => fuenteDe(paquete, f, pid)),
   // 0.7.2: una tarjeta ya partida trae sus partes; las secciones de texto largo las parte la pantalla (public/tarjetas.js).
   ...(s.tipo === 'tarjeta' ? {
@@ -204,6 +206,8 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const leidos = temasLeidos(db, usuarioId);
   const memoria = puntosDebiles(db, usuarioId, paquete);
   const saltos = saltosDe(db, usuarioId);
+  const pasos = pasosDeTemas(db, usuarioId);
+  const posVideo = posiciones(db, usuarioId);
   const materias = paquete.materias.map(m => {
     const temas = m.temas.map(t => {
       const a = aprobados.get(`${m.id}/${t.id}`);
@@ -211,7 +215,10 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
       const aprobado = a?.aprobado === true || (!t.preguntas.length && leidos.has(`${m.id}/${t.id}`));
       const estadoTema = aprobado ? 'aprobado' : anteriorAprobado ? 'abierto' : 'bloqueado';
       anteriorAprobado = aprobado;
-      return { id: t.id, titulo: t.titulo, estado: estadoTema, mejor: a?.mejor ?? null, preguntas: t.preguntas.length };
+      // 0.12.2: el avance (anillo y color del nodo) y dónde quedó en su clase.
+      const p = pasos[`${m.id}/${t.id}`] ?? null;
+      return { id: t.id, titulo: t.titulo, estado: estadoTema, mejor: a?.mejor ?? null, preguntas: t.preguntas.length,
+        avance: avanceTema(p, a, aprobado, !t.preguntas.length), paso: p ? { paso: p.paso, total: p.total } : null };
     });
     const todos = temas.length > 0 && temas.every(t => t.estado === 'aprobado');
     const estadoMateria = !temas.length ? 'vacia' : todos ? 'aprobada' : temas.some(t => t.estado !== 'bloqueado') ? 'abierta' : 'bloqueada';
@@ -219,15 +226,24 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const aprobadosN = temas.filter(t => t.estado === 'aprobado').length;
     const audio = audioDe(paquete, m.paquete, m.audio);
     const video = resumenVideo(paquete, m, vistos);
+    // 0.12.2: el anillo del video: visto = completo; si no, hasta dónde llegó en el mp4.
+    if (video) {
+      const pv = posVideo[m.id];
+      video.pct = video.visto ? 100 : video.duracion && Number.isFinite(pv?.s) ? Math.min(99, Math.round((pv.s * 100) / video.duracion)) : 0;
+    }
     // 0.8.0: cuántas preguntas tienen Modo reto (de los temas abiertos) y el punto débil del alumno en la materia.
     const abiertos = new Set(temas.filter(t => t.estado !== 'bloqueado').map(t => t.id));
     const retoN = m.temas.filter(t => abiertos.has(t.id)).reduce((n, t) => n + t.preguntas.filter(id => tieneReto(paquete.preguntas.get(id))).length, 0);
     const debil = debilDe(memoria, paquete, { materia: m.id });
+    // 0.12.2: el avance de la materia (su anillo): el promedio de sus nodos (video, temas y el examen del Test Guide).
+    const exAvance = ex?.aprobado === true ? { nivel: 'dominado', pct: 100 } : ex?.veces ? { nivel: 'terminado', pct: Math.min(99, ex.mejor ?? 0) } : { nivel: 'nuevo', pct: 0 };
+    const partes = [...(video ? [video.pct] : []), ...temas.map(t => t.avance.pct), exAvance.pct];
     return {
-      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), ...(audio ? { audio } : {}), ...(video ? { video } : {}),
+      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), avance: partes.length ? Math.round(partes.reduce((a, b) => a + b, 0) / partes.length) : 0,
+      ...(audio ? { audio } : {}), ...(video ? { video } : {}),
       reto: retoN, ...(debil ? { debil } : {}),
       examen: {
-        disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0,
+        avance: exAvance, disponible: todos, preguntas: m.temas.reduce((n, t) => n + t.preguntas.length, 0), mejor: ex?.mejor ?? null, aprobado: ex?.aprobado === true, veces: ex?.veces ?? 0,
         // 0.12.0: «Ir directo al examen» sin terminar los temas (con su aviso). El orden queda guardado.
         saltable: !todos && temas.length > 0, pendientes: temas.filter(t => t.estado !== 'aprobado').length,
       },
@@ -236,7 +252,11 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
       ...(m.extra?.preguntas?.length || m.extra?.tarjetas?.length ? { extra: { preguntas: m.extra.preguntas.length, tarjetas: m.extra.tarjetas.length, recomendado: ex?.aprobado === true } } : {}),
     };
   });
-  return { ...base, paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra }, materias, repaso: repasoPendiente(db, usuarioId, paquete, ahoraMs).length };
+  // 0.12.2: «Continuar» = la última clase que abrió y todavía no aprobó (en la tarjeta donde quedó).
+  const abiertos = new Set(materias.flatMap(m => m.temas.filter(t => t.estado === 'abierto').map(t => `${m.id}/${t.id}`)));
+  const [ultimo] = Object.entries(pasos).filter(([k]) => abiertos.has(k)).sort((a, b) => String(b[1]?.en).localeCompare(String(a[1]?.en)));
+  const continuar = ultimo ? { materia: ultimo[0].split('/')[0], tema: ultimo[0].split('/')[1], paso: ultimo[1].paso, total: ultimo[1].total } : null;
+  return { ...base, paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra }, materias, continuar, repaso: repasoPendiente(db, usuarioId, paquete, ahoraMs).length };
 }
 
 // ---------- 0.7.2: el «Video resumen» de cada materia ----------
@@ -265,6 +285,7 @@ export function videoMateria(db, usuarioId, paquete, materia) {
   const { bytes, ...mp4 } = x.mp4 ?? {};
   return {
     materia, titulo: x.v?.titulo ?? null, audio: x.audio, visto: videosVistos(db, usuarioId).includes(materia),
+    temas: m.temas.map(t => t.id), // 0.12.2: el orden de los temas (el tema n es el capítulo n del mp4)
     // 0.12.1: el video editado (o null) y dónde lo dejó la última vez (segundos, o null).
     mp4: x.mp4 ? mp4 : null, posicion: x.mp4 ? posicionVideo(db, usuarioId, materia, x.mp4.ref) : null,
     escenas: x.escenas.map((e, i) => ({
@@ -300,11 +321,68 @@ export function guardarPosicionVideo(db, usuarioId, paquete, materia, segundos, 
   guardarAjuste(db, clavePosiciones(usuarioId), JSON.stringify(limpio));
   return { posicion: { s: todas[materia].s, en: todas[materia].en } };
 }
+// 0.12.2: el video de una materia se ofrece solo la PRIMERA vez que entra a ella (con «Saltar video»); visto o saltado,
+// nunca más se muestra solo. Las materias donde ya se ofreció van en ajustes (sin cambio de base).
+const claveOfrecidos = usuarioId => `academia.videos_ofrecidos.${Number(usuarioId)}`;
+function videosOfrecidos(db, usuarioId) {
+  try { const l = JSON.parse(leerAjuste(db, claveOfrecidos(usuarioId)) ?? '[]'); return Array.isArray(l) ? l.filter(x => typeof x === 'string') : []; } catch { return []; }
+}
+export function marcarVideoOfrecido(db, usuarioId, paquete, materia) {
+  videoMateria(db, usuarioId, paquete, materia); // que exista
+  const lista = videosOfrecidos(db, usuarioId);
+  if (!lista.includes(materia)) guardarAjuste(db, claveOfrecidos(usuarioId), JSON.stringify([...lista, materia].slice(-20)));
+  return { ofrecido: true };
+}
+// Lo que la clase de un tema sabe del video de su materia: si hay que ofrecerlo (la primera vez que entra a la materia:
+// sin verlo, sin habérselo ofrecido y sin nada hecho en sus temas) y el capítulo del mp4 de ESE tema (capítulo 0 = la
+// introducción; el tema n es el capítulo n), para «Ver la explicación en video».
+function videoDeLeccion(db, usuarioId, paquete, m, t) {
+  const x = videoDeMateria(paquete, m);
+  if (!x) return null;
+  const indice = m.temas.findIndex(y => y.id === t.id);
+  const cap = x.mp4 && Array.isArray(x.v?.mp4?.capitulos) ? x.v.mp4.capitulos[indice + 1] ?? null : null;
+  const pasos = pasosDeTemas(db, usuarioId);
+  const hizoAlgo = m.temas.some(y => pasos[`${m.id}/${y.id}`]) || db.prepare("SELECT 1 FROM academia_intentos WHERE usuario_id = ? AND materia = ? LIMIT 1").get(usuarioId, m.id);
+  const ofrecer = !videosVistos(db, usuarioId).includes(m.id) && !videosOfrecidos(db, usuarioId).includes(m.id) && !hizoAlgo;
+  return { ofrecer, capitulo: cap && Number.isFinite(cap.inicio_s) ? { inicio_s: cap.inicio_s, titulo: cap.titulo ?? '' } : null };
+}
 export function marcarVideoVisto(db, usuarioId, paquete, materia) {
   videoMateria(db, usuarioId, paquete, materia); // que exista
   const vistos = videosVistos(db, usuarioId);
   if (!vistos.includes(materia)) guardarAjuste(db, claveVistos(usuarioId), JSON.stringify([...vistos, materia].slice(-20)));
   return { visto: true };
+}
+
+// ---------- 0.12.2: dónde quedó en cada clase (la tarjeta), para seguir ahí y para el anillo de avance del Camino ----------
+// En ajustes (sin cambio de base): { "<materia>/<tema>": { paso, max, total, en } }. paso = la pantalla donde está (0 = la
+// portada; total - 1 = el final), max = la más lejana que vio, total = cuántas pantallas tiene su clase.
+const clavePasos = usuarioId => `academia.tema_paso.${Number(usuarioId)}`;
+export function pasosDeTemas(db, usuarioId) {
+  try { const o = JSON.parse(leerAjuste(db, clavePasos(usuarioId)) ?? '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; }
+}
+export function guardarPasoTema(db, usuarioId, paquete, materia, tema, { paso, total }, ahoraMs = Date.now()) {
+  if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
+  buscarTema(paquete, materia, tema);
+  if (estadoDelTema(db, usuarioId, paquete, materia, tema) === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
+  if (!Number.isSafeInteger(total) || total < 2 || total > 1000 || !Number.isSafeInteger(paso) || paso < 0 || paso >= total) throw new ErrorHttp(400, 'datos_no_validos');
+  const todos = pasosDeTemas(db, usuarioId);
+  const k = `${materia}/${tema}`;
+  const antes = todos[k] && todos[k].total === total ? todos[k] : null;
+  todos[k] = { paso, max: Math.max(paso, Number(antes?.max) || 0), total, en: new Date(ahoraMs).toISOString() };
+  // Solo los temas que existen: nunca crece de más.
+  const vivos = new Set(paquete.materias.flatMap(m => m.temas.map(t => `${m.id}/${t.id}`)));
+  guardarAjuste(db, clavePasos(usuarioId), JSON.stringify(Object.fromEntries(Object.entries(todos).filter(([x]) => vivos.has(x)))));
+  return { paso: todos[k] };
+}
+// El avance de un tema para el Camino: nivel 'nuevo' | 'empezado' | 'terminado' (vio todas sus tarjetas e hizo su
+// práctica) | 'dominado' (aprobó su práctica); pct = 60 % las tarjetas vistas + 40 % la práctica hecha (100 aprobado).
+function avanceTema(p, intento, aprobado, sinPreguntas) {
+  if (aprobado) return { nivel: 'dominado', pct: 100 };
+  const tarjetas = p && p.total > 1 ? Math.min(1, (Number(p.max) || 0) / (p.total - 1)) : 0;
+  const practica = Boolean(intento) || sinPreguntas;
+  const pct = Math.round(60 * tarjetas + (intento ? 40 : 0));
+  const nivel = tarjetas >= 1 && practica ? 'terminado' : tarjetas > 0 || intento ? 'empezado' : 'nuevo';
+  return { nivel, pct: Math.min(99, pct) };
 }
 
 // ---------- 0.7.2: los temas sin preguntas se aprueban al leer la lección completa ----------
@@ -345,6 +423,10 @@ export function leccion(db, usuarioId, paquete, materia, tema) {
   return {
     materia, tema: t.id, titulo: t.titulo, estado: estadoTema, secciones: vistaSecciones(paquete, t.secciones, t.paquete), preguntas: t.preguntas.length,
     reto: t.preguntas.filter(id => tieneReto(paquete.preguntas.get(id))).length, ...(audio ? { audio } : {}), ...(debil ? { debil } : {}),
+    // 0.12.2: el video de su materia (ofrecerlo la primera vez; el capítulo de este tema).
+    ...((v => (v ? { video: v } : {}))(videoDeLeccion(db, usuarioId, paquete, paquete.materias.find(x => x.id === materia), t))),
+    // 0.12.2: dónde quedó la última vez (la pantalla de su clase), para seguir ahí.
+    paso: (({ paso, max, total } = {}) => (total ? { paso, max, total } : null))(pasosDeTemas(db, usuarioId)[`${materia}/${t.id}`]),
   };
 }
 
@@ -358,7 +440,7 @@ function barajar(lista, azar) {
   return copia;
 }
 
-export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
+export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false, concepto = null }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   if (!TIPOS_INTENTO.includes(tipo)) throw new ErrorHttp(400, 'datos_no_validos');
   let ids;
@@ -396,8 +478,15 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
     if (!ids.length) throw new ErrorHttp(409, 'sin_reto');
   } else if (tipo === 'errores') {
     // «Practicar mis errores»: las falladas de un intento suyo, o lo que más falla (de un tema, una materia o todo).
-    ids = preguntasParaPracticar(db, usuarioId, paquete, { intento: intentoBase, materia, tema });
-    if (intentoBase != null) {
+    // 0.12.2: o un concepto de «Mi repaso» (concepto = su clave): sus preguntas, las falladas primero.
+    if (concepto != null) {
+      const x = preguntasDeConcepto(db, usuarioId, paquete, concepto);
+      if (estadoDelTema(db, usuarioId, paquete, x.concepto.materia, x.concepto.tema) === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
+      ids = x.ids;
+      materia = x.concepto.materia;
+      tema = x.concepto.tema;
+    } else ids = preguntasParaPracticar(db, usuarioId, paquete, { intento: intentoBase, materia, tema });
+    if (intentoBase != null && concepto == null) {
       const f = intentoDe(db, usuarioId, intentoBase);
       materia = f.materia;
       tema = f.tema;
@@ -429,6 +518,7 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
   const r = db.prepare(`INSERT INTO academia_intentos (usuario_id, paquete_id, tipo, materia, tema, orden, total, umbral, empezado_en, modo)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(usuarioId, paquete.id, tipo, materia, tema, JSON.stringify(orden), orden.length, umbral, new Date(ahoraMs).toISOString(), modo);
   const nuevo = Number(r.lastInsertRowid);
+  if (tipo === 'errores' && concepto != null) empezarRepaso(db, usuarioId, paquete, concepto, nuevo, ahoraMs);
   if (tipo === 'examen') {
     anotarOrden(db, usuarioId, materia, salto ? 'examen_antes' : 'temas_antes');
     if (salto) registrarSalto(db, usuarioId, { materia, intento: nuevo, ...salto, en: new Date(ahoraMs).toISOString() });
@@ -529,6 +619,9 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
   };
 }
 
+// 0.12.2: cuántas veces sin aprobar lo mismo ANTES de esta para que salga el humor de «te quemaste».
+const INTENTOS_PARA_QUEMADO = 2;
+
 // 0.12.0: lo que el resultado agrega: si fue un examen «directo» (saltó las clases), cuántos temas saltó, cuántos faltan
 // ahora y el primero que toca; y una línea de humor si se quemó (si el humor está encendido para él).
 function extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs) {
@@ -540,10 +633,16 @@ function extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs) {
     const sigue = c?.temas.find(t => t.estado === 'abierto') ?? null;
     extra.salto = { saltados: s.pendientes, total: s.total, pendientes: pendientes.length, siguiente: sigue ? { tema: sigue.id, titulo: sigue.titulo } : null };
   }
+  // 0.12.2: el «te quemaste» solo si se saltó las clases o ya no aprobó esto mismo 2 veces antes (una primera vez nunca).
   if (fila.aprobado === 0) {
-    const h = lineaHumor(db, usuarioId, s ? 'salto' : 'quemado', { recien, referencia: `i${fila.id}`, ahoraMs });
+    const antes = db.prepare('SELECT COUNT(*) AS n FROM academia_intentos WHERE usuario_id = ? AND tipo = ? AND materia IS ? AND tema IS ? AND aprobado = 0 AND id < ?')
+      .get(usuarioId, fila.tipo, fila.materia, fila.tema, fila.id).n;
+    const h = s || antes >= INTENTOS_PARA_QUEMADO ? lineaHumor(db, usuarioId, s ? 'salto' : 'quemado', { recien, referencia: `i${fila.id}`, ahoraMs }) : null;
     if (h) extra.humor = h;
   }
+  // Con alguna mala (y sin la frase de arriba): ánimo, y lo que pasó con «Mi repaso».
+  if (fila.aciertos < fila.total && !extra.humor) extra.animo = true;
+  Object.assign(extra, repasoDelResultado(db, usuarioId, paquete, fila, ahoraMs));
   return extra;
 }
 
@@ -567,9 +666,44 @@ function debiles(db, usuarioId, paquete, limite = 30) {
     .map(f => ({ ...vistaPregunta(paquete, f.pregunta), caja: f.caja, fallos: f.fallos, aciertos: f.aciertos, venceEn: f.vence_en }));
 }
 
+// 0.12.2: el curso ENTERO (las 11 materias del programa; las que todavía no tienen clases salen «pronto»): temas aprobados,
+// exámenes de etapa aprobados y preguntas del Test Guide dominadas (su última respuesta fue buena), cada número con lo que cuenta.
+export function cursoCompleto(c, deMateria) {
+  const porId = new Map(c.materias.map(m => [m.id, m]));
+  const materias = MATERIAS.map((id, n) => {
+    const m = porId.get(id);
+    const d = deMateria.get(id);
+    if (!m || !m.temas.length) return { id, numero: n + 1, estado: 'pronto', temas: [], temasAprobados: 0, examen: null, preguntas: 0, bien: 0, pct: 0 };
+    return {
+      id, numero: n + 1, estado: m.estado, temasAprobados: m.temas.filter(t => t.estado === 'aprobado').length,
+      temas: m.temas.map((t, i) => ({ id: t.id, numero: i + 1, titulo: t.titulo, estado: t.estado, mejor: t.mejor, preguntas: t.preguntas })),
+      examen: { aprobado: m.examen.aprobado, mejor: m.examen.mejor, veces: m.examen.veces }, preguntas: d?.preguntas ?? 0, bien: d?.bien ?? 0, pct: d?.pct ?? 0,
+    };
+  });
+  const con = materias.filter(m => m.estado !== 'pronto');
+  const suma = (lista, f) => lista.reduce((n, x) => n + f(x), 0);
+  const preguntas = suma(con, m => m.preguntas);
+  const bien = suma(con, m => m.bien);
+  return {
+    materias, programa: MATERIAS.length, conClases: con.length,
+    temas: suma(con, m => m.temas.length), temasAprobados: suma(con, m => m.temasAprobados),
+    examenes: con.length, examenesAprobados: con.filter(m => m.examen?.aprobado).length,
+    preguntas, bien, pct: pct(bien, preguntas),
+  };
+}
+
 export function progreso(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const c = camino(db, usuarioId, paquete, ahoraMs);
+  const deMateria = new Map(porMateria(db, usuarioId, paquete).map(m => [m.id, m]));
+  // 0.12.2: «Mi repaso» en corto (la lista entera vive en su pantalla): cuántos puntos para repasar y los primeros.
+  const r = paquete ? miRepaso(db, usuarioId, paquete, ahoraMs) : null;
+  const miRepasoCorto = r ? {
+    paraRepasar: r.paraRepasar.length, pendientes: r.pendientes,
+    puntos: (r.paraRepasar.length ? r.paraRepasar : r.errores.flatMap(t => t.conceptos.map(x => ({ ...x, materia: t.materia, temaTitulo: t.temaTitulo, temaNumero: t.temaNumero }))))
+      .slice(0, 3).map(x => ({ clave: x.clave, concepto: x.concepto, materia: x.materia, temaTitulo: x.temaTitulo, temaNumero: x.temaNumero ?? null })),
+  } : { paraRepasar: 0, pendientes: 0, puntos: [] };
   return {
+    curso: cursoCompleto(c, deMateria), miRepaso: miRepasoCorto,
     nombre: c.nombre, umbral: c.umbral, puntos: c.puntos, racha: c.racha, repaso: c.repaso, paquete: c.paquete,
     materias: porMateria(db, usuarioId, paquete).map(m => ({ ...m, examen: c.materias.find(x => x.id === m.id)?.examen ?? null, temas: c.materias.find(x => x.id === m.id)?.temas.map(t => ({ id: t.id, titulo: t.titulo, estado: t.estado, mejor: t.mejor })) ?? [] })),
     debiles: debiles(db, usuarioId, paquete),

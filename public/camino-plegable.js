@@ -45,12 +45,12 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
     if (!m) return;
     const banner = seccion.querySelector(':scope > .banner-materia');
     if (!banner) return;
-    // Lo de la cabeza: avance, estado, video y punto débil (.materia-insignias deja lugar para otras insignias).
+    // Lo de la cabeza: avance, estado y video (.materia-insignias deja lugar para otras insignias).
     const estado = m.estado === 'vacia' ? null : m.estado === 'aprobada' ? ['marca', t('camino.estado.aprobada')]
       : m.estado === 'bloqueada' ? ['candado', t('camino.estado.bloqueada')] : ['avion', t('camino.estado.abierta')];
     const insignias = el('div', { class: 'materia-insignias' },
-      m.video ? el('span', { class: `materia-insignia ${m.video.visto ? 'hecho' : 'pendiente'}` }, icono('video', 'icono chico'), el('span', { texto: t(m.video.visto ? 'camino.video_visto' : 'camino.video_pendiente') })) : null,
-      m.debil ? el('span', { class: 'materia-insignia debil' }, icono('atencion', 'icono chico'), el('span', { texto: t('camino.debil') })) : null);
+      // (0.12.2: sin «Punto débil»: lo de los errores vive en «Mi repaso», no en el Camino)
+      m.video ? el('span', { class: `materia-insignia ${m.video.visto ? 'hecho' : 'pendiente'}` }, icono('video', 'icono chico'), el('span', { texto: t(m.video.visto ? 'camino.video_visto' : 'camino.video_pendiente') })) : null);
     if (estado) {
       banner.querySelector('.banner-texto')?.append(el('div', { class: 'materia-estado' },
         el('span', { class: `materia-estado-chip estado-${m.estado}` }, icono(estado[0], 'icono chico'), el('span', { texto: estado[1] })),

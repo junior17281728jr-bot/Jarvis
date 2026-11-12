@@ -158,16 +158,15 @@ export function crearPagos(h) {
             pantallaPagosAdmin();
           } }, el('span', { texto: tx('pagos.poner') })));
       })));
-    // Las fallas registradas: desde cuántas veces se registra una.
+    // «Mi repaso»: cuántos errores en cosas de un mismo punto lo ponen ahí. (0.12.2: la regla vieja de «2 de un tema en un
+    // examen» ya no crea nada; su número se guarda igual, sin cambiarlo, por si se vuelve a una versión de antes.)
     const umbral = el('input', { type: 'number', min: 2, max: 10, value: d.fallas.umbral, class: 'campo-corto', id: 'fallas-umbral' });
-    const examen = el('input', { type: 'number', min: 1, max: 10, value: d.fallas.examen, class: 'campo-corto', id: 'fallas-examen' });
     const fallas = el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, icono('atencion'), el('span', { texto: tx('pagos.fallas') })),
       el('label', { for: 'fallas-umbral', texto: tx('pagos.fallas.umbral') }), umbral,
-      el('label', { for: 'fallas-examen', texto: tx('pagos.fallas.examen') }), examen,
       el('p', { class: 'suave chica', texto: tx('pagos.fallas.superar', { n: numero(d.fallas.aciertos), dias: numero(d.fallas.dias) }) }),
       el('button', { type: 'button', class: 'boton-3d blanco', onclick: async () => {
-        const x = await api('POST', '/api/admin/academia/fallas/ajustes', { umbral: Number(umbral.value), examen: Number(examen.value) });
+        const x = await api('POST', '/api/admin/academia/fallas/ajustes', { umbral: Number(umbral.value) });
         avisar(x.ok ? tx('pagos.guardado') : textoError(x.datos.error), x.ok ? 'bien' : 'mal');
       } }, el('span', { texto: tx('pagos.guardar') })));
     const pendientes = d.pagos.filter(p => p.estado === 'revision');
