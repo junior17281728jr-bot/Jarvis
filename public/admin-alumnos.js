@@ -235,7 +235,7 @@ function pestanaActividad(d, h) {
         cifra(h, 'flecha', act.ultimaEntrada ? h.cuando(act.ultimaEntrada) : t('admin.nunca'), t('ficha.ultima_entrada')),
         cifra(h, 'salir', act.ultimaSalida ? h.cuando(act.ultimaSalida) : t('ficha.sin_salida'), t('ficha.ultima_salida')),
         cifra(h, 'reloj', act.ultimaActividad ? h.cuando(act.ultimaActividad) : t('admin.nunca'), t('ficha.ultima_actividad'), act.enLinea ? t('acad.en_linea') : null)),
-      el('p', { class: 'suave chica', texto: t('ficha.actividad.linea', { n: numero(act.entradas), abiertas: numero(act.abiertas) }) })),
+      el('p', { class: 'suave chica', texto: h.tn('ficha.actividad.linea', { n: act.entradas, abiertas: numero(act.abiertas) }) })),
     el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('ficha.sesiones') })),
       el('p', { class: 'suave', texto: t('ficha.sesiones.linea') }),
