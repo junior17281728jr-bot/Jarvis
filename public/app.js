@@ -643,7 +643,7 @@ async function salir() {
 // dueña ve la fecha de un reinicio que no pidió aunque otro lo haya «visto» antes.
 function leerAvisos(datos) {
   // 0.9.2: también «el administrador cambió tu usuario» y «… tu nombre» (se muestra el de ahora).
-  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado'].includes(a.tipo) && Number.isSafeInteger(a.id));
+  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido'].includes(a.tipo) && Number.isSafeInteger(a.id));
   const recientes = (Array.isArray(datos?.reiniciosRecientes) ? datos.reiniciosRecientes : []).filter(x => x && typeof x.fecha === 'string');
   return { avisos, recientes };
 }
@@ -659,9 +659,11 @@ function avisosDeCuenta({ marcar = true } = {}) {
   const nombres = avisos.filter(a => a.tipo !== 'clave_reiniciada');
   const fechas = !reinicios.length ? [] : recientes.length ? recientes.map(x => x.fecha) : reinicios.map(a => a.fecha).reverse();
   return el('section', { class: 'tarjeta', role: 'alert' },
-    nombres.map(a => el('p', { class: 'aviso', texto: a.tipo === 'usuario_cambiado'
-      ? t('aviso.usuario_cambiado', { nombre: estado.usuario?.nombre ?? '', fecha: fecha(a.fecha) })
-      : t('aviso.nombre_cambiado', { nombre: estado.usuario?.nombreVisible ?? '', fecha: fecha(a.fecha) }) })),
+    nombres.map(a => a.tipo === 'soporte_respondido'
+      ? el('p', { class: 'aviso' }, el('span', { texto: `${t('aviso.soporte_respondido', { fecha: fecha(a.fecha) })} ` }), el('a', { href: '#ayuda-mia', texto: t('aviso.soporte_ver') }))
+      : el('p', { class: 'aviso', texto: a.tipo === 'usuario_cambiado'
+        ? t('aviso.usuario_cambiado', { nombre: estado.usuario?.nombre ?? '', fecha: fecha(a.fecha) })
+        : t('aviso.nombre_cambiado', { nombre: estado.usuario?.nombreVisible ?? '', fecha: fecha(a.fecha) }) })),
     fechas.length > 1 ? el('p', { class: 'suave', texto: t('aviso.clave_reiniciada.recientes', { dias: 90 }) }) : null,
     fechas.map(f => el('p', { class: 'aviso', texto: t('aviso.clave_reiniciada', { fecha: fecha(f) }) })),
     fechas.length ? el('p', { class: 'suave', texto: t(fechas.length > 1 ? 'aviso.clave_reiniciada.que_hacer_varios' : 'aviso.clave_reiniciada.que_hacer') }) : null);
@@ -820,6 +822,11 @@ async function pantallaConfiguracion() {
             el('p', { class: 'suave', texto: t('config.reinicios.texto') }),
             verMas(el('ul', {}), lista.map(x => el('li', { texto: t('config.reinicios.linea', { fecha: fecha(x.fecha) }) })), 5),
           ] : vacio('candado', t('config.reinicios.vacio'), null, 'en-linea')),
+      // 0.9.2: escribirle al administrador.
+      el('section', { class: 'tarjeta' },
+        titulo('chispa', t('soporte.titulo')),
+        el('p', { class: 'suave', texto: t('soporte.config.linea') }),
+        el('a', { class: 'boton-enlace con-icono', href: '#ayuda-mia' }, icono('chispa'), el('span', { texto: t('soporte.config.boton') }))),
       el('section', { class: 'tarjeta' },
         titulo('info', t('ayuda.titulo')),
         el('p', { class: 'suave', texto: t('config.ayuda.texto') }),
@@ -1414,7 +1421,9 @@ function tonosDePestanas(s, sinConexion = false) {
   if (!s) return {};
   if (sinConexion) return { trabajo: 'apagado', servidor: 'apagado' };
   const copias = vistaAzulejoCopias(s.copias, { modoSeguro: s.modoSeguro?.activo }).tono;
-  return { trabajo: tonoTrabajo(s), servidor: TONO_SEMAFORO[s.salud?.semaforo] ?? 'atencion', copias: ['mal', 'atencion'].includes(copias) ? copias : undefined };
+  return { trabajo: tonoTrabajo(s), servidor: TONO_SEMAFORO[s.salud?.semaforo] ?? 'atencion', copias: ['mal', 'atencion'].includes(copias) ? copias : undefined,
+    // 0.9.2: los mensajes de ayuda que esperan respuesta.
+    soporte: s.soporte?.pendientes ? 'atencion' : undefined, soportePendientes: s.soporte?.pendientes ?? 0 };
 }
 
 // La zona de sistema de Administrador: se dibuja, se actualiza cada 30 s y maneja sus botones.
@@ -1534,6 +1543,7 @@ const LINEA_ADMIN = {
   resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
   alumnos: () => t('admin.linea.alumnos'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
+  soporte: () => t('admin.linea.soporte'),
 };
 const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
 function cabeceraAdmin(actual, tonos = {}) {
@@ -1550,6 +1560,8 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'contenido', href: '#contenido', texto: t('admin.pestana.contenido'), nombreIcono: 'libro' },
       // 0.8.0: la clave completa (cada pregunta con su respuesta y sus explicaciones).
       { id: 'respuestas', href: '#respuestas', texto: t('admin.pestana.respuestas'), nombreIcono: 'marca' },
+      // 0.9.2: «Ayuda»: los mensajes de los alumnos (con cuántos esperan respuesta).
+      { id: 'soporte', href: '#soporte', texto: tonos.soportePendientes ? `${t('admin.pestana.soporte')} (${numero(tonos.soportePendientes)})` : t('admin.pestana.soporte'), nombreIcono: 'chispa', tono: tonos.soporte },
       { id: 'usuarios', href: '#admin/usuarios', texto: t('admin.pestana.usuarios'), nombreIcono: 'personas' },
       { id: 'trabajo', href: '#admin/trabajo', texto: t('admin.pestana.trabajo'), nombreIcono: 'latido', tono: tonos.trabajo },
       { id: 'servidor', href: '#admin/servidor', texto: t('admin.pestana.servidor'), nombreIcono: 'servidor', tono: tonos.servidor },
@@ -3992,6 +4004,10 @@ function opcionesFijas(q, resp) {
     o.letra === resp.correcta ? icono('marca', 'icono opcion-marca') : o.letra === resp.elegida ? icono('cerrar', 'icono opcion-marca') : null)));
 }
 
+// 0.9.2: «Reportar un error» en una pregunta: abre «Ayuda» con el número de la pregunta.
+function enlaceReportar(id) {
+  return el('a', { class: 'reportar-error con-icono-chico', href: `#ayuda-mia/pregunta/${encodeURIComponent(id)}` }, icono('atencion', 'icono chico'), el('span', { texto: t('soporte.reportar') }));
+}
 // 0.8.0: la revisión completa al terminar (examen, tema, reto, repaso): cada pregunta con lo que eligió, la correcta, la
 // explicación original y la sencilla; arriba el filtro «Solo las que fallé».
 function revisionCompleta(res) {
@@ -4078,7 +4094,8 @@ async function pantallaPractica(id) {
     }, { deshabilitado: true, sonido: null });
     zona.replaceChildren(el('article', { class: 'tarjeta-pregunta' },
       el('p', { class: 'pregunta-de', texto: tituloIntento }),
-      tarjetaPregunta(q), el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones)));
+      tarjetaPregunta(q), el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones),
+      enlaceReportar(q.id)));
     pie.replaceChildren(comprobar);
   };
   const pintarRespondida = (i, recien = false) => {
@@ -4097,7 +4114,7 @@ async function pantallaPractica(id) {
     ponerHoja(raizEstudio, hojaRespuesta({
       acierto: resp.acierto,
       titulo: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }),
-      partes: partesRespuesta(q, resp),
+      partes: [...partesRespuesta(q, resp), enlaceReportar(q.id)],
       boton,
     }));
     if (recien) {
@@ -4319,6 +4336,40 @@ async function pantallaContratosTodos() {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', '/api/admin/contratos'), api('GET', '/api/admin/sistema'), import('./contratos-vista.js')]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaTodos(d, piezasContratos(h)));
+}
+// 0.9.2: «Ayuda / Soporte» (public/soporte-vista.js, solo se carga aquí).
+let pantallaAnterior = null;
+const piezasSoporte = () => ({ el, t, numero, icono, insignia, talCual, vacio, fecha, api, avisar, caja, botonAccion, textoError, recargar: () => dibujar(),
+  pantallaAnterior, version: estado.setup?.version ?? null });
+async function pantallaMiAyuda(pregunta = null) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/soporte'), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('configuracion', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('configuracion', vista.vistaMisAyudas(r.datos, piezasSoporte(), { pregunta })));
+}
+async function pantallaMiTicket(id) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', `/api/soporte/${encodeURIComponent(id)}`), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('configuracion', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('configuracion', vista.vistaMiTicket(r.datos, piezasSoporte())));
+}
+async function pantallaSoporte() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/soporte'), api('GET', '/api/admin/sistema'), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('soporte', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaAdminSoporte(r.datos, piezasSoporte())));
+}
+async function pantallaSoporteTicket(id) {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/soporte/${encodeURIComponent(id)}`), api('GET', '/api/admin/sistema'), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('soporte', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaAdminTicket(r.datos, piezasSoporte())));
 }
 async function pantallaComparar(ids) {
   const vigente = nuevoTurno();
@@ -4568,7 +4619,8 @@ async function dibujar() {
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos'].includes(seccion) || /^(?:alumno|comparar|contrato)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte)\//.test(seccion))) ponerModoEstudiante(false);
+  if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
   // La clave de recuperación recién creada vive solo en esta pantalla: al irse de Copias se suelta (fase 1, parte e).
@@ -4601,6 +4653,14 @@ async function dibujar() {
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   if (seccion === 'reporte' && esAdmin) return pantallaReporte();
+  if (seccion === 'soporte' && esAdmin) return pantallaSoporte();
+  const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);
+  if (ticketAdmin && esAdmin) return pantallaSoporteTicket(ticketAdmin[1]);
+  if (seccion === 'ayuda-mia') return pantallaMiAyuda();
+  const ayudaPregunta = seccion.match(/^ayuda-mia\/pregunta\/([a-z0-9_.-]+)$/i);
+  if (ayudaPregunta) return pantallaMiAyuda(ayudaPregunta[1]);
+  const miTicket = seccion.match(/^ayuda-mia\/(\d+)$/);
+  if (miTicket) return pantallaMiTicket(miTicket[1]);
   if (seccion === 'contratos' && esAdmin) return pantallaContratos();
   if (seccion === 'contratos/todos' && esAdmin) return pantallaContratosTodos();
   const contrato = seccion.match(/^contrato\/(\d+)\/(\d+)$/);
@@ -4643,6 +4703,12 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema', '/api/admin/terminos'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
+  if (seccion === 'soporte') return admin ? ['/api/admin/soporte', '/api/admin/sistema'] : [];
+  const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);
+  if (ticketAdmin) return admin ? [`/api/admin/soporte/${encodeURIComponent(ticketAdmin[1])}`, '/api/admin/sistema'] : [];
+  if (seccion === 'ayuda-mia' || /^ayuda-mia\/pregunta\//i.test(seccion)) return ['/api/soporte'];
+  const miTicket = seccion.match(/^ayuda-mia\/(\d+)$/);
+  if (miTicket) return [`/api/soporte/${encodeURIComponent(miTicket[1])}`];
   if (seccion === 'contratos' || seccion === 'contratos/todos') return admin ? ['/api/admin/contratos', '/api/admin/sistema'] : [];
   const contrato = seccion.match(/^contrato\/(\d+)\/(\d+)$/);
   if (contrato) return admin ? [`/api/admin/contratos/${encodeURIComponent(contrato[1])}/${encodeURIComponent(contrato[2])}`, '/api/admin/sistema'] : [];
