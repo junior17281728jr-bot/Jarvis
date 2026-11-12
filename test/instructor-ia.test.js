@@ -341,3 +341,83 @@ test('tamaños: lo peor que puede costar una vez con Sonnet cabe en el máximo d
   assert.equal(enviado.eligio, '2');
   assert.match(r.sistema, /nunca por letra/);
 });
+
+// ---------- 0.10.0: el tiempo con IA y el Profesor virtual ----------
+import { saldoIa, ajustarSaldo } from '../src/academia/tiempo-ia.js';
+import { darProfesor } from '../src/academia/profesor.js';
+const idDe = (c, nombre) => c.db.prepare('SELECT id FROM usuarios WHERE nombre = ?').get(nombre).id;
+
+test('tiempo con IA: cada uso nuevo cuesta un minuto, lo guardado se cobra una vez, lo que falla se devuelve, y en 0 no se llama', async () => {
+  await conInstructor(async c => {
+    const z = idDe(c, 'zoelia');
+    const q = idDe(c, 'quirino');
+    const x = await unaMala(c, c.z);
+    const correcta = String(DE(x.pregunta.id).original.opciones.findIndex(o => o.letra === DE(x.pregunta.id).original.correcta) + 1);
+    c.falso.siguiente(explicacionFalsa(correcta));
+    const r = (await explicar(c, c.z, x)).datos;
+    assert.equal(saldoIa(c.db, z).minutos, 19);
+    await c.hacer(r.ia.tarea);
+    await pedir(c.base, 'GET', `/api/academia/instructor/tareas/${r.ia.tarea}`, { galleta: c.z });
+    assert.equal(saldoIa(c.db, z).minutos, 19, 'la respuesta llegó: se queda cobrado');
+    assert.equal((await explicar(c, c.z, x)).datos.ia.estado, 'lista');
+    assert.equal(saldoIa(c.db, z).minutos, 19, 'volver a verla no se cobra');
+    const y = await unaMala(c, c.q, x.pregunta.id);
+    assert.equal((await explicar(c, c.q, y)).datos.ia.estado, 'lista');
+    assert.equal(saldoIa(c.db, q).minutos, 19, 'lo guardado cuesta un uso a quien lo ve (una vez)');
+    // Una que falla se devuelve sola.
+    c.falso.siguiente('sin_credito_400');
+    const d = (await pedir(c.base, 'POST', '/api/academia/instructor/duda', { galleta: c.z, datos: { materia: 'factores_humanos', tema: 'muestra-hipoxia', texto: '¿Qué es la hipoxia?' } })).datos;
+    assert.equal(saldoIa(c.db, z).minutos, 18);
+    await c.hacer(d.ia.tarea);
+    assert.equal(saldoIa(c.db, z).minutos, 19, 'la IA no respondió: se devuelve');
+    // En 0: modo básico, «sin_minutos», y nada se pone en la fila aunque la clave exista.
+    anotarPrueba(c.db, { id: c.secretoId, motivo: 'ok' });
+    c.db.prepare('UPDATE secretos SET pausa_motivo = NULL, pausa_hasta = NULL WHERE id = ?').run(c.secretoId);
+    ajustarSaldo(c.db, q, 0, c.adminId);
+    assert.deepEqual((await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.q })).datos.instructor, { modo: 'basico', motivo: 'sin_minutos' });
+    const antes = c.db.prepare("SELECT COUNT(*) AS n FROM tareas WHERE tipo = 'academia.instructor'").get().n;
+    const w = await unaMala(c, c.q);
+    assert.deepEqual((await explicar(c, c.q, w)).datos.ia, { estado: 'no', motivo: 'sin_minutos' });
+    assert.equal(c.db.prepare("SELECT COUNT(*) AS n FROM tareas WHERE tipo = 'academia.instructor'").get().n, antes);
+    assert.equal(saldoIa(c.db, q).minutos, 0, 'nunca menos de 0');
+  });
+});
+
+test('Profesor virtual: solo con permiso, usa sus minutos, su contexto es solo suyo, y la IA nunca pone un enlace', async () => {
+  await conInstructor(async c => {
+    const z = idDe(c, 'zoelia');
+    // Quirino respondió una pregunta que Zoelia nunca respondió: nunca debe ir en el contexto de Zoelia.
+    const iq = (await nuevo(c, c.q, { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' })).datos;
+    for (const p of iq.preguntas) await pedir(c.base, 'POST', `/api/academia/intentos/${iq.id}/responder`, { galleta: c.q, datos: { pregunta: p.id, elegida: mala(p.id) } });
+    const x = await unaMala(c, c.z, 'muestra-h1');
+    assert.equal((await pedir(c.base, 'POST', '/api/academia/profesor', { galleta: c.z, datos: { mensaje: '¿Qué es la hipoxia?' } })).codigo, 403, 'sin permiso todavía');
+    darProfesor(c.db, z, true);
+    c.falso.siguiente({ tipo: 'ok', json: { respuesta: 'Mira https://evil.example/x para más. La hipoxia (hypoxia) es falta de oxígeno.', pregunta_control: '¿Qué baja con la altura?', estudiar_ahora: 'Hipoxia', buscar_en_youtube: ['https://evil.example/y hypoxia', 'hypoxia pilot'], terminos: [] } });
+    const r = (await pedir(c.base, 'POST', '/api/academia/profesor', { galleta: c.z, datos: { mensaje: '¿Qué es la hipoxia? Suficiente oxígeno' } })).datos;
+    assert.equal(r.ia.estado, 'pendiente');
+    assert.equal(saldoIa(c.db, z).minutos, 19);
+    await c.hacer(r.ia.tarea);
+    const cuerpo = cuerpoDe(pedidosIa(c).at(-1));
+    assert.match(cuerpo.system, /PROFESOR VIRTUAL/);
+    assert.match(cuerpo.system, /Nunca escribas enlaces/);
+    const enviado = datosDe(cuerpo.messages[0].content);
+    const deZoelia = new Set(c.db.prepare('SELECT DISTINCT pregunta FROM academia_respuestas WHERE usuario_id = ?').all(z).map(f => DE(f.pregunta).original.enunciado));
+    assert.ok(enviado.preguntas_que_ya_respondio.every(p => deZoelia.has(p.enunciado)), 'solo preguntas que respondió ella');
+    for (const nombre of [...NOMBRES, 'junior']) assert.ok(!textoDe(pedidosIa(c).at(-1)).toLowerCase().includes(nombre));
+    const h = (await pedir(c.base, 'GET', '/api/academia/profesor', { galleta: c.z })).datos;
+    const m = h.historial.at(-1);
+    assert.equal(m.estado, 'lista');
+    assert.match(m.respuesta.respuesta, /evil\.example/, 'lo que escribió queda como texto');
+    for (const v of [...m.videos, ...m.buscar]) assert.match(v.url, /^https:\/\/www\.youtube\.com\//, 'los únicos enlaces son de YouTube');
+    assert.ok(m.buscar.every(v => !/evil/.test(v.url)));
+    assert.equal((await pedir(c.base, 'GET', '/api/academia/profesor', { galleta: c.q })).datos.historial.length, 0, 'el historial es de cada uno');
+    // En 0 minutos: el instructor básico y los videos, sin llamar.
+    ajustarSaldo(c.db, z, 0, c.adminId);
+    const n = pedidosIa(c).length;
+    const b = (await pedir(c.base, 'POST', '/api/academia/profesor', { galleta: c.z, datos: { mensaje: '¿Qué estudio hoy?' } })).datos;
+    assert.deepEqual(b.ia, { estado: 'no', motivo: 'sin_minutos' });
+    assert.ok(b.basica);
+    assert.equal(pedidosIa(c).length, n);
+    assert.ok(x);
+  }, { modelo: 'claude-haiku-5-5' });
+});

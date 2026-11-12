@@ -455,7 +455,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.8.0: Administrador → Respuestas (la clave completa).
     ['respuestas', 'pantallaRespuestas'],
     // 0.9.0: la ficha de un alumno por pestañas, uno de sus intentos y «Comparar».
-    ['alumno/7/examenes', 'pantallaAlumno'], ['alumno/7/actividad', 'pantallaAlumno'], ['alumno/7/intento/7', 'pantallaIntentoAlumno'], ['comparar/7,7', 'pantallaComparar']];
+    ['alumno/7/examenes', 'pantallaAlumno'], ['alumno/7/actividad', 'pantallaAlumno'], ['alumno/7/intento/7', 'pantallaIntentoAlumno'], ['comparar/7,7', 'pantallaComparar'],
+    // 0.10.0: Pagos (administrador) y el Profesor virtual.
+    ['pagos', 'pantallaPagos'], ['profesor', 'pantallaProfesor']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {

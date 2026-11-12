@@ -50,3 +50,77 @@
 .opcion-radio { display: flex; gap: 8px; align-items: flex-start; }
 .instructor-alumnos { margin-top: 12px; }
 .lista-simple { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
+/* 0.10.0: plan de refuerzo, tiempo con IA, pagos, Profesor virtual. */
+.plan-refuerzo { margin: 0 0 16px; text-align: left; border: 2px solid color-mix(in srgb, var(--naranja) 50%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--naranja) 14%, var(--tarjeta)), var(--tarjeta)); }
+.instructor-avatar.refuerzo { background: var(--naranja); color: var(--naranja-texto); box-shadow: 0 4px 0 var(--naranja-borde); }
+.plan-refuerzo-lista { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 12px; }
+.plan-refuerzo-lista li { padding: 10px 12px; border-radius: 14px; background: var(--tarjeta); }
+.plan-refuerzo-lista p { margin: 0 0 6px; }
+.nodo-refuerzo, .sello-refuerzo { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--naranja); color: var(--naranja-texto);
+  font-size: 11px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; }
+.nodo-refuerzo { position: absolute; top: -6px; right: -6px; }
+.nodo-dentro { position: relative; }
+.sello-refuerzo { margin-bottom: 8px; }
+.medidor-tiempo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 0; padding: 8px 12px; border-radius: 14px;
+  background: color-mix(in srgb, var(--verde) 14%, var(--tarjeta)); }
+.medidor-tiempo p { margin: 0; }
+.medidor-tiempo.poco { background: color-mix(in srgb, var(--oro) 25%, var(--tarjeta)); }
+.enlace-tiempo { font-weight: 800; }
+.aviso-sin-minutos { margin: 10px 0; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--oro) 22%, var(--tarjeta)); }
+.aviso-sin-minutos p { margin: 0 0 8px; }
+.boton-profesor { margin-top: 10px; }
+.aviso-pagos { margin: 0 0 14px; padding: 12px 14px; border-radius: 16px; background: var(--tarjeta); border: 2px solid var(--linea); text-align: left; }
+.comparacion-ia { text-align: left; }
+.comparacion-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+@media (max-width: 560px) { .comparacion-columnas { grid-template-columns: 1fr; } }
+.comparacion-columnas > div { padding: 12px; border-radius: 16px; background: var(--gris-nodo); }
+.comparacion-ia-col { background: color-mix(in srgb, var(--verde) 16%, var(--tarjeta)) !important; border: 2px solid color-mix(in srgb, var(--verde) 40%, transparent); }
+.comparacion-columnas h3 { margin: 0 0 8px; font-size: 16px; }
+.lista-beneficios { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.lista-beneficios li { align-items: flex-start; font-size: 15px; }
+.lista-paquetes { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.lista-paquetes li { padding: 6px 12px; border-radius: 999px; background: var(--tarjeta); border: 2px solid var(--linea); }
+.datos-cuenta { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0; }
+.datos-cuenta dt { font-weight: 800; color: var(--suave); }
+.datos-cuenta dd { margin: 0; font-weight: 700; }
+.subir-pago, .datos-pago, .historial-pagos, .tiempo-cabeza { text-align: left; }
+.subir-pago label { display: grid; gap: 4px; margin: 10px 0; }
+.paquetes { border: 0; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
+.opcion-radio.paquete { padding: 10px 12px; border-radius: 14px; border: 2px solid var(--linea); }
+.lista-pagos { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; }
+.lista-pagos .pago { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border-radius: 14px; background: var(--tarjeta); border: 2px solid var(--linea); }
+.recibo-mini { width: 72px; height: 96px; object-fit: cover; border-radius: 10px; background: var(--gris-nodo); }
+.recibo-boton { padding: 0; border: 0; background: none; cursor: zoom-in; }
+.pago-datos p { margin: 0 0 4px; }
+.contador-pendientes { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; margin-left: 4px; border-radius: 999px;
+  background: var(--rojo); color: #fff; font-size: 12px; font-weight: 900; }
+.campo-corto { width: 6em; }
+.fila-saldo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fila-saldo span:first-child { flex: 1; min-width: 8em; }
+.lista-fallas { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; }
+.falla { padding: 10px 12px; border-radius: 14px; background: var(--tarjeta); border-left: 5px solid var(--naranja); }
+.falla p { margin: 0 0 4px; }
+.falla-superada { border-left-color: var(--verde); }
+.lo-que-hicimos, .profesor-admin { text-align: left; }
+.resultado-refuerzo { margin: 10px auto; padding: 10px 14px; border-radius: 14px; background: color-mix(in srgb, var(--naranja) 14%, var(--tarjeta)); font-weight: 800; }
+.demo-lados { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+@media (max-width: 700px) { .demo-lados { grid-template-columns: 1fr; } }
+.demo select { width: 100%; margin: 6px 0; }
+.caja-ia.ejemplo { border-style: dotted; }
+.chat { text-align: left; display: grid; gap: 12px; }
+.chat-cabeza { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.chat-cabeza h1 { margin: 0; font-size: 22px; }
+.chat-tiempo { flex-basis: 100%; }
+.chat-lista { display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; padding: 4px; }
+.burbuja { max-width: 88%; padding: 10px 12px; border-radius: 18px; }
+.burbuja p { margin: 0 0 6px; }
+.burbuja.alumno { justify-self: end; background: var(--azul); color: #fff; border-bottom-right-radius: 6px; }
+.burbuja.profesor { justify-self: start; background: var(--tarjeta); border: 2px solid var(--linea); border-bottom-left-radius: 6px; }
+.pregunta-control { padding: 6px 8px; border-radius: 10px; background: color-mix(in srgb, var(--oro) 18%, transparent); }
+.videos { display: grid; gap: 6px; margin-top: 6px; }
+.videos a { display: inline-flex; gap: 6px; align-items: center; font-weight: 800; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 8px 12px; border-radius: 999px; border: 2px solid var(--linea); background: var(--tarjeta); font: inherit; font-weight: 700; cursor: pointer; }
+.chat-escribir { display: flex; gap: 8px; align-items: flex-end; }
+.chat-escribir textarea { flex: 1; font: inherit; border-radius: 14px; padding: 10px; }

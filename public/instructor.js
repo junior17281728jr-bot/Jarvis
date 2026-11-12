@@ -14,6 +14,7 @@ const ESPERA_MAXIMA_MS = 120_000;
 
 export function crearInstructor(h) {
   const { el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError } = h;
+  const nombreMateria = id => (h.nombreMateria ? h.nombreMateria(id) : id);
   const tx = (clave, vars = {}) => t(clave, vars);
 
   // ---------- ¿Te sigue un instructor con IA? ----------
@@ -47,9 +48,8 @@ export function crearInstructor(h) {
       Array.isArray(r.terminos) && r.terminos.length ? el('ul', { class: 'lista-terminos' }, r.terminos.map(x => el('li', {},
         el('strong', { lang: 'en', texto: x.ingles }), x.abreviatura ? el('span', { class: 'termino-abrev', texto: ` (${x.abreviatura})` }) : null,
         x.espanol ? el('span', { texto: ` · ${x.espanol}` }) : null))) : null,
-      el('p', { class: 'suave chica', texto: tx('instr.ia.firma', { modelo: nombreModelo(r.modelo) }) }));
+      el('p', { class: 'suave chica', texto: tx('instr.ia.firma') }));
   }
-  const nombreModelo = m => (m === 'claude-sonnet-5-5' ? 'Claude Sonnet 5.5' : m === 'claude-haiku-5-5' ? 'Claude Haiku 5.5' : m || 'IA');
 
   // Pregunta por una tarea de la IA hasta que llega (o se rinde). alListo(datos) con { estado: 'lista' | 'no', … }.
   function esperarTarea(id, nodo, alListo) {
@@ -71,6 +71,7 @@ export function crearInstructor(h) {
     const lugar = el('div', { class: 'lugar-ia', 'aria-live': 'polite' });
     const poner = d => {
       if (d?.estado === 'lista') lugar.replaceChildren(pintar(d));
+      else if (d?.estado === 'no' && d.motivo === 'sin_minutos') lugar.replaceChildren(sinMinutos());
       else if (d?.estado === 'no') lugar.replaceChildren(el('p', { class: 'suave chica con-icono' }, icono('info', 'icono chico'), el('span', { texto: tx('instr.ia.no', { motivo: motivoTexto(d.motivo) }) })));
       else lugar.replaceChildren();
     };
@@ -79,6 +80,105 @@ export function crearInstructor(h) {
       esperarTarea(ia.tarea, lugar, poner);
     } else poner(ia);
     return lugar;
+  }
+
+  // 0.10.0: se acabó su tiempo con IA: sigue el básico (gratis) o pide más.
+  function sinMinutos() {
+    return el('div', { class: 'aviso-sin-minutos' },
+      el('p', { class: 'con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: tx('tiempo.agotado') })),
+      el('a', { class: 'boton-3d naranja chico', href: '#tiempo-ia' }, el('span', { texto: tx('tiempo.pedir_mas') })));
+  }
+  // «Te quedan 12 min de instructor IA» (solo si el dueño encendió el instructor con IA).
+  function medidorTiempo(tiempo, { conBoton = true } = {}) {
+    if (!tiempo?.activo) return null;
+    if (tiempo.ilimitado) return el('p', { class: 'medidor-tiempo ilimitado con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx('tiempo.ilimitado') }));
+    const poco = tiempo.minutos < Math.max(3, tiempo.porUso * 3);
+    return el('div', { class: `medidor-tiempo${poco ? ' poco' : ''}` },
+      el('p', { class: 'con-icono' }, icono('reloj', 'icono chico'), el('strong', { texto: tx('tiempo.quedan', { n: numero(tiempo.minutos) }) })),
+      conBoton ? el('a', { class: 'enlace-tiempo', href: '#tiempo-ia', texto: tx('tiempo.pedir_mas') }) : null);
+  }
+
+  // ---------- 0.10.0: el plan de refuerzo (sus fallas registradas) ----------
+  const lugarDe = f => `${nombreMateria(f.materia)} → ${f.temaTitulo}`;
+  function planRefuerzo(plan) {
+    if (!plan?.length) return null;
+    return el('section', { class: 'panel plan-refuerzo', 'aria-labelledby': 'plan-refuerzo-titulo' },
+      el('div', { class: 'instructor-cabeza' },
+        el('span', { class: 'instructor-avatar refuerzo', 'aria-hidden': 'true' }, icono('atencion')),
+        el('div', {}, el('h2', { id: 'plan-refuerzo-titulo', texto: tx('refuerzo.plan.titulo') }), el('p', { class: 'suave chica', texto: tx('refuerzo.plan.linea') }))),
+      el('ul', { class: 'plan-refuerzo-lista' }, plan.slice(0, 4).map((f, i) => el('li', {},
+        el('p', {}, el('strong', { texto: `${tx('refuerzo.debes')} ` }), talCual('span', lugarDe(f)), el('span', { class: 'suave', texto: ` ${tx('refuerzo.fallaste', { n: numero(f.fallos) })}` })),
+        f.idea ? talCual('p', f.idea, 'suave chica') : null,
+        el('p', { class: 'chica', texto: tx('refuerzo.progreso', { n: numero(f.aciertos), meta: numero(f.meta.aciertos) }) }),
+        el('a', { class: `boton-3d ${i === 0 ? 'naranja' : 'blanco'} chico`, href: `#refuerzo/${encodeURIComponent(f.materia)}/${encodeURIComponent(f.tema)}` }, el('span', { texto: tx('refuerzo.repasar') }))))));
+  }
+  // «Refuerzo» en el círculo del camino de cada tema con una falla viva.
+  function marcarCamino(plan) {
+    for (const f of plan ?? []) {
+      const nodo = document.querySelector(`a.nodo-dentro[href="#tema/${f.materia}/${f.tema}"]`);
+      if (nodo && !nodo.querySelector('.nodo-refuerzo')) nodo.append(el('span', { class: 'nodo-refuerzo', texto: tx('refuerzo.sello') }));
+    }
+  }
+  // «Lo que hicimos por ti»: una falla en frases (lo que pasó, lo que hicimos, cómo va).
+  function frasesFalla(f) {
+    const hecho = [
+      f.tarjeta ? tx('hicimos.tarjeta', { tarjeta: f.tarjeta }) : null,
+      f.extras ? tx('hicimos.extras', { n: numero(f.extras) }) : null,
+      tx('hicimos.seguimos', { aciertos: numero(f.meta.aciertos), dias: numero(f.meta.dias) }),
+    ].filter(Boolean);
+    return el('li', { class: `falla falla-${f.estado}` },
+      el('p', {}, el('strong', { texto: tx(f.origen === 'examen' ? 'hicimos.linea_examen' : 'hicimos.linea', { n: numero(f.fallos), lugar: lugarDe(f), numero: f.numero ?? '' }) })),
+      f.idea ? el('p', { class: 'suave' }, el('span', { texto: `${tx('hicimos.idea')} ` }), talCual('span', f.idea)) : null,
+      el('p', {}, el('span', { texto: `${tx('hicimos.por_eso')} ` }), el('span', { texto: hecho.join('; ') + '.' })),
+      el('p', { class: `falla-estado tono-${f.estado === 'superada' ? 'bien' : 'atencion'}`, texto: f.estado === 'superada'
+        ? tx('hicimos.superada', { n: numero(f.fallos), meta: numero(f.meta.aciertos) })
+        : tx('hicimos.vas', { n: numero(f.aciertos), meta: numero(f.meta.aciertos), estado: tx(`falla.estado.${f.estado}`) }) }));
+  }
+  function loQueHicimos({ titulo = tx('hicimos.titulo'), url = '/api/academia/instructor/fallas' } = {}) {
+    const lugar = el('section', { class: 'panel lo-que-hicimos', 'aria-label': titulo }, el('h2', { class: 'con-icono' }, icono('cerebro'), el('span', { texto: titulo })));
+    api('GET', url).then(r => {
+      if (!lugar.isConnected || !r.ok) return;
+      lugar.append(r.datos.fallas.length ? el('ul', { class: 'lista-fallas' }, r.datos.fallas.map(frasesFalla)) : el('p', { class: 'suave', texto: tx('hicimos.vacio') }));
+    });
+    return lugar;
+  }
+  // «Plan para pasar la próxima vez» (al no aprobar un tema o un examen): en qué falló, qué releer, qué practicar (las
+  // preguntas del Test Guide), videos y cuándo volver a tomarlo. Con IA, además el consejo del instructor IA.
+  function planParaPasar(res) {
+    const lugar = el('section', { class: 'panel plan-pasar', 'aria-label': tx('plan.titulo') });
+    api('GET', `/api/academia/instructor/plan/${encodeURIComponent(res.id)}`).then(r => {
+      if (!lugar.isConnected || !r.ok) return;
+      const d = r.datos;
+      const enlace = v => el('a', { class: 'con-icono', href: v.url, target: '_blank', rel: 'noopener noreferrer' }, icono('video', 'icono chico'), el('span', { texto: v.titulo ?? tx('profesor.buscar', { texto: v.texto }) }));
+      const otraVez = d.intento.tipo === 'examen' ? { href: `#examen/${encodeURIComponent(d.intento.materia)}` } : { datos: { tipo: d.intento.tipo, materia: d.intento.materia, tema: d.intento.tema } };
+      lugar.append(
+        el('h2', { class: 'con-icono' }, icono('cerebro'), el('span', { texto: tx('plan.titulo') })),
+        el('p', { class: 'suave', texto: tx('plan.animo') }),
+        el('h3', { texto: tx('plan.fallaste') }),
+        el('ul', { class: 'lista-fallas' }, d.temas.map(x => el('li', { class: 'falla' },
+          el('p', {}, el('strong', { texto: `${nombreMateria(x.materia)} → ` }), talCual('strong', x.titulo), el('span', { texto: ` · ${tx('plan.n_fallos', { n: numero(x.fallos) })}` })),
+          x.ideas.map(i => el('p', { class: 'suave' }, el('span', { texto: `${tx('hicimos.idea')} ` }), talCual('span', i))),
+          el('p', { class: 'fuerte', texto: tx('plan.estudiar') }),
+          el('div', { class: 'botones' },
+            el('a', { class: 'boton-3d naranja chico', href: `#refuerzo/${encodeURIComponent(x.materia)}/${encodeURIComponent(x.tema)}` }, el('span', { texto: x.tarjeta ? tx('plan.releer', { tarjeta: x.tarjeta.titulo }) : tx('refuerzo.repasar') })),
+            el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: e => empezarIntento({ tipo: 'instructor', materia: x.materia, tema: x.tema }, e.currentTarget) }, el('span', { texto: tx('plan.practicar', { n: numero(x.preguntas.length) }) }))),
+          el('details', {}, el('summary', { texto: tx('plan.preguntas') }), el('ul', {}, x.preguntas.map(q => talCual('li', `${q.numero ? `${q.numero} · ` : ''}${q.enunciado}`)))),
+          el('div', { class: 'videos' }, [...x.videos, ...x.buscar].map(enlace)),
+          x.refuerzoHecho ? el('p', { class: 'tono-bien', texto: tx('plan.refuerzo_hecho') }) : null))),
+        el('h3', { texto: tx('plan.otra_vez') }),
+        el('p', { texto: d.otraVez.listo ? tx('plan.otra_vez.ya') : tx('plan.otra_vez.despues') }),
+        otraVez.href ? el('a', { class: `boton-3d ${d.otraVez.listo ? '' : 'blanco'}`.trim(), href: otraVez.href }, el('span', { texto: tx('plan.tomar') }))
+          : el('button', { type: 'button', class: `boton-3d ${d.otraVez.listo ? '' : 'blanco'}`.trim(), onclick: e => empezarIntento(otraVez.datos, e.currentTarget) }, el('span', { texto: tx('plan.tomar') })),
+        consejoExamen(res.id));
+    });
+    return lugar;
+  }
+  // Después de una práctica de refuerzo: «Bien: 2 de 3 — lo repasamos otra vez el jueves».
+  function resultadoRefuerzo(res) {
+    if (res.tipo !== 'instructor' || !res.tema) return null;
+    const dia = new Intl.DateTimeFormat(document.documentElement.lang === 'en' ? 'en-US' : 'es-DO', { weekday: 'long', timeZone: 'America/Santo_Domingo' }).format(new Date(Date.now() + 2 * 86_400_000));
+    return el('p', { class: 'resultado-refuerzo con-icono' }, icono('atencion', 'icono chico'),
+      el('span', { texto: tx(res.aciertos === res.total ? 'refuerzo.resultado.bien' : 'refuerzo.resultado', { n: numero(res.aciertos), total: numero(res.total), dia }) }));
   }
 
   // ---------- Inicio: «Tu instructor dice…» ----------
@@ -112,14 +212,28 @@ export function crearInstructor(h) {
       consejo?.accion ? el('div', { class: 'instructor-accion' }, botonAccion(consejo.accion)) : null,
       d.observaciones?.length ? el('ul', { class: 'instructor-notas' }, d.observaciones.map(o => el('li', { class: 'con-icono' },
         icono('ojo', 'icono chico'), talCual('span', tx(`instr.o.${o.clave}`, { ...o.vars, franja: o.vars?.franja ? tx(`instr.franja.${o.vars.franja}`) : '' }))))) : null,
+      medidorTiempo(d.tiempo),
+      d.instructor?.motivo === 'sin_minutos' ? sinMinutos() : null,
+      d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
       zonaIa);
   }
-  // Pone la tarjeta en su lugar cuando llega (Inicio ya se dibujó: no lo hace esperar).
+  // Un pago aprobado o rechazado que todavía no vio.
+  function avisoPagos(pagos) {
+    if (!pagos?.length) return null;
+    const caja = el('aside', { class: 'aviso-pagos', role: 'status' }, pagos.map(p => el('p', { class: `con-icono tono-${p.estado === 'aprobado' ? 'bien' : 'mal'}` },
+      icono(p.estado === 'aprobado' ? 'bien' : 'mal', 'icono chico'),
+      el('span', { texto: p.estado === 'aprobado' ? tx('pago.aprobado_aviso', { n: numero(p.minutos) }) : tx('pago.rechazado_aviso', { motivo: p.motivo ?? '' }) }))),
+    el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async () => { caja.remove(); await api('POST', '/api/academia/tiempo-ia/visto', {}); } }, el('span', { texto: tx('pago.entendido') })));
+    return caja;
+  }
+  // Pone la tarjeta en su lugar cuando llega (Inicio ya se dibujó: no lo hace esperar). Arriba de todo, su plan de
+  // refuerzo (si tiene fallas vivas); después el aviso de un pago y «Tu instructor dice…».
   function enInicio() {
     const lugar = el('div', { class: 'instructor-lugar' });
     api('GET', '/api/academia/instructor').then(r => {
       if (!lugar.isConnected || !r.ok) return;
-      lugar.replaceChildren(tarjetaInicio(r.datos));
+      lugar.replaceChildren(...[planRefuerzo(r.datos.plan), avisoPagos(r.datos.pagos), tarjetaInicio(r.datos)].filter(Boolean));
+      marcarCamino(r.datos.plan);
     });
     return lugar;
   }
@@ -127,7 +241,7 @@ export function crearInstructor(h) {
   // ---------- Al empezar un tema: el consejo del tema y «¿Tienes una duda?» ----------
   function alEmpezarTema(materia, tema) {
     const lugar = el('div', { class: 'instructor-tema' });
-    api('GET', `/api/academia/instructor?materia=${encodeURIComponent(materia)}&tema=${encodeURIComponent(tema)}`).then(r => {
+    api('GET', `/api/academia/instructor/tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`).then(r => {
       if (!lugar.isConnected || !r.ok) return;
       const c = r.datos.consejo;
       lugar.replaceChildren(el('aside', { class: 'instructor-mini' },
@@ -191,7 +305,8 @@ export function crearInstructor(h) {
     const pasos = b.estilo === 'paso_a_paso';
     const partes = [
       el('div', { class: 'instructor-mini-cabeza' }, icono('cerebro', 'icono chico'), el('strong', { texto: tx('instr.explica.titulo') }), insignia(d.instructor, { compacta: true })),
-      b.veces >= 2 ? el('p', { class: 'aviso chica', texto: tx('instr.explica.repetida', { n: numero(b.veces) }) }) : null,
+      b.falla ? el('p', { class: 'aviso chica con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: tx('refuerzo.explica', { n: numero(b.falla.fallos) }) }))
+        : b.veces >= 2 ? el('p', { class: 'aviso chica', texto: tx('instr.explica.repetida', { n: numero(b.veces) }) }) : null,
       el(pasos ? 'ol' : 'div', { class: pasos ? 'instructor-pasos' : 'instructor-bloques' },
         el(pasos ? 'li' : 'p', {}, el('strong', { texto: `${tx('instr.explica.correcta')} ` }), talCual('span', b.correcta)),
         !b.acierto && b.elegidaTexto ? el(pasos ? 'li' : 'p', {}, el('strong', { texto: `${tx('instr.explica.elegiste')} ` }), talCual('span', b.elegidaTexto)) : null,
@@ -232,6 +347,92 @@ export function crearInstructor(h) {
     return lugar;
   }
 
+  // El Profesor virtual de un alumno (en su ficha): darlo, quitarlo o «según su pago», y su historial.
+  function profesorAdmin(id) {
+    const lugar = el('section', { class: 'panel profesor-admin' }, el('h2', { class: 'con-icono' }, icono('cerebro'), el('span', { texto: tx('profesor.titulo') })));
+    const pintar = async () => {
+      const r = await api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/profesor`);
+      if (!lugar.isConnected || !r.ok) return;
+      const poner = async valor => {
+        const x = await api('POST', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/profesor`, { permitido: valor });
+        if (!x.ok) return h.avisar?.(textoError(x.datos.error), 'mal');
+        lugar.replaceChildren(lugar.firstChild);
+        pintar();
+      };
+      lugar.append(
+        el('p', { texto: r.datos.permiso.permitido ? tx(`profesor.admin.si.${r.datos.permiso.por}`) : tx('profesor.admin.no') }),
+        el('div', { class: 'botones' },
+          el('button', { type: 'button', class: 'boton-3d chico', onclick: () => poner(true) }, el('span', { texto: tx('profesor.admin.dar') })),
+          el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => poner(null) }, el('span', { texto: tx('profesor.admin.pago') })),
+          el('button', { type: 'button', class: 'boton-3d rojo chico', onclick: () => poner(false) }, el('span', { texto: tx('profesor.admin.quitar') }))),
+        r.datos.historial.length ? el('details', {}, el('summary', { texto: tx('profesor.admin.historial', { n: numero(r.datos.historial.length) }) }),
+          el('ul', { class: 'lista-simple' }, r.datos.historial.map(m => el('li', {}, talCual('p', m.pregunta, 'fuerte'), m.respuesta ? talCual('p', m.respuesta.respuesta, 'suave') : null)))) : null);
+    };
+    pintar();
+    return lugar;
+  }
+
+  // ---------- Administrador: «Ver cómo trabaja» (una pregunta y una opción mala: sin IA y con IA, lado a lado) ----------
+  function demo() {
+    const zona = el('div', { class: 'demo-zona' });
+    const elegir = el('select', { 'aria-label': tx('demo.pregunta') });
+    const opcion = el('select', { 'aria-label': tx('demo.opcion') });
+    let preguntas = [];
+    const pintarOpciones = () => {
+      const q = preguntas.find(x => x.id === elegir.value);
+      opcion.replaceChildren(...(q?.opciones ?? []).filter(o => o.letra !== q.correcta).map(o => el('option', { value: o.letra, texto: `${o.letra}. ${o.texto}` })));
+    };
+    elegir.addEventListener('change', pintarOpciones);
+    const boton = el('button', {
+      type: 'button', class: 'boton-3d azul chico',
+      onclick: async () => {
+        boton.disabled = true;
+        const r = await api('POST', '/api/admin/academia/instructor/demo', { pregunta: elegir.value, opcion: opcion.value });
+        boton.disabled = false;
+        if (!r.ok) return zona.replaceChildren(el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }));
+        const d = r.datos;
+        const conIa = d.ia?.estado === 'ejemplo'
+          ? el('section', { class: 'caja-hoja caja-ia ejemplo' }, el('h3', { texto: tx('demo.con_ia_ejemplo') }), el('p', { texto: tx('demo.ejemplo_texto') }), el('p', { class: 'suave chica', texto: tx('demo.ejemplo_nota') }))
+          : lugarIa(d.ia, x => cajaIa(x, [talCual('p', x.explicacion), x.porQueNo ? talCual('p', x.porQueNo) : null, x.recuerda ? talCual('p', x.recuerda, 'recuerda-linea') : null]));
+        zona.replaceChildren(
+          el('article', { class: 'demo-pregunta' }, talCual('p', d.pregunta.enunciado, 'fuerte'), el('ul', {}, d.pregunta.opciones.map(o => talCual('li', `${o.letra}. ${o.texto}${o.letra === d.pregunta.correcta ? ' ✓' : ''}`)))),
+          el('div', { class: 'demo-lados' },
+            el('div', {}, el('h3', { texto: tx('demo.sin_ia') }), vistaExplicacion({ instructor: { modo: 'basico' }, basica: d.basica, ia: null })),
+            el('div', {}, el('h3', { texto: tx('demo.con_ia') }), conIa)));
+      },
+    }, el('span', { texto: tx('demo.ver') }));
+    const caja = el('details', { class: 'en-palabras demo' },
+      el('summary', { class: 'con-icono' }, icono('ojo'), el('span', { texto: tx('demo.titulo') })),
+      el('p', { class: 'suave', texto: tx('demo.linea') }), elegir, opcion, boton, zona);
+    caja.addEventListener('toggle', async () => {
+      if (!caja.open || preguntas.length) return;
+      const r = await api('GET', '/api/admin/academia/respuestas');
+      if (!r.ok) return;
+      preguntas = r.datos.materias.flatMap(m => m.temas.flatMap(t => t.preguntas));
+      elegir.replaceChildren(...preguntas.map(q => el('option', { value: q.id, texto: `${q.numero ?? q.id} · ${q.enunciado.slice(0, 70)}` })));
+      pintarOpciones();
+    });
+    return caja;
+  }
+  // «Conectar la IA» paso a paso (para quien no es técnico). Las claves se pegan y se prueban gratis en Claves.
+  function guiaConectar(s) {
+    const proveedores = Array.isArray(s.proveedores) ? s.proveedores : [];
+    const estado = id => {
+      const p = proveedores.find(x => x.id === id);
+      return p ? (p.usable ? tx('conectar.lista') : p.usar ? tx('conectar.falta') : tx('conectar.apagado')) : '—';
+    };
+    return el('details', { class: 'en-palabras conectar-ia', open: !s.encendida },
+      el('summary', { class: 'con-icono' }, icono('llave'), el('span', { texto: tx('conectar.titulo') })),
+      el('p', { class: 'fuerte', texto: tx('conectar.claude') }),
+      el('ol', {}, [1, 2, 3, 4, 5].map(n => el('li', { texto: tx(`conectar.claude.${n}`) }))),
+      el('p', { class: 'suave', texto: `Claude: ${estado('anthropic')}` }),
+      el('p', { class: 'fuerte', texto: tx('conectar.openai') }),
+      el('ol', {}, [1, 2, 3].map(n => el('li', { texto: tx(`conectar.openai.${n}`) }))),
+      el('p', { class: 'suave', texto: `ChatGPT: ${estado('openai')}` }),
+      el('p', { texto: tx('conectar.orden') }),
+      el('a', { class: 'boton-3d azul chico', href: '#claves' }, el('span', { texto: tx('conectar.probar') })));
+  }
+
   // ---------- Administrador: el instructor con IA ----------
   function tarjetaAdmin(s, { cambiar, caja, interruptor, usd }) {
     const mensaje = caja();
@@ -249,6 +450,7 @@ export function crearInstructor(h) {
     return el('section', { class: 'tarjeta tarjeta-instructor-admin' },
       el('h2', { class: 'con-icono titulo-tarjeta' }, icono('cerebro', 'icono grande'), el('span', { texto: tx('instr.admin.titulo') })),
       el('p', { texto: tx('instr.admin.linea') }),
+      guiaConectar(s),
       interruptor(tx('instr.admin.encender'), s.instructorIa === true, boton => cambiar(boton, mensaje, '/api/admin/ia/ajustes', { instructorIa: !s.instructorIa }, null)),
       !s.encendida ? el('p', { class: 'suave', texto: tx('instr.admin.ia_apagada') }) : null,
       el('fieldset', { class: 'modelos-instructor' },
@@ -258,6 +460,9 @@ export function crearInstructor(h) {
             onchange: evento => cambiar(evento.currentTarget, mensaje, '/api/admin/ia/ajustes', { instructorModelo: m.modelo }, null) }),
           el('span', { texto: tx(`instr.admin.modelo.${m.modelo === 'claude-sonnet-5-5' ? 'sonnet' : 'haiku'}`, { entrada: m.precio ? `US$${m.precio.entradaUsd}` : '—', salida: m.precio ? `US$${m.precio.salidaUsd}` : '—' }) })))),
       el('p', { class: 'suave', texto: tx('instr.admin.tipico', { monto: usd(s.tipicoInstructorMicro) }) }),
+      el('p', { class: 'suave', texto: tx('instr.admin.minuto') }),
+      el('a', { class: 'boton-enlace secundario', href: '#pagos', texto: tx('instr.admin.ir_pagos') }),
+      demo(),
       el('details', { class: 'en-palabras' },
         el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: tx('instr.admin.como') })),
         el('p', { texto: tx('instr.admin.como.1') }), el('p', { texto: tx('instr.admin.como.2') }), el('p', { texto: tx('instr.admin.como.3') })),
@@ -265,5 +470,5 @@ export function crearInstructor(h) {
       mensaje);
   }
 
-  return Object.freeze({ insignia, enInicio, alEmpezarTema, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  return Object.freeze({ planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, planRefuerzo, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, alEmpezarTema, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
 }

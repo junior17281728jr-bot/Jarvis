@@ -334,9 +334,10 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
   } else if (tipo === 'instructor') {
     const c = camino(db, usuarioId, paquete, ahoraMs);
     const abiertos = new Set(c.materias.flatMap(m => m.temas.filter(t => t.estado !== 'bloqueado').map(t => `${m.id}/${t.id}`)));
-    ids = preguntasDelInstructor(db, usuarioId, paquete, abiertos, ahoraMs);
-    materia = null;
-    tema = null;
+    // 0.10.0: con materia y tema, el refuerzo de ese tema (su plan de refuerzo: «Repasar ahora»).
+    if (materia && tema && !abiertos.has(`${materia}/${tema}`)) throw new ErrorHttp(403, 'tema_bloqueado');
+    ids = preguntasDelInstructor(db, usuarioId, paquete, abiertos, ahoraMs, { materia, tema });
+    if (!(materia && tema)) { materia = null; tema = null; }
   } else {
     ids = repasoPendiente(db, usuarioId, paquete, ahoraMs).slice(0, REPASO_MAXIMO);
     materia = null;

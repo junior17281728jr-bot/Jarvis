@@ -48,6 +48,8 @@ export const PROPOSITOS = Object.freeze({
   instructor_consejo: INSTRUCTOR,
   // Una duda escrita sobre un tema: la IA solo puede usar las tarjetas de ese tema que se le mandan.
   instructor_duda: INSTRUCTOR,
+  // 0.10.0: el «Profesor virtual» (un chat): su modelo, tarjetas y preguntas que ya respondió (nunca su nombre).
+  instructor_chat: INSTRUCTOR,
 });
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las

@@ -22,16 +22,22 @@ import { paqueteActivo } from '../academia/paquetes.js';
 import { camino } from '../academia/progreso.js';
 import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, reexplicarSinIa, dudaSinIa, tarjetasParaDuda } from '../academia/instructor.js';
 import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS } from '../academia/instructor-ia.js';
+import { enTransaccion } from '../nucleo/db.js';
+import { cobrarUso, yaPagado, ponerTareaAlUso, novedadesPagos } from '../academia/tiempo-ia.js';
+import { sincronizarFallas, refuerzoDeTema, fallasDe, planParaPasar } from '../academia/fallas.js';
+import { tiempoDe } from './pagos.js';
+import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube } from '../academia/profesor.js';
+import { armarChat } from '../academia/instructor-ia.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const HORA = 60 * 60 * 1000;
 // Lo que se le dice a un alumno de por qué no hay IA ahora (nada del estado del dueño).
-const MOTIVOS_ALUMNO = new Set(['tope_espacio', 'sin_presupuesto', 'cuenta_sin_permiso', 'demasiadas_llamadas', 'trabajo_en_pausa', 'solo_tailnet', 'ia_apagada']);
+const MOTIVOS_ALUMNO = new Set(['sin_minutos', 'tope_espacio', 'sin_presupuesto', 'cuenta_sin_permiso', 'demasiadas_llamadas', 'trabajo_en_pausa', 'solo_tailnet', 'ia_apagada']);
 // Los que no se pasan solos (sin un cambio del dueño): «básico». Los demás (un tope lleno este mes, una pausa corta,
 // demasiadas llamadas en la hora): «en espera».
 const SIN_IA = new Set(['ia_apagada', 'ayuda_no_activada', 'cuenta_sin_permiso', 'proveedor_no_usado', 'sin_clave', 'clave_ilegible', 'llave_no_disponible',
   'precio_sin_confirmar', 'llamada_muy_cara', 'solo_tailnet']);
-const RESULTADO_ALUMNO = new Set(['ok', 'caducada', 'tope_espacio', 'demasiadas_llamadas', 'rechazada', 'respuesta_no_valida', 'respuesta_incompleta', 'no_se_pudo_guardar', 'demasiado_largo']);
+const RESULTADO_ALUMNO = new Set(['ok', 'sin_minutos', 'caducada', 'tope_espacio', 'demasiadas_llamadas', 'rechazada', 'respuesta_no_valida', 'respuesta_incompleta', 'no_se_pudo_guardar', 'demasiado_largo']);
 const TAMANO_TIPICO = 4_000;
 
 export function crearLimitesInstructor() {
@@ -40,6 +46,7 @@ export function crearLimitesInstructor() {
     explicar: new Limitador({ maximo: 40, ventanaMs: DIEZ_MINUTOS }),
     duda: new Limitador({ maximo: 10, ventanaMs: DIEZ_MINUTOS }),
     consejo: new Limitador({ maximo: 6, ventanaMs: HORA }),
+    chat: new Limitador({ maximo: 20, ventanaMs: DIEZ_MINUTOS }),
   };
 }
 
@@ -76,6 +83,9 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const d = disponibilidad(db, { config, espacioId: e.id, proposito: 'instructor_explicar', entradaMax: TAMANO_TIPICO, ahora });
     if (d.disponible) {
       if (leerModoSeguro(db).activo || !trabajadorEncendido()) return decir('espera', 'trabajo_en_pausa');
+      // 0.10.0: su tiempo con IA. Sin minutos, el instructor básico (gratis) hasta que pida más.
+      const tiempo = tiempoDe(db, usuario, ahora);
+      if (!tiempo.ilimitado && tiempo.minutos < tiempo.porUso) return decir('basico', 'sin_minutos');
       return decir('ia', 'ok');
     }
     // Un tope de plan en US$0 no se llena: esa cuenta no tiene presupuesto de IA (básico, no «en espera»).
@@ -84,28 +94,66 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   }
 
   // Pone en la fila el pedido a la IA. → { estado: 'pendiente', tarea } o { estado: 'no', motivo }.
+  // 0.10.0: cada uso nuevo cuesta minutos de su tiempo con IA (se cobra al pedirlo y se devuelve solo si la IA no
+  // responde); ver otra vez lo mismo no se cobra. La cuenta del administrador no tiene límite.
   function pedirIa(db, usuario, { uso, sistema, texto, clave, extra = {} }) {
     if (Buffer.byteLength(sistema) + Buffer.byteLength(texto) > PROPOSITOS[uso].entradaMaxBytes) return { estado: 'no', motivo: 'demasiado_largo' };
     const e = espacioDe(db, usuario);
     const ahora = reloj();
-    const r = encolar(db, { tipo: 'academia.instructor', espacioId: e.id, creadaPor: usuario.id, datos: { uso, sistema, texto, clave, usuarioId: usuario.id, pedidaEn: ahora, ...extra } }, { ahora });
-    try { supervisor?.despertar?.(); } catch { /* la toma en su próxima vuelta (5 s) */ }
-    return { estado: 'pendiente', tarea: r.id };
+    const ilimitado = esEspacioAdmin(db, e.id);
+    const pagado = ilimitado || yaPagado(db, usuario.id, clave);
+    try {
+      return enTransaccion(db, () => {
+        if (!pagado) cobrarUso(db, usuario.id, { referencia: clave, ahora });
+        const r = encolar(db, { tipo: 'academia.instructor', espacioId: e.id, creadaPor: usuario.id, datos: { uso, sistema, texto, clave, usuarioId: usuario.id, pedidaEn: ahora, ...extra } }, { ahora });
+        if (!pagado) ponerTareaAlUso(db, usuario.id, clave, r.id);
+        try { supervisor?.despertar?.(); } catch { /* la toma en su próxima vuelta (5 s) */ }
+        return { estado: 'pendiente', tarea: r.id };
+      });
+    } catch (error) {
+      if (error?.clave === 'sin_minutos') return { estado: 'no', motivo: 'sin_minutos' };
+      throw error;
+    }
+  }
+  // Lo que ya estaba guardado (otro alumno pidió lo mismo): no costó, pero es un uso de su tiempo con IA (una vez).
+  function deGuardado(db, usuario, clave, guardado) {
+    const e = espacioDe(db, usuario);
+    if (!esEspacioAdmin(db, e.id) && !yaPagado(db, usuario.id, clave)) {
+      try { cobrarUso(db, usuario.id, { referencia: clave, ahora: reloj() }); } catch (error) {
+        if (error?.clave === 'sin_minutos') return { estado: 'no', motivo: 'sin_minutos' };
+        throw error;
+      }
+    }
+    return lista(guardado);
   }
   const lista = (guardado, extra = {}) => ({ estado: 'lista', ...guardado, ...extra });
 
   // ---------- «Tu instructor dice…» (Inicio, o al empezar un tema con ?materia=&tema=) ----------
+  // Inicio: GET /api/academia/instructor. Al abrir un tema: GET /api/academia/instructor/tema/:materia/:tema (o ?materia=&tema=).
   rutas.agregar('GET', '/api/academia/instructor', ({ db, req, usuario }) => {
+    const consulta = new URL(req.url, 'http://x').searchParams;
+    return instructorDe(db, req, usuario, consulta.get('materia'), consulta.get('tema'));
+  });
+  rutas.agregar('GET', '/api/academia/instructor/tema/:materia/:tema', ({ db, req, usuario, parametros }) => instructorDe(db, req, usuario, parametros.materia, parametros.tema));
+  function instructorDe(db, req, usuario, materia, tema) {
     contar(topes.lecturas, usuario);
     const p = activo(db);
-    const consulta = new URL(req.url, 'http://x').searchParams;
-    const materia = consulta.get('materia');
-    const tema = consulta.get('tema');
     const ahora = reloj();
-    const datos = consejoInstructor(db, usuario.id, p, ahora, materia && tema ? { materia, tema } : null);
+    const donde = materia && tema ? { materia, tema } : null;
+    const datos = consejoInstructor(db, usuario.id, p, ahora, donde);
     const guardado = leerGuardado(db, `academia.ia.consejo.${usuario.id}.${semanaDe(ahora)}`);
-    return { codigo: 200, datos: { instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(guardado) : null } };
-  });
+    // 0.10.0: su plan de refuerzo (las fallas que todavía tiene) y, al abrir un tema, el refuerzo de ese tema.
+    const fallas = p ? fallasDe(db, usuario.id, p, ahora) : [];
+    const refuerzo = donde && p ? refuerzoDeTema(db, usuario.id, p, materia, tema, ahora) : null;
+    return {
+      codigo: 200,
+      datos: {
+        instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(guardado) : null,
+        tiempo: tiempoDe(db, usuario, ahora), pagos: novedadesPagos(db, usuario.id),
+        plan: fallas.filter(f => f.estado !== 'superada'), recientes: fallas.slice(0, 3), ...(donde ? { refuerzo } : {}),
+      },
+    };
+  }
 
   // ---------- «Explícamelo de otra forma» ----------
   rutas.agregar('POST', '/api/academia/instructor/explicar', async ({ db, req, usuario }) => {
@@ -117,13 +165,17 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const r = respuestaDelAlumno(db, usuario.id, p, datos.intento, datos.pregunta); // 404 si no la respondió en SU intento
     const modelo = modeloAlumno(db, usuario.id, p, ahora);
     const basica = reexplicarSinIa(db, usuario.id, p, r, modelo.estilo);
+    // 0.10.0: si esa pregunta es una de sus fallas registradas, se le dice (y cuántas veces).
+    sincronizarFallas(db, usuario.id, p, ahora);
+    const falla = db.prepare("SELECT fallos, estado FROM academia_fallas WHERE usuario_id = ? AND clave = ? AND estado <> 'superada' ORDER BY id DESC LIMIT 1").get(usuario.id, `q:${r.q.id}`);
+    if (falla) basica.falla = { fallos: falla.fallos, estado: falla.estado };
     const instructor = estadoInstructor(db, req, usuario, ahora);
     let ia = null;
     if (datos.ia === true && instructor.modo === 'ia') {
       const cfg = leerConfigIa(db);
       const pedido = armarExplicacion({ q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo, idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: modelo.estilo }, idioma: usuario.idioma, modelo: cfg.instructorModelo });
       const ya = leerGuardado(db, pedido.clave);
-      ia = ya ? lista(ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones } });
+      ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones } });
     } else if (datos.ia === true) ia = { estado: 'no', motivo: instructor.motivo };
     return { codigo: 200, datos: { instructor, basica, ia } };
   });
@@ -189,6 +241,21 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     return { codigo: 200, datos: { instructor, basica, ia } };
   });
 
+  // ---------- 0.10.0: «Lo que hicimos por ti» (todas sus fallas, también las superadas) ----------
+  rutas.agregar('GET', '/api/academia/instructor/fallas', ({ db, usuario }) => {
+    contar(topes.lecturas, usuario);
+    return { codigo: 200, datos: { fallas: fallasDe(db, usuario.id, activo(db), reloj()) } };
+  });
+
+  // ---------- 0.10.0: «Plan para pasar la próxima vez» (un intento suyo terminado) ----------
+  const conVideos = (db, plan) => ({ ...plan, temas: plan.temas.map(x => ({ ...x, videos: videosDeTema(db, x.materia, x.tema).map(v => ({ titulo: v.titulo, url: v.url })), buscar: [{ texto: x.titulo, url: busquedaYoutube(x.titulo) }] })) });
+  rutas.agregar('GET', '/api/academia/instructor/plan/:intento', ({ db, usuario, parametros }) => {
+    contar(topes.lecturas, usuario);
+    return { codigo: 200, datos: conVideos(db, planParaPasar(db, usuario.id, activo(db), parametros.intento, reloj())) };
+  });
+  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/plan/:intento', ({ db, parametros }) =>
+    ({ codigo: 200, datos: conVideos(db, planParaPasar(db, Number(parametros.id), activo(db), parametros.intento, reloj())) }), { admin: true });
+
   // ---------- ¿Ya llegó lo de la IA? (solo una tarea suya) ----------
   rutas.agregar('GET', '/api/academia/instructor/tareas/:id', ({ db, usuario, parametros }) => {
     contar(topes.lecturas, usuario);
@@ -207,6 +274,86 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const admin = esEspacioAdmin(db, e.id);
     return { codigo: 200, datos: { estado: 'no', motivo: admin || RESULTADO_ALUMNO.has(motivo) ? motivo : 'no_disponible' } };
   });
+
+  // ---------- 0.10.0: «Ver cómo trabaja» (el administrador): una pregunta y una opción mala, sin IA y con IA ----------
+  // Sin datos de ningún alumno: el estilo «claro». Con la IA lista para el administrador (desde Tailscale), la pide de
+  // verdad (con su tope general); si no, la pantalla muestra un ejemplo marcado como ejemplo.
+  rutas.agregar('POST', '/api/admin/academia/instructor/demo', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    contar(topes.explicar, usuario);
+    const p = activo(db);
+    const q = typeof datos?.pregunta === 'string' ? p?.preguntas.get(datos.pregunta) : null;
+    if (!q) throw new ErrorHttp(404, 'no_existe');
+    const elegida = typeof datos?.opcion === 'string' ? datos.opcion : '';
+    if (!q.original.opciones.some(o => o.letra === elegida)) throw new ErrorHttp(400, 'opcion_no_valida');
+    const r = { q, elegida, acierto: elegida === q.original.correcta, modo: 'original' };
+    const basica = reexplicarSinIa(db, usuario.id, p, r, 'claro');
+    basica.veces = 0;
+    const instructor = estadoInstructor(db, req, usuario);
+    let ia = { estado: 'ejemplo' };
+    if (instructor.modo === 'ia') {
+      const cfg = leerConfigIa(db);
+      const pedido = armarExplicacion({ q, elegida, acierto: r.acierto, modo: 'original', idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: 'claro' }, idioma: usuario.idioma, modelo: cfg.instructorModelo });
+      const ya = leerGuardado(db, pedido.clave);
+      ia = ya ? lista(ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones } });
+    }
+    return { codigo: 200, datos: { instructor, basica, ia, pregunta: { id: q.id, numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })), correcta: q.original.correcta } } };
+  }, { admin: true });
+
+  // ---------- 0.10.0: el «Profesor virtual» (un chat; para quien pagó o a quien el administrador se lo dio) ----------
+  const esAdminDe = (db, usuario) => { const e = espacioDe(db, usuario); return Boolean(e && esEspacioAdmin(db, e.id)); };
+  rutas.agregar('GET', '/api/academia/profesor', ({ db, req, usuario }) => {
+    contar(topes.lecturas, usuario);
+    const ahora = reloj();
+    return { codigo: 200, datos: { permiso: permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }), instructor: estadoInstructor(db, req, usuario, ahora), tiempo: tiempoDe(db, usuario, ahora), historial: historialParaVer(db, usuario.id) } };
+  });
+  rutas.agregar('POST', '/api/academia/profesor', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    contar(topes.chat, usuario);
+    const mensaje = textoDe(datos, 'mensaje').trim();
+    if (mensaje.length < 2 || mensaje.length > DUDA_MAX_LETRAS) throw new ErrorHttp(400, 'duda_no_valida');
+    const p = activo(db);
+    if (!p) throw new ErrorHttp(409, 'sin_paquete');
+    if (!permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }).permitido) throw new ErrorHttp(403, 'sin_profesor');
+    const ahora = reloj();
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    const c = camino(db, usuario.id, p, ahora);
+    const abiertos = new Set(c.materias.flatMap(m => m.temas.filter(t => t.estado !== 'bloqueado').map(t => `${m.id}/${t.id}`)));
+    const fallas = fallasDe(db, usuario.id, p, ahora).filter(f => f.estado !== 'superada');
+    const ctx = contextoChat(db, usuario.id, p, mensaje, abiertos, fallas);
+    const videos = ctx.materia ? videosDeTema(db, ctx.materia, ctx.tema).map(v => ({ titulo: v.titulo, url: v.url })) : [];
+    const buscar = ctx.temaTitulo ? [{ texto: ctx.temaTitulo, url: busquedaYoutube(ctx.temaTitulo) }] : [];
+    // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual.
+    if (instructor.modo !== 'ia') {
+      return { codigo: 200, datos: { instructor, ia: { estado: 'no', motivo: instructor.motivo }, basica: consejoInstructor(db, usuario.id, p, ahora).consejo, videos, buscar } };
+    }
+    const m = modeloAlumno(db, usuario.id, p, ahora);
+    // Su modelo, en cifras y con los textos del paquete: nunca su nombre ni su usuario.
+    const alumno = {
+      ...resumenModelo(m), ideas: m.ideas.map(x => x.idea).filter(Boolean),
+      fallas: fallas.slice(0, 5).map(f => ({ tema: f.temaTitulo, idea: f.idea, fallos: f.fallos, aciertos: f.aciertos, estado: f.estado })),
+    };
+    const historial = historialParaVer(db, usuario.id).filter(x => x.respuesta).map(x => ({ alumno: x.pregunta, profesor: x.respuesta.respuesta }));
+    const pedido = armarChat({ alumno, material: ctx.material, preguntas: ctx.preguntas, historial, mensaje, idioma: usuario.idioma });
+    const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
+    const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje } });
+    if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar });
+    return { codigo: 200, datos: { instructor, ia, videos, buscar, tiempo: tiempoDe(db, usuario, ahora) } };
+  });
+  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/profesor', ({ db, parametros }) => {
+    const id = Number(parametros.id);
+    if (!Number.isSafeInteger(id) || !db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(id)) throw new ErrorHttp(404, 'no_existe');
+    return { codigo: 200, datos: { permiso: permisoProfesor(db, id), historial: historialParaVer(db, id) } };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/alumnos/:id/profesor', async ({ db, req, parametros }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { permiso: darProfesor(db, Number(parametros.id), datos?.permitido ?? null) } };
+  }, { admin: true, soloDueno: true });
+  rutas.agregar('GET', '/api/admin/academia/videos', ({ db }) => ({ codigo: 200, datos: { videos: leerVideos(db) } }), { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/videos', async ({ db, req }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { videos: guardarVideos(db, datos?.videos) } };
+  }, { admin: true });
 
   // ---------- El administrador: qué alumnos tienen ahora un instructor con IA ----------
   rutas.agregar('GET', '/api/admin/academia/instructor', ({ db, req }) => {

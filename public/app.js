@@ -14,6 +14,7 @@ import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
 import { leccionDeVideo } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
+import { crearPagos } from './pagos.js';
 import { dibujarAvatar } from './avatares.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
@@ -1486,6 +1487,8 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'contenido', href: '#contenido', texto: t('admin.pestana.contenido'), nombreIcono: 'libro' },
       // 0.8.0: la clave completa (cada pregunta con su respuesta y sus explicaciones).
       { id: 'respuestas', href: '#respuestas', texto: t('admin.pestana.respuestas'), nombreIcono: 'marca' },
+      // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
+      { id: 'pagos', href: '#pagos', texto: t('admin.pestana.pagos'), nombreIcono: 'dinero' },
       { id: 'usuarios', href: '#admin/usuarios', texto: t('admin.pestana.usuarios'), nombreIcono: 'personas' },
       { id: 'trabajo', href: '#admin/trabajo', texto: t('admin.pestana.trabajo'), nombreIcono: 'latido', tono: tonos.trabajo },
       { id: 'servidor', href: '#admin/servidor', texto: t('admin.pestana.servidor'), nombreIcono: 'servidor', tono: tonos.servidor },
@@ -1493,11 +1496,29 @@ function cabeceraAdmin(actual, tonos = {}) {
       { id: 'ia', href: '#ia', texto: t('admin.pestana.ia'), nombreIcono: 'chispa' },
       { id: 'claves', href: '#claves', texto: t('admin.pestana.claves'), nombreIcono: 'llave' },
     ], actual, t('admin.pestanas')),
+    contadorPagos(),
     LINEA_ADMIN[actual] ? entrada(LINEA_ADMIN[actual]()) : null,
     // Academia (0.7.0): «plan» es de los proyectos (escondidos).
     PALABRAS_ADMIN[actual] ? palabras(PALABRAS_ADMIN[actual].filter(x => !TEMAS_DE_PROYECTOS.includes(x))) : null,
     seccionClaveTemporal(),
   ];
+}
+// 0.10.0: Pagos (administrador) y el Profesor virtual: el pedido sale de aquí (así se adelanta al abrir) y lo dibuja
+// public/pagos.js.
+async function pantallaPagos() {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/admin/academia/pagos');
+  if (vigente()) pagosUi().pantallaPagosAdmin(r);
+}
+async function pantallaProfesor() {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/academia/profesor');
+  if (vigente()) pagosUi().pantallaProfesor(r);
+}
+// 0.10.0: el número de comprobantes en revisión, sobre la pestaña «Pagos» (se pone cuando llega).
+function contadorPagos() {
+  requestAnimationFrame(() => { const a = raiz.querySelector('.pestanas a[data-pestana="pagos"]'); if (a && !a.querySelector('.contador-pendientes')) pagosUi().contarPendientes(a); });
+  return null;
 }
 // «Crear un usuario» desde el Resumen: la pestaña Usuarios abre el formulario y pone el cursor en el nombre.
 let abrirCrearUsuario = false;
@@ -3042,7 +3063,10 @@ function avisoMuestra(paquete) {
 }
 // 0.9.0: el «Instructor» (public/instructor.js) usa las mismas ayudas que estas pantallas.
 let ayudasInstructor = null;
-const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar }));
+const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria }));
+// 0.10.0: tiempo con IA, pagos y Profesor virtual (public/pagos.js).
+let ayudasPagos = null;
+const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi }));
 async function empezarIntento(datos, boton = null) {
   if (boton) boton.disabled = true;
   const r = await api('POST', '/api/academia/intentos', datos);
@@ -3578,14 +3602,22 @@ function vistaSituacion(p, { alElegir }) {
   return { nodo, botones, elegida: () => elegida };
 }
 
-async function pantallaTema(materia, tema) {
+async function pantallaTema(materia, tema, { soloRefuerzo = false } = {}) {
   const vigente = nuevoTurno();
-  const r = await api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`);
+  // 0.10.0: junto con la lección, el refuerzo del instructor para este tema (sus fallas registradas).
+  const [r, ins] = await Promise.all([api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`),
+    api('GET', `/api/academia/instructor/tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`)]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const l = r.datos;
   const { es, en } = partirTitulo(l.titulo);
-  const pantallas = [{ tipo: 'portada' }, ...partirLeccion(l.secciones), { tipo: 'fin' }];
+  // La tarjeta que explica su falla sale PRIMERO, marcada «Refuerzo para ti» (y en «Repasar ahora», solo esa).
+  const refuerzo = ins.ok ? ins.datos.refuerzo : null;
+  const seccionRefuerzo = refuerzo?.tarjeta ? l.secciones[refuerzo.tarjeta.indice] : null;
+  const deRefuerzo = seccionRefuerzo ? partirLeccion([seccionRefuerzo]).map(p => ({ ...p, refuerzo: true })) : [];
+  const pantallas = soloRefuerzo
+    ? [{ tipo: 'portada', refuerzo: true }, ...(deRefuerzo.length ? deRefuerzo : partirLeccion(l.secciones)), { tipo: 'fin', refuerzo: true }]
+    : [{ tipo: 'portada' }, ...deRefuerzo, ...partirLeccion(l.secciones), { tipo: 'fin' }];
   let paso = 0;
   let actual = null; // { destruir }
   const barraAvance = combustible();
@@ -3614,7 +3646,20 @@ async function pantallaTema(materia, tema) {
     cuenta.textContent = paso > 0 && paso < pantallas.length - 1 ? t('acad.de', { n: numero(paso), total: numero(pantallas.length - 2) }) : '';
     let nodo;
     let botones = [];
-    if (p.tipo === 'portada') {
+    if (p.tipo === 'portada' && p.refuerzo) {
+      nodo = el('article', { class: 'portada-tema portada-refuerzo' },
+        el('span', { class: 'sello-refuerzo', texto: t('refuerzo.para_ti') }),
+        el('p', { class: 'antetitulo', texto: nombreMateria(materia) }),
+        el('h1', { class: 'titulo-grande', texto: es }),
+        el('p', { class: 'bajada', texto: refuerzo ? tn('refuerzo.portada', { n: refuerzo.fallos }) : t('refuerzo.portada_sin') }),
+        refuerzo?.idea ? talCual('p', refuerzo.idea, 'caja-debil-idea') : null);
+      botones = [botonGrande(t('acad.empezar'), () => ir(1))];
+    } else if (p.tipo === 'fin' && p.refuerzo) {
+      nodo = el('article', { class: 'fin-leccion' },
+        el('h1', { class: 'titulo-grande', texto: t('refuerzo.fin') }),
+        el('p', { class: 'bajada', texto: t('refuerzo.fin_linea') }));
+      botones = [atras(), botonGrande(t('refuerzo.preguntas'), evento => empezarIntento({ tipo: 'instructor', materia, tema }, evento.currentTarget))];
+    } else if (p.tipo === 'portada') {
       nodo = el('article', { class: 'portada-tema' },
         el('span', { class: 'portada-icono', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[materia] ?? 'avion')),
         el('p', { class: 'antetitulo', texto: nombreMateria(materia) }),
@@ -3695,6 +3740,7 @@ async function pantallaTema(materia, tema) {
       actual = v;
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
     }
+    if (p.refuerzo && p.tipo !== 'portada' && p.tipo !== 'fin') nodo.prepend(el('span', { class: 'sello-refuerzo', texto: t('refuerzo.para_ti') }));
     cuerpo.replaceChildren(nodo);
     pie.replaceChildren(...botones.filter(Boolean));
   };
@@ -4034,7 +4080,9 @@ async function pantallaPractica(id) {
         el('h2', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('acad.mas_facil') })),
         res.reexplicacion.map(s => el('div', { class: 'reexplicacion-parte' }, el('h3', { texto: s.titulo }), talCual('p', s.texto ?? (s.puntos ?? []).join('\n')), s.fuentes.map(lineaFuente)))) : null,
       // 0.9.0: después de un examen, el consejo del instructor (con IA, además el suyo).
-      res.tipo === 'examen' ? instructorUi().consejoExamen(res.id) : null,
+      // 0.10.0: si no aprobó, el «Plan para pasar la próxima vez» (con el consejo del instructor IA adentro).
+      res.aprobado === false ? instructorUi().planParaPasar(res) : res.tipo === 'examen' ? instructorUi().consejoExamen(res.id) : null,
+      instructorUi().resultadoRefuerzo(res),
       revisionCompleta(res)].filter(Boolean));
     // 0.8.0: «Practicar mis errores»: las que falló en este intento, otra vez (Original).
     const errores = res.falladas.length ? el('button', { type: 'button', class: 'boton-3d naranja con-icono',
@@ -4093,6 +4141,8 @@ async function pantallaProgreso() {
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
     el('p', { class: 'bajada', texto: t('acad.progreso.linea') }),
+    // 0.10.0: «Lo que hicimos por ti» (sus fallas registradas y cómo se le reforzaron).
+    instructorUi().loQueHicimos(),
     el('section', { class: 'panel panel-preparacion' },
       medidor(p.preparacion?.pct ?? 0),
       el('div', {},
@@ -4170,6 +4220,9 @@ function listaDebiles(lista, tituloTexto, claveVacio, { conFallos = false } = {}
 const piezasAlumnos = () => ({
   el, t, tn, icono, insignia, numero, pctTexto, fecha, hace, cuando, fechaCortaDia, nombreMateria, claseMateria, talCual, tarjetaPregunta,
   panelPuntosDebiles, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
+  // 0.10.0: las fallas registradas del alumno y su Profesor virtual (dar o quitar).
+  fallasAlumno: id => instructorUi().loQueHicimos({ titulo: t('ficha.fallas'), url: `/api/admin/academia/alumnos/${encodeURIComponent(id)}/fallas` }),
+  profesorAlumno: id => instructorUi().profesorAdmin(id),
 });
 // Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
 function dibujarDeAlumnos(r, s, dibujarCon) {
@@ -4469,6 +4522,12 @@ async function dibujar() {
   if (comparar && esAdmin) return pantallaComparar(comparar[1]);
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
+  // 0.10.0: el tiempo con IA (pedir más), los pagos (administrador), el Profesor virtual y el refuerzo de un tema.
+  if (seccion === 'tiempo-ia') return pagosUi().pantallaTiempo();
+  if (seccion === 'pagos' && esAdmin) return pantallaPagos();
+  if (seccion === 'profesor') return pantallaProfesor();
+  const refuerzo = seccion.match(/^refuerzo\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
+  if (refuerzo) return pantallaTema(refuerzo[1], refuerzo[2], { soloRefuerzo: true });
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
   return pantallaInicio();
 }
@@ -4490,7 +4549,7 @@ function pedidosAlAbrir(seccion, admin) {
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/);
-  if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
+  if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`, `/api/academia/instructor/tema/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
   const practica = seccion.match(/^practica\/(\d+)$/);
   if (practica) return [`/api/academia/intentos/${encodeURIComponent(practica[1])}`];
   if (/^examen\/[a-z0-9_-]+$/.test(seccion)) return ['/api/academia/camino'];
@@ -4505,6 +4564,9 @@ function pedidosAlAbrir(seccion, admin) {
   if (comparar) return admin ? [`/api/admin/academia/comparar/${comparar[1]}`, '/api/admin/sistema'] : [];
   if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
+  // 0.10.0: Pagos (administrador) y el Profesor virtual.
+  if (seccion === 'pagos') return admin ? ['/api/admin/academia/pagos'] : [];
+  if (seccion === 'profesor') return ['/api/academia/profesor'];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
 }

@@ -13,7 +13,7 @@
 //    modelo, huella del texto de la pregunta), compartida (no tiene nada del alumno); el consejo y las dudas, por alumno.
 import { createHash } from 'node:crypto';
 
-export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda']);
+export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat']);
 // Lo más largo que se guarda de cada parte (lo que pase de ahí se corta: nunca una pantalla enorme).
 const TOPE = Object.freeze({ explicacion: 2400, corto: 900, termino: 120, terminos: 8, pasos: 4, duda: 600 });
 export const DUDA_MAX_LETRAS = 500;
@@ -131,6 +131,27 @@ export function armarDuda({ material, pregunta, alumno = {}, idioma = 'es' }) {
   return { sistema, texto: bloque({ tema: material.titulo, tarjetas: material.tarjetas, duda: String(pregunta).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_DUDA };
 }
 
+// ---------- 4. (0.10.0) El «Profesor virtual»: un chat que conoce cómo estudia el alumno ----------
+export const ESQUEMA_CHAT = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['respuesta', 'pregunta_control', 'estudiar_ahora', 'buscar_en_youtube', 'terminos'],
+  properties: {
+    respuesta: { type: 'string' }, pregunta_control: { type: 'string' }, estudiar_ahora: { type: 'string' },
+    buscar_en_youtube: { type: 'array', items: { type: 'string' } }, terminos: TERMINOS,
+  },
+});
+// alumno: su modelo (solo cifras, ideas equivocadas y fallas: nunca su nombre); material: tarjetas del tema que más se
+// parece; preguntas: preguntas del Test Guide que YA respondió y se parecen (tal cual, con la respuesta del Test Guide);
+// historial: los últimos mensajes del chat (lo que escribió va como dato).
+export function armarChat({ alumno, material, preguntas = [], historial = [], mensaje, idioma = 'es' }) {
+  const sistema = [
+    ...COMUN(idioma),
+    'Eres su PROFESOR VIRTUAL: un chat corto con UN alumno. Conoces cómo estudia (sus cifras, sus fallas y sus ideas equivocadas) y adaptas cómo le explicas.',
+    'Reglas: (1) Respuestas CORTAS (hasta 700 caracteres), en su estilo. (2) Si hablas de una pregunta del Test Guide, su respuesta es SIEMPRE la que te damos; nunca la contradigas ni la cambies. (3) Usa el material dado; si no está, dilo. (4) Termina con una pregunta corta para comprobar que entendió (pregunta_control). (5) estudiar_ahora: qué le recomiendas estudiar ahora (un tema o una de sus fallas). (6) Nunca escribas enlaces ni direcciones de internet: para videos, da en buscar_en_youtube hasta 3 búsquedas cortas (por ejemplo «night vision scanning pilot»); la app arma el enlace.',
+    `Estilo de este alumno: ${estiloDe(alumno?.estilo)}`,
+  ].join('\n');
+  return { sistema, texto: bloque({ alumno, material, preguntas_que_ya_respondio: preguntas, historial: historial.slice(-4), mensaje: String(mensaje).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_CHAT };
+}
+
 // ---------- Guardar y leer lo que respondió ----------
 const limpio = (texto, tope) => (typeof texto === 'string' ? texto.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, tope) : '');
 const terminosDe = lista => (Array.isArray(lista) ? lista : []).slice(0, TOPE.terminos)
@@ -158,6 +179,16 @@ export function revisarRespuesta(datos, json) {
     if (!r.consejo) throw noSirve();
     return r;
   }
+  if (datos.uso === 'instructor_chat') {
+    const r = {
+      respuesta: limpio(json?.respuesta, TOPE.explicacion), control: limpio(json?.pregunta_control, 300), estudiar: limpio(json?.estudiar_ahora, 300),
+      // Solo palabras para buscar (nunca una dirección: la app arma el enlace a la búsqueda de YouTube).
+      buscar: (Array.isArray(json?.buscar_en_youtube) ? json.buscar_en_youtube : []).slice(0, 3).map(x => limpio(x, 80).replace(/https?:\/\/\S+|www\.\S+/gi, '').trim()).filter(Boolean),
+      terminos: terminosDe(json?.terminos), pregunta: limpio(datos.pregunta, TOPE.duda),
+    };
+    if (!r.respuesta) throw noSirve();
+    return r;
+  }
   if (datos.uso === 'instructor_duda') {
     const r = { respuesta: limpio(json?.respuesta, TOPE.explicacion), enMaterial: json?.en_material === true, terminos: terminosDe(json?.terminos), pregunta: limpio(datos.pregunta, TOPE.duda) };
     if (!r.respuesta) throw noSirve();
@@ -169,10 +200,11 @@ export function esquemaDe(datos) {
   if (datos?.uso === 'instructor_explicar') return esquemaExplicar(Number(datos.opciones) || 3);
   if (datos?.uso === 'instructor_consejo') return ESQUEMA_CONSEJO;
   if (datos?.uso === 'instructor_duda') return ESQUEMA_DUDA;
+  if (datos?.uso === 'instructor_chat') return ESQUEMA_CHAT;
   return null;
 }
 
-export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
+export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
 
 export function leerGuardado(db, clave) {
   if (typeof clave !== 'string' || !CLAVE_GUARDADO.test(clave)) return null;

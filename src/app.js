@@ -16,6 +16,7 @@ import { registrarRutasCopias } from './api/copias.js';
 import { registrarRutasCanales } from './api/canales.js';
 import { registrarRutasAcademia } from './api/academia.js';
 import { registrarRutasInstructor } from './api/instructor.js';
+import { registrarRutasPagos } from './api/pagos.js';
 import { registrarRutasPerfil } from './api/perfil.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 
@@ -115,6 +116,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasAcademia(rutas, { config, supervisor, ...academia });
   // Academia (0.9.0): el instructor (sin IA siempre; con IA solo si el dueño lo enciende).
   registrarRutasInstructor(rutas, { config, supervisor, reloj: academia.reloj, limites: academia.limitesInstructor });
+  // 0.10.0: el tiempo con IA de cada alumno, sus pagos por transferencia y las fallas registradas.
+  registrarRutasPagos(rutas, { config, reloj: academia.reloj, limites: academia.limitesPagos });
   // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).
   registrarRutasPerfil(rutas, { config, limites: academia.limitesPerfil, reloj: academia.reloj });
   const sw = readFileSync(join(PUB, 'sw.js'));
