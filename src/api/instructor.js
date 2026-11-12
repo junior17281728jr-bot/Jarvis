@@ -163,7 +163,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     if (!p) return { motivo: 'sin_paquete' };
     const d = datosPreparacion(db, usuario.id, p, { idioma: usuario.idioma, ahora });
     if (!d) return { motivo: 'sin_tema' };
-    if (pt?.huella === d.huella) return { motivo: 'sin_cambios' };
+    // Sin cambios Y con lo de la última vez guardado: nada. (Si la última no llegó a guardarse, se puede otra vez.)
+    if (pt?.huella === d.huella && leerGuardado(db, pt.clave)) return { motivo: 'sin_cambios' };
     if (Buffer.byteLength(d.prefijo.sistema) + Buffer.byteLength(d.texto) > PROPOSITOS.instructor_preparar.entradaMaxBytes) return { motivo: 'demasiado_largo' };
     const e = espacioDe(db, usuario);
     const clave = `academia.ia.preparado.${usuario.id}.${d.huella}`;

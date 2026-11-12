@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conInstructor, pedir, pedidosIa, cuerpoDe, datosDe, DE, NOMBRES, mala, nuevo, SILENCIO } from './instructor-ia-base.js';
 import { guardarConfigIa } from '../src/ia/config.js';
-import { saldoIa } from '../src/academia/tiempo-ia.js';
+import { saldoIa, leerPrueba } from '../src/academia/tiempo-ia.js';
 import { revisarRespuesta } from '../src/academia/instructor-ia.js';
 import { crearEjecutor } from '../src/tareas/ejecutor.js';
 import { crearEscritor } from '../src/tareas/escritor.js';
@@ -67,7 +67,8 @@ test('(b) al terminar una sesión: UNA preparación (Haiku, prefijo cacheable si
     const [t] = tareasPreparar(c);
     assert.ok(t, 'quedó una tarea de preparación');
     assert.equal(saldoIa(c.db, z).minutos, saldo, 'no le cobra usos');
-    c.falso.siguiente({ ...preparadoFalso(), uso: { input_tokens: 400, cache_read_input_tokens: 1600 } });
+    // Lo que informa el proveedor de la caché (lectura y escritura de 5 minutos) se cobra bien y nunca pausa la clave.
+    c.falso.siguiente({ ...preparadoFalso(), uso: { input_tokens: 400, cache_read_input_tokens: 1600, cache_creation_input_tokens: 0, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 } } });
     const hecha = await c.hacer(t.id);
     assert.equal(hecha.resultado.usada, true, JSON.stringify(hecha.resultado));
     const cuerpo = cuerpoDe(pedidosIa(c).at(-1));
@@ -139,4 +140,21 @@ test('(d) «Apagar la IA» y «Preparar la próxima clase con IA» la paran: no 
     assert.equal(tareasPreparar(c).length, 1, 'con el interruptor apagado no se prepara');
     assert.equal(pedidosIa(c).length, 0);
   });
+});
+
+test('(e) con planes: la preparación no gasta usos ni empieza la prueba gratis; la caché escrita se cobra sin pausar la clave', async () => {
+  await conInstructor(async c => {
+    const z = idDe(c, 'zoelia');
+    await estudiarYSalir(c, c.z);
+    const [t] = tareasPreparar(c);
+    c.falso.siguiente({ ...preparadoFalso(), uso: { input_tokens: 300, cache_creation_input_tokens: 3000, cache_creation: { ephemeral_5m_input_tokens: 3000, ephemeral_1h_input_tokens: 0 } } });
+    const hecha = await c.hacer(t.id);
+    assert.equal(hecha.resultado.usada, true, JSON.stringify(hecha.resultado));
+    const l = c.db.prepare("SELECT estado, resultado, tokens_cache_escritura AS w, costo_micro AS costo FROM ia_llamadas WHERE proposito = 'instructor_preparar'").get();
+    assert.deepEqual([l.estado, l.resultado, l.w], ['hecha', 'ok', 3000]);
+    assert.ok(l.costo > 0);
+    assert.equal(c.db.prepare('SELECT pausa_motivo FROM secretos').get().pausa_motivo ?? null, null, 'la clave sigue sin pausa');
+    assert.equal(c.db.prepare("SELECT COUNT(*) AS n FROM academia_ia_minutos WHERE usuario_id = ? AND motivo LIKE 'uso%'").get(z).n, 0, 'ningún uso cobrado');
+    assert.equal(leerPrueba(c.db, z), null, 'la prueba gratis no empezó');
+  }, { pagos: 'planes' });
 });

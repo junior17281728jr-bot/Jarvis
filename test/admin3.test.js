@@ -268,7 +268,7 @@ test('un comprobante nuevo avisa al administrador (nombre, paquete y monto; tamb
     assert.equal(aviso.clave, `pago_recibido:${subido.datos.pago.id}`);
     assert.deepEqual(JSON.parse(aviso.detalle), { pago: subido.datos.pago.id, alumno: 'Ana Pérez', minutos: 60, precio: 'RD$350' });
     assert.deepEqual(vaPorTelegram(aviso), { va: true, suena: false });
-    assert.equal(cuerpoDeAviso(aviso, 'es'), 'Comprobante nuevo de Ana Pérez: 60 min · RD$350. Revísalo en Pagos.');
+    assert.equal(cuerpoDeAviso(aviso, 'es'), 'Comprobante nuevo de Ana Pérez: 60 usos de IA · RD$350. Revísalo en Pagos.');
     // Aprobarlo cierra el aviso; la imagen sigue ahí (y se puede bajar), también en «Todos los comprobantes».
     assert.equal((await pedir(base, 'POST', `/api/admin/academia/pagos/${subido.datos.pago.id}/aprobar`, { galleta: admin, datos: {} })).codigo, 200);
     assert.ok(db.prepare('SELECT resuelto_en FROM avisos WHERE id = ?').get(aviso.id).resuelto_en);
