@@ -160,7 +160,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       datos: {
         instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(guardado) : null,
         tiempo: tiempoDe(db, usuario, ahora), pagos: novedadesPagos(db, usuario.id),
-        plan: fallas.filter(f => f.estado !== 'superada'), recientes: fallas.slice(0, 3), ...(donde ? { refuerzo } : {}),
+        plan: fallas.filter(f => f.estado !== 'superada' && f.cuenta), recientes: fallas.slice(0, 3), ...(donde ? { refuerzo } : {}),
       },
     };
   }

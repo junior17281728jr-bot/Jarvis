@@ -964,7 +964,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .baldosa.ok { border-color: color-mix(in srgb, var(--verde) 55%, transparent); background: color-mix(in srgb, var(--verde) 10%, var(--tarjeta)); }
 .baldosa-cabeza { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--suave); }
 .baldosa-cabeza .icono { width: 16px; height: 16px; flex: none; }
-.baldosa.ok .baldosa-cabeza { color: var(--verde-borde); }
+.baldosa.ok .baldosa-cabeza { color: #2e6a03; }
 :root[data-tema="oscuro"] .baldosa.ok .baldosa-cabeza { color: var(--verde); }
 .baldosa-valor { font-size: 16px; line-height: 1.2; overflow-wrap: anywhere; }
 .baldosa-barra { display: block; height: 6px; border-radius: 99px; background: var(--linea); overflow: hidden; }

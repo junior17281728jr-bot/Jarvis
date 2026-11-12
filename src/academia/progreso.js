@@ -481,7 +481,10 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
     // 0.12.2: o un concepto de «Mi repaso» (concepto = su clave): sus preguntas, las falladas primero.
     if (concepto != null) {
       const x = preguntasDeConcepto(db, usuarioId, paquete, concepto);
-      if (estadoDelTema(db, usuarioId, paquete, x.concepto.materia, x.concepto.tema) === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
+      // Un tema cerrado, solo si ya respondió preguntas de ese concepto (p. ej. al ir directo al examen): practicar lo que
+      // ya vio, como «errores» de un intento suyo; lo que nunca vio de un tema cerrado, no.
+      const respondio = db.prepare(`SELECT 1 FROM academia_respuestas WHERE usuario_id = ? AND pregunta IN (${x.concepto.preguntas.map(() => '?').join(', ')}) LIMIT 1`).get(usuarioId, ...x.concepto.preguntas);
+      if (!respondio && estadoDelTema(db, usuarioId, paquete, x.concepto.materia, x.concepto.tema) === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
       ids = x.ids;
       materia = x.concepto.materia;
       tema = x.concepto.tema;

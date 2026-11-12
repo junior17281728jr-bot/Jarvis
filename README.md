@@ -744,8 +744,12 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **«¿Estás listo para el examen oficial?»** más visual: un medidor con la probabilidad y el veredicto, una baldosa por regla
   (nombre corto, valor → meta y una barrita; verde si se cumple), las explicaciones largas plegadas en «¿Cómo lo pienso?» y un
   solo botón con el paso que más importa (siempre lleva a algún lado).
-- **Las fallas de antes** (filas `pregunta` / `examen`): nunca se borran ni se reescriben; salen en «Mi repaso» (se repasan
-  con la Práctica del instructor de su tema) y en «Lo que hicimos por ti», y se superan como antes.
+- **Las fallas de antes** (filas `pregunta` / `examen`): nunca se borran ni se reescriben y se superan como antes. Las que
+  llegan al umbral de ahora (p. ej. «la misma pregunta 3 veces») salen en «Para repasar» (se repasan con la Práctica del
+  instructor de su tema); las que no (p. ej. «2 de un tema en un intento»), solo en el historial de «Lo que hicimos por ti»:
+  no suman en el número de Inicio ni en «¿Estás listo?».
+- **Ir directo al examen:** lo que falló de un tema todavía cerrado se puede repasar en «Mi repaso» (con su mini-clase), porque
+  ya vio esas preguntas; lo que nunca vio de un tema cerrado, no.
 - Pruebas: `test/mi-repaso.test.js` (el caso del dueño, la regla, el repaso con su mini-clase, las fallas viejas y que ninguna
   pantalla diga «null»/«undefined») y `test/camino-avance.test.js` (el video opcional y su capítulo, seguir en la misma tarjeta,
   «Continuar» y los colores y anillos de cada nodo).

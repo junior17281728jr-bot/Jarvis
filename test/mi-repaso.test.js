@@ -171,8 +171,13 @@ test('las fallas de antes (0.10.0–0.12.1) se leen, salen en «Mi repaso» y se
     const antes = await fallas(c, c.ana);
     assert.deepEqual(antes.map(f => f.origen).sort(), ['examen', 'pregunta']);
     assert.ok(antes.every(f => f.meta.dias === 2 && f.conceptoClave === QUE_ES && f.concepto === '¿Qué es?'));
+    // La de «2 de un tema en un intento» (2 fallos, debajo del umbral de ahora) queda en el historial: no es «para repasar»,
+    // no suma en «¿Estás listo?» ni en el número de Inicio. La de la misma pregunta 3 veces, sí.
+    assert.deepEqual(antes.map(f => [f.origen, f.cuenta]).sort(), [['examen', false], ['pregunta', true]]);
     const r = await repaso(c, c.ana);
-    assert.deepEqual(r.paraRepasar.map(x => x.practicar).sort((a, b) => a.tipo.localeCompare(b.tipo)), [{ tipo: 'instructor', materia: 'factores_humanos', tema: 'muestra-hipoxia' }, { tipo: 'instructor', materia: 'factores_humanos', tema: 'muestra-hipoxia' }]);
+    assert.deepEqual(r.paraRepasar.map(x => [x.origen, x.practicar]), [['pregunta', { tipo: 'instructor', materia: 'factores_humanos', tema: 'muestra-hipoxia' }]]);
+    assert.equal((await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.ana })).datos.plan.length, 1);
+    assert.equal((await pedir(c.base, 'GET', '/api/academia/preparado', { galleta: c.ana })).datos.reglas.find(x => x.id === 'fallas').valor, 1);
     // Todo bien un día y otro día: las dos se superan (3 aciertos en 2 días distintos, como antes).
     await hacer(c, c.ana, TEMA1);
     await hacer(c, c.ana, TEMA1);
@@ -190,7 +195,7 @@ test('las fallas de antes (0.10.0–0.12.1) se leen, salen en «Mi repaso» y se
 
 // ---------- Lo que la pantalla arma con esos datos (un DOM de mentira: append() escribe «null» como el de verdad) ----------
 class Nodo {
-  constructor(etiqueta) { this.etiqueta = etiqueta; this.hijos = []; this.atributos = {}; this.isConnected = true; }
+  constructor(etiqueta) { this.etiqueta = etiqueta; this.hijos = []; this.atributos = {}; this.isConnected = true; this.style = {}; }
   append(...xs) { for (const x of xs) this.hijos.push(x instanceof Nodo ? x : String(x)); }
   prepend(...xs) { this.hijos.unshift(...xs.map(x => (x instanceof Nodo ? x : String(x)))); }
   replaceChildren(...xs) { this.hijos = []; this.append(...xs); }
@@ -266,5 +271,24 @@ test('pantallas: Progreso (curso entero, «Mi repaso» en corto, «¿Estás list
     const lineas = panelesRepaso(res, h).map(n => n.textContent).join(' ');
     assert.match(lineas, /Normal, a todos les pasa: vamos a practicarlo\./);
     assert.doesNotMatch(lineas, /quemaste/i);
+  });
+});
+
+test('ir directo al examen: lo que falló de temas cerrados se puede repasar en «Mi repaso» (sin botones muertos); lo que nunca vio, no', async () => {
+  await conAcademia(async c => {
+    const ex = (await pedir(c.base, 'POST', '/api/academia/intentos', { galleta: c.ana, datos: { tipo: 'examen', materia: 'factores_humanos', saltar: true } })).datos;
+    assert.ok(ex.id, JSON.stringify(ex));
+    for (const q of ex.preguntas) await pedir(c.base, 'POST', `/api/academia/intentos/${ex.id}/examen`, { galleta: c.ana, datos: { pregunta: q.id, elegida: ['muestra-v1', 'muestra-v3', 'muestra-v4'].includes(q.id) ? mala(q.id) : DE(q.id).original.correcta } });
+    await pedir(c.base, 'POST', `/api/academia/intentos/${ex.id}/terminar`, { galleta: c.ana, datos: {} });
+    const r = await repaso(c, c.ana);
+    const ojos = 'c:factores_humanos/muestra-ilusiones/los-ojos-se-enganan';
+    assert.deepEqual(r.paraRepasar.map(x => x.clave), [ojos], 'v1, v3 y v4 son del mismo concepto: entra');
+    // El tema 2 está cerrado (no hizo el tema 1), pero esas preguntas ya las respondió: «Repasar» y la mini-clase funcionan.
+    const i = await pedir(c.base, 'POST', '/api/academia/intentos', { galleta: c.ana, datos: { tipo: 'errores', concepto: ojos } });
+    assert.equal(i.codigo, 201, JSON.stringify(i.datos));
+    assert.equal((await pedir(c.base, 'GET', `/api/academia/mi-repaso/clase?concepto=${encodeURIComponent(ojos)}`, { galleta: c.ana })).codigo, 200);
+    // Beto no respondió nada de ese tema cerrado: no.
+    assert.equal((await pedir(c.base, 'POST', '/api/academia/intentos', { galleta: c.beto, datos: { tipo: 'errores', concepto: ojos } })).codigo, 403);
+    assert.equal((await pedir(c.base, 'GET', `/api/academia/mi-repaso/clase?concepto=${encodeURIComponent(ojos)}`, { galleta: c.beto })).codigo, 403);
   });
 });

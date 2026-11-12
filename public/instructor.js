@@ -115,12 +115,13 @@ export function crearInstructor(h) {
       f.extras ? tx('hicimos.extras', { n: numero(f.extras) }) : null,
       tx('hicimos.seguimos', { aciertos: numero(f.meta.aciertos), dias: numero(f.meta.dias) }),
     ].filter(Boolean);
-    const viva = f.estado !== 'superada';
+    // (una de antes por debajo del umbral de ahora queda en el historial: sin botón, sin «para repasar»)
+    const viva = f.estado !== 'superada' && f.cuenta !== false;
     return el('li', { class: `falla falla-${f.estado}` },
-      el('p', { class: 'fuerte' }, talCual('span', lineaRepasa(f))),
+      el('p', { class: 'fuerte' }, talCual('span', viva ? lineaRepasa(f) : `${f.concepto || f.temaTitulo} · ${lugarDe(f)}`)),
       el('p', { class: `falla-estado chica tono-${viva ? 'atencion' : 'bien'}`, texto: viva
         ? tx('hicimos.vas', { n: numero(f.aciertos), meta: numero(f.meta.aciertos), estado: tx(`falla.estado.${f.estado}`) })
-        : tx('hicimos.superada', { n: numero(f.fallos), meta: numero(f.meta.aciertos) }) }),
+        : f.estado === 'superada' ? tx('hicimos.superada', { n: numero(f.fallos), meta: numero(f.meta.aciertos) }) : tx('hicimos.historial') }),
       conBoton && viva ? el('a', { class: 'boton-3d blanco chico', href: aMiniClase(f.conceptoClave) }, el('span', { texto: tx('mirepaso.repasar') })) : null,
       el('details', { class: 'falla-porque' },
         el('summary', { texto: tx('repasa.por_que') }),

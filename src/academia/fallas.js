@@ -20,7 +20,7 @@ import { ideaDe } from './reto.js';
 import { tarjetaPara } from './instructor.js';
 import { conceptosDe, conceptoDePregunta, concepto as conceptoPorClave, nombreConcepto, esClaveConcepto } from './conceptos.js';
 import { puntosDebiles } from './memoria.js';
-import { vistaSecciones } from './progreso.js';
+import { vistaSecciones, camino } from './progreso.js';
 
 // examen: la regla vieja (2 de un tema en un intento): se sigue leyendo y guardando (una 0.12.1 que vuelva atrás la usa), pero
 // la 0.12.2 ya no crea fallas con ella. umbral: cuántos errores de un mismo concepto lo ponen en «Mi repaso».
@@ -137,11 +137,17 @@ export function sincronizarFallas(db, usuarioId, paquete, ahoraMs = Date.now()) 
 export function preguntasDeFallas(db, usuarioId, paquete, ahoraMs = Date.now()) {
   sincronizarFallas(db, usuarioId, paquete, ahoraMs);
   const ids = [];
-  for (const f of db.prepare("SELECT pregunta, refuerzo FROM academia_fallas WHERE usuario_id = ? AND estado <> 'superada' ORDER BY fallos DESC, id").all(usuarioId)) {
+  for (const f of db.prepare(`SELECT pregunta, refuerzo FROM academia_fallas WHERE usuario_id = ? AND estado <> 'superada' AND ${SQL_CUENTA} ORDER BY fallos DESC, id`).all(usuarioId, leerConfigFallas(db).umbral)) {
     for (const id of [f.pregunta, ...(leerRefuerzo(f)?.extras ?? [])]) if (id && paquete.preguntas.has(id) && !ids.includes(id)) ids.push(id);
   }
   return ids;
 }
+
+// 0.12.2: ¿esta falla cuenta para «Mi repaso» (su número, «¿Estás listo?», la Práctica del instructor)? Las de concepto,
+// sí; las de antes, solo si llegan al umbral de ahora (una de «2 de un tema en un intento» queda en el historial: se
+// sigue viendo en «Lo que hicimos por ti» y se puede superar, pero ya no se le trata como algo para repasar).
+export const cuentaParaRepaso = (f, cfg = CONFIG_FALLAS) => f.origen === 'concepto' || f.fallos >= cfg.umbral;
+export const SQL_CUENTA = "(origen = 'concepto' OR fallos >= ?)";
 
 // La meta para superar una falla: los conceptos (0.12.2) piden 3 aciertos seguidos (en 1 día basta); las de antes, en 2 días.
 const metaDe = (cfg, f) => ({ aciertos: cfg.aciertos, dias: f.origen === 'concepto' ? cfg.diasConcepto : cfg.dias });
@@ -156,7 +162,7 @@ export function fallasDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const meta = metaDe(cfg, f);
     const c = paquete ? conceptoDeFalla(paquete, f) : null;
     return {
-      id: f.id, clave: f.clave, conceptoClave: c?.clave ?? null, temaNumero: temaNumeroDe(paquete, f.materia, f.tema), estado: f.estado, origen: f.origen, materia: f.materia, tema: f.tema, temaTitulo: t?.titulo ?? f.tema,
+      id: f.id, clave: f.clave, conceptoClave: c?.clave ?? null, cuenta: cuentaParaRepaso(f, cfg), temaNumero: temaNumeroDe(paquete, f.materia, f.tema), estado: f.estado, origen: f.origen, materia: f.materia, tema: f.tema, temaTitulo: t?.titulo ?? f.tema,
       // 0.12.2: el concepto (la tarjeta que lo explica, o el tema entero) y en cuántos días distintos lo falló.
       concepto: c ? nombreConcepto(c) : r.concepto?.titulo || r.tarjeta?.titulo || t?.titulo || f.tema, diasFallos: r.dias ?? null,
       numero: f.pregunta ? paquete?.preguntas.get(f.pregunta)?.original.numero ?? null : null, idea: f.idea, fallos: f.fallos, aciertos: f.aciertos,
@@ -184,7 +190,7 @@ export function miRepaso(db, usuarioId, paquete, ahoraMs = Date.now()) {
   sincronizarFallas(db, usuarioId, paquete, ahoraMs);
   const cfg = leerConfigFallas(db);
   const filas = db.prepare('SELECT * FROM academia_fallas WHERE usuario_id = ? ORDER BY ultima_en DESC, id DESC').all(usuarioId);
-  const paraRepasar = filas.filter(f => f.estado !== 'superada').map(f => {
+  const paraRepasar = filas.filter(f => f.estado !== 'superada' && cuentaParaRepaso(f, cfg)).map(f => {
     const c = conceptoDeFalla(paquete, f);
     const t = temaDe(paquete, f.materia, f.tema);
     const r = leerRefuerzo(f) ?? {};
@@ -277,6 +283,10 @@ export function miniClase(db, usuarioId, paquete, clave, ahoraMs = Date.now()) {
   if (!c) throw new ErrorHttp(404, 'no_existe');
   sincronizarFallas(db, usuarioId, paquete, ahoraMs);
   const t = temaDe(paquete, c.materia, c.tema);
+  // De un tema cerrado, solo si ya respondió preguntas de ese concepto (al ir directo al examen): como su repaso.
+  const marcasC = c.preguntas.map(() => '?').join(', ');
+  const respondio = db.prepare(`SELECT 1 FROM academia_respuestas WHERE usuario_id = ? AND pregunta IN (${marcasC}) LIMIT 1`).get(usuarioId, ...c.preguntas);
+  if (!respondio && camino(db, usuarioId, paquete, ahoraMs).materias.find(m => m.id === c.materia)?.temas.find(x => x.id === c.tema)?.estado === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
   const viva = vivaDe(db, usuarioId, clave);
   const r = viva ? leerRefuerzo(viva) ?? {} : {};
   const ronda = Number(r.ronda) || 0;

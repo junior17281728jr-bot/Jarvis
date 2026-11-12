@@ -13,6 +13,7 @@
 import { diaDe, examenes, camino } from './progreso.js';
 import { saltosDe } from './saltos.js';
 import { porMateria } from './progreso.js';
+import { SQL_CUENTA, leerConfigFallas } from './fallas.js';
 
 // materias: las 11 de ENALAS con contenido (con menos, nunca «Listo»: faltaría lo que no se ha podido estudiar).
 export const REGLAS = Object.freeze({ materias: 11, acierto: 90, cobertura: 95, examenes: 3, examenPct: 90, memoria: 80, dias: 7, diasEstudio: 5, casi: 80 });
@@ -39,7 +40,8 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const ultimos = db.prepare(`SELECT id, materia, total, aciertos FROM academia_intentos WHERE usuario_id = ? AND tipo = 'examen' AND terminado_en IS NOT NULL
     ORDER BY id DESC LIMIT ?`).all(usuarioId, R.examenes);
   const buenos = ultimos.filter(x => pct(x.aciertos, x.total) >= R.examenPct).length;
-  const fallas = db.prepare("SELECT materia, COUNT(*) AS n FROM academia_fallas WHERE usuario_id = ? AND estado <> 'superada' GROUP BY materia ORDER BY n DESC").all(usuarioId);
+  // 0.12.2: solo lo que de verdad está en «Mi repaso» (las fallas viejas por debajo del umbral de ahora quedan en el historial).
+  const fallas = db.prepare(`SELECT materia, COUNT(*) AS n FROM academia_fallas WHERE usuario_id = ? AND estado <> 'superada' AND ${SQL_CUENTA} GROUP BY materia ORDER BY n DESC`).all(usuarioId, leerConfigFallas(db).umbral);
   const activas = fallas.reduce((n, f) => n + f.n, 0);
   const dias = [...new Set(filas.map(f => f.dia))];
   const desde = dias.length ? diasEntre(dias[0], diaDe(ahoraMs)) : 0;
