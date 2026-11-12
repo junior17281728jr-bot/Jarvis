@@ -17,6 +17,7 @@ import {
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 import { duenoDeTailscale, exigirDueno } from '../cuentas/tailscale.js';
 import { leerConfigIa, algunTopeDePlan } from '../ia/config.js';
+import { leerPerfil, avataresDe } from '../cuentas/perfil.js';
 import { anotarConfianza, cuentaConfirmada, seguirConfianza, estadoConfianza, ponerPermisoIa } from '../cuentas/confianza.js';
 
 const IDIOMAS = new Set(['es', 'en']);
@@ -74,7 +75,8 @@ function usuarioPublico(u) {
 
 function avisosParaLaPantalla(db, usuario) {
   const avisos = avisosSinVer(db, usuario.id);
-  return { usuario: usuarioPublico(usuario), avisos, reiniciosRecientes: avisos.length ? reiniciosRecientes(db, usuario.id) : [] };
+  // 0.9.0: con su avatar (Configuración → Mi perfil), para la barra de arriba.
+  return { usuario: { ...usuarioPublico(usuario), avatar: leerPerfil(db, usuario.id).avatar }, avisos, reiniciosRecientes: avisos.length ? reiniciosRecientes(db, usuario.id) : [] };
 }
 
 // La puerta de arranque: los primeros 90 s después de encender el servicio, /api/setup responde 503
@@ -209,7 +211,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     // Con una sesión abierta tampoco se puede adivinar la contraseña: 5 fallos cierran esta sesión.
     const llave = llaveDeCuenta(fila.nombre, fila);
     if (!limites.cambioDeClave.permitir(llave)) {
-      cerrarSesion(db, token);
+      cerrarSesion(db, token, 'bloqueo');
       return { codigo: 429, datos: { error: 'demasiados_intentos_clave' }, cabeceras: { 'Set-Cookie': textoGalleta('', { segura: https, borrar: true }) } };
     }
     if (!(await verificarClave(textoDe(datos, 'actual'), fila.clave_hash))) throw new ErrorHttp(400, 'clave_actual_incorrecta');
@@ -243,7 +245,8 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     codigo: 200,
     datos: {
       // ia (solo de las cuentas comunes): si puede gastar IA y de dónde vino su último cambio (src/cuentas/confianza.js).
-      usuarios: listarUsuarios(db).map(u => (u.rol === 'admin' ? u : { ...u, ia: estadoConfianza(db, u.id) })),
+      // 0.9.0: avatar (el que eligió en Configuración → Mi perfil, o null).
+      usuarios: (avatares => listarUsuarios(db).map(u => ({ ...(u.rol === 'admin' ? u : { ...u, ia: estadoConfianza(db, u.id) }), avatar: avatares.get(u.id) ?? null })))(avataresDe(db)),
       planes: planesPublicos(),
       permisos: { cuentas: cuentasDesdeAqui(db, req), admins: duenoDeTailscale(db, req, usuario).si },
     },

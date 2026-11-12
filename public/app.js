@@ -14,6 +14,7 @@ import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
 import { leccionDeVideo } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
+import { dibujarAvatar } from './avatares.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -148,7 +149,7 @@ const adelantados = new Map();
 // eso; a la vez se pide de nuevo y, si cambió, la pantalla se vuelve a dibujar sola (sin moverse de donde estaba).
 // Solo las lecturas de la academia y de Administrador; nunca un intento (las preguntas que se responden). Cualquier
 // cambio (POST) lo vacía y vuelve a pedir el camino, y se vacía al salir o al cambiar de cuenta.
-const EN_MEMORIA = /^\/api\/(?:academia\/(?:camino|progreso|temas\/[^/]+\/[^/]+|video\/[^/]+)|admin\/(?:academia(?:\/alumnos(?:\/\d+)?|\/respuestas)?|sistema|usuarios|ia|copias|claves)|yo\/reinicios)$/;
+const EN_MEMORIA = /^\/api\/(?:academia\/(?:camino|progreso|temas\/[^/]+\/[^/]+|video\/[^/]+)|admin\/(?:academia(?:\/alumnos(?:\/\d+(?:\/ficha|\/intentos\/\d+)?)?|\/respuestas|\/comparar\/[\d,]+)?|sistema|usuarios|ia|copias|claves)|yo\/(?:reinicios|perfil))$/;
 const FRESCO_MS = 2500;
 const memoria = new Map(); // ruta -> { respuesta, en, usuario }
 const enCamino = new Map(); // ruta -> pedido que ya salió (no se pide dos veces lo mismo)
@@ -659,6 +660,9 @@ function marco(seccion, ...contenido) {
       el('header', { class: 'encabezado' },
         el('a', { href: '#inicio', class: 'marca-enlace', 'aria-label': t('menu.inicio') }, marcaConLogo()),
         el('a', { href: '#ayuda', class: 'ayuda-enlace', 'aria-current': seccion === 'ayuda' ? 'page' : null }, icono('info', 'icono menu-icono'), el('span', { texto: t('menu.ayuda') })),
+        // 0.9.0: el avatar que eligió (Configuración → Mi perfil); lleva a Configuración.
+        el('a', { href: '#configuracion', class: 'avatar-enlace', title: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' },
+          dibujarAvatar(estado.usuario?.avatar ?? null, { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
         el('button', { type: 'button', class: 'secundario chico con-icono salir', onclick: salir }, icono('salir'), el('span', { texto: t('menu.salir') }))),
       el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
         enlaces.map(([id, clave, nombreIcono]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null },
@@ -702,7 +706,8 @@ function grupoDeBotones(opciones, elegido, alElegir) {
 
 async function pantallaConfiguracion() {
   const vigente = nuevoTurno();
-  const reinicios = await api('GET', '/api/yo/reinicios');
+  // 0.9.0: «Mi perfil» (public/perfil-vista.js solo se carga aquí).
+  const [reinicios, perfil, vistaPerfil] = await Promise.all([api('GET', '/api/yo/reinicios'), api('GET', '/api/yo/perfil'), import('./perfil-vista.js')]);
   if (!vigente()) return;
   const mensajeIdioma = caja();
   const botonesIdioma = grupoDeBotones(['es', 'en'].map(v => [v, t(`idioma.${v}`)]), idioma, async valor => {
@@ -724,10 +729,16 @@ async function pantallaConfiguracion() {
     sonar('bien');
   });
   const lista = reinicios.ok ? reinicios.datos.reinicios : null;
+  const alGuardarPerfil = p => {
+    Object.assign(estado.usuario, { nombre: p.nombre, nombreVisible: p.nombreVisible, avatar: p.avatar });
+    pantallaConfiguracion();
+  };
   mostrar(marco('configuracion',
     el('h1', { class: 'titulo-pantalla', texto: t('config.titulo') }),
     entrada(t('config.linea')),
     el('div', { class: 'rejilla dos' },
+      perfil.ok ? vistaPerfil.tarjetasPerfil(perfil.datos.perfil, { el, t, numero, icono, caja, botonAccion, api, avisar, textoError, dibujarAvatar }, { alGuardar: alGuardarPerfil })
+        : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(perfil.datos.error) })),
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('config.cuenta') }),
         estado.usuario.nombreVisible && estado.usuario.nombreVisible !== estado.usuario.nombre
@@ -1652,12 +1663,15 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         },
       }));
     return el('div', { class: 'fila' },
-      el('div', {},
+      el('div', { class: 'fila-cuenta' },
+        // 0.9.0: su avatar y su ficha (exámenes, notas, actividad).
+        dibujarAvatar(u.avatar ?? null, { nombre: u.nombreVisible || u.nombre, tamano: 'chico' }),
         el('span', { class: 'nombre', texto: u.nombreVisible || u.nombre }),
         el('span', { class: 'etiqueta', texto: t(u.rol === 'admin' ? 'admin.rol.admin' : 'admin.rol.usuario') }),
         insignia(u.activo ? 'bien' : 'apagado', t(u.activo ? 'admin.activo' : 'admin.inactivo'))),
       u.nombreVisible && u.nombreVisible !== u.nombre ? el('p', { class: 'suave', texto: t('admin.usuario_linea', { nombre: u.nombre }) }) : null,
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
+      el('a', { class: 'enlace-fuerte con-icono-chico ficha-enlace', href: `#alumno/${u.id}` }, icono('grafica', 'icono chico'), el('span', { texto: t('ficha.ver') })),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
       controlIa(u),
       acciones);
@@ -3255,7 +3269,9 @@ function rutaGrupo(g, { compacta = false } = {}) {
 }
 function filaCompanero(x) {
   return el('li', { class: `companero${x.tu ? ' tu' : ''}` },
-    el('span', { class: `companero-avatar color-${colorDe(x.nombre)}`, 'aria-hidden': 'true' }, avionSvg(), el('span', { texto: (x.nombre || '?').trim().charAt(0).toUpperCase() })),
+    // 0.9.0: el avatar que eligió; sin avatar, la avioneta con su inicial de siempre.
+    x.avatar ? el('span', { class: 'companero-avatar con-avatar', 'aria-hidden': 'true' }, dibujarAvatar(x.avatar, { nombre: x.nombre, tamano: 'medio' }))
+      : el('span', { class: `companero-avatar color-${colorDe(x.nombre)}`, 'aria-hidden': 'true' }, avionSvg(), el('span', { texto: (x.nombre || '?').trim().charAt(0).toUpperCase() })),
     el('span', { class: 'companero-texto' },
       el('strong', { texto: x.tu ? t('acad.grupo.tu', { nombre: x.nombre }) : x.nombre }),
       el('span', { class: 'suave', texto: x.lugar >= ORDEN_MATERIAS.length ? t('acad.grupo.terminado') : t('acad.grupo.en_materia', { n: numero(x.lugar + 1), materia: nombreMateria(x.materia) }) }),
@@ -4148,60 +4164,42 @@ function listaDebiles(lista, tituloTexto, claveVacio, { conFallos = false } = {}
       : vacio('bien', t(claveVacio)));
 }
 
-// ---- Administrador: alumnos (quién está en línea, su última actividad, % por materia) ----
+// ---- Administrador: alumnos (0.9.0: public/admin-alumnos.js, que solo se carga aquí) ----
+// La lista (con «Comparar»), la ficha de cada alumno por pestañas (#alumno/N, #alumno/N/examenes…), cada intento pregunta
+// por pregunta (#alumno/N/intento/M) y la comparación lado a lado (#comparar/2,5).
+const piezasAlumnos = () => ({
+  el, t, tn, icono, insignia, numero, pctTexto, fecha, hace, cuando, fechaCortaDia, nombreMateria, claseMateria, talCual, tarjetaPregunta,
+  panelPuntosDebiles, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
+});
+// Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
+function dibujarDeAlumnos(r, s, dibujarCon) {
+  const cabecera = cabeceraAdmin('alumnos', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) {
+    return mostrar(marco('admin', cabecera,
+      el('a', { class: 'volver con-icono', href: '#alumnos' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') })),
+      el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  }
+  mostrar(marco('admin', cabecera, dibujarCon(r.datos, piezasAlumnos())));
+}
 async function pantallaAlumnos() {
   const vigente = nuevoTurno();
-  const [r, s] = await Promise.all([api('GET', '/api/admin/academia/alumnos'), api('GET', '/api/admin/sistema')]);
-  if (!vigente()) return;
-  const cabecera = cabeceraAdmin('alumnos', tonosDePestanas(s.ok ? s.datos : null));
-  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  const lista = r.datos.alumnos;
-  const enLinea = lista.filter(a => a.enLinea).length;
-  const fila = a => el('a', { class: 'fila alumno', href: `#alumno/${a.id}` },
-    el('div', { class: 'alumno-cabeza' },
-      el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }),
-      el('span', { class: 'nombre', texto: a.nombreVisible || a.nombre }),
-      a.rol === 'admin' ? el('span', { class: 'etiqueta', texto: t('admin.rol.admin') }) : null,
-      el('span', { class: 'alumno-pct', texto: a.respuestas ? pctTexto(a.pct) : '—' })),
-    el('p', { class: 'suave', texto: a.enLinea ? t('acad.en_linea') : a.ultimaActividad ? t('acad.ultima', { cuando: hace(a.ultimaActividad) }) : t('admin.nunca') }),
-    el('div', { class: 'etiquetas' },
-      insignia('bien', t('acad.bien', { n: numero(a.aciertos) })),
-      insignia('mal', t('acad.mal', { n: numero(a.errores) })),
-      insignia('info', t('acad.temas_de', { n: numero(a.temasAprobados), total: numero(a.temas) }))));
-  mostrar(marco('admin', cabecera,
-    el('section', { class: 'tarjeta' },
-      el('h2', { class: 'con-icono' }, icono('personas'), el('span', { texto: tn('acad.alumnos.n', { n: lista.length }) }), el('span', { class: 'insignia tono-bien', texto: tn('acad.alumnos.en_linea', { n: enLinea }) })),
-      lista.length ? verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 8) : vacio('personas', t('admin.usuarios.solo_tu')))));
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/alumnos'), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaListaAlumnos(d, h));
 }
-async function pantallaAlumno(id) {
+async function pantallaAlumno(id, pestana = 'resumen') {
   const vigente = nuevoTurno();
-  const [r, s] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}`), api('GET', '/api/admin/sistema')]);
-  if (!vigente()) return;
-  const cabecera = cabeceraAdmin('alumnos', tonosDePestanas(s.ok ? s.datos : null));
-  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  const d = r.datos;
-  const a = d.alumno;
-  mostrar(marco('admin', cabecera,
-    el('a', { class: 'volver con-icono', href: '#alumnos' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') })),
-    el('section', { class: 'tarjeta acad-portada' },
-      el('div', { class: 'acad-portada-fila' },
-        el('div', {},
-          el('h2', { class: 'con-icono' }, el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), el('span', { texto: a.nombreVisible || a.nombre })),
-          el('p', { class: 'suave', texto: a.enLinea ? t('acad.en_linea') : a.ultimaActividad ? t('acad.ultima', { cuando: fecha(a.ultimaActividad) }) : t('admin.nunca') })),
-        cifras(d)),
-      el('div', { class: 'etiquetas' },
-        insignia('bien', t('acad.bien', { n: numero(a.aciertos) })), insignia('mal', t('acad.mal', { n: numero(a.errores) })),
-        insignia('info', t('acad.temas_de', { n: numero(a.temasAprobados), total: numero(a.temas) })))),
-    d.materias.length ? el('div', { class: 'rejilla dos' }, d.materias.map(m => tarjetaMateria(m, { conExamen: false }))) : null,
-    panelPuntosDebiles(d.puntosDebiles, { titulo: t('debil.panel_alumno') }),
-    listaDebiles(d.falladas, t('acad.falladas'), 'acad.falladas.vacio', { conFallos: true }),
-    d.intentos.length ? el('section', { class: 'tarjeta' },
-      el('h2', { class: 'con-icono' }, icono('reloj'), el('span', { texto: t('acad.intentos') })),
-      el('ul', { class: 'lista-intentos' }, d.intentos.map(x => el('li', {},
-        insignia(x.aprobado == null ? 'info' : x.aprobado ? 'bien' : 'mal', pctTexto(x.pct)),
-        el('span', { texto: x.tipo === 'repaso' ? t('acad.repaso') : x.tipo === 'examen' ? t('acad.examen_de', { materia: nombreMateria(x.materia) })
-          : x.tipo === 'errores' ? t('errores.titulo') : x.tipo === 'reto' ? `${t('reto.sello')} · ${nombreMateria(x.materia)}${x.tema ? ` · ${x.tema}` : ''}` : `${nombreMateria(x.materia)} · ${x.tema}` }),
-        el('span', { class: 'suave', texto: cuando(x.fecha) }))))) : null));
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/ficha`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaFicha(d, pestana, h));
+}
+async function pantallaIntentoAlumno(id, intento) {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/intentos/${encodeURIComponent(intento)}`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaIntento(d, h));
+}
+async function pantallaComparar(ids) {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/comparar/${ids}`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaComparar(d, h));
 }
 
 // ---- 0.8.0: Administrador → Respuestas: la clave completa (se dibuja en public/admin-respuestas.js, que solo se carga aquí) ----
@@ -4439,7 +4437,7 @@ async function dibujar() {
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas'].includes(seccion) || /^alumno\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas'].includes(seccion) || /^(?:alumno|comparar)\//.test(seccion))) ponerModoEstudiante(false);
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
   // La clave de recuperación recién creada vive solo en esta pantalla: al irse de Copias se suelta (fase 1, parte e).
@@ -4463,8 +4461,12 @@ async function dibujar() {
   const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
   if (video) return pantallaVideo(video[1]);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
-  const alumno = seccion.match(/^alumno\/(\d+)$/);
-  if (alumno && esAdmin) return pantallaAlumno(alumno[1]);
+  const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad))?$/);
+  if (alumno && esAdmin) return pantallaAlumno(alumno[1], alumno[2] ?? 'resumen');
+  const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);
+  if (intentoAlumno && esAdmin) return pantallaIntentoAlumno(intentoAlumno[1], intentoAlumno[2]);
+  const comparar = seccion.match(/^comparar\/(\d+(?:,\d+){1,9})$/);
+  if (comparar && esAdmin) return pantallaComparar(comparar[1]);
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
@@ -4475,7 +4477,7 @@ async function dibujar() {
 // y no después: por la red del teléfono eso es un viaje de ida y vuelta menos (150-400 ms). Si una pantalla pide
 // algo más al empezar, va aquí también (test/archivos.test.js lo revisa).
 function pedidosAlAbrir(seccion, admin) {
-  if (seccion === 'configuracion') return ['/api/yo/reinicios'];
+  if (seccion === 'configuracion') return ['/api/yo/reinicios', '/api/yo/perfil'];
   // La Ayuda no pide nada: sus textos llegan con el idioma.
   if (seccion === 'ayuda') return [];
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
@@ -4495,8 +4497,12 @@ function pedidosAlAbrir(seccion, admin) {
   const video = seccion.match(/^video\/([a-z0-9_-]+)$/);
   if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
-  const alumno = seccion.match(/^alumno\/(\d+)$/);
-  if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}`, '/api/admin/sistema'] : [];
+  const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad))?$/);
+  if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}/ficha`, '/api/admin/sistema'] : [];
+  const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);
+  if (intentoAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(intentoAlumno[1])}/intentos/${encodeURIComponent(intentoAlumno[2])}`, '/api/admin/sistema'] : [];
+  const comparar = seccion.match(/^comparar\/(\d+(?:,\d+){1,9})$/);
+  if (comparar) return admin ? [`/api/admin/academia/comparar/${comparar[1]}`, '/api/admin/sistema'] : [];
   if (seccion === 'contenido') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema'] : [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.

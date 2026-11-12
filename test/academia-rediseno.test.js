@@ -237,7 +237,7 @@ test('servidor: video resumen (con su mp3 por partes), plan de estudio, grupo si
     let grupo = (await pedir(base, 'GET', '/api/academia/camino', { galleta: g.ana })).datos.grupo;
     assert.equal(grupo.activo, true);
     assert.deepEqual(grupo.companeros.map(x => x.nombre).sort(), ['Ana', 'Beto', 'Caro']);
-    for (const x of grupo.companeros) assert.deepEqual(Object.keys(x).sort(), ['lugar', 'materia', 'medallas', 'nombre', 'pct', 'racha', 'tu']);
+    for (const x of grupo.companeros) assert.deepEqual(Object.keys(x).sort(), ['avatar', 'lugar', 'materia', 'medallas', 'nombre', 'pct', 'racha', 'tu']);
     assert.deepEqual(grupo.companeros.filter(x => x.tu).map(x => x.nombre), ['Ana']);
     // Beto se oculta: Ana ya no lo ve; él se sigue viendo (marcado «oculto»).
     assert.equal((await pedir(base, 'POST', '/api/academia/grupo', { galleta: g.beto, datos: { oculto: 'si' } })).codigo, 400);

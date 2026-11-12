@@ -511,6 +511,39 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   adelanta el próximo tema y el progreso. Medido en un iPhone 13 emulado (150 ms de red, CPU ×4): de ~200-290 ms a
   30-150 ms al volver a una pantalla ya vista.
 
+### Lo nuevo de la 0.9.0: cada alumno con más claridad, comparar y el perfil propio (sin cambio de base)
+- **Administrador → Alumnos** (`public/admin-alumnos.js`, solo se carga ahí; estilos en `public/alumnos.css`): cada alumno con
+  su avatar, `@usuario`, % y última actividad. Se marcan de 2 a 6 y «Comparar». Desde Administrador → Usuarios, «Ver su ficha».
+- **La ficha de un alumno** (`#alumno/N`, por pestañas):
+  - **Resumen**: plan y ritmo, preparación (preguntas con su última respuesta bien), nota promedio (de sus temas y exámenes
+    terminados), % de acierto (todas sus respuestas), intentos, aprobados, temas y exámenes aprobados, preguntas
+    respondidas, racha y tiempo de estudio aproximado (ratos de respuestas seguidas con pausas de menos de 10 minutos).
+  - **Exámenes** (`#alumno/N/examenes`): cada intento (tema, examen de materia, Modo reto, repaso, errores) con fecha, nota y
+    si aprobó. Al tocar uno (`#alumno/N/intento/M`), cada pregunta TAL CUAL con lo que eligió, la correcta, si acertó y las
+    explicaciones; filtro «Solo las que falló».
+  - **Por materia**: dominio de cada materia y, por tema y examen, la mejor nota, la última y cuántas veces.
+  - **Puntos débiles**: la memoria de errores de la 0.8.0.
+  - **Actividad**: última entrada (con contraseña), última salida, última actividad y cada sesión con su entrada, su última
+    actividad y cuándo salió (y por qué: «Salir», contraseña cambiada o reiniciada, contraseñas malas). Sin «Salir», se ve
+    su última actividad (o que venció).
+- **Entradas y salidas sin cambio de base**: la sesión abierta ya guarda cuándo entró y su última actividad (cada 5 min).
+  Antes de borrar una sesión (`cerrarSesion`/`cerrarTodas` en `src/cuentas/sesiones.js`) queda una fila `salida` en la
+  auditoría con la entrada, la última actividad, el motivo y el equipo. `src/cuentas/historial.js` arma la lista.
+- **Comparar** (`#comparar/2,5`): preparación, % de acierto, nota promedio, exámenes y temas aprobados, intentos, preguntas,
+  racha, tiempo; % por materia; puntos débiles y última actividad. Con barras.
+- **Mi perfil** (Configuración, `public/perfil-vista.js`): nombre para mostrar, un avatar de aviación (6 figuras × 6 colores,
+  dibujado en SVG por `public/avatares.js`, sin archivos) y «Mi meta» (una línea). El avatar sale arriba, en el Grupo y en
+  las listas del administrador; la meta solo la ven la persona y el administrador (el Grupo sigue sin notas, errores ni
+  conexión). Se guardan en `ajustes` (`cuenta.perfil.<id>`). **El nombre de usuario** también se cambia ahí, con la
+  contraseña actual: tiene que estar libre (sin importar mayúsculas); las sesiones siguen abiertas (van por el id). No se
+  puede con la contraseña temporal. Queda en la auditoría (`nombre_usuario_cambiado`).
+- Rutas nuevas: `GET/POST /api/yo/perfil`, `POST /api/yo/usuario { nombre, clave }` (la cuenta de la sesión, nunca otra);
+  solo administrador (401 sin sesión, 403 alumnos): `GET /api/admin/academia/alumnos/:id/ficha`,
+  `GET /api/admin/academia/alumnos/:id/intentos/:intento` (404 si el intento no es de ese alumno),
+  `GET /api/admin/academia/comparar/:ids` (2 a 6 ids). `/api/yo`, el Grupo y las listas del administrador traen `avatar`.
+  Pruebas: `test/admin-alumnos.test.js`.
+- Volver a la 0.8.1 es seguro: no hay migración nueva; la 0.8.1 ignora las filas `salida` y `cuenta.perfil.*`.
+
 ### Formato del paquete, versión 1
 Un JSON (hasta 12 MB) y sus figuras (PNG, JPG o WEBP, hasta 8 MB cada una). Se revisa entero ANTES de escribir nada; los
 errores salen con su ruta exacta (`materias[0].temas[1].preguntas[5]: pregunta_desconocida`). Los textos se guardan y se

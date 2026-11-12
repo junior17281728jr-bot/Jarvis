@@ -16,6 +16,7 @@ import { registrarRutasCopias } from './api/copias.js';
 import { registrarRutasCanales } from './api/canales.js';
 import { registrarRutasAcademia } from './api/academia.js';
 import { registrarRutasInstructor } from './api/instructor.js';
+import { registrarRutasPerfil } from './api/perfil.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -84,7 +85,9 @@ const RESPUESTAS_COMPRIMIBLES = new Set([
   '/api/admin/sistema', '/api/admin/tareas', '/api/admin/usuarios',
   // Academia (0.7.0): ninguna lleva secretos.
   '/api/academia/camino', '/api/academia/temas/:materia/:tema', '/api/academia/intentos/:id', '/api/academia/progreso', '/api/admin/academia/alumnos',
-  '/api/admin/academia/alumnos/:id', '/api/admin/academia', '/api/admin/academia/respuestas']);
+  '/api/admin/academia/alumnos/:id', '/api/admin/academia', '/api/admin/academia/respuestas',
+  // 0.9.0: la ficha de un alumno, uno de sus intentos y «Comparar».
+  '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids']);
 
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });
@@ -112,6 +115,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasAcademia(rutas, { config, supervisor, ...academia });
   // Academia (0.9.0): el instructor (sin IA siempre; con IA solo si el dueño lo enciende).
   registrarRutasInstructor(rutas, { config, supervisor, reloj: academia.reloj, limites: academia.limitesInstructor });
+  // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).
+  registrarRutasPerfil(rutas, { config, limites: academia.limitesPerfil, reloj: academia.reloj });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
