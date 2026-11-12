@@ -317,6 +317,28 @@ test('un alumno nunca ve lo de otro: sus rutas usan la sesión, y lo del adminis
   });
 });
 
+test('la ficha cuenta TODOS los intentos (la pantalla recibe los 500 más nuevos) y la lista usa la última actividad aunque haya salido', async () => {
+  await conAcademia(async ({ base, db, admin, ana, ids }) => {
+    const primero = await hacerTema(base, ana, 'muestra-hipoxia', 5); // aprobado, el más viejo
+    const fila = db.prepare("INSERT INTO academia_intentos (usuario_id, tipo, materia, tema, orden, total, respondidas, aciertos, empezado_en, terminado_en) VALUES (?, 'repaso', NULL, NULL, '[]', 1, 1, 1, ?, ?)");
+    const ahora = new Date().toISOString();
+    for (let k = 0; k < 520; k++) fila.run(ids.ana, ahora, ahora);
+    const f = (await pedir(base, 'GET', `/api/admin/academia/alumnos/${ids.ana}/ficha`, { galleta: admin })).datos;
+    assert.equal(f.intentos.length, 500);
+    assert.equal(f.intentosTotal, 521);
+    assert.equal(f.resumen.intentos, 521);
+    assert.equal(f.resumen.aprobados, 1);
+    assert.ok(!f.intentos.some(x => x.id === primero.intento.id), 'el más viejo no viaja a la pantalla');
+    const tema = f.materias[0].temas.find(x => x.id === 'muestra-hipoxia');
+    assert.deepEqual([tema.aprobado, tema.mejor, tema.veces], [true, 100, 1], 'pero sí cuenta en Por materia');
+    // Ana sale: la lista de alumnos sigue mostrando su última actividad (de la fila «salida»).
+    db.prepare("UPDATE sesiones SET ultimo_uso = '2099-01-01T00:00:00.000Z' WHERE usuario_id = ?").run(ids.ana);
+    await pedir(base, 'POST', '/api/salir', { galleta: ana, datos: {} });
+    const lista = (await pedir(base, 'GET', '/api/admin/academia/alumnos', { galleta: admin })).datos.alumnos;
+    assert.equal(lista.find(a => a.id === ids.ana).ultimaActividad, '2099-01-01T00:00:00.000Z');
+  });
+});
+
 test('los avatares: las mismas listas en el servidor y en la pantalla; tiempo de estudio y equipo', () => {
   assert.deepEqual([...avataresPantalla.FORMAS_AVATAR], [...FORMAS_AVATAR]);
   assert.deepEqual([...avataresPantalla.COLORES_AVATAR], [...COLORES_AVATAR]);

@@ -154,7 +154,7 @@ function ultimosIntentos(d, h) {
   return h.el('section', { class: 'tarjeta' },
     h.el('h2', { class: 'con-icono' }, h.icono('libro'), h.el('span', { texto: h.t('ficha.ultimos') })),
     h.el('ul', { class: 'ficha-intentos' }, lista.map(x => filaIntento(h, d.alumno.id, x))),
-    h.el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/examenes`, texto: h.t('ficha.ver_todos', { n: h.numero(d.intentos.length) }) }));
+    h.el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/examenes`, texto: h.t('ficha.ver_todos', { n: h.numero(d.intentosTotal ?? d.intentos.length) }) }));
 }
 function filaIntento(h, alumnoId, x) {
   const { el, t } = h;
@@ -188,7 +188,7 @@ function pestanaExamenes(d, h) {
   };
   pintar();
   return el('section', { class: 'tarjeta' },
-    el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: h.tn('ficha.intentos.n', { n: d.intentos.length }) })),
+    el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: h.tn('ficha.intentos.n', { n: d.intentosTotal ?? d.intentos.length }) })),
     el('p', { class: 'suave', texto: t('ficha.intentos.linea') }),
     el('div', { class: 'ficha-filtros', role: 'group', 'aria-label': t('ficha.filtro') }, botones),
     lista);

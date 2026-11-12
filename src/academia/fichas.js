@@ -13,6 +13,7 @@ import { actividadDe } from '../cuentas/historial.js';
 import { leerPerfil } from '../cuentas/perfil.js';
 
 export const MAXIMO_COMPARAR = 6;
+export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
 // Para el tiempo de estudio: dos respuestas seguidas con menos de esto entre sí son el mismo rato de estudio.
 const PAUSA_MAXIMA_MS = 10 * 60 * 1000;
 const POR_RESPUESTA_SUELTA_MS = 60 * 1000;
@@ -40,10 +41,11 @@ export function tiempoDeEstudio(fechas) {
   return Math.round(ms / 60000);
 }
 
+// Todos sus intentos (sin tope: los totales y las notas por tema salen de aquí); la pantalla recibe los 500 más nuevos.
 function intentosDe(db, alumnoId, paquete) {
   const titulos = titulosDe(paquete);
   return db.prepare(`SELECT id, tipo, materia, tema, total, respondidas, aciertos, aprobado, empezado_en, terminado_en FROM academia_intentos
-    WHERE usuario_id = ? ORDER BY id DESC LIMIT 500`).all(alumnoId).map(f => ({
+    WHERE usuario_id = ? ORDER BY id DESC`).all(alumnoId).map(f => ({
     id: f.id, tipo: f.tipo, modo: modoDeTipo(f.tipo), materia: f.materia, tema: f.tema,
     temaTitulo: f.tema ? titulos.get(`${f.materia}/${f.tema}`) ?? null : null,
     total: f.total, respondidas: f.respondidas, aciertos: f.aciertos, pct: pct(f.aciertos, f.total),
@@ -114,7 +116,7 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     alumno: cabeceraDe(db, u),
     paquete: paquete ? { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra } : null,
     resumen,
-    intentos,
+    intentos: intentos.slice(0, MAXIMO_INTENTOS_EN_PANTALLA), intentosTotal: intentos.length,
     materias: paquete ? materiasDe(db, u.id, paquete, intentos) : [],
     puntosDebiles: resumenDebiles(puntosDebiles(db, u.id, paquete), paquete),
     actividad: actividadCompleta(db, u, ahoraMs, resumen.ultimaRespuesta),

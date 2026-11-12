@@ -12,6 +12,7 @@
 .avatar .av-linea { fill: none; stroke: #ffffff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .avatar .av-linea-suave { fill: none; stroke: var(--av); stroke-width: 1.6; stroke-linecap: round; opacity: 0.85; }
 .avatar .av-aguja { fill: var(--av); stroke: none; }
+.avatar .av-aguja-linea { fill: none; stroke: var(--av); stroke-width: 2; stroke-linecap: round; }
 .avatar .av-letra { fill: #ffffff; font: 800 22px var(--letra-redonda); }
 .av-azul { --av: #1c8fe0; }
 .av-rojo { --av: #e5484d; }

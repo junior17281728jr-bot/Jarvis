@@ -484,6 +484,8 @@ function ultimaActividad(db) {
   for (const f of db.prepare('SELECT id, ultimo_acceso AS f FROM usuarios').all()) poner(f.id, f.f);
   for (const f of db.prepare('SELECT usuario_id AS id, MAX(ultimo_uso) AS f FROM sesiones GROUP BY usuario_id').all()) poner(f.id, f.f);
   for (const f of db.prepare('SELECT usuario_id AS id, MAX(creada_en) AS f FROM academia_respuestas GROUP BY usuario_id').all()) poner(f.id, f.f);
+  // 0.9.0: al tocar «Salir» la sesión se borra; su última actividad queda en la fila «salida» de la auditoría.
+  for (const f of db.prepare("SELECT usuario_id AS id, MAX(json_extract(detalle, '$.ultimoUso')) AS f FROM auditoria WHERE accion = 'salida' AND json_valid(detalle) GROUP BY usuario_id").all()) poner(f.id, f.f);
   return m;
 }
 
