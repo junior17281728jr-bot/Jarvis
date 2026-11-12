@@ -39,6 +39,11 @@ export function pantallaIaDemo(d, h) {
   mostrar(marco('admin', banner,
     el('h1', { class: 'titulo-pantalla', texto: t('demo.vista.titulo') }),
     el('p', { class: 'suave', texto: t('demo.vista.linea') }),
+    // 0.12.7: cómo ve el alumno su prueba gratis y su plan (con números de demostración).
+    seccion(t('tiempo.titulo'), el('p', { class: 'suave chica', texto: t('demo.planes.linea') }),
+      ui.medidorTiempo({ activo: true, modo: 'planes', fuente: 'prueba', puede: true, prueba: { empezada: true, quedanDias: 3, hoy: 2, porDia: 20 } }, { conBoton: false }),
+      ui.medidorTiempo({ activo: true, modo: 'planes', fuente: 'plan', puede: true, plan: { nombre: 'IA Estándar', quedan: 240, dias: 2, renovar: true } }, { conBoton: false }),
+      ui.medidorTiempo({ activo: true, modo: 'planes', fuente: null, puede: false, motivo: 'prueba_terminada' }, { conBoton: false })),
     seccion(t('para_ti.titulo'), el('p', { class: 'suave chica', texto: t('demo.para_ti.linea') }), paraTi),
     seccion(t('instr.explicar'), pregunta, explica),
     seccion(t('profesor.titulo'), chat),

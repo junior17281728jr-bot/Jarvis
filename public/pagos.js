@@ -43,11 +43,28 @@ export function crearPagos(h) {
         el('div', { class: 'comparacion-basico' }, el('h3', { class: 'con-icono' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('vender.basico') })), lista('vender.basico', 4)),
         el('div', { class: 'comparacion-ia-col' }, el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx('vender.ia') })), lista('vender.ia', 6))),
       pagar?.paquetes?.length ? el('ul', { class: 'lista-paquetes' }, pagar.paquetes.map(p => el('li', {}, el('strong', { texto: tx('pago.paquete', { n: numero(p.minutos) }) }), talCual('span', ` · ${p.precio}`)))) : null,
+      // 0.12.7: la prueba gratis y los planes.
+      pagar?.planes?.length ? el('p', { class: 'fuerte', texto: tx('plan.prueba_linea', { dias: numero(pagar.pruebaDias) }) }) : null,
+      pagar?.planes?.length ? el('ul', { class: 'lista-paquetes' }, pagar.planes.map(p => el('li', {}, el('strong', { texto: tx('plan.opcion', { nombre: p.nombre, n: numero(p.usos), dias: numero(pagar.planDias) }) }), el('span', { texto: ` · ${precioPlan(p)}` })))) : null,
       el('p', { class: 'suave chica', texto: tx('vender.honesto') }),
       irA === null ? null
         : irA ? el('button', { type: 'button', class: 'boton-3d naranja', onclick: () => { irA.scrollIntoView({ behavior: 'smooth', block: 'start' }); irA.querySelector('input')?.focus({ preventScroll: true }); } }, el('span', { texto: tx('vender.comprar') }))
           : el('a', { class: 'boton-3d naranja', href: '#tiempo-ia' }, el('span', { texto: tx('vender.comprar') })));
   }
+
+  // 0.12.7: los planes para elegir: «IA Estándar · US$12 al mes (≈ RD$720) · 300 usos de IA».
+  const precioPlan = p => (p.precioRd ? tx('plan.precio_rd', { usd: p.precioUsd, rd: p.precioRd }) : tx('plan.precio', { usd: p.precioUsd }));
+  function opcionesDePlan(pg, tiempo) {
+    const lista = pg.planes.map(p => ({ id: `plan:${p.id}`, texto: tx('plan.opcion', { nombre: p.nombre, n: numero(p.usos), dias: numero(pg.planDias) }), precio: precioPlan(p) }));
+    const actual = tiempo?.plan && !tiempo.plan.vencido ? pg.planes.find(p => p.id === tiempo.plan.id) : null;
+    const plus = pg.planes.find(p => p.id === 'plus');
+    if (actual && plus && actual.id !== 'plus') {
+      const dif = Math.round((Number(plus.precioUsd) - Number(actual.precioUsd)) * 100) / 100;
+      lista.unshift({ id: 'plan:plus:mejora', texto: tx('plan.mejora', { nombre: plus.nombre, n: numero(plus.usos) }), precio: tx('plan.precio_dif', { usd: dif }) });
+    }
+    return lista;
+  }
+  const textoPago = p => (String(p.paquete ?? '').startsWith('plan:') ? tx('plan_ia.pago', { usos: numero(p.minutos), precio: p.precio ?? '' }) : tx('pago.paquete', { n: numero(p.minutos) }));
 
   // ---------- El alumno: «Pedir más tiempo con IA» ----------
   async function pantallaTiempo() {
@@ -62,10 +79,12 @@ export function crearPagos(h) {
           .flatMap(([k, v]) => [el('dt', { texto: tx(`pago.campo.${k}`) }), talCual('dd', v)])) : el('p', { class: 'aviso', texto: tx('pago.sin_datos') }),
       pg.instrucciones ? talCual('p', pg.instrucciones) : null);
     const mensaje = el('p', { class: 'mensaje', hidden: true });
-    let elegido = pg.paquetes[0]?.id ?? null;
-    const paquetes = el('fieldset', { class: 'paquetes' }, el('legend', { texto: tx('pago.elige') }), pg.paquetes.map((p, i) => el('label', { class: 'opcion-radio paquete' },
+    // 0.12.7: con planes, se elige un plan (o, con IA Estándar vigente, pasar a Plus pagando la diferencia).
+    const opciones = pg.modo === 'planes' ? opcionesDePlan(pg, d.tiempo) : pg.paquetes.map(p => ({ id: p.id, texto: tx('pago.paquete', { n: numero(p.minutos) }), precio: p.precio }));
+    let elegido = opciones[0]?.id ?? null;
+    const paquetes = el('fieldset', { class: 'paquetes' }, el('legend', { texto: tx(pg.modo === 'planes' ? 'plan.elige' : 'pago.elige') }), opciones.map((p, i) => el('label', { class: 'opcion-radio paquete' },
       el('input', { type: 'radio', name: 'paquete', value: p.id, checked: i === 0, onchange: () => { elegido = p.id; } }),
-      el('span', {}, el('strong', { texto: tx('pago.paquete', { n: numero(p.minutos) }) }), talCual('span', ` · ${p.precio}`)))));
+      el('span', {}, el('strong', { texto: p.texto }), talCual('span', ` · ${p.precio}`)))));
     const archivo = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', 'aria-label': tx('pago.foto') });
     const nota = el('input', { type: 'text', maxlength: 300, placeholder: tx('pago.nota.ejemplo'), 'aria-label': tx('pago.nota') });
     const enviar = el('button', {
@@ -97,7 +116,7 @@ export function crearPagos(h) {
       el('ul', { class: 'lista-pagos' }, d.pagos.map(p => el('li', { class: `pago pago-${p.estado}` },
         el('img', { src: `/api/academia/pagos/${p.id}/recibo`, alt: tx('pago.foto'), loading: 'lazy', class: 'recibo-mini' }),
         el('div', {},
-          el('p', {}, el('strong', { texto: tx('pago.paquete', { n: numero(p.minutos) }) }), el('span', { class: 'suave', texto: ` · ${fecha(p.fecha)}` })),
+          el('p', {}, el('strong', { texto: textoPago(p) }), el('span', { class: 'suave', texto: ` · ${fecha(p.fecha)}` })),
           el('p', { class: `estado-pago tono-${p.estado === 'aprobado' ? 'bien' : p.estado === 'rechazado' ? 'mal' : 'atencion'}`, texto: p.estado === 'revision' ? pg.espera : tx(`pago.estado.${p.estado}`) }),
           p.motivo ? el('p', { class: 'suave' }, el('span', { texto: `${tx('pago.motivo')} ` }), talCual('span', p.motivo)) : null))))) : null;
     if (d.novedades.length) api('POST', '/api/academia/tiempo-ia/visto', {});
@@ -113,7 +132,8 @@ export function crearPagos(h) {
         historial));
     }
     mostrar(marco('inicio', volver,
-      el('section', { class: 'panel tiempo-cabeza' }, el('h1', { class: 'titulo-grande', texto: tx('tiempo.titulo') }), instructorUi().medidorTiempo(d.tiempo, { conBoton: false }), el('p', { class: 'suave', texto: tx('tiempo.que_es', { n: numero(d.tiempo.porUso) }) })),
+      el('section', { class: 'panel tiempo-cabeza' }, el('h1', { class: 'titulo-grande', texto: tx('tiempo.titulo') }), instructorUi().medidorTiempo(d.tiempo, { conBoton: false }),
+        el('p', { class: 'suave', texto: pg.modo === 'planes' ? tx('plan.que_es', { dias: numero(pg.pruebaDias), por_dia: numero(pg.pruebaUsosDia), plan_dias: numero(pg.planDias) }) : tx('tiempo.que_es', { n: numero(d.tiempo.porUso) }) })),
       // El administrador no compra (su tiempo no tiene límite): ve la pantalla como vista previa, sin «Comprar» ni subir.
       comparacion(pg, { irA: d.tiempo.ilimitado ? null : subir ?? null }), datosCuenta, d.tiempo.ilimitado ? null : subir, historial));
   }
@@ -218,7 +238,15 @@ export function crearPagos(h) {
       el('ul', { class: 'lista-simple' }, d.alumnos.map(a => {
         const n = el('input', { type: 'number', min: 0, value: a.minutos, 'aria-label': tx('pagos.minutos_de', { alumno: a.nombre }), class: 'campo-corto' });
         return el('li', { class: 'fila-saldo' }, el('span', { texto: a.nombre }),
-          el('span', { class: `chica tono-${a.ia?.listo ? 'bien' : 'atencion'}`, texto: a.ia?.listo ? tx('pagos.ia_lista') : tx('pagos.falta_ia', { falta: (a.ia?.falta ?? []).map(f => tx(`pagos.admin.falta.${f}`)).join(', ') }) }), n,
+          el('span', { class: `chica tono-${a.ia?.listo ? 'bien' : 'atencion'}`, texto: a.ia?.listo ? tx('pagos.ia_lista') : tx('pagos.falta_ia', { falta: (a.ia?.falta ?? []).map(f => tx(`pagos.admin.falta.${f}`)).join(', ') }) }),
+          // 0.12.7: su plan, su prueba gratis (días que le quedan) o sus usos de antes, y «Dar la prueba otra vez».
+          a.derecho && d.config.modo === 'planes' ? el('span', { class: 'chica', texto: instructorUi().textoPlan({ ...a.derecho, modo: 'planes', minutos: a.minutos }).filter(Boolean).join(' · ') }) : null,
+          a.derecho && d.config.modo === 'planes' ? el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async e => {
+            e.currentTarget.disabled = true;
+            const x = await api('POST', `/api/admin/academia/alumnos/${a.id}/prueba`, {});
+            avisar(x.ok ? tx('plan.admin.prueba_lista', { alumno: a.nombre }) : textoError(x.datos.error), x.ok ? 'bien' : 'mal');
+            pantallaPagosAdmin();
+          } }, el('span', { texto: tx('plan.admin.dar_prueba') })) : null, n,
           el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async e => {
             e.currentTarget.disabled = true;
             const x = await api('POST', `/api/admin/academia/alumnos/${a.id}/minutos`, { minutos: Number(n.value) });

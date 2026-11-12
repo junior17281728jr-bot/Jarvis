@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.6; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.7; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,64 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.7: la IA solo trabaja cuando alguien estudia, prepara la próxima clase, avisa el gasto y va por plan — sin cambio de base
+- **Auditoría: quién puede llamar a la IA** (el único camino que gasta es `ctx.ia.pedir` dentro de la tarea
+  `academia.instructor` del trabajador; el servidor web nunca llama a la IA):
+
+  | Camino | Quién lo dispara | Peor caso al día |
+  |---|---|---|
+  | Explícamelo / Mini-clase IA | el alumno (botón) | 40 cada 10 min por alumno; además 10 llamadas por hora por cuenta y 20 por hora entre todas las cuentas (`llamadasPorHora` 30) |
+  | Duda / Profesor virtual | el alumno (escribe) | 10 y 20 cada 10 min por alumno (mismos topes por hora) |
+  | Consejo / Plan de hoy | el alumno (botón) | 6 por hora; guardados por semana / por día |
+  | «Ver cómo trabaja» | el administrador | como Explícamelo |
+  | **Preparar la próxima clase** (nuevo) | el alumno TERMINA una sesión | **1 por alumno y día** |
+  | Probar una clave | el administrador | gratis (`count_tokens`) |
+  | `scripts/regresion-ia.mjs --clave-archivo` | el dueño, a mano en la consola | lo que él corra |
+  | Trabajos programados (vigilar, base, copias, Drive) | el reloj | **0**: ninguno usa la IA |
+
+  Con el servidor encendido y nadie estudiando: **0 llamadas, 0 tokens** (`test/preparar-clase.test.js` corre un día
+  entero del trabajo automático de verdad, con la IA encendida y un proveedor falso: ningún pedido). En todo caso, los
+  topes del mes (general y por cuenta) mandan siempre.
+- **«Preparado para ti»** (`src/academia/preparar-clase.js`): al terminar una sesión (terminar un tema, una práctica o un
+  examen, marcar una lección leída, o cerrar la app después de estudiar), el servidor web mira, de lo más barato a lo más
+  caro: los interruptores (IA, instructor con IA y el nuevo **«Preparar la próxima clase con IA»**, encendido por defecto),
+  que hoy no se preparó nada, que estudió en las últimas 48 h y algo nuevo desde la última vez, que la IA está para él y
+  que lo que se mandaría cambió (huella). Solo entonces pone UNA tarea (clave única por alumno y día). La IA (siempre
+  **Claude Haiku 5.5**) recibe el tema que sigue en su Camino con sus tarjetas enteras y sus preguntas del Test Guide TAL
+  CUAL **sin la respuesta** (eso es lo compartido y cacheable), y aparte sus números (dominio, prisa, estilo, temas
+  flojos, ideas equivocadas, conceptos de «Mi repaso»), las preguntas del tema que FALLÓ (con la respuesta del Test Guide,
+  como el Profesor) y los números de las que no respondió. Devuelve una introducción, las tarjetas en que fijarse, 1–2
+  analogías y un plan de 3 pasos. Se revisa: tarjetas inventadas fuera; citar o decir la respuesta de una que no
+  respondió, o contradecir la de una fallada, la deja sin usar. Se ve en la portada de ESE tema (si abre otro, ve la
+  versión básica, gratis). **No le cobra usos al alumno ni empieza su prueba**; cuenta en el tope de su cuenta y en el
+  general. «Apagar la IA» la para (también la que ya estaba en la fila).
+- **Caché del proveedor**: el sistema de explicar, dudas, Profesor, mini-clase y preparar va marcado con
+  `cache_control` de 5 minutos (la única caché que OPORTIA pide y sabe cobrar). Con el paquete de verdad de la materia 1,
+  el prefijo de preparar mide de 5,4 KB (t04) a 16,3 KB (t11): unos 1 300 a 5 400 tokens, siempre más que el mínimo de 512
+  de Haiku 5.5 / Sonnet 5.5; el sistema de explicar/chat/duda mide ~2,4–2,7 KB (~570–900 tokens, apenas encima). Ojo:
+  la caché solo ahorra si otro pedido con el mismo prefijo llega en 5 minutos (varias explicaciones seguidas, un chat);
+  una preparación por alumno y día casi nunca la reutiliza. Las explicaciones y mini-clases siguen guardadas en la app y
+  compartidas entre alumnos (eso sí ahorra siempre).
+- **IA y gastos**: «Gasto de hoy / este mes», las llamadas por tipo, la caché del proveedor del mes (lo leído de la
+  caché sobre toda la entrada) y «0 llamadas cuando nadie estudia» (las llamadas del mes que no salieron de algo que hizo
+  una persona; tiene que ser 0).
+- **Avisos del gasto** (pantalla y Telegram): el tope general del mes avisa cada 10 % («IA: llevas el 40 % del límite del
+  mes (US$4.00 de US$10.00) · quedan 18 días»), cada uno una vez por mes, en silencio; al 100 % suena y dice que la IA
+  quedó en modo básico. Los topes de cada cuenta siguen en 50/80/100 %. Un **resumen de ayer** sale a las 00:07 (RD) solo
+  si ayer hubo gasto. Sin nombres: solo números.
+- **La IA por plan** (`src/academia/tiempo-ia.js`, modo `planes`; el de minutos sigue para quien lo elija):
+  **5 días de prueba gratis desde el PRIMER uso** (así nadie la pierde sin verla; para quien nunca pagó), con **20 usos
+  por día**; después, sin plan, lo básico (sin errores). **IA Estándar US$12/mes (300 usos)** e **IA Plus US$20/mes (800
+  usos)**, 30 días desde que se aprueba el comprobante (el flujo de siempre), con el precio en RD$ si el administrador pone
+  la tasa; pasar a Plus pagando la diferencia; aviso en la app 3 días antes de vencer. Se gasta primero el plan, después
+  la prueba, después los minutos que ya tenía (nada se borra; los usos nuevos van en el mismo libro con sus motivos). Una
+  cuenta nueva ya no recibe minutos de regalo. El Profesor virtual va con plan o prueba. En Pagos, cada alumno con su
+  estado y «Dar la prueba otra vez». Siguen mandando la IA encendida, el tope de su plan, «Permitir IA» y su permiso.
+- **Términos v2** (punto 8: la IA por plan; «Qué cambió»: «La IA ahora es por plan mensual: 5 días de prueba gratis;
+  US$12 o US$20 al mes»). La v1 y sus firmas quedan tal cual; todos firman otra vez.
+- Cada uso de la IA empieza con su meta: que el alumno apruebe el Test Guide y llegue a ser piloto.
+- Pruebas: `test/preparar-clase.test.js`, `test/alertas-ia.test.js` y `test/planes-ia.test.js` (proveedor falso).
 
 ### Lo nuevo de la 0.12.6: sin bloqueos por contraseñas, código de respaldo y claves pegadas como salgan — sin cambio de base
 - **Las contraseñas malas nunca bloquean** (pedido del dueño): ni la cuenta, ni la sesión, ni «te quedan N intentos»; solo

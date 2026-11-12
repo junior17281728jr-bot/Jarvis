@@ -137,9 +137,29 @@ export function crearInstructor(h) {
       el('a', { class: 'boton-3d naranja chico', href: '#tiempo-ia' }, el('span', { texto: tx('tiempo.pedir_mas') })));
   }
   // «Te quedan 12 min de instructor IA» (solo si el dueño encendió el instructor con IA).
+  // 0.12.7: con planes, su estado: el plan (usos y días), la prueba gratis (días y usos de hoy) o los usos de antes.
+  function textoPlan(tiempo) {
+    if (tiempo.fuente === 'plan' || (tiempo.plan && !tiempo.plan.vencido)) {
+      return [tx('plan.estado.plan', { nombre: tiempo.plan.nombre, n: numero(tiempo.plan.quedan ?? 0), dias: numero(tiempo.plan.dias ?? 0) }), tiempo.plan.renovar ? tx('plan.renovar', { dias: numero(tiempo.plan.dias ?? 0) }) : null];
+    }
+    if (tiempo.fuente === 'prueba' || (tiempo.prueba && !tiempo.prueba.terminada && tiempo.motivo === 'limite_diario')) {
+      const p = tiempo.prueba;
+      return [p.empezada ? tx('plan.estado.prueba', { dias: numero(p.quedanDias), hoy: numero(p.hoy), por_dia: numero(p.porDia) }) : tx('plan.estado.prueba_nueva', { dias: numero(p.dias), por_dia: numero(p.porDia) }),
+        tiempo.motivo === 'limite_diario' ? tx('plan.limite_diario') : null];
+    }
+    if (tiempo.fuente === 'minutos') return [tx('plan.estado.minutos', { n: numero(tiempo.minutos) })];
+    return [tx(tiempo.motivo === 'prueba_terminada' ? 'plan.estado.prueba_terminada' : 'plan.estado.sin_plan')];
+  }
   function medidorTiempo(tiempo, { conBoton = true } = {}) {
     if (!tiempo?.activo) return null;
     if (tiempo.ilimitado) return el('p', { class: 'medidor-tiempo ilimitado con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx('tiempo.ilimitado') }));
+    if (tiempo.modo === 'planes') {
+      const [linea, extra] = textoPlan(tiempo);
+      return el('div', { class: `medidor-tiempo${!tiempo.puede || tiempo.plan?.renovar ? ' poco' : ''}` },
+        el('p', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('strong', { texto: linea })),
+        extra ? el('p', { class: 'chica', texto: extra }) : null,
+        conBoton ? el('a', { class: 'enlace-tiempo', href: '#tiempo-ia', texto: tx('plan.ver') }) : null);
+    }
     const poco = tiempo.minutos < Math.max(3, tiempo.porUso * 3);
     return el('div', { class: `medidor-tiempo${poco ? ' poco' : ''}` },
       el('p', { class: 'con-icono' }, icono('reloj', 'icono chico'), el('strong', { texto: tx('tiempo.quedan', { n: numero(tiempo.minutos) }) })),
@@ -701,5 +721,5 @@ export function crearInstructor(h) {
       el('a', { class: 'boton-3d', href: '#inicio' }, el('span', { texto: tx('profesor.ir_inicio') })));
   }
 
-  return Object.freeze({ paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  return Object.freeze({ textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
 }
