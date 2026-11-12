@@ -35,13 +35,36 @@ export function leerSesion(db, token) {
   };
 }
 
-export function cerrarSesion(db, token) {
-  if (token) db.prepare('DELETE FROM sesiones WHERE token_hash = ?').run(huella(token));
+// 0.9.0: antes de borrar una sesión queda anotada su «salida» en la auditoría (cuándo entró, su última actividad, cuándo
+// salió y por qué), así el administrador ve la historia de entradas y salidas de cada alumno (src/cuentas/historial.js).
+// Sin cambio de base: la sesión abierta ya guarda creada_en y ultimo_uso; la auditoría ya existe.
+// motivo: 'salir' (tocó «Salir»), 'cerrada' (se cerraron sus sesiones: cambio o reinicio de contraseña, desactivada),
+// 'bloqueo' (muchas contraseñas malas con la sesión abierta).
+export const MOTIVOS_SALIDA = Object.freeze(['salir', 'cerrada', 'bloqueo']);
+function anotarSalidas(db, filas, motivo) {
+  for (const s of filas) {
+    if (!s.vence_en || s.vence_en <= ahora()) continue; // ya había vencido: su historia sale de su última actividad
+    const detalle = JSON.stringify({ entrada: s.creada_en, ultimoUso: s.ultimo_uso ?? null, motivo, nav: String(s.navegador ?? '').slice(0, 120) });
+    db.prepare("INSERT INTO auditoria (fecha, usuario_id, accion, detalle) VALUES (?, ?, 'salida', ?)").run(ahora(), s.usuario_id, detalle);
+  }
 }
 
-export function cerrarTodas(db, usuarioId, exceptoToken = null) {
-  if (exceptoToken) db.prepare('DELETE FROM sesiones WHERE usuario_id = ? AND token_hash <> ?').run(usuarioId, huella(exceptoToken));
-  else db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(usuarioId);
+export function cerrarSesion(db, token, motivo = 'salir') {
+  if (!token || typeof token !== 'string' || token.length > 100) return;
+  const filas = db.prepare('SELECT usuario_id, creada_en, vence_en, ultimo_uso, navegador FROM sesiones WHERE token_hash = ?').all(huella(token));
+  anotarSalidas(db, filas, motivo);
+  db.prepare('DELETE FROM sesiones WHERE token_hash = ?').run(huella(token));
+}
+
+export function cerrarTodas(db, usuarioId, exceptoToken = null, motivo = 'cerrada') {
+  const columnas = 'SELECT usuario_id, creada_en, vence_en, ultimo_uso, navegador FROM sesiones';
+  if (exceptoToken) {
+    anotarSalidas(db, db.prepare(`${columnas} WHERE usuario_id = ? AND token_hash <> ?`).all(usuarioId, huella(exceptoToken)), motivo);
+    db.prepare('DELETE FROM sesiones WHERE usuario_id = ? AND token_hash <> ?').run(usuarioId, huella(exceptoToken));
+  } else {
+    anotarSalidas(db, db.prepare(`${columnas} WHERE usuario_id = ?`).all(usuarioId), motivo);
+    db.prepare('DELETE FROM sesiones WHERE usuario_id = ?').run(usuarioId);
+  }
 }
 
 export function textoGalleta(token, { segura, borrar = false }) {

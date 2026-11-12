@@ -9,6 +9,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe } from './paquetes.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
+import { avataresDe } from '../cuentas/perfil.js';
 
 // 0.8.0: «reto» = practicar un tema (o toda una materia, sin tema) en Modo reto; «errores» = practicar lo que más se
 // falla (de un intento, de un tema, de una materia o de todo). Los dos son práctica: no aprueban temas ni exámenes
@@ -491,13 +492,14 @@ export function alumnos(db, paquete, ahoraMs = Date.now()) {
   const temasHechos = new Map(db.prepare("SELECT usuario_id AS id, COUNT(DISTINCT materia || '/' || tema) AS n FROM academia_intentos WHERE tipo = 'tema' AND aprobado = 1 GROUP BY usuario_id").all().map(f => [f.id, f.n]));
   const resp = db.prepare('SELECT usuario_id AS id, materia, COUNT(*) AS n, COALESCE(SUM(correcta), 0) AS bien FROM academia_respuestas GROUP BY usuario_id, materia').all();
   const totalTemas = (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0);
+  const avatares = avataresDe(db);
   return db.prepare('SELECT id, nombre, nombre_visible, rol, activo FROM usuarios ORDER BY rol, nombre').all().map(u => {
     const ultima = actividad.get(u.id) ?? null;
     const suyas = resp.filter(r => r.id === u.id);
     const n = suyas.reduce((s, r) => s + r.n, 0);
     const bien = suyas.reduce((s, r) => s + r.bien, 0);
     return {
-      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1,
+      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null,
       ultimaActividad: ultima, enLinea: Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS),
       respuestas: n, aciertos: bien, errores: n - bien, pct: pct(bien, n), temasAprobados: temasHechos.get(u.id) ?? 0, temas: totalTemas,
       materias: suyas.filter(r => r.materia).map(r => ({ id: r.materia, respuestas: r.n, aciertos: r.bien, errores: r.n - r.bien, pct: pct(r.bien, r.n) })),

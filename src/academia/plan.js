@@ -9,6 +9,7 @@
 import { ErrorHttp } from '../nucleo/http.js';
 import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { MATERIAS } from './formato.js';
+import { avataresDe } from '../cuentas/perfil.js';
 import { grupoEncendido, temasAprobados, temasLeidos, examenes, puntosYRacha, porMateria, diaDe } from './progreso.js';
 
 export const PLANES_ESTUDIO = Object.freeze({ un_mes: 30, dos_meses: 60, repaso_15: 15 });
@@ -100,6 +101,7 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   if (!grupo) return { activo: false, oculto: yoOculto, materias: MATERIAS.length, companeros: [] };
   const filas = db.prepare("SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE activo = 1 ORDER BY id").all();
   const companeros = [];
+  const avatares = avataresDe(db);
   for (const u of filas) {
     const soyYo = u.id === usuarioId;
     // Un administrador sale solo si también estudia (eligió un plan); cualquiera se puede ocultar.
@@ -110,6 +112,8 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
     companeros.push({
       tu: soyYo,
       nombre: u.nombre_visible || u.nombre,
+      // 0.9.0: el avatar que eligió (o null). Su «meta» NO va aquí: es solo suya y del administrador.
+      avatar: avatares.get(u.id) ?? null,
       materia: actual ?? MATERIAS[MATERIAS.length - 1],
       lugar: actual ? MATERIAS.indexOf(actual) : MATERIAS.length,
       pct: total ? Math.min(100, Math.floor((hechos * 100) / total)) : 0,
