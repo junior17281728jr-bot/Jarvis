@@ -290,9 +290,9 @@ test('cambiar el nombre de usuario: con la contraseña, libre (sin importar may�
     const carla = await entrar(base, 'carla');
     assert.equal((await cambiar(carla, 'carla2')).datos.error, 'debe_cambiar_clave');
     assert.equal((await pedir(base, 'POST', '/api/yo/perfil', { galleta: carla, datos: { avatar: 'jet-rojo' } })).datos.error, 'debe_cambiar_clave');
-    // 5 contraseñas malas: espera (aunque después ponga la buena).
-    for (let k = 0; k < 5; k++) await cambiar(ana, 'otra.cosa', 'mala');
-    assert.equal((await cambiar(ana, 'otra.cosa')).codigo, 429);
+    // 0.12.6: 5 contraseñas malas nunca bloquean (la sexta solo espera 1 s en el servidor): después la buena sirve.
+    for (let k = 0; k < 5; k++) assert.equal((await cambiar(ana, 'otra.cosa', 'mala')).datos.error, 'clave_actual_incorrecta');
+    assert.equal((await cambiar(ana, 'otra.cosa')).codigo, 200);
   });
 });
 

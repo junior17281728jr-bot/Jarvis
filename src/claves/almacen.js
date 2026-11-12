@@ -21,16 +21,27 @@ const IMPRIMIBLE = /^[\x21-\x7e]+$/;
 // Si la última prueba gratis dijo esto, la clave no sirve (hasta que el dueño la pruebe otra vez y pase).
 export const PRUEBAS_QUE_INUTILIZAN = Object.freeze(['clave_no_valida', 'sin_permiso']);
 
-// Revisa una clave pegada y la devuelve sin espacios alrededor. Los errores NUNCA llevan la clave.
-//  400 uso_no_valido · clave_admin · clave_suscripcion · clave_otro_proveedor · clave_formato
+// 0.12.6: lo que deja copiar una clave desde una pantalla angosta o un documento: espacios y saltos de línea en
+// CUALQUIER parte (la clave sale cortada en varias líneas), caracteres invisibles (U+200B–U+200D, U+FEFF) y rayas
+// parecidas al guion (U+2010–U+2015, U+2212). Ninguna clave de estos usos lleva espacios ni esas rayas.
+export function limpiarPegado(valor) {
+  return valor.replace(/[\s\u200b-\u200d\ufeff]+/g, '').replace(/[\u2010-\u2015\u2212]/g, '-');
+}
+
+// Revisa una clave pegada y la devuelve limpia (limpiarPegado). Los errores NUNCA llevan la clave.
+//  400 uso_no_valido · clave_admin · clave_suscripcion · clave_otro_proveedor · clave_anthropic_prefijo · clave_formato
 export function validarValor(uso, valor) {
   const def = definicionUso(uso);
   if (!def) throw new ErrorHttp(400, 'uso_no_valido');
   if (typeof valor !== 'string') throw new ErrorHttp(400, 'clave_formato');
-  const v = valor.trim();
+  const v = limpiarPegado(valor);
   for (const [prefijo, motivo] of def.rechazar ?? []) if (v.startsWith(prefijo)) throw new ErrorHttp(400, motivo);
+  // Empieza como una de Claude pero no es la clave (por ejemplo, su nombre o su ID): un motivo que dice qué copiar.
+  if (def.prefijos && !def.prefijos.some(p => v.startsWith(p)) && def.prefijoAvisado && v.startsWith(def.prefijoAvisado[0])) {
+    throw new ErrorHttp(400, def.prefijoAvisado[1]);
+  }
   if (v.length < LARGO.min || v.length > LARGO.max || !IMPRIMIBLE.test(v)) throw new ErrorHttp(400, 'clave_formato');
-  if (def.prefijo && !v.startsWith(def.prefijo)) throw new ErrorHttp(400, 'clave_formato');
+  if (def.prefijos && !def.prefijos.some(p => v.startsWith(p))) throw new ErrorHttp(400, 'clave_formato');
   if (def.formato && !def.formato.test(v)) throw new ErrorHttp(400, 'clave_formato');
   return v;
 }

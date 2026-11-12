@@ -124,68 +124,84 @@ test('entrar, ver quién soy y salir', async () => {
 
 const DESDE_INTERNET = ip => ({ 'X-Forwarded-For': `1.2.3.4, ${ip}`, 'Tailscale-Funnel-Request': '?1' });
 
-test('5 contraseñas malas desde un lugar bloquean ese lugar un rato, aunque luego pongan la buena', async () => {
-  await conAdmin(async base => {
-    for (let i = 0; i < 5; i++) {
+// 0.12.6 (pedido del dueño): nunca se bloquea ni se cierra la sesión por contraseñas malas; el servidor solo tarda más en
+// contestar (5 sin espera, después 1, 2, 4, 8, 8… s). Las pruebas cambian la espera por un reloj falso (rápidas).
+function conEsperas({ avanza = true } = {}) {
+  const r = { t: Date.now(), esperas: [] };
+  r.reloj = () => r.t;
+  r.dormir = async ms => { r.esperas.push(ms); if (avanza) r.t += ms; };
+  return r;
+}
+async function conAdminFreno(fn, falso = conEsperas()) {
+  const { crearLimitesCuentas } = await import('../src/api/cuentas.js');
+  const db = nuevaBase();
+  await conServidor(crearServidor({ db, limites: crearLimitesCuentas({ dormir: falso.dormir, reloj: falso.reloj }) }), async base => {
+    const r = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });
+    assert.equal(r.codigo, 201);
+    await fn(base, r.galleta, db, falso);
+  });
+  db.close();
+}
+
+test('0.12.6: las contraseñas malas nunca bloquean: cada una es «credenciales», solo esperan más, y la buena entra', async () => {
+  await conAdminFreno(async (base, galleta, db, falso) => {
+    for (let i = 0; i < 12; i++) {
       const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') });
-      assert.equal(r.codigo, 401);
-      assert.equal(r.datos.error, 'credenciales');
+      assert.deepEqual([r.codigo, r.datos.error], [401, 'credenciales'], `intento ${i + 1}`);
     }
+    assert.deepEqual(falso.esperas, [1000, 2000, 4000, 8000, 8000, 8000, 8000], 'los 5 primeros sin espera, luego 1, 2, 4 y hasta 8 s');
     let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('203.0.113.7') });
-    assert.equal(r.codigo, 429);
-    assert.equal(r.datos.error, 'cuenta_bloqueada_un_rato');
-    // Inventar otra dirección al principio de X-Forwarded-For no sirve: cuenta la última, la que pone Tailscale.
-    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: { 'X-Forwarded-For': '9.9.9.9, 203.0.113.7', 'Tailscale-Funnel-Request': '?1' } });
-    assert.equal(r.codigo, 429);
-    // Pero el dueño, desde otro lugar, sí entra: un extraño no puede dejarlo fuera.
+    assert.equal(r.codigo, 200, 'la buena entra (después de su espera)');
+    falso.esperas.length = 0;
+    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: 'otra-mala-clave-larga' }, cabeceras: DESDE_INTERNET('203.0.113.7') });
+    assert.equal(r.codigo, 401);
+    assert.deepEqual(falso.esperas, [], 'al acertar se olvida');
+    // Desde otro lugar no hay espera: un extraño no hace esperar al dueño.
+    for (let i = 0; i < 6; i++) await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.9') });
+    falso.esperas.length = 0;
     r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('198.51.100.20') });
     assert.equal(r.codigo, 200);
+    assert.deepEqual(falso.esperas, []);
+    // Un usuario que no existe espera igual (la espera no dice qué cuentas hay).
+    for (let i = 0; i < 6; i++) r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'nadie', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') });
+    assert.equal(r.codigo, 401);
+    assert.deepEqual(falso.esperas, [1000]);
+    assert.ok(!JSON.stringify(r.datos).includes('quedan'));
   });
 });
 
-test('un ataque repartido desde muchos lugares frena a internet, pero el dueño entra por Tailscale', async () => {
-  await conAdmin(async base => {
-    for (let i = 0; i < 20; i++) {
-      await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET(`203.0.113.${i}`) });
-    }
-    let r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('198.51.100.20') });
-    assert.equal(r.codigo, 429, 'desde internet queda frenada un rato');
-    r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });
-    assert.equal(r.codigo, 200, 'por Tailscale el dueño siempre entra');
-  });
-});
-
-test('muchos pedidos a la vez no se saltan el límite de 5', async () => {
-  await conAdmin(async base => {
+test('0.12.6: muchos pedidos a la vez se escalonan (no se saltan la espera), ninguno espera más de 8 s y ninguno recibe 429', async () => {
+  await conAdminFreno(async (base, galleta, db, falso) => {
     const respuestas = await Promise.all(Array.from({ length: 15 }, (_, i) =>
       pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') })));
-    assert.equal(respuestas.filter(r => r.codigo === 401).length, 5, 'solo 5 contraseñas se llegan a probar');
-    assert.ok(respuestas.filter(r => r.codigo === 429).length >= 5);
-  });
+    assert.equal(respuestas.filter(r => r.codigo === 401).length, 15);
+    // Con el reloj quieto: los primeros se escalonan (1, 1+2, 1+2+4) y después todos con el tope de 8 s.
+    assert.deepEqual(falso.esperas.sort((a, b) => a - b), [1000, 3000, 7000, ...Array(7).fill(8000)]);
+  }, conEsperas({ avanza: false }));
 });
 
-test('una contraseña nueva (puesta por el administrador o la consola) quita el bloqueo anterior', async () => {
-  await conAdmin(async (base, galleta, db) => {
-    const { hashClave } = await import('../src/cuentas/claves.js');
+test('una contraseña nueva (puesta por el administrador o la consola) quita la espera anterior', async () => {
+  await conAdminFreno(async (base, galleta, db, falso) => {
     const { guardarClave } = await import('../src/cuentas/usuarios.js');
-    for (let i = 0; i < 5; i++) await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') });
-    assert.equal((await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_INTERNET('203.0.113.7') })).codigo, 429);
+    for (let i = 0; i < 8; i++) await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: `mala-${i}-clave-larga` }, cabeceras: DESDE_INTERNET('203.0.113.7') });
     guardarClave(db, 1, await hashClave('clave nueva de rescate'), { debeCambiarClave: true });
+    falso.esperas.length = 0;
     const r = await pedir(base, 'POST', '/api/entrar', { datos: { nombre: 'junior', clave: 'clave nueva de rescate' }, cabeceras: DESDE_INTERNET('203.0.113.7') });
     assert.equal(r.codigo, 200);
+    assert.deepEqual(falso.esperas, []);
   });
 });
 
-test('con una sesión abierta no se puede adivinar la contraseña actual: 5 fallos cierran la sesión', async () => {
-  await conAdmin(async (base, galleta) => {
-    for (let i = 0; i < 5; i++) {
+test('0.12.6: con una sesión abierta, fallar la contraseña actual nunca cierra la sesión (solo espera)', async () => {
+  await conAdminFreno(async (base, galleta, db, falso) => {
+    for (let i = 0; i < 8; i++) {
       const r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: `mala-${i}-clave-larga`, nueva: 'otra clave muy larga' }, galleta });
-      assert.equal(r.datos.error, 'clave_actual_incorrecta');
+      assert.deepEqual([r.codigo, r.datos.error], [400, 'clave_actual_incorrecta']);
     }
+    assert.deepEqual(falso.esperas, [1000, 2000, 4000]);
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).codigo, 200, 'la sesión sigue abierta');
     const r = await pedir(base, 'POST', '/api/yo/clave', { datos: { actual: CLAVE, nueva: 'otra clave muy larga' }, galleta });
-    assert.equal(r.codigo, 429);
-    assert.equal(r.datos.error, 'demasiados_intentos_clave');
-    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta })).codigo, 401, 'la sesión quedó cerrada');
+    assert.equal(r.codigo, 200);
   });
 });
 

@@ -114,7 +114,7 @@ function texto(res, codigo, mensaje) {
 export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {} } = {}) {
   const rutas = crearRuteador();
   const limitesConfirmar = { ...crearLimitesConfirmar(), ...confirmar };
-  registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
+  registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor, alertaAdmin: limitesConfirmar.alerta });
   registrarRutasVisitas(rutas, { Limitador });
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
@@ -163,7 +163,7 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     // (con ella, desde su red, no se le pide la contraseña otra vez). Crear el PRIMER administrador sigue siendo solo
     // desde Tailscale (src/api/cuentas.js).
     if (opciones.soloDueno && usuario?.rol === 'admin') duenoDeTailscale(db, req, usuario, { anotar: true });
-    const confirmar = () => confirmarClave({ db, req, usuario, token, limites: limitesConfirmar });
+    const confirmar = () => confirmarClave({ db, req, usuario, cliente: clienteDe(req), limites: limitesConfirmar });
 
     // 0.12.4: cada pedido de quien entró es actividad de su visita (como mucho una escritura por minuto). El aviso de
     // «cerró la app» no cuenta como actividad.

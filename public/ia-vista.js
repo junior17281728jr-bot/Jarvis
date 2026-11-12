@@ -19,6 +19,21 @@ export const ATRIBUTOS_CAMPO_CLAVE = Object.freeze({
   enterkeyhint: 'done',
 });
 
+// 0.12.6: al pegar una clave, sin saltos de línea (desde una pantalla angosta sale cortada en varias líneas). El servidor
+// limpia lo demás (espacios, invisibles, rayas parecidas al guion: src/claves/almacen.js).
+export const sinSaltos = texto => String(texto ?? '').replace(/[\r\n]+/g, '');
+export function limpiarAlPegar(area) {
+  area.addEventListener('paste', e => {
+    const texto = e.clipboardData?.getData('text');
+    if (typeof texto !== 'string' || !/[\r\n]/.test(texto)) return;
+    e.preventDefault();
+    const { selectionStart: a = area.value.length, selectionEnd: b = area.value.length } = area;
+    area.value = area.value.slice(0, a) + sinSaltos(texto) + area.value.slice(b);
+    area.dispatchEvent(new Event('input'));
+  });
+  return area;
+}
+
 // Las rayitas de la barra del gasto (porcentaje del tope): los avisos salen al 50, al 80 y al 100 %.
 export const MARCAS_GASTO = Object.freeze([50, 80]);
 

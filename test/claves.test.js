@@ -354,14 +354,16 @@ test('validar: se quitan los espacios de alrededor; las claves raras, de adminis
   const contar = () => db.prepare('SELECT COUNT(*) AS n FROM secretos').get().n;
   assert.equal(validarValor('ia_anthropic', `  ${claveAnthropic()}\n`), claveAnthropic());
   const casos = [
-    ['ia_anthropic', ['sk', 'ant', 'api03', 'con espacio dentro xxxxxxxx'].join('-'), 'clave_formato'],
+    ['ia_anthropic', ['sk', 'ant', 'api03', 'con·punto·dentro·xxxxxxxx'].join('-'), 'clave_formato'],
     ['ia_anthropic', ['sk', 'ant', 'api03', 'eñe' + 'x'.repeat(30)].join('-'), 'clave_formato'],
     ['ia_anthropic', ['sk', 'ant', 'api03', 'x'].join('-'), 'clave_formato'],
     ['ia_anthropic', ['sk', 'ant', 'api03', 'x'.repeat(600)].join('-'), 'clave_formato'],
     ['ia_anthropic', ['sk', 'ant', 'admin01', 'x'.repeat(40)].join('-'), 'clave_admin'],
     ['ia_anthropic', ['sk', 'ant', 'oat01', 'x'.repeat(40)].join('-'), 'clave_suscripcion'],
     ['ia_anthropic', ['sk', 'ant', 'ort01', 'x'.repeat(40)].join('-'), 'clave_suscripcion'],
-    ['ia_anthropic', ['sk', 'ant', 'x'.repeat(40)].join('-'), 'clave_formato'],
+    ['ia_anthropic', ['sk', 'ant', 'x'.repeat(40)].join('-'), 'clave_anthropic_prefijo'], // 0.12.6: un motivo que dice qué copiar
+    ['ia_anthropic', ['sk', 'ant', 'mi-clave'].join('-'), 'clave_anthropic_prefijo'], // su nombre, no la clave
+    ['ia_anthropic', 'mi clave de claude', 'clave_formato'],
     ['ia_anthropic', claveOpenai(), 'clave_otro_proveedor'],
     ['ia_openai', claveAnthropic(), 'clave_otro_proveedor'],
     ['ia_openai', ['sk', 'admin', 'x'.repeat(40)].join('-'), 'clave_admin'],

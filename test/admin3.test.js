@@ -19,6 +19,7 @@ import { crearLimitesCuentas } from '../src/api/cuentas.js';
 import { Limitador } from '../src/nucleo/limites.js';
 import { leerPaquetes } from '../public/pagos.js';
 import { cabeceraDeClave } from '../public/confirmar-clave.js';
+import { crearLimitesConfirmar } from '../src/cuentas/confirmar.js';
 import { cuerpoDeAviso } from '../src/canales/textos.js';
 import { vaPorTelegram } from '../src/canales/avisador.js';
 import { PRIVACIDAD_V1, PRIVACIDAD_V2, versionDoc, docVersion } from '../src/cuentas/terminos.js';
@@ -73,11 +74,11 @@ async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerp
 
 // Un servidor con el primer administrador (creado desde Tailscale, como en la vida real) y un alumno. Después, todo lo del
 // administrador va SIN la cabecera de Tailscale: el enlace público.
-async function conPlataforma(fn, { terminos = false } = {}) {
+async function conPlataforma(fn, { terminos = false, confirmar = {} } = {}) {
   const config = { ...configDePrueba(), terminosObligatorios: terminos };
   const db = abrirBase(config);
   const limites = { ...crearLimitesCuentas(), entrarPorCliente: new Limitador({ maximo: 1000, ventanaMs: 60_000 }) };
-  const servidor = crearServidor({ db, config, limites, ia: { probadores: { telegram_bot: async () => 'ok' } } });
+  const servidor = crearServidor({ db, config, limites, confirmar, ia: { probadores: { telegram_bot: async () => 'ok' } } });
   await conServidor(servidor, async base => {
     const primero = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });
     assert.equal(primero.codigo, 201);
@@ -108,7 +109,7 @@ test('por el enlace público el administrador guarda los datos del banco solo co
     assert.deepEqual([sin.codigo, sin.datos.error], [403, 'confirmar_clave']);
     const mala = await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: admin, datos: BANCO, cabeceras: CON_CLAVE('no es esa') });
     assert.deepEqual([mala.codigo, mala.datos.error], [403, 'clave_confirmar_incorrecta']);
-    assert.equal(mala.datos.quedan, 4);
+    assert.equal(mala.datos.quedan, undefined, '0.12.6: sin «te quedan N intentos»');
     assert.equal((await pedir(base, 'GET', '/api/admin/academia/pagos', { galleta: admin })).datos.config.numero, '', 'nada se guardó');
     assert.equal(cambios(db).length, 0);
     const bien = await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: admin, datos: BANCO, cabeceras: CON_CLAVE() });
@@ -137,17 +138,24 @@ test('por el enlace público el administrador guarda los datos del banco solo co
   });
 });
 
-test('un alumno no puede (ni con la contraseña) y 5 contraseñas malas cierran la sesión del administrador', async () => {
+test('0.12.6: un alumno no puede (ni con la contraseña) y las contraseñas malas del administrador nunca cierran su sesión: solo esperan', async () => {
+  const esperas = [];
+  let t = Date.now();
+  const confirmar = crearLimitesConfirmar({ dormir: async ms => { esperas.push(ms); t += ms; }, reloj: () => t });
   await conPlataforma(async ({ base, db, admin, alumno }) => {
     const r = await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: alumno, datos: BANCO, cabeceras: CON_CLAVE() });
     assert.deepEqual([r.codigo, r.datos.error], [403, 'solo_admin']);
-    for (let i = 0; i < 5; i++) assert.equal((await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: admin, datos: BANCO, cabeceras: CON_CLAVE(`mala ${i}`) })).datos.error, 'clave_confirmar_incorrecta');
-    const sexta = await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: admin, datos: BANCO, cabeceras: CON_CLAVE() });
-    assert.deepEqual([sexta.codigo, sexta.datos.error], [429, 'demasiados_intentos_clave']);
-    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta: admin })).codigo, 401, 'la sesión se cerró');
-    assert.equal(avisosDe(db, 'cambio_admin:clave_bloqueada:').length, 1, 'y queda un aviso');
-    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE accion = 'clave_confirmar_fallida'").get().n, 5);
-  });
+    for (let i = 0; i < 9; i++) {
+      const mala = await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: admin, datos: BANCO, cabeceras: CON_CLAVE(`mala ${i}`) });
+      assert.deepEqual([mala.codigo, mala.datos.error, mala.datos.quedan], [403, 'clave_confirmar_incorrecta', undefined]);
+    }
+    assert.deepEqual(esperas, [1000, 2000, 4000, 8000]);
+    assert.equal((await pedir(base, 'GET', '/api/yo', { galleta: admin })).codigo, 200, 'la sesión sigue abierta');
+    const buena = await pedir(base, 'POST', '/api/admin/academia/pagos/ajustes', { galleta: admin, datos: BANCO, cabeceras: CON_CLAVE() });
+    assert.equal(buena.codigo, 200, 'y la buena sirve');
+    assert.equal(avisosDe(db, 'cambio_admin:clave_bloqueada:').length, 0, 'ya no hay «sesión cerrada»');
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE accion = 'clave_confirmar_fallida'").get().n, 9);
+  }, { confirmar });
 });
 
 test('el primer administrador sigue siendo solo desde Tailscale', async () => {

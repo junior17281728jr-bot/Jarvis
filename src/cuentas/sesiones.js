@@ -42,7 +42,7 @@ export function leerSesion(db, token) {
 // salió y por qué), así el administrador ve la historia de entradas y salidas de cada alumno (src/cuentas/historial.js).
 // Sin cambio de base: la sesión abierta ya guarda creada_en y ultimo_uso; la auditoría ya existe.
 // motivo: 'salir' (tocó «Salir»), 'cerrada' (se cerraron sus sesiones: cambio o reinicio de contraseña, desactivada),
-// 'bloqueo' (muchas contraseñas malas con la sesión abierta).
+// 'bloqueo' (muchas contraseñas malas con la sesión abierta; solo hasta la 0.12.4: desde la 0.12.6 no se cierra por eso).
 export const MOTIVOS_SALIDA = Object.freeze(['salir', 'cerrada', 'bloqueo']);
 function anotarSalidas(db, filas, motivo) {
   for (const s of filas) {

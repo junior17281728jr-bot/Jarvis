@@ -54,12 +54,21 @@ En la Consola de DigitalOcean (nunca como root, para no dañar los permisos de l
     sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs
 
 Muestra una contraseña temporal para el primer administrador (o crea uno si no existe), cierra sus sesiones y quita
-cualquier bloqueo por intentos fallidos. Para un nombre concreto:
+la espera que hubiera por contraseñas malas. Para un nombre concreto:
 `sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs junior`.
+Antes de llegar a eso: si pusiste un **código de acceso de respaldo** (Configuración, desde la 0.12.6), escríbelo en la
+casilla de la contraseña al entrar.
 
-Bloqueos por contraseñas malas: 5 fallos desde un mismo lugar bloquean ese lugar 15 minutos; 20 fallos desde internet
-(sumando todos los lugares) frenan a internet 15 minutos. Quien entra por Tailscale nunca queda frenado por lo que
-hagan otros, así que desde tus equipos con Tailscale siempre puedes entrar.
+Contraseñas malas (desde la 0.12.6, decisión del dueño: «puede intentarlo aunque falle las veces que quiera»): **nunca se
+bloquea la cuenta, nunca se cierra la sesión y nunca sale «te quedan N intentos»** (al entrar, al crear o cambiar la
+contraseña, al cambiar el nombre de usuario y al confirmar lo delicado del administrador). Cada contraseña mala recibe la respuesta normal «contraseña
+incorrecta», solo que el servidor tarda en contestarla: las 5 primeras al momento, después 1 s, 2 s, 4 s y desde ahí 8 s
+cada una (por cuenta y lugar; se olvida al acertar o 15 minutos después del último fallo). Por eso, después de 5 o más
+malas, también la buena tarda esa vez (8 s como mucho). Muchos pedidos a la vez se escalonan y ninguno espera más de 8 s. La espera es un
+temporizador (el servidor sigue contestando lo demás) y la memoria tiene tope. Como la espera es por lugar, ya no hay un
+freno de «todo internet junto»: para eso, con 20 contraseñas malas de un administrador en una hora (sumando entrar,
+cambiar la suya y confirmar) queda **un aviso** «Muchos intentos de contraseña fallidos en tu cuenta» (pantalla y
+Telegram), sin bloquear nada. Los demás topes (subidas, IA, Drive, crear el primer administrador) siguen igual.
 
 ## Dos procesos, un servicio (fase 1, parte c)
 El servicio `jarvis` sigue siendo uno solo (`node --no-warnings src/server.js`), pero adentro corren dos programas:
@@ -126,7 +135,7 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
 2. Settings → Workspaces → crea un espacio «oportia» y ponle un **límite de gasto un poco más alto** que el tope que pondrás
    en OPORTIA (el tope + 20 %, al menos US$1 más; por ejemplo US$3 para un tope de US$2). Es un segundo candado; si fuera
    igual, el proveedor podría frenar a OPORTIA antes de tiempo. (El espacio «Default» no admite límite.)
-3. API keys → Create key, dentro del espacio «oportia». Tiene que ser una clave normal de la API (empieza con `sk-ant-api`):
+3. API keys → Create key, dentro del espacio «oportia». Tiene que ser una clave normal de la API (empieza con `sk-ant-api` o, las ligadas a tu usuario, `sk-ant-usr`):
    OPORTIA rechaza, sin guardarlas, las claves de administrador de la cuenta y las de la suscripción de Claude.
 4. Desde tu iPhone o Mac **con tu cuenta de Tailscale**, por el enlace https: Administrador → Claves → pegar → «Guardar y
    probar (gratis)». Luego Administrador → Inteligencia artificial → tope (por ejemplo US$2) → «Encender la IA» → confirmar.
@@ -413,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.5; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.6; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -692,6 +701,26 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.12.6: sin bloqueos por contraseñas, código de respaldo y claves pegadas como salgan — sin cambio de base
+- **Las contraseñas malas nunca bloquean** (pedido del dueño): ni la cuenta, ni la sesión, ni «te quedan N intentos»; solo
+  una espera que crece en el servidor (`Freno`, `src/nucleo/limites.js`; ver «Recuperar el acceso de administrador»). Se
+  quitaron el `429 cuenta_bloqueada_un_rato`, el `429 demasiados_intentos` de entrar y crear la contraseña y el
+  `429 demasiados_intentos_clave` (con su cierre de sesión); `403 clave_confirmar_incorrecta` ya no lleva `quedan`. Con 20
+  malas de un administrador en una hora: el aviso `cambio_admin:claves_fallidas:<n.º>`.
+- **Código de acceso de respaldo** (`src/cuentas/respaldo.js`, solo administradores): Configuración → «Código de acceso de
+  respaldo» (8 o más, distinto de la contraseña, con la contraseña otra vez; se cambia o se quita; nunca vence). Se guarda
+  solo su huella scrypt en `ajustes` (`codigo_respaldo:<id>`; quitarlo deja la fila sin huella). Al entrar, la casilla de la
+  contraseña lo acepta (con las mismas esperas); cada uso deja el aviso «Alguien entró con el código de respaldo»
+  (`cambio_admin:codigo_respaldo_usado:<n.º>`), la línea `entrada_codigo_respaldo` en la auditoría y, en su pantalla, la
+  sugerencia de poner una contraseña nueva (el código sirve como «contraseña actual»). `GET /api/yo/codigo-respaldo`,
+  `POST /api/yo/codigo-respaldo { codigo }`, `POST /api/yo/codigo-respaldo/quitar`.
+- **Claves pegadas** (`validarValor`, `src/claves/almacen.js`): se quitan los espacios y saltos de línea de cualquier parte,
+  los invisibles (U+200B–U+200D, U+FEFF) y las rayas parecidas al guion pasan a `-` (U+2010–U+2015, U+2212), para todos los
+  usos; la casilla quita los saltos al pegar. Claude acepta `sk-ant-api…` y las claves ligadas a la persona `sk-ant-usr…`
+  (las dos van con `x-api-key`); otra cosa que empieza con `sk-ant-` responde `400 clave_anthropic_prefijo` («copia la clave
+  completa, no su nombre ni su ID»). Siguen rechazadas las de administrador y las de la suscripción.
+- Pruebas: `test/intentos-0126.test.js` (y las de bloqueos de `test/cuentas.test.js` y `test/admin3.test.js`, ahora sin bloqueos).
+
 ### Lo nuevo de la 0.12.5: la foto del libro en las tarjetas y Administrador en 4 grupos — sin cambio de base
 - **La foto del libro de una tarjeta** (opcional; temas, reexplicación y lo extra): `"imagen": { "archivo": "foto-ala.webp",
   "alt": "…", "pie": "…" (opcional), "pagina": "12" (opcional), "libro": "<id de libro>" (opcional), "sha256": "…" (opcional) }`.
@@ -774,7 +803,8 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   persona (reiniciarla o ponerla), crear un administrador, bloquear o renombrar a otro administrador y crear la clave de
   recuperación. La pantalla abre una ventanita («Confirma con tu contraseña») y repite el mismo pedido con la cabecera
   `X-Confirmar-Clave` (base64; nunca se guarda). Sin ella: `403 confirmar_clave`; mala: `403 clave_confirmar_incorrecta`
-  (con `quedan`); 5 malas en 15 minutos cierran esa sesión (`429 demasiados_intentos_clave`) y dejan un aviso. Desde la
+  (con `quedan`); 5 malas en 15 minutos cierran esa sesión (`429 demasiados_intentos_clave`) y dejan un aviso (hasta la
+  0.12.4: desde la 0.12.6 nunca se cierra, ver arriba). Desde la
   cuenta de Tailscale del dueño no se pide (Tailscale ya dijo quién es).
 - **Cada cambio delicado** deja una línea en la auditoría (`cambio_admin`: hora, quién y QUÉ cambió, por ejemplo los nombres
   de los campos de pago o el uso de una clave; nunca un valor secreto) y un aviso `cambio_admin:<acción>:<n.º>` (en la
@@ -1127,7 +1157,7 @@ restaura una copia de la 0.7.0 igual, y que al volver la 0.7.0 todo sigue. (`tes
 ## Estado
 - Fase 0 (completa): ya no se borra nada, base de datos propia, entrada solo por el enlace https de Tailscale o por la red Tailscale.
 - Fase 1, parte a: cuentas. El primer administrador solo se crea desde Tailscale; contraseñas con scrypt; sesiones en galletas
-  HttpOnly; candados contra intentos; protección contra pedidos falsos; español e inglés; administración de usuarios;
+  HttpOnly; esperas contra quien adivina contraseñas (desde la 0.12.6, nunca bloqueos); protección contra pedidos falsos; español e inglés; administración de usuarios;
   herramienta de rescate del acceso.
 - Fase 1, parte b (versión 0.2.0, cambio de base 3): proyectos. Cada cuenta escribe lo que necesita con sus palabras; el motor propio (`src/motor/`, sin IA)
   entiende sectores, las 32 provincias con sus municipios, distritos municipales conocidos y regiones (Cibao, Este, Sur…),

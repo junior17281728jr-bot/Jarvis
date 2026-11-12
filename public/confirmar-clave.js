@@ -15,13 +15,13 @@ export function cabeceraDeClave(clave) {
 }
 
 // → Promise<string | null> (null: canceló). h: { el, t }. error: la clave del error anterior (para decir «no es esa»).
-export function pedirClaveAdmin(h, { error = null, quedan = null } = {}) {
+export function pedirClaveAdmin(h, { error = null } = {}) {
   const { el, t } = h;
   return new Promise(resolver => {
     const anterior = document.activeElement;
     const campo = el('input', { id: 'confirmar-clave-campo', type: 'password', autocomplete: 'current-password', maxlength: 200, required: true });
     const linea = el('p', { class: 'mensaje error', role: 'alert', id: 'confirmar-clave-error', hidden: !error });
-    if (error) linea.textContent = error === 'clave_confirmar_incorrecta' ? t('confirmar.incorrecta', { n: quedan ?? '?' }) : t(`error.${error}`);
+    if (error) linea.textContent = error === 'clave_confirmar_incorrecta' ? t('confirmar.incorrecta') : t(`error.${error}`);
     let listo = false;
     const terminar = valor => {
       if (listo) return;

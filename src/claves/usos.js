@@ -1,6 +1,8 @@
 // Qué claves secretas guarda OPORTIA y cómo se reconocen. Solo DATOS (lo usan los dos procesos).
 // El almacén (src/claves/almacen.js) es compartido: la IA ahora; el bot de Telegram en la parte e (uso 'telegram_bot').
-//  - prefijo: con qué empieza una clave buena de ese uso.
+//  - prefijos: con qué puede empezar una clave buena de ese uso (0.12.6: la Console de Claude da también claves
+//    ligadas a la persona, «sk-ant-usr-…», que valen igual con x-api-key).
+//  - prefijoAvisado: [prefijo, motivo]: lo que se parece (empieza igual) pero no es: un motivo más claro que clave_formato.
 //  - rechazar: claves que se parecen pero NUNCA se guardan (se revisan antes que el prefijo y antes de cifrar nada):
 //    una clave de administrador de la cuenta puede mucho más de lo que OPORTIA necesita, y una de la suscripción
 //    (OAuth) no es de la API.
@@ -8,7 +10,8 @@
 // Las pruebas arman sus claves falsas al correr (['sk', 'ant', 'api03', …].join('-')): ninguna clave vive en el código.
 export const USOS = Object.freeze({
   ia_anthropic: Object.freeze({
-    grupo: 'ia', proveedor: 'anthropic', prefijo: 'sk-ant-api',
+    grupo: 'ia', proveedor: 'anthropic', prefijos: Object.freeze(['sk-ant-api', 'sk-ant-usr']),
+    prefijoAvisado: Object.freeze(['sk-ant-', 'clave_anthropic_prefijo']),
     rechazar: Object.freeze([
       Object.freeze(['sk-ant-admin', 'clave_admin']),
       Object.freeze(['sk-ant-oat', 'clave_suscripcion']),
@@ -20,7 +23,7 @@ export const USOS = Object.freeze({
     ]),
   }),
   ia_openai: Object.freeze({
-    grupo: 'ia', proveedor: 'openai', prefijo: 'sk-',
+    grupo: 'ia', proveedor: 'openai', prefijos: Object.freeze(['sk-']),
     rechazar: Object.freeze([
       Object.freeze(['sk-ant-', 'clave_otro_proveedor']),
       Object.freeze(['sk-admin-', 'clave_admin']),

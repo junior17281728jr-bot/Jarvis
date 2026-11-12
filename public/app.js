@@ -1,7 +1,7 @@
 // OPORTIA: pantallas (sin librerías). Todo texto se pone con textContent: nunca se interpreta como código.
 import { ICONOS_PROYECTO, ICONOS_SERVICIOS } from './dibujos.js';
 import {
-  ATRIBUTOS_CAMPO_CLAVE, MARCAS_GASTO, partesBarraGasto, controlesProveedores, estadoDeClave, nombreModelo, leerDolares,
+  ATRIBUTOS_CAMPO_CLAVE, limpiarAlPegar, MARCAS_GASTO, partesBarraGasto, controlesProveedores, estadoDeClave, nombreModelo, leerDolares,
   textoUsd, cosasParaEncender, apagarProveedorApagaIa,
 } from './ia-vista.js';
 import {
@@ -16,6 +16,7 @@ import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuari
 import { crearInstructor } from './instructor.js';
 import { crearPagos } from './pagos.js';
 import { pedirClaveAdmin, cabeceraDeClave, ERRORES_CONFIRMAR } from './confirmar-clave.js';
+import { tarjetaCodigoRespaldo } from './codigo-respaldo.js';
 import { dibujarAvatar } from './avatares.js';
 import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
@@ -675,7 +676,7 @@ async function salir() {
 // dueña ve la fecha de un reinicio que no pidió aunque otro lo haya «visto» antes.
 function leerAvisos(datos) {
   // 0.9.2: también «el administrador cambió tu usuario» y «… tu nombre» (se muestra el de ahora).
-  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido'].includes(a.tipo) && Number.isSafeInteger(a.id));
+  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido', 'codigo_respaldo_usado'].includes(a.tipo) && Number.isSafeInteger(a.id));
   const recientes = (Array.isArray(datos?.reiniciosRecientes) ? datos.reiniciosRecientes : []).filter(x => x && typeof x.fecha === 'string');
   return { avisos, recientes };
 }
@@ -691,7 +692,9 @@ function avisosDeCuenta({ marcar = true } = {}) {
   const nombres = avisos.filter(a => a.tipo !== 'clave_reiniciada');
   const fechas = !reinicios.length ? [] : recientes.length ? recientes.map(x => x.fecha) : reinicios.map(a => a.fecha).reverse();
   return el('section', { class: 'tarjeta', role: 'alert' },
-    nombres.map(a => a.tipo === 'soporte_respondido'
+    nombres.map(a => a.tipo === 'codigo_respaldo_usado'
+      ? el('p', { class: 'aviso' }, el('span', { texto: `${t('aviso.codigo_respaldo_usado', { fecha: fecha(a.fecha) })} ` }), el('a', { href: '#configuracion', texto: t('aviso.codigo_respaldo_clave') }))
+      : a.tipo === 'soporte_respondido'
       ? el('p', { class: 'aviso' }, el('span', { texto: `${t('aviso.soporte_respondido', { fecha: fecha(a.fecha) })} ` }), el('a', { href: '#ayuda-mia', texto: t('aviso.soporte_ver') }))
       : el('p', { class: 'aviso', texto: a.tipo === 'usuario_cambiado'
         ? t('aviso.usuario_cambiado', { nombre: estado.usuario?.nombre ?? '', fecha: fecha(a.fecha) })
@@ -859,6 +862,7 @@ async function pantallaConfiguracion() {
           el('div', { class: 'ajuste-humor', role: 'group', 'aria-labelledby': 'titulo-humor' }, botonesHumor),
           el('p', { class: 'ayuda', texto: humor.permitido ? t('humor.config.ayuda') : t('humor.admin_apagado') })] : null),
       el('section', { class: 'tarjeta' }, el('h2', { texto: t('clave.titulo') }), formularioClave({})),
+      estado.usuario.rol === 'admin' ? tarjetaCodigoRespaldo({ el, t, api, caja, decir, textoError, fecha }) : null,
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('config.reinicios') }),
         !lista ? el('p', { class: 'mensaje error', texto: textoError(reinicios.datos.error) })
@@ -2980,7 +2984,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar, ayuda = null, nombre: otr
   if (listo) {
     // Pegar una clave: una línea tapada con puntos que se vacía apenas se manda. Nunca se vuelve a mostrar.
     const id = `clave-${u.uso}`;
-    const area = crecer(el('textarea', { ...ATRIBUTOS_CAMPO_CLAVE, id, 'aria-describedby': `${id}-donde` }));
+    const area = crecer(limpiarAlPegar(el('textarea', { ...ATRIBUTOS_CAMPO_CLAVE, id, 'aria-describedby': `${id}-donde` })));
     const guardar = el('button', {
       type: 'button', class: 'con-icono',
       onclick: async () => {

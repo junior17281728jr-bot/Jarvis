@@ -21,7 +21,7 @@
 // El modo seguro sirve cuando las pantallas no abren: el servicio que está corriendo lo aplica en menos de
 // 30 segundos, sin reiniciar. Las pantallas siguen funcionando y no se pierde nada (lo que está en la fila espera).
 //
-// La contraseña nueva también quita cualquier bloqueo por intentos fallidos que tuviera la cuenta.
+// Desde la 0.12.6 las contraseñas malas no bloquean (solo hacen esperar unos segundos); la nueva quita también esa espera.
 //
 // Qué hace: genera una contraseña temporal, cierra las sesiones abiertas de esa cuenta y te pide
 // cambiarla al entrar. No borra nada. Se ejecuta como el usuario «jarvis» (nunca como root) para que

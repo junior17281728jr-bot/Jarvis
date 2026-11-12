@@ -3,7 +3,7 @@
 //  - /api/admin/academia/alumnos/:id/ficha, …/intentos/:intento y /api/admin/academia/comparar/:ids llevan { admin: true }
 //    (403 para los alumnos, 401 sin sesión).
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
-import { Limitador } from '../nucleo/limites.js';
+import { Freno, Limitador } from '../nucleo/limites.js';
 import { verificarClave } from '../cuentas/claves.js';
 import { buscarPorId } from '../cuentas/usuarios.js';
 import { perfilDe, guardarPerfil, cambiarNombreUsuario, ponerNombreVisible } from '../cuentas/perfil.js';
@@ -17,8 +17,8 @@ import { reporteAcademia, opcionesReporte, guardarOpcionesReporte } from '../aca
 
 export function crearLimitesPerfil() {
   return {
-    // Contraseñas malas al cambiar el nombre de usuario (por cuenta): 5 cada 15 minutos.
-    nombreUsuario: new Limitador({ maximo: 5, ventanaMs: 15 * 60 * 1000 }),
+    // Contraseñas malas al cambiar el nombre de usuario (por cuenta). 0.12.6: nunca bloquean, solo esperan (Freno).
+    nombreUsuario: new Freno(),
     cambios: new Limitador({ maximo: 120, ventanaMs: 60 * 60 * 1000 }),
   };
 }
@@ -54,12 +54,10 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   rutas.agregar('POST', '/api/yo/usuario', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     const llave = String(usuario.id);
-    if (topes.nombreUsuario.bloqueado(llave)) throw new ErrorHttp(429, 'demasiados_intentos');
+    await topes.nombreUsuario.esperarTurno(llave);
     const fila = buscarPorId(db, usuario.id);
-    if (!(await verificarClave(textoDe(datos, 'clave'), fila?.clave_hash))) {
-      topes.nombreUsuario.permitir(llave);
-      throw new ErrorHttp(400, 'clave_actual_incorrecta');
-    }
+    if (!(await verificarClave(textoDe(datos, 'clave'), fila?.clave_hash))) throw new ErrorHttp(400, 'clave_actual_incorrecta');
+    topes.nombreUsuario.olvidar(llave);
     return { codigo: 200, datos: { perfil: cambiarNombreUsuario(db, usuario.id, textoDe(datos, 'nombre')) } };
   });
 

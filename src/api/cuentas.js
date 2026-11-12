@@ -4,7 +4,7 @@
 import { ajustesAcademia } from '../academia/progreso.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { Limitador } from '../nucleo/limites.js';
+import { Freno, Limitador } from '../nucleo/limites.js';
 import { createHash } from 'node:crypto';
 import { vieneDeTailscale } from '../nucleo/red.js';
 import { hashClave, verificarClave, problemaDeClave, claveTemporal, clavePendiente, esPendiente } from '../cuentas/claves.js';
@@ -15,30 +15,27 @@ import {
   avisarClaveReiniciada, avisarCuenta, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
-import { anotarCambioAdmin, historialAdmin } from '../cuentas/confirmar.js';
+import { anotarCambioAdmin, anotarFalloAdmin, historialAdmin } from '../cuentas/confirmar.js';
 import { leerPerfil, avataresDe } from '../cuentas/perfil.js';
+import { codigoCorrecto, estadoCodigo, ponerCodigo, problemaDeCodigo, quitarCodigo } from '../cuentas/respaldo.js';
 import { estadoTerminos, nombresLegales, ponerNombreLegal } from '../cuentas/terminos.js';
 import { anotarConfianza, cuentaConfirmada, seguirConfianza, estadoConfianza, ponerPermisoIa } from '../cuentas/confianza.js';
 
 const IDIOMAS = new Set(['es', 'en']);
 
-const QUINCE_MINUTOS = 15 * 60 * 1000;
-
-export function crearLimitesCuentas() {
+// 0.12.6 (pedido del dueño: «puede intentarlo aunque falle las veces que quiera»): entrar, crear la contraseña y cambiarla
+// NUNCA bloquean ni dicen «te quedan N intentos». Una contraseña mala recibe siempre «contraseña incorrecta», solo que
+// el servidor tarda un poco más cada vez (Freno, src/nucleo/limites.js: 5 sin espera, después 1, 2, 4… hasta 8 s, por
+// cuenta y lugar; al acertar se olvida). dormir/reloj: solo para las pruebas.
+export function crearLimitesCuentas({ dormir, reloj } = {}) {
   return {
-    entrarPorCliente: new Limitador({ maximo: 10, ventanaMs: QUINCE_MINUTOS }),
-    // 5 contraseñas malas para una cuenta desde un mismo lugar: ese lugar espera 15 minutos.
-    fallosPorCuentaYLugar: new Limitador({ maximo: 5, ventanaMs: QUINCE_MINUTOS }),
-    // Contando todos los lugares de internet juntos (ataques repartidos). Quien entra por Tailscale no
-    // cuenta aquí ni queda frenado por esto: así el dueño siempre puede entrar desde sus equipos.
-    fallosPorCuentaDesdeInternet: new Limitador({ maximo: 20, ventanaMs: QUINCE_MINUTOS }),
-    cambioDeClave: new Limitador({ maximo: 5, ventanaMs: QUINCE_MINUTOS }),
+    freno: new Freno({ dormir, reloj }),
     primerAdmin: new Limitador({ maximo: 5, ventanaMs: 60 * 60 * 1000 }),
   };
 }
 
 // La cuenta se identifica por su nombre y una huella de su contraseña guardada. Si el administrador o la
-// herramienta de rescate ponen una contraseña nueva, la huella cambia y cualquier bloqueo anterior deja de valer.
+// herramienta de rescate ponen una contraseña nueva, la huella cambia y la espera anterior deja de valer.
 function llaveDeCuenta(nombre, usuario) {
   const huella = usuario ? createHash('sha256').update(usuario.clave_hash).digest('hex').slice(0, 16) : '-';
   return `${nombre}|${huella}`;
@@ -107,7 +104,7 @@ function anotarOrigen(db, req, { usuarioId, accion, hechoPor, teniaPermiso = fal
   anotarConfianza(db, { usuarioId, accion, desdeTailnet, confiable: desdeTailnet || teniaPermiso === true, hechoPor });
 }
 
-export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null } = {}) {
+export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null, alertaAdmin = null } = {}) {
   rutas.agregar('GET', '/api/setup', ({ db, req }) => {
     if (arrancando(supervisor)) {
       return { codigo: 503, datos: { app: 'oportia', estado: 'arrancando', version, error: 'arrancando' }, cabeceras: { 'Retry-After': '1' } };
@@ -146,36 +143,39 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   }, { publica: true });
 
   rutas.agregar('POST', '/api/entrar', async ({ db, req, cliente, https }) => {
-    if (!limites.entrarPorCliente.permitir(cliente)) throw new ErrorHttp(429, 'demasiados_intentos');
     const datos = await leerJson(req);
     const nombre = textoDe(datos, 'nombre').trim().toLowerCase().slice(0, 40);
     const clave = textoDe(datos, 'clave');
     const usuario = nombre ? buscarPorNombre(db, nombre) : null;
     // 0.9.2: una cuenta creada sin contraseña: la persona crea la suya (POST /api/crear-clave). Bloqueada: lo dice.
     if (usuario && esPendiente(usuario.clave_hash)) throw new ErrorHttp(usuario.activo === 1 ? 409 : 403, usuario.activo === 1 ? 'crear_clave' : 'cuenta_bloqueada');
-    const cuenta = llaveDeCuenta(nombre, usuario);
-    const lugar = `${cuenta}|${cliente}`;
-    const desdeInternet = !vieneDeTailscale(req).si;
-    if (limites.fallosPorCuentaYLugar.bloqueado(lugar) || (desdeInternet && limites.fallosPorCuentaDesdeInternet.bloqueado(cuenta))) {
-      throw new ErrorHttp(429, 'cuenta_bloqueada_un_rato');
-    }
-    // El intento se aparta ANTES de calcular la contraseña: así muchos pedidos a la vez no se saltan el límite.
-    limites.fallosPorCuentaYLugar.permitir(lugar);
-    if (desdeInternet) limites.fallosPorCuentaDesdeInternet.permitir(cuenta);
-    const correcta = await verificarClave(clave, usuario?.clave_hash);
+    // El turno se aparta ANTES de calcular la contraseña (muchos pedidos a la vez se escalonan; ninguno espera más de 8 s). También
+    // para un usuario que no existe: la espera no dice qué cuentas hay.
+    const lugar = `${llaveDeCuenta(nombre, usuario)}|${cliente}`;
+    await limites.freno.esperarTurno(lugar);
+    // 0.12.6: la casilla de la contraseña acepta también el código de respaldo de un administrador (src/cuentas/respaldo.js).
+    const porClave = await verificarClave(clave, usuario?.clave_hash);
+    const conCodigo = !porClave && await codigoCorrecto(db, usuario, clave);
+    const correcta = porClave || conCodigo;
     // 0.9.2: con la contraseña correcta, una cuenta bloqueada (desactivada) lo dice: «habla con el administrador».
     if (usuario && correcta && usuario.activo !== 1) {
-      limites.fallosPorCuentaYLugar.olvidar(lugar);
-      if (desdeInternet) limites.fallosPorCuentaDesdeInternet.descontar(cuenta);
+      limites.freno.olvidar(lugar);
       auditar(db, { usuarioId: usuario.id, accion: 'entrada_bloqueada', detalle: nombre });
       throw new ErrorHttp(403, 'cuenta_bloqueada');
     }
     if (!usuario || !correcta || usuario.activo !== 1) {
       auditar(db, { usuarioId: usuario?.id ?? null, accion: 'entrada_fallida', detalle: nombre });
+      anotarFalloAdmin(db, alertaAdmin, usuario);
       throw new ErrorHttp(401, 'credenciales');
     }
-    limites.fallosPorCuentaYLugar.olvidar(lugar);
-    if (desdeInternet) limites.fallosPorCuentaDesdeInternet.descontar(cuenta);
+    limites.freno.olvidar(lugar);
+    if (conCodigo) {
+      // Cada uso del código: un aviso para el administrador (pantalla y Telegram), la auditoría y, en su pantalla, la
+      // sugerencia de poner una contraseña nueva.
+      auditar(db, { usuarioId: usuario.id, accion: 'entrada_codigo_respaldo' });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'codigo_respaldo_usado' });
+      avisarCuenta(db, usuario.id, 'codigo_respaldo_usado');
+    }
     const sesion = crearSesion(db, usuario.id, req.headers['user-agent']);
     registrarAcceso(db, usuario.id);
     auditar(db, { usuarioId: usuario.id, accion: 'entrada' });
@@ -191,12 +191,17 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
 
   // 0.9.2: la primera vez de una cuenta creada sin contraseña: la persona pone la suya (4 o más) y entra.
   // La primera que llega con ese usuario se la queda: por eso el administrador avisa a la persona enseguida.
+  // 0.12.6: sin tope de intentos; un nombre que no sirve (no existe o ya tiene contraseña) espera como una contraseña mala
+  // (por lugar), así nadie recorre nombres a toda velocidad.
   rutas.agregar('POST', '/api/crear-clave', async ({ db, req, cliente, https }) => {
-    if (!limites.entrarPorCliente.permitir(cliente)) throw new ErrorHttp(429, 'demasiados_intentos');
     const datos = await leerJson(req);
     const nombre = textoDe(datos, 'nombre').trim().toLowerCase().slice(0, 40);
     const usuario = nombre ? buscarPorNombre(db, nombre) : null;
-    if (!usuario || !esPendiente(usuario.clave_hash) || usuario.rol === 'admin') throw new ErrorHttp(409, 'ya_tiene_clave');
+    const lugar = `crear|${cliente}`;
+    if (!usuario || !esPendiente(usuario.clave_hash) || usuario.rol === 'admin') {
+      await limites.freno.esperarTurno(lugar);
+      throw new ErrorHttp(409, 'ya_tiene_clave');
+    }
     if (usuario.activo !== 1) throw new ErrorHttp(403, 'cuenta_bloqueada');
     const problema = problemaDeClave(datos.nueva, [usuario.nombre, usuario.nombre_visible]);
     if (problema) throw new ErrorHttp(400, problema);
@@ -237,17 +242,19 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   rutas.agregar('GET', '/api/yo/reinicios', ({ db, usuario }) => ({ codigo: 200, datos: { reinicios: reiniciosDeClave(db, usuario.id) } }),
     { permitirConClaveTemporal: true });
 
-  rutas.agregar('POST', '/api/yo/clave', async ({ db, req, usuario, token, https }) => {
+  rutas.agregar('POST', '/api/yo/clave', async ({ db, req, usuario, token, cliente }) => {
     const datos = await leerJson(req);
     const fila = buscarPorId(db, usuario.id);
-    // Con una sesión abierta tampoco se puede adivinar la contraseña: 5 fallos cierran esta sesión.
-    const llave = llaveDeCuenta(fila.nombre, fila);
-    if (!limites.cambioDeClave.permitir(llave)) {
-      cerrarSesion(db, token, 'bloqueo');
-      return { codigo: 429, datos: { error: 'demasiados_intentos_clave' }, cabeceras: { 'Set-Cookie': textoGalleta('', { segura: https, borrar: true }) } };
+    // Con una sesión abierta tampoco se adivina la contraseña a toda velocidad: la misma espera que al entrar (0.12.6:
+    // nunca se cierra la sesión por fallar).
+    const llave = `clave|${llaveDeCuenta(fila.nombre, fila)}|${cliente}`;
+    await limites.freno.esperarTurno(llave);
+    // 0.12.6: el código de respaldo de un administrador también vale como contraseña actual (para poner una nueva).
+    if (!(await verificarClave(textoDe(datos, 'actual'), fila.clave_hash)) && !(await codigoCorrecto(db, fila, textoDe(datos, 'actual')))) {
+      anotarFalloAdmin(db, alertaAdmin, fila);
+      throw new ErrorHttp(400, 'clave_actual_incorrecta');
     }
-    if (!(await verificarClave(textoDe(datos, 'actual'), fila.clave_hash))) throw new ErrorHttp(400, 'clave_actual_incorrecta');
-    limites.cambioDeClave.olvidar(llave);
+    limites.freno.olvidar(llave);
     const problema = problemaDeClave(datos.nueva, [fila.nombre, fila.nombre_visible]);
     if (problema) throw new ErrorHttp(400, problema);
     if (datos.nueva === datos.actual) throw new ErrorHttp(400, 'clave_igual');
@@ -262,6 +269,27 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     });
     return { codigo: 200, datos: { ok: true } };
   }, { permitirConClaveTemporal: true });
+
+  // 0.12.6: el código de acceso de respaldo del administrador (src/cuentas/respaldo.js). Ponerlo, cambiarlo o quitarlo pide
+  // su contraseña otra vez (confirmar()); nunca se devuelve ni se anota el código.
+  rutas.agregar('GET', '/api/yo/codigo-respaldo', ({ db, usuario }) => ({ codigo: 200, datos: estadoCodigo(db, usuario.id) }), { admin: true });
+  rutas.agregar('POST', '/api/yo/codigo-respaldo', async ({ db, req, usuario, confirmar }) => {
+    const datos = await leerJson(req);
+    const problema = problemaDeCodigo(datos.codigo);
+    if (problema) throw new ErrorHttp(400, problema);
+    // Primero la contraseña otra vez: así esto nunca sirve para adivinar la contraseña sin esperas.
+    const { como } = await confirmar();
+    if (await verificarClave(datos.codigo, buscarPorId(db, usuario.id).clave_hash)) throw new ErrorHttp(400, 'codigo_igual_clave');
+    const habia = estadoCodigo(db, usuario.id).puesto;
+    await ponerCodigo(db, usuario.id, datos.codigo);
+    anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'codigo_respaldo', detalle: { que: habia ? 'cambiado' : 'puesto' }, como });
+    return { codigo: 200, datos: estadoCodigo(db, usuario.id) };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/yo/codigo-respaldo/quitar', async ({ db, usuario, confirmar }) => {
+    const { como } = await confirmar();
+    if (quitarCodigo(db, usuario.id)) anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'codigo_respaldo', detalle: { que: 'quitado' }, como });
+    return { codigo: 200, datos: estadoCodigo(db, usuario.id) };
+  }, { admin: true });
 
   rutas.agregar('POST', '/api/yo/idioma', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
