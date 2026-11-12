@@ -21,7 +21,7 @@ import { PROPOSITOS, MOTIVOS, ESTADOS_LLAMADA, definicionProposito } from './pro
 import { precioDe, reservaMicro, costoMicro, cotaMicro, instantaneaPrecio } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
 import { ID_PETICION, TOKENS_MAX } from './proveedores/comun.js';
-import { politicaDe, finDePausa, FALLAS_SEGUIDAS } from './politica.js';
+import { politicaDe, finDePausa, FALLAS_SEGUIDAS, FALLAS_SEGUIDAS_INSTRUCTOR, PASAJEROS } from './politica.js';
 import { leerConfigIa } from './config.js';
 import { gastoMicro, revisarUmbrales, topeLleno, reservaMinimaMicro } from './gasto.js';
 import { topeEspacioMicro, iaDeVersionActiva, esEspacioAdmin } from './topes.js';
@@ -240,14 +240,31 @@ function avisoProveedor(db, { proveedor, motivo, pausa, hasta, nivel, ahora }) {
 // trabajos automáticos piden solos). Un uso bueno entre ellas vuelve a empezar la cuenta.
 // Ronda 3: también una respuesta buena que no se pudo guardar ('no_se_pudo_guardar') y una que traía la clave.
 export const RESPUESTAS_INSERVIBLES = Object.freeze(['respuesta_no_valida', 'respuesta_incompleta', 'rechazada', 'no_se_pudo_guardar', 'eco_de_clave']);
-const esFalla = ({ estado, resultado }) => ((estado === 'fallida' || estado === 'desconocida') && resultado !== 'interrumpida')
-  || RESPUESTAS_INSERVIBLES.includes(resultado);
+// 0.12.4: un error pasajero del proveedor o de la red (429, 5xx, 529, sin red, tiempo agotado) NO es una falla para esta
+// cuenta: solo da una pausa corta que crece (src/ia/politica.js). Los demás errores claros (fallida) siguen contando.
+const esPasajero = resultado => PASAJEROS.includes(resultado);
+const esFalla = ({ estado, resultado }) => (((estado === 'fallida' || estado === 'desconocida') && resultado !== 'interrumpida' && !esPasajero(resultado))
+  || RESPUESTAS_INSERVIBLES.includes(resultado));
 
-// ¿Es la tercera falla seguida de esa clave en una hora (sin un uso bueno entre ellas)?
-function tresFallasSeguidas(db, secretoId, ahora) {
-  const ultimas = db.prepare(`SELECT estado, resultado FROM ia_llamadas WHERE secreto_id = ? AND creada_en >= ? AND estado <> 'reservada'
-    ORDER BY id DESC LIMIT ?`).all(secretoId, iso(ahora - FALLAS_SEGUIDAS.ventanaMs), FALLAS_SEGUIDAS.veces);
-  return ultimas.length === FALLAS_SEGUIDAS.veces && ultimas.every(esFalla);
+// ¿Es la tercera falla seguida de esa clave en una hora (sin un uso bueno entre ellas)? 0.12.4: los errores pasajeros
+// se saltan (ni cuentan ni cortan la cuenta) y se mira el MISMO propósito; el instructor de la academia pide 6.
+// El instructor: una respuesta cortada (max_tokens) tampoco cuenta: su salida ya subió a 4 096 tokens para que no pase,
+// y una cortada no es un modelo que «responde mal» (se pagó lo usado y sigue lo básico).
+function tresFallasSeguidas(db, secretoId, ahora, proposito) {
+  const instructor = typeof proposito === 'string' && proposito.startsWith('instructor_');
+  const veces = instructor ? FALLAS_SEGUIDAS_INSTRUCTOR : FALLAS_SEGUIDAS.veces;
+  const salta = f => esPasajero(f.resultado) || f.resultado === 'interrumpida' || (instructor && f.resultado === 'respuesta_incompleta');
+  const ultimas = db.prepare(`SELECT estado, resultado FROM ia_llamadas WHERE secreto_id = ? AND proposito IS ? AND creada_en >= ? AND estado <> 'reservada'
+    ORDER BY id DESC LIMIT ?`).all(secretoId, proposito ?? null, iso(ahora - FALLAS_SEGUIDAS.ventanaMs), veces * 4).filter(f => !salta(f)).slice(0, veces);
+  return ultimas.length === veces && ultimas.every(esFalla);
+}
+// Cuántos errores pasajeros seguidos lleva esa clave en la última hora (para que la pausa corta crezca: 2, 5, 15 min).
+function pasajerosSeguidos(db, secretoId, ahora) {
+  const ultimas = db.prepare(`SELECT resultado FROM ia_llamadas WHERE secreto_id = ? AND creada_en >= ? AND estado <> 'reservada'
+    ORDER BY id DESC LIMIT 6`).all(secretoId, iso(ahora - FALLAS_SEGUIDAS.ventanaMs));
+  let n = 0;
+  for (const f of ultimas) { if (!esPasajero(f.resultado)) break; n += 1; }
+  return n;
 }
 
 // Lo mínimo que puede gastar de entrada un pedido de OPORTIA: 1 token por cada 32 bytes enviados (en la práctica un
@@ -328,7 +345,7 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
         pausarSecreto(db, { id: secretoId, motivo, hastaMs: null, ahora });
         if (pol.aviso) avisoProveedor(db, { proveedor, motivo, pausa: 'admin', hasta: null, nivel: pol.aviso, ahora });
       } else if (pol.pausa === 'corta') {
-        const hasta = finDePausa(pol, { reintentarMs: resultado?.reintentarMs ?? null, ahora });
+        const hasta = finDePausa(pol, { reintentarMs: resultado?.reintentarMs ?? null, ahora, seguidos: pasajerosSeguidos(db, secretoId, ahora) });
         pausarSecreto(db, { id: secretoId, motivo, hastaMs: hasta, ahora });
         if (pol.aviso) avisoProveedor(db, { proveedor, motivo, pausa: 'corta', hasta, nivel: pol.aviso, ahora });
       }
@@ -336,7 +353,7 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
         quitarPausaCorta(db, { id: secretoId });
         resolverAviso(db, `ia_proveedor:${proveedor}`, ahora);
       }
-      if (esFalla({ estado, resultado: motivo }) && tresFallasSeguidas(db, secretoId, ahora)) {
+      if (esFalla({ estado, resultado: motivo }) && tresFallasSeguidas(db, secretoId, ahora, f.proposito)) {
         if (pausarSecreto(db, { id: secretoId, motivo: 'fallas_seguidas', hastaMs: null, ahora })) {
           avisoProveedor(db, { proveedor, motivo: 'fallas_seguidas', pausa: 'admin', hasta: null, nivel: 'atencion', ahora });
         }

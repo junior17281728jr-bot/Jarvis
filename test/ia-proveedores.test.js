@@ -441,30 +441,43 @@ test('un gasto desconocido (caché de 1 hora, herramientas del servidor) o mayor
   }
 });
 
-test('tres fallas seguidas de la misma clave en una hora la pausan hasta que el dueño la revise; un uso bueno cierra el aviso', async () => {
+test('0.12.4: los errores pasajeros del proveedor (500/529/503) solo dan pausas cortas que crecen (2, 5, 15 min), nunca la del dueño; tres respuestas inservibles seguidas sí', async () => {
   const falso = await crearProveedorFalso();
   const b = preparar({ iaBases: { anthropic: falso.base } });
   try {
-    // 500 → pausa corta de 2 minutos; pasada la pausa vuelve a fallar…
+    // 500 → pausa corta de 2 minutos; pasada la pausa un uso bueno cierra el aviso.
     falso.siguiente({ tipo: 'status', status: 500 });
     await usarUnaVez(b, { ahora: T0 });
     falso.siguiente('ok');
     await usarUnaVez(b, { ahora: T0 + 2 * MIN });
     assert.equal(b.db.prepare("SELECT COUNT(*) AS n FROM avisos WHERE clave = 'ia_proveedor:anthropic' AND resuelto_en IS NULL").get().n, 0, 'un uso bueno cierra el aviso');
-    falso.siguiente({ tipo: 'status', status: 500 }, { tipo: 'status', status: 529 }, { tipo: 'status', status: 503 });
+    falso.siguiente({ tipo: 'status', status: 500 }, { tipo: 'status', status: 529 }, { tipo: 'status', status: 503 }, { tipo: 'status', status: 500 });
+    const hasta = () => b.db.prepare('SELECT pausa_motivo, pausa_hasta FROM secretos').get();
     await usarUnaVez(b, { ahora: T0 + 3 * MIN });
+    assert.equal(Date.parse(hasta().pausa_hasta), T0 + 5 * MIN, 'el primero: 2 minutos');
     await usarUnaVez(b, { ahora: T0 + 6 * MIN });
-    let s = b.db.prepare('SELECT pausa_motivo, pausa_hasta FROM secretos').get();
-    assert.ok(s.pausa_hasta, 'dos fallas: todavía pausa corta');
-    await usarUnaVez(b, { ahora: T0 + 9 * MIN });
-    s = b.db.prepare('SELECT pausa_motivo, pausa_hasta FROM secretos').get();
-    assert.deepEqual([s.pausa_motivo, s.pausa_hasta], ['fallas_seguidas', null], 'la tercera: pausa del dueño');
-    const aviso = b.db.prepare("SELECT nivel, detalle FROM avisos WHERE clave = 'ia_proveedor:anthropic' AND resuelto_en IS NULL").get();
-    assert.equal(aviso.nivel, 'atencion');
-    assert.equal(JSON.parse(aviso.detalle).motivo, 'fallas_seguidas');
+    assert.equal(Date.parse(hasta().pausa_hasta), T0 + 11 * MIN, 'el segundo seguido: 5 minutos');
+    await usarUnaVez(b, { ahora: T0 + 12 * MIN });
+    let s = hasta();
+    assert.ok(s.pausa_hasta, 'el tercero: todavía pausa corta, nunca la del dueño');
+    assert.equal(Date.parse(s.pausa_hasta), T0 + 27 * MIN, 'el tercero seguido: 15 minutos');
+    await usarUnaVez(b, { ahora: T0 + 28 * MIN });
+    s = hasta();
+    assert.equal(Date.parse(s.pausa_hasta), T0 + 43 * MIN, 'nunca más de 15 minutos');
+    assert.notEqual(s.pausa_motivo, 'fallas_seguidas');
     const antes = falso.peticiones.length;
-    assert.equal((await usarUnaVez(b, { ahora: T0 + 3 * 3_600_000 })).reserva.motivo, 'proveedor_en_pausa', 'horas después sigue en pausa');
+    assert.equal((await usarUnaVez(b, { ahora: T0 + 30 * MIN })).reserva.motivo, 'proveedor_en_pausa', 'durante la pausa no se llama (nunca reintenta solo)');
     assert.equal(falso.peticiones.length, antes);
+    // Pasada la pausa vuelve a llamar sola en el próximo uso; tres respuestas que se pagan y no sirven (mismo propósito): pausa del dueño.
+    falso.siguiente('json_roto', 'json_roto', 'json_roto');
+    await usarUnaVez(b, { ahora: T0 + 44 * MIN });
+    await usarUnaVez(b, { ahora: T0 + 45 * MIN });
+    assert.notEqual(hasta().pausa_motivo, 'fallas_seguidas', 'dos todavía no');
+    await usarUnaVez(b, { ahora: T0 + 46 * MIN });
+    s = hasta();
+    assert.deepEqual([s.pausa_motivo, s.pausa_hasta], ['fallas_seguidas', null], 'la tercera inservible: pausa del dueño');
+    const aviso = b.db.prepare("SELECT nivel, detalle FROM avisos WHERE clave = 'ia_proveedor:anthropic' AND resuelto_en IS NULL").get();
+    assert.equal(JSON.parse(aviso.detalle).motivo, 'fallas_seguidas');
   } finally {
     b.db.close();
     await falso.cerrar();

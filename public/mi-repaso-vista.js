@@ -74,7 +74,9 @@ export function pantallaMiniClase(d, h) {
     linea(t('mini.sencilla'), q.sencilla),
     linea(t('mini.original'), q.explicacion),
     // Solo con instructor IA de verdad (minutos, permiso y clave): si no, no hay botón.
-    d.ia && q.intento ? instructorUi().explicar(q.intento, { id: q.id }, { etiqueta: t('mini.ia') }) : null) : null;
+    d.ia && q.intento ? instructorUi().explicar(q.intento, { id: q.id }, { etiqueta: t('mini.ia') }) : null,
+    // 0.12.4: la mini-clase entera, de otra forma, con IA (guardada para todos los que se equivocan igual).
+    d.ia ? instructorUi().miniClaseIa(d.clave) : null) : null;
   mostrar(marco('inicio',
     el('a', { class: 'boton-texto con-icono', href: '#mi-repaso' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('mini.volver') })),
     el('section', { class: 'mi-repaso mini-clase' },

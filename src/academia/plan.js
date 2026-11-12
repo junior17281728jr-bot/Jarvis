@@ -53,10 +53,15 @@ function pasosDelCamino(db, usuarioId, paquete) {
   return { total: Math.round(total), hechos, actual };
 }
 
+// 0.12.4: UNA sola cuenta para el último día (antes el alumno veía «12 dic» al elegir y el administrador «11 dic»): hoy
+// cuenta como el día 1, así un plan de 30 días que empieza el 12 nov termina el 11 dic, y lo que falta al ritmo de hoy
+// (n días de trabajo) termina el día n contando hoy.
+export const ultimoDia = (desde, dias) => sumarDias(desde, Math.max(1, dias) - 1);
+
 export function planDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const p = leerPlan(db, usuarioId);
   const hoy = diaDe(ahoraMs);
-  const opciones = Object.entries(PLANES_ESTUDIO).map(([id, dias]) => ({ id, dias, recomendado: id === PLAN_RECOMENDADO, fin: sumarDias(hoy, dias) }));
+  const opciones = Object.entries(PLANES_ESTUDIO).map(([id, dias]) => ({ id, dias, recomendado: id === PLAN_RECOMENDADO, fin: ultimoDia(hoy, dias) }));
   if (!p) return { elegido: null, opciones };
   const dias = PLANES_ESTUDIO[p.plan];
   const { total, hechos } = pasosDelCamino(db, usuarioId, paquete);
@@ -66,8 +71,8 @@ export function planDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const ritmoReal = hechos / pasados;
   const ritmo = Math.max(0.05, pasados < 3 ? ritmoPlan : 0.4 * ritmoPlan + 0.6 * ritmoReal);
   const faltan = Math.max(0, total - hechos);
-  const finPlan = sumarDias(p.desde, dias - 1);
-  const fin = faltan ? sumarDias(hoy, Math.ceil(faltan / ritmo)) : hoy;
+  const finPlan = ultimoDia(p.desde, dias);
+  const fin = faltan ? ultimoDia(hoy, Math.ceil(faltan / ritmo - 1e-9)) : hoy;
   const diferencia = diasEntre(finPlan, fin);
   return {
     elegido: p.plan, dias, desde: p.desde, finPlan, fin, total, hechos, faltan,

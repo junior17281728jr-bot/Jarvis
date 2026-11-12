@@ -7,7 +7,7 @@
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import {
   docActual, docVersion, versionDoc, DOCUMENTOS, estadoTerminos, aceptarTerminos, publicarDoc, ponerNombreLegal, firmasDe, DECLARACION, REEMBOLSO,
-  contratos, contrato, pngDeFirma, ponerConsentimientoIa, ponerVerificacion, ponerTutorPagos, ponerNacimiento, nombreLegalDe,
+  contratos, contrato, pngDeFirma, ponerConsentimientoIa, ponerVerificacion, ponerTutorPagos, ponerNacimiento, nombreLegalDe, queCambio,
 } from '../cuentas/terminos.js';
 import { ponerNombreVisible } from '../cuentas/perfil.js';
 
@@ -19,7 +19,13 @@ export function registrarRutasTerminos(rutas, { config = null, reloj = Date.now 
   const textos = db => ({ terminos: docActual(db, 'terminos'), privacidad: docActual(db, 'privacidad'), declaracion: DECLARACION, reembolso: REEMBOLSO });
 
   rutas.agregar('GET', '/api/terminos', ({ db }) => ({ codigo: 200, datos: textos(db) }), { publica: true });
-  rutas.agregar('GET', '/api/yo/terminos', ({ db, usuario }) => ({ codigo: 200, datos: { ...textos(db), estado: estadoTerminos(db, usuario.id) } }));
+  // 0.12.4: «novedades»: qué cambió desde la última versión que firmó (si firmó una anterior).
+  rutas.agregar('GET', '/api/yo/terminos', ({ db, usuario }) => {
+    const estado = estadoTerminos(db, usuario.id);
+    const u = estado.pendiente ? estado.ultima : null;
+    const novedades = u ? { terminos: queCambio(db, 'terminos', u.version), privacidad: queCambio(db, 'privacidad', u.versionPrivacidad ?? 1) } : null;
+    return { codigo: 200, datos: { ...textos(db), estado, novedades: novedades && (novedades.terminos || novedades.privacidad) ? novedades : null } };
+  });
 
   // Firmar: se guarda con la fecha y hora del servidor, las versiones y huellas de los textos exactos, de dónde (IP y
   // navegador) y la huella de cada firma dibujada.
@@ -71,7 +77,7 @@ export function registrarRutasTerminos(rutas, { config = null, reloj = Date.now 
     const datos = await leerJson(req, 256 * 1024);
     const doc = datos?.doc ?? 'terminos';
     if (!DOCUMENTOS.includes(doc)) throw new ErrorHttp(400, 'terminos_no_validos');
-    return { codigo: 200, datos: { [doc]: publicarDoc(db, doc, datos?.secciones, { hechoPor: usuario.id }), terminos: docActual(db, 'terminos') } };
+    return { codigo: 200, datos: { [doc]: publicarDoc(db, doc, datos?.secciones, { hechoPor: usuario.id, cambios: datos?.cambios ?? null }), terminos: docActual(db, 'terminos') } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios/:id/nombre-legal', async ({ db, req, usuario, parametros }) => {

@@ -1,0 +1,78 @@
+// 0.12.4: las «visitas» de cada cuenta (para la ficha del alumno: «Última entrada», «Última salida», «En línea»). Casi
+// nadie toca «Salir» y «entrada» solo contaba las contraseñas, así que las dos cosas engañaban. Una visita:
+//  - EMPIEZA al entrar con su contraseña, o cuando la app se usa después de 15 minutos (o más) sin actividad;
+//  - TERMINA en su última actividad antes de 15 minutos sin nada («sin actividad 15 min»), al cerrar o esconder la app
+//    (un aviso corto de la pantalla, «cerró la app») o al tocar «Salir». Si vuelve antes de 15 minutos, sigue la MISMA
+//    visita (cerrar la app un momento no es salir).
+// Sin cambio de base: un ajuste por cuenta (`cuenta.visitas.<id>`), que se escribe como mucho una vez por minuto (y al
+// empezar o terminar una visita). Nunca se borra nada de las sesiones ni de la auditoría.
+export const HUECO_MS = 15 * 60 * 1000;
+export const EN_LINEA_MS = 3 * 60 * 1000;
+const CADA_MS = 60 * 1000;
+export const COMO = Object.freeze(['cerro', 'inactiva', 'salir']);
+
+const clave = id => `cuenta.visitas.${Number(id)}`;
+const iso = ms => new Date(ms).toISOString();
+
+export function leerVisitas(db, usuarioId) {
+  try {
+    const v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave(usuarioId))?.valor ?? 'null');
+    if (!v || typeof v !== 'object' || !v.actual || typeof v.actual.inicio !== 'string') return null;
+    return v;
+  } catch { return null; }
+}
+function guardar(db, usuarioId, v, ahoraMs) {
+  db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(clave(usuarioId), JSON.stringify(v), iso(ahoraMs));
+}
+// Cómo terminó una visita que ya pasó: lo que quedó anotado o, si no, «sin actividad».
+const cerrada = a => ({ inicio: a.inicio, fin: a.fin ?? a.ultimo, como: COMO.includes(a.como) ? a.como : 'inactiva' });
+
+// Cada pedido de una cuenta que entró (src/app.js). entrada: true = acaba de entrar con su contraseña.
+export function anotarActividad(db, usuarioId, ahoraMs = Date.now(), { entrada = false } = {}) {
+  const v = leerVisitas(db, usuarioId);
+  const a = v?.actual;
+  const ultimo = a ? Date.parse(a.ultimo ?? a.inicio) : NaN;
+  if (!a || entrada || !(ahoraMs - ultimo < HUECO_MS)) {
+    guardar(db, usuarioId, { actual: { inicio: iso(ahoraMs), ultimo: iso(ahoraMs) }, anterior: a ? cerrada(a) : null, visitas: (v?.visitas ?? 0) + 1 }, ahoraMs);
+    return 'nueva';
+  }
+  // Volvió antes de 15 minutos (aunque hubiera cerrado la app): la misma visita sigue.
+  if (a.fin || ahoraMs - ultimo >= CADA_MS) {
+    guardar(db, usuarioId, { ...v, actual: { inicio: a.inicio, ultimo: iso(ahoraMs) } }, ahoraMs);
+    return 'sigue';
+  }
+  return null;
+}
+// Cerró o escondió la app (pagehide / visibilitychange) o tocó «Salir». Una vez cada 30 s como mucho.
+export function anotarFin(db, usuarioId, como, ahoraMs = Date.now()) {
+  if (!COMO.includes(como)) return false;
+  const v = leerVisitas(db, usuarioId);
+  if (!v) return false;
+  const a = v.actual;
+  if (a.fin && como !== 'salir' && ahoraMs - Date.parse(a.fin) < 30_000) return false;
+  guardar(db, usuarioId, { ...v, actual: { ...a, ultimo: iso(ahoraMs), fin: iso(ahoraMs), como } }, ahoraMs);
+  return true;
+}
+
+// Lo que se ve en la ficha: { entrada, salida, salidaComo, ultima, enLinea, visitas } (null si nunca se anotó una visita).
+export function resumenVisitas(db, usuarioId, ahoraMs = Date.now()) {
+  const v = leerVisitas(db, usuarioId);
+  if (!v) return null;
+  const a = v.actual;
+  const ultima = a.ultimo ?? a.inicio;
+  const enLinea = !a.fin && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS;
+  // En línea: la salida es la de la visita anterior. Si no, la de esta (cerró la app, tocó Salir o dejó de usarla).
+  const salida = enLinea ? v.anterior : cerrada(a);
+  return { entrada: a.inicio, salida: salida?.fin ?? null, salidaComo: salida?.como ?? null, ultima, enLinea, visitas: Number(v.visitas) || 1 };
+}
+
+// POST /api/yo/visita/fin { como: 'cerro' }: la pantalla avisa que se cerró o se escondió (pagehide / visibilitychange).
+// Barato: una escritura, como mucho una vez cada 30 s por cuenta (anotarFin) y 30 avisos cada 10 minutos.
+export function registrarRutasVisitas(rutas, { Limitador }) {
+  const tope = new Limitador({ maximo: 30, ventanaMs: 10 * 60 * 1000 });
+  rutas.agregar('POST', '/api/yo/visita/fin', ({ db, usuario }) => {
+    if (tope.permitir(String(usuario.id))) anotarFin(db, usuario.id, 'cerro');
+    return { codigo: 200, datos: { ok: true } };
+  }, { permitirConClaveTemporal: true, noEsActividad: true });
+}

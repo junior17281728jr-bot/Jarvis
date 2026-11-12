@@ -1,0 +1,236 @@
+{
+ "version": 1,
+ "nota": "Casos SINTÉTICOS (escritos para esta prueba, ninguno de un libro ni del Test Guide). Para correr scripts/regresion-ia.mjs al cambiar de modelo o de prompt.",
+ "casos": [
+  {
+   "id": "r01",
+   "enunciado": "¿Qué le pasa al aire cuando un avión sube a gran altura?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Tiene más presión."
+    },
+    {
+     "letra": "B",
+     "texto": "Tiene menos presión."
+    },
+    {
+     "letra": "C",
+     "texto": "No cambia."
+    }
+   ],
+   "correcta": "B",
+   "explicacion": "Al subir, la presión del aire baja.",
+   "sencilla": "Arriba hay menos aire empujando.",
+   "elegida": "A",
+   "idea": "Creer que arriba el aire está más apretado."
+  },
+  {
+   "id": "r02",
+   "enunciado": "¿Cuál es una señal temprana de falta de oxígeno en vuelo?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Euforia y falsa confianza."
+    },
+    {
+     "letra": "B",
+     "texto": "Hambre repentina."
+    },
+    {
+     "letra": "C",
+     "texto": "Manos más calientes."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "La hipoxia puede dar sensación de bienestar.",
+   "sencilla": "Te sientes bien justo cuando no lo estás.",
+   "elegida": "B",
+   "idea": "Pensar que la falta de oxígeno da hambre."
+  },
+  {
+   "id": "r03",
+   "enunciado": "De noche, ¿cómo conviene mirar un objeto lejano y tenue?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Directamente al centro."
+    },
+    {
+     "letra": "B",
+     "texto": "Un poco de lado."
+    },
+    {
+     "letra": "C",
+     "texto": "Con un ojo cerrado."
+    }
+   ],
+   "correcta": "B",
+   "explicacion": "Los bastones de la retina ven mejor con poca luz y están a los lados.",
+   "sencilla": "Mira un poco al lado para verlo mejor.",
+   "elegida": "A",
+   "idea": "Creer que mirar fijo siempre es mejor."
+  },
+  {
+   "id": "r04",
+   "enunciado": "Un piloto cansado y apurado por llegar, ¿qué actitud muestra?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Presión por llegar (get-there-itis)."
+    },
+    {
+     "letra": "B",
+     "texto": "Prudencia."
+    },
+    {
+     "letra": "C",
+     "texto": "Exceso de humildad."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "La prisa por llegar es una actitud peligrosa.",
+   "sencilla": "Querer llegar a toda costa nubla el juicio.",
+   "elegida": "C",
+   "idea": "Confundir el cansancio con humildad."
+  },
+  {
+   "id": "r05",
+   "enunciado": "Al girar mucho tiempo en las nubes y nivelar, ¿qué puede sentir el piloto?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Que gira hacia el otro lado."
+    },
+    {
+     "letra": "B",
+     "texto": "Que sube muy rápido."
+    },
+    {
+     "letra": "C",
+     "texto": "Nada en absoluto."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "El oído interno se acostumbra al giro y al parar da la sensación contraria.",
+   "sencilla": "El oído se engaña: parece que giras al revés.",
+   "elegida": "C",
+   "idea": "Pensar que el oído interno no se engaña."
+  },
+  {
+   "id": "r06",
+   "enunciado": "¿Qué ayuda a evitar la desorientación en nubes?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Confiar en las sensaciones del cuerpo."
+    },
+    {
+     "letra": "B",
+     "texto": "Confiar en los instrumentos."
+    },
+    {
+     "letra": "C",
+     "texto": "Mirar por la ventana lateral."
+    }
+   ],
+   "correcta": "B",
+   "explicacion": "Sin referencia visual, el cuerpo engaña; los instrumentos no.",
+   "sencilla": "En nubes, cree a los instrumentos.",
+   "elegida": "A",
+   "idea": "Creer que el cuerpo siente bien la posición."
+  },
+  {
+   "id": "r07",
+   "enunciado": "Bucear y volar el mismo día sin esperar puede causar:",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Enfermedad por descompresión."
+    },
+    {
+     "letra": "B",
+     "texto": "Mejor visión nocturna."
+    },
+    {
+     "letra": "C",
+     "texto": "Menos fatiga."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "El nitrógeno disuelto forma burbujas al bajar la presión.",
+   "sencilla": "Al subir, el gas del buceo hace burbujas en el cuerpo.",
+   "elegida": "B",
+   "idea": "Pensar que bucear ayuda a ver de noche."
+  },
+  {
+   "id": "r08",
+   "enunciado": "Un piloto que dice «a mí no me va a pasar» muestra:",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Invulnerabilidad."
+    },
+    {
+     "letra": "B",
+     "texto": "Resignación."
+    },
+    {
+     "letra": "C",
+     "texto": "Antiautoridad."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "Creerse a salvo de los accidentes es la actitud de invulnerabilidad.",
+   "sencilla": "«A mí no» = me creo invulnerable.",
+   "elegida": "C",
+   "idea": "Confundir creerse a salvo con no aceptar reglas."
+  },
+  {
+   "id": "r09",
+   "enunciado": "¿Qué efecto tiene el monóxido de carbono en el cuerpo?",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Reduce la capacidad de la sangre de llevar oxígeno."
+    },
+    {
+     "letra": "B",
+     "texto": "Aumenta el oxígeno en la sangre."
+    },
+    {
+     "letra": "C",
+     "texto": "No tiene efecto a baja altura."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "El monóxido se une a la hemoglobina en lugar del oxígeno.",
+   "sencilla": "Ocupa el lugar del oxígeno en la sangre.",
+   "elegida": "C",
+   "idea": "Creer que solo afecta en la altura."
+  },
+  {
+   "id": "r10",
+   "enunciado": "Una pista más angosta de lo normal puede hacer creer al piloto que está:",
+   "opciones": [
+    {
+     "letra": "A",
+     "texto": "Más alto de lo que está."
+    },
+    {
+     "letra": "B",
+     "texto": "Más bajo de lo que está."
+    },
+    {
+     "letra": "C",
+     "texto": "A la altura correcta."
+    }
+   ],
+   "correcta": "A",
+   "explicacion": "Una pista estrecha parece más lejana, como si se estuviera más alto.",
+   "sencilla": "Pista angosta: parece que estás alto, y bajas de más.",
+   "elegida": "B",
+   "idea": "Confundir el efecto de la pista angosta con el de la ancha."
+  }
+ ]
+}

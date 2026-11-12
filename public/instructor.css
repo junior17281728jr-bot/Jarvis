@@ -155,3 +155,17 @@
 .pagos-todos { margin-top: 12px; }
 .lista-cambios li { padding: 6px 0; border-bottom: 1px solid var(--gris-nodo, #e5e7eb); overflow-wrap: anywhere; }
 .tarjeta-cambios { margin-top: 16px; }
+
+/* 0.12.4: el plan de hoy, la nota para ti, las citas del Test Guide y la vista de prueba de la IA (administrador). */
+.plan-hoy { margin: 12px 0 0; }
+.plan-hoy h3 { margin: 0 0 6px; font-size: 16px; }
+.plan-hoy-pasos { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.plan-hoy-pasos li { overflow-wrap: anywhere; }
+.nota-para-ti { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--azul); background: color-mix(in srgb, var(--azul) 8%, transparent); border-radius: 6px; }
+.cita-test-guide { margin: 6px 0 0; color: var(--verde-texto); }
+.caja-ia.demo { border-style: dotted; border-color: color-mix(in srgb, var(--naranja) 60%, transparent); }
+.banner-demo { position: sticky; top: 0; z-index: 5; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px;
+  background: var(--tarjeta); border: 2px solid var(--naranja); display: grid; gap: 6px; }
+.banner-demo p { margin: 0; }
+.demo-seccion { display: grid; gap: 10px; }
+.mini-clase-ia { margin-top: 8px; }

@@ -1,6 +1,7 @@
 // Sesiones: un código largo al azar en una galleta (cookie) que el navegador no deja leer a ningún programa.
 // En la base solo se guarda su huella (sha256), así que ni con la base en la mano se puede entrar.
 import { randomBytes, createHash } from 'node:crypto';
+import { anotarActividad, anotarFin } from './visitas.js';
 
 export const GALLETA = 'op_sesion';
 const DURACION_MS = 30 * 24 * 3600 * 1000;
@@ -13,6 +14,8 @@ export function crearSesion(db, usuarioId, navegador = '') {
   const venceEn = new Date(Date.now() + DURACION_MS).toISOString();
   db.prepare('INSERT INTO sesiones (token_hash, usuario_id, creada_en, vence_en, ultimo_uso, navegador) VALUES (?, ?, ?, ?, ?, ?)')
     .run(huella(token), usuarioId, ahora(), venceEn, ahora(), String(navegador).slice(0, 200));
+  // 0.12.4: entrar con su contraseña empieza una visita (src/cuentas/visitas.js).
+  try { anotarActividad(db, usuarioId, Date.now(), { entrada: true }); } catch { /* nunca impide entrar */ }
   return { token, venceEn };
 }
 
@@ -53,6 +56,8 @@ export function cerrarSesion(db, token, motivo = 'salir') {
   if (!token || typeof token !== 'string' || token.length > 100) return;
   const filas = db.prepare('SELECT usuario_id, creada_en, vence_en, ultimo_uso, navegador FROM sesiones WHERE token_hash = ?').all(huella(token));
   anotarSalidas(db, filas, motivo);
+  // 0.12.4: tocó «Salir»: su visita termina ahí.
+  if (motivo === 'salir') for (const s of filas) { try { anotarFin(db, s.usuario_id, 'salir'); } catch { /* sigue saliendo */ } }
   db.prepare('DELETE FROM sesiones WHERE token_hash = ?').run(huella(token));
 }
 

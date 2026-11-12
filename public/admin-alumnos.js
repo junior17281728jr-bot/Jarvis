@@ -71,7 +71,8 @@ function cuentaAlumno(h, a) {
   const yo = a.id === h.yoId;
   const mensaje = h.caja();
   const bloquear = yo ? null : h.botonAccion(t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), a.activo ? 'peligro' : 'secundario', mensaje, async () => {
-    if (!confirm(t(a.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: nombreDe(a) }))) return;
+    // 0.12.4: con la hoja propia de la app (no la confirmación del navegador).
+    if (!(await h.confirmar(t(a.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: nombreDe(a) }), { si: t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), peligro: a.activo }))) return;
     const r = await h.api('POST', `/api/admin/usuarios/${a.id}/activo`, { activo: !a.activo });
     if (!r.ok) throw new Error(h.textoError(r.datos.error));
     h.avisar(t(a.activo ? 'admin.listo.desactivada' : 'admin.listo.activada', { nombre: nombreDe(a) }));
@@ -258,7 +259,7 @@ function pestanaResumen(d, h) {
       el('h2', { class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('ficha.pestana.actividad') })),
       el('dl', { class: 'ficha-datos' },
         el('dt', { texto: t('ficha.ultima_entrada') }), el('dd', { texto: act.ultimaEntrada ? h.fecha(act.ultimaEntrada) : t('admin.nunca') }),
-        el('dt', { texto: t('ficha.ultima_salida') }), el('dd', { texto: act.ultimaSalida ? h.fecha(act.ultimaSalida) : t('ficha.sin_salida') }),
+        el('dt', { texto: t('ficha.ultima_salida') }), el('dd', { texto: textoSalida(h, act, h.fecha) }),
         el('dt', { texto: t('ficha.ultima_actividad') }), el('dd', { texto: act.ultimaActividad ? h.fecha(act.ultimaActividad) : t('admin.nunca') })),
       el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/actividad`, texto: t('ficha.ver_sesiones') })),
     ultimosIntentos(d, h),
@@ -429,6 +430,11 @@ function pestanaDebiles(d, h) {
   return [h.preparadoAlumno?.(d.alumno.id) ?? null, h.panelPuntosDebiles(d.puntosDebiles, { titulo: h.t('debil.panel_alumno') }), h.fallasAlumno?.(d.alumno.id) ?? null, h.profesorAlumno?.(d.alumno.id) ?? null];
 }
 
+// 0.12.4: «Última salida» (el fin de su visita anterior, o de esta si ya no está) y cómo terminó.
+function textoSalida(h, act, formato) {
+  if (!act.ultimaSalida) return act.visitas != null ? h.t('admin.nunca') : h.t('ficha.sin_salida');
+  return act.salidaComo ? `${formato(act.ultimaSalida)} (${h.t(`ficha.salida_como.${act.salidaComo}`)})` : formato(act.ultimaSalida);
+}
 function pestanaActividad(d, h) {
   const { el, t, numero } = h;
   const act = d.actividad;
@@ -436,9 +442,11 @@ function pestanaActividad(d, h) {
     el('section', { class: 'tarjeta' },
       el('div', { class: 'ficha-cifras tres' },
         cifra(h, 'flecha', act.ultimaEntrada ? h.cuando(act.ultimaEntrada) : t('admin.nunca'), t('ficha.ultima_entrada')),
-        cifra(h, 'salir', act.ultimaSalida ? h.cuando(act.ultimaSalida) : t('ficha.sin_salida'), t('ficha.ultima_salida')),
+        cifra(h, 'salir', textoSalida(h, act, h.cuando), t('ficha.ultima_salida')),
         cifra(h, 'reloj', act.ultimaActividad ? h.cuando(act.ultimaActividad) : t('admin.nunca'), t('ficha.ultima_actividad'), act.enLinea ? t('acad.en_linea') : null)),
-      el('p', { class: 'suave chica', texto: h.tn('ficha.actividad.linea', { n: act.entradas, abiertas: numero(act.abiertas) }) })),
+      // 0.12.4: las veces que abrió la app (visitas); las entradas con contraseña, aparte.
+      act.visitas != null ? el('p', { class: 'suave chica', texto: `${h.tn('ficha.visitas.linea', { n: act.visitas })} · ${h.tn('ficha.actividad.linea', { n: act.entradas, abiertas: numero(act.abiertas) })}` })
+        : el('p', { class: 'suave chica', texto: h.tn('ficha.actividad.linea', { n: act.entradas, abiertas: numero(act.abiertas) }) })),
     el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('ficha.sesiones') })),
       el('p', { class: 'suave', texto: t('ficha.sesiones.linea') }),

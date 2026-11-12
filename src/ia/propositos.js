@@ -25,12 +25,16 @@
 // 0.9.0: los tres usos del «Instructor con IA» de la academia (src/academia/instructor-ia.js). Los paga la cuenta del
 // alumno (dentro del tope de su plan y del general, y solo con el permiso de IA del dueño para esa cuenta) y solo con
 // «Instructor con IA» encendido. El tamaño está pensado para Sonnet 5.5 (el más caro de los dos): lo peor que puede
-// costar una vez (toda la entrada al precio más caro, toda la salida, el lugar más caro y un 5 % más) es ~US$0.045 con
+// costar una vez (toda la entrada al precio más caro, toda la salida, el lugar más caro y un 5 % más) era ~US$0.045 con
 // Sonnet y ~US$0.002 con Haiku; lo normal, ~US$0.011 y ~US$0.0006. entradaMinBytes: el pedido más corto de verdad (el
 // consejo sin cifras; test/instructor-ia.test.js lo comprueba).
+// 0.12.4: la entrada sube de 7 000 a 16 384 bytes (las tarjetas largas con tildes ya no responden «demasiado_largo» y el
+// Profesor recuerda más) y la salida de 2 048 a 4 096 tokens: lo que el modelo «piensa» (también con effort 'low') entra
+// en max_tokens, y con 2 048 una explicación larga se cortaba («respuesta_incompleta»). Lo peor de una vez con Sonnet 5.5
+// queda en ~US$0.095 (máximo 100 000 µUSD); con Haiku 5.5, ~US$0.005. Lo normal casi no cambia (se paga lo usado).
 const INSTRUCTOR = Object.freeze({
-  fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 2048, entradaMaxBytes: 7_000, entradaMinBytes: 2_200, respuestaMaxBytes: 65_536,
-  maximoMicro: 50_000, tipicoMicro: 11_000, esfuerzo: 'low', timeoutMs: 50_000, alFaltar: 'motor_propio',
+  fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 4096, entradaMaxBytes: 16_384, entradaMinBytes: 2_200, respuestaMaxBytes: 65_536,
+  maximoMicro: 100_000, tipicoMicro: 12_000, esfuerzo: 'low', timeoutMs: 50_000, alFaltar: 'motor_propio',
   ajuste: 'instructorIa', modeloAjuste: 'instructorModelo', tarea: 'academia.instructor',
 });
 export const PROPOSITOS = Object.freeze({
@@ -50,6 +54,10 @@ export const PROPOSITOS = Object.freeze({
   instructor_duda: INSTRUCTOR,
   // 0.10.0: el «Profesor virtual» (un chat): su modelo, tarjetas y preguntas que ya respondió (nunca su nombre).
   instructor_chat: INSTRUCTOR,
+  // 0.12.4: la «Mini-clase IA» de un concepto de «Mi repaso» (se guarda compartida por concepto, idea equivocada y
+  // estilo; se cobra como una explicación) y el plan de estudio de HOY (solo con acciones que existen en la app).
+  instructor_miniclase: INSTRUCTOR,
+  instructor_plan: INSTRUCTOR,
 });
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las

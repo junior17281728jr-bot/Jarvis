@@ -239,8 +239,10 @@ export function pasosFirma(h, paso) {
       el('span', { class: 'firma-paso-nombre', texto: t(`firma.paso.${p}`) }),
       k + 1 < n ? el('span', { class: 'solo-lectores', texto: t('firma.paso.hecho') }) : null))),
     el('div', { class: 'firma-pasos-barra', role: 'progressbar', 'aria-label': t('firma.paso.de', { n: numero(n), total: numero(PASOS_FIRMA.length) }), 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct },
-      el('span', { style: `width: ${pct}%` })));
+      relleno(el('span'), pct)));
 }
+// 0.12.4: la CSP (style-src 'self') bloquea el atributo style: el ancho se pone por CSSOM, que sí lo deja.
+function relleno(nodo, pct) { nodo.style.width = `${pct}%`; return nodo; }
 // Lo que pasa en este paso (y lo que viene después).
 function introPaso(h, paso, extra = {}) {
   const { el, t, numero } = h;
@@ -256,6 +258,22 @@ function introPaso(h, paso, extra = {}) {
 // texto completo con índice y las casillas, que se pueden marcar al llegar al final) → 3 Firma («Yo, …», la firma y, si
 // es menor de 18, la parte del padre, madre o tutor) → 4 Listo («Descargar mi copia»). El servidor recibe lo mismo de
 // siempre (POST /api/yo/terminos) al tocar «Firmar».
+// 0.12.4: «Qué cambió» arriba, para quien ya firmó una versión anterior (antes tenía que releer todo sin saber qué cambió):
+// la nota del administrador de cada versión nueva (o una línea general) y qué partes son nuevas o cambiaron.
+function cajaCambios(h, novedades) {
+  if (!novedades) return null;
+  const { el, t, numero } = h;
+  const partes = ['terminos', 'privacidad'].map(doc => novedades[doc] ? { doc, ...novedades[doc] } : null).filter(Boolean);
+  if (!partes.length) return null;
+  const lista = (clave, titulos) => (titulos.length ? el('p', { class: 'chica' }, el('strong', { texto: `${t(clave)} ` }), el('span', { texto: titulos.join(' · ') })) : null);
+  return el('section', { class: 'aviso que-cambio', role: 'note', 'aria-labelledby': 'que-cambio-titulo' },
+    el('h2', { id: 'que-cambio-titulo', texto: t('terminos.cambio.titulo') }),
+    ...partes.flatMap(x => [
+      el('p', { class: 'fuerte', texto: t(x.doc === 'terminos' ? 'terminos.cambio.doc_terminos' : 'terminos.cambio.doc_privacidad', { desde: numero(x.desde), n: numero(x.version) }) }),
+      ...(x.notas.length ? x.notas.map(n => (n.clave ? el('p', { texto: t(n.clave) }) : h.talCual('p', n.texto))) : [el('p', { texto: t('terminos.cambio.general') })]),
+      lista('terminos.cambio.nuevas', x.nuevas), lista('terminos.cambio.cambiadas', x.cambiadas), lista('terminos.cambio.quitadas', x.quitadas),
+    ]).filter(Boolean));
+}
 export function pantallaAceptar(datos, h, { alListo, salir }) {
   const { el, t, numero } = h;
   const legal = datos.estado.nombreLegal;
@@ -300,7 +318,7 @@ export function pantallaAceptar(datos, h, { alListo, salir }) {
       h.decir(mensaje, '');
       paso2();
     });
-    mostrarPaso('datos', [formulario]);
+    mostrarPaso('datos', [cajaCambios(h, datos.novedades), formulario]);
   };
 
   const paso2 = () => {
@@ -318,7 +336,7 @@ export function pantallaAceptar(datos, h, { alListo, salir }) {
     if (leido) lectura.llego = () => true;
     seguir.addEventListener('click', () => { if (!seguir.disabled) paso3(); });
     pintar();
-    mostrarPaso('lee', [lectura.nodo,
+    mostrarPaso('lee', [cajaCambios(h, datos.novedades), lectura.nodo,
       el('section', { class: 'lee-casillas', 'aria-labelledby': 'lee-casillas-titulo' },
         el('h2', { id: 'lee-casillas-titulo', texto: t('lee.casillas') }), nota, c1.nodo, c2.nodo, c3.nodo),
       el('div', { class: 'botones apilados' }, seguir,
@@ -401,6 +419,7 @@ export function tarjetaAdminTerminos(datos, h, { alPublicar }) {
   const editor = doc => {
     const actual = datos[doc];
     const area = el('textarea', { id: `campo-${doc}`, rows: 14, class: 'terminos-editor' });
+    const cambios = el('textarea', { id: `campo-${doc}-cambios`, rows: 2, maxlength: 600, placeholder: t('terminos.admin.cambios_ejemplo') });
     area.value = actual.secciones.map(x => `${x.titulo}\n${x.texto}`).join('\n\n');
     const mensaje = h.caja();
     const publicar = h.botonAccion(t('terminos.admin.publicar', { n: numero(actual.version + 1) }), '', mensaje, async () => {
@@ -409,8 +428,9 @@ export function tarjetaAdminTerminos(datos, h, { alPublicar }) {
         return { titulo: titulo.trim(), texto: resto.join('\n').trim() };
       });
       if (!secciones.length || secciones.some(x => !x.titulo || !x.texto)) throw new Error(t('error.terminos_no_validos'));
-      if (!confirm(t('terminos.admin.confirmar', { n: numero(actual.version + 1) }))) return;
-      const r = await h.api('POST', '/api/admin/terminos', { doc, secciones });
+      // 0.12.4: con la hoja propia de la app (no la confirmación del navegador), y «Qué cambió» (opcional) para los alumnos.
+      if (!(await h.confirmar(t('terminos.admin.confirmar', { n: numero(actual.version + 1) }), { si: t('terminos.admin.publicar', { n: numero(actual.version + 1) }) }))) return;
+      const r = await h.api('POST', '/api/admin/terminos', { doc, secciones, cambios: cambios.value });
       if (!r.ok) throw new Error(h.textoError(r.datos.error));
       h.avisar(t('terminos.admin.listo', { n: numero(r.datos[doc].version) }));
       await alPublicar();
@@ -419,6 +439,7 @@ export function tarjetaAdminTerminos(datos, h, { alPublicar }) {
       el('summary', { texto: t(doc === 'terminos' ? 'terminos.admin.editar' : 'terminos.admin.editar_privacidad', { n: numero(actual.version) }) }),
       el('p', { class: 'ayuda', texto: t('terminos.admin.ayuda') }),
       el('label', { for: `campo-${doc}`, texto: t('terminos.admin.texto') }), area,
+      el('label', { for: `campo-${doc}-cambios`, texto: t('terminos.admin.cambios') }), cambios,
       el('div', { class: 'botones' }, publicar), mensaje);
   };
   // 0.11.0: lo que se llenó por Junior en los textos del informe legal: que lo confirme o lo cambie.

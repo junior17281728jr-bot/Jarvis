@@ -6,6 +6,7 @@
 //  - «última entrada» es usuarios.ultimo_acceso (cada vez que entra con su contraseña).
 // Una sesión que nunca tocó «Salir» no tiene hora de salida: se muestra su última actividad (y si ya venció).
 import { MOTIVOS_SALIDA } from './sesiones.js';
+import { resumenVisitas } from './visitas.js';
 
 export const EN_LINEA_MS = 10 * 60 * 1000;
 export const ESTADOS_SESION = Object.freeze(['en_linea', 'abierta', 'vencida', 'cerrada']);
@@ -55,14 +56,23 @@ export function actividadDe(db, usuarioId, ahoraMs = Date.now(), ultimaActividad
   const salida = db.prepare("SELECT fecha FROM auditoria WHERE usuario_id = ? AND accion = 'salida' ORDER BY id DESC LIMIT 1").get(id);
   const sesiones = sesionesDe(db, id, ahoraMs);
   const entradas = db.prepare("SELECT COUNT(*) AS n FROM auditoria WHERE usuario_id = ? AND accion IN ('entrada', 'primer_admin_creado')").get(id).n;
-  const ultima = ultimaActividad ?? sesiones.map(s => s.ultimaActividad).filter(Boolean).sort().pop() ?? null;
+  // 0.12.4: las visitas (src/cuentas/visitas.js): «entrada» = cuando empezó su última visita, «salida» = cuando terminó la
+  // anterior (o esta, si ya no está) y cómo; «en línea» = actividad en los últimos 3 minutos. Sin visitas anotadas
+  // (una cuenta que no ha vuelto desde la 0.12.4): lo de antes (contraseña y «Salir»).
+  const v = resumenVisitas(db, id, ahoraMs);
+  // Con visitas: ninguna sesión dice «en línea» si la cuenta no lo está (la ficha y la lista dicen lo mismo).
+  if (v && !v.enLinea) for (const s of sesiones) if (s.estado === 'en_linea') s.estado = 'abierta';
+  const ultima = [ultimaActividad ?? sesiones.map(s => s.ultimaActividad).filter(Boolean).sort().pop() ?? null, v?.ultima].filter(Boolean).sort().pop() ?? null;
   return {
-    ultimaEntrada: u?.ultimo_acceso ?? null,
-    ultimaSalida: salida?.fecha ?? null,
+    ultimaEntrada: v?.entrada ?? u?.ultimo_acceso ?? null,
+    ultimaSalida: v ? v.salida : salida?.fecha ?? null,
+    salidaComo: v ? v.salidaComo : salida ? 'salir' : null,
     ultimaActividad: ultima,
-    enLinea: Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS),
+    enLinea: v ? v.enLinea : Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS),
     abiertas: sesiones.filter(s => s.estado === 'en_linea' || s.estado === 'abierta').length,
+    // entradas: con su contraseña (lo de antes); visitas: las veces que abrió la app (0.12.4).
     entradas,
+    visitas: v?.visitas ?? null,
     sesiones,
   };
 }

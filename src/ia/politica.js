@@ -14,7 +14,17 @@ export const PAUSA_CORTA_MS = 2 * MINUTO;
 // Cuando el proveedor pide esperar (429): lo que diga retry-after, entre 1 y 15 minutos (1 minuto si no dice).
 export const ESPERA_PEDIDA = Object.freeze({ minimoMs: MINUTO, maximoMs: 15 * MINUTO, porDefectoMs: MINUTO });
 // Tres fallas seguidas de la misma clave en una hora (sin un uso bueno entre ellas): pausa del dueño.
+// 0.12.4: solo cuentan las respuestas que se pagaron y NO sirvieron (el CONTENIDO: mal formada, cortada, rechazada, o que
+// contradijo al Test Guide), y por propósito. Los errores pasajeros del proveedor (429, 5xx, 529, sin red, tiempo
+// agotado) nunca llevan a la pausa del dueño: solo a una pausa corta que crece (ESPERAS_PASAJERAS). Sigue sin reintentar
+// solo: el próximo uso, pasada la pausa, es el que vuelve a llamar.
 export const FALLAS_SEGUIDAS = Object.freeze({ veces: 3, ventanaMs: 60 * MINUTO });
+// El instructor de la academia (instructor_*): una pregunta rara no debe apagar la IA para todos. Una pregunta rechazada
+// 2 veces queda sin IA 7 días (src/academia/instructor-tarea.js); la pausa del dueño pide 6 seguidas.
+export const FALLAS_SEGUIDAS_INSTRUCTOR = 6;
+export const PASAJEROS = Object.freeze(['sobrecargado', 'error_proveedor', 'sin_red', 'tiempo_agotado', 'limite_proveedor']);
+// La pausa corta de un error pasajero crece con los que vienen seguidos en la hora: 2, 5 y 15 minutos (nunca más).
+export const ESPERAS_PASAJERAS = Object.freeze([2 * MINUTO, 5 * MINUTO, 15 * MINUTO]);
 
 const P = (estado, pausa = null, aviso = null, extra = {}) => Object.freeze({ estado, pausa, aviso, prueba: false, resuelve: false, ...extra });
 
@@ -56,9 +66,10 @@ export function politicaDe(motivo) {
 }
 
 // Hasta cuándo dura una pausa corta.
-export function finDePausa(politica, { reintentarMs = null, ahora = Date.now() } = {}) {
+// seguidos (0.12.4): cuántos errores pasajeros seguidos lleva esa clave en la hora, contando este (1 = el primero).
+export function finDePausa(politica, { reintentarMs = null, ahora = Date.now(), seguidos = 1 } = {}) {
   if (politica.pausa !== 'corta') return null;
-  if (politica.espera !== 'pedida') return ahora + PAUSA_CORTA_MS;
+  if (politica.espera !== 'pedida') return ahora + ESPERAS_PASAJERAS[Math.min(ESPERAS_PASAJERAS.length, Math.max(1, seguidos)) - 1];
   const pedida = Number.isFinite(reintentarMs) && reintentarMs != null ? reintentarMs : ESPERA_PEDIDA.porDefectoMs;
   return ahora + Math.min(ESPERA_PEDIDA.maximoMs, Math.max(ESPERA_PEDIDA.minimoMs, pedida));
 }

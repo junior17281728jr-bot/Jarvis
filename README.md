@@ -143,8 +143,11 @@ OPORTIA funciona completo con su motor propio, sin IA y sin costo. La IA es una 
   IA» siempre está: vuelve a lo que entendió el motor propio (aunque se pida ayuda otra vez sobre la versión de la IA), y
   la ayuda solo se ofrece si al proyecto le quedan dos lugares de sus 100 versiones (el de la IA y el de volver).
 - Una respuesta de la IA que no cumple el formato pedido nunca se usa ni crea nada (se cobra lo que costó). Tres respuestas
-  seguidas que se pagan y no sirven (mal formadas, cortadas o rechazadas) ponen esa clave en pausa y avisan al momento,
-  igual que tres errores. Lo que se lee de una respuesta tiene su tope (256 KB para la ayuda), para cuidar la memoria del
+  seguidas que se pagan y no sirven (mal formadas, cortadas o rechazadas) del mismo uso ponen esa clave en pausa y avisan
+  al momento (0.12.4: el instructor de la academia pide 6, y una pregunta en la que la IA contradijo al Test Guide 2 veces
+  queda 7 días con lo básico). Desde la 0.12.4 los errores pasajeros del proveedor (429, 5xx, 529, sin red, tiempo
+  agotado) ya no llevan a esa pausa del dueño: solo a una pausa corta que crece (2, 5 y 15 minutos); sigue sin reintentar
+  solo (el próximo uso, pasada la pausa, es el que vuelve a llamar). Lo que se lee de una respuesta tiene su tope (256 KB para la ayuda), para cuidar la memoria del
   trabajador. Un lugar de cobro (`inference_geo`) que la tabla de precios no conoce cuenta como un cobro desconocido: se
   cuenta al menos lo apartado, la clave queda en pausa y hay aviso grave.
 - Una respuesta buena que no se pudo guardar (por ejemplo, ya no cabían más dudas) cuenta como pagada y que no sirvió
@@ -410,7 +413,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.3; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.12.4; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -626,7 +629,7 @@ La IA explica de otra forma, responde dudas solo con las tarjetas del tema, da e
 pedido y nunca llama a la IA); la pregunta y sus opciones viajan TAL CUAL y la IA debe devolver cuál es la correcta: si no
 coincide con el Test Guide, su respuesta no se usa ni se guarda; nunca se manda el nombre ni el usuario del alumno; las
 explicaciones se guardan (en `ajustes`) por pregunta, opción, estilo y modelo, y otro alumno que elige lo mismo no se vuelve a
-pagar; ante cualquier error o tope, sigue lo básico. Lo peor que cuesta un uso con Sonnet es ~US$0.045 (lo normal ~US$0.011);
+pagar; ante cualquier error o tope, sigue lo básico. Lo peor que cuesta un uso con Sonnet es ~US$0.095 desde la 0.12.4 (antes ~US$0.045; lo normal ~US$0.011);
 con Haiku ~US$0.002 (~US$0.0006). Lo paga **la cuenta del alumno**: para que un alumno tenga IA hacen falta la IA encendida,
 el instructor encendido, un **tope de plan mayor que US$0** y **«Permitir IA»** para esa cuenta (desde Tailscale). Si falta
 algo, ese alumno ve «modo básico». La cuenta del administrador gasta solo desde Tailscale. «Ver cómo trabaja» (en la misma
@@ -688,6 +691,46 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.12.4: sin clave de IA, ningún error; con clave, la IA más útil — sin cambio de base
+- **Sin IA para un alumno por algo que no se pasa solo** (sin clave, la IA apagada, sin su permiso o retirado, sin
+  presupuesto): «Explícamelo», el consejo, las dudas y el Profesor responden solo lo básico (`ia: null`), sin ningún «no
+  pudo». Solo se dice algo si es pasajero: «en pausa un momento» o sin minutos (con «Pedir más», porque la IA sí está
+  lista). La pantalla solo pide la IA si el último estado no es «básico». Los minutos, «Pedir más» y el botón del
+  Profesor virtual solo se ven con la IA de verdad para ese alumno; sin ella, `#profesor` muestra una nota tranquila
+  («Modo básico»), lo que ya habló y nada para escribir. Cada mensaje al Profesor (y su respuesta básica) queda en su
+  historial aunque no haya IA. El interruptor «Instructor con IA» no se puede tocar sin la IA encendida (con la explicación).
+- **«Vista de prueba de la IA»** (`#ia-demo`, solo el administrador, desde Inteligencia artificial y desde Inicio «como
+  estudiante»): las pantallas de verdad (Explícamelo, Profesor, mini-clase IA, plan de hoy, consejo del examen) con
+  respuestas de demostración marcadas como tales, sobre una pregunta real. No llama a la IA, no cobra y no guarda nada.
+- **La IA, más útil (con clave):** la entrada sube a 16 KB (cabe la tarjeta entera, el Profesor recuerda 6 mensajes) y la
+  salida a 4 096 tokens (lo que el modelo piensa entra ahí; con 2 048 las largas se cortaban); lo peor de un uso con Sonnet
+  queda en ~US$0.095 (con Haiku ~US$0.005). El chat y las dudas **citan la pregunta del Test Guide** (`cita_test_guide`:
+  número y respuesta) y se revisa contra la clave: si contradice (o el texto dice «la correcta es <otra>»), no se usa.
+  **«Nota para ti»** encima de la explicación compartida (sin IA: cuántas veces falló ese concepto y la idea que repite).
+  **«Mini-clase con IA»** en «Mi repaso» (compartida por concepto, opción y estilo; se cobra como una explicación; con el
+  candado del Test Guide). **«Tu plan de hoy»** en Inicio: sin IA, las primeras acciones que existen en la app (cada una
+  con su botón); con IA, la IA solo elige y ordena entre esas (una inventada se descarta). Banco de regresión con casos
+  sintéticos: `node scripts/regresion-ia.mjs --falso` (sin red) o `--clave-archivo /ruta` al cambiar de modelo o de prompt.
+- **Visitas** en la ficha del alumno (`src/cuentas/visitas.js`, en `ajustes`): «Última entrada» = cuando empezó su última
+  visita (entrar con la contraseña o volver después de 15 minutos sin nada), «Última salida» = cuando terminó la anterior
+  (o esta) con «(cerró la app)», «(dejó de usarla)» o «(tocó Salir)», «En línea» = actividad en los últimos 3
+  minutos, «Abrió la app N veces» (las entradas con contraseña siguen aparte). Al esconder o cerrar la app sale un aviso
+  corto (`POST /api/yo/visita/fin`, como mucho cada 30 s).
+- **Arreglos:** la barra de pasos de la firma (la CSP bloqueaba su `style`), `anexar()` en vez de `append(null)`, plurales
+  bien («{n|día|días}» en `t()`), «¡Errores practicados!» solo si llegó a la nota (si no, «vamos otra vez», sin confeti),
+  las frases duras del humor solo al saltarse las clases, «Qué cambió» arriba al firmar una versión nueva de los términos
+  (la nota opcional del administrador y las partes nuevas o cambiadas), el ejemplo de «Mi meta» sin nombres de
+  instituciones, sin adelantar lo de estudiar antes de firmar, el audio solo después de un toque, Drive «Probar» vacío sin
+  pedir nada, la fecha de fin del plan igual para el alumno y el administrador (hoy es el día 1), bloquear y publicar con la
+  hoja propia de la app, la lista de versiones con páginas, clips, video y audios, y en el iPhone los botones de PDF dicen
+  cómo guardarlo («Compartir → Imprimir»).
+- **Sobre la 0.12.3:** el chat del Profesor (`public/pagos.js`) entiende las respuestas básicas, las citas del Test
+  Guide e `ia: null`; rechazar un comprobante pide el motivo en la hoja propia de la app, y lo mismo aprobar sin IA,
+  bloquear, reiniciar una contraseña, «Permitir IA», encender/apagar la IA, apagar un proveedor, desactivar una clave,
+  dejar Telegram y la clave de recuperación (solo el modo seguro y cancelar una tarea siguen con el del navegador). El
+  aviso de privacidad v2 que trae el código dice qué cambió («Qué cambió» al firmar).
+- Pruebas: `test/arreglos-0124.test.js` y `test/ia-0124.test.js` (con el proveedor falso).
 
 ### Lo nuevo de la 0.12.3: el administrador hace todo desde el enlace público, comprobantes para siempre — sin cambio de base
 - **Todo desde el enlace público** (pedido del dueño): un administrador con su sesión (contraseña) hace TODO sin Tailscale:

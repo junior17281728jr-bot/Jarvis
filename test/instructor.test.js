@@ -201,8 +201,8 @@ test('«Explícamelo de otra forma» sin IA: la idea EXACTA de la opción que el
     assert.equal(b.acierto, false);
     assert.ok(b.tarjeta && typeof b.tarjeta.titulo === 'string', 'la tarjeta de la lección que lo explica');
     assert.ok(!('opciones' in b) && !('enunciado' in b), 'nunca reescribe la pregunta ni sus opciones');
-    // Con la IA apagada: dice por qué y no pone nada en la fila ni gasta.
-    assert.deepEqual(r.datos.ia, { estado: 'no', motivo: 'ia_apagada' });
+    // Con la IA apagada: 0.12.4: ia = null (ningún «no pudo»), no pone nada en la fila ni gasta.
+    assert.equal(r.datos.ia, null);
     assert.equal(c.db.prepare("SELECT COUNT(*) AS n FROM tareas WHERE tipo = 'academia.instructor'").get().n, 0);
     assert.equal(c.db.prepare('SELECT COUNT(*) AS n FROM ia_llamadas').get().n, 0);
     // El intento de otro: 404. La opción nunca se toma de la pantalla.
@@ -227,7 +227,7 @@ test('dudas sin IA: la tarjeta del tema que más se parece; un tema cerrado no; 
     const r = await pedir(c.base, 'POST', '/api/academia/instructor/duda', { galleta: c.ana, datos: { materia: 'factores_humanos', tema: 'muestra-hipoxia', texto: '¿Qué hacer si noto la hipoxia?' } });
     assert.equal(r.codigo, 200);
     assert.ok(r.datos.basica.tarjeta);
-    assert.deepEqual(r.datos.ia, { estado: 'no', motivo: 'ia_apagada' });
+    assert.equal(r.datos.ia, null, '0.12.4: sin IA, ningún «no pudo»');
     assert.equal((await pedir(c.base, 'POST', '/api/academia/instructor/duda', { galleta: c.ana, datos: { materia: 'factores_humanos', tema: 'muestra-ilusiones', texto: 'una duda' } })).codigo, 403);
     assert.equal((await pedir(c.base, 'POST', '/api/academia/instructor/duda', { galleta: c.ana, datos: { materia: 'factores_humanos', tema: 'muestra-hipoxia', texto: 'x' } })).codigo, 400);
     assert.equal((await pedir(c.base, 'POST', '/api/academia/instructor/duda', { galleta: c.ana, datos: { materia: 'factores_humanos', tema: 'muestra-hipoxia', texto: 'y'.repeat(501) } })).codigo, 400);

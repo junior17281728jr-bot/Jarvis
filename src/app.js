@@ -8,6 +8,8 @@ import { createHash } from 'node:crypto';
 import { entradaPermitida, esLocal, clienteDe, esHttps, nombrePermitido } from './nucleo/red.js';
 import { ErrorHttp, enviarJson, crearRuteador, servirArchivo, CABECERAS_SEGURIDAD } from './nucleo/http.js';
 import { leerSesion, leerGalleta } from './cuentas/sesiones.js';
+import { anotarActividad, registrarRutasVisitas } from './cuentas/visitas.js';
+import { Limitador } from './nucleo/limites.js';
 import { registrarRutasCuentas } from './api/cuentas.js';
 import { registrarRutasTareas } from './api/tareas.js';
 import { registrarRutasIa } from './api/ia.js';
@@ -113,6 +115,7 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   const rutas = crearRuteador();
   const limitesConfirmar = { ...crearLimitesConfirmar(), ...confirmar };
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor });
+  registrarRutasVisitas(rutas, { Limitador });
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
   registrarRutasClaves(rutas, { config, limites: ia.limitesClaves, probadores: ia.probadores });
@@ -162,6 +165,9 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     if (opciones.soloDueno && usuario?.rol === 'admin') duenoDeTailscale(db, req, usuario, { anotar: true });
     const confirmar = () => confirmarClave({ db, req, usuario, token, limites: limitesConfirmar });
 
+    // 0.12.4: cada pedido de quien entró es actividad de su visita (como mucho una escritura por minuto). El aviso de
+    // «cerró la app» no cuenta como actividad.
+    if (usuario && !opciones.noEsActividad) { try { anotarActividad(db, usuario.id); } catch { /* nunca frena un pedido */ } }
     try {
       const r = await encontrada.manejador({ db, req, res, usuario, token, parametros: encontrada.parametros, cliente: clienteDe(req), https: esHttps(req), confirmar });
       // Academia (0.7.0): una figura del paquete se manda tal cual (una imagen, no JSON).

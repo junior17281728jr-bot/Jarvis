@@ -68,16 +68,30 @@ export function historialParaVer(db, usuarioId) {
     const r = m.clave ? leerGuardado(db, m.clave) : null;
     // Sin respuesta: si su tarea ya terminó (la IA no respondió), «no»; si no, todavía «pendiente».
     const t = !r && m.tarea ? db.prepare('SELECT estado FROM tareas WHERE id = ?').get(m.tarea) : null;
-    const estado = r ? 'lista' : t && !['lista', 'en_curso'].includes(t.estado) ? 'no' : 'pendiente';
+    // 0.12.4: un mensaje respondido por el instructor básico (sin IA para él en ese momento): «basico», con su consejo.
+    const estado = r ? 'lista' : !m.clave && !m.tarea ? 'basico' : t && !['lista', 'en_curso'].includes(t.estado) ? 'no' : 'pendiente';
     return {
       pregunta: m.pregunta, en: m.en, tarea: m.tarea ?? null, estado, tema: m.tema ?? null,
-      respuesta: r ? { respuesta: r.respuesta, control: r.control, estudiar: r.estudiar, terminos: r.terminos } : null,
+      ...(estado === 'basico' ? { basica: m.basica && typeof m.basica.clave === 'string' ? { clave: m.basica.clave, vars: m.basica.vars ?? {} } : null } : {}),
+      respuesta: r ? { respuesta: r.respuesta, control: r.control, estudiar: r.estudiar, terminos: r.terminos, citas: Array.isArray(r.citas) ? r.citas : [] } : null,
       videos: m.videos ?? [], buscar: [...(r?.buscar ?? []).map(x => ({ texto: x, url: busquedaYoutube(x) })), ...(m.buscar ?? [])].filter(x => x.url).slice(0, 3),
     };
   });
 }
 
 // ---------- Lo que se le manda a la IA ----------
+// Las preguntas del Test Guide que el alumno YA respondió y más se parecen a un texto (tal cual, con la respuesta del Test
+// Guide: así nunca se adelanta una que no respondió). donde (0.12.4, opcional): solo las de ese tema.
+export function respondidasParecidas(db, usuarioId, paquete, texto, { donde = null, cuantas = 2 } = {}) {
+  const buscadas = raices(texto);
+  const respondidas = db.prepare('SELECT DISTINCT pregunta FROM academia_respuestas WHERE usuario_id = ?').all(usuarioId).map(f => f.pregunta)
+    .filter(id => paquete.preguntas.has(id) && (!donde || (paquete.deTema?.get(id)?.materia === donde.materia && paquete.deTema?.get(id)?.tema === donde.tema)));
+  return respondidas.map(id => ({ id, n: parecido(buscadas, raices(paquete.preguntas.get(id).original.enunciado)) })).filter(x => x.n > 0)
+    .sort((a, b) => b.n - a.n).slice(0, cuantas).map(x => {
+      const o = paquete.preguntas.get(x.id).original;
+      return { numero: o.numero ?? null, enunciado: o.enunciado, opciones: o.opciones.map(op => op.texto), respuesta_del_test_guide: o.opciones.find(op => op.letra === o.correcta)?.texto ?? '' };
+    });
+}
 const raices = texto => new Set(String(texto ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9ñ]+/).filter(p => p.length >= 4).map(p => p.slice(0, 5)));
 function parecido(a, b) { let n = 0; for (const x of a) if (b.has(x)) n += 1; return n; }
 
@@ -100,13 +114,8 @@ export function contextoChat(db, usuarioId, paquete, mensaje, abiertos, fallas) 
     tema: mejor.t.titulo,
     tarjetas: (mejor.t.secciones ?? []).map(s => ({ titulo: s.titulo ?? '', texto: [s.texto, ...(s.puntos ?? []), s.recuerda].filter(Boolean).join('\n') }))
       .map(x => ({ ...x, n: parecido(buscadas, raices(`${x.titulo} ${x.texto}`)) })).sort((a, b) => b.n - a.n).slice(0, 2)
-      .map(x => ({ titulo: x.titulo, texto: cortarBytes(x.texto, 1200) })),
+      .map(x => ({ titulo: x.titulo, texto: cortarBytes(x.texto, 2400) })),
   } : null;
-  const respondidas = db.prepare('SELECT DISTINCT pregunta FROM academia_respuestas WHERE usuario_id = ?').all(usuarioId).map(f => f.pregunta).filter(id => paquete.preguntas.has(id));
-  const preguntas = respondidas.map(id => ({ id, n: parecido(buscadas, raices(paquete.preguntas.get(id).original.enunciado)) })).filter(x => x.n > 0)
-    .sort((a, b) => b.n - a.n).slice(0, 2).map(x => {
-      const o = paquete.preguntas.get(x.id).original;
-      return { numero: o.numero ?? null, enunciado: o.enunciado, opciones: o.opciones.map(op => op.texto), respuesta_del_test_guide: o.opciones.find(op => op.letra === o.correcta)?.texto ?? '' };
-    });
+  const preguntas = respondidasParecidas(db, usuarioId, paquete, mensaje);
   return { material, preguntas, materia: mejor?.materia ?? null, tema: mejor?.tema ?? null, temaTitulo: mejor?.t.titulo ?? null };
 }

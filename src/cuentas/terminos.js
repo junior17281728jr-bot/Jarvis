@@ -55,7 +55,11 @@ const ahora = () => new Date().toISOString();
 // 'terminos' (Términos de uso y aviso) y 'privacidad' (Aviso de privacidad). Cada uno con su versión; firmar acepta los
 // dos en sus versiones de ese momento.
 // defectos: las versiones que trae el código (la 1, la 2…), nunca cambian una vez publicadas.
-const DOCS = { terminos: { clave: 'academia.terminos', defectos: [TERMINOS_V1] }, privacidad: { clave: 'academia.privacidad', defectos: [PRIVACIDAD_V1, PRIVACIDAD_V2] } };
+// cambios (0.12.4): «Qué cambió» de cada versión que trae el código: la clave de su frase en public/i18n (null = la primera).
+const DOCS = {
+  terminos: { clave: 'academia.terminos', defectos: [TERMINOS_V1], cambios: [null] },
+  privacidad: { clave: 'academia.privacidad', defectos: [PRIVACIDAD_V1, PRIVACIDAD_V2], cambios: [null, 'terminos.cambio.privacidad_v2'] },
+};
 export const DOCUMENTOS = Object.freeze(Object.keys(DOCS));
 const docDe = doc => { if (!DOCS[doc]) throw new ErrorHttp(400, 'terminos_no_validos'); return DOCS[doc]; };
 export function versionDoc(db, doc) {
@@ -66,9 +70,9 @@ export function versionDoc(db, doc) {
 export function docVersion(db, doc, version) {
   const d = docDe(doc);
   const t = json(leer(db, `${d.clave}.v${Number(version)}`));
-  if (t && Array.isArray(t.secciones)) return { doc, version: Number(version), secciones: t.secciones, publicadoEn: t.publicadoEn ?? null };
+  if (t && Array.isArray(t.secciones)) return { doc, version: Number(version), secciones: t.secciones, publicadoEn: t.publicadoEn ?? null, cambios: typeof t.cambios === 'string' && t.cambios ? t.cambios : null };
   const n = Number(version);
-  return Number.isSafeInteger(n) && n >= 1 && n <= d.defectos.length ? { doc, version: n, secciones: d.defectos[n - 1].map(x => ({ ...x })), publicadoEn: null } : null;
+  return Number.isSafeInteger(n) && n >= 1 && n <= d.defectos.length ? { doc, version: n, secciones: d.defectos[n - 1].map(x => ({ ...x })), publicadoEn: null, cambios: null, cambiosClave: d.cambios?.[n - 1] ?? null } : null;
 }
 export const docActual = (db, doc) => docVersion(db, doc, versionDoc(db, doc));
 export const versionTerminos = db => versionDoc(db, 'terminos');
@@ -77,7 +81,9 @@ export const terminosActuales = db => docActual(db, 'terminos');
 const huellaSecciones = d => sha256(JSON.stringify(d.secciones.map(x => [x.titulo, x.texto])));
 
 // El administrador publica un texto nuevo: [{ titulo, texto }] (1 a 40 partes). Crea la versión siguiente.
-export function publicarDoc(db, doc, secciones, { hechoPor }) {
+// cambios (0.12.4, opcional): «Qué cambió», en pocas palabras, para los que ya firmaron la versión anterior.
+export function publicarDoc(db, doc, secciones, { hechoPor, cambios = null }) {
+  const resumen = typeof cambios === 'string' ? cambios.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 600) : '';
   const d = docDe(doc);
   if (!Array.isArray(secciones) || !secciones.length || secciones.length > 40) throw new ErrorHttp(400, 'terminos_no_validos');
   const limpias = secciones.map(x => {
@@ -89,13 +95,32 @@ export function publicarDoc(db, doc, secciones, { hechoPor }) {
   });
   return enTransaccion(db, () => {
     const version = versionDoc(db, doc) + 1;
-    escribir(db, `${d.clave}.v${version}`, JSON.stringify({ secciones: limpias, publicadoEn: ahora(), por: hechoPor }));
+    escribir(db, `${d.clave}.v${version}`, JSON.stringify({ secciones: limpias, publicadoEn: ahora(), por: hechoPor, ...(resumen ? { cambios: resumen } : {}) }));
     escribir(db, `${d.clave}.version`, String(version));
     auditar(db, { usuarioId: hechoPor, accion: `${doc}_publicados`, detalle: `v${version}` });
     return docActual(db, doc);
   });
 }
 export const publicarTerminos = (db, secciones, opciones) => publicarDoc(db, 'terminos', secciones, opciones);
+
+// 0.12.4: «Qué cambió» para quien ya firmó una versión anterior: la nota de cada versión nueva (si el administrador la
+// escribió) y qué partes son nuevas, cambiaron o ya no están (por su título). null si no firmó antes o no cambió nada.
+export function queCambio(db, doc, desdeVersion) {
+  const actual = docActual(db, doc);
+  const desde = Number(desdeVersion);
+  if (!Number.isSafeInteger(desde) || desde < 1 || desde >= actual.version) return null;
+  const antes = docVersion(db, doc, desde);
+  const notas = [];
+  for (let v = desde + 1; v <= actual.version; v++) { const x = docVersion(db, doc, v); if (x?.cambios) notas.push({ version: v, texto: x.cambios }); else if (x?.cambiosClave) notas.push({ version: v, clave: x.cambiosClave }); }
+  const viejas = new Map((antes?.secciones ?? []).map(s => [s.titulo, s.texto]));
+  const nuevas = new Set(actual.secciones.map(s => s.titulo));
+  return {
+    desde, version: actual.version, notas,
+    nuevas: actual.secciones.filter(s => !viejas.has(s.titulo)).map(s => s.titulo),
+    cambiadas: actual.secciones.filter(s => viejas.has(s.titulo) && viejas.get(s.titulo) !== s.texto).map(s => s.titulo),
+    quitadas: [...viejas.keys()].filter(titulo => !nuevas.has(titulo)),
+  };
+}
 
 // ---------- El nombre legal y la fecha de nacimiento ----------
 const PARTE = /^[\p{L}](?:[\p{L}\p{M}' -]*[\p{L}\p{M}])?$/u;

@@ -8,7 +8,8 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De, clipDe } from './paquetes.js';
 import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe } from './saltos.js';
-import { lineaHumor } from './humor.js';
+import { lineaHumor, QUEMADO_SUAVE } from './humor.js';
+import { resumenVisitas } from '../cuentas/visitas.js';
 import { resumenExtra } from './extra.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
@@ -640,7 +641,8 @@ function extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs) {
   if (fila.aprobado === 0) {
     const antes = db.prepare('SELECT COUNT(*) AS n FROM academia_intentos WHERE usuario_id = ? AND tipo = ? AND materia IS ? AND tema IS ? AND aprobado = 0 AND id < ?')
       .get(usuarioId, fila.tipo, fila.materia, fila.tema, fila.id).n;
-    const h = s || antes >= INTENTOS_PARA_QUEMADO ? lineaHumor(db, usuarioId, s ? 'salto' : 'quemado', { recien, referencia: `i${fila.id}`, ahoraMs }) : null;
+    // 0.12.4: lo duro solo al saltarse las clases; si no aprobó lo mismo otra vez, frases que animan sin pinchar.
+    const h = s || antes >= INTENTOS_PARA_QUEMADO ? lineaHumor(db, usuarioId, s ? 'salto' : 'quemado', { recien, referencia: `i${fila.id}`, ahoraMs, solo: s ? null : QUEMADO_SUAVE }) : null;
     if (h) extra.humor = h;
   }
   // Con alguna mala (y sin la frase de arriba): ánimo, y lo que pasó con «Mi repaso».
@@ -754,7 +756,8 @@ export function alumnos(db, paquete, ahoraMs = Date.now()) {
     const bien = suyas.reduce((s, r) => s + r.bien, 0);
     return {
       id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null, nombreLegal: legales.get(u.id) ?? null,
-      ultimaActividad: ultima, enLinea: Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS),
+      // 0.12.4: «en línea» lo dicen sus visitas (3 minutos), igual que en su ficha; sin visitas anotadas, lo de antes.
+      ...(v => ({ ultimaActividad: [ultima, v?.ultima].filter(Boolean).sort().pop() ?? null, enLinea: v ? v.enLinea : Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS) }))(resumenVisitas(db, u.id, ahoraMs)),
       respuestas: n, aciertos: bien, errores: n - bien, pct: pct(bien, n), temasAprobados: temasHechos.get(u.id) ?? 0, temas: totalTemas,
       materias: suyas.filter(r => r.materia).map(r => ({ id: r.materia, respuestas: r.n, aciertos: r.bien, errores: r.n - r.bien, pct: pct(r.bien, r.n) })),
     };

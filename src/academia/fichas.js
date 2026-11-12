@@ -116,7 +116,8 @@ function cabeceraDe(db, u) {
 function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {
   const a = actividadDe(db, u.id, ahoraMs);
   const ultima = [a.ultimaActividad, ultimaRespuesta, a.ultimaEntrada].filter(Boolean).sort().pop() ?? null;
-  return { ...a, ultimaActividad: ultima, enLinea: Boolean(ultima && ahoraMs - Date.parse(ultima) <= 10 * 60 * 1000) };
+  // 0.12.4: «en línea» lo dicen sus visitas (actividad en los últimos 3 minutos); una respuesta reciente también.
+  return { ...a, ultimaActividad: ultima, enLinea: a.enLinea || Boolean(ultimaRespuesta && ahoraMs - Date.parse(ultimaRespuesta) <= 3 * 60 * 1000) };
 }
 
 export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
@@ -180,7 +181,7 @@ export function compararAlumnos(db, paquete, texto, ahoraMs = Date.now()) {
       preparacion: r.preparacion.pct, pctAcierto: r.pctAcierto, notaPromedio: r.notaPromedio, respuestas: r.respuestas,
       intentos: r.intentos, aprobados: r.aprobados, examenesAprobados: r.examenesAprobados, examenes: r.examenes, temasAprobados: r.temasAprobados, temas: r.temas,
       racha: r.racha, puntos: r.puntos, minutosEstudio: r.minutosEstudio, plan: r.plan,
-      ultimaActividad: act.ultimaActividad, enLinea: act.enLinea, ultimaEntrada: act.ultimaEntrada, ultimaSalida: act.ultimaSalida,
+      ultimaActividad: act.ultimaActividad, enLinea: act.enLinea, ultimaEntrada: act.ultimaEntrada, ultimaSalida: act.ultimaSalida, salidaComo: act.salidaComo,
       materias: paquete ? porMateria(db, u.id, paquete).map(m => ({ id: m.id, pct: m.pct, pctRespuestas: m.pctRespuestas, respuestas: m.respuestas })) : [],
       debiles: { temas: debiles.temas.map(t => ({ materia: t.materia, tema: t.tema, titulo: t.titulo, fallos: t.fallos, pct: t.pct })), ideas: debiles.ideas.map(x => ({ idea: x.idea, numero: x.numero, materia: x.materia, fallos: x.fallos })) },
     };

@@ -338,7 +338,7 @@ test('27b. el precio máximo se muestra redondeado hacia arriba: nunca menos de 
 test('27e. Administrador: el permiso de IA de cada cuenta (dar solo el dueño desde Tailscale, quitar desde cualquier entrada)', () => {
   assert.match(appJs, /if \(u\.rol === 'admin' \|\| !u\.ia\) return null;/);
   assert.match(appJs, /const boton = permitida \? botonAccion\(t\('admin\.ia\.quitar'\)[^\n]*\n\s*: u\.activo && permisos\.admins \? botonAccion\(t\('admin\.ia\.permitir'\)/);
-  assert.match(appJs, /if \(permitir && !confirm\(t\('admin\.ia\.confirmar', \{ nombre: u\.nombreVisible \|\| u\.nombre, origen \}\)\)\) return;/);
+  assert.match(appJs, /if \(permitir && !\(await confirmar\(t\('admin\.ia\.confirmar', \{ nombre: u\.nombreVisible \|\| u\.nombre, origen \}\)/);
   assert.match(appJs, /api\('POST', `\/api\/admin\/usuarios\/\$\{u\.id\}\/ia`, \{ permitida: permitir \}\)/);
   assert.match(appJs, /\n\s*controlIa\(u\),/);
   assert.match(appJs, /t\('ia\.planes\.cuentas', \{ si: numero\(s\.cuentas\.permitidas \?\? 0\), no: numero\(s\.cuentas\.sinPermiso \?\? 0\) \}\)/);

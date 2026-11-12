@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto';
 import { REGLAS_IA } from './humor.js';
 
-export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat']);
+export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat', 'instructor_miniclase', 'instructor_plan']);
 // Lo más largo que se guarda de cada parte (lo que pase de ahí se corta: nunca una pantalla enorme).
 const TOPE = Object.freeze({ explicacion: 2400, corto: 900, termino: 120, terminos: 8, pasos: 4, duda: 600 });
 export const DUDA_MAX_LETRAS = 500;
@@ -47,6 +47,18 @@ const TERMINOS = Object.freeze({
   type: 'array',
   items: { type: 'object', additionalProperties: false, required: ['ingles', 'espanol', 'abreviatura'], properties: { ingles: { type: 'string' }, espanol: { type: 'string' }, abreviatura: { type: 'string' } } },
 });
+
+// 0.12.4: cuando la IA habla de una pregunta del Test Guide (en el chat o en una duda), tiene que CITARLA: su número y la
+// respuesta del Test Guide tal cual. Se revisa contra la clave: si la cita (o el texto) dice otra respuesta, no se usa.
+const CITAS = Object.freeze({
+  type: 'array',
+  items: { type: 'object', additionalProperties: false, required: ['numero', 'respuesta'], properties: { numero: { type: 'string' }, respuesta: { type: 'string' } } },
+});
+const REGLA_CITA = 'cita_test_guide: si mencionas una pregunta del Test Guide de las que te damos, pon {numero, respuesta} con su número y su respuesta del Test Guide copiada TAL CUAL (la de «respuesta_del_test_guide»); si no mencionas ninguna, [].';
+// Para revisar: lo que se manda de cada pregunta (número, la respuesta del Test Guide y las otras opciones).
+export const claveDeCitas = preguntas => (preguntas ?? []).filter(p => p?.numero != null).map(p => ({
+  numero: String(p.numero), correcta: p.respuesta_del_test_guide ?? '', otras: (p.opciones ?? []).filter(o => o !== p.respuesta_del_test_guide),
+}));
 
 // ---------- 1. «Explícamelo de otra forma» ----------
 // q: la pregunta del paquete; elegida: la opción de verdad (la letra original o R1/R2); modo: 'original' | 'reto';
@@ -89,7 +101,7 @@ export function armarExplicacion({ q, elegida, acierto, modo = 'original', idea 
     pregunta: { numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: opciones.map((x, i) => ({ numero: String(i + 1), texto: x.texto })) },
     correcta, eligio: suya, acerto: acierto === true, modo,
     explicacion_original: q.original.explicacion ?? null, explicacion_sencilla: q.sencilla ?? null, idea_equivocada: idea,
-    tarjeta: tarjeta ? { titulo: tarjeta.titulo, texto: [tarjeta.texto, ...(tarjeta.puntos ?? []), tarjeta.recuerda].filter(Boolean).join('\n').slice(0, 1800) } : null,
+    tarjeta: tarjeta ? { titulo: tarjeta.titulo, texto: [tarjeta.texto, ...(tarjeta.puntos ?? []), tarjeta.recuerda].filter(Boolean).join('\n').slice(0, 4000) } : null, // 0.12.4: 4 000 (antes 1 800): cabe la tarjeta entera
     // Solo el estilo: esta explicación se guarda y la ven todos los que eligieron lo mismo con ese estilo.
     alumno: { estilo },
   });
@@ -119,27 +131,30 @@ export function armarConsejo({ cifras, idioma = 'es', humor = false }) {
 
 // ---------- 3. Una duda escrita sobre un tema ----------
 export const ESQUEMA_DUDA = Object.freeze({
-  type: 'object', additionalProperties: false, required: ['respuesta', 'en_material', 'terminos'],
-  properties: { respuesta: { type: 'string' }, en_material: { type: 'boolean' }, terminos: TERMINOS },
+  type: 'object', additionalProperties: false, required: ['respuesta', 'en_material', 'terminos', 'cita_test_guide'],
+  properties: { respuesta: { type: 'string' }, en_material: { type: 'boolean' }, terminos: TERMINOS, cita_test_guide: CITAS },
 });
 // material: { titulo, tarjetas: [{ titulo, texto }] } (las del tema que más se parecen a la duda); pregunta: lo que escribió.
-export function armarDuda({ material, pregunta, alumno = {}, idioma = 'es' }) {
+// preguntas (0.12.4): las del Test Guide de ese tema que YA respondió y se parecen a la duda (tal cual, con su respuesta).
+export function armarDuda({ material, pregunta, preguntas = [], alumno = {}, idioma = 'es' }) {
   const sistema = [
     ...COMUN(idioma),
     'Tu tarea: responder la duda de UN alumno sobre un tema de su materia, usando SOLO las tarjetas de la lección que te damos.',
     'Si la respuesta no está en esas tarjetas, dilo con honestidad (en_material = false) y sugiere qué parte de la lección releer o preguntarle a su instructor; nunca inventes reglas, números ni respuestas del Test Guide.',
     `Estilo: ${estiloDe(alumno.estilo)}`,
+    'Si hablas de una pregunta del Test Guide, su respuesta es SIEMPRE la que te damos; nunca la contradigas.',
     'Campos: respuesta (hasta 900 caracteres), en_material (true si la respuesta sale de las tarjetas), terminos = hasta 5 términos {ingles, espanol, abreviatura}.',
+    REGLA_CITA,
   ].join('\n');
-  return { sistema, texto: bloque({ tema: material.titulo, tarjetas: material.tarjetas, duda: String(pregunta).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_DUDA };
+  return { sistema, texto: bloque({ tema: material.titulo, tarjetas: material.tarjetas, preguntas_que_ya_respondio: preguntas, duda: String(pregunta).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_DUDA, citas: claveDeCitas(preguntas) };
 }
 
 // ---------- 4. (0.10.0) El «Profesor virtual»: un chat que conoce cómo estudia el alumno ----------
 export const ESQUEMA_CHAT = Object.freeze({
-  type: 'object', additionalProperties: false, required: ['respuesta', 'pregunta_control', 'estudiar_ahora', 'buscar_en_youtube', 'terminos'],
+  type: 'object', additionalProperties: false, required: ['respuesta', 'pregunta_control', 'estudiar_ahora', 'buscar_en_youtube', 'terminos', 'cita_test_guide'],
   properties: {
     respuesta: { type: 'string' }, pregunta_control: { type: 'string' }, estudiar_ahora: { type: 'string' },
-    buscar_en_youtube: { type: 'array', items: { type: 'string' } }, terminos: TERMINOS,
+    buscar_en_youtube: { type: 'array', items: { type: 'string' } }, terminos: TERMINOS, cita_test_guide: CITAS,
   },
 });
 // alumno: su modelo (solo cifras, ideas equivocadas y fallas: nunca su nombre); material: tarjetas del tema que más se
@@ -151,8 +166,89 @@ export function armarChat({ alumno, material, preguntas = [], historial = [], me
     'Eres su PROFESOR VIRTUAL: un chat corto con UN alumno. Conoces cómo estudia (sus cifras, sus fallas y sus ideas equivocadas) y adaptas cómo le explicas.',
     'Reglas: (1) Respuestas CORTAS (hasta 700 caracteres), en su estilo. (2) Si hablas de una pregunta del Test Guide, su respuesta es SIEMPRE la que te damos; nunca la contradigas ni la cambies. (3) Usa el material dado; si no está, dilo. (4) Termina con una pregunta corta para comprobar que entendió (pregunta_control). (5) estudiar_ahora: qué le recomiendas estudiar ahora (un tema o una de sus fallas). (6) Nunca escribas enlaces ni direcciones de internet: para videos, da en buscar_en_youtube hasta 3 búsquedas cortas (por ejemplo «night vision scanning pilot»); la app arma el enlace.',
     `Estilo de este alumno: ${estiloDe(alumno?.estilo)}`,
+    REGLA_CITA,
   ].join('\n');
-  return { sistema, texto: bloque({ alumno, material, preguntas_que_ya_respondio: preguntas, historial: historial.slice(-4), mensaje: String(mensaje).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_CHAT };
+  return { citas: claveDeCitas(preguntas), sistema, texto: bloque({ alumno, material, preguntas_que_ya_respondio: preguntas, historial: historial.slice(-6), mensaje: String(mensaje).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_CHAT };
+}
+
+// ---------- 5. (0.12.4) La «Mini-clase IA» de un concepto de «Mi repaso» ----------
+// Se guarda COMPARTIDA (no tiene nada del alumno) por (concepto, texto del concepto, la pregunta, la opción que eligió,
+// estilo, idioma, modelo); se cobra como una explicación. Tiene el mismo candado del Test Guide: devuelve cuál es la
+// correcta y, si no coincide, no se usa.
+export function esquemaMiniClase(n) {
+  return {
+    type: 'object', additionalProperties: false, required: ['opcion_correcta', 'concepto', 'ejemplo', 'trampa', 'recuerda', 'terminos'],
+    properties: {
+      opcion_correcta: { type: 'string', enum: Array.from({ length: n }, (_, i) => String(i + 1)) },
+      concepto: { type: 'string' }, ejemplo: { type: 'string' }, trampa: { type: 'string' }, recuerda: { type: 'string' }, terminos: TERMINOS,
+    },
+  };
+}
+export function armarMiniClase({ concepto, tarjeta = null, q, elegida = null, idea = null, alumno = {}, idioma = 'es', modelo = '' }) {
+  const opciones = opcionesParaIa(q, 'original');
+  const correcta = String(opciones.findIndex(x => x.clave === q.original.correcta) + 1);
+  const estilo = ESTILOS[alumno.estilo] ? alumno.estilo : 'claro';
+  const sistema = [
+    ...COMUN(idioma),
+    'Tu tarea: una MINI-CLASE corta de UN concepto que a este alumno le cuesta (lo falló varias veces en preguntas del Test Guide).',
+    'REGLAS FIJAS: (1) La respuesta correcta de la pregunta es la del Test Guide («correcta»): NUNCA la contradigas. (2) No reescribas el enunciado ni las opciones; nómbralas por su contenido, nunca por letra ni número. (3) Usa solo el material dado (la tarjeta del concepto, la explicación original y la sencilla, la idea equivocada); no inventes reglas ni números. (4) Empieza por lo que el alumno pensó (la idea equivocada) y corrígela con calma.',
+    `Estilo para este alumno: ${estiloDe(estilo)}`,
+    'Campos: opcion_correcta = el número de la opción correcta (el de «correcta»); concepto = el concepto explicado de otra forma (hasta 900 caracteres); ejemplo = un ejemplo concreto de vuelo (hasta 500); trampa = la trampa del enunciado y cómo reconocerla (hasta 400); recuerda = una frase para el examen (hasta 200); terminos = hasta 5 términos {ingles, espanol, abreviatura}.',
+  ].join('\n');
+  const texto = bloque({
+    concepto, tarjeta: tarjeta ? { titulo: tarjeta.titulo ?? '', texto: [tarjeta.texto, ...(tarjeta.puntos ?? []), tarjeta.recuerda].filter(Boolean).join('\n').slice(0, 4000) } : null,
+    pregunta: { numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: opciones.map((x, i) => ({ numero: String(i + 1), texto: x.texto })) },
+    correcta, eligio: elegida ? String(opciones.findIndex(x => x.clave === elegida) + 1) : null,
+    explicacion_original: q.original.explicacion ?? null, explicacion_sencilla: q.sencilla ?? null, idea_equivocada: idea, alumno: { estilo },
+  });
+  const contenido = huella(JSON.stringify([concepto, tarjeta?.titulo ?? '', tarjeta?.texto ?? '', q.id, q.original.enunciado, opciones, q.original.correcta, q.original.explicacion ?? null, q.sencilla ?? null]));
+  const clave = `academia.ia.miniclase.${huella([contenido, elegida ?? '', idea ?? '', estilo, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`;
+  return { sistema, texto, correcta, opciones: opciones.length, clave, esquema: esquemaMiniClase(opciones.length) };
+}
+
+// ---------- 6. (0.12.4) El plan de estudio de HOY ----------
+// El servidor arma la lista de lo que el alumno PUEDE hacer hoy en la app (cada cosa con su id); la IA solo elige y
+// ordena (y dice por qué). Una acción que no está en la lista se descarta. Se guarda por alumno y por día.
+export const ESQUEMA_PLAN = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['titulo', 'pasos'],
+  properties: {
+    titulo: { type: 'string' },
+    pasos: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['accion', 'porque'], properties: { accion: { type: 'string' }, porque: { type: 'string' } } } },
+  },
+});
+export function armarPlanDia({ cifras, acciones, idioma = 'es', humor = false }) {
+  const sistema = [
+    ...COMUN(idioma),
+    'Tu tarea: el plan de estudio de HOY para UN alumno (unos 20 a 40 minutos), con sus cifras.',
+    'Solo puedes usar las acciones de «acciones» (por su id): elige de 2 a 4, en el orden en que conviene hacerlas, y di en una frase por qué cada una (hasta 160 caracteres). Nunca inventes una acción, un tema ni una pregunta.',
+    'Campos: titulo (hasta 80 caracteres); pasos = [{accion (el id), porque}].',
+    ...(humor ? [REGLAS_IA] : []),
+  ].join('\n');
+  return { sistema, texto: bloque({ cifras, acciones: acciones.map(a => ({ id: a.id, que: a.que })) }), esquema: ESQUEMA_PLAN };
+}
+
+// ---------- Revisar lo que cita del Test Guide (chat y dudas) ----------
+const plano = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9ñ]+/g, ' ').trim();
+const mismaRespuesta = (a, b) => { const x = plano(a); const y = plano(b); return Boolean(x && y) && (x === y || (x.length >= 8 && y.includes(x)) || (y.length >= 8 && x.includes(y))); };
+// citas: las de la clave (claveDeCitas). Lanza noSirve si una cita (o el texto: «la correcta es …») contradice al Test
+// Guide; devuelve las citas buenas con la respuesta del Test Guide tal cual (nunca la de la IA).
+export function revisarCitas(citas, dadas, texto = '') {
+  const lista = Array.isArray(citas) ? citas : [];
+  const buenas = [];
+  for (const c of Array.isArray(dadas) ? dadas.slice(0, 5) : []) {
+    const k = lista.find(x => x.numero === String(c?.numero ?? '').trim());
+    if (!k) continue; // una pregunta que no se le dio: no se muestra
+    if (!mismaRespuesta(c.respuesta, k.correcta) || k.otras.some(o => plano(o) === plano(c.respuesta))) throw noSirve();
+    if (!buenas.some(b => b.numero === k.numero)) buenas.push({ numero: k.numero, respuesta: k.correcta });
+  }
+  const t = plano(texto);
+  for (const k of lista) {
+    for (const o of k.otras) {
+      const p = plano(o);
+      if (p.length >= 6 && [`correcta es ${p}`, `respuesta es ${p}`, `correct answer is ${p}`, `answer is ${p}`].some(f => t.includes(f))) throw noSirve();
+    }
+  }
+  return buenas;
 }
 
 // ---------- Guardar y leer lo que respondió ----------
@@ -190,12 +286,29 @@ export function revisarRespuesta(datos, json) {
       terminos: terminosDe(json?.terminos), pregunta: limpio(datos.pregunta, TOPE.duda),
     };
     if (!r.respuesta) throw noSirve();
+    r.citas = revisarCitas(datos.citas, json?.cita_test_guide, r.respuesta);
     return r;
   }
   if (datos.uso === 'instructor_duda') {
     const r = { respuesta: limpio(json?.respuesta, TOPE.explicacion), enMaterial: json?.en_material === true, terminos: terminosDe(json?.terminos), pregunta: limpio(datos.pregunta, TOPE.duda) };
     if (!r.respuesta) throw noSirve();
+    r.citas = revisarCitas(datos.citas, json?.cita_test_guide, r.respuesta);
     return r;
+  }
+  if (datos.uso === 'instructor_miniclase') {
+    if (json?.opcion_correcta !== datos.correcta) throw noSirve();
+    const r = { concepto: limpio(json.concepto, TOPE.explicacion), ejemplo: limpio(json.ejemplo, TOPE.corto), trampa: limpio(json.trampa, TOPE.corto), recuerda: limpio(json.recuerda, TOPE.corto), terminos: terminosDe(json.terminos) };
+    if (!r.concepto) throw noSirve();
+    return r;
+  }
+  if (datos.uso === 'instructor_plan') {
+    // Solo acciones que existen en la app (las que mandó el servidor): una que no está se descarta; ninguna, no sirve.
+    const validas = new Set((datos.acciones ?? []).map(String));
+    const vistas = new Set();
+    const pasos = (Array.isArray(json?.pasos) ? json.pasos : []).filter(p => validas.has(String(p?.accion)) && !vistas.has(String(p.accion)) && vistas.add(String(p.accion)))
+      .slice(0, TOPE.pasos).map(p => ({ accion: String(p.accion), porque: limpio(p.porque, 240) }));
+    if (!pasos.length) throw noSirve();
+    return { titulo: limpio(json?.titulo, 120), pasos };
   }
   throw noSirve();
 }
@@ -204,10 +317,12 @@ export function esquemaDe(datos) {
   if (datos?.uso === 'instructor_consejo') return ESQUEMA_CONSEJO;
   if (datos?.uso === 'instructor_duda') return ESQUEMA_DUDA;
   if (datos?.uso === 'instructor_chat') return ESQUEMA_CHAT;
+  if (datos?.uso === 'instructor_miniclase') return esquemaMiniClase(Number(datos.opciones) || 3);
+  if (datos?.uso === 'instructor_plan') return ESQUEMA_PLAN;
   return null;
 }
 
-export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
+export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
 
 export function leerGuardado(db, clave) {
   if (typeof clave !== 'string' || !CLAVE_GUARDADO.test(clave)) return null;
@@ -222,4 +337,26 @@ export function guardarRespuesta(db, datos, json, llamada, ahora = Date.now()) {
   db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(datos.clave, JSON.stringify(valor), valor.en);
   return { clave: datos.clave };
+}
+
+// ---------- 0.12.4: una pregunta en la que la IA no sirve (contradijo al Test Guide 2 veces) queda sin IA 7 días ----------
+export const RECHAZOS = Object.freeze({ veces: 2, diasSinIa: 7 });
+const claveRechazo = pregunta => `academia.ia.sin_ia.${createHash('sha256').update(String(pregunta)).digest('hex').slice(0, 24)}`;
+export function anotarRechazo(db, pregunta, ahora = Date.now()) {
+  const clave = claveRechazo(pregunta);
+  let v = null;
+  try { v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave)?.valor ?? 'null'); } catch { v = null; }
+  const vencida = v?.hasta && Date.parse(v.hasta) <= ahora; // pasados los 7 días, la cuenta empieza otra vez
+  const veces = (vencida ? 0 : Number(v?.veces) || 0) + 1;
+  const valor = { veces, hasta: veces >= RECHAZOS.veces ? new Date(ahora + RECHAZOS.diasSinIa * 86_400_000).toISOString() : null };
+  db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(clave, JSON.stringify(valor), new Date(ahora).toISOString());
+  return valor;
+}
+// ¿Esta pregunta está ahora sin IA? (después de los 7 días vuelve a intentarse, y la cuenta empieza otra vez)
+export function preguntaSinIa(db, pregunta, ahora = Date.now()) {
+  try {
+    const v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(claveRechazo(pregunta))?.valor ?? 'null');
+    return Boolean(v?.hasta && Date.parse(v.hasta) > ahora);
+  } catch { return false; }
 }

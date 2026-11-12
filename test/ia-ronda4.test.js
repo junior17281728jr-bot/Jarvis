@@ -173,7 +173,7 @@ test('ronda 4 (1, 2 y 3): las pantallas dicen por qué se apagó la IA y ofrecen
   // Reanudada con la IA apagada: se dice, con el atajo.
   assert.match(appJs, /x\.datos\.reanudada && x\.datos\.iaEncendida === false\) return recargar\(\{ texto: t\('claves\.reanudada_ia_apagada'\), clase: 'aviso', enlace: abrirIa \}\)/);
   // Apagar el último proveedor pregunta antes.
-  assert.match(appJs, /if \(apagarProveedorApagaIa\(s, c\.id\) && !confirm\(t\('ia\.proveedor\.apagar_ia\.confirmar'/);
+  assert.match(appJs, /if \(apagarProveedorApagaIa\(s, c\.id\) && !\(await confirmar\(t\('ia\.proveedor\.apagar_ia\.confirmar'/);
   assert.match(appJs, /cosasParaEncender\(faltan\)\.map/);
 });
 

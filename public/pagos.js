@@ -25,7 +25,7 @@ export function leerPaquetes(texto) {
 }
 
 export function crearPagos(h) {
-  const { el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi } = h;
+  const { el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi, confirmar } = h;
   const tx = (clave, vars = {}) => t(clave, vars);
   // 0.12.3 (auditoría P1-3): agregar hijos sin que un null salga escrito «null» en la pantalla.
   const anexar = (nodo, ...hijos) => nodo.append(...hijos.filter(x => x != null && x !== false));
@@ -132,13 +132,18 @@ export function crearPagos(h) {
     };
     const resolver = async (p, aprobar, boton) => {
       let motivo = '';
-      if (!aprobar) { motivo = prompt(tx('pagos.motivo_pedir')) ?? ''; if (!motivo.trim()) return; }
+      // 0.12.4: el motivo y la confirmación, con la hoja propia de la app (no las ventanas del navegador).
+      if (!aprobar) {
+        const escrito = await confirmar(tx('pagos.rechazar_linea', { alumno: p.alumno.nombre }), { titulo: tx('pagos.rechazar'), si: tx('pagos.rechazar'), peligro: true, campo: { etiqueta: tx('pagos.motivo_pedir'), max: 300 } });
+        if (!escrito) return;
+        motivo = escrito;
+      }
       boton.disabled = true;
       let x = await api('POST', `/api/admin/academia/pagos/${p.id}/${aprobar ? 'aprobar' : 'rechazar'}`, aprobar ? {} : { motivo });
       // 0.12.3: sus minutos no le servirían ahora: se dice por qué (al administrador) y solo se aprueba si lo confirma.
       if (aprobar && x.datos?.error === 'ia_no_lista_alumno') {
         const falta = (x.datos.falta ?? []).map(f => tx(`pagos.admin.falta.${f}`)).join(' · ');
-        if (!confirm(tx('pagos.aprobar_sin_ia', { alumno: p.alumno.nombre, falta }))) { boton.disabled = false; return; }
+        if (!(await confirmar(tx('pagos.aprobar_sin_ia', { alumno: p.alumno.nombre, falta }), { si: tx('pagos.aprobar') }))) { boton.disabled = false; return; }
         x = await api('POST', `/api/admin/academia/pagos/${p.id}/aprobar`, { aunAsi: true });
       }
       if (!x.ok) { boton.disabled = false; return avisar(textoError(x.datos.error), 'mal'); }
@@ -288,14 +293,18 @@ export function crearPagos(h) {
   function enlaceVideo(v, clase) {
     return el('a', { class: clase, href: v.url, target: '_blank', rel: 'noopener noreferrer' }, icono('video', 'icono chico'), el('span', { texto: v.titulo ?? v.texto }));
   }
+  // 0.12.4: lo que respondió el instructor básico (sin IA en ese momento): una respuesta más, nunca «no pudo».
+  const textoBasica = b => (b ? `${tx('profesor.basico')} ${tx(`instr.c.${b.clave}`, b.vars ?? {})}` : tx('profesor.basico_sin'));
   function burbujas(m) {
-    const respuesta = m.respuesta;
+    const respuesta = m.respuesta ?? (m.estado === 'basico' ? { respuesta: textoBasica(m.basica) } : null);
     return [
       el('div', { class: 'burbuja alumno' }, talCual('p', m.pregunta)),
       el('div', { class: 'burbuja profesor' },
         respuesta ? [
           // Lo que escribió la IA va como texto (una dirección que escriba se ve como texto, nunca como enlace).
           talCual('p', respuesta.respuesta),
+          // 0.12.4: lo que citó del Test Guide (revisado contra la clave), con la respuesta del Test Guide tal cual.
+          ...(respuesta.citas ?? []).map(c => talCual('p', tx('instr.ia.cita', { n: c.numero, respuesta: c.respuesta }), 'cita-test-guide chica')),
           respuesta.estudiar ? el('p', { class: 'suave' }, el('strong', { texto: `${tx('profesor.estudia')} ` }), talCual('span', respuesta.estudiar)) : null,
           respuesta.control ? el('p', { class: 'pregunta-control' }, el('strong', { texto: `${tx('profesor.comprueba')} ` }), talCual('span', respuesta.control)) : null,
         ] : el('p', { class: 'suave', texto: m.estado === 'no' ? tx('profesor.no') : tx('instr.ia.escribiendo') }),
@@ -324,21 +333,23 @@ export function crearPagos(h) {
       boton.disabled = false;
       if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
       entradaTexto.value = '';
-      const m = { pregunta: mensaje, respuesta: null, estado: x.datos.ia.estado, videos: x.datos.videos, buscar: x.datos.buscar };
+      // 0.12.4: ia = null cuando no hay IA para él por algo que no se pasa solo: la respuesta básica, sin «no pudo».
+      const ia = x.datos.ia ?? { estado: 'basico' };
+      const m = { pregunta: mensaje, respuesta: null, estado: ia.estado, basica: x.datos.basica ?? null, videos: x.datos.videos, buscar: x.datos.buscar };
       const nodos = burbujas(m);
       lista.append(...nodos);
       const caja = nodos[1];
       if (x.datos.tiempo) cambiarHijos(medidor, instructorUi().medidorTiempo(x.datos.tiempo));
-      if (x.datos.ia.estado === 'no') {
-        cambiarHijos(caja, x.datos.ia.motivo === 'sin_minutos' ? instructorUi().sinMinutos() : el('p', { class: 'suave', texto: tx('profesor.no') }),
+      if (ia.estado === 'no') {
+        cambiarHijos(caja, ia.motivo === 'sin_minutos' ? instructorUi().sinMinutos() : el('p', { class: 'suave', texto: tx(ia.espera ? 'instr.ia.espera' : 'profesor.no') }),
           x.datos.basica ? el('p', {}, el('strong', { texto: `${tx('profesor.basico')} ` }), el('span', { texto: tx(`instr.c.${x.datos.basica.clave}`, x.datos.basica.vars ?? {}) })) : null,
           ...[...(x.datos.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')), ...(x.datos.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))]);
-      } else if (x.datos.ia.estado === 'pendiente') {
+      } else if (ia.estado === 'pendiente') {
         const vuelta = async (n = 0) => {
           if (!caja.isConnected) return;
           const y = await api('GET', '/api/academia/profesor');
           const ultimo = y.ok ? y.datos.historial.at(-1) : null;
-          if (ultimo?.respuesta || ultimo?.estado === 'no') { caja.replaceWith(...burbujas(ultimo).slice(1)); cambiarHijos(medidor, instructorUi().medidorTiempo(y.datos.tiempo)); return; }
+          if (ultimo?.respuesta || ultimo?.estado === 'no' || ultimo?.estado === 'basico') { caja.replaceWith(...burbujas(ultimo).slice(1)); cambiarHijos(medidor, instructorUi().medidorTiempo(y.datos.tiempo)); return; }
           if (n < 60) setTimeout(() => vuelta(n + 1), 2000);
         };
         setTimeout(vuelta, 2000);

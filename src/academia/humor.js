@@ -14,6 +14,9 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 const diaDe = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
 
 export const TIPOS_HUMOR = Object.freeze({ quemado: 12, salto: 10, racha: 9, regreso: 9 });
+// 0.12.4: las frases DURAS («te quemaste», «te pasó por encima», «la nota más baja…») solo salen cuando se saltó las
+// clases a propósito («Ir directo al examen»). Si no aprobó lo mismo otra vez, solo estas, que animan sin pinchar.
+export const QUEMADO_SUAVE = Object.freeze([3, 4, 6, 8, 9, 10, 11]);
 export const TOTAL_HUMOR = Object.values(TIPOS_HUMOR).reduce((a, b) => a + b, 0);
 const MAX_REFERENCIAS = 40;
 const DIA = 86_400_000;
@@ -47,20 +50,23 @@ function leerBolsa(db, usuarioId) {
 
 // La frase que toca de un tipo: { tipo, clave } (o null si el humor está apagado). «referencia» la ata a algo (un
 // intento, un día): volver a mirar ese resultado da la misma frase; «recien» = false no saca una nueva.
-export function lineaHumor(db, usuarioId, tipo, { recien = true, referencia = null, azar = Math.random } = {}) {
+// solo (0.12.4, opcional): los números de frase que valen esta vez (los demás se quedan en la bolsa para otra ocasión).
+export function lineaHumor(db, usuarioId, tipo, { recien = true, referencia = null, azar = Math.random, solo = null } = {}) {
   const n = TIPOS_HUMOR[tipo];
   if (!n || !humorActivo(db, usuarioId)) return null;
   const b = leerBolsa(db, usuarioId);
   const ya = referencia ? b.refs.find(r => r?.ref === referencia && r?.tipo === tipo) : null;
   if (ya && Number.isSafeInteger(ya.n) && ya.n >= 1 && ya.n <= n) return { tipo, clave: `humor.${tipo}.${ya.n}` };
   if (!recien) return null;
+  const vale = x => !solo || solo.includes(x);
   let bolsa = (Array.isArray(b.bolsas[tipo]) ? b.bolsas[tipo] : []).filter(x => Number.isSafeInteger(x) && x >= 1 && x <= n);
-  if (!bolsa.length) {
-    bolsa = Array.from({ length: n }, (_, i) => i + 1);
-    if (bolsa.length > 1) bolsa = bolsa.filter(x => x !== b.ultima[tipo]); // nunca la misma dos veces seguidas
+  if (!bolsa.some(vale)) {
+    bolsa = [...new Set([...bolsa, ...Array.from({ length: n }, (_, i) => i + 1)])];
+    if (bolsa.filter(vale).length > 1) bolsa = bolsa.filter(x => x !== b.ultima[tipo]); // nunca la misma dos veces seguidas
   }
-  const k = Math.min(bolsa.length - 1, Math.floor(azar() * bolsa.length));
-  const elegida = bolsa.splice(k, 1)[0];
+  const posibles = bolsa.filter(vale);
+  const elegida = posibles[Math.min(posibles.length - 1, Math.floor(azar() * posibles.length))];
+  bolsa.splice(bolsa.indexOf(elegida), 1);
   b.bolsas[tipo] = bolsa;
   b.ultima[tipo] = elegida;
   if (referencia) b.refs = [...b.refs.filter(r => r?.ref !== referencia), { ref: referencia, tipo, n: elegida }].slice(-MAX_REFERENCIAS);

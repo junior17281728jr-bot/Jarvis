@@ -99,8 +99,12 @@ async function cargarIdioma(valor) {
   }
   document.documentElement.lang = idioma;
 }
+// 0.12.4: «{n|día|días}» = el singular si esa variable vale 1, si no el plural (sirve con varias cifras en una frase y
+// en los dos idiomas: «{n} {n|día|días} de estudio»). Las cifras ya formateadas («1», «1,000») también se leen.
+const CIFRA_PLURAL = /\{(\w+)\|([^|{}]*)\|([^{}]*)\}/g;
+const esUno = valor => Number(String(valor ?? '').replace(/[\s,.\u00a0](?=\d{3}\b)/g, '')) === 1;
 function t(clave, variables = {}) {
-  const texto = catalogos[idioma]?.[clave] ?? catalogos.es?.[clave] ?? clave;
+  const texto = (catalogos[idioma]?.[clave] ?? catalogos.es?.[clave] ?? clave).replace(CIFRA_PLURAL, (_, nombre, uno, varios) => (nombre in variables && esUno(variables[nombre]) ? uno : varios));
   return texto.replace(/\{(\w+)\}/g, (_, nombre) => (nombre in variables ? String(variables[nombre]) : `{${nombre}}`));
 }
 // Con n = 1, la frase en singular si existe (clave + «.uno»): «1 paso», no «1 pasos».
@@ -133,6 +137,10 @@ function el(etiqueta, propiedades = {}, ...hijos) {
   }
   return nodo;
 }
+// 0.12.4: el append()/replaceChildren() del navegador escribe «null» si le llega un null: estos solo ponen lo que existe.
+// (test/arreglos-0124.test.js revisa que ningún append/replaceChildren reciba un «cond ? x : null» directo.)
+function anexar(nodo, ...hijos) { nodo.append(...hijos.flat(Infinity).filter(x => x != null && x !== false)); return nodo; }
+function reemplazar(nodo, ...hijos) { nodo.replaceChildren(...hijos.flat(Infinity).filter(x => x != null && x !== false)); return nodo; }
 
 // El pedido tal cual, sin mirar la respuesta (eso lo hace api). Nunca falla: sin red responde «sin_conexion».
 async function pedirAlServidor(metodo, ruta, datos, extra = null) {
@@ -177,6 +185,8 @@ function pedirYGuardar(ruta) {
 // Adelantar algo que la persona seguramente abre después (el próximo tema, el progreso): sin esperar, sin dibujar.
 function adelantar(ruta) {
   if (!EN_MEMORIA.test(ruta) || !estado.usuario) return;
+  // 0.12.4: con los términos sin firmar, lo de estudiar responde 403: no se adelanta (ni ensucia la consola).
+  if (estado.terminos?.pendiente && ruta.startsWith('/api/academia/')) return;
   const g = memoria.get(ruta);
   if (!g || Date.now() - g.en > FRESCO_MS) pedirYGuardar(ruta);
 }
@@ -472,7 +482,7 @@ function pie() {
     el('a', { class: 'pie-terminos', href: '#terminos', texto: t('terminos.pie') }));
 }
 // 0.9.2: los términos (public/terminos-vista.js, solo se carga aquí).
-const piezasTerminos = () => ({ el, t, numero, icono, talCual, api, caja, decir, avisar, textoError, botonAccion, marcaConLogo });
+const piezasTerminos = () => ({ el, t, numero, icono, talCual, api, caja, decir, avisar, textoError, botonAccion, marcaConLogo, confirmar, anexar });
 async function pantallaLeerTerminos() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/terminos'), import('./terminos-vista.js')]);
@@ -1645,10 +1655,24 @@ async function pantallaAprendizaje(alumno = null) {
     el('h2', { class: 'titulo-pantalla', texto: alumno ? t('aprendizaje.de_alumno') : t('aprendizaje.titulo') }),
     r.ok ? vista.vistaAprendizaje(r.datos, { el, t, numero }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
+async function pantallaIaDemo() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-demo'), import('./ia-demo-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('admin', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, mostrar, marco, instructorUi });
+}
 async function pantallaProfesor() {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/profesor');
-  if (vigente()) pagosUi().pantallaProfesor(r);
+  if (!vigente()) return;
+  // 0.12.4: el Profesor virtual es con IA: sin IA para él, una nota tranquila (nunca un chat que responde «no pudo»).
+  if (r.ok && r.datos.instructor?.modo === 'basico' && r.datos.instructor.motivo !== 'sin_minutos') {
+    return mostrar(marco('inicio', el('a', { class: 'volver con-icono', href: '#inicio' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.volver') })),
+      instructorUi().profesorSinIa(r.datos)));
+  }
+  if (r.ok) r.datos.historial = instructorUi().historialParaChat(r.datos.historial);
+  pagosUi().pantallaProfesor(r);
 }
 // 0.10.0: el número de comprobantes en revisión, sobre la pestaña «Pagos» (se pone cuando llega).
 function contadorPagos() {
@@ -1810,7 +1834,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       : ultimo.vigente === false ? t('admin.ia.cambio_sin_anotar')
         : t('admin.ia.ultimo', { accion: tSi(`admin.ia.accion.${ultimo.accion}`, ultimo.accion), desde: tSi(`admin.ia.desde.${ultimo.desde}`, ultimo.desde), fecha: fecha(ultimo.fecha) });
     const cambiarPermiso = permitir => async () => {
-      if (permitir && !confirm(t('admin.ia.confirmar', { nombre: u.nombreVisible || u.nombre, origen }))) return;
+      if (permitir && !(await confirmar(t('admin.ia.confirmar', { nombre: u.nombreVisible || u.nombre, origen }), { si: t('dialogo.si') }))) return;
       const x = await api('POST', `/api/admin/usuarios/${u.id}/ia`, { permitida: permitir });
       if (!x.ok) throw new Error(textoError(x.datos.error));
       await pantallaAdmin('usuarios', el('p', { class: 'mensaje bien', 'data-foco': true, texto: t(permitir ? 'admin.ia.listo_permitida' : 'admin.ia.listo_retirada', { nombre: u.nombreVisible || u.nombre }) }));
@@ -1844,7 +1868,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         class: 'secundario',
         texto: t('admin.reiniciar'),
         onclick: async () => {
-          if (!confirm(t('admin.confirmar_reiniciar', { nombre: u.nombre }))) return;
+          if (!(await confirmar(t('admin.confirmar_reiniciar', { nombre: u.nombre }), { si: t('admin.reiniciar') }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/reiniciar-clave`, {});
           if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
           claveTemporalVisible = { textoClave: 'admin.reiniciada', nombre: u.nombreVisible || x.datos.nombre, temporal: x.datos.claveTemporal, usuario: x.datos.nombre };
@@ -1856,7 +1880,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
         class: u.activo ? 'peligro' : 'secundario',
         texto: t(u.activo ? 'admin.desactivar' : 'admin.activar'),
         onclick: async () => {
-          if (!confirm(t(u.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: u.nombreVisible || u.nombre }))) return;
+          if (!(await confirmar(t(u.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: u.nombreVisible || u.nombre }), { si: t(u.activo ? 'admin.desactivar' : 'admin.activar'), peligro: u.activo }))) return;
           const x = await api('POST', `/api/admin/usuarios/${u.id}/activo`, { activo: !u.activo });
           if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
           avisar(u.activo ? t('admin.listo.desactivada', { nombre: u.nombreVisible || u.nombre }) : t('admin.listo.activada', { nombre: u.nombreVisible || u.nombre }));
@@ -2235,7 +2259,7 @@ const ATRIBUTOS_CAMPO_RECUPERACION = Object.freeze({
 
 // «Crear mi clave de recuperación» (o una nueva, al cambiarla): el servidor la crea y la muestra UNA vez.
 async function crearClaveNueva(boton, mensaje, antes) {
-  if (antes && !confirm(t('copias.clave.cambiar_confirmar', { huella: antes }))) return;
+  if (antes && !(await confirmar(t('copias.clave.cambiar_confirmar', { huella: antes })))) return;
   boton.disabled = true;
   mensaje.hidden = true;
   const x = await api('POST', '/api/admin/copias/clave/nueva', {});
@@ -2285,8 +2309,8 @@ function dibujarClaveNueva(datos, vigente) {
   const cancelar = el('button', {
     type: 'button', class: 'secundario',
     texto: t('copias.clave.cancelar'),
-    onclick: () => {
-      if (!confirm(n.antes ? t('copias.clave.cancelar_confirmar_cambio', { huella: n.antes }) : t('copias.clave.cancelar_confirmar'))) return;
+    onclick: async () => {
+      if (!(await confirmar(n.antes ? t('copias.clave.cancelar_confirmar_cambio', { huella: n.antes }) : t('copias.clave.cancelar_confirmar')))) return;
       claveNueva = null;
       pantallaCopias({ texto: n.antes ? t('copias.clave.cancelada_cambio', { huella: n.antes }) : t('copias.clave.cancelada'), clase: 'aviso' });
     },
@@ -2577,17 +2601,19 @@ function dibujarIa(s, aviso, vigente) {
   ] : null;
   const encender = dueno && !s.encendida && !faltan.length ? el('button', {
     type: 'button', class: 'grande con-icono centrado',
-    onclick: evento => {
-      if (!confirm(t('ia.encender.confirmar', { proveedor, tope }))) return;
-      cambiar(evento.currentTarget, mensajeEstado, '/api/admin/ia/ajustes', { encendida: true }, x => t('ia.encender.listo', { tope: usd(x.topeGeneralMicro) }));
+    onclick: async evento => {
+      const boton = evento.currentTarget;
+      if (!(await confirmar(t('ia.encender.confirmar', { proveedor, tope }), { si: t('ia.encender') }))) return;
+      cambiar(boton, mensajeEstado, '/api/admin/ia/ajustes', { encendida: true }, x => t('ia.encender.listo', { tope: usd(x.topeGeneralMicro) }));
     },
   }, icono('encendido'), el('span', { texto: t('ia.encender') })) : null;
   // Apagar se puede siempre, también por el enlace público: nunca gasta.
   const apagar = s.encendida ? el('button', {
     type: 'button', class: 'peligro grande con-icono centrado',
-    onclick: evento => {
-      if (!confirm(t('ia.apagar.confirmar'))) return;
-      cambiar(evento.currentTarget, mensajeEstado, '/api/admin/ia/apagar', {}, t('ia.apagar.listo'));
+    onclick: async evento => {
+      const boton = evento.currentTarget;
+      if (!(await confirmar(t('ia.apagar.confirmar'), { si: t('ia.apagar'), peligro: true }))) return;
+      cambiar(boton, mensajeEstado, '/api/admin/ia/apagar', {}, t('ia.apagar.listo'));
     },
   }, icono('encendido'), el('span', { texto: t('ia.apagar') })) : null;
   const tarjetaEstadoIa = el('section', { class: 'tarjeta' },
@@ -2692,9 +2718,9 @@ function dibujarIa(s, aviso, vigente) {
         c.confirmado ? el('p', { class: 'suave', texto: t('ia.precio', { modelo: p.precio.nombre || nombreModelo(p.modelo), entrada: `US$${p.precio.entradaUsd}`, salida: `US$${p.precio.salidaUsd}`, fecha: fechaDia(p.precio.revisadoEl) }) })
           : el('p', { class: 'suave', texto: t('ia.proveedor.sin_precio', { proveedor: nombre }) }),
         c.conInterruptor ? interruptor(c.etiqueta === 'ia.proveedor.segundo' ? t('ia.proveedor.segundo') : t('ia.proveedor.usar', { proveedor: nombre }), c.usar,
-          boton => {
+          async boton => {
             // Apagar el último proveedor apaga la IA: se pregunta antes (y, si sigue, la pantalla dice por qué se apagó).
-            if (apagarProveedorApagaIa(s, c.id) && !confirm(t('ia.proveedor.apagar_ia.confirmar', { proveedor: nombre }))) return;
+            if (apagarProveedorApagaIa(s, c.id) && !(await confirmar(t('ia.proveedor.apagar_ia.confirmar', { proveedor: nombre }), { peligro: true }))) return;
             cambiar(boton, mensajeProveedores, '/api/admin/ia/ajustes', { usar: { [c.id]: !c.usar } }, null);
           }) : null);
     }),
@@ -2860,7 +2886,7 @@ function cajaDeClave(u, { listo, recargar, abrirPegar, ayuda = null, nombre: otr
       botones.push(probar);
     }
     botones.push(botonAccion(t('claves.desactivar'), 'peligro', mensajeClave, async () => {
-      if (!confirm(t('claves.desactivar.confirmar'))) return;
+      if (!(await confirmar(t('claves.desactivar.confirmar'), { peligro: true }))) return;
       const x = await api('POST', `/api/admin/claves/${a.id}/activa`, { activa: false });
       if (!x.ok) throw new Error(textoError(x.datos.error));
       recargar({ texto: conIaApagada(t('claves.desactivada_listo'), x), clase: x.datos.iaApagada ? 'aviso' : 'bien', enlace: x.datos.iaApagada ? abrirIa : null });
@@ -2968,7 +2994,7 @@ function grupoTelegram(g, d, { listo, recargar, vigente }) {
       el('summary', { class: 'con-icono' }, icono('prohibido', 'icono chico'), el('span', { texto: t('telegram.dejar') })),
       el('p', { class: 'ayuda', texto: t('telegram.dejar.explica') }),
       botonAccion(t('telegram.dejar.boton'), 'peligro', mensaje, async () => {
-        if (!confirm(t('telegram.dejar.confirmar'))) return;
+        if (!(await confirmar(t('telegram.dejar.confirmar'), { peligro: true }))) return;
         const x = await api('POST', '/api/admin/telegram/desvincular', {});
         if (!x.ok) throw new Error(textoError(x.datos.error));
         recargar({ texto: t('telegram.dejar.listo'), clase: 'aviso' });
@@ -3261,7 +3287,7 @@ let ayudasInstructor = null;
 const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor }));
 // 0.10.0: tiempo con IA, pagos y Profesor virtual (public/pagos.js).
 let ayudasPagos = null;
-const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi }));
+const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi, confirmar }));
 async function empezarIntento(datos, boton = null) {
   if (boton) boton.disabled = true;
   const r = await api('POST', '/api/academia/intentos', datos);
@@ -4325,7 +4351,7 @@ async function pantallaVideo(materia, { modo = null, tema = null } = {}) {
   el('span', { class: 'video-poster-titulo', texto: titulo }),
   el('span', { class: 'video-poster-play', 'aria-hidden': 'true' }, triangulo()),
   el('span', { class: 'video-poster-datos', texto: [total ? t('acad.video.minutos', { n: numero(Math.max(1, Math.round(total / 60))) }) : null, v.escenas.length ? tn('acad.video.escenas', { n: v.escenas.length }) : null, audioUrl ? t('acad.video.con_voz') : t('acad.video.sin_voz')].filter(Boolean).join(' · ') }));
-  lugar.append(poster, el('p', { class: 'video-nota suave', texto: audioUrl ? t('acad.video.nota') : t('acad.video.nota_sin_audio') }),
+  anexar(lugar, poster, el('p', { class: 'video-nota suave', texto: audioUrl ? t('acad.video.nota') : t('acad.video.nota_sin_audio') }),
     v.visto ? el('button', { type: 'button', class: 'boton-texto', onclick: () => { location.hash = '#inicio'; }, texto: t('acad.video.ya_lo_vi') }) : null);
   pie.append(ver);
   if (saltar) pie.append(saltar);
@@ -4376,6 +4402,47 @@ async function pantallaExamen(materia) {
         ? el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: evento => empezarIntento({ tipo: 'examen', materia }, evento.currentTarget) }, el('span', { texto: t('acad.empezar_examen') }))
         : m.examen.saltable ? saltarAlExamen(m) : el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }))));
 }
+// 0.12.4: confirmar con la hoja propia de la app (la misma capa de «Ir directo al examen»), no con la confirmación del
+// navegador (en el iPhone como app se ve fuera de estilo). → una promesa: true si toca «Sí», false si cancela (botón,
+// tocar fuera o Escape). El foco vuelve a donde estaba. campo: { etiqueta } = además un texto para escribir (por ejemplo
+// el motivo de un rechazo): entonces resuelve con lo escrito (sin espacios a los lados) o false; «Sí» pide algo escrito.
+function confirmar(texto, { si = t('dialogo.si'), no = t('dialogo.no'), peligro = false, titulo = t('dialogo.titulo'), campo = null } = {}) {
+  return new Promise(listo => {
+    const desde = document.activeElement;
+    let hecho = false;
+    const cerrar = valor => {
+      if (hecho) return;
+      hecho = true;
+      capa.remove();
+      try { desde?.focus?.({ preventScroll: true }); } catch { /* ya no está */ }
+      listo(valor);
+    };
+    const entrada = campo ? el('textarea', { id: 'confirmar-campo', rows: 2, maxlength: campo.max ?? 300 }) : null;
+    const aceptar = () => {
+      if (!entrada) return cerrar(true);
+      const valor = entrada.value.trim();
+      if (!valor) return entrada.focus();
+      cerrar(valor);
+    };
+    const botonSi = el('button', { type: 'button', class: `boton-3d ${peligro ? 'rojo' : 'naranja'}`, onclick: aceptar }, el('span', { texto: si }));
+    const botonNo = el('button', { type: 'button', class: 'boton-3d blanco', onclick: () => cerrar(false) }, el('span', { texto: no }));
+    const hoja = el('div', { class: 'saltar-hoja confirmar-hoja', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'confirmar-titulo', 'aria-describedby': 'confirmar-texto' },
+      el('h2', { id: 'confirmar-titulo', texto: titulo }),
+      el('p', { id: 'confirmar-texto', texto }),
+      entrada ? el('label', { for: 'confirmar-campo', texto: campo.etiqueta }) : null, entrada,
+      el('div', { class: 'saltar-botones' }, botonSi, botonNo));
+    const capa = el('div', { class: 'origen-capa saltar-capa', onclick: e => { if (e.target === capa) cerrar(false); } }, hoja);
+    capa.addEventListener('keydown', e => {
+      if (e.key === 'Escape') cerrar(false);
+      // El tabulador se queda dentro de la hoja.
+      if (e.key === 'Tab') { const [a, b] = [entrada ?? botonSi, botonNo]; if (e.shiftKey && document.activeElement === a) { e.preventDefault(); b.focus(); } else if (!e.shiftKey && document.activeElement === b) { e.preventDefault(); a.focus(); } }
+    });
+    window.addEventListener('hashchange', () => cerrar(false), { once: true });
+    document.body.append(capa);
+    (entrada ?? botonNo).focus();
+  });
+}
+
 // 0.12.0: «Ir directo al examen» sin terminar los temas: primero el aviso (una hoja para confirmar), después el examen.
 function saltarAlExamen(m) {
   const total = m.temas.length;
@@ -4636,9 +4703,12 @@ async function pantallaPractica(id) {
     cuenta.textContent = '';
     const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: `boton-3d ${res.aprobado ? 'blanco' : 'grande naranja'}`,
       onclick: evento => empezarIntento({ tipo: res.tipo, materia: res.materia, tema: res.tema }, evento.currentTarget) }, el('span', { texto: t('acad.otra_vez') }));
-    const titulo = res.tipo === 'reto' ? t('reto.hecho') : res.tipo === 'errores' ? t('errores.hecho') : res.tipo === 'instructor' ? t('instr.practica.hecha') : res.aprobado == null ? t('acad.repaso_hecho') : res.aprobado ? (res.tipo === 'examen' ? t('acad.examen_aprobado') : t('acad.tema_aprobado')) : t('acad.no_aprobado');
+    // 0.12.4: una práctica sin nota (errores, reto, instructor, repaso) solo se celebra si llegó a la nota para aprobar;
+    // si no, un título que anima («Practicaste tus errores: 2 de 6 — vamos otra vez»), sin confeti.
+    const llego = res.aprobado ?? (res.total > 0 && res.aciertos * 100 >= (res.umbral ?? 90) * res.total);
+    const titulo = res.tipo === 'reto' ? t('reto.hecho') : res.tipo === 'errores' ? (llego ? t('errores.hecho') : t('errores.sigue', { n: numero(res.aciertos), total: numero(res.total) })) : res.tipo === 'instructor' ? t('instr.practica.hecha') : res.aprobado == null ? t('acad.repaso_hecho') : res.aprobado ? (res.tipo === 'examen' ? t('acad.examen_aprobado') : t('acad.tema_aprobado')) : t('acad.no_aprobado');
     zona.replaceChildren(...[
-      el('section', { class: `resultado-vuelo ${res.aprobado === false ? 'falta' : 'bien'}`, 'data-foco': true },
+      el('section', { class: `resultado-vuelo ${res.aprobado === false ? 'falta' : llego ? 'bien' : 'sigue'}`, 'data-foco': true },
         medidor(res.pct, { etiqueta: t('acad.resultado.nota') }),
         el('h1', { class: 'titulo-grande', texto: titulo }),
         el('p', { class: 'bajada', texto: t('acad.resultado.de', { n: numero(res.aciertos), total: numero(res.total) }) }),
@@ -4664,8 +4734,8 @@ async function pantallaPractica(id) {
     pie.replaceChildren(...(deRepaso ? [...deRepaso] : [res.aprobado === false ? otraVez : el('a', { class: 'boton-3d grande', href: '#inicio' }, el('span', { texto: t('acad.seguir') })),
       errores,
       res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez, aMiRepaso]).filter(Boolean));
-    if (res.aprobado !== false) celebrar(zona);
-    sonar(res.aprobado && res.tipo === 'examen' ? 'nivel' : res.aprobado ? 'tema' : res.aprobado === false ? 'mal' : 'bien');
+    if (res.aprobado !== false && llego) celebrar(zona);
+    sonar(res.aprobado && res.tipo === 'examen' ? 'nivel' : res.aprobado ? 'tema' : res.aprobado === false ? 'mal' : llego ? 'bien' : 'toque');
     window.scrollTo(0, 0);
   };
   mostrar(raizEstudio);
@@ -4785,7 +4855,7 @@ const piezasAlumnos = () => ({
   el, t, tn, icono, insignia, numero, pctTexto, fecha, hace, cuando, fechaCortaDia, nombreMateria, claseMateria, talCual, tarjetaPregunta,
   panelPuntosDebiles, panelExtra, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
   // 0.9.2: la cuenta del alumno desde su ficha (bloquear, nombre, contraseña) y los tiempos del examen.
-  api, avisar, caja, botonAccion, textoError, yoId: estado.usuario?.id, recargar: () => dibujar(),
+  api, avisar, caja, botonAccion, textoError, yoId: estado.usuario?.id, recargar: () => dibujar(), confirmar,
   // 0.10.0: las fallas registradas del alumno y su Profesor virtual (dar o quitar).
   fallasAlumno: id => instructorUi().loQueHicimos({ titulo: t('ficha.fallas'), url: `/api/admin/academia/alumnos/${encodeURIComponent(id)}/fallas` }),
   profesorAlumno: id => instructorUi().profesorAdmin(id),
@@ -5104,7 +5174,9 @@ async function pantallaContenido() {
         p.activo ? insignia('bien', t('acad.paquete.en_uso')) : insignia(p.estado === 'listo' ? 'info' : 'atencion', tSi(`acad.paquete.estado.${p.estado}`, p.estado)),
         p.muestra ? el('span', { class: 'etiqueta', texto: t('acad.paquete.muestra') }) : null),
       p.enUso?.length ? el('p', { class: 'suave', texto: t('acad.paquete.da', { materias: p.enUso.map(nombreMateria).join(', ') }) }) : null,
-      el('p', { class: 'suave', texto: t('acad.paquete.cuenta', { version: p.id, edicion: p.edicion || '—', temas: numero(p.temas), preguntas: numero(p.preguntas), figuras: numero(p.figuras) }) }),
+      el('p', { class: 'suave', texto: [t('acad.paquete.cuenta', { version: p.id, temas: numero(p.temas), preguntas: numero(p.preguntas) }), p.edicion ? t('acad.paquete.edicion', { edicion: p.edicion }) : null,
+        ...[['figuras', p.figuras], ['paginas', p.recursos?.paginas], ['clips', p.recursos?.clips], ['videos', p.recursos?.videos], ['audios', p.recursos?.audios]]
+          .filter(([, n]) => n > 0).map(([que, n]) => tn(`acad.paquete.n_${que}`, { n: numero(n) }))].filter(Boolean).join(' · ') }),
       el('p', { class: 'suave', texto: t('acad.paquete.subido', { fecha: fecha(p.subidoEn) }) }),
       p.faltan?.length ? el('p', { class: 'aviso', texto: tn('acad.subir.faltan', { n: p.faltan.length }) }) : null,
       p.faltanAudio?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_audio', { n: p.faltanAudio.length }) }) : null,
@@ -5180,6 +5252,8 @@ function tarjetaDrive(d) {
     prueba,
     el('div', { class: 'botones' },
       botonAccion(t('acad.drive.probar'), 'secundario', mensaje, async () => {
+        // 0.12.4: con el campo vacío ni se pregunta al servidor (antes respondía 400 en la consola).
+        if (!campo.value.trim()) { campo.focus(); throw new Error(t('acad.drive.vacio')); }
         prueba.replaceChildren(el('p', { class: 'suave', texto: t('acad.drive.probando') }));
         const x = await api('POST', '/api/admin/academia/drive/probar', { enlace: campo.value });
         if (!x.ok) { prueba.replaceChildren(); throw new Error(textoError(x.datos.error)); }
@@ -5187,11 +5261,13 @@ function tarjetaDrive(d) {
           prueba.replaceChildren(el('p', { class: 'mensaje error', texto: tSi(`acad.drive.motivo.${x.datos.motivo}`, t('acad.drive.motivo.no_responde')) }));
           return;
         }
-        prueba.replaceChildren(
+        reemplazar(prueba,
           el('p', { class: 'mensaje bien', texto: t('acad.drive.probar_bien', { carpetas: numero(x.datos.carpetas), archivos: numero(x.datos.archivos), paquetes: numero(x.datos.paquetes.length) }) }),
           x.datos.paquetes.length ? el('ul', { class: 'lista-drive' }, x.datos.paquetes.map(n => el('li', { class: 'suave', texto: n }))) : null);
       }, 'buscar'),
       botonAccion(t('acad.drive.guardar'), '', mensaje, async () => {
+        // 0.12.4: vacío y sin carpeta guardada: no hay nada que quitar (antes decía «Ya no se usa la carpeta»).
+        if (!campo.value.trim() && !d?.carpeta) { campo.focus(); throw new Error(t('acad.drive.vacio')); }
         const x = await api('POST', '/api/admin/academia/drive', { enlace: campo.value });
         if (!x.ok) throw new Error(textoError(x.datos.error));
         avisar(x.datos.drive.carpeta ? t('acad.drive.guardado') : t('acad.drive.quitado'));
@@ -5236,6 +5312,7 @@ async function dibujar() {
   }
   if (estado.usuario.debeCambiarClave) return pantallaClaveObligatoria();
   // 0.9.2: sin aceptar los términos en uso no se sigue.
+  recordarTerminos();
   if (estado.terminos?.pendiente) return pantallaTerminos();
   ponerUsuarioSonidos(estado.usuario.id);
   const seccion = location.hash.replace('#', '') || 'inicio';
@@ -5303,6 +5380,8 @@ async function dibujar() {
   if (seccion === 'pagos' && esAdmin) return pantallaPagos();
   if (seccion === 'profesor') return pantallaProfesor();
   if (seccion === 'aprendizaje' && esAdmin) return pantallaAprendizaje();
+  // 0.12.4: la «Vista de prueba de la IA» (solo el administrador; sin IA, sin costo, sin guardar nada).
+  if (seccion === 'ia-demo' && esAdmin) return pantallaIaDemo();
   const aprendizajeDe = seccion.match(/^aprendizaje\/(\d+)$/);
   if (aprendizajeDe && esAdmin) return pantallaAprendizaje(aprendizajeDe[1]);
   // 0.12.2: «Mi repaso» y la mini-clase de un punto. Las direcciones viejas del refuerzo (#refuerzo/…) llevan a «Mi repaso».
@@ -5370,6 +5449,7 @@ function pedidosAlAbrir(seccion, admin) {
   // 0.10.0: Pagos (administrador) y el Profesor virtual.
   if (seccion === 'pagos') return admin ? ['/api/admin/academia/pagos'] : [];
   if (seccion === 'profesor') return ['/api/academia/profesor'];
+  if (seccion === 'ia-demo') return admin ? ['/api/admin/academia/ia-demo'] : [];
   if (seccion === 'aprendizaje') return [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.
   return ['/api/academia/camino'];
@@ -5379,6 +5459,14 @@ function pedidosAlAbrir(seccion, admin) {
 // adelantado. Si se equivoca no pasa nada (lo que sobra se descarta y lo que falta se pide después).
 function eraAdmin() {
   try { return localStorage.getItem('op_admin') === '1'; } catch { return false; }
+}
+// 0.12.4: si la última vez tenía los términos sin firmar (para no adelantar lo de estudiar, que respondería 403).
+// → true, false o null (nunca se anotó: el primer uso en este navegador).
+function teniaTerminosPendientes() {
+  try { const v = localStorage.getItem('op_terminos'); return v == null ? null : v === '1'; } catch { return null; }
+}
+function recordarTerminos() {
+  try { localStorage.setItem('op_terminos', estado.terminos?.pendiente ? '1' : '0'); } catch { /* sin almacenamiento: no pasa nada */ }
 }
 function recordarAdmin(usuario) {
   try { localStorage.setItem('op_admin', usuario?.rol === 'admin' ? '1' : '0'); } catch { /* sin almacenamiento: no pasa nada */ }
@@ -5403,7 +5491,17 @@ async function iniciar() {
   // Y lo que va a pedir la primera pantalla. Se descarta si no hay sesión, si hubo que esperar al servidor o si la
   // persona cambió de pantalla mientras tanto; después de la primera pantalla no queda nada guardado.
   const direccionAlAbrir = location.hash;
-  for (const ruta of pedidosAlAbrir(direccionAlAbrir.replace('#', '') || 'inicio', eraAdmin())) adelantados.set(ruta, pedirAlServidor('GET', ruta));
+  const pendientesAntes = teniaTerminosPendientes();
+  for (const ruta of pedidosAlAbrir(direccionAlAbrir.replace('#', '') || 'inicio', eraAdmin())) {
+    const deEstudio = ruta.startsWith('/api/academia/');
+    if (deEstudio && pendientesAntes === true) continue;
+    // Sin saberlo todavía (primer uso aquí): lo de estudiar sale cuando la cuenta dice que ya firmó (si no, ni sale).
+    if (deEstudio && pendientesAntes == null) {
+      adelantados.set(ruta, pedidoYo.then(y => (y.ok && !y.datos.terminos?.pendiente ? pedirAlServidor('GET', ruta) : { ok: false, codigo: 403, datos: { error: 'terminos_pendientes' } })));
+      continue;
+    }
+    adelantados.set(ruta, pedirAlServidor('GET', ruta));
+  }
   try {
     await cargarIdioma(preferido === 'en' ? 'en' : 'es');
   } catch {
@@ -5446,4 +5544,24 @@ async function iniciar() {
 window.addEventListener('hashchange', () => { repintarEnFondo = false; if (estado.usuario) dibujar(); });
 // 0.8.0: el audio de los sonidos se despierta con el primer toque (el iPhone no deja sonar si se crea después de esperar).
 prepararSonidos();
+// 0.12.4: al cerrar o esconder la app, un aviso corto para la ficha del administrador («Última salida (cerró la app)»).
+// Solo con una sesión abierta; keepalive para que salga aunque la página se cierre. Nunca muestra nada.
+let finAvisado = 0;
+function avisarFinDeVisita() {
+  if (!estado.usuario || Date.now() - finAvisado < 30_000) return;
+  finAvisado = Date.now();
+  try { fetch('/api/yo/visita/fin', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'X-Oportia': '1', 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); } catch { /* sin red: no pasa nada */ }
+}
+window.addEventListener('pagehide', avisarFinDeVisita);
+// 0.12.4: en el iPhone y el iPad (sobre todo como app de la pantalla de inicio) «imprimir» a veces no abre nada: todos
+// los botones de PDF (reporte, contratos, Mis documentos, términos) dicen cómo guardarlo con «Compartir».
+const esIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+if (typeof window.print === 'function') {
+  const imprimirDelNavegador = window.print.bind(window);
+  window.print = () => {
+    if (esIos()) avisar(t('pdf.ios'), 'info');
+    imprimirDelNavegador();
+  };
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') avisarFinDeVisita(); });
 iniciar().catch(() => pantallaNoArranco());

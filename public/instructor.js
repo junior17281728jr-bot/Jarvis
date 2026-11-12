@@ -18,6 +18,12 @@ export function crearInstructor(h) {
   const tx = (clave, vars = {}) => t(clave, vars);
   // 0.12.2: append() escribe «null» si le llega un null (se veía «null» junto a «HACERLO AHORA»): solo lo que existe.
   const anexar = (nodo, ...hijos) => nodo.append(...hijos.filter(x => x != null && x !== false));
+  // 0.12.4: el último modo que dijo el servidor ('ia' | 'espera' | 'basico'): sin IA para él, ni se le pide.
+  let estadoConocido = null;
+  const anotarModo = instructor => { if (instructor?.modo) estadoConocido = instructor; };
+  const pedirleIa = () => !estadoConocido || estadoConocido.modo !== 'basico' || estadoConocido.motivo === 'sin_minutos';
+  // Sin IA por algo que no se pasa solo: nunca se pinta como un fallo (solo lo básico).
+  const PERMANENTES = new Set(['sin_consentimiento', 'ia_apagada', 'sin_presupuesto', 'cuenta_sin_permiso', 'solo_tailnet', 'ayuda_no_activada', 'sin_clave']);
 
   // ---------- ¿Te sigue un instructor con IA? ----------
   function insignia(estado, { compacta = false } = {}) {
@@ -44,15 +50,18 @@ export function crearInstructor(h) {
 
   // Lo que escribió la IA (consejo, explicación o duda): en su propia caja, con quién lo escribió.
   function cajaIa(r, partes) {
-    return el('section', { class: 'caja-hoja caja-ia' },
-      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx('instr.ia.titulo') })),
+    // 0.12.4: en la «Vista de prueba de la IA» (administrador) todo dice que es una demostración.
+    return el('section', { class: `caja-hoja caja-ia${r.demo ? ' demo' : ''}` },
+      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx(r.demo ? 'demo.ia.titulo' : 'instr.ia.titulo') })),
       partes,
       Array.isArray(r.terminos) && r.terminos.length ? el('ul', { class: 'lista-terminos' }, r.terminos.map(x => el('li', {},
         el('strong', { lang: 'en', texto: x.ingles }), x.abreviatura ? el('span', { class: 'termino-abrev', texto: ` (${x.abreviatura})` }) : null,
         x.espanol ? el('span', { texto: ` · ${x.espanol}` }) : null))) : null,
-      el('p', { class: 'suave chica', texto: tx('instr.ia.firma') }));
+      el('p', { class: 'suave chica', texto: tx(r.demo ? 'demo.ia.firma' : 'instr.ia.firma') }));
   }
 
+  // 0.12.4: «Test Guide n.º 12: <respuesta tal cual>» (solo citas revisadas contra la clave).
+  const citasTg = r => (r?.citas ?? []).map(c => el('p', { class: 'cita-test-guide chica con-icono' }, icono('libro', 'icono chico'), talCual('span', tx('instr.ia.cita', { n: c.numero, respuesta: c.respuesta }))));
   // Pregunta por una tarea de la IA hasta que llega (o se rinde). alListo(datos) con { estado: 'lista' | 'no', … }.
   function esperarTarea(id, nodo, alListo) {
     const inicio = Date.now();
@@ -74,6 +83,8 @@ export function crearInstructor(h) {
     const poner = d => {
       if (d?.estado === 'lista') lugar.replaceChildren(pintar(d));
       else if (d?.estado === 'no' && d.motivo === 'sin_minutos') lugar.replaceChildren(sinMinutos());
+      else if (d?.estado === 'no' && PERMANENTES.has(d.motivo)) lugar.replaceChildren();
+      else if (d?.estado === 'no' && d.espera) lugar.replaceChildren(el('p', { class: 'suave chica con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: tx('instr.ia.espera') })));
       else if (d?.estado === 'no') lugar.replaceChildren(el('p', { class: 'suave chica con-icono' }, icono('info', 'icono chico'), el('span', { texto: tx('instr.ia.no', { motivo: motivoTexto(d.motivo) }) })));
       else lugar.replaceChildren();
     };
@@ -283,14 +294,76 @@ export function crearInstructor(h) {
       consejo?.accion ? el('div', { class: 'instructor-accion' }, botonAccion(consejo.accion)) : null,
       d.observaciones?.length ? el('ul', { class: 'instructor-notas' }, d.observaciones.map(o => el('li', { class: 'con-icono' },
         icono('ojo', 'icono chico'), talCual('span', tx(`instr.o.${o.clave}`, { ...o.vars, franja: o.vars?.franja ? tx(`instr.franja.${o.vars.franja}`) : '' }))))) : null,
-      medidorTiempo(d.tiempo),
+      // 0.12.4: los minutos y el Profesor virtual solo si la IA sirve de verdad para él (nunca un botón muerto).
+      ia || d.instructor?.modo === 'espera' ? medidorTiempo(d.tiempo) : null,
       d.instructor?.motivo === 'sin_minutos' ? sinMinutos() : null,
       // 0.11.0: activó la academia sin IA.
       d.instructor?.motivo === 'sin_consentimiento' ? el('p', { class: 'suave chica con-icono' }, icono('info', 'icono chico'),
         el('span', { texto: `${tx('instr.motivo.sin_consentimiento')} ` }), el('a', { href: '#mis-datos', texto: tx('datos.titulo') })) : null,
-      d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
+      planDeHoy(),
+      // 0.12.4: el administrador (también «como estudiante») puede ver cómo se vería todo con IA, sin clave.
+      d.demoIa ? el('a', { class: 'enlace-fuerte chica con-icono', href: '#ia-demo' }, icono('ojo', 'icono chico'), el('span', { texto: tx('demo.vista.abrir') })) : null,
+      ia && d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
       zonaIa);
   }
+  // 0.12.4: «Tu plan de hoy»: sin IA, las primeras cosas que puede hacer hoy (cada una con su botón de verdad); con IA,
+  // «Armar mi plan con IA» (la IA solo elige y ordena entre esas mismas). Se pinta cuando llega (no hace esperar a Inicio).
+  const textoAccion = a => tx(`instr.hoy.${a.clave}`, { ...a.vars, n: numero(a.vars?.n ?? 0), consejo: a.vars?.consejo ? textoConsejo({ clave: a.vars.consejo, vars: a.vars.consejoVars ?? {} }) : '' });
+  function pasosPlan(pasos, { botones = true } = {}) {
+    return el('ol', { class: 'plan-hoy-pasos' }, pasos.map(a => el('li', {},
+      talCual('span', textoAccion(a)), a.porque ? talCual('span', ` — ${a.porque}`, 'suave chica') : null, botones ? ' ' : null, botones ? botonAccion(a.accion, 'boton-3d blanco chico') : null)));
+  }
+  function planDeHoy({ url = '/api/academia/instructor/plan-hoy' } = {}) {
+    const lugar = el('section', { class: 'plan-hoy', 'aria-label': tx('instr.hoy.titulo') });
+    api('GET', url).then(r => {
+      if (!lugar.isConnected || !r.ok || !(r.datos.basico ?? []).length) return;
+      const d = r.datos;
+      const zona = el('div', { class: 'plan-hoy-ia' });
+      const pintarIa = x => cajaIa(x, [x.titulo ? talCual('p', x.titulo, 'fuerte') : null, pasosPlan(x.pasos ?? [])]);
+      if (d.ia?.estado === 'lista') zona.append(pintarIa(d.ia));
+      else if (d.instructor?.modo === 'ia') {
+        zona.append(el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: async evento => {
+          const boton = evento.currentTarget;
+          boton.disabled = true;
+          const x = await api('POST', url, {});
+          if (!x.ok) { boton.disabled = false; return h.avisar?.(textoError(x.datos.error), 'mal'); }
+          if (x.datos.ia?.estado === 'lista') return boton.replaceWith(pintarIa(x.datos.ia));
+          boton.replaceWith(lugarIa(x.datos.ia, () => el('span')));
+          if (x.datos.ia?.estado !== 'pendiente') return;
+          // Cuando llega, se vuelve a leer el plan (las acciones con su botón las pone el servidor).
+          const vuelta = async (n = 0) => {
+            if (!zona.isConnected) return;
+            const y = await api('GET', url);
+            if (y.ok && y.datos.ia?.estado === 'lista') return zona.replaceChildren(pintarIa(y.datos.ia));
+            if (n < 60) setTimeout(() => vuelta(n + 1), 2000);
+          };
+          setTimeout(vuelta, 2000);
+        } }, icono('chispa', 'icono chico'), el('span', { texto: tx('instr.hoy.con_ia') })));
+      }
+      lugar.replaceChildren(el('h3', { class: 'con-icono' }, icono('calendario', 'icono chico'), el('span', { texto: tx('instr.hoy.titulo') })),
+        d.ia?.estado === 'lista' ? zona : el('div', {}, pasosPlan(d.basico), zona));
+    });
+    return lugar;
+  }
+  // 0.12.4: «Mini-clase con IA» de un concepto de «Mi repaso» (solo si de verdad hay IA para él: si no, no hay botón).
+  function miniClaseIa(clave) {
+    const lugar = el('div', { class: 'mini-clase-ia' });
+    const boton = el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: async () => {
+      boton.disabled = true;
+      const r = await api('POST', '/api/academia/mi-repaso/clase/ia', { concepto: clave });
+      if (!r.ok) { boton.disabled = false; return h.avisar?.(textoError(r.datos.error), 'mal'); }
+      boton.remove();
+      lugar.replaceChildren(lugarIa(r.datos.ia, pintarMiniClase));
+    } }, icono('chispa', 'icono chico'), el('span', { texto: tx('mini.ia_clase') }));
+    lugar.append(boton);
+    return lugar;
+  }
+  const pintarMiniClase = x => cajaIa(x, [
+    talCual('p', x.concepto),
+    x.ejemplo ? el('p', {}, el('strong', { texto: `${tx('mini.ia.ejemplo')} ` }), talCual('span', x.ejemplo)) : null,
+    x.trampa ? el('p', {}, el('strong', { texto: `${tx('mini.ia.trampa')} ` }), talCual('span', x.trampa)) : null,
+    x.recuerda ? el('p', { class: 'recuerda-linea' }, el('strong', { texto: `${tx('acad.recuerda')}: ` }), talCual('span', x.recuerda)) : null,
+    el('p', { class: 'suave chica', texto: tx('instr.ia.test_guide') })]);
   // Un pago aprobado o rechazado que todavía no vio.
   function avisoPagos(pagos) {
     if (!pagos?.length) return null;
@@ -306,6 +379,7 @@ export function crearInstructor(h) {
     const lugar = el('div', { class: 'instructor-lugar' });
     api('GET', '/api/academia/instructor').then(r => {
       if (!lugar.isConnected || !r.ok) return;
+      anotarModo(r.datos.instructor);
       // 0.12.2: el plan de refuerzo ya no va en Inicio ni marca el Camino: es «Mi repaso» (con su número en la entrada).
       lugar.replaceChildren(...[avisoPagos(r.datos.pagos), tarjetaInicio(r.datos)].filter(Boolean));
       const cuenta = document.querySelector('.entrada-mi-repaso .mi-repaso-cuenta');
@@ -332,7 +406,7 @@ export function crearInstructor(h) {
           b.tarjeta ? el('section', { class: 'caja-hoja' },
             el('h3', { class: 'con-icono' }, icono('tarjetas', 'icono chico'), el('span', { texto: tx('instr.duda.tarjeta', { titulo: b.tarjeta.titulo }) })),
             tarjetaCompleta(b.tarjeta)) : el('p', { class: 'suave', texto: tx('instr.duda.sin_tarjeta') }),
-          lugarIa(r.datos.ia, x => cajaIa(x, [talCual('p', x.respuesta), x.enMaterial ? null : el('p', { class: 'suave chica', texto: tx('instr.duda.fuera') })])));
+          lugarIa(r.datos.ia, x => cajaIa(x, [talCual('p', x.respuesta), ...citasTg(x), x.enMaterial ? null : el('p', { class: 'suave chica', texto: tx('instr.duda.fuera') })])));
       },
     }, el('span', { texto: tx('instr.duda.boton') }));
     return el('details', { class: 'instructor-duda' },
@@ -354,8 +428,9 @@ export function crearInstructor(h) {
       type: 'button', class: 'boton-3d blanco chico con-icono boton-explicar',
       onclick: async () => {
         boton.disabled = true;
-        const r = await api('POST', '/api/academia/instructor/explicar', { intento: Number(intentoId), pregunta: q.id, ia: true });
+        const r = await api('POST', '/api/academia/instructor/explicar', { intento: Number(intentoId), pregunta: q.id, ia: pedirleIa() });
         if (!r.ok) { boton.disabled = false; return h.avisar?.(textoError(r.datos.error), 'mal'); }
+        anotarModo(r.datos.instructor);
         sonar?.('toque');
         boton.remove();
         lugar.replaceChildren(vistaExplicacion(r.datos));
@@ -371,6 +446,10 @@ export function crearInstructor(h) {
       el('div', { class: 'instructor-mini-cabeza' }, icono('cerebro', 'icono chico'), el('strong', { texto: tx('instr.explica.titulo') }), insignia(d.instructor, { compacta: true })),
       b.falla ? el('p', { class: 'aviso chica con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: tx('refuerzo.explica', { n: numero(b.falla.fallos) }) }))
         : b.veces >= 2 ? el('p', { class: 'aviso chica', texto: tx('instr.explica.repetida', { n: numero(b.veces) }) }) : null,
+      // 0.12.4: la nota para ti (su historia con este concepto), encima de la explicación (con o sin IA).
+      b.nota ? el('p', { class: 'nota-para-ti chica con-icono' }, icono('ojo', 'icono chico'), talCual('span', [
+        b.nota.concepto ? tn('instr.nota.concepto', { n: b.nota.fallos, concepto: b.nota.concepto, dias: numero(b.nota.dias) }) : tn('instr.nota.fallos', { n: b.nota.fallos }),
+        b.nota.idea ? tx('instr.nota.idea', { idea: b.nota.idea }) : null].filter(Boolean).join(' '))) : null,
       el(pasos ? 'ol' : 'div', { class: pasos ? 'instructor-pasos' : 'instructor-bloques' },
         el(pasos ? 'li' : 'p', {}, el('strong', { texto: `${tx('instr.explica.correcta')} ` }), talCual('span', b.correcta)),
         !b.acierto && b.elegidaTexto ? el(pasos ? 'li' : 'p', {}, el('strong', { texto: `${tx('instr.explica.elegiste')} ` }), talCual('span', b.elegidaTexto)) : null,
@@ -430,7 +509,7 @@ export function crearInstructor(h) {
           el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => poner(null) }, el('span', { texto: tx('profesor.admin.pago') })),
           el('button', { type: 'button', class: 'boton-3d rojo chico', onclick: () => poner(false) }, el('span', { texto: tx('profesor.admin.quitar') }))),
         r.datos.historial.length ? el('details', {}, el('summary', { texto: tx('profesor.admin.historial', { n: numero(r.datos.historial.length) }) }),
-          el('ul', { class: 'lista-simple' }, r.datos.historial.map(m => el('li', {}, talCual('p', m.pregunta, 'fuerte'), m.respuesta ? talCual('p', m.respuesta.respuesta, 'suave') : null)))) : null);
+          el('ul', { class: 'lista-simple' }, r.datos.historial.map(m => el('li', {}, talCual('p', m.pregunta, 'fuerte'), m.respuesta ? talCual('p', m.respuesta.respuesta, 'suave') : m.basica ? talCual('p', `${tx('profesor.basico')} ${textoConsejo(m.basica)}`, 'suave') : null)))) : null);
     };
     pintar();
     return lugar;
@@ -498,6 +577,17 @@ export function crearInstructor(h) {
   }
 
   // ---------- Administrador: el instructor con IA ----------
+  // 0.12.4: sin la IA encendida (sin clave, por ejemplo) el interruptor no se puede tocar (antes respondía 409): se ve
+  // apagado, con la explicación al lado. Apagarlo siempre se puede.
+  function interruptorInstructor(s, hacer) {
+    const boton = hacer();
+    if (!s.encendida && s.instructorIa !== true) {
+      boton.disabled = true;
+      boton.setAttribute('aria-disabled', 'true');
+      boton.setAttribute('aria-describedby', 'instructor-sin-ia');
+    }
+    return boton;
+  }
   function tarjetaAdmin(s, { cambiar, caja, interruptor, usd }) {
     const mensaje = caja();
     const modelos = Array.isArray(s.modelosInstructor) ? s.modelosInstructor : [];
@@ -515,8 +605,8 @@ export function crearInstructor(h) {
       el('h2', { class: 'con-icono titulo-tarjeta' }, icono('cerebro', 'icono grande'), el('span', { texto: tx('instr.admin.titulo') })),
       el('p', { texto: tx('instr.admin.linea') }),
       guiaConectar(s),
-      interruptor(tx('instr.admin.encender'), s.instructorIa === true, boton => cambiar(boton, mensaje, '/api/admin/ia/ajustes', { instructorIa: !s.instructorIa }, null)),
-      !s.encendida ? el('p', { class: 'suave', texto: tx('instr.admin.ia_apagada') }) : null,
+      interruptorInstructor(s, () => interruptor(tx('instr.admin.encender'), s.instructorIa === true, boton => cambiar(boton, mensaje, '/api/admin/ia/ajustes', { instructorIa: !s.instructorIa }, null))),
+      !s.encendida ? el('p', { id: 'instructor-sin-ia', class: 'suave', texto: tx('instr.admin.ia_apagada') }) : null,
       el('fieldset', { class: 'modelos-instructor' },
         el('legend', { texto: tx('instr.admin.modelo') }),
         modelos.map(m => el('label', { class: 'opcion-radio' },
@@ -527,6 +617,7 @@ export function crearInstructor(h) {
       el('p', { class: 'suave', texto: tx('instr.admin.minuto') }),
       el('a', { class: 'boton-enlace secundario', href: '#pagos', texto: tx('instr.admin.ir_pagos') }),
       demo(),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#ia-demo' }, icono('ojo', 'icono chico'), el('span', { texto: tx('demo.vista.abrir') })),
       el('details', { class: 'en-palabras' },
         el('summary', { class: 'con-icono' }, icono('info'), el('span', { texto: tx('instr.admin.como') })),
         el('p', { texto: tx('instr.admin.como.1') }), el('p', { texto: tx('instr.admin.como.2') }), el('p', { texto: tx('instr.admin.como.3') })),
@@ -534,5 +625,26 @@ export function crearInstructor(h) {
       mensaje);
   }
 
-  return Object.freeze({ preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  // ---------- 0.12.4: el Profesor virtual cuando no hay IA para él ----------
+  // Lo que respondió el instructor básico se ve como una respuesta más (nunca «no pudo» ni «escribiendo…»).
+  // 0.12.4: lo que citó del Test Guide (ya revisado contra la clave) va al final de su respuesta.
+  const conCitas = r => (r?.citas?.length ? { ...r, respuesta: [r.respuesta, ...r.citas.map(c => tx('instr.ia.cita', { n: c.numero, respuesta: c.respuesta }))].join('\n') } : r);
+  const historialParaChat = historial => (historial ?? []).map(m => (m.estado === 'basico'
+    ? { ...m, estado: 'lista', respuesta: { respuesta: m.basica ? `${tx('profesor.basico')} ${textoConsejo(m.basica)}` : tx('profesor.basico_sin') } }
+    : m.respuesta ? { ...m, respuesta: conCitas(m.respuesta) } : m));
+  // Sin IA para él (sin clave, apagada, sin su permiso…): el Profesor virtual no se ofrece; si llega aquí, una nota
+  // tranquila («Modo básico»), lo que ya habló y el paso de su instructor automático. Nada para escribir.
+  function profesorSinIa(d) {
+    const historial = historialParaChat(d?.historial);
+    return el('section', { class: 'panel chat profesor-sin-ia' },
+      el('div', { class: 'chat-cabeza' }, el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('cerebro')),
+        el('div', {}, el('h1', { texto: tx('profesor.titulo') }), insignia(d?.instructor))),
+      el('p', { class: 'con-icono' }, icono('info', 'icono chico'), el('span', { texto: tx('profesor.sin_ia') })),
+      d?.instructor?.motivo === 'sin_consentimiento' ? el('p', { class: 'suave chica' }, el('a', { href: '#mis-datos', texto: tx('datos.titulo') })) : null,
+      historial.length ? el('details', { class: 'profesor-historial' }, el('summary', { texto: tx('profesor.anteriores', { n: numero(historial.length) }) }),
+        el('ul', { class: 'lista-simple' }, historial.map(m => el('li', {}, talCual('p', m.pregunta, 'fuerte'), m.respuesta ? talCual('p', m.respuesta.respuesta, 'suave') : null)))) : null,
+      el('a', { class: 'boton-3d', href: '#inicio' }, el('span', { texto: tx('profesor.ir_inicio') })));
+  }
+
+  return Object.freeze({ historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
 }

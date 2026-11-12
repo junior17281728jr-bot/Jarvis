@@ -162,7 +162,13 @@ export function listarPaquetes(db, config) {
         faltanClips = clipsQueFaltan(config, f);
       } catch { faltan = []; }
     }
-    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas, faltanVideo, faltanClips };
+    // 0.12.4: cuánto trae además de las figuras (antes la lista decía «0 figuras» de un paquete con páginas, clips y video).
+    let recursos = { clips: 0, paginas: 0, videos: 0, audios: 0 };
+    try {
+      const m = manifiesto(config, f);
+      recursos = { clips: (m.clips ?? []).length, paginas: (m.paginas ?? []).length, videos: (m.videos ?? []).filter(a => /\.mp4$/i.test(a.archivo ?? '')).length, audios: (m.audios ?? []).length };
+    } catch { /* sin manifiesto: solo lo de la fila */ }
+    return { ...vista(f), activo: enUso.length > 0, enUso, faltan, faltanAudio, faltanPaginas, faltanVideo, faltanClips, recursos };
   });
 }
 

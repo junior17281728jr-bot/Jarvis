@@ -5,6 +5,10 @@
 // apaga, y en el iPhone estos sonidos siguen la regla de siempre de Web Audio (respetan el interruptor de silencio).
 let contexto = null;
 let usuario = null;
+// 0.12.4: el contexto de audio se crea solo después de un toque o una tecla (antes, al abrir un resultado sin tocar
+// nada, el navegador avisaba «AudioContext was not allowed to start»). Sin toque todavía, no suena (ni avisa).
+let huboGesto = false;
+const yaTocó = () => huboGesto || globalThis.navigator?.userActivation?.hasBeenActive === true;
 const clave = () => `op_sonidos.${usuario ?? 'x'}`;
 
 export function ponerUsuario(id) { usuario = id; }
@@ -37,7 +41,7 @@ function elContexto() {
 // El iPhone solo deja sonar un contexto de audio creado o reanudado DENTRO de un toque. Los sonidos suenan muchas veces
 // después de esperar al servidor (COMPROBAR): por eso, con cada toque o tecla, el contexto se crea o se reanuda ya.
 export function prepararSonidos() {
-  const despertar = () => { if (sonidosEncendidos() && (!contexto || contexto.state !== 'running')) elContexto(); };
+  const despertar = () => { huboGesto = true; if (sonidosEncendidos() && (!contexto || contexto.state !== 'running')) elContexto(); };
   try {
     document.addEventListener('pointerdown', despertar, { capture: true, passive: true });
     document.addEventListener('keydown', despertar, { capture: true });
@@ -53,6 +57,7 @@ export function sonar(nombre) {
   cuenta.sonidos = String(Number(cuenta.sonidos || 0) + 1);
   cuenta.ultimoSonido = nombre;
   cuenta[`s${nombre}`] = String(Number(cuenta[`s${nombre}`] || 0) + 1);
+  if (!contexto && !yaTocó()) return false;
   const c = elContexto();
   if (!c) return false;
   try {

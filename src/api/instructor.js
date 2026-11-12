@@ -20,13 +20,15 @@ import { PROPOSITOS } from '../ia/propositos.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { camino } from '../academia/progreso.js';
 import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, reexplicarSinIa, dudaSinIa, tarjetasParaDuda } from '../academia/instructor.js';
-import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS } from '../academia/instructor-ia.js';
+import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS, preguntaSinIa, armarMiniClase, armarPlanDia } from '../academia/instructor-ia.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { cobrarUso, yaPagado, ponerTareaAlUso, novedadesPagos } from '../academia/tiempo-ia.js';
 import { sincronizarFallas, fallasDe, planParaPasar, miRepaso, miniClase } from '../academia/fallas.js';
-import { conceptoDePregunta } from '../academia/conceptos.js';
+import { conceptoDePregunta, concepto as conceptoPorClave, nombreConcepto } from '../academia/conceptos.js';
+import { accionesDeHoy, planBasico, notaPersonal } from '../academia/plan-dia.js';
+import { ideaDe } from '../academia/reto.js';
 import { tiempoDe } from './pagos.js';
-import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube } from '../academia/profesor.js';
+import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube, respondidasParecidas } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
@@ -134,6 +136,11 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     return lista(guardado);
   }
   const lista = (guardado, extra = {}) => ({ estado: 'lista', ...guardado, ...extra });
+  // 0.12.4: sin IA para él por algo que no se pasa solo (sin clave, la IA apagada, sin su permiso, sin presupuesto…):
+  // ia = null (la pantalla muestra solo lo básico, sin ningún «no pudo»). Solo lo pasajero dice algo: una pausa corta
+  // («en espera») o sin minutos (con «Pedir más», porque la IA sí está lista para él).
+  const iaNoAhora = instructor => (instructor.modo === 'espera' ? { estado: 'no', motivo: instructor.motivo, espera: true }
+    : instructor.motivo === 'sin_minutos' ? { estado: 'no', motivo: 'sin_minutos' } : null);
 
   // ---------- «Tu instructor dice…» (Inicio, o al empezar un tema con ?materia=&tema=) ----------
   // Inicio: GET /api/academia/instructor. Al abrir un tema: GET /api/academia/instructor/tema/:materia/:tema (o ?materia=&tema=).
@@ -158,7 +165,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       codigo: 200,
       datos: {
         instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(guardado) : null,
-        tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), pagos: novedadesPagos(db, usuario.id),
+        tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), pagos: novedadesPagos(db, usuario.id), demoIa: usuario.rol === 'admin',
         plan: fallas.filter(f => f.estado !== 'superada' && f.cuenta), recientes: fallas.slice(0, 3), ...(donde ? { refuerzo } : {}),
       },
     };
@@ -180,14 +187,19 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const falla = db.prepare("SELECT fallos, estado FROM academia_fallas WHERE usuario_id = ? AND clave IN (?, ?) AND estado <> 'superada' ORDER BY id DESC LIMIT 1")
       .get(usuario.id, `q:${r.q.id}`, conceptoDePregunta(p, r.q.id)?.clave ?? '');
     if (falla) basica.falla = { fallos: falla.fallos, estado: falla.estado };
+    // 0.12.4: la «nota para ti» (su historia con ese concepto), encima de la explicación compartida. Sin IA y sin costo.
+    basica.nota = notaPersonal(db, usuario.id, p, r.q.id, r.modo === 'original' ? r.elegida : null);
     const instructor = estadoInstructor(db, req, usuario, ahora);
     let ia = null;
-    if (datos.ia === true && instructor.modo === 'ia') {
+    // 0.12.4: una pregunta en la que la IA contradijo al Test Guide 2 veces queda 7 días con lo básico (sin «no pudo»).
+    const sinIaAqui = preguntaSinIa(db, r.q.id, ahora);
+    if (datos.ia === true && instructor.modo === 'ia' && !sinIaAqui) {
       const cfg = leerConfigIa(db);
       const pedido = armarExplicacion({ q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo, idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: modelo.estilo }, idioma: usuario.idioma, modelo: cfg.instructorModelo });
       const ya = leerGuardado(db, pedido.clave);
-      ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones } });
-    } else if (datos.ia === true) ia = { estado: 'no', motivo: instructor.motivo };
+      ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: r.q.id } });
+    } else if (sinIaAqui) ia = null;
+    else if (datos.ia === true) ia = iaNoAhora(instructor);
     // 0.10.0: para «Aprendizaje»: ¿acertó la siguiente vez después de que se lo explicaron (con IA o sin IA)?
     anotarExplicado(db, usuario.id, { pregunta: r.q.id, ia: ia?.estado === 'pendiente' || ia?.estado === 'lista', ahora });
     return { codigo: 200, datos: { instructor, basica, ia } };
@@ -213,7 +225,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const ya = leerGuardado(db, clave);
     let ia;
     if (ya) ia = lista(ya);
-    else if (instructor.modo !== 'ia') ia = { estado: 'no', motivo: instructor.motivo };
+    else if (instructor.modo !== 'ia') ia = iaNoAhora(instructor);
     else {
       const m = modeloAlumno(db, usuario.id, p, ahora);
       const falladas = examen ? db.prepare('SELECT tema, COUNT(*) AS n FROM academia_respuestas WHERE intento_id = ? AND correcta = 0 GROUP BY tema ORDER BY n DESC LIMIT 5').all(examen.id) : [];
@@ -251,10 +263,12 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const instructor = estadoInstructor(db, req, usuario, ahora);
     let ia = null;
     if (instructor.modo === 'ia') {
-      const material = tarjetasParaDuda(p, materia, tema, texto, 3_500);
-      const pedido = armarDuda({ material, pregunta: texto, alumno: { estilo: modeloAlumno(db, usuario.id, p, ahora).estilo }, idioma: usuario.idioma });
-      ia = pedirIa(db, usuario, { uso: 'instructor_duda', sistema: pedido.sistema, texto: pedido.texto, clave: `academia.ia.duda.${usuario.id}.${ahora}`, extra: { pregunta: texto } });
-    } else ia = { estado: 'no', motivo: instructor.motivo };
+      const material = tarjetasParaDuda(p, materia, tema, texto, 8_000);
+      // 0.12.4: también las preguntas del Test Guide de ese tema que ya respondió (para que cite la de verdad).
+      const preguntas = respondidasParecidas(db, usuario.id, p, texto, { donde: { materia, tema } });
+      const pedido = armarDuda({ material, pregunta: texto, preguntas, alumno: { estilo: modeloAlumno(db, usuario.id, p, ahora).estilo }, idioma: usuario.idioma });
+      ia = pedirIa(db, usuario, { uso: 'instructor_duda', sistema: pedido.sistema, texto: pedido.texto, clave: `academia.ia.duda.${usuario.id}.${ahora}`, extra: { pregunta: texto, citas: pedido.citas } });
+    } else ia = iaNoAhora(instructor);
     return { codigo: 200, datos: { instructor, basica, ia } };
   });
 
@@ -275,6 +289,69 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const datos = miniClase(db, usuario.id, activo(db), new URL(req.url, 'http://x').searchParams.get('concepto') ?? '', ahora);
     // «Explícamelo de otra forma (IA)» solo si de verdad hay instructor con IA para él (minutos, permiso y clave).
     return { codigo: 200, datos: { ...datos, ia: estadoInstructor(db, req, usuario, ahora).modo === 'ia' } };
+  });
+
+  // ---------- 0.12.4: la «Mini-clase IA» de un concepto de «Mi repaso» (se guarda compartida; se cobra como explicar) ----------
+  rutas.agregar('POST', '/api/academia/mi-repaso/clase/ia', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    contar(topes.explicar, usuario);
+    const p = activo(db);
+    const ahora = reloj();
+    const clase = miniClase(db, usuario.id, p, textoDe(datos, 'concepto'), ahora); // 404 / 403 como la mini-clase
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    const q = clase.pregunta ? p.preguntas.get(clase.pregunta.id) : null;
+    if (!q) throw new ErrorHttp(409, 'sin_pregunta');
+    if (instructor.modo !== 'ia' || preguntaSinIa(db, q.id, ahora)) return { codigo: 200, datos: { instructor, ia: preguntaSinIa(db, q.id, ahora) ? null : iaNoAhora(instructor) } };
+    const c = conceptoPorClave(p, clase.clave);
+    const t = p.materias.find(m => m.id === c.materia)?.temas.find(x => x.id === c.tema);
+    const tarjeta = c.indice >= 0 ? t?.secciones?.[c.indice] ?? null : null;
+    const elegida = clase.pregunta.elegida?.letra ?? null;
+    const pedido = armarMiniClase({
+      concepto: nombreConcepto(c), tarjeta, q, elegida, idea: elegida && elegida !== q.original.correcta ? ideaDe(q, elegida) : null,
+      alumno: { estilo: modeloAlumno(db, usuario.id, p, ahora).estilo }, idioma: usuario.idioma, modelo: leerConfigIa(db).instructorModelo,
+    });
+    const ya = leerGuardado(db, pedido.clave);
+    const ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
+      : pedirIa(db, usuario, { uso: 'instructor_miniclase', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: q.id } });
+    return { codigo: 200, datos: { instructor, ia, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
+  });
+
+  // ---------- 0.12.4: el «Plan de hoy» (sin IA: las primeras acciones; con IA: la IA elige y ordena entre ESAS) ----------
+  const diaDe = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
+  const conAcciones = (guardado, acciones) => {
+    const porId = new Map(acciones.map(a => [a.id, a]));
+    const pasos = (guardado.pasos ?? []).filter(x => porId.has(x.accion)).map(x => ({ ...porId.get(x.accion), porque: x.porque ?? '' }));
+    return pasos.length ? lista({ titulo: guardado.titulo ?? '', pasos }) : null;
+  };
+  rutas.agregar('GET', '/api/academia/instructor/plan-hoy', ({ db, req, usuario }) => {
+    contar(topes.lecturas, usuario);
+    const p = activo(db);
+    const ahora = reloj();
+    const acciones = accionesDeHoy(db, usuario.id, p, ahora);
+    const porId = new Map(acciones.map(a => [a.id, a]));
+    const guardado = leerGuardado(db, `academia.ia.plandia.${usuario.id}.${diaDe(ahora)}`);
+    return { codigo: 200, datos: { instructor: estadoInstructor(db, req, usuario, ahora), basico: planBasico(acciones).map(x => porId.get(x.accion)), ia: guardado ? conAcciones(guardado, acciones) : null } };
+  });
+  rutas.agregar('POST', '/api/academia/instructor/plan-hoy', async ({ db, req, usuario }) => {
+    await leerJson(req);
+    contar(topes.consejo, usuario);
+    const p = activo(db);
+    const ahora = reloj();
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    const acciones = accionesDeHoy(db, usuario.id, p, ahora);
+    const clave = `academia.ia.plandia.${usuario.id}.${diaDe(ahora)}`;
+    const ya = leerGuardado(db, clave);
+    let ia;
+    if (ya) ia = conAcciones(ya, acciones);
+    else if (instructor.modo !== 'ia' || !acciones.length) ia = iaNoAhora(instructor);
+    else {
+      // Solo cifras y las acciones (con textos del paquete): nunca el nombre ni el usuario del alumno.
+      const resumen = resumenModelo(modeloAlumno(db, usuario.id, p, ahora));
+      resumen.temas = [...resumen.temas].sort((a, b) => a.pct - b.pct).slice(0, 6);
+      const pedido = armarPlanDia({ cifras: resumen, acciones: acciones.map(a => ({ id: a.id, que: `${a.clave}: ${Object.values(a.vars ?? {}).filter(v => typeof v === 'string' || typeof v === 'number').join(' · ')}` })), idioma: usuario.idioma, humor: humorActivo(db, usuario.id) });
+      ia = pedirIa(db, usuario, { uso: 'instructor_plan', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { acciones: acciones.map(a => a.id) } });
+    }
+    return { codigo: 200, datos: { instructor, ia } };
   });
 
   // ---------- 0.10.0: «Plan para pasar la próxima vez» (un intento suyo terminado) ----------
@@ -356,6 +433,35 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     return { codigo: 200, datos: { instructor, basica, ia, pregunta: { id: q.id, numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })), correcta: q.original.correcta } } };
   }, { admin: true });
 
+  // ---------- 0.12.4: la «Vista de prueba de la IA» (solo el administrador) ----------
+  // Para ver cómo se verían las pantallas con IA SIN clave: los datos de verdad del paquete y del propio administrador
+  // (una pregunta, lo básico, un concepto, las acciones de hoy); las respuestas «de la IA» las pone la pantalla, marcadas
+  // como demostración. Nunca llama a la IA, nunca pone nada en la fila, nunca cobra minutos y no guarda nada de nadie.
+  rutas.agregar('GET', '/api/admin/academia/ia-demo', ({ db, usuario }) => {
+    contar(topes.lecturas, usuario);
+    const p = activo(db);
+    if (!p) throw new ErrorHttp(409, 'sin_paquete');
+    const ahora = reloj();
+    // La última que el administrador falló (estudiando como estudiante) o, si no, la primera del paquete con una mala.
+    const suya = db.prepare('SELECT pregunta, elegida FROM academia_respuestas WHERE usuario_id = ? AND correcta = 0 ORDER BY id DESC LIMIT 1').get(usuario.id);
+    const q = (suya && p.preguntas.get(suya.pregunta)) || [...p.preguntas.values()][0];
+    if (!q) throw new ErrorHttp(409, 'sin_paquete');
+    const elegida = suya && p.preguntas.get(suya.pregunta) ? suya.elegida : q.original.opciones.find(o => o.letra !== q.original.correcta).letra;
+    const basica = reexplicarSinIa(db, usuario.id, p, { q, elegida, acierto: elegida === q.original.correcta, modo: 'original' }, 'claro');
+    basica.veces = 0;
+    const c = conceptoDePregunta(p, q.id);
+    const lugar = p.deTema.get(q.id);
+    const tema = lugar ? p.materias.find(m => m.id === lugar.materia)?.temas.find(t => t.id === lugar.tema) : null;
+    const correcta = q.original.opciones.find(o => o.letra === q.original.correcta);
+    return {
+      codigo: 200, datos: {
+        demo: true, basica, tema: tema?.titulo ?? '', concepto: c ? nombreConcepto(c) : tema?.titulo ?? '',
+        pregunta: { id: q.id, numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })), correcta: correcta?.letra ?? null, correctaTexto: correcta?.texto ?? '' },
+        acciones: accionesDeHoy(db, usuario.id, p, ahora).map(a => ({ id: a.id, clave: a.clave, vars: a.vars })),
+      },
+    };
+  }, { admin: true });
+
   // ---------- 0.10.0: el «Profesor virtual» (un chat; para quien pagó o a quien el administrador se lo dio) ----------
   const esAdminDe = (db, usuario) => { const e = espacioDe(db, usuario); return Boolean(e && esEspacioAdmin(db, e.id)); };
   rutas.agregar('GET', '/api/academia/profesor', ({ db, req, usuario }) => {
@@ -379,9 +485,12 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const ctx = contextoChat(db, usuario.id, p, mensaje, abiertos, fallas);
     const videos = ctx.materia ? videosDeTema(db, ctx.materia, ctx.tema).map(v => ({ titulo: v.titulo, url: v.url })) : [];
     const buscar = ctx.temaTitulo ? [{ texto: ctx.temaTitulo, url: busquedaYoutube(ctx.temaTitulo) }] : [];
-    // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual.
+    // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual. 0.12.4: el mensaje y la
+    // respuesta básica quedan en su historial (antes se perdían al recargar); sin IA por algo que no se pasa solo, ia = null.
     if (instructor.modo !== 'ia') {
-      return { codigo: 200, datos: { instructor, ia: { estado: 'no', motivo: instructor.motivo }, basica: consejoInstructor(db, usuario.id, p, ahora).consejo, videos, buscar } };
+      const basica = consejoInstructor(db, usuario.id, p, ahora).consejo;
+      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar });
+      return { codigo: 200, datos: { instructor, ia: iaNoAhora(instructor), basica, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
     }
     const m = modeloAlumno(db, usuario.id, p, ahora);
     // Su modelo, en cifras y con los textos del paquete: nunca su nombre ni su usuario.
@@ -390,7 +499,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       fallas: fallas.slice(0, 5).map(f => ({ tema: f.temaTitulo, idea: f.idea, fallos: f.fallos, aciertos: f.aciertos, estado: f.estado })),
     };
     alumno.temas = [...alumno.temas].sort((a, b) => a.pct - b.pct).slice(0, 6); // solo los más flojos (cuida el tamaño)
-    let historial = historialParaVer(db, usuario.id).filter(x => x.respuesta).map(x => ({ alumno: x.pregunta, profesor: x.respuesta.respuesta })).slice(-4);
+    let historial = historialParaVer(db, usuario.id).filter(x => x.respuesta).map(x => ({ alumno: x.pregunta, profesor: x.respuesta.respuesta })).slice(-6);
     // Que quepa en lo que se puede mandar: primero se quita historial, después preguntas, después se acortan las tarjetas.
     const cabe = x => Buffer.byteLength(x.sistema) + Buffer.byteLength(x.texto) <= PROPOSITOS.instructor_chat.entradaMaxBytes;
     let preguntas = ctx.preguntas;
@@ -403,8 +512,14 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma });
     }
     const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
-    const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje } });
+    const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje, citas: pedido.citas } });
     if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar });
+    else {
+      // 0.12.4: no se pudo pedir (sin minutos, muy largo): lo básico, y también queda en su historial.
+      const basica = consejoInstructor(db, usuario.id, p, ahora).consejo;
+      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar });
+      return { codigo: 200, datos: { instructor, ia, basica, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
+    }
     return { codigo: 200, datos: { instructor, ia, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
   });
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/profesor', ({ db, parametros }) => {

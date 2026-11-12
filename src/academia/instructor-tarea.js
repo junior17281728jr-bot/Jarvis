@@ -3,7 +3,7 @@
 // nunca abre el paquete) y guarda lo que respondió en «ajustes» (src/academia/instructor-ia.js), en la misma escritura
 // que anota lo que costó. Lo esperado (la IA apagada, un tope, un error del proveedor, una respuesta que contradice al Test
 // Guide) NUNCA lanza: la tarea termina «hecha» con { usada: false, motivo } y el alumno sigue con el instructor básico.
-import { USOS_INSTRUCTOR, esquemaDe, guardarRespuesta, leerGuardado } from './instructor-ia.js';
+import { USOS_INSTRUCTOR, esquemaDe, guardarRespuesta, leerGuardado, anotarRechazo } from './instructor-ia.js';
 
 // Nadie espera una respuesta pedida hace más de esto (el trabajador estaba ocupado, apagado o en modo seguro): se termina
 // sin llamar, sin pagar.
@@ -27,7 +27,14 @@ async function paso(ctx) {
   });
   if (r.motivo === 'ya_cobrada') return { listo: true, resultado: { usada: Boolean(leerGuardado(ctx.db, d.clave)), motivo: leerGuardado(ctx.db, d.clave) ? 'ok' : 'interrumpida', costoMicro: r.costoMicro ?? 0 } };
   if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
-  if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
+  if (!r.guardado?.ok) {
+    // 0.12.4: la IA contradijo al Test Guide (o no sirvió) en ESA pregunta: 2 veces → esa pregunta queda sin IA 7 días
+    // (lo básico de siempre), sin pausar la IA para nadie más.
+    if (typeof d.preguntaId === 'string') {
+      try { await ctx.escribir(() => anotarRechazo(ctx.db, d.preguntaId, Date.now())); } catch { /* lo básico sigue igual */ }
+    }
+    return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
+  }
   return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
 }
 
