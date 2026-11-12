@@ -86,9 +86,9 @@ test('listo: un alumno nuevo está «Todavía no» (cada regla con su número) y
   await conAcademia(async c => {
     const v = await preparado(c, c.ana);
     assert.equal(v.nivel, 'todavia');
-    assert.deepEqual(v.reglas.map(r => [r.id, r.ok]), [['acierto', false], ['cobertura', false], ['constancia', false], ['memoria', false], ['fallas', true], ['tiempo', false]]);
+    assert.deepEqual(v.reglas.map(r => [r.id, r.ok]), [['materias', false], ['acierto', false], ['cobertura', false], ['constancia', false], ['memoria', false], ['fallas', true], ['tiempo', false]]);
     assert.equal(v.probabilidad, null);
-    assert.equal(v.siguiente.regla, 'acierto');
+    assert.equal(v.siguiente.regla, 'acierto', 'el primer paso que depende de él');
     assert.equal(v.porMateria.length, 1);
   });
 });
@@ -100,7 +100,7 @@ test('listo: «Listo para presentarte» solo con TODO: acierto, cobertura, 3 ex�
     let v = await preparado(c, c.ana);
     assert.deepEqual([regla(v, 'acierto').ok, regla(v, 'acierto').valor, regla(v, 'cobertura').ok], [true, 100, true]);
     assert.deepEqual([regla(v, 'constancia').ok, regla(v, 'memoria').ok, regla(v, 'tiempo').ok], [false, false, false]);
-    assert.equal(v.nivel, 'todavia', 'tres reglas sin cumplir');
+    assert.equal(v.nivel, 'todavia', 'cuatro reglas sin cumplir (con las materias que faltan)');
     // Un examen bueno no basta (constancia), ni todo el mismo día (memoria y tiempo).
     await todoBien(c, c.ana, { tipo: 'examen', materia: 'factores_humanos' });
     v = await preparado(c, c.ana);
@@ -111,13 +111,15 @@ test('listo: «Listo para presentarte» solo con TODO: acierto, cobertura, 3 ex�
       await todoBien(c, c.ana, { tipo: 'examen', materia: 'factores_humanos' });
     }
     v = await preparado(c, c.ana);
-    assert.deepEqual(v.reglas.filter(r => !r.ok).map(r => r.id), []);
-    assert.equal(v.nivel, 'listo');
+    // Todo lo suyo está bien; pero el paquete trae 1 de las 11 materias: «Casi», nunca «Listo» con materias sin estudiar.
+    assert.deepEqual(v.reglas.filter(r => !r.ok).map(r => r.id), ['materias']);
+    assert.equal(v.nivel, 'casi');
+    assert.deepEqual([regla(v, 'materias').valor, regla(v, 'materias').meta], [1, 11]);
     assert.ok(v.probabilidad >= 90 && v.probabilidad <= 99);
     assert.equal(v.porMateria[0].nivel, 'listo');
     // Beto (nada) sigue «Todavía no»: cada uno lo suyo. El administrador ve el de Ana; Beto no puede.
     assert.equal((await preparado(c, c.beto)).nivel, 'todavia');
-    assert.equal((await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${c.ids.ana}/preparado`, { galleta: c.admin, cabeceras: DUENO })).datos.nivel, 'listo');
+    assert.equal((await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${c.ids.ana}/preparado`, { galleta: c.admin, cabeceras: DUENO })).datos.nivel, 'casi');
     assert.equal((await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${c.ids.ana}/preparado`, { galleta: c.beto })).codigo, 403);
   });
 });

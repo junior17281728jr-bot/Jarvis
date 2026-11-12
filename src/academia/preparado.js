@@ -12,7 +12,8 @@
 import { diaDe, examenes } from './progreso.js';
 import { porMateria } from './progreso.js';
 
-export const REGLAS = Object.freeze({ acierto: 90, cobertura: 95, examenes: 3, examenPct: 90, memoria: 80, dias: 7, diasEstudio: 5, casi: 80 });
+// materias: las 11 de ENALAS con contenido (con menos, nunca «Listo»: faltaría lo que no se ha podido estudiar).
+export const REGLAS = Object.freeze({ materias: 11, acierto: 90, cobertura: 95, examenes: 3, examenPct: 90, memoria: 80, dias: 7, diasEstudio: 5, casi: 80 });
 const DIA = 86_400_000;
 const pct = (a, b) => (b > 0 ? Math.floor((a * 100) / b) : 0);
 const diasEntre = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DIA);
@@ -43,6 +44,7 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const conContenido = materias.length;
   const materiasVistas = materias.filter(m => m.bien + m.mal > 0).length;
   const reglas = [
+    { id: 'materias', ok: conContenido >= R.materias, valor: conContenido, meta: R.materias, n: conContenido },
     { id: 'acierto', ok: pct(bien, total) >= R.acierto, valor: pct(bien, total), meta: R.acierto, n: total },
     { id: 'cobertura', ok: pct(vistas, total) >= R.cobertura, valor: pct(vistas, total), meta: R.cobertura, n: total, materias: materiasVistas, deMaterias: conContenido },
     { id: 'constancia', ok: buenos >= R.examenes, valor: buenos, meta: R.examenes, n: ultimos.length },
@@ -52,11 +54,14 @@ export function veredicto(db, usuarioId, paquete, ahoraMs = Date.now()) {
   ];
   const malas = reglas.filter(r => !r.ok);
   const nivel = !malas.length ? 'listo' : pct(bien, total) >= R.casi && malas.length <= 2 ? 'casi' : 'todavia';
+  // (las materias que faltan en el paquete cuentan como una regla más: con todo lo demás bien, «Casi»)
   // La probabilidad: el promedio de sus últimos exámenes (o su acierto), menos 5 por cada regla que no cumple.
   const base = ultimos.length ? Math.floor(ultimos.reduce((n, x) => n + pct(x.aciertos, x.total), 0) / ultimos.length) : pct(bien, total);
   const probabilidad = filas.length ? Math.max(1, Math.min(99, base - 5 * malas.length)) : null;
-  const ACCION = { cobertura: { tipo: 'intento', datos: { tipo: 'instructor' } }, acierto: { tipo: 'intento', datos: { tipo: 'instructor' } }, constancia: { tipo: 'examen' }, memoria: { tipo: 'intento', datos: { tipo: 'repaso' } }, fallas: { tipo: 'refuerzo' }, tiempo: { tipo: 'seguir' } };
-  const siguiente = malas[0] ? { regla: malas[0].id, accion: ACCION[malas[0].id] } : null;
+  const ACCION = { materias: null, cobertura: { tipo: 'intento', datos: { tipo: 'instructor' } }, acierto: { tipo: 'intento', datos: { tipo: 'instructor' } }, constancia: { tipo: 'examen' }, memoria: { tipo: 'intento', datos: { tipo: 'repaso' } }, fallas: { tipo: 'refuerzo' }, tiempo: { tipo: 'seguir' } };
+  // El paso que más importa: el primero que el alumno puede hacer (que falten materias no depende de él).
+  const suya = malas.find(r => r.id !== 'materias') ?? malas[0];
+  const siguiente = suya ? { regla: suya.id, accion: ACCION[suya.id] } : null;
   const ex = examenes(db, usuarioId);
   const fallasPor = new Map(fallas.map(f => [f.materia, f.n]));
   const porMateriaV = materias.map(m => {

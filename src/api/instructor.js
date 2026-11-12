@@ -208,8 +208,10 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       const falladas = examen ? db.prepare('SELECT tema, COUNT(*) AS n FROM academia_respuestas WHERE intento_id = ? AND correcta = 0 GROUP BY tema ORDER BY n DESC LIMIT 5').all(examen.id) : [];
       const titulo = (materia, tema) => p?.materias.find(x => x.id === materia)?.temas.find(x => x.id === tema)?.titulo ?? tema;
       // Solo cifras y textos del paquete: nunca el nombre ni el usuario del alumno.
+      const resumen = resumenModelo(m);
+      resumen.temas = [...resumen.temas].sort((a, b) => a.pct - b.pct).slice(0, 8); // los más flojos (cuida el tamaño)
       const cifras = {
-        ...resumenModelo(m), ideas: m.ideas.map(x => ({ idea: x.idea, tema: titulo(x.materia, x.tema), veces: x.fallos })),
+        ...resumen, ideas: m.ideas.map(x => ({ idea: x.idea, tema: titulo(x.materia, x.tema), veces: x.fallos })),
         repite_misma_opcion: m.repetidas.map(x => ({ tema: titulo(x.materia, x.tema), veces: x.veces, idea: x.idea })),
         consejo_basico: base.consejo?.clave ?? null,
         examen: examen ? { materia: examen.materia, pct: examen.total ? Math.floor((examen.aciertos * 100) / examen.total) : 0, aprobado: examen.aprobado === 1, temas_fallados: falladas.map(f => ({ tema: titulo(examen.materia, f.tema), errores: f.n })) } : null,
@@ -363,8 +365,19 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       ...resumenModelo(m), ideas: m.ideas.map(x => x.idea).filter(Boolean),
       fallas: fallas.slice(0, 5).map(f => ({ tema: f.temaTitulo, idea: f.idea, fallos: f.fallos, aciertos: f.aciertos, estado: f.estado })),
     };
-    const historial = historialParaVer(db, usuario.id).filter(x => x.respuesta).map(x => ({ alumno: x.pregunta, profesor: x.respuesta.respuesta }));
-    const pedido = armarChat({ alumno, material: ctx.material, preguntas: ctx.preguntas, historial, mensaje, idioma: usuario.idioma });
+    alumno.temas = [...alumno.temas].sort((a, b) => a.pct - b.pct).slice(0, 6); // solo los más flojos (cuida el tamaño)
+    let historial = historialParaVer(db, usuario.id).filter(x => x.respuesta).map(x => ({ alumno: x.pregunta, profesor: x.respuesta.respuesta })).slice(-4);
+    // Que quepa en lo que se puede mandar: primero se quita historial, después preguntas, después se acortan las tarjetas.
+    const cabe = x => Buffer.byteLength(x.sistema) + Buffer.byteLength(x.texto) <= PROPOSITOS.instructor_chat.entradaMaxBytes;
+    let preguntas = ctx.preguntas;
+    let material = ctx.material;
+    let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma });
+    while (!cabe(pedido) && (historial.length || preguntas.length || (material?.tarjetas ?? []).some(t => t.texto.length > 200))) {
+      if (historial.length) historial = historial.slice(1);
+      else if (preguntas.length) preguntas = preguntas.slice(1);
+      else material = { ...material, tarjetas: material.tarjetas.map(t => ({ ...t, texto: t.texto.slice(0, Math.floor(t.texto.length / 2)) })) };
+      pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma });
+    }
     const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
     const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje } });
     if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar });

@@ -421,3 +421,21 @@ test('Profesor virtual: solo con permiso, usa sus minutos, su contexto es solo s
     assert.ok(x);
   }, { modelo: 'claude-haiku-5-5' });
 });
+
+test('Profesor virtual: con mensajes y respuestas largas, cada pedido cabe en el tamaño máximo (se recorta el historial)', async () => {
+  await conInstructor(async c => {
+    const z = idDe(c, 'zoelia');
+    darProfesor(c.db, z, true);
+    ajustarSaldo(c.db, z, 50, c.adminId);
+    for (let k = 0; k < 6; k++) {
+      c.falso.siguiente({ tipo: 'ok', json: { respuesta: `Respuesta ${k} `.padEnd(2300, 'la hipoxia baja el oxígeno; '), pregunta_control: '¿qué baja? '.repeat(25), estudiar_ahora: 'repasa la tarjeta. '.repeat(14), buscar_en_youtube: ['a'], terminos: [] } });
+      const r = (await pedir(c.base, 'POST', '/api/academia/profesor', { galleta: c.z, datos: { mensaje: `¿Qué es la hipoxia y el oxígeno? ${k} `.padEnd(480, ' cuéntame más del tema') } })).datos;
+      assert.equal(r.ia.estado, "pendiente", `mensaje ${k}: ${JSON.stringify(r.instructor)} ${JSON.stringify(c.db.prepare("SELECT resultado, estado FROM ia_llamadas ORDER BY id DESC LIMIT 1").get())}`);
+      await c.hacer(r.ia.tarea);
+    }
+    for (const p of pedidosIa(c)) {
+      const cuerpo = cuerpoDe(p);
+      assert.ok(Buffer.byteLength(cuerpo.system) + Buffer.byteLength(cuerpo.messages[0].content) <= PROPOSITOS.instructor_chat.entradaMaxBytes);
+    }
+  }, { modelo: 'claude-haiku-5-5' });
+});

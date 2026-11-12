@@ -96,7 +96,8 @@ export function crearPagos(h) {
       boton.disabled = true;
       const x = await api('POST', `/api/admin/academia/pagos/${p.id}/${aprobar ? 'aprobar' : 'rechazar'}`, aprobar ? {} : { motivo });
       if (!x.ok) { boton.disabled = false; return avisar(textoError(x.datos.error), 'mal'); }
-      avisar(aprobar ? tx('pagos.aprobado', { n: numero(p.minutos), alumno: p.alumno.nombre }) : tx('pagos.rechazado'), 'bien');
+      const falta = aprobar && x.datos.ia && !x.datos.ia.listo ? ` ${tx('pagos.falta_ia', { falta: x.datos.ia.falta.map(f => tx(`instr.motivo.${f}`)).join(', ') })}` : '';
+      avisar((aprobar ? tx('pagos.aprobado', { n: numero(p.minutos), alumno: p.alumno.nombre }) : tx('pagos.rechazado')) + falta, falta ? 'info' : 'bien');
       pantallaPagosAdmin();
     };
     const filaPago = p => el('li', { class: `pago pago-${p.estado}` },
@@ -148,7 +149,8 @@ export function crearPagos(h) {
       el('h2', { class: 'con-icono' }, icono('reloj'), el('span', { texto: tx('pagos.saldos') })),
       el('ul', { class: 'lista-simple' }, d.alumnos.map(a => {
         const n = el('input', { type: 'number', min: 0, value: a.minutos, 'aria-label': tx('pagos.minutos_de', { alumno: a.nombre }), class: 'campo-corto' });
-        return el('li', { class: 'fila-saldo' }, el('span', { texto: a.nombre }), n,
+        return el('li', { class: 'fila-saldo' }, el('span', { texto: a.nombre }),
+          el('span', { class: `chica tono-${a.ia?.listo ? 'bien' : 'atencion'}`, texto: a.ia?.listo ? tx('pagos.ia_lista') : tx('pagos.falta_ia', { falta: (a.ia?.falta ?? []).map(f => tx(`instr.motivo.${f}`)).join(', ') }) }), n,
           el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async e => {
             e.currentTarget.disabled = true;
             const x = await api('POST', `/api/admin/academia/alumnos/${a.id}/minutos`, { minutos: Number(n.value) });
@@ -253,7 +255,7 @@ export function crearPagos(h) {
           if (!caja.isConnected) return;
           const y = await api('GET', '/api/academia/profesor');
           const ultimo = y.ok ? y.datos.historial.at(-1) : null;
-          if (ultimo?.respuesta) { caja.replaceWith(...burbujas(ultimo).slice(1)); medidor.replaceChildren(instructorUi().medidorTiempo({ ...y.datos.tiempo, activo: true }) ?? ''); return; }
+          if (ultimo?.respuesta || ultimo?.estado === 'no') { caja.replaceWith(...burbujas(ultimo).slice(1)); medidor.replaceChildren(instructorUi().medidorTiempo({ ...y.datos.tiempo, activo: true }) ?? ''); return; }
           if (n < 60) setTimeout(() => vuelta(n + 1), 2000);
         };
         setTimeout(vuelta, 2000);

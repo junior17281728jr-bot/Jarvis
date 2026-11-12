@@ -331,7 +331,7 @@ test('las frases del instructor (public/instructor.js y los consejos) existen en
   for (const x of ['activa', 'refuerzo', 'superada']) claves.push(`falla.estado.${x}`);
   for (const x of ['admin', 'regalo', 'pago']) claves.push(`profesor.admin.si.${x}`);
   for (const x of ['todavia', 'casi', 'listo']) claves.push(`listo.nivel.${x}`);
-  for (const x of ['acierto', 'cobertura', 'constancia', 'memoria', 'fallas', 'tiempo']) claves.push(`listo.regla.${x}`, `listo.paso.${x}`);
+  for (const x of ['materias', 'acierto', 'cobertura', 'constancia', 'memoria', 'fallas', 'tiempo']) claves.push(`listo.regla.${x}`, `listo.paso.${x}`);
   for (const x of ['nuevas', 'despues', 'justo', 'fallas']) claves.push(`listo.suerte.${x}`);
   for (const x of ['banco', 'tipoCuenta', 'numero', 'titular', 'documento', 'espera', 'minutosRegalo', 'minutosPorUso', 'instrucciones', 'paquetes']) claves.push(`pagos.campo.${x}`);
   claves.push('hicimos.linea', 'hicimos.linea_examen', 'refuerzo.resultado', 'refuerzo.resultado.bien');

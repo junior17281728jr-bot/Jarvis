@@ -589,14 +589,16 @@ minutos no se llama a la IA y sigue el básico. «Pedir más tiempo con IA» (`#
 el dueño escribe en Administrador → Pagos (solo en la base; nunca en el repositorio), los paquetes y la espera («En revisión —
 la verificación puede tardar hasta 24 horas», editable). El alumno sube la foto del comprobante (JPG, PNG o WEBP de verdad,
 hasta 5 MB; queda en `OPORTIA_DATOS/academia/pagos/`, no va en las copias; la ven solo él y el administrador). Administrador →
-Pagos (con el número de pendientes): aprobar (suma los minutos una vez) o rechazar con un motivo que el alumno ve. Cambiar los
+Pagos (con el número de pendientes): aprobar (suma los minutos una vez) o rechazar con un motivo que el alumno ve. Ojo: los
+minutos solos no encienden la IA de un alumno (también hacen falta su tope de plan y «Permitir IA»); Pagos lo dice al lado de
+cada saldo y al aprobar. Cualquier administrador puede aprobar o rechazar; cambiar datos y saldos es solo del dueño. Cambiar los
 datos de pago, el regalo, un saldo, los umbrales de fallas o dar el Profesor virtual es solo del dueño desde Tailscale. El
 Profesor virtual es para quien tiene un pago aprobado o a quien el dueño se lo da; nunca muestra un enlace que escriba la IA:
 solo los videos de YouTube que el dueño elige por tema (Administrador → Pagos → Videos) y un enlace a la búsqueda de YouTube.
 
 **¿Estás listo para el examen oficial?** (Progreso, y la ficha de cada alumno): un veredicto estricto sobre el banco del Test
 Guide —«Todavía no», «Casi» o «Listo para presentarte»— con «Cómo lo pienso» (cada regla ✔/✘ con su número: acierto ≥ 90 %,
-cobertura ≥ 95 %, 3 exámenes recientes ≥ 90 %, memoria ≥ 80 % acertadas otra vez 2 días después, sin fallas activas, 7 días y 5
+cobertura ≥ 95 %, las 11 materias con contenido (con menos, nunca «Listo»), 3 exámenes recientes ≥ 90 %, memoria ≥ 80 % acertadas otra vez 2 días después, sin fallas activas, 7 días y 5
 días de estudio), el paso que más importa, la probabilidad estimada (con el aviso de que no garantiza nada), cada materia, y
 «Aprobaste, pero te recomiendo repetirlo porque…» cuando un aprobado tiene señales de suerte (`src/academia/preparado.js`).
 

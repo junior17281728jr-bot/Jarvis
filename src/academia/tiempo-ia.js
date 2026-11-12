@@ -12,10 +12,8 @@
 //    con un motivo que el alumno ve. La imagen vive en la carpeta de datos (academia/pagos/) y solo la ven el
 //    administrador y ese alumno. Nada se borra.
 import { randomBytes } from 'node:crypto';
-import { createWriteStream, mkdirSync, existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
-import { Transform } from 'node:stream';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, carpetaAcademia } from './paquetes.js';
@@ -158,30 +156,26 @@ export async function subirRecibo(db, config, { usuarioId, req, paquete, nota = 
   if (!p) throw new ErrorHttp(400, 'paquete_pago_no_valido');
   const pendientes = db.prepare("SELECT COUNT(*) AS n FROM academia_pagos WHERE usuario_id = ? AND estado = 'revision'").get(usuarioId).n;
   if (pendientes >= PAGOS_EN_REVISION_MAX) throw new ErrorHttp(409, 'muchos_en_revision');
-  const carpeta = carpetaPagos(config);
-  mkdirSync(carpeta, { recursive: true });
-  const archivo = `${usuarioId}-${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
-  const ruta = join(carpeta, archivo);
+  // En memoria (5 MB como mucho) y revisada por dentro (los primeros bytes, nunca el nombre) ANTES de escribir nada:
+  // una que no sirve nunca llega al disco.
+  const partes = [];
   let bytes = 0;
-  const contar = new Transform({
-    transform(trozo, _c, listo) {
-      bytes += trozo.length;
-      if (bytes > RECIBO_MAX_BYTES) return listo(new ErrorHttp(413, 'demasiado_grande'));
-      listo(null, trozo);
-    },
-  });
   try {
-    await pipeline(req, contar, createWriteStream(ruta, { flags: 'wx', mode: 0o640 }));
+    for await (const trozo of req) {
+      bytes += trozo.length;
+      if (bytes > RECIBO_MAX_BYTES) throw new ErrorHttp(413, 'demasiado_grande');
+      partes.push(trozo);
+    }
   } catch (error) {
     if (error instanceof ErrorHttp) throw error;
     throw new ErrorHttp(400, 'imagen_no_valida');
   }
-  // La imagen se revisa por dentro (los primeros bytes), nunca por su nombre. Una que no sirve queda en el disco (nada se
-  // borra) pero nunca entra a la base.
-  const fd = openSync(ruta, 'r');
-  const cabeza = Buffer.alloc(16);
-  try { readSync(fd, cabeza, 0, 16, 0); } finally { closeSync(fd); }
-  if (!bytes || !esImagen(cabeza, tipo)) throw new ErrorHttp(400, 'imagen_no_valida');
+  const contenido = Buffer.concat(partes);
+  if (!bytes || !esImagen(contenido.subarray(0, 16), tipo)) throw new ErrorHttp(400, 'imagen_no_valida');
+  const carpeta = carpetaPagos(config);
+  mkdirSync(carpeta, { recursive: true });
+  const archivo = `${usuarioId}-${Date.now()}-${randomBytes(6).toString('hex')}.${ext}`;
+  writeFileSync(join(carpeta, archivo), contenido, { flag: 'wx', mode: 0o640 });
   const r = db.prepare(`INSERT INTO academia_pagos (usuario_id, paquete, minutos, precio, archivo, tipo, bytes, nota, estado, creado_en)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'revision', ?)`).run(usuarioId, p.id, p.minutos, p.precio, archivo, tipo, bytes, texto(nota, 300) || null, iso(ahora));
   return vistaPago(db.prepare('SELECT * FROM academia_pagos WHERE id = ?').get(Number(r.lastInsertRowid)));

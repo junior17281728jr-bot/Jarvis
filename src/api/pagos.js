@@ -16,6 +16,22 @@ import {
 } from '../academia/tiempo-ia.js';
 import { leerConfigFallas, guardarConfigFallas, fallasDe } from '../academia/fallas.js';
 import { paqueteActivo } from '../academia/paquetes.js';
+import { espacioConfirmado } from '../cuentas/confianza.js';
+import { topeEspacioMicro } from '../ia/topes.js';
+
+// ¿Sus minutos le sirven ahora? Los minutos solos no encienden la IA: también hacen falta la IA y el instructor
+// encendidos, un tope de su plan mayor que US$0 y «Permitir IA» para su cuenta (y que no se haya llenado un tope del mes).
+export function iaDeAlumno(db, usuario) {
+  const cfg = leerConfigIa(db);
+  const falta = [];
+  if (!cfg.encendida || !cfg.instructorIa) falta.push('ia_apagada');
+  const e = espacioDe(db, usuario);
+  if (e && !esEspacioAdmin(db, e.id)) {
+    if (!(topeEspacioMicro(db, cfg, e.id).topeMicro > 0)) falta.push('sin_presupuesto');
+    if (!espacioConfirmado(db, e.id)) falta.push('cuenta_sin_permiso');
+  }
+  return { listo: falta.length === 0, falta };
+}
 
 const DIA = 24 * 60 * 60 * 1000;
 
@@ -78,7 +94,7 @@ export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj 
   rutas.agregar('GET', '/api/admin/academia/pagos', ({ db }) => {
     const ahora = reloj();
     const alumnos = db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' AND activo = 1 ORDER BY nombre").all()
-      .map(u => ({ id: u.id, nombre: u.nombre_visible || u.nombre, minutos: saldoIa(db, u.id, ahora).minutos }));
+      .map(u => ({ id: u.id, nombre: u.nombre_visible || u.nombre, minutos: saldoIa(db, u.id, ahora).minutos, ia: iaDeAlumno(db, u) }));
     return { codigo: 200, datos: { config: leerConfigPagos(db), pagos: pagosParaRevisar(db), pendientes: pagosPendientes(db), alumnos, fallas: leerConfigFallas(db) } };
   }, { admin: true });
   rutas.agregar('GET', '/api/admin/academia/pagos/pendientes', ({ db }) => ({ codigo: 200, datos: { pendientes: pagosPendientes(db) } }), { admin: true });
@@ -88,7 +104,10 @@ export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj 
   }, { admin: true });
   rutas.agregar('POST', '/api/admin/academia/pagos/:id/aprobar', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
-    return { codigo: 200, datos: { pago: resolverPago(db, { id: parametros.id, adminId: usuario.id, aprobar: true, ahora: reloj() }) } };
+    const pago = resolverPago(db, { id: parametros.id, adminId: usuario.id, aprobar: true, ahora: reloj() });
+    const alumno = db.prepare('SELECT p.usuario_id AS id FROM academia_pagos p WHERE p.id = ?').get(pago.id);
+    // Si sus minutos todavía no le sirven (falta un tope de plan o «Permitir IA»), se dice al aprobar.
+    return { codigo: 200, datos: { pago, ia: iaDeAlumno(db, { id: alumno.id }) } };
   }, { admin: true });
   rutas.agregar('POST', '/api/admin/academia/pagos/:id/rechazar', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);

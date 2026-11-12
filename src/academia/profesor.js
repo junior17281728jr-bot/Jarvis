@@ -66,8 +66,11 @@ export function anotarMensaje(db, usuarioId, entrada) {
 export function historialParaVer(db, usuarioId) {
   return leerHistorial(db, usuarioId).map(m => {
     const r = m.clave ? leerGuardado(db, m.clave) : null;
+    // Sin respuesta: si su tarea ya terminó (la IA no respondió), «no»; si no, todavía «pendiente».
+    const t = !r && m.tarea ? db.prepare('SELECT estado FROM tareas WHERE id = ?').get(m.tarea) : null;
+    const estado = r ? 'lista' : t && !['lista', 'en_curso'].includes(t.estado) ? 'no' : 'pendiente';
     return {
-      pregunta: m.pregunta, en: m.en, tarea: m.tarea ?? null, estado: r ? 'lista' : m.estado ?? 'pendiente', tema: m.tema ?? null,
+      pregunta: m.pregunta, en: m.en, tarea: m.tarea ?? null, estado, tema: m.tema ?? null,
       respuesta: r ? { respuesta: r.respuesta, control: r.control, estudiar: r.estudiar, terminos: r.terminos } : null,
       videos: m.videos ?? [], buscar: [...(r?.buscar ?? []).map(x => ({ texto: x, url: busquedaYoutube(x) })), ...(m.buscar ?? [])].filter(x => x.url).slice(0, 3),
     };
