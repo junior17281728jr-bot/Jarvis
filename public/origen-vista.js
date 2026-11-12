@@ -42,6 +42,7 @@ export function abrirOrigen(q, h, desde = null) {
   const cerrar = () => {
     capa.remove();
     document.removeEventListener('keydown', teclas, true);
+    window.removeEventListener('hashchange', alNavegar);
     try { desde?.focus({ preventScroll: true }); } catch { /* ya no está */ }
   };
   const teclas = e => { if (e.key === 'Escape' && document.body.lastElementChild === capa) { e.stopPropagation(); cerrar(); } };
@@ -56,6 +57,9 @@ export function abrirOrigen(q, h, desde = null) {
       fila(h, t('origen.pagina'), pg?.pagina ?? q.pagina)),
     cuerpoImagen);
   const capa = el('div', { class: 'origen-capa', onclick: e => { if (e.target === capa) cerrar(); } }, hoja);
+  // Al cambiar de pantalla la hoja se va (vive en <body>, fuera de la pantalla).
+  const alNavegar = () => { capa.remove(); document.removeEventListener('keydown', teclas, true); window.removeEventListener('hashchange', alNavegar); };
+  window.addEventListener('hashchange', alNavegar);
   document.addEventListener('keydown', teclas, true);
   document.body.append(capa);
   try { hoja.focus({ preventScroll: true }); } catch { hoja.focus(); }

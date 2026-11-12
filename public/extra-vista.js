@@ -88,6 +88,7 @@ function ronda(r, pedido, h) {
       if (!x.ok) { comprobar.disabled = false; for (const b of botones) b.disabled = false; return h.avisar(h.textoError(x.datos.error), 'mal'); }
       const res = x.datos;
       hechas.push(res);
+      avance(i + 1);
       h.sonar(res.acierto ? 'bien' : 'mal');
       for (const b of botones) {
         if (b.dataset.letra === res.correcta) b.classList.add('es-correcta');

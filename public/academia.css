@@ -842,3 +842,6 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .extra-progreso-niveles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 6px; }
 .extra-progreso-nivel { display: grid; gap: 4px; }
 .ficha-saltos-lista { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.hoja-origen { display: flex; margin: 0 0 10px; }
+.hoja-origen .origen-boton { margin-left: 0; }
+.hoja-origen .origen-boton-texto { position: static; width: auto; height: auto; overflow: visible; clip: auto; }

@@ -4067,6 +4067,7 @@ function saltarAlExamen(m) {
       el('div', { class: 'saltar-botones' }, si, no));
     const capa = el('div', { class: 'origen-capa saltar-capa', onclick: e => { if (e.target === capa) cerrar(); } }, hoja);
     capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+    window.addEventListener('hashchange', () => capa.remove(), { once: true });
     document.body.append(capa);
     si.focus();
   };
@@ -4087,6 +4088,7 @@ function abrirImagenGrande({ src, nombre, titulo }) {
       el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
     el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
   capa.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); } });
+  window.addEventListener('hashchange', () => capa.remove(), { once: true }); // 0.12.0: al cambiar de pantalla se va
   document.body.append(capa);
   // 0.9.1: abre ajustada a la pantalla, con − / + y «Ajustar» (public/clase/realce.js).
   visorFigura(capa, { t });
@@ -4280,7 +4282,8 @@ async function pantallaPractica(id) {
       acierto: resp.acierto,
       titulo: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }),
       // 0.9.0: «Explícamelo de otra forma» (la pregunta y sus opciones quedan tal cual arriba); 0.9.2: «Reportar un error».
-      partes: [...partesRespuesta(q, resp, { enHoja: true }), instructorUi().explicar(intento.id, q), enlaceReportar(q.id)],
+      // 0.12.0: «¿De dónde salió?» también aquí (arriba puede quedar tapado por la hoja): ya respondió, se ve la página.
+      partes: [...partesRespuesta(q, resp, { enHoja: true }), el('div', { class: 'hoja-origen' }, origenDe(q)), instructorUi().explicar(intento.id, q), enlaceReportar(q.id)],
       boton,
     }));
     if (recien) {
