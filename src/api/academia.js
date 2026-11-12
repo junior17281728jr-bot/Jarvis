@@ -74,7 +74,7 @@ export function enviarPorPartes(res, req, { ruta, bytes, tipo, cache = 'private,
   pipeline(createReadStream(ruta, { start: inicio, end: fin, highWaterMark: 256 * 1024 }), res).catch(() => res.destroy());
 }
 
-export function registrarRutasAcademia(rutas, { config = null, supervisor = null, limites = {}, azar = Math.random, reloj = Date.now } = {}) {
+export function registrarRutasAcademia(rutas, { config = null, supervisor = null, limites = {}, azar = Math.random, reloj = Date.now, finDeSesion = () => {} } = {}) {
   const topes = { ...crearLimitesAcademia(), ...limites };
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'academia_no_disponible'); };
   const activo = db => { necesitaConfig(); return paqueteActivo(db, config); };
@@ -184,7 +184,9 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   // 0.7.2: «terminé de leer la lección» (un tema sin preguntas se aprueba así).
   rutas.agregar('POST', '/api/academia/temas/:materia/:tema/leido', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
-    return { codigo: 200, datos: marcarTemaLeido(db, usuario.id, activo(db), parametros.materia, parametros.tema) };
+    const leido = marcarTemaLeido(db, usuario.id, activo(db), parametros.materia, parametros.tema);
+    finDeSesion(db, usuario, 'leido'); // 0.12.7: preparar su próxima clase (si hace falta)
+    return { codigo: 200, datos: leido };
   });
 
   rutas.agregar('POST', '/api/academia/intentos', async ({ db, req, usuario }) => {
@@ -232,8 +234,11 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
 
   rutas.agregar('POST', '/api/academia/intentos/:id/terminar', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
-    if (examenDe(db, filaPropia(db, usuario, parametros.id))) return { codigo: 200, datos: entregarExamen(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
-    return { codigo: 200, datos: terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
+    const fin = examenDe(db, filaPropia(db, usuario, parametros.id))
+      ? entregarExamen(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() })
+      : terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() });
+    finDeSesion(db, usuario, 'terminar'); // 0.12.7: preparar su próxima clase (si hace falta)
+    return { codigo: 200, datos: fin };
   });
 
   rutas.agregar('GET', '/api/academia/progreso', ({ db, usuario }) => {

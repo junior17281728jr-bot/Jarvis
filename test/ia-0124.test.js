@@ -7,7 +7,7 @@
 import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { conInstructor, pedir, unaMala, explicar, pedidosIa, cuerpoDe, datosDe, explicacionFalsa, DE, NOMBRES, textoDe } from './instructor-ia-base.js';
+import { conInstructor, pedir, unaMala, explicar, pedidosIa, cuerpoDe, datosDe, explicacionFalsa, DE, NOMBRES, textoDe, sistemaDe } from './instructor-ia-base.js';
 import { darProfesor } from '../src/academia/profesor.js';
 import { saldoIa } from '../src/academia/tiempo-ia.js';
 import { revisarCitas, claveDeCitas, revisarRespuesta, preguntaSinIa } from '../src/academia/instructor-ia.js';
@@ -36,7 +36,7 @@ test('(a) el Profesor virtual cita la pregunta del Test Guide: la cita buena se 
     assert.equal(r.ia.estado, 'pendiente');
     await c.hacer(r.ia.tarea);
     const cuerpo = cuerpoDe(pedidosIa(c).at(-1));
-    assert.match(cuerpo.system, /cita_test_guide/);
+    assert.match(sistemaDe(cuerpo), /cita_test_guide/);
     assert.ok(cuerpo.output_config.format.schema.required.includes('cita_test_guide'));
     assert.deepEqual(datosDe(cuerpo.messages[0].content).preguntas_que_ya_respondio.map(p => p.numero), ['M-01']);
     let h = (await pedir(c.base, 'GET', '/api/academia/profesor', { galleta: c.z })).datos.historial.at(-1);

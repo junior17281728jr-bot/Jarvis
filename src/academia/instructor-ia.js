@@ -14,7 +14,7 @@
 import { createHash } from 'node:crypto';
 import { REGLAS_IA } from './humor.js';
 
-export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat', 'instructor_miniclase', 'instructor_plan']);
+export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat', 'instructor_miniclase', 'instructor_plan', 'instructor_preparar']);
 // Lo más largo que se guarda de cada parte (lo que pase de ahí se corta: nunca una pantalla enorme).
 const TOPE = Object.freeze({ explicacion: 2400, corto: 900, termino: 120, terminos: 8, pasos: 4, duda: 600 });
 export const DUDA_MAX_LETRAS = 500;
@@ -227,6 +227,47 @@ export function armarPlanDia({ cifras, acciones, idioma = 'es', humor = false })
   return { sistema, texto: bloque({ cifras, acciones: acciones.map(a => ({ id: a.id, que: a.que })) }), esquema: ESQUEMA_PLAN };
 }
 
+// ---------- 7. (0.12.7) «Preparar tu próxima clase» ----------
+// Dos partes, para que la caché del proveedor sirva (src/ia/proveedores/anthropic.js, cachear):
+//  - el PREFIJO (sistema): las reglas + el material del tema que sigue: sus tarjetas enteras (con un id t1, t2…) y sus
+//    preguntas del Test Guide TAL CUAL (número, enunciado y opciones) SIN la respuesta. Es igual para todos los alumnos
+//    que preparan ese tema en ese idioma: nada del alumno. Lo guarda el servidor web en «ajustes» por su huella
+//    (academia.preparar.prefijo.<huella>) y la tarea solo lleva la huella (los datos de una tarea tienen 16 000 letras).
+//  - lo del ALUMNO (el mensaje): su modelo en números (dominio por tema, prisa, estilo, ritmo; nunca su nombre ni su
+//    usuario), sus conceptos débiles («Mi repaso»), las preguntas del tema que FALLÓ (con la opción que eligió y la
+//    respuesta del Test Guide: ya la vio al responder, como en el Profesor) y los números de las que no ha respondido.
+// La respuesta se revisa: tarjetas que no existen se descartan; citar o decir la respuesta de una pregunta que no ha
+// respondido, o contradecir la del Test Guide de una fallada, la deja sin usar (se pagó y no sirvió).
+export const ESQUEMA_PREPARAR = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['intro', 'tarjetas', 'analogias', 'plan', 'cita_test_guide'],
+  properties: {
+    intro: { type: 'string' },
+    tarjetas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['tarjeta', 'porque'], properties: { tarjeta: { type: 'string' }, porque: { type: 'string' } } } },
+    analogias: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['idea', 'analogia'], properties: { idea: { type: 'string' }, analogia: { type: 'string' } } } },
+    plan: { type: 'array', items: { type: 'string' } },
+    cita_test_guide: CITAS,
+  },
+});
+// material: { titulo, tarjetas: [{ id, titulo, texto }], preguntas: [{ numero, enunciado, opciones: [texto] }] }.
+export function prefijoPreparar({ material, idioma = 'es' }) {
+  const sistema = [
+    ...COMUN(idioma),
+    'Tu tarea: preparar la PRÓXIMA clase de UN alumno: el tema que te damos abajo. Con sus cifras y sus errores (vienen en el mensaje), escribe lo que verá al empezar la clase.',
+    'REGLAS FIJAS: (1) Las preguntas del Test Guide de abajo van TAL CUAL y SIN su respuesta: NUNCA digas, insinúes ni descartes opciones de una pregunta que el alumno no ha respondido. (2) De las preguntas que ya FALLÓ te damos en el mensaje la respuesta del Test Guide: es la correcta; nunca la contradigas. (3) Usa solo el material dado; no inventes reglas ni números. (4) Nombra las tarjetas por su id (t1, t2…), nunca inventes una. (5) Nunca nombres opciones por letra.',
+    'Campos: intro = una introducción personal a esta clase (hasta 600 caracteres: qué va a aprender y por qué le sirve a ÉL, según sus errores); tarjetas = de 1 a 4 {tarjeta: el id de una tarjeta de abajo, porque: por qué debe fijarse en ella (hasta 160)}; analogias = 1 o 2 {idea: la idea equivocada suya que corrige, analogia: una comparación de la vida diaria o de vuelo (hasta 400)}; plan = exactamente 3 pasos cortos para la clase (hasta 160 cada uno).',
+    'cita_test_guide: si mencionas una pregunta que el alumno YA FALLÓ, pon {numero, respuesta} con la respuesta del Test Guide copiada TAL CUAL (la de «respuesta_del_test_guide»); nunca cites una que no ha respondido; si no mencionas ninguna, [].',
+    'MATERIAL DEL TEMA (el mismo para todos los alumnos):',
+    bloque({ tema: material.titulo, tarjetas: material.tarjetas, preguntas_del_test_guide: material.preguntas }),
+  ].join('\n');
+  return { sistema, huella: huella(sistema) };
+}
+// alumno: cifras; falladas: [{ numero, eligio, respuesta_del_test_guide, idea }]; sinResponder: [números];
+// conceptos: [{ concepto, tema, fallos, idea }].
+export function armarPreparar({ alumno, falladas = [], sinResponder = [], conceptos = [] }) {
+  const texto = bloque({ alumno, preguntas_que_fallo: falladas, preguntas_sin_responder: sinResponder, conceptos_debiles: conceptos });
+  return { texto, citas: claveDeCitas(falladas.map(f => ({ numero: f.numero, respuesta_del_test_guide: f.respuesta_del_test_guide, opciones: f.opciones ?? [] }))) };
+}
+
 // ---------- Revisar lo que cita del Test Guide (chat y dudas) ----------
 const plano = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9ñ]+/g, ' ').trim();
 const mismaRespuesta = (a, b) => { const x = plano(a); const y = plano(b); return Boolean(x && y) && (x === y || (x.length >= 8 && y.includes(x)) || (y.length >= 8 && x.includes(y))); };
@@ -301,6 +342,7 @@ export function revisarRespuesta(datos, json) {
     if (!r.concepto) throw noSirve();
     return r;
   }
+  if (datos.uso === 'instructor_preparar') return revisarPreparar(datos, json);
   if (datos.uso === 'instructor_plan') {
     // Solo acciones que existen en la app (las que mandó el servidor): una que no está se descarta; ninguna, no sirve.
     const validas = new Set((datos.acciones ?? []).map(String));
@@ -312,7 +354,36 @@ export function revisarRespuesta(datos, json) {
   }
   throw noSirve();
 }
+// 0.12.7: lo que se guarda de «Preparado para ti» (o noSirve). datos: { tarjetas: [ids], citas, sinResponder: [{ numero,
+// opciones }], tema }.
+function revisarPreparar(datos, json) {
+  const ids = new Set((datos.tarjetas ?? []).map(String));
+  const vistas = new Set();
+  const tarjetas = (Array.isArray(json?.tarjetas) ? json.tarjetas : [])
+    .filter(x => ids.has(String(x?.tarjeta)) && !vistas.has(String(x.tarjeta)) && vistas.add(String(x.tarjeta)))
+    .slice(0, 4).map(x => ({ tarjeta: String(x.tarjeta), porque: limpio(x.porque, 240) }));
+  const analogias = (Array.isArray(json?.analogias) ? json.analogias : []).slice(0, 2)
+    .map(x => ({ idea: limpio(x?.idea, 300), analogia: limpio(x?.analogia, 600) })).filter(x => x.analogia);
+  const plan = (Array.isArray(json?.plan) ? json.plan : []).slice(0, 3).map(x => limpio(x, 240)).filter(Boolean);
+  const intro = limpio(json?.intro, TOPE.corto);
+  if (!intro || plan.length < 2) throw noSirve();
+  const todo = [intro, ...tarjetas.map(x => x.porque), ...analogias.flatMap(x => [x.idea, x.analogia]), ...plan].join('\n');
+  // Nunca la respuesta de una pregunta que no ha respondido: ni citarla, ni decir «la correcta es …» con una de sus opciones.
+  const sin = Array.isArray(datos.sinResponder) ? datos.sinResponder : [];
+  const sinNumeros = new Set(sin.map(x => String(x?.numero ?? '')));
+  if ((Array.isArray(json?.cita_test_guide) ? json.cita_test_guide : []).some(c => sinNumeros.has(String(c?.numero ?? '').trim()))) throw noSirve();
+  const t = plano(todo);
+  for (const q of sin) {
+    for (const o of Array.isArray(q?.opciones) ? q.opciones : []) {
+      const p = plano(o);
+      if (p.length >= 6 && [`correcta es ${p}`, `respuesta es ${p}`, `correct answer is ${p}`, `answer is ${p}`].some(f => t.includes(f))) throw noSirve();
+    }
+  }
+  const citas = revisarCitas(datos.citas, json?.cita_test_guide, todo);
+  return { intro, tarjetas, analogias, plan, citas, tema: typeof datos.tema === 'string' ? datos.tema : null };
+}
 export function esquemaDe(datos) {
+  if (datos?.uso === 'instructor_preparar') return ESQUEMA_PREPARAR;
   if (datos?.uso === 'instructor_explicar') return esquemaExplicar(Number(datos.opciones) || 3);
   if (datos?.uso === 'instructor_consejo') return ESQUEMA_CONSEJO;
   if (datos?.uso === 'instructor_duda') return ESQUEMA_DUDA;
@@ -322,7 +393,7 @@ export function esquemaDe(datos) {
   return null;
 }
 
-export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
+export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|preparado\.[1-9]\d{0,9}\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
 
 export function leerGuardado(db, clave) {
   if (typeof clave !== 'string' || !CLAVE_GUARDADO.test(clave)) return null;

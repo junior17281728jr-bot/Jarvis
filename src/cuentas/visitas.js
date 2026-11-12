@@ -69,10 +69,15 @@ export function resumenVisitas(db, usuarioId, ahoraMs = Date.now()) {
 
 // POST /api/yo/visita/fin { como: 'cerro' }: la pantalla avisa que se cerró o se escondió (pagehide / visibilitychange).
 // Barato: una escritura, como mucho una vez cada 30 s por cuenta (anotarFin) y 30 avisos cada 10 minutos.
-export function registrarRutasVisitas(rutas, { Limitador }) {
+// 0.12.7: finDeSesion (src/app.js): al cerrar la app, el instructor mira si hace falta preparar su próxima clase (barato:
+// primero lo que no cuesta nada; solo si estudió de verdad y no se preparó hoy).
+export function registrarRutasVisitas(rutas, { Limitador, finDeSesion = () => {} }) {
   const tope = new Limitador({ maximo: 30, ventanaMs: 10 * 60 * 1000 });
   rutas.agregar('POST', '/api/yo/visita/fin', ({ db, usuario }) => {
-    if (tope.permitir(String(usuario.id))) anotarFin(db, usuario.id, 'cerro');
+    if (tope.permitir(String(usuario.id))) {
+      anotarFin(db, usuario.id, 'cerro');
+      finDeSesion(db, usuario, 'salio');
+    }
     return { codigo: 200, datos: { ok: true } };
   }, { permitirConClaveTemporal: true, noEsActividad: true });
 }

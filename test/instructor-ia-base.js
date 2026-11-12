@@ -107,6 +107,8 @@ export async function unaMala(c, galleta, preguntaId = null) {
 export const explicar = (c, galleta, x) => pedir(c.base, 'POST', '/api/academia/instructor/explicar', { galleta, datos: { intento: x.intento.id, pregunta: x.pregunta.id, ia: true } });
 export const datosDe = texto => JSON.parse(/<datos>\n([\s\S]*)\n<\/datos>/.exec(texto)[1]);
 export const pedidosIa = c => c.falso.peticiones.filter(p => p.ruta === '/v1/messages');
+// 0.12.7: el sistema puede ir como texto o como bloques (con la marca de la caché): su texto.
+export const sistemaDe = cuerpo => (typeof cuerpo.system === 'string' ? cuerpo.system : cuerpo.system.map(b => b.text).join(''));
 export const cuerpoDe = p => (typeof p.cuerpo === 'string' ? JSON.parse(p.cuerpo) : p.cuerpo);
 export const textoDe = p => (typeof p.cuerpo === 'string' ? p.cuerpo : JSON.stringify(p.cuerpo));
 

@@ -114,8 +114,12 @@ function texto(res, codigo, mensaje) {
 export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {} } = {}) {
   const rutas = crearRuteador();
   const limitesConfirmar = { ...crearLimitesConfirmar(), ...confirmar };
+  // 0.12.7: «terminó una sesión de estudio» (terminar un intento, una lección leída, cerrar la app): el instructor lo
+  // usa para preparar la PRÓXIMA clase (src/api/instructor.js). Nunca hace fallar el pedido del alumno.
+  const ganchos = { finDeSesion: null };
+  const finDeSesion = (db, usuario, como) => { try { ganchos.finDeSesion?.(db, usuario, como); } catch { /* nunca molesta al alumno */ } };
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor, alertaAdmin: limitesConfirmar.alerta });
-  registrarRutasVisitas(rutas, { Limitador });
+  registrarRutasVisitas(rutas, { Limitador, finDeSesion });
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
   registrarRutasClaves(rutas, { config, limites: ia.limitesClaves, probadores: ia.probadores });
@@ -123,9 +127,9 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasCopias(rutas, { config, supervisor, limites: copias.limites, medirDisco: copias.medirDisco ?? null });
   registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
   // Academia (0.7.0): el contenido vive en la carpeta de datos del servidor (src/academia/paquetes.js).
-  registrarRutasAcademia(rutas, { config, supervisor, ...academia });
+  registrarRutasAcademia(rutas, { config, supervisor, ...academia, finDeSesion });
   // Academia (0.9.0): el instructor (sin IA siempre; con IA solo si el dueño lo enciende).
-  registrarRutasInstructor(rutas, { config, supervisor, reloj: academia.reloj, limites: academia.limitesInstructor });
+  registrarRutasInstructor(rutas, { config, supervisor, reloj: academia.reloj, limites: academia.limitesInstructor, ganchos });
   // 0.10.0: el tiempo con IA de cada alumno, sus pagos por transferencia y las fallas registradas.
   registrarRutasPagos(rutas, { config, reloj: academia.reloj, limites: academia.limitesPagos });
   // 0.9.0: «Mi perfil» (Configuración) y la ficha de cada alumno, con «Comparar» (Administrador → Alumnos).

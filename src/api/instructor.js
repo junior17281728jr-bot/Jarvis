@@ -34,6 +34,8 @@ import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 import { iaPermitida } from '../cuentas/terminos.js';
 import { humorActivo } from '../academia/humor.js';
+import { guardarAjuste, leerAjuste } from '../academia/paquetes.js';
+import { datosPreparacion, leerPuntero, guardarPuntero, ultimaActividad, preparadoConIa, preparadoBasico, diaRd, PREPARAR } from '../academia/preparar-clase.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const HORA = 60 * 60 * 1000;
@@ -63,7 +65,7 @@ export function semanaDe(ms) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dia)).toISOString().slice(0, 10);
 }
 
-export function registrarRutasInstructor(rutas, { config = null, supervisor = null, limites = {}, reloj = Date.now } = {}) {
+export function registrarRutasInstructor(rutas, { config = null, supervisor = null, limites = {}, reloj = Date.now, ganchos = null } = {}) {
   const topes = { ...crearLimitesInstructor(), ...(limites ?? {}) };
   reloj ??= Date.now;
   const contar = (tope, usuario) => { if (!tope.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos'); };
@@ -141,6 +143,63 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   // («en espera») o sin minutos (con «Pedir más», porque la IA sí está lista para él).
   const iaNoAhora = instructor => (instructor.modo === 'espera' ? { estado: 'no', motivo: instructor.motivo, espera: true }
     : instructor.motivo === 'sin_minutos' ? { estado: 'no', motivo: 'sin_minutos' } : null);
+
+  // ---------- 0.12.7: «Preparar tu próxima clase» (el ÚNICO trabajo de la IA que no espera una pantalla) ----------
+  // Lo llama src/app.js cuando el alumno termina una sesión (finDeSesion). Las revisiones van de lo más barato a lo más
+  // caro (ver src/academia/preparar-clase.js); cualquier «no» termina sin escribir nada. → { motivo, tarea? }.
+  function prepararProximaClase(db, usuario, como = 'fin', ahora = reloj()) {
+    if (!config || !usuario?.id) return { motivo: 'no_disponible' };
+    const cfg = leerConfigIa(db);
+    if (!cfg.encendida || !cfg.instructorIa || !cfg.prepararClase) return { motivo: 'apagado' };
+    const dia = diaRd(ahora);
+    const pt = leerPuntero(db, usuario.id);
+    if (pt?.dia === dia) return { motivo: 'ya_hoy' };
+    const ultima = ultimaActividad(db, usuario.id);
+    if (ultima == null || ahora - ultima > PREPARAR.activoMs) return { motivo: 'inactivo' };
+    if (pt?.en && ultima <= Date.parse(pt.en)) return { motivo: 'sin_novedad' };
+    if (estadoInstructor(db, null, usuario, ahora).modo !== 'ia') return { motivo: 'sin_ia' };
+    const p = activo(db);
+    if (!p) return { motivo: 'sin_paquete' };
+    const d = datosPreparacion(db, usuario.id, p, { idioma: usuario.idioma, ahora });
+    if (!d) return { motivo: 'sin_tema' };
+    if (pt?.huella === d.huella) return { motivo: 'sin_cambios' };
+    if (Buffer.byteLength(d.prefijo.sistema) + Buffer.byteLength(d.texto) > PROPOSITOS.instructor_preparar.entradaMaxBytes) return { motivo: 'demasiado_largo' };
+    const e = espacioDe(db, usuario);
+    const clave = `academia.ia.preparado.${usuario.id}.${d.huella}`;
+    const r = enTransaccion(db, () => {
+      // El prefijo (igual para todos los que preparan ese tema) se guarda una vez por su huella.
+      if (leerAjuste(db, d.prefijo.clave) == null) guardarAjuste(db, d.prefijo.clave, d.prefijo.sistema);
+      const t = encolar(db, {
+        tipo: 'academia.instructor', espacioId: e.id, creadaPor: usuario.id, claveUnica: `preparar:${usuario.id}:${dia}`,
+        datos: { uso: 'instructor_preparar', prefijo: d.prefijo.clave, texto: d.texto, clave, huella: d.huella, usuarioId: usuario.id, pedidaEn: ahora, tema: d.tema, tarjetas: d.tarjetas, citas: d.citas, sinResponder: d.sinResponder, como },
+      }, { ahora });
+      guardarPuntero(db, usuario.id, { dia, huella: d.huella, tema: d.tema, clave, tarea: t.id, en: new Date(ahora).toISOString() });
+      return t;
+    });
+    try { supervisor?.despertar?.(); } catch { /* la toma en su próxima vuelta */ }
+    return { motivo: 'ok', tarea: r.id };
+  }
+  if (ganchos) {
+    ganchos.finDeSesion = (db, usuario, como) => {
+      try { return prepararProximaClase(db, usuario, como); } catch (error) {
+        console.error('preparar la próxima clase:', error?.name ?? 'Error');
+        return { motivo: 'error' };
+      }
+    };
+  }
+
+  // «Preparado para ti» al abrir un tema: lo de la IA si se preparó ESE tema y la IA está para él; si no, lo básico.
+  rutas.agregar('GET', '/api/academia/instructor/preparado/:materia/:tema', ({ db, req, usuario, parametros }) => {
+    contar(topes.lecturas, usuario);
+    const p = activo(db);
+    if (!p) throw new ErrorHttp(409, 'sin_paquete');
+    const ahora = reloj();
+    const estado = camino(db, usuario.id, p, ahora).materias.find(m => m.id === parametros.materia)?.temas.find(t => t.id === parametros.tema)?.estado;
+    if (!estado) throw new ErrorHttp(404, 'no_existe');
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    const ia = instructor.modo === 'ia' ? preparadoConIa(db, usuario.id, p, parametros.materia, parametros.tema) : null;
+    return { codigo: 200, datos: { ia: ia ? { estado: 'lista', ...ia } : null, basico: preparadoBasico(db, usuario.id, p, parametros.materia, parametros.tema, ahora) } };
+  });
 
   // ---------- «Tu instructor dice…» (Inicio, o al empezar un tema con ?materia=&tema=) ----------
   // Inicio: GET /api/academia/instructor. Al abrir un tema: GET /api/academia/instructor/tema/:materia/:tema (o ?materia=&tema=).
@@ -456,6 +515,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     return {
       codigo: 200, datos: {
         demo: true, basica, tema: tema?.titulo ?? '', concepto: c ? nombreConcepto(c) : tema?.titulo ?? '',
+        // 0.12.7: para «Preparado para ti» (demostración): los títulos de las primeras tarjetas de ese tema.
+        tarjetas: (tema?.secciones ?? []).slice(0, 2).map((x, i) => ({ numero: i + 1, titulo: String(x.titulo ?? '') })),
         pregunta: { id: q.id, numero: q.original.numero ?? null, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })), correcta: correcta?.letra ?? null, correctaTexto: correcta?.texto ?? '' },
         acciones: accionesDeHoy(db, usuario.id, p, ahora).map(a => ({ id: a.id, clave: a.clave, vars: a.vars })),
       },

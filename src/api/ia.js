@@ -54,13 +54,15 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     contar(topes.ajustes, usuario);
     const cambios = {};
     for (const campo of Object.keys(datos)) {
-      if (!['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'topeGeneralUsd', 'topesPlanUsd', 'usar'].includes(campo)) throw new ErrorHttp(400, 'datos_no_validos');
+      if (!['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralUsd', 'topesPlanUsd', 'usar'].includes(campo)) throw new ErrorHttp(400, 'datos_no_validos');
     }
     if ('encendida' in datos) cambios.encendida = datos.encendida;
     if ('ayudaProyectos' in datos) cambios.ayudaProyectos = datos.ayudaProyectos;
     // 0.9.0: el instructor con IA de la academia (encenderlo y su modelo: Sonnet 5.5 o Haiku 5.5).
     if ('instructorIa' in datos) cambios.instructorIa = datos.instructorIa;
     if ('instructorModelo' in datos) cambios.instructorModelo = datos.instructorModelo;
+    // 0.12.7: «Preparar la próxima clase con IA» (encendido por defecto; solo trabaja con la IA y el instructor encendidos).
+    if ('prepararClase' in datos) cambios.prepararClase = datos.prepararClase;
     if ('topeGeneralUsd' in datos) cambios.topeGeneralMicro = usdAMicro(datos.topeGeneralUsd, LIMITES_IA.topeGeneralMaxMicro);
     if ('topesPlanUsd' in datos) {
       const t = datos.topesPlanUsd;

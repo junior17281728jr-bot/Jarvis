@@ -4204,6 +4204,8 @@ async function pantallaTema(materia, tema) {
         el('ul', { class: 'portada-datos' },
           el('li', {}, icono('tarjetas', 'icono'), el('span', { texto: tn('acad.n_tarjetas', { n: pantallas.length - 2 }) }))),
         el('p', { class: 'bajada', texto: t('acad.portada.linea') }),
+        // 0.12.7: «Preparado para ti» (lo que la IA preparó para ESTA clase, o la versión básica), sin esperar.
+        instructorUi().paraTi(materia, tema),
         // 0.12.2: la explicación en video de ESTE tema (su capítulo del mp4), solo si el paquete lo trae.
         l.video?.capitulo ? el('a', { class: 'boton-3d blanco chico con-icono boton-video-tema', href: `#video/${encodeURIComponent(materia)}/tema/${encodeURIComponent(tema)}` },
           icono('video', 'icono chico'), el('span', { texto: t('acad.video.explicacion') })) : null);

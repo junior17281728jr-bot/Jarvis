@@ -94,13 +94,18 @@ export const anthropic = Object.freeze({
   host: 'api.anthropic.com',
   version: VERSION_API,
 
-  pedido({ modelo, sistema, texto, esquema = null, salidaMax, esfuerzo = 'low' }) {
+  // 0.12.7: cachear = true marca el «sistema» (lo estable y compartido: reglas, tarjetas del tema, preguntas del Test
+  // Guide sin respuestas) con cache_control de 5 minutos (la única caché que OPORTIA pide y sabe cobrar: leerUso trata
+  // cualquier otra como un gasto desconocido). Lo de cada alumno va después, en el mensaje. Sin cachear, el cuerpo es
+  // el de siempre (byte a byte). Con menos de 512 tokens (Haiku 5.5 / Sonnet 5.5) el proveedor no cachea y no cobra extra.
+  pedido({ modelo, sistema, texto, esquema = null, salidaMax, esfuerzo = 'low', cachear = false }) {
     const outputConfig = { effort: esfuerzo };
     if (esquema) outputConfig.format = { type: 'json_schema', schema: esquema };
+    const system = cachear ? [{ type: 'text', text: sistema, cache_control: { type: 'ephemeral' } }] : sistema;
     return {
       ruta: '/v1/messages',
       metodo: 'POST',
-      cuerpo: { model: modelo, max_tokens: salidaMax, system: sistema, messages: [{ role: 'user', content: texto }], output_config: outputConfig },
+      cuerpo: { model: modelo, max_tokens: salidaMax, system, messages: [{ role: 'user', content: texto }], output_config: outputConfig },
     };
   },
 

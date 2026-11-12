@@ -37,6 +37,21 @@ const INSTRUCTOR = Object.freeze({
   maximoMicro: 100_000, tipicoMicro: 12_000, esfuerzo: 'low', timeoutMs: 50_000, alFaltar: 'motor_propio',
   ajuste: 'instructorIa', modeloAjuste: 'instructorModelo', tarea: 'academia.instructor',
 });
+// 0.12.7: con «cachear», el sistema (lo estable: las reglas, igual para todos los alumnos de ese estilo) va marcado para la
+// caché de 5 minutos del proveedor (src/ia/proveedores/anthropic.js). Solo donde se repite en minutos (explicar varias
+// preguntas seguidas, un chat, una duda); el consejo de la semana y el plan de hoy no (casi nunca se repiten a tiempo).
+const INSTRUCTOR_CACHE = Object.freeze({ ...INSTRUCTOR, cachear: true });
+// 0.12.7: «Preparar tu próxima clase» (src/academia/preparar-clase.js): el ÚNICO trabajo de la IA que no espera una
+// respuesta en pantalla. Lo pone en la fila el servidor web cuando el alumno TERMINA una sesión de estudio (como mucho
+// uno por alumno y por día, solo si algo cambió); nunca un reloj. Siempre con Claude Haiku 5.5 (modelo fijo: es rutina),
+// con su propio interruptor del dueño («prepararClase», además del instructor con IA). No cobra usos al alumno; cuenta en
+// el tope de su cuenta y en el general. La entrada es más grande (las tarjetas del tema enteras + las preguntas del Test
+// Guide del tema, en el prefijo que se cachea): lo peor con Haiku 5.5 es 32 768 × US$0.125/M + 4 096 × US$0.50/M, ×1,1
+// (EE. UU.) ×1,05 ≈ US$0.0071 (máximo 8 000 µUSD); lo normal ≈ US$0.0015.
+const PREPARAR = Object.freeze({
+  ...INSTRUCTOR, entradaMaxBytes: 32_768, maximoMicro: 8_000, tipicoMicro: 1_500, ajuste: Object.freeze(['instructorIa', 'prepararClase']),
+  modelo: 'claude-haiku-5-5', cachear: true, timeoutMs: 60_000,
+});
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -47,17 +62,19 @@ export const PROPOSITOS = Object.freeze({
   }),
   // «Explícamelo de otra forma» en una pregunta ya respondida (se guarda por pregunta, opción y estilo: la misma
   // explicación sirve a todos los alumnos que eligieron eso y no se vuelve a pagar).
-  instructor_explicar: INSTRUCTOR,
+  instructor_explicar: INSTRUCTOR_CACHE,
   // El consejo de estudio de la semana (o después de un examen), con las cifras del alumno (nunca su nombre).
   instructor_consejo: INSTRUCTOR,
   // Una duda escrita sobre un tema: la IA solo puede usar las tarjetas de ese tema que se le mandan.
-  instructor_duda: INSTRUCTOR,
+  instructor_duda: INSTRUCTOR_CACHE,
   // 0.10.0: el «Profesor virtual» (un chat): su modelo, tarjetas y preguntas que ya respondió (nunca su nombre).
-  instructor_chat: INSTRUCTOR,
+  instructor_chat: INSTRUCTOR_CACHE,
   // 0.12.4: la «Mini-clase IA» de un concepto de «Mi repaso» (se guarda compartida por concepto, idea equivocada y
   // estilo; se cobra como una explicación) y el plan de estudio de HOY (solo con acciones que existen en la app).
-  instructor_miniclase: INSTRUCTOR,
+  instructor_miniclase: INSTRUCTOR_CACHE,
   instructor_plan: INSTRUCTOR,
+  // 0.12.7: «Preparado para ti» (ver PREPARAR).
+  instructor_preparar: PREPARAR,
 });
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las

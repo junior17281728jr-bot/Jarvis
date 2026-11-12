@@ -95,7 +95,39 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
     cuentas: resumenConfianza(db),
     // 0.9.0: los modelos que puede usar el instructor, con su precio (para elegir) y lo que suele costar una vez.
     modelosInstructor: MODELOS_INSTRUCTOR.map(m => ({ modelo: m, precio: precioPublico(filaDe('anthropic', m)), confirmado: precioDe('anthropic', m) != null })),
+    // 0.12.7: «Preparar la próxima clase con IA» y el gasto de hoy / del mes, por tipo, la caché y «0 llamadas sin nadie».
+    prepararClase: cfg.prepararClase,
+    uso: usoDeIa(db, { ahora }),
     tipicoInstructorMicro: espacioAdmin != null ? tipicoMicro(db, { proposito: 'instructor_explicar', espacioId: espacioAdmin }) : PROPOSITOS.instructor_explicar.tipicoMicro,
+  };
+}
+
+// 0.12.7: lo que el dueño ve arriba en «IA y gastos». Solo lee.
+//  - hoy (día de RD) y el mes de cobro: lo gastado y cuántas llamadas, por tipo (explicar, profesor, mini-clase,
+//    preparar clase…);
+//  - caché del proveedor: de toda la entrada del mes, cuánta se leyó de la caché (cuesta un 10 % en Haiku 5.5, un 5 % en
+//    Sonnet 5.5) y cuánta se escribió en ella;
+//  - sinPersona: las llamadas del mes que NO salieron de algo que hizo una persona (una tarea sin «creada_por»). Tiene que
+//    ser 0: la IA solo trabaja cuando alguien estudia (o la preparación que dejó al terminar su sesión);
+//  - ultima: cuándo fue la última llamada (con nadie estudiando, no hay ninguna nueva).
+export function usoDeIa(db, { ahora = Date.now() } = {}) {
+  const mes = mesCobro(ahora);
+  const inicioDia = Date.parse(`${new Date(ahora - 4 * 3_600_000).toISOString().slice(0, 10)}T04:00:00Z`);
+  const porTipo = desde => db.prepare(`SELECT proposito, ${GASTO_SQL} AS usado, COUNT(*) AS n FROM ia_llamadas WHERE creada_en >= ? GROUP BY proposito ORDER BY n DESC`)
+    .all(iso(desde)).map(f => ({ proposito: f.proposito, usadoMicro: f.usado, n: f.n }));
+  const hoy = porTipo(inicioDia);
+  const delMes = db.prepare(`SELECT proposito, ${GASTO_SQL} AS usado, COUNT(*) AS n FROM ia_llamadas WHERE mes = ? GROUP BY proposito ORDER BY n DESC`).all(mes)
+    .map(f => ({ proposito: f.proposito, usadoMicro: f.usado, n: f.n }));
+  const t = db.prepare(`SELECT COALESCE(SUM(tokens_entrada), 0) AS entrada, COALESCE(SUM(tokens_cache_lectura), 0) AS lectura,
+    COALESCE(SUM(tokens_cache_escritura), 0) AS escritura FROM ia_llamadas WHERE mes = ?`).get(mes);
+  const total = t.entrada + t.lectura + t.escritura;
+  const sinPersona = db.prepare(`SELECT COUNT(*) AS n FROM ia_llamadas l LEFT JOIN tareas ta ON ta.id = l.tarea_id
+    WHERE l.mes = ? AND (l.tarea_id IS NULL OR ta.creada_por IS NULL)`).get(mes).n;
+  const suma = lista => lista.reduce((a, x) => ({ usadoMicro: a.usadoMicro + x.usadoMicro, n: a.n + x.n }), { usadoMicro: 0, n: 0 });
+  return {
+    hoy: { ...suma(hoy), porTipo: hoy }, mes: { ...suma(delMes), porTipo: delMes },
+    cache: { entrada: t.entrada, lectura: t.lectura, escritura: t.escritura, pct: total > 0 ? Math.floor((100 * t.lectura) / total) : null },
+    sinPersona, ultima: db.prepare('SELECT MAX(creada_en) AS en FROM ia_llamadas').get().en ?? null,
   };
 }
 

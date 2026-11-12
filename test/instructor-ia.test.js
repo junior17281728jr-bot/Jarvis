@@ -36,6 +36,8 @@ const DE = id => MUESTRA.preguntas.find(q => q.id === id);
 const SILENCIO = { log() {}, error() {}, warn() {}, info() {} };
 // Nombres que no aparecen en ningún texto del paquete: si alguno llega al proveedor, es un dato personal que se escapó.
 const NOMBRES = ['zoelia', 'quirino'];
+// 0.12.7: el sistema puede ir como bloques (con la marca de la caché del proveedor): su texto.
+const sistemaDe = cuerpo => (typeof cuerpo.system === 'string' ? cuerpo.system : cuerpo.system.map(b => b.text).join(''));
 
 async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerpo } = {}) {
   const opciones = { method: metodo, headers: { 'X-Oportia': '1', ...cabeceras } };
@@ -191,8 +193,8 @@ test('«Explícamelo de otra forma» con IA: viaja la pregunta TAL CUAL y nunca 
     const [p] = pedidosIa(c);
     const cuerpo = cuerpoDe(p);
     assert.equal(cuerpo.model, 'claude-sonnet-5-5');
-    assert.match(cuerpo.system, /NUNCA la contradigas/);
-    assert.match(cuerpo.system, /inglés, su traducción al español y su abreviatura/);
+    assert.match(sistemaDe(cuerpo), /NUNCA la contradigas/);
+    assert.match(sistemaDe(cuerpo), /inglés, su traducción al español y su abreviatura/);
     const enviado = datosDe(cuerpo.messages[0].content);
     assert.equal(enviado.pregunta.enunciado, q.original.enunciado);
     assert.deepEqual(enviado.pregunta.opciones.map(o => o.texto), q.original.opciones.map(o => o.texto));
@@ -284,7 +286,7 @@ test('dudas con IA: solo con las tarjetas del tema como material, la duda va com
     const lista = (await pedir(c.base, 'GET', `/api/academia/instructor/tareas/${d.ia.tarea}`, { galleta: c.z })).datos;
     assert.deepEqual([lista.estado, lista.enMaterial, lista.pregunta], ['lista', true, texto]);
     const cuerpo = cuerpoDe(pedidosIa(c)[0]);
-    assert.match(cuerpo.system, /SOLO las tarjetas/);
+    assert.match(sistemaDe(cuerpo), /SOLO las tarjetas/);
     const enviado = datosDe(cuerpo.messages[0].content);
     assert.equal(enviado.duda, texto, 'lo que escribió va como dato, dentro del bloque');
     const secciones = MUESTRA.materias[0].temas[0].secciones.map(s => s.titulo);
@@ -400,8 +402,8 @@ test('Profesor virtual: solo con permiso, usa sus minutos, su contexto es solo s
     assert.equal(saldoIa(c.db, z).minutos, 19);
     await c.hacer(r.ia.tarea);
     const cuerpo = cuerpoDe(pedidosIa(c).at(-1));
-    assert.match(cuerpo.system, /PROFESOR VIRTUAL/);
-    assert.match(cuerpo.system, /Nunca escribas enlaces/);
+    assert.match(sistemaDe(cuerpo), /PROFESOR VIRTUAL/);
+    assert.match(sistemaDe(cuerpo), /Nunca escribas enlaces/);
     const enviado = datosDe(cuerpo.messages[0].content);
     const deZoelia = new Set(c.db.prepare('SELECT DISTINCT pregunta FROM academia_respuestas WHERE usuario_id = ?').all(z).map(f => DE(f.pregunta).original.enunciado));
     assert.ok(enviado.preguntas_que_ya_respondio.every(p => deZoelia.has(p.enunciado)), 'solo preguntas que respondió ella');
@@ -437,7 +439,7 @@ test('Profesor virtual: con mensajes y respuestas largas, cada pedido cabe en el
     }
     for (const p of pedidosIa(c)) {
       const cuerpo = cuerpoDe(p);
-      assert.ok(Buffer.byteLength(cuerpo.system) + Buffer.byteLength(cuerpo.messages[0].content) <= PROPOSITOS.instructor_chat.entradaMaxBytes);
+      assert.ok(Buffer.byteLength(sistemaDe(cuerpo)) + Buffer.byteLength(cuerpo.messages[0].content) <= PROPOSITOS.instructor_chat.entradaMaxBytes);
     }
   }, { modelo: 'claude-haiku-5-5' });
 });

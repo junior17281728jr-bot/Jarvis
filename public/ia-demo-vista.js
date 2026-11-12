@@ -29,9 +29,17 @@ export function pantallaIaDemo(d, h) {
   const consejo = ui.cajaIa(demo({}), [talCual('p', t('demo.r.consejo_titulo'), 'fuerte'), talCual('p', t('demo.r.consejo', { tema: d.tema })),
     el('ol', { class: 'instructor-pasos' }, [t('demo.r.consejo_1'), t('demo.r.consejo_2'), t('demo.r.consejo_3')].map(p => talCual('li', p)))]);
 
+  // 0.12.7: «Preparado para ti» (lo que vería al abrir su próxima clase), con datos de demostración.
+  const paraTi = ui.pintarParaTi({ ia: demo({
+    intro: t('demo.r.para_ti_intro', { tema: d.tema }),
+    tarjetas: (d.tarjetas ?? []).map(x => ({ ...x, porque: t('demo.r.para_ti_porque') })),
+    analogias: [{ idea: d.basica.idea ?? '', analogia: t('demo.r.para_ti_analogia') }],
+    plan: [t('demo.r.para_ti_1'), t('demo.r.para_ti_2'), t('demo.r.para_ti_3')],
+  }) });
   mostrar(marco('admin', banner,
     el('h1', { class: 'titulo-pantalla', texto: t('demo.vista.titulo') }),
     el('p', { class: 'suave', texto: t('demo.vista.linea') }),
+    seccion(t('para_ti.titulo'), el('p', { class: 'suave chica', texto: t('demo.para_ti.linea') }), paraTi),
     seccion(t('instr.explicar'), pregunta, explica),
     seccion(t('profesor.titulo'), chat),
     seccion(t('mini.ia_clase'), mini),

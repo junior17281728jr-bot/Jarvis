@@ -107,7 +107,8 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
 
 // El modelo propio de un propósito (0.9.0: el instructor de la academia usa cfg.instructorModelo con Claude), o null.
 export function modelosDe(def, cfg) {
-  const modelo = def?.modeloAjuste ? cfg?.[def.modeloAjuste] : null;
+  // 0.12.7: un modelo FIJO (preparar la próxima clase: siempre el barato) manda sobre el del ajuste.
+  const modelo = typeof def?.modelo === 'string' ? def.modelo : def?.modeloAjuste ? cfg?.[def.modeloAjuste] : null;
   return typeof modelo === 'string' ? { anthropic: modelo } : null;
 }
 
@@ -116,7 +117,8 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   const mes = mesCobro(ahora);
   const no = (motivo, ambito = 'general', extra = {}) => ({ ok: false, motivo, ambito, mes, ...extra });
   if (!cfg.encendida) return no('ia_apagada');
-  if (def.ajuste && cfg[def.ajuste] !== true) return no('ayuda_no_activada');
+  // 0.12.7: un propósito puede pedir varios interruptores (preparar la próxima clase: el instructor y el suyo).
+  if ((Array.isArray(def.ajuste) ? def.ajuste : def.ajuste ? [def.ajuste] : []).some(a => cfg[a] !== true)) return no('ayuda_no_activada');
   // Ronda 5 de revisión: una cuenta común gasta solo con el permiso de IA vigente (src/cuentas/confianza.js): se mira
   // AQUÍ, al gastar, y no solo al crear la cuenta o cambiar su plan.
   if (espacioId != null && !esEspacioAdmin(db, espacioId) && !espacioConfirmado(db, espacioId)) return no('cuenta_sin_permiso', `e${espacioId}`);

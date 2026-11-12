@@ -231,7 +231,7 @@ export function crearClienteIA({
     }
 
     // 4. UNA llamada, con su tiempo máximo y la señal de parar del paso.
-    const p = adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo });
+    const p = adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo, cachear: def.cachear === true });
     let respuesta;
     let eco = false;
     try {

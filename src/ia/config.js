@@ -53,6 +53,9 @@ export const CONFIG_POR_DEFECTO = Object.freeze({
   ayudaProyectos: false,
   instructorIa: false,
   instructorModelo: MODELO_INSTRUCTOR,
+  // 0.12.7: «Preparar la próxima clase con IA». Encendido por defecto, pero solo trabaja si la IA y el instructor con
+  // IA están encendidos (o sea: de verdad encendido solo cuando la IA está configurada). El dueño lo puede apagar.
+  prepararClase: true,
   cambiadoEn: null,
   cambiadoPor: null,
   origen: null,
@@ -92,6 +95,7 @@ export function normalizarConfig(valor) {
     ayudaProyectos: v.ayudaProyectos === true,
     instructorIa: v.instructorIa === true,
     instructorModelo: MODELOS_INSTRUCTOR.includes(v.instructorModelo) ? v.instructorModelo : MODELO_INSTRUCTOR,
+    prepararClase: v.prepararClase !== false,
     cambiadoEn: typeof v.cambiadoEn === 'string' ? v.cambiadoEn.slice(0, 40) : null,
     cambiadoPor: Number.isSafeInteger(v.cambiadoPor) ? v.cambiadoPor : null,
     origen: ORIGENES_CAMBIO.includes(v.origen) ? v.origen : null,
@@ -172,6 +176,10 @@ function cambiosValidados(cfg, cambios) {
     if (!MODELOS_INSTRUCTOR.includes(cambios.instructorModelo)) throw new ErrorHttp(400, 'datos_no_validos');
     nueva.instructorModelo = cambios.instructorModelo;
   }
+  if ('prepararClase' in cambios) {
+    if (typeof cambios.prepararClase !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+    nueva.prepararClase = cambios.prepararClase;
+  }
   if ('topeGeneralMicro' in cambios) {
     if (!topeValido(cambios.topeGeneralMicro, LIMITES_IA.topeGeneralMaxMicro)) throw new ErrorHttp(400, 'tope_no_valido');
     nueva.topeGeneralMicro = cambios.topeGeneralMicro;
@@ -192,7 +200,7 @@ function cambiosValidados(cfg, cambios) {
       nueva.proveedores[id].usar = valor;
     }
   }
-  const otras = Object.keys(cambios).filter(k => !['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'topeGeneralMicro', 'topesPlanMicro', 'usar'].includes(k));
+  const otras = Object.keys(cambios).filter(k => !['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralMicro', 'topesPlanMicro', 'usar'].includes(k));
   if (otras.length) throw new ErrorHttp(400, 'datos_no_validos');
   return nueva;
 }
@@ -201,7 +209,7 @@ function cambiosValidados(cfg, cambios) {
 function diferencias(antes, despues) {
   const a = {};
   const d = {};
-  for (const campo of ['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'topeGeneralMicro', 'llamadasPorHora']) {
+  for (const campo of ['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralMicro', 'llamadasPorHora']) {
     if (antes[campo] !== despues[campo]) { a[campo] = antes[campo]; d[campo] = despues[campo]; }
   }
   for (const plan of PLANES) {

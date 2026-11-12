@@ -169,3 +169,10 @@
 .banner-demo p { margin: 0; }
 .demo-seccion { display: grid; gap: 10px; }
 .mini-clase-ia { margin-top: 8px; }
+
+/* 0.12.7: «Preparado para ti» en la portada de una clase (con IA: caja-ia; sin IA: la versión básica). */
+.para-ti-lugar { width: 100%; max-width: 40rem; margin: 0.75rem auto 0; text-align: left; }
+.para-ti { margin: 0; }
+.para-ti-tarjetas { margin: 0.25rem 0 0.5rem; padding-left: 1.1rem; }
+.para-ti-tarjetas li { margin: 0.2rem 0; }
+.para-ti-analogia { margin: 0.5rem 0; }
