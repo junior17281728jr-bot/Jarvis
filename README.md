@@ -716,12 +716,10 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   pagó este mes (fecha y monto del último comprobante aprobado), cuándo vence; tope personal en la misma tarjeta, «Dar
   la prueba otra vez», «Regalar usos» (van al libro como `regalo_usos`, se gastan después del plan y de la prueba) y
   «Pausar IA». Ordena por gasto (o nombre, o vence) y termina con los totales.
-- **Registro de la IA** (`#ia-registro`, `#ia-registro/<alumno>`): la meta de la IA con él, su foco (Mi repaso), la
-  próxima clase preparada y cada llamada (fecha, tipo, trozo del texto, costo); y la **biblioteca** de lo guardado y
-  compartido (cualquier `academia.ia.<tipo>.<…>` sin número de alumno: explicaciones, mini-clases y las familias
-  nuevas), con el texto completo, veces reutilizada, ahorro (lo que costó × veces), buscar y **ocultar** una mala: una
-  marca `academia.ia.oculto.<…>` con la fecha de ESA generación y una copia del texto (`src/academia/ocultos.js`);
-  `leerGuardado` la da por no guardada (se pide otra; la nueva no queda oculta). Nunca se borra nada.
+- **Registro de la IA** (`#ia-registro`, `#ia-registro/<alumno>`): la meta de la IA con él, su foco, la próxima clase,
+  lo que la IA generó solo para él (fecha, tipo, texto, costo), la memoria del tutor y lo que costaron sus llamadas; y la
+  **biblioteca** de lo compartido con el texto completo, veces reutilizada, ahorro, buscar y **ocultar** una mala (se
+  marca, nunca se borra; la auditoría lo anota).
 - **El bot del dueño** (`src/canales/bot.js`, en el proceso web junto al avisador): cada 20 s pregunta a Telegram
   (getUpdates sin esperar, sin webhooks) **solo** con el chat unido y listo, **nunca mientras se une un chat**; contesta
   solo al chat unido del dueño (privado, no un bot, mismo id; a nadie más, ni «no»), solo mensajes de los últimos 10
@@ -751,6 +749,15 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **Mensajes del bot en HTML** (`parse_mode: 'HTML'`, solo en `src/canales/telegram.js`): el título en negrita con un
   emoji por tipo (📄 contrato, 💳 comprobante, 📊 resumen, 🤖 gasto de la IA, ⚠️ alerta; lo grave sigue 🔴) y TODO lo
   demás escapado. Se corta el texto plano antes de escapar; si escapado pasara de 4.096, va plano (lo grave siempre llega).
+- **Un alumno, un dispositivo a la vez** (`src/cuentas/un-dispositivo.js`): al entrar (contraseña, código de respaldo o
+  al crear su primera contraseña) se cierran sus OTRAS sesiones: la fila queda (vence en ese momento; nunca se borra), con
+  la marca `sesion.otro_equipo.<huella>` y su «salida» con el motivo `otro_equipo` (sale en la Actividad de su ficha). El
+  otro dispositivo recibe `401 sesion_otro_equipo` y ve «Tu cuenta se abrió en otro dispositivo. Si no fuiste tú, avisa al
+  administrador.» con «Entrar aquí». Las cuentas de administrador no. Se apaga en Usuarios («Un solo dispositivo a la vez
+  para alumnos», encendido por defecto; `GET/POST /api/admin/cuentas/un-dispositivo`). Aviso para el administrador
+  (pantalla y Telegram) solo si a un alumno le pasa más de 3 veces en un día (hora de RD): `cuenta_compartida:<id>:<día>`.
+- **Registro de la IA** usa los datos de `src/academia/registro-ia.js` (0.12.9): meta y foco, la próxima clase, lo generado
+  solo para él, sus preparaciones, la memoria del tutor, la biblioteca (reusos y ahorro) y «ocultar».
 - Rutas nuevas: `GET /api/admin/academia/ia-alumnos`, `POST /api/admin/academia/alumnos/:id/{regalo,pausa,tope}`,
   `GET /api/admin/academia/ia-registro?alumno=`, `GET /api/admin/academia/ia-biblioteca?buscar=`,
   `POST /api/admin/academia/ia-biblioteca/ocultar`, `POST /api/admin/telegram/contratos[/:usuario/:n]`,

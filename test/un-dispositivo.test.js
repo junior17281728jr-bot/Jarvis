@@ -44,6 +44,7 @@ test('al entrar en otro dispositivo, las otras sesiones del alumno se cierran (s
       const s = sesionesDe(db, id).find(x => x.motivo === 'otro_equipo');
       assert.ok(s, JSON.stringify(sesionesDe(db, id)));
       assert.equal(s.estado, 'cerrada');
+      assert.equal(sesionesDe(db, id).length, 2, 'una abierta y una cerrada (la cerrada no sale también como «vencida»)');
       // El administrador: dos dispositivos a la vez, sin problema.
       const admin2 = (await entrar('junior', 'Safari')).galleta;
       assert.equal((await pedir(base, 'GET', '/api/yo', { galleta: admin1 })).codigo, 200);

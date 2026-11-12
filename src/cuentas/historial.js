@@ -29,7 +29,10 @@ export function equipoDe(navegador) {
 export function sesionesDe(db, usuarioId, ahoraMs = Date.now(), { limite = 40 } = {}) {
   const id = Number(usuarioId);
   const ahoraIso = new Date(ahoraMs).toISOString();
-  const abiertas = db.prepare('SELECT creada_en, vence_en, ultimo_uso, navegador FROM sesiones WHERE usuario_id = ? ORDER BY creada_en DESC LIMIT ?').all(id, limite)
+  // 0.12.8: una sesión cerrada porque la cuenta se abrió en otro dispositivo queda en la tabla (nunca se borra), pero aquí
+  // sale una sola vez: como «cerrada» (su salida en la auditoría), no también como «vencida».
+  const abiertas = db.prepare(`SELECT creada_en, vence_en, ultimo_uso, navegador FROM sesiones s WHERE usuario_id = ?
+    AND NOT EXISTS (SELECT 1 FROM ajustes a WHERE a.clave = 'sesion.otro_equipo.' || s.token_hash) ORDER BY creada_en DESC LIMIT ?`).all(id, limite)
     .map(s => {
       const ultima = s.ultimo_uso ?? s.creada_en;
       const vencida = s.vence_en <= ahoraIso;
