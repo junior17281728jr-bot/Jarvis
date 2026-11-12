@@ -541,6 +541,19 @@ deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Cont
   SHA-256 de la firma; el PNG va en `OPORTIA_DATOS/firmas/` (nunca se borra) y una copia en la base (así va en las copias
   cifradas). El administrador edita el texto (cada cambio es una versión nueva y todos firman otra vez) y ve
   **«Contratos firmados»** (cada uno como documento, PDF de uno o de todos). Pie con «Términos y aviso».
+- **Textos legales** (`src/cuentas/textos-legales.js`, del informe legal, Anexos A y B): «Términos de uso y aviso» y
+  «Aviso de privacidad», cada uno por versiones (Contenido → editar; un cambio pide firmar otra vez). Al firmar: Nombre,
+  Apellido y **fecha de nacimiento**; tres casillas **sin marcar**: términos, privacidad y (opcional) el envío de datos de
+  estudio sin nombre a la IA en el extranjero (sin ella la app funciona sin IA: `consienteIa(db, id)`). **Menores de 18**:
+  padre, madre o tutor (nombre, relación, contacto, su firma y su casilla); la cuenta queda «menor — consentimiento de
+  tutor» y sus pagos esperan «el tutor autorizó pagos» (`pagosPermitidos(db, id)`). La nota «Cómo verifiqué su
+  identidad» del administrador sale en el contrato. Configuración → **Mis documentos** (su copia, para imprimir) y **Mis
+  datos** (acceso, corrección, borrado u oposición → un mensaje «Datos personales» con plazo de 10 días hábiles; retirar
+  el permiso de IA). La política de reembolso está en `terminos.reembolso` (para la pantalla de pagos).
+- **Ayuda / Soporte** (`src/cuentas/soporte.js`): Configuración → «Escribir al administrador» (categoría, mensaje, hasta 3
+  capturas PNG/JPG/WEBP de 5 MB, contexto automático; 10 por día) y «Reportar un error» en cada pregunta. Administrador →
+  «Ayuda» con cuántos esperan: hilo, respuesta y estado (Nuevo / En revisión / Resuelto); la persona ve un aviso. Los
+  mensajes van en `ajustes` (`soporte.ticket.<n>`) y las capturas en `OPORTIA_DATOS/soporte/`.
 - Volver a la 0.9.0 es seguro: no hay migración nueva. (La 0.9.0 no conoce el examen con reloj: un examen a medias
   quedaría sin respuestas guardadas en la base.)
 
