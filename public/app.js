@@ -231,6 +231,11 @@ function revisarSesion(respuesta, ruta) {
   } else if (estado.usuario && error === 'debe_cambiar_clave') {
     estado.usuario.debeCambiarClave = true;
     setTimeout(dibujar);
+  } else if (estado.usuario && error === 'terminos_pendientes' && !estado.terminos?.pendiente) {
+    // 0.11.0: el administrador publicó otra versión de los términos: hay que firmarla antes de seguir.
+    estado.terminos = { ...(estado.terminos ?? {}), pendiente: true };
+    vaciarMemoria();
+    setTimeout(dibujar);
   }
   return respuesta;
 }
@@ -1684,7 +1689,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const claveAdmin = el('div', { hidden: true },
     el('label', { for: 'campo-clave-nueva-admin', texto: t('admin.nuevo.clave.escribe') }),
     el('input', { id: 'campo-clave-nueva-admin', name: 'claveAdmin', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' }));
-  const ayudaModo = el('p', { class: 'ayuda con-icono-arriba' }, icono('atencion', 'icono chico'), el('span', { texto: t('admin.nuevo.clave.alumno.ayuda') }));
+  // 0.11.0: el aviso de Funnel bien a la vista (es lo que sale por defecto).
+  const ayudaModo = el('p', { class: 'aviso aviso-funnel con-icono-arriba', role: 'note' }, icono('atencion'), el('span', {}, el('strong', { texto: t('admin.nuevo.clave.alumno.titulo') }), ' ', el('span', { texto: t('admin.nuevo.clave.alumno.ayuda') })));
   const pintarModo = () => {
     claveAdmin.hidden = modoClave.value !== 'admin';
     ayudaModo.hidden = modoClave.value !== 'alumno';

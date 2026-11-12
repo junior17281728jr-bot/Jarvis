@@ -30,11 +30,12 @@ import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, 
 import { armarChat } from '../academia/instructor-ia.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
+import { iaPermitida } from '../cuentas/terminos.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const HORA = 60 * 60 * 1000;
 // Lo que se le dice a un alumno de por qué no hay IA ahora (nada del estado del dueño).
-const MOTIVOS_ALUMNO = new Set(['sin_minutos', 'tope_espacio', 'sin_presupuesto', 'cuenta_sin_permiso', 'demasiadas_llamadas', 'trabajo_en_pausa', 'solo_tailnet', 'ia_apagada']);
+const MOTIVOS_ALUMNO = new Set(['sin_consentimiento', 'sin_minutos', 'tope_espacio', 'sin_presupuesto', 'cuenta_sin_permiso', 'demasiadas_llamadas', 'trabajo_en_pausa', 'solo_tailnet', 'ia_apagada']);
 // Los que no se pasan solos (sin un cambio del dueño): «básico». Los demás (un tope lleno este mes, una pausa corta,
 // demasiadas llamadas en la hora): «en espera».
 const SIN_IA = new Set(['ia_apagada', 'ayuda_no_activada', 'cuenta_sin_permiso', 'proveedor_no_usado', 'sin_clave', 'clave_ilegible', 'llave_no_disponible',
@@ -75,6 +76,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   function estadoInstructor(db, req, usuario, ahora = reloj()) {
     const basico = motivo => ({ modo: 'basico', motivo });
     if (!config) return basico('no_disponible');
+    // 0.11.0: activó la academia sin IA (o la retiró en «Mis datos»): nada va a la IA.
+    if (!iaPermitida(db, usuario.id, { estricto: config.terminosObligatorios !== false })) return basico('sin_consentimiento');
     const cfg = leerConfigIa(db);
     if (!cfg.encendida || !cfg.instructorIa) return basico('ia_apagada');
     const e = espacioDe(db, usuario);
@@ -99,6 +102,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   // 0.10.0: cada uso nuevo cuesta minutos de su tiempo con IA (se cobra al pedirlo y se devuelve solo si la IA no
   // responde); ver otra vez lo mismo no se cobra. La cuenta del administrador no tiene límite.
   function pedirIa(db, usuario, { uso, sistema, texto, clave, extra = {} }) {
+    if (!iaPermitida(db, usuario.id, { estricto: config?.terminosObligatorios !== false })) return { estado: 'no', motivo: 'sin_consentimiento' };
     if (Buffer.byteLength(sistema) + Buffer.byteLength(texto) > PROPOSITOS[uso].entradaMaxBytes) return { estado: 'no', motivo: 'demasiado_largo' };
     const e = espacioDe(db, usuario);
     const ahora = reloj();

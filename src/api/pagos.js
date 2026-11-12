@@ -18,6 +18,7 @@ import { leerConfigFallas, guardarConfigFallas, fallasDe } from '../academia/fal
 import { paqueteActivo } from '../academia/paquetes.js';
 import { espacioConfirmado } from '../cuentas/confianza.js';
 import { topeEspacioMicro } from '../ia/topes.js';
+import { pagosPermitidos } from '../cuentas/terminos.js';
 
 // ¿Sus minutos le sirven ahora? Los minutos solos no encienden la IA: también hacen falta la IA y el instructor
 // encendidos, un tope de su plan mayor que US$0 y «Permitir IA» para su cuenta (y que no se haya llenado un tope del mes).
@@ -80,6 +81,8 @@ export function registrarRutasPagos(rutas, { config = null, limites = {}, reloj 
   // El comprobante: el cuerpo es la imagen tal cual; el paquete y la nota van en la dirección (?paquete=…&nota=…).
   rutas.agregar('POST', '/api/academia/pagos', async ({ db, req, usuario }) => {
     necesitaConfig();
+    // 0.11.0: un menor de edad paga solo si el administrador marcó «el tutor autorizó pagos».
+    if (!pagosPermitidos(db, usuario.id)) throw new ErrorHttp(403, 'pagos_menor');
     contar(topes.subir, usuario);
     const consulta = new URL(req.url, 'http://x').searchParams;
     const fila = await subirRecibo(db, config, { usuarioId: usuario.id, req, paquete: consulta.get('paquete') ?? '', nota: consulta.get('nota') ?? '', ahora: reloj() });

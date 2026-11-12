@@ -341,3 +341,7 @@ a.avatar-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset
 .contrato-casillas { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 4px; font-weight: 600; }
 .contrato-tutor { border-top: 1px solid #e2e8f0; margin-top: 10px; padding-top: 6px; }
 .ficha-cuenta-menor { margin-top: 10px; padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--naranja) 10%, var(--tarjeta)); }
+
+/* ---------- 0.11.0 ---------- */
+.aviso-funnel { border-left: 5px solid var(--naranja); font-size: 15px; }
+.terminos-revisa ul { margin: 6px 0; padding-left: 20px; display: grid; gap: 3px; font-size: 14px; }

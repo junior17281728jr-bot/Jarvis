@@ -79,7 +79,7 @@ export const PRIVACIDAD_V1 = Object.freeze([
   },
   {
     "titulo": "6. Cuánto tiempo los guardamos",
-    "texto": "• Cuenta, progreso y respuestas: Mientras su cuenta esté activa. Se borran o anonimizan a los 12 meses de inactividad o cuando usted pida la baja.\n• Registros de acceso (entradas y salidas, IP, navegador): 12 meses\n• Conversaciones con el tutor de IA: Hasta 90 días\n• Imagen del comprobante de pago: Se borra al aprobar o rechazar el pago, o como máximo a los 30 días\n• Registro del pago (fecha, monto, referencia, estado): Hasta 5 años, por posibles obligaciones fiscales\n• Prueba de aceptación de términos: Mientras dure la cuenta y hasta 5 años después (en el caso de menores, hasta 5 años después de cumplir 18)"
+    "texto": "• Cuenta, progreso y respuestas: se guardan mientras exista la cuenta, aunque no la use. Nunca se borran solos: solo cuando usted o el Administrador lo piden. Al borrar a pedido se eliminan sus datos personales (nombre, usuario, fecha de nacimiento, mensajes); se conserva la constancia de aceptación de los términos (la firma y su registro) mientras la ley lo exija.\n• Registros de acceso (entradas y salidas, IP, navegador): mientras exista la cuenta.\n• Conversaciones con el tutor de IA: se guardan los últimos 30 mensajes; los anteriores se borran solos.\n• Imagen del comprobante de pago: se borra sola 30 días después de que el pago se aprueba o se rechaza.\n• Registro del pago (fecha, monto, referencia, estado): hasta 5 años, por posibles obligaciones fiscales.\n• Prueba de aceptación de términos: mientras dure la cuenta y hasta 5 años después (en el caso de menores, hasta 5 años después de cumplir 18)."
   },
   {
     "titulo": "7. Seguridad",

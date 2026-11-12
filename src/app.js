@@ -21,6 +21,7 @@ import { registrarRutasPerfil } from './api/perfil.js';
 import { registrarRutasTerminos } from './api/terminos.js';
 import { registrarRutasSoporte } from './api/soporte.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
+import { estadoTerminos } from './cuentas/terminos.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
@@ -144,6 +145,12 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     if (!opciones.publica && !usuario) return enviarJson(res, 401, { error: 'no_has_entrado' });
     if (usuario?.debeCambiarClave && !opciones.publica && !opciones.permitirConClaveTemporal) return enviarJson(res, 403, { error: 'debe_cambiar_clave' });
     if (opciones.admin && usuario?.rol !== 'admin') return enviarJson(res, 403, { error: 'solo_admin' });
+    // 0.11.0: lo de estudiar (/api/academia/…, /api/soporte…) espera a que firme los términos en uso. Quedan libres: entrar,
+    // salir, /api/yo/… (su firma, su perfil, sus documentos), /api/terminos y lo del administrador (para que arregle
+    // los textos). config.terminosObligatorios === false solo lo ponen las pruebas que no son de los términos.
+    if (usuario && config && config.terminosObligatorios !== false && /^\/api\/(?:academia\/|soporte(?:\/|$))/.test(ruta) && estadoTerminos(db, usuario.id).pendiente) {
+      return enviarJson(res, 403, { error: 'terminos_pendientes' });
+    }
     // Fase 1, parte d. soloTailnet: solo desde la red de Tailscale (nunca por el enlace público de Funnel).
     // soloDueno: además, con la cuenta de Tailscale del administrador que entró (las claves y lo que gasta dinero).
     if (opciones.soloTailnet && !vieneDeTailscale(req).si) return enviarJson(res, 403, { error: 'solo_desde_tailnet' });

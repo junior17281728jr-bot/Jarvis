@@ -184,6 +184,10 @@ export function pantallaAceptar(datos, h, { alListo, salir }) {
   return caja;
 }
 
+const TEXTO_REVISA = {
+  reembolso: 'terminos.admin.revisa.reembolso', devolucion: 'terminos.admin.revisa.devolucion', activacion: 'terminos.admin.revisa.activacion',
+  chat: 'terminos.admin.revisa.chat', alojamiento: 'terminos.admin.revisa.alojamiento', contacto: 'terminos.admin.revisa.contacto', retencion: 'terminos.admin.revisa.retencion',
+};
 // Administrador → Contenido: los textos en uso (términos y privacidad) y publicar una versión nueva.
 // Cada parte: primera línea = título; las partes van separadas por una línea en blanco.
 export function tarjetaAdminTerminos(datos, h, { alPublicar }) {
@@ -211,8 +215,14 @@ export function tarjetaAdminTerminos(datos, h, { alPublicar }) {
       el('label', { for: `campo-${doc}`, texto: t('terminos.admin.texto') }), area,
       el('div', { class: 'botones' }, publicar), mensaje);
   };
+  // 0.11.0: lo que se llenó por Junior en los textos del informe legal: que lo confirme o lo cambie.
+  const revisar = el('div', { class: 'aviso terminos-revisa', role: 'note' },
+    el('strong', { texto: t('terminos.admin.revisa') }),
+    el('ul', {}, ['reembolso', 'devolucion', 'activacion', 'chat', 'alojamiento', 'contacto', 'retencion'].map(k => el('li', { texto: t(TEXTO_REVISA[k]) }))),
+    el('p', { class: 'chica', texto: t('terminos.admin.revisa.linea') }));
   return el('section', { class: 'tarjeta', 'aria-labelledby': 'terminos-admin-titulo' },
     el('h2', { id: 'terminos-admin-titulo', class: 'con-icono' }, h.icono('manual'), el('span', { texto: t('terminos.admin.titulo') })),
+    revisar,
     el('p', { class: 'suave', texto: t('terminos.admin.linea2', { t: numero(datos.terminos.version), p: numero(datos.privacidad.version), si: numero(datos.aceptaron), total: numero(datos.cuentas) }) }),
     editor('terminos'), editor('privacidad'));
 }

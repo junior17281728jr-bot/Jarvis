@@ -149,10 +149,17 @@ export function ponerNacimiento(db, id, valor, { hechoPor, ahoraMs = Date.now() 
 // IA: si aceptó enviar sus datos de estudio (sin nombre) al proveedor de IA en el extranjero. Sin aceptar: la app
 // funciona igual, sin las funciones de IA.
 export const consienteIa = (db, id) => leer(db, `cuenta.consentimiento_ia.${Number(id)}`) === '1';
+// ¿Se puede usar la IA con esta cuenta? Con los términos obligatorios (el servidor de verdad), solo con el «sí»
+// firmado; las pruebas sin términos solo frenan un «no» explícito.
+export const iaPermitida = (db, id, { estricto = true } = {}) => (estricto ? consienteIa(db, id) : leer(db, `cuenta.consentimiento_ia.${Number(id)}`) !== '0');
 export function ponerConsentimientoIa(db, id, permitido) {
   if (typeof permitido !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
   if (!firmasDe(db, id).length) throw new ErrorHttp(409, 'terminos_pendientes');
   escribir(db, `cuenta.consentimiento_ia.${Number(id)}`, permitido ? '1' : '0');
+  // Queda anotado con su fecha (y en la auditoría): el último cambio es el que vale.
+  const historia = json(leer(db, `cuenta.consentimiento_ia_historia.${Number(id)}`)) ?? [];
+  historia.push({ permitido, en: ahora() });
+  escribir(db, `cuenta.consentimiento_ia_historia.${Number(id)}`, JSON.stringify(historia.slice(-100)));
   auditar(db, { usuarioId: Number(id), accion: permitido ? 'ia_consentida' : 'ia_retirada' });
   return permitido;
 }

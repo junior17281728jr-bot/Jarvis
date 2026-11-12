@@ -26,6 +26,12 @@ const codigo = archivos(SRC, p => /\.(js|mjs|cjs)$/.test(p));
 
 test('el programa nunca borra archivos ni carpetas de datos', () => {
   for (const f of codigo) {
+    // 0.11.0: la única excepción: la imagen del comprobante de pago se borra a los 30 días (lo promete el Aviso de
+    // privacidad); el registro del pago queda. Solo ese archivo, y solo con unlinkSync.
+    if (relative(SRC, f) === join('academia', 'recibos.js')) {
+      assert.doesNotMatch(readFileSync(f, 'utf8'), /\b(rmSync|rmdirSync|limpiar)\b|\brm\(|\bunlink\(/);
+      continue;
+    }
     const texto = readFileSync(f, 'utf8');
     assert.doesNotMatch(texto, /\b(rmSync|rmdirSync|unlinkSync|limpiar)\b|\brm\(|\bunlink\(/, `${relative(RAIZ, f)} contiene una orden de borrado`);
   }

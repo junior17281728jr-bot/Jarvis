@@ -29,6 +29,7 @@ import { vigilarIA } from '../ia/presupuesto.js';
 import { MANEJADOR_COPIAS } from '../copias/hacer.js';
 import { MANEJADOR_DRIVE } from '../academia/sincronizar.js';
 import { MANEJADOR_INSTRUCTOR } from '../academia/instructor-tarea.js';
+import { borrarRecibosVencidos } from '../academia/recibos.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 
@@ -63,6 +64,9 @@ async function vigilar(ctx) {
   await ctx.escribir(() => sincronizarAvisos(ctx.db, avisos, ahora));
   // La IA (parte d): una sola escritura corta. Sin carpeta de datos (algunas pruebas) no mira la llave.
   const ia = await ctx.escribir(() => vigilarIA(ctx.db, { config: ctx.config, ahora }));
+  // 0.11.0: las imágenes de comprobantes de pago revisados hace más de 30 días (el registro del pago queda).
+  let recibosBorrados = 0;
+  try { recibosBorrados = await borrarRecibosVencidos(ctx.db, ctx.config, { ahoraMs: ahora, escribir: fn => ctx.escribir(fn) }); } catch { /* la próxima hora */ }
   // Las copias (parte e): las que quedaron a medias, el recordatorio de la clave, el disco; y las actualizaciones que
   // no se instalaron o se devolvieron (update.log: solo se LEE, fuera de la escritura).
   let copias = null;
@@ -84,7 +88,7 @@ async function vigilar(ctx) {
     checkpoint = await pasarWal(ctx);
     walMb = tamanoWalMb(ctx.config);
   }
-  return { listo: true, resultado: { fila, walMb, ia, copias, actualizaciones: actualizaciones ? { abiertos: actualizaciones.abiertos.length, resueltos: actualizaciones.resueltos.length } : null, ...(checkpoint ? { checkpoint } : {}) } };
+  return { listo: true, resultado: { fila, walMb, ia, recibosBorrados, copias, actualizaciones: actualizaciones ? { abiertos: actualizaciones.abiertos.length, resueltos: actualizaciones.resueltos.length } : null, ...(checkpoint ? { checkpoint } : {}) } };
 }
 
 // sistema.base, paso 1 «revisar»: quick_check SOLO lee. Si encuentra un problema, se abre el aviso grave

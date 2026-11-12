@@ -15,6 +15,8 @@ async function paso(ctx) {
   const ahora = Date.now();
   const pedidaEn = Number(d.pedidaEn);
   if (!Number.isSafeInteger(pedidaEn) || ahora - pedidaEn > CADUCA_MS || pedidaEn > ahora + 60_000) return fin('caducada');
+  // 0.11.0: si la persona retiró el permiso de IA después de pedir, no se llama (un «no» guardado en sus ajustes).
+  if (Number.isSafeInteger(d.usuarioId) && ctx.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`cuenta.consentimiento_ia.${d.usuarioId}`)?.valor === '0') return fin('sin_consentimiento');
   if (!USOS_INSTRUCTOR.includes(d.uso) || typeof d.sistema !== 'string' || typeof d.texto !== 'string' || !Number.isSafeInteger(ctx.tarea.espacioId)) return fin('pedido_no_valido');
   // Otro alumno ya la pidió y quedó guardada (la misma pregunta, opción y estilo): no se paga otra vez.
   if (leerGuardado(ctx.db, d.clave)) return { listo: true, resultado: { usada: false, motivo: 'ok', guardada: true, costoMicro: 0 } };
