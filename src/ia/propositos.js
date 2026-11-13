@@ -101,6 +101,9 @@ const DIBUJO_REVISAR = Object.freeze({ ...FABRICA_HAIKU, proveedores: Object.fre
 //    Lo peor de una vez: escribir 125 200 × US$5/M + 8 192 × US$20/M, ×1,155 ≈ US$0,912; verificar 160 200 × US$5/M +
 //    8 192 × US$20/M, ×1,155 ≈ US$1,115. Lo normal es mucho menos: la lectura va en la caché (lectura a US$0,20/M).
 //  - Los pasajes de una lectura muy larga (extracto): siempre Haiku 5.5 (copia TAL CUAL, barato).
+// Haiku 5.5 con una lectura de más de 100 000 tokens cobra el tramo largo (US$0,625/M al escribir en caché y US$2,50/M de
+// salida): lo peor con 190 200 bytes ≈ US$0,149. Para los pasajes y la verificación «barata» de la mejora profunda.
+const PROFUNDA_HAIKU = Object.freeze({ ...FABRICA_HAIKU, maximoMicro: 160_000, techoMicro: 300_000, profunda: true });
 const PROFUNDA_SONNET = Object.freeze({ ...FABRICA, entradaMaxBytes: 125_000, maximoMicro: 410_000, tipicoMicro: 40_000, techoMicro: 600_000, profunda: true });
 const PROFUNDA_OPUS = Object.freeze({
   ...FABRICA, modelo: 'claude-opus-5-5', proveedores: Object.freeze(['anthropic']), entradaMaxBytes: 125_000, salidaMax: 8192, esfuerzo: 'medium',
@@ -143,8 +146,8 @@ export const PROPOSITOS = Object.freeze({
   // Haiku, con su tope propio (no gasta el de la fábrica) y dentro del tope general.
   // 0.14.7: Sonnet escribe con la lectura entera; Opus («lo mejor») escribe y verifica; Haiku saca los pasajes.
   profunda_escribir: PROFUNDA_SONNET,
-  profunda_verificar: FABRICA_HAIKU,
-  profunda_extracto: FABRICA_HAIKU,
+  profunda_verificar: PROFUNDA_HAIKU,
+  profunda_extracto: PROFUNDA_HAIKU,
   profunda_escribir_opus: PROFUNDA_OPUS,
   profunda_verificar_opus: PROFUNDA_OPUS_VERIFICAR,
   // 0.14.2: «Pídele a la IA»: cada mensaje (chat_admin) y los trabajos que el dueño aprobó con «Hazlo» (reescribir un
@@ -152,7 +155,7 @@ export const PROPOSITOS = Object.freeze({
   chat_admin: CHAT,
   // 0.14.7: los trabajos del chat usan el mismo modelo que eligió el dueño para la mejora profunda (Opus por defecto).
   chat_escribir: PROFUNDA_SONNET,
-  chat_verificar: FABRICA_HAIKU,
+  chat_verificar: PROFUNDA_HAIKU,
   chat_escribir_opus: PROFUNDA_OPUS,
   chat_verificar_opus: PROFUNDA_OPUS_VERIFICAR,
   dibujo_generar: DIBUJO,

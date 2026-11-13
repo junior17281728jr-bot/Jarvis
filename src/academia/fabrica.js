@@ -84,6 +84,8 @@ export function leerConfigFabrica(db) {
       // 0.14.7: la ronda (1 = la de la 0.13.9). «Mejorar todo con Claude» empieza una ronda nueva cuando la de ahora ya no
       // tiene nada por hacer: sus estados y pasos van con su número (lo de antes queda guardado, nunca se borra).
       ronda: Number.isSafeInteger(pr.ronda) && pr.ronda >= 1 && pr.ronda <= 99 ? pr.ronda : 1,
+      // 0.14.7: una ronda de «Mejorar todo» (con sus etapas: la revisión final, publicar solo y el «fuera» del tope).
+      etapas: pr.etapas === true,
     },
   };
 }
