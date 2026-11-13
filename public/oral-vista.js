@@ -6,6 +6,11 @@
 
 import { caminoConMapa, TOTAL_TEMAS_MAPA } from './oral-mapa.js';
 
+// 0.13.3: un dibujito por capítulo (como cada materia del Camino).
+const ICONO_CAPITULO = {
+  oral_calificaciones: 'personas', oral_aeronavegabilidad: 'manual', oral_meteorologia: 'nube', oral_rendimiento: 'velocimetro',
+  oral_sistemas: 'motor', oral_travesia: 'brujula', oral_nocturno: 'bombilla', oral_factores_humanos: 'cerebro', oral_escenarios: 'radio',
+};
 const ruta = (...partes) => `#oral${partes.length ? `/${partes.map(encodeURIComponent).join('/')}` : ''}`;
 
 // El Camino oral. 0.13.2: igual que el Camino principal: los capítulos 1 a 8 y «Escenarios», cada uno con su título en
@@ -56,14 +61,16 @@ export function pantallaOral(d, h) {
     const listos = c.temas.filter(x => x.x).length;
     return el('section', { class: `materia-bloque oral-capitulo ${m ? resumen[n].estado : 'vacia'}`, 'aria-labelledby': `materia-${c.id}` },
       el('header', { class: 'banner-materia' },
-        el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, m ? anilloAvance(m.pct ?? 0, 'anillo-materia') : null, icono(esc ? 'radio' : 'manual')),
+        el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, m ? anilloAvance(m.pct ?? 0, 'anillo-materia') : null, icono(ICONO_CAPITULO[c.id] ?? 'manual')),
         el('div', { class: 'banner-texto' },
           el('p', { class: 'banner-ante', texto: esc ? t('oral.escenarios.ante') : t('oral.capitulo_n', { n: numero(c.n) }) }),
           el('h2', { id: `materia-${c.id}`, class: 'banner-titulo', texto: nombreMateria(c.id) }),
           enEspanol && c.en ? el('p', { class: 'banner-en', lang: 'en', texto: c.en }) : null,
           m ? el('div', { class: 'banner-avance' }, el('span', { class: 'banner-barra' }, barraLlena(m.pct)),
             el('span', { texto: esc ? t('oral.bien_de', { n: numero(m.bien), total: numero(m.preguntas) }) : t('oral.temas_listos', { n: numero(listos), total: numero(c.temas.length) }) }))
-            : el('p', { class: 'banner-linea', texto: tn('oral.pronto.linea', { n: c.temas.length }) }))),
+            : el('p', { class: 'banner-linea', texto: tn('oral.pronto.linea', { n: c.temas.length }) })),
+        // 0.13.3: como en el Camino, el sello «PRONTO» en los capítulos que todavía no tienen clase.
+        m ? null : el('span', { class: 'banner-pronto', texto: t('acad.pronto') })),
       el('ol', { class: 'sendero', 'aria-label': nombreMateria(c.id) }, nodos));
   };
   const continuar = sig ? el('a', { class: 'boton-3d grande boton-continuar con-icono', href: sig.tipo === 'final' ? ruta('final') : sig.tipo === 'examen' ? ruta('examen', sig.materia) : sig.tipo === 'practica' ? ruta('practica', sig.materia, sig.tema) : ruta('tema', sig.materia, sig.tema) },

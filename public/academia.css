@@ -1105,3 +1105,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .oral-final-nodo { margin: 8px 0 18px; }
 .oral-final-nodo .sendero { padding-top: 8px; }
 .nodo.examen.final .nodo-nombre { font-size: 15px; }
+
+/* 0.13.3: en el examen oral, el sello «PRONTO» va arriba a la derecha (no le quita ancho al título en el teléfono). */
+.oral-capitulo .banner-materia { position: relative; }
+.oral-capitulo .banner-pronto { position: absolute; top: 10px; right: 12px; font-size: 10.5px; padding: 3px 8px; }
