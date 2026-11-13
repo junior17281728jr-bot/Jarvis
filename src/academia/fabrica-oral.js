@@ -115,9 +115,12 @@ export function partirEscenario(texto, termina = null) {
     const respuesta = texto.slice(i).trim();
     return pregunta && respuesta ? { pregunta_en: pregunta, respuesta_en: respuesta } : null;
   };
-  if (typeof termina === 'string' && termina.trim().length >= 8) {
-    const i = texto.indexOf(termina.trim());
-    if (i >= 0 && texto.indexOf(termina.trim(), i + 1) < 0) { const r = probar(i + termina.trim().length); if (r) return r; }
+  // Sin mirar los espacios ni los saltos de línea (el libro corta las líneas): las palabras, en orden, con \s+ entre ellas.
+  const palabras = typeof termina === 'string' ? termina.trim().split(/\s+/).filter(Boolean) : [];
+  if (palabras.length >= 2 && termina.trim().length >= 8) {
+    const patron = new RegExp(palabras.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'g');
+    const hallados = [...texto.matchAll(patron)];
+    if (hallados.length === 1) { const r = probar(hallados[0].index + hallados[0][0].length); if (r) return r; }
   }
   const m = /\?[ \t]*\n/.exec(texto);
   return (m && probar(m.index + 1)) || { pregunta_en: texto.trim(), respuesta_en: null };
@@ -191,7 +194,8 @@ export function pedidoOral(leer, c, t, p) {
   const items = itemsOral(leer);
   const libro = libroDeTema(t, cortesDe(items));
   switch (p.tipo) {
-    case 'plan': return { sistema, texto: `${TAREAS_ORAL.plan}\n${datos({ preguntas_del_libro: libroParaModelo(libro).map(x => (t.escenarios ? { n: x.n, pagina: x.pagina, texto: t.qa.find(q => q.n === x.n)?.texto_en } : x)), fotos_del_libro: fotosParaModelo(c.imagenes) })}`, esquema: ESQUEMAS_ORAL.plan };
+    // Para el plan basta la pregunta (las respuestas ya están en la lectura): así un tema largo cabe en el pedido.
+    case 'plan': return { sistema, texto: `${TAREAS_ORAL.plan}\n${datos({ preguntas_del_libro: t.qa.map(x => ({ n: x.n, pagina: x.pagina, pregunta_en: t.escenarios ? x.texto_en.slice(0, 240) : x.pregunta_en })), fotos_del_libro: fotosParaModelo(c.imagenes) })}`, esquema: ESQUEMAS_ORAL.plan };
     case 'tarjetas': {
       const parte = plan.slice(p.desde, p.desde + ORAL_POR_PASO.tarjetas).map(x => ({ titulo: x.titulo, idea: x.idea, paginas: x.paginas, preguntas: [] }));
       const ns = new Set(plan.slice(p.desde, p.desde + ORAL_POR_PASO.tarjetas).flatMap(x => x.libro ?? []));

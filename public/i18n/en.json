@@ -362,7 +362,6 @@
   "plan.pago": "Paid (5 projects)",
   "plan.empresarial": "Business (20 projects)",
   "aviso.clave_reiniciada": "The administrator reset your password on {fecha}.",
-  "error.pregunta_en_examen": "That question is in your open oral exam: finish it first.",
   "error.no_se_pudo_guardar": "It could not be saved. Nothing was changed.",
   "error.credenciales": "Wrong username or password.",
   "error.demasiados_intentos": "Too many attempts. Wait a few minutes and try again.",

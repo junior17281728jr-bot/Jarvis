@@ -724,8 +724,8 @@ IA, «¿Lo entendiste?» de cada tarjeta explica mejor o profundiza (el mismo tu
   el **«Examen oral (práctica final)»**, hasta 40, que mezcla todos los capítulos por partes iguales más hasta 6 de
   escenario): opción múltiple hecha con las respuestas del libro. Al responder (en el examen, al entregar) cada una dice
   **«¿De dónde salió?»**: la pregunta y la respuesta del libro tal cual (inglés, con su página) y una línea de cómo se
-  convirtió en esta pregunta. La respuesta nunca viaja antes; mientras un examen está abierto, sus preguntas no se
-  responden por la práctica.
+  convirtió en esta pregunta. La respuesta nunca viaja antes. Un examen dejado a medias no bloquea nada (vale el último
+  que se abrió). Las versiones orales en uso se cuentan aparte de las del Test Guide (las últimas 30 de cada pista).
 - **«Listo para el oral / Todavía no»** (sin IA): el % junta por igual lo que domina (la última respuesta de cada pregunta),
   los exámenes de capítulo aprobados y la mejor nota del examen final; «Listo» = todos los de capítulo y el final
   aprobados (con el % para aprobar de los ajustes).

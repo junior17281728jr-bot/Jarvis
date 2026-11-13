@@ -35,6 +35,11 @@ test('las fuentes orales: capítulos por su número (oral_*), escenarios aparte 
   const q = partirEscenario(texto, 'esto no está en el texto');
   assert.ok(texto.includes(q.pregunta_en) && texto.includes(q.respuesta_en), 'sin el corte del modelo: en la primera línea con «?»');
   assert.equal(partirEscenario('Sin pregunta ni corte.').respuesta_en, null);
+  // El libro corta las líneas: las últimas palabras de la pregunta pueden cruzar un salto de línea.
+  const largo = 'Your sample friend asks for a ride and wants\nto know what the rules say. Explain it\nI must explain the sample rules first.';
+  const r2 = partirEscenario(largo, 'wants to know what the rules say. Explain it');
+  assert.equal(r2.respuesta_en, 'I must explain the sample rules first.');
+  assert.ok(largo.startsWith(r2.pregunta_en));
   assert.equal(preguntaBien({ enunciado: 'x', opciones: [{ letra: 'A', texto: 'a' }, { letra: 'B', texto: 'A' }, { letra: 'C', texto: 'c' }], correcta: 'A', explicacion: 'e', errores: [{ letra: 'B', idea: 'i' }, { letra: 'C', idea: 'i' }], como: 'c' }), false, 'dos opciones iguales');
 });
 

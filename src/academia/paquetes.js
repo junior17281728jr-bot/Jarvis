@@ -471,8 +471,13 @@ export function leerEnUso(db) {
   try {
     const lista = JSON.parse(leerAjuste(db, AJUSTE_EN_USO) ?? 'null');
     if (Array.isArray(lista)) {
-      return lista.filter(e => Number.isSafeInteger(e?.id) && e.id > 0).slice(-30)
+      const todas = lista.filter(e => Number.isSafeInteger(e?.id) && e.id > 0)
         .map(e => ({ id: e.id, materias: Array.isArray(e.materias) ? e.materias.filter(m => typeof m === 'string' && ID_MATERIA.test(m)) : null }));
+      // 0.13.1: las de la pista oral se cuentan aparte (las últimas 30 de cada pista): nunca le quitan lugar al Test Guide.
+      const esOral = e => Boolean(e.materias?.some(m => MATERIAS_ORAL.includes(m)));
+      const orales = new Set(todas.filter(esOral).slice(-30));
+      const otras = new Set(todas.filter(e => !esOral(e)).slice(-30));
+      return todas.filter(e => orales.has(e) || otras.has(e));
     }
   } catch { /* se usa la de antes */ }
   const id = Number(leerAjuste(db, AJUSTE_ACTIVO)) || null;

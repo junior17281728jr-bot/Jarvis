@@ -10,7 +10,7 @@ import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
 import { hashClave } from '../src/cuentas/claves.js';
 import { revisarPaquete, MATERIAS_ORAL } from '../src/academia/formato.js';
-import { paqueteActivo, leerEnUso } from '../src/academia/paquetes.js';
+import { paqueteActivo, leerEnUso, guardarAjuste, AJUSTE_EN_USO } from '../src/academia/paquetes.js';
 import { listoParaOral } from '../src/academia/oral.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 import { paqueteOralMuestra } from './oral-muestra.js';
@@ -102,6 +102,14 @@ test('las versiones orales se juntan TEMA POR TEMA (capítulo hecho a mano + la 
     assert.ok(p.materias.every(m => !m.id.startsWith('oral_')));
     assert.equal(p.id, ids[0], 'la versión principal sigue siendo la del Test Guide');
   }, { orales: [mano, fabrica] });
+  // Muchas versiones orales (cada capítulo republicado) nunca le quitan lugar a las del Test Guide.
+  await conOral(async ({ db }) => {
+    const lista = [{ id: 1, materias: ['factores_humanos'] }, ...Array.from({ length: 40 }, (_, i) => ({ id: 100 + i, materias: ['oral_travesia'] }))];
+    guardarAjuste(db, AJUSTE_EN_USO, JSON.stringify(lista));
+    const en = leerEnUso(db);
+    assert.equal(en[0].id, 1);
+    assert.equal(en.length, 31, 'las últimas 30 orales');
+  }, { tg: false, orales: [] });
   // Solo lo oral en uso (sin Test Guide): igual se compone.
   await conOral(async ({ db, config }) => {
     const p = paqueteActivo(db, config);
@@ -166,8 +174,6 @@ test('examen de capítulo y examen final: nota al entregar, revisión con su ori
       const e = (await pedir(base, 'POST', '/api/academia/oral/examen', { galleta: ana, datos: materia ? { materia } : {} })).datos;
       assert.ok(e.examen, JSON.stringify(e));
       assert.ok(!JSON.stringify(e).includes('respuesta_en') && !JSON.stringify(e).includes('"correcta"'));
-      // Mientras el examen está abierto, sus preguntas no se responden por la práctica (vería la respuesta).
-      assert.equal((await pedir(base, 'POST', '/api/academia/oral/responder', { galleta: ana, datos: { pregunta: e.preguntas[0].id, elegida: 'A' } })).codigo, 403);
       const respuestas = Object.fromEntries(e.preguntas.map(q => [q.id, bien ? todas.get(q.id).original.correcta : 'C']));
       return (await pedir(base, 'POST', '/api/academia/oral/examen/entregar', { galleta: ana, datos: { examen: e.examen, respuestas } })).datos;
     };
@@ -184,6 +190,9 @@ test('examen de capítulo y examen final: nota al entregar, revisión con su ori
     assert.equal(f.total, 6, 'todas las de los capítulos y las de escenario');
     c = (await pedir(base, 'GET', '/api/academia/oral', { galleta: ana })).datos;
     assert.equal(c.listo.listo, true);
+    // Un examen abierto y abandonado no bloquea la práctica.
+    const abandonado = (await pedir(base, 'POST', '/api/academia/oral/examen', { galleta: ana, datos: { materia: 'oral_rendimiento' } })).datos;
+    assert.equal((await pedir(base, 'POST', '/api/academia/oral/responder', { galleta: ana, datos: { pregunta: abandonado.preguntas[0].id, elegida: 'A' } })).codigo, 200);
     assert.equal(c.listo.pct, 100);
     assert.equal(c.final.aprobado, true);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM academia_extra_respuestas WHERE nivel = 'oral_final'").get().n, 6);

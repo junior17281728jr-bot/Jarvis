@@ -362,7 +362,6 @@
   "plan.pago": "Pago (5 proyectos)",
   "plan.empresarial": "Empresarial (20 proyectos)",
   "aviso.clave_reiniciada": "El administrador reinició tu contraseña el {fecha}",
-  "error.pregunta_en_examen": "Esa pregunta está en tu examen oral abierto: termínalo primero.",
   "error.no_se_pudo_guardar": "No se pudo guardar. No se cambió nada.",
   "error.credenciales": "Usuario o contraseña incorrectos.",
   "error.demasiados_intentos": "Demasiados intentos. Espera unos minutos y vuelve a probar.",

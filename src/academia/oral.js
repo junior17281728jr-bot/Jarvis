@@ -7,7 +7,8 @@
 //    solo mira las materias del Test Guide, así que nunca las muestra.
 //  - Los exámenes (de un capítulo y el final) y lo leído se guardan por alumno en «ajustes» (academia.oral.<id>).
 //  - Funciona sin IA: la lección, la práctica, los exámenes y «Listo para el oral» salen solo del paquete y de lo que
-//    respondió. La respuesta correcta (y «¿De dónde salió?», que la trae) nunca viaja antes de responder.
+//    respondió. La respuesta correcta (y «¿De dónde salió?», que la trae) nunca viaja antes de responder. Es práctica sin
+//    nota oficial: un examen que se deja a medias no bloquea nada (se entrega el último que se abrió).
 import { randomBytes } from 'node:crypto';
 import { ErrorHttp } from '../nucleo/http.js';
 import { MATERIAS_ORAL } from './formato.js';
@@ -15,7 +16,7 @@ import { leerAjuste, guardarAjuste, librosDe } from './paquetes.js';
 import { vistaSecciones, ajustesAcademia } from './progreso.js';
 
 export const NIVELES_ORAL = Object.freeze({ practica: 'oral_practica', examen: 'oral_examen', final: 'oral_final' });
-export const ORAL = Object.freeze({ porRonda: 10, examenCapitulo: 20, examenFinal: 40, escenariosFinal: 6, examenVivoMs: 6 * 3600_000 });
+export const ORAL = Object.freeze({ porRonda: 10, examenCapitulo: 20, examenFinal: 40, escenariosFinal: 6 });
 const pct = (a, b) => (b > 0 ? Math.floor((a * 100) / b) : 0);
 const diaDe = ms => new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 10);
 const claveAlumno = id => `academia.oral.${Number(id)}`;
@@ -186,9 +187,6 @@ export function responderOral(db, usuarioId, paquete, { pregunta, elegida }, { a
   const q = typeof pregunta === 'string' ? paquete.oral.preguntas.get(pregunta) : null;
   if (!q) throw new ErrorHttp(404, 'no_existe');
   if (typeof elegida !== 'string' || !q.original.opciones.some(o => o.letra === elegida)) throw new ErrorHttp(400, 'opcion_no_valida');
-  // Mientras tenga abierto un examen con esta pregunta, no se responde (ni se ve su origen) por la práctica.
-  const abierto = estadoAlumno(db, usuarioId).abierto;
-  if (abierto && ahoraMs - Date.parse(abierto.creado) < ORAL.examenVivoMs && (abierto.preguntas ?? []).includes(pregunta)) throw new ErrorHttp(403, 'pregunta_en_examen');
   const r = retroOral(paquete, pregunta, elegida);
   anotar(db, usuarioId, paquete, pregunta, elegida, r.acierto, NIVELES_ORAL.practica, ahoraMs);
   return r;
