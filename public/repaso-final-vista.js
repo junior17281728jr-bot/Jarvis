@@ -9,6 +9,9 @@
 //    cual, con su página) → «La sabía» / «No la sabía». Las que no sabía vuelven al final.
 // Todo con h.el (nunca texto como código) y clases (nunca estilos escritos); los textos, de public/i18n.
 
+// 0.14.3: el oral en español (si ya está traducido), con «Español | Inglés original» (public/oral-idioma.js).
+import { selectorIdioma, bilingue, rotulo } from './oral-idioma.js';
+
 const RUTA = '#repaso';
 
 export function pantallaRepasoFinal(d, h) {
@@ -173,7 +176,7 @@ export function mazoOral(tarjetas, marcas) {
   return [...tarjetas.filter(x => !Object.hasOwn(marcas, x.id)), ...tarjetas.filter(x => marcas[x.id] === 0)];
 }
 export function rondaOralFinal(d, materia, h) {
-  const { el, t, numero, icono, talCual, api, avisar, textoError, mostrar, marcoEstudio, combustible, botonGrande, sonar, celebrar, nombreMateria } = h;
+  const { el, t, numero, icono, talCual, api, avisar, textoError, mostrar, marcoEstudio, combustible, botonGrande, sonar, celebrar, nombreMateria, vistaVisual } = h;
   const tarjetas = d.tarjetas.filter(x => materia == null || x.materia === materia);
   const marcas = { ...d.marcas };
   const barra = combustible();
@@ -198,16 +201,21 @@ export function rondaOralFinal(d, materia, h) {
     if (!sabia) cola.push(x);
     siguiente();
   };
+  // 0.14.3: la pregunta en español (si ya está traducida) con «Español | Inglés original»; la respuesta igual, y su dibujo.
   const frente = x => [
     el('div', { class: 'tarjeta-sello' },
       el('span', { class: `sello${x.adicional ? '' : ' ingles'}`, texto: x.adicional ? t('rf.oral.adicional') : t('oral.del_libro') }),
       el('span', { class: 'sello-parte', texto: t('rf.oral.capitulo', { n: numero(x.capitulo), nombre: nombreMateria(x.materia) }) })),
+    selectorIdioma(h),
     el('p', { class: 'rf-oral-tema' }, talCual('span', x.temaTitulo, 'fuerte'), x.temaTituloEn ? el('span', { class: 'suave chica', lang: 'en' }, ' · ', talCual('span', x.temaTituloEn)) : null),
-    el('section', { class: 'oral-qa', lang: 'en' },
-      el('p', { class: 'oral-qa-etiqueta', lang: 'es', texto: x.n != null ? t('oral.pregunta_libro', { n: x.n }) : t('rf.oral.pregunta') }),
-      talCual('p', x.pregunta_en, 'oral-qa-pregunta')),
+    el('section', { class: 'oral-qa' },
+      x.n != null ? rotulo(h, Boolean(x.pregunta_es), t('oral.pregunta_es', { n: x.n }), t('oral.pregunta_libro', { n: x.n })) : el('p', { class: 'oral-qa-etiqueta', texto: t('rf.oral.pregunta') }),
+      bilingue(h, 'p', x.pregunta_es, x.pregunta_en, 'oral-qa-pregunta')),
   ];
+  let dibujo = null;
   const pintar = x => {
+    dibujo?.destruir?.();
+    dibujo = null;
     avance();
     const ver = botonGrande(t('rf.oral.ver'), () => pintarAtras(x), { tono: 'azul' });
     zona.replaceChildren(el('article', { class: 'tarjeta-leccion oral-libro rf-tarjeta' }, ...frente(x),
@@ -216,12 +224,14 @@ export function rondaOralFinal(d, materia, h) {
   };
   const pintarAtras = x => {
     sonar('toque');
+    dibujo = x.visual && vistaVisual ? vistaVisual(x.visual) : null;
     zona.replaceChildren(el('article', { class: 'tarjeta-leccion oral-libro rf-tarjeta' }, ...frente(x),
-      el('section', { class: 'oral-qa rf-oral-respuesta', lang: 'en' },
-        el('p', { class: 'oral-qa-etiqueta', lang: 'es', texto: t('oral.respuesta_libro') }),
-        x.respuesta_en ? talCual('p', x.respuesta_en, 'oral-qa-respuesta') : el('p', { class: 'suave', lang: 'es', texto: t('rf.oral.sin_respuesta') })),
+      el('section', { class: 'oral-qa rf-oral-respuesta' },
+        x.respuesta_en ? [rotulo(h, Boolean(x.respuesta_es), t('oral.respuesta_es'), t('oral.respuesta_libro')), bilingue(h, 'p', x.respuesta_es, x.respuesta_en, 'oral-qa-respuesta')]
+          : [el('p', { class: 'oral-qa-etiqueta', texto: t('oral.respuesta_libro') }), el('p', { class: 'suave', texto: t('rf.oral.sin_respuesta') })]),
       el('p', { class: 'oral-pagina con-icono-chico' }, icono('libro', 'icono chico'), el('span', { texto: pagina(x) })),
-      x.explicacion_es ? el('aside', { class: 'caja-ejemplo oral-es' }, el('p', { class: 'caja-ejemplo-titulo', texto: t('oral.en_espanol') }), talCual('p', x.explicacion_es)) : null));
+      dibujo?.nodo ?? null,
+      x.explicacion_es ? el('aside', { class: 'caja-ejemplo oral-es' }, el('p', { class: 'caja-ejemplo-titulo', texto: t('oral.explicacion') }), talCual('p', x.explicacion_es)) : null));
     const botones = [];
     botones.push(el('button', { type: 'button', class: 'boton-3d grande rojo', onclick: () => marcar(x, false, botones) }, el('span', { texto: t('rf.oral.no_sabia') })));
     botones.push(el('button', { type: 'button', class: 'boton-3d grande verde', onclick: () => marcar(x, true, botones) }, el('span', { texto: t('rf.oral.sabia') })));
@@ -231,6 +241,8 @@ export function rondaOralFinal(d, materia, h) {
     const x = cola.shift();
     window.scrollTo(0, 0);
     if (x) return pintar(x);
+    dibujo?.destruir?.();
+    dibujo = null;
     avance();
     cuenta.textContent = '';
     zona.replaceChildren(el('section', { class: 'resultado-vuelo bien', 'data-foco': true },

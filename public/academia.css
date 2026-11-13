@@ -1081,6 +1081,20 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .oral-qa-pregunta { margin: 0 0 6px; font-weight: 800; white-space: pre-line; }
 .oral-qa-respuesta { margin: 0; white-space: pre-line; }
 .oral-es { margin-top: 10px; }
+/* 0.14.3: el oral en español con «Español | Inglés original» (public/oral-idioma.js): las dos versiones van juntas y
+   data-oral-idioma en <html> esconde la otra (cambiar nunca vuelve a pintar la pantalla). La pastilla, con 44 px de alto. */
+:root[data-oral-idioma="en"] .oral-solo-es, :root:not([data-oral-idioma="en"]) .oral-solo-en { display: none !important; }
+.idioma-oral-fila { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
+.idioma-oral { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 2px solid var(--oral); background: var(--oral-suave); max-width: 100%; }
+.idioma-oral-boton { min-height: 44px; min-width: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--oral-texto);
+  font: inherit; font-size: 14px; font-weight: 800; line-height: 1.1; cursor: pointer; touch-action: manipulation; }
+.idioma-oral-boton[aria-pressed="true"] { background: var(--oral); color: #fff; }
+.idioma-oral-boton:focus-visible { outline: 3px solid var(--oral-texto); outline-offset: 2px; }
+:root[data-tema="oscuro"] .idioma-oral-boton[aria-pressed="true"] { color: #06233d; }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] .idioma-oral-boton[aria-pressed="true"] { color: #06233d; } }
+.sin-traducir { display: inline-block; margin: 2px 0 6px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; font-style: italic;
+  background: var(--tarjeta); color: var(--suave); border: 1px dashed var(--linea); }
+.tarjeta-pregunta .idioma-oral-fila { margin-top: 0; }
 .oral-adicionales-lista { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 10px; }
 .oral-adicionales-lista p { margin: 0; white-space: pre-line; }
 .oral-origen { margin-top: 10px; border: 2px solid var(--oral); border-radius: 14px; padding: 8px 12px; background: var(--tarjeta); }

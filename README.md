@@ -709,6 +709,30 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.5: el examen oral en español — sin cambio de base
+Pedido del dueño: el examen oral se lo hacen en español, así que las preguntas y respuestas del oral se ven **en español**,
+con un botón para ver el **original en inglés** ahí mismo, estudiando o en un examen.
+- **Formato del paquete (pista oral), todo opcional** (`src/academia/formato.js`; un paquete viejo sigue valiendo):
+  - en cada `libro_qa`: `pregunta_es`, `respuesta_es` (solo si el libro trae `respuesta_en`; en los escenarios, el español
+    de su texto va en los mismos campos) y `visual` (un dibujo como el de una tarjeta: `diagrama-*`, `calculo`, …);
+  - en cada `adicionales`: `pregunta_es`;
+  - en las de opción múltiple `origen: "oral"` (que ya vienen en español): `enunciado_en` y `opciones_en` (las mismas
+    letras, en el mismo orden). En una pregunta del Test Guide se rechazan (`solo_oral`).
+  - Si vienen, no pueden estar vacíos. `pregunta_en` / `respuesta_en` siguen siendo el original TAL CUAL: nunca se tocan.
+- **El botón «Español | Inglés original»** (`public/oral-idioma.js`): una pastilla de dos partes (44 px de alto) arriba de
+  cada pregunta: en la clase (cada pregunta del libro y «Para practicar en voz alta»), en practicar, en el examen de cada
+  capítulo y el final, en la revisión, en «¿De dónde salió?» y en las tarjetas del oral del «Repaso final». Empieza en
+  español; lo elegido se recuerda por alumno en el navegador (`op_oral_idioma.<id>`). Las dos versiones se arman juntas y
+  el botón solo cambia `data-oral-idioma` en `<html>` (el CSS esconde la otra): no vuelve a pintar la pantalla, no borra
+  la opción elegida, no muestra la respuesta antes de tiempo y no cambia la nota.
+- **Sin español** se ve el inglés con la nota «Aún sin traducir». En las de opción múltiple sin `enunciado_en`, «Inglés
+  original» muestra la pregunta del libro tal cual (nunca su respuesta) y la nota «Las opciones están en español».
+- **El servidor** manda lo nuevo: la clase (`libro_qa[].pregunta_es/respuesta_es/visual`, `adicionales[].pregunta_es`),
+  practicar y los exámenes (`enunciado_en`, `opciones_en`, `pregunta_libro_en`; la respuesta solo después de responder),
+  «¿De dónde salió?» (`origen.pregunta_es/respuesta_es`, de la pregunta del libro de su tema) y el «Repaso final».
+- La caja de la explicación ahora dice «Explicación sencilla» (antes «En español»).
+- Pruebas: `test/oral-espanol.test.js`.
+
 ### Lo nuevo de la 0.14.4: ChatGPT (o tu propia API) termina la academia, «Pídele a la IA» y «Lo que hizo la IA» — sin cambio de base
 - **Dinero e IA → «IA (Claude o ChatGPT)»** (`#claves`, antes «Claude (API)»): arriba **«¿Quién hace el trabajo?»** — Claude,
   ChatGPT, API propia o **«El que funcione»** (por defecto, con su orden editable ↑↓; Claude primero). Vale para la fábrica
@@ -946,7 +970,9 @@ IA, «¿Lo entendiste?» de cada tarjeta explica mejor o profundiza (el mismo tu
   capítulo): `oral_calificaciones`, `oral_aeronavegabilidad`, `oral_meteorologia`, `oral_rendimiento`, `oral_sistemas`,
   `oral_travesia`, `oral_nocturno`, `oral_factores_humanos` y `oral_escenarios` (capítulo 9). El formato suma por tema
   `titulo_en`, `adicionales` (las «Additional Study Questions», tal cual, con su página) y, en cada `libro_qa`, `n` y
-  `puntos_clave`; `fuente_pregunta` puede llevar `n` (el número de la pregunta del libro).
+  `puntos_clave`; `fuente_pregunta` puede llevar `n` (el número de la pregunta del libro). Desde la 0.14.3, opcionales:
+  `pregunta_es`, `respuesta_es` (solo si hay `respuesta_en`) y `visual` en cada `libro_qa`, `pregunta_es` en cada
+  `adicionales`, y `enunciado_en` / `opciones_en` en las preguntas `origen: "oral"` (ver «Lo nuevo de la 0.14.3»).
 - **La clase** (misma cara que Factores Humanos): las tarjetas en español (dibujos, `calculo`, fotos de la guía, fichas de
   inglés con su traducción, «Recuerda», la página «Guía del examen oral, p. N»); después **cada pregunta del libro TAL
   CUAL** (inglés) con su respuesta TAL CUAL, «En español» y «Puntos clave»; después las preguntas para estudiar en voz alta.

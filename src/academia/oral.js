@@ -54,12 +54,28 @@ function ultimas(db, usuarioId) {
 }
 const libroDe = (paquete, pid, id) => librosDe(paquete, pid).get(id)?.titulo ?? null;
 
-// Una pregunta, para responder (SIN la respuesta ni su origen).
+// 0.14.3: el dibujo (opcional) de una pregunta del libro, como el de una tarjeta.
+export const visualQa = x => (x?.visual?.tipo ? { tipo: x.visual.tipo, parametros: x.visual.parametros ?? {} } : null);
+// 0.14.3: una pregunta del libro con su español (si ya lo trae; si no, null y la pantalla dice «Aún sin traducir»).
+export const vistaLibroQa = x => ({
+  n: x.n ?? null, pregunta_en: x.pregunta_en, respuesta_en: x.respuesta_en ?? null, pagina: x.pagina,
+  pregunta_es: x.pregunta_es ?? null, respuesta_es: x.respuesta_es ?? null, visual: visualQa(x),
+  explicacion_es: x.explicacion_es ?? null, puntos_clave: Array.isArray(x.puntos_clave) ? x.puntos_clave : [],
+});
+const temaDe = (paquete, qid) => {
+  const lugar = paquete.oral.deTema.get(qid);
+  return { lugar, t: paquete.oral.materias.find(m => m.id === lugar.materia)?.temas.find(x => x.id === lugar.tema) ?? null };
+};
+// Una pregunta, para responder (SIN la respuesta ni su origen). 0.14.3: con su inglés para el botón «Inglés original»:
+// enunciado_en / opciones_en si el paquete los trae; si no, la pregunta del libro tal cual (nunca su respuesta).
 function vistaPreguntaOral(paquete, qid) {
   const q = paquete.oral.preguntas.get(qid);
-  const lugar = paquete.oral.deTema.get(qid);
-  const t = paquete.oral.materias.find(m => m.id === lugar.materia)?.temas.find(x => x.id === lugar.tema);
-  return { id: qid, materia: lugar.materia, tema: lugar.tema, temaTitulo: t?.titulo ?? lugar.tema, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })) };
+  const { lugar, t } = temaDe(paquete, qid);
+  return {
+    id: qid, materia: lugar.materia, tema: lugar.tema, temaTitulo: t?.titulo ?? lugar.tema, enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })),
+    enunciado_en: q.enunciado_en ?? null, opciones_en: Array.isArray(q.opciones_en) ? q.opciones_en.map(o => ({ letra: o.letra, texto: o.texto })) : null,
+    pregunta_libro_en: q.fuente_pregunta?.pregunta_en ?? null,
+  };
 }
 // Lo que se ve DESPUÉS de responder: la correcta, por qué su opción no, la explicación y «¿De dónde salió?».
 function retroOral(paquete, qid, elegida) {
@@ -67,11 +83,14 @@ function retroOral(paquete, qid, elegida) {
   const pid = paquete.oral.dePaquete.get(qid);
   const f = q.fuente_pregunta;
   const acierto = elegida === q.original.correcta;
+  // 0.14.3: el español de esa pregunta del libro (la de su tema con la misma pregunta en inglés), si ya lo trae.
+  const qa = (temaDe(paquete, qid).t?.libro_qa ?? []).find(x => x.pregunta_en === f.pregunta_en) ?? null;
   return {
     pregunta: qid, elegida, correcta: q.original.correcta, acierto,
     porque: acierto ? null : q.errores?.[elegida] ?? null,
     explicacion: q.original.explicacion, sencilla: q.sencilla ?? null,
-    origen: { libro: libroDe(paquete, pid, f.libro), pagina: f.pagina, pregunta_en: f.pregunta_en, respuesta_en: f.respuesta_en, como: f.como },
+    origen: { libro: libroDe(paquete, pid, f.libro), pagina: f.pagina, pregunta_en: f.pregunta_en, respuesta_en: f.respuesta_en, como: f.como,
+      pregunta_es: qa?.pregunta_es ?? null, respuesta_es: qa?.respuesta_es ?? null },
   };
 }
 function anotar(db, usuarioId, paquete, qid, elegida, acierto, nivel, ahoraMs) {
@@ -152,8 +171,8 @@ export function leccionOral(db, usuarioId, paquete, materia, tema) {
   return {
     materia, tema: t.id, titulo: t.titulo, titulo_en: t.titulo_en ?? null, libro: primerLibro,
     secciones: vistaSecciones(paquete, t.secciones, t.paquete),
-    libro_qa: (t.libro_qa ?? []).map(x => ({ n: x.n ?? null, pregunta_en: x.pregunta_en, respuesta_en: x.respuesta_en ?? null, pagina: x.pagina, explicacion_es: x.explicacion_es ?? null, puntos_clave: Array.isArray(x.puntos_clave) ? x.puntos_clave : [] })),
-    adicionales: (t.adicionales ?? []).map(x => ({ n: x.n ?? null, pregunta_en: x.pregunta_en, pagina: x.pagina })),
+    libro_qa: (t.libro_qa ?? []).map(vistaLibroQa),
+    adicionales: (t.adicionales ?? []).map(x => ({ n: x.n ?? null, pregunta_en: x.pregunta_en, pregunta_es: x.pregunta_es ?? null, pagina: x.pagina })),
     preguntas: t.preguntas.length, leido: estadoAlumno(db, usuarioId).leidos.includes(`${materia}/${t.id}`),
   };
 }

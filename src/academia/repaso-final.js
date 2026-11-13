@@ -17,7 +17,7 @@ import { MATERIAS_ORAL } from './formato.js';
 import { leerAjuste, guardarAjuste, librosDe } from './paquetes.js';
 import { crearIntento, verIntento, responder, terminar, diaDe, idsTestGuide, falladasTestGuide } from './progreso.js';
 import { examenDe, finDe, GRACIA_MS } from './examen.js';
-import { hayOral } from './oral.js';
+import { hayOral, visualQa } from './oral.js';
 
 const claveAlumno = id => `academia.repaso_final.${Number(id)}`;
 const esObjeto = v => v != null && typeof v === 'object' && !Array.isArray(v);
@@ -122,8 +122,11 @@ export function tarjetasOral(paquete) {
   for (const m of paquete.oral.materias) for (const t of m.temas) {
     const libro = [...librosDe(paquete, t.paquete).values()][0]?.titulo ?? null;
     const comun = { materia: m.id, capitulo: MATERIAS_ORAL.indexOf(m.id) + 1, tema: t.id, temaTitulo: t.titulo, temaTituloEn: t.titulo_en ?? null, libro };
-    (t.libro_qa ?? []).forEach((x, k) => lista.push({ id: `${m.id}/${t.id}/q${k}`, ...comun, adicional: false, n: x.n ?? null, pregunta_en: x.pregunta_en, respuesta_en: x.respuesta_en ?? null, pagina: x.pagina, explicacion_es: x.explicacion_es ?? null }));
-    (t.adicionales ?? []).forEach((x, k) => lista.push({ id: `${m.id}/${t.id}/a${k}`, ...comun, adicional: true, n: x.n ?? null, pregunta_en: x.pregunta_en, respuesta_en: null, pagina: x.pagina, explicacion_es: null }));
+    // 0.14.3: con su español (pregunta_es / respuesta_es, si ya lo trae) y su dibujo (visual), además del inglés tal cual.
+    (t.libro_qa ?? []).forEach((x, k) => lista.push({ id: `${m.id}/${t.id}/q${k}`, ...comun, adicional: false, n: x.n ?? null, pregunta_en: x.pregunta_en, respuesta_en: x.respuesta_en ?? null,
+      pregunta_es: x.pregunta_es ?? null, respuesta_es: x.respuesta_es ?? null, visual: visualQa(x), pagina: x.pagina, explicacion_es: x.explicacion_es ?? null }));
+    (t.adicionales ?? []).forEach((x, k) => lista.push({ id: `${m.id}/${t.id}/a${k}`, ...comun, adicional: true, n: x.n ?? null, pregunta_en: x.pregunta_en, respuesta_en: null,
+      pregunta_es: x.pregunta_es ?? null, respuesta_es: null, visual: null, pagina: x.pagina, explicacion_es: null }));
   }
   return lista;
 }

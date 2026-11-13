@@ -105,6 +105,12 @@ export function revisarPaquete(p) {
     if (v.includes('\u0000')) { mal(ruta, 'caracter_no_valido'); return false; }
     return true;
   };
+  // 0.14.3: un texto opcional que, si viene, no puede estar vacío (las traducciones al español y al inglés).
+  const textoEs = (v, ruta) => {
+    if (v == null) return false;
+    if (typeof v === 'string' && !v.trim()) { mal(ruta, 'vacio'); return false; }
+    return texto(v, ruta, { obligatorio: false });
+  };
   const id = (v, ruta) => {
     if (typeof v !== 'string' || !ID_VALIDO.test(v)) { mal(ruta, 'id_no_valido'); return false; }
     return true;
@@ -287,6 +293,24 @@ export function revisarPaquete(p) {
     }
     const o = q.original;
     if (!esObjeto(o)) return mal(`${r}.original`, 'falta');
+    // 0.14.3: las preguntas orales de opción múltiple ya vienen en español; opcionalmente traen su versión en inglés
+    // (enunciado_en y opciones_en, con las mismas letras en el mismo orden). Solo en las del oral.
+    if (q.enunciado_en != null || q.opciones_en != null) {
+      if (q.origen !== 'oral') mal(`${r}.${q.enunciado_en != null ? 'enunciado_en' : 'opciones_en'}`, 'solo_oral');
+      else {
+        textoEs(q.enunciado_en, `${r}.enunciado_en`);
+        if (q.opciones_en != null) {
+          const suyas = Array.isArray(o.opciones) ? o.opciones.map(op => op?.letra) : [];
+          if (!Array.isArray(q.opciones_en) || q.opciones_en.length !== suyas.length) mal(`${r}.opciones_en`, 'opciones_no_validas');
+          else q.opciones_en.forEach((op, j) => {
+            const ro = `${r}.opciones_en[${j}]`;
+            if (!esObjeto(op)) return mal(ro, 'no_es_objeto');
+            if (op.letra !== suyas[j]) mal(`${ro}.letra`, 'letra_no_valida');
+            texto(op.texto, `${ro}.texto`);
+          });
+        }
+      }
+    }
     texto(o.numero, `${r}.original.numero`, { obligatorio: q.origen === 'test_guide', max: 40 });
     texto(o.seccion, `${r}.original.seccion`, { obligatorio: false, max: LIMITES.corto });
     texto(o.enunciado, `${r}.original.enunciado`);
@@ -523,6 +547,12 @@ export function revisarPaquete(p) {
           texto(x.respuesta_en, `${rx}.respuesta_en`, { obligatorio: false });
           texto(x.pagina, `${rx}.pagina`, { max: 40 });
           texto(x.explicacion_es, `${rx}.explicacion_es`, { obligatorio: false });
+          // 0.14.3: la pregunta y la respuesta EN ESPAÑOL (opcionales; el examen oral se hace en español). El inglés de arriba
+          // sigue siendo el original TAL CUAL; sin español, la app muestra el inglés con «Aún sin traducir».
+          textoEs(x.pregunta_es, `${rx}.pregunta_es`);
+          if (textoEs(x.respuesta_es, `${rx}.respuesta_es`) && x.respuesta_en == null) mal(`${rx}.respuesta_es`, 'sin_original');
+          // 0.14.3: un dibujo (opcional) que acompaña la respuesta, como el de una tarjeta.
+          visual(x.visual, `${rx}.visual`);
           if (x.puntos_clave != null) {
             if (!Array.isArray(x.puntos_clave) || x.puntos_clave.length > LIMITES_ORAL.puntosClave) mal(`${rx}.puntos_clave`, 'no_es_lista');
             else x.puntos_clave.forEach((y, j) => texto(y, `${rx}.puntos_clave[${j}]`, { max: 2000 }));
@@ -540,6 +570,7 @@ export function revisarPaquete(p) {
           if (x.n != null && (!Number.isSafeInteger(x.n) || x.n < 1 || x.n > 9999)) mal(`${rx}.n`, 'no_valido');
           texto(x.pregunta_en, `${rx}.pregunta_en`);
           texto(x.pagina, `${rx}.pagina`, { max: 40 });
+          textoEs(x.pregunta_es, `${rx}.pregunta_es`); // 0.14.3
         });
       }
       temas += 1;

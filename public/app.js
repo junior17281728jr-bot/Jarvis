@@ -4256,6 +4256,19 @@ function vistaFoto(f, { mini = false } = {}) {
   return figura;
 }
 
+// 0.14.3: un dibujo de las clases suelto (el de una pregunta del libro del oral), igual que el de una tarjeta.
+function vistaVisual(v) {
+  const nodo = el('div', { class: 'tarjeta-visual' });
+  let montado = null;
+  let fuera = false;
+  cargarVisuales().then(V => {
+    if (fuera || !nodo.isConnected) return;
+    const montar = V[v.tipo] ?? V.cartel;
+    try { montado = montar?.(nodo, v.parametros ?? {}, { modo: 'interactivo' }); } catch { nodo.remove(); }
+  });
+  return { nodo, destruir: () => { fuera = true; montado?.destruir?.(); } };
+}
+
 function vistaTarjeta(p, { materia }) {
   const { es, en } = partirTitulo(p.titulo);
   // 0.12.1: si la tarjeta trae clip (y ya llegó), el clip manda sobre el dibujo.
@@ -4795,6 +4808,7 @@ async function pantallaExtra(materia, tema = null) {
 // ---- 0.13.1: «Preparándote para el examen oral» (public/oral-vista.js) ----
 const ayudasOral = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, sacudir,
   combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, partirLeccion, vistaTarjeta, nodoCamino, barraLlena, medidor, tutorUi, alDeslizar, anilloAvance,
+  vistaVisual, usuario: estado.usuario?.id ?? 0, // 0.14.3: el dibujo de una pregunta del libro y el idioma elegido (por alumno)
   plegarCamino: (camino, materias, siguiente) => plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario: estado.usuario?.id, siguiente }) });
 async function pantallaOralDe(que, a, b) {
   const vigente = nuevoTurno();
@@ -4824,7 +4838,8 @@ async function pantallaOralDe(que, a, b) {
 
 // ---- 0.13.7: «Repaso final» (public/repaso-final-vista.js) ----
 const ayudasRepasoFinal = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
-  combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }) });
+  combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }),
+  vistaVisual, usuario: estado.usuario?.id ?? 0 }); // 0.14.3
 const errorRepasoFinal = r => mostrar(marco('repaso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
   el('a', { class: 'boton-3d blanco', href: '#repaso' }, el('span', { texto: t('rf.volver') })))));
 async function pantallaRepasoFinal() {
