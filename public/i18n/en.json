@@ -1494,6 +1494,7 @@
   "camino.estado.bloqueada": "Locked",
   "camino.estado.aprobada": "Passed",
   "camino.estado.abierta": "In progress",
+  "camino.estado.sin_empezar": "Not started",
   "camino.video_visto": "Video watched",
   "camino.video_pendiente": "Video not watched",
   "camino.debil": "Weak spot",

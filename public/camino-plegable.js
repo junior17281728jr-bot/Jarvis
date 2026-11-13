@@ -47,7 +47,9 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
     if (!banner) return;
     // Lo de la cabeza: avance, estado y video (.materia-insignias deja lugar para otras insignias).
     const estado = m.estado === 'vacia' ? null : m.estado === 'aprobada' ? ['marca', t('camino.estado.aprobada')]
-      : m.estado === 'bloqueada' ? ['candado', t('camino.estado.bloqueada')] : ['avion', t('camino.estado.abierta')];
+      : m.estado === 'bloqueada' ? ['candado', t('camino.estado.bloqueada')]
+      // 0.14.3: un capítulo del oral que todavía no se empezó (gris, «Sin empezar»).
+      : m.estado === 'sin_empezar' ? ['reloj', t('camino.estado.sin_empezar')] : ['avion', t('camino.estado.abierta')];
     const insignias = el('div', { class: 'materia-insignias' },
       // (0.12.2: sin «Punto débil»: lo de los errores vive en «Mi repaso», no en el Camino)
       m.video ? el('span', { class: `materia-insignia ${m.video.visto ? 'hecho' : 'pendiente'}` }, icono('video', 'icono chico'), el('span', { texto: t(m.video.visto ? 'camino.video_visto' : 'camino.video_pendiente') })) : null);

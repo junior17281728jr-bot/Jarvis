@@ -15,6 +15,16 @@ const ICONO_CAPITULO = {
 };
 const ruta = (...partes) => `#oral${partes.length ? `/${partes.map(encodeURIComponent).join('/')}` : ''}`;
 
+// 0.14.3 (pedido del dueño): el estado de cada capítulo en el Camino oral. «vacia»: todavía sin clase («Pronto»);
+// «aprobada»: aprobó su examen; «abierta» («En curso», azul): es donde está el siguiente paso o ya tiene algo hecho (un tema
+// leído, una pregunta respondida, un examen intentado); «sin_empezar» (gris, «Sin empezar»): nada de eso todavía.
+export function estadoCapitulo(m, id, siguiente) {
+  if (!m) return 'vacia';
+  if (m.examen?.aprobado) return 'aprobada';
+  const algo = (m.temas ?? []).some(x => x.leido || x.vistas > 0) || (m.examen?.veces ?? 0) > 0 || (m.pct ?? 0) > 0 || (m.bien ?? 0) > 0;
+  return algo || siguiente?.materia === id ? 'abierta' : 'sin_empezar';
+}
+
 // El Camino oral. 0.13.2: igual que el Camino principal: los capítulos 1 a 8 y «Escenarios», cada uno con su título en
 // español grande y el inglés chico debajo, plegables; adentro TODOS los temas del libro en su orden («1A · Privilegios y
 // limitaciones»), los que todavía no tienen clase en gris con «Pronto»; el examen de cada capítulo y, al final, el nodo
@@ -26,10 +36,7 @@ export function pantallaOral(d, h) {
   const sig = d.siguiente;
   const capitulos = caminoConMapa(d.materias);
   // Lo que plegarCamino necesita de cada capítulo (estado, avance y sus temas).
-  const resumen = capitulos.map(c => ({
-    id: c.id, temas: c.temas, pct: c.m?.pct ?? 0,
-    estado: !c.m ? 'vacia' : c.m.examen.aprobado ? 'aprobada' : 'abierta',
-  }));
+  const resumen = capitulos.map(c => ({ id: c.id, temas: c.temas, pct: c.m?.pct ?? 0, estado: estadoCapitulo(c.m, c.id, sig) }));
   const capitulo = (c, n) => {
     const m = c.m;
     const esc = c.id === 'oral_escenarios';

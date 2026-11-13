@@ -731,6 +731,9 @@ con un botón para ver el **original en inglés** ahí mismo, estudiando o en un
   practicar y los exámenes (`enunciado_en`, `opciones_en`, `pregunta_libro_en`; la respuesta solo después de responder),
   «¿De dónde salió?» (`origen.pregunta_es/respuesta_es`, de la pregunta del libro de su tema) y el «Repaso final».
 - La caja de la explicación ahora dice «Explicación sencilla» (antes «En español»).
+- **El Camino oral**: solo el capítulo en curso (el del siguiente paso, o con algo hecho: un tema leído, una pregunta
+  respondida, un examen intentado) va en azul con «En curso»; los que tienen clase pero no se han empezado van en gris
+  con «Sin empezar»; los aprobados, con «Aprobada» (`estadoCapitulo` en `public/oral-vista.js`).
 - Pruebas: `test/oral-espanol.test.js`.
 
 ### Lo nuevo de la 0.14.4: ChatGPT (o tu propia API) termina la academia, «Pídele a la IA» y «Lo que hizo la IA» — sin cambio de base

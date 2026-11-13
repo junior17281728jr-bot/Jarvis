@@ -1494,6 +1494,7 @@
   "camino.estado.bloqueada": "Bloqueada",
   "camino.estado.aprobada": "Aprobada",
   "camino.estado.abierta": "En curso",
+  "camino.estado.sin_empezar": "Sin empezar",
   "camino.video_visto": "Video visto",
   "camino.video_pendiente": "Video sin ver",
   "camino.debil": "Punto débil",

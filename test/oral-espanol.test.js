@@ -16,6 +16,27 @@ import { revisarPaquete } from '../src/academia/formato.js';
 import { tarjetasOral } from '../src/academia/repaso-final.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 import { paqueteOralMuestra } from './oral-muestra.js';
+import { estadoCapitulo } from '../public/oral-vista.js';
+
+// 0.14.3 (pedido del dueño): en el Camino oral, solo el capítulo en curso va en azul («En curso»); los que tienen clase
+// pero no se han empezado van en gris («Sin empezar»); los aprobados, como terminados.
+test('Camino oral: el estado de cada capítulo (Pronto · Sin empezar · En curso · Aprobado)', () => {
+  const tema = (x = {}) => ({ leido: false, vistas: 0, ...x });
+  const cap = (x = {}) => ({ pct: 0, bien: 0, temas: [tema(), tema()], examen: { aprobado: false, veces: 0 }, ...x });
+  assert.equal(estadoCapitulo(null, 'oral_rendimiento', null), 'vacia');
+  assert.equal(estadoCapitulo(cap(), 'oral_rendimiento', { tipo: 'tema', materia: 'oral_calificaciones', tema: 't01-a' }), 'sin_empezar');
+  assert.equal(estadoCapitulo(cap(), 'oral_rendimiento', null), 'sin_empezar');
+  assert.equal(estadoCapitulo(cap(), 'oral_calificaciones', { tipo: 'tema', materia: 'oral_calificaciones', tema: 't01-a' }), 'abierta', 'el del siguiente paso');
+  assert.equal(estadoCapitulo(cap({ temas: [tema({ leido: true }), tema()] }), 'x', null), 'abierta', 'un tema leído');
+  assert.equal(estadoCapitulo(cap({ temas: [tema({ vistas: 1 })] }), 'x', null), 'abierta', 'una pregunta respondida');
+  assert.equal(estadoCapitulo(cap({ examen: { aprobado: false, veces: 1 } }), 'x', null), 'abierta', 'un examen intentado');
+  assert.equal(estadoCapitulo(cap({ pct: 100, examen: { aprobado: true, veces: 1 } }), 'x', null), 'aprobada');
+  assert.equal(estadoCapitulo(cap(), 'x', { tipo: 'final' }), 'sin_empezar');
+  const es = JSON.parse(readFileSync(new URL('../public/i18n/es.json', import.meta.url), 'utf8'));
+  const en = JSON.parse(readFileSync(new URL('../public/i18n/en.json', import.meta.url), 'utf8'));
+  assert.equal(es['camino.estado.sin_empezar'], 'Sin empezar');
+  assert.equal(en['camino.estado.sin_empezar'], 'Not started');
+});
 
 const DUENO = { 'Tailscale-User-Login': 'junior@example.com' };
 const CLAVE = 'una clave bien larga';
