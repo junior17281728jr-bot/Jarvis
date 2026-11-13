@@ -151,14 +151,15 @@ export function rondaTestGuide(intento, h) {
       repetidas.size ? el('p', { class: 'chica con-icono' }, icono('actualizar', 'icono chico'), el('span', { texto: t('rf.fin.repetidas', { n: numero(repetidas.size) }) })) : null,
       el('p', { class: 'suave chica', texto: t('rf.no_cuenta') })));
     pie.classList.add('apilados');
-    pie.replaceChildren(
+    pie.replaceChildren(...[
       r.falladas.length ? el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: async e => {
-        e.currentTarget.disabled = true;
+        const boton = e.currentTarget;
+        boton.disabled = true;
         const n = await api('POST', '/api/academia/repaso-final/ronda', { falladas: true, ...(intento.materia ? { materia: intento.materia } : {}) });
-        if (!n.ok) { e.currentTarget.disabled = false; return avisar(textoError(n.datos.error), 'mal'); }
+        if (!n.ok) { boton.disabled = false; return avisar(textoError(n.datos.error), 'mal'); }
         location.hash = `${RUTA}/test-guide/${n.datos.id}`;
       } }, el('span', { texto: t('rf.fin.falladas') })) : null,
-      el('a', { class: 'boton-3d blanco', href: RUTA }, el('span', { texto: t('rf.volver') })));
+      el('a', { class: 'boton-3d blanco', href: RUTA }, el('span', { texto: t('rf.volver') }))].filter(Boolean));
     if (r.aciertos) celebrar(zona);
     window.scrollTo(0, 0);
   };
@@ -239,9 +240,10 @@ export function rondaOralFinal(d, materia, h) {
     pie.classList.add('apilados');
     pie.replaceChildren(
       el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: async e => {
-        e.currentTarget.disabled = true;
+        const boton = e.currentTarget;
+        boton.disabled = true;
         const r = await api('POST', '/api/academia/repaso-final/oral/reiniciar', materia ? { materia } : {});
-        if (!r.ok) { e.currentTarget.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
+        if (!r.ok) { boton.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
         for (const x of tarjetas) delete marcas[x.id];
         cola = mazoOral(tarjetas, marcas);
         pie.classList.remove('apilados');

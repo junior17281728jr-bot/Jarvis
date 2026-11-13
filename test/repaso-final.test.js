@@ -133,7 +133,13 @@ test('Test Guide completo: todas las preguntas del Test Guide de cada materia, T
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM academia_intentos WHERE usuario_id = ? AND (tipo IN ('examen', 'tema') OR aprobado IS NOT NULL)").get(u).n, 0);
     const c = await pedir(base, 'GET', '/api/academia/camino', { galleta: ana });
     assert.ok(c.datos.materias.every(m => !m.examen?.aprobado && !(m.examen?.veces > 0)), 'ningún examen cuenta');
-    assert.equal((await pedir(base, 'GET', '/api/academia/mi-repaso', { galleta: ana })).codigo, 200, 'Mi repaso sigue bien');
+    const mr = await pedir(base, 'GET', '/api/academia/mi-repaso', { galleta: ana });
+    assert.equal(mr.codigo, 200, 'Mi repaso sigue bien');
+    const enMiRepaso = JSON.stringify(mr.datos.errores);
+    for (const { q } of respuestas.slice(0, 2)) {
+      assert.ok(enMiRepaso.includes(q.enunciado), `${q.id}: la fallada sale en «Tus errores» de Mi repaso`);
+      assert.equal(db.prepare('SELECT caja FROM academia_repaso WHERE usuario_id = ? AND pregunta = ?').get(u, q.id)?.caja, 1, `${q.id}: entra al repaso espaciado`);
+    }
     assert.equal((await pedir(base, 'GET', '/api/academia/repaso-final', { galleta: ana })).datos.tg.abierta, null, 'terminada: ya no se sigue');
 
     // «Solo las que fallé» y «Por materia».
