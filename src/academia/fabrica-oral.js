@@ -93,7 +93,8 @@ export function leerFuenteOral(dir) {
 }
 
 // Las páginas que lee un tema: de la primera pregunta a la última (+1: una respuesta sigue en la página de al lado).
-export function contextoOral(dir, fuente, cap, t) {
+// 0.14.7: maxBytes: la mejora profunda pide la lectura entera (hasta 170 000; si pasa de lo que cabe, saca pasajes).
+export function contextoOral(dir, fuente, cap, t, { maxBytes = ORAL_POR_PASO.lecturaMaxBytes } = {}) {
   const titulos = new Map([[fuente.libro.id, fuente.libro.titulo]]);
   const paginas = [...t.qa.map(x => x.pagina), ...t.adicionales.map(x => x.pagina)];
   const desde = Math.min(...paginas);
@@ -102,7 +103,7 @@ export function contextoOral(dir, fuente, cap, t) {
   try { const ruta = join(dir, 'oral', cap.archivo); if (statSync(ruta).size <= 1024 * 1024) porPagina = paginasDeTexto(readFileSync(ruta, 'utf8')); } catch { porPagina = new Map(); }
   const partes = [];
   for (let p = desde; p <= hasta; p++) if (porPagina.get(p)) partes.push({ libro: fuente.libro.id, archivo: cap.archivo, pagina: p, texto: porPagina.get(p) });
-  const texto = partes.map(x => `[${fuente.libro.titulo}, p. ${x.pagina}]\n${x.texto}`).join('\n\n').slice(0, ORAL_POR_PASO.lecturaMaxBytes);
+  const texto = partes.map(x => `[${fuente.libro.titulo}, p. ${x.pagina}]\n${x.texto}`).join('\n\n').slice(0, maxBytes);
   const imagenes = fuente.imagenes.filter(x => x.pagina >= desde && x.pagina <= hasta);
   return { titulos, lectura: { partes }, texto, largo: Buffer.byteLength(texto), qa: t.qa, imagenes, preguntas: [], oral: true };
 }

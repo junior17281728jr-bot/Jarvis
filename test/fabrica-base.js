@@ -90,8 +90,8 @@ export function textoDelPedido(cuerpo) {
 const datosDe = texto => { const m = [...texto.matchAll(/<datos>\n([\s\S]*?)\n<\/datos>/g)].at(-1); return m ? JSON.parse(m[1]) : {}; };
 // 0.14.2: chat(d): lo que «responde» la IA en «Pídele a la IA» (si no, un plan para reescribir el primer tema);
 // sinDibujo: tarjetas sin foto ni dibujo y sin números (para los «Dibujos con IA»); revision(d): lo que mira Claude.
-export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null } = {}) {
-  const opciones = { dudasProfunda };
+export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null } = {}) {
+  const opciones = { dudasProfunda, veredicto, dudasFinal };
   const texto = textoDelPedido(cuerpo);
   const d = datosDe(texto);
   if (texto.startsWith(TAREA_CHAT)) {
@@ -132,7 +132,18 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = 
     return { resumen: ['Lo simple primero.', 'Una idea por tarjeta.'], otra_vez: 'Otra vez, en fácil: el tema entero en pocas frases.',
       examinador: d.examen_oral ? [{ pregunta_en: 'May you fly for hire?', pregunta_es: '¿Puedes volar por paga?', respuesta: 'No: el piloto privado no vuela por paga (for hire).', paginas: [3] }, { pregunta_en: 'Who may share the costs?', pregunta_es: '¿Quién comparte los gastos?', respuesta: 'Solo se comparten los gastos.', paginas: [3] }] : [] };
   }
-  if (texto.startsWith(TAREAS_PROFUNDA.verificar)) return { dudas: opciones.dudasProfunda ?? [] };
+  // 0.14.7: las explicaciones (Test Guide y oral), su verificación una por una y la revisión final.
+  if (texto.startsWith(TAREAS_PROFUNDA.explicaciones_tg)) {
+    return { preguntas: d.preguntas.map(q => ({ id: q.id, sencilla: `✔ La correcta es: ${q.correcta_texto}\nPor qué: lo dice el libro de muestra.\nPiensa así: primero el dato.\nTruco para recordar: «el libro manda».`,
+      errores: (q.errores_de_ahora ? Object.keys(q.errores_de_ahora) : q.opciones.map(o => o.letra).filter(l => l !== q.correcta)).map(letra => ({ letra, idea: 'Idea equivocada, mejor explicada.' })) })) };
+  }
+  if (texto.startsWith(TAREAS_PROFUNDA.explicaciones_oral)) {
+    return { items: d.preguntas_del_libro.map(x => ({ id: x.id, explicacion_es: 'Explicación mejor: el libro de muestra lo dice así (sample).', puntos_clave: ['Lo dice el libro.'],
+      pregunta_es: `Pregunta en español (muestra) ${x.id}`, respuesta_es: x.respuesta_en ? `Respuesta en español: ${(x.respuesta_en.match(/\d+/g) ?? []).join(' y ')} (muestra).` : null })) };
+  }
+  if (texto.startsWith(TAREAS_PROFUNDA.verificar_explicaciones)) return { items: d.items.map(i => (opciones.veredicto ? opciones.veredicto(i) : { id: i.original.id, ok: true, problema: null })) };
+  if (texto.startsWith(TAREAS_PROFUNDA.revision_final)) return { dudas: opciones.dudasFinal ? opciones.dudasFinal(d) : [] };
+  if (texto.startsWith(TAREAS_PROFUNDA.verificar)) return { dudas: typeof opciones.dudasProfunda === 'function' ? opciones.dudasProfunda(d) : opciones.dudasProfunda ?? [] };
   // 0.13.1: la pista oral (los pedidos traen «preguntas_del_libro»).
   if (texto.startsWith(TAREAS_ORAL.plan)) {
     const pag = [d.preguntas_del_libro[0].pagina];
@@ -193,10 +204,10 @@ export async function ponerChatGpt(base, { proveedor = 'openai', claudeBloqueada
   if (claudeBloqueada && secretoId) anotarPrueba(db, { id: secretoId, motivo: 'verificacion_identidad', ahora });
   return id;
 }
-export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null } = {}) {
+export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
-  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision };
+  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision, veredicto, dudasFinal };
   const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo, opciones) });
   const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base, propia: falso.base }, ahora: T0 });
   const { db, config } = base;

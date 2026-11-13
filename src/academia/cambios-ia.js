@@ -11,7 +11,7 @@ import { GASTO_SQL } from '../ia/gasto.js';
 
 export const AJUSTE_CAMBIOS = 'ia.cambios';
 export const MAX_CAMBIOS = 500;
-export const QUE_CAMBIO = Object.freeze(['materia_publicada', 'materia_en_revision', 'clase_reescrita', 'correccion', 'pedido_hecho', 'revision_errores', 'dibujo', 'publicada_por_ti']);
+export const QUE_CAMBIO = Object.freeze(['materia_publicada', 'materia_en_revision', 'clase_reescrita', 'correccion', 'pedido_hecho', 'revision_errores', 'dibujo', 'publicada_por_ti', 'revision_final', 'revision_arreglo']);
 const iso = ms => new Date(ms).toISOString();
 
 export function leerCambios(db) {

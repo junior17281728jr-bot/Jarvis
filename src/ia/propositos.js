@@ -88,6 +88,25 @@ const DIBUJO = Object.freeze({ ...FABRICA, tipo: 'imagen', rol: 'imagen', salida
 // Claude MIRA cada dibujo de ChatGPT (¿coincide con la tarjeta? ¿etiquetas o números mal? ¿algo engañoso?). Solo Claude
 // (Haiku 5.5): 8 000 bytes + la imagen (1 600) × US$0,125/M + 1 024 × US$0,50/M, ×1,1 ×1,05 ≈ US$0,002.
 const DIBUJO_REVISAR = Object.freeze({ ...FABRICA_HAIKU, proveedores: Object.freeze(['anthropic']), salidaMax: 1024, entradaMaxBytes: 12_000, entradaMinBytes: 500, respuestaMaxBytes: 32_768, maximoMicro: 6_000, tipicoMicro: 1_500, cachear: false });
+// 0.14.7: «Mejorar todo con Claude (lo mejor)»: la mejora profunda lee la lectura ENTERA del libro de cada tema (hasta
+// 95 000 bytes directo; más que eso, Haiku saca primero los pasajes) y la escribe y la verifica el modelo que elige el
+// dueño. EXCEPCIÓN pensada (test/reglas.test.js la conoce: profunda: true; solo la fábrica, ámbito general, nunca un
+// alumno; con su tope propio, US$90 por defecto con el botón, y dentro del 80 % del tope general):
+//  - «Más barato: Sonnet» (PROFUNDA_SONNET): escribe Sonnet 5.5, verifica Haiku 5.5. Lo peor de una vez escribiendo:
+//    125 200 bytes × US$2,50/M (escribir en caché) + 4 096 × US$10/M, ×1,1 (EE. UU.) ×1,05 ≈ US$0,409.
+//  - «Lo mejor: Opus» (PROFUNDA_OPUS y PROFUNDA_OPUS_VERIFICAR): escribe Opus 5.5 y verifica OTRA llamada de Opus 5.5,
+//    independiente (otro «sistema»: solo el libro y la clave; nunca ve cómo pensó el autor). Esfuerzo «medium» y salida
+//    de 8 192 tokens (Opus 5.5 piensa siempre y lo que piensa entra en max_tokens: con 4 096 se cortaría). Tiempo 150 s
+//    (el paso de la fábrica tiene 180 s). Solo Claude (proveedores: ['anthropic']): con «Lo mejor» nunca escribe otro.
+//    Lo peor de una vez: escribir 125 200 × US$5/M + 8 192 × US$20/M, ×1,155 ≈ US$0,912; verificar 160 200 × US$5/M +
+//    8 192 × US$20/M, ×1,155 ≈ US$1,115. Lo normal es mucho menos: la lectura va en la caché (lectura a US$0,20/M).
+//  - Los pasajes de una lectura muy larga (extracto): siempre Haiku 5.5 (copia TAL CUAL, barato).
+const PROFUNDA_SONNET = Object.freeze({ ...FABRICA, entradaMaxBytes: 125_000, maximoMicro: 410_000, tipicoMicro: 40_000, techoMicro: 600_000, profunda: true });
+const PROFUNDA_OPUS = Object.freeze({
+  ...FABRICA, modelo: 'claude-opus-5-5', proveedores: Object.freeze(['anthropic']), entradaMaxBytes: 125_000, salidaMax: 8192, esfuerzo: 'medium',
+  timeoutMs: 150_000, maximoMicro: 915_000, tipicoMicro: 90_000, techoMicro: 915_000, profunda: true,
+});
+const PROFUNDA_OPUS_VERIFICAR = Object.freeze({ ...PROFUNDA_OPUS, entradaMaxBytes: 160_000, maximoMicro: 1_120_000, tipicoMicro: 150_000, techoMicro: 1_120_000, rol: 'verificar' });
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -122,21 +141,28 @@ export const PROPOSITOS = Object.freeze({
   mejora_verificar: FABRICA_HAIKU,
   // 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js): reescribir con Sonnet, verificar con
   // Haiku, con su tope propio (no gasta el de la fábrica) y dentro del tope general.
-  profunda_escribir: FABRICA,
+  // 0.14.7: Sonnet escribe con la lectura entera; Opus («lo mejor») escribe y verifica; Haiku saca los pasajes.
+  profunda_escribir: PROFUNDA_SONNET,
   profunda_verificar: FABRICA_HAIKU,
+  profunda_extracto: FABRICA_HAIKU,
+  profunda_escribir_opus: PROFUNDA_OPUS,
+  profunda_verificar_opus: PROFUNDA_OPUS_VERIFICAR,
   // 0.14.2: «Pídele a la IA»: cada mensaje (chat_admin) y los trabajos que el dueño aprobó con «Hazlo» (reescribir un
   // tema y verificarlo contra el libro, o «Revisar errores»), con su tope propio. Y los «Dibujos con IA» con el suyo.
   chat_admin: CHAT,
-  chat_escribir: FABRICA,
+  // 0.14.7: los trabajos del chat usan el mismo modelo que eligió el dueño para la mejora profunda (Opus por defecto).
+  chat_escribir: PROFUNDA_SONNET,
   chat_verificar: FABRICA_HAIKU,
+  chat_escribir_opus: PROFUNDA_OPUS,
+  chat_verificar_opus: PROFUNDA_OPUS_VERIFICAR,
   dibujo_generar: DIBUJO,
   dibujo_revisar: DIBUJO_REVISAR,
 });
 export const PROPOSITOS_FABRICA = Object.freeze(['fabrica_escribir', 'fabrica_verificar']);
-export const PROPOSITOS_CHAT = Object.freeze(['chat_admin', 'chat_escribir', 'chat_verificar']);
+export const PROPOSITOS_CHAT = Object.freeze(['chat_admin', 'chat_escribir', 'chat_verificar', 'chat_escribir_opus', 'chat_verificar_opus']);
 export const PROPOSITOS_DIBUJO = Object.freeze(['dibujo_generar', 'dibujo_revisar']);
 export const PROPOSITOS_MEJORA = Object.freeze(['mejora_escribir', 'mejora_verificar']);
-export const PROPOSITOS_PROFUNDA = Object.freeze(['profunda_escribir', 'profunda_verificar']);
+export const PROPOSITOS_PROFUNDA = Object.freeze(['profunda_escribir', 'profunda_verificar', 'profunda_extracto', 'profunda_escribir_opus', 'profunda_verificar_opus']);
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las
 // pruebas gratis de las claves (secretos.prueba), las pausas (secretos.pausa_motivo) y las pantallas

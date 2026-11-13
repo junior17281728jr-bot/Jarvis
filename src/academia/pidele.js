@@ -16,7 +16,7 @@ import { MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { leerAjuste, guardarAjuste, activarPaquete } from './paquetes.js';
 import { carpetaFuentes, leerManifiesto } from './fuentes.js';
 import { REGLAS_VERIFICACION, ESQUEMAS, TAREAS, datos } from './fabrica-prompts.js';
-import { crearLector, publicado, trabajoDeTemas, temaPublicado, examenDe, P } from './fabrica-profunda.js';
+import { crearLector, publicado, trabajoDeTemas, temaPublicado, examenDe, MODOS_CHAT, verificarMaxDe, P } from './fabrica-profunda.js';
 import { puedeLlamar, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 import { GASTO_SQL } from '../ia/gasto.js';
@@ -105,16 +105,27 @@ export function materiasParaChat(db, config) {
 }
 
 // El costo estimado de un plan (con lo que suele costar cada paso).
-function estimarPlan(db, config, plan) {
+// 0.14.7: con el modelo que eligió el dueño para la mejora profunda (Opus por defecto): lo típico de cada paso.
+// Si Claude no se puede usar ahora (por ejemplo, con solo ChatGPT), los trabajos del chat siguen con el modelo «barato»
+// (que puede escribir ChatGPT, con la revisión cruzada de siempre): el chat nunca se queda esperando a Opus.
+function propsChat(cfg, db = null, config = null, ahora = Date.now()) {
+  const props = MODOS_CHAT[cfg?.profunda?.modelo] ?? MODOS_CHAT.opus;
+  if (props !== MODOS_CHAT.opus || !db) return props;
+  const cfgIa = leerConfigIa(db);
+  return elegirProveedor(db, config, cfgIa, ahora, modelosDe(PROPOSITOS[props.escribir], cfgIa), PROPOSITOS[props.escribir]).ok ? props : MODOS_CHAT.sonnet;
+}
+function estimarPlan(db, config, plan, props = MODOS_CHAT.opus) {
+  const escribirMicro = PROPOSITOS[props.escribir].tipicoMicro;
+  const verificarMicro = PROPOSITOS[props.verificar].tipicoMicro;
   if (plan.tipo === 'revisar_errores') {
     const pub = publicado(db, config, plan.materia);
     const n = plan.tema ? 1 : pub?.orden.length ?? 1;
-    return { pasos: n, micro: n * P.costoVerificarMicro * 2 };
+    return { pasos: n, micro: n * verificarMicro };
   }
   const tp = temaPublicado(db, config, plan.materia, plan.tema);
   const tarjetas = Math.min(12, Math.max(3, (tp?.t?.secciones ?? []).length));
   const escribir = 2 + Math.ceil(tarjetas / P.tarjetasPorPaso);
-  return { pasos: escribir + 1, micro: escribir * P.costoEscribirMicro + P.costoVerificarMicro };
+  return { pasos: escribir + 2, micro: escribir * escribirMicro + 2 * verificarMicro };
 }
 
 // ¿El plan que propuso la IA es uno que se puede hacer? (tipo de la lista, materia y tema que existen, nada prohibido)
@@ -237,7 +248,7 @@ async function responderMensaje(ctx, { ahora, cfg, chat, mio }) {
   if (!rechazo && j.plan) {
     const rev = revisarPlan(db, config, j.plan, materiasParaChat(db, config));
     if (rev.ok) {
-      const est = estimarPlan(db, config, rev.plan);
+      const est = estimarPlan(db, config, rev.plan, propsChat(cfg, db, config, ahora));
       const pub = publicado(db, config, rev.plan.materia);
       trabajo = { id: id12(`t|${mio.id}|${iso(ahora)}`), ...rev.plan, estado: 'propuesto', estimadoMicro: est.micro, pasosEstimados: est.pasos, base: pub?.base ?? null, mensaje: mio.id, creadoEn: iso(ahora), hechos: 0 };
     } else if (rev.motivo.startsWith('prohibido:')) rechazo = rev.motivo.slice('prohibido:'.length);
@@ -274,7 +285,8 @@ async function pasoRevisar(ctx, { ahora, cfg, j }) {
   }
   const examen = examenDe(tp.t, tp.pub, tp.c);
   const clave = tp.c.oral ? examen.preguntas_del_libro.map(x => ({ n: x.n, respuesta_en: x.respuesta_en })) : examen.test_guide.map(q => ({ id: q.id, correcta: q.correcta }));
-  const sistema = `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA:\n${datos(tp.c.texto.slice(0, T.verificarBytes))}`;
+  const props = propsChat(cfg, db, config, ahora);
+  const sistema = `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA:\n${datos(tp.c.texto.slice(0, verificarMaxDe(props)))}`;
   const preguntas = tp.c.oral
     ? (tp.t.libro_qa ?? []).map(x => ({ n: x.n, explicacion_es: x.explicacion_es ?? null, puntos_clave: x.puntos_clave ?? null }))
     : (tp.t.preguntas ?? []).map(id => tp.pub.preguntas.get(id)).filter(Boolean).map(q => ({
@@ -283,13 +295,13 @@ async function pasoRevisar(ctx, { ahora, cfg, j }) {
   const tarjetas = tp.viejas.map(({ s }) => ({ titulo: s.titulo, puntos: s.puntos ?? null, texto: s.tipo === 'tarjeta' ? null : s.texto ?? null, recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null, visual: s.visual?.parametros ?? null }));
   const texto = `${TAREAS.verificar}\n${datos({ pedido_del_dueno: j.instruccion, clave_test_guide: clave, contenido: { tarjetas, preguntas } })}`;
   const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(ESQUEMAS.verificar));
-  const puede = puedeLlamar(db, config, { proposito: 'chat_verificar', bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db) });
+  const puede = puedeLlamar(db, config, { proposito: props.verificar, bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db) });
   if (!puede.ok) {
     if (puede.motivo === 'demasiado_largo') { await ctx.escribir(() => cambiarTrabajo(db, j.id, { estado: 'trabajando', informe: [...informe, { tema: pendiente.id, titulo: pendiente.titulo, demasiadoLargo: true, dudas: [] }] })); return { trabajo: true, seguir: true }; }
     await ctx.escribir(() => cambiarTrabajo(db, j.id, { espera: puede.motivo }));
     return { trabajo: true, seguir: false, motivo: puede.motivo };
   }
-  const r = await ctx.ia.pedir({ proposito: 'chat_verificar', paso: `c:${j.id}:${id12(pendiente.id)}`, sistema, texto, esquema: ESQUEMAS.verificar });
+  const r = await ctx.ia.pedir({ proposito: props.verificar, paso: `c:${j.id}:${id12(pendiente.id)}`, sistema, texto, esquema: ESQUEMAS.verificar });
   if (!r.usada && r.motivo !== 'ya_cobrada') { await ctx.escribir(() => cambiarTrabajo(db, j.id, { espera: r.motivo })); return { trabajo: true, seguir: false, motivo: r.motivo }; }
   const dudas = (r.json?.dudas ?? []).slice(0, 40).map(d => ({ donde: String(d.donde).slice(0, 200), problema: String(d.problema).slice(0, 400), gravedad: d.gravedad }));
   await ctx.escribir(() => cambiarTrabajo(db, j.id, { estado: 'trabajando', espera: null, hechos: (j.hechos ?? 0) + 1, informe: [...informe, { tema: pendiente.id, titulo: pendiente.titulo, dudas, proveedor: r.proveedor ?? null }] }));
@@ -299,7 +311,7 @@ async function pasoRevisar(ctx, { ahora, cfg, j }) {
 async function pasoReescribir(ctx, { ahora, cfg, j }) {
   const { db } = ctx;
   const op = {
-    prefijo: `chat.t.${j.id}`, propositos: { profunda_escribir: 'chat_escribir', profunda_verificar: 'chat_verificar' },
+    prefijo: `chat.t.${j.id}`, props: propsChat(cfg, db, ctx.config, ahora),
     topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro, pasoPrefijo: `c:${j.id}:`, ajusteEspera: `chat.t.${j.id}.espera`, base: j.base, que: 'pedido_hecho', edicion: 'pedido',
     anotarPaso: dbx => { const x = leerTrabajos(dbx).find(y => y.id === j.id); cambiarTrabajo(dbx, j.id, { estado: 'trabajando', espera: null, hechos: (x?.hechos ?? 0) + 1 }); },
     guardarEstado: (dbx, valor) => cambiarTrabajo(dbx, j.id, {

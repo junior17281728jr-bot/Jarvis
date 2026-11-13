@@ -24,10 +24,10 @@
       "confirmado": true,
       "fuente": "https://platform.claude.com/docs/en/about-claude/pricing",
       "fuenteGeo": "https://platform.claude.com/docs/en/manage-claude/data-residency",
-      "revisadoEl": "2026-11-05",
+      "revisadoEl": "2026-11-13",
       "multiplicadoresGeo": { "global": "1", "us": "1.1" },
       "tramos": [
-        { "hastaEntrada": null, "entrada": "2.00", "cacheLectura": "0.20", "cacheEscritura": "2.50", "salida": "10.00" }
+        { "hastaEntrada": null, "entrada": "2.00", "cacheLectura": "0.10", "cacheEscritura": "2.50", "salida": "10.00" }
       ]
     },
     {
@@ -37,7 +37,7 @@
       "confirmado": true,
       "fuente": "https://platform.claude.com/docs/en/about-claude/pricing",
       "fuenteGeo": "https://platform.claude.com/docs/en/manage-claude/data-residency",
-      "revisadoEl": "2026-11-05",
+      "revisadoEl": "2026-11-13",
       "multiplicadoresGeo": { "global": "1", "us": "1.1" },
       "tramos": [
         { "hastaEntrada": null, "entrada": "4.00", "cacheLectura": "0.20", "cacheEscritura": "5.00", "salida": "20.00" }

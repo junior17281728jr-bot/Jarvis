@@ -4301,5 +4301,10 @@
   "notas.comparar.marcar": "Marcar a {nombre} para comparar",
   "notas.comparar.titulo": "Comparar notas",
   "notas.comparar.linea": "Las notas lado a lado, materia por materia y tema por tema. A cada alumno se le marca su tema más débil.",
-  "notas.comparar.faltan": "Elige al menos 2 alumnos en Notas para compararlos."
+  "notas.comparar.faltan": "Elige al menos 2 alumnos en Notas para compararlos.",
+  "ia.proposito.profunda_extracto": "Mejora profunda: sacar los pasajes del libro (Haiku)",
+  "ia.proposito.profunda_escribir_opus": "Mejora profunda: reescribir con Opus (lo mejor)",
+  "ia.proposito.profunda_verificar_opus": "Mejora profunda: verificar con Opus (otra pasada)",
+  "ia.proposito.chat_escribir_opus": "Pídele a la IA: reescribir con Opus",
+  "ia.proposito.chat_verificar_opus": "Pídele a la IA: verificar con Opus"
 }

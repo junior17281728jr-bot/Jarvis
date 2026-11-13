@@ -46,6 +46,7 @@ export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_
   profunda: Object.freeze({ activa: false, topeMicro: 40_000_000 }),
   // 0.14.2: «Pídele a la IA» (el chat del dueño y sus trabajos) y los «Dibujos con IA» (APAGADOS), cada uno con su tope.
   chat: Object.freeze({ topeMicro: 10_000_000 }), dibujos: Object.freeze({ activa: false, topeMicro: 5_000_000 }) });
+export const MODELOS_PROFUNDA = Object.freeze(['opus', 'sonnet']);
 export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 100_000_000, chatMaxMicro: 50_000_000, dibujosMaxMicro: 50_000_000 });
 export const T = Object.freeze({
   lecturaDirectaBytes: 60_000, // más que esto: primero Haiku saca los pasajes (extracto)
@@ -74,7 +75,15 @@ export function leerConfigFabrica(db) {
     chat: { topeMicro: entre(ch.topeMicro, LIMITES_FABRICA.chatMaxMicro, CONFIG_FABRICA.chat.topeMicro) },
     dibujos: { activa: di.activa === true, topeMicro: entre(di.topeMicro, LIMITES_FABRICA.dibujosMaxMicro, CONFIG_FABRICA.dibujos.topeMicro) },
     mejora: { activa: m.activa !== false, topeMesMicro: Number.isSafeInteger(m.topeMesMicro) && m.topeMesMicro >= 0 && m.topeMesMicro <= LIMITES_FABRICA.mejoraMaxMicro ? m.topeMesMicro : CONFIG_FABRICA.mejora.topeMesMicro },
-    profunda: { activa: pr.activa === true, topeMicro: Number.isSafeInteger(pr.topeMicro) && pr.topeMicro >= 0 && pr.topeMicro <= LIMITES_FABRICA.profundaMaxMicro ? pr.topeMicro : CONFIG_FABRICA.profunda.topeMicro },
+    profunda: {
+      activa: pr.activa === true, topeMicro: Number.isSafeInteger(pr.topeMicro) && pr.topeMicro >= 0 && pr.topeMicro <= LIMITES_FABRICA.profundaMaxMicro ? pr.topeMicro : CONFIG_FABRICA.profunda.topeMicro,
+      // 0.14.7: el modelo («opus» = lo mejor, por defecto; «sonnet» = más barato). Una mejora profunda que ya estaba
+      // encendida antes de la 0.14.7 (sin modelo guardado) sigue con Sonnet: nunca se sube el costo sin que lo pida el dueño.
+      modelo: MODELOS_PROFUNDA.includes(pr.modelo) ? pr.modelo : pr.activa === true ? 'sonnet' : 'opus',
+      // 0.14.7: la ronda (1 = la de la 0.13.9). «Mejorar todo con Claude» empieza una ronda nueva cuando la de ahora ya no
+      // tiene nada por hacer: sus estados y pasos van con su número (lo de antes queda guardado, nunca se borra).
+      ronda: Number.isSafeInteger(pr.ronda) && pr.ronda >= 1 && pr.ronda <= 99 ? pr.ronda : 1,
+    },
   };
 }
 export function guardarConfigFabrica(db, cambios) {

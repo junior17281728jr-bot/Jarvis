@@ -4301,5 +4301,10 @@
   "notas.comparar.marcar": "Tick {nombre} to compare",
   "notas.comparar.titulo": "Compare grades",
   "notas.comparar.linea": "Grades side by side, subject by subject and topic by topic. Each student's weakest topic is marked.",
-  "notas.comparar.faltan": "Pick at least 2 students in Grades to compare them."
+  "notas.comparar.faltan": "Pick at least 2 students in Grades to compare them.",
+  "ia.proposito.profunda_extracto": "Deep improvement: pull the book passages (Haiku)",
+  "ia.proposito.profunda_escribir_opus": "Deep improvement: rewrite with Opus (the best)",
+  "ia.proposito.profunda_verificar_opus": "Deep improvement: verify with Opus (second pass)",
+  "ia.proposito.chat_escribir_opus": "Ask the AI: rewrite with Opus",
+  "ia.proposito.chat_verificar_opus": "Ask the AI: verify with Opus"
 }

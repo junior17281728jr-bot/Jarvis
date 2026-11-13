@@ -375,7 +375,12 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     assert.ok(Number.isSafeInteger(p.fase) && p.fase >= 1 && p.fase <= FASE_ACTUAL, `${id}: fase`);
     assert.ok(['espacio', 'proyecto', 'general'].includes(p.ambito), `${id}: ámbito`);
     assert.equal(typeof p.cuentaProyecto, 'boolean');
-    assert.ok(Number.isSafeInteger(p.salidaMax) && p.salidaMax >= 16 && p.salidaMax <= 4096, `${id}: salidaMax`);
+    // 0.14.7: la ÚNICA excepción de tamaño es la mejora profunda («profunda: true», solo la fábrica): Opus 5.5 piensa siempre
+    // y lo que piensa entra en max_tokens (8 192); lee la lectura entera (hasta 160 000 bytes al verificar); por vez puede
+    // apartar hasta US$1,12 (src/ia/propositos.js, PROFUNDA_OPUS*) y su llamada dura hasta 150 s (el paso tiene 180 s).
+    const profunda = p.profunda === true;
+    if (profunda) assert.ok(p.tarea === 'academia.fabrica' && p.ambito === 'general', `${id}: solo la fábrica tiene la excepción profunda`);
+    assert.ok(Number.isSafeInteger(p.salidaMax) && p.salidaMax >= 16 && p.salidaMax <= (profunda ? 8192 : 4096), `${id}: salidaMax`);
     assert.ok(Number.isSafeInteger(p.entradaMaxBytes) && p.entradaMaxBytes > 0 && p.entradaMaxBytes <= 200_000, `${id}: entradaMaxBytes`);
     // Ronda 1 de revisión: lo que se lee de la respuesta tiene su tope (cuida los 120 MB del trabajador).
     assert.ok(Number.isSafeInteger(p.respuestaMaxBytes) && p.respuestaMaxBytes >= 16_384 && p.respuestaMaxBytes <= 524_288, `${id}: respuestaMaxBytes`);
@@ -384,11 +389,11 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     // 0.13.0: la ÚNICA excepción es la fábrica de materias (escribir con la lectura del tema entera, ≤ US$0,26 por vez): la
     // paga el dueño con su tope propio (ámbito general), nunca la pide un alumno (src/ia/propositos.js, FABRICA).
     const fabrica = p.tarea === 'academia.fabrica' && p.ambito === 'general';
-    assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= (fabrica ? 260_000 : 100_000), `${id}: maximoMicro (US$0,10 como mucho por vez)`);
+    assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= (profunda ? 1_200_000 : fabrica ? 260_000 : 100_000), `${id}: maximoMicro (US$0,10 como mucho por vez)`);
     // 0.14.2: con otro precio que el de Claude (ChatGPT o la API propia), el techo de una vez: US$0,50 la fábrica, US$0,15 los demás.
-    if (p.techoMicro != null) assert.ok(Number.isSafeInteger(p.techoMicro) && p.techoMicro >= p.maximoMicro && p.techoMicro <= (fabrica ? 500_000 : 150_000), `${id}: techoMicro`);
+    if (p.techoMicro != null) assert.ok(Number.isSafeInteger(p.techoMicro) && p.techoMicro >= p.maximoMicro && p.techoMicro <= (profunda ? 1_500_000 : fabrica ? 500_000 : 150_000), `${id}: techoMicro`);
     if (p.ambito === 'general') assert.equal(p.tarea, 'academia.fabrica', `${id}: solo la fábrica gasta sin cuenta`);
-    assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= 60_000, `${id}: timeoutMs`);
+    assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= (profunda ? 150_000 : 60_000), `${id}: timeoutMs`);
     assert.ok(['low', 'medium', 'high'].includes(p.esfuerzo), `${id}: esfuerzo`);
     assert.ok(['motor_propio', 'esperar'].includes(p.alFaltar), `${id}: alFaltar`);
     assert.match(p.tarea, /^[a-z]+\.[a-z_]+$/, `${id}: tarea`);
