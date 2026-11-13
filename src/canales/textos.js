@@ -124,6 +124,10 @@ function valoresDe(aviso, idioma) {
     if (Number.isSafeInteger(d?.dias)) v.dias = d.dias;
     if (Number.isSafeInteger(d?.n)) v.n = d.n;
   }
+  if (/^fabrica_/.test(partes[0]) && /^[a-z_]{2,30}$/.test(partes[1] ?? '')) {
+    v.materia = existeFrase(`acad.materia.${partes[1]}`) ? frase(idioma, `acad.materia.${partes[1]}`) : partes[1];
+    v.version = (partes[2] ?? '').replace(/^[gm]/, '');
+  }
   if (partes[0] === 'cuenta_compartida') {
     v.alumno = typeof d?.alumno === 'string' ? d.alumno.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 60) || '?' : '?';
     v.veces = Number.isSafeInteger(d?.veces) ? d.veces : '?';

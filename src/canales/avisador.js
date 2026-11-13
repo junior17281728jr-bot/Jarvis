@@ -66,7 +66,9 @@ export const RUTA_AVISOS = Object.freeze({
     // 0.12.3: un cambio delicado del administrador y un comprobante de pago nuevo.
     'cambio_admin', 'pago_recibido',
     // 0.12.8: una cuenta de alumno abierta en otro dispositivo más de 3 veces en un día (quizás la comparte).
-    'cuenta_compartida']),
+    'cuenta_compartida',
+    // 0.13.0: la fábrica de materias publicó una materia, una espera revisión o la mejora continua publicó.
+    'fabrica_publicada', 'fabrica_revision', 'fabrica_mejora']),
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».
 });
 

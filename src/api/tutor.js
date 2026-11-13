@@ -3,6 +3,7 @@
 // llama a la IA; pone en la fila la tarea 'academia.instructor' como los demás usos del instructor.
 // Regla de siempre (N): sin IA para ese alumno, NADA de IA: las rutas devuelven ia: null / ia: false y la pantalla solo
 // muestra lo gratis («Modo básico»). Nunca va al proveedor el nombre del alumno.
+import { anotarEvidenciaTarjeta } from '../academia/fabrica-mejora.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { camino } from '../academia/progreso.js';
 import { modeloAlumno, respuestaDelAlumno, reexplicarSinIa } from '../academia/instructor.js';
@@ -134,6 +135,8 @@ export function registrarRutasTutor(rutas, h) {
       reexplicacion: vistaSecciones(p, t.reexplicacion, t.paquete).slice(0, 3).map(x => ({ titulo: x.titulo, texto: x.texto ?? (x.puntos ?? []).join('\n') })),
     };
     anotarSenal(db, usuario.id, tipo === 'profundizar' ? 'profundizar' : 'mejor');
+    // 0.13.0: la evidencia de la «Mejora continua» (cuántos alumnos distintos no entendieron ESTA tarjeta; solo números).
+    if (tipo === 'mejor' && typeof s.titulo === 'string') anotarEvidenciaTarjeta(db, { materia, tema, titulo: s.titulo, usuarioId: usuario.id });
     const instructor = conIa(db, req, usuario, ahora);
     let ia = null;
     if (datos?.ia === true && instructor.modo === 'ia') {

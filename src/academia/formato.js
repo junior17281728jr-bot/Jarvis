@@ -4,13 +4,22 @@
 // Test Guide se guarda y se muestra tal cual (sin trim, sin normalizar).
 
 import { normalizar, retosFaciles } from './reto-calidad.js';
+import { revisarDiagrama } from './diagramas.js';
 
 // Las 11 materias de ENALAS (piloto privado), en el orden fijo de la escuela. Sus nombres están en public/i18n.
 export const MATERIAS = Object.freeze([
   'factores_humanos', 'sistemas', 'aerodinamica', 'ambiente_vuelo', 'rad', 'poh',
   'comunicacion', 'meteorologia', 'rendimiento', 'navegacion', 'sms',
 ]);
-export const ORIGENES = Object.freeze(['test_guide', 'poh']);
+// 0.13.0: la pista «Preparándote para el examen oral» (pista: 'oral'): sus propias materias (nunca se mezclan con las 11) y
+// sus preguntas de opción múltiple creadas desde la Guía del examen oral (origen 'oral', cada una con su fuente_pregunta:
+// la pregunta y la respuesta del libro TAL CUAL, la página y cómo se armó). Las preguntas y respuestas del libro van tal
+// cual en cada tema («libro_qa»).
+export const MATERIAS_ORAL = Object.freeze([
+  'oral_requisitos', 'oral_aeronavegabilidad', 'oral_meteorologia', 'oral_rendimiento', 'oral_sistemas', 'oral_travesia', 'oral_nocturno', 'oral_factores',
+]);
+export const PISTAS = Object.freeze(['test_guide', 'oral']);
+export const ORIGENES = Object.freeze(['test_guide', 'poh', 'oral']);
 export const FORMATO = 'academia-enalas';
 export const VERSION_FORMATO = 1;
 
@@ -101,6 +110,9 @@ export function revisarPaquete(p) {
   texto(p.nombre, 'nombre', { max: LIMITES.corto });
   texto(p.edicion, 'edicion', { obligatorio: false, max: LIMITES.corto });
   if (p.muestra != null && typeof p.muestra !== 'boolean') mal('muestra', 'no_es_si_o_no');
+  if (p.pista != null && !PISTAS.includes(p.pista)) mal('pista', 'pista_desconocida');
+  const oral = p.pista === 'oral';
+  const listaMaterias = oral ? MATERIAS_ORAL : MATERIAS;
 
   // Libros (las fuentes que se citan).
   const libros = new Set();
@@ -130,6 +142,8 @@ export function revisarPaquete(p) {
     if (typeof v.tipo !== 'string' || !TIPO_VISUAL.test(v.tipo)) mal(`${ruta}.tipo`, 'tipo_desconocido');
     if (v.parametros != null && !esObjeto(v.parametros)) mal(`${ruta}.parametros`, 'no_es_objeto');
     else if (v.parametros != null && JSON.stringify(v.parametros).length > LIMITES.texto) mal(`${ruta}.parametros`, 'muy_largo');
+    // 0.13.0: los dibujos con datos (src/academia/diagramas.js) tienen que traer sus datos bien.
+    else for (const motivo of revisarDiagrama(v.tipo, v.parametros).slice(0, 3)) mal(`${ruta}.parametros.${motivo}`, 'diagrama_no_valido');
   };
   const palabrasIngles = (lista, ruta, obligatorios) => {
     if (lista == null) return;
@@ -255,13 +269,22 @@ export function revisarPaquete(p) {
     const r = `preguntas[${i}]`;
     if (!esObjeto(q)) return mal(r, 'no_es_objeto');
     if (id(q.id, `${r}.id`)) { if (preguntas.has(q.id)) mal(`${r}.id`, 'repetido'); preguntas.set(q.id, q); }
-    if (!ORIGENES.includes(q.origen)) mal(`${r}.origen`, 'origen_no_valido');
+    if (!ORIGENES.includes(q.origen) || (q.origen === 'oral') !== oral) mal(`${r}.origen`, 'origen_no_valido');
+    if (q.origen === 'oral') {
+      const f = q.fuente_pregunta;
+      if (!esObjeto(f)) mal(`${r}.fuente_pregunta`, 'falta');
+      else {
+        if (!libros.has(f.libro)) mal(`${r}.fuente_pregunta.libro`, 'libro_desconocido');
+        texto(f.pagina, `${r}.fuente_pregunta.pagina`, { max: 40 });
+        for (const campo of ['pregunta_en', 'respuesta_en', 'como']) texto(f[campo], `${r}.fuente_pregunta.${campo}`);
+      }
+    }
     const o = q.original;
     if (!esObjeto(o)) return mal(`${r}.original`, 'falta');
     texto(o.numero, `${r}.original.numero`, { obligatorio: q.origen === 'test_guide', max: 40 });
     texto(o.seccion, `${r}.original.seccion`, { obligatorio: false, max: LIMITES.corto });
     texto(o.enunciado, `${r}.original.enunciado`);
-    texto(o.explicacion, `${r}.original.explicacion`, { obligatorio: q.origen === 'test_guide' });
+    texto(o.explicacion, `${r}.original.explicacion`, { obligatorio: q.origen === 'test_guide' || q.origen === 'oral' });
     texto(o.pagina, `${r}.original.pagina`, { obligatorio: false, max: 40 });
     const letras = [];
     if (!Array.isArray(o.opciones) || o.opciones.length < 2 || o.opciones.length > 6) mal(`${r}.original.opciones`, 'opciones_no_validas');
@@ -464,7 +487,7 @@ export function revisarPaquete(p) {
   else p.materias.forEach((m, i) => {
     const r = `materias[${i}]`;
     if (!esObjeto(m)) return mal(r, 'no_es_objeto');
-    const lugar = MATERIAS.indexOf(m.id);
+    const lugar = listaMaterias.indexOf(m.id);
     if (lugar < 0) mal(`${r}.id`, 'materia_desconocida');
     else if (materiasVistas.has(m.id)) mal(`${r}.id`, 'repetido');
     else if (lugar < ultima) mal(`${r}.id`, 'fuera_de_orden');
@@ -482,6 +505,18 @@ export function revisarPaquete(p) {
       secciones(t.secciones, `${rt}.secciones`, { obligatorio: true });
       secciones(t.reexplicacion, `${rt}.reexplicacion`, { obligatorio: false });
       audio(t.audio, `${rt}.audio`);
+      // 0.13.0 (pista oral): las preguntas y respuestas de la Guía del examen oral, TAL CUAL (inglés), con su página.
+      if (t.libro_qa != null) {
+        if (!oral || !Array.isArray(t.libro_qa) || t.libro_qa.length > 300) mal(`${rt}.libro_qa`, 'no_es_lista');
+        else t.libro_qa.forEach((x, k) => {
+          const rx = `${rt}.libro_qa[${k}]`;
+          if (!esObjeto(x)) return mal(rx, 'no_es_objeto');
+          texto(x.pregunta_en, `${rx}.pregunta_en`);
+          texto(x.respuesta_en, `${rx}.respuesta_en`, { obligatorio: false });
+          texto(x.pagina, `${rx}.pagina`, { max: 40 });
+          texto(x.explicacion_es, `${rx}.explicacion_es`, { obligatorio: false });
+        });
+      }
       temas += 1;
       if (!Array.isArray(t.preguntas)) return mal(`${rt}.preguntas`, 'falta');
       t.preguntas.forEach((qid, k) => {
@@ -502,7 +537,7 @@ export function revisarPaquete(p) {
   return {
     ok,
     errores,
-    resumen: ok ? { nombre: p.nombre, edicion: p.edicion ?? null, muestra: p.muestra === true, materias: materiasVistas.size, temas, preguntas: preguntas.size, figuras: figuras.size,
+    resumen: ok ? { nombre: p.nombre, edicion: p.edicion ?? null, muestra: p.muestra === true, ...(oral ? { pista: 'oral' } : {}), materias: materiasVistas.size, temas, preguntas: preguntas.size, figuras: figuras.size,
       // 0.12.0: solo si el paquete los trae (el resumen de uno de antes queda igual).
       ...(paginas.size ? { paginas: paginas.size } : {}), ...(preguntasExtra || tarjetasExtra ? { extra: { preguntas: preguntasExtra, tarjetas: tarjetasExtra } } : {}) } : null,
     figuras: ok ? [...figuras.values()] : [],

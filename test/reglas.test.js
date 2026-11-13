@@ -376,7 +376,11 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     assert.ok(Number.isSafeInteger(p.respuestaMaxBytes) && p.respuestaMaxBytes >= 16_384 && p.respuestaMaxBytes <= 524_288, `${id}: respuestaMaxBytes`);
     // 0.12.4: US$0,10 como mucho por vez (antes 0,05): la entrada del instructor subió a 16 KB y la salida a 4 096 tokens;
     // con Sonnet 5.5 lo peor de un uso es ~US$0,095 (con Haiku 5.5, ~US$0,005). Los topes del mes no cambian.
-    assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= 100_000, `${id}: maximoMicro (US$0,10 como mucho por vez)`);
+    // 0.13.0: la ÚNICA excepción es la fábrica de materias (escribir con la lectura del tema entera, ≤ US$0,26 por vez): la
+    // paga el dueño con su tope propio (ámbito general), nunca la pide un alumno (src/ia/propositos.js, FABRICA).
+    const fabrica = p.tarea === 'academia.fabrica' && p.ambito === 'general';
+    assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= (fabrica ? 260_000 : 100_000), `${id}: maximoMicro (US$0,10 como mucho por vez)`);
+    if (p.ambito === 'general') assert.equal(p.tarea, 'academia.fabrica', `${id}: solo la fábrica gasta sin cuenta`);
     assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= 60_000, `${id}: timeoutMs`);
     assert.ok(['low', 'medium', 'high'].includes(p.esfuerzo), `${id}: esfuerzo`);
     assert.ok(['motor_propio', 'esperar'].includes(p.alFaltar), `${id}: alFaltar`);

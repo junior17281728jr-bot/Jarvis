@@ -83,7 +83,7 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
     let stop = 'end_turn';
     if (escena.tipo === 'refusal') stop = 'refusal';
     else if (escena.tipo === 'max_tokens') stop = 'max_tokens';
-    else content.push({ type: 'text', text: escena.texto ?? JSON.stringify(escena.json ?? respuestaJson) });
+    else content.push({ type: 'text', text: escena.texto ?? JSON.stringify(escena.json ?? (typeof respuestaJson === "function" ? respuestaJson(cuerpoPedido) : respuestaJson)) });
     const cuerpo = { id: `msg_falso_${numero}`, type: 'message', role: 'assistant', model: cuerpoPedido?.model ?? 'claude-haiku-5-5', content, stop_reason: stop, stop_details: null, usage: uso };
     if (escena.tipo === 'sin_uso') delete cuerpo.usage;
     return cuerpo;

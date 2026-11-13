@@ -58,6 +58,21 @@ const PREPARAR = Object.freeze({
 // al alumno, como una explicación. Lo peor con Haiku 5.5: 16 384 bytes (~4 100 tokens) × US$0.125/M + 4 096 × US$0.50/M,
 // ×1,1 ×1,05 ≈ US$0.003 (máximo 8 000 µUSD); lo normal ≈ US$0.0012.
 const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro: 1_200, modelo: 'claude-haiku-5-5', cachear: true });
+// 0.13.0: la «Fábrica de materias» (src/academia/fabrica.js) y su «Mejora continua». Los paga el dueño (ámbito
+// 'general': ninguna cuenta), dentro de su TOPE PROPIO (por defecto US$20 la fábrica y US$2 al mes la mejora, editables)
+// y del tope general del mes. Nunca los pide un alumno. Escribir: siempre Claude Sonnet 5.5 con el sistema (reglas + la
+// lectura del libro del tema) marcado para la caché; verificar y sacar pasajes: siempre Claude Haiku 5.5.
+// EXCEPCIÓN pensada (test/reglas.test.js la conoce): escribir puede apartar hasta US$0,26 por vez (la regla general es
+// US$0,10), porque la lectura del tema entra entera (hasta 72 000 bytes). La reserva cuenta cada byte como un token al
+// precio de escribir en caché (US$2,50/M) + 4 096 tokens de salida (US$10/M), ×1,1 (EE. UU.) ×1,05: ≈ US$0,255. Lo normal,
+// con la caché: ≈ US$0,02–0,04. Salida y tiempo como todos (4 096 tokens, 60 s): cada paso pide poco (3 tarjetas, 3 preguntas).
+const FABRICA = Object.freeze({
+  fase: 1, ambito: 'general', cuentaProyecto: false, salidaMax: 4096, entradaMaxBytes: 72_000, entradaMinBytes: 4_000, respuestaMaxBytes: 131_072,
+  maximoMicro: 260_000, tipicoMicro: 30_000, esfuerzo: 'low', timeoutMs: 60_000, alFaltar: 'esperar', tarea: 'academia.fabrica',
+  modelo: 'claude-sonnet-5-5', cachear: true,
+});
+// Haiku 5.5: lo peor, 190 000 bytes × US$0,125/M + 4 096 × US$0,50/M, ×1,1 ×1,05 ≈ US$0,030.
+const FABRICA_HAIKU = Object.freeze({ ...FABRICA, entradaMaxBytes: 190_000, maximoMicro: 32_000, tipicoMicro: 5_000, modelo: 'claude-haiku-5-5' });
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -85,7 +100,14 @@ export const PROPOSITOS = Object.freeze({
   instructor_tarjeta: CLASE_IA,
   instructor_profundizar: CLASE_IA,
   instructor_personal: CLASE_IA,
+  // 0.13.0: la fábrica de materias y su mejora continua (ver FABRICA).
+  fabrica_escribir: FABRICA,
+  fabrica_verificar: FABRICA_HAIKU,
+  mejora_escribir: FABRICA,
+  mejora_verificar: FABRICA_HAIKU,
 });
+export const PROPOSITOS_FABRICA = Object.freeze(['fabrica_escribir', 'fabrica_verificar']);
+export const PROPOSITOS_MEJORA = Object.freeze(['mejora_escribir', 'mejora_verificar']);
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las
 // pruebas gratis de las claves (secretos.prueba), las pausas (secretos.pausa_motivo) y las pantallas

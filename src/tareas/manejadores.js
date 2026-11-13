@@ -29,6 +29,7 @@ import { vigilarIA } from '../ia/presupuesto.js';
 import { MANEJADOR_COPIAS } from '../copias/hacer.js';
 import { MANEJADOR_DRIVE } from '../academia/sincronizar.js';
 import { MANEJADOR_INSTRUCTOR } from '../academia/instructor-tarea.js';
+import { MANEJADOR_FABRICA } from '../academia/fabrica.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 
@@ -133,4 +134,5 @@ export const MANEJADORES = Object.freeze({
   'copias.hacer': MANEJADOR_COPIAS,
   'academia.drive': MANEJADOR_DRIVE,
   'academia.instructor': MANEJADOR_INSTRUCTOR,
+  'academia.fabrica': MANEJADOR_FABRICA,
 });

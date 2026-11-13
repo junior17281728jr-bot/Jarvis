@@ -50,13 +50,17 @@ export const AVISO_HECHO = /^(?:cambio_admin:[a-z_]{1,40}:[1-9]\d{0,15}|pago_rec
 // 0.12.8: un alumno cuya cuenta se abrió en otro dispositivo más de 3 veces en un día ('cuenta_compartida:<id>:<día>').
 export const AVISO_CUENTA_COMPARTIDA = /^cuenta_compartida:[1-9]\d{0,9}:\d{4}-\d{2}-\d{2}$/;
 
+// 0.13.0: la fábrica de materias publicó una materia ('fabrica_publicada:<materia>:<versión>'), una espera revisión
+// ('fabrica_revision:<materia>:g<generación>' o ':m<versión>') o la mejora continua publicó ('fabrica_mejora:<materia>:<versión>').
+export const AVISO_FABRICA = /^fabrica_(?:publicada:[a-z_]{2,30}:[1-9]\d{0,9}|revision:[a-z_]{2,30}:[gm][1-9]\d{0,9}|mejora:[a-z_]{2,30}:[1-9]\d{0,9})$/;
+
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
 
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
   return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_RESUMEN.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
-    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto) || AVISO_CUENTA_COMPARTIDA.test(texto);
+    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto) || AVISO_CUENTA_COMPARTIDA.test(texto) || AVISO_FABRICA.test(texto);
 }
 
 function textoDetalle(detalle) {

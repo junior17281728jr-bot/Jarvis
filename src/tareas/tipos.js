@@ -51,6 +51,11 @@ export const TIPOS = Object.freeze({
   // que armó el servidor web (el trabajador nunca abre el paquete). «repetible»: la llamada se anota por tarea y paso,
   // así un reinicio a mitad nunca paga dos veces; una que se pidió hace más de 5 minutos termina sin llamar.
   'academia.instructor': Object.freeze({ cupo: 'normal', maxFallos: 1, tiempoPorPasoMs: 90_000, repetible: true, prioridad: 6, reintentos: Object.freeze({ baseMs: 30_000 }) }),
+  // 0.13.0: la «Fábrica de materias» (src/academia/fabrica.js): cada paso hace UNA cosa corta (traer las fuentes, UNA
+  // llamada a la IA o armar un paquete) y lo deja guardado; el siguiente sigue desde lo guardado. Cupo «grande» (nunca
+  // ocupa el de los alumnos) y prioridad baja (las copias y la revisión de la base de la madrugada pasan antes).
+  // «repetible»: la llamada se anota por tarea y paso y lo hecho se guarda por tema y paso: repetir nunca paga dos veces.
+  'academia.fabrica': Object.freeze({ cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 180_000, repetible: true, prioridad: 1, reintentos: Object.freeze({ baseMs: 5 * 60_000 }) }),
 });
 
 // La definición completa de un tipo (con lo que vale por defecto), o null si este código no lo conoce.
@@ -73,6 +78,9 @@ export const PROGRAMAS_DEL_SISTEMA = Object.freeze([
   Object.freeze({ programa: 'copias.hacer', tipo: 'copias.hacer', cada: 'diaria', hora: 4, minuto: 40 }),
   // Academia (0.7.1): cada hora, a los :23, mira la carpeta de Drive (sin carpeta guardada no hace nada).
   Object.freeze({ programa: 'academia.drive', tipo: 'academia.drive', cada: 'hora', minuto: 23 }),
+  // 0.13.0: cada hora, a los :41, la fábrica mira si tiene trabajo (sin clave que funcione, sin fuentes, en pausa o
+  // terminada: termina enseguida, sin llamar a la IA).
+  Object.freeze({ programa: 'academia.fabrica', tipo: 'academia.fabrica', cada: 'hora', minuto: 41 }),
 ]);
 
 // Cómo terminó cada vida del trabajador (trabajador_corridas.como_termino). Viven aquí, con los demás datos
