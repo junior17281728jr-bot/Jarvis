@@ -3603,5 +3603,15 @@
   "telegram.aviso.fabrica_revision.titulo": "Subject to review",
   "telegram.aviso.fabrica_revision.texto": "The subject «{materia}» is ready but has doubts: it waits for your review in Content → Subject factory.",
   "telegram.aviso.fabrica_mejora.titulo": "Subject improved",
-  "telegram.aviso.fabrica_mejora.texto": "Continuous improvement published an improved version of «{materia}» (version {version})."
+  "telegram.aviso.fabrica_mejora.texto": "Continuous improvement published an improved version of «{materia}» (version {version}).",
+  "tareas.tipo.academia.fabrica": "Build the subjects (subject factory)",
+  "ia.proposito.fabrica_escribir": "Factory: write a subject",
+  "ia.proposito.fabrica_verificar": "Factory: verify against the book",
+  "ia.proposito.mejora_escribir": "Continuous improvement: rewrite",
+  "ia.proposito.mejora_verificar": "Continuous improvement: verify",
+  "aviso.fabrica_publicada": "The factory published the subject «{materia}» (version {version}).",
+  "aviso.fabrica_revision": "The subject «{materia}» waits for your review in the Subject factory.",
+  "aviso.fabrica_mejora": "Continuous improvement published an improved version of «{materia}».",
+  "acad.motivo.pista_desconocida": "unknown track (only the Test Guide one or «oral»)",
+  "acad.motivo.diagrama_no_valido": "the drawing's data is not filled in correctly"
 }

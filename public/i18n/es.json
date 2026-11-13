@@ -3603,5 +3603,15 @@
   "telegram.aviso.fabrica_revision.titulo": "Materia para revisar",
   "telegram.aviso.fabrica_revision.texto": "La materia «{materia}» está lista pero tiene dudas: espera tu revisión en Contenido → Fábrica de materias.",
   "telegram.aviso.fabrica_mejora.titulo": "Materia mejorada",
-  "telegram.aviso.fabrica_mejora.texto": "La mejora continua publicó una versión mejorada de «{materia}» (versión {version})."
+  "telegram.aviso.fabrica_mejora.texto": "La mejora continua publicó una versión mejorada de «{materia}» (versión {version}).",
+  "tareas.tipo.academia.fabrica": "Fabricar las materias (fábrica de materias)",
+  "ia.proposito.fabrica_escribir": "Fábrica: escribir una materia",
+  "ia.proposito.fabrica_verificar": "Fábrica: verificar contra el libro",
+  "ia.proposito.mejora_escribir": "Mejora continua: reescribir",
+  "ia.proposito.mejora_verificar": "Mejora continua: verificar",
+  "aviso.fabrica_publicada": "La fábrica publicó la materia «{materia}» (versión {version}).",
+  "aviso.fabrica_revision": "La materia «{materia}» espera tu revisión en la Fábrica de materias.",
+  "aviso.fabrica_mejora": "La mejora continua publicó una versión mejorada de «{materia}».",
+  "acad.motivo.pista_desconocida": "pista desconocida (solo la del Test Guide o «oral»)",
+  "acad.motivo.diagrama_no_valido": "el dibujo no tiene sus datos bien llenados"
 }
