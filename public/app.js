@@ -6054,7 +6054,8 @@ function pedidosAlAbrir(seccion, admin) {
   if (extra) return [`/api/academia/extra/${encodeURIComponent(extra[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'como-van') return admin ? ['/api/admin/academia/como-van', '/api/admin/sistema'] : [];
-  if (RUTA_NOTAS.test(seccion)) return admin ? ['/api/admin/academia/notas', '/api/admin/sistema'] : [];
+  // 0.14.6: «Notas» (la misma dirección que RUTA_NOTAS; aquí escrita entera porque esta función se prueba sola).
+  if (/^notas(?:\/(?:alumno\/\d{1,9}|comparar\/\d{1,9}(?:,\d{1,9}){1,9}|[a-z0-9_-]+))?$/.test(seccion)) return admin ? ['/api/admin/academia/notas', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad))?$/);
   if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}/ficha`, '/api/admin/sistema'] : [];
   const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);
