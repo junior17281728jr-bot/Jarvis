@@ -22,7 +22,7 @@ import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
 import { botonOrigen } from './origen-vista.js';
-import { panelCurso, panelRepasoResumen } from './progreso-vista.js';
+import { panelCurso, panelRepasoResumen, panelOral } from './progreso-vista.js';
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
@@ -3903,6 +3903,8 @@ async function pantallaInicio() {
     c.repaso ? botonRepaso(c.repaso, 'chico') : null,
     // 0.12.2: «Mi repaso» (todo lo que falló), siempre visible; el número de puntos para repasar llega con el instructor.
     entradaMiRepaso(),
+    // 0.13.1: «Preparándote para el examen oral» (su propio Camino; el siguiente paso al terminar el Test Guide).
+    entradaOral(c.oral),
     // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
     lineaHumorVista(c.humor));
   tutorUi().olvidar();
@@ -4689,6 +4691,46 @@ async function pantallaExtra(materia, tema = null) {
   vista.pantallaExtra(r.datos, { el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, fichaIngles, vigente, nuevoTurno, sacudir, vistaClip, vistaFoto }, { tema });
 }
 
+// ---- 0.13.1: «Preparándote para el examen oral» (public/oral-vista.js) ----
+const ayudasOral = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, sacudir,
+  combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, partirLeccion, vistaTarjeta, nodoCamino, barraLlena, medidor, tutorUi, alDeslizar });
+async function pantallaOralDe(que, a, b) {
+  const vigente = nuevoTurno();
+  const error = r => mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }))));
+  const vista = await import('./oral-vista.js');
+  if (!vigente()) return;
+  const h = ayudasOral();
+  if (que === 'tema' && a && b) {
+    const r = await api('GET', `/api/academia/oral/temas/${encodeURIComponent(a)}/${encodeURIComponent(b)}`);
+    if (!vigente()) return;
+    return r.ok ? vista.pantallaLeccionOral(r.datos, h) : error(r);
+  }
+  if (que === 'practica' && a) {
+    const pedido = a === 'errores' ? { errores: true } : { materia: a, ...(b ? { tema: b } : {}) };
+    const r = await api('POST', '/api/academia/oral/ronda', pedido);
+    if (!vigente()) return;
+    return r.ok ? vista.rondaOral(r.datos, pedido, h) : error(r);
+  }
+  const r = await api('GET', '/api/academia/oral');
+  if (!vigente()) return;
+  if (!r.ok) return error(r);
+  if (que === 'examen' && a) return vista.portadaExamenOral(r.datos, a, h);
+  if (que === 'final') return vista.portadaExamenOral(r.datos, 'final', h);
+  return vista.pantallaOral(r.datos, h);
+}
+// La entrada en Inicio (y en Progreso): siempre visible cuando hay contenido oral; «Tu siguiente paso» cuando terminó los
+// exámenes del Test Guide. Con «Listo para el oral / Todavía no» y su %.
+function entradaOral(o) {
+  if (!o?.hay) return null;
+  const listo = o.listo?.listo === true;
+  return el('a', { class: `entrada-oral con-icono${o.siguientePaso ? ' siguiente' : ''}`, href: '#oral' }, icono('manual', 'icono'),
+    el('span', { class: 'entrada-oral-texto' },
+      o.siguientePaso ? el('span', { class: 'antetitulo', texto: t('oral.siguiente_paso') }) : null,
+      el('strong', { texto: t('oral.titulo') }),
+      el('span', { class: 'suave chica', texto: t('oral.entrada.linea', { n: numero(o.capitulos ?? 0) }) })),
+    el('span', { class: `insignia tono-${listo ? 'bien' : 'info'}`, texto: listo ? t('oral.listo.si_corto', { pct: numero(o.listo?.pct ?? 0) }) : t('oral.listo.no_corto', { pct: numero(o.listo?.pct ?? 0) }) }));
+}
+
 async function pantallaExamen(materia) {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/camino');
@@ -5122,7 +5164,9 @@ async function pantallaProgreso() {
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
     grupo,
     p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
-    panelExtra(p.extra)));
+    panelExtra(p.extra),
+    // 0.13.1: la pista oral, en su propia sección (nunca se suma al Test Guide).
+    panelOral(p.oral, ayudas)));
 }
 // 0.12.0: lo EXTRA va aparte (nunca se suma al Test Guide): por materia y por nivel. Lo usa también la ficha del alumno.
 function panelExtra(lista, { titulo = t('extra.progreso.titulo'), enlaces = true } = {}) {
@@ -5728,6 +5772,10 @@ async function dibujar() {
   // 0.12.12: #extra/<materia>/<tema> = «Profundizar en este tema» (abre las tarjetas de ese tema).
   const extra = seccion.match(/^extra\/([a-z0-9_-]+)(?:\/([a-z0-9_-]+))?$/);
   if (extra) return pantallaExtra(extra[1], extra[2] ?? null);
+  // 0.13.1: «Preparándote para el examen oral» (public/oral-vista.js, solo se carga ahí): #oral, #oral/tema/<m>/<t>,
+  // #oral/practica/<m>[/<t>] o #oral/practica/errores, #oral/examen/<m> y #oral/final.
+  const oral = seccion.match(/^oral(?:\/(tema|practica|examen|final)(?:\/([a-z0-9_-]+))?(?:\/([a-z0-9_-]+))?)?$/);
+  if (oral) return pantallaOralDe(oral[1] ?? null, oral[2] ?? null, oral[3] ?? null);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad))?$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1], alumno[2] ?? 'resumen');

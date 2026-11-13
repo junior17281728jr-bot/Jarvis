@@ -60,3 +60,30 @@ export function panelRepasoResumen(r, h) {
       el('a', { class: 'boton-3d blanco chico', href: enlaceMiniClase(x.clave) }, el('span', { texto: t('mirepaso.repasar') }))))) : null,
     el('a', { class: 'boton-3d naranja con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('animo.ir') })));
 }
+
+// 0.13.1: «Preparándote para el examen oral» en Progreso, en su propia sección (nunca se suma al Test Guide): «Listo
+// para el oral / Todavía no» con su %, cada capítulo (lo que domina y su examen) y el examen final.
+export function panelOral(o, h) {
+  const { el, t, numero, icono, medidor, nombreMateria, barraLlena } = h;
+  if (!o) return null;
+  const x = o.listo;
+  return el('section', { class: 'panel panel-oral', 'aria-labelledby': 'oral-progreso-titulo' },
+    el('h2', { id: 'oral-progreso-titulo', class: 'con-icono' }, icono('manual'), el('span', { texto: t('oral.titulo') })),
+    el('p', { class: 'oral-sello', texto: t('oral.sello') }),
+    el('div', { class: 'curso-resumen' },
+      medidor(x.pct, { etiqueta: t('oral.listo.medidor') }),
+      el('div', {},
+        el('p', { class: `insignia grande tono-${x.listo ? 'bien' : 'atencion'}`, texto: x.listo ? t('oral.listo.si') : t('oral.listo.no') }),
+        el('ul', { class: 'lista-simple chica' },
+          el('li', { texto: t('oral.listo.dominio', { pct: numero(x.dominio) }) }),
+          el('li', { texto: t('oral.listo.capitulos', { pct: numero(x.capitulos) }) }),
+          el('li', { texto: t('oral.listo.final', { pct: numero(x.final) }) })))),
+    el('ul', { class: 'curso-materias' }, o.materias.map(m => el('li', { class: 'curso-materia' },
+      el('div', { class: 'curso-materia-cabeza' },
+        el('span', { class: 'suave chica', texto: m.id === 'oral_escenarios' ? t('oral.escenarios.ante') : t('oral.capitulo_n', { n: numero(m.numero) }) }),
+        el('strong', { texto: nombreMateria(m.id) }),
+        el('span', { class: 'chica', texto: t('oral.progreso.capitulo', { bien: numero(m.bien), n: numero(m.preguntas), examen: m.examen.aprobado ? t('oral.progreso.examen_si', { pct: numero(m.examen.mejor ?? 0) }) : m.examen.veces ? t('oral.progreso.examen_intentos', { pct: numero(m.examen.mejor ?? 0) }) : t('oral.progreso.examen_no') }) })),
+      el('div', { class: 'plan-barra' }, barraLlena(m.pct))))),
+    el('p', { class: 'chica', texto: o.final.aprobado ? t('oral.progreso.final_si', { pct: numero(o.final.mejor ?? 0) }) : o.final.veces ? t('oral.progreso.final_intentos', { pct: numero(o.final.mejor ?? 0) }) : t('oral.progreso.final_no') }),
+    el('a', { class: 'boton-3d naranja con-icono', href: '#oral' }, icono('flecha', 'icono chico'), el('span', { texto: t('oral.abrir') })));
+}

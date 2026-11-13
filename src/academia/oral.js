@@ -107,7 +107,7 @@ export function caminoOral(db, usuarioId, paquete, { tgTerminado = false } = {})
   const final = yo.examenes.final ?? null;
   const totalFinal = materias.reduce((n, m) => n + m.preguntas, 0);
   const vista = {
-    hay: true, umbral, materias,
+    hay: true, umbral, materias, examenCapitulo: ORAL.examenCapitulo,
     final: { disponible: totalFinal > 0, preguntas: Math.min(totalFinal, ORAL.examenFinal), aprobado: final?.aprobado === true, mejor: final?.mejor ?? null, veces: final?.veces ?? 0 },
     listo: listoParaOral(materias, final, umbral),
     // Se muestra como «siguiente paso» cuando terminó los exámenes del Test Guide (pero siempre se puede abrir).

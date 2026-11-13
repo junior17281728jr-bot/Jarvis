@@ -59,7 +59,26 @@ export function pantallaMiRepaso(d, h) {
       el('p', { class: 'bajada', texto: t('mirepaso.linea') }),
       // 0.12.9 (O): las preguntas personalizadas cuentan aquí (nunca en el % del Test Guide).
       d.personal?.respondidas ? el('p', { class: 'chica con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('mirepaso.personal', { n: numero(d.personal.bien), de: numero(d.personal.respondidas) }) })) : null,
-      paraRepasar, errores)));
+      paraRepasar, errores,
+      // 0.13.1: lo del examen oral, aparte (sus errores por tema, para practicarlos otra vez).
+      seccionOral(d.oral, h))));
+}
+
+function seccionOral(o, h) {
+  const { el, t, tn, icono, talCual, nombreMateria } = h;
+  if (!o) return null;
+  return el('section', { class: 'panel repaso-oral', 'aria-labelledby': 'repaso-oral-titulo' },
+    el('h2', { id: 'repaso-oral-titulo', class: 'con-icono' }, icono('manual'), el('span', { texto: t('oral.repaso.titulo') })),
+    el('p', { class: 'oral-sello', texto: t('oral.sello') }),
+    o.errores ? [
+      el('p', { class: 'suave', texto: tn('oral.repaso.linea', { n: o.errores }) }),
+      el('a', { class: 'boton-3d naranja con-icono', href: '#oral/practica/errores' }, icono('actualizar', 'icono chico'), el('span', { texto: t('oral.errores.boton') })),
+      el('ul', { class: 'lista-repaso' }, o.temas.map(x => el('li', { class: 'repasa-fila' },
+        el('span', {}, el('span', { class: 'antetitulo', texto: nombreMateria(x.materia) }), talCual('span', x.titulo, 'fuerte')),
+        el('span', { class: 'suave chica', texto: tn('oral.repaso.errores', { n: x.errores }) }),
+        el('a', { class: 'boton-3d blanco chico', href: `#oral/practica/${encodeURIComponent(x.materia)}/${encodeURIComponent(x.tema)}` }, el('span', { texto: t('oral.practicar') })))))]
+      : el('p', { class: 'suave', texto: t('oral.repaso.vacio') }),
+    el('p', { class: 'suave chica', texto: t('oral.repaso.nota') }));
 }
 
 export function pantallaMiniClase(d, h) {

@@ -122,6 +122,9 @@ export function registrarRutasTutor(rutas, h) {
     const p = activo(db);
     if (!p) throw new ErrorHttp(409, 'sin_paquete');
     const ahora = reloj();
+    // 0.13.1: una tarjeta de la pista oral (siempre abierta): lo gratis es su «Recuerda», la explicación en español de las
+    // preguntas del libro del tema y la reexplicación; con IA, lo mismo que una del Test Guide (sin «Para el examen»).
+    if (/^oral_[a-z_]+$/.test(materia)) return { codigo: 200, datos: tarjetaOral(db, req, usuario, p, { materia, tema, tipo, n, ia: datos?.ia === true }, ahora) };
     const t = temaAbierto(db, usuario, p, materia, tema, ahora);
     const s = Number.isSafeInteger(n) && n >= 1 ? t.secciones?.[n - 1] : null;
     if (!s) throw new ErrorHttp(404, 'no_existe');
@@ -153,6 +156,30 @@ export function registrarRutasTutor(rutas, h) {
     // K: «Para el examen» (lo pone la app): citadas solo las que ya respondió; de las otras, el número.
     return { codigo: 200, datos: { instructor: { modo: instructor.modo }, basica, ia, examen: paraElExamen(db, usuario.id, p, materia, tema, n - 1) } };
   });
+
+  function tarjetaOral(db, req, usuario, p, { materia, tema, tipo, n, ia: quiereIa }, ahora) {
+    const t = p.oral?.materias.find(m => m.id === materia)?.temas.find(x => x.id === tema);
+    const s = t && Number.isSafeInteger(n) && n >= 1 ? t.secciones?.[n - 1] : null;
+    if (!s) throw new ErrorHttp(404, 'no_existe');
+    const basica = {
+      recuerda: s.recuerda ?? null,
+      sencilla: (t.libro_qa ?? []).map(x => x.explicacion_es).filter(x => typeof x === 'string' && x.trim()).slice(0, 2),
+      reexplicacion: vistaSecciones(p, t.reexplicacion, t.paquete).slice(0, 3).map(x => ({ titulo: x.titulo, texto: x.texto ?? (x.puntos ?? []).join('\n') })),
+    };
+    anotarSenal(db, usuario.id, tipo === 'profundizar' ? 'profundizar' : 'mejor');
+    const instructor = conIa(db, req, usuario, ahora);
+    let ia = null;
+    if (quiereIa && instructor.modo === 'ia') {
+      const estilo = estiloConSenales(modeloAlumno(db, usuario.id, p, ahora).estilo, leerSenales(db, usuario.id));
+      // Solo el material de la tarjeta (no hay preguntas del Test Guide en la pista oral).
+      const pedido = armarTarjeta({ tipo, tarjeta: { titulo: String(s.titulo ?? ''), texto: textoTarjeta(s) }, tema: t.titulo, preguntas: [], trampas: [], estilo, idioma: usuario.idioma, modelo: 'claude-haiku-5-5' });
+      const uso = tipo === 'profundizar' ? 'instructor_profundizar' : 'instructor_tarjeta';
+      const ya = leerGuardado(db, pedido.clave);
+      ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
+        : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: String(s.titulo ?? '') } });
+    } else if (quiereIa) ia = iaNoAhora(instructor);
+    return { instructor: { modo: instructor.modo }, basica, ia, examen: null };
+  }
 
   // O: «Preguntas personalizadas» (solo con IA) de un tema que ya practicó: hechas a lo que confundió.
   function confusionDe(db, usuarioId, p, materia, tema, ahora) {

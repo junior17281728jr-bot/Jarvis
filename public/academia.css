@@ -1052,3 +1052,45 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 :root[data-tema="oscuro"] .cadena-avion { fill: var(--texto); }
 @media (prefers-color-scheme: dark) { :root[data-tema="auto"] .cadena-avion { fill: var(--texto); } }
 @media (prefers-reduced-motion: reduce) { .ruta-temas-avion { animation: none; } }
+
+/* 0.13.1: «Preparándote para el examen oral» (public/oral-vista.js): su propio color (azul de cabina), las preguntas del
+   libro TAL CUAL (con sus saltos de línea), «¿De dónde salió?» y «Listo para el oral». */
+:root { --oral: #0f6fb8; --oral-suave: #e3f1fc; --oral-texto: #0b4f86; }
+:root[data-tema="oscuro"] { --oral: #4aa8f0; --oral-suave: #11283f; --oral-texto: #a9d6ff; }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] { --oral: #4aa8f0; --oral-suave: #11283f; --oral-texto: #a9d6ff; } }
+.entrada-oral { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--oral);
+  background: var(--tarjeta); color: var(--texto); text-decoration: none; min-height: 44px; }
+.entrada-oral.siguiente { background: var(--oral-suave); border-width: 3px; }
+.entrada-oral > .icono { flex: none; width: 26px; height: 26px; color: var(--oral); }
+.entrada-oral-texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.entrada-oral .insignia { flex: none; }
+.oral-sello { display: inline-block; margin: 4px 0; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; background: var(--oral-suave); color: var(--oral-texto); }
+.oral-portada { text-align: center; padding: 18px 0 6px; display: grid; justify-items: center; gap: 6px; }
+.oral-listo-cuerpo { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.oral-listo-cuerpo > div { flex: 1; min-width: 180px; }
+.oral-listo.listo { border-left: 6px solid var(--verde); }
+.oral-listo.todavia { border-left: 6px solid var(--oro); }
+.insignia.grande { font-size: 16px; padding: 6px 12px; }
+.oral-camino .banner-icono { color: var(--oral); }
+.oral-final { border-left: 6px solid var(--oral); }
+.oral-final.hecho { border-left-color: var(--verde); }
+.oral-nota { text-align: center; }
+.oral-pagina { margin: 4px 0 8px; color: var(--oral-texto); font-weight: 700; }
+.oral-qa { border-left: 5px solid var(--oral); background: var(--oral-suave); border-radius: 12px; padding: 10px 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.oral-qa-etiqueta { margin: 6px 0 2px; font-size: 12px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; color: var(--oral-texto); }
+.oral-qa-pregunta { margin: 0 0 6px; font-weight: 800; white-space: pre-line; }
+.oral-qa-respuesta { margin: 0; white-space: pre-line; }
+.oral-es { margin-top: 10px; }
+.oral-adicionales-lista { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 10px; }
+.oral-adicionales-lista p { margin: 0; white-space: pre-line; }
+.oral-origen { margin-top: 10px; border: 2px solid var(--oral); border-radius: 14px; padding: 8px 12px; background: var(--tarjeta); }
+.oral-origen summary { cursor: pointer; font-weight: 800; min-height: 36px; display: flex; align-items: center; gap: 6px; color: var(--oral-texto); }
+.oral-como { margin: 6px 0 0; }
+.insignia-pregunta.oral { background: var(--oral-suave); color: var(--oral-texto); }
+.oral-revision-lista { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 14px; }
+.oral-revision-lista > li { border-left: 4px solid var(--linea); padding-left: 10px; }
+.oral-revision-lista > li.bien { border-left-color: var(--verde); }
+.oral-revision-lista > li.mal { border-left-color: var(--rojo); }
+.oral-revision-lista p { margin: 2px 0; }
+.panel-oral { border-left: 6px solid var(--oral); }
+.repaso-oral { border-left: 6px solid var(--oral); }
