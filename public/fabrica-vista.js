@@ -103,5 +103,66 @@ export function pantallaFabrica(d, h) {
     el('label', { class: 'con-casilla' }, mejoraSi, el('span', { texto: t('fabrica.mejora.activa') })),
     el('label', { for: 'fabrica-tope-mejora', texto: t('fabrica.mejora.tope') }), topeMejora,
     el('button', { type: 'submit', class: 'boton-3d chico' }, el('span', { texto: t('fabrica.guardar') }))));
-  return [cabeza, fuentes, plan, ajustes];
+  return [cabeza, seccionProfunda(d, h, { accion }), fuentes, plan, ajustes];
+}
+
+// 0.13.9: «Mejora profunda de las clases»: apagada por defecto; antes de encenderla se ve cuánto cuesta y cuánto tarda.
+// Por materia: estado, % hecho, gasto e informe (con «Publicar» si espera revisión).
+const MOSTRAR_PROFUNDA = new Set(['pendiente', 'mejorando', 'verificando', 'revision', 'publicada', 'saltada']);
+function seccionProfunda(d, h, { accion }) {
+  const { el, t } = h;
+  const p = d.profunda;
+  if (!p) return null;
+  const f = p.falta ?? { temas: 0, pasos: 0, micro: 0, etaMs: 0 };
+  const estimado = t('fabrica.profunda.estimado', { temas: h.numero(f.temas), pasos: h.numero(f.pasos), costo: usd(f.micro), eta: horas(f.etaMs) });
+  const motivo = p.espera?.motivo ?? null;
+  const filas = (p.materias ?? []).filter(m => MOSTRAR_PROFUNDA.has(m.estado)).map(m => el('article', { class: `fabrica-materia estado-${m.estado}` },
+    el('h4', { texto: m.oral ? t('fabrica.profunda.oral', { nombre: m.nombre ?? m.id }) : h.tSi(`acad.materia.${m.id}`, m.nombre ?? m.id) }),
+    el('p', {}, h.insignia(m.estado === 'publicada' ? 'bien' : m.estado === 'revision' ? 'mal' : 'neutro', h.tSi(`fabrica.profunda.estado.${m.estado}`, m.estado))),
+    el('progress', { max: 100, value: m.pct, 'aria-label': t('fabrica.hecho_pct', { pct: m.pct }) }),
+    el('p', { class: 'suave chica', texto: t('fabrica.profunda.materia_linea', { pct: m.pct, gasto: usd(m.gastoMicro), temas: h.numero(m.temas), saltados: h.numero(m.saltados) }) }),
+    m.estado === 'revision' ? informeProfunda(m, h) : null,
+    m.estado === 'revision' && m.version ? el('div', { class: 'botones' }, accion(t('fabrica.publicar'), `/api/admin/academia/fabrica/${encodeURIComponent(m.id)}/profunda/publicar`, {}, { clase: 'verde', confirmar: t('fabrica.publicar_confirmar') })) : null));
+  const tope = el('input', { type: 'text', inputmode: 'decimal', id: 'fabrica-tope-profunda', value: ((p.topeMicro ?? 0) / 1e6).toFixed(2) });
+  return el('section', { class: 'tarjeta fabrica-profunda' },
+    el('h3', { class: 'con-icono' }, h.icono('chispa'), el('span', { texto: t('fabrica.profunda.titulo') })),
+    el('p', { class: 'suave', texto: t('fabrica.profunda.linea') }),
+    el('p', {}, h.insignia(p.activa ? 'bien' : 'apagado', p.activa ? t('fabrica.profunda.encendida') : t('fabrica.profunda.apagada')),
+      motivo && p.activa ? el('span', { class: 'suave', texto: ` · ${h.tSi(`fabrica.espera.${motivo}`, h.tSi(`ia.motivo.${motivo}`, motivo))}` }) : null),
+    el('p', { class: 'fuerte', texto: f.temas ? estimado : t('fabrica.profunda.nada') }),
+    el('p', { class: 'suave chica', texto: t('fabrica.profunda.gasto', { gasto: usd(p.gastoMicro), tope: usd(p.topeMicro) }) }),
+    el('p', { class: 'suave chica', texto: t('fabrica.profunda.orden') }),
+    el('div', { class: 'botones' }, p.activa
+      ? accion(t('fabrica.profunda.apagar'), '/api/admin/academia/fabrica/config', { profunda: { activa: false } })
+      : accion(t('fabrica.profunda.encender'), '/api/admin/academia/fabrica/config', { profunda: { activa: true } }, { clase: 'verde', confirmar: t('fabrica.profunda.encender_confirmar', { estimado: f.temas ? estimado : t('fabrica.profunda.nada'), tope: usd(p.topeMicro) }) })),
+    el('form', {
+      class: 'fabrica-ajustes', onsubmit: async e => {
+        e.preventDefault();
+        const r = await h.api('POST', '/api/admin/academia/fabrica/config', { profunda: { topeUsd: tope.value.trim() } });
+        h.avisar(r.ok ? t('fabrica.hecho') : h.textoError(r.datos.error), r.ok ? 'bien' : 'mal');
+        if (r.ok) h.recargar();
+      },
+    }, el('label', { for: 'fabrica-tope-profunda', texto: t('fabrica.profunda.tope') }), tope, el('button', { type: 'submit', class: 'boton-3d chico' }, el('span', { texto: t('fabrica.guardar') }))),
+    filas.length ? el('div', { class: 'fabrica-materias' }, filas) : null);
+}
+function informeProfunda(m, h) {
+  const { el, t } = h;
+  return el('details', {
+    ontoggle: async e => {
+      const caja = e.currentTarget.querySelector('.fabrica-informe');
+      if (!e.currentTarget.open || caja.dataset.cargado) return;
+      caja.dataset.cargado = '1';
+      const r = await h.api('GET', `/api/admin/academia/fabrica/${encodeURIComponent(m.id)}/profunda/informe`);
+      if (!r.ok) { caja.replaceChildren(el('p', { class: 'mensaje error', texto: h.textoError(r.datos.error) })); return; }
+      const x = r.datos;
+      caja.replaceChildren(...[
+        x.problema ? el('p', { class: 'mensaje error', texto: h.tSi(`fabrica.problema.${x.problema}`, x.problema) }) : null,
+        el('h4', { texto: t('fabrica.informe.dudas', { n: x.dudas.length }) }),
+        el('ul', { class: 'chica' }, x.dudas.map(u => el('li', {},
+          el('strong', { texto: `${u.gravedad === 'error' ? '⚠️' : '•'} ${u.donde}` }),
+          el('span', { texto: ` — ${h.tSi(`fabrica.duda.${String(u.problema).split(':')[0]}`, u.problema)}` })))),
+        ...(x.errores ?? []).map(e2 => el('p', { class: 'mensaje error chica', texto: `${e2.ruta}: ${e2.motivo}` })),
+      ].filter(Boolean));
+    },
+  }, el('summary', { texto: t('fabrica.ver_informe') }), el('div', { class: 'fabrica-informe' }, el('p', { class: 'suave', texto: t('reporte.preparando') })));
 }

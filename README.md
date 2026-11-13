@@ -422,6 +422,8 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
+## Academia (etapa 1, versión 0.13.9; cambio de base 9 en la 0.12.0)
+
 ## Academia (etapa 1, versión 0.13.8; cambio de base 10 en la 0.13.8)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
@@ -700,6 +702,34 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.13.9: Claude fácil de encontrar y la «Mejora profunda de las clases» — sin cambio de base
+- **Claude (la clave de la API) a la vista**: en el **Resumen** de Administrador, arriba de todo, la tarjeta **«Claude (IA)»**
+  dice el estado en palabras simples: «No conectado», **«Esperando verificación de identidad»** (cuando Anthropic responde
+  «Identity verification is required…», en la prueba gratis o en un uso pagado: el motivo nuevo `verificacion_identidad`, que
+  deja la clave sin usar hasta que una prueba pase) o «Conectado ✔ · gastado US$X de US$Y este mes». Un botón grande
+  **«Conectar o cambiar la clave»** lleva directo al formulario y **«Probar (gratis)»** la prueba (y la reanuda si estaba en
+  pausa). Lo que se decide está en `public/ia-vista.js` (`estadoClaude`); la tarjeta en `public/claude-vista.js`.
+- **Dinero e IA → «Claude (API)»** es ahora la PRIMERA pestaña (`#claves`, la misma pantalla de siempre; también `#claude`):
+  la clave de Claude arriba con **3 pasos** (console.anthropic.com → API Keys → crear clave; pegarla aquí; «Probar») y el
+  Telegram abajo. El botón del grupo «Dinero e IA» abre esta pestaña (antes, Pagos).
+- **Contenido → Fábrica de materias → «Mejora profunda de las clases»** (`src/academia/fabrica-profunda.js`), **apagada por
+  defecto**: antes de encenderla se ve lo que falta (temas, pasos, ≈ costo y ≈ tiempo a la cuota de la hora). Cuando la
+  fábrica ya no tiene materias por fabricar, reescribe lo YA publicado (la Materia 1, los capítulos orales y después todo lo
+  que la fábrica publique), tema por tema, con el patrón mejorado: «¿Qué es y por qué importa?», bloques de 3 tarjetas (cada
+  término definido la primera vez con el inglés, ejemplo, «Recuerda», «Truco para recordar»), «¿Te acuerdas?» después de
+  cada bloque (tarjetas para girar), «Para el Test Guide» igual que antes, en el oral «Lo que te puede preguntar el
+  examinador» (en inglés, con respuesta modelo) y el «Resumen». Todo sale de las fuentes (la lectura del tema, con páginas).
+  Sonnet escribe (con la caché del libro y una guía corta de cómo se aprende), Haiku verifica. **Nunca cambia** (lo revisa el
+  código antes de guardar): las preguntas (Test Guide TAL CUAL), `libro_qa`/`adicionales` del oral, los ids y el orden de
+  temas y preguntas, ni ninguna foto o clip (el modelo dice «de» qué tarjeta viene y el código le pasa su foto). Limpio → versión
+  nueva publicada y aviso por Telegram (`fabrica_profunda:<materia>:<versión>`); con dudas → «Esperando revisión del admin»
+  con la lista y «Publicar». Orden: primero la fábrica, después la profunda, al final la mejora continua; al terminar, deja de
+  gastar. Su tope propio (US$40 por defecto, editable) además del tope general (deja libre el 20 %), con sus propósitos
+  `profunda_escribir`/`profunda_verificar`. Un tema sin su lectura en las fuentes (ni por id, ni por título, ni por las
+  páginas que cita) se queda igual. El estado vive en `ajustes` (sin migración).
+- Ojo: lo que apunta a una tarjeta por su número dentro de un tema (por ejemplo, `#tema/…/<n>`) puede caer en otra tarjeta;
+  el avance por tema y por pregunta no cambia.
 
 ### Lo nuevo de la 0.13.8: cada materia, bloquear y eliminar (sin borrar nada) — cambio de base 10
 - **«Ver cada materia»** (desplegable, en cada tarjeta de «Cómo van todos» y en el Resumen de la ficha, debajo del resultado

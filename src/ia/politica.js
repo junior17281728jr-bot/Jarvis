@@ -41,6 +41,8 @@ export const POLITICA = Object.freeze({
   eco_de_clave: P('hecha', 'admin', 'grave'),
   clave_no_valida: P('fallida', 'admin', 'grave', { prueba: true }),
   sin_permiso: P('fallida', 'admin', 'grave', { prueba: true }),
+  // 0.13.9: la cuenta de Anthropic espera la verificación de identidad: no se gasta nada hasta que una prueba pase.
+  verificacion_identidad: P('fallida', 'admin', 'atencion', { prueba: true }),
   sin_credito: P('fallida', 'admin', 'grave'),
   limite_gasto_proveedor: P('fallida', 'admin', 'grave'),
   modelo_no_disponible: P('fallida', 'admin', 'atencion', { prueba: true }),

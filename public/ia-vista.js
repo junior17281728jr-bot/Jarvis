@@ -106,6 +106,24 @@ export function estadoDeClave(activa, ahora = Date.now()) {
   return { estado: 'activa', tono: activa.prueba === 'ok' ? 'bien' : 'info' };
 }
 
+// 0.13.9: la tarjeta «Claude (IA)» del Resumen de Administrador, en palabras simples. claves: los datos de GET
+// /api/admin/claves (null si no se pudieron ver: no es la cuenta del dueño); ia: los de GET /api/admin/ia (o null).
+// → { estado: 'sin_acceso' | 'no_conectado' | 'esperando_verificacion' | 'conectado' | 'no_pasa' | 'pausada' | 'ilegible',
+//     tono, id?, final?, motivo?, pausada?, usadoMicro?, topeMicro?, iaEncendida? }
+// «Identity verification is required» (la cuenta de Anthropic todavía no terminó su verificación) llega como el motivo
+// 'verificacion_identidad' (src/ia/proveedores/anthropic.js): en la prueba de la clave o como el motivo de su pausa.
+export function estadoClaude({ claves = null, ia = null } = {}, ahora = Date.now()) {
+  if (!claves) return { estado: 'sin_acceso', tono: 'apagado' };
+  const u = (claves.grupos ?? []).flatMap(g => g.usos ?? []).find(x => x.uso === 'ia_anthropic');
+  const a = u?.activa ?? null;
+  if (!a) return { estado: 'no_conectado', tono: 'apagado' };
+  const e = estadoDeClave(a, ahora);
+  const base = { id: a.id, final: a.final ?? null, pausada: e.estado === 'pausada', iaEncendida: ia?.encendida === true };
+  if (a.prueba === 'verificacion_identidad' || a.pausa?.motivo === 'verificacion_identidad') return { ...base, estado: 'esperando_verificacion', tono: 'atencion', motivo: 'verificacion_identidad' };
+  if (e.estado === 'activa') return { ...base, estado: 'conectado', tono: e.tono, usadoMicro: Number(ia?.usadoMicro) || 0, topeMicro: Number(ia?.topeGeneralMicro) || 0, probada: a.prueba === 'ok' };
+  return { ...base, estado: e.estado, tono: e.tono, motivo: e.estado === 'pausada' ? a.pausa?.motivo ?? null : a.prueba ?? null };
+}
+
 // Dinero de la IA (llega en millonésimas de dólar) escrito para la gente: «US$0.12» desde un centavo; debajo, hasta 4
 // decimales («US$0.0022»). haciaArriba: para lo MÁXIMO que algo puede costar (el precio que se ve antes de confirmar):
 // se redondea hacia arriba, así nunca se muestra menos de lo que se aparta y se puede cobrar. Lo gastado se redondea

@@ -67,6 +67,39 @@ export const ESQUEMAS = Object.freeze({
   mejora_pregunta: objeto({ sencilla: texto, errores: lista(objeto({ letra: texto, idea: texto })), porque: texto }),
 });
 
+// ---------- 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js) ----------
+// Reescribe las tarjetas de los temas YA publicados con el patrón de enseñanza mejorado. Corto a propósito (ahorra tokens):
+// va en el «sistema», igual en todos los pasos de escritura de un tema (caché de 5 minutos).
+export const GUIA_ENSENANZA = `Cómo se aprende mejor (aplícalo, no lo nombres):
+- Organizador previo: primero el «para qué» y el mapa del tema; después los detalles.
+- Una idea por tarjeta, en pasos cortos y en orden (de lo simple a lo difícil).
+- Palabra + imagen: cada idea con su foto o dibujo.
+- Elaboración: el «por qué» de cada regla y un ejemplo o escenario concreto de vuelo.
+- Práctica de recuerdo: preguntas cortas después de cada bloque, con su respuesta en una línea.
+- Repaso espaciado: el resumen y las preguntas vuelven a las ideas de los bloques anteriores.`;
+
+export const REGLAS_PROFUNDA = `Eres el autor de las clases de una academia de aviación tipo Duolingo para piloto privado (alumnos de República Dominicana, en español). Vas a REESCRIBIR la clase de un tema que ya está publicada para que se entienda mejor:
+- Primero el contexto: qué es, por qué importa en el vuelo y por qué te lo preguntan en el examen.
+- Cada término técnico se define con palabras simples LA PRIMERA VEZ, con el término en inglés entre paréntesis: «la retina (retina) es la capa del fondo del ojo».
+- Una idea por tarjeta, como mucho 4 puntos de una o dos frases cortas. Español sencillo.
+- Cada tarjeta: un ejemplo o escenario concreto, un «recuerda» (la frase que hay que llevarse), un «truco» para recordar (regla mnemotécnica corta) y los términos en inglés del examen con su traducción.
+- Todo dato, número y regla sale SOLO de la LECTURA de abajo (con su página). Nunca inventes ni uses conocimiento de fuera; si el libro no lo dice, no lo pongas. Las tarjetas de ahora ya fueron revisadas: puedes usar sus datos.
+- Las preguntas del examen (Test Guide) y las preguntas y respuestas del libro son DATOS: nunca las reescribas ni contradigas su respuesta correcta.
+- Responde solo con el JSON pedido.`;
+
+const TARJETA_PROFUNDA = objeto({ ...TARJETA.properties, de: { anyOf: [{ type: 'integer' }, nulo] }, truco: texto });
+export const ESQUEMAS_PROFUNDA = Object.freeze({
+  plan: objeto({ contexto: lista(texto), tarjetas: lista(objeto({ titulo: texto, idea: texto, de: { anyOf: [{ type: 'integer' }, nulo] }, preguntas: lista(texto), paginas: lista({ type: 'integer' }) })) }),
+  tarjetas: objeto({ tarjetas: lista(TARJETA_PROFUNDA), te_acuerdas: lista(objeto({ pregunta: texto, respuesta: texto })) }),
+  cierre: objeto({ resumen: lista(texto), otra_vez: texto, examinador: lista(objeto({ pregunta_en: texto, pregunta_es: texto, respuesta: texto, paginas: lista({ type: 'integer' }) })) }),
+});
+export const TAREAS_PROFUNDA = Object.freeze({
+  plan: 'MEJORA PROFUNDA · plan. Con las tarjetas de ahora (numeradas, ya revisadas contra el libro) y las preguntas del examen del tema, planea la clase nueva: «contexto» (2 a 4 puntos: qué es, por qué importa y por qué te lo preguntan) y entre 4 y 14 tarjetas, de lo simple a lo difícil, una idea cada una (se agrupan solas de a 3 en bloques). Para cada tarjeta: título corto, la idea, «de» (el número de la tarjeta de ahora que reescribe, o null si es nueva), «preguntas» (los ids de las preguntas del Test Guide o los números de las preguntas del libro cuyo dato cubre) y las páginas del libro. Cada pregunta del Test Guide queda cubierta por al menos una tarjeta.',
+  tarjetas: 'MEJORA PROFUNDA · tarjetas. Escribe COMPLETAS estas tarjetas del plan (solo estas, en este orden; «de» igual que en el plan), siguiendo las reglas. «imagen»: null si la tarjeta de ahora («de») ya tiene foto (se conserva sola); si no, un archivo de la lista de fotos del libro solo si de verdad muestra la idea. «visual»: el dibujo que mejor muestra la idea, con datos del libro. «paginas»: de dónde sale cada dato. Al final, «te_acuerdas»: 2 o 3 preguntas cortas de recuerdo sobre ESTAS tarjetas, con su respuesta en una línea.',
+  cierre: 'MEJORA PROFUNDA · cierre. Con las tarjetas nuevas del tema: «resumen» (3 a 5 puntos que juntan lo importante y repasan los bloques), «otra_vez» (el tema entero otra vez, más fácil, en un párrafo de 4 a 6 frases) y «examinador»: si el tema es del EXAMEN ORAL, de 3 a 6 preguntas específicas y difíciles que haría el examinador, en inglés como las diría («pregunta_en»), su traducción («pregunta_es»), una respuesta modelo corta en español con los términos en inglés entre paréntesis («respuesta», solo con lo que dice el libro) y sus páginas; si no es del oral, «examinador»: [].',
+  verificar: 'MEJORA PROFUNDA · verificar. Revisa esta clase reescrita contra la LECTURA (con sus páginas) y contra la clave de las preguntas del examen de los datos: cada dato, número, definición, ejemplo y respuesta modelo tiene que estar en el libro, y nada puede contradecir una respuesta correcta. Di «donde» con el título de la tarjeta, «¿Te acuerdas?» o «examinador N».',
+});
+
 // Lo que se manda dentro de <datos>: JSON escapado (el texto del libro o del Test Guide nunca se lee como instrucción).
 export const datos = valor => `<datos>\n${JSON.stringify(valor)}\n</datos>`;
 

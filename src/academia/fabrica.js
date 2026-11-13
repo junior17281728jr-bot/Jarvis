@@ -30,15 +30,18 @@ import { leerConfigIa } from '../ia/config.js';
 import { elegirProveedor, modelosDe, partesPorHora } from '../ia/presupuesto.js';
 import { gastoMicro, GASTO_SQL } from '../ia/gasto.js';
 import { reservaMicro } from '../ia/precios.js';
-import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA } from '../ia/propositos.js';
+import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA, PROPOSITOS_PROFUNDA } from '../ia/propositos.js';
 import { mesCobro } from '../tareas/tiempo.js';
 import { mejorar } from './fabrica-mejora.js';
+import { profundizar, vistaProfunda } from './fabrica-profunda.js';
 
 export const AJUSTE_CONFIG = 'fabrica.config';
 export const AJUSTE_GENERAL = 'fabrica.estado';
 export const LIBRO_TG = Object.freeze({ id: 'test-guide', titulo: 'Test Guide (preguntas del examen)', idioma: 'es' });
-export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_000, oral: false, mejora: Object.freeze({ activa: true, topeMesMicro: 2_000_000 }) });
-export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000 });
+export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_000, oral: false, mejora: Object.freeze({ activa: true, topeMesMicro: 2_000_000 }),
+  // 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js): APAGADA por defecto, con su tope propio.
+  profunda: Object.freeze({ activa: false, topeMicro: 40_000_000 }) });
+export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 100_000_000 });
 export const T = Object.freeze({
   lecturaDirectaBytes: 60_000, // más que esto: primero Haiku saca los pasajes (extracto)
   verificarBytes: 170_000,
@@ -57,14 +60,16 @@ export function leerConfigFabrica(db) {
   const v = leerJsonAjuste(db, AJUSTE_CONFIG) ?? {};
   const tope = Number.isSafeInteger(v.topeMicro) && v.topeMicro >= 0 && v.topeMicro <= LIMITES_FABRICA.topeMaxMicro ? v.topeMicro : CONFIG_FABRICA.topeMicro;
   const m = v.mejora ?? {};
+  const pr = v.profunda ?? {};
   return {
     pausada: v.pausada === true, topeMicro: tope, oral: v.oral === true,
     mejora: { activa: m.activa !== false, topeMesMicro: Number.isSafeInteger(m.topeMesMicro) && m.topeMesMicro >= 0 && m.topeMesMicro <= LIMITES_FABRICA.mejoraMaxMicro ? m.topeMesMicro : CONFIG_FABRICA.mejora.topeMesMicro },
+    profunda: { activa: pr.activa === true, topeMicro: Number.isSafeInteger(pr.topeMicro) && pr.topeMicro >= 0 && pr.topeMicro <= LIMITES_FABRICA.profundaMaxMicro ? pr.topeMicro : CONFIG_FABRICA.profunda.topeMicro },
   };
 }
 export function guardarConfigFabrica(db, cambios) {
   const actual = leerConfigFabrica(db);
-  const nueva = { ...actual, ...cambios, mejora: { ...actual.mejora, ...(cambios.mejora ?? {}) } };
+  const nueva = { ...actual, ...cambios, mejora: { ...actual.mejora, ...(cambios.mejora ?? {}) }, profunda: { ...actual.profunda, ...(cambios.profunda ?? {}) } };
   guardarAjuste(db, AJUSTE_CONFIG, JSON.stringify(nueva));
   return leerConfigFabrica(db);
 }
@@ -75,7 +80,7 @@ export function estadoMateria(db, materia) {
 }
 export const guardarMateria = (db, materia, valor) => guardarAjuste(db, claveMateria(materia), JSON.stringify(valor));
 export const estadoGeneral = db => ({ espera: null, esperaHasta: null, ultimaSync: null, terminada: false, ...(leerJsonAjuste(db, AJUSTE_GENERAL) ?? {}) });
-const guardarGeneral = (db, cambios) => guardarAjuste(db, AJUSTE_GENERAL, JSON.stringify({ ...estadoGeneral(db), ...cambios }));
+export const guardarGeneral = (db, cambios) => guardarAjuste(db, AJUSTE_GENERAL, JSON.stringify({ ...estadoGeneral(db), ...cambios }));
 const claveSalida = (materia, gen, tema, paso) => `fabrica.salida.${materia}.g${gen}.${tema}.${paso}`;
 export const leerSalida = (db, materia, gen, tema, paso) => leerJsonAjuste(db, claveSalida(materia, gen, tema, paso));
 
@@ -111,8 +116,8 @@ export function puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro, ga
   const cuota = cuotaHora(cfg);
   const desde = iso(ahora - 3_600_000);
   const todas = db.prepare('SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ?').get(desde);
-  const propias = db.prepare(`SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ? AND proposito IN ${enLista([...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA])}`)
-    .get(desde, ...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA);
+  const propias = db.prepare(`SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ? AND proposito IN ${enLista([...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA])}`)
+    .get(desde, ...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA);
   if (propias.n >= cuota.propia || todas.n >= cuota.total - cuota.libre) {
     const primera = Date.parse((propias.n >= cuota.propia ? propias.primera : todas.primera) ?? '') || ahora;
     return { ok: false, motivo: 'demasiadas_llamadas', esperarMs: Math.max(60_000, primera + 3_600_000 - ahora + 5_000) };
@@ -624,6 +629,14 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     if (!trabajo) {
       // Todo hecho: «Terminada» (cero llamadas). Solo queda la mejora continua (una vez por semana y con evidencia).
       if (!g.terminada) await ctx.escribir(() => guardarGeneral(db, { terminada: true, terminadaEn: iso(ahora), espera: null }));
+      // 0.13.9: antes, la «Mejora profunda» de lo publicado (si está encendida y falta). Con su tope propio lleno, sigue la
+      // mejora continua (que tiene el suyo); cualquier otra espera (tope general, cuota, clave) también la pararía.
+      const pr = await profundizar(ctx, { ahora, cfg, man });
+      if (pr.trabajo && pr.motivo !== 'tope_profunda') {
+        if (pr.seguir) return { punto: {}, esperarMs: pr.esperarMs ?? 1000 };
+        if (pr.esperarMs) return { punto: {}, esperarMs: pr.esperarMs, motivo: 'fabrica_cuota' };
+        return fin({ motivo: 'profunda', profunda: pr.motivo });
+      }
       const r = await mejorar(ctx, { ahora, cfg, man });
       return r.seguir ? { punto: {}, esperarMs: r.esperarMs ?? 1000 } : fin({ motivo: 'terminada', mejora: r.motivo });
     }
@@ -769,10 +782,14 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
     };
   });
   const etaMs = materias.reduce((s, x) => s + x.etaMs, 0) + capitulos.reduce((s, x) => s + x.etaMs, 0);
+  // 0.13.9: la «Mejora profunda de las clases» (lo publicado, tema por tema), con su estimado antes de encenderla.
+  const profunda = vistaProfunda(db, config, { ahora, cuota, man, fuenteOral });
+  const terminadaYa = g.terminada ? ([...materias, ...capitulos].some(x => x.estado === 'revision') ? 'esperando_revision' : profunda.activa && profunda.falta.temas ? 'mejorando' : 'terminada') : null;
   return {
+    profunda,
     config: cfg, general: g, cuota, fuentes: fuentes ? { ok: fuentes.ok, errores: (fuentes.errores ?? []).slice(0, 10), faltan: fuentes.faltan ?? [], en: fuentes.en ?? null, oral: Boolean(fuentes.oral) } : null,
     gastoMicro: gastoFabricaMicro(db), materias, etaMs, faltaMicro: materias.reduce((s, x) => s + x.faltaMicro, 0) + (cfg.oral ? capitulos.reduce((s, x) => s + x.faltaMicro, 0) : 0),
-    estado: !plan.fuentes ? 'sin_fuentes' : cfg.pausada ? 'pausada' : g.terminada ? ([...materias, ...capitulos].some(x => x.estado === 'revision') ? 'esperando_revision' : 'terminada') : g.espera ? 'esperando' : 'trabajando',
+    estado: !plan.fuentes ? 'sin_fuentes' : cfg.pausada ? 'pausada' : g.terminada ? terminadaYa : g.espera ? 'esperando' : 'trabajando',
     oral: { hay: plan.oral.hay, activa: plan.oral.activa, ok: plan.oral.ok, errores: plan.oral.errores ?? [], capitulos }, mejora: leerJsonAjuste(db, 'fabrica.mejora.ultima'), mejoraGastoMicro: gastoMejoraMesMicro(db, ahora),
   };
 }

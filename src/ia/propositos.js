@@ -105,9 +105,14 @@ export const PROPOSITOS = Object.freeze({
   fabrica_verificar: FABRICA_HAIKU,
   mejora_escribir: FABRICA,
   mejora_verificar: FABRICA_HAIKU,
+  // 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js): reescribir con Sonnet, verificar con
+  // Haiku, con su tope propio (no gasta el de la fábrica) y dentro del tope general.
+  profunda_escribir: FABRICA,
+  profunda_verificar: FABRICA_HAIKU,
 });
 export const PROPOSITOS_FABRICA = Object.freeze(['fabrica_escribir', 'fabrica_verificar']);
 export const PROPOSITOS_MEJORA = Object.freeze(['mejora_escribir', 'mejora_verificar']);
+export const PROPOSITOS_PROFUNDA = Object.freeze(['profunda_escribir', 'profunda_verificar']);
 
 // UNA sola lista para todo: el libro de gastos (ia_llamadas.resultado), las veces sin IA (ia_bloqueos.motivo), las
 // pruebas gratis de las claves (secretos.prueba), las pausas (secretos.pausa_motivo) y las pantallas
@@ -138,6 +143,8 @@ export const MOTIVOS = Object.freeze([
   // Fase 1, parte e: la prueba gratis del token del bot de Telegram (src/claves/probar.js → src/canales/telegram.js):
   // otro programa usa ese bot (tiene un webhook), el dueño bloqueó al bot, o el chat ya no existe.
   'bot_ocupado', 'bloqueado', 'chat_no_existe',
+  // 0.13.9: Anthropic todavía pide la verificación de identidad de la cuenta («Identity verification is required»).
+  'verificacion_identidad',
 ]);
 
 // Estados de una fila de ia_llamadas (un intento PAGADO, que pasó la reserva):

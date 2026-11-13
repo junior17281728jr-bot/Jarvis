@@ -1424,6 +1424,16 @@ ul.lista-drive li:first-child { border-top: 0; }
 }
 /* 0.13.3: en los iPhone más chicos (320 px) la letra del menú baja un poco para que quepan las 5 pestañas. */
 @media (max-width: 359.98px) { .menu a { font-size: 11.5px; } }
+/* 0.13.9: la tarjeta «Claude (IA)» del Resumen de Administrador (borde del color del estado) y sus 3 pasos. */
+.tarjeta-claude { border-left: 6px solid var(--tono, var(--borde)); }
+.tarjeta-claude .claude-estado { display: flex; align-items: center; gap: 8px; font-size: 18px; margin: 6px 0; overflow-wrap: anywhere; }
+.tarjeta-claude .claude-estado .icono { color: var(--tono, currentColor); flex: none; }
+.claude-botones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.claude-botones .claude-conectar { flex: 1 1 260px; justify-content: center; }
+.enlace-claude { margin-left: 6px; }
+.claude-pasos { margin: 4px 0 14px; }
+.fabrica-profunda .fuerte { font-weight: 700; }
+
 
 /* 0.13.7: con 6 pestañas (Camino · Progreso · Examen oral · Repaso · Ajustes · Admin: el administrador) en el iPhone, la
    letra baja un poco y las pestañas se juntan, para que «Progreso» quepa entero (nunca cortado) desde 320 px. */

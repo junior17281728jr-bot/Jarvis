@@ -8,7 +8,7 @@ import { guardarAjuste } from '../src/academia/paquetes.js';
 import { carpetaFuentes, revisarCarpetaFuentes, AJUSTE_FUENTES } from '../src/academia/fuentes.js';
 import { crearFabrica } from '../src/academia/fabrica.js';
 import { crearClienteIA } from '../src/ia/cliente.js';
-import { TAREAS } from '../src/academia/fabrica-prompts.js';
+import { TAREAS, TAREAS_PROFUNDA } from '../src/academia/fabrica-prompts.js';
 import { TAREAS_ORAL } from '../src/academia/fabrica-oral.js';
 import { crearProveedorFalso } from './proveedor-falso.js';
 import { preparar, T0 } from './ia-base.js';
@@ -75,7 +75,8 @@ export const sincronizarFalso = async (db, config, { escribir }) => {
 
 // Lo que «responde el modelo» en cada paso (por la tarea que va en el mensaje). dudas: lo que dice el verificador.
 const datosDe = texto => { const m = [...texto.matchAll(/<datos>\n([\s\S]*?)\n<\/datos>/g)].at(-1); return m ? JSON.parse(m[1]) : {}; };
-export function respuestaFalsa(cuerpo, { dudas = [] } = {}) {
+export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [] } = {}) {
+  const opciones = { dudasProfunda };
   const texto = typeof cuerpo.messages?.[0]?.content === 'string' ? cuerpo.messages[0].content : '';
   const d = datosDe(texto);
   const tarjeta = (titulo, i) => ({
@@ -85,6 +86,28 @@ export function respuestaFalsa(cuerpo, { dudas = [] } = {}) {
     visual: i === 0 ? null : { tipo: 'diagrama-pasos', parametros: { titulo: null, unidad: null, problema: null, formula: null, resultado: null, columnas: null, filas: null, elementos: [{ nombre: 'Admisión', detalle: null, valor: null, hasta: null }, { nombre: 'Compresión', detalle: null, valor: null, hasta: null }] } },
     solo_texto: null,
   });
+  // 0.13.9: la «Mejora profunda de las clases» (sus tareas empiezan con «MEJORA PROFUNDA ·»).
+  if (texto.startsWith(TAREAS_PROFUNDA.plan)) {
+    const oral = Boolean(d.preguntas_del_libro);
+    const pag = oral ? d.preguntas_del_libro[0].pagina : 10;
+    const viejas = d.tarjetas_de_ahora.filter(x => !/^(Qué vas a aprender|Resumen|Para el Test Guide)/.test(x.titulo));
+    const tarjetas = viejas.map((x, i) => ({ titulo: `Mejor: ${x.titulo}`, idea: 'una idea', de: x.n, preguntas: i === 0 ? (oral ? d.preguntas_del_libro.map(q => String(q.n)) : d.test_guide.map(q => q.id)) : [], paginas: [pag] }));
+    while (tarjetas.length < 3) tarjetas.push({ titulo: `Nueva ${tarjetas.length}`, idea: 'otra idea', de: null, preguntas: [], paginas: [pag] });
+    return { contexto: ['Qué es y para qué sirve.', 'Por qué te lo preguntan en el examen.'], tarjetas };
+  }
+  if (texto.startsWith(TAREAS_PROFUNDA.tarjetas)) {
+    return { tarjetas: d.tarjetas.map(x => ({
+      titulo: x.titulo, puntos: ['Primero lo simple: el motor (engine) empuja el avión.', 'Paso a paso, una idea.'], recuerda: 'Una idea por tarjeta.', ejemplo: 'En el circuito, antes de despegar.',
+      ingles: [{ palabra: 'Engine', pronunciacion: 'ÉN-yin', significado: 'Motor' }], paginas: x.paginas, imagen: null, de: x.de, truco: 'Motor = músculo del avión.',
+      visual: { tipo: 'diagrama-pasos', parametros: { titulo: null, unidad: null, problema: null, formula: null, resultado: null, columnas: null, filas: null, elementos: [{ nombre: 'Primero', detalle: null, valor: null, hasta: null }, { nombre: 'Después', detalle: null, valor: null, hasta: null }] } },
+      solo_texto: null,
+    })), te_acuerdas: [{ pregunta: '¿Qué empuja el avión?', respuesta: 'El motor.' }, { pregunta: '¿Cuántas ideas por tarjeta?', respuesta: 'Una.' }] };
+  }
+  if (texto.startsWith(TAREAS_PROFUNDA.cierre)) {
+    return { resumen: ['Lo simple primero.', 'Una idea por tarjeta.'], otra_vez: 'Otra vez, en fácil: el tema entero en pocas frases.',
+      examinador: d.examen_oral ? [{ pregunta_en: 'May you fly for hire?', pregunta_es: '¿Puedes volar por paga?', respuesta: 'No: el piloto privado no vuela por paga (for hire).', paginas: [3] }, { pregunta_en: 'Who may share the costs?', pregunta_es: '¿Quién comparte los gastos?', respuesta: 'Solo se comparten los gastos.', paginas: [3] }] : [] };
+  }
+  if (texto.startsWith(TAREAS_PROFUNDA.verificar)) return { dudas: opciones.dudasProfunda ?? [] };
   // 0.13.1: la pista oral (los pedidos traen «preguntas_del_libro»).
   if (texto.startsWith(TAREAS_ORAL.plan)) {
     const pag = [d.preguntas_del_libro[0].pagina];
@@ -132,10 +155,10 @@ export function respuestaFalsa(cuerpo, { dudas = [] } = {}) {
 }
 
 // Todo listo: base con la IA encendida (tope general US$50), la clave probada, el proveedor falso y las fuentes.
-export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], tope = 50_000_000 } = {}) {
+export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000 } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
-  const opciones = { dudas };
+  const opciones = { dudas, dudasProfunda };
   const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo, opciones) });
   const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base }, ahora: T0 });
   const { db, config } = base;

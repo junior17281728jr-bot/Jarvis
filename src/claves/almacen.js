@@ -19,7 +19,7 @@ import { ErrorClaves, asegurarLlave, leerLlave, estadoLlave, cifrar, descifrar, 
 const iso = ms => new Date(ms).toISOString();
 const IMPRIMIBLE = /^[\x21-\x7e]+$/;
 // Si la última prueba gratis dijo esto, la clave no sirve (hasta que el dueño la pruebe otra vez y pase).
-export const PRUEBAS_QUE_INUTILIZAN = Object.freeze(['clave_no_valida', 'sin_permiso']);
+export const PRUEBAS_QUE_INUTILIZAN = Object.freeze(['clave_no_valida', 'sin_permiso', 'verificacion_identidad']);
 
 // 0.12.6: lo que deja copiar una clave desde una pantalla angosta o un documento: espacios y saltos de línea en
 // CUALQUIER parte (la clave sale cortada en varias líneas), caracteres invisibles (U+200B–U+200D, U+FEFF) y rayas

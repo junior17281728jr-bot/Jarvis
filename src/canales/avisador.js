@@ -68,7 +68,9 @@ export const RUTA_AVISOS = Object.freeze({
     // 0.12.8: una cuenta de alumno abierta en otro dispositivo más de 3 veces en un día (quizás la comparte).
     'cuenta_compartida',
     // 0.13.0: la fábrica de materias publicó una materia, una espera revisión o la mejora continua publicó.
-    'fabrica_publicada', 'fabrica_revision', 'fabrica_mejora']),
+    'fabrica_publicada', 'fabrica_revision', 'fabrica_mejora',
+    // 0.13.9: la mejora profunda de las clases publicó la versión mejorada de una materia.
+    'fabrica_profunda']),
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».
 });
 

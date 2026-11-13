@@ -2,8 +2,10 @@
 import { ICONOS_PROYECTO, ICONOS_SERVICIOS } from './dibujos.js';
 import {
   ATRIBUTOS_CAMPO_CLAVE, limpiarAlPegar, MARCAS_GASTO, partesBarraGasto, controlesProveedores, estadoDeClave, nombreModelo, leerDolares,
-  textoUsd, cosasParaEncender, apagarProveedorApagaIa,
+  textoUsd, cosasParaEncender, apagarProveedorApagaIa, estadoClaude,
 } from './ia-vista.js';
+// 0.13.9: la tarjeta «Claude (IA)» del Resumen y los 3 pasos de «Claude (API)».
+import { tarjetaClaude, pasosClaude } from './claude-vista.js';
 import {
   vistaCopias, vistaDisco, motivoBase, razonNoClave, TONO_COPIA, ICONO_TONO, vistaAzulejoCopias, vistaAzulejoTelegram, vistaTelegram,
   codigoLegible, cuentaAtras, enlaceSeguro, fraseMotivoTareaCopia,
@@ -1693,10 +1695,11 @@ const GRUPOS_ADMIN = [
     { id: 'fabrica', href: '#contenido/fabrica', clave: 'admin.pestana.fabrica', icono: 'chispa' },
   ] },
   { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
+    // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo).
+    { id: 'claves', href: '#claves', clave: 'admin.pestana.claude_api', icono: 'llave' },
     // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
     { id: 'pagos', href: '#pagos', clave: 'admin.pestana.pagos', icono: 'recibo' },
     { id: 'ia', href: '#ia', clave: 'admin.pestana.ia', icono: 'chispa' },
-    { id: 'claves', href: '#claves', clave: 'admin.pestana.claves_telegram', icono: 'llave' },
     { id: 'ia-demo', href: '#ia-demo', clave: 'admin.pestana.ia_demo', icono: 'ojo' },
     // 0.12.8: la IA de cada alumno (dinero y topes) y lo que la IA hizo (public/admin-ia.js).
     { id: 'ia-alumnos', href: '#ia-alumnos', clave: 'admin.pestana.ia_alumnos', icono: 'personas' },
@@ -1713,7 +1716,7 @@ const GRUPOS_ADMIN = [
 const grupoDePestana = actual => GRUPOS_ADMIN.find(g => g.pestanas.some(x => x.id === actual)) ?? GRUPOS_ADMIN[3];
 // 0.12.5: las direcciones que se dicen con el nombre del grupo (o de una pestaña bajo #admin/…) llevan a su pantalla.
 const REDIRECCIONES_ADMIN = Object.freeze({
-  'admin/alumnos': '#alumnos', 'admin/como-van': '#como-van', 'admin/contenido': '#contenido', 'admin/dinero': '#pagos', 'admin/sistema': '#admin',
+  'admin/alumnos': '#alumnos', 'admin/como-van': '#como-van', 'admin/contenido': '#contenido', 'admin/dinero': '#claves', 'claude': '#claves', 'admin/claude': '#claves', 'api': '#claves', 'admin/sistema': '#admin',
   'admin/respuestas': '#respuestas', 'admin/aprendizaje': '#aprendizaje', 'admin/soporte': '#soporte', 'admin/ayuda': '#soporte',
   'admin/paquetes': '#contenido', 'admin/terminos': '#contenido/terminos', 'admin/videos': '#contenido/videos', 'contenido/paquetes': '#contenido',
   'admin/pagos': '#pagos', 'admin/ia': '#ia', 'admin/claves': '#claves', 'admin/telegram': '#claves', 'admin/copias': '#copias', 'admin/resumen': '#admin',
@@ -1896,7 +1899,9 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     // Academia (0.7.0): los pasos de los proyectos se cambian por los de la academia (subir el contenido, crear alumnos).
     const guia = datosSistema.ok && contenido.ok
       ? guiaCompacta(pasosAcademia(pasosAdmin({ sistema: datosSistema.datos, ia: ia.ok ? ia.datos : null, proyectos: [] }), { contenido: contenido.datos, usuarios })) : null;
-    mostrar(marco('admin', cabecera, aviso, guia,
+    // 0.13.9: «Claude (IA)» arriba de todo: el estado en palabras simples, conectar la clave y probarla gratis.
+    const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
+    mostrar(marco('admin', cabecera, aviso, claude, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
@@ -2997,8 +3002,16 @@ function textoEstadoClave(estadoClave) {
   return t('claves.estado.ninguna');
 }
 
+// 0.13.9: «Conectar o cambiar la clave» (Resumen) lleva directo al formulario de la clave de Claude.
+let abrirClaveClaude = false;
+function irAClaveClaude() {
+  abrirClaveClaude = true;
+  if (location.hash === '#claves') pantallaClaves(); else location.hash = '#claves';
+}
 async function pantallaClaves(aviso = null) {
   const vigente = nuevoTurno();
+  const abrirClaude = abrirClaveClaude;
+  abrirClaveClaude = false;
   const r = await api('GET', '/api/admin/claves');
   if (!vigente()) return;
   const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
@@ -3023,10 +3036,16 @@ async function pantallaClaves(aviso = null) {
       !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null,
       // Revisión final: una base recuperada de una copia nunca trae la llave de las claves: se pegan otra vez aquí.
       listo && d.almacen?.motivo === 'restaurada' ? el('p', { class: 'aviso con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('claves.restaurada') })) : null),
-    // El Telegram primero: es gratis y las copias fuera del servidor lo necesitan (la IA es opcional).
-    [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'avisos') - (a.grupo === 'avisos')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente }) : el('section', { class: 'tarjeta' },
+    // 0.13.9: Claude (la IA) primero, con sus 3 pasos; el Telegram abajo.
+    [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'ia') - (a.grupo === 'ia')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente }) : el('section', { class: 'tarjeta', id: `claves-${g.grupo}` },
       titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
-      (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))))));
+      g.grupo === 'ia' ? pasosClaude({ el, t, icono }, { verificacion: estadoClaude({ claves: d }).estado === 'esperando_verificacion' }) : null,
+      (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: (i === 0 && !u.activa) || (abrirClaude && u.uso === 'ia_anthropic') }))))))));
+  if (abrirClaude) {
+    const campo = document.getElementById('clave-ia_anthropic');
+    campo?.closest('.clave-caja')?.scrollIntoView({ block: 'start' });
+    campo?.focus({ preventScroll: true });
+  }
   // 0.12.8: «Probar el bot» y los comandos para @BotFather (public/admin-ia.js).
   import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.dos'); if (vigente() && rejilla) rejilla.append(m.tarjetaBot(piezasIa())); });
 }

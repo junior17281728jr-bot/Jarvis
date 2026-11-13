@@ -18,6 +18,7 @@ import {
 const VERSION_API = '2026-10-21';
 const LIMITE_GASTO = /you have reached your specified (?:workspace )?api usage limits/i;
 const SIN_CREDITO = /credit balance/i;
+const VERIFICACION_IDENTIDAD = /identity verification/i;
 // Lo que Anthropic informa y OPORTIA sabe cobrar. Cualquier otra cosa (un número mayor que 0, un texto o un objeto con
 // algo dentro, a cualquier profundidad) es un gasto desconocido: src/ia/proveedores/comun.js (revisarUsoDesconocido).
 const USO_CONOCIDO = new Set(['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'cache_creation', 'server_tool_use', 'service_tier', 'inference_geo', 'speed']);
@@ -65,6 +66,8 @@ function mensajeDe(json, textoCorto) {
 function motivoDeError(status, json, textoCorto) {
   const mensaje = mensajeDe(json, textoCorto);
   const codigo = codigoCorto(json?.error?.details?.error_code);
+  // 0.13.9: la cuenta todavía no terminó la verificación de identidad (llega con cualquier código 4xx; también como texto).
+  if (status >= 400 && status <= 499 && VERIFICACION_IDENTIDAD.test(mensaje)) return 'verificacion_identidad';
   if (status === 400) {
     if (LIMITE_GASTO.test(mensaje)) return 'limite_gasto_proveedor';
     if (SIN_CREDITO.test(mensaje)) return 'sin_credito';

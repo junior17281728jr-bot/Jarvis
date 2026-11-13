@@ -51,8 +51,8 @@ export const AVISO_HECHO = /^(?:cambio_admin:[a-z_]{1,40}:[1-9]\d{0,15}|pago_rec
 export const AVISO_CUENTA_COMPARTIDA = /^cuenta_compartida:[1-9]\d{0,9}:\d{4}-\d{2}-\d{2}$/;
 
 // 0.13.0: la fábrica de materias publicó una materia ('fabrica_publicada:<materia>:<versión>'), una espera revisión
-// ('fabrica_revision:<materia>:g<generación>' o ':m<versión>') o la mejora continua publicó ('fabrica_mejora:<materia>:<versión>').
-export const AVISO_FABRICA = /^fabrica_(?:publicada:[a-z_]{2,30}:[1-9]\d{0,9}|revision:[a-z_]{2,30}:[gm][1-9]\d{0,9}|mejora:[a-z_]{2,30}:[1-9]\d{0,9})$/;
+// ('fabrica_revision:<materia>:g<generación>' o ':m<versión>') o la mejora continua publicó ('fabrica_mejora:<materia>:<versión>'). 0.13.9: la mejora profunda publicó ('fabrica_profunda:<materia>:<versión>').
+export const AVISO_FABRICA = /^fabrica_(?:publicada:[a-z_]{2,30}:[1-9]\d{0,9}|revision:[a-z_]{2,30}:[gm][1-9]\d{0,9}|mejora:[a-z_]{2,30}:[1-9]\d{0,9}|profunda:[a-z_]{2,30}:[1-9]\d{0,9})$/;
 
 const iso = momento => new Date(momento).toISOString();
 const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion' THEN 1 ELSE 2 END`;
