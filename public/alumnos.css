@@ -619,3 +619,68 @@ a.cv-nota-fila .cv-examen-estado { grid-column: 1 / -1; }
 .ficha-fallo-en { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--rojo-suave); color: var(--rojo-texto); font-weight: 600; overflow-wrap: anywhere; }
 .ficha-pregunta-tema { list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 10px 0 0; padding-bottom: 4px; border-bottom: 2px solid var(--linea); }
 .ficha-pregunta-tema h3 { margin: 0; font-size: 17px; }
+
+/* ---------- 0.14.6: «Notas» (public/admin-notas.js): solo las notas, en tablas ----------
+   La tabla se desliza de lado DENTRO de .notas-caja (la página nunca); la primera columna queda fija y opaca.
+   Colores: verde ≥ 70, ámbar 50–69, rojo < 50, gris sin empezar (con texto, no solo el color). */
+.tarjeta.notas { min-width: 0; max-width: 100%; }
+.notas-enlaces { margin: 6px 0 4px; }
+.botones.cv-notas { margin: 4px 0 10px; }
+.notas-leyenda { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 10px 0; }
+.notas-leyenda-item { padding: 4px 10px; border-radius: 99px; font-size: 13px; font-weight: 700; }
+.notas-deslizar { margin: 4px 0; }
+.notas-caja { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; border: 1px solid var(--borde); border-radius: 12px; background: var(--tarjeta); margin: 6px 0 10px; }
+.notas-caja:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.notas-tabla { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 14px; }
+.notas-tabla th, .notas-tabla td { padding: 6px 8px; border-bottom: 1px solid var(--borde); text-align: center; white-space: nowrap; }
+.notas-tabla tbody tr:last-child th, .notas-tabla tbody tr:last-child td { border-bottom: 0; }
+.notas-tabla th.notas-th { vertical-align: bottom; white-space: normal; min-width: 68px; max-width: 120px; font-size: 12px; line-height: 1.25; font-weight: 700; color: var(--suave); }
+.notas-tabla thead th { border-bottom: 2px solid var(--borde); }
+.notas-tabla tfoot th, .notas-tabla tfoot td { border-top: 2px solid var(--borde); border-bottom: 0; font-weight: 800; }
+.notas-tabla th.notas-quien { position: sticky; left: 0; z-index: 1; background: var(--tarjeta); text-align: left; white-space: normal; min-width: 128px; max-width: 170px; box-shadow: 1px 0 0 var(--borde); }
+.notas-tabla thead th.notas-quien { z-index: 2; }
+.notas-tabla th.notas-quien-tema { font-weight: 500; font-size: 13px; min-width: 128px; max-width: 170px; }
+.notas-tabla .notas-fila-total th, .notas-tabla .notas-fila-total td { font-weight: 800; border-bottom: 2px solid var(--borde); }
+.notas-quien-caja { display: flex; align-items: center; gap: 6px; }
+.notas-quien-caja .ficha-marcar { width: 22px; height: 22px; flex: none; margin: 0; }
+a.notas-quien-enlace { display: flex; align-items: center; gap: 6px; min-height: 44px; min-width: 0; color: inherit; text-decoration: none; }
+a.notas-quien-enlace:hover .notas-nombre, a.notas-quien-enlace:focus-visible .notas-nombre { text-decoration: underline; }
+.notas-nombre { font-weight: 700; overflow-wrap: break-word; hyphens: auto; line-height: 1.2; }
+@media (max-width: 600px) {
+  .notas-tabla .notas-quien .avatar { display: none; }
+  .notas-tabla th.notas-quien { min-width: 116px; max-width: 140px; }
+}
+a.notas-col-enlace { display: inline-block; color: var(--acento); text-decoration: underline; text-underline-offset: 2px; padding: 4px 0; }
+.notas-col-tema { display: block; font-weight: 600; }
+/* Una nota: «85 %» + E/P. En una celda, el color va en la celda; fuera de la tabla, en una pastilla. */
+.nt { color: var(--apagado-texto); background: var(--apagado-fondo); }
+span.nt, p.nt { display: inline-flex; align-items: baseline; gap: 3px; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }
+.nt-pct { font-weight: 800; }
+.nt-fuente { font-size: 10px; font-weight: 800; opacity: 0.85; margin-left: 2px; vertical-align: super; }
+.nt-bien { color: var(--bien); background: color-mix(in srgb, var(--bien) 16%, var(--tarjeta)); }
+.nt-regular { color: var(--atencion); background: color-mix(in srgb, var(--atencion) 18%, var(--tarjeta)); }
+.nt-mal { color: var(--mal); background: color-mix(in srgb, var(--mal) 16%, var(--tarjeta)); }
+.nt-nada { color: var(--apagado-texto); background: var(--apagado-fondo); }
+td.nt-celda { min-width: 58px; }
+.nt-debil { box-shadow: inset 0 0 0 3px var(--mal); }
+.nt-debil-marca { display: block; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; }
+span.nt .nt-debil-marca { display: inline; margin-left: 4px; }
+/* Las otras materias, la cabeza del alumno y sus listas por materia. */
+.notas-otras { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.notas-otras a[aria-current="page"] { border-color: var(--acento); background: var(--acento-suave); }
+.notas-alumno-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
+.notas-alumno-cabeza > div { min-width: 0; flex: 1 1 200px; }
+.notas-alumno-cabeza .titulo-pantalla { margin: 0 0 4px; }
+.notas-alumno-general { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0; font-weight: 700; }
+.notas-alumno-debil { margin: 4px 0; overflow-wrap: anywhere; }
+.notas-alumno-debil.hay { color: var(--mal); font-weight: 700; }
+a.notas-ver-materia { display: inline-flex; align-items: center; min-height: 44px; color: var(--acento); font-weight: 700; }
+.notas-bloque { border: 1px solid var(--borde); border-radius: 12px; margin: 8px 0; padding: 0 12px; background: var(--tarjeta); min-width: 0; }
+.notas-bloque > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; cursor: pointer; font-weight: 800; }
+.notas-bloque-nombre { min-width: 0; overflow-wrap: anywhere; }
+.notas-bloque .notas-caja { margin-top: 0; }
+.notas-lista { list-style: none; margin: 0; padding: 0 0 6px; }
+.notas-lista-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--borde); }
+.notas-lista-nombre { min-width: 0; overflow-wrap: anywhere; }
+.notas-comparar-cabezas { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.notas-comparar-cabeza { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 12px; min-width: 0; }

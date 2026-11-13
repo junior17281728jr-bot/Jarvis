@@ -14,6 +14,7 @@ import { paqueteActivo } from '../academia/paquetes.js';
 import { fichaAlumno, intentoDeAlumno, compararAlumnos } from '../academia/fichas.js';
 import { examenesTestGuide } from '../academia/examenes-tg.js';
 import { comoVanTodos, enLineaTodos, compararExamen } from '../academia/como-van.js';
+import { notasDeTodos } from '../academia/notas.js';
 import { reporteAcademia, opcionesReporte, guardarOpcionesReporte } from '../academia/reporte.js';
 
 export function crearLimitesPerfil() {
@@ -98,6 +99,9 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   // …/en-linea es lo liviano que la pantalla pide cada 30 s (solo quién está en línea). Solo leen.
   rutas.agregar('GET', '/api/admin/academia/como-van', ({ db }) => ({ codigo: 200, datos: comoVanTodos(db, activo(db), reloj()) }), { admin: true });
   rutas.agregar('GET', '/api/admin/academia/como-van/en-linea', ({ db }) => ({ codigo: 200, datos: enLineaTodos(db, reloj()) }), { admin: true });
+  // 0.14.6: «Notas»: SOLO las notas de cada alumno (cada materia y tema del Test Guide y del oral). Una sola respuesta para
+  // #notas, #notas/<materia>, #notas/alumno/<n.º> y #notas/comparar/<n.º,n.º>. Solo lee.
+  rutas.agregar('GET', '/api/admin/academia/notas', ({ db }) => ({ codigo: 200, datos: notasDeTodos(db, activo(db), reloj()) }), { admin: true });
   // 0.13.5: «Comparar un examen» (el de una materia): la nota de cada alumno y qué pregunta falló cada uno.
   rutas.agregar('GET', '/api/admin/academia/examenes/:materia/comparar', ({ db, parametros }) => {
     const datos = compararExamen(db, activo(db), String(parametros.materia ?? ''));

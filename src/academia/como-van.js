@@ -20,7 +20,8 @@ const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
 const SEMANA_MS = 7 * 24 * 3600 * 1000;
 export const ORDENES = Object.freeze(['en_linea', 'nota', 'avance']);
 
-function cuentasDeAlumnos(db) {
+// 0.14.6: también «Notas» (src/academia/notas.js): los alumnos (sin administradores ni cuentas eliminadas).
+export function cuentasDeAlumnos(db) {
   return db.prepare("SELECT id, nombre, nombre_visible, activo FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL ORDER BY COALESCE(nombre_visible, nombre), id").all();
 }
 

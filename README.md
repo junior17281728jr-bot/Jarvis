@@ -709,6 +709,24 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.6: «Notas» en el administrador (solo las notas) — sin cambio de base
+Pedido del dueño: una parte donde vea SOLO las notas de cada alumno, tema por tema, y comparar alumnos fácil.
+- **Administrador → Alumnos → Notas** (`#notas`; botón «Ver solo las notas» en Alumnos y en «Cómo van todos»;
+  `public/admin-notas.js`, solo se carga ahí; estilos `.notas-*` y `.nt-*` en `public/alumnos.css`): una tabla con una
+  fila por alumno (sin administradores ni cuentas eliminadas) y una columna por cada una de las 11 materias y el oral.
+  Cada casilla: la mejor nota del examen («E»); si aún no hay examen, la de la práctica («P»); sin nada, «—» en gris.
+  Colores: verde 70 % o más, ámbar 50–69 %, rojo menos de 50 %. «General» es `notaGeneralDelCurso` (solo exámenes);
+  abajo, el promedio del grupo (solo de quien ya tiene nota). Ordenar por nombre o por nota general.
+- **`#notas/<materia>`**: cada tema de esa materia; `#notas/oral`: cada capítulo; `#notas/<capítulo>`: sus temas.
+  **`#notas/alumno/<n.º>`**: todas sus notas, materia por materia y tema por tema, con su tema más débil.
+  **`#notas/comparar/<n.º,n.º>`** (marcar 2 a 6 en `#notas`): lado a lado, con el tema más débil de cada uno marcado.
+- En el iPhone la tabla se desliza de lado dentro de su caja (la página no) y la columna del alumno queda fija.
+- **El servidor**: `GET /api/admin/academia/notas` (solo administrador; `src/academia/notas.js`). Pocas consultas para
+  todos (no una por alumno ni por tema). Tema del Test Guide: la mejor nota de ese tema dentro de un examen; sin examen,
+  la mejor prueba del tema (como la ficha) o el % de aciertos fuera de exámenes. Oral: el examen de cada capítulo y el
+  final (guardados en ajustes), cada tema por su mejor examen (cada entrega tiene su hora) o su práctica.
+- Pruebas: `test/notas.test.js`.
+
 ### Lo nuevo de la 0.14.5: el examen oral en español — sin cambio de base
 Pedido del dueño: el examen oral se lo hacen en español, así que las preguntas y respuestas del oral se ven **en español**,
 con un botón para ver el **original en inglés** ahí mismo, estudiando o en un examen.

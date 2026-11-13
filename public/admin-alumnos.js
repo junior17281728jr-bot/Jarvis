@@ -201,6 +201,8 @@ export function vistaListaAlumnos(datos, h) {
     lista.length > 1 ? el('div', { class: 'ficha-comparar-barra' }, boton, ayuda) : null,
     // 0.9.2: el Reporte (ranking, por alumno, grupo, comparar; PDF y CSV).
     el('div', { class: 'botones ficha-reporte' },
+      // 0.14.6: «Notas»: solo las notas de cada alumno (cada materia y cada tema).
+      el('a', { class: 'boton-enlace con-icono', href: '#notas' }, h.icono('marca', 'icono chico'), el('span', { texto: t('notas.boton') })),
       el('a', { class: 'boton-enlace secundario con-icono', href: '#reporte' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('reporte.boton') })),
       // 0.9.2: los contratos firmados (términos aceptados con la firma dibujada).
       el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.titulo') }))),
@@ -902,6 +904,8 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
   const nodo = el('section', { class: 'tarjeta como-van' },
     el('h2', { class: 'con-icono' }, h.icono('grafica'), el('span', { texto: t('cv.titulo') })),
     cuenta,
+    // 0.14.6: «Notas»: solo las notas de cada alumno, en una tabla (y comparar alumnos tema por tema).
+    el('div', { class: 'botones cv-notas' }, el('a', { class: 'boton-enlace con-icono', href: '#notas' }, h.icono('marca', 'icono chico'), el('span', { texto: t('notas.boton') }))),
     lista.length ? el('div', { class: 'ficha-filtros', role: 'group', 'aria-label': t('cv.orden') }, el('span', { class: 'suave chica', texto: t('cv.orden') }), botones) : null,
     conExamen.length ? el('div', { class: 'cv-comparar' }, el('span', { class: 'suave chica', texto: t('cv.comparar_examen') }),
       conExamen.map(id => el('a', { class: 'cv-comparar-enlace', href: `#comparar-examen/${encodeURIComponent(id)}`, texto: h.nombreMateria(id) }))) : null,
