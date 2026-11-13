@@ -36,6 +36,7 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
   // gratis pase con el bot nuevo (si es OTRO bot, el chat queda desvinculado: src/canales/canales.js).
   const trasCambio = usuario => (d, { uso } = {}) => {
     if (definicionUso(uso)?.grupo === 'avisos') return { iaApagada: false, telegram: trasCambiarToken(d, { usuarioId: usuario.id }) };
+    if (definicionUso(uso)?.grupo === 'codigo') return { iaApagada: false };
     return { iaApagada: apagarSiNoQuedaProveedor(d, config, { usuarioId: usuario.id }) };
   };
 
@@ -64,7 +65,7 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
     try {
       const confirmado = await confirmar();
       guardada = guardarSecreto(db, config, { uso, valor, usuarioId: usuario.id, trasCambio: trasCambio(usuario) });
-      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: definicionUso(uso)?.grupo === 'avisos' ? 'token_telegram' : 'clave_ia', detalle: { uso }, como: confirmado.como });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: definicionUso(uso)?.grupo === 'avisos' ? 'token_telegram' : definicionUso(uso)?.grupo === 'codigo' ? 'token_github' : 'clave_ia', detalle: { uso }, como: confirmado.como });
     } finally {
       valor = null;
       datos.valor = null;

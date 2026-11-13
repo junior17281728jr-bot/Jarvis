@@ -9,6 +9,7 @@ import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
 import { crearAvisador } from './canales/avisador.js';
 import { crearBot } from './canales/bot.js';
 import { crearImportador } from './academia/importador.js';
+import { crearProbador } from './academia/app-probador.js';
 
 // Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
 process.umask(0o027);
@@ -34,6 +35,8 @@ const bot = db ? crearBot({ db, config }) : null;
 // Academia (0.7.1): el que entra al contenido los paquetes que el trabajador trae de Google Drive (src/academia/importador.js).
 // También en este proceso: revisar un JSON de 12 MB pasaría el tope de memoria del trabajador.
 const importador = db ? crearImportador({ db, config, supervisor, registro: console }) : null;
+// 0.14.8: el que prueba los cambios de «Claude mejora la app» (todas las pruebas, en una copia, con prioridad baja).
+const probador = db ? crearProbador({ db, config, supervisor, registro: console }) : null;
 let arranque = null;
 let cerrando = false;
 
@@ -70,6 +73,11 @@ servidor.listen(config.puerto, config.host, () => {
   } catch (error) {
     console.error('No se pudo encender el que trae el contenido de Drive (sigue):', error?.name ?? 'error');
   }
+  try {
+    probador?.iniciar();
+  } catch (error) {
+    console.error('No se pudo encender el que prueba los cambios de Claude (sigue):', error?.name ?? 'error');
+  }
 });
 
 // Apagado ordenado (systemctl stop/restart, el actualizador): una sola vez.
@@ -96,6 +104,9 @@ async function cerrar() {
   } catch { /* nada que esperar */ }
   try {
     await bot?.parar();
+  } catch { /* nada que esperar */ }
+  try {
+    await probador?.parar();
   } catch { /* nada que esperar */ }
   try {
     await importador?.parar();

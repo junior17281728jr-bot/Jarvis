@@ -18,6 +18,7 @@ import { PROVEEDORES, urlDe, hostDe } from '../ia/proveedores/index.js';
 import { modelosDeLista } from '../ia/proveedores/openai.js';
 import { guardarModelosVistos, usarSiFunciona } from '../ia/modelos.js';
 import { leerSecreto, validarValor, anotarPrueba, reanudarSecreto, secretoPublico } from './almacen.js';
+import { probarTokenGithub } from '../canales/github.js';
 import { definicionUso } from './usos.js';
 import { estadoLlave } from './cifrado.js';
 import { TELEGRAM } from '../canales/telegram.js';
@@ -74,6 +75,8 @@ export const PROBADORES = Object.freeze({
   ia_openai: probadorIa('openai'),
   ia_propia: probadorIa('propia'),
   telegram_bot: probadorTelegram,
+  // 0.14.8: el token de GitHub de «Claude mejora la app» (lee el repositorio: gratis).
+  github_token: (valor, ctx) => probarTokenGithub(valor, ctx),
 });
 
 const numero = id => {

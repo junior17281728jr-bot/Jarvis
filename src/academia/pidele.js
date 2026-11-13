@@ -24,6 +24,7 @@ import { PROPOSITOS, PROPOSITOS_CHAT } from '../ia/propositos.js';
 import { leerConfigIa } from '../ia/config.js';
 import { elegirProveedor, modelosDe } from '../ia/presupuesto.js';
 import { costoMicro } from '../ia/precios.js';
+import { pedirMejora, estadosParaChat } from './app-mejora.js';
 
 export const AJUSTE_CHAT = 'ia.chat';
 export const AJUSTE_TRABAJOS = 'ia.chat.trabajos';
@@ -141,6 +142,14 @@ export function escribirMensaje(db, { texto, ahora = Date.now() }) {
   if (chat.mensajes.some(x => x.de === 'dueno' && x.estado === 'pendiente')) return { ocupado: true };
   const mio = { id: id12(`${iso(ahora)}|${t}|${chat.mensajes.length}`), de: 'dueno', texto: t, en: iso(ahora), estado: 'pendiente' };
   const motivo = rechazoDe(t);
+  // 0.14.8: lo de la app (cómo se ve, botones, pantallas) va a «Claude mejora la app» (src/academia/app-mejora.js).
+  if (motivo === 'codigo') {
+    const ap = pedirMejora(db, { texto: t, origen: 'chat', mensaje: mio.id, ahora });
+    mio.estado = 'respondido';
+    chat.mensajes.push(mio, { id: id12(`${mio.id}a`), de: 'ia', en: iso(ahora), texto: null, appMejora: ap.id, costoMicro: 0 });
+    guardarChat(db, chat);
+    return { mensaje: mio, rechazado: null, appMejora: ap.id };
+  }
   if (motivo) {
     // Se rechaza en código, gratis: ni se llama a la IA.
     mio.estado = 'rechazado';
@@ -175,7 +184,7 @@ export function publicarTrabajo(db, { id, usuarioId = null, ahora = Date.now() }
 export function vistaChat(db, config, { ahora = Date.now(), pausada = false } = {}) {
   const chat = leerChat(db);
   return {
-    mensajes: chat.mensajes.slice(-60), trabajos: leerTrabajos(db).slice(-30).reverse(), pausada,
+    mensajes: chat.mensajes.slice(-60), trabajos: leerTrabajos(db).slice(-30).reverse(), pausada, app: estadosParaChat(db),
     estimado: estimadoMensaje(db, config, ahora), gastoMicro: gastoChatMicro(db),
     pendiente: chat.mensajes.some(x => x.de === 'dueno' && x.estado === 'pendiente') || leerTrabajos(db).some(x => ['en_cola', 'trabajando'].includes(x.estado)),
   };
@@ -234,6 +243,8 @@ async function responderMensaje(ctx, { ahora, cfg, chat, mio }) {
   let trabajo = null;
   let rechazo = RECHAZOS.includes(j.rechazo) ? j.rechazo : null;
   let nota = null;
+  let appMejora = null;
+  if (rechazo === 'codigo') { appMejora = (await ctx.escribir(() => pedirMejora(db, { texto: mio.texto, origen: 'chat', mensaje: mio.id, ahora })))?.id ?? null; rechazo = null; j.plan = null; }
   if (!rechazo && j.plan) {
     const rev = revisarPlan(db, config, j.plan, materiasParaChat(db, config));
     if (rev.ok) {
@@ -245,7 +256,7 @@ async function responderMensaje(ctx, { ahora, cfg, chat, mio }) {
   }
   await marcar({
     estadoMio: rechazo ? 'rechazado' : 'respondido', resumen: String(j.resumen ?? '').slice(0, 1500),
-    respuesta: { id: id12(`${mio.id}r`), de: 'ia', en: iso(ahora), texto: String(j.respuesta ?? '').slice(0, 2000), rechazo, planNoValido: nota, trabajo: trabajo?.id ?? null, costoMicro: r.costoMicro, proveedor: r.proveedor, modelo: r.modelo },
+    respuesta: { id: id12(`${mio.id}r`), de: 'ia', en: iso(ahora), texto: appMejora ? null : String(j.respuesta ?? '').slice(0, 2000), rechazo, planNoValido: nota, trabajo: trabajo?.id ?? null, appMejora, costoMicro: r.costoMicro, proveedor: r.proveedor, modelo: r.modelo },
     trabajo: rechazo ? null : trabajo,
   });
   return { trabajo: true, seguir: true };

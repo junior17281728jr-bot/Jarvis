@@ -388,7 +388,9 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     // 0.14.2: con otro precio que el de Claude (ChatGPT o la API propia), el techo de una vez: US$0,50 la fábrica, US$0,15 los demás.
     if (p.techoMicro != null) assert.ok(Number.isSafeInteger(p.techoMicro) && p.techoMicro >= p.maximoMicro && p.techoMicro <= (fabrica ? 500_000 : 150_000), `${id}: techoMicro`);
     if (p.ambito === 'general') assert.equal(p.tarea, 'academia.fabrica', `${id}: solo la fábrica gasta sin cuenta`);
-    assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= 60_000, `${id}: timeoutMs`);
+    // 0.14.8: la ÚNICA excepción de tiempo: «Claude mejora la app» (Opus 5.5, de la fábrica, ámbito general) hasta 110 s.
+    const lento = fabrica && p.modelo === 'claude-opus-5-5';
+    assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= (lento ? 110_000 : 60_000), `${id}: timeoutMs`);
     assert.ok(['low', 'medium', 'high'].includes(p.esfuerzo), `${id}: esfuerzo`);
     assert.ok(['motor_propio', 'esperar'].includes(p.alFaltar), `${id}: alFaltar`);
     assert.match(p.tarea, /^[a-z]+\.[a-z_]+$/, `${id}: tarea`);

@@ -30,12 +30,13 @@ import { leerConfigIa } from '../ia/config.js';
 import { elegirProveedor, modelosDe, partesPorHora, maximoDe } from '../ia/presupuesto.js';
 import { gastoMicro, GASTO_SQL } from '../ia/gasto.js';
 import { reservaMicro } from '../ia/precios.js';
-import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA, PROPOSITOS_PROFUNDA, PROPOSITOS_CHAT, PROPOSITOS_DIBUJO } from '../ia/propositos.js';
+import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA, PROPOSITOS_PROFUNDA, PROPOSITOS_CHAT, PROPOSITOS_DIBUJO, PROPOSITOS_APP } from '../ia/propositos.js';
 import { mesCobro } from '../tareas/tiempo.js';
 import { mejorar } from './fabrica-mejora.js';
 import { profundizar, vistaProfunda } from './fabrica-profunda.js';
 import { dibujar } from './dibujos-ia.js';
 import { atenderChat } from './pidele.js';
+import { mejorarApp } from './app-mejora.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 
 export const AJUSTE_CONFIG = 'fabrica.config';
@@ -130,7 +131,7 @@ export function puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro, ga
   const cuota = cuotaHora(cfg);
   const desde = iso(ahora - 3_600_000);
   const todas = db.prepare('SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ?').get(desde);
-  const todos = [...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA, ...PROPOSITOS_CHAT, ...PROPOSITOS_DIBUJO];
+  const todos = [...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA, ...PROPOSITOS_CHAT, ...PROPOSITOS_DIBUJO, ...PROPOSITOS_APP];
   const propias = db.prepare(`SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ? AND proposito IN ${enLista(todos)}`)
     .get(desde, ...todos);
   if (propias.n >= cuota.propia || todas.n >= cuota.total - cuota.libre) {
@@ -609,6 +610,10 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     if (!cfg.pausada) {
       const ch = await atenderChat(ctx, { ahora, cfg });
       if (ch.trabajo && ch.seguir) return { punto: {}, esperarMs: 1000 };
+      // 0.14.8: «Claude mejora la app»: lo que pidió el dueño (aquí o en el chat) y lo que ya está en camino (subir,
+      // mirar si quedó instalado, deshacer). Una pantalla nueva del modo solo, más abajo (después del contenido).
+      const ap = await mejorarApp(ctx, { ahora, cfg, soloPedidos: true, puedeLlamar });
+      if (ap.trabajo && ap.seguir) return { punto: {}, esperarMs: 1000 };
     }
     const fuentes = estadoFuentes(db);
     const man = fuentes?.ok ? leerManifiesto(carpetaFuentes(config)) : null;
@@ -666,6 +671,11 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
         if (pr.esperarMs) return { punto: {}, esperarMs: pr.esperarMs, motivo: 'fabrica_cuota' };
         return fin({ motivo: 'profunda', profunda: pr.motivo });
       }
+      // 0.14.8: con el contenido terminado (fábrica y mejora profunda), «Claude mejora la app» solo (fase 5), una pantalla
+      // por vez. Esperando las pruebas, la instalación o el saldo, sigue con lo demás.
+      const ap = await mejorarApp(ctx, { ahora, cfg, puedeLlamar });
+      if (ap.trabajo && ap.seguir) return { punto: {}, esperarMs: 1000 };
+      if (ap.trabajo && ap.esperarMs) return { punto: {}, esperarMs: ap.esperarMs, motivo: 'fabrica_cuota' };
       // 0.14.2: los «Dibujos con IA» (apagados por defecto, con su tope propio): uno por paso.
       const di = await dibujar(ctx, { ahora, cfg });
       if (di.trabajo) return di.seguir ? { punto: {}, esperarMs: 1000 } : fin({ motivo: 'dibujos' });
