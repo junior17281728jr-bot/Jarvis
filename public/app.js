@@ -3627,6 +3627,42 @@ function nodoCamino({ clase, href = null, nombreIcono, titulo, en = null, detall
   return el('li', { class: `nodo ${clase} desvio-${i % DESVIOS}${actual ? ' actual' : ''}` }, dentro);
 }
 
+// 0.13.3: la línea del camino pasa POR los círculos (antes era una recta en el centro y los nodos serpentean al lado).
+// Se dibuja con un SVG detrás de cada sendero, midiendo dónde quedó cada círculo; se vuelve a dibujar si cambia de tamaño
+// (al abrir/cerrar una materia, al girar el teléfono, al cargar la letra). Sin medidas (pruebas, sin ResizeObserver): nada.
+const senderosVistos = new WeakSet();
+function trazarSendero(ol) {
+  if (!ol.isConnected) return;
+  const caja = ol.getBoundingClientRect();
+  const puntos = [...ol.querySelectorAll(':scope > li.nodo .nodo-boton')].map(b => b.getBoundingClientRect())
+    .filter(r => r.width > 0 && r.height > 0).map(r => [r.left + r.width / 2 - caja.left, r.top + r.height / 2 - caja.top]);
+  let svg = ol.querySelector(':scope > svg.sendero-linea');
+  if (puntos.length < 2 || !caja.width) { svg?.remove(); ol.classList.remove('con-linea'); return; }
+  if (!svg) { svg = svgEl('svg', { class: 'sendero-linea', 'aria-hidden': 'true', focusable: 'false' }); svg.append(svgEl('path', {})); ol.prepend(svg); }
+  svg.setAttribute('width', String(Math.round(caja.width)));
+  svg.setAttribute('height', String(Math.round(caja.height)));
+  let d = `M${puntos[0][0].toFixed(1)} ${puntos[0][1].toFixed(1)}`;
+  for (let k = 1; k < puntos.length; k++) {
+    const [x0, y0] = puntos[k - 1]; const [x1, y1] = puntos[k]; const m = (y1 - y0) / 2;
+    d += ` C${x0.toFixed(1)} ${(y0 + m).toFixed(1)} ${x1.toFixed(1)} ${(y1 - m).toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+  }
+  svg.firstChild.setAttribute('d', d);
+  ol.classList.add('con-linea');
+}
+function vigilarSenderos(raizVista) {
+  if (typeof ResizeObserver !== 'function' || typeof MutationObserver !== 'function' || !raizVista) return;
+  let pendiente = false;
+  const redibujar = () => { if (pendiente) return; pendiente = true; requestAnimationFrame(() => { pendiente = false; raizVista.querySelectorAll('ol.sendero').forEach(trazarSendero); }); };
+  const tam = new ResizeObserver(redibujar);
+  const buscar = () => {
+    for (const ol of raizVista.querySelectorAll('ol.sendero')) if (!senderosVistos.has(ol)) { senderosVistos.add(ol); tam.observe(ol); }
+    redibujar();
+  };
+  new MutationObserver(lista => { if (lista.some(x => x.target.closest?.('svg.sendero-linea') == null)) buscar(); }).observe(raizVista, { childList: true, subtree: true });
+  window.addEventListener('resize', redibujar);
+  buscar();
+}
+
 function senderoMateria(m, n, siguiente) {
   const nodos = [];
   let i = 0;
@@ -6035,4 +6071,5 @@ if (typeof window.print === 'function') {
   };
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') avisarFinDeVisita(); });
+try { vigilarSenderos(raiz); } catch { /* sin medidas: queda la línea recta de siempre */ }
 iniciar().catch(() => pantallaNoArranco());

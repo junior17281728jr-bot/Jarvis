@@ -454,3 +454,8 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
 /* «Atención» (tono naranja) sobre los fondos teñidos del tema claro. */
 :root[data-tema="claro"] .tono-atencion { color: #8a4100; }
 @media (prefers-color-scheme: light) { :root[data-tema="auto"] .tono-atencion { color: #8a4100; } }
+
+/* 0.13.3: la línea que pasa por los círculos (app.js: trazarSendero). Con ella, la recta del centro se esconde. */
+ol.sendero.con-linea::before { display: none; }
+.sendero-linea { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; overflow: visible; }
+.sendero-linea path { fill: none; stroke: color-mix(in srgb, var(--suave) 30%, transparent); stroke-width: 4; stroke-dasharray: 9 9; stroke-linecap: round; }
