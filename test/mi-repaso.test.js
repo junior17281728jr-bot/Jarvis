@@ -244,7 +244,8 @@ test('pantallas: Progreso (curso entero, «Mi repaso» en corto, «¿Estás list
     assert.deepEqual([prog.curso.temas, prog.curso.preguntas, prog.miRepaso.paraRepasar], [2, 10, 1]);
     sinHuecos(panelCurso(prog.curso, h).todo, 'curso');
     sinHuecos(panelRepasoResumen(prog.miRepaso, h).todo, 'Mi repaso en corto');
-    assert.match(panelRepasoResumen(prog.miRepaso, h).textContent, /Repasa: ¿Qué es\? · Tema 1 La hipoxia \(muestra\)/);
+    // 0.13.2: en los resúmenes, el título sin el paréntesis final (como en el Camino: partirTitulo).
+    assert.match(panelRepasoResumen(prog.miRepaso, h).textContent, /Repasa: ¿Qué es\? · Tema 1 La hipoxia(?! \()/);
     // Lo que llega por la API, con el instructor de verdad (el «null» junto a «HACERLO AHORA» salía de un append(null)).
     const promesas = [];
     const api = (metodo, ruta) => { const p = pedir(c.base, metodo, ruta, { galleta: c.ana }).then(r => ({ ok: r.codigo < 300, datos: r.datos })); promesas.push(p); return p; };
