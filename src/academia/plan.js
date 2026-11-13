@@ -32,7 +32,7 @@ function leerPlan(db, usuarioId) {
 }
 
 // Cuántos «pasos» tiene el camino entero (cada tema y cada examen de materia) y cuántos ya hizo el alumno.
-function pasosDelCamino(db, usuarioId, paquete) {
+export function pasosDelCamino(db, usuarioId, paquete) {
   const aprobados = temasAprobados(db, usuarioId);
   const leidos = temasLeidos(db, usuarioId);
   const deExamen = examenes(db, usuarioId);

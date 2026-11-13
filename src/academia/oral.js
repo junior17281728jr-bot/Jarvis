@@ -252,6 +252,17 @@ export function resumenOral(db, usuarioId, paquete) {
     materias: c.materias.map(m => ({ id: m.id, numero: m.numero, preguntas: m.preguntas, bien: m.bien, pct: m.pct, examen: m.examen, temas: m.temas.length })),
   };
 }
+// 0.13.5: «Cómo van todos» (solo el administrador): la mejor y la última nota de cada examen oral (de cada capítulo y el
+// final), tal como quedaron guardadas. Solo lee. → [{ id: <materia oral> | 'final', mejor, ultima, aprobado, veces, en }]
+export function examenesOralDe(db, usuarioId, paquete) {
+  if (!hayOral(paquete)) return [];
+  const yo = estadoAlumno(db, usuarioId);
+  const orden = [...MATERIAS_ORAL, 'final'];
+  return Object.entries(yo.examenes)
+    .filter(([id, e]) => orden.includes(id) && esObjeto(e) && Number(e.veces) > 0)
+    .sort(([a], [b]) => orden.indexOf(a) - orden.indexOf(b))
+    .map(([id, e]) => ({ id, mejor: Number(e.mejor) || 0, ultima: Number.isFinite(Number(e.ultimo)) ? Number(e.ultimo) : Number(e.mejor) || 0, aprobado: e.aprobado === true, veces: Number(e.veces) || 0, en: typeof e.en === 'string' ? e.en : null }));
+}
 // Mi repaso: las preguntas del oral que la última vez respondió mal, por tema (para practicarlas otra vez).
 export function repasoOral(db, usuarioId, paquete) {
   if (!hayOral(paquete)) return null;

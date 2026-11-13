@@ -8,13 +8,14 @@
 import { ErrorHttp } from '../nucleo/http.js';
 import { porMateria, puntosYRacha, examenes, temasAprobados, verIntento, resumenDebiles, modoDeFila, PUNTOS_POR_ACIERTO } from './progreso.js';
 import { puntosDebiles } from './memoria.js';
-import { planDe, preparacionDe } from './plan.js';
+import { planDe, preparacionDe, pasosDelCamino } from './plan.js';
 import { actividadDe } from '../cuentas/historial.js';
 import { leerPerfil } from '../cuentas/perfil.js';
 import { cerrarVencidos, tiemposDe, leerExamen } from './examen.js';
 import { nombreLegalDe, estadoTerminos, verificacionDe, tutorAutorizoPagos } from '../cuentas/terminos.js';
 import { historialSaltos } from './saltos.js';
 import { resumenExtra } from './extra.js';
+import { examenesOralDe } from './oral.js';
 
 export const MAXIMO_COMPARAR = 6;
 export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
@@ -99,7 +100,10 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
     examenesAprobados: [...deExamen.values()].filter(x => x.aprobado).length, examenes: (paquete?.materias ?? []).filter(m => m.temas.length).length,
     respuestas: r.n, aciertos: r.bien, errores: r.n - r.bien, pctAcierto: pct(r.bien, r.n), preguntasDistintas: r.distintas,
     racha, estudioHoy: hoy, puntos: r.bien * PUNTOS_POR_ACIERTO,
-    minutosEstudio: tiempoDeEstudio(fechas), diasEstudio: db.prepare('SELECT COUNT(DISTINCT dia) AS n FROM academia_respuestas WHERE usuario_id = ?').get(alumnoId).n,
+    minutosEstudio: tiempoDeEstudio(fechas),
+    // 0.13.5: lo de los últimos 7 días y el avance del curso entero (los pasos del camino, como en su Inicio).
+    minutosSemana: tiempoDeEstudio(fechas.filter(f => { const t = Date.parse(f); return t <= ahoraMs && ahoraMs - t < 7 * 24 * 3600 * 1000; })),
+    avance: (p => ({ pct: p.total ? Math.min(100, Math.floor((p.hechos * 100) / p.total)) : 0, hechos: p.hechos, total: Math.round(p.total) }))(plan.elegido ? plan : pasosDelCamino(db, alumnoId, paquete)), diasEstudio: db.prepare('SELECT COUNT(DISTINCT dia) AS n FROM academia_respuestas WHERE usuario_id = ?').get(alumnoId).n,
     primeraRespuesta: fechas[0] ?? null, ultimaRespuesta: fechas.at(-1) ?? null,
   };
 }
@@ -136,6 +140,8 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     // 0.12.0: «saltó las clases» (cada vez que fue directo al examen, y cómo le fue) y lo EXTRA (aparte del Test Guide).
     saltos: historialSaltos(db, u.id),
     extra: paquete ? resumenExtra(db, u.id, paquete) : [],
+    // 0.13.5: las notas de sus exámenes del oral (cada capítulo y el final), para «Exámenes» del resumen.
+    examenesOral: examenesOralDe(db, u.id, paquete),
   };
 }
 
@@ -158,7 +164,7 @@ export function intentoDeAlumno(db, paquete, alumnoId, intentoId) {
     examen: reloj,
     preguntas: v.preguntas.map(q => {
       const g = guardadas.get(q.id);
-      const base = { ...q, respondidaEn: g?.creada_en ?? null, segundos: reloj ? reloj.tiempos[q.id] ?? 0 : null };
+      const base = { ...q, temaTitulo: q.tema ? titulos.get(`${q.materia}/${q.tema}`) ?? null : null, respondidaEn: g?.creada_en ?? null, segundos: reloj ? reloj.tiempos[q.id] ?? 0 : null };
       if (!q.respuesta && g) base.respuesta = { elegida: g.elegida, acierto: g.correcta === 1, correcta: null, sinContenido: true };
       return base;
     }),

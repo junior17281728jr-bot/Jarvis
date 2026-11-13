@@ -234,33 +234,49 @@ function pestanaResumen(d, h) {
   const r = d.resumen;
   const act = d.actividad;
   const plan = r.plan;
+  // 0.13.5: más fácil de leer: Avance (con su plan), Exámenes, Clases y Actividad, cada uno con números grandes y barras.
+  const avance = r.avance ?? { pct: plan?.pct ?? 0 };
+  const examenes = [...d.materias.filter(m => m.examen.veces).map(m => ({ id: m.id, mejor: m.examen.mejor, ultima: m.examen.ultima, aprobado: m.examen.aprobado })), ...(d.examenesOral ?? [])];
+  const clases = d.materias.map(m => {
+    const temasAprob = m.temas.filter(x => x.aprobado).length;
+    return { id: m.id, temasAprobados: temasAprob, temas: m.temas.length, pct: m.temas.length ? Math.floor((temasAprob * 100) / m.temas.length) : 0, respuestas: m.respuestas, pctAcierto: m.pctRespuestas };
+  }).filter(m => m.respuestas || m.temasAprobados);
   return [
-    el('section', { class: 'tarjeta ficha-resumen' },
-      el('div', { class: 'ficha-resumen-medidor' }, h.medidor(r.preparacion.pct, { etiqueta: t('ficha.preparacion') }),
-        el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) })),
+    el('section', { class: 'tarjeta ficha-bloque ficha-bloque-avance' },
+      el('h2', { class: 'con-icono' }, h.icono('calendario'), el('span', { texto: t('cv.avance_titulo') })),
+      bloqueAvance(h, avance, plan),
+      plan ? el('p', { class: 'suave chica', texto: t('cv.plan.estimado', { fin: h.fechaCortaDia(plan.fin), plan: h.fechaCortaDia(plan.finPlan) }) }) : null,
+      el('div', { class: 'ficha-resumen-medidor' }, el('strong', { texto: t('ficha.preparacion') }), h.medidor(r.preparacion.pct, { etiqueta: t('ficha.preparacion'), chico: true }),
+        el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) }))),
+    el('section', { class: 'tarjeta ficha-bloque' },
+      el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: t('cv.examenes') })),
+      examenes.length ? el('ul', { class: 'cv-examenes' }, examenes.map(x => chipExamen(h, x))) : el('p', { class: 'suave', texto: t('cv.examenes.vacio') }),
       el('div', { class: 'ficha-cifras' },
-        cifra(h, 'trofeo', r.notaPromedio == null ? '—' : h.pctTexto(r.notaPromedio), t('ficha.nota_promedio'), t('ficha.nota_promedio.linea', { n: numero(r.calificados) })),
+        cifra(h, 'medalla', `${numero(r.examenesAprobados)}/${numero(r.examenes)}`, t('ficha.examenes')),
+        cifra(h, 'trofeo', r.notaPromedio == null ? '—' : h.pctTexto(r.notaPromedio), t('ficha.nota_promedio'), t('ficha.nota_promedio.linea', { n: numero(r.calificados) }))),
+      el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/examenes`, texto: t('cv.ver_examenes') })),
+    el('section', { class: 'tarjeta ficha-bloque' },
+      el('h2', { class: 'con-icono' }, h.icono('bandera'), el('span', { texto: t('cv.clases') })),
+      el('div', { class: 'ficha-cifras' },
+        cifra(h, 'bandera', `${numero(r.temasAprobados)}/${numero(r.temas)}`, t('ficha.temas')),
         cifra(h, 'bien', h.pctTexto(r.pctAcierto), t('ficha.acierto'), t('ficha.acierto.linea', { bien: numero(r.aciertos), n: numero(r.respuestas) })),
         cifra(h, 'libro', numero(r.intentos), t('ficha.intentos'), r.enCurso ? t('ficha.en_curso', { n: numero(r.enCurso) }) : null),
         cifra(h, 'medalla', numero(r.aprobados), t('ficha.aprobados'), t('ficha.reprobados', { n: numero(r.reprobados) })),
-        cifra(h, 'bandera', t('acad.temas_de', { n: numero(r.temasAprobados), total: numero(r.temas) }), t('ficha.temas'), t('ficha.examenes_de', { n: numero(r.examenesAprobados), total: numero(r.examenes) })),
-        cifra(h, 'tarjetas', numero(r.respuestas), t('ficha.respondidas'), t('ficha.distintas', { n: numero(r.preguntasDistintas) })),
-        cifra(h, 'fuego', numero(r.racha), t('acad.racha'), r.estudioHoy ? t('ficha.estudio_hoy') : null),
-        cifra(h, 'reloj', horas(h, r.minutosEstudio), t('ficha.tiempo'), t('ficha.tiempo.linea', { n: numero(r.diasEstudio) })))),
-    el('section', { class: 'tarjeta' },
-      el('h2', { class: 'con-icono' }, h.icono('calendario'), el('span', { texto: t('ficha.plan') })),
-      plan ? [
-        el('p', { texto: t(TEXTO_PLAN[plan.elegido] ?? 'acad.plan.un_mes') }),
-        el('div', { class: 'ficha-linea-barra' }, barra(h, plan.pct), el('span', { texto: h.pctTexto(plan.pct) })),
-        el('p', { class: 'suave', texto: t('ficha.plan.fin', { fin: h.fechaCortaDia(plan.fin), plan: h.fechaCortaDia(plan.finPlan) }) }),
-        el('p', { class: 'etiquetas' }, h.insignia(plan.ritmo === 'atrasado' ? 'mal' : 'bien', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo'))),
-      ] : el('p', { class: 'suave', texto: t('ficha.plan.sin') })),
-    el('section', { class: 'tarjeta' },
+        cifra(h, 'tarjetas', numero(r.respuestas), t('ficha.respondidas'), t('ficha.distintas', { n: numero(r.preguntasDistintas) }))),
+      clases.length ? el('ul', { class: 'cv-clases' }, clases.map(m => filaClase(h, m))) : el('p', { class: 'suave', texto: t('cv.clases.vacio') }),
+      el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/materias`, texto: t('cv.ver_materias') })),
+    el('section', { class: 'tarjeta ficha-bloque' },
       el('h2', { class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('ficha.pestana.actividad') })),
+      el('p', { class: 'cv-estado grande' }, el('span', { class: `punto-linea${act.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), el('span', { texto: estadoLinea(h, act) })),
+      el('div', { class: 'ficha-cifras' },
+        cifra(h, 'reloj', horas(h, r.minutosEstudio), t('cv.tiempo.total'), t('ficha.tiempo.linea', { n: numero(r.diasEstudio) })),
+        cifra(h, 'calendario', horas(h, r.minutosSemana ?? 0), t('cv.tiempo.semana')),
+        cifra(h, 'fuego', numero(r.racha), t('acad.racha'), r.estudioHoy ? t('ficha.estudio_hoy') : null)),
       el('dl', { class: 'ficha-datos' },
         el('dt', { texto: t('ficha.ultima_entrada') }), el('dd', { texto: act.ultimaEntrada ? h.fecha(act.ultimaEntrada) : t('admin.nunca') }),
         el('dt', { texto: t('ficha.ultima_salida') }), el('dd', { texto: textoSalida(h, act, h.fecha) }),
         el('dt', { texto: t('ficha.ultima_actividad') }), el('dd', { texto: act.ultimaActividad ? h.fecha(act.ultimaActividad) : t('admin.nunca') })),
+      el('p', { class: 'suave chica', texto: t('cv.tiempo.nota') }),
       el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/actividad`, texto: t('ficha.ver_sesiones') })),
     ultimosIntentos(d, h),
     saltosAlumno(d, h),
@@ -345,7 +361,8 @@ export function vistaExamenesTG(datos, h, { conAlumno = true } = {}) {
       return el('section', { class: `panel examenes-materia ${h.claseMateria(m.id)}` },
         el('div', { class: 'materia-cabeza' },
           el('span', { class: 'banner-icono chico', 'aria-hidden': 'true' }, h.icono(h.ICONO_MATERIA?.[m.id] ?? 'avion')),
-          el('h3', { texto: h.nombreMateria(m.id) })),
+          el('h3', { texto: h.nombreMateria(m.id) }),
+          el('a', { class: 'cv-comparar-enlace', href: `#comparar-examen/${encodeURIComponent(m.id)}`, texto: t('cv.comparar_alumnos') })),
         el('p', { class: 'suave chica', texto: r.intentos ? t('examenes.materia.linea', { n: numero(r.intentos), mejor: h.pctTexto(r.mejor), ultima: h.pctTexto(r.ultima), aprobados: numero(r.aprobados), tasa: h.pctTexto(r.tasa) }) : t('examenes.sin_intentos') }),
         filas.length ? h.verMas(el('ul', { class: 'ficha-intentos' }), filas.map(fila), 5) : null);
     });
@@ -496,8 +513,36 @@ export function vistaIntento(v, h) {
       q.respondidaEn || q.segundos != null ? el('p', { class: 'suave chica', texto: [q.respondidaEn ? t('ficha.p.cuando', { cuando: h.fecha(q.respondidaEn) }) : null,
         q.segundos != null ? t('ficha.p.segundos', { tiempo: reloj(q.segundos) }) : null].filter(Boolean).join(' · ') }) : null);
   };
-  const pintar = () => lista.replaceChildren(...v.preguntas.map((q, k) => (soloMalas && !(q.respuesta && !q.respuesta.acierto) ? null : pregunta(q, k))).filter(Boolean));
+  // 0.13.5: agrupadas por tema (cuando el intento tiene más de uno, como el examen de una materia), cada pregunta con su
+  // número de siempre; los temas en el orden en que aparece su primera pregunta.
+  const numerada = v.preguntas.map((q, k) => ({ q, k }));
+  const grupos = [];
+  for (const x of numerada) {
+    const clave = x.q.tema ?? '';
+    let g = grupos.find(y => y.clave === clave);
+    if (!g) { g = { clave, titulo: x.q.temaTitulo, lista: [] }; grupos.push(g); }
+    g.lista.push(x);
+  }
+  const pintar = () => {
+    const nodos = [];
+    for (const g of grupos) {
+      const visibles = g.lista.filter(({ q }) => !soloMalas || (q.respuesta && !q.respuesta.acierto));
+      if (!visibles.length) continue;
+      if (grupos.length > 1) {
+        const respondidasTema = g.lista.filter(({ q }) => q.respuesta);
+        const bien = respondidasTema.filter(({ q }) => q.respuesta.acierto).length;
+        nodos.push(el('li', { class: 'ficha-pregunta-tema' }, el('h3', { texto: g.titulo ? h.partirTitulo(g.titulo).es : t('cv.sin_tema') }),
+          el('span', { class: 'suave chica', texto: t('ficha.tema_bien', { bien: numero(bien), n: numero(respondidasTema.length) }) })));
+      }
+      for (const { q, k } of visibles) nodos.push(pregunta(q, k));
+    }
+    lista.replaceChildren(...nodos);
+  };
   pintar();
+  const fallas = fallasPorTema(v.preguntas);
+  const resumenFallas = fallas.length ? el('p', { class: 'ficha-fallo-en' }, el('strong', { texto: t('ficha.fallo_en') }), ' ',
+    el('span', { texto: fallas.map(x => `${x.titulo ? h.partirTitulo(x.titulo).es : t('cv.sin_tema')} (${numero(x.fallos)})`).join(', ') }))
+    : respondidas.length ? el('p', { class: 'mensaje bien', texto: t('ficha.sin_fallos') }) : null;
   return [
     el('a', { class: 'volver con-icono', href: `#alumno/${v.alumno.id}/examenes` }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('ficha.volver_intentos', { nombre: nombreDe(v.alumno) }) })),
     el('section', { class: 'tarjeta ficha-intento-cabeza' },
@@ -513,6 +558,7 @@ export function vistaIntento(v, h) {
           el('span', { texto: v.examen ? t('ficha.tiempo_de', { usado: reloj(v.segundos), limite: reloj(v.examen.limiteSegundos) }) : t('ficha.tiempo_usado', { usado: reloj(v.segundos) }) })) : null,
         v.aprobado === true ? h.insignia('bien', t('ficha.aprobado')) : v.aprobado === false ? h.insignia('mal', t('ficha.no_aprobado', { umbral: numero(v.umbral ?? 90) })) : h.insignia('info', t('ficha.practica')))),
     el('section', { class: 'tarjeta' },
+      resumenFallas,
       el('div', { class: 'ficha-filtros' }, filtro, el('span', { class: 'suave chica', texto: t('ficha.p.resumen', { n: numero(respondidas.length), total: numero(v.total), mal: numero(malas) }) })),
       lista),
   ];
@@ -584,4 +630,218 @@ export function vistaComparar(datos, h) {
           a.debiles.temas.map(x => el('li', { texto: t('ficha.comparar.tema_debil', { tema: h.partirTitulo(x.titulo).es, pct: h.pctTexto(x.pct) }) })),
           a.debiles.ideas.map(x => el('li', {}, h.talCual('span', x.idea)))) : el('p', { class: 'suave', texto: t('ficha.comparar.sin_debiles') }))))),
   ];
+}
+
+// ---------- 0.13.5: piezas comunes de «Cómo van todos» y de la ficha ----------
+// El color de una nota de examen: verde si aprobó, naranja si la mejor llegó a 70 %, rojo si no.
+export function tonoExamen(x) {
+  if (!x || x.mejor == null) return 'apagado';
+  return x.aprobado ? 'bien' : x.mejor >= 70 ? 'atencion' : 'mal';
+}
+// El nombre de un examen: la materia, un capítulo del oral o el examen oral final.
+function nombreExamen(h, id) {
+  return id === 'final' ? h.t('cv.oral_final') : h.nombreMateria(id);
+}
+// Una nota de examen: «Factores humanos · Mejor 85 % · Última 70 % · ✔ Aprobado».
+function chipExamen(h, x) {
+  const { el, t } = h;
+  const tono = tonoExamen(x);
+  return el('li', { class: `cv-examen cv-${tono}` },
+    el('span', { class: 'cv-examen-nombre', texto: nombreExamen(h, x.id) }),
+    el('span', { class: 'cv-examen-notas' },
+      el('strong', { class: 'cv-examen-mejor', texto: h.pctTexto(x.mejor) }),
+      el('span', { class: 'cv-examen-ultima', texto: t('cv.ultima', { pct: h.pctTexto(x.ultima) }) })),
+    el('span', { class: 'cv-examen-estado', texto: t(x.aprobado ? 'cv.aprobado' : 'cv.no_aprobado') }));
+}
+// Una materia de las clases: el nombre, la barra de temas aprobados y «3 de 5 temas · 80 % aciertos».
+function filaClase(h, m) {
+  const { el, t } = h;
+  return el('li', { class: `cv-clase ${h.claseMateria(m.id)}` },
+    el('span', { class: 'cv-clase-nombre', texto: h.nombreMateria(m.id) }),
+    el('span', { class: 'cv-barra' }, h.barraLlena(m.pct)),
+    el('span', { class: 'cv-clase-cifras', texto: m.respuestas ? t('cv.clase.linea', { n: h.numero(m.temasAprobados), total: h.numero(m.temas), pct: h.pctTexto(m.pctAcierto) })
+      : t('cv.clase.linea_sin', { n: h.numero(m.temasAprobados), total: h.numero(m.temas) }) }));
+}
+function textoPlan(h, plan) {
+  const { t } = h;
+  if (!plan) return t('cv.plan.sin');
+  return t('cv.plan.linea', { plan: t(TEXTO_PLAN[plan.elegido] ?? 'acad.plan.un_mes'), fin: h.fechaCortaDia(plan.fin) });
+}
+const TONO_RITMO = { adelantado: 'bien', a_tiempo: 'bien', terminado: 'bien', atrasado: 'atencion' };
+function estadoLinea(h, a) {
+  return a.enLinea ? h.t('cv.en_linea') : a.ultimaActividad ? h.t('cv.visto', { cuando: h.hace(a.ultimaActividad) }) : h.t('cv.nunca');
+}
+// El avance del curso entero: el número grande y la barra.
+function bloqueAvance(h, avance, plan) {
+  const { el, t } = h;
+  return el('div', { class: 'cv-avance' },
+    el('div', { class: 'cv-avance-cifra' },
+      el('strong', { class: 'cv-grande', texto: h.pctTexto(avance.pct) }),
+      el('span', { class: 'cv-rotulo', texto: t('cv.avance') })),
+    el('span', { class: 'cv-barra grande' }, h.barraLlena(avance.pct)),
+    el('p', { class: 'cv-plan' },
+      el('span', { texto: textoPlan(h, plan) }),
+      plan ? h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null));
+}
+function minutos(h, n) {
+  return horas(h, n ?? 0);
+}
+
+// ---------- 0.13.5: «Cómo van todos» ----------
+// Lógica pura (test/como-van.test.js): el orden de la lista (igual que en el servidor).
+export const ORDENES_COMO_VAN = Object.freeze(['en_linea', 'nota', 'avance']);
+export function ordenarComoVan(lista, orden = 'en_linea') {
+  const nombre = a => String(a.nombreVisible || a.nombre || '').toLocaleLowerCase('es');
+  const porNombre = (a, b) => nombre(a).localeCompare(nombre(b), 'es') || a.id - b.id;
+  const comparar = {
+    en_linea: (a, b) => Number(b.enLinea) - Number(a.enLinea) || String(b.ultimaActividad ?? '').localeCompare(String(a.ultimaActividad ?? '')) || porNombre(a, b),
+    nota: (a, b) => (b.examenes.promedio ?? -1) - (a.examenes.promedio ?? -1) || porNombre(a, b),
+    avance: (a, b) => b.avance.pct - a.avance.pct || b.clases.pctAcierto - a.clases.pctAcierto || porNombre(a, b),
+  }[ORDENES_COMO_VAN.includes(orden) ? orden : 'en_linea'];
+  return [...lista].sort(comparar);
+}
+
+// → { nodo, actualizar(enLinea) }: actualizar pinta solo quién está en línea (lo que se pide cada 30 s), sin redibujar.
+export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrdenar = null } = {}) {
+  const { el, t, tn, numero } = h;
+  let orden = ORDENES_COMO_VAN.includes(ordenInicial) ? ordenInicial : 'en_linea';
+  const lista = datos.alumnos.map(a => ({ ...a }));
+  const tarjetas = new Map();
+  const estados = new Map();
+  const tarjeta = a => {
+    const estado = el('span', { class: 'cv-estado-texto', texto: estadoLinea(h, a) });
+    const punto = el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' });
+    estados.set(a.id, { estado, punto });
+    const examenes = [...a.examenes.materias, ...a.examenes.oral];
+    const clases = a.clases.materias.filter(m => m.respuestas || m.temasAprobados);
+    const nodo = el('a', { class: `cv-alumno${a.enLinea ? ' en-linea' : ''}`, href: `#alumno/${a.id}`, 'data-alumno': String(a.id) },
+      el('div', { class: 'cv-quien' },
+        h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'medio' }),
+        el('div', { class: 'cv-quien-texto' },
+          el('strong', { class: 'cv-nombre', texto: nombreDe(a) }),
+          el('span', { class: 'cv-estado' }, punto, estado),
+          a.activo ? null : h.insignia('mal', t('admin.inactivo')))),
+      el('div', { class: 'cv-col cv-col-avance' }, bloqueAvance(h, a.avance, a.plan)),
+      el('div', { class: 'cv-col cv-col-examenes' },
+        el('h3', { class: 'cv-titulo', texto: t('cv.examenes') }),
+        examenes.length ? el('ul', { class: 'cv-examenes' }, examenes.map(x => chipExamen(h, x))) : el('p', { class: 'suave', texto: t('cv.examenes.vacio') })),
+      el('div', { class: 'cv-col cv-col-clases' },
+        el('h3', { class: 'cv-titulo', texto: t('cv.clases') }),
+        el('p', { class: 'cv-clases-total' },
+          el('strong', { texto: t('cv.temas', { n: numero(a.clases.temasAprobados), total: numero(a.clases.temas) }) }),
+          el('span', { texto: a.clases.respuestas ? t('cv.aciertos', { pct: h.pctTexto(a.clases.pctAcierto) }) : t('cv.clases.vacio') })),
+        clases.length ? el('ul', { class: 'cv-clases' }, clases.map(m => filaClase(h, m))) : null),
+      el('div', { class: 'cv-col cv-col-tiempo' },
+        el('h3', { class: 'cv-titulo', texto: t('cv.tiempo') }),
+        el('p', { class: 'cv-tiempo' }, el('strong', { texto: minutos(h, a.tiempo.minutos) }), el('span', { class: 'suave chica', texto: t('cv.tiempo.total') })),
+        el('p', { class: 'cv-tiempo' }, el('strong', { texto: minutos(h, a.tiempo.semana) }), el('span', { class: 'suave chica', texto: t('cv.tiempo.semana') }))));
+    tarjetas.set(a.id, nodo);
+    return nodo;
+  };
+  lista.forEach(tarjeta);
+  const zona = el('div', { class: 'cv-lista' });
+  const cuenta = el('p', { class: 'cv-resumen', role: 'status' });
+  const pintarCuenta = () => {
+    const n = lista.filter(a => a.enLinea).length;
+    cuenta.replaceChildren(el('strong', { texto: tn('cv.resumen.alumnos', { n: lista.length }) }), el('span', { texto: ' · ' }),
+      el('span', { class: `punto-linea${n ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), el('span', { texto: ` ${t('cv.resumen.en_linea', { n: numero(n) })}` }));
+  };
+  const pintar = () => zona.replaceChildren(...ordenarComoVan(lista, orden).map(a => tarjetas.get(a.id)));
+  const botones = ORDENES_COMO_VAN.map(id => el('button', { type: 'button', class: 'ficha-filtro', 'data-orden': id, 'aria-pressed': String(id === orden), texto: t(`cv.orden.${id}`),
+    onclick: () => { orden = id; botones.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.orden === orden))); pintar(); alOrdenar?.(orden); } }));
+  pintarCuenta();
+  pintar();
+  // Los exámenes que alguien ya hizo: «Comparar» (quién sacó cuánto y qué pregunta falló cada uno).
+  const conExamen = datos.materias.filter(id => lista.some(a => a.examenes.materias.some(x => x.id === id)));
+  const nodo = el('section', { class: 'tarjeta como-van' },
+    el('h2', { class: 'con-icono' }, h.icono('grafica'), el('span', { texto: t('cv.titulo') })),
+    cuenta,
+    lista.length ? el('div', { class: 'ficha-filtros', role: 'group', 'aria-label': t('cv.orden') }, el('span', { class: 'suave chica', texto: t('cv.orden') }), botones) : null,
+    conExamen.length ? el('div', { class: 'cv-comparar' }, el('span', { class: 'suave chica', texto: t('cv.comparar_examen') }),
+      conExamen.map(id => el('a', { class: 'cv-comparar-enlace', href: `#comparar-examen/${encodeURIComponent(id)}`, texto: h.nombreMateria(id) }))) : null,
+    lista.length ? el('div', { class: 'cv-cabeza-tabla', 'aria-hidden': 'true' },
+      el('span', { texto: t('cv.col.alumno') }), el('span', { texto: t('cv.avance') }), el('span', { texto: t('cv.examenes') }), el('span', { texto: t('cv.clases') }), el('span', { texto: t('cv.tiempo') })) : null,
+    lista.length ? zona : h.vacio('personas', t('cv.vacio')),
+    el('p', { class: 'suave chica', texto: t('cv.nota') }));
+  const actualizar = d => {
+    for (const x of d?.alumnos ?? []) {
+      const a = lista.find(y => y.id === x.id);
+      if (!a) continue;
+      a.enLinea = x.enLinea;
+      a.ultimaActividad = x.ultimaActividad;
+      const e = estados.get(a.id);
+      e.estado.textContent = estadoLinea(h, a);
+      e.punto.classList.toggle('en-linea', Boolean(a.enLinea));
+      tarjetas.get(a.id).classList.toggle('en-linea', Boolean(a.enLinea));
+    }
+    pintarCuenta();
+    if (orden === 'en_linea') pintar();
+  };
+  return { nodo, actualizar };
+}
+
+// ---------- 0.13.5: «Comparar un examen» (el de una materia) ----------
+export function vistaCompararExamen(d, h) {
+  const { el, t, tn, numero } = h;
+  const nombre = h.nombreMateria(d.materia);
+  const total = d.alumnos.length;
+  const alumnos = d.alumnos.length ? el('ul', { class: 'cv-notas' }, d.alumnos.map(a => el('li', {},
+    el('a', { class: `cv-nota-fila cv-${tonoExamen(a)}`, href: `#alumno/${a.id}/intento/${a.ultimoIntento}` },
+      el('span', { class: 'cv-nombre', texto: a.nombre }),
+      el('strong', { class: 'cv-examen-mejor', texto: h.pctTexto(a.mejor) }),
+      el('span', { class: 'cv-examen-ultima', texto: t('cv.ultima', { pct: h.pctTexto(a.ultima) }) }),
+      el('span', { class: 'cv-examen-estado', texto: `${t(a.aprobado ? 'cv.aprobado' : 'cv.no_aprobado')} · ${tn('cv.veces', { n: a.intentos })}` }))))) : h.vacio('libro', t('examenes.sin_intentos'));
+  const tonoFallas = (n, de) => (!n ? 'bien' : n * 2 >= de ? 'mal' : 'atencion');
+  const temas = d.temas.length ? el('ul', { class: 'cv-temas-fallas' }, d.temas.map(x => el('li', { class: `cv-${tonoFallas(x.alumnos, total)}` },
+    el('span', { class: 'cv-clase-nombre', texto: h.partirTitulo(x.titulo).es }),
+    el('strong', { texto: tn('cv.fallas', { n: x.fallos }) }),
+    el('span', { class: 'suave chica', texto: t('cv.fallas.alumnos', { n: numero(x.alumnos), total: numero(total) }) })))) : null;
+  const pregunta = q => {
+    const letra = op => el('span', { class: 'opcion-letra', texto: op.letra });
+    return el('li', { class: `cv-pregunta cv-${tonoFallas(q.fallaron.length, q.respondieron)}` },
+      el('details', {},
+        el('summary', {},
+          el('span', { class: 'cv-pregunta-n', texto: q.numero ? t('acad.pregunta_n', { n: q.numero }) : t('cv.pregunta') }),
+          el('strong', { class: 'cv-pregunta-fallas', texto: q.fallaron.length ? t('cv.fallaron', { n: numero(q.fallaron.length), total: numero(q.respondieron) }) : t('cv.nadie_fallo') }),
+          q.temaTitulo ? el('span', { class: 'suave chica cv-pregunta-tema', texto: h.partirTitulo(q.temaTitulo).es }) : null),
+        q.falta ? el('p', { class: 'aviso', texto: t('ficha.p.falta', { id: q.id }) }) : [
+          h.talCual('p', q.enunciado, 'cv-enunciado'),
+          el('ul', { class: 'ficha-opciones' }, q.opciones.map(op => el('li', { class: op.letra === q.correcta ? 'es-correcta' : null },
+            letra(op), h.talCual('span', op.texto, 'opcion-texto'),
+            op.letra === q.correcta ? el('span', { class: 'ficha-opcion-sellos' }, el('span', { class: 'ficha-sello correcta', texto: t('ficha.p.correcta') })) : null))),
+        ],
+        q.fallaron.length ? el('div', { class: 'cv-quienes' },
+          el('h4', { texto: t('cv.quienes') }),
+          el('ul', {}, q.fallaron.map(f => el('li', {},
+            el('a', { href: `#alumno/${f.id}/intento/${f.intento}`, texto: f.nombre }),
+            el('span', { class: 'suave', texto: ` ${t('cv.eligio', { letra: f.elegida })}` })))))
+          : el('p', { class: 'mensaje bien', texto: t('cv.nadie_fallo') })));
+  };
+  return [
+    el('a', { class: 'volver con-icono', href: '#como-van' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('cv.volver') })),
+    el('h1', { class: 'titulo-pantalla', texto: t('cv.examen.titulo', { materia: nombre }) }),
+    el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, h.icono('trofeo'), el('span', { texto: t('cv.examen.notas') })),
+      el('p', { class: 'suave chica', texto: t('cv.examen.notas.linea') }),
+      alumnos),
+    temas ? el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, h.icono('bandera'), el('span', { texto: t('cv.examen.temas') })),
+      temas) : null,
+    el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: t('cv.examen.preguntas') })),
+      el('p', { class: 'suave chica', texto: t('cv.examen.preguntas.linea') }),
+      d.preguntas.length ? h.verMas(el('ol', { class: 'cv-preguntas' }), d.preguntas.map(pregunta), 15) : el('p', { class: 'suave', texto: t('examenes.sin_intentos') })),
+  ];
+}
+
+// «Falló en: Hipoxia (3), Ilusiones (1)»: los temas donde se equivocó en un intento, de más a menos.
+export function fallasPorTema(preguntas) {
+  const m = new Map();
+  for (const q of preguntas) {
+    if (!q.respuesta || q.respuesta.acierto) continue;
+    const clave = q.tema ?? '';
+    if (!m.has(clave)) m.set(clave, { tema: q.tema ?? null, titulo: q.temaTitulo ?? null, fallos: 0 });
+    m.get(clave).fallos += 1;
+  }
+  return [...m.values()].sort((a, b) => b.fallos - a.fallos || String(a.titulo ?? '').localeCompare(String(b.titulo ?? ''), 'es'));
 }

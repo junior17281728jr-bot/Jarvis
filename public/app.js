@@ -1674,6 +1674,8 @@ const PESTANAS_ADMIN = ['resumen', 'usuarios', 'trabajo', 'servidor', 'cambios']
 const GRUPOS_ADMIN = [
   { id: 'alumnos', clave: 'admin.grupo.alumnos', icono: 'personas', pestanas: [
     { id: 'alumnos', href: '#alumnos', clave: 'admin.pestana.alumnos', icono: 'grafica' },
+    // 0.13.5: «Cómo van todos»: cada alumno con sus notas de examen, sus clases, su avance y si está en línea.
+    { id: 'como-van', href: '#como-van', clave: 'admin.pestana.como_van', icono: 'medalla' },
     { id: 'usuarios', href: '#admin/usuarios', clave: 'admin.pestana.usuarios', icono: 'personas' },
     // 0.8.0: los Exámenes del Test Guide de cada materia y la clave completa.
     { id: 'respuestas', href: '#respuestas', clave: 'admin.pestana.respuestas', icono: 'marca' },
@@ -1710,7 +1712,7 @@ const GRUPOS_ADMIN = [
 const grupoDePestana = actual => GRUPOS_ADMIN.find(g => g.pestanas.some(x => x.id === actual)) ?? GRUPOS_ADMIN[3];
 // 0.12.5: las direcciones que se dicen con el nombre del grupo (o de una pestaña bajo #admin/…) llevan a su pantalla.
 const REDIRECCIONES_ADMIN = Object.freeze({
-  'admin/alumnos': '#alumnos', 'admin/contenido': '#contenido', 'admin/dinero': '#pagos', 'admin/sistema': '#admin',
+  'admin/alumnos': '#alumnos', 'admin/como-van': '#como-van', 'admin/contenido': '#contenido', 'admin/dinero': '#pagos', 'admin/sistema': '#admin',
   'admin/respuestas': '#respuestas', 'admin/aprendizaje': '#aprendizaje', 'admin/soporte': '#soporte', 'admin/ayuda': '#soporte',
   'admin/paquetes': '#contenido', 'admin/terminos': '#contenido/terminos', 'admin/videos': '#contenido/videos', 'contenido/paquetes': '#contenido',
   'admin/pagos': '#pagos', 'admin/ia': '#ia', 'admin/claves': '#claves', 'admin/telegram': '#claves', 'admin/copias': '#copias', 'admin/resumen': '#admin',
@@ -1720,7 +1722,7 @@ const REDIRECCIONES_ADMIN = Object.freeze({
 const LINEA_ADMIN = {
   resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
-  alumnos: () => t('admin.linea.alumnos'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
+  alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
   soporte: () => t('admin.linea.soporte'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
   pagos: () => t('admin.linea.pagos'), // 0.12.12
 };
@@ -5303,8 +5305,8 @@ const piezasAlumnos = () => ({
     el('a', { class: 'boton-enlace secundario', href: `#aprendizaje/${encodeURIComponent(id)}`, texto: t('aprendizaje.de_alumno') })],
 });
 // Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
-function dibujarDeAlumnos(r, s, dibujarCon) {
-  const cabecera = cabeceraAdmin('alumnos', tonosDePestanas(s.ok ? s.datos : null));
+function dibujarDeAlumnos(r, s, dibujarCon, pestana = 'alumnos') {
+  const cabecera = cabeceraAdmin(pestana, tonosDePestanas(s.ok ? s.datos : null));
   if (!r.ok) {
     return mostrar(marco('admin', cabecera,
       el('a', { class: 'volver con-icono', href: '#alumnos' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') })),
@@ -5316,6 +5318,37 @@ async function pantallaAlumnos() {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/alumnos'), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaListaAlumnos(d, h));
+}
+// 0.13.5: «Cómo van todos». Mientras la pantalla está abierta (y a la vista), cada 30 s pide solo quién está en línea y lo
+// pinta sin redibujar (el orden y lo que se ve quedan). Al irse de la pantalla o al esconder la app, deja de pedir.
+let ordenComoVan = 'en_linea';
+async function pantallaComoVan() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/como-van'), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  if (!vigente()) return;
+  let control = null;
+  dibujarDeAlumnos(r, s, (d, h) => {
+    control = vista.vistaComoVan(d, h, { orden: ordenComoVan, alOrdenar: o => { ordenComoVan = o; } });
+    return control.nodo;
+  }, 'como-van');
+  if (!control) return;
+  const ruta = location.hash;
+  let pidiendo = false;
+  const reloj = setInterval(async () => {
+    if (!vigente() || location.hash !== ruta || !control.nodo.isConnected) { clearInterval(reloj); return; }
+    if (document.hidden || pidiendo) return;
+    pidiendo = true;
+    try {
+      const x = await api('GET', '/api/admin/academia/como-van/en-linea');
+      if (x.ok && vigente() && control.nodo.isConnected) control.actualizar(x.datos);
+    } finally { pidiendo = false; }
+  }, 30000);
+}
+// 0.13.5: «Comparar un examen»: la nota de cada alumno y qué pregunta falló cada uno (y qué eligió).
+async function pantallaCompararExamen(materia) {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/examenes/${encodeURIComponent(materia)}/comparar`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaCompararExamen(d, h), 'como-van');
 }
 async function pantallaAlumno(id, pestana = 'resumen') {
   const vigente = nuevoTurno();
@@ -5803,7 +5836,7 @@ async function dibujar() {
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5843,6 +5876,9 @@ async function dibujar() {
   const oral = seccion.match(/^oral(?:\/(tema|practica|examen|final)(?:\/([a-z0-9_-]+))?(?:\/([a-z0-9_-]+))?)?$/);
   if (oral) return pantallaOralDe(oral[1] ?? null, oral[2] ?? null, oral[3] ?? null);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
+  if (seccion === 'como-van' && esAdmin) return pantallaComoVan();
+  const compararExamen = seccion.match(/^comparar-examen\/([a-z0-9_-]+)$/);
+  if (compararExamen && esAdmin) return pantallaCompararExamen(compararExamen[1]);
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad))?$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1], alumno[2] ?? 'resumen');
   const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);
@@ -5924,6 +5960,7 @@ function pedidosAlAbrir(seccion, admin) {
   const extra = seccion.match(/^extra\/([a-z0-9_-]+)(?:\/[a-z0-9_-]+)?$/);
   if (extra) return [`/api/academia/extra/${encodeURIComponent(extra[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
+  if (seccion === 'como-van') return admin ? ['/api/admin/academia/como-van', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad))?$/);
   if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}/ficha`, '/api/admin/sistema'] : [];
   const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);

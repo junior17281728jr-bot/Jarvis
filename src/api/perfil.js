@@ -13,6 +13,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { fichaAlumno, intentoDeAlumno, compararAlumnos } from '../academia/fichas.js';
 import { examenesTestGuide } from '../academia/examenes-tg.js';
+import { comoVanTodos, enLineaTodos, compararExamen } from '../academia/como-van.js';
 import { reporteAcademia, opcionesReporte, guardarOpcionesReporte } from '../academia/reporte.js';
 
 export function crearLimitesPerfil() {
@@ -91,6 +92,17 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   rutas.agregar('GET', '/api/admin/academia/examenes', ({ db, req }) => {
     const alumno = Number(new URL(req.url, 'http://x').searchParams.get('alumno'));
     return { codigo: 200, datos: examenesTestGuide(db, activo(db), { alumno: Number.isSafeInteger(alumno) && alumno > 0 ? alumno : null }) };
+  }, { admin: true });
+
+  // 0.13.5: «Cómo van todos»: cada alumno con sus notas de examen, sus clases, su plan, su avance y si está en línea.
+  // …/en-linea es lo liviano que la pantalla pide cada 30 s (solo quién está en línea). Solo leen.
+  rutas.agregar('GET', '/api/admin/academia/como-van', ({ db }) => ({ codigo: 200, datos: comoVanTodos(db, activo(db), reloj()) }), { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/como-van/en-linea', ({ db }) => ({ codigo: 200, datos: enLineaTodos(db, reloj()) }), { admin: true });
+  // 0.13.5: «Comparar un examen» (el de una materia): la nota de cada alumno y qué pregunta falló cada uno.
+  rutas.agregar('GET', '/api/admin/academia/examenes/:materia/comparar', ({ db, parametros }) => {
+    const datos = compararExamen(db, activo(db), String(parametros.materia ?? ''));
+    if (!datos) throw new ErrorHttp(404, 'no_existe');
+    return { codigo: 200, datos };
   }, { admin: true });
 
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/intentos/:intento', ({ db, parametros }) =>

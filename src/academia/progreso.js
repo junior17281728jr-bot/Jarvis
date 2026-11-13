@@ -735,7 +735,7 @@ export function resumenDebiles(memoria, paquete, { limite = 10 } = {}) {
 
 // ---------- Solo para el administrador ----------
 
-function ultimaActividad(db) {
+export function ultimaActividad(db) {
   const m = new Map();
   const poner = (id, fecha) => { if (fecha && (!m.get(id) || fecha > m.get(id))) m.set(id, fecha); };
   for (const f of db.prepare('SELECT id, ultimo_acceso AS f FROM usuarios').all()) poner(f.id, f.f);

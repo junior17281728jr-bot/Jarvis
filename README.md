@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.13.2; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.13.5; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,28 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.13.5: «Cómo van todos», la ficha más fácil de leer y comparar un examen — sin cambio de base
+- **Administrador → Alumnos → «Cómo van todos»** (`#como-van`, `src/academia/como-van.js`, `GET /api/admin/academia/como-van`):
+  arriba «N alumnos · M en línea ahora»; cada alumno (las cuentas de administrador no salen), en el iPhone una tarjeta y en la
+  PC una fila: 🟢 «En línea ahora» o «Visto hace …» (sus visitas: actividad en los últimos 3 minutos), el **avance** del curso
+  entero (número grande y barra, con su plan y «termina ≈ …»: es un cálculo, no una fecha límite; adelantado / a tiempo /
+  atrasado), **Exámenes** (SOLO las notas: el de cada materia y los del oral, capítulos y final; mejor y última, verde si
+  aprobó, naranja si llegó a 70 %, rojo si no; «Sin exámenes todavía»), **Clases** (temas aprobados de cada materia con su
+  barra y el % de aciertos sin contar los exámenes) y **Tiempo** (estudiando en total y en los últimos 7 días; aproximado, sale
+  de cuándo respondió). Se ordena por «En línea primero», «Mejor nota» o «Más avance». Tocar un alumno abre su ficha.
+  Mientras la pantalla está abierta y a la vista, cada 30 s pide solo quién está en línea (`…/como-van/en-linea`) y lo pinta
+  sin redibujar; al irse de la pantalla o esconder la app deja de pedir. Solo lee: no cierra exámenes ni escribe nada.
+- **«Comparar un examen»** (`#comparar-examen/<materia>`, `GET /api/admin/academia/examenes/:materia/comparar`; también desde
+  «Respuestas» y desde los exámenes de cada ficha): la mejor y la última nota de cada alumno, dónde fallan por tema y las
+  preguntas que más fallan («Fallaron 4 de 5», con la ÚLTIMA respuesta de cada alumno); al tocar una, el enunciado y las
+  opciones tal cual, la correcta y quién la falló y qué eligió (cada nombre abre ese examen suyo).
+- **La ficha de cada alumno** (Resumen): cuatro partes claras — Avance del curso (con su plan), Exámenes (cada materia con su
+  nota de color), Clases (temas, aciertos y la barra de cada materia) y Actividad (en línea, tiempo total y de la semana,
+  racha, entradas y salidas). Todo lo de antes sigue. Cada intento, pregunta por pregunta, ahora dice arriba «Falló en: tema
+  (n)…» y agrupa las preguntas por tema.
+- Las rutas nuevas son `{ admin: true }` (401 sin sesión, 403 para los alumnos). Pruebas: `test/como-van.test.js` (con un
+  reloj falso, sin esperas).
 
 ### Lo nuevo de la 0.13.2: menos texto en Inicio y el oral con su pestaña — sin cambio de base
 - **«Tu instructor dice…»** cabe de un vistazo: una línea corta («Te quemaste (28 %). Empieza por: Visión en vuelo») y UN
