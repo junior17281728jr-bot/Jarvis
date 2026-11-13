@@ -8,19 +8,20 @@
 //  - Plan, avance del curso entero (los pasos del camino: src/academia/plan.js) y tiempo estudiando (aprox., sale de sus
 //    respuestas: src/academia/fichas.js → tiempoDeEstudio).
 // Solo lee lo que ya se guarda (sin cambio de base). No cierra exámenes vencidos ni escribe nada: se pide cada 30 s.
-import { ultimaActividad, notaGeneralDelCurso } from './progreso.js';
+import { ultimaActividad, notaGeneralDelCurso, puntosYRacha } from './progreso.js';
 import { resumenVisitas, EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avataresDe } from '../cuentas/perfil.js';
 import { planDe, pasosDelCamino } from './plan.js';
 import { tiempoDeEstudio } from './fichas.js';
 import { examenesOralDe, hayOral } from './oral.js';
+import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
 
 const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
 const SEMANA_MS = 7 * 24 * 3600 * 1000;
 export const ORDENES = Object.freeze(['en_linea', 'nota', 'avance']);
 
 function cuentasDeAlumnos(db) {
-  return db.prepare("SELECT id, nombre, nombre_visible, activo FROM usuarios WHERE rol <> 'admin' ORDER BY COALESCE(nombre_visible, nombre), id").all();
+  return db.prepare("SELECT id, nombre, nombre_visible, activo FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL ORDER BY COALESCE(nombre_visible, nombre), id").all();
 }
 
 // En línea (y la última actividad) de cada alumno. respuestas: Map id → la fecha de su última respuesta.
@@ -124,6 +125,9 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
     const plan = planDe(db, u.id, paquete, ahoraMs);
     const pasos = plan.elegido ? { total: plan.total, hechos: plan.hechos } : pasosDelCamino(db, u.id, paquete);
     const total = Math.round(pasos.total);
+    // 0.13.8: «Ver cada materia» (las 11, en el orden del curso) y lo útil de su actividad.
+    const cada = avancePorMateria(db, u.id, paquete, { respuestas: new Map([...resp].map(([id, f]) => [id, { n: f.n, bien: f.bien }])) });
+    const estado = linea.get(u.id);
     return {
       id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null,
       ...linea.get(u.id),
@@ -144,6 +148,12 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
       clases: {
         temasAprobados: clasesMaterias.reduce((s, m) => s + m.temasAprobados, 0), temas: clasesMaterias.reduce((s, m) => s + m.temas, 0),
         respuestas: nResp, aciertos: nBien, pctAcierto: pct(nBien, nResp), materias: clasesMaterias,
+      },
+      cadaMateria: cada.materias, cadaOral: conOral ? avanceOral(db, u.id, paquete) : null,
+      detalles: {
+        dondeVa: cada.dondeVa, masDebil: materiaMasDebil(cada.materias), ultimoExamen: ultimoExamenDe(db, u.id, paquete),
+        diasSemana: diasActivosSemana(misFechas, ahoraMs), racha: puntosYRacha(db, u.id, ahoraMs).racha,
+        diasSinEntrar: diasSinEntrar(estado?.ultimaActividad, ahoraMs),
       },
     };
   });

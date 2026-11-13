@@ -15,7 +15,8 @@ import { cerrarVencidos, tiemposDe, leerExamen } from './examen.js';
 import { nombreLegalDe, estadoTerminos, verificacionDe, tutorAutorizoPagos } from '../cuentas/terminos.js';
 import { historialSaltos } from './saltos.js';
 import { resumenExtra } from './extra.js';
-import { examenesOralDe } from './oral.js';
+import { examenesOralDe, hayOral } from './oral.js';
+import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
 
 export const MAXIMO_COMPARAR = 6;
 export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
@@ -27,7 +28,7 @@ const CALIFICADOS = ['tema', 'examen'];
 
 function cuentaDe(db, alumnoId) {
   const id = Number(alumnoId);
-  const u = Number.isSafeInteger(id) && id > 0 ? db.prepare("SELECT id, nombre, nombre_visible, rol, activo, creado_en, (clave_hash LIKE 'pendiente$%') AS pendiente FROM usuarios WHERE id = ?").get(id) : null;
+  const u = Number.isSafeInteger(id) && id > 0 ? db.prepare("SELECT id, nombre, nombre_visible, rol, activo, creado_en, eliminado_en, (clave_hash LIKE 'pendiente$%') AS pendiente FROM usuarios WHERE id = ?").get(id) : null;
   if (!u) throw new ErrorHttp(404, 'no_existe');
   return u;
 }
@@ -116,7 +117,9 @@ function cabeceraDe(db, u) {
     // 0.9.2: su nombre legal y los términos que aceptó (versión, nombre tal como firmó, fecha).
     nombreLegal: nombreLegalDe(db, u.id),
     terminos: (e => ({ version: e.version, versionPrivacidad: e.versionPrivacidad, pendiente: e.pendiente, ultima: e.ultima, nacimiento: e.nacimiento, menor: e.menor, aceptoIa: e.aceptoIa }))(estadoTerminos(db, u.id)),
-    verificacion: verificacionDe(db, u.id), tutorPagos: tutorAutorizoPagos(db, u.id) };
+    verificacion: verificacionDe(db, u.id), tutorPagos: tutorAutorizoPagos(db, u.id),
+    // 0.13.8: si se eliminó (sale de las listas; su ficha se sigue viendo desde «Alumnos eliminados» para recuperarla).
+    eliminado: u.eliminado_en ? { en: u.eliminado_en } : null };
 }
 // La última actividad: la de sus sesiones o su última respuesta (lo más nuevo).
 function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {
@@ -131,6 +134,9 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
   cerrarVencidos(db, u.id, paquete, ahoraMs);
   const intentos = intentosDe(db, u.id, paquete);
   const resumen = resumenDe(db, u.id, paquete, intentos, ahoraMs);
+  const actividad = actividadCompleta(db, u, ahoraMs, resumen.ultimaRespuesta);
+  // 0.13.8: «Ver cada materia» (las 11, en el orden del curso) y lo útil de su actividad.
+  const cada = avancePorMateria(db, u.id, paquete);
   return {
     alumno: cabeceraDe(db, u),
     paquete: paquete ? { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra } : null,
@@ -138,7 +144,13 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     intentos: intentos.slice(0, MAXIMO_INTENTOS_EN_PANTALLA), intentosTotal: intentos.length,
     materias: paquete ? materiasDe(db, u.id, paquete, intentos) : [],
     puntosDebiles: resumenDebiles(puntosDebiles(db, u.id, paquete), paquete),
-    actividad: actividadCompleta(db, u, ahoraMs, resumen.ultimaRespuesta),
+    actividad,
+    cadaMateria: cada.materias, cadaOral: hayOral(paquete) ? avanceOral(db, u.id, paquete) : null,
+    detalles: {
+      dondeVa: cada.dondeVa, masDebil: materiaMasDebil(cada.materias), ultimoExamen: ultimoExamenDe(db, u.id, paquete),
+      diasSemana: diasActivosSemana(db.prepare('SELECT dia, creada_en FROM academia_respuestas WHERE usuario_id = ?').all(u.id), ahoraMs),
+      racha: resumen.racha, diasSinEntrar: diasSinEntrar(actividad.ultimaActividad, ahoraMs),
+    },
     // 0.12.0: «saltó las clases» (cada vez que fue directo al examen, y cómo le fue) y lo EXTRA (aparte del Test Guide).
     saltos: historialSaltos(db, u.id),
     extra: paquete ? resumenExtra(db, u.id, paquete) : [],

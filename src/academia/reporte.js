@@ -57,7 +57,7 @@ export function reporteAcademia(db, paquete, opciones, ahoraMs = Date.now()) {
   const hastaIso = o.hasta ? new Date(Date.parse(inicioDia(o.hasta)) + 24 * 3600 * 1000).toISOString() : '9999';
   const avatares = avataresDe(db);
   const legales = nombresLegales(db);
-  const cuentas = db.prepare(`SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE rol = 'usuario' ${o.bloqueados ? '' : 'AND activo = 1'} ORDER BY id`).all();
+  const cuentas = db.prepare(`SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE rol = 'usuario' AND eliminado_en IS NULL ${o.bloqueados ? '' : 'AND activo = 1'} ORDER BY id`).all();
   const materiasIds = (paquete?.materias ?? []).filter(m => m.temas.length).map(m => m.id);
   const titulos = new Map((paquete?.materias ?? []).flatMap(m => m.temas.map(t => [`${m.id}/${t.id}`, t.titulo])));
   const alumnos = cuentas.map(u => {

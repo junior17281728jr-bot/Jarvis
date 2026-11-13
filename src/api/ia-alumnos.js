@@ -49,7 +49,7 @@ export function registrarRutasIaAlumnos(rutas, { config = null, reloj = Date.now
 
   rutas.agregar('GET', '/api/admin/academia/ia-registro', ({ db, req }) => {
     const id = new URL(req.url, 'http://x').searchParams.get('alumno');
-    const alumnos = db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' ORDER BY nombre").all().map(u => ({ id: u.id, nombre: u.nombre_visible || u.nombre, usuario: u.nombre }));
+    const alumnos = db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL ORDER BY nombre").all().map(u => ({ id: u.id, nombre: u.nombre_visible || u.nombre, usuario: u.nombre }));
     let p = null;
     try { p = config ? paqueteActivo(db, config) : null; } catch { p = null; }
     return { codigo: 200, datos: { alumnos, registro: id ? registroAlumno(db, id, p, reloj()) : null } };

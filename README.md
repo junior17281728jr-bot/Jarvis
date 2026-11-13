@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.13.6; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.13.8; cambio de base 10 en la 0.13.8)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,30 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.13.8: cada materia, bloquear y eliminar (sin borrar nada) — cambio de base 10
+- **«Ver cada materia»** (desplegable, en cada tarjeta de «Cómo van todos» y en el Resumen de la ficha, debajo del resultado
+  general): las **11 materias** en el orden de la escuela, cada una con su **%** (temas aprobados + examen aprobado: la misma
+  cuenta que «Avance de todo el curso»), «3/5 temas · examen 85 %» y una barra de su color. Las que todavía no tienen
+  contenido salen en gris: **«Pronto»**. Si el alumno hizo algo del oral, abajo van los **capítulos del oral**.
+  Arriba: **«Va en: …»** (el tema donde se quedó) y **«Le cuesta más: …»** (la materia de menos aciertos, con 10 respuestas o más).
+  Lógica: `src/academia/por-materia.js`.
+- En **Actividad**: «**Hace N días que no entra**» (en naranja, desde 7 días), el último examen, cuántos de los últimos 7 días
+  estudió y la racha.
+- **La cuenta** (en la ficha, y un menú chico plegado «Bloquear o eliminar» en cada tarjeta):
+  - **Bloquear / Desbloquear** (como antes): no entra y sus sesiones se cierran. Pregunta con su nombre.
+  - **Eliminar** (`POST /api/admin/usuarios/:id/eliminar`): **no borra nada**. La cuenta queda bloqueada y marcada
+    (`usuarios.eliminado_en`, `eliminado_por`, `eliminado_activo`: cambio de base 10, solo agrega columnas), sale de todas las
+    listas (Cómo van, Alumnos, Usuarios, Reporte, Exámenes, Comparar, IA, Telegram) y sus sesiones se cierran. Sus respuestas,
+    exámenes, contratos y pagos siguen en la base y su ficha se sigue viendo. Pregunta con su nombre y pide **la contraseña del
+    administrador otra vez** (o su Tailscale). Queda en la auditoría (`usuario_eliminado`).
+  - **Su usuario queda reservado** (nadie más lo puede usar): liberarlo obligaría a cambiar la fila y podría chocar al
+    recuperarla. Si de verdad quieres el usuario para otra persona, cámbiale antes el usuario en su ficha.
+  - **«Alumnos eliminados»** (plegado, al final de «Cómo van todos» y de Alumnos): cada uno con **Recuperar**
+    (`POST …/recuperar`), que la deja como estaba (activa, o bloqueada si ya lo estaba). Una cuenta eliminada no se puede
+    desbloquear ni recibir contraseña: primero se recupera.
+  - Nunca la propia cuenta ni el último administrador.
+- Una versión anterior que vuelva atrás ve a un eliminado como una cuenta bloqueada: nadie entra con ella.
 
 ### Lo nuevo de la 0.13.7: «Repaso final» (para el día antes del examen) — sin cambio de base
 - **Una pestaña más en el menú: «Repaso final»** (en el iPhone, «Repaso»; `#repaso`, `public/repaso-final-vista.js`,

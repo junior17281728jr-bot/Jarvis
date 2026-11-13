@@ -64,7 +64,7 @@ export function listarUsuarios(db) {
   return db.prepare(`SELECT u.id, u.nombre, u.nombre_visible, u.rol, u.activo, u.idioma, u.debe_cambiar_clave, u.creado_en, u.ultimo_acceso,
       (u.clave_hash LIKE 'pendiente$%') AS pendiente,
       (SELECT e.plan FROM miembros m JOIN espacios e ON e.id = m.espacio_id WHERE m.usuario_id = u.id AND m.rol = 'dueno' ORDER BY e.id LIMIT 1) AS plan
-    FROM usuarios u ORDER BY u.id`).all().map(u => ({
+    FROM usuarios u WHERE u.eliminado_en IS NULL ORDER BY u.id`).all().map(u => ({
     id: u.id,
     nombre: u.nombre,
     nombreVisible: u.nombre_visible || u.nombre,
@@ -99,6 +99,38 @@ export function registrarAcceso(db, usuarioId) {
 
 export function cuantosAdminsActivos(db) {
   return db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE rol = 'admin' AND activo = 1").get().n;
+}
+
+// ---------- 0.13.8: «Eliminar» una cuenta SIN borrar nada (cambio de base 10) ----------
+// La cuenta queda marcada (cuándo, quién y si estaba activa), desactivada y fuera de todas las listas. Sus datos siguen
+// en la base y su usuario queda reservado (nadie más lo puede usar; «Recuperar» la deja como estaba).
+export const estaEliminada = u => Boolean(u?.eliminado_en);
+
+// Por qué NO se puede bloquear o eliminar esta cuenta (o null si se puede): nunca la propia, nunca el último
+// administrador activo. destino: la fila de usuarios; yoId: el administrador que lo pide.
+export function problemaParaQuitar(db, destino, yoId) {
+  if (!destino) return 'no_existe';
+  if (destino.id === yoId) return 'no_puedes_quitarte';
+  if (destino.rol === 'admin' && destino.activo === 1 && cuantosAdminsActivos(db) <= 1) return 'ultimo_admin';
+  return null;
+}
+
+// Marca la cuenta como eliminada (sin tocar su activo: eso lo hace quien llama, como al bloquear).
+export function marcarEliminada(db, usuarioId, { por, estabaActiva, ahoraIso = ahora() }) {
+  db.prepare('UPDATE usuarios SET eliminado_en = ?, eliminado_por = ?, eliminado_activo = ? WHERE id = ? AND eliminado_en IS NULL')
+    .run(ahoraIso, Number.isSafeInteger(por) ? por : null, estabaActiva ? 1 : 0, usuarioId);
+}
+// Le quita la marca. → si estaba activa antes de eliminarla (la cuenta vuelve como estaba).
+export function quitarMarcaEliminada(db, usuarioId) {
+  const f = db.prepare('SELECT eliminado_activo FROM usuarios WHERE id = ?').get(usuarioId);
+  db.prepare('UPDATE usuarios SET eliminado_en = NULL, eliminado_por = NULL, eliminado_activo = NULL WHERE id = ?').run(usuarioId);
+  return f?.eliminado_activo === 1;
+}
+// «Alumnos eliminados» (Administrador → Alumnos): las cuentas marcadas, la más nueva primero.
+export function listarEliminadas(db) {
+  return db.prepare(`SELECT u.id, u.nombre, u.nombre_visible, u.rol, u.eliminado_en, u.eliminado_activo, p.nombre AS por
+    FROM usuarios u LEFT JOIN usuarios p ON p.id = u.eliminado_por WHERE u.eliminado_en IS NOT NULL ORDER BY u.eliminado_en DESC, u.id DESC`).all()
+    .map(u => ({ id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, eliminadoEn: u.eliminado_en, estabaActiva: u.eliminado_activo === 1, por: u.por ?? null }));
 }
 
 // ---------- Avisos para la persona ----------

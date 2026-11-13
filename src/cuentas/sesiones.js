@@ -23,7 +23,7 @@ export function leerSesion(db, token) {
   if (!token || typeof token !== 'string' || token.length > 100) return null;
   const fila = db.prepare(`SELECT s.token_hash, s.ultimo_uso, u.id, u.nombre, u.nombre_visible, u.rol, u.idioma, u.debe_cambiar_clave
     FROM sesiones s JOIN usuarios u ON u.id = s.usuario_id
-    WHERE s.token_hash = ? AND s.vence_en > ? AND u.activo = 1`).get(huella(token), ahora());
+    WHERE s.token_hash = ? AND s.vence_en > ? AND u.activo = 1 AND u.eliminado_en IS NULL`).get(huella(token), ahora());
   if (!fila) return null;
   if (!fila.ultimo_uso || Date.now() - Date.parse(fila.ultimo_uso) > 5 * 60 * 1000) {
     db.prepare('UPDATE sesiones SET ultimo_uso = ? WHERE token_hash = ?').run(ahora(), fila.token_hash);

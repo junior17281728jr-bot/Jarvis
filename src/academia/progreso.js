@@ -793,7 +793,7 @@ export function alumnos(db, paquete, ahoraMs = Date.now()) {
   const totalTemas = (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0);
   const avatares = avataresDe(db);
   const legales = nombresLegales(db);
-  return db.prepare('SELECT id, nombre, nombre_visible, rol, activo FROM usuarios ORDER BY rol, nombre').all().map(u => {
+  return db.prepare('SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE eliminado_en IS NULL ORDER BY rol, nombre').all().map(u => {
     const ultima = actividad.get(u.id) ?? null;
     const suyas = resp.filter(r => r.id === u.id);
     const n = suyas.reduce((s, r) => s + r.n, 0);

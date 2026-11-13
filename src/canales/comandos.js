@@ -86,9 +86,9 @@ export function textoPagos(db, idioma, ahora = Date.now()) {
 export function buscarAlumno(db, texto) {
   const q = String(texto ?? '').trim().replace(/^@/, '').toLowerCase();
   if (!q) return null;
-  const exacto = db.prepare("SELECT id FROM usuarios WHERE rol <> 'admin' AND lower(nombre) = ?").get(q);
+  const exacto = db.prepare("SELECT id FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL AND lower(nombre) = ?").get(q);
   if (exacto) return exacto.id;
-  const parecidos = db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin'").all()
+  const parecidos = db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL").all()
     .filter(u => String(u.nombre).toLowerCase().includes(q) || String(u.nombre_visible ?? '').toLowerCase().includes(q));
   return parecidos.length === 1 ? parecidos[0].id : null;
 }

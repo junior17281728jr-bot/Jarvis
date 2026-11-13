@@ -705,4 +705,19 @@ CREATE INDEX IF NOT EXISTS academia_extra_usuario ON academia_extra_respuestas(u
 ALTER TABLE academia_intentos ADD COLUMN modo TEXT;
 `,
   },
+  {
+    id: 10,
+    nombre: 'cuentas_eliminadas',
+    // Academia 0.13.8 (pedido del dueño: «bloquearlo y eliminarlo»). Solo agrega tres columnas que pueden quedar vacías
+    // (sin CHECK, sin UNIQUE, sin índice). «Eliminar» un alumno NUNCA borra nada: la cuenta queda marcada
+    // (eliminado_en: cuándo; eliminado_por: qué administrador; eliminado_activo: si estaba activa antes, para que
+    // «Recuperar» la deje como estaba), además queda desactivada (activo = 0: no entra y sus sesiones se cierran), y sale
+    // de todas las listas. Sus respuestas, exámenes, contratos y pagos siguen en la base. Su usuario queda reservado.
+    // Una versión anterior que vuelva atrás la ve como una cuenta bloqueada (activo = 0): nadie entra con ella.
+    sql: `
+ALTER TABLE usuarios ADD COLUMN eliminado_en TEXT;
+ALTER TABLE usuarios ADD COLUMN eliminado_por INTEGER;
+ALTER TABLE usuarios ADD COLUMN eliminado_activo INTEGER;
+`,
+  },
 ];

@@ -55,7 +55,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   assert.equal(Buffer.byteLength(m.sql), 3760);
   const config = configDePrueba();
   const db = abrirBase(config);
-  assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 9); // 0.7.0: la 7 (academia) también; 0.10.0: la 8 (el Instructor); 0.12.0: la 9 (lo extra)
+  assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 10); // 0.7.0: la 7 (academia) también; 0.10.0: la 8 (el Instructor); 0.12.0: la 9 (lo extra); 0.13.8: la 10 (cuentas eliminadas)
   for (const t of ['copias_llaves', 'canales', 'copias', 'copia_partes', 'canal_envios']) {
     assert.ok(db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?").get(t), t);
   }
@@ -66,7 +66,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   db.close();
   // La 0.4.1 (migraciones 1–5) abre esta base sin aplicar nada, y su trabajador (versión mínima 5) se conecta.
   const db41 = abrirBase(config, MIGRACIONES.filter(x => x.id <= 5));
-  assert.equal(db41.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, 9); // 0.7.0: con la 7 (academia); 0.10.0: con la 8; 0.12.0: con la 9
+  assert.equal(db41.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, 10); // 0.7.0: con la 7 (academia); 0.10.0: con la 8; 0.12.0: con la 9; 0.13.8: con la 10
   db41.close();
   conectarBase(config, { versionMinima: 5 }).close();
 });

@@ -13,6 +13,7 @@ import { crearSesion, cerrarSesion, cerrarTodas, textoGalleta } from '../cuentas
 import {
   NOMBRE_VALIDO, auditar, hayAdmin, crearPrimerAdmin, crearUsuario, buscarPorNombre, buscarPorId,
   listarUsuarios, guardarClave, ponerActivo, ponerIdioma, registrarAcceso, cuantosAdminsActivos,
+  estaEliminada, problemaParaQuitar, marcarEliminada, quitarMarcaEliminada, listarEliminadas,
   avisarClaveReiniciada, avisarCuenta, avisosSinVer, marcarAvisosVistos, reiniciosDeClave, reiniciosRecientes,
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
@@ -105,6 +106,19 @@ function anotarOrigen(db, req, { usuarioId, accion, hechoPor, teniaPermiso = fal
   anotarConfianza(db, { usuarioId, accion, desdeTailnet, confiable: desdeTailnet || teniaPermiso === true, hechoPor });
 }
 
+// 0.13.8: bloquear o desbloquear (lo que antes hacía solo POST …/activo), para «Bloquear», «Eliminar» y «Recuperar».
+// Dentro de una transacción. accion: la línea de la auditoría (por defecto la de bloquear o desbloquear).
+function cambiarActivo(db, req, { destino, activo, usuario, confirmado = null, accion = null }) {
+  const teniaPermiso = cuentaConfirmada(db, destino.id);
+  ponerActivo(db, destino.id, activo);
+  // Volver a activar una cuenta común queda anotado (solo si de verdad estaba desactivada); bloquearla también (0.12.3).
+  if (activo && destino.activo !== 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'activada', hechoPor: usuario.id, teniaPermiso });
+  if (!activo && destino.activo === 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'desactivada', hechoPor: usuario.id, teniaPermiso });
+  if (!activo) cerrarTodas(db, destino.id);
+  auditar(db, { usuarioId: usuario.id, accion: accion ?? (activo ? 'usuario_activado' : 'usuario_desactivado'), detalle: destino.nombre });
+  if (destino.rol === 'admin') anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'admin_activo', detalle: { cuenta: destino.nombre, activo: activo ? 1 : 0 }, como: confirmado?.como });
+}
+
 export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null, alertaAdmin = null } = {}) {
   rutas.agregar('GET', '/api/setup', ({ db, req }) => {
     if (arrancando(supervisor)) {
@@ -159,12 +173,14 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const conCodigo = !porClave && await codigoCorrecto(db, usuario, clave);
     const correcta = porClave || conCodigo;
     // 0.9.2: con la contraseña correcta, una cuenta bloqueada (desactivada) lo dice: «habla con el administrador».
-    if (usuario && correcta && usuario.activo !== 1) {
+    // 0.13.8: una cuenta eliminada (también desactivada) tampoco entra.
+    const puedeEntrar = usuario && usuario.activo === 1 && !estaEliminada(usuario);
+    if (usuario && correcta && !puedeEntrar) {
       limites.freno.olvidar(lugar);
       auditar(db, { usuarioId: usuario.id, accion: 'entrada_bloqueada', detalle: nombre });
       throw new ErrorHttp(403, 'cuenta_bloqueada');
     }
-    if (!usuario || !correcta || usuario.activo !== 1) {
+    if (!usuario || !correcta || !puedeEntrar) {
       auditar(db, { usuarioId: usuario?.id ?? null, accion: 'entrada_fallida', detalle: nombre });
       anotarFalloAdmin(db, alertaAdmin, usuario);
       throw new ErrorHttp(401, 'credenciales');
@@ -360,6 +376,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
   rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, req, parametros, usuario, confirmar }) => {
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_eliminada'); // 0.13.8: primero «Recuperar»
     // 0.12.3: la contraseña de otra persona, con la del administrador otra vez.
     const confirmado = await confirmar();
     const temporal = claveTemporal();
@@ -383,6 +400,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const datos = await leerJson(req);
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_eliminada'); // 0.13.8: primero «Recuperar»
     // La suya, el administrador la cambia en Configuración (con la actual).
     if (destino.id === usuario.id) throw new ErrorHttp(400, 'tu_clave_en_configuracion');
     const problema = problemaDeClave(datos.clave, [destino.nombre, destino.nombre_visible]);
@@ -407,6 +425,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const datos = await leerJson(req);
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_eliminada'); // 0.13.8: primero «Recuperar»
     const teniaPermiso = cuentaConfirmada(db, destino.id);
     const r = cambiarPlan(db, {
       usuario: destino,
@@ -424,22 +443,51 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
     const activo = datos.activo === true;
+    // 0.13.8: una cuenta eliminada solo vuelve con «Recuperar» (así nunca entra alguien que no sale en ninguna lista).
+    if (estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_eliminada');
     if (!activo && destino.id === usuario.id) throw new ErrorHttp(400, 'no_puedes_desactivarte');
     if (!activo && destino.rol === 'admin' && cuantosAdminsActivos(db) <= 1) throw new ErrorHttp(400, 'ultimo_admin');
     // 0.12.3: bloquear o desbloquear una cuenta común, con la sesión; a otro administrador, con la contraseña otra vez.
     const confirmado = destino.rol === 'admin' ? await confirmar() : null;
-    enTransaccion(db, () => {
-      const teniaPermiso = cuentaConfirmada(db, destino.id);
-      ponerActivo(db, destino.id, activo);
-      // Volver a activar una cuenta común queda anotado (solo si de verdad estaba desactivada); bloquearla también (0.12.3).
-      if (activo && destino.activo !== 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'activada', hechoPor: usuario.id, teniaPermiso });
-      if (!activo && destino.activo === 1 && destino.rol === 'usuario') anotarOrigen(db, req, { usuarioId: destino.id, accion: 'desactivada', hechoPor: usuario.id, teniaPermiso });
-      if (!activo) cerrarTodas(db, destino.id);
-      auditar(db, { usuarioId: usuario.id, accion: activo ? 'usuario_activado' : 'usuario_desactivado', detalle: destino.nombre });
-      if (destino.rol === 'admin') anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'admin_activo', detalle: { cuenta: destino.nombre, activo: activo ? 1 : 0 }, como: confirmado?.como });
-    });
+    enTransaccion(db, () => cambiarActivo(db, req, { destino, activo, usuario, confirmado }));
     return { codigo: 200, datos: { ok: true } };
   }, { admin: true });
+
+  // ---------- 0.13.8: «Eliminar» y «Recuperar» (nunca se borra nada) ----------
+  // Eliminar = bloquearla (lo mismo que «Bloquear»: no entra, sus sesiones se cierran, su permiso de IA queda anotado)
+  // + la marca de eliminada (sale de todas las listas). Siempre con la contraseña del administrador otra vez (o desde su
+  // Tailscale). Nunca la propia ni el último administrador. Su usuario queda reservado: nadie más lo puede usar.
+  rutas.agregar('POST', '/api/admin/usuarios/:id/eliminar', async ({ db, parametros, req, usuario, confirmar }) => {
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_eliminada');
+    const problema = problemaParaQuitar(db, destino, usuario.id);
+    if (problema) throw new ErrorHttp(400, problema);
+    const confirmado = await confirmar();
+    enTransaccion(db, () => {
+      marcarEliminada(db, destino.id, { por: usuario.id, estabaActiva: destino.activo === 1 });
+      cambiarActivo(db, req, { destino, activo: false, usuario, confirmado, accion: 'usuario_eliminado' });
+    });
+    return { codigo: 200, datos: { ok: true, id: destino.id, nombre: destino.nombre } };
+  }, { admin: true });
+
+  // Recuperar: le quita la marca y la deja como estaba antes (activa, o bloqueada si ya lo estaba). A otro administrador,
+  // con la contraseña otra vez (como desbloquearlo).
+  rutas.agregar('POST', '/api/admin/usuarios/:id/recuperar', async ({ db, parametros, req, usuario, confirmar }) => {
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (!estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_no_eliminada');
+    const confirmado = destino.rol === 'admin' ? await confirmar() : null;
+    const activa = enTransaccion(db, () => {
+      const estaba = quitarMarcaEliminada(db, destino.id);
+      if (estaba) cambiarActivo(db, req, { destino, activo: true, usuario, confirmado, accion: 'usuario_recuperado' });
+      else auditar(db, { usuarioId: usuario.id, accion: 'usuario_recuperado', detalle: destino.nombre });
+      return estaba;
+    });
+    return { codigo: 200, datos: { ok: true, id: destino.id, nombre: destino.nombre, activo: activa } };
+  }, { admin: true });
+
+  rutas.agregar('GET', '/api/admin/usuarios/eliminados', ({ db }) => ({ codigo: 200, datos: { cuentas: listarEliminadas(db) } }), { admin: true });
 
   // Ronda 5 de revisión: el permiso de IA de una cuenta común (la pantalla muestra antes cuándo y desde dónde se tocó la
   // cuenta por última vez). 0.12.3: darlo y quitarlo, con la sesión del administrador (también por el enlace público).
@@ -449,6 +497,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     if (typeof datos.permitida !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     const destino = buscarPorId(db, parametros.id);
     if (!destino) throw new ErrorHttp(404, 'no_existe');
+    if (estaEliminada(destino)) throw new ErrorHttp(409, 'cuenta_eliminada'); // 0.13.8: primero «Recuperar»
     if (destino.rol !== 'usuario') throw new ErrorHttp(400, 'datos_no_validos');
     if (datos.permitida && destino.activo !== 1) throw new ErrorHttp(409, 'cuenta_inactiva');
     enTransaccion(db, () => {

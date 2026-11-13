@@ -507,16 +507,18 @@ a.cv-comparar-enlace:hover { border-color: var(--azul); }
 .materia-cabeza a.cv-comparar-enlace { margin-left: auto; }
 .cv-lista { display: grid; gap: 12px; }
 .cv-cabeza-tabla { display: none; }
-a.cv-alumno { display: grid; gap: 12px; padding: 14px; border-radius: 18px; border: 1px solid var(--borde); background: var(--tarjeta); color: inherit; text-decoration: none; min-width: 0; }
-a.cv-alumno:hover { border-color: var(--azul); }
-a.cv-alumno:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
-a.cv-alumno.en-linea { border-color: #22c55e; box-shadow: inset 4px 0 0 #22c55e; }
-.cv-quien { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cv-alumno { display: grid; gap: 12px; padding: 14px; border-radius: 18px; border: 1px solid var(--borde); background: var(--tarjeta); color: inherit; min-width: 0; }
+.cv-alumno:hover { border-color: var(--azul); }
+.cv-alumno.en-linea { border-color: #22c55e; box-shadow: inset 4px 0 0 #22c55e; }
+.cv-quien { display: flex; align-items: center; gap: 12px; min-width: 0; color: inherit; text-decoration: none; border-radius: 12px; }
+a.cv-quien:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+.cv-ver-ficha { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: var(--acento); }
+a.cv-quien:hover .cv-ver-ficha { text-decoration: underline; }
 .cv-quien-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cv-nombre { font: 800 18px var(--letra-redonda); overflow-wrap: anywhere; }
 .cv-estado { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--suave); }
 .cv-estado.grande { font-size: 17px; font-weight: 700; color: var(--texto); margin: 0 0 10px; }
-a.cv-alumno.en-linea .cv-estado { color: var(--bien); font-weight: 700; }
+.cv-alumno.en-linea .cv-estado { color: var(--bien); font-weight: 700; }
 .cv-col { min-width: 0; }
 .cv-titulo { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); }
 .cv-avance { display: grid; gap: 6px; }
@@ -545,11 +547,43 @@ a.cv-alumno.en-linea .cv-estado { color: var(--bien); font-weight: 700; }
 .cv-tiempo strong { font: 800 17px var(--letra-redonda); }
 .cv-col-tiempo { display: flex; flex-wrap: wrap; gap: 0 18px; align-items: baseline; }
 .cv-col-tiempo .cv-titulo { flex-basis: 100%; }
+.cv-col-tiempo .cv-detalles { flex-basis: 100%; }
+/* 0.13.8: «Ver cada materia», lo útil de su actividad, el menú de la cuenta y «Alumnos eliminados» */
+.cv-pie { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 16px; border-top: 1px solid var(--linea); padding-top: 2px; min-width: 0; }
+.cv-pie > details { margin: 0; min-width: 0; }
+.cv-cada-materia { flex: 1 1 320px; }
+.cv-menu { flex: 0 1 auto; }
+.cv-menu[open] { flex: 1 1 260px; }
+.cv-menu > summary { color: var(--suave); }
+.cv-menu .botones { margin-top: 4px; }
+.cv-detalles { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.cv-detalles li { overflow-wrap: anywhere; }
+.cv-sin-entrar { color: var(--atencion); font-weight: 800; }
+.cv-cada-lista { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 8px; }
+.cv-cada { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; }
+.cv-cada-nombre { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.cv-cada-pct { font: 800 16px var(--letra-redonda); }
+.cv-cada .cv-barra { grid-column: 1 / -1; }
+.cv-cada .cv-barra .barra-relleno { background: var(--mc, var(--verde)); }
+.cv-cada-linea { grid-column: 1 / -1; font-size: 12px; color: var(--suave); }
+.cv-cada-linea.aprobado { color: var(--bien); font-weight: 700; }
+.cv-cada.pronto { color: var(--suave); padding: 4px 0; }
+.cv-cada.pronto .cv-cada-nombre { font-weight: 600; }
+.cv-cada.pronto .cv-cada-pct { font: 700 12px var(--letra-redonda); text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 99px; background: var(--apagado-fondo); }
+.cv-cada-oral { margin: 12px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); }
+.cv-eliminados { margin-top: 14px; }
+.cv-eliminados-lista { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.cv-eliminado { display: grid; gap: 4px; padding: 10px 12px; border-radius: 14px; border: 1px dashed var(--borde); background: var(--apagado-fondo); }
+a.cv-eliminado-nombre { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: inherit; }
+.cv-eliminado .botones { margin: 4px 0 0; }
+@media (min-width: 700px) {
+  .cv-cada-lista { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 18px; }
+}
 @media (min-width: 1100px) {
-  .cv-cabeza-tabla, a.cv-alumno { grid-template-columns: minmax(150px, 1.1fr) minmax(130px, 0.9fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(100px, 0.7fr); column-gap: 16px; align-items: start; }
+  .cv-cabeza-tabla, .cv-alumno { grid-template-columns: minmax(150px, 1.1fr) minmax(130px, 0.9fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(100px, 0.7fr); column-gap: 16px; align-items: start; }
   .cv-cabeza-tabla { display: grid; padding: 0 14px 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); border-bottom: 2px solid var(--linea); margin-bottom: 4px; }
   .cv-lista { gap: 8px; }
-  a.cv-alumno { padding: 12px 14px; border-radius: 14px; }
+  .cv-alumno { padding: 12px 14px; border-radius: 14px; }
   .cv-alumno .cv-titulo { display: none; }
   .cv-col-tiempo { display: block; }
   .cv-grande { font-size: 28px; }

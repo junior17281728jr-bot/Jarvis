@@ -70,14 +70,8 @@ function cuentaAlumno(h, a) {
   const { el, t } = h;
   const yo = a.id === h.yoId;
   const mensaje = h.caja();
-  const bloquear = yo ? null : h.botonAccion(t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), a.activo ? 'peligro' : 'secundario', mensaje, async () => {
-    // 0.12.4: con la hoja propia de la app (no la confirmación del navegador).
-    if (!(await h.confirmar(t(a.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre: nombreDe(a) }), { si: t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), peligro: a.activo }))) return;
-    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/activo`, { activo: !a.activo });
-    if (!r.ok) throw new Error(h.textoError(r.datos.error));
-    h.avisar(t(a.activo ? 'admin.listo.desactivada' : 'admin.listo.activada', { nombre: nombreDe(a) }));
-    await h.recargar();
-  }, a.activo ? 'candado' : 'ojo');
+  // 0.13.8: «Bloquear» / «Desbloquear» y «Eliminar» (o «Recuperar», si ya se eliminó), con el nombre en la pregunta.
+  const bloquear = yo ? null : accionesCuenta(h, a, mensaje);
   const mensajeNombre = h.caja();
   const campoVisible = el('input', { id: 'campo-ficha-visible', type: 'text', maxlength: 80, value: nombreDe(a), autocomplete: 'off' });
   const campoUsuario = el('input', { id: 'campo-ficha-usuario', type: 'text', maxlength: 40, value: a.nombre, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' });
@@ -128,12 +122,14 @@ function cuentaAlumno(h, a) {
     el('div', { class: 'ficha-cuenta-cabeza' },
       el('h2', { id: 'ficha-cuenta-titulo', class: 'con-icono' }, h.icono('ajustes'), el('span', { texto: t('cuenta.titulo') })),
       el('span', { class: 'etiquetas' },
-        a.activo ? h.insignia('bien', t('admin.activo')) : h.insignia('mal', t('admin.inactivo')),
+        a.eliminado ? h.insignia('mal', t('cuenta.eliminada')) : a.activo ? h.insignia('bien', t('admin.activo')) : h.insignia('mal', t('admin.inactivo')),
         a.pendiente ? h.insignia('atencion', t('admin.pendiente')) : null,
         a.terminos?.menor ? h.insignia('atencion', t('contratos.menor')) : null,
         a.terminos && !a.terminos.aceptoIa ? h.insignia('apagado', t('cuenta.sin_ia')) : null)),
-    a.activo ? null : el('p', { class: 'aviso', texto: t('cuenta.bloqueada.linea') }),
+    a.eliminado ? el('p', { class: 'aviso', texto: t('cuenta.eliminada.linea', { fecha: h.fecha(a.eliminado.en) }) })
+      : a.activo ? null : el('p', { class: 'aviso', texto: t('cuenta.bloqueada.linea') }),
     bloquear ? el('div', { class: 'botones' }, bloquear) : el('p', { class: 'suave chica', texto: t('admin.tu_cuenta') }),
+    bloquear && !a.eliminado ? el('p', { class: 'ayuda', texto: t('cuenta.eliminar.ayuda') }) : null,
     mensaje,
     el('details', { class: 'ficha-cuenta-mas' },
       el('summary', { texto: t('cuenta.nombre.titulo') }),
@@ -208,7 +204,9 @@ export function vistaListaAlumnos(datos, h) {
       el('a', { class: 'boton-enlace secundario con-icono', href: '#reporte' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('reporte.boton') })),
       // 0.9.2: los contratos firmados (términos aceptados con la firma dibujada).
       el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.titulo') }))),
-    lista.length ? h.verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 12) : h.vacio('personas', t('admin.usuarios.solo_tu')));
+    lista.length ? h.verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 12) : h.vacio('personas', t('admin.usuarios.solo_tu')),
+    // 0.13.8: los eliminados (plegado), para recuperarlos.
+    listaEliminados(h));
 }
 
 // ---------- La ficha de un alumno ----------
@@ -247,7 +245,9 @@ function pestanaResumen(d, h) {
       bloqueAvance(h, avance, plan),
       plan ? el('p', { class: 'suave chica', texto: t('cv.plan.estimado', { fin: h.fechaCortaDia(plan.fin), plan: h.fechaCortaDia(plan.finPlan) }) }) : null,
       el('div', { class: 'ficha-resumen-medidor' }, el('strong', { texto: t('ficha.preparacion') }), h.medidor(r.preparacion.pct, { etiqueta: t('ficha.preparacion'), chico: true }),
-        el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) }))),
+        el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) })),
+      // 0.13.8: el % de cada una de las 11 materias (y del oral, si hizo algo ahí).
+      bloqueCadaMateria(h, d.cadaMateria, d.cadaOral, d.detalles)),
     el('section', { class: 'tarjeta ficha-bloque' },
       el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: t('cv.examenes') })),
       bloqueNotaGeneral(h, { pct: r.notaGeneral ?? 0, aprobados: r.examenesAprobados, total: r.examenes }),
@@ -268,6 +268,7 @@ function pestanaResumen(d, h) {
     el('section', { class: 'tarjeta ficha-bloque' },
       el('h2', { class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('ficha.pestana.actividad') })),
       el('p', { class: 'cv-estado grande' }, el('span', { class: `punto-linea${act.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), el('span', { texto: estadoLinea(h, act) })),
+      lineasDeActividad(h, d.detalles),
       el('div', { class: 'ficha-cifras' },
         cifra(h, 'reloj', horas(h, r.minutosEstudio), t('cv.tiempo.total'), t('ficha.tiempo.linea', { n: numero(r.diasEstudio) })),
         cifra(h, 'calendario', horas(h, r.minutosSemana ?? 0), t('cv.tiempo.semana')),
@@ -699,6 +700,132 @@ function minutos(h, n) {
   return horas(h, n ?? 0);
 }
 
+// ---------- 0.13.8: «Ver cada materia», lo útil de su actividad y la cuenta (bloquear, eliminar, recuperar) ----------
+// Lógica pura (test/admin-materias.test.js): «Hace 7 días que no entra» sale desde DIAS_SIN_ENTRAR_AVISO días.
+export const DIAS_SIN_ENTRAR_AVISO = 7;
+export const avisarSinEntrar = dias => Number.isFinite(dias) && dias >= DIAS_SIN_ENTRAR_AVISO;
+const notaOGuion = (h, n) => (n == null ? '—' : h.pctTexto(n));
+// Una materia: el nombre, su % (o «Pronto», en gris), la barra y «3/5 temas · examen 85 %».
+function filaCadaMateria(h, m, oral = false) {
+  const { el, t, numero } = h;
+  if (m.pronto) {
+    return el('li', { class: 'cv-cada pronto' },
+      el('span', { class: 'cv-cada-nombre', texto: h.nombreMateria(m.id) }),
+      el('span', { class: 'cv-cada-pct', texto: t('cv.cada.pronto') }));
+  }
+  const linea = oral ? t('cv.cada.oral_linea', { n: numero(m.leidos), total: numero(m.temas), examen: notaOGuion(h, m.examen.mejor) })
+    : t('cv.cada.linea', { n: numero(m.temasHechos), total: numero(m.temas), examen: notaOGuion(h, m.examen.mejor) });
+  return el('li', { class: `cv-cada ${h.claseMateria(m.id)}${m.pct >= 100 ? ' completa' : ''}` },
+    el('span', { class: 'cv-cada-nombre', texto: h.nombreMateria(m.id) }),
+    el('strong', { class: 'cv-cada-pct', texto: h.pctTexto(m.pct) }),
+    el('span', { class: 'cv-barra' }, h.barraLlena(m.pct)),
+    el('span', { class: `cv-cada-linea${m.examen.aprobado ? ' aprobado' : ''}`, texto: linea }));
+}
+// El desplegable «Ver cada materia»: dónde va y lo que más le cuesta, las 11 materias y, si hizo algo del oral, sus capítulos.
+function bloqueCadaMateria(h, materias, oral, detalles) {
+  const { el, t } = h;
+  if (!materias?.length) return null;
+  return el('details', { class: 'cv-cada-materia' },
+    el('summary', { class: 'con-icono' }, h.icono('bandera', 'icono chico'), el('span', { texto: t('cv.cada.titulo') })),
+    lineasDeMateria(h, detalles),
+    el('ul', { class: 'cv-cada-lista' }, materias.map(m => filaCadaMateria(h, m))),
+    oral?.length ? [el('h4', { class: 'cv-cada-oral', texto: t('cv.cada.oral') }), el('ul', { class: 'cv-cada-lista' }, oral.map(m => filaCadaMateria(h, m, true)))] : null,
+    el('p', { class: 'suave chica', texto: t('cv.cada.nota') }));
+}
+function textoDondeVa(h, d) {
+  const { t } = h;
+  if (d.dondeVa === null) return t('cv.va_en.listo');
+  const v = d.dondeVa;
+  const lugar = v.examen ? t('cv.va_en.examen', { materia: h.nombreMateria(v.materia) }) : `${h.nombreMateria(v.materia)} · ${h.partirTitulo(v.titulo).es}`;
+  return t('cv.va_en', { lugar });
+}
+function lineasDeMateria(h, d) {
+  const { el, t } = h;
+  if (!d) return null;
+  return el('ul', { class: 'cv-detalles' },
+    el('li', { texto: textoDondeVa(h, d) }),
+    d.masDebil ? el('li', { texto: t('cv.le_cuesta', { materia: h.nombreMateria(d.masDebil.id), pct: h.pctTexto(d.masDebil.pctAcierto) }) }) : null);
+}
+// Lo útil de su actividad (en «Actividad»): «Hace 9 días que no entra» (naranja), el último examen, los días de esta semana y la racha.
+function lineasDeActividad(h, d) {
+  const { el, t, numero } = h;
+  if (!d) return null;
+  return el('ul', { class: 'cv-detalles' },
+    avisarSinEntrar(d.diasSinEntrar) ? el('li', { class: 'cv-sin-entrar', texto: t('cv.sin_entrar', { n: numero(d.diasSinEntrar) }) }) : null,
+    el('li', { texto: d.ultimoExamen ? t('cv.ultimo_examen', { cuando: h.fechaCortaDia(d.ultimoExamen.slice(0, 10)) }) : t('cv.ultimo_examen.no') }),
+    el('li', { texto: t('cv.dias_semana', { n: numero(d.diasSemana ?? 0) }) }),
+    d.racha ? el('li', { texto: t('cv.racha_linea', { n: numero(d.racha) }) }) : null);
+}
+
+// Los botones de la cuenta: «Bloquear» / «Desbloquear» y «Eliminar»; si ya se eliminó, solo «Recuperar». Cada uno pregunta
+// antes, con su nombre (la hoja de la app); eliminar pide además la contraseña del administrador (lo hace h.api).
+function accionesCuenta(h, a, mensaje) {
+  const { t } = h;
+  const nombre = nombreDe(a);
+  const hacer = async (ruta, datos, aviso) => {
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/${ruta}`, datos);
+    if (!r.ok) {
+      if (r.datos?.error === 'confirmar_cancelado') return;
+      throw new Error(h.textoError(r.datos.error));
+    }
+    h.avisar(aviso);
+    await h.recargar();
+  };
+  if (a.eliminado) {
+    return [h.botonAccion(t('cuenta.recuperar'), '', mensaje, async () => {
+      if (!(await h.confirmar(t('cuenta.recuperar.confirmar'), { titulo: t('cuenta.recuperar.titulo', { nombre }), si: t('cuenta.recuperar') }))) return;
+      await hacer('recuperar', {}, t('cuenta.recuperar.listo', { nombre }));
+    }, 'actualizar')];
+  }
+  const bloquear = h.botonAccion(t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), 'secundario', mensaje, async () => {
+    // 0.12.4: con la hoja propia de la app (no la confirmación del navegador).
+    if (!(await h.confirmar(t(a.activo ? 'admin.confirmar_desactivar' : 'admin.confirmar_activar', { nombre }), { titulo: a.activo ? t('cuenta.bloquear.titulo', { nombre }) : undefined, si: t(a.activo ? 'cuenta.bloquear' : 'cuenta.desbloquear'), peligro: a.activo }))) return;
+    await hacer('activo', { activo: !a.activo }, t(a.activo ? 'admin.listo.desactivada' : 'admin.listo.activada', { nombre }));
+  }, a.activo ? 'candado' : 'ojo');
+  const eliminar = h.botonAccion(t('cuenta.eliminar'), 'peligro', mensaje, async () => {
+    if (!(await h.confirmar(t('cuenta.eliminar.confirmar', { usuario: a.nombre }), { titulo: t('cuenta.eliminar.titulo', { nombre }), si: t('cuenta.eliminar'), peligro: true }))) return;
+    await hacer('eliminar', {}, t('cuenta.eliminar.listo', { nombre }));
+  }, 'papelera');
+  return [bloquear, eliminar];
+}
+// El menú chico de cada tarjeta de «Cómo van todos» (plegado: nada se toca sin querer).
+function menuCuenta(h, a) {
+  const { el, t } = h;
+  if (a.id === h.yoId) return null;
+  const mensaje = h.caja();
+  return el('details', { class: 'cv-menu' },
+    el('summary', { class: 'con-icono' }, h.icono('ajustes', 'icono chico'), el('span', { texto: t('cuenta.acciones') })),
+    el('div', { class: 'botones' }, accionesCuenta(h, a, mensaje)),
+    el('p', { class: 'ayuda', texto: t('cuenta.eliminar.ayuda') }),
+    mensaje);
+}
+// «Alumnos eliminados» (plegado): se pide al abrirlo. Cada uno con «Recuperar» y su ficha (sus datos siguen ahí).
+export function listaEliminados(h, { tarjeta = false } = {}) {
+  const { el, t } = h;
+  const zona = el('div', { class: 'cv-eliminados-zona' }, el('p', { class: 'suave', texto: t('cv.eliminados.cargando') }));
+  let pedido = false;
+  const nodo = el('details', { class: tarjeta ? 'tarjeta cv-eliminados' : 'cv-eliminados' },
+    el('summary', { class: 'con-icono' }, h.icono('papelera', 'icono chico'), el('span', { texto: t('cv.eliminados.titulo') })),
+    el('p', { class: 'suave chica', texto: t('cv.eliminados.ayuda') }),
+    zona);
+  nodo.addEventListener('toggle', async () => {
+    if (!nodo.open || pedido) return;
+    pedido = true;
+    const r = await h.api('GET', '/api/admin/usuarios/eliminados');
+    if (!r.ok) { pedido = false; zona.replaceChildren(el('p', { class: 'mensaje error', texto: h.textoError(r.datos.error) })); return; }
+    const cuentas = r.datos.cuentas ?? [];
+    zona.replaceChildren(cuentas.length ? el('ul', { class: 'cv-eliminados-lista' }, cuentas.map(c => {
+      const mensaje = h.caja();
+      return el('li', { class: 'cv-eliminado' },
+        el('a', { class: 'cv-eliminado-nombre', href: `#alumno/${c.id}` }, el('strong', { texto: c.nombreVisible }), el('span', { class: 'suave chica', texto: `@${c.nombre}` })),
+        el('span', { class: 'suave chica', texto: c.por ? t('cv.eliminados.por', { fecha: h.fecha(c.eliminadoEn), por: c.por }) : t('cv.eliminados.linea', { fecha: h.fecha(c.eliminadoEn) }) }),
+        el('div', { class: 'botones' }, accionesCuenta(h, { id: c.id, nombre: c.nombre, nombreVisible: c.nombreVisible, eliminado: { en: c.eliminadoEn } }, mensaje)),
+        mensaje);
+    })) : el('p', { class: 'suave', texto: t('cv.eliminados.vacio') }));
+  });
+  return nodo;
+}
+
 // ---------- 0.13.5: «Cómo van todos» ----------
 // Lógica pura (test/como-van.test.js): el orden de la lista (igual que en el servidor).
 export const ORDENES_COMO_VAN = Object.freeze(['en_linea', 'nota', 'avance']);
@@ -726,12 +853,14 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
     estados.set(a.id, { estado, punto });
     const examenes = [...a.examenes.materias, ...a.examenes.oral];
     const clases = a.clases.materias.filter(m => m.respuestas || m.temasAprobados);
-    const nodo = el('a', { class: `cv-alumno${a.enLinea ? ' en-linea' : ''}`, href: `#alumno/${a.id}`, 'data-alumno': String(a.id) },
-      el('div', { class: 'cv-quien' },
+    // 0.13.8: la tarjeta ya no es un enlace entero (adentro van «Ver cada materia» y el menú de la cuenta): el nombre lleva a su ficha.
+    const nodo = el('article', { class: `cv-alumno${a.enLinea ? ' en-linea' : ''}`, 'data-alumno': String(a.id) },
+      el('a', { class: 'cv-quien', href: `#alumno/${a.id}`, 'aria-label': `${nombreDe(a)} · ${t('cv.ver_ficha')}` },
         h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'medio' }),
         el('div', { class: 'cv-quien-texto' },
           el('strong', { class: 'cv-nombre', texto: nombreDe(a) }),
           el('span', { class: 'cv-estado' }, punto, estado),
+          el('span', { class: 'cv-ver-ficha con-icono-chico' }, el('span', { texto: t('cv.ver_ficha') }), h.icono('flecha', 'icono chico')),
           a.activo ? null : h.insignia('mal', t('admin.inactivo')))),
       el('div', { class: 'cv-col cv-col-avance' }, bloqueAvance(h, a.avance, a.plan)),
       el('div', { class: 'cv-col cv-col-examenes' },
@@ -747,7 +876,11 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
       el('div', { class: 'cv-col cv-col-tiempo' },
         el('h3', { class: 'cv-titulo', texto: t('cv.tiempo') }),
         el('p', { class: 'cv-tiempo' }, el('strong', { texto: minutos(h, a.tiempo.minutos) }), el('span', { class: 'suave chica', texto: t('cv.tiempo.total') })),
-        el('p', { class: 'cv-tiempo' }, el('strong', { texto: minutos(h, a.tiempo.semana) }), el('span', { class: 'suave chica', texto: t('cv.tiempo.semana') }))));
+        el('p', { class: 'cv-tiempo' }, el('strong', { texto: minutos(h, a.tiempo.semana) }), el('span', { class: 'suave chica', texto: t('cv.tiempo.semana') })),
+        lineasDeActividad(h, a.detalles)),
+      el('div', { class: 'cv-pie' },
+        bloqueCadaMateria(h, a.cadaMateria, a.cadaOral, a.detalles),
+        menuCuenta(h, a)));
     tarjetas.set(a.id, nodo);
     return nodo;
   };
@@ -775,7 +908,9 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
     lista.length ? el('div', { class: 'cv-cabeza-tabla', 'aria-hidden': 'true' },
       el('span', { texto: t('cv.col.alumno') }), el('span', { texto: t('cv.avance') }), el('span', { texto: t('cv.examenes') }), el('span', { texto: t('cv.clases') }), el('span', { texto: t('cv.tiempo') })) : null,
     lista.length ? zona : h.vacio('personas', t('cv.vacio')),
-    el('p', { class: 'suave chica', texto: t('cv.nota') }));
+    el('p', { class: 'suave chica', texto: t('cv.nota') }),
+    // 0.13.8: los eliminados (plegado), para recuperarlos.
+    listaEliminados(h));
   const actualizar = d => {
     for (const x of d?.alumnos ?? []) {
       const a = lista.find(y => y.id === x.id);
