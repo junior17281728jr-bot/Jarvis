@@ -7,7 +7,8 @@
 //  - tg.json: las preguntas del Test Guide TAL CUAL (nunca se cambian: la fábrica las copia byte a byte al paquete).
 //  - libro-<libro>-capNN.txt: el texto de un capítulo, con marcas de página «=== p 123 ===» (≤ 1 MB cada uno).
 //  - imagenes.json y los .webp (img-… del libro, fig-… del Test Guide).
-//  - oral/oral.json y oral/oral-capNN.txt (0.13.0, la pista «Preparándote para el examen oral»; ver src/academia/oral.js).
+//  - oral/oral.json, oral/oral-capNN.txt y oral/img-… (la pista «Preparándote para el examen oral»; la fabrica
+//    src/academia/fabrica-oral.js y la ve el alumno por src/academia/oral.js).
 // Todo es puro aquí salvo sincronizarFuentes (la red, por src/academia/drive.js) y las lecturas de archivos. La memoria se
 // cuida: un capítulo se lee entero (≤ 1 MB) solo para sacar sus páginas; tg.json se parte por tema una vez al sincronizar.
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, createReadStream, openSync, writeSync, closeSync } from 'node:fs';
@@ -158,6 +159,8 @@ export function revisarImagenes(lista, libros) {
   const buenas = [];
   const vistos = new Set();
   lista.forEach((x, i) => {
+    // 0.13.1: las de la Guía del examen oral («oral/img-…») las lee la pista oral (src/academia/fabrica-oral.js).
+    if (esObjeto(x) && typeof x.archivo === 'string' && x.archivo.startsWith('oral/')) return;
     const malo = !esObjeto(x) || typeof x.archivo !== 'string' || !(IMAGEN_LIBRO.test(x.archivo) || FIGURA_TG.test(x.archivo)) || !ARCHIVO_FIGURA.test(x.archivo)
       || vistos.has(x.archivo) || (IMAGEN_LIBRO.test(x.archivo) && (!libros.has(x.libro) || !Number.isSafeInteger(x.pagina)));
     if (malo) { if (errores.length < 20) errores.push({ ruta: `imagenes[${i}]`, motivo: 'no_valida' }); return; }

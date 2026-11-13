@@ -3584,8 +3584,8 @@
   "fabrica.plan.titulo": "Work plan",
   "fabrica.plan.principal": "Main track (Test Guide): {n} subjects in the sources, {faltan} left.",
   "fabrica.plan.oral_sin": "«Preparing for the oral exam» track: the sources don't include oral/oral.json yet.",
-  "fabrica.plan.oral_apagada": "«Preparing for the oral exam» track: sources ready; building it is still off (chapters 3–8, scenarios and final exam).",
-  "fabrica.plan.oral_activa": "«Preparing for the oral exam» track: on.",
+  "fabrica.plan.oral_apagada": "Sources ready. It is off: turn it on to build the chapters still missing (topics already published, for example the hand-made ones, are skipped).",
+  "fabrica.plan.oral_activa": "On: it is built after the Test Guide, chapter by chapter (topics already published are skipped).",
   "fabrica.plan.vacio": "Nothing to build yet.",
   "fabrica.mejora.titulo": "Continuous improvement",
   "fabrica.mejora.linea": "At most once a week and only with student evidence (cards with many «Explain it better», questions that fail a lot), it rewrites those cards or explanations, verifies them and publishes a new version. No evidence, no spending.",
@@ -3712,5 +3712,14 @@
   "oral.repaso.errores": "{n} mistakes",
   "oral.repaso.errores.uno": "1 mistake",
   "oral.repaso.vacio": "No oral exam mistakes for now.",
-  "oral.repaso.nota": "Kept separate: it does not count toward the Test Guide «My review»."
+  "oral.repaso.nota": "Kept separate: it does not count toward the Test Guide «My review».",
+  "fabrica.plan.oral_mal": "The sources' oral/oral.json file cannot be read properly:",
+  "fabrica.oral.titulo": "«Preparing for the oral exam» track",
+  "fabrica.oral.capitulo": "Oral · Chapter {num}: {nombre}",
+  "fabrica.oral.escenarios": "Oral · {nombre}",
+  "fabrica.oral.saltados": "{n} of {de} topics already published: skipped.",
+  "fabrica.oral.resumen": "{n} chapters · {faltan} to go",
+  "fabrica.oral.encender": "Turn on the oral track",
+  "fabrica.oral.apagar": "Turn off the oral track",
+  "fabrica.oral.encender_confirmar": "Build the oral track? It uses the same factory cap (about US$10–15 for every chapter)."
 }

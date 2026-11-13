@@ -53,8 +53,10 @@ export function pantallaFabrica(d, h) {
       ].filter(Boolean));
     },
   }, el('summary', { texto: t('fabrica.ver_informe') }), el('div', { class: 'fabrica-informe' }, el('p', { class: 'suave', texto: t('reporte.preparando') })));
-  const filas = d.materias.map(m => el('article', { class: `fabrica-materia estado-${m.estado}` },
-    el('h3', { texto: t('fabrica.materia', { num: m.num, nombre: m.nombre }) }),
+  const fila = (m, { oral = false } = {}) => el('article', { class: `fabrica-materia estado-${m.estado}` },
+    el('h3', { texto: oral ? t(m.num === 9 ? 'fabrica.oral.escenarios' : 'fabrica.oral.capitulo', { num: m.num, nombre: m.nombre }) : t('fabrica.materia', { num: m.num, nombre: m.nombre }) }),
+    // 0.13.1: los temas que ya están publicados (por ejemplo, hechos a mano) se saltan, tema por tema.
+    oral && m.yaPublicados ? el('p', { class: 'suave chica', texto: t('fabrica.oral.saltados', { n: m.yaPublicados, de: m.temas }) }) : null,
     el('p', {}, h.insignia(LISTAS.includes(m.estado) ? 'bien' : m.estado === 'revision' ? 'mal' : 'neutro', h.tSi(`fabrica.estado.${m.estado}`, m.estado)),
       m.temaN ? el('span', { class: 'suave chica', texto: ` ${t('fabrica.tema_de', { n: m.temaN, total: m.temas })}` }) : null),
     el('progress', { max: 100, value: m.pct, 'aria-label': t('fabrica.hecho_pct', { pct: m.pct }) }),
@@ -64,12 +66,22 @@ export function pantallaFabrica(d, h) {
     m.dudas || m.corregidos || m.problema ? informe(m) : null,
     el('div', { class: 'botones' },
       m.estado === 'revision' && m.version ? accion(t('fabrica.publicar'), `/api/admin/academia/fabrica/${encodeURIComponent(m.id)}/publicar`, {}, { clase: 'verde', confirmar: t('fabrica.publicar_confirmar') }) : null,
-      LISTAS.includes(m.estado) ? null : accion(t('fabrica.reiniciar'), `/api/admin/academia/fabrica/${encodeURIComponent(m.id)}/reiniciar`, {}, { confirmar: t('fabrica.reiniciar_confirmar') }))));
+      LISTAS.includes(m.estado) ? null : accion(t('fabrica.reiniciar'), `/api/admin/academia/fabrica/${encodeURIComponent(m.id)}/reiniciar`, {}, { confirmar: t('fabrica.reiniciar_confirmar') })));
+  const filas = d.materias.map(m => fila(m));
+  const o = d.oral ?? {};
+  const capitulos = (o.capitulos ?? []).map(m => fila(m, { oral: true }));
   const plan = el('section', { class: 'tarjeta' },
     el('h3', { texto: t('fabrica.plan.titulo') }),
     el('p', { class: 'suave chica', texto: t('fabrica.plan.principal', { n: d.materias.length, faltan: d.materias.filter(m => !LISTAS.includes(m.estado)).length }) }),
-    el('p', { class: 'suave chica', texto: !d.oral?.hay ? t('fabrica.plan.oral_sin') : d.oral.activa ? t('fabrica.plan.oral_activa') : t('fabrica.plan.oral_apagada') }),
-    filas.length ? el('div', { class: 'fabrica-materias' }, filas) : el('p', { class: 'suave', texto: t('fabrica.plan.vacio') }));
+    filas.length ? el('div', { class: 'fabrica-materias' }, filas) : el('p', { class: 'suave', texto: t('fabrica.plan.vacio') }),
+    // 0.13.1: la pista «Preparándote para el examen oral»: sus capítulos (después del Test Guide), con lo que falta.
+    el('h3', { texto: t('fabrica.oral.titulo') }),
+    el('p', { class: 'suave chica', texto: !o.hay ? t('fabrica.plan.oral_sin') : !o.ok ? t('fabrica.plan.oral_mal') : o.activa ? t('fabrica.plan.oral_activa') : t('fabrica.plan.oral_apagada') }),
+    o.errores?.length ? el('ul', { class: 'chica' }, o.errores.map(e => el('li', { texto: `${e.ruta}: ${e.motivo}` }))) : null,
+    capitulos.length ? el('p', { class: 'suave chica', texto: t('fabrica.oral.resumen', { n: capitulos.length, faltan: o.capitulos.filter(m => !LISTAS.includes(m.estado)).length }) }) : null,
+    capitulos.length ? el('div', { class: 'fabrica-materias' }, capitulos) : null,
+    o.hay && o.ok ? (o.activa ? accion(t('fabrica.oral.apagar'), '/api/admin/academia/fabrica/config', { oral: false })
+      : accion(t('fabrica.oral.encender'), '/api/admin/academia/fabrica/config', { oral: true }, { clase: 'verde', confirmar: t('fabrica.oral.encender_confirmar') })) : null);
   const tope = el('input', { type: 'text', inputmode: 'decimal', id: 'fabrica-tope', value: ((d.config.topeMicro ?? 0) / 1e6).toFixed(2) });
   const topeMejora = el('input', { type: 'text', inputmode: 'decimal', id: 'fabrica-tope-mejora', value: ((d.config.mejora.topeMesMicro ?? 0) / 1e6).toFixed(2) });
   const mejoraSi = el('input', { type: 'checkbox', id: 'fabrica-mejora', checked: d.config.mejora.activa });

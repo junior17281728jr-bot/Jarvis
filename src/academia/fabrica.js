@@ -16,9 +16,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, linkSync, copyFileSync, statSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { MATERIAS, revisarPaquete, LIMITES, ID_VALIDO } from './formato.js';
+import { MATERIAS, MATERIAS_ORAL, revisarPaquete, LIMITES, ID_VALIDO } from './formato.js';
 import { normalizar } from './reto-calidad.js';
-import { guardarAjuste, leerAjuste, guardarJson, aceptarRecurso, rutaDeRecurso, activarPaquete, huellaDeArchivo, leerEnUso } from './paquetes.js';
+import { guardarAjuste, leerAjuste, guardarJson, aceptarRecurso, rutaDeRecurso, activarPaquete, huellaDeArchivo, leerEnUso, paqueteActivo } from './paquetes.js';
+import { leerFuenteOral, contextoOral, pasosDeTemaOral, pedidoOral, revisarSalidaOral, seccionOral, armarTemaOral } from './fabrica-oral.js';
 import {
   carpetaFuentes, estadoFuentes, sincronizarFuentes, leerManifiesto, leerLecturas, textoDeLectura, preguntasDeTema, imagenesDeTema,
 } from './fuentes.js';
@@ -125,7 +126,7 @@ export function planDeTrabajo(db, config) {
   const dir = carpetaFuentes(config);
   const man = leerManifiesto(dir);
   const fuentes = estadoFuentes(db);
-  if (!man || !fuentes?.ok) return { fuentes: Boolean(fuentes?.ok), materias: [], oral: { hay: Boolean(fuentes?.oral), activa: false, capitulos: [] } };
+  if (!man || !fuentes?.ok) return { fuentes: Boolean(fuentes?.ok), materias: [], oral: { hay: Boolean(fuentes?.oral), activa: false, ok: false, errores: [], capitulos: [] } };
   const enUso = leerEnUso(db);
   const propias = new Set();
   const materias = [...man.materias].sort((a, b) => MATERIAS.indexOf(a.id) - MATERIAS.indexOf(b.id)).map(m => {
@@ -134,8 +135,30 @@ export function planDeTrabajo(db, config) {
     const publicadaFuera = enUso.some(x => x.id !== e.version && !(e.versiones ?? []).includes(x.id) && (x.materias ?? []).includes(m.id));
     return { id: m.id, num: m.num, nombre: m.nombre, temas: m.temas.map(t => ({ id: t.id, titulo: t.titulo, tg: t.tg.length })), yaPublicada: publicadaFuera, estado: e };
   });
-  return { fuentes: true, materias, oral: { hay: Boolean(fuentes.oral), activa: leerConfigFabrica(db).oral, capitulos: [] } };
+  return { fuentes: true, materias, oral: planOral(db, config, dir) };
 }
+
+// ---------- 0.13.1: la pista oral (src/academia/fabrica-oral.js) ----------
+// Por capítulo: sus temas y cuáles ya están en una versión oral en uso que NO es de la fábrica (por ejemplo, los
+// capítulos 1–2 hechos a mano): esos se saltan TEMA POR TEMA. Un capítulo con todos sus temas así queda «ya publicada».
+function temasFuera(db, config, materia, e) {
+  let p = null;
+  try { p = paqueteActivo(db, config); } catch { p = null; }
+  const propias = new Set([e.version, ...(e.versiones ?? [])].filter(x => x != null));
+  return new Set((p?.oral?.materias.find(m => m.id === materia)?.temas ?? []).filter(t => !propias.has(t.paquete)).map(t => t.id));
+}
+export function planOral(db, config, dir = carpetaFuentes(config)) {
+  const f = leerFuenteOral(dir);
+  const activa = leerConfigFabrica(db).oral;
+  if (!f.hay || !f.ok) return { hay: f.hay, activa, ok: false, errores: (f.errores ?? []).slice(0, 10), capitulos: [] };
+  const capitulos = f.capitulos.map(cap => {
+    const e = estadoMateria(db, cap.id);
+    const fuera = temasFuera(db, config, cap.id, e);
+    return { id: cap.id, num: cap.num, nombre: cap.nombre, temas: cap.temas.map(t => ({ id: t.id, titulo: t.titulo, qa: t.qa.length, yaPublicado: fuera.has(t.id) })), yaPublicados: fuera.size, estado: e };
+  });
+  return { hay: true, activa, ok: true, errores: (f.errores ?? []).slice(0, 10), capitulos };
+}
+const leerDe = (db, materia, gen, tema) => paso => leerSalida(db, materia, gen, tema, paso);
 
 // Los pasos de un tema, según lo ya guardado (el plan dice cuántas tarjetas). → [{ paso, tipo, ... }]
 export function pasosDeTema(db, materia, gen, tema, { largo, preguntas }) {
@@ -463,6 +486,62 @@ async function armar(ctx, man, m, e, ahora) {
   }
 }
 
+// 0.13.1: armar un capítulo de la pista oral con SOLO los temas que no estaban publicados («quedan»): paquete con
+// pista «oral» → revisión (formato.js) → versión nueva → fotos del libro → publicar (limpio) o esperar revisión.
+export function armarPaqueteOral(db, config, fuente, cap, gen, quedan, ahora) {
+  const dir = carpetaFuentes(config);
+  const temas = [];
+  const preguntas = [];
+  const dudas = [];
+  for (const t of quedan) {
+    const c = contextoOral(dir, fuente, cap, t);
+    const r = armarTemaOral(leerDe(db, cap.id, gen, t.id), c, cap, t, fuente);
+    temas.push(r.tema);
+    preguntas.push(...r.preguntas);
+    dudas.push(...r.dudas);
+  }
+  const paquete = {
+    formato: 'academia-enalas', version: 1, pista: 'oral',
+    nombre: `Examen oral · ${cap.num === 9 ? 'Escenarios' : `Capítulo ${cap.num}`} · ${cap.nombre} (fábrica)`.slice(0, LIMITES.corto),
+    edicion: `fabrica-${cap.id}-g${gen}-${iso(ahora).slice(0, 10)}`,
+    libros: [{ id: fuente.libro.id, titulo: fuente.libro.titulo, idioma: 'en' }],
+    materias: [{ id: cap.id, temas }], preguntas, figuras: [],
+  };
+  return { paquete, dudas, corregidos: [] };
+}
+async function armarOral(ctx, fuente, cap, e, quedan, ahora) {
+  const { db, config } = ctx;
+  const { paquete, dudas, corregidos } = armarPaqueteOral(db, config, fuente, cap, e.gen, quedan, ahora);
+  const cuerpo = Buffer.from(JSON.stringify(paquete));
+  const revision = revisarPaquete(paquete);
+  const informe = { dudas: dudas.slice(0, 200), corregidos, errores: revision.ok ? [] : revision.errores.slice(0, 20), tgAlterado: [], en: iso(ahora), temasSaltados: cap.temas.length - quedan.length };
+  if (!revision.ok || cuerpo.length > T.paqueteMaxBytes) {
+    await ctx.escribir(() => guardarMateria(db, cap.id, { ...e, estado: 'revision', version: null, ...informe, problema: !revision.ok ? 'paquete_no_valido' : 'paquete_muy_grande' }));
+    await ctx.escribir(() => abrirAviso(db, { clave: `fabrica_revision:${cap.id}:g${e.gen}`, nivel: 'atencion', detalle: { n: dudas.length }, ahora }));
+    return;
+  }
+  const huella = createHash('sha256').update(cuerpo).digest('hex');
+  const r = await guardarJson(db, config, { cuerpo, revisado: { datos: paquete, revision, huella }, origen: 'fabrica', escribir: ctx.escribir });
+  const fila = db.prepare('SELECT * FROM academia_paquetes WHERE id = ?').get(r.datos.paquete.id);
+  for (const f of revision.fotos) {
+    const origen = fuente.imagenes.find(x => x.archivo === f.archivo)?.ruta ?? join(carpetaFuentes(config), 'oral', f.archivo);
+    if (!(await adjuntar(db, config, fila, 'foto', f.archivo, origen, ctx.escribir))) informe.dudas.push({ donde: f.archivo, problema: 'archivo_no_esta', gravedad: 'dudoso' });
+  }
+  const lista = db.prepare('SELECT estado FROM academia_paquetes WHERE id = ?').get(fila.id);
+  const limpio = informe.dudas.length === 0 && lista.estado === 'listo';
+  const versiones = [...new Set([...(e.versiones ?? []), fila.id])];
+  await ctx.escribir(() => {
+    if (limpio) {
+      activarPaquete(db, { paqueteId: fila.id, materias: [cap.id] });
+      guardarMateria(db, cap.id, { ...e, estado: 'publicada', version: fila.id, versiones, ...informe, publicadaEn: iso(ahora) });
+      abrirAviso(db, { clave: `fabrica_publicada:${cap.id}:${fila.id}`, nivel: 'atencion', detalle: { temas: quedan.length, preguntas: paquete.preguntas.length }, ahora });
+    } else {
+      guardarMateria(db, cap.id, { ...e, estado: 'revision', version: fila.id, versiones, ...informe });
+      abrirAviso(db, { clave: `fabrica_revision:${cap.id}:g${e.gen}`, nivel: 'atencion', detalle: { n: informe.dudas.length }, ahora });
+    }
+  });
+}
+
 // Publicar una versión que esperaba revisión (lo hace el administrador desde la pantalla).
 export function publicarRevisada(db, { materia, usuarioId = null, ahora = Date.now() }) {
   const e = estadoMateria(db, materia);
@@ -521,6 +600,27 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       if (!trabajo) { trabajo = { m, e, armar: true }; }
       break;
     }
+    // 0.13.1: con el Test Guide terminado (o en revisión) y la pista oral encendida, sus capítulos (tema por tema).
+    if (!trabajo && cfg.oral && plan.oral.ok) {
+      const fuente = leerFuenteOral(carpetaFuentes(config));
+      for (const pc of plan.oral.capitulos) {
+        const e = pc.estado;
+        if (ESTADOS_LISTOS.has(e.estado)) continue;
+        const cap = fuente.capitulos.find(x => x.id === pc.id);
+        const quedan = cap.temas.filter(t => !pc.temas.find(x => x.id === t.id)?.yaPublicado);
+        if (!quedan.length) { await ctx.escribir(() => guardarMateria(db, cap.id, { ...e, estado: 'ya_publicada' })); return { punto: {}, esperarMs: 1000 }; }
+        for (const t of quedan) {
+          const c = contextoOral(carpetaFuentes(config), fuente, cap, t);
+          if (!c.lectura.partes.length) continue;
+          for (const p of pasosDeTemaOral(leerDe(db, cap.id, e.gen, t.id), t)) {
+            if (!hecho(leerSalida(db, cap.id, e.gen, t.id, p.paso))) { trabajo = { m: cap, e, t, c, p, oral: true }; break; }
+          }
+          if (trabajo) break;
+        }
+        if (!trabajo) trabajo = { m: cap, e, armar: true, oral: true, fuente, quedan };
+        break;
+      }
+    }
     if (!trabajo) {
       // Todo hecho: «Terminada» (cero llamadas). Solo queda la mejora continua (una vez por semana y con evidencia).
       if (!g.terminada) await ctx.escribir(() => guardarGeneral(db, { terminada: true, terminadaEn: iso(ahora), espera: null }));
@@ -530,14 +630,15 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     if (g.terminada) await ctx.escribir(() => guardarGeneral(db, { terminada: false }));
     const { m, e } = trabajo;
     if (trabajo.armar) {
-      await armar(ctx, man, m, e, ahora);
+      if (trabajo.oral) await armarOral(ctx, trabajo.fuente, m, e, trabajo.quedan, ahora);
+      else await armar(ctx, man, m, e, ahora);
       return { punto: {}, esperarMs: 1000 };
     }
     // 3. UNA llamada (si se puede).
     const { t, c, p } = trabajo;
     if (e.estado === 'pendiente') await ctx.escribir(() => guardarMateria(db, m.id, { ...e, estado: 'escribiendo', iniciadaEn: iso(ahora) }));
     const planGuardado = leerSalida(db, m.id, e.gen, t.id, 'plan')?.json?.tarjetas ?? [];
-    const pedido = pedidoDe(db, c, m.id, e.gen, t, p);
+    const pedido = trabajo.oral ? pedidoOral(leerDe(db, m.id, e.gen, t.id), c, t, p) : pedidoDe(db, c, m.id, e.gen, t, p);
     const bytes = Buffer.byteLength(pedido.sistema) + Buffer.byteLength(pedido.texto) + Buffer.byteLength(JSON.stringify(pedido.esquema));
     const puede = puedeLlamar(db, config, { proposito: p.proposito, bytes, ahora, topeMicro: cfg.topeMicro, gastado: gastoFabricaMicro(db) });
     const clave = claveSalida(m.id, e.gen, t.id, p.paso);
@@ -563,7 +664,7 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     const crudo = leerJsonAjuste(db, `${clave}.crudo`);
     const json = r.usada ? r.json : r.motivo === 'ya_cobrada' && crudo?.json && crudo.intento === previo.n ? crudo.json : null;
     if (json) {
-      const rev = revisarSalida(p, json, c, planGuardado);
+      const rev = trabajo.oral ? revisarSalidaOral(p, json, c, t, planGuardado, seccionOral) : revisarSalida(p, json, c, planGuardado);
       if (rev.ok) {
         await ctx.escribir(() => {
           guardarAjuste(db, clave, JSON.stringify({ json, en: iso(ahora), costoMicro: r.costoMicro ?? crudo?.costoMicro ?? null }));
@@ -638,16 +739,45 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
       faltan: faltan.slice(0, 40), version: e.version ?? null, dudas: (e.dudas ?? []).length, corregidos: (e.corregidos ?? []).length, problema: e.problema ?? null,
     };
   });
-  const etaMs = materias.reduce((s, x) => s + x.etaMs, 0);
+  // 0.13.1: la pista oral (sus capítulos, con lo que falta por tema y los temas que se saltan por estar ya publicados).
+  const fuenteOral = plan.oral.ok ? leerFuenteOral(carpetaFuentes(config)) : null;
+  const capitulos = (plan.oral.capitulos ?? []).map(pc => {
+    const cap = fuenteOral.capitulos.find(x => x.id === pc.id);
+    const e = pc.estado;
+    let total = 0;
+    let hechos = 0;
+    const faltan = [];
+    let temaN = 0;
+    const quedan = cap.temas.filter(t => !pc.temas.find(x => x.id === t.id)?.yaPublicado);
+    if (!ESTADOS_LISTOS.has(e.estado) && quedan.length) {
+      quedan.forEach((t, i) => {
+        const pasos = pasosDeTemaOral(leerDe(db, cap.id, e.gen, t.id), t);
+        const listos = pasos.filter(p => hecho(leerSalida(db, cap.id, e.gen, t.id, p.paso))).length;
+        total += pasos.length; hechos += listos;
+        if (listos < pasos.length) { faltan.push({ tema: t.id, titulo: t.titulo, pasos: pasos.length - listos }); if (!temaN && listos > 0) temaN = i + 1; }
+      });
+      total += 1;
+    }
+    const pct = ESTADOS_LISTOS.has(e.estado) || !quedan.length ? 100 : total ? Math.floor((hechos * 100) / total) : 0;
+    const restantes = cfg.oral ? Math.max(0, total - hechos) : 0;
+    const ritmo = 3_600_000 / cuota.propia;
+    return {
+      id: pc.id, num: pc.num, nombre: pc.nombre, estado: !quedan.length && !ESTADOS_LISTOS.has(e.estado) ? 'ya_publicada' : e.estado, gen: e.gen, temas: pc.temas.length, tema: e.tema ?? null, temaN: temaN || null,
+      pct, gastoMicro: gastoFabricaMicro(db, { materia: pc.id }), etaMs: restantes * ritmo, faltaMicro: Math.max(0, total - hechos) * costoPaso,
+      faltan: faltan.slice(0, 40), version: e.version ?? null, dudas: (e.dudas ?? []).length, corregidos: (e.corregidos ?? []).length, problema: e.problema ?? null,
+      yaPublicados: pc.yaPublicados, saltados: pc.temas.filter(x => x.yaPublicado).map(x => x.id),
+    };
+  });
+  const etaMs = materias.reduce((s, x) => s + x.etaMs, 0) + capitulos.reduce((s, x) => s + x.etaMs, 0);
   return {
     config: cfg, general: g, cuota, fuentes: fuentes ? { ok: fuentes.ok, errores: (fuentes.errores ?? []).slice(0, 10), faltan: fuentes.faltan ?? [], en: fuentes.en ?? null, oral: Boolean(fuentes.oral) } : null,
-    gastoMicro: gastoFabricaMicro(db), materias, etaMs, faltaMicro: materias.reduce((s, x) => s + x.faltaMicro, 0),
-    estado: !plan.fuentes ? 'sin_fuentes' : cfg.pausada ? 'pausada' : g.terminada ? (materias.some(x => x.estado === 'revision') ? 'esperando_revision' : 'terminada') : g.espera ? 'esperando' : 'trabajando',
-    oral: plan.oral, mejora: leerJsonAjuste(db, 'fabrica.mejora.ultima'), mejoraGastoMicro: gastoMejoraMesMicro(db, ahora),
+    gastoMicro: gastoFabricaMicro(db), materias, etaMs, faltaMicro: materias.reduce((s, x) => s + x.faltaMicro, 0) + (cfg.oral ? capitulos.reduce((s, x) => s + x.faltaMicro, 0) : 0),
+    estado: !plan.fuentes ? 'sin_fuentes' : cfg.pausada ? 'pausada' : g.terminada ? ([...materias, ...capitulos].some(x => x.estado === 'revision') ? 'esperando_revision' : 'terminada') : g.espera ? 'esperando' : 'trabajando',
+    oral: { hay: plan.oral.hay, activa: plan.oral.activa, ok: plan.oral.ok, errores: plan.oral.errores ?? [], capitulos }, mejora: leerJsonAjuste(db, 'fabrica.mejora.ultima'), mejoraGastoMicro: gastoMejoraMesMicro(db, ahora),
   };
 }
 export function informeMateria(db, materia) {
-  if (!MATERIAS.includes(materia) || !ID_VALIDO.test(materia)) return null;
+  if (!(MATERIAS.includes(materia) || MATERIAS_ORAL.includes(materia)) || !ID_VALIDO.test(materia)) return null;
   const e = estadoMateria(db, materia);
   return { materia, estado: e.estado, version: e.version ?? null, dudas: e.dudas ?? [], corregidos: e.corregidos ?? [], errores: e.errores ?? [], tgAlterado: e.tgAlterado ?? [], en: e.en ?? null, problema: e.problema ?? null };
 }

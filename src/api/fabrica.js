@@ -3,7 +3,7 @@
 //  - GET  /api/admin/academia/fabrica                       el estado: por materia, %, gasto, tiempo estimado, lo que falta
 //  - GET  /api/admin/academia/fabrica/:materia/informe      el informe de verificación (dudas y lo corregido)
 //  - POST /api/admin/academia/fabrica/pausa { pausada }     pausar o reanudar (sin llamadas mientras está en pausa)
-//  - POST /api/admin/academia/fabrica/config { topeUsd?, mejora?: { activa?, topeUsd? }, oral? }
+//  - POST /api/admin/academia/fabrica/config { topeUsd?, mejora?: { activa?, topeUsd? }, oral? } (oral: fabricar la pista oral)
 //  - POST /api/admin/academia/fabrica/:materia/reiniciar    una generación nueva de esa materia (lo de antes se guarda)
 //  - POST /api/admin/academia/fabrica/:materia/publicar     publicar la versión que esperaba revisión
 //  - POST /api/admin/academia/fabrica/ahora                 mirar ya (sin esperar a la próxima hora)
@@ -12,7 +12,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { encolar } from '../tareas/cola.js';
 import { usdAMicro } from '../ia/config.js';
-import { MATERIAS } from '../academia/formato.js';
+import { MATERIAS, MATERIAS_ORAL } from '../academia/formato.js';
 import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, reiniciarMateria, publicarRevisada, LIMITES_FABRICA } from '../academia/fabrica.js';
 
 // «3,50» y «3.50» son lo mismo (el teléfono en español pone coma).
@@ -21,7 +21,7 @@ const conPunto = v => (typeof v === 'string' ? v.trim().replace(',', '.') : v);
 export function registrarRutasFabrica(rutas, { config = null, supervisor = null, reloj = Date.now } = {}) {
   reloj ??= Date.now;
   const materiaDe = parametros => {
-    if (!MATERIAS.includes(parametros.materia)) throw new ErrorHttp(404, 'no_existe');
+    if (!MATERIAS.includes(parametros.materia) && !MATERIAS_ORAL.includes(parametros.materia)) throw new ErrorHttp(404, 'no_existe');
     return parametros.materia;
   };
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'academia_no_disponible'); };
@@ -48,15 +48,15 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
       if (typeof datos.mejora.activa === 'boolean') cambios.mejora.activa = datos.mejora.activa;
       if (datos.mejora.topeUsd != null) cambios.mejora.topeMesMicro = usdAMicro(conPunto(datos.mejora.topeUsd), LIMITES_FABRICA.mejoraMaxMicro);
     }
-    // La pista oral todavía no se fabrica (README): encenderla no haría nada, así que no se deja.
-    if (datos?.oral === true) throw new ErrorHttp(409, 'no_disponible');
-    if (datos?.oral === false) cambios.oral = false;
+    // 0.13.1: la pista oral ya se fabrica (capítulos 1–9, tema por tema; lo ya publicado a mano se salta).
+    if (typeof datos?.oral === 'boolean') cambios.oral = datos.oral;
     const antes = leerConfigFabrica(db);
     const cfg = enTransaccion(db, () => {
       const nueva = guardarConfigFabrica(db, cambios);
       auditar(db, { usuarioId: usuario.id, accion: 'fabrica_config', detalle: JSON.stringify({ antes: { tope: antes.topeMicro, mejora: antes.mejora, oral: antes.oral }, despues: { tope: nueva.topeMicro, mejora: nueva.mejora, oral: nueva.oral } }).slice(0, 500) });
       return nueva;
     });
+    if (cambios.oral === true) despertar();
     return { codigo: 200, datos: { config: cfg } };
   }, { admin: true, soloDueno: true });
   rutas.agregar('POST', '/api/admin/academia/fabrica/:materia/reiniciar', ({ db, parametros, usuario }) => {

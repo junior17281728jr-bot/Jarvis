@@ -49,7 +49,12 @@ test('rutas de la fábrica: ver el estado y el plan, pausar, topes, reiniciar, p
       assert.equal((await pedir(base, 'POST', '/api/admin/academia/fabrica/sistemas/reiniciar', { galleta: admin, datos: {} })).codigo, 200);
       assert.equal(estadoMateria(db, 'sistemas').gen, 2);
       assert.equal((await pedir(base, 'POST', '/api/admin/academia/fabrica/cocina/reiniciar', { galleta: admin, datos: {} })).codigo, 404);
-      assert.equal((await pedir(base, 'POST', '/api/admin/academia/fabrica/config', { galleta: admin, cabeceras: DUENO, datos: { oral: true } })).datos.error, 'no_disponible', 'la pista oral todavía no se fabrica');
+      // 0.13.1: la pista oral ya se fabrica: el interruptor se enciende (y se apaga); sus capítulos tienen informe y reinicio.
+      assert.equal((await pedir(base, 'POST', '/api/admin/academia/fabrica/config', { galleta: admin, cabeceras: DUENO, datos: { oral: true } })).datos.config.oral, true);
+      assert.equal(leerConfigFabrica(db).oral, true);
+      assert.equal((await pedir(base, 'POST', '/api/admin/academia/fabrica/config', { galleta: admin, cabeceras: DUENO, datos: { oral: false } })).datos.config.oral, false);
+      assert.equal((await pedir(base, 'GET', '/api/admin/academia/fabrica/oral_calificaciones/informe', { galleta: admin })).codigo, 200);
+      assert.equal((await pedir(base, 'POST', '/api/admin/academia/fabrica/oral_calificaciones/reiniciar', { galleta: admin, datos: {} })).codigo, 200);
       r = await pedir(base, 'GET', '/api/admin/academia/fabrica/sistemas/informe', { galleta: admin });
       assert.equal(r.datos.materia, 'sistemas');
       r = await pedir(base, 'POST', '/api/admin/academia/fabrica/ahora', { galleta: admin, datos: {} });

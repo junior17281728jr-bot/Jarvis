@@ -1,7 +1,7 @@
 // Ayuda común para las pruebas de la fábrica de materias (no es un archivo *.test.js). Fuentes SINTÉTICAS (inventadas
 // aquí: nunca material real), un proveedor falso que responde según el paso, un reloj de mentira y sin Drive.
 import './ayuda.js';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { enTransaccion } from '../src/nucleo/db.js';
 import { guardarAjuste } from '../src/academia/paquetes.js';
@@ -9,6 +9,7 @@ import { carpetaFuentes, revisarCarpetaFuentes, AJUSTE_FUENTES } from '../src/ac
 import { crearFabrica } from '../src/academia/fabrica.js';
 import { crearClienteIA } from '../src/ia/cliente.js';
 import { TAREAS } from '../src/academia/fabrica-prompts.js';
+import { TAREAS_ORAL } from '../src/academia/fabrica-oral.js';
 import { crearProveedorFalso } from './proveedor-falso.js';
 import { preparar, T0 } from './ia-base.js';
 
@@ -34,8 +35,37 @@ export function escribirFuentes(config, { conOral = false } = {}) {
   writeFileSync(join(dir, 'imagenes.json'), JSON.stringify([{ archivo: 'img-pp-es-p10-1.webp', libro: 'pp-es', pagina: 10, ancho: 800, alto: 600, pie: 'El motor' }, { archivo: 'fig-2.webp' }]));
   writeFileSync(join(dir, 'img-pp-es-p10-1.webp'), WEBP);
   writeFileSync(join(dir, 'fig-2.webp'), WEBP);
-  if (conOral) { mkdirSync(join(dir, 'oral'), { recursive: true }); writeFileSync(join(dir, 'oral', 'oral.json'), '{}'); }
+  if (conOral === true) { mkdirSync(join(dir, 'oral'), { recursive: true }); writeFileSync(join(dir, 'oral', 'oral.json'), '{}'); }
+  if (conOral === 'completa') escribirOral(dir);
   return dir;
+}
+
+// 0.13.1: la Guía del examen oral de MUESTRA (inventada aquí, en inglés como el libro real; nunca material real): el
+// capítulo 1 con dos secciones, una «Additional Study Question» y un escenario (pregunta y respuesta juntas).
+export const ORAL = {
+  libro: { id: 'oral-en', titulo: 'Guía del examen oral (muestra)' },
+  materias: [{ id: 'oral_calificaciones', num: 1, nombre: 'Calificaciones (muestra)', nombre_en: 'Sample Qualifications', temas: [
+    { id: 't01-a', seccion: 'A', titulo: 'Atribuciones (muestra)', titulo_en: 'Sample Privileges', preguntas: [
+      { n: 1, pregunta_en: 'May a sample private pilot fly for hire?', respuesta_en: 'No. A sample private pilot may not fly for hire.', referencia: 'Sample 1', pagina: 3 },
+      { n: 2, pregunta_en: 'How many sample passengers may be carried?', respuesta_en: 'Up to 4 sample passengers may be carried.', referencia: 'Sample 2', pagina: 3 },
+    ], adicionales: [] },
+    { id: 't02-b', seccion: 'B', titulo: 'Experiencia reciente (muestra)', titulo_en: 'Sample Recent Experience', preguntas: [
+      { n: 1, pregunta_en: 'How many sample landings are needed?', respuesta_en: 'Three sample landings within 90 days.', referencia: 'Sample 3', pagina: 4 },
+    ], adicionales: [{ n: 1, pregunta_en: 'Describe your sample personal minimums.', referencia: 'Sample 4', pagina: 5 }] },
+  ] }],
+  escenarios: [{ n: 1, texto_en: 'A sample friend offers to pay for the whole flight.\nMay you accept the money?\nNo. A sample private pilot may only share the costs.', pagina: 7 }],
+};
+export const ORAL_CAP01 = '=== p 3 ===\n1\nSample Qualifications\n1. May a sample private pilot fly for hire?\nNo. A sample private pilot may not fly for hire.\n2. How many sample passengers may be carried?\nUp to 4 sample passengers may be carried.\n=== p 4 ===\n1. How many sample landings are needed?\nThree sample landings within 90 days.\n=== p 5 ===\nAdditional Study Questions\n1. Describe your sample personal minimums.\n';
+export const ORAL_CAP09 = '=== p 7 ===\n1. A sample friend offers to pay for the whole flight.\nMay you accept the money?\nNo. A sample private pilot may only share the costs.\n';
+export function escribirOral(dir) {
+  mkdirSync(join(dir, 'oral'), { recursive: true });
+  writeFileSync(join(dir, 'oral', 'oral.json'), JSON.stringify(ORAL));
+  writeFileSync(join(dir, 'oral', 'oral-cap01.txt'), ORAL_CAP01);
+  writeFileSync(join(dir, 'oral', 'oral-cap09.txt'), ORAL_CAP09);
+  writeFileSync(join(dir, 'oral', 'img-oral-en-p3-1.webp'), WEBP);
+  const imgs = JSON.parse(readFileSync(join(dir, 'imagenes.json'), 'utf8'));
+  imgs.push({ archivo: 'oral/img-oral-en-p3-1.webp', libro: 'oral-en', pagina: 3, ancho: 600, alto: 400, pie: 'Una cabina de muestra' });
+  writeFileSync(join(dir, 'imagenes.json'), JSON.stringify(imgs));
 }
 export const sincronizarFalso = async (db, config, { escribir }) => {
   const estado = revisarCarpetaFuentes(carpetaFuentes(config));
@@ -55,6 +85,28 @@ export function respuestaFalsa(cuerpo, { dudas = [] } = {}) {
     visual: i === 0 ? null : { tipo: 'diagrama-pasos', parametros: { titulo: null, unidad: null, problema: null, formula: null, resultado: null, columnas: null, filas: null, elementos: [{ nombre: 'Admisión', detalle: null, valor: null, hasta: null }, { nombre: 'Compresión', detalle: null, valor: null, hasta: null }] } },
     solo_texto: null,
   });
+  // 0.13.1: la pista oral (los pedidos traen «preguntas_del_libro»).
+  if (texto.startsWith(TAREAS_ORAL.plan)) {
+    const pag = [d.preguntas_del_libro[0].pagina];
+    return { tarjetas: [{ titulo: 'Lo que puedes hacer', idea: 'atribuciones', libro: d.preguntas_del_libro.map(x => x.n), paginas: pag }, { titulo: 'Lo que no puedes', idea: 'cobrar', libro: [], paginas: pag }, { titulo: 'Para el examinador', idea: 'decirlo', libro: [], paginas: pag }] };
+  }
+  if (texto.startsWith(TAREAS.tarjetas) && d.preguntas_del_libro) {
+    return { tarjetas: d.tarjetas.map((x, i) => ({
+      titulo: x.titulo, puntos: ['El piloto privado de muestra no vuela por paga (for hire).', 'Lleva hasta 4 pasajeros.'], recuerda: 'Nunca por paga.', ejemplo: 'El examinador te pregunta si puedes cobrar.',
+      ingles: [{ palabra: 'For hire', pronunciacion: 'for JÁIR', significado: 'Por paga' }], paginas: x.paginas,
+      imagen: i === 0 && d.fotos_del_libro?.length ? { archivo: d.fotos_del_libro[0].archivo, alt: 'Una cabina', pie: 'La cabina de muestra' } : null,
+      visual: i === 0 && d.fotos_del_libro?.length ? null : { tipo: 'diagrama-pasos', parametros: { titulo: null, unidad: null, problema: null, formula: null, resultado: null, columnas: null, filas: null, elementos: [{ nombre: 'Pregunta', detalle: null, valor: null, hasta: null }, { nombre: 'Respuesta', detalle: null, valor: null, hasta: null }] } },
+      solo_texto: null,
+    })) };
+  }
+  if (texto.startsWith(TAREAS_ORAL.libro)) {
+    return { items: d.preguntas_del_libro.map(x => ({
+      n: x.n, explicacion_es: 'En la muestra, el libro dice que el piloto privado no vuela por paga (for hire).', puntos_clave: ['No vuela por paga.'],
+      pregunta_termina_en: x.escenario ? 'May you accept the money?' : null,
+      pregunta: { enunciado: `Muestra ${x.n}: ¿qué dice el libro?`, opciones: [{ letra: 'A', texto: 'Lo que dice el libro.' }, { letra: 'B', texto: 'Lo contrario.' }, { letra: 'C', texto: 'Otra cosa.' }], correcta: 'A', explicacion: 'Lo dice el libro de muestra.', errores: [{ letra: 'B', idea: 'Al revés.' }, { letra: 'C', idea: 'Inventado.' }], como: 'La respuesta del libro es la A.' },
+    })) };
+  }
+  if (texto.startsWith(TAREAS_ORAL.verificar)) return { dudas };
   if (texto.startsWith(TAREAS.plan)) return { tarjetas: [{ titulo: 'El motor', idea: 'cilindros', preguntas: ['2-1'], paginas: [10] }, { titulo: 'La hélice', idea: 'empuje', preguntas: ['2-2'], paginas: [11] }, { titulo: 'Cuidarlo', idea: 'rpm', preguntas: [], paginas: [10] }] };
   if (texto.startsWith(TAREAS.tarjetas)) return { tarjetas: d.tarjetas.map((x, i) => tarjeta(x.titulo, i)) };
   if (texto.startsWith(TAREAS.preguntas)) {
@@ -80,14 +132,14 @@ export function respuestaFalsa(cuerpo, { dudas = [] } = {}) {
 }
 
 // Todo listo: base con la IA encendida (tope general US$50), la clave probada, el proveedor falso y las fuentes.
-export async function conFabrica(fn, { fuentes = true, encendida = true, guardar = true, dudas = [], tope = 50_000_000 } = {}) {
+export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], tope = 50_000_000 } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
   const opciones = { dudas };
   const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo, opciones) });
   const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base }, ahora: T0 });
   const { db, config } = base;
-  if (fuentes) escribirFuentes(config);
+  if (fuentes) escribirFuentes(config, { conOral: oral });
   let tareaId = 100;
   const escribir = async trabajo => enTransaccion(db, trabajo);
   // Una «tarea» nueva (otro id: como la del programa de cada hora) que corre pasos hasta terminar o hasta «max».

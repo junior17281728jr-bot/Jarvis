@@ -3584,8 +3584,8 @@
   "fabrica.plan.titulo": "Plan de trabajo",
   "fabrica.plan.principal": "Pista principal (Test Guide): {n} materias en las fuentes, faltan {faltan}.",
   "fabrica.plan.oral_sin": "Pista «Preparándote para el examen oral»: las fuentes todavía no traen oral/oral.json.",
-  "fabrica.plan.oral_apagada": "Pista «Preparándote para el examen oral»: fuentes listas; su fabricación todavía está apagada (capítulos 3–8, escenarios y examen final).",
-  "fabrica.plan.oral_activa": "Pista «Preparándote para el examen oral»: encendida.",
+  "fabrica.plan.oral_apagada": "Fuentes listas. Está apagada: enciéndela para fabricar los capítulos que faltan (los temas ya publicados, por ejemplo los hechos a mano, se saltan).",
+  "fabrica.plan.oral_activa": "Encendida: se fabrica después del Test Guide, capítulo por capítulo (los temas ya publicados se saltan).",
   "fabrica.plan.vacio": "Nada que fabricar todavía.",
   "fabrica.mejora.titulo": "Mejora continua",
   "fabrica.mejora.linea": "Como mucho una vez por semana y solo con evidencia de los alumnos (tarjetas con muchos «Explícamelo mejor», preguntas que fallan mucho), reescribe esas tarjetas o explicaciones, las verifica y publica otra versión. Sin evidencia, no gasta nada.",
@@ -3712,5 +3712,14 @@
   "oral.repaso.errores": "{n} errores",
   "oral.repaso.errores.uno": "1 error",
   "oral.repaso.vacio": "Ningún error en el examen oral por ahora.",
-  "oral.repaso.nota": "Va aparte: no cuenta para «Mi repaso» del Test Guide."
+  "oral.repaso.nota": "Va aparte: no cuenta para «Mi repaso» del Test Guide.",
+  "fabrica.plan.oral_mal": "El archivo oral/oral.json de las fuentes no se puede leer bien:",
+  "fabrica.oral.titulo": "Pista «Preparándote para el examen oral»",
+  "fabrica.oral.capitulo": "Oral · Capítulo {num}: {nombre}",
+  "fabrica.oral.escenarios": "Oral · {nombre}",
+  "fabrica.oral.saltados": "{n} de {de} temas ya publicados: se saltan.",
+  "fabrica.oral.resumen": "{n} capítulos · faltan {faltan}",
+  "fabrica.oral.encender": "Encender la pista oral",
+  "fabrica.oral.apagar": "Apagar la pista oral",
+  "fabrica.oral.encender_confirmar": "¿Fabricar la pista oral? Usa el mismo tope de la fábrica (unos US$10–15 para todos los capítulos)."
 }
