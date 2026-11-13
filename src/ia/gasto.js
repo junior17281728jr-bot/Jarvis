@@ -5,7 +5,7 @@ import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { inicioMesSiguienteCobro } from '../tareas/tiempo.js';
 import { FASE_ACTUAL } from '../tareas/tipos.js';
 import { topeDeAmbito } from './topes.js';
-import { precioDe, reservaMicro } from './precios.js';
+import { precioPara, reservaMicro } from './precios.js';
 import { PROPOSITOS } from './propositos.js';
 
 export const GASTO_SQL = "COALESCE(SUM(CASE estado WHEN 'reservada' THEN reservado_micro ELSE COALESCE(costo_micro, 0) END), 0)";
@@ -63,11 +63,11 @@ function leerDetalle(texto) {
 
 // El precio con el que se mide si un tope está lleno: el del primer proveedor que el dueño usa y cuyo precio está
 // confirmado (el que reservar elegiría si su clave está lista). null si no hay ninguno.
-export function precioDeReferencia(cfg) {
+export function precioDeReferencia(cfg, db = null) {
   for (const id of cfg?.orden ?? []) {
     const p = cfg.proveedores?.[id];
     if (!p?.usar) continue;
-    const precio = precioDe(id, p.modelo);
+    const precio = precioPara(db, id, p.modelo);
     if (precio) return precio;
   }
   return null;
@@ -79,6 +79,8 @@ export function reservaMinimaMicro(precio, propositos = PROPOSITOS) {
   let minimo = null;
   for (const def of Object.values(propositos ?? {})) {
     if (!def || def.fase > FASE_ACTUAL) continue;
+    // 0.14.0: los usos especiales (un dibujo, mirar un dibujo) no cuentan: no dicen si cabe una clase o una explicación.
+    if (def.tipo === 'imagen' || Array.isArray(def.proveedores)) continue;
     const entrada = Number.isSafeInteger(def.entradaMinBytes) && def.entradaMinBytes > 0 ? def.entradaMinBytes : 1;
     const r = reservaMicro(precio, { entradaMax: entrada, salidaMax: def.salidaMax });
     if (minimo == null || r < minimo) minimo = r;
@@ -95,7 +97,7 @@ export function topeLleno(db, { cfg, ambito, mes, precio = undefined, propositos
   if (!Number.isSafeInteger(tope)) return false;
   const usado = gastoCerradoMicro(db, filtroDeAmbito(mes, ambito));
   if (usado >= tope) return true;
-  const elPrecio = precio === undefined ? precioDeReferencia(cfg) : precio;
+  const elPrecio = precio === undefined ? precioDeReferencia(cfg, db) : precio;
   return Boolean(elPrecio) && tope - usado < reservaMinimaMicro(elPrecio, propositos);
 }
 

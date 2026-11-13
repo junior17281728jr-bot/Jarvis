@@ -11,6 +11,8 @@ const ARCHIVO = new URL('./precios.json', import.meta.url);
 const PRECIO = /^(?:0|[1-9]\d{0,4})(?:\.\d{1,3})?$/;
 const FECHA = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const NOMBRE = /^[a-z][a-z0-9._-]{1,60}$/;
+// 0.14.0: el nombre de un modelo (también los de una «API propia»: pueden traer mayúsculas, «:» y «/»).
+export const MODELO_ID = /^[A-Za-z0-9][A-Za-z0-9._:\/-]{1,80}$/;
 const GEO = /^[a-z]{2,20}$/;
 const HOSTS_DE_FUENTE = Object.freeze(['platform.claude.com', 'developers.openai.com', 'platform.openai.com']);
 export const TIPOS_DE_TOKEN = Object.freeze(['entrada', 'cacheLectura', 'cacheEscritura', 'salida']);
@@ -37,7 +39,7 @@ export function validarPrecios(datos) {
   const filas = datos.modelos.map((m, i) => {
     const donde = `modelo ${i + 1}`;
     if (!m || typeof m !== 'object') mal(`${donde}: no es un objeto`);
-    if (!NOMBRE.test(String(m.proveedor)) || !NOMBRE.test(String(m.modelo))) mal(`${donde}: proveedor o modelo no válido`);
+    if (!NOMBRE.test(String(m.proveedor)) || !MODELO_ID.test(String(m.modelo))) mal(`${donde}: proveedor o modelo no válido`);
     const clave = `${m.proveedor}/${m.modelo}`;
     if (vistos.has(clave)) mal(`${clave} está dos veces`);
     vistos.add(clave);
@@ -196,9 +198,92 @@ export function instantaneaPrecio(fila) {
   };
 }
 
+// ---------- 0.14.0: los precios de ChatGPT y de la «API propia» (tabla editable del dueño, en «ajustes») ----------
+// Los modelos de OpenAI cambian seguido y sus nombres no se adivinan: el dueño elige el modelo de la lista que da la
+// prueba gratis (GET /v1/models) y su precio sale de SU tabla (Administrador → IA → ChatGPT → Precios). Si todavía no lo
+// escribió, se usa un precio por defecto CONSERVADOR según el nombre (mini, nano, pro, imagen…), un poco más alto que
+// los precios comunes de OpenAI: así el gasto anotado nunca queda por debajo de lo que cobra el proveedor (los topes del
+// mes y de la fábrica siguen valiendo para todo junto). La pantalla dice «revisa los precios en la página de OpenAI».
+export const AJUSTE_PRECIOS_PROPIOS = 'ia.precios.propios';
+export const PROVEEDORES_CON_TABLA = Object.freeze(['openai', 'propia']);
+const FUENTE_TABLA = 'https://platform.openai.com/docs/pricing';
+// [patrón del nombre, entrada, lectura de caché, salida] (US$ por millón de tokens). El primero que coincide.
+const POR_DEFECTO = Object.freeze([
+  [/image|dall-e/i, '10.00', '2.50', '40.00'],
+  [/nano/i, '0.20', '0.02', '1.60'],
+  [/mini/i, '0.50', '0.05', '4.00'],
+  [/(?:^|-)pro(?:-|$)/i, '20.00', '2.00', '160.00'],
+  [/./, '2.50', '0.25', '15.00'],
+]);
+export function precioPorDefecto(modelo) {
+  const [, entrada, cacheLectura, salida] = POR_DEFECTO.find(([re]) => re.test(String(modelo ?? '')));
+  return { entrada, cacheLectura, salida };
+}
+const PRECIO_TEXTO = PRECIO;
+export const precioTextoValido = v => typeof v === 'string' && PRECIO_TEXTO.test(v);
+
+// La tabla guardada: { [proveedor]: { [modelo]: { entrada, cacheLectura, salida, revisadoEl } } } (lo que no se entiende
+// se ignora y vale el precio por defecto).
+export function leerTablaPropia(db) {
+  let v = null;
+  try { v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(AJUSTE_PRECIOS_PROPIOS)?.valor ?? 'null'); } catch { v = null; }
+  const out = {};
+  for (const id of PROVEEDORES_CON_TABLA) {
+    out[id] = {};
+    const t = v && typeof v === 'object' ? v[id] : null;
+    if (!t || typeof t !== 'object') continue;
+    for (const [modelo, p] of Object.entries(t)) {
+      if (!MODELO_ID.test(modelo) || !p || typeof p !== 'object') continue;
+      if (!['entrada', 'cacheLectura', 'salida'].every(k => precioTextoValido(p[k]))) continue;
+      out[id][modelo] = { entrada: p.entrada, cacheLectura: p.cacheLectura, salida: p.salida, revisadoEl: typeof p.revisadoEl === 'string' && FECHA.test(p.revisadoEl) ? p.revisadoEl : null };
+    }
+  }
+  return out;
+}
+
+// Guarda (o borra, con null) el precio de UN modelo. Lanza 'precio_no_valido' si algo no se entiende.
+export function guardarPrecioPropio(db, { proveedor, modelo, precio, ahora = Date.now() }) {
+  if (!PROVEEDORES_CON_TABLA.includes(proveedor) || !MODELO_ID.test(String(modelo))) throw Object.assign(new Error('precio_no_valido'), { clave: 'precio_no_valido' });
+  const tabla = leerTablaPropia(db);
+  if (precio == null) delete tabla[proveedor][modelo];
+  else {
+    const p = Object.fromEntries(['entrada', 'cacheLectura', 'salida'].map(k => [k, String(precio[k] ?? '').trim().replace(',', '.')]));
+    if (!Object.values(p).every(precioTextoValido)) throw Object.assign(new Error('precio_no_valido'), { clave: 'precio_no_valido' });
+    tabla[proveedor][modelo] = { ...p, revisadoEl: new Date(ahora).toISOString().slice(0, 10) };
+  }
+  db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(AJUSTE_PRECIOS_PROPIOS, JSON.stringify(tabla), new Date(ahora).toISOString());
+  return tabla;
+}
+
+const filasHechas = new Map();
+function filaPropia(proveedor, modelo, p, porDefecto) {
+  const clave = JSON.stringify([proveedor, modelo, p, porDefecto]);
+  if (filasHechas.has(clave)) return filasHechas.get(clave);
+  const [fila] = validarPrecios({ version: 1, modelos: [{
+    proveedor, modelo, nombre: String(modelo).slice(0, 60), confirmado: true, fuente: FUENTE_TABLA, revisadoEl: p.revisadoEl ?? '2026-11-13',
+    multiplicadoresGeo: { global: '1' },
+    tramos: [{ hastaEntrada: null, entrada: p.entrada, cacheLectura: p.cacheLectura, cacheEscritura: p.entrada, salida: p.salida }],
+  }] });
+  const lista = Object.freeze({ ...fila, porDefecto });
+  if (filasHechas.size > 200) filasHechas.clear();
+  filasHechas.set(clave, lista);
+  return lista;
+}
+
+// EL precio para gastar con la base a mano: Claude, de precios.json (confirmado); ChatGPT y la API propia, de la tabla
+// del dueño o el precio por defecto. null si no hay modelo elegido (entonces no se gasta).
+export function precioPara(db, proveedor, modelo, tabla = null) {
+  if (!PROVEEDORES_CON_TABLA.includes(proveedor)) return precioDe(proveedor, modelo);
+  if (typeof modelo !== 'string' || !MODELO_ID.test(modelo)) return null;
+  const t = tabla ?? (db ? leerTablaPropia(db) : { [proveedor]: {} });
+  const propio = t[proveedor]?.[modelo];
+  try { return filaPropia(proveedor, modelo, propio ?? precioPorDefecto(modelo), !propio); } catch { return null; }
+}
+
 // Lo que ven las pantallas de un precio (el primer tramo), sin nada interno.
 export function precioPublico(fila) {
   if (!fila) return null;
   const t = fila.tramos[0];
-  return { nombre: fila.nombre, entradaUsd: t.usd.entrada, salidaUsd: t.usd.salida, revisadoEl: fila.revisadoEl, confirmado: fila.confirmado, fuente: fila.fuente };
+  return { nombre: fila.nombre, entradaUsd: t.usd.entrada, cacheLecturaUsd: t.usd.cacheLectura, salidaUsd: t.usd.salida, revisadoEl: fila.revisadoEl, confirmado: fila.confirmado, fuente: fila.fuente, porDefecto: fila.porDefecto === true };
 }

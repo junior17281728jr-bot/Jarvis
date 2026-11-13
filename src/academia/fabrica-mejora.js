@@ -17,6 +17,7 @@ import { REGLAS_ESCRITURA, REGLAS_VERIFICACION, ESQUEMAS, datos } from './fabric
 import { tarjetaConVisual } from './diagramas.js';
 import { abrirAviso } from '../avisos/avisos.js';
 import { puedeLlamar, gastoMejoraMesMicro, adjuntar, T } from './fabrica.js';
+import { anotarCambio, costoDe } from './cambios-ia.js';
 
 export const SEMANA_MS = 7 * 86_400_000;
 export const UMBRALES_MEJORA = Object.freeze({ usuariosTarjeta: 3, usuariosPregunta: 5, fallaPct: 50, items: 6, paqueteMaxBytes: 4 * 1024 * 1024 });
@@ -177,6 +178,11 @@ export async function mejorar(ctx, { ahora, cfg }) {
       }
       guardarAjuste(db, AJUSTE_ULTIMA, JSON.stringify({ en: iso(ahora), motivo, materia: trabajo.materia, version, mejorados, dudas: dudas.slice(0, 50) }));
       guardarAjuste(db, AJUSTE_TRABAJO, 'null');
+      // 0.14.0: «Lo que hizo la IA»: cada corrección que quedó en una versión (publicada o esperando revisión).
+      if (version != null) {
+        const c = costoDe(db, `m:${trabajo.version}:`);
+        for (const x of mejorados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'correccion', estado: motivo, version, antes: { que: x.tipo === 'tarjeta' ? x.titulo : x.pregunta }, despues: { porque: x.porque }, proveedor: c.proveedor, modelo: c.modelo, revisadoPor: c.revisadoPor, ahora });
+      }
     });
     return { seguir: false, motivo };
   };

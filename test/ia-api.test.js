@@ -122,7 +122,7 @@ test('20. claves y ajustes (0.12.3): también por el enlace público con la sesi
     assert.equal(lista.codigo, 200);
     assert.equal(lista.datos.duenoTailscale, 'junior@example.com');
     assert.deepEqual(lista.datos.almacen, { listo: true, motivo: null }, 'la llave ya existe: se guardó una clave');
-    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai']], ['avisos', ['telegram_bot']]]);
+    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai', 'ia_propia']], ['avisos', ['telegram_bot']]]);
     // Sin ser administrador, ni el dueño de Tailscale entra; sin la cabecera de OPORTIA, nada.
     const maria = await nuevaCuenta('maria');
     assert.equal((await pedir('GET', '/api/admin/claves', { galleta: maria.galleta, cabeceras: DUENO })).datos.error, 'solo_admin');
@@ -248,7 +248,7 @@ test('20. guardar y probar: solo lo público vuelve, la prueba es GRATIS (count_
     // ChatGPT: solo GET /v1/models/<modelo>.
     const o = await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'ia_openai', valor: claveOpenai() } });
     assert.equal(o.datos.prueba.motivo, 'ok');
-    assert.deepEqual(falso.peticiones.slice(1).map(p => [p.metodo, p.ruta]), [['GET', '/v1/models/gpt-6-luna']]);
+    assert.deepEqual(falso.peticiones.slice(1).map(p => [p.metodo, p.ruta]), [['GET', '/v1/models']]);
     assert.ok(!falso.peticiones.some(p => p.ruta === '/v1/messages' || p.ruta === '/v1/responses'), 'la prueba nunca gasta');
     // Lo que dice cada respuesta de la prueba.
     const id = g.datos.secreto.id;

@@ -18,6 +18,8 @@
 // stop_reason / incomplete_details.reason), 'error' (401 con la clave así en el tipo y el código del error) y
 // 'error_500' (lo mismo con un 500).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
+// 0.14.0: GET /v1/models (la LISTA: { modelos }), POST /v1/images/generations (un WebP falso pequeño) y la «API propia»:
+// POST /chat/completions y GET /models (su lista: { modelosPropia }).
 import { createServer } from 'node:http';
 
 export const ESCENAS = Object.freeze([
@@ -53,7 +55,11 @@ function enviar(res, status, cuerpo, cabeceras = {}) {
 const errorAnthropic = (status, mensaje, extra = {}) => ({ type: 'error', error: { type: TIPO_POR_STATUS[status] ?? 'api_error', message: mensaje, ...extra }, request_id: 'req_falso_error' });
 const errorOpenai = (mensaje, tipo, codigo = null) => ({ error: { message: mensaje, type: tipo, param: null, code: codigo } });
 
-export async function crearProveedorFalso({ respuestaJson = { listo: true } } = {}) {
+export const MODELOS_FALSOS = Object.freeze(['gpt-6-pro', 'gpt-5-mini', 'gpt-6', 'gpt-6-mini', 'gpt-6-nano', 'gpt-image-2', 'text-embedding-3-small', 'gpt-6-2026-08-01', 'whisper-1']);
+export const MODELOS_PROPIA_FALSOS = Object.freeze(['mi-modelo-grande', 'mi-modelo-mini']);
+// Un WebP falso (solo la cabecera RIFF/WEBP y relleno): lo «dibuja» el proveedor falso.
+export const WEBP_FALSO = Buffer.concat([Buffer.from('RIFF', 'latin1'), Buffer.from([60, 0, 0, 0]), Buffer.from('WEBPVP8 ', 'latin1'), Buffer.alloc(52, 9)]);
+export async function crearProveedorFalso({ respuestaJson = { listo: true }, modelos = MODELOS_FALSOS, modelosPropia = MODELOS_PROPIA_FALSOS, imagen = WEBP_FALSO } = {}) {
   const peticiones = [];
   const cola = [];
   const segundoPeticiones = [];
@@ -97,7 +103,7 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
     if (escena.tipo === 'uso_cero') { uso.input_tokens = 0; uso.output_tokens = 0; uso.total_tokens = 0; uso.output_tokens_details = { reasoning_tokens: 0 }; }
     const cuerpo = {
       id: `resp_falso_${numero}`, object: 'response', status: 'completed', model: cuerpoPedido?.model ?? 'gpt-6-luna', service_tier: 'default',
-      output: [{ type: 'reasoning', summary: [] }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: escena.texto ?? JSON.stringify(escena.json ?? respuestaJson) }] }],
+      output: [{ type: 'reasoning', summary: [] }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: escena.texto ?? JSON.stringify(escena.json ?? (typeof respuestaJson === 'function' ? respuestaJson(cuerpoPedido) : respuestaJson)) }] }],
       usage: uso,
     };
     if (escena.tipo === 'refusal') cuerpo.output[1].content = [{ type: 'refusal', refusal: 'no' }];
@@ -108,9 +114,18 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
     return cuerpo;
   }
 
+  function okChat(escena, cuerpoPedido) {
+    const texto = escena.texto ?? JSON.stringify(escena.json ?? (typeof respuestaJson === 'function' ? respuestaJson(cuerpoPedido) : respuestaJson));
+    return {
+      id: `chatcmpl-falso-${numero}`, object: 'chat.completion', model: cuerpoPedido?.model ?? 'mi-modelo',
+      choices: [{ index: 0, message: { role: 'assistant', content: texto, refusal: null }, finish_reason: escena.tipo === 'max_tokens' ? 'length' : 'stop' }],
+      usage: { prompt_tokens: 2000, completion_tokens: 500, total_tokens: 2500, prompt_tokens_details: { cached_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 0 } },
+    };
+  }
+
   async function responder(escena, req, res, ruta, cuerpoPedido) {
-    const esOpenai = ruta.startsWith('/v1/responses') || ruta.startsWith('/v1/models');
-    const esPrueba = ruta === '/v1/messages/count_tokens' || ruta.startsWith('/v1/models');
+    const esOpenai = ruta.startsWith('/v1/responses') || ruta.startsWith('/v1/models') || ruta.startsWith('/v1/images') || ruta === '/chat/completions' || ruta === '/models';
+    const esPrueba = ruta === '/v1/messages/count_tokens' || ruta.startsWith('/v1/models') || ruta === '/models';
     const id = { 'request-id': `req_falso_${numero}`, 'x-request-id': `req_falso_${numero}` };
     switch (escena.tipo) {
       case 'nunca': return; // nunca responde (se corta por tiempo)
@@ -187,9 +202,15 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true } } = 
       default: break;
     }
     if (esPrueba) {
+      if (ruta === '/v1/models') return enviar(res, 200, { object: 'list', data: modelos.map(m => ({ id: m, object: 'model', owned_by: 'openai' })) }, id);
+      if (ruta === '/models') return enviar(res, 200, { object: 'list', data: modelosPropia.map(m => ({ id: m, object: 'model' })) }, id);
       if (ruta.startsWith('/v1/models')) return enviar(res, 200, { id: decodeURIComponent(ruta.slice('/v1/models/'.length)), object: 'model', owned_by: 'openai' }, id);
       return enviar(res, 200, { input_tokens: 9 }, id);
     }
+    if (ruta === '/v1/images/generations') {
+      return enviar(res, 200, { created: 1, data: [{ b64_json: imagen.toString('base64') }], usage: { input_tokens: 60, output_tokens: 272, total_tokens: 332, input_tokens_details: { text_tokens: 60, image_tokens: 0 } } }, id);
+    }
+    if (ruta === '/chat/completions') return enviar(res, 200, okChat(escena, cuerpoPedido), id);
     return enviar(res, 200, esOpenai ? okOpenai(escena, cuerpoPedido) : okAnthropic(escena, cuerpoPedido), id);
   }
 

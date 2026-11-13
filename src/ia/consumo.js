@@ -6,7 +6,7 @@ import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { estadoLlave } from '../claves/cifrado.js';
 import { secretoUsable } from '../claves/almacen.js';
 import { leerConfigIa, faltaParaEncender, MODELOS_INSTRUCTOR } from './config.js';
-import { precioDe, filaDe, precioPublico } from './precios.js';
+import { precioDe, precioPara, filaDe, precioPublico } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
 import { PROPOSITOS } from './propositos.js';
 import { GASTO_SQL, gastoMicro, apartadoMicro } from './gasto.js';
@@ -26,16 +26,16 @@ function proveedoresPublicos(db, config, cfg, ahora) {
   return cfg.orden.map(id => {
     const p = cfg.proveedores[id];
     const adaptador = PROVEEDORES[id];
-    const fila = filaDe(id, p.modelo);
+    const fila = id === 'anthropic' ? filaDe(id, p.modelo) : precioPara(db, id, p.modelo);
     const secreto = db.prepare("SELECT * FROM secretos WHERE uso = ? AND espacio_id IS NULL AND estado = 'activa' ORDER BY id DESC LIMIT 1").get(adaptador.uso);
     let motivo = null;
     if (!p.usar) motivo = 'proveedor_no_usado';
-    else if (!precioDe(id, p.modelo)) motivo = 'precio_sin_confirmar';
+    else if (!precioPara(db, id, p.modelo)) motivo = 'precio_sin_confirmar';
     else {
       const u = secretoUsable(secreto, ahora, llave.listo ? llave.huella : null);
       if (!u.si) motivo = u.motivo;
     }
-    return { id, usar: p.usar, modelo: p.modelo, precio: precioPublico(fila), usable: motivo == null, motivo };
+    return { id, usar: p.usar, modelo: p.modelo, modeloEscribir: p.modeloEscribir ?? null, precio: precioPublico(fila), usable: motivo == null, motivo };
   });
 }
 
@@ -50,9 +50,10 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
   let estado = 'apagada';
   let motivo = null;
   let modelo = cfg.proveedores[cfg.orden[0]]?.modelo ?? null;
+  let proveedorActivo = null;
   if (cfg.encendida) {
     const eleccion = elegirProveedor(db, config, cfg, ahora);
-    if (eleccion.ok) modelo = eleccion.modelo;
+    if (eleccion.ok) { modelo = eleccion.modelo; proveedorActivo = eleccion.proveedor; }
     // Ronda 2 de revisión: «Tope lleno» sale de la MISMA regla que el aviso del 100 % (topeLleno: lo que queda no
     // alcanza ni para el uso más barato), nunca de un aviso abierto: un pedido grande que no cupo no apaga la IA.
     const lleno = pct >= 100 || topeLleno(db, { cfg, ambito: 'general', mes });
@@ -81,6 +82,9 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
     vuelveEl: iso(inicioMesSiguienteCobro(ahora)),
     modoSeguro: leerModoSeguro(db).activo,
     modelo,
+    // 0.14.0: quién está trabajando ahora (Claude, ChatGPT o la API propia) y quién se eligió para escribir.
+    proveedorActivo,
+    preferido: cfg.preferido,
   };
   if (!esDueno) return respuesta;
   return {

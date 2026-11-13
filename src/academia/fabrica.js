@@ -27,21 +27,26 @@ import { REGLAS_ESCRITURA, REGLAS_VERIFICACION, ESQUEMAS, TAREAS, datos } from '
 import { tarjetaConVisual, revisarDiagrama, TIPOS_DIAGRAMA } from './diagramas.js';
 import { abrirAviso } from '../avisos/avisos.js';
 import { leerConfigIa } from '../ia/config.js';
-import { elegirProveedor, modelosDe, partesPorHora } from '../ia/presupuesto.js';
+import { elegirProveedor, modelosDe, partesPorHora, maximoDe } from '../ia/presupuesto.js';
 import { gastoMicro, GASTO_SQL } from '../ia/gasto.js';
 import { reservaMicro } from '../ia/precios.js';
-import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA, PROPOSITOS_PROFUNDA } from '../ia/propositos.js';
+import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA, PROPOSITOS_PROFUNDA, PROPOSITOS_CHAT, PROPOSITOS_DIBUJO } from '../ia/propositos.js';
 import { mesCobro } from '../tareas/tiempo.js';
 import { mejorar } from './fabrica-mejora.js';
 import { profundizar, vistaProfunda } from './fabrica-profunda.js';
+import { dibujar } from './dibujos-ia.js';
+import { atenderChat } from './pidele.js';
+import { anotarCambio, costoDe } from './cambios-ia.js';
 
 export const AJUSTE_CONFIG = 'fabrica.config';
 export const AJUSTE_GENERAL = 'fabrica.estado';
 export const LIBRO_TG = Object.freeze({ id: 'test-guide', titulo: 'Test Guide (preguntas del examen)', idioma: 'es' });
 export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_000, oral: false, mejora: Object.freeze({ activa: true, topeMesMicro: 2_000_000 }),
   // 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js): APAGADA por defecto, con su tope propio.
-  profunda: Object.freeze({ activa: false, topeMicro: 40_000_000 }) });
-export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 100_000_000 });
+  profunda: Object.freeze({ activa: false, topeMicro: 40_000_000 }),
+  // 0.14.0: «Pídele a la IA» (el chat del dueño y sus trabajos) y los «Dibujos con IA» (APAGADOS), cada uno con su tope.
+  chat: Object.freeze({ topeMicro: 10_000_000 }), dibujos: Object.freeze({ activa: false, topeMicro: 5_000_000 }) });
+export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 100_000_000, chatMaxMicro: 50_000_000, dibujosMaxMicro: 50_000_000 });
 export const T = Object.freeze({
   lecturaDirectaBytes: 60_000, // más que esto: primero Haiku saca los pasajes (extracto)
   verificarBytes: 170_000,
@@ -61,15 +66,21 @@ export function leerConfigFabrica(db) {
   const tope = Number.isSafeInteger(v.topeMicro) && v.topeMicro >= 0 && v.topeMicro <= LIMITES_FABRICA.topeMaxMicro ? v.topeMicro : CONFIG_FABRICA.topeMicro;
   const m = v.mejora ?? {};
   const pr = v.profunda ?? {};
+  const ch = v.chat ?? {};
+  const di = v.dibujos ?? {};
+  const entre = (n, max, def) => (Number.isSafeInteger(n) && n >= 0 && n <= max ? n : def);
   return {
     pausada: v.pausada === true, topeMicro: tope, oral: v.oral === true,
+    chat: { topeMicro: entre(ch.topeMicro, LIMITES_FABRICA.chatMaxMicro, CONFIG_FABRICA.chat.topeMicro) },
+    dibujos: { activa: di.activa === true, topeMicro: entre(di.topeMicro, LIMITES_FABRICA.dibujosMaxMicro, CONFIG_FABRICA.dibujos.topeMicro) },
     mejora: { activa: m.activa !== false, topeMesMicro: Number.isSafeInteger(m.topeMesMicro) && m.topeMesMicro >= 0 && m.topeMesMicro <= LIMITES_FABRICA.mejoraMaxMicro ? m.topeMesMicro : CONFIG_FABRICA.mejora.topeMesMicro },
     profunda: { activa: pr.activa === true, topeMicro: Number.isSafeInteger(pr.topeMicro) && pr.topeMicro >= 0 && pr.topeMicro <= LIMITES_FABRICA.profundaMaxMicro ? pr.topeMicro : CONFIG_FABRICA.profunda.topeMicro },
   };
 }
 export function guardarConfigFabrica(db, cambios) {
   const actual = leerConfigFabrica(db);
-  const nueva = { ...actual, ...cambios, mejora: { ...actual.mejora, ...(cambios.mejora ?? {}) }, profunda: { ...actual.profunda, ...(cambios.profunda ?? {}) } };
+  const nueva = { ...actual, ...cambios, mejora: { ...actual.mejora, ...(cambios.mejora ?? {}) }, profunda: { ...actual.profunda, ...(cambios.profunda ?? {}) },
+    chat: { ...actual.chat, ...(cambios.chat ?? {}) }, dibujos: { ...actual.dibujos, ...(cambios.dibujos ?? {}) } };
   guardarAjuste(db, AJUSTE_CONFIG, JSON.stringify(nueva));
   return leerConfigFabrica(db);
 }
@@ -105,19 +116,23 @@ export function puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro, ga
   const def = PROPOSITOS[proposito];
   const cfg = leerConfigIa(db);
   if (!cfg.encendida) return { ok: false, motivo: 'ia_apagada' };
-  const e = elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg));
+  // 0.14.0: cualquier proveedor que funcione (Claude, ChatGPT o la API propia), con la MISMA elección que hará la llamada
+  // (src/ia/presupuesto.js: quién escribe y la revisión cruzada de Claude).
+  const e = elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg), def);
   if (!e.ok) return { ok: false, motivo: e.motivo };
-  if (e.proveedor !== 'anthropic') return { ok: false, motivo: 'proveedor_no_usado' };
+  if (bytes + 200 > def.entradaMaxBytes) return { ok: false, motivo: 'demasiado_largo' };
   const reserva = reservaMicro(e.precio, { entradaMax: bytes + 200, salidaMax: def.salidaMax });
-  if (reserva > def.maximoMicro) return { ok: false, motivo: 'demasiado_largo' };
+  // Un precio (no el largo) que no cabe en una vez: se espera (nunca deja el paso «fallido» para siempre).
+  if (reserva > maximoDe(def, e)) return { ok: false, motivo: 'llamada_muy_cara' };
   if (gastado + reserva > topeMicro) return { ok: false, motivo: 'tope_fabrica' };
   const usado = gastoMicro(db, { mes: mesCobro(ahora) });
   if (usado + reserva > Math.floor(cfg.topeGeneralMicro * (1 - T.margenGeneral))) return { ok: false, motivo: 'tope_general' };
   const cuota = cuotaHora(cfg);
   const desde = iso(ahora - 3_600_000);
   const todas = db.prepare('SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ?').get(desde);
-  const propias = db.prepare(`SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ? AND proposito IN ${enLista([...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA])}`)
-    .get(desde, ...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA);
+  const todos = [...PROPOSITOS_FABRICA, ...PROPOSITOS_MEJORA, ...PROPOSITOS_PROFUNDA, ...PROPOSITOS_CHAT, ...PROPOSITOS_DIBUJO];
+  const propias = db.prepare(`SELECT COUNT(*) AS n, MIN(creada_en) AS primera FROM ia_llamadas WHERE creada_en >= ? AND proposito IN ${enLista(todos)}`)
+    .get(desde, ...todos);
   if (propias.n >= cuota.propia || todas.n >= cuota.total - cuota.libre) {
     const primera = Date.parse((propias.n >= cuota.propia ? propias.primera : todas.primera) ?? '') || ahora;
     return { ok: false, motivo: 'demasiadas_llamadas', esperarMs: Math.max(60_000, primera + 3_600_000 - ahora + 5_000) };
@@ -477,16 +492,20 @@ async function armar(ctx, man, m, e, ahora) {
   const lista = db.prepare('SELECT estado FROM academia_paquetes WHERE id = ?').get(fila.id);
   const limpio = informe.dudas.length === 0 && lista.estado === 'listo';
   const versiones = [...new Set([...(e.versiones ?? []), fila.id])];
+  const registro = estado => anotarCambio(db, { materia: m.id, que: estado === 'publicada' ? 'materia_publicada' : 'materia_en_revision', estado, version: fila.id,
+    antes: { version: e.version ?? null }, despues: { temas: m.temas.length, preguntas: paquete.preguntas.length, dudas: informe.dudas.length }, ...costoDe(db, `f:${m.id}:`), ahora });
   if (limpio) {
     await ctx.escribir(() => {
       activarPaquete(db, { paqueteId: fila.id, materias: [m.id] });
       guardarMateria(db, m.id, { ...e, estado: 'publicada', version: fila.id, versiones, ...informe, publicadaEn: iso(ahora) });
       abrirAviso(db, { clave: `fabrica_publicada:${m.id}:${fila.id}`, nivel: 'atencion', detalle: { temas: m.temas.length, preguntas: paquete.preguntas.length }, ahora });
+      registro('publicada');
     });
   } else {
     await ctx.escribir(() => {
       guardarMateria(db, m.id, { ...e, estado: 'revision', version: fila.id, versiones, ...informe });
       abrirAviso(db, { clave: `fabrica_revision:${m.id}:g${e.gen}`, nivel: 'atencion', detalle: { n: informe.dudas.length }, ahora });
+      registro('revision');
     });
   }
 }
@@ -536,6 +555,8 @@ async function armarOral(ctx, fuente, cap, e, quedan, ahora) {
   const limpio = informe.dudas.length === 0 && lista.estado === 'listo';
   const versiones = [...new Set([...(e.versiones ?? []), fila.id])];
   await ctx.escribir(() => {
+    anotarCambio(db, { materia: cap.id, que: limpio ? 'materia_publicada' : 'materia_en_revision', estado: limpio ? 'publicada' : 'revision', version: fila.id,
+      antes: { version: e.version ?? null }, despues: { temas: quedan.length, preguntas: paquete.preguntas.length, dudas: informe.dudas.length }, ...costoDe(db, `f:${cap.id}:`), ahora });
     if (limpio) {
       activarPaquete(db, { paqueteId: fila.id, materias: [cap.id] });
       guardarMateria(db, cap.id, { ...e, estado: 'publicada', version: fila.id, versiones, ...informe, publicadaEn: iso(ahora) });
@@ -555,6 +576,7 @@ export function publicarRevisada(db, { materia, usuarioId = null, ahora = Date.n
   if (fila?.estado !== 'listo') return { ok: false, motivo: 'paquete_incompleto' };
   activarPaquete(db, { paqueteId: e.version, materias: [materia], usuarioId });
   guardarMateria(db, materia, { ...e, estado: 'publicada', publicadaEn: iso(ahora), revisadaPor: usuarioId });
+  anotarCambio(db, { materia, que: 'publicada_por_ti', estado: 'publicada', version: e.version, despues: { dudas: (e.dudas ?? []).length }, ahora });
   abrirAviso(db, { clave: `fabrica_publicada:${materia}:${e.version}`, nivel: 'atencion', detalle: { revisada: 1 }, ahora });
   return { ok: true, version: e.version };
 }
@@ -580,6 +602,13 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       const r = await sincronizar(db, config, { escribir: ctx.escribir, senal: ctx.senal, quedaMs: ctx.quedaMs });
       await ctx.escribir(() => guardarGeneral(db, { ultimaSync: iso(ahora), sync: { ok: r.ok, motivo: r.motivo ?? null, bajados: r.bajados ?? 0 } }));
       return { punto: { sincronizado: true }, esperarMs: 1000 };
+    }
+    // 0.14.0: «Pídele a la IA» primero (lo pidió el dueño): el mensaje que espera respuesta o un paso del trabajo que
+    // aprobó con «Hazlo». Nunca con la IA en pausa; sin esperar las fuentes ni la espera de la fábrica. Si no pudo
+    // (un tope, la clave), sigue con lo de siempre.
+    if (!cfg.pausada) {
+      const ch = await atenderChat(ctx, { ahora, cfg });
+      if (ch.trabajo && ch.seguir) return { punto: {}, esperarMs: 1000 };
     }
     const fuentes = estadoFuentes(db);
     const man = fuentes?.ok ? leerManifiesto(carpetaFuentes(config)) : null;
@@ -637,6 +666,9 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
         if (pr.esperarMs) return { punto: {}, esperarMs: pr.esperarMs, motivo: 'fabrica_cuota' };
         return fin({ motivo: 'profunda', profunda: pr.motivo });
       }
+      // 0.14.0: los «Dibujos con IA» (apagados por defecto, con su tope propio): uno por paso.
+      const di = await dibujar(ctx, { ahora, cfg });
+      if (di.trabajo) return di.seguir ? { punto: {}, esperarMs: 1000 } : fin({ motivo: 'dibujos' });
       const r = await mejorar(ctx, { ahora, cfg, man });
       return r.seguir ? { punto: {}, esperarMs: r.esperarMs ?? 1000 } : fin({ motivo: 'terminada', mejora: r.motivo });
     }

@@ -17,6 +17,8 @@ import { usdAMicro } from '../ia/config.js';
 import { MATERIAS, MATERIAS_ORAL } from '../academia/formato.js';
 import { informeProfunda, publicarProfundaRevisada } from '../academia/fabrica-profunda.js';
 import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, reiniciarMateria, publicarRevisada, LIMITES_FABRICA } from '../academia/fabrica.js';
+import { vistaLoQueHizo } from '../academia/ia-hizo.js';
+import { vistaChat, escribirMensaje, hazlo, cancelarTrabajo, publicarTrabajo } from '../academia/pidele.js';
 
 // «3,50» y «3.50» son lo mismo (el teléfono en español pone coma).
 const conPunto = v => (typeof v === 'string' ? v.trim().replace(',', '.') : v);
@@ -100,4 +102,56 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
     despertar();
     return { codigo: 200, datos: r };
   }, { admin: true });
+
+  // ---------- 0.14.0: «Lo que hizo la IA» y «Pídele a la IA» (solo el administrador; aquí nunca se llama a la IA) ----------
+  //  - GET  /api/admin/academia/ia-hizo                       registro de cambios, números, «Lo que falta» y materiales
+  //  - GET  /api/admin/academia/chat                          la charla, los trabajos y lo que cuesta un mensaje
+  //  - POST /api/admin/academia/chat { texto }                un mensaje (409 ia_en_pausa / chat_ocupado)
+  //  - POST /api/admin/academia/chat/trabajos/:id/hazlo       «Hazlo» (el plan pasa a la fila de la fábrica)
+  //  - POST /api/admin/academia/chat/trabajos/:id/cancelar    deja de hacerse (lo ya hecho queda)
+  //  - POST /api/admin/academia/chat/trabajos/:id/publicar    publicar lo que quedó «Esperando revisión»
+  // Pausar o reanudar TODO el trabajo de la IA (fábrica + chat): POST /api/admin/academia/fabrica/pausa.
+  const ponerEnFila = (db, usuario) => {
+    const ahora = reloj();
+    try { encolar(db, { tipo: 'academia.fabrica', programa: 'academia.fabrica', claveUnica: `academia.fabrica@chat-${ahora}`, creadaPor: usuario.id }, { ahora }); } catch { /* ya hay una en la fila */ }
+    despertar();
+  };
+  const idTrabajo = parametros => { if (!/^[0-9a-f]{12}$/.test(String(parametros.id))) throw new ErrorHttp(404, 'no_existe'); return parametros.id; };
+  rutas.agregar('GET', '/api/admin/academia/ia-hizo', ({ db }) => { necesitaConfig(); return { codigo: 200, datos: vistaLoQueHizo(db, config, reloj()) }; }, { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/chat', ({ db }) => {
+    necesitaConfig();
+    return { codigo: 200, datos: vistaChat(db, config, { ahora: reloj(), pausada: leerConfigFabrica(db).pausada }) };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/chat', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    const datos = await leerJson(req);
+    if (typeof datos?.texto !== 'string' || !datos.texto.trim() || datos.texto.length > 2000) throw new ErrorHttp(400, 'datos_no_validos');
+    if (leerConfigFabrica(db).pausada) throw new ErrorHttp(409, 'ia_en_pausa');
+    const r = enTransaccion(db, () => escribirMensaje(db, { texto: datos.texto, ahora: reloj() }));
+    if (r?.ocupado) throw new ErrorHttp(409, 'chat_ocupado');
+    if (!r?.rechazado) ponerEnFila(db, usuario);
+    return { codigo: 200, datos: vistaChat(db, config, { ahora: reloj(), pausada: false }) };
+  }, { admin: true, soloDueno: true });
+  rutas.agregar('POST', '/api/admin/academia/chat/trabajos/:id/hazlo', ({ db, parametros, usuario }) => {
+    necesitaConfig();
+    if (leerConfigFabrica(db).pausada) throw new ErrorHttp(409, 'ia_en_pausa');
+    const j = enTransaccion(db, () => {
+      const x = hazlo(db, { id: idTrabajo(parametros), ahora: reloj() });
+      if (x) auditar(db, { usuarioId: usuario.id, accion: 'ia_pedido_hazlo', detalle: `${x.tipo} ${x.materia} ${x.tema ?? ''}`.slice(0, 200) });
+      return x;
+    });
+    if (!j) throw new ErrorHttp(409, 'no_se_puede');
+    ponerEnFila(db, usuario);
+    return { codigo: 200, datos: vistaChat(db, config, { ahora: reloj(), pausada: false }) };
+  }, { admin: true, soloDueno: true });
+  rutas.agregar('POST', '/api/admin/academia/chat/trabajos/:id/cancelar', ({ db, parametros }) => {
+    necesitaConfig();
+    if (!enTransaccion(db, () => cancelarTrabajo(db, { id: idTrabajo(parametros), ahora: reloj() }))) throw new ErrorHttp(409, 'no_se_puede');
+    return { codigo: 200, datos: vistaChat(db, config, { ahora: reloj(), pausada: leerConfigFabrica(db).pausada }) };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/chat/trabajos/:id/publicar', ({ db, parametros, usuario }) => {
+    necesitaConfig();
+    if (!enTransaccion(db, () => publicarTrabajo(db, { id: idTrabajo(parametros), usuarioId: usuario.id, ahora: reloj() }))) throw new ErrorHttp(409, 'no_se_puede');
+    return { codigo: 200, datos: vistaChat(db, config, { ahora: reloj(), pausada: leerConfigFabrica(db).pausada }) };
+  }, { admin: true, soloDueno: true });
 }

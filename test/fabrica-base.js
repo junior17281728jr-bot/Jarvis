@@ -10,8 +10,12 @@ import { crearFabrica } from '../src/academia/fabrica.js';
 import { crearClienteIA } from '../src/ia/cliente.js';
 import { TAREAS, TAREAS_PROFUNDA } from '../src/academia/fabrica-prompts.js';
 import { TAREAS_ORAL } from '../src/academia/fabrica-oral.js';
+import { TAREA_CHAT } from '../src/academia/pidele.js';
 import { crearProveedorFalso } from './proveedor-falso.js';
-import { preparar, T0 } from './ia-base.js';
+import { preparar, T0, claveOpenai } from './ia-base.js';
+import { guardarSecreto, anotarPrueba } from '../src/claves/almacen.js';
+import { probarSecreto } from '../src/claves/probar.js';
+import { guardarConfigIa } from '../src/ia/config.js';
 
 export const WEBP = Buffer.concat([Buffer.from('RIFF', 'latin1'), Buffer.from([30, 0, 0, 0]), Buffer.from('WEBPVP8 ', 'latin1'), Buffer.alloc(22, 7)]);
 // Ojo: espacios dobles y uno al final A PROPÓSITO (el Test Guide se copia tal cual, sin recortar).
@@ -73,12 +77,33 @@ export const sincronizarFalso = async (db, config, { escribir }) => {
   return { ok: true, bajados: 0 };
 };
 
+// 0.14.0: el texto del pedido en los tres formatos: Claude (messages[0].content), ChatGPT (input) y la API propia
+// (el último mensaje «user» de messages).
+export function textoDelPedido(cuerpo) {
+  if (typeof cuerpo?.input === 'string') return cuerpo.input;
+  const usuario = (Array.isArray(cuerpo?.messages) ? cuerpo.messages : []).filter(m => m?.role === 'user').at(-1);
+  if (typeof usuario?.content === 'string') return usuario.content;
+  if (Array.isArray(usuario?.content)) return usuario.content.filter(c => c?.type === 'text').map(c => c.text).join('');
+  return '';
+}
 // Lo que «responde el modelo» en cada paso (por la tarea que va en el mensaje). dudas: lo que dice el verificador.
 const datosDe = texto => { const m = [...texto.matchAll(/<datos>\n([\s\S]*?)\n<\/datos>/g)].at(-1); return m ? JSON.parse(m[1]) : {}; };
-export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [] } = {}) {
+// 0.14.0: chat(d): lo que «responde» la IA en «Pídele a la IA» (si no, un plan para reescribir el primer tema);
+// sinDibujo: tarjetas sin foto ni dibujo y sin números (para los «Dibujos con IA»); revision(d): lo que mira Claude.
+export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null } = {}) {
   const opciones = { dudasProfunda };
-  const texto = typeof cuerpo.messages?.[0]?.content === 'string' ? cuerpo.messages[0].content : '';
+  const texto = textoDelPedido(cuerpo);
   const d = datosDe(texto);
+  if (texto.startsWith(TAREA_CHAT)) {
+    if (chat) return chat(d);
+    const m = d.materias[0];
+    return { respuesta: `Puedo reescribir «${m.temas[0].titulo}» más claro. Toca «Hazlo».`, rechazo: null, resumen: 'Pidió explicar mejor un tema.',
+      plan: { tipo: 'reescribir_tema', materia: m.id, tema: m.temas[0].id, instruccion: d.pide_ahora, pasos: ['Escribir', 'Verificar con el libro'] } };
+  }
+  if (texto.includes('¿El dibujo coincide con la tarjeta')) return revision ? revision(d) : { usar: true, problemas: [] };
+  if (sinDibujo && texto.startsWith(TAREAS.tarjetas) && !d.preguntas_del_libro) {
+    return { tarjetas: d.tarjetas.map(x => ({ titulo: x.titulo, puntos: ['El motor empuja el avión.', 'La hélice mueve el aire.'], recuerda: 'Motor y hélice.', ejemplo: 'Antes de despegar.', ingles: [], paginas: [10], imagen: null, visual: null, solo_texto: 'Una idea simple, sin dibujo.' })) };
+  }
   const tarjeta = (titulo, i) => ({
     titulo, puntos: ['El motor tiene cuatro cilindros (cylinders).', 'Gira a 2400 rpm en crucero.'], recuerda: 'Cuatro cilindros.', ejemplo: 'En el circuito el motor va a 2400 rpm.',
     ingles: [{ palabra: 'Cylinder', pronunciacion: 'SÍ-lin-der', significado: 'Cilindro' }], paginas: [10],
@@ -155,13 +180,27 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [] } = {}) 
 }
 
 // Todo listo: base con la IA encendida (tope general US$50), la clave probada, el proveedor falso y las fuentes.
-export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000 } = {}) {
+// 0.14.0: proveedor: 'anthropic' (lo de siempre), 'openai' (el caso del dueño: la clave de Claude espera la verificación
+// de identidad y ChatGPT, probada gratis con la lista de modelos, hace todo), 'ambos' (las dos funcionan) o 'propia'.
+export async function ponerChatGpt(base, { proveedor = 'openai', claudeBloqueada = true, ahora = T0 } = {}) {
+  const { db, config, admin, secretoId } = base;
+  const uso = proveedor === 'propia' ? 'ia_propia' : 'ia_openai';
+  if (proveedor === 'propia') guardarConfigIa(db, { basePropia: 'https://ia.ejemplo-propio.com/v1' }, { config, usuarioId: admin, ahora });
+  const id = guardarSecreto(db, config, { uso, valor: claveOpenai(proveedor === 'propia' ? 'p' : 'z'), usuarioId: admin, ahora }).secreto.id;
+  const r = await probarSecreto(db, config, { id, usuarioId: admin, ahora: () => ahora });
+  if (r.motivo !== 'ok') throw new Error(`la prueba gratis no pasó: ${r.motivo}`);
+  guardarConfigIa(db, { usar: { [proveedor]: true } }, { config, usuarioId: admin, ahora });
+  if (claudeBloqueada && secretoId) anotarPrueba(db, { id: secretoId, motivo: 'verificacion_identidad', ahora });
+  return id;
+}
+export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
-  const opciones = { dudas, dudasProfunda };
+  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision };
   const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo, opciones) });
-  const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base }, ahora: T0 });
+  const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base, propia: falso.base }, ahora: T0 });
   const { db, config } = base;
+  if (proveedor !== 'anthropic') await ponerChatGpt(base, { proveedor: proveedor === 'ambos' ? 'openai' : proveedor, claudeBloqueada: proveedor !== 'ambos' });
   if (fuentes) escribirFuentes(config, { conOral: oral });
   let tareaId = 100;
   const escribir = async trabajo => enTransaccion(db, trabajo);
@@ -181,7 +220,7 @@ export async function conFabrica(fn, { fuentes = true, oral = false, encendida =
     }
     return salidas;
   };
-  const llamadas = () => falso.peticiones.filter(p => p.ruta === '/v1/messages');
+  const llamadas = () => falso.peticiones.filter(p => ['/v1/messages', '/v1/responses', '/chat/completions', '/v1/images/generations'].includes(p.ruta));
   try {
     await fn({ ...base, falso, correr, llamadas, reloj, avanzar: ms => { ahoraMs += ms; }, opciones, escribir });
   } finally {

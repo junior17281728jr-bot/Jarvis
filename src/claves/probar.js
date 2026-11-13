@@ -14,7 +14,9 @@ import { resolverAviso } from '../avisos/avisos.js';
 import { MOTIVOS } from '../ia/propositos.js';
 import { leerConfigIa } from '../ia/config.js';
 import { llamarProveedor } from '../ia/llamar.js';
-import { PROVEEDORES, urlDe } from '../ia/proveedores/index.js';
+import { PROVEEDORES, urlDe, hostDe } from '../ia/proveedores/index.js';
+import { modelosDeLista } from '../ia/proveedores/openai.js';
+import { guardarModelosVistos } from '../ia/modelos.js';
 import { leerSecreto, validarValor, anotarPrueba, reanudarSecreto, secretoPublico } from './almacen.js';
 import { definicionUso } from './usos.js';
 import { estadoLlave } from './cifrado.js';
@@ -25,17 +27,26 @@ import { trasProbarToken } from '../canales/canales.js';
 export const PRUEBA_MS = 10_000;
 // Lo más que se lee de la respuesta de una prueba gratis (count_tokens o GET models: unos pocos bytes).
 export const PRUEBA_MAX_BYTES = 65_536;
+// 0.14.0: la lista de modelos de OpenAI (unos cientos de nombres).
+export const LISTA_MAX_BYTES = 524_288;
 
 function probadorIa(id) {
   return async (clave, { db, config, senal = null }) => {
     const adaptador = PROVEEDORES[id];
-    const modelo = leerConfigIa(db).proveedores[id]?.modelo;
+    const cfg = leerConfigIa(db);
+    const modelo = cfg.proveedores[id]?.modelo;
     const p = adaptador.prueba({ modelo });
+    const url = urlDe(adaptador, config, p.ruta, cfg);
+    if (!url) return 'pedido_no_valido'; // la API propia todavía sin dirección
     const respuesta = await llamarProveedor({
-      url: urlDe(adaptador, config, p.ruta), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
-      senal, timeoutMs: PRUEBA_MS, permitido: adaptador.host, topeBytes: PRUEBA_MAX_BYTES,
+      url, metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
+      senal, timeoutMs: PRUEBA_MS, permitido: hostDe(adaptador, cfg), topeBytes: id === 'anthropic' ? PRUEBA_MAX_BYTES : LISTA_MAX_BYTES,
     });
-    return adaptador.leerPrueba(respuesta);
+    const motivo = adaptador.leerPrueba(respuesta);
+    // 0.14.0: ChatGPT y la API propia: la lista de modelos se guarda (para elegir) y se eligen solos los de por defecto
+    // si todavía no hay uno elegido (o el elegido ya no está en la lista).
+    if (motivo === 'ok' && id !== 'anthropic') guardarModelosVistos(db, config, { proveedor: id, modelos: modelosDeLista(respuesta.json) });
+    return motivo;
   };
 }
 
@@ -58,6 +69,7 @@ async function probadorTelegram(token, { db, config, senal = null, secretoId = n
 export const PROBADORES = Object.freeze({
   ia_anthropic: probadorIa('anthropic'),
   ia_openai: probadorIa('openai'),
+  ia_propia: probadorIa('propia'),
   telegram_bot: probadorTelegram,
 });
 

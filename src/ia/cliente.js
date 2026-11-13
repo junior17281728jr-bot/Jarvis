@@ -24,7 +24,8 @@ import { abrirAviso } from '../avisos/avisos.js';
 import { leerSecreto, validarValor } from '../claves/almacen.js';
 import { PROPOSITOS, MOTIVOS, definicionProposito } from './propositos.js';
 import { reservar, liquidar, anotarBloqueo, mesCobro, cerrarLlamadaRota } from './presupuesto.js';
-import { PROVEEDORES, urlDe } from './proveedores/index.js';
+import { PROVEEDORES, urlDe, hostDe } from './proveedores/index.js';
+import { leerConfigIa } from './config.js';
 import { llamarProveedor } from './llamar.js';
 import { cumpleEsquema } from './esquema.js';
 
@@ -99,6 +100,7 @@ class NoSeGuardo extends Error {}
 
 // Lo que se suma a los bytes del pedido por el «sobre» del proveedor (roles, nombres de campos…).
 export const MARCO_BYTES = 200;
+export const IMAGEN_BYTES = 1_600;
 const CLAVE_CORTA = /^[a-z_]{1,60}$/;
 
 // ¿SQLite dijo «ocupada» (otro está escribiendo hace más de busy_timeout)? Solo mira el código, nunca el texto.
@@ -171,7 +173,9 @@ export function crearClienteIA({
     const proyectoId = pedido.proyectoId ?? null;
 
     // 0. ¿Cabe? Lo que no cabe ni se intenta (y cuenta como una vez sin IA).
-    const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + (esquema ? Buffer.byteLength(JSON.stringify(esquema)) : 0);
+    // 0.14.0: cada imagen que se manda para mirar cuenta como 1 600 «bytes» (lo que Claude cobra por una de 1024×1024).
+    const imagenesBytes = Array.isArray(pedido.imagenes) ? pedido.imagenes.length * IMAGEN_BYTES : 0;
+    const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + (esquema ? Buffer.byteLength(JSON.stringify(esquema)) : 0) + imagenesBytes;
     if (bytes > def.entradaMaxBytes) {
       try {
         await escribirConCerca(() => anotarBloqueo(db, { mes: mesCobro(reloj()), ambito: 'general', motivo: 'demasiado_largo', proposito, ahora: reloj() }));
@@ -231,13 +235,20 @@ export function crearClienteIA({
     }
 
     // 4. UNA llamada, con su tiempo máximo y la señal de parar del paso.
-    const p = adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo, cachear: def.cachear === true });
+    // 0.14.0: un propósito de imagen (tipo 'imagen': «Dibujos con IA», solo ChatGPT) usa pedidoImagen / leerImagen; uno
+    // con imágenes para mirar (Claude revisa un dibujo) las pasa al pedido.
+    const esImagen = def.tipo === 'imagen';
+    if (esImagen && typeof adaptador.pedidoImagen !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');
+    const p = esImagen
+      ? adaptador.pedidoImagen({ modelo: llamada.modelo, texto })
+      : adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo, cachear: def.cachear === true, imagenes: pedido.imagenes ?? null });
+    const cfgIa = leerConfigIa(db);
     let respuesta;
     let eco = false;
     try {
       respuesta = await llamarProveedor({
-        url: urlDe(adaptador, config, p.ruta), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
-        senal, timeoutMs: def.timeoutMs, permitido: adaptador.host, topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES,
+        url: urlDe(adaptador, config, p.ruta, cfgIa), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
+        senal, timeoutMs: def.timeoutMs, permitido: hostDe(adaptador, cfgIa), topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES,
       });
       quitarEcoDeClave(respuesta, clave);
       eco = respuestaTraeClave(respuesta, clave);
@@ -248,7 +259,7 @@ export function crearClienteIA({
     // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor). Lo que no cumple el esquema pedido
     // no se usa: cuenta como 'respuesta_no_valida' (con su costo real) y no se guarda nada. Una respuesta que traía la
     // clave no se usa ni se guarda nada de ella (ronda 3 de revisión).
-    let leido = adaptador.leer(respuesta, { json: Boolean(esquema) });
+    let leido = esImagen ? adaptador.leerImagen(respuesta) : adaptador.leer(respuesta, { json: Boolean(esquema) });
     if (eco) {
       leido = resultadoConEco(leido, respuesta);
       respuesta.json = null;

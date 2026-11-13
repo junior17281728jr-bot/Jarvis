@@ -37,7 +37,7 @@ export function leerConfig(env = process.env) {
 }
 
 const BASE_DE_PRUEBA = /^http:\/\/127\.0\.0\.1:\d{2,5}$/;
-const VARIABLES_DE_PRUEBA = Object.freeze({ anthropic: 'OPORTIA_IA_URL_ANTHROPIC', openai: 'OPORTIA_IA_URL_OPENAI' });
+const VARIABLES_DE_PRUEBA = Object.freeze({ anthropic: 'OPORTIA_IA_URL_ANTHROPIC', openai: 'OPORTIA_IA_URL_OPENAI', propia: 'OPORTIA_IA_URL_PROPIA' });
 
 function basesDePrueba(env) {
   const bases = {};

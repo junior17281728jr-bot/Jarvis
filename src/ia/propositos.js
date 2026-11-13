@@ -32,10 +32,11 @@
 // Profesor recuerda más) y la salida de 2 048 a 4 096 tokens: lo que el modelo «piensa» (también con effort 'low') entra
 // en max_tokens, y con 2 048 una explicación larga se cortaba («respuesta_incompleta»). Lo peor de una vez con Sonnet 5.5
 // queda en ~US$0.095 (máximo 100 000 µUSD); con Haiku 5.5, ~US$0.005. Lo normal casi no cambia (se paga lo usado).
+// 0.14.0: con ChatGPT o la API propia, techoMicro US$0,15 (su precio lo pone el dueño; los topes del mes no cambian).
 const INSTRUCTOR = Object.freeze({
   fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 4096, entradaMaxBytes: 16_384, entradaMinBytes: 2_200, respuestaMaxBytes: 65_536,
   maximoMicro: 100_000, tipicoMicro: 12_000, esfuerzo: 'low', timeoutMs: 50_000, alFaltar: 'motor_propio',
-  ajuste: 'instructorIa', modeloAjuste: 'instructorModelo', tarea: 'academia.instructor',
+  ajuste: 'instructorIa', modeloAjuste: 'instructorModelo', tarea: 'academia.instructor', techoMicro: 150_000,
 });
 // 0.12.7: con «cachear», el sistema (lo estable: las reglas, igual para todos los alumnos de ese estilo) va marcado para la
 // caché de 5 minutos del proveedor (src/ia/proveedores/anthropic.js). Solo donde se repite en minutos (explicar varias
@@ -50,14 +51,14 @@ const INSTRUCTOR_CACHE = Object.freeze({ ...INSTRUCTOR, cachear: true });
 // (EE. UU.) ×1,05 ≈ US$0.0071 (máximo 8 000 µUSD); lo normal ≈ US$0.0015.
 const PREPARAR = Object.freeze({
   ...INSTRUCTOR, entradaMaxBytes: 32_768, maximoMicro: 8_000, tipicoMicro: 1_500, ajuste: Object.freeze(['instructorIa', 'prepararClase']),
-  modelo: 'claude-haiku-5-5', cachear: true, timeoutMs: 60_000,
+  modelo: 'claude-haiku-5-5', cachear: true, timeoutMs: 60_000, techoMicro: 60_000,
 });
 // 0.12.9: lo que el alumno pide DENTRO de la clase (J) y las «Preguntas personalizadas» (O): se guarda COMPARTIDO (por
 // tarjeta + estilo + idioma; por tema + confusión), así que se paga una vez y lo reutilizan todos. Siempre Claude Haiku 5.5
 // (modelo fijo y barato) con el sistema (el material, igual para todos) marcado para la caché de 5 minutos. Se cobra un uso
 // al alumno, como una explicación. Lo peor con Haiku 5.5: 16 384 bytes (~4 100 tokens) × US$0.125/M + 4 096 × US$0.50/M,
 // ×1,1 ×1,05 ≈ US$0.003 (máximo 8 000 µUSD); lo normal ≈ US$0.0012.
-const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro: 1_200, modelo: 'claude-haiku-5-5', cachear: true });
+const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro: 1_200, modelo: 'claude-haiku-5-5', cachear: true, techoMicro: 40_000 });
 // 0.13.0: la «Fábrica de materias» (src/academia/fabrica.js) y su «Mejora continua». Los paga el dueño (ámbito
 // 'general': ninguna cuenta), dentro de su TOPE PROPIO (por defecto US$20 la fábrica y US$2 al mes la mejora, editables)
 // y del tope general del mes. Nunca los pide un alumno. Escribir: siempre Claude Sonnet 5.5 con el sistema (reglas + la
@@ -66,13 +67,27 @@ const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro:
 // US$0,10), porque la lectura del tema entra entera (hasta 72 000 bytes). La reserva cuenta cada byte como un token al
 // precio de escribir en caché (US$2,50/M) + 4 096 tokens de salida (US$10/M), ×1,1 (EE. UU.) ×1,05: ≈ US$0,255. Lo normal,
 // con la caché: ≈ US$0,02–0,04. Salida y tiempo como todos (4 096 tokens, 60 s): cada paso pide poco (3 tarjetas, 3 preguntas).
+// 0.14.0: rol 'escribir' / 'verificar' (src/ia/presupuesto.js: con ChatGPT o la API propia, el modelo fuerte o el barato
+// que eligió el dueño; un rol «verificar» lo hace Claude siempre que funcione: la revisión cruzada). techoMicro: lo más
+// que puede apartar una vez con OTRO precio que el de Claude (maximoDe): US$0,50 escribir, US$0,15 verificar.
 const FABRICA = Object.freeze({
   fase: 1, ambito: 'general', cuentaProyecto: false, salidaMax: 4096, entradaMaxBytes: 72_000, entradaMinBytes: 4_000, respuestaMaxBytes: 131_072,
   maximoMicro: 260_000, tipicoMicro: 30_000, esfuerzo: 'low', timeoutMs: 60_000, alFaltar: 'esperar', tarea: 'academia.fabrica',
-  modelo: 'claude-sonnet-5-5', cachear: true,
+  modelo: 'claude-sonnet-5-5', cachear: true, rol: 'escribir', techoMicro: 500_000,
 });
 // Haiku 5.5: lo peor, 190 000 bytes × US$0,125/M + 4 096 × US$0,50/M, ×1,1 ×1,05 ≈ US$0,030.
-const FABRICA_HAIKU = Object.freeze({ ...FABRICA, entradaMaxBytes: 190_000, maximoMicro: 32_000, tipicoMicro: 5_000, modelo: 'claude-haiku-5-5' });
+const FABRICA_HAIKU = Object.freeze({ ...FABRICA, entradaMaxBytes: 190_000, maximoMicro: 32_000, tipicoMicro: 5_000, modelo: 'claude-haiku-5-5', rol: 'verificar', techoMicro: 150_000 });
+// 0.14.0: «Pídele a la IA» (el chat del dueño, Administrador → Contenido): cada mensaje es UNA llamada corta (lo que
+// pidió, un resumen corto de la charla y la lista de materias y temas), con el modelo fuerte. Lo peor con Sonnet 5.5:
+// 16 384 bytes × US$2,50/M + 2 048 × US$10/M, ×1,1 ×1,05 ≈ US$0,071. Lo normal ≈ US$0,01.
+const CHAT = Object.freeze({ ...FABRICA, salidaMax: 2048, entradaMaxBytes: 16_384, entradaMinBytes: 3_500, respuestaMaxBytes: 65_536, maximoMicro: 80_000, tipicoMicro: 10_000, cachear: false, techoMicro: 120_000 });
+// 0.14.0: «Dibujos con IA» (APAGADO por defecto; solo ChatGPT dibuja): una imagen WebP 1024×1024 de calidad baja. Con
+// el precio por defecto de un modelo de imagen (US$10/M de entrada, US$40/M de salida): 4 000 bytes + 1 100 tokens de
+// imagen, ×1,05 ≈ US$0,05 lo peor; lo normal ≈ US$0,015. Su tope propio (US$5 por defecto).
+const DIBUJO = Object.freeze({ ...FABRICA, tipo: 'imagen', rol: 'imagen', salidaMax: 1100, entradaMaxBytes: 4_000, entradaMinBytes: 300, respuestaMaxBytes: 524_288, maximoMicro: 60_000, tipicoMicro: 15_000, cachear: false, modelo: undefined, techoMicro: 100_000 });
+// Claude MIRA cada dibujo de ChatGPT (¿coincide con la tarjeta? ¿etiquetas o números mal? ¿algo engañoso?). Solo Claude
+// (Haiku 5.5): 8 000 bytes + la imagen (1 600) × US$0,125/M + 1 024 × US$0,50/M, ×1,1 ×1,05 ≈ US$0,002.
+const DIBUJO_REVISAR = Object.freeze({ ...FABRICA_HAIKU, proveedores: Object.freeze(['anthropic']), salidaMax: 1024, entradaMaxBytes: 12_000, entradaMinBytes: 500, respuestaMaxBytes: 32_768, maximoMicro: 6_000, tipicoMicro: 1_500, cachear: false });
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -109,8 +124,17 @@ export const PROPOSITOS = Object.freeze({
   // Haiku, con su tope propio (no gasta el de la fábrica) y dentro del tope general.
   profunda_escribir: FABRICA,
   profunda_verificar: FABRICA_HAIKU,
+  // 0.14.0: «Pídele a la IA»: cada mensaje (chat_admin) y los trabajos que el dueño aprobó con «Hazlo» (reescribir un
+  // tema y verificarlo contra el libro, o «Revisar errores»), con su tope propio. Y los «Dibujos con IA» con el suyo.
+  chat_admin: CHAT,
+  chat_escribir: FABRICA,
+  chat_verificar: FABRICA_HAIKU,
+  dibujo_generar: DIBUJO,
+  dibujo_revisar: DIBUJO_REVISAR,
 });
 export const PROPOSITOS_FABRICA = Object.freeze(['fabrica_escribir', 'fabrica_verificar']);
+export const PROPOSITOS_CHAT = Object.freeze(['chat_admin', 'chat_escribir', 'chat_verificar']);
+export const PROPOSITOS_DIBUJO = Object.freeze(['dibujo_generar', 'dibujo_revisar']);
 export const PROPOSITOS_MEJORA = Object.freeze(['mejora_escribir', 'mejora_verificar']);
 export const PROPOSITOS_PROFUNDA = Object.freeze(['profunda_escribir', 'profunda_verificar']);
 

@@ -40,7 +40,7 @@ function leerUso(u, nivel) {
   return { entrada: Math.max(0, total - cacheLectura - cacheEscritura), salida, cacheLectura, cacheEscritura, geo: null, raro: nota.raro, desconocidos: nota.desconocidos };
 }
 
-function motivoDeError(status, json) {
+export function motivoDeError(status, json) {
   const tipo = codigoCorto(json?.error?.type);
   const codigo = codigoCorto(json?.error?.code);
   const sinCredito = codigo === 'credit_balance_exhausted' || codigo === 'insufficient_quota' || tipo === 'insufficient_quota';
@@ -55,6 +55,45 @@ function motivoDeError(status, json) {
   if (status >= 500 && status <= 599) return 'error_proveedor';
   if (status >= 400 && status <= 499) return 'pedido_no_valido';
   return 'error_proveedor';
+}
+
+// ¿Se puede pedir el esquema con strict:true? Todo objeto con additionalProperties:false y todas sus claves en required.
+export function esquemaEstricto(esquema, profundidad = 0) {
+  if (!esquema || typeof esquema !== 'object' || profundidad > 32) return false;
+  if (Array.isArray(esquema.anyOf)) return esquema.anyOf.every(x => esquemaEstricto(x, profundidad + 1));
+  const tipos = Array.isArray(esquema.type) ? esquema.type : [esquema.type];
+  if (tipos.includes('object')) {
+    const props = esquema.properties ?? {};
+    const req = new Set(esquema.required ?? []);
+    if (esquema.additionalProperties !== false || Object.keys(props).some(k => !req.has(k))) return false;
+    if (!Object.values(props).every(x => esquemaEstricto(x, profundidad + 1))) return false;
+  }
+  if (tipos.includes('array') && esquema.items) return esquemaEstricto(esquema.items, profundidad + 1);
+  return true;
+}
+
+// Lo que gastó una imagen (gpt-image: tokens de entrada de texto y de salida de imagen).
+const USO_IMAGEN = new Set(['input_tokens', 'output_tokens', 'total_tokens', 'input_tokens_details', 'output_tokens_details']);
+function leerUsoImagen(u) {
+  if (!u || typeof u !== 'object' || Array.isArray(u) || u.input_tokens == null || u.output_tokens == null) return null;
+  const entrada = tokens(u.input_tokens);
+  const salida = tokens(u.output_tokens);
+  if ([entrada, salida].some(Number.isNaN)) return null;
+  const nota = { raro: [entrada, salida].some(n => n > TOKENS_MAX), desconocidos: 0 };
+  for (const campo of ['input_tokens_details', 'output_tokens_details']) {
+    const d = u[campo];
+    if (d == null) continue;
+    if (typeof d !== 'object' || Array.isArray(d)) { nota.raro = true; continue; }
+    for (const [clave, v] of Object.entries(d)) if (!['text_tokens', 'image_tokens', 'cached_tokens'].includes(clave)) revisarUsoDesconocido(v, nota, 1);
+  }
+  for (const [clave, v] of Object.entries(u)) if (!USO_IMAGEN.has(clave)) revisarUsoDesconocido(v, nota);
+  return { entrada, salida, cacheLectura: 0, cacheEscritura: 0, geo: null, raro: nota.raro, desconocidos: nota.desconocidos };
+}
+
+// 0.14.0: los modelos de la lista (GET /v1/models → data[].id), solo los que tienen un nombre que se entiende.
+export function modelosDeLista(json) {
+  const lista = Array.isArray(json?.data) ? json.data : [];
+  return [...new Set(lista.map(x => x?.id).filter(id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:\/-]{1,80}$/.test(id)))].slice(0, 400);
 }
 
 function textoDe(json) {
@@ -78,8 +117,30 @@ export const openai = Object.freeze({
 
   pedido({ modelo, sistema, texto, esquema = null, salidaMax }) {
     const cuerpo = { model: modelo, instructions: sistema, input: texto, max_output_tokens: Math.max(16, Number(salidaMax) || 16), store: false };
-    if (esquema) cuerpo.text = { format: { type: 'json_schema', name: 'campos', schema: esquema, strict: true } };
+    // 0.14.0: strict solo si el esquema lo permite (todo objeto cerrado y con todas sus claves en «required»); si no,
+    // igual se revisa con el mismo candado que a Claude (src/ia/esquema.js).
+    if (esquema) cuerpo.text = { format: { type: 'json_schema', name: 'campos', schema: esquema, strict: esquemaEstricto(esquema) } };
     return { ruta: '/v1/responses', metodo: 'POST', cuerpo };
+  },
+
+  // 0.14.0: «Dibujos con IA» (solo ChatGPT dibuja): una imagen WebP pequeña. La respuesta trae la imagen en base64.
+  pedidoImagen({ modelo, texto }) {
+    return { ruta: '/v1/images/generations', metodo: 'POST', cuerpo: { model: modelo, prompt: texto, n: 1, size: '1024x1024', quality: 'low', output_format: 'webp', output_compression: 60 } };
+  },
+
+  leerImagen(resp) {
+    const antes = resultadoSinRespuesta(resp);
+    if (antes) return antes;
+    const { status, json } = resp;
+    const idPeticion = idPeticionDe(resp.cabeceras?.['x-request-id']);
+    if (status >= 200 && status <= 299) {
+      const uso = resp.demasiado ? null : leerUsoImagen(json?.usage);
+      const estado = uso ? 'hecha' : 'desconocida';
+      const b64 = json?.data?.[0]?.b64_json;
+      if (resp.demasiado || !uso || typeof b64 !== 'string' || !b64) return resultado({ motivo: 'respuesta_no_valida', estado, uso, idPeticion, http: status });
+      return resultado({ motivo: 'ok', estado, uso, json: { b64 }, idPeticion, http: status });
+    }
+    return resultado({ motivo: motivoDeError(status, json), estado: 'fallida', idPeticion, http: status, detalle: { tipo: json?.error?.type, codigo: json?.error?.code } });
   },
 
   cabeceras(clave) {
@@ -122,9 +183,10 @@ export const openai = Object.freeze({
     });
   },
 
-  // La prueba de una clave: leer los datos del modelo configurado (no usa tokens).
-  prueba({ modelo }) {
-    return { ruta: `/v1/models/${encodeURIComponent(modelo)}`, metodo: 'GET', cuerpo: null };
+  // La prueba de una clave: la LISTA de modelos (GET /v1/models, gratis: no usa tokens). 0.14.0: antes leía un modelo
+  // adivinado; ahora la lista sirve además para elegir los modelos (src/claves/probar.js la guarda).
+  prueba() {
+    return { ruta: '/v1/models', metodo: 'GET', cuerpo: null };
   },
 
   leerPrueba(resp) {

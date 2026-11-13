@@ -16,7 +16,7 @@ import { PLANES } from '../cuentas/planes.js';
 import { mesCobro } from '../tareas/tiempo.js';
 import { estadoLlave } from '../claves/cifrado.js';
 import { pausaVigente } from '../claves/almacen.js';
-import { precioDe } from './precios.js';
+import { precioDe, precioPara, MODELO_ID } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
 import { revisarUmbrales, resolverAvisosDeTope } from './gasto.js';
 import { esEspacioAdmin, topeEspacioMicro } from './topes.js';
@@ -46,9 +46,16 @@ export const CONFIG_POR_DEFECTO = Object.freeze({
   topesPlanMicro: Object.freeze(Object.fromEntries(PLANES.map(p => [p, 0]))),
   proveedores: Object.freeze({
     anthropic: Object.freeze({ usar: true, modelo: 'claude-haiku-5-5' }),
-    openai: Object.freeze({ usar: false, modelo: 'gpt-6-luna' }),
+    // 0.14.0: ChatGPT sin ningún modelo adivinado: el dueño los elige de la lista de la prueba gratis (GET /v1/models).
+    // modelo = el «barato» (verificar, rutina); modeloEscribir = el fuerte (escribir clases); modeloImagen = dibujos.
+    openai: Object.freeze({ usar: false, modelo: null, modeloEscribir: null, modeloImagen: null }),
+    // 0.14.0: «API propia (compatible con OpenAI)»: su dirección (https), su clave y sus modelos.
+    propia: Object.freeze({ usar: false, modelo: null, modeloEscribir: null, base: null }),
   }),
-  orden: Object.freeze(['anthropic', 'openai']),
+  orden: Object.freeze(['anthropic', 'openai', 'propia']),
+  // 0.14.0: quién escribe: 'auto' («el que funcione», en el orden de arriba), o uno fijo. Cuando Claude funciona, él
+  // revisa lo que escribe otro (src/ia/presupuesto.js, elegirProveedor: rol «verificar»).
+  preferido: 'auto',
   llamadasPorHora: 30,
   ayudaProyectos: false,
   instructorIa: false,
@@ -62,6 +69,20 @@ export const CONFIG_POR_DEFECTO = Object.freeze({
 });
 
 const MODELO = /^[a-z][a-z0-9._-]{1,60}$/;
+export const PREFERIDOS = Object.freeze(['auto', 'anthropic', 'openai', 'propia']);
+// La dirección de una «API propia»: https, sin usuario ni clave en la dirección, sin puerto, nunca un número de IP ni
+// un nombre local (la clave nunca debe salir hacia un servidor de la red interna). Con su camino (por ejemplo «/v1»).
+export function basePropiaValida(valor) {
+  if (typeof valor !== 'string' || valor.length > 200) return null;
+  let u;
+  try { u = new URL(valor.trim()); } catch { return null; }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port || u.search || u.hash) return null;
+  const h = u.hostname.toLowerCase();
+  if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(h) || /^\d+(?:\.\d+){3}$/.test(h) || /(?:^|\.)(?:localhost|local|internal|lan|home|ts\.net)$/.test(h)) return null;
+  if (!/^(?:\/[A-Za-z0-9._~-]+)*\/?$/.test(u.pathname)) return null;
+  return `https://${h}${u.pathname.replace(/\/+$/, '')}`;
+}
+const modeloONulo = v => (typeof v === 'string' && MODELO_ID.test(v) ? v : null);
 const topeValido = (n, max) => Number.isSafeInteger(n) && n >= 0 && n <= max && n % LIMITES_IA.centavoMicro === 0;
 
 // Siempre devuelve una configuración válida: lo que no se entiende vuelve a su valor por defecto (apagada, tope 0).
@@ -76,10 +97,14 @@ export function normalizarConfig(valor) {
   const proveedores = {};
   for (const [id, defecto] of Object.entries(d.proveedores)) {
     const p = v.proveedores?.[id];
-    proveedores[id] = {
+    const fila = {
       usar: typeof p?.usar === 'boolean' ? p.usar : defecto.usar,
-      modelo: typeof p?.modelo === 'string' && MODELO.test(p.modelo) ? p.modelo : defecto.modelo,
+      modelo: id === 'anthropic' ? (typeof p?.modelo === 'string' && MODELO.test(p.modelo) ? p.modelo : defecto.modelo) : modeloONulo(p?.modelo),
     };
+    if (id !== 'anthropic') fila.modeloEscribir = modeloONulo(p?.modeloEscribir);
+    if (id === 'openai') fila.modeloImagen = modeloONulo(p?.modeloImagen);
+    if (id === 'propia') fila.base = basePropiaValida(p?.base);
+    proveedores[id] = fila;
   }
   const orden = Array.isArray(v.orden) && v.orden.length === Object.keys(PROVEEDORES).length && new Set(v.orden).size === v.orden.length
     && v.orden.every(id => Object.hasOwn(PROVEEDORES, id)) ? [...v.orden] : [...d.orden];
@@ -91,6 +116,7 @@ export function normalizarConfig(valor) {
     topesPlanMicro,
     proveedores,
     orden,
+    preferido: PREFERIDOS.includes(v.preferido) ? v.preferido : d.preferido,
     llamadasPorHora: Number.isSafeInteger(llamadas) && llamadas >= LIMITES_IA.llamadasPorHoraMin && llamadas <= LIMITES_IA.llamadasPorHoraMax ? llamadas : d.llamadasPorHora,
     ayudaProyectos: v.ayudaProyectos === true,
     instructorIa: v.instructorIa === true,
@@ -134,7 +160,7 @@ export function proveedoresParaEncender(db, config, cfg = leerConfigIa(db), ahor
   return cfg.orden.map(id => {
     const p = cfg.proveedores[id];
     const adaptador = PROVEEDORES[id];
-    const precio = precioDe(id, p.modelo) != null;
+    const precio = precioPara(db, id, p.modelo) != null;
     const fila = db.prepare("SELECT * FROM secretos WHERE uso = ? AND espacio_id IS NULL AND estado = 'activa' ORDER BY id DESC LIMIT 1").get(adaptador.uso);
     const pausa = pausaVigente(fila, ahora);
     const clave = Boolean(fila && llave.listo && fila.llave_huella === llave.huella && fila.prueba === 'ok' && (seguir || !pausa?.admin));
@@ -200,7 +226,34 @@ function cambiosValidados(cfg, cambios) {
       nueva.proveedores[id].usar = valor;
     }
   }
-  const otras = Object.keys(cambios).filter(k => !['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralMicro', 'topesPlanMicro', 'usar'].includes(k));
+  // 0.14.0: quién escribe, el orden de «el que funcione», los modelos de ChatGPT / API propia y la dirección de la propia.
+  if ('preferido' in cambios) {
+    if (!PREFERIDOS.includes(cambios.preferido)) throw new ErrorHttp(400, 'datos_no_validos');
+    nueva.preferido = cambios.preferido;
+  }
+  if ('orden' in cambios) {
+    const o = cambios.orden;
+    if (!Array.isArray(o) || o.length !== nueva.orden.length || new Set(o).size !== o.length || !o.every(id => nueva.orden.includes(id))) throw new ErrorHttp(400, 'datos_no_validos');
+    nueva.orden = [...o];
+  }
+  if ('modelos' in cambios) {
+    const m = cambios.modelos;
+    if (!m || typeof m !== 'object' || Array.isArray(m)) throw new ErrorHttp(400, 'datos_no_validos');
+    for (const [id, campos] of Object.entries(m)) {
+      if (!['openai', 'propia'].includes(id) || !campos || typeof campos !== 'object') throw new ErrorHttp(400, 'datos_no_validos');
+      for (const [campo, valor] of Object.entries(campos)) {
+        const permitidos = id === 'openai' ? ['modelo', 'modeloEscribir', 'modeloImagen'] : ['modelo', 'modeloEscribir'];
+        if (!permitidos.includes(campo) || !(valor === null || (typeof valor === 'string' && MODELO_ID.test(valor)))) throw new ErrorHttp(400, 'datos_no_validos');
+        nueva.proveedores[id][campo] = valor;
+      }
+    }
+  }
+  if ('basePropia' in cambios) {
+    const b = cambios.basePropia === null ? null : basePropiaValida(cambios.basePropia);
+    if (cambios.basePropia !== null && !b) throw new ErrorHttp(400, 'base_no_valida');
+    nueva.proveedores.propia.base = b;
+  }
+  const otras = Object.keys(cambios).filter(k => !['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralMicro', 'topesPlanMicro', 'usar', 'preferido', 'orden', 'modelos', 'basePropia'].includes(k));
   if (otras.length) throw new ErrorHttp(400, 'datos_no_validos');
   return nueva;
 }
@@ -209,7 +262,7 @@ function cambiosValidados(cfg, cambios) {
 function diferencias(antes, despues) {
   const a = {};
   const d = {};
-  for (const campo of ['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralMicro', 'llamadasPorHora']) {
+  for (const campo of ['encendida', 'ayudaProyectos', 'instructorIa', 'instructorModelo', 'prepararClase', 'topeGeneralMicro', 'llamadasPorHora', 'preferido']) {
     if (antes[campo] !== despues[campo]) { a[campo] = antes[campo]; d[campo] = despues[campo]; }
   }
   for (const plan of PLANES) {
@@ -217,7 +270,11 @@ function diferencias(antes, despues) {
   }
   for (const id of Object.keys(despues.proveedores)) {
     if (antes.proveedores[id]?.usar !== despues.proveedores[id].usar) { a[`usar_${id}`] = antes.proveedores[id]?.usar; d[`usar_${id}`] = despues.proveedores[id].usar; }
+    for (const campo of ['modelo', 'modeloEscribir', 'modeloImagen', 'base']) {
+      if (campo in despues.proveedores[id] && antes.proveedores[id]?.[campo] !== despues.proveedores[id][campo]) { a[`${campo}_${id}`] = antes.proveedores[id]?.[campo] ?? null; d[`${campo}_${id}`] = despues.proveedores[id][campo]; }
+    }
   }
+  if (JSON.stringify(antes.orden) !== JSON.stringify(despues.orden)) { a.orden = antes.orden.join(','); d.orden = despues.orden.join(','); }
   return { antes: a, despues: d, hay: Object.keys(d).length > 0 };
 }
 
@@ -234,13 +291,13 @@ export function guardarConfigIa(db, cambios, { config, usuarioId = null, origen 
     const falta = faltan => { throw new ErrorHttp(409, 'ia_falta', { faltan }); };
     // Activar un proveedor para gastar: solo con su precio oficial confirmado.
     for (const [id, p] of Object.entries(nueva.proveedores)) {
-      if (p.usar && !antes.proveedores[id].usar && precioDe(id, p.modelo) == null) falta(['precio']);
+      if (p.usar && !antes.proveedores[id].usar && precioPara(db, id, p.modelo) == null) falta(['precio']);
     }
     // Encender (o seguir encendida tras un cambio): todo lo necesario tiene que estar.
     // Si ya estaba encendida, una clave en pausa no cuenta como «falta» (sigue «En espera»): solo se apaga si de verdad
     // queda sin proveedor, sin clave probada, sin precio o con tope 0, y entonces se dice por qué.
     let apagadaPor = null;
-    if (nueva.encendida && (!antes.encendida || 'usar' in cambios || 'topeGeneralMicro' in cambios)) {
+    if (nueva.encendida && (!antes.encendida || 'usar' in cambios || 'topeGeneralMicro' in cambios || 'modelos' in cambios || 'basePropia' in cambios)) {
       const faltan = faltaParaEncender(db, config, nueva, ahora, { seguir: antes.encendida });
       if (faltan.length) {
         if (antes.encendida && !('encendida' in cambios)) { nueva.encendida = false; apagadaPor = faltan; } // un cambio que la deja sin nada: se apaga

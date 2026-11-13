@@ -101,14 +101,19 @@ export const anthropic = Object.freeze({
   // Guide sin respuestas) con cache_control de 5 minutos (la única caché que OPORTIA pide y sabe cobrar: leerUso trata
   // cualquier otra como un gasto desconocido). Lo de cada alumno va después, en el mensaje. Sin cachear, el cuerpo es
   // el de siempre (byte a byte). Con menos de 512 tokens (Haiku 5.5 / Sonnet 5.5) el proveedor no cachea y no cobra extra.
-  pedido({ modelo, sistema, texto, esquema = null, salidaMax, esfuerzo = 'low', cachear = false }) {
+  // 0.14.0: imagenes (opcional): [{ tipo: 'image/webp', base64 }] van antes del texto (Claude MIRA el dibujo que hizo
+  // ChatGPT para revisarlo; Claude nunca dibuja).
+  pedido({ modelo, sistema, texto, esquema = null, salidaMax, esfuerzo = 'low', cachear = false, imagenes = null }) {
     const outputConfig = { effort: esfuerzo };
     if (esquema) outputConfig.format = { type: 'json_schema', schema: esquema };
     const system = cachear ? [{ type: 'text', text: sistema, cache_control: { type: 'ephemeral' } }] : sistema;
+    const content = Array.isArray(imagenes) && imagenes.length
+      ? [...imagenes.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.tipo, data: i.base64 } })), { type: 'text', text: texto }]
+      : texto;
     return {
       ruta: '/v1/messages',
       metodo: 'POST',
-      cuerpo: { model: modelo, max_tokens: salidaMax, system, messages: [{ role: 'user', content: texto }], output_config: outputConfig },
+      cuerpo: { model: modelo, max_tokens: salidaMax, system, messages: [{ role: 'user', content }], output_config: outputConfig },
     };
   },
 

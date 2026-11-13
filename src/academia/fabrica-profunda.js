@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { MATERIAS, MATERIAS_ORAL, LIMITES, revisarPaquete } from './formato.js';
 import { normalizar } from './reto-calidad.js';
 import { carpetaAcademia, leerAjuste, guardarAjuste, leerEnUso, guardarJson, activarPaquete, rutaDeRecurso, RECURSOS } from './paquetes.js';
-import { carpetaFuentes, leerLecturas, textoDeLectura, imagenesDeTema } from './fuentes.js';
+import { carpetaFuentes, leerLecturas, textoDeLectura, imagenesDeTema, leerManifiesto } from './fuentes.js';
 import { leerFuenteOral, contextoOral } from './fabrica-oral.js';
 import { REGLAS_PROFUNDA, GUIA_ENSENANZA, REGLAS_VERIFICACION, ESQUEMAS, ESQUEMAS_PROFUNDA, TAREAS, TAREAS_PROFUNDA, datos } from './fabrica-prompts.js';
 import { tarjetaConVisual, revisarDiagrama, TIPOS_DIAGRAMA } from './diagramas.js';
@@ -29,6 +29,7 @@ import { abrirAviso } from '../avisos/avisos.js';
 import { GASTO_SQL } from '../ia/gasto.js';
 import { PROPOSITOS_PROFUNDA } from '../ia/propositos.js';
 import { puedeLlamar, adjuntar, estadoMateria, guardarGeneral, leerConfigFabrica, T } from './fabrica.js';
+import { anotarCambio, costoDe } from './cambios-ia.js';
 
 export const P = Object.freeze({
   tarjetasPorPaso: 3, lecturaMaxBytes: 50_000, intentos: 2,
@@ -47,10 +48,12 @@ const hecho = s => Boolean(s && (s.json || s.fallido));
 // ---------- Estado (filas de «ajustes»; nada se borra) ----------
 const claveMateria = materia => `fabrica.profunda.m.${materia}`;
 const AJUSTE_ESPERA = 'fabrica.profunda.espera';
+const AJUSTE_ESPERA_PROFUNDA = AJUSTE_ESPERA;
 export function estadoProfunda(db, materia) {
   return { estado: 'pendiente', base: null, version: null, dudas: [], corregidos: [], saltados: [], hechos: [], ...(leerJson(db, claveMateria(materia)) ?? {}) };
 }
 export const guardarProfunda = (db, materia, valor) => guardarAjuste(db, claveMateria(materia), JSON.stringify(valor));
+const guardarProfundaReal = guardarProfunda;
 const claveSalida = (materia, base, tema, paso) => `fabrica.profunda.salida.${materia}.v${base}.${tema}.${paso}`;
 export function gastoProfundaMicro(db, { materia = null } = {}) {
   if (materia) return db.prepare(`SELECT ${GASTO_SQL} AS g FROM ia_llamadas WHERE proposito IN ${enLista(PROPOSITOS_PROFUNDA)} AND paso LIKE ?`).get(...PROPOSITOS_PROFUNDA, `p:${materia}:%`).g;
@@ -147,16 +150,16 @@ export function contextoTema(dir, item, t, man, fuenteOral) {
   return { titulos, lectura, texto, largo: Buffer.byteLength(texto), imagenes: mt ? imagenesDeTema(dir, item.id, mt.id) : [], oral: false };
 }
 // Las tarjetas de antes, numeradas desde 1 (las que el modelo nombra con «de»).
-const viejasDe = t => (t.secciones ?? []).map((s, i) => ({ n: i + 1, s }));
+export const viejasDe = t => (t.secciones ?? []).map((s, i) => ({ n: i + 1, s }));
 const FIJA = s => /^Para el Test Guide/i.test(String(s.titulo ?? '')) || (s.tipo !== 'tarjeta' && /Escenario\s+\d+\s*:/i.test(String(s.texto ?? '')));
 const RELLENO = s => /^(Qué vas a aprender|Resumen|¿Qué es y por qué importa\?|¿De qué va)/i.test(String(s.titulo ?? ''));
-const compacta = ({ n, s }) => sinNulos({
+export const compacta = ({ n, s }) => sinNulos({
   n, titulo: s.titulo, puntos: s.tipo === 'tarjeta' ? (s.puntos ?? []).slice(0, 5).map(p => String(p).slice(0, 220)) : null,
   texto: s.tipo === 'tarjeta' ? null : String(s.texto ?? '').slice(0, 400), recuerda: s.recuerda ? String(s.recuerda).slice(0, 200) : null,
   ejemplo: s.ejemplo ? String(s.ejemplo).slice(0, 200) : null, tiene_foto: s.imagen || s.clip ? true : null,
 });
 // Las preguntas del examen del tema (como datos: nunca se reescriben).
-function examenDe(t, pub, c) {
+export function examenDe(t, pub, c) {
   if (c.oral) return { preguntas_del_libro: (t.libro_qa ?? []).map(x => ({ n: x.n, pagina: Number(x.pagina) || null, pregunta_en: x.pregunta_en, respuesta_en: String(x.respuesta_en ?? '').slice(0, 700) })) };
   return { test_guide: (t.preguntas ?? []).map(id => pub.preguntas.get(id)).filter(q => q?.origen === 'test_guide' && q.original)
     .map(q => ({ id: q.id, enunciado: q.original.enunciado, correcta: q.original.opciones?.find(o => o.letra === q.original.correcta)?.texto ?? '' })) };
@@ -181,7 +184,17 @@ const bloquesDe = leer => {
 };
 
 // ---------- Los pedidos ----------
-function pedidoProfundo(leer, c, t, p, pub, viejas) {
+function pedidoProfundo(leer, c, t, p, pub, viejas, instruccion = null) {
+  const r = pedidoProfundoBase(leer, c, t, p, pub, viejas);
+  // 0.14.0: un trabajo de «Pídele a la IA»: lo que pidió el dueño (solo contenido) va al final de cada paso de escribir.
+  // Va entre la tarea y sus datos (los datos siguen siendo lo último del mensaje), sin «<» ni «>».
+  if (instruccion && ['plan', 'tarjetas', 'cierre'].includes(p.tipo)) {
+    const pedido = String(instruccion).slice(0, 600).replace(/[<>]/g, ' ');
+    r.texto = r.texto.replace('\n<datos>', `\nPEDIDO DEL DUEÑO (solo sobre cómo se enseña; nunca cambies las preguntas, sus opciones, sus respuestas ni lo que dice el libro): «${pedido}»\n<datos>`);
+  }
+  return r;
+}
+function pedidoProfundoBase(leer, c, t, p, pub, viejas) {
   const extracto = leer('extracto')?.json?.pasajes;
   const titulo = (id, n) => (c.titulos?.get(id) ?? id) + (n != null ? `, p. ${n}` : '');
   const lectura = extracto ? extracto.map(x => `[${titulo(x.libro, x.pagina)}]\n${x.texto}`).join('\n\n') : c.texto;
@@ -390,15 +403,17 @@ export function invariantesProfunda(pub, nuevo, materia) {
 }
 
 // ---------- Armar la materia: versión nueva → publicar o esperar revisión ----------
-async function armarProfunda(ctx, item, info, ahora) {
+async function armarProfunda(ctx, item, info, ahora, op = null) {
   const { db, config } = ctx;
   const { pub, rec } = item;
+  const guardarEstado = op?.guardarEstado ?? ((dbx, valor) => guardarProfunda(dbx, item.id, { ...estadoProfunda(dbx, item.id), ...valor }));
   const dudas = [];
   const corregidos = [];
   const saltados = [];
   let cambiados = 0;
   const temas = pub.orden.map(t => {
     const x = info.get(t.id);
+    if (op?.soloTemas && !op.soloTemas.has(t.id)) return clon(t);
     if (!x?.c) { saltados.push(t.id); return clon(t); }
     const r = temaProfundo(x.leer, x.c, t, x.viejas);
     dudas.push(...r.dudas.map(d => ({ ...d, tema: t.id })));
@@ -408,8 +423,12 @@ async function armarProfunda(ctx, item, info, ahora) {
   });
   const fin = async (valor, aviso = null) => {
     await ctx.escribir(() => {
-      guardarProfunda(db, item.id, { ...estadoProfunda(db, item.id), ...valor, saltados, corregidos: corregidos.slice(0, 100), en: iso(ahora) });
+      guardarEstado(db, { ...valor, saltados, corregidos: corregidos.slice(0, 100), en: iso(ahora) });
       if (aviso) abrirAviso(db, { ...aviso, ahora });
+      // 0.14.0: «Lo que hizo la IA»: cada clase reescrita (publicada o esperando revisión) queda en el registro.
+      if (valor.estado === 'publicada' || valor.estado === 'revision') {
+        anotarCambio(db, { materia: item.id, que: op?.que ?? 'clase_reescrita', estado: valor.estado, version: valor.version ?? null, antes: { version: pub.base }, despues: { temas: valor.temasMejorados ?? 0, dudas: (valor.dudas ?? []).length }, ...costoDe(db, op?.pasoPrefijo ?? `p:${item.id}:`), ahora });
+      }
     });
     return { trabajo: true, seguir: true };
   };
@@ -426,7 +445,7 @@ async function armarProfunda(ctx, item, info, ahora) {
   }
   const paginas = [...pub.paginas.values()].filter(g => paginasUsadas.has(String(g.archivo).toLowerCase()));
   const nuevo = {
-    ...clon(pub.cabeza), edicion: `profunda-${item.id}-${iso(ahora).slice(0, 10)}`, libros: [...libros.values()],
+    ...clon(pub.cabeza), edicion: `${op?.edicion ?? 'profunda'}-${item.id}-${iso(ahora).slice(0, 10)}`, libros: [...libros.values()],
     materias: [mn], preguntas, figuras: [...pub.figuras.values()].filter(f => figurasUsadas.has(f.numero)), ...(paginas.length ? { paginas } : {}),
   };
   const problemas = invariantesProfunda(pub, nuevo, item.id);
@@ -463,10 +482,13 @@ async function armarProfunda(ctx, item, info, ahora) {
 }
 
 // ---------- UNA llamada (como la fábrica: lo que respondió se guarda con su costo; nunca se paga dos veces) ----------
-async function llamar(ctx, { item, clave, p, pedido, revisar, cfg, ahora }) {
+async function llamar(ctx, { item, clave, p, pedido, revisar, cfg, ahora, op = null }) {
   const { db, config } = ctx;
   const bytes = Buffer.byteLength(pedido.sistema) + Buffer.byteLength(pedido.texto) + Buffer.byteLength(JSON.stringify(pedido.esquema));
-  const puede = puedeLlamar(db, config, { proposito: p.proposito, bytes, ahora, topeMicro: cfg.profunda.topeMicro, gastado: gastoProfundaMicro(db) });
+  const proposito = op?.propositos?.[p.proposito] ?? p.proposito;
+  const AJUSTE_ESPERA = op?.ajusteEspera ?? AJUSTE_ESPERA_PROFUNDA;
+  const guardarProfunda = op?.anotarPaso ? (dbx, _id, valor) => op.anotarPaso(dbx, valor) : guardarProfundaReal;
+  const puede = puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro: op?.topeMicro ?? cfg.profunda.topeMicro, gastado: op?.gastado ? op.gastado(db) : gastoProfundaMicro(db) });
   if (!puede.ok) {
     if (puede.motivo === 'demasiado_largo') {
       await ctx.escribir(() => guardarAjuste(db, clave, JSON.stringify({ fallido: true, motivo: 'demasiado_largo', en: iso(ahora) })));
@@ -480,7 +502,7 @@ async function llamar(ctx, { item, clave, p, pedido, revisar, cfg, ahora }) {
   if (previo.n > 0 && previo.motivo) pedido.texto += `\n\nEl intento anterior no sirvió (${previo.motivo}): corrígelo.`;
   const yaPagado = leerJson(db, `${clave}.crudo`);
   const r = yaPagado?.intento === previo.n && yaPagado.json ? { usada: false, motivo: 'ya_cobrada' } : await ctx.ia.pedir({
-    proposito: p.proposito, paso: `p:${item.id}:${corto(clave, 12)}:${previo.n}`, sistema: pedido.sistema, texto: pedido.texto, esquema: pedido.esquema,
+    proposito, paso: `${op?.pasoPrefijo ?? `p:${item.id}:`}${corto(clave, 12)}:${previo.n}`, sistema: pedido.sistema, texto: pedido.texto, esquema: pedido.esquema,
     guardar: (dbx, json, llamada) => guardarAjuste(dbx, `${clave}.crudo`, JSON.stringify({ json, intento: previo.n, llamadaId: llamada.id, costoMicro: llamada.costoMicro, en: iso(ahora) })),
   });
   const crudo = leerJson(db, `${clave}.crudo`);
@@ -496,35 +518,37 @@ async function llamar(ctx, { item, clave, p, pedido, revisar, cfg, ahora }) {
       });
       return { trabajo: true, seguir: true };
     }
-    return falla(ctx, clave, previo, rev.motivo, ahora, 5 * 60_000);
+    return falla(ctx, clave, previo, rev.motivo, ahora, 5 * 60_000, AJUSTE_ESPERA);
   }
   if (['sobrecargado', 'error_proveedor', 'sin_red', 'tiempo_agotado', 'limite_proveedor', 'base_ocupada', 'interrumpida', 'demasiadas_llamadas'].includes(r.motivo)) {
     await ctx.escribir(() => { guardarAjuste(db, AJUSTE_ESPERA, JSON.stringify({ motivo: r.motivo, en: iso(ahora) })); guardarGeneral(db, { esperaHasta: iso(ahora + T.esperaPasajeroMs) }); });
     return { trabajo: true, seguir: false, motivo: r.motivo };
   }
-  if (['respuesta_no_valida', 'respuesta_incompleta', 'rechazada', 'no_se_pudo_guardar', 'ya_cobrada'].includes(r.motivo)) return falla(ctx, clave, previo, r.motivo, ahora, T.esperaFallaMs);
+  if (['respuesta_no_valida', 'respuesta_incompleta', 'rechazada', 'no_se_pudo_guardar', 'ya_cobrada'].includes(r.motivo)) return falla(ctx, clave, previo, r.motivo, ahora, T.esperaFallaMs, AJUSTE_ESPERA);
   await ctx.escribir(() => guardarAjuste(db, AJUSTE_ESPERA, JSON.stringify({ motivo: r.motivo, en: iso(ahora) })));
   return { trabajo: true, seguir: false, motivo: r.motivo };
 }
-async function falla(ctx, clave, previo, motivo, ahora, esperaMs) {
+async function falla(ctx, clave, previo, motivo, ahora, esperaMs, ajusteEspera = AJUSTE_ESPERA_PROFUNDA) {
   const n = previo.n + 1;
   await ctx.escribir(() => {
     guardarAjuste(ctx.db, `${clave}.intentos`, JSON.stringify({ n, motivo }));
     if (n >= P.intentos) guardarAjuste(ctx.db, clave, JSON.stringify({ fallido: true, motivo, en: iso(ahora) }));
-    guardarAjuste(ctx.db, AJUSTE_ESPERA, JSON.stringify({ motivo, en: iso(ahora) }));
+    guardarAjuste(ctx.db, ajusteEspera, JSON.stringify({ motivo, en: iso(ahora) }));
     guardarGeneral(ctx.db, { esperaHasta: iso(ahora + esperaMs) });
   });
   return { trabajo: true, seguir: false, motivo };
 }
 
 // Los temas de una materia con su lectura, sus tarjetas de antes y su «leer» (lo guardado de sus pasos).
-function temasDe(db, dir, item, man, fuenteOral) {
+function temasDe(db, dir, item, man, fuenteOral, op = null) {
   const base = item.rec.base ?? item.pub.base;
   const out = new Map();
   for (const t of item.pub.orden) {
+    if (op?.soloTemas && !op.soloTemas.has(t.id)) continue;
     const c = contextoTema(dir, item, t, man, fuenteOral);
-    const leer = paso => leerJson(db, claveSalida(item.id, base, t.id, paso));
-    out.set(t.id, { t, c, viejas: viejasDe(t), leer, clave: paso => claveSalida(item.id, base, t.id, paso) });
+    const clave = op?.prefijo ? paso => `${op.prefijo}.${t.id}.${paso}` : paso => claveSalida(item.id, base, t.id, paso);
+    const leer = paso => leerJson(db, clave(paso));
+    out.set(t.id, { t, c, viejas: viejasDe(t), leer, clave });
   }
   out.man = man;
   out.fuenteOral = fuenteOral;
@@ -557,6 +581,55 @@ export async function profundizar(ctx, { ahora, cfg, man }) {
     }
   }
   return armarProfunda(ctx, item, info, ahora);
+}
+
+// ---------- 0.14.0: un trabajo de «Pídele a la IA» (reescribir UN tema con lo que pidió el dueño) ----------
+// La MISMA tubería que la mejora profunda (escribir → verificar contra el libro → versión nueva publicada o «Esperando
+// revisión»), solo para los temas pedidos, con sus propios pasos guardados (op.prefijo), sus propósitos (chat_*) y su
+// tope (op.topeMicro). → { trabajo, seguir, motivo?, listo? }
+export async function trabajoDeTemas(ctx, { materia, temas, instruccion, ahora, cfg, op }) {
+  const { db, config } = ctx;
+  const dir = carpetaFuentes(config);
+  const fo = leerFuenteOral(dir);
+  const fuenteOral = fo.hay && fo.ok ? fo : null;
+  let man = null;
+  try { man = leerManifiesto(dir); } catch { man = null; }
+  const pub = publicado(db, config, materia);
+  if (!pub) return { trabajo: false, motivo: 'sin_publicar' };
+  const oral = MATERIAS_ORAL.includes(materia);
+  const item = { id: materia, oral, pub, rec: { base: op.base ?? pub.base }, cap: oral ? fuenteOral?.capitulos?.find(c => c.id === materia) ?? null : null, mm: oral ? null : man?.materias?.find(m => m.id === materia) ?? null };
+  if (op.base != null && op.base !== pub.base) return { trabajo: false, motivo: 'version_cambio' };
+  const conOp = { ...op, soloTemas: new Set(temas) };
+  const info = temasDe(db, dir, item, man, fuenteOral, conOp);
+  if (![...info.values()].some(x => x.c)) return { trabajo: false, motivo: 'sin_fuentes' };
+  for (const x of info.values()) {
+    if (!x.c) continue;
+    for (const p of pasosProfundos(x.leer, x.c, x.viejas)) {
+      if (hecho(x.leer(p.paso))) continue;
+      const pedido = pedidoProfundo(x.leer, x.c, x.t, p, item.pub, x.viejas, instruccion);
+      const planGuardado = x.leer('plan')?.json ?? { contexto: [], tarjetas: [] };
+      return llamar(ctx, { item, clave: x.clave(p.paso), p, pedido, revisar: json => revisarProfunda(p, json, x.c, x.t, item.pub, x.viejas, planGuardado), cfg, ahora, op: conOp });
+    }
+  }
+  info.man = man;
+  info.fuenteOral = fuenteOral;
+  await armarProfunda(ctx, item, info, ahora, conOp);
+  return { trabajo: true, seguir: true, listo: true };
+}
+// El contexto de UN tema publicado (para «Revisar errores»): su lectura del libro, sus tarjetas y la clave.
+export function temaPublicado(db, config, materia, temaId) {
+  const dir = carpetaFuentes(config);
+  const fo = leerFuenteOral(dir);
+  const fuenteOral = fo.hay && fo.ok ? fo : null;
+  let man = null;
+  try { man = leerManifiesto(dir); } catch { man = null; }
+  const pub = publicado(db, config, materia);
+  if (!pub) return null;
+  const oral = MATERIAS_ORAL.includes(materia);
+  const item = { id: materia, oral, pub, cap: oral ? fuenteOral?.capitulos?.find(c => c.id === materia) ?? null : null, mm: oral ? null : man?.materias?.find(m => m.id === materia) ?? null };
+  const t = pub.orden.find(x => x.id === temaId);
+  if (!t) return null;
+  return { pub, t, c: contextoTema(dir, item, t, man, fuenteOral), viejas: viejasDe(t) };
 }
 
 // ---------- Lo que ve el administrador (solo lee) ----------
@@ -598,6 +671,7 @@ export function publicarProfundaRevisada(db, { materia, usuarioId = null, ahora 
   if (fila?.estado !== 'listo') return { ok: false, motivo: 'paquete_incompleto' };
   activarPaquete(db, { paqueteId: e.version, materias: [materia], usuarioId });
   guardarProfunda(db, materia, { ...e, estado: 'publicada', publicadaEn: iso(ahora), revisadaPor: usuarioId });
+  anotarCambio(db, { materia, que: 'publicada_por_ti', estado: 'publicada', version: e.version, despues: { temas: e.temasMejorados ?? 0 }, ahora });
   abrirAviso(db, { clave: `fabrica_profunda:${materia}:${e.version}`, nivel: 'atencion', detalle: { revisada: 1 }, ahora });
   return { ok: true, version: e.version };
 }

@@ -29,6 +29,15 @@ export const USOS = Object.freeze({
       Object.freeze(['sk-admin-', 'clave_admin']),
     ]),
   }),
+  // 0.14.0: la clave de la «API propia (compatible con OpenAI)»: cualquier texto razonable (cada servidor da la suya),
+  // nunca una de Claude ni de administrador.
+  ia_propia: Object.freeze({
+    grupo: 'ia', proveedor: 'propia',
+    rechazar: Object.freeze([
+      Object.freeze(['sk-ant-', 'clave_otro_proveedor']),
+      Object.freeze(['sk-admin-', 'clave_admin']),
+    ]),
+  }),
   // Fase 1, parte e: el token del bot de Telegram del dueño (avisos graves y copias de cada noche). Lo da @BotFather:
   // números, dos puntos y letras. Lo usa SOLO src/canales/credencial.js (la puerta de los canales a esta clave).
   telegram_bot: Object.freeze({ grupo: 'avisos', formato: /^\d{6,15}:[A-Za-z0-9_-]{30,80}$/, rechazar: Object.freeze([]) }),

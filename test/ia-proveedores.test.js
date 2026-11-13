@@ -10,9 +10,9 @@ import { carpetaTemporal } from './ayuda.js';
 import { T0, claveAnthropic, claveOpenai, preparar, ponerConfig, buscarEnTodo, capturarConsola } from './ia-base.js';
 import { crearProveedorFalso } from './proveedor-falso.js';
 import { lanzarTrabajador } from '../src/tareas/supervisor.js';
-import { leerSecreto, guardarSecreto } from '../src/claves/almacen.js';
+import { leerSecreto, guardarSecreto, anotarPrueba } from '../src/claves/almacen.js';
 import { MOTIVOS } from '../src/ia/propositos.js';
-import { precioDe, costoMicro, cotaMicro } from '../src/ia/precios.js';
+import { precioDe, costoMicro, cotaMicro, guardarPrecioPropio } from '../src/ia/precios.js';
 import { llamarProveedor, destinoPermitido } from '../src/ia/llamar.js';
 import { PROVEEDORES, urlDe } from '../src/ia/proveedores/index.js';
 import { anthropic } from '../src/ia/proveedores/anthropic.js';
@@ -155,7 +155,8 @@ test('ChatGPT: store:false siempre, máximo de salida de al menos 16, formato es
   });
   for (const prohibido of ['temperature', 'top_p', 'reasoning', 'fallbacks']) assert.ok(!JSON.stringify(p).includes(prohibido), prohibido);
   assert.deepEqual(openai.cabeceras('k'), { authorization: 'Bearer k', 'content-type': 'application/json' });
-  assert.deepEqual(openai.prueba({ modelo: 'gpt-6-luna' }), { ruta: '/v1/models/gpt-6-luna', metodo: 'GET', cuerpo: null });
+  // 0.14.0: la prueba gratis lee la LISTA de modelos (nunca un nombre adivinado).
+  assert.deepEqual(openai.prueba({ modelo: 'gpt-6-luna' }), { ruta: '/v1/models', metodo: 'GET', cuerpo: null });
   const bien = {
     status: 'completed', service_tier: 'default',
     output: [{ type: 'reasoning' }, { type: 'message', content: [{ type: 'output_text', text: '{"listo":true}' }] }],
@@ -284,7 +285,7 @@ test('llamar: solo va al servidor oficial (https) en el servidor real y solo a 1
   // Las direcciones oficiales vienen de los adaptadores, y en las pruebas config.iaBases manda al falso.
   assert.equal(urlDe(anthropic, {}, '/v1/messages'), 'https://api.anthropic.com/v1/messages');
   assert.equal(urlDe(openai, { iaBases: { openai: 'http://127.0.0.1:5' } }, '/v1/responses'), 'http://127.0.0.1:5/v1/responses');
-  assert.deepEqual(Object.keys(PROVEEDORES), ['anthropic', 'openai']);
+  assert.deepEqual(Object.keys(PROVEEDORES), ['anthropic', 'openai', 'propia']);
 });
 
 test('llamar: un valor de cabecera con salto de línea no sale, y lo devuelto nunca contiene la clave (Node la pone en su mensaje de error)', async () => {
@@ -484,7 +485,7 @@ test('0.12.4: los errores pasajeros del proveedor (500/529/503) solo dan pausas 
   }
 });
 
-test('ChatGPT contra el falso: se guarda y se prueba, pero nunca gasta (precio sin confirmar); sus respuestas se leen bien', async () => {
+test('ChatGPT contra el falso: se guarda y se prueba; sin modelo elegido nunca gasta; con modelo, gasta con su precio; sus respuestas se leen bien', async () => {
   const falso = await crearProveedorFalso();
   const b = preparar({ iaBases: { anthropic: falso.base, openai: falso.base } });
   try {
@@ -496,17 +497,27 @@ test('ChatGPT contra el falso: se guarda y se prueba, pero nunca gasta (precio s
     };
     assert.equal(openai.leerPrueba(await llamar(openai.prueba({ modelo: 'gpt-6-luna' }))), 'ok');
     assert.equal(falso.peticiones.at(-1).metodo, 'GET');
-    assert.equal(falso.peticiones.at(-1).ruta, '/v1/models/gpt-6-luna');
+    assert.equal(falso.peticiones.at(-1).ruta, '/v1/models');
     assert.equal(falso.peticiones.at(-1).cabeceras.authorization, `Bearer ${valor}`);
     const pedido = openai.pedido({ modelo: 'gpt-6-luna', sistema: 'S', texto: 'T', esquema: ESQUEMA, salidaMax: 2048 });
     for (const [escena, motivo] of [['ok', 'ok'], ['sin_credito_openai', 'sin_credito'], ['insufficient_quota', 'sin_credito'], ['incomplete', 'respuesta_incompleta'], ['content_filter', 'rechazada'], ['refusal', 'rechazada'], ['failed', 'error_proveedor'], [{ tipo: 'status', status: 401 }, 'clave_no_valida'], ['limite_429', 'limite_proveedor']]) {
       assert.equal(openai.leer(await llamar(pedido, escena)).motivo, motivo, String(escena.tipo ?? escena));
     }
     assert.equal(falso.peticiones.at(-1).cuerpo.store, false);
-    // Para gastar con ChatGPT hace falta su precio confirmado: reservar nunca lo elige.
+    // 0.14.0: sin un modelo elegido (de la lista de la prueba gratis) no hay precio: reservar nunca lo elige.
     b.db.prepare("UPDATE secretos SET estado = 'desactivada' WHERE uso = 'ia_anthropic'").run();
-    ponerConfig(b.db, { orden: ['openai', 'anthropic'], proveedores: { anthropic: { usar: true, modelo: 'claude-haiku-5-5' }, openai: { usar: true, modelo: 'gpt-6-luna' } } });
+    ponerConfig(b.db, { orden: ['openai', 'anthropic', 'propia'], proveedores: { anthropic: { usar: true, modelo: 'claude-haiku-5-5' }, openai: { usar: true, modelo: null } } });
     assert.equal((await usarUnaVez(b)).reserva.motivo, 'precio_sin_confirmar');
+    // Con el modelo elegido: su precio (el de la tabla del dueño o el conservador por defecto) y la clave probada.
+    anotarPrueba(b.db, { id: k.id, motivo: 'ok' });
+    ponerConfig(b.db, { orden: ['openai', 'anthropic', 'propia'], proveedores: { anthropic: { usar: true, modelo: 'claude-haiku-5-5' }, openai: { usar: true, modelo: 'gpt-6-luna' } } });
+    // Con el precio conservador por defecto, la ayuda de un proyecto (US$0,005 como mucho por vez) no cabe; con el precio
+    // que escribe el dueño en su tabla, sí.
+    assert.equal((await usarUnaVez(b)).reserva.motivo, 'llamada_muy_cara');
+    guardarPrecioPropio(b.db, { proveedor: 'openai', modelo: 'gpt-6-luna', precio: { entrada: '0.10', cacheLectura: '0.01', salida: '0.50' } });
+    const u = await usarUnaVez(b);
+    assert.equal(u.reserva.ok, true, JSON.stringify(u.reserva));
+    assert.equal(u.fila.proveedor, 'openai');
   } finally {
     b.db.close();
     await falso.cerrar();

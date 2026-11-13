@@ -18,7 +18,7 @@ import { FASE_ACTUAL } from '../tareas/tipos.js';
 import { estadoLlave } from '../claves/cifrado.js';
 import { anotarPrueba, anotarUso, pausarSecreto, quitarPausaCorta, secretoUsable } from '../claves/almacen.js';
 import { PROPOSITOS, MOTIVOS, ESTADOS_LLAMADA, definicionProposito } from './propositos.js';
-import { precioDe, reservaMicro, costoMicro, cotaMicro, instantaneaPrecio } from './precios.js';
+import { precioDe, precioPara, leerTablaPropia, reservaMicro, costoMicro, cotaMicro, instantaneaPrecio } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
 import { ID_PETICION, TOKENS_MAX } from './proveedores/comun.js';
 import { politicaDe, finDePausa, FALLAS_SEGUIDAS, FALLAS_SEGUIDAS_INSTRUCTOR, PASAJEROS } from './politica.js';
@@ -54,15 +54,29 @@ export function anotarBloqueo(db, { mes, ambito, motivo, proposito, ahora = Date
 // la tabla de precios y la llave. { ok, proveedor, modelo, precio, secreto, adaptador } o { ok: false, motivo }.
 // 0.9.0: modelos = { anthropic: '…' } usa otro modelo de ese proveedor (el del instructor de la academia: el propósito
 // dice de qué ajuste sale, modeloAjuste). Con la misma clave y el mismo precio confirmado que pide cualquier modelo.
-export function elegirProveedor(db, config, cfg, ahora = Date.now(), modelos = null) {
+// 0.14.0: def (el propósito, opcional) decide:
+//  - quién escribe: cfg.preferido ('auto' = el primero que funcione en cfg.orden; o uno fijo);
+//  - la REVISIÓN CRUZADA: un propósito de rol «verificar» lo hace Claude siempre que Claude funcione (así lo que escribe
+//    ChatGPT o la API propia lo revisa Claude; si Claude escribió, se revisa a sí mismo con Haiku, como siempre). Si
+//    Claude no funciona, verifica el mismo proveedor con su modelo barato;
+//  - def.proveedores: solo esos (por ejemplo, mirar un dibujo: solo Claude); def.tipo 'imagen': solo quien sabe dibujar.
+export function ordenDeProveedores(cfg, def = null) {
+  let ids = cfg.preferido && cfg.preferido !== 'auto' && cfg.orden.includes(cfg.preferido) ? [cfg.preferido] : [...cfg.orden];
+  if (def?.rol === 'verificar' && cfg.proveedores.anthropic?.usar) ids = ['anthropic', ...ids.filter(id => id !== 'anthropic')];
+  if (Array.isArray(def?.proveedores)) ids = def.proveedores.filter(id => cfg.orden.includes(id));
+  if (def?.tipo === 'imagen') ids = ids.filter(id => typeof PROVEEDORES[id]?.pedidoImagen === 'function');
+  return ids;
+}
+export function elegirProveedor(db, config, cfg, ahora = Date.now(), modelos = null, def = null) {
   const llave = estadoLlave(config);
   let primero = null;
-  for (const id of cfg.orden) {
+  const tabla = leerTablaPropia(db);
+  for (const id of ordenDeProveedores(cfg, def)) {
     const p0 = cfg.proveedores[id];
-    const p = p0 && typeof modelos?.[id] === 'string' ? { ...p0, modelo: modelos[id] } : p0;
+    const p = p0 && Object.hasOwn(modelos ?? {}, id) ? { ...p0, modelo: modelos[id] } : p0;
     const adaptador = PROVEEDORES[id];
     if (!p?.usar || !adaptador) continue;
-    const precio = precioDe(id, p.modelo);
+    const precio = precioPara(db, id, p.modelo, tabla);
     let motivo = null;
     let fila = null;
     if (!precio) motivo = 'precio_sin_confirmar';
@@ -106,10 +120,38 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
 }
 
 // El modelo propio de un propósito (0.9.0: el instructor de la academia usa cfg.instructorModelo con Claude), o null.
+// 0.14.0: también el de ChatGPT y el de la API propia, según el ROL del propósito: 'escribir' (el fuerte), 'verificar' y
+// 'barato' (el barato), 'imagen' (el de dibujos). Sin rol: el de Claude dice cuál (Haiku = barato, si no = escribir).
+export function rolDe(def, cfg) {
+  if (def?.tipo === 'imagen') return 'imagen';
+  if (typeof def?.rol === 'string') return def.rol;
+  const m = typeof def?.modelo === 'string' ? def.modelo : def?.modeloAjuste ? cfg?.[def.modeloAjuste] : null;
+  if (typeof m === 'string') return /haiku/i.test(m) ? 'barato' : 'escribir';
+  return null;
+}
 export function modelosDe(def, cfg) {
   // 0.12.7: un modelo FIJO (preparar la próxima clase: siempre el barato) manda sobre el del ajuste.
   const modelo = typeof def?.modelo === 'string' ? def.modelo : def?.modeloAjuste ? cfg?.[def.modeloAjuste] : null;
-  return typeof modelo === 'string' ? { anthropic: modelo } : null;
+  const rol = rolDe(def, cfg);
+  const out = typeof modelo === 'string' ? { anthropic: modelo } : {};
+  for (const id of ['openai', 'propia']) {
+    const p = cfg?.proveedores?.[id];
+    if (!p) continue;
+    if (rol === 'escribir') out[id] = p.modeloEscribir ?? p.modelo ?? null;
+    else if (rol === 'verificar' || rol === 'barato') out[id] = p.modelo ?? p.modeloEscribir ?? null;
+    else if (rol === 'imagen') out[id] = p.modeloImagen ?? null;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// 0.14.0: lo más que puede apartar UNA vez. Con Claude, el de siempre (maximoMicro). Con ChatGPT o la API propia (otros
+// precios, que pone el dueño), lo que cuesta su pedido más largo con SU precio, sin pasar del techo del propósito
+// (techoMicro): así un precio distinto no deja una clase a medias por «muy cara», y nunca se pasa de un techo fijo.
+export function maximoDe(def, eleccion) {
+  if (!eleccion || eleccion.proveedor === 'anthropic' || !eleccion.precio) return def.maximoMicro;
+  const techo = Number.isSafeInteger(def.techoMicro) ? def.techoMicro : def.maximoMicro;
+  const peor = reservaMicro(eleccion.precio, { entradaMax: def.entradaMaxBytes + 200, salidaMax: def.salidaMax });
+  return Math.max(def.maximoMicro, Math.min(peor, techo));
 }
 
 // Todas las revisiones de reservar, SIN escribir nada (también las usa disponibilidad, para las pantallas).
@@ -122,11 +164,11 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   // Ronda 5 de revisión: una cuenta común gasta solo con el permiso de IA vigente (src/cuentas/confianza.js): se mira
   // AQUÍ, al gastar, y no solo al crear la cuenta o cambiar su plan.
   if (espacioId != null && !esEspacioAdmin(db, espacioId) && !espacioConfirmado(db, espacioId)) return no('cuenta_sin_permiso', `e${espacioId}`);
-  const eleccion = elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg));
+  const eleccion = elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg), def);
   if (!eleccion.ok) return no(eleccion.motivo);
   const reserva = reservaMicro(eleccion.precio, { entradaMax, salidaMax });
   const base = { proveedor: eleccion.proveedor, modelo: eleccion.modelo, reserva };
-  if (reserva > def.maximoMicro) return no('llamada_muy_cara', 'general', base);
+  if (reserva > maximoDe(def, eleccion)) return no('llamada_muy_cara', 'general', base);
   if (maximoConfirmadoMicro != null && reserva > maximoConfirmadoMicro) return no('precio_cambio', 'general', base);
   const hora = llamadasEnLaHora(db, { cfg, espacioId, ahora });
   if (hora.todas >= hora.partes.total) return no('demasiadas_llamadas', 'general', base);
@@ -229,7 +271,7 @@ function precioDeLaFila(f) {
     costoMicro(p, { entrada: 0, salida: 0 }); // ¿se puede hacer cuentas con ella?
     return p;
   } catch {
-    return precioDe(f.proveedor, f.modelo);
+    return precioDe(f.proveedor, f.modelo) ?? precioPara(null, f.proveedor, f.modelo);
   }
 }
 
