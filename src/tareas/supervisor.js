@@ -72,6 +72,21 @@ export function lanzarTrabajador({ ruta = RUTA_TRABAJADOR, env }) {
   return spawn(completa[0], completa.slice(1), opciones);
 }
 
+// 0.14.8: «Claude mejora la app» (src/academia/app-probador.js): TODAS las pruebas de una copia de main con un cambio
+// de Claude, o la revisión de la escritura de un .js. Con la prioridad más baja (nice 19: las pantallas y el trabajador
+// pasan antes), sin archivos «core» y con un entorno VACÍO (solo PATH y la carpeta temporal de la copia): ninguna clave ni
+// variable del servicio llega a las pruebas. Nunca con una consola (shell): el programa y sus argumentos, tal cual.
+export function lanzarPruebas({ carpeta, archivos, tmp }) {
+  const env = { PATH: '/usr/local/bin:/usr/bin:/bin', TMPDIR: tmp, LANG: 'C.UTF-8' };
+  const orden = [...(NICE ? [NICE, '-n', '19'] : []), process.execPath, '--no-warnings', '--test', ...archivos];
+  const completa = PRLIMIT ? [PRLIMIT, '--core=0', '--', ...orden] : orden;
+  return spawn(completa[0], completa.slice(1), { cwd: carpeta, env, stdio: ['ignore', 'pipe', 'pipe'] });
+}
+export function revisarSintaxis({ carpeta, archivo, tmp }) {
+  const env = { PATH: '/usr/local/bin:/usr/bin:/bin', TMPDIR: tmp };
+  return spawn(process.execPath, ['--check', archivo], { cwd: carpeta, env, stdio: ['ignore', 'pipe', 'pipe'] });
+}
+
 // Ronda 2 de revisión: el servidor web también tiene en memoria, por un momento, una clave descifrada (la prueba gratis
 // de Claves y «Probar y reanudar»), así que tampoco puede dejar un archivo «core» si se cae: se baja a sí mismo ese
 // límite a 0 al arrancar, con el mismo prlimit (bajar el propio límite no necesita root, ni depende del archivo del

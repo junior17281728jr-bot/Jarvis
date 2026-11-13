@@ -6,6 +6,8 @@ const horas = ms => (ms <= 0 ? '—' : ms < 3_600_000 ? `${Math.max(1, Math.roun
 const NOMBRE_PROVEEDOR = { anthropic: 'Claude', openai: 'ChatGPT', propia: 'API propia' };
 export const nombreProveedor = id => NOMBRE_PROVEEDOR[id] ?? id ?? '—';
 
+// 0.14.8: el estado de un cambio de la app, en la frase del chat.
+const CHAT_APP = { instalado: 'listo', no_paso: 'no_paso', rechazado: 'no_paso', fallido: 'no_paso', esperando_token: 'token', esperando_aprobar: 'aprobar', conflicto: 'conflicto', idea: 'idea', deshecho: 'deshecho', no_instalado: 'deshecho', deshacer: 'deshecho', nada: 'nada', subido: 'subido' };
 const nombreMateria = (h, id) => (id ? h.tSi(`acad.materia.${id}`, id) : '');
 
 // El botón grande de «Pausar / Reanudar» TODO el trabajo de la IA (fábrica + chat).
@@ -129,7 +131,9 @@ export function pantallaPidele(d, h, { alCambiar } = {}) {
   };
   const burbuja = m => {
     if (m.de === 'dueno') return el('div', { class: 'pidele-msg pidele-dueno' }, el('p', { texto: m.texto }), el('span', { class: 'suave chica', texto: h.fecha(m.en) }));
-    const texto = m.avisoTrabajo ? t(`pidele.aviso_trabajo.${m.avisoTrabajo}`) : m.rechazo ? t(`pidele.rechazo.${m.rechazo}`) : m.error ? t('pidele.error', { motivo: h.tSi(`ia.motivo.${m.error}`, m.error) }) : m.texto;
+    // 0.14.8: lo que se pidió de la app va a «Mejorar la app con Claude»: la burbuja dice cómo va.
+    const ap = m.appMejora ? d.app?.[m.appMejora] : null;
+    const texto = m.appMejora ? t(`appm.chat.${CHAT_APP[ap?.estado] ?? 'haciendo'}`, { titulo: ap?.titulo ?? '' }) : m.avisoTrabajo ? t(`pidele.aviso_trabajo.${m.avisoTrabajo}`) : m.rechazo ? t(`pidele.rechazo.${m.rechazo}`) : m.error ? t('pidele.error', { motivo: h.tSi(`ia.motivo.${m.error}`, m.error) }) : m.texto;
     return el('div', { class: `pidele-msg pidele-ia${m.rechazo ? ' pidele-rechazo' : ''}` },
       el('p', { texto }),
       m.rechazo && m.texto ? el('p', { class: 'suave chica', texto: m.texto }) : null,

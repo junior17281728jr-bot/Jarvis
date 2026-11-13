@@ -41,9 +41,15 @@ export const USOS = Object.freeze({
   // Fase 1, parte e: el token del bot de Telegram del dueño (avisos graves y copias de cada noche). Lo da @BotFather:
   // números, dos puntos y letras. Lo usa SOLO src/canales/credencial.js (la puerta de los canales a esta clave).
   telegram_bot: Object.freeze({ grupo: 'avisos', formato: /^\d{6,15}:[A-Za-z0-9_-]{30,80}$/, rechazar: Object.freeze([]) }),
+  // 0.14.8: el token de GitHub de «Claude mejora la app» (src/canales/github.js): SOLO uno «fine-grained» (github_pat_…),
+  // de UN repositorio, con «Contents: Read and write». Uno clásico (ghp_…) puede todo en todas las cuentas: no se guarda.
+  github_token: Object.freeze({
+    grupo: 'codigo', prefijos: Object.freeze(['github_pat_']), formato: /^github_pat_[A-Za-z0-9_]{40,255}$/,
+    rechazar: Object.freeze([Object.freeze(['ghp_', 'clave_github_clasica']), Object.freeze(['gho_', 'clave_github_clasica']), Object.freeze(['ghu_', 'clave_github_clasica']), Object.freeze(['ghs_', 'clave_github_clasica'])]),
+  }),
 });
 
-export const GRUPOS = Object.freeze(['ia', 'avisos']);
+export const GRUPOS = Object.freeze(['ia', 'avisos', 'codigo']);
 export const LARGO = Object.freeze({ min: 20, max: 500 });
 
 // secretos.estado. «No se puede leer» no se guarda: se calcula (la llave cambió o falta).

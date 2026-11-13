@@ -75,7 +75,10 @@ export const RUTA_AVISOS = Object.freeze({
     // 0.14.1: los recordatorios del pago del servidor (7 y 2 días antes y el día; con pago automático, uno 2 días antes).
     'servidor_pago',
     // 0.14.7: «Mejorar todo con Claude» (empezó, fases, terminó, sin saldo) y una idea para cambiar la app (del chat).
-    'ia_todo', 'ia_idea']),
+    'ia_todo', 'ia_idea',
+    // 0.14.8: «Claude mejora la app».
+    'app_lista', 'app_instalada', 'app_deshecha', 'app_token', 'app_termino']),
+
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».
 });
 

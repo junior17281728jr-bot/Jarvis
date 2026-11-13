@@ -44,11 +44,16 @@ test('chat → plan con su costo → «Hazlo» → trabajo de la fábrica → es
     assert.ok(v0, 'la materia ya está publicada');
     // Un pedido prohibido: ni una llamada.
     const antes = llamadas().length;
-    const no = T_(db, () => escribirMensaje(db, { texto: 'cambia el código del servidor', ahora: reloj() }));
-    assert.equal(no.rechazado, 'codigo');
+    const no = T_(db, () => escribirMensaje(db, { texto: 'sube el precio del plan', ahora: reloj() }));
+    assert.equal(no.rechazado, 'dinero');
     await correr({ max: 3 });
     assert.equal(llamadas().length, antes, 'rechazado en código: gratis');
-    assert.equal(leerChat(db).mensajes.at(-1).rechazo, 'codigo');
+    assert.equal(leerChat(db).mensajes.at(-1).rechazo, 'dinero');
+    // 0.14.8: lo de la app (el código, la interfaz) ya no se rechaza: va a «Claude mejora la app» (test/app-mejora.test.js).
+    const app = T_(db, () => escribirMensaje(db, { texto: 'cambia el código del servidor', ahora: reloj() }));
+    assert.equal(app.rechazado, null);
+    assert.ok(app.appMejora && leerChat(db).mensajes.at(-1).appMejora === app.appMejora);
+    T_(db, () => db.prepare("UPDATE ajustes SET valor = '[]' WHERE clave = 'ia.app.propuestas'").run());
     // Un pedido de contenido: UNA llamada (el chat), con el plan y su costo; todavía no se hace nada.
     T_(db, () => escribirMensaje(db, { texto: 'explica mejor el tema del motor, con un ejemplo de la vida diaria', ahora: reloj() }));
     await correr({ max: 3 });

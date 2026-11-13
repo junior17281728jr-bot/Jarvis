@@ -110,6 +110,16 @@ const PROFUNDA_OPUS = Object.freeze({
   timeoutMs: 150_000, maximoMicro: 915_000, tipicoMicro: 90_000, techoMicro: 915_000, profunda: true,
 });
 const PROFUNDA_OPUS_VERIFICAR = Object.freeze({ ...PROFUNDA_OPUS, entradaMaxBytes: 160_000, maximoMicro: 1_120_000, tipicoMicro: 150_000, techoMicro: 1_120_000, rol: 'verificar' });
+// 0.14.8: «Claude mejora la app» (src/academia/app-mejora.js): Claude Opus 5.5 (solo Claude) mira UNA pantalla (sus
+// archivos cortados, ~20 KB, en el sistema marcado para la caché) y propone UN cambio chico. Lo paga el dueño con su tope
+// propio (US$20 por defecto; los pedidos del chat, con el tope del chat) y dentro del tope general. La reserva: 28 200
+// bytes × US$5/M (escribir en caché) + 4 096 × US$20/M, ×1,05 ×1,1 ≈ US$0,257 (la misma excepción de la fábrica: ≤ US$0,26).
+// EXCEPCIÓN pensada (test/reglas.test.js la conoce): hasta 110 s por llamada (el modelo grande escribe más despacio; el
+// paso de la fábrica tiene 180 s). Lo normal, con la caché: ≈ US$0,05–0,10 por propuesta.
+const APP = Object.freeze({
+  ...FABRICA, proveedores: Object.freeze(['anthropic']), modelo: 'claude-opus-5-5', salidaMax: 4096, entradaMaxBytes: 28_000, entradaMinBytes: 2_500,
+  respuestaMaxBytes: 131_072, maximoMicro: 260_000, tipicoMicro: 70_000, esfuerzo: 'low', timeoutMs: 110_000, cachear: true, rol: 'escribir', profunda: true,
+});
 export const PROPOSITOS = Object.freeze({
   // Fase 1: «Pedir ayuda a la IA» en un proyecto que espera aprobación (solo si el dueño encendió «Ayuda en
   // proyectos»). La IA llena el formulario y el motor propio lo vuelve a leer; una persona revisa y aprueba.
@@ -160,9 +170,13 @@ export const PROPOSITOS = Object.freeze({
   chat_verificar_opus: PROFUNDA_OPUS_VERIFICAR,
   dibujo_generar: DIBUJO,
   dibujo_revisar: DIBUJO_REVISAR,
+  // 0.14.8: «Claude mejora la app» (solo o lo que pidió el dueño en su pantalla) y lo que pidió en el chat.
+  app_mejorar: APP,
+  chat_app: APP,
 });
 export const PROPOSITOS_FABRICA = Object.freeze(['fabrica_escribir', 'fabrica_verificar']);
-export const PROPOSITOS_CHAT = Object.freeze(['chat_admin', 'chat_escribir', 'chat_verificar', 'chat_escribir_opus', 'chat_verificar_opus']);
+export const PROPOSITOS_CHAT = Object.freeze(['chat_admin', 'chat_escribir', 'chat_verificar', 'chat_escribir_opus', 'chat_verificar_opus', 'chat_app']);
+export const PROPOSITOS_APP = Object.freeze(['app_mejorar']);
 export const PROPOSITOS_DIBUJO = Object.freeze(['dibujo_generar', 'dibujo_revisar']);
 export const PROPOSITOS_MEJORA = Object.freeze(['mejora_escribir', 'mejora_verificar']);
 export const PROPOSITOS_PROFUNDA = Object.freeze(['profunda_escribir', 'profunda_verificar', 'profunda_extracto', 'profunda_escribir_opus', 'profunda_verificar_opus']);

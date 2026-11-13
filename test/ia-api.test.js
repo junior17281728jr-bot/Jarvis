@@ -122,7 +122,7 @@ test('20. claves y ajustes (0.12.3): también por el enlace público con la sesi
     assert.equal(lista.codigo, 200);
     assert.equal(lista.datos.duenoTailscale, 'junior@example.com');
     assert.deepEqual(lista.datos.almacen, { listo: true, motivo: null }, 'la llave ya existe: se guardó una clave');
-    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai', 'ia_propia']], ['avisos', ['telegram_bot']]]);
+    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai', 'ia_propia']], ['avisos', ['telegram_bot']], ['codigo', ['github_token']]]);
     // Sin ser administrador, ni el dueño de Tailscale entra; sin la cabecera de OPORTIA, nada.
     const maria = await nuevaCuenta('maria');
     assert.equal((await pedir('GET', '/api/admin/claves', { galleta: maria.galleta, cabeceras: DUENO })).datos.error, 'solo_admin');
@@ -502,8 +502,12 @@ test('0.14.2: pegar la clave de ChatGPT → probar → tope → encender: trabaj
     let c = await comoDueno('GET', '/api/admin/academia/chat');
     assert.equal(c.codigo, 200);
     assert.ok(c.datos.estimado.micro > 0 && c.datos.estimado.proveedor === 'openai', 'lo que cuesta un mensaje');
+    c = await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'sube el precio del plan' } });
+    assert.equal(c.datos.mensajes.at(-1).rechazo, 'dinero');
+    // 0.14.8: lo de la app va a «Mejorar la app con Claude» (no se rechaza).
     c = await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'cambia el código de la app' } });
-    assert.equal(c.datos.mensajes.at(-1).rechazo, 'codigo');
+    assert.ok(c.datos.mensajes.at(-1).appMejora && c.datos.app[c.datos.mensajes.at(-1).appMejora].estado === 'en_fila');
+    assert.equal((await comoDueno('GET', '/api/admin/academia/app')).codigo, 200);
     c = await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'explica mejor el tema de hipoxia' } });
     assert.deepEqual([c.codigo, c.datos.pendiente], [200, true]);
     assert.equal((await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'otra cosa' } })).datos.error, 'chat_ocupado');

@@ -22,7 +22,7 @@ export const CABECERA_CLAVE = 'x-confirmar-clave';
 export const FALLOS_PARA_AVISO = 20;
 // Lo que puede decir un aviso o la auditoría de un cambio (la pantalla y Telegram tienen una frase para cada uno).
 export const ACCIONES_ADMIN = Object.freeze([
-  'datos_pago', 'clave_ia', 'clave_ia_activa', 'token_telegram', 'telegram_unir', 'telegram_dejar', 'clave_otro',
+  'datos_pago', 'clave_ia', 'clave_ia_activa', 'token_telegram', 'token_github', 'telegram_unir', 'telegram_dejar', 'clave_otro',
   'admin_creado', 'admin_activo', 'admin_nombre', 'clave_copias', 'clave_bloqueada', 'claves_fallidas',
   'codigo_respaldo', 'codigo_respaldo_usado',
 ]);

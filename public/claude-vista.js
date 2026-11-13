@@ -42,6 +42,8 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
   botones.push(el('a', { class: 'boton-3d blanco con-icono claude-pidele', href: '#contenido/pidele' }, el('span', { 'aria-hidden': 'true', texto: '💬' }), el('span', { texto: t('claude.pidele') })));
   // 0.14.2: ChatGPT se conecta en la misma pestaña («IA (Claude o ChatGPT)»).
   botones.push(el('a', { class: 'boton-3d blanco con-icono', href: '#claves' }, h.icono('chispa'), el('span', { texto: t('iaprov.conectar_chatgpt') })));
+  // 0.14.8: «Mejorar la app con Claude» (public/app-mejora-vista.js).
+  botones.push(el('a', { class: 'boton-3d blanco con-icono', href: '#contenido/app' }, h.icono('chispa'), el('span', { texto: t('appm.boton') })));
   if (v.id != null && v.estado !== 'ilegible') {
     const texto = el('span', { texto: t('claude.probar') });
     const probar = el('button', {

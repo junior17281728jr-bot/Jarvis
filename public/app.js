@@ -1708,6 +1708,8 @@ const GRUPOS_ADMIN = [
     // 0.14.2: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js).
     { id: 'ia-hizo', href: '#contenido/ia-hizo', clave: 'admin.pestana.ia_hizo', icono: 'manual' },
     { id: 'pidele', href: '#contenido/pidele', clave: 'admin.pestana.pidele', icono: 'chispa' },
+    // 0.14.8: «Mejorar la app con Claude» (public/app-mejora-vista.js).
+    { id: 'app-mejora', href: '#contenido/app', clave: 'admin.pestana.app_mejora', icono: 'chispa' },
   ] },
   { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
     // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo). 0.14.2: «IA (Claude o
@@ -1880,6 +1882,13 @@ async function pantallaPidele(datosYa = null) {
   const ultimo = raiz.querySelector('.pidele-mensajes')?.lastElementChild;
   ultimo?.scrollIntoView?.({ block: 'nearest' });
   if (r.ok && r.datos.pendiente) setTimeout(() => { if (vigente() && location.hash === '#contenido/pidele' && !document.hidden) pantallaPidele(); }, 4000);
+}
+async function pantallaAppMejora(datosYa = null) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([datosYa ? { ok: true, datos: datosYa } : api('GET', '/api/admin/academia/app'), import('./app-mejora-vista.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('app-mejora'), r.ok ? vista.pantallaAppMejora(r.datos, piezasIa(() => pantallaAppMejora()), { alCambiar: d => pantallaAppMejora(d) }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  if (r.ok && vista.siguePasando(r.datos)) setTimeout(() => { if (vigente() && location.hash === '#contenido/app' && !document.hidden) pantallaAppMejora(); }, 15000);
 }
 async function pantallaIaAlumnos() {
   const vigente = nuevoTurno();
@@ -5919,7 +5928,7 @@ async function dibujar() {
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5982,6 +5991,7 @@ async function dibujar() {
   if (seccion === 'contenido/fabrica' && esAdmin) return pantallaFabrica();
   if (seccion === 'contenido/ia-hizo' && esAdmin) return pantallaLoQueHizo();
   if (seccion === 'contenido/pidele' && esAdmin) return pantallaPidele();
+  if (seccion === 'contenido/app' && esAdmin) return pantallaAppMejora();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   if (seccion === 'reporte' && esAdmin) return pantallaReporte();
   if (seccion === 'soporte' && esAdmin) return pantallaSoporte();
@@ -6075,6 +6085,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'contenido/fabrica') return admin ? ['/api/admin/academia/fabrica'] : [];
   if (seccion === 'contenido/ia-hizo') return admin ? ['/api/admin/academia/ia-hizo'] : [];
   if (seccion === 'contenido/pidele') return admin ? ['/api/admin/academia/chat'] : [];
+  if (seccion === 'contenido/app') return admin ? ['/api/admin/academia/app'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'soporte') return admin ? ['/api/admin/soporte', '/api/admin/sistema'] : [];

@@ -48,7 +48,7 @@ function basesDePrueba(env) {
   return bases;
 }
 
-const VARIABLES_DE_CANAL_DE_PRUEBA = Object.freeze({ telegram: 'OPORTIA_TELEGRAM_URL' });
+const VARIABLES_DE_CANAL_DE_PRUEBA = Object.freeze({ telegram: 'OPORTIA_TELEGRAM_URL', github: 'OPORTIA_GITHUB_URL', github_descarga: 'OPORTIA_GITHUB_DESCARGA_URL' });
 
 function basesDeCanalDePrueba(env) {
   const bases = {};

@@ -15,6 +15,8 @@ Antes: plataforma de inteligencia de oportunidades comerciales y laborales. JARV
   avisa que está listo. Si una versión nueva trae un trabajador que no arranca, sigue en 503 y el actualizador vuelve solo a la
   versión anterior. Se vuelve atrás el CÓDIGO, nunca los datos.
 - `/api/setup` muestra la versión de `package.json`: así se sabe qué versión quedó instalada.
+- Desde la 0.14.8, «Mejorar la app con Claude» también sube cambios a `main` (solo `public/`, después de pasar todas las
+  pruebas en el servidor): el actualizador los prueba OTRA VEZ como cualquier versión (ver «Lo nuevo de la 0.14.8»).
 - JARVIS dejó sus claves de API en `/var/lib/jarvis/secrets.env` (nunca en GitHub: este repositorio es público). OPORTIA
   **nunca** abre ese archivo ni lee claves de variables de entorno: sus claves se pegan una vez en Administrador → Claves y
   se guardan cifradas (ver «IA opcional y claves»).
@@ -709,6 +711,45 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.8: «Mejorar la app con Claude» (Claude mejora la parte visible de la app) — sin cambio de base
+
+Administrador → Contenido → **«Mejorar la app con Claude»** (también el botón en la tarjeta de Claude). Claude (Opus 5.5)
+mejora lo que se VE de la app (pantallas del alumno primero, después el administrador), con la misma seguridad del
+actualizador:
+
+1. **Solo** (encendido por defecto, decisión del dueño): cuando el contenido está terminado (fábrica y mejora profunda),
+   revisa pantalla por pantalla y propone **un cambio chico** a la vez. También hace lo que el dueño pide en esa pantalla o
+   en el chat «Pídele a la IA» (lo que antes se rechazaba como «código» ahora va directo aquí, con el tope del chat).
+2. **Revisión en código** (`src/academia/app-parche.js`), antes de probar nada: solo `public/**/*.js`, `public/**/*.css`,
+   `public/index.html` (archivos que ya existen) y los textos de `public/i18n/es.json` y `en.json` (en los dos idiomas, sin
+   claves repetidas). Nunca `src/`, `test/`, `deploy/`, `package.json`, `sw.js`, pagos, claves ni cuentas. Nada de
+   `innerHTML`, estilos incrustados, direcciones de internet, `fetch` ni almacenamiento del navegador. Rutas raras (`..`,
+   `\`, `//`) se rechazan antes de mirar el disco.
+3. **Todas las pruebas**, en una copia de `main` bajada de GitHub (`src/academia/app-fuente.js`, en la carpeta temporal del
+   servicio), por el servidor web (`src/academia/app-probador.js` → `lanzarPruebas` de `src/tareas/supervisor.js`): una a la
+   vez, `nice 19`, entorno vacío (ninguna clave llega a las pruebas), 15 minutos como mucho. La copia vuelve a quedar como
+   estaba. Si falla una sola prueba: se descarta y se anota en «Lo que hizo la IA».
+4. **Subir** (con «Instalar solo si pasan todas las pruebas», encendido por defecto; apagado, espera «Aprobar»): API de datos
+   de Git (`src/canales/github.js`, sin git ni procesos): rama `claude-app/<id>` y `main` avanza **solo si nadie la movió**
+   (`force: false`; si no, «conflicto»). Un cambio a la vez: el siguiente empieza cuando `version.txt` dice que el anterior
+   quedó instalado.
+5. El **actualizador de siempre** lo instala después de correr OTRA VEZ todas las pruebas. Si lo marca en `version.bad` (o no
+   arrancó y volvió atrás), el cambio **se deshace solo** con un commit nuevo hacia adelante (el árbol de antes). El botón
+   «Deshacer el último cambio» hace lo mismo. Nunca se fuerza nada.
+
+Gasto: su tope propio (US$20 por defecto, editable), el tope general y, si existe, el total de las fases 1–5
+(`ia.todo.tope_micro`). Sin saldo: «Pausado: se acabó el saldo», todo guardado, y sigue donde quedó (lo que Claude respondió
+se guarda con su costo: nunca se paga dos veces). Estado para la pantalla de la mejora profunda: `ia.app.estado`
+(`{ fase: 'visual', estado, pct, actual, actualizado }`). Avisos por Telegram: listo para aprobar, instalado, deshecho, falta el
+token (una vez) y «Terminé: todo revisado y mejorado». Lo que necesita el servidor va a «Ideas para el programador».
+
+**El permiso de GitHub (lo pega el dueño una vez en Administrador → Claves → GitHub)**: github.com → tu foto → Settings →
+Developer settings → Personal access tokens → **Fine-grained tokens** → «Generate new token». Repository access: **Only
+select repositories** → solo el repositorio de la app. Permissions → Repository permissions → **Contents: Read and write**
+(nada más). Empieza con `github_pat_`. Se guarda cifrado como las demás claves (nunca en el repositorio, nunca en un
+registro ni en una respuesta). Un token clásico (`ghp_…`) no se acepta. Sin token, lo que pasa las pruebas queda guardado
+con «Copiar / Descargar» para el programador.
+
 ### Lo nuevo de la 0.14.7: «Mejorar todo con Claude (lo mejor)» — sin cambio de base
 Pedido del dueño: que la API de Claude profundice los libros de cada tema con los mejores modelos, mejore las clases, las
 explicaciones y las palabras, revise todo, y que sea fácil de seguir.
@@ -756,7 +797,6 @@ explicaciones y las palabras, revise todo, y que sea fácil de seguir.
   termina; los trabajos usan el modelo de la mejora (Opus; sin Claude, el barato); el tope del chat es del mes (US$10).
   Lo que es del código o la pantalla va a **«Ideas para cambiar la app»** (`ajustes: ia.ideas`, últimas 200) con «Copiar».
 - Pruebas: `test/profunda-mejores.test.js` (y las de siempre de la mejora profunda y del chat, al día).
-
 ### Lo nuevo de la 0.14.6: «Notas» en el administrador (solo las notas) — sin cambio de base
 Pedido del dueño: una parte donde vea SOLO las notas de cada alumno, tema por tema, y comparar alumnos fácil.
 - **Administrador → Alumnos → Notas** (`#notas`; botón «Ver solo las notas» en Alumnos y en «Cómo van todos»;
@@ -774,7 +814,6 @@ Pedido del dueño: una parte donde vea SOLO las notas de cada alumno, tema por t
   la mejor prueba del tema (como la ficha) o el % de aciertos fuera de exámenes. Oral: el examen de cada capítulo y el
   final (guardados en ajustes), cada tema por su mejor examen (cada entrega tiene su hora) o su práctica.
 - Pruebas: `test/notas.test.js`.
-
 ### Lo nuevo de la 0.14.5: el examen oral en español — sin cambio de base
 Pedido del dueño: el examen oral se lo hacen en español, así que las preguntas y respuestas del oral se ven **en español**,
 con un botón para ver el **original en inglés** ahí mismo, estudiando o en un examen.
