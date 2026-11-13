@@ -9,6 +9,8 @@ import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
 import { crearAvisador } from './canales/avisador.js';
 import { crearBot } from './canales/bot.js';
 import { crearImportador } from './academia/importador.js';
+import { autoEmpezarTodo } from './academia/fabrica-profunda.js';
+import { guardarConfigFabrica } from './academia/fabrica.js';
 
 // Los archivos nuevos de OPORTIA (la base y sus copias) solo los puede leer el servicio, no cualquier usuario.
 process.umask(0o027);
@@ -55,6 +57,12 @@ servidor.listen(config.puerto, config.host, () => {
     console.error('No se pudo anotar el arranque:', error);
   }
   supervisor.iniciar();
+  // 0.14.7 (lo pidió el dueño): con la clave de Claude ya probada, «Mejorar todo con Claude» empieza solo, UNA vez.
+  try {
+    if (autoEmpezarTodo(db, config, { guardarConfig: guardarConfigFabrica })) supervisor.despertar?.();
+  } catch (error) {
+    console.error('No se pudo empezar «Mejorar todo con Claude»:', error?.message ?? error);
+  }
   try {
     avisador?.iniciar();
   } catch (error) {

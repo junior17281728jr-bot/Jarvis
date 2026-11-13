@@ -15,6 +15,9 @@ import { Limitador } from '../nucleo/limites.js';
 import { GRUPOS } from '../claves/usos.js';
 import { guardarSecreto, listarSecretos, activarSecreto, desactivarSecreto, estadoAlmacen } from '../claves/almacen.js';
 import { probarSecreto } from '../claves/probar.js';
+import { autoEmpezarTodo } from '../academia/fabrica-profunda.js';
+import { encolar } from '../tareas/cola.js';
+import { guardarConfigFabrica } from '../academia/fabrica.js';
 import { apagarSiNoQuedaProveedor, leerConfigIa } from '../ia/config.js';
 import { loginDeTailscale } from '../cuentas/tailscale.js';
 import { definicionUso } from '../claves/usos.js';
@@ -28,6 +31,16 @@ export function crearLimitesClaves() {
 }
 
 export function registrarRutasClaves(rutas, { config = null, limites = {}, probadores = undefined } = {}) {
+  // 0.14.7: la primera vez que la clave de Claude pasa la prueba, «Mejorar todo con Claude» empieza solo (una vez) y se pone
+  // en la fila de la fábrica. Nunca traba la respuesta de la prueba.
+  const trasProbarClaude = (db, r) => {
+    if (r?.motivo !== 'ok' || r.secreto?.uso !== 'ia_anthropic' || !config) return;
+    try {
+      if (autoEmpezarTodo(db, config, { guardarConfig: guardarConfigFabrica })) {
+        try { encolar(db, { tipo: 'academia.fabrica', programa: 'academia.fabrica', claveUnica: `academia.fabrica@todo-${Date.now()}`, creadaPor: null }); } catch { /* ya hay una en la fila */ }
+      }
+    } catch { /* sigue: la prueba ya respondió */ }
+  };
   const topes = { ...crearLimitesClaves(), ...limites };
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'almacen_no_disponible'); };
   const contar = usuario => { if (!topes.acciones.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos'); };
@@ -70,6 +83,7 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
       datos.valor = null;
     }
     const prueba = await probarSecreto(db, config, { id: guardada.secreto.id, usuarioId: usuario.id, probadores });
+    trasProbarClaude(db, prueba);
     return { codigo: 201, datos: { secreto: prueba.secreto, prueba: { motivo: prueba.motivo }, iaApagada: guardada.efecto?.iaApagada === true } };
   }, { admin: true, soloDueno: true });
 
@@ -79,6 +93,7 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
     if (datos.reanudar != null && typeof datos.reanudar !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
     contar(usuario);
     const r = await probarSecreto(db, config, { id: parametros.id, usuarioId: usuario.id, reanudar: datos.reanudar === true, probadores });
+    trasProbarClaude(db, r);
     // Ronda 4 de revisión: si se reanudó pero la IA está apagada, la pantalla lo dice y ofrece encenderla.
     return { codigo: 200, datos: { secreto: r.secreto, prueba: { motivo: r.motivo }, reanudada: r.reanudada, iaEncendida: leerConfigIa(db).encendida } };
   }, { admin: true, soloDueno: true });

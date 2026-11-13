@@ -130,6 +130,7 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = 
   }
   if (texto.startsWith(TAREAS_PROFUNDA.cierre)) {
     return { resumen: ['Lo simple primero.', 'Una idea por tarjeta.'], otra_vez: 'Otra vez, en fácil: el tema entero en pocas frases.',
+      ideas_futuro: ['Un dibujo animado del motor ayudaría a ver los cuatro tiempos.'],
       examinador: d.examen_oral ? [{ pregunta_en: 'May you fly for hire?', pregunta_es: '¿Puedes volar por paga?', respuesta: 'No: el piloto privado no vuela por paga (for hire).', paginas: [3] }, { pregunta_en: 'Who may share the costs?', pregunta_es: '¿Quién comparte los gastos?', respuesta: 'Solo se comparten los gastos.', paginas: [3] }] : [] };
   }
   // 0.14.7: las explicaciones (Test Guide y oral), su verificación una por una y la revisión final.
@@ -142,7 +143,7 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = 
       pregunta_es: `Pregunta en español (muestra) ${x.id}`, respuesta_es: x.respuesta_en ? `Respuesta en español: ${(x.respuesta_en.match(/\d+/g) ?? []).join(' y ')} (muestra).` : null })) };
   }
   if (texto.startsWith(TAREAS_PROFUNDA.verificar_explicaciones)) return { items: d.items.map(i => (opciones.veredicto ? opciones.veredicto(i) : { id: i.original.id, ok: true, problema: null })) };
-  if (texto.startsWith(TAREAS_PROFUNDA.revision_final)) return { dudas: opciones.dudasFinal ? opciones.dudasFinal(d) : [] };
+  if (texto.startsWith(TAREAS_PROFUNDA.revision_final)) return { dudas: opciones.dudasFinal ? opciones.dudasFinal(d) : [], ideas_futuro: ['Practicar en voz alta con un compañero.'] };
   if (texto.startsWith(TAREAS_PROFUNDA.verificar)) return { dudas: typeof opciones.dudasProfunda === 'function' ? opciones.dudasProfunda(d) : opciones.dudasProfunda ?? [] };
   // 0.13.1: la pista oral (los pedidos traen «preguntas_del_libro»).
   if (texto.startsWith(TAREAS_ORAL.plan)) {

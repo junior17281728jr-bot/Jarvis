@@ -38,6 +38,7 @@ test('el chat rechaza en código (gratis) lo que no es contenido: código, diner
 
 test('chat → plan con su costo → «Hazlo» → trabajo de la fábrica → escrito, verificado contra el libro y publicado (el Test Guide TAL CUAL)', async () => {
   await conFabrica(async ({ db, config, correr, llamadas, reloj }) => {
+    guardarConfigFabrica(db, { chat: { auto: false } }); // 0.14.7: aquí, con «Hazlo» (sin él, lo hace solo)
     await correr({ max: 60 });
     const v0 = estadoMateria(db, 'sistemas').version;
     assert.ok(v0, 'la materia ya está publicada');
@@ -87,6 +88,7 @@ test('chat → plan con su costo → «Hazlo» → trabajo de la fábrica → es
 
 test('si la IA intenta un plan prohibido o con un tema que no existe, no se ofrece «Hazlo»; «Revisar errores» da un informe', async () => {
   await conFabrica(async ({ db, correr, llamadas, opciones, reloj }) => {
+    guardarConfigFabrica(db, { chat: { auto: false } });
     await correr({ max: 60 });
     opciones.chat = d => ({ respuesta: 'Listo, cambio las opciones.', rechazo: null, resumen: 'x', plan: { tipo: 'reescribir_tema', materia: 'sistemas', tema: 't01-motor', instruccion: 'cambia las opciones de la pregunta del test guide 2-1', pasos: [] } });
     T_(db, () => escribirMensaje(db, { texto: 'mejora el tema del motor', ahora: reloj() }));

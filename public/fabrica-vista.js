@@ -108,7 +108,7 @@ export function pantallaFabrica(d, h) {
 
 // 0.13.9: «Mejora profunda de las clases»: apagada por defecto; antes de encenderla se ve cuánto cuesta y cuánto tarda.
 // Por materia: estado, % hecho, gasto e informe (con «Publicar» si espera revisión).
-const MOSTRAR_PROFUNDA = new Set(['pendiente', 'mejorando', 'verificando', 'revision', 'publicada', 'saltada']);
+const MOSTRAR_PROFUNDA = new Set(['pendiente', 'mejorando', 'verificando', 'revision', 'publicada', 'saltada', 'fuera']);
 function seccionProfunda(d, h, { accion }) {
   const { el, t } = h;
   const p = d.profunda;
@@ -121,9 +121,17 @@ function seccionProfunda(d, h, { accion }) {
     el('p', {}, h.insignia(m.estado === 'publicada' ? 'bien' : m.estado === 'revision' ? 'mal' : 'neutro', h.tSi(`fabrica.profunda.estado.${m.estado}`, m.estado))),
     el('progress', { max: 100, value: m.pct, 'aria-label': t('fabrica.hecho_pct', { pct: m.pct }) }),
     el('p', { class: 'suave chica', texto: t('fabrica.profunda.materia_linea', { pct: m.pct, gasto: usd(m.gastoMicro), temas: h.numero(m.temas), saltados: h.numero(m.saltados) }) }),
-    m.estado === 'revision' ? informeProfunda(m, h) : null,
+    m.final ? el('p', { class: 'suave chica', texto: t('fabrica.profunda.final', { estado: h.tSi(`fabrica.profunda.final.${m.final.estado}`, m.final.estado), errores: h.numero(m.final.errores) }) }) : null,
+    m.omitidos ? el('p', { class: 'aviso chica', texto: t('fabrica.profunda.omitidos', { n: h.numero(m.omitidos) }) }) : null,
+    m.estado === 'revision' || m.final || m.omitidos ? informeProfunda(m, h) : null,
     m.estado === 'revision' && m.version ? el('div', { class: 'botones' }, accion(t('fabrica.publicar'), `/api/admin/academia/fabrica/${encodeURIComponent(m.id)}/profunda/publicar`, {}, { clase: 'verde', confirmar: t('fabrica.publicar_confirmar') })) : null));
   const tope = el('input', { type: 'text', inputmode: 'decimal', id: 'fabrica-tope-profunda', value: ((p.topeMicro ?? 0) / 1e6).toFixed(2) });
+  // 0.14.7: el modelo, con lo que costaría lo que falta con cada uno (antes de encenderla).
+  const pm = f.porModelo ?? {};
+  const radio = (valor, clave) => el('label', { class: 'con-casilla' },
+    el('input', { type: 'radio', name: 'fabrica-modelo', value: valor, checked: (p.modelo ?? 'opus') === valor }),
+    el('span', { texto: t(clave, { costo: usd(pm[valor] ?? 0) }) }));
+  const modelo = el('fieldset', { class: 'fabrica-modelo' }, el('legend', { texto: t('fabrica.profunda.modelo') }), radio('opus', 'fabrica.profunda.modelo.opus'), radio('sonnet', 'fabrica.profunda.modelo.sonnet'));
   return el('section', { class: 'tarjeta fabrica-profunda' },
     el('h3', { class: 'con-icono' }, h.icono('chispa'), el('span', { texto: t('fabrica.profunda.titulo') })),
     el('p', { class: 'suave', texto: t('fabrica.profunda.linea') }),
@@ -138,11 +146,12 @@ function seccionProfunda(d, h, { accion }) {
     el('form', {
       class: 'fabrica-ajustes', onsubmit: async e => {
         e.preventDefault();
-        const r = await h.api('POST', '/api/admin/academia/fabrica/config', { profunda: { topeUsd: tope.value.trim() } });
+        const elegido = modelo.querySelector('input[name="fabrica-modelo"]:checked')?.value ?? 'opus';
+        const r = await h.api('POST', '/api/admin/academia/fabrica/config', { profunda: { topeUsd: tope.value.trim(), modelo: elegido } });
         h.avisar(r.ok ? t('fabrica.hecho') : h.textoError(r.datos.error), r.ok ? 'bien' : 'mal');
         if (r.ok) h.recargar();
       },
-    }, el('label', { for: 'fabrica-tope-profunda', texto: t('fabrica.profunda.tope') }), tope, el('button', { type: 'submit', class: 'boton-3d chico' }, el('span', { texto: t('fabrica.guardar') }))),
+    }, modelo, el('label', { for: 'fabrica-tope-profunda', texto: t('fabrica.profunda.tope') }), tope, el('button', { type: 'submit', class: 'boton-3d chico' }, el('span', { texto: t('fabrica.guardar') }))),
     filas.length ? el('div', { class: 'fabrica-materias' }, filas) : null);
 }
 function informeProfunda(m, h) {
@@ -162,6 +171,10 @@ function informeProfunda(m, h) {
           el('strong', { texto: `${u.gravedad === 'error' ? '⚠️' : '•'} ${u.donde}` }),
           el('span', { texto: ` — ${h.tSi(`fabrica.duda.${String(u.problema).split(':')[0]}`, u.problema)}` })))),
         ...(x.errores ?? []).map(e2 => el('p', { class: 'mensaje error chica', texto: `${e2.ruta}: ${e2.motivo}` })),
+        // 0.14.7: el informe de la revisión muy profunda (por tema) y lo que se arregló.
+        x.final?.informe?.length ? el('h4', { texto: t('fabrica.profunda.informe_final') }) : null,
+        ...(x.final?.informe ?? []).map(tm => el('details', {}, el('summary', { texto: `${tm.titulo} — ${t('fabrica.informe.dudas', { n: tm.dudas.length })}${x.final.arreglos?.[tm.tema] ? ` · ${h.tSi(`fabrica.profunda.arreglo.${x.final.arreglos[tm.tema].estado}`, x.final.arreglos[tm.tema].estado)}` : ''}` }),
+          el('ul', { class: 'chica' }, tm.dudas.map(u => el('li', { texto: `${u.gravedad === 'error' ? '⚠️' : '•'} ${u.donde} — ${u.problema}` }))))),
       ].filter(Boolean));
     },
   }, el('summary', { texto: t('fabrica.ver_informe') }), el('div', { class: 'fabrica-informe' }, el('p', { class: 'suave', texto: t('reporte.preparando') })));

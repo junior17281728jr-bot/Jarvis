@@ -72,7 +72,8 @@ export function leerConfigFabrica(db) {
   const entre = (n, max, def) => (Number.isSafeInteger(n) && n >= 0 && n <= max ? n : def);
   return {
     pausada: v.pausada === true, topeMicro: tope, oral: v.oral === true,
-    chat: { topeMicro: entre(ch.topeMicro, LIMITES_FABRICA.chatMaxMicro, CONFIG_FABRICA.chat.topeMicro) },
+    // 0.14.7: el tope del chat es del mes; «auto»: lo de contenido se hace solo, sin «Hazlo» (encendido por defecto).
+    chat: { topeMicro: entre(ch.topeMicro, LIMITES_FABRICA.chatMaxMicro, CONFIG_FABRICA.chat.topeMicro), auto: ch.auto !== false },
     dibujos: { activa: di.activa === true, topeMicro: entre(di.topeMicro, LIMITES_FABRICA.dibujosMaxMicro, CONFIG_FABRICA.dibujos.topeMicro) },
     mejora: { activa: m.activa !== false, topeMesMicro: Number.isSafeInteger(m.topeMesMicro) && m.topeMesMicro >= 0 && m.topeMesMicro <= LIMITES_FABRICA.mejoraMaxMicro ? m.topeMesMicro : CONFIG_FABRICA.mejora.topeMesMicro },
     profunda: {

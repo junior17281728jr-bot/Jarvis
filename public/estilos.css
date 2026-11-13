@@ -1498,3 +1498,16 @@ ul.lista-drive li:first-child { border-top: 0; }
 .pidele-trabajo progress { width: 100%; }
 .pidele-escribir textarea { width: 100%; min-height: 84px; font-size: 16px; }
 .pidele > p.suave:last-child { margin-top: 14px; }
+
+/* 0.14.7: «Qué está haciendo Claude ahora» (public/todo-vista.js) y los saltos de línea del estimado al confirmar. */
+.todo-panel .todo-fases { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
+.todo-panel .todo-fase { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; background: var(--fondo-suave, rgba(0, 0, 0, 0.03)); }
+.todo-panel .todo-fase.fase-ahora { outline: 2px solid var(--azul, #1c7ed6); }
+.todo-panel .todo-emoji { font-size: 22px; line-height: 1.2; flex: none; }
+.todo-panel .todo-fase-cuerpo { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.todo-panel .todo-fase-cuerpo p { margin: 0 0 4px; }
+.todo-panel progress { width: 100%; height: 10px; }
+.todo-panel .botones { display: flex; flex-wrap: wrap; gap: 10px; }
+.tarjeta-claude .todo-panel { margin: 14px 0 0; box-shadow: none; border: 1px solid var(--borde, #ddd); }
+.confirmar-hoja #confirmar-texto { white-space: pre-line; }
+.pidele-ideas li { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; margin: 6px 0; overflow-wrap: anywhere; }

@@ -195,6 +195,13 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     ...ACCIONES_ADMIN.map(x => `admin.cambio.${x}`),
     ...['ia_apagada', 'sin_presupuesto', 'cuenta_sin_permiso', 'sin_consentimiento'].map(x => `pagos.admin.falta.${x}`),
     ...['formato', 'repetido', 'demasiados'].map(x => `pagos.paquetes.error.${x}`),
+    // 0.14.7: «Mejorar todo con Claude» (los avisos, las fases, lo que falta para empezar) y los avisos de los trabajos del chat.
+    ...['empieza', 'a_fin', 'fin', 'saldo'].map(x => `aviso.ia_todo.${x}`),
+    ...['hecho', 'revision', 'sin_cambios', 'fallido'].map(x => `pidele.aviso_trabajo.${x}`),
+    ...['leer', 'explicar', 'dibujos', 'revision', 'app'].map(x => `todo.fase.${x}`),
+    ...['hecha', 'ahora', 'falta', 'pronto'].map(x => `todo.fase_estado.${x}`),
+    ...['apagada', 'trabajando', 'sin_saldo', 'pausada', 'terminada', 'esperando'].map(x => `todo.estado.${x}`),
+    ...['ia_apagada', 'sin_clave', 'verificacion_identidad', 'clave_no_pasa', 'sin_probar', 'claude_no_usado', 'fabrica_pausada', 'precio_sin_confirmar'].map(x => `todo.listo.${x}`),
   ];
   for (const clave of claves) assert.ok(clave in es && clave in en, `falta la frase ${clave}`);
   // Y en el código, cada frase armada por partes usa uno de esos prefijos conocidos.

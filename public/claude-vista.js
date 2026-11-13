@@ -2,7 +2,8 @@
 // Administrador (el estado en palabras simples, «Conectar o cambiar la clave» y «Probar (gratis)») y los 3 pasos de la
 // pestaña «Claude (API)» (Dinero e IA). Lo que se decide está en public/ia-vista.js (estadoClaude, probado sin navegador).
 // Sin librerías; todo texto con textContent y sin estilos en línea. Las piezas llegan de app.js en «h».
-import { estadoClaude, estadoOtraIa, quienTrabaja } from './ia-vista.js';
+import { estadoClaude, estadoOtraIa, quienTrabaja, nombreModelo } from './ia-vista.js';
+import { panelTodo } from './todo-vista.js';
 
 // 0.14.2: el nombre simple de cada proveedor.
 const NOMBRES = { anthropic: 'Claude', openai: 'ChatGPT', propia: 'API propia' };
@@ -21,7 +22,7 @@ export function pasosClaude(h, { verificacion = false } = {}) {
 // La línea grande del estado.
 function textoEstado(v, h) {
   const { t } = h;
-  if (v.estado === 'conectado') return t('claude.estado.conectado', { usado: h.usd(v.usadoMicro), tope: h.usd(v.topeMicro) });
+  if (v.estado === 'conectado') return t('claude.estado.conectado', { usado: h.usd(v.usadoMicro), tope: h.usd(v.topeMicro), modelo: v.modelo ? nombreModelo(v.modelo) : 'Claude' });
   if (v.estado === 'no_pasa') return t('claude.estado.no_pasa', { motivo: h.textoMotivoIa(v.motivo) });
   if (v.estado === 'pausada') return t('claude.estado.pausada', { motivo: h.textoMotivoIa(v.motivo) });
   return h.tSi(`claude.estado.${v.estado}`, v.estado);
@@ -37,6 +38,8 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
     el('button', { type: 'button', class: 'boton-3d grande con-icono claude-conectar', onclick: () => h.irAlFormulario() },
       h.icono('llave'), el('span', { texto: t('claude.conectar') })),
   ];
+  // 0.14.7: «Pídele a Claude» (el chat del dueño para pedir mejoras puntuales).
+  botones.push(el('a', { class: 'boton-3d blanco con-icono claude-pidele', href: '#contenido/pidele' }, el('span', { 'aria-hidden': 'true', texto: '💬' }), el('span', { texto: t('claude.pidele') })));
   // 0.14.2: ChatGPT se conecta en la misma pestaña («IA (Claude o ChatGPT)»).
   botones.push(el('a', { class: 'boton-3d blanco con-icono', href: '#claves' }, h.icono('chispa'), el('span', { texto: t('iaprov.conectar_chatgpt') })));
   if (v.id != null && v.estado !== 'ilegible') {
@@ -78,5 +81,7 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
     v.final ? el('p', { class: 'suave chica', texto: t('claves.termina', { final: v.final }) }) : null,
     detalle,
     el('div', { class: 'botones claude-botones' }, botones),
-    mensaje);
+    mensaje,
+    // 0.14.7: «Mejorar todo con Claude (lo mejor)» y «Qué está haciendo Claude ahora» (se actualiza solo).
+    v.estado === 'sin_acceso' || !h.confirmar ? null : panelTodo(h, { compacto: true }));
 }

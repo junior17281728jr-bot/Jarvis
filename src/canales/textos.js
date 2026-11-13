@@ -116,13 +116,14 @@ function valoresDe(aviso, idioma) {
     v.que = existeFrase(`admin.cambio.${partes[1]}`) ? frase(idioma, `admin.cambio.${partes[1]}`) : partes[1];
   }
   // 0.12.7: el gasto de la IA en dinero («US$4,00») y los días que quedan del mes (solo números del dueño, nunca un nombre).
-  if (partes[0] === 'ia_tope' || partes[0] === 'ia_resumen') {
+  if (partes[0] === 'ia_tope' || partes[0] === 'ia_resumen' || partes[0] === 'ia_todo') {
     const usd = x => (Number.isSafeInteger(x) && x >= 0 ? `US$${new Intl.NumberFormat(idioma === 'en' ? 'en-US' : 'es-DO', { minimumFractionDigits: 2, maximumFractionDigits: x < 10_000 ? 4 : 2 }).format(x / 1_000_000)}` : '?');
     v.usado = usd(d?.usadoMicro);
     v.tope = usd(d?.topeMicro);
     v.mes = usd(d?.mesMicro);
     if (Number.isSafeInteger(d?.dias)) v.dias = d.dias;
     if (Number.isSafeInteger(d?.n)) v.n = d.n;
+    v.quedan = usd(d?.quedanMicro);
   }
   if (/^fabrica_/.test(partes[0]) && /^[a-z_]{2,30}$/.test(partes[1] ?? '')) {
     v.materia = existeFrase(`acad.materia.${partes[1]}`) ? frase(idioma, `acad.materia.${partes[1]}`) : partes[1];
@@ -165,6 +166,11 @@ export function cuerpoDeAviso(aviso, idioma) {
     const d = detalleDe(aviso);
     if (d?.ambito !== 'general') texto = frase(idioma, 'telegram.aviso.ia_tope.cuenta', valores);
     else if (Number(d?.umbral) >= 100) texto = frase(idioma, 'telegram.aviso.ia_tope.lleno', valores);
+  }
+  // 0.14.7: un texto por cada momento de «Mejorar todo con Claude».
+  if (base === 'ia_todo') {
+    const evento = String(aviso.clave).split(':')[2];
+    if (existeFrase(`telegram.aviso.ia_todo.${evento}`)) texto = frase(idioma, `telegram.aviso.ia_todo.${evento}`, valores);
   }
   // 0.14.1: un texto por recordatorio del pago del servidor (y «venció» si ya pasó el día; «mañana» a 1 día).
   if (base === 'servidor_pago') {

@@ -40,14 +40,14 @@ import { normalizar } from './reto-calidad.js';
 import { carpetaAcademia, leerAjuste, guardarAjuste, leerEnUso, guardarJson, activarPaquete, rutaDeRecurso, RECURSOS } from './paquetes.js';
 import { carpetaFuentes, leerLecturas, textoDeLectura, imagenesDeTema, leerManifiesto } from './fuentes.js';
 import { leerFuenteOral, contextoOral } from './fabrica-oral.js';
-import { REGLAS_PROFUNDA, GUIA_ENSENANZA, REGLAS_VERIFICACION, ESQUEMAS, ESQUEMAS_PROFUNDA, TAREAS, TAREAS_PROFUNDA, datos } from './fabrica-prompts.js';
+import { REGLAS_PROFUNDA, GUIA_ENSENANZA, REGLAS_VERIFICACION, REGLAS_VERIFICACION_PROFUNDA, ESQUEMAS, ESQUEMAS_PROFUNDA, TAREAS, TAREAS_PROFUNDA, datos } from './fabrica-prompts.js';
 import { tarjetaConVisual, revisarDiagrama, TIPOS_DIAGRAMA } from './diagramas.js';
-import { abrirAviso } from '../avisos/avisos.js';
+import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { GASTO_SQL } from '../ia/gasto.js';
 import { PROPOSITOS, PROPOSITOS_PROFUNDA } from '../ia/propositos.js';
 import { precioDe, costoMicro } from '../ia/precios.js';
 import { leerConfigIa } from '../ia/config.js';
-import { gastoMicro, mesCobro } from '../ia/presupuesto.js';
+import { gastoMicro, mesCobro, elegirProveedor, modelosDe } from '../ia/presupuesto.js';
 import { puedeLlamar, adjuntar, estadoMateria, guardarGeneral, leerConfigFabrica, cuotaHora, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 
@@ -258,7 +258,7 @@ function pedidoProfundo(leer, c, t, p, pub, viejas, props, instruccion = null) {
   return r;
 }
 // El «sistema» de verificar: IGUAL para el verificar del tema, sus explicaciones y la revisión final (caché).
-const sistemaVerificar = (c, props) => `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA:\n${datos(c.texto.slice(0, verificarMaxDe(props)))}`;
+const sistemaVerificar = (c, props) => `${REGLAS_VERIFICACION_PROFUNDA}\n\nLECTURA COMPLETA:\n${datos(c.texto.slice(0, verificarMaxDe(props)))}`;
 const datosExplicable = (e, c) => (c.oral
   ? { id: e.id, n: e.x.n ?? null, pagina: e.x.pagina, pregunta_en: e.x.pregunta_en, respuesta_en: e.x.respuesta_en ?? null, pregunta_es_de_ahora: e.x.pregunta_es ?? null, respuesta_es_de_ahora: e.x.respuesta_es ?? null, explicacion_es_de_ahora: e.x.explicacion_es ?? null, puntos_clave_de_ahora: e.x.puntos_clave ?? null }
   : { id: e.id, enunciado: e.q.original.enunciado, opciones: e.q.original.opciones.map(o => ({ letra: o.letra, texto: o.texto })), correcta: e.q.original.correcta,
@@ -647,6 +647,8 @@ async function armarProfunda(ctx, item, info, ahora, op = null) {
     await ctx.escribir(() => {
       guardarEstado(db, { ...valor, saltados, corregidos: corregidos.slice(0, 100), en: iso(ahora) });
       if (aviso) abrirAviso(db, { ...aviso, ahora });
+      // 0.14.7: las «Ideas para el futuro» que dejó el cierre de cada tema.
+      for (const [id, x] of info) if (x.leer) anotarIdeasFuturo(db, x.leer('cierre')?.json?.ideas_futuro, { fase: 'explicar', materia: item.id, tema: id, ahora });
       // 0.14.2: «Lo que hizo la IA»: cada clase reescrita (publicada o esperando revisión) queda en el registro.
       if (valor.estado === 'publicada' || valor.estado === 'revision') {
         anotarCambio(db, { materia: item.id, que: op?.que ?? 'clase_reescrita', estado: valor.estado, version: valor.version ?? null, antes: { version: pub.base }, despues: { temas: valor.temasMejorados ?? 0, explicaciones: explicadas, dudas: (valor.dudas ?? []).length }, ...costoDe(db, op?.pasoPrefijo ?? prefijoPaso(item.id, ronda)), detalle: op?.detalle ?? null, ahora });
@@ -654,7 +656,23 @@ async function armarProfunda(ctx, item, info, ahora, op = null) {
     });
     return { trabajo: true, seguir: true };
   };
-  if (!cambiados) return fin({ estado: 'saltada', motivo: 'sin_cambios', dudas: [] });
+  // 0.14.7: «Mejorar todo» (automático): un tema con dudas del verificador se queda COMO ESTABA (nada a medias) y se
+  // lista; lo demás se publica solo. La revisión final lo intenta otra vez; si vuelve a fallar, queda en la lista.
+  const omitidos = [];
+  if (op?.auto) {
+    for (let i = 0; i < temas.length; i++) {
+      const t = pub.orden[i];
+      const suyas = dudas.filter(d => d.tema === t.id);
+      if (!suyas.length) continue;
+      temas[i] = clon(t);
+      for (const id of t.preguntas ?? []) explicacionesTg.delete(id);
+      omitidos.push({ tema: t.id, titulo: t.titulo, dudas: suyas.slice(0, 20) });
+      cambiados -= 1;
+    }
+    for (let i = dudas.length - 1; i >= 0; i--) if (omitidos.some(o => o.tema === dudas[i].tema)) dudas.splice(i, 1);
+  }
+  const finConOmitidos = (valor, aviso) => fin({ ...valor, omitidos }, aviso);
+  if (cambiados <= 0) return finConOmitidos({ estado: 'saltada', motivo: omitidos.length ? 'omitidos' : 'sin_cambios', dudas: [] });
   const mn = { ...clon(pub.materia), temas };
   const preguntas = [];
   const vistas = new Set();
@@ -681,7 +699,7 @@ async function armarProfunda(ctx, item, info, ahora, op = null) {
   const revision = revisarPaquete(nuevo);
   const cuerpo = Buffer.from(JSON.stringify(nuevo));
   if (problemas.length || !revision.ok || cuerpo.length > LIMITES.jsonBytes) {
-    return fin({ estado: 'revision', version: null, problema: problemas.length ? 'no_se_conservo' : !revision.ok ? 'paquete_no_valido' : 'paquete_muy_grande',
+    return finConOmitidos({ estado: 'revision', version: null, problema: problemas.length ? 'no_se_conservo' : !revision.ok ? 'paquete_no_valido' : 'paquete_muy_grande',
       dudas: [...problemas.map(p => ({ ...p, gravedad: 'error' })), ...dudas].slice(0, 200), errores: revision.ok ? [] : revision.errores.slice(0, 20) },
     { clave: `fabrica_revision:${item.id}:m${pub.base}`, nivel: 'atencion', detalle: { n: problemas.length + dudas.length } });
   }
@@ -703,10 +721,10 @@ async function armarProfunda(ctx, item, info, ahora, op = null) {
   const listo = db.prepare('SELECT estado FROM academia_paquetes WHERE id = ?').get(nf.id).estado === 'listo';
   if (listo && !dudas.length) {
     await ctx.escribir(() => activarPaquete(db, { paqueteId: nf.id, materias: [item.id] }));
-    return fin({ estado: 'publicada', version: nf.id, dudas: [], publicadaEn: iso(ahora), temasMejorados: cambiados, explicaciones: explicadas },
+    return finConOmitidos({ estado: 'publicada', version: nf.id, dudas: [], publicadaEn: iso(ahora), temasMejorados: cambiados, explicaciones: explicadas },
       { clave: `fabrica_profunda:${item.id}:${nf.id}`, nivel: 'atencion', detalle: { temas: cambiados } });
   }
-  return fin({ estado: 'revision', version: nf.id, dudas: dudas.slice(0, 200), temasMejorados: cambiados, explicaciones: explicadas, problema: listo ? null : 'paquete_incompleto' },
+  return finConOmitidos({ estado: 'revision', version: nf.id, dudas: dudas.slice(0, 200), temasMejorados: cambiados, explicaciones: explicadas, problema: listo ? null : 'paquete_incompleto' },
     { clave: `fabrica_revision:${item.id}:m${nf.id}`, nivel: 'atencion', detalle: { n: dudas.length } });
 }
 
@@ -718,7 +736,7 @@ async function llamar(ctx, { item, clave, p, pedido, revisar, cfg, ahora, op = n
   const proposito = p.proposito;
   const AJUSTE_ESPERA = op?.ajusteEspera ?? AJUSTE_ESPERA_PROFUNDA;
   const guardarProfunda = op?.anotarPaso ? (dbx, _id, valor) => op.anotarPaso(dbx, valor) : (dbx, id, valor) => guardarProfundaReal(dbx, id, valor, ronda);
-  const puede = puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro: op?.topeMicro ?? cfg.profunda.topeMicro, gastado: op?.gastado ? op.gastado(db) : gastoProfundaMicro(db, { ronda }) });
+  const puede = puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro: op?.topeMicro ?? cfg.profunda.topeMicro, gastado: op?.gastado ? op.gastado(db) : gastadoRonda(db, cfg, ronda) });
   if (!puede.ok) {
     if (puede.motivo === 'demasiado_largo') {
       await ctx.escribir(() => guardarAjuste(db, clave, JSON.stringify({ fallido: true, motivo: 'demasiado_largo', en: iso(ahora) })));
@@ -862,7 +880,7 @@ export function estimadoProfundo(db, config, { modelo = null, topeMicro = null, 
   const plan = planProfundo(db, config, { man, fuenteOral, ronda: r });
   const medidas = medidasDe(db);
   const tope = topeMicro ?? cfg.profunda.topeMicro;
-  const gastado = gastoProfundaMicro(db, { ronda: r });
+  const gastado = r === cfg.profunda.ronda ? gastadoRonda(db, cfg, r) : 0;
   const cuota = cuotaHora(leerConfigIa(db));
   const porModo = {};
   for (const m of ['opus', 'sonnet']) {
@@ -901,12 +919,23 @@ function cabeEnTope(db, item, info, props, cfg, ronda) {
   const medidas = medidasDe(db);
   let micro = 0;
   for (const x of info.values()) if (x.c) { const e = estimarTema(x, props, medidas, { hechoPaso: p => hecho(x.leer(p.paso)) }); micro += e.micro + e.revisionMicro; }
-  return { cabe: gastoProfundaMicro(db, { ronda }) + micro <= cfg.profunda.topeMicro, micro };
+  return { cabe: gastadoRonda(db, cfg, ronda) + micro <= cfg.profunda.topeMicro, micro };
 }
 
 // ---------- Un paso de la mejora profunda ----------
 // → { trabajo: false, motivo } (apagada o ya no falta nada: no gasta) o { trabajo: true, seguir, motivo?, esperarMs? }.
+const SIN_SALDO = new Set(['tope_profunda', 'tope_general', 'sin_credito', 'limite_gasto_proveedor']);
 export async function profundizar(ctx, { ahora, cfg, man }) {
+  const r = await profundizarPaso(ctx, { ahora, cfg, man });
+  // 0.14.7: los avisos de «Mejorar todo» (pocos): «se acabó el saldo» (una vez; se cierra al seguir).
+  if (cfg.profunda?.activa && cfg.profunda.etapas) {
+    const ronda = cfg.profunda.ronda;
+    if (r.trabajo && !r.seguir && SIN_SALDO.has(r.motivo)) await ctx.escribir(() => avisoTodo(ctx.db, cfg, ronda, 'saldo', ahora));
+    else if (r.trabajo && r.seguir) await ctx.escribir(() => resolverAviso(ctx.db, `ia_todo:r${ronda}:saldo`, ahora));
+  }
+  return r;
+}
+async function profundizarPaso(ctx, { ahora, cfg, man }) {
   const { db, config } = ctx;
   if (!cfg.profunda?.activa) return { trabajo: false, motivo: 'apagada' };
   const ronda = cfg.profunda.ronda;
@@ -930,14 +959,102 @@ export async function profundizar(ctx, { ahora, cfg, man }) {
     const info = temasDe(db, dir, item, man, fuenteOral, props);
     const r = await siguientePaso(ctx, { item, info, props, cfg, ahora });
     if (r) return r;
-    return armarProfunda(ctx, item, info, ahora);
+    return armarProfunda(ctx, item, info, ahora, cfg.profunda.etapas ? { ronda, auto: true } : null);
   }
   // Etapa c: la «revisión muy profunda» de lo publicado (solo en una ronda de «Mejorar todo»).
   if (cfg.profunda.etapas && !plan.some(x => x.pendiente && x.rec.estado !== 'fuera')) {
+    if (plan.some(x => HECHOS.has(x.rec.estado)) && !avisoDado(db, ronda, 'a_fin')) { await ctx.escribir(() => avisoTodo(db, cfg, ronda, 'a_fin', ahora)); return { trabajo: true, seguir: true }; }
     const r = await revisionFinal(ctx, { ahora, cfg, man, fuenteOral, dir, plan, props, ronda });
     if (r) return r;
+    // Todo hecho (o lo que queda no cabe en el tope): se para, avisa una vez y deja el estado para la fase 5.
+    if (!avisoDado(db, ronda, 'fin')) {
+      await ctx.escribir(() => {
+        avisoTodo(db, cfg, ronda, 'fin', ahora);
+        guardarAjuste(db, AJUSTE_TODO_ESTADO, JSON.stringify({ ronda, fases: { leer: 'hecha', explicar: 'hecha', dibujos: 'hecha', revision: 'hecha' }, fuera: plan.filter(x => x.rec.estado === 'fuera').map(x => x.id), gastadoMicro: gastadoRonda(db, cfg, ronda), topeMicro: cfg.profunda.topeMicro, en: iso(ahora) }));
+      });
+    }
   }
   return { trabajo: false, motivo: 'hecha' };
+}
+
+// ---------- 0.14.7: «Mejorar todo con Claude» (las 5 fases, el tope compartido y los avisos) ----------
+// El tope de TODO el trabajo (fases 1 a 5) es UN valor en «ajustes» que también lee la fase 5 («Mejorar la app con Claude»,
+// otra parte de la app): ia.todo.tope_micro. Lo que gasta la fase 5 cuenta aquí si anota sus propósitos en
+// ia.todo.propositos (una lista JSON). El estado de las fases 1–4 queda en ia.todo.estado; el de la fase 5, en ia.app.estado.
+export const AJUSTE_TODO_TOPE = 'ia.todo.tope_micro';
+export const AJUSTE_TODO_AUTO = 'ia.todo.auto';
+export const AJUSTE_TODO_PROPOSITOS = 'ia.todo.propositos';
+export const AJUSTE_TODO_ESTADO = 'ia.todo.estado';
+export const AJUSTE_APP_ESTADO = 'ia.app.estado';
+export const TODO_TOPE_MICRO = 90_000_000;
+const AJUSTE_TODO_AVISOS = 'ia.todo.avisos';
+export function topeTodoMicro(db) {
+  const v = Number(leerAjuste(db, AJUSTE_TODO_TOPE));
+  return leerAjuste(db, AJUSTE_TODO_TOPE) != null && Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+function gastoOtrosTodo(db) {
+  let lista = [];
+  try { lista = JSON.parse(leerAjuste(db, AJUSTE_TODO_PROPOSITOS) ?? '[]'); } catch { lista = []; }
+  const props = (Array.isArray(lista) ? lista : []).filter(x => typeof x === 'string' && /^[a-z_]{2,40}$/.test(x) && !PROPOSITOS_PROFUNDA.includes(x)).slice(0, 20);
+  if (!props.length) return 0;
+  return db.prepare(`SELECT ${GASTO_SQL} AS g FROM ia_llamadas WHERE proposito IN ${enLista(props)}`).get(...props).g ?? 0;
+}
+// Lo gastado contra el tope de la mejora: la ronda y, con «Mejorar todo» (tope compartido), también la fase 5.
+export function gastadoRonda(db, cfg, ronda) {
+  const propio = gastoProfundaMicro(db, { ronda });
+  return cfg?.profunda?.etapas && topeTodoMicro(db) != null ? propio + gastoOtrosTodo(db) : propio;
+}
+// «Ideas para el futuro» (lo que el modelo propone mejorar después: dibujos, explicaciones, cómo practicar, lo que el
+// dueño podría controlar). Una fila de «ajustes» que solo agrega (las últimas 300); la lee la fase 5 y la ve el admin.
+export const AJUSTE_IDEAS_FUTURO = 'ia.ideas.futuro';
+export function leerIdeasFuturo(db) { try { const v = JSON.parse(leerAjuste(db, AJUSTE_IDEAS_FUTURO) ?? '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+export function anotarIdeasFuturo(db, ideas, { fase, materia = null, tema = null, ahora = Date.now() }) {
+  const lista = leerIdeasFuturo(db);
+  const vistas = new Set(lista.map(x => plano(x.texto)));
+  let n = 0;
+  for (const idea of (Array.isArray(ideas) ? ideas : []).slice(0, 3)) {
+    const texto = String(idea ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 300);
+    if (texto.length < 8 || vistas.has(plano(texto))) continue;
+    vistas.add(plano(texto));
+    lista.push({ texto, fase, materia, tema, en: iso(ahora) });
+    n += 1;
+  }
+  if (n) guardarAjuste(db, AJUSTE_IDEAS_FUTURO, JSON.stringify(lista.slice(-300)));
+  return n;
+}
+function leerAvisosTodo(db) { try { return JSON.parse(leerAjuste(db, AJUSTE_TODO_AVISOS) ?? '{}') ?? {}; } catch { return {}; } }
+const avisoDado = (db, ronda, evento) => Boolean(leerAvisosTodo(db)[`r${ronda}:${evento}`]);
+export function avisoTodo(db, cfg, ronda, evento, ahora = Date.now()) {
+  const usado = gastadoRonda(db, cfg, ronda);
+  const tope = cfg.profunda.topeMicro;
+  const vistos = leerAvisosTodo(db);
+  if (evento !== 'saldo') { if (vistos[`r${ronda}:${evento}`]) return; vistos[`r${ronda}:${evento}`] = iso(ahora); guardarAjuste(db, AJUSTE_TODO_AVISOS, JSON.stringify(vistos)); }
+  abrirAviso(db, { clave: `ia_todo:r${ronda}:${evento}`, nivel: 'atencion', detalle: { usadoMicro: usado, topeMicro: tope, quedanMicro: Math.max(0, tope - usado) }, ahora });
+}
+// ¿Claude puede hacer «lo mejor» ahora? (sin red; la prueba gratis con Opus es aparte). → { listo, motivo }
+export function claudeListo(db, config, ahora = Date.now()) {
+  const cfgIa = leerConfigIa(db);
+  if (!cfgIa.encendida) return { listo: false, motivo: 'ia_apagada' };
+  const fila = db.prepare("SELECT prueba, pausa_motivo FROM secretos WHERE uso = 'ia_anthropic' AND espacio_id IS NULL AND estado = 'activa' ORDER BY id DESC LIMIT 1").get();
+  if (!fila) return { listo: false, motivo: 'sin_clave' };
+  if (fila.prueba === 'verificacion_identidad' || fila.pausa_motivo === 'verificacion_identidad') return { listo: false, motivo: 'verificacion_identidad' };
+  if (fila.prueba && fila.prueba !== 'ok') return { listo: false, motivo: 'clave_no_pasa', detalle: fila.prueba };
+  if (!fila.prueba) return { listo: false, motivo: 'sin_probar' };
+  const def = PROPOSITOS.profunda_escribir_opus;
+  const e = elegirProveedor(db, config, cfgIa, ahora, modelosDe(def, cfgIa), def);
+  if (!e.ok) return { listo: false, motivo: e.motivo === 'proveedor_no_usado' ? 'claude_no_usado' : e.motivo };
+  if (leerConfigFabrica(db).pausada) return { listo: false, motivo: 'fabrica_pausada' };
+  return { listo: true, motivo: null };
+}
+// Lo que pidió el dueño: con esta versión instalada y la prueba de la clave de Claude pasada, empieza SOLO (una sola vez:
+// nunca vuelve a empezar si después lo pausa). Opus y US$90 para todo. → la config nueva, o null si no tocaba.
+export function autoEmpezarTodo(db, config, { ahora = Date.now(), guardarConfig }) {
+  if (leerAjuste(db, AJUSTE_TODO_AUTO) != null) return null;
+  if (!claudeListo(db, config, ahora).listo) return null;
+  const tope = topeTodoMicro(db) ?? TODO_TOPE_MICRO;
+  const cfg = empezarProfunda(db, config, { modelo: 'opus', topeMicro: tope, guardarConfig, ahora });
+  guardarAjuste(db, AJUSTE_TODO_AUTO, JSON.stringify({ en: iso(ahora), ronda: cfg.profunda.ronda }));
+  return cfg;
 }
 
 // ---------- Etapa c: la «revisión muy profunda» (otra pasada independiente sobre lo PUBLICADO) ----------
@@ -970,7 +1087,7 @@ async function revisionFinal(ctx, { ahora, cfg, man, fuenteOral, dir, plan, prop
       if (rec.final.estado !== 'revisando') break;
       const examen = examenDe(t, pub, c);
       const claveRespuestas = c.oral ? examen.preguntas_del_libro.map(x => ({ n: x.n, respuesta_en: x.respuesta_en })) : examen.test_guide.map(q => ({ id: q.id, correcta: q.correcta }));
-      const pedido = { sistema: sistemaVerificar(c, props), texto: `${TAREAS_PROFUNDA.revision_final}\n${datos({ tema: t.titulo, clave: claveRespuestas, contenido: contenidoPublicado(t, pub, c) })}`, esquema: ESQUEMAS.verificar };
+      const pedido = { sistema: sistemaVerificar(c, props), texto: `${TAREAS_PROFUNDA.revision_final}\n${datos({ tema: t.titulo, clave: claveRespuestas, contenido: contenidoPublicado(t, pub, c) })}`, esquema: ESQUEMAS_PROFUNDA.revision_final };
       const p = { paso: 'final', rol: 'verificar', tipo: 'verificar', proposito: props.verificar };
       return llamar(ctx, { item: { ...item, ronda }, clave, p, pedido, revisar: () => ({ ok: true }), cfg, ahora, temaId: t.id, op: { ronda, anotarPaso: dbx => guardarProfunda(dbx, item.id, { ...estadoProfunda(dbx, item.id, ronda), tema: t.id }, ronda) } });
     }
@@ -983,19 +1100,22 @@ async function revisionFinal(ctx, { ahora, cfg, man, fuenteOral, dir, plan, prop
     if (rec.final.estado === 'revisando') {
       await ctx.escribir(() => {
         guardarFinal({ estado: 'arreglando', informe, revisadaEn: iso(ahora), arreglos: {} });
+        for (const t of pub.orden) anotarIdeasFuturo(db, leerJson(db, claveFinal(ronda, item.id, base, t.id))?.json?.ideas_futuro, { fase: 'revision', materia: item.id, tema: t.id, ahora });
         const dudas = informe.flatMap(x => x.dudas);
         anotarCambio(db, { materia: item.id, que: 'revision_final', estado: 'hecho', despues: { temas: informe.length, dudas: dudas.length, errores: dudas.filter(d => d.gravedad === 'error').length }, ...costoDe(db, prefijoPaso(item.id, ronda)), ahora });
       });
       return { trabajo: true, seguir: true };
     }
     const arreglos = rec.final.arreglos ?? {};
-    const conError = (rec.final.informe ?? informe).filter(x => x.dudas.some(d => d.gravedad === 'error') && !arreglos[x.tema]);
+    const omitidos = (rec.omitidos ?? []).map(o => ({ tema: o.tema, titulo: o.titulo, dudas: o.dudas.map(d => ({ ...d, gravedad: 'error' })) }));
+    const conError = [...omitidos, ...(rec.final.informe ?? informe).filter(x => !omitidos.some(o => o.tema === x.tema))]
+      .filter(x => x.dudas.some(d => d.gravedad === 'error') && !arreglos[x.tema]);
     if (conError.length) {
       const x = conError[0];
       const instruccion = `Corrige SOLO estos problemas que encontró la revisión contra el libro (nada más): ${x.dudas.filter(d => d.gravedad === 'error').map(d => `${d.donde}: ${d.problema}`).join(' | ')}`.slice(0, 600);
       const opArreglo = {
-        ronda, prefijo: `fabrica.profunda${sufijo(ronda)}.arreglo.${item.id}`, topeMicro: cfg.profunda.topeMicro, gastado: dbx => gastoProfundaMicro(dbx, { ronda }),
-        pasoPrefijo: `${prefijoPaso(item.id, ronda)}a:`, que: 'revision_arreglo', edicion: 'revision', detalle: instruccion, props,
+        ronda, prefijo: `fabrica.profunda${sufijo(ronda)}.arreglo.${item.id}`, topeMicro: cfg.profunda.topeMicro, gastado: dbx => gastadoRonda(dbx, cfg, ronda),
+        pasoPrefijo: `${prefijoPaso(item.id, ronda)}a:`, que: 'revision_arreglo', edicion: 'revision', detalle: instruccion, props, auto: true,
         anotarPaso: dbx => guardarProfunda(dbx, item.id, { ...estadoProfunda(dbx, item.id, ronda), tema: x.tema }, ronda),
         guardarEstado: (dbx, valor) => {
           const e = estadoProfunda(dbx, item.id, ronda);
@@ -1055,10 +1175,10 @@ export function vistaProfunda(db, config, { ahora = Date.now(), cuota, man = nul
   const dir = carpetaFuentes(config);
   const plan = planProfundo(db, config, { man, fuenteOral, ronda });
   const medidas = medidasDe(db);
-  const falta = { temas: 0, pasos: 0, escribir: 0, verificar: 0, micro: 0, etaMs: 0 };
+  const falta = { temas: 0, pasos: 0, escribir: 0, verificar: 0, micro: 0, etaMs: 0, porModelo: { opus: 0, sonnet: 0 } };
   const materias = plan.map(item => {
     const fila = { id: item.id, oral: item.oral, num: item.num, nombre: item.nombre, estado: item.estado, temas: 0, saltados: 0, pasos: 0, hechos: 0, pct: HECHOS.has(item.estado) ? 100 : 0,
-      gastoMicro: gastoProfundaMicro(db, { materia: item.id, ronda }), dudas: (item.rec.dudas ?? []).length, version: item.rec.version ?? null, problema: item.rec.problema ?? null, temasMejorados: item.rec.temasMejorados ?? null,
+      gastoMicro: gastoProfundaMicro(db, { materia: item.id, ronda }), omitidos: (item.rec.omitidos ?? []).length, dudas: (item.rec.dudas ?? []).length, version: item.rec.version ?? null, problema: item.rec.problema ?? null, temasMejorados: item.rec.temasMejorados ?? null,
       tema: item.rec.tema ?? null, final: item.rec.final ? { estado: item.rec.final.estado, temas: (item.rec.final.informe ?? []).length, errores: (item.rec.final.informe ?? []).reduce((n, x) => n + x.dudas.filter(d => d.gravedad === 'error').length, 0) } : null };
     if (!item.pendiente) return fila;
     const info = temasDe(db, dir, { ...item }, man, fuenteOral, props);
@@ -1070,6 +1190,10 @@ export function vistaProfunda(db, config, { ahora = Date.now(), cuota, man = nul
       if (listos.length < x.pasos.length) falta.temas += 1;
       for (const p of x.pasos) if (!listos.includes(p)) { if (p.rol === 'escribir') falta.escribir += 1; else falta.verificar += 1; }
       falta.micro += estimarTema(x, props, medidas, { hechoPaso: p => hecho(x.leer(p.paso)) }).micro;
+      for (const m of ['opus', 'sonnet']) {
+        const otro = m === modelo ? x : { ...x, pasos: pasosProfundos(x.leer, x.c, x.viejas, MODOS[m], { explicables: explicablesDe(x.t, item.pub, x.c) }) };
+        falta.porModelo[m] += estimarTema(otro, MODOS[m], medidas, { hechoPaso: p => hecho(x.leer(p.paso)) }).micro;
+      }
     }
     fila.pct = fila.pasos ? Math.floor((fila.hechos * 100) / (fila.pasos + 1)) : 0;
     return fila;
@@ -1088,7 +1212,7 @@ export function resumenProfunda(db) {
     const e = estadoProfunda(db, id, ronda);
     return { id, oral: MATERIAS_ORAL.includes(id), estado: e.estado, tema: e.tema ?? null, final: e.final?.estado ?? null, version: e.version ?? null };
   });
-  const gasto = gastoProfundaMicro(db, { ronda });
+  const gasto = gastadoRonda(db, cfg, ronda);
   const cuenta = f => materias.filter(f).length;
   const trabajando = materias.find(m => ['mejorando', 'verificando'].includes(m.estado)) ?? materias.find(m => ['revisando', 'arreglando'].includes(m.final)) ?? null;
   const empezo = materias.some(m => m.estado !== 'pendiente');
@@ -1102,12 +1226,16 @@ export function resumenProfunda(db) {
 
 // 0.14.7: «Mejorar todo con Claude»: enciende la mejora con el modelo y el tope elegidos y con sus etapas (a, b y c).
 // Si la ronda de ahora ya no tiene nada por hacer, empieza una nueva (lo de antes queda guardado). → la config nueva.
-export function empezarProfunda(db, config, { modelo = 'opus', topeMicro = null, guardarConfig }) {
+export function empezarProfunda(db, config, { modelo = 'opus', topeMicro = null, guardarConfig, ahora = Date.now() }) {
   const cfg = leerConfigFabrica(db);
   const r = resumenProfunda(db);
-  const nueva = r.empezo && r.terminada && !r.materias.some(m => ['pendiente', 'fuera'].includes(m.estado) && m.estado === 'fuera');
+  const nueva = r.empezo && r.terminada && !r.materias.some(m => m.estado === 'fuera');
   const ronda = nueva ? cfg.profunda.ronda + 1 : cfg.profunda.ronda;
-  return guardarConfig(db, { pausada: false, profunda: { activa: true, modelo, etapas: true, ronda, ...(topeMicro != null ? { topeMicro } : {}) } });
+  const tope = topeMicro ?? topeTodoMicro(db) ?? cfg.profunda.topeMicro;
+  const nuevaCfg = guardarConfig(db, { pausada: false, profunda: { activa: true, modelo, etapas: true, ronda, topeMicro: tope } });
+  guardarAjuste(db, AJUSTE_TODO_TOPE, String(tope));
+  avisoTodo(db, nuevaCfg, ronda, 'empieza', ahora);
+  return nuevaCfg;
 }
 
 // Publicar lo que esperaba revisión (lo hace el administrador desde la pantalla).
@@ -1128,3 +1256,65 @@ export function informeProfunda(db, materia) {
   return { materia, estado: e.estado, version: e.version ?? null, dudas: e.dudas ?? [], corregidos: e.corregidos ?? [], errores: e.errores ?? [], tgAlterado: [], saltados: e.saltados ?? [], en: e.en ?? null, problema: e.problema ?? null,
     final: e.final ? { estado: e.final.estado, informe: e.final.informe ?? [], arreglos: e.final.arreglos ?? {} } : null };
 }
+
+// ---------- 0.14.7: «Qué está haciendo Claude ahora»: las 5 fases (solo lee; la pantalla lo pide cada pocos segundos) ----------
+//  1 «Leyendo los libros» (el plan de cada tema, con su lectura entera) · 2 «Mejorando las explicaciones» (tarjetas,
+//  explicaciones del Test Guide y del oral, verificadas) · 3 «Agregando dibujos y visuales» (llegan con cada materia
+//  publicada) · 4 «Revisión profunda» (la etapa c) · 5 «Mejorando lo visual de la app» (otra parte: ia.app.estado).
+// → { estado: 'apagada'|'trabajando'|'sin_saldo'|'pausada'|'terminada'|'esperando', fases: [{ id, estado: 'hecha'|'ahora'|'falta'|'pronto', pct, actual }], … }
+const FASES = Object.freeze(['leer', 'explicar', 'dibujos', 'revision', 'app']);
+let memoFases = null;
+export function fasesTodo(db, config, { ahora = Date.now(), memoMs = 0 } = {}) {
+  if (memoMs && memoFases && memoFases.db === db && ahora - memoFases.en < memoMs && memoFases.ahora <= ahora) return memoFases.valor;
+  const cfg = leerConfigFabrica(db);
+  const { activa, ronda, etapas, topeMicro } = cfg.profunda;
+  const props = propsDe(cfg);
+  const { dir, fuenteOral, man } = fuentesDe(config);
+  const plan = planProfundo(db, config, { man, fuenteOral, ronda });
+  const elegibles = plan.filter(x => x.pendiente || HECHOS.has(x.estado) || x.estado === 'fuera');
+  const total = Math.max(1, elegibles.length);
+  const hechas = elegibles.filter(x => HECHOS.has(x.estado)).length;
+  const actual = plan.find(x => x.pendiente && ['mejorando', 'verificando'].includes(x.rec.estado)) ?? null;
+  let f1 = 0;
+  let f2 = 0;
+  let temaActual = null;
+  if (actual) {
+    const info = temasDe(db, dir, actual, man, fuenteOral, props);
+    const temas = [...info.values()].filter(x => x.c);
+    const n = Math.max(1, temas.length);
+    f1 = temas.filter(x => hecho(x.leer('plan'))).length / n;
+    f2 = temas.filter(x => x.pasos.filter(p => p.rol === 'escribir').every(p => hecho(x.leer(p.paso)))).length / n;
+    temaActual = info.get(actual.rec.tema)?.t?.titulo ?? temas.find(x => x.pasos.some(p => !hecho(x.leer(p.paso))))?.t?.titulo ?? null;
+  }
+  const nombre = x => (x ? { id: x.id, nombre: x.nombre ?? null, oral: x.oral, num: x.num } : null);
+  const paraRevisar = elegibles.filter(x => ['publicada', 'saltada'].includes(x.estado));
+  const revisadas = paraRevisar.filter(x => x.rec.final?.estado === 'hecha').length;
+  const enRevision = paraRevisar.find(x => x.rec.final && x.rec.final.estado !== 'hecha') ?? null;
+  const etapaA = elegibles.some(x => x.pendiente && x.rec.estado !== 'fuera');
+  const pct = x => Math.max(0, Math.min(100, Math.floor(x * 100)));
+  const fases = [
+    { id: 'leer', pct: pct((hechas + f1) / total) },
+    { id: 'explicar', pct: pct((hechas + f2) / total) },
+    { id: 'dibujos', pct: pct(hechas / total) },
+    { id: 'revision', pct: etapas ? pct(paraRevisar.length ? revisadas / paraRevisar.length : 0) : 0 },
+  ].map((f, i) => ({ ...f, estado: f.pct >= 100 && (i < 3 ? !etapaA : true) ? 'hecha' : (i < 3 ? etapaA && activa : !etapaA && activa && etapas) ? 'ahora' : 'falta',
+    actual: i < 3 ? (actual ? { materia: nombre(actual), tema: temaActual } : null) : enRevision ? { materia: nombre(enRevision), tema: null } : null }));
+  let app = null;
+  try { app = JSON.parse(leerAjuste(db, AJUSTE_APP_ESTADO) ?? 'null'); } catch { app = null; }
+  fases.push({ id: 'app', estado: ['hecha', 'ahora', 'falta'].includes(app?.estado) ? app.estado : 'pronto', pct: Number.isFinite(app?.pct) ? Math.max(0, Math.min(100, Math.floor(app.pct))) : 0, actual: typeof app?.actual === 'string' ? { texto: app.actual.slice(0, 200) } : null });
+  const espera = leerJson(db, AJUSTE_ESPERA);
+  const gasto = gastadoRonda(db, cfg, ronda);
+  const r = resumenProfunda(db);
+  const ultima = plan.filter(x => x.rec.en || x.rec.tema).sort((a, b) => String(b.rec.en ?? '').localeCompare(String(a.rec.en ?? '')))[0] ?? null;
+  const estado = !activa ? (r.empezo ? 'pausada' : 'apagada')
+    : etapas && r.terminada && !etapaA && !enRevision ? 'terminada'
+      : espera && SIN_SALDO.has(espera.motivo) ? 'sin_saldo' : actual || enRevision ? 'trabajando' : 'esperando';
+  const valor = {
+    estado, ronda, etapas: etapas === true, modelo: cfg.profunda.modelo, topeMicro, gastoMicro: gasto, quedanMicro: Math.max(0, topeMicro - gasto), espera,
+    hasta: actual ? { materia: nombre(actual), tema: temaActual } : ultima ? { materia: nombre(ultima), tema: null } : null,
+    fuera: plan.filter(x => x.rec.estado === 'fuera').map(nombre), conteo: r.conteo, fases,
+  };
+  memoFases = { db, en: ahora, ahora, valor };
+  return valor;
+}
+export { FASES };

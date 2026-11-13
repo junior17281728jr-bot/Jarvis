@@ -126,3 +126,37 @@ export async function probarSecreto(db, config, { id, usuarioId = null, reanudar
   const actual = db.prepare('SELECT * FROM secretos WHERE id = ?').get(fila.id);
   return { motivo, reanudada, secreto: secretoPublico(actual, { huellaActual: llave.listo ? llave.huella : null, ahora: momento }) };
 }
+
+// 0.14.7: la prueba GRATIS de un modelo de Claude en particular (count_tokens con ESE modelo), para «Mejorar todo con
+// Claude (lo mejor)»: que la clave pase con Haiku no dice que pueda usar Opus. No cambia la prueba de la clave (esa sigue
+// con su modelo); lo que dijo queda en «ajustes» (ia.prueba.modelo.<modelo>). → { motivo }
+export const MODELOS_PROBABLES = Object.freeze(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']);
+export async function probarModeloClaude(db, config, { modelo, senal = null, ahora = Date.now }) {
+  if (!MODELOS_PROBABLES.includes(modelo)) throw new ErrorHttp(400, 'datos_no_validos');
+  const fila = db.prepare("SELECT * FROM secretos WHERE uso = 'ia_anthropic' AND espacio_id IS NULL AND estado = 'activa' ORDER BY id DESC LIMIT 1").get();
+  let motivo;
+  if (!fila) motivo = 'sin_clave';
+  else {
+    let valor = leerSecreto(db, config, { id: fila.id });
+    if (valor == null) motivo = 'clave_ilegible';
+    else {
+      try {
+        valor = validarValor(fila.uso, valor);
+        const adaptador = PROVEEDORES.anthropic;
+        const cfg = leerConfigIa(db);
+        const p = adaptador.prueba({ modelo });
+        const respuesta = await llamarProveedor({ url: urlDe(adaptador, config, p.ruta, cfg), metodo: p.metodo, cabeceras: adaptador.cabeceras(valor), cuerpo: p.cuerpo, senal, timeoutMs: PRUEBA_MS, permitido: hostDe(adaptador, cfg), topeBytes: PRUEBA_MAX_BYTES });
+        motivo = adaptador.leerPrueba(respuesta);
+      } catch {
+        motivo = motivo ?? 'error_proveedor';
+      } finally {
+        valor = null;
+      }
+    }
+  }
+  if (!MOTIVOS.includes(motivo)) motivo = 'error_proveedor';
+  const momento = typeof ahora === 'function' ? ahora() : ahora;
+  db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
+    ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(`ia.prueba.modelo.${modelo}`, JSON.stringify({ motivo, en: new Date(momento).toISOString() }), new Date(momento).toISOString());
+  return { motivo };
+}

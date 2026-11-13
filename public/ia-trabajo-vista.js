@@ -129,12 +129,12 @@ export function pantallaPidele(d, h, { alCambiar } = {}) {
   };
   const burbuja = m => {
     if (m.de === 'dueno') return el('div', { class: 'pidele-msg pidele-dueno' }, el('p', { texto: m.texto }), el('span', { class: 'suave chica', texto: h.fecha(m.en) }));
-    const texto = m.rechazo ? t(`pidele.rechazo.${m.rechazo}`) : m.error ? t('pidele.error', { motivo: h.tSi(`ia.motivo.${m.error}`, m.error) }) : m.texto;
+    const texto = m.avisoTrabajo ? t(`pidele.aviso_trabajo.${m.avisoTrabajo}`) : m.rechazo ? t(`pidele.rechazo.${m.rechazo}`) : m.error ? t('pidele.error', { motivo: h.tSi(`ia.motivo.${m.error}`, m.error) }) : m.texto;
     return el('div', { class: `pidele-msg pidele-ia${m.rechazo ? ' pidele-rechazo' : ''}` },
       el('p', { texto }),
       m.rechazo && m.texto ? el('p', { class: 'suave chica', texto: m.texto }) : null,
       m.planNoValido ? el('p', { class: 'aviso chica', texto: t('pidele.plan_no_valido') }) : null,
-      m.trabajo && trabajos.has(m.trabajo) ? cajaTrabajo(trabajos.get(m.trabajo)) : null,
+      m.trabajo && !m.avisoTrabajo && trabajos.has(m.trabajo) ? cajaTrabajo(trabajos.get(m.trabajo)) : null,
       el('span', { class: 'suave chica', texto: [h.fecha(m.en), m.costoMicro ? usd(m.costoMicro) : null, m.proveedor ? nombreProveedor(m.proveedor) : null].filter(Boolean).join(' · ') }));
   };
   const mensajes = el('div', { class: 'pidele-mensajes', role: 'log', 'aria-live': 'polite' },
@@ -160,13 +160,28 @@ export function pantallaPidele(d, h, { alCambiar } = {}) {
     d.pausada ? el('p', { class: 'aviso', texto: t('pidele.en_pausa') }) : null,
     el('div', { class: 'botones' }, enviar));
   const otros = d.trabajos.filter(j => !d.mensajes.some(m => m.trabajo === j.id));
+  // 0.14.7: «Lo hago solo» (sin «Hazlo») y las «Ideas para cambiar la app» (con «Copiar»).
+  const solo = el('input', { type: 'checkbox', id: 'pidele-solo', checked: d.chat?.auto !== false,
+    onchange: async e => { const r = await h.api('POST', '/api/admin/academia/fabrica/config', { chat: { auto: e.currentTarget.checked } }); if (!r.ok) h.avisar(h.textoError(r.datos.error), 'mal'); } });
+  const copiar = async (texto, boton) => {
+    try { await navigator.clipboard.writeText(texto); boton.querySelector('span').textContent = t('pidele.ideas.copiado'); } catch { h.avisar(texto, 'bien'); }
+  };
+  const botonCopiar = (texto, clave) => el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: e => copiar(texto, e.currentTarget) }, el('span', { texto: t(clave) }));
+  const ideas = el('section', { class: 'tarjeta pidele-ideas' },
+    el('h3', { texto: t('pidele.ideas.titulo') }),
+    el('p', { class: 'suave chica', texto: t('pidele.ideas.linea') }),
+    (d.ideas ?? []).length ? el('ul', {}, d.ideas.map(x => el('li', {}, el('span', { texto: `${h.fecha(x.en)} · ${x.texto}` }), botonCopiar(x.texto, 'pidele.ideas.copiar')))) : el('p', { class: 'suave', texto: t('pidele.ideas.vacio') }),
+    (d.ideas ?? []).length ? el('div', { class: 'botones' }, botonCopiar(d.ideas.map(x => `- ${x.texto}`).join('\n'), 'pidele.ideas.copiar_todas')) : null);
   return el('div', { class: 'rejilla dos' },
     el('section', { class: 'tarjeta ancha pidele' },
       el('h2', { class: 'con-icono' }, h.icono('chispa', 'icono grande'), el('span', { texto: t('admin.pestana.pidele') })),
       el('p', { class: 'suave', texto: t('pidele.linea') }),
       el('ul', { class: 'chica suave' }, ['ejemplo1', 'ejemplo2', 'ejemplo3'].map(k => el('li', { texto: t(`pidele.${k}`) }))),
       el('div', { class: 'botones' }, botonPausa(h, d.pausada), el('a', { class: 'boton-enlace secundario con-icono', href: '#contenido/ia-hizo' }, h.icono('manual'), el('span', { texto: t('admin.pestana.ia_hizo') }))),
+      el('label', { class: 'con-casilla' }, solo, el('span', { texto: t('pidele.solo') })),
+      el('p', { class: 'suave chica', texto: t('pidele.solo_linea', { tope: usd(d.chat?.topeMicro ?? 0) }) }),
       mensajes, escribir,
       el('p', { class: 'suave chica', texto: t('pidele.gasto', { usd: usd(d.gastoMicro) }) })),
-    otros.length ? el('section', { class: 'tarjeta' }, el('h3', { texto: t('pidele.trabajos') }), otros.map(cajaTrabajo)) : null);
+    otros.length ? el('section', { class: 'tarjeta' }, el('h3', { texto: t('pidele.trabajos') }), otros.map(cajaTrabajo)) : null,
+    ideas);
 }

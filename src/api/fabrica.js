@@ -15,8 +15,10 @@ import { auditar } from '../cuentas/usuarios.js';
 import { encolar } from '../tareas/cola.js';
 import { usdAMicro } from '../ia/config.js';
 import { MATERIAS, MATERIAS_ORAL } from '../academia/formato.js';
-import { informeProfunda, publicarProfundaRevisada } from '../academia/fabrica-profunda.js';
-import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, reiniciarMateria, publicarRevisada, LIMITES_FABRICA } from '../academia/fabrica.js';
+import { informeProfunda, publicarProfundaRevisada, resumenProfunda, fasesTodo, estimadoProfundo, empezarProfunda, claudeListo, topeTodoMicro, AJUSTE_TODO_TOPE, TODO_TOPE_MICRO } from '../academia/fabrica-profunda.js';
+import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, reiniciarMateria, publicarRevisada, LIMITES_FABRICA, MODELOS_PROFUNDA } from '../academia/fabrica.js';
+import { guardarAjuste } from '../academia/paquetes.js';
+import { probarModeloClaude } from '../claves/probar.js';
 import { vistaLoQueHizo } from '../academia/ia-hizo.js';
 import { vistaChat, escribirMensaje, hazlo, cancelarTrabajo, publicarTrabajo } from '../academia/pidele.js';
 
@@ -57,12 +59,21 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
       cambios.profunda = {};
       if (typeof datos.profunda.activa === 'boolean') cambios.profunda.activa = datos.profunda.activa;
       if (datos.profunda.topeUsd != null) cambios.profunda.topeMicro = usdAMicro(conPunto(datos.profunda.topeUsd), LIMITES_FABRICA.profundaMaxMicro);
+      // 0.14.7: el modelo («opus» = lo mejor; «sonnet» = más barato).
+      if (datos.profunda.modelo != null) {
+        if (!MODELOS_PROFUNDA.includes(datos.profunda.modelo)) throw new ErrorHttp(400, 'datos_no_validos');
+        cambios.profunda.modelo = datos.profunda.modelo;
+      }
     }
+    // 0.14.7: «Pídele a la IA» hace solo lo de contenido (sin «Hazlo»), o espera el «Hazlo».
+    if (typeof datos?.chat?.auto === 'boolean') cambios.chat = { auto: datos.chat.auto };
     // 0.13.1: la pista oral ya se fabrica (capítulos 1–9, tema por tema; lo ya publicado a mano se salta).
     if (typeof datos?.oral === 'boolean') cambios.oral = datos.oral;
     const antes = leerConfigFabrica(db);
     const cfg = enTransaccion(db, () => {
       const nueva = guardarConfigFabrica(db, cambios);
+      // 0.14.7: con «Mejorar todo» (tope compartido de las 5 fases), el tope nuevo también es el de todo.
+      if (cambios.profunda?.topeMicro != null && topeTodoMicro(db) != null) guardarAjuste(db, AJUSTE_TODO_TOPE, String(cambios.profunda.topeMicro));
       auditar(db, { usuarioId: usuario.id, accion: 'fabrica_config', detalle: JSON.stringify({ antes: { tope: antes.topeMicro, mejora: antes.mejora, oral: antes.oral, profunda: antes.profunda }, despues: { tope: nueva.topeMicro, mejora: nueva.mejora, oral: nueva.oral, profunda: nueva.profunda } }).slice(0, 500) });
       return nueva;
     });
@@ -103,6 +114,62 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
     return { codigo: 200, datos: r };
   }, { admin: true });
 
+  const ponerEnFila = (db, usuario) => {
+    const ahora = reloj();
+    try { encolar(db, { tipo: 'academia.fabrica', programa: 'academia.fabrica', claveUnica: `academia.fabrica@chat-${ahora}`, creadaPor: usuario.id }, { ahora }); } catch { /* ya hay una en la fila */ }
+    despertar();
+  };
+  // ---------- 0.14.7: «Mejorar todo con Claude (lo mejor)» (solo el administrador; aquí nunca se llama a la IA de pago) ----------
+  //  - GET  /api/admin/academia/profunda                  lo corto: estado, gasto, tope, las 5 fases y si Claude está listo
+  //  - GET  /api/admin/academia/profunda/estimado?topeUsd= el costo y el tiempo de cada etapa, con Opus y con Sonnet
+  //  - POST /api/admin/academia/profunda/probar           la prueba GRATIS de la clave con Opus (count_tokens)
+  //  - POST /api/admin/academia/profunda/empezar { modelo, topeUsd }   empezar (o seguir) con el tope elegido
+  //  - POST /api/admin/academia/profunda/pausa { pausada }             pausar o seguir (lo hecho queda guardado)
+  rutas.agregar('GET', '/api/admin/academia/profunda', ({ db }) => {
+    necesitaConfig();
+    const ahora = reloj();
+    return { codigo: 200, datos: { ...fasesTodo(db, config, { ahora, memoMs: 3_000 }), listo: claudeListo(db, config, ahora), topeTodoMicro: topeTodoMicro(db) ?? TODO_TOPE_MICRO } };
+  }, { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/profunda/estimado', ({ db, req }) => {
+    necesitaConfig();
+    const texto = new URL(req.url, 'http://x').searchParams.get('topeUsd');
+    const topeMicro = texto ? usdAMicro(conPunto(texto), LIMITES_FABRICA.profundaMaxMicro) : topeTodoMicro(db) ?? TODO_TOPE_MICRO;
+    const r = resumenProfunda(db);
+    const ronda = r.empezo && r.terminada && !r.materias.some(m => m.estado === 'fuera') ? leerConfigFabrica(db).profunda.ronda + 1 : null;
+    return { codigo: 200, datos: { ...estimadoProfundo(db, config, { topeMicro, ronda, ahora: reloj() }), listo: claudeListo(db, config, reloj()) } };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/profunda/probar', async ({ db }) => {
+    necesitaConfig();
+    return { codigo: 200, datos: await probarModeloClaude(db, config, { modelo: 'claude-opus-5-5', ahora: reloj }) };
+  }, { admin: true, soloDueno: true });
+  rutas.agregar('POST', '/api/admin/academia/profunda/empezar', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    const datos = await leerJson(req);
+    const modelo = datos?.modelo ?? 'opus';
+    if (!MODELOS_PROFUNDA.includes(modelo)) throw new ErrorHttp(400, 'datos_no_validos');
+    const listo = claudeListo(db, config, reloj());
+    if (modelo === 'opus' && !listo.listo) throw new ErrorHttp(409, listo.motivo);
+    const topeMicro = datos?.topeUsd != null ? usdAMicro(conPunto(datos.topeUsd), LIMITES_FABRICA.profundaMaxMicro) : null;
+    const cfg = enTransaccion(db, () => {
+      const nueva = empezarProfunda(db, config, { modelo, topeMicro, guardarConfig: guardarConfigFabrica, ahora: reloj() });
+      auditar(db, { usuarioId: usuario.id, accion: 'fabrica_config', detalle: JSON.stringify({ profunda: nueva.profunda }).slice(0, 500) });
+      return nueva;
+    });
+    ponerEnFila(db, usuario);
+    return { codigo: 200, datos: { config: cfg } };
+  }, { admin: true, soloDueno: true });
+  rutas.agregar('POST', '/api/admin/academia/profunda/pausa', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    const datos = await leerJson(req);
+    if (typeof datos?.pausada !== 'boolean') throw new ErrorHttp(400, 'datos_no_validos');
+    const cfg = enTransaccion(db, () => {
+      auditar(db, { usuarioId: usuario.id, accion: datos.pausada ? 'fabrica_pausada' : 'fabrica_reanudada', detalle: 'profunda' });
+      return guardarConfigFabrica(db, { profunda: { activa: !datos.pausada } });
+    });
+    if (!datos.pausada) ponerEnFila(db, usuario);
+    return { codigo: 200, datos: { config: cfg } };
+  }, { admin: true, soloDueno: true });
+
   // ---------- 0.14.2: «Lo que hizo la IA» y «Pídele a la IA» (solo el administrador; aquí nunca se llama a la IA) ----------
   //  - GET  /api/admin/academia/ia-hizo                       registro de cambios, números, «Lo que falta» y materiales
   //  - GET  /api/admin/academia/chat                          la charla, los trabajos y lo que cuesta un mensaje
@@ -111,11 +178,6 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
   //  - POST /api/admin/academia/chat/trabajos/:id/cancelar    deja de hacerse (lo ya hecho queda)
   //  - POST /api/admin/academia/chat/trabajos/:id/publicar    publicar lo que quedó «Esperando revisión»
   // Pausar o reanudar TODO el trabajo de la IA (fábrica + chat): POST /api/admin/academia/fabrica/pausa.
-  const ponerEnFila = (db, usuario) => {
-    const ahora = reloj();
-    try { encolar(db, { tipo: 'academia.fabrica', programa: 'academia.fabrica', claveUnica: `academia.fabrica@chat-${ahora}`, creadaPor: usuario.id }, { ahora }); } catch { /* ya hay una en la fila */ }
-    despertar();
-  };
   const idTrabajo = parametros => { if (!/^[0-9a-f]{12}$/.test(String(parametros.id))) throw new ErrorHttp(404, 'no_existe'); return parametros.id; };
   rutas.agregar('GET', '/api/admin/academia/ia-hizo', ({ db }) => { necesitaConfig(); return { codigo: 200, datos: vistaLoQueHizo(db, config, reloj()) }; }, { admin: true });
   rutas.agregar('GET', '/api/admin/academia/chat', ({ db }) => {

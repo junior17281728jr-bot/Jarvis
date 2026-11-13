@@ -1255,6 +1255,10 @@ function textoAviso(a) {
   if (cambio) return t('aviso.cambio_admin', { que: tSi(`admin.cambio.${cambio[1]}`, cambio[1]), cuenta: d.cuenta ? ` (${d.cuenta})` : '' });
   if (String(a.clave).startsWith('cuenta_compartida:')) return t('aviso.cuenta_compartida', { alumno: v(d.alumno), veces: v(d.veces) });
   if (String(a.clave).startsWith('servidor_pago:')) return textoAvisoPago(a, t, idioma); // 0.14.1
+  // 0.14.7: «Mejorar todo con Claude» y una idea para cambiar la app (guardada desde el chat).
+  const todo = /^ia_todo:r\d+:([a-z_]+)$/.exec(String(a.clave));
+  if (todo) return tSi(`aviso.ia_todo.${todo[1]}`, a.clave, { usado: usd(d.usadoMicro), tope: usd(d.topeMicro), quedan: usd(d.quedanMicro) });
+  if (String(a.clave).startsWith('ia_idea:')) return t('aviso.ia_idea');
   if (String(a.clave).startsWith('pago_recibido:')) return t('aviso.pago_recibido', { alumno: v(d.alumno), minutos: v(d.minutos), precio: v(d.precio) });
   const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
@@ -1841,9 +1845,10 @@ const piezasIa = (recargar = () => dibujar()) => ({ el, t, tSi, icono, api, avis
 // 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js, solo se carga aquí).
 async function pantallaFabrica() {
   const vigente = nuevoTurno();
-  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/fabrica'), import('./fabrica-vista.js')]);
+  const [r, vista, todo] = await Promise.all([api('GET', '/api/admin/academia/fabrica'), import('./fabrica-vista.js'), import('./todo-vista.js')]);
   if (!vigente()) return;
-  mostrar(marco('admin', cabeceraAdmin('fabrica'), r.ok ? vista.pantallaFabrica(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  // 0.14.7: arriba, «Qué está haciendo Claude ahora» (las 5 fases; se actualiza solo).
+  mostrar(marco('admin', cabeceraAdmin('fabrica'), todo.panelTodo(piezasIa()), r.ok ? vista.pantallaFabrica(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
 // 0.14.1: Sistema → «Pago del servidor».
 async function pantallaPagoServidor() {
@@ -1948,7 +1953,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     const guia = datosSistema.ok && contenido.ok
       ? guiaCompacta(pasosAcademia(pasosAdmin({ sistema: datosSistema.datos, ia: ia.ok ? ia.datos : null, proyectos: [] }), { contenido: contenido.datos, usuarios })) : null;
     // 0.13.9: «Claude (IA)» arriba de todo: el estado en palabras simples, conectar la clave y probarla gratis.
-    const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
+    const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, avisar, confirmar, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
     const lineaPago = pagoServidor?.ok ? lineaResumenPago(pagoServidor.datos, { el, t, icono }, idioma) : null; // 0.14.1
     mostrar(marco('admin', cabecera, aviso, avisoCopiasSinGuardar(datosSistema), lineaPago, claude, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
@@ -4915,6 +4920,7 @@ function confirmar(texto, { si = t('dialogo.si'), no = t('dialogo.no'), peligro 
       listo(valor);
     };
     const entrada = campo ? el('textarea', { id: 'confirmar-campo', rows: 2, maxlength: campo.max ?? 300 }) : null;
+    if (entrada && campo.valor != null) entrada.value = String(campo.valor); // 0.14.7: un valor ya puesto (el tope de US$90)
     const aceptar = () => {
       if (!entrada) return cerrar(true);
       const valor = entrada.value.trim();

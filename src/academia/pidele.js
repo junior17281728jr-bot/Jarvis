@@ -17,8 +17,10 @@ import { leerAjuste, guardarAjuste, activarPaquete } from './paquetes.js';
 import { carpetaFuentes, leerManifiesto } from './fuentes.js';
 import { REGLAS_VERIFICACION, ESQUEMAS, TAREAS, datos } from './fabrica-prompts.js';
 import { crearLector, publicado, trabajoDeTemas, temaPublicado, examenDe, MODOS_CHAT, verificarMaxDe, P } from './fabrica-profunda.js';
-import { puedeLlamar, T } from './fabrica.js';
+import { puedeLlamar, leerConfigFabrica, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
+import { abrirAviso } from '../avisos/avisos.js';
+import { mesCobro } from '../ia/presupuesto.js';
 import { GASTO_SQL } from '../ia/gasto.js';
 import { PROPOSITOS, PROPOSITOS_CHAT } from '../ia/propositos.js';
 import { leerConfigIa } from '../ia/config.js';
@@ -64,18 +66,48 @@ export function leerTrabajos(db) {
 function guardarTrabajos(db, lista) {
   guardarAjuste(db, AJUSTE_TRABAJOS, JSON.stringify(lista.slice(-100)));
 }
+const FINALES = new Set(['hecho', 'revision', 'sin_cambios', 'fallido']);
 function cambiarTrabajo(db, id, cambios) {
   const lista = leerTrabajos(db);
   const i = lista.findIndex(x => x.id === id);
   if (i < 0) return null;
   // Cancelado es final: lo que todavía estaba en camino no lo vuelve a poner «trabajando».
   if (lista[i].estado === 'cancelado' && cambios.estado !== 'cancelado') return lista[i];
+  const antes = lista[i].estado;
   lista[i] = { ...lista[i], ...cambios };
   guardarTrabajos(db, lista);
+  // 0.14.7: cuando un trabajo termina, la IA lo dice en el chat (en palabras simples).
+  if (FINALES.has(lista[i].estado) && !FINALES.has(antes) && antes !== 'cancelado') {
+    const chat = leerChat(db);
+    chat.mensajes.push({ id: id12(`${id}|fin|${lista[i].estado}`), de: 'ia', en: lista[i].terminadoEn ?? lista[i].publicadoEn ?? new Date().toISOString(), texto: null, avisoTrabajo: lista[i].estado, trabajo: id, costoMicro: 0 });
+    guardarChat(db, chat);
+  }
   return lista[i];
 }
-export function gastoChatMicro(db) {
-  return db.prepare(`SELECT ${GASTO_SQL} AS g FROM ia_llamadas WHERE proposito IN (${PROPOSITOS_CHAT.map(() => '?').join(', ')})`).get(...PROPOSITOS_CHAT).g;
+// 0.14.7: el tope del chat es del MES (US$10 por defecto), aparte del de «Mejorar todo».
+export function gastoChatMicro(db, ahora = Date.now()) {
+  return db.prepare(`SELECT ${GASTO_SQL} AS g FROM ia_llamadas WHERE mes = ? AND proposito IN (${PROPOSITOS_CHAT.map(() => '?').join(', ')})`).get(mesCobro(ahora), ...PROPOSITOS_CHAT).g;
+}
+
+// ---------- 0.14.7: «Ideas para cambiar la app» ----------
+// Lo que el chat no hace porque es del código o de la pantalla (rechazo «codigo») no se pierde: queda en esta lista
+// (una fila de «ajustes», solo agrega, las últimas 200) para pasársela al programador, con un aviso corto por Telegram
+// (sin el texto de la idea). La ve el administrador en «Pídele a la IA» con «Copiar».
+export const AJUSTE_IDEAS = 'ia.ideas';
+export const MAX_IDEAS = 200;
+export function leerIdeas(db) {
+  const v = leerJson(db, AJUSTE_IDEAS, []);
+  return Array.isArray(v) ? v : [];
+}
+export function guardarIdea(db, { texto, ahora = Date.now() }) {
+  const t = String(texto ?? '').trim().slice(0, LIMITES_CHAT.texto);
+  if (!t) return null;
+  const lista = leerIdeas(db);
+  const idea = { id: id12(`idea|${iso(ahora)}|${t}|${lista.length}`), texto: t, en: iso(ahora) };
+  lista.push(idea);
+  guardarAjuste(db, AJUSTE_IDEAS, JSON.stringify(lista.slice(-MAX_IDEAS)));
+  abrirAviso(db, { clave: `ia_idea:${idea.id}`, nivel: 'atencion', ahora });
+  return idea;
 }
 
 // Lo que cuesta UN mensaje (para la pantalla): lo medido (3 o más) o, si no, uno típico (6 000 tokens de entrada, 800
@@ -156,6 +188,7 @@ export function escribirMensaje(db, { texto, ahora = Date.now() }) {
     // Se rechaza en código, gratis: ni se llama a la IA.
     mio.estado = 'rechazado';
     chat.mensajes.push(mio, { id: id12(`${mio.id}r`), de: 'ia', en: iso(ahora), texto: null, rechazo: motivo, costoMicro: 0 });
+    if (motivo === 'codigo') guardarIdea(db, { texto: t, ahora });
   } else chat.mensajes.push(mio);
   guardarChat(db, chat);
   return { mensaje: mio, rechazado: motivo };
@@ -187,7 +220,7 @@ export function vistaChat(db, config, { ahora = Date.now(), pausada = false } = 
   const chat = leerChat(db);
   return {
     mensajes: chat.mensajes.slice(-60), trabajos: leerTrabajos(db).slice(-30).reverse(), pausada,
-    estimado: estimadoMensaje(db, config, ahora), gastoMicro: gastoChatMicro(db),
+    estimado: estimadoMensaje(db, config, ahora), gastoMicro: gastoChatMicro(db, ahora), ideas: leerIdeas(db).slice(-50).reverse(), chat: leerConfigFabrica(db).chat,
     pendiente: chat.mensajes.some(x => x.de === 'dueno' && x.estado === 'pendiente') || leerTrabajos(db).some(x => ['en_cola', 'trabajando'].includes(x.estado)),
   };
 }
@@ -231,7 +264,7 @@ async function responderMensaje(ctx, { ahora, cfg, chat, mio }) {
     guardarChat(db, c);
     if (valor.trabajo) guardarTrabajos(db, [...leerTrabajos(db), valor.trabajo]);
   });
-  const puede = puedeLlamar(db, config, { proposito: 'chat_admin', bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db) });
+  const puede = puedeLlamar(db, config, { proposito: 'chat_admin', bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db, ahora) });
   if (!puede.ok) {
     await marcar({ estadoMio: 'error', respuesta: { id: id12(`${mio.id}e`), de: 'ia', en: iso(ahora), texto: null, error: puede.motivo, costoMicro: 0 } });
     return { trabajo: true, seguir: false, motivo: puede.motivo };
@@ -250,10 +283,13 @@ async function responderMensaje(ctx, { ahora, cfg, chat, mio }) {
     if (rev.ok) {
       const est = estimarPlan(db, config, rev.plan, propsChat(cfg, db, config, ahora));
       const pub = publicado(db, config, rev.plan.materia);
-      trabajo = { id: id12(`t|${mio.id}|${iso(ahora)}`), ...rev.plan, estado: 'propuesto', estimadoMicro: est.micro, pasosEstimados: est.pasos, base: pub?.base ?? null, mensaje: mio.id, creadoEn: iso(ahora), hechos: 0 };
+      // 0.14.7: el contenido se hace solo (sin «Hazlo»), salvo que el dueño apague «hacerlo solo» (cfg.chat.auto).
+      const solo = cfg.chat?.auto !== false;
+      trabajo = { id: id12(`t|${mio.id}|${iso(ahora)}`), ...rev.plan, estado: solo ? 'en_cola' : 'propuesto', ...(solo ? { aprobadoEn: iso(ahora), solo: true } : {}), estimadoMicro: est.micro, pasosEstimados: est.pasos, base: pub?.base ?? null, mensaje: mio.id, creadoEn: iso(ahora), hechos: 0 };
     } else if (rev.motivo.startsWith('prohibido:')) rechazo = rev.motivo.slice('prohibido:'.length);
     else nota = rev.motivo; // un plan con una materia o un tema que no existe: no se ofrece «Hazlo»
   }
+  if (rechazo === 'codigo') await ctx.escribir(() => guardarIdea(db, { texto: mio.texto, ahora }));
   await marcar({
     estadoMio: rechazo ? 'rechazado' : 'respondido', resumen: String(j.resumen ?? '').slice(0, 1500),
     respuesta: { id: id12(`${mio.id}r`), de: 'ia', en: iso(ahora), texto: String(j.respuesta ?? '').slice(0, 2000), rechazo, planNoValido: nota, trabajo: trabajo?.id ?? null, costoMicro: r.costoMicro, proveedor: r.proveedor, modelo: r.modelo },
@@ -295,7 +331,7 @@ async function pasoRevisar(ctx, { ahora, cfg, j }) {
   const tarjetas = tp.viejas.map(({ s }) => ({ titulo: s.titulo, puntos: s.puntos ?? null, texto: s.tipo === 'tarjeta' ? null : s.texto ?? null, recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null, visual: s.visual?.parametros ?? null }));
   const texto = `${TAREAS.verificar}\n${datos({ pedido_del_dueno: j.instruccion, clave_test_guide: clave, contenido: { tarjetas, preguntas } })}`;
   const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(ESQUEMAS.verificar));
-  const puede = puedeLlamar(db, config, { proposito: props.verificar, bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db) });
+  const puede = puedeLlamar(db, config, { proposito: props.verificar, bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db, ahora) });
   if (!puede.ok) {
     if (puede.motivo === 'demasiado_largo') { await ctx.escribir(() => cambiarTrabajo(db, j.id, { estado: 'trabajando', informe: [...informe, { tema: pendiente.id, titulo: pendiente.titulo, demasiadoLargo: true, dudas: [] }] })); return { trabajo: true, seguir: true }; }
     await ctx.escribir(() => cambiarTrabajo(db, j.id, { espera: puede.motivo }));
@@ -312,7 +348,7 @@ async function pasoReescribir(ctx, { ahora, cfg, j }) {
   const { db } = ctx;
   const op = {
     prefijo: `chat.t.${j.id}`, props: propsChat(cfg, db, ctx.config, ahora),
-    topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro, pasoPrefijo: `c:${j.id}:`, ajusteEspera: `chat.t.${j.id}.espera`, base: j.base, que: 'pedido_hecho', edicion: 'pedido',
+    topeMicro: cfg.chat.topeMicro, gastado: dbx => gastoChatMicro(dbx, ahora), pasoPrefijo: `c:${j.id}:`, ajusteEspera: `chat.t.${j.id}.espera`, base: j.base, que: 'pedido_hecho', edicion: 'pedido',
     anotarPaso: dbx => { const x = leerTrabajos(dbx).find(y => y.id === j.id); cambiarTrabajo(dbx, j.id, { estado: 'trabajando', espera: null, hechos: (x?.hechos ?? 0) + 1 }); },
     guardarEstado: (dbx, valor) => cambiarTrabajo(dbx, j.id, {
       estado: valor.estado === 'publicada' ? 'hecho' : valor.estado === 'revision' ? 'revision' : 'sin_cambios', version: valor.version ?? null,

@@ -54,6 +54,11 @@ export const AVISO_CUENTA_COMPARTIDA = /^cuenta_compartida:[1-9]\d{0,9}:\d{4}-\d
 // ('fabrica_revision:<materia>:g<generación>' o ':m<versión>') o la mejora continua publicó ('fabrica_mejora:<materia>:<versión>'). 0.13.9: la mejora profunda publicó ('fabrica_profunda:<materia>:<versión>').
 export const AVISO_FABRICA = /^fabrica_(?:publicada:[a-z_]{2,30}:[1-9]\d{0,9}|revision:[a-z_]{2,30}:[gm][1-9]\d{0,9}|mejora:[a-z_]{2,30}:[1-9]\d{0,9}|profunda:[a-z_]{2,30}:[1-9]\d{0,9})$/;
 
+// 0.14.7: «Mejorar todo con Claude»: empezó, terminó de reescribir (fases 1–3), terminó todo, o se acabó el saldo
+// ('ia_todo:r<ronda>:<empieza|a_fin|fin|saldo>'), y una idea para cambiar la app guardada desde el chat ('ia_idea:<id>').
+export const AVISO_IA_TODO = /^ia_todo:r[1-9]\d?:(?:empieza|a_fin|fin|saldo)$/;
+export const AVISO_IA_IDEA = /^ia_idea:[0-9a-f]{12}$/;
+
 // 0.14.1: los recordatorios del pago del servidor ('servidor_pago:<AAAA-MM>:<d7|d2|d0|auto>', src/avisos/pago-servidor.js).
 export const AVISO_SERVIDOR_PAGO = /^servidor_pago:\d{4}-(?:0[1-9]|1[0-2]):(?:d7|d2|d0|auto)$/;
 
@@ -63,7 +68,8 @@ const RANGO_SQL = columna => `CASE ${columna} WHEN 'info' THEN 0 WHEN 'atencion'
 export function claveDeAvisoValida(clave) {
   const texto = String(clave);
   return CLAVES_AVISO.includes(clave) || FRENO.test(texto) || AVISO_IA_TOPE.test(texto) || AVISO_IA_RESUMEN.test(texto) || AVISO_IA_PROVEEDOR.test(texto) || AVISO_IA_LLAMADAS.test(texto)
-    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto) || AVISO_CUENTA_COMPARTIDA.test(texto) || AVISO_FABRICA.test(texto) || AVISO_SERVIDOR_PAGO.test(texto);
+    || AVISO_ACTUALIZACION.test(texto) || AVISO_HECHO.test(texto) || AVISO_CUENTA_COMPARTIDA.test(texto) || AVISO_FABRICA.test(texto) || AVISO_SERVIDOR_PAGO.test(texto)
+    || AVISO_IA_TODO.test(texto) || AVISO_IA_IDEA.test(texto);
 }
 
 function textoDetalle(detalle) {

@@ -120,7 +120,7 @@ export function estadoClaude({ claves = null, ia = null } = {}, ahora = Date.now
   const e = estadoDeClave(a, ahora);
   const base = { id: a.id, final: a.final ?? null, pausada: e.estado === 'pausada', iaEncendida: ia?.encendida === true };
   if (a.prueba === 'verificacion_identidad' || a.pausa?.motivo === 'verificacion_identidad') return { ...base, estado: 'esperando_verificacion', tono: 'atencion', motivo: 'verificacion_identidad' };
-  if (e.estado === 'activa') return { ...base, estado: 'conectado', tono: e.tono, usadoMicro: Number(ia?.usadoMicro) || 0, topeMicro: Number(ia?.topeGeneralMicro) || 0, probada: a.prueba === 'ok' };
+  if (e.estado === 'activa') return { ...base, estado: 'conectado', tono: e.tono, usadoMicro: Number(ia?.usadoMicro) || 0, topeMicro: Number(ia?.topeGeneralMicro) || 0, probada: a.prueba === 'ok', modelo: (ia?.proveedores ?? []).find(p => p?.id === 'anthropic')?.modelo ?? (ia?.proveedorActivo === 'anthropic' ? ia.modelo ?? null : null) };
   return { ...base, estado: e.estado, tono: e.tono, motivo: e.estado === 'pausada' ? a.pausa?.motivo ?? null : a.prueba ?? null };
 }
 
