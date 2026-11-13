@@ -48,7 +48,9 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
       if (typeof datos.mejora.activa === 'boolean') cambios.mejora.activa = datos.mejora.activa;
       if (datos.mejora.topeUsd != null) cambios.mejora.topeMesMicro = usdAMicro(conPunto(datos.mejora.topeUsd), LIMITES_FABRICA.mejoraMaxMicro);
     }
-    if (typeof datos?.oral === 'boolean') cambios.oral = datos.oral;
+    // La pista oral todavía no se fabrica (README): encenderla no haría nada, así que no se deja.
+    if (datos?.oral === true) throw new ErrorHttp(409, 'no_disponible');
+    if (datos?.oral === false) cambios.oral = false;
     const antes = leerConfigFabrica(db);
     const cfg = enTransaccion(db, () => {
       const nueva = guardarConfigFabrica(db, cambios);

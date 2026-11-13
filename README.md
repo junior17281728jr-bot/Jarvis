@@ -734,8 +734,11 @@ se comprueban otra vez al armar (`tgAlterado`); si algo no cuadra, no se guarda 
   parte); verificar y sacar pasajes con **Claude Haiku 5.5**. Salida 4 096 tokens y 60 s por llamada, como todo. **Excepción
   pensada** (la conoce `test/reglas.test.js`): escribir puede apartar hasta US$0,26 por vez (la lectura entra entera, hasta
   72 KB). **Sin Batch API**: la capa de la IA es «apartar → UNA llamada → anotar» en pasos de un minuto; la Batch API (50 %
-  menos) tarda hasta 24 h por lote y la fábrica tiene ~8 pasos encadenados por tema; con la caché el ahorro de la Batch API
-  sería de unos US$5 en total. Estimado para 10 materias (~715 preguntas, ~31 temas): **≈ US$12–16**.
+  menos) tarda hasta 24 h por lote y cada tema tiene ~15 llamadas encadenadas (plan → tarjetas → preguntas → …); con la
+  caché el ahorro de la Batch API sería de unos US$5 en total. Estimado para 10 materias (~715 preguntas, ~31 temas):
+  ~470 llamadas, **≈ US$12–16**, y con 30 llamadas por hora (la fábrica usa 15) **unas 31 horas**; para gastar los US$20 en
+  un solo mes, el tope general del mes tiene que ser de US$25 o más (la fábrica deja libre el 20 %). Medido: instalar un
+  paquete de fuentes de 81 MB en 9 partes con el trabajador (64 MB de heap) llega a 63 MB de memoria (tope: 120 MB).
 - **Topes**: el propio (por defecto **US$20**, editable hasta US$100) además del general del mes, del que la fábrica deja
   siempre libre el 20 % para los alumnos; usa como mucho la **mitad de las llamadas de la hora** (y nunca el último tercio).
   Nunca llama si está en pausa o terminada, sin fuentes, con la IA apagada, la clave en pausa o que no sirve, o sin tope.
@@ -759,7 +762,7 @@ se comprueban otra vez al armar (`tgAlterado`); si algo no cuadra, no se guarda 
 - **Pista «Preparándote para el examen oral»** (lo que ya está): el formato acepta `pista: "oral"` con sus materias
   `oral_*` (nunca se mezclan con las 11), preguntas `origen: "oral"` con `fuente_pregunta` (pregunta y respuesta del libro
   tal cual, página y cómo se armó) y `libro_qa` por tema (verbatim); las fuentes traen `oral/oral.json` y `oral-capNN.txt`
-  y el plan lo muestra. **Lo que falta (a propósito, detrás del interruptor `oral`, apagado):** fabricar esa pista
+  y el plan lo muestra. **Lo que falta (a propósito; el interruptor `oral` no se puede encender todavía: la ruta responde `no_disponible`):** fabricar esa pista
   (capítulos 3–8, escenarios y examen final; los capítulos 1–2 llegan hechos a mano y se saltan) y su sección en la app
   (Camino propio, «¿De dónde salió?» de cada pregunta creada, examen final y «Listo para el oral»).
 - Rutas: `GET /api/admin/academia/fabrica`, `GET …/fabrica/:materia/informe`, `POST …/fabrica/{pausa,config,ahora}`,

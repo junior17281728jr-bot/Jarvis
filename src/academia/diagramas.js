@@ -65,7 +65,7 @@ export function revisarDiagrama(tipo, p) {
 
 // ¿La tarjeta de la fábrica tiene algo que se VEA? (foto del libro, un dibujo bien llenado, o «solo texto» con motivo)
 export function tarjetaConVisual(s) {
-  if (s?.imagen?.archivo) return true;
+  if (s?.imagen?.archivo || s?.clip?.archivo) return true;
   if (s?.visual?.tipo && (VISUALES_SIMPLES.includes(s.visual.tipo) || (TIPOS_DIAGRAMA.includes(s.visual.tipo) && !revisarDiagrama(s.visual.tipo, s.visual.parametros).length))) return true;
   return typeof s?.solo_texto === 'string' && s.solo_texto.trim().length >= 10;
 }

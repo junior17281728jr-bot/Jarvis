@@ -143,7 +143,7 @@ export function pasosDeTema(db, materia, gen, tema, { largo, preguntas }) {
   if (largo > T.lecturaDirectaBytes) pasos.push({ paso: 'extracto', proposito: 'fabrica_verificar', tipo: 'extracto' });
   pasos.push({ paso: 'plan', proposito: 'fabrica_escribir', tipo: 'plan' });
   const plan = leerSalida(db, materia, gen, tema, 'plan');
-  const n = plan?.json?.tarjetas?.length ?? 6;
+  const n = plan?.fallido ? 0 : plan?.json?.tarjetas?.length ?? 6;
   for (let i = 0; i < Math.ceil(n / T.tarjetasPorPaso); i++) pasos.push({ paso: `tarjetas-${i + 1}`, proposito: 'fabrica_escribir', tipo: 'tarjetas', desde: i * T.tarjetasPorPaso, estimado: !plan });
   for (let i = 0; i < Math.ceil(preguntas / T.preguntasPorPaso); i++) pasos.push({ paso: `preguntas-${i + 1}`, proposito: 'fabrica_escribir', tipo: 'preguntas', desde: i * T.preguntasPorPaso });
   pasos.push({ paso: 'cierre', proposito: 'fabrica_escribir', tipo: 'cierre' });
@@ -551,6 +551,8 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       return fin({ motivo: puede.motivo });
     }
     const previo = leerJsonAjuste(db, `${clave}.intentos`) ?? { n: 0 };
+    // Un intento que se repite dice por qué no sirvió el anterior (si no, el modelo respondería lo mismo).
+    if (previo.n > 0 && previo.motivo) pedido.texto += `\n\nEl intento anterior no sirvió (${previo.motivo}): corrígelo.`;
     // Ya se pagó este intento y su respuesta quedó guardada (la tarea se cortó justo después): se usa, sin llamar.
     const yaPagado = leerJsonAjuste(db, `${clave}.crudo`);
     const r = yaPagado?.intento === previo.n && yaPagado.json ? { usada: false, motivo: 'ya_cobrada' } : await ctx.ia.pedir({
@@ -571,7 +573,7 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
         });
         return { punto: {}, esperarMs: 1000 };
       }
-      return falla(ctx, clave, previo, rev.motivo, ahora);
+      return falla(ctx, clave, previo, rev.motivo, ahora, { esperaMs: 5 * 60_000 });
     }
     if (['sobrecargado', 'error_proveedor', 'sin_red', 'tiempo_agotado', 'limite_proveedor', 'base_ocupada', 'interrumpida', 'demasiadas_llamadas'].includes(r.motivo)) {
       await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: r.motivo, en: iso(ahora) }, esperaHasta: iso(ahora + T.esperaPasajeroMs) }));
@@ -583,12 +585,12 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     return fin({ motivo: r.motivo });
   };
 }
-async function falla(ctx, clave, previo, motivo, ahora) {
+async function falla(ctx, clave, previo, motivo, ahora, { esperaMs = T.esperaFallaMs } = {}) {
   const n = previo.n + 1;
   await ctx.escribir(() => {
     guardarAjuste(ctx.db, `${clave}.intentos`, JSON.stringify({ n, motivo }));
     if (n >= T.intentos) guardarAjuste(ctx.db, clave, JSON.stringify({ fallido: true, motivo, en: iso(ahora) }));
-    guardarGeneral(ctx.db, { espera: { motivo, en: iso(ahora) }, esperaHasta: iso(ahora + T.esperaFallaMs) });
+    guardarGeneral(ctx.db, { espera: { motivo, en: iso(ahora) }, esperaHasta: iso(ahora + esperaMs) });
   });
   return { listo: true, resultado: { motivo, intento: n } };
 }

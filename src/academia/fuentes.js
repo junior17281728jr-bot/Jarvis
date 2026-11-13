@@ -16,7 +16,7 @@ import { createGunzip } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { MATERIAS, ID_VALIDO, ARCHIVO_FIGURA } from './formato.js';
-import { carpetaAcademia, leerAjuste, guardarAjuste } from './paquetes.js';
+import { carpetaAcademia, leerAjuste, guardarAjuste, huellaDeArchivo } from './paquetes.js';
 import { listarCarpeta, bajarArchivo, basesDrive } from './drive.js';
 import { carpetaDrive } from './drive-estado.js';
 
@@ -274,7 +274,8 @@ const NOMBRE_PERMITIDO = n => n === ARCHIVO_MANIFIESTO || n === ARCHIVO_TG || n 
 const topeDeNombre = n => (n.endsWith('.txt') ? TOPES_FUENTES.txtBytes : n.endsWith('.json') ? TOPES_FUENTES.jsonBytes : FIGURA_TG.test(n) ? TOPES_FUENTES.figuraBytes : TOPES_FUENTES.imagenBytes);
 export const INDICE_PARTES = /^fuentes-v(\d{1,4})\.json$/;
 export const PARTE = /^fuentes-v\d{1,4}\.tar\.gz\.part\d{2,3}$/;
-const huellaArchivo = ruta => createHash('sha256').update(readFileSync(ruta)).digest('hex');
+// Por pedazos de 1 MB (una parte de 9,5 MB nunca entera en memoria).
+const huellaArchivo = ruta => huellaDeArchivo(ruta);
 
 // ---------- El paquete de fuentes en partes ----------
 // fuentes-vN.json = { version, partes: [{ archivo, sha256, bytes }], sha256_total, bytes_total }. → { ok, indice } o { ok: false, motivo }
@@ -313,6 +314,7 @@ export async function extraerTar(trozos, destino) {
   let nombreLargo = null;
   let entradas = 0;
   let total = 0;
+  let escritos = 0;
   const archivos = [];
   const cerrar = () => { if (actual?.fd != null) { closeSync(actual.fd); actual.fd = null; } };
   try {
@@ -326,6 +328,9 @@ export async function extraerTar(trozos, destino) {
           const n = Math.min(actual.restante, pendiente.length - i);
           if (n > 0) {
             if (actual.fd != null) writeSync(actual.fd, pendiente, i, n);
+            // Lo ya escrito se suelta de a ~1 MB (como en bajarArchivo): con poca memoria Node no lo recoge solo a tiempo.
+            if (Math.floor(escritos / 1_048_576) !== Math.floor((escritos + n) / 1_048_576)) globalThis.gc?.();
+            escritos += n;
             if (actual.texto) actual.texto.push(Buffer.from(pendiente.subarray(i, i + n)));
             actual.restante -= n;
             i += n;

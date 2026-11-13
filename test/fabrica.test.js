@@ -216,3 +216,43 @@ test('reiniciar una materia: generación nueva, lo de antes queda guardado', asy
     assert.ok(carpetaFuentes);
   });
 });
+
+test('por el trabajador de verdad (la fila, el ejecutor y los manejadores): de la tarea encolada a la materia publicada', async () => {
+  const { crearProveedorFalso } = await import('./proveedor-falso.js');
+  const { preparar } = await import('./ia-base.js');
+  const { respuestaFalsa } = await import('./fabrica-base.js');
+  const { crearEjecutor } = await import('../src/tareas/ejecutor.js');
+  const { crearEscritor } = await import('../src/tareas/escritor.js');
+  const { nuevaCorrida } = await import('../src/tareas/corridas.js');
+  const { TIPOS } = await import('../src/tareas/tipos.js');
+  const { MANEJADORES } = await import('../src/tareas/manejadores.js');
+  const { encolar } = await import('../src/tareas/cola.js');
+  const { esperarHasta } = await import('./ayuda.js');
+  const { revisarCarpetaFuentes: revisar, AJUSTE_FUENTES: AJ } = await import('../src/academia/fuentes.js');
+  const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo) });
+  const { db, config } = preparar({ tope: 50_000_000, iaBases: { anthropic: falso.base, openai: falso.base }, ahora: Date.now() });
+  const SILENCIO = { log() {}, error() {}, warn() {}, info() {} };
+  try {
+    escribirFuentes(config);
+    guardarAjuste(db, AJ, JSON.stringify(revisar(carpetaFuentes(config))));
+    const corrida = nuevaCorrida(db, { version: 'prueba', codigo: 'prueba' });
+    const escritor = crearEscritor(db, { registro: SILENCIO, dormir: async () => {} });
+    const ejecutor = crearEjecutor({
+      db, config, corrida, escritor, registro: TIPOS, manejadores: MANEJADORES, tiempos: { rssMaxMb: 1e9 }, programas: [],
+      memoriaDisponibleMb: () => 1000, discoLibreMb: () => 100_000, pedirSalida: () => {}, log: SILENCIO,
+    });
+    const { id } = encolar(db, { tipo: 'academia.fabrica', programa: 'academia.fabrica', claveUnica: 'prueba-1', datos: {} });
+    const fila = () => db.prepare('SELECT * FROM tareas WHERE id = ?').get(id);
+    await esperarHasta(async () => { await ejecutor.ciclo(); return ['hecha', 'fallida', 'revisar'].includes(fila().estado); }, { ms: 90_000, cada: 50, que: 'la tarea de la fábrica' });
+    assert.equal(fila().estado, 'hecha', JSON.stringify(fila()));
+    assert.equal(fila().cupo, 'grande');
+    assert.equal(estadoMateria(db, 'sistemas').estado, 'publicada');
+    const llamadas = db.prepare("SELECT tarea_id, estado FROM ia_llamadas WHERE proposito LIKE 'fabrica_%'").all();
+    assert.equal(llamadas.length, 6);
+    assert.ok(llamadas.every(l => l.tarea_id === id && l.estado === 'hecha'), 'con la cerca de la tarea');
+    await ejecutor.parar?.();
+  } finally {
+    db.close();
+    await falso.cerrar?.();
+  }
+});
