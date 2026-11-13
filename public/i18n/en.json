@@ -3613,5 +3613,7 @@
   "aviso.fabrica_revision": "The subject «{materia}» waits for your review in the Subject factory.",
   "aviso.fabrica_mejora": "Continuous improvement published an improved version of «{materia}».",
   "acad.motivo.pista_desconocida": "unknown track (only the Test Guide one or «oral»)",
-  "acad.motivo.diagrama_no_valido": "the drawing's data is not filled in correctly"
+  "acad.motivo.diagrama_no_valido": "the drawing's data is not filled in correctly",
+  "error.no_disponible": "This is not available yet.",
+  "error.sin_version": "This subject has no version waiting for review."
 }
