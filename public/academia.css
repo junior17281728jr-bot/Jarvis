@@ -1071,7 +1071,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .oral-listo.listo { border-left: 6px solid var(--verde); }
 .oral-listo.todavia { border-left: 6px solid var(--oro); }
 .insignia.grande { font-size: 16px; padding: 6px 12px; }
-.oral-camino .banner-icono { color: var(--oral); }
+
 .oral-final { border-left: 6px solid var(--oral); }
 .oral-final.hecho { border-left-color: var(--verde); }
 .oral-nota { text-align: center; }
@@ -1094,3 +1094,5 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .oral-revision-lista p { margin: 2px 0; }
 .panel-oral { border-left: 6px solid var(--oral); }
 .repaso-oral { border-left: 6px solid var(--oral); }
+.oral-capitulo { --mc: #0f6fb8; }
+.oral-capitulo .banner-icono { color: inherit; }

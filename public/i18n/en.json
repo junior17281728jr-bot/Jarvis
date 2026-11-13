@@ -3721,5 +3721,6 @@
   "fabrica.oral.resumen": "{n} chapters · {faltan} to go",
   "fabrica.oral.encender": "Turn on the oral track",
   "fabrica.oral.apagar": "Turn off the oral track",
-  "fabrica.oral.encender_confirmar": "Build the oral track? It uses the same factory cap (about US$10–15 for every chapter)."
+  "fabrica.oral.encender_confirmar": "Build the oral track? It uses the same factory cap (about US$10–15 for every chapter).",
+  "oral.corto": "Oral exam"
 }

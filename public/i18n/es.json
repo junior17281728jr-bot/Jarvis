@@ -3721,5 +3721,6 @@
   "fabrica.oral.resumen": "{n} capítulos · faltan {faltan}",
   "fabrica.oral.encender": "Encender la pista oral",
   "fabrica.oral.apagar": "Apagar la pista oral",
-  "fabrica.oral.encender_confirmar": "¿Fabricar la pista oral? Usa el mismo tope de la fábrica (unos US$10–15 para todos los capítulos)."
+  "fabrica.oral.encender_confirmar": "¿Fabricar la pista oral? Usa el mismo tope de la fábrica (unos US$10–15 para todos los capítulos).",
+  "oral.corto": "Examen oral"
 }

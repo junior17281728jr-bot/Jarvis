@@ -116,7 +116,7 @@ export function pantallaLeccionOral(l, h) {
     if (p.tipo === 'portada') {
       nodo = el('article', { class: 'portada-tema' },
         el('span', { class: 'portada-icono', 'aria-hidden': 'true' }, icono('manual')),
-        el('p', { class: 'antetitulo', texto: `${t('oral.sello')} · ${nombreMateria(l.materia)}` }),
+        el('p', { class: 'antetitulo', texto: `${t('oral.corto')} · ${nombreMateria(l.materia)}` }),
         el('h1', { class: 'titulo-grande', texto: l.titulo }),
         l.titulo_en ? el('p', { class: 'tarjeta-en', lang: 'en', texto: l.titulo_en }) : null,
         el('ul', { class: 'portada-datos' },
