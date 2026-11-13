@@ -6,7 +6,7 @@
 //  - dibujos: el «gpt-image» más nuevo (o «dall-e-3»).
 // El dueño los cambia en Administrador → IA → ChatGPT (una lista simple). Puro salvo guardar/leer.
 import { leerConfigIa, guardarConfigIa } from './config.js';
-import { MODELO_ID } from './precios.js';
+import { MODELO_ID, precioPara } from './precios.js';
 
 const clave = proveedor => `ia.modelos.${proveedor}`;
 const NO_TEXTO = /(audio|realtime|transcri|tts|image|search|embedding|instruct|moderation|dall-e|whisper|davinci|babbage|codex|computer|research|preview|sora|vision)/i;
@@ -28,7 +28,8 @@ export function elegirPorDefecto(modelos, { proveedor = 'openai' } = {}) {
   const fuertes = ordenar(chat.filter(m => !/(mini|nano|(?:^|-)pro(?:-|$))/i.test(m)));
   const mini = ordenar(chat.filter(m => /mini/i.test(m)));
   const nano = ordenar(chat.filter(m => /nano/i.test(m)));
-  const imagen = [...lista.filter(m => /^gpt-image/i.test(m))].sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))[0] ?? lista.find(m => m === 'dall-e-3') ?? null;
+  // Solo «gpt-image» (el pedido usa sus opciones: WebP y calidad baja); nunca dall-e.
+  const imagen = [...lista.filter(m => /^gpt-image/i.test(m))].sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))[0] ?? null;
   const escribir = fuertes[0] ?? mini[0] ?? null;
   return { modeloEscribir: escribir, modelo: mini[0] ?? nano[0] ?? escribir, modeloImagen: imagen };
 }
@@ -38,6 +39,21 @@ export function modelosVistos(db, proveedor) {
     const v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave(proveedor))?.valor ?? 'null');
     return v && Array.isArray(v.modelos) ? { modelos: v.modelos.filter(m => typeof m === 'string' && MODELO_ID.test(m)), en: v.en ?? null } : { modelos: [], en: null };
   } catch { return { modelos: [], en: null }; }
+}
+
+// Después de una prueba gratis que pasó: si el dueño eligió «el que funcione» (o este proveedor) y ya hay modelo y precio,
+// este proveedor queda en «Usar» (la IA sigue apagada hasta que el dueño la encienda con su tope). Nunca lanza.
+export function usarSiFunciona(db, config, { proveedor, ahora = Date.now(), usuarioId = null }) {
+  try {
+    const cfg = leerConfigIa(db);
+    const p = cfg.proveedores[proveedor];
+    if (!p || p.usar || !(cfg.preferido === 'auto' || cfg.preferido === proveedor)) return false;
+    if (!precioPara(db, proveedor, p.modelo)) return false;
+    guardarConfigIa(db, { usar: { [proveedor]: true } }, { config, usuarioId, origen: 'automatico', ahora });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Guarda la lista y, si falta, elige los de por defecto. Nunca lanza (la prueba de la clave sigue igual).

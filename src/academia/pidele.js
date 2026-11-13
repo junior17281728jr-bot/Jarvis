@@ -16,7 +16,7 @@ import { MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { leerAjuste, guardarAjuste, activarPaquete } from './paquetes.js';
 import { carpetaFuentes, leerManifiesto } from './fuentes.js';
 import { REGLAS_VERIFICACION, ESQUEMAS, TAREAS, datos } from './fabrica-prompts.js';
-import { crearLector, publicado, trabajoDeTemas, temaPublicado, examenDe, compacta, P } from './fabrica-profunda.js';
+import { crearLector, publicado, trabajoDeTemas, temaPublicado, examenDe, P } from './fabrica-profunda.js';
 import { puedeLlamar, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 import { GASTO_SQL } from '../ia/gasto.js';
@@ -36,11 +36,12 @@ const id12 = t => createHash('sha256').update(String(t)).digest('hex').slice(0, 
 const leerJson = (db, clave, defecto) => { try { const v = JSON.parse(leerAjuste(db, clave) ?? 'null'); return v ?? defecto; } catch { return defecto; } };
 
 // ---------- Lo que NUNCA se hace (en código, sin IA) ----------
+const VERBO = '(?:cambi|modific|reescrib|corrig|edit|borr|quit|elimin|arregl|actualiz|instal|program|sub|baj|pon|cre|bloque|reinici|desactiv|traduc|mueve|mover)\\w*\\b.{0,60}';
 const PROHIBIDO = Object.freeze([
-  ['codigo', /\b(c[oó]digo|programa(?:r|ción|dor)?|javascript|node|servidor|base de datos|sqlite|github|git|script|html|css|instala\w*|actualiza(?:r)? la app|bot[oó]n(?:es)?|pantalla|interfaz)\b/i],
-  ['dinero', /\b(precios?|cobr\w*|pag(?:o|os|ar)|tope|presupuesto|factur\w*|tarifa|suscrip\w*|cr[eé]dito|api ?key|clave de (?:la )?api)\b/i],
-  ['usuarios', /\b(usuari\w*|contraseñ\w*|cuentas?|borra\w* (?:al|a los|el) alumno|alumnos? (?:nuevo|nuevos)|permisos?|admin\w*)\b/i],
-  ['test_guide', /(cambi|modific|reescrib|corrig|edit|borr|quit|traduc|agreg)\w*\b.{0,60}\b(test guide|tg|enunciados?|opci[oó]n(?:es)? de (?:la|las) preguntas?|respuestas? correctas?|clave de respuestas|libro_qa|preguntas? del (?:test|examen|libro)|respuestas? del libro)/i],
+  ['codigo', new RegExp(`${VERBO}\\b(?:el c[oó]digo(?! del transponder| de (?:la )?(?:frecuencia|aeropuerto|radio))|c[oó]digo (?:de la app|del programa|fuente)|la app\\b|la aplicaci[oó]n|el programa\\b|el servidor|la base de datos|javascript|html|css|github|(?:los?|el) bot[oó]n(?:es)?|la interfaz|la pantalla de (?:la app|administrador|inicio))`, 'i')],
+  ['dinero', new RegExp(`${VERBO}\\b(?:los? precios?|el precio|las? tarifas?|los? cobros?|los? pagos?|los planes|la suscripci[oó]n|el tope (?:de|del) (?:gasto|dinero|la ia|la f[aá]brica|mes)|el presupuesto)|\\bapi ?key\\b|clave de (?:la )?api`, 'i')],
+  ['usuarios', new RegExp(`${VERBO}\\b(?:(?:el|los|un|una|al|a los|las?) usuari\\w*|(?:la|las|su|sus) contraseñ\\w*|(?:la|las) cuentas? (?:de|del)|al alumno|a los alumnos|a un alumno|los permisos (?:de|del))`, 'i')],
+  ['test_guide', /(cambi|modific|reescrib|corrig|edit|borr|quit|elimin|traduc)\w*\b.{0,60}\b(test guide|tg\b|enunciados?|opci[oó]n(?:es)? de (?:la|las) preguntas?|respuestas? correctas?|clave de respuestas|libro_qa|preguntas? del (?:test|examen|libro)|respuestas? del libro)/i],
 ]);
 export function rechazoDe(texto) {
   const t = String(texto ?? '');
@@ -67,6 +68,8 @@ function cambiarTrabajo(db, id, cambios) {
   const lista = leerTrabajos(db);
   const i = lista.findIndex(x => x.id === id);
   if (i < 0) return null;
+  // Cancelado es final: lo que todavía estaba en camino no lo vuelve a poner «trabajando».
+  if (lista[i].estado === 'cancelado' && cambios.estado !== 'cancelado') return lista[i];
   lista[i] = { ...lista[i], ...cambios };
   guardarTrabajos(db, lista);
   return lista[i];
@@ -272,7 +275,13 @@ async function pasoRevisar(ctx, { ahora, cfg, j }) {
   const examen = examenDe(tp.t, tp.pub, tp.c);
   const clave = tp.c.oral ? examen.preguntas_del_libro.map(x => ({ n: x.n, respuesta_en: x.respuesta_en })) : examen.test_guide.map(q => ({ id: q.id, correcta: q.correcta }));
   const sistema = `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA:\n${datos(tp.c.texto.slice(0, T.verificarBytes))}`;
-  const texto = `${TAREAS.verificar}\n${datos({ pedido_del_dueno: j.instruccion, clave_test_guide: clave, contenido: tp.viejas.map(compacta) })}`;
+  const preguntas = tp.c.oral
+    ? (tp.t.libro_qa ?? []).map(x => ({ n: x.n, explicacion_es: x.explicacion_es ?? null, puntos_clave: x.puntos_clave ?? null }))
+    : (tp.t.preguntas ?? []).map(id => tp.pub.preguntas.get(id)).filter(Boolean).map(q => ({
+      id: q.id, correcta: q.original?.opciones?.find(o => o.letra === q.original.correcta)?.texto ?? null, sencilla: q.sencilla ?? null, errores: q.errores ?? null, reto: q.reto ?? null,
+    }));
+  const tarjetas = tp.viejas.map(({ s }) => ({ titulo: s.titulo, puntos: s.puntos ?? null, texto: s.tipo === 'tarjeta' ? null : s.texto ?? null, recuerda: s.recuerda ?? null, ejemplo: s.ejemplo ?? null, visual: s.visual?.parametros ?? null }));
+  const texto = `${TAREAS.verificar}\n${datos({ pedido_del_dueno: j.instruccion, clave_test_guide: clave, contenido: { tarjetas, preguntas } })}`;
   const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(ESQUEMAS.verificar));
   const puede = puedeLlamar(db, config, { proposito: 'chat_verificar', bytes, ahora, topeMicro: cfg.chat.topeMicro, gastado: gastoChatMicro(db) });
   if (!puede.ok) {

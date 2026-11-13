@@ -20,6 +20,7 @@ import { GASTO_SQL } from '../ia/gasto.js';
 import { PROPOSITOS, PROPOSITOS_DIBUJO } from '../ia/propositos.js';
 import { leerConfigIa } from '../ia/config.js';
 import { elegirProveedor, modelosDe } from '../ia/presupuesto.js';
+import { anotarCambio } from './cambios-ia.js';
 
 export const D = Object.freeze({ maxBytes: 200 * 1024, porMateria: 3, costoMicro: 15_000, revisarMicro: 1_500 });
 export const ETIQUETA = 'Dibujo hecho con IA (ilustrativo)';
@@ -101,6 +102,7 @@ export async function dibujar(ctx, { ahora, cfg }) {
     if (!elegirProveedor(db, config, cfgIa, ahora, modelosDe(defR, cfgIa), defR).ok) {
       // Sin Claude no hay quien lo mire: queda aprobado SIN revisión (así lo dice la pantalla).
       await anotar(id, { estado: 'aprobado', revisadoPor: null });
+      await ctx.escribir(() => anotarCambio(db, { materia: x.materia, tema: x.tema, que: 'dibujo', estado: 'aprobado', costoMicro: x.costoMicro ?? null, proveedor: x.proveedor, modelo: x.modelo, revisadoPor: null, detalle: x.titulo, ahora }));
       return { trabajo: true, seguir: true };
     }
     const r = await ctx.ia.pedir({
@@ -109,7 +111,11 @@ export async function dibujar(ctx, { ahora, cfg }) {
       texto: `La tarjeta dice:\n${JSON.stringify({ titulo: x.titulo, puntos: x.puntos })}\n¿El dibujo coincide con la tarjeta, sin etiquetas ni números equivocados y sin nada que pueda confundir a un alumno de piloto privado? usar=false si hay cualquier duda.`,
       esquema: ESQUEMA_REVISAR, imagenes: [{ tipo: 'image/webp', base64: readFileSync(ruta).toString('base64') }],
     });
-    if (r.usada) await anotar(id, { estado: r.json.usar ? 'aprobado' : 'rechazado', revisadoPor: 'anthropic', problemas: r.json.problemas.slice(0, 5).map(p => String(p).slice(0, 200)), revisarMicro: r.costoMicro });
+    if (r.usada) {
+      const estado = r.json.usar ? 'aprobado' : 'rechazado';
+      await anotar(id, { estado, revisadoPor: 'anthropic', problemas: r.json.problemas.slice(0, 5).map(p => String(p).slice(0, 200)), revisarMicro: r.costoMicro });
+      await ctx.escribir(() => anotarCambio(db, { materia: x.materia, tema: x.tema, que: 'dibujo', estado, costoMicro: (x.costoMicro ?? 0) + (r.costoMicro ?? 0), proveedor: x.proveedor, modelo: x.modelo, revisadoPor: 'anthropic', detalle: x.titulo, ahora }));
+    }
     else await anotar(id, { estado: r.motivo === 'ya_cobrada' ? 'rechazado' : 'hecho', motivoEspera: r.motivo });
     return { trabajo: true, seguir: r.usada };
   }

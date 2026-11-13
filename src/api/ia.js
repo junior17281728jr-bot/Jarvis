@@ -110,9 +110,11 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
   }, { admin: true });
   // { preferido?, orden?, modelos?: { openai?: {...}, propia?: {...} }, basePropia? }. Elegir quién escribe enciende
   // su «Usar» (y con «el que funcione», el de cada uno que ya tiene su clave probada).
-  rutas.agregar('POST', '/api/admin/ia/proveedores', async ({ db, req, usuario }) => {
+  rutas.agregar('POST', '/api/admin/ia/proveedores', async ({ db, req, usuario, confirmar }) => {
     necesitaConfig();
     const datos = await leerJson(req);
+    // Cambiar la dirección de la API propia cambia ADÓNDE va su clave: pide la contraseña otra vez, como cambiar una clave.
+    if (datos && typeof datos === 'object' && 'basePropia' in datos) await confirmar();
     contar(topes.ajustes, usuario);
     if (!datos || typeof datos !== 'object') throw new ErrorHttp(400, 'datos_no_validos');
     const cambios = {};

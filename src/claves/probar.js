@@ -16,7 +16,7 @@ import { leerConfigIa } from '../ia/config.js';
 import { llamarProveedor } from '../ia/llamar.js';
 import { PROVEEDORES, urlDe, hostDe } from '../ia/proveedores/index.js';
 import { modelosDeLista } from '../ia/proveedores/openai.js';
-import { guardarModelosVistos } from '../ia/modelos.js';
+import { guardarModelosVistos, usarSiFunciona } from '../ia/modelos.js';
 import { leerSecreto, validarValor, anotarPrueba, reanudarSecreto, secretoPublico } from './almacen.js';
 import { definicionUso } from './usos.js';
 import { estadoLlave } from './cifrado.js';
@@ -45,7 +45,10 @@ function probadorIa(id) {
     const motivo = adaptador.leerPrueba(respuesta);
     // 0.14.2: ChatGPT y la API propia: la lista de modelos se guarda (para elegir) y se eligen solos los de por defecto
     // si todavía no hay uno elegido (o el elegido ya no está en la lista).
-    if (motivo === 'ok' && id !== 'anthropic') guardarModelosVistos(db, config, { proveedor: id, modelos: modelosDeLista(respuesta.json) });
+    if (motivo === 'ok' && id !== 'anthropic') {
+      guardarModelosVistos(db, config, { proveedor: id, modelos: modelosDeLista(respuesta.json) });
+      usarSiFunciona(db, config, { proveedor: id });
+    }
     return motivo;
   };
 }

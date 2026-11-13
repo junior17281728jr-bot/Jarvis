@@ -1861,7 +1861,13 @@ async function pantallaPidele(datosYa = null) {
   const [r, vista] = await Promise.all([datosYa ? { ok: true, datos: datosYa } : api('GET', '/api/admin/academia/chat'), import('./ia-trabajo-vista.js')]);
   if (!vigente()) return;
   const h = piezasIa(() => pantallaPidele());
+  // Lo que el dueño está escribiendo (y dónde está el cursor) sigue igual cuando la pantalla se actualiza sola.
+  const antes = document.getElementById('pidele-texto');
+  const escrito = antes?.value ?? '';
+  const conFoco = antes != null && document.activeElement === antes;
   mostrar(marco('admin', cabeceraAdmin('pidele'), r.ok ? vista.pantallaPidele(r.datos, h, { alCambiar: d => pantallaPidele(d) }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  const campo = document.getElementById('pidele-texto');
+  if (campo && escrito && !datosYa) { campo.value = escrito; if (conFoco) campo.focus({ preventScroll: true }); }
   const ultimo = raiz.querySelector('.pidele-mensajes')?.lastElementChild;
   ultimo?.scrollIntoView?.({ block: 'nearest' });
   if (r.ok && r.datos.pendiente) setTimeout(() => { if (vigente() && location.hash === '#contenido/pidele' && !document.hidden) pantallaPidele(); }, 4000);

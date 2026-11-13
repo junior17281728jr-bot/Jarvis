@@ -31,22 +31,25 @@ test('el chat rechaza en código (gratis) lo que no es contenido: código, diner
   assert.equal(rechazoDe('explica mejor el tema de hipoxia'), null);
   assert.equal(rechazoDe('agrega un dibujo al tema del motor'), null);
   assert.equal(rechazoDe('revisa si hay errores en la materia 1'), null);
+  // Las palabras de aviación pasan (solo se rechaza un verbo + lo prohibido).
+  for (const bien of ['explica mejor el código del transponder', 'qué es el tope de nubes', 'la administración del riesgo en vuelo', 'ten en cuenta el permiso de despegue',
+    'la instalación eléctrica del avión', 'la pantalla del GPS', 'agrega un ejemplo para las preguntas del examen', 'cambia el orden de las tarjetas del tema del motor']) assert.equal(rechazoDe(bien), null, bien);
 });
 
 test('chat → plan con su costo → «Hazlo» → trabajo de la fábrica → escrito, verificado contra el libro y publicado (el Test Guide TAL CUAL)', async () => {
-  await conFabrica(async ({ db, config, correr, llamadas }) => {
+  await conFabrica(async ({ db, config, correr, llamadas, reloj }) => {
     await correr({ max: 60 });
     const v0 = estadoMateria(db, 'sistemas').version;
     assert.ok(v0, 'la materia ya está publicada');
     // Un pedido prohibido: ni una llamada.
     const antes = llamadas().length;
-    const no = T_(db, () => escribirMensaje(db, { texto: 'cambia el código del servidor', ahora: Date.now() }));
+    const no = T_(db, () => escribirMensaje(db, { texto: 'cambia el código del servidor', ahora: reloj() }));
     assert.equal(no.rechazado, 'codigo');
     await correr({ max: 3 });
     assert.equal(llamadas().length, antes, 'rechazado en código: gratis');
     assert.equal(leerChat(db).mensajes.at(-1).rechazo, 'codigo');
     // Un pedido de contenido: UNA llamada (el chat), con el plan y su costo; todavía no se hace nada.
-    T_(db, () => escribirMensaje(db, { texto: 'explica mejor el tema del motor, con un ejemplo de la vida diaria', ahora: Date.now() }));
+    T_(db, () => escribirMensaje(db, { texto: 'explica mejor el tema del motor, con un ejemplo de la vida diaria', ahora: reloj() }));
     await correr({ max: 3 });
     assert.equal(llamadas().length, antes + 1);
     const pedido = cuerpoDe(llamadas().at(-1));
@@ -83,20 +86,20 @@ test('chat → plan con su costo → «Hazlo» → trabajo de la fábrica → es
 });
 
 test('si la IA intenta un plan prohibido o con un tema que no existe, no se ofrece «Hazlo»; «Revisar errores» da un informe', async () => {
-  await conFabrica(async ({ db, correr, llamadas, opciones }) => {
+  await conFabrica(async ({ db, correr, llamadas, opciones, reloj }) => {
     await correr({ max: 60 });
     opciones.chat = d => ({ respuesta: 'Listo, cambio las opciones.', rechazo: null, resumen: 'x', plan: { tipo: 'reescribir_tema', materia: 'sistemas', tema: 't01-motor', instruccion: 'cambia las opciones de la pregunta del test guide 2-1', pasos: [] } });
-    T_(db, () => escribirMensaje(db, { texto: 'mejora el tema del motor', ahora: Date.now() }));
+    T_(db, () => escribirMensaje(db, { texto: 'mejora el tema del motor', ahora: reloj() }));
     await correr({ max: 3 });
     assert.equal(leerChat(db).mensajes.at(-1).rechazo, 'test_guide');
     assert.equal(leerTrabajos(db).length, 0, 'ningún trabajo');
     opciones.chat = () => ({ respuesta: 'ok', rechazo: null, resumen: 'x', plan: { tipo: 'reescribir_tema', materia: 'sistemas', tema: 't99-no-existe', instruccion: 'mejóralo', pasos: [] } });
-    T_(db, () => escribirMensaje(db, { texto: 'mejora el tema 99', ahora: Date.now() }));
+    T_(db, () => escribirMensaje(db, { texto: 'mejora el tema 99', ahora: reloj() }));
     await correr({ max: 3 });
     assert.equal(leerChat(db).mensajes.at(-1).planNoValido, 'tema');
     assert.equal(leerTrabajos(db).length, 0);
     opciones.chat = () => ({ respuesta: 'Reviso la materia.', rechazo: null, resumen: 'x', plan: { tipo: 'revisar_errores', materia: 'sistemas', tema: null, instruccion: 'revisa si hay errores', pasos: ['Cada tema contra el libro'] } });
-    T_(db, () => escribirMensaje(db, { texto: 'revisa si hay errores en sistemas', ahora: Date.now() }));
+    T_(db, () => escribirMensaje(db, { texto: 'revisa si hay errores en sistemas', ahora: reloj() }));
     await correr({ max: 3 });
     const j = leerTrabajos(db).at(-1);
     assert.equal(j.tipo, 'revisar_errores');
@@ -116,9 +119,9 @@ test('si la IA intenta un plan prohibido o con un tema que no existe, no se ofre
 // (la verificación de la fábrica sale limpia y la de «Revisar errores» encuentra una duda: el falso responde según el
 // orden; aquí se cambia lo que dice el verificador justo antes del trabajo)
 test('«Pausar» para TODO: ni la fábrica ni el chat llaman; al reanudar, sigue', async () => {
-  await conFabrica(async ({ db, correr, llamadas }) => {
+  await conFabrica(async ({ db, correr, llamadas, reloj }) => {
     guardarConfigFabrica(db, { pausada: true });
-    T_(db, () => escribirMensaje(db, { texto: 'explica mejor el motor', ahora: Date.now() }));
+    T_(db, () => escribirMensaje(db, { texto: 'explica mejor el motor', ahora: reloj() }));
     const r = await correr({ max: 5 });
     assert.equal(llamadas().length, 0, 'en pausa: cero llamadas');
     assert.equal(r.at(-1).resultado.motivo, 'pausada');
@@ -173,6 +176,8 @@ test('«Dibujos con IA»: apagado = cero llamadas de imagen; encendido, ChatGPT 
     const archivo = join(carpetaDibujos(config), h[0].archivo);
     assert.ok(existsSync(archivo) && webpBueno(readFileSync(archivo)));
     assert.ok(!archivo.includes('/public/'), 'en la carpeta privada de datos');
+    const c = leerCambios(db).filter(x => x.que === 'dibujo');
+    assert.ok(c.length >= 1 && c.every(x => x.revisadoPor === 'anthropic' && x.proveedor === 'openai' && x.estado === 'aprobado'), 'en el registro, «Revisado por Claude ✔»');
   }, { proveedor: 'ambos', sinDibujo: true });
   // Claude rechaza: no se usa.
   await conFabrica(async ({ db, correr }) => {

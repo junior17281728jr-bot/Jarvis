@@ -70,7 +70,7 @@ test('«Probar (gratis)» de ChatGPT: GET /v1/models (nunca /v1/responses), guar
 });
 
 test('elegir modelos por el nombre: nada adivinado, y sin lista no hay modelo (no se gasta)', () => {
-  assert.deepEqual(elegirPorDefecto(['gpt-4o', 'gpt-4o-mini', 'o3', 'dall-e-3']), { modeloEscribir: 'gpt-4o', modelo: 'gpt-4o-mini', modeloImagen: 'dall-e-3' });
+  assert.deepEqual(elegirPorDefecto(['gpt-4o', 'gpt-4o-mini', 'o3', 'dall-e-3']), { modeloEscribir: 'gpt-4o', modelo: 'gpt-4o-mini', modeloImagen: null }, 'dall-e no: el pedido de imagen es de gpt-image');
   assert.deepEqual(elegirPorDefecto(['gpt-7-2027-01-01', 'gpt-7', 'gpt-7-pro', 'gpt-7-nano']), { modeloEscribir: 'gpt-7', modelo: 'gpt-7-nano', modeloImagen: null });
   assert.deepEqual(elegirPorDefecto([]), { modeloEscribir: null, modelo: null, modeloImagen: null });
   assert.equal(elegirPorDefecto(['Llama-4-70B', 'llama-mini'], { proveedor: 'propia' }).modelo, 'llama-mini');

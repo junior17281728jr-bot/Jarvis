@@ -468,3 +468,52 @@ test('sin la configuración del servidor, las rutas de claves y de IA responden 
   });
   db.close();
 });
+
+// ---------- 0.14.2: ChatGPT por las pantallas (el camino real del dueño), sus rutas y las del chat ----------
+test('0.14.2: pegar la clave de ChatGPT → probar → tope → encender: trabaja ChatGPT (sin Claude); modelos, precios, dibujos y el chat por HTTP', async () => {
+  await conPlataforma(async ({ comoDueno, falso, pedir }) => {
+    const o = await comoDueno('POST', '/api/admin/claves', { datos: { uso: 'ia_openai', valor: claveOpenai() } });
+    assert.equal(o.codigo, 201, o.texto);
+    assert.equal(o.datos.prueba.motivo, 'ok');
+    assert.deepEqual(falso.peticiones.map(p => [p.metodo, p.ruta]), [['GET', '/v1/models']], 'gratis: solo la lista de modelos');
+    let p = await comoDueno('GET', '/api/admin/ia/proveedores');
+    assert.equal(p.codigo, 200);
+    const gpt = p.datos.proveedores.find(x => x.id === 'openai');
+    assert.deepEqual([gpt.usar, gpt.clave, gpt.modeloEscribir, gpt.modelo, gpt.modeloImagen], [true, true, 'gpt-6', 'gpt-6-mini', 'gpt-image-2'], 'pasó la prueba: queda en «Usar» con sus modelos');
+    assert.ok(gpt.precios.every(x => x.porDefecto === true) && gpt.vistos.includes('gpt-6-nano'));
+    assert.ok(!p.texto.includes(claveOpenai()));
+    assert.equal((await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { topeGeneralUsd: '20' } })).codigo, 200);
+    const e = await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { encendida: true } });
+    assert.equal(e.codigo, 200, e.texto);
+    const ia = await comoDueno('GET', '/api/admin/ia');
+    assert.deepEqual([ia.datos.encendida, ia.datos.proveedorActivo, ia.datos.preferido], [true, 'openai', 'auto']);
+    // Precios, quién escribe, el orden y los dibujos.
+    p = await comoDueno('POST', '/api/admin/ia/precios', { datos: { proveedor: 'openai', modelo: 'gpt-6', entrada: '1,25', cacheLectura: '0.125', salida: '10' } });
+    assert.equal(p.codigo, 200, p.texto);
+    assert.deepEqual(p.datos.proveedores.find(x => x.id === 'openai').precios.find(x => x.modelo === 'gpt-6'), { modelo: 'gpt-6', ...p.datos.proveedores.find(x => x.id === 'openai').precios.find(x => x.modelo === 'gpt-6'), entradaUsd: '1.25', porDefecto: false });
+    assert.equal((await comoDueno('POST', '/api/admin/ia/precios', { datos: { proveedor: 'openai', modelo: 'gpt-6', entrada: 'gratis', cacheLectura: '0', salida: '1' } })).datos.error, 'precio_no_valido');
+    p = await comoDueno('POST', '/api/admin/ia/proveedores', { datos: { preferido: 'openai', orden: ['openai', 'anthropic', 'propia'] } });
+    assert.deepEqual([p.codigo, p.datos.preferido, p.datos.orden[0]], [200, 'openai', 'openai']);
+    assert.equal((await comoDueno('POST', '/api/admin/ia/proveedores', { datos: { basePropia: 'http://10.0.0.1/v1' } })).datos.error, 'base_no_valida');
+    assert.equal((await comoDueno('POST', '/api/admin/ia/proveedores', { datos: { algo: 1 } })).codigo, 400);
+    p = await comoDueno('POST', '/api/admin/ia/dibujos', { datos: { activa: true, topeUsd: '3,50' } });
+    assert.deepEqual([p.datos.dibujos.activa, p.datos.dibujos.topeMicro], [true, 3_500_000]);
+    // El chat: un mensaje (sin IA todavía: lo contesta el trabajador), un pedido prohibido (gratis) y la pausa.
+    let c = await comoDueno('GET', '/api/admin/academia/chat');
+    assert.equal(c.codigo, 200);
+    assert.ok(c.datos.estimado.micro > 0 && c.datos.estimado.proveedor === 'openai', 'lo que cuesta un mensaje');
+    c = await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'cambia el código de la app' } });
+    assert.equal(c.datos.mensajes.at(-1).rechazo, 'codigo');
+    c = await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'explica mejor el tema de hipoxia' } });
+    assert.deepEqual([c.codigo, c.datos.pendiente], [200, true]);
+    assert.equal((await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'otra cosa' } })).datos.error, 'chat_ocupado');
+    assert.equal((await comoDueno('POST', '/api/admin/academia/fabrica/pausa', { datos: { pausada: true } })).codigo, 200);
+    assert.equal((await comoDueno('POST', '/api/admin/academia/chat', { datos: { texto: 'algo' } })).datos.error, 'ia_en_pausa');
+    const h = await comoDueno('GET', '/api/admin/academia/ia-hizo');
+    assert.equal(h.codigo, 200);
+    assert.equal(h.datos.numeros.pausada, true);
+    assert.equal(falso.peticiones.filter(x => x.ruta === '/v1/responses').length, 0, 'el servidor web nunca llama a la IA');
+    // Un alumno (sin sesión de administrador) no entra.
+    assert.equal((await pedir('GET', '/api/admin/academia/chat')).codigo, 401);
+  });
+});
