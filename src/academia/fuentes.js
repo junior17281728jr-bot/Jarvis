@@ -10,9 +10,11 @@
 //  - oral/oral.json y oral/oral-capNN.txt (0.13.0, la pista «Preparándote para el examen oral»; ver src/academia/oral.js).
 // Todo es puro aquí salvo sincronizarFuentes (la red, por src/academia/drive.js) y las lecturas de archivos. La memoria se
 // cuida: un capítulo se lee entero (≤ 1 MB) solo para sacar sus páginas; tg.json se parte por tema una vez al sincronizar.
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync, createReadStream, openSync, writeSync, closeSync } from 'node:fs';
+import { Readable } from 'node:stream';
+import { createGunzip } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { MATERIAS, ID_VALIDO, ARCHIVO_FIGURA } from './formato.js';
 import { carpetaAcademia, leerAjuste, guardarAjuste } from './paquetes.js';
 import { listarCarpeta, bajarArchivo, basesDrive } from './drive.js';
@@ -30,7 +32,9 @@ export const ID_TG = /^\d{1,2}-\d{1,4}[a-z]?$/;
 export const FIGURA_TG = /^fig-[a-z0-9][a-z0-9._-]{0,70}\.(?:webp|png|jpg|jpeg)$/i;
 export const IMAGEN_LIBRO = /^img-[a-z0-9][a-z0-9._-]{0,70}\.(?:webp|png|jpg|jpeg)$/i;
 export const TOPES_FUENTES = Object.freeze({
-  txtBytes: 1024 * 1024, jsonBytes: 4 * 1024 * 1024, imagenBytes: 1024 * 1024, archivos: 3000, carpetas: 12,
+  txtBytes: 1024 * 1024, jsonBytes: 4 * 1024 * 1024, imagenBytes: 1024 * 1024, figuraBytes: 4 * 1024 * 1024, archivos: 3000, carpetas: 12,
+  // 0.13.0: el paquete de fuentes en partes (fuentes-vN.tar.gz.partNN, ≤ 9,5 MB cada una; Drive no deja subir más de 10 MB).
+  parteBytes: 10 * 1024 * 1024, partes: 60, indiceBytes: 64 * 1024, totalTarBytes: 400 * 1024 * 1024, entradasTar: 6000,
   paginasPorLectura: 400, lecturasPorTema: 12, temas: 400,
 });
 const LETRAS = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -267,39 +271,212 @@ export function revisarCarpetaFuentes(dir) {
 // mismo nombre solo cuando terminó de bajar bien. → { ok, motivo?, bajados, errores }.
 const NOMBRE_PERMITIDO = n => n === ARCHIVO_MANIFIESTO || n === ARCHIVO_TG || n === ARCHIVO_IMAGENES || n === 'oral.json'
   || LIBRO_TXT.test(n) || ORAL_TXT.test(n) || IMAGEN_LIBRO.test(n) || FIGURA_TG.test(n);
-const topeDeNombre = n => (n.endsWith('.txt') ? TOPES_FUENTES.txtBytes : n.endsWith('.json') ? TOPES_FUENTES.jsonBytes : TOPES_FUENTES.imagenBytes);
+const topeDeNombre = n => (n.endsWith('.txt') ? TOPES_FUENTES.txtBytes : n.endsWith('.json') ? TOPES_FUENTES.jsonBytes : FIGURA_TG.test(n) ? TOPES_FUENTES.figuraBytes : TOPES_FUENTES.imagenBytes);
+export const INDICE_PARTES = /^fuentes-v(\d{1,4})\.json$/;
+export const PARTE = /^fuentes-v\d{1,4}\.tar\.gz\.part\d{2,3}$/;
+const huellaArchivo = ruta => createHash('sha256').update(readFileSync(ruta)).digest('hex');
+
+// ---------- El paquete de fuentes en partes ----------
+// fuentes-vN.json = { version, partes: [{ archivo, sha256, bytes }], sha256_total, bytes_total }. → { ok, indice } o { ok: false, motivo }
+export function revisarIndice(x) {
+  const SHA = /^[a-f0-9]{64}$/;
+  if (!esObjeto(x) || !Number.isSafeInteger(x.version) || !Array.isArray(x.partes) || !x.partes.length || x.partes.length > TOPES_FUENTES.partes) return { ok: false, motivo: 'indice_no_valido' };
+  const vistos = new Set();
+  for (const p of x.partes) {
+    if (!esObjeto(p) || typeof p.archivo !== 'string' || !PARTE.test(p.archivo) || vistos.has(p.archivo) || !SHA.test(String(p.sha256)) || !Number.isSafeInteger(p.bytes) || p.bytes < 1 || p.bytes > TOPES_FUENTES.parteBytes) return { ok: false, motivo: 'parte_no_valida' };
+    vistos.add(p.archivo);
+  }
+  const suma = x.partes.reduce((a, p) => a + p.bytes, 0);
+  if (!SHA.test(String(x.sha256_total)) || x.bytes_total !== suma) return { ok: false, motivo: 'total_no_valido' };
+  return { ok: true, indice: x };
+}
+// El nombre de una entrada del tar: relativo, sin «..», sin barra invertida, y de los que la fábrica conoce.
+// → { ruta, tope } | { saltar: true } (no es de las fuentes) | { mal: true } (rechaza el paquete entero)
+export function nombreDeEntrada(nombre) {
+  const n = String(nombre).replace(/^\.\//, '');
+  if (!n || n.startsWith('/') || n.includes('\\') || n.includes('\u0000') || /^[A-Za-z]:/.test(n) || n.split('/').some(x => x === '..')) return { mal: true };
+  const partes = n.split('/').filter(x => x && x !== '.');
+  if (partes.length === 1 && NOMBRE_PERMITIDO(partes[0]) && !ORAL_TXT.test(partes[0]) && partes[0] !== 'oral.json') return { ruta: partes[0], tope: topeDeNombre(partes[0]) };
+  if (partes.length === 2 && partes[0] === 'oral' && (partes[1] === 'oral.json' || ORAL_TXT.test(partes[1]) || IMAGEN_LIBRO.test(partes[1]) || FIGURA_TG.test(partes[1]))) return { ruta: `oral/${partes[1]}`, tope: topeDeNombre(partes[1]) };
+  return { saltar: true };
+}
+const sinCeros = t => t.split('\0')[0];
+const octal = (b, desde, largo) => { const t = sinCeros(b.toString('latin1', desde, desde + largo)).trim(); return t ? parseInt(t, 8) : 0; };
+
+// Lee un tar (ustar) por pedazos y escribe sus archivos en «destino» (una carpeta nueva). Solo archivos comunes: un
+// enlace, un dispositivo, una ruta absoluta o con «..», o un archivo más grande que su tope rechazan TODO. Lo que no es de
+// las fuentes se salta. → { ok, archivos } o { ok: false, motivo }
+export async function extraerTar(trozos, destino) {
+  mkdirSync(destino, { recursive: true });
+  let pendiente = Buffer.alloc(0);
+  let actual = null;
+  let nombreLargo = null;
+  let entradas = 0;
+  let total = 0;
+  const archivos = [];
+  const cerrar = () => { if (actual?.fd != null) { closeSync(actual.fd); actual.fd = null; } };
+  try {
+    for await (const trozo of trozos) {
+      total += trozo.length;
+      if (total > TOPES_FUENTES.totalTarBytes) return { ok: false, motivo: 'demasiado_grande' };
+      pendiente = pendiente.length ? Buffer.concat([pendiente, trozo]) : trozo;
+      let i = 0;
+      for (;;) {
+        if (actual) {
+          const n = Math.min(actual.restante, pendiente.length - i);
+          if (n > 0) {
+            if (actual.fd != null) writeSync(actual.fd, pendiente, i, n);
+            if (actual.texto) actual.texto.push(Buffer.from(pendiente.subarray(i, i + n)));
+            actual.restante -= n;
+            i += n;
+          }
+          if (actual.restante > 0) break;
+          const r = Math.min(actual.relleno, pendiente.length - i);
+          actual.relleno -= r;
+          i += r;
+          if (actual.relleno > 0) break;
+          cerrar();
+          if (actual.texto) nombreLargo = sinCeros(Buffer.concat(actual.texto).toString('utf8'));
+          if (actual.ruta) archivos.push(actual.ruta);
+          actual = null;
+          continue;
+        }
+        if (pendiente.length - i < 512) break;
+        const h = pendiente.subarray(i, i + 512);
+        i += 512;
+        if (h.every(b => b === 0)) continue;
+        if (++entradas > TOPES_FUENTES.entradasTar) return { ok: false, motivo: 'demasiadas_entradas' };
+        const tipo = String.fromCharCode(h[156] || 48);
+        const tam = octal(h, 124, 12);
+        const prefijo = sinCeros(h.toString('utf8', 345, 500));
+        const nombre = nombreLargo ?? `${prefijo ? `${prefijo}/` : ''}${sinCeros(h.toString('utf8', 0, 100))}`;
+        nombreLargo = null;
+        const relleno = (512 - (tam % 512)) % 512;
+        if (tipo === 'L') { if (tam > 4096) return { ok: false, motivo: 'nombre_largo' }; actual = { restante: tam, relleno, texto: [] }; continue; }
+        if (tipo === 'x' || tipo === 'g') { if (tam > 1024 * 1024) return { ok: false, motivo: 'cabecera_grande' }; actual = { restante: tam, relleno }; continue; }
+        if (tipo === '5') { if (nombreDeEntrada(`${nombre.replace(/\/$/, '')}/x`).mal) return { ok: false, motivo: 'ruta_no_permitida' }; continue; }
+        if (tipo !== '0' && tipo !== '7') return { ok: false, motivo: 'tipo_no_permitido' };
+        const e = nombreDeEntrada(nombre);
+        if (e.mal) return { ok: false, motivo: 'ruta_no_permitida' };
+        if (e.saltar) { actual = { restante: tam, relleno }; continue; }
+        if (tam > e.tope) return { ok: false, motivo: 'archivo_muy_grande' };
+        const ruta = join(destino, e.ruta);
+        mkdirSync(dirname(ruta), { recursive: true });
+        actual = { restante: tam, relleno, fd: openSync(ruta, 'w', 0o640), ruta: e.ruta };
+      }
+      pendiente = i < pendiente.length ? Buffer.from(pendiente.subarray(i)) : Buffer.alloc(0);
+    }
+    if (actual) return { ok: false, motivo: 'tar_cortado' };
+    return { ok: true, archivos };
+  } catch {
+    return { ok: false, motivo: 'tar_no_valido' };
+  } finally {
+    cerrar();
+  }
+}
+
+// Las partes ya bajadas y revisadas → juntas (por pedazos, nunca enteras en memoria) → gunzip → tar → una carpeta nueva
+// → cada archivo a su lugar (solo si todo salió bien y la huella total coincide). → { ok, archivos } o { ok: false, motivo }
+export async function instalarPartes(dir, indice) {
+  const carpeta = join(dir, 'partes');
+  const hash = createHash('sha256');
+  let bytes = 0;
+  async function* juntas() {
+    for (const p of indice.partes) {
+      for await (const trozo of createReadStream(join(carpeta, p.archivo), { highWaterMark: 256 * 1024 })) { hash.update(trozo); bytes += trozo.length; yield trozo; }
+    }
+  }
+  const destino = join(dir, 'entrante', indice.sha256_total.slice(0, 16));
+  const gunzip = createGunzip({ chunkSize: 64 * 1024 });
+  let fallo = null;
+  const fuente = Readable.from(juntas());
+  fuente.on('error', () => { fallo ??= 'parte_ilegible'; gunzip.destroy(); });
+  fuente.pipe(gunzip);
+  async function* descomprimido() {
+    try { for await (const t of gunzip) yield t; } catch { fallo ??= 'gzip_no_valido'; }
+  }
+  const r = await extraerTar(descomprimido(), destino);
+  if (fallo) return { ok: false, motivo: fallo };
+  if (!r.ok) { fuente.destroy(); return r; }
+  if (bytes !== indice.bytes_total || hash.digest('hex') !== indice.sha256_total) return { ok: false, motivo: 'total_distinto' };
+  for (const a of r.archivos) { mkdirSync(dirname(join(dir, a)), { recursive: true }); renameSync(join(destino, a), join(dir, a)); }
+  return { ok: true, archivos: r.archivos.length };
+}
+
+// Baja el paquete en partes (si hace falta) y lo instala. → lo mismo que sincronizarFuentes.
+async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, escribir, anterior }) {
+  const indices = archivos.filter(a => INDICE_PARTES.test(a.nombre)).sort((a, b) => Number(INDICE_PARTES.exec(b.nombre)[1]) - Number(INDICE_PARTES.exec(a.nombre)[1]));
+  mkdirSync(join(dir, 'partes'), { recursive: true });
+  const ri = join(dir, 'partes', indices[0].nombre);
+  const guardar = async (archivo, estado = anterior) => {
+    const nuevo = { ...estado, archivo: { indice: indices[0].nombre, ...archivo }, en: new Date().toISOString() };
+    await escribir(() => guardarAjuste(db, AJUSTE_FUENTES, JSON.stringify(nuevo)));
+    return nuevo;
+  };
+  const mal = async (motivo, extra = {}) => { await guardar({ ok: false, motivo, ...extra }); return { ok: false, motivo, bajados: 0, errores: [] }; };
+  const bi = await bajarArchivo(indices[0].id, { bases, ruta: `${ri}.drive.part`, tope: TOPES_FUENTES.indiceBytes, senal });
+  if (!bi.ok) return mal(bi.motivo);
+  let r;
+  try { r = revisarIndice(JSON.parse(readFileSync(`${ri}.drive.part`, 'utf8'))); } catch { r = { ok: false, motivo: 'indice_no_valido' }; }
+  if (!r.ok) return mal(r.motivo);
+  const indice = r.indice;
+  if (anterior.archivo?.instalado === indice.sha256_total) return { ok: true, bajados: 0, errores: [], estado: anterior };
+  let bajados = 0;
+  for (const p of indice.partes) {
+    const ruta = join(dir, 'partes', p.archivo);
+    if (existsSync(ruta) && statSync(ruta).size === p.bytes && huellaArchivo(ruta) === p.sha256) continue;
+    if (senal?.aborted || quedaMs() < 45_000) { await guardar({ ok: false, motivo: 'parcial' }); return { ok: true, bajados, errores: [{ archivo: '', motivo: 'parcial' }], parcial: true }; }
+    const a = archivos.find(x => x.nombre === p.archivo);
+    if (!a) return mal('falta_parte', { parte: p.archivo });
+    const b = await bajarArchivo(a.id, { bases, ruta: `${ruta}.drive.part`, tope: TOPES_FUENTES.parteBytes, senal });
+    if (!b.ok || b.huella !== p.sha256 || b.bytes !== p.bytes) return mal('parte_distinta', { parte: p.archivo });
+    renameSync(`${ruta}.drive.part`, ruta);
+    bajados += 1;
+  }
+  const inst = await instalarPartes(dir, indice);
+  if (!inst.ok) return mal(inst.motivo);
+  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {} });
+  return { ok: true, bajados, errores: [], estado };
+}
 export async function sincronizarFuentes(db, config, { escribir, senal = null, quedaMs = () => Infinity } = {}) {
   const raiz = carpetaDrive(db);
   if (!raiz) return { ok: false, motivo: 'sin_carpeta', bajados: 0, errores: [] };
   const bases = basesDrive(config);
   const dir = carpetaFuentes(config);
   mkdirSync(join(dir, 'oral'), { recursive: true });
-  // 1. Dónde está «fuentes».
+  // 1. Dónde está «fuentes» (hasta 2 niveles abajo); de paso se anotan los archivos de cada carpeta leída (el paquete
+  // en partes puede estar en cualquiera de ellas).
   const pendientes = [{ id: raiz, nivel: 0 }];
+  const vistos = [];
   let fuentes = null;
   let leidas = 0;
-  while (pendientes.length && !fuentes && leidas < TOPES_FUENTES.carpetas) {
+  while (pendientes.length && leidas < TOPES_FUENTES.carpetas) {
     const c = pendientes.shift();
     leidas += 1;
     const l = await listarCarpeta(c.id, { bases, senal });
     if (!l.ok) { if (c.nivel === 0) return { ok: false, motivo: l.motivo, bajados: 0, errores: [] }; continue; }
     for (const e of l.entradas) {
-      if (!e.carpeta) continue;
-      if (e.nombre.trim().toLowerCase() === CARPETA_EN_DRIVE) { fuentes = e.id; break; }
-      if (c.nivel < 2) pendientes.push({ id: e.id, nivel: c.nivel + 1 });
+      if (!e.carpeta) { vistos.push({ ...e, sub: '' }); continue; }
+      if (!fuentes && e.nombre.trim().toLowerCase() === CARPETA_EN_DRIVE) fuentes = e.id;
+      else if (c.nivel < 2) pendientes.push({ id: e.id, nivel: c.nivel + 1 });
     }
   }
-  if (!fuentes) return { ok: false, motivo: 'sin_fuentes', bajados: 0, errores: [] };
-  // 2. Sus archivos (y los de sus subcarpetas: «oral» va a oral/).
+  // 2. Los archivos de «fuentes» (y de sus subcarpetas: «oral» va a oral/).
   const archivos = [];
-  const l = await listarCarpeta(fuentes, { bases, senal });
-  if (!l.ok) return { ok: false, motivo: l.motivo, bajados: 0, errores: [] };
-  for (const e of l.entradas) {
-    if (!e.carpeta) { archivos.push({ ...e, sub: '' }); continue; }
-    const sub = await listarCarpeta(e.id, { bases, senal });
-    const nombre = e.nombre.trim().toLowerCase() === 'oral' ? 'oral' : '';
-    if (sub.ok) for (const x of sub.entradas) if (!x.carpeta) archivos.push({ ...x, sub: nombre });
+  if (fuentes) {
+    const l = await listarCarpeta(fuentes, { bases, senal });
+    if (!l.ok) return { ok: false, motivo: l.motivo, bajados: 0, errores: [] };
+    for (const e of l.entradas) {
+      if (!e.carpeta) { archivos.push({ ...e, sub: '' }); continue; }
+      const sub = await listarCarpeta(e.id, { bases, senal });
+      const nombre = e.nombre.trim().toLowerCase() === 'oral' ? 'oral' : '';
+      if (sub.ok) for (const x of sub.entradas) if (!x.carpeta) archivos.push({ ...x, sub: nombre });
+    }
   }
+  // 2b. El paquete en partes (fuentes-vN.json + fuentes-vN.tar.gz.partNN), en «fuentes» o en cualquier carpeta leída.
+  const conPartes = [...archivos, ...vistos.filter(v => !archivos.some(a => a.id === v.id))];
+  if (conPartes.some(a => INDICE_PARTES.test(a.nombre))) return sincronizarPartes(db, dir, conPartes, { bases, senal, quedaMs, escribir, anterior: estadoFuentes(db) ?? {} });
+  if (!fuentes) return { ok: false, motivo: 'sin_fuentes', bajados: 0, errores: [] };
   // 3. Bajar lo nuevo.
   const anterior = estadoFuentes(db) ?? {};
   const memoria = esObjeto(anterior.archivos) ? { ...anterior.archivos } : {};

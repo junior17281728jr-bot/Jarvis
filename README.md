@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.12.12; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.13.0; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,72 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.13.0: la «Fábrica de materias» y la «Mejora continua» — sin cambio de base
+Cuando la clave de Claude funciona y las fuentes están en Drive, **la app fabrica sola las materias 2–11** con la calidad de
+Factores Humanos y las publica como versiones normales de paquete (siguen sirviendo aunque la API deje de funcionar). El
+Test Guide queda **TAL CUAL**: el enunciado, las opciones, la respuesta y su explicación se copian byte a byte de `tg.json` y
+se comprueban otra vez al armar (`tgAlterado`); si algo no cuadra, no se guarda nada.
+- **Fuentes** (`src/academia/fuentes.js`; nunca en git, nunca servidas a alumnos): en la subcarpeta **«fuentes»** de la
+  carpeta de Drive (hasta 2 niveles abajo: por ejemplo «audios» → «fuentes»). Dos formas: (a) **un paquete en partes**
+  `fuentes-vN.tar.gz.part01…` (≤ 9,5 MB cada una) + `fuentes-vN.json` `{ version, partes: [{ archivo, sha256, bytes }],
+  sha256_total, bytes_total }` (en «fuentes» o en cualquier carpeta que se lee): se baja cada parte (revisando su sha256), se
+  juntan por pedazos, se revisa el total, gunzip (node:zlib) y un lector de tar mínimo (ustar) que **rechaza** rutas
+  absolutas, `..`, enlaces y archivos más grandes que su tope (texto 1 MB, JSON 4 MB, fotos 1 MB, figuras del Test Guide
+  4 MB); se extrae a una carpeta nueva y solo si todo salió bien cada archivo va a su lugar; (b) los archivos sueltos.
+  Van a `academia/fabrica/fuentes/` (carpeta privada). Se revisan (`revisarManifiesto`, `revisarTg`, `revisarImagenes`) y
+  `tg.json` se parte por tema una vez. El estado (errores, archivos que faltan) sale en la pantalla.
+- **El trabajo** (tarea `academia.fabrica`, cupo «grande»: nunca ocupa el de los alumnos; cada hora a los :41 y con «Mirar
+  ahora»): materia por materia, tema por tema, **cada paso hace UNA cosa y la guarda** (filas `fabrica.salida.*`; nada se
+  borra): [extracto, si la lectura pasa de 60 KB] → plan → tarjetas (de a 3) → preguntas del Test Guide (de a 3: `sencilla`,
+  `errores` por opción, `reto` con 2 opciones nuevas, «Si te preguntan… → Recuerda…») → cierre («Qué vas a aprender»,
+  «Resumen», «Otra vez, más fácil») → «Profundizar» (tarjetas y preguntas extra con cita del libro) → **verificación**
+  (Claude Haiku 5.5, con la lectura entera y la clave) → **armar** (en código, revisado con `formato.js`). El siguiente
+  paso sale SIEMPRE de lo guardado: un corte o un reinicio sigue donde quedó y nunca paga dos veces (lo que respondió se
+  guarda en la misma escritura que su costo). Cada tarjeta lleva algo que se VEA: la foto del libro (de `imagenes.json`,
+  por página y leyenda) o un dibujo con datos; si no, «solo texto» con el motivo (si no, se pide otra vez).
+- **Revisiones sin IA** antes de publicar: el Test Guide byte a byte, letras de `errores`, `reto` distinto de las
+  originales, cada pregunta cubierta por una tarjeta, números que no están en el libro, la cita de cada pregunta extra
+  (si no está en el libro, esa pregunta se quita y se anota «corregido»), fotos y figuras que faltan.
+- **Publicación**: limpia (cero dudas) → se pone en uso sola y avisa por **Telegram** (`fabrica_publicada:<materia>:<versión>`);
+  con dudas → versión guardada y «Esperando revisión del admin» (`fabrica_revision:…`), con el informe y «Publicar».
+- **Modelos y costo** (`src/ia/propositos.js`): escribir con **Claude Sonnet 5.5** (el sistema = reglas + la lectura del
+  tema, igual en todos los pasos del tema y marcado para la caché de 5 minutos: los pasos seguidos lo pagan a una décima
+  parte); verificar y sacar pasajes con **Claude Haiku 5.5**. Salida 4 096 tokens y 60 s por llamada, como todo. **Excepción
+  pensada** (la conoce `test/reglas.test.js`): escribir puede apartar hasta US$0,26 por vez (la lectura entra entera, hasta
+  72 KB). **Sin Batch API**: la capa de la IA es «apartar → UNA llamada → anotar» en pasos de un minuto; la Batch API (50 %
+  menos) tarda hasta 24 h por lote y la fábrica tiene ~8 pasos encadenados por tema; con la caché el ahorro de la Batch API
+  sería de unos US$5 en total. Estimado para 10 materias (~715 preguntas, ~31 temas): **≈ US$12–16**.
+- **Topes**: el propio (por defecto **US$20**, editable hasta US$100) además del general del mes, del que la fábrica deja
+  siempre libre el 20 % para los alumnos; usa como mucho la **mitad de las llamadas de la hora** (y nunca el último tercio).
+  Nunca llama si está en pausa o terminada, sin fuentes, con la IA apagada, la clave en pausa o que no sirve, o sin tope.
+  Después de una respuesta que no sirvió espera 35 minutos (tres seguidas pausarían la clave para todos); 2 intentos por paso.
+- **Al terminar todo: «Terminada», cero llamadas.** Solo siguen el tutor (a pedido) y la preparación diaria de cada alumno.
+- **Mejora continua** (`src/academia/fabrica-mejora.js`, encendida por defecto, tope propio **US$2 al mes**): como mucho una
+  vez por semana y SOLO con evidencia (una tarjeta con «Explícamelo mejor» de 3 alumnos o más —`anotarEvidenciaTarjeta`
+  desde `/api/academia/tutor/tarjeta`—; una pregunta del Test Guide que fallan la mitad o más de 5 alumnos o más, con la
+  opción equivocada que más eligen) reescribe SOLO esas tarjetas o explicaciones, las verifica, arma una versión nueva de
+  esa materia (el Test Guide igual al de antes; los archivos se enlazan desde la versión anterior) y la publica (o la deja
+  para revisión). La evidencia trabajada se marca. Sirve también para la Materia 1 (cualquier versión en uso de hasta 4 MB).
+- **Pantalla** Administrador → Contenido → **Fábrica de materias** (`#contenido/fabrica`, `public/fabrica-vista.js`): estado
+  general y por qué espera, gasto contra el tope, falta (US$ y tiempo), por materia: estado («Escribiendo», «tema n de N»,
+  «Verificando», «Esperando revisión», «Publicada»), % hecho, gasto, **tiempo estimado** (pasos que faltan × el ritmo
+  medido, nunca más rápido que la cuota de la hora), qué falta por tema, el informe de verificación, Pausar/Reanudar,
+  Reiniciar (generación nueva; lo de antes queda) y Publicar; el **plan de trabajo** por pista (una materia ya publicada por
+  otra versión se salta) y la Mejora continua (qué mejoró y por qué).
+- **Dibujos con datos** (`src/academia/diagramas.js` revisa, `public/clase/diagramas.js` dibuja): `diagrama-partes`,
+  `diagrama-tabla`, `diagrama-pasos`, `diagrama-escala`, `diagrama-capas`, `diagrama-linea` y `calculo` (un ejemplo
+  resuelto: problema, fórmula, cada paso con sus números y el resultado). `formato.js` rechaza uno con los datos mal llenados.
+- **Pista «Preparándote para el examen oral»** (lo que ya está): el formato acepta `pista: "oral"` con sus materias
+  `oral_*` (nunca se mezclan con las 11), preguntas `origen: "oral"` con `fuente_pregunta` (pregunta y respuesta del libro
+  tal cual, página y cómo se armó) y `libro_qa` por tema (verbatim); las fuentes traen `oral/oral.json` y `oral-capNN.txt`
+  y el plan lo muestra. **Lo que falta (a propósito, detrás del interruptor `oral`, apagado):** fabricar esa pista
+  (capítulos 3–8, escenarios y examen final; los capítulos 1–2 llegan hechos a mano y se saltan) y su sección en la app
+  (Camino propio, «¿De dónde salió?» de cada pregunta creada, examen final y «Listo para el oral»).
+- Rutas: `GET /api/admin/academia/fabrica`, `GET …/fabrica/:materia/informe`, `POST …/fabrica/{pausa,config,ahora}`,
+  `POST …/fabrica/:materia/{reiniciar,publicar}`. Pruebas: `test/fabrica.test.js`, `test/fabrica-mejora.test.js`,
+  `test/fabrica-api.test.js`, `test/fuentes-partes.test.js` y `test/diagramas.test.js` (fuentes sintéticas, proveedor falso,
+  Drive falso y reloj de mentira).
 
 ### Lo nuevo de la 0.12.12: la X de la clase y cambiar de pantalla sin trabarse; arreglos de la revisión visual — sin cambio de base
 - **La X de la clase «no funcionaba»**: cada tarjeta anota dónde va (POST `…/paso`) y ese POST vaciaba TODA la memoria de la

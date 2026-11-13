@@ -1648,6 +1648,8 @@ const GRUPOS_ADMIN = [
     { id: 'contenido', href: '#contenido', clave: 'admin.pestana.paquetes', icono: 'carpeta' },
     { id: 'terminos', href: '#contenido/terminos', clave: 'admin.pestana.terminos', icono: 'manual' },
     { id: 'videos', href: '#contenido/videos', clave: 'admin.pestana.videos', icono: 'video' },
+    // 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js).
+    { id: 'fabrica', href: '#contenido/fabrica', clave: 'admin.pestana.fabrica', icono: 'chispa' },
   ] },
   { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
     // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
@@ -1776,6 +1778,13 @@ async function pantallaIaDemo() {
 }
 // 0.12.8: «IA por alumno» y «Registro de la IA» (public/admin-ia.js, solo se carga aquí).
 const piezasIa = (recargar = () => dibujar()) => ({ el, t, tSi, icono, api, avisar, numero, fecha, talCual, textoError, confirmar, insignia, vacio, recargar });
+// 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js, solo se carga aquí).
+async function pantallaFabrica() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/fabrica'), import('./fabrica-vista.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('fabrica'), r.ok ? vista.pantallaFabrica(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
 async function pantallaIaAlumnos() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-alumnos'), import('./admin-ia.js')]);
@@ -5684,7 +5693,7 @@ async function dibujar() {
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica'].includes(seccion) || /^(?:alumno|comparar|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5729,6 +5738,7 @@ async function dibujar() {
   if (seccion === 'contenido' && esAdmin) return pantallaContenido();
   if (seccion === 'contenido/terminos' && esAdmin) return pantallaTerminosAdmin();
   if (seccion === 'contenido/videos' && esAdmin) return pantallaVideosAdmin();
+  if (seccion === 'contenido/fabrica' && esAdmin) return pantallaFabrica();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   if (seccion === 'reporte' && esAdmin) return pantallaReporte();
   if (seccion === 'soporte' && esAdmin) return pantallaSoporte();
@@ -5810,6 +5820,7 @@ function pedidosAlAbrir(seccion, admin) {
   // 0.12.5: Contenido → Términos y Contenido → Videos de YouTube.
   if (seccion === 'contenido/terminos') return admin ? ['/api/admin/terminos', '/api/admin/sistema'] : [];
   if (seccion === 'contenido/videos') return admin ? ['/api/admin/academia/videos', '/api/admin/sistema'] : [];
+  if (seccion === 'contenido/fabrica') return admin ? ['/api/admin/academia/fabrica'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'soporte') return admin ? ['/api/admin/soporte', '/api/admin/sistema'] : [];

@@ -15,6 +15,9 @@ import { usdAMicro } from '../ia/config.js';
 import { MATERIAS } from '../academia/formato.js';
 import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, reiniciarMateria, publicarRevisada, LIMITES_FABRICA } from '../academia/fabrica.js';
 
+// «3,50» y «3.50» son lo mismo (el teléfono en español pone coma).
+const conPunto = v => (typeof v === 'string' ? v.trim().replace(',', '.') : v);
+
 export function registrarRutasFabrica(rutas, { config = null, supervisor = null, reloj = Date.now } = {}) {
   reloj ??= Date.now;
   const materiaDe = parametros => {
@@ -39,11 +42,11 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
   rutas.agregar('POST', '/api/admin/academia/fabrica/config', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     const cambios = {};
-    if (datos?.topeUsd != null) cambios.topeMicro = usdAMicro(datos.topeUsd, LIMITES_FABRICA.topeMaxMicro);
+    if (datos?.topeUsd != null) cambios.topeMicro = usdAMicro(conPunto(datos.topeUsd), LIMITES_FABRICA.topeMaxMicro);
     if (datos?.mejora && typeof datos.mejora === 'object') {
       cambios.mejora = {};
       if (typeof datos.mejora.activa === 'boolean') cambios.mejora.activa = datos.mejora.activa;
-      if (datos.mejora.topeUsd != null) cambios.mejora.topeMesMicro = usdAMicro(datos.mejora.topeUsd, LIMITES_FABRICA.mejoraMaxMicro);
+      if (datos.mejora.topeUsd != null) cambios.mejora.topeMesMicro = usdAMicro(conPunto(datos.mejora.topeUsd), LIMITES_FABRICA.mejoraMaxMicro);
     }
     if (typeof datos?.oral === 'boolean') cambios.oral = datos.oral;
     const antes = leerConfigFabrica(db);

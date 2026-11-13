@@ -8,6 +8,8 @@ import { montarTitulo } from './titulo.js';
 import { montarCartel } from './cartel.js';
 // Las escenas del video de la materia 1 (Factores humanos): tipos «fh-…».
 import { VISUALES_FH } from './visuales-fh.js';
+// 0.13.0: los dibujos con datos de la fábrica de materias.
+import { VISUALES_DIAGRAMA } from './diagramas.js';
 
 export const VISUALES = {
   titulo: (c, p, o) => montarTitulo(c, { ...p, ...o }),
@@ -20,4 +22,5 @@ export const VISUALES = {
   // El escenario recibe los datos del escenario en parametros y espera la respuesta del alumno.
   escenario: (c, p, o) => montarEscenario(c, p, o),
   ...VISUALES_FH,
+  ...VISUALES_DIAGRAMA,
 };

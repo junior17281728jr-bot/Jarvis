@@ -660,3 +660,28 @@ html, body { margin: 0; }
 .demo-seccion > p { margin: 0 0 12px; color: var(--cl-suave); }
 .demo-pie { color: var(--cl-suave); font-size: 0.85rem; padding-top: 24px; }
 .demo-progreso { margin: 8px 2px 0; font-size: 0.85rem; color: var(--cl-suave); min-height: 1.3em; }
+
+/* 0.13.0: los dibujos con datos de la fábrica de materias (public/clase/diagramas.js). */
+.clase-diagrama { margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--fondo-suave, #eef5ff); color: var(--texto, #10233f); display: grid; gap: 10px; }
+.clase-diagrama-titulo { font-weight: 700; font-size: 1.05rem; }
+.clase-diagrama-partes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.clase-diagrama-parte { display: grid; gap: 2px; padding: 10px; border-radius: 12px; background: var(--fondo, #fff); border: 2px solid var(--borde, #c9dcf5); }
+.clase-diagrama-numero { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #1c7ed6; color: #fff; font-weight: 700; font-size: .85rem; }
+.clase-diagrama-detalle { font-size: .9rem; opacity: .85; }
+.clase-diagrama-tabla { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.clase-diagrama-tabla th, .clase-diagrama-tabla td { padding: 8px; border-bottom: 1px solid var(--borde, #c9dcf5); text-align: left; vertical-align: top; }
+.clase-diagrama-tabla thead th { background: #1c7ed6; color: #fff; }
+.clase-diagrama-pasos, .clase-diagrama-linea { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; }
+.clase-diagrama-pasos li, .clase-diagrama-linea li { display: grid; gap: 2px; }
+.clase-diagrama-linea { border-left: 3px solid #1c7ed6; padding-left: 1.2em; list-style: none; }
+.clase-diagrama-problema { margin: 0; font-weight: 600; }
+.clase-diagrama-formula { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--fondo, #fff); font-family: ui-monospace, Menlo, monospace; }
+.clase-diagrama-numeros { font-family: ui-monospace, Menlo, monospace; }
+.clase-diagrama-resultado { margin: 0; padding: 8px 10px; border-radius: 10px; background: #2f9e44; color: #fff; font-weight: 700; }
+.clase-diagrama-lienzo { width: 100%; height: auto; }
+.clase-diagrama-barra { fill: #a5d8ff; }
+.clase-diagrama-marca line { stroke: #1c7ed6; stroke-width: 3; }
+.clase-diagrama-marca text, .clase-diagrama-capa text { fill: currentColor; font-size: 16px; }
+.clase-diagrama-rotulo { font-size: 14px; opacity: .8; }
+.clase-diagrama-capa rect { fill: #a5d8ff; stroke: #1c7ed6; stroke-width: 2; }
+.clase-diagrama-capa-1 rect { fill: #b2f2bb; } .clase-diagrama-capa-2 rect { fill: #ffec99; } .clase-diagrama-capa-3 rect { fill: #ffc9c9; }
