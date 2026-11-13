@@ -1511,3 +1511,6 @@ ul.lista-drive li:first-child { border-top: 0; }
 .tarjeta-claude .todo-panel { margin: 14px 0 0; box-shadow: none; border: 1px solid var(--borde, #ddd); }
 .confirmar-hoja #confirmar-texto { white-space: pre-line; }
 .pidele-ideas li { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; margin: 6px 0; overflow-wrap: anywhere; }
+.pidele .con-casilla, .fabrica-modelo .con-casilla { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+.pidele .con-casilla input, .fabrica-modelo .con-casilla input { width: 24px; height: 24px; flex: none; margin: 0; }
+.fabrica-modelo { border: 1px solid var(--borde, #ddd); border-radius: 12px; padding: 8px 12px; margin: 0 0 10px; }

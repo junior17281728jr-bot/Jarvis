@@ -709,6 +709,54 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.7: «Mejorar todo con Claude (lo mejor)» — sin cambio de base
+Pedido del dueño: que la API de Claude profundice los libros de cada tema con los mejores modelos, mejore las clases, las
+explicaciones y las palabras, revise todo, y que sea fácil de seguir.
+- **Los modelos** (`src/ia/propositos.js`, `src/academia/fabrica-profunda.js: MODOS`): «Lo mejor: Opus» (por defecto):
+  **Claude Opus 5.5 escribe y OTRA llamada de Opus 5.5 verifica** (otro «sistema»: solo el libro y la clave; nunca ve cómo
+  escribió el autor). «Más barato: Sonnet»: Sonnet 5.5 escribe, Haiku 5.5 verifica. Los pasajes de una lectura muy larga
+  los copia Haiku. Opus va con esfuerzo `medium` y 8 192 tokens (lo que piensa entra ahí); nunca `thinking` ni muestreo.
+  Con «Lo mejor», solo Claude (`proveedores: ['anthropic']`). Precios (`src/ia/precios.json`): Opus 5.5 US$4/20 (caché
+  0,20), Sonnet 5.5 US$2/10 (caché **0,10**, antes 0,20). Excepción de tamaño documentada en `test/reglas.test.js` (`profunda: true`).
+- **La lectura entera del libro**: hasta 95 000 bytes directo (sale del propósito: `lecturaMaxDe`), en el «sistema» que va
+  a la caché de 5 minutos; verificar ve hasta 140 000 (Opus) / 170 000 (Haiku). El oral también (antes 60 000).
+- **Qué mejora**: las tarjetas (contexto, una idea, ejemplo resuelto, truco, «recuerda» numerado «1. … · 2. …», trampas del
+  examen, un dibujo donde ayude), las **explicaciones del Test Guide** («sencilla» y «errores»; nunca el enunciado, las
+  opciones, la clave ni su explicación original) y, en el oral, **la explicación y el español** de cada pregunta del libro
+  (`pregunta_es` / `respuesta_es` solo si el verificador confirma que traduce FIEL el inglés). Cada una se aplica solo con
+  el visto bueno del verificador **elemento por elemento** y las reglas del código (`explicacionTgValida`: empieza con «✔»
+  y nombra la opción correcta tal cual, «errores» solo de las incorrectas, ningún número que no esté en el libro;
+  `explicacionOralValida`: los mismos números y la misma lista numerada que el original).
+- **Nada se pierde** (`invariantesProfunda`): el inglés de `libro_qa` y todo lo que no es su español, `adicionales`, las
+  preguntas del oral (con `enunciado_en`/`opciones_en`), cada foto, clip y **dibujo** (el de antes gana; uno sin tarjeta va
+  a la más cercana), y el «recuerda» numerado de antes si el nuevo lo perdió.
+- **El orden**: las materias del Test Guide con más preguntas primero, después los capítulos orales; la 11 (SMS) sin
+  fuentes se salta sola.
+- **Etapas** (una ronda de «Mejorar todo»): a) reescribir cada tema (fases 1–3: leer, explicar, dibujos); c) «revisión muy
+  profunda»: otra pasada de Opus sobre cada tema PUBLICADO, sobre todo el español contra el inglés → informe por tema, y lo
+  que salió «error» se arregla con la misma tubería (publica solo si queda limpio). Un tema con dudas se queda como estaba
+  y se lista (no espera al dueño). Al final se para y avisa «Terminé… (gastado US$X)».
+- **El tope**: el botón trae **US$90** (editable) para TODO (fases 1–5), guardado en `ajustes: ia.todo.tope_micro`; la fase 5
+  (otra rama) suma su gasto si anota sus propósitos en `ia.todo.propositos`. Lo que no cabe queda «fuera» y se dice; si se
+  acaba el saldo: «Pausado: se acabó el saldo · siguió hasta …», y al subir el tope sigue donde se quedó (cada paso está
+  guardado: nunca se paga dos veces; también tras un reinicio).
+- **Empieza solo una vez** (`autoEmpezarTodo`, al arrancar el servidor y al pasar la prueba de la clave de Claude): con la
+  IA encendida y la clave probada, Opus y US$90 (`ajustes: ia.todo.auto`; después de «Pausar» no vuelve a empezar solo).
+- **La pantalla**: «Qué está haciendo Claude ahora» (`public/todo-vista.js`, cada 5 s) en la tarjeta de Claude del Resumen y
+  en la Fábrica: 5 fases con ✅ / 🔄 / ⏳ / 🕒, %, lo que hace ahora, el gasto y «Pausar» / «Seguir». La tarjeta dice «Claude
+  conectado ✅ · modelo · gastado este mes» y trae «💬 Pídele a Claude». Antes de empezar: la prueba GRATIS con Opus
+  (`POST /api/admin/academia/profunda/probar`, count_tokens) y el estimado por etapa con Opus y con Sonnet.
+- **Rutas**: `GET /api/admin/academia/profunda`, `GET …/profunda/estimado?topeUsd=`, `POST …/profunda/probar`,
+  `POST …/profunda/empezar { modelo, topeUsd }`, `POST …/profunda/pausa { pausada }`; config acepta `profunda.modelo` y `chat.auto`.
+- **Telegram** (pocos): empezó, terminó las fases 1–3, terminó todo, se acabó el saldo (`ia_todo:r<ronda>:…`), cada materia
+  publicada (como antes) y cada idea nueva para cambiar la app (`ia_idea:<id>`, sin su texto).
+- **Rondas**: una ronda nueva empieza cuando la de ahora terminó; sus estados, pasos y gasto llevan su número.
+- **Ideas para el futuro** (`ajustes: ia.ideas.futuro`, últimas 300): las que deja el cierre de cada tema y la revisión final.
+- **«Pídele a la IA»**: lo de contenido se hace solo (sin «Hazlo», ajuste `chat.auto`) y la IA avisa en el chat cuando
+  termina; los trabajos usan el modelo de la mejora (Opus; sin Claude, el barato); el tope del chat es del mes (US$10).
+  Lo que es del código o la pantalla va a **«Ideas para cambiar la app»** (`ajustes: ia.ideas`, últimas 200) con «Copiar».
+- Pruebas: `test/profunda-mejores.test.js` (y las de siempre de la mejora profunda y del chat, al día).
+
 ### Lo nuevo de la 0.14.6: «Notas» en el administrador (solo las notas) — sin cambio de base
 Pedido del dueño: una parte donde vea SOLO las notas de cada alumno, tema por tema, y comparar alumnos fácil.
 - **Administrador → Alumnos → Notas** (`#notas`; botón «Ver solo las notas» en Alumnos y en «Cómo van todos»;

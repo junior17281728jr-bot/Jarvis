@@ -89,14 +89,16 @@ export function panelTodo(h, { d = null, compacto = false } = {}) {
     else if (x.estado !== 'terminada') botones.push(accion(t('todo.pausar'), 'blanco', pausa(true)));
     botones.push(el('a', { class: 'boton-enlace secundario con-icono', href: '#contenido/ia-hizo' }, h.icono('manual'), el('span', { texto: t('admin.pestana.ia_hizo') })));
     if (compacto) botones.push(el('a', { class: 'boton-enlace secundario', href: '#contenido/fabrica' }, el('span', { texto: t('todo.detalle') })));
-    caja.replaceChildren(
+    caja.replaceChildren(...[
       el('h2', { class: 'con-icono', id: 'todo-titulo' }, h.icono('chispa'), el('span', { texto: t('todo.titulo') })),
       el('p', { class: x.estado === 'sin_saldo' ? 'aviso' : x.estado === 'terminada' ? 'bien' : '' }, el('strong', { texto: linea })),
       x.estado === 'apagada' && x.listo && !x.listo.listo ? el('p', { class: 'aviso chica', texto: t(queHacer(x.listo.motivo)) }) : null,
       el('ol', { class: 'todo-fases' }, filas),
-      el('p', { class: 'suave chica', texto: t('todo.gasto', { usado: usd(x.gastoMicro), tope: usd(x.topeMicro), quedan: usd(x.quedanMicro) }) }),
+      // Antes de empezar, el tope que trae el botón (US$90 para todo); después, el de la ronda.
+      el('p', { class: 'suave chica', texto: x.estado === 'apagada' ? t('todo.tope_antes', { tope: usd(x.topeTodoMicro ?? x.topeMicro) }) : t('todo.gasto', { usado: usd(x.gastoMicro), tope: usd(x.topeMicro), quedan: usd(x.quedanMicro) }) }),
       x.fuera?.length ? el('p', { class: 'suave chica', texto: t('todo.fuera', { n: x.fuera.length, lista: x.fuera.slice(0, 6).map(m => nombreMateria(m, t, h.tSi)).join(', ') }) }) : null,
-      el('div', { class: 'botones' }, botones));
+      el('div', { class: 'botones' }, botones),
+    ].filter(Boolean));
   }
   if (d) pintar(d); else caja.append(el('p', { class: 'suave', texto: t('reporte.preparando') }));
   if (!d) pedir();

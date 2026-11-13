@@ -4045,7 +4045,7 @@
   "fabrica.duda.ids_de_temas": "cambiaron los temas",
   "fabrica.duda.libro_qa_cambio": "cambió lo del libro",
   "fabrica.profunda.titulo": "Mejora profunda de las clases",
-  "fabrica.profunda.linea": "Reescribe las clases ya publicadas para que se entiendan mejor: primero «qué es y por qué importa», cada término explicado la primera vez (con el inglés), una idea por tarjeta con su ejemplo, «Recuerda», un truco para recordar, «¿Te acuerdas?» después de cada bloque y el resumen; en el oral, «Lo que te puede preguntar el examinador». Todo sale del libro, con su página. El Test Guide, las preguntas del libro, los ids y las fotos no cambian. Claude Haiku lo verifica: limpio se publica solo; con dudas espera tu revisión.",
+  "fabrica.profunda.linea": "Reescribe las clases ya publicadas para que se entiendan mejor: primero «qué es y por qué importa», cada término explicado la primera vez (con el inglés), una idea por tarjeta con su ejemplo, «Recuerda», un truco para recordar, «¿Te acuerdas?» después de cada bloque y el resumen; en el oral, «Lo que te puede preguntar el examinador». Todo sale del libro, con su página. El Test Guide (enunciado, opciones y clave), el inglés del libro, los ids, las fotos y los dibujos no cambian; las explicaciones y el español del oral mejoran solo si el verificador (otra pasada de Opus, o Haiku con «Más barato») lo confirma. Limpio se publica solo; con dudas espera tu revisión.",
   "fabrica.profunda.encendida": "Encendida",
   "fabrica.profunda.apagada": "Apagada (no gasta)",
   "fabrica.profunda.estimado": "Falta: {temas} temas · {pasos} pasos · ≈ {costo} · ≈ {eta}",
@@ -4202,7 +4202,7 @@
   "iahizo.costo": "Costó {usd}",
   "iahizo.revisado_claude": "Revisado por Claude ✔",
   "iahizo.ver_clase": "Ver la clase",
-  "pidele.linea": "Escríbele en palabras simples qué quieres mejorar. La IA te propone un plan con su costo y solo lo hace cuando tocas «Hazlo». Solo cambia el contenido de las clases (nunca el Test Guide, el código, los precios ni las cuentas).",
+  "pidele.linea": "Escríbele en palabras simples qué quieres mejorar. Lo de contenido lo hace sola: lo escribe, lo verifica contra el libro y lo publica si está limpio (puedes apagar «Lo hago solo» para aprobarlo con «Hazlo»). Nunca cambia el Test Guide, los precios ni las cuentas; lo del código o la pantalla lo guarda en «Ideas para cambiar la app».",
   "pidele.ejemplo1": "«Explica mejor el tema de hipoxia»",
   "pidele.ejemplo2": "«Agrega un dibujo al tema del motor»",
   "pidele.ejemplo3": "«Revisa si hay errores en la materia 1»",
@@ -4388,5 +4388,6 @@
   "fabrica.profunda.arreglo.publicada": "arreglado y publicado",
   "fabrica.profunda.arreglo.revision": "arreglo esperando tu revisión",
   "fabrica.profunda.arreglo.saltada": "sin arreglar (sigue como estaba)",
-  "fabrica.profunda.arreglo.no_se_pudo": "no se pudo arreglar"
+  "fabrica.profunda.arreglo.no_se_pudo": "no se pudo arreglar",
+  "todo.tope_antes": "Tope para todo el trabajo: {tope} (lo puedes cambiar al empezar)."
 }

@@ -4045,7 +4045,7 @@
   "fabrica.duda.ids_de_temas": "the topics changed",
   "fabrica.duda.libro_qa_cambio": "the book Q&A changed",
   "fabrica.profunda.titulo": "Deep improvement of the lessons",
-  "fabrica.profunda.linea": "Rewrites the published lessons so they are easier to understand: first “what it is and why it matters”, each term explained the first time (with the English), one idea per card with its example, “Remember”, a memory trick, “Do you remember?” after each block and the summary; for the oral exam, “What the examiner may ask you”. Everything comes from the book, with its page. The Test Guide, the book questions, the ids and the photos never change. Claude Haiku checks it: clean is published on its own; with doubts it waits for your review.",
+  "fabrica.profunda.linea": "Rewrites the published lessons so they are easier to understand: first “what it is and why it matters”, each term explained the first time (with the English), one idea per card with its example, “Remember”, a memory trick, “Do you remember?” after each block and the summary; for the oral exam, “What the examiner may ask you”. Everything comes from the book, with its page. The Test Guide (question, options and key), the English of the book, the ids, the photos and the drawings never change; explanations and the Spanish of the oral improve only if the checker (a second Opus pass, or Haiku with «Cheaper») confirms it. Clean is published on its own; with doubts it waits for your review.",
   "fabrica.profunda.encendida": "On",
   "fabrica.profunda.apagada": "Off (spends nothing)",
   "fabrica.profunda.estimado": "Left: {temas} topics · {pasos} steps · ≈ {costo} · ≈ {eta}",
@@ -4202,7 +4202,7 @@
   "iahizo.costo": "Cost {usd}",
   "iahizo.revisado_claude": "Reviewed by Claude ✔",
   "iahizo.ver_clase": "See the lesson",
-  "pidele.linea": "Write in simple words what you want to improve. The AI proposes a plan with its cost and only does it when you tap “Do it”. It only changes lesson content (never the Test Guide, the code, prices or accounts).",
+  "pidele.linea": "Write in simple words what you want to improve. Content requests run on their own: written, checked against the book and published when clean (turn off «Do it on my own» to approve with «Do it»). It never changes the Test Guide, prices or accounts; code or screen requests are saved in «Ideas to change the app».",
   "pidele.ejemplo1": "“Explain the hypoxia topic better”",
   "pidele.ejemplo2": "“Add a drawing to the engine topic”",
   "pidele.ejemplo3": "“Check subject 1 for errors”",
@@ -4388,5 +4388,6 @@
   "fabrica.profunda.arreglo.publicada": "fixed and published",
   "fabrica.profunda.arreglo.revision": "fix waiting for your review",
   "fabrica.profunda.arreglo.saltada": "not fixed (stays as it was)",
-  "fabrica.profunda.arreglo.no_se_pudo": "could not be fixed"
+  "fabrica.profunda.arreglo.no_se_pudo": "could not be fixed",
+  "todo.tope_antes": "Cap for the whole job: {tope} (you can change it when starting)."
 }
