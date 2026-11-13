@@ -146,6 +146,7 @@ test('«Hace N días que no entra» con un reloj falso (desde 7 días), días de
   ];
   assert.deepEqual(materiaMasDebil(m), { id: 'c', pctAcierto: 55, respuestas: 12 });
   assert.equal(materiaMasDebil([]), null);
+  assert.equal(materiaMasDebil([{ id: 'a', pronto: false, respuestas: 40, pctAcierto: 90 }]), null, 'con 90 % o más no «le cuesta»');
 });
 
 test('«Hace 9 días que no entra»: lo dice «Cómo van todos» con el reloj de las rutas', async () => {

@@ -580,12 +580,13 @@ a.cv-eliminado-nombre { display: flex; flex-wrap: wrap; align-items: baseline; g
   .cv-cada-lista { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 18px; }
 }
 @media (min-width: 1100px) {
-  .cv-cabeza-tabla, .cv-alumno { grid-template-columns: minmax(150px, 1.1fr) minmax(130px, 0.9fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(100px, 0.7fr); column-gap: 16px; align-items: start; }
+  .cv-cabeza-tabla, .cv-alumno { grid-template-columns: minmax(150px, 1.1fr) minmax(130px, 0.9fr) minmax(0, 1.5fr) minmax(0, 1.4fr) minmax(150px, 0.9fr); column-gap: 16px; align-items: start; }
   .cv-cabeza-tabla { display: grid; padding: 0 14px 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); border-bottom: 2px solid var(--linea); margin-bottom: 4px; }
   .cv-lista { gap: 8px; }
   .cv-alumno { padding: 12px 14px; border-radius: 14px; }
   .cv-alumno .cv-titulo { display: none; }
   .cv-col-tiempo { display: block; }
+  .cv-col-tiempo .cv-detalles { font-size: 13px; }
   .cv-grande { font-size: 28px; }
 }
 

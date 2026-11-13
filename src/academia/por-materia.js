@@ -5,7 +5,7 @@
 //    leído, si no tiene preguntas) es un paso y el examen aprobado de la materia es otro. La que el paquete todavía no
 //    trae sale «pronto» (sin pasos). También la mejor nota de su examen y el % de aciertos FUERA de los exámenes.
 //  - dondeVa: el tema donde se quedó (el primero sin hacer, como su Camino) o el examen de esa materia.
-//  - materiaMasDebil: la de menos aciertos (con al menos 10 respuestas: con menos no dice nada).
+//  - materiaMasDebil: la de menos aciertos (con al menos 10 respuestas y menos de 90 % de aciertos; si no, nada).
 //  - avanceOral: los capítulos del oral (si el alumno ya hizo algo ahí): temas leídos + examen aprobado.
 //  - diasSinEntrar / diasActivosSemana: con el reloj que llega (las pruebas usan uno falso).
 import { MATERIAS } from './formato.js';
@@ -15,6 +15,8 @@ import { caminoOral, examenesOralDe, hayOral } from './oral.js';
 const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
 const DIA_MS = 24 * 3600 * 1000;
 export const MINIMO_PARA_DEBIL = 10;
+// Con 90 % de aciertos o más, ninguna materia «le cuesta» (no se dice nada).
+export const TOPE_DEBIL = 90;
 // Desde cuántos días sin entrar se avisa (en naranja) «Hace N días que no entra».
 export const DIAS_SIN_ENTRAR_AVISO = 7;
 
@@ -66,7 +68,7 @@ export function avancePorMateria(db, usuarioId, paquete, { respuestas = null } =
 export function materiaMasDebil(materias, minimo = MINIMO_PARA_DEBIL) {
   let peor = null;
   for (const m of materias ?? []) {
-    if (m.pronto || (m.respuestas ?? 0) < minimo || m.pctAcierto == null) continue;
+    if (m.pronto || (m.respuestas ?? 0) < minimo || m.pctAcierto == null || m.pctAcierto >= TOPE_DEBIL) continue;
     if (!peor || m.pctAcierto < peor.pctAcierto) peor = { id: m.id, pctAcierto: m.pctAcierto, respuestas: m.respuestas };
   }
   return peor;

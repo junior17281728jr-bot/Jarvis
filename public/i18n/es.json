@@ -1838,6 +1838,7 @@
   "ficha.tipo.reto": "Modo reto",
   "ficha.tipo.repaso": "Repaso",
   "ficha.tipo.errores": "Practicar errores",
+  "ficha.tipo.final": "Repaso final",
   "ficha.intentos.n": "{n} intentos",
   "ficha.intentos.n.uno": "1 intento",
   "ficha.intentos.linea": "Cada tema, examen y práctica, del más nuevo al más viejo. Toca uno para ver cada pregunta, lo que eligió y la correcta.",

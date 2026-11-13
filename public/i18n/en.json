@@ -1838,6 +1838,7 @@
   "ficha.tipo.reto": "Challenge mode",
   "ficha.tipo.repaso": "Review",
   "ficha.tipo.errores": "Mistakes practice",
+  "ficha.tipo.final": "Final review",
   "ficha.intentos.n": "{n} attempts",
   "ficha.intentos.n.uno": "1 attempt",
   "ficha.intentos.linea": "Every topic, exam and practice, newest first. Tap one to see each question, what they chose and the right answer.",

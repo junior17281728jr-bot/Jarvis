@@ -450,7 +450,7 @@ test('1.11 el resumen sellado solo se abre con la clave, y sus cuentas son las d
   assert.equal(resumen.copia, c.copia);
   assert.deepEqual(resumen.porTabla, c.porTabla);
   assert.equal(resumen.filas, c.filas);
-  assert.equal(resumen.migracion, 9);
+  assert.equal(resumen.migracion, 10); // 0.13.8: la 10 (cuentas eliminadas)
   await assert.rejects(abrirSellado(c.sellado, derivar(crearClave().semilla).privada), codigoDe('clave_no_es_de_esta_copia'));
   const s = sellar('x'.repeat(TROZO), c.llaves.publica, { copia: c.copia, creada: c.creada });
   assert.equal((await abrirSellado(s, c.llaves.privada)).texto.length, TROZO, 'un resumen de 64 KiB justos');

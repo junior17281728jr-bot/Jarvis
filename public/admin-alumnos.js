@@ -11,7 +11,7 @@ export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 
 export const MAXIMO_COMPARAR = 6;
 const TEXTO_PESTANA = { resumen: 'ficha.pestana.resumen', examenes: 'ficha.pestana.examenes', materias: 'ficha.pestana.materias', debiles: 'ficha.pestana.debiles', actividad: 'ficha.pestana.actividad' };
 const ICONO_PESTANA = { resumen: 'grafica', examenes: 'libro', materias: 'bandera', debiles: 'atencion', actividad: 'reloj' };
-const TEXTO_TIPO = { tema: 'ficha.tipo.tema', examen: 'ficha.tipo.examen', reto: 'ficha.tipo.reto', repaso: 'ficha.tipo.repaso', errores: 'ficha.tipo.errores' };
+const TEXTO_TIPO = { tema: 'ficha.tipo.tema', examen: 'ficha.tipo.examen', reto: 'ficha.tipo.reto', repaso: 'ficha.tipo.repaso', errores: 'ficha.tipo.errores', final: 'ficha.tipo.final' };
 const TEXTO_ESTADO = { en_linea: 'ficha.sesion.en_linea', abierta: 'ficha.sesion.abierta', vencida: 'ficha.sesion.vencida', cerrada: 'ficha.sesion.cerrada' };
 const TEXTO_MOTIVO = { salir: 'ficha.motivo.salir', cerrada: 'ficha.motivo.cerrada', bloqueo: 'ficha.motivo.bloqueo', otro_equipo: 'ficha.motivo.otro_equipo' };
 const TEXTO_RITMO = { adelantado: 'ficha.ritmo.adelantado', a_tiempo: 'ficha.ritmo.a_tiempo', atrasado: 'ficha.ritmo.atrasado', terminado: 'ficha.ritmo.terminado' };
@@ -268,7 +268,7 @@ function pestanaResumen(d, h) {
     el('section', { class: 'tarjeta ficha-bloque' },
       el('h2', { class: 'con-icono' }, h.icono('reloj'), el('span', { texto: t('ficha.pestana.actividad') })),
       el('p', { class: 'cv-estado grande' }, el('span', { class: `punto-linea${act.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), el('span', { texto: estadoLinea(h, act) })),
-      lineasDeActividad(h, d.detalles),
+      lineasDeActividad(h, d.detalles && { ...d.detalles, racha: 0 }), // la racha ya va abajo, con su número grande
       el('div', { class: 'ficha-cifras' },
         cifra(h, 'reloj', horas(h, r.minutosEstudio), t('cv.tiempo.total'), t('ficha.tiempo.linea', { n: numero(r.diasEstudio) })),
         cifra(h, 'calendario', horas(h, r.minutosSemana ?? 0), t('cv.tiempo.semana')),
@@ -387,7 +387,7 @@ function pestanaExamenes(d, h) {
   });
   // Prácticas y temas: plegadas, sin los sin terminar salvo que se pida.
   const otros = d.intentos.filter(x => x.tipo !== 'examen');
-  const tipos = ['todos', 'tema', 'reto', 'repaso', 'errores'].filter(x => x === 'todos' || otros.some(i => i.tipo === x));
+  const tipos = ['todos', 'tema', 'reto', 'repaso', 'errores', 'final'].filter(x => x === 'todos' || otros.some(i => i.tipo === x));
   const lista = el('ul', { class: 'ficha-intentos' });
   let filtro = 'todos';
   let conSinTerminar = false;
