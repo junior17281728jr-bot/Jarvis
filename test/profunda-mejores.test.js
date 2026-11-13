@@ -359,7 +359,8 @@ test('el chat: lo de código va a «Ideas para cambiar la app» (con aviso por T
   await conFabrica(async ({ db, config, correr, reloj }) => {
     await correr();
     const r = enTransaccion(db, () => escribirMensaje(db, { texto: 'cambia el botón de la pantalla de inicio a verde', ahora: reloj() }));
-    assert.equal(r.rechazado, 'codigo');
+    // 0.14.8: además va directo a «Mejorar la app con Claude» (test/app-mejora.test.js); la idea queda como historia.
+    assert.ok(r.rechazado == null && r.appMejora);
     const ideas = leerIdeas(db);
     assert.equal(ideas.at(-1).texto, 'cambia el botón de la pantalla de inicio a verde');
     const aviso = db.prepare('SELECT * FROM avisos WHERE clave = ?').get(`ia_idea:${ideas.at(-1).id}`);

@@ -110,10 +110,10 @@ function anotarPropositosTodo(db) {
   if (!Array.isArray(lista)) lista = [];
   if (!PROPOSITOS_APP.every(x => lista.includes(x))) guardarAjuste(db, AJUSTE_TODO_PROPOSITOS, JSON.stringify([...new Set([...lista, ...PROPOSITOS_APP])]));
 }
-// ¿Terminaron las fases 1–4 de «Mejorar todo»? (si nunca empezó, no hay nada que esperar).
+// ¿Terminaron las fases 1–4 de «Mejorar todo»? El modo solo empieza DESPUÉS de ellas (si nunca empezaron, espera).
 function fasesTerminadas(db) {
   const v = leerJson(db, AJUSTE_TODO_ESTADO, null);
-  if (!v || typeof v !== 'object' || !v.fases || typeof v.fases !== 'object') return true;
+  if (!v || typeof v !== 'object' || !v.fases || typeof v.fases !== 'object') return false;
   return Object.values(v.fases).every(x => x === 'hecha');
 }
 
@@ -512,7 +512,7 @@ export async function mejorarApp(ctx, { ahora, cfg, soloPedidos = false, puedeLl
   const continuo = activos.find(x => x.origen === 'continuo');
   if (r.terminado && !continuo) { await ctx.escribir(() => escribirEstado(db, { estado: 'hecha', actual: 'Terminé: todo revisado y mejorado', ahora })); return { trabajo: false }; }
   if (cfgApp.pausada || !cfgApp.activa) { await ctx.escribir(() => escribirEstado(db, { estado: 'pausada', actual: 'Pausado por ti', ahora })); return { trabajo: false }; }
-  if (!fasesTerminadas(db)) { await ctx.escribir(() => escribirEstado(db, { estado: 'falta', actual: 'Empieza cuando terminen las fases del contenido', ahora })); return { trabajo: false }; }
+  if (!fasesTerminadas(db) && !continuo) return { trabajo: false };
   if (continuo) return pensar(ctx, continuo, { ahora, cfg, puedeLlamar });
   const siguiente = PANTALLAS.find(x => !r.pantallas[x.id]?.hecha);
   if (!siguiente) return { trabajo: false };

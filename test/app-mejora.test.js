@@ -82,6 +82,8 @@ async function conApp(fn, { token = true, respuesta = () => BUENA, pruebas = () 
   config.canalesBases = { github: gh.base, github_descarga: gh.base };
   mkdirSync(config.carpetaDatos, { recursive: true });
   guardarConfigApp(db, { repo: 'dueno/app' });
+  // Las fases 1–4 de «Mejorar todo» ya terminaron (el modo solo empieza después).
+  guardarAjuste(db, 'ia.todo.estado', JSON.stringify({ ronda: 1, fases: { leer: 'hecha', explicar: 'hecha', dibujos: 'hecha', revision: 'hecha' } }));
   if (token) guardarSecreto(db, config, { uso: 'github_token', valor: tokenFalso(), usuarioId: admin, ahora: T0 });
   const escribir = async trabajo => enTransaccion(db, trabajo);
   const lanzadas = [];
@@ -456,6 +458,19 @@ test('«Terminé: todo revisado y mejorado»: con nada importante en cada pantal
     await correr({ max: 5 });
     assert.equal(llamadas().length, n, 'parado: ni una llamada más');
   }, { respuesta: () => ({ nada_importante: true, titulo: 'Bien', explicacion: '', cambios: [], textos: [], idea_para_desarrollador: null }) });
+});
+
+test('el modo solo espera a que terminen las fases 1–4 (ia.todo.estado) y anota su propósito en el tope compartido', async () => {
+  await conApp(async ({ db, correr, llamadas }) => {
+    guardarAjuste(db, 'ia.todo.estado', JSON.stringify({ ronda: 1, fases: { leer: 'hecha', explicar: 'ahora', dibujos: 'falta', revision: 'falta' } }));
+    await correr();
+    assert.equal(llamadas().length, 0);
+    assert.equal(leerPropuestas(db).length, 0);
+    guardarAjuste(db, 'ia.todo.estado', JSON.stringify({ ronda: 1, fases: { leer: 'hecha', explicar: 'hecha', dibujos: 'hecha', revision: 'hecha' } }));
+    await correr({ max: 3 });
+    assert.ok(leerPropuestas(db).length >= 1);
+    assert.ok(JSON.parse(db.prepare("SELECT valor FROM ajustes WHERE clave = 'ia.todo.propositos'").get().valor).includes('app_mejorar'));
+  });
 });
 
 test('lo que necesita el servidor va a «Ideas para el programador»; con la IA en pausa no se hace nada', async () => {
