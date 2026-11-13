@@ -250,9 +250,9 @@ function pestanaResumen(d, h) {
         el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) }))),
     el('section', { class: 'tarjeta ficha-bloque' },
       el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: t('cv.examenes') })),
+      bloqueNotaGeneral(h, { pct: r.notaGeneral ?? 0, aprobados: r.examenesAprobados, total: r.examenes }),
       examenes.length ? el('ul', { class: 'cv-examenes' }, examenes.map(x => chipExamen(h, x))) : el('p', { class: 'suave', texto: t('cv.examenes.vacio') }),
       el('div', { class: 'ficha-cifras' },
-        cifra(h, 'medalla', `${numero(r.examenesAprobados)}/${numero(r.examenes)}`, t('ficha.examenes')),
         cifra(h, 'trofeo', r.notaPromedio == null ? '—' : h.pctTexto(r.notaPromedio), t('ficha.nota_promedio'), t('ficha.nota_promedio.linea', { n: numero(r.calificados) }))),
       el('a', { class: 'enlace-fuerte', href: `#alumno/${d.alumno.id}/examenes`, texto: t('cv.ver_examenes') })),
     el('section', { class: 'tarjeta ficha-bloque' },
@@ -677,11 +677,23 @@ function bloqueAvance(h, avance, plan) {
   return el('div', { class: 'cv-avance' },
     el('div', { class: 'cv-avance-cifra' },
       el('strong', { class: 'cv-grande', texto: h.pctTexto(avance.pct) }),
-      el('span', { class: 'cv-rotulo', texto: t('cv.avance') })),
+      el('span', { class: 'cv-rotulo', texto: t('cv.avance_curso') })),
     el('span', { class: 'cv-barra grande' }, h.barraLlena(avance.pct)),
     el('p', { class: 'cv-plan' },
       el('span', { texto: textoPlan(h, plan) }),
       plan ? h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null));
+}
+// 0.13.6: la nota general del curso (las 11 materias; sin examen cuenta 0), grande con su barra, y los exámenes aprobados.
+function bloqueNotaGeneral(h, general) {
+  const { el, t, numero } = h;
+  if (!general) return null;
+  return el('div', { class: 'cv-avance cv-general' },
+    el('div', { class: 'cv-avance-cifra' },
+      el('strong', { class: 'cv-grande', texto: h.pctTexto(general.pct ?? 0) }),
+      el('span', { class: 'cv-rotulo', texto: t('cv.general') })),
+    el('span', { class: 'cv-barra grande' }, h.barraLlena(general.pct ?? 0)),
+    el('p', { class: 'cv-general-aprobados', texto: t('cv.general.aprobados', { n: numero(general.aprobados ?? 0), total: numero(general.total ?? 11) }) }),
+    el('p', { class: 'suave chica', texto: t('cv.general.linea') }));
 }
 function minutos(h, n) {
   return horas(h, n ?? 0);
@@ -695,7 +707,7 @@ export function ordenarComoVan(lista, orden = 'en_linea') {
   const porNombre = (a, b) => nombre(a).localeCompare(nombre(b), 'es') || a.id - b.id;
   const comparar = {
     en_linea: (a, b) => Number(b.enLinea) - Number(a.enLinea) || String(b.ultimaActividad ?? '').localeCompare(String(a.ultimaActividad ?? '')) || porNombre(a, b),
-    nota: (a, b) => (b.examenes.promedio ?? -1) - (a.examenes.promedio ?? -1) || porNombre(a, b),
+    nota: (a, b) => (b.examenes.general?.pct ?? 0) - (a.examenes.general?.pct ?? 0) || (b.examenes.promedio ?? -1) - (a.examenes.promedio ?? -1) || porNombre(a, b),
     avance: (a, b) => b.avance.pct - a.avance.pct || b.clases.pctAcierto - a.clases.pctAcierto || porNombre(a, b),
   }[ORDENES_COMO_VAN.includes(orden) ? orden : 'en_linea'];
   return [...lista].sort(comparar);
@@ -724,6 +736,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
       el('div', { class: 'cv-col cv-col-avance' }, bloqueAvance(h, a.avance, a.plan)),
       el('div', { class: 'cv-col cv-col-examenes' },
         el('h3', { class: 'cv-titulo', texto: t('cv.examenes') }),
+        bloqueNotaGeneral(h, a.examenes.general),
         examenes.length ? el('ul', { class: 'cv-examenes' }, examenes.map(x => chipExamen(h, x))) : el('p', { class: 'suave', texto: t('cv.examenes.vacio') })),
       el('div', { class: 'cv-col cv-col-clases' },
         el('h3', { class: 'cv-titulo', texto: t('cv.clases') }),

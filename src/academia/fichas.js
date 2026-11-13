@@ -6,7 +6,7 @@
 //  - acierto: respuestas correctas sobre todas las respuestas que dio (también las repetidas);
 //  - nota promedio: el promedio de la nota (%) de sus temas y exámenes TERMINADOS (la práctica no cuenta).
 import { ErrorHttp } from '../nucleo/http.js';
-import { porMateria, puntosYRacha, examenes, temasAprobados, verIntento, resumenDebiles, modoDeFila, PUNTOS_POR_ACIERTO } from './progreso.js';
+import { porMateria, puntosYRacha, examenes, notaGeneralDelCurso, temasAprobados, verIntento, resumenDebiles, modoDeFila, PUNTOS_POR_ACIERTO } from './progreso.js';
 import { puntosDebiles } from './memoria.js';
 import { planDe, preparacionDe, pasosDelCamino } from './plan.js';
 import { actividadDe } from '../cuentas/historial.js';
@@ -86,6 +86,7 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
   const fechas = db.prepare('SELECT creada_en FROM academia_respuestas WHERE usuario_id = ? ORDER BY creada_en').all(alumnoId).map(f => f.creada_en);
   const aprobadosTemas = [...temasAprobados(db, alumnoId).values()].filter(x => x.aprobado).length;
   const deExamen = examenes(db, alumnoId);
+  const general = notaGeneralDelCurso(deExamen);
   const { racha, hoy } = puntosYRacha(db, alumnoId, ahoraMs);
   const plan = planDe(db, alumnoId, paquete, ahoraMs);
   return {
@@ -97,7 +98,8 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
     aprobados: calificados.filter(x => x.aprobado === true).length,
     reprobados: calificados.filter(x => x.aprobado === false).length,
     temasAprobados: aprobadosTemas, temas: (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0),
-    examenesAprobados: [...deExamen.values()].filter(x => x.aprobado).length, examenes: (paquete?.materias ?? []).filter(m => m.temas.length).length,
+    // 0.13.6: de las 11 materias del curso (no solo las que ya tienen contenido) y la nota general del curso.
+    examenesAprobados: general.aprobados, examenes: general.total, notaGeneral: general.pct,
     respuestas: r.n, aciertos: r.bien, errores: r.n - r.bien, pctAcierto: pct(r.bien, r.n), preguntasDistintas: r.distintas,
     racha, estudioHoy: hoy, puntos: r.bien * PUNTOS_POR_ACIERTO,
     minutosEstudio: tiempoDeEstudio(fechas),

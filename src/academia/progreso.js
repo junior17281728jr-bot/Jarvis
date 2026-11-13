@@ -175,6 +175,22 @@ export function examenes(db, usuarioId) {
   return new Map(filas.map(f => [f.materia, { aprobado: f.aprobado === 1, mejor: f.mejor, veces: f.veces }]));
 }
 
+// 0.13.6: la nota general del curso: la MEJOR nota del examen de cada una de las 11 materias, sumadas y divididas entre 11
+// (la materia sin examen hecho o sin contenido cuenta 0). mejores: Map o lista de { id/materia, mejor, aprobado }.
+// → { pct, aprobados, total: 11 } (aprobados: los exámenes de materia aprobados). El oral no entra.
+export function notaGeneralDelCurso(mejores) {
+  const lista = mejores instanceof Map ? [...mejores].map(([id, x]) => ({ ...x, id })) : [...(mejores ?? [])];
+  const deCada = new Map();
+  for (const x of lista) {
+    const id = x.id ?? x.materia;
+    if (!MATERIAS.includes(id)) continue;
+    const antes = deCada.get(id) ?? { mejor: 0, aprobado: false };
+    deCada.set(id, { mejor: Math.max(antes.mejor, Math.max(0, Math.min(100, Number(x.mejor) || 0))), aprobado: antes.aprobado || x.aprobado === true });
+  }
+  const suma = [...deCada.values()].reduce((s, x) => s + x.mejor, 0);
+  return { pct: Math.floor(suma / MATERIAS.length), aprobados: [...deCada.values()].filter(x => x.aprobado).length, total: MATERIAS.length };
+}
+
 export function puntosYRacha(db, usuarioId, ahoraMs = Date.now()) {
   const puntos = (db.prepare('SELECT COALESCE(SUM(correcta), 0) AS n FROM academia_respuestas WHERE usuario_id = ?').get(usuarioId).n) * PUNTOS_POR_ACIERTO;
   const dias = db.prepare('SELECT DISTINCT dia FROM academia_respuestas WHERE usuario_id = ? ORDER BY dia DESC LIMIT 400').all(usuarioId).map(f => f.dia);

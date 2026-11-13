@@ -1,4 +1,4 @@
-// Pruebas de la Academia 0.13.5: «Cómo van todos» (Administrador → Alumnos) y «Comparar un examen».
+// Pruebas de la Academia 0.13.5 (0.13.6: la nota general del curso): «Cómo van todos» (Administrador → Alumnos) y «Comparar un examen».
 //  - Solo el administrador: 401 sin sesión, 403 para los alumnos (sin datos).
 //  - En línea con un reloj falso (nada de esperas): visita de hace 2 min → en línea; de hace 4 min o cerrada → no.
 //  - Exámenes: SOLO las notas de examen, por materia (mejor, última, aprobó) y los del oral (capítulos y final).
@@ -14,6 +14,8 @@ import { hashClave } from '../src/cuentas/claves.js';
 import { anotarActividad, anotarFin } from '../src/cuentas/visitas.js';
 import { comoVanTodos, enLineaTodos, examenesPorMateria, ordenarAlumnos } from '../src/academia/como-van.js';
 import { examenesOralDe } from '../src/academia/oral.js';
+import { notaGeneralDelCurso } from '../src/academia/progreso.js';
+import { MATERIAS } from '../src/academia/formato.js';
 import { ordenarComoVan, fallasPorTema, tonoExamen } from '../public/admin-alumnos.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 
@@ -109,6 +111,8 @@ test('«Cómo van todos»: solo alumnos; exámenes por materia (mejor y última)
     assert.deepEqual(a.examenes.oral, []);
     assert.equal(a.examenes.promedio, 100);
     assert.equal(a.examenes.aprobados, 1);
+    // 0.13.6: la nota general es de las 11 materias: su mejor nota (100) ÷ 11 → 9 %; 1 de 11 aprobados.
+    assert.deepEqual(a.examenes.general, { pct: 9, aprobados: 1, total: 11 });
     // Clases: 1 de 2 temas aprobados; aciertos SOLO de los temas (8 de 10), no de los exámenes.
     assert.deepEqual([a.clases.temasAprobados, a.clases.temas, a.clases.respuestas, a.clases.aciertos, a.clases.pctAcierto], [1, 2, 10, 8, 80]);
     assert.deepEqual(a.clases.materias.map(m => [m.id, m.temasAprobados, m.temas, m.pct, m.pctAcierto]), [['factores_humanos', 1, 2, 50, 80]]);
@@ -122,6 +126,10 @@ test('«Cómo van todos»: solo alumnos; exámenes por materia (mejor y última)
     assert.equal(a.tiempo.dias, 4);
     const b = d.alumnos.find(x => x.id === ids.beto);
     assert.deepEqual([b.examenes.materias, b.examenes.promedio, b.clases.respuestas, b.plan, b.tiempo.minutos], [[], null, 0, null, 0]);
+    assert.deepEqual(b.examenes.general, { pct: 0, aprobados: 0, total: 11 });
+    // La ficha (Resumen) dice lo mismo: de las 11 materias, no solo de las que tienen contenido.
+    const f = (await pedir(base, 'GET', `/api/admin/academia/alumnos/${ids.ana}/ficha`, { galleta: admin })).datos;
+    assert.deepEqual([f.resumen.notaGeneral, f.resumen.examenesAprobados, f.resumen.examenes], [9, 1, 11]);
     assert.ok(!JSON.stringify(d).includes('clave_hash'));
   });
 });
@@ -237,4 +245,20 @@ test('«Comparar un examen»: la nota de cada uno y las preguntas que más falla
     assert.equal(typeof f.resumen.minutosSemana, 'number');
     assert.deepEqual(f.examenesOral, [], 'la muestra no trae pista oral');
   });
+});
+
+test('0.13.6: la nota general del curso es de las 11 materias (la que no tiene examen cuenta 0); «Mejor nota» ordena por ella', () => {
+  assert.equal(MATERIAS.length, 11);
+  // Un solo examen con 80 % → 80 ÷ 11 = 7 %; aprobado → 1 de 11.
+  assert.deepEqual(notaGeneralDelCurso([{ id: 'factores_humanos', mejor: 80, aprobado: true }]), { pct: 7, aprobados: 1, total: 11 });
+  assert.deepEqual(notaGeneralDelCurso([]), { pct: 0, aprobados: 0, total: 11 });
+  // Lo mismo desde el Map de progreso.examenes(); el oral u otra materia no cuentan; la mejor de cada materia.
+  const m = new Map([['factores_humanos', { mejor: 90, aprobado: true }], ['meteorologia', { mejor: 70, aprobado: false }], ['oral_meteorologia', { mejor: 100, aprobado: true }]]);
+  assert.deepEqual(notaGeneralDelCurso(m), { pct: 14, aprobados: 1, total: 11 });
+  assert.deepEqual(notaGeneralDelCurso(MATERIAS.map(id => ({ id, mejor: 100, aprobado: true }))), { pct: 100, aprobados: 11, total: 11 });
+  // Orden «nota»: la nota general manda (2 exámenes buenos le ganan a 1 perfecto); sin exámenes, al final.
+  const a = (id, nombre, general, promedio) => ({ id, nombre, nombreVisible: nombre, enLinea: false, ultimaActividad: null, examenes: { promedio, general: { pct: general, aprobados: 0, total: 11 } }, avance: { pct: 0 }, clases: { pctAcierto: 0 } });
+  const lista = [a(1, 'Uno', 9, 100), a(2, 'Dos', 16, 90), a(3, 'Nadie', 0, null)];
+  assert.deepEqual(ordenarComoVan(lista, 'nota').map(x => x.nombre), ['Dos', 'Uno', 'Nadie']);
+  assert.deepEqual(ordenarAlumnos(lista, 'nota').map(x => x.nombre), ['Dos', 'Uno', 'Nadie']);
 });

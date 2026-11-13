@@ -520,6 +520,8 @@ a.cv-alumno.en-linea .cv-estado { color: var(--bien); font-weight: 700; }
 .cv-col { min-width: 0; }
 .cv-titulo { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); }
 .cv-avance { display: grid; gap: 6px; }
+.cv-general { margin-bottom: 8px; }
+.cv-general-aprobados { margin: 0; font-weight: 700; }
 .cv-avance-cifra { display: flex; align-items: baseline; gap: 8px; }
 .cv-grande { font: 800 34px/1 var(--letra-redonda); }
 .cv-rotulo { font-weight: 700; color: var(--suave); }

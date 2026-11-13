@@ -3800,5 +3800,9 @@
   "cv.sin_tema": "Otras",
   "ficha.fallo_en": "Falló en:",
   "ficha.sin_fallos": "No falló ninguna.",
-  "ficha.tema_bien": "{bien} de {n} bien"
+  "ficha.tema_bien": "{bien} de {n} bien",
+  "cv.avance_curso": "Avance de todo el curso",
+  "cv.general": "Nota general del curso",
+  "cv.general.aprobados": "Exámenes aprobados: {n} de {total}",
+  "cv.general.linea": "Cuenta las 11 materias. La que todavía no tiene examen cuenta 0."
 }

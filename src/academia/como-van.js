@@ -1,4 +1,4 @@
-// Academia 0.13.5: «Cómo van todos» (Administrador → Alumnos). SOLO para las rutas { admin: true } (src/api/perfil.js):
+// Academia 0.13.5 (0.13.6: la nota general del curso): «Cómo van todos» (Administrador → Alumnos). SOLO para las rutas { admin: true } (src/api/perfil.js):
 // un alumno nunca ve esto. Una fila por alumno (las cuentas de administrador no salen) con, por separado:
 //  - En línea: lo dicen sus visitas (actividad en los últimos 3 minutos, src/cuentas/visitas.js); sin visitas anotadas,
 //    su última actividad (sesiones, respuestas) en esos mismos 3 minutos. Una respuesta de hace menos de 3 minutos también.
@@ -8,7 +8,7 @@
 //  - Plan, avance del curso entero (los pasos del camino: src/academia/plan.js) y tiempo estudiando (aprox., sale de sus
 //    respuestas: src/academia/fichas.js → tiempoDeEstudio).
 // Solo lee lo que ya se guarda (sin cambio de base). No cierra exámenes vencidos ni escribe nada: se pide cada 30 s.
-import { ultimaActividad } from './progreso.js';
+import { ultimaActividad, notaGeneralDelCurso } from './progreso.js';
 import { resumenVisitas, EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avataresDe } from '../cuentas/perfil.js';
 import { planDe, pasosDelCamino } from './plan.js';
@@ -62,14 +62,15 @@ export function examenesPorMateria(filas, orden = []) {
   }));
 }
 
-// Para ordenar en la pantalla (y en las pruebas): «en_linea» (en línea primero, después lo más reciente), «nota» (el
-// promedio de sus mejores notas de examen; sin exámenes, al final) y «avance» (el % del curso). Empate: por nombre.
+// Para ordenar en la pantalla (y en las pruebas): «en_linea» (en línea primero, después lo más reciente), «nota» (0.13.6: la
+// nota general del curso, de las 11 materias; empate: el promedio de sus mejores notas, sin exámenes al final) y «avance»
+// (el % del curso). Empate: por nombre.
 export function ordenarAlumnos(lista, orden = 'en_linea') {
   const nombre = a => String(a.nombreVisible || a.nombre || '').toLocaleLowerCase('es');
   const porNombre = (a, b) => nombre(a).localeCompare(nombre(b), 'es') || a.id - b.id;
   const comparar = {
     en_linea: (a, b) => Number(b.enLinea) - Number(a.enLinea) || String(b.ultimaActividad ?? '').localeCompare(String(a.ultimaActividad ?? '')) || porNombre(a, b),
-    nota: (a, b) => (b.examenes.promedio ?? -1) - (a.examenes.promedio ?? -1) || porNombre(a, b),
+    nota: (a, b) => (b.examenes.general?.pct ?? 0) - (a.examenes.general?.pct ?? 0) || (b.examenes.promedio ?? -1) - (a.examenes.promedio ?? -1) || porNombre(a, b),
     avance: (a, b) => b.avance.pct - a.avance.pct || b.clases.pctAcierto - a.clases.pctAcierto || porNombre(a, b),
   }[ORDENES.includes(orden) ? orden : 'en_linea'];
   return [...lista].sort(comparar);
@@ -137,6 +138,8 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
         materias: tg, oral,
         hechos: todas.length, aprobados: todas.filter(x => x.aprobado).length,
         promedio: todas.length ? Math.round(todas.reduce((s, x) => s + x.mejor, 0) / todas.length) : null,
+        // 0.13.6: la nota general de TODO el curso (las 11 materias; sin examen, 0) y cuántos exámenes de materia aprobó.
+        general: notaGeneralDelCurso(tg),
       },
       clases: {
         temasAprobados: clasesMaterias.reduce((s, m) => s + m.temasAprobados, 0), temas: clasesMaterias.reduce((s, m) => s + m.temas, 0),

@@ -3800,5 +3800,9 @@
   "cv.sin_tema": "Other",
   "ficha.fallo_en": "Failed in:",
   "ficha.sin_fallos": "No mistakes.",
-  "ficha.tema_bien": "{bien} of {n} right"
+  "ficha.tema_bien": "{bien} of {n} right",
+  "cv.avance_curso": "Progress in the whole course",
+  "cv.general": "Overall course grade",
+  "cv.general.aprobados": "Exams passed: {n} of {total}",
+  "cv.general.linea": "Counts all 11 subjects. A subject with no exam yet counts as 0."
 }

@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.13.5; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.13.6; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,11 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.13.6: la nota general del curso — sin cambio de base
+- En «Cómo van todos» y en el Resumen de la ficha: **«Nota general del curso: X %»** (número grande y barra) = la mejor nota
+  del examen de cada una de las **11 materias**, sumadas y ÷ 11 (la que no tiene examen cuenta 0), y **«Exámenes aprobados: A de 11»**.
+- «Mejor nota» ordena por esa nota general; el avance grande dice «Avance de todo el curso».
 
 ### Lo nuevo de la 0.13.5: «Cómo van todos», la ficha más fácil de leer y comparar un examen — sin cambio de base
 - **Administrador → Alumnos → «Cómo van todos»** (`#como-van`, `src/academia/como-van.js`, `GET /api/admin/academia/como-van`):
