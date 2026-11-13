@@ -1880,7 +1880,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const sistema = crearZonaSistema(vigente, pestana);
   // El contenido de la academia, solo para «Primeros pasos».
   const [r, datosSistema, ia, contenido, pagoServidor] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia'),
-    pestana === 'resumen' ? api('GET', '/api/admin/servidor-pago') : null]);
+    api('GET', '/api/admin/servidor-pago')]);
   // Las claves solo se piden desde la cuenta de Tailscale del dueño (por el enlace público ni se preguntan).
   const claves = ia.ok && ia.datos.esDueno ? await api('GET', '/api/admin/claves') : null;
   if (!vigente()) return;
@@ -6009,7 +6009,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'ayuda') return [];
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
   // Las pestañas de Administrador (#admin/usuarios, #admin/trabajo, #admin/servidor) piden lo mismo que #admin.
-  if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/admin/academia'] : [];
+  if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/admin/academia', '/api/admin/servidor-pago'] : [];
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
   if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
