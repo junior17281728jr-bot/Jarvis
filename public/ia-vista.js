@@ -124,6 +124,23 @@ export function estadoClaude({ claves = null, ia = null } = {}, ahora = Date.now
   return { ...base, estado: e.estado, tono: e.tono, motivo: e.estado === 'pausada' ? a.pausa?.motivo ?? null : a.prueba ?? null };
 }
 
+// 0.14.0: el estado de la clave de ChatGPT (o de la API propia) para la tarjeta del Resumen, y quién trabaja ahora.
+//   { estado: 'sin_acceso' | 'no_conectado' | 'conectado' | 'no_pasa' | 'pausada' | 'ilegible', tono, id?, final?, motivo? }
+export function estadoOtraIa({ claves = null } = {}, uso = 'ia_openai', ahora = Date.now()) {
+  if (!claves) return { estado: 'sin_acceso', tono: 'apagado' };
+  const a = (claves.grupos ?? []).flatMap(g => g.usos ?? []).find(x => x.uso === uso)?.activa ?? null;
+  if (!a) return { estado: 'no_conectado', tono: 'apagado' };
+  const e = estadoDeClave(a, ahora);
+  const base = { id: a.id, final: a.final ?? null, pausada: e.estado === 'pausada' };
+  if (e.estado === 'activa') return { ...base, estado: 'conectado', tono: e.tono };
+  return { ...base, estado: e.estado, tono: e.tono, motivo: e.estado === 'pausada' ? a.pausa?.motivo ?? null : a.prueba ?? null };
+}
+// Quién trabaja ahora (de GET /api/admin/ia): { proveedor, modelo, usadoMicro, topeMicro } o null si nadie.
+export function quienTrabaja(ia) {
+  if (!ia?.encendida || !ia.proveedorActivo) return null;
+  return { proveedor: ia.proveedorActivo, modelo: ia.modelo ?? null, usadoMicro: Number(ia.usadoMicro) || 0, topeMicro: Number(ia.topeGeneralMicro) || 0 };
+}
+
 // Dinero de la IA (llega en millonésimas de dólar) escrito para la gente: «US$0.12» desde un centavo; debajo, hasta 4
 // decimales («US$0.0022»). haciaArriba: para lo MÁXIMO que algo puede costar (el precio que se ve antes de confirmar):
 // se redondea hacia arriba, así nunca se muestra menos de lo que se aparta y se puede cobrar. Lo gastado se redondea

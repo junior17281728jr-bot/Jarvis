@@ -2,7 +2,10 @@
 // Administrador (el estado en palabras simples, «Conectar o cambiar la clave» y «Probar (gratis)») y los 3 pasos de la
 // pestaña «Claude (API)» (Dinero e IA). Lo que se decide está en public/ia-vista.js (estadoClaude, probado sin navegador).
 // Sin librerías; todo texto con textContent y sin estilos en línea. Las piezas llegan de app.js en «h».
-import { estadoClaude } from './ia-vista.js';
+import { estadoClaude, estadoOtraIa, quienTrabaja } from './ia-vista.js';
+
+// 0.14.0: el nombre simple de cada proveedor.
+const NOMBRES = { anthropic: 'Claude', openai: 'ChatGPT', propia: 'API propia' };
 
 // Los 3 pasos para conectar la clave (y el de la verificación de identidad, resaltado si la prueba lo pidió).
 export function pasosClaude(h, { verificacion = false } = {}) {
@@ -34,6 +37,8 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
     el('button', { type: 'button', class: 'boton-3d grande con-icono claude-conectar', onclick: () => h.irAlFormulario() },
       h.icono('llave'), el('span', { texto: t('claude.conectar') })),
   ];
+  // 0.14.0: ChatGPT se conecta en la misma pestaña («IA (Claude o ChatGPT)»).
+  botones.push(el('a', { class: 'boton-3d blanco con-icono', href: '#claves' }, h.icono('chispa'), el('span', { texto: t('iaprov.conectar_chatgpt') })));
   if (v.id != null && v.estado !== 'ilegible') {
     const texto = el('span', { texto: t('claude.probar') });
     const probar = el('button', {
@@ -56,9 +61,20 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
   const detalle = v.estado === 'conectado'
     ? (v.iaEncendida ? null : el('p', { class: 'aviso con-icono-arriba' }, h.icono('info', 'icono chico'), el('span', { texto: t('claude.detalle.ia_apagada') }), el('a', { href: '#ia', class: 'enlace-claude', texto: t('ia.abrir') })))
     : el('p', { class: 'suave', texto: h.tSi(`claude.detalle.${v.estado}`, '') });
-  return el('section', { class: `tarjeta tarjeta-claude ancha tono-${v.tono}`, 'aria-labelledby': 'titulo-claude' },
+  // 0.14.0: ChatGPT (o la API propia) al lado, y quién está trabajando ahora con lo gastado del mes.
+  const datosClaves = claves?.ok ? claves.datos : null;
+  const otra = estadoOtraIa({ claves: datosClaves }, 'ia_openai');
+  const propia = estadoOtraIa({ claves: datosClaves }, 'ia_propia');
+  const trabaja = quienTrabaja(ia?.ok ? ia.datos : null);
+  const lineaOtra = (nombre, e) => el('p', { class: 'claude-estado' }, h.icono(e.estado === 'conectado' ? 'bien' : e.tono === 'mal' ? 'mal' : 'info'),
+    el('strong', { texto: `${nombre}: ${e.estado === 'no_pasa' || e.estado === 'pausada' ? t(`claude.estado.${e.estado}`, { motivo: h.textoMotivoIa(e.motivo) }) : h.tSi(`iaprov.estado.${e.estado}`, e.estado)}` }));
+  const tono = trabaja ? 'bien' : v.tono;
+  return el('section', { class: `tarjeta tarjeta-claude ancha tono-${tono}`, 'aria-labelledby': 'titulo-claude' },
     el('h2', { class: 'con-icono', id: 'titulo-claude' }, h.icono('chispa', 'icono grande'), el('span', { texto: t('claude.titulo') })),
-    el('p', { class: 'claude-estado' }, h.icono(v.estado === 'conectado' ? 'bien' : v.tono === 'atencion' ? 'atencion' : v.tono === 'mal' ? 'mal' : 'info'), el('strong', { texto: textoEstado(v, h) })),
+    trabaja ? el('p', { class: 'claude-trabaja' }, h.icono('latido'), el('strong', { texto: t('iaprov.trabaja', { proveedor: NOMBRES[trabaja.proveedor] ?? trabaja.proveedor, modelo: trabaja.modelo ?? '', usado: h.usd(trabaja.usadoMicro), tope: h.usd(trabaja.topeMicro) }) })) : null,
+    el('p', { class: 'claude-estado' }, h.icono(v.estado === 'conectado' ? 'bien' : v.tono === 'atencion' ? 'atencion' : v.tono === 'mal' ? 'mal' : 'info'), el('strong', { texto: `Claude: ${textoEstado(v, h)}` })),
+    datosClaves ? lineaOtra('ChatGPT', otra) : null,
+    datosClaves && propia.estado !== 'no_conectado' ? lineaOtra(t('iaprov.propia'), propia) : null,
     v.final ? el('p', { class: 'suave chica', texto: t('claves.termina', { final: v.final }) }) : null,
     detalle,
     el('div', { class: 'botones claude-botones' }, botones),

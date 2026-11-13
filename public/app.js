@@ -1697,9 +1697,13 @@ const GRUPOS_ADMIN = [
     { id: 'videos', href: '#contenido/videos', clave: 'admin.pestana.videos', icono: 'video' },
     // 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js).
     { id: 'fabrica', href: '#contenido/fabrica', clave: 'admin.pestana.fabrica', icono: 'chispa' },
+    // 0.14.0: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js).
+    { id: 'ia-hizo', href: '#contenido/ia-hizo', clave: 'admin.pestana.ia_hizo', icono: 'manual' },
+    { id: 'pidele', href: '#contenido/pidele', clave: 'admin.pestana.pidele', icono: 'chispa' },
   ] },
   { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
-    // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo).
+    // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo). 0.14.0: «IA (Claude o
+    // ChatGPT)»: quién trabaja, Claude, ChatGPT y la API propia.
     { id: 'claves', href: '#claves', clave: 'admin.pestana.claude_api', icono: 'llave' },
     // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
     { id: 'pagos', href: '#pagos', clave: 'admin.pestana.pagos', icono: 'recibo' },
@@ -1843,6 +1847,24 @@ async function pantallaPagoServidor() {
   const r = await api('GET', '/api/admin/servidor-pago');
   if (!vigente()) return;
   mostrar(marco('admin', cabeceraAdmin('pago-servidor'), r.ok ? vistaPagoServidor(r.datos, { el, t, icono, api, textoError }, idioma) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
+// 0.14.0: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js, solo se carga aquí). El chat se mira solo
+// cada 4 s mientras la IA está contestando o trabajando (y solo mientras esta pantalla sigue abierta).
+async function pantallaLoQueHizo() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-hizo'), import('./ia-trabajo-vista.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('ia-hizo'), r.ok ? vista.pantallaLoQueHizo(r.datos, piezasIa(() => pantallaLoQueHizo())) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
+async function pantallaPidele(datosYa = null) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([datosYa ? { ok: true, datos: datosYa } : api('GET', '/api/admin/academia/chat'), import('./ia-trabajo-vista.js')]);
+  if (!vigente()) return;
+  const h = piezasIa(() => pantallaPidele());
+  mostrar(marco('admin', cabeceraAdmin('pidele'), r.ok ? vista.pantallaPidele(r.datos, h, { alCambiar: d => pantallaPidele(d) }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  const ultimo = raiz.querySelector('.pidele-mensajes')?.lastElementChild;
+  ultimo?.scrollIntoView?.({ block: 'nearest' });
+  if (r.ok && r.datos.pendiente) setTimeout(() => { if (vigente() && location.hash === '#contenido/pidele' && !document.hidden) pantallaPidele(); }, 4000);
 }
 async function pantallaIaAlumnos() {
   const vigente = nuevoTurno();
@@ -2982,7 +3004,7 @@ async function pantallaClaves(aviso = null) {
   const vigente = nuevoTurno();
   const abrirClaude = abrirClaveClaude;
   abrirClaveClaude = false;
-  const r = await api('GET', '/api/admin/claves');
+  const [r, prov, vistaIa] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js')]);
   if (!vigente()) return;
   const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
     avisoDeArriba(aviso),
@@ -3006,11 +3028,17 @@ async function pantallaClaves(aviso = null) {
       !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null,
       // Revisión final: una base recuperada de una copia nunca trae la llave de las claves: se pegan otra vez aquí.
       listo && d.almacen?.motivo === 'restaurada' ? el('p', { class: 'aviso con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('claves.restaurada') })) : null),
-    // 0.13.9: Claude (la IA) primero, con sus 3 pasos; el Telegram abajo.
-    [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'ia') - (a.grupo === 'ia')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente }) : el('section', { class: 'tarjeta', id: `claves-${g.grupo}` },
-      titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
-      g.grupo === 'ia' ? pasosClaude({ el, t, icono }, { verificacion: estadoClaude({ claves: d }).estado === 'esperando_verificacion' }) : null,
-      (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: (i === 0 && !u.activa) || (abrirClaude && u.uso === 'ia_anthropic') }))))))));
+    // 0.13.9: Claude (la IA) primero, con sus 3 pasos; el Telegram abajo. 0.14.0: «¿Quién hace el trabajo?», Claude,
+    // ChatGPT y la API propia (public/ia-proveedores-vista.js).
+    [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'ia') - (a.grupo === 'ia')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente })
+      : g.grupo === 'ia' ? vistaIa.seccionesIa(g, prov.ok ? prov.datos : null, {
+        el, t, tSi, icono, api, numero, insignia, textoError, recargar,
+        pasosClaude: () => pasosClaude({ el, t, icono }, { verificacion: estadoClaude({ claves: d }).estado === 'esperando_verificacion' }),
+        cajaDeClave: (u, extra) => cajaDeClave(u, { listo, recargar, ...extra }),
+      }, { abrirClaude })
+        : el('section', { class: 'tarjeta', id: `claves-${g.grupo}` },
+          titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
+          (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))))));
   if (abrirClaude) {
     const campo = document.getElementById('clave-ia_anthropic');
     campo?.closest('.clave-caja')?.scrollIntoView({ block: 'start' });
@@ -5853,7 +5881,7 @@ async function dibujar() {
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5913,6 +5941,8 @@ async function dibujar() {
   if (seccion === 'contenido/terminos' && esAdmin) return pantallaTerminosAdmin();
   if (seccion === 'contenido/videos' && esAdmin) return pantallaVideosAdmin();
   if (seccion === 'contenido/fabrica' && esAdmin) return pantallaFabrica();
+  if (seccion === 'contenido/ia-hizo' && esAdmin) return pantallaLoQueHizo();
+  if (seccion === 'contenido/pidele' && esAdmin) return pantallaPidele();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
   if (seccion === 'reporte' && esAdmin) return pantallaReporte();
   if (seccion === 'soporte' && esAdmin) return pantallaSoporte();
@@ -5967,7 +5997,7 @@ function pedidosAlAbrir(seccion, admin) {
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
   if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
-  if (seccion === 'claves') return admin ? ['/api/admin/claves'] : [];
+  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores'] : [];
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);
@@ -6002,6 +6032,8 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'contenido/terminos') return admin ? ['/api/admin/terminos', '/api/admin/sistema'] : [];
   if (seccion === 'contenido/videos') return admin ? ['/api/admin/academia/videos', '/api/admin/sistema'] : [];
   if (seccion === 'contenido/fabrica') return admin ? ['/api/admin/academia/fabrica'] : [];
+  if (seccion === 'contenido/ia-hizo') return admin ? ['/api/admin/academia/ia-hizo'] : [];
+  if (seccion === 'contenido/pidele') return admin ? ['/api/admin/academia/chat'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];
   if (seccion === 'reporte') return admin ? ['/api/admin/academia/reporte/opciones', '/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'soporte') return admin ? ['/api/admin/soporte', '/api/admin/sistema'] : [];

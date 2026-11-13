@@ -254,7 +254,8 @@ test('27. «Usar …» de un proveedor solo existe con su precio confirmado (con
     assert.equal(s.encendida, false, 'la IA llega apagada');
     assert.equal(s.topeGeneralMicro, 0, 'y con tope US$0');
     const porId = Object.fromEntries(controlesProveedores(s.proveedores).map(c => [c.id, c]));
-    assert.equal(s.proveedores.find(p => p.id === 'openai').precio?.confirmado, false, 'el precio de ChatGPT sigue sin confirmar');
+    // 0.14.0: ChatGPT llega sin modelo elegido (se elige de la lista de la prueba gratis): sin modelo no hay precio.
+    assert.equal(s.proveedores.find(p => p.id === 'openai').precio, null, 'ChatGPT sin modelo: sin precio');
     assert.deepEqual([porId.openai.conInterruptor, porId.openai.etiqueta, porId.openai.estado], [false, null, 'sin_precio'], 'sin precio no hay interruptor para ChatGPT');
     assert.deepEqual([porId.anthropic.conInterruptor, porId.anthropic.etiqueta], [true, 'ia.proveedor.usar']);
     // 0.12.3: por el enlace público, el administrador con su sesión ve lo mismo (los mismos controles).
