@@ -220,7 +220,8 @@ test('0.13.2: el Camino oral muestra los 8 capítulos y los 39 temas del libro; 
   assert.equal(MAPA_ORAL[0].temas[0].es, 'Privilegios y limitaciones');
   assert.equal(MAPA_ORAL[0].temas[0].en, 'Privileges and Limitations');
   assert.equal(letraDeTema('t02-b'), 'B');
-  assert.equal(letraDeTema('t01-escenarios'), null);
+  assert.equal(letraDeTema('t03-presion'), 'C', 'sin letra al final: la de su número de orden');
+  assert.equal(letraDeTema('escenarios'), null);
   const c = caminoConMapa([
     { id: 'oral_calificaciones', numero: 1, temas: [{ id: 't02-b', titulo: 'Recent Experience' }, { id: 'otro', titulo: 'Uno que el mapa no conoce' }] },
     { id: 'oral_escenarios', numero: 9, temas: [{ id: 't01-escenarios', titulo: 'Escenarios' }] },

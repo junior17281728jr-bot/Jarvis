@@ -29,9 +29,10 @@ export function pantallaOral(d, h) {
     let i = 0;
     const nodos = c.temas.map(tm => {
       const x = tm.x;
-      const nombre = enEspanol ? tm.es : tm.en || tm.es;
+      const enIngles = tm.x?.titulo_en || tm.en;
+      const nombre = enEspanol ? tm.es : enIngles || tm.es;
       const titulo = tm.letra ? `${c.n}${tm.letra} · ${nombre}` : nombre;
-      const ingles = enEspanol && tm.en && tm.en !== tm.es ? tm.en : null;
+      const ingles = enEspanol && enIngles && enIngles !== tm.es ? enIngles : null;
       if (!x) {
         return nodoCamino({ clase: 'bloqueado pronto', nombreIcono: 'reloj', titulo, en: ingles, detalle: t('acad.pronto'), etiqueta: t('oral.tema.pronto', { tema: titulo }), i: i++ });
       }

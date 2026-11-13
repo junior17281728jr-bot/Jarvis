@@ -2,7 +2,8 @@
 // orden del libro y los «Escenarios»), para que el Camino oral muestre todo desde el primer día: lo que ya tiene clase
 // se abre; lo que todavía no, sale en gris con «Pronto». Nada del contenido del libro: solo nombres.
 // (Escenarios: un solo tema, sin letra, que es el que traiga el paquete.)
-// Los temas se cruzan con lo que trae el paquete por su letra (el id del tema termina en «-a», «-b»…: t01-a, t02-b).
+// Los temas se cruzan con lo que trae el paquete por su letra (el id del tema termina en «-a», «-b»…: t01-a, t02-b; si no,
+// por su número de orden «tNN»). El inglés del paquete (titulo_en) manda sobre el del mapa.
 
 const T = (letra, es, en) => Object.freeze({ letra, es, en });
 export const MAPA_ORAL = Object.freeze([
@@ -33,8 +34,15 @@ export const MAPA_ORAL = Object.freeze([
   { id: 'oral_escenarios', n: 9, en: 'Scenario-Based Questions', temas: [T('', 'Preguntas de escenario', 'Scenario-Based Questions')] },
 ].map(c => Object.freeze({ ...c, temas: Object.freeze(c.temas) })));
 
-// La letra de un tema del paquete: «t02-b» → «B» (null si el id no la trae).
-export const letraDeTema = id => { const m = /-([a-z])$/i.exec(String(id ?? '')); return m ? m[1].toUpperCase() : null; };
+// La letra de un tema del paquete: «t02-b» → «B»; si el id no la trae, la de su número de orden («t03-…» → «C»);
+// si tampoco, null (va al final de su capítulo).
+export function letraDeTema(id) {
+  const s = String(id ?? '');
+  const m = /-([a-z])$/i.exec(s);
+  if (m) return m[1].toUpperCase();
+  const n = /^t(\d{1,2})(?:-|$)/i.exec(s);
+  return n && Number(n[1]) >= 1 && Number(n[1]) <= 26 ? String.fromCharCode(64 + Number(n[1])) : null;
+}
 
 // Junta el mapa con lo que trae el Camino oral del servidor (d.materias): cada capítulo del mapa, en orden, con sus temas
 // del libro; cada uno lleva lo suyo del paquete (x) si ya tiene clase, o null («Pronto»). Un tema del paquete que no
