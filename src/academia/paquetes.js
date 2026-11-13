@@ -15,7 +15,7 @@ import { pipeline } from 'node:stream/promises';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion, revisarModoPrueba } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
-import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, clipsDe, fotosDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS } from './formato.js';
+import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, clipsDe, fotosDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { espacioLibre } from './espacio.js';
 import { datosMp4 } from './mp4.js';
 import { enAlmacen, enlazarDesdeAlmacen, guardarEnAlmacen, indexarVersiones } from './almacen.js';
@@ -153,7 +153,8 @@ export function listarPaquetes(db, config) {
     let faltanVideo = [];
     let faltanClips = [];
     let faltanFotos = [];
-    const enUso = (compuesto?.materias ?? []).filter(m => m.paquete === f.id).map(m => m.id);
+    const enUso = [...(compuesto?.materias ?? []).filter(m => m.paquete === f.id).map(m => m.id),
+      ...(compuesto?.oral?.materias ?? []).filter(m => m.temas.some(t => t.paquete === f.id)).map(m => m.id)]; // 0.13.1
     // Solo se mira lo que falta en las incompletas y en las que están en uso (las demás quedan guardadas tal cual).
     if (f.estado === 'incompleto' || enUso.length) {
       try {
@@ -486,6 +487,9 @@ export function listaConActivada(lista, id, materias) {
   for (let i = nueva.length - 1; i >= 0; i--) {
     const e = nueva[i];
     if (e.materias == null) { queda.unshift(e); continue; }
+    // 0.13.1: una versión de la pista oral nunca se quita: sus temas se juntan TEMA POR TEMA con los de las otras
+    // (los capítulos 1–2 hechos a mano y lo que fabrique la fábrica viven juntos; ver componer).
+    if (e.materias.some(m => MATERIAS_ORAL.includes(m))) { queda.unshift(e); continue; }
     if (e.materias.some(m => !tapadas.has(m))) queda.unshift(e);
     for (const m of e.materias) tapadas.add(m);
   }
@@ -537,6 +541,7 @@ function componer(config, vivas, filas) {
   const deMateria = new Map(); // materia → { pid, materia indexada }
   const porPaquete = new Map(); // pid → { carpeta, figuras, libros, audios }
   const datosDe = new Map(); // pid → { nombre, edicion, muestra }
+  const temasOral = new Map(); // 0.13.1: «materia/tema» → { pid, materia, t, indice } (la pista oral, tema por tema)
   for (let i = vivas.length - 1; i >= 0; i--) {
     const e = vivas[i];
     if (e.materias && e.materias.every(m => deMateria.has(m))) continue;
@@ -544,7 +549,14 @@ function componer(config, vivas, filas) {
     let indice;
     try { indice = indexarPaquete(leerJsonDe(config, fila)); } catch { continue; }
     let usada = false;
-    for (const m of indice.materias) {
+    if (indice.pista === 'oral') {
+      for (const m of indice.materias) for (const t of m.temas) {
+        const clave = `${m.id}/${t.id}`;
+        if (temasOral.has(clave)) continue;
+        temasOral.set(clave, { pid: e.id, materia: m.id, t, indice });
+        usada = true;
+      }
+    } else for (const m of indice.materias) {
       if (!m.temas.length || deMateria.has(m.id)) continue;
       deMateria.set(m.id, { pid: e.id, m, indice });
       usada = true;
@@ -553,7 +565,7 @@ function componer(config, vivas, filas) {
     porPaquete.set(e.id, { carpeta: join(carpetaAcademia(config), 'paquetes', fila.carpeta), figuras: indice.figuras, libros: indice.libros, paginas: indice.paginas ?? new Map() });
     datosDe.set(e.id, { nombre: indice.nombre, edicion: indice.edicion, muestra: indice.muestra });
   }
-  if (!deMateria.size) return null;
+  if (!deMateria.size && !temasOral.size) return null;
   const preguntas = new Map();
   const deTema = new Map();
   const dePaquete = new Map();
@@ -576,14 +588,35 @@ function componer(config, vivas, filas) {
     for (const [n, l] of indice.libros) if (!libros.has(n)) libros.set(n, l);
     return { id: idMateria, temas, audio: m.audio, video: m.video ?? null, paquete: pid, extra: m.extra ?? { tarjetas: [], preguntas: [] } };
   });
-  // La versión «principal» (su nombre, su id en los intentos): la última puesta en uso que da alguna materia.
-  const principal = [...vivas].reverse().find(e => porPaquete.has(e.id)).id;
+  // La versión «principal» (su nombre, su id en los intentos): la última puesta en uso que da alguna materia (del Test
+  // Guide, si hay alguna: la pista oral va aparte).
+  const deTg = new Set([...deMateria.values()].map(x => x.pid));
+  const principal = ([...vivas].reverse().find(e => deTg.has(e.id)) ?? [...vivas].reverse().find(e => porPaquete.has(e.id))).id;
   const ids = vivas.map(e => e.id).filter(id => porPaquete.has(id));
   const dp = datosDe.get(principal);
   return {
     id: principal, ids, nombre: dp.nombre, edicion: dp.edicion, muestra: dp.muestra,
     carpeta: porPaquete.get(principal).carpeta, materias, preguntas, deTema, dePaquete, figuras, libros, porPaquete,
+    oral: componerOral(temasOral),
   };
+}
+
+// 0.13.1: la pista «Preparándote para el examen oral», aparte de todo lo del Test Guide (nada de esto está en
+// materias, preguntas ni deTema: los exámenes, la preparación, el repaso y las estadísticas del Test Guide no la ven).
+// Cada tema sale de la última versión puesta en uso que lo trae; los temas de una materia van por su id (t01-a, t02-b…).
+function componerOral(temasOral) {
+  const preguntas = new Map();
+  const deTema = new Map();
+  const dePaquete = new Map();
+  const materias = MATERIAS_ORAL.map(id => {
+    const temas = [...temasOral.values()].filter(x => x.materia === id).sort((a, b) => (a.t.id < b.t.id ? -1 : a.t.id > b.t.id ? 1 : 0)).map(({ pid, t, indice }) => {
+      const suyas = t.preguntas.filter(qid => !preguntas.has(qid) && indice.preguntas.has(qid));
+      for (const qid of suyas) { preguntas.set(qid, indice.preguntas.get(qid)); deTema.set(qid, { materia: id, tema: t.id }); dePaquete.set(qid, pid); }
+      return { ...t, preguntas: suyas, paquete: pid };
+    });
+    return { id, temas, paquete: temas[0]?.paquete ?? null };
+  });
+  return { materias, preguntas, deTema, dePaquete, hay: temasOral.size > 0 };
 }
 
 // Con varias versiones en uso, una figura se nombra «<versión>~<número>» (dos versiones pueden tener la figura «1»).
@@ -687,6 +720,9 @@ export function rutaClip(paquete, ref) {
       const listas = [...x.temas.flatMap(t => [t.secciones, t.reexplicacion]), x.extra?.tarjetas];
       for (const c of clipsDe({ materias: [{ temas: listas.map(l => ({ secciones: l })) }] })) nombres.add(`${x.paquete}~${c.archivo}`);
     }
+    for (const x of paquete.oral?.materias ?? []) for (const t of x.temas) { // 0.13.1
+      for (const c of clipsDe({ materias: [{ temas: [{ secciones: t.secciones }, { secciones: t.reexplicacion }] }] })) nombres.add(`${t.paquete}~${c.archivo}`);
+    }
     clipsEnUso.set(paquete, nombres);
   }
   if (!clipsEnUso.get(paquete).has(`${m[1]}~${m[2]}`)) return null;
@@ -723,6 +759,10 @@ export function rutaFoto(paquete, ref) {
       if (x.paquete == null) continue;
       const listas = [...x.temas.flatMap(t => [t.secciones, t.reexplicacion]), x.extra?.tarjetas];
       for (const f of fotosDe({ materias: [{ temas: listas.map(l => ({ secciones: l })) }] })) nombres.add(`${x.paquete}~${f.archivo}`);
+    }
+    // 0.13.1: y las de las tarjetas de la pista oral (cada tema, de su versión).
+    for (const x of paquete.oral?.materias ?? []) for (const t of x.temas) {
+      for (const f of fotosDe({ materias: [{ temas: [{ secciones: t.secciones }, { secciones: t.reexplicacion }] }] })) nombres.add(`${t.paquete}~${f.archivo}`);
     }
     fotosEnUso.set(paquete, nombres);
   }

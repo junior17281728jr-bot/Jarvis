@@ -19,6 +19,7 @@ import { disponibilidad } from '../ia/presupuesto.js';
 import { PROPOSITOS } from '../ia/propositos.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { camino } from '../academia/progreso.js';
+import { repasoOral } from '../academia/oral.js';
 import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, reexplicarSinIa, dudaSinIa, tarjetasParaDuda } from '../academia/instructor.js';
 import { cortarBytes } from '../academia/instructor.js';
 import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS, preguntaSinIa, armarMiniClase, armarPlanDia } from '../academia/instructor-ia.js';
@@ -352,7 +353,9 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   rutas.agregar('GET', '/api/academia/mi-repaso', ({ db, usuario }) => {
     contar(topes.lecturas, usuario);
     // 0.12.9 (O): las preguntas personalizadas cuentan en el progreso de «Mi repaso» (nunca en el % del Test Guide).
-    return { codigo: 200, datos: { ...miRepaso(db, usuario.id, activo(db), reloj()), personal: progresoPersonal(db, usuario.id) } };
+    // 0.13.1: lo del examen oral va aparte (sus errores, por tema), en su propia sección.
+    const p = activo(db);
+    return { codigo: 200, datos: { ...miRepaso(db, usuario.id, p, reloj()), personal: progresoPersonal(db, usuario.id), oral: repasoOral(db, usuario.id, p) } };
   });
   rutas.agregar('GET', '/api/academia/mi-repaso/clase', ({ db, req, usuario }) => {
     contar(topes.lecturas, usuario);

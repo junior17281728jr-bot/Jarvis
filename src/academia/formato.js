@@ -15,9 +15,14 @@ export const MATERIAS = Object.freeze([
 // sus preguntas de opción múltiple creadas desde la Guía del examen oral (origen 'oral', cada una con su fuente_pregunta:
 // la pregunta y la respuesta del libro TAL CUAL, la página y cómo se armó). Las preguntas y respuestas del libro van tal
 // cual en cada tema («libro_qa»).
+// 0.13.1: los ids son los de las fuentes (oral/oral.json), en el orden de los capítulos 1–8 del libro; el capítulo 9
+// (preguntas de escenario) es «oral_escenarios». La fábrica los busca por el número de capítulo (MATERIAS_ORAL[num - 1]).
 export const MATERIAS_ORAL = Object.freeze([
-  'oral_requisitos', 'oral_aeronavegabilidad', 'oral_meteorologia', 'oral_rendimiento', 'oral_sistemas', 'oral_travesia', 'oral_nocturno', 'oral_factores',
+  'oral_calificaciones', 'oral_aeronavegabilidad', 'oral_meteorologia', 'oral_rendimiento', 'oral_sistemas', 'oral_travesia', 'oral_nocturno', 'oral_factores_humanos',
+  'oral_escenarios',
 ]);
+// 0.13.1: los topes de lo propio de un tema oral.
+export const LIMITES_ORAL = Object.freeze({ libroQa: 300, adicionales: 100, puntosClave: 6 });
 export const PISTAS = Object.freeze(['test_guide', 'oral']);
 export const ORIGENES = Object.freeze(['test_guide', 'poh', 'oral']);
 export const FORMATO = 'academia-enalas';
@@ -277,6 +282,7 @@ export function revisarPaquete(p) {
         if (!libros.has(f.libro)) mal(`${r}.fuente_pregunta.libro`, 'libro_desconocido');
         texto(f.pagina, `${r}.fuente_pregunta.pagina`, { max: 40 });
         for (const campo of ['pregunta_en', 'respuesta_en', 'como']) texto(f[campo], `${r}.fuente_pregunta.${campo}`);
+        if (f.n != null && (!Number.isSafeInteger(f.n) || f.n < 1 || f.n > 9999)) mal(`${r}.fuente_pregunta.n`, 'no_valido');
       }
     }
     const o = q.original;
@@ -506,15 +512,34 @@ export function revisarPaquete(p) {
       secciones(t.reexplicacion, `${rt}.reexplicacion`, { obligatorio: false });
       audio(t.audio, `${rt}.audio`);
       // 0.13.0 (pista oral): las preguntas y respuestas de la Guía del examen oral, TAL CUAL (inglés), con su página.
+      // 0.13.1: cada una con su número en el libro (n), su explicación en español y sus «puntos clave» (opcionales).
       if (t.libro_qa != null) {
-        if (!oral || !Array.isArray(t.libro_qa) || t.libro_qa.length > 300) mal(`${rt}.libro_qa`, 'no_es_lista');
+        if (!oral || !Array.isArray(t.libro_qa) || t.libro_qa.length > LIMITES_ORAL.libroQa) mal(`${rt}.libro_qa`, 'no_es_lista');
         else t.libro_qa.forEach((x, k) => {
           const rx = `${rt}.libro_qa[${k}]`;
           if (!esObjeto(x)) return mal(rx, 'no_es_objeto');
+          if (x.n != null && (!Number.isSafeInteger(x.n) || x.n < 1 || x.n > 9999)) mal(`${rx}.n`, 'no_valido');
           texto(x.pregunta_en, `${rx}.pregunta_en`);
           texto(x.respuesta_en, `${rx}.respuesta_en`, { obligatorio: false });
           texto(x.pagina, `${rx}.pagina`, { max: 40 });
           texto(x.explicacion_es, `${rx}.explicacion_es`, { obligatorio: false });
+          if (x.puntos_clave != null) {
+            if (!Array.isArray(x.puntos_clave) || x.puntos_clave.length > LIMITES_ORAL.puntosClave) mal(`${rx}.puntos_clave`, 'no_es_lista');
+            else x.puntos_clave.forEach((y, j) => texto(y, `${rx}.puntos_clave[${j}]`, { max: 2000 }));
+          }
+        });
+      }
+      // 0.13.1 (pista oral): título del tema en inglés (como en el libro) y las «Additional Study Questions» (sin
+      // respuesta en el libro: para practicar en voz alta), cada una TAL CUAL con su página.
+      if (t.titulo_en != null) { if (!oral) mal(`${rt}.titulo_en`, 'solo_oral'); else texto(t.titulo_en, `${rt}.titulo_en`, { max: LIMITES.corto }); }
+      if (t.adicionales != null) {
+        if (!oral || !Array.isArray(t.adicionales) || t.adicionales.length > LIMITES_ORAL.adicionales) mal(`${rt}.adicionales`, 'no_es_lista');
+        else t.adicionales.forEach((x, k) => {
+          const rx = `${rt}.adicionales[${k}]`;
+          if (!esObjeto(x)) return mal(rx, 'no_es_objeto');
+          if (x.n != null && (!Number.isSafeInteger(x.n) || x.n < 1 || x.n > 9999)) mal(`${rx}.n`, 'no_valido');
+          texto(x.pregunta_en, `${rx}.pregunta_en`);
+          texto(x.pagina, `${rx}.pagina`, { max: 40 });
         });
       }
       temas += 1;
@@ -623,15 +648,18 @@ export function paginasDe(p) {
 }
 
 // El paquete ya revisado, listo para usar: materias en el orden fijo, preguntas por id y figuras por número.
+// 0.13.1: un paquete de la pista oral se indexa con SUS materias (MATERIAS_ORAL) y guarda lo propio de cada tema.
 export function indexarPaquete(p) {
   const preguntas = new Map();
   const deTema = new Map();
   for (const q of p.preguntas) preguntas.set(q.id, q);
-  const materias = MATERIAS.map(idMateria => {
+  const oral = p.pista === 'oral';
+  const materias = (oral ? MATERIAS_ORAL : MATERIAS).map(idMateria => {
     const m = p.materias.find(x => x.id === idMateria);
     const temas = (m?.temas ?? []).map(t => {
       for (const qid of t.preguntas) deTema.set(qid, { materia: idMateria, tema: t.id });
-      return { id: t.id, titulo: t.titulo, secciones: t.secciones, reexplicacion: t.reexplicacion ?? [], preguntas: [...t.preguntas], audio: t.audio ?? null };
+      return { id: t.id, titulo: t.titulo, secciones: t.secciones, reexplicacion: t.reexplicacion ?? [], preguntas: [...t.preguntas], audio: t.audio ?? null,
+        ...(oral ? { titulo_en: t.titulo_en ?? null, libro_qa: Array.isArray(t.libro_qa) ? t.libro_qa : [], adicionales: Array.isArray(t.adicionales) ? t.adicionales : [] } : {}) };
     });
     // 0.12.0: lo EXTRA de la materia (tarjetas y preguntas que no son del Test Guide), aparte de todo lo demás.
     const extra = { tarjetas: Array.isArray(m?.extra?.tarjetas) ? m.extra.tarjetas : [], preguntas: Array.isArray(m?.extra?.preguntas) ? m.extra.preguntas : [] };
@@ -640,5 +668,5 @@ export function indexarPaquete(p) {
   const figuras = new Map((p.figuras ?? []).map(f => [f.numero, f]));
   const libros = new Map(p.libros.map(l => [l.id, l]));
   const paginas = new Map((Array.isArray(p.paginas) ? p.paginas : []).map(g => [g.archivo.toLowerCase(), g]));
-  return { nombre: p.nombre, edicion: p.edicion ?? null, muestra: p.muestra === true, materias, preguntas, deTema, figuras, libros, paginas };
+  return { nombre: p.nombre, edicion: p.edicion ?? null, muestra: p.muestra === true, pista: oral ? 'oral' : 'test_guide', materias, preguntas, deTema, figuras, libros, paginas };
 }

@@ -14,6 +14,7 @@ import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
 import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, rutaVideo, rutaClip, rutaFoto, paginaDe } from '../academia/paquetes.js';
 import { extraDeMateria, rondaExtra, responderExtra } from '../academia/extra.js';
+import { caminoOral, leccionOral, marcarLeidoOral, rondaOral, responderOral, crearExamenOral, entregarExamenOral, resumenOral, hayOral } from '../academia/oral.js';
 import { humorDelDia, humorDelAdmin, humorDelAlumno, encenderHumorAdmin, encenderHumorAlumno } from '../academia/humor.js';
 import { idDeCarpeta, enlaceDeCarpeta, basesDrive, recorrerCarpeta, PAQUETE_EN_DRIVE } from '../academia/drive.js';
 import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '../academia/drive-estado.js';
@@ -88,7 +89,47 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     // 0.12.0: la frase de humor del día (racha perdida o el regreso), si el humor está encendido para él.
     let humor = null;
     try { humor = p ? humorDelDia(db, usuario.id, reloj()) : null; } catch { humor = null; }
-    return { codigo: 200, datos: { ...camino(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), humor } };
+    const c = camino(db, usuario.id, p, reloj());
+    return { codigo: 200, datos: { ...c, ...extrasAlumno(db, usuario.id, p, reloj()), humor, oral: oralCorto(db, usuario.id, p, c) } };
+  });
+
+  // ---------- 0.13.1: «Preparándote para el examen oral» (src/academia/oral.js; aparte de todo lo del Test Guide) ----------
+  // ¿Terminó los exámenes del Test Guide? (todas las materias con clases, con su examen aprobado): el oral es el siguiente paso.
+  const tgTerminado = c => { const con = (c?.materias ?? []).filter(m => m.temas?.length); return con.length > 0 && con.every(m => m.examen?.aprobado === true); };
+  function oralCorto(db, usuarioId, p, c) {
+    if (!hayOral(p)) return { hay: false };
+    try {
+      const o = caminoOral(db, usuarioId, p, { tgTerminado: tgTerminado(c) });
+      return { hay: true, siguientePaso: o.siguientePaso, listo: o.listo, capitulos: o.materias.length, temas: o.materias.reduce((n, m) => n + m.temas.length, 0) };
+    } catch { return { hay: false }; }
+  }
+  rutas.agregar('GET', '/api/academia/oral', ({ db, usuario }) => {
+    const p = activo(db);
+    return { codigo: 200, datos: caminoOral(db, usuario.id, p, { tgTerminado: tgTerminado(p ? camino(db, usuario.id, p, reloj()) : null) }) };
+  });
+  rutas.agregar('GET', '/api/academia/oral/temas/:materia/:tema', ({ db, usuario, parametros }) =>
+    ({ codigo: 200, datos: leccionOral(db, usuario.id, activo(db), parametros.materia, parametros.tema) }));
+  rutas.agregar('POST', '/api/academia/oral/temas/:materia/:tema/leido', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    return { codigo: 200, datos: marcarLeidoOral(db, usuario.id, activo(db), parametros.materia, parametros.tema) };
+  });
+  rutas.agregar('POST', '/api/academia/oral/ronda', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: rondaOral(db, usuario.id, activo(db), { materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, errores: datos?.errores === true }, { azar }) };
+  });
+  rutas.agregar('POST', '/api/academia/oral/responder', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    if (!topes.intentos.permitir(`o${usuario.id}`)) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 200, datos: responderOral(db, usuario.id, activo(db), { pregunta: textoDe(datos, 'pregunta'), elegida: textoDe(datos, 'elegida') }, { ahoraMs: reloj() }) };
+  });
+  rutas.agregar('POST', '/api/academia/oral/examen', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    if (!topes.intentos.permitir(`o${usuario.id}`)) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 200, datos: crearExamenOral(db, usuario.id, activo(db), { materia: textoDe(datos, 'materia') || null }, { azar, ahoraMs: reloj() }) };
+  });
+  rutas.agregar('POST', '/api/academia/oral/examen/entregar', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: entregarExamenOral(db, usuario.id, activo(db), { examen: textoDe(datos, 'examen'), respuestas: datos?.respuestas }, { ahoraMs: reloj() }) };
   });
 
   // 0.12.0: el humor del instructor (Configuración): si el administrador lo permite y si el alumno lo quiere.
@@ -248,7 +289,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
 
   rutas.agregar('GET', '/api/academia/progreso', ({ db, usuario }) => {
     const p = activo(db);
-    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()) } };
+    // 0.13.1: la pista oral va en su propia sección (null si no hay contenido oral).
+    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), oral: resumenOral(db, usuario.id, p) } };
   });
 
   // Una figura del paquete en uso (solo con la sesión abierta; nunca sale de public/).
