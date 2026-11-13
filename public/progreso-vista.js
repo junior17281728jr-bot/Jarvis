@@ -2,6 +2,8 @@
 // tienen clases, «pronto»), con cada número diciendo qué cuenta; después cada materia (se abre) con sus temas; y «Mi
 // repaso» en corto (lo que hay que repasar, con su botón: la lista entera vive en #mi-repaso). Todo con h.el.
 
+import { tituloSinIngles } from './tarjetas.js';
+
 const ESTADO_TEMA = { aprobado: 'progreso.tema.aprobado', abierto: 'progreso.tema.abierto', bloqueado: 'progreso.tema.bloqueado' };
 
 export function panelCurso(curso, h) {
@@ -46,7 +48,7 @@ export function panelCurso(curso, h) {
 }
 
 // «Repasa: <punto> · Tema <n> <tema>»: la línea corta de cada error (lo largo, la idea equivocada, va en la mini-clase).
-export const lineaRepasa = (x, t, numero) => t(x.temaNumero ? 'repasa.linea' : 'repasa.linea_sin_numero', { concepto: x.concepto, n: numero(x.temaNumero ?? 0), tema: x.temaTitulo ?? '' });
+export const lineaRepasa = (x, t, numero) => t(x.temaNumero ? 'repasa.linea' : 'repasa.linea_sin_numero', { concepto: tituloSinIngles(x.concepto), n: numero(x.temaNumero ?? 0), tema: tituloSinIngles(x.temaTitulo ?? '') });
 export const enlaceMiniClase = clave => (clave ? `#mi-repaso/clase/${String(clave).replace(/^c:/, '')}` : '#mi-repaso');
 
 export function panelRepasoResumen(r, h) {
@@ -61,29 +63,13 @@ export function panelRepasoResumen(r, h) {
     el('a', { class: 'boton-3d naranja con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('animo.ir') })));
 }
 
-// 0.13.1: «Preparándote para el examen oral» en Progreso, en su propia sección (nunca se suma al Test Guide): «Listo
-// para el oral / Todavía no» con su %, cada capítulo (lo que domina y su examen) y el examen final.
+// 0.13.1: «Preparándote para el examen oral» en Progreso, aparte (nunca se suma al Test Guide). 0.13.2: el oral tiene su
+// propia pestaña abajo («Oral», con su Camino, «Listo para el oral» y cada capítulo): aquí queda solo un enlace corto.
 export function panelOral(o, h) {
-  const { el, t, numero, icono, medidor, nombreMateria, barraLlena } = h;
-  if (!o) return null;
+  const { el, t, numero, icono } = h;
+  if (!o?.listo) return null;
   const x = o.listo;
-  return el('section', { class: 'panel panel-oral', 'aria-labelledby': 'oral-progreso-titulo' },
-    el('h2', { id: 'oral-progreso-titulo', class: 'con-icono' }, icono('manual'), el('span', { texto: t('oral.titulo') })),
-    el('p', { class: 'oral-sello', texto: t('oral.sello') }),
-    el('div', { class: 'curso-resumen' },
-      medidor(x.pct, { etiqueta: t('oral.listo.medidor') }),
-      el('div', {},
-        el('p', { class: `insignia grande tono-${x.listo ? 'bien' : 'atencion'}`, texto: x.listo ? t('oral.listo.si') : t('oral.listo.no') }),
-        el('ul', { class: 'lista-simple chica' },
-          el('li', { texto: t('oral.listo.dominio', { pct: numero(x.dominio) }) }),
-          el('li', { texto: t('oral.listo.capitulos', { pct: numero(x.capitulos) }) }),
-          el('li', { texto: t('oral.listo.final', { pct: numero(x.final) }) })))),
-    el('ul', { class: 'curso-materias' }, o.materias.map(m => el('li', { class: 'curso-materia' },
-      el('div', { class: 'curso-materia-cabeza' },
-        el('span', { class: 'suave chica', texto: m.id === 'oral_escenarios' ? t('oral.escenarios.ante') : t('oral.capitulo_n', { n: numero(m.numero) }) }),
-        el('strong', { texto: nombreMateria(m.id) }),
-        el('span', { class: 'chica', texto: t('oral.progreso.capitulo', { bien: numero(m.bien), n: numero(m.preguntas), examen: m.examen.aprobado ? t('oral.progreso.examen_si', { pct: numero(m.examen.mejor ?? 0) }) : m.examen.veces ? t('oral.progreso.examen_intentos', { pct: numero(m.examen.mejor ?? 0) }) : t('oral.progreso.examen_no') }) })),
-      el('div', { class: 'plan-barra' }, barraLlena(m.pct))))),
-    el('p', { class: 'chica', texto: o.final.aprobado ? t('oral.progreso.final_si', { pct: numero(o.final.mejor ?? 0) }) : o.final.veces ? t('oral.progreso.final_intentos', { pct: numero(o.final.mejor ?? 0) }) : t('oral.progreso.final_no') }),
-    el('a', { class: 'boton-3d naranja con-icono', href: '#oral' }, icono('flecha', 'icono chico'), el('span', { texto: t('oral.abrir') })));
+  return el('a', { class: 'entrada-oral con-icono', href: '#oral' }, icono('microfono', 'icono'),
+    el('span', { class: 'entrada-oral-texto' }, el('strong', { texto: t('oral.corto') })),
+    el('span', { class: `insignia tono-${x.listo ? 'bien' : 'info'}`, texto: x.listo ? t('oral.listo.si_corto', { pct: numero(x.pct ?? 0) }) : t('oral.listo.no_corto', { pct: numero(x.pct ?? 0) }) }));
 }

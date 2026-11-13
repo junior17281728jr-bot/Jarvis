@@ -9,6 +9,8 @@
 //  - pista(intento, pregunta): después de un error en la práctica, una pista de una línea y «Ver en la clase» (H).
 //  - examen(): «¿Tomo el examen final?» por materia y el oficial (U; sin IA; con IA, además el porqué a su estilo).
 //  - pantallaMemoria(), pantallaExamen(), pantallaPersonalizadas(materia, tema).
+import { tituloSinIngles } from './tarjetas.js';
+
 export function crearTutor(h) {
   const { el, t, icono, api, talCual, numero, nombreMateria, empezarIntento, avisar, textoError, mostrar, marco } = h;
   const ui = () => h.instructorUi();
@@ -28,7 +30,8 @@ export function crearTutor(h) {
   // Y: «Hola, piloto Juan»: su primer nombre visible (lo pone la app alrededor del texto; nunca va a la IA).
   const primerNombre = () => String(h.nombre?.() ?? '').trim().split(/\s+/)[0] ?? '';
   const saludo = () => (primerNombre() ? t('tutor.hola', { nombre: primerNombre() }) : t('tutor.hola_sin'));
-  const textoNovedad = n => t(`tutor.nov.${n.tipo}`, n.vars ?? {});
+  // 0.13.2: en la tarjeta, los títulos sin el inglés entre paréntesis (el inglés queda en la clase).
+  const textoNovedad = n => t(`tutor.nov.${n.tipo}`, Object.fromEntries(Object.entries(n.vars ?? {}).map(([k, v]) => [k, typeof v === 'string' ? tituloSinIngles(v) : v])));
   const decision = si => t(si ? 'tutor.examen.si' : 'tutor.examen.todavia');
   const porque = x => t(`tutor.examen.porque.${x.clave}`, { ...x.vars, valor: numero(x.vars?.valor ?? 0), meta: numero(x.vars?.meta ?? 0), n: numero(x.vars?.n ?? 0) });
 
@@ -40,19 +43,23 @@ export function crearTutor(h) {
       el('div', { class: 'tutor-cabeza' },
         el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('chispa')),
         el('div', {}, el('h2', { id: 'tutor-titulo', texto: t('tutor.titulo') }), insigniaIa())),
-      // M: su meta, siempre la misma.
-      !compacta && a?.preguntasMateria ? el('p', { class: 'tutor-meta', texto: t('tutor.meta', { n: numero(a.preguntasMateria), materia: nombreMateria(a.tema?.materia) }) }) : null,
-      // S: por dónde empezar (lo que falla y más sale en el Test Guide).
+      // S: por dónde empezar (lo que falla y más sale en el Test Guide), en una línea corta.
       !compacta && a?.prioridad ? el('p', { class: 'tutor-prioridad con-icono' }, icono('flecha', 'icono chico'),
-        el('span', { texto: t('tutor.prioridad', { concepto: a.prioridad.concepto, n: numero(a.prioridad.n) }) })) : null,
-      !compacta && a?.prioridad ? el('p', { class: 'suave chica', texto: t('tutor.paciencia') }) : null,
-      // Lo que pasó de verdad, cada cosa un botón.
-      (d.novedades ?? []).length ? el('ul', { class: 'tutor-novedades' }, d.novedades.map(n => el('li', {},
-        el('a', { class: 'boton-3d blanco chico con-icono', href: n.href }, icono(n.tipo === 'preparada' || n.tipo === 'preparando' ? 'calendario' : n.tipo === 'reforzamos' ? 'cerebro' : 'bombilla', 'icono chico'), el('span', { texto: textoNovedad(n) }))))) : null,
+        el('span', { texto: t('tutor.prioridad_corta', { concepto: tituloSinIngles(a.prioridad.concepto), n: numero(a.prioridad.n) }) })) : null,
+      // 0.13.2: lo de siempre (M: su meta, la paciencia, por qué S y lo que dijo la IA del examen), detrás de «Ver por qué».
+      !compacta && (a?.preguntasMateria || a?.prioridad || d.examenIa?.porque) ? el('details', { class: 'instructor-porque' }, el('summary', { texto: t('instr.ver_porque') }),
+        a?.prioridad ? el('p', { class: 'chica', texto: `${t('tutor.prioridad', { concepto: tituloSinIngles(a.prioridad.concepto), n: numero(a.prioridad.n) })} ${t('tutor.paciencia')}` }) : null,
+        a?.preguntasMateria ? el('p', { class: 'chica', texto: t('tutor.meta', { n: numero(a.preguntasMateria), materia: nombreMateria(a.tema?.materia) }) }) : null,
+        d.examenIa?.porque ? el('p', { class: 'chica con-icono' }, icono('chispa', 'icono chico'), talCual('span', d.examenIa.porque)) : null) : null,
+      // Lo que pasó de verdad: cada cosa una fila que se toca (como «Tu plan de hoy»).
+      (d.novedades ?? []).length ? el('ul', { class: 'plan-hoy-pasos tutor-novedades' }, d.novedades.map(n => el('li', {},
+        el('a', { class: 'plan-hoy-fila tocable', href: n.href },
+          el('span', { class: 'plan-hoy-icono', 'aria-hidden': 'true' }, icono(n.tipo === 'preparada' || n.tipo === 'preparando' ? 'calendario' : n.tipo === 'reforzamos' ? 'cerebro' : 'bombilla', 'icono chico')),
+          el('span', { class: 'plan-hoy-texto' }, el('span', { class: 'plan-hoy-etiqueta', texto: textoNovedad(n) })),
+          el('span', { class: 'plan-hoy-ir', 'aria-hidden': 'true' }, icono('flecha', 'icono chico')))))) : null,
       // U: «¿Tomo el examen de esta materia?».
       ex ? el('a', { class: `tutor-examen-linea tono-${ex.si ? 'bien' : 'atencion'}`, href: '#tutor/examen' },
         el('strong', { texto: t('tutor.examen.linea', { materia: nombreMateria(ex.materia), decision: decision(ex.si), pct: numero(ex.pct ?? 0) }) })) : null,
-      d.examenIa?.porque && !compacta ? el('p', { class: 'suave chica con-icono' }, icono('chispa', 'icono chico'), talCual('span', d.examenIa.porque)) : null,
       el('div', { class: 'tutor-enlaces' },
         el('a', { class: 'boton-3d azul chico con-icono', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: t('tutor.hablar') })),
         compacta ? null : el('a', { class: 'enlace-fuerte chica', href: '#tutor/memoria', texto: t('tutor.memoria.abrir') })));

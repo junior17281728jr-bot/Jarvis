@@ -49,6 +49,29 @@ export function crearInstructor(h) {
     return el('button', { type: 'button', class: clase, onclick: evento => { sonar?.('toque'); empezarIntento(accion.datos, evento.currentTarget); } }, el('span', { texto: etiqueta }));
   }
   const textoConsejo = c => (c ? tx(`instr.c.${c.clave}`, c.vars ?? {}) : '');
+  // 0.13.2: en los resúmenes (Inicio, «Tu plan de hoy») el título sin el inglés entre paréntesis (el inglés queda en la
+  // clase) y corto: «Visión en vuelo y visión nocturna (vision in flight / night vision)» → «Visión en vuelo».
+  const sinIngles = titulo => (h.partirTitulo ? h.partirTitulo(titulo).es : String(titulo ?? '')).trim();
+  function tituloCorto(titulo, max = 26) {
+    const s = sinIngles(titulo);
+    if (s.length <= max) return s;
+    const corte = s.search(/\s+(?:y|e|o|[—–-])\s+|[,:;(]/);
+    if (corte >= 6 && corte <= max) return s.slice(0, corte).trim();
+    let r = '';
+    for (const p of s.split(/\s+/)) { if (`${r} ${p}`.trim().length > max - 1) break; r = `${r} ${p}`.trim(); }
+    return `${r || s.slice(0, max - 1)}…`;
+  }
+  const conTitulos = (vars = {}, corto = tituloCorto) => ({ ...vars, ...(vars.tema ? { tema: corto(vars.tema) } : {}), ...(vars.concepto ? { concepto: corto(vars.concepto) } : {}) });
+  // El consejo en una línea (≤ ~90 letras) y entero (con el título sin inglés) para «Ver por qué».
+  const consejoCorto = c => tx(`instr.corto.${c.clave}`, { ...conTitulos(c.vars), n: numero(c.vars?.n ?? 0), pct: numero(c.vars?.pct ?? 0), faltan: numero(c.vars?.faltan ?? 0), reto: numero(c.vars?.reto ?? 0) });
+  const consejoEntero = c => tx(`instr.c.${c.clave}`, conTitulos(c.vars, sinIngles));
+  // Una fila entera que se toca (sin botones aparte): el mismo destino que botonAccion.
+  function filaAccion(accion, clase, ...partes) {
+    if (accion?.tipo === 'tema') return el('a', { class: clase, href: `#tema/${encodeURIComponent(accion.materia)}/${encodeURIComponent(accion.tema)}` }, ...partes);
+    if (accion?.tipo === 'examen') return el('a', { class: clase, href: `#examen/${encodeURIComponent(accion.materia)}` }, ...partes);
+    if (accion?.tipo === 'intento') return el('button', { type: 'button', class: clase, onclick: evento => { sonar?.('toque'); empezarIntento(accion.datos, evento.currentTarget); } }, ...partes);
+    return el('div', { class: clase }, ...partes);
+  }
 
   // Lo que escribió la IA (consejo, explicación o duda): en su propia caja, con quién lo escribió.
   function cajaIa(r, partes) {
@@ -176,7 +199,7 @@ export function crearInstructor(h) {
   // 0.12.2: un concepto (más de 2 errores en cosas de un mismo punto) va a «Mi repaso»; las de antes dicen lo de antes.
   // 0.12.2: lo principal, corto y para hacer: «Repasa: <punto> · Tema <n> <tema>» con su botón (la mini-clase en «Mi
   // repaso»). El porqué (las veces, la idea equivocada, lo que hicimos) va plegado en «¿Por qué me equivoqué?».
-  const lineaRepasa = f => tx(f.temaNumero ? 'repasa.linea' : 'repasa.linea_sin_numero', { concepto: f.concepto || f.tarjeta || f.temaTitulo || '', n: numero(f.temaNumero ?? 0), tema: f.temaTitulo ?? '' });
+  const lineaRepasa = f => tx(f.temaNumero ? 'repasa.linea' : 'repasa.linea_sin_numero', { concepto: sinIngles(f.concepto || f.tarjeta || f.temaTitulo || ''), n: numero(f.temaNumero ?? 0), tema: sinIngles(f.temaTitulo ?? '') });
   const aMiniClase = clave => (clave ? `#mi-repaso/clase/${String(clave).replace(/^c:/, '')}` : '#mi-repaso');
   function frasesFalla(f, { conBoton = true } = {}) {
     const concepto = f.origen === 'concepto';
@@ -300,11 +323,11 @@ export function crearInstructor(h) {
           el('div', { class: 'listo-veredicto' },
             el('p', { class: `veredicto veredicto-${v.nivel}`, texto: tx(`listo.nivel.${v.nivel}`) }),
             // (sin medidor, la probabilidad en texto)
-            v.probabilidad != null && !medidor ? el('p', { class: 'chica', texto: tx('listo.probabilidad', { n: numero(v.probabilidad) }) }) : null,
-            el('p', { class: 'suave chica', texto: tx('listo.aviso') }))),
+            v.probabilidad != null && !medidor ? el('p', { class: 'chica', texto: tx('listo.probabilidad', { n: numero(v.probabilidad) }) }) : null)),
         el('ul', { class: 'baldosas' }, v.reglas.map(baldosa)),
         boton ? el('div', { class: 'listo-siguiente' }, el('span', { class: 'suave chica', texto: tx('listo.siguiente') }), boton) : null,
-        el('details', { class: 'listo-como' }, el('summary', { texto: tx('listo.como_pregunta') }), el('ul', { class: 'lista-reglas' }, v.reglas.map(linea))),
+        // 0.13.2: «es una estimación…» va con el «¿Cómo lo pienso?» (la tarjeta, más corta).
+        el('details', { class: 'listo-como' }, el('summary', { texto: tx('listo.como_pregunta') }), el('p', { class: 'suave chica', texto: tx('listo.aviso') }), el('ul', { class: 'lista-reglas' }, v.reglas.map(linea))),
         v.suerte?.length ? el('div', { class: 'suerte' }, v.suerte.map(x => el('p', { class: 'aviso' },
           el('strong', { texto: `${tx('listo.suerte', { lugar: nombreMateria(x.materia), pct: numero(x.pct) })} ` }),
           el('span', { texto: x.razones.map(z => tx(`listo.suerte.${z.id}`, { n: numero(z.n ?? 0), de: numero(z.de ?? 0), pct: numero(z.pct ?? 0), umbral: numero(z.umbral ?? 0) })).join(' ') })))) : null,
@@ -349,17 +372,21 @@ export function crearInstructor(h) {
         el('div', {},
           el('h2', { id: 'instructor-titulo', texto: tx('instr.titulo') }),
           insignia(d.instructor))),
-      consejo ? talCual('p', textoConsejo(consejo), 'instructor-consejo') : null,
-      consejo?.accion ? el('div', { class: 'instructor-accion' }, botonAccion(consejo.accion)) : null,
-      d.observaciones?.length ? el('ul', { class: 'instructor-notas' }, d.observaciones.map(o => el('li', { class: 'con-icono' },
-        icono('ojo', 'icono chico'), talCual('span', tx(`instr.o.${o.clave}`, { ...o.vars, franja: o.vars?.franja ? tx(`instr.franja.${o.vars.franja}`) : '' }))))) : null,
+      // 0.13.2: una línea corta y UN botón; el consejo entero y lo que nota, detrás de «Ver por qué».
+      consejo ? el('div', { class: 'instructor-fila' },
+        talCual('p', consejoCorto(consejo), 'instructor-consejo'),
+        consejo.accion ? botonAccion(consejo.accion) : null) : null,
+      consejo ? el('details', { class: 'instructor-porque' }, el('summary', { texto: tx('instr.ver_porque') }),
+        talCual('p', consejoEntero(consejo), 'chica'),
+        d.observaciones?.length ? el('ul', { class: 'instructor-notas' }, d.observaciones.map(o => el('li', { class: 'con-icono' },
+          icono('ojo', 'icono chico'), talCual('span', tx(`instr.o.${o.clave}`, { ...o.vars, franja: o.vars?.franja ? tx(`instr.franja.${o.vars.franja}`) : '' }))))) : null) : null,
       // 0.12.4: los minutos y el Profesor virtual solo si la IA sirve de verdad para él (nunca un botón muerto).
       ia || d.instructor?.modo === 'espera' ? medidorTiempo(d.tiempo) : null,
       d.instructor?.motivo === 'sin_minutos' ? sinMinutos() : null,
       // 0.11.0: activó la academia sin IA.
       d.instructor?.motivo === 'sin_consentimiento' ? el('p', { class: 'suave chica con-icono' }, icono('info', 'icono chico'),
         el('span', { texto: `${tx('instr.motivo.sin_consentimiento')} ` }), el('a', { href: '#mis-datos', texto: tx('datos.titulo') })) : null,
-      planDeHoy(),
+      planDeHoy({ sinAccion: consejo?.accion ?? null }),
       // 0.12.4: el administrador (también «como estudiante») puede ver cómo se vería todo con IA, sin clave.
       d.demoIa ? el('a', { class: 'enlace-fuerte chica con-icono', href: '#ia-demo' }, icono('ojo', 'icono chico'), el('span', { texto: tx('demo.vista.abrir') })) : null,
       ia && d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
@@ -367,16 +394,28 @@ export function crearInstructor(h) {
   }
   // 0.12.4: «Tu plan de hoy»: sin IA, las primeras cosas que puede hacer hoy (cada una con su botón de verdad); con IA,
   // «Armar mi plan con IA» (la IA solo elige y ordena entre esas mismas). Se pinta cuando llega (no hace esperar a Inicio).
-  const textoAccion = a => tx(`instr.hoy.${a.clave}`, { ...a.vars, n: numero(a.vars?.n ?? 0), consejo: a.vars?.consejo ? textoConsejo({ clave: a.vars.consejo, vars: a.vars.consejoVars ?? {} }) : '' });
+  // 0.13.2: cada paso es UNA fila que se toca: ícono + 2 a 4 palabras («Repasar: Mirar al lado de noche», «Clase: Visión
+  // en vuelo», «Modo reto»); el «porque» de la IA, chico debajo.
+  const ICONO_PASO = { repaso: 'actualizar', tema: 'libro', reto: 'rayo', examen: 'trofeo', practica: 'cerebro', practica_vence: 'cerebro', consejo: 'flecha' };
+  const textoAccion = a => (a.clave === 'consejo' ? botonTexto(a.accion) : tx(`instr.hoy.${a.clave}`, { ...conTitulos(a.vars), n: numero(a.vars?.n ?? 0) }));
+  const botonTexto = accion => (accion?.tipo === 'intento' ? tx(`instr.accion.${accion.datos?.tipo ?? 'instructor'}`) : accion ? tx(`instr.accion.${accion.tipo}`) : '');
+  const mismaAccion = (a, b) => a != null && b != null && JSON.stringify(a) === JSON.stringify(b);
   function pasosPlan(pasos, { botones = true } = {}) {
-    return el('ol', { class: 'plan-hoy-pasos' }, pasos.map(a => el('li', {},
-      talCual('span', textoAccion(a)), a.porque ? talCual('span', ` — ${a.porque}`, 'suave chica') : null, botones ? ' ' : null, botones ? botonAccion(a.accion, 'boton-3d blanco chico') : null)));
+    return el('ul', { class: 'plan-hoy-pasos' }, pasos.map(a => el('li', {},
+      filaAccion(botones ? a.accion : null, `plan-hoy-fila${botones && a.accion ? ' tocable' : ''}`,
+        el('span', { class: 'plan-hoy-icono', 'aria-hidden': 'true' }, icono(ICONO_PASO[a.clave] ?? 'flecha', 'icono chico')),
+        el('span', { class: 'plan-hoy-texto' }, el('span', { class: 'plan-hoy-etiqueta', texto: textoAccion(a) }),
+          a.porque ? talCual('span', a.porque, 'plan-hoy-porque suave chica') : null),
+        botones && a.accion ? el('span', { class: 'plan-hoy-ir', 'aria-hidden': 'true' }, icono('flecha', 'icono chico')) : null))));
   }
-  function planDeHoy({ url = '/api/academia/instructor/plan-hoy' } = {}) {
+  function planDeHoy({ url = '/api/academia/instructor/plan-hoy', sinAccion = null } = {}) {
     const lugar = el('section', { class: 'plan-hoy', 'aria-label': tx('instr.hoy.titulo') });
     api('GET', url).then(r => {
       if (!lugar.isConnected || !r.ok || !(r.datos.basico ?? []).length) return;
       const d = r.datos;
+      // Lo mismo que ya ofrece el botón de arriba no se repite.
+      const basico = d.basico.filter(a => !mismaAccion(a.accion, sinAccion));
+      if (!basico.length && d.ia?.estado !== 'lista' && d.instructor?.modo !== 'ia') return;
       const zona = el('div', { class: 'plan-hoy-ia' });
       const pintarIa = x => cajaIa(x, [x.titulo ? talCual('p', x.titulo, 'fuerte') : null, pasosPlan(x.pasos ?? [])]);
       if (d.ia?.estado === 'lista') zona.append(pintarIa(d.ia));
@@ -400,7 +439,7 @@ export function crearInstructor(h) {
         } }, icono('chispa', 'icono chico'), el('span', { texto: tx('instr.hoy.con_ia') })));
       }
       lugar.replaceChildren(el('h3', { class: 'con-icono' }, icono('calendario', 'icono chico'), el('span', { texto: tx('instr.hoy.titulo') })),
-        d.ia?.estado === 'lista' ? zona : el('div', {}, pasosPlan(d.basico), zona));
+        d.ia?.estado === 'lista' ? zona : el('div', {}, basico.length ? pasosPlan(basico) : null, zona));
     });
     return lugar;
   }

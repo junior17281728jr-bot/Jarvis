@@ -210,3 +210,24 @@ test('sin contenido oral, nada cambia: el Camino dice que no hay y las rutas res
     assert.equal((await pedir(base, 'GET', '/api/academia/progreso', { galleta: ana })).datos.oral, null);
   }, { orales: [] });
 });
+
+// 0.13.2: el mapa del libro (solo títulos) y cómo se cruza con lo que trae el paquete.
+test('0.13.2: el Camino oral muestra los 8 capítulos y los 39 temas del libro; lo que no tiene clase queda «Pronto»', async () => {
+  const { MAPA_ORAL, TOTAL_TEMAS_MAPA, caminoConMapa, letraDeTema } = await import('../public/oral-mapa.js');
+  assert.equal(TOTAL_TEMAS_MAPA, 39);
+  assert.deepEqual(MAPA_ORAL.map(c => c.id), [...MATERIAS_ORAL]);
+  assert.deepEqual(MAPA_ORAL.map(c => c.temas.filter(x => x.letra).length), [3, 2, 5, 3, 6, 10, 2, 8, 0]);
+  assert.equal(MAPA_ORAL[0].temas[0].es, 'Privilegios y limitaciones');
+  assert.equal(MAPA_ORAL[0].temas[0].en, 'Privileges and Limitations');
+  assert.equal(letraDeTema('t02-b'), 'B');
+  assert.equal(letraDeTema('t01-escenarios'), null);
+  const c = caminoConMapa([
+    { id: 'oral_calificaciones', numero: 1, temas: [{ id: 't02-b', titulo: 'Recent Experience' }, { id: 'otro', titulo: 'Uno que el mapa no conoce' }] },
+    { id: 'oral_escenarios', numero: 9, temas: [{ id: 't01-escenarios', titulo: 'Escenarios' }] },
+  ]);
+  assert.equal(c.length, 9);
+  assert.deepEqual(c[0].temas.map(x => [x.letra, x.es, x.x?.id ?? null]), [['A', 'Privilegios y limitaciones', null], ['B', 'Vigencia', 't02-b'], ['C', 'Certificado médico', null], [null, 'Uno que el mapa no conoce', 'otro']]);
+  assert.equal(c[1].m, null, 'un capítulo sin clases sale igual, con sus temas «Pronto»');
+  assert.equal(c[1].temas.length, 2);
+  assert.equal(c[8].temas[0].x.id, 't01-escenarios');
+});

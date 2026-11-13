@@ -1096,3 +1096,12 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .repaso-oral { border-left: 6px solid var(--oral); }
 .oral-capitulo { --mc: #0f6fb8; }
 .oral-capitulo .banner-icono { color: inherit; }
+/* 0.13.2: el Camino oral como el principal: el inglés chico debajo del título (capítulo y tema), los temas que llegan
+   pronto en gris, y al final el nodo del «Examen oral». */
+.banner-en { margin: -4px 0 6px; font-size: 13.5px; font-weight: 600; font-style: italic; opacity: 0.85; }
+.nodo-en { font-size: 12px; font-weight: 600; font-style: italic; color: var(--suave); line-height: 1.2; max-width: 168px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nodo.pronto .nodo-dentro { cursor: default; }
+.nodo.pronto .nodo-detalle { text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; }
+.oral-final-nodo { margin: 8px 0 18px; }
+.oral-final-nodo .sendero { padding-top: 8px; }
+.nodo.examen.final .nodo-nombre { font-size: 15px; }

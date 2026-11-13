@@ -1407,3 +1407,16 @@ ul.lista-drive li:first-child { border-top: 0; }
 .acad-audio { margin: 8px 0 12px; }
 .acad-audio p { margin: 0 0 6px; }
 .acad-audio audio { width: 100%; max-width: 520px; }
+
+/* 0.13.2: el menú de abajo con 5 pestañas (Camino · Progreso · Oral · Ajustes · Admin): en el teléfono, nombres cortos;
+   en la PC (menú al costado o arriba), los de siempre. El punto de «Oral» = tu siguiente paso. */
+.menu-icono-lugar { position: relative; display: inline-flex; }
+.menu-punto { position: absolute; top: -2px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--naranja, #f97316);
+  box-shadow: 0 0 0 2px var(--barra-fondo, #fff); }
+.menu-corto { display: none; }
+.menu a > span:not(.menu-icono-lugar) { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 759.98px) {
+  .menu a { min-width: 0; padding-left: 2px; padding-right: 2px; }
+  .menu-largo { display: none; }
+  .menu-corto { display: inline; }
+}

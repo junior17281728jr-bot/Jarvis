@@ -8,6 +8,16 @@
   box-shadow: 0 4px 0 var(--azul-borde); }
 .instructor-avatar .icono { width: 28px; height: 28px; }
 .instructor-consejo { font-size: 18px; line-height: 1.45; margin: 6px 0 12px; }
+/* 0.13.2: la línea corta y su botón (al lado si cabe); el resto, detrás de «Ver por qué». */
+.instructor-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.instructor-fila .instructor-consejo { flex: 1 1 14em; margin: 2px 0; font-weight: 700; font-size: 17px; line-height: 1.35; }
+.instructor-fila .boton-3d { flex: none; }
+.instructor-porque { margin: 6px 0 0; }
+.instructor-porque > summary::after { content: '›'; margin-left: 6px; transition: transform 0.15s ease; }
+.instructor-porque[open] > summary::after { transform: rotate(90deg); }
+.instructor-porque > summary::-webkit-details-marker { display: none; }
+.instructor-porque > summary { list-style: none; padding: 4px 0; cursor: pointer; font-size: 14px; font-weight: 700; color: var(--suave); min-height: 32px; display: inline-flex; align-items: center; }
+.instructor-porque > p { margin: 4px 0 6px; color: var(--suave); }
 .instructor-accion { margin-bottom: 10px; }
 .instructor-notas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .instructor-notas li { font-size: 15px; color: var(--suave); align-items: flex-start; }
@@ -162,8 +172,21 @@
 /* 0.12.4: el plan de hoy, la nota para ti, las citas del Test Guide y la vista de prueba de la IA (administrador). */
 .plan-hoy { margin: 12px 0 0; }
 .plan-hoy h3 { margin: 0 0 6px; font-size: 16px; }
-.plan-hoy-pasos { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
-.plan-hoy-pasos li { overflow-wrap: anywhere; }
+.plan-hoy-pasos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.plan-hoy-pasos li { min-width: 0; margin: 0; }
+/* 0.13.2: cada paso es una fila que se toca entera (ícono + pocas palabras + flecha). */
+.plan-hoy-fila { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 10px; border-radius: 12px;
+  border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); font: inherit; font-size: 15px; font-weight: 700; text-align: left;
+  text-decoration: none; box-shadow: none; margin: 0; }
+button.plan-hoy-fila { cursor: pointer; }
+.plan-hoy-fila.tocable:hover { border-color: color-mix(in srgb, var(--azul) 45%, var(--borde)); }
+.plan-hoy-fila.tocable:active { transform: scale(0.99); }
+.plan-hoy-icono { flex: none; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--azul) 14%, var(--tarjeta)); color: var(--azul); }
+.plan-hoy-texto { flex: 1 1 auto; min-width: 0; display: grid; }
+.plan-hoy-etiqueta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-hoy-porque { font-weight: 400; }
+.plan-hoy-ir { flex: none; color: var(--suave); display: grid; place-items: center; }
 .nota-para-ti { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--azul); background: color-mix(in srgb, var(--azul) 8%, transparent); border-radius: 6px; }
 .cita-test-guide { margin: 6px 0 0; color: var(--verde-texto); }
 .caja-ia.demo { border-style: dotted; border-color: color-mix(in srgb, var(--naranja) 60%, transparent); }
@@ -190,8 +213,7 @@
 .tutor-cabeza h2 { margin: 0; font-size: 19px; display: inline; }
 .tutor-meta { margin: 6px 0; font-weight: 700; }
 .tutor-prioridad { margin: 6px 0 2px; }
-.tutor-novedades { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
-.tutor-novedades a { width: 100%; justify-content: flex-start; text-align: left; box-sizing: border-box; }
+.tutor-novedades { margin: 10px 0; }
 .tutor-examen-linea { display: block; margin: 8px 0; padding: 8px 12px; border-radius: 12px; text-decoration: none; color: var(--texto); background: var(--gris-nodo); }
 .tutor-enlaces { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
 .tutor-apertura { border: 2px solid color-mix(in srgb, var(--verde) 45%, transparent); }
@@ -241,3 +263,4 @@
 .burbuja-ejemplo { margin: 0 0 6px; padding: 8px 12px; border-radius: 14px; background: var(--gris-nodo); }
 .planes-pasos { margin: 6px 0 12px; padding-left: 22px; }
 .planes-pasos li { margin: 0 0 6px; }
+.tutor-novedades .plan-hoy-etiqueta { white-space: normal; }

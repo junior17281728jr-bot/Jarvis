@@ -349,3 +349,29 @@ test('las frases del instructor (public/instructor.js y los consejos) existen en
     assert.ok(clave in es && clave in en, `falta ${clave}`);
   }
 });
+
+// 0.13.2: el consejo de Inicio en una línea corta (≤ 90 letras, sin el inglés de los títulos) y «Tu plan de hoy» en
+// pocas palabras; lo entero queda en «Ver por qué».
+test('0.13.2: cada consejo de Inicio tiene su línea corta en los dos idiomas, y el plan de hoy dice pocas palabras', () => {
+  const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
+  const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
+  const fuente = readFileSync(join(RAIZ, 'src/academia/instructor.js'), 'utf8');
+  const general = fuente.slice(fuente.indexOf('function consejoSalto'), fuente.indexOf('function consejoDeTema'));
+  // (las que se eligen con «? :» se escriben entre comillas sueltas: salto_paso / salto_quemado, reto_bajo / reto_nuevo)
+  const claves = new Set([...general.matchAll(/'(salto_paso|salto_quemado|reto_bajo|reto_nuevo)'|clave: '([a-z_]+)'/g)].map(m => m[1] ?? m[2]));
+  assert.ok(claves.size >= 13, [...claves].join(','));
+  const largo = (texto, vars) => texto.replace(/\{(\w+)\|([^|{}]*)\|([^{}]*)\}/g, (_, n, a, b) => b).replace(/\{(\w+)\}/g, (_, n) => vars[n] ?? '00');
+  for (const c of claves) for (const idioma of [es, en]) {
+    const texto = idioma[`instr.corto.${c}`];
+    assert.ok(texto, `falta instr.corto.${c}`);
+    assert.ok(largo(texto, { tema: 'Visión en vuelo y visión', concepto: 'Visión en vuelo y visión' }).length <= 90, `${c}: ${texto}`);
+  }
+  for (const c of ['repaso', 'tema', 'reto', 'examen', 'practica', 'practica_vence']) {
+    assert.ok(es[`instr.hoy.${c}`] && en[`instr.hoy.${c}`], c);
+    assert.ok(es[`instr.hoy.${c}`].replace(/\{\w+\}/g, 'x').split(/\s+/).length <= 4, es[`instr.hoy.${c}`]);
+  }
+  assert.ok(es['instr.ver_porque'] && en['instr.ver_porque']);
+  const pantalla = readFileSync(join(RAIZ, 'public/instructor.js'), 'utf8');
+  assert.match(pantalla, /instructor-porque/, 'el consejo entero y lo que nota, detrás de «Ver por qué»');
+  assert.match(pantalla, /plan-hoy-fila/, 'cada paso del plan es una fila que se toca');
+});

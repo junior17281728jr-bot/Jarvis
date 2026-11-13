@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.13.1; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.13.2; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -700,6 +700,20 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.13.2: menos texto en Inicio y el oral con su pestaña — sin cambio de base
+- **«Tu instructor dice…»** cabe de un vistazo: una línea corta («Te quemaste (28 %). Empieza por: Visión en vuelo») y UN
+  botón; el consejo entero y lo que nota el instructor van detrás de «Ver por qué». En los resúmenes (Inicio, Progreso, Mi
+  repaso, «Tu tutor IA») los títulos van sin el inglés entre paréntesis: el inglés queda dentro de la clase.
+- **«Tu plan de hoy»**: hasta 3 filas que se tocan enteras (ícono + pocas palabras: «Repasar: …», «Clase: …», «Modo reto»),
+  sin repetir lo que ya ofrece el botón de arriba. «Tu tutor IA» usa las mismas filas; su meta y el porqué, en «Ver por qué».
+- **La pestaña «Oral»** abajo (Camino · Progreso · Oral · Ajustes · Admin; en la PC con sus nombres enteros), con un punto
+  cuando el oral es «Tu siguiente paso». Inicio ya no lleva la entrada del oral; Progreso, solo un enlace corto.
+- **El Camino oral es como el principal**: los capítulos 1 a 8 y «Escenarios» con el título en español grande y el inglés
+  chico debajo, plegables, con anillos y colores; adentro los 39 temas del libro en su orden («1A · Privilegios y
+  limitaciones»), los que todavía no tienen clase en gris con «Pronto» (el mapa de títulos vive en `public/oral-mapa.js`,
+  solo nombres; un tema del paquete se cruza por la letra de su id, `t01-a`, `t02-b`…); el examen de cada capítulo y, al
+  final, el nodo del «Examen oral».
 
 ### Lo nuevo de la 0.13.1: «Preparándote para el examen oral» (la pista oral, entera) — sin cambio de base
 Una sección **aparte** del Test Guide, con su propio Camino, que solo usa la **Guía del examen oral**. Funciona sin IA; con

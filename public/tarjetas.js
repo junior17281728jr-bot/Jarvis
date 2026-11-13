@@ -153,6 +153,12 @@ const PALABRAS_ES = /\b(el|la|los|las|de|del|que|y|e|o|u|en|por|con|para|una?|un
 // un término en español nunca debe salir como ficha de inglés (las siglas como FAR o NTSB tampoco).
 const TERMINACION_ES = /(dad|cion|ciones|mente|ando|iendo|ado|ada|ados|adas|osis|encia|ores|ismo|[^e]os|[^e]as)\b/i;
 const SENAL_EN = /(th|sh|ck|wh|ght|tion|ing\b|ee|oo|ea|ou|w|k|y(?![aeiou]))/i;
+// 0.13.2: un título «Español (english)» sin el inglés, para los resúmenes (Inicio, Progreso, Mi repaso): el inglés
+// queda dentro de la clase. Si el paréntesis no parece inglés, el título va entero.
+export function tituloSinIngles(titulo) {
+  const m = /^(.*\S)\s*\(([^()]*[A-Za-z][^()]*)\)\s*$/.exec(String(titulo ?? ''));
+  return m && pareceIngles(m[2], { titulo: true }) ? m[1] : String(titulo ?? '');
+}
 export function pareceIngles(termino, { titulo = false } = {}) {
   const t = String(termino ?? '').trim();
   if (!t || t.length > (titulo ? 200 : 60) || /[áéíóúñ¿¡]/i.test(t) || !/[a-z]/.test(t)) return false;

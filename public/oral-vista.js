@@ -4,56 +4,90 @@
 // la explicación en español y los puntos clave; práctica por tema con «¿De dónde salió?», el examen de cada capítulo, el
 // examen final y «Listo para el oral». Todo con h.el (nunca texto como código); los textos, de public/i18n.
 
+import { caminoConMapa, TOTAL_TEMAS_MAPA } from './oral-mapa.js';
+
 const ruta = (...partes) => `#oral${partes.length ? `/${partes.map(encodeURIComponent).join('/')}` : ''}`;
 
-// El Camino oral.
+// El Camino oral. 0.13.2: igual que el Camino principal: los capítulos 1 a 8 y «Escenarios», cada uno con su título en
+// español grande y el inglés chico debajo, plegables; adentro TODOS los temas del libro en su orden («1A · Privilegios y
+// limitaciones»), los que todavía no tienen clase en gris con «Pronto»; el examen de cada capítulo y, al final, el nodo
+// del «Examen oral». Con su pestaña propia abajo («Oral»).
 export function pantallaOral(d, h) {
-  const { el, t, tn, numero, icono, mostrar, marco, volverAlCamino, nombreMateria, nodoCamino, barraLlena } = h;
-  if (!d.hay) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { texto: t('oral.vacio') }))));
+  const { el, t, tn, numero, icono, mostrar, marco, nombreMateria, nodoCamino, barraLlena, anilloAvance, plegarCamino } = h;
+  if (!d.hay) return mostrar(marco('oral', el('section', { class: 'tarjeta' }, el('p', { texto: t('oral.vacio') }))));
+  const enEspanol = (document.documentElement.lang || 'es') !== 'en';
   const sig = d.siguiente;
-  const capitulo = m => {
-    const temas = m.temas.map((x, i) => {
-      const actual = sig?.materia === m.id && sig?.tema === x.id;
+  const capitulos = caminoConMapa(d.materias);
+  // Lo que plegarCamino necesita de cada capítulo (estado, avance y sus temas).
+  const resumen = capitulos.map(c => ({
+    id: c.id, temas: c.temas, pct: c.m?.pct ?? 0,
+    estado: !c.m ? 'vacia' : c.m.examen.aprobado ? 'aprobada' : 'abierta',
+  }));
+  const capitulo = (c, n) => {
+    const m = c.m;
+    const esc = c.id === 'oral_escenarios';
+    let i = 0;
+    const nodos = c.temas.map(tm => {
+      const x = tm.x;
+      const nombre = enEspanol ? tm.es : tm.en || tm.es;
+      const titulo = tm.letra ? `${c.n}${tm.letra} · ${nombre}` : nombre;
+      const ingles = enEspanol && tm.en && tm.en !== tm.es ? tm.en : null;
+      if (!x) {
+        return nodoCamino({ clase: 'bloqueado pronto', nombreIcono: 'reloj', titulo, en: ingles, detalle: t('acad.pronto'), etiqueta: t('oral.tema.pronto', { tema: titulo }), i: i++ });
+      }
+      const actual = sig?.materia === c.id && sig?.tema === x.id;
       const nivel = x.preguntas && x.bien >= x.preguntas ? 'dominado' : x.leido && x.vistas >= x.preguntas ? 'terminado' : x.leido || x.vistas ? 'empezado' : 'nuevo';
       return nodoCamino({
-        clase: x.leido ? 'hecho' : 'abierto', href: ruta('tema', m.id, x.id), i, nombreIcono: x.leido ? 'marca' : 'libro',
-        titulo: x.titulo, detalle: tn('oral.n_preguntas_libro', { n: x.qa }), etiqueta: t('oral.tema.etiqueta', { tema: x.titulo }),
+        clase: x.leido ? 'hecho' : 'abierto', href: ruta('tema', c.id, x.id), i: i++, nombreIcono: x.leido ? 'marca' : 'libro',
+        titulo, en: ingles, detalle: tn('oral.n_preguntas_libro', { n: x.qa }), etiqueta: t('oral.tema.etiqueta', { tema: titulo }),
         actual, burbuja: actual ? t(sig.tipo === 'practica' ? 'oral.practicar' : 'acad.empezar') : null, avance: { nivel, pct: x.pct },
       });
     });
-    const ex = m.examen;
-    const actualEx = sig?.tipo === 'examen' && sig.materia === m.id;
-    temas.push(nodoCamino({
-      clase: `examen ${ex.aprobado ? 'hecho' : 'abierto'}`, href: ruta('examen', m.id), i: m.temas.length, nombreIcono: 'trofeo',
-      titulo: t('oral.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : tn('acad.n_preguntas', { n: Math.min(m.preguntas, d.examenCapitulo ?? 20) }),
-      etiqueta: t('oral.examen.de', { capitulo: nombreMateria(m.id) }), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
-    }));
-    return el('section', { class: 'materia-bloque oral-capitulo abierta', 'aria-labelledby': `oral-${m.id}` },
+    if (m) {
+      const ex = m.examen;
+      const actualEx = sig?.tipo === 'examen' && sig.materia === c.id;
+      nodos.push(nodoCamino({
+        clase: `examen ${ex.aprobado ? 'hecho' : 'abierto'}`, href: ruta('examen', c.id), i: i++, nombreIcono: 'trofeo',
+        titulo: t('oral.examen.nodo'), detalle: ex.mejor != null ? t('acad.mejor', { n: numero(ex.mejor) }) : tn('acad.n_preguntas', { n: Math.min(m.preguntas, d.examenCapitulo ?? 20) }),
+        etiqueta: t('oral.examen.de', { capitulo: nombreMateria(c.id) }), actual: actualEx, burbuja: actualEx ? t('acad.empezar') : null,
+      }));
+    }
+    const listos = c.temas.filter(x => x.x).length;
+    return el('section', { class: `materia-bloque oral-capitulo ${m ? resumen[n].estado : 'vacia'}`, 'aria-labelledby': `materia-${c.id}` },
       el('header', { class: 'banner-materia' },
-        el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, icono(m.id === 'oral_escenarios' ? 'radio' : 'manual')),
+        el('span', { class: 'banner-icono', 'aria-hidden': 'true' }, m ? anilloAvance(m.pct ?? 0, 'anillo-materia') : null, icono(esc ? 'radio' : 'manual')),
         el('div', { class: 'banner-texto' },
-          el('p', { class: 'banner-ante', texto: m.id === 'oral_escenarios' ? t('oral.escenarios.ante') : t('oral.capitulo_n', { n: numero(m.numero) }) }),
-          el('h2', { id: `oral-${m.id}`, class: 'banner-titulo', texto: nombreMateria(m.id) }),
-          el('div', { class: 'banner-avance' }, el('span', { class: 'banner-barra' }, barraLlena(m.pct)), el('span', { texto: t('oral.bien_de', { n: numero(m.bien), total: numero(m.preguntas) }) })))),
-      el('ol', { class: 'sendero', 'aria-label': nombreMateria(m.id) }, temas));
+          el('p', { class: 'banner-ante', texto: esc ? t('oral.escenarios.ante') : t('oral.capitulo_n', { n: numero(c.n) }) }),
+          el('h2', { id: `materia-${c.id}`, class: 'banner-titulo', texto: nombreMateria(c.id) }),
+          enEspanol && c.en ? el('p', { class: 'banner-en', lang: 'en', texto: c.en }) : null,
+          m ? el('div', { class: 'banner-avance' }, el('span', { class: 'banner-barra' }, barraLlena(m.pct)),
+            el('span', { texto: esc ? t('oral.bien_de', { n: numero(m.bien), total: numero(m.preguntas) }) : t('oral.temas_listos', { n: numero(listos), total: numero(c.temas.length) }) }))
+            : el('p', { class: 'banner-linea', texto: tn('oral.pronto.linea', { n: c.temas.length }) }))),
+      el('ol', { class: 'sendero', 'aria-label': nombreMateria(c.id) }, nodos));
   };
   const continuar = sig ? el('a', { class: 'boton-3d grande boton-continuar con-icono', href: sig.tipo === 'final' ? ruta('final') : sig.tipo === 'examen' ? ruta('examen', sig.materia) : sig.tipo === 'practica' ? ruta('practica', sig.materia, sig.tema) : ruta('tema', sig.materia, sig.tema) },
     icono('flecha', 'icono chico'), el('span', { texto: t(`oral.siguiente.${sig.tipo}`) })) : null;
   const f = d.final;
-  mostrar(marco('inicio', volverAlCamino(),
+  const actualFinal = sig?.tipo === 'final';
+  // El último nodo: el «Examen oral» (mezcla todos los capítulos y los escenarios).
+  const nodoFinal = el('section', { class: 'oral-final-nodo', 'aria-labelledby': 'oral-final-titulo' },
+    el('h2', { id: 'oral-final-titulo', class: 'solo-lectores', texto: t('oral.final.titulo') }),
+    el('ol', { class: 'sendero' }, nodoCamino({
+      clase: `examen final ${f.aprobado ? 'hecho' : f.disponible ? 'abierto' : 'bloqueado'}`, href: f.disponible ? ruta('final') : null, i: 0, nombreIcono: 'medalla',
+      titulo: t('oral.final.titulo'), detalle: f.mejor != null ? t('acad.mejor', { n: numero(f.mejor) }) : tn('acad.n_preguntas', { n: f.preguntas }),
+      etiqueta: t('oral.final.linea', { n: numero(f.preguntas) }), actual: actualFinal, burbuja: actualFinal ? t('acad.empezar') : null,
+    })));
+  mostrar(marco('oral',
     el('section', { class: 'oral-portada' },
       el('span', { class: 'oral-sello', texto: t('oral.sello') }),
       el('h1', { class: 'titulo-grande', texto: t('oral.titulo') }),
-      el('p', { class: 'bajada', texto: t('oral.linea') }),
+      el('p', { class: 'bajada', texto: t('oral.mapa.linea', { n: numero(TOTAL_TEMAS_MAPA), listos: numero(capitulos.reduce((k, c) => k + c.temas.filter(x => x.x && x.letra).length, 0)) }) }),
       d.siguientePaso ? el('p', { class: 'insignia tono-bien', texto: t('oral.siguiente_paso') }) : null,
       continuar),
+    plegarCamino(el('div', { class: 'camino oral-camino' }, capitulos.map(capitulo)), resumen, sig?.materia ? { materia: sig.materia } : null),
+    nodoFinal,
+    // «¿Listo para el oral?», debajo del Camino (arriba, lo primero es el mapa).
     panelListo(d.listo, h),
-    el('div', { class: 'camino oral-camino' }, d.materias.map(capitulo)),
-    el('section', { class: `panel oral-final${f.aprobado ? ' hecho' : ''}`, 'aria-labelledby': 'oral-final-titulo' },
-      el('div', { class: 'panel-cabeza' }, el('span', { class: 'panel-icono' }, icono('medalla')),
-        el('div', {}, el('h2', { id: 'oral-final-titulo', texto: t('oral.final.titulo') }), el('p', { class: 'suave chica', texto: t('oral.final.linea', { n: numero(f.preguntas) }) }))),
-      f.mejor != null ? el('p', { class: 'chica', texto: t('acad.mejor', { n: numero(f.mejor) }) }) : null,
-      el('a', { class: 'boton-3d naranja con-icono', href: ruta('final') }, icono('trofeo', 'icono chico'), el('span', { texto: t('oral.final.abrir') }))),
     el('section', { class: 'panel oral-errores' },
       el('p', { class: 'suave chica', texto: t('oral.errores.linea') }),
       el('a', { class: 'boton-3d blanco chico', href: ruta('practica', 'errores') }, el('span', { texto: t('oral.errores.boton') }))),
@@ -253,7 +287,7 @@ export function portadaExamenOral(d, alcance, h) {
   const { el, t, tn, numero, icono, mostrar, marco, nombreMateria, api, avisar, textoError } = h;
   const final = alcance === 'final';
   const m = final ? null : d.materias.find(x => x.id === alcance);
-  if (!final && !m) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError('no_existe') }))));
+  if (!final && !m) return mostrar(marco('oral', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError('no_existe') }))));
   const ex = final ? d.final : m.examen;
   const n = final ? d.final.preguntas : Math.min(m.preguntas, d.examenCapitulo ?? 20);
   const empezar = async e => {
@@ -262,7 +296,7 @@ export function portadaExamenOral(d, alcance, h) {
     if (!r.ok) { e.currentTarget.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
     examenOral(r.datos, h);
   };
-  mostrar(marco('inicio', el('a', { class: 'volver con-icono', href: ruta() }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('oral.volver') })),
+  mostrar(marco('oral', el('a', { class: 'volver con-icono', href: ruta() }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('oral.volver') })),
     el('section', { class: 'examen-portada oral-examen-portada' },
       el('span', { class: 'examen-trofeo', 'aria-hidden': 'true' }, icono(final ? 'medalla' : 'trofeo')),
       el('p', { class: 'antetitulo', texto: t('oral.sello') }),

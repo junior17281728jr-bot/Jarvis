@@ -10,7 +10,7 @@ import {
 } from './copias-vista.js';
 import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto } from './clave-recuperacion.js';
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
-import { partirLeccion, resaltar, pareceIngles } from './tarjetas.js';
+import { partirLeccion, resaltar, tituloSinIngles } from './tarjetas.js';
 import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capituloEn, reloj as relojVideo, VELOCIDADES, velocidadValida } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
@@ -264,6 +264,7 @@ function revisarSesion(respuesta, ruta) {
     // Se recuerda de quién era: si entra la misma persona, vuelve a la misma pantalla (la dirección no cambia).
     sesionTerminada = estado.usuario.id;
     estado.usuario = null;
+    estado.oral = undefined;
     avisoEntrar = textoError(error);
     setTimeout(dibujar);
   } else if (estado.usuario && error === 'debe_cambiar_clave') {
@@ -561,6 +562,7 @@ function pantallaCrearAdmin() {
     if (!r.ok) throw new Error(textoError(r.datos.error));
     estado.setup = { ...estado.setup, necesitaAdmin: false, puedeCrearAdmin: false };
     estado.usuario = r.datos.usuario;
+    estado.oral = undefined;
     vaciarMemoria();
     location.hash = '#inicio';
     await dibujar();
@@ -627,6 +629,7 @@ function pantallaCrearClave(nombre) {
 }
 async function entrarCon(r) {
   estado.usuario = r.datos.usuario;
+  estado.oral = undefined;
   estado.terminos = r.datos.terminos ?? null;
   vaciarMemoria();
   recordarAdmin(estado.usuario);
@@ -685,6 +688,7 @@ async function salir() {
   // Si el servidor no pudo cerrar la sesión, no se finge que se cerró.
   if (!r.ok && r.codigo !== 401) return avisar(textoError(r.datos.error), 'mal');
   estado.usuario = null;
+  estado.oral = undefined;
   vaciarMemoria();
   sesionTerminada = null;
   avisosCuenta = { avisos: [], recientes: [] };
@@ -777,8 +781,12 @@ function bandaEstudiante() {
 // En la PC (pantalla ancha) el mismo menú va a la izquierda, con sus nombres, y el contenido al lado (estilos.css).
 function marco(seccion, ...contenido) {
   // Academia (0.7.0): «Proyectos» queda escondido (su código sigue, para más adelante).
-  const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['configuracion', 'menu.configuracion', 'ajustes']];
-  if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo']);
+  // 0.13.2: «Oral» (el examen oral, con su Camino) tiene su pestaña cuando hay contenido oral; con un punto cuando es «Tu
+  // siguiente paso» (terminó los exámenes del Test Guide). En el teléfono caben 5: nombres cortos («Ajustes», «Admin»).
+  const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['configuracion', 'menu.configuracion', 'ajustes', 'menu.corto.configuracion']];
+  if (estado.oral?.hay) enlaces.splice(2, 0, ['oral', 'menu.oral', 'microfono']);
+  if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo', 'menu.corto.admin']);
+  if (estado.usuario && estado.oral === undefined) conocerOral();
   return el('div', { class: 'marco' },
     el('div', { class: 'lateral' },
       el('header', { class: 'encabezado' },
@@ -789,13 +797,41 @@ function marco(seccion, ...contenido) {
           dibujarAvatar(estado.usuario?.avatar ?? null, { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
         el('button', { type: 'button', class: 'secundario chico con-icono salir', onclick: salir }, icono('salir'), el('span', { texto: t('menu.salir') }))),
       el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
-        enlaces.map(([id, clave, nombreIcono]) => el('a', { href: `#${id}`, 'aria-current': id === seccion ? 'page' : null },
-          icono(nombreIcono, 'icono menu-icono'), el('span', { texto: t(clave) }))))),
+        enlaces.map(([id, clave, nombreIcono, corto]) => enlaceMenu(id, clave, nombreIcono, corto, seccion)))),
     el('main', { class: 'contenido' },
       bandaEstudiante(),
       avisosDeCuenta(),
       ...contenido,
       pie()));
+}
+
+function enlaceMenu(id, clave, nombreIcono, corto, seccion) {
+  const punto = id === 'oral' && estado.oral?.siguientePaso;
+  return el('a', { href: `#${id}`, 'data-menu': id, 'aria-current': id === seccion ? 'page' : null, title: corto ? t(clave) : null },
+    el('span', { class: 'menu-icono-lugar' }, icono(nombreIcono, 'icono menu-icono'), punto ? el('span', { class: 'menu-punto', 'aria-hidden': 'true' }) : null),
+    corto ? el('span', { class: 'menu-largo', texto: t(clave) }) : el('span', { texto: t(clave) }),
+    corto ? el('span', { class: 'menu-corto', 'aria-hidden': 'true', texto: t(corto) }) : null,
+    punto ? el('span', { class: 'solo-lectores', texto: ` · ${t('oral.siguiente_paso')}` }) : null);
+}
+// 0.13.2: ¿hay examen oral? Se sabe con el Camino, Progreso o el oral; si se entra por otra pantalla, se pregunta una vez
+// y la pestaña aparece sola.
+let preguntandoOral = false;
+function anotarOral(o) {
+  const antes = estado.oral;
+  estado.oral = { hay: o?.hay === true, siguientePaso: o?.siguientePaso === true || (o?.siguientePaso == null && antes?.siguientePaso === true) };
+  const menu = document.querySelector('.menu');
+  if (!menu || (antes?.hay === estado.oral.hay && antes?.siguientePaso === estado.oral.siguientePaso)) return;
+  const actual = menu.querySelector('[data-menu="oral"]');
+  const seccion = actual?.getAttribute('aria-current') === 'page' ? 'oral' : null;
+  const nuevo = estado.oral.hay ? enlaceMenu('oral', 'menu.oral', 'microfono', null, seccion) : null;
+  if (actual && nuevo) actual.replaceWith(nuevo);
+  else if (actual) actual.remove();
+  else if (nuevo) menu.querySelector('[data-menu="configuracion"]')?.before(nuevo);
+}
+function conocerOral() {
+  if (preguntandoOral) return;
+  preguntandoOral = true;
+  api('GET', '/api/academia/oral').then(r => anotarOral(r.ok ? r.datos : { hay: false })).catch(() => {}).finally(() => { preguntandoOral = false; });
 }
 
 // La misma guía en una línea, arriba de Administrador → Resumen: cuántos pasos van y el botón del que sigue.
@@ -1076,6 +1112,8 @@ const ICONOS = {
   motor: [['rect', { x: 5, y: 9, width: 10, height: 8, rx: 1 }], ['path', { d: 'M15 11h3l2-2v8l-2-2h-3' }], ['path', { d: 'M8 9V6h4v3' }], ['path', { d: 'M2.5 11v4' }]],
   ala: [['path', { d: 'M2.5 14c4-4.5 11-6 19-5-5 1.5-8.5 3.5-10.5 7-3 .2-6-.6-8.5-2z' }], ['path', { d: 'M4 18h9M7 21h9' }]],
   torre: [['path', { d: 'M8 21l1.5-10h5L16 21' }], ['path', { d: 'M6.5 11h11l-1.5-4h-8z' }], ['path', { d: 'M12 7V3M9.5 4.5 12 3l2.5 1.5' }]],
+  // 0.13.2: la pestaña «Oral» (un micrófono).
+  microfono: [['rect', { x: 9, y: 3, width: 6, height: 11, rx: 3 }], ['path', { d: 'M5.5 11a6.5 6.5 0 0 0 13 0' }], ['path', { d: 'M12 17.5V21M9 21h6' }]],
   manual: [['path', { d: 'M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z' }], ['path', { d: 'M5 18a2 2 0 0 1 2-2h11' }], ['path', { d: 'M9 8h5M9 11h3' }]],
   radio: [['rect', { x: 4, y: 9, width: 16, height: 11, rx: 2 }], ['path', { d: 'M8 9l8-5' }], ['circle', { cx: 9, cy: 14.5, r: 2 }], ['path', { d: 'M14 13h3M14 16h3' }]],
   nube: [['path', { d: 'M7 18h10a4 4 0 0 0 .5-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7 18z' }]],
@@ -3409,9 +3447,9 @@ const TEXTO_RITMO = { adelantado: 'acad.plan.ritmo.adelantado', a_tiempo: 'acad.
 const textoPlan = (id, cual) => tSi(TEXTOS_PLAN[id]?.[cual] ?? '', id);
 // «Visión en vuelo y visión nocturna (vision in flight / night vision)» → título y el inglés aparte.
 function partirTitulo(titulo) {
-  const m = /^(.*\S)\s*\(([^()]*[A-Za-z][^()]*)\)\s*$/.exec(String(titulo ?? ''));
-  if (m && pareceIngles(m[2], { titulo: true })) return { es: m[1], en: m[2] };
-  return { es: String(titulo ?? ''), en: null };
+  const es = tituloSinIngles(titulo);
+  const m = es !== String(titulo ?? '') ? /\(([^()]*)\)\s*$/.exec(String(titulo)) : null;
+  return m ? { es, en: m[1] } : { es, en: null };
 }
 
 // Un texto del paquete tal cual (respeta saltos de línea y espacios: estilos.css .tal-cual).
@@ -3440,7 +3478,7 @@ function avisoMuestra(paquete) {
 }
 // 0.9.0: el «Instructor» (public/instructor.js) usa las mismas ayudas que estas pantallas.
 let ayudasInstructor = null;
-const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor }));
+const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor, partirTitulo }));
 // 0.10.0: tiempo con IA, pagos y Profesor virtual (public/pagos.js).
 let ayudasPagos = null;
 const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi, confirmar, vistaPlanes, tutorUi }));
@@ -3569,7 +3607,7 @@ function anilloAvance(pct, clase = '') {
   s.append(lleno);
   return s;
 }
-function nodoCamino({ clase, href = null, nombreIcono, titulo, detalle = null, etiqueta, actual = false, estrellas = 0, burbuja = null, i, avance = null }) {
+function nodoCamino({ clase, href = null, nombreIcono, titulo, en = null, detalle = null, etiqueta, actual = false, estrellas = 0, burbuja = null, i, avance = null }) {
   const circulo = el('span', { class: 'nodo-boton' }, icono(nombreIcono, 'icono nodo-icono'));
   // 0.12.2: el color del nodo (morado = terminada, dorado = dominada) y su anillo de avance.
   if (avance) clase = `${clase} nivel-${avance.nivel}`;
@@ -3579,6 +3617,8 @@ function nodoCamino({ clase, href = null, nombreIcono, titulo, detalle = null, e
     el('span', { class: 'nodo-aro' }, avance ? anilloAvance(avance.pct) : null, circulo, actual ? el('span', { class: 'nodo-avion', 'aria-hidden': 'true' }, avionSvg()) : null),
     estrellas ? el('span', { class: 'nodo-estrellas', 'aria-hidden': 'true' }, [1, 2, 3].map(k => icono('estrella', `icono estrella-${k <= estrellas ? 'llena' : 'vacia'}`))) : null,
     el('span', { class: 'nodo-nombre', title: titulo, texto: titulo }),
+    // 0.13.2: el título en inglés, chico debajo (el Camino oral).
+    en ? el('span', { class: 'nodo-en', lang: 'en', texto: en }) : null,
     detalle ? el('span', { class: 'nodo-detalle', texto: detalle }) : null,
   ];
   const dentro = href
@@ -3876,6 +3916,7 @@ async function pantallaInicio() {
   if (!r.ok) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const c = r.datos;
   estudioHoy = c.hoy ?? null;
+  if (c.oral) anotarOral(c.oral);
   if (!c.paquete) {
     return mostrar(marco('inicio', barraCabina(c),
       el('section', { class: 'panel bienvenida' },
@@ -3903,8 +3944,6 @@ async function pantallaInicio() {
     c.repaso ? botonRepaso(c.repaso, 'chico') : null,
     // 0.12.2: «Mi repaso» (todo lo que falló), siempre visible; el número de puntos para repasar llega con el instructor.
     entradaMiRepaso(),
-    // 0.13.1: «Preparándote para el examen oral» (su propio Camino; el siguiente paso al terminar el Test Guide).
-    entradaOral(c.oral),
     // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
     lineaHumorVista(c.humor));
   tutorUi().olvidar();
@@ -4693,10 +4732,11 @@ async function pantallaExtra(materia, tema = null) {
 
 // ---- 0.13.1: «Preparándote para el examen oral» (public/oral-vista.js) ----
 const ayudasOral = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, sacudir,
-  combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, partirLeccion, vistaTarjeta, nodoCamino, barraLlena, medidor, tutorUi, alDeslizar });
+  combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, partirLeccion, vistaTarjeta, nodoCamino, barraLlena, medidor, tutorUi, alDeslizar, anilloAvance,
+  plegarCamino: (camino, materias, siguiente) => plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario: estado.usuario?.id, siguiente }) });
 async function pantallaOralDe(que, a, b) {
   const vigente = nuevoTurno();
-  const error = r => mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }))));
+  const error = r => mostrar(marco('oral', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }))));
   const vista = await import('./oral-vista.js');
   if (!vigente()) return;
   const h = ayudasOral();
@@ -4714,21 +4754,10 @@ async function pantallaOralDe(que, a, b) {
   const r = await api('GET', '/api/academia/oral');
   if (!vigente()) return;
   if (!r.ok) return error(r);
+  anotarOral(r.datos);
   if (que === 'examen' && a) return vista.portadaExamenOral(r.datos, a, h);
   if (que === 'final') return vista.portadaExamenOral(r.datos, 'final', h);
   return vista.pantallaOral(r.datos, h);
-}
-// La entrada en Inicio (y en Progreso): siempre visible cuando hay contenido oral; «Tu siguiente paso» cuando terminó los
-// exámenes del Test Guide. Con «Listo para el oral / Todavía no» y su %.
-function entradaOral(o) {
-  if (!o?.hay) return null;
-  const listo = o.listo?.listo === true;
-  return el('a', { class: `entrada-oral con-icono${o.siguientePaso ? ' siguiente' : ''}`, href: '#oral' }, icono('manual', 'icono'),
-    el('span', { class: 'entrada-oral-texto' },
-      o.siguientePaso ? el('span', { class: 'antetitulo', texto: t('oral.siguiente_paso') }) : null,
-      el('strong', { texto: t('oral.titulo') }),
-      el('span', { class: 'suave chica', texto: t('oral.entrada.linea', { n: numero(o.capitulos ?? 0) }) })),
-    el('span', { class: `insignia tono-${listo ? 'bien' : 'info'}`, texto: listo ? t('oral.listo.si_corto', { pct: numero(o.listo?.pct ?? 0) }) : t('oral.listo.no_corto', { pct: numero(o.listo?.pct ?? 0) }) }));
 }
 
 async function pantallaExamen(materia) {
@@ -5143,6 +5172,7 @@ async function pantallaProgreso() {
   if (!r.ok) return mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const p = r.datos;
   estudioHoy = p.hoy ?? estudioHoy;
+  if (p.oral) anotarOral({ hay: true });
   let grupo = null;
   const alCambiarGrupo = g => { const nuevo = panelGrupo(g, { alCambiar: alCambiarGrupo }); if (nuevo && grupo) grupo.replaceWith(nuevo); grupo = nuevo; };
   grupo = panelGrupo(p.grupo, { alCambiar: alCambiarGrupo });
