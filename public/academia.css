@@ -1085,7 +1085,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
    data-oral-idioma en <html> esconde la otra (cambiar nunca vuelve a pintar la pantalla). La pastilla, con 44 px de alto. */
 :root[data-oral-idioma="en"] .oral-solo-es, :root:not([data-oral-idioma="en"]) .oral-solo-en { display: none !important; }
 .idioma-oral-fila { display: flex; justify-content: flex-end; margin: 6px 0 4px; }
-.idioma-oral { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; border: 2px solid var(--oral); background: var(--oral-suave); max-width: 100%; }
+.idioma-oral { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; border: 2px solid var(--oral); background: var(--oral-suave); max-width: 100%; overflow: hidden; }
 .idioma-oral-boton { min-height: 44px; min-width: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--oral-texto);
   font: inherit; font-size: 14px; font-weight: 800; line-height: 1.1; cursor: pointer; touch-action: manipulation; }
 .idioma-oral-boton[aria-pressed="true"] { background: var(--oral); color: #fff; }

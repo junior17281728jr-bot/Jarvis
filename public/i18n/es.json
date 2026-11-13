@@ -3798,6 +3798,7 @@
   "aviso.fabrica_mejora": "La mejora continua publicó una versión mejorada de «{materia}».",
   "acad.motivo.pista_desconocida": "pista desconocida (solo la del Test Guide o «oral»)",
   "acad.motivo.solo_oral": "solo en un paquete de la pista oral",
+  "acad.motivo.sin_original": "trae la traducción, pero no el original en inglés",
   "acad.motivo.diagrama_no_valido": "el dibujo no tiene sus datos bien llenados",
   "error.no_disponible": "Esto todavía no está disponible.",
   "error.sin_version": "Esta materia no tiene una versión esperando revisión.",
