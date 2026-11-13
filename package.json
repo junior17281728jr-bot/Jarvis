@@ -1,6 +1,6 @@
 {
   "name": "oportia",
-  "version": "0.13.9",
+  "version": "0.14.1",
   "description": "Academia de Aviación (sobre OPORTIA): profesor de aviación tipo Duolingo para piloto privado. El contenido (libros, Test Guide) vive solo en el servidor, nunca en este repositorio.",
   "type": "module",
   "main": "src/server.js",

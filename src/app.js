@@ -24,6 +24,7 @@ import { registrarRutasTerminos } from './api/terminos.js';
 import { registrarRutasSoporte } from './api/soporte.js';
 import { registrarRutasIaAlumnos } from './api/ia-alumnos.js';
 import { registrarRutasFabrica } from './api/fabrica.js';
+import { registrarRutasPagoServidor } from './api/pago-servidor.js';
 import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
@@ -144,6 +145,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   // 0.12.8: IA por alumno, Registro de la IA y «Enviar a mi Telegram» (Administrador → Dinero e IA).
   registrarRutasIaAlumnos(rutas, { config, reloj: academia.reloj, adaptador: copias.adaptador, topesBot: academia.topesBot });
   registrarRutasFabrica(rutas, { config, supervisor, reloj: academia.reloj });
+  // 0.14.1: Administrador → Sistema → «Pago del servidor» (DigitalOcean).
+  registrarRutasPagoServidor(rutas, { reloj: academia.reloj });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

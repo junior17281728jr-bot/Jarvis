@@ -30,6 +30,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { copiaAtrasada } from '../copias/estado.js';
+import { revisarPagoServidor } from '../avisos/pago-servidor.js';
 import { conCredencial } from './credencial.js';
 import { ADAPTADORES } from './canal.js';
 import { USO, listoParaMandar, anotarEnvio, anotarProblema, marcarBien, enviadosDesde, rangoDe, secretoDelBot, mandarBienvenida, bienvenidaPendiente, primerVinculo, MARGEN_RELOJ_MS, revisarClaveDudosa, botGuardado } from './canales.js';
@@ -70,7 +71,9 @@ export const RUTA_AVISOS = Object.freeze({
     // 0.13.0: la fábrica de materias publicó una materia, una espera revisión o la mejora continua publicó.
     'fabrica_publicada', 'fabrica_revision', 'fabrica_mejora',
     // 0.13.9: la mejora profunda de las clases publicó la versión mejorada de una materia.
-    'fabrica_profunda']),
+    'fabrica_profunda',
+    // 0.14.1: los recordatorios del pago del servidor (7 y 2 días antes y el día; con pago automático, uno 2 días antes).
+    'servidor_pago']),
   // Nunca (solo en la pantalla), aunque estén en la lista de arriba por su nivel: el modo seguro puesto a mano es «info».
 });
 
@@ -87,7 +90,9 @@ const iso = ms => new Date(ms).toISOString();
 
 // monotono: el reloj del proceso (nunca salta). Por defecto, el de verdad si el reloj de pared es el de verdad; con un reloj
 // de mentira (pruebas), ninguno, salvo que la prueba pase el suyo.
-export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTADORES.telegram, registro = null, topes = {}, monotono = undefined } = {}) {
+// pagoServidor (0.14.1): revisar cada 5 min si toca un recordatorio del pago del servidor. Solo lo enciende src/server.js
+// (y las pruebas de ese recordatorio): así las demás pruebas nunca dependen del día del mes.
+export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTADORES.telegram, registro = null, topes = {}, monotono = undefined, pagoServidor = false } = {}) {
   const T = { ...TOPES_ENVIO, ...topes };
   const mono = monotono === undefined ? (reloj === Date.now ? () => performance.now() : null) : monotono;
   let baseReloj = null; // { pared, mono } de la última pasada en que los dos relojes cuadraban
@@ -95,6 +100,7 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
   let temporizador = null;
   let enMarcha = null;
   let ultimaAtrasada = -Infinity;
+  let ultimoPago = -Infinity;
   let reprobado = { en: -Infinity, veces: 0, secretoId: null };
   let parado = false;
   const anotar = codigo => { try { registro?.error?.(`Avisos por Telegram: ${codigo}`); } catch { /* nada */ } };
@@ -291,6 +297,10 @@ export function crearAvisador({ db, config, reloj = Date.now, adaptador = ADAPTA
     const ahora = reloj();
     const creible = relojCreible(ahora);
     if (creible) revisarAtrasada(ahora);
+    if (creible && pagoServidor && (ahora - ultimoPago >= T.atrasadaCadaMs || ahora < ultimoPago)) {
+      ultimoPago = ahora;
+      try { revisarPagoServidor(db, ahora); } catch (error) { anotar(`pago_servidor:${error?.code ?? error?.name ?? 'error'}`); }
+    }
     // Una sospecha de token malo (un 401 suelto): getMe otra vez antes de mandar nada (ronda 3).
     await revisarClaveDudosa(db, config, { adaptador, ahora: reloj });
     let listo = listoParaMandar(db, config, ahora);

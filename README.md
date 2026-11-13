@@ -703,6 +703,29 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.1: «Pago del servidor» (DigitalOcean) — sin cambio de base
+- **Administrador → Sistema → «Pago del servidor»** (`#pago-servidor`, `public/pago-servidor-vista.js`): un botón grande
+  **«Ir a pagar / ver factura»** (abre https://cloud.digitalocean.com/account/billing en otra pestaña) y **«Ver mi servidor»**
+  (https://cloud.digitalocean.com/droplets). Se anotan el **monto al mes (US$)**, el **día del mes** en que se paga (1 por
+  defecto; si el mes no tiene ese día, el último), **con qué se paga** (una nota corta como «tarjeta …1234»: el servidor
+  rechaza 8 cifras seguidas o más, nunca guarda un número de tarjeta, y la nota no va en la auditoría ni en Telegram) y
+  **«¿Pago automático con tarjeta?»**. Todo en `ajustes` (clave `servidor.pago`), sin cambio de base.
+- **«Próximo pago: 1 dic (en 18 días)»**, en días de RD (UTC−4), calculado en el servidor (`src/avisos/pago-servidor.js`,
+  `proximoPago`, con el reloj de afuera): naranja a 7 días o menos, rojo a 2 días o menos. Sin marcar como pagado, un pago
+  que pasó sale **vencido** hasta 5 días (nunca uno de antes de guardar los datos, nunca con pago automático); después cuenta
+  el del mes siguiente. **«Marcar como pagado este mes»** guarda el mes del pago que se muestra (con «Deshacer»).
+- Una explicación corta de qué pasa si no se paga (DigitalOcean avisa por correo; pueden suspender la cuenta y, con el tiempo,
+  apagar o borrar el servidor con la app y sus datos) y que las copias (Administrador → Copias) son el respaldo.
+- **En el Resumen** de Administrador, una línea arriba cuando el pago está a 7 días o menos (o vencido), que lleva a la pantalla.
+- **Recordatorios por Telegram** con los avisos de siempre (`servidor_pago:<AAAA-MM>:<d7|d2|d0|auto>`, en silencio): 7 días
+  antes, 2 días antes y el día del pago; ninguno si ese mes ya está marcado como pagado. Con pago automático, **uno solo, 2
+  días antes** («Se cobrará solo; revisa que tu tarjeta tenga fondos»). Cada uno se abre UNA vez (ni «Entendido» ni marcar y
+  desmarcar lo repiten); si la app estuvo apagada, solo va el que toca ahora. Lo revisa el avisador cada 5 min
+  (`crearAvisador({ pagoServidor: true })`, solo en `src/server.js`: las demás pruebas no dependen del día del mes).
+- Rutas (solo administrador): `GET /api/admin/servidor-pago`, `POST /api/admin/servidor-pago`
+  (`{ montoUsd?, dia?, metodo?, automatico? }`) y `POST /api/admin/servidor-pago/pagado` (`{ deshacer? }`). Pruebas:
+  `test/pago-servidor.test.js` (reloj de mentira).
+
 ### Lo nuevo de la 0.13.9: Claude fácil de encontrar y la «Mejora profunda de las clases» — sin cambio de base
 - **Claude (la clave de la API) a la vista**: en el **Resumen** de Administrador, arriba de todo, la tarjeta **«Claude (IA)»**
   dice el estado en palabras simples: «No conectado», **«Esperando verificación de identidad»** (cuando Anthropic responde

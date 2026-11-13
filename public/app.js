@@ -6,6 +6,8 @@ import {
 } from './ia-vista.js';
 // 0.13.9: la tarjeta «Claude (IA)» del Resumen y los 3 pasos de «Claude (API)».
 import { tarjetaClaude, pasosClaude } from './claude-vista.js';
+// 0.14.1: Sistema → «Pago del servidor» y su línea en el Resumen.
+import { vistaPagoServidor, lineaResumenPago, textoAvisoPago } from './pago-servidor-vista.js';
 import {
   vistaCopias, vistaDisco, motivoBase, razonNoClave, TONO_COPIA, ICONO_TONO, vistaAzulejoCopias, vistaAzulejoTelegram, vistaTelegram,
   codigoLegible, cuentaAtras, enlaceSeguro, fraseMotivoTareaCopia,
@@ -1249,6 +1251,7 @@ function textoAviso(a) {
   const cambio = /^cambio_admin:([a-z_]+):\d+$/.exec(String(a.clave));
   if (cambio) return t('aviso.cambio_admin', { que: tSi(`admin.cambio.${cambio[1]}`, cambio[1]), cuenta: d.cuenta ? ` (${d.cuenta})` : '' });
   if (String(a.clave).startsWith('cuenta_compartida:')) return t('aviso.cuenta_compartida', { alumno: v(d.alumno), veces: v(d.veces) });
+  if (String(a.clave).startsWith('servidor_pago:')) return textoAvisoPago(a, t, idioma); // 0.14.1
   if (String(a.clave).startsWith('pago_recibido:')) return t('aviso.pago_recibido', { alumno: v(d.alumno), minutos: v(d.minutos), precio: v(d.precio) });
   const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
@@ -1709,6 +1712,8 @@ const GRUPOS_ADMIN = [
     { id: 'resumen', href: '#admin', clave: 'admin.pestana.resumen', icono: 'escudo' },
     { id: 'trabajo', href: '#admin/trabajo', clave: 'admin.pestana.trabajo', icono: 'latido' },
     { id: 'servidor', href: '#admin/servidor', clave: 'admin.pestana.servidor', icono: 'servidor' },
+    // 0.14.1: cuánto y cuándo se paga el servidor en DigitalOcean (public/pago-servidor-vista.js).
+    { id: 'pago-servidor', href: '#pago-servidor', clave: 'admin.pestana.pago_servidor', icono: 'dinero' },
     { id: 'copias', href: '#copias', clave: 'admin.pestana.copias', icono: 'copia' },
     { id: 'cambios', href: '#admin/cambios', clave: 'admin.pestana.cambios', icono: 'escudo' },
   ] },
@@ -1721,6 +1726,7 @@ const REDIRECCIONES_ADMIN = Object.freeze({
   'admin/paquetes': '#contenido', 'admin/terminos': '#contenido/terminos', 'admin/videos': '#contenido/videos', 'contenido/paquetes': '#contenido',
   'admin/pagos': '#pagos', 'admin/ia': '#ia', 'admin/claves': '#claves', 'admin/telegram': '#claves', 'admin/copias': '#copias', 'admin/resumen': '#admin',
   'terminos-admin': '#contenido/terminos', 'videos': '#contenido/videos', 'cambios': '#admin/cambios',
+  'admin/pago-servidor': '#pago-servidor', 'admin/pago': '#pago-servidor', 'pago': '#pago-servidor', // 0.14.1
 });
 // Debajo de las pestañas: para qué sirve cada una, en una línea, y las palabras que conviene conocer ahí.
 const LINEA_ADMIN = {
@@ -1729,6 +1735,7 @@ const LINEA_ADMIN = {
   alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
   soporte: () => t('admin.linea.soporte'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
   pagos: () => t('admin.linea.pagos'), // 0.12.12
+  'pago-servidor': () => t('admin.linea.pago_servidor'), // 0.14.1
 };
 const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
 // 0.12.5: «Pendiente» sobre un grupo cuando algo espera al administrador: comprobantes por revisar (Dinero e IA), mensajes
@@ -1829,6 +1836,13 @@ async function pantallaFabrica() {
   if (!vigente()) return;
   mostrar(marco('admin', cabeceraAdmin('fabrica'), r.ok ? vista.pantallaFabrica(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
+// 0.14.1: Sistema → «Pago del servidor».
+async function pantallaPagoServidor() {
+  const vigente = nuevoTurno();
+  const r = await api('GET', '/api/admin/servidor-pago');
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('pago-servidor'), r.ok ? vistaPagoServidor(r.datos, { el, t, icono, api, textoError }, idioma) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
 async function pantallaIaAlumnos() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-alumnos'), import('./admin-ia.js')]);
@@ -1865,7 +1879,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const conZona = pestana !== 'usuarios' && pestana !== 'cambios';
   const sistema = crearZonaSistema(vigente, pestana);
   // El contenido de la academia, solo para «Primeros pasos».
-  const [r, datosSistema, ia, contenido] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia')]);
+  const [r, datosSistema, ia, contenido, pagoServidor] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia'),
+    pestana === 'resumen' ? api('GET', '/api/admin/servidor-pago') : null]);
   // Las claves solo se piden desde la cuenta de Tailscale del dueño (por el enlace público ni se preguntan).
   const claves = ia.ok && ia.datos.esDueno ? await api('GET', '/api/admin/claves') : null;
   if (!vigente()) return;
@@ -1901,7 +1916,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       ? guiaCompacta(pasosAcademia(pasosAdmin({ sistema: datosSistema.datos, ia: ia.ok ? ia.datos : null, proyectos: [] }), { contenido: contenido.datos, usuarios })) : null;
     // 0.13.9: «Claude (IA)» arriba de todo: el estado en palabras simples, conectar la clave y probarla gratis.
     const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
-    mostrar(marco('admin', cabecera, aviso, claude, guia,
+    const lineaPago = pagoServidor?.ok ? lineaResumenPago(pagoServidor.datos, { el, t, icono }, idioma) : null; // 0.14.1
+    mostrar(marco('admin', cabecera, aviso, lineaPago, claude, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
@@ -5883,7 +5899,7 @@ async function dibujar() {
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -5970,6 +5986,7 @@ async function dibujar() {
   if (seccion === 'ia-demo' && esAdmin) return pantallaIaDemo();
   // 0.12.8: IA por alumno y Registro de la IA (public/admin-ia.js).
   if (seccion === 'ia-alumnos' && esAdmin) return pantallaIaAlumnos();
+  if (seccion === 'pago-servidor' && esAdmin) return pantallaPagoServidor();
   const registroIa = seccion.match(/^ia-registro(?:\/(\d+))?$/);
   if (registroIa && esAdmin) return pantallaRegistroIa(registroIa[1] ?? null);
   const aprendizajeDe = seccion.match(/^aprendizaje\/(\d+)$/);
@@ -6051,6 +6068,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'profesor') return ['/api/academia/profesor'];
   if (seccion === 'ia-demo') return admin ? ['/api/admin/academia/ia-demo'] : [];
   if (seccion === 'ia-alumnos') return admin ? ['/api/admin/academia/ia-alumnos'] : [];
+  if (seccion === 'pago-servidor') return admin ? ['/api/admin/servidor-pago'] : [];
   if (/^ia-registro(?:\/\d+)?$/.test(seccion)) return [];
   if (seccion === 'aprendizaje') return [];
   // Los proyectos están escondidos (#proyectos, #nuevo y #proyecto/N muestran el camino): no se adelanta lo suyo.

@@ -138,6 +138,14 @@ function valoresDe(aviso, idioma) {
     v.precio = corto(d?.precio, 40) || '?';
     v.minutos = Number.isSafeInteger(d?.minutos) ? d.minutos : '?';
   }
+  // 0.14.1: el pago del servidor: la fecha («1 dic»), los días que faltan y el monto (nunca la nota del método de pago).
+  if (partes[0] === 'servidor_pago') {
+    const f = typeof d?.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.fecha) ? Date.parse(`${d.fecha}T12:00:00Z`) : NaN;
+    try { v.fecha = Number.isFinite(f) ? new Intl.DateTimeFormat(idioma === 'en' ? 'en-US' : 'es-DO', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(f) : '?'; } catch { v.fecha = d?.fecha ?? '?'; }
+    if (Number.isSafeInteger(d?.dias)) { v.dias = Math.abs(d.dias); }
+    v.monto = Number.isSafeInteger(d?.montoCentavos) && d.montoCentavos > 0
+      ? ` (US$${new Intl.NumberFormat(idioma === 'en' ? 'en-US' : 'es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.montoCentavos / 100)})` : '';
+  }
   return v;
 }
 
@@ -158,6 +166,13 @@ export function cuerpoDeAviso(aviso, idioma) {
     if (d?.ambito !== 'general') texto = frase(idioma, 'telegram.aviso.ia_tope.cuenta', valores);
     else if (Number(d?.umbral) >= 100) texto = frase(idioma, 'telegram.aviso.ia_tope.lleno', valores);
   }
+  // 0.14.1: un texto por recordatorio del pago del servidor (y «venció» si ya pasó el día; «mañana» a 1 día).
+  if (base === 'servidor_pago') {
+    const etapa = String(aviso.clave).split(':')[2];
+    const dias = detalleDe(aviso)?.dias;
+    const cual = etapa === 'd0' && dias < 0 ? 'vencido' : etapa === 'd2' && dias === 1 ? 'd2.uno' : etapa;
+    if (existeFrase(`telegram.aviso.servidor_pago.${cual}`)) texto = frase(idioma, `telegram.aviso.servidor_pago.${cual}`, valores);
+  }
   if (base === 'copias_locales_pausadas' && detalleDe(aviso)?.motivo === 'escribir') texto = frase(idioma, 'telegram.aviso.copias_locales_pausadas.escribir');
   if (base === 'copia_atrasada' && valores.pausa === 'modo_seguro') texto = `${texto} ${frase(idioma, 'telegram.aviso.copia_atrasada.modo_seguro')}`;
   // Revisión final: el modo seguro por un problema de la base nunca dice que todo está bien: pide revisar antes de quitarlo.
@@ -170,7 +185,7 @@ export function textoDeAviso(aviso, idioma = 'es', { titulo = null, veces = null
   const tipo = titulo ?? (aviso.nivel === 'grave' ? 'grave' : 'atencion');
   // 0.12.8: un emoji por tipo: 💳 un comprobante nuevo, 🤖 el gasto de la IA; lo demás que no es grave, ⚠️.
   const base = baseDeClave(aviso.clave);
-  const propio = tipo === 'atencion' ? (base === 'pago_recibido' ? 'pago' : ['ia_tope', 'ia_resumen'].includes(base) ? 'ia' : null) : null;
+  const propio = tipo === 'atencion' ? (base === 'pago_recibido' ? 'pago' : ['ia_tope', 'ia_resumen'].includes(base) ? 'ia' : base === 'servidor_pago' ? 'servidor_pago' : null) : null;
   const lineas = [frase(idioma, `telegram.titulo.${propio ?? tipo}`)];
   if (tipo === 'volvio' && veces >= 3) lineas.push(frase(idioma, 'telegram.volvio_veces', { n: veces, desde: fechaRd(desde, idioma) }));
   lineas.push(cuerpoDeAviso(aviso, idioma));

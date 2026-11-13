@@ -310,6 +310,13 @@ button.resumen-tarjeta {
 .aviso-sistema p { margin-bottom: 4px; }
 .aviso-sistema button { margin-top: 8px; }
 .aviso-linea { color: var(--tono); font-weight: 600; }
+/* 0.14.1: Administrador → Sistema → «Pago del servidor» y su línea en el Resumen (public/pago-servidor-vista.js). */
+.pago-servidor .botones-pago { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 14px; }
+.pago-servidor .botones-pago .boton-enlace { flex: 1 1 100%; justify-content: center; }
+.pago-servidor .formulario-pago { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--borde, rgba(127,127,127,.25)); }
+.pago-servidor .formulario-pago input, .pago-servidor .formulario-pago select { width: 100%; max-width: 100%; box-sizing: border-box; }
+.pago-servidor h3 { margin: 18px 0 6px; }
+a.linea-pago-servidor { display: block; text-decoration: none; color: var(--tono, var(--texto)); font-weight: 600; }
 
 .medidor { margin: 12px 0; }
 .medidor-texto { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }

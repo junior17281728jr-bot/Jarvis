@@ -28,7 +28,7 @@ const supervisor = db ? crearSupervisor({ db, config, version: VERSION, codigo: 
 const servidor = crearServidor({ db, config, supervisor });
 // Fase 1, parte e: el que manda los avisos graves al Telegram del dueño. Vive en ESTE proceso (no en el trabajador): así
 // llegan también en modo seguro o con el trabajador caído. Empieza después de abrir el puerto y nunca lo traba.
-const avisador = db ? crearAvisador({ db, config, registro: console }) : null;
+const avisador = db ? crearAvisador({ db, config, registro: console, pagoServidor: true }) : null;
 // 0.12.8: el bot del dueño (sus comandos y los contratos firmados), también en este proceso y después de abrir el puerto.
 const bot = db ? crearBot({ db, config }) : null;
 // Academia (0.7.1): el que entra al contenido los paquetes que el trabajador trae de Google Drive (src/academia/importador.js).
