@@ -166,6 +166,8 @@ export function armarIndice(d, sello) {
     flujo: { bytes: d.flujo.bytes, sha256: d.flujo.sha256 },
     partes: d.partes.map(parte),
     sellado: d.sellado,
+    // 0.14.2: con una contraseña de copias, su sal y sus números de scrypt (sin kdf, el índice es el de siempre).
+    ...(d.kdf ? { kdf: d.kdf } : {}),
   };
   const linea = JSON.stringify(datos);
   const firma = createHmac('sha256', sello).update(linea, 'utf8').digest('hex');

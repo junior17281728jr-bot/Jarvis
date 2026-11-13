@@ -48,7 +48,7 @@ import { generarCopia } from './generar.js';
 import { volcar as volcarDeVerdad } from './volcado.js';
 import {
   TOPES, ajustesCopias, servidorId, servidorActual, llaveActiva, llavePorId, planDeDisco, topesDeIntento, empezarCopia, actualizarCopia, guardarParte,
-  actualizarParte, partesDe, ultimaFueraPorId, ultimaCreible, revisarFechasFuturas, selloDe, RECIENTE_MS,
+  actualizarParte, partesDe, ultimaFueraPorId, ultimaCreible, revisarFechasFuturas, selloDe, kdfDeLlave, RECIENTE_MS,
 } from './estado.js';
 import { conCredencial } from '../canales/credencial.js';
 import { ADAPTADORES, esPasajero } from '../canales/canal.js';
@@ -538,7 +538,7 @@ export function crearManejadorCopias(opciones = {}) {
       inicio = reloj();
       resultado = await generarCopia({
         foto: foto.db, publica, sello, alParte, copia: copia.copia, creada, servidor: copia.servidor, version: ctx.version ?? null,
-        codigo: ctx.codigo ?? null, tamanoParte: directo ? Math.min(O.tamanoParte, TAMANO_PARTE_DIRECTO) : O.tamanoParte, ceder: ctx.ceder, senal: ctx.senal, volcar,
+        codigo: ctx.codigo ?? null, tamanoParte: directo ? Math.min(O.tamanoParte, TAMANO_PARTE_DIRECTO) : O.tamanoParte, ceder: ctx.ceder, senal: ctx.senal, volcar, kdf: kdfDeLlave(db, llave),
       });
     } catch (error) {
       foto?.cerrar();
@@ -753,7 +753,7 @@ export function crearManejadorCopias(opciones = {}) {
         copia: copia.copia, creada: copia.empezada_en, servidor: copia.servidor, version: copia.version, migracion: copia.migracion,
         receptor: llave.huella, publica: llave.publica, bot: copia.fuera === 1 ? copia.cuenta_id : null,
         anterior: anterior ? { copia: anterior.copia, creada: anterior.empezada_en } : null,
-        flujo: { bytes: copia.bytes, sha256: copia.sha256 }, partes, sellado: copia.sellado,
+        flujo: { bytes: copia.bytes, sha256: copia.sha256 }, partes, sellado: copia.sellado, kdf: kdfDeLlave(db, llave),
       }, sello);
     } finally {
       sello.fill(0);

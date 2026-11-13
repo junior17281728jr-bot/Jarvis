@@ -10,9 +10,10 @@ import { tarjetaClaude, pasosClaude } from './claude-vista.js';
 import { vistaPagoServidor, lineaResumenPago, textoAvisoPago } from './pago-servidor-vista.js';
 import {
   vistaCopias, vistaDisco, motivoBase, razonNoClave, TONO_COPIA, ICONO_TONO, vistaAzulejoCopias, vistaAzulejoTelegram, vistaTelegram,
+  avisoSinCopias, problemaContrasena, reglasContrasena, normalizarContrasena,
   codigoLegible, cuentaAtras, enlaceSeguro, fraseMotivoTareaCopia,
 } from './copias-vista.js';
-import { leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto } from './clave-recuperacion.js';
+import { leerClave, verificadorDe, sobraNombreCorto } from './clave-recuperacion.js';
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
 import { partirLeccion, resaltar, tituloSinIngles } from './tarjetas.js';
 import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capituloEn, reloj as relojVideo, VELOCIDADES, velocidadValida } from './academia-video.js';
@@ -1917,7 +1918,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     // 0.13.9: «Claude (IA)» arriba de todo: el estado en palabras simples, conectar la clave y probarla gratis.
     const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
     const lineaPago = pagoServidor?.ok ? lineaResumenPago(pagoServidor.datos, { el, t, icono }, idioma) : null; // 0.14.1
-    mostrar(marco('admin', cabecera, aviso, lineaPago, claude, guia,
+    mostrar(marco('admin', cabecera, aviso, avisoCopiasSinGuardar(datosSistema), lineaPago, claude, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
@@ -2162,10 +2163,11 @@ function bajarAlAncla() {
 // clave de recuperación, el Telegram y el disco en tarjetas chicas, y lo largo dentro de «Ver…»: las últimas copias y
 // «Si un día pierdes el servidor». En el teléfono, lo importante en la primera pantalla; en la PC, 3 columnas.
 // Mientras se hace una copia se actualiza cada 3 s (el servidor responde solo con filas de la base: nunca mira la carpeta).
-// La clave de recuperación recién creada vive SOLO en la memoria de esta pantalla hasta que se confirma (o hasta salir de
-// Copias): nunca se guarda en el navegador ni vuelve al servidor. Al confirmarla y al comprobarla, la página calcula su
-// «verificador» (public/clave-recuperacion.js) y manda solo eso.
-let claveNueva = null; // { clave, huella, expira, paso: 1 | 2, antes } mientras se crea una clave
+// 0.14.2 (pedido del dueño: «quita eso, pon una contraseña normal»): en vez de la clave de 28 símbolos que se mostraba una
+// vez, el dueño elige su CONTRASEÑA DE COPIAS (la escribe dos veces). Lo escrito vive solo en los cuadros del formulario:
+// nunca se guarda en el navegador. Una clave de 28 símbolos de antes se sigue comprobando como siempre (solo su
+// «verificador» sale de la página, public/clave-recuperacion.js).
+let formContrasena = null; // { antes: { huella, contrasena } | null } mientras se crea o se cambia la contraseña
 
 const textoMotivoCopia = motivo => {
   const base = motivoBase(motivo);
@@ -2208,8 +2210,8 @@ async function pantallaCopias(aviso = null) {
     mostrar(marco('admin', cabeceraAdmin('copias'), el('section', { class: 'tarjeta' }, titulo('copia', t('copias.titulo')), el('p', { class: 'mensaje error', 'data-foco': true, texto: textoError(r.datos.error) }))));
     return;
   }
-  if (claveNueva && r.datos.puede?.crearClave) return dibujarClaveNueva(r.datos, vigente);
-  claveNueva = null;
+  if (formContrasena && r.datos.puede?.crearClave) return dibujarFormContrasena();
+  formContrasena = null;
   dibujarCopias(r.datos, aviso, vigente);
 }
 
@@ -2289,8 +2291,8 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   }, icono(v.accion === 'otra_vez' ? 'actualizar' : 'copia'), el('span', { texto: t(v.accion === 'otra_vez' ? 'copias.otra_vez' : 'copias.ahora') }));
   const botonCrear = el('button', {
     type: 'button', class: 'grande con-icono centrado',
-    onclick: evento => crearClaveNueva(evento.currentTarget, mensaje, null),
-  }, icono('clave_recuperacion'), el('span', { texto: t('copias.clave.crear') }));
+    onclick: () => abrirFormContrasena(null),
+  }, icono('clave_recuperacion'), el('span', { texto: t('copias.contrasena.crear') }));
   // Revisión final: mientras una copia espera, se hace o se reintenta, la última buena fuera del servidor (cuándo, cuánto
   // mide, comprobada) sigue a la vista: nunca desaparece «lo que ya está a salvo».
   const mientras = ['en_fila', 'haciendo', 'reintentando', 'revisar'].includes(v.estado);
@@ -2310,7 +2312,6 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
     lineaPrincipal ? el('p', { class: 'copias-linea fuerte', texto: lineaPrincipal }) : null,
     datosUltima,
     d.clave?.activa && !d.enCurso && !d.modoSeguro && !d.locales?.frenoDisco && d.proxima ? el('p', { class: 'copias-proxima con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('copias.proxima', { cuando: cuando(d.proxima, ahora) }) })) : null,
-    d.clave?.pendiente && !d.clave.activa ? el('p', { class: 'ayuda', texto: t('copias.clave.pendiente_perdida') }) : null,
     d.clave?.ilegible && !d.clave.activa ? el('p', { class: 'aviso con-icono-arriba' }, icono('atencion', 'icono chico'), el('span', { texto: t('copias.clave.ilegible', { huella: d.clave.ilegible.huella }) })) : null,
     v.accion === 'crear_clave' ? botonCrear : v.accion ? botonAhora : null,
     v.razon ? el('p', { class: 'aviso con-icono-arriba copias-razon' }, icono('info', 'icono chico'), el('span', { texto: t(v.razon) })) : null,
@@ -2320,8 +2321,8 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
   // ---- La clave (tarjeta chica) ----
   const c = d.clave ?? {};
   const tarjetaClave = el('section', { class: `tarjeta copias-mini tono-${c.activa ? 'bien' : 'mal'}` },
-    el('p', { class: 'copias-mini-titulo con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: c.activa ? t('copias.clave.mini', { huella: c.huella }) : t('copias.clave.mini_falta') })),
-    el('p', { class: 'copias-mini-valor', texto: c.activa ? t('copias.clave.desde', { fecha: diaCorto(c.desde) }) : t('copias.clave.mini_falta_texto') }),
+    el('p', { class: 'copias-mini-titulo con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: c.activa ? t(c.contrasena ? 'copias.contrasena.mini' : 'copias.clave.mini', { huella: c.huella }) : t('copias.contrasena.mini_falta') })),
+    el('p', { class: 'copias-mini-valor', texto: c.activa ? t('copias.clave.desde', { fecha: diaCorto(c.desde) }) : t('copias.contrasena.mini_falta_texto') }),
     c.activa ? el('p', { class: 'suave', texto: c.comprobadaEn ? t('copias.clave.comprobada_el', { fecha: diaCorto(c.comprobadaEn) }) : t('copias.clave.nunca_comprobada') }) : null,
     c.activa && d.puede?.crearClave ? el('button', {
       type: 'button', class: 'secundario chico con-icono',
@@ -2382,12 +2383,12 @@ function partesDeCopias(d, { abierto, mensaje, actualizar }) {
 
   // ---- La clave: comprobarla, cambiarla, las de antes (solo el dueño desde Tailscale puede comprobar y cambiar) ----
   const detallesClave = c.activa ? el('details', { class: 'tarjeta copias-gestion', 'data-ancla': 'clave', open: abierto.clave },
-    el('summary', { class: 'con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: t('copias.clave.titulo_gestion', { huella: c.huella }) })),
-    d.puede?.crearClave ? [formularioComprobarClave([c.huella, ...(c.anteriores ?? []).map(x => x.huella)].filter(Boolean)), bloqueCambiarClave(c, abierto, mensaje)]
+    el('summary', { class: 'con-icono' }, icono('clave_recuperacion', 'icono'), el('span', { texto: t(c.contrasena ? 'copias.contrasena.titulo_gestion' : 'copias.clave.titulo_gestion', { huella: c.huella }) })),
+    d.puede?.crearClave ? [formularioComprobarClave(c), bloqueCambiarClave(c, abierto)]
       : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t(razonNoClave(d)) })),
     (c.anteriores ?? []).length ? [
       el('h3', { texto: t('copias.clave.anteriores') }),
-      el('ul', { class: 'lista-simple' }, c.anteriores.map(x => el('li', { texto: t('copias.clave.anterior_linea', { huella: x.huella, desde: diaRd(x.desde), hasta: diaRd(x.hasta) }) }))),
+      el('ul', { class: 'lista-simple' }, c.anteriores.map(x => el('li', { texto: t(x.contrasena ? 'copias.contrasena.anterior_linea' : 'copias.clave.anterior_linea', { huella: x.huella, desde: diaRd(x.desde), hasta: diaRd(x.hasta) }) }))),
       el('p', { class: 'ayuda', texto: t('copias.clave.anteriores_ayuda') }),
     ] : null) : null;
   detallesClave?.addEventListener('toggle', () => { abierto.clave = detallesClave.open; });
@@ -2418,199 +2419,143 @@ function pasosRestaurar() {
     el('span', { texto: t(`copias.restaurar.paso${n}`) }))));
 }
 
-// «Comprobar mi clave»: se escribe; la página la revisa y manda solo su verificador.
-function formularioComprobarClave(huellas = []) {
+// «Comprobar mi contraseña» (0.14.2): la contraseña de copias o, para las copias de antes, la clave de 28 símbolos. Una
+// clave de 28 símbolos válida se revisa en la página y viaja SOLO su verificador (como siempre); una contraseña va al
+// servidor, que la estira con la sal de cada llave y nunca la guarda ni la anota.
+function formularioComprobarClave(c) {
   const id = 'campo-comprobar-clave';
-  const campoClave = el('input', { ...ATRIBUTOS_CAMPO_RECUPERACION, id });
+  const campoClave = el('input', { ...ATRIBUTOS_CAMPO_CONTRASENA, id });
   const mensajeComprobar = caja();
   const formulario = el('form', { class: 'form-clave', novalidate: true },
-    el('h3', { texto: t('copias.clave.comprobar_titulo') }),
-    el('p', { class: 'ayuda', texto: t('copias.clave.comprobar_ayuda') }),
-    el('label', { for: id, texto: t('copias.clave.escribela') }),
-    campoClave,
+    el('h3', { texto: t('copias.contrasena.comprobar_titulo') }),
+    el('p', { class: 'ayuda', texto: t('copias.contrasena.comprobar_ayuda') }),
+    el('label', { for: id, texto: t(c.contrasena ? 'copias.contrasena.escribela' : 'copias.contrasena.escribela_o_clave') }),
+    el('div', { class: 'campo-con-boton' }, campoClave, botonVerOcultar([campoClave])),
     el('button', { type: 'submit', class: 'con-icono' }, icono('marca'), el('span', { texto: t('copias.clave.comprobar_boton') })),
     mensajeComprobar);
+  const huellas = [c.huella, ...(c.anteriores ?? []).map(x => x.huella)].filter(Boolean);
   alEnviar(formulario, mensajeComprobar, async () => {
     const escrita = campoClave.value;
     const sobra = huellas.find(h => sobraNombreCorto(escrita, h));
     if (sobra) throw new Error(t('copias.clave.sobra_nombre', { huella: sobra }));
-    const calculado = verificadorDe(escrita);
-    if (!calculado.ok) throw new Error(textoError(calculado.error));
-    const x = await api('POST', '/api/admin/copias/clave/comprobar', { verificador: calculado.verificador });
+    const leida = leerClave(escrita);
+    let x;
+    if (leida.ok) {
+      // Una clave de 28 símbolos (de antes): solo su verificador sale de la página.
+      leida.semilla.fill(0);
+      const calculado = verificadorDe(escrita);
+      if (!calculado.ok) throw new Error(textoError(calculado.error));
+      x = await api('POST', '/api/admin/copias/clave/comprobar', { verificador: calculado.verificador });
+    } else {
+      if (!normalizarContrasena(escrita)) throw new Error(textoError('contrasena_formato'));
+      x = await api('POST', '/api/admin/copias/contrasena/comprobar', { contrasena: escrita });
+    }
     if (!x.ok) throw new Error(textoError(x.datos.error));
     campoClave.value = '';
     const r = x.datos;
+    const u = r.ultimaCopia;
     if (r.resultado === 'actual') {
-      const u = r.ultimaCopia;
-      decir(mensajeComprobar, u ? t('copias.clave.actual', { huella: r.huella, desde: diaRd(r.desde), mb: tamanoBytes(u.bytes), tablas: numero(u.tablas ?? 0) }) : t('copias.clave.actual_sin_copia', { huella: r.huella, desde: diaRd(r.desde) }), 'bien');
+      decir(mensajeComprobar, leida.ok
+        ? (u ? t('copias.clave.actual', { huella: r.huella, desde: diaRd(r.desde), mb: tamanoBytes(u.bytes), tablas: numero(u.tablas ?? 0) }) : t('copias.clave.actual_sin_copia', { huella: r.huella, desde: diaRd(r.desde) }))
+        : (u ? t('copias.contrasena.actual', { desde: diaRd(r.desde), mb: tamanoBytes(u.bytes), tablas: numero(u.tablas ?? 0) }) : t('copias.contrasena.actual_sin_copia', { desde: diaRd(r.desde) })), 'bien');
     } else if (r.resultado === 'anterior') {
-      decir(mensajeComprobar, t('copias.clave.anterior', { huella: r.huella, hasta: diaRd(r.hasta) }), 'bien');
-    } else decir(mensajeComprobar, t('copias.clave.no_es'), 'error');
+      decir(mensajeComprobar, leida.ok ? t('copias.clave.anterior', { huella: r.huella, hasta: diaRd(r.hasta) }) : t('copias.contrasena.anterior', { hasta: diaRd(r.hasta) }), 'bien');
+    } else decir(mensajeComprobar, t('copias.contrasena.no_es'), 'error');
   });
   return formulario;
 }
 
-// «Cambiar mi clave» (cerrado, con su advertencia): las copias de antes siguen necesitando la clave de antes.
-function bloqueCambiarClave(c, abierto, mensaje) {
+// «Cambiar mi contraseña de copias» (cerrado, con su advertencia): las copias de antes siguen necesitando la de antes.
+function bloqueCambiarClave(c, abierto) {
   const cambiar = el('details', { class: 'cambiar-clave', open: abierto.cambiar },
-    el('summary', { class: 'con-icono' }, icono('lapiz', 'icono chico'), el('span', { texto: t('copias.clave.cambiar') })),
-    el('p', { class: 'aviso', texto: t('copias.clave.cambiar_aviso', { huella: c.huella }) }),
-    el('button', { type: 'button', class: 'secundario con-icono', onclick: evento => crearClaveNueva(evento.currentTarget, mensaje, c.huella) },
-      icono('clave_recuperacion'), el('span', { texto: t('copias.clave.crear_otra') })));
+    el('summary', { class: 'con-icono' }, icono('lapiz', 'icono chico'), el('span', { texto: t('copias.contrasena.cambiar') })),
+    el('p', { class: 'aviso', texto: t(c.contrasena ? 'copias.contrasena.cambiar_aviso' : 'copias.contrasena.cambiar_aviso_clave', { huella: c.huella }) }),
+    el('button', { type: 'button', class: 'secundario con-icono', onclick: () => abrirFormContrasena(c) },
+      icono('clave_recuperacion'), el('span', { texto: t('copias.contrasena.cambiar_boton') })));
   cambiar.addEventListener('toggle', () => { abierto.cambiar = cambiar.open; });
   return cambiar;
 }
 
-// El cuadro donde se escribe la clave de recuperación: una línea, sin autocompletar, sin corrector, en mayúsculas.
-const ATRIBUTOS_CAMPO_RECUPERACION = Object.freeze({
-  type: 'text', class: 'campo-recuperacion', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'characters', spellcheck: 'false',
-  'data-1p-ignore': 'true', 'data-lpignore': 'true', 'data-form-type': 'other', enterkeyhint: 'done', maxlength: 48, placeholder: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
+// El cuadro de la contraseña de copias: oculta (con «Mostrar»), sin autocompletar ni corrector, sin que un gestor de
+// contraseñas proponga una al azar (el dueño elige una que pueda recordar).
+const ATRIBUTOS_CAMPO_CONTRASENA = Object.freeze({
+  type: 'password', class: 'campo-contrasena', autocomplete: 'off', autocorrect: 'off', autocapitalize: 'none', spellcheck: 'false',
+  'data-1p-ignore': 'true', 'data-lpignore': 'true', 'data-form-type': 'other', maxlength: 200, enterkeyhint: 'next',
 });
 
-// «Crear mi clave de recuperación» (o una nueva, al cambiarla): el servidor la crea y la muestra UNA vez.
-async function crearClaveNueva(boton, mensaje, antes) {
-  if (antes && !(await confirmar(t('copias.clave.cambiar_confirmar', { huella: antes })))) return;
-  boton.disabled = true;
-  mensaje.hidden = true;
-  const x = await api('POST', '/api/admin/copias/clave/nueva', {});
-  if (!x.ok) {
-    boton.disabled = false;
-    return decir(mensaje, textoError(x.datos.error), 'error');
-  }
-  claveNueva = { clave: x.datos.clave, huella: x.datos.huella, expira: x.datos.expira, paso: 1, antes };
-  await pantallaCopias();
-}
-
-// Copiar al portapapeles (en una dirección http:// de Tailscale el navegador no deja usar navigator.clipboard: se
-// copia con el método de antes). → true si se copió.
-async function copiarTexto(texto) {
-  try {
-    await navigator.clipboard.writeText(texto);
-    return true;
-  } catch { /* se prueba de la otra forma */ }
-  const area = el('textarea', { class: 'solo-lectores', readonly: true, 'aria-hidden': 'true', tabindex: '-1' });
-  area.value = texto;
-  document.body.append(area);
-  area.select();
-  let copiado = false;
-  try { copiado = document.execCommand('copy'); } catch { copiado = false; }
-  area.value = '';
-  area.remove();
-  return copiado;
-}
-
-// La hoja para imprimir (solo se ve al imprimir: estilos.css, @media print). Se quita sola después.
-function hojaDeLaClave(clave, huella) {
-  return el('section', { class: 'hoja-clave' },
-    el('h1', { texto: t('copias.clave.hoja.titulo') }),
-    el('p', { texto: t('copias.clave.hoja.fecha', { fecha: fecha(new Date().toISOString()), huella }) }),
-    el('p', { class: 'hoja-clave-grupos' }, gruposDeClave(clave).map(g => el('span', { texto: g }))),
-    el('p', { class: 'fuerte', texto: t('copias.clave.unica') }),
-    el('p', { texto: t('copias.clave.no_compartir') }),
-    el('h2', { texto: t('copias.restaurar.titulo') }),
-    pasosRestaurar(),
-    el('p', { class: 'fuerte', texto: t('copias.clave.hoja.guardala') }));
-}
-
-// El paso a paso de la clave nueva: ① verla y guardarla, ② escribirla otra vez mirando el papel.
-function dibujarClaveNueva(datos, vigente) {
-  const n = claveNueva;
-  const mensaje = caja();
-  const cancelar = el('button', {
-    type: 'button', class: 'secundario',
-    texto: t('copias.clave.cancelar'),
-    onclick: async () => {
-      if (!(await confirmar(n.antes ? t('copias.clave.cancelar_confirmar_cambio', { huella: n.antes }) : t('copias.clave.cancelar_confirmar')))) return;
-      claveNueva = null;
-      pantallaCopias({ texto: n.antes ? t('copias.clave.cancelada_cambio', { huella: n.antes }) : t('copias.clave.cancelada'), clase: 'aviso' });
-    },
+// «Mostrar» / «Ocultar» lo escrito en los cuadros (los dos a la vez).
+function botonVerOcultar(campos) {
+  const texto = el('span', { texto: t('copias.contrasena.mostrar') });
+  const boton = el('button', { type: 'button', class: 'secundario chico con-icono ver-ocultar', 'aria-pressed': 'false' }, icono('ojo', 'icono chico'), texto);
+  boton.addEventListener('click', () => {
+    const ver = boton.getAttribute('aria-pressed') !== 'true';
+    for (const c of campos) c.type = ver ? 'text' : 'password';
+    boton.setAttribute('aria-pressed', String(ver));
+    texto.textContent = t(ver ? 'copias.contrasena.ocultar' : 'copias.contrasena.mostrar');
   });
-  const vence = el('p', { class: 'ayuda con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: t('copias.clave.vence', { hora: cuando(n.expira) }) }));
-  const cabeza = (numeroPaso, texto) => el('h2', { class: 'paso-titulo' }, el('span', { class: 'paso-numero', texto: String(numeroPaso) }), el('span', { texto }));
-  let tarjeta;
-  if (n.paso === 1) {
-    const grupos = gruposDeClave(n.clave);
-    const botonCopiar = el('button', {
-      type: 'button', class: 'secundario con-icono',
-      onclick: async () => {
-        const copiado = await copiarTexto(grupos.join('-'));
-        decir(mensaje, t(copiado ? 'copias.clave.copiada' : 'copias.clave.no_copiada'), copiado ? 'bien' : 'error');
-      },
-    }, icono('copiar'), el('span', { texto: t('copias.clave.copiar') }));
-    const botonImprimir = el('button', {
-      type: 'button', class: 'secundario con-icono',
-      onclick: () => {
-        const hoja = hojaDeLaClave(n.clave, n.huella);
-        document.body.append(hoja);
-        const quitar = () => hoja.remove();
-        window.addEventListener('afterprint', quitar, { once: true });
-        try { window.print(); } catch { quitar(); }
-        setTimeout(() => { if (!window.matchMedia?.('print').matches) quitar(); }, 60_000);
-      },
-    }, icono('imprimir'), el('span', { texto: t('copias.clave.imprimir') }));
-    tarjeta = el('section', { class: 'tarjeta clave-nueva' },
-      el('div', { class: 'clave-nueva-cabeza' }, cabeza(1, t('copias.clave.tu_clave'))),
-      el('p', { class: 'clave-recuperacion', 'aria-label': t('copias.clave.tu_clave') }, grupos.map(g => el('span', { class: 'clave-grupo', texto: g }))),
-      // Revisión final: el nombre corto va DEBAJO de la clave y dice que no es parte de ella (antes estaba justo encima,
-      // con el mismo formato que los grupos, y se copiaba al papel como si fuera el primero).
-      el('p', { class: 'suave con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('copias.clave.nombre_corto', { huella: n.huella }) })),
-      el('ul', { class: 'lista-iconos clave-consejos' },
-        el('li', {}, icono('lapiz', 'icono'), el('span', { texto: t('copias.clave.guardala') })),
-        el('li', { class: 'fuerte' }, icono('candado', 'icono'), el('span', { texto: t('copias.clave.unica') })),
-        el('li', {}, icono('prohibido', 'icono'), el('span', { texto: t('copias.clave.no_compartir') }))),
-      el('div', { class: 'botones clave-botones' },
-        botonCopiar, botonImprimir,
-        el('button', { type: 'button', class: 'con-icono', onclick: () => { claveNueva.paso = 2; dibujarClaveNueva(datos, vigente); } },
-          el('span', { texto: t('copias.clave.ya_guarde') }), icono('flecha'))),
-      mensaje, vence, cancelar);
-  } else {
-    const id = 'campo-clave-repite';
-    const campoClave = el('input', { ...ATRIBUTOS_CAMPO_RECUPERACION, id, 'aria-describedby': `${id}-ayuda` });
-    const formulario = el('form', { class: 'form-clave', novalidate: true },
-      el('label', { for: id, texto: t('copias.clave.repite') }),
-      el('p', { class: 'ayuda', id: `${id}-ayuda`, texto: t('copias.clave.repite_ayuda') }),
-      campoClave,
-      el('button', { type: 'submit', class: 'grande con-icono centrado' }, icono('marca'), el('span', { texto: t('copias.clave.comprobar_boton') })),
-      mensaje);
-    alEnviar(formulario, mensaje, async () => {
-      const escrita = campoClave.value;
-      if (sobraNombreCorto(escrita, n.huella)) throw new Error(t('copias.clave.sobra_nombre', { huella: n.huella }));
-      // Primero, grupo por grupo contra la que se mostró (sigue en la memoria de esta pantalla).
-      const leida = leerClave(escrita);
-      if (!leida.ok && leida.error === 'clave_formato') throw new Error(textoError('clave_formato'));
-      if (leida.ok) leida.semilla.fill(0);
-      const grupo = grupoDistinto(n.clave, escrita);
-      if (grupo) throw new Error(t('copias.clave.grupo_mal', { n: grupo }));
-      // Coincide: el verificador de lo ESCRITO es lo único que viaja.
-      const calculado = verificadorDe(escrita);
-      if (!calculado.ok) throw new Error(textoError(calculado.error));
-      const x = await api('POST', '/api/admin/copias/clave/confirmar', { verificador: calculado.verificador });
-      if (!x.ok) {
-        if (x.datos.error === 'sin_pendiente') {
-          claveNueva = null;
-          await pantallaCopias({ texto: textoError('sin_pendiente'), clase: 'aviso' });
-          return MANTENER;
-        }
-        throw new Error(textoError(x.datos.error));
-      }
-      campoClave.value = '';
-      claveNueva = null;
-      await pantallaCopias({ texto: t('copias.clave.lista', { huella: x.datos.activa.huella }), clase: 'bien' });
-      return MANTENER;
-    });
-    tarjeta = el('section', { class: 'tarjeta clave-nueva' },
-      el('div', { class: 'clave-nueva-cabeza' }, cabeza(2, t('copias.clave.repite_titulo')), el('span', { class: 'insignia tono-info', texto: t('copias.clave.mini', { huella: n.huella }) })),
-      formulario,
-      el('div', { class: 'botones' },
-        el('button', { type: 'button', class: 'secundario con-icono', onclick: () => { claveNueva.paso = 1; dibujarClaveNueva(datos, vigente); } },
-          icono('ojo'), el('span', { texto: t('copias.clave.ver_otra_vez') })),
-        cancelar),
-      vence);
-  }
+  return boton;
+}
+
+// Abre el formulario «Crear mi contraseña de copias» (c: la clave de ahora, al cambiarla).
+function abrirFormContrasena(c = null) {
+  formContrasena = { antes: c?.activa ? { huella: c.huella, contrasena: c.contrasena === true } : null };
+  pantallaCopias();
+}
+
+// El formulario: escribirla dos veces, verla si hace falta, las reglas que se van cumpliendo. Lo escrito vive solo en los
+// cuadros de esta pantalla (nunca en el navegador): al guardar, al cancelar o al salir de Copias se borra.
+function dibujarFormContrasena() {
+  const antes = formContrasena?.antes ?? null;
+  const mensaje = caja();
+  const id1 = 'campo-contrasena-copias';
+  const id2 = 'campo-contrasena-copias-2';
+  const uno = el('input', { ...ATRIBUTOS_CAMPO_CONTRASENA, id: id1, 'aria-describedby': 'contrasena-reglas' });
+  const dos = el('input', { ...ATRIBUTOS_CAMPO_CONTRASENA, id: id2, enterkeyhint: 'done' });
+  const regla = (nombre, clave) => el('li', { class: 'regla-contrasena', 'data-regla': nombre }, icono('marca', 'icono chico'), el('span', { texto: t(clave) }));
+  const reglas = el('ul', { class: 'reglas-contrasena', id: 'contrasena-reglas' },
+    regla('largo', 'copias.contrasena.regla_largo'), regla('letra', 'copias.contrasena.regla_letra'), regla('numero', 'copias.contrasena.regla_numero'));
+  uno.addEventListener('input', () => {
+    const r = reglasContrasena(uno.value);
+    for (const li of reglas.children) li.classList.toggle('cumplida', r[li.dataset.regla] === true);
+  });
+  const limpiar = () => { uno.value = ''; dos.value = ''; };
+  const cancelar = el('button', {
+    type: 'button', class: 'secundario', texto: t('copias.contrasena.ahora_no'),
+    onclick: () => { limpiar(); formContrasena = null; pantallaCopias(); },
+  });
+  const formulario = el('form', { class: 'form-clave form-contrasena', novalidate: true },
+    el('label', { for: id1, texto: t('copias.contrasena.escribe') }),
+    el('div', { class: 'campo-con-boton' }, uno, botonVerOcultar([uno, dos])),
+    reglas,
+    el('label', { for: id2, texto: t('copias.contrasena.repite') }),
+    dos,
+    el('p', { class: 'ayuda con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('copias.contrasena.distinta_de_entrar') })),
+    el('button', { type: 'submit', class: 'grande con-icono centrado' }, icono('candado'), el('span', { texto: t(antes ? 'copias.contrasena.guardar_nueva' : 'copias.contrasena.guardar') })),
+    mensaje);
+  alEnviar(formulario, mensaje, async () => {
+    const problema = problemaContrasena(uno.value, dos.value);
+    if (problema) throw new Error(textoError(problema));
+    if (antes && !(await confirmar(t('copias.contrasena.cambiar_confirmar', { huella: antes.huella })))) return null;
+    const x = await api('POST', '/api/admin/copias/contrasena', { contrasena: uno.value, repetida: dos.value });
+    if (!x.ok) throw new Error(textoError(x.datos.error));
+    limpiar();
+    formContrasena = null;
+    const texto = [t('copias.contrasena.lista'), antes ? t('copias.contrasena.antes_sigue', { huella: antes.huella }) : null,
+      x.datos.igualQueEntrar ? t('copias.contrasena.igual_que_entrar') : null].filter(Boolean).join(' ');
+    await pantallaCopias({ texto, clase: x.datos.igualQueEntrar ? 'aviso' : 'bien' });
+    return MANTENER;
+  });
+  const tarjeta = el('section', { class: 'tarjeta clave-nueva' },
+    el('h2', { class: 'con-icono' }, icono('clave_recuperacion'), el('span', { texto: t(antes ? 'copias.contrasena.cambiar' : 'copias.contrasena.crear') })),
+    el('p', { class: 'fuerte', texto: t('copias.contrasena.explica') }),
+    antes ? el('p', { class: 'aviso con-icono-arriba' }, icono('atencion', 'icono chico'),
+      el('span', { texto: t(antes.contrasena ? 'copias.contrasena.cambiar_aviso' : 'copias.contrasena.cambiar_aviso_clave', { huella: antes.huella }) })) : null,
+    formulario,
+    cancelar);
   const porQue = el('section', { class: 'tarjeta nota clave-por-que' },
-    el('p', { class: 'con-icono-arriba' }, icono('info'), el('span', { texto: t(n.antes ? 'copias.clave.por_que_cambio' : 'copias.clave.por_que', { huella: n.antes ?? '' }) })));
+    el('p', { class: 'con-icono-arriba' }, icono('info'), el('span', { texto: t('copias.contrasena.por_que') })));
   mostrar(marco('admin', cabeceraAdmin('copias'), el('div', { class: 'rejilla clave-pasos' }, tarjeta, porQue)));
-  if (n.paso === 2) document.getElementById('campo-clave-repite')?.focus({ preventScroll: true });
+  uno.focus({ preventScroll: true });
 }
 
 // ---------- IA opcional y Claves (fase 1, parte d) ----------
@@ -2734,6 +2679,15 @@ function azulejoClaves(ia, claves) {
     valor: activas.length ? tn('servicios.claves.n', { n: activas.length }) : t('servicios.claves.ninguna'),
     detalle: activas.length ? activas.map(u => t('servicios.claves.una', { nombre: tSi(`claves.corto.${u.uso}`, u.uso), final: u.activa.final })).join(' · ') : t('claves.agregar'),
   });
+}
+// 0.14.2: arriba del Resumen, en rojo, cuando no se guarda ninguna copia (falta la contraseña de copias), con su botón.
+function avisoCopiasSinGuardar(sistema) {
+  const v = avisoSinCopias(sistema?.ok ? sistema.datos.copias : null);
+  if (!v) return null;
+  return el('section', { class: 'tarjeta copias-sin-guardar tono-mal', role: 'alert' },
+    el('p', { class: 'copias-sin-guardar-titulo con-icono' }, icono('mal', 'icono'), el('span', { texto: t(v.titulo) })),
+    el('p', { texto: t(v.linea) }),
+    el('a', { class: 'boton-enlace con-icono', href: v.href }, icono('clave_recuperacion'), el('span', { texto: t(v.boton) })));
 }
 // Fase 1, parte e: las copias fuera del servidor y el Telegram (de GET /api/admin/sistema: no se pide nada más).
 function azulejoCopias(sistema) {
@@ -5904,7 +5858,7 @@ async function dibujar() {
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
   // La clave de recuperación recién creada vive solo en esta pantalla: al irse de Copias se suelta (fase 1, parte e).
-  if (seccion !== 'copias') claveNueva = null;
+  if (seccion !== 'copias') formContrasena = null;
   if (seccion !== 'claves') vinculoEnPantalla = null;
   if (seccion === 'configuracion') return pantallaConfiguracion();
   if (seccion === 'ayuda') return pantallaAyuda();

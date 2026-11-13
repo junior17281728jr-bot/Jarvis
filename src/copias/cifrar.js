@@ -47,7 +47,10 @@ function armarCabecera(datos) {
 
 // Un cifrador de UNA copia. trozo(datos, ultimo) cifra un registro (≤ 64 KiB). llaveDeCopia queda en memoria solo para la
 // revisión en el mismo paso (crearDescifrador({ llaveDeCopia, hashCabecera })); cerrar() la llena de ceros.
-export function crearCifrador({ publica, copia = randomUUID(), creada = new Date().toISOString(), servidor = null, compresion = 'gzip', contenido = 'oportia-volcado-v1', efimera = null }) {
+// kdf (0.14.2): con una contraseña de copias, su sal y sus números de scrypt (src/copias/clave.js) van en la cabecera
+// (autenticada: es parte de la AAD), así una copia sin su índice se abre solo con la contraseña. Sin kdf (la clave de 28
+// símbolos), la cabecera es exactamente la de siempre.
+export function crearCifrador({ publica, copia = randomUUID(), creada = new Date().toISOString(), servidor = null, compresion = 'gzip', contenido = 'oportia-volcado-v1', efimera = null, kdf = null }) {
   const pub = Buffer.from(publica);
   if (pub.length !== 32) throw new ErrorCopias('clave_no_valida');
   if (!esUuid(copia)) throw new ErrorCopias('copia_danada');
@@ -60,7 +63,7 @@ export function crearCifrador({ publica, copia = randomUUID(), creada = new Date
   try { llave = derivarLlave(compartido, efPub, pub); } finally { compartido.fill(0); }
   const cabecera = armarCabecera({
     formato: FORMATO, app: 'oportia', copia, creada, cifrado: CIFRADO, efimera: efPub.toString('base64url'),
-    receptor: huellaDe(pub), trozo: TROZO, compresion, contenido, servidor,
+    receptor: huellaDe(pub), trozo: TROZO, compresion, contenido, servidor, ...(kdf ? { kdf } : {}),
   });
   const hashCabecera = createHash('sha256').update(cabecera).digest();
   let i = 0;

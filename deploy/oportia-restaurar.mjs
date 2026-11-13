@@ -14,8 +14,8 @@
 //     --trabajo=<carpeta>  dónde se guardan las partes que baja de Telegram (por defecto, junto al destino)
 //     --json        la última línea es el resultado en JSON
 //
-// La clave de recuperación (y el token del bot, con --telegram) se escriben cuando los pide, sin que se vean en la
-// pantalla. NUNCA van en la línea de la orden (cualquiera los vería con «ps») ni en variables del entorno.
+// Tu contraseña de copias (0.14.2; o la clave de recuperación de 28 símbolos de antes, para las copias de antes) y el
+// token del bot (con --telegram) se escriben cuando los pide, sin que se vean en la pantalla. NUNCA van en la línea de la orden (cualquiera los vería con «ps») ni en variables del entorno.
 // Con --telegram muestra un código de 8 cifras: escríbeselo a tu bot desde tu chat privado. Los mensajes de otras
 // personas al bot se ignoran. Después pregunta si el chat que encontró es el tuyo, y el bot le manda a ese chat un
 // segundo código de 6 cifras que hay que escribir aquí (si no te llegó a ti, otra persona tiene el token del bot).
@@ -26,7 +26,7 @@
 //
 // Nunca pisa un archivo: si el destino ya existe, no hace nada. Nunca toca el archivo de la llave de las claves: después
 // de recuperar, pega otra vez tus claves (las de la IA y el token del bot) en Administrador → Claves (en una base
-// recuperada se puede sin la consola) y crea en Copias una clave de recuperación nueva.
+// recuperada se puede sin la consola) y crea en Copias tu contraseña de copias otra vez (puede ser la misma).
 //
 // Códigos de salida: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe ·
 // 6 Telegram o la red · 7 formato nuevo (usa una versión más nueva de OPORTIA) · 8 cancelada por el dueño.
@@ -40,7 +40,7 @@ import { ErrorCopias } from '../src/copias/formato.js';
 
 export const SALIDAS = Object.freeze({ ok: 0, uso: 2, clave: 3, copia: 4, destino: 5, telegram: 6, formato: 7, cancelada: 8 });
 const DE_ERROR = Object.freeze({
-  clave_formato: 'clave', clave_control: 'clave', clave_no_es_de_esta_copia: 'clave',
+  clave_formato: 'clave', clave_control: 'clave', clave_no_es_de_esta_copia: 'clave', contrasena_no_abre: 'clave',
   destino_existe: 'destino',
   demasiados_archivos: 'uso',
   telegram: 'telegram', sin_red: 'telegram', codigo_vencido: 'telegram', otro_bot: 'telegram',
@@ -48,9 +48,10 @@ const DE_ERROR = Object.freeze({
   cancelada_por_dueno: 'cancelada', cancelada: 'cancelada',
 });
 const TEXTO_ERROR = Object.freeze({
-  clave_formato: 'Esa no es una clave válida: revisa letra por letra (la O y el 0 valen igual).',
+  clave_formato: 'Esas copias se cerraron con tu clave de recuperación de 28 letras y números (de antes de la contraseña de copias), y lo que escribiste no es una clave válida: revisa letra por letra (la O y el 0 valen igual).',
   clave_control: 'La clave tiene un error: revisa letra por letra.',
-  clave_no_es_de_esta_copia: 'Esa clave no abre esta copia (quizás es de una clave anterior).',
+  clave_no_es_de_esta_copia: 'Esa contraseña (o clave) no abre esta copia (quizás es de una contraseña o una clave anterior).',
+  contrasena_no_abre: 'Esa contraseña no abre tus copias. Revísala letra por letra (mayúsculas, tildes). Si la cambiaste, las copias de antes se abren con la de antes; si era una clave de 28 letras y números, escríbela completa.',
   destino_existe: 'El archivo de destino ya existe: no se tocó. Elige otro nombre.',
   sin_indice: 'No encontré un índice que sirva. Guarda de tu chat el archivo «…-indice.txt» más nuevo y usa --indice=<ese archivo>, o guarda todos los archivos de una noche y usa --archivos.',
   indice_no_autentico: 'El índice no es de tu clave (o alguien lo cambió): no se usa. Quita ese archivo de la carpeta, o usa otro índice con --indice.',
@@ -261,7 +262,7 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
     } else {
       fuente = { tipo: 'archivos', archivos: [resolve(o.archivos)] };
     }
-    const clave = await lector.preguntar('Escribe tu clave de recuperación (no se muestra): ', { oculto: true });
+    const clave = await lector.preguntar('Escribe tu contraseña de copias o tu clave de recuperación (no se muestra): ', { oculto: true });
     if (!clave) throw new ErrorCopias('cancelada_por_dueno');
     resultado = await restaurarCopia({
       clave, fuente, destino, carpetaTrabajo, aceptarAnterior: o.anterior, base,
@@ -291,7 +292,7 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
       },
       alAvanzar: a => { if (a?.paso === 'partes_listas') decir(`Partes: ${a.partes} de ${a.partes}, todas bien.`); },
     });
-    decir(`La clave corresponde (${resultado.receptor}).`);
+    decir(resultado.con === 'contrasena' ? `La contraseña corresponde (${resultado.receptor}).` : `La clave corresponde (${resultado.receptor}).`);
     if (destino) decir(`Base recuperada: ${megas(resultado.bytes)}, ${resultado.tablas} tablas, revisada: bien. Está en ${basename(destino)} (en ${dirname(destino)}).`);
     else decir(`Copia comprobada: ${megas(resultado.bytes)}, ${resultado.tablas} tablas, todo bien. No se escribió ninguna base.`);
     const pegar = [...(resultado.claves?.deIa ?? []).map(u => (u === 'ia_anthropic' ? 'clave de Claude' : u === 'ia_openai' ? 'clave de ChatGPT' : u)), ...(resultado.claves?.telegram ? ['token del bot'] : [])];
@@ -306,7 +307,7 @@ export async function principal({ argv = process.argv.slice(2), entrada = proces
       // Claves deja pegar otra vez sin pasar por la consola (crea una llave nueva; la de antes nunca viaja en una copia).
       decir('Después, con OPORTIA abierto sobre esta base:');
       decir(`  1. En Administrador → Claves pega otra vez ${pegar.length ? pegar.join(', ') : 'tus claves'}${resultado.claves?.telegram || o.telegram ? ' (el token NUEVO)' : ''}: por seguridad nunca viajan en las copias.`);
-      decir('  2. En Administrador → Copias crea una clave de recuperación NUEVA y guarda las dos (la de antes abre las copias de antes).');
+      decir('  2. En Administrador → Copias crea tu contraseña de copias otra vez (puede ser la misma; si es otra, guarda las dos: la de antes abre las copias de antes).');
       decir('  Si Claves dijera que falta el archivo que protege las claves: sudo -u jarvis node --no-warnings /opt/jarvis/deploy/oportia-admin.mjs --claves=revisar');
     } else if (pegar.length) decir(`Tienes que pegar otra vez: ${pegar.join(', ')} (por seguridad nunca viajan en las copias).`);
   } catch (error) {

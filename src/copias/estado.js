@@ -19,7 +19,10 @@ import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { ErrorCopias, CLAVE_SERVIDOR, ESTADOS_COPIA, CABECERA_PARTE } from './formato.js';
-import { crearClave, derivar, esClaveDePrueba, hashVerificador, leerClave } from './clave.js';
+import {
+  crearClave, derivar, esClaveDePrueba, hashVerificador, leerClave, KDF, CONTRASENA_MAX, leerKdf, nuevoKdf, problemaDeContrasena, normalizarContrasena,
+  derivarDeContrasena, hashDeVerificador,
+} from './clave.js';
 import { envolverDato, abrirDato, huellaDeEnvuelto } from '../claves/almacen.js';
 import { ranura } from '../tareas/tiempo.js';
 import { PROGRAMAS_DEL_SISTEMA } from '../tareas/tipos.js';
@@ -173,6 +176,88 @@ export function crearClavePendiente(db, { config, usuarioId = null, ahora = Date
   }
 }
 
+// ---------- 0.14.2: la contraseña de copias (la elige el dueño) ----------
+// La sal y los números de scrypt de una llave hecha con contraseña (no son secretos): en «ajustes», uno por llave pública
+// (sin cambio de base). Las llaves de 28 símbolos no tienen ninguno.
+const refKdf = publica => `copias.contrasena|${publica}`;
+
+// El kdf de una llave ({ kdf, N, r, p, sal }) o null (una clave de 28 símbolos).
+export function kdfDeLlave(db, llave) {
+  return llave ? leerKdf(leerAjuste(db, refKdf(llave.publica))) : null;
+}
+
+// «Crear mi contraseña de copias» (y «Cambiar»): la contraseña se escribe dos veces; de ella salen la llave pública, el
+// sello, el verificador y la huella, y queda ACTIVA enseguida (las copias de antes siguen con su llave de antes,
+// «anterior»). Nunca se guarda la contraseña: solo lo de siempre (pública, sello envuelto, sha256 del verificador) y su
+// kdf. → { huella, desde, antes } · Errores: contrasena_corta · contrasena_larga · contrasena_sin_letra ·
+// contrasena_sin_numero · contrasenas_distintas · almacen_no_disponible.
+// base: los números de scrypt (las pruebas pasan uno chico).
+export async function crearContrasenaCopias(db, { config, contrasena, repetida, usuarioId = null, ahora = Date.now(), base = KDF } = {}) {
+  if (!config) throw new ErrorCopias('almacen_no_disponible');
+  const problema = problemaDeContrasena(contrasena, repetida);
+  if (problema) throw new ErrorCopias(problema);
+  const antes = llaveActiva(db);
+  // Siempre una sal nueva: la misma contraseña otra vez (por ejemplo, después de recuperar en un servidor nuevo) da una
+  // llave nueva, y las copias de antes se siguen abriendo con la misma contraseña.
+  const kdf = nuevoKdf(base);
+  const d = await derivarDeContrasena(contrasena, kdf);
+  try {
+    const publica = d.publica.toString('base64url');
+    if (esClaveDePrueba(publica)) throw new ErrorCopias('clave_de_prueba');
+    const sello = envolverSello(db, config, publica, d.sello.toString('hex'));
+    const verificador = hashDeVerificador(d.verificador);
+    const momento = iso(ahora);
+    enTransaccion(db, () => {
+      db.prepare("UPDATE copias_llaves SET estado = 'caducada' WHERE estado = 'pendiente'").run();
+      db.prepare("UPDATE copias_llaves SET estado = 'anterior', reemplazada_en = ? WHERE estado = 'activa'").run(momento);
+      guardarAjuste(db, refKdf(publica), kdf, ahora);
+      db.prepare(`INSERT INTO copias_llaves (formato, publica, sello, huella, verificador, estado, creada_por, creada_en, confirmada_en)
+        VALUES (2, ?, ?, ?, ?, 'activa', ?, ?, ?)`).run(publica, sello, d.huella, verificador, usuarioId, momento, momento);
+      auditar(db, { usuarioId, accion: 'contrasena_copias_creada', detalle: `Clave ${d.huella}${antes ? ` (antes: ${antes.huella})` : ''}` });
+      resolverAviso(db, 'copias_sin_clave', ahora);
+      resolverAviso(db, 'copias_clave_ilegible', ahora);
+      resolverAviso(db, 'copias_comprobar_clave', ahora);
+    });
+    return { huella: d.huella, desde: momento, antes: antes ? antes.huella : null };
+  } finally {
+    d.sello.fill(0);
+    d.verificador.fill(0);
+  }
+}
+
+// Las llaves con contraseña que se prueban al «Comprobar» (las más nuevas primero; cada una es un cálculo de scrypt).
+export const LLAVES_POR_COMPROBAR = 5;
+
+// «Comprobar mi contraseña»: ¿es la de ahora, una anterior, o ninguna? Mismo resultado que comprobarClave.
+export async function comprobarContrasena(db, { contrasena, ahora = Date.now() }) {
+  if (!normalizarContrasena(contrasena) || [...normalizarContrasena(contrasena)].length > CONTRASENA_MAX) throw new ErrorCopias('contrasena_formato');
+  const llaves = db.prepare("SELECT * FROM copias_llaves WHERE estado IN ('activa', 'anterior') ORDER BY id DESC").all()
+    .map(l => ({ l, kdf: kdfDeLlave(db, l) })).filter(x => x.kdf).slice(0, LLAVES_POR_COMPROBAR);
+  let encontrada = null;
+  for (const { l, kdf } of llaves) {
+    const d = await derivarDeContrasena(contrasena, kdf);
+    try {
+      if (mismoHash(hashDeVerificador(d.verificador), l.verificador)) { encontrada = l; break; }
+    } finally { d.sello.fill(0); d.verificador.fill(0); }
+  }
+  return resultadoDeComprobar(db, encontrada, ahora);
+}
+
+function resultadoDeComprobar(db, encontrada, ahora) {
+  if (!encontrada) return { resultado: 'no_es', huella: null, desde: null, hasta: null, ultimaCopia: null };
+  enTransaccion(db, () => {
+    db.prepare('UPDATE copias_llaves SET comprobada_en = ? WHERE id = ?').run(iso(ahora), encontrada.id);
+    if (encontrada.estado === 'activa') resolverAviso(db, 'copias_comprobar_clave', ahora);
+  });
+  return {
+    resultado: encontrada.estado === 'activa' ? 'actual' : 'anterior',
+    huella: encontrada.huella,
+    desde: encontrada.confirmada_en,
+    hasta: encontrada.reemplazada_en,
+    ultimaCopia: ultimaCopiaDeLlave(db, encontrada.id),
+  };
+}
+
 function mismoHash(a, b) {
   const x = Buffer.from(String(a ?? ''), 'hex');
   const y = Buffer.from(String(b ?? ''), 'hex');
@@ -217,19 +302,8 @@ export function comprobarClave(db, { verificador, ahora = Date.now() }) {
   const hash = hashVerificador(verificador);
   if (!hash) throw new ErrorCopias('verificador_formato');
   const llaves = db.prepare("SELECT * FROM copias_llaves WHERE estado IN ('activa', 'anterior') ORDER BY id DESC").all();
-  const encontrada = llaves.find(l => mismoHash(hash, l.verificador));
-  if (!encontrada) return { resultado: 'no_es', huella: null, desde: null, hasta: null, ultimaCopia: null };
-  enTransaccion(db, () => {
-    db.prepare('UPDATE copias_llaves SET comprobada_en = ? WHERE id = ?').run(iso(ahora), encontrada.id);
-    if (encontrada.estado === 'activa') resolverAviso(db, 'copias_comprobar_clave', ahora);
-  });
-  return {
-    resultado: encontrada.estado === 'activa' ? 'actual' : 'anterior',
-    huella: encontrada.huella,
-    desde: encontrada.confirmada_en,
-    hasta: encontrada.reemplazada_en,
-    ultimaCopia: ultimaCopiaDeLlave(db, encontrada.id),
-  };
+  const encontrada = llaves.find(l => mismoHash(hash, l.verificador)) ?? null;
+  return resultadoDeComprobar(db, encontrada, ahora);
 }
 
 // ---------- El disco («nunca se borra nada») ----------
@@ -501,7 +575,7 @@ export function resumenCopias(db, { ahora = Date.now() } = {}) {
   const reciente = fuera && ahora - fuera.efectivaMs <= HORAS_COPIA_VIEJA * HORA;
   let tono = 'bien';
   let motivo = null;
-  if (!llave) { tono = 'atencion'; motivo = 'sin_clave'; }
+  if (!llave) { tono = 'mal'; motivo = 'sin_clave'; } // 0.14.2: sin contraseña de copias no se hace ninguna copia
   else if (!canal) { tono = 'atencion'; motivo = 'solo_locales'; }
   else if (ultima?.estado === 'fallida') { tono = 'mal'; motivo = 'fallo'; }
   else if (!reciente) { tono = 'mal'; motivo = 'atrasada'; }
@@ -521,8 +595,9 @@ export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopi
   const ilegible = guardada && !selloLegible(guardada, huellaLlave) ? { huella: guardada.huella } : null;
   const activa = ilegible ? null : guardada;
   const pendiente = llavePendiente(db, ahora);
-  const anteriores = db.prepare("SELECT huella, confirmada_en, reemplazada_en FROM copias_llaves WHERE estado = 'anterior' ORDER BY id DESC LIMIT 20").all()
-    .map(l => ({ huella: l.huella, desde: l.confirmada_en, hasta: l.reemplazada_en }));
+  // contrasena: true si es una contraseña de copias (0.14.2); false, una clave de 28 símbolos.
+  const anteriores = db.prepare("SELECT publica, huella, confirmada_en, reemplazada_en FROM copias_llaves WHERE estado = 'anterior' ORDER BY id DESC LIMIT 20").all()
+    .map(l => ({ huella: l.huella, desde: l.confirmada_en, hasta: l.reemplazada_en, contrasena: Boolean(kdfDeLlave(db, l)) }));
   const fuera = ultimaFuera(db, ahora);
   const ultima = db.prepare('SELECT * FROM copias ORDER BY id DESC LIMIT 1').get();
   const recientes = db.prepare('SELECT * FROM copias ORDER BY id DESC LIMIT 10').all().map(copiaPublica);
@@ -536,6 +611,7 @@ export function estadoCopias(db, { ahora = Date.now(), libreMb = null, libreCopi
   return {
     clave: {
       activa: Boolean(activa), huella: activa?.huella ?? null, desde: activa?.confirmada_en ?? null, comprobadaEn: activa?.comprobada_en ?? null,
+      contrasena: Boolean(activa && kdfDeLlave(db, activa)),
       pendiente: pendiente ? { huella: pendiente.huella, expira: pendiente.vence_en } : null, anteriores, ilegible,
     },
     telegram,

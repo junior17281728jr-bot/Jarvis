@@ -137,6 +137,34 @@ export function vistaCopias(c, ahora = Date.now()) {
   return { ...base, estado: 'bien', tono: 'bien', icono: 'nube_candado', marca: 'bien', titulo: 'copias.fuera.titulo', linea: 'copias.comprobada', ...conAhora() };
 }
 
+// 0.14.2: el aviso rojo de arriba del Resumen de Administrador cuando las copias no se están guardando (no hay
+// contraseña de copias). → { titulo, linea, boton, href } o null.
+export function avisoSinCopias(copias) {
+  if (copias?.motivo !== 'sin_clave') return null;
+  return { titulo: 'copias.no_se_guardan', linea: 'copias.no_se_guardan.linea', boton: 'copias.contrasena.crear', href: '#copias' };
+}
+
+// 0.14.2: las reglas de la contraseña de copias, igual que el servidor (src/copias/clave.js problemaDeContrasena): 10
+// caracteres o más (hasta 200), una letra y un número; las dos veces igual. → el código del problema, o null.
+export const CONTRASENA_MIN = 10;
+export const CONTRASENA_MAX = 200;
+export const normalizarContrasena = texto => String(texto ?? '').normalize('NFC').trim();
+export function problemaContrasena(contrasena, repetida) {
+  const c = normalizarContrasena(contrasena);
+  const largo = [...c].length;
+  if (largo < CONTRASENA_MIN) return 'contrasena_corta';
+  if (largo > CONTRASENA_MAX) return 'contrasena_larga';
+  if (!/\p{L}/u.test(c)) return 'contrasena_sin_letra';
+  if (!/\p{Nd}/u.test(c)) return 'contrasena_sin_numero';
+  if (repetida !== undefined && normalizarContrasena(repetida) !== c) return 'contrasenas_distintas';
+  return null;
+}
+// Lo que se va cumpliendo mientras se escribe (las marcas de la pantalla).
+export function reglasContrasena(contrasena) {
+  const c = normalizarContrasena(contrasena);
+  return { largo: [...c].length >= CONTRASENA_MIN, letra: /\p{L}/u.test(c), numero: /\p{Nd}/u.test(c) };
+}
+
 // La tarjeta del disco: { tono, linea } (linea: una frase de copias.aqui.* o null si todo está bien).
 export function vistaDisco(locales) {
   const l = locales ?? {};
@@ -165,7 +193,8 @@ export function motivoBase(motivo) {
 export function vistaAzulejoCopias(copias, { modoSeguro = false } = {}) {
   if (!copias) return { tono: 'apagado', valor: { clave: 'copias.azulejo.sin_datos' }, detalle: null };
   const m = copias.motivo;
-  if (m === 'sin_clave') return { tono: 'atencion', valor: { clave: 'copias.azulejo.sin_clave' }, detalle: 'copias.azulejo.sin_clave.detalle' };
+  // 0.14.2: sin contraseña de copias NO se hace ninguna copia (ni aquí ni en Telegram): es rojo, no «algo que mirar».
+  if (m === 'sin_clave') return { tono: 'mal', valor: { clave: 'copias.azulejo.sin_clave' }, detalle: 'copias.azulejo.sin_clave.detalle' };
   if (modoSeguro) return { tono: 'apagado', valor: { clave: 'copias.azulejo.en_pausa' }, detalle: 'copias.azulejo.en_pausa.detalle' };
   if (m === 'solo_locales') return { tono: 'atencion', valor: { clave: 'copias.azulejo.solo_locales' }, detalle: 'copias.azulejo.solo_locales.detalle' };
   if (m === 'fallo') return { tono: 'mal', valor: { clave: 'copias.azulejo.fallo' }, detalle: 'copias.azulejo.fallo.detalle' };

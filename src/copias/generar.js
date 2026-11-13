@@ -23,11 +23,11 @@ const FALLAS_DE_REVISION = Object.freeze(['volcado_danado', 'copia_no_autentica'
 // → { copia, creada, bytes, sha256, partes, volcado: { bytes, sha256 }, tablas, filas, porTabla, migracion, sellado, resumen }
 export async function generarCopia({
   foto, publica, sello, alParte, copia = randomUUID(), creada = new Date().toISOString(), servidor = null, version = null,
-  codigo = null, tamanoParte = TAMANO_PARTE, ceder = esperar, senal = null, lineaMax = LINEA_MAX, asignar, volcar = volcarDeVerdad,
+  codigo = null, tamanoParte = TAMANO_PARTE, ceder = esperar, senal = null, lineaMax = LINEA_MAX, asignar, volcar = volcarDeVerdad, kdf = null,
 }) {
   if (!foto || typeof alParte !== 'function') throw new ErrorCopias('datos_no_validos');
   const independientes = contarFilas(foto);
-  const cifrador = crearCifrador({ publica, copia, creada, servidor });
+  const cifrador = crearCifrador({ publica, copia, creada, servidor, kdf });
   const resultadoVolcado = {};
   const hashFlujo = createHash('sha256');
   let bytesFlujo = 0;

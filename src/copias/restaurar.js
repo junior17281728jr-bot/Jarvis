@@ -39,7 +39,7 @@ import {
   ErrorCopias, CABECERA_PARTE, INDICE_MAXIMO, MAGIA_PARTE, PARTE_MAXIMA, LINEA_MAX, CLAVE_SERVIDOR, CLAVE_ORIGENES,
   rutaSegura, leerCabeceraParte, leerIndice, pareceIndice, nombreParte, sha256Hex,
 } from './formato.js';
-import { leerClave, derivar } from './clave.js';
+import { leerClave, derivar, leerKdf, derivarDeContrasena, normalizarContrasena } from './clave.js';
 import { crearDescifrador, abrirSellado, leerCabeceraFlujo } from './cifrar.js';
 import { crearLector, crearAplicador } from './volcado.js';
 import { TELEGRAM } from '../canales/telegram.js';
@@ -410,18 +410,18 @@ export async function restaurarCopia({
   clave, fuente, destino = null, carpetaTrabajo = null, alElegir = async () => true, aceptarAnterior = false, ajustar = true,
   senal = null, alAvanzar = () => {}, base = null, tamanoMaximoParte = PARTE_MAXIMA, ahora = Date.now(),
 }) {
-  // 1. La clave (un error al escribirla se nota enseguida).
-  const semilla = leerClave(clave);
-  let llaves;
-  try { llaves = derivar(semilla); } finally { semilla.fill(0); }
+  // 1. La clave de 28 símbolos se lee enseguida; una contraseña de copias (0.14.2) se estira cuando se sabe su sal (de
+  // los índices o de las cabeceras de las copias).
+  const llavero = crearLlavero(clave);
   try {
     if (destino != null) revisarDestino(destino);
     const tope = Math.min(PARTE_MAXIMA, Math.max(CABECERA_PARTE + 1, Number(tamanoMaximoParte) || PARTE_MAXIMA));
     // 2-3. El índice (o, sin índice, las partes solas) y la copia elegida.
     let elegida;
-    if (fuente?.tipo === 'telegram') elegida = await elegirDeTelegram({ fuente, llaves, base, carpetaTrabajo, tope, senal, alElegir, ahora, alAvanzar });
-    else if (fuente?.tipo === 'archivos') elegida = await elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, ahora, senal, alAvanzar });
+    if (fuente?.tipo === 'telegram') elegida = await elegirDeTelegram({ fuente, llavero, base, carpetaTrabajo, tope, senal, alElegir, ahora, alAvanzar });
+    else if (fuente?.tipo === 'archivos') elegida = await elegirDeArchivos({ fuente, llavero, aceptarAnterior, alElegir, ahora, senal, alAvanzar });
     else throw new ErrorCopias('fuente_no_valida');
+    const llaves = llavero.llaves;
     alAvanzar({ paso: 'partes_listas', partes: elegida.orden.length });
     // 6-8. Descifrar, leer, aplicar y revisar.
     const resultado = await aplicarCopia({ elegida, llaves, destino, ajustar, senal, ahora, alAvanzar });
@@ -430,19 +430,91 @@ export async function restaurarCopia({
       autentica: elegida.indice ? 'indice+flujo' : 'flujo', copiaEnCurso: resultado.copiaEnCurso, tablas: resultado.tablas,
       filas: resultado.filas, bytes: elegida.bytes, archivo: destino, claves: resultado.claves, partes: elegida.orden.length,
       indicesNoAutenticos: elegida.noAutenticos ?? 0, indicesDescartados: elegida.descartados ?? 0, ajuste: resultado.ajuste,
+      con: llaves.kdf ? 'contrasena' : 'clave',
     };
   } finally {
-    llaves.sello.fill(0);
-    llaves.verificador.fill(0);
+    llavero.cerrar();
   }
+}
+
+// ---------- 0.14.2: la clave de 28 símbolos o la contraseña de copias ----------
+// Cuántas sales distintas se prueban con una contraseña (cada una es un cálculo de scrypt; de la más nueva a la más
+// vieja: si el dueño cambió su contraseña, la de antes abre las copias de antes).
+export const SALES_POR_PROBAR = 8;
+
+// El llavero de una restauración. Se decide por la COPIA, no por lo escrito: si lo escrito es una clave de 28 símbolos
+// válida, es esa; si no, y alguna copia trae un kdf, se prueba como contraseña con la sal de cada copia (la huella que
+// sale debe ser la del receptor de esa copia). Sin ningún kdf, el error de la clave de siempre (clave_formato,
+// clave_control). Una contraseña que no da ninguna huella: contrasena_no_abre.
+function crearLlavero(clave) {
+  let llaves = null;
+  let errorClave = null;
+  try {
+    const semilla = leerClave(clave);
+    try { llaves = derivar(semilla); } finally { semilla.fill(0); }
+  } catch (error) {
+    if (!(error instanceof ErrorCopias)) throw error;
+    errorClave = error;
+  }
+  if (!llaves && !normalizarContrasena(clave)) throw errorClave;
+  return {
+    get llaves() { return llaves; },
+    // candidatos(): [{ kdf, receptor, creada }] (solo se piden si hace falta: leer las cabeceras cuesta).
+    async para(candidatos) {
+      if (llaves) return llaves;
+      const vistas = new Set();
+      const sales = [];
+      const lista = [...(candidatos() ?? [])].sort((a, b) => (Date.parse(b.creada) || 0) - (Date.parse(a.creada) || 0));
+      for (const c of lista) {
+        const k = leerKdf(c?.kdf);
+        if (!k || typeof c.receptor !== 'string' || vistas.has(k.sal)) continue;
+        vistas.add(k.sal);
+        sales.push({ k, receptor: c.receptor });
+        if (sales.length >= SALES_POR_PROBAR) break;
+      }
+      if (!sales.length) throw errorClave;
+      for (const { k, receptor } of sales) {
+        let d;
+        try { d = await derivarDeContrasena(clave, k); } catch (error) { if (error instanceof ErrorCopias && error.clave === 'contrasena_formato') throw errorClave; throw error; }
+        if (d.huella === receptor) { llaves = d; return d; }
+        d.sello.fill(0);
+        d.verificador.fill(0);
+      }
+      throw new ErrorCopias('contrasena_no_abre');
+    },
+    cerrar() {
+      if (!llaves) return;
+      llaves.sello.fill(0);
+      llaves.verificador.fill(0);
+    },
+  };
+}
+
+// Lo que dice cada índice y la parte 1 de cada copia sobre su kdf (sin revisar nada: solo para saber qué sal probar).
+function candidatosDe(indices, partes) {
+  const lista = [];
+  for (const x of indices) {
+    const d = pareceIndice(x.texto);
+    if (d?.kdf) lista.push({ kdf: d.kdf, receptor: d.receptor, creada: d.creada });
+  }
+  for (const [, grupo] of partes ?? []) {
+    const uno = grupo.find(p => p.n === 1);
+    if (!uno) continue;
+    try {
+      const c = cabeceraDelFlujo(uno.ruta);
+      if (c?.kdf) lista.push({ kdf: c.kdf, receptor: c.receptor, creada: c.creada });
+    } catch { /* una parte rara no tumba nada */ }
+  }
+  return lista;
 }
 
 async function preguntar(alElegir, info) {
   if ((await alElegir(info)) !== true) throw new ErrorCopias('cancelada_por_dueno');
 }
 
-async function elegirDeArchivos({ fuente, llaves, aceptarAnterior, alElegir, ahora, senal, alAvanzar }) {
+async function elegirDeArchivos({ fuente, llavero, aceptarAnterior, alElegir, ahora, senal, alAvanzar }) {
   const { indices, partes, formatoNuevo } = inventario(fuente.archivos ?? []);
+  const llaves = await llavero.para(() => candidatosDe(indices, partes));
   const deIndices = indices.length ? indicesDeLaClave(indices, llaves) : null;
   // Hay índices que se entienden pero ninguno auténtico de esta clave: se dice (un índice tocado es una señal, nunca se
   // pasa por alto). Si ninguno se entendió (todos rotos o de un formato nuevo), se sigue como si no hubiera índice.
@@ -571,7 +643,7 @@ async function elegirSinIndice({ partes, llaves, aceptarAnterior, alElegir, ahor
   throw primerProblema ?? new ErrorCopias('falta_parte', { n: 1, copia: mias[0].copia });
 }
 
-async function elegirDeTelegram({ fuente, llaves, base, carpetaTrabajo, tope, senal, alElegir, ahora, alAvanzar }) {
+async function elegirDeTelegram({ fuente, llavero, base, carpetaTrabajo, tope, senal, alElegir, ahora, alAvanzar }) {
   if (!carpetaTrabajo) throw new ErrorCopias('fuente_no_valida');
   const cred = crearCredencial({ token: String(fuente.token ?? '').trim(), base });
   const yo = await TELEGRAM.probar(cred, { senal });
@@ -594,6 +666,7 @@ async function elegirDeTelegram({ fuente, llaves, base, carpetaTrabajo, tope, se
     texto = (await bajarATexto(cred, archivoId, INDICE_MAXIMO, senal)).toString('utf8');
   }
   if (!pareceIndice(texto)) throw new ErrorCopias('sin_indice');
+  const llaves = await llavero.para(() => candidatosDe([{ ruta: null, texto }], null));
   // Un índice que no se entiende (cualquiera con el token puede fijar un archivo) no tumba con un error raro: «no hay
   // índice» con su motivo; uno de otra clave o tocado se nombra.
   const deIndices = indicesDeLaClave([{ ruta: null, texto }], llaves);

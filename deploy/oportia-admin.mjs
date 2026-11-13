@@ -319,8 +319,11 @@ function estadoDeCopias(db, config) {
   let dc = { libreMb: null, mismoDisco: null };
   try { dc = discoDeCopias(config.carpetaCopias, config.carpetaDatos); } catch { dc = { libreMb: null, mismoDisco: null }; }
   const t = estadoTelegram(db, config);
-  const e = estadoCopias(db, { libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, telegram: t, modoSeguro: leerModoSeguro(db).activo });
-  console.log(e.clave.activa ? `Clave de recuperación: ${e.clave.huella} (desde el ${fechaRd(e.clave.desde)}).` : 'Clave de recuperación: FALTA (créala en Administrador → Copias, desde Tailscale). Sin ella no hay copias.');
+  // 0.14.2: con la huella de la llave de las claves (sin ella, una clave en uso se veía como «FALTA»).
+  let huellaLlave = null;
+  try { const l = estadoLlave(config); huellaLlave = l?.listo ? l.huella : null; } catch { huellaLlave = null; }
+  const e = estadoCopias(db, { libreMb, libreCopiasMb: dc.libreMb, mismoDisco: dc.mismoDisco !== false, telegram: t, modoSeguro: leerModoSeguro(db).activo, huellaLlave });
+  console.log(e.clave.activa ? `${e.clave.contrasena ? 'Contraseña de copias' : 'Clave de recuperación'}: ${e.clave.huella} (desde el ${fechaRd(e.clave.desde)}).` : 'Contraseña de copias: FALTA (créala en Administrador → Copias). Sin ella no se hace ninguna copia.');
   console.log(t.chat ? `Telegram: chat de ${t.chat.nombre ?? '—'} (${t.chat.estado}).${t.listo ? '' : ` No llegan mensajes ahora (${t.motivo}).`}` : `Telegram: sin chat unido${t.token ? '' : ' (falta el token del bot)'}.`);
   console.log(e.ultimaFuera ? `Última copia fuera del servidor: la foto del ${fechaRd(e.ultimaFuera.fecha)}, ${megas(e.ultimaFuera.bytes)}, ${e.ultimaFuera.partes} partes, comprobada${e.ultimaFuera.comprobada ? ` el ${fechaRd(e.ultimaFuera.comprobada)}` : ''}.` : 'Última copia fuera del servidor: ninguna todavía.');
   if (e.ultima) console.log(`Última copia (cualquiera): ${fechaRd(e.ultima.fecha)} — ${e.ultima.estado}${e.ultima.motivo ? ` (${e.ultima.motivo})` : ''}.`);
@@ -338,7 +341,7 @@ function estadoDeCopias(db, config) {
 // --copias=ahora: la pone en la fila (la hace el trabajo automático, en menos de un minuto si está encendido).
 function copiaAhora(db) {
   if (!llaveActiva(db)) {
-    console.log('Primero crea la clave de recuperación (Administrador → Copias, desde Tailscale). No se pidió nada.');
+    console.log('Primero crea tu contraseña de copias (Administrador → Copias). No se pidió nada.');
     return 2;
   }
   if (tareaDeCopiaViva(db)) {

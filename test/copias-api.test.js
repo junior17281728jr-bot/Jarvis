@@ -372,7 +372,7 @@ test('2.14 la consola: --copias=estado, --copias=ahora y --telegram=desvincular 
   try {
     let r = consola(b.config, '--copias=estado');
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /Clave de recuperación: [0-9A-Z]{4}/);
+    assert.match(r.stdout, /Clave de recuperación: [0-9A-Z]{4} \(desde el /);
     assert.match(r.stdout, /Telegram: chat de Junior/);
     assert.match(r.stdout, /Nunca se borra ninguna copia/);
     r = consola(b.config, '--copias=ahora');

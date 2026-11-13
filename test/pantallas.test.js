@@ -514,31 +514,32 @@ test('3.2 Copias: íconos propios, y la clave de recuperación nunca se guarda e
   // Los íconos que nombra la vista de las copias existen.
   const vista = readFileSync(join(RAIZ, 'public/copias-vista.js'), 'utf8');
   for (const m of vista.matchAll(/icono: '([a-z_]+)'/g)) assert.ok(m[1] in ICONOS_SERVICIOS || appJs.includes(`  ${m[1]}: [`), `ícono ${m[1]}`);
-  // La pantalla manda SOLO el verificador al confirmar y al comprobar.
-  const envios = [...appJs.matchAll(/api\('POST', '\/api\/admin\/copias\/clave\/(confirmar|comprobar)', (\{[^}]*\})\)/g)];
-  assert.equal(envios.length, 2);
-  for (const e of envios) assert.equal(e[2], '{ verificador: calculado.verificador }', e[1]);
-  // La clave nueva vive en una variable de la pantalla: nunca en localStorage, sessionStorage, la dirección ni un borrador.
+  // Una clave de 28 símbolos (de antes): la pantalla manda SOLO su verificador al comprobarla (0.14.2: ya no se crea).
+  const envios = [...appJs.matchAll(/api\('POST', '\/api\/admin\/copias\/clave\/(nueva|confirmar|comprobar)', (\{[^}]*\})\)/g)];
+  assert.deepEqual(envios.map(e => [e[1], e[2]]), [['comprobar', '{ verificador: calculado.verificador }']]);
+  // 0.14.2: la contraseña de copias va SOLO en esos campos (nunca en la dirección ni en otro pedido).
+  const deContrasena = [...appJs.matchAll(/api\('POST', '\/api\/admin\/copias\/contrasena(\/comprobar)?', (\{[^}]*\})\)/g)];
+  assert.deepEqual(deContrasena.map(e => [e[1] ?? '', e[2]]), [['/comprobar', '{ contrasena: escrita }'], ['', '{ contrasena: uno.value, repetida: dos.value }']]);
+  // La contraseña vive solo en los cuadros de la pantalla: nunca en localStorage, sessionStorage, la dirección ni un borrador.
   const bloque = appJs.slice(appJs.indexOf('// ---------- Copias de seguridad (fase 1, parte e)'), appJs.indexOf('// ---------- IA opcional y Claves (fase 1, parte d)'));
   assert.ok(bloque.length > 1000);
   assert.doesNotMatch(bloque, /localStorage|sessionStorage|location\.hash\s*=(?!=)|borrador\(|recordarTexto\(/);
   // Al salir de Copias se suelta (y el código de Telegram al salir de Claves).
-  assert.match(appJs, /if \(seccion !== 'copias'\) claveNueva = null;/);
+  assert.match(appJs, /if \(seccion !== 'copias'\) formContrasena = null;/);
   assert.match(appJs, /if \(seccion !== 'claves'\) vinculoEnPantalla = null;/);
   // La página calcula el verificador sin WebCrypto (también en una dirección http:// de Tailscale).
-  assert.match(appJs, /import \{ leerClave, verificadorDe, grupoDistinto, gruposDeClave, sobraNombreCorto \} from '\.\/clave-recuperacion\.js';/);
+  assert.match(appJs, /import \{ leerClave, verificadorDe, sobraNombreCorto \} from '\.\/clave-recuperacion\.js';/);
   // El enlace al bot pasa siempre por enlaceSeguro.
   assert.match(appJs, /enlace: enlaceSeguro\(x\.datos\.enlace\)/);
 });
 
 // ---------- Fase 1, parte e — revisión final ----------
 
-test('revisión: los pasos para recuperar son los mismos en la pantalla, la hoja impresa y el README, y dicen /revoke y la clave nueva', () => {
+test('revisión: los pasos para recuperar son los mismos en la pantalla y el README, y dicen /revoke y la contraseña de copias nueva', () => {
   const lista = appJs.match(/const PASOS_RESTAURAR = Object\.freeze\(\[([^\]]*)\]\)/)?.[1];
   assert.ok(lista, 'una sola lista de pasos');
   const numeros = lista.split(',').map(x => Number(x.trim()));
-  // La pantalla y la hoja dibujan esa lista (pasosRestaurar), nunca otra.
-  assert.match(seccionDe(appJs, 'function hojaDeLaClave('), /pasosRestaurar\(\)/);
+  // La pantalla dibuja esa lista (pasosRestaurar), nunca otra (0.14.2: ya no hay hoja de la clave para imprimir).
   assert.match(appJs, /PASOS_RESTAURAR\.map\(n =>/);
   const readme = readFileSync(join(RAIZ, 'README.md'), 'utf8');
   const seccion = readme.split('### Si un día pierdes el servidor')[1].split('\n\n')[0];
@@ -549,7 +550,7 @@ test('revisión: los pasos para recuperar son los mismos en la pantalla, la hoja
     const todos = numeros.map(n => idioma[`copias.restaurar.paso${n}`]).join(' ');
     assert.match(todos, /\/revoke/);
     assert.match(todos, idioma === es ? /NUEVO/ : /NEW/);
-    assert.match(todos, idioma === es ? /clave de recuperación nueva/ : /new recovery key/);
+    assert.match(todos, idioma === es ? /contraseña de copias nueva/ : /new backup password/);
   }
   assert.ok(numeros.findIndex(n => /\/revoke/.test(es[`copias.restaurar.paso${n}`])) < numeros.findIndex(n => /token NUEVO/.test(es[`copias.restaurar.paso${n}`]) && /Claves/.test(es[`copias.restaurar.paso${n}`])), 'revocar antes de pegar el token nuevo');
 });
@@ -589,9 +590,8 @@ test('revisión: el nombre corto de la clave va debajo de la clave y, si se escr
   assert.equal(sobraNombreCorto(`ABCD ${clave}`, '21JE'), false);
   assert.equal(gruposDeClave(clave).length, 7);
   for (const k of ['copias.clave.nombre_corto', 'copias.clave.sobra_nombre']) assert.ok(existe(k) && es[k].includes('{huella}') && en[k].includes('{huella}'), k);
-  const paso1 = seccionDe(appJs, 'function dibujarClaveNueva(');
-  assert.ok(paso1.indexOf("'copias.clave.nombre_corto'") > paso1.indexOf("class: 'clave-recuperacion'"), 'el nombre corto va después de la clave');
-  assert.match(paso1, /sobraNombreCorto\(escrita, n\.huella\)/);
+  // 0.14.2: la clave de 28 símbolos ya no se muestra; al comprobar una de antes, se sigue diciendo qué sobra.
+  assert.match(seccionDe(appJs, 'function formularioComprobarClave('), /sobraNombreCorto\(escrita, h\)/);
 });
 
 test('revisión: Claves dice que la base se recuperó; Trabajo menciona la copia de las 4:40; el chat se retoma tras recargar', () => {

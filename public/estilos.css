@@ -994,6 +994,20 @@ h2.paso-titulo, h3.paso-titulo { margin: 0 0 6px; }
 input.campo-recuperacion { font: 600 19px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.06em; text-transform: uppercase; }
 input.campo-recuperacion::placeholder { letter-spacing: 0.02em; font-weight: 400; text-transform: none; font-size: 15px; }
 details.cambiar-clave { border-top: 1px solid var(--borde); margin-top: 14px; }
+/* 0.14.2: la contraseña de copias (escribirla dos veces, «Mostrar», las reglas que se van cumpliendo). */
+.campo-con-boton { display: flex; gap: 8px; align-items: stretch; }
+.campo-con-boton input { flex: 1 1 auto; min-width: 0; }
+.campo-con-boton .ver-ocultar { flex: 0 0 auto; white-space: nowrap; }
+ul.reglas-contrasena { list-style: none; padding: 0; margin: 6px 0 12px; display: grid; gap: 4px; color: var(--suave); font-size: 15px; }
+ul.reglas-contrasena li { display: flex; align-items: center; gap: 6px; margin: 0; }
+ul.reglas-contrasena li .icono { opacity: 0.35; }
+ul.reglas-contrasena li.cumplida { color: var(--bien); }
+ul.reglas-contrasena li.cumplida .icono { opacity: 1; }
+.form-contrasena label { margin-top: 10px; }
+/* 0.14.2: arriba del Resumen, cuando no se guarda ninguna copia. */
+.tarjeta.copias-sin-guardar { border: 2px solid var(--mal); background: color-mix(in srgb, var(--mal) 8%, var(--tarjeta)); }
+.copias-sin-guardar-titulo { margin: 0 0 4px; font-weight: 800; font-size: 19px; color: var(--mal); }
+.copias-sin-guardar p { margin: 0 0 10px; }
 /* La clave nueva, en grande: 7 grupos de 4 (2 filas en el teléfono, 1 en la PC). */
 .clave-pasos { max-width: 860px; }
 .clave-nueva-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }

@@ -273,16 +273,22 @@ bot te avisa al momento de lo grave. Nada se borra. Todo lo lento lo hace el tra
   lo permite).
 
 ### Lo que tienes que guardar tú (solo dos cosas)
-1. **Tu clave de recuperación**: 28 letras y números en 7 grupos («7K2M-Q9TB-…»). OPORTIA te la muestra **una sola vez**
-   en Administrador → Copias, te pide escribirla otra vez para estar seguros, y te ofrece imprimir una hoja. Guárdala en
-   un papel en un lugar seguro y en Contraseñas del iPhone o la Mac (como nota segura). El servidor guarda solo el
-   candado (la parte pública), nunca la clave: si alguien se roba el servidor o tu Telegram, no puede abrir tus copias.
-   Si la pierdes, nadie puede abrirlas, ni tú. Se crea y se comprueba solo desde tu cuenta de Tailscale; la página la
-   revisa sola y manda al servidor solo un «verificador», nunca la clave.
+1. **Tu contraseña de copias** (desde la 0.14.2): la eliges tú en Administrador → Copias → «Crear mi contraseña de
+   copias» (la escribes dos veces; al menos 10 caracteres, con una letra y un número). Con esta contraseña se abren tus
+   copias si un día pierdes el servidor. Anótala en un lugar seguro. Si la olvidas, nadie puede abrir tus copias, ni tú.
+   Mejor que no sea la misma con la que entras a la app. El servidor guarda solo el candado (la parte pública) y la «sal»
+   para estirarla, nunca la contraseña: si alguien se roba el servidor o tu Telegram, no puede abrir tus copias.
+   *Antes de la 0.14.2* la app daba una **clave de recuperación** de 28 letras y números («7K2M-Q9TB-…»): si tienes
+   copias hechas con una, esa clave sigue abriéndolas (la consola acepta las dos).
 2. **Tu cuenta de Telegram** (el chat con tu bot tiene todas las copias). No borres los mensajes del bot.
 
-Cada 90 días te llega un recordatorio en silencio para «Comprobar mi clave» (tarda un minuto). «Cambiar mi clave» existe
-por si alguien la vio: las copias de antes siguen necesitando la clave de antes (no la tires).
+**Sin contraseña de copias no se hace ninguna copia** (ni en el servidor ni en Telegram: la tarea de las 4:40 a. m. se
+salta con «sin_clave»). Por eso Copias y el Resumen de Administrador lo dicen en rojo: «Tus copias no se están
+guardando», con el botón «Crear mi contraseña de copias».
+
+Cada 90 días te llega un recordatorio en silencio para «Comprobar mi contraseña» (tarda un minuto; también acepta la clave
+de 28 símbolos de antes). «Cambiar mi contraseña de copias» existe por si alguien la vio: las copias nuevas usan la nueva;
+las copias de antes siguen necesitando la de antes (no la olvides).
 
 ### Cómo crear el bot y unir tu chat (unos 5 minutos, gratis)
 1. En Telegram busca **@BotFather** (marca azul) y escríbele `/newbot`.
@@ -299,9 +305,9 @@ Si alguien más le escribe a tu bot, nunca le contesta ni se une su chat: cada c
 de un extraño nunca gastan los tuyos) y el código vence a los 10 minutos.
 
 ### Si un día pierdes el servidor
-1. Ten a mano tu clave de recuperación (la del papel o la de Contraseñas).
+1. Ten a mano tu contraseña de copias (y, para las copias de antes de la 0.14.2, tu clave de recuperación de 28 letras y números).
 2. En Telegram abre @BotFather → /mybots → tu bot → API Token, y cópialo.
-3. En el servidor nuevo, OPORTIA te pedirá ese token y tu clave. Busca sola tu última copia (la que está fijada arriba en el
+3. En el servidor nuevo, OPORTIA te pedirá ese token y tu contraseña de copias. Busca sola tu última copia (la que está fijada arriba en el
    chat con tu bot), la comprueba y la abre. *(La pantalla llega en la parte 1f; hasta entonces Claude lo hace contigo por
    la consola, con la orden de abajo.)*
 4. **Enseguida, revoca el token del bot**: en @BotFather escribe `/revoke`, elige tu bot y te da un token NUEVO. Así el
@@ -309,13 +315,13 @@ de un extraño nunca gastan los tuyos) y el código vence a los 10 minutos.
    hiciera, el servidor nuevo te avisa urgente «Otro servidor manda copias»).
 5. Después pega otra vez tus claves de IA y el token NUEVO del bot en Claves: por seguridad nunca viajan en las copias.
    En una base recuperada, Claves lo deja hacer enseguida (dice «Esta base se recuperó de una copia»: crea una llave
-   nueva para tus claves, sin pasar por la consola). Luego crea en Copias una clave de recuperación **nueva** (Copias dice
-   «Tu clave ya no sirve en este servidor» y deja crear otra) y guarda las dos: las copias viejas se siguen abriendo con
-   la de antes.
+   nueva para tus claves, sin pasar por la consola). Luego crea en Copias tu contraseña de copias **nueva** (Copias dice
+   «ya no sirve en este servidor» y deja crearla otra vez; puede ser la misma de antes): las copias de antes se siguen
+   abriendo con la contraseña de antes.
 6. No borres los mensajes del bot: son tus copias. Si borras el chat, solo quedan las copias de este servidor.
 
-Estos 6 pasos son los mismos en la pantalla Copias («Si un día pierdes el servidor») y en la hoja que se imprime con la
-clave (`copias.restaurar.paso1…6`; `test/pantallas.test.js` revisa que sean los mismos que aquí).
+Estos 6 pasos son los mismos en la pantalla Copias («Si un día pierdes el servidor») (`copias.restaurar.paso1…6`;
+`test/pantallas.test.js` revisa que sean los mismos que aquí).
 
 Sin bot (token perdido o bot borrado): en Telegram Desktop de la Mac guarda las partes `.opc` y el `-indice.txt` de una
 noche y usa `--archivos=`. Una copia de más de 30 horas, si hay una más nueva, si su fecha es del futuro (el reloj del
@@ -382,7 +388,7 @@ siguen: revocar el token en @BotFather (`/revoke`), pegar otra vez las claves y 
 de antes si la más nueva está dañada o cortada (siempre dice que hay una más nueva). Para la carpeta de copias del
 servidor, usa la carpeta de un mes si son muchísimos archivos.
 
-`oportia-restaurar.mjs` pide la clave y el token sin mostrarlos (nunca en la línea de la orden), nunca corre como root y
+`oportia-restaurar.mjs` pide la contraseña de copias (o la clave de 28 símbolos de antes) y el token sin mostrarlos (nunca en la línea de la orden), nunca corre como root y
 nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta, dañada o no auténtica · 5 el destino existe
 · 6 Telegram o la red · 7 formato nuevo · 8 cancelada. La parte 1f pondrá la pantalla y el instalador encima.
 
@@ -414,15 +420,15 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
   de la llave de las claves, por ejemplo una foto del droplet). La base sola no alcanza: el sello que firma las copias va
   guardado con la llave de las claves, que nunca viaja en una copia. Si el servidor fue atacado, al recuperar elige una
   copia de ANTES de esa fecha (la consola siempre muestra la fecha y pregunta).
-- **La clave de recuperación**: «Cambiar mi clave» en Copias. Las copias nuevas quedan con la clave nueva; las viejas
-  siguen abriéndose con la vieja (quien la tenga y además tenga tu Telegram podría abrir esas copias viejas).
+- **La contraseña de copias**: «Cambiar mi contraseña de copias» en Copias. Las copias nuevas quedan con la nueva; las
+  viejas siguen abriéndose con la vieja (quien la tenga y además tenga tu Telegram podría abrir esas copias viejas).
 
 ### Lo que falta (a propósito)
 - La pantalla para recuperar y el instalador de una base recuperada: parte 1f (hoy, la consola).
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.13.9; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.14.2; cambio de base 9 en la 0.12.0)
 
 ## Academia (etapa 1, versión 0.13.8; cambio de base 10 en la 0.13.8)
 
@@ -702,6 +708,38 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.14.2: tu propia contraseña de copias (en vez de la clave de 28 símbolos) — sin cambio de base
+Pedido del dueño: «quita eso, pon una contraseña normal».
+- **Lo que pasaba**: sin la clave de recuperación creada, **no se hacía ninguna copia** (la tarea `copias.hacer` de las 4:40
+  se saltaba con `sin_clave`, sin copia local ni en Telegram); el Resumen solo lo decía en amarillo.
+- **Ahora**: Administrador → Copias → **«Crear mi contraseña de copias»**: dos cuadros (escribirla y repetirla), «Mostrar» /
+  «Ocultar», al menos 10 caracteres con una letra y un número (las marcas se encienden mientras escribes) y la sugerencia
+  de no usar la de entrar (si es la misma, se avisa; no se obliga). Queda en uso enseguida (pide tu contraseña de entrar
+  otra vez, como todo lo delicado). Sin contraseña, Copias y el Resumen dicen en **rojo** «Tus copias no se están
+  guardando» con el botón para crearla.
+- **Cómo se protege**: la contraseña (normalizada: NFC, sin espacios al principio ni al final) pasa por **scrypt** (N=2^15,
+  r=8, p=1: 32 MB, ~0,1 s medido en un núcleo de la máquina de pruebas; uno a la vez) con una sal al azar de 16 bytes, y
+  salen los mismos 16 bytes de «semilla» que daba la clave de 28 símbolos: el candado X25519, el sello y el verificador son
+  los de siempre (`src/copias/clave.js`). La sal y los números de scrypt (no son secretos) van en `ajustes`
+  (`copias.contrasena|<llave pública>`), en la cabecera del flujo de cada copia y en su índice: así se recupera solo con la
+  contraseña, también sin el índice. Al leerlos de una copia (antes de saber si es auténtica) solo se acepta scrypt con
+  N entre 2^10 y 2^17, r=8, p=1 y 16 bytes de sal, y se prueban como mucho 8 sales. La contraseña nunca se guarda, nunca
+  se anota, nunca va a Telegram ni a una IA; las copias hechas con la clave de 28 símbolos quedan byte por byte iguales
+  (`test/copia-v1.json` sigue abriéndose).
+- **Recuperar**: `oportia-restaurar.mjs` pide «tu contraseña de copias, o tu clave de recuperación de antes». Se decide por la
+  copia: una clave de 28 símbolos válida es la clave; si no, se prueba como contraseña con la sal de cada copia (de la más
+  nueva a la más vieja). Una contraseña que no abre nada: «Esa contraseña no abre tus copias…» (salida 3).
+- **Cambiar**: «Cambiar mi contraseña de copias» — las copias nuevas usan la nueva; las de antes siguen necesitando la de antes
+  (la pantalla lo dice). La misma contraseña puesta otra vez (por ejemplo tras recuperar en un servidor nuevo) lleva sal
+  nueva y abre las copias de antes y las nuevas.
+- **Comprobar** (el recordatorio de cada 90 días): acepta la contraseña (va al servidor, que la estira con la sal de cada
+  llave, las 5 más nuevas) o la clave de 28 símbolos (solo su verificador sale de la página, como siempre).
+- Rutas nuevas: `POST /api/admin/copias/contrasena` ({ contrasena, repetida }) y `POST /api/admin/copias/contrasena/comprobar`
+  ({ contrasena }), las dos con `no-store`. Las de la clave de 28 símbolos siguen (la pantalla ya no ofrece crearla).
+- **Vuelta atrás**: la 0.14.2 no cambia la base. Si se vuelve a la 0.14.1 (o antes) con una contraseña de copias en uso, esa versión
+  seguiría haciendo copias con esa llave pero **sin** la sal en la copia ni en el índice: esas copias solo se abrirían con la
+  0.14.2 y la base de ese servidor. Si hay que volver, crea antes una clave de 28 símbolos (o vuelve a la 0.14.2 pronto).
 
 ### Lo nuevo de la 0.14.1: «Pago del servidor» (DigitalOcean) — sin cambio de base
 - **Administrador → Sistema → «Pago del servidor»** (`#pago-servidor`, `public/pago-servidor-vista.js`): un botón grande

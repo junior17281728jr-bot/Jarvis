@@ -628,7 +628,7 @@ test('el programa para restaurar nunca lee la clave ni el token de la orden ni d
   assert.doesNotMatch(cli, /process\.env/);
   assert.match(cli, /\/\^--\(\?:clave\|token\|key\)\\b\/i\.test\(a\)/, 'rechaza --clave/--token');
   assert.match(cli, /process\.getuid\?\.\(\) === 0 && !config\.modoPrueba/);
-  assert.match(cli, /preguntar\('Escribe tu clave de recuperación \(no se muestra\): ', \{ oculto: true \}\)/);
+  assert.match(cli, /preguntar\('Escribe tu contraseña de copias o tu clave de recuperación \(no se muestra\): ', \{ oculto: true \}\)/);
   assert.doesNotMatch(cli, /\b(?:rmSync|unlinkSync|rmdirSync|writeFileSync)\b/, 'nunca borra ni pisa');
 });
 

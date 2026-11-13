@@ -9,7 +9,7 @@
 //  - El texto de la clave nunca se guarda, nunca se anota, nunca va en un error ni en un aviso. Cada búfer derivado se
 //    llena de ceros al terminar.
 //  - 128 bits al azar no necesitan «estirar» la clave (nadie la elige).
-import { createHash, createPrivateKey, createPublicKey, hkdfSync, randomBytes } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, hkdfSync, randomBytes, scrypt } from 'node:crypto';
 import { ErrorCopias } from './formato.js';
 
 export const ALFABETO = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -127,4 +127,90 @@ export function hashVerificador(hex) {
   const texto = String(hex ?? '');
   if (!/^[0-9a-f]{64}$/.test(texto)) return null;
   return createHash('sha256').update(Buffer.from(texto, 'hex')).digest('hex');
+}
+
+// El sha256 (hex) de un verificador en bytes (lo que se guarda en copias_llaves.verificador).
+export const hashDeVerificador = bytes => createHash('sha256').update(bytes).digest('hex');
+
+// ---------- 0.14.2: la CONTRASEÑA DE COPIAS (la elige el dueño) ----------
+// Pedido del dueño: «quita eso, pon una contraseña normal». La contraseña se «estira» con scrypt (lento a propósito: quien
+// tenga una copia y quiera adivinar tarda ~0,1–0,5 s por intento en una máquina como el servidor) y salen 16 bytes que
+// son la MISMA «semilla» de siempre: derivar() da la llave X25519, el sello, el verificador y la huella. El sobre de las
+// copias no cambia. La sal (al azar, 16 bytes) y los números de scrypt van con la parte pública: en la base (ajustes), en
+// la cabecera del flujo de cada copia y en su índice; así se puede recuperar solo con la contraseña.
+//  - La contraseña nunca se guarda, nunca se anota, nunca va en un error, un aviso, Telegram ni a una IA.
+//  - Se normaliza igual en todas partes (NFC y sin espacios al principio ni al final): una «ñ» escrita en el iPhone y
+//    pegada en la terminal de la Mac da la misma llave.
+//  - scrypt N=2^15, r=8, p=1: 32 MB por cálculo y uno a la vez (servidor de 512 MB). Las pruebas pasan uno más chico.
+export const KDF = Object.freeze({ kdf: 'scrypt', N: 32768, r: 8, p: 1 });
+export const CONTRASENA_MIN = 10;
+export const CONTRASENA_MAX = 200;
+// Lo que se acepta al LEER un kdf (viene de una copia o un índice antes de saber si es auténtico: cualquiera con el token
+// del bot puede fijar un archivo). Un N enorme no puede tumbar nada.
+const N_MIN = 1024;
+const N_MAX = 131072;
+const LARGO_SAL = 16;
+
+export function normalizarContrasena(texto) {
+  return String(texto ?? '').normalize('NFC').trim();
+}
+
+// El problema de una contraseña nueva (código corto) o null si sirve: 10 caracteres o más, una letra y un número.
+export function problemaDeContrasena(contrasena, repetida) {
+  const c = normalizarContrasena(contrasena);
+  const largo = [...c].length;
+  if (largo < CONTRASENA_MIN) return 'contrasena_corta';
+  if (largo > CONTRASENA_MAX) return 'contrasena_larga';
+  if (!/\p{L}/u.test(c)) return 'contrasena_sin_letra';
+  if (!/\p{Nd}/u.test(c)) return 'contrasena_sin_numero';
+  if (repetida !== undefined && normalizarContrasena(repetida) !== c) return 'contrasenas_distintas';
+  return null;
+}
+
+// ¿Este kdf (de la base, de una cabecera o de un índice) tiene la forma de siempre? → { kdf, N, r, p, sal } o null.
+export function leerKdf(k) {
+  if (!k || typeof k !== 'object' || k.kdf !== 'scrypt') return null;
+  const { N, r, p } = k;
+  if (!Number.isSafeInteger(N) || N < N_MIN || N > N_MAX || (N & (N - 1)) !== 0 || r !== 8 || p !== 1) return null;
+  if (typeof k.sal !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(k.sal) || Buffer.from(k.sal, 'base64url').length !== LARGO_SAL) return null;
+  return { kdf: 'scrypt', N, r, p, sal: k.sal };
+}
+
+export function nuevoKdf(base = KDF) {
+  return leerKdf({ kdf: 'scrypt', N: base.N, r: base.r, p: base.p, sal: randomBytes(LARGO_SAL).toString('base64url') });
+}
+
+// Un cálculo de scrypt a la vez (32 MB cada uno): el resto espera su turno.
+let enCurso = Promise.resolve();
+function porTurno(trabajo) {
+  const r = enCurso.then(trabajo, trabajo);
+  enCurso = r.then(() => {}, () => {});
+  return r;
+}
+
+// contraseña + kdf → la semilla (16 bytes; quien llama la llena de ceros). ErrorCopias('contrasena_formato') si no hay
+// contraseña, 'kdf_no_valido' si el kdf no tiene la forma de siempre.
+export function semillaDeContrasena(contrasena, kdf) {
+  const k = leerKdf(kdf);
+  if (!k) return Promise.reject(new ErrorCopias('kdf_no_valido'));
+  const texto = normalizarContrasena(contrasena);
+  if (!texto || [...texto].length > CONTRASENA_MAX) return Promise.reject(new ErrorCopias('contrasena_formato'));
+  const entrada = Buffer.from(texto, 'utf8');
+  return porTurno(() => new Promise((ok, mal) => {
+    scrypt(entrada, Buffer.from(k.sal, 'base64url'), 16, { N: k.N, r: k.r, p: k.p, maxmem: 160 * k.N * k.r }, (error, semilla) => {
+      entrada.fill(0);
+      if (error) mal(new ErrorCopias('kdf_no_valido'));
+      else ok(semilla);
+    });
+  }));
+}
+
+// contraseña + kdf → lo mismo que derivar(): { privada, publica, sello, verificador, huella } y además el kdf.
+export async function derivarDeContrasena(contrasena, kdf) {
+  const semilla = await semillaDeContrasena(contrasena, kdf);
+  try {
+    return { ...derivar(semilla), kdf: leerKdf(kdf) };
+  } finally {
+    semilla.fill(0);
+  }
 }

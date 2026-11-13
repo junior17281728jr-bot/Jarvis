@@ -128,7 +128,7 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
   registrarRutasClaves(rutas, { config, limites: ia.limitesClaves, probadores: ia.probadores });
   // Fase 1, parte e: las copias cifradas y el Telegram del dueño.
-  registrarRutasCopias(rutas, { config, supervisor, limites: copias.limites, medirDisco: copias.medirDisco ?? null });
+  registrarRutasCopias(rutas, { config, supervisor, limites: copias.limites, medirDisco: copias.medirDisco ?? null, kdf: copias.kdf });
   registrarRutasCanales(rutas, { config, limites: copias.limitesCanales, adaptador: copias.adaptador });
   // Academia (0.7.0): el contenido vive en la carpeta de datos del servidor (src/academia/paquetes.js).
   registrarRutasAcademia(rutas, { config, supervisor, ...academia, finDeSesion });

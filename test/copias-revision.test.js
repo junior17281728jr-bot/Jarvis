@@ -314,7 +314,7 @@ test('revisión (1): el programa para restaurar dice los pasos que siguen (pegar
     const r = await restaurar([`--archivos=${join(b.config.carpetaCopias, 'cifradas')}`, `--destino=${destino}`], { entrada: `${b.claveTexto}\n` });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /Administrador → Claves pega otra vez/);
-    assert.match(r.stdout, /clave de recuperación NUEVA/);
+    assert.match(r.stdout, /crea tu contraseña de copias otra vez/);
   } finally {
     await b.cerrar();
   }

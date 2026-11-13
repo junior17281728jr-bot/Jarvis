@@ -16,7 +16,12 @@ import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { anotarCambioAdmin } from '../cuentas/confirmar.js';
 import { ErrorCopias } from '../copias/formato.js';
-import { estadoCopias, crearClavePendiente, confirmarClave, comprobarClave, tareaDeCopiaViva, llaveActiva, planDeDisco, ajustesCopias, selloLegible } from '../copias/estado.js';
+import {
+  estadoCopias, crearClavePendiente, confirmarClave, comprobarClave, tareaDeCopiaViva, llaveActiva, planDeDisco, ajustesCopias, selloLegible,
+  crearContrasenaCopias, comprobarContrasena,
+} from '../copias/estado.js';
+import { verificarClave } from '../cuentas/claves.js';
+import { buscarPorId } from '../cuentas/usuarios.js';
 import { estadoTelegram, canalActivo } from '../canales/canales.js';
 import { estadoLlave } from '../claves/cifrado.js';
 
@@ -40,11 +45,25 @@ function errorDeClave(error, registro) {
   if (error instanceof ErrorHttp) return error;
   if (error instanceof ErrorCopias) {
     if (error.clave === 'sin_pendiente') return new ErrorHttp(409, 'sin_pendiente');
-    if (['verificador_formato', 'clave_no_coincide', 'clave_de_prueba'].includes(error.clave)) return new ErrorHttp(400, error.clave);
+    if (['verificador_formato', 'clave_no_coincide', 'clave_de_prueba', ...ERRORES_CONTRASENA].includes(error.clave)) return new ErrorHttp(400, error.clave);
     if (error.clave === 'almacen_no_disponible') return new ErrorHttp(503, 'almacen_no_disponible');
   }
   try { registro?.error?.(`Clave de recuperación: ${error instanceof ErrorCopias ? error.clave : 'error'}`); } catch { /* nada */ }
   return new ErrorHttp(500, 'error_interno');
+}
+
+// 0.14.2: lo que puede estar mal en una contraseña de copias (la pantalla tiene una frase para cada uno).
+export const ERRORES_CONTRASENA = Object.freeze(['contrasena_corta', 'contrasena_larga', 'contrasena_sin_letra', 'contrasena_sin_numero',
+  'contrasenas_distintas', 'contrasena_formato']);
+
+// 0.14.2: el pedido de la contraseña de copias: SOLO esos campos, de texto (cualquier otro se rechaza sin leerlo). La
+// contraseña nunca se anota ni vuelve en una respuesta.
+async function soloCampos(req, nombres) {
+  let datos;
+  try { datos = await leerJson(req, 4096); } catch (error) { throw error instanceof ErrorHttp ? error : new ErrorHttp(400, 'datos_no_validos'); }
+  const campos = Object.keys(datos ?? {});
+  if (campos.length !== nombres.length || !nombres.every(n => typeof datos[n] === 'string')) throw new ErrorHttp(400, 'contrasena_formato');
+  return datos;
 }
 
 // El pedido de confirmar o comprobar: SOLO { verificador } (64 hex). Cualquier otro campo (por ejemplo, la clave
@@ -57,8 +76,9 @@ async function soloVerificador(req) {
   return datos.verificador;
 }
 
-// medirDisco: solo para pruebas (el disco libre de mentira); en el servidor, el de verdad.
-export function registrarRutasCopias(rutas, { config = null, supervisor = null, limites = {}, registro = console, medirDisco = null } = {}) {
+// medirDisco: solo para pruebas (el disco libre de mentira); en el servidor, el de verdad. kdf: los números de scrypt de
+// una contraseña nueva (las pruebas pasan unos chicos; en el servidor, los de src/copias/clave.js).
+export function registrarRutasCopias(rutas, { config = null, supervisor = null, limites = {}, registro = console, medirDisco = null, kdf = undefined } = {}) {
   const topes = { ...crearLimitesCopias(), ...limites };
   const disco = () => {
     try { return medirDisco ? medirDisco() : config ? discoLibreMb(config.carpetaDatos ?? config.carpetaCopias) : null; } catch { return null; }
@@ -137,6 +157,33 @@ export function registrarRutasCopias(rutas, { config = null, supervisor = null, 
       const r = confirmarClave(db, { verificador, usuarioId: usuario.id });
       anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'clave_copias' });
       return { codigo: 200, datos: { activa: { huella: r.huella, desde: r.desde } }, cabeceras: SIN_CACHE };
+    } catch (error) {
+      throw errorDeClave(error, registro);
+    }
+  }, { admin: true, soloDueno: true });
+
+  // 0.14.2 (pedido del dueño): «Crear mi contraseña de copias» y «Cambiar mi contraseña de copias». La escribe dos veces;
+  // queda en uso enseguida. Si es la misma con la que entra a la app, se le sugiere (nunca se obliga) que use otra.
+  rutas.agregar('POST', '/api/admin/copias/contrasena', async ({ db, req, usuario, confirmar }) => {
+    try {
+      const datos = await soloCampos(req, ['contrasena', 'repetida']);
+      contar(topes.clave, usuario);
+      await confirmar();
+      const r = await crearContrasenaCopias(db, { config, contrasena: datos.contrasena, repetida: datos.repetida, usuarioId: usuario.id, base: kdf });
+      anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'clave_copias' });
+      let igualQueEntrar = false;
+      try { igualQueEntrar = await verificarClave(datos.contrasena, buscarPorId(db, usuario.id)?.clave_hash); } catch { igualQueEntrar = false; }
+      return { codigo: 201, datos: { activa: { huella: r.huella, desde: r.desde }, antes: r.antes, igualQueEntrar }, cabeceras: SIN_CACHE };
+    } catch (error) {
+      throw errorDeClave(error, registro);
+    }
+  }, { admin: true, soloDueno: true });
+
+  rutas.agregar('POST', '/api/admin/copias/contrasena/comprobar', async ({ db, req, usuario }) => {
+    try {
+      const datos = await soloCampos(req, ['contrasena']);
+      contar(topes.comprobar, usuario);
+      return { codigo: 200, datos: await comprobarContrasena(db, { contrasena: datos.contrasena }), cabeceras: SIN_CACHE };
     } catch (error) {
       throw errorDeClave(error, registro);
     }
