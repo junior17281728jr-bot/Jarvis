@@ -783,7 +783,8 @@ function marco(seccion, ...contenido) {
   // Academia (0.7.0): «Proyectos» queda escondido (su código sigue, para más adelante).
   // 0.13.2: «Oral» (el examen oral, con su Camino) tiene su pestaña cuando hay contenido oral; con un punto cuando es «Tu
   // siguiente paso» (terminó los exámenes del Test Guide). En el teléfono caben 5: nombres cortos («Ajustes», «Admin»).
-  const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['configuracion', 'menu.configuracion', 'ajustes', 'menu.corto.configuracion']];
+  // 0.13.7: «Repaso final» (todo el Test Guide y todo el oral, para el día antes del examen): siempre, antes de «Ajustes».
+  const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['repaso', 'menu.repaso', 'trofeo', 'menu.corto.repaso'], ['configuracion', 'menu.configuracion', 'ajustes', 'menu.corto.configuracion']];
   if (estado.oral?.hay) enlaces.splice(2, 0, ['oral', 'menu.oral', 'microfono']);
   if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo', 'menu.corto.admin']);
   if (estado.usuario && estado.oral === undefined) conocerOral();
@@ -826,7 +827,7 @@ function anotarOral(o) {
   const nuevo = estado.oral.hay ? enlaceMenu('oral', 'menu.oral', 'microfono', null, seccion) : null;
   if (actual && nuevo) actual.replaceWith(nuevo);
   else if (actual) actual.remove();
-  else if (nuevo) menu.querySelector('[data-menu="configuracion"]')?.before(nuevo);
+  else if (nuevo) (menu.querySelector('[data-menu="repaso"]') ?? menu.querySelector('[data-menu="configuracion"]'))?.before(nuevo);
 }
 function conocerOral() {
   if (preguntandoOral) return;
@@ -4798,6 +4799,33 @@ async function pantallaOralDe(que, a, b) {
   return vista.pantallaOral(r.datos, h);
 }
 
+// ---- 0.13.7: «Repaso final» (public/repaso-final-vista.js) ----
+const ayudasRepasoFinal = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
+  combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }) });
+const errorRepasoFinal = r => mostrar(marco('repaso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
+  el('a', { class: 'boton-3d blanco', href: '#repaso' }, el('span', { texto: t('rf.volver') })))));
+async function pantallaRepasoFinal() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/academia/repaso-final'), import('./repaso-final-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorRepasoFinal(r);
+  vista.pantallaRepasoFinal(r.datos, ayudasRepasoFinal());
+}
+async function pantallaRondaFinal(id) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', `/api/academia/repaso-final/ronda/${encodeURIComponent(id)}`), import('./repaso-final-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorRepasoFinal(r);
+  vista.rondaTestGuide(r.datos, ayudasRepasoFinal());
+}
+async function pantallaOralFinal(materia) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/academia/repaso-final/oral'), import('./repaso-final-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorRepasoFinal(r);
+  vista.rondaOralFinal(r.datos, materia, ayudasRepasoFinal());
+}
+
 async function pantallaExamen(materia) {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/camino');
@@ -5875,6 +5903,13 @@ async function dibujar() {
   // #oral/practica/<m>[/<t>] o #oral/practica/errores, #oral/examen/<m> y #oral/final.
   const oral = seccion.match(/^oral(?:\/(tema|practica|examen|final)(?:\/([a-z0-9_-]+))?(?:\/([a-z0-9_-]+))?)?$/);
   if (oral) return pantallaOralDe(oral[1] ?? null, oral[2] ?? null, oral[3] ?? null);
+  // 0.13.7: «Repaso final» (public/repaso-final-vista.js, solo se carga ahí): #repaso, #repaso/test-guide/<intento>,
+  // #repaso/oral y #repaso/oral/<capítulo>.
+  if (seccion === 'repaso') return pantallaRepasoFinal();
+  const rondaFinal = seccion.match(/^repaso\/test-guide\/(\d+)$/);
+  if (rondaFinal) return pantallaRondaFinal(rondaFinal[1]);
+  const oralFinal = seccion.match(/^repaso\/oral(?:\/([a-z0-9_-]+))?$/);
+  if (oralFinal) return pantallaOralFinal(oralFinal[1] ?? null);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   if (seccion === 'como-van' && esAdmin) return pantallaComoVan();
   const compararExamen = seccion.match(/^comparar-examen\/([a-z0-9_-]+)$/);
@@ -5954,6 +5989,11 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'mi-repaso' || /^refuerzo\/[a-z0-9_-]+\/[a-z0-9_-]+$/.test(seccion)) return ['/api/academia/mi-repaso'];
   const miniClase = seccion.match(/^mi-repaso\/clase\/([a-z0-9_-]+\/[a-z0-9_-]+\/[a-z0-9-]+)$/);
   if (miniClase) return [`/api/academia/mi-repaso/clase?concepto=${encodeURIComponent(`c:${miniClase[1]}`)}`];
+  // 0.13.7: «Repaso final».
+  if (seccion === 'repaso') return ['/api/academia/repaso-final'];
+  const rondaFinal = seccion.match(/^repaso\/test-guide\/(\d+)$/);
+  if (rondaFinal) return [`/api/academia/repaso-final/ronda/${encodeURIComponent(rondaFinal[1])}`];
+  if (/^repaso\/oral(?:\/[a-z0-9_-]+)?$/.test(seccion)) return ['/api/academia/repaso-final/oral'];
   const video = seccion.match(/^video\/([a-z0-9_-]+)(?:\/(?:primera|tema)\/[a-z0-9_-]+)?$/);
   if (video) return [`/api/academia/video/${encodeURIComponent(video[1])}`];
   // 0.12.0: lo extra de una materia.

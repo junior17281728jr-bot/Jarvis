@@ -25,6 +25,7 @@ import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tuto
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
+import { resumenRepasoFinal, crearRondaFinal, vistaRondaFinal, responderRondaFinal, terminarRondaFinal, oralRepasoFinal, marcarOralRepasoFinal, reiniciarOralRepasoFinal, examenAbierto } from '../academia/repaso-final.js';
 
 export function crearLimitesAcademia() {
   return {
@@ -130,6 +131,34 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('POST', '/api/academia/oral/examen/entregar', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: entregarExamenOral(db, usuario.id, activo(db), { examen: textoDe(datos, 'examen'), respuestas: datos?.respuestas }, { ahoraMs: reloj() }) };
+  });
+
+  // ---------- 0.13.7: «Repaso final» (src/academia/repaso-final.js): todo el Test Guide y todo el oral, sin IA ----------
+  rutas.agregar('GET', '/api/academia/repaso-final', ({ db, usuario }) => ({ codigo: 200, datos: resumenRepasoFinal(db, usuario.id, activo(db), reloj()) }));
+  rutas.agregar('POST', '/api/academia/repaso-final/ronda', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    if (!topes.intentos.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 201, datos: crearRondaFinal(db, usuario.id, activo(db), { materia: textoDe(datos, 'materia') || null, falladas: datos?.falladas === true }, { azar, ahoraMs: reloj() }) };
+  });
+  rutas.agregar('GET', '/api/academia/repaso-final/ronda/:id', ({ db, usuario, parametros }) => ({ codigo: 200, datos: vistaRondaFinal(db, usuario.id, activo(db), parametros.id) }));
+  rutas.agregar('POST', '/api/academia/repaso-final/ronda/:id/responder', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: responderRondaFinal(db, usuario.id, activo(db), parametros.id, { pregunta: textoDe(datos, 'pregunta'), elegida: textoDe(datos, 'elegida') }, { ahoraMs: reloj() }) };
+  });
+  // (sin finDeSesion: el Repaso final nunca prepara clases ni gasta IA)
+  rutas.agregar('POST', '/api/academia/repaso-final/ronda/:id/terminar', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    return { codigo: 200, datos: terminarRondaFinal(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
+  });
+  rutas.agregar('GET', '/api/academia/repaso-final/oral', ({ db, usuario }) => ({ codigo: 200, datos: oralRepasoFinal(db, usuario.id, activo(db), reloj()) }));
+  rutas.agregar('POST', '/api/academia/repaso-final/oral/marcar', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    if (!topes.posiciones.permitir(`rf${usuario.id}`)) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 200, datos: marcarOralRepasoFinal(db, usuario.id, activo(db), { tarjeta: datos?.tarjeta, sabia: datos?.sabia }, reloj()) };
+  });
+  rutas.agregar('POST', '/api/academia/repaso-final/oral/reiniciar', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: reiniciarOralRepasoFinal(db, usuario.id, activo(db), { materia: textoDe(datos, 'materia') || null }, reloj()) };
   });
 
   // 0.12.0: el humor del instructor (Configuración): si el administrador lo permite y si el alumno lo quiere.
@@ -241,6 +270,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     if (base != null && !Number.isSafeInteger(base)) throw new ErrorHttp(400, 'datos_no_validos');
     // 0.12.2: «concepto» (opcional, con tipo «errores»): repasar un concepto de «Mi repaso» (su clave).
     const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null, concepto: textoDe(datos, 'concepto') || null };
+    // 0.13.7: el Repaso final se empieza solo por su ruta (que no deja empezarlo durante un examen con reloj).
+    if (pedido.tipo === 'final') throw new ErrorHttp(400, 'datos_no_validos');
     // 0.9.2: el examen de materia va con reloj (src/academia/examen.js); si hay uno abierto con tiempo, sigue ese (200).
     // 0.12.0: «saltar: true» = «Ir directo al examen» sin terminar los temas (queda anotado; src/academia/saltos.js).
     if (pedido.tipo === 'examen') return crearExamen(db, usuario.id, activo(db), pedido.materia, { azar, ahoraMs: reloj(), saltar: datos?.saltar === true });
@@ -272,12 +303,17 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('POST', '/api/academia/intentos/:id/responder', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
     // El examen con reloj no dice nada antes de entregar: sus respuestas van por …/examen.
-    if (examenDe(db, filaPropia(db, usuario, parametros.id))) throw new ErrorHttp(409, 'examen_con_reloj');
+    const propia = filaPropia(db, usuario, parametros.id);
+    if (examenDe(db, propia)) throw new ErrorHttp(409, 'examen_con_reloj');
+    // 0.13.7: el Repaso final trae TODO el Test Guide: no se responde con un examen con reloj abierto.
+    if (propia?.tipo === 'final' && examenAbierto(db, usuario.id, reloj())) throw new ErrorHttp(409, 'repaso_final_en_examen');
     return { codigo: 200, datos: responder(db, usuario.id, activo(db), parametros.id, { pregunta: textoDe(datos, 'pregunta'), elegida: textoDe(datos, 'elegida') }, { ahoraMs: reloj() }) };
   });
 
   rutas.agregar('POST', '/api/academia/intentos/:id/terminar', async ({ db, req, usuario, parametros }) => {
     await leerJson(req);
+    // 0.13.7: el Repaso final (por si llega aquí) nunca prepara clases ni gasta IA.
+    if (filaPropia(db, usuario, parametros.id)?.tipo === 'final') return { codigo: 200, datos: terminarRondaFinal(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() }) };
     const fin = examenDe(db, filaPropia(db, usuario, parametros.id))
       ? entregarExamen(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() })
       : terminar(db, usuario.id, activo(db), parametros.id, { ahoraMs: reloj() });

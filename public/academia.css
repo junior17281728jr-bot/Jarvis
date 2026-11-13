@@ -1109,3 +1109,22 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 /* 0.13.3: en el examen oral, el sello «PRONTO» va arriba a la derecha (no le quita ancho al título en el teléfono). */
 .oral-capitulo .banner-materia { position: relative; }
 .oral-capitulo .banner-pronto { position: absolute; top: 10px; right: 12px; font-size: 10.5px; padding: 3px 8px; }
+
+/* 0.13.7: «Repaso final» (public/repaso-final-vista.js): dos partes grandes con sus botones, la línea corta después de
+   responder y las tarjetas del oral con «La sabía» / «No la sabía». */
+.repaso-final .titulo-grande.con-icono { display: flex; align-items: center; gap: 10px; }
+.repaso-final .rf-parte { margin-top: 16px; }
+.rf-opciones { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+@media (min-width: 560px) { .rf-opciones { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); } }
+.rf-opcion { width: 100%; min-height: 56px; text-decoration: none; }
+.rf-parte > .rf-opcion { margin-top: 12px; }
+.rf-opcion-texto { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.rf-opcion-detalle { font-size: 13px; font-weight: 600; opacity: 0.85; }
+.rf-materias { display: grid; gap: 8px; margin-top: 10px; }
+.rf-materias[hidden] { display: none; }
+.rf-breve { display: flex; gap: 8px; align-items: flex-start; font-size: 16px; line-height: 1.4; margin: 0; }
+.rf-breve .icono { flex: none; margin-top: 2px; }
+.rf-oral-tema { margin: 4px 0 8px; }
+.rf-oral-respuesta { margin-top: 14px; }
+.rf-sabia { display: flex; gap: 10px; width: 100%; }
+.rf-sabia .boton-3d.grande { flex: 1 1 0; min-width: 0; }

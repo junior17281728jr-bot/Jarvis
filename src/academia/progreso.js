@@ -24,7 +24,21 @@ import { nombresLegales } from '../cuentas/terminos.js';
 // (eso solo lo hacen «tema» y «examen», siempre con las 3 opciones originales del Test Guide).
 // 0.9.0: «instructor» = la Práctica del instructor (src/academia/practica.js): lo que vence en el repaso, lo que más falla
 // y lo nuevo de sus temas abiertos, mezclado. También es práctica, con las 3 opciones originales.
-export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso', 'reto', 'errores', 'instructor']);
+// 0.13.7: «final» = el «Repaso final» (src/academia/repaso-final.js): TODAS las preguntas del Test Guide del paquete en uso
+// (o de una materia, o solo las que la última vez falló), tal cual y sin mirar qué temas tiene abiertos. Es práctica: nunca
+// aprueba un tema ni un examen.
+export const TIPOS_INTENTO = Object.freeze(['tema', 'examen', 'repaso', 'reto', 'errores', 'instructor', 'final']);
+// Las preguntas del Test Guide (nunca las del POH ni las «extra») de todas las materias con contenido, o de una.
+export function idsTestGuide(paquete, materia = null) {
+  const materias = (paquete?.materias ?? []).filter(m => m.temas.length && (materia == null || m.id === materia));
+  return materias.flatMap(m => m.temas.flatMap(t => t.preguntas)).filter(id => paquete.preguntas.get(id)?.origen === 'test_guide');
+}
+// Las preguntas cuya ÚLTIMA respuesta (en cualquier práctica o examen) fue mala.
+export function falladasTestGuide(db, usuarioId, paquete) {
+  const ultima = new Map();
+  for (const f of db.prepare('SELECT pregunta, correcta FROM academia_respuestas WHERE usuario_id = ? ORDER BY id').all(usuarioId)) ultima.set(f.pregunta, f.correcta);
+  return new Set([...ultima].filter(([id, c]) => c === 0 && paquete?.preguntas.get(id)?.origen === 'test_guide').map(([id]) => id));
+}
 export const modoDeTipo = tipo => (tipo === 'reto' ? MODO_RETO : MODO_ORIGINAL);
 // 0.12.0: el modo de un intento ya creado: el de su tipo, o «reto» si un tema se hizo en Modo reto (el administrador lo
 // puso por defecto para las prácticas de tema; se fija al crear el intento en academia_intentos.modo).
@@ -461,7 +475,7 @@ function barajar(lista, azar) {
   return copia;
 }
 
-export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false, concepto = null }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
+export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false, concepto = null, soloFalladas = false }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   if (!TIPOS_INTENTO.includes(tipo)) throw new ErrorHttp(400, 'datos_no_validos');
   let ids;
@@ -523,6 +537,16 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
     if (materia && tema && !abiertos.has(`${materia}/${tema}`)) throw new ErrorHttp(403, 'tema_bloqueado');
     ids = preguntasDelInstructor(db, usuarioId, paquete, abiertos, ahoraMs, { materia, tema });
     if (!(materia && tema)) { materia = null; tema = null; }
+  } else if (tipo === 'final') {
+    // 0.13.7: el Repaso final (para quien ya estudió): no mira temas cerrados.
+    if (materia != null && !paquete.materias.some(m => m.id === materia && m.temas.length)) throw new ErrorHttp(404, 'no_existe');
+    ids = idsTestGuide(paquete, materia);
+    if (soloFalladas === true) {
+      const malas = falladasTestGuide(db, usuarioId, paquete);
+      ids = ids.filter(id => malas.has(id));
+      if (!ids.length) throw new ErrorHttp(409, 'sin_errores');
+    }
+    tema = null;
   } else {
     ids = repasoPendiente(db, usuarioId, paquete, ahoraMs).slice(0, REPASO_MAXIMO);
     materia = null;
@@ -621,7 +645,7 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
     if (f.terminado_en) return f;
     recien = true;
     if (f.respondidas < f.total && !permitirFaltantes) throw new ErrorHttp(409, 'faltan_respuestas');
-    const aprobado = ['repaso', 'reto', 'errores', 'instructor'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
+    const aprobado = ['repaso', 'reto', 'errores', 'instructor', 'final'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
   });

@@ -492,7 +492,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.12.5: Administrador en 4 grupos: Contenido → Términos y Videos de YouTube; Sistema → Cambios importantes.
     ['contenido/terminos', 'pantallaTerminosAdmin'], ['contenido/videos', 'pantallaVideosAdmin'], ['admin/cambios', 'pantallaAdmin'],
     // 0.12.8: Dinero e IA → IA por alumno y Registro de la IA.
-    ['ia-alumnos', 'pantallaIaAlumnos'], ['ia-registro', 'pantallaRegistroIa'], ['ia-registro/7', 'pantallaRegistroIa']];
+    ['ia-alumnos', 'pantallaIaAlumnos'], ['ia-registro', 'pantallaRegistroIa'], ['ia-registro/7', 'pantallaRegistroIa'],
+    // 0.13.7: el Repaso final y una de sus vueltas del Test Guide.
+    ['repaso', 'pantallaRepasoFinal'], ['repaso/test-guide/7', 'pantallaRondaFinal'], ['repaso/oral', 'pantallaOralFinal']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {

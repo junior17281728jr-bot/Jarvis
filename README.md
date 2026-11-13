@@ -701,6 +701,25 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.13.7: «Repaso final» (para el día antes del examen) — sin cambio de base
+- **Una pestaña más en el menú: «Repaso final»** (en el iPhone, «Repaso»; `#repaso`, `public/repaso-final-vista.js`,
+  `src/academia/repaso-final.js`). «Para el día antes del examen: practica todo sin volver a leer las clases.» Sin IA y sin costo.
+- **A) Test Guide completo**: todas las preguntas del Test Guide del paquete en uso (cada materia que tenga contenido; si llega
+  otra, entra sola), tal cual: enunciado, opciones y correcta del paquete. «Todo», «Por materia» o «Solo las que fallé» (las
+  que la última vez respondió mal). Después de responder: ✅/❌ y UNA línea corta sacada tal cual de la explicación sencilla
+  del paquete (el «Truco para recordar»; si no trae, el «Por qué»; si no, su primera línea). Las que falla vuelven al final
+  hasta acertarlas; «12 de 32» arriba y la nota «a la primera» al final. Las respuestas cuentan como cualquier práctica
+  (Mi repaso, puntos, racha), pero nunca aprueban un tema ni un examen (intento de tipo `final`). Con un examen con reloj
+  abierto no se puede empezar ni responder. La vuelta de hoy se puede seguir («Seguir donde quedaste»).
+- **B) Examen oral: todo lo que te pueden preguntar**: tarjetas con cada pregunta del libro del oral (inglés, tal cual, con
+  el título del tema en español) → «Ver respuesta» (la del libro tal cual, su página y lo que dice en español) → «La sabía» /
+  «No la sabía» (las que no, vuelven al final). También las de practicar en voz alta (el libro no trae su respuesta). Todo o un
+  capítulo. Lo de hoy se guarda por alumno en «ajustes» (`academia.repaso_final.<id>`) para seguir donde quedó; al otro día
+  empieza limpio. Sin contenido oral, la parte B lo dice en una línea.
+- Rutas del alumno (solo lo suyo; 401 sin sesión, 404 lo de otro): `GET /api/academia/repaso-final`,
+  `POST …/ronda`, `GET …/ronda/:id`, `POST …/ronda/:id/responder`, `POST …/ronda/:id/terminar`, `GET …/oral`,
+  `POST …/oral/marcar`, `POST …/oral/reiniciar`. Pruebas: `test/repaso-final.test.js` (reloj falso, sin esperas).
+
 ### Lo nuevo de la 0.13.6: la nota general del curso — sin cambio de base
 - En «Cómo van todos» y en el Resumen de la ficha: **«Nota general del curso: X %»** (número grande y barra) = la mejor nota
   del examen de cada una de las **11 materias**, sumadas y ÷ 11 (la que no tiene examen cuenta 0), y **«Exámenes aprobados: A de 11»**.
