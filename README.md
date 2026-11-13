@@ -422,7 +422,7 @@ nunca pisa un archivo. Salidas: 0 bien · 2 uso · 3 clave · 4 copia incompleta
 - No se vuelven a comprobar copias viejas; el bot no contesta órdenes (eso llega con los canales de clientes, fase 3+).
 - No hay un canal aparte para las copias (todo va a tu chat privado); se puede agregar si lo pides.
 
-## Academia (etapa 1, versión 0.13.0; cambio de base 9 en la 0.12.0)
+## Academia (etapa 1, versión 0.13.1; cambio de base 9 en la 0.12.0)
 
 **Regla absoluta: este repositorio es PÚBLICO.** Ningún texto de un libro, ninguna pregunta del Test Guide y ninguna imagen de
 un libro entra nunca a git. El contenido llega como un **paquete** que el administrador sube en Administrador → Contenido y que
@@ -701,6 +701,53 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.13.1: «Preparándote para el examen oral» (la pista oral, entera) — sin cambio de base
+Una sección **aparte** del Test Guide, con su propio Camino, que solo usa la **Guía del examen oral**. Funciona sin IA; con
+IA, «¿Lo entendiste?» de cada tarjeta explica mejor o profundiza (el mismo tutor de las clases).
+- **Dónde**: en Inicio, debajo de «Mi repaso», la entrada «Preparándote para el examen oral» (siempre visible si hay
+  contenido oral; dice «Tu siguiente paso» cuando el alumno aprobó los exámenes de todas las materias con clases del
+  Test Guide), con «Listo · N %» o «Todavía no · N %». Rutas de pantalla: `#oral`, `#oral/tema/<materia>/<tema>`,
+  `#oral/practica/<materia>[/<tema>]`, `#oral/practica/errores`, `#oral/examen/<materia>`, `#oral/final`
+  (`public/oral-vista.js`, se carga solo ahí).
+- **El contenido** (`src/academia/oral.js`): las versiones con `pista: "oral"` se juntan **tema por tema**
+  (`paquete.oral`; cada tema sale de la última versión puesta en uso que lo trae, y una versión oral nunca se quita de
+  «en uso» por otra más nueva). Nada de esto está en `materias`, `preguntas` ni `deTema`: los exámenes, la preparación,
+  el repaso, las fallas, los puntos y las estadísticas del Test Guide no lo ven. Materias (los ids de las fuentes, por
+  capítulo): `oral_calificaciones`, `oral_aeronavegabilidad`, `oral_meteorologia`, `oral_rendimiento`, `oral_sistemas`,
+  `oral_travesia`, `oral_nocturno`, `oral_factores_humanos` y `oral_escenarios` (capítulo 9). El formato suma por tema
+  `titulo_en`, `adicionales` (las «Additional Study Questions», tal cual, con su página) y, en cada `libro_qa`, `n` y
+  `puntos_clave`; `fuente_pregunta` puede llevar `n` (el número de la pregunta del libro).
+- **La clase** (misma cara que Factores Humanos): las tarjetas en español (dibujos, `calculo`, fotos de la guía, fichas de
+  inglés con su traducción, «Recuerda», la página «Guía del examen oral, p. N»); después **cada pregunta del libro TAL
+  CUAL** (inglés) con su respuesta TAL CUAL, «En español» y «Puntos clave»; después las preguntas para estudiar en voz alta.
+- **Practicar** (por tema, por capítulo o «mis errores del oral») y **exámenes** (de cada capítulo, hasta 20 preguntas, y
+  el **«Examen oral (práctica final)»**, hasta 40, que mezcla todos los capítulos por partes iguales más hasta 6 de
+  escenario): opción múltiple hecha con las respuestas del libro. Al responder (en el examen, al entregar) cada una dice
+  **«¿De dónde salió?»**: la pregunta y la respuesta del libro tal cual (inglés, con su página) y una línea de cómo se
+  convirtió en esta pregunta. La respuesta nunca viaja antes; mientras un examen está abierto, sus preguntas no se
+  responden por la práctica.
+- **«Listo para el oral / Todavía no»** (sin IA): el % junta por igual lo que domina (la última respuesta de cada pregunta),
+  los exámenes de capítulo aprobados y la mejor nota del examen final; «Listo» = todos los de capítulo y el final
+  aprobados (con el % para aprobar de los ajustes).
+- **Dónde se guarda** (sin cambio de base): las respuestas en `academia_extra_respuestas` con la materia `oral_*` y el
+  nivel `oral_practica` / `oral_examen` / `oral_final` (lo «extra» solo mira las materias del Test Guide); lo leído, los
+  exámenes y el examen abierto en el ajuste `academia.oral.<alumno>`. **Progreso** y **Mi repaso** la muestran en su
+  propia sección. Rutas: `GET /api/academia/oral`, `GET /api/academia/oral/temas/:materia/:tema`,
+  `POST …/oral/temas/:materia/:tema/leido`, `POST …/oral/ronda`, `POST …/oral/responder`, `POST …/oral/examen`,
+  `POST …/oral/examen/entregar`; `/api/academia/camino` trae `oral` (corto), `/api/academia/progreso` y
+  `/api/academia/mi-repaso` traen `oral`.
+- **La fábrica la hace** (`src/academia/fabrica-oral.js`; ya no responde `no_disponible`: el interruptor «Encender la pista
+  oral» está en Fábrica de materias): con el Test Guide terminado, capítulo por capítulo desde `oral/oral.json`,
+  `oral/oral-capNN.txt` y las fotos `oral/img-…` de `imagenes.json`. Por tema: plan → tarjetas (de a 3, con algo que se
+  VEA) → libro (de a 4 preguntas del libro: explicación, puntos clave y UNA pregunta de opción múltiple con su `como`) →
+  cierre → verificación (Claude Haiku 5.5: cada punto y cada pregunta contra la página citada de ESTE libro). La pregunta
+  y la respuesta del libro las copia el código TAL CUAL (el modelo solo dice el número; en un escenario, dónde termina la
+  pregunta: las dos partes son trozos exactos del texto). Sin IA se revisa además que cada respuesta del libro esté en su
+  página (o la siguiente) y los números que no están en la lectura. **Un tema que ya está en una versión oral en uso que
+  no es de la fábrica (por ejemplo, los capítulos 1–2 hechos a mano) se salta, tema por tema**; un capítulo con todos
+  sus temas así queda «Ya publicada». El plan («Qué falta») muestra cada capítulo, los temas saltados y su tiempo.
+  Pruebas: `test/oral.test.js` y `test/fabrica-oral.test.js` (todo de muestra, inventado).
+
 ### Lo nuevo de la 0.13.0: la «Fábrica de materias» y la «Mejora continua» — sin cambio de base
 Cuando la clave de Claude funciona y las fuentes están en Drive, **la app fabrica sola las materias 2–11** con la calidad de
 Factores Humanos y las publica como versiones normales de paquete (siguen sirviendo aunque la API deje de funcionar). El
@@ -759,12 +806,9 @@ se comprueban otra vez al armar (`tgAlterado`); si algo no cuadra, no se guarda 
 - **Dibujos con datos** (`src/academia/diagramas.js` revisa, `public/clase/diagramas.js` dibuja): `diagrama-partes`,
   `diagrama-tabla`, `diagrama-pasos`, `diagrama-escala`, `diagrama-capas`, `diagrama-linea` y `calculo` (un ejemplo
   resuelto: problema, fórmula, cada paso con sus números y el resultado). `formato.js` rechaza uno con los datos mal llenados.
-- **Pista «Preparándote para el examen oral»** (lo que ya está): el formato acepta `pista: "oral"` con sus materias
-  `oral_*` (nunca se mezclan con las 11), preguntas `origen: "oral"` con `fuente_pregunta` (pregunta y respuesta del libro
-  tal cual, página y cómo se armó) y `libro_qa` por tema (verbatim); las fuentes traen `oral/oral.json` y `oral-capNN.txt`
-  y el plan lo muestra. **Lo que falta (a propósito; el interruptor `oral` no se puede encender todavía: la ruta responde `no_disponible`):** fabricar esa pista
-  (capítulos 3–8, escenarios y examen final; los capítulos 1–2 llegan hechos a mano y se saltan) y su sección en la app
-  (Camino propio, «¿De dónde salió?» de cada pregunta creada, examen final y «Listo para el oral»).
+- **Pista «Preparándote para el examen oral»**: el formato acepta `pista: "oral"` con sus materias `oral_*` (nunca se
+  mezclan con las 11), preguntas `origen: "oral"` con `fuente_pregunta` (pregunta y respuesta del libro tal cual, página y
+  cómo se armó) y `libro_qa` por tema (verbatim). La fabricación y su sección en la app llegaron en la 0.13.1 (arriba).
 - Rutas: `GET /api/admin/academia/fabrica`, `GET …/fabrica/:materia/informe`, `POST …/fabrica/{pausa,config,ahora}`,
   `POST …/fabrica/:materia/{reiniciar,publicar}`. Pruebas: `test/fabrica.test.js`, `test/fabrica-mejora.test.js`,
   `test/fabrica-api.test.js`, `test/fuentes-partes.test.js` y `test/diagramas.test.js` (fuentes sintéticas, proveedor falso,
