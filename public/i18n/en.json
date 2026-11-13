@@ -4003,14 +4003,14 @@
   "claude.estado.pausada": "Paused: {motivo}",
   "claude.estado.ilegible": "The key has to be pasted again",
   "claude.estado.sin_acceso": "Only visible from the owner's account",
-  "claude.detalle.no_conectado": "Paste your Claude key so the app can build and improve the lessons on its own.",
+  "claude.detalle.no_conectado": "Paste your Claude or ChatGPT key so the app can build and improve the lessons by itself.",
   "claude.detalle.esperando_verificacion": "Anthropic still asks you to finish identity verification at console.anthropic.com. When it is done, tap “Test (free)”.",
   "claude.detalle.no_pasa": "Tap “Test (free)” again or change the key.",
   "claude.detalle.pausada": "Tap “Test (free)”: if it passes, it continues on its own.",
   "claude.detalle.ilegible": "Tap “Connect or change the key” and paste it again.",
   "claude.detalle.sin_acceso": "Sign in with the owner's account to see or change the key.",
   "claude.detalle.ia_apagada": "The key works, but the AI is off.",
-  "claude.conectar": "Connect or change the key",
+  "claude.conectar": "Connect Claude",
   "claude.probar": "Test (free)",
   "claude.probando": "Testing…",
   "claude.prueba.ok": "It works! The key passed the (free) test.",
@@ -4233,5 +4233,6 @@
   "ia.proposito.dibujo_generar": "AI drawings: draw",
   "ia.proposito.dibujo_revisar": "AI drawings: Claude reviews the drawing",
   "ia.proveedor.propia": "Own API (OpenAI-compatible)",
-  "claves.corto.ia_propia": "Own API"
+  "claves.corto.ia_propia": "Own API",
+  "iaprov.ia_apagada": "The AI is off: turn it on once you have a key that works."
 }

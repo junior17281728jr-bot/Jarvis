@@ -18,7 +18,7 @@
 // stop_reason / incomplete_details.reason), 'error' (401 con la clave así en el tipo y el código del error) y
 // 'error_500' (lo mismo con un 500).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
-// 0.14.0: GET /v1/models (la LISTA: { modelos }), POST /v1/images/generations (un WebP falso pequeño) y la «API propia»:
+// 0.14.2: GET /v1/models (la LISTA: { modelos }), POST /v1/images/generations (un WebP falso pequeño) y la «API propia»:
 // POST /chat/completions y GET /models (su lista: { modelosPropia }).
 import { createServer } from 'node:http';
 

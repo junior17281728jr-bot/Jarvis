@@ -79,7 +79,7 @@ export function reservaMinimaMicro(precio, propositos = PROPOSITOS) {
   let minimo = null;
   for (const def of Object.values(propositos ?? {})) {
     if (!def || def.fase > FASE_ACTUAL) continue;
-    // 0.14.0: los usos especiales (un dibujo, mirar un dibujo) no cuentan: no dicen si cabe una clase o una explicación.
+    // 0.14.2: los usos especiales (un dibujo, mirar un dibujo) no cuentan: no dicen si cabe una clase o una explicación.
     if (def.tipo === 'imagen' || Array.isArray(def.proveedores)) continue;
     const entrada = Number.isSafeInteger(def.entradaMinBytes) && def.entradaMinBytes > 0 ? def.entradaMinBytes : 1;
     const r = reservaMicro(precio, { entradaMax: entrada, salidaMax: def.salidaMax });

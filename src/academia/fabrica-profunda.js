@@ -186,7 +186,7 @@ const bloquesDe = leer => {
 // ---------- Los pedidos ----------
 function pedidoProfundo(leer, c, t, p, pub, viejas, instruccion = null) {
   const r = pedidoProfundoBase(leer, c, t, p, pub, viejas);
-  // 0.14.0: un trabajo de «Pídele a la IA»: lo que pidió el dueño (solo contenido) va al final de cada paso de escribir.
+  // 0.14.2: un trabajo de «Pídele a la IA»: lo que pidió el dueño (solo contenido) va al final de cada paso de escribir.
   // Va entre la tarea y sus datos (los datos siguen siendo lo último del mensaje), sin «<» ni «>».
   if (instruccion && ['plan', 'tarjetas', 'cierre'].includes(p.tipo)) {
     const pedido = String(instruccion).slice(0, 600).replace(/[<>]/g, ' ');
@@ -425,7 +425,7 @@ async function armarProfunda(ctx, item, info, ahora, op = null) {
     await ctx.escribir(() => {
       guardarEstado(db, { ...valor, saltados, corregidos: corregidos.slice(0, 100), en: iso(ahora) });
       if (aviso) abrirAviso(db, { ...aviso, ahora });
-      // 0.14.0: «Lo que hizo la IA»: cada clase reescrita (publicada o esperando revisión) queda en el registro.
+      // 0.14.2: «Lo que hizo la IA»: cada clase reescrita (publicada o esperando revisión) queda en el registro.
       if (valor.estado === 'publicada' || valor.estado === 'revision') {
         anotarCambio(db, { materia: item.id, que: op?.que ?? 'clase_reescrita', estado: valor.estado, version: valor.version ?? null, antes: { version: pub.base }, despues: { temas: valor.temasMejorados ?? 0, dudas: (valor.dudas ?? []).length }, ...costoDe(db, op?.pasoPrefijo ?? `p:${item.id}:`), ahora });
       }
@@ -583,7 +583,7 @@ export async function profundizar(ctx, { ahora, cfg, man }) {
   return armarProfunda(ctx, item, info, ahora);
 }
 
-// ---------- 0.14.0: un trabajo de «Pídele a la IA» (reescribir UN tema con lo que pidió el dueño) ----------
+// ---------- 0.14.2: un trabajo de «Pídele a la IA» (reescribir UN tema con lo que pidió el dueño) ----------
 // La MISMA tubería que la mejora profunda (escribir → verificar contra el libro → versión nueva publicada o «Esperando
 // revisión»), solo para los temas pedidos, con sus propios pasos guardados (op.prefijo), sus propósitos (chat_*) y su
 // tope (op.topeMicro). → { trabajo, seguir, motivo?, listo? }

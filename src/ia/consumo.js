@@ -82,7 +82,7 @@ export function estadoIA(db, { config, enTailnet = false, esDueno = false, motiv
     vuelveEl: iso(inicioMesSiguienteCobro(ahora)),
     modoSeguro: leerModoSeguro(db).activo,
     modelo,
-    // 0.14.0: quién está trabajando ahora (Claude, ChatGPT o la API propia) y quién se eligió para escribir.
+    // 0.14.2: quién está trabajando ahora (Claude, ChatGPT o la API propia) y quién se eligió para escribir.
     proveedorActivo,
     preferido: cfg.preferido,
   };

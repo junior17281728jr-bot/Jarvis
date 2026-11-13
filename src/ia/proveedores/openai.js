@@ -90,7 +90,7 @@ function leerUsoImagen(u) {
   return { entrada, salida, cacheLectura: 0, cacheEscritura: 0, geo: null, raro: nota.raro, desconocidos: nota.desconocidos };
 }
 
-// 0.14.0: los modelos de la lista (GET /v1/models → data[].id), solo los que tienen un nombre que se entiende.
+// 0.14.2: los modelos de la lista (GET /v1/models → data[].id), solo los que tienen un nombre que se entiende.
 export function modelosDeLista(json) {
   const lista = Array.isArray(json?.data) ? json.data : [];
   return [...new Set(lista.map(x => x?.id).filter(id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:\/-]{1,80}$/.test(id)))].slice(0, 400);
@@ -117,13 +117,13 @@ export const openai = Object.freeze({
 
   pedido({ modelo, sistema, texto, esquema = null, salidaMax }) {
     const cuerpo = { model: modelo, instructions: sistema, input: texto, max_output_tokens: Math.max(16, Number(salidaMax) || 16), store: false };
-    // 0.14.0: strict solo si el esquema lo permite (todo objeto cerrado y con todas sus claves en «required»); si no,
+    // 0.14.2: strict solo si el esquema lo permite (todo objeto cerrado y con todas sus claves en «required»); si no,
     // igual se revisa con el mismo candado que a Claude (src/ia/esquema.js).
     if (esquema) cuerpo.text = { format: { type: 'json_schema', name: 'campos', schema: esquema, strict: esquemaEstricto(esquema) } };
     return { ruta: '/v1/responses', metodo: 'POST', cuerpo };
   },
 
-  // 0.14.0: «Dibujos con IA» (solo ChatGPT dibuja): una imagen WebP pequeña. La respuesta trae la imagen en base64.
+  // 0.14.2: «Dibujos con IA» (solo ChatGPT dibuja): una imagen WebP pequeña. La respuesta trae la imagen en base64.
   pedidoImagen({ modelo, texto }) {
     return { ruta: '/v1/images/generations', metodo: 'POST', cuerpo: { model: modelo, prompt: texto, n: 1, size: '1024x1024', quality: 'low', output_format: 'webp', output_compression: 60 } };
   },
@@ -183,7 +183,7 @@ export const openai = Object.freeze({
     });
   },
 
-  // La prueba de una clave: la LISTA de modelos (GET /v1/models, gratis: no usa tokens). 0.14.0: antes leía un modelo
+  // La prueba de una clave: la LISTA de modelos (GET /v1/models, gratis: no usa tokens). 0.14.2: antes leía un modelo
   // adivinado; ahora la lista sirve además para elegir los modelos (src/claves/probar.js la guarda).
   prueba() {
     return { ruta: '/v1/models', metodo: 'GET', cuerpo: null };

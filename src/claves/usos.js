@@ -29,7 +29,7 @@ export const USOS = Object.freeze({
       Object.freeze(['sk-admin-', 'clave_admin']),
     ]),
   }),
-  // 0.14.0: la clave de la «API propia (compatible con OpenAI)»: cualquier texto razonable (cada servidor da la suya),
+  // 0.14.2: la clave de la «API propia (compatible con OpenAI)»: cualquier texto razonable (cada servidor da la suya),
   // nunca una de Claude ni de administrador.
   ia_propia: Object.freeze({
     grupo: 'ia', proveedor: 'propia',

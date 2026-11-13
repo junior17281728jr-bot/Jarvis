@@ -77,7 +77,7 @@ export const sincronizarFalso = async (db, config, { escribir }) => {
   return { ok: true, bajados: 0 };
 };
 
-// 0.14.0: el texto del pedido en los tres formatos: Claude (messages[0].content), ChatGPT (input) y la API propia
+// 0.14.2: el texto del pedido en los tres formatos: Claude (messages[0].content), ChatGPT (input) y la API propia
 // (el último mensaje «user» de messages).
 export function textoDelPedido(cuerpo) {
   if (typeof cuerpo?.input === 'string') return cuerpo.input;
@@ -88,7 +88,7 @@ export function textoDelPedido(cuerpo) {
 }
 // Lo que «responde el modelo» en cada paso (por la tarea que va en el mensaje). dudas: lo que dice el verificador.
 const datosDe = texto => { const m = [...texto.matchAll(/<datos>\n([\s\S]*?)\n<\/datos>/g)].at(-1); return m ? JSON.parse(m[1]) : {}; };
-// 0.14.0: chat(d): lo que «responde» la IA en «Pídele a la IA» (si no, un plan para reescribir el primer tema);
+// 0.14.2: chat(d): lo que «responde» la IA en «Pídele a la IA» (si no, un plan para reescribir el primer tema);
 // sinDibujo: tarjetas sin foto ni dibujo y sin números (para los «Dibujos con IA»); revision(d): lo que mira Claude.
 export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null } = {}) {
   const opciones = { dudasProfunda };
@@ -180,7 +180,7 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = 
 }
 
 // Todo listo: base con la IA encendida (tope general US$50), la clave probada, el proveedor falso y las fuentes.
-// 0.14.0: proveedor: 'anthropic' (lo de siempre), 'openai' (el caso del dueño: la clave de Claude espera la verificación
+// 0.14.2: proveedor: 'anthropic' (lo de siempre), 'openai' (el caso del dueño: la clave de Claude espera la verificación
 // de identidad y ChatGPT, probada gratis con la lista de modelos, hace todo), 'ambos' (las dos funcionan) o 'propia'.
 export async function ponerChatGpt(base, { proveedor = 'openai', claudeBloqueada = true, ahora = T0 } = {}) {
   const { db, config, admin, secretoId } = base;

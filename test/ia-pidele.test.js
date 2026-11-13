@@ -1,4 +1,4 @@
-// 0.14.0: «Pídele a la IA» (el chat del dueño), «Lo que hizo la IA» (registro, números, lo que falta) y los «Dibujos con
+// 0.14.2: «Pídele a la IA» (el chat del dueño), «Lo que hizo la IA» (registro, números, lo que falta) y los «Dibujos con
 // IA». Fuentes sintéticas, proveedor falso en 127.0.0.1 (ChatGPT; Claude esperando la verificación, salvo donde se dice),
 // reloj de mentira y sin Drive.
 import './ayuda.js';

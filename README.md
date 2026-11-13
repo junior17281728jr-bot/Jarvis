@@ -709,6 +709,61 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.4: ChatGPT (o tu propia API) termina la academia, «Pídele a la IA» y «Lo que hizo la IA» — sin cambio de base
+- **Dinero e IA → «IA (Claude o ChatGPT)»** (`#claves`, antes «Claude (API)»): arriba **«¿Quién hace el trabajo?»** — Claude,
+  ChatGPT, API propia o **«El que funcione»** (por defecto, con su orden editable ↑↓; Claude primero). Vale para la fábrica
+  y también para lo que usan los alumnos (tutor, profesor, explicaciones). Después, una sección por proveedor: pegar la clave,
+  **«Probar (gratis)»**, el estado en palabras simples y **3 pasos** (ChatGPT: platform.openai.com → API keys → crear; agregar
+  crédito en Billing; pegarla aquí). Público: `public/ia-proveedores-vista.js`; servidor: `GET/POST /api/admin/ia/proveedores`,
+  `POST /api/admin/ia/precios`, `POST /api/admin/ia/dibujos`.
+- **ChatGPT sin nombres adivinados**: la prueba gratis ahora es `GET /v1/models` (la lista; nunca gasta) y se guarda
+  (`ajustes`: `ia.modelos.openai`). Si no hay un modelo elegido, se eligen solos por el nombre (`src/ia/modelos.js`): el general
+  más nuevo para **escribir**, el «mini» para **verificar** y la rutina, el «gpt-image» para **dibujos**; el dueño los cambia en
+  una lista simple. Sin modelo elegido no hay precio y no se gasta. La clave: `sk-…` / `sk-proj-…` (cifrada como la de Claude).
+- **Tabla de precios editable** (US$ por millón de tokens: entrada, entrada en caché, salida) por modelo (`ajustes`:
+  `ia.precios.propios`, `src/ia/precios.js: precioPara`). Mientras no se escriba, un precio **conservador por el nombre**
+  (mini US$0.50/4.00, nano 0.20/1.60, pro 20/160, imagen 10/40, los demás 2.50/15.00) con la nota «revisa los precios en la
+  página de OpenAI». Los topes del mes, de la fábrica, de la mejora profunda, del chat y de los dibujos valen para TODO junto.
+  Con otro precio que el de Claude, lo más que se aparta una vez sale de su precio sin pasar de un techo (`techoMicro`: US$0,50
+  escribir la fábrica, US$0,15 lo demás); un precio que no cabe espera (`llamada_muy_cara`), nunca deja un paso «fallido».
+- **Revisión cruzada**: cuando Claude funciona, **todo lo que escribe ChatGPT (o la API propia) lo verifica Claude** (los
+  propósitos de rol «verificar»: `src/ia/presupuesto.js, ordenDeProveedores`); si solo funciona uno, se verifica solo con su
+  modelo barato. El registro dice **«Revisado por Claude ✔»**.
+- **La fábrica con ChatGPT hace lo mismo que con Claude** (`puedeLlamar` ya no exige Claude): las 11 materias (Test Guide TAL
+  CUAL, comprobado byte a byte), la pista oral (`libro_qa` TAL CUAL), las clases con el patrón mejorado, «¿De dónde salió?», las
+  fotos del libro de `imagenes.json`, la verificación, la mejora profunda y la continua, y deja de gastar al terminar. Con
+  OpenAI: API «Responses», `store:false`, salida JSON con `strict:true` cuando el esquema lo permite (todos los de la fábrica;
+  si no, el mismo candado de siempre, `src/ia/esquema.js`).
+- **«API propia (compatible con OpenAI)»** (`src/ia/proveedores/propia.js`): dirección `https://…` (sin puerto, nunca una IP ni
+  un nombre local), su clave y sus modelos (escribir / verificar); habla «Chat Completions»; «Probar» = `GET {base}/models`.
+- **Contenido → «Lo que hizo la IA»** (`#contenido/ia-hizo`, `src/academia/ia-hizo.js`): el **registro de cambios** (lo más
+  nuevo primero: fecha, materia/tema, qué cambió — «Materia publicada», «Clase reescrita», «Corrección», «Tu pedido, hecho»,
+  «Revisión de errores» —, antes → después, costo, proveedor/modelo, «Revisado por Claude ✔» y «Ver la clase»; `ajustes`:
+  `ia.cambios`, solo agrega, las últimas 500), **cómo vamos** (materias hechas / en curso / esperando revisión / pendientes de
+  11 y de 9 capítulos orales, temas mejorados, preguntas con explicación, dudas que esperan tu revisión, dinero contra cada
+  tope y el tiempo estimado), **«Lo que falta»** en palabras simples y los **materiales privados que faltan** (texto del libro
+  de un tema, sus preguntas del Test Guide, una foto, el libro del oral, una materia publicada sin su libro).
+- **Contenido → «Pídele a la IA»** (`#contenido/pidele`, `src/academia/pidele.js`, solo el administrador): escribes en español
+  simple; la IA contesta y propone un **plan con su costo estimado**; solo con **«Hazlo»** pasa a la fila de la fábrica (la
+  misma tubería que la mejora profunda: escribir → verificar contra el libro → versión nueva publicada o «Esperando revisión»).
+  Trabajos: **reescribir un tema** (explicar mejor, ejemplos, orden de las tarjetas, un dibujo hecho por el código) y
+  **«Revisar errores»** (cada tema contra el libro y la clave → informe). **Solo contenido**: lo que pide cambiar el código,
+  precios, cuentas o el texto del Test Guide / `libro_qa` se rechaza en código antes de llamar (gratis) y otra vez si la IA lo
+  propone (el plan es JSON con un tipo de una lista cerrada y materia/tema que existen). Cada mensaje muestra su costo; tope
+  propio del chat (US$10, `chat_admin`/`chat_escribir`/`chat_verificar`); el contexto va corto (un resumen + 6 mensajes);
+  **«Pausar la IA» / «Reanudar»** para todo (fábrica + chat): en pausa no se llama a nada. La charla y los trabajos quedan en
+  `ajustes` (`ia.chat`, `ia.chat.trabajos`). Los contesta el trabajador dentro de la tarea de la fábrica.
+- **«Dibujos con IA»** (APAGADO, tope propio US$5, con el estimado antes de encenderlo; `src/academia/dibujos-ia.js`): para
+  tarjetas publicadas sin foto, sin clip y sin dibujo propio (nunca con datos exactos: tablas, números, instrumentos), ChatGPT
+  dibuja un WebP (≤ 200 KB, si no se descarta) que se guarda en la carpeta PRIVADA de datos (`academia/dibujos-ia/`, nunca en
+  git) marcado «Dibujo hecho con IA (ilustrativo)»; si Claude funciona, **Claude lo mira** (visión) y uno rechazado no se usa.
+  Solo ChatGPT dibuja; Claude solo revisa. Sin la API de imágenes, se salta en silencio.
+- **Resumen**: la tarjeta «IA (Claude o ChatGPT)» dice quién trabaja ahora y lo gastado del mes, el estado de Claude y de
+  ChatGPT, y «Conectar ChatGPT».
+- **Lo que falta** (para la próxima): poner los dibujos aprobados en una versión nueva del paquete (hoy quedan guardados,
+  revisados y contados); con la API propia, si el servidor no tiene `GET /models`, la prueba dice que no se pudo probar (la
+  prueba gratis nunca gasta: no se hace una respuesta de prueba pagada).
+
 ### Lo nuevo de la 0.14.2: tu propia contraseña de copias (en vez de la clave de 28 símbolos) — sin cambio de base
 Pedido del dueño: «quita eso, pon una contraseña normal».
 - **Lo que pasaba**: sin la clave de recuperación creada, **no se hacía ninguna copia** (la tarea `copias.hacer` de las 4:40

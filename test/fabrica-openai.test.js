@@ -1,4 +1,4 @@
-// 0.14.0: ChatGPT (OpenAI) y la «API propia» como proveedores de la IA. Sin red de verdad: proveedor falso en 127.0.0.1,
+// 0.14.2: ChatGPT (OpenAI) y la «API propia» como proveedores de la IA. Sin red de verdad: proveedor falso en 127.0.0.1,
 // claves falsas armadas al correr y reloj fijo. El caso del dueño: la clave de Claude espera la verificación de identidad
 // y ChatGPT termina todo (Test Guide y oral TAL CUAL).
 import './ayuda.js';

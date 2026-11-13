@@ -44,7 +44,7 @@ export const LIBRO_TG = Object.freeze({ id: 'test-guide', titulo: 'Test Guide (p
 export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_000, oral: false, mejora: Object.freeze({ activa: true, topeMesMicro: 2_000_000 }),
   // 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js): APAGADA por defecto, con su tope propio.
   profunda: Object.freeze({ activa: false, topeMicro: 40_000_000 }),
-  // 0.14.0: «Pídele a la IA» (el chat del dueño y sus trabajos) y los «Dibujos con IA» (APAGADOS), cada uno con su tope.
+  // 0.14.2: «Pídele a la IA» (el chat del dueño y sus trabajos) y los «Dibujos con IA» (APAGADOS), cada uno con su tope.
   chat: Object.freeze({ topeMicro: 10_000_000 }), dibujos: Object.freeze({ activa: false, topeMicro: 5_000_000 }) });
 export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 100_000_000, chatMaxMicro: 50_000_000, dibujosMaxMicro: 50_000_000 });
 export const T = Object.freeze({
@@ -116,7 +116,7 @@ export function puedeLlamar(db, config, { proposito, bytes, ahora, topeMicro, ga
   const def = PROPOSITOS[proposito];
   const cfg = leerConfigIa(db);
   if (!cfg.encendida) return { ok: false, motivo: 'ia_apagada' };
-  // 0.14.0: cualquier proveedor que funcione (Claude, ChatGPT o la API propia), con la MISMA elección que hará la llamada
+  // 0.14.2: cualquier proveedor que funcione (Claude, ChatGPT o la API propia), con la MISMA elección que hará la llamada
   // (src/ia/presupuesto.js: quién escribe y la revisión cruzada de Claude).
   const e = elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg), def);
   if (!e.ok) return { ok: false, motivo: e.motivo };
@@ -603,7 +603,7 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       await ctx.escribir(() => guardarGeneral(db, { ultimaSync: iso(ahora), sync: { ok: r.ok, motivo: r.motivo ?? null, bajados: r.bajados ?? 0 } }));
       return { punto: { sincronizado: true }, esperarMs: 1000 };
     }
-    // 0.14.0: «Pídele a la IA» primero (lo pidió el dueño): el mensaje que espera respuesta o un paso del trabajo que
+    // 0.14.2: «Pídele a la IA» primero (lo pidió el dueño): el mensaje que espera respuesta o un paso del trabajo que
     // aprobó con «Hazlo». Nunca con la IA en pausa; sin esperar las fuentes ni la espera de la fábrica. Si no pudo
     // (un tope, la clave), sigue con lo de siempre.
     if (!cfg.pausada) {
@@ -666,7 +666,7 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
         if (pr.esperarMs) return { punto: {}, esperarMs: pr.esperarMs, motivo: 'fabrica_cuota' };
         return fin({ motivo: 'profunda', profunda: pr.motivo });
       }
-      // 0.14.0: los «Dibujos con IA» (apagados por defecto, con su tope propio): uno por paso.
+      // 0.14.2: los «Dibujos con IA» (apagados por defecto, con su tope propio): uno por paso.
       const di = await dibujar(ctx, { ahora, cfg });
       if (di.trabajo) return di.seguir ? { punto: {}, esperarMs: 1000 } : fin({ motivo: 'dibujos' });
       const r = await mejorar(ctx, { ahora, cfg, man });

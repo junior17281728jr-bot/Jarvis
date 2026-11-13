@@ -1,4 +1,4 @@
-// 0.14.0: «Lo que hizo la IA» (Administrador → Contenido): el registro de cambios, del más nuevo al más viejo. Solo
+// 0.14.2: «Lo que hizo la IA» (Administrador → Contenido): el registro de cambios, del más nuevo al más viejo. Solo
 // agrega (una fila de «ajustes» con las últimas 500 entradas; nada de lo publicado se borra nunca). Cada entrada:
 //   { id, en, materia, tema?, que, estado?, version?, antes?, despues?, costoMicro, proveedor, modelo, revisadoPor, detalle? }
 // que: 'materia_publicada' | 'materia_en_revision' | 'clase_reescrita' | 'correccion' | 'pedido_hecho' | 'revision_errores'

@@ -1697,12 +1697,12 @@ const GRUPOS_ADMIN = [
     { id: 'videos', href: '#contenido/videos', clave: 'admin.pestana.videos', icono: 'video' },
     // 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js).
     { id: 'fabrica', href: '#contenido/fabrica', clave: 'admin.pestana.fabrica', icono: 'chispa' },
-    // 0.14.0: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js).
+    // 0.14.2: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js).
     { id: 'ia-hizo', href: '#contenido/ia-hizo', clave: 'admin.pestana.ia_hizo', icono: 'manual' },
     { id: 'pidele', href: '#contenido/pidele', clave: 'admin.pestana.pidele', icono: 'chispa' },
   ] },
   { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
-    // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo). 0.14.0: «IA (Claude o
+    // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo). 0.14.2: «IA (Claude o
     // ChatGPT)»: quién trabaja, Claude, ChatGPT y la API propia.
     { id: 'claves', href: '#claves', clave: 'admin.pestana.claude_api', icono: 'llave' },
     // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
@@ -1848,7 +1848,7 @@ async function pantallaPagoServidor() {
   if (!vigente()) return;
   mostrar(marco('admin', cabeceraAdmin('pago-servidor'), r.ok ? vistaPagoServidor(r.datos, { el, t, icono, api, textoError }, idioma) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
-// 0.14.0: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js, solo se carga aquí). El chat se mira solo
+// 0.14.2: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js, solo se carga aquí). El chat se mira solo
 // cada 4 s mientras la IA está contestando o trabajando (y solo mientras esta pantalla sigue abierta).
 async function pantallaLoQueHizo() {
   const vigente = nuevoTurno();
@@ -3028,7 +3028,7 @@ async function pantallaClaves(aviso = null) {
       !listo ? el('p', { class: 'aviso', role: 'alert', texto: t(d.almacen?.motivo === 'llave_falta' ? 'claves.llave_falta' : 'claves.llave_danada') }) : null,
       // Revisión final: una base recuperada de una copia nunca trae la llave de las claves: se pegan otra vez aquí.
       listo && d.almacen?.motivo === 'restaurada' ? el('p', { class: 'aviso con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('claves.restaurada') })) : null),
-    // 0.13.9: Claude (la IA) primero, con sus 3 pasos; el Telegram abajo. 0.14.0: «¿Quién hace el trabajo?», Claude,
+    // 0.13.9: Claude (la IA) primero, con sus 3 pasos; el Telegram abajo. 0.14.2: «¿Quién hace el trabajo?», Claude,
     // ChatGPT y la API propia (public/ia-proveedores-vista.js).
     [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'ia') - (a.grupo === 'ia')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente })
       : g.grupo === 'ia' ? vistaIa.seccionesIa(g, prov.ok ? prov.datos : null, {

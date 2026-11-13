@@ -27,7 +27,7 @@ import { trasProbarToken } from '../canales/canales.js';
 export const PRUEBA_MS = 10_000;
 // Lo más que se lee de la respuesta de una prueba gratis (count_tokens o GET models: unos pocos bytes).
 export const PRUEBA_MAX_BYTES = 65_536;
-// 0.14.0: la lista de modelos de OpenAI (unos cientos de nombres).
+// 0.14.2: la lista de modelos de OpenAI (unos cientos de nombres).
 export const LISTA_MAX_BYTES = 524_288;
 
 function probadorIa(id) {
@@ -43,7 +43,7 @@ function probadorIa(id) {
       senal, timeoutMs: PRUEBA_MS, permitido: hostDe(adaptador, cfg), topeBytes: id === 'anthropic' ? PRUEBA_MAX_BYTES : LISTA_MAX_BYTES,
     });
     const motivo = adaptador.leerPrueba(respuesta);
-    // 0.14.0: ChatGPT y la API propia: la lista de modelos se guarda (para elegir) y se eligen solos los de por defecto
+    // 0.14.2: ChatGPT y la API propia: la lista de modelos se guarda (para elegir) y se eligen solos los de por defecto
     // si todavía no hay uno elegido (o el elegido ya no está en la lista).
     if (motivo === 'ok' && id !== 'anthropic') guardarModelosVistos(db, config, { proveedor: id, modelos: modelosDeLista(respuesta.json) });
     return motivo;

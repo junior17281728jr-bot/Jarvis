@@ -32,7 +32,7 @@
 // Profesor recuerda más) y la salida de 2 048 a 4 096 tokens: lo que el modelo «piensa» (también con effort 'low') entra
 // en max_tokens, y con 2 048 una explicación larga se cortaba («respuesta_incompleta»). Lo peor de una vez con Sonnet 5.5
 // queda en ~US$0.095 (máximo 100 000 µUSD); con Haiku 5.5, ~US$0.005. Lo normal casi no cambia (se paga lo usado).
-// 0.14.0: con ChatGPT o la API propia, techoMicro US$0,15 (su precio lo pone el dueño; los topes del mes no cambian).
+// 0.14.2: con ChatGPT o la API propia, techoMicro US$0,15 (su precio lo pone el dueño; los topes del mes no cambian).
 const INSTRUCTOR = Object.freeze({
   fase: 1, ambito: 'espacio', cuentaProyecto: false, salidaMax: 4096, entradaMaxBytes: 16_384, entradaMinBytes: 2_200, respuestaMaxBytes: 65_536,
   maximoMicro: 100_000, tipicoMicro: 12_000, esfuerzo: 'low', timeoutMs: 50_000, alFaltar: 'motor_propio',
@@ -67,7 +67,7 @@ const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro:
 // US$0,10), porque la lectura del tema entra entera (hasta 72 000 bytes). La reserva cuenta cada byte como un token al
 // precio de escribir en caché (US$2,50/M) + 4 096 tokens de salida (US$10/M), ×1,1 (EE. UU.) ×1,05: ≈ US$0,255. Lo normal,
 // con la caché: ≈ US$0,02–0,04. Salida y tiempo como todos (4 096 tokens, 60 s): cada paso pide poco (3 tarjetas, 3 preguntas).
-// 0.14.0: rol 'escribir' / 'verificar' (src/ia/presupuesto.js: con ChatGPT o la API propia, el modelo fuerte o el barato
+// 0.14.2: rol 'escribir' / 'verificar' (src/ia/presupuesto.js: con ChatGPT o la API propia, el modelo fuerte o el barato
 // que eligió el dueño; un rol «verificar» lo hace Claude siempre que funcione: la revisión cruzada). techoMicro: lo más
 // que puede apartar una vez con OTRO precio que el de Claude (maximoDe): US$0,50 escribir, US$0,15 verificar.
 const FABRICA = Object.freeze({
@@ -77,11 +77,11 @@ const FABRICA = Object.freeze({
 });
 // Haiku 5.5: lo peor, 190 000 bytes × US$0,125/M + 4 096 × US$0,50/M, ×1,1 ×1,05 ≈ US$0,030.
 const FABRICA_HAIKU = Object.freeze({ ...FABRICA, entradaMaxBytes: 190_000, maximoMicro: 32_000, tipicoMicro: 5_000, modelo: 'claude-haiku-5-5', rol: 'verificar', techoMicro: 150_000 });
-// 0.14.0: «Pídele a la IA» (el chat del dueño, Administrador → Contenido): cada mensaje es UNA llamada corta (lo que
+// 0.14.2: «Pídele a la IA» (el chat del dueño, Administrador → Contenido): cada mensaje es UNA llamada corta (lo que
 // pidió, un resumen corto de la charla y la lista de materias y temas), con el modelo fuerte. Lo peor con Sonnet 5.5:
 // 16 384 bytes × US$2,50/M + 2 048 × US$10/M, ×1,1 ×1,05 ≈ US$0,071. Lo normal ≈ US$0,01.
 const CHAT = Object.freeze({ ...FABRICA, salidaMax: 2048, entradaMaxBytes: 16_384, entradaMinBytes: 3_500, respuestaMaxBytes: 65_536, maximoMicro: 80_000, tipicoMicro: 10_000, cachear: false, techoMicro: 120_000 });
-// 0.14.0: «Dibujos con IA» (APAGADO por defecto; solo ChatGPT dibuja): una imagen WebP 1024×1024 de calidad baja. Con
+// 0.14.2: «Dibujos con IA» (APAGADO por defecto; solo ChatGPT dibuja): una imagen WebP 1024×1024 de calidad baja. Con
 // el precio por defecto de un modelo de imagen (US$10/M de entrada, US$40/M de salida): 4 000 bytes + 1 100 tokens de
 // imagen, ×1,05 ≈ US$0,05 lo peor; lo normal ≈ US$0,015. Su tope propio (US$5 por defecto).
 const DIBUJO = Object.freeze({ ...FABRICA, tipo: 'imagen', rol: 'imagen', salidaMax: 1100, entradaMaxBytes: 4_000, entradaMinBytes: 300, respuestaMaxBytes: 524_288, maximoMicro: 60_000, tipicoMicro: 15_000, cachear: false, modelo: undefined, techoMicro: 100_000 });
@@ -124,7 +124,7 @@ export const PROPOSITOS = Object.freeze({
   // Haiku, con su tope propio (no gasta el de la fábrica) y dentro del tope general.
   profunda_escribir: FABRICA,
   profunda_verificar: FABRICA_HAIKU,
-  // 0.14.0: «Pídele a la IA»: cada mensaje (chat_admin) y los trabajos que el dueño aprobó con «Hazlo» (reescribir un
+  // 0.14.2: «Pídele a la IA»: cada mensaje (chat_admin) y los trabajos que el dueño aprobó con «Hazlo» (reescribir un
   // tema y verificarlo contra el libro, o «Revisar errores»), con su tope propio. Y los «Dibujos con IA» con el suyo.
   chat_admin: CHAT,
   chat_escribir: FABRICA,

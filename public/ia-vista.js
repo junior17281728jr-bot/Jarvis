@@ -124,7 +124,7 @@ export function estadoClaude({ claves = null, ia = null } = {}, ahora = Date.now
   return { ...base, estado: e.estado, tono: e.tono, motivo: e.estado === 'pausada' ? a.pausa?.motivo ?? null : a.prueba ?? null };
 }
 
-// 0.14.0: el estado de la clave de ChatGPT (o de la API propia) para la tarjeta del Resumen, y quién trabaja ahora.
+// 0.14.2: el estado de la clave de ChatGPT (o de la API propia) para la tarjeta del Resumen, y quién trabaja ahora.
 //   { estado: 'sin_acceso' | 'no_conectado' | 'conectado' | 'no_pasa' | 'pausada' | 'ilegible', tono, id?, final?, motivo? }
 export function estadoOtraIa({ claves = null } = {}, uso = 'ia_openai', ahora = Date.now()) {
   if (!claves) return { estado: 'sin_acceso', tono: 'apagado' };

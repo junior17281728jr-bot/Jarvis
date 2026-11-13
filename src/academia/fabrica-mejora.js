@@ -178,7 +178,7 @@ export async function mejorar(ctx, { ahora, cfg }) {
       }
       guardarAjuste(db, AJUSTE_ULTIMA, JSON.stringify({ en: iso(ahora), motivo, materia: trabajo.materia, version, mejorados, dudas: dudas.slice(0, 50) }));
       guardarAjuste(db, AJUSTE_TRABAJO, 'null');
-      // 0.14.0: «Lo que hizo la IA»: cada corrección que quedó en una versión (publicada o esperando revisión).
+      // 0.14.2: «Lo que hizo la IA»: cada corrección que quedó en una versión (publicada o esperando revisión).
       if (version != null) {
         const c = costoDe(db, `m:${trabajo.version}:`);
         for (const x of mejorados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'correccion', estado: motivo, version, antes: { que: x.tipo === 'tarjeta' ? x.titulo : x.pregunta }, despues: { porque: x.porque }, proveedor: c.proveedor, modelo: c.modelo, revisadoPor: c.revisadoPor, ahora });

@@ -1,4 +1,4 @@
-// 0.14.0: los modelos de ChatGPT (y de la «API propia») que el dueño puede elegir. Nunca se adivina un nombre: la prueba
+// 0.14.2: los modelos de ChatGPT (y de la «API propia») que el dueño puede elegir. Nunca se adivina un nombre: la prueba
 // gratis (GET /v1/models, src/claves/probar.js) trae la lista, se guarda aquí («ajustes») y, si todavía no hay uno
 // elegido (o el elegido ya no está), se eligen solos los de por defecto, por el NOMBRE:
 //  - escribir (las clases): el modelo general más nuevo que no es «mini», «nano» ni «pro» (pro es muy caro).

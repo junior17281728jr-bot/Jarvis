@@ -173,7 +173,7 @@ export function crearClienteIA({
     const proyectoId = pedido.proyectoId ?? null;
 
     // 0. ¿Cabe? Lo que no cabe ni se intenta (y cuenta como una vez sin IA).
-    // 0.14.0: cada imagen que se manda para mirar cuenta como 1 600 «bytes» (lo que Claude cobra por una de 1024×1024).
+    // 0.14.2: cada imagen que se manda para mirar cuenta como 1 600 «bytes» (lo que Claude cobra por una de 1024×1024).
     const imagenesBytes = Array.isArray(pedido.imagenes) ? pedido.imagenes.length * IMAGEN_BYTES : 0;
     const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + (esquema ? Buffer.byteLength(JSON.stringify(esquema)) : 0) + imagenesBytes;
     if (bytes > def.entradaMaxBytes) {
@@ -235,7 +235,7 @@ export function crearClienteIA({
     }
 
     // 4. UNA llamada, con su tiempo máximo y la señal de parar del paso.
-    // 0.14.0: un propósito de imagen (tipo 'imagen': «Dibujos con IA», solo ChatGPT) usa pedidoImagen / leerImagen; uno
+    // 0.14.2: un propósito de imagen (tipo 'imagen': «Dibujos con IA», solo ChatGPT) usa pedidoImagen / leerImagen; uno
     // con imágenes para mirar (Claude revisa un dibujo) las pasa al pedido.
     const esImagen = def.tipo === 'imagen';
     if (esImagen && typeof adaptador.pedidoImagen !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');

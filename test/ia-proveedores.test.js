@@ -155,7 +155,7 @@ test('ChatGPT: store:false siempre, máximo de salida de al menos 16, formato es
   });
   for (const prohibido of ['temperature', 'top_p', 'reasoning', 'fallbacks']) assert.ok(!JSON.stringify(p).includes(prohibido), prohibido);
   assert.deepEqual(openai.cabeceras('k'), { authorization: 'Bearer k', 'content-type': 'application/json' });
-  // 0.14.0: la prueba gratis lee la LISTA de modelos (nunca un nombre adivinado).
+  // 0.14.2: la prueba gratis lee la LISTA de modelos (nunca un nombre adivinado).
   assert.deepEqual(openai.prueba({ modelo: 'gpt-6-luna' }), { ruta: '/v1/models', metodo: 'GET', cuerpo: null });
   const bien = {
     status: 'completed', service_tier: 'default',
@@ -504,7 +504,7 @@ test('ChatGPT contra el falso: se guarda y se prueba; sin modelo elegido nunca g
       assert.equal(openai.leer(await llamar(pedido, escena)).motivo, motivo, String(escena.tipo ?? escena));
     }
     assert.equal(falso.peticiones.at(-1).cuerpo.store, false);
-    // 0.14.0: sin un modelo elegido (de la lista de la prueba gratis) no hay precio: reservar nunca lo elige.
+    // 0.14.2: sin un modelo elegido (de la lista de la prueba gratis) no hay precio: reservar nunca lo elige.
     b.db.prepare("UPDATE secretos SET estado = 'desactivada' WHERE uso = 'ia_anthropic'").run();
     ponerConfig(b.db, { orden: ['openai', 'anthropic', 'propia'], proveedores: { anthropic: { usar: true, modelo: 'claude-haiku-5-5' }, openai: { usar: true, modelo: null } } });
     assert.equal((await usarUnaVez(b)).reserva.motivo, 'precio_sin_confirmar');

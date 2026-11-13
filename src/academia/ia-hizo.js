@@ -1,4 +1,4 @@
-// 0.14.0: «Lo que hizo la IA» (Administrador → Contenido, junto a la Fábrica). Solo LEE lo que la fábrica ya guarda:
+// 0.14.2: «Lo que hizo la IA» (Administrador → Contenido, junto a la Fábrica). Solo LEE lo que la fábrica ya guarda:
 //  - cambios: el registro (src/academia/cambios-ia.js), del más nuevo al más viejo, con su enlace a la clase.
 //  - numeros: materias hechas / en curso / pendientes (de las 11 y de los capítulos orales), temas mejorados, preguntas
 //    con explicación, dudas que esperan tu revisión, dinero gastado contra los topes y el tiempo estimado que falta.

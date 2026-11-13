@@ -11,7 +11,7 @@ const ARCHIVO = new URL('./precios.json', import.meta.url);
 const PRECIO = /^(?:0|[1-9]\d{0,4})(?:\.\d{1,3})?$/;
 const FECHA = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const NOMBRE = /^[a-z][a-z0-9._-]{1,60}$/;
-// 0.14.0: el nombre de un modelo (también los de una «API propia»: pueden traer mayúsculas, «:» y «/»).
+// 0.14.2: el nombre de un modelo (también los de una «API propia»: pueden traer mayúsculas, «:» y «/»).
 export const MODELO_ID = /^[A-Za-z0-9][A-Za-z0-9._:\/-]{1,80}$/;
 const GEO = /^[a-z]{2,20}$/;
 const HOSTS_DE_FUENTE = Object.freeze(['platform.claude.com', 'developers.openai.com', 'platform.openai.com']);
@@ -198,7 +198,7 @@ export function instantaneaPrecio(fila) {
   };
 }
 
-// ---------- 0.14.0: los precios de ChatGPT y de la «API propia» (tabla editable del dueño, en «ajustes») ----------
+// ---------- 0.14.2: los precios de ChatGPT y de la «API propia» (tabla editable del dueño, en «ajustes») ----------
 // Los modelos de OpenAI cambian seguido y sus nombres no se adivinan: el dueño elige el modelo de la lista que da la
 // prueba gratis (GET /v1/models) y su precio sale de SU tabla (Administrador → IA → ChatGPT → Precios). Si todavía no lo
 // escribió, se usa un precio por defecto CONSERVADOR según el nombre (mini, nano, pro, imagen…), un poco más alto que

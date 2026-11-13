@@ -1,4 +1,4 @@
-// 0.14.0: «Pídele a la IA» (Administrador → Contenido, solo el administrador). El dueño escribe en español simple
+// 0.14.2: «Pídele a la IA» (Administrador → Contenido, solo el administrador). El dueño escribe en español simple
 // («explica mejor el tema de hipoxia», «agrega un dibujo al tema X», «revisa si hay errores en la materia 1»). La IA
 // (Claude, ChatGPT o la API propia: la que trabaje) contesta en el chat y propone un PLAN concreto con su costo estimado;
 // SOLO cuando el dueño toca «Hazlo» queda en la fila como un trabajo de la fábrica (la misma tubería: escribir →

@@ -46,14 +46,14 @@ export const CONFIG_POR_DEFECTO = Object.freeze({
   topesPlanMicro: Object.freeze(Object.fromEntries(PLANES.map(p => [p, 0]))),
   proveedores: Object.freeze({
     anthropic: Object.freeze({ usar: true, modelo: 'claude-haiku-5-5' }),
-    // 0.14.0: ChatGPT sin ningún modelo adivinado: el dueño los elige de la lista de la prueba gratis (GET /v1/models).
+    // 0.14.2: ChatGPT sin ningún modelo adivinado: el dueño los elige de la lista de la prueba gratis (GET /v1/models).
     // modelo = el «barato» (verificar, rutina); modeloEscribir = el fuerte (escribir clases); modeloImagen = dibujos.
     openai: Object.freeze({ usar: false, modelo: null, modeloEscribir: null, modeloImagen: null }),
-    // 0.14.0: «API propia (compatible con OpenAI)»: su dirección (https), su clave y sus modelos.
+    // 0.14.2: «API propia (compatible con OpenAI)»: su dirección (https), su clave y sus modelos.
     propia: Object.freeze({ usar: false, modelo: null, modeloEscribir: null, base: null }),
   }),
   orden: Object.freeze(['anthropic', 'openai', 'propia']),
-  // 0.14.0: quién escribe: 'auto' («el que funcione», en el orden de arriba), o uno fijo. Cuando Claude funciona, él
+  // 0.14.2: quién escribe: 'auto' («el que funcione», en el orden de arriba), o uno fijo. Cuando Claude funciona, él
   // revisa lo que escribe otro (src/ia/presupuesto.js, elegirProveedor: rol «verificar»).
   preferido: 'auto',
   llamadasPorHora: 30,
@@ -226,7 +226,7 @@ function cambiosValidados(cfg, cambios) {
       nueva.proveedores[id].usar = valor;
     }
   }
-  // 0.14.0: quién escribe, el orden de «el que funcione», los modelos de ChatGPT / API propia y la dirección de la propia.
+  // 0.14.2: quién escribe, el orden de «el que funcione», los modelos de ChatGPT / API propia y la dirección de la propia.
   if ('preferido' in cambios) {
     if (!PREFERIDOS.includes(cambios.preferido)) throw new ErrorHttp(400, 'datos_no_validos');
     nueva.preferido = cambios.preferido;

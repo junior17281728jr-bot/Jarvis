@@ -199,7 +199,7 @@ test('configuración: la IA llega apagada, con tope US$0 en todo, y un valor da�
   assert.equal(raro.topesPlanMicro.prueba, 0);
   assert.equal(raro.llamadasPorHora, 30);
   assert.deepEqual(raro.orden, ['anthropic', 'openai', 'propia']);
-  assert.equal(cfg.proveedores.openai.modelo, null, '0.14.0: ningún modelo de ChatGPT adivinado');
+  assert.equal(cfg.proveedores.openai.modelo, null, '0.14.2: ningún modelo de ChatGPT adivinado');
   assert.equal(cfg.preferido, 'auto');
   assert.equal(raro.ayudaProyectos, false);
   assert.equal(normalizarConfig({ version: 2, encendida: true }).encendida, false, 'una versión desconocida se lee como apagada');
@@ -272,7 +272,7 @@ test('reservar: sin la IA encendida, sin la ayuda, sin proveedor, sin clave o si
     ['sin_clave', () => { const b = preparar(); b.db.prepare("UPDATE secretos SET estado = 'desactivada'").run(); return b; }],
     ['clave_ilegible', () => { const b = preparar(); b.db.prepare("UPDATE secretos SET llave_huella = '0000000000000000'").run(); return b; }],
     ['llave_no_disponible', () => { const b = preparar(); const r = rutaLlave(b.config); renameSync(r, `${r}.movida`); return b; }],
-    // 0.14.0: ChatGPT sin modelo elegido no tiene precio.
+    // 0.14.2: ChatGPT sin modelo elegido no tiene precio.
     ['precio_sin_confirmar', () => { const b = preparar(); ponerConfig(b.db, { orden: ['openai', 'anthropic', 'propia'], proveedores: { anthropic: { usar: false, modelo: 'claude-haiku-5-5' }, openai: { usar: true, modelo: null } } }); return b; }],
     ['proveedor_en_pausa', () => { const b = preparar(); pausarSecreto(b.db, { id: b.secretoId, motivo: 'sin_credito', hastaMs: null }); return b; }],
     ['clave_no_valida', () => { const b = preparar(); anotarPrueba(b.db, { id: b.secretoId, motivo: 'clave_no_valida' }); return b; }],

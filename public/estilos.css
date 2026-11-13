@@ -1463,3 +1463,38 @@ ul.lista-drive li:first-child { border-top: 0; }
   .menu:has(> a:nth-child(6)) a { font-size: 11.5px; padding-left: 1px; padding-right: 1px; }
 }
 @media (max-width: 359.98px) { .menu:has(> a:nth-child(6)) a { font-size: 10.5px; letter-spacing: -0.01em; } }
+/* 0.14.2: «IA (Claude o ChatGPT)»: quién trabaja, el orden, los modelos, los precios y los dibujos. */
+.ia-opciones { border: 1px solid var(--borde); border-radius: 12px; padding: 10px 12px; margin: 10px 0; display: grid; gap: 6px; }
+.ia-opciones legend { padding: 0 6px; font-weight: 700; }
+.ia-opcion { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.ia-opcion input { width: 22px; height: 22px; flex: none; }
+.ia-orden-fila { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.botones-chicos { display: inline-flex; gap: 6px; }
+.botones-chicos button { min-width: 44px; min-height: 40px; }
+.ia-modelos, .ia-dibujos { border-top: 1px solid var(--borde); margin-top: 14px; padding-top: 10px; }
+.ia-modelos select, .ia-modelos input[type="text"] { width: 100%; max-width: 100%; }
+.ia-precio { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 10px; margin: 8px 0; overflow-wrap: anywhere; }
+.ia-precio-campos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ia-precio-campos input { width: 100%; }
+.claude-trabaja { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; color: var(--bien); overflow-wrap: anywhere; }
+/* 0.14.2: «Lo que hizo la IA». */
+.iahizo-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.iahizo-cifra { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--borde); border-radius: 12px; background: var(--tarjeta); }
+.iahizo-numero { font-size: 26px; line-height: 1.1; color: var(--acento); }
+.iahizo-etiqueta { font-size: 14px; }
+.iahizo-falta { display: grid; gap: 6px; padding-left: 20px; }
+.iahizo-cambios { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.iahizo-cambio { border-left: 4px solid var(--acento); padding: 6px 10px; background: var(--tarjeta); border-radius: 8px; overflow-wrap: anywhere; }
+.iahizo-cambio p { margin: 2px 0; }
+.iahizo-revisado { margin-left: 8px; }
+/* 0.14.2: «Pídele a la IA» (el chat del dueño). */
+.pidele-mensajes { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; max-height: 60vh; overflow-y: auto; padding: 4px; }
+.pidele-msg { max-width: 92%; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--borde); overflow-wrap: anywhere; }
+.pidele-msg p { margin: 0 0 6px; }
+.pidele-dueno { align-self: flex-end; background: var(--acento-suave); }
+.pidele-ia { align-self: flex-start; background: var(--tarjeta); }
+.pidele-rechazo { border-color: var(--atencion); }
+.pidele-trabajo { border: 1px dashed var(--borde); border-radius: 12px; padding: 8px 10px; margin: 8px 0; }
+.pidele-trabajo progress { width: 100%; }
+.pidele-escribir textarea { width: 100%; min-height: 84px; font-size: 16px; }
+.pidele > p.suave:last-child { margin-top: 14px; }

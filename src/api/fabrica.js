@@ -103,7 +103,7 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
     return { codigo: 200, datos: r };
   }, { admin: true });
 
-  // ---------- 0.14.0: «Lo que hizo la IA» y «Pídele a la IA» (solo el administrador; aquí nunca se llama a la IA) ----------
+  // ---------- 0.14.2: «Lo que hizo la IA» y «Pídele a la IA» (solo el administrador; aquí nunca se llama a la IA) ----------
   //  - GET  /api/admin/academia/ia-hizo                       registro de cambios, números, «Lo que falta» y materiales
   //  - GET  /api/admin/academia/chat                          la charla, los trabajos y lo que cuesta un mensaje
   //  - POST /api/admin/academia/chat { texto }                un mensaje (409 ia_en_pausa / chat_ocupado)

@@ -101,7 +101,7 @@ export const anthropic = Object.freeze({
   // Guide sin respuestas) con cache_control de 5 minutos (la única caché que OPORTIA pide y sabe cobrar: leerUso trata
   // cualquier otra como un gasto desconocido). Lo de cada alumno va después, en el mensaje. Sin cachear, el cuerpo es
   // el de siempre (byte a byte). Con menos de 512 tokens (Haiku 5.5 / Sonnet 5.5) el proveedor no cachea y no cobra extra.
-  // 0.14.0: imagenes (opcional): [{ tipo: 'image/webp', base64 }] van antes del texto (Claude MIRA el dibujo que hizo
+  // 0.14.2: imagenes (opcional): [{ tipo: 'image/webp', base64 }] van antes del texto (Claude MIRA el dibujo que hizo
   // ChatGPT para revisarlo; Claude nunca dibuja).
   pedido({ modelo, sistema, texto, esquema = null, salidaMax, esfuerzo = 'low', cachear = false, imagenes = null }) {
     const outputConfig = { effort: esfuerzo };

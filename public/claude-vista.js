@@ -4,7 +4,7 @@
 // Sin librerías; todo texto con textContent y sin estilos en línea. Las piezas llegan de app.js en «h».
 import { estadoClaude, estadoOtraIa, quienTrabaja } from './ia-vista.js';
 
-// 0.14.0: el nombre simple de cada proveedor.
+// 0.14.2: el nombre simple de cada proveedor.
 const NOMBRES = { anthropic: 'Claude', openai: 'ChatGPT', propia: 'API propia' };
 
 // Los 3 pasos para conectar la clave (y el de la verificación de identidad, resaltado si la prueba lo pidió).
@@ -37,7 +37,7 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
     el('button', { type: 'button', class: 'boton-3d grande con-icono claude-conectar', onclick: () => h.irAlFormulario() },
       h.icono('llave'), el('span', { texto: t('claude.conectar') })),
   ];
-  // 0.14.0: ChatGPT se conecta en la misma pestaña («IA (Claude o ChatGPT)»).
+  // 0.14.2: ChatGPT se conecta en la misma pestaña («IA (Claude o ChatGPT)»).
   botones.push(el('a', { class: 'boton-3d blanco con-icono', href: '#claves' }, h.icono('chispa'), el('span', { texto: t('iaprov.conectar_chatgpt') })));
   if (v.id != null && v.estado !== 'ilegible') {
     const texto = el('span', { texto: t('claude.probar') });
@@ -61,7 +61,7 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
   const detalle = v.estado === 'conectado'
     ? (v.iaEncendida ? null : el('p', { class: 'aviso con-icono-arriba' }, h.icono('info', 'icono chico'), el('span', { texto: t('claude.detalle.ia_apagada') }), el('a', { href: '#ia', class: 'enlace-claude', texto: t('ia.abrir') })))
     : el('p', { class: 'suave', texto: h.tSi(`claude.detalle.${v.estado}`, '') });
-  // 0.14.0: ChatGPT (o la API propia) al lado, y quién está trabajando ahora con lo gastado del mes.
+  // 0.14.2: ChatGPT (o la API propia) al lado, y quién está trabajando ahora con lo gastado del mes.
   const datosClaves = claves?.ok ? claves.datos : null;
   const otra = estadoOtraIa({ claves: datosClaves }, 'ia_openai');
   const propia = estadoOtraIa({ claves: datosClaves }, 'ia_propia');

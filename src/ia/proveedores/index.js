@@ -6,7 +6,7 @@ import { anthropic } from './anthropic.js';
 import { openai } from './openai.js';
 import { propia } from './propia.js';
 
-// 0.14.0: «propia» = una API compatible con OpenAI del dueño (su dirección sale de la configuración, no de aquí).
+// 0.14.2: «propia» = una API compatible con OpenAI del dueño (su dirección sale de la configuración, no de aquí).
 export const PROVEEDORES = Object.freeze({ anthropic, openai, propia });
 
 export function adaptadorDe(id) {

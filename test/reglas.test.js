@@ -355,7 +355,7 @@ test('la IA llega APAGADA: tope US$0 en todo, sin la ayuda en proyectos, sin Cha
   assert.equal(estadoPrecios().valido, true, `src/ia/precios.json no es válido: ${estadoPrecios().error}`);
   const { anthropic, openai } = CONFIG_POR_DEFECTO.proveedores;
   assert.ok(precioDe('anthropic', anthropic.modelo), 'el modelo de Claude por defecto tiene su precio confirmado');
-  // 0.14.0: ChatGPT llega sin ningún modelo adivinado (se elige de la lista de la prueba gratis) y sin «Usar».
+  // 0.14.2: ChatGPT llega sin ningún modelo adivinado (se elige de la lista de la prueba gratis) y sin «Usar».
   assert.equal(openai.modelo, null, 'ningún modelo de ChatGPT adivinado');
   assert.equal(CONFIG_POR_DEFECTO.proveedores.propia.usar, false);
   void filaDe;
@@ -385,7 +385,7 @@ test('cada propósito de IA está bien definido (fase, salida, tiempo, costo má
     // paga el dueño con su tope propio (ámbito general), nunca la pide un alumno (src/ia/propositos.js, FABRICA).
     const fabrica = p.tarea === 'academia.fabrica' && p.ambito === 'general';
     assert.ok(Number.isSafeInteger(p.maximoMicro) && p.maximoMicro > 0 && p.maximoMicro <= (fabrica ? 260_000 : 100_000), `${id}: maximoMicro (US$0,10 como mucho por vez)`);
-    // 0.14.0: con otro precio que el de Claude (ChatGPT o la API propia), el techo de una vez: US$0,50 la fábrica, US$0,15 los demás.
+    // 0.14.2: con otro precio que el de Claude (ChatGPT o la API propia), el techo de una vez: US$0,50 la fábrica, US$0,15 los demás.
     if (p.techoMicro != null) assert.ok(Number.isSafeInteger(p.techoMicro) && p.techoMicro >= p.maximoMicro && p.techoMicro <= (fabrica ? 500_000 : 150_000), `${id}: techoMicro`);
     if (p.ambito === 'general') assert.equal(p.tarea, 'academia.fabrica', `${id}: solo la fábrica gasta sin cuenta`);
     assert.ok(Number.isSafeInteger(p.timeoutMs) && p.timeoutMs > 0 && p.timeoutMs <= 60_000, `${id}: timeoutMs`);

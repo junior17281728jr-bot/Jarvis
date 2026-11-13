@@ -54,7 +54,7 @@ export function anotarBloqueo(db, { mes, ambito, motivo, proposito, ahora = Date
 // la tabla de precios y la llave. { ok, proveedor, modelo, precio, secreto, adaptador } o { ok: false, motivo }.
 // 0.9.0: modelos = { anthropic: '…' } usa otro modelo de ese proveedor (el del instructor de la academia: el propósito
 // dice de qué ajuste sale, modeloAjuste). Con la misma clave y el mismo precio confirmado que pide cualquier modelo.
-// 0.14.0: def (el propósito, opcional) decide:
+// 0.14.2: def (el propósito, opcional) decide:
 //  - quién escribe: cfg.preferido ('auto' = el primero que funcione en cfg.orden; o uno fijo);
 //  - la REVISIÓN CRUZADA: un propósito de rol «verificar» lo hace Claude siempre que Claude funcione (así lo que escribe
 //    ChatGPT o la API propia lo revisa Claude; si Claude escribió, se revisa a sí mismo con Haiku, como siempre). Si
@@ -120,7 +120,7 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
 }
 
 // El modelo propio de un propósito (0.9.0: el instructor de la academia usa cfg.instructorModelo con Claude), o null.
-// 0.14.0: también el de ChatGPT y el de la API propia, según el ROL del propósito: 'escribir' (el fuerte), 'verificar' y
+// 0.14.2: también el de ChatGPT y el de la API propia, según el ROL del propósito: 'escribir' (el fuerte), 'verificar' y
 // 'barato' (el barato), 'imagen' (el de dibujos). Sin rol: el de Claude dice cuál (Haiku = barato, si no = escribir).
 export function rolDe(def, cfg) {
   if (def?.tipo === 'imagen') return 'imagen';
@@ -144,7 +144,7 @@ export function modelosDe(def, cfg) {
   return Object.keys(out).length ? out : null;
 }
 
-// 0.14.0: lo más que puede apartar UNA vez. Con Claude, el de siempre (maximoMicro). Con ChatGPT o la API propia (otros
+// 0.14.2: lo más que puede apartar UNA vez. Con Claude, el de siempre (maximoMicro). Con ChatGPT o la API propia (otros
 // precios, que pone el dueño), lo que cuesta su pedido más largo con SU precio, sin pasar del techo del propósito
 // (techoMicro): así un precio distinto no deja una clase a medias por «muy cara», y nunca se pasa de un techo fijo.
 export function maximoDe(def, eleccion) {

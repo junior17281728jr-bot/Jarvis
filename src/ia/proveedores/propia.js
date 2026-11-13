@@ -1,4 +1,4 @@
-// 0.14.0: «API propia (compatible con OpenAI)»: un servidor del dueño (o de un tercero) que habla como OpenAI «Chat
+// 0.14.2: «API propia (compatible con OpenAI)»: un servidor del dueño (o de un tercero) que habla como OpenAI «Chat
 // Completions» (POST {base}/chat/completions). El dueño pone la dirección (https, sin puerto, nunca una IP ni un nombre
 // de la red interna: src/ia/config.js, basePropiaValida), la clave y los nombres de sus modelos. Puro: nunca usa la red.
 //  - La dirección NO está escrita aquí: sale de la configuración (baseDe / hostDe). src/ia/llamar.js solo deja ir a ese

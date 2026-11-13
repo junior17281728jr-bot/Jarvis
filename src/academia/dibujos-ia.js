@@ -1,4 +1,4 @@
-// 0.14.0: «Dibujos con IA» (APAGADO por defecto; Administrador → IA → ChatGPT, con su tope propio, US$5, y el estimado
+// 0.14.2: «Dibujos con IA» (APAGADO por defecto; Administrador → IA → ChatGPT, con su tope propio, US$5, y el estimado
 // antes de encenderlo). Solo ChatGPT DIBUJA (la API de imágenes de OpenAI, con el modelo de imagen que el dueño elige de
 // la lista); Claude solo MIRA: si Claude funciona, revisa cada dibujo (¿coincide con la tarjeta? ¿etiquetas o números
 // mal? ¿algo engañoso?) y uno rechazado nunca se usa.

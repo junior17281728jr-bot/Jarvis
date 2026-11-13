@@ -1,4 +1,4 @@
-// 0.14.0: la pestaña «IA (Claude o ChatGPT)» (Administrador → Dinero e IA, #claves): «¿Quién hace el trabajo?»
+// 0.14.2: la pestaña «IA (Claude o ChatGPT)» (Administrador → Dinero e IA, #claves): «¿Quién hace el trabajo?»
 // (Claude / ChatGPT / API propia / el que funcione, con su orden), y una sección por proveedor: pegar la clave,
 // «Probar (gratis)», el estado en palabras simples y los 3 pasos; para ChatGPT y la API propia, además, los modelos
 // (de la lista que trae la prueba gratis), su tabla de precios editable y, en ChatGPT, los «Dibujos con IA».
@@ -43,7 +43,7 @@ function quien(prov, h) {
     el('fieldset', { class: 'ia-opciones' }, el('legend', { texto: t('iaprov.usar') }), opciones),
     prov.preferido === 'auto' ? el('div', {}, el('p', { class: 'suave chica', texto: t('iaprov.orden') }), el('ol', { class: 'lista-simple ia-orden' }, orden)) : null,
     el('p', { class: 'suave chica', texto: t('iaprov.revision_cruzada') }),
-    prov.encendida ? null : el('p', { class: 'aviso con-icono-arriba' }, h.icono('info', 'icono chico'), el('span', { texto: t('claude.detalle.ia_apagada') }), el('a', { href: '#ia', class: 'enlace-claude', texto: t('ia.abrir') })),
+    prov.encendida ? null : el('p', { class: 'aviso con-icono-arriba' }, h.icono('info', 'icono chico'), el('span', { texto: t('iaprov.ia_apagada') }), el('a', { href: '#ia', class: 'enlace-claude', texto: t('ia.abrir') })),
     mensaje);
 }
 

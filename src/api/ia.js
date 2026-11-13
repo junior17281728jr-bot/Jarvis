@@ -85,7 +85,7 @@ export function registrarRutasIa(rutas, { config = null, supervisor = null, limi
     return { codigo: 200, datos: { ...estado(db, req, usuario), apagadaPor: informe.apagadaPor ?? null } };
   }, { admin: true, soloDueno: true });
 
-  // 0.14.0: «IA (Claude o ChatGPT)»: quién escribe, el orden de «el que funcione», los modelos de ChatGPT y de la API
+  // 0.14.2: «IA (Claude o ChatGPT)»: quién escribe, el orden de «el que funcione», los modelos de ChatGPT y de la API
   // propia (de la lista de la prueba gratis), su tabla de precios y los «Dibujos con IA». Nunca una clave.
   const vistaProveedores = (db, ahora = Date.now()) => {
     const cfg = leerConfigIa(db);

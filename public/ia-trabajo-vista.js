@@ -1,4 +1,4 @@
-// 0.14.0: Administrador → Contenido → «Lo que hizo la IA» (#contenido/ia-hizo) y «Pídele a la IA» (#contenido/pidele).
+// 0.14.2: Administrador → Contenido → «Lo que hizo la IA» (#contenido/ia-hizo) y «Pídele a la IA» (#contenido/pidele).
 // Sin librerías; todo texto con textContent y sin estilos en línea. Las piezas llegan de app.js en «h» (este módulo no
 // importa nada). Lo que se decide está en el servidor (src/academia/ia-hizo.js y src/academia/pidele.js).
 const usd = micro => `US$${((Number(micro) || 0) / 1_000_000).toFixed(micro > 0 && micro < 10_000 ? 3 : 2)}`;
