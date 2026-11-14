@@ -361,7 +361,7 @@ export function crearInstructor(h) {
     location.hash = `#practica/${r.datos.id}`;
   }
   function hrefVideo(v) {
-    if (v.tipo === 'youtube') return v.url;
+    if (v.tipo === 'youtube' || v.tipo === 'buscar') return v.url;
     if (v.tipo === 'materia') return v.tema ? `#video/${encodeURIComponent(v.materia)}/tema/${encodeURIComponent(v.tema)}` : `#video/${encodeURIComponent(v.materia)}`;
     return rutaTema(v.materia, v.tema, v.tarjeta);
   }
@@ -392,11 +392,11 @@ export function crearInstructor(h) {
     const caja = el('section', { class: `caja-hoja caja-ia consejo-ia${r.demo ? ' demo' : ''}` },
       el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx(r.demo ? 'demo.ia.titulo' : 'instr.ia.titulo') })),
       talCual('p', r.saludo || tx('consejo.saludo_base', { tema: temas[0] ? tituloCorto(temas[0].titulo) : '' }), 'consejo-saludo'),
-      v ? el('a', { class: 'consejo-video', href: hrefVideo(v), ...(v.tipo === 'youtube' ? { target: '_blank', rel: 'noopener noreferrer' } : {}) },
-        icono('video', 'icono chico'),
+      v ? el('a', { class: 'consejo-video', href: hrefVideo(v), ...(v.tipo === 'youtube' || v.tipo === 'buscar' ? { target: '_blank', rel: 'noopener noreferrer' } : {}) },
+        icono(v.tipo === 'buscar' ? 'lupa' : 'video', 'icono chico'),
         el('span', { class: 'consejo-video-texto' },
-          el('strong', { texto: tx('consejo.video') }),
-          el('span', { class: 'chica', texto: v.titulo ? sinIngles(v.titulo) : tx('consejo.video_de', { materia: nombreMateria(v.materia) }) }),
+          el('strong', { texto: tx(v.tipo === 'buscar' ? 'consejo.buscar' : 'consejo.video') }),
+          el('span', { class: 'chica', texto: v.tipo === 'buscar' ? tx('consejo.buscar_de', { tema: sinIngles(v.titulo) }) : v.titulo ? sinIngles(v.titulo) : tx('consejo.video_de', { materia: nombreMateria(v.materia) }) }),
           v.porque ? talCual('span', v.porque, 'suave chica') : null),
         icono('flecha', 'icono chico')) : null,
       temas.length ? el('p', { class: 'fuerte chica consejo-etiqueta', texto: tx('consejo.fallaste') }) : null,

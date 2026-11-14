@@ -74,6 +74,13 @@ export function decidirAlcance(vistos, delExamen = new Map()) {
   return { alcance: 'varias', elegidos, evidencia: { materias: new Set(debiles.map(t => t.materia)).size, temas: elegidos.map(t => t.titulo) } };
 }
 
+// 0.14.15: sin un video elegido por el administrador para ese tema, «Buscar en YouTube» con una búsqueda precisa en
+// español armada aquí (el título sin el inglés entre paréntesis + «piloto privado explicación español»).
+export function busquedaTema(titulo) {
+  const limpio = String(titulo ?? '').replace(/\([^)]*\)/g, ' ').replace(/[^\p{L}\p{N} -]/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);
+  return limpio ? `https://www.youtube.com/results?search_query=${encodeURIComponent(`${limpio} piloto privado explicación español`)}` : null;
+}
+
 // UN video que existe: para una materia entera, el de la materia (o uno de YouTube de la materia); para un tema, uno de
 // ese tema (YouTube), el capítulo del video de la materia, o el clip de una de sus tarjetas. Si no hay, null.
 export function elegirVideo(paquete, alcance, temas, videos = []) {
@@ -89,7 +96,9 @@ export function elegirVideo(paquete, alcance, temas, videos = []) {
     // De YouTube: el que cubre más de sus temas flojos (uno sin tema cubre la materia entera).
     const cubre = v => (!v.tema ? ids.size + 0.5 : ids.has(v.tema) ? 1 : 0);
     const mejor = [...lista].sort((a, b) => cubre(b) - cubre(a))[0];
-    return mejor && cubre(mejor) > 0 ? youtube(mejor) : null;
+    if (mejor && cubre(mejor) > 0) return youtube(mejor);
+    const url = busquedaTema(temas[0].titulo);
+    return url ? { id: `buscar-${materia}-${temas[0].tema}`, tipo: 'buscar', titulo: temas[0].titulo ?? null, url, materia, tema: temas[0].tema } : null;
   }
   const t = temas[0];
   const exacto = lista.find(v => v.tema === t.tema);
@@ -102,7 +111,9 @@ export function elegirVideo(paquete, alcance, temas, videos = []) {
     return { id: `clip-${materia}-${t.tema}-${x.i + 1}`, tipo: 'clip', titulo: x.s.titulo ?? null, materia, tema: t.tema, tarjeta: x.i + 1 };
   }
   const general = lista.find(v => !v.tema);
-  return general ? youtube(general) : null;
+  if (general) return youtube(general);
+  const url = busquedaTema(t.titulo);
+  return url ? { id: `buscar-${materia}-${t.tema}`, tipo: 'buscar', titulo: t.titulo ?? null, url, materia, tema: t.tema } : null;
 }
 
 // Lo que va a la IA (sin nombre ni usuario: solo cifras y textos del paquete).

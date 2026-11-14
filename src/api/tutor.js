@@ -7,7 +7,7 @@ import { anotarEvidenciaTarjeta } from '../academia/fabrica-mejora.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { camino } from '../academia/progreso.js';
 import { modeloAlumno, respuestaDelAlumno, reexplicarSinIa } from '../academia/instructor.js';
-import { armarTarjeta, armarPersonal, armarExplicacion, leerGuardado, preguntaSinIa } from '../academia/instructor-ia.js';
+import { armarTarjeta, armarPersonal, armarExplicacion, leerGuardado, preguntaSinIa, cortarPalabras } from '../academia/instructor-ia.js';
 import { leerConfigIa } from '../ia/config.js';
 import { ideaDe } from '../academia/reto.js';
 import { vistaSecciones } from '../academia/progreso.js';
@@ -84,7 +84,9 @@ export function registrarRutasTutor(rutas, h) {
     if (!p) throw new ErrorHttp(409, 'sin_paquete');
     const ex = tomoExamen(db, usuario.id, p, ahora);
     const ia = conIa(db, req, usuario, ahora).modo === 'ia' ? preparacionDe(db, usuario.id, ahora)?.examen ?? null : null;
-    return { codigo: 200, datos: { ...ex, examenIa: ia } };
+    // 0.14.15: corto (una frase y 3 pasos breves); sin ids (leerGuardado ya los quita).
+    const corto = ia ? { ...ia, porque: cortarPalabras(ia.porque ?? '', 28), pasos: (ia.pasos ?? []).slice(0, 3).map(x => cortarPalabras(x, 12)) } : null;
+    return { codigo: 200, datos: { ...ex, examenIa: corto } };
   });
 
   // T: la memoria del tutor (lo que recuerda de él: sin IA).

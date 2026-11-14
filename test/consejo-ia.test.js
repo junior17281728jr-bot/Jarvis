@@ -180,3 +180,64 @@ test('con el servidor: el consejo guardado de antes no vuelve a salir (se pide e
     assert.deepEqual([ahora.superado, ahora.saludo, ahora.temas.length], [true, '', 0]);
   });
 });
+
+// ---------- 0.14.15: nada de ids internos, la búsqueda de YouTube y «¿Tomo el examen?» en filas ----------
+test('lo que escribió la IA nunca muestra un id interno (t4, tg-3-28, m03, materia/tema), y lo guardado antes también se limpia', async () => {
+  const { sinIds, limpiarProsa } = await import('../src/academia/sin-ids.js');
+  assert.equal(sinIds('Todavía no: repasa las tarjetas t4, t5 y t9 antes del examen.'), 'Todavía no: repasa las tarjetas antes del examen.');
+  assert.equal(sinIds('Mira la pregunta tg-3-28 (m03) otra vez.'), 'Mira la pregunta otra vez.');
+  assert.doesNotMatch(sinIds('Ve a factores_humanos/muestra-hipoxia y a muestra-h3.'), /factores_humanos|muestra-|h3/);
+  for (const igual of ['El VOR y el ADF a 3000 pies, con piloto-automático.', 'Mira https://evil.example/x-1 para más.', 'Hipoxia (hypoxia) a 12,500 pies.']) assert.equal(sinIds(igual), igual);
+  const v = limpiarProsa({ porque: 'Repasa t4.', pasos: ['Relee t9 y t10.'], tarjetas: [{ tarjeta: 't4', porque: 'Por t4.' }], citas: [{ numero: 'tg-1-2', respuesta: 'B' }], confusiones: { 'fh/hipoxia': 'Ve m03.' } });
+  assert.deepEqual(v, { porque: 'Repasa.', pasos: ['Relee.'], tarjetas: [{ tarjeta: 't4', porque: 'Por.' }], citas: [{ numero: 'tg-1-2', respuesta: 'B' }], confusiones: { 'fh/hipoxia': 'Ve.' } });
+  // Por la base: un consejo guardado con ids sale limpio.
+  const { abrirBase } = await import('../src/nucleo/db.js');
+  const { configDePrueba } = await import('./ayuda.js');
+  const { leerGuardado } = await import('../src/academia/instructor-ia.js');
+  const db = abrirBase(configDePrueba());
+  db.prepare('INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)').run('academia.ia.consejo.1.2026-11-09-v2', JSON.stringify({ forma: 2, saludo: 'Pana, repasa t4 y t5.', confusiones: {}, porque: '', en: 'x' }), 'x');
+  assert.equal(leerGuardado(db, 'academia.ia.consejo.1.2026-11-09-v2').saludo, 'Pana, repasa.');
+  db.close();
+});
+
+test('sin video elegido por el administrador: «Buscar en YouTube» con una búsqueda en español armada en código', async () => {
+  const { busquedaTema } = await import('../src/academia/consejo-ia.js');
+  const url = busquedaTema('La hipoxia y sus tipos (hypoxia)');
+  assert.ok(url.startsWith('https://www.youtube.com/results?search_query='));
+  assert.equal(decodeURIComponent(url.split('=')[1]), 'la hipoxia y sus tipos piloto privado explicación español');
+  assert.doesNotMatch(url.split('=')[1], /[ ()]/, 'codificada');
+  assert.equal(busquedaTema('  '), null);
+  const paquete = { materias: [{ id: 'fh', temas: [{ id: 'hipoxia', secciones: [] }] }] };
+  const v = elegirVideo(paquete, 'tema', [{ materia: 'fh', tema: 'hipoxia', titulo: 'Hipoxia (hypoxia)' }], []);
+  assert.deepEqual([v.tipo, v.url], ['buscar', busquedaTema('Hipoxia (hypoxia)')]);
+  const ins = crearInstructor(ayudas());
+  const n = ins.pintarConsejo({ forma: 2, saludo: 'x', temas: [], video: v, repaso: { n: 0 } });
+  assert.match(n.textContent, /Buscar en YouTube/);
+  assert.equal(n.todos(x => x.etiqueta === 'a')[0].atributos.target, '_blank');
+});
+
+test('«¿Tomo el examen final?»: una fila por materia con sus barritas, qué falla por su nombre y «Reforzar»; sin empezar, «Empezar»', async () => {
+  const { crearTutor } = await import('../public/tutor-vista.js');
+  const h = ayudas();
+  const tu = crearTutor({ ...h, mostrar: () => {}, marco: () => {}, instructorUi: () => crearInstructor(h) });
+  const n = tu.pintarExamen({ oficial: null, materias: [
+    { materia: 'fh', si: false, pct: 40, cobertura: 60, estado: 'todavia', flojos: [{ materia: 'fh', tema: 'hipoxia', titulo: 'Hipoxia (hypoxia)' }, { materia: 'fh', tema: 'vision', titulo: 'Visión nocturna' }], empezar: 'hipoxia', porques: [] },
+    { materia: 'nav', si: false, pct: 0, cobertura: 0, estado: 'sin_empezar', flojos: [], empezar: 'cartas', porques: [] },
+    { materia: 'met', si: true, pct: 95, cobertura: 97, estado: 'listo', flojos: [], empezar: 'nubes', porques: [] }] });
+  const texto = n.textContent;
+  for (const x of ['TODAVÍA NO', 'Acierto 40 % (meta 90)', 'Visto 60 % (meta 95)', 'Te falla: Hipoxia, Visión nocturna', 'Reforzar', 'Sin empezar', 'Empezar', 'LISTO']) assert.ok(texto.includes(x), x);
+  assert.doesNotMatch(texto, /\bnull\b|undefined|\{[a-z_]+\}|Has visto el/);
+  assert.deepEqual(n.todos(x => x.etiqueta === 'a').map(x => x.atributos.href), ['#tema/fh/hipoxia', '#tema/nav/cartas']);
+  assert.equal(n.todos(x => x.etiqueta === 'progress').length, 4);
+});
+
+test('con el servidor: «¿Tomo el examen?» dice qué tema falla de cada materia', async () => {
+  await conInstructor(async c => {
+    await unaMala(c, c.z);
+    const d = (await pedir(c.base, 'GET', '/api/academia/tutor/examen', { galleta: c.z })).datos;
+    const fh = d.materias.find(m => m.materia === 'factores_humanos');
+    assert.equal(fh.estado, 'todavia');
+    assert.deepEqual(fh.flojos.map(x => x.tema), ['muestra-hipoxia']);
+    assert.equal(fh.empezar, 'muestra-hipoxia');
+  });
+});

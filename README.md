@@ -724,6 +724,14 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   Estudiar · Practicar · Te guío → «Repaso: tienes N pendientes» → «Por qué te lo recomiendo» plegado. «Te guío» abre la
   clase en la tarjeta que lo explica y, al terminar, practica lo que falló de ese tema.
 - Se guarda con «-v2»: el consejo largo de antes queda en la base pero ya no sale en Inicio (se pide el nuevo).
+- Sin video elegido por el administrador para ese tema: «Buscar en YouTube» con una búsqueda en español armada en código
+  («hipoxia piloto privado explicación español»).
+- Ningún id interno (t4, tg-3-28, m03, materia/tema) en lo que escribió la IA: `src/academia/sin-ids.js` lo quita al
+  leer todo lo guardado de la IA (también lo de antes); el prompt además lo prohíbe.
+- «¿Tomo el examen final?»: una fila por materia (estado, barritas de acierto vs 90 % y visto vs 95 %, «Te falla: …» con
+  el nombre del tema y «Reforzar»; sin empezar, una fila gris con «Empezar»); lo de la IA, corto.
+- Progreso, más claro: La carrera (y la tabla) → Mis números → ¿Tomo el examen final? → Mi avance → Ver detalles, cada
+  sección con una línea que dice qué es; la tabla y «Mis números» se ponen al día con la carrera (cada 30 s).
 - Pruebas: `test/consejo-ia.test.js`.
 
 ### Lo nuevo de la 0.14.14: «Progreso» como una carrera (corto y visual) y el token de GitHub fácil de encontrar — sin cambio de base

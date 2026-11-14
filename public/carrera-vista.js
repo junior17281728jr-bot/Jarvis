@@ -151,6 +151,8 @@ export function vistaCarrera(h, datos, { admin = false } = {}) {
     el('div', { class: 'carrera-arriba' },
       el('h2', { id: 'carrera-titulo', class: 'con-icono' }, h.icono('bandera'), el('span', { texto: t('carrera.titulo') })),
       el('span', { class: 'carrera-cuantos suave chica' })),
+    // 0.14.15: cada sección con una línea que dice qué es.
+    el('p', { class: 'seccion-sub suave chica', texto: t(admin ? 'carrera.sub_admin' : 'carrera.sub') }),
     tg.nodo, oral.nodo,
     el('p', { class: 'carrera-pie suave chica', texto: t(admin ? 'carrera.pie_admin' : 'carrera.pie') }));
   const actualizar = d => {
@@ -196,6 +198,7 @@ export function vistaTabla(h, pilotos, { oral = true } = {}) {
     el('span', { class: 'tabla-barras' }, barra(pctDe(p, 'tg'), 'tg', t('carrera.tg_corto')), oral && p.oral != null ? barra(pctDe(p, 'oral'), 'oral', t('carrera.oral_corto')) : null))));
   return el('section', { class: 'panel tabla-carrera', 'aria-labelledby': 'tabla-titulo' },
     el('h2', { id: 'tabla-titulo', class: 'con-icono' }, h.icono('trofeo'), el('span', { texto: t('carrera.tabla') })),
+    el('p', { class: 'seccion-sub suave chica', texto: t('carrera.tabla_sub') }),
     podio, filasNodo);
 }
 
@@ -211,6 +214,7 @@ export function vistaMisNumeros(h, d) {
   const tiempo = horas ? t('carrera.horas', { h: numero(horas), m: numero(d.minutosSemana % 60) }) : t('carrera.minutos', { m: numero(d.minutosSemana) });
   return el('section', { class: 'panel mis-numeros', 'aria-labelledby': 'mis-numeros-titulo' },
     el('h2', { id: 'mis-numeros-titulo', class: 'con-icono' }, h.icono('velocimetro'), el('span', { texto: t('carrera.mis_numeros') })),
+    el('p', { class: 'seccion-sub suave chica', texto: t('carrera.mis_numeros_sub') }),
     el('ul', { class: 'mis-numeros-lista' },
       ficha('racha', 'fuego', numero(d.racha), h.tn('carrera.dias_racha', { n: d.racha })),
       ficha('temas', 'libro', t('carrera.de', { n: numero(d.temas.hechos), total: numero(d.temas.total) }), t('carrera.temas_hechos')),

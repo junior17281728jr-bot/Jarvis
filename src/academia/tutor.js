@@ -223,6 +223,16 @@ export function tomoExamen(db, usuarioId, p, ahora = Date.now()) {
     si: v.nivel === 'listo', pct: v.probabilidad,
     porques: [...malas.slice(0, 3), ...buenas.slice(0, Math.max(0, 2 - malas.length))].slice(0, 4).map(porRegla),
   };
+  // 0.14.15: por materia, QUÉ falla (los 2 temas con más errores, por su nombre) y por dónde empezar.
+  const ultima = new Map();
+  for (const r of db.prepare('SELECT pregunta, correcta FROM academia_respuestas WHERE usuario_id = ? ORDER BY id').all(usuarioId)) ultima.set(r.pregunta, r.correcta === 1);
+  const flojosDe = materia => (p?.materias.find(x => x.id === materia)?.temas ?? []).map(t => {
+    const vistas = t.preguntas.filter(id => ultima.has(id));
+    const bien = vistas.filter(id => ultima.get(id)).length;
+    return { materia, tema: t.id, titulo: t.titulo, fallos: vistas.length - bien, bien, de: vistas.length };
+  }).filter(x => x.fallos > 0 && x.bien / x.de < 0.9).sort((a, b) => b.fallos - a.fallos || a.bien / a.de - b.bien / b.de).slice(0, 2)
+    .map(({ materia: mm, tema, titulo }) => ({ materia: mm, tema, titulo }));
+  const primerTema = materia => p?.materias.find(x => x.id === materia)?.temas[0]?.id ?? null;
   const materias = (v.porMateria ?? []).map(m => {
     const porques = [];
     porques.push({ clave: m.pct >= 90 ? 'acierto.ok' : 'acierto.no', vars: { valor: m.pct, meta: 90 } });
@@ -233,7 +243,9 @@ export function tomoExamen(db, usuarioId, p, ahora = Date.now()) {
     if (ultima && porques.length < 4) porques.push({ clave: 'memoria.mal', vars: { mal: ultima.mal.slice(0, 2).join(', ') } });
     if (porques.length < 2) porques.push({ clave: m.aprobado ? 'examen.ok' : 'examen.no', vars: { valor: m.examen ?? 0 } });
     const si = m.pct >= 90 && m.cobertura >= 95 && m.fallas === 0 && m.clases === 0;
-    return { materia: m.materia, si, pct: m.pct, porques: porques.slice(0, 4) };
+    const iniciada = m.cobertura > 0;
+    return { materia: m.materia, si, pct: m.pct, porques: porques.slice(0, 4), cobertura: m.cobertura, iniciada, estado: si ? 'listo' : !iniciada ? 'sin_empezar' : m.pct >= 70 ? 'casi' : 'todavia',
+      flojos: si ? [] : flojosDe(m.materia), empezar: primerTema(m.materia) };
   });
   return { oficial, materias };
 }

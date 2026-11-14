@@ -4645,5 +4645,22 @@
   "consejo.porque.tema_solo": "You missed {fallos} of {de} in {tema}: start there.",
   "consejo.porque.varias": "Your mistakes are in {n} subjects: first what weighs most ({temas}).",
   "consejo.sin_fallas": "You're doing well: no weak topics right now. Keep going!",
-  "consejo.guia_practicar": "PRACTICE WHAT I MISSED"
+  "consejo.guia_practicar": "PRACTICE WHAT I MISSED",
+  "consejo.buscar": "Search YouTube",
+  "consejo.buscar_de": "Videos about {tema}, in Spanish",
+  "listo2.sin_empezar": "Not started",
+  "listo2.empezar": "Start",
+  "listo2.estado.listo": "READY",
+  "listo2.estado.casi": "ALMOST",
+  "listo2.estado.todavia": "NOT YET",
+  "listo2.acierto": "Correct {valor}% (goal {meta})",
+  "listo2.visto": "Seen {valor}% (goal {meta})",
+  "listo2.falla": "Struggling with: {temas}",
+  "listo2.reforzar": "Reinforce",
+  "carrera.sub": "Your place among the pilots: your plane is the blue one.",
+  "carrera.sub_admin": "Where each student is.",
+  "carrera.tabla_sub": "Who's ahead, by % of all Test Guide topics.",
+  "carrera.mis_numeros_sub": "Just yours: streak, topics, grade and time.",
+  "carrera.mi_avance_sub": "How far you are in each subject.",
+  "listo2.sub": "By subject: how much you get right, how much you've seen and what you're missing."
 }

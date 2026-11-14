@@ -5351,13 +5351,19 @@ async function pantallaProgreso() {
     el('summary', { class: 'progreso-detalles-boton' }, icono('expandir', 'icono chico'), el('span', { texto: t('carrera.ver_detalles') })),
     el('div', { class: 'progreso-detalles-cuerpo' }, detallesProgreso(p, ayudas, grupo)));
   detalles.addEventListener('toggle', () => { detallesProgresoAbiertos = detalles.open; });
+  // 0.14.15 (claridad): siempre el mismo orden — La carrera (y su tabla) → Mis números → ¿Estoy listo? → Mi avance →
+  // Ver detalles —, cada sección con una línea que dice qué es. La tabla y mis números se ponen al día con la carrera.
+  let misNumeros = yo ? vistaMisNumeros(ayudas, yo.datos) : null;
+  let tabla = c.ok && c.datos.pilotos.length > 1 ? vistaTabla(ayudas, c.datos.pilotos, { oral: c.datos.oral }) : null;
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
     carrera?.nodo ?? null,
-    yo ? vistaMisNumeros(ayudas, yo.datos) : null,
-    c.ok && c.datos.pilotos.length > 1 ? vistaTabla(ayudas, c.datos.pilotos, { oral: c.datos.oral }) : null,
+    tabla,
+    misNumeros,
+    tutorUi().examen(),
     miAvance ? el('section', { class: 'panel mi-avance', 'aria-labelledby': 'mi-avance-titulo' },
-      el('h2', { id: 'mi-avance-titulo', class: 'con-icono' }, icono('grafica'), el('span', { texto: t('carrera.mi_avance') })), miAvance) : null,
+      el('h2', { id: 'mi-avance-titulo', class: 'con-icono' }, icono('grafica'), el('span', { texto: t('carrera.mi_avance') })),
+      el('p', { class: 'seccion-sub suave chica', texto: t('carrera.mi_avance_sub') }), miAvance) : null,
     detalles));
   // Con la app a la vista, la carrera y mi avance se ponen al día cada 30 s (los aviones se mueven solos).
   if (carrera) {
@@ -5366,6 +5372,8 @@ async function pantallaProgreso() {
       if (!x.ok || !vigente() || !carrera.nodo.isConnected) return;
       carrera.actualizar(x.datos);
       if (miAvance && x.datos.yo?.avance) repintarAvance(miAvance, x.datos.yo.avance, ayudas);
+      if (misNumeros?.isConnected && x.datos.yo?.datos) { const n = vistaMisNumeros(ayudas, x.datos.yo.datos); misNumeros.replaceWith(n); misNumeros = n; }
+      if (tabla?.isConnected && x.datos.pilotos?.length > 1) { const n = vistaTabla(ayudas, x.datos.pilotos, { oral: x.datos.oral }); tabla.replaceWith(n); tabla = n; }
     }, AVANCE_ADMIN_MS);
   }
 }
@@ -5377,8 +5385,7 @@ function detallesProgreso(p, ayudas, grupo) {
     p.repaso ? el('div', { class: 'progreso-repaso-espaciado' }, botonRepaso(p.repaso), queEs('repaso')) : null,
     // 0.10.0: «¿Estás listo para el examen oficial?» y «Lo que hicimos por ti» (sus fallas y cómo se le reforzaron).
     instructorUi().preparado(),
-    // 0.12.9 (U): «¿Tomo el examen final?» por materia y el oficial (sin IA; con IA, además el porqué a su estilo).
-    tutorUi().examen(),
+    // 0.12.9 (U): «¿Tomo el examen final?» ahora va arriba, fuera de «Ver detalles» (0.14.15: sin repetirlo aquí).
     panelRepasoResumen(p.miRepaso, ayudas),
     instructorUi().loQueHicimos(),
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),

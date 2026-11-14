@@ -4645,5 +4645,22 @@
   "consejo.porque.tema_solo": "Fallaste {fallos} de {de} en {tema}: empieza por ahí.",
   "consejo.porque.varias": "Tus errores están en {n} materias: primero lo que más pesa ({temas}).",
   "consejo.sin_fallas": "Vas bien: ahora mismo no tienes temas flojos. ¡Dale con lo que sigue!",
-  "consejo.guia_practicar": "PRACTICAR LO QUE FALLÉ"
+  "consejo.guia_practicar": "PRACTICAR LO QUE FALLÉ",
+  "consejo.buscar": "Buscar en YouTube",
+  "consejo.buscar_de": "Videos de {tema}, en español",
+  "listo2.sin_empezar": "Sin empezar",
+  "listo2.empezar": "Empezar",
+  "listo2.estado.listo": "LISTO",
+  "listo2.estado.casi": "CASI",
+  "listo2.estado.todavia": "TODAVÍA NO",
+  "listo2.acierto": "Acierto {valor} % (meta {meta})",
+  "listo2.visto": "Visto {valor} % (meta {meta})",
+  "listo2.falla": "Te falla: {temas}",
+  "listo2.reforzar": "Reforzar",
+  "carrera.sub": "Tu lugar entre los pilotos: tu avión es el azul.",
+  "carrera.sub_admin": "Dónde va cada alumno.",
+  "carrera.tabla_sub": "Quién va adelante, por % de todos los temas del Test Guide.",
+  "carrera.mis_numeros_sub": "Solo lo tuyo: racha, temas, nota y tiempo.",
+  "carrera.mi_avance_sub": "Cuánto llevas de cada materia.",
+  "listo2.sub": "Por materia: cuánto aciertas, cuánto has visto y qué te falla."
 }
