@@ -17,6 +17,7 @@ import { historialSaltos } from './saltos.js';
 import { resumenExtra } from './extra.js';
 import { examenesOralDe, hayOral } from './oral.js';
 import { avanceDe } from './avance-alumno.js';
+import { EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
 
 export const MAXIMO_COMPARAR = 6;
@@ -126,8 +127,8 @@ function cabeceraDe(db, u) {
 function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {
   const a = actividadDe(db, u.id, ahoraMs);
   const ultima = [a.ultimaActividad, ultimaRespuesta, a.ultimaEntrada].filter(Boolean).sort().pop() ?? null;
-  // 0.12.4: «en línea» lo dicen sus visitas (actividad en los últimos 3 minutos); una respuesta reciente también.
-  return { ...a, ultimaActividad: ultima, enLinea: a.enLinea || Boolean(ultimaRespuesta && ahoraMs - Date.parse(ultimaRespuesta) <= 3 * 60 * 1000) };
+  // 0.12.4: «en línea» lo dicen sus visitas (0.14.9: actividad en los últimos 45 s); una respuesta reciente también.
+  return { ...a, ultimaActividad: ultima, enLinea: a.enLinea || Boolean(ultimaRespuesta && ahoraMs - Date.parse(ultimaRespuesta) <= EN_LINEA_MS) };
 }
 
 export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {

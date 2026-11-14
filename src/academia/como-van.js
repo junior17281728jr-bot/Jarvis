@@ -9,7 +9,7 @@
 //    respuestas: src/academia/fichas.js → tiempoDeEstudio).
 // Solo lee lo que ya se guarda (sin cambio de base). No cierra exámenes vencidos ni escribe nada: se pide cada 30 s.
 import { ultimaActividad, notaGeneralDelCurso, puntosYRacha } from './progreso.js';
-import { resumenVisitas, EN_LINEA_MS } from '../cuentas/visitas.js';
+import { resumenesVisitas, EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avataresDe } from '../cuentas/perfil.js';
 import { planDe, pasosDelCamino } from './plan.js';
 import { tiempoDeEstudio } from './fichas.js';
@@ -30,8 +30,9 @@ export function cuentasDeAlumnos(db) {
 export function enLineaDe(db, cuentas, ahoraMs, ultimas = null) {
   const actividad = ultimaActividad(db);
   const respuestas = ultimas ?? new Map(db.prepare('SELECT usuario_id AS id, MAX(creada_en) AS f FROM academia_respuestas GROUP BY usuario_id').all().map(f => [f.id, f.f]));
+  const visitas = resumenesVisitas(db, ahoraMs); // 0.14.9: una consulta para todos (se pide cada 5 s)
   return new Map(cuentas.map(u => {
-    const v = resumenVisitas(db, u.id, ahoraMs);
+    const v = visitas.get(u.id) ?? null;
     const ultima = [actividad.get(u.id), v?.ultima].filter(Boolean).sort().pop() ?? null;
     const reciente = f => Boolean(f) && ahoraMs - Date.parse(f) >= 0 && ahoraMs - Date.parse(f) <= EN_LINEA_MS;
     const enLinea = (v ? v.enLinea : reciente(ultima)) || reciente(respuestas.get(u.id));

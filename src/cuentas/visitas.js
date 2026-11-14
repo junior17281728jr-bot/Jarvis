@@ -7,8 +7,12 @@
 // Sin cambio de base: un ajuste por cuenta (`cuenta.visitas.<id>`), que se escribe como mucho una vez por minuto (y al
 // empezar o terminar una visita). Nunca se borra nada de las sesiones ni de la auditoría.
 export const HUECO_MS = 15 * 60 * 1000;
-export const EN_LINEA_MS = 3 * 60 * 1000;
-const CADA_MS = 60 * 1000;
+// 0.14.9 (pedido del dueño): «en línea» = actividad en los últimos 45 s. Mientras la app está a la vista, la pantalla
+// manda un latido cada 15 s (POST /api/yo/visita/latido; public/presencia.js); al cerrarla de golpe, a los 45 s ya sale
+// «desconectado». Por eso la visita se anota hasta cada 10 s (antes, 1 min): cada latido la mueve.
+export const EN_LINEA_MS = 45 * 1000;
+export const LATIDO_MS = 15 * 1000;
+const CADA_MS = 10 * 1000;
 export const COMO = Object.freeze(['cerro', 'inactiva', 'salir']);
 
 const clave = id => `cuenta.visitas.${Number(id)}`;
@@ -57,7 +61,22 @@ export function anotarFin(db, usuarioId, como, ahoraMs = Date.now()) {
 
 // Lo que se ve en la ficha: { entrada, salida, salidaComo, ultima, enLinea, visitas } (null si nunca se anotó una visita).
 export function resumenVisitas(db, usuarioId, ahoraMs = Date.now()) {
-  const v = leerVisitas(db, usuarioId);
+  return resumenDeVisitas(leerVisitas(db, usuarioId), ahoraMs);
+}
+// 0.14.9: las visitas de TODAS las cuentas en una consulta (lo que «Cómo van todos» pide cada 5 s): Map id → resumen.
+export function resumenesVisitas(db, ahoraMs = Date.now()) {
+  const m = new Map();
+  for (const f of db.prepare("SELECT clave, valor FROM ajustes WHERE clave LIKE 'cuenta.visitas.%'").all()) {
+    const id = Number(f.clave.slice('cuenta.visitas.'.length));
+    if (!Number.isSafeInteger(id)) continue;
+    let v = null;
+    try { v = JSON.parse(f.valor); } catch { v = null; }
+    if (!v || typeof v !== 'object' || !v.actual || typeof v.actual.inicio !== 'string') continue;
+    m.set(id, resumenDeVisitas(v, ahoraMs));
+  }
+  return m;
+}
+function resumenDeVisitas(v, ahoraMs) {
   if (!v) return null;
   const a = v.actual;
   const ultima = a.ultimo ?? a.inicio;
@@ -69,10 +88,17 @@ export function resumenVisitas(db, usuarioId, ahoraMs = Date.now()) {
 
 // POST /api/yo/visita/fin { como: 'cerro' }: la pantalla avisa que se cerró o se escondió (pagehide / visibilitychange).
 // Barato: una escritura, como mucho una vez cada 30 s por cuenta (anotarFin) y 30 avisos cada 10 minutos.
+// 0.14.9: POST /api/yo/visita/latido: «sigo aquí» (cada 15 s con la app a la vista). No hace nada más que contar como
+// actividad (src/app.js → anotarActividad: una escritura cada 10 s como mucho). 80 cada 10 minutos por cuenta.
 // 0.12.7: finDeSesion (src/app.js): al cerrar la app, el instructor mira si hace falta preparar su próxima clase (barato:
 // primero lo que no cuesta nada; solo si estudió de verdad y no se preparó hoy).
 export function registrarRutasVisitas(rutas, { Limitador, finDeSesion = () => {} }) {
   const tope = new Limitador({ maximo: 30, ventanaMs: 10 * 60 * 1000 });
+  const topeLatido = new Limitador({ maximo: 80, ventanaMs: 10 * 60 * 1000 });
+  rutas.agregar('POST', '/api/yo/visita/latido', ({ usuario }) => {
+    if (!topeLatido.permitir(String(usuario.id))) return { codigo: 429, datos: { error: 'demasiados_intentos' } };
+    return { codigo: 200, datos: { ok: true } };
+  }, { permitirConClaveTemporal: true });
   rutas.agregar('POST', '/api/yo/visita/fin', ({ db, usuario }) => {
     if (tope.permitir(String(usuario.id))) {
       anotarFin(db, usuario.id, 'cerro');

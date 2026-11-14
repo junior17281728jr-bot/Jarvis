@@ -142,7 +142,7 @@ test('en línea con un reloj falso: visita de hace 2 min sí; de hace 4 min o ce
     const beto = crearUsuario(db, { nombre: 'beto', claveHash: 'x' });
     const carla = crearUsuario(db, { nombre: 'carla', claveHash: 'x' });
     const jefe = crearUsuario(db, { nombre: 'jefe', claveHash: 'x', rol: 'admin' });
-    anotarActividad(db, ana, AHORA - 2 * MIN, { entrada: true });
+    anotarActividad(db, ana, AHORA - 30_000, { entrada: true });
     anotarActividad(db, beto, AHORA - 4 * MIN, { entrada: true });
     anotarActividad(db, jefe, AHORA, { entrada: true });
     const linea = id => enLineaTodos(db, AHORA).alumnos.find(a => a.id === id);
@@ -154,11 +154,11 @@ test('en línea con un reloj falso: visita de hace 2 min sí; de hace 4 min o ce
     assert.equal(enLineaTodos(db, AHORA).alumnos.some(a => a.id === jefe), false, 'el administrador no cuenta');
     assert.equal(enLineaTodos(db, AHORA).enLinea, 1);
     // Ana cierra la app: deja de estar en línea aunque haya sido hace segundos.
-    anotarFin(db, ana, 'cerro', AHORA - 1 * MIN);
+    anotarFin(db, ana, 'cerro', AHORA - 10_000);
     assert.equal(linea(ana).enLinea, false);
-    // Una respuesta de hace 1 minuto (sin visita anotada) la pone en línea.
+    // Una respuesta de hace 30 s (sin visita anotada) la pone en línea.
     const i = Number(db.prepare(`INSERT INTO academia_intentos (usuario_id, tipo, materia, tema, total, respondidas, aciertos, empezado_en, orden) VALUES (?, 'tema', 'factores_humanos', 'muestra-hipoxia', 5, 1, 1, ?, '[]')`).run(carla, iso(AHORA - 5 * MIN)).lastInsertRowid);
-    db.prepare(`INSERT INTO academia_respuestas (intento_id, usuario_id, pregunta, materia, tema, elegida, correcta, dia, creada_en) VALUES (?, ?, 'muestra-h1', 'factores_humanos', 'muestra-hipoxia', 'B', 1, '2026-11-13', ?)`).run(i, carla, iso(AHORA - MIN));
+    db.prepare(`INSERT INTO academia_respuestas (intento_id, usuario_id, pregunta, materia, tema, elegida, correcta, dia, creada_en) VALUES (?, ?, 'muestra-h1', 'factores_humanos', 'muestra-hipoxia', 'B', 1, '2026-11-13', ?)`).run(i, carla, iso(AHORA - 30_000));
     assert.equal(linea(carla).enLinea, true);
     // Y lo mismo en la lista completa (sin contenido en uso: igual funciona).
     const todos = comoVanTodos(db, null, AHORA);

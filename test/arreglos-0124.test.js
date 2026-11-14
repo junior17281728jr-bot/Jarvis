@@ -183,9 +183,9 @@ test('visitas: empiezan al entrar o tras 15 min sin nada, cerrar la app un momen
     const MIN = 60_000;
     assert.equal(resumenVisitas(db, id, T), null, 'sin visitas: nada (la ficha usa lo de antes)');
     assert.equal(anotarActividad(db, id, T, { entrada: true }), 'nueva');
-    assert.equal(anotarActividad(db, id, T + 30_000), null, 'menos de un minuto: ni escribe');
+    assert.equal(anotarActividad(db, id, T + 5_000), null, 'menos de 10 s: ni escribe');
     assert.equal(anotarActividad(db, id, T + 2 * MIN), 'sigue');
-    let r = resumenVisitas(db, id, T + 3 * MIN);
+    let r = resumenVisitas(db, id, T + 2 * MIN + 30_000);
     assert.deepEqual([r.enLinea, r.visitas, r.salida], [true, 1, null], 'en línea, primera visita, sin salida todavía');
     // Cierra la app y vuelve a los 5 minutos: la misma visita.
     assert.equal(anotarFin(db, id, 'cerro', T + 4 * MIN), true);
@@ -198,9 +198,11 @@ test('visitas: empiezan al entrar o tras 15 min sin nada, cerrar la app un momen
     // Se va sin cerrar nada; vuelve al día siguiente: visita nueva, y la salida de la anterior es su última actividad.
     const manana = T + 9 * MIN + HUECO_MS + 16 * 3600_000;
     assert.equal(anotarActividad(db, id, manana), 'nueva');
-    r = resumenVisitas(db, id, manana + MIN);
+    r = resumenVisitas(db, id, manana + 30_000);
     assert.deepEqual([r.entrada, r.salida, r.salidaComo, r.visitas, r.enLinea], [new Date(manana).toISOString(), new Date(T + 9 * MIN).toISOString(), 'inactiva', 2, true]);
-    // Sin actividad 3 minutos: ya no «en línea»; su salida es la de ESTA visita.
+    // 0.14.9: a los 45 s sin actividad ya no está «en línea»; su salida es la de ESTA visita.
+    assert.equal(resumenVisitas(db, id, manana + 45_000).enLinea, true);
+    assert.equal(resumenVisitas(db, id, manana + 46_000).enLinea, false);
     r = resumenVisitas(db, id, manana + 4 * MIN);
     assert.deepEqual([r.enLinea, r.salida, r.salidaComo], [false, new Date(manana).toISOString(), 'inactiva']);
     anotarFin(db, id, 'salir', manana + 5 * MIN);

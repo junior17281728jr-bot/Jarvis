@@ -6,6 +6,7 @@ import {
 } from './ia-vista.js';
 // 0.13.9: la tarjeta «Claude (IA)» del Resumen y los 3 pasos de «Claude (API)».
 import { tarjetaClaude, pasosClaude } from './claude-vista.js';
+import { repetirMientrasVisible, LATIDO_ALUMNO_MS, EN_LINEA_ADMIN_MS, AVANCE_ADMIN_MS } from './presencia.js';
 // 0.14.1: Sistema → «Pago del servidor» y su línea en el Resumen.
 import { vistaPagoServidor, lineaResumenPago, textoAvisoPago } from './pago-servidor-vista.js';
 import {
@@ -5426,26 +5427,25 @@ async function pantallaComoVan() {
     return control.nodo;
   }, 'como-van');
   if (!control) return;
-  // 0.14.9: cada 30 s (y al volver a la app) pide en línea Y el avance de cada alumno: lo nuevo se ve sin recargar.
+  // 0.14.9: con la app a la vista, quién está en línea cada 5 s (lo liviano) y el avance de cada alumno cada 30 s; al
+  // volver a la app, enseguida. Lo nuevo se ve sin recargar.
+  refrescarMientras(control.nodo, vigente, async () => {
+    const x = await api('GET', '/api/admin/academia/como-van/en-linea');
+    if (x.ok && vigente() && control.nodo.isConnected) control.actualizar(x.datos);
+  }, EN_LINEA_ADMIN_MS);
   refrescarMientras(control.nodo, vigente, async () => {
     const x = await api('GET', '/api/admin/academia/como-van/avance');
     if (x.ok && vigente() && control.nodo.isConnected) control.actualizar(x.datos);
-  });
+  }, AVANCE_ADMIN_MS);
 }
-// 0.14.9: repite «pedir» cada 30 s mientras la pantalla sigue abierta y a la vista, y enseguida al volver a la app.
-function refrescarMientras(nodo, vigente, pedir) {
+// 0.14.9: repite «pedir» cada cadaMs mientras la pantalla sigue abierta y a la vista (public/presencia.js), y enseguida
+// al volver a la app. Al irse de la pantalla, deja de pedir.
+function refrescarMientras(nodo, vigente, pedir, cadaMs = AVANCE_ADMIN_MS) {
   const ruta = location.hash;
-  let pidiendo = false;
-  const vez = async () => {
-    if (!vigente() || location.hash !== ruta || !nodo.isConnected) { parar(); return; }
-    if (document.hidden || pidiendo) return;
-    pidiendo = true;
-    try { await pedir(); } finally { pidiendo = false; }
-  };
-  const reloj = setInterval(vez, 30000);
-  const alVolver = () => { if (!document.hidden) vez(); };
-  document.addEventListener('visibilitychange', alVolver);
-  function parar() { clearInterval(reloj); document.removeEventListener('visibilitychange', alVolver); }
+  repetirMientrasVisible({ doc: document, cadaMs, hacer: parar => {
+    if (!vigente() || location.hash !== ruta || !nodo.isConnected) { parar(); return null; }
+    return pedir();
+  } });
 }
 // 0.13.5: «Comparar un examen»: la nota de cada alumno y qué pregunta falló cada uno (y qué eligió).
 async function pantallaCompararExamen(materia) {
@@ -6242,6 +6242,12 @@ function avisarFinDeVisita() {
   try { fetch('/api/yo/visita/fin', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'X-Oportia': '1', 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); } catch { /* sin red: no pasa nada */ }
 }
 window.addEventListener('pagehide', avisarFinDeVisita);
+// 0.14.9: el latido del alumno: con la app a la vista, «sigo aquí» cada 15 s (así «en línea» del administrador es de
+// 45 s y, si cierra de golpe, sale «desconectado» enseguida). Escondida, nada. Directo al servidor: no toca la memoria.
+repetirMientrasVisible({ doc: document, cadaMs: LATIDO_ALUMNO_MS, hacer: () => {
+  if (!estado.usuario || estado.usuario.rol === 'admin' || estado.terminos?.pendiente) return null;
+  return pedirAlServidor('POST', '/api/yo/visita/latido', {});
+} });
 // 0.12.4: en el iPhone y el iPad (sobre todo como app de la pantalla de inicio) «imprimir» a veces no abre nada: todos
 // los botones de PDF (reporte, contratos, Mis documentos, términos) dicen cómo guardarlo con «Compartir».
 const esIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
