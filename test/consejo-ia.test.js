@@ -1,6 +1,7 @@
 // Academia 0.14.16: el consejo del instructor IA, corto y con botones (src/academia/consejo-ia.js, la parte del consejo de
 // src/academia/instructor-ia.js y pintarConsejo de public/instructor.js). Todo con el proveedor FALSO o sin IA.
 import { test } from 'node:test';
+import { configDePrueba } from './ayuda.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -199,7 +200,6 @@ test('lo que escribió la IA nunca muestra un id interno (t4, tg-3-28, m03, mate
   assert.deepEqual(v, { porque: 'Repasa.', pasos: ['Relee.'], tarjetas: [{ tarjeta: 't4', porque: 'Por.' }], citas: [{ numero: 'tg-1-2', respuesta: 'B' }], confusiones: { 'fh/hipoxia': 'Ve.' } });
   // Por la base: un consejo guardado con ids sale limpio.
   const { abrirBase } = await import('../src/nucleo/db.js');
-  const { configDePrueba } = await import('./ayuda.js');
   const { leerGuardado } = await import('../src/academia/instructor-ia.js');
   const db = abrirBase(configDePrueba());
   db.prepare('INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)').run('academia.ia.consejo.1.2026-11-09-v2', JSON.stringify({ forma: 2, saludo: 'Pana, repasa t4 y t5.', confusiones: {}, porque: '', en: 'x' }), 'x');
