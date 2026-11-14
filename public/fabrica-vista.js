@@ -30,7 +30,8 @@ export function pantallaFabrica(d, h) {
   const f = d.fuentes;
   const fuentes = el('section', { class: 'tarjeta' },
     el('h3', { texto: t('fabrica.fuentes.titulo') }),
-    el('p', { class: f?.ok ? 'suave' : 'mensaje error', texto: !f ? t('fabrica.fuentes.nunca') : f.ok ? t('fabrica.fuentes.bien', { en: f.en ? h.fecha(f.en) : '—' }) : t('fabrica.fuentes.mal') }),
+    el('p', { class: f?.ok ? 'suave' : f?.resumen?.estado === 'bajando' ? 'aviso' : 'mensaje error', texto: textoFuentes(f, t, h) }),
+    f?.resumen?.estado === 'bajando' && f.resumen.total ? el('progress', { max: f.resumen.total, value: f.resumen.hechas, 'aria-label': t('fabrica.fuentes.bajando', { hechas: f.resumen.hechas, total: f.resumen.total }) }) : null,
     f?.errores?.length ? el('ul', { class: 'chica' }, f.errores.map(e => el('li', { texto: `${e.ruta}: ${e.motivo}` }))) : null,
     f?.faltan?.length ? el('p', { class: 'suave chica', texto: t('fabrica.fuentes.faltan', { lista: f.faltan.slice(0, 8).join(', ') }) }) : null);
   const informe = m => el('details', {
@@ -178,4 +179,14 @@ function informeProfunda(m, h) {
       ].filter(Boolean));
     },
   }, el('summary', { texto: t('fabrica.ver_informe') }), el('div', { class: 'fabrica-informe' }, el('p', { class: 'suave', texto: t('reporte.preparando') })));
+}
+
+// 0.14.13: la línea de la tarjeta de fuentes: revisadas, «Bajando los libros: 12 de 27», o el motivo exacto del fallo.
+function textoFuentes(f, t, h) {
+  if (!f) return t('fabrica.fuentes.nunca');
+  if (f.ok) return t('fabrica.fuentes.bien', { en: f.en ? h.fecha(f.en) : '—' });
+  const r = f.resumen;
+  if (r?.estado === 'bajando') return t('fabrica.fuentes.bajando', { hechas: r.hechas, total: r.total });
+  if (r?.estado === 'fallo' && r.motivo) return t('fabrica.fuentes.fallo', { motivo: h.tSi(`fuentes.motivo.${r.motivo}`, r.motivo) });
+  return t('fabrica.fuentes.mal');
 }

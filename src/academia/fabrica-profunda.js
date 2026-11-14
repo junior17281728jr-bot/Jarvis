@@ -38,7 +38,7 @@ import { join } from 'node:path';
 import { MATERIAS, MATERIAS_ORAL, LIMITES, LIMITES_ORAL, revisarPaquete } from './formato.js';
 import { normalizar } from './reto-calidad.js';
 import { carpetaAcademia, leerAjuste, guardarAjuste, leerEnUso, guardarJson, activarPaquete, rutaDeRecurso, RECURSOS } from './paquetes.js';
-import { carpetaFuentes, leerLecturas, textoDeLectura, imagenesDeTema, leerManifiesto } from './fuentes.js';
+import { carpetaFuentes, leerLecturas, textoDeLectura, imagenesDeTema, leerManifiesto, estadoFuentes, resumenFuentes } from './fuentes.js';
 import { leerFuenteOral, contextoOral } from './fabrica-oral.js';
 import { REGLAS_PROFUNDA, GUIA_ENSENANZA, REGLAS_VERIFICACION, REGLAS_VERIFICACION_PROFUNDA, ESQUEMAS, ESQUEMAS_PROFUNDA, TAREAS, TAREAS_PROFUNDA, datos } from './fabrica-prompts.js';
 import { tarjetaConVisual, revisarDiagrama, TIPOS_DIAGRAMA } from './diagramas.js';
@@ -48,7 +48,7 @@ import { PROPOSITOS, PROPOSITOS_PROFUNDA } from '../ia/propositos.js';
 import { precioDe, costoMicro } from '../ia/precios.js';
 import { leerConfigIa } from '../ia/config.js';
 import { gastoMicro, mesCobro, elegirProveedor, modelosDe } from '../ia/presupuesto.js';
-import { puedeLlamar, adjuntar, estadoMateria, guardarGeneral, leerConfigFabrica, cuotaHora, T } from './fabrica.js';
+import { puedeLlamar, adjuntar, estadoMateria, guardarGeneral, estadoGeneral, leerConfigFabrica, cuotaHora, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 
 export const P = Object.freeze({
@@ -1309,8 +1309,11 @@ export function fasesTodo(db, config, { ahora = Date.now(), memoMs = 0 } = {}) {
   const estado = !activa ? (r.empezo ? 'pausada' : 'apagada')
     : etapas && r.terminada && !etapaA && !enRevision ? 'terminada'
       : espera && SIN_SALDO.has(espera.motivo) ? 'sin_saldo' : actual || enRevision ? 'trabajando' : 'esperando';
+  // 0.14.13: sin las fuentes instaladas, la pantalla dice por qué (bajando «12 de 27», o el motivo), no «esperando su turno».
+  const fuentes = resumenFuentes(estadoFuentes(db), estadoGeneral(db).sync);
+  const estadoFinal = activa && estado === 'esperando' && fuentes.estado !== 'listas' ? (fuentes.estado === 'bajando' ? 'bajando_fuentes' : 'sin_fuentes') : estado;
   const valor = {
-    estado, ronda, etapas: etapas === true, modelo: cfg.profunda.modelo, topeMicro, gastoMicro: gasto, quedanMicro: Math.max(0, topeMicro - gasto), espera,
+    estado: estadoFinal, fuentes, ronda, etapas: etapas === true, modelo: cfg.profunda.modelo, topeMicro, gastoMicro: gasto, quedanMicro: Math.max(0, topeMicro - gasto), espera,
     hasta: actual ? { materia: nombre(actual), tema: temaActual } : ultima ? { materia: nombre(ultima), tema: null } : null,
     fuera: plan.filter(x => x.rec.estado === 'fuera').map(nombre), conteo: r.conteo, fases,
   };

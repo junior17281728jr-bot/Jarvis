@@ -82,7 +82,9 @@ export function panelTodo(h, { d = null, compacto = false } = {}) {
         f.estado === 'pronto' ? null : el('progress', { max: 100, value: f.pct, 'aria-label': t('fabrica.hecho_pct', { pct: f.pct }) }),
         f.actual && f.estado === 'ahora' ? el('p', { class: 'suave chica', texto: f.actual.texto ?? [nombreMateria(f.actual.materia, t, h.tSi), f.actual.tema].filter(Boolean).join(' › ') }) : null)));
     const hasta = x.hasta ? [nombreMateria(x.hasta.materia, t, h.tSi), x.hasta.tema].filter(Boolean).join(' › ') : '—';
-    const linea = x.estado === 'sin_saldo' ? t('todo.estado.sin_saldo', { hasta }) : t(`todo.estado.${x.estado}`, { hasta, modelo: x.modelo === 'opus' ? 'Claude Opus 5.5' : 'Claude Sonnet 5.5' });
+    const fu = x.fuentes ?? {};
+    const motivoFuentes = fu.motivo ? h.tSi(`fuentes.motivo.${fu.motivo}`, fu.motivo) : t('fuentes.motivo.sin_fuentes');
+    const linea = x.estado === 'sin_saldo' ? t('todo.estado.sin_saldo', { hasta }) : t(`todo.estado.${x.estado}`, { hasta, modelo: x.modelo === 'opus' ? 'Claude Opus 5.5' : 'Claude Sonnet 5.5', hechas: fu.hechas ?? 0, total: fu.total ?? 0, motivo: motivoFuentes });
     const botones = [];
     if (x.estado === 'apagada') botones.push(accion(t('todo.boton'), 'verde grande', empezar));
     else if (x.estado === 'pausada') botones.push(accion(t('todo.seguir'), 'verde', pausa(false)));
@@ -91,7 +93,7 @@ export function panelTodo(h, { d = null, compacto = false } = {}) {
     if (compacto) botones.push(el('a', { class: 'boton-enlace secundario', href: '#contenido/fabrica' }, el('span', { texto: t('todo.detalle') })));
     caja.replaceChildren(...[
       el('h2', { class: 'con-icono', id: 'todo-titulo' }, h.icono('chispa'), el('span', { texto: t('todo.titulo') })),
-      el('p', { class: x.estado === 'sin_saldo' ? 'aviso' : x.estado === 'terminada' ? 'bien' : '' }, el('strong', { texto: linea })),
+      el('p', { class: x.estado === 'sin_saldo' || x.estado === 'sin_fuentes' || x.estado === 'bajando_fuentes' ? 'aviso' : x.estado === 'terminada' ? 'bien' : '' }, el('strong', { texto: linea })),
       x.estado === 'apagada' && x.listo && !x.listo.listo ? el('p', { class: 'aviso chica', texto: t(queHacer(x.listo.motivo)) }) : null,
       el('ol', { class: 'todo-fases' }, filas),
       // Antes de empezar, el tope que trae el botón (US$90 para todo); después, el de la ronda.

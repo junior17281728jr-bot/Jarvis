@@ -21,7 +21,7 @@ import { normalizar } from './reto-calidad.js';
 import { guardarAjuste, leerAjuste, guardarJson, aceptarRecurso, rutaDeRecurso, activarPaquete, huellaDeArchivo, leerEnUso, paqueteActivo } from './paquetes.js';
 import { leerFuenteOral, contextoOral, pasosDeTemaOral, pedidoOral, revisarSalidaOral, seccionOral, armarTemaOral } from './fabrica-oral.js';
 import {
-  carpetaFuentes, estadoFuentes, sincronizarFuentes, leerManifiesto, leerLecturas, textoDeLectura, preguntasDeTema, imagenesDeTema,
+  carpetaFuentes, estadoFuentes, sincronizarFuentes, leerManifiesto, MOTIVOS_PASAJEROS, resumenFuentes, leerLecturas, textoDeLectura, preguntasDeTema, imagenesDeTema,
 } from './fuentes.js';
 import { REGLAS_ESCRITURA, REGLAS_VERIFICACION, ESQUEMAS, TAREAS, datos } from './fabrica-prompts.js';
 import { tarjetaConVisual, revisarDiagrama, TIPOS_DIAGRAMA } from './diagramas.js';
@@ -54,6 +54,7 @@ export const T = Object.freeze({
   verificarBytes: 170_000,
   tarjetasPorPaso: 3, preguntasPorPaso: 3, intentos: 2,
   esperaFallaMs: 35 * 60_000, esperaPasajeroMs: 10 * 60_000, sincronizarCadaMs: 3_600_000, sincronizarTerminadaMs: 6 * 3_600_000,
+  reintentarFuentesMs: 3 * 60_000, // 0.14.13: sin las fuentes y con un corte pasajero, se reintenta a los 3 min (no cada hora)
   margenGeneral: 0.2, // la fábrica deja siempre libre el 20 % del tope general del mes (para los alumnos)
   paqueteMaxBytes: 4 * 1024 * 1024,
 });
@@ -610,11 +611,15 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     const cfg = leerConfigFabrica(db);
     let g = estadoGeneral(db);
     // 1. Las fuentes (Drive): como mucho cada hora (cada 6 h con todo terminado). Solo lee Drive; nunca la IA.
-    const cada = g.terminada ? T.sincronizarTerminadaMs : T.sincronizarCadaMs;
-    if (!ctx.tarea?.punto?.sincronizado && (!g.ultimaSync || ahora - Date.parse(g.ultimaSync) >= cada)) {
+    // 0.14.13: mientras el paquete de fuentes se está bajando (partes que faltan), se sigue en el paso siguiente, sin
+    // esperar la hora; sin fuentes y con un corte pasajero (la red, Drive ocupado), a los 3 minutos.
+    const sinFuentes = !estadoFuentes(db)?.ok;
+    const pronto = sinFuentes && g.sync && (g.sync.parcial || MOTIVOS_PASAJEROS.has(g.sync.motivo));
+    const cada = g.sync?.parcial && sinFuentes ? 0 : pronto ? T.reintentarFuentesMs : g.terminada ? T.sincronizarTerminadaMs : T.sincronizarCadaMs;
+    if ((!ctx.tarea?.punto?.sincronizado || (pronto && g.sync.parcial)) && (!g.ultimaSync || ahora - Date.parse(g.ultimaSync) >= cada)) {
       const r = await sincronizar(db, config, { escribir: ctx.escribir, senal: ctx.senal, quedaMs: ctx.quedaMs });
-      await ctx.escribir(() => guardarGeneral(db, { ultimaSync: iso(ahora), sync: { ok: r.ok, motivo: r.motivo ?? null, bajados: r.bajados ?? 0 } }));
-      return { punto: { sincronizado: true }, esperarMs: 1000 };
+      await ctx.escribir(() => guardarGeneral(db, { ultimaSync: iso(ahora), sync: { ok: r.ok, motivo: r.motivo ?? null, bajados: r.bajados ?? 0, parcial: Boolean(r.parcial) } }));
+      return { punto: { sincronizado: !r.parcial }, esperarMs: 1000 };
     }
     // 0.14.2: «Pídele a la IA» primero (lo pidió el dueño): el mensaje que espera respuesta o un paso del trabajo que
     // aprobó con «Hazlo». Nunca con la IA en pausa; sin esperar las fuentes ni la espera de la fábrica. Si no pudo
@@ -629,7 +634,12 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     }
     const fuentes = estadoFuentes(db);
     const man = fuentes?.ok ? leerManifiesto(carpetaFuentes(config)) : null;
-    if (!man) return fin({ motivo: 'sin_fuentes' });
+    if (!man) {
+      // 0.14.13: con la bajada a medias o un corte pasajero, la tarea sigue viva y vuelve a probar en unos minutos.
+      const gg = estadoGeneral(db);
+      if (gg.sync && (gg.sync.parcial || MOTIVOS_PASAJEROS.has(gg.sync.motivo))) return { punto: {}, esperarMs: gg.sync.parcial ? 1000 : T.reintentarFuentesMs };
+      return fin({ motivo: 'sin_fuentes' });
+    }
     if (cfg.pausada) return fin({ motivo: 'pausada' });
     if (g.esperaHasta && Date.parse(g.esperaHasta) > ahora) return fin({ motivo: 'esperando', hasta: g.esperaHasta });
     // 2. La próxima cosa por hacer (desde lo guardado).
@@ -841,7 +851,7 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
   const terminadaYa = g.terminada ? ([...materias, ...capitulos].some(x => x.estado === 'revision') ? 'esperando_revision' : profunda.activa && profunda.falta.temas ? 'mejorando' : 'terminada') : null;
   return {
     profunda,
-    config: cfg, general: g, cuota, fuentes: fuentes ? { ok: fuentes.ok, errores: (fuentes.errores ?? []).slice(0, 10), faltan: fuentes.faltan ?? [], en: fuentes.en ?? null, oral: Boolean(fuentes.oral) } : null,
+    config: cfg, general: g, cuota, fuentes: fuentes ? { ok: fuentes.ok, errores: (fuentes.errores ?? []).slice(0, 10), faltan: fuentes.faltan ?? [], en: fuentes.en ?? null, oral: Boolean(fuentes.oral), resumen: resumenFuentes(fuentes, g.sync) } : g.sync && !g.sync.ok ? { ok: false, errores: [], faltan: [], en: g.ultimaSync ?? null, oral: false, resumen: resumenFuentes(null, g.sync) } : null,
     gastoMicro: gastoFabricaMicro(db), materias, etaMs, faltaMicro: materias.reduce((s, x) => s + x.faltaMicro, 0) + (cfg.oral ? capitulos.reduce((s, x) => s + x.faltaMicro, 0) : 0),
     estado: !plan.fuentes ? 'sin_fuentes' : cfg.pausada ? 'pausada' : g.terminada ? terminadaYa : g.espera ? 'esperando' : 'trabajando',
     oral: { hay: plan.oral.hay, activa: plan.oral.activa, ok: plan.oral.ok, errores: plan.oral.errores ?? [], capitulos }, mejora: leerJsonAjuste(db, 'fabrica.mejora.ultima'), mejoraGastoMicro: gastoMejoraMesMicro(db, ahora),

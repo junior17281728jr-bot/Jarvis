@@ -20,6 +20,7 @@ import { MATERIAS, ID_VALIDO, ARCHIVO_FIGURA } from './formato.js';
 import { carpetaAcademia, leerAjuste, guardarAjuste, huellaDeArchivo } from './paquetes.js';
 import { listarCarpeta, bajarArchivo, basesDrive } from './drive.js';
 import { carpetaDrive } from './drive-estado.js';
+import { espacioLibre } from './espacio.js';
 
 export const FORMATO_FUENTES = 'fuentes-academia';
 export const ARCHIVO_MANIFIESTO = 'fuentes-manifiesto.json';
@@ -242,6 +243,23 @@ export function estadoFuentes(db) {
   try { const v = JSON.parse(leerAjuste(db, AJUSTE_FUENTES) ?? 'null'); return esObjeto(v) ? v : null; } catch { return null; }
 }
 
+// 0.14.13: lo que la pantalla dice de las fuentes, en una línea. → { estado: 'listas'|'bajando'|'fallo'|'nunca'|'con_errores',
+// hechas, total, motivo }. «motivo» es una clave (fuentes.motivo.<motivo> en public/i18n).
+// «sync» es lo que dijo la última sincronización (fabrica.general.sync), para cuando ni se llegó a guardar el estado.
+export function resumenFuentes(f, sync = null) {
+  const fallo = esObjeto(sync) && !sync.ok && typeof sync.motivo === 'string' ? sync.motivo : null;
+  if (!esObjeto(f)) return fallo ? { estado: 'fallo', hechas: 0, total: 0, motivo: fallo } : { estado: 'nunca', hechas: 0, total: 0, motivo: null };
+  const d = esObjeto(f.descarga) ? f.descarga : null;
+  const hechas = Number.isSafeInteger(d?.hechas) ? d.hechas : 0;
+  const total = Number.isSafeInteger(d?.total) ? d.total : 0;
+  if (f.ok) return { estado: 'listas', hechas, total, motivo: null };
+  if (d?.estado === 'bajando') return { estado: 'bajando', hechas, total, motivo: d.motivo ?? null };
+  if (d?.estado === 'fallo') return { estado: 'fallo', hechas, total, motivo: d.motivo ?? f.archivo?.motivo ?? null };
+  if (fallo) return { estado: 'fallo', hechas, total, motivo: fallo };
+  const e = Array.isArray(f.errores) ? f.errores[0] : null;
+  return { estado: 'con_errores', hechas, total, motivo: e?.ruta === ARCHIVO_MANIFIESTO && e?.motivo === 'falta' ? 'sin_manifiesto' : 'con_errores' };
+}
+
 // Revisa lo que hay en la carpeta (sin red) y deja todo preparado. → el estado (también se guarda con escribir).
 export function revisarCarpetaFuentes(dir) {
   const estado = { ok: false, errores: [], materias: [], huella: null, faltan: [], oral: false };
@@ -412,35 +430,66 @@ export async function instalarPartes(dir, indice) {
 }
 
 // Baja el paquete en partes (si hace falta) y lo instala. → lo mismo que sincronizarFuentes.
+// 0.14.13: las partes ya bajadas y revisadas se quedan en partes/ y se siguen en el paso siguiente (la fábrica vuelve a
+// sincronizar en seguida mientras quede alguna: ver src/academia/fabrica.js). El avance queda en «descarga» ({ estado:
+// 'bajando'|'fallo'|'instalada', hechas, total, motivo }) para que la pantalla diga «Bajando los libros: 12 de 27» o el
+// motivo exacto. La instalación (80 MB por pedazos) solo empieza con tiempo de sobra en el paso.
+export const RESERVA_INSTALAR_MS = 90_000;
+export const MOTIVOS_PASAJEROS = new Set(['tiempo_agotado', 'sin_red', 'cancelado', 'no_responde', 'muchos_pedidos', 'no_disponible']);
 async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, escribir, anterior }) {
   const indices = archivos.filter(a => INDICE_PARTES.test(a.nombre)).sort((a, b) => Number(INDICE_PARTES.exec(b.nombre)[1]) - Number(INDICE_PARTES.exec(a.nombre)[1]));
   mkdirSync(join(dir, 'partes'), { recursive: true });
   const ri = join(dir, 'partes', indices[0].nombre);
-  const guardar = async (archivo, estado = anterior) => {
-    const nuevo = { ...estado, archivo: { indice: indices[0].nombre, ...archivo }, en: new Date().toISOString() };
+  let total = 0;
+  let hechas = 0;
+  const guardar = async (archivo, estado = anterior, descarga = null) => {
+    const nuevo = { ...estado, archivo: { indice: indices[0].nombre, ...archivo }, descarga: descarga ?? { estado: archivo.ok ? 'instalada' : 'fallo', motivo: archivo.motivo ?? null, hechas, total }, en: new Date().toISOString() };
     await escribir(() => guardarAjuste(db, AJUSTE_FUENTES, JSON.stringify(nuevo)));
     return nuevo;
   };
   const mal = async (motivo, extra = {}) => { await guardar({ ok: false, motivo, ...extra }); return { ok: false, motivo, bajados: 0, errores: [] }; };
+  const parcial = async (bajados, motivo = 'parcial') => {
+    await guardar({ ok: false, motivo }, anterior, { estado: 'bajando', motivo, hechas, total });
+    return { ok: true, bajados, errores: [{ archivo: '', motivo }], parcial: true, hechas, total };
+  };
   const bi = await bajarArchivo(indices[0].id, { bases, ruta: `${ri}.drive.part`, tope: TOPES_FUENTES.indiceBytes, senal });
   if (!bi.ok) return mal(bi.motivo);
   let r;
   try { r = revisarIndice(JSON.parse(readFileSync(`${ri}.drive.part`, 'utf8'))); } catch { r = { ok: false, motivo: 'indice_no_valido' }; }
   if (!r.ok) return mal(r.motivo);
   const indice = r.indice;
-  if (anterior.archivo?.instalado === indice.sha256_total) return { ok: true, bajados: 0, errores: [], estado: anterior };
+  total = indice.partes.length;
+  if (anterior.archivo?.instalado === indice.sha256_total) {
+    if (anterior.ok) return { ok: true, bajados: 0, errores: [], estado: anterior };
+    // Instalado pero la revisión no dio bien (o el estado se perdió): se revisa otra vez lo que ya está en la carpeta.
+    hechas = total;
+    const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: anterior.archivo.archivos ?? null }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {} });
+    return { ok: true, bajados: 0, errores: [], estado };
+  }
   let bajados = 0;
+  const faltan = [];
   for (const p of indice.partes) {
     const ruta = join(dir, 'partes', p.archivo);
-    if (existsSync(ruta) && statSync(ruta).size === p.bytes && huellaArchivo(ruta) === p.sha256) continue;
-    if (senal?.aborted || quedaMs() < 45_000) { await guardar({ ok: false, motivo: 'parcial' }); return { ok: true, bajados, errores: [{ archivo: '', motivo: 'parcial' }], parcial: true }; }
+    if (existsSync(ruta) && statSync(ruta).size === p.bytes && huellaArchivo(ruta) === p.sha256) hechas += 1;
+    else faltan.push(p);
+  }
+  const libre = espacioLibre(dir);
+  // Lo que falta bajar + el paquete abierto (más o menos lo mismo otra vez, y un margen).
+  if (libre != null && libre < faltan.reduce((s, p) => s + p.bytes, 0) + indice.bytes_total * 3) return mal('sin_espacio');
+  for (const p of faltan) {
+    if (senal?.aborted || quedaMs() < 45_000) return parcial(bajados);
     const a = archivos.find(x => x.nombre === p.archivo);
     if (!a) return mal('falta_parte', { parte: p.archivo });
+    const ruta = join(dir, 'partes', p.archivo);
     const b = await bajarArchivo(a.id, { bases, ruta: `${ruta}.drive.part`, tope: TOPES_FUENTES.parteBytes, senal });
+    // Un corte de la red o el tiempo del paso: lo bajado se queda; se sigue en el paso siguiente.
+    if (!b.ok && MOTIVOS_PASAJEROS.has(b.motivo)) return parcial(bajados, b.motivo);
     if (!b.ok || b.huella !== p.sha256 || b.bytes !== p.bytes) return mal('parte_distinta', { parte: p.archivo });
     renameSync(`${ruta}.drive.part`, ruta);
     bajados += 1;
+    hechas += 1;
   }
+  if (senal?.aborted || quedaMs() < RESERVA_INSTALAR_MS) return parcial(bajados, 'instalando');
   const inst = await instalarPartes(dir, indice);
   if (!inst.ok) return mal(inst.motivo);
   const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {} });

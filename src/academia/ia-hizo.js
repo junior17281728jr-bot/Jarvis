@@ -9,9 +9,9 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { paqueteActivo } from './paquetes.js';
-import { carpetaFuentes, estadoFuentes, leerManifiesto, leerLecturas, preguntasDeTema, imagenesDeTema } from './fuentes.js';
+import { carpetaFuentes, estadoFuentes, resumenFuentes, leerManifiesto, leerLecturas, preguntasDeTema, imagenesDeTema } from './fuentes.js';
 import { leerFuenteOral } from './fabrica-oral.js';
-import { vistaFabrica, estadoMateria, leerConfigFabrica, gastoFabricaMicro, gastoMejoraMesMicro } from './fabrica.js';
+import { vistaFabrica, estadoGeneral, estadoMateria, leerConfigFabrica, gastoFabricaMicro, gastoMejoraMesMicro } from './fabrica.js';
 import { crearLector, publicado, estadoProfunda, gastoProfundaMicro, planProfundo } from './fabrica-profunda.js';
 import { leerCambios } from './cambios-ia.js';
 import { leerTrabajos, gastoChatMicro } from './pidele.js';
@@ -26,7 +26,12 @@ export function materialesQueFaltan(db, config) {
   const dir = carpetaFuentes(config);
   const out = [];
   const f = estadoFuentes(db);
-  if (!f?.ok) { out.push({ clave: 'sin_fuentes' }); return out; }
+  if (!f?.ok) {
+    // 0.14.13: por qué no hay fuentes, en palabras: bajando «12 de 27», o el motivo exacto.
+    const r = resumenFuentes(f, estadoGeneral(db).sync);
+    out.push(r.estado === 'bajando' ? { clave: 'fuentes_bajando', hechas: r.hechas, total: r.total } : r.estado === 'fallo' || r.estado === 'con_errores' ? { clave: 'fuentes_fallo', motivo: r.motivo } : { clave: 'sin_fuentes' });
+    return out;
+  }
   let man = null;
   try { man = leerManifiesto(dir); } catch { man = null; }
   if (!man) { out.push({ clave: 'sin_manifiesto' }); return out; }

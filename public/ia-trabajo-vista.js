@@ -70,7 +70,8 @@ export function pantallaLoQueHizo(d, h) {
   const textoFalta = x => h.tSi(`iahizo.falta.${x.clave}`, x.clave)
     .replace('{nombre}', x.nombre ?? nombreMateria(h, x.materia)).replace('{materia}', nombreMateria(h, x.materia)).replace('{num}', x.num ?? '')
     .replace('{n}', h.numero(x.n ?? x.temas ?? 0)).replace('{pct}', x.pct ?? 0).replace('{tema}', x.tema ?? '').replace('{archivo}', x.archivo ?? '')
-    .replace('{motivo}', x.motivo ? h.tSi(`ia.motivo.${x.motivo}`, x.motivo) : '');
+    .replace('{hechas}', x.hechas ?? 0).replace('{total}', x.total ?? 0)
+    .replace('{motivo}', x.motivo ? (x.clave === 'material_fuentes_fallo' ? h.tSi(`fuentes.motivo.${x.motivo}`, x.motivo) : h.tSi(`ia.motivo.${x.motivo}`, x.motivo)) : '');
   const falta = el('section', { class: 'tarjeta' },
     el('h3', { texto: t('iahizo.falta') }),
     d.falta.length ? el('ul', { class: 'iahizo-falta' }, d.falta.map(x => el('li', { texto: textoFalta(x) }))) : el('p', { class: 'bien', texto: t('iahizo.falta.nada') }));
