@@ -1,4 +1,4 @@
-// Academia 0.14.9: el AVANCE de un alumno, visual y con pocas palabras («Cómo van todos» y su ficha; solo el administrador).
+// Academia 0.14.11: el AVANCE de un alumno, visual y con pocas palabras («Cómo van todos» y su ficha; solo el administrador).
 // Dos barras grandes (Test Guide y oral, el % de TODOS los temas), «Ahora en» y una cuadrícula: 11 materias (M1–M11) y los
 // capítulos del oral (C1–C9), cada una con su % y su barrita; la actual, resaltada. Al tocar una, sus temas como puntos
 // (✓ hecho, • empezado, vacío sin empezar); al tocar un punto, su nombre. Los datos: src/academia/avance-alumno.js.

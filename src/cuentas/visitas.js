@@ -7,7 +7,7 @@
 // Sin cambio de base: un ajuste por cuenta (`cuenta.visitas.<id>`), que se escribe como mucho una vez por minuto (y al
 // empezar o terminar una visita). Nunca se borra nada de las sesiones ni de la auditoría.
 export const HUECO_MS = 15 * 60 * 1000;
-// 0.14.9 (pedido del dueño): «en línea» = actividad en los últimos 45 s. Mientras la app está a la vista, la pantalla
+// 0.14.11 (pedido del dueño): «en línea» = actividad en los últimos 45 s. Mientras la app está a la vista, la pantalla
 // manda un latido cada 15 s (POST /api/yo/visita/latido; public/presencia.js); al cerrarla de golpe, a los 45 s ya sale
 // «desconectado». Por eso la visita se anota hasta cada 10 s (antes, 1 min): cada latido la mueve.
 export const EN_LINEA_MS = 45 * 1000;
@@ -63,7 +63,7 @@ export function anotarFin(db, usuarioId, como, ahoraMs = Date.now()) {
 export function resumenVisitas(db, usuarioId, ahoraMs = Date.now()) {
   return resumenDeVisitas(leerVisitas(db, usuarioId), ahoraMs);
 }
-// 0.14.9: las visitas de TODAS las cuentas en una consulta (lo que «Cómo van todos» pide cada 5 s): Map id → resumen.
+// 0.14.11: las visitas de TODAS las cuentas en una consulta (lo que «Cómo van todos» pide cada 5 s): Map id → resumen.
 export function resumenesVisitas(db, ahoraMs = Date.now()) {
   const m = new Map();
   for (const f of db.prepare("SELECT clave, valor FROM ajustes WHERE clave LIKE 'cuenta.visitas.%'").all()) {
@@ -88,7 +88,7 @@ function resumenDeVisitas(v, ahoraMs) {
 
 // POST /api/yo/visita/fin { como: 'cerro' }: la pantalla avisa que se cerró o se escondió (pagehide / visibilitychange).
 // Barato: una escritura, como mucho una vez cada 30 s por cuenta (anotarFin) y 30 avisos cada 10 minutos.
-// 0.14.9: POST /api/yo/visita/latido: «sigo aquí» (cada 15 s con la app a la vista). No hace nada más que contar como
+// 0.14.11: POST /api/yo/visita/latido: «sigo aquí» (cada 15 s con la app a la vista). No hace nada más que contar como
 // actividad (src/app.js → anotarActividad: una escritura cada 10 s como mucho). 80 cada 10 minutos por cuenta.
 // 0.12.7: finDeSesion (src/app.js): al cerrar la app, el instructor mira si hace falta preparar su próxima clase (barato:
 // primero lo que no cuesta nada; solo si estudió de verdad y no se preparó hoy).

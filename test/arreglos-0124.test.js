@@ -200,7 +200,7 @@ test('visitas: empiezan al entrar o tras 15 min sin nada, cerrar la app un momen
     assert.equal(anotarActividad(db, id, manana), 'nueva');
     r = resumenVisitas(db, id, manana + 30_000);
     assert.deepEqual([r.entrada, r.salida, r.salidaComo, r.visitas, r.enLinea], [new Date(manana).toISOString(), new Date(T + 9 * MIN).toISOString(), 'inactiva', 2, true]);
-    // 0.14.9: a los 45 s sin actividad ya no está «en línea»; su salida es la de ESTA visita.
+    // 0.14.11: a los 45 s sin actividad ya no está «en línea»; su salida es la de ESTA visita.
     assert.equal(resumenVisitas(db, id, manana + 45_000).enLinea, true);
     assert.equal(resumenVisitas(db, id, manana + 46_000).enLinea, false);
     r = resumenVisitas(db, id, manana + 4 * MIN);

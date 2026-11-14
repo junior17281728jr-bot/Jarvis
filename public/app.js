@@ -5427,7 +5427,7 @@ async function pantallaComoVan() {
     return control.nodo;
   }, 'como-van');
   if (!control) return;
-  // 0.14.9: con la app a la vista, quién está en línea cada 5 s (lo liviano) y el avance de cada alumno cada 30 s; al
+  // 0.14.11: con la app a la vista, quién está en línea cada 5 s (lo liviano) y el avance de cada alumno cada 30 s; al
   // volver a la app, enseguida. Lo nuevo se ve sin recargar.
   refrescarMientras(control.nodo, vigente, async () => {
     const x = await api('GET', '/api/admin/academia/como-van/en-linea');
@@ -5438,7 +5438,7 @@ async function pantallaComoVan() {
     if (x.ok && vigente() && control.nodo.isConnected) control.actualizar(x.datos);
   }, AVANCE_ADMIN_MS);
 }
-// 0.14.9: repite «pedir» cada cadaMs mientras la pantalla sigue abierta y a la vista (public/presencia.js), y enseguida
+// 0.14.11: repite «pedir» cada cadaMs mientras la pantalla sigue abierta y a la vista (public/presencia.js), y enseguida
 // al volver a la app. Al irse de la pantalla, deja de pedir.
 function refrescarMientras(nodo, vigente, pedir, cadaMs = AVANCE_ADMIN_MS) {
   const ruta = location.hash;
@@ -5469,7 +5469,7 @@ async function pantallaAlumno(id, pestana = 'resumen') {
   // 0.12.8: sus contratos («Enviar a mi Telegram») y su IA, al final de la ficha.
   if (r.ok) import('./admin-ia.js').then(m => { const main = raiz.querySelector('main.contenido'); if (vigente() && main) main.insertBefore(m.fichaIa(id, piezasIa()), main.lastElementChild); });
 }
-// 0.14.9: el avance de la ficha (dónde está y los %) se pide de nuevo cada 30 s y al volver a la app (sin memoria del
+// 0.14.11: el avance de la ficha (dónde está y los %) se pide de nuevo cada 30 s y al volver a la app (sin memoria del
 // navegador): lo que el alumno hace se ve sin recargar. Va después de dibujar (no se adelanta al abrir).
 function vigilarAvanceFicha(id, vigente, vista) {
   const caja = raiz.querySelector(`.av-caja[data-avance-alumno="${Number(id)}"]`);
@@ -6242,7 +6242,7 @@ function avisarFinDeVisita() {
   try { fetch('/api/yo/visita/fin', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'X-Oportia': '1', 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); } catch { /* sin red: no pasa nada */ }
 }
 window.addEventListener('pagehide', avisarFinDeVisita);
-// 0.14.9: el latido del alumno: con la app a la vista, «sigo aquí» cada 15 s (así «en línea» del administrador es de
+// 0.14.11: el latido del alumno: con la app a la vista, «sigo aquí» cada 15 s (así «en línea» del administrador es de
 // 45 s y, si cierra de golpe, sale «desconectado» enseguida). Escondida, nada. Directo al servidor: no toca la memoria.
 repetirMientrasVisible({ doc: document, cadaMs: LATIDO_ALUMNO_MS, hacer: () => {
   if (!estado.usuario || estado.usuario.rol === 'admin' || estado.terminos?.pendiente) return null;

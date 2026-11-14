@@ -1,4 +1,4 @@
-// Academia 0.14.9: repetir algo cada N ms SOLO mientras la app está a la vista (pausa con la app escondida; al volver,
+// Academia 0.14.11: repetir algo cada N ms SOLO mientras la app está a la vista (pausa con la app escondida; al volver,
 // enseguida una vez y otra vez cada N ms). Lo usan el latido del alumno (cada 15 s: «sigo aquí», para «en línea») y lo que
 // el administrador pide en «Cómo van todos» (en línea cada 5 s, el avance cada 30 s) y en la ficha (el avance cada 30 s).
 // Sin nada del DOM aparte de document (llega como «doc»): las pruebas lo usan con un reloj y un documento falsos.

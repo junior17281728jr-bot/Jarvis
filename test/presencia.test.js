@@ -1,4 +1,4 @@
-// Pruebas de la Academia 0.14.9: «en línea» más rápido. Con un reloj y un documento FALSOS (nada espera):
+// Pruebas de la Academia 0.14.11: «en línea» más rápido. Con un reloj y un documento FALSOS (nada espera):
 //  - el latido del alumno cada 15 s y lo que pide el administrador (en línea cada 5 s, el avance cada 30 s) SOLO con la
 //    app a la vista: pausa al esconderla, y al volver pide enseguida y sigue;
 //  - la ventana de «en línea»: 45 s (a los 46 s sin nada, ya no); un latido la renueva; cerrar la app la corta;

@@ -1,4 +1,4 @@
-// Academia 0.14.9 (pedido del dueño: «el progreso del alumno no se actualiza y solo sale una materia»): el AVANCE de cada
+// Academia 0.14.11 (pedido del dueño: «el progreso del alumno no se actualiza y solo sale una materia»): el AVANCE de cada
 // alumno para el administrador («Cómo van todos» y su ficha; rutas { admin: true }). Solo lee: sin cambio de base.
 //  - Test Guide: las 11 materias en el orden de la escuela; cada tema está «hecho» (aprobó su práctica, o lo leyó entero si
 //    no tiene preguntas), «empezado» (vio tarjetas, respondió algo o hizo una práctica sin aprobar) o «nuevo». El % del

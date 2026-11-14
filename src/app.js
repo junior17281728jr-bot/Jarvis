@@ -101,7 +101,7 @@ const RESPUESTAS_COMPRIMIBLES = new Set([
   // 0.9.0: la ficha de un alumno, uno de sus intentos y «Comparar».
   '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids',
   '/api/admin/academia/reporte',
-  // 0.14.9: «Cómo van todos» y el avance de cada alumno.
+  // 0.14.11: «Cómo van todos» y el avance de cada alumno.
   '/api/admin/academia/como-van', '/api/admin/academia/como-van/avance', '/api/admin/academia/alumnos/:id/avance']);
 
 function texto(res, codigo, mensaje) {

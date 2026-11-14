@@ -685,7 +685,7 @@ a.notas-ver-materia { display: inline-flex; align-items: center; min-height: 44p
 .notas-comparar-cabezas { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .notas-comparar-cabeza { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 12px; min-width: 0; }
 
-/* 0.14.9: el avance de cada alumno (public/admin-avance.js): «Ahora en», dos barras grandes (Test Guide y oral) y las
+/* 0.14.11: el avance de cada alumno (public/admin-avance.js): «Ahora en», dos barras grandes (Test Guide y oral) y las
    fichas de las 11 materias y de los capítulos del oral (la actual resaltada); al tocar una, sus temas como puntos. */
 .cv-alumno .cv-col-avance { grid-column: 1 / -1; }
 .av-caja { display: grid; gap: 10px; min-width: 0; }

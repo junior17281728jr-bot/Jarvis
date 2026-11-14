@@ -127,7 +127,7 @@ function cabeceraDe(db, u) {
 function actividadCompleta(db, u, ahoraMs, ultimaRespuesta) {
   const a = actividadDe(db, u.id, ahoraMs);
   const ultima = [a.ultimaActividad, ultimaRespuesta, a.ultimaEntrada].filter(Boolean).sort().pop() ?? null;
-  // 0.12.4: «en línea» lo dicen sus visitas (0.14.9: actividad en los últimos 45 s); una respuesta reciente también.
+  // 0.12.4: «en línea» lo dicen sus visitas (0.14.11: actividad en los últimos 45 s); una respuesta reciente también.
   return { ...a, ultimaActividad: ultima, enLinea: a.enLinea || Boolean(ultimaRespuesta && ahoraMs - Date.parse(ultimaRespuesta) <= EN_LINEA_MS) };
 }
 
@@ -148,7 +148,7 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     puntosDebiles: resumenDebiles(puntosDebiles(db, u.id, paquete), paquete),
     actividad,
     cadaMateria: cada.materias, cadaOral: hayOral(paquete) ? avanceOral(db, u.id, paquete) : null,
-    // 0.14.9: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema (src/academia/avance-alumno.js).
+    // 0.14.11: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema (src/academia/avance-alumno.js).
     avanceAlumno: avanceDe(db, paquete, [u.id]).get(u.id),
     detalles: {
       dondeVa: cada.dondeVa, masDebil: materiaMasDebil(cada.materias), ultimoExamen: ultimoExamenDe(db, u.id, paquete),

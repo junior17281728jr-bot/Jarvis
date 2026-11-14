@@ -30,7 +30,7 @@ export function cuentasDeAlumnos(db) {
 export function enLineaDe(db, cuentas, ahoraMs, ultimas = null) {
   const actividad = ultimaActividad(db);
   const respuestas = ultimas ?? new Map(db.prepare('SELECT usuario_id AS id, MAX(creada_en) AS f FROM academia_respuestas GROUP BY usuario_id').all().map(f => [f.id, f.f]));
-  const visitas = resumenesVisitas(db, ahoraMs); // 0.14.9: una consulta para todos (se pide cada 5 s)
+  const visitas = resumenesVisitas(db, ahoraMs); // 0.14.11: una consulta para todos (se pide cada 5 s)
   return new Map(cuentas.map(u => {
     const v = visitas.get(u.id) ?? null;
     const ultima = [actividad.get(u.id), v?.ultima].filter(Boolean).sort().pop() ?? null;
@@ -48,7 +48,7 @@ export function enLineaTodos(db, ahoraMs = Date.now()) {
   return { ahora: new Date(ahoraMs).toISOString(), enLinea: alumnos.filter(a => a.enLinea).length, alumnos };
 }
 
-// 0.14.9: lo que «Cómo van todos» pide cada 30 s (y al volver a la pantalla): en línea + el avance de cada alumno (Test
+// 0.14.11: lo que «Cómo van todos» pide cada 30 s (y al volver a la pantalla): en línea + el avance de cada alumno (Test
 // Guide y oral: dónde está y el % de todos los temas), así lo nuevo se ve sin recargar. Pocas consultas para todos.
 export function avanceTodos(db, paquete, ahoraMs = Date.now()) {
   const cuentas = cuentasDeAlumnos(db);
@@ -145,7 +145,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
     return {
       id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null,
       ...linea.get(u.id),
-      // 0.14.9: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema.
+      // 0.14.11: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema.
       avanceAlumno: avanceAlumno.get(u.id),
       plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde } : null,
       avance: { pct: pasos.total ? Math.min(100, Math.floor((pasos.hechos * 100) / pasos.total)) : 0, hechos: pasos.hechos, total },

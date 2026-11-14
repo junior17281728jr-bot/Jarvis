@@ -1,4 +1,4 @@
-// Pruebas de la Academia 0.14.9: el AVANCE de cada alumno para el administrador («Cómo van todos» y su ficha).
+// Pruebas de la Academia 0.14.11: el AVANCE de cada alumno para el administrador («Cómo van todos» y su ficha).
 //  - El % del curso suma TODOS los temas de TODAS las materias con clases (pesado por temas): ni el % de una sola materia
 //    (lo que se veía antes) ni el promedio de las materias. Lo mismo en el oral (por capítulo).
 //  - «Ahora en»: el tema de lo último que hizo (o el siguiente sin hacer), en el Test Guide y en el oral.

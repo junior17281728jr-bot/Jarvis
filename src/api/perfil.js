@@ -100,7 +100,7 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   // …/en-linea es lo liviano que la pantalla pide cada 30 s (solo quién está en línea). Solo leen.
   rutas.agregar('GET', '/api/admin/academia/como-van', ({ db }) => ({ codigo: 200, datos: comoVanTodos(db, activo(db), reloj()) }), { admin: true });
   rutas.agregar('GET', '/api/admin/academia/como-van/en-linea', ({ db }) => ({ codigo: 200, datos: enLineaTodos(db, reloj()) }), { admin: true });
-  // 0.14.9: el avance de cada alumno (dónde está, el % del Test Guide y del oral, tema por tema): lo que «Cómo van todos»
+  // 0.14.11: el avance de cada alumno (dónde está, el % del Test Guide y del oral, tema por tema): lo que «Cómo van todos»
   // pide cada 30 s, y el de uno solo para su ficha. Solo leen; nunca se guardan en el navegador (no-store).
   rutas.agregar('GET', '/api/admin/academia/como-van/avance', ({ db }) => ({ codigo: 200, datos: avanceTodos(db, activo(db), reloj()) }), { admin: true });
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/avance', ({ db, parametros }) => {

@@ -712,6 +712,18 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.11: el avance de cada alumno al día (Test Guide y oral) y «en línea» en 45 s — sin cambio de base
+
+- «Cómo van todos» y la ficha de cada alumno muestran, con pocas palabras: «Ahora en» (materia y tema del Test Guide;
+  capítulo y tema del oral), una barra grande con el % de TODO el curso del Test Guide y otra del oral (temas hechos ÷
+  todos los temas de todas las materias con clases; las que todavía no tienen clases salen «—» y no cuentan) y las
+  fichas M1–M11 y C1–C9 (la actual resaltada); al tocar una, sus temas como puntos (✓ hecho, • empezado).
+- Arreglo: «Clases» dejaba afuera la materia de la que solo dio el examen (parecía una sola materia), lo que solo vio
+  en tarjetas o practicó en el oral no contaba, el % salía de los pasos del camino (con exámenes y pasos inventados) y
+  la pantalla solo refrescaba quién está en línea.
+- Al día sin recargar: en línea cada 5 s y el avance cada 30 s (solo con la app a la vista; al volver, enseguida).
+  El alumno manda un latido cada 15 s con la app a la vista; «en línea» = actividad en los últimos 45 s.
+
 ### Lo nuevo de la 0.14.10: la contraseña de copias siempre a la vista, y un PIN sirve — sin cambio de base
 Pedido del dueño: «no me pide una contraseña» y «déjame poner una sencilla, de 4 o 6 números».
 - **Lo que pasaba**: Copias ofrecía «Crear mi contraseña de copias» solo si NO había ninguna clave. Con una clave de 28

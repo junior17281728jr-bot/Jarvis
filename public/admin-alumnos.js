@@ -7,7 +7,7 @@
 //  - Comparar (#comparar/2,5): lado a lado, con barras.
 // Todo texto se pone con textContent (h.el / h.talCual): nunca se interpreta como código.
 
-// 0.14.9: el avance visual (Test Guide y oral, tema por tema): public/admin-avance.js (tampoco importa nada).
+// 0.14.11: el avance visual (Test Guide y oral, tema por tema): public/admin-avance.js (tampoco importa nada).
 import { vistaAvanceAlumno, repintarAvance, pctTg } from './admin-avance.js';
 export { repintarAvance };
 
@@ -243,11 +243,11 @@ function pestanaResumen(d, h) {
   const clases = d.materias.map(m => {
     const temasAprob = m.temas.filter(x => x.aprobado).length;
     return { id: m.id, temasAprobados: temasAprob, temas: m.temas.length, pct: m.temas.length ? Math.floor((temasAprob * 100) / m.temas.length) : 0, respuestas: m.respuestas, pctAcierto: m.pctRespuestas, examen: m.examen.veces };
-  }).filter(m => m.respuestas || m.temasAprobados || m.examen); // 0.14.9: también la materia de la que solo dio el examen
+  }).filter(m => m.respuestas || m.temasAprobados || m.examen); // 0.14.11: también la materia de la que solo dio el examen
   return [
     el('section', { class: 'tarjeta ficha-bloque ficha-bloque-avance' },
       el('h2', { class: 'con-icono' }, h.icono('calendario'), el('span', { texto: t('cv.avance_titulo') })),
-      // 0.14.9: dónde está y el % de TODOS los temas (Test Guide y oral), materia por materia y tema por tema.
+      // 0.14.11: dónde está y el % de TODOS los temas (Test Guide y oral), materia por materia y tema por tema.
       vistaAvanceAlumno(h, d.avanceAlumno, { completo: true, alumno: d.alumno.id }),
       el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, plan) }), plan ? h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null),
       plan ? el('p', { class: 'suave chica', texto: t('cv.plan.estimado', { fin: h.fechaCortaDia(plan.fin), plan: h.fechaCortaDia(plan.finPlan) }) }) : null,
@@ -860,7 +860,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
     const punto = el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' });
     estados.set(a.id, { estado, punto });
     const examenes = [...a.examenes.materias, ...a.examenes.oral];
-    // 0.14.9: también la materia de la que solo dio el examen (antes quedaba afuera y parecía «una sola materia»).
+    // 0.14.11: también la materia de la que solo dio el examen (antes quedaba afuera y parecía «una sola materia»).
     const conExamen = new Set(a.examenes.materias.map(x => x.id));
     const clases = a.clases.materias.filter(m => m.respuestas || m.temasAprobados || conExamen.has(m.id));
     const caja = vistaAvanceAlumno(h, a.avanceAlumno, { alumno: a.id });
@@ -931,7 +931,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
       if (!a) continue;
       a.enLinea = x.enLinea;
       a.ultimaActividad = x.ultimaActividad;
-      // 0.14.9: el avance nuevo (si vino): se repinta solo lo que cambió, sin cerrar la materia abierta.
+      // 0.14.11: el avance nuevo (si vino): se repinta solo lo que cambió, sin cerrar la materia abierta.
       if (x.avanceAlumno !== undefined) { a.avanceAlumno = x.avanceAlumno; repintarAvance(cajas.get(a.id), x.avanceAlumno, h); }
       const e = estados.get(a.id);
       e.estado.textContent = estadoLinea(h, a);
