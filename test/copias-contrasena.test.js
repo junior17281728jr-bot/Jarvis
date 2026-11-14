@@ -64,16 +64,18 @@ async function rechaza(promesa, clave) {
 
 test('0.14.2 las reglas de la contraseña (servidor y página iguales), su normalización y el kdf que se acepta al leer', async () => {
   const casos = [
-    ['corta1', undefined, 'contrasena_corta'], ['  abc12345 ', undefined, 'contrasena_corta'], ['solo letras sin numero', undefined, 'contrasena_sin_numero'],
-    ['1234567890', undefined, 'contrasena_sin_letra'], ['a1'.repeat(101), undefined, 'contrasena_larga'], [P1, 'Avion de papel 2025', 'contrasenas_distintas'],
+    // 0.14.10: de 4 a 200 caracteres, de cualquier tipo (ya no pide letra ni número).
+    ['123', undefined, 'contrasena_corta'], ['  12  ', undefined, 'contrasena_corta'], ['', undefined, 'contrasena_corta'], ['corta1', undefined, null],
+    ['solo letras sin numero', undefined, null], ['1234567890', undefined, null], ['a1'.repeat(101), undefined, 'contrasena_larga'], [P1, 'Avion de papel 2025', 'contrasenas_distintas'],
     [P1, P1, null], [` ${P1}\n`, P1, null], ['ñandúes 2026', 'ñandúes 2026', null], ['ÁRBOL1234x', undefined, null],
   ];
   for (const [c, rep, esperado] of casos) {
     assert.equal(problemaDeContrasena(c, rep), esperado, `servidor: ${c}`);
     assert.equal(problemaContrasena(c, rep), esperado, `página: ${c}`);
   }
-  assert.deepEqual(reglasContrasena('abc'), { largo: false, letra: true, numero: false });
-  assert.deepEqual(reglasContrasena(P1), { largo: true, letra: true, numero: true });
+  assert.deepEqual(reglasContrasena('abc'), { largo: false, corta: false });
+  assert.deepEqual(reglasContrasena('4821'), { largo: true, corta: true });
+  assert.deepEqual(reglasContrasena(P1), { largo: true, corta: false });
   // La misma «ñ» compuesta o descompuesta (iPhone y terminal de la Mac) da la MISMA llave.
   const k = nuevoKdf(CHICO);
   const a = await derivarDeContrasena('ñandú 2026 avión', k);
@@ -119,7 +121,7 @@ test('0.14.2 sin contraseña no se hace ninguna copia: Copias y el Resumen lo di
 test('0.14.2 crear → copia → recuperar con la contraseña (archivos con y sin índice, y Telegram); mala → contrasena_no_abre', async () => {
   const b = await montar({ relleno: 6, clave: false });
   try {
-    await rechaza(conContrasena(b, 'corta1'), 'contrasena_corta');
+    await rechaza(conContrasena(b, '123'), 'contrasena_corta');
     await rechaza(conContrasena(b, P1, { repetida: `${P1}x` }), 'contrasenas_distintas');
     assert.equal(llaveActiva(b.db), null, 'nada guardado con una contraseña que no sirve');
     const creada = await conContrasena(b, P1);
@@ -287,7 +289,7 @@ test('0.14.2 las rutas: solo { contrasena, repetida }, piden la contraseña de e
         for (const datos of [{ contrasena: P1 }, { contrasena: P1, repetida: P1, clave: 'x' }, { contrasena: 1, repetida: 1 }, {}]) {
           assert.deepEqual((await comoDueno('POST', '/api/admin/copias/contrasena', { datos })).datos.error, 'contrasena_formato', JSON.stringify(Object.keys(datos)));
         }
-        assert.deepEqual((await comoDueno('POST', '/api/admin/copias/contrasena', { datos: { contrasena: 'corta1', repetida: 'corta1' } })).datos.error, 'contrasena_corta');
+        assert.deepEqual((await comoDueno('POST', '/api/admin/copias/contrasena', { datos: { contrasena: '123', repetida: '123' } })).datos.error, 'contrasena_corta');
         assert.deepEqual((await comoDueno('POST', '/api/admin/copias/contrasena', { datos: { contrasena: P1, repetida: P2 } })).datos.error, 'contrasenas_distintas');
         const ok = await comoDueno('POST', '/api/admin/copias/contrasena', { datos: { contrasena: P1, repetida: P1 } });
         assert.equal(ok.codigo, 201);
@@ -336,6 +338,106 @@ test('0.14.2 la clave de 28 símbolos se crea todavía por la API de antes (comp
     const e = estadoCopias(b.db, { ahora: b.t, huellaLlave: estadoLlave(b.config).huella });
     assert.deepEqual([e.clave.contrasena, e.clave.anteriores.map(x => x.contrasena)], [false, [true]]);
     assert.equal((await comprobarContrasena(b.db, { contrasena: P1, ahora: b.t })).resultado, 'anterior');
+  } finally {
+    await b.cerrar();
+  }
+});
+
+// 0.14.10 (pedido del dueño: «no me pide una contraseña… déjame poner una sencilla, de 4 o 6 números»).
+const PIN = '4821';
+
+test('0.14.10 un PIN de 4 o 6 números sirve (servidor y página); 3 no; con menos de 8 solo una nota suave; la tarjeta siempre a la vista', async () => {
+  for (const [c, esperado] of [['4821', null], ['482913', null], ['123', 'contrasena_corta'], [' 12 ', 'contrasena_corta'], ['abcd', null]]) {
+    assert.equal(problemaDeContrasena(c, c), esperado, `servidor: ${c}`);
+    assert.equal(problemaContrasena(c, c), esperado, `página: ${c}`);
+  }
+  assert.equal(problemaDeContrasena('4821', '4822'), 'contrasenas_distintas');
+  assert.deepEqual([reglasContrasena('482').corta, reglasContrasena('4821').corta, reglasContrasena('4821913').corta, reglasContrasena('48219137').corta], [false, true, true, false]);
+  // scrypt no cambia: el PIN cuesta lo mismo de adivinar por intento.
+  assert.deepEqual([KDF.N, KDF.r, KDF.p], [32768, 8, 1]);
+  const { vistaTarjetaContrasena, vistaContrasenaGuardada } = await import('../public/copias-vista.js');
+  assert.equal(vistaTarjetaContrasena({ clave: { activa: true }, puede: { crearClave: false } }), null, 'quien no es administrador');
+  assert.equal(vistaTarjetaContrasena({ clave: { activa: false }, puede: { crearClave: true } }).accion, 'crear');
+  // Con una clave o contraseña ya puesta (aunque nadie la recuerde): «Cambiar por una contraseña nueva», a la vista.
+  assert.deepEqual(vistaTarjetaContrasena({ clave: { activa: true, contrasena: false }, puede: { crearClave: true } }),
+    { accion: 'cambiar', titulo: 'copias.contrasena.tarjeta.con', linea: 'copias.contrasena.tarjeta.con_linea', boton: 'copias.contrasena.cambiar_nueva', nota: 'copias.contrasena.de_antes_sigue' });
+  const listo = { clave: { activa: true }, telegram: { listo: true }, puede: { ahora: true, motivoNoAhora: null } };
+  assert.deepEqual(vistaContrasenaGuardada(listo), { texto: 'copias.contrasena.lista_telegram', enlace: null, ahora: true });
+  assert.deepEqual(vistaContrasenaGuardada({ ...listo, telegram: null }), { texto: 'copias.contrasena.lista_sin_telegram', enlace: { href: '#claves', texto: 'copias.ir.unir_telegram' }, ahora: true });
+  assert.equal(vistaContrasenaGuardada({ ...listo, puede: { ahora: false, motivoNoAhora: 'en_marcha' } }).ahora, false);
+  const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
+  const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
+  assert.equal(es['copias.contrasena.lista_telegram'], '✅ Listo. Esta noche llega la primera copia a tu Telegram.');
+  assert.equal(es['copias.contrasena.corta_nota'], 'Corta es más fácil de adivinar; si alguien tiene tu Telegram podría intentar abrirla. Recomendado: 8 o más.');
+  for (const k of ['copias.contrasena.tarjeta.con', 'copias.contrasena.tarjeta.con_linea', 'copias.contrasena.cambiar_nueva', 'copias.contrasena.de_antes_sigue', 'copias.contrasena.lista_sin_telegram', 'copias.contrasena.corta_nota']) {
+    assert.ok(es[k] && en[k], k);
+  }
+});
+
+test('0.14.10 cambiar sin saber la de antes: pide SOLO la contraseña de entrar; la copia de antes abre con la de antes y la nueva con el PIN', async () => {
+  const b = await montar({ telegram: false, clave: false, relleno: 3 });
+  const ENTRAR = 'Mi clave de entrar 1';
+  try {
+    const carpeta = join(b.config.carpetaCopias, 'cifradas');
+    const hacer = async () => { b.avanzar(HORA); assert.equal((await b.terminar(b.pedir())).estado, 'hecha'); return b.copias().at(-1); };
+    const abre = async clave => (await restaurarCopia({ clave, fuente: { tipo: 'archivos', archivos: [carpeta] }, destino: null, ajustar: false })).copia;
+    // La de antes (que el dueño ya no recuerda) y una copia hecha con ella.
+    const h1 = (await conContrasena(b, P1)).huella;
+    const vieja = await hacer();
+    const servidor = crearServidor({ db: b.db, config: b.config, copias: { medirDisco: () => 100_000, kdf: CHICO } });
+    await conServidor(servidor, async base => {
+      const pedir = async (ruta, { datos, galleta, cabeceras = {} } = {}) => {
+        const r = await fetch(`${base}${ruta}`, {
+          method: 'POST',
+          headers: { 'X-Oportia': '1', 'Content-Type': 'application/json', ...(galleta ? { Cookie: galleta } : {}), ...cabeceras },
+          body: JSON.stringify(datos),
+        });
+        let cuerpo = {};
+        try { cuerpo = JSON.parse(await r.text()); } catch { cuerpo = {}; }
+        return { codigo: r.status, datos: cuerpo, galleta: r.headers.get('set-cookie')?.split(';')[0] ?? null };
+      };
+      const { hashClave } = await import('../src/cuentas/claves.js');
+      b.db.prepare('UPDATE usuarios SET clave_hash = ?, debe_cambiar_clave = 0 WHERE id = ?').run(await hashClave(ENTRAR), b.admin);
+      const galleta = (await pedir('/api/entrar', { datos: { nombre: 'junior', clave: ENTRAR }, cabeceras: { 'Tailscale-User-Login': 'junior@example.com' } })).galleta;
+      assert.ok(galleta);
+      // Por el enlace público (sin la cuenta de Tailscale): solo { contrasena, repetida } (nunca la de antes).
+      const funnel = { 'Tailscale-Funnel-Request': '?1' };
+      const cambio = { contrasena: PIN, repetida: PIN };
+      const sin = await pedir('/api/admin/copias/contrasena', { galleta, cabeceras: funnel, datos: cambio });
+      assert.deepEqual([sin.codigo, sin.datos.error], [403, 'confirmar_clave'], 'sin la contraseña de entrar no se cambia');
+      const conClave = c => ({ ...funnel, 'X-Confirmar-Clave': Buffer.from(c, 'utf8').toString('base64') });
+      const mala = await pedir('/api/admin/copias/contrasena', { galleta, cabeceras: conClave('No es la de entrar 9'), datos: cambio });
+      assert.deepEqual([mala.codigo, mala.datos.error], [403, 'clave_confirmar_incorrecta']);
+      assert.equal(llaveActiva(b.db).huella, h1, 'nada cambió');
+      const corto = await pedir('/api/admin/copias/contrasena', { galleta, cabeceras: conClave(ENTRAR), datos: { contrasena: '123', repetida: '123' } });
+      assert.deepEqual([corto.codigo, corto.datos.error], [400, 'contrasena_corta']);
+      const ok = await pedir('/api/admin/copias/contrasena', { galleta, cabeceras: conClave(ENTRAR), datos: cambio });
+      assert.equal(ok.codigo, 201);
+      assert.equal(ok.datos.antes, h1);
+    });
+    const e = estadoCopias(b.db, { ahora: b.t, huellaLlave: estadoLlave(b.config).huella });
+    assert.deepEqual([e.clave.activa, e.clave.contrasena, e.clave.anteriores.map(x => x.huella)], [true, true, [h1]]);
+    const nueva = await hacer();
+    assert.equal(await abre(PIN), nueva.copia, 'la copia nueva abre con el PIN');
+    assert.equal(await abre(P1), vieja.copia, 'la copia de antes sigue abriendo con la de antes');
+    await rechaza(abre('4822'), 'contrasena_no_abre');
+    assert.equal((await comprobarContrasena(b.db, { contrasena: PIN, ahora: b.t })).resultado, 'actual');
+    assert.equal((await comprobarContrasena(b.db, { contrasena: P1, ahora: b.t })).resultado, 'anterior');
+  } finally {
+    await b.cerrar();
+  }
+});
+
+test('0.14.10 un PIN de 6 números desde cero: crear → copia → recuperar con él', async () => {
+  const b = await montar({ telegram: false, clave: false, relleno: 2 });
+  try {
+    const seis = '482913';
+    await conContrasena(b, seis);
+    b.avanzar(MINUTO);
+    assert.equal((await b.terminar(b.pedir())).estado, 'hecha');
+    const [c] = b.copias();
+    const r = await restaurarCopia({ clave: ` ${seis} `, fuente: { tipo: 'archivos', archivos: [join(b.config.carpetaCopias, 'cifradas')] }, destino: null, ajustar: false });
+    assert.deepEqual([r.copia, r.con], [c.copia, 'contrasena']);
   } finally {
     await b.cerrar();
   }

@@ -53,8 +53,8 @@ function errorDeClave(error, registro) {
 }
 
 // 0.14.2: lo que puede estar mal en una contraseña de copias (la pantalla tiene una frase para cada uno).
-export const ERRORES_CONTRASENA = Object.freeze(['contrasena_corta', 'contrasena_larga', 'contrasena_sin_letra', 'contrasena_sin_numero',
-  'contrasenas_distintas', 'contrasena_formato']);
+// (0.14.10: ya no hay «sin letra» ni «sin número».)
+export const ERRORES_CONTRASENA = Object.freeze(['contrasena_corta', 'contrasena_larga', 'contrasenas_distintas', 'contrasena_formato']);
 
 // 0.14.2: el pedido de la contraseña de copias: SOLO esos campos, de texto (cualquier otro se rechaza sin leerlo). La
 // contraseña nunca se anota ni vuelve en una respuesta.

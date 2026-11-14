@@ -144,9 +144,11 @@ export function avisoSinCopias(copias) {
   return { titulo: 'copias.no_se_guardan', linea: 'copias.no_se_guardan.linea', boton: 'copias.contrasena.crear', href: '#copias' };
 }
 
-// 0.14.2: las reglas de la contraseña de copias, igual que el servidor (src/copias/clave.js problemaDeContrasena): 10
-// caracteres o más (hasta 200), una letra y un número; las dos veces igual. → el código del problema, o null.
-export const CONTRASENA_MIN = 10;
+// Las reglas de la contraseña de copias, igual que el servidor (src/copias/clave.js problemaDeContrasena). 0.14.10
+// (pedido del dueño): 4 caracteres o más (hasta 200), de cualquier tipo: un PIN de 4 o 6 números sirve; las dos veces
+// igual. → el código del problema, o null.
+export const CONTRASENA_MIN = 4;
+export const CONTRASENA_RECOMENDADA = 8;
 export const CONTRASENA_MAX = 200;
 export const normalizarContrasena = texto => String(texto ?? '').normalize('NFC').trim();
 export function problemaContrasena(contrasena, repetida) {
@@ -154,15 +156,40 @@ export function problemaContrasena(contrasena, repetida) {
   const largo = [...c].length;
   if (largo < CONTRASENA_MIN) return 'contrasena_corta';
   if (largo > CONTRASENA_MAX) return 'contrasena_larga';
-  if (!/\p{L}/u.test(c)) return 'contrasena_sin_letra';
-  if (!/\p{Nd}/u.test(c)) return 'contrasena_sin_numero';
   if (repetida !== undefined && normalizarContrasena(repetida) !== c) return 'contrasenas_distintas';
   return null;
 }
-// Lo que se va cumpliendo mientras se escribe (las marcas de la pantalla).
+// Lo que se va cumpliendo mientras se escribe: largo (4 o más: la regla) y corta (de 4 a 7: la nota suave «Corta es más
+// fácil de adivinar…», que nunca frena).
 export function reglasContrasena(contrasena) {
-  const c = normalizarContrasena(contrasena);
-  return { largo: [...c].length >= CONTRASENA_MIN, letra: /\p{L}/u.test(c), numero: /\p{Nd}/u.test(c) };
+  const n = [...normalizarContrasena(contrasena)].length;
+  return { largo: n >= CONTRASENA_MIN, corta: n >= CONTRASENA_MIN && n < CONTRASENA_RECOMENDADA };
+}
+
+// 0.14.10: la tarjeta de la contraseña de copias, siempre a la vista en #copias (antes, con una clave ya puesta, «Cambiar»
+// quedaba dentro de dos «Ver más» cerrados y el dueño no veía dónde poner la suya). → null si quien mira no puede
+// (no es administrador), o { accion: 'crear' | 'cambiar', titulo, linea, boton, nota }.
+export function vistaTarjetaContrasena(c) {
+  if (c?.puede?.crearClave !== true) return null;
+  if (!c?.clave?.activa) {
+    return { accion: 'crear', titulo: 'copias.contrasena.tarjeta.sin', linea: 'copias.contrasena.tarjeta.sin_linea', boton: 'copias.contrasena.crear', nota: null };
+  }
+  return {
+    accion: 'cambiar', titulo: 'copias.contrasena.tarjeta.con', linea: 'copias.contrasena.tarjeta.con_linea', boton: 'copias.contrasena.cambiar_nueva',
+    nota: 'copias.contrasena.de_antes_sigue',
+  };
+}
+
+// 0.14.10: lo que se dice al guardar la contraseña. Con el Telegram listo: «✅ Listo. Esta noche llega la primera copia a
+// tu Telegram»; sin él, que se una el Telegram. ahora: si se puede «Hacer una copia ahora» (el mismo motivoNoAhora de la
+// tarjeta grande). → { texto, enlace, ahora }
+export function vistaContrasenaGuardada(c) {
+  const listo = c?.telegram?.listo === true;
+  return {
+    texto: listo ? 'copias.contrasena.lista_telegram' : 'copias.contrasena.lista_sin_telegram',
+    enlace: listo ? null : { href: '#claves', texto: 'copias.ir.unir_telegram' },
+    ahora: c?.clave?.activa === true && motivoNoAhora(c) == null,
+  };
 }
 
 // La tarjeta del disco: { tono, linea } (linea: una frase de copias.aqui.* o null si todo está bien).

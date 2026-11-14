@@ -917,10 +917,12 @@ a.enlace-fuerte { display: inline-flex; min-height: 44px; font-weight: 700; text
    servidor» a lo ancho. */
 .copias-rejilla { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; margin: 0 0 16px; }
 .copias-rejilla > .tarjeta { margin: 0; }
-.copias-estado, .copias-disco, .copias-recientes, .copias-gestion, .copias-restaurar { grid-column: 1 / -1; }
+.copias-estado, .copias-contrasena, .copias-disco, .copias-recientes, .copias-gestion, .copias-restaurar { grid-column: 1 / -1; }
 /* En el teléfono y la tableta las columnas no existen: sus tarjetas van en la rejilla, en este orden. */
 .copias-col { display: contents; }
 .copias-estado { order: 1; }
+/* 0.14.10: la contraseña de copias, siempre a la vista justo debajo de la tarjeta grande. */
+.copias-contrasena { order: 1; }
 .copias-mini { order: 2; }
 .copias-disco { order: 3; }
 .copias-recientes { order: 4; }
@@ -939,6 +941,11 @@ a.enlace-fuerte { display: inline-flex; min-height: 44px; font-weight: 700; text
 .copias-estado button.grande { margin-top: 12px; }
 .copias-estado a.boton-enlace { margin-top: 10px; display: flex; justify-content: center; }
 .copias-razon { margin: 12px 0 0; font-size: 15px; }
+.copias-contrasena h2 { margin: 0 0 6px; font-size: 18px; }
+.copias-contrasena p { margin: 6px 0; }
+.copias-contrasena button.grande { margin: 10px 0 4px; }
+.copias-ahora-arriba { margin: 0 0 12px; }
+.form-contrasena .nota-corta { margin: 0 0 12px; font-size: 15px; }
 .copias-dibujo {
   position: relative; flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
   color: color-mix(in srgb, var(--tono) 88%, var(--texto)); background: color-mix(in srgb, var(--tono) 16%, var(--tarjeta));

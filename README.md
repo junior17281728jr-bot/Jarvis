@@ -276,7 +276,8 @@ bot te avisa al momento de lo grave. Nada se borra. Todo lo lento lo hace el tra
 
 ### Lo que tienes que guardar tú (solo dos cosas)
 1. **Tu contraseña de copias** (desde la 0.14.2): la eliges tú en Administrador → Copias → «Crear mi contraseña de
-   copias» (la escribes dos veces; al menos 10 caracteres, con una letra y un número). Con esta contraseña se abren tus
+   copias» (la escribes dos veces; desde la 0.14.10, al menos 4 caracteres de cualquier tipo: un PIN de 4 o 6 números
+   sirve; con menos de 8 la pantalla recuerda, sin frenar, que es más fácil de adivinar). Con esta contraseña se abren tus
    copias si un día pierdes el servidor. Anótala en un lugar seguro. Si la olvidas, nadie puede abrir tus copias, ni tú.
    Mejor que no sea la misma con la que entras a la app. El servidor guarda solo el candado (la parte pública) y la «sal»
    para estirarla, nunca la contraseña: si alguien se roba el servidor o tu Telegram, no puede abrir tus copias.
@@ -710,6 +711,21 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - **El visor de figuras** abre la figura ajustada a la pantalla (antes al 160 %), con − / +, «Ajustar» (pantalla, alto, ancho),
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
+
+### Lo nuevo de la 0.14.10: la contraseña de copias siempre a la vista, y un PIN sirve — sin cambio de base
+Pedido del dueño: «no me pide una contraseña» y «déjame poner una sencilla, de 4 o 6 números».
+- **Lo que pasaba**: Copias ofrecía «Crear mi contraseña de copias» solo si NO había ninguna clave. Con una clave de 28
+  símbolos de antes (o una contraseña de la que nadie se acuerda), «Cambiar» quedaba dentro de dos «Ver más» cerrados, al
+  final de la pantalla del teléfono: no se veía dónde poner una nueva.
+- **Ahora**: debajo de la tarjeta grande siempre está «Tu contraseña de copias» con **«Cambiar por una contraseña
+  nueva»**. No hace falta saber la de antes: se confirma con la contraseña de entrar a la app (lo mismo que todo lo
+  delicado; desde la cuenta de Tailscale del dueño no se pide). Las copias nuevas usan la nueva; **las de antes se siguen
+  abriendo con la de antes** (contraseña o clave de 28 símbolos).
+- **Reglas**: de 4 a 200 caracteres, de cualquier tipo (ya no pide letra ni número). Con menos de 8: «Corta es más fácil
+  de adivinar; si alguien tiene tu Telegram podría intentar abrirla. Recomendado: 8 o más.» (no frena). scrypt igual
+  (N=2^15, r=8, p=1).
+- **Al guardar**: «✅ Listo. Esta noche llega la primera copia a tu Telegram» (sin Telegram unido, que lo una) y el botón
+  «Hacer una copia ahora» cuando se puede.
 
 ### Lo nuevo de la 0.14.8: «Mejorar la app con Claude» (Claude mejora la parte visible de la app) — sin cambio de base
 

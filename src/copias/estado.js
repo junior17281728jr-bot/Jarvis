@@ -189,8 +189,8 @@ export function kdfDeLlave(db, llave) {
 // «Crear mi contraseña de copias» (y «Cambiar»): la contraseña se escribe dos veces; de ella salen la llave pública, el
 // sello, el verificador y la huella, y queda ACTIVA enseguida (las copias de antes siguen con su llave de antes,
 // «anterior»). Nunca se guarda la contraseña: solo lo de siempre (pública, sello envuelto, sha256 del verificador) y su
-// kdf. → { huella, desde, antes } · Errores: contrasena_corta · contrasena_larga · contrasena_sin_letra ·
-// contrasena_sin_numero · contrasenas_distintas · almacen_no_disponible.
+// kdf. → { huella, desde, antes } · Errores: contrasena_corta · contrasena_larga · contrasenas_distintas ·
+// almacen_no_disponible.
 // base: los números de scrypt (las pruebas pasan uno chico).
 export async function crearContrasenaCopias(db, { config, contrasena, repetida, usuarioId = null, ahora = Date.now(), base = KDF } = {}) {
   if (!config) throw new ErrorCopias('almacen_no_disponible');

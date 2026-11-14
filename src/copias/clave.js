@@ -143,7 +143,11 @@ export const hashDeVerificador = bytes => createHash('sha256').update(bytes).dig
 //    pegada en la terminal de la Mac da la misma llave.
 //  - scrypt N=2^15, r=8, p=1: 32 MB por cálculo y uno a la vez (servidor de 512 MB). Las pruebas pasan uno más chico.
 export const KDF = Object.freeze({ kdf: 'scrypt', N: 32768, r: 8, p: 1 });
-export const CONTRASENA_MIN = 10;
+// 0.14.10 (pedido del dueño: «déjame poner una sencilla, de 4 o 6 números»): 4 caracteres o más, de cualquier tipo
+// (solo números también). Con menos de 8 la pantalla dice, sin frenar, que es más fácil de adivinar
+// (CONTRASENA_RECOMENDADA). scrypt sigue igual (N=2^15): cada intento cuesta lo mismo, también con un PIN corto.
+export const CONTRASENA_MIN = 4;
+export const CONTRASENA_RECOMENDADA = 8;
 export const CONTRASENA_MAX = 200;
 // Lo que se acepta al LEER un kdf (viene de una copia o un índice antes de saber si es auténtico: cualquiera con el token
 // del bot puede fijar un archivo). Un N enorme no puede tumbar nada.
@@ -155,14 +159,13 @@ export function normalizarContrasena(texto) {
   return String(texto ?? '').normalize('NFC').trim();
 }
 
-// El problema de una contraseña nueva (código corto) o null si sirve: 10 caracteres o más, una letra y un número.
+// El problema de una contraseña nueva (código corto) o null si sirve: de 4 a 200 caracteres (0.14.10: ya no pide letra
+// ni número; «1234» o «482913» sirven).
 export function problemaDeContrasena(contrasena, repetida) {
   const c = normalizarContrasena(contrasena);
   const largo = [...c].length;
   if (largo < CONTRASENA_MIN) return 'contrasena_corta';
   if (largo > CONTRASENA_MAX) return 'contrasena_larga';
-  if (!/\p{L}/u.test(c)) return 'contrasena_sin_letra';
-  if (!/\p{Nd}/u.test(c)) return 'contrasena_sin_numero';
   if (repetida !== undefined && normalizarContrasena(repetida) !== c) return 'contrasenas_distintas';
   return null;
 }
