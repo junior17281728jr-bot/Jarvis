@@ -265,7 +265,7 @@ button.plan-hoy-fila { cursor: pointer; }
 .planes-pasos li { margin: 0 0 6px; }
 .tutor-novedades .plan-hoy-etiqueta { white-space: normal; }
 
-/* 0.14.15: el consejo del instructor IA, corto y con botones (pensado primero para el teléfono). */
+/* 0.14.16: el consejo del instructor IA, corto y con botones (pensado primero para el teléfono). */
 .consejo-ia { display: grid; gap: 8px; }
 .consejo-ia > * { margin: 0; }
 .consejo-saludo { font-weight: 600; line-height: 1.35; }
@@ -284,7 +284,7 @@ button.plan-hoy-fila { cursor: pointer; }
 .consejo-botones > * { justify-content: center; min-height: 44px; min-width: 0; padding-inline: 10px; }
 .consejo-repaso { display: inline-flex; align-items: center; gap: 8px; background: none; border: 1px dashed var(--borde); border-radius: 10px; padding: 8px 12px; font: inherit; font-size: 14px; color: inherit; cursor: pointer; min-height: 44px; justify-self: start; }
 
-/* 0.14.15: «¿Tomo el examen final?»: una fila por materia (estado, dos barritas, qué falla y «Reforzar»). */
+/* 0.14.16: «¿Tomo el examen final?»: una fila por materia (estado, dos barritas, qué falla y «Reforzar»). */
 .examen-materia { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--gris-nodo); list-style: none; }
 .examen-materia + .examen-materia { margin-top: 6px; }
 .examen-materia-cabeza { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; }
@@ -301,6 +301,6 @@ button.plan-hoy-fila { cursor: pointer; }
 .examen-materia.estado-casi .examen-materia-cabeza .icono { color: var(--amarillo, #c98a00); }
 .examen-materia.estado-todavia .examen-materia-cabeza .icono { color: var(--rojo, #c43c3c); }
 
-/* 0.14.15: la línea que dice qué es cada sección (Progreso). */
+/* 0.14.16: la línea que dice qué es cada sección (Progreso). */
 .seccion-sub { margin: -2px 0 10px; }
 .examen-tarjetas { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }

@@ -1,4 +1,4 @@
-// Academia 0.14.15 (pedido del dueño): un alumno NUNCA ve un id interno («t4», «tg-3-28», «m03», «muestra-h3»,
+// Academia 0.14.16 (pedido del dueño): un alumno NUNCA ve un id interno («t4», «tg-3-28», «m03», «muestra-h3»,
 // «factores_humanos/muestra-hipoxia») en lo que escribió la IA. Puro: se aplica a la PROSA de lo guardado de la IA al
 // leerlo (src/academia/instructor-ia.js, leerGuardado), también a lo que se guardó antes de esta versión.
 // Con un «mapa» (id → nombre de verdad), el id se cambia por su nombre («la tarjeta «Qué es»»); si no, se quita con la

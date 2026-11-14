@@ -71,7 +71,7 @@ export function semanaDe(ms) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dia)).toISOString().slice(0, 10);
 }
 
-// 0.14.15: el consejo nuevo (corto, con botones) se guarda con «-v2»: el de antes (un muro de texto) se queda en la base,
+// 0.14.16: el consejo nuevo (corto, con botones) se guarda con «-v2»: el de antes (un muro de texto) se queda en la base,
 // pero ya no se muestra en Inicio; al pedirlo otra vez se escribe el nuevo.
 export const claveConsejo = (usuarioId, que, humor) => `academia.ia.consejo.${usuarioId}.${que}${humor ? '-humor' : ''}-v2`;
 
@@ -298,7 +298,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     // 0.12.0: con el humor encendido para él, el consejo de la IA viene en ese tono (y se guarda aparte).
     const conHumor = humorActivo(db, usuario.id);
     const clave = claveConsejo(usuario.id, examen ? `examen-${examen.id}` : semanaDe(ahora), conHumor);
-    // 0.14.15: el diagnóstico (temas, números, alcance, video, repasos) lo hace el código; la IA solo lo dice corto.
+    // 0.14.16: el diagnóstico (temas, números, alcance, video, repasos) lo hace el código; la IA solo lo dice corto.
     const diag = diagnostico(db, usuario.id, p, ahora, { examenId: examen?.id ?? null });
     const ya = leerGuardado(db, clave);
     let ia;
@@ -476,7 +476,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const guardado = f.estado === 'hecha' ? leerGuardado(db, clave) : null;
     // 0.12.9: las preguntas personalizadas viajan SIN la correcta (se revisa al responder).
     if (guardado && /^academia\.ia\.personal\./.test(clave)) return { codigo: 200, datos: { estado: 'lista', clave, ...personalParaVer(guardado) } };
-    // 0.14.15: el consejo nuevo se arma con el diagnóstico de ahora (los botones de verdad).
+    // 0.14.16: el consejo nuevo se arma con el diagnóstico de ahora (los botones de verdad).
     if (guardado && /^academia\.ia\.consejo\./.test(clave) && guardado.forma === 2) return { codigo: 200, datos: lista(consejoParaVer(guardado, diagnostico(db, usuario.id, activo(db), reloj()))) };
     if (guardado) return { codigo: 200, datos: lista(guardado) };
     const motivo = typeof resultado?.motivo === 'string' ? resultado.motivo : 'no_disponible';

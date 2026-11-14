@@ -1,4 +1,4 @@
-// Academia 0.14.15: el consejo del instructor IA, corto y con botones (src/academia/consejo-ia.js, la parte del consejo de
+// Academia 0.14.16: el consejo del instructor IA, corto y con botones (src/academia/consejo-ia.js, la parte del consejo de
 // src/academia/instructor-ia.js y pintarConsejo de public/instructor.js). Todo con el proveedor FALSO o sin IA.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -182,7 +182,7 @@ test('con el servidor: el consejo guardado de antes no vuelve a salir (se pide e
   });
 });
 
-// ---------- 0.14.15: nada de ids internos, la búsqueda de YouTube y «¿Tomo el examen?» en filas ----------
+// ---------- 0.14.16: nada de ids internos, la búsqueda de YouTube y «¿Tomo el examen?» en filas ----------
 test('lo que escribió la IA nunca muestra un id interno (t4, tg-3-28, m03, materia/tema), y lo guardado antes también se limpia', async () => {
   const { sinIds, limpiarProsa } = await import('../src/academia/sin-ids.js');
   assert.equal(sinIds('Todavía no: repasa las tarjetas t4, t5 y t9 antes del examen.'), 'Todavía no: repasa las tarjetas antes del examen.');

@@ -3550,7 +3550,7 @@ function avisoMuestra(paquete) {
 }
 // 0.9.0: el «Instructor» (public/instructor.js) usa las mismas ayudas que estas pantallas.
 let ayudasInstructor = null;
-// 0.14.15: «Te guío» del consejo del instructor IA: abre la clase de ese tema (en la tarjeta que lo explica) y, al
+// 0.14.16: «Te guío» del consejo del instructor IA: abre la clase de ese tema (en la tarjeta que lo explica) y, al
 // terminarla, el botón grande practica lo que falló de ese tema (en vez del examen del tema). Solo en memoria.
 let guiaTema = null;
 const guiar = g => {
@@ -5351,7 +5351,7 @@ async function pantallaProgreso() {
     el('summary', { class: 'progreso-detalles-boton' }, icono('expandir', 'icono chico'), el('span', { texto: t('carrera.ver_detalles') })),
     el('div', { class: 'progreso-detalles-cuerpo' }, detallesProgreso(p, ayudas, grupo)));
   detalles.addEventListener('toggle', () => { detallesProgresoAbiertos = detalles.open; });
-  // 0.14.15 (claridad): siempre el mismo orden — La carrera (y su tabla) → Mis números → ¿Estoy listo? → Mi avance →
+  // 0.14.16 (claridad): siempre el mismo orden — La carrera (y su tabla) → Mis números → ¿Estoy listo? → Mi avance →
   // Ver detalles —, cada sección con una línea que dice qué es. La tabla y mis números se ponen al día con la carrera.
   let misNumeros = yo ? vistaMisNumeros(ayudas, yo.datos) : null;
   let tabla = c.ok && c.datos.pilotos.length > 1 ? vistaTabla(ayudas, c.datos.pilotos, { oral: c.datos.oral }) : null;
@@ -5385,7 +5385,7 @@ function detallesProgreso(p, ayudas, grupo) {
     p.repaso ? el('div', { class: 'progreso-repaso-espaciado' }, botonRepaso(p.repaso), queEs('repaso')) : null,
     // 0.10.0: «¿Estás listo para el examen oficial?» y «Lo que hicimos por ti» (sus fallas y cómo se le reforzaron).
     instructorUi().preparado(),
-    // 0.12.9 (U): «¿Tomo el examen final?» ahora va arriba, fuera de «Ver detalles» (0.14.15: sin repetirlo aquí).
+    // 0.12.9 (U): «¿Tomo el examen final?» ahora va arriba, fuera de «Ver detalles» (0.14.16: sin repetirlo aquí).
     panelRepasoResumen(p.miRepaso, ayudas),
     instructorUi().loQueHicimos(),
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
@@ -6050,7 +6050,7 @@ async function dibujar() {
   // Academia (0.7.0): el camino (Inicio), un tema, practicar, el examen de una materia y el progreso; lo del administrador.
   if (seccion === 'progreso') return pantallaProgreso();
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/(\d{1,3}))?$/);
-  if (guiaTema && !(tema && tema[1] === guiaTema.materia && tema[2] === guiaTema.tema)) guiaTema = null; // 0.14.15: «Te guío» solo vale en esa clase
+  if (guiaTema && !(tema && tema[1] === guiaTema.materia && tema[2] === guiaTema.tema)) guiaTema = null; // 0.14.16: «Te guío» solo vale en esa clase
   if (tema) return pantallaTema(tema[1], tema[2], tema[3] ? Number(tema[3]) : null);
   // 0.12.9: el tutor: lo que recuerda de él, «¿Tomo el examen?» y sus preguntas personalizadas.
   if (seccion === 'tutor/memoria') return tutorUi().pantallaMemoria();

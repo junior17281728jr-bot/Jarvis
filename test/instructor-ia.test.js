@@ -299,7 +299,7 @@ test('dudas con IA: solo con las tarjetas del tema como material, la duda va com
     assert.equal((await pedir(c.base, 'GET', `/api/academia/instructor/tareas/${d.ia.tarea}`, { galleta: c.q })).codigo, 404);
     // El consejo de la semana.
     await unaMala(c, c.z);
-    // 0.14.15: el consejo nuevo: frases cortas por id (los temas, números y botones los pone la app).
+    // 0.14.16: el consejo nuevo: frases cortas por id (los temas, números y botones los pone la app).
     c.falso.siguiente({ tipo: 'ok', json: { saludo: 'Pana, la hipoxia (hypoxia) te está costando. Dale con esto:', video_porque: '', temas: [{ id: 'factores_humanos/muestra-hipoxia', confusion: 'Confundes altitud con presión.' }, { id: 'otra/inventada', confusion: 'x' }], porque: 'Fallaste 1 de 1.' } });
     const k = (await pedir(c.base, 'POST', '/api/academia/instructor/consejo', { galleta: c.z, datos: {} })).datos;
     assert.equal(k.ia.estado, 'pendiente');

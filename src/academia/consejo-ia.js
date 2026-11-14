@@ -1,4 +1,4 @@
-// Academia 0.14.15 (pedido del dueño: «el consejo del instructor IA es un muro de texto»): el DIAGNÓSTICO del consejo
+// Academia 0.14.16 (pedido del dueño: «el consejo del instructor IA es un muro de texto»): el DIAGNÓSTICO del consejo
 // se calcula aquí, en código (sin IA ni red), y la IA solo lo dice con sus palabras, corto:
 //  - qué temas falla (con sus números de verdad: «2/6» = bien de los que respondió), la idea equivocada que repite;
 //  - el ALCANCE: si los errores se juntan en UN tema (los demás de esa materia van bien) → ese tema; si son varios temas
@@ -74,7 +74,7 @@ export function decidirAlcance(vistos, delExamen = new Map()) {
   return { alcance: 'varias', elegidos, evidencia: { materias: new Set(debiles.map(t => t.materia)).size, temas: elegidos.map(t => t.titulo) } };
 }
 
-// 0.14.15: sin un video elegido por el administrador para ese tema, «Buscar en YouTube» con una búsqueda precisa en
+// 0.14.16: sin un video elegido por el administrador para ese tema, «Buscar en YouTube» con una búsqueda precisa en
 // español armada aquí (el título sin el inglés entre paréntesis + «piloto privado explicación español»).
 export function busquedaTema(titulo) {
   const limpio = String(titulo ?? '').replace(/\([^)]*\)/g, ' ').replace(/[^\p{L}\p{N} -]/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80);

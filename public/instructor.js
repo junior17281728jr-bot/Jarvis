@@ -346,7 +346,7 @@ export function crearInstructor(h) {
       el('span', { texto: tx(res.aciertos === res.total ? 'refuerzo.resultado.bien' : 'refuerzo.resultado', { n: numero(res.aciertos), total: numero(res.total), dia }) }));
   }
 
-  // ---------- 0.14.15: el consejo del instructor IA, corto y con botones ----------
+  // ---------- 0.14.16: el consejo del instructor IA, corto y con botones ----------
   // Lo nuevo (forma 2): una línea de saludo, UN video que existe, los temas que falló (nombre corto, «2/6», barrita y la
   // confusión en pocas palabras), los botones Estudiar · Practicar · Te guío, los repasos de hoy y, plegado, «Por qué».
   // Todo destino sale del servidor (ids revisados); lo que escribió la IA va siempre como texto (talCual).

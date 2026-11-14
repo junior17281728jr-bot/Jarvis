@@ -173,7 +173,7 @@ export function crearTutor(h) {
   }
 
   // ---------- U: «¿Tomo el examen final?» ----------
-  // 0.14.15: cada materia en UNA fila: estado, nombre, dos barritas (acierto vs 90 %, visto vs 95 %), qué falla (por su
+  // 0.14.16: cada materia en UNA fila: estado, nombre, dos barritas (acierto vs 90 %, visto vs 95 %), qué falla (por su
   // nombre) y «Reforzar»; sin empezar, una fila gris con «Empezar».
   const ICONO_ESTADO = { listo: 'bien', casi: 'atencion', todavia: 'mal', sin_empezar: 'reloj' };
   const tituloCorto = x => (h.partirTitulo ? h.partirTitulo(x).es : String(x ?? '').replace(/\s*\([^)]*\)\s*$/, '')).trim();
@@ -216,7 +216,7 @@ export function crearTutor(h) {
         ...(completo ? d.materias ?? [] : []).map(m => fila(nombreMateria(m.materia), m))),
       d.examenIa ? ui().cajaIa({}, [d.examenIa.porque ? talCual('p', d.examenIa.porque) : null,
         d.examenIa.pasos?.length ? el('div', {}, el('p', { class: 'fuerte chica', texto: t('tutor.examen.antes') }), el('ol', { class: 'instructor-pasos' }, d.examenIa.pasos.map(p => talCual('li', p)))) : null,
-        // 0.14.15: las tarjetas que eligió, como botones con su título (nunca «t4»).
+        // 0.14.16: las tarjetas que eligió, como botones con su título (nunca «t4»).
         d.examenIa.tarjetas?.length ? el('div', { class: 'examen-tarjetas' }, d.examenIa.tarjetas.map(x => el('a', { class: 'boton-3d blanco chico con-icono', href: `#tema/${encodeURIComponent(x.materia)}/${encodeURIComponent(x.tema)}/${Number(x.numero)}` },
           icono('tarjetas', 'icono chico'), el('span', { texto: tituloCorto(x.titulo) })))) : null,
         insigniaIa()].filter(Boolean)) : null,

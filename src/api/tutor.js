@@ -26,7 +26,7 @@ const textoTarjeta = s => [s?.texto, ...(Array.isArray(s?.puntos) ? s.puntos : [
 const PREFIJO_PERSONAL = id => `academia.tutor.personal.${Number(id)}.`;
 
 // Lo que se guardó de la preparación (si existe) — también su «examen» y su conclusión.
-// 0.14.15: con el paquete, las tarjetas que nombra la IA («t4») salen con su título de verdad, y las que eligió (ids ya
+// 0.14.16: con el paquete, las tarjetas que nombra la IA («t4») salen con su título de verdad, y las que eligió (ids ya
 // revisados) van como botones a esa tarjeta: { materia, tema, numero, titulo }.
 function preparacionDe(db, usuarioId, ahora, p = null) {
   const pt = leerPuntero(db, usuarioId);
@@ -91,7 +91,7 @@ export function registrarRutasTutor(rutas, h) {
     if (!p) throw new ErrorHttp(409, 'sin_paquete');
     const ex = tomoExamen(db, usuario.id, p, ahora);
     const ia = conIa(db, req, usuario, ahora).modo === 'ia' ? preparacionDe(db, usuario.id, ahora, p)?.examen ?? null : null;
-    // 0.14.15: corto (una frase y 3 pasos breves); sin ids (leerGuardado ya los quita).
+    // 0.14.16: corto (una frase y 3 pasos breves); sin ids (leerGuardado ya los quita).
     const corto = ia ? { ...ia, porque: cortarPalabras(ia.porque ?? '', 28), pasos: (ia.pasos ?? []).slice(0, 3).map(x => cortarPalabras(x, 12)) } : null;
     return { codigo: 200, datos: { ...ex, examenIa: corto } };
   });

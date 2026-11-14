@@ -151,7 +151,7 @@ export function vistaCarrera(h, datos, { admin = false } = {}) {
     el('div', { class: 'carrera-arriba' },
       el('h2', { id: 'carrera-titulo', class: 'con-icono' }, h.icono('bandera'), el('span', { texto: t('carrera.titulo') })),
       el('span', { class: 'carrera-cuantos suave chica' })),
-    // 0.14.15: cada sección con una línea que dice qué es.
+    // 0.14.16: cada sección con una línea que dice qué es.
     el('p', { class: 'seccion-sub suave chica', texto: t(admin ? 'carrera.sub_admin' : 'carrera.sub') }),
     tg.nodo, oral.nodo,
     el('p', { class: 'carrera-pie suave chica', texto: t(admin ? 'carrera.pie_admin' : 'carrera.pie') }));

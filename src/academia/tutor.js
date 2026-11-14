@@ -224,7 +224,7 @@ export function tomoExamen(db, usuarioId, p, ahora = Date.now()) {
     si: v.nivel === 'listo', pct: v.probabilidad, acierto: regla('acierto')?.valor ?? null, cobertura: regla('cobertura')?.valor ?? null,
     porques: [...malas.slice(0, 3), ...buenas.slice(0, Math.max(0, 2 - malas.length))].slice(0, 4).map(porRegla),
   };
-  // 0.14.15: por materia, QUÉ falla (los 2 temas con más errores, por su nombre) y por dónde empezar.
+  // 0.14.16: por materia, QUÉ falla (los 2 temas con más errores, por su nombre) y por dónde empezar.
   const ultima = new Map();
   for (const r of db.prepare('SELECT pregunta, correcta FROM academia_respuestas WHERE usuario_id = ? ORDER BY id').all(usuarioId)) ultima.set(r.pregunta, r.correcta === 1);
   const flojosDe = materia => (p?.materias.find(x => x.id === materia)?.temas ?? []).map(t => {

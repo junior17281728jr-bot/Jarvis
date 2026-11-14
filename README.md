@@ -712,7 +712,7 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
-### Lo nuevo de la 0.14.15: el consejo del instructor IA, corto y con botones — sin cambio de base
+### Lo nuevo de la 0.14.16: el consejo del instructor IA, corto y con botones — sin cambio de base
 
 - El diagnóstico lo hace el CÓDIGO (`src/academia/consejo-ia.js`): los temas flojos con sus números («2/5» = bien de las
   que respondió), el alcance (un solo tema flojo → ese tema; 2+ temas de la misma materia → repaso de la materia; varias
