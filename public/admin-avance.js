@@ -81,11 +81,12 @@ function cuadricula(h, parte, oral, abierto) {
 }
 
 // El bloque entero. av: { tg, oral, ultima } (o null). completo: la ficha (el «Ahora en» largo).
-function contenido(h, av, completo, estado) {
+// sinAhora (0.14.14, «Mi avance» del alumno): sin la línea «Ahora en» (ya la dice «La carrera» arriba).
+function contenido(h, av, completo, estado, sinAhora = false) {
   const { el, t } = h;
   if (!av) return [el('p', { class: 'suave', texto: t('av.sin_empezar') })];
   return [
-    el('div', { class: 'av-ahora' }, el('span', { class: 'av-ahora-rotulo', texto: t('av.ahora') }), chipAhora(h, av.tg, false, completo), av.oral ? chipAhora(h, av.oral, true, completo) : null),
+    sinAhora ? null : el('div', { class: 'av-ahora' }, el('span', { class: 'av-ahora-rotulo', texto: t('av.ahora') }), chipAhora(h, av.tg, false, completo), av.oral ? chipAhora(h, av.oral, true, completo) : null),
     el('div', { class: 'av-totales' }, barraGrande(h, t('av.curso_tg'), av.tg, 'tg'), av.oral ? barraGrande(h, t('av.curso_oral'), av.oral, 'oral') : null),
     el('h4', { class: 'av-sub', texto: t('av.materias') }),
     ...cuadricula(h, av.tg, false, estado.tg),
@@ -95,10 +96,10 @@ function contenido(h, av, completo, estado) {
 }
 
 // → el nodo (div.av-caja). repintarAvance(nodo, avNuevo, h) lo cambia sin perder la materia abierta.
-export function vistaAvanceAlumno(h, av, { completo = false, alumno = null } = {}) {
+export function vistaAvanceAlumno(h, av, { completo = false, alumno = null, sinAhora = false } = {}) {
   const estado = { tg: { id: null }, oral: { id: null } };
-  const caja = h.el('div', { class: `av-caja${completo ? ' completo' : ''}`, ...(alumno != null ? { 'data-avance-alumno': String(alumno) } : {}) }, contenido(h, av, completo, estado));
-  estados.set(caja, { estado, completo, json: JSON.stringify(av ?? null) });
+  const caja = h.el('div', { class: `av-caja${completo ? ' completo' : ''}`, ...(alumno != null ? { 'data-avance-alumno': String(alumno) } : {}) }, contenido(h, av, completo, estado, sinAhora));
+  estados.set(caja, { estado, completo, sinAhora, json: JSON.stringify(av ?? null) });
   return caja;
 }
 const estados = new WeakMap();
@@ -108,7 +109,7 @@ export function repintarAvance(caja, av, h) {
   const nuevo = JSON.stringify(av ?? null);
   if (nuevo === e.json) return false;
   e.json = nuevo;
-  caja.replaceChildren(...contenido(h, av, e.completo, e.estado).flat(Infinity).filter(Boolean));
+  caja.replaceChildren(...contenido(h, av, e.completo, e.estado, e.sinAhora).flat(Infinity).filter(Boolean));
   return true;
 }
 // Para ordenar por avance: el % de todos los temas del Test Guide (si no viene, el avance de antes).

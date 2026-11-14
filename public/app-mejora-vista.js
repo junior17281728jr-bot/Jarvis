@@ -60,7 +60,7 @@ export function pantallaAppMejora(d, h, { alCambiar } = {}) {
       el('h3', { texto: t('appm.token.titulo') }),
       el('p', { class: 'aviso', texto: t('appm.token.falta') }),
       el('ol', { class: 'appm-pasos' }, [1, 2, 3, 4, 5].map(n => el('li', { texto: t(`appm.token.paso${n}`) }))),
-      el('a', { class: 'boton-enlace con-icono', href: '#claves' }, h.icono('llave'), el('span', { texto: t('appm.token.ir') })));
+      el('a', { class: 'boton-enlace con-icono', href: '#claves/github' }, h.icono('llave'), el('span', { texto: t('appm.token.ir') })));
 
   // Ajustes: subir solo, el tope.
   const auto = el('input', { type: 'checkbox', id: 'appm-auto', checked: cfg.autoSubir });

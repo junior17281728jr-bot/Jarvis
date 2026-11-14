@@ -24,6 +24,7 @@ import { auditar } from '../cuentas/usuarios.js';
 import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tutor.js';
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
+import { carreraDe, nombresEnCarrera, mostrarNombresEnCarrera } from '../academia/carrera.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
 import { resumenRepasoFinal, crearRondaFinal, vistaRondaFinal, responderRondaFinal, terminarRondaFinal, oralRepasoFinal, marcarOralRepasoFinal, reiniciarOralRepasoFinal, examenAbierto } from '../academia/repaso-final.js';
 
@@ -329,6 +330,9 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), oral: resumenOral(db, usuario.id, p) } };
   });
 
+  // 0.14.14: «La carrera» (arriba de Progreso): de los demás, solo su alias y su % (src/academia/carrera.js). Solo lee.
+  rutas.agregar('GET', '/api/academia/carrera', ({ db, usuario }) => ({ codigo: 200, datos: carreraDe(db, activo(db), usuario.id, reloj()) }));
+
   // Una figura del paquete en uso (solo con la sesión abierta; nunca sale de public/).
   rutas.agregar('GET', '/api/academia/figuras/:numero', ({ db, parametros }) => {
     const f = rutaFigura(activo(db), parametros.numero);
@@ -380,7 +384,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return {
       codigo: 200,
       datos: {
-        ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
+        ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), carreraNombres: nombresEnCarrera(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
         // 0.12.9 (R): cuántas preguntas del Test Guide del paquete activo explica alguna tarjeta, y cuáles faltan.
         cobertura: (() => { try { const p = activo(db); return p ? coberturaTestGuide(p) : null; } catch { return null; } })(),
         limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, videoBytes: LIMITES.videoBytes, clipBytes: LIMITES.clipBytes, paginaBytes: LIMITES.paginaBytes, fotoBytes: LIMITES.fotoBytes },
@@ -452,6 +456,12 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('POST', '/api/admin/academia/grupo', async ({ db, req }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { grupo: encenderGrupo(db, datos?.encendido) } };
+  }, { admin: true });
+
+  // 0.14.14: «Mostrar nombres en la carrera» (apagado: los demás son «Piloto 1, 2…»).
+  rutas.agregar('POST', '/api/admin/academia/carrera', async ({ db, req }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { carreraNombres: mostrarNombresEnCarrera(db, datos?.nombres) } };
   }, { admin: true });
 
   // 0.12.0: el humor del instructor para todos (encendido por defecto).

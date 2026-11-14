@@ -712,6 +712,21 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.14: «Progreso» como una carrera (corto y visual) y el token de GitHub fácil de encontrar — sin cambio de base
+
+- Arriba de Progreso, «La carrera»: dos pistas (Test Guide y oral) con un avioncito por alumno en su % de TODOS los temas
+  («Tú», más grande y azul; la meta a cuadros; la raya amarilla es el promedio), «Vas 2.º de 5 · 45 %» y «Ahora en: M3 · T2».
+  Aviones muy juntos van en uno con «+N» (al tocarlo, quiénes son); nunca más de 8 por pista. Se mueven solos cada 30 s.
+- Debajo: «Mis números» (racha, temas hechos, nota media de exámenes, tiempo de esta semana), la «Tabla» (podio y una
+  fila por alumno con «M3 · T2» y sus dos barras) y «Mi avance» (las barras y las fichas M1–M11 y C1–C9). Todo lo de
+  antes sigue igual dentro de «Ver detalles».
+- Privacidad (`GET /api/academia/carrera`, `src/academia/carrera.js`): de los demás solo el primer nombre, sus % y dónde
+  va; nunca usuarios, correos, apellidos ni notas. Ajuste «Mostrar nombres en la carrera» (Contenido; encendido): apagado,
+  «Piloto 1, 2…». Quien tiene «Perfil privado» sale siempre como «Piloto». No corren administradores, bloqueados ni
+  eliminados. El administrador ve la misma carrera arriba de «Cómo van todos», con los nombres.
+- Claves: «Ir a Claves» de «Mejorar la app» abre `#claves/github` (el cuadro del token, abierto y con el cursor), y la
+  sección de GitHub va justo después de la IA.
+
 ### Lo nuevo de la 0.14.11: el avance de cada alumno al día (Test Guide y oral) y «en línea» en 45 s — sin cambio de base
 
 - «Cómo van todos» y la ficha de cada alumno muestran, con pocas palabras: «Ahora en» (materia y tema del Test Guide;

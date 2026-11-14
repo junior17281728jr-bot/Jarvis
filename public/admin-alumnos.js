@@ -9,6 +9,8 @@
 
 // 0.14.11: el avance visual (Test Guide y oral, tema por tema): public/admin-avance.js (tampoco importa nada).
 import { vistaAvanceAlumno, repintarAvance, pctTg } from './admin-avance.js';
+// 0.14.14: «La carrera» y la tabla arriba de «Cómo van todos» (los mismos aviones que ve el alumno, con los nombres enteros).
+import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 export { repintarAvance };
 
 export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 'debiles', 'actividad']);
@@ -909,11 +911,24 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
     onclick: () => { orden = id; botones.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.orden === orden))); pintar(); alOrdenar?.(orden); } }));
   pintarCuenta();
   pintar();
+  // 0.14.14: los aviones: solo los alumnos activos (los bloqueados no corren), con su nombre entero.
+  const datosCarrera = () => {
+    const pilotos = lista.filter(a => a.activo !== false && a.activo !== 0).map(a => ({
+      alias: nombreDe(a), esYo: false, tg: a.avanceAlumno?.tg?.pct ?? 0, oral: a.avanceAlumno?.oral ? a.avanceAlumno.oral.pct : null,
+      tgEn: a.avanceAlumno?.tg?.ahora ? { n: a.avanceAlumno.tg.ahora.numero, t: a.avanceAlumno.tg.ahora.temaNumero } : null,
+      oralEn: a.avanceAlumno?.oral?.ahora ? { n: a.avanceAlumno.oral.ahora.numero, t: a.avanceAlumno.oral.ahora.temaNumero } : null }));
+    return { pilotos, oral: pilotos.some(x => x.oral != null) };
+  };
+  const carrera = lista.length ? vistaCarrera(h, datosCarrera(), { admin: true }) : null;
+  const tablaDe = () => { const d = datosCarrera(); return d.pilotos.length > 1 ? vistaTabla(h, d.pilotos, { oral: d.oral }) : el('span', { hidden: true }); };
+  let tabla = lista.length ? tablaDe() : null;
   // Los exámenes que alguien ya hizo: «Comparar» (quién sacó cuánto y qué pregunta falló cada uno).
   const conExamen = datos.materias.filter(id => lista.some(a => a.examenes.materias.some(x => x.id === id)));
   const nodo = el('section', { class: 'tarjeta como-van' },
     el('h2', { class: 'con-icono' }, h.icono('grafica'), el('span', { texto: t('cv.titulo') })),
     cuenta,
+    carrera?.nodo ?? null,
+    tabla,
     // 0.14.6: «Notas»: solo las notas de cada alumno, en una tabla (y comparar alumnos tema por tema).
     el('div', { class: 'botones cv-notas' }, el('a', { class: 'boton-enlace con-icono', href: '#notas' }, h.icono('marca', 'icono chico'), el('span', { texto: t('notas.boton') }))),
     lista.length ? el('div', { class: 'ficha-filtros', role: 'group', 'aria-label': t('cv.orden') }, el('span', { class: 'suave chica', texto: t('cv.orden') }), botones) : null,
@@ -940,6 +955,12 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
     }
     pintarCuenta();
     if (orden === 'en_linea' || orden === 'avance') pintar();
+    if (carrera && (d?.alumnos ?? []).some(x => x.avanceAlumno !== undefined)) {
+      carrera.actualizar(datosCarrera());
+      const nueva = tablaDe();
+      tabla.replaceWith(nueva);
+      tabla = nueva;
+    }
   };
   return { nodo, actualizar };
 }

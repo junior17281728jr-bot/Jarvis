@@ -29,6 +29,8 @@ import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
 import { botonOrigen } from './origen-vista.js';
 import { panelCurso, panelRepasoResumen, panelOral } from './progreso-vista.js';
+import { vistaCarrera, vistaTabla, vistaMisNumeros } from './carrera-vista.js';
+import { vistaAvanceAlumno, repintarAvance } from './admin-avance.js';
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
@@ -3019,6 +3021,9 @@ function detalleDelGasto(mes) {
 
 // ---- #claves: Administrador → Claves (solo desde la cuenta de Tailscale del dueño) ----
 const ICONO_GRUPO_CLAVES = { ia: 'chispa', avisos: 'avion_papel' };
+// El orden de las secciones de #claves: la IA, «Mejorar la app (GitHub)» y el Telegram (lo demás, después).
+const ORDEN_GRUPOS_CLAVES = ['ia', 'codigo', 'avisos'];
+const ordenGrupoClaves = g => (ORDEN_GRUPOS_CLAVES.includes(g) ? ORDEN_GRUPOS_CLAVES.indexOf(g) : ORDEN_GRUPOS_CLAVES.length);
 const ICONO_ESTADO_CLAVE = { activa: 'bien', pausada: 'pausa', no_pasa: 'mal', ilegible: 'mal', ninguna: 'apagado' };
 function textoEstadoClave(estadoClave) {
   if (estadoClave === 'activa') return t('claves.estado.activa');
@@ -3034,10 +3039,14 @@ function irAClaveClaude() {
   abrirClaveClaude = true;
   if (location.hash === '#claves') pantallaClaves(); else location.hash = '#claves';
 }
+// 0.14.14: «Ir a Claves» de «Mejorar la app» (#claves/github) abre el cuadro del token de GitHub (pegar, ya abierto).
+let abrirClaveGithub = false;
 async function pantallaClaves(aviso = null) {
   const vigente = nuevoTurno();
   const abrirClaude = abrirClaveClaude;
   abrirClaveClaude = false;
+  const abrirGithub = abrirClaveGithub;
+  abrirClaveGithub = false;
   const [r, prov, vistaIa] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js')]);
   if (!vigente()) return;
   const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
@@ -3064,7 +3073,8 @@ async function pantallaClaves(aviso = null) {
       listo && d.almacen?.motivo === 'restaurada' ? el('p', { class: 'aviso con-icono-arriba' }, icono('info', 'icono chico'), el('span', { texto: t('claves.restaurada') })) : null),
     // 0.13.9: Claude (la IA) primero, con sus 3 pasos; el Telegram abajo. 0.14.2: «¿Quién hace el trabajo?», Claude,
     // ChatGPT y la API propia (public/ia-proveedores-vista.js).
-    [...(d.grupos ?? [])].sort((a, b) => (b.grupo === 'ia') - (a.grupo === 'ia')).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente })
+    // 0.14.14: «Mejorar la app (GitHub)» justo después de la IA (antes quedaba al final, debajo del Telegram).
+    [...(d.grupos ?? [])].sort((a, b) => ordenGrupoClaves(a.grupo) - ordenGrupoClaves(b.grupo)).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente })
       : g.grupo === 'ia' ? vistaIa.seccionesIa(g, prov.ok ? prov.datos : null, {
         el, t, tSi, icono, api, numero, insignia, textoError, recargar,
         pasosClaude: () => pasosClaude({ el, t, icono }, { verificacion: estadoClaude({ claves: d }).estado === 'esperando_verificacion' }),
@@ -3073,6 +3083,14 @@ async function pantallaClaves(aviso = null) {
         : el('section', { class: 'tarjeta', id: `claves-${g.grupo}` },
           titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
           (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))))));
+  if (abrirGithub) {
+    const seccion = document.getElementById('claves-codigo');
+    const campo = document.getElementById('clave-github_token');
+    const pegar = campo?.closest('details');
+    if (pegar) pegar.open = true;
+    seccion?.scrollIntoView({ block: 'start' });
+    campo?.focus({ preventScroll: true });
+  }
   if (abrirClaude) {
     const campo = document.getElementById('clave-ia_anthropic');
     campo?.closest('.clave-caja')?.scrollIntoView({ block: 'start' });
@@ -5298,9 +5316,11 @@ function panelPlan(plan, { alCambiar }) {
   return caja;
 }
 
+// 0.14.14: «Ver detalles» abierto o cerrado (queda así al volver a pintar la pantalla, por ejemplo al cambiar el plan).
+let detallesProgresoAbiertos = false;
 async function pantallaProgreso() {
   const vigente = nuevoTurno();
-  const r = await api('GET', '/api/academia/progreso');
+  const [r, c] = await Promise.all([api('GET', '/api/academia/progreso'), api('GET', '/api/academia/carrera')]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const p = r.datos;
@@ -5311,10 +5331,37 @@ async function pantallaProgreso() {
   grupo = panelGrupo(p.grupo, { alCambiar: alCambiarGrupo });
   // 0.12.2: arriba, el curso ENTERO (las 11 materias, con cada número diciendo qué cuenta) y, por materia, sus temas;
   // «Mis puntos débiles» se juntó con «Mi repaso» (aquí, en corto, con su botón).
-  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual };
+  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual, pctTexto, insignia, partirTitulo };
+  // 0.14.14: arriba, corto y visual: «La carrera» (los aviones de todos), «Mis números», la tabla y mi avance (las dos
+  // barras y una ficha por materia y capítulo). Todo lo de antes, igual, dentro de «Ver detalles».
+  const carrera = c.ok ? vistaCarrera(ayudas, c.datos) : null;
+  const yo = c.ok ? c.datos.yo : null;
+  const miAvance = yo?.avance ? vistaAvanceAlumno(ayudas, yo.avance, { sinAhora: true }) : null;
+  const detalles = el('details', { class: 'progreso-detalles', open: detallesProgresoAbiertos },
+    el('summary', { class: 'progreso-detalles-boton' }, icono('expandir', 'icono chico'), el('span', { texto: t('carrera.ver_detalles') })),
+    el('div', { class: 'progreso-detalles-cuerpo' }, detallesProgreso(p, ayudas, grupo)));
+  detalles.addEventListener('toggle', () => { detallesProgresoAbiertos = detalles.open; });
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
-    el('p', { class: 'bajada', texto: t('acad.progreso.linea') }),
+    carrera?.nodo ?? null,
+    yo ? vistaMisNumeros(ayudas, yo.datos) : null,
+    c.ok && c.datos.pilotos.length > 1 ? vistaTabla(ayudas, c.datos.pilotos, { oral: c.datos.oral }) : null,
+    miAvance ? el('section', { class: 'panel mi-avance', 'aria-labelledby': 'mi-avance-titulo' },
+      el('h2', { id: 'mi-avance-titulo', class: 'con-icono' }, icono('grafica'), el('span', { texto: t('carrera.mi_avance') })), miAvance) : null,
+    detalles));
+  // Con la app a la vista, la carrera y mi avance se ponen al día cada 30 s (los aviones se mueven solos).
+  if (carrera) {
+    refrescarMientras(carrera.nodo, vigente, async () => {
+      const x = await api('GET', '/api/academia/carrera');
+      if (!x.ok || !vigente() || !carrera.nodo.isConnected) return;
+      carrera.actualizar(x.datos);
+      if (miAvance && x.datos.yo?.avance) repintarAvance(miAvance, x.datos.yo.avance, ayudas);
+    }, AVANCE_ADMIN_MS);
+  }
+}
+// Lo de siempre de «Mi progreso» (0.12.2 en adelante), ahora dentro de «Ver detalles».
+function detallesProgreso(p, ayudas, grupo) {
+  return [
     p.curso?.conClases ? panelCurso(p.curso, ayudas) : el('section', { class: 'panel' }, vacio('grafica', t('acad.progreso.vacio'))),
     // El repaso espaciado (lo que vence hoy) es otra cosa que «Mi repaso»: su (i) lo explica.
     p.repaso ? el('div', { class: 'progreso-repaso-espaciado' }, botonRepaso(p.repaso), queEs('repaso')) : null,
@@ -5329,7 +5376,7 @@ async function pantallaProgreso() {
     p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
     panelExtra(p.extra),
     // 0.13.1: la pista oral, en su propia sección (nunca se suma al Test Guide).
-    panelOral(p.oral, ayudas)));
+    panelOral(p.oral, ayudas)];
 }
 // 0.12.0: lo EXTRA va aparte (nunca se suma al Test Guide): por materia y por nivel. Lo usa también la ficha del alumno.
 function panelExtra(lista, { titulo = t('extra.progreso.titulo'), enlaces = true } = {}) {
@@ -5684,6 +5731,16 @@ async function pantallaContenido() {
         avisar(t(x.datos.grupo ? 'acad.grupo.admin.encendido' : 'acad.grupo.admin.apagado'));
       }),
       el('p', { class: 'suave chica', texto: t('acad.grupo.admin.linea') })),
+    // 0.14.14: «Mostrar nombres en la carrera» (Progreso de los alumnos). Apagado: «Piloto 1, 2…».
+    el('div', { class: 'ajuste-grupo' },
+      el('p', { class: 'etiqueta-campo', texto: t('carrera.admin') }),
+      grupoDeBotones([['si', t('carrera.admin.si')], ['no', t('carrera.admin.no')]], r.datos.carreraNombres !== false ? 'si' : 'no', async (valor, marcar) => {
+        const x = await api('POST', '/api/admin/academia/carrera', { nombres: valor === 'si' });
+        if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+        marcar();
+        avisar(t(x.datos.carreraNombres ? 'carrera.admin.si' : 'carrera.admin.no'));
+      }),
+      el('p', { class: 'suave chica', texto: t('carrera.admin.linea') })),
     // 0.12.0: el humor del instructor, para todos (cada alumno lo puede apagar para sí).
     el('div', { class: 'ajuste-grupo' },
       el('p', { class: 'etiqueta-campo', texto: t('acad.humor.admin') }),
@@ -5956,6 +6013,8 @@ async function dibujar() {
   // Las pestañas de Administrador (#admin, #admin/usuarios, #admin/trabajo, #admin/servidor, #copias, #ia, #claves).
   // 0.12.5: las direcciones con el nombre de un grupo (o de una pestaña bajo #admin/…) llevan a su pantalla.
   if (esAdmin && Object.hasOwn(REDIRECCIONES_ADMIN, seccion)) { location.replace(REDIRECCIONES_ADMIN[seccion]); return; }
+  // 0.14.14: #claves/github: #claves con el cuadro del token de GitHub abierto (y el cursor en él).
+  if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
   if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
@@ -6078,7 +6137,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
   if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores'] : [];
   // Academia (0.7.0).
-  if (seccion === 'progreso') return ['/api/academia/progreso'];
+  if (seccion === 'progreso') return ['/api/academia/progreso', '/api/academia/carrera'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);
   if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
   const practica = seccion.match(/^practica\/(\d+)$/);
