@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { revisarManifiesto, revisarTg, paginasDeTexto, carpetaFuentes } from '../src/academia/fuentes.js';
+import { revisarManifiesto, revisarTg, limpiarManifiesto, paginasDeTexto, carpetaFuentes } from '../src/academia/fuentes.js';
 import { estadoMateria, vistaFabrica, guardarConfigFabrica, leerSalida, tgAlterado, publicarRevisada, reiniciarMateria, estadoGeneral } from '../src/academia/fabrica.js';
 import { leerEnUso, carpetaAcademia, guardarAjuste } from '../src/academia/paquetes.js';
 import { revisarPaquete } from '../src/academia/formato.js';
@@ -48,6 +48,18 @@ test('manifiesto y tg.json: lo bien armado pasa y cada error se dice con su luga
   const paginas = paginasDeTexto('=== p 4 ===\nuno\n=== p 5 ===\ndos\n');
   assert.equal(paginas.get(4), 'uno');
   assert.equal(paginas.get(5), 'dos');
+});
+
+test('0.14.15: una materia sin temas (SMS) y preguntas del Test Guide sin explicación no rechazan las fuentes', () => {
+  const m = manifiestoBueno();
+  m.materias.push({ id: 'sms', num: 11, nombre: 'SMS', temas: [] });
+  assert.equal(revisarManifiesto(m).ok, false, 'el manifiesto crudo con la materia vacía no pasa');
+  const limpio = limpiarManifiesto(m);
+  assert.equal(limpio.materias.some(x => x.id === 'sms'), false);
+  assert.equal(revisarManifiesto(limpio).ok, true);
+  const tg = { preguntas: [{ id: '2-1', materia: 'sistemas', enunciado: 'x', opciones: { A: 'a', B: 'b' }, correcta: 'B' }] };
+  assert.equal(revisarTg(tg, limpio).ok, true, 'sin explicación vale (así viene en el libro)');
+  assert.equal(revisarTg({ preguntas: [{ ...tg.preguntas[0], explicacion: 5 }] }, limpio).ok, false);
 });
 
 test('la fábrica arma una materia entera: paquete válido, Test Guide TAL CUAL, publicado solo y con aviso por Telegram', async () => {

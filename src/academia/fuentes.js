@@ -126,7 +126,8 @@ export function revisarTg(tg, manifiesto) {
     if (!esObjeto(q) || typeof q.id !== 'string' || !ID_TG.test(q.id)) return mal(`${r}.id`, 'id_no_valido');
     if (porId.has(q.id)) return mal(`${r}.id`, 'repetido');
     if (typeof q.enunciado !== 'string' || !q.enunciado.trim()) mal(`${r}.enunciado`, 'falta');
-    if (typeof q.explicacion !== 'string' || !q.explicacion.trim()) mal(`${r}.explicacion`, 'falta');
+    // 0.14.15: algunas preguntas del Test Guide no traen explicación (vienen así en el libro): vacía o sin ella vale.
+    if (q.explicacion != null && typeof q.explicacion !== 'string') mal(`${r}.explicacion`, 'no_valida');
     const letras = esObjeto(q.opciones) ? Object.keys(q.opciones) : [];
     if (letras.length < 2 || letras.length > 6 || letras.some((l, k) => l !== LETRAS[k]) || letras.some(l => typeof q.opciones[l] !== 'string' || !q.opciones[l].trim())) mal(`${r}.opciones`, 'opciones_no_validas');
     if (!letras.includes(q.correcta)) mal(`${r}.correcta`, 'correcta_no_es_opcion');
@@ -234,8 +235,14 @@ export function preguntasDeTema(dir, materia, tema) {
 export function imagenesDeTema(dir, materia, tema) {
   try { const l = JSON.parse(readFileSync(join(dir, 'tg', materia, `${tema}.imagenes.json`), 'utf8')); return Array.isArray(l) ? l : []; } catch { return []; }
 }
+// 0.14.15: una materia SIN temas (p. ej. SMS, que no tiene material en los libros) no es un error: se deja fuera de las
+// fuentes (la fábrica y la mejora profunda la saltan). Antes una sola materia vacía rechazaba TODAS las fuentes.
+export function limpiarManifiesto(m) {
+  if (!esObjeto(m) || !Array.isArray(m.materias)) return m;
+  return { ...m, materias: m.materias.filter(x => !(esObjeto(x) && Array.isArray(x.temas) && x.temas.length === 0)) };
+}
 export function leerManifiesto(dir) {
-  try { return JSON.parse(readFileSync(join(dir, ARCHIVO_MANIFIESTO), 'utf8')); } catch { return null; }
+  try { return limpiarManifiesto(JSON.parse(readFileSync(join(dir, ARCHIVO_MANIFIESTO), 'utf8'))); } catch { return null; }
 }
 
 // El estado de las fuentes (lo que vio la última sincronización): { ok, errores, materias, huella, en, faltan, archivos }.
@@ -266,7 +273,7 @@ export function revisarCarpetaFuentes(dir) {
   const ruta = join(dir, ARCHIVO_MANIFIESTO);
   if (!existsSync(ruta)) return { ...estado, errores: [{ ruta: ARCHIVO_MANIFIESTO, motivo: 'falta' }] };
   let manifiesto;
-  try { manifiesto = JSON.parse(readFileSync(ruta, 'utf8')); } catch { return { ...estado, errores: [{ ruta: ARCHIVO_MANIFIESTO, motivo: 'json_no_valido' }] }; }
+  try { manifiesto = limpiarManifiesto(JSON.parse(readFileSync(ruta, 'utf8'))); } catch { return { ...estado, errores: [{ ruta: ARCHIVO_MANIFIESTO, motivo: 'json_no_valido' }] }; }
   const rm = revisarManifiesto(manifiesto);
   if (!rm.ok) return { ...estado, errores: rm.errores };
   let tg;
