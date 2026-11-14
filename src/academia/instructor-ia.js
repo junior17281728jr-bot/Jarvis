@@ -476,6 +476,9 @@ export function revisarRespuesta(datos, json) {
       forma: 2, saludo: cortarPalabras(limpio(json.saludo, 400), PALABRAS_CONSEJO.saludo),
       videoId: video, videoPorque: video ? cortarPalabras(limpio(json.video_porque, 300), PALABRAS_CONSEJO.video) : '',
       confusiones, porque: cortarPalabras(limpio(json.porque, 800), PALABRAS_CONSEJO.porque),
+      // Lo que vio (temas y números): si cambia, su texto ya no se muestra (src/academia/consejo-ia.js, consejoParaVer).
+      vio: (Array.isArray(datos.vio) ? datos.vio : []).slice(0, 3).filter(x => typeof x?.id === 'string' && ids.has(x.id))
+        .map(x => ({ id: x.id, bien: Number(x.bien) || 0, de: Number(x.de) || 0 })),
     };
     if (!r.saludo && !Object.keys(confusiones).length) throw noSirve();
     return r;

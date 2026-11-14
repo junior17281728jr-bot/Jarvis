@@ -378,6 +378,14 @@ export function crearInstructor(h) {
       return cajaIa(r, [r.titulo ? talCual('p', r.titulo, 'fuerte') : null, talCual('p', r.consejo ?? ''),
         r.pasos?.length ? el('ol', { class: 'instructor-pasos' }, r.pasos.map(p => talCual('li', p))) : null]);
     }
+    const repaso = r.repaso?.n > 0 ? el('button', { type: 'button', class: 'consejo-repaso con-icono', onclick: evento => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, evento.currentTarget); } },
+      icono('calendario', 'icono chico'), el('span', { texto: tn('consejo.repaso', { n: r.repaso.n }) })) : null;
+    // Ya superó lo que el consejo señalaba: «vas bien» (y sus repasos), nunca un consejo vacío.
+    if (r.superado) {
+      return el('section', { class: 'caja-hoja caja-ia consejo-ia' },
+        el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx('instr.ia.titulo') })),
+        el('p', { class: 'consejo-saludo', texto: tx('consejo.sin_fallas') }), repaso);
+    }
     const temas = r.temas ?? [];
     const guia = r.guia ?? temas[0] ?? null;
     const v = r.video;
@@ -404,8 +412,7 @@ export function crearInstructor(h) {
           icono('cerebro', 'icono chico'), el('span', { texto: tx('consejo.practicar') })),
         el('button', { type: 'button', class: 'boton-3d naranja chico con-icono', onclick: () => { sonar?.('toque'); if (h.guiar) h.guiar(guia); else location.hash = rutaTema(guia.materia, guia.tema, guia.tarjeta); } },
           icono('dedo', 'icono chico'), el('span', { texto: tx('consejo.guiar') }))) : null,
-      r.repaso?.n > 0 ? el('button', { type: 'button', class: 'consejo-repaso con-icono', onclick: evento => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, evento.currentTarget); } },
-        icono('calendario', 'icono chico'), el('span', { texto: tn('consejo.repaso', { n: r.repaso.n }) })) : null,
+      repaso,
       el('details', { class: 'instructor-porque' }, el('summary', { texto: tx('consejo.por_que') }),
         porqueConsejo(r) ? el('p', { class: 'chica', texto: porqueConsejo(r) }) : null,
         r.porque ? talCual('p', r.porque, 'chica') : null,

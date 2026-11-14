@@ -6043,6 +6043,7 @@ async function dibujar() {
   // Academia (0.7.0): el camino (Inicio), un tema, practicar, el examen de una materia y el progreso; lo del administrador.
   if (seccion === 'progreso') return pantallaProgreso();
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/(\d{1,3}))?$/);
+  if (guiaTema && !(tema && tema[1] === guiaTema.materia && tema[2] === guiaTema.tema)) guiaTema = null; // 0.14.15: «Te guío» solo vale en esa clase
   if (tema) return pantallaTema(tema[1], tema[2], tema[3] ? Number(tema[3]) : null);
   // 0.12.9: el tutor: lo que recuerda de él, «¿Tomo el examen?» y sus preguntas personalizadas.
   if (seccion === 'tutor/memoria') return tutorUi().pantallaMemoria();

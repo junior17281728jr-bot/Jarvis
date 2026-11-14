@@ -9,7 +9,7 @@ import { decidirAlcance, elegirVideo, consejoParaVer } from '../src/academia/con
 import { ESQUEMA_CONSEJO, PALABRAS_CONSEJO, armarConsejo, revisarRespuesta, cortarPalabras, esquemaDe } from '../src/academia/instructor-ia.js';
 import { cumpleEsquema } from '../src/ia/esquema.js';
 import { crearInstructor } from '../public/instructor.js';
-import { conInstructor, unaMala, pedir, pedidosIa, textoDe, NOMBRES } from './instructor-ia-base.js';
+import { conInstructor, unaMala, pedir, pedidosIa, textoDe, nuevo, DE, NOMBRES } from './instructor-ia-base.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const fila = (materia, tema, bien, de, titulo = tema) => ({ id: `${materia}/${tema}`, materia, tema, titulo, bien, de, fallos: de - bien, peso: de - bien });
@@ -44,6 +44,15 @@ test('el video sale solo de lo que ya existe: el de la materia, uno de YouTube d
   assert.deepEqual([clip.tipo, clip.tarjeta], ['clip', 2], 'sin YouTube: el clip de la tarjeta');
   assert.equal(elegirVideo(paquete, 'materia', temas, [{ materia: 'otra', tema: '', titulo: 'x', url: 'https://youtu.be/zzzzzzz' }]), null, 'de otra materia: ninguno');
   assert.match(elegirVideo(paquete, 'tema', temas, yt).id, /^yt-[a-f0-9]{12}$/);
+  // Con el video de la materia: para la materia entera, desde el principio; para un tema, en su capítulo.
+  const conVideo = { materias: [{ ...paquete.materias[0], video: { titulo: 'Factores humanos', escenas: [{ inicio_s: 0, fin_s: 10 }] } }] };
+  const entero = elegirVideo(conVideo, 'materia', temas, yt);
+  assert.deepEqual([entero.tipo, entero.tema], ['materia', null]);
+  const capitulo = elegirVideo(conVideo, 'tema', temas, []);
+  assert.deepEqual([capitulo.tipo, capitulo.tema], ['materia', 'hipoxia']);
+  const ins = crearInstructor(ayudas());
+  const enlace = v => ins.pintarConsejo({ forma: 2, saludo: 'x', temas: [], video: v, repaso: { n: 0 } }).todos(n => n.etiqueta === 'a')[0].atributos.href;
+  assert.deepEqual([enlace(entero), enlace(capitulo), enlace(clip)], ['#video/fh', '#video/fh/tema/hipoxia', '#tema/fh/hipoxia/2']);
 });
 
 test('la respuesta de la IA: esquema, ids revisados (los inventados se descartan), palabras con tope, y nunca un muro', () => {
@@ -122,6 +131,16 @@ test('la tarjeta: saludo, UN video, los temas con «2/6» y barrita, Estudiar ·
   // Un video que ya no está (otro id): sin su porqué; sin video: sin la fila.
   assert.ok(!ins.pintarConsejo({ ...consejoParaVer({ ...guardado, videoId: 'yt-otro' }, diag) }).textContent.includes('con dibujos'));
   assert.ok(!ins.pintarConsejo({ ...consejoParaVer(guardado, { ...diag, video: null }) }).textContent.includes('Video recomendado'));
+  // El texto se escribió para UN diagnóstico: con otros números, sin su porqué; con otros temas, sin saludo ni porqué.
+  const numeros = consejoParaVer({ ...guardado, vio: [{ id: 'fh/hipoxia', bien: 1, de: 6 }] }, diag);
+  assert.deepEqual([Boolean(numeros.saludo), numeros.porque], [true, '']);
+  const otros = consejoParaVer({ ...guardado, vio: [{ id: 'fh/vision', bien: 1, de: 6 }] }, diag);
+  assert.deepEqual([otros.saludo, otros.porque], ['', '']);
+  assert.match(ins.pintarConsejo(otros).textContent, /Estuve mirando tus respuestas: La hipoxia/);
+  assert.equal(consejoParaVer({ ...guardado, vio: [{ id: 'fh/hipoxia', bien: 2, de: 6 }] }, diag).porque, 'Fallaste 4 de 6.');
+  // Superado: «vas bien» y sus repasos, nunca una tarjeta vacía.
+  const bien = ins.pintarConsejo(consejoParaVer(guardado, { ...diag, temas: [], video: null, guia: null }));
+  assert.match(bien.textContent, /Vas bien.*Repaso: tienes 5 pendientes/);
   // El de antes (titulo, consejo, pasos) se sigue viendo.
   const viejo = ins.pintarConsejo({ estado: 'lista', titulo: 'Tu semana', consejo: 'Repasa la hipoxia.', pasos: ['Relee.'] });
   assert.match(viejo.textContent, /Tu semana.*Repasa la hipoxia.*Relee/);
@@ -129,7 +148,7 @@ test('la tarjeta: saludo, UN video, los temas con «2/6» y barrita, Estudiar ·
 
 test('con el servidor: el consejo guardado de antes no vuelve a salir (se pide el nuevo), y nada personal va a la IA', async () => {
   await conInstructor(async c => {
-    await unaMala(c, c.z);
+    const x = await unaMala(c, c.z);
     const id = c.db.prepare("SELECT id FROM usuarios WHERE nombre = 'zoelia'").get().id;
     const { semanaDe } = await import('../src/api/instructor.js');
     c.db.prepare('INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)').run(`academia.ia.consejo.${id}.${semanaDe(Date.now())}`, JSON.stringify({ titulo: 'Viejo', consejo: 'Un muro de texto.', pasos: [] }), new Date().toISOString());
@@ -141,5 +160,23 @@ test('con el servidor: el consejo guardado de antes no vuelve a salir (se pide e
     const lista = (await pedir(c.base, 'GET', `/api/academia/instructor/tareas/${k.ia.tarea}`, { galleta: c.z })).datos;
     assert.deepEqual([lista.estado, lista.forma, lista.saludo, lista.temas[0].confusion], ['lista', 2, 'Dale, pana: la hipoxia primero.', 'Altitud y presión.']);
     for (const nombre of [...NOMBRES, 'junior']) assert.ok(!textoDe(pedidosIa(c)[0]).toLowerCase().includes(nombre));
+    const enviado = textoDe(pedidosIa(c)[0]);
+    assert.match(enviado, /alcance/, 'el diagnóstico (alcance, evidencia) va como dato');
+    // «Practicar» (lo que falló de ese tema; si ya no queda, la práctica del instructor de ese tema) y su respaldo.
+    const lugar = { materia: 'factores_humanos', tema: 'muestra-hipoxia' };
+    const errores = await nuevo(c, c.z, { tipo: 'errores', ...lugar });
+    assert.ok(errores.codigo < 300 || errores.datos.error === 'sin_errores', JSON.stringify(errores.datos));
+    assert.ok((await nuevo(c, c.z, { tipo: 'instructor', ...lugar })).codigo < 300);
+    // El consejo de un intento suyo ya terminado (la consulta de sus errores corre de verdad).
+    c.db.prepare("UPDATE academia_intentos SET terminado_en = ? WHERE id = ?").run(new Date().toISOString(), x.intento.id); // terminado (sin responder las demás)
+    c.falso.siguiente({ tipo: 'ok', json: { saludo: 'Dale con la hipoxia.', video_porque: '', temas: [{ id: 'factores_humanos/muestra-hipoxia', confusion: 'Presión.' }], porque: 'Ese examen.' } });
+    const ex = await pedir(c.base, 'POST', '/api/academia/instructor/consejo', { galleta: c.z, datos: { examen: x.intento.id } });
+    assert.equal(ex.codigo, 200);
+    assert.equal(ex.datos.ia.estado, 'pendiente');
+    // Ya la respondió bien: el consejo no se contradice («vas bien», sin el saludo de antes ni temas).
+    const otra = (await nuevo(c, c.z, { tipo: 'tema', ...lugar })).datos;
+    assert.equal((await pedir(c.base, 'POST', `/api/academia/intentos/${otra.id}/responder`, { galleta: c.z, datos: { pregunta: x.pregunta.id, elegida: DE(x.pregunta.id).original.correcta } })).codigo, 200);
+    const ahora = (await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.z })).datos.consejoIa;
+    assert.deepEqual([ahora.superado, ahora.saludo, ahora.temas.length], [true, '', 0]);
   });
 });

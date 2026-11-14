@@ -116,11 +116,18 @@ export function cifrasConsejo(d, { examen = null } = {}) {
 }
 
 // Lo que ve la pantalla: lo guardado (textos por id) + el diagnóstico de AHORA. Lo de antes (forma vieja) va tal cual.
+// El texto de la IA se escribió para UN diagnóstico (guardado.vio): si ya superó esos temas, «vas bien» (y sus repasos);
+// si los temas cambiaron, sin su saludo ni su porqué (queda la línea de la app y la evidencia de ahora); si solo cambiaron
+// los números, sin su porqué (que los nombraba).
 export function consejoParaVer(guardado, d) {
   if (!guardado || guardado.forma !== 2) return guardado;
+  if (!d.temas.length) return { forma: 2, superado: true, saludo: '', porque: '', temas: [], video: null, guia: null, repaso: d.repaso, alcance: null, evidencia: null, en: guardado.en ?? null };
   const conf = guardado.confusiones && typeof guardado.confusiones === 'object' ? guardado.confusiones : {};
+  const vio = Array.isArray(guardado.vio) ? guardado.vio : null;
+  const mismosTemas = !vio || (vio.length === d.temas.length && d.temas.every(t => vio.some(x => x.id === t.id)));
+  const mismosNumeros = mismosTemas && (!vio || d.temas.every(t => vio.some(x => x.id === t.id && x.bien === t.bien && x.de === t.de)));
   return {
-    forma: 2, saludo: guardado.saludo ?? '', porque: guardado.porque ?? '', alcance: d.alcance, evidencia: d.evidencia,
+    forma: 2, saludo: mismosTemas ? guardado.saludo ?? '' : '', porque: mismosNumeros ? guardado.porque ?? '' : '', alcance: d.alcance, evidencia: d.evidencia,
     temas: d.temas.map(({ ideas, ...t }) => ({ ...t, confusion: typeof conf[t.id] === 'string' ? conf[t.id] : '' })),
     video: d.video ? { ...d.video, porque: guardado.videoId === d.video.id ? guardado.videoPorque ?? '' : '' } : null,
     repaso: d.repaso, guia: d.guia, modelo: guardado.modelo ?? null, en: guardado.en ?? null,
