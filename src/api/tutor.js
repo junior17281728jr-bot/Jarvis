@@ -26,12 +26,19 @@ const textoTarjeta = s => [s?.texto, ...(Array.isArray(s?.puntos) ? s.puntos : [
 const PREFIJO_PERSONAL = id => `academia.tutor.personal.${Number(id)}.`;
 
 // Lo que se guardó de la preparación (si existe) — también su «examen» y su conclusión.
-function preparacionDe(db, usuarioId, ahora) {
+// 0.14.15: con el paquete, las tarjetas que nombra la IA («t4») salen con su título de verdad, y las que eligió (ids ya
+// revisados) van como botones a esa tarjeta: { materia, tema, numero, titulo }.
+function preparacionDe(db, usuarioId, ahora, p = null) {
   const pt = leerPuntero(db, usuarioId);
   if (!pt?.tema) return null;
-  const g = typeof pt.clave === 'string' ? leerGuardado(db, pt.clave) : null;
+  const [materia, tema] = String(pt.tema).split('/');
+  const secciones = p?.materias.find(x => x.id === materia)?.temas.find(x => x.id === tema)?.secciones ?? [];
+  const tituloDe = id => (/^t\d{1,4}$/.test(id) ? secciones[Number(id.slice(1)) - 1]?.titulo ?? null : null);
+  const mapa = id => { const x = tituloDe(id); return x ? `«${x.replace(/\s*\([^)]*\)\s*$/, '')}»` : null; };
+  const g = typeof pt.clave === 'string' ? leerGuardado(db, pt.clave, { mapa }) : null;
   if (!g && pt.dia !== diaRd(ahora)) return null;
-  return { tema: pt.tema, listo: Boolean(g), examen: g?.examen ?? null, conclusion: g?.conclusion ?? null };
+  const tarjetas = (g?.tarjetas ?? []).map(x => ({ materia, tema, numero: Number(String(x.tarjeta).slice(1)), titulo: tituloDe(String(x.tarjeta)) })).filter(x => x.titulo).slice(0, 3);
+  return { tema: pt.tema, listo: Boolean(g), examen: g?.examen ? { ...g.examen, tarjetas } : null, conclusion: g?.conclusion ?? null };
 }
 // Las preguntas personalizadas que se le muestran: SIN la correcta (se revisa al responder).
 export const personalParaVer = g => ({ preguntas: (g?.preguntas ?? []).map((x, i) => ({ i, enunciado: x.enunciado, opciones: x.opciones, entrena: x.entrena })), tema: g?.tema ?? null });
@@ -62,7 +69,7 @@ export function registrarRutasTutor(rutas, h) {
     const instructor = conIa(db, req, usuario, ahora);
     // N: sin IA para él, nada de IA (ni la tarjeta del tutor).
     if (!p || instructor.modo !== 'ia') return { codigo: 200, datos: { ia: false } };
-    const preparado = preparacionDe(db, usuario.id, ahora);
+    const preparado = preparacionDe(db, usuario.id, ahora, p);
     const apertura = aperturaTutor(db, usuario.id, p, ahora);
     const ex = tomoExamen(db, usuario.id, p, ahora);
     const materia = apertura?.tema?.materia ?? null;
@@ -83,7 +90,7 @@ export function registrarRutasTutor(rutas, h) {
     const p = activo(db);
     if (!p) throw new ErrorHttp(409, 'sin_paquete');
     const ex = tomoExamen(db, usuario.id, p, ahora);
-    const ia = conIa(db, req, usuario, ahora).modo === 'ia' ? preparacionDe(db, usuario.id, ahora)?.examen ?? null : null;
+    const ia = conIa(db, req, usuario, ahora).modo === 'ia' ? preparacionDe(db, usuario.id, ahora, p)?.examen ?? null : null;
     // 0.14.15: corto (una frase y 3 pasos breves); sin ids (leerGuardado ya los quita).
     const corto = ia ? { ...ia, porque: cortarPalabras(ia.porque ?? '', 28), pasos: (ia.pasos ?? []).slice(0, 3).map(x => cortarPalabras(x, 12)) } : null;
     return { codigo: 200, datos: { ...ex, examenIa: corto } };

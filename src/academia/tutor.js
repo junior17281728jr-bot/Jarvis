@@ -219,8 +219,9 @@ export function tomoExamen(db, usuarioId, p, ahora = Date.now()) {
   const porRegla = r => ({ clave: `${r.id}.${r.ok ? 'ok' : 'no'}`, vars: { valor: r.valor, meta: r.meta, n: r.n } });
   const malas = v.reglas.filter(r => !r.ok && r.id !== 'materias');
   const buenas = v.reglas.filter(r => r.ok);
+  const regla = id => v.reglas.find(r => r.id === id);
   const oficial = {
-    si: v.nivel === 'listo', pct: v.probabilidad,
+    si: v.nivel === 'listo', pct: v.probabilidad, acierto: regla('acierto')?.valor ?? null, cobertura: regla('cobertura')?.valor ?? null,
     porques: [...malas.slice(0, 3), ...buenas.slice(0, Math.max(0, 2 - malas.length))].slice(0, 4).map(porRegla),
   };
   // 0.14.15: por materia, QUÉ falla (los 2 temas con más errores, por su nombre) y por dónde empezar.
@@ -232,7 +233,9 @@ export function tomoExamen(db, usuarioId, p, ahora = Date.now()) {
     return { materia, tema: t.id, titulo: t.titulo, fallos: vistas.length - bien, bien, de: vistas.length };
   }).filter(x => x.fallos > 0 && x.bien / x.de < 0.9).sort((a, b) => b.fallos - a.fallos || a.bien / a.de - b.bien / b.de).slice(0, 2)
     .map(({ materia: mm, tema, titulo }) => ({ materia: mm, tema, titulo }));
-  const primerTema = materia => p?.materias.find(x => x.id === materia)?.temas[0]?.id ?? null;
+  // Solo un tema que ya puede abrir (nunca un botón a una clase cerrada).
+  const abiertos = new Set(camino(db, usuarioId, p, ahora).materias.flatMap(x => x.temas.filter(t => t.estado !== 'bloqueado').map(t => `${x.id}/${t.id}`)));
+  const primerTema = materia => (p?.materias.find(x => x.id === materia)?.temas ?? []).find(t => abiertos.has(`${materia}/${t.id}`))?.id ?? null;
   const materias = (v.porMateria ?? []).map(m => {
     const porques = [];
     porques.push({ clave: m.pct >= 90 ? 'acierto.ok' : 'acierto.no', vars: { valor: m.pct, meta: 90 } });

@@ -309,7 +309,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       // Solo cifras y textos del paquete: nunca el nombre ni el usuario del alumno.
       const cifras = cifrasConsejo(diag, { examen: examen ? { materia: examen.materia, pct: examen.total ? Math.floor((examen.aciertos * 100) / examen.total) : 0, aprobado: examen.aprobado === 1 } : null });
       const pedido = armarConsejo({ cifras, idioma: usuario.idioma, humor: conHumor });
-      ia = pedirIa(db, usuario, { uso: 'instructor_consejo', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { forma: 2, temas: diag.temas.map(t => t.id), vio: diag.temas.map(t => ({ id: t.id, bien: t.bien, de: t.de })), videoId: diag.video?.id ?? null } });
+      ia = pedirIa(db, usuario, { uso: 'instructor_consejo', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { forma: 2, temas: diag.temas.map(t => t.id), vio: diag.temas.map(t => ({ id: t.id, bien: t.bien, de: t.de })), videoId: diag.video && diag.video.tipo !== 'buscar' ? diag.video.id : null } });
     }
     return { codigo: 200, datos: { instructor, ...base, ia } };
   });

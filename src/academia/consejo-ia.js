@@ -92,11 +92,12 @@ export function elegirVideo(paquete, alcance, temas, videos = []) {
   const youtube = v => ({ id: `yt-${huella(v.url)}`, tipo: 'youtube', titulo: v.titulo, url: v.url, materia, tema: v.tema || null });
   const deMateria = m && videoDeMateria(paquete, m) ? { id: `mat-${materia}`, tipo: 'materia', titulo: m.video?.titulo ?? null, materia, tema: null } : null;
   if (alcance === 'materia') {
-    if (deMateria) return deMateria;
-    // De YouTube: el que cubre más de sus temas flojos (uno sin tema cubre la materia entera).
+    // Primero lo que eligió el administrador (YouTube): el que cubre más de sus temas flojos (uno sin tema cubre la
+    // materia entera); si no hay, el video de la materia.
     const cubre = v => (!v.tema ? ids.size + 0.5 : ids.has(v.tema) ? 1 : 0);
     const mejor = [...lista].sort((a, b) => cubre(b) - cubre(a))[0];
     if (mejor && cubre(mejor) > 0) return youtube(mejor);
+    if (deMateria) return deMateria;
     const url = busquedaTema(temas[0].titulo);
     return url ? { id: `buscar-${materia}-${temas[0].tema}`, tipo: 'buscar', titulo: temas[0].titulo ?? null, url, materia, tema: temas[0].tema } : null;
   }
@@ -121,7 +122,7 @@ export function cifrasConsejo(d, { examen = null } = {}) {
   return {
     alcance: d.alcance, evidencia: d.evidencia,
     temas: d.temas.map(t => ({ id: t.id, tema: t.titulo, bien: t.bien, de: t.de, ideas_equivocadas: t.ideas })),
-    video: d.video ? { tipo: d.video.tipo, titulo: d.video.titulo ?? null } : null,
+    video: d.video && d.video.tipo !== 'buscar' ? { tipo: d.video.tipo, titulo: d.video.titulo ?? null } : null, // una búsqueda no es un video
     repasos_pendientes: d.repaso.n, ...(examen ? { examen } : {}),
   };
 }

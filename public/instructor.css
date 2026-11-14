@@ -303,3 +303,4 @@ button.plan-hoy-fila { cursor: pointer; }
 
 /* 0.14.15: la línea que dice qué es cada sección (Progreso). */
 .seccion-sub { margin: -2px 0 10px; }
+.examen-tarjetas { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }

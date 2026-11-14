@@ -46,7 +46,8 @@ test('el video sale solo de lo que ya existe: el de la materia, uno de YouTube d
   assert.match(elegirVideo(paquete, 'tema', temas, yt).id, /^yt-[a-f0-9]{12}$/);
   // Con el video de la materia: para la materia entera, desde el principio; para un tema, en su capítulo.
   const conVideo = { materias: [{ ...paquete.materias[0], video: { titulo: 'Factores humanos', escenas: [{ inicio_s: 0, fin_s: 10 }] } }] };
-  const entero = elegirVideo(conVideo, 'materia', temas, yt);
+  assert.equal(elegirVideo(conVideo, 'materia', temas, yt).tipo, 'youtube', 'primero lo que eligió el administrador');
+  const entero = elegirVideo(conVideo, 'materia', temas, []);
   assert.deepEqual([entero.tipo, entero.tema], ['materia', null]);
   const capitulo = elegirVideo(conVideo, 'tema', temas, []);
   assert.deepEqual([capitulo.tipo, capitulo.tema], ['materia', 'hipoxia']);
@@ -187,7 +188,13 @@ test('lo que escribió la IA nunca muestra un id interno (t4, tg-3-28, m03, mate
   assert.equal(sinIds('Todavía no: repasa las tarjetas t4, t5 y t9 antes del examen.'), 'Todavía no: repasa las tarjetas antes del examen.');
   assert.equal(sinIds('Mira la pregunta tg-3-28 (m03) otra vez.'), 'Mira la pregunta otra vez.');
   assert.doesNotMatch(sinIds('Ve a factores_humanos/muestra-hipoxia y a muestra-h3.'), /factores_humanos|muestra-|h3/);
-  for (const igual of ['El VOR y el ADF a 3000 pies, con piloto-automático.', 'Mira https://evil.example/x-1 para más.', 'Hipoxia (hypoxia) a 12,500 pies.']) assert.equal(sinIds(igual), igual);
+  for (const igual of ['El VOR y el ADF a 3000 pies, con piloto-automático.', 'Mira https://evil.example/x-1 para más.', 'Hipoxia (hypoxia) a 12,500 pies.',
+    'La mezcla aire/combustible a 500 pies/min y 120 km/h.', 'El CO2 y el co2 del motor.']) assert.equal(sinIds(igual), igual);
+  // Con el mapa (id → nombre de verdad), la tarjeta sale por su título.
+  assert.equal(sinIds('Repasa t2 y t9.', id => (id === 't2' ? '«Qué es»' : null)), 'Repasa «Qué es».');
+  assert.match(sinIds('Repasa t2 antes.', id => (id === 't2' ? '«Qué es»' : null)), /Repasa «Qué es» antes\./);
+  // Los ids que usa el código (la acción de un paso del plan de hoy) no se tocan.
+  assert.deepEqual(limpiarProsa({ pasos: [{ accion: 'repaso-1', porque: 'Toca t4.' }] }), { pasos: [{ accion: 'repaso-1', porque: 'Toca.' }] });
   const v = limpiarProsa({ porque: 'Repasa t4.', pasos: ['Relee t9 y t10.'], tarjetas: [{ tarjeta: 't4', porque: 'Por t4.' }], citas: [{ numero: 'tg-1-2', respuesta: 'B' }], confusiones: { 'fh/hipoxia': 'Ve m03.' } });
   assert.deepEqual(v, { porque: 'Repasa.', pasos: ['Relee.'], tarjetas: [{ tarjeta: 't4', porque: 'Por.' }], citas: [{ numero: 'tg-1-2', respuesta: 'B' }], confusiones: { 'fh/hipoxia': 'Ve.' } });
   // Por la base: un consejo guardado con ids sale limpio.
@@ -229,6 +236,12 @@ test('«¿Tomo el examen final?»: una fila por materia con sus barritas, qué f
   assert.doesNotMatch(texto, /\bnull\b|undefined|\{[a-z_]+\}|Has visto el/);
   assert.deepEqual(n.todos(x => x.etiqueta === 'a').map(x => x.atributos.href), ['#tema/fh/hipoxia', '#tema/nav/cartas']);
   assert.equal(n.todos(x => x.etiqueta === 'progress').length, 4);
+  // El oficial, también en barritas (sin «Aciertas 3 %: la meta es 90 %»), y las tarjetas de la IA como botones.
+  const o = tu.pintarExamen({ oficial: { si: false, pct: 1, acierto: 3, cobertura: 8, porques: [{ clave: 'acierto.no', vars: { valor: 3, meta: 90 } }, { clave: 'constancia.no', vars: { valor: 0, meta: 3 } }] }, materias: [],
+    examenIa: { porque: 'Todavía no.', pasos: [], tarjetas: [{ materia: 'fh', tema: 'hipoxia', numero: 2, titulo: 'Síntomas (symptoms)' }] } });
+  assert.doesNotMatch(o.textContent, /la meta es/);
+  assert.match(o.textContent, /Acierto 3 % \(meta 90\).*Te faltan exámenes/);
+  assert.deepEqual(o.todos(x => x.etiqueta === 'a').map(x => [x.atributos.href, x.textContent.trim()]), [['#tema/fh/hipoxia/2', 'Síntomas']]);
 });
 
 test('con el servidor: «¿Tomo el examen?» dice qué tema falla de cada materia', async () => {

@@ -585,7 +585,7 @@ export function esquemaDe(datos) {
 
 export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|tarjeta\.[a-f0-9]{32}|profundiza\.[a-f0-9]{32}|personal\.[a-f0-9]{32}|preparado\.[1-9]\d{0,9}\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
 
-export function leerGuardado(db, clave) {
+export function leerGuardado(db, clave, { mapa = null } = {}) {
   if (typeof clave !== 'string' || !CLAVE_GUARDADO.test(clave)) return null;
   const f = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(clave);
   if (!f) return null;
@@ -597,7 +597,7 @@ export function leerGuardado(db, clave) {
   const oculto = db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`academia.ia_oculto.${clave.slice('academia.ia.'.length)}`)?.valor;
   if (oculto && oculto === String(v.en ?? '')) return null;
   // 0.14.15: ningún id interno en lo que ve el alumno (también en lo guardado antes).
-  return limpiarProsa(v);
+  return limpiarProsa(v, null, mapa);
 }
 // Dentro de la escritura que anota el costo (src/ia/cliente.js, guardar). Nunca guarda lo que se le preguntó.
 export function guardarRespuesta(db, datos, json, llamada, ahora = Date.now()) {

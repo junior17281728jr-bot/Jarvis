@@ -195,8 +195,17 @@ export function crearTutor(h) {
       (m.flojos ?? []).length ? el('p', { class: 'chica examen-falla', texto: t('listo2.falla', { temas: m.flojos.map(x => tituloCorto(x.titulo)).join(', ') }) }) : null,
       !m.si && (flojo || m.empezar) ? el('a', { class: 'boton-3d naranja chico', href: `#tema/${encodeURIComponent(m.materia)}/${encodeURIComponent(flojo?.tema ?? m.empezar)}` }, el('span', { texto: t('listo2.reforzar') })) : null);
   }
+  // El oficial, igual de corto: estado, las dos barritas y lo que más falta (una línea).
+  function filaOficial(x) {
+    const otras = (x.porques ?? []).filter(z => !/^(?:acierto|cobertura)\./.test(z.clave)).slice(0, 1);
+    return el('li', { class: `examen-materia estado-${x.si ? 'listo' : 'todavia'}` },
+      el('span', { class: 'examen-materia-cabeza' }, icono(x.si ? 'bien' : 'mal', 'icono chico'), el('strong', { texto: t('tutor.examen.oficial') }),
+        el('span', { class: `veredicto-corto ${x.si ? 'si' : 'no'}`, texto: t(x.si ? 'listo2.estado.listo' : 'listo2.estado.todavia') })),
+      el('span', { class: 'examen-barras' }, barra('listo2.acierto', x.acierto, 90), barra('listo2.visto', x.cobertura, 95)),
+      otras.length ? el('p', { class: 'chica examen-falla', texto: porque(otras[0]) }) : null);
+  }
   function pintarExamen(d, { completo = true } = {}) {
-    const fila = (titulo, x) => x.estado ? filaMateria(x) : el('li', { class: `tutor-examen tono-${x.si ? 'bien' : 'atencion'}` },
+    const fila = (titulo, x) => x.estado ? filaMateria(x) : x.acierto != null && titulo === t('tutor.examen.oficial') ? filaOficial(x) : el('li', { class: `tutor-examen tono-${x.si ? 'bien' : 'atencion'}` },
       el('p', {}, el('strong', { texto: `${titulo}: ` }), el('span', { class: `veredicto-corto ${x.si ? 'si' : 'no'}`, texto: decision(x.si) }), x.pct != null ? el('span', { class: 'suave', texto: ` · ${numero(x.pct)} %` }) : null),
       el('ul', { class: 'lista-simple chica' }, (x.porques ?? []).map(z => el('li', { texto: porque(z) }))));
     return el('section', { class: 'panel tutor-examenes', 'aria-labelledby': 'tomo-titulo' },
@@ -206,7 +215,11 @@ export function crearTutor(h) {
         d.oficial ? fila(t('tutor.examen.oficial'), d.oficial) : null,
         ...(completo ? d.materias ?? [] : []).map(m => fila(nombreMateria(m.materia), m))),
       d.examenIa ? ui().cajaIa({}, [d.examenIa.porque ? talCual('p', d.examenIa.porque) : null,
-        d.examenIa.pasos?.length ? el('div', {}, el('p', { class: 'fuerte chica', texto: t('tutor.examen.antes') }), el('ol', { class: 'instructor-pasos' }, d.examenIa.pasos.map(p => talCual('li', p)))) : null, insigniaIa()].filter(Boolean)) : null,
+        d.examenIa.pasos?.length ? el('div', {}, el('p', { class: 'fuerte chica', texto: t('tutor.examen.antes') }), el('ol', { class: 'instructor-pasos' }, d.examenIa.pasos.map(p => talCual('li', p)))) : null,
+        // 0.14.15: las tarjetas que eligió, como botones con su título (nunca «t4»).
+        d.examenIa.tarjetas?.length ? el('div', { class: 'examen-tarjetas' }, d.examenIa.tarjetas.map(x => el('a', { class: 'boton-3d blanco chico con-icono', href: `#tema/${encodeURIComponent(x.materia)}/${encodeURIComponent(x.tema)}/${Number(x.numero)}` },
+          icono('tarjetas', 'icono chico'), el('span', { texto: tituloCorto(x.titulo) })))) : null,
+        insigniaIa()].filter(Boolean)) : null,
       el('p', { class: 'suave chica', texto: t('tutor.examen.aviso') }));
   }
   function examen({ completo = true } = {}) {
