@@ -32,6 +32,7 @@ import { ideaDe } from '../academia/reto.js';
 import { tiempoDe } from './pagos.js';
 import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube, respondidasParecidas } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
+import { diagnostico, cifrasConsejo, consejoParaVer } from '../academia/consejo-ia.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 import { iaPermitida } from '../cuentas/terminos.js';
@@ -69,6 +70,10 @@ export function semanaDe(ms) {
   const dia = (d.getUTCDay() + 6) % 7;
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dia)).toISOString().slice(0, 10);
 }
+
+// 0.14.15: el consejo nuevo (corto, con botones) se guarda con «-v2»: el de antes (un muro de texto) se queda en la base,
+// pero ya no se muestra en Inicio; al pedirlo otra vez se escribe el nuevo.
+export const claveConsejo = (usuarioId, que, humor) => `academia.ia.consejo.${usuarioId}.${que}${humor ? '-humor' : ''}-v2`;
 
 export function registrarRutasInstructor(rutas, { config = null, supervisor = null, limites = {}, reloj = Date.now, ganchos = null } = {}) {
   const topes = { ...crearLimitesInstructor(), ...(limites ?? {}) };
@@ -227,7 +232,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const donde = materia && tema ? { materia, tema } : null;
     const datos = consejoInstructor(db, usuario.id, p, ahora, donde);
     // 0.12.0: con el humor encendido, el consejo de la IA va guardado aparte (en ese tono).
-    const guardado = leerGuardado(db, `academia.ia.consejo.${usuario.id}.${semanaDe(ahora)}${humorActivo(db, usuario.id) ? '-humor' : ''}`);
+    const guardado = leerGuardado(db, claveConsejo(usuario.id, semanaDe(ahora), humorActivo(db, usuario.id)));
     // 0.10.0: su plan de refuerzo (las fallas que todavía tiene). 0.12.2: abrir un tema ya no pone ninguna tarjeta de
     // refuerzo en la clase (la clase sigue normal: lo de los errores vive en «Mi repaso»), así que «refuerzo» va vacío.
     const fallas = p ? fallasDe(db, usuario.id, p, ahora) : [];
@@ -235,7 +240,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     return {
       codigo: 200,
       datos: {
-        instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(guardado) : null,
+        instructor: estadoInstructor(db, req, usuario, ahora), ...datos, consejoIa: guardado ? lista(consejoParaVer(guardado, diagnostico(db, usuario.id, p, ahora))) : null,
         tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), pagos: novedadesPagos(db, usuario.id), demoIa: usuario.rol === 'admin',
         plan: fallas.filter(f => f.estado !== 'superada' && f.cuenta), recientes: fallas.slice(0, 3), ...(donde ? { refuerzo } : {}),
       },
@@ -292,26 +297,19 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const instructor = estadoInstructor(db, req, usuario, ahora);
     // 0.12.0: con el humor encendido para él, el consejo de la IA viene en ese tono (y se guarda aparte).
     const conHumor = humorActivo(db, usuario.id);
-    const clave = `academia.ia.consejo.${usuario.id}.${examen ? `examen-${examen.id}` : semanaDe(ahora)}${conHumor ? '-humor' : ''}`;
+    const clave = claveConsejo(usuario.id, examen ? `examen-${examen.id}` : semanaDe(ahora), conHumor);
+    // 0.14.15: el diagnóstico (temas, números, alcance, video, repasos) lo hace el código; la IA solo lo dice corto.
+    const diag = diagnostico(db, usuario.id, p, ahora, { examenId: examen?.id ?? null });
     const ya = leerGuardado(db, clave);
     let ia;
-    if (ya) ia = lista(ya);
+    if (ya) ia = lista(consejoParaVer(ya, diag));
     else if (instructor.modo !== 'ia') ia = iaNoAhora(instructor);
+    else if (!diag.temas.length) ia = { estado: 'no', motivo: 'sin_fallas' }; // nada que corregir: no se paga por un «vas bien»
     else {
-      const m = modeloAlumno(db, usuario.id, p, ahora);
-      const falladas = examen ? db.prepare('SELECT tema, COUNT(*) AS n FROM academia_respuestas WHERE intento_id = ? AND correcta = 0 GROUP BY tema ORDER BY n DESC LIMIT 5').all(examen.id) : [];
-      const titulo = (materia, tema) => p?.materias.find(x => x.id === materia)?.temas.find(x => x.id === tema)?.titulo ?? tema;
       // Solo cifras y textos del paquete: nunca el nombre ni el usuario del alumno.
-      const resumen = resumenModelo(m);
-      resumen.temas = [...resumen.temas].sort((a, b) => a.pct - b.pct).slice(0, 8); // los más flojos (cuida el tamaño)
-      const cifras = {
-        ...resumen, ideas: m.ideas.map(x => ({ idea: x.idea, tema: titulo(x.materia, x.tema), veces: x.fallos })),
-        repite_misma_opcion: m.repetidas.map(x => ({ tema: titulo(x.materia, x.tema), veces: x.veces, idea: x.idea })),
-        consejo_basico: base.consejo?.clave ?? null,
-        examen: examen ? { materia: examen.materia, pct: examen.total ? Math.floor((examen.aciertos * 100) / examen.total) : 0, aprobado: examen.aprobado === 1, temas_fallados: falladas.map(f => ({ tema: titulo(examen.materia, f.tema), errores: f.n })) } : null,
-      };
+      const cifras = cifrasConsejo(diag, { examen: examen ? { materia: examen.materia, pct: examen.total ? Math.floor((examen.aciertos * 100) / examen.total) : 0, aprobado: examen.aprobado === 1 } : null });
       const pedido = armarConsejo({ cifras, idioma: usuario.idioma, humor: conHumor });
-      ia = pedirIa(db, usuario, { uso: 'instructor_consejo', sistema: pedido.sistema, texto: pedido.texto, clave });
+      ia = pedirIa(db, usuario, { uso: 'instructor_consejo', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { forma: 2, temas: diag.temas.map(t => t.id), videoId: diag.video?.id ?? null } });
     }
     return { codigo: 200, datos: { instructor, ...base, ia } };
   });
@@ -478,6 +476,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const guardado = f.estado === 'hecha' ? leerGuardado(db, clave) : null;
     // 0.12.9: las preguntas personalizadas viajan SIN la correcta (se revisa al responder).
     if (guardado && /^academia\.ia\.personal\./.test(clave)) return { codigo: 200, datos: { estado: 'lista', clave, ...personalParaVer(guardado) } };
+    // 0.14.15: el consejo nuevo se arma con el diagnóstico de ahora (los botones de verdad).
+    if (guardado && /^academia\.ia\.consejo\./.test(clave) && guardado.forma === 2) return { codigo: 200, datos: lista(consejoParaVer(guardado, diagnostico(db, usuario.id, activo(db), reloj()))) };
     if (guardado) return { codigo: 200, datos: lista(guardado) };
     const motivo = typeof resultado?.motivo === 'string' ? resultado.motivo : 'no_disponible';
     const admin = esEspacioAdmin(db, e.id);

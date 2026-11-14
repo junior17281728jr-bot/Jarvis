@@ -712,6 +712,20 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.15: el consejo del instructor IA, corto y con botones — sin cambio de base
+
+- El diagnóstico lo hace el CÓDIGO (`src/academia/consejo-ia.js`): los temas flojos con sus números («2/5» = bien de las
+  que respondió), el alcance (un solo tema flojo → ese tema; 2+ temas de la misma materia → repaso de la materia; varias
+  materias → los 2 que más pesan) con su evidencia, UN video que ya existe (YouTube del administrador, el video de la
+  materia en el capítulo del tema o el clip de una tarjeta) y los repasos de hoy.
+- La IA solo escribe frases cortas (saludo de pana, porqué del video, la confusión de cada tema por su id, el «Por qué»);
+  los ids que no se le dieron se descartan y cada parte tiene tope de palabras (lo visible ≤ 60).
+- La tarjeta: saludo → «Video recomendado» → «Estos son los temas que fallaste» (nombre corto, cifra y barrita) →
+  Estudiar · Practicar · Te guío → «Repaso: tienes N pendientes» → «Por qué te lo recomiendo» plegado. «Te guío» abre la
+  clase en la tarjeta que lo explica y, al terminar, practica lo que falló de ese tema.
+- Se guarda con «-v2»: el consejo largo de antes queda en la base pero ya no sale en Inicio (se pide el nuevo).
+- Pruebas: `test/consejo-ia.test.js`.
+
 ### Lo nuevo de la 0.14.14: «Progreso» como una carrera (corto y visual) y el token de GitHub fácil de encontrar — sin cambio de base
 
 - Arriba de Progreso, «La carrera»: dos pistas (Test Guide y oral) con un avioncito por alumno en su % de TODOS los temas

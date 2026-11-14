@@ -3550,7 +3550,14 @@ function avisoMuestra(paquete) {
 }
 // 0.9.0: el «Instructor» (public/instructor.js) usa las mismas ayudas que estas pantallas.
 let ayudasInstructor = null;
-const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor, partirTitulo }));
+// 0.14.15: «Te guío» del consejo del instructor IA: abre la clase de ese tema (en la tarjeta que lo explica) y, al
+// terminarla, el botón grande practica lo que falló de ese tema (en vez del examen del tema). Solo en memoria.
+let guiaTema = null;
+const guiar = g => {
+  guiaTema = { materia: g.materia, tema: g.tema };
+  location.hash = `#tema/${encodeURIComponent(g.materia)}/${encodeURIComponent(g.tema)}${g.tarjeta ? `/${Number(g.tarjeta)}` : ''}`;
+};
+const instructorUi = () => (ayudasInstructor ??= crearInstructor({ el, t, tn, icono, api, talCual, sonar, empezarIntento, numero, textoError, avisar, nombreMateria, medidor, partirTitulo, guiar }));
 // 0.10.0: tiempo con IA, pagos y Profesor virtual (public/pagos.js).
 let ayudasPagos = null;
 const pagosUi = () => (ayudasPagos ??= crearPagos({ el, t, icono, api, talCual, numero, textoError, avisar, fecha, mostrar, marco, cabeceraAdmin, instructorUi, confirmar, vistaPlanes, tutorUi }));
@@ -4481,7 +4488,10 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
         el('div', { class: 'fin-cielo', 'aria-hidden': 'true' }, avionSvg('fin-avion')),
         el('h1', { class: 'titulo-grande', texto: t('acad.fin.titulo') }),
         el('p', { class: 'bajada', texto: l.preguntas ? tn('acad.fin.linea', { n: l.preguntas }) : t('acad.fin.sin_preguntas') }));
-      botones = [atras(), l.preguntas
+      const guiado = guiaTema?.materia === materia && guiaTema?.tema === tema;
+      botones = [atras(), guiado
+        ? botonGrande(t('consejo.guia_practicar'), evento => { guiaTema = null; instructorUi().practicarTema(materia, tema, evento.currentTarget); })
+        : l.preguntas
         ? botonGrande(t('acad.empezar_preguntas_corto'), evento => empezarIntento({ tipo: 'tema', materia, tema }, evento.currentTarget))
         : botonGrande(t('acad.seguir'), async evento => {
           evento.currentTarget.disabled = true;

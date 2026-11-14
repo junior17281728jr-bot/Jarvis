@@ -118,18 +118,45 @@ export function armarExplicacion({ q, elegida, acierto, modo = 'original', idea 
 }
 
 // ---------- 2. El consejo de estudio (la semana, o después de un examen) ----------
-export const ESQUEMA_CONSEJO = Object.freeze({
+// 0.14.15 (pedido del dueño): ya no es un muro de texto. El diagnóstico (qué temas, con qué números, el alcance, el video,
+// los repasos) lo calcula el código (src/academia/consejo-ia.js); la IA solo escribe frases MUY cortas: el saludo, el
+// porqué del video, la confusión de cada tema (por su id, de los que se le dan: otro id se descarta) y el «Por qué» (que
+// va plegado). Los botones y las cifras los pone la app. Lo de antes (titulo, consejo, pasos) sigue leyéndose.
+export const ESQUEMA_CONSEJO_VIEJO = Object.freeze({
   type: 'object', additionalProperties: false, required: ['titulo', 'consejo', 'pasos'],
   properties: { titulo: { type: 'string' }, consejo: { type: 'string' }, pasos: { type: 'array', items: { type: 'string' } } },
 });
-// cifras: lo que sale de resumenModelo (src/academia/instructor.js) + ideas (textos del paquete) + examen (si hubo uno).
+export const ESQUEMA_CONSEJO = Object.freeze({
+  type: 'object', additionalProperties: false, required: ['saludo', 'video_porque', 'temas', 'porque'],
+  properties: {
+    saludo: { type: 'string' }, video_porque: { type: 'string' }, porque: { type: 'string' },
+    temas: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'confusion'], properties: { id: { type: 'string' }, confusion: { type: 'string' } } } },
+  },
+});
+// Cuántas palabras puede tener cada parte (lo visible suma ≤ 60: 26 + 12 + 3 × 7).
+export const PALABRAS_CONSEJO = Object.freeze({ saludo: 26, video: 12, confusion: 7, porque: 45 });
+// Corta un texto a n palabras (en el último punto si queda algo razonable; si no, con «…»).
+export function cortarPalabras(texto, n) {
+  const p = String(texto ?? '').split(/\s+/).filter(Boolean);
+  if (p.length <= n) return p.join(' ');
+  const corto = p.slice(0, n).join(' ');
+  const fin = Math.max(corto.lastIndexOf('. '), corto.lastIndexOf('! '), corto.lastIndexOf('? '), corto.lastIndexOf(': '));
+  if (fin >= corto.length * 0.4) return corto.slice(0, fin + 1);
+  return `${corto.replace(/[,;:.\s]+$/, '')}…`;
+}
+// cifras: lo de cifrasConsejo (src/academia/consejo-ia.js): alcance, evidencia, temas con id, video, repasos (y el examen).
 export function armarConsejo({ cifras, idioma = 'es', humor = false }) {
   const sistema = [
     ...COMUN(idioma),
-    'Tu tarea: darle a UN alumno su consejo personal de estudio para esta semana, a partir de sus cifras, para que apruebe el examen del Test Guide y entienda (no solo memorice).',
-    'Sé concreto: nombra los temas y las ideas equivocadas que te damos; di qué hacer primero (repasar lo que vence, releer una tarjeta, hacer el Modo reto, bajar la prisa, estudiar a su mejor hora). Nada de frases vacías.',
-    'Campos: titulo (hasta 80 caracteres), consejo (hasta 700), pasos = de 2 a 4 pasos cortos (hasta 160 cada uno).',
-    // 0.12.0: el «vacilón» del instructor (si el administrador y el alumno lo tienen encendido), con sus reglas.
+    'Tu tarea: el consejo de estudio de UN alumno, MUY corto, como un instructor de verdad que le habla en el pasillo. El diagnóstico ya está hecho (en <datos>): tú solo lo dices con tus palabras. Nunca cambies los números, los temas ni el video.',
+    idioma === 'en'
+      ? 'Tone: warm, friendly and direct (like a buddy who is also a good instructor). No paragraphs, no lists.'
+      : 'Tono: cercano y dominicano, ligero, de pana a pana (puedes usar «bro», «pana» o «dale», una vez), pero claro y respetuoso. Nada de párrafos ni listas.',
+    'Campos (cada uno UNA frase):',
+    `- saludo (hasta ${PALABRAS_CONSEJO.saludo} palabras): lo que notaste y que aquí va lo que le recomiendas, nombrando el tema que más falla. Ejemplo: «Bro, estuve analizando y vi que has fallado varias veces en Hipoxia; se te ha complicado un poquito. Te recomiendo esto:». Si alcance = «materia», di que son varios temas de esa materia.`,
+    `- video_porque (hasta ${PALABRAS_CONSEJO.video} palabras): por qué ese video le sirve (si video es null, "").`,
+    `- temas: para cada tema de «temas» (por su id, sin inventar otros), confusion (hasta ${PALABRAS_CONSEJO.confusion} palabras): la idea equivocada que repite, de «ideas_equivocadas»; si no hay, qué le cuesta de ese tema.`,
+    `- porque (hasta ${PALABRAS_CONSEJO.porque} palabras): la evidencia en números (de «evidencia») y por qué empezar por ahí para el examen del Test Guide.`,
     ...(humor ? [REGLAS_IA] : []),
   ].join('\n');
   return { sistema, texto: bloque(cifras), esquema: ESQUEMA_CONSEJO };
@@ -434,6 +461,25 @@ export function revisarRespuesta(datos, json) {
     if (!r.explicacion) throw noSirve();
     return r;
   }
+  if (datos.uso === 'instructor_consejo' && datos.forma === 2) {
+    if (!json || typeof json !== 'object' || Array.isArray(json)) throw noSirve();
+    const ids = new Set(Array.isArray(datos.temas) ? datos.temas.filter(x => typeof x === 'string') : []);
+    const confusiones = {};
+    for (const x of Array.isArray(json.temas) ? json.temas : []) {
+      // Un id que no se le dio, uno repetido o más de 3: fuera (sin que se pierda lo demás).
+      if (typeof x?.id !== 'string' || !ids.has(x.id) || Object.hasOwn(confusiones, x.id) || Object.keys(confusiones).length >= 3) continue;
+      const c = cortarPalabras(limpio(x.confusion, 200), PALABRAS_CONSEJO.confusion);
+      if (c) confusiones[x.id] = c;
+    }
+    const video = typeof datos.videoId === 'string' ? datos.videoId : null;
+    const r = {
+      forma: 2, saludo: cortarPalabras(limpio(json.saludo, 400), PALABRAS_CONSEJO.saludo),
+      videoId: video, videoPorque: video ? cortarPalabras(limpio(json.video_porque, 300), PALABRAS_CONSEJO.video) : '',
+      confusiones, porque: cortarPalabras(limpio(json.porque, 800), PALABRAS_CONSEJO.porque),
+    };
+    if (!r.saludo && !Object.keys(confusiones).length) throw noSirve();
+    return r;
+  }
   if (datos.uso === 'instructor_consejo') {
     const r = { titulo: limpio(json?.titulo, 120), consejo: limpio(json?.consejo, TOPE.explicacion), pasos: (Array.isArray(json?.pasos) ? json.pasos : []).slice(0, TOPE.pasos).map(p => limpio(p, 240)).filter(Boolean) };
     if (!r.consejo) throw noSirve();
@@ -523,7 +569,7 @@ export function esquemaDe(datos) {
   if (datos?.uso === 'instructor_profundizar') return ESQUEMA_PROFUNDIZAR;
   if (datos?.uso === 'instructor_personal') return ESQUEMA_PERSONAL;
   if (datos?.uso === 'instructor_explicar') return esquemaExplicar(Number(datos.opciones) || 3);
-  if (datos?.uso === 'instructor_consejo') return ESQUEMA_CONSEJO;
+  if (datos?.uso === 'instructor_consejo') return datos.forma === 2 ? ESQUEMA_CONSEJO : ESQUEMA_CONSEJO_VIEJO;
   if (datos?.uso === 'instructor_duda') return ESQUEMA_DUDA;
   if (datos?.uso === 'instructor_chat') return ESQUEMA_CHAT;
   if (datos?.uso === 'instructor_miniclase') return esquemaMiniClase(Number(datos.opciones) || 3);

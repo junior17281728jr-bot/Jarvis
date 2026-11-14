@@ -143,6 +143,7 @@ export function crearInstructor(h) {
     const poner = d => {
       if (d?.estado === 'lista') lugar.replaceChildren(pintar(d));
       else if (d?.estado === 'no' && d.motivo === 'sin_minutos') lugar.replaceChildren(sinMinutos());
+      else if (d?.estado === 'no' && d.motivo === 'sin_fallas') lugar.replaceChildren(el('p', { class: 'chica con-icono' }, icono('bien', 'icono chico'), el('span', { texto: tx('consejo.sin_fallas') })));
       else if (d?.estado === 'no' && PERMANENTES.has(d.motivo)) lugar.replaceChildren();
       else if (d?.estado === 'no' && d.espera) lugar.replaceChildren(el('p', { class: 'suave chica con-icono' }, icono('reloj', 'icono chico'), el('span', { texto: tx('instr.ia.espera') })));
       else if (d?.estado === 'no') lugar.replaceChildren(el('p', { class: 'suave chica con-icono' }, icono('info', 'icono chico'), el('span', { texto: tx('instr.ia.no', { motivo: motivoTexto(d.motivo) }) })));
@@ -345,14 +346,79 @@ export function crearInstructor(h) {
       el('span', { texto: tx(res.aciertos === res.total ? 'refuerzo.resultado.bien' : 'refuerzo.resultado', { n: numero(res.aciertos), total: numero(res.total), dia }) }));
   }
 
+  // ---------- 0.14.15: el consejo del instructor IA, corto y con botones ----------
+  // Lo nuevo (forma 2): una línea de saludo, UN video que existe, los temas que falló (nombre corto, «2/6», barrita y la
+  // confusión en pocas palabras), los botones Estudiar · Practicar · Te guío, los repasos de hoy y, plegado, «Por qué».
+  // Todo destino sale del servidor (ids revisados); lo que escribió la IA va siempre como texto (talCual).
+  const rutaTema = (materia, tema, tarjeta = null) => `#tema/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}${tarjeta ? `/${Number(tarjeta)}` : ''}`;
+  // Practicar lo que falló de ESE tema; si ya no le queda nada fallado, la práctica del instructor de ese tema.
+  async function practicarTema(materia, tema, boton) {
+    if (boton) boton.disabled = true;
+    let r = await api('POST', '/api/academia/intentos', { tipo: 'errores', materia, tema });
+    if (!r.ok && r.datos?.error === 'sin_errores') r = await api('POST', '/api/academia/intentos', { tipo: 'instructor', materia, tema });
+    if (boton) boton.disabled = false;
+    if (!r.ok) return h.avisar?.(textoError(r.datos.error), 'mal');
+    location.hash = `#practica/${r.datos.id}`;
+  }
+  function hrefVideo(v) {
+    if (v.tipo === 'youtube') return v.url;
+    if (v.tipo === 'materia') return v.tema ? `#video/${encodeURIComponent(v.materia)}/tema/${encodeURIComponent(v.tema)}` : `#video/${encodeURIComponent(v.materia)}`;
+    return rutaTema(v.materia, v.tema, v.tarjeta);
+  }
+  function porqueConsejo(r) {
+    const e = r.evidencia ?? {};
+    if (r.alcance === 'materia') return tx('consejo.porque.materia', { n: numero(e.n ?? 0), materia: nombreMateria(e.materia) });
+    if (r.alcance === 'tema') return tx(e.bien_otros ? 'consejo.porque.tema' : 'consejo.porque.tema_solo', { fallos: numero(e.fallos ?? 0), de: numero(e.de ?? 0), tema: sinIngles(e.tema), materia: nombreMateria(e.materia) });
+    if (r.alcance === 'varias') return tx('consejo.porque.varias', { n: numero(e.materias ?? 0), temas: (e.temas ?? []).map(x => tituloCorto(x, 22)).join(' · ') });
+    return '';
+  }
+  function pintarConsejo(r) {
+    if (r.forma !== 2) {
+      // El de antes (titulo, consejo, pasos): tal cual.
+      return cajaIa(r, [r.titulo ? talCual('p', r.titulo, 'fuerte') : null, talCual('p', r.consejo ?? ''),
+        r.pasos?.length ? el('ol', { class: 'instructor-pasos' }, r.pasos.map(p => talCual('li', p))) : null]);
+    }
+    const temas = r.temas ?? [];
+    const guia = r.guia ?? temas[0] ?? null;
+    const v = r.video;
+    const caja = el('section', { class: `caja-hoja caja-ia consejo-ia${r.demo ? ' demo' : ''}` },
+      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx(r.demo ? 'demo.ia.titulo' : 'instr.ia.titulo') })),
+      talCual('p', r.saludo || tx('consejo.saludo_base', { tema: temas[0] ? tituloCorto(temas[0].titulo) : '' }), 'consejo-saludo'),
+      v ? el('a', { class: 'consejo-video', href: hrefVideo(v), ...(v.tipo === 'youtube' ? { target: '_blank', rel: 'noopener noreferrer' } : {}) },
+        icono('video', 'icono chico'),
+        el('span', { class: 'consejo-video-texto' },
+          el('strong', { texto: tx('consejo.video') }),
+          el('span', { class: 'chica', texto: v.titulo ? sinIngles(v.titulo) : tx('consejo.video_de', { materia: nombreMateria(v.materia) }) }),
+          v.porque ? talCual('span', v.porque, 'suave chica') : null),
+        icono('flecha', 'icono chico')) : null,
+      temas.length ? el('p', { class: 'fuerte chica consejo-etiqueta', texto: tx('consejo.fallaste') }) : null,
+      temas.length ? el('ul', { class: 'consejo-temas' }, temas.map(t => el('li', {},
+        el('a', { class: 'consejo-chip', href: rutaTema(t.materia, t.tema) },
+          el('span', { class: 'consejo-chip-nombre', texto: tituloCorto(t.titulo, 18) }),
+          el('span', { class: 'consejo-chip-cifra', texto: tx('consejo.cifra', { bien: numero(t.bien), de: numero(t.de) }) }),
+          el('progress', { class: 'consejo-barra', max: Math.max(1, t.de), value: Math.min(t.bien, Math.max(1, t.de)), 'aria-label': tx('consejo.barra', { bien: numero(t.bien), de: numero(t.de) }) })),
+        t.confusion ? talCual('span', t.confusion, 'consejo-confusion suave chica') : null))) : null,
+      guia ? el('div', { class: 'consejo-botones' },
+        el('a', { class: 'boton-3d blanco chico con-icono', href: rutaTema(guia.materia, guia.tema, guia.tarjeta) }, icono('libro', 'icono chico'), el('span', { texto: tx('consejo.estudiar') })),
+        el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: evento => { sonar?.('toque'); practicarTema(guia.materia, guia.tema, evento.currentTarget); } },
+          icono('cerebro', 'icono chico'), el('span', { texto: tx('consejo.practicar') })),
+        el('button', { type: 'button', class: 'boton-3d naranja chico con-icono', onclick: () => { sonar?.('toque'); if (h.guiar) h.guiar(guia); else location.hash = rutaTema(guia.materia, guia.tema, guia.tarjeta); } },
+          icono('dedo', 'icono chico'), el('span', { texto: tx('consejo.guiar') }))) : null,
+      r.repaso?.n > 0 ? el('button', { type: 'button', class: 'consejo-repaso con-icono', onclick: evento => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, evento.currentTarget); } },
+        icono('calendario', 'icono chico'), el('span', { texto: tn('consejo.repaso', { n: r.repaso.n }) })) : null,
+      el('details', { class: 'instructor-porque' }, el('summary', { texto: tx('consejo.por_que') }),
+        porqueConsejo(r) ? el('p', { class: 'chica', texto: porqueConsejo(r) }) : null,
+        r.porque ? talCual('p', r.porque, 'chica') : null,
+        el('p', { class: 'suave chica', texto: tx(r.demo ? 'demo.ia.firma' : 'instr.ia.firma') })));
+    return caja;
+  }
+
   // ---------- Inicio: «Tu instructor dice…» ----------
   function tarjetaInicio(d) {
     const consejo = d.consejo;
     const ia = d.instructor?.modo === 'ia';
     const zonaIa = el('div', { class: 'instructor-ia' });
-    const pintarConsejoIa = r => cajaIa(r, [
-      r.titulo ? talCual('p', r.titulo, 'fuerte') : null, talCual('p', r.consejo),
-      r.pasos?.length ? el('ol', { class: 'instructor-pasos' }, r.pasos.map(p => talCual('li', p))) : null]);
+    const pintarConsejoIa = pintarConsejo;
     if (d.consejoIa?.estado === 'lista') zonaIa.append(pintarConsejoIa(d.consejoIa));
     else if (ia) {
       zonaIa.append(el('button', {
@@ -580,8 +646,7 @@ export function crearInstructor(h) {
           el('div', { class: 'instructor-mini-cabeza' }, icono('cerebro', 'icono chico'), el('strong', { texto: tx('instr.titulo') }), insignia(r.datos.instructor, { compacta: true })),
           r.datos.consejo ? talCual('p', textoConsejo(r.datos.consejo)) : null,
           r.datos.consejo?.accion ? botonAccion(r.datos.consejo.accion) : null,
-          lugarIa(r.datos.ia, x => cajaIa(x, [x.titulo ? talCual('p', x.titulo, 'fuerte') : null, talCual('p', x.consejo),
-            x.pasos?.length ? el('ol', { class: 'instructor-pasos' }, x.pasos.map(p => talCual('li', p))) : null]))));
+          lugarIa(r.datos.ia, pintarConsejo)));
       },
     }, icono('cerebro', 'icono chico'), el('span', { texto: tx('instr.examen.boton') }));
     lugar.append(boton);
@@ -764,5 +829,5 @@ export function crearInstructor(h) {
       el('a', { class: 'boton-3d', href: '#inicio' }, el('span', { texto: tx('profesor.ir_inicio') })));
   }
 
-  return Object.freeze({ lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion });
+  return Object.freeze({ lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion, pintarConsejo, practicarTema });
 }

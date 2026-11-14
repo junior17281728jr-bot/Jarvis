@@ -295,7 +295,7 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
 // ---------- 0.7.2: el «Video resumen» de cada materia ----------
 // Lo que el camino necesita saber del video (sin las escenas): cuántas escenas, si tiene su narración y cuánto dura.
 // 0.12.1: con el mp4 ya en su carpeta, el video es ese (mp4); si no, las escenas de siempre (o nada).
-function videoDeMateria(paquete, m) {
+export function videoDeMateria(paquete, m) {
   const v = m?.video ?? null;
   const audio = audioDe(paquete, m?.paquete, v?.audio) ?? (v ? null : audioDe(paquete, m?.paquete, m?.audio));
   const escenas = Array.isArray(v?.escenas) ? v.escenas : [];

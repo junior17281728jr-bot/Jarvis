@@ -299,7 +299,8 @@ test('dudas con IA: solo con las tarjetas del tema como material, la duda va com
     assert.equal((await pedir(c.base, 'GET', `/api/academia/instructor/tareas/${d.ia.tarea}`, { galleta: c.q })).codigo, 404);
     // El consejo de la semana.
     await unaMala(c, c.z);
-    c.falso.siguiente({ tipo: 'ok', json: { titulo: 'Tu semana', consejo: 'Repasa la hipoxia (hypoxia) antes de seguir.', pasos: ['Relee la tarjeta.', 'Haz la práctica.'] } });
+    // 0.14.15: el consejo nuevo: frases cortas por id (los temas, números y botones los pone la app).
+    c.falso.siguiente({ tipo: 'ok', json: { saludo: 'Pana, la hipoxia (hypoxia) te está costando. Dale con esto:', video_porque: '', temas: [{ id: 'factores_humanos/muestra-hipoxia', confusion: 'Confundes altitud con presión.' }, { id: 'otra/inventada', confusion: 'x' }], porque: 'Fallaste 1 de 1.' } });
     const k = (await pedir(c.base, 'POST', '/api/academia/instructor/consejo', { galleta: c.z, datos: {} })).datos;
     assert.equal(k.ia.estado, 'pendiente');
     const tarea = c.fila(k.ia.tarea);
@@ -309,7 +310,11 @@ test('dudas con IA: solo con las tarjetas del tema como material, la duda va com
     for (const nombre of [...NOMBRES, 'junior']) assert.ok(!textoDe(p).toLowerCase().includes(nombre));
     const inicio = (await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.z })).datos;
     assert.equal(inicio.consejoIa.estado, 'lista');
-    assert.deepEqual(inicio.consejoIa.pasos, ['Relee la tarjeta.', 'Haz la práctica.']);
+    assert.equal(inicio.consejoIa.forma, 2);
+    assert.equal(inicio.consejoIa.saludo, 'Pana, la hipoxia (hypoxia) te está costando. Dale con esto:');
+    assert.deepEqual(inicio.consejoIa.temas.map(t => [t.id, t.bien, t.de, t.confusion]), [['factores_humanos/muestra-hipoxia', 0, 1, 'Confundes altitud con presión.']], 'el id inventado se descarta');
+    assert.equal(inicio.consejoIa.alcance, 'tema');
+    assert.deepEqual([inicio.consejoIa.guia.materia, inicio.consejoIa.guia.tema], ['factores_humanos', 'muestra-hipoxia']);
     assert.equal((await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.q })).datos.consejoIa, null, 'el consejo es de cada alumno');
     // Pedirlo otra vez la misma semana: lo guardado (sin pagar).
     assert.equal((await pedir(c.base, 'POST', '/api/academia/instructor/consejo', { galleta: c.z, datos: {} })).datos.ia.estado, 'lista');
