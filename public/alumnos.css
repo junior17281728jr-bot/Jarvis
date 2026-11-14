@@ -735,3 +735,10 @@ a.notas-ver-materia { display: inline-flex; align-items: center; min-height: 44p
 .av-punto.empezado { border-color: var(--azul); color: var(--azul); font-size: 22px; }
 .av-punto.actual { box-shadow: 0 0 0 3px color-mix(in srgb, var(--azul) 40%, transparent); }
 .av-leyenda { margin: 6px 0 0; overflow-wrap: anywhere; }
+@media (min-width: 1100px) {
+  /* 0.14.11: el avance va en su propia fila (ancha); debajo, exámenes, clases y tiempo en tres columnas con su título. */
+  .cv-alumno { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1fr); }
+  .cv-alumno .cv-quien { grid-column: 1 / -1; }
+  .cv-cabeza-tabla { display: none; }
+  .cv-alumno .cv-titulo { display: block; }
+}
