@@ -139,8 +139,13 @@ test('el % del curso suma TODOS los temas de TODAS las materias (pesado por tema
     assert.equal(a.tg.ultima, iso(AHORA - 30 * MIN));
     assert.equal(a.tg.empezados, 1);
 
-    // «Cómo van todos» trae lo mismo en cada fila (las 3 materias con su estado, no una sola).
-    // (La ficha también: ver la prueba de «al día».)
+    // El Repaso final (y el repaso, «Mis errores»…) mezcla temas de todo el curso: no mueve «Ahora en» ni empieza temas.
+    const rf = intento(db, ana, { tipo: 'final', materia: null, aprobado: false, en: AHORA - 10 * MIN });
+    respuesta(db, ana, { materia: 'aerodinamica', tema: 'muestra-hipoxia-2', pregunta: 'muestra-h1-2', en: AHORA - 10 * MIN, intentoId: rf });
+    respuesta(db, ana, { materia: 'factores_humanos', tema: 'muestra-ilusiones', pregunta: 'muestra-v1', en: AHORA - 10 * MIN, intentoId: rf });
+    const despues = await avance(ana);
+    assert.deepEqual(despues.tg.ahora, a.tg.ahora);
+    assert.deepEqual(estados(despues.tg.bloques.find(b => b.id === 'factores_humanos')), ['hecho', 'nuevo']);
   });
 });
 
@@ -167,6 +172,12 @@ test('el oral: % de todos los temas de todos los capítulos y «Ahora en» capí
     assert.equal(a.oral.hechos, 2);
     assert.equal(a.oral.ahora.id, 'oral_escenarios');
     assert.equal(a.ultima, iso(AHORA - 4 * MIN));
+    // El examen final del oral (de todos los capítulos) no mueve «Ahora en» ni empieza temas.
+    db.prepare(`INSERT INTO academia_extra_respuestas (usuario_id, paquete_id, materia, tema, pregunta, nivel, elegida, correcta, dia, creada_en)
+      VALUES (?, NULL, 'oral_calificaciones', 't02-b', 'or-cali-t02-b-01', 'oral_final', 'A', 1, '2026-11-13', ?)`).run(ana, iso(AHORA - 3 * MIN));
+    const tras = await avance(ana);
+    assert.equal(tras.oral.ahora.id, 'oral_escenarios');
+    assert.deepEqual(estados(tras.oral.bloques.find(b => b.id === 'oral_calificaciones')), ['hecho', 'nuevo']);
     // Nada del oral se mezcla con el Test Guide.
     assert.equal(a.tg.hechos, 0);
   });

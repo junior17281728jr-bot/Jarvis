@@ -4,7 +4,8 @@
 //    no tiene preguntas), «empezado» (vio tarjetas, respondió algo o hizo una práctica sin aprobar) o «nuevo». El % del
 //    curso = temas hechos ÷ TODOS los temas de TODAS las materias con clases (una suma tema por tema, no el % de una sola
 //    materia ni un promedio de materias). Una materia sin clases todavía sale «pronto» y no entra en la cuenta.
-//  - Oral: igual, por capítulo (los 9); un tema está hecho si leyó su lección o practicó todas sus preguntas.
+//  - Oral: igual, por capítulo (los 9); un tema está hecho si leyó su lección o practicó todas sus preguntas. El examen
+//    final (de todos los capítulos) no mueve «Ahora en» ni empieza temas.
 //  - «Ahora en»: el tema de lo ÚLTIMO que hizo (tarjetas, respuestas, prácticas, exámenes); si ese tema ya está hecho, el
 //    siguiente sin hacer. Sin nada con fecha (solo lecturas), el primero sin hacer.
 // Pocas consultas para TODOS los alumnos a la vez (una por tabla, sin una por alumno ni por tema): 1 CPU y 512 MB.
@@ -94,18 +95,19 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
   const filtroR = filtro.replace('usuario_id', 'r.usuario_id');
   const ajustes = ajustesDe(db, ids);
   // Los temas: aprobado (de un intento terminado), y la fecha de lo último (intento empezado o terminado).
-  const temas = agrupar(db.prepare(`SELECT usuario_id, materia, tema, MAX(CASE WHEN terminado_en IS NOT NULL THEN aprobado ELSE 0 END) AS aprobado,
-    MAX(COALESCE(terminado_en, empezado_en)) AS en FROM academia_intentos WHERE tipo = 'tema' AND tema IS NOT NULL${filtro} GROUP BY usuario_id, materia, tema`).all(), f => `${f.materia}/${f.tema}`);
-  // Lo que respondió de cada tema FUERA de los exámenes (prácticas, reto, repaso…): la fecha de lo último.
+  const temas = agrupar(db.prepare(`SELECT usuario_id, materia, tema, MAX(CASE WHEN tipo = 'tema' AND terminado_en IS NOT NULL THEN aprobado ELSE 0 END) AS aprobado,
+    MAX(COALESCE(terminado_en, empezado_en)) AS en FROM academia_intentos WHERE tipo IN ('tema', 'reto') AND tema IS NOT NULL${filtro} GROUP BY usuario_id, materia, tema`).all(), f => `${f.materia}/${f.tema}`);
+  // Lo que respondió DENTRO de ese tema (su práctica o su reto): la fecha de lo último. El repaso, «Mis errores», la
+  // práctica del instructor y el Repaso final mezclan temas de todo el curso: no dicen dónde va (ni empiezan un tema).
   const resp = agrupar(db.prepare(`SELECT r.usuario_id, r.materia, r.tema, MAX(r.creada_en) AS en FROM academia_respuestas r
-    LEFT JOIN academia_intentos i ON i.id = r.intento_id WHERE (i.tipo IS NULL OR i.tipo <> 'examen') AND r.tema IS NOT NULL${filtroR}
+    JOIN academia_intentos i ON i.id = r.intento_id WHERE i.tipo IN ('tema', 'reto') AND i.tema = r.tema${filtroR}
     GROUP BY r.usuario_id, r.materia, r.tema`).all(), f => `${f.materia}/${f.tema}`);
   const examenes = agrupar(db.prepare(`SELECT usuario_id, materia, MAX(CASE WHEN terminado_en IS NOT NULL THEN aprobado ELSE 0 END) AS aprobado,
     MAX(CASE WHEN terminado_en IS NOT NULL AND total > 0 THEN aciertos * 100 / total END) AS mejor, MAX(COALESCE(terminado_en, empezado_en)) AS en
     FROM academia_intentos WHERE tipo = 'examen'${filtro} GROUP BY usuario_id, materia`).all(), f => f.materia);
   const hayOral = Boolean(paquete?.oral?.hay);
   const oralResp = hayOral ? agrupar(db.prepare(`SELECT usuario_id, materia, tema, nivel, COUNT(DISTINCT pregunta) AS vistas, MAX(creada_en) AS en
-    FROM academia_extra_respuestas WHERE materia LIKE 'oral\\_%' ESCAPE '\\'${filtro} GROUP BY usuario_id, materia, tema, nivel = 'oral_practica'`).all(),
+    FROM academia_extra_respuestas WHERE materia LIKE 'oral\\_%' ESCAPE '\\' AND nivel <> 'oral_final'${filtro} GROUP BY usuario_id, materia, tema, nivel = 'oral_practica'`).all(),
   f => `${f.materia}/${f.tema}/${f.nivel === 'oral_practica' ? 'p' : 'e'}`) : new Map();
 
   const todos = ids ? [...ids] : [...new Set([...ajustes.keys(), ...temas.keys(), ...resp.keys(), ...examenes.keys(), ...oralResp.keys()])];
