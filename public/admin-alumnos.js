@@ -7,6 +7,10 @@
 //  - Comparar (#comparar/2,5): lado a lado, con barras.
 // Todo texto se pone con textContent (h.el / h.talCual): nunca se interpreta como código.
 
+// 0.14.9: el avance visual (Test Guide y oral, tema por tema): public/admin-avance.js (tampoco importa nada).
+import { vistaAvanceAlumno, repintarAvance, pctTg } from './admin-avance.js';
+export { repintarAvance };
+
 export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 'debiles', 'actividad']);
 export const MAXIMO_COMPARAR = 6;
 const TEXTO_PESTANA = { resumen: 'ficha.pestana.resumen', examenes: 'ficha.pestana.examenes', materias: 'ficha.pestana.materias', debiles: 'ficha.pestana.debiles', actividad: 'ficha.pestana.actividad' };
@@ -235,21 +239,21 @@ function pestanaResumen(d, h) {
   const act = d.actividad;
   const plan = r.plan;
   // 0.13.5: más fácil de leer: Avance (con su plan), Exámenes, Clases y Actividad, cada uno con números grandes y barras.
-  const avance = r.avance ?? { pct: plan?.pct ?? 0 };
   const examenes = [...d.materias.filter(m => m.examen.veces).map(m => ({ id: m.id, mejor: m.examen.mejor, ultima: m.examen.ultima, aprobado: m.examen.aprobado })), ...(d.examenesOral ?? [])];
   const clases = d.materias.map(m => {
     const temasAprob = m.temas.filter(x => x.aprobado).length;
-    return { id: m.id, temasAprobados: temasAprob, temas: m.temas.length, pct: m.temas.length ? Math.floor((temasAprob * 100) / m.temas.length) : 0, respuestas: m.respuestas, pctAcierto: m.pctRespuestas };
-  }).filter(m => m.respuestas || m.temasAprobados);
+    return { id: m.id, temasAprobados: temasAprob, temas: m.temas.length, pct: m.temas.length ? Math.floor((temasAprob * 100) / m.temas.length) : 0, respuestas: m.respuestas, pctAcierto: m.pctRespuestas, examen: m.examen.veces };
+  }).filter(m => m.respuestas || m.temasAprobados || m.examen); // 0.14.9: también la materia de la que solo dio el examen
   return [
     el('section', { class: 'tarjeta ficha-bloque ficha-bloque-avance' },
       el('h2', { class: 'con-icono' }, h.icono('calendario'), el('span', { texto: t('cv.avance_titulo') })),
-      bloqueAvance(h, avance, plan),
+      // 0.14.9: dónde está y el % de TODOS los temas (Test Guide y oral), materia por materia y tema por tema.
+      vistaAvanceAlumno(h, d.avanceAlumno, { completo: true, alumno: d.alumno.id }),
+      el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, plan) }), plan ? h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null),
       plan ? el('p', { class: 'suave chica', texto: t('cv.plan.estimado', { fin: h.fechaCortaDia(plan.fin), plan: h.fechaCortaDia(plan.finPlan) }) }) : null,
       el('div', { class: 'ficha-resumen-medidor' }, el('strong', { texto: t('ficha.preparacion') }), h.medidor(r.preparacion.pct, { etiqueta: t('ficha.preparacion'), chico: true }),
         el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) })),
-      // 0.13.8: el % de cada una de las 11 materias (y del oral, si hizo algo ahí).
-      bloqueCadaMateria(h, d.cadaMateria, d.cadaOral, d.detalles)),
+      lineasDeMateria(h, d.detalles && { masDebil: d.detalles.masDebil })),
     el('section', { class: 'tarjeta ficha-bloque' },
       el('h2', { class: 'con-icono' }, h.icono('libro'), el('span', { texto: t('cv.examenes') })),
       bloqueNotaGeneral(h, { pct: r.notaGeneral ?? 0, aprobados: r.examenesAprobados, total: r.examenes }),
@@ -736,6 +740,7 @@ function bloqueCadaMateria(h, materias, oral, detalles) {
 }
 function textoDondeVa(h, d) {
   const { t } = h;
+  if (d.dondeVa === undefined) return null;
   if (d.dondeVa === null) return t('cv.va_en.listo');
   const v = d.dondeVa;
   const lugar = v.examen ? t('cv.va_en.examen', { materia: h.nombreMateria(v.materia) }) : `${h.nombreMateria(v.materia)} · ${h.partirTitulo(v.titulo).es}`;
@@ -745,7 +750,7 @@ function lineasDeMateria(h, d) {
   const { el, t } = h;
   if (!d) return null;
   return el('ul', { class: 'cv-detalles' },
-    el('li', { texto: textoDondeVa(h, d) }),
+    d.dondeVa === undefined ? null : el('li', { texto: textoDondeVa(h, d) }),
     d.masDebil ? el('li', { texto: t('cv.le_cuesta', { materia: h.nombreMateria(d.masDebil.id), pct: h.pctTexto(d.masDebil.pctAcierto) }) }) : null);
 }
 // Lo útil de su actividad (en «Actividad»): «Hace 9 días que no entra» (naranja), el último examen, los días de esta semana y la racha.
@@ -837,7 +842,7 @@ export function ordenarComoVan(lista, orden = 'en_linea') {
   const comparar = {
     en_linea: (a, b) => Number(b.enLinea) - Number(a.enLinea) || String(b.ultimaActividad ?? '').localeCompare(String(a.ultimaActividad ?? '')) || porNombre(a, b),
     nota: (a, b) => (b.examenes.general?.pct ?? 0) - (a.examenes.general?.pct ?? 0) || (b.examenes.promedio ?? -1) - (a.examenes.promedio ?? -1) || porNombre(a, b),
-    avance: (a, b) => b.avance.pct - a.avance.pct || b.clases.pctAcierto - a.clases.pctAcierto || porNombre(a, b),
+    avance: (a, b) => pctTg(b) - pctTg(a) || b.clases.pctAcierto - a.clases.pctAcierto || porNombre(a, b),
   }[ORDENES_COMO_VAN.includes(orden) ? orden : 'en_linea'];
   return [...lista].sort(comparar);
 }
@@ -849,12 +854,17 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
   const lista = datos.alumnos.map(a => ({ ...a }));
   const tarjetas = new Map();
   const estados = new Map();
+  const cajas = new Map();
   const tarjeta = a => {
     const estado = el('span', { class: 'cv-estado-texto', texto: estadoLinea(h, a) });
     const punto = el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' });
     estados.set(a.id, { estado, punto });
     const examenes = [...a.examenes.materias, ...a.examenes.oral];
-    const clases = a.clases.materias.filter(m => m.respuestas || m.temasAprobados);
+    // 0.14.9: también la materia de la que solo dio el examen (antes quedaba afuera y parecía «una sola materia»).
+    const conExamen = new Set(a.examenes.materias.map(x => x.id));
+    const clases = a.clases.materias.filter(m => m.respuestas || m.temasAprobados || conExamen.has(m.id));
+    const caja = vistaAvanceAlumno(h, a.avanceAlumno, { alumno: a.id });
+    cajas.set(a.id, caja);
     // 0.13.8: la tarjeta ya no es un enlace entero (adentro van «Ver cada materia» y el menú de la cuenta): el nombre lleva a su ficha.
     const nodo = el('article', { class: `cv-alumno${a.enLinea ? ' en-linea' : ''}`, 'data-alumno': String(a.id) },
       el('a', { class: 'cv-quien', href: `#alumno/${a.id}`, 'aria-label': `${nombreDe(a)} · ${t('cv.ver_ficha')}` },
@@ -864,7 +874,8 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
           el('span', { class: 'cv-estado' }, punto, estado),
           el('span', { class: 'cv-ver-ficha con-icono-chico' }, el('span', { texto: t('cv.ver_ficha') }), h.icono('flecha', 'icono chico')),
           a.activo ? null : h.insignia('mal', t('admin.inactivo')))),
-      el('div', { class: 'cv-col cv-col-avance' }, bloqueAvance(h, a.avance, a.plan)),
+      el('div', { class: 'cv-col cv-col-avance' }, caja,
+        el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, a.plan) }), a.plan ? h.insignia(TONO_RITMO[a.plan.ritmo] ?? 'info', t(TEXTO_RITMO[a.plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null)),
       el('div', { class: 'cv-col cv-col-examenes' },
         el('h3', { class: 'cv-titulo', texto: t('cv.examenes') }),
         bloqueNotaGeneral(h, a.examenes.general),
@@ -881,7 +892,6 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
         el('p', { class: 'cv-tiempo' }, el('strong', { texto: minutos(h, a.tiempo.semana) }), el('span', { class: 'suave chica', texto: t('cv.tiempo.semana') })),
         lineasDeActividad(h, a.detalles)),
       el('div', { class: 'cv-pie' },
-        bloqueCadaMateria(h, a.cadaMateria, a.cadaOral, a.detalles),
         menuCuenta(h, a)));
     tarjetas.set(a.id, nodo);
     return nodo;
@@ -921,13 +931,15 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
       if (!a) continue;
       a.enLinea = x.enLinea;
       a.ultimaActividad = x.ultimaActividad;
+      // 0.14.9: el avance nuevo (si vino): se repinta solo lo que cambió, sin cerrar la materia abierta.
+      if (x.avanceAlumno !== undefined) { a.avanceAlumno = x.avanceAlumno; repintarAvance(cajas.get(a.id), x.avanceAlumno, h); }
       const e = estados.get(a.id);
       e.estado.textContent = estadoLinea(h, a);
       e.punto.classList.toggle('en-linea', Boolean(a.enLinea));
       tarjetas.get(a.id).classList.toggle('en-linea', Boolean(a.enLinea));
     }
     pintarCuenta();
-    if (orden === 'en_linea') pintar();
+    if (orden === 'en_linea' || orden === 'avance') pintar();
   };
   return { nodo, actualizar };
 }

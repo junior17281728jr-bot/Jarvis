@@ -100,7 +100,9 @@ const RESPUESTAS_COMPRIMIBLES = new Set([
   '/api/admin/academia/alumnos/:id', '/api/admin/academia', '/api/admin/academia/respuestas',
   // 0.9.0: la ficha de un alumno, uno de sus intentos y «Comparar».
   '/api/admin/academia/alumnos/:id/ficha', '/api/admin/academia/alumnos/:id/intentos/:intento', '/api/admin/academia/comparar/:ids',
-  '/api/admin/academia/reporte']);
+  '/api/admin/academia/reporte',
+  // 0.14.9: «Cómo van todos» y el avance de cada alumno.
+  '/api/admin/academia/como-van', '/api/admin/academia/como-van/avance', '/api/admin/academia/alumnos/:id/avance']);
 
 function texto(res, codigo, mensaje) {
   res.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...CABECERAS_SEGURIDAD });

@@ -5426,17 +5426,26 @@ async function pantallaComoVan() {
     return control.nodo;
   }, 'como-van');
   if (!control) return;
+  // 0.14.9: cada 30 s (y al volver a la app) pide en línea Y el avance de cada alumno: lo nuevo se ve sin recargar.
+  refrescarMientras(control.nodo, vigente, async () => {
+    const x = await api('GET', '/api/admin/academia/como-van/avance');
+    if (x.ok && vigente() && control.nodo.isConnected) control.actualizar(x.datos);
+  });
+}
+// 0.14.9: repite «pedir» cada 30 s mientras la pantalla sigue abierta y a la vista, y enseguida al volver a la app.
+function refrescarMientras(nodo, vigente, pedir) {
   const ruta = location.hash;
   let pidiendo = false;
-  const reloj = setInterval(async () => {
-    if (!vigente() || location.hash !== ruta || !control.nodo.isConnected) { clearInterval(reloj); return; }
+  const vez = async () => {
+    if (!vigente() || location.hash !== ruta || !nodo.isConnected) { parar(); return; }
     if (document.hidden || pidiendo) return;
     pidiendo = true;
-    try {
-      const x = await api('GET', '/api/admin/academia/como-van/en-linea');
-      if (x.ok && vigente() && control.nodo.isConnected) control.actualizar(x.datos);
-    } finally { pidiendo = false; }
-  }, 30000);
+    try { await pedir(); } finally { pidiendo = false; }
+  };
+  const reloj = setInterval(vez, 30000);
+  const alVolver = () => { if (!document.hidden) vez(); };
+  document.addEventListener('visibilitychange', alVolver);
+  function parar() { clearInterval(reloj); document.removeEventListener('visibilitychange', alVolver); }
 }
 // 0.13.5: «Comparar un examen»: la nota de cada alumno y qué pregunta falló cada uno (y qué eligió).
 async function pantallaCompararExamen(materia) {
@@ -5456,8 +5465,20 @@ async function pantallaAlumno(id, pestana = 'resumen') {
   const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/ficha`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
   if (!vigente()) return;
   dibujarDeAlumnos(r, s, (d, h) => vista.vistaFicha(d, pestana, h));
+  if (r.ok) vigilarAvanceFicha(id, vigente, vista);
   // 0.12.8: sus contratos («Enviar a mi Telegram») y su IA, al final de la ficha.
   if (r.ok) import('./admin-ia.js').then(m => { const main = raiz.querySelector('main.contenido'); if (vigente() && main) main.insertBefore(m.fichaIa(id, piezasIa()), main.lastElementChild); });
+}
+// 0.14.9: el avance de la ficha (dónde está y los %) se pide de nuevo cada 30 s y al volver a la app (sin memoria del
+// navegador): lo que el alumno hace se ve sin recargar. Va después de dibujar (no se adelanta al abrir).
+function vigilarAvanceFicha(id, vigente, vista) {
+  const caja = raiz.querySelector(`.av-caja[data-avance-alumno="${Number(id)}"]`);
+  if (!caja) return;
+  const h = piezasAlumnos();
+  refrescarMientras(caja, vigente, async () => {
+    const x = await api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/avance`);
+    if (x.ok && vigente() && caja.isConnected) vista.repintarAvance(caja, x.datos.avanceAlumno, h);
+  });
 }
 async function pantallaIntentoAlumno(id, intento) {
   const vigente = nuevoTurno();

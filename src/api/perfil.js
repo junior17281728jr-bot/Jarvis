@@ -13,7 +13,8 @@ import { enTransaccion } from '../nucleo/db.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { fichaAlumno, intentoDeAlumno, compararAlumnos } from '../academia/fichas.js';
 import { examenesTestGuide } from '../academia/examenes-tg.js';
-import { comoVanTodos, enLineaTodos, compararExamen } from '../academia/como-van.js';
+import { comoVanTodos, enLineaTodos, avanceTodos, compararExamen } from '../academia/como-van.js';
+import { avanceDe } from '../academia/avance-alumno.js';
 import { notasDeTodos } from '../academia/notas.js';
 import { reporteAcademia, opcionesReporte, guardarOpcionesReporte } from '../academia/reporte.js';
 
@@ -99,6 +100,15 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   // …/en-linea es lo liviano que la pantalla pide cada 30 s (solo quién está en línea). Solo leen.
   rutas.agregar('GET', '/api/admin/academia/como-van', ({ db }) => ({ codigo: 200, datos: comoVanTodos(db, activo(db), reloj()) }), { admin: true });
   rutas.agregar('GET', '/api/admin/academia/como-van/en-linea', ({ db }) => ({ codigo: 200, datos: enLineaTodos(db, reloj()) }), { admin: true });
+  // 0.14.9: el avance de cada alumno (dónde está, el % del Test Guide y del oral, tema por tema): lo que «Cómo van todos»
+  // pide cada 30 s, y el de uno solo para su ficha. Solo leen; nunca se guardan en el navegador (no-store).
+  rutas.agregar('GET', '/api/admin/academia/como-van/avance', ({ db }) => ({ codigo: 200, datos: avanceTodos(db, activo(db), reloj()) }), { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/avance', ({ db, parametros }) => {
+    const id = Number(parametros.id);
+    const u = Number.isSafeInteger(id) && id > 0 ? db.prepare('SELECT id FROM usuarios WHERE id = ?').get(id) : null;
+    if (!u) throw new ErrorHttp(404, 'no_existe');
+    return { codigo: 200, datos: { ahora: new Date(reloj()).toISOString(), id: u.id, avanceAlumno: avanceDe(db, activo(db), [u.id]).get(u.id) } };
+  }, { admin: true });
   // 0.14.6: «Notas»: SOLO las notas de cada alumno (cada materia y tema del Test Guide y del oral). Una sola respuesta para
   // #notas, #notas/<materia>, #notas/alumno/<n.º> y #notas/comparar/<n.º,n.º>. Solo lee.
   rutas.agregar('GET', '/api/admin/academia/notas', ({ db }) => ({ codigo: 200, datos: notasDeTodos(db, activo(db), reloj()) }), { admin: true });

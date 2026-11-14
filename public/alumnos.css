@@ -684,3 +684,54 @@ a.notas-ver-materia { display: inline-flex; align-items: center; min-height: 44p
 .notas-lista-nombre { min-width: 0; overflow-wrap: anywhere; }
 .notas-comparar-cabezas { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .notas-comparar-cabeza { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 12px; min-width: 0; }
+
+/* 0.14.9: el avance de cada alumno (public/admin-avance.js): «Ahora en», dos barras grandes (Test Guide y oral) y las
+   fichas de las 11 materias y de los capítulos del oral (la actual resaltada); al tocar una, sus temas como puntos. */
+.cv-alumno .cv-col-avance { grid-column: 1 / -1; }
+.av-caja { display: grid; gap: 10px; min-width: 0; }
+.av-ahora { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.av-ahora-rotulo { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); }
+.av-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-height: 32px; padding: 4px 10px; border-radius: 99px;
+  border: 2px solid var(--azul); background: color-mix(in srgb, var(--azul) 12%, var(--tarjeta)); font-weight: 700; font-size: 14px; }
+.av-chip.oral { border-color: var(--morado); background: color-mix(in srgb, var(--morado) 12%, var(--tarjeta)); }
+.av-chip.apagado { border-color: var(--borde); background: var(--apagado-fondo); color: var(--suave); }
+.av-chip-quien { font-size: 12px; text-transform: uppercase; color: var(--suave); }
+.av-chip-donde { min-width: 0; overflow-wrap: anywhere; }
+.av-totales { display: grid; gap: 10px; }
+@media (min-width: 720px) { .av-totales { grid-template-columns: 1fr 1fr; } }
+.av-total { display: grid; gap: 4px; min-width: 0; }
+.av-total-cabeza { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.av-total-nombre { font-weight: 800; }
+.av-total-pct { font: 800 28px/1 var(--letra-redonda); }
+.av-total.tg .barra-relleno { background: var(--azul); }
+.av-total.oral .barra-relleno { background: var(--morado); }
+.av-sub { margin: 4px 0 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--suave); }
+.av-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; }
+.av-celda { display: grid; min-width: 0; }
+.av-ficha { align-content: start; margin: 0; }
+.av-punto { margin: 0; }
+.av-ficha { position: relative; display: grid; justify-items: center; gap: 2px; width: 100%; min-height: 58px; padding: 6px 2px 8px; border-radius: 12px;
+  border: 2px solid var(--borde); background: var(--tarjeta); color: inherit; font: inherit; cursor: pointer; }
+.av-ficha-n { font-size: 12px; font-weight: 800; color: var(--suave); }
+.av-ficha-pct { font-size: 14px; font-weight: 800; white-space: nowrap; }
+.av-mini { display: block; width: 80%; height: 6px; border-radius: 99px; background: var(--linea); overflow: hidden; }
+.av-mini .barra-relleno { background: var(--naranja); }
+.av-ficha.media .av-mini .barra-relleno { background: var(--azul); }
+.av-ficha.completa { border-color: var(--verde); background: color-mix(in srgb, var(--verde) 14%, var(--tarjeta)); }
+.av-ficha.completa .av-mini .barra-relleno { background: var(--verde); }
+.av-ficha.cero .av-ficha-pct { color: var(--suave); }
+.av-ficha.actual { border-color: var(--azul); box-shadow: 0 0 0 3px color-mix(in srgb, var(--azul) 35%, transparent); }
+.av-rejilla.oral .av-ficha.actual { border-color: var(--morado); box-shadow: 0 0 0 3px color-mix(in srgb, var(--morado) 35%, transparent); }
+.av-ficha[aria-expanded="true"] { background: var(--acento-suave); }
+.av-ficha.pronto { cursor: default; border-style: dashed; color: var(--suave); background: var(--apagado-fondo); }
+.av-ficha-ex { position: absolute; top: 2px; right: 4px; font-size: 11px; color: var(--marca-punto); }
+.av-ficha:focus-visible, .av-punto:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+.av-panel { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 10px; background: var(--fondo); min-width: 0; }
+.av-panel-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; overflow-wrap: anywhere; }
+.av-puntos { display: flex; flex-wrap: wrap; gap: 6px; }
+.av-punto { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--borde); background: var(--tarjeta); color: var(--suave);
+  font: 800 13px/1 var(--letra-redonda); cursor: pointer; padding: 0; }
+.av-punto.hecho { border-color: var(--verde); background: var(--verde); color: #fff; }
+.av-punto.empezado { border-color: var(--azul); color: var(--azul); font-size: 22px; }
+.av-punto.actual { box-shadow: 0 0 0 3px color-mix(in srgb, var(--azul) 40%, transparent); }
+.av-leyenda { margin: 6px 0 0; overflow-wrap: anywhere; }

@@ -15,6 +15,7 @@ import { planDe, pasosDelCamino } from './plan.js';
 import { tiempoDeEstudio } from './fichas.js';
 import { examenesOralDe, hayOral } from './oral.js';
 import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
+import { avanceDe } from './avance-alumno.js';
 
 const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
 const SEMANA_MS = 7 * 24 * 3600 * 1000;
@@ -44,6 +45,16 @@ export function enLineaTodos(db, ahoraMs = Date.now()) {
   const estado = enLineaDe(db, cuentas, ahoraMs);
   const alumnos = cuentas.map(u => ({ id: u.id, ...estado.get(u.id) }));
   return { ahora: new Date(ahoraMs).toISOString(), enLinea: alumnos.filter(a => a.enLinea).length, alumnos };
+}
+
+// 0.14.9: lo que «Cómo van todos» pide cada 30 s (y al volver a la pantalla): en línea + el avance de cada alumno (Test
+// Guide y oral: dónde está y el % de todos los temas), así lo nuevo se ve sin recargar. Pocas consultas para todos.
+export function avanceTodos(db, paquete, ahoraMs = Date.now()) {
+  const cuentas = cuentasDeAlumnos(db);
+  const estado = enLineaDe(db, cuentas, ahoraMs);
+  const avance = avanceDe(db, paquete, cuentas.map(u => u.id));
+  const alumnos = cuentas.map(u => ({ id: u.id, ...estado.get(u.id), avanceAlumno: avance.get(u.id) }));
+  return { ahora: new Date(ahoraMs).toISOString(), enLinea: alumnos.filter(a => a.enLinea).length, oral: Boolean(paquete?.oral?.hay), alumnos };
 }
 
 // filas: los exámenes terminados de UN alumno, del más nuevo al más viejo. orden: los ids de materia del contenido.
@@ -104,6 +115,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
   const ultimas = new Map([...fechas].map(([id, l]) => [id, l.at(-1).creada_en]));
   const linea = enLineaDe(db, cuentas, ahoraMs, ultimas);
   const conOral = hayOral(paquete);
+  const avanceAlumno = avanceDe(db, paquete, cuentas.map(u => u.id));
 
   const alumnos = cuentas.map(u => {
     const tg = examenesPorMateria(examenes.get(u.id) ?? [], orden);
@@ -132,6 +144,8 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
     return {
       id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null,
       ...linea.get(u.id),
+      // 0.14.9: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema.
+      avanceAlumno: avanceAlumno.get(u.id),
       plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde } : null,
       avance: { pct: pasos.total ? Math.min(100, Math.floor((pasos.hechos * 100) / pasos.total)) : 0, hechos: pasos.hechos, total },
       tiempo: {

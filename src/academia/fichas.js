@@ -16,6 +16,7 @@ import { nombreLegalDe, estadoTerminos, verificacionDe, tutorAutorizoPagos } fro
 import { historialSaltos } from './saltos.js';
 import { resumenExtra } from './extra.js';
 import { examenesOralDe, hayOral } from './oral.js';
+import { avanceDe } from './avance-alumno.js';
 import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
 
 export const MAXIMO_COMPARAR = 6;
@@ -146,6 +147,8 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     puntosDebiles: resumenDebiles(puntosDebiles(db, u.id, paquete), paquete),
     actividad,
     cadaMateria: cada.materias, cadaOral: hayOral(paquete) ? avanceOral(db, u.id, paquete) : null,
+    // 0.14.9: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema (src/academia/avance-alumno.js).
+    avanceAlumno: avanceDe(db, paquete, [u.id]).get(u.id),
     detalles: {
       dondeVa: cada.dondeVa, masDebil: materiaMasDebil(cada.materias), ultimoExamen: ultimoExamenDe(db, u.id, paquete),
       diasSemana: diasActivosSemana(db.prepare('SELECT dia, creada_en FROM academia_respuestas WHERE usuario_id = ?').all(u.id), ahoraMs),
