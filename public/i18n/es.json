@@ -4673,6 +4673,6 @@
   "telegram.aviso.fabrica_pendiente.texto": "En la materia «{materia}» un paso no salió después de 3 reintentos: míralo en Contenido → Fábrica de materias («Pendientes para reintentar»).",
   "aviso.fabrica_pendiente": "En la materia «{materia}» un paso no salió después de 3 reintentos («Pendientes para reintentar»).",
   "iahizo.cifra.tg_cubierto": "Test Guide cubierto (cada pregunta con su tarjeta)",
-  "iahizo.falta.tg_sin_cubrir": "Materia {materia} · «{tema}»: la pregunta {archivo} del Test Guide no tiene una tarjeta que enseñe su respuesta (la revisión final lo arregla).",
+  "iahizo.falta.tg_sin_cubrir": "Materia {materia} · «{tema}»: la pregunta {archivo} del Test Guide no tiene una tarjeta que enseñe su respuesta (la revisión final de «Mejorar todo» la mira primero).",
   "iahizo.falta.fabrica_espera": "La fábrica espera en Materia {num} · {nombre} («{tema}», paso {archivo}) — motivo: {motivo}"
 }

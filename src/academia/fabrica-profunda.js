@@ -50,6 +50,7 @@ import { leerConfigIa } from '../ia/config.js';
 import { gastoMicro, mesCobro, elegirProveedor, modelosDe } from '../ia/presupuesto.js';
 import { puedeLlamar, adjuntar, estadoMateria, guardarGeneral, estadoGeneral, leerConfigFabrica, cuotaHora, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
+import { preguntaCubierta } from './cobertura-tg.js';
 
 export const P = Object.freeze({
   tarjetasPorPaso: 3, intentos: 2, explicacionesTg: 4, explicacionesOral: 3,
@@ -1087,7 +1088,10 @@ async function revisionFinal(ctx, { ahora, cfg, man, fuenteOral, dir, plan, prop
       if (rec.final.estado !== 'revisando') break;
       const examen = examenDe(t, pub, c);
       const claveRespuestas = c.oral ? examen.preguntas_del_libro.map(x => ({ n: x.n, respuesta_en: x.respuesta_en })) : examen.test_guide.map(q => ({ id: q.id, correcta: q.correcta }));
-      const pedido = { sistema: sistemaVerificar(c, props), texto: `${TAREAS_PROFUNDA.revision_final}\n${datos({ tema: t.titulo, clave: claveRespuestas, contenido: contenidoPublicado(t, pub, c) })}`, esquema: ESQUEMAS_PROFUNDA.revision_final };
+      // 0.14.17: las preguntas del Test Guide que el CÓDIGO no encontró enseñadas en el tema (src/academia/cobertura-tg.js):
+      // el verificador las mira primero; un «falta_tg» es un «error» y se arregla con la misma tubería.
+      const sinTarjeta = c.oral ? [] : (t.preguntas ?? []).map(id => pub.preguntas.get(id)).filter(q => q?.origen === 'test_guide' && !preguntaCubierta(t, q)).map(q => q.id);
+      const pedido = { sistema: sistemaVerificar(c, props), texto: `${TAREAS_PROFUNDA.revision_final}\n${datos({ tema: t.titulo, clave: claveRespuestas, contenido: contenidoPublicado(t, pub, c), ...(sinTarjeta.length ? { sin_tarjeta_en_codigo: sinTarjeta } : {}) })}`, esquema: ESQUEMAS_PROFUNDA.revision_final };
       const p = { paso: 'final', rol: 'verificar', tipo: 'verificar', proposito: props.verificar };
       return llamar(ctx, { item: { ...item, ronda }, clave, p, pedido, revisar: () => ({ ok: true }), cfg, ahora, temaId: t.id, op: { ronda, anotarPaso: dbx => guardarProfunda(dbx, item.id, { ...estadoProfunda(dbx, item.id, ronda), tema: t.id }, ronda) } });
     }

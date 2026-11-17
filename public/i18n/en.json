@@ -4673,6 +4673,6 @@
   "telegram.aviso.fabrica_pendiente.texto": "In the subject «{materia}» a step still fails after 3 retries: see Content → Subject factory («Pending retries»).",
   "aviso.fabrica_pendiente": "In the subject «{materia}» a step still fails after 3 retries («Pending retries»).",
   "iahizo.cifra.tg_cubierto": "Test Guide covered (each question with its card)",
-  "iahizo.falta.tg_sin_cubrir": "Subject {materia} · «{tema}»: Test Guide question {archivo} has no card teaching its answer (the final review fixes it).",
+  "iahizo.falta.tg_sin_cubrir": "Subject {materia} · «{tema}»: Test Guide question {archivo} has no card teaching its answer (the «Improve everything» final review checks it first).",
   "iahizo.falta.fabrica_espera": "The factory is waiting at Subject {num} · {nombre} («{tema}», step {archivo}) — reason: {motivo}"
 }

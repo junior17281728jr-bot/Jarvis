@@ -217,8 +217,17 @@ export function pedidoOral(leer, c, t, p) {
       // 0.14.17: el pedido entero dentro del tramo corto de Haiku (si no, se negaba siempre por «llamada_muy_cara»).
       const texto = `${TAREAS_ORAL.verificar}\n${datos({ contenido })}`;
       const resto = Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(ESQUEMAS_ORAL.verificar)) + Buffer.byteLength(REGLAS_VERIFICACION) + 200;
-      const cabe = Math.floor(Math.max(0, Math.min(ORAL_POR_PASO.verificarBytes, ORAL_POR_PASO.haikuPedidoMaxBytes - resto)) / 2 ** (p.nivel ?? 0));
-      return { sistema: `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA (la Guía del examen oral):\n${datos(cortarUtf8(c.texto, cabe))}`, texto, esquema: ESQUEMAS_ORAL.verificar };
+      let cabe = Math.floor(Math.max(0, Math.min(ORAL_POR_PASO.verificarBytes, ORAL_POR_PASO.haikuPedidoMaxBytes - resto)) / 2 ** (p.nivel ?? 0));
+      const arma = () => ({ sistema: `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA (la Guía del examen oral):\n${datos(cortarUtf8(c.texto, cabe))}`, texto, esquema: ESQUEMAS_ORAL.verificar });
+      // Se mide el pedido armado (datos() escapa los saltos de línea) y se achica hasta que cabe.
+      let pedido = arma();
+      for (let i = 0; i < 8; i++) {
+        const sobra = Buffer.byteLength(pedido.sistema) + Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(pedido.esquema)) - ORAL_POR_PASO.haikuPedidoMaxBytes;
+        if (sobra <= 0 || cabe <= 0) break;
+        cabe = Math.max(0, cabe - sobra - 512);
+        pedido = arma();
+      }
+      return pedido;
     }
     default: throw new Error('paso desconocido');
   }

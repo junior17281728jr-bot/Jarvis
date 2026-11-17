@@ -61,7 +61,7 @@ export const T = Object.freeze({
   // un pedido de verificar o sacar pasajes más largo que esto se negaba SIEMPRE («llamada_muy_cara») y la fábrica se
   // quedaba parada en ese paso para siempre. Ahora la lectura se recorta (por bytes) para que el pedido entero quepa, y
   // una lectura enorme se saca en trozos (extracto, extracto-2, …).
-  haikuPedidoMaxBytes: 98_000, extractoTrozoBytes: 78_000,
+  haikuPedidoMaxBytes: 98_000, extractoTrozoBytes: 60_000,
   // 0.14.17: un paso que se niega por su tamaño o su precio 3 veces, o que falla sus intentos, NO frena la materia: queda
   // en «Pendientes para reintentar» y se vuelve a probar con otra estrategia (lectura más corta) cuando la materia no tiene
   // otra cosa que hacer y después cada 24 h, hasta 3 veces. Solo entonces queda en la lista con su motivo (y aviso).
@@ -281,10 +281,17 @@ function pasajesDe(db, materia, gen, tema) {
 }
 // 0.14.17: un pedido de Haiku (verificar, sacar pasajes) con la lectura recortada para que el pedido ENTERO quepa en el
 // tramo corto (nivel: la estrategia de un reintento: la mitad de la lectura cada vez).
-function pedidoHaiku(arma, lectura, nivel = 0) {
-  const vacio = arma('');
-  const resto = Buffer.byteLength(vacio.sistema) + Buffer.byteLength(vacio.texto) + Buffer.byteLength(JSON.stringify(vacio.esquema));
-  const cabe = Math.floor(Math.max(0, T.haikuPedidoMaxBytes - resto) / 2 ** nivel);
+const bytesDe = x => Buffer.byteLength(x.sistema) + Buffer.byteLength(x.texto) + Buffer.byteLength(JSON.stringify(x.esquema));
+export function pedidoHaiku(arma, lectura, nivel = 0) {
+  const resto = bytesDe(arma(''));
+  let cabe = Math.floor(Math.max(0, T.haikuPedidoMaxBytes - resto) / 2 ** nivel);
+  // Se mide el pedido ARMADO (datos() escapa la lectura: un salto de línea ocupa 2 bytes) y se achica hasta que cabe.
+  for (let i = 0; i < 8; i++) {
+    const p = arma(cortarBytes(lectura, cabe));
+    const sobra = bytesDe(p) - T.haikuPedidoMaxBytes;
+    if (sobra <= 0 || cabe <= 0) return p;
+    cabe = Math.max(0, cabe - sobra - 512);
+  }
   return arma(cortarBytes(lectura, cabe));
 }
 function pedidoDe(db, c, materia, gen, t, p) {

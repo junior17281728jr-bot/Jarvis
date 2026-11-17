@@ -26,7 +26,15 @@ export function preguntaCubierta(tema, q) {
   const correcta = normalizar(correctaDe(q)).replace(/[.,;:]+$/g, '').trim();
   if (correcta.length < 2) return false;
   const todo = normalizar(secciones.map(textoDe).join(' \n '));
-  return todo.includes(correcta);
+  if (todo.includes(correcta)) return true;
+  // Dicho con otras palabras («Igual que durante el día» por «La misma que durante el día»): sus números todos y al
+  // menos el 60 % de sus palabras con contenido (4 letras o más) están en las tarjetas del tema.
+  const numeros = correcta.match(/\d+(?:[.,]\d+)?/g) ?? [];
+  if (numeros.some(n => !todo.includes(n))) return false;
+  const palabras = [...new Set(correcta.split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 4))];
+  if (!palabras.length) return numeros.length > 0;
+  const hay = new Set(todo.split(/[^\p{L}\p{N}]+/u));
+  return palabras.filter(w => hay.has(w)).length / palabras.length >= 0.6;
 }
 
 // → { total, cubiertas, faltan: [{ materia, tema, titulo, id, numero }] }

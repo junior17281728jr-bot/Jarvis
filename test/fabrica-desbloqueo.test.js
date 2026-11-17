@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { carpetaFuentes } from '../src/academia/fuentes.js';
-import { estadoMateria, estadoGeneral, vistaFabrica, leerSalida, guardarConfigFabrica, guardarMateria, planDeTrabajo, cortarBytes, trozosDe, puedeLlamar } from '../src/academia/fabrica.js';
+import { estadoMateria, estadoGeneral, vistaFabrica, leerSalida, guardarConfigFabrica, guardarMateria, planDeTrabajo, cortarBytes, trozosDe, puedeLlamar, pedidoHaiku } from '../src/academia/fabrica.js';
 import { guardarAjuste, AJUSTE_EN_USO } from '../src/academia/paquetes.js';
 import { TAREAS } from '../src/academia/fabrica-prompts.js';
 import { claveDeAvisoValida } from '../src/avisos/avisos.js';
@@ -20,7 +20,8 @@ import { vistaLoQueHizo } from '../src/academia/ia-hizo.js';
 import { conFabrica } from './fabrica-base.js';
 
 const SEIS = 6 * 60_000;
-const RELLENO = 'El motor de muestra tiene cuatro cilindros y gira a 2400 rpm en crucero. Texto de relleno sintético con tildes: ñandú. ';
+// Con muchos saltos de línea A PROPÓSITO (datos() los escapa: cada uno ocupa 2 bytes en el pedido).
+const RELLENO = 'El motor de muestra tiene cuatro cilindros.\nGira a 2400 rpm en crucero.\nTexto de relleno sintético con tildes: ñandú.\n\n';
 function lecturaEnorme(config, bytes) {
   const veces = Math.ceil(bytes / Buffer.byteLength(RELLENO));
   writeFileSync(join(carpetaFuentes(config), 'libro-pp-es-cap02.txt'), `=== p 10 ===\n${RELLENO.repeat(veces)}\n=== p 11 ===\nLa hélice de muestra empuja el aire hacia atrás y así el avión avanza.\n`);
@@ -35,6 +36,12 @@ test('0.14.17: cortarBytes nunca corta una letra y trozosDe reparte todo el text
   const t = trozosDe(texto, 1000);
   assert.equal(t.join(''), texto);
   assert.ok(t.every(x => Buffer.byteLength(x) <= 1000));
+  // El pedido ARMADO (con la lectura escapada y una lista larga del Test Guide) nunca pasa del tope del tramo corto.
+  const lectura = 'línea\n\n'.repeat(40_000);
+  const tg = Array.from({ length: 120 }, (_, i) => ({ id: `9-${i}`, enunciado: 'Una pregunta larga del Test Guide con \n saltos. '.repeat(4) }));
+  const p = pedidoHaiku(l => ({ sistema: `REGLAS\n${JSON.stringify(l)}`, texto: JSON.stringify(tg), esquema: { type: 'object' } }), lectura);
+  assert.ok(Buffer.byteLength(p.sistema) + Buffer.byteLength(p.texto) + 17 <= 98_000);
+  assert.ok(Buffer.byteLength(p.sistema) > 50_000, 'y usa casi todo lo que cabe');
 });
 
 test('0.14.17: una lectura enorme (como la del POH) ya no traba la fábrica: pasajes en trozos y todo pedido de Haiku en el tramo corto', async () => {

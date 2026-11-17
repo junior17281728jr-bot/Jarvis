@@ -105,7 +105,10 @@ test('instalar las partes: juntas, gunzip, tar → las fuentes listas; un total 
 async function conDrive(archivos, fn) {
   const carpetas = new Map([['raizDePrueba000001', [{ id: 'audiosDePrueba0001', nombre: 'audios', carpeta: true }]], ['audiosDePrueba0001', [{ id: 'fuentesDePrueba001', nombre: 'fuentes', carpeta: true }]], ['fuentesDePrueba001', []]]);
   const cuerpos = new Map();
-  archivos.forEach((a, i) => { const id = `archivoDePrueba${String(i).padStart(3, '0')}`; carpetas.get('fuentesDePrueba001').push({ id, nombre: a.nombre }); cuerpos.set(id, a.cuerpo); });
+  let n = 0;
+  // 0.14.17: agregar(a): un archivo que se sube a «fuentes» después (el «extra» de la Materia 1).
+  const agregar = a => { const id = `archivoDePrueba${String(n++).padStart(3, '0')}`; carpetas.get('fuentesDePrueba001').push({ id, nombre: a.nombre }); cuerpos.set(id, a.cuerpo); };
+  archivos.forEach(agregar);
   const html = entradas => `<html><body>${entradas.map(e => `<div class="flip-entry"><a href="https://drive.google.com/${e.carpeta ? 'drive/folders' : 'file/d'}/${e.id}/view"><div class="flip-entry-title">${e.nombre}</div><div class="flip-entry-last-modified"><div>3:10 PM</div></div></a></div>`).join('')}</body></html>`;
   const servidor = createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
@@ -119,7 +122,7 @@ async function conDrive(archivos, fn) {
   const config = { ...configDePrueba(), driveBases: { lista: base, bajar: base } };
   const db = abrirBase(config);
   guardarCarpetaDrive(db, 'raizDePrueba000001');
-  try { await fn({ db, config }); } finally { db.close(); await new Promise(listo => servidor.close(listo)); }
+  try { await fn({ db, config, agregar }); } finally { db.close(); await new Promise(listo => servidor.close(listo)); }
 }
 const escribir = db => async trabajo => enTransaccion(db, trabajo);
 
@@ -151,5 +154,29 @@ test('la sincronización baja las partes de Drive, revisa cada una y el total, e
     const r = await sincronizarFuentes(db, config, { escribir: escribir(db) });
     assert.equal(r.motivo, 'ruta_no_permitida');
     assert.ok(!existsSync(join(carpetaFuentes(config), 'tg.json')));
+  });
+});
+
+// 0.14.17: «fuentes-manifiesto-extra.json» suelto junto a las partes: se baja (también con las partes ya instaladas) y
+// agrega la Materia 1 sin volver a subir el paquete.
+test('0.14.17: el «extra» suelto en «fuentes» se baja junto a las partes (y después, con todo ya instalado) y agrega la materia que falta', async () => {
+  const { leerManifiesto } = await import('../src/academia/fuentes.js');
+  const { partes, indice } = partir(bundle());
+  const extra = { materias: [{ id: 'factores_humanos', num: 1, nombre: 'Factores Humanos (muestra)', temas: [{ id: 't01-vision', titulo: 'Visión', tg: [], lecturas: [{ libro: 'pp-es', archivo: 'libro-pp-es-cap02.txt', desde: 10, hasta: 11 }] }] }] };
+  await conDrive([{ nombre: 'fuentes-v1.json', cuerpo: Buffer.from(JSON.stringify(indice)) }, ...partes.map(p => ({ nombre: p.archivo, cuerpo: p.b }))], async ({ db, config, agregar }) => {
+    assert.equal((await sincronizarFuentes(db, config, { escribir: escribir(db) })).ok, true);
+    assert.deepEqual(estadoFuentes(db).materias, ['sistemas']);
+    // Ya instalado: el dueño sube el extra después.
+    agregar({ nombre: 'fuentes-manifiesto-extra.json', cuerpo: Buffer.from(JSON.stringify(extra)) });
+    const r = await sincronizarFuentes(db, config, { escribir: escribir(db) });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    const e = estadoFuentes(db);
+    assert.equal(e.ok, true);
+    assert.deepEqual(e.extra, ['factores_humanos']);
+    assert.deepEqual(e.materias, ['sistemas', 'factores_humanos']);
+    assert.equal(e.archivo.instalado, indice.sha256_total, 'el paquete no se vuelve a instalar');
+    assert.deepEqual(leerManifiesto(carpetaFuentes(config)).materias.map(m => m.id), ['sistemas', 'factores_humanos']);
+    // Otra vez: nada nuevo.
+    assert.equal((await sincronizarFuentes(db, config, { escribir: escribir(db) })).bajados, 0);
   });
 });
