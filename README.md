@@ -712,6 +712,20 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.17: la fábrica nunca se queda trabada y «Mejorar todo» no espera detrás de ella — sin cambio de base
+- Los pedidos de Haiku (sacar pasajes, verificar) se recortan para caber en el tramo corto de su precio (antes, una lectura
+  de más de ~98 KB se negaba siempre por «llamada_muy_cara» y la materia se quedaba en ese paso); una lectura enorme se saca
+  en trozos (extracto, extracto-2, …). Lo ya hecho antes no se vuelve a pagar.
+- Un paso que se niega 3 veces o que falla sus intentos va a «Pendientes para reintentar»: se reintenta solo con una lectura
+  más corta (cuando la materia no tiene otra cosa, después cada 24 h, hasta 3 veces); si sigue, queda en la lista con su
+  motivo, aviso por Telegram y la materia espera tu revisión. Nunca se borra nada.
+- La mejora profunda trabaja en turnos alternos y siempre que la fábrica espera (su tope, un rechazo, su espera); el panel
+  dice dónde y por qué espera la fábrica. Las materias hechas a mano en uso quedan «ya publicada» todas de una vez.
+- «fuentes-manifiesto-extra.json» (suelto en la carpeta «fuentes» del Drive): agrega materias que el manifiesto no trae
+  (la Materia 1), con el mismo formato de «materias» y temas con «tg»: []. Solo agrega; si está mal, se ignora y se dice.
+- La cobertura del Test Guide se revisa en código («Test Guide cubierto: N de M», con la lista de lo que falta) y la
+  revisión final la busca pregunta por pregunta («falta_tg»). Cada riesgo o ilusión lleva su «Qué hacer» del libro.
+
 ### Lo nuevo de la 0.14.16: el consejo del instructor IA, corto y con botones — sin cambio de base
 
 - El diagnóstico lo hace el CÓDIGO (`src/academia/consejo-ia.js`): los temas flojos con sus números («2/5» = bien de las

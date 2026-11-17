@@ -14,6 +14,7 @@ import { leerFuenteOral } from './fabrica-oral.js';
 import { vistaFabrica, estadoGeneral, estadoMateria, leerConfigFabrica, gastoFabricaMicro, gastoMejoraMesMicro } from './fabrica.js';
 import { crearLector, publicado, estadoProfunda, gastoProfundaMicro, planProfundo } from './fabrica-profunda.js';
 import { leerCambios } from './cambios-ia.js';
+import { coberturaTg } from './cobertura-tg.js';
 import { leerTrabajos, gastoChatMicro } from './pidele.js';
 import { gastoDibujosMicro } from './dibujos-ia.js';
 import { leerConfigIa } from '../ia/config.js';
@@ -104,6 +105,9 @@ export function vistaLoQueHizo(db, config, ahora = Date.now()) {
     if (m.estado === 'revision') falta.push({ clave: 'revision', materia: m.id, num: m.num, nombre: m.nombre, n: m.dudas });
     else if (!['publicada', 'ya_publicada'].includes(m.estado)) falta.push({ clave: 'materia_falta', materia: m.id, num: m.num, nombre: m.nombre, pct: m.pct, temas: m.faltan.length });
   }
+  // 0.14.17: por qué la fábrica no avanza (dónde y el motivo), en vez de solo «va en 62 %».
+  const espera = fab?.general?.espera;
+  if (espera?.motivo && espera.materia) falta.push({ clave: 'fabrica_espera', materia: espera.materia, num: espera.num ?? '', nombre: espera.nombre ?? undefined, tema: espera.titulo ?? espera.tema ?? '', archivo: espera.paso ?? '', motivo: espera.motivo });
   if (fab?.oral?.hay && !fab.oral.activa) falta.push({ clave: 'oral_apagada' });
   for (const c of fab?.oral?.activa ? fab.oral.capitulos : []) {
     if (c.estado === 'revision') falta.push({ clave: 'revision', materia: c.id, num: c.num, nombre: c.nombre, n: c.dudas });
@@ -112,11 +116,16 @@ export function vistaLoQueHizo(db, config, ahora = Date.now()) {
   if (fab?.profunda && !fab.profunda.activa && fab.profunda.falta.temas) falta.push({ clave: 'profunda_apagada', temas: fab.profunda.falta.temas });
   for (const j of trabajos) if (j.estado === 'revision') falta.push({ clave: 'pedido_revision', materia: j.materia, nombre: j.temaTitulo ?? j.materiaNombre });
   for (const x of materiales.slice(0, 20)) falta.push({ ...x, clave: `material_${x.clave}` });
+  // 0.14.17: la cobertura del Test Guide (en código): cada pregunta con su tarjeta que enseña la respuesta.
+  let tgCubierto = { total: 0, cubiertas: 0, faltan: [] };
+  try { tgCubierto = coberturaTg(db, config); } catch { /* sin paquetes */ }
+  for (const x of tgCubierto.faltan.slice(0, 30)) falta.push({ clave: 'tg_sin_cubrir', materia: x.materia, tema: x.titulo, archivo: x.numero });
   return {
     numeros: {
       tg: contar([...MATERIAS]), oral: contar([...MATERIAS_ORAL]), temasMejorados, preguntas, dudasEsperando, dinero,
       etaMs: (fab?.etaMs ?? 0) + (fab?.profunda?.activa ? fab.profunda.falta.etaMs : 0), faltaMicro: (fab?.faltaMicro ?? 0) + (fab?.profunda?.activa ? fab.profunda.falta.micro : 0),
       proveedor: eleccion.ok ? eleccion.proveedor : null, modelo: eleccion.ok ? eleccion.modelo : null, pausada: cfg.pausada,
+      tgCubierto: { total: tgCubierto.total, cubiertas: tgCubierto.cubiertas, faltan: tgCubierto.faltan.length },
     },
     cambios: leerCambios(db).slice(-200).reverse(),
     falta: falta.slice(0, 60),

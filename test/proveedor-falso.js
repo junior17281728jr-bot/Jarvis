@@ -73,7 +73,10 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true }, mod
   const baseSegundo = `http://127.0.0.2:${segundo.address().port}`;
 
   function okAnthropic(escena, cuerpoPedido) {
-    const uso = { ...USO_ANTHROPIC, ...(escena.uso ?? {}) };
+    // 0.14.17: un pedido muy largo (una lectura de >64 KB) dice al menos 1 token cada 30 bytes (si no, liquidar lo vería
+    // «imposible» y pausaría la clave por «costo_mayor»). Los pedidos cortos siguen con 2000 tokens.
+    const largo = cuerpoPedido ? Buffer.byteLength(JSON.stringify(cuerpoPedido)) : 0;
+    const uso = { ...USO_ANTHROPIC, input_tokens: Math.max(USO_ANTHROPIC.input_tokens, Math.ceil(largo / 30)), ...(escena.uso ?? {}) };
     if (escena.tipo === 'geo_us') uso.inference_geo = 'us';
     if (escena.tipo === 'geo_desconocido') uso.inference_geo = 'eu';
     if (escena.tipo === 'geo_raro') uso.inference_geo = 'EU West';

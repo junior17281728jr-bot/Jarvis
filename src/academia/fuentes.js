@@ -24,6 +24,7 @@ import { espacioLibre } from './espacio.js';
 
 export const FORMATO_FUENTES = 'fuentes-academia';
 export const ARCHIVO_MANIFIESTO = 'fuentes-manifiesto.json';
+export const ARCHIVO_EXTRA = 'fuentes-manifiesto-extra.json';
 export const ARCHIVO_TG = 'tg.json';
 export const ARCHIVO_IMAGENES = 'imagenes.json';
 export const CARPETA_EN_DRIVE = 'fuentes';
@@ -242,7 +243,25 @@ export function limpiarManifiesto(m) {
   return { ...m, materias: m.materias.filter(x => !(esObjeto(x) && Array.isArray(x.temas) && x.temas.length === 0)) };
 }
 export function leerManifiesto(dir) {
-  try { return limpiarManifiesto(JSON.parse(readFileSync(join(dir, ARCHIVO_MANIFIESTO), 'utf8'))); } catch { return null; }
+  try { return limpiarManifiesto(unirExtra(dir, JSON.parse(readFileSync(join(dir, ARCHIVO_MANIFIESTO), 'utf8'))).manifiesto); } catch { return null; }
+}
+// 0.14.17: «fuentes-manifiesto-extra.json» (un archivo suelto en la carpeta «fuentes» del Drive, junto a las partes): solo
+// AGREGA materias que el manifiesto no trae (por ejemplo, la Materia 1, cuyo libro ya está en las fuentes), con el mismo
+// formato de «materias» del manifiesto. Sus temas no traen preguntas nuevas del Test Guide (tg: []). Si algo no está bien,
+// se usa el manifiesto solo (y se dice en los errores de las fuentes). → { manifiesto, error, agregadas }
+export function unirExtra(dir, m) {
+  const ruta = join(dir, ARCHIVO_EXTRA);
+  if (!esObjeto(m) || !Array.isArray(m.materias) || !existsSync(ruta)) return { manifiesto: m, error: null, agregadas: [] };
+  let x;
+  try { if (statSync(ruta).size > TOPES_FUENTES.jsonBytes) throw new Error('grande'); x = JSON.parse(readFileSync(ruta, 'utf8')); } catch { return { manifiesto: m, error: 'json_no_valido', agregadas: [] }; }
+  if (!esObjeto(x) || !Array.isArray(x.materias)) return { manifiesto: m, error: 'no_valido', agregadas: [] };
+  const ya = new Set(m.materias.map(z => z?.id));
+  const nuevas = x.materias.filter(z => esObjeto(z) && !ya.has(z.id));
+  if (!nuevas.length) return { manifiesto: m, error: null, agregadas: [] };
+  if (nuevas.some(z => !Array.isArray(z.temas) || z.temas.some(t => !esObjeto(t) || !Array.isArray(t.tg) || t.tg.length))) return { manifiesto: m, error: 'tg_no_vacio', agregadas: [] };
+  const unido = { ...m, materias: [...m.materias, ...nuevas] };
+  if (!revisarManifiesto(limpiarManifiesto(unido)).ok) return { manifiesto: m, error: 'no_valido', agregadas: [] };
+  return { manifiesto: unido, error: null, agregadas: nuevas.map(z => z.id) };
 }
 
 // El estado de las fuentes (lo que vio la última sincronización): { ok, errores, materias, huella, en, faltan, archivos }.
@@ -274,8 +293,12 @@ export function revisarCarpetaFuentes(dir) {
   if (!existsSync(ruta)) return { ...estado, errores: [{ ruta: ARCHIVO_MANIFIESTO, motivo: 'falta' }] };
   let manifiesto;
   try { manifiesto = limpiarManifiesto(JSON.parse(readFileSync(ruta, 'utf8'))); } catch { return { ...estado, errores: [{ ruta: ARCHIVO_MANIFIESTO, motivo: 'json_no_valido' }] }; }
+  const rm0 = revisarManifiesto(manifiesto);
+  if (!rm0.ok) return { ...estado, errores: rm0.errores };
+  // 0.14.17: con el «extra» (materias que el manifiesto no trae), si está bien.
+  const ux = unirExtra(dir, manifiesto);
+  manifiesto = limpiarManifiesto(ux.manifiesto);
   const rm = revisarManifiesto(manifiesto);
-  if (!rm.ok) return { ...estado, errores: rm.errores };
   let tg;
   try { if (statSync(join(dir, ARCHIVO_TG)).size > TOPES_FUENTES.jsonBytes) throw new Error('grande'); tg = JSON.parse(readFileSync(join(dir, ARCHIVO_TG), 'utf8')); } catch { return { ...estado, errores: [{ ruta: ARCHIVO_TG, motivo: 'falta' }] }; }
   const rt = revisarTg(tg, manifiesto);
@@ -287,8 +310,10 @@ export function revisarCarpetaFuentes(dir) {
   for (const m of manifiesto.materias) for (const t of m.temas) for (const l of t.lecturas) if (!existsSync(join(dir, l.archivo))) faltan.add(l.archivo);
   for (const q of rt.porId.values()) if (q.figura && !existsSync(join(dir, q.figura))) faltan.add(q.figura);
   prepararPorTema(dir, manifiesto, rt.porId, ri.lista.filter(x => existsSync(join(dir, x.archivo))));
+  const extraErr = ux.error ? [{ ruta: ARCHIVO_EXTRA, motivo: ux.error }] : [];
   return {
-    ok: true, errores: ri.errores, materias: rm.materias, huella: huellaTexto(readFileSync(ruta)) .slice(0, 32),
+    ok: true, errores: [...ri.errores, ...extraErr], materias: rm.materias, huella: huellaTexto(Buffer.concat([readFileSync(ruta), existsSync(join(dir, ARCHIVO_EXTRA)) ? readFileSync(join(dir, ARCHIVO_EXTRA)) : Buffer.alloc(0)])).slice(0, 32),
+    ...(ux.agregadas.length ? { extra: ux.agregadas } : {}),
     faltan: [...faltan].slice(0, 50), oral: existsSync(join(dir, 'oral', 'oral.json')),
   };
 }
@@ -297,7 +322,7 @@ export function revisarCarpetaFuentes(dir) {
 // Busca la carpeta «fuentes» (hasta 3 niveles bajo la carpeta del dueño), la lista con sus subcarpetas (una, «oral» u
 // otras) y baja lo que cambió (por la fecha que muestra Drive). Nunca borra nada; un archivo nuevo pisa al de antes del
 // mismo nombre solo cuando terminó de bajar bien. → { ok, motivo?, bajados, errores }.
-const NOMBRE_PERMITIDO = n => n === ARCHIVO_MANIFIESTO || n === ARCHIVO_TG || n === ARCHIVO_IMAGENES || n === 'oral.json'
+const NOMBRE_PERMITIDO = n => n === ARCHIVO_MANIFIESTO || n === ARCHIVO_EXTRA || n === ARCHIVO_TG || n === ARCHIVO_IMAGENES || n === 'oral.json'
   || LIBRO_TXT.test(n) || ORAL_TXT.test(n) || IMAGEN_LIBRO.test(n) || FIGURA_TG.test(n);
 const topeDeNombre = n => (n.endsWith('.txt') ? TOPES_FUENTES.txtBytes : n.endsWith('.json') ? TOPES_FUENTES.jsonBytes : FIGURA_TG.test(n) ? TOPES_FUENTES.figuraBytes : TOPES_FUENTES.imagenBytes);
 export const INDICE_PARTES = /^fuentes-v(\d{1,4})\.json$/;
@@ -466,8 +491,22 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
   if (!r.ok) return mal(r.motivo);
   const indice = r.indice;
   total = indice.partes.length;
+  // 0.14.17: el «fuentes-manifiesto-extra.json» suelto (junto a las partes): se baja si cambió (por su fecha en Drive).
+  let extraNuevo = false;
+  const ax = archivos.find(a => a.nombre === ARCHIVO_EXTRA);
+  if (ax && !(anterior.extraDrive && anterior.extraDrive === (ax.modificado ?? null) && existsSync(join(dir, ARCHIVO_EXTRA)))) {
+    const destino = join(dir, ARCHIVO_EXTRA);
+    const b = await bajarArchivo(ax.id, { bases, ruta: `${destino}.drive.part`, tope: TOPES_FUENTES.jsonBytes, senal });
+    if (b.ok) { renameSync(`${destino}.drive.part`, destino); extraNuevo = true; }
+  }
+  const extraDrive = ax ? (ax.modificado ?? null) : null;
   if (anterior.archivo?.instalado === indice.sha256_total) {
-    if (anterior.ok) return { ok: true, bajados: 0, errores: [], estado: anterior };
+    if (anterior.ok && !extraNuevo) return { ok: true, bajados: 0, errores: [], estado: anterior };
+    if (extraNuevo) {
+      hechas = total;
+      const estado = await guardar({ ...anterior.archivo, ok: true }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive });
+      return { ok: true, bajados: 1, errores: [], estado };
+    }
     // Instalado pero la revisión no dio bien (o el estado se perdió): se revisa otra vez lo que ya está en la carpeta.
     hechas = total;
     const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: anterior.archivo.archivos ?? null }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {} });
@@ -499,7 +538,7 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
   if (senal?.aborted || quedaMs() < RESERVA_INSTALAR_MS) return parcial(bajados, 'instalando');
   const inst = await instalarPartes(dir, indice);
   if (!inst.ok) return mal(inst.motivo);
-  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {} });
+  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive });
   return { ok: true, bajados, errores: [], estado };
 }
 export async function sincronizarFuentes(db, config, { escribir, senal = null, quedaMs = () => Infinity } = {}) {

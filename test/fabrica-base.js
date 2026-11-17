@@ -90,10 +90,13 @@ export function textoDelPedido(cuerpo) {
 const datosDe = texto => { const m = [...texto.matchAll(/<datos>\n([\s\S]*?)\n<\/datos>/g)].at(-1); return m ? JSON.parse(m[1]) : {}; };
 // 0.14.2: chat(d): lo que «responde» la IA en «Pídele a la IA» (si no, un plan para reescribir el primer tema);
 // sinDibujo: tarjetas sin foto ni dibujo y sin números (para los «Dibujos con IA»); revision(d): lo que mira Claude.
-export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null } = {}) {
+export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null, antes = null } = {}) {
   const opciones = { dudasProfunda, veredicto, dudasFinal };
   const texto = textoDelPedido(cuerpo);
   const d = datosDe(texto);
+  // 0.14.17: antes(texto, d, cuerpo): una respuesta propia de la prueba (undefined = la de siempre).
+  const propia = antes ? antes(texto, d, cuerpo) : undefined;
+  if (propia !== undefined) return propia;
   if (texto.startsWith(TAREA_CHAT)) {
     if (chat) return chat(d);
     const m = d.materias[0];
@@ -205,10 +208,10 @@ export async function ponerChatGpt(base, { proveedor = 'openai', claudeBloqueada
   if (claudeBloqueada && secretoId) anotarPrueba(db, { id: secretoId, motivo: 'verificacion_identidad', ahora });
   return id;
 }
-export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null } = {}) {
+export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null, antes = null } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
-  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision, veredicto, dudasFinal };
+  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision, veredicto, dudasFinal, antes };
   const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo, opciones) });
   const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base, propia: falso.base }, ahora: T0 });
   const { db, config } = base;

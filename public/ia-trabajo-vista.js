@@ -58,6 +58,8 @@ export function pantallaLoQueHizo(d, h) {
       cifra(h, h.numero(n.temasMejorados), t('iahizo.cifra.temas')),
       cifra(h, `${h.numero(n.preguntas.conExplicacion)}/${h.numero(n.preguntas.tg)}`, t('iahizo.cifra.preguntas')),
       cifra(h, h.numero(n.dudasEsperando), t('iahizo.cifra.dudas')),
+      // 0.14.17: «Test Guide cubierto: N de 745» (revisado en código, pregunta por pregunta).
+      n.tgCubierto?.total ? cifra(h, `${h.numero(n.tgCubierto.cubiertas)} / ${h.numero(n.tgCubierto.total)}`, t('iahizo.cifra.tg_cubierto')) : null,
       cifra(h, horas(n.etaMs), t('iahizo.cifra.eta'), n.faltaMicro ? t('iahizo.cifra.falta_dinero', { usd: usd(n.faltaMicro) }) : null)),
     el('h4', { texto: t('iahizo.dinero') }),
     el('ul', { class: 'lista-simple chica' },

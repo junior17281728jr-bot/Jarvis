@@ -4662,5 +4662,17 @@
   "carrera.tabla_sub": "Who's ahead, by % of all Test Guide topics.",
   "carrera.mis_numeros_sub": "Just yours: streak, topics, grade and time.",
   "carrera.mi_avance_sub": "How far you are in each subject.",
-  "listo2.sub": "By subject: how much you get right, how much you've seen and what you're missing."
+  "listo2.sub": "By subject: how much you get right, how much you've seen and what you're missing.",
+  "fabrica.pendientes.titulo": "Pending retries",
+  "fabrica.pendientes.esperando": "«{tema}», step {paso}: will retry on its own with a shorter reading (attempt {intentos} of {de}) — reason: {motivo}",
+  "fabrica.pendientes.reintentando": "«{tema}», step {paso}: retrying now (attempt {intentos} of {de}) — previous reason: {motivo}",
+  "fabrica.pendientes.agotada": "«{tema}», step {paso}: still failing after {de} retries — reason: {motivo}. Left as a doubt for your review.",
+  "fabrica.profunda.esperando_fabrica": "The factory is stuck at Subject {num} {nombre} («{tema}», step {paso}) — reason: {motivo}. The deep improvement keeps going on alternate turns.",
+  "fabrica.espera.llamada_muy_cara": "one request cost more than allowed per call (the reading is trimmed; if it persists, it is retried later)",
+  "telegram.aviso.fabrica_pendiente.titulo": "A factory step did not work",
+  "telegram.aviso.fabrica_pendiente.texto": "In the subject «{materia}» a step still fails after 3 retries: see Content → Subject factory («Pending retries»).",
+  "aviso.fabrica_pendiente": "In the subject «{materia}» a step still fails after 3 retries («Pending retries»).",
+  "iahizo.cifra.tg_cubierto": "Test Guide covered (each question with its card)",
+  "iahizo.falta.tg_sin_cubrir": "Subject {materia} · «{tema}»: Test Guide question {archivo} has no card teaching its answer (the final review fixes it).",
+  "iahizo.falta.fabrica_espera": "The factory is waiting at Subject {num} · {nombre} («{tema}», step {archivo}) — reason: {motivo}"
 }

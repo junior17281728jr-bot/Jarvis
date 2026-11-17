@@ -58,6 +58,9 @@ export function pantallaFabrica(d, h) {
     el('h3', { texto: oral ? t(m.num === 9 ? 'fabrica.oral.escenarios' : 'fabrica.oral.capitulo', { num: m.num, nombre: m.nombre }) : t('fabrica.materia', { num: m.num, nombre: m.nombre }) }),
     // 0.13.1: los temas que ya están publicados (por ejemplo, hechos a mano) se saltan, tema por tema.
     oral && m.yaPublicados ? el('p', { class: 'suave chica', texto: t('fabrica.oral.saltados', { n: m.yaPublicados, de: m.temas }) }) : null,
+    // 0.14.17: «Pendientes para reintentar» (un paso que no salió: se reintenta solo con otra estrategia).
+    m.pendientes?.length ? el('div', { class: 'aviso chica' }, el('strong', { texto: t('fabrica.pendientes.titulo') }),
+      el('ul', {}, m.pendientes.map(x => el('li', { texto: t(`fabrica.pendientes.${x.estado}`, { tema: x.titulo ?? x.tema, paso: x.paso, motivo: h.tSi(`fabrica.espera.${x.motivo}`, h.tSi(`ia.motivo.${x.motivo}`, x.motivo)), intentos: x.intentos ?? 0, de: 3 }) })))) : null,
     el('p', {}, h.insignia(LISTAS.includes(m.estado) ? 'bien' : m.estado === 'revision' ? 'mal' : 'neutro', h.tSi(`fabrica.estado.${m.estado}`, m.estado)),
       m.temaN ? el('span', { class: 'suave chica', texto: ` ${t('fabrica.tema_de', { n: m.temaN, total: m.temas })}` }) : null),
     el('progress', { max: 100, value: m.pct, 'aria-label': t('fabrica.hecho_pct', { pct: m.pct }) }),
@@ -138,6 +141,8 @@ function seccionProfunda(d, h, { accion }) {
     el('p', { class: 'suave', texto: t('fabrica.profunda.linea') }),
     el('p', {}, h.insignia(p.activa ? 'bien' : 'apagado', p.activa ? t('fabrica.profunda.encendida') : t('fabrica.profunda.apagada')),
       motivo && p.activa ? el('span', { class: 'suave', texto: ` · ${h.tSi(`fabrica.espera.${motivo}`, h.tSi(`ia.motivo.${motivo}`, motivo))}` }) : null),
+    // 0.14.17: si la fábrica está trabada, dónde y por qué (la mejora profunda sigue igual, en otro turno).
+    p.activa && p.fabrica ? el('p', { class: 'aviso chica', texto: t('fabrica.profunda.esperando_fabrica', { num: p.fabrica.num ?? '', nombre: p.fabrica.nombre ?? p.fabrica.materia, tema: p.fabrica.tema ?? '', paso: p.fabrica.paso ?? '', motivo: h.tSi(`fabrica.espera.${p.fabrica.motivo}`, h.tSi(`ia.motivo.${p.fabrica.motivo}`, p.fabrica.motivo)) }) }) : null,
     el('p', { class: 'fuerte', texto: f.temas ? estimado : t('fabrica.profunda.nada') }),
     el('p', { class: 'suave chica', texto: t('fabrica.profunda.gasto', { gasto: usd(p.gastoMicro), tope: usd(p.topeMicro) }) }),
     el('p', { class: 'suave chica', texto: t('fabrica.profunda.orden') }),

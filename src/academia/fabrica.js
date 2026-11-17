@@ -33,7 +33,7 @@ import { reservaMicro } from '../ia/precios.js';
 import { PROPOSITOS, PROPOSITOS_FABRICA, PROPOSITOS_MEJORA, PROPOSITOS_PROFUNDA, PROPOSITOS_CHAT, PROPOSITOS_DIBUJO, PROPOSITOS_APP } from '../ia/propositos.js';
 import { mesCobro } from '../tareas/tiempo.js';
 import { mejorar } from './fabrica-mejora.js';
-import { profundizar, vistaProfunda } from './fabrica-profunda.js';
+import { profundizar, vistaProfunda, publicado, crearLector } from './fabrica-profunda.js';
 import { dibujar } from './dibujos-ia.js';
 import { atenderChat } from './pidele.js';
 import { mejorarApp } from './app-mejora.js';
@@ -57,7 +57,42 @@ export const T = Object.freeze({
   reintentarFuentesMs: 3 * 60_000, // 0.14.13: sin las fuentes y con un corte pasajero, se reintenta a los 3 min (no cada hora)
   margenGeneral: 0.2, // la fábrica deja siempre libre el 20 % del tope general del mes (para los alumnos)
   paqueteMaxBytes: 4 * 1024 * 1024,
+  // 0.14.17: Haiku 5.5 cobra el «tramo largo» con más de 100 000 tokens de entrada (y la reserva cuenta 1 byte = 1 token):
+  // un pedido de verificar o sacar pasajes más largo que esto se negaba SIEMPRE («llamada_muy_cara») y la fábrica se
+  // quedaba parada en ese paso para siempre. Ahora la lectura se recorta (por bytes) para que el pedido entero quepa, y
+  // una lectura enorme se saca en trozos (extracto, extracto-2, …).
+  haikuPedidoMaxBytes: 98_000, extractoTrozoBytes: 78_000,
+  // 0.14.17: un paso que se niega por su tamaño o su precio 3 veces, o que falla sus intentos, NO frena la materia: queda
+  // en «Pendientes para reintentar» y se vuelve a probar con otra estrategia (lectura más corta) cuando la materia no tiene
+  // otra cosa que hacer y después cada 24 h, hasta 3 veces. Solo entonces queda en la lista con su motivo (y aviso).
+  rechazosMax: 3, reintentos: 3, reintentarMs: 24 * 3_600_000,
 });
+// 0.14.17: lo que se niega igual cada vez (no es una espera: esperar no lo arregla).
+const RECHAZOS_FIJOS = new Set(['llamada_muy_cara']);
+const ESPERAS_PASAJERAS = new Set(['sobrecargado', 'error_proveedor', 'sin_red', 'tiempo_agotado', 'limite_proveedor', 'base_ocupada', 'interrumpida']);
+// 0.14.17: un texto cortado a lo más «max» bytes UTF-8 (nunca a la mitad de una letra).
+export function cortarBytes(texto, max) {
+  const b = Buffer.from(String(texto));
+  if (b.length <= max) return String(texto);
+  if (max <= 0) return '';
+  let n = max;
+  while (n > 0 && (b[n] & 0xc0) === 0x80) n -= 1;
+  return b.subarray(0, n).toString('utf8');
+}
+// 0.14.17: los trozos de una lectura larga (cada uno de a lo más «max» bytes, cortando en un salto de línea si se puede).
+export function trozosDe(texto, max) {
+  const out = [];
+  let resto = String(texto);
+  while (Buffer.byteLength(resto) > max) {
+    let t = cortarBytes(resto, max);
+    const corte = t.lastIndexOf('\n');
+    if (corte > t.length / 2) t = t.slice(0, corte + 1);
+    out.push(t);
+    resto = resto.slice(t.length);
+  }
+  if (resto.length || !out.length) out.push(resto);
+  return out;
+}
 const ESTADOS_LISTOS = new Set(['publicada', 'revision', 'ya_publicada']);
 const iso = ms => new Date(ms).toISOString();
 const corto = (t, n = 16) => createHash('sha256').update(String(t)).digest('hex').slice(0, n);
@@ -163,10 +198,17 @@ export function planDeTrabajo(db, config) {
   if (!man || !fuentes?.ok) return { fuentes: Boolean(fuentes?.ok), materias: [], oral: { hay: Boolean(fuentes?.oral), activa: false, ok: false, errores: [], capitulos: [] } };
   const enUso = leerEnUso(db);
   const propias = new Set();
+  const lector = crearLector(config);
   const materias = [...man.materias].sort((a, b) => MATERIAS.indexOf(a.id) - MATERIAS.indexOf(b.id)).map(m => {
     const e = estadoMateria(db, m.id);
     if (e.version) propias.add(e.version);
-    const publicadaFuera = enUso.some(x => x.id !== e.version && !(e.versiones ?? []).includes(x.id) && (x.materias ?? []).includes(m.id));
+    const deFabrica = id => id === e.version || (e.versiones ?? []).includes(id);
+    let publicadaFuera = enUso.some(x => !deFabrica(x.id) && (x.materias ?? []).includes(m.id));
+    // 0.14.17: también una versión en uso sin su lista de materias (la de antes, «todas»): se mira lo que trae el paquete
+    // (hecho a mano: Comunicación, Meteorología, …). Solo mientras la materia no está lista (después no se vuelve a leer).
+    if (!publicadaFuera && !ESTADOS_LISTOS.has(e.estado)) {
+      try { publicadaFuera = Boolean(publicado(db, config, m.id, lector)?.filas?.some(f => !deFabrica(f.id))); } catch { publicadaFuera = false; }
+    }
     return { id: m.id, num: m.num, nombre: m.nombre, temas: m.temas.map(t => ({ id: t.id, titulo: t.titulo, tg: t.tg.length })), yaPublicada: publicadaFuera, estado: e };
   });
   return { fuentes: true, materias, oral: planOral(db, config, dir) };
@@ -197,9 +239,14 @@ const leerDe = (db, materia, gen, tema) => paso => leerSalida(db, materia, gen, 
 // Los pasos de un tema, según lo ya guardado (el plan dice cuántas tarjetas). → [{ paso, tipo, ... }]
 export function pasosDeTema(db, materia, gen, tema, { largo, preguntas }) {
   const pasos = [];
-  if (largo > T.lecturaDirectaBytes) pasos.push({ paso: 'extracto', proposito: 'fabrica_verificar', tipo: 'extracto' });
-  pasos.push({ paso: 'plan', proposito: 'fabrica_escribir', tipo: 'plan' });
   const plan = leerSalida(db, materia, gen, tema, 'plan');
+  if (largo > T.lecturaDirectaBytes) {
+    // 0.14.17: una lectura enorme se saca en trozos (cada pedido cabe en el tramo corto de Haiku). Un tema cuyo plan ya se
+    // escribió con un solo extracto (antes de la 0.14.17) sigue así (nunca se vuelve a pagar lo hecho).
+    const n = plan?.json || plan?.fallido ? 1 : Math.max(1, Math.ceil(largo / T.extractoTrozoBytes));
+    for (let i = 0; i < n; i++) pasos.push({ paso: i ? `extracto-${i + 1}` : 'extracto', proposito: 'fabrica_verificar', tipo: 'extracto', trozo: i, trozos: n });
+  }
+  pasos.push({ paso: 'plan', proposito: 'fabrica_escribir', tipo: 'plan' });
   const n = plan?.fallido ? 0 : plan?.json?.tarjetas?.length ?? 6;
   for (let i = 0; i < Math.ceil(n / T.tarjetasPorPaso); i++) pasos.push({ paso: `tarjetas-${i + 1}`, proposito: 'fabrica_escribir', tipo: 'tarjetas', desde: i * T.tarjetasPorPaso, estimado: !plan });
   for (let i = 0; i < Math.ceil(preguntas / T.preguntasPorPaso); i++) pasos.push({ paso: `preguntas-${i + 1}`, proposito: 'fabrica_escribir', tipo: 'preguntas', desde: i * T.preguntasPorPaso });
@@ -221,14 +268,40 @@ function contexto(dir, man, m, t) {
 const tgParaModelo = qs => qs.map(q => ({ id: q.id, enunciado: q.enunciado, opciones: q.opciones, correcta: q.correcta, explicacion: q.explicacion }));
 const fotosParaModelo = imgs => imgs.filter(x => x.libro).map(x => ({ archivo: x.archivo, libro: x.libro, pagina: x.pagina, pie: x.pie }));
 
+// 0.14.17: los pasajes de todos los trozos del extracto (null si no hay ninguno).
+function pasajesDe(db, materia, gen, tema) {
+  const out = [];
+  let hay = false;
+  for (let i = 1; i < 40; i++) {
+    const s = leerSalida(db, materia, gen, tema, i === 1 ? 'extracto' : `extracto-${i}`);
+    if (!s) { if (i > 1) break; continue; }
+    if (s.json?.pasajes) { hay = true; out.push(...s.json.pasajes); }
+  }
+  return hay ? out : null;
+}
+// 0.14.17: un pedido de Haiku (verificar, sacar pasajes) con la lectura recortada para que el pedido ENTERO quepa en el
+// tramo corto (nivel: la estrategia de un reintento: la mitad de la lectura cada vez).
+function pedidoHaiku(arma, lectura, nivel = 0) {
+  const vacio = arma('');
+  const resto = Buffer.byteLength(vacio.sistema) + Buffer.byteLength(vacio.texto) + Buffer.byteLength(JSON.stringify(vacio.esquema));
+  const cabe = Math.floor(Math.max(0, T.haikuPedidoMaxBytes - resto) / 2 ** nivel);
+  return arma(cortarBytes(lectura, cabe));
+}
 function pedidoDe(db, c, materia, gen, t, p) {
-  const extracto = leerSalida(db, materia, gen, t.id, 'extracto')?.json?.pasajes;
-  const lectura = extracto ? extracto.map(x => `[${c.titulos.get(x.libro) ?? x.libro}, p. ${x.pagina}]\n${x.texto}`).join('\n\n') : c.texto;
+  const nivel = p.nivel ?? 0;
+  const extracto = pasajesDe(db, materia, gen, t.id);
+  let lectura = extracto ? extracto.map(x => `[${c.titulos.get(x.libro) ?? x.libro}, p. ${x.pagina}]\n${x.texto}`).join('\n\n') : c.texto;
+  // Un reintento de un paso que falló: la lectura más corta (otra estrategia).
+  if (nivel > 0 && p.tipo !== 'verificar' && p.tipo !== 'extracto') lectura = cortarBytes(lectura, Math.floor(PROPOSITOS.fabrica_escribir.entradaMaxBytes / 2 ** (nivel + 1)));
   const sistema = `${REGLAS_ESCRITURA}\n\nTEMA: ${t.titulo}\n\nLECTURA DEL LIBRO (con sus páginas):\n${datos(lectura)}`;
   const plan = leerSalida(db, materia, gen, t.id, 'plan')?.json?.tarjetas ?? [];
   const tg = tgParaModelo(c.preguntas);
   switch (p.tipo) {
-    case 'extracto': return { sistema: `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA:\n${datos(c.texto.slice(0, T.verificarBytes))}`, texto: `${TAREAS.extracto}\n${datos({ tema: t.titulo, test_guide: tg })}`, esquema: ESQUEMAS.extracto };
+    case 'extracto': {
+      const trozo = trozosDe(c.texto, T.extractoTrozoBytes)[p.trozo ?? 0] ?? '';
+      const nombre = (p.trozos ?? 1) > 1 ? `LECTURA (parte ${(p.trozo ?? 0) + 1} de ${p.trozos})` : 'LECTURA COMPLETA';
+      return pedidoHaiku(l => ({ sistema: `${REGLAS_VERIFICACION}\n\n${nombre}:\n${datos(l)}`, texto: `${TAREAS.extracto}\n${datos({ tema: t.titulo, test_guide: tg })}`, esquema: ESQUEMAS.extracto }), trozo, nivel);
+    }
     case 'plan': return { sistema, texto: `${TAREAS.plan}\n${datos({ test_guide: tg, fotos_del_libro: fotosParaModelo(c.imagenes) })}`, esquema: ESQUEMAS.plan };
     case 'tarjetas': {
       const parte = plan.slice(p.desde, p.desde + T.tarjetasPorPaso);
@@ -243,7 +316,8 @@ function pedidoDe(db, c, materia, gen, t, p) {
     case 'extra': return { sistema, texto: `${TAREAS.extra}\n${datos({ ya_en_el_tema: plan.map(x => x.titulo), test_guide: tg.map(q => q.enunciado) })}`, esquema: ESQUEMAS.extra };
     case 'verificar': {
       const contenido = contenidoParaVerificar(db, materia, gen, t.id, c.preguntas);
-      return { sistema: `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA:\n${datos(c.texto.slice(0, T.verificarBytes))}`, texto: `${TAREAS.verificar}\n${datos({ clave_test_guide: tg.map(q => ({ id: q.id, correcta: q.opciones[q.correcta] })), contenido })}`, esquema: ESQUEMAS.verificar };
+      // 0.14.17: contra los pasajes que usó el que escribió (si hay), y siempre dentro del tramo corto de Haiku.
+      return pedidoHaiku(l => ({ sistema: `${REGLAS_VERIFICACION}\n\n${extracto ? 'PASAJES DEL LIBRO' : 'LECTURA COMPLETA'}:\n${datos(l)}`, texto: `${TAREAS.verificar}\n${datos({ clave_test_guide: tg.map(q => ({ id: q.id, correcta: q.opciones[q.correcta] })), contenido })}`, esquema: ESQUEMAS.verificar }), lectura, nivel);
     }
     default: throw new Error('paso desconocido');
   }
@@ -453,6 +527,8 @@ export function armarPaquete(db, config, man, m, gen, ahora) {
     const v = leerSalida(db, m.id, gen, t.id, 'verificar');
     for (const d of v?.json?.dudas ?? []) dudasTema.push({ donde: String(d.donde).slice(0, 200), problema: String(d.problema).slice(0, 400), gravedad: d.gravedad });
     for (const paso of ['plan', 'cierre', 'extra', 'verificar']) if (leerSalida(db, m.id, gen, t.id, paso)?.fallido) dudasTema.push({ donde: t.titulo, problema: `paso_fallido:${paso}`, gravedad: 'error' });
+    // 0.14.17: un paso de tarjetas o de preguntas que se saltó (pendiente agotado): nunca se publica solo sin él.
+    for (let i = 1; i < 40; i++) for (const tipo of ['tarjetas', 'preguntas']) if (leerSalida(db, m.id, gen, t.id, `${tipo}-${i}`)?.saltado) dudasTema.push({ donde: t.titulo, problema: `paso_fallido:${tipo}-${i}`, gravedad: 'error' });
     dudas.push(...dudasTema.map(d => ({ ...d, tema: t.id })));
     temas.push({ id: t.id, titulo: t.titulo, secciones: secciones.length ? secciones : [{ titulo: t.titulo, texto: t.titulo, fuentes: fuenteTema }], reexplicacion, preguntas: c.preguntas.filter(q => ad.get(q.id)).map(q => `tg-${q.id}`) });
   });
@@ -641,25 +717,56 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       return fin({ motivo: 'sin_fuentes' });
     }
     if (cfg.pausada) return fin({ motivo: 'pausada' });
-    if (g.esperaHasta && Date.parse(g.esperaHasta) > ahora) return fin({ motivo: 'esperando', hasta: g.esperaHasta });
+    // 0.14.17: la mejora profunda («Mejorar todo con Claude») NUNCA espera detrás de la fábrica: cuando la fábrica no puede
+    // llamar (su tope, un paso que se niega, su espera) o cada otro turno, se le da el paso a ella. Si tampoco tiene nada
+    // que hacer, sigue lo de siempre (nunca da vueltas sin hacer nada).
+    const turnoProfunda = async () => {
+      if (!cfg.profunda?.activa) return null;
+      const pr = await profundizar(ctx, { ahora, cfg, man });
+      if (pr.trabajo && pr.seguir) return { punto: {}, esperarMs: pr.esperarMs ?? 1000 };
+      return null;
+    };
+    if (g.esperaHasta && Date.parse(g.esperaHasta) > ahora) {
+      const pr = ESPERAS_PASAJERAS.has(g.espera?.motivo) ? null : await turnoProfunda();
+      if (pr) return pr;
+      return fin({ motivo: 'esperando', hasta: g.esperaHasta });
+    }
     // 2. La próxima cosa por hacer (desde lo guardado).
     const plan = planDeTrabajo(db, config);
+    // 0.14.17: las materias con un paquete hecho a mano en uso quedan «ya publicada» TODAS de una vez (antes, una por
+    // paso y solo al llegar a ellas: detrás de una materia trabada se veían en 0 %).
+    const yaHechas = plan.materias.filter(pm => pm.yaPublicada && !ESTADOS_LISTOS.has(pm.estado.estado));
+    if (yaHechas.length) {
+      await ctx.escribir(() => { for (const pm of yaHechas) guardarMateria(db, pm.id, { ...estadoMateria(db, pm.id), estado: 'ya_publicada' }); });
+      return { punto: {}, esperarMs: 1000 };
+    }
     let trabajo = null;
+    let aparcada = null; // 0.14.17: una materia que solo espera sus «Pendientes para reintentar»
+    const buscar = (m, e, temas, pasosDe, cx, extra = {}) => {
+      for (const t of temas) {
+        const c = cx(t);
+        if (!c.lectura.partes.length) continue;
+        for (const p of pasosDe(t, c)) {
+          const s = leerSalida(db, m.id, e.gen, t.id, p.paso);
+          if (!hecho(s)) return { m, e, t, c, p: { ...p, nivel: s?.reintento?.nivel ?? 0 }, ...extra };
+        }
+      }
+      // Todo hecho salvo lo que espera reintentarse: se reintenta lo que ya toca; si no, la materia queda aparcada.
+      const pend = (e.pendientes ?? []).filter(x => x.estado === 'esperando');
+      if (pend.length) {
+        const toca = pend.find(x => Date.parse(x.reintentarEn) <= ahora);
+        if (toca) return { m, e, reabrir: toca, ...extra };
+        aparcada ??= { m, e, reabrir: pend[0], ...extra };
+        return null;
+      }
+      return { m, e, armar: true, ...extra };
+    };
     for (const pm of plan.materias) {
       const m = man.materias.find(x => x.id === pm.id);
       const e = pm.estado;
       if (ESTADOS_LISTOS.has(e.estado)) continue;
-      if (pm.yaPublicada) { await ctx.escribir(() => guardarMateria(db, m.id, { ...e, estado: 'ya_publicada' })); return { punto: {}, esperarMs: 1000 }; }
-      for (const t of m.temas) {
-        const c = contexto(carpetaFuentes(config), man, m, t);
-        if (!c.lectura.partes.length) continue;
-        for (const p of pasosDeTema(db, m.id, e.gen, t.id, { largo: c.largo, preguntas: c.preguntas.length })) {
-          if (!hecho(leerSalida(db, m.id, e.gen, t.id, p.paso))) { trabajo = { m, e, t, c, p }; break; }
-        }
-        if (trabajo) break;
-      }
-      if (!trabajo) { trabajo = { m, e, armar: true }; }
-      break;
+      trabajo = buscar(m, e, m.temas, (t, c) => pasosDeTema(db, m.id, e.gen, t.id, { largo: c.largo, preguntas: c.preguntas.length }), t => contexto(carpetaFuentes(config), man, m, t));
+      if (trabajo) break;
     }
     // 0.13.1: con el Test Guide terminado (o en revisión) y la pista oral encendida, sus capítulos (tema por tema).
     if (!trabajo && cfg.oral && plan.oral.ok) {
@@ -670,18 +777,12 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
         const cap = fuente.capitulos.find(x => x.id === pc.id);
         const quedan = cap.temas.filter(t => !pc.temas.find(x => x.id === t.id)?.yaPublicado);
         if (!quedan.length) { await ctx.escribir(() => guardarMateria(db, cap.id, { ...e, estado: 'ya_publicada' })); return { punto: {}, esperarMs: 1000 }; }
-        for (const t of quedan) {
-          const c = contextoOral(carpetaFuentes(config), fuente, cap, t);
-          if (!c.lectura.partes.length) continue;
-          for (const p of pasosDeTemaOral(leerDe(db, cap.id, e.gen, t.id), t)) {
-            if (!hecho(leerSalida(db, cap.id, e.gen, t.id, p.paso))) { trabajo = { m: cap, e, t, c, p, oral: true }; break; }
-          }
-          if (trabajo) break;
-        }
-        if (!trabajo) trabajo = { m: cap, e, armar: true, oral: true, fuente, quedan };
-        break;
+        trabajo = buscar(cap, e, quedan, t => pasosDeTemaOral(leerDe(db, cap.id, e.gen, t.id), t), t => contextoOral(carpetaFuentes(config), fuente, cap, t), { oral: true, fuente, quedan });
+        if (trabajo) break;
       }
     }
+    // 0.14.17: no queda otra cosa: se reintenta ya lo pendiente (con la estrategia siguiente), sin esperar las 24 h.
+    if (!trabajo && aparcada) trabajo = aparcada;
     if (!trabajo) {
       // Todo hecho: «Terminada» (cero llamadas). Solo queda la mejora continua (una vez por semana y con evidencia).
       if (!g.terminada) await ctx.escribir(() => guardarGeneral(db, { terminada: true, terminadaEn: iso(ahora), espera: null }));
@@ -706,10 +807,20 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     }
     if (g.terminada) await ctx.escribir(() => guardarGeneral(db, { terminada: false }));
     const { m, e } = trabajo;
+    if (trabajo.reabrir) {
+      await ctx.escribir(() => reabrirPendiente(db, m.id, trabajo.reabrir, ahora));
+      return { punto: {}, esperarMs: 1000 };
+    }
     if (trabajo.armar) {
       if (trabajo.oral) await armarOral(ctx, trabajo.fuente, m, e, trabajo.quedan, ahora);
       else await armar(ctx, man, m, e, ahora);
       return { punto: {}, esperarMs: 1000 };
+    }
+    // 0.14.17: un turno sí y otro no, la mejora profunda (si está encendida y tiene algo que hacer).
+    if (cfg.profunda?.activa && g.turno !== 'profunda') {
+      await ctx.escribir(() => guardarGeneral(db, { turno: 'profunda' }));
+      const pr = await turnoProfunda();
+      if (pr) return pr;
     }
     // 3. UNA llamada (si se puede).
     const { t, c, p } = trabajo;
@@ -719,12 +830,13 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
     const bytes = Buffer.byteLength(pedido.sistema) + Buffer.byteLength(pedido.texto) + Buffer.byteLength(JSON.stringify(pedido.esquema));
     const puede = puedeLlamar(db, config, { proposito: p.proposito, bytes, ahora, topeMicro: cfg.topeMicro, gastado: gastoFabricaMicro(db) });
     const clave = claveSalida(m.id, e.gen, t.id, p.paso);
+    const donde = { materia: m.id, num: m.num, nombre: m.nombre, tema: t.id, titulo: t.titulo, paso: p.paso };
     if (!puede.ok) {
-      if (puede.motivo === 'demasiado_largo') {
-        await ctx.escribir(() => guardarAjuste(db, clave, JSON.stringify({ fallido: true, motivo: 'demasiado_largo', en: iso(ahora) })));
-        return { punto: {}, esperarMs: 1000 };
-      }
-      await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: puede.motivo, en: iso(ahora) } }));
+      if (puede.motivo === 'demasiado_largo') return saltar(ctx, trabajo, clave, 'demasiado_largo', ahora);
+      if (RECHAZOS_FIJOS.has(puede.motivo)) return rechazo(ctx, trabajo, clave, puede.motivo, ahora, donde);
+      await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: puede.motivo, en: iso(ahora), ...donde } }));
+      const pr = await turnoProfunda();
+      if (pr) return pr;
       if (puede.esperarMs && puede.esperarMs < 62 * 60_000) return { punto: {}, esperarMs: puede.esperarMs, motivo: 'fabrica_cuota' };
       return fin({ motivo: puede.motivo });
     }
@@ -744,33 +856,94 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       const rev = trabajo.oral ? revisarSalidaOral(p, json, c, t, planGuardado, seccionOral) : revisarSalida(p, json, c, planGuardado);
       if (rev.ok) {
         await ctx.escribir(() => {
-          guardarAjuste(db, clave, JSON.stringify({ json, en: iso(ahora), costoMicro: r.costoMicro ?? crudo?.costoMicro ?? null }));
+          guardarAjuste(db, clave, JSON.stringify({ json, en: iso(ahora), costoMicro: r.costoMicro ?? crudo?.costoMicro ?? null, ...(p.nivel ? { nivel: p.nivel } : {}) }));
           const ee = estadoMateria(db, m.id);
-          guardarMateria(db, m.id, { ...ee, estado: p.tipo === 'verificar' ? 'verificando' : 'escribiendo', tema: t.id, hechos: [...(ee.hechos ?? []), iso(ahora)].slice(-40) });
-          guardarGeneral(db, { espera: null });
+          // 0.14.17: lo que se reintentaba y ahora salió queda «resuelto» (en la lista, nunca se borra).
+          const pendientes = (ee.pendientes ?? []).map(x => (x.tema === t.id && x.paso === p.paso && x.estado === 'reintentando' ? { ...x, estado: 'resuelta', resueltaEn: iso(ahora) } : x));
+          guardarMateria(db, m.id, { ...ee, estado: p.tipo === 'verificar' ? 'verificando' : 'escribiendo', tema: t.id, hechos: [...(ee.hechos ?? []), iso(ahora)].slice(-40), ...(ee.pendientes ? { pendientes } : {}) });
+          guardarGeneral(db, { espera: null, turno: 'fabrica' });
         });
         return { punto: {}, esperarMs: 1000 };
       }
-      return falla(ctx, clave, previo, rev.motivo, ahora, { esperaMs: 5 * 60_000 });
+      return falla(ctx, trabajo, clave, previo, rev.motivo, ahora, { esperaMs: 5 * 60_000 });
     }
-    if (['sobrecargado', 'error_proveedor', 'sin_red', 'tiempo_agotado', 'limite_proveedor', 'base_ocupada', 'interrumpida', 'demasiadas_llamadas'].includes(r.motivo)) {
-      await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: r.motivo, en: iso(ahora) }, esperaHasta: iso(ahora + T.esperaPasajeroMs) }));
+    if ([...ESPERAS_PASAJERAS, 'demasiadas_llamadas'].includes(r.motivo)) {
+      await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: r.motivo, en: iso(ahora), ...donde }, esperaHasta: iso(ahora + T.esperaPasajeroMs) }));
       return fin({ motivo: r.motivo });
     }
-    if (['respuesta_no_valida', 'respuesta_incompleta', 'rechazada', 'no_se_pudo_guardar', 'ya_cobrada'].includes(r.motivo)) return falla(ctx, clave, previo, r.motivo, ahora);
+    if (RECHAZOS_FIJOS.has(r.motivo)) return rechazo(ctx, trabajo, clave, r.motivo, ahora, donde);
+    if (['respuesta_no_valida', 'respuesta_incompleta', 'rechazada', 'no_se_pudo_guardar', 'ya_cobrada'].includes(r.motivo)) return falla(ctx, trabajo, clave, previo, r.motivo, ahora);
     // La IA apagada, un tope, la clave que no sirve o está en pausa: se espera (sin llamar) hasta la próxima hora.
-    await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: r.motivo, en: iso(ahora) } }));
+    await ctx.escribir(() => guardarGeneral(db, { espera: { motivo: r.motivo, en: iso(ahora), ...donde } }));
     return fin({ motivo: r.motivo });
   };
 }
-async function falla(ctx, clave, previo, motivo, ahora, { esperaMs = T.esperaFallaMs } = {}) {
+async function falla(ctx, trabajo, clave, previo, motivo, ahora, { esperaMs = T.esperaFallaMs } = {}) {
   const n = previo.n + 1;
+  // 0.14.17: los intentos se cuentan desde el último reintento («desde»): el número sigue subiendo (cada llamada con su
+  // propio paso: nunca se repite ni se usa una respuesta vieja).
+  const agotado = n - (previo.desde ?? 0) >= T.intentos;
   await ctx.escribir(() => {
-    guardarAjuste(ctx.db, `${clave}.intentos`, JSON.stringify({ n, motivo }));
-    if (n >= T.intentos) guardarAjuste(ctx.db, clave, JSON.stringify({ fallido: true, motivo, en: iso(ahora) }));
+    guardarAjuste(ctx.db, `${clave}.intentos`, JSON.stringify({ n, motivo, ...(previo.desde ? { desde: previo.desde } : {}) }));
+    if (agotado) marcarSaltado(ctx.db, trabajo, clave, motivo, ahora);
     guardarGeneral(ctx.db, { espera: { motivo, en: iso(ahora) }, esperaHasta: iso(ahora + esperaMs) });
   });
   return { listo: true, resultado: { motivo, intento: n } };
+}
+// 0.14.17: un rechazo que se repite igual (el precio de UN pedido): a la 3.ª vez, el paso se salta (queda pendiente).
+async function rechazo(ctx, trabajo, clave, motivo, ahora, donde) {
+  const previo = leerJsonAjuste(ctx.db, `${clave}.rechazos`) ?? { n: 0 };
+  const n = previo.n + 1;
+  if (n >= T.rechazosMax) {
+    await ctx.escribir(() => { guardarAjuste(ctx.db, `${clave}.rechazos`, JSON.stringify({ n: 0, motivo })); marcarSaltado(ctx.db, trabajo, clave, motivo, ahora); });
+    return { punto: {}, esperarMs: 1000 };
+  }
+  await ctx.escribir(() => { guardarAjuste(ctx.db, `${clave}.rechazos`, JSON.stringify({ n, motivo })); guardarGeneral(ctx.db, { espera: { motivo, en: iso(ahora), ...donde } }); });
+  return { punto: {}, esperarMs: 1000 };
+}
+async function saltar(ctx, trabajo, clave, motivo, ahora) {
+  await ctx.escribir(() => marcarSaltado(ctx.db, trabajo, clave, motivo, ahora));
+  return { punto: {}, esperarMs: 1000 };
+}
+// El paso queda «fallido» (la materia sigue con lo demás) y va a «Pendientes para reintentar» (en el estado de la materia).
+// Después del último reintento queda «agotada»: en la lista con su motivo y con aviso (Telegram).
+function marcarSaltado(db, trabajo, clave, motivo, ahora) {
+  const { m, t, p } = trabajo;
+  guardarAjuste(db, clave, JSON.stringify({ fallido: true, motivo, saltado: true, en: iso(ahora) }));
+  const e = estadoMateria(db, m.id);
+  const lista = [...(e.pendientes ?? [])];
+  const i = lista.findIndex(x => x.tema === t.id && x.paso === p.paso && ['esperando', 'reintentando'].includes(x.estado));
+  const previo = i >= 0 ? lista[i] : { tema: t.id, titulo: t.titulo, paso: p.paso, intentos: 0, desde: iso(ahora) };
+  const agotada = previo.intentos >= T.reintentos;
+  const nuevo = { ...previo, motivo, en: iso(ahora), estado: agotada ? 'agotada' : 'esperando', reintentarEn: agotada ? null : iso(ahora + (previo.intentos ? T.reintentarMs : 0)) };
+  if (i >= 0) lista[i] = nuevo; else lista.push(nuevo);
+  guardarMateria(db, m.id, { ...e, pendientes: lista.slice(-60) });
+  if (agotada) abrirAviso(db, { clave: `fabrica_pendiente:${m.id}:g${e.gen}`, nivel: 'atencion', detalle: { n: lista.filter(x => x.estado === 'agotada').length, paso: p.paso, motivo }, ahora });
+}
+// Se vuelve a abrir un paso pendiente con la estrategia siguiente (nivel: la lectura más corta). Lo de antes queda guardado.
+function reabrirPendiente(db, materia, pend, ahora) {
+  const e = estadoMateria(db, materia);
+  const nivel = (pend.intentos ?? 0) + 1;
+  const clave = claveSalida(materia, e.gen, pend.tema, pend.paso);
+  const antes = leerJsonAjuste(db, clave);
+  const intentos = leerJsonAjuste(db, `${clave}.intentos`) ?? { n: 0 };
+  guardarAjuste(db, `${clave}.antes${nivel}`, JSON.stringify(antes));
+  guardarAjuste(db, clave, JSON.stringify({ reintento: { nivel, en: iso(ahora), motivoAnterior: pend.motivo ?? null } }));
+  guardarAjuste(db, `${clave}.intentos`, JSON.stringify({ n: intentos.n, desde: intentos.n }));
+  guardarAjuste(db, `${clave}.rechazos`, JSON.stringify({ n: 0 }));
+  // Lo que se armó con el paso que faltaba se vuelve a hacer con él: el cierre (si faltaba el plan o tarjetas) y la verificación.
+  const despues = pend.paso === 'verificar' ? [] : /^(plan|tarjetas-)/.test(pend.paso) ? ['cierre', 'verificar'] : ['verificar'];
+  for (const paso of despues) {
+    const k = claveSalida(materia, e.gen, pend.tema, paso);
+    const s = leerJsonAjuste(db, k);
+    if (!s?.json && !s?.fallido) continue;
+    const ni = leerJsonAjuste(db, `${k}.intentos`) ?? { n: 0 };
+    guardarAjuste(db, `${k}.antes${nivel}`, JSON.stringify(s));
+    guardarAjuste(db, k, JSON.stringify({ reintento: { nivel: 0, en: iso(ahora), por: pend.paso } }));
+    guardarAjuste(db, `${k}.intentos`, JSON.stringify({ n: ni.n + 1, desde: ni.n + 1 }));
+  }
+  const pendientes = (e.pendientes ?? []).map(x => (x.tema === pend.tema && x.paso === pend.paso && x.estado === 'esperando' ? { ...x, estado: 'reintentando', intentos: nivel, reintentoEn: iso(ahora) } : x));
+  guardarMateria(db, materia, { ...e, pendientes });
 }
 
 export const MANEJADOR_FABRICA = Object.freeze({ paso: crearFabrica() });
@@ -795,7 +968,7 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
     let hechos = 0;
     const faltan = [];
     let temaN = 0;
-    if (m && !ESTADOS_LISTOS.has(e.estado)) {
+    if (m && !ESTADOS_LISTOS.has(e.estado) && !pm.yaPublicada) {
       m.temas.forEach((t, i) => {
         const c = contexto(carpetaFuentes(config), man, m, t);
         const pasos = pasosDeTema(db, m.id, e.gen, t.id, { largo: c.largo, preguntas: c.preguntas.length });
@@ -805,15 +978,19 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
       });
       total += 1;
     }
-    const pct = ESTADOS_LISTOS.has(e.estado) ? 100 : total ? Math.floor((hechos * 100) / total) : 0;
-    const restantes = Math.max(0, total - hechos);
+    const lista = ESTADOS_LISTOS.has(e.estado) || pm.yaPublicada;
+    const pct = lista ? 100 : total ? Math.floor((hechos * 100) / total) : 0;
+    const restantes = lista ? 0 : Math.max(0, total - hechos);
     const marcas = (e.hechos ?? []).map(Date.parse).filter(Number.isFinite);
     const medido = marcas.length >= 3 ? (marcas.at(-1) - marcas[0]) / (marcas.length - 1) : null;
     const ritmo = Math.max(medido ?? 0, 3_600_000 / cuota.propia);
     return {
-      id: pm.id, num: pm.num, nombre: pm.nombre, estado: e.estado, gen: e.gen, temas: pm.temas.length, tema: e.tema ?? null, temaN: temaN || null,
+      // 0.14.17: una materia con su paquete hecho a mano en uso se ve «ya publicada» (100 %) aunque la fábrica no la marcó.
+      id: pm.id, num: pm.num, nombre: pm.nombre, estado: pm.yaPublicada && !ESTADOS_LISTOS.has(e.estado) ? 'ya_publicada' : e.estado, gen: e.gen, temas: pm.temas.length, tema: e.tema ?? null, temaN: temaN || null,
       pct, gastoMicro: gastoFabricaMicro(db, { materia: pm.id }), etaMs: restantes ? restantes * ritmo : 0, faltaMicro: restantes * costoPaso,
       faltan: faltan.slice(0, 40), version: e.version ?? null, dudas: (e.dudas ?? []).length, corregidos: (e.corregidos ?? []).length, problema: e.problema ?? null,
+      // 0.14.17: «Pendientes para reintentar» (esperando, reintentando, resuelta o agotada, con su motivo).
+      pendientes: (e.pendientes ?? []).filter(x => x.estado !== 'resuelta').slice(-20),
     };
   });
   // 0.13.1: la pista oral (sus capítulos, con lo que falta por tema y los temas que se saltan por estar ya publicados).
@@ -848,6 +1025,10 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
   const etaMs = materias.reduce((s, x) => s + x.etaMs, 0) + capitulos.reduce((s, x) => s + x.etaMs, 0);
   // 0.13.9: la «Mejora profunda de las clases» (lo publicado, tema por tema), con su estimado antes de encenderla.
   const profunda = vistaProfunda(db, config, { ahora, cuota, man, fuenteOral });
+  // 0.14.17: por qué la mejora profunda no avanza, en palabras: la fábrica espera (dónde y por qué) o su propia espera.
+  if (profunda.activa && profunda.falta?.temas && g.espera?.materia) {
+    profunda.fabrica = { materia: g.espera.materia, num: g.espera.num ?? null, nombre: g.espera.nombre ?? null, tema: g.espera.titulo ?? g.espera.tema ?? null, paso: g.espera.paso ?? null, motivo: g.espera.motivo, en: g.espera.en ?? null };
+  }
   const terminadaYa = g.terminada ? ([...materias, ...capitulos].some(x => x.estado === 'revision') ? 'esperando_revision' : profunda.activa && profunda.falta.temas ? 'mejorando' : 'terminada') : null;
   return {
     profunda,

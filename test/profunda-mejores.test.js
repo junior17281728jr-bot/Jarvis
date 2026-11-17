@@ -426,3 +426,22 @@ test('las rutas: GET …/profunda (las 5 fases y si Claude está listo), el esti
     db.close();
   }
 });
+
+// 0.14.17 (pedido del dueño: una clase explicó las ilusiones de la aproximación sin el «qué hacer» del libro).
+test('0.14.17: cada riesgo con su «Qué hacer» del libro: las reglas lo piden y un hallazgo «falta_que_hacer» de la revisión se arregla', async () => {
+  const { REGLAS_PROFUNDA, REGLAS_VERIFICACION_PROFUNDA, TAREAS_PROFUNDA } = await import('../src/academia/fabrica-prompts.js');
+  assert.match(REGLAS_PROFUNDA, /«Qué hacer»/);
+  assert.match(REGLAS_PROFUNDA, /nada importante del libro falta/);
+  assert.match(REGLAS_VERIFICACION_PROFUNDA, /falta_que_hacer/);
+  assert.match(TAREAS_PROFUNDA.revision_final, /lo que falta del libro/);
+  await conFabrica(async ({ db, config, correr, llamadas, opciones }) => {
+    await correr();
+    opciones.dudasFinal = d => (d.tema.startsWith('El motor') && !opciones.yaArreglado ? [{ donde: 'Mejor: El motor', problema: 'falta_que_hacer: explica el riesgo de pasarse de rpm pero no dice qué hacer (p. 10)', gravedad: 'error' }] : []);
+    empezar(db, config, { topeMicro: 90_000_000 });
+    await correr({ max: 120, avanzarMs: SEIS });
+    const e = estadoProfunda(db, 'sistemas');
+    assert.equal(e.final.estado, 'hecha', JSON.stringify(e.final));
+    assert.ok(e.final.arreglos['t01-motor'], 'el «falta_que_hacer» se arregló con la misma tubería');
+    assert.ok(llamadas().some(p => { const t = JSON.stringify(cuerpo(p)); return t.includes('Corrige SOLO estos problemas') && t.includes('falta_que_hacer'); }));
+  });
+});

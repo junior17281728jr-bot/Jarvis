@@ -72,6 +72,8 @@ export const RUTA_AVISOS = Object.freeze({
     'fabrica_publicada', 'fabrica_revision', 'fabrica_mejora',
     // 0.13.9: la mejora profunda de las clases publicó la versión mejorada de una materia.
     'fabrica_profunda',
+    // 0.14.17: un paso que la fábrica reintentó y sigue sin salir (queda en «Pendientes para reintentar»).
+    'fabrica_pendiente',
     // 0.14.1: los recordatorios del pago del servidor (7 y 2 días antes y el día; con pago automático, uno 2 días antes).
     'servidor_pago',
     // 0.14.7: «Mejorar todo con Claude» (empezó, fases, terminó, sin saldo) y una idea para cambiar la app (del chat).

@@ -16,7 +16,9 @@ import { paginasDeTexto, IMAGEN_LIBRO, ARCHIVO_IMAGENES } from './fuentes.js';
 import { REGLAS_VERIFICACION, ESQUEMAS, datos, TAREAS } from './fabrica-prompts.js';
 import { tarjetaConVisual, revisarDiagrama, TIPOS_DIAGRAMA } from './diagramas.js';
 
-export const ORAL_POR_PASO = Object.freeze({ tarjetas: 3, libro: 4, lecturaMaxBytes: 60_000, verificarBytes: 170_000 });
+export const ORAL_POR_PASO = Object.freeze({ tarjetas: 3, libro: 4, lecturaMaxBytes: 60_000, verificarBytes: 170_000, haikuPedidoMaxBytes: 98_000 });
+// 0.14.17: un texto cortado a lo más «max» bytes UTF-8 (nunca a la mitad de una letra).
+const cortarUtf8 = (texto, max) => { const b = Buffer.from(String(texto)); if (b.length <= max) return String(texto); let n = Math.max(0, max); while (n > 0 && (b[n] & 0xc0) === 0x80) n -= 1; return b.subarray(0, n).toString('utf8'); };
 export const TEMA_ESCENARIOS = 't01-escenarios';
 const LETRAS = ['A', 'B', 'C'];
 const esObjeto = v => v != null && typeof v === 'object' && !Array.isArray(v);
@@ -212,7 +214,11 @@ export function pedidoOral(leer, c, t, p) {
         tarjetas: tarjetasOral(leer).map(x => ({ titulo: x.titulo, puntos: x.puntos, recuerda: x.recuerda, ejemplo: x.ejemplo, paginas: x.paginas, visual: x.visual?.parametros ?? null })),
         libro: [...items.values()].map(x => ({ n: x.n, pagina: t.qa.find(q => q.n === x.n)?.pagina ?? null, explicacion_es: x.explicacion_es, puntos_clave: x.puntos_clave, pregunta: x.pregunta })),
       };
-      return { sistema: `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA (la Guía del examen oral):\n${datos(c.texto.slice(0, ORAL_POR_PASO.verificarBytes))}`, texto: `${TAREAS_ORAL.verificar}\n${datos({ contenido })}`, esquema: ESQUEMAS_ORAL.verificar };
+      // 0.14.17: el pedido entero dentro del tramo corto de Haiku (si no, se negaba siempre por «llamada_muy_cara»).
+      const texto = `${TAREAS_ORAL.verificar}\n${datos({ contenido })}`;
+      const resto = Buffer.byteLength(texto) + Buffer.byteLength(JSON.stringify(ESQUEMAS_ORAL.verificar)) + Buffer.byteLength(REGLAS_VERIFICACION) + 200;
+      const cabe = Math.floor(Math.max(0, Math.min(ORAL_POR_PASO.verificarBytes, ORAL_POR_PASO.haikuPedidoMaxBytes - resto)) / 2 ** (p.nivel ?? 0));
+      return { sistema: `${REGLAS_VERIFICACION}\n\nLECTURA COMPLETA (la Guía del examen oral):\n${datos(cortarUtf8(c.texto, cabe))}`, texto, esquema: ESQUEMAS_ORAL.verificar };
     }
     default: throw new Error('paso desconocido');
   }

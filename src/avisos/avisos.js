@@ -52,7 +52,7 @@ export const AVISO_CUENTA_COMPARTIDA = /^cuenta_compartida:[1-9]\d{0,9}:\d{4}-\d
 
 // 0.13.0: la fábrica de materias publicó una materia ('fabrica_publicada:<materia>:<versión>'), una espera revisión
 // ('fabrica_revision:<materia>:g<generación>' o ':m<versión>') o la mejora continua publicó ('fabrica_mejora:<materia>:<versión>'). 0.13.9: la mejora profunda publicó ('fabrica_profunda:<materia>:<versión>').
-export const AVISO_FABRICA = /^fabrica_(?:publicada:[a-z_]{2,30}:[1-9]\d{0,9}|revision:[a-z_]{2,30}:[gm][1-9]\d{0,9}|mejora:[a-z_]{2,30}:[1-9]\d{0,9}|profunda:[a-z_]{2,30}:[1-9]\d{0,9})$/;
+export const AVISO_FABRICA = /^fabrica_(?:publicada:[a-z_]{2,30}:[1-9]\d{0,9}|revision:[a-z_]{2,30}:[gm][1-9]\d{0,9}|mejora:[a-z_]{2,30}:[1-9]\d{0,9}|profunda:[a-z_]{2,30}:[1-9]\d{0,9}|pendiente:[a-z_]{2,30}:g[1-9]\d{0,9})$/;
 
 // 0.14.7: «Mejorar todo con Claude»: empezó, terminó de reescribir (fases 1–3), terminó todo, o se acabó el saldo
 // ('ia_todo:r<ronda>:<empieza|a_fin|fin|saldo>'), y una idea para cambiar la app guardada desde el chat ('ia_idea:<id>').

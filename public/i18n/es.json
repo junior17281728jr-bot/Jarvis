@@ -4662,5 +4662,17 @@
   "carrera.tabla_sub": "Quién va adelante, por % de todos los temas del Test Guide.",
   "carrera.mis_numeros_sub": "Solo lo tuyo: racha, temas, nota y tiempo.",
   "carrera.mi_avance_sub": "Cuánto llevas de cada materia.",
-  "listo2.sub": "Por materia: cuánto aciertas, cuánto has visto y qué te falla."
+  "listo2.sub": "Por materia: cuánto aciertas, cuánto has visto y qué te falla.",
+  "fabrica.pendientes.titulo": "Pendientes para reintentar",
+  "fabrica.pendientes.esperando": "«{tema}», paso {paso}: se reintenta solo con una lectura más corta (intento {intentos} de {de}) — motivo: {motivo}",
+  "fabrica.pendientes.reintentando": "«{tema}», paso {paso}: reintentando ahora (intento {intentos} de {de}) — motivo anterior: {motivo}",
+  "fabrica.pendientes.agotada": "«{tema}», paso {paso}: no salió después de {de} reintentos — motivo: {motivo}. Queda como duda para tu revisión.",
+  "fabrica.profunda.esperando_fabrica": "La fábrica está trabada en Materia {num} {nombre} («{tema}», paso {paso}) — motivo: {motivo}. La mejora profunda sigue en otro turno.",
+  "fabrica.espera.llamada_muy_cara": "un pedido costaba más que lo permitido por vez (se recorta la lectura y, si sigue, se reintenta después)",
+  "telegram.aviso.fabrica_pendiente.titulo": "Un paso de la fábrica no salió",
+  "telegram.aviso.fabrica_pendiente.texto": "En la materia «{materia}» un paso no salió después de 3 reintentos: míralo en Contenido → Fábrica de materias («Pendientes para reintentar»).",
+  "aviso.fabrica_pendiente": "En la materia «{materia}» un paso no salió después de 3 reintentos («Pendientes para reintentar»).",
+  "iahizo.cifra.tg_cubierto": "Test Guide cubierto (cada pregunta con su tarjeta)",
+  "iahizo.falta.tg_sin_cubrir": "Materia {materia} · «{tema}»: la pregunta {archivo} del Test Guide no tiene una tarjeta que enseñe su respuesta (la revisión final lo arregla).",
+  "iahizo.falta.fabrica_espera": "La fábrica espera en Materia {num} · {nombre} («{tema}», paso {archivo}) — motivo: {motivo}"
 }
