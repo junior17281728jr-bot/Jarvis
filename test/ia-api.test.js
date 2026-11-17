@@ -328,7 +328,7 @@ test('21. encender necesita clave probada, tope y precio; la ayuda necesita la I
     assert.deepEqual([r.codigo, r.datos.error, r.datos.faltan], [409, 'ia_falta', ['clave', 'tope']]);
     r = await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { ayudaProyectos: true } });
     assert.deepEqual([r.codigo, r.datos.faltan], [409, ['encendida']]);
-    for (const tope of ['100.01', '1.234', '-1', 'abc', 101, '']) {
+    for (const tope of ['500.01', '1.234', '-1', 'abc', 501, '']) {
       const t = await comoDueno('POST', '/api/admin/ia/ajustes', { datos: { topeGeneralUsd: tope } });
       assert.deepEqual([t.codigo, t.datos.error], [400, 'tope_no_valido'], String(tope));
     }
