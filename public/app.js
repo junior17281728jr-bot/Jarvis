@@ -27,7 +27,7 @@ import { dibujarAvatar } from './avatares.js';
 import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
-import { botonOrigen } from './origen-vista.js';
+import { botonOrigen, botonTestGuide } from './origen-vista.js';
 import { panelCurso, panelRepasoResumen, panelOral } from './progreso-vista.js';
 import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 import { vistaAvanceAlumno, repintarAvance } from './admin-avance.js';
@@ -804,6 +804,8 @@ function marco(seccion, ...contenido) {
       el('header', { class: 'encabezado' },
         el('a', { href: '#inicio', class: 'marca-enlace', 'aria-label': t('menu.inicio') }, marcaConLogo()),
         el('a', { href: '#ayuda', class: 'ayuda-enlace', 'aria-current': seccion === 'ayuda' ? 'page' : null }, icono('info', 'icono menu-icono'), el('span', { texto: t('menu.ayuda') })),
+        // 0.14.20: la Biblioteca (los libros de dominio público, para leerlos aquí), al lado de la Ayuda.
+        el('a', { href: '#biblioteca', class: 'ayuda-enlace biblioteca-enlace', 'aria-current': seccion === 'biblioteca' ? 'page' : null }, icono('libro', 'icono menu-icono'), el('span', { texto: t('menu.biblioteca') })),
         // 0.9.0: el avatar que eligió (Configuración → Mi perfil); lleva a Configuración.
         el('a', { href: '#configuracion', class: 'avatar-enlace', title: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' },
           dibujarAvatar(estado.usuario?.avatar ?? null, { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
@@ -3529,9 +3531,27 @@ function partirTitulo(titulo) {
 function talCual(etiqueta, texto, clase = '') {
   return el(etiqueta, { class: `tal-cual ${clase}`.trim(), texto: texto ?? '' });
 }
-function lineaFuente(f) {
+function lineaFuente(f, { conLibro = false } = {}) {
   const partes = [f.libro, f.capitulo, f.seccion, f.pagina ? t('acad.pagina', { n: f.pagina }) : null].filter(Boolean);
-  return el('p', { class: 'fuente con-icono-chico' }, icono('libro', 'icono chico'), el('span', { texto: partes.join(' · ') }));
+  return el('p', { class: 'fuente con-icono-chico' }, icono('libro', 'icono chico'), el('span', { texto: partes.join(' · ') }), conLibro ? verEnElLibro(f) : null);
+}
+// 0.14.20: «Ver en el libro»: en las tarjetas de una clase que citan una página, si ese libro está en la Biblioteca (se
+// pregunta una vez cada 5 minutos qué libros se pueden leer; el enlace aparece cuando llega la respuesta).
+let librosLegibles = null;
+function legibles() {
+  if (!librosLegibles || Date.now() - librosLegibles.en > 5 * 60_000) {
+    librosLegibles = { en: Date.now(), ids: api('GET', '/api/academia/biblioteca').then(r => new Set(r.ok ? (r.datos.libros ?? []).map(l => l.id) : [])).catch(() => new Set()) };
+  }
+  return librosLegibles.ids;
+}
+function verEnElLibro(f) {
+  const n = /(\d{1,5})/.exec(String(f?.pagina ?? ''))?.[1];
+  if (!f?.libroId || !n) return null;
+  const lugar = el('span', { class: 'ver-en-libro-lugar' });
+  legibles().then(ids => {
+    if (ids.has(f.libroId)) lugar.append(el('a', { class: 'ver-en-libro', href: `#biblioteca/${encodeURIComponent(f.libroId)}/${Number(n)}` }, el('span', { texto: t('biblio.ver_en_libro') })));
+  });
+  return lugar;
 }
 // Un texto con los términos en inglés como fichas y las cifras resaltadas (public/tarjetas.js: los trozos juntos dicen
 // exactamente el texto).
@@ -4211,9 +4231,10 @@ const cargarVisuales = () => (visualesClase ??= import('./clase/visuales.js').th
 // De dónde sale la tarjeta, abajo y en chico: la primera fuente; las demás, al tocar «y N fuentes más».
 function fuentesDe(lista) {
   if (!lista?.length) return null;
-  if (lista.length === 1) return el('footer', { class: 'tarjeta-fuentes' }, lineaFuente(lista[0]));
-  return el('footer', { class: 'tarjeta-fuentes' }, lineaFuente(lista[0]),
-    el('details', { class: 'mas-fuentes' }, el('summary', { texto: tn('acad.mas_fuentes', { n: lista.length - 1 }) }), lista.slice(1).map(lineaFuente)));
+  const linea = f => lineaFuente(f, { conLibro: true });
+  if (lista.length === 1) return el('footer', { class: 'tarjeta-fuentes' }, linea(lista[0]));
+  return el('footer', { class: 'tarjeta-fuentes' }, linea(lista[0]),
+    el('details', { class: 'mas-fuentes' }, el('summary', { texto: tn('acad.mas_fuentes', { n: lista.length - 1 }) }), lista.slice(1).map(linea)));
 }
 const ETIQUETA_ESTILO = { normal: 'acad.tarjeta.concepto', analogia: 'acad.tarjeta.analogia', resumen: 'acad.tarjeta.resumen' };
 
@@ -4900,6 +4921,14 @@ async function pantallaOralDe(que, a, b) {
   return vista.pantallaOral(r.datos, h);
 }
 
+// ---- 0.14.20: la Biblioteca (public/biblioteca-vista.js) ----
+async function pantallaBiblioteca(libro, pagina) {
+  const vigente = nuevoTurno();
+  const vista = await import('./biblioteca-vista.js');
+  if (!vigente()) return;
+  return vista.pantallaBiblioteca(libro, pagina, { el, t, tn, icono, talCual, api, mostrar, marco, textoError, avisar, abrirImagenGrande, esAdmin: verComoAdmin(), vigente });
+}
+
 // ---- 0.13.7: «Repaso final» (public/repaso-final-vista.js) ----
 const ayudasRepasoFinal = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
   combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }),
@@ -5063,6 +5092,8 @@ function abrirImagenGrande({ src, nombre, titulo }) {
 }
 // 0.12.0: el botón «¿De dónde salió?» de una pregunta (public/origen-vista.js).
 const origenDe = q => botonOrigen(q, { el, t, icono, talCual, abrirImagenGrande });
+// 0.14.20: «Ver en el Test Guide» (public/origen-vista.js): también durante el examen; la respuesta la decide el servidor.
+const testGuideDe = q => botonTestGuide(q, { el, t, icono, talCual, api, abrirImagenGrande, textoError });
 function figuraPregunta(q) {
   if (!q.figura) return null;
   const src = `/api/academia/figuras/${encodeURIComponent(q.figura.ref ?? q.figura.numero)}`;
@@ -5082,10 +5113,10 @@ function insigniaPregunta(q) {
 }
 // 0.8.0: en Modo reto, arriba la insignia «MODO RETO» (las opciones no son las del Test Guide; el enunciado sí).
 // 0.12.0: con «origen» (lo normal) lleva en la esquina «¿De dónde salió?»; el examen con reloj lo pide sin él.
-function tarjetaPregunta(q, { origen = true } = {}) {
+function tarjetaPregunta(q, { origen = true, testGuide = true } = {}) {
   return [
     el('div', { class: 'q-cabeza' }, insigniaPregunta(q), q.modo === 'reto' ? el('span', { class: 'insignia-reto con-icono' }, icono('rayo', 'icono chico'), el('span', { texto: t('reto.sello') })) : null,
-      q.seccion ? talCual('span', q.seccion, 'q-seccion') : null, origen ? origenDe(q) : null),
+      q.seccion ? talCual('span', q.seccion, 'q-seccion') : null, testGuide ? testGuideDe(q) : null, origen ? origenDe(q) : null),
     q.origen === 'poh' && q.fuente ? lineaFuente(q.fuente) : null,
     talCual('p', q.enunciado, 'q-enunciado'),
     figuraPregunta(q),
@@ -6220,6 +6251,9 @@ async function dibujar() {
   if (seccion === 'mi-repaso' || /^refuerzo\/[a-z0-9_-]+\/[a-z0-9_-]+$/.test(seccion)) return pantallaMiRepaso();
   const miniClase = seccion.match(/^mi-repaso\/clase\/([a-z0-9_-]+\/[a-z0-9_-]+\/[a-z0-9-]+)$/);
   if (miniClase) return pantallaMiniClase(`c:${miniClase[1]}`);
+  // 0.14.20: la Biblioteca (public/biblioteca-vista.js, solo se carga ahí): #biblioteca, #biblioteca/<libro>[/<página>].
+  const biblioteca = seccion.match(/^biblioteca(?:\/([a-z0-9][a-z0-9-]{0,40})(?:\/(\d{1,5}))?)?$/);
+  if (biblioteca) return pantallaBiblioteca(biblioteca[1] ?? null, biblioteca[2] ?? null);
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
   return pantallaInicio();
 }

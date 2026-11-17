@@ -138,7 +138,8 @@ function figuraVista(paquete, id, numero) {
   return { numero, titulo: figuraDe(paquete, id, numero)?.titulo ?? null, ...(ref ? { ref } : {}) };
 }
 function fuenteDe(paquete, f, pid = null) {
-  return { libro: librosDe(paquete, pid).get(f.libro)?.titulo ?? f.libro, capitulo: f.capitulo ?? null, seccion: f.seccion ?? null, pagina: f.pagina ?? null };
+  // 0.14.20: libroId: para «Ver en el libro» (la Biblioteca abre ese libro en esa página, si se puede leer).
+  return { libro: librosDe(paquete, pid).get(f.libro)?.titulo ?? f.libro, libroId: f.libro, capitulo: f.capitulo ?? null, seccion: f.seccion ?? null, pagina: f.pagina ?? null };
 }
 // Lo que se ve DESPUÉS de responder. «elegida» es la opción de verdad guardada (en Modo reto, la letra original de la
 // correcta o R1/R2); lo que vuelve usa las letras que se VIERON. En Modo reto trae además por qué cada opción del reto es

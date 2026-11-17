@@ -757,6 +757,33 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   pásala» con su aviso corto; abre la hoja de «Ir directo al examen», que ahora dice la regla.
 - Oral: no tiene candados (no hay nada que abrir); aprobar el examen de un capítulo antes de sus temas lo deja convalidado
   y su avance cuenta todos sus temas hechos.
+### Lo nuevo de la 0.14.20: «Ver en el Test Guide» y la «Biblioteca» — sin cambio de base
+
+- **Ver en el Test Guide** (`public/origen-vista.js`, `GET /api/academia/test-guide/:pregunta`): un botón chico en toda
+  pregunta del Test Guide (práctica, temas, Repaso final y también el examen con reloj). Muestra «Pregunta 4-134 del Test
+  Guide», el capítulo (el número antes del guion), la referencia, la página (si el paquete la trae) y la figura, y la
+  pregunta TAL CUAL: el texto y las opciones de `tg.json` de las fuentes instaladas (si no están, el original del paquete,
+  que es copia byte a byte). La respuesta oficial y su explicación las decide el servidor, igual que la página del libro
+  (0.12.0): solo a quien ya respondió esa pregunta y nunca con un examen con reloj abierto que la trae (el administrador,
+  siempre). En Modo reto, sin responder, no se muestran las opciones oficiales (la que se repite sería la correcta).
+- **Biblioteca** (`#biblioteca`, enlace arriba al lado de la Ayuda; `src/academia/biblioteca.js`, `src/api/biblioteca.js`,
+  `public/biblioteca-vista.js`): leer los libros de las fuentes del servidor (`libro-<id>-capNN.txt` con «=== p N ===»),
+  página por página, con índice (capítulos y los temas del curso que se leen en ese libro), «Ir a la página», buscador
+  (sin tildes ni mayúsculas, hasta 30 resultados, 300 búsquedas por hora) y las fotos del libro (`imagenes.json`). Solo
+  con sesión, desde la carpeta privada de datos (nunca del repositorio), JSON sin caché. Memoria: un índice chico por libro
+  (página → archivo y bytes) mientras los archivos no cambien; cada página se lee por sus bytes; la búsqueda va línea por
+  línea.
+- **Derechos de autor**: solo se publican libros de dominio público (publicaciones del gobierno: manuales de la FAA y el
+  RAD). Cada libro tiene su interruptor (Biblioteca → «Administrador: qué libros se publican»). Encendidos de entrada: los
+  que el manifiesto marca `"licencia": "dominio_publico"` o cuyo id/título es de la FAA (FAA, Handbook, PHAK, AFH…) o del
+  RAD (`rad-…`, «Reglamento Aeronáutico»). Comerciales (apagados, sin interruptor, «libro comercial: no se puede publicar
+  completo», y el servidor los rechaza aunque el ajuste se escriba a mano): `"licencia": "comercial"`, la Guía del examen
+  oral, un id/título de editorial, o un texto que nombra a una editorial (Jeppesen, GFDPPM…). Todo lo demás, apagado hasta
+  que el administrador lo encienda. Se puede marcar cada libro en el manifiesto con `"licencia"` para no depender de esto.
+- **Ver en el libro**: en las tarjetas de una clase, la línea de la fuente lleva «Ver en el libro» (abre la Biblioteca en
+  esa página) cuando ese libro se puede leer.
+
+Pruebas: `test/biblioteca.test.js`.
 
 ### Lo nuevo de la 0.14.16: el consejo del instructor IA, corto y con botones — sin cambio de base
 

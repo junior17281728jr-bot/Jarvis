@@ -26,6 +26,7 @@ import { registrarRutasIaAlumnos } from './api/ia-alumnos.js';
 import { registrarRutasFabrica } from './api/fabrica.js';
 import { registrarRutasAppMejora } from './api/app-mejora.js';
 import { registrarRutasPagoServidor } from './api/pago-servidor.js';
+import { registrarRutasBiblioteca } from './api/biblioteca.js';
 import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
@@ -151,6 +152,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasAppMejora(rutas, { config, supervisor, reloj: academia.reloj });
   // 0.14.1: Administrador → Sistema → «Pago del servidor» (DigitalOcean).
   registrarRutasPagoServidor(rutas, { reloj: academia.reloj });
+  // 0.14.20: la Biblioteca (los libros de dominio público de las fuentes) y «Ver en el Test Guide».
+  registrarRutasBiblioteca(rutas, { config, reloj: academia.reloj });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

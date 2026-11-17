@@ -232,7 +232,7 @@ test('camino y tema: lección con sus fuentes, preguntas tal cual sin la respues
     const l = await pedir(base, 'GET', '/api/academia/temas/factores_humanos/muestra-hipoxia', { galleta: ana });
     assert.equal(l.codigo, 200);
     assert.equal(l.datos.secciones.length, 3);
-    assert.deepEqual(l.datos.secciones[0].fuentes[0], { libro: 'Libro de muestra (inventado para las pruebas)', capitulo: 'Capítulo de muestra', seccion: 'Muestra', pagina: '1' });
+    assert.deepEqual(l.datos.secciones[0].fuentes[0], { libro: 'Libro de muestra (inventado para las pruebas)', libroId: 'muestra', capitulo: 'Capítulo de muestra', seccion: 'Muestra', pagina: '1' });
     assert.equal(l.datos.secciones[0].texto, paqueteMuestra().materias[0].temas[0].secciones[0].texto, 'el texto llega tal cual (con su salto de línea)');
     // Practicar: las 5 preguntas del tema, tal cual, sin la respuesta.
     const i1 = (await pedir(base, 'POST', '/api/academia/intentos', { galleta: ana, datos: { tipo: 'tema', materia: 'factores_humanos', tema: 'muestra-hipoxia' } })).datos;
