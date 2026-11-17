@@ -73,3 +73,13 @@ export function panelOral(o, h) {
     el('span', { class: 'entrada-oral-texto' }, el('strong', { texto: t('oral.corto') })),
     el('span', { class: `insignia tono-${x.listo ? 'bien' : 'info'}`, texto: x.listo ? t('oral.listo.si_corto', { pct: numero(x.pct ?? 0) }) : t('oral.listo.no_corto', { pct: numero(x.pct ?? 0) }) }));
 }
+
+// 0.14.29: la «Práctica en vivo» del examen oral: cuántas veces, la mejor nota y si la última dijo «Listo para el examen real».
+export function panelVivo(v, h) {
+  const { el, t, numero, icono } = h;
+  if (!v?.veces) return null;
+  return el('a', { class: 'entrada-oral con-icono', href: '#oral/vivo' }, icono('microfono', 'icono'),
+    el('span', { class: 'entrada-oral-texto' }, el('strong', { texto: t('vivo.titulo') }),
+      el('span', { class: 'suave chica', texto: t('vivo.progreso.linea', { veces: numero(v.veces), mejor: numero(v.mejor), ultima: numero(v.ultima) }) })),
+    el('span', { class: `insignia tono-${v.listo ? 'bien' : 'info'}`, texto: v.listo ? t('vivo.listo.si') : t('vivo.listo.no') }));
+}

@@ -16,6 +16,7 @@ import { nombreLegalDe, estadoTerminos, verificacionDe, tutorAutorizoPagos } fro
 import { historialSaltos } from './saltos.js';
 import { resumenExtra } from './extra.js';
 import { examenesOralDe, hayOral } from './oral.js';
+import { vivoDe } from './oral-vivo.js';
 import { avanceDe } from './avance-alumno.js';
 import { EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
@@ -159,7 +160,8 @@ export function fichaAlumno(db, paquete, alumnoId, ahoraMs = Date.now()) {
     saltos: historialSaltos(db, u.id),
     extra: paquete ? resumenExtra(db, u.id, paquete) : [],
     // 0.13.5: las notas de sus exámenes del oral (cada capítulo y el final), para «Exámenes» del resumen.
-    examenesOral: examenesOralDe(db, u.id, paquete),
+    // 0.14.29: y la «Práctica en vivo» (id 'vivo'), si hizo alguna.
+    examenesOral: [...examenesOralDe(db, u.id, paquete), ...(hayOral(paquete) && vivoDe(db, u.id) ? [vivoDe(db, u.id)] : [])],
   };
 }
 

@@ -41,6 +41,7 @@ import { humorActivo } from '../academia/humor.js';
 import { guardarAjuste, leerAjuste } from '../academia/paquetes.js';
 import { contarReuso } from '../academia/registro-ia.js';
 import { registrarRutasTutor, personalParaVer, progresoPersonal } from './tutor.js';
+import { registrarRutasOralVivo } from './oral-vivo.js';
 import { memoriaParaIa, leerSenales, preferencias, preguntasDeMateria } from '../academia/tutor.js';
 import { datosPreparacion, leerPuntero, guardarPuntero, ultimaActividad, preparadoConIa, preparadoBasico, diaRd, PREPARAR } from '../academia/preparar-clase.js';
 
@@ -205,6 +206,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
 
   // 0.12.9: el tutor del alumno (src/api/tutor.js), con el mismo estado de la IA, el mismo cobro y la misma fila.
   registrarRutasTutor(rutas, { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj, config });
+  // 0.14.29: la «Práctica en vivo» del examen oral (src/api/oral-vivo.js), con el mismo estado de la IA, cobro y fila.
+  registrarRutasOralVivo(rutas, { estadoInstructor, pedirIa, iaNoAhora, contar, topes, activo, reloj, config, supervisor });
 
   // «Preparado para ti» al abrir un tema: lo de la IA si se preparó ESE tema y la IA está para él; si no, lo básico.
   rutas.agregar('GET', '/api/academia/instructor/preparado/:materia/:tema', ({ db, req, usuario, parametros }) => {
@@ -476,6 +479,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     try { resultado = f.resultado ? JSON.parse(f.resultado) : null; } catch { resultado = null; }
     const guardado = f.estado === 'hecha' ? leerGuardado(db, clave) : null;
     // 0.12.9: las preguntas personalizadas viajan SIN la correcta (se revisa al responder).
+    // 0.14.29: lo de la «Práctica en vivo» se ve por sus rutas (nada del detalle antes del final).
+    if (guardado && /^academia\.ia\.vivo(?:cierre)?\./.test(clave)) return { codigo: 200, datos: { estado: 'lista' } };
     if (guardado && /^academia\.ia\.personal\./.test(clave)) return { codigo: 200, datos: { estado: 'lista', clave, ...personalParaVer(guardado) } };
     // 0.14.16: el consejo nuevo se arma con el diagnóstico de ahora (los botones de verdad).
     if (guardado && /^academia\.ia\.consejo\./.test(clave) && guardado.forma === 2) return { codigo: 200, datos: lista(consejoParaVer(guardado, diagnostico(db, usuario.id, activo(db), reloj()))) };

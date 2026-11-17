@@ -14,6 +14,7 @@ import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
 import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, rutaVideo, rutaClip, rutaFoto, paginaDe } from '../academia/paquetes.js';
 import { extraDeMateria, rondaExtra, responderExtra } from '../academia/extra.js';
+import { vivoDe } from '../academia/oral-vivo.js';
 import { caminoOral, leccionOral, marcarLeidoOral, rondaOral, responderOral, crearExamenOral, entregarExamenOral, resumenOral, hayOral } from '../academia/oral.js';
 import { humorDelDia, humorDelAdmin, humorDelAlumno, encenderHumorAdmin, encenderHumorAlumno } from '../academia/humor.js';
 import { idDeCarpeta, enlaceDeCarpeta, basesDrive, recorrerCarpeta, PAQUETE_EN_DRIVE } from '../academia/drive.js';
@@ -327,7 +328,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('GET', '/api/academia/progreso', ({ db, usuario }) => {
     const p = activo(db);
     // 0.13.1: la pista oral va en su propia sección (null si no hay contenido oral).
-    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), oral: resumenOral(db, usuario.id, p) } };
+    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), oral: resumenOral(db, usuario.id, p), oralVivo: vivoDe(db, usuario.id) } };
   });
 
   // 0.14.14: «La carrera» (arriba de Progreso): de los demás, solo su alias y su % (src/academia/carrera.js). Solo lee.

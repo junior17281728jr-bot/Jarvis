@@ -18,7 +18,8 @@
 // stop_reason / incomplete_details.reason), 'error' (401 con la clave así en el tipo y el código del error) y
 // 'error_500' (lo mismo con un 500).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
-// 0.14.2: GET /v1/models (la LISTA: { modelos }), POST /v1/images/generations (un WebP falso pequeño) y la «API propia»:
+// 0.14.2: GET /v1/models (la LISTA: { modelos }), POST /v1/images/generations (un WebP falso pequeño), 0.14.29: POST
+// /v1/audio/speech (la voz, como eventos), y la «API propia»:
 // POST /chat/completions y GET /models (su lista: { modelosPropia }).
 import { createServer } from 'node:http';
 
@@ -209,6 +210,14 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true }, mod
       if (ruta === '/models') return enviar(res, 200, { object: 'list', data: modelosPropia.map(m => ({ id: m, object: 'model' })) }, id);
       if (ruta.startsWith('/v1/models')) return enviar(res, 200, { id: decodeURIComponent(ruta.slice('/v1/models/'.length)), object: 'model', owned_by: 'openai' }, id);
       return enviar(res, 200, { input_tokens: 9 }, id);
+    }
+    // 0.14.29: la voz (text-to-speech) como eventos: dos pedazos de un mp3 falso (con su etiqueta ID3) y lo que gastó.
+    if (ruta === '/v1/audio/speech') {
+      const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(200, 7)]);
+      const ev = x => `data: ${JSON.stringify(x)}\n\n`;
+      res.writeHead(200, { 'content-type': 'text/event-stream', ...id });
+      return res.end(ev({ type: 'speech.audio.delta', audio: mp3.subarray(0, 90).toString('base64') }) + ev({ type: 'speech.audio.delta', audio: mp3.subarray(90).toString('base64') })
+        + ev({ type: 'speech.audio.done', usage: { input_tokens: 20, output_tokens: 150, total_tokens: 170 } }));
     }
     if (ruta === '/v1/images/generations') {
       return enviar(res, 200, { created: 1, data: [{ b64_json: imagen.toString('base64') }], usage: { input_tokens: 60, output_tokens: 272, total_tokens: 332, input_tokens_details: { text_tokens: 60, image_tokens: 0 } } }, id);

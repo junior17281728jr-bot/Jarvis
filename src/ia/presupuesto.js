@@ -122,6 +122,7 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
 // El modelo propio de un propósito (0.9.0: el instructor de la academia usa cfg.instructorModelo con Claude), o null.
 // 0.14.2: también el de ChatGPT y el de la API propia, según el ROL del propósito: 'escribir' (el fuerte), 'verificar' y
 // 'barato' (el barato), 'imagen' (el de dibujos). Sin rol: el de Claude dice cuál (Haiku = barato, si no = escribir).
+export const MODELO_VOZ = 'gpt-4o-mini-tts';
 export function rolDe(def, cfg) {
   if (def?.tipo === 'imagen') return 'imagen';
   if (typeof def?.rol === 'string') return def.rol;
@@ -140,6 +141,8 @@ export function modelosDe(def, cfg) {
     if (rol === 'escribir') out[id] = p.modeloEscribir ?? p.modelo ?? null;
     else if (rol === 'verificar' || rol === 'barato') out[id] = p.modelo ?? p.modeloEscribir ?? null;
     else if (rol === 'imagen') out[id] = p.modeloImagen ?? null;
+    // 0.14.29: la voz natural (solo ChatGPT): su modelo de voz, fijo.
+    else if (rol === 'voz') out[id] = id === 'openai' ? MODELO_VOZ : null;
   }
   return Object.keys(out).length ? out : null;
 }

@@ -25,7 +25,7 @@ import { memoriaTutor, prioridad, preguntasDeMateria, analisisTema, dificultades
 import { leerPuntero, proximoTema } from './preparar-clase.js';
 
 export const TIPOS_COMPARTIDOS = Object.freeze({ explica: 'explicacion', miniclase: 'miniclase', tarjeta: 'explicar_mejor', profundiza: 'profundizar', personal: 'pregunta_personalizada' });
-export const TIPOS_DEL_ALUMNO = Object.freeze({ preparado: 'preparacion', consejo: 'consejo', plandia: 'plan_de_hoy', duda: 'duda', chat: 'profesor' });
+export const TIPOS_DEL_ALUMNO = Object.freeze({ preparado: 'preparacion', consejo: 'consejo', plandia: 'plan_de_hoy', duda: 'duda', chat: 'profesor', vivo: 'oral_vivo', vivocierre: 'oral_vivo_cierre' });
 const sufijo = clave => String(clave).slice('academia.ia.'.length);
 const claveReuso = clave => `academia.ia_reuso.${sufijo(clave)}`;
 const claveOculto = clave => `academia.ia_oculto.${sufijo(clave)}`;
@@ -43,6 +43,8 @@ export function textoDe(tipo, v) {
   if (tipo === 'pregunta_personalizada') return (v.preguntas ?? []).map(x => x.enunciado).join(' · ');
   if (tipo === 'preparacion') return v.intro ?? '';
   if (tipo === 'consejo') return v.consejo ?? '';
+  if (tipo === 'oral_vivo') return [v.veredicto, v.linea].filter(Boolean).join(' · ');
+  if (tipo === 'oral_vivo_cierre') return v.mensaje ?? '';
   if (tipo === 'plan_de_hoy') return (v.pasos ?? []).map(x => x.porque).filter(Boolean).join(' · ') || v.titulo || '';
   return v.respuesta ?? '';
 }

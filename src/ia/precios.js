@@ -210,6 +210,8 @@ const FUENTE_TABLA = 'https://platform.openai.com/docs/pricing';
 // [patrón del nombre, entrada, lectura de caché, salida] (US$ por millón de tokens). El primero que coincide.
 const POR_DEFECTO = Object.freeze([
   [/image|dall-e/i, '10.00', '2.50', '40.00'],
+  // 0.14.29: la voz (gpt-4o-mini-tts: el texto a US$0,60/M y el audio a US$12/M tokens).
+  [/tts/i, '0.60', '0.06', '12.00'],
   [/nano/i, '0.20', '0.02', '1.60'],
   [/mini/i, '0.50', '0.05', '4.00'],
   [/(?:^|-)pro(?:-|$)/i, '20.00', '2.00', '160.00'],

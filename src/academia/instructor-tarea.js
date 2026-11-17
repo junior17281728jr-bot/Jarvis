@@ -5,6 +5,7 @@
 // Guide) NUNCA lanza: la tarea termina «hecha» con { usada: false, motivo } y el alumno sigue con el instructor básico.
 import { createHash } from 'node:crypto';
 import { USOS_INSTRUCTOR, esquemaDe, guardarRespuesta, leerGuardado, anotarRechazo } from './instructor-ia.js';
+import { VOZ, ARCHIVO_VOZ, INSTRUCCIONES_VOZ, archivoVoz, hayVoz, guardarVoz } from './oral-voz.js';
 
 // Nadie espera una respuesta pedida hace más de esto (el trabajador estaba ocupado, apagado o en modo seguro): se termina
 // sin llamar, sin pagar.
@@ -42,6 +43,19 @@ async function paso(ctx) {
   if (!Number.isSafeInteger(pedidaEn) || ahora - pedidaEn > caduca || pedidaEn > ahora + 60_000) return fin('caducada');
   // 0.11.0: si la persona retiró el permiso de IA después de pedir, no se llama (un «no» guardado en sus ajustes).
   if (Number.isSafeInteger(d.usuarioId) && ctx.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`cuenta.consentimiento_ia.${d.usuarioId}`)?.valor === '0') return fin('sin_consentimiento');
+  // 0.14.29: la voz natural de una pregunta del oral (solo ChatGPT; en el tope de su cuenta, sin cobrarle un uso): un mp3
+  // por texto, una sola vez para todos.
+  if (d.uso === 'oral_voz') {
+    if (typeof d.texto !== 'string' || !d.texto.trim() || d.texto.length > VOZ.textoMax || !ARCHIVO_VOZ.test(String(d.archivo)) || archivoVoz(d.texto) !== d.archivo) return fin('pedido_no_valido');
+    if (hayVoz(ctx.config, d.archivo)) return { listo: true, resultado: { usada: false, motivo: 'ok', guardada: true, costoMicro: 0 } };
+    const r = await ctx.ia.pedir({
+      proposito: 'oral_voz', paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: Number.isSafeInteger(d.usuarioId) ? d.usuarioId : null, sistema: INSTRUCCIONES_VOZ, texto: d.texto,
+      guardar: (_db, json) => guardarVoz(ctx.config, d.archivo, json?.audio),
+    });
+    if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
+    if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
+    return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
+  }
   let sistema = d.sistema;
   if (d.uso === 'instructor_preparar') {
     const r = revisarPreparar(ctx.db, d, ahora);

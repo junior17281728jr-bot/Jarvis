@@ -55,6 +55,7 @@ function traePedazoDeClave(texto, clave) {
 }
 
 // Quita de la respuesta todo «id» que traiga la clave, ANTES de olvidarla: así nunca llega a la base.
+const comoJsonSuelto = t => { try { return typeof t === 'string' && t ? JSON.parse(t) : null; } catch { return null; } };
 function quitarEcoDeClave(respuesta, clave) {
   for (const nombre of CABECERAS_ID) {
     if (traePedazoDeClave(respuesta?.cabeceras?.[nombre], clave)) delete respuesta.cabeceras[nombre];
@@ -238,8 +239,12 @@ export function crearClienteIA({
     // 0.14.2: un propósito de imagen (tipo 'imagen': «Dibujos con IA», solo ChatGPT) usa pedidoImagen / leerImagen; uno
     // con imágenes para mirar (Claude revisa un dibujo) las pasa al pedido.
     const esImagen = def.tipo === 'imagen';
+    // 0.14.29: la voz natural (tipo 'audio': «Práctica en vivo» del oral, solo ChatGPT): pedidoAudio / leerAudio.
+    const esAudio = def.tipo === 'audio';
     if (esImagen && typeof adaptador.pedidoImagen !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');
-    const p = esImagen
+    if (esAudio && typeof adaptador.pedidoAudio !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');
+    const p = esAudio ? adaptador.pedidoAudio({ modelo: llamada.modelo, texto, instrucciones: sistema })
+      : esImagen
       ? adaptador.pedidoImagen({ modelo: llamada.modelo, texto })
       : adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo, cachear: def.cachear === true, imagenes: pedido.imagenes ?? null });
     const cfgIa = leerConfigIa(db);
@@ -248,8 +253,10 @@ export function crearClienteIA({
     try {
       respuesta = await llamarProveedor({
         url: urlDe(adaptador, config, p.ruta, cfgIa), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
-        senal, timeoutMs: def.timeoutMs, permitido: hostDe(adaptador, cfgIa), topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES,
+        senal, timeoutMs: def.timeoutMs, permitido: hostDe(adaptador, cfgIa), topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES, crudo: esAudio,
       });
+      // La voz llega como eventos: se juntan en un JSON ({ audio, usage }) antes de mirar nada más.
+      if (esAudio) { respuesta.json = respuesta.status >= 200 && respuesta.status <= 299 ? adaptador.eventosAudio(respuesta.crudo) : comoJsonSuelto(respuesta.crudo); delete respuesta.crudo; }
       quitarEcoDeClave(respuesta, clave);
       eco = respuestaTraeClave(respuesta, clave);
     } finally {
@@ -259,7 +266,7 @@ export function crearClienteIA({
     // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor). Lo que no cumple el esquema pedido
     // no se usa: cuenta como 'respuesta_no_valida' (con su costo real) y no se guarda nada. Una respuesta que traía la
     // clave no se usa ni se guarda nada de ella (ronda 3 de revisión).
-    let leido = esImagen ? adaptador.leerImagen(respuesta) : adaptador.leer(respuesta, { json: Boolean(esquema) });
+    let leido = esAudio ? adaptador.leerAudio(respuesta) : esImagen ? adaptador.leerImagen(respuesta) : adaptador.leer(respuesta, { json: Boolean(esquema) });
     if (eco) {
       leido = resultadoConEco(leido, respuesta);
       respuesta.json = null;

@@ -1460,3 +1460,114 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .biblio-admin-caja input { width: 22px; height: 22px; flex: none; }
 .biblio-admin-fila.bloqueado .biblio-admin-caja { opacity: 0.6; }
 .biblio-nota-comercial { color: var(--mal, #b42318); font-weight: 800; }
+
+/* ---------- 0.14.29: «Práctica en vivo» del examen oral (public/oral-vivo-vista.js) ---------- */
+.vivo-entrada { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; }
+.vivo-entrada .boton-3d { grid-column: 1 / -1; justify-self: stretch; }
+.vivo-entrada-icono { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--oral-suave); color: var(--oral-texto); }
+.vivo-entrada-icono .icono { width: 28px; height: 28px; }
+.vivo-entrada-texto h2 { margin: 0; font-size: 1.15rem; }
+.vivo-entrada-texto p { margin: 2px 0 0; }
+.vivo-ajustes { display: grid; gap: 14px; text-align: left; width: 100%; }
+.vivo-interruptor { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.vivo-interruptor-caja { width: 24px; height: 24px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--azul); }
+.vivo-interruptor-texto { display: grid; gap: 2px; }
+.vivo-campo { display: grid; gap: 6px; }
+.vivo-select { min-height: 44px; font: inherit; border-radius: 12px; border: 2px solid var(--linea); padding: 6px 10px; background: transparent; color: inherit; }
+.vivo-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.vivo-chip { min-height: 44px; min-width: 56px; padding: 6px 14px; border-radius: 999px; border: 2px solid var(--linea); background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; }
+.vivo-chip[aria-pressed="true"] { border-color: var(--azul-borde); background: var(--azul); color: #fff; }
+.vivo-chip.tono-bien[aria-pressed="true"] { border-color: var(--verde-borde); background: var(--verde); }
+.vivo-chip.tono-casi[aria-pressed="true"] { border-color: var(--naranja-borde); background: var(--naranja); color: var(--naranja-texto); }
+.vivo-chip.tono-mal[aria-pressed="true"] { border-color: var(--rojo-borde); background: var(--rojo); }
+.vivo-privacidad { max-width: 34rem; }
+.vivo-portada-botones { display: grid; gap: 10px; width: 100%; }
+.vivo-chat { display: grid; gap: 12px; margin-top: 10px; }
+.vivo-fila { display: flex; gap: 8px; align-items: flex-end; }
+.vivo-fila.alumno { justify-content: flex-end; }
+.vivo-avatar { display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%; background: var(--oral-suave); color: var(--oral-texto); }
+.vivo-burbuja { max-width: 92%; padding: 10px 14px; border-radius: 18px 18px 18px 4px; background: var(--oral-suave); }
+.vivo-burbuja.tuya { width: 100%; border-radius: 18px 18px 4px 18px; background: transparent; border: 2px solid var(--linea); }
+.vivo-quien { margin: 0 0 4px; font-size: .8rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; opacity: .75; }
+.vivo-pregunta { margin: 0; font-size: 1.15rem; font-weight: 700; line-height: 1.4; }
+/* La pregunta del examinador: grande y centrada, en el medio de la pantalla (lo primero que se lee). */
+.vivo-fila.examinador:first-child { flex-direction: column; align-items: center; text-align: center; padding: 0 0 2vh; width: 100%; box-sizing: border-box; }
+.vivo-chat > .vivo-fila { width: 100%; }
+.vivo-fila.examinador:first-child .vivo-avatar { display: none; }
+.vivo-fila.examinador:first-child .vivo-burbuja { max-width: 100%; width: 100%; border-radius: 22px; padding: 20px 18px; }
+.vivo-fila.examinador:first-child .vivo-pregunta { font-size: clamp(1.45rem, 6.2vw, 2rem); line-height: 1.35; }
+.vivo-no-se { margin-left: auto; min-height: 44px; padding: 4px 10px; border: 0; background: transparent; color: var(--azul); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.vivo-no-se:disabled { opacity: .45; cursor: default; }
+.vivo-repetir { margin-top: 8px; min-height: 40px; padding: 4px 12px; border-radius: 999px; border: 2px solid var(--linea); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.vivo-texto { width: 100%; box-sizing: border-box; min-height: 96px; font: inherit; font-size: 1.05rem; border: 0; background: transparent; color: inherit; resize: vertical; }
+.vivo-texto:focus { outline: 2px solid var(--azul); outline-offset: 2px; border-radius: 8px; }
+.vivo-controles { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.vivo-mic { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; border: 0; background: var(--rojo); color: #fff; box-shadow: 0 4px 0 var(--rojo-borde); cursor: pointer; flex: 0 0 auto; }
+.vivo-mic .icono { width: 34px; height: 34px; }
+.vivo-mic[aria-pressed="true"] { animation: vivo-latir 1.2s ease-in-out infinite; }
+.vivo-mic:disabled { opacity: .45; cursor: default; }
+@keyframes vivo-latir { 0%, 100% { box-shadow: 0 0 0 0 var(--rojo-suave), 0 4px 0 var(--rojo-borde); } 50% { box-shadow: 0 0 0 12px var(--rojo-suave), 0 4px 0 var(--rojo-borde); } }
+.vivo-estado { margin: 0; font-weight: 700; min-height: 1.4em; }
+.vivo-estado[data-estado="escuchando"] { color: var(--rojo-texto); }
+.vivo-estado[data-estado="pensando"] { color: var(--oral-texto); }
+.vivo-estado[data-estado="pensando"]::after { content: ' …'; }
+.vivo-veredicto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 14px; font-size: 1.1rem; }
+.vivo-veredicto.tono-bien { background: var(--verde-suave); color: var(--verde-texto); }
+.vivo-veredicto.tono-casi { background: var(--mc-suave); color: var(--naranja-texto); }
+.vivo-veredicto.tono-mal { background: var(--rojo-suave); color: var(--rojo-texto); }
+.vivo-veredicto.tono-anotado { border: 2px dashed var(--linea); font-size: 1rem; }
+.vivo-veredicto-icono .icono { width: 26px; height: 26px; }
+.vivo-linea { font-size: .98rem; font-weight: 500; }
+.vivo-listo.listo { border-color: var(--verde-borde); }
+.vivo-listo.todavia { border-color: var(--naranja-borde); }
+.vivo-recomendacion { font-weight: 700; }
+.vivo-mensaje { font-size: 1.05rem; line-height: 1.5; }
+.vivo-temas-lista, .vivo-revision-lista { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.vivo-temas-lista li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--linea); }
+.vivo-temas-lista .suave { grid-column: 1; }
+.vivo-temas-lista .insignia { grid-row: 1 / span 2; grid-column: 2; }
+.vivo-tema-nombre { font-weight: 700; }
+.vivo-botones-temas { display: grid; gap: 8px; }
+.vivo-item { padding: 12px; border-radius: 14px; border: 2px solid var(--linea); display: grid; gap: 4px; }
+.vivo-item p { margin: 0; }
+.vivo-item-cabeza { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.vivo-dijo { font-style: italic; }
+.insignia.tono-casi { --tono: var(--naranja); }
+@media (min-width: 640px) { .vivo-entrada { grid-template-columns: auto 1fr auto; } .vivo-entrada .boton-3d { grid-column: auto; } .vivo-portada-botones { width: auto; justify-items: center; } }
+@media (prefers-reduced-motion: reduce) { .vivo-mic[aria-pressed="true"] { animation: none; outline: 4px solid var(--rojo-suave); } }
+.vivo-campo[role="radiogroup"] .vivo-interruptor { align-items: center; min-height: 44px; }
+
+/* ---------- 0.14.29: el examinador animado (public/oral-examinador.js) ---------- */
+.vivo-escenario { display: grid; justify-items: center; margin: 4px 0 -6px; }
+.examinador { width: min(46vw, 190px); height: auto; overflow: visible; }
+.examinador .ex-fondo { fill: var(--oral-suave); }
+.examinador g, .examinador ellipse, .examinador path { transform-box: fill-box; }
+.examinador .ex-respira { transform-origin: 50% 100%; animation: ex-respirar 3.6s ease-in-out infinite; }
+.examinador .ex-cabeza { transform-origin: 50% 90%; transition: transform .35s ease; }
+.examinador .ex-ojos { transform-origin: center; animation: ex-parpadear 4.2s infinite; }
+.examinador .ex-boca-abierta { display: none; transform-origin: center; }
+.examinador .ex-mano { opacity: 0; transition: opacity .25s ease; }
+@keyframes ex-respirar { 0%, 100% { transform: translateY(0) scaleY(1); } 50% { transform: translateY(-1.5px) scaleY(1.006); } }
+@keyframes ex-parpadear { 0%, 93%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
+@keyframes ex-hablar { 0% { transform: scaleY(.25); } 40% { transform: scaleY(1); } 70% { transform: scaleY(.5); } 100% { transform: scaleY(.85); } }
+@keyframes ex-asentir { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(-4deg) translateY(3px); } }
+@keyframes ex-asentir-recto { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+@keyframes ex-negar { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-6deg); } 40% { transform: rotate(6deg); } 60% { transform: rotate(-5deg); } 80% { transform: rotate(4deg); } }
+@keyframes ex-saludar { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-10deg); } }
+@keyframes ex-aparecer { 0% { transform: translateY(14px) scale(.9); } 60% { transform: translateY(-3px) scale(1.05); } 100% { transform: translateY(0) scale(1); } }
+.examinador[data-estado="hablando"] .ex-boca-cerrada { display: none; }
+.examinador[data-estado="hablando"] .ex-boca-abierta { display: inline; animation: ex-hablar .32s ease-in-out infinite alternate; }
+.examinador[data-estado="leyendo"] .ex-cabeza { animation: ex-asentir-recto 1.1s ease-in-out 2; }
+.examinador[data-estado="leyendo"] .ex-mano-senala { opacity: 1; }
+.examinador[data-estado="leyendo"] .ex-mano-senala rect { animation: ex-saludar 1s ease-in-out 2; transform-origin: 50% 100%; }
+.examinador[data-estado="escuchando"] .ex-cabeza { animation: ex-asentir 1.6s ease-in-out infinite; transform: rotate(-4deg); }
+.examinador[data-estado="bien"] .ex-mano-pulgar { opacity: 1; animation: ex-aparecer .45s ease-out; }
+.examinador[data-estado="bien"] .ex-boca-cerrada { transform: scale(1.15, 1.6); transform-origin: center; }
+.examinador[data-estado="casi"] .ex-mano-barbilla { opacity: 1; }
+.examinador[data-estado="casi"] .ex-cabeza { transform: rotate(5deg); }
+.examinador[data-estado="casi"] .ex-ceja { transform: translateY(-2px); }
+.examinador[data-estado="mal"] .ex-cabeza { animation: ex-negar .9s ease-in-out 1; }
+@media (prefers-reduced-motion: reduce) {
+  .examinador *, .examinador .ex-respira, .examinador .ex-ojos { animation: none !important; transition: none !important; }
+  .examinador[data-estado="hablando"] .ex-boca-abierta { transform: scaleY(.7); }
+}

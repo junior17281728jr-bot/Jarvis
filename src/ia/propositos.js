@@ -59,6 +59,23 @@ const PREPARAR = Object.freeze({
 // al alumno, como una explicación. Lo peor con Haiku 5.5: 16 384 bytes (~4 100 tokens) × US$0.125/M + 4 096 × US$0.50/M,
 // ×1,1 ×1,05 ≈ US$0.003 (máximo 8 000 µUSD); lo normal ≈ US$0.0012.
 const CLASE_IA = Object.freeze({ ...INSTRUCTOR, maximoMicro: 8_000, tipicoMicro: 1_200, modelo: 'claude-haiku-5-5', cachear: true, techoMicro: 40_000 });
+// 0.14.29: la «Práctica en vivo» del examen oral (src/academia/oral-vivo-ia.js): calificar UNA respuesta (bien / casi / mal)
+// contra la respuesta del libro, con el sistema (reglas + las preguntas y respuestas del libro del capítulo, igual para todos)
+// marcado para la caché; y el mensaje del cierre. Siempre Claude Haiku 5.5 (con ChatGPT o la API propia, el modelo barato
+// del dueño). Cada uno cobra un uso al alumno, como una explicación. La entrada se queda en 14 000 bytes (los datos de una
+// tarea son ≤ 16 000 letras); la salida, 2 048 tokens (es un JSON corto). Lo peor con Haiku 5.5: 14 000 × US$0.125/M +
+// 2 048 × US$0.50/M, ×1,1 ×1,05 ≈ US$0.0032 (máximo 6 000 µUSD); lo normal (con la caché) ≈ US$0.0004–0.0008.
+const ORAL_VIVO = Object.freeze({ ...CLASE_IA, salidaMax: 2048, entradaMaxBytes: 14_000, maximoMicro: 6_000, tipicoMicro: 600, timeoutMs: 40_000, techoMicro: 30_000 });
+// 0.14.29: la «voz natural» de la Práctica en vivo: ChatGPT lee en voz alta UNA pregunta del libro (gpt-4o-mini-tts, voz
+// «coral», mp3). Solo ChatGPT (Claude no tiene voz). Se guarda por el texto (un archivo por pregunta, para todos): cada
+// pregunta se paga UNA vez. Cuenta en el tope de la cuenta del alumno que la pidió primero (y en el general y las llamadas
+// por hora), pero no le cobra un uso: después la oyen todos gratis. Lo peor: 1 200 bytes × US$0,60/M + 2 048 tokens de audio × US$12/M, ×1,05 ≈ US$0,027 (techo
+// US$0,04); lo normal (una pregunta de ~10 s) ≈ US$0,002–0,003.
+const ORAL_VOZ = Object.freeze({
+  fase: 1, ambito: 'espacio', cuentaProyecto: false, tipo: 'audio', rol: 'voz', proveedores: Object.freeze(['openai']), salidaMax: 2048,
+  entradaMaxBytes: 1_200, entradaMinBytes: 20, respuestaMaxBytes: 524_288, maximoMicro: 30_000, tipicoMicro: 2_500, esfuerzo: 'low',
+  timeoutMs: 40_000, alFaltar: 'motor_propio', ajuste: 'instructorIa', tarea: 'academia.instructor', cachear: false, techoMicro: 40_000,
+});
 // 0.13.0: la «Fábrica de materias» (src/academia/fabrica.js) y su «Mejora continua». Los paga el dueño (ámbito
 // 'general': ninguna cuenta), dentro de su TOPE PROPIO (por defecto US$20 la fábrica y US$2 al mes la mejora, editables)
 // y del tope general del mes. Nunca los pide un alumno. Escribir: siempre Claude Sonnet 5.5 con el sistema (reglas + la
@@ -147,6 +164,10 @@ export const PROPOSITOS = Object.freeze({
   instructor_tarjeta: CLASE_IA,
   instructor_profundizar: CLASE_IA,
   instructor_personal: CLASE_IA,
+  // 0.14.29: la «Práctica en vivo» del examen oral (ver ORAL_VIVO).
+  instructor_oral_vivo: ORAL_VIVO,
+  instructor_oral_vivo_cierre: Object.freeze({ ...ORAL_VIVO, cachear: false }),
+  oral_voz: ORAL_VOZ,
   // 0.13.0: la fábrica de materias y su mejora continua (ver FABRICA).
   fabrica_escribir: FABRICA,
   fabrica_verificar: FABRICA_HAIKU,

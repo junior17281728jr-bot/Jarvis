@@ -39,7 +39,9 @@ export function sinIds(texto, mapa = null) {
 // Solo la PROSA (lo que escribió la IA para que lo lea el alumno). Todo lo demás (ids que usa el código como «accion»,
 // «tarjeta», «tema»; citas del Test Guide tal cual; términos; lo que escribió el alumno) queda igual.
 const PROSA = new Set(['saludo', 'porque', 'videoPorque', 'titulo', 'consejo', 'pasos', 'plan', 'intro', 'conclusion', 'explicacion', 'porQueNo', 'recuerda',
-  'respuesta', 'control', 'estudiar', 'analogia', 'idea', 'concepto', 'ejemplo', 'trampa', 'texto', 'resumen', 'mas', 'profundo', 'entrena']);
+  'respuesta', 'control', 'estudiar', 'analogia', 'idea', 'concepto', 'ejemplo', 'trampa', 'texto', 'resumen', 'mas', 'profundo', 'entrena',
+  // 0.14.29: la «Práctica en vivo» del oral.
+  'linea', 'bienDicho', 'falto', 'repregunta', 'mensaje', 'comentario', 'listoPorque']);
 const NUNCA = new Set(['citas', 'cita_test_guide', 'terminos', 'preguntas', 'opciones', 'vio', 'buscar', 'pregunta']);
 export function limpiarProsa(valor, clave = null, mapa = null) {
   if (clave != null && NUNCA.has(clave)) return valor;

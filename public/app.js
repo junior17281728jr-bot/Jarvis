@@ -28,7 +28,7 @@ import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
 import { botonOrigen, botonTestGuide } from './origen-vista.js';
-import { panelCurso, panelRepasoResumen, panelOral } from './progreso-vista.js';
+import { panelCurso, panelRepasoResumen, panelOral, panelVivo } from './progreso-vista.js';
 import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 import { vistaAvanceAlumno, repintarAvance } from './admin-avance.js';
 import { vistaHero, vistaTop3, botonVerTodos, vistaNumeros, vistaMaterias, vistaExamenResumen } from './progreso-tablero.js';
@@ -4918,6 +4918,12 @@ async function pantallaOralDe(que, a, b) {
   anotarOral(r.datos);
   if (que === 'examen' && a) return vista.portadaExamenOral(r.datos, a, h);
   if (que === 'final') return vista.portadaExamenOral(r.datos, 'final', h);
+  // 0.14.29: «Práctica en vivo» (public/oral-vivo-vista.js, solo se carga ahí): #oral/vivo[/<capítulo>].
+  if (que === 'vivo') {
+    const [v, vivo] = await Promise.all([api('GET', '/api/academia/oral/vivo'), import('./oral-vivo-vista.js')]);
+    if (!vigente()) return;
+    return v.ok ? vivo.portadaVivo(v.datos, a, { ...h, vigente }) : error(v);
+  }
   return vista.pantallaOral(r.datos, h);
 }
 
@@ -5509,7 +5515,9 @@ function detallesProgreso(p, ayudas, grupo, { tabla = null, miAvance = null, exa
     p.grupo && !p.grupo.activo ? el('p', { class: 'suave chica', texto: t('acad.grupo.apagado') }) : null,
     panelExtra(p.extra),
     // 0.13.1: la pista oral, en su propia sección (nunca se suma al Test Guide).
-    panelOral(p.oral, ayudas)];
+    panelOral(p.oral, ayudas),
+    // 0.14.29: la «Práctica en vivo» del oral (si hizo alguna).
+    panelVivo(p.oralVivo, ayudas)];
 }
 // 0.12.0: lo EXTRA va aparte (nunca se suma al Test Guide): por materia y por nivel. Lo usa también la ficha del alumno.
 function panelExtra(lista, { titulo = t('extra.progreso.titulo'), enlaces = true } = {}) {
@@ -6188,7 +6196,7 @@ async function dibujar() {
   if (extra) return pantallaExtra(extra[1], extra[2] ?? null);
   // 0.13.1: «Preparándote para el examen oral» (public/oral-vista.js, solo se carga ahí): #oral, #oral/tema/<m>/<t>,
   // #oral/practica/<m>[/<t>] o #oral/practica/errores, #oral/examen/<m> y #oral/final.
-  const oral = seccion.match(/^oral(?:\/(tema|practica|examen|final)(?:\/([a-z0-9_-]+))?(?:\/([a-z0-9_-]+))?)?$/);
+  const oral = seccion.match(/^oral(?:\/(tema|practica|examen|final|vivo)(?:\/([a-z0-9_-]+))?(?:\/([a-z0-9_-]+))?)?$/);
   if (oral) return pantallaOralDe(oral[1] ?? null, oral[2] ?? null, oral[3] ?? null);
   // 0.13.7: «Repaso final» (public/repaso-final-vista.js, solo se carga ahí): #repaso, #repaso/test-guide/<intento>,
   // #repaso/oral y #repaso/oral/<capítulo>.

@@ -828,7 +828,8 @@ export function crearInstructor(h) {
     if (b.tipo === 'repaso') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, e.currentTarget); } }, icono('calendario', 'icono chico'), el('span', { texto: tn('profe.b.repaso', { n: numero(b.n ?? 0) }) }));
     if (b.tipo === 'oral') {
       if (b.errores === true) return el('a', { class: clase, href: '#oral/practica/errores' }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral_errores') }));
-      return ok(b.materia) && ok(b.tema) ? el('a', { class: clase, href: `#oral/practica/${encodeURIComponent(b.materia)}/${encodeURIComponent(b.tema)}` }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral', { tema }) })) : null;
+      // 0.14.29: el oral de un tema se practica en vivo (con el examinador), con su capítulo ya elegido.
+      return ok(b.materia) && ok(b.tema) ? el('a', { class: clase, href: `#oral/vivo/${encodeURIComponent(b.materia)}` }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral', { tema }) })) : null;
     }
     if (!ok(b.materia)) return null;
     if (b.tipo === 'examen') return el('a', { class: 'boton-3d naranja chico con-icono', href: `#examen/${encodeURIComponent(b.materia)}` }, icono('trofeo', 'icono chico'), el('span', { texto: tx('profe.b.examen', { materia: nombreMateria(b.materia) }) }));

@@ -14,10 +14,13 @@
 import { createHash } from 'node:crypto';
 import { REGLAS_IA } from './humor.js';
 import { limpiarProsa } from './sin-ids.js';
+import { USOS_VIVO, ESQUEMA_VIVO, ESQUEMA_VIVO_CIERRE, revisarVivo, revisarCierre } from './oral-vivo-ia.js';
 
 export const USOS_INSTRUCTOR = Object.freeze(['instructor_explicar', 'instructor_consejo', 'instructor_duda', 'instructor_chat', 'instructor_miniclase', 'instructor_plan', 'instructor_preparar',
   // 0.12.9: «Explícamelo mejor» y «Profundizar» de una tarjeta de la clase, y las «Preguntas personalizadas».
-  'instructor_tarjeta', 'instructor_profundizar', 'instructor_personal']);
+  'instructor_tarjeta', 'instructor_profundizar', 'instructor_personal',
+  // 0.14.29: la «Práctica en vivo» del examen oral (calificar una respuesta y el cierre): src/academia/oral-vivo-ia.js.
+  ...USOS_VIVO]);
 // Lo más largo que se guarda de cada parte (lo que pase de ahí se corta: nunca una pantalla enorme).
 const TOPE = Object.freeze({ explicacion: 2400, corto: 900, termino: 120, terminos: 8, pasos: 4, duda: 600 });
 export const DUDA_MAX_LETRAS = 500;
@@ -525,6 +528,8 @@ export function revisarRespuesta(datos, json) {
   if (datos.uso === 'instructor_preparar') return revisarPreparar(datos, json);
   if (datos.uso === 'instructor_tarjeta' || datos.uso === 'instructor_profundizar') return revisarTarjeta(datos, json);
   if (datos.uso === 'instructor_personal') return revisarPersonal(datos, json);
+  if (datos.uso === 'instructor_oral_vivo') return revisarVivo(datos, json);
+  if (datos.uso === 'instructor_oral_vivo_cierre') return revisarCierre(datos, json);
   if (datos.uso === 'instructor_plan') {
     // Solo acciones que existen en la app (las que mandó el servidor): una que no está se descarta; ninguna, no sirve.
     const validas = new Set((datos.acciones ?? []).map(String));
@@ -582,6 +587,8 @@ export function esquemaDe(datos) {
   if (datos?.uso === 'instructor_tarjeta') return ESQUEMA_TARJETA;
   if (datos?.uso === 'instructor_profundizar') return ESQUEMA_PROFUNDIZAR;
   if (datos?.uso === 'instructor_personal') return ESQUEMA_PERSONAL;
+  if (datos?.uso === 'instructor_oral_vivo') return ESQUEMA_VIVO;
+  if (datos?.uso === 'instructor_oral_vivo_cierre') return ESQUEMA_VIVO_CIERRE;
   if (datos?.uso === 'instructor_explicar') return esquemaExplicar(Number(datos.opciones) || 3);
   if (datos?.uso === 'instructor_consejo') return datos.forma === 2 ? ESQUEMA_CONSEJO : ESQUEMA_CONSEJO_VIEJO;
   if (datos?.uso === 'instructor_duda') return ESQUEMA_DUDA;
@@ -591,7 +598,7 @@ export function esquemaDe(datos) {
   return null;
 }
 
-export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|tarjeta\.[a-f0-9]{32}|profundiza\.[a-f0-9]{32}|personal\.[a-f0-9]{32}|preparado\.[1-9]\d{0,9}\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12})$/;
+export const CLAVE_GUARDADO = /^academia\.ia\.(?:explica\.[a-f0-9]{32}|miniclase\.[a-f0-9]{32}|tarjeta\.[a-f0-9]{32}|profundiza\.[a-f0-9]{32}|personal\.[a-f0-9]{32}|preparado\.[1-9]\d{0,9}\.[a-f0-9]{32}|plandia\.[1-9]\d{0,9}\.\d{4}-\d{2}-\d{2}|consejo\.[1-9]\d{0,9}\.[a-z0-9-]{1,40}|duda\.[1-9]\d{0,9}\.[1-9]\d{0,12}|chat\.[1-9]\d{0,9}\.[1-9]\d{0,12}|vivo\.[1-9]\d{0,9}\.[1-9]\d{0,19}|vivocierre\.[1-9]\d{0,9}\.[1-9]\d{0,19})$/;
 
 export function leerGuardado(db, clave, { mapa = null } = {}) {
   if (typeof clave !== 'string' || !CLAVE_GUARDADO.test(clave)) return null;

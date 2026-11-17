@@ -712,6 +712,51 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.29: «Práctica en vivo» del examen oral (hablando con el examinador) — sin cambio de base
+
+- En «Examen oral», «Práctica en vivo» (`#oral/vivo`, `public/oral-vivo-vista.js`): como el checkride, el examinador hace
+  UNA pregunta del libro a la vez (libro_qa con su respuesta; en español si está traducida, con «Español | Inglés
+  original»), el alumno responde hablando (dictado del navegador: SpeechRecognition / webkitSpeechRecognition, es-ES;
+  en iPhone Safari con el permiso del micrófono) o escribiendo, puede corregir el texto y toca «Enviar» (un solo
+  botón; «No sé» es un enlace chico). La pregunta se ve grande y centrada en el medio de la pantalla.
+  Estados claros: «Escuchando…», «Pensando», el veredicto. Botón grande de micrófono.
+- Arriba de la pregunta, el EXAMINADOR animado (`public/oral-examinador.js`): un capitán original (gorra, charreteras,
+  corbata) dibujado como SVG con createElementNS (~5 KB, sin archivos de afuera) y animado solo con CSS: parpadea y
+  respira; mueve la boca mientras suena la voz (la del teléfono o la natural); sin voz, señala la pregunta y asiente;
+  ladea la cabeza y asiente mientras el alumno habla o escribe; pulgar arriba («Bien»), mano en la barbilla («Casi») y
+  niega con la cabeza («Mal»). Con «reducir movimiento», quieto.
+- Las dos voces son opcionales y se recuerdan por alumno en el navegador: «Leer las preguntas en voz alta»
+  (speechSynthesis, con «Repetir») y «Responder con la voz». Sin dictado en el navegador: se escribe.
+- «Qué voz»: «Voz natural (ChatGPT)» o «Voz del teléfono». Claude no tiene voz: la natural solo existe si el dueño tiene
+  ChatGPT. ChatGPT lee la pregunta del libro (gpt-4o-mini-tts, voz «coral», mp3 como eventos con lo que gastó; propósito
+  `oral_voz`, solo `openai`) y el mp3 se guarda en `<datos>/academia/voz-oral/<huella>.mp3` por su texto: cada pregunta
+  se paga UNA vez (≈ US$0,002; en el tope de la cuenta que la pidió primero, sin cobrarle un uso) y la oyen todos. Sin
+  ChatGPT, con la IA en pausa, un tope lleno o si no llega en ~8 s: la voz del teléfono. La repregunta (escrita por la
+  IA para él) siempre con la voz del teléfono.
+- Durante la práctica solo «Bien / Casi / Mal» con una línea muy corta; si fue «Casi», una repregunta corta del
+  examinador (si la contesta bien, cuenta «Bien»). La respuesta del libro y el detalle solo en el repaso del FINAL.
+- La IA (la del instructor: Claude, ChatGPT o la API propia, con sus usos, topes, «IA en pausa» y llamadas por hora)
+  califica cada respuesta con Haiku contra la respuesta del libro TAL CUAL (en el sistema, igual para todos los alumnos
+  del capítulo y marcado para la caché); no inventa nada fuera del libro, acepta sus propias palabras y cuenta los puntos
+  clave que faltan. Propósitos `instructor_oral_vivo` e `instructor_oral_vivo_cierre` (1 uso cada uno; lo peor ≈
+  US$0,003, lo normal ≈ US$0,0005). Al servidor y a la IA solo va el TEXTO, nunca el audio ni el nombre.
+- Sin IA (apagada, en pausa, sin usos, un tope, o una calificación que no llegó): igual funciona; en el repaso final ve
+  la respuesta del libro y se califica él, con la sugerencia de la app (las palabras clave del libro que dijo).
+- El final: «Aprobado / No aprobado» (bien = 1, casi = ½, contra la nota de aprobar de la academia), tema por tema con
+  la comparación con las prácticas anteriores («Mejoraste ✅», «Sigue flojo», «Bajó esta vez»…, calculada por el código),
+  «¿Listo para el examen real? Sí / Todavía no» con la razón (aprobó y ningún tema flojo), «Debes reforzar» con botones a
+  esas clases, la recomendación y el mensaje del instructor (IA, cálido y honesto, con solo cifras y lo que faltó).
+- Se guarda aparte (`academia.oral.vivo.<id>`: la práctica abierta y el historial de las últimas 100 con lo de cada tema;
+  una práctica dejada a medias pasa a «sinTerminar» al empezar otra, nunca se borra):
+  no toca los exámenes del oral ni «Listo para el oral». Sale en Progreso y en la ficha del alumno («Oral: práctica en
+  vivo»); `GET /api/admin/academia/alumnos/:id/oral-vivo` da su historial.
+- Cuántas llamadas: N preguntas + hasta 2 repreguntas + 1 cierre (cada una, 1 uso). Por defecto 7 preguntas: con las
+  llamadas por hora de siempre (`llamadasPorHora` = 30 → 10 por cuenta de alumno) cabe una práctica entera; con 10 o 15,
+  las que no quepan en la hora se califica él al final (y el cierre de la IA puede no salir); las respuestas de
+  pasada la hora vuelven a tener IA. Si el dueño quiere prácticas largas con IA, hay que subir `llamadasPorHora`.
+- Al tocar «Terminar» (o si falta calificarse alguna) la práctica queda TERMINADA: ya vio las respuestas del libro, así
+  que no se puede responder ninguna más (las que faltan cuentan «mal») y no se gasta otro uso.
+- Pruebas: `test/oral-vivo.test.js`.
 ### Lo nuevo de la 0.14.23: «Mi progreso» como tablero (corto, visual, poco texto) — sin cambio de base
 
 - Arriba, un resumen: dos anillos grandes (Test Guide y oral, el % de TODOS los temas), «Ahora en: M2 · <tema>» (con

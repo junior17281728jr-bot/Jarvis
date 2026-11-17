@@ -109,6 +109,7 @@ function textoDe(json) {
   return { texto: partes.join(''), rechazo };
 }
 
+const VOZ = 'coral';
 export const openai = Object.freeze({
   id: 'openai',
   uso: 'ia_openai',
@@ -139,6 +140,43 @@ export const openai = Object.freeze({
       const b64 = json?.data?.[0]?.b64_json;
       if (resp.demasiado || !uso || typeof b64 !== 'string' || !b64) return resultado({ motivo: 'respuesta_no_valida', estado, uso, idPeticion, http: status });
       return resultado({ motivo: 'ok', estado, uso, json: { b64 }, idPeticion, http: status });
+    }
+    return resultado({ motivo: motivoDeError(status, json), estado: 'fallida', idPeticion, http: status, detalle: { tipo: json?.error?.type, codigo: json?.error?.code } });
+  },
+
+  // 0.14.29: la voz natural de la «Práctica en vivo» (solo ChatGPT): el texto leído en mp3, como eventos (stream_format
+  // 'sse'): así llega también lo que gastó (el último evento trae usage). Voz «coral», en español, como un examinador.
+  pedidoAudio({ modelo, texto, instrucciones }) {
+    return { ruta: '/v1/audio/speech', metodo: 'POST', cuerpo: { model: modelo, input: texto, voice: VOZ, response_format: 'mp3', stream_format: 'sse', ...(instrucciones ? { instructions: instrucciones } : {}) } };
+  },
+  // Los eventos → { audio: base64 de todo el mp3, usage } (o null si no se entienden).
+  eventosAudio(crudo) {
+    if (typeof crudo !== 'string' || !crudo) return null;
+    const partes = [];
+    let usage = null;
+    for (const linea of crudo.split(/\r?\n/)) {
+      if (!linea.startsWith('data:')) continue;
+      let e = null;
+      try { e = JSON.parse(linea.slice(5).trim()); } catch { continue; }
+      if (e?.type === 'speech.audio.delta' && typeof e.audio === 'string') partes.push(e.audio);
+      else if (e?.type === 'speech.audio.done' && e.usage && typeof e.usage === 'object') usage = e.usage;
+    }
+    if (!partes.length && !usage) return null;
+    // Cada pedazo es base64 por separado: se junta como bytes.
+    const audio = Buffer.concat(partes.map(b => Buffer.from(b, 'base64'))).toString('base64');
+    return { audio, usage };
+  },
+  leerAudio(resp) {
+    const antes = resultadoSinRespuesta(resp);
+    if (antes) return antes;
+    const { status, json } = resp;
+    const idPeticion = idPeticionDe(resp.cabeceras?.['x-request-id']);
+    if (status >= 200 && status <= 299) {
+      const uso = resp.demasiado ? null : leerUsoImagen(json?.usage);
+      const estado = uso ? 'hecha' : 'desconocida';
+      const audio = json?.audio;
+      if (resp.demasiado || !uso || typeof audio !== 'string' || !audio) return resultado({ motivo: 'respuesta_no_valida', estado, uso, idPeticion, http: status });
+      return resultado({ motivo: 'ok', estado, uso, json: { audio }, idPeticion, http: status });
     }
     return resultado({ motivo: motivoDeError(status, json), estado: 'fallida', idPeticion, http: status, detalle: { tipo: json?.error?.type, codigo: json?.error?.code } });
   },

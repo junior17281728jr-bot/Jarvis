@@ -660,7 +660,7 @@ export function tonoExamen(x) {
 }
 // El nombre de un examen: la materia, un capítulo del oral o el examen oral final.
 function nombreExamen(h, id) {
-  return id === 'final' ? h.t('cv.oral_final') : h.nombreMateria(id);
+  return id === 'final' ? h.t('cv.oral_final') : id === 'vivo' ? h.t('cv.oral_vivo') : h.nombreMateria(id);
 }
 // Una nota de examen: «Factores humanos · Mejor 85 % · Última 70 % · ✔ Aprobado».
 function chipExamen(h, x) {

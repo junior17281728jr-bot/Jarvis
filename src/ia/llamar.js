@@ -116,7 +116,9 @@ async function entregarConTope(respuesta, topeBytes, alTrozo) {
 // (texto), no se baja nada y salida.cortado lo dice (por ejemplo, «sin_espacio_disco»).
 export const TOPE_MS = 120_000;
 export const TOPE_MS_POR_PEDAZOS = 900_000;
-export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cuerpo = null, cuerpoCrudo = null, alTrozo = null, alEmpezar = null, senal = null, timeoutMs = 30_000, topeBytes = 1_048_576, permitido = null }) {
+// 0.14.29: crudo = true deja además el texto de la respuesta tal cual (salida.crudo): la voz de ChatGPT llega como eventos
+// (text/event-stream), no como un JSON.
+export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cuerpo = null, cuerpoCrudo = null, alTrozo = null, alEmpezar = null, senal = null, timeoutMs = 30_000, topeBytes = 1_048_576, permitido = null, crudo = false }) {
   const inicio = Date.now();
   const salida = {
     status: null, json: null, textoCorto: null, cabeceras: {}, red: null, tiempoAgotado: false, abortado: false,
@@ -177,6 +179,10 @@ export async function llamarProveedor({ url, metodo = 'POST', cabeceras = {}, cu
       return terminar();
     }
     const texto = bytes.toString('utf8');
+    if (crudo) {
+      salida.crudo = texto;
+      return terminar();
+    }
     if (demasiadoProfundo(texto)) {
       salida.profundo = true;
       return terminar();

@@ -101,6 +101,11 @@ export function pantallaOral(d, h) {
       el('p', { class: 'bajada', texto: t('oral.mapa.linea', { n: numero(TOTAL_TEMAS_MAPA), listos: numero(capitulos.reduce((k, c) => k + c.temas.filter(x => x.x && x.letra).length, 0)) }) }),
       d.siguientePaso ? el('p', { class: 'insignia tono-bien', texto: t('oral.siguiente_paso') }) : null,
       continuar),
+    // 0.14.29: «Práctica en vivo» (public/oral-vivo-vista.js): como el examen oral de verdad, hablando con el examinador.
+    el('section', { class: 'panel vivo-entrada' },
+      el('span', { class: 'vivo-entrada-icono', 'aria-hidden': 'true' }, icono('microfono')),
+      el('div', { class: 'vivo-entrada-texto' }, el('h2', { texto: t('vivo.titulo') }), el('p', { class: 'suave chica', texto: t('vivo.entrada') })),
+      el('a', { class: 'boton-3d azul', href: ruta('vivo') }, el('span', { texto: t('vivo.abrir') }))),
     plegarCamino(el('div', { class: 'camino oral-camino' }, capitulos.map(capitulo)), resumen, sig?.materia ? { materia: sig.materia } : null),
     nodoFinal,
     // «¿Listo para el oral?», debajo del Camino (arriba, lo primero es el mapa).
