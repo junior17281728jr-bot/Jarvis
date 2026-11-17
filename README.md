@@ -712,6 +712,22 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.23: «Mi progreso» como tablero (corto, visual, poco texto) — sin cambio de base
+
+- Arriba, un resumen: dos anillos grandes (Test Guide y oral, el % de TODOS los temas), «Ahora en: M2 · <tema>» (con
+  su nombre de verdad; al tocarlo, ese tema) y una línea «Vas 3.º de 5 · 🔥 3 días».
+- «La carrera» en UNA tarjeta compacta: las dos pistas, sin párrafo (la explicación, detrás de un «?») y debajo el top 3
+  (inicial + %); la tabla entera, en «Ver todos» (una hoja que sube desde abajo).
+- «Mis números»: 4 fichitas en una fila (racha, temas, nota, semana).
+- «Materias»: 11 fichas con su anillo y un punto de estado (lista · en curso · sin empezar · te falla) y los capítulos
+  del oral; al tocar una, una hoja con sus temas como puntos, acierto y visto contra la meta, «Te falla: …» y
+  Estudiar / Reforzar / Examen. Las materias sin clases salen apagadas («—»).
+- «¿Tomo el examen final?» en una tarjeta: «Todavía no» / «¡Listo!», dos barras (acierto vs 90, visto vs 95) con la
+  rayita de la meta, «Te falta: …» (máx. 2) y «Ver por materia» (la lista de siempre, en una hoja).
+- «Ver detalles» guarda TODO lo de antes: la tabla, «Mi avance», el examen por materia y los paneles de siempre.
+- En 320 px el menú de abajo y «Salir» ya no se salen a lo ancho.
+- Código: `public/progreso-tablero.js` (lo puro y las vistas), `public/carrera-vista.js` (opción `compacta`), estilos
+  en `public/academia.css`. Pruebas: `test/progreso-tablero.test.js`.
 ### Lo nuevo de la 0.14.17: la fábrica nunca se queda trabada y «Mejorar todo» no espera detrás de ella — sin cambio de base
 - Los pedidos de Haiku (sacar pasajes, verificar) se recortan para caber en el tramo corto de su precio (antes, una lectura
   de más de ~98 KB se negaba siempre por «llamada_muy_cara» y la materia se quedaba en ese paso); una lectura enorme se saca

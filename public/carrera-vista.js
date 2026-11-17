@@ -62,7 +62,7 @@ const nombreVisto = (h, p) => (p.esYo ? h.t('carrera.tu') : /^Piloto \d+$/.test(
 const textoDonde = (h, en, oral) => (en ? h.t(oral ? 'carrera.donde_oral' : 'carrera.donde_tg', { n: h.numero(en.n), t: h.numero(en.t) }) : null);
 
 // Una pista. → { nodo, actualizar(pilotos) } (los aviones se mueven con transición: la misma caja por avión).
-function pista(h, { campo, titulo, iconoNombre, admin }) {
+function pista(h, { campo, titulo, iconoNombre, admin, compacta = false }) {
   const { el, t, numero } = h;
   const aviones = new Map();
   const zona = el('div', { class: 'carrera-zona' });
@@ -130,7 +130,7 @@ function pista(h, { campo, titulo, iconoNombre, admin }) {
     const corren = (pilotos ?? []).filter(x => x[campo] != null).length;
     puesto.textContent = p ? t('carrera.vas', { n: numero(p.puesto), total: numero(p.de), pct: h.pctTexto(p.pct) })
       : t('carrera.resumen', { n: numero(corren), pct: h.pctTexto(prom) });
-    ahora.hidden = admin || !yo;
+    ahora.hidden = admin || compacta || !yo;
     if (yo) {
       const en = campo === 'tg' ? yo.tgEn : yo.oralEn;
       ahora.replaceChildren(el('span', { class: 'carrera-ahora-rotulo', texto: t('carrera.ahora') }),
@@ -143,18 +143,24 @@ function pista(h, { campo, titulo, iconoNombre, admin }) {
 }
 
 // «La carrera»: datos = { oral, pilotos }. admin: los nombres enteros y sin «Tú». → { nodo, actualizar(datos) }
-export function vistaCarrera(h, datos, { admin = false } = {}) {
+// compacta (0.14.23, el tablero del alumno): sin la línea de abajo ni «Ahora en» (lo dice el resumen de arriba); la
+// explicación, detrás de un «?» junto al título. «extra»: lo que va al final de la tarjeta (el top 3); «accion»: un
+// botón arriba a la derecha («Ver todos»), en lugar de «5 pilotos».
+export function vistaCarrera(h, datos, { admin = false, compacta = false, extra = null, accion = null } = {}) {
   const { el, t } = h;
-  const tg = pista(h, { campo: 'tg', titulo: t('carrera.tg'), iconoNombre: 'libro', admin });
-  const oral = pista(h, { campo: 'oral', titulo: t('carrera.oral'), iconoNombre: 'microfono', admin });
-  const nodo = el('section', { class: 'panel carrera', 'aria-labelledby': 'carrera-titulo' },
+  const tg = pista(h, { campo: 'tg', titulo: t('carrera.tg'), iconoNombre: 'libro', admin, compacta });
+  const oral = pista(h, { campo: 'oral', titulo: t('carrera.oral'), iconoNombre: 'microfono', admin, compacta });
+  const pie = el('p', { class: 'carrera-pie suave chica', id: compacta ? 'carrera-leyenda' : null, hidden: compacta, texto: t(admin ? 'carrera.pie_admin' : 'carrera.pie') });
+  const ayuda = compacta ? el('button', { type: 'button', class: 'carrera-que', 'aria-expanded': 'false', 'aria-controls': 'carrera-leyenda', 'aria-label': t('tablero.que_es_carrera'), texto: '?' }) : null;
+  ayuda?.addEventListener('click', () => { pie.hidden = !pie.hidden; ayuda.setAttribute('aria-expanded', String(!pie.hidden)); });
+  const nodo = el('section', { class: `panel carrera${compacta ? ' compacta' : ''}`, 'aria-labelledby': 'carrera-titulo' },
     el('div', { class: 'carrera-arriba' },
-      el('h2', { id: 'carrera-titulo', class: 'con-icono' }, h.icono('bandera'), el('span', { texto: t('carrera.titulo') })),
-      el('span', { class: 'carrera-cuantos suave chica' })),
-    // 0.14.16: cada sección con una línea que dice qué es.
-    el('p', { class: 'seccion-sub suave chica', texto: t(admin ? 'carrera.sub_admin' : 'carrera.sub') }),
+      el('h2', { id: 'carrera-titulo', class: compacta ? 'tb-titulo' : 'con-icono' }, compacta ? null : h.icono('bandera'), el('span', { texto: t('carrera.titulo') }), ayuda),
+      el('span', { class: 'carrera-cuantos suave chica', hidden: Boolean(accion) }), accion),
+    // 0.14.16: cada sección con una línea que dice qué es (la compacta, no: su «?»).
+    compacta ? pie : el('p', { class: 'seccion-sub suave chica', texto: t(admin ? 'carrera.sub_admin' : 'carrera.sub') }),
     tg.nodo, oral.nodo,
-    el('p', { class: 'carrera-pie suave chica', texto: t(admin ? 'carrera.pie_admin' : 'carrera.pie') }));
+    compacta ? null : pie, extra);
   const actualizar = d => {
     const pilotos = d?.pilotos ?? [];
     nodo.querySelector('.carrera-cuantos').textContent = h.tn('carrera.pilotos', { n: pilotos.length });

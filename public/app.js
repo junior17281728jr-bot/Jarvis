@@ -29,8 +29,9 @@ import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
 import { botonOrigen } from './origen-vista.js';
 import { panelCurso, panelRepasoResumen, panelOral } from './progreso-vista.js';
-import { vistaCarrera, vistaTabla, vistaMisNumeros } from './carrera-vista.js';
+import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 import { vistaAvanceAlumno, repintarAvance } from './admin-avance.js';
+import { vistaHero, vistaTop3, botonVerTodos, vistaNumeros, vistaMaterias, vistaExamenResumen } from './progreso-tablero.js';
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
@@ -5365,6 +5366,34 @@ function panelPlan(plan, { alCambiar }) {
 
 // 0.14.14: «Ver detalles» abierto o cerrado (queda así al volver a pintar la pantalla, por ejemplo al cambiar el plan).
 let detallesProgresoAbiertos = false;
+// 0.14.23: una hoja que sube desde abajo (la de «¿Qué es esto?»): una materia, la tabla entera, el examen por materia.
+// Se cierra con «Cerrar», Escape, tocando fuera o al seguir un enlace de dentro (nunca queda abierta sobre otra pantalla).
+function abrirHoja({ titulo, cuerpo }) {
+  cerrarAyuda();
+  const hoja = el('dialog', { class: 'hoja-ayuda hoja-tablero', 'aria-labelledby': 'hoja-tablero-titulo' });
+  const vuelve = document.activeElement;
+  // Lo de dentro puede estar también en «Ver detalles» (la tabla, el examen): sin ids repetidos.
+  for (const x of cuerpo.querySelectorAll?.('[id], [aria-labelledby]') ?? []) { x.removeAttribute('id'); x.removeAttribute('aria-labelledby'); }
+  // El foco entra a la hoja (no al botón «Cerrar», que se vería marcado sin haberlo tocado).
+  hoja.append(el('div', { class: 'hoja-ayuda-dentro', tabindex: '-1', autofocus: true },
+    el('div', { class: 'hoja-tablero-cabeza' }, el('h2', { id: 'hoja-tablero-titulo', texto: titulo }),
+      el('button', { type: 'button', class: 'hoja-tablero-cerrar', 'aria-label': t('tablero.cerrar'), onclick: () => hoja.close() }, icono('cerrar', 'icono'))),
+    cuerpo));
+  hoja.addEventListener('click', evento => { if (evento.target === hoja || evento.target.closest?.('a[href]')) hoja.close(); });
+  const alSalir = () => hoja.close();
+  window.addEventListener('hashchange', alSalir, { once: true });
+  hoja.addEventListener('close', () => {
+    window.removeEventListener('hashchange', alSalir);
+    hoja.remove();
+    if (hojaAyuda === hoja) hojaAyuda = null;
+    if (vuelve?.isConnected) { try { vuelve.focus({ preventScroll: true }); } catch { vuelve.focus(); } }
+  });
+  document.body.append(hoja);
+  hojaAyuda = hoja;
+  if (typeof hoja.showModal === 'function') hoja.showModal();
+  else { hoja.close = () => hoja.dispatchEvent(new Event('close')); hoja.setAttribute('open', ''); }
+  return hoja;
+}
 async function pantallaProgreso() {
   const vigente = nuevoTurno();
   const [r, c] = await Promise.all([api('GET', '/api/academia/progreso'), api('GET', '/api/academia/carrera')]);
@@ -5376,53 +5405,72 @@ async function pantallaProgreso() {
   let grupo = null;
   const alCambiarGrupo = g => { const nuevo = panelGrupo(g, { alCambiar: alCambiarGrupo }); if (nuevo && grupo) grupo.replaceWith(nuevo); grupo = nuevo; };
   grupo = panelGrupo(p.grupo, { alCambiar: alCambiarGrupo });
-  // 0.12.2: arriba, el curso ENTERO (las 11 materias, con cada número diciendo qué cuenta) y, por materia, sus temas;
-  // «Mis puntos débiles» se juntó con «Mi repaso» (aquí, en corto, con su botón).
-  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual, pctTexto, insignia, partirTitulo };
-  // 0.14.14: arriba, corto y visual: «La carrera» (los aviones de todos), «Mis números», la tabla y mi avance (las dos
-  // barras y una ficha por materia y capítulo). Todo lo de antes, igual, dentro de «Ver detalles».
-  const carrera = c.ok ? vistaCarrera(ayudas, c.datos) : null;
-  const yo = c.ok ? c.datos.yo : null;
+  // Los temas que se pueden abrir (un enlace del tablero nunca lleva a una clase cerrada).
+  const abiertos = new Set((p.curso?.materias ?? []).flatMap(m => (m.temas ?? []).filter(x => x.estado !== 'bloqueado').map(x => `${m.id}/${x.id}`)));
+  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual, pctTexto, insignia, partirTitulo, svgEl, abrirHoja,
+    iconoMateria: id => ICONO_MATERIA[id] ?? 'avion', claseMateria, abierto: (materia, tema) => abiertos.has(`${materia}/${tema}`) };
+  // 0.14.23 (pedido del dueño: «muchas cosas juntas, mucho texto»): un tablero corto y visual, siempre en este orden:
+  // el resumen (dos anillos, «Ahora en», puesto y racha) → la carrera con su top 3 → mis números → las materias →
+  // «¿Tomo el examen final?» en una tarjeta → «Ver detalles» (todo lo de antes, igual). Detalle: public/progreso-tablero.js.
+  let datosCarrera = c.ok ? c.datos : null;
+  const yo = datosCarrera?.yo ?? null;
+  let hero = vistaHero(ayudas, datosCarrera);
+  const caja = el('div', { class: 'tb-top-caja' }, datosCarrera ? vistaTop3(ayudas, datosCarrera.pilotos) : null);
+  const verTodos = datosCarrera?.pilotos.length > 1 ? botonVerTodos(ayudas, () => datosCarrera) : null;
+  const carrera = datosCarrera ? vistaCarrera(ayudas, datosCarrera, { compacta: true, extra: caja, accion: verTodos }) : null;
+  let numeros = yo ? vistaNumeros(ayudas, yo.datos) : null;
+  const materias = yo?.avance ? vistaMaterias(ayudas, yo.avance) : null;
+  // «¿Tomo el examen final?»: llega aparte (puede no estar: sin paquete). «Ver por materia» abre la lista de siempre.
+  const lugarExamen = el('div', { class: 'tb-examen-lugar' });
+  const lugarExamenDetalle = el('div', { class: 'tb-examen-detalle' });
+  api('GET', '/api/academia/tutor/examen').then(x => {
+    if (!x.ok || !vigente()) return;
+    materias?.conExamen(x.datos);
+    const tarjeta = vistaExamenResumen(ayudas, x.datos, { alVerMaterias: () => abrirHoja({ titulo: t('tutor.examen.titulo'), cuerpo: tutorUi().pintarExamen(x.datos) }) });
+    reemplazar(lugarExamen, tarjeta);
+    reemplazar(lugarExamenDetalle, tutorUi().pintarExamen(x.datos));
+  }).catch(() => {});
+  // Lo de antes de arriba (la tabla entera y «Mi avance»), ahora dentro de «Ver detalles» con todo lo demás.
+  let tabla = datosCarrera && datosCarrera.pilotos.length > 1 ? vistaTabla(ayudas, datosCarrera.pilotos, { oral: datosCarrera.oral }) : null;
   const miAvance = yo?.avance ? vistaAvanceAlumno(ayudas, yo.avance, { sinAhora: true }) : null;
   const detalles = el('details', { class: 'progreso-detalles', open: detallesProgresoAbiertos },
     el('summary', { class: 'progreso-detalles-boton' }, icono('expandir', 'icono chico'), el('span', { texto: t('carrera.ver_detalles') })),
-    el('div', { class: 'progreso-detalles-cuerpo' }, detallesProgreso(p, ayudas, grupo)));
+    el('div', { class: 'progreso-detalles-cuerpo' }, detallesProgreso(p, ayudas, grupo, { tabla, miAvance, examen: lugarExamenDetalle })));
   detalles.addEventListener('toggle', () => { detallesProgresoAbiertos = detalles.open; });
-  // 0.14.16 (claridad): siempre el mismo orden — La carrera (y su tabla) → Mis números → ¿Estoy listo? → Mi avance →
-  // Ver detalles —, cada sección con una línea que dice qué es. La tabla y mis números se ponen al día con la carrera.
-  let misNumeros = yo ? vistaMisNumeros(ayudas, yo.datos) : null;
-  let tabla = c.ok && c.datos.pilotos.length > 1 ? vistaTabla(ayudas, c.datos.pilotos, { oral: c.datos.oral }) : null;
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
-    carrera?.nodo ?? null,
-    tabla,
-    misNumeros,
-    tutorUi().examen(),
-    miAvance ? el('section', { class: 'panel mi-avance', 'aria-labelledby': 'mi-avance-titulo' },
-      el('h2', { id: 'mi-avance-titulo', class: 'con-icono' }, icono('grafica'), el('span', { texto: t('carrera.mi_avance') })),
-      el('p', { class: 'seccion-sub suave chica', texto: t('carrera.mi_avance_sub') }), miAvance) : null,
+    el('div', { class: 'tablero' }, hero, carrera?.nodo ?? null, numeros, materias?.nodo ?? null, lugarExamen),
     detalles));
-  // Con la app a la vista, la carrera y mi avance se ponen al día cada 30 s (los aviones se mueven solos).
+  // Con la app a la vista, todo se pone al día cada 30 s (los aviones se mueven solos).
   if (carrera) {
     refrescarMientras(carrera.nodo, vigente, async () => {
       const x = await api('GET', '/api/academia/carrera');
       if (!x.ok || !vigente() || !carrera.nodo.isConnected) return;
       carrera.actualizar(x.datos);
-      if (miAvance && x.datos.yo?.avance) repintarAvance(miAvance, x.datos.yo.avance, ayudas);
-      if (misNumeros?.isConnected && x.datos.yo?.datos) { const n = vistaMisNumeros(ayudas, x.datos.yo.datos); misNumeros.replaceWith(n); misNumeros = n; }
+      datosCarrera = x.datos;
+      const y = x.datos.yo;
+      if (hero?.isConnected) { const n = vistaHero(ayudas, x.datos); if (n) { hero.replaceWith(n); hero = n; } }
+      reemplazar(caja, vistaTop3(ayudas, x.datos.pilotos));
+      if (y?.avance) { materias?.actualizar(y.avance); if (miAvance) repintarAvance(miAvance, y.avance, ayudas); }
+      if (numeros?.isConnected && y?.datos) { const n = vistaNumeros(ayudas, y.datos); numeros.replaceWith(n); numeros = n; }
       if (tabla?.isConnected && x.datos.pilotos?.length > 1) { const n = vistaTabla(ayudas, x.datos.pilotos, { oral: x.datos.oral }); tabla.replaceWith(n); tabla = n; }
     }, AVANCE_ADMIN_MS);
   }
 }
-// Lo de siempre de «Mi progreso» (0.12.2 en adelante), ahora dentro de «Ver detalles».
-function detallesProgreso(p, ayudas, grupo) {
+// Lo de siempre de «Mi progreso» (0.12.2 en adelante), dentro de «Ver detalles». 0.14.23: también lo que antes iba
+// arriba (la tabla entera, «Mi avance» y «¿Tomo el examen final?» por materia): no se quitó nada.
+function detallesProgreso(p, ayudas, grupo, { tabla = null, miAvance = null, examen = null } = {}) {
   return [
+    tabla,
+    miAvance ? el('section', { class: 'panel mi-avance', 'aria-labelledby': 'mi-avance-titulo' },
+      el('h2', { id: 'mi-avance-titulo', class: 'con-icono' }, icono('grafica'), el('span', { texto: t('carrera.mi_avance') })),
+      el('p', { class: 'seccion-sub suave chica', texto: t('carrera.mi_avance_sub') }), miAvance) : null,
+    examen,
     p.curso?.conClases ? panelCurso(p.curso, ayudas) : el('section', { class: 'panel' }, vacio('grafica', t('acad.progreso.vacio'))),
     // El repaso espaciado (lo que vence hoy) es otra cosa que «Mi repaso»: su (i) lo explica.
     p.repaso ? el('div', { class: 'progreso-repaso-espaciado' }, botonRepaso(p.repaso), queEs('repaso')) : null,
     // 0.10.0: «¿Estás listo para el examen oficial?» y «Lo que hicimos por ti» (sus fallas y cómo se le reforzaron).
     instructorUi().preparado(),
-    // 0.12.9 (U): «¿Tomo el examen final?» ahora va arriba, fuera de «Ver detalles» (0.14.16: sin repetirlo aquí).
     panelRepasoResumen(p.miRepaso, ayudas),
     instructorUi().loQueHicimos(),
     panelPlan(p.plan, { alCambiar: () => pantallaProgreso() }),
@@ -6192,7 +6240,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
   if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores'] : [];
   // Academia (0.7.0).
-  if (seccion === 'progreso') return ['/api/academia/progreso', '/api/academia/carrera'];
+  if (seccion === 'progreso') return ['/api/academia/progreso', '/api/academia/carrera', '/api/academia/tutor/examen'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);
   if (tema) return [`/api/academia/temas/${encodeURIComponent(tema[1])}/${encodeURIComponent(tema[2])}`];
   const practica = seccion.match(/^practica\/(\d+)$/);
