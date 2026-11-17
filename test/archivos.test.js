@@ -492,6 +492,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     ['mis-documentos', 'pantallaMisDocumentos'], ['mis-datos', 'pantallaMisDatos'], ['mi-documento/7', 'pantallaMiDocumento'],
     // 0.10.0: Pagos (administrador) y el Profesor virtual.
     ['pagos', 'pantallaPagos'], ['profesor', 'pantallaProfesor'], ['aprendizaje', 'pantallaAprendizaje'],
+    // 0.14.34: «Tu instructor».
+    ['instructor', 'pantallaInstructor'],
     // 0.12.5: Administrador en 4 grupos: Contenido → Términos y Videos de YouTube; Sistema → Cambios importantes.
     ['contenido/terminos', 'pantallaTerminosAdmin'], ['contenido/videos', 'pantallaVideosAdmin'], ['admin/cambios', 'pantallaAdmin'],
     // 0.12.8: Dinero e IA → IA por alumno y Registro de la IA.

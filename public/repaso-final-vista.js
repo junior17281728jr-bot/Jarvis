@@ -61,6 +61,7 @@ export function pantallaRepasoFinal(d, h) {
       el('h1', { class: 'titulo-grande con-icono' }, icono('trofeo'), el('span', { texto: t('rf.titulo') })),
       el('p', { class: 'bajada', texto: t('rf.linea') }),
       el('p', { class: 'suave chica', texto: t('rf.no_cuenta') }),
+      h.recoInstructor?.() ?? null, // 0.14.34: «Recomendación de tu instructor»
       partA, partB)));
 }
 

@@ -33,7 +33,8 @@ import { tiempoDe } from './pagos.js';
 import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube, respondidasParecidas } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
 import { diagnostico, cifrasConsejo, consejoParaVer } from '../academia/consejo-ia.js';
-import { profe as leerProfe, cifrasProfe, validarBotones } from '../academia/profe-chat.js';
+import { profe as leerProfe, cifrasProfe, validarBotones, resumenInstructor, cambiosVista, recomendacion } from '../academia/profe-chat.js';
+import { vistaSecciones } from '../academia/progreso.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 import { iaPermitida } from '../cuentas/terminos.js';
@@ -561,6 +562,62 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     return { codigo: 200, datos: { permiso: permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }), instructor: estadoInstructor(db, req, usuario, ahora), tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), historial,
       profe: pf ? { lineas: pf.lineas, botones: pf.botones } : null } };
   });
+  // ---------- 0.14.34: «Tu instructor» (#instructor): la tarjeta de arriba (se vuelve a pedir cada ~30 s) ----------
+  // Lo que lee de TODO (Test Guide, oral, práctica en vivo, repaso y Repaso final), lo que cambió desde el último día, el
+  // tema para «Estudiar por mi cuenta» / «Guíame» y si puede escribirle al chat (con IA y su permiso). Sin ids ni nombres.
+  const puedeChatear = (permiso, instructor) => Boolean(permiso?.permitido) && !(instructor?.modo === 'basico' && instructor.motivo !== 'sin_minutos');
+  rutas.agregar('GET', '/api/academia/instructor/resumen', ({ db, req, usuario }) => {
+    contar(topes.lecturas, usuario);
+    const ahora = reloj();
+    let p = null;
+    try { p = config ? paqueteActivo(db, config) : null; } catch { p = null; }
+    const permiso = permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) });
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    if (!p) return { codigo: 200, datos: { hay: false, chat: false, instructor } };
+    return { codigo: 200, datos: { ...datosResumen(resumenInstructor(db, usuario.id, p, ahora)), chat: puedeChatear(permiso, instructor), permitido: Boolean(permiso?.permitido), instructor, ia: instructor.modo === 'ia' } };
+  });
+  // «Recomendación de tu instructor» (arriba de Repaso): la misma mientras sus resultados no cambien.
+  rutas.agregar('GET', '/api/academia/instructor/recomendacion', ({ db, usuario }) => {
+    contar(topes.lecturas, usuario);
+    let p = null;
+    try { p = config ? paqueteActivo(db, config) : null; } catch { p = null; }
+    if (!p) return { codigo: 200, datos: { lineas: [], botones: [] } };
+    const r = recomendacion(db, usuario.id, p, reloj());
+    return { codigo: 200, datos: { lineas: r.lineas, botones: r.botones, en: r.en } };
+  });
+  // Administrador: lo que el instructor le recomienda a un alumno (solo leer: ni guarda la foto de hoy ni cambia nada).
+  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/instructor', ({ db, parametros }) => {
+    const id = Number(parametros.id);
+    if (!Number.isSafeInteger(id) || !db.prepare('SELECT 1 FROM usuarios WHERE id = ?').get(id)) throw new ErrorHttp(404, 'no_existe');
+    const p = activo(db);
+    return { codigo: 200, datos: { ...datosResumen(resumenInstructor(db, id, p, reloj(), { soloLeer: true })), soloLeer: true } };
+  }, { admin: true });
+  const datosResumen = r => {
+    const h = r.historial;
+    return {
+      hay: true,
+      lineas: r.lineas, botones: r.botones, charla: r.charla, cambios: cambiosVista(r.cambios), desdeDias: r.desdeDias, foco: r.foco, debiles: r.debiles,
+      repaso: { n: h?.repasos ?? 0 }, vivo: h?.vivo ? { veces: h.vivo.veces, ultima: h.vivo.ultima, mejor: h.vivo.mejor, listo: h.vivo.listo } : null,
+      repasoFinal: h?.repasoFinal ?? null,
+      // «Tu instructor tiene algo para ti» (el puntito del botón): un cambio, un repaso de hoy o algo flojo.
+      algo: Boolean(r.cambios.length || (h?.repasos ?? 0) > 0 || r.foco),
+    };
+  };
+  // «Guíame» sin IA: las tarjetas «Otra vez, más fácil» del tema (las del paquete) y si hay IA para explicarlo distinto.
+  rutas.agregar('GET', '/api/academia/instructor/guia/:materia/:tema', ({ db, req, usuario, parametros }) => {
+    contar(topes.lecturas, usuario);
+    const p = activo(db);
+    const ahora = reloj();
+    const estadoTema = camino(db, usuario.id, p, ahora).materias.find(m => m.id === parametros.materia)?.temas.find(t => t.id === parametros.tema)?.estado;
+    if (!estadoTema) throw new ErrorHttp(404, 'no_existe');
+    if (estadoTema === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
+    const t = p.materias.find(m => m.id === parametros.materia).temas.find(x => x.id === parametros.tema);
+    const facil = vistaSecciones(p, t.reexplicacion ?? [], t.paquete).map(x => ({ titulo: x.titulo, texto: x.texto }));
+    // Sin «Otra vez, más fácil»: la primera tarjeta de la clase, para que la guía nunca quede vacía.
+    const respaldo = facil.length ? [] : (t.secciones ?? []).slice(0, 2).map(x => ({ titulo: x.titulo ?? '', texto: [x.texto, ...(x.puntos ?? [])].filter(Boolean).join('\n') }));
+    const permiso = permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) });
+    return { codigo: 200, datos: { titulo: t.titulo, facil: facil.length ? facil : respaldo, preguntas: t.preguntas.length, ia: puedeChatear(permiso, estadoInstructor(db, req, usuario, ahora)) && estadoInstructor(db, req, usuario, ahora).modo === 'ia' } };
+  });
   rutas.agregar('POST', '/api/academia/profesor', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     contar(topes.chat, usuario);
@@ -586,7 +643,10 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const buscar = ctx.temaTitulo ? [{ texto: ctx.temaTitulo, url: busquedaYoutube(ctx.temaTitulo) }] : [];
     // 0.14.22: el profesor conoce su historia (clases, prácticas, tests, exámenes, oral, repasos) y lo que no cuadra; los
     // botones los arma y revisa el código. Sin IA, esto mismo es su respuesta.
-    const pf = leerProfe(db, usuario.id, p, ahora, { donde: ctx.materia ? { materia: ctx.materia, tema: ctx.tema } : null });
+    // 0.14.34: con lo que cambió desde el último día, la práctica en vivo del oral y el Repaso final (resumenInstructor).
+    const pf = resumenInstructor(db, usuario.id, p, ahora, { donde: ctx.materia ? { materia: ctx.materia, tema: ctx.tema } : null });
+    // «Guíame» (con el tema abierto que dice el botón): explicarlo con OTRAS palabras que la clase.
+    const guia = datos?.guia === true && Boolean(forzado);
     const profe = { lineas: pf.lineas, botones: pf.botones };
     // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual. 0.12.4: el mensaje y la
     // respuesta básica quedan en su historial (antes se perdían al recargar); sin IA por algo que no se pasa solo, ia = null.
@@ -612,7 +672,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     let preguntas = ctx.preguntas;
     let material = ctx.material;
     let estudio = cifrasProfe(pf, { idioma: usuario.idioma });
-    let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio });
+    let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio, guia });
     // (0.14.22: su historia ya tiene tope de tamaño; si igual no cabe, se le quitan temas antes de acortar la clase,
     // hasta dejar 2; nunca se pierde lo que no cuadra ni los botones)
     while (!cabe(pedido) && (historial.length || preguntas.length || (material?.tarjetas ?? []).some(t => t.texto.length > 200) || estudio?.temas?.length)) {
@@ -621,7 +681,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       else if (estudio?.temas?.length > 2) estudio = { ...estudio, temas: estudio.temas.slice(0, -1) };
       else if ((material?.tarjetas ?? []).some(t => t.texto.length > 200)) material = { ...material, tarjetas: material.tarjetas.map(t => ({ ...t, texto: t.texto.slice(0, Math.floor(t.texto.length / 2)) })) };
       else estudio = { ...estudio, temas: estudio.temas.slice(0, -1) };
-      pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio });
+      pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio, guia });
     }
     const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
     const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje, citas: pedido.citas } });

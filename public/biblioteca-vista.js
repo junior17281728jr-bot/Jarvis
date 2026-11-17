@@ -13,6 +13,67 @@ export function parrafos(texto) {
     .map(p => p.split('\n').map(l => l.trim()).filter(Boolean).reduce((a, l) => (!a ? l : /[a-záéíóúñ]-$/i.test(a) ? a.slice(0, -1) + l : `${a} ${l}`), ''))
     .filter(Boolean);
 }
+// 0.14.34: la estructura de una página (para leerla cómoda): títulos (renglones en MAYÚSCULAS o secciones numeradas como
+// «2.1 Definiciones»), párrafos (los renglones cortados se juntan; una línea en blanco separa), listas (renglones que
+// empiezan con «-», «•», «a)», «1.»; un renglón que sigue sin marca es la continuación del punto) y la etiqueta de un
+// artículo o sección en negrita («Artículo 12.-», «Sección 3»). Solo texto: nunca HTML del libro. Puro (se prueba sin navegador).
+// → [{ tipo: 'titulo', nivel: 2|3, texto } | { tipo: 'parrafo', etiqueta, texto } | { tipo: 'lista', ordenada, items: [{ marca, texto }] }]
+const MARCA_LISTA = /^(?:([-•▪●◦–*])|(\(?[a-zA-Z]\)|[a-z]\.|\d{1,2}[.)]))\s+(\S.*)$/u;
+const SECCION = /^(\d{1,2}(?:\.\d{1,3})+)\.?\s+(\S.*)$/;
+const ETIQUETA = /^((?:Art[íi]culo|Art\.|Secci[óo]n|Section|Article|Cap[íi]tulo|Chapter|P[áa]rrafo|Regla|Rule)\s+[0-9IVXLC]+[A-Za-z0-9.()]*\s*(?:\.-|[.:–-])?)(?:\s+(.*))?$/iu;
+const juntar = (a, l) => (!a ? l : /[\p{L}]-$/u.test(a) ? a.slice(0, -1) + l : `${a} ${l}`);
+export function esTituloMayusculas(l) {
+  const letras = l.match(/\p{L}/gu) ?? [];
+  return letras.length >= 3 && l.length <= 90 && !/\p{Ll}/u.test(l) && !/[,;]$/.test(l);
+}
+export function estructura(texto) {
+  const bloques = [];
+  let parrafo = null;
+  let lista = null;
+  const cerrar = () => {
+    if (parrafo) {
+      const m = ETIQUETA.exec(parrafo);
+      bloques.push(m && m[2] ? { tipo: 'parrafo', etiqueta: m[1], texto: m[2] } : { tipo: 'parrafo', etiqueta: null, texto: parrafo });
+    }
+    if (lista) bloques.push(lista);
+    parrafo = null;
+    lista = null;
+  };
+  for (const crudo of String(texto ?? '').replace(/\r/g, '').split('\n')) {
+    const l = crudo.trim();
+    if (!l) { cerrar(); continue; }
+    if (/^\d{1,4}$/.test(l)) continue; // un número de página suelto
+    const sec = SECCION.exec(l);
+    if (sec && l.length <= 80 && !/[.;:,]$/.test(l)) { cerrar(); bloques.push({ tipo: 'titulo', nivel: 3, texto: l }); continue; }
+    if (esTituloMayusculas(l)) { cerrar(); bloques.push({ tipo: 'titulo', nivel: 2, texto: l }); continue; }
+    const et = ETIQUETA.exec(l);
+    if (et && !et[2]) { cerrar(); bloques.push({ tipo: 'titulo', nivel: 3, texto: l }); continue; }
+    const li = MARCA_LISTA.exec(l);
+    if (li) {
+      if (parrafo) cerrar();
+      const ordenada = !li[1];
+      if (!lista || lista.ordenada !== ordenada) { cerrar(); lista = { tipo: 'lista', ordenada, items: [] }; }
+      lista.items.push({ marca: ordenada ? li[2] : '•', texto: li[3] });
+      continue;
+    }
+    if (lista) { const u = lista.items.at(-1); u.texto = juntar(u.texto, l); continue; }
+    parrafo = juntar(parrafo, l);
+  }
+  cerrar();
+  return bloques;
+}
+// El tamaño de la letra al leer (A− / A+), recordado en este navegador.
+export const LETRAS = Object.freeze([1, 2, 3, 4, 5]);
+const CLAVE_LETRA = 'biblio.letra';
+export function letraGuardada(almacen = globalThis.localStorage) {
+  try { const n = Number(almacen?.getItem(CLAVE_LETRA)); return LETRAS.includes(n) ? n : 2; } catch { return 2; }
+}
+export function guardarLetra(n, almacen = globalThis.localStorage) {
+  const v = Math.min(LETRAS.at(-1), Math.max(LETRAS[0], Number(n) || 2));
+  try { almacen?.setItem(CLAVE_LETRA, String(v)); } catch { /* sin almacenamiento: solo en esta visita */ }
+  return v;
+}
+
 // Las partes de un fragmento con la búsqueda resaltada (sin importar mayúsculas ni tildes). → [{ texto, marca }]
 export function resaltarBusqueda(fragmento, consulta) {
   const base = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -182,19 +243,45 @@ async function leer(libro, pagina, h) {
         el('img', { src, alt, loading: 'lazy', decoding: 'async', width: x.ancho ? String(x.ancho) : null, height: x.alto ? String(x.alto) : null })),
       x.pie ? h.talCual('figcaption', x.pie, 'suave chica') : null);
   });
-  const texto = parrafos(d.texto);
+  const bloques = estructura(d.texto);
+  // 0.14.34: la página con su estructura (títulos, párrafos, listas y etiquetas en negrita), con letra cómoda (A− / A+).
+  let letra = letraGuardada();
+  const hoja = el('div', { class: `tarjeta biblio-pagina letra-${letra}` },
+    bloques.length ? bloques.map(b => pintarBloque(b, h)) : el('p', { class: 'suave', texto: t('biblio.pagina_vacia') }),
+    fotos);
+  const cambiarLetra = paso => {
+    hoja.classList.remove(`letra-${letra}`);
+    letra = guardarLetra(letra + paso);
+    hoja.classList.add(`letra-${letra}`);
+    menos.disabled = letra <= LETRAS[0];
+    mas.disabled = letra >= LETRAS.at(-1);
+  };
+  const menos = el('button', { type: 'button', class: 'boton-3d blanco chico biblio-letra', 'aria-label': t('biblio.letra_menos'), disabled: letra <= LETRAS[0], onclick: () => cambiarLetra(-1), texto: 'A−' });
+  const mas = el('button', { type: 'button', class: 'boton-3d blanco chico biblio-letra', 'aria-label': t('biblio.letra_mas'), disabled: letra >= LETRAS.at(-1), onclick: () => cambiarLetra(1), texto: 'A+' });
+  // La cabecera chiquita que se queda arriba al bajar: capítulo y página, anterior / siguiente y el tamaño de la letra.
+  const mini = el('div', { class: 'biblio-mini' },
+    d.anterior != null ? el('a', { class: 'biblio-mini-paso', href: enlaceLibro(libro, d.anterior), rel: 'prev', 'aria-label': t('biblio.anterior'), texto: '‹' }) : el('span', { class: 'biblio-mini-paso vacio' }),
+    el('span', { class: 'biblio-mini-donde' }, el('strong', { texto: t('biblio.pagina_corta', { n: d.pagina }) }), d.capitulo?.titulo ? el('span', { class: 'suave', texto: ` · ${d.capitulo.titulo}` }) : null),
+    el('span', { class: 'biblio-mini-letra' }, menos, mas),
+    d.siguiente != null ? el('a', { class: 'biblio-mini-paso', href: enlaceLibro(libro, d.siguiente), rel: 'next', 'aria-label': t('biblio.siguiente'), texto: '›' }) : el('span', { class: 'biblio-mini-paso vacio' }));
   return h.mostrar(h.marco('biblioteca', el('article', { class: 'biblioteca biblio-lector', lang: /-en$/.test(libro) ? 'en' : null },
     el('header', { class: 'biblio-cabeza' },
       el('a', { class: 'biblio-volver', href: enlaceLibro(libro) }, el('span', { texto: t('biblio.al_indice') })),
-      el('h1', { class: 'biblio-titulo chico', texto: d.titulo }),
-      el('p', { class: 'biblio-donde suave' }, el('strong', { texto: t('biblio.pagina_corta', { n: d.pagina }) }), d.capitulo?.titulo ? ` · ${d.capitulo.titulo}` : '')),
-    pasos(),
-    el('div', { class: 'tarjeta biblio-pagina' },
-      texto.length ? texto.map(p => h.talCual('p', p, 'biblio-parrafo')) : el('p', { class: 'suave', texto: t('biblio.pagina_vacia') }),
-      fotos),
+      el('h1', { class: 'biblio-titulo chico', texto: d.titulo })),
+    mini,
+    hoja,
     pasos(),
     el('details', { class: 'tarjeta biblio-mas' }, el('summary', {}, icono('lupa', 'icono chico'), el('span', { texto: t('biblio.buscar_o_ir') })),
       buscador(libro, h), ir))));
+}
+
+// Un bloque de la página (solo textContent).
+function pintarBloque(b, h) {
+  const { el } = h;
+  if (b.tipo === 'titulo') return h.talCual(b.nivel === 2 ? 'h2' : 'h3', b.texto, 'biblio-h');
+  if (b.tipo === 'lista') return el(b.ordenada ? 'ol' : 'ul', { class: 'biblio-lista' }, b.items.map(x => el('li', {},
+    el('span', { class: 'biblio-marca', 'aria-hidden': b.ordenada ? null : 'true', texto: x.marca }), h.talCual('span', x.texto))));
+  return el('p', { class: 'biblio-parrafo' }, b.etiqueta ? el('strong', { class: 'biblio-etiqueta', texto: `${b.etiqueta} ` }) : null, h.talCual('span', b.texto));
 }
 
 // «Ver en el libro» en la línea de la fuente de una tarjeta: solo si ese libro se puede leer y la página es un número.

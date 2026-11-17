@@ -810,6 +810,8 @@ function marco(seccion, ...contenido) {
         el('a', { href: '#ayuda', class: 'ayuda-enlace', 'aria-current': seccion === 'ayuda' ? 'page' : null }, icono('info', 'icono menu-icono'), el('span', { texto: t('menu.ayuda') })),
         // 0.14.20: la Biblioteca (los libros de dominio público, para leerlos aquí), al lado de la Ayuda.
         el('a', { href: '#biblioteca', class: 'ayuda-enlace biblioteca-enlace', 'aria-current': seccion === 'biblioteca' ? 'page' : null }, icono('libro', 'icono menu-icono'), el('span', { texto: t('menu.biblioteca') })),
+        // 0.14.34: «Tu instructor» (en la PC, aquí arriba; en el teléfono, el botón flotante de Camino, Oral, Progreso y Repaso).
+        estado.usuario ? el('a', { href: '#instructor', class: 'ayuda-enlace instructor-enlace', 'aria-current': seccion === 'instructor' ? 'page' : null }, icono('cerebro', 'icono menu-icono'), el('span', { texto: t('tuinstr.titulo') })) : null,
         // 0.9.0: el avatar que eligió (Configuración → Mi perfil); lleva a Configuración.
         el('a', { href: '#configuracion', class: 'avatar-enlace', title: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' },
           dibujarAvatar(estado.usuario?.avatar ?? null, { foto: estado.usuario?.foto ?? null, nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
@@ -820,7 +822,29 @@ function marco(seccion, ...contenido) {
       bandaEstudiante(),
       avisosDeCuenta(),
       ...contenido,
-      pie()));
+      pie()),
+    botonInstructor(seccion));
+}
+
+// 0.14.34: el botón flotante «Tu instructor» (solo en Camino, Oral, Progreso y Repaso; nunca en una clase ni un examen).
+// El puntito «Tu instructor tiene algo para ti» sale de su resumen (se pregunta a lo más cada 2 minutos; nunca un aviso).
+const SECCIONES_INSTRUCTOR = new Set(['inicio', 'oral', 'progreso', 'repaso']);
+let algoInstructor = { si: false, en: 0 };
+function anotarAlgo(si) {
+  algoInstructor = { si: Boolean(si), en: Date.now() };
+  for (const b of document.querySelectorAll('.boton-instructor')) b.classList.toggle('con-algo', algoInstructor.si);
+}
+function botonInstructor(seccion) {
+  if (!estado.usuario || !SECCIONES_INSTRUCTOR.has(seccion)) return null;
+  if (Date.now() - algoInstructor.en > 120_000) {
+    algoInstructor.en = Date.now();
+    api('GET', '/api/academia/instructor/resumen', undefined, { fresco: true }).then(r => { if (r.ok) anotarAlgo(r.datos.algo === true); }).catch(() => {});
+  }
+  return el('a', { class: `boton-instructor${algoInstructor.si ? ' con-algo' : ''}`, href: '#instructor', title: t('tuinstr.algo') },
+    el('span', { class: 'boton-instructor-icono' }, icono('cerebro', 'icono')),
+    el('span', { texto: t('tuinstr.abrir') }),
+    el('span', { class: 'boton-instructor-punto', 'aria-hidden': 'true' }),
+    el('span', { class: 'solo-lectores boton-instructor-algo', texto: ` · ${t('tuinstr.algo')}` }));
 }
 
 function enlaceMenu(id, clave, nombreIcono, corto, seccion) {
@@ -1925,6 +1949,24 @@ async function pantallaRegistroIa(alumno = null) {
   const [r, vista] = await Promise.all([api('GET', ruta), import('./admin-ia.js')]);
   if (!vigente()) return;
   mostrar(marco('admin', cabeceraAdmin('ia-registro'), r.ok ? vista.pantallaRegistroIa(r.datos, piezasIa()) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
+// ---- 0.14.34: «Tu instructor» (public/instructor-vista.js) ----
+let vistaInstructorLista = null;
+async function vistaInstructor() {
+  const m = await import('./instructor-vista.js');
+  return (vistaInstructorLista ??= m.crearVistaInstructor({ el, t, tn, icono, api, talCual, numero, avisar, textoError, mostrar, marco, sonar, instructorUi, pagosUi, anotarAlgo }));
+}
+async function pantallaInstructor() {
+  const vigente = nuevoTurno();
+  const [r, prof, v] = await Promise.all([api('GET', '/api/academia/instructor/resumen'), api('GET', '/api/academia/profesor'), vistaInstructor()]);
+  if (!vigente()) return;
+  return v.pantalla(r, prof);
+}
+// Un lugar que se llena cuando llega la vista (para la ficha del alumno y Repaso).
+function lugarInstructor(llenar) {
+  const lugar = el('div', { class: 'tuinstr-lugar-perezoso' });
+  vistaInstructor().then(v => lugar.replaceChildren(llenar(v))).catch(() => {});
+  return lugar;
 }
 async function pantallaProfesor() {
   const vigente = nuevoTurno();
@@ -4977,7 +5019,7 @@ async function pantallaBiblioteca(libro, pagina) {
 // ---- 0.13.7: «Repaso final» (public/repaso-final-vista.js) ----
 const ayudasRepasoFinal = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
   combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }),
-  vistaVisual, usuario: estado.usuario?.id ?? 0 }); // 0.14.3
+  vistaVisual, usuario: estado.usuario?.id ?? 0, recoInstructor: () => lugarInstructor(v => v.recomendacionRepaso()) }); // 0.14.3; 0.14.34: la recomendación
 const errorRepasoFinal = r => mostrar(marco('repaso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
   el('a', { class: 'boton-3d blanco', href: '#repaso' }, el('span', { texto: t('rf.volver') })))));
 async function pantallaRepasoFinal() {
@@ -5649,7 +5691,7 @@ const piezasAlumnos = () => ({
   api, avisar, caja, botonAccion, textoError, yoId: estado.usuario?.id, recargar: () => dibujar(), confirmar,
   // 0.10.0: las fallas registradas del alumno y su Profesor virtual (dar o quitar).
   fallasAlumno: id => instructorUi().loQueHicimos({ titulo: t('ficha.fallas'), url: `/api/admin/academia/alumnos/${encodeURIComponent(id)}/fallas` }),
-  profesorAlumno: id => instructorUi().profesorAdmin(id),
+  profesorAlumno: id => [instructorUi().profesorAdmin(id), lugarInstructor(v => v.resumenAdmin(id))], // 0.14.34: lo que le recomienda su instructor
   preparadoAlumno: id => [instructorUi().preparado(`/api/admin/academia/alumnos/${encodeURIComponent(id)}/preparado`, { alumno: true }),
     // 0.12.9 (T, U): lo que su tutor recuerda de él y «¿Tomo el examen?».
     tutorUi().adminAlumno(id),
@@ -6371,6 +6413,8 @@ async function dibujar() {
   if (seccion === 'tiempo-ia') return pagosUi().pantallaTiempo();
   if (seccion === 'pagos' && esAdmin) return pantallaPagos();
   if (seccion === 'profesor') return pantallaProfesor();
+  // 0.14.34: «Tu instructor» (public/instructor-vista.js, solo se carga aquí).
+  if (seccion === 'instructor') return pantallaInstructor();
   if (seccion === 'aprendizaje' && esAdmin) return pantallaAprendizaje();
   // 0.12.4: la «Vista de prueba de la IA» (solo el administrador; sin IA, sin costo, sin guardar nada).
   if (seccion === 'ia-demo' && esAdmin) return pantallaIaDemo();
@@ -6473,6 +6517,7 @@ function pedidosAlAbrir(seccion, admin) {
   // 0.10.0: Pagos (administrador) y el Profesor virtual.
   if (seccion === 'pagos') return admin ? ['/api/admin/academia/pagos'] : [];
   if (seccion === 'profesor') return ['/api/academia/profesor'];
+  if (seccion === 'instructor') return ['/api/academia/instructor/resumen', '/api/academia/profesor'];
   if (seccion === 'ia-demo') return admin ? ['/api/admin/academia/ia-demo'] : [];
   if (seccion === 'ia-alumnos') return admin ? ['/api/admin/academia/ia-alumnos'] : [];
   if (seccion === 'pago-servidor') return admin ? ['/api/admin/servidor-pago'] : [];

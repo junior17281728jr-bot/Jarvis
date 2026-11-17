@@ -201,7 +201,8 @@ export const ESQUEMA_CHAT = Object.freeze({
 // historial: los últimos mensajes del chat (lo que escribió va como dato).
 // 0.14.22: estudio = lo de src/academia/profe-chat.js (cifrasProfe): su historia por tema (clase, prácticas, test del tema,
 // examen de la materia, con el examen pesando más), lo que no cuadra, el oral, los repasos y los botones que pone la app.
-export function armarChat({ alumno, material, preguntas = [], historial = [], mensaje, idioma = 'es', estudio = null }) {
+// 0.14.34: guia = «Guíame» desde «Tu instructor»: una mini-clase del tema dicha con OTRAS palabras que la clase.
+export function armarChat({ alumno, material, preguntas = [], historial = [], mensaje, idioma = 'es', estudio = null, guia = false }) {
   const sistema = [
     ...COMUN(idioma),
     'Eres su PROFESOR VIRTUAL: un chat corto con UN alumno. Conoces cómo estudia (sus cifras, sus fallas y sus ideas equivocadas) y adaptas cómo le explicas.',
@@ -211,6 +212,7 @@ export function armarChat({ alumno, material, preguntas = [], historial = [], me
       'Los botones los pone la app («botones_que_pone_la_app»): puedes mencionarlos («abajo tienes el botón…»), pero nunca inventes otros, ni enlaces, ni rutas.',
       idioma === 'en' ? 'Tone: warm and friendly, like a good flight instructor; short and structured (2 to 4 short lines or bullets).' : 'Tono: dominicano y de pana, cálido, con jerga ligera si cae bien («dale», «tranquilo», «vamos a meterle mano»), sin groserías ni burlas. Corto y ordenado: 2 a 4 líneas o viñetas cortas, nada de párrafos largos.',
     ] : []),
+    ...(guia ? ['Modo GUÍAME: el alumno pidió que lo guíes en este tema. Explícalo como una mini-clase de 3 a 5 líneas con OTRAS palabras que la clase (otra analogía, otro orden, un ejemplo de cabina), usando SOLO los hechos del material; no copies frases de la clase. Termina diciendo que abajo vienen 3 preguntas rápidas para comprobar.'] : []),
     'Reglas: (1) Respuestas CORTAS (hasta 700 caracteres), en su estilo. (2) Si hablas de una pregunta del Test Guide, su respuesta es SIEMPRE la que te damos; nunca la contradigas ni la cambies. (3) Usa el material dado; si no está, dilo. (4) Termina con una pregunta corta para comprobar que entendió (pregunta_control). (5) estudiar_ahora: qué le recomiendas estudiar ahora (un tema o una de sus fallas). (6) Nunca escribas enlaces ni direcciones de internet: para videos, da en buscar_en_youtube hasta 3 búsquedas cortas (por ejemplo «night vision scanning pilot»); la app arma el enlace.',
     `Estilo de este alumno: ${estiloDe(alumno?.estilo)}`,
     REGLA_CITA,

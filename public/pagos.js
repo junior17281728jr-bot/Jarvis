@@ -354,7 +354,9 @@ export function crearPagos(h) {
           ...(m.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))) : null),
     ];
   }
-  async function pantallaProfesor(cargado = null) {
+  // 0.14.34: «Tu instructor» (#instructor) usa este mismo chat: arriba = su tarjeta (lo de arriba del chat), seccion = la
+  // pestaña marcada, alListo({ mandar, lista }) = para poner la guía y las preguntas rápidas DENTRO de la conversación.
+  async function pantallaProfesor(cargado = null, { arriba = [], seccion = 'inicio', alListo = null } = {}) {
     const r = cargado ?? await api('GET', '/api/academia/profesor');
     if (!r.ok) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
     const d = r.datos;
@@ -406,7 +408,8 @@ export function crearPagos(h) {
     const boton = el('button', { type: 'button', class: 'boton-3d', onclick: () => mandar() }, el('span', { texto: tx('profesor.enviar') }));
     // 0.12.9 (G, M, Y): el primer mensaje del tutor (sin llamar a la IA), arriba de la conversación.
     h.tutorUi?.().ponerApertura(lista, mandar);
-    mostrar(marco('inicio', volver,
+    alListo?.({ mandar, lista });
+    mostrar(marco(seccion, volver, ...arriba,
       el('section', { class: 'panel chat' },
         el('div', { class: 'chat-cabeza' }, el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('cerebro')),
           el('div', {}, el('h1', { texto: tx('profesor.titulo') }), el('p', { class: 'suave chica', texto: tx('profesor.linea') })), medidor),

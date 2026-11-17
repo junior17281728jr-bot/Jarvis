@@ -344,3 +344,46 @@ button.plan-hoy-fila { cursor: pointer; }
 .profe-botones > * { justify-content: center; min-height: 44px; min-width: 0; padding-inline: 10px; text-align: center; }
 .profe-botones > :only-child, .profe-botones > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .profe-resumen { border-inline-start: 3px solid var(--naranja, #f59e0b); }
+
+/* 0.14.34: «Tu instructor» (#instructor): el botón flotante, la tarjeta de arriba y las preguntas rápidas en el chat */
+.boton-instructor {
+  position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 9;
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 6px 16px 6px 8px; border-radius: 999px;
+  background: var(--azul); color: #fff; font-weight: 800; font-size: 15px; text-decoration: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+.boton-instructor-icono { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.18); }
+.boton-instructor-icono .icono { width: 22px; height: 22px; }
+.boton-instructor-punto { display: none; position: absolute; top: 4px; left: 32px; width: 12px; height: 12px; border-radius: 50%; background: var(--naranja); border: 2px solid var(--azul); }
+.boton-instructor.con-algo .boton-instructor-punto { display: block; }
+.boton-instructor:not(.con-algo) .boton-instructor-algo { display: none; }
+.boton-instructor:focus-visible { outline: 3px solid var(--acento); outline-offset: 3px; }
+@media (max-width: 759px) { a.ayuda-enlace.instructor-enlace { display: none; } }
+@media (min-width: 760px) { .boton-instructor { bottom: calc(24px + env(safe-area-inset-bottom)); } }
+@media print { .boton-instructor { display: none; } }
+.tuinstr-titulo { margin: 0 0 10px; }
+.tuinstr-tarjeta { display: grid; gap: 10px; margin-bottom: 14px; }
+.tuinstr-cabeza { display: flex; align-items: center; gap: 12px; }
+.tuinstr-cabeza h2 { margin: 0; font-size: 19px; }
+.tuinstr-cabeza p { margin: 2px 0 0; }
+.tuinstr-charla p { margin: 0 0 6px; font-size: 17px; line-height: 1.45; }
+.tuinstr-cambios, .tuinstr-debiles { padding: 8px 10px; border-radius: 12px; background: var(--fondo); }
+.tuinstr-cambios p, .tuinstr-debiles p { margin: 0 0 4px; }
+.tuinstr-cambios .lista-simple, .tuinstr-debiles .lista-simple { margin: 0; padding-left: 18px; }
+.tuinstr-cambio.cambio-mejoro { color: var(--bien); font-weight: 700; }
+.tuinstr-salida .tono-bien { color: var(--bien); font-weight: 700; }
+.tuinstr-salida .tono-mal { color: var(--mal, #b42318); font-weight: 700; }
+.tuinstr-elige { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid var(--linea); }
+.tuinstr-elige p { margin: 0; }
+.tuinstr-elige-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tuinstr-elige-botones .boton-3d { width: 100%; min-height: 48px; }
+.tuinstr-repaso { width: 100%; min-height: 48px; }
+.tuinstr-guia { max-height: none; overflow: visible; margin-top: 4px; }
+.tuinstr-guia:empty { display: none; }
+.tuinstr-burbuja { max-width: 100%; }
+.tuinstr-opciones { display: grid; gap: 6px; margin: 6px 0; }
+.tuinstr-opcion { justify-content: flex-start; text-align: left; min-height: 44px; white-space: normal; }
+.tuinstr-salida .boton-3d { margin-top: 6px; }
+.tuinstr-facil h3 { font-size: 16px; margin: 6px 0 2px; }
+.tuinstr-sin-chat { margin-top: 10px; }
+.tuinstr-reco { display: grid; gap: 6px; margin: 10px 0 14px; border-left: 4px solid var(--azul); }
+.tuinstr-reco p { margin: 0; }

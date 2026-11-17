@@ -272,7 +272,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const base = datos?.intento;
     if (base != null && !Number.isSafeInteger(base)) throw new ErrorHttp(400, 'datos_no_validos');
     // 0.12.2: «concepto» (opcional, con tipo «errores»): repasar un concepto de «Mi repaso» (su clave).
-    const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null, concepto: textoDe(datos, 'concepto') || null };
+    const pedido = { tipo: textoDe(datos, 'tipo'), materia: textoDe(datos, 'materia') || null, tema: textoDe(datos, 'tema') || null, intento: base ?? null, concepto: textoDe(datos, 'concepto') || null, cuantas: datos?.cuantas ?? null };
     // 0.13.7: el Repaso final se empieza solo por su ruta (que no deja empezarlo durante un examen con reloj).
     if (pedido.tipo === 'final') throw new ErrorHttp(400, 'datos_no_validos');
     // 0.9.2: el examen de materia va con reloj (src/academia/examen.js); si hay uno abierto con tiempo, sigue ese (200).

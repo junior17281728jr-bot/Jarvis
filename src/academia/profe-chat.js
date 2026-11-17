@@ -12,9 +12,14 @@
 //    sus datos: se leen en el idioma del alumno) y los mismos botones.
 //  - cifrasProfe: lo que va a la IA. Sin nombre, sin usuario y SIN ids internos: solo títulos y números.
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { camino, temasLeidos } from './progreso.js';
 import { diagnostico } from './consejo-ia.js';
 import { caminoOral, repasoOral, examenesOralDe, hayOral } from './oral.js';
+import { leerVivo } from './oral-vivo.js';
+import { resumenRepasoFinal } from './repaso-final.js';
+import { ajustesAcademia, diaDe } from './progreso.js';
+import { leerAjuste, guardarAjuste } from './paquetes.js';
 
 export const PESO_EXAMEN = 3;
 // Lo mínimo de cada lado para hablar de una contradicción (con 1 respuesta no se acusa a nadie).
@@ -95,10 +100,125 @@ export function historialEstudio(db, usuarioId, paquete, ahoraMs = Date.now()) {
     db.prepare("SELECT MAX(creada_en) AS en FROM academia_extra_respuestas WHERE usuario_id = ? AND materia LIKE 'oral\\_%' ESCAPE '\\'").get(usuarioId)?.en,
   ].filter(Boolean).map(x => Date.parse(x)).filter(Number.isFinite);
   const d = diagnostico(db, usuarioId, paquete, ahoraMs);
+  // 0.14.34: la «Práctica en vivo» del oral y el «Repaso final» también los lee (solo cifras y títulos).
+  const umbral = ajustesAcademia(db).umbral;
+  const vivo = hayOral(paquete) ? vivoEstudio(leerVivo(db, usuarioId), paquete, umbral) : null;
+  let repasoFinal = null;
+  try {
+    const rf = resumenRepasoFinal(db, usuarioId, paquete, ahoraMs);
+    repasoFinal = { tg: { total: rf.tg.total, falladas: rf.tg.falladas }, oral: rf.oral.hay ? { total: rf.oral.total, marcadas: rf.oral.marcadas, sabidas: rf.oral.sabidas } : null };
+  } catch { repasoFinal = null; }
   return {
-    materias, oral, repasos: d.repaso?.n ?? 0, haceDias: ultimaEn.length ? Math.max(0, Math.floor((ahoraMs - Math.max(...ultimaEn)) / DIA)) : null,
+    materias, oral, vivo, repasoFinal, umbral, repasos: d.repaso?.n ?? 0, haceDias: ultimaEn.length ? Math.max(0, Math.floor((ahoraMs - Math.max(...ultimaEn)) / DIA)) : null,
     diagnostico: d, abiertos: new Set(c.materias.flatMap(x => x.temas.filter(t => t.estado !== 'bloqueado').map(t => `${x.id}/${t.id}`))),
   };
+}
+
+// ---------- 0.14.34: la «Práctica en vivo» del oral, resumida ----------
+// v: leerVivo(...). → { veces, mejor, ultima, aprobado, listo, temas: { 'm/t': { titulo, pct } }, flojos: [{ materia, tema, titulo, pct }] }
+// o null. De cada tema vale la ÚLTIMA vez que salió; los temas que ya no están en el paquete no cuentan.
+export function vivoEstudio(v, paquete, umbral = 70) {
+  if (!v?.veces) return null;
+  const temas = {};
+  for (const fila of v.historial ?? []) {
+    for (const [id, x] of Object.entries(fila?.temas ?? {})) {
+      const [m, t] = id.split('/');
+      const tt = temaOral(paquete, m, t);
+      if (tt && Number.isFinite(Number(x?.pct))) temas[id] = { materia: m, tema: t, titulo: tt.titulo, pct: Number(x.pct) };
+    }
+  }
+  const u = (v.historial ?? []).at(-1) ?? null;
+  const flojos = Object.values(temas).filter(x => x.pct < umbral).sort((a, b) => a.pct - b.pct).slice(0, 3);
+  return { veces: v.veces, mejor: v.mejor ?? 0, ultima: u ? Number(u.pct) || 0 : null, aprobado: v.aprobado === true, listo: u?.listo === true, temas, flojos };
+}
+
+// ---------- 0.14.34: lo que cambió desde la última vez («Desde ayer: Hipoxia 2/6 → 5/6») ----------
+// La foto de HOY: por tema del Test Guide { bien, de } (prácticas, tests y examen, la última respuesta de cada pregunta) y
+// por tema de la práctica en vivo { pct }. Las claves son internas (se quedan en el servidor; a la pantalla y a la IA
+// solo van los títulos).
+export function fotoEstudio(h) {
+  const temas = {};
+  for (const m of h?.materias ?? []) {
+    for (const t of m.temas) {
+      const bien = t.estudio.bien + t.examen.bien;
+      const de = t.estudio.de + t.examen.de;
+      if (de) temas[`${m.materia}/${t.tema}`] = { bien, de };
+    }
+  }
+  for (const [id, x] of Object.entries(h?.vivo?.temas ?? {})) temas[`v:${id}`] = { pct: x.pct };
+  return temas;
+}
+export const CAMBIO_MINIMO = 10; // puntos de % para decir «mejoraste» / «bajaste»
+const FLOJO = 70;
+const pctDe = x => (x?.de ? Math.round((x.bien * 100) / x.de) : Number.isFinite(x?.pct) ? x.pct : null);
+// antes/ahora: fotos (fotoEstudio). titulo(clave) → el título que se ve. → [{ tipo: 'mejoro' | 'bajo' | 'sigue_flojo',
+// origen: 'tg' | 'vivo', titulo, antes, ahora }] (hasta 3: primero lo que mejoró, después lo que bajó y lo que sigue flojo).
+export function cambiosEstudio(antes, ahora, titulo) {
+  if (!antes || !ahora) return [];
+  const lista = [];
+  for (const [k, x] of Object.entries(ahora)) {
+    const a = antes[k];
+    if (!a) continue;
+    const pa = pctDe(a);
+    const pb = pctDe(x);
+    if (pa == null || pb == null) continue;
+    const nuevas = x.de != null ? x.de - (a.de ?? 0) : null;
+    const tipo = pb - pa >= CAMBIO_MINIMO ? 'mejoro' : pa - pb >= CAMBIO_MINIMO ? 'bajo' : pb < FLOJO && (nuevas == null || nuevas > 0 || x.bien !== a.bien) ? 'sigue_flojo' : null;
+    const t = tipo ? titulo(k) : null;
+    if (tipo && t) lista.push({ tipo, origen: k.startsWith('v:') ? 'vivo' : 'tg', clave: k, titulo: t, antes: { ...a }, ahora: { ...x }, distancia: Math.abs(pb - pa) });
+  }
+  const orden = { mejoro: 0, bajo: 1, sigue_flojo: 2 };
+  return lista.sort((a, b) => orden[a.tipo] - orden[b.tipo] || b.distancia - a.distancia).slice(0, 3).map(({ distancia, ...x }) => x);
+}
+// Guarda la foto de hoy y devuelve la de referencia (la del último día ANTERIOR con estudio): { base, dia } o null.
+// Ajuste «academia.instructor.foto.<id>» = { base: { dia, temas }, ultima: { dia, temas } }. Solo se reemplaza la foto:
+// nunca se borra nada de lo que hizo.
+const claveFoto = id => `academia.instructor.foto.${Number(id)}`;
+export function seguirCambios(db, usuarioId, foto, ahoraMs = Date.now(), { soloLeer = false } = {}) {
+  let g = null;
+  try { g = JSON.parse(leerAjuste(db, claveFoto(usuarioId)) ?? 'null'); } catch { g = null; }
+  const hoy = diaDe(ahoraMs);
+  const vale = x => x && typeof x === 'object' && typeof x.dia === 'string' && x.temas && typeof x.temas === 'object';
+  let base = vale(g?.base) ? g.base : null;
+  const ultima = vale(g?.ultima) ? g.ultima : null;
+  if (ultima && ultima.dia < hoy) base = ultima;
+  if (!Object.keys(foto).length && !ultima) return null;
+  if (!soloLeer && (JSON.stringify(ultima?.temas) !== JSON.stringify(foto) || ultima?.dia !== hoy || base !== g?.base)) guardarAjuste(db, claveFoto(usuarioId), JSON.stringify({ base, ultima: { dia: hoy, temas: foto } }));
+  return base && base.dia < hoy ? base : null;
+}
+// El tema para «¿Estudias por tu cuenta o te guío?»: lo que bajó o sigue flojo del Test Guide, o el que diagnosticó el
+// consejo. Solo un tema ABIERTO que existe. → { materia, tema, titulo } o null.
+export function focoProfe(h, cambios, paquete) {
+  const candidatos = [
+    ...cambios.filter(c => c.origen === 'tg' && c.tipo !== 'mejoro').map(c => c.clave.split('/')),
+    ...(h?.diagnostico?.guia ? [[h.diagnostico.guia.materia, h.diagnostico.guia.tema]] : []),
+    ...(h?.diagnostico?.temas ?? []).map(t => [t.materia, t.tema]),
+  ];
+  for (const [m, t] of candidatos) {
+    if (!m || !t || !h?.abiertos?.has(`${m}/${t}`)) continue;
+    const x = temaDe(paquete, m, t);
+    if (x?.preguntas?.length) return { materia: m, tema: t, titulo: x.titulo };
+  }
+  return null;
+}
+// Lo que dice el instructor de esos cambios (sin IA), como un profe de verdad: [{ clave, vars }] (hasta 2).
+export function charlaCambios(cambios, foco) {
+  const lineas = [];
+  const mejor = cambios.find(c => c.tipo === 'mejoro');
+  const flojo = cambios.find(c => c.tipo !== 'mejoro');
+  if (mejor) lineas.push({ clave: `profe.cambio.mejoro${flojo ? '_pero' : ''}`, vars: { tema: mejor.titulo } });
+  if (flojo) lineas.push({ clave: 'profe.cambio.flojo', vars: { tema: flojo.titulo } });
+  else if (foco && !mejor) lineas.push({ clave: 'profe.cambio.foco', vars: { tema: foco.titulo } });
+  return lineas;
+}
+// Los puntos débiles de TODO (Test Guide, oral y práctica en vivo), para la tarjeta: [{ origen, titulo, pct, bien?, de? }] (hasta 4).
+export function debilesProfe(h) {
+  if (!h) return [];
+  const tg = h.materias.flatMap(m => m.temas).filter(t => t.dominio != null && t.dominio < FLOJO)
+    .map(t => ({ origen: 'tg', titulo: t.titulo, pct: t.dominio, bien: t.estudio.bien + t.examen.bien, de: t.estudio.de + t.examen.de }));
+  const vivo = (h.vivo?.flojos ?? []).map(x => ({ origen: 'vivo', titulo: x.titulo, pct: x.pct }));
+  const oral = (h.oral?.flojos ?? []).map(x => ({ origen: 'oral', titulo: x.titulo, pct: null, errores: x.errores ?? null }));
+  return [...tg.sort((a, b) => a.pct - b.pct).slice(0, 2), ...vivo.slice(0, 1), ...oral.slice(0, 1), ...tg.slice(2)].slice(0, 4);
 }
 
 // ---------- Lo que no cuadra ----------
@@ -186,6 +306,8 @@ export function botonesProfe(h, contras, paquete) {
     if (siguiente) p.push({ tipo: 'clase', materia: siguiente.materia, tema: siguiente.tema });
   }
   if (h.oral?.errores > 0) p.push(h.oral.flojos[0] ? { tipo: 'oral', materia: h.oral.flojos[0].materia, tema: h.oral.flojos[0].tema } : { tipo: 'oral', errores: true });
+  // 0.14.34: lo más flojo de la práctica en vivo del oral.
+  if (h.vivo?.flojos?.[0]) p.push({ tipo: 'oral', materia: h.vivo.flojos[0].materia, tema: h.vivo.flojos[0].tema });
   return validarBotones(p, paquete, h);
 }
 
@@ -222,6 +344,69 @@ export function profe(db, usuarioId, paquete, ahoraMs = Date.now(), { donde = nu
   return { historial: h, contradicciones: contras, lineas: respuestaSinIa(h, contras), botones: primero.length ? validarBotones([...primero, ...botones], paquete, h) : botones };
 }
 
+// ---------- 0.14.34: «Tu instructor» (la tarjeta de arriba y lo que lee el chat) ----------
+// Lo mismo que profe() más: lo que cambió desde el último día que estudió, lo que dice de eso, el tema para elegir
+// «Estudiar por mi cuenta» / «Guíame», los puntos débiles de TODO y el repaso de hoy. Guarda la foto de hoy (seguirCambios).
+// soloLeer (la vista del administrador): compara con lo guardado sin guardar la foto de hoy.
+export function resumenInstructor(db, usuarioId, paquete, ahoraMs = Date.now(), { soloLeer = false, ...opciones } = {}) {
+  const x = profe(db, usuarioId, paquete, ahoraMs, opciones);
+  const h = x.historial;
+  if (!h) return { ...x, cambios: [], desdeDias: null, charla: [], foco: null, debiles: [] };
+  const foto = fotoEstudio(h);
+  const base = seguirCambios(db, usuarioId, foto, ahoraMs, { soloLeer });
+  const titulo = k => {
+    if (k.startsWith('v:')) return h.vivo?.temas?.[k.slice(2)]?.titulo ?? null;
+    const [m, t] = k.split('/');
+    return temaDe(paquete, m, t)?.titulo ?? null;
+  };
+  const cambios = base ? cambiosEstudio(base.temas, foto, titulo) : [];
+  const desdeDias = base ? Math.max(1, Math.round((Date.parse(`${diaDe(ahoraMs)}T12:00:00Z`) - Date.parse(`${base.dia}T12:00:00Z`)) / DIA)) : null;
+  const foco = focoProfe(h, cambios, paquete);
+  return { ...x, cambios, desdeDias, charla: charlaCambios(cambios, foco), foco, debiles: debilesProfe(h) };
+}
+// ---------- 0.14.34: «Recomendación de tu instructor» (arriba de Repaso) ----------
+// 1–2 líneas y 1–2 botones que cambian con sus ÚLTIMOS resultados («¡Bien con la hipoxia! Ahora refuerza Visión nocturna,
+// que la tienes floja»). Se guarda por alumno (ajuste «academia.instructor.reco.<id>») con la huella de sus resultados:
+// mientras no cambien, se devuelve la misma (no se vuelve a armar). Lo que cambió se mide contra la foto de la última
+// recomendación (así, aprobar un tema hoy ya cambia la recomendación). → { lineas, botones, en, veces, nueva }
+const claveReco = id => `academia.instructor.reco.${Number(id)}`;
+export function recomendacion(db, usuarioId, paquete, ahoraMs = Date.now()) {
+  const r = resumenInstructor(db, usuarioId, paquete, ahoraMs);
+  const h = r.historial;
+  if (!h) return { lineas: [{ clave: 'tuinstr.reco.empezar', vars: {} }], botones: [], en: null, veces: 0, nueva: false };
+  const foto = fotoEstudio(h);
+  const huella = createHash('sha256').update(JSON.stringify({ foto, foco: r.foco ? `${r.foco.materia}/${r.foco.tema}` : null, repaso: h.repasos > 0, vivo: h.vivo?.flojos?.[0]?.titulo ?? null })).digest('hex').slice(0, 24);
+  let g = null;
+  try { g = JSON.parse(leerAjuste(db, claveReco(usuarioId)) ?? 'null'); } catch { g = null; }
+  if (g?.huella === huella && Array.isArray(g.lineas)) return { lineas: g.lineas, botones: validarBotones(g.botones, paquete, h), en: g.en ?? null, veces: Number(g.veces) || 1, nueva: false };
+  const titulo = k => {
+    if (k.startsWith('v:')) return h.vivo?.temas?.[k.slice(2)]?.titulo ?? null;
+    const [m, t] = k.split('/');
+    return temaDe(paquete, m, t)?.titulo ?? null;
+  };
+  const cambios = g?.foto && typeof g.foto === 'object' ? cambiosEstudio(g.foto, foto, titulo) : r.cambios;
+  const mejor = cambios.find(c => c.tipo === 'mejoro');
+  const foco = r.foco;
+  const lineas = [];
+  if (mejor && foco && mejor.titulo !== foco.titulo) lineas.push({ clave: 'tuinstr.reco.mejoro_foco', vars: { bien: mejor.titulo, tema: foco.titulo } });
+  else if (mejor && foco) lineas.push({ clave: 'tuinstr.reco.mejoro_sigue', vars: { bien: mejor.titulo } });
+  else if (mejor) lineas.push({ clave: 'tuinstr.reco.mejoro', vars: { bien: mejor.titulo } });
+  else if (foco) lineas.push({ clave: 'tuinstr.reco.foco', vars: { tema: foco.titulo } });
+  else if (h.repasos > 0) lineas.push({ clave: 'tuinstr.reco.repaso', vars: { n: h.repasos } });
+  else lineas.push({ clave: h.materias.some(m => m.temas.some(t => t.dominio != null)) ? 'tuinstr.reco.bien' : 'tuinstr.reco.empezar', vars: {} });
+  if (h.vivo?.flojos?.[0]) lineas.push({ clave: 'tuinstr.reco.vivo', vars: { tema: h.vivo.flojos[0].titulo } });
+  const pedidos = foco ? [{ tipo: 'practicar', materia: foco.materia, tema: foco.tema }, { tipo: 'clase', materia: foco.materia, tema: foco.tema }]
+    : h.repasos > 0 ? [{ tipo: 'repaso' }] : r.botones;
+  const botones = validarBotones(pedidos, paquete, h).slice(0, 2);
+  const en = new Date(ahoraMs).toISOString();
+  const veces = (Number(g?.veces) || 0) + 1;
+  guardarAjuste(db, claveReco(usuarioId), JSON.stringify({ huella, foto, lineas: lineas.slice(0, 2), botones, en, veces }));
+  return { lineas: lineas.slice(0, 2), botones, en, veces, nueva: true };
+}
+
+// Para la pantalla: sin claves internas (los cambios sin «clave»).
+export const cambiosVista = cambios => cambios.map(({ clave, ...c }) => c);
+
 // ---------- Lo que va a la IA (sin nombres ni ids) ----------
 const QUE_BOTON = Object.freeze({ clase: 'abrir la clase', practicar: 'practicar las que falló', test: 'el test del tema', examen: 'el examen de la materia', oral: 'practicar el oral', repaso: 'el repaso de hoy' });
 // Con un tope de tamaño (TOPE_CIFRAS bytes): con 11 materias y el oral, igual deja lugar a la clase y al historial.
@@ -232,6 +417,7 @@ export function cifrasProfe(x, { idioma = 'es', maxTemas = 6 } = {}) {
   // Se achica en este orden: temas (hasta 2), ideas equivocadas, capítulos del oral, exámenes, temas del diagnóstico y,
   // al final, los 2 temas que quedaban.
   const pasos = [() => (c.temas.length > 2 ? c.temas.pop() : undefined), () => c.diagnostico?.temas.find(t => t.ideas_equivocadas.length && (t.ideas_equivocadas = [])),
+    () => c.oral_en_vivo?.temas_flojos.pop(), () => c.cambios_desde_antes?.pop(),
     () => c.oral?.capitulos.pop(), () => c.examenes_de_materia.pop(), () => (c.diagnostico?.temas.length > 1 ? c.diagnostico.temas.pop() : undefined), () => c.temas.pop()];
   for (const paso of pasos) while (c && grande() && paso() !== undefined);
   return c;
@@ -253,6 +439,11 @@ function cifrasCompletas(x, { idioma, maxTemas }) {
     examenes_aprobados: h.materias.filter(m => m.examen?.aprobado).length,
     diagnostico: h.diagnostico?.alcance ? { alcance: h.diagnostico.alcance, temas: h.diagnostico.temas.map(t => ({ tema: t.titulo, bien: t.bien, de: t.de, ideas_equivocadas: (t.ideas ?? []).slice(0, 1).map(i => String(i).slice(0, 160)) })) } : null,
     oral: h.oral ? { capitulos: h.oral.materias.filter(m => (m.bien || m.examen?.veces) && m.pct < 80).slice(0, 4).map(m => ({ capitulo: nombreOral(m.materia), pct: m.pct, examen_aprobado: m.examen?.aprobado ?? false })), errores_pendientes: h.oral.errores, temas_flojos: h.oral.flojos.slice(0, 2).map(t => t.titulo) } : null,
+    // 0.14.34: la práctica en vivo del oral (cifras y títulos), el Repaso final y lo que cambió desde el último día.
+    oral_en_vivo: h.vivo ? { veces: h.vivo.veces, ultima_pct: h.vivo.ultima, mejor_pct: h.vivo.mejor, aprobada_alguna_vez: h.vivo.aprobado, listo_para_el_real: h.vivo.listo, temas_flojos: h.vivo.flojos.map(t => ({ tema: t.titulo, pct: t.pct })) } : null,
+    repaso_final: h.repasoFinal ? { test_guide: { preguntas: h.repasoFinal.tg.total, falladas: h.repasoFinal.tg.falladas }, oral: h.repasoFinal.oral } : null,
+    cambios_desde_antes: (x.cambios ?? []).map(c => ({ que_paso: c.tipo, de_donde: c.origen === 'vivo' ? 'oral en vivo' : 'test guide', tema: c.titulo, antes: c.antes, ahora: c.ahora })),
+    dias_desde_la_comparacion: x.desdeDias ?? null,
     repasos_pendientes: h.repasos, dias_sin_estudiar: h.haceDias,
     botones_que_pone_la_app: x.botones.map(b => ({ que: QUE_BOTON[b.tipo], tema: b.titulo ?? (b.tipo === 'examen' ? nm(b.materia) : null) })),
   };

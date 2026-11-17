@@ -492,7 +492,9 @@ function barajar(lista, azar) {
   return copia;
 }
 
-export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false, concepto = null, soloFalladas = false }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
+// 0.14.34: cuantas (2–10, solo repaso, errores e instructor): las primeras N (para las preguntas rápidas de «Tu instructor»).
+export const CUANTAS = Object.freeze({ min: 2, max: 10 });
+export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tema = null, intento: intentoBase = null, saltar = false, concepto = null, soloFalladas = false, cuantas = null }, { azar = Math.random, ahoraMs = Date.now() } = {}) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   if (!TIPOS_INTENTO.includes(tipo)) throw new ErrorHttp(400, 'datos_no_validos');
   let ids;
@@ -568,6 +570,10 @@ export function crearIntento(db, usuarioId, paquete, { tipo, materia = null, tem
     ids = repasoPendiente(db, usuarioId, paquete, ahoraMs).slice(0, REPASO_MAXIMO);
     materia = null;
     tema = null;
+  }
+  if (cuantas != null && ['repaso', 'errores', 'instructor'].includes(tipo)) {
+    if (!Number.isSafeInteger(cuantas) || cuantas < CUANTAS.min || cuantas > CUANTAS.max) throw new ErrorHttp(400, 'datos_no_validos');
+    ids = ids.slice(0, cuantas);
   }
   if (!ids.length) throw new ErrorHttp(409, tipo === 'repaso' ? 'repaso_vacio' : 'sin_preguntas');
   // 0.8.0: el repaso y «practicar mis errores» van en orden de prioridad (lo más fallado primero), sin mezclar.
