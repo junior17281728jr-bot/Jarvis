@@ -6,7 +6,13 @@
 //    no cambia; cada salto es un evento (los últimos 200).
 //  - academia.salto.<intento>: la foto del momento del salto (cuántos temas le faltaban de cuántos). Se guarda al crear
 //    el examen: así «saltaste 6 temas» no cambia cuando después hace los temas.
-// Saltar no abre nada del camino: los temas siguen en su orden y el examen aprobado así no los aprueba.
+// Saltar no abre nada del camino por sí solo: si se quema, los temas siguen en su orden y nada se abre.
+// 0.14.19 («test out», pedido del dueño): si APRUEBA ese examen directo (con la nota de aprobar de los exámenes de materia:
+// el «umbral» del intento, academia.aprobar_pct, 90 % si no se cambió), la materia queda «Convalidada por examen»: cuenta
+// con todos sus temas hechos y se abre la siguiente. Se guarda aparte y solo se agrega (nunca se borra nada):
+//  - academia.convalidadas.<alumno>: { <materia>: { intento, pct, umbral, en } }. El primero que aprueba se queda (la
+//    nota no cambia después). Solo lo escribe la entrega de un examen directo aprobado (los aprobados antes de la 0.14.19
+//    no se convalidan solos: pueden volver a tomarlo).
 import { leerAjuste, guardarAjuste } from './paquetes.js';
 
 const MAX_EVENTOS = 200;
@@ -64,5 +70,32 @@ export function historialSaltos(db, usuarioId) {
       aprobado: f?.terminado_en != null ? f.aprobado === 1 : null,
     };
   });
-  return { orden, eventos: lista.reverse() };
+  // 0.14.19: qué materias quedaron «Convalidadas por examen» (y con qué nota); el salto que la convalidó, marcado.
+  const convalidadas = convalidadasDe(db, usuarioId);
+  for (const e of lista) if (convalidadas[e.materia]?.intento === e.intento) e.convalidada = true;
+  return { orden, eventos: lista.reverse(), convalidadas };
+}
+
+// ---------- 0.14.19: «Convalidada por examen» ----------
+const claveConvalidadas = id => `academia.convalidadas.${Number(id)}`;
+export function leerConvalidadas(texto) {
+  let v = null;
+  try { v = JSON.parse(texto ?? 'null'); } catch { v = null; }
+  const salida = {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return salida;
+  for (const [m, x] of Object.entries(v)) {
+    if (!MATERIA.test(m) || !x || typeof x !== 'object') continue;
+    salida[m] = { intento: Number(x.intento) || null, pct: Math.max(0, Math.min(100, Number(x.pct) || 0)), umbral: Number(x.umbral) || null, en: typeof x.en === 'string' ? x.en : null };
+  }
+  return salida;
+}
+export const convalidadasDe = (db, usuarioId) => leerConvalidadas(leerAjuste(db, claveConvalidadas(usuarioId)));
+// Idempotente: si ya estaba convalidada, no cambia nada (→ false).
+export function convalidar(db, usuarioId, { materia, intento, pct, umbral, en }) {
+  if (!MATERIA.test(String(materia))) return false;
+  const v = convalidadasDe(db, usuarioId);
+  if (v[materia]) return false;
+  v[materia] = { intento: Number(intento), pct: Number(pct) || 0, umbral: Number(umbral) || null, en };
+  guardarAjuste(db, claveConvalidadas(usuarioId), JSON.stringify(v));
+  return true;
 }

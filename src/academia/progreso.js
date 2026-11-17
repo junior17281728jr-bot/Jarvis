@@ -7,7 +7,7 @@
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De, clipDe, fotoDe } from './paquetes.js';
-import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe } from './saltos.js';
+import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe, convalidadasDe, convalidar } from './saltos.js';
 import { lineaHumor, QUEMADO_SUAVE } from './humor.js';
 import { resumenVisitas } from '../cuentas/visitas.js';
 import { resumenExtra } from './extra.js';
@@ -178,10 +178,22 @@ export const vistaSecciones = (paquete, lista, pid = null) => (lista ?? []).map(
   } : {}),
 }));
 
-export function temasAprobados(db, usuarioId) {
+// 0.14.19: con el paquete, los temas de una materia «Convalidada por examen» (src/academia/saltos.js) cuentan como
+// aprobados (convalidado: true; su «mejor» sigue siendo el de su práctica, o null si nunca la hizo).
+export function temasAprobados(db, usuarioId, paquete = null) {
   const filas = db.prepare(`SELECT materia, tema, MAX(aprobado) AS aprobado, MAX(CASE WHEN total > 0 THEN aciertos * 100 / total END) AS mejor
     FROM academia_intentos WHERE usuario_id = ? AND tipo = 'tema' AND terminado_en IS NOT NULL GROUP BY materia, tema`).all(usuarioId);
-  return new Map(filas.map(f => [`${f.materia}/${f.tema}`, { aprobado: f.aprobado === 1, mejor: f.mejor }]));
+  const mapa = new Map(filas.map(f => [`${f.materia}/${f.tema}`, { aprobado: f.aprobado === 1, mejor: f.mejor }]));
+  if (paquete) {
+    for (const mid of Object.keys(convalidadasDe(db, usuarioId))) {
+      for (const t of paquete.materias.find(m => m.id === mid)?.temas ?? []) {
+        const k = `${mid}/${t.id}`;
+        const a = mapa.get(k);
+        if (!a?.aprobado) mapa.set(k, { aprobado: true, mejor: a?.mejor ?? null, convalidado: true });
+      }
+    }
+  }
+  return mapa;
 }
 export function examenes(db, usuarioId) {
   const filas = db.prepare(`SELECT materia, MAX(aprobado) AS aprobado, MAX(CASE WHEN total > 0 THEN aciertos * 100 / total END) AS mejor, COUNT(*) AS veces
@@ -232,8 +244,9 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const { nombre, umbral, examenSegundos, practicaModo } = ajustesAcademia(db);
   const base = { nombre, umbral, examenSegundos, practicaModo, ...puntosYRacha(db, usuarioId, ahoraMs) };
   if (!paquete) return { ...base, paquete: null, materias: [], repaso: 0 };
-  const aprobados = temasAprobados(db, usuarioId);
+  const aprobados = temasAprobados(db, usuarioId, paquete);
   const deExamen = examenes(db, usuarioId);
+  const convalidadas = convalidadasDe(db, usuarioId);
   let anteriorAprobado = true;
   const vistos = videosVistos(db, usuarioId);
   const leidos = temasLeidos(db, usuarioId);
@@ -250,7 +263,7 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
       anteriorAprobado = aprobado;
       // 0.12.2: el avance (anillo y color del nodo) y dónde quedó en su clase.
       const p = pasos[`${m.id}/${t.id}`] ?? null;
-      return { id: t.id, titulo: t.titulo, estado: estadoTema, mejor: a?.mejor ?? null, preguntas: t.preguntas.length,
+      return { id: t.id, titulo: t.titulo, estado: estadoTema, mejor: a?.mejor ?? null, preguntas: t.preguntas.length, ...(a?.convalidado ? { convalidado: true } : {}),
         avance: avanceTema(p, a, aprobado, !t.preguntas.length), paso: p ? { paso: p.paso, total: p.total } : null };
     });
     const todos = temas.length > 0 && temas.every(t => t.estado === 'aprobado');
@@ -272,7 +285,9 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const exAvance = ex?.aprobado === true ? { nivel: 'dominado', pct: 100 } : ex?.veces ? { nivel: 'terminado', pct: Math.min(99, ex.mejor ?? 0) } : { nivel: 'nuevo', pct: 0 };
     const partes = [...(video ? [video.pct] : []), ...temas.map(t => t.avance.pct), exAvance.pct];
     return {
-      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length), avance: partes.length ? Math.round(partes.reduce((a, b) => a + b, 0) / partes.length) : 0,
+      id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length),
+      // 0.14.19: «Convalidada por examen ✓» (aprobó el examen directo): todos sus temas cuentan hechos.
+      ...(convalidadas[m.id] && temas.length ? { convalidada: { pct: convalidadas[m.id].pct, en: convalidadas[m.id].en } } : {}), avance: partes.length ? Math.round(partes.reduce((a, b) => a + b, 0) / partes.length) : 0,
       ...(audio ? { audio } : {}), ...(video ? { video } : {}),
       reto: retoN, ...(debil ? { debil } : {}),
       examen: {
@@ -647,6 +662,10 @@ export function terminar(db, usuarioId, paquete, intentoId, { ahoraMs = Date.now
     if (f.respondidas < f.total && !permitirFaltantes) throw new ErrorHttp(409, 'faltan_respuestas');
     const aprobado = ['repaso', 'reto', 'errores', 'instructor', 'final'].includes(f.tipo) ? null : aprueba(f.aciertos, f.total, f.umbral ?? UMBRAL_POR_DEFECTO) ? 1 : 0;
     db.prepare('UPDATE academia_intentos SET terminado_en = ?, aprobado = ? WHERE id = ?').run(new Date(ahoraMs).toISOString(), aprobado, f.id);
+    // 0.14.19: el examen directo (sin terminar los temas) APROBADO convalida la materia (una vez; solo se agrega).
+    if (f.tipo === 'examen' && aprobado === 1 && saltoDeIntento(db, usuarioId, f.id)) {
+      convalidar(db, usuarioId, { materia: f.materia, intento: f.id, pct: pct(f.aciertos, f.total), umbral: f.umbral ?? UMBRAL_POR_DEFECTO, en: new Date(ahoraMs).toISOString() });
+    }
     return db.prepare('SELECT * FROM academia_intentos WHERE id = ?').get(f.id);
   });
   const respuestas = db.prepare('SELECT pregunta, elegida, correcta FROM academia_respuestas WHERE intento_id = ? ORDER BY id').all(fila.id);
@@ -680,6 +699,15 @@ function extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs) {
     const pendientes = c ? c.temas.filter(t => t.estado !== 'aprobado') : [];
     const sigue = c?.temas.find(t => t.estado === 'abierto') ?? null;
     extra.salto = { saltados: s.pendientes, total: s.total, pendientes: pendientes.length, siguiente: sigue ? { tema: sigue.id, titulo: sigue.titulo } : null };
+    // 0.14.19: aprobó el examen directo → «Convalidada por examen ✓» (y se abre lo que sigue).
+    if (c?.convalidada) extra.convalidada = { pct: c.convalidada.pct };
+  }
+  // 0.14.19: un examen de materia que no aprobó: cuánto le faltó y los temas donde más falló (con su nombre).
+  if (fila.tipo === 'examen' && fila.aprobado === 0) {
+    extra.falto = faltoDelExamen(paquete, fila, db.prepare('SELECT pregunta, correcta FROM academia_respuestas WHERE intento_id = ?').all(fila.id));
+    // (abierto: si ya puede entrar a ese tema; los cerrados se abren en orden)
+    const cm = camino(db, usuarioId, paquete, ahoraMs).materias.find(m => m.id === fila.materia);
+    for (const x of extra.falto.temas) x.abierto = cm?.temas.find(t => t.id === x.tema)?.estado !== 'bloqueado';
   }
   // 0.12.2: el «te quemaste» solo si se saltó las clases o ya no aprobó esto mismo 2 veces antes (una primera vez nunca).
   if (fila.aprobado === 0) {
@@ -693,6 +721,27 @@ function extrasDelResultado(db, usuarioId, paquete, fila, recien, ahoraMs) {
   if (fila.aciertos < fila.total && !extra.humor) extra.animo = true;
   Object.assign(extra, repasoDelResultado(db, usuarioId, paquete, fila, ahoraMs));
   return extra;
+}
+
+// 0.14.19: «Te faltó X %: estudia estos temas». Las que quedaron sin responder (examen con reloj) cuentan como malas.
+const TEMAS_PARA_ESTUDIAR = 3;
+export function faltoDelExamen(paquete, fila, respuestas) {
+  const bien = new Set(respuestas.filter(r => r.correcta === 1).map(r => r.pregunta));
+  const porTema = new Map();
+  for (const id of JSON.parse(fila.orden)) {
+    const lugar = paquete?.deTema?.get(id);
+    if (!lugar?.tema) continue;
+    const x = porTema.get(lugar.tema) ?? { tema: lugar.tema, materia: lugar.materia, total: 0, bien: 0 };
+    x.total += 1;
+    if (bien.has(id)) x.bien += 1;
+    porTema.set(lugar.tema, x);
+  }
+  const titulos = new Map((paquete?.materias.find(m => m.id === fila.materia)?.temas ?? []).map(t => [t.id, t.titulo]));
+  const temas = [...porTema.values()].filter(x => x.bien < x.total && titulos.has(x.tema))
+    .sort((a, b) => a.bien / a.total - b.bien / b.total || (b.total - b.bien) - (a.total - a.bien) || a.tema.localeCompare(b.tema))
+    .slice(0, TEMAS_PARA_ESTUDIAR).map(x => ({ tema: x.tema, titulo: titulos.get(x.tema), bien: x.bien, total: x.total, pct: pct(x.bien, x.total) }));
+  const umbral = fila.umbral ?? UMBRAL_POR_DEFECTO;
+  return { pct: Math.max(1, umbral - pct(fila.aciertos, fila.total)), umbral, temas };
 }
 
 // Cómo va cada materia: «dominio» = preguntas cuya ÚLTIMA respuesta fue correcta, sobre todas las de la materia.

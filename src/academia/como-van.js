@@ -119,7 +119,9 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
   const avanceAlumno = avanceDe(db, paquete, cuentas.map(u => u.id));
 
   const alumnos = cuentas.map(u => {
-    const tg = examenesPorMateria(examenes.get(u.id) ?? [], orden);
+    // 0.14.19: «Convalidada (examen N %)»: la materia cuenta con todos sus temas (src/academia/saltos.js).
+    const convalidadas = new Map((avanceAlumno.get(u.id)?.tg?.bloques ?? []).filter(b => b.convalidada).map(b => [b.id, b.convalidada]));
+    const tg = examenesPorMateria(examenes.get(u.id) ?? [], orden).map(x => (convalidadas.has(x.id) ? { ...x, convalidada: convalidadas.get(x.id) } : x));
     const oral = conOral ? examenesOralDe(db, u.id, paquete) : [];
     const todas = [...tg, ...oral];
     const aprobadosDe = new Map();
@@ -130,8 +132,8 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
     const resp = new Map((respuestas.get(u.id) ?? []).map(f => [f.materia, f]));
     const clasesMaterias = materias.map(m => {
       const r = resp.get(m.id);
-      const hechos = aprobadosDe.get(m.id) ?? 0;
-      return { id: m.id, temasAprobados: hechos, temas: m.temas.length, pct: pct(hechos, m.temas.length), respuestas: r?.n ?? 0, aciertos: r?.bien ?? 0, pctAcierto: pct(r?.bien ?? 0, r?.n ?? 0) };
+      const hechos = convalidadas.has(m.id) ? m.temas.length : aprobadosDe.get(m.id) ?? 0;
+      return { id: m.id, temasAprobados: hechos, ...(convalidadas.has(m.id) ? { convalidada: convalidadas.get(m.id) } : {}), temas: m.temas.length, pct: pct(hechos, m.temas.length), respuestas: r?.n ?? 0, aciertos: r?.bien ?? 0, pctAcierto: pct(r?.bien ?? 0, r?.n ?? 0) };
     });
     const nResp = [...resp.values()].reduce((s, f) => s + f.n, 0);
     const nBien = [...resp.values()].reduce((s, f) => s + f.bien, 0);

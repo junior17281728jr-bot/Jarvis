@@ -10,6 +10,7 @@
 //  - diasSinEntrar / diasActivosSemana: con el reloj que llega (las pruebas usan uno falso).
 import { MATERIAS } from './formato.js';
 import { temasAprobados, temasLeidos, examenes } from './progreso.js';
+import { convalidadasDe } from './saltos.js';
 import { caminoOral, examenesOralDe, hayOral } from './oral.js';
 
 const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
@@ -30,10 +31,11 @@ export function respuestasSinExamen(db, usuarioId) {
 // → { materias: [11 × { id, pronto, temas, temasHechos, examen: { mejor, aprobado, veces }, pasos, hechos, pct, respuestas, pctAcierto }],
 //     hechos, pasos, dondeVa: { materia, tema, titulo } | { materia, examen: true } | null }
 export function avancePorMateria(db, usuarioId, paquete, { respuestas = null } = {}) {
-  const aprobados = temasAprobados(db, usuarioId);
+  const aprobados = temasAprobados(db, usuarioId, paquete);
   const leidos = temasLeidos(db, usuarioId);
   const deExamen = examenes(db, usuarioId);
   const resp = respuestas ?? respuestasSinExamen(db, usuarioId);
+  const convalidadas = convalidadasDe(db, usuarioId);
   let dondeVa = null;
   let todoHecho = true;
   const materias = MATERIAS.map(id => {
@@ -54,7 +56,7 @@ export function avancePorMateria(db, usuarioId, paquete, { respuestas = null } =
         dondeVa = t ? { materia: id, tema: t.id, titulo: t.titulo } : { materia: id, examen: true };
       }
     }
-    return { ...base, pronto: false, temas: m.temas.length, temasHechos, pasos, hechos, pct: pct(hechos, pasos) };
+    return { ...base, pronto: false, temas: m.temas.length, temasHechos, ...(convalidadas[id] ? { convalidada: { pct: convalidadas[id].pct } } : {}), pasos, hechos, pct: pct(hechos, pasos) };
   });
   return {
     materias,
@@ -81,10 +83,10 @@ export function avanceOral(db, usuarioId, paquete) {
   const algo = c.materias.some(m => m.temas.some(t => t.leido || t.vistas) || m.examen.veces) || (c.final?.veces ?? 0) > 0;
   if (!algo) return null;
   return c.materias.map(m => {
-    const leidos = m.temas.filter(t => t.leido).length;
+    const leidos = m.convalidada ? m.temas.length : m.temas.filter(t => t.leido).length; // 0.14.19: convalidado por examen
     const hechos = leidos + (m.examen.aprobado ? 1 : 0);
     const pasos = m.temas.length + 1;
-    return { id: m.id, numero: m.numero, temas: m.temas.length, leidos, examen: { mejor: m.examen.mejor, aprobado: m.examen.aprobado, veces: m.examen.veces }, pasos, hechos, pct: pct(hechos, pasos), pctDominio: m.pct };
+    return { id: m.id, numero: m.numero, temas: m.temas.length, leidos, examen: { mejor: m.examen.mejor, aprobado: m.examen.aprobado, veces: m.examen.veces }, ...(m.convalidada ? { convalidada: m.convalidada } : {}), pasos, hechos, pct: pct(hechos, pasos), pctDominio: m.pct };
   });
 }
 

@@ -316,6 +316,7 @@ function saltosAlumno(d, h) {
       el('a', { href: `#alumno/${d.alumno.id}/intento/${e.intento}`, texto: t('alumnos.saltos.linea', { fecha: h.fecha(e.en), materia: h.nombreMateria(e.materia), n: numero(e.pendientes), total: numero(e.total) }) }),
       ' ',
       !e.terminado ? h.insignia('apagado', t('alumnos.saltos.abierto'))
+        : e.convalidada ? h.insignia('bien', t('alumnos.saltos.convalidada', { pct: numero(s.convalidadas?.[e.materia]?.pct ?? e.pct ?? 0) })) // 0.14.19
         : e.aprobado ? h.insignia('bien', t('alumnos.saltos.aprobo', { pct: numero(e.pct ?? 0) })) : h.insignia('mal', t('alumnos.saltos.quemado', { pct: numero(e.pct ?? 0) })))))
       : el('p', { class: 'suave', texto: t('alumnos.saltos.vacio') }));
 }

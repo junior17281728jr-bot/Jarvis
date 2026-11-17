@@ -55,7 +55,9 @@ function cuadricula(h, parte, oral, abierto) {
     const leyenda = el('p', { class: 'av-leyenda suave chica', texto: t('av.toca_punto') });
     panel.replaceChildren(
       el('p', { class: 'av-panel-titulo' }, el('strong', { texto: h.nombreMateria(b.id) }), el('span', { class: 'suave chica', texto: ` · ${t('av.temas', { n: numero(b.hechos), total: numero(b.temas.length) })}` }),
-        b.examen ? h.insignia(b.examen.aprobado ? 'bien' : 'atencion', b.examen.aprobado ? t('av.examen_ok') : t('av.examen_no', { pct: h.pctTexto(b.examen.mejor ?? 0) })) : null),
+        // 0.14.19: «Convalidada (examen N %)»: aprobó el examen antes de los temas (cuentan todos hechos).
+        b.convalidada ? h.insignia('bien', t('av.convalidada', { pct: h.pctTexto(b.convalidada.pct ?? 0) }))
+          : b.examen ? h.insignia(b.examen.aprobado ? 'bien' : 'atencion', b.examen.aprobado ? t('av.examen_ok') : t('av.examen_no', { pct: h.pctTexto(b.examen.mejor ?? 0) })) : null),
       el('div', { class: 'av-puntos' }, b.temas.map((x, k) => punto(h, b, k, x, leyenda, oral))),
       leyenda);
     panel.hidden = false;

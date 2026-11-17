@@ -87,7 +87,7 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
   const calificados = terminados.filter(x => CALIFICADOS.includes(x.tipo));
   const r = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(correcta), 0) AS bien, COUNT(DISTINCT pregunta) AS distintas FROM academia_respuestas WHERE usuario_id = ?').get(alumnoId);
   const fechas = db.prepare('SELECT creada_en FROM academia_respuestas WHERE usuario_id = ? ORDER BY creada_en').all(alumnoId).map(f => f.creada_en);
-  const aprobadosTemas = [...temasAprobados(db, alumnoId).values()].filter(x => x.aprobado).length;
+  const aprobadosTemas = [...temasAprobados(db, alumnoId, paquete).values()].filter(x => x.aprobado).length;
   const deExamen = examenes(db, alumnoId);
   const general = notaGeneralDelCurso(deExamen);
   const { racha, hoy } = puntosYRacha(db, alumnoId, ahoraMs);

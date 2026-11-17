@@ -33,7 +33,7 @@ function leerPlan(db, usuarioId) {
 
 // Cuántos «pasos» tiene el camino entero (cada tema y cada examen de materia) y cuántos ya hizo el alumno.
 export function pasosDelCamino(db, usuarioId, paquete) {
-  const aprobados = temasAprobados(db, usuarioId);
+  const aprobados = temasAprobados(db, usuarioId, paquete);
   const leidos = temasLeidos(db, usuarioId);
   const deExamen = examenes(db, usuarioId);
   const conContenido = (paquete?.materias ?? []).filter(m => m.temas.length);
@@ -114,7 +114,7 @@ export function mapaDelGrupo(paquete) {
 // null si aprobó todos) y qué temas terminó (vio la clase e hizo la práctica: morado) o dominó (aprobó: dorado).
 // Solo ids «<materia>/<tema>»: ni porcentajes, ni intentos, ni respuestas.
 export function rutaDeCompanero(db, usuarioId, paquete) {
-  const aprobados = temasAprobados(db, usuarioId);
+  const aprobados = temasAprobados(db, usuarioId, paquete);
   const leidos = temasLeidos(db, usuarioId);
   const pasos = pasosDeTemas(db, usuarioId);
   let actual = null;

@@ -9,7 +9,10 @@
 //  - «Ahora en»: el tema de lo ÚLTIMO que hizo (tarjetas, respuestas, prácticas, exámenes); si ese tema ya está hecho, el
 //    siguiente sin hacer. Sin nada con fecha (solo lecturas), el primero sin hacer.
 // Pocas consultas para TODOS los alumnos a la vez (una por tabla, sin una por alumno ni por tema): 1 CPU y 512 MB.
+//  - 0.14.19: una materia «Convalidada por examen» (aprobó su examen directo: src/academia/saltos.js) cuenta con TODOS
+//    sus temas hechos y sale con convalidada: { pct }; lo mismo un capítulo del oral cuyo examen aprobó antes de sus temas.
 import { MATERIAS, MATERIAS_ORAL } from './formato.js';
+import { leerConvalidadas } from './saltos.js';
 
 const pct = (a, b) => (b > 0 ? Math.floor((a * 100) / b) : 0);
 const mayor = (a, b) => (!a ? b ?? null : !b ? a : a > b ? a : b);
@@ -19,18 +22,19 @@ const json = texto => { try { return JSON.parse(texto); } catch { return null; }
 // Lo guardado de cada alumno en «ajustes» (lecturas, tarjetas vistas y el oral), en UNA consulta.
 function ajustesDe(db, ids) {
   const filas = db.prepare(`SELECT clave, valor FROM ajustes WHERE clave LIKE 'academia.temas\\_leidos.%' ESCAPE '\\'
-    OR clave LIKE 'academia.tema\\_paso.%' ESCAPE '\\' OR clave LIKE 'academia.oral.%'`).all();
+    OR clave LIKE 'academia.tema\\_paso.%' ESCAPE '\\' OR clave LIKE 'academia.oral.%' OR clave LIKE 'academia.convalidadas.%'`).all();
   const de = new Map();
   for (const f of filas) {
-    const m = /^academia\.(temas_leidos|tema_paso|oral)\.(\d+)$/.exec(f.clave);
+    const m = /^academia\.(temas_leidos|tema_paso|oral|convalidadas)\.(\d+)$/.exec(f.clave);
     if (!m) continue;
     const id = Number(m[2]);
     if (ids && !ids.has(id)) continue;
-    if (!de.has(id)) de.set(id, { leidos: new Set(), pasos: {}, oral: { leidos: new Set(), examenes: {} } });
+    if (!de.has(id)) de.set(id, { leidos: new Set(), pasos: {}, oral: { leidos: new Set(), examenes: {} }, convalidadas: {} });
     const v = json(f.valor);
     const x = de.get(id);
     if (m[1] === 'temas_leidos' && Array.isArray(v)) x.leidos = new Set(v.filter(s => typeof s === 'string'));
     else if (m[1] === 'tema_paso' && esObjeto(v)) x.pasos = v;
+    else if (m[1] === 'convalidadas') x.convalidadas = leerConvalidadas(f.valor);
     else if (m[1] === 'oral' && esObjeto(v)) x.oral = { leidos: new Set(Array.isArray(v.leidos) ? v.leidos.filter(s => typeof s === 'string') : []), examenes: esObjeto(v.examenes) ? v.examenes : {} };
   }
   return de;
@@ -113,7 +117,7 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
   const todos = ids ? [...ids] : [...new Set([...ajustes.keys(), ...temas.keys(), ...resp.keys(), ...examenes.keys(), ...oralResp.keys()])];
   const salida = new Map();
   for (const id of todos) {
-    const aj = ajustes.get(id) ?? { leidos: new Set(), pasos: {}, oral: { leidos: new Set(), examenes: {} } };
+    const aj = ajustes.get(id) ?? { leidos: new Set(), pasos: {}, oral: { leidos: new Set(), examenes: {} }, convalidadas: {} };
     const misTemas = temas.get(id) ?? new Map();
     const misResp = resp.get(id) ?? new Map();
     const misEx = examenes.get(id) ?? new Map();
@@ -123,20 +127,21 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
       const m = (paquete?.materias ?? []).find(x => x.id === mid);
       const ex = misEx.get(mid);
       if (ex) verFecha(ex.en, mid, null);
+      const conv = m?.temas.length ? aj.convalidadas[mid] ?? null : null;
       const lista = (m?.temas ?? []).map(t => {
         const k = `${mid}/${t.id}`;
         const it = misTemas.get(k);
         const r = misResp.get(k);
         const p = esObjeto(aj.pasos[k]) ? aj.pasos[k] : null;
         const leido = aj.leidos.has(k);
-        const hecho = it?.aprobado === 1 || (!t.preguntas.length && leido);
+        const hecho = it?.aprobado === 1 || (!t.preguntas.length && leido) || Boolean(conv);
         const empezado = Boolean(it || r || leido || (p && Number(p.max) > 0));
         verFecha(mayor(mayor(it?.en, r?.en), typeof p?.en === 'string' ? p.en : null), mid, t.id);
         return { id: t.id, titulo: t.titulo, estado: hecho ? 'hecho' : empezado ? 'empezado' : 'nuevo' };
       });
       const hechos = lista.filter(t => t.estado === 'hecho').length;
       return { id: mid, numero: n + 1, pronto: !lista.length, temas: lista, hechos, pct: pct(hechos, lista.length), actual: false,
-        examen: ex ? { aprobado: ex.aprobado === 1, mejor: ex.mejor ?? null } : null };
+        examen: ex ? { aprobado: ex.aprobado === 1, mejor: ex.mejor ?? null } : null, ...(conv ? { convalidada: { pct: conv.pct } } : {}) };
     });
     let oral = null;
     let ultimoOral = null;
@@ -147,19 +152,21 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
         const m = paquete.oral.materias.find(x => x.id === cid);
         const e = aj.oral.examenes[cid];
         if (esObjeto(e) && typeof e.en === 'string') verOral(e.en, cid, null);
+        const convOral = esObjeto(e) && esObjeto(e.convalidada) ? e.convalidada : null;
         const lista = (m?.temas ?? []).map(t => {
           const k = `${cid}/${t.id}`;
           const pr = mios.get(`${k}/p`);
           const ex = mios.get(`${k}/e`);
           const leido = aj.oral.leidos.has(k);
-          const hecho = leido || (t.preguntas.length > 0 && (pr?.vistas ?? 0) >= t.preguntas.length);
+          const hecho = leido || (t.preguntas.length > 0 && (pr?.vistas ?? 0) >= t.preguntas.length) || Boolean(convOral);
           verOral(pr?.en, cid, t.id);
           if (ex) verOral(ex.en, cid, null);
           return { id: t.id, titulo: t.titulo, estado: hecho ? 'hecho' : pr || ex ? 'empezado' : 'nuevo' };
         });
         const hechos = lista.filter(t => t.estado === 'hecho').length;
         return { id: cid, numero: n + 1, pronto: !lista.length, temas: lista, hechos, pct: pct(hechos, lista.length), actual: false,
-          examen: esObjeto(e) && Number(e.veces) > 0 ? { aprobado: e.aprobado === true, mejor: Number(e.mejor) || 0 } : null };
+          examen: esObjeto(e) && Number(e.veces) > 0 ? { aprobado: e.aprobado === true, mejor: Number(e.mejor) || 0 } : null,
+          ...(convOral ? { convalidada: { pct: Math.max(0, Math.min(100, Number(convOral.pct) || 0)) } } : {}) };
       });
       oral = armar(capitulos, ultimoOral);
     }

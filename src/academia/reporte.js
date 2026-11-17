@@ -77,7 +77,7 @@ export function reporteAcademia(db, paquete, opciones, ahoraMs = Date.now()) {
       id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, nombreLegal: legales.get(u.id) ?? null, avatar: avatares.get(u.id) ?? null,
       bloqueado: u.activo !== 1, puntaje, preparacion: prep.pct, notaPromedio: nota, pctAcierto: acierto, respuestas: r.n, calificados: calificados.length,
       examenesAprobados: [...deExamen.values()].filter(x => x.aprobado).length, examenes: materiasIds.length,
-      temasAprobados: [...temasAprobados(db, u.id).values()].filter(x => x.aprobado).length, temas: (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0),
+      temasAprobados: [...temasAprobados(db, u.id, paquete).values()].filter(x => x.aprobado).length, temas: (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0),
       racha: puntosYRacha(db, u.id, ahoraMs).racha,
       ultimaActividad: [act.ultimaActividad, ultimaRespuesta, act.ultimaEntrada].filter(Boolean).sort().pop() ?? null,
       materias: paquete ? porMateria(db, u.id, paquete).map(m => ({ id: m.id, pct: m.pct, pctRespuestas: m.pctRespuestas })) : [],

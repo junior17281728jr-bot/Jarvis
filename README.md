@@ -728,6 +728,19 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   recuerdan mientras la lista en uso no cambie (un paso del trabajador pasa de ~100 ms a ~6 ms con los datos reales).
 - La cobertura del Test Guide se revisa en código («Test Guide cubierto: N de M», con la lista de lo que falta) y la
   revisión final la busca pregunta por pregunta («falta_tg»). Cada riesgo o ilusión lleva su «Qué hacer» del libro.
+### Lo nuevo de la 0.14.19: «¿Ya lo sabes? Toma el examen y pásala» (convalidar por examen) — sin cambio de base
+
+- Quien ya sabe una materia toma su examen sin hacer los temas («Ir directo al examen», `src/academia/saltos.js`). Si lo
+  APRUEBA con la nota de aprobar de los exámenes de materia (`academia.aprobar_pct`, 90 % si no se cambió), la materia queda
+  **«Convalidada por examen ✓»**: cuenta con todos sus temas hechos, se abre la siguiente en el Camino y el avance (el %
+  por temas de la 0.14.11, «Cómo van todos», la ficha) la cuenta completa; el administrador ve «Convalidada (examen N %)».
+- Si no aprueba, nada se salta ni se abre: «Te faltó X %: estudia estos temas» con los temas donde más falló (sus nombres).
+- Solo se agrega un registro en `ajustes` (`academia.convalidadas.<alumno>`, el primero que aprueba se queda); nunca se
+  borra nada. Los exámenes directos aprobados antes de la 0.14.19 no se convalidan solos (pueden volver a tomarlo).
+- En la tarjeta de una materia sin empezar (o cerrada), visible aunque esté plegada: «¿Ya lo sabes? Toma el examen y
+  pásala» con su aviso corto; abre la hoja de «Ir directo al examen», que ahora dice la regla.
+- Oral: no tiene candados (no hay nada que abrir); aprobar el examen de un capítulo antes de sus temas lo deja convalidado
+  y su avance cuenta todos sus temas hechos.
 
 ### Lo nuevo de la 0.14.16: el consejo del instructor IA, corto y con botones — sin cambio de base
 

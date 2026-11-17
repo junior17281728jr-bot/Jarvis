@@ -205,19 +205,17 @@ test('saltar etapas: sin «saltar» sigue 403; con «saltar» se guarda el orden
   });
 });
 
-test('saltar etapas: si pasa después de saltar, igual le recomienda hacer los temas (y la regla «clases» no se cumple hasta hacerlos)', async () => {
+// 0.14.19 («test out»): si pasa el examen directo, la materia queda «Convalidada por examen» (todos sus temas cuentan
+// hechos): ya no le pide hacer los temas, y la regla «clases» se cumple (test/convalidar.test.js lo prueba entero).
+test('saltar etapas: si pasa después de saltar, la materia queda convalidada (sus temas cuentan hechos) y no le pide hacerlos', async () => {
   await conAcademia(async c => {
     const res = await hacerIntento(c, c.ana, { tipo: 'examen', materia: MATERIA, saltar: true });
     assert.equal(res.aprobado, true);
-    assert.equal(res.salto.pendientes, 2);
+    assert.equal(res.salto.pendientes, 0);
+    assert.deepEqual(res.convalidada, { pct: 100 });
     assert.equal(res.humor, undefined, 'sin quemarse no hay vacilón');
-    const consejo = (await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.ana })).datos.consejo;
-    assert.equal(consejo.clave, 'salto_paso');
-    assert.equal((await pedir(c.base, 'GET', '/api/academia/preparado', { galleta: c.ana })).datos.reglas.find(r => r.id === 'clases').ok, false);
-    await hacerIntento(c, c.ana, { tipo: 'tema', materia: MATERIA, tema: 'muestra-hipoxia' });
-    await hacerIntento(c, c.ana, { tipo: 'tema', materia: MATERIA, tema: 'muestra-ilusiones' });
+    assert.notEqual((await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.ana })).datos.consejo?.clave, 'salto_paso');
     assert.equal((await pedir(c.base, 'GET', '/api/academia/preparado', { galleta: c.ana })).datos.reglas.find(r => r.id === 'clases').ok, true);
-    assert.notEqual((await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.ana })).datos.consejo.clave, 'salto_paso');
   });
 });
 

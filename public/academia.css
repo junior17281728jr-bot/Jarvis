@@ -802,6 +802,18 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .panel-salto.quemado { border-left-color: var(--rojo); }
 .panel-salto h2 { margin: 0 0 6px; font-size: 18px; }
 .panel-salto p { font-size: 17px; font-weight: 700; margin: 0 0 12px; }
+/* 0.14.19: «Convalidada por examen ✓» y «¿Ya lo sabes? Toma el examen y pásala» */
+.banner-convalidada { display: inline-block; margin: 8px 0 0; padding: 4px 10px; border-radius: 99px; font-size: 13px; font-weight: 800; background: #ffffff; color: var(--verde-borde); }
+.convalidar-caja { display: grid; gap: 6px; justify-items: center; text-align: center; margin: 12px 0 4px; }
+.convalidar-caja .convalidar-boton { width: 100%; max-width: 420px; }
+.convalidar-aviso { margin: 0; max-width: 420px; }
+.saltar-regla { font-weight: 700; margin: 6px 0; }
+.panel-convalidada { border-left: 6px solid var(--verde); }
+.panel-convalidada h2 .icono { color: var(--verde-borde); }
+.panel-falto { border-left: 6px solid var(--rojo); }
+.panel-convalidada h2, .panel-falto h2 { margin: 0 0 6px; font-size: 18px; }
+.panel-convalidada p, .panel-falto p { font-size: 17px; font-weight: 700; margin: 0 0 12px; }
+.falto-temas { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 17px; font-weight: 700; }
 
 .extra-sello { display: inline-block; margin: 4px 0 0; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; background: var(--morado-suave); color: var(--morado-texto); }
 .extra-sello.grande { font-size: 14px; padding: 6px 12px; }

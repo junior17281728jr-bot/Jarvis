@@ -3764,10 +3764,13 @@ function senderoMateria(m, n, siguiente) {
       nodos.push(nodoCamino({ clase: 'bloqueado', nombreIcono: 'candado', titulo: es, detalle: tema.preguntas ? tn('acad.n_preguntas', { n: tema.preguntas }) : null, etiqueta: t('acad.tema_cerrado', { tema: es }), i: i++ }));
     } else {
       const hecho = tema.estado === 'aprobado';
+      // 0.14.19: un tema de una materia convalidada por examen (sin su práctica): hecho, sin estrellas ni «0 %».
+      const convalidado = hecho && tema.convalidado === true;
       nodos.push(nodoCamino({
         clase: hecho ? 'hecho' : 'abierto', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}`, i: i++,
-        nombreIcono: hecho ? 'marca' : 'estrella', titulo: es, etiqueta: hecho ? t('acad.tema_hecho', { tema: es, n: numero(tema.mejor ?? 0) }) : t('acad.tema_abierto', { tema: es }),
-        actual, estrellas: hecho ? estrellasDe(tema.mejor ?? 0) : 0, burbuja: actual ? t(tema.paso?.paso ? 'acad.seguir_aqui' : 'acad.empezar') : null, avance: tema.avance ?? null,
+        nombreIcono: hecho ? 'marca' : 'estrella', titulo: es, detalle: convalidado ? t('acad.convalidar.tema') : null,
+        etiqueta: convalidado ? t('acad.convalidar.tema_etiqueta', { tema: es }) : hecho ? t('acad.tema_hecho', { tema: es, n: numero(tema.mejor ?? 0) }) : t('acad.tema_abierto', { tema: es }),
+        actual, estrellas: hecho && !convalidado ? estrellasDe(tema.mejor ?? 0) : 0, burbuja: actual ? t(tema.paso?.paso ? 'acad.seguir_aqui' : 'acad.empezar') : null, avance: tema.avance ?? null,
       }));
     }
   });
@@ -3814,7 +3817,9 @@ function bannerMateria(m, n, { vacia = false } = {}) {
       el('p', { class: 'banner-ante', texto: t('acad.materia_n', { n: numero(n + 1) }) }),
       el('h2', { id: `materia-${m.id}`, class: 'banner-titulo', texto: nombreMateria(m.id) }),
       vacia ? el('p', { class: 'banner-linea', texto: t('acad.pronto.linea') })
-        : el('div', { class: 'banner-avance' }, el('span', { class: 'banner-barra' }, barraLlena(m.pct)), el('span', { texto: t('acad.temas_de', { n: numero(hechos), total: numero(m.temas.length) }) }))),
+        : el('div', { class: 'banner-avance' }, el('span', { class: 'banner-barra' }, barraLlena(m.pct)), el('span', { texto: t('acad.temas_de', { n: numero(hechos), total: numero(m.temas.length) }) })),
+      // 0.14.19: «Convalidada por examen ✓» (aprobó el examen sin hacer los temas: cuenta completa).
+      !vacia && m.convalidada ? el('p', { class: 'banner-convalidada', texto: t('acad.convalidar.sello', { pct: numero(m.convalidada.pct ?? 0) }) }) : null),
     vacia ? el('span', { class: 'banner-pronto', texto: t('acad.pronto') }) : null);
 }
 function barraLlena(pct) {
@@ -4031,6 +4036,7 @@ async function pantallaInicio() {
   if (!r.ok) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const c = r.datos;
   estudioHoy = c.hoy ?? null;
+  if (Number.isFinite(c.umbral)) umbralCamino = c.umbral;
   if (c.oral) anotarOral(c.oral);
   if (!c.paquete) {
     return mostrar(marco('inicio', barraCabina(c),
@@ -4048,6 +4054,7 @@ async function pantallaInicio() {
     const vacia = !m.temas.length;
     return el('section', { class: `materia-bloque ${claseMateria(m.id)} ${vacia ? 'vacia' : m.estado}`, 'aria-labelledby': `materia-${m.id}` },
       bannerMateria(m, n, { vacia }),
+      vacia ? null : ofrecerConvalidar(m),
       vacia || m.estado === 'bloqueada' ? null : extrasMateria(m),
       vacia ? null : senderoMateria(m, n, siguiente));
   });
@@ -4994,9 +5001,9 @@ function confirmar(texto, { si = t('dialogo.si'), no = t('dialogo.no'), peligro 
 }
 
 // 0.12.0: «Ir directo al examen» sin terminar los temas: primero el aviso (una hoja para confirmar), después el examen.
-function saltarAlExamen(m) {
+function hojaSaltar(m, evento) {
   const total = m.temas.length;
-  const abrir = evento => {
+  {
     const desde = evento.currentTarget;
     const cerrar = () => { capa.remove(); try { desde.focus({ preventScroll: true }); } catch { /* ya no está */ } };
     const si = el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: e => { sonar('toque'); cerrar(); empezarIntento({ tipo: 'examen', materia: m.id, saltar: true }, e.currentTarget); } }, el('span', { texto: t('acad.saltar.si') }));
@@ -5008,17 +5015,32 @@ function saltarAlExamen(m) {
       el('h2', { id: 'saltar-titulo', texto: t('acad.saltar.titulo') }),
       el('p', { id: 'saltar-aviso', class: 'saltar-aviso', texto: t('acad.saltar.aviso') }),
       el('p', { class: 'suave', texto: t('acad.saltar.linea', { n: numero(m.examen.pendientes ?? total), total: numero(total) }) }),
+      el('p', { class: 'saltar-regla', texto: t('acad.convalidar.regla', { n: numero(umbralCamino ?? 90) }) }),
       el('div', { class: 'saltar-botones' }, si, no));
     const capa = el('div', { class: 'origen-capa saltar-capa', onclick: e => { if (e.target === capa) cerrar(); } }, hoja);
     capa.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
     window.addEventListener('hashchange', () => capa.remove(), { once: true });
     document.body.append(capa);
     si.focus();
-  };
+  }
+}
+function saltarAlExamen(m) {
+  const abrir = evento => hojaSaltar(m, evento);
   return el('div', { class: 'saltar-caja' },
     el('p', { class: 'aviso', texto: t('acad.examen_cerrado') }),
     el('button', { type: 'button', class: 'boton-3d grande blanco con-icono', onclick: abrir }, icono('rayo', 'icono chico'), el('span', { texto: t('acad.saltar.boton') })),
     el('p', { class: 'suave chica', texto: t('acad.saltar.aviso') }));
+}
+
+// 0.14.19 («test out»): en la tarjeta de una materia sin empezar (o cerrada), «¿Ya lo sabes? Toma el examen y pásala»
+// con su aviso corto; abre la misma hoja de «Ir directo al examen». Aprobado: «Convalidada por examen ✓» y se abre lo
+// que sigue; si no, nada se abre y toca estudiar los temas.
+let umbralCamino = null;
+function ofrecerConvalidar(m) {
+  if (!m.examen?.saltable || m.convalidada || m.examen.aprobado || m.temas.some(x => x.estado === 'aprobado')) return null;
+  return el('div', { class: 'convalidar-caja materia-fuera' },
+    el('button', { type: 'button', class: 'boton-3d blanco con-icono convalidar-boton', onclick: e => hojaSaltar(m, e) }, icono('rayo', 'icono chico'), el('span', { texto: t('acad.convalidar.boton') })),
+    el('p', { class: 'suave chica convalidar-aviso', texto: t('acad.convalidar.aviso', { n: numero(umbralCamino ?? 90) }) }));
 }
 
 // ---- Las preguntas: una por pantalla, como un ejercicio de Duolingo ----
@@ -5144,6 +5166,21 @@ function panelesResultado(res) {
       el('p', { texto }),
       s.siguiente ? el('a', { class: 'boton-3d naranja con-icono', href: `#tema/${encodeURIComponent(res.materia)}/${encodeURIComponent(s.siguiente.tema)}` },
         icono('estrella', 'icono chico'), el('span', { texto: t('salto.ir') })) : null));
+  }
+  // 0.14.19: aprobó el examen directo → «Convalidada por examen ✓»; no aprobó → cuánto le faltó y qué temas estudiar.
+  if (res.convalidada) {
+    lista.push(el('section', { class: 'panel panel-convalidada', 'aria-labelledby': 'convalidada-titulo' },
+      el('h2', { id: 'convalidada-titulo', class: 'con-icono' }, icono('marca'), el('span', { texto: t('acad.convalidar.sello', { pct: numero(res.convalidada.pct) }) })),
+      el('p', { texto: t('acad.convalidar.paso', { materia: nombreMateria(res.materia) }) }),
+      el('a', { class: 'boton-3d naranja', href: '#inicio' }, el('span', { texto: t('acad.convalidar.seguir') }))));
+  }
+  if (res.falto) {
+    lista.push(el('section', { class: 'panel panel-falto', 'aria-labelledby': 'falto-titulo' },
+      el('h2', { id: 'falto-titulo', class: 'con-icono' }, icono('atencion'), el('span', { texto: t('acad.convalidar.falto', { pct: numero(res.falto.pct) }) })),
+      el('p', { texto: t('acad.convalidar.falto_linea', { n: numero(res.falto.umbral) }) }),
+      res.falto.temas.length ? el('ul', { class: 'falto-temas' }, res.falto.temas.map(x => el('li', {},
+        x.abierto ? el('a', { href: `#tema/${encodeURIComponent(res.materia)}/${encodeURIComponent(x.tema)}`, texto: partirTitulo(x.titulo).es }) : el('strong', { texto: partirTitulo(x.titulo).es }),
+        el('span', { class: 'suave chica', texto: ` · ${t('acad.convalidar.falto_tema', { bien: numero(x.bien), total: numero(x.total) })}` })))) : null));
   }
   if (res.tipo === 'examen' && res.aprobado && res.materia) {
     lista.push(el('a', { class: 'extra-invitacion con-icono', href: `#extra/${encodeURIComponent(res.materia)}` }, icono('chispa'),

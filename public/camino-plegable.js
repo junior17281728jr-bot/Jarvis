@@ -63,7 +63,8 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
     // El sendero (y lo de la materia) va dentro de un cuerpo que se pliega.
     const dentro = el('div', { class: 'materia-cuerpo-dentro' });
     if (m.estado === 'bloqueada') dentro.append(el('p', { class: 'materia-vista-previa con-icono' }, icono('candado', 'icono chico'), el('span', { texto: t('camino.vista_previa') })));
-    for (const hijo of [...seccion.children]) if (hijo !== banner) dentro.append(hijo);
+    // 0.14.19: «¿Ya lo sabes? Toma el examen y pásala» (.materia-fuera) se queda visible en la tarjeta aunque esté plegada.
+    for (const hijo of [...seccion.children]) if (hijo !== banner && !hijo.classList.contains('materia-fuera')) dentro.append(hijo);
     const cuerpo = el('div', { class: 'materia-cuerpo', id: `camino-cuerpo-${m.id}` }, dentro);
     seccion.append(cuerpo);
     const boton = el('button', {

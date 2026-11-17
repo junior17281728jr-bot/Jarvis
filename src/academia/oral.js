@@ -9,6 +9,9 @@
 //  - Funciona sin IA: la lección, la práctica, los exámenes y «Listo para el oral» salen solo del paquete y de lo que
 //    respondió. La respuesta correcta (y «¿De dónde salió?», que la trae) nunca viaja antes de responder. Es práctica sin
 //    nota oficial: un examen que se deja a medias no bloquea nada (se entrega el último que se abrió).
+//  - 0.14.19 («test out»): el oral no tiene candados (todos los capítulos están abiertos), así que no hay nada que abrir;
+//    pero si aprueba el examen de un capítulo ANTES de terminar sus temas, el capítulo queda «Convalidado por examen»
+//    (examenes.<capítulo>.convalidada = { pct, en }, se agrega una vez y no cambia): su avance cuenta todos sus temas hechos.
 import { randomBytes } from 'node:crypto';
 import { ErrorHttp } from '../nucleo/http.js';
 import { MATERIAS_ORAL } from './formato.js';
@@ -122,6 +125,7 @@ export function caminoOral(db, usuarioId, paquete, { tgTerminado = false } = {})
     return {
       id: m.id, numero: MATERIAS_ORAL.indexOf(m.id) + 1, temas, preguntas: total, bien, pct: pct(bien, total),
       examen: { disponible: total > 0, aprobado: ex?.aprobado === true, mejor: ex?.mejor ?? null, veces: ex?.veces ?? 0 },
+      ...(esObjeto(ex?.convalidada) ? { convalidada: { pct: Number(ex.convalidada.pct) || 0 } } : {}),
     };
   });
   const final = yo.examenes.final ?? null;
@@ -254,9 +258,20 @@ export function entregarExamenOral(db, usuarioId, paquete, { examen, respuestas 
   const nota = pct(bien, ids.length);
   const aprobado = ids.length > 0 && bien * 100 >= umbral * ids.length;
   const antes = yo.examenes[a.alcance] ?? {};
-  const examenes = { ...yo.examenes, [a.alcance]: { aprobado: antes.aprobado === true || aprobado, mejor: Math.max(Number(antes.mejor) || 0, nota), ultimo: nota, veces: (Number(antes.veces) || 0) + 1, en: new Date(ahoraMs).toISOString() } };
+  // 0.14.19: aprobado el de un capítulo con temas sin hacer (ni leídos ni practicados enteros) → «Convalidado por examen».
+  let convalidada = esObjeto(antes.convalidada) ? antes.convalidada : null;
+  if (!convalidada && aprobado && a.alcance !== 'final' && temasSinHacer(db, usuarioId, paquete, yo, a.alcance) > 0) convalidada = { pct: nota, en: new Date(ahoraMs).toISOString() };
+  const examenes = { ...yo.examenes, [a.alcance]: { aprobado: antes.aprobado === true || aprobado, mejor: Math.max(Number(antes.mejor) || 0, nota), ultimo: nota, veces: (Number(antes.veces) || 0) + 1, en: new Date(ahoraMs).toISOString(), ...(convalidada ? { convalidada } : {}) } };
   guardarAlumno(db, usuarioId, { ...yo, abierto: null, examenes });
-  return { alcance: a.alcance, bien, total: ids.length, pct: nota, aprobado, umbral, revision };
+  return { alcance: a.alcance, bien, total: ids.length, pct: nota, aprobado, umbral, revision, ...(convalidada && !antes.convalidada ? { convalidada: { pct: convalidada.pct } } : {}) };
+}
+// Cuántos temas del capítulo NO están hechos (la misma cuenta que el avance: leído, o todas sus preguntas practicadas).
+function temasSinHacer(db, usuarioId, paquete, yo, materia) {
+  const m = paquete.oral.materias.find(x => x.id === materia);
+  if (!m) return 0;
+  const leidos = new Set(yo.leidos);
+  const vistas = new Set(db.prepare("SELECT DISTINCT tema, pregunta FROM academia_extra_respuestas WHERE usuario_id = ? AND materia = ? AND nivel = 'oral_practica'").all(usuarioId, materia).map(f => `${f.tema}/${f.pregunta}`));
+  return m.temas.filter(t => !(leidos.has(`${materia}/${t.id}`) || (t.preguntas.length > 0 && t.preguntas.every(id => vistas.has(`${t.id}/${id}`))))).length;
 }
 
 // ---------- Progreso, Mi repaso y la ficha del administrador (aparte del Test Guide) ----------
