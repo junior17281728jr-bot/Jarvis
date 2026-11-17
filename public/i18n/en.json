@@ -4374,7 +4374,7 @@
   "notas.intentos.linea_oral": "The practice oral exam.",
   "notas.intento.n": "Try {n}",
   "notas.intentos.ninguno": "Hasn't taken this exam yet.",
-  "notas.intentos.oral": "Handed in {n} {n|time|times}. Best score: {mejor}. Last: {ultima}.",
+  "notas.intentos.oral": "Handed in {n} {n|time|times}. Best score: {mejor}. Last: {final}.",
   "notas.intentos.oral_abierto": "One started and not handed in: Half done.",
   "notas.intentos.oral_nota": "For the oral only the best and the last score are kept, not every attempt.",
   "notas.intentos.cerrar": "Close",

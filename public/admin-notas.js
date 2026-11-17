@@ -176,7 +176,7 @@ function listaIntentos(h, ex) {
   if (!ex) return el('p', { class: 'suave', texto: t('notas.intentos.ninguno') });
   if (ex.oral) {
     return el('div', { class: 'notas-intentos-oral' },
-      ex.terminados ? el('p', { texto: t('notas.intentos.oral', { n: h.numero(ex.terminados), mejor: h.pctTexto(ex.mejor), ultima: h.pctTexto(ex.ultimo ?? ex.mejor) }) }) : null,
+      ex.terminados ? el('p', { texto: t('notas.intentos.oral', { n: h.numero(ex.terminados), mejor: h.pctTexto(ex.mejor), final: h.pctTexto(ex.ultimo ?? ex.mejor) }) }) : null,
       ex.abierto ? el('p', { class: 'notas-intentos-medias', texto: t('notas.intentos.oral_abierto') }) : null,
       el('p', { class: 'suave chica', texto: t('notas.intentos.oral_nota') }));
   }

@@ -4374,7 +4374,7 @@
   "notas.intentos.linea_oral": "El examen oral de práctica.",
   "notas.intento.n": "{n}.ª vez",
   "notas.intentos.ninguno": "Todavía no hizo este examen.",
-  "notas.intentos.oral": "Lo entregó {n} {n|vez|veces}. Su mejor nota: {mejor}. La última: {ultima}.",
+  "notas.intentos.oral": "Lo entregó {n} {n|vez|veces}. Su mejor nota: {mejor}. La última: {final}.",
   "notas.intentos.oral_abierto": "Tiene uno empezado sin entregar: A medias.",
   "notas.intentos.oral_nota": "Del oral solo se guardan la mejor y la última nota, no cada intento.",
   "notas.intentos.cerrar": "Cerrar",
