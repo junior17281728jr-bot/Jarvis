@@ -41,16 +41,27 @@ export function pasosDelCamino(db, usuarioId, paquete) {
   let total = 0;
   let hechos = 0;
   let actual = null;
+  // 0.14.25: dónde termina cada materia en el camino (pasos acumulados), para decir «debería ir en Materia 2».
+  const limites = [];
   for (const id of MATERIAS) {
     const m = paquete?.materias.find(x => x.id === id);
-    if (!m || !m.temas.length) { total += promedio; if (actual == null) actual = id; continue; }
+    if (!m || !m.temas.length) { total += promedio; limites.push({ id, hasta: total }); if (actual == null) actual = id; continue; }
     total += m.temas.length + 1;
+    limites.push({ id, hasta: total });
     const temasHechos = m.temas.filter(t => aprobados.get(`${id}/${t.id}`)?.aprobado || (!t.preguntas.length && leidos.has(`${id}/${t.id}`))).length;
     const examen = deExamen.get(id)?.aprobado === true;
     hechos += temasHechos + (examen ? 1 : 0);
     if (actual == null && !(temasHechos === m.temas.length && examen)) actual = id;
   }
-  return { total: Math.round(total), hechos, actual };
+  return { total: Math.round(total), hechos, actual, limites };
+}
+// 0.14.25: la materia en la que «debería ir» según su plan: la que contiene el paso que el ritmo del plan marca para hoy.
+// → { materia, numero } (numero: 1…11) | null
+export function materiaSegunPlan(limites, pasosEsperados) {
+  if (!limites?.length) return null;
+  const i = limites.findIndex(l => pasosEsperados < l.hasta);
+  const k = i < 0 ? limites.length - 1 : i;
+  return { materia: limites[k].id, numero: k + 1 };
 }
 
 // 0.12.4: UNA sola cuenta para el último día (antes el alumno veía «12 dic» al elegir y el administrador «11 dic»): hoy
@@ -64,7 +75,7 @@ export function planDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const opciones = Object.entries(PLANES_ESTUDIO).map(([id, dias]) => ({ id, dias, recomendado: id === PLAN_RECOMENDADO, fin: ultimoDia(hoy, dias) }));
   if (!p) return { elegido: null, opciones };
   const dias = PLANES_ESTUDIO[p.plan];
-  const { total, hechos } = pasosDelCamino(db, usuarioId, paquete);
+  const { total, hechos, limites } = pasosDelCamino(db, usuarioId, paquete);
   const pasados = Math.max(1, diasEntre(p.desde, hoy) + 1);
   const ritmoPlan = total / dias;
   // Los primeros 3 días manda el ritmo del plan; después, más el ritmo real (nunca menos de un paso cada 20 días).
@@ -79,6 +90,7 @@ export function planDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
     pct: total ? Math.min(100, Math.floor((hechos * 100) / total)) : 0,
     metaHoy: Math.max(1, Math.ceil(ritmoPlan)),
     ritmo: faltan === 0 ? 'terminado' : diferencia < -1 ? 'adelantado' : diferencia > 1 ? 'atrasado' : 'a_tiempo',
+    deberia: materiaSegunPlan(limites, Math.min(total, ritmoPlan * pasados)),
     opciones,
   };
 }

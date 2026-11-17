@@ -776,6 +776,7 @@ dialog.notas-hoja .hoja-ayuda-botones a.boton-enlace { display: flex; align-item
 .av-chip.apagado { border-color: var(--borde); background: var(--apagado-fondo); color: var(--suave); }
 .av-chip-quien { font-size: 12px; text-transform: uppercase; color: var(--suave); }
 .av-chip-donde { min-width: 0; overflow-wrap: anywhere; }
+.av-panel-temas { margin-left: 8px; }
 .av-totales { display: grid; gap: 10px; }
 @media (min-width: 720px) { .av-totales { grid-template-columns: 1fr 1fr; } }
 .av-total { display: grid; gap: 4px; min-width: 0; }

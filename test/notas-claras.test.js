@@ -16,6 +16,9 @@ import { notasDeTodos, examenesDeTodos, resumenExamen } from '../src/academia/no
 import { resumenClaro, MINIMO, AYUDA_DEBAJO } from '../src/academia/aprendizaje.js';
 import { MATERIAS, MATERIAS_ORAL } from '../src/academia/formato.js';
 import { estadoCelda, columnasNotas, codigoColumna, lineasIntentos } from '../public/admin-notas.js';
+import { textoAhora } from '../public/admin-avance.js';
+import { textoRitmo } from '../public/admin-alumnos.js';
+import { materiaSegunPlan } from '../src/academia/plan.js';
 
 const AHORA = Date.parse('2026-11-17T15:00:00Z');
 const MIN = 60 * 1000;
@@ -205,4 +208,25 @@ test('las pantallas: los textos nuevos en los dos idiomas, sin HTML pegado ni es
   // La numeración de los intentos.
   assert.equal(es['notas.intento.n'], '{n}.ª vez');
   assert.equal(es['notas.medias'], 'A medias');
+});
+
+test('el avance con nombres: «Materia 1 Factores humanos · Tema 1 de 13: La visión» y «Atrasado: debería ir en Materia 2»', () => {
+  const es = JSON.parse(readFileSync(new URL('../public/i18n/es.json', import.meta.url), 'utf8'));
+  const t = (k, v = {}) => es[k].replace(/\{(\w+)\}/g, (_, x) => String(v[x]));
+  const h = { t, numero: n => String(n), partirTitulo: x => ({ es: x.split(' (')[0] }), nombreMateria: id => ({ factores_humanos: 'Factores humanos', sistemas: 'Sistemas' })[id] ?? id };
+  const ahora = { id: 'factores_humanos', numero: 1, tema: 'v', temaNumero: 1, temas: 13, titulo: 'La visión (Vision)' };
+  assert.equal(textoAhora(h, ahora, { nombre: true }), 'Materia 1 Factores humanos · Tema 1 de 13: La visión');
+  assert.equal(textoAhora(h, ahora), 'M1 · T1/13', 'sin nombre, como antes');
+  assert.equal(t('av.temas.completados', { n: 3, total: 48 }), 'Temas completados: 3 de 48');
+  // Dónde debería ir: la materia que contiene el paso que marca el plan para hoy.
+  const limites = [{ id: 'factores_humanos', hasta: 14 }, { id: 'sistemas', hasta: 30 }, { id: 'aerodinamica', hasta: 40 }];
+  assert.deepEqual(materiaSegunPlan(limites, 0), { materia: 'factores_humanos', numero: 1 });
+  assert.deepEqual(materiaSegunPlan(limites, 14), { materia: 'sistemas', numero: 2 });
+  assert.deepEqual(materiaSegunPlan(limites, 99), { materia: 'aerodinamica', numero: 3 });
+  assert.equal(materiaSegunPlan([], 3), null);
+  assert.equal(textoRitmo(h, { ritmo: 'atrasado', deberia: { materia: 'sistemas', numero: 2 } }), 'Atrasado: según su plan debería ir en Materia 2 (Sistemas)');
+  assert.equal(textoRitmo(h, { ritmo: 'atrasado' }), 'Atrasado');
+  assert.equal(textoRitmo(h, { ritmo: 'a_tiempo', deberia: { materia: 'sistemas', numero: 2 } }), 'A tiempo');
+  const en = JSON.parse(readFileSync(new URL('../public/i18n/en.json', import.meta.url), 'utf8'));
+  for (const k of ['av.ahora.tg_nombre', 'av.ahora.oral_nombre', 'av.temas.completados', 'ficha.ritmo.atrasado_donde']) assert.ok(es[k] && en[k], k);
 });

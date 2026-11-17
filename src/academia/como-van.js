@@ -149,7 +149,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
       ...linea.get(u.id),
       // 0.14.11: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema.
       avanceAlumno: avanceAlumno.get(u.id),
-      plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde } : null,
+      plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde, deberia: plan.deberia ?? null } : null,
       avance: { pct: pasos.total ? Math.min(100, Math.floor((pasos.hechos * 100) / pasos.total)) : 0, hechos: pasos.hechos, total },
       tiempo: {
         minutos: tiempoDeEstudio(misFechas.map(f => f.creada_en)),

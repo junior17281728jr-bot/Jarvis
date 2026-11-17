@@ -94,7 +94,7 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
   const { racha, hoy } = puntosYRacha(db, alumnoId, ahoraMs);
   const plan = planDe(db, alumnoId, paquete, ahoraMs);
   return {
-    plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde } : null,
+    plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde, deberia: plan.deberia ?? null } : null,
     preparacion: preparacionDe(db, alumnoId, paquete),
     notaPromedio: calificados.length ? Math.round(calificados.reduce((s, x) => s + x.pct, 0) / calificados.length) : null,
     intentos: terminados.length, enCurso: intentos.length - terminados.length,

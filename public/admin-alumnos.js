@@ -261,7 +261,7 @@ function pestanaResumen(d, h) {
       el('h2', { class: 'con-icono' }, h.icono('calendario'), el('span', { texto: t('cv.avance_titulo') })),
       // 0.14.11: dónde está y el % de TODOS los temas (Test Guide y oral), materia por materia y tema por tema.
       vistaAvanceAlumno(h, d.avanceAlumno, { completo: true, alumno: d.alumno.id }),
-      el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, plan) }), plan ? h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null),
+      el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, plan) }), plan ? insigniaRitmo(h, plan) : null),
       plan ? el('p', { class: 'suave chica', texto: t('cv.plan.estimado', { fin: h.fechaCortaDia(plan.fin), plan: h.fechaCortaDia(plan.finPlan) }) }) : null,
       el('div', { class: 'ficha-resumen-medidor' }, el('strong', { texto: t('ficha.preparacion') }), h.medidor(r.preparacion.pct, { etiqueta: t('ficha.preparacion'), chico: true }),
         el('p', { class: 'suave chica', texto: t('ficha.preparacion.linea', { bien: numero(r.preparacion.bien), total: numero(r.preparacion.total) }) })),
@@ -688,6 +688,15 @@ function textoPlan(h, plan) {
   return t('cv.plan.linea', { plan: t(TEXTO_PLAN[plan.elegido] ?? 'acad.plan.un_mes'), fin: h.fechaCortaDia(plan.fin) });
 }
 const TONO_RITMO = { adelantado: 'bien', a_tiempo: 'bien', terminado: 'bien', atrasado: 'atencion' };
+// 0.14.25 (pedido del dueño): «Atrasado» solo no dice nada; con el plan, dónde debería ir: «Atrasado: según su plan
+// debería ir en Materia 2 (Sistemas…)».
+export function textoRitmo(h, plan) {
+  if (plan?.ritmo === 'atrasado' && plan.deberia) return h.t('ficha.ritmo.atrasado_donde', { n: h.numero(plan.deberia.numero), materia: h.nombreMateria(plan.deberia.materia) });
+  return h.t(TEXTO_RITMO[plan?.ritmo] ?? 'ficha.ritmo.a_tiempo');
+}
+function insigniaRitmo(h, plan) {
+  return h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', textoRitmo(h, plan));
+}
 function estadoLinea(h, a) {
   return a.enLinea ? h.t('cv.en_linea') : a.ultimaActividad ? h.t('cv.visto', { cuando: h.hace(a.ultimaActividad) }) : h.t('cv.nunca');
 }
@@ -701,7 +710,7 @@ function bloqueAvance(h, avance, plan) {
     el('span', { class: 'cv-barra grande' }, h.barraLlena(avance.pct)),
     el('p', { class: 'cv-plan' },
       el('span', { texto: textoPlan(h, plan) }),
-      plan ? h.insignia(TONO_RITMO[plan.ritmo] ?? 'info', t(TEXTO_RITMO[plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null));
+      plan ? insigniaRitmo(h, plan) : null));
 }
 // 0.13.6: la nota general del curso (las 11 materias; sin examen cuenta 0), grande con su barra, y los exámenes aprobados.
 function bloqueNotaGeneral(h, general) {
@@ -888,7 +897,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
           el('span', { class: 'cv-ver-ficha con-icono-chico' }, el('span', { texto: t('cv.ver_ficha') }), h.icono('flecha', 'icono chico')),
           a.activo ? null : h.insignia('mal', t('admin.inactivo')))),
       el('div', { class: 'cv-col cv-col-avance' }, caja,
-        el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, a.plan) }), a.plan ? h.insignia(TONO_RITMO[a.plan.ritmo] ?? 'info', t(TEXTO_RITMO[a.plan.ritmo] ?? 'ficha.ritmo.a_tiempo')) : null)),
+        el('p', { class: 'cv-plan' }, el('span', { texto: textoPlan(h, a.plan) }), a.plan ? insigniaRitmo(h, a.plan) : null)),
       el('div', { class: 'cv-col cv-col-examenes' },
         el('h3', { class: 'cv-titulo', texto: t('cv.examenes') }),
         bloqueNotaGeneral(h, a.examenes.general),

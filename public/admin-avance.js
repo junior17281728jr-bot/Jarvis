@@ -5,10 +5,12 @@
 // Todo con h.el (solo textContent; nada de HTML armado con texto).
 
 // «M3 · T2/6» (corto, para la lista) o «Materia 3 · Tema 2 de 6: Nombre» (largo, para la ficha).
-export function textoAhora(h, ahora, { oral = false, largo = false, capitulos = 9 } = {}) {
+// 0.14.25 (pedido del dueño: «M1 · T1/13» no dice nada): con nombre, «Materia 1 Factores humanos · Tema 1 de 13: La visión».
+export function textoAhora(h, ahora, { oral = false, largo = false, capitulos = 9, nombre = false } = {}) {
   const { t, numero } = h;
   if (!ahora) return null;
   const datos = { m: numero(ahora.numero), c: numero(ahora.numero), total: numero(capitulos), t: numero(ahora.temaNumero), n: numero(ahora.temas), titulo: h.partirTitulo ? h.partirTitulo(ahora.titulo).es : ahora.titulo };
+  if (nombre && typeof h.nombreMateria === 'function' && ahora.id) return t(`av.ahora.${oral ? 'oral' : 'tg'}_nombre`, { ...datos, materia: h.nombreMateria(ahora.id) });
   return t(`av.ahora.${oral ? 'oral' : 'tg'}_${largo ? 'largo' : 'corto'}`, datos);
 }
 
@@ -21,13 +23,13 @@ function barraGrande(h, nombre, parte, clase) {
       el('span', { class: 'av-total-nombre', texto: nombre }),
       el('strong', { class: 'av-total-pct', texto: h.pctTexto(parte.pct) })),
     el('span', { class: 'cv-barra grande av-barra' }, h.barraLlena(parte.pct)),
-    el('span', { class: 'av-total-temas suave chica', texto: t('av.temas', { n: numero(parte.hechos), total: numero(parte.total) }) }));
+    el('span', { class: 'av-total-temas suave chica', texto: t('av.temas.completados', { n: numero(parte.hechos), total: numero(parte.total) }) }));
 }
 
 function chipAhora(h, parte, oral, largo) {
   const { el, t } = h;
   if (!parte) return null;
-  const texto = parte.terminado ? t('av.terminado') : parte.ahora ? textoAhora(h, parte.ahora, { oral, largo, capitulos: parte.bloques.length }) : t('av.sin_empezar');
+  const texto = parte.terminado ? t('av.terminado') : parte.ahora ? textoAhora(h, parte.ahora, { oral, largo, capitulos: parte.bloques.length, nombre: true }) : t('av.sin_empezar');
   return el('span', { class: `av-chip${oral ? ' oral' : ''}${parte.ahora ? '' : ' apagado'}` },
     el('span', { class: 'av-chip-quien', texto: oral ? t('av.oral') : t('av.tg') }), el('span', { class: 'av-chip-donde', texto }));
 }
@@ -39,7 +41,7 @@ function punto(h, b, k, x, leyenda, oral) {
   const nombre = `${t('av.tema_n', { n: numero(k + 1) })} · ${h.partirTitulo ? h.partirTitulo(x.titulo).es : x.titulo}`;
   return el('button', { type: 'button', class: `av-punto ${x.estado}${x.actual ? ' actual' : ''}`, 'aria-label': `${nombre} · ${estado}`, title: nombre,
     texto: x.estado === 'hecho' ? '✓' : x.estado === 'empezado' ? '•' : numero(k + 1),
-    onclick: () => { leyenda.textContent = `${oral ? t('av.tile.c', { n: numero(b.numero) }) : t('av.tile.m', { n: numero(b.numero) })} · ${nombre} · ${estado}`; } });
+    onclick: () => { leyenda.textContent = `${h.nombreMateria(b.id)} · ${nombre} · ${estado}`; } });
 }
 
 function cuadricula(h, parte, oral, abierto) {
@@ -54,7 +56,7 @@ function cuadricula(h, parte, oral, abierto) {
     abierto.id = b.id;
     const leyenda = el('p', { class: 'av-leyenda suave chica', texto: t('av.toca_punto') });
     panel.replaceChildren(
-      el('p', { class: 'av-panel-titulo' }, el('strong', { texto: h.nombreMateria(b.id) }), el('span', { class: 'suave chica', texto: ` · ${t('av.temas', { n: numero(b.hechos), total: numero(b.temas.length) })}` }),
+      el('p', { class: 'av-panel-titulo' }, el('strong', { texto: h.nombreMateria(b.id) }), el('span', { class: 'suave chica av-panel-temas', texto: t('av.temas', { n: numero(b.hechos), total: numero(b.temas.length) }) }),
         // 0.14.19: «Convalidada (examen N %)»: aprobó el examen antes de los temas (cuentan todos hechos).
         b.convalidada ? h.insignia('bien', t('av.convalidada', { pct: h.pctTexto(b.convalidada.pct ?? 0) }))
           : b.examen ? h.insignia(b.examen.aprobado ? 'bien' : 'atencion', b.examen.aprobado ? t('av.examen_ok') : t('av.examen_no', { pct: h.pctTexto(b.examen.mejor ?? 0) })) : null),
