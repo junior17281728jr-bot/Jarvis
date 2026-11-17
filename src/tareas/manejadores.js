@@ -30,6 +30,7 @@ import { MANEJADOR_COPIAS } from '../copias/hacer.js';
 import { MANEJADOR_DRIVE } from '../academia/sincronizar.js';
 import { MANEJADOR_INSTRUCTOR } from '../academia/instructor-tarea.js';
 import { MANEJADOR_FABRICA } from '../academia/fabrica.js';
+import { topesUnaVez } from '../academia/topes-una-vez.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 
@@ -64,6 +65,8 @@ async function vigilar(ctx) {
   await ctx.escribir(() => sincronizarAvisos(ctx.db, avisos, ahora));
   // La IA (parte d): una sola escritura corta. Sin carpeta de datos (algunas pruebas) no mira la llave.
   const ia = await ctx.escribir(() => vigilarIA(ctx.db, { config: ctx.config, ahora }));
+  // 0.14.33: una sola vez, los topes que pidió el dueño (US$300 la mejora, US$375 el mes; solo suben).
+  try { await ctx.escribir(() => topesUnaVez(ctx.db, { config: ctx.config, ahora })); } catch { /* se intenta en la próxima vuelta */ }
   // 0.12.3: los comprobantes de pago ya no se borran a los 30 días (se guardan para siempre, como todo).
   // Las copias (parte e): las que quedaron a medias, el recordatorio de la clave, el disco; y las actualizaciones que
   // no se instalaron o se devolvieron (update.log: solo se LEE, fuera de la escritura).
