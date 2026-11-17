@@ -7,6 +7,15 @@
 //  - Comparar (#comparar/2,5): lado a lado, con barras.
 // Todo texto se pone con textContent (h.el / h.talCual): nunca se interpreta como código.
 
+// 0.14.18: la lista de alumnos en orden de actividad: en línea primero, después la entrada más reciente; los que nunca
+// entraron al final (por nombre). No cambia la lista que llega.
+export function ordenarPorActividad(alumnos) {
+  const cuando = a => (a.ultimaActividad ? Date.parse(a.ultimaActividad) || 0 : 0);
+  return [...(alumnos ?? [])].sort((a, b) => Number(Boolean(b.enLinea)) - Number(Boolean(a.enLinea))
+    || cuando(b) - cuando(a)
+    || String(a.nombre ?? '').localeCompare(String(b.nombre ?? '')));
+}
+
 // 0.14.11: el avance visual (Test Guide y oral, tema por tema): public/admin-avance.js (tampoco importa nada).
 import { vistaAvanceAlumno, repintarAvance, pctTg } from './admin-avance.js';
 // 0.14.14: «La carrera» y la tabla arriba de «Cómo van todos» (los mismos aviones que ve el alumno, con los nombres enteros).
@@ -168,7 +177,8 @@ function cuentaAlumno(h, a) {
 // ---------- La lista de alumnos (con «Comparar») ----------
 export function vistaListaAlumnos(datos, h) {
   const { el, t, tn, numero } = h;
-  const lista = datos.alumnos;
+  // 0.14.18: en línea primero, después el que entró más reciente; al final los que nunca han entrado.
+  const lista = ordenarPorActividad(datos.alumnos);
   const marcados = new Set();
   const enLinea = lista.filter(a => a.enLinea).length;
   const boton = el('a', { class: 'boton-enlace con-icono ficha-comparar-boton', href: '#alumnos', 'aria-disabled': 'true' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('ficha.comparar.boton', { n: numero(0) }) }));
