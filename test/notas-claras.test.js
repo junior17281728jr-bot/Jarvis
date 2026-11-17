@@ -153,7 +153,8 @@ test('Aprendizaje: lo más importante (lo que más fallan, el tema más difícil
   const filas = [];
   let id = 0;
   const responder = (u, materia, tema, correcta, dia = '2026-11-15') => filas.push({ id: ++id, u, pregunta: `${tema}-${id}`, materia, tema, correcta, creada_en: `${dia}T10:00:00.000Z` });
-  // Hipoxia: 30 respuestas, 18 malas (60 %). Ilusiones: 10 respuestas, 8 malas (80 %, menos errores en total). Viento: 4 (pocos).
+  // Hipoxia: 30 respuestas, 18 malas (60 %). Ilusiones: 10 respuestas, 8 malas (80 %: menos errores en total, pero el
+  // mayor % de malas). Viento: 4 (pocos).
   for (let i = 0; i < 30; i++) responder(i % 2 ? 1 : 2, 'factores_humanos', 'hipoxia', i < 18 ? 0 : 1);
   for (let i = 0; i < 10; i++) responder(3, 'factores_humanos', 'ilusiones', i < 8 ? 0 : 1);
   for (let i = 0; i < 4; i++) responder(3, 'meteorologia', 'viento', 0);
@@ -173,12 +174,12 @@ test('Aprendizaje: lo más importante (lo que más fallan, el tema más difícil
     filas, clases, dificiles, titulo, cuentas, atrasados: new Set([5, 2]), ahoraMs: AHORA,
     aprendizaje: { primera: medida(55, 40), despues: medida(78, 30) },
   });
-  // Lo que más fallan: Hipoxia (más respuestas malas), con su % de malas.
-  assert.deepEqual([r.temaMasFallado.tema, r.temaMasFallado.errores, r.temaMasFallado.mal, r.temaMasFallado.n], ['hipoxia', 60, 18, 30]);
-  assert.equal(r.temaMasFallado.titulo, 'Hipoxia (Hypoxia)');
-  assert.deepEqual(r.temas.map(t => t.tema), ['hipoxia', 'ilusiones'], 'con pocos datos (viento) no entra');
-  // El tema más difícil la primera vez: otro distinto del más fallado (Ilusiones 45 %), no el de pocos datos.
-  assert.deepEqual([r.temaMasDificil.tema, r.temaMasDificil.primera], ['ilusiones', 45]);
+  // Lo que más fallan: el mayor % de respuestas malas (Ilusiones 80 %), no el que más se practicó.
+  assert.deepEqual([r.temaMasFallado.tema, r.temaMasFallado.errores, r.temaMasFallado.mal, r.temaMasFallado.n], ['ilusiones', 80, 8, 10]);
+  assert.deepEqual(r.temas.map(t => [t.tema, t.errores]), [['ilusiones', 80], ['hipoxia', 60]], 'con pocos datos (viento) no entra');
+  assert.equal(r.temas[1].titulo, 'Hipoxia (Hypoxia)');
+  // El tema más difícil la primera vez: otro distinto del más fallado (Hipoxia 30 %), no el de pocos datos.
+  assert.deepEqual([r.temaMasDificil.tema, r.temaMasDificil.primera], ['hipoxia', 30]);
   // La pregunta más fallada.
   assert.deepEqual([r.pregunta.numero, r.pregunta.fallos, r.pregunta.opcion], [123, 70, 'B']);
   // Quién necesita ayuda: 3 acierta 14 % en las últimas 2 semanas (2 bien de 14); 1 y 2 aciertan 40 %
@@ -218,15 +219,22 @@ test('el avance con nombres: «Materia 1 Factores humanos · Tema 1 de 13: La vi
   assert.equal(textoAhora(h, ahora, { nombre: true }), 'Materia 1 Factores humanos · Tema 1 de 13: La visión');
   assert.equal(textoAhora(h, ahora), 'M1 · T1/13', 'sin nombre, como antes');
   assert.equal(t('av.temas.completados', { n: 3, total: 48 }), 'Temas completados: 3 de 48');
-  // Dónde debería ir: la materia que contiene el paso que marca el plan para hoy.
-  const limites = [{ id: 'factores_humanos', hasta: 14 }, { id: 'sistemas', hasta: 30 }, { id: 'aerodinamica', hasta: 40 }];
-  assert.deepEqual(materiaSegunPlan(limites, 0), { materia: 'factores_humanos', numero: 1 });
-  assert.deepEqual(materiaSegunPlan(limites, 14), { materia: 'sistemas', numero: 2 });
-  assert.deepEqual(materiaSegunPlan(limites, 99), { materia: 'aerodinamica', numero: 3 });
+  // Dónde debería ir: la materia (y el tema) del paso que marca el plan para hoy. Factores humanos: 13 temas + examen
+  // (pasos 0–13); sistemas: 15 + examen (14–29); ambiente de vuelo, sin clases (30–40).
+  const limites = [{ id: 'factores_humanos', desde: 0, hasta: 14, temas: 13 }, { id: 'sistemas', desde: 14, hasta: 30, temas: 15 }, { id: 'ambiente', desde: 30, hasta: 40, temas: 0 }];
+  assert.deepEqual(materiaSegunPlan(limites, 0), { materia: 'factores_humanos', numero: 1, tema: 1, temas: 13 });
+  assert.deepEqual(materiaSegunPlan(limites, 8.6), { materia: 'factores_humanos', numero: 1, tema: 9, temas: 13 });
+  assert.deepEqual(materiaSegunPlan(limites, 13.5), { materia: 'factores_humanos', numero: 1, tema: 13, temas: 13 }, 'el examen: el último tema');
+  assert.deepEqual(materiaSegunPlan(limites, 16), { materia: 'sistemas', numero: 2, tema: 3, temas: 15 });
+  assert.deepEqual(materiaSegunPlan(limites, 99), { materia: 'ambiente', numero: 3, tema: null, temas: 0 });
   assert.equal(materiaSegunPlan([], 3), null);
-  assert.equal(textoRitmo(h, { ritmo: 'atrasado', deberia: { materia: 'sistemas', numero: 2 } }), 'Atrasado: según su plan debería ir en Materia 2 (Sistemas)');
+  // En la misma materia en la que ya está, el tema dice cuánto le falta.
+  assert.equal(textoRitmo(h, { ritmo: 'atrasado', deberia: { materia: 'factores_humanos', numero: 1, tema: 9, temas: 13 } }), 'Atrasado: según su plan debería ir en Materia 1 (Factores humanos), tema 9 de 13');
+  assert.equal(textoRitmo(h, { ritmo: 'atrasado', deberia: { materia: 'sistemas', numero: 2, tema: 3, temas: 15 } }), 'Atrasado: según su plan debería ir en Materia 2 (Sistemas), tema 3 de 15');
+  // Una materia todavía sin clases: solo «Atrasado» (no se nombra una materia gris).
+  assert.equal(textoRitmo(h, { ritmo: 'atrasado', deberia: { materia: 'ambiente', numero: 3, tema: null, temas: 0 } }), 'Atrasado');
   assert.equal(textoRitmo(h, { ritmo: 'atrasado' }), 'Atrasado');
-  assert.equal(textoRitmo(h, { ritmo: 'a_tiempo', deberia: { materia: 'sistemas', numero: 2 } }), 'A tiempo');
+  assert.equal(textoRitmo(h, { ritmo: 'a_tiempo', deberia: { materia: 'sistemas', numero: 2, tema: 3, temas: 15 } }), 'A tiempo');
   const en = JSON.parse(readFileSync(new URL('../public/i18n/en.json', import.meta.url), 'utf8'));
   for (const k of ['av.ahora.tg_nombre', 'av.ahora.oral_nombre', 'av.temas.completados', 'ficha.ritmo.atrasado_donde']) assert.ok(es[k] && en[k], k);
 });

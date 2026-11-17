@@ -1916,7 +1916,7 @@
   "ficha.ritmo.adelantado": "Adelantado",
   "ficha.ritmo.a_tiempo": "A tiempo",
   "ficha.ritmo.atrasado": "Atrasado",
-  "ficha.ritmo.atrasado_donde": "Atrasado: según su plan debería ir en Materia {n} ({materia})",
+  "ficha.ritmo.atrasado_donde": "Atrasado: según su plan debería ir en Materia {n} ({materia}), tema {t} de {total}",
   "ficha.ritmo.terminado": "Terminado",
   "ficha.ultima_entrada": "Última entrada",
   "ficha.ultima_salida": "Última salida",

@@ -791,7 +791,8 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   cerrados, cada bloque con una línea que lo explica. Con pocos datos dice «Todavía faltan datos».
 - El avance de cada alumno («Cómo van todos» y su ficha): «Ahora en» con nombres («Test Guide: Materia 1 Factores
   humanos · Tema 1 de 13: La visión», «Oral: Sin empezar»), «Temas completados: 3 de 48» bajo cada barra, al tocar una
-  materia su nombre y «3 de 13 temas», y «Atrasado: según su plan debería ir en Materia 2 (…)» (`materiaSegunPlan`).
+  materia su nombre y «3 de 13 temas», y «Atrasado: según su plan debería ir en Materia 2 (…), tema 3 de 15» (`materiaSegunPlan`; si esa materia
+  todavía no tiene clases, solo «Atrasado»).
 - Pruebas: `test/notas-claras.test.js`.
 
 ### Lo nuevo de la 0.14.17: la fábrica nunca se queda trabada y «Mejorar todo» no espera detrás de ella — sin cambio de base

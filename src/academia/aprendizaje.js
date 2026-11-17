@@ -162,7 +162,7 @@ export function estadisticas(db, paquete, { usuarioId = null, ahoraMs = Date.now
 // 0.14.25 (pedido del dueño: «no entiendo nada de Aprendizaje»): lo más importante, en pocas frases, sacado de lo mismo
 // que ya se leyó (sin otra consulta). Cada parte es null si no hay datos suficientes (MINIMO respuestas): nunca se afirma
 // algo que sale de muy poco.
-//  - temaMasFallado: el tema con MÁS respuestas malas (y su % de respuestas malas). temas: los 8 con más errores.
+//  - temaMasFallado: el tema con el MAYOR % de respuestas malas (empate: más malas). temas: los 8 primeros así.
 //  - temaMasDificil: el tema con el MENOR acierto la primera vez (otro distinto del más fallado, si lo hay).
 //  - pregunta: la pregunta del Test Guide que más fallan (la primera de «dificiles» con datos suficientes).
 //  - ayuda (solo de todos, no de un alumno): quien acierta menos de 60 % en las últimas 2 semanas (con MINIMO respuestas)
@@ -180,7 +180,7 @@ export function resumenClaro({ filas, clases, dificiles, aprendizaje, titulo, cu
   }
   const conDatos = [...porTema.values()].filter(x => x.n >= MINIMO && x.mal > 0)
     .map(x => ({ ...x, titulo: titulo(x.materia, x.tema), errores: pct(x.mal, x.n) }))
-    .sort((a, b) => b.mal - a.mal || b.errores - a.errores || `${a.materia}/${a.tema}`.localeCompare(`${b.materia}/${b.tema}`));
+    .sort((a, b) => b.errores - a.errores || b.mal - a.mal || `${a.materia}/${a.tema}`.localeCompare(`${b.materia}/${b.tema}`));
   const temaMasFallado = conDatos[0] ?? null;
   const dificilesTema = clases.filter(c => !c.total.pocos && c.total.pct != null).sort((a, b) => a.total.pct - b.total.pct);
   const otro = dificilesTema.find(c => !temaMasFallado || `${c.materia}/${c.tema}` !== `${temaMasFallado.materia}/${temaMasFallado.tema}`) ?? dificilesTema[0] ?? null;

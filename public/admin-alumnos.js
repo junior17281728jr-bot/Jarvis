@@ -689,9 +689,10 @@ function textoPlan(h, plan) {
 }
 const TONO_RITMO = { adelantado: 'bien', a_tiempo: 'bien', terminado: 'bien', atrasado: 'atencion' };
 // 0.14.25 (pedido del dueño): «Atrasado» solo no dice nada; con el plan, dónde debería ir: «Atrasado: según su plan
-// debería ir en Materia 2 (Sistemas…)».
+// debería ir en Materia 2 (Sistemas…), tema 3 de 13». Si esa materia todavía no tiene clases, solo «Atrasado».
 export function textoRitmo(h, plan) {
-  if (plan?.ritmo === 'atrasado' && plan.deberia) return h.t('ficha.ritmo.atrasado_donde', { n: h.numero(plan.deberia.numero), materia: h.nombreMateria(plan.deberia.materia) });
+  const d = plan?.deberia;
+  if (plan?.ritmo === 'atrasado' && d?.temas > 0) return h.t('ficha.ritmo.atrasado_donde', { n: h.numero(d.numero), materia: h.nombreMateria(d.materia), t: h.numero(d.tema), total: h.numero(d.temas) });
   return h.t(TEXTO_RITMO[plan?.ritmo] ?? 'ficha.ritmo.a_tiempo');
 }
 function insigniaRitmo(h, plan) {

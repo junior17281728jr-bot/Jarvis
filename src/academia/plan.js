@@ -45,9 +45,9 @@ export function pasosDelCamino(db, usuarioId, paquete) {
   const limites = [];
   for (const id of MATERIAS) {
     const m = paquete?.materias.find(x => x.id === id);
-    if (!m || !m.temas.length) { total += promedio; limites.push({ id, hasta: total }); if (actual == null) actual = id; continue; }
+    if (!m || !m.temas.length) { limites.push({ id, desde: total, hasta: total + promedio, temas: 0 }); total += promedio; if (actual == null) actual = id; continue; }
+    limites.push({ id, desde: total, hasta: total + m.temas.length + 1, temas: m.temas.length });
     total += m.temas.length + 1;
-    limites.push({ id, hasta: total });
     const temasHechos = m.temas.filter(t => aprobados.get(`${id}/${t.id}`)?.aprobado || (!t.preguntas.length && leidos.has(`${id}/${t.id}`))).length;
     const examen = deExamen.get(id)?.aprobado === true;
     hechos += temasHechos + (examen ? 1 : 0);
@@ -55,13 +55,16 @@ export function pasosDelCamino(db, usuarioId, paquete) {
   }
   return { total: Math.round(total), hechos, actual, limites };
 }
-// 0.14.25: la materia en la que «debería ir» según su plan: la que contiene el paso que el ritmo del plan marca para hoy.
-// → { materia, numero } (numero: 1…11) | null
+// 0.14.25: dónde «debería ir» según su plan: la materia (y el tema) del paso que el ritmo del plan marca para hoy.
+// → { materia, numero (1…11), tema (1…temas; el examen cuenta como el último tema), temas (0: materia sin clases) } | null
 export function materiaSegunPlan(limites, pasosEsperados) {
   if (!limites?.length) return null;
   const i = limites.findIndex(l => pasosEsperados < l.hasta);
   const k = i < 0 ? limites.length - 1 : i;
-  return { materia: limites[k].id, numero: k + 1 };
+  const l = limites[k];
+  const temas = l.temas ?? 0;
+  const tema = temas ? Math.max(1, Math.min(temas, Math.floor(pasosEsperados - (l.desde ?? 0)) + 1)) : null;
+  return { materia: l.id, numero: k + 1, tema, temas };
 }
 
 // 0.12.4: UNA sola cuenta para el último día (antes el alumno veía «12 dic» al elegir y el administrador «11 dic»): hoy

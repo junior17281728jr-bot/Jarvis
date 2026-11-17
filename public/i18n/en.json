@@ -1916,7 +1916,7 @@
   "ficha.ritmo.adelantado": "Ahead",
   "ficha.ritmo.a_tiempo": "On time",
   "ficha.ritmo.atrasado": "Behind",
-  "ficha.ritmo.atrasado_donde": "Behind: by their plan they should be in Subject {n} ({materia})",
+  "ficha.ritmo.atrasado_donde": "Behind: by their plan they should be in Subject {n} ({materia}), topic {t} of {total}",
   "ficha.ritmo.terminado": "Finished",
   "ficha.ultima_entrada": "Last login",
   "ficha.ultima_salida": "Last logout",
