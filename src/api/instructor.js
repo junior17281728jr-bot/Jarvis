@@ -581,7 +581,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const buscar = ctx.temaTitulo ? [{ texto: ctx.temaTitulo, url: busquedaYoutube(ctx.temaTitulo) }] : [];
     // 0.14.22: el profesor conoce su historia (clases, prácticas, tests, exámenes, oral, repasos) y lo que no cuadra; los
     // botones los arma y revisa el código. Sin IA, esto mismo es su respuesta.
-    const pf = leerProfe(db, usuario.id, p, ahora);
+    const pf = leerProfe(db, usuario.id, p, ahora, { donde: ctx.materia ? { materia: ctx.materia, tema: ctx.tema } : null });
     const profe = { lineas: pf.lineas, botones: pf.botones };
     // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual. 0.12.4: el mensaje y la
     // respuesta básica quedan en su historial (antes se perdían al recargar); sin IA por algo que no se pasa solo, ia = null.
@@ -608,10 +608,12 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     let material = ctx.material;
     let estudio = cifrasProfe(pf, { idioma: usuario.idioma });
     let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio });
-    // (0.14.22: su historia se achica al final: primero menos temas; nunca se pierde lo que no cuadra ni los botones)
+    // (0.14.22: su historia ya tiene tope de tamaño; si igual no cabe, se le quitan temas antes de acortar la clase,
+    // hasta dejar 2; nunca se pierde lo que no cuadra ni los botones)
     while (!cabe(pedido) && (historial.length || preguntas.length || (material?.tarjetas ?? []).some(t => t.texto.length > 200) || estudio?.temas?.length)) {
       if (historial.length) historial = historial.slice(1);
       else if (preguntas.length) preguntas = preguntas.slice(1);
+      else if (estudio?.temas?.length > 2) estudio = { ...estudio, temas: estudio.temas.slice(0, -1) };
       else if ((material?.tarjetas ?? []).some(t => t.texto.length > 200)) material = { ...material, tarjetas: material.tarjetas.map(t => ({ ...t, texto: t.texto.slice(0, Math.floor(t.texto.length / 2)) })) };
       else estudio = { ...estudio, temas: estudio.temas.slice(0, -1) };
       pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio });

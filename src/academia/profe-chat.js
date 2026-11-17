@@ -202,7 +202,8 @@ export function respuestaSinIa(h, contras) {
   else if (d?.alcance === 'materia') lineas.push({ clave: 'profe.diag.materia', vars: { materia: d.evidencia?.materia ?? '', n: d.temas.length } });
   else if (d?.alcance === 'varias') lineas.push({ clave: 'profe.diag.varias', vars: { temas: d.temas.map(t => t.titulo).join(' · ') } });
   // Un examen de materia que no pasó (pesa más que todo lo demás).
-  const caido = h.materias.find(m => m.examen && !m.examen.aprobado);
+  // (si lo que no cuadra es justo «en el examen te fue bien» en esa materia, no se dice además que el examen no lo pasó)
+  const caido = h.materias.find(m => m.examen && !m.examen.aprobado && !(c?.tipo === 'practica_mal_examen_bien' && c.materia === m.materia));
   if (caido && lineas.length < 3) lineas.push({ clave: 'profe.examen.no', vars: { materia: caido.materia, pct: caido.examen.ultimo } });
   if (!lineas.length) lineas.push({ clave: h.materias.some(m => m.temas.some(t => t.dominio != null)) ? 'profe.bien' : 'profe.empezar', vars: {} });
   if (h.oral?.errores > 0 && lineas.length < 3) lineas.push({ clave: 'profe.oral.errores', vars: { n: h.oral.errores } });
@@ -212,15 +213,30 @@ export function respuestaSinIa(h, contras) {
 }
 
 // Todo junto, para la ruta: { lineas, botones, contradicciones, historial }.
-export function profe(db, usuarioId, paquete, ahoraMs = Date.now()) {
+// donde (opcional): { materia, tema } de lo que preguntó: sus botones (clase, practicar) van primero.
+export function profe(db, usuarioId, paquete, ahoraMs = Date.now(), { donde = null } = {}) {
   const h = historialEstudio(db, usuarioId, paquete, ahoraMs);
   const contras = contradicciones(h);
-  return { historial: h, contradicciones: contras, lineas: respuestaSinIa(h, contras), botones: botonesProfe(h, contras, paquete) };
+  const botones = botonesProfe(h, contras, paquete);
+  const primero = donde?.materia && donde?.tema && !contras.length ? [{ tipo: 'clase', materia: donde.materia, tema: donde.tema }, { tipo: 'practicar', materia: donde.materia, tema: donde.tema }] : [];
+  return { historial: h, contradicciones: contras, lineas: respuestaSinIa(h, contras), botones: primero.length ? validarBotones([...primero, ...botones], paquete, h) : botones };
 }
 
 // ---------- Lo que va a la IA (sin nombres ni ids) ----------
 const QUE_BOTON = Object.freeze({ clase: 'abrir la clase', practicar: 'practicar las que falló', test: 'el test del tema', examen: 'el examen de la materia', oral: 'practicar el oral', repaso: 'el repaso de hoy' });
-export function cifrasProfe(x, { idioma = 'es', maxTemas = 8 } = {}) {
+// Con un tope de tamaño (TOPE_CIFRAS bytes): con 11 materias y el oral, igual deja lugar a la clase y al historial.
+export const TOPE_CIFRAS = 2000;
+export function cifrasProfe(x, { idioma = 'es', maxTemas = 6 } = {}) {
+  const c = cifrasCompletas(x, { idioma, maxTemas });
+  const grande = () => Buffer.byteLength(JSON.stringify(c)) > TOPE_CIFRAS;
+  // Se achica en este orden: temas (hasta 2), ideas equivocadas, capítulos del oral, exámenes, temas del diagnóstico y,
+  // al final, los 2 temas que quedaban.
+  const pasos = [() => (c.temas.length > 2 ? c.temas.pop() : undefined), () => c.diagnostico?.temas.find(t => t.ideas_equivocadas.length && (t.ideas_equivocadas = [])),
+    () => c.oral?.capitulos.pop(), () => c.examenes_de_materia.pop(), () => (c.diagnostico?.temas.length > 1 ? c.diagnostico.temas.pop() : undefined), () => c.temas.pop()];
+  for (const paso of pasos) while (c && grande() && paso() !== undefined);
+  return c;
+}
+function cifrasCompletas(x, { idioma, maxTemas }) {
   const h = x?.historial;
   if (!h) return null;
   const nm = id => nombreMateria(id, idioma) ?? `materia ${h.materias.findIndex(m => m.materia === id) + 1}`;
@@ -231,11 +247,12 @@ export function cifrasProfe(x, { idioma = 'es', maxTemas = 8 } = {}) {
   const nombreOral = id => nombreMateria(id, idioma) ?? 'oral';
   return {
     peso_examen: PESO_EXAMEN,
-    examenes_de_materia: h.materias.filter(m => m.examen).map(m => ({ materia: nm(m.materia), veces: m.examen.veces, mejor_pct: m.examen.mejor, ultimo_pct: m.examen.ultimo, aprobado: m.examen.aprobado })),
+    examenes_de_materia: h.materias.filter(m => m.examen && !m.examen.aprobado).slice(0, 3).map(m => ({ materia: nm(m.materia), veces: m.examen.veces, mejor_pct: m.examen.mejor, ultimo_pct: m.examen.ultimo, aprobado: m.examen.aprobado })),
     temas,
     contradicciones: x.contradicciones.map(c => ({ tipo: c.tipo, tema: c.titulo, practica_y_tests: c.estudio, examen: c.examen })),
-    diagnostico: h.diagnostico?.alcance ? { alcance: h.diagnostico.alcance, temas: h.diagnostico.temas.map(t => ({ tema: t.titulo, bien: t.bien, de: t.de, ideas_equivocadas: t.ideas ?? [] })) } : null,
-    oral: h.oral ? { capitulos: h.oral.materias.filter(m => m.bien || m.examen?.veces).map(m => ({ capitulo: nombreOral(m.materia), pct: m.pct, examen_aprobado: m.examen?.aprobado ?? false })), errores_pendientes: h.oral.errores, temas_flojos: h.oral.flojos.map(t => t.titulo) } : null,
+    examenes_aprobados: h.materias.filter(m => m.examen?.aprobado).length,
+    diagnostico: h.diagnostico?.alcance ? { alcance: h.diagnostico.alcance, temas: h.diagnostico.temas.map(t => ({ tema: t.titulo, bien: t.bien, de: t.de, ideas_equivocadas: (t.ideas ?? []).slice(0, 1).map(i => String(i).slice(0, 160)) })) } : null,
+    oral: h.oral ? { capitulos: h.oral.materias.filter(m => (m.bien || m.examen?.veces) && m.pct < 80).slice(0, 4).map(m => ({ capitulo: nombreOral(m.materia), pct: m.pct, examen_aprobado: m.examen?.aprobado ?? false })), errores_pendientes: h.oral.errores, temas_flojos: h.oral.flojos.slice(0, 2).map(t => t.titulo) } : null,
     repasos_pendientes: h.repasos, dias_sin_estudiar: h.haceDias,
     botones_que_pone_la_app: x.botones.map(b => ({ que: QUE_BOTON[b.tipo], tema: b.titulo ?? (b.tipo === 'examen' ? nm(b.materia) : null) })),
   };

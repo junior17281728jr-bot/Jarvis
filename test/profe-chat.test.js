@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { contradicciones, historialEstudio, validarBoton, validarBotones, profe, cifrasProfe, respuestaSinIa, PESO_EXAMEN } from '../src/academia/profe-chat.js';
+import { contradicciones, historialEstudio, validarBoton, validarBotones, profe, cifrasProfe, respuestaSinIa, PESO_EXAMEN, TOPE_CIFRAS } from '../src/academia/profe-chat.js';
 import { armarChat } from '../src/academia/instructor-ia.js';
 import { paqueteActivo } from '../src/academia/paquetes.js';
 import { darProfesor } from '../src/academia/profesor.js';
@@ -52,6 +52,30 @@ test('lo que no cuadra: en las dos direcciones, con suficientes respuestas, lo m
   const lineas = respuestaSinIa({ ...h, diagnostico: null, repasos: 3, oral: null, haceDias: 0 }, c);
   assert.deepEqual(lineas[0], { clave: 'profe.contra.practica_bien_examen_mal', vars: { tema: 'Vision', sbien: 5, sde: 5, ebien: 0, ede: 3 } });
   assert.ok(lineas.some(l => l.clave === 'profe.repaso' && l.vars.n === 3));
+  // «En el examen te fue bien» y a la vez «el examen no lo pasaste» (de la misma materia): nunca las dos.
+  const examenMal = { veces: 1, mejor: 50, ultimo: 50, aprobado: false };
+  const solo = [c[1]];
+  const sin = respuestaSinIa({ materias: [{ ...h.materias[0], examen: examenMal }], diagnostico: null, repasos: 0, oral: null, haceDias: 0 }, solo);
+  assert.equal(sin[0].clave, 'profe.contra.practica_mal_examen_bien');
+  assert.ok(!sin.some(l => l.clave === 'profe.examen.no'));
+  assert.ok(respuestaSinIa({ materias: [{ ...h.materias[0], examen: examenMal }], diagnostico: null, repasos: 0, oral: null, haceDias: 0 }, [c[0]]).some(l => l.clave === 'profe.examen.no'));
+});
+
+test('lo que va a la IA tiene tope de tamaño (11 materias y el oral) y nunca pierde lo que no cuadra ni los botones', () => {
+  const largo = 'Un título de tema bastante largo para la prueba de tamaño';
+  const materias = Array.from({ length: 11 }, (_, i) => ({ materia: `m${i}`, examen: { veces: 2, mejor: 60, ultimo: 55, aprobado: false }, disponible: true,
+    temas: Array.from({ length: 10 }, (_, k) => ({ materia: `m${i}`, tema: `t${k}`, titulo: `${largo} ${i}-${k}`, clase: true, practica: { bien: 1, de: 5 }, test: { bien: 2, de: 5, veces: 1, aprobado: false }, examen: { bien: 1, de: 3 }, estudio: { bien: 3, de: 10 }, dominio: 20 + k })) }));
+  const x = {
+    historial: { materias, repasos: 9, haceDias: 2, oral: { materias: Array.from({ length: 9 }, (_, i) => ({ materia: `oral_${i}`, pct: 30, bien: 3, examen: { veces: 1, aprobado: false } })), errores: 12, flojos: [{ titulo: largo }, { titulo: largo }] },
+      diagnostico: { alcance: 'materia', temas: [1, 2, 3].map(k => ({ titulo: `${largo} ${k}`, bien: 1, de: 5, ideas: ['Una idea equivocada larga '.repeat(8)] })) } },
+    contradicciones: [{ tipo: 'practica_bien_examen_mal', titulo: largo, estudio: { bien: 9, de: 10 }, examen: { bien: 0, de: 3 } }],
+    botones: [{ tipo: 'practicar', titulo: largo }, { tipo: 'repaso' }],
+  };
+  const c = cifrasProfe(x);
+  assert.ok(Buffer.byteLength(JSON.stringify(c)) <= TOPE_CIFRAS, `${Buffer.byteLength(JSON.stringify(c))} bytes`);
+  assert.equal(c.contradicciones.length, 1);
+  assert.equal(c.botones_que_pone_la_app.length, 2);
+  assert.ok(c.temas.length >= 1, 'quedan los temas más flojos');
 });
 
 test('con la base: la historia por tema pesa el examen más que la práctica, y los botones se revisan (nada cerrado ni inventado)', async () => {
