@@ -1948,8 +1948,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const conZona = pestana !== 'usuarios' && pestana !== 'cambios';
   const sistema = crearZonaSistema(vigente, pestana);
   // El contenido de la academia, solo para «Primeros pasos».
-  const [r, datosSistema, ia, contenido, pagoServidor] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia'),
-    api('GET', '/api/admin/servidor-pago')]);
+  const [r, datosSistema, ia, contenido, pagoServidor, dineroR] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia'),
+    api('GET', '/api/admin/servidor-pago'), pestana === 'resumen' ? api('GET', '/api/admin/ia/dinero?corto=1') : null]);
   // Las claves solo se piden desde la cuenta de Tailscale del dueño (por el enlace público ni se preguntan).
   const claves = ia.ok && ia.datos.esDueno ? await api('GET', '/api/admin/claves') : null;
   if (!vigente()) return;
@@ -1986,7 +1986,11 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     // 0.13.9: «Claude (IA)» arriba de todo: el estado en palabras simples, conectar la clave y probarla gratis.
     const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, avisar, confirmar, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
     const lineaPago = pagoServidor?.ok ? lineaResumenPago(pagoServidor.datos, { el, t, icono }, idioma) : null; // 0.14.1
-    mostrar(marco('admin', cabecera, aviso, avisoCopiasSinGuardar(datosSistema), lineaPago, claude, guia,
+    // 0.14.31: «Dinero de la IA» (corta) en el Resumen.
+    const vistaDinero = dineroR?.ok ? await import('./dinero-ia-vista.js') : null;
+    if (!vigente()) return;
+    const dinero = vistaDinero ? vistaDinero.tarjetaDinero(dineroR.datos, piezasIa(() => pantallaAdmin('resumen')), { corto: true }) : null;
+    mostrar(marco('admin', cabecera, aviso, avisoCopiasSinGuardar(datosSistema), lineaPago, dinero, claude, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
@@ -3066,8 +3070,11 @@ async function pantallaClaves(aviso = null) {
   abrirClaveClaude = false;
   const abrirGithub = abrirClaveGithub;
   abrirClaveGithub = false;
-  const [r, prov, vistaIa] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js')]);
+  const [r, prov, vistaIa, dineroR, vistaDinero] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js'),
+    api('GET', '/api/admin/ia/dinero'), import('./dinero-ia-vista.js')]);
   if (!vigente()) return;
+  // 0.14.31: «Dinero de la IA» arriba de todo (también por el enlace público: no muestra claves).
+  const dinero = dineroR.ok ? vistaDinero.tarjetaDinero(dineroR.datos, piezasIa(() => pantallaClaves())) : null;
   const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
     avisoDeArriba(aviso),
     el('h2', { class: 'con-icono titulo-tarjeta' }, icono('llave', 'icono grande'), el('span', { texto: t('claves.titulo') }), queEs('clave_api')),
@@ -3077,13 +3084,13 @@ async function pantallaClaves(aviso = null) {
     const e = r.datos.error;
     const texto = e === 'solo_desde_tailnet' ? t('claves.solo_tailnet') : e === 'solo_dueno_tailscale' ? t('claves.solo_dueno')
       : e === 'solo_el_dueno' ? t('claves.solo_el_dueno') : textoError(e);
-    mostrar(marco('admin', cabeceraAdmin('claves'), cabeza(el('p', { class: 'aviso con-icono-arriba', 'data-foco': true }, icono('candado'), el('span', { texto })))));
+    mostrar(marco('admin', cabeceraAdmin('claves'), dinero, cabeza(el('p', { class: 'aviso con-icono-arriba', 'data-foco': true }, icono('candado'), el('span', { texto })))));
     return;
   }
   const d = r.datos;
   const listo = d.almacen?.listo !== false;
   const recargar = siguiente => pantallaClaves(siguiente);
-  mostrar(marco('admin', cabeceraAdmin('claves'), el('div', { class: 'rejilla dos' },
+  mostrar(marco('admin', cabeceraAdmin('claves'), dinero, el('div', { class: 'rejilla dos' },
     cabeza(
       el('p', { class: 'suave', texto: t('claves.explica') }),
       d.duenoTailscale ? el('p', { class: 'suave con-icono' }, icono('escudo', 'icono chico'), el('span', { texto: t('claves.dueno', { login: d.duenoTailscale }) })) : null,

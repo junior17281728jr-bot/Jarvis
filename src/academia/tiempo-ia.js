@@ -299,6 +299,8 @@ function elegirLoQuePaga(db, cfg, usuarioId, paquete, ahora) {
   const plan = m ? cfg.planes.find(x => x.id === m[1]) : null;
   if (!plan) return null;
   if (!m[2]) return { id: `plan:${plan.id}`, minutos: plan.usos, precio: `US$${plan.precioUsd}` };
+  // 0.14.31: un plan de regalo (del administrador) no se «mejora» pagando la diferencia: se compra el plan entero.
+  if (leerPlan(db, usuarioId)?.regalo === true) return null;
   const d = derechoIa(db, usuarioId, ahora);
   const actual = d.plan && !d.plan.vencido ? cfg.planes.find(x => x.id === d.plan.id) : null;
   if (plan.id !== 'plus' || !actual || actual.id === 'plus') return null;

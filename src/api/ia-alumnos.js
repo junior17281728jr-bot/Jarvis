@@ -4,6 +4,8 @@
 //  - POST /api/admin/academia/alumnos/:id/regalo { usos }    regalar N usos (1–1000)
 //  - POST /api/admin/academia/alumnos/:id/pausa { pausada }  pausar (o reanudar) la IA de ese alumno
 //  - POST /api/admin/academia/alumnos/:id/tope { usd }       su tope personal del mes (US$, hasta 20; null: el de su plan)
+//  - GET  /api/admin/ia/dinero?corto=1                      0.14.31: la tarjeta «Dinero de la IA» (src/academia/dinero-ia.js)
+//  - POST /api/admin/academia/alumnos/:id/ia-opcion { accion: 'dar'|'quitar', tipo: 'usos'|'tiempo'|'todo'|'fecha', usos?, dias?, fecha? }
 //  - GET  /api/admin/academia/ia-registro?alumno=N           lo que la IA hizo para ese alumno
 //  - GET  /api/admin/academia/ia-biblioteca?buscar=…         lo guardado y compartido
 //  - POST /api/admin/academia/ia-biblioteca/ocultar { clave, oculto }
@@ -14,6 +16,7 @@
 import { ErrorHttp, leerJson } from '../nucleo/http.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { filasIaAlumnos, regalarUsos, pausarIa, ponerTopePersonal, registroAlumno, biblioteca, ocultarGuardado } from '../academia/ia-alumnos.js';
+import { vistaDinero, aplicarOpcion } from '../academia/dinero-ia.js';
 import { contratos } from '../cuentas/terminos.js';
 import { mandarContratos, mandarTextoAlDueno, TOPES_BOT } from '../canales/bot.js';
 import { contratosParaMandar, textoAyuda, COMANDOS } from '../canales/comandos.js';
@@ -37,6 +40,15 @@ export function registrarRutasIaAlumnos(rutas, { config = null, reloj = Date.now
   rutas.agregar('POST', '/api/admin/academia/alumnos/:id/regalo', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { derecho: regalarUsos(db, parametros.id, datos?.usos, usuario.id, reloj()) } };
+  }, { admin: true, soloDueno: true });
+  // 0.14.31: «Dinero de la IA» y «Darle más IA» / «Quitarle IA».
+  rutas.agregar('GET', '/api/admin/ia/dinero', ({ db, req }) => {
+    const corto = new URL(req.url, 'http://x').searchParams.get('corto') === '1';
+    return { codigo: 200, datos: vistaDinero(db, config, { ahora: reloj(), corto }) };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/alumnos/:id/ia-opcion', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: aplicarOpcion(db, parametros.id, datos, usuario.id, reloj()) };
   }, { admin: true, soloDueno: true });
   rutas.agregar('POST', '/api/admin/academia/alumnos/:id/pausa', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
