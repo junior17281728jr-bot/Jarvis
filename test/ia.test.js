@@ -489,7 +489,7 @@ test('liquidar: anota tokens, costo, resultado y duración; un error claro cuest
   b.db.close();
 });
 
-test('liquidar: si costó más de lo apartado, se anota lo real, se avisa grave y esa clave queda en pausa del dueño', () => {
+test('liquidar: si costó más de lo apartado, se anota lo real y se avisa (atención) pero la IA SIGUE (0.14.30); un uso desconocido sí pausa', () => {
   const b = preparar();
   const r = reservarUno(b).llamada;
   const l = liquidar(b.db, { llamadaId: r.id, resultado: bien(usoDe(30_000, 2000)), ahora: T0 + 1000 });
@@ -497,10 +497,10 @@ test('liquidar: si costó más de lo apartado, se anota lo real, se avisa grave 
   assert.equal(l.costoMicro, Math.ceil((30_000 * 100 + 2000 * 500) / 1000));
   assert.ok(l.costoMicro > r.reservadoMicro);
   const aviso = avisoDe(b.db, 'ia_costo_mayor');
-  assert.equal(aviso.nivel, 'grave');
+  assert.equal(aviso.nivel, 'atencion');
   assert.deepEqual(JSON.parse(aviso.detalle), { proveedor: 'anthropic', llamadaId: r.id, realMicro: l.costoMicro, reservadoMicro: r.reservadoMicro, motivo: 'costo_mayor' });
-  assert.equal(b.db.prepare('SELECT pausa_motivo, pausa_hasta FROM secretos WHERE id = ?').get(b.secretoId).pausa_motivo, 'costo_mayor');
-  assert.equal(reservarUno(b, { ahora: T0 + 2000 }).motivo, 'proveedor_en_pausa');
+  assert.equal(b.db.prepare('SELECT pausa_motivo FROM secretos WHERE id = ?').get(b.secretoId).pausa_motivo, null);
+  assert.notEqual(reservarUno(b, { ahora: T0 + 2000 }).motivo, 'proveedor_en_pausa');
   // Un gasto desconocido (por ejemplo, caché de 1 hora): se cuenta la cota y pasa lo mismo.
   const c = preparar();
   const rc = reservarUno(c).llamada;

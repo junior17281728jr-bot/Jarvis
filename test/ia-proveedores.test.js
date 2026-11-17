@@ -424,8 +424,11 @@ test('un gasto desconocido (caché de 1 hora, herramientas del servidor) o mayor
         assert.equal(u.leido.motivo, 'ok', escena);
         assert.equal(u.liquidado.mayorQueReserva, true, escena);
         assert.ok(u.fila.costo_micro >= u.reserva.llamada.reservadoMicro, `${escena}: nunca se cuenta menos que lo apartado`);
-        assert.equal(b.db.prepare("SELECT nivel FROM avisos WHERE clave = 'ia_costo_mayor' AND resuelto_en IS NULL").get().nivel, 'grave');
-        assert.equal(b.db.prepare('SELECT pausa_motivo FROM secretos').get().pausa_motivo, 'costo_mayor');
+        // 0.14.30: solo un uso desconocido/absurdo pausa (aviso grave); uno conocido que costó más solo avisa y sigue.
+        const desconocido = JSON.parse(u.fila.detalle).motivoInterno === 'uso_desconocido';
+        assert.equal(b.db.prepare("SELECT nivel FROM avisos WHERE clave = 'ia_costo_mayor' AND resuelto_en IS NULL").get().nivel, desconocido ? 'grave' : 'atencion', escena);
+        assert.equal(b.db.prepare('SELECT pausa_motivo FROM secretos').get().pausa_motivo, desconocido ? 'costo_mayor' : null, escena);
+        if (!desconocido) continue;
         if (escena === 'geo_desconocido') assert.deepEqual([JSON.parse(u.fila.detalle).geo, JSON.parse(u.fila.detalle).motivoInterno], ['eu', 'uso_desconocido']);
         if (escena === 'geo_raro') assert.equal(JSON.parse(u.fila.detalle).geo, undefined);
         if (escena === 'uso_anidado' || typeof escena === 'object') assert.ok(u.fila.costo_micro > ok450 * 10, 'lo desconocido se cuenta al precio más alto');

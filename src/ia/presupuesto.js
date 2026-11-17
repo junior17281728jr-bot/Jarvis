@@ -16,7 +16,7 @@ import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 import { mesCobro, inicioMesSiguienteCobro } from '../tareas/tiempo.js';
 import { FASE_ACTUAL } from '../tareas/tipos.js';
 import { estadoLlave } from '../claves/cifrado.js';
-import { anotarPrueba, anotarUso, pausarSecreto, quitarPausaCorta, secretoUsable } from '../claves/almacen.js';
+import { anotarPrueba, anotarUso, pausarSecreto, quitarPausaCorta, reanudarSecreto, secretoUsable } from '../claves/almacen.js';
 import { PROPOSITOS, MOTIVOS, ESTADOS_LLAMADA, definicionProposito } from './propositos.js';
 import { precioDe, precioPara, leerTablaPropia, reservaMicro, costoMicro, cotaMicro, instantaneaPrecio } from './precios.js';
 import { PROVEEDORES } from './proveedores/index.js';
@@ -405,9 +405,13 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
           avisoProveedor(db, { proveedor, motivo: 'fallas_seguidas', pausa: 'admin', hasta: null, nivel: 'atencion', ahora });
         }
       }
+      // 0.14.30 (lo pidió el dueño): un uso que costó más de lo apartado, con su uso conocido, ya se sumó al gasto real:
+      // solo se avisa (atención) y la IA SIGUE; lo único que la para son los topes que puso el dueño. Un uso desconocido
+      // o absurdo (no se puede creer el número) sigue pausando la clave, como antes.
       if (mayor) {
-        abrirAviso(db, { clave: 'ia_costo_mayor', nivel: 'grave', detalle: { proveedor, llamadaId: f.id, realMicro: costo, reservadoMicro: reservado, motivo: detalle.motivoInterno }, ahora });
-        pausarSecreto(db, { id: secretoId, motivo: 'costo_mayor', hastaMs: null, ahora });
+        const raro = detalle.motivoInterno === 'uso_desconocido';
+        abrirAviso(db, { clave: 'ia_costo_mayor', nivel: raro ? 'grave' : 'atencion', detalle: { proveedor, llamadaId: f.id, realMicro: costo, reservadoMicro: reservado, motivo: detalle.motivoInterno }, ahora });
+        if (raro) pausarSecreto(db, { id: secretoId, motivo: 'costo_mayor', hastaMs: null, ahora });
       }
     }
     const cfg = leerConfigIa(db);
@@ -442,6 +446,12 @@ export function cerrarLlamadaRota(db, { llamadaId, ahora = Date.now() }) {
 export function vigilarIA(db, { config, ahora = Date.now() }) {
   return enTransaccion(db, () => {
     const barridas = barrerViejas(db, { ahora });
+    // 0.14.30: una clave que quedó en pausa SOLO porque un uso costó más de lo apartado (con su uso conocido) vuelve sola.
+    for (const s of db.prepare(`SELECT s.id FROM secretos s WHERE s.estado = 'activa' AND s.pausa_motivo = 'costo_mayor'
+        AND NOT EXISTS (SELECT 1 FROM ia_llamadas l WHERE l.secreto_id = s.id AND l.resultado = 'costo_mayor' AND l.detalle LIKE '%uso_desconocido%')
+        AND NOT EXISTS (SELECT 1 FROM ia_llamadas l WHERE l.secreto_id = s.id AND l.detalle LIKE '%no_se_pudo_anotar%')`).all()) {
+      reanudarSecreto(db, { id: s.id });
+    }
     const mes = mesCobro(ahora);
     let cerrados = 0;
     for (const a of db.prepare("SELECT clave FROM avisos WHERE resuelto_en IS NULL AND substr(clave, 1, 8) = 'ia_tope:'").all()) {
