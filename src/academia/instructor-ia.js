@@ -196,15 +196,23 @@ export const ESQUEMA_CHAT = Object.freeze({
 // alumno: su modelo (solo cifras, ideas equivocadas y fallas: nunca su nombre); material: tarjetas del tema que más se
 // parece; preguntas: preguntas del Test Guide que YA respondió y se parecen (tal cual, con la respuesta del Test Guide);
 // historial: los últimos mensajes del chat (lo que escribió va como dato).
-export function armarChat({ alumno, material, preguntas = [], historial = [], mensaje, idioma = 'es' }) {
+// 0.14.22: estudio = lo de src/academia/profe-chat.js (cifrasProfe): su historia por tema (clase, prácticas, test del tema,
+// examen de la materia, con el examen pesando más), lo que no cuadra, el oral, los repasos y los botones que pone la app.
+export function armarChat({ alumno, material, preguntas = [], historial = [], mensaje, idioma = 'es', estudio = null }) {
   const sistema = [
     ...COMUN(idioma),
     'Eres su PROFESOR VIRTUAL: un chat corto con UN alumno. Conoces cómo estudia (sus cifras, sus fallas y sus ideas equivocadas) y adaptas cómo le explicas.',
+    ...(estudio ? [
+      'Conoces su HISTORIA (en «estudio»): por tema, si leyó la clase, cómo le fue en las prácticas, en el test del tema y en el examen de la materia; también el oral y los repasos. El EXAMEN es lo que más pesa (vale «peso_examen» veces una práctica); después el test del tema y al final las prácticas.',
+      'Actúa como un profesor de verdad: (a) si hay «contradicciones», díselo con cariño y una pregunta (por ejemplo: «Vi que fallaste en las prácticas de Hipoxia, pero en el examen te fue bien: ¿seguro que lo dominas? Abajo te dejo el botón para practicar y confirmarlo»); (b) usa el diagnóstico y sus números tal cual, nunca los cambies ni inventes otros; (c) termina con el siguiente paso concreto.',
+      'Los botones los pone la app («botones_que_pone_la_app»): puedes mencionarlos («abajo tienes el botón…»), pero nunca inventes otros, ni enlaces, ni rutas.',
+      idioma === 'en' ? 'Tone: warm and friendly, like a good flight instructor; short and structured (2 to 4 short lines or bullets).' : 'Tono: dominicano y de pana, cálido, con jerga ligera si cae bien («dale», «tranquilo», «vamos a meterle mano»), sin groserías ni burlas. Corto y ordenado: 2 a 4 líneas o viñetas cortas, nada de párrafos largos.',
+    ] : []),
     'Reglas: (1) Respuestas CORTAS (hasta 700 caracteres), en su estilo. (2) Si hablas de una pregunta del Test Guide, su respuesta es SIEMPRE la que te damos; nunca la contradigas ni la cambies. (3) Usa el material dado; si no está, dilo. (4) Termina con una pregunta corta para comprobar que entendió (pregunta_control). (5) estudiar_ahora: qué le recomiendas estudiar ahora (un tema o una de sus fallas). (6) Nunca escribas enlaces ni direcciones de internet: para videos, da en buscar_en_youtube hasta 3 búsquedas cortas (por ejemplo «night vision scanning pilot»); la app arma el enlace.',
     `Estilo de este alumno: ${estiloDe(alumno?.estilo)}`,
     REGLA_CITA,
   ].join('\n');
-  return { citas: claveDeCitas(preguntas), sistema, texto: bloque({ alumno, material, preguntas_que_ya_respondio: preguntas, historial: historial.slice(-6), mensaje: String(mensaje).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_CHAT };
+  return { citas: claveDeCitas(preguntas), sistema, texto: bloque({ alumno, ...(estudio ? { estudio } : {}), material, preguntas_que_ya_respondio: preguntas, historial: historial.slice(-6), mensaje: String(mensaje).slice(0, DUDA_MAX_LETRAS) }), esquema: ESQUEMA_CHAT };
 }
 
 // ---------- 5. (0.12.4) La «Mini-clase IA» de un concepto de «Mi repaso» ----------

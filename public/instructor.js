@@ -815,12 +815,46 @@ export function crearInstructor(h) {
       mensaje);
   }
 
+  // ---------- 0.14.22: lo que lee el profesor de su historia (sin IA) y sus botones ----------
+  // lineas: [{ clave: 'profe.…', vars }] (las arma src/academia/profe-chat.js); botones: de un juego cerrado de tipos, con
+  // el destino armado AQUÍ (el servidor ya los revisó: tema abierto, examen que existe, errores que existen…).
+  const varsProfe = v => Object.fromEntries(Object.entries(v ?? {}).map(([k, x]) => [k, k === 'materia' ? nombreMateria(x) : k === 'tema' || k === 'temas' ? String(x ?? '').split(' · ').map(sinIngles).join(' · ') : typeof x === 'number' ? numero(x) : x]));
+  const textoProfe = p => (p?.lineas ?? []).map(l => (Number(l.vars?.n) === 1 ? tn(l.clave, varsProfe(l.vars)) : tx(l.clave, varsProfe(l.vars)))).join('\n');
+  const ID_RUTA = /^[a-z0-9_-]{1,64}$/;
+  function botonProfe(b) {
+    const ok = x => ID_RUTA.test(String(x ?? ''));
+    const tema = sinIngles(b.titulo ?? '');
+    const clase = 'boton-3d blanco chico con-icono';
+    if (b.tipo === 'repaso') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, e.currentTarget); } }, icono('calendario', 'icono chico'), el('span', { texto: tn('profe.b.repaso', { n: numero(b.n ?? 0) }) }));
+    if (b.tipo === 'oral') {
+      if (b.errores === true) return el('a', { class: clase, href: '#oral/practica/errores' }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral_errores') }));
+      return ok(b.materia) && ok(b.tema) ? el('a', { class: clase, href: `#oral/practica/${encodeURIComponent(b.materia)}/${encodeURIComponent(b.tema)}` }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral', { tema }) })) : null;
+    }
+    if (!ok(b.materia)) return null;
+    if (b.tipo === 'examen') return el('a', { class: 'boton-3d naranja chico con-icono', href: `#examen/${encodeURIComponent(b.materia)}` }, icono('trofeo', 'icono chico'), el('span', { texto: tx('profe.b.examen', { materia: nombreMateria(b.materia) }) }));
+    if (!ok(b.tema)) return null;
+    if (b.tipo === 'clase') return el('a', { class: clase, href: rutaTema(b.materia, b.tema, b.tarjeta) }, icono('libro', 'icono chico'), el('span', { texto: tx('profe.b.clase', { tema }) }));
+    if (b.tipo === 'practicar') return el('button', { type: 'button', class: 'boton-3d naranja chico con-icono', onclick: e => { sonar?.('toque'); practicarTema(b.materia, b.tema, e.currentTarget); } }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profe.b.practicar', { tema }) }));
+    if (b.tipo === 'test') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'tema', materia: b.materia, tema: b.tema }, e.currentTarget); } }, icono('bien', 'icono chico'), el('span', { texto: tx('profe.b.test', { tema }) }));
+    return null;
+  }
+  // { lineas: true } = también sus líneas (sin IA); si no, solo los botones (debajo de lo que escribió la IA).
+  function pintarProfe(p, { lineas = false } = {}) {
+    if (!p) return null;
+    const botones = (p.botones ?? []).map(botonProfe).filter(Boolean);
+    const texto = lineas ? textoProfe(p) : '';
+    if (!botones.length && !texto) return null;
+    return el('div', { class: 'profe-chat' },
+      texto ? talCual('p', texto, 'profe-lineas') : null,
+      botones.length ? el('div', { class: 'profe-botones' }, botones) : null);
+  }
+
   // ---------- 0.12.4: el Profesor virtual cuando no hay IA para él ----------
   // Lo que respondió el instructor básico se ve como una respuesta más (nunca «no pudo» ni «escribiendo…»).
   // 0.12.4: lo que citó del Test Guide (ya revisado contra la clave) va al final de su respuesta.
   const conCitas = r => (r?.citas?.length ? { ...r, respuesta: [r.respuesta, ...r.citas.map(c => tx('instr.ia.cita', { n: c.numero, respuesta: c.respuesta }))].join('\n') } : r);
   const historialParaChat = historial => (historial ?? []).map(m => (m.estado === 'basico'
-    ? { ...m, estado: 'lista', respuesta: { respuesta: m.basica ? `${tx('profesor.basico')} ${textoConsejo(m.basica)}` : tx('profesor.basico_sin') } }
+    ? { ...m, estado: 'lista', respuesta: { respuesta: m.profe?.lineas?.length ? textoProfe(m.profe) : m.basica ? `${tx('profesor.basico')} ${textoConsejo(m.basica)}` : tx('profesor.basico_sin') } }
     : m.respuesta ? { ...m, respuesta: conCitas(m.respuesta) } : m));
   // Sin IA para él (sin clave, apagada, sin su permiso…): el Profesor virtual no se ofrece; si llega aquí, una nota
   // tranquila («Modo básico»), lo que ya habló y el paso de su instructor automático. Nada para escribir.
@@ -830,11 +864,13 @@ export function crearInstructor(h) {
       el('div', { class: 'chat-cabeza' }, el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('cerebro')),
         el('div', {}, el('h1', { texto: tx('profesor.titulo') }), insignia(d?.instructor))),
       el('p', { class: 'con-icono' }, icono('info', 'icono chico'), el('span', { texto: tx('profesor.sin_ia') })),
+      // 0.14.22: sin IA, igual lo que lee de su historia (lo que no cuadra, el diagnóstico) y sus botones.
+      d?.profe ? el('div', { class: 'burbuja profesor profe-resumen' }, el('p', { class: 'fuerte chica', texto: tx('profe.titulo') }), pintarProfe(d.profe, { lineas: true })) : null,
       d?.instructor?.motivo === 'sin_consentimiento' ? el('p', { class: 'suave chica' }, el('a', { href: '#mis-datos', texto: tx('datos.titulo') })) : null,
       historial.length ? el('details', { class: 'profesor-historial' }, el('summary', { texto: tx('profesor.anteriores', { n: numero(historial.length) }) }),
         el('ul', { class: 'lista-simple' }, historial.map(m => el('li', {}, talCual('p', m.pregunta, 'fuerte'), m.respuesta ? talCual('p', m.respuesta.respuesta, 'suave') : null)))) : null,
       el('a', { class: 'boton-3d', href: '#inicio' }, el('span', { texto: tx('profesor.ir_inicio') })));
   }
 
-  return Object.freeze({ lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion, pintarConsejo, practicarTema });
+  return Object.freeze({ pintarProfe, textoProfe, lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion, pintarConsejo, practicarTema });
 }

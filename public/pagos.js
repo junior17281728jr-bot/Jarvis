@@ -333,7 +333,10 @@ export function crearPagos(h) {
   // 0.12.4: lo que respondió el instructor básico (sin IA en ese momento): una respuesta más, nunca «no pudo».
   const textoBasica = b => (b ? `${tx('profesor.basico')} ${tx(`instr.c.${b.clave}`, b.vars ?? {})}` : tx('profesor.basico_sin'));
   function burbujas(m) {
-    const respuesta = m.respuesta ?? (m.estado === 'basico' ? { respuesta: textoBasica(m.basica) } : null);
+    // 0.14.22: sin IA, la respuesta es lo que lee el profesor de su historia (si lo hay); y sus botones, siempre.
+    const sinIa = !m.respuesta && m.estado === 'basico';
+    const respuesta = m.respuesta ?? (sinIa ? { respuesta: m.profe?.lineas?.length ? instructorUi().textoProfe(m.profe) : textoBasica(m.basica) } : null);
+    const botonesProfe = m.profe && (respuesta || m.estado === 'no') ? instructorUi().pintarProfe({ botones: m.profe.botones }) : null;
     return [
       el('div', { class: 'burbuja alumno' }, talCual('p', m.pregunta)),
       el('div', { class: 'burbuja profesor' },
@@ -344,7 +347,8 @@ export function crearPagos(h) {
           ...(respuesta.citas ?? []).map(c => talCual('p', tx('instr.ia.cita', { n: c.numero, respuesta: c.respuesta }), 'cita-test-guide chica')),
           respuesta.estudiar ? el('p', { class: 'suave' }, el('strong', { texto: `${tx('profesor.estudia')} ` }), talCual('span', respuesta.estudiar)) : null,
           respuesta.control ? el('p', { class: 'pregunta-control' }, el('strong', { texto: `${tx('profesor.comprueba')} ` }), talCual('span', respuesta.control)) : null,
-        ] : el('p', { class: 'suave', texto: m.estado === 'no' ? tx('profesor.no') : tx('instr.ia.escribiendo') }),
+          botonesProfe,
+        ] : [m.estado === 'no' && m.profe?.lineas?.length ? talCual('p', instructorUi().textoProfe(m.profe)) : el('p', { class: 'suave', texto: m.estado === 'no' ? tx('profesor.no') : tx('instr.ia.escribiendo') }), m.estado === 'no' ? botonesProfe : null],
         m.videos?.length || m.buscar?.length ? el('div', { class: 'videos' },
           ...(m.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')),
           ...(m.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))) : null),
@@ -359,7 +363,11 @@ export function crearPagos(h) {
       // 0.12.3: «Comprar» solo si el instructor IA le sirve a esta cuenta (si no, no se vende).
       return mostrar(marco('inicio', volver, el('section', { class: 'panel' }, el('h1', { class: 'titulo-grande', texto: tx('profesor.titulo') }), el('p', { texto: tx('profesor.sin_permiso') })), comparacion(null, { irA: d.tiempo?.activo ? undefined : null })));
     }
-    const lista = el('div', { class: 'chat-lista', 'aria-live': 'polite' }, d.historial.flatMap(burbujas));
+    // 0.14.22: arriba, lo que el profesor ya leyó de su historia (sin IA, gratis) con sus botones.
+    const resumen = d.profe ? instructorUi().pintarProfe(d.profe, { lineas: true }) : null;
+    const lista = el('div', { class: 'chat-lista', 'aria-live': 'polite' },
+      resumen ? el('div', { class: 'burbuja profesor profe-resumen' }, el('p', { class: 'fuerte chica', texto: tx('profe.titulo') }), resumen) : null,
+      d.historial.flatMap(burbujas));
     const entradaTexto = el('textarea', { rows: 2, maxlength: 500, 'aria-label': tx('profesor.escribe'), placeholder: tx('profesor.escribe') });
     const medidor = el('div', { class: 'chat-tiempo' }, instructorUi().medidorTiempo(d.tiempo));
     // 0.12.9 (G): donde = { materia, tema } cuando el mensaje sale de «Explícame la clase de…».
@@ -373,14 +381,15 @@ export function crearPagos(h) {
       entradaTexto.value = '';
       // 0.12.4: ia = null cuando no hay IA para él por algo que no se pasa solo: la respuesta básica, sin «no pudo».
       const ia = x.datos.ia ?? { estado: 'basico' };
-      const m = { pregunta: mensaje, respuesta: null, estado: ia.estado, basica: x.datos.basica ?? null, videos: x.datos.videos, buscar: x.datos.buscar };
+      const m = { pregunta: mensaje, respuesta: null, estado: ia.estado, basica: x.datos.basica ?? null, profe: x.datos.profe ?? null, videos: x.datos.videos, buscar: x.datos.buscar };
       const nodos = burbujas(m);
       lista.append(...nodos);
       const caja = nodos[1];
       if (x.datos.tiempo) cambiarHijos(medidor, instructorUi().medidorTiempo(x.datos.tiempo));
       if (ia.estado === 'no') {
         cambiarHijos(caja, ia.motivo === 'sin_minutos' ? instructorUi().sinMinutos() : el('p', { class: 'suave', texto: tx(ia.espera ? 'instr.ia.espera' : 'profesor.no') }),
-          x.datos.basica ? el('p', {}, el('strong', { texto: `${tx('profesor.basico')} ` }), el('span', { texto: tx(`instr.c.${x.datos.basica.clave}`, x.datos.basica.vars ?? {}) })) : null,
+          x.datos.profe?.lineas?.length ? instructorUi().pintarProfe(x.datos.profe, { lineas: true })
+            : x.datos.basica ? el('p', {}, el('strong', { texto: `${tx('profesor.basico')} ` }), el('span', { texto: tx(`instr.c.${x.datos.basica.clave}`, x.datos.basica.vars ?? {}) })) : null,
           ...[...(x.datos.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')), ...(x.datos.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))]);
       } else if (ia.estado === 'pendiente') {
         const vuelta = async (n = 0) => {

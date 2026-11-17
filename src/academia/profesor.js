@@ -80,6 +80,11 @@ export function historialParaVer(db, usuarioId) {
       pregunta: m.pregunta, en: m.en, tarea: m.tarea ?? null, estado, tema: m.tema ?? null,
       ...(estado === 'basico' ? { basica: m.basica && typeof m.basica.clave === 'string' ? { clave: m.basica.clave, vars: m.basica.vars ?? {} } : null } : {}),
       respuesta: r ? { respuesta: r.respuesta, control: r.control, estudiar: r.estudiar, terminos: r.terminos, citas: Array.isArray(r.citas) ? r.citas : [] } : null,
+      // 0.14.22: lo que leyó el profesor de su historia (líneas con clave de texto) y sus botones (la ruta los revisa otra vez).
+      profe: m.profe && typeof m.profe === 'object' ? {
+        lineas: (Array.isArray(m.profe.lineas) ? m.profe.lineas : []).filter(x => typeof x?.clave === 'string' && /^profe\.[a-z_.]{1,60}$/.test(x.clave)).slice(0, 4).map(x => ({ clave: x.clave, vars: x.vars && typeof x.vars === 'object' ? x.vars : {} })),
+        botones: Array.isArray(m.profe.botones) ? m.profe.botones.slice(0, 6) : [],
+      } : null,
       videos: m.videos ?? [], buscar: [...(r?.buscar ?? []).map(x => ({ texto: x, url: busquedaYoutube(x) })), ...(m.buscar ?? [])].filter(x => x.url).slice(0, 3),
     };
   });

@@ -784,6 +784,19 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   esa página) cuando ese libro se puede leer.
 
 Pruebas: `test/biblioteca.test.js`.
+### Lo nuevo de la 0.14.22: el Profesor virtual conoce tu historia — sin cambio de base
+
+- El chat del Profesor virtual (todas las clases: las materias del Test Guide y el oral) lee la historia del alumno en
+  código (`src/academia/profe-chat.js`): por tema, la clase leída, las prácticas, el test del tema y el examen de la
+  materia (el EXAMEN pesa 3 veces una práctica), el oral, los repasos de hoy, los días sin estudiar y el diagnóstico del
+  consejo. Nota lo que no cuadra («fallaste en las prácticas de Hipoxia, pero en el examen te fue bien: ¿seguro que lo
+  dominas?») en las dos direcciones y solo con al menos 2 respuestas de cada lado.
+- Los botones (la clase, practicar lo fallado, el test del tema, el examen de la materia, la práctica del oral, el
+  repaso) los arma y revisa el código, al crearlos y otra vez al leer el historial: nunca uno a un tema cerrado o
+  inventado. La pantalla arma cada destino de un juego cerrado de tipos.
+- A la IA (la que esté configurada) va solo con títulos y números: sin nombre, sin usuario y sin ids internos; tono
+  dominicano y corto. Sin IA (apagada, en pausa, sin minutos) la respuesta es esa misma lectura en 2–4 líneas, con los
+  mismos botones. Los topes, los minutos y «IA en pausa» siguen como siempre (`estadoInstructor`, `pedirIa`).
 
 ### Lo nuevo de la 0.14.16: el consejo del instructor IA, corto y con botones — sin cambio de base
 

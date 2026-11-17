@@ -304,3 +304,11 @@ button.plan-hoy-fila { cursor: pointer; }
 /* 0.14.16: la línea que dice qué es cada sección (Progreso). */
 .seccion-sub { margin: -2px 0 10px; }
 .examen-tarjetas { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+
+/* 0.14.22: el Profesor virtual lee su historia: unas líneas cortas y botones de verdad (2 por fila en el teléfono). */
+.profe-chat { display: grid; gap: 8px; margin-top: 6px; }
+.profe-lineas { margin: 0; line-height: 1.45; }
+.profe-botones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.profe-botones > * { justify-content: center; min-height: 44px; min-width: 0; padding-inline: 10px; text-align: center; }
+.profe-botones > :only-child, .profe-botones > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+.profe-resumen { border-inline-start: 3px solid var(--naranja, #f59e0b); }

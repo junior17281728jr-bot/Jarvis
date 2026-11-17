@@ -33,6 +33,7 @@ import { tiempoDe } from './pagos.js';
 import { permisoProfesor, darProfesor, leerVideos, guardarVideos, videosDeTema, anotarMensaje, historialParaVer, contextoChat, busquedaYoutube, respondidasParecidas } from '../academia/profesor.js';
 import { armarChat } from '../academia/instructor-ia.js';
 import { diagnostico, cifrasConsejo, consejoParaVer } from '../academia/consejo-ia.js';
+import { profe as leerProfe, cifrasProfe, validarBotones } from '../academia/profe-chat.js';
 import { veredicto } from '../academia/preparado.js';
 import { estadisticas, anotarExplicado } from '../academia/aprendizaje.js';
 import { iaPermitida } from '../cuentas/terminos.js';
@@ -547,7 +548,13 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   rutas.agregar('GET', '/api/academia/profesor', ({ db, req, usuario }) => {
     contar(topes.lecturas, usuario);
     const ahora = reloj();
-    return { codigo: 200, datos: { permiso: permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }), instructor: estadoInstructor(db, req, usuario, ahora), tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), historial: historialParaVer(db, usuario.id) } };
+    // 0.14.22: lo que lee el profesor de su historia (sin IA) y los botones de cada mensaje, revisados con lo de AHORA.
+    let p = null;
+    try { p = config ? paqueteActivo(db, config) : null; } catch { p = null; }
+    const pf = p ? leerProfe(db, usuario.id, p, ahora) : null;
+    const historial = historialParaVer(db, usuario.id).map(m => (m.profe ? { ...m, profe: { ...m.profe, botones: pf ? validarBotones(m.profe.botones, p, pf.historial) : [] } } : m));
+    return { codigo: 200, datos: { permiso: permisoProfesor(db, usuario.id, { admin: esAdminDe(db, usuario) }), instructor: estadoInstructor(db, req, usuario, ahora), tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }), historial,
+      profe: pf ? { lineas: pf.lineas, botones: pf.botones } : null } };
   });
   rutas.agregar('POST', '/api/academia/profesor', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
@@ -572,12 +579,16 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     } : contextoChat(db, usuario.id, p, mensaje, abiertos, fallas);
     const videos = ctx.materia ? videosDeTema(db, ctx.materia, ctx.tema).map(v => ({ titulo: v.titulo, url: v.url })) : [];
     const buscar = ctx.temaTitulo ? [{ texto: ctx.temaTitulo, url: busquedaYoutube(ctx.temaTitulo) }] : [];
+    // 0.14.22: el profesor conoce su historia (clases, prácticas, tests, exámenes, oral, repasos) y lo que no cuadra; los
+    // botones los arma y revisa el código. Sin IA, esto mismo es su respuesta.
+    const pf = leerProfe(db, usuario.id, p, ahora);
+    const profe = { lineas: pf.lineas, botones: pf.botones };
     // Sin IA (o sin minutos): el instructor básico le dice qué estudiar, y los videos igual. 0.12.4: el mensaje y la
     // respuesta básica quedan en su historial (antes se perdían al recargar); sin IA por algo que no se pasa solo, ia = null.
     if (instructor.modo !== 'ia') {
       const basica = consejoInstructor(db, usuario.id, p, ahora).consejo;
-      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar });
-      return { codigo: 200, datos: { instructor, ia: iaNoAhora(instructor), basica, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
+      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar, profe });
+      return { codigo: 200, datos: { instructor, ia: iaNoAhora(instructor), basica, profe, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
     }
     const m = modeloAlumno(db, usuario.id, p, ahora);
     // Su modelo, en cifras y con los textos del paquete: nunca su nombre ni su usuario.
@@ -595,23 +606,26 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       && JSON.stringify([x.sistema, x.texto, mensaje, x.citas]).length <= 14_500;
     let preguntas = ctx.preguntas;
     let material = ctx.material;
-    let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma });
-    while (!cabe(pedido) && (historial.length || preguntas.length || (material?.tarjetas ?? []).some(t => t.texto.length > 200))) {
+    let estudio = cifrasProfe(pf, { idioma: usuario.idioma });
+    let pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio });
+    // (0.14.22: su historia se achica al final: primero menos temas; nunca se pierde lo que no cuadra ni los botones)
+    while (!cabe(pedido) && (historial.length || preguntas.length || (material?.tarjetas ?? []).some(t => t.texto.length > 200) || estudio?.temas?.length)) {
       if (historial.length) historial = historial.slice(1);
       else if (preguntas.length) preguntas = preguntas.slice(1);
-      else material = { ...material, tarjetas: material.tarjetas.map(t => ({ ...t, texto: t.texto.slice(0, Math.floor(t.texto.length / 2)) })) };
-      pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma });
+      else if ((material?.tarjetas ?? []).some(t => t.texto.length > 200)) material = { ...material, tarjetas: material.tarjetas.map(t => ({ ...t, texto: t.texto.slice(0, Math.floor(t.texto.length / 2)) })) };
+      else estudio = { ...estudio, temas: estudio.temas.slice(0, -1) };
+      pedido = armarChat({ alumno, material, preguntas, historial, mensaje, idioma: usuario.idioma, estudio });
     }
     const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
     const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje, citas: pedido.citas } });
-    if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar });
+    if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar, profe });
     else {
       // 0.12.4: no se pudo pedir (sin minutos, muy largo): lo básico, y también queda en su historial.
       const basica = consejoInstructor(db, usuario.id, p, ahora).consejo;
-      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar });
-      return { codigo: 200, datos: { instructor, ia, basica, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
+      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar, profe });
+      return { codigo: 200, datos: { instructor, ia, basica, profe, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
     }
-    return { codigo: 200, datos: { instructor, ia, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
+    return { codigo: 200, datos: { instructor, ia, profe, videos, buscar, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
   });
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/profesor', ({ db, parametros }) => {
     const id = Number(parametros.id);
