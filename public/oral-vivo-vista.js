@@ -95,7 +95,7 @@ export function portadaVivo(d, materiaPre, h) {
     b.disabled = true;
     const r = await api('POST', '/api/academia/oral/vivo', { materia: capitulo.value || null, n });
     if (!r.ok) { b.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
-    practica(r.datos, { voz, dictar, natural, umbral: d.umbral }, h, 0);
+    practica(r.datos, { voz, dictar, natural, umbral: d.umbral, guardarVoz: v => guardarAjuste(usuario, 'voz', v) }, h, 0);
   };
   const seguir = d.abierta ? el('button', { type: 'button', class: 'boton-3d blanco', onclick: async e => {
     despertarVoz();
@@ -105,7 +105,7 @@ export function portadaVivo(d, materiaPre, h) {
     const hechas = new Set(r.datos.respondidas);
     // Terminada (falta calificarse): directo al repaso del final.
     const desde = r.datos.terminada ? -1 : r.datos.preguntas.findIndex(q => !hechas.has(q.i));
-    practica(r.datos, { voz, dictar, natural, umbral: d.umbral }, h, desde < 0 ? r.datos.preguntas.length : desde);
+    practica(r.datos, { voz, dictar, natural, umbral: d.umbral, guardarVoz: v => guardarAjuste(usuario, 'voz', v) }, h, desde < 0 ? r.datos.preguntas.length : desde);
   } }, el('span', { texto: t('vivo.seguir', { n: numero(d.abierta.respondidas), total: numero(d.abierta.total) }) })) : null;
   mostrar(marco('oral', volver,
     el('section', { class: 'examen-portada vivo-portada' },
@@ -175,11 +175,32 @@ function practica(s, prefs, h, desde = 0) {
     if (!puedeLeer()) { ex.poner('leyendo', 2400); return; }
     leer(decir().texto, decir().lang);
   };
-  const burbujaExaminador = (contenido, decir, alRepetir = null) => el('div', { class: 'vivo-fila examinador' },
-    el('span', { class: 'vivo-avatar', 'aria-hidden': 'true' }, icono('radio', 'icono')),
-    el('div', { class: 'vivo-burbuja' },
-      el('p', { class: 'vivo-quien', texto: t('vivo.examinador') }), contenido,
-      prefs.voz && decir ? el('button', { type: 'button', class: 'vivo-repetir con-icono-chico', onclick: () => (alRepetir ? alRepetir() : leer(decir().texto, decir().lang)) }, icono('altavoz', 'icono chico'), el('span', { texto: t('vivo.repetir') })) : null));
+  // 0.14.34: silenciar o activar la voz AHÍ MISMO, en medio de la práctica (lo pidió el dueño); se recuerda para la próxima.
+  const botonVoz = (repetir, decir, alRepetir) => {
+    const b = el('button', { type: 'button', class: 'vivo-repetir con-icono-chico', 'aria-pressed': prefs.voz ? 'false' : 'true' });
+    const pintar = () => {
+      b.replaceChildren(icono(prefs.voz ? 'silencio' : 'altavoz', 'icono chico'), el('span', { texto: prefs.voz ? t('vivo.silenciar') : t('vivo.activar_voz') }));
+      b.setAttribute('aria-pressed', prefs.voz ? 'false' : 'true');
+      repetir.hidden = !prefs.voz;
+    };
+    b.addEventListener('click', () => {
+      prefs.voz = !prefs.voz;
+      try { prefs.guardarVoz?.(prefs.voz); } catch { /* vale solo ahora */ }
+      if (!prefs.voz) { callar(); hablar(false); } else if (alRepetir) alRepetir(); else if (decir) leer(decir().texto, decir().lang);
+      pintar();
+    });
+    pintar();
+    return b;
+  };
+  const burbujaExaminador = (contenido, decir, alRepetir = null) => {
+    const repetir = decir ? el('button', { type: 'button', class: 'vivo-repetir con-icono-chico', onclick: () => (alRepetir ? alRepetir() : leer(decir().texto, decir().lang)) }, icono('altavoz', 'icono chico'), el('span', { texto: t('vivo.repetir') })) : null;
+    if (repetir) repetir.hidden = !prefs.voz;
+    return el('div', { class: 'vivo-fila examinador' },
+      el('span', { class: 'vivo-avatar', 'aria-hidden': 'true' }, icono('radio', 'icono')),
+      el('div', { class: 'vivo-burbuja' },
+        el('p', { class: 'vivo-quien', texto: t('vivo.examinador') }), contenido,
+        repetir && puedeLeer() ? el('div', { class: 'botones' }, repetir, botonVoz(repetir, decir, alRepetir)) : null));
+  };
 
   // El cuadro de su respuesta: el dictado en vivo (que puede corregir) o lo que escribe.
   const respuesta = alListo => {
@@ -195,24 +216,43 @@ function practica(s, prefs, h, desde = 0) {
         if (escucha) { parar(); ponerEstado(null); return; }
         callar(); // nunca la voz del examinador y el micrófono a la vez
         const R = Reconocimiento();
-        try {
+        // 0.14.34: el dictado no escribía en algunos navegadores. Safari (iPhone y Mac) se porta mejor con «continuous»
+        // apagado y volviendo a empezar solo; Chrome corta tras un silencio: también se vuelve a empezar mientras el
+        // botón siga encendido. Cada error dice su causa y qué hacer.
+        const esSafari = typeof navigator !== 'undefined' && /safari/i.test(navigator.userAgent) && !/chrome|crios|android/i.test(navigator.userAgent);
+        base = caja.value ? `${caja.value.trim()} ` : '';
+        let fijoTotal = '';
+        let reintentos = 0;
+        const empezar = () => {
           const r = new R();
           r.lang = idiomaOral(usuario) === 'en' ? 'en-US' : 'es-ES';
-          r.continuous = true;
+          r.continuous = !esSafari;
           r.interimResults = true;
-          base = caja.value ? `${caja.value.trim()} ` : '';
+          r.maxAlternatives = 1;
           r.onresult = ev => {
+            reintentos = 0;
             let fijo = '';
             let provisional = '';
-            for (let k = 0; k < ev.results.length; k++) { const x = ev.results[k]; if (x.isFinal) fijo += x[0].transcript; else provisional += x[0].transcript; }
-            caja.value = `${base}${fijo}${provisional}`.slice(0, 1200);
+            for (let k = ev.resultIndex ?? 0; k < ev.results.length; k++) { const x = ev.results[k]; if (x.isFinal) fijo += x[0].transcript; else provisional += x[0].transcript; }
+            if (fijo) fijoTotal = `${fijoTotal}${fijoTotal && !/\s$/.test(fijoTotal) ? ' ' : ''}${fijo.trim()}`;
+            caja.value = `${base}${fijoTotal}${provisional ? ` ${provisional}` : ''}`.slice(0, 1200);
           };
-          r.onerror = ev => { ponerEstado(ev?.error === 'not-allowed' || ev?.error === 'service-not-allowed' ? 'sin_permiso' : 'no_oyo'); escucha = null; };
-          r.onend = () => { if (escucha === r) { escucha = null; ponerEstado(null); } };
+          r.onerror = ev => {
+            const e = ev?.error;
+            if (e === 'no-speech' || e === 'aborted') return; // sigue escuchando (onend lo vuelve a empezar)
+            escucha = null;
+            ponerEstado(e === 'not-allowed' || e === 'service-not-allowed' ? 'sin_permiso'
+              : e === 'audio-capture' ? 'sin_micro' : e === 'network' ? 'sin_red' : e === 'language-not-supported' ? 'sin_idioma' : 'no_oyo');
+          };
+          r.onend = () => {
+            if (escucha !== r) return;
+            if (reintentos++ < 20) { try { empezar(); return; } catch { /* abajo */ } }
+            escucha = null; ponerEstado(null);
+          };
           escucha = r;
           r.start();
-          ponerEstado('escuchando');
-        } catch { escucha = null; ponerEstado('no_oyo'); }
+        };
+        try { empezar(); ponerEstado('escuchando'); } catch { escucha = null; ponerEstado('no_oyo'); }
       });
     }
     const listo = botonGrande(t('vivo.listo'), () => { parar(); alListo(caja.value.trim(), ponerEstado); }, { sonido: null });

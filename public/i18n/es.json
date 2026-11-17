@@ -5192,5 +5192,10 @@
   "error.dias_no_validos": "Escribe cuántos días (de 1 a 90).",
   "error.solo_con_planes": "Dar tiempo solo funciona con los planes de IA (Pagos).",
   "error.sin_regalo_tiempo": "Este alumno no tiene tiempo regalado en su plan de ahora.",
-  "error.fecha_no_valida": "Elige una fecha válida (hasta un año desde hoy)."
+  "error.fecha_no_valida": "Elige una fecha válida (hasta un año desde hoy).",
+  "vivo.silenciar": "Silenciar",
+  "vivo.activar_voz": "Activar voz",
+  "vivo.estado.sin_micro": "No encuentro el micrófono: revisa que esté conectado o escribe tu respuesta.",
+  "vivo.estado.sin_red": "El dictado necesita internet: revisa la conexión o escribe tu respuesta.",
+  "vivo.estado.sin_idioma": "Este navegador no dicta en este idioma: usa Chrome o Safari, o escribe tu respuesta."
 }

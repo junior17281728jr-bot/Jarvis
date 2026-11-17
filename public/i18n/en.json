@@ -5192,5 +5192,10 @@
   "error.dias_no_validos": "Type how many days (1 to 90).",
   "error.solo_con_planes": "Giving time only works with AI plans (Payments).",
   "error.sin_regalo_tiempo": "This student has no given time on their current plan.",
-  "error.fecha_no_valida": "Pick a valid date (up to one year from today)."
+  "error.fecha_no_valida": "Pick a valid date (up to one year from today).",
+  "vivo.silenciar": "Mute",
+  "vivo.activar_voz": "Turn voice on",
+  "vivo.estado.sin_micro": "I can't find the microphone: check it is connected or type your answer.",
+  "vivo.estado.sin_red": "Dictation needs internet: check your connection or type your answer.",
+  "vivo.estado.sin_idioma": "This browser can't dictate in this language: use Chrome or Safari, or type your answer."
 }
