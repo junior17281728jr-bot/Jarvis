@@ -48,7 +48,7 @@ export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_
   // 0.14.2: «Pídele a la IA» (el chat del dueño y sus trabajos) y los «Dibujos con IA» (APAGADOS), cada uno con su tope.
   chat: Object.freeze({ topeMicro: 10_000_000 }), dibujos: Object.freeze({ activa: false, topeMicro: 5_000_000 }) });
 export const MODELOS_PROFUNDA = Object.freeze(['opus', 'sonnet']);
-export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 100_000_000, chatMaxMicro: 50_000_000, dibujosMaxMicro: 50_000_000 });
+export const LIMITES_FABRICA = Object.freeze({ topeMaxMicro: 100_000_000, mejoraMaxMicro: 20_000_000, profundaMaxMicro: 500_000_000, chatMaxMicro: 50_000_000, dibujosMaxMicro: 50_000_000 });
 export const T = Object.freeze({
   lecturaDirectaBytes: 60_000, // más que esto: primero Haiku saca los pasajes (extracto)
   verificarBytes: 170_000,

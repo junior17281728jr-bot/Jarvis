@@ -130,7 +130,7 @@ test('la tarjeta: los 5 topes, el pronóstico con el gasto de 7 días y el confl
   guardarAjuste(db, 'fabrica.config', JSON.stringify({ profunda: { topeMicro: 90 * M } }));
   const d = vistaDinero(db, config, { ahora: T0 });
   assert.deepEqual(d.topes.map(x => x.id), ['general', 'todo', 'chat', 'mejora', 'alumnos']);
-  assert.equal(d.maxGeneralMicro, 100 * M);
+  assert.equal(d.maxGeneralMicro, 500 * M);
   assert.deepEqual([d.topes[0].usadoMicro, d.topes[4].usadoMicro], [30 * M, 30 * M], 'el mes de cobro (sin octubre) y lo de los alumnos');
   assert.deepEqual([d.pronostico.estado, d.pronostico.dias], ['alcanza', 20], 'US$40 libres a US$2/día');
   assert.equal(d.conflicto?.paraEnMicro, 56 * M, 'la mejora (US$90) se para en el 80 % de US$70');

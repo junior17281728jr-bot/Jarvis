@@ -25,7 +25,7 @@ export { esEspacioAdmin, topeEspacioMicro };
 
 export const CLAVE_AJUSTE_IA = 'ia.config';
 export const LIMITES_IA = Object.freeze({
-  topeGeneralMaxMicro: 100_000_000, // US$100 al mes
+  topeGeneralMaxMicro: 500_000_000, // US$500 al mes (0.14.33: lo pidió el dueño)
   topePlanMaxMicro: 20_000_000, // US$20 al mes por cuenta
   centavoMicro: 10_000, // los topes van con hasta 2 decimales
   llamadasPorHoraMin: 1,
