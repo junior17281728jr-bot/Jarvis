@@ -2,6 +2,7 @@
 // de una lista fija (las mismas listas que revisa el servidor: src/cuentas/perfil.js). Se dibujan aquí, en SVG, con
 // createElementNS (sin archivos de imagen, sin texto convertido en código). Sin avatar elegido: la avioneta de siempre
 // con la inicial y un color que sale del nombre. Este módulo no importa nada.
+// 0.14.24: o la FOTO de perfil que cada uno sube (dibujarAvatar(..., { foto })).
 export const FORMAS_AVATAR = Object.freeze(['avioneta', 'jet', 'helicoptero', 'globo', 'alas', 'brujula']);
 export const COLORES_AVATAR = Object.freeze(['azul', 'rojo', 'verde', 'naranja', 'morado', 'amarillo']);
 
@@ -54,9 +55,26 @@ function nodo(etiqueta, atributos = {}) {
   return n;
 }
 
+// 0.14.24: la foto de perfil (src/cuentas/foto.js): solo su token al azar viaja; la imagen se pide con la sesión.
+const TOKEN_FOTO = /^[a-f0-9]{32}$/;
+export const fotoValida = foto => typeof foto === 'string' && TOKEN_FOTO.test(foto);
+export const direccionFoto = foto => (fotoValida(foto) ? `/api/fotos/${foto}` : null);
+
 // El avatar como un <svg> (redondo). avatar: 'jet-rojo' o null; nombre: para la inicial y el color de siempre.
 // tamano: 'chico' | 'medio' | 'grande'. etiqueta: lo que dice VoiceOver (sin ella, se esconde: es decoración).
-export function dibujarAvatar(avatar, { nombre = '', tamano = 'medio', etiqueta = null } = {}) {
+// 0.14.24: foto (el token): con foto, una <img> redonda; si no se puede ver (la quitaron, se volvió privada), el avatar.
+export function dibujarAvatar(avatar, { nombre = '', tamano = 'medio', etiqueta = null, foto = null } = {}) {
+  if (fotoValida(foto)) {
+    const img = document.createElement('img');
+    img.className = `avatar avatar-${tamano} avatar-foto`;
+    img.alt = etiqueta ?? '';
+    if (!etiqueta) img.setAttribute('aria-hidden', 'true');
+    img.decoding = 'async';
+    img.draggable = false;
+    img.addEventListener('error', () => img.replaceWith(dibujarAvatar(avatar, { nombre, tamano, etiqueta })), { once: true });
+    img.src = direccionFoto(foto);
+    return img;
+  }
   const valido = avatarValido(avatar);
   const [forma, color] = valido ? avatar.split('-') : ['avioneta', colorDeNombre(nombre)];
   const s = nodo('svg', { viewBox: '0 0 48 48', class: `avatar avatar-${tamano} av-${color}${valido ? '' : ' av-inicial'}`, focusable: 'false', ...(etiqueta ? { role: 'img', 'aria-label': etiqueta } : { 'aria-hidden': 'true' }) });

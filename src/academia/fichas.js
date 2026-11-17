@@ -11,6 +11,7 @@ import { puntosDebiles } from './memoria.js';
 import { planDe, preparacionDe, pasosDelCamino } from './plan.js';
 import { actividadDe } from '../cuentas/historial.js';
 import { leerPerfil } from '../cuentas/perfil.js';
+import { fotoDe } from '../cuentas/foto.js';
 import { cerrarVencidos, tiemposDe, leerExamen } from './examen.js';
 import { nombreLegalDe, estadoTerminos, verificacionDe, tutorAutorizoPagos } from '../cuentas/terminos.js';
 import { historialSaltos } from './saltos.js';
@@ -116,7 +117,7 @@ function resumenDe(db, alumnoId, paquete, intentos, ahoraMs) {
 
 function cabeceraDe(db, u) {
   const perfil = leerPerfil(db, u.id);
-  return { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, activo: u.activo === 1, pendiente: u.pendiente === 1, creadoEn: u.creado_en, avatar: perfil.avatar, meta: perfil.meta,
+  return { id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, rol: u.rol, activo: u.activo === 1, pendiente: u.pendiente === 1, creadoEn: u.creado_en, avatar: perfil.avatar, foto: fotoDe(db, u.id), meta: perfil.meta,
     // 0.9.2: su nombre legal y los términos que aceptó (versión, nombre tal como firmó, fecha).
     nombreLegal: nombreLegalDe(db, u.id),
     terminos: (e => ({ version: e.version, versionPrivacidad: e.versionPrivacidad, pendiente: e.pendiente, ultima: e.ultima, nacimiento: e.nacimiento, menor: e.menor, aceptoIa: e.aceptoIa }))(estadoTerminos(db, u.id)),

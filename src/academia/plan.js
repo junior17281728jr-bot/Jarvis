@@ -10,6 +10,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { MATERIAS } from './formato.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { fotosDe } from '../cuentas/foto.js';
 import { nombreLegalDe } from '../cuentas/terminos.js';
 import { grupoEncendido, temasAprobados, temasLeidos, examenes, puntosYRacha, porMateria, diaDe, pasosDeTemas, avanceTema } from './progreso.js';
 
@@ -157,6 +158,7 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const filas = db.prepare("SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE activo = 1 ORDER BY id").all();
   const companeros = [];
   const avatares = avataresDe(db);
+  const fotos = fotosDe(db);
   const legales = new Map(filas.map(u => [u.id, nombreLegalDe(db, u.id)]));
   for (const u of filas) {
     const soyYo = u.id === usuarioId;
@@ -172,6 +174,8 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
       nombre: soyYo ? u.nombre_visible || u.nombre : nombreParaElGrupo(legales.get(u.id), u.nombre_visible || u.nombre),
       // 0.9.0: el avatar que eligió (o null). Su «meta» NO va aquí: es solo suya y del administrador.
       avatar: avatares.get(u.id) ?? null,
+      // 0.14.24: su foto (el token), solo si tiene: aquí ya no están los que pusieron «Perfil privado».
+      ...(fotos.has(u.id) ? { foto: fotos.get(u.id) } : {}),
       materia: actual ?? MATERIAS[MATERIAS.length - 1],
       lugar: actual ? MATERIAS.indexOf(actual) : MATERIAS.length,
       pct: total ? Math.min(100, Math.floor((hechos * 100) / total)) : 0,

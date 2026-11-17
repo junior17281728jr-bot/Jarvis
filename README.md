@@ -712,6 +712,35 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.24: la foto de perfil (de la galería o la cámara) — sin cambio de base
+
+Pedido del dueño: que cada uno pueda poner su propia foto, además de los avatares de aviación.
+- **Ajustes → Mi perfil → «Mi foto»** (`public/perfil-vista.js`): «Elegir foto» / «Cambiar foto» es un campo de archivo
+  `accept="image/*"` (en el iPhone abre Fototeca / Tomar foto). La foto se recorta cuadrada (centrada; se arrastra con el dedo
+  y se acerca con «Acercar»), se achica a 256 × 256 en un lienzo y se guarda como JPEG de hasta unos 60 KB: el lienzo no copia
+  los datos de la cámara (lugar, fecha). La vista previa es el mismo lienzo, redondo (la CSP no deja imágenes `blob:`).
+  «Quitar foto» vuelve al avatar.
+- **El servidor** (`src/cuentas/foto.js`, rutas en `src/api/perfil.js`): `POST /api/yo/foto` (el cuerpo es la imagen; solo
+  con sesión y la cabecera de la app) revisa los PRIMEROS BYTES (solo JPEG, PNG o WEBP; el tipo lo dicen los bytes), hasta
+  200 KB (413), de 16 a 512 px por lado (400 `foto_tamano`); una mala nunca llega al disco. Se guarda en la carpeta privada
+  de datos (`OPORTIA_DATOS/fotos/<id>.foto`, nunca en el repositorio ni en `public/`): un archivo por persona, la nueva se
+  escribe aparte y reemplaza a la suya. La referencia va en `ajustes` (`cuenta.foto.<id>`: un token al azar que cambia con
+  cada foto). Nunca se borra un archivo: «Quitar» solo quita la referencia (`POST /api/yo/foto/quitar`).
+- **Ver una foto**: `GET /api/fotos/<token>` (con sesión; `private, no-cache` + ETag: el navegador pregunta cada vez). El
+  token nunca dice de quién es. Se revisa en CADA pedido: la persona y el administrador siempre; los demás alumnos solo si
+  la persona no puso «Perfil privado», su cuenta está activa y hay dónde verla (Grupo o «Mostrar nombres en la carrera»
+  encendido). Si no, 404 y la pantalla dibuja el avatar.
+- **Dónde sale** (`dibujarAvatar(avatar, { foto })` en `public/avatares.js`; si la foto no se puede ver, el avatar): la barra de
+  arriba, el Grupo, la carrera de Progreso (en el avión, el podio y la tabla), Administrador → Usuarios, la ficha, Comparar,
+  «Cómo van todos», Notas y el Reporte. En la carrera la de otro solo viaja con «Mostrar nombres» encendido y sin «Perfil
+  privado» (el «Piloto N» nunca lleva foto). En los chats (instructor, tutor) no se dibuja el avatar del alumno: tampoco la foto.
+- **Moderación**: en la ficha del alumno, «Quitar su foto» (`POST /api/admin/usuarios/:id/foto/quitar`, solo administrador):
+  queda en la auditoría y la persona ve el aviso «El administrador quitó tu foto de perfil».
+- **Copias**: la copia cifrada de cada noche es el volcado de la BASE (`src/copias/`); los archivos de la carpeta de datos
+  (fotos, firmas, comprobantes, capturas de soporte) no van en ella. La referencia de la foto (en `ajustes`) sí.
+
+Pruebas: `test/foto-perfil.test.js`.
+
 ### Lo nuevo de la 0.14.29: «Práctica en vivo» del examen oral (hablando con el examinador) — sin cambio de base
 
 - En «Examen oral», «Práctica en vivo» (`#oral/vivo`, `public/oral-vivo-vista.js`): como el checkride, el examinador hace

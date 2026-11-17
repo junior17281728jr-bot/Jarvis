@@ -140,7 +140,7 @@ export function dibujarReporte(d, h) {
         const a = porId.get(x.id);
         return el('li', { class: `lugar-${x.lugar}` },
           el('span', { class: 'reporte-medalla', texto: String(x.lugar) }),
-          h.dibujarAvatar(a.avatar, { nombre: a.nombreVisible, tamano: 'medio' }),
+          h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: a.nombreVisible, tamano: 'medio' }),
           el('strong', { texto: nombre(a) }),
           el('span', { class: 'suave chica', texto: t('reporte.puntaje', { n: numero(x.puntaje) }) }));
       }))));
@@ -151,7 +151,7 @@ export function dibujarReporte(d, h) {
       el('h2', { texto: t('reporte.seccion.alumnos') }),
       orden.length ? orden.map(a => el('article', { class: 'reporte-alumno' },
         el('div', { class: 'reporte-alumno-cabeza' },
-          h.dibujarAvatar(a.avatar, { nombre: a.nombreVisible, tamano: 'medio' }),
+          h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: a.nombreVisible, tamano: 'medio' }),
           el('div', {},
             el('h3', { texto: `${a.lugar}. ${nombre(a)}` }),
             el('p', { class: 'suave chica', texto: [`@${a.nombre}`, a.bloqueado ? t('admin.inactivo') : null, a.ultimaActividad ? t('reporte.ultima', { fecha: h.fecha(a.ultimaActividad) }) : t('admin.nunca')].filter(Boolean).join(' · ') })),

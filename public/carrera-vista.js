@@ -31,7 +31,7 @@ export function promedioDe(pilotos, campo = 'tg') {
 // ordenados de atrás hacia adelante.
 export function agruparAviones(pilotos, campo = 'tg', { max = 8, separacion = 12 } = {}) {
   const lista = (pilotos ?? []).filter(p => p[campo] != null)
-    .map(p => ({ alias: String(p.alias ?? ''), pct: pctDe(p, campo), esYo: Boolean(p.esYo) }))
+    .map(p => ({ alias: String(p.alias ?? ''), pct: pctDe(p, campo), esYo: Boolean(p.esYo), ...(p.foto ? { foto: p.foto } : {}) }))
     .sort((a, b) => a.pct - b.pct || Number(a.esYo) - Number(b.esYo) || a.alias.localeCompare(b.alias, 'es'));
   const cabeza = g => g.find(x => x.esYo) ?? [...g].sort((a, b) => b.pct - a.pct || a.alias.localeCompare(b.alias, 'es'))[0];
   let grupos = [];
@@ -48,7 +48,7 @@ export function agruparAviones(pilotos, campo = 'tg', { max = 8, separacion = 12
   return grupos.map(g => {
     const c = cabeza(g);
     const miembros = [c, ...g.filter(x => x !== c).sort((a, b) => b.pct - a.pct || a.alias.localeCompare(b.alias, 'es'))];
-    return { clave: c.esYo ? '\u0000yo' : c.alias, pct: c.pct, alias: c.alias, esYo: c.esYo, miembros };
+    return { clave: c.esYo ? '\u0000yo' : c.alias, pct: c.pct, alias: c.alias, esYo: c.esYo, ...(c.foto ? { foto: c.foto } : {}), miembros };
   });
 }
 
@@ -98,8 +98,9 @@ function pista(h, { campo, titulo, iconoNombre, admin, compacta = false }) {
       if (!a) {
         const mas = el('span', { class: 'carrera-mas' });
         const nombre = el('span', { class: 'carrera-alias' });
-        const boton = el('button', { type: 'button', class: 'carrera-avion' }, el('span', { class: 'carrera-icono' }, h.icono('avion', 'icono')), mas, nombre);
-        a = { boton, mas, nombre, g };
+        const caja = el('span', { class: 'carrera-icono' }, h.icono('avion', 'icono'));
+        const boton = el('button', { type: 'button', class: 'carrera-avion' }, caja, mas, nombre);
+        a = { boton, mas, nombre, g, caja, foto: null };
         boton.addEventListener('click', () => {
           const ya = !quienes.hidden && quienes.dataset.clave === a.g.clave;
           quienes.hidden = ya;
@@ -112,6 +113,12 @@ function pista(h, { campo, titulo, iconoNombre, admin, compacta = false }) {
         requestAnimationFrame(() => requestAnimationFrame(() => mover(boton, a.g.pct)));
       } else mover(a.boton, g.pct);
       a.g = g;
+      // 0.14.24: su foto de perfil en el avión (solo viaja si se puede ver: src/academia/carrera.js); si no, el avioncito.
+      const foto = h.dibujarAvatar && g.foto ? g.foto : null;
+      if (foto !== a.foto) {
+        a.foto = foto;
+        a.caja.replaceChildren(foto ? h.dibujarAvatar(null, { foto, nombre: g.alias, tamano: 'chico' }) : h.icono('avion', 'icono'));
+      }
       const otros = g.miembros.length - 1;
       a.mas.textContent = otros ? `+${numero(otros)}` : '';
       a.mas.hidden = !otros;
@@ -177,7 +184,10 @@ export function vistaTabla(h, pilotos, { oral = true } = {}) {
   const { el, t, numero } = h;
   const lista = ordenTabla(pilotos);
   const puesto = p => 1 + lista.filter(x => pctDe(x, 'tg') > pctDe(p, 'tg')).length;
-  const inicial = p => el('span', { class: `tabla-inicial${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true', texto: (nombreVisto(h, p).match(/\p{L}|\d/u)?.[0] ?? '?').toUpperCase() });
+  // 0.14.24: con foto de perfil (si viajó: se puede ver), la foto en vez de la inicial.
+  const inicial = p => (h.dibujarAvatar && p.foto
+    ? el('span', { class: `tabla-inicial con-foto${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true' }, h.dibujarAvatar(null, { foto: p.foto, nombre: nombreVisto(h, p), tamano: 'chico' }))
+    : el('span', { class: `tabla-inicial${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true', texto: (nombreVisto(h, p).match(/\p{L}|\d/u)?.[0] ?? '?').toUpperCase() }));
   const MEDALLAS = ['🥇', '🥈', '🥉'];
   const top = lista.slice(0, 3);
   // El podio: el 2.º, el 1.º (más alto) y el 3.º.

@@ -2,11 +2,13 @@
 //  - /api/yo/… usan SIEMPRE la cuenta de la sesión: nadie cambia el perfil de otro.
 //  - /api/admin/academia/alumnos/:id/ficha, …/intentos/:intento y /api/admin/academia/comparar/:ids llevan { admin: true }
 //    (403 para los alumnos, 401 sin sesión).
-import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
+import { createReadStream } from 'node:fs';
+import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Freno, Limitador } from '../nucleo/limites.js';
 import { verificarClave } from '../cuentas/claves.js';
 import { buscarPorId } from '../cuentas/usuarios.js';
 import { perfilDe, guardarPerfil, cambiarNombreUsuario, ponerNombreVisible } from '../cuentas/perfil.js';
+import { subirFoto, quitarFoto, fotoParaVer, fotoDe } from '../cuentas/foto.js';
 import { anotarCambioAdmin } from '../cuentas/confirmar.js';
 import { nombreLegalDe } from '../cuentas/terminos.js';
 import { enTransaccion } from '../nucleo/db.js';
@@ -23,6 +25,8 @@ export function crearLimitesPerfil() {
     // Contraseñas malas al cambiar el nombre de usuario (por cuenta). 0.12.6: nunca bloquean, solo esperan (Freno).
     nombreUsuario: new Freno(),
     cambios: new Limitador({ maximo: 120, ventanaMs: 60 * 60 * 1000 }),
+    // 0.14.24: fotos de perfil subidas (por cuenta).
+    fotos: new Limitador({ maximo: 30, ventanaMs: 60 * 60 * 1000 }),
   };
 }
 
@@ -52,6 +56,50 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
     }
     return { codigo: 200, datos: { perfil: { ...guardarPerfil(db, usuario.id, pedido), nombreFijo: fijo } } };
   });
+
+  // ---------- 0.14.24: la foto de perfil (src/cuentas/foto.js) ----------
+  // El cuerpo es la imagen tal cual (la pantalla ya la recortó y achicó). Siempre la de la cuenta de la sesión.
+  const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'academia_no_disponible'); };
+  rutas.agregar('POST', '/api/yo/foto', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    if (!topes.fotos.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    await subirFoto(db, config, { usuarioId: usuario.id, req });
+    return { codigo: 200, datos: { perfil: { ...perfilDe(db, usuario.id), nombreFijo: nombreFijo(db, usuario) } } };
+  });
+  rutas.agregar('POST', '/api/yo/foto/quitar', async ({ db, req, usuario }) => {
+    await leerJson(req);
+    quitarFoto(db, usuario.id);
+    return { codigo: 200, datos: { perfil: { ...perfilDe(db, usuario.id), nombreFijo: nombreFijo(db, usuario) } } };
+  });
+  // Ver una foto: el token (al azar) nunca dice de quién es. Quién la puede ver se revisa en cada pedido (fotoParaVer).
+  // no-cache + ETag: el navegador la guarda, pero pregunta cada vez (así «Perfil privado» o «Quitar» valen enseguida).
+  rutas.agregar('GET', '/api/fotos/:token', ({ db, req, usuario, parametros }) => {
+    necesitaConfig();
+    const f = fotoParaVer(db, config, parametros.token, usuario);
+    const etiqueta = `"${f.token}"`;
+    return {
+      codigo: 200,
+      enviar: res => {
+        const comun = { ...CABECERAS_SEGURIDAD, 'Cache-Control': 'private, no-cache', ETag: etiqueta };
+        if (String(req.headers['if-none-match'] ?? '').split(',').map(x => x.trim()).includes(etiqueta)) {
+          res.writeHead(304, comun);
+          return res.end();
+        }
+        res.writeHead(200, { ...comun, 'Content-Type': f.tipo, 'Content-Length': f.bytes });
+        const flujo = createReadStream(f.ruta);
+        flujo.on('error', () => res.destroy());
+        flujo.pipe(res);
+      },
+    };
+  });
+  // El administrador quita la foto de alguien (moderación): auditoría y un aviso para la persona.
+  rutas.agregar('POST', '/api/admin/usuarios/:id/foto/quitar', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    const destino = buscarPorId(db, parametros.id);
+    if (!destino) throw new ErrorHttp(404, 'no_existe');
+    const quitada = quitarFoto(db, destino.id, { hechoPor: usuario.id });
+    return { codigo: 200, datos: { id: destino.id, quitada, foto: fotoDe(db, destino.id) } };
+  }, { admin: true });
 
   // El nombre de usuario (con el que se entra): con la contraseña actual. Las sesiones abiertas siguen (van por el id).
   rutas.agregar('POST', '/api/yo/usuario', async ({ db, req, usuario }) => {

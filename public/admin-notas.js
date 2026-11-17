@@ -126,7 +126,7 @@ function quien(h, a, { marcar = null } = {}) {
     el('span', { class: 'notas-quien-caja' },
       marcar,
       el('a', { class: 'notas-quien-enlace', href: `#notas/alumno/${a.id}` },
-        h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'chico' }),
+        h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'chico' }),
         el('span', { class: 'notas-nombre', texto: nombreDe(a) }))));
 }
 function textoDebil(h, d, debil) {
@@ -413,7 +413,7 @@ function vistaAlumno(d, h, id) {
   return el('section', { class: 'tarjeta notas' },
     volver(h, '#notas', 'notas.volver'),
     el('div', { class: 'notas-alumno-cabeza' },
-      h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'grande' }),
+      h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'grande' }),
       el('div', {},
         el('h1', { class: 'titulo-pantalla', texto: t('notas.alumno.titulo', { nombre: nombreDe(a) }) }),
         el('p', { class: 'notas-alumno-general' }, el('span', { texto: t('notas.col.general') }),
@@ -460,7 +460,7 @@ function vistaComparar(d, h, ids) {
     el('h1', { class: 'titulo-pantalla', texto: t('notas.comparar.titulo') }),
     el('p', { class: 'suave', texto: t('notas.comparar.linea') }),
     el('ul', { class: 'notas-comparar-cabezas' }, lista.map(a => el('li', { class: 'notas-comparar-cabeza' },
-      el('a', { class: 'notas-quien-enlace', href: `#notas/alumno/${a.id}` }, h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'medio' }), el('strong', { texto: nombreDe(a) })),
+      el('a', { class: 'notas-quien-enlace', href: `#notas/alumno/${a.id}` }, h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'medio' }), el('strong', { texto: nombreDe(a) })),
       el('p', { class: 'notas-alumno-general' }, el('span', { texto: t('notas.col.general') }), nota(h, a.general.conExamen ? { pct: a.general.pct, fuente: 'examen' } : null, { sinFuente: true })),
       el('p', { class: `notas-alumno-debil${a.debil ? ' hay' : ''}`, texto: textoDebil(h, d, a.debil) })))),
     leyendaEstados(h),

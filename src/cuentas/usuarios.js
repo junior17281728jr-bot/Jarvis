@@ -141,7 +141,7 @@ export function listarEliminadas(db) {
 // muestra TODOS los reinicios recientes (también los ya vistos), con su fecha: la dueña ve uno que no pidió.
 // 0.9.2: otros avisos para la persona: 'usuario_cambiado' y 'nombre_cambiado' (lo cambió el administrador; la pantalla
 // muestra el valor de ahora).
-export const TIPOS_AVISO_CUENTA = Object.freeze(['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido', 'codigo_respaldo_usado']);
+export const TIPOS_AVISO_CUENTA = Object.freeze(['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido', 'codigo_respaldo_usado', 'foto_quitada']);
 export function avisarCuenta(db, usuarioId, tipo) {
   if (!TIPOS_AVISO_CUENTA.includes(tipo)) throw new Error(`aviso desconocido: ${tipo}`);
   db.prepare('INSERT INTO avisos_cuenta (usuario_id, tipo, fecha) VALUES (?, ?, ?)').run(usuarioId, tipo, ahora());

@@ -25,6 +25,7 @@
 import { MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { notaGeneralDelCurso } from './progreso.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { fotosDe } from '../cuentas/foto.js';
 import { cuentasDeAlumnos } from './como-van.js';
 
 export const UMBRALES_NOTA = Object.freeze({ bien: 70, regular: 50 });
@@ -125,6 +126,7 @@ export function notasDeTodos(db, paquete, ahoraMs = Date.now()) {
   const cuentas = cuentasDeAlumnos(db);
   const deAlumno = new Set(cuentas.map(u => u.id));
   const avatares = avataresDe(db);
+  const fotos = fotosDe(db);
   const materias = MATERIAS.map(id => {
     const m = (paquete?.materias ?? []).find(x => x.id === id);
     const temas = (m?.temas ?? []).map(t => ({ id: t.id, titulo: t.titulo }));
@@ -248,7 +250,7 @@ export function notasDeTodos(db, paquete, ahoraMs = Date.now()) {
       }
     }
     return {
-      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, avatar: avatares.get(u.id) ?? null, activo: u.activo === 1,
+      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, avatar: avatares.get(u.id) ?? null, foto: fotos.get(u.id) ?? null, activo: u.activo === 1,
       general, materias: notasMateria, oral, capitulos: capitulosAlumno, temas, examenes,
     };
   });

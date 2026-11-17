@@ -11,6 +11,7 @@ import { porMateria, temasAprobados, examenes, puntosYRacha, ajustesAcademia } f
 import { preparacionDe } from './plan.js';
 import { puntosDebiles } from './memoria.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { fotosDe } from '../cuentas/foto.js';
 import { nombresLegales, estadoTerminos } from '../cuentas/terminos.js';
 import { actividadDe } from '../cuentas/historial.js';
 
@@ -56,6 +57,7 @@ export function reporteAcademia(db, paquete, opciones, ahoraMs = Date.now()) {
   const desdeIso = o.desde ? inicioDia(o.desde) : '0000';
   const hastaIso = o.hasta ? new Date(Date.parse(inicioDia(o.hasta)) + 24 * 3600 * 1000).toISOString() : '9999';
   const avatares = avataresDe(db);
+  const fotos = fotosDe(db);
   const legales = nombresLegales(db);
   const cuentas = db.prepare(`SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE rol = 'usuario' AND eliminado_en IS NULL ${o.bloqueados ? '' : 'AND activo = 1'} ORDER BY id`).all();
   const materiasIds = (paquete?.materias ?? []).filter(m => m.temas.length).map(m => m.id);
@@ -74,7 +76,7 @@ export function reporteAcademia(db, paquete, opciones, ahoraMs = Date.now()) {
     const ultimaRespuesta = db.prepare('SELECT MAX(creada_en) AS f FROM academia_respuestas WHERE usuario_id = ?').get(u.id).f;
     const terminos = estadoTerminos(db, u.id);
     return {
-      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, nombreLegal: legales.get(u.id) ?? null, avatar: avatares.get(u.id) ?? null,
+      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, nombreLegal: legales.get(u.id) ?? null, avatar: avatares.get(u.id) ?? null, foto: fotos.get(u.id) ?? null,
       bloqueado: u.activo !== 1, puntaje, preparacion: prep.pct, notaPromedio: nota, pctAcierto: acierto, respuestas: r.n, calificados: calificados.length,
       examenesAprobados: [...deExamen.values()].filter(x => x.aprobado).length, examenes: materiasIds.length,
       temasAprobados: [...temasAprobados(db, u.id, paquete).values()].filter(x => x.aprobado).length, temas: (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0),

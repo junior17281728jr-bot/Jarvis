@@ -68,7 +68,7 @@ export function nombreIntento(h, x) {
 }
 function cabezaAlumno(h, a, act) {
   return h.el('section', { class: 'tarjeta ficha-cabeza' },
-    h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'grande' }),
+    h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'grande' }),
     h.el('div', { class: 'ficha-cabeza-texto' },
       h.el('h1', { class: 'ficha-nombre con-icono' }, h.el('span', { class: `punto-linea${act?.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }), h.el('span', { texto: nombreDe(a) })),
       h.el('p', { class: 'suave', texto: [`@${a.nombre}`, a.rol === 'admin' ? h.t('admin.rol.admin') : h.t('admin.rol.usuario'), a.activo ? null : h.t('admin.inactivo')].filter(Boolean).join(' · ') }),
@@ -77,7 +77,22 @@ function cabezaAlumno(h, a, act) {
         ? h.t(a.terminos.pendiente ? 'ficha.terminos.vieja' : 'ficha.terminos.si', { n: h.numero(a.terminos.ultima.version), cuando: h.fecha(a.terminos.ultima.en), nombre: a.terminos.ultima.firmado, actual: h.numero(a.terminos.version) })
         : h.t('ficha.terminos.no') }) : null,
       a.meta ? h.el('p', { class: 'ficha-meta con-icono-chico' }, h.icono('bandera', 'icono chico'), h.el('span', { texto: a.meta })) : null,
-      h.el('p', { class: 'suave chica', texto: act?.enLinea ? h.t('acad.en_linea') : act?.ultimaActividad ? h.t('acad.ultima', { cuando: h.hace(act.ultimaActividad) }) : h.t('admin.nunca') })));
+      h.el('p', { class: 'suave chica', texto: act?.enLinea ? h.t('acad.en_linea') : act?.ultimaActividad ? h.t('acad.ultima', { cuando: h.hace(act.ultimaActividad) }) : h.t('admin.nunca') }),
+      a.foto ? quitarFotoAlumno(h, a) : null));
+}
+
+// 0.14.24: moderación: el administrador quita la foto de perfil de alguien (vuelve a su avatar; la persona ve un aviso).
+function quitarFotoAlumno(h, a) {
+  const { el, t } = h;
+  const mensaje = h.caja();
+  const boton = h.botonAccion(t('fotoperfil.admin.quitar'), 'secundario', mensaje, async () => {
+    if (!(await h.confirmar(t('fotoperfil.admin.confirmar', { nombre: nombreDe(a) }), { titulo: t('fotoperfil.admin.quitar'), si: t('fotoperfil.admin.quitar'), peligro: true }))) return;
+    const r = await h.api('POST', `/api/admin/usuarios/${a.id}/foto/quitar`, {});
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    h.avisar(t('fotoperfil.admin.listo'));
+    await h.recargar();
+  }, 'papelera');
+  return el('div', { class: 'ficha-foto-moderar' }, boton, mensaje);
 }
 
 // 0.9.2: la cuenta: bloquear / desbloquear (sin borrar nada), cambiar su nombre y su usuario, ponerle una contraseña.
@@ -198,7 +213,7 @@ export function vistaListaAlumnos(datos, h) {
     return el('div', { class: 'fila alumno ficha-fila' },
       el('label', { class: 'ficha-marcar-caja' }, casilla),
       el('a', { class: 'ficha-fila-enlace', href: `#alumno/${a.id}` },
-        h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'medio' }),
+        h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'medio' }),
         el('div', { class: 'ficha-fila-texto' },
           el('div', { class: 'alumno-cabeza' },
             el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }),
@@ -611,7 +626,7 @@ export function vistaComparar(datos, h) {
         const ancho = v == null ? 0 : Math.round((v * 100) / tope);
         const texto = f.texto ? f.texto(a) : v == null ? '—' : f.pct ? h.pctTexto(v) : f.maximo ? t(f.frase, { n: numero(v), total: numero(f.maximo(a)) }) : numero(v);
         return el('li', { class: `comparar-fila color-${k % 6}${v != null && v > 0 && v === mejor && valores.some(x => (x ?? -1) !== mejor) ? ' mejor' : ''}` },
-          el('span', { class: 'comparar-quien' }, h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'chico' }), el('span', { texto: nombreDe(a) })),
+          el('span', { class: 'comparar-quien' }, h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'chico' }), el('span', { texto: nombreDe(a) })),
           el('span', { class: 'comparar-barra' }, h.barraLlena(ancho)),
           el('strong', { class: 'comparar-valor', texto }));
       })));
@@ -624,7 +639,7 @@ export function vistaComparar(datos, h) {
       el('ul', { class: 'comparar-barras' }, lista.map((a, k) => {
         const m = a.materias.find(x => x.id === id);
         return el('li', { class: `comparar-fila color-${k % 6}` },
-          el('span', { class: 'comparar-quien' }, h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'chico' }), el('span', { texto: nombreDe(a) })),
+          el('span', { class: 'comparar-quien' }, h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'chico' }), el('span', { texto: nombreDe(a) })),
           el('span', { class: 'comparar-barra' }, h.barraLlena(m?.pct ?? 0)),
           el('strong', { class: 'comparar-valor', texto: h.pctTexto(m?.pct ?? 0) }));
       }))))) : null;
@@ -632,7 +647,7 @@ export function vistaComparar(datos, h) {
     el('a', { class: 'volver con-icono', href: '#alumnos' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') })),
     el('h1', { class: 'titulo-pantalla', texto: t('ficha.comparar.titulo') }),
     el('div', { class: 'comparar-cabezas' }, lista.map((a, k) => el('a', { class: `tarjeta comparar-cabeza color-${k % 6}`, href: `#alumno/${a.id}` },
-      h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'grande' }),
+      h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'grande' }),
       el('strong', { texto: nombreDe(a) }),
       el('span', { class: 'suave chica', texto: `@${a.nombre}` }),
       el('span', { class: 'suave chica', texto: a.enLinea ? t('acad.en_linea') : a.ultimaActividad ? t('acad.ultima', { cuando: h.hace(a.ultimaActividad) }) : t('admin.nunca') }),
@@ -645,7 +660,7 @@ export function vistaComparar(datos, h) {
     el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: t('ficha.comparar.debiles') })),
       el('div', { class: 'comparar-debiles' }, lista.map(a => el('div', { class: 'comparar-debil' },
-        el('h3', { class: 'con-icono' }, h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'chico' }), el('span', { texto: nombreDe(a) })),
+        el('h3', { class: 'con-icono' }, h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'chico' }), el('span', { texto: nombreDe(a) })),
         a.debiles.temas.length || a.debiles.ideas.length ? el('ul', {},
           a.debiles.temas.map(x => el('li', { texto: t('ficha.comparar.tema_debil', { tema: h.partirTitulo(x.titulo).es, pct: h.pctTexto(x.pct) }) })),
           a.debiles.ideas.map(x => el('li', {}, h.talCual('span', x.idea)))) : el('p', { class: 'suave', texto: t('ficha.comparar.sin_debiles') }))))),
@@ -891,7 +906,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
     // 0.13.8: la tarjeta ya no es un enlace entero (adentro van «Ver cada materia» y el menú de la cuenta): el nombre lleva a su ficha.
     const nodo = el('article', { class: `cv-alumno${a.enLinea ? ' en-linea' : ''}`, 'data-alumno': String(a.id) },
       el('a', { class: 'cv-quien', href: `#alumno/${a.id}`, 'aria-label': `${nombreDe(a)} · ${t('cv.ver_ficha')}` },
-        h.dibujarAvatar(a.avatar, { nombre: nombreDe(a), tamano: 'medio' }),
+        h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'medio' }),
         el('div', { class: 'cv-quien-texto' },
           el('strong', { class: 'cv-nombre', texto: nombreDe(a) }),
           el('span', { class: 'cv-estado' }, punto, estado),
@@ -935,7 +950,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
   // 0.14.14: los aviones: solo los alumnos activos (los bloqueados no corren), con su nombre entero.
   const datosCarrera = () => {
     const pilotos = lista.filter(a => a.activo !== false && a.activo !== 0).map(a => ({
-      alias: nombreDe(a), esYo: false, tg: a.avanceAlumno?.tg?.pct ?? 0, oral: a.avanceAlumno?.oral ? a.avanceAlumno.oral.pct : null,
+      alias: nombreDe(a), esYo: false, foto: a.foto ?? null, tg: a.avanceAlumno?.tg?.pct ?? 0, oral: a.avanceAlumno?.oral ? a.avanceAlumno.oral.pct : null,
       tgEn: a.avanceAlumno?.tg?.ahora ? { n: a.avanceAlumno.tg.ahora.numero, t: a.avanceAlumno.tg.ahora.temaNumero } : null,
       oralEn: a.avanceAlumno?.oral?.ahora ? { n: a.avanceAlumno.oral.ahora.numero, t: a.avanceAlumno.oral.ahora.temaNumero } : null }));
     return { pilotos, oral: pilotos.some(x => x.oral != null) };

@@ -15,6 +15,7 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { avanceDe } from './avance-alumno.js';
 import { puntosYRacha } from './progreso.js';
 import { tiempoDeEstudio } from './fichas.js';
+import { fotosDe } from '../cuentas/foto.js';
 
 const CLAVE_NOMBRES = 'academia.carrera_nombres';
 const SEMANA_MS = 7 * 24 * 3600 * 1000;
@@ -119,11 +120,17 @@ export function carreraDe(db, paquete, yoId, ahoraMs = Date.now()) {
   const nombres = nombresEnCarrera(db);
   const corre = cuentas.some(u => u.id === yoId);
   const avance = avanceDe(db, paquete, cuentas.map(u => u.id));
-  const alias = aliasDe(cuentas, { nombres, primeros: primerosNombres(db, cuentas), privados: ocultos(db), yoId: corre ? yoId : null });
+  const privados = ocultos(db);
+  const alias = aliasDe(cuentas, { nombres, primeros: primerosNombres(db, cuentas), privados, yoId: corre ? yoId : null });
+  // 0.14.24: la foto (el token al azar, nunca el id): la suya siempre; la de otro solo con «Mostrar nombres» encendido y
+  // sin «Perfil privado» (el que sale como «Piloto N» nunca lleva foto). Sin foto, la clave no viaja.
+  const fotos = fotosDe(db);
+  const fotoPara = u => (u.id === yoId || (nombres && !privados.has(u.id)) ? fotos.get(u.id) ?? null : null);
   const hayOral = Boolean(paquete?.oral?.hay);
   const pilotos = cuentas.map(u => {
     const a = avance.get(u.id);
-    return { alias: alias.get(u.id), tg: a?.tg?.pct ?? 0, oral: hayOral ? a?.oral?.pct ?? 0 : null, esYo: u.id === yoId, tgEn: dondeVa(a?.tg), oralEn: hayOral ? dondeVa(a?.oral) : null };
+    const foto = fotoPara(u);
+    return { alias: alias.get(u.id), tg: a?.tg?.pct ?? 0, oral: hayOral ? a?.oral?.pct ?? 0 : null, esYo: u.id === yoId, tgEn: dondeVa(a?.tg), oralEn: hayOral ? dondeVa(a?.oral) : null, ...(foto ? { foto } : {}) };
   });
   const mio = corre ? avance.get(yoId) : null;
   return { nombres, oral: hayOral, pilotos, yo: corre ? { avance: mio, datos: misDatos(db, yoId, mio, ahoraMs) } : null };

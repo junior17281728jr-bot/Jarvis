@@ -8,6 +8,7 @@
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { NOMBRE_VALIDO, auditar, avisarCuenta } from './usuarios.js';
+import { fotoDe } from './foto.js';
 
 // Las mismas listas que dibuja public/avatares.js (test/admin-alumnos.test.js revisa que coincidan).
 export const FORMAS_AVATAR = Object.freeze(['avioneta', 'jet', 'helicoptero', 'globo', 'alas', 'brujula']);
@@ -58,6 +59,8 @@ export function perfilDe(db, usuarioId) {
   if (!u) throw new ErrorHttp(404, 'no_existe');
   return {
     nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, ...leerPerfil(db, u.id), privado: esPrivado(db, u.id),
+    // 0.14.24: su foto (el token, o null: src/cuentas/foto.js).
+    foto: fotoDe(db, u.id),
     opciones: { formas: [...FORMAS_AVATAR], colores: [...COLORES_AVATAR], metaMaxima: META_MAXIMA, nombreVisibleMaximo: NOMBRE_VISIBLE_MAXIMO },
   };
 }

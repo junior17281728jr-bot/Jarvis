@@ -11,6 +11,7 @@
 import { ultimaActividad, notaGeneralDelCurso, puntosYRacha } from './progreso.js';
 import { resumenesVisitas, EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { fotosDe } from '../cuentas/foto.js';
 import { planDe, pasosDelCamino } from './plan.js';
 import { tiempoDeEstudio } from './fichas.js';
 import { examenesOralDe, hayOral } from './oral.js';
@@ -96,6 +97,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
   const orden = materias.map(m => m.id);
   const temasDe = new Map(materias.map(m => [m.id, new Set(m.temas.map(t => t.id))]));
   const avatares = avataresDe(db);
+  const fotos = fotosDe(db);
 
   // Todo de una vez (pocas consultas para todos), y se reparte por alumno.
   const porAlumno = (filas, clave = 'usuario_id') => {
@@ -145,7 +147,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
     const cada = avancePorMateria(db, u.id, paquete, { respuestas: new Map([...resp].map(([id, f]) => [id, { n: f.n, bien: f.bien }])) });
     const estado = linea.get(u.id);
     return {
-      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null,
+      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible || u.nombre, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null, foto: fotos.get(u.id) ?? null,
       ...linea.get(u.id),
       // 0.14.11: dónde está y el % de TODOS los temas (Test Guide y oral), tema por tema.
       avanceAlumno: avanceAlumno.get(u.id),

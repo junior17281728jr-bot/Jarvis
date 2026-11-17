@@ -17,6 +17,7 @@ import { preguntasDelInstructor } from './practica.js';
 import { preguntasDeConcepto, empezarRepaso, repasoDelResultado, miRepaso } from './fallas.js';
 import { MATERIAS } from './formato.js';
 import { avataresDe } from '../cuentas/perfil.js';
+import { fotosDe } from '../cuentas/foto.js';
 import { nombresLegales } from '../cuentas/terminos.js';
 
 // 0.8.0: «reto» = practicar un tema (o toda una materia, sin tema) en Modo reto; «errores» = practicar lo que más se
@@ -842,6 +843,7 @@ export function alumnos(db, paquete, ahoraMs = Date.now()) {
   const resp = db.prepare('SELECT usuario_id AS id, materia, COUNT(*) AS n, COALESCE(SUM(correcta), 0) AS bien FROM academia_respuestas GROUP BY usuario_id, materia').all();
   const totalTemas = (paquete?.materias ?? []).reduce((n, m) => n + m.temas.length, 0);
   const avatares = avataresDe(db);
+  const fotos = fotosDe(db);
   const legales = nombresLegales(db);
   return db.prepare('SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE eliminado_en IS NULL ORDER BY rol, nombre').all().map(u => {
     const ultima = actividad.get(u.id) ?? null;
@@ -849,7 +851,7 @@ export function alumnos(db, paquete, ahoraMs = Date.now()) {
     const n = suyas.reduce((s, r) => s + r.n, 0);
     const bien = suyas.reduce((s, r) => s + r.bien, 0);
     return {
-      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null, nombreLegal: legales.get(u.id) ?? null,
+      id: u.id, nombre: u.nombre, nombreVisible: u.nombre_visible, rol: u.rol, activo: u.activo === 1, avatar: avatares.get(u.id) ?? null, foto: fotos.get(u.id) ?? null, nombreLegal: legales.get(u.id) ?? null,
       // 0.12.4: «en línea» lo dicen sus visitas (3 minutos), igual que en su ficha; sin visitas anotadas, lo de antes.
       ...(v => ({ ultimaActividad: [ultima, v?.ultima].filter(Boolean).sort().pop() ?? null, enLinea: v ? v.enLinea : Boolean(ultima && ahoraMs - Date.parse(ultima) <= EN_LINEA_MS) }))(resumenVisitas(db, u.id, ahoraMs)),
       respuestas: n, aciertos: bien, errores: n - bien, pct: pct(bien, n), temasAprobados: temasHechos.get(u.id) ?? 0, temas: totalTemas,

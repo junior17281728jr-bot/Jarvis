@@ -719,7 +719,7 @@ async function salir() {
 // dueña ve la fecha de un reinicio que no pidió aunque otro lo haya «visto» antes.
 function leerAvisos(datos) {
   // 0.9.2: también «el administrador cambió tu usuario» y «… tu nombre» (se muestra el de ahora).
-  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido', 'codigo_respaldo_usado'].includes(a.tipo) && Number.isSafeInteger(a.id));
+  const avisos = (Array.isArray(datos?.avisos) ? datos.avisos : []).filter(a => a && ['clave_reiniciada', 'usuario_cambiado', 'nombre_cambiado', 'soporte_respondido', 'codigo_respaldo_usado', 'foto_quitada'].includes(a.tipo) && Number.isSafeInteger(a.id));
   const recientes = (Array.isArray(datos?.reiniciosRecientes) ? datos.reiniciosRecientes : []).filter(x => x && typeof x.fecha === 'string');
   return { avisos, recientes };
 }
@@ -739,6 +739,8 @@ function avisosDeCuenta({ marcar = true } = {}) {
       ? el('p', { class: 'aviso' }, el('span', { texto: `${t('aviso.codigo_respaldo_usado', { fecha: fecha(a.fecha) })} ` }), el('a', { href: '#configuracion', texto: t('aviso.codigo_respaldo_clave') }))
       : a.tipo === 'soporte_respondido'
       ? el('p', { class: 'aviso' }, el('span', { texto: `${t('aviso.soporte_respondido', { fecha: fecha(a.fecha) })} ` }), el('a', { href: '#ayuda-mia', texto: t('aviso.soporte_ver') }))
+      : a.tipo === 'foto_quitada'
+      ? el('p', { class: 'aviso' }, el('span', { texto: `${t('aviso.foto_quitada', { fecha: fecha(a.fecha) })} ` }), el('a', { href: '#configuracion', texto: t('perfil.titulo') }))
       : el('p', { class: 'aviso', texto: a.tipo === 'usuario_cambiado'
         ? t('aviso.usuario_cambiado', { nombre: estado.usuario?.nombre ?? '', fecha: fecha(a.fecha) })
         : t('aviso.nombre_cambiado', { nombre: estado.usuario?.nombreVisible ?? '', fecha: fecha(a.fecha) }) })),
@@ -810,7 +812,7 @@ function marco(seccion, ...contenido) {
         el('a', { href: '#biblioteca', class: 'ayuda-enlace biblioteca-enlace', 'aria-current': seccion === 'biblioteca' ? 'page' : null }, icono('libro', 'icono menu-icono'), el('span', { texto: t('menu.biblioteca') })),
         // 0.9.0: el avatar que eligió (Configuración → Mi perfil); lleva a Configuración.
         el('a', { href: '#configuracion', class: 'avatar-enlace', title: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' },
-          dibujarAvatar(estado.usuario?.avatar ?? null, { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
+          dibujarAvatar(estado.usuario?.avatar ?? null, { foto: estado.usuario?.foto ?? null, nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
         el('button', { type: 'button', class: 'secundario chico con-icono salir', onclick: salir }, icono('salir'), el('span', { texto: t('menu.salir') }))),
       el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
         enlaces.map(([id, clave, nombreIcono, corto]) => enlaceMenu(id, clave, nombreIcono, corto, seccion)))),
@@ -914,14 +916,14 @@ async function pantallaConfiguracion() {
   }) : null;
   const lista = reinicios.ok ? reinicios.datos.reinicios : null;
   const alGuardarPerfil = p => {
-    Object.assign(estado.usuario, { nombre: p.nombre, nombreVisible: p.nombreVisible, avatar: p.avatar });
+    Object.assign(estado.usuario, { nombre: p.nombre, nombreVisible: p.nombreVisible, avatar: p.avatar, foto: p.foto ?? null });
     pantallaConfiguracion();
   };
   mostrar(marco('configuracion',
     el('h1', { class: 'titulo-pantalla', texto: t('config.titulo') }),
     entrada(t('config.linea')),
     el('div', { class: 'rejilla dos' },
-      perfil.ok ? vistaPerfil.tarjetasPerfil(perfil.datos.perfil, { el, t, numero, icono, caja, botonAccion, api, avisar, textoError, dibujarAvatar }, { alGuardar: alGuardarPerfil })
+      perfil.ok ? vistaPerfil.tarjetasPerfil(perfil.datos.perfil, { el, t, numero, icono, caja, botonAccion, api, avisar, textoError, dibujarAvatar, subirFoto: subirFotoPerfil }, { alGuardar: alGuardarPerfil })
         : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(perfil.datos.error) })),
       el('section', { class: 'tarjeta' },
         el('h2', { texto: t('config.cuenta') }),
@@ -2156,7 +2158,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     return el('div', { class: 'fila' },
       el('div', { class: 'fila-cuenta' },
         // 0.9.0: su avatar y su ficha (exámenes, notas, actividad).
-        dibujarAvatar(u.avatar ?? null, { nombre: u.nombreVisible || u.nombre, tamano: 'chico' }),
+        dibujarAvatar(u.avatar ?? null, { foto: u.foto ?? null, nombre: u.nombreVisible || u.nombre, tamano: 'chico' }),
         el('span', { class: 'nombre', texto: u.nombreVisible || u.nombre }),
         el('span', { class: 'etiqueta', texto: t(u.rol === 'admin' ? 'admin.rol.admin' : 'admin.rol.usuario') }),
         insignia(u.activo ? 'bien' : 'mal', t(u.activo ? 'admin.activo' : 'admin.inactivo')),
@@ -3472,6 +3474,21 @@ function unir(lista) {
 }
 const enMinuscula = texto => (texto ? texto.charAt(0).toLowerCase() + texto.slice(1) : texto);
 // Botón que hace un pedido: se desactiva mientras espera y, si falla, explica por qué.
+// 0.14.24: sube la foto de perfil ya recortada (el cuerpo es la imagen tal cual, como un comprobante). Vacía lo guardado en
+// memoria: la barra de arriba, el Grupo y la carrera piden otra vez (con el token nuevo).
+async function subirFotoPerfil(imagen) {
+  vaciarMemoria();
+  try {
+    const r = await fetch('/api/yo/foto', { method: 'POST', credentials: 'same-origin', headers: { 'X-Oportia': '1', 'Content-Type': imagen.type || 'image/jpeg' }, body: imagen });
+    const datos = await r.json().catch(() => ({}));
+    const respuesta = { ok: r.ok, codigo: r.status, datos };
+    revisarSesion(respuesta, '/api/yo/foto');
+    return respuesta;
+  } catch {
+    return { ok: false, codigo: 0, datos: { error: 'sin_conexion' } };
+  }
+}
+
 function botonAccion(texto, clase, cajaMensaje, accion, nombreIcono = null) {
   const boton = el('button', {
     type: 'button',
@@ -3972,7 +3989,8 @@ function cadenaCompanero(x, mapa) {
 function filaCompanero(x, mapa = null) {
   return el('li', { class: `companero${x.tu ? ' tu' : ''}` },
     // 0.9.0: el avatar que eligió; sin avatar, la avioneta con su inicial de siempre.
-    x.avatar ? el('span', { class: 'companero-avatar con-avatar', 'aria-hidden': 'true' }, dibujarAvatar(x.avatar, { nombre: x.nombre, tamano: 'medio' }))
+    // 0.14.24: o su foto de perfil (si la tiene y se puede ver).
+    x.avatar || x.foto ? el('span', { class: 'companero-avatar con-avatar', 'aria-hidden': 'true' }, dibujarAvatar(x.avatar ?? null, { foto: x.foto ?? null, nombre: x.nombre, tamano: 'medio' }))
       : el('span', { class: `companero-avatar color-${colorDe(x.nombre)}`, 'aria-hidden': 'true' }, avionSvg(), el('span', { texto: (x.nombre || '?').trim().charAt(0).toUpperCase() })),
     el('span', { class: 'companero-texto' },
       el('strong', { texto: x.tu ? t('acad.grupo.tu', { nombre: x.nombre }) : x.nombre }),
@@ -5483,7 +5501,7 @@ async function pantallaProgreso() {
   grupo = panelGrupo(p.grupo, { alCambiar: alCambiarGrupo });
   // Los temas que se pueden abrir (un enlace del tablero nunca lleva a una clase cerrada).
   const abiertos = new Set((p.curso?.materias ?? []).flatMap(m => (m.temas ?? []).filter(x => x.estado !== 'bloqueado').map(x => `${m.id}/${x.id}`)));
-  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual, pctTexto, insignia, partirTitulo, svgEl, abrirHoja,
+  const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual, pctTexto, insignia, partirTitulo, svgEl, abrirHoja, dibujarAvatar,
     iconoMateria: id => ICONO_MATERIA[id] ?? 'avion', claseMateria, abierto: (materia, tema) => abiertos.has(`${materia}/${tema}`) };
   // 0.14.23 (pedido del dueño: «muchas cosas juntas, mucho texto»): un tablero corto y visual, siempre en este orden:
   // el resumen (dos anillos, «Ahora en», puesto y racha) → la carrera con su top 3 → mis números → las materias →
