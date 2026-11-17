@@ -27,6 +27,7 @@ import { camino, leccion, crearIntento, verIntento, responder, terminar, progres
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { carreraDe, nombresEnCarrera, mostrarNombresEnCarrera } from '../academia/carrera.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
+import { tgTerminado } from '../academia/certificados.js';
 import { resumenRepasoFinal, crearRondaFinal, vistaRondaFinal, responderRondaFinal, terminarRondaFinal, oralRepasoFinal, marcarOralRepasoFinal, reiniciarOralRepasoFinal, examenAbierto } from '../academia/repaso-final.js';
 
 export function crearLimitesAcademia() {
@@ -98,7 +99,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
 
   // ---------- 0.13.1: «Preparándote para el examen oral» (src/academia/oral.js; aparte de todo lo del Test Guide) ----------
   // ¿Terminó los exámenes del Test Guide? (todas las materias con clases, con su examen aprobado): el oral es el siguiente paso.
-  const tgTerminado = c => { const con = (c?.materias ?? []).filter(m => m.temas?.length); return con.length > 0 && con.every(m => m.examen?.aprobado === true); };
+  // 0.14.26: la misma regla la usan los certificados (src/academia/certificados.js).
   function oralCorto(db, usuarioId, p, c) {
     if (!hayOral(p)) return { hay: false };
     try {

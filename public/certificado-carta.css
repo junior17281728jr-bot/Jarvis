@@ -1,0 +1,10 @@
+/* Academia 0.14.26: solo mientras se imprime un certificado («Guardar como PDF»). public/certificado-vista.js agrega esta
+   hoja al tocar el botón y la quita al terminar: así el resto de las impresiones (reporte, contratos) no cambia. */
+@page { size: letter landscape; margin: 0; }
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #fdfaf1 !important; }
+  body.imprimiendo-certificado > * { display: none !important; }
+  body.imprimiendo-certificado > .cert-impresion { display: block !important; width: 279.4mm; height: 215.9mm; overflow: hidden; page-break-after: avoid; break-after: avoid; }
+  .cert-impresion svg { display: block; width: 279.4mm; height: 215.9mm; }
+}
+@media screen { .cert-impresion { display: none; } }

@@ -4,7 +4,7 @@
 // Las piezas de dibujo llegan de app.js en «h» (este módulo no importa nada).
 
 export const CATEGORIAS = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'otro']);
-const TEXTO_CATEGORIA = { datos: 'soporte.cat.datos', app: 'soporte.cat.app', pregunta: 'soporte.cat.pregunta', cuenta: 'soporte.cat.cuenta', pagos: 'soporte.cat.pagos', otro: 'soporte.cat.otro' };
+const TEXTO_CATEGORIA = { datos: 'soporte.cat.datos', app: 'soporte.cat.app', pregunta: 'soporte.cat.pregunta', cuenta: 'soporte.cat.cuenta', pagos: 'soporte.cat.pagos', otro: 'soporte.cat.otro', error: 'soporte.cat.error' };
 const TEXTO_ESTADO = { nuevo: 'soporte.estado.nuevo', revision: 'soporte.estado.revision', resuelto: 'soporte.estado.resuelto' };
 const TONO_ESTADO = { nuevo: 'atencion', revision: 'info', resuelto: 'bien' };
 export const IMAGEN_MAXIMA = 5 * 1024 * 1024;
@@ -36,6 +36,7 @@ function contextoDe(h, c) {
     el('dt', { texto: t('soporte.c.pregunta') }), el('dd', { texto: c.pregunta ?? '—' }),
     el('dt', { texto: t('soporte.c.version') }), el('dd', { texto: c.version ?? '—' }),
     el('dt', { texto: t('soporte.c.equipo') }), el('dd', { texto: c.navegador ?? '—' }),
+    c.tamano ? [el('dt', { texto: t('reportar.c.tamano') }), el('dd', { texto: c.tamano })] : null,
     el('dt', { texto: t('soporte.c.hora') }), el('dd', { texto: c.hora ? h.fecha(c.hora) : '—' }));
 }
 const insigniaEstado = (h, e) => h.insignia(TONO_ESTADO[e] ?? 'info', h.t(TEXTO_ESTADO[e] ?? 'soporte.estado.nuevo'));
@@ -89,6 +90,10 @@ export function vistaMisAyudas(datos, h, { pregunta = null } = {}) {
       el('label', { for: 'soporte-capturas', texto: t('soporte.capturas') }), capturas, elegidas,
       el('p', { class: 'ayuda', texto: t('soporte.contexto_auto') }),
       el('div', { class: 'botones' }, enviar), mensaje),
+    // 0.14.26: «Reportar un problema» (con captura y el contexto que se agrega solo).
+    el('section', { class: 'tarjeta' },
+      el('p', { class: 'suave', texto: t('reportar.config.linea') }),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda-mia/reportar' }, h.icono('atencion'), el('span', { texto: t('reportar.boton') }))),
     el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, h.icono('fila'), el('span', { texto: t('soporte.mios') })),
       datos.tickets.length ? el('ul', { class: 'ficha-intentos' }, datos.tickets.map(x => filaTicket(h, x, `#mi-ayuda/${x.id}`))) : h.vacio('chispa', t('soporte.mios.vacio'))),
@@ -154,5 +159,202 @@ export function vistaAdminTicket(datos, h) {
       el('label', { for: 'soporte-admin-respuesta', texto: t('soporte.admin.tu_respuesta') }), texto,
       el('label', { for: 'soporte-admin-estado', texto: t('soporte.admin.estado') }), estado,
       el('div', { class: 'botones' }, responder), mensaje),
+  ];
+}
+
+// ---------- 0.14.26: «Reportar un problema» ----------
+// Un texto, una captura opcional (de la galería: el navegador no puede sacar una foto de la pantalla solo) y lo que la
+// app agrega sola. La captura se achica aquí a 1600 px o menos y se manda como JPG de 500 KB o menos.
+export const CAPTURA_LADO = 1600;
+export const CAPTURA_MAXIMA = 500 * 1024;
+export const ESTADOS_REPORTE = Object.freeze(['nuevo', 'visto', 'arreglado', 'no_error']);
+const TONO_REPORTE = { nuevo: 'atencion', visto: 'info', arreglado: 'bien', no_error: 'info' };
+
+// El tamaño nuevo (sin agrandar nunca), con el lado más largo en «maximo» o menos.
+export function medidasCaptura(ancho, alto, maximo = CAPTURA_LADO) {
+  const a = Math.max(1, Math.round(Number(ancho) || 1));
+  const b = Math.max(1, Math.round(Number(alto) || 1));
+  const f = Math.min(1, maximo / Math.max(a, b));
+  return { ancho: Math.max(1, Math.round(a * f)), alto: Math.max(1, Math.round(b * f)) };
+}
+
+// Lo que la app agrega sola: SOLO estos campos (nunca lo escrito en una casilla, nunca una contraseña). De la
+// dirección se queda solo la pantalla (lo que va después de «?» se quita).
+export function contextoReporte({ pantalla, version, navegador, ancho, alto, idioma }) {
+  return {
+    pantalla: String(pantalla ?? '').split(/[?&]/)[0].slice(0, 120) || null,
+    version: version ? String(version).slice(0, 20) : null,
+    navegador: navegador ? String(navegador).slice(0, 300) : null,
+    tamano: Number.isFinite(ancho) && Number.isFinite(alto) ? `${Math.round(ancho)}x${Math.round(alto)}` : null,
+    idioma: idioma === 'en' ? 'en' : 'es',
+  };
+}
+
+// El reporte como texto para pegárselo al programador.
+export function textoParaProgramador(r, { fecha = x => x } = {}) {
+  const c = r.contexto ?? {};
+  const lineas = [
+    `Reporte #${r.id} · ${r.reporte?.estado ?? 'nuevo'}`,
+    `Quién: ${r.nombreVisible ?? '—'} (@${r.usuario ?? '—'})`,
+    `Cuándo: ${c.hora ? fecha(c.hora) : r.creado ?? '—'}`,
+    `Pantalla: ${c.pantalla ?? '—'}`,
+    `Versión de la app: ${c.version ?? '—'}`,
+    `Equipo / navegador: ${c.navegador ?? '—'}`,
+    `Tamaño de pantalla: ${c.tamano ?? '—'} · Idioma: ${c.idioma ?? '—'}`,
+    `Captura: ${r.reporte?.captura ? 'sí (en Administrador → Reportes)' : 'no'}`,
+    '',
+    'Lo que pasó:',
+    r.mensajes?.[0]?.texto ?? r.resumen ?? '',
+  ];
+  const resto = (r.mensajes ?? []).slice(1);
+  if (resto.length) lineas.push('', 'Mensajes después:', ...resto.map(m => `- ${m.de === 'admin' ? 'Administrador' : 'Alumno'}: ${m.texto}`));
+  if (r.reporte?.notas) lineas.push('', 'Notas del administrador:', r.reporte.notas);
+  return lineas.join('\n');
+}
+
+// Un archivo de imagen → un canvas achicado (sin «blob:»: la página solo deja cargar imágenes «data:»).
+async function lienzoDe(archivo) {
+  let fuente;
+  try { fuente = await createImageBitmap(archivo); } catch {
+    const url = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = mal; r.readAsDataURL(archivo); });
+    fuente = new Image();
+    await new Promise((ok, mal) => { fuente.onload = ok; fuente.onerror = mal; fuente.src = url; });
+  }
+  const m = medidasCaptura(fuente.width, fuente.height);
+  const lienzo = document.createElement('canvas');
+  lienzo.width = m.ancho;
+  lienzo.height = m.alto;
+  const ctx = lienzo.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, m.ancho, m.alto);
+  ctx.drawImage(fuente, 0, 0, m.ancho, m.alto);
+  return lienzo;
+}
+// JPG de 500 KB o menos: baja la calidad y, si hace falta, el tamaño.
+async function jpegDe(lienzo) {
+  let actual = lienzo;
+  for (let intento = 0; intento < 6; intento++) {
+    for (const calidad of [0.85, 0.72, 0.6, 0.5]) {
+      const b = await new Promise(ok => actual.toBlob(ok, 'image/jpeg', calidad));
+      if (b && b.size <= CAPTURA_MAXIMA) return b;
+    }
+    const otro = document.createElement('canvas');
+    otro.width = Math.max(1, Math.round(actual.width * 0.75));
+    otro.height = Math.max(1, Math.round(actual.height * 0.75));
+    otro.getContext('2d').drawImage(actual, 0, 0, otro.width, otro.height);
+    actual = otro;
+  }
+  throw new Error('captura');
+}
+
+export function vistaReportar(h) {
+  const { el, t } = h;
+  const contexto = contextoReporte({ pantalla: h.pantallaAnterior ? `#${h.pantallaAnterior}` : null, version: h.version, navegador: navigator.userAgent, ancho: window.innerWidth, alto: window.innerHeight, idioma: h.idioma });
+  const texto = el('textarea', { id: 'reportar-texto', rows: 6, maxlength: 4000, placeholder: t('reportar.texto.muestra') });
+  const archivo = el('input', { id: 'reportar-captura', type: 'file', accept: 'image/*' });
+  const previa = el('canvas', { class: 'reportar-vista-previa', hidden: true, 'aria-label': t('reportar.captura.previa') });
+  const nota = el('p', { class: 'suave chica', texto: t('reportar.captura.ayuda') });
+  let lienzo = null;
+  archivo.addEventListener('change', async () => {
+    lienzo = null;
+    previa.hidden = true;
+    const f = archivo.files?.[0];
+    if (!f) { nota.textContent = t('reportar.captura.ayuda'); return; }
+    if (!/^image\//.test(f.type)) { nota.textContent = t('reportar.captura.tipo'); archivo.value = ''; return; }
+    try {
+      lienzo = await lienzoDe(f);
+      previa.width = lienzo.width;
+      previa.height = lienzo.height;
+      previa.getContext('2d').drawImage(lienzo, 0, 0);
+      previa.hidden = false;
+      nota.textContent = t('reportar.captura.lista', { ancho: h.numero(lienzo.width), alto: h.numero(lienzo.height) });
+    } catch { nota.textContent = t('reportar.captura.tipo'); archivo.value = ''; }
+  });
+  const mensaje = h.caja();
+  const enviar = h.botonAccion(t('reportar.enviar'), '', mensaje, async () => {
+    const jpg = lienzo ? await jpegDe(lienzo).catch(() => { throw new Error(t('reportar.captura.grande')); }) : null;
+    const r = await h.api('POST', '/api/soporte/reporte', { texto: texto.value, contexto });
+    if (!r.ok) throw new Error(h.textoError(r.datos.error));
+    if (jpg) {
+      const x = await fetch(`/api/soporte/${r.datos.ticket.id}/captura`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Oportia': '1', 'Content-Type': 'image/jpeg' }, body: jpg });
+      if (!x.ok) h.avisar(h.textoError((await x.json().catch(() => ({}))).error ?? 'desconocido'), 'mal');
+    }
+    h.avisar(t('reportar.enviado'));
+    location.hash = `#ayuda-mia/${r.datos.ticket.id}`;
+  }, 'flecha');
+  const lista = [
+    [t('soporte.c.pantalla'), contexto.pantalla ?? '—'], [t('soporte.c.version'), contexto.version ?? '—'],
+    [t('soporte.c.equipo'), contexto.navegador ?? '—'], [t('reportar.c.tamano'), contexto.tamano ?? '—'], [t('soporte.c.hora'), t('reportar.c.hora_al_enviar')],
+  ];
+  return [
+    el('a', { class: 'volver con-icono', href: '#ayuda-mia' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('soporte.titulo') })),
+    el('h1', { class: 'titulo-pantalla', texto: t('reportar.titulo') }),
+    el('section', { class: 'tarjeta' },
+      el('p', { class: 'suave', texto: t('reportar.linea') }),
+      el('label', { for: 'reportar-texto', texto: t('reportar.que_paso') }), texto,
+      el('label', { for: 'reportar-captura', texto: t('reportar.captura') }), archivo, nota, previa,
+      el('details', { class: 'soporte-contexto-detalle' }, el('summary', { texto: t('reportar.contexto') }),
+        el('dl', { class: 'ficha-datos soporte-contexto' }, lista.flatMap(([a, b]) => [el('dt', { texto: a }), el('dd', { texto: b })])),
+        el('p', { class: 'suave chica', texto: t('reportar.privado') })),
+      el('div', { class: 'botones' }, enviar), mensaje),
+  ];
+}
+
+const insigniaReporte = (h, e) => h.insignia(TONO_REPORTE[e] ?? 'info', h.t(`reportar.estado.${ESTADOS_REPORTE.includes(e) ? e : 'nuevo'}`));
+
+export function vistaAdminReportes(datos, h) {
+  const { el, t } = h;
+  const fila = r => el('li', {}, el('a', { class: 'ficha-intento', href: `#reportes/${r.id}` },
+    el('span', { class: 'ficha-nota', texto: `#${r.id}` }),
+    el('span', { class: 'ficha-intento-texto' },
+      el('strong', { texto: r.resumen }),
+      el('span', { class: 'ficha-intento-lugar', texto: r.contexto?.pantalla ?? '—' }),
+      el('span', { class: 'suave chica', texto: [`@${r.usuario ?? '—'}`, h.fecha(r.creado), r.reporte.captura ? t('reportar.con_captura') : null].filter(Boolean).join(' · ') })),
+    el('span', { class: 'ficha-intento-estado' }, insigniaReporte(h, r.reporte.estado), h.icono('flecha', 'icono chico'))));
+  const abiertos = datos.reportes.filter(r => ['nuevo', 'visto'].includes(r.reporte.estado));
+  const cerrados = datos.reportes.filter(r => !['nuevo', 'visto'].includes(r.reporte.estado));
+  return [
+    el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: t('reportar.admin.titulo', { n: h.numero(datos.nuevos) }) })),
+      abiertos.length ? el('ul', { class: 'ficha-intentos' }, abiertos.map(fila)) : h.vacio('bien', t('reportar.admin.vacio'))),
+    cerrados.length ? el('section', { class: 'tarjeta' }, el('h2', { texto: t('reportar.admin.cerrados') }), el('ul', { class: 'ficha-intentos' }, cerrados.map(fila))) : null,
+  ];
+}
+
+export function vistaAdminReporte(datos, h) {
+  const { el, t } = h;
+  const r = datos.reporte;
+  const estado = el('select', { id: 'reporte-estado' }, ESTADOS_REPORTE.map(e => el('option', { value: e, texto: t(`reportar.estado.${e}`), selected: e === r.reporte.estado || null })));
+  const notas = el('textarea', { id: 'reporte-notas', rows: 4, maxlength: 4000 });
+  notas.value = r.reporte.notas ?? '';
+  const mensaje = h.caja();
+  const guardar = h.botonAccion(t('reportar.admin.guardar'), '', mensaje, async () => {
+    const x = await h.api('POST', `/api/admin/reportes/${r.id}`, { estado: estado.value, notas: notas.value });
+    if (!x.ok) throw new Error(h.textoError(x.datos.error));
+    h.avisar(t('reportar.admin.guardado'));
+    await h.recargar();
+  }, 'bien');
+  const paraCopiar = textoParaProgramador(r, { fecha: h.fecha });
+  const copia = el('textarea', { class: 'reporte-texto-programador', rows: 10, readonly: true, 'aria-label': t('reportar.admin.copiar') });
+  copia.value = paraCopiar;
+  const copiar = el('button', { type: 'button', class: 'secundario con-icono', onclick: async () => {
+    try { await navigator.clipboard.writeText(paraCopiar); h.avisar(t('reportar.admin.copiado')); } catch { copia.select(); h.avisar(t('reportar.admin.copiar_a_mano'), 'info'); }
+  } }, h.icono('marca'), el('span', { texto: t('reportar.admin.copiar') }));
+  const src = `/api/admin/reportes/${r.id}/captura`;
+  return [
+    el('a', { class: 'volver con-icono', href: '#reportes' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('admin.pestana.reportes') })),
+    el('section', { class: 'tarjeta' },
+      el('div', { class: 'ficha-cuenta-cabeza' }, el('h1', { class: 'ficha-nombre', texto: t('reportar.admin.uno', { n: r.id }) }), insigniaReporte(h, r.reporte.estado)),
+      el('p', { class: 'suave' }, el('a', { href: `#alumno/${r.usuarioId}`, texto: `${r.nombreVisible ?? ''} (@${r.usuario ?? '—'})` }), ' · ', el('a', { href: `#soporte/${r.id}`, texto: t('reportar.admin.hilo') })),
+      h.talCual('p', r.mensajes?.[0]?.texto ?? '', 'soporte-texto'),
+      r.reporte.captura ? el('a', { href: src, target: '_blank', rel: 'noopener', 'aria-label': t('soporte.ampliar') }, el('img', { src, class: 'reportar-captura', alt: t('reportar.captura'), loading: 'lazy' })) : el('p', { class: 'suave', texto: t('reportar.sin_captura') }),
+      contextoDe(h, r.contexto),
+      el('label', { for: 'reporte-estado', texto: t('soporte.admin.estado') }), estado,
+      el('label', { for: 'reporte-notas', texto: t('reportar.admin.notas') }), notas,
+      el('div', { class: 'botones' }, guardar), mensaje),
+    el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, h.icono('manual'), el('span', { texto: t('reportar.admin.programador') })),
+      el('p', { class: 'suave', texto: t('reportar.admin.programador.linea') }),
+      copia, el('div', { class: 'botones' }, copiar)),
   ];
 }

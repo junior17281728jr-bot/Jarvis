@@ -139,6 +139,14 @@ function valoresDe(aviso, idioma) {
     v.precio = corto(d?.precio, 40) || '?';
     v.minutos = Number.isSafeInteger(d?.minutos) ? d.minutos : '?';
   }
+  // 0.14.26: un reporte de problema: quién, en qué pantalla y el comienzo de lo que escribió (nunca más que eso).
+  if (partes[0] === 'reporte_error') {
+    const corto = (x, max) => (typeof x === 'string' ? x.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '');
+    v.alumno = corto(d?.alumno, 60) || '?';
+    v.resumen = corto(d?.resumen, 120) || '…';
+    v.pantalla = corto(d?.pantalla, 60) || '—';
+    v.n = /^[1-9]\d{0,15}$/.test(partes[1] ?? '') ? partes[1] : '?';
+  }
   // 0.14.1: el pago del servidor: la fecha («1 dic»), los días que faltan y el monto (nunca la nota del método de pago).
   if (partes[0] === 'servidor_pago') {
     const f = typeof d?.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.fecha) ? Date.parse(`${d.fecha}T12:00:00Z`) : NaN;
@@ -191,7 +199,7 @@ export function textoDeAviso(aviso, idioma = 'es', { titulo = null, veces = null
   const tipo = titulo ?? (aviso.nivel === 'grave' ? 'grave' : 'atencion');
   // 0.12.8: un emoji por tipo: 💳 un comprobante nuevo, 🤖 el gasto de la IA; lo demás que no es grave, ⚠️.
   const base = baseDeClave(aviso.clave);
-  const propio = tipo === 'atencion' ? (base === 'pago_recibido' ? 'pago' : ['ia_tope', 'ia_resumen'].includes(base) ? 'ia' : base === 'servidor_pago' ? 'servidor_pago' : null) : null;
+  const propio = tipo === 'atencion' ? (base === 'pago_recibido' ? 'pago' : base === 'reporte_error' ? 'reporte' : ['ia_tope', 'ia_resumen'].includes(base) ? 'ia' : base === 'servidor_pago' ? 'servidor_pago' : null) : null;
   const lineas = [frase(idioma, `telegram.titulo.${propio ?? tipo}`)];
   if (tipo === 'volvio' && veces >= 3) lineas.push(frase(idioma, 'telegram.volvio_veces', { n: veces, desde: fechaRd(desde, idioma) }));
   lineas.push(cuerpoDeAviso(aviso, idioma));

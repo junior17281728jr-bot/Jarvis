@@ -11,8 +11,10 @@ import { join, dirname } from 'node:path';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { avisarCuenta, auditar } from './usuarios.js';
+import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
 
-export const CATEGORIAS_SOPORTE = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'datos', 'otro']);
+// 0.14.26: 'error' = «Reportar un problema» (con su estado de reporte, notas del administrador y una captura en la base).
+export const CATEGORIAS_SOPORTE = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'datos', 'otro', 'error']);
 // 0.9.2: «Mis datos» (acceso, corrección o borrado): se responde en 10 días hábiles o menos (Ley 172-13).
 export const PEDIDOS_DATOS = Object.freeze(['acceso', 'correccion', 'supresion', 'oposicion']);
 export function diasHabiles(desdeMs, n) {
@@ -68,6 +70,8 @@ export function vistaTicket(db, t, { conHilo = true } = {}) {
     respuestas: t.mensajes.filter(m => m.de === 'admin').length, ultimoDe: ultimo?.de ?? null,
     sinLeerAlumno: Boolean(ultimo && ultimo.de === 'admin' && (Number(t.vistosAlumno) || 0) < t.mensajes.length),
     pendiente: t.estado !== 'resuelto' && ultimo?.de === 'alumno',
+    // 0.14.26: un reporte de problema: su estado y si trae captura (las notas del administrador NUNCA van aquí).
+    reporte: t.reporte ? { estado: t.reporte.estado, captura: Boolean(t.reporte.captura) } : null,
   };
 }
 
@@ -87,7 +91,8 @@ export function crearTicket(db, usuarioId, { categoria, texto, contexto, pedido 
     const en = ahora(ahoraMs);
     const t = {
       id, usuarioId: Number(usuarioId), categoria, estado: 'nuevo', creado: en, actualizado: en,
-      contexto: { pantalla: unaLinea(c.pantalla, 120) || null, version: unaLinea(c.version, 20) || null, navegador: unaLinea(c.navegador, 300) || null, pregunta: unaLinea(c.pregunta, 60) || null, hora: en },
+      contexto: { pantalla: unaLinea(String(c.pantalla ?? '').split(/[?&]/)[0], 120) || null, version: unaLinea(c.version, 20) || null, navegador: unaLinea(c.navegador, 300) || null, pregunta: unaLinea(c.pregunta, 60) || null,
+        tamano: /^\d{2,5}x\d{2,5}$/.test(String(c.tamano ?? '')) ? c.tamano : null, idioma: ['es', 'en'].includes(c.idioma) ? c.idioma : null, hora: en },
       mensajes: [{ de: 'alumno', autorId: Number(usuarioId), texto: limpio, en, imagenes: [] }],
       ...(categoria === 'datos' ? { pedido, vence: diasHabiles(ahoraMs, 10) } : {}),
       vistoAlumno: en, vistosAlumno: 1, vistoAdmin: null,
@@ -217,5 +222,104 @@ export function responderAdmin(db, adminId, id, { texto, estado }, { ahoraMs = D
     guardar(db, t);
     auditar(db, { usuarioId: Number(adminId), accion: 'soporte_respuesta', detalle: `${t.id} → ${t.estado}` });
     return vistaTicket(db, t);
+  });
+}
+
+// ---------- 0.14.26: «Reportar un problema» ----------
+// Es un mensaje de ayuda más (categoría 'error'), con lo propio del reporte en t.reporte: { estado, notas, captura }.
+//  - estado: nuevo | visto | arreglado | no_error (el del mensaje se mueve con él: visto → en revisión; arreglado o «no
+//    es error» → resuelto).
+//  - notas: SOLO del administrador (la persona nunca las ve).
+//  - la captura (una, opcional) va EN LA BASE (ajustes 'soporte.captura.<n>', en base64) y no en la carpeta de datos: así
+//    entra en las copias de cada noche. JPG de verdad (por sus primeros bytes), de 500 KB o menos (la app la achica a
+//    1600 px antes de subirla). Se sube en los primeros 30 minutos, como las capturas de siempre.
+//  - al llegar uno nuevo, un aviso para el dueño (pantalla y Telegram): 'reporte_error:<n>'.
+export const ESTADOS_REPORTE = Object.freeze(['nuevo', 'visto', 'arreglado', 'no_error']);
+export const CAPTURA_MAXIMA = 500 * 1024;
+const ESTADO_TICKET_DE_REPORTE = { nuevo: 'nuevo', visto: 'revision', arreglado: 'resuelto', no_error: 'resuelto' };
+const claveCaptura = id => `soporte.captura.${Number(id)}`;
+const esJpeg = b => b.length >= 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+
+export function crearReporte(db, usuarioId, { texto, contexto }, { ahoraMs = Date.now() } = {}) {
+  return enTransaccion(db, () => {
+    const vista = crearTicket(db, usuarioId, { categoria: 'error', texto, contexto }, { ahoraMs });
+    const t = ticketDe(db, vista.id);
+    t.reporte = { estado: 'nuevo', notas: '', captura: null };
+    guardar(db, t);
+    const u = db.prepare('SELECT nombre, nombre_visible FROM usuarios WHERE id = ?').get(Number(usuarioId));
+    abrirAviso(db, { clave: `reporte_error:${t.id}`, nivel: 'atencion', detalle: { ticket: t.id, alumno: u?.nombre_visible || u?.nombre || '?', resumen: unaLinea(t.mensajes[0].texto, 120), pantalla: t.contexto.pantalla ?? '' }, ahora: ahoraMs });
+    return vistaTicket(db, t);
+  });
+}
+
+// El cuerpo es la imagen tal cual (image/jpeg), por partes.
+export async function subirCaptura(db, usuarioId, id, req, { ahoraMs = Date.now() } = {}) {
+  const t = propio(db, usuarioId, id);
+  if (!t.reporte) throw new ErrorHttp(404, 'no_existe');
+  if (t.reporte.captura || ahoraMs - Date.parse(t.creado) > MINUTOS_PARA_CAPTURAS * 60 * 1000) throw new ErrorHttp(409, 'soporte_imagenes');
+  const largo = Number(req.headers['content-length']);
+  if (Number.isFinite(largo) && largo > CAPTURA_MAXIMA) throw new ErrorHttp(413, 'demasiado_grande');
+  const partes = [];
+  let bytes = 0;
+  await new Promise((ok, mal) => {
+    let fallo = false;
+    req.on('data', parte => {
+      if (fallo) return;
+      bytes += parte.length;
+      if (bytes > CAPTURA_MAXIMA) { fallo = true; req.destroy(); return mal(new ErrorHttp(413, 'demasiado_grande')); }
+      partes.push(parte);
+    });
+    req.on('end', () => { if (!fallo) ok(); });
+    req.on('error', e => { if (!fallo) { fallo = true; mal(e); } });
+  });
+  const datos = Buffer.concat(partes);
+  if (datos.length < 16 || !esJpeg(datos)) throw new ErrorHttp(415, 'soporte_imagen_tipo');
+  return enTransaccion(db, () => {
+    const actual = propio(db, usuarioId, id);
+    if (actual.reporte?.captura) throw new ErrorHttp(409, 'soporte_imagenes');
+    const sha256 = createHash('sha256').update(datos).digest('hex');
+    escribir(db, claveCaptura(actual.id), JSON.stringify({ tipo: 'image/jpeg', bytes: datos.length, sha256, base64: datos.toString('base64') }));
+    actual.reporte.captura = { bytes: datos.length, sha256 };
+    guardar(db, actual);
+    return { captura: true, bytes: datos.length };
+  });
+}
+
+// → { tipo, datos (Buffer) }. Con usuarioId: solo la suya.
+export function capturaDe(db, id, { usuarioId = null } = {}) {
+  const t = usuarioId == null ? ticketDe(db, id) : propio(db, usuarioId, id);
+  if (!t?.reporte?.captura) throw new ErrorHttp(404, 'no_existe');
+  const c = json(leer(db, claveCaptura(t.id)));
+  const datos = typeof c?.base64 === 'string' ? Buffer.from(c.base64, 'base64') : null;
+  if (!datos || !esJpeg(datos)) throw new ErrorHttp(404, 'no_existe');
+  return { tipo: 'image/jpeg', datos };
+}
+
+const vistaReporte = (db, t, conHilo) => ({ ...vistaTicket(db, t, { conHilo }), reporte: { estado: t.reporte.estado, notas: t.reporte.notas ?? '', captura: Boolean(t.reporte.captura), bytes: t.reporte.captura?.bytes ?? null } });
+export function reportesAdmin(db) {
+  const lista = todos(db).filter(t => t.categoria === 'error' && t.reporte).sort((a, b) => b.creado.localeCompare(a.creado)).map(t => vistaReporte(db, t, false));
+  return { reportes: lista, nuevos: lista.filter(r => r.reporte.estado === 'nuevo').length };
+}
+export function verReporteAdmin(db, id) {
+  const t = ticketDe(db, id);
+  if (!t?.reporte) throw new ErrorHttp(404, 'no_existe');
+  return vistaReporte(db, t, true);
+}
+export function actualizarReporte(db, adminId, id, { estado, notas }, { ahoraMs = Date.now() } = {}) {
+  return enTransaccion(db, () => {
+    const t = ticketDe(db, id);
+    if (!t?.reporte) throw new ErrorHttp(404, 'no_existe');
+    if (estado !== undefined) {
+      if (!ESTADOS_REPORTE.includes(estado)) throw new ErrorHttp(400, 'datos_no_validos');
+      t.reporte.estado = estado;
+      t.estado = ESTADO_TICKET_DE_REPORTE[estado];
+      if (estado !== 'nuevo') resolverAviso(db, `reporte_error:${t.id}`, ahoraMs);
+    }
+    if (notas !== undefined) t.reporte.notas = textoLargo(notas);
+    t.actualizado = ahora(ahoraMs);
+    t.vistoAdmin = t.actualizado;
+    guardar(db, t);
+    auditar(db, { usuarioId: Number(adminId), accion: 'reporte_estado', detalle: `${t.id} → ${t.reporte.estado}` });
+    return vistaReporte(db, t, true);
   });
 }

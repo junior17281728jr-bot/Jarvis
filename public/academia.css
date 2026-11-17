@@ -1571,3 +1571,34 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
   .examinador *, .examinador .ex-respira, .examinador .ex-ojos { animation: none !important; transition: none !important; }
   .examinador[data-estado="hablando"] .ex-boca-abierta { transform: scaleY(.7); }
 }
+/* 0.14.26: los certificados de recuerdo (public/certificado-vista.js). */
+.cert-marco { margin: 12px 0; border-radius: 10px; overflow: hidden; box-shadow: 0 6px 22px rgba(20, 30, 60, 0.18); background: #fdfaf1; }
+.cert-dibujo { display: block; width: 100%; height: auto; }
+.cert-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cert-acciones select { width: auto; }
+.cert-leer { margin: 8px 0; }
+.cert-leer summary { cursor: pointer; font-weight: 700; color: var(--acento); }
+.cert-titular { font-weight: 800; }
+.cert-bloqueado { opacity: 0.85; }
+.cert-resultado:empty { display: none; }
+@media screen { .cert-impresion { display: none; } }
+/* 0.14.26: «Reportar un problema» (public/soporte-vista.js). */
+.reportar-vista-previa { display: block; max-width: 100%; height: auto; margin: 8px 0; border-radius: 8px; border: 1px solid var(--borde); }
+.reportar-vista-previa[hidden] { display: none; }
+.reportar-captura { display: block; max-width: 100%; max-height: 420px; width: auto; height: auto; object-fit: contain; margin: 8px 0; border-radius: 8px; border: 1px solid var(--borde); }
+.reporte-texto-programador { width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; }
+.aviso-flotante-reportar { display: block; margin-top: 4px; color: inherit; font-weight: 800; text-decoration: underline; }
+/* 0.14.26: «¿Cómo te fue con esta clase?» y Administrador → Opiniones. */
+.opinion-barra { display: grid; gap: 10px; }
+.opinion-pregunta { margin: 0; font-weight: 800; }
+.opinion-votos { display: flex; flex-wrap: wrap; gap: 8px; }
+.opinion-voto { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 2px solid var(--borde); background: var(--superficie, #fff); color: inherit; font-weight: 700; cursor: pointer; }
+.opinion-voto[aria-pressed="true"] { border-color: var(--acento); background: var(--acento-suave, rgba(28, 143, 224, 0.12)); }
+.opinion-emoji { font-size: 1.15em; }
+.opinion-extra[hidden] { display: none; }
+.opinion-extra textarea { width: 100%; }
+.opinion-gracias { margin: 0; font-weight: 700; }
+.opinion-lugares { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.opinion-lugar-cabeza { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.opinion-cuentas { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.opinion-textos { margin: 6px 0 0; padding-left: 18px; color: var(--texto-suave, inherit); }

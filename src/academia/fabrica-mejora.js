@@ -3,6 +3,8 @@
 // fábrica y publica una versión nueva de esa materia (o la deja esperando revisión). Sin evidencia: ninguna llamada.
 // Evidencia (solo números agregados; nunca un nombre ni un texto de un alumno va al modelo):
 //  - una tarjeta con «Explícamelo mejor» (🤔) de 3 alumnos o más (anotarEvidenciaTarjeta, desde /api/academia/tutor/tarjeta);
+//  - 0.14.26: un tema con 3 alumnos o más que dijeron «Me quedó una duda» o «Se puede mejorar» (src/academia/opiniones.js):
+//    van los números y hasta 5 textos SIN nombres (anonimizar), nunca quién lo dijo;
 //  - una pregunta del Test Guide que responden mal la mitad o más de 5 alumnos o más (academia_respuestas), con la
 //    opción equivocada que más eligen.
 // Lo que se mejoró se marca: la misma evidencia no vuelve a trabajarse (solo si después llega evidencia nueva).
@@ -18,6 +20,8 @@ import { tarjetaConVisual } from './diagramas.js';
 import { abrirAviso } from '../avisos/avisos.js';
 import { puedeLlamar, gastoMejoraMesMicro, adjuntar, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
+// 0.14.26: las opiniones de los alumnos al terminar un tema («¿Cómo te fue con esta clase?»).
+import { evidenciaOpiniones } from './opiniones.js';
 
 export const SEMANA_MS = 7 * 86_400_000;
 export const UMBRALES_MEJORA = Object.freeze({ usuariosTarjeta: 3, usuariosPregunta: 5, fallaPct: 50, items: 6, paqueteMaxBytes: 4 * 1024 * 1024 });
@@ -57,6 +61,7 @@ export function evidencia(db) {
     const opcion = db.prepare('SELECT elegida, COUNT(*) AS n FROM academia_respuestas WHERE pregunta = ? AND correcta = 0 GROUP BY elegida ORDER BY n DESC LIMIT 1').get(f.pregunta);
     out.push({ tipo: 'pregunta', materia: f.materia, tema: f.tema, pregunta: f.pregunta, evidencia: { alumnos: f.alumnos, respuestas: f.n, fallaPct: pct, opcion: opcion?.elegida ?? null, opcionPct: opcion ? Math.round((opcion.n * 100) / f.n) : 0 }, peso: f.alumnos * pct, n: f.n });
   }
+  out.push(...evidenciaOpiniones(db));
   return out.filter(x => typeof x.materia === 'string' && typeof x.tema === 'string').sort((a, b) => b.peso - a.peso);
 }
 
@@ -109,7 +114,19 @@ export async function mejorar(ctx, { ahora, cfg }) {
     const t = m.temas.find(x => x.id === it.tema);
     let r;
     let porque = null;
-    if (it.tipo === 'tarjeta') {
+    // 0.14.26: una opinión es de un tema entero: se reescribe la tarjeta que nombran los textos (o la primera).
+    if (it.tipo === 'opinion' && !it.titulo) {
+      const textos = (it.evidencia.textos ?? []).join(' ').toLowerCase();
+      it.titulo = (t?.secciones ?? []).find(x => x.titulo && textos.includes(String(x.titulo).toLowerCase()))?.titulo ?? t?.secciones?.[0]?.titulo ?? null;
+    }
+    if (it.tipo === 'opinion') {
+      const s = t?.secciones.find(x => x.titulo === it.titulo);
+      if (!s) { trabajo.hechos[pendiente] = { saltado: 'no_esta' }; await ctx.escribir(() => guardarAjuste(db, AJUSTE_TRABAJO, JSON.stringify(trabajo))); return { seguir: true }; }
+      const preguntas = (t.preguntas ?? []).map(id => porId.get(id)?.original).filter(Boolean).map(o => ({ enunciado: o.enunciado, correcta: o.opciones.find(x => x.letra === o.correcta)?.texto }));
+      const e = it.evidencia;
+      porque = `${e.alumnos} alumnos dijeron de esta clase: ${e.duda} «me quedó una duda», ${e.mejorar} «se puede mejorar» (${e.clara} «clara»)`;
+      r = await llamar('mejora_escribir', REGLAS_ESCRITURA, `Varios alumnos no entendieron del todo esta clase y opinaron sobre ella (${porque}). Sus comentarios, sin nombres: ${JSON.stringify(e.textos ?? [])}. Reescribe esta tarjeta más clara, respondiendo a esas dudas, con un ejemplo más concreto y su dibujo, con los MISMOS datos y fuentes (no agregues datos nuevos). Meta: aprobar el Test Guide.\n${datos({ tarjeta: s, test_guide_del_tema: preguntas })}`, ESQUEMAS.mejora_tarjeta, `m:${trabajo.version}:${pendiente}`);
+    } else if (it.tipo === 'tarjeta') {
       const s = t?.secciones.find(x => x.titulo === it.titulo);
       if (!s) { trabajo.hechos[pendiente] = { saltado: 'no_esta' }; await ctx.escribir(() => guardarAjuste(db, AJUSTE_TRABAJO, JSON.stringify(trabajo))); return { seguir: true }; }
       const preguntas = (t.preguntas ?? []).map(id => porId.get(id)?.original).filter(Boolean).map(o => ({ enunciado: o.enunciado, correcta: o.opciones.find(x => x.letra === o.correcta)?.texto }));
@@ -129,7 +146,7 @@ export async function mejorar(ctx, { ahora, cfg }) {
   // Todo escrito: verificar (Haiku) una vez y armar la versión nueva.
   const cambios = trabajo.items.map((it, i) => ({ it, h: trabajo.hechos[i] })).filter(x => x.h?.json);
   if (!trabajo.verificado && cambios.length) {
-    const r = await llamar('mejora_verificar', REGLAS_VERIFICACION, `${'Revisa estas tarjetas y explicaciones reescritas contra la versión de antes (que ya fue revisada contra el libro) y la clave del Test Guide.'}\n${datos(cambios.map(({ it, h }) => ({ antes: it.tipo === 'tarjeta' ? m.temas.find(t => t.id === it.tema)?.secciones.find(s => s.titulo === it.titulo) : { original: porId.get(it.pregunta)?.original, sencilla: porId.get(it.pregunta)?.sencilla }, despues: h.json })))}`, ESQUEMAS.verificar, `m:${trabajo.version}:v`);
+    const r = await llamar('mejora_verificar', REGLAS_VERIFICACION, `${'Revisa estas tarjetas y explicaciones reescritas contra la versión de antes (que ya fue revisada contra el libro) y la clave del Test Guide.'}\n${datos(cambios.map(({ it, h }) => ({ antes: it.tipo !== 'pregunta' ? m.temas.find(t => t.id === it.tema)?.secciones.find(s => s.titulo === it.titulo) : { original: porId.get(it.pregunta)?.original, sencilla: porId.get(it.pregunta)?.sencilla }, despues: h.json })))}`, ESQUEMAS.verificar, `m:${trabajo.version}:v`);
     if (r.espera) return { seguir: false, motivo: r.espera };
     trabajo.verificado = { dudas: r.usada ? r.json.dudas : [{ donde: 'mejora', problema: `sin_verificar:${r.motivo}`, gravedad: 'error' }] };
     await ctx.escribir(() => guardarAjuste(db, AJUSTE_TRABAJO, JSON.stringify(trabajo)));
@@ -142,14 +159,14 @@ export async function mejorar(ctx, { ahora, cfg }) {
   const pregs = new Map(nuevo.preguntas.map(q => [q.id, q]));
   for (const { it, h } of cambios) {
     const t = mn.temas.find(x => x.id === it.tema);
-    if (it.tipo === 'tarjeta') {
+    if (it.tipo !== 'pregunta') {
       const i = t.secciones.findIndex(s => s.titulo === it.titulo);
       const d = h.json.tarjeta;
       const s = { ...t.secciones[i], titulo: d.titulo, puntos: d.puntos.slice(0, 6), recuerda: d.recuerda, ejemplo: d.ejemplo };
       if (d.visual?.tipo) s.visual = { tipo: d.visual.tipo, parametros: Object.fromEntries(Object.entries(d.visual.parametros ?? {}).filter(([, v]) => v != null)) };
       if (!d.puntos.length || d.puntos.length > 4 || !tarjetaConVisual(s)) { dudas.push({ donde: it.titulo, problema: 'tarjeta_no_valida', gravedad: 'error' }); continue; }
       t.secciones[i] = JSON.parse(JSON.stringify(s));
-      mejorados.push({ tipo: 'tarjeta', tema: it.tema, titulo: it.titulo, porque: h.porque });
+      mejorados.push({ tipo: it.tipo === 'opinion' ? 'opinion' : 'tarjeta', tema: it.tema, titulo: it.titulo, porque: h.porque });
     } else {
       const q = pregs.get(it.pregunta);
       const malas = q.original.opciones.map(o => o.letra).filter(l => l !== q.original.correcta);
@@ -173,7 +190,8 @@ export async function mejorar(ctx, { ahora, cfg }) {
   const cierre = async (motivo, version = null) => {
     await ctx.escribir(() => {
       for (const x of mejorados) {
-        if (x.tipo === 'tarjeta') { const it = trabajo.items.find(i => i.titulo === x.titulo); const v = leerJson(db, it.clave); if (v) guardarAjuste(db, it.clave, JSON.stringify({ ...v, consumida: v.usuarios.length })); }
+        if (x.tipo === 'opinion') { const it = trabajo.items.find(i => i.tipo === 'opinion' && i.tema === x.tema); if (it) guardarAjuste(db, it.clave, JSON.stringify({ consumida: it.evidencia.alumnos, en: iso(ahora) })); }
+        else if (x.tipo === 'tarjeta') { const it = trabajo.items.find(i => i.tipo === 'tarjeta' && i.titulo === x.titulo); const v = leerJson(db, it.clave); if (v) guardarAjuste(db, it.clave, JSON.stringify({ ...v, consumida: v.usuarios.length })); }
         else { const it = trabajo.items.find(i => i.pregunta === x.pregunta); guardarAjuste(db, `fabrica.mejora.hecha.${x.pregunta}`, JSON.stringify({ n: it.n, en: iso(ahora) })); }
       }
       guardarAjuste(db, AJUSTE_ULTIMA, JSON.stringify({ en: iso(ahora), motivo, materia: trabajo.materia, version, mejorados, dudas: dudas.slice(0, 50) }));
@@ -181,7 +199,7 @@ export async function mejorar(ctx, { ahora, cfg }) {
       // 0.14.2: «Lo que hizo la IA»: cada corrección que quedó en una versión (publicada o esperando revisión).
       if (version != null) {
         const c = costoDe(db, `m:${trabajo.version}:`);
-        for (const x of mejorados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'correccion', estado: motivo, version, antes: { que: x.tipo === 'tarjeta' ? x.titulo : x.pregunta }, despues: { porque: x.porque }, proveedor: c.proveedor, modelo: c.modelo, revisadoPor: c.revisadoPor, ahora });
+        for (const x of mejorados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'correccion', estado: motivo, version, antes: { que: x.tipo !== 'pregunta' ? x.titulo : x.pregunta }, despues: { porque: x.porque }, proveedor: c.proveedor, modelo: c.modelo, revisadoPor: c.revisadoPor, ahora });
       }
     });
     return { seguir: false, motivo };

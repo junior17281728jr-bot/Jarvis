@@ -407,7 +407,9 @@ function avisar(texto, tono = 'bien') {
   }
   const aviso = el('div', { class: `aviso-flotante tono-${tono}`, role: tono === 'mal' ? 'alert' : null },
     icono(tono === 'mal' ? 'mal' : tono === 'bien' ? 'bien' : 'info'),
-    el('span', { class: 'aviso-flotante-texto', texto }),
+    // 0.14.26: en un error, debajo del texto, «Reportar un problema» (con la pantalla donde estaba).
+    el('span', { class: 'aviso-flotante-texto' }, texto,
+      tono === 'mal' && estado.usuario ? el('a', { class: 'aviso-flotante-reportar', href: '#ayuda-mia/reportar', texto: t('reportar.boton'), onclick: () => aviso.remove() }) : null),
     el('button', { type: 'button', class: 'aviso-flotante-cerrar', 'aria-label': t('aviso.cerrar'), texto: '×', onclick: () => aviso.remove() }));
   cajaAvisos.replaceChildren(aviso);
   setTimeout(() => aviso.remove(), tono === 'mal' ? 12000 : 6000);
@@ -956,7 +958,14 @@ async function pantallaConfiguracion() {
       el('section', { class: 'tarjeta' },
         titulo('chispa', t('soporte.titulo')),
         el('p', { class: 'suave', texto: t('soporte.config.linea') }),
-        el('a', { class: 'boton-enlace con-icono', href: '#ayuda-mia' }, icono('chispa'), el('span', { texto: t('soporte.config.boton') }))),
+        el('a', { class: 'boton-enlace con-icono', href: '#ayuda-mia' }, icono('chispa'), el('span', { texto: t('soporte.config.boton') })),
+        // 0.14.26: «Reportar un problema» (texto, captura y el contexto que se agrega solo).
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda-mia/reportar' }, icono('atencion'), el('span', { texto: t('reportar.boton') }))),
+      // 0.14.26: los certificados de recuerdo.
+      el('section', { class: 'tarjeta' },
+        titulo('medalla', t('cert.mis')),
+        el('p', { class: 'suave', texto: t('cert.config.linea') }),
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#certificados' }, icono('medalla'), el('span', { texto: t('cert.ver') }))),
       el('section', { class: 'tarjeta' },
         titulo('info', t('ayuda.titulo')),
         el('p', { class: 'suave', texto: t('config.ayuda.texto') }),
@@ -1265,6 +1274,7 @@ function textoAviso(a) {
   const todo = /^ia_todo:r\d+:([a-z_]+)$/.exec(String(a.clave));
   if (todo) return tSi(`aviso.ia_todo.${todo[1]}`, a.clave, { usado: usd(d.usadoMicro), tope: usd(d.topeMicro), quedan: usd(d.quedanMicro) });
   if (String(a.clave).startsWith('ia_idea:')) return t('aviso.ia_idea');
+  if (String(a.clave).startsWith('reporte_error:')) return t('aviso.reporte_error', { alumno: v(d.alumno), resumen: v(d.resumen) }); // 0.14.26
   if (String(a.clave).startsWith('pago_recibido:')) return t('aviso.pago_recibido', { alumno: v(d.alumno), minutos: v(d.minutos), precio: v(d.precio) });
   const actualizacion = /^actualizacion_(no_instalada|revertida):([0-9a-f]{7})$/.exec(String(a.clave));
   if (actualizacion) return t(actualizacion[1] === 'revertida' ? 'aviso.actualizacion_revertida' : 'aviso.actualizacion_no_instalada', { sha: actualizacion[2] });
@@ -1704,6 +1714,10 @@ const GRUPOS_ADMIN = [
     { id: 'aprendizaje', href: '#aprendizaje', clave: 'admin.pestana.aprendizaje', icono: 'grafica' },
     // 0.9.2: «Ayuda»: los mensajes de los alumnos (con cuántos esperan respuesta).
     { id: 'soporte', href: '#soporte', clave: 'admin.pestana.soporte', icono: 'chispa' },
+    // 0.14.26: «Reportes»: los problemas que reportan los alumnos (estado, notas y «Copiar para el programador»).
+    { id: 'reportes', href: '#reportes', clave: 'admin.pestana.reportes', icono: 'atencion' },
+    // 0.14.26: «Opiniones de los alumnos» (al terminar cada tema y cada examen).
+    { id: 'opiniones', href: '#opiniones', clave: 'admin.pestana.opiniones', icono: 'chispa' },
   ] },
   { id: 'contenido', clave: 'admin.grupo.contenido', icono: 'libro', pestanas: [
     { id: 'contenido', href: '#contenido', clave: 'admin.pestana.paquetes', icono: 'carpeta' },
@@ -1754,7 +1768,7 @@ const LINEA_ADMIN = {
   resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
   alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), notas: () => t('admin.linea.notas'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
-  soporte: () => t('admin.linea.soporte'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
+  soporte: () => t('admin.linea.soporte'), reportes: () => t('admin.linea.reportes'), opiniones: () => t('admin.linea.opiniones'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
   pagos: () => t('admin.linea.pagos'), // 0.12.12
   'pago-servidor': () => t('admin.linea.pago_servidor'), // 0.14.1
 };
@@ -5191,6 +5205,28 @@ function lineaHumorVista(h) {
   return el('p', { class: 'humor-linea con-icono', role: 'note' }, icono('chispa', 'icono chico'),
     el('span', { class: 'solo-lectores', texto: `${t('humor.sello')}: ` }), el('span', { texto: t(h.clave) }));
 }
+// 0.14.26: «¿Cómo te fue con esta clase?» al terminar un tema o un examen (👍 Clara / 🤔 Me quedó una duda / 💡 Se puede
+// mejorar, con un texto corto opcional). Lo ve el administrador (Opiniones) y la Mejora continua (sin nombres).
+function barraOpinion(res) {
+  if (!['tema', 'examen'].includes(res.tipo) || !res.materia || (res.tipo === 'tema' && !res.tema)) return null;
+  let voto = null;
+  const botones = [['clara', '👍', 'opinion.clara'], ['duda', '🤔', 'opinion.duda'], ['mejorar', '💡', 'opinion.mejorar']].map(([v, emoji, clave]) => el('button', { type: 'button', class: 'opinion-voto', 'aria-pressed': 'false', 'data-voto': v,
+    onclick: () => { voto = v; for (const b of botones) b.setAttribute('aria-pressed', String(b.dataset.voto === v)); extra.hidden = false; } },
+  el('span', { class: 'opinion-emoji', 'aria-hidden': 'true', texto: emoji }), el('span', { texto: t(clave) })));
+  const texto = el('textarea', { id: `opinion-texto-${res.id ?? 'x'}`, rows: 2, maxlength: 300, placeholder: t('opinion.texto.muestra') });
+  const mensaje = caja();
+  const enviar = botonAccion(t('opinion.enviar'), 'secundario', mensaje, async () => {
+    if (!voto) return;
+    const r = await api('POST', '/api/academia/opinion', { tipo: res.tipo, materia: res.materia, tema: res.tipo === 'tema' ? res.tema : '', voto, texto: texto.value });
+    if (!r.ok) throw new Error(textoError(r.datos.error));
+    seccion.replaceChildren(el('p', { class: 'opinion-gracias con-icono' }, icono('bien'), el('span', { texto: t('opinion.gracias') })));
+  });
+  const extra = el('div', { class: 'opinion-extra', hidden: true }, el('label', { for: texto.id, texto: t('opinion.texto') }), texto, el('div', { class: 'botones' }, enviar), mensaje);
+  const seccion = el('section', { class: 'panel opinion-barra', 'aria-label': t(res.tipo === 'tema' ? 'opinion.titulo.tema' : 'opinion.titulo.examen') },
+    el('p', { class: 'opinion-pregunta', texto: t(res.tipo === 'tema' ? 'opinion.titulo.tema' : 'opinion.titulo.examen') }),
+    el('div', { class: 'opinion-votos' }, botones), extra);
+  return seccion;
+}
 function panelesResultado(res) {
   const lista = [];
   if (res.humor) lista.push(lineaHumorVista(res.humor));
@@ -5224,6 +5260,9 @@ function panelesResultado(res) {
     lista.push(el('a', { class: 'extra-invitacion con-icono', href: `#extra/${encodeURIComponent(res.materia)}` }, icono('chispa'),
       el('span', {}, el('strong', { texto: t('extra.titulo') }), el('span', { class: 'extra-sello', texto: t('extra.sello') }))));
   }
+  // 0.14.26: «¿Cómo te fue con esta clase?»
+  const opinion = barraOpinion(res);
+  if (opinion) lista.push(opinion);
   return lista;
 }
 
@@ -5477,6 +5516,10 @@ async function pantallaProgreso() {
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
     el('div', { class: 'tablero' }, hero, carrera?.nodo ?? null, numeros, materias?.nodo ?? null, lugarExamen),
+    // 0.14.26: los certificados de recuerdo (cuando termina un curso).
+    el('section', { class: 'panel' }, el('h2', { class: 'con-icono' }, icono('medalla'), el('span', { texto: t('cert.mis') })),
+      el('p', { class: 'seccion-sub suave chica', texto: t('cert.config.linea') }),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#certificados' }, icono('medalla'), el('span', { texto: t('cert.ver') }))),
     detalles));
   // Con la app a la vista, todo se pone al día cada 30 s (los aviones se mueven solos).
   if (carrera) {
@@ -5654,6 +5697,8 @@ async function pantallaAlumno(id, pestana = 'resumen') {
   if (!vigente()) return;
   dibujarDeAlumnos(r, s, (d, h) => vista.vistaFicha(d, pestana, h));
   if (r.ok) vigilarAvanceFicha(id, vigente, vista);
+  // 0.14.26: sus certificados de recuerdo (verlos y descargarlos).
+  if (r.ok) { const main = raiz.querySelector('main.contenido'); if (main) main.append(el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('medalla'), el('span', { texto: t('cert.admin.ficha') })), el('a', { class: 'boton-enlace secundario con-icono', href: `#certificados/alumno/${encodeURIComponent(id)}` }, icono('medalla'), el('span', { texto: t('cert.ver') })))); }
   // 0.12.8: sus contratos («Enviar a mi Telegram») y su IA, al final de la ficha.
   if (r.ok) import('./admin-ia.js').then(m => { const main = raiz.querySelector('main.contenido'); if (vigente() && main) main.insertBefore(m.fichaIa(id, piezasIa()), main.lastElementChild); });
 }
@@ -5704,7 +5749,7 @@ async function pantallaContratosTodos() {
 // 0.9.2: «Ayuda / Soporte» (public/soporte-vista.js, solo se carga aquí).
 let pantallaAnterior = null;
 const piezasSoporte = () => ({ el, t, numero, icono, insignia, talCual, vacio, fecha, api, avisar, caja, botonAccion, textoError, recargar: () => dibujar(),
-  pantallaAnterior, version: estado.setup?.version ?? null });
+  pantallaAnterior, version: estado.setup?.version ?? null, idioma });
 async function pantallaMiAyuda(pregunta = null) {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/soporte'), import('./soporte-vista.js')]);
@@ -5734,6 +5779,53 @@ async function pantallaSoporteTicket(id) {
   const cabecera = cabeceraAdmin('soporte', tonosDePestanas(s.ok ? s.datos : null));
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   mostrar(marco('admin', cabecera, vista.vistaAdminTicket(r.datos, piezasSoporte())));
+}
+// 0.14.26: «Reportar un problema» y Administrador → Reportes (public/soporte-vista.js).
+async function pantallaReportar() {
+  const vigente = nuevoTurno();
+  const vista = await import('./soporte-vista.js');
+  if (!vigente()) return;
+  mostrar(marco('configuracion', vista.vistaReportar(piezasSoporte())));
+}
+async function pantallaReportes() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/reportes'), api('GET', '/api/admin/sistema'), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('reportes', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaAdminReportes(r.datos, piezasSoporte())));
+}
+async function pantallaReporteError(id) {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/reportes/${encodeURIComponent(id)}`), api('GET', '/api/admin/sistema'), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('reportes', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaAdminReporte(r.datos, piezasSoporte())));
+}
+// 0.14.26: Administrador → «Opiniones de los alumnos» (public/opiniones-vista.js).
+async function pantallaOpiniones() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/opiniones'), api('GET', '/api/admin/sistema'), import('./opiniones-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('opiniones', tonosDePestanas(s.ok ? s.datos : null));
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaOpiniones(r.datos, { el, t, numero, icono, insignia, talCual, vacio, nombreMateria })));
+}
+// 0.14.26: los certificados de recuerdo (public/certificado-vista.js): los míos, o los de un alumno (administrador).
+async function pantallaCertificados() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/academia/certificados'), import('./certificado-vista.js')]);
+  if (vigente()) dibujarCertificados(r, vista, 'progreso');
+}
+async function pantallaCertificadosAlumno(id) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/certificados`), import('./certificado-vista.js')]);
+  if (vigente()) dibujarCertificados(r, vista, 'alumnos');
+}
+function dibujarCertificados(r, vista, seccion) {
+  if (!r.ok) return mostrar(marco(seccion, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  mostrar(marco(seccion, vista.vistaCertificados(r.datos, { el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma })));
 }
 // 0.9.2: «Mis documentos» (su copia de cada firma) y «Mis datos» (pedir acceso, corrección o borrado; permiso de IA).
 async function pantallaMisDocumentos() {
@@ -6158,7 +6250,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|ia-registro)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6229,6 +6321,15 @@ async function dibujar() {
   const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);
   if (ticketAdmin && esAdmin) return pantallaSoporteTicket(ticketAdmin[1]);
   if (seccion === 'ayuda-mia') return pantallaMiAyuda();
+  // 0.14.26: «Reportar un problema», Administrador → Reportes y los certificados de recuerdo.
+  if (seccion === 'ayuda-mia/reportar') return pantallaReportar();
+  if (seccion === 'reportes' && esAdmin) return pantallaReportes();
+  if (seccion === 'opiniones' && esAdmin) return pantallaOpiniones();
+  const reporteAdmin = seccion.match(/^reportes\/(\d+)$/);
+  if (reporteAdmin && esAdmin) return pantallaReporteError(reporteAdmin[1]);
+  if (seccion === 'certificados') return pantallaCertificados();
+  const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
+  if (certificadosAlumno && esAdmin) return pantallaCertificadosAlumno(certificadosAlumno[1]);
   if (seccion === 'mis-documentos') return pantallaMisDocumentos();
   if (seccion === 'mis-datos') return pantallaMisDatos();
   const miDocumento = seccion.match(/^mi-documento\/(\d+)$/);
@@ -6326,6 +6427,15 @@ function pedidosAlAbrir(seccion, admin) {
   const ticketAdmin = seccion.match(/^soporte\/(\d+)$/);
   if (ticketAdmin) return admin ? [`/api/admin/soporte/${encodeURIComponent(ticketAdmin[1])}`, '/api/admin/sistema'] : [];
   if (seccion === 'ayuda-mia' || /^ayuda-mia\/pregunta\//i.test(seccion)) return ['/api/soporte'];
+  // 0.14.26: «Reportar un problema» no pide nada; Reportes y los certificados.
+  if (seccion === 'ayuda-mia/reportar') return [];
+  if (seccion === 'reportes') return admin ? ['/api/admin/reportes', '/api/admin/sistema'] : [];
+  if (seccion === 'opiniones') return admin ? ['/api/admin/opiniones', '/api/admin/sistema'] : [];
+  const reporteAdmin = seccion.match(/^reportes\/(\d+)$/);
+  if (reporteAdmin) return admin ? [`/api/admin/reportes/${encodeURIComponent(reporteAdmin[1])}`, '/api/admin/sistema'] : [];
+  if (seccion === 'certificados') return ['/api/academia/certificados'];
+  const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
+  if (certificadosAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(certificadosAlumno[1])}/certificados`] : [];
   if (seccion === 'mis-documentos') return ['/api/yo/documentos', '/api/yo/terminos'];
   if (seccion === 'mis-datos') return ['/api/yo/terminos'];
   const miDocumento = seccion.match(/^mi-documento\/(\d+)$/);

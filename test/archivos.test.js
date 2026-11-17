@@ -486,6 +486,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.9.2: el Reporte.
     ['reporte', 'pantallaReporte'], ['contratos', 'pantallaContratos'], ['contratos/todos', 'pantallaContratosTodos'], ['contrato/7/7', 'pantallaContrato'],
     ['soporte', 'pantallaSoporte'], ['soporte/7', 'pantallaSoporteTicket'], ['ayuda-mia', 'pantallaMiAyuda'], ['ayuda-mia/7', 'pantallaMiTicket'],
+    // 0.14.26: «Reportar un problema», Reportes y los certificados de recuerdo.
+    ['ayuda-mia/reportar', 'pantallaReportar'], ['reportes', 'pantallaReportes'], ['reportes/7', 'pantallaReporteError'], ['certificados', 'pantallaCertificados'], ['certificados/alumno/7', 'pantallaCertificadosAlumno'], ['opiniones', 'pantallaOpiniones'],
     ['mis-documentos', 'pantallaMisDocumentos'], ['mis-datos', 'pantallaMisDatos'], ['mi-documento/7', 'pantallaMiDocumento'],
     // 0.10.0: Pagos (administrador) y el Profesor virtual.
     ['pagos', 'pantallaPagos'], ['profesor', 'pantallaProfesor'], ['aprendizaje', 'pantallaAprendizaje'],

@@ -3,10 +3,18 @@
 import { createReadStream } from 'node:fs';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
-import { crearTicket, subirImagen, imagenDe, ticketsDe, verTicket, responderAlumno, ticketsAdmin, verTicketAdmin, responderAdmin, pendientesSoporte } from '../cuentas/soporte.js';
+import { crearTicket, subirImagen, imagenDe, ticketsDe, verTicket, responderAlumno, ticketsAdmin, verTicketAdmin, responderAdmin, pendientesSoporte,
+  crearReporte, subirCaptura, capturaDe, reportesAdmin, verReporteAdmin, actualizarReporte } from '../cuentas/soporte.js';
 
 export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, limites = {} } = {}) {
   const topes = { imagenes: new Limitador({ maximo: 40, ventanaMs: 24 * 3600 * 1000 }), mensajes: new Limitador({ maximo: 60, ventanaMs: 3600 * 1000 }), ...limites };
+  const servirCaptura = c => ({
+    codigo: 200,
+    enviar: res => {
+      res.writeHead(200, { ...CABECERAS_SEGURIDAD, 'Content-Type': c.tipo, 'Content-Length': c.datos.length, 'Cache-Control': 'private, no-store' });
+      res.end(c.datos);
+    },
+  });
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'academia_no_disponible'); };
   const servir = img => ({
     codigo: 200,
@@ -46,6 +54,29 @@ export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, 
     necesitaConfig();
     return servir(imagenDe(db, config, parametros.id, parametros.mensaje, parametros.indice, { usuarioId: usuario.id }));
   });
+
+  // ---------- 0.14.26: «Reportar un problema» (un mensaje de ayuda 'error' con su captura en la base) ----------
+  // El contexto lo pone la app (pantalla, versión, equipo, tamaño, idioma); el servidor solo guarda esos campos (nunca
+  // otro, así una contraseña nunca puede colarse) y pone la hora.
+  rutas.agregar('POST', '/api/soporte/reporte', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 201, datos: { ticket: crearReporte(db, usuario.id, { texto: textoDe(datos, 'texto'), contexto: datos?.contexto }, { ahoraMs: reloj() }) } };
+  });
+  rutas.agregar('POST', '/api/soporte/:id/captura', async ({ db, req, usuario, parametros }) => {
+    if (!topes.imagenes.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    return { codigo: 201, datos: await subirCaptura(db, usuario.id, parametros.id, req, { ahoraMs: reloj() }) };
+  });
+  rutas.agregar('GET', '/api/soporte/:id/captura', ({ db, usuario, parametros }) => servirCaptura(capturaDe(db, parametros.id, { usuarioId: usuario.id })));
+  rutas.agregar('GET', '/api/admin/reportes', ({ db }) => ({ codigo: 200, datos: reportesAdmin(db) }), { admin: true });
+  rutas.agregar('GET', '/api/admin/reportes/:id', ({ db, parametros }) => ({ codigo: 200, datos: { reporte: verReporteAdmin(db, parametros.id) } }), { admin: true });
+  rutas.agregar('POST', '/api/admin/reportes/:id', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    const pedido = {};
+    if (Object.hasOwn(datos ?? {}, 'estado')) pedido.estado = textoDe(datos, 'estado');
+    if (Object.hasOwn(datos ?? {}, 'notas')) pedido.notas = textoDe(datos, 'notas');
+    return { codigo: 200, datos: { reporte: actualizarReporte(db, usuario.id, parametros.id, pedido, { ahoraMs: reloj() }) } };
+  }, { admin: true });
+  rutas.agregar('GET', '/api/admin/reportes/:id/captura', ({ db, parametros }) => servirCaptura(capturaDe(db, parametros.id)), { admin: true });
 
   // ---------- El administrador ----------
   rutas.agregar('GET', '/api/admin/soporte', ({ db }) => ({ codigo: 200, datos: { tickets: ticketsAdmin(db), pendientes: pendientesSoporte(db) } }), { admin: true });

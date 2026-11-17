@@ -22,6 +22,7 @@ import { registrarRutasPagos } from './api/pagos.js';
 import { registrarRutasPerfil } from './api/perfil.js';
 import { registrarRutasTerminos } from './api/terminos.js';
 import { registrarRutasSoporte } from './api/soporte.js';
+import { registrarRutasCertificados, registrarRutasOpiniones } from './api/certificados.js';
 import { registrarRutasIaAlumnos } from './api/ia-alumnos.js';
 import { registrarRutasFabrica } from './api/fabrica.js';
 import { registrarRutasAppMejora } from './api/app-mejora.js';
@@ -146,6 +147,9 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasTerminos(rutas, { config, reloj: academia.reloj });
   // 0.9.2: «Ayuda / Soporte» (escribirle al administrador).
   registrarRutasSoporte(rutas, { config, reloj: academia.reloj, limites: academia.limitesSoporte });
+  // 0.14.26: los certificados de recuerdo.
+  registrarRutasCertificados(rutas, { config, reloj: academia.reloj, limites: academia.limitesCertificados });
+  registrarRutasOpiniones(rutas, { config, reloj: academia.reloj });
   // 0.12.8: IA por alumno, Registro de la IA y «Enviar a mi Telegram» (Administrador → Dinero e IA).
   registrarRutasIaAlumnos(rutas, { config, reloj: academia.reloj, adaptador: copias.adaptador, topesBot: academia.topesBot });
   registrarRutasFabrica(rutas, { config, supervisor, reloj: academia.reloj });
