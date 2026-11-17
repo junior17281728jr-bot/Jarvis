@@ -116,6 +116,20 @@ test('la carrera: solo con sesión, sin memoria, y de los demás solo alias + % 
   });
 });
 
+test('0.14.18: un administrador que también estudia corre en la carrera; uno que solo administra, no', async () => {
+  await conAcademia(async ({ base, db, nuevo, entrar }) => {
+    nuevo('ana', 'Ana Pérez');
+    const estudia = crearUsuario(db, { nombre: 'jefe', nombreVisible: 'Jefe Piloto', claveHash: await hashClave(CLAVE), rol: 'admin', debeCambiarClave: false });
+    crearUsuario(db, { nombre: 'quieto', nombreVisible: 'Quieto Admin', claveHash: await hashClave(CLAVE), rol: 'admin', debeCambiarClave: false });
+    const p = paqueteMuestra();
+    intento(db, estudia, { materia: p.materias[0].id, tema: p.materias[0].temas[0].id, en: AHORA - 10 * MIN });
+    const r = await pedir(base, 'GET', '/api/academia/carrera', { galleta: await entrar('ana') });
+    const alias = r.datos.pilotos.map(x => x.alias);
+    assert.ok(alias.includes('Jefe'), JSON.stringify(alias));
+    assert.ok(!alias.includes('Quieto'), JSON.stringify(alias));
+  });
+});
+
 test('los alias: primer nombre, únicos (inicial del apellido, después un número), sin «@» y «Piloto N» por orden de cuenta', () => {
   const cuentas = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }];
   const enOrden = m => cuentas.map(u => m.get(u.id));

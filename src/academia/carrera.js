@@ -27,9 +27,12 @@ export function mostrarNombresEnCarrera(db, encendido) {
   return encendido;
 }
 
-// Quién corre: los alumnos activos (sin administradores, eliminados ni bloqueados), por orden de cuenta.
+// Quién corre: los alumnos activos (sin eliminados ni bloqueados), por orden de cuenta. 0.14.18: un administrador que
+// también estudia (tiene algún intento o respuesta) corre como uno más; uno que solo administra, no.
 export function corredores(db) {
-  return db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL AND activo = 1 ORDER BY id").all();
+  return db.prepare(`SELECT id, nombre, nombre_visible FROM usuarios u WHERE eliminado_en IS NULL AND activo = 1
+    AND (rol <> 'admin' OR EXISTS (SELECT 1 FROM academia_intentos i WHERE i.usuario_id = u.id)
+      OR EXISTS (SELECT 1 FROM academia_respuestas r WHERE r.usuario_id = u.id)) ORDER BY id`).all();
 }
 
 const json = t => { try { return JSON.parse(t); } catch { return null; } };
