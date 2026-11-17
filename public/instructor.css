@@ -158,6 +158,38 @@
 .grafica-barras .barra.pocos { fill: var(--gris-nodo-borde); }
 .grafica-barras .barra-etiqueta { font-size: 10px; fill: var(--suave, #667); }
 .lista-dificiles li { margin-bottom: 8px; }
+/* 0.14.25: «Aprendizaje» claro: arriba lo más importante en tarjetas grandes; los números completos, cerrados debajo. */
+.ap-claves { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin: 10px 0 18px; }
+.ap-clave { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--borde); background: var(--tarjeta); min-width: 0; }
+.ap-clave > p { margin: 0; }
+.ap-clave-mal { border-left: 6px solid var(--mal); }
+.ap-clave-atencion { border-left: 6px solid var(--atencion); }
+.ap-clave-bien { border-left: 6px solid var(--bien); }
+.ap-clave-neutro { border-left: 6px solid var(--borde); }
+.ap-clave-titulo { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: var(--suave); }
+.ap-clave-icono { font-size: 18px; }
+.ap-clave-grande { font-size: 24px; font-weight: 900; line-height: 1.2; overflow-wrap: anywhere; }
+.ap-clave-mal .ap-clave-grande { color: var(--mal); }
+.ap-clave-texto { font-size: 16px; }
+.ap-clave-enunciado { font-style: italic; }
+button.ap-clave-boton { margin-top: auto; align-self: flex-start; }
+.ap-ayuda { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 16px; }
+.ap-ayuda a { font-weight: 800; }
+.ap-mas-titulo { margin: 18px 0 8px; font-size: 18px; }
+details.ap-detalle { padding-top: 6px; padding-bottom: 6px; }
+.ap-detalle-cabeza { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; cursor: pointer; font-weight: 800; font-size: 17px; }
+.ap-detalle-ver { flex: none; font-size: 14px; font-weight: 700; color: var(--acento); }
+details.ap-detalle[open] .ap-detalle-ver { display: none; }
+.ap-detalle-linea { margin: 0 0 8px; }
+.ap-temas { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ap-tema { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(80px, 1fr) auto; align-items: center; gap: 10px; }
+.ap-tema-nombre { min-width: 0; overflow-wrap: anywhere; }
+.ap-tema-medidor { width: 100%; height: 12px; }
+.ap-tema-pct { font-weight: 700; white-space: nowrap; font-size: 14px; }
+@media (max-width: 520px) {
+  .ap-tema { grid-template-columns: minmax(0, 1fr) auto; }
+  .ap-tema-barra { grid-column: 1 / -1; grid-row: 2; }
+}
 .plan-pasar { text-align: left; }
 
 /* 0.12.3: la contraseña otra vez para lo delicado del administrador, los comprobantes de siempre y los cambios. */

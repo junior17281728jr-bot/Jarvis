@@ -685,6 +685,85 @@ a.notas-ver-materia { display: inline-flex; align-items: center; min-height: 44p
 .notas-comparar-cabezas { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .notas-comparar-cabeza { border: 1px solid var(--borde); border-radius: 12px; padding: 8px 12px; min-width: 0; }
 
+/* 0.14.25: «Notas» clara (public/admin-notas.js): cada casilla dice el estado del examen (✅/❌ con su mejor nota,
+   «A medias», «P» solo práctica, «—» sin empezar) y «×3» si lo intentó varias veces; al tocarla, cada intento en una hoja.
+   Columnas cortas (M1…M11, Oral); en el teléfono, una tarjeta por alumno en vez de la tabla ancha. */
+.cn { position: relative; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; border: 1.5px solid transparent;
+  font-size: 14px; line-height: 1.25; white-space: nowrap; font-weight: 600; }
+.cn .cn-pct { font-weight: 800; }
+.cn-si { color: var(--bien); background: color-mix(in srgb, var(--bien) 15%, var(--tarjeta)); border-color: color-mix(in srgb, var(--bien) 35%, transparent); }
+.cn-no { color: var(--mal); background: color-mix(in srgb, var(--mal) 13%, var(--tarjeta)); border-color: color-mix(in srgb, var(--mal) 32%, transparent); }
+.cn-medias { color: var(--atencion); background: color-mix(in srgb, var(--atencion) 12%, var(--tarjeta)); border: 1.5px dashed var(--atencion); }
+.cn-practica { color: var(--suave); background: transparent; border: 1.5px dotted var(--borde); font-size: 12px; padding: 2px 8px; }
+.cn-practica .cn-pct { font-weight: 700; }
+.cn-p { display: inline-grid; place-items: center; min-width: 16px; height: 16px; border-radius: 4px; background: var(--apagado-fondo); color: var(--apagado-texto); font-size: 10px; font-weight: 900; }
+.cn-nada { color: var(--borde); background: transparent; padding: 3px 6px; }
+.cn-marca { font-size: 12px; line-height: 1; }
+.cn-veces { font-size: 11px; font-weight: 900; padding: 1px 5px; border-radius: 6px; background: color-mix(in srgb, currentColor 14%, transparent); }
+.cn-cod { font-size: 11px; font-weight: 900; letter-spacing: 0.02em; opacity: 0.85; margin-right: 2px; }
+button.cn { margin: 0; min-height: 36px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; }
+button.cn.cn-si { color: var(--bien); background: color-mix(in srgb, var(--bien) 15%, var(--tarjeta)); }
+button.cn.cn-no { color: var(--mal); background: color-mix(in srgb, var(--mal) 13%, var(--tarjeta)); }
+button.cn.cn-medias { color: var(--atencion); background: color-mix(in srgb, var(--atencion) 12%, var(--tarjeta)); }
+button.cn:hover { filter: brightness(0.97); box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 30%, transparent); }
+button.cn:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+td.notas-celda-estado { background: transparent; padding: 5px 6px; }
+.notas-tabla-estados th.notas-th { min-width: 64px; max-width: none; text-align: center; }
+a.notas-col-cod { font-size: 14px; font-weight: 900; color: var(--texto); text-decoration: underline dotted; text-underline-offset: 4px; cursor: help; }
+.notas-tabla-estados th.notas-th-vacia a.notas-col-cod { color: var(--suave); }
+td.notas-aprobaron { font-size: 13px; font-weight: 700; color: var(--suave); }
+.notas-leyenda-estados { list-style: none; margin: 10px 0; padding: 10px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 14px;
+  border: 1px solid var(--borde); border-radius: 12px; background: color-mix(in srgb, var(--fondo) 60%, var(--tarjeta)); }
+.notas-leyenda-fila { display: flex; align-items: center; gap: 8px; font-size: 14px; min-width: 0; }
+.notas-leyenda-fila > .cn { flex: none; min-width: 74px; justify-content: center; }
+.notas-columnas-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: 8px 0 4px; }
+.notas-columnas-barra .notas-vacias-boton { margin: 0; }
+.notas-codigos-caja { margin: 6px 0 10px; }
+.notas-codigos-caja > p { margin: 0 0 4px; }
+.notas-codigos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 14px; font-size: 13px; }
+.notas-codigo { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.notas-codigo strong { flex: none; min-width: 34px; }
+.notas-codigo.vacia { color: var(--suave); }
+/* Las tarjetas del teléfono (escondidas en la PC). */
+.notas-tarjetas { display: none; list-style: none; margin: 8px 0; padding: 0; gap: 10px; }
+.notas-tarjeta { border: 1px solid var(--borde); border-radius: 14px; padding: 10px 12px; background: var(--tarjeta); min-width: 0; }
+.notas-tarjeta-cabeza { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.notas-tarjeta-cabeza .ficha-marcar { width: 22px; height: 22px; flex: none; margin: 0; }
+.notas-tarjeta-cabeza .notas-quien-enlace { flex: 1 1 auto; }
+.notas-tarjeta-general { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.notas-tarjeta-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.notas-tarjeta-resto { margin: 6px 0 0; }
+@media (max-width: 640px) {
+  .notas-todas .notas-caja-todas { display: none; }
+  .notas-todas .notas-tarjetas { display: grid; }
+  .notas-todas .notas-codigos { grid-template-columns: 1fr; }
+  .notas-todas .notas-vacias-boton { display: none; }
+}
+/* La hoja con cada intento. */
+dialog.notas-hoja .hoja-ayuda-dentro { display: grid; gap: 6px; }
+.notas-hoja-quien { display: flex; align-items: center; gap: 8px; margin: 0; }
+.notas-hoja-titulo { margin: 0; font-size: 20px; line-height: 1.25; }
+.notas-intentos { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.notas-intento { display: grid; grid-template-columns: 76px auto 1fr; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 12px; }
+.notas-intento-n { font-size: 15px; }
+.notas-intento > .cn { justify-self: start; }
+dialog.notas-hoja .hoja-ayuda-botones a.boton-enlace { display: flex; align-items: center; justify-content: center; text-align: center; }
+.notas-intento-fecha { text-align: right; }
+.notas-intento-aprobado { border-color: color-mix(in srgb, var(--bien) 40%, var(--borde)); }
+.notas-intentos-oral { display: grid; gap: 6px; justify-items: start; }
+.notas-intentos-oral p { margin: 0; }
+.notas-intentos-medias { color: var(--atencion); font-weight: 700; }
+.notas-bloque-intentos { padding: 0 0 8px; }
+.notas-intentos-titulo { font-size: 14px; margin: 4px 0; color: var(--suave); text-transform: uppercase; letter-spacing: 0.03em; }
+.notas-bloque-final { padding: 6px 12px 10px; }
+@media (min-width: 700px) {
+  dialog.notas-hoja { inset: 0; margin: auto; width: min(560px, 92vw); height: fit-content; max-height: 82vh; border-radius: 22px; }
+}
+@media (max-width: 420px) {
+  .notas-intento { grid-template-columns: 64px auto; }
+  .notas-intento-fecha { grid-column: 1 / -1; text-align: left; }
+}
+
 /* 0.14.11: el avance de cada alumno (public/admin-avance.js): «Ahora en», dos barras grandes (Test Guide y oral) y las
    fichas de las 11 materias y de los capítulos del oral (la actual resaltada); al tocar una, sus temas como puntos. */
 .cv-alumno .cv-col-avance { grid-column: 1 / -1; }

@@ -773,6 +773,24 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
 - En 320 px el menú de abajo y «Salir» ya no se salen a lo ancho.
 - Código: `public/progreso-tablero.js` (lo puro y las vistas), `public/carrera-vista.js` (opción `compacta`), estilos
   en `public/academia.css`. Pruebas: `test/progreso-tablero.test.js`.
+### Lo nuevo de la 0.14.25: «Notas» y «Aprendizaje» claros para el administrador — sin cambio de base
+
+- «Notas» (`#notas`, `public/admin-notas.js`): columnas cortas M1…M11 y «Oral» (el nombre al pasar el ratón y en la
+  lista «Las columnas» de abajo); las materias que nadie empezó se esconden detrás de «+N sin empezar». Cada casilla
+  dice el ESTADO del examen: ✅/❌ con su mejor nota (contra la nota para aprobar de cada intento), «A medias» si lo
+  empezó y nunca lo terminó (sin número ni %, aunque haya practicado), «P 45 %» si solo practicó y «—» sin empezar;
+  «×3» = lo intentó 3 veces (contando los a medias). Abajo, cuántos aprobaron el examen de cada columna.
+- Tocar una casilla abre cada intento en orden: «1.ª vez 60 % ❌ · 2.ª vez A medias · 3.ª vez 90 % ✅», con su fecha
+  (de `academia_intentos`, tipo «examen»; el «Repaso final» es práctica y no cuenta). La ficha de notas de cada alumno
+  muestra lo mismo materia por materia. Del oral solo se guardan la mejor, la última y las veces; el examen oral
+  abierto sin entregar sale «A medias». En el teléfono, una tarjeta por alumno (solo lo que empezó) en vez de la tabla.
+- Una sola consulta más barata para todos los intentos (la misma cantidad de consultas que antes, sin una por alumno).
+- «Aprendizaje»: arriba, lo más importante en tarjetas grandes y en palabras simples (lo que más fallan, el tema más
+  difícil la primera vez, la pregunta del Test Guide más fallada, quién necesita ayuda —menos de 60 % en 2 semanas o
+  atrasado con su plan— y si están aprendiendo), cada una con «Ver detalles». Los números completos van debajo,
+  cerrados, cada bloque con una línea que lo explica. Con pocos datos dice «Todavía faltan datos».
+- Pruebas: `test/notas-claras.test.js`.
+
 ### Lo nuevo de la 0.14.17: la fábrica nunca se queda trabada y «Mejorar todo» no espera detrás de ella — sin cambio de base
 - Los pedidos de Haiku (sacar pasajes, verificar) se recortan para caber en el tramo corto de su precio (antes, una lectura
   de más de ~98 KB se negaba siempre por «llamada_muy_cara» y la materia se quedaba en ese paso); una lectura enorme se saca

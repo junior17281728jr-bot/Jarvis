@@ -1838,7 +1838,7 @@ async function pantallaAprendizaje(alumno = null) {
   mostrar(marco('admin', cabeceraAdmin('aprendizaje'),
     alumno ? el('a', { class: 'volver con-icono', href: `#alumno/${encodeURIComponent(alumno)}` }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('aprendizaje.volver') })) : null,
     el('h2', { class: 'titulo-pantalla', texto: alumno ? t('aprendizaje.de_alumno') : t('aprendizaje.titulo') }),
-    r.ok ? vista.vistaAprendizaje(r.datos, { el, t, numero }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+    r.ok ? vista.vistaAprendizaje(r.datos, { el, t, numero, nombreMateria }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
 async function pantallaIaDemo() {
   const vigente = nuevoTurno();

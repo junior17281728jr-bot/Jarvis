@@ -26,7 +26,8 @@ function explicados(db, usuarioId) {
 }
 
 export function estadisticas(db, paquete, { usuarioId = null, ahoraMs = Date.now() } = {}) {
-  const alumnos = usuarioId != null ? [usuarioId] : db.prepare("SELECT id FROM usuarios WHERE rol <> 'admin' AND activo = 1").all().map(u => u.id);
+  const cuentas = usuarioId != null ? [] : db.prepare("SELECT id, nombre, nombre_visible FROM usuarios WHERE rol <> 'admin' AND activo = 1").all();
+  const alumnos = usuarioId != null ? [usuarioId] : cuentas.map(u => u.id);
   const enLista = new Set(alumnos);
   const filas = db.prepare(`SELECT r.id, r.usuario_id AS u, r.pregunta, r.materia, r.tema, r.elegida, r.correcta, r.creada_en, i.tipo FROM academia_respuestas r
     JOIN academia_intentos i ON i.id = r.intento_id ORDER BY r.id`).all().filter(f => enLista.has(f.u) && paquete?.preguntas.has(f.pregunta));
@@ -134,14 +135,18 @@ export function estadisticas(db, paquete, { usuarioId = null, ahoraMs = Date.now
   }
   const porDia = [...minutos.entries()].sort().slice(-30).map(([dia, m]) => ({ dia, minutos: Math.round(m) }));
   const ritmos = { adelantado: 0, a_tiempo: 0, atrasado: 0, terminado: 0, sin_plan: 0 };
+  const atrasados = new Set();
   let rachas = 0;
   for (const u of alumnos) {
     const p = planDe(db, u, paquete, ahoraMs);
     ritmos[p.elegido ? p.ritmo : 'sin_plan'] += 1;
+    if (p.elegido && p.ritmo === 'atrasado') atrasados.add(u);
     rachas += puntosYRacha(db, u, ahoraMs).racha;
   }
   return {
     alumnos: alumnos.length, respuestas: filas.length, minimo: MINIMO,
+    resumen: resumenClaro({ filas, clases, dificiles, aprendizaje: { primera: medida(primeraBien, primeraN), despues: medida(despuesBien, despuesN) }, titulo,
+      cuentas: usuarioId != null ? null : cuentas, atrasados, ahoraMs }),
     aprendizaje: { primera: medida(primeraBien, primeraN), despues: medida(despuesBien, despuesN), retencion2: medida(ret2Bien, ret2N), retencion7: medida(ret7Bien, ret7N), dominadas: medida(dominadas, falladas), curva },
     clases: { temas: clases, paraMejorar },
     adaptacion: {
@@ -152,4 +157,58 @@ export function estadisticas(db, paquete, { usuarioId = null, ahoraMs = Date.now
     dificiles,
     actividad: { porDia, rachaPromedio: alumnos.length ? Math.round((rachas / alumnos.length) * 10) / 10 : 0, plan: ritmos },
   };
+}
+
+// 0.14.25 (pedido del dueño: «no entiendo nada de Aprendizaje»): lo más importante, en pocas frases, sacado de lo mismo
+// que ya se leyó (sin otra consulta). Cada parte es null si no hay datos suficientes (MINIMO respuestas): nunca se afirma
+// algo que sale de muy poco.
+//  - temaMasFallado: el tema con MÁS respuestas malas (y su % de respuestas malas). temas: los 8 con más errores.
+//  - temaMasDificil: el tema con el MENOR acierto la primera vez (otro distinto del más fallado, si lo hay).
+//  - pregunta: la pregunta del Test Guide que más fallan (la primera de «dificiles» con datos suficientes).
+//  - ayuda (solo de todos, no de un alumno): quien acierta menos de 60 % en las últimas 2 semanas (con MINIMO respuestas)
+//    o va atrasado con su plan; los que peor van primero. → { lista: [hasta 3], total }
+//  - mejoran: el acierto la primera vez contra el de las siguientes veces; «si» cuando repiten aciertan 5 puntos o más.
+export const AYUDA_DEBAJO = 60;
+export function resumenClaro({ filas, clases, dificiles, aprendizaje, titulo, cuentas, atrasados, ahoraMs }) {
+  const porTema = new Map();
+  for (const f of filas) {
+    const k = `${f.materia}/${f.tema}`;
+    const x = porTema.get(k) ?? { materia: f.materia, tema: f.tema, n: 0, mal: 0 };
+    x.n += 1;
+    if (f.correcta === 0) x.mal += 1;
+    porTema.set(k, x);
+  }
+  const conDatos = [...porTema.values()].filter(x => x.n >= MINIMO && x.mal > 0)
+    .map(x => ({ ...x, titulo: titulo(x.materia, x.tema), errores: pct(x.mal, x.n) }))
+    .sort((a, b) => b.mal - a.mal || b.errores - a.errores || `${a.materia}/${a.tema}`.localeCompare(`${b.materia}/${b.tema}`));
+  const temaMasFallado = conDatos[0] ?? null;
+  const dificilesTema = clases.filter(c => !c.total.pocos && c.total.pct != null).sort((a, b) => a.total.pct - b.total.pct);
+  const otro = dificilesTema.find(c => !temaMasFallado || `${c.materia}/${c.tema}` !== `${temaMasFallado.materia}/${temaMasFallado.tema}`) ?? dificilesTema[0] ?? null;
+  const temaMasDificil = otro ? { materia: otro.materia, tema: otro.tema, titulo: otro.titulo, primera: otro.total.pct, n: otro.total.n } : null;
+  const q = dificiles.find(x => !x.fallos.pocos) ?? null;
+  const pregunta = q ? { pregunta: q.pregunta, numero: q.numero, enunciado: q.enunciado, fallos: q.fallos.pct, n: q.fallos.n, opcion: q.opcion } : null;
+  let ayuda = null;
+  if (cuentas) {
+    const desde = ahoraMs - 14 * DIA;
+    const reciente = new Map();
+    for (const f of filas) {
+      if (Date.parse(f.creada_en) < desde) continue;
+      const x = reciente.get(f.u) ?? { n: 0, bien: 0 };
+      x.n += 1; x.bien += f.correcta;
+      reciente.set(f.u, x);
+    }
+    const lista = [];
+    for (const u of cuentas) {
+      const r = reciente.get(u.id);
+      const acierto = r && r.n >= MINIMO ? pct(r.bien, r.n) : null;
+      const bajo = acierto != null && acierto < AYUDA_DEBAJO;
+      const atrasado = atrasados.has(u.id);
+      if (bajo || atrasado) lista.push({ id: u.id, nombre: u.nombre_visible || u.nombre, acierto, n: r?.n ?? 0, bajo, atrasado });
+    }
+    lista.sort((a, b) => Number(b.bajo) - Number(a.bajo) || (a.acierto ?? 101) - (b.acierto ?? 101) || a.id - b.id);
+    ayuda = { lista: lista.slice(0, 3), total: lista.length };
+  }
+  const { primera, despues } = aprendizaje;
+  const mejoran = primera.pocos || despues.pocos ? null : { primera: primera.pct, despues: despues.pct, si: despues.pct - primera.pct >= 5 };
+  return { temaMasFallado, temas: conDatos.slice(0, 8), temaMasDificil, pregunta, ayuda, mejoran };
 }
