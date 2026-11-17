@@ -52,7 +52,7 @@ export function tarjetaDinero(d, h, { corto = false } = {}) {
 function editarTope(d, h) {
   const { el, t } = h;
   const actual = d.topes.find(x => x.id === 'general')?.topeMicro ?? 0;
-  const campo = el('input', { id: 'dinero-tope', type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'campo-corto', value: (actual / 1_000_000).toFixed(0), 'aria-describedby': 'dinero-tope-nota' });
+  const campo = el('input', { id: 'dinero-tope', type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'campo-corto', value: String(Math.round(actual / 10_000) / 100), 'aria-describedby': 'dinero-tope-nota' });
   const guardar = async () => {
     const valor = campo.value.trim().replace(',', '.');
     const r = await h.api('POST', '/api/admin/ia/ajustes', { topeGeneralUsd: valor });

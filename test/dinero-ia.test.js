@@ -40,6 +40,7 @@ test('topes en conflicto: la mejora con US$90 y el mes con US$70 se para en US$5
   assert.deepEqual(conflictoTopes({ profundaMicro: 90 * M, generalMicro: 70 * M }), { profundaMicro: 90 * M, generalMicro: 70 * M, paraEnMicro: 56 * M, margenPct: 20 });
   assert.equal(conflictoTopes({ profundaMicro: 40 * M, generalMicro: 70 * M }), null);
   assert.equal(conflictoTopes({ profundaMicro: 90 * M, generalMicro: 100 * M, margen: 0 }), null);
+  assert.equal(conflictoTopes({ profundaMicro: 90 * M, generalMicro: 100 * M }), null, 'con el tope del mes más alto que la mejora, sin aviso');
 });
 
 test('la mejora profunda: le quedan US$85 → 68 temas (US$1,25 cada uno) y 4 días; lo libre del mes también manda', () => {
@@ -114,6 +115,10 @@ test('dar y quitar tiempo: sin plan, un plan de regalo; con plan pagado, nunca a
   // Una compra nueva (otro pago) empieza de cero: lo regalado antes ya no es «quitable».
   guardarAjuste(db, `academia.ia.plan.${otro}`, JSON.stringify({ ...pagado, pago: 8, desde: new Date(T0).toISOString() }));
   assert.throws(() => quitarTiempo(db, otro, 7, admin, T0), e => e.clave === 'nada_que_quitar');
+  // Un regalo sobre el plan nuevo sigue la misma historia (nada se pierde).
+  const antes = JSON.parse(db.prepare("SELECT valor FROM ajustes WHERE clave = ?").get(`academia.ia.regalo.tiempo.${otro}`).valor).log.length;
+  regalarTiempo(db, otro, 7, admin, T0);
+  assert.equal(JSON.parse(db.prepare("SELECT valor FROM ajustes WHERE clave = ?").get(`academia.ia.regalo.tiempo.${otro}`).valor).log.length, antes + 2);
 });
 
 test('la tarjeta: los 5 topes, el pronóstico con el gasto de 7 días y el conflicto; la corta sin alumnos', () => {

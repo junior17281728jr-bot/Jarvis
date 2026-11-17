@@ -5133,7 +5133,7 @@
   "dinero.pron.sin_ritmo": "Almost nothing was spent in the last 7 days: at this pace {sobra} is left at month end.",
   "dinero.pron.alcanza": "At this pace ({ritmo} per day, last 7 days), the monthly cap lasts until {fecha} ({dias} days).",
   "dinero.pron.sobra": "At this pace ({ritmo} per day, last 7 days), the monthly cap is enough and {sobra} is left at month end.",
-  "dinero.conflicto": "The improvement has {mejora} but the monthly cap is {general}: it will stop at ≈ {para} (it always leaves {margen} % free for students).",
+  "dinero.conflicto": "The improvement has {mejora} but the monthly cap is {general}: it will stop when the month's spending reaches ≈ {para} (it always leaves {margen} % free for students).",
   "dinero.tope.general": "Overall monthly cap: {usado} of {tope} ({pct} %)",
   "dinero.tope.todo": "Improve everything with Claude: {usado} of {tope} ({pct} %)",
   "dinero.tope.chat": "Admin chat (Ask the AI): {usado} of {tope} ({pct} %)",

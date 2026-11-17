@@ -6406,7 +6406,7 @@ function pedidosAlAbrir(seccion, admin) {
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
   if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
-  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores'] : [];
+  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores', '/api/admin/ia/dinero'] : []; // 0.14.31: «Dinero de la IA»
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso', '/api/academia/carrera', '/api/academia/tutor/examen'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);

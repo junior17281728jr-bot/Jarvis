@@ -5133,7 +5133,7 @@
   "dinero.pron.sin_ritmo": "En los últimos 7 días casi no se gastó: a este ritmo sobran {sobra} al final del mes.",
   "dinero.pron.alcanza": "A este ritmo ({ritmo} por día, los últimos 7 días), el tope del mes alcanza hasta el {fecha} ({dias} días).",
   "dinero.pron.sobra": "A este ritmo ({ritmo} por día, los últimos 7 días), el tope del mes alcanza y sobran {sobra} al final del mes.",
-  "dinero.conflicto": "La mejora tiene {mejora} pero el tope del mes es {general}: se parará en ≈ {para} (siempre deja libre el {margen} % para los alumnos).",
+  "dinero.conflicto": "La mejora tiene {mejora} pero el tope del mes es {general}: se parará cuando el gasto del mes llegue a ≈ {para} (siempre deja libre el {margen} % para los alumnos).",
   "dinero.tope.general": "Tope general del mes: {usado} de {tope} ({pct} %)",
   "dinero.tope.todo": "Mejorar todo con Claude: {usado} de {tope} ({pct} %)",
   "dinero.tope.chat": "Chat del admin (Pídele a la IA): {usado} de {tope} ({pct} %)",

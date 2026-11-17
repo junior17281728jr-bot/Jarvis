@@ -50,7 +50,7 @@ export function pronosticoMes({ gastadoMicro, topeMicro, gasto7dMicro, ahora, fi
 // para los alumnos). → null, o { profundaMicro, generalMicro, paraEnMicro, margenPct }
 export function conflictoTopes({ profundaMicro, generalMicro, margen = T_FABRICA.margenGeneral }) {
   const paraEn = Math.max(0, Math.floor(generalMicro * (1 - margen)));
-  if (!(profundaMicro > paraEn)) return null;
+  if (!(profundaMicro > generalMicro)) return null;
   return { profundaMicro, generalMicro, paraEnMicro: paraEn, margenPct: Math.round(margen * 100) };
 }
 
@@ -134,7 +134,7 @@ export function vistaDinero(db, config, { ahora = Date.now(), corto = false } = 
   const general = gastoMicro(db, { mes });
   const pro = resumenProfunda(db);
   // Sin empezar «Mejorar todo», su tope es el que usará al empezar (US$90 o el que eligió el dueño).
-  if (!pro.etapas) pro.topeMicro = topeTodoMicro(db) ?? TODO_TOPE_MICRO;
+  if (!pro.etapas && !pro.activa) pro.topeMicro = topeTodoMicro(db) ?? TODO_TOPE_MICRO;
   const alumnosGasto = gastoAlumnosMes(db, mes);
   const topes = [
     { id: 'general', usadoMicro: general, topeMicro: cfgIa.topeGeneralMicro, periodo: 'mes' },
@@ -146,7 +146,7 @@ export function vistaDinero(db, config, { ahora = Date.now(), corto = false } = 
   const pronostico = pronosticoMes({ gastadoMicro: general, topeMicro: cfgIa.topeGeneralMicro, gasto7dMicro: gastoUltimosDias(db, ahora), ahora, finMesMs: finMes });
   const conflicto = conflictoTopes({ profundaMicro: pro.topeMicro, generalMicro: cfgIa.topeGeneralMicro });
   const est = pro.activa || pro.empezo ? estimadoCorto(db, config, ahora) : null;
-  const profunda = pronosticoProfunda({ topeMicro: pro.topeMicro, gastadoMicro: pro.gastoMicro, libreGeneralMicro: est?.libreGeneralMicro ?? Math.max(0, Math.floor(cfgIa.topeGeneralMicro * (1 - T_FABRICA.margenGeneral)) - general), faltaMicro: est?.faltaMicro ?? 0, faltaTemas: est?.faltaTemas ?? 0, faltaEtaMs: est?.faltaEtaMs ?? 0 });
+  const profunda = pronosticoProfunda({ topeMicro: pro.topeMicro, gastadoMicro: pro.gastoMicro, libreGeneralMicro: Math.max(0, Math.floor(cfgIa.topeGeneralMicro * (1 - T_FABRICA.margenGeneral)) - general), faltaMicro: est?.faltaMicro ?? 0, faltaTemas: est?.faltaTemas ?? 0, faltaEtaMs: est?.faltaEtaMs ?? 0 });
   const salida = { mes, finMes: iso(finMes), topes, pronostico, profunda: { ...profunda, activa: pro.activa }, conflicto, maxGeneralMicro: LIMITES_IA.topeGeneralMaxMicro };
   if (corto) return salida;
   // Los alumnos: lo que les queda y hasta cuándo, y las opciones para darles (o quitarles) IA.
@@ -211,7 +211,7 @@ export function quitarUsos(db, id, usos, adminId, ahora = Date.now()) {
 
 function guardarTiempo(db, uid, rec, plan, entrada, adminId, ahora) {
   guardarAjuste(db, `academia.ia.plan.${uid}`, JSON.stringify(plan));
-  guardarAjuste(db, claveRegaloTiempo(uid), JSON.stringify({ ...rec, pago: plan.pago ?? null, desde: plan.desde, log: [...(rec.log ?? []), { ...entrada, por: adminId, en: iso(ahora) }].slice(-100) }));
+  guardarAjuste(db, claveRegaloTiempo(uid), JSON.stringify({ ...rec, pago: plan.pago ?? null, desde: plan.desde, log: [...(rec.log ?? []), { ...entrada, por: adminId, en: iso(ahora) }] }));
   auditar(db, { usuarioId: adminId, accion: `ia_tiempo_${entrada.tipo}`, detalle: `${uid}: ${entrada.antes.hasta} → ${plan.hasta}` });
 }
 
@@ -225,15 +225,17 @@ export function regalarTiempo(db, id, dias, adminId, ahora = Date.now()) {
   return enTransaccion(db, () => {
     const pl = leerPlan(db, uid);
     const vigente = pl && Date.parse(pl.hasta) > ahora;
+    // La historia de antes nunca se pierde: un plan nuevo sigue la misma lista.
+    const historia = leerRegaloTiempo(db, uid)?.log ?? [];
     const tipoPlan = (vigente && cfg.planes.find(x => x.id === pl.plan)) || cfg.planes[0] || { id: 'estandar', nombre: 'IA Estándar', usos: 300 };
     const extra = Math.max(1, Math.round((tipoPlan.usos * dias) / Math.max(1, cfg.planDias)));
     let rec;
     let nuevo;
     if (vigente) {
-      rec = regaloVigente(db, uid, pl) ?? { base: pl.regalo ? { hasta: pl.desde, usos: 0 } : { hasta: pl.hasta, usos: pl.usos }, log: [] };
+      rec = regaloVigente(db, uid, pl) ?? { base: pl.regalo ? { hasta: pl.desde, usos: 0 } : { hasta: pl.hasta, usos: pl.usos }, log: [...historia, { tipo: 'plan_nuevo', antes: null, despues: { hasta: pl.hasta, usos: pl.usos } }] };
       nuevo = { ...pl, hasta: iso(Date.parse(pl.hasta) + dias * DIA_MS), usos: pl.usos + extra };
     } else {
-      rec = { base: { hasta: iso(ahora), usos: 0 }, log: pl ? [{ tipo: 'plan_anterior', antes: pl, despues: null }] : [] };
+      rec = { base: { hasta: iso(ahora), usos: 0 }, log: pl ? [...historia, { tipo: 'plan_anterior', antes: pl, despues: null }] : historia };
       nuevo = { plan: tipoPlan.id, nombre: tipoPlan.nombre, usos: extra, desde: iso(ahora), hasta: iso(ahora + dias * DIA_MS), regalo: true, pago: null, por: adminId };
     }
     guardarTiempo(db, uid, rec, nuevo, { tipo: 'mas', dias, usos: extra, antes: { hasta: pl?.hasta ?? null, usos: pl?.usos ?? null } }, adminId, ahora);
