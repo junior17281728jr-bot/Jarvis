@@ -103,11 +103,12 @@ export function vistaLoQueHizo(db, config, ahora = Date.now()) {
   if (cfg.pausada) falta.push({ clave: 'pausada' });
   for (const m of fab?.materias ?? []) {
     if (m.estado === 'revision') falta.push({ clave: 'revision', materia: m.id, num: m.num, nombre: m.nombre, n: m.dudas });
+    else if (m.estado === 'en_espera') falta.push({ clave: 'materia_en_espera', materia: m.id, num: m.num, nombre: m.nombre });
     else if (!['publicada', 'ya_publicada'].includes(m.estado)) falta.push({ clave: 'materia_falta', materia: m.id, num: m.num, nombre: m.nombre, pct: m.pct, temas: m.faltan.length });
   }
   // 0.14.17: por qué la fábrica no avanza (dónde y el motivo), en vez de solo «va en 62 %».
   const espera = fab?.general?.espera;
-  if (espera?.motivo && espera.materia) falta.push({ clave: 'fabrica_espera', materia: espera.materia, num: espera.num ?? '', nombre: espera.nombre ?? undefined, tema: espera.titulo ?? espera.tema ?? '', archivo: espera.paso ?? '', motivo: espera.motivo });
+  if (espera?.motivo && espera.materia && !cfg.enEspera.includes(espera.materia)) falta.push({ clave: 'fabrica_espera', materia: espera.materia, num: espera.num ?? '', nombre: espera.nombre ?? undefined, tema: espera.titulo ?? espera.tema ?? '', archivo: espera.paso ?? '', motivo: espera.motivo });
   if (fab?.oral?.hay && !fab.oral.activa) falta.push({ clave: 'oral_apagada' });
   for (const c of fab?.oral?.activa ? fab.oral.capitulos : []) {
     if (c.estado === 'revision') falta.push({ clave: 'revision', materia: c.id, num: c.num, nombre: c.nombre, n: c.dudas });

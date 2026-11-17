@@ -4674,5 +4674,7 @@
   "aviso.fabrica_pendiente": "En la materia «{materia}» un paso no salió después de 3 reintentos («Pendientes para reintentar»).",
   "iahizo.cifra.tg_cubierto": "Test Guide cubierto (cada pregunta con su tarjeta)",
   "iahizo.falta.tg_sin_cubrir": "Materia {materia} · «{tema}»: la pregunta {archivo} del Test Guide no tiene una tarjeta que enseñe su respuesta (la revisión final de «Mejorar todo» la mira primero).",
-  "iahizo.falta.fabrica_espera": "La fábrica espera en Materia {num} · {nombre} («{tema}», paso {archivo}) — motivo: {motivo}"
+  "iahizo.falta.fabrica_espera": "La fábrica espera en Materia {num} · {nombre} («{tema}», paso {archivo}) — motivo: {motivo}",
+  "fabrica.estado.en_espera": "En espera: falta el POH del avión (la fábrica no la toca)",
+  "iahizo.falta.materia_en_espera": "Materia {num} · {nombre}: en espera — falta el POH del avión (la fábrica no la fabrica todavía)."
 }

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { carpetaFuentes } from '../src/academia/fuentes.js';
-import { estadoMateria, estadoGeneral, vistaFabrica, leerSalida, guardarConfigFabrica, guardarMateria, planDeTrabajo, cortarBytes, trozosDe, puedeLlamar, pedidoHaiku } from '../src/academia/fabrica.js';
+import { estadoMateria, estadoGeneral, vistaFabrica, leerSalida, guardarConfigFabrica, guardarMateria, planDeTrabajo, cortarBytes, trozosDe, puedeLlamar, pedidoHaiku, esperaRechazoMs } from '../src/academia/fabrica.js';
 import { guardarAjuste, AJUSTE_EN_USO } from '../src/academia/paquetes.js';
 import { TAREAS } from '../src/academia/fabrica-prompts.js';
 import { claveDeAvisoValida } from '../src/avisos/avisos.js';
@@ -196,5 +196,29 @@ test('0.14.17: la cobertura del Test Guide se revisa en código (cada pregunta c
     const n = vistaLoQueHizo(db, config).numeros.tgCubierto;
     assert.equal(n.total, 2);
     assert.equal(n.cubiertas, 2, JSON.stringify(n));
+  });
+});
+
+test('0.14.17: un paso que se niega no vuelve a probar en segundos (1, 2, 4… minutos; nunca un bucle de 1 s)', () => {
+  assert.equal(esperaRechazoMs(1), 60_000);
+  assert.equal(esperaRechazoMs(2), 120_000);
+  assert.equal(esperaRechazoMs(3), 240_000);
+  assert.ok(esperaRechazoMs(30) <= 30 * 60_000);
+  for (let n = 1; n < 10; n++) assert.ok(esperaRechazoMs(n) >= 60_000);
+});
+
+test('0.14.17: una materia «en espera» (por defecto el POH) no se fabrica: ni una llamada, se ve «en espera» y la mejora profunda sigue', async () => {
+  const { leerConfigFabrica } = await import('../src/academia/fabrica.js');
+  await conFabrica(async ({ db, config, correr }) => {
+    assert.deepEqual(leerConfigFabrica(db).enEspera, ['poh'], 'por defecto, el POH');
+    guardarConfigFabrica(db, { enEspera: ['sistemas'] });
+    await correr({ max: 20, avanzarMs: SEIS });
+    assert.equal(llamadasDe(db).length, 0);
+    const v = vistaFabrica(db, config).materias[0];
+    assert.equal(v.estado, 'en_espera');
+    assert.ok(vistaLoQueHizo(db, config).falta.some(x => x.clave === 'materia_en_espera' && x.materia === 'sistemas'));
+    guardarConfigFabrica(db, { enEspera: [] });
+    await correr({ max: 80, avanzarMs: SEIS });
+    assert.equal(estadoMateria(db, 'sistemas').estado, 'publicada', 'al quitarla de la espera, sigue');
   });
 });

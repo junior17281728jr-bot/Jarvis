@@ -492,19 +492,21 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
   const indice = r.indice;
   total = indice.partes.length;
   // 0.14.17: el «fuentes-manifiesto-extra.json» suelto (junto a las partes): se baja si cambió (por su fecha en Drive).
+  // Solo se vuelve a revisar la carpeta (pesado) si su contenido cambió (por su huella), nunca en cada sincronización.
   let extraNuevo = false;
+  let extraHuella = anterior.extraHuella ?? null;
   const ax = archivos.find(a => a.nombre === ARCHIVO_EXTRA);
   if (ax && !(anterior.extraDrive && anterior.extraDrive === (ax.modificado ?? null) && existsSync(join(dir, ARCHIVO_EXTRA)))) {
     const destino = join(dir, ARCHIVO_EXTRA);
     const b = await bajarArchivo(ax.id, { bases, ruta: `${destino}.drive.part`, tope: TOPES_FUENTES.jsonBytes, senal });
-    if (b.ok) { renameSync(`${destino}.drive.part`, destino); extraNuevo = true; }
+    if (b.ok && b.huella !== anterior.extraHuella) { renameSync(`${destino}.drive.part`, destino); extraNuevo = true; extraHuella = b.huella; }
   }
   const extraDrive = ax ? (ax.modificado ?? null) : null;
   if (anterior.archivo?.instalado === indice.sha256_total) {
     if (anterior.ok && !extraNuevo) return { ok: true, bajados: 0, errores: [], estado: anterior };
     if (extraNuevo) {
       hechas = total;
-      const estado = await guardar({ ...anterior.archivo, ok: true }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive });
+      const estado = await guardar({ ...anterior.archivo, ok: true }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive, extraHuella });
       return { ok: true, bajados: 1, errores: [], estado };
     }
     // Instalado pero la revisión no dio bien (o el estado se perdió): se revisa otra vez lo que ya está en la carpeta.
@@ -538,7 +540,7 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
   if (senal?.aborted || quedaMs() < RESERVA_INSTALAR_MS) return parcial(bajados, 'instalando');
   const inst = await instalarPartes(dir, indice);
   if (!inst.ok) return mal(inst.motivo);
-  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive });
+  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive, extraHuella });
   return { ok: true, bajados, errores: [], estado };
 }
 export async function sincronizarFuentes(db, config, { escribir, senal = null, quedaMs = () => Infinity } = {}) {

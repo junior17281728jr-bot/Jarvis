@@ -723,6 +723,9 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   dice dónde y por qué espera la fábrica. Las materias hechas a mano en uso quedan «ya publicada» todas de una vez.
 - «fuentes-manifiesto-extra.json» (suelto en la carpeta «fuentes» del Drive): agrega materias que el manifiesto no trae
   (la Materia 1), con el mismo formato de «materias» y temas con «tg»: []. Solo agrega; si está mal, se ignora y se dice.
+- Materias «en espera» (ajuste de la fábrica, por defecto el POH hasta tener el del avión): ni una llamada por ellas.
+- Un paso que se niega espera 1, 2, 4… minutos (nunca reintenta en segundos); las búsquedas en los paquetes en uso se
+  recuerdan mientras la lista en uso no cambie (un paso del trabajador pasa de ~100 ms a ~6 ms con los datos reales).
 - La cobertura del Test Guide se revisa en código («Test Guide cubierto: N de M», con la lista de lo que falta) y la
   revisión final la busca pregunta por pregunta («falta_tg»). Cada riesgo o ilusión lleva su «Qué hacer» del libro.
 

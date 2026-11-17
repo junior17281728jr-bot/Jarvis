@@ -6,6 +6,7 @@
 import { MATERIAS } from './formato.js';
 import { normalizar } from './reto-calidad.js';
 import { publicado, crearLector } from './fabrica-profunda.js';
+import { leerEnUso } from './paquetes.js';
 
 const textoDe = s => [s.titulo, ...(s.puntos ?? []), s.recuerda, s.ejemplo, s.texto, s.truco].filter(x => typeof x === 'string').join(' \n ');
 const numeroDe = q => String(q.original?.numero ?? String(q.id).replace(/^tg-/, ''));
@@ -38,7 +39,16 @@ export function preguntaCubierta(tema, q) {
 }
 
 // → { total, cubiertas, faltan: [{ materia, tema, titulo, id, numero }] }
+const MEMORIA = new Map(); // (lista en uso) → el resultado: los paquetes no cambian una vez escritos
 export function coberturaTg(db, config) {
+  const firma = `${config.raiz ?? ''}|${JSON.stringify(leerEnUso(db))}`;
+  if (MEMORIA.has(firma)) return MEMORIA.get(firma);
+  const r = calcular(db, config);
+  if (MEMORIA.size > 20) MEMORIA.clear();
+  MEMORIA.set(firma, r);
+  return r;
+}
+function calcular(db, config) {
   const lector = crearLector(config);
   const out = { total: 0, cubiertas: 0, faltan: [] };
   for (const id of MATERIAS) {

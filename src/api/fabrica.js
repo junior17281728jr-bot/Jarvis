@@ -14,6 +14,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { encolar } from '../tareas/cola.js';
 import { usdAMicro } from '../ia/config.js';
+import { MATERIAS as MATERIAS_FABRICABLES } from '../academia/formato.js';
 import { MATERIAS, MATERIAS_ORAL } from '../academia/formato.js';
 import { informeProfunda, publicarProfundaRevisada, resumenProfunda, fasesTodo, estimadoProfundo, empezarProfunda, claudeListo, topeTodoMicro, AJUSTE_TODO_TOPE, TODO_TOPE_MICRO } from '../academia/fabrica-profunda.js';
 import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, reiniciarMateria, publicarRevisada, LIMITES_FABRICA, MODELOS_PROFUNDA } from '../academia/fabrica.js';
@@ -69,6 +70,11 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
     if (typeof datos?.chat?.auto === 'boolean') cambios.chat = { auto: datos.chat.auto };
     // 0.13.1: la pista oral ya se fabrica (capítulos 1–9, tema por tema; lo ya publicado a mano se salta).
     if (typeof datos?.oral === 'boolean') cambios.oral = datos.oral;
+    // 0.14.17: las materias «en espera» (la fábrica no las toca; por defecto el POH, hasta tener el del avión).
+    if (datos?.enEspera != null) {
+      if (!Array.isArray(datos.enEspera) || datos.enEspera.some(x => !MATERIAS_FABRICABLES.includes(x))) throw new ErrorHttp(400, 'datos_no_validos');
+      cambios.enEspera = [...new Set(datos.enEspera)];
+    }
     const antes = leerConfigFabrica(db);
     const cfg = enTransaccion(db, () => {
       const nueva = guardarConfigFabrica(db, cambios);

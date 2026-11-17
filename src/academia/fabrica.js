@@ -42,7 +42,7 @@ import { anotarCambio, costoDe } from './cambios-ia.js';
 export const AJUSTE_CONFIG = 'fabrica.config';
 export const AJUSTE_GENERAL = 'fabrica.estado';
 export const LIBRO_TG = Object.freeze({ id: 'test-guide', titulo: 'Test Guide (preguntas del examen)', idioma: 'es' });
-export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_000, oral: false, mejora: Object.freeze({ activa: true, topeMesMicro: 2_000_000 }),
+export const CONFIG_FABRICA = Object.freeze({ pausada: false, topeMicro: 20_000_000, oral: false, enEspera: Object.freeze(['poh']), mejora: Object.freeze({ activa: true, topeMesMicro: 2_000_000 }),
   // 0.13.9: la «Mejora profunda de las clases» (src/academia/fabrica-profunda.js): APAGADA por defecto, con su tope propio.
   profunda: Object.freeze({ activa: false, topeMicro: 40_000_000 }),
   // 0.14.2: «Pídele a la IA» (el chat del dueño y sus trabajos) y los «Dibujos con IA» (APAGADOS), cada uno con su tope.
@@ -94,6 +94,7 @@ export function trozosDe(texto, max) {
   return out;
 }
 const ESTADOS_LISTOS = new Set(['publicada', 'revision', 'ya_publicada']);
+const YA_PUBLICADA = new Map(); // 0.14.17: (lista en uso, materia) → ¿hay un paquete en uso que no es de la fábrica?
 const iso = ms => new Date(ms).toISOString();
 const corto = (t, n = 16) => createHash('sha256').update(String(t)).digest('hex').slice(0, n);
 const leerJsonAjuste = (db, clave) => { try { const v = JSON.parse(leerAjuste(db, clave) ?? 'null'); return v && typeof v === 'object' ? v : null; } catch { return null; } };
@@ -109,6 +110,9 @@ export function leerConfigFabrica(db) {
   const entre = (n, max, def) => (Number.isSafeInteger(n) && n >= 0 && n <= max ? n : def);
   return {
     pausada: v.pausada === true, topeMicro: tope, oral: v.oral === true,
+    // 0.14.17: las materias «en espera»: la fábrica no las fabrica ni llama a la IA por ellas (lo hecho queda guardado).
+    // Por defecto el POH (Materia 6): el dueño traerá el POH del avión de verdad.
+    enEspera: Array.isArray(v.enEspera) ? v.enEspera.filter(x => MATERIAS.includes(x)) : [...CONFIG_FABRICA.enEspera],
     // 0.14.7: el tope del chat es del mes; «auto»: lo de contenido se hace solo, sin «Hazlo» (encendido por defecto).
     chat: { topeMicro: entre(ch.topeMicro, LIMITES_FABRICA.chatMaxMicro, CONFIG_FABRICA.chat.topeMicro), auto: ch.auto !== false },
     dibujos: { activa: di.activa === true, topeMicro: entre(di.topeMicro, LIMITES_FABRICA.dibujosMaxMicro, CONFIG_FABRICA.dibujos.topeMicro) },
@@ -199,6 +203,7 @@ export function planDeTrabajo(db, config) {
   const enUso = leerEnUso(db);
   const propias = new Set();
   const lector = crearLector(config);
+  const firma = `${config.raiz ?? ''}|${JSON.stringify(enUso)}`;
   const materias = [...man.materias].sort((a, b) => MATERIAS.indexOf(a.id) - MATERIAS.indexOf(b.id)).map(m => {
     const e = estadoMateria(db, m.id);
     if (e.version) propias.add(e.version);
@@ -207,7 +212,15 @@ export function planDeTrabajo(db, config) {
     // 0.14.17: también una versión en uso sin su lista de materias (la de antes, «todas»): se mira lo que trae el paquete
     // (hecho a mano: Comunicación, Meteorología, …). Solo mientras la materia no está lista (después no se vuelve a leer).
     if (!publicadaFuera && !ESTADOS_LISTOS.has(e.estado)) {
-      try { publicadaFuera = Boolean(publicado(db, config, m.id, lector)?.filas?.some(f => !deFabrica(f.id))); } catch { publicadaFuera = false; }
+      // Los paquetes no cambian una vez escritos: se lee solo si cambió la lista en uso (nunca en cada paso).
+      const k = `${firma}|${m.id}|${e.version}|${(e.versiones ?? []).join(',')}`;
+      if (!YA_PUBLICADA.has(k)) {
+        let si = false;
+        try { si = Boolean(publicado(db, config, m.id, lector)?.filas?.some(f => !deFabrica(f.id))); } catch { si = false; }
+        if (YA_PUBLICADA.size > 200) YA_PUBLICADA.clear();
+        YA_PUBLICADA.set(k, si);
+      }
+      publicadaFuera = YA_PUBLICADA.get(k);
     }
     return { id: m.id, num: m.num, nombre: m.nombre, temas: m.temas.map(t => ({ id: t.id, titulo: t.titulo, tg: t.tg.length })), yaPublicada: publicadaFuera, estado: e };
   });
@@ -772,6 +785,7 @@ export function crearFabrica({ reloj = Date.now, sincronizar = sincronizarFuente
       const m = man.materias.find(x => x.id === pm.id);
       const e = pm.estado;
       if (ESTADOS_LISTOS.has(e.estado)) continue;
+      if (cfg.enEspera.includes(m.id)) continue; // 0.14.17: en espera (el POH del avión): ni una llamada
       trabajo = buscar(m, e, m.temas, (t, c) => pasosDeTema(db, m.id, e.gen, t.id, { largo: c.largo, preguntas: c.preguntas.length }), t => contexto(carpetaFuentes(config), man, m, t));
       if (trabajo) break;
     }
@@ -897,7 +911,9 @@ async function falla(ctx, trabajo, clave, previo, motivo, ahora, { esperaMs = T.
   });
   return { listo: true, resultado: { motivo, intento: n } };
 }
-// 0.14.17: un rechazo que se repite igual (el precio de UN pedido): a la 3.ª vez, el paso se salta (queda pendiente).
+// 0.14.17: un rechazo que se repite igual (el precio de UN pedido): espera 1, 2, 4… minutos (nunca vuelve a probar en
+// segundos: un paso trabado no gasta el procesador) y a la 3.ª vez el paso se salta (queda pendiente).
+export const esperaRechazoMs = n => Math.min(30 * 60_000, 60_000 * 2 ** Math.max(0, n - 1));
 async function rechazo(ctx, trabajo, clave, motivo, ahora, donde) {
   const previo = leerJsonAjuste(ctx.db, `${clave}.rechazos`) ?? { n: 0 };
   const n = previo.n + 1;
@@ -906,7 +922,7 @@ async function rechazo(ctx, trabajo, clave, motivo, ahora, donde) {
     return { punto: {}, esperarMs: 1000 };
   }
   await ctx.escribir(() => { guardarAjuste(ctx.db, `${clave}.rechazos`, JSON.stringify({ n, motivo })); guardarGeneral(ctx.db, { espera: { motivo, en: iso(ahora), ...donde } }); });
-  return { punto: {}, esperarMs: 1000 };
+  return { punto: {}, esperarMs: esperaRechazoMs(n), motivo: 'fabrica_cuota' };
 }
 async function saltar(ctx, trabajo, clave, motivo, ahora) {
   await ctx.escribir(() => marcarSaltado(ctx.db, trabajo, clave, motivo, ahora));
@@ -975,7 +991,8 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
     let hechos = 0;
     const faltan = [];
     let temaN = 0;
-    if (m && !ESTADOS_LISTOS.has(e.estado) && !pm.yaPublicada) {
+    const enEspera = cfg.enEspera.includes(pm.id) && !ESTADOS_LISTOS.has(e.estado) && !pm.yaPublicada;
+    if (m && !ESTADOS_LISTOS.has(e.estado) && !pm.yaPublicada && !enEspera) {
       m.temas.forEach((t, i) => {
         const c = contexto(carpetaFuentes(config), man, m, t);
         const pasos = pasosDeTema(db, m.id, e.gen, t.id, { largo: c.largo, preguntas: c.preguntas.length });
@@ -993,7 +1010,7 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
     const ritmo = Math.max(medido ?? 0, 3_600_000 / cuota.propia);
     return {
       // 0.14.17: una materia con su paquete hecho a mano en uso se ve «ya publicada» (100 %) aunque la fábrica no la marcó.
-      id: pm.id, num: pm.num, nombre: pm.nombre, estado: pm.yaPublicada && !ESTADOS_LISTOS.has(e.estado) ? 'ya_publicada' : e.estado, gen: e.gen, temas: pm.temas.length, tema: e.tema ?? null, temaN: temaN || null,
+      id: pm.id, num: pm.num, nombre: pm.nombre, estado: enEspera ? 'en_espera' : pm.yaPublicada && !ESTADOS_LISTOS.has(e.estado) ? 'ya_publicada' : e.estado, gen: e.gen, temas: pm.temas.length, tema: e.tema ?? null, temaN: temaN || null,
       pct, gastoMicro: gastoFabricaMicro(db, { materia: pm.id }), etaMs: restantes ? restantes * ritmo : 0, faltaMicro: restantes * costoPaso,
       faltan: faltan.slice(0, 40), version: e.version ?? null, dudas: (e.dudas ?? []).length, corregidos: (e.corregidos ?? []).length, problema: e.problema ?? null,
       // 0.14.17: «Pendientes para reintentar» (esperando, reintentando, resuelta o agotada, con su motivo).
@@ -1033,7 +1050,7 @@ export function vistaFabrica(db, config, ahora = Date.now()) {
   // 0.13.9: la «Mejora profunda de las clases» (lo publicado, tema por tema), con su estimado antes de encenderla.
   const profunda = vistaProfunda(db, config, { ahora, cuota, man, fuenteOral });
   // 0.14.17: por qué la mejora profunda no avanza, en palabras: la fábrica espera (dónde y por qué) o su propia espera.
-  if (profunda.activa && profunda.falta?.temas && g.espera?.materia) {
+  if (profunda.activa && profunda.falta?.temas && g.espera?.materia && !cfg.enEspera.includes(g.espera.materia)) {
     profunda.fabrica = { materia: g.espera.materia, num: g.espera.num ?? null, nombre: g.espera.nombre ?? null, tema: g.espera.titulo ?? g.espera.tema ?? null, paso: g.espera.paso ?? null, motivo: g.espera.motivo, en: g.espera.en ?? null };
   }
   const terminadaYa = g.terminada ? ([...materias, ...capitulos].some(x => x.estado === 'revision') ? 'esperando_revision' : profunda.activa && profunda.falta.temas ? 'mejorando' : 'terminada') : null;
