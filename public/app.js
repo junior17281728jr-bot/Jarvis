@@ -1174,6 +1174,8 @@ const ICONOS = {
   altavoz: [['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }], ['path', { d: 'M15.5 9a4 4 0 0 1 0 6' }], ['path', { d: 'M18 6.5a7.5 7.5 0 0 1 0 11' }]],
   silencio: [['path', { d: 'M4 9.5h3.5L12 5.5v13l-4.5-4H4z' }], ['line', { x1: 16, y1: 9.5, x2: 21, y2: 14.5 }], ['line', { x1: 21, y1: 9.5, x2: 16, y2: 14.5 }]],
   tarjetas: [['rect', { x: 6, y: 3, width: 12, height: 15, rx: 2 }], ['path', { d: 'M4 7v12a2 2 0 0 0 2 2h9' }]],
+  // 0.14.39: «Enviar» en el chat de «Tu instructor» (un avión de papel).
+  enviar: [['path', { d: 'M21 3 3 10.5l7 2.5 2.5 7z' }], ['path', { d: 'M21 3 10 13' }]],
   lupa: [['circle', { cx: 10.5, cy: 10.5, r: 6 }], ['path', { d: 'M15 15l5.5 5.5M8 10.5h5M10.5 8v5' }]],
 };
 // Un elemento SVG con sus atributos (siempre con createElementNS: nunca se arma con texto).

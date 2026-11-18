@@ -12,7 +12,8 @@ import { diaDe } from '../src/academia/progreso.js';
 import { guardarAjuste, leerAjuste } from '../src/academia/paquetes.js';
 import { darProfesor } from '../src/academia/profesor.js';
 import { estructura, esTituloMayusculas, letraGuardada, guardarLetra } from '../public/biblioteca-vista.js';
-import { crearVistaInstructor, textoCambio, textoDebil } from '../public/instructor-vista.js';
+import { crearVistaInstructor, textoCambio, textoDebil, revision, textoRevision, contarPalabras, semillaDe, VARIANTES, MAX_PALABRAS } from '../public/instructor-vista.js';
+import { crearPagos } from '../public/pagos.js';
 import { crearInstructor } from '../public/instructor.js';
 import { conInstructor, pedir, pedidosIa, cuerpoDe, sistemaDe, datosDe, DE, NOMBRES } from './instructor-ia-base.js';
 import { paqueteOralMuestra } from './oral-muestra.js';
@@ -63,7 +64,7 @@ test('los cambios: mejoró, bajó y sigue flojo (con respuestas nuevas), lo igua
   const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
   const t = (k, v = {}) => (es[k] ?? k).replace(/\{(\w+)\}/g, (_, n) => String(v[n]));
   assert.equal(textoCambio(c[1], t), 'Hipoxia: 2/6 → 5/6 ✅ mejoraste');
-  assert.equal(textoCambio(solo[0], t), 'Sigues flojo en Espacio aéreo');
+  assert.equal(textoCambio(solo[0], t), 'Todavía con dudas en Espacio aéreo');
   assert.equal(textoCambio(c[0], t), 'Licencias (oral en vivo): 30 % → 90 % ✅ mejoraste');
   assert.equal(textoDebil({ origen: 'vivo', titulo: 'Licencias', pct: 30 }, t), 'Licencias · oral en vivo 30 %');
 });
@@ -270,7 +271,70 @@ const RESUMEN = {
   botones: [{ tipo: 'oral', materia: 'oral_x', tema: 'a', titulo: 'Licencias' }], repaso: { n: 3 }, vivo: { veces: 2, ultima: 40, mejor: 60, listo: false }, repasoFinal: null,
 };
 
-test('la pantalla #instructor: sin chat, la tarjeta con «Estudiar por mi cuenta» / «Guíame» y el repaso, y SIN caja para escribir; con chat, el chat de siempre', () => {
+// Los botones a la vista de un mensaje (las pastillas de arriba, sin «Más opciones» ni lo plegado).
+const pastillasVisibles = nodo => nodo.todos(n => n.etiqueta !== 'svg' && /(^|\s)pastillas(\s|$)/.test(n.atributos.class ?? ''))
+  .flatMap(p => p.hijos.filter(x => typeof x !== 'string' && /\bpastilla\b/.test(x.atributos.class ?? '') && !/\bmas\b/.test(x.atributos.class ?? '')));
+const textoDe = n => n.textContent.replace(/\s+/g, ' ');
+
+test('la revisión (el primer mensaje): corta, humana, con frases variadas y los hechos del código; nunca una lista de «Sigues flojo»', () => {
+  const es = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/es.json'), 'utf8'));
+  const en = JSON.parse(readFileSync(join(RAIZ, 'public/i18n/en.json'), 'utf8'));
+  const { t, tn } = ayudas();
+  const d = {
+    cambios: [{ tipo: 'mejoro', origen: 'tg', titulo: 'Visión nocturna', antes: { bien: 1, de: 4 }, ahora: { bien: 4, de: 4 } },
+      { tipo: 'sigue_flojo', origen: 'tg', titulo: 'Experiencia reciente', antes: { bien: 0, de: 2 }, ahora: { bien: 1, de: 4 } },
+      { tipo: 'sigue_flojo', origen: 'tg', titulo: 'Desorientación espacial', antes: { bien: 0, de: 2 }, ahora: { bien: 1, de: 5 } }],
+    debiles: [{ origen: 'tg', titulo: 'Experiencia reciente', pct: 25, bien: 1, de: 4 }, { origen: 'tg', titulo: 'Desorientación espacial', pct: 20, bien: 1, de: 5 }, { origen: 'vivo', titulo: 'Licencias', pct: 6 }],
+    foco: { materia: 'reglamento', tema: 'reciente', titulo: 'Experiencia reciente' }, desdeDias: 1, repaso: { n: 4 },
+    botones: [{ tipo: 'oral', materia: 'oral_x', tema: 'a', titulo: 'Licencias' }, { tipo: 'examen', materia: 'reglamento' }], vivo: { ultima: 6, mejor: 6 },
+  };
+  const r = revision(d, { semilla: 0 });
+  const texto = textoRevision(r, t, tn);
+  assert.equal(texto, 'Revisé tu estudio de ayer y hoy. 👍 Vas bien en Visión nocturna. Donde te veo con dudas: Experiencia reciente (1 de 4) y Desorientación espacial. ¿Empezamos por Experiencia reciente? Te tomo 3 preguntas rápidas.');
+  assert.doesNotMatch(texto, /Sigues flojo|%/, 'sin la lista mecánica ni porcentajes sueltos');
+  assert.ok(contarPalabras(texto) <= MAX_PALABRAS, `${contarPalabras(texto)} palabras`);
+  // Hasta 3 acciones a la vista (la principal: «Repasar ahora»), lo demás en «Más opciones».
+  assert.deepEqual(r.acciones.primarias.map(a => a.etiqueta), ['tuinstr.accion.repasar', 'tuinstr.accion.clase', 'tuinstr.accion.oral']);
+  assert.ok(r.acciones.mas.some(a => a.tipo === 'repaso_guiado') && r.acciones.mas.some(a => a.tipo === 'practicar') && r.acciones.mas.some(a => a.tipo === 'examen'));
+  // Otro día, otras palabras (los mismos hechos); el mismo día, siempre las mismas.
+  const textos = new Set([0, 1, 2].map(s => textoRevision(revision(d, { semilla: s }), t, tn)));
+  assert.equal(textos.size, 3);
+  assert.equal(textoRevision(revision(d, { semilla: 5 }), t, tn), textoRevision(revision(d, { semilla: 5 }), t, tn));
+  assert.equal(semillaDe(Date.UTC(2026, 10, 18, 3)), semillaDe(Date.UTC(2026, 10, 17, 5)), 'antes de las 4 a. m. UTC sigue siendo el día de Santo Domingo');
+  for (let s = 0; s < 6; s++) {
+    const x = textoRevision(revision(d, { semilla: s }), t, tn);
+    for (const hecho of ['Visión nocturna', 'Experiencia reciente', 'Desorientación espacial']) assert.ok(x.includes(hecho), `${s}: ${hecho}`);
+    assert.ok(contarPalabras(x) <= MAX_PALABRAS, x);
+  }
+  // Sin foco: el repaso; sin nada flojo: la próxima clase; sin nada: una invitación a empezar.
+  assert.match(textoRevision(revision({ repaso: { n: 1 }, debiles: [], cambios: [] }), t, tn), /1 pregunta de repaso para hoy/);
+  assert.deepEqual(revision({ repaso: { n: 2 } }).acciones.primarias.map(a => a.tipo), ['repaso_guiado']);
+  const tranquilo = revision({ cambios: [], debiles: [], botones: [{ tipo: 'clase', materia: 'm', tema: 't', titulo: 'La próxima' }] });
+  assert.match(textoRevision(tranquilo, t, tn), /No veo nada flojo.*próxima clase/);
+  assert.deepEqual(tranquilo.acciones.primarias.map(a => a.etiqueta), ['tuinstr.accion.siguiente']);
+  assert.equal(textoRevision(revision({}), t, tn), es['tuinstr.rev.vacio']);
+  // Mejoró pero sigue flojo (y es el tema para empezar): no dice «vas bien» a secas ni repite el tema.
+  const subio = textoRevision(revision({ cambios: [{ tipo: 'mejoro', origen: 'tg', titulo: 'Hipoxia' }], debiles: [{ origen: 'tg', titulo: 'Hipoxia', bien: 1, de: 3 }], foco: { materia: 'm', tema: 't', titulo: 'Hipoxia' } }), t, tn);
+  assert.equal(subio, 'Revisé tu estudio de ayer y hoy. 👍 Mejoraste en Hipoxia, aunque todavía no está firme. ¿Le damos una vuelta más? Te tomo 3 preguntas rápidas.');
+  // El oral en vivo se nombra como «(oral)», sin su porcentaje.
+  assert.match(textoRevision(revision({ debiles: [{ origen: 'vivo', titulo: 'Licencias', pct: 6 }] }), t, tn), /Licencias \(oral\)/);
+  // Títulos largos: sigue corto.
+  const largo = 'Un título de tema bastante largo para la prueba';
+  const x = textoRevision(revision({ ...d, cambios: [{ ...d.cambios[0], titulo: largo }], foco: { ...d.foco, titulo: `${largo} 2` }, debiles: [{ origen: 'tg', titulo: `${largo} 3`, bien: 1, de: 4 }] }), t, tn);
+  assert.ok(contarPalabras(x) <= MAX_PALABRAS, x);
+  const muyLargo = 'Un título de tema larguísimo con muchas palabras para ver que nunca pasa de sesenta en total';
+  const y = textoRevision(revision({ ...d, cambios: [{ ...d.cambios[0], titulo: `${muyLargo} 1` }], foco: { ...d.foco, titulo: `${muyLargo} 2` }, debiles: [{ origen: 'tg', titulo: `${muyLargo} 3`, bien: 1, de: 4 }] }), t, tn);
+  assert.ok(contarPalabras(y) <= MAX_PALABRAS, `${contarPalabras(y)}: ${y}`);
+  // Los títulos, sin el inglés entre paréntesis; un «mejoró» que sigue bajo 70 % no es «vas bien»; el oral, con «(oral)».
+  assert.match(textoRevision(revision({ foco: { materia: 'm', tema: 't', titulo: 'Hipoxia (Hypoxia)' } }), t, tn), /por Hipoxia\?/);
+  assert.match(textoRevision(revision({ cambios: [{ tipo: 'mejoro', origen: 'tg', titulo: 'Nubes', ahora: { bien: 2, de: 5 } }] }), t, tn), /Mejoraste en Nubes, aunque todavía no está firme/);
+  assert.match(textoRevision(revision({ cambios: [{ tipo: 'mejoro', origen: 'vivo', titulo: 'Licencias', ahora: { pct: 90 } }] }), t, tn), /Vas bien en Licencias \(oral\)/);
+  // Todas sus frases, en los dos idiomas.
+  for (const [parte, n] of Object.entries(VARIANTES)) for (let i = 1; i <= n; i++) assert.ok(es[`tuinstr.rev.${parte}.${i}`] && en[`tuinstr.rev.${parte}.${i}`], `${parte}.${i}`);
+  for (const k of ['tuinstr.rev.vacio', 'tuinstr.rev.en_oral', 'tuinstr.rev.fraccion', 'tuinstr.rev.y', 'tuinstr.mas']) assert.ok(es[k] && en[k], k);
+});
+
+test('la pantalla #instructor: un chat (cabeza, su revisión como primer mensaje, ≤ 3 pastillas); sin chat, SIN caja para escribir; con chat, la caja abajo', () => {
   let mostrado = null;
   let marcado = null;
   let chat = null;
@@ -281,21 +345,81 @@ test('la pantalla #instructor: sin chat, la tarjeta con «Estudiar por mi cuenta
   const v = crearVistaInstructor(h);
   v.pantalla({ ok: true, datos: RESUMEN }, { ok: true, datos: { permiso: { permitido: false }, historial: [] } });
   assert.equal(marcado, 'instructor');
-  const texto = mostrado.textContent;
-  for (const x of ['Tu instructor', 'Vi que mejoraste en La hipoxia', 'Pero en Espacio aéreo todavía dudas', 'La hipoxia: 2/6 → 5/6 ✅ mejoraste', 'Sigues flojo en Espacio aéreo',
-    'Licencias · oral en vivo 20 %', 'Estudiar por mi cuenta', 'Guíame', 'Repaso con tu instructor (3)', 'Oral en vivo: la última 40 %']) assert.ok(texto.includes(x), `falta «${x}»`);
+  const texto = textoDe(mostrado);
+  for (const x of ['Tu instructor', 'La hipoxia', 'Espacio aéreo', 'Repasar ahora', 'Ver la clase', 'Practicar oral', 'Más opciones', 'Estudiar por mi cuenta']) assert.ok(texto.includes(x), `falta «${x}»`);
+  assert.doesNotMatch(texto, /Sigues flojo|Lo que más te cuesta|Desde ayer:|Test Guide 33|oral en vivo 20/, 'nada de la lista de antes');
+  const primero = mostrado.todos(n => /tuinstr-primero/.test(n.atributos.class ?? ''));
+  assert.equal(primero.length, 1, 'la revisión es UN mensaje del instructor');
+  assert.match(primero[0].atributos.class, /burbuja profesor/);
+  assert.ok(contarPalabras(primero[0].todos(n => /tuinstr-revision/.test(n.atributos.class ?? ''))[0].textContent) <= MAX_PALABRAS);
+  const visibles = pastillasVisibles(primero[0]);
+  assert.ok(visibles.length >= 1 && visibles.length <= 3, `${visibles.length} pastillas a la vista`);
+  assert.ok(mostrado.todos(n => n.etiqueta === 'h1' && n.textContent.includes('Tu instructor')).length === 1, 'la cabeza del chat');
   assert.equal(mostrado.todos(n => n.etiqueta === 'textarea').length, 0, 'sin caja para escribir');
+  assert.ok(texto.includes('hace falta el instructor con IA'));
   assert.doesNotMatch(texto, /reglamento|espacio\b|oral_x/, 'ningún id a la vista');
   assert.equal(chat, null);
-  // Con chat: el mismo chat del Profesor, con la tarjeta arriba y la pestaña de «Tu instructor».
+  // Con chat: el chat del Profesor en modo mensajería, con la revisión como primer mensaje y las sugerencias.
   const conChat = { ok: true, datos: { permiso: { permitido: true }, historial: [] } };
   v.pantalla({ ok: true, datos: { ...RESUMEN, chat: true, ia: true } }, conChat);
   assert.equal(chat.o.seccion, 'instructor');
-  assert.ok(chat.o.arriba.some(n => n.textContent.includes('Estudiar por mi cuenta')));
-  // La vista del administrador: solo leer (sin «Guíame» ni el repaso).
-  const t = v.tarjeta(RESUMEN, null);
+  assert.ok(chat.o.mensajero.primero.textContent.includes('Repasar ahora'));
+  assert.ok(chat.o.mensajero.cabeza.textContent.includes('Tu instructor'));
+  assert.deepEqual(chat.o.mensajero.chips.slice(0, 1), ['Explícame Espacio aéreo']);
+  // La vista del administrador: solo leer (sin botones), con el detalle plegado.
+  const t = v.tarjeta(RESUMEN);
   assert.ok(t.textContent.includes('Lo que le recomienda su instructor'));
-  assert.ok(!t.textContent.includes('Guíame') && !t.textContent.includes('Repaso con tu instructor'));
+  assert.ok(t.textContent.includes('Ver el detalle') && t.textContent.includes('La hipoxia: 2/6 → 5/6 ✅ mejoraste'));
+  assert.ok(!t.textContent.includes('Repasar ahora') && !t.textContent.includes('Guíame') && !t.textContent.includes('Repaso con tu instructor'));
+  assert.equal(t.todos(n => /\bpastilla\b/.test(n.atributos.class ?? '')).length, 0);
+});
+
+test('el chat estilo mensajería (pagos.js): caja para escribir abajo, respuestas cortas con «Ver más», «Comprueba» como quiz, ≤ 3 pastillas y un solo video', () => {
+  let mostrado = null;
+  const base = ayudas();
+  const pagos = crearPagos({ ...base, fecha: x => String(x), confirmar: async () => true, cabeceraAdmin: () => null,
+    mostrar: x => { mostrado = x; }, marco: (seccion, ...xs) => { const n = new Nodo('div'); n.atributos.seccion = seccion; n.append(...xs.flat()); return n; } });
+  const largo = `${'La hipoxia aparece cuando entra menos oxígeno. '.repeat(10)}Por eso arriba se nota antes.`;
+  const botones = [{ tipo: 'clase', materia: 'fh', tema: 'h', titulo: 'Hipoxia' }, { tipo: 'practicar', materia: 'fh', tema: 'h', titulo: 'Hipoxia' }, { tipo: 'test', materia: 'fh', tema: 'h', titulo: 'Hipoxia' }, { tipo: 'examen', materia: 'fh' }];
+  const prof = { ok: true, datos: { permiso: { permitido: true }, tiempo: null, profe: { lineas: [{ clave: 'profe.bien', vars: {} }], botones }, historial: [
+    { pregunta: '¿Qué es la hipoxia?', estado: 'lista', respuesta: { respuesta: largo, control: '¿Qué baja con la altura?', estudiar: 'La hipoxia' }, profe: { botones },
+      videos: [{ url: 'https://www.youtube.com/watch?v=x', titulo: 'Hipoxia en vuelo' }], buscar: [{ url: 'https://www.youtube.com/results?search_query=a', texto: 'a' }, { url: 'https://www.youtube.com/results?search_query=b', texto: 'b' }] }] } };
+  const primero = new Nodo('div');
+  primero.textContent = 'Revisé tu estudio';
+  const cabeza = new Nodo('header');
+  pagos.pantallaProfesor(prof, { seccion: 'instructor', mensajero: { cabeza, primero, chips: ['Explícame la hipoxia', '¿Qué estudio hoy?'] } });
+  assert.equal(mostrado.atributos.seccion, 'instructor');
+  const texto = textoDe(mostrado);
+  // La caja para escribir, con su botón de enviar y las sugerencias rápidas.
+  const caja = mostrado.todos(n => n.etiqueta === 'textarea');
+  assert.equal(caja.length, 1);
+  assert.equal(caja[0].atributos.placeholder, 'Escríbele a tu instructor…');
+  assert.equal(mostrado.todos(n => /chat-enviar/.test(n.atributos.class ?? '')).length, 1);
+  assert.ok(texto.includes('Explícame la hipoxia') && texto.includes('Cada mensaje usa un minuto'));
+  // Sin el resumen de antes; lo de antes, plegado; y la revisión, después.
+  assert.equal(mostrado.todos(n => /profe-resumen/.test(n.atributos.class ?? '')).length, 0);
+  assert.ok(texto.includes('Tus mensajes anteriores (1)'));
+  const lista = mostrado.todos(n => n.atributos.class === 'chat-lista')[0];
+  assert.equal(lista.hijos.at(-1), primero, 'la revisión va al final de la conversación (la última que se ve)');
+  // La respuesta larga: lo primero y «Ver más»; «Comprueba» como quiz con su respuesta ahí mismo.
+  assert.ok(texto.includes('Ver más'));
+  assert.equal(mostrado.todos(n => n.atributos.class === 'burbuja-mas' && 'hidden' in n.atributos).length, 1);
+  const quiz = mostrado.todos(n => /burbuja-quiz/.test(n.atributos.class ?? ''));
+  assert.equal(quiz.length, 1);
+  assert.ok(quiz[0].textContent.includes('Comprueba') && quiz[0].textContent.includes('¿Qué baja con la altura?'));
+  assert.equal(quiz[0].todos(n => n.etiqueta === 'input').length, 0, 'en lo de antes, «Comprueba» se lee pero ya no se contesta');
+  // Un solo video; nada de «Buscar en YouTube» repetido.
+  assert.equal(mostrado.todos(n => /video-recomendado/.test(n.atributos.class ?? '')).length, 1);
+  assert.doesNotMatch(texto, /Buscar en YouTube/);
+  // Hasta 3 pastillas a la vista y «Más opciones»; ningún botón en MAYÚSCULAS (boton-3d) en la respuesta.
+  const respuesta = mostrado.todos(n => n.atributos.class === 'burbuja profesor')[0];
+  assert.ok(pastillasVisibles(respuesta).length <= 3);
+  assert.ok(respuesta.textContent.includes('Más opciones'));
+  assert.equal(respuesta.todos(n => /boton-3d/.test(n.atributos.class ?? '')).length, 0);
+  // El chat de siempre (#profesor) no cambia: su resumen y su botón «Enviar».
+  pagos.pantallaProfesor({ ok: true, datos: { ...prof.datos, historial: [] } });
+  assert.equal(mostrado.todos(n => /profe-resumen/.test(n.atributos.class ?? '')).length, 1);
+  assert.equal(mostrado.todos(n => n.etiqueta === 'textarea')[0].atributos.placeholder, 'Escribe tu pregunta…');
 });
 
 test('la ruta #instructor, el botón flotante (con su puntito) solo en Camino, Oral, Progreso y Repaso, y la recomendación arriba de Repaso', () => {
@@ -307,6 +431,7 @@ test('la ruta #instructor, el botón flotante (con su puntito) solo en Camino, O
   assert.match(readFileSync(join(RAIZ, 'public/repaso-final-vista.js'), 'utf8'), /h\.recoInstructor\?\.\(\)/);
   const vista = readFileSync(join(RAIZ, 'public/instructor-vista.js'), 'utf8');
   assert.doesNotMatch(vista, /innerHTML|style=|\.style\./);
+  assert.doesNotMatch(readFileSync(join(RAIZ, 'public/pagos.js'), 'utf8'), /innerHTML|style=|\.style\./);
 });
 
 // ---------- La Biblioteca: leer cómodo ----------
@@ -344,4 +469,5 @@ test('la Biblioteca: títulos en MAYÚSCULAS y numerados, párrafos juntados, li
   assert.equal(guardarLetra(3, roto), 3);
   const vista = readFileSync(join(RAIZ, 'public/biblioteca-vista.js'), 'utf8');
   assert.doesNotMatch(vista, /innerHTML|style=|\.style\./);
+  assert.doesNotMatch(readFileSync(join(RAIZ, 'public/pagos.js'), 'utf8'), /innerHTML|style=|\.style\./);
 });

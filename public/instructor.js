@@ -821,34 +821,54 @@ export function crearInstructor(h) {
   const varsProfe = v => Object.fromEntries(Object.entries(v ?? {}).map(([k, x]) => [k, k === 'materia' ? nombreMateria(x) : k === 'tema' || k === 'temas' ? String(x ?? '').split(' · ').map(sinIngles).join(' · ') : typeof x === 'number' ? numero(x) : x]));
   const textoProfe = p => (p?.lineas ?? []).map(l => (Number(l.vars?.n) === 1 ? tn(l.clave, varsProfe(l.vars)) : tx(l.clave, varsProfe(l.vars)))).join('\n');
   const ID_RUTA = /^[a-z0-9_-]{1,64}$/;
-  function botonProfe(b) {
+  // 0.14.39: { pastilla: true } = un botón compacto del chat de «Tu instructor» (sin mayúsculas); etiqueta = otro texto
+  // más corto («Ver la clase»); principal = el resaltado.
+  function botonProfe(b, { pastilla = false, principal = false, etiqueta = null } = {}) {
     const ok = x => ID_RUTA.test(String(x ?? ''));
     const tema = sinIngles(b.titulo ?? '');
-    const clase = 'boton-3d blanco chico con-icono';
-    if (b.tipo === 'repaso') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, e.currentTarget); } }, icono('calendario', 'icono chico'), el('span', { texto: tn('profe.b.repaso', { n: numero(b.n ?? 0) }) }));
+    const clase = pastilla ? `pastilla con-icono${principal ? ' principal' : ''}` : 'boton-3d blanco chico con-icono';
+    const fuerte = pastilla ? clase : 'boton-3d naranja chico con-icono';
+    const ic = nombre => icono(nombre, 'icono chico');
+    const texto = (clave, vars) => el('span', { texto: etiqueta ?? tx(clave, vars) });
+    if (b.tipo === 'repaso') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'repaso' }, e.currentTarget); } }, ic('calendario'), el('span', { texto: etiqueta ?? tn('profe.b.repaso', { n: numero(b.n ?? 0) }) }));
     if (b.tipo === 'oral') {
-      if (b.errores === true) return el('a', { class: clase, href: '#oral/practica/errores' }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral_errores') }));
+      if (b.errores === true) return el('a', { class: clase, href: '#oral/practica/errores' }, ic('microfono'), texto('profe.b.oral_errores'));
       // 0.14.29: el oral de un tema se practica en vivo (con el examinador), con su capítulo ya elegido.
-      return ok(b.materia) && ok(b.tema) ? el('a', { class: clase, href: `#oral/vivo/${encodeURIComponent(b.materia)}` }, icono('microfono', 'icono chico'), el('span', { texto: tx('profe.b.oral', { tema }) })) : null;
+      return ok(b.materia) && ok(b.tema) ? el('a', { class: clase, href: `#oral/vivo/${encodeURIComponent(b.materia)}` }, ic('microfono'), texto('profe.b.oral', { tema })) : null;
     }
     if (!ok(b.materia)) return null;
-    if (b.tipo === 'examen') return el('a', { class: 'boton-3d naranja chico con-icono', href: `#examen/${encodeURIComponent(b.materia)}` }, icono('trofeo', 'icono chico'), el('span', { texto: tx('profe.b.examen', { materia: nombreMateria(b.materia) }) }));
+    if (b.tipo === 'examen') return el('a', { class: fuerte, href: `#examen/${encodeURIComponent(b.materia)}` }, ic('trofeo'), texto('profe.b.examen', { materia: nombreMateria(b.materia) }));
     if (!ok(b.tema)) return null;
-    if (b.tipo === 'clase') return el('a', { class: clase, href: rutaTema(b.materia, b.tema, b.tarjeta) }, icono('libro', 'icono chico'), el('span', { texto: tx('profe.b.clase', { tema }) }));
-    if (b.tipo === 'practicar') return el('button', { type: 'button', class: 'boton-3d naranja chico con-icono', onclick: e => { sonar?.('toque'); practicarTema(b.materia, b.tema, e.currentTarget); } }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profe.b.practicar', { tema }) }));
-    if (b.tipo === 'test') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'tema', materia: b.materia, tema: b.tema }, e.currentTarget); } }, icono('bien', 'icono chico'), el('span', { texto: tx('profe.b.test', { tema }) }));
+    if (b.tipo === 'clase') return el('a', { class: clase, href: rutaTema(b.materia, b.tema, b.tarjeta) }, ic('libro'), texto('profe.b.clase', { tema }));
+    if (b.tipo === 'practicar') return el('button', { type: 'button', class: fuerte, onclick: e => { sonar?.('toque'); practicarTema(b.materia, b.tema, e.currentTarget); } }, ic('cerebro'), texto('profe.b.practicar', { tema }));
+    if (b.tipo === 'test') return el('button', { type: 'button', class: clase, onclick: e => { sonar?.('toque'); empezarIntento({ tipo: 'tema', materia: b.materia, tema: b.tema }, e.currentTarget); } }, ic('bien'), texto('profe.b.test', { tema }));
     return null;
   }
   // { lineas: true } = también sus líneas (sin IA); si no, solo los botones (debajo de lo que escribió la IA).
   function pintarProfe(p, { lineas = false } = {}) {
     if (!p) return null;
-    const botones = (p.botones ?? []).map(botonProfe).filter(Boolean);
+    const botones = (p.botones ?? []).map(b => botonProfe(b)).filter(Boolean);
     const texto = lineas ? textoProfe(p) : '';
     if (!botones.length && !texto) return null;
     return el('div', { class: 'profe-chat' },
       texto ? talCual('p', texto, 'profe-lineas') : null,
       botones.length ? el('div', { class: 'profe-botones' }, botones) : null);
   }
+  // 0.14.39: los botones dentro de un mensaje del chat de «Tu instructor»: hasta `max` pastillas a la vista y el resto
+  // en «Más opciones» (plegado). nodos: botones ya hechos (los null se saltan).
+  function pastillas(nodos, { max = 3 } = {}) {
+    const lista = (nodos ?? []).flat(Infinity).filter(Boolean);
+    if (!lista.length) return null;
+    const resto = lista.slice(max);
+    const mas = resto.length ? el('div', { class: 'pastillas-mas', hidden: true }, resto) : null;
+    const abrir = mas ? el('button', { type: 'button', class: 'pastilla mas', 'aria-expanded': 'false', onclick: e => {
+      mas.hidden = !mas.hidden;
+      e.currentTarget.setAttribute('aria-expanded', String(!mas.hidden));
+    } }, el('span', { texto: tx('tuinstr.mas') })) : null;
+    return el('div', { class: 'pastillas' }, lista.slice(0, max), abrir, mas);
+  }
+  // Los botones de un mensaje como pastillas (hasta 3 + «Más opciones»).
+  const pastillasProfe = (botones, opciones = {}) => pastillas((botones ?? []).map(b => botonProfe(b, { pastilla: true })), opciones);
 
   // ---------- 0.12.4: el Profesor virtual cuando no hay IA para él ----------
   // Lo que respondió el instructor básico se ve como una respuesta más (nunca «no pudo» ni «escribiendo…»).
@@ -873,5 +893,5 @@ export function crearInstructor(h) {
       el('a', { class: 'boton-3d', href: '#inicio' }, el('span', { texto: tx('profesor.ir_inicio') })));
   }
 
-  return Object.freeze({ pintarProfe, textoProfe, lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion, pintarConsejo, practicarTema });
+  return Object.freeze({ pintarProfe, botonProfe, pastillas, pastillasProfe, textoProfe, lugarIa, textoPlan, paraTi, pintarParaTi, historialParaChat, profesorSinIa, planDeHoy, miniClaseIa, pintarMiniClase, pasosPlan, citasTg, cajaIa, preparado, planParaPasar, profesorAdmin, medidorTiempo, sinMinutos, loQueHicimos, resultadoRefuerzo, frasesFalla, demo, insignia, enInicio, cajaDuda, explicar, consejoExamen, tarjetaAdmin, tarjetaInicio, vistaExplicacion, pintarConsejo, practicarTema });
 }

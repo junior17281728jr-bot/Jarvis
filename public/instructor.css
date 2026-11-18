@@ -387,3 +387,115 @@ button.plan-hoy-fila { cursor: pointer; }
 .tuinstr-sin-chat { margin-top: 10px; }
 .tuinstr-reco { display: grid; gap: 6px; margin: 10px 0 14px; border-left: 4px solid var(--azul); }
 .tuinstr-reco p { margin: 0; }
+/* ---------- 0.14.39: «Tu instructor» como un chat de mensajería ---------- */
+.mensajero { max-width: 720px; margin: 0 auto 16px; padding: 0; gap: 0; overflow: visible; display: flex; flex-direction: column; min-height: calc(100dvh - 190px); }
+.mensajero-cabeza { position: sticky; top: 0; z-index: 3; flex-wrap: nowrap; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--linea);
+  background: color-mix(in srgb, var(--tarjeta) 92%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-radius: 20px 20px 0 0; }
+.mensajero-cabeza h1 { font-size: 18px; line-height: 1.2; }
+.mensajero-cabeza p { margin: 1px 0 0; }
+.mensajero-cabeza .instructor-avatar { position: relative; width: 42px; height: 42px; border-radius: 50%; box-shadow: none; }
+.mensajero-cabeza .instructor-avatar .icono { width: 24px; height: 24px; }
+.avatar-punto { position: absolute; right: 0; bottom: 0; width: 11px; height: 11px; border-radius: 50%; background: #22c55e; border: 2px solid var(--tarjeta); }
+.sin-chat .avatar-punto { background: var(--suave); }
+.chat-quien { min-width: 0; }
+.chat-volver { flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin-left: -6px; border-radius: 50%; color: var(--azul); }
+.chat-volver:hover { background: var(--fondo); }
+.mensajero .chat-lista { flex: 1; max-height: none; overflow: visible; align-content: start; gap: 10px; padding: 16px 12px 12px; }
+.mensajero .burbuja { max-width: min(86%, 560px); padding: 10px 14px; border-radius: 20px; line-height: 1.45; font-size: 16px; }
+.mensajero .burbuja p { margin: 0 0 4px; }
+.mensajero .burbuja p:last-child { margin-bottom: 0; }
+.mensajero .burbuja.alumno { border-bottom-right-radius: 6px; }
+.mensajero .burbuja.profesor { border: 0; background: var(--fondo); border-bottom-left-radius: 6px; }
+.mensajero .tuinstr-lugar { display: contents; }
+.mensajero .burbuja.tuinstr-primero, .mensajero .burbuja:has(> .pastillas) { max-width: min(94%, 600px); }
+@media (max-width: 420px) { .pastilla, .mensajero .boton-explicar { font-size: 14px; padding: 6px 11px; min-height: 36px; gap: 5px; } .pastillas { gap: 6px 5px; } }
+.mensajero .tuinstr-burbuja { max-width: min(86%, 560px); }
+.tuinstr-revision { font-size: 16.5px; }
+.burbuja.escribiendo .suave { font-style: italic; }
+/* Las pastillas: botones compactos, sin mayúsculas. */
+.pastillas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pastilla, .mensajero .boton-explicar { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; margin: 0; padding: 7px 13px;
+  border: 1.5px solid color-mix(in srgb, var(--azul) 45%, var(--linea)); border-radius: 999px; background: var(--tarjeta); color: var(--azul);
+  font-size: 14.5px; font-weight: 700; line-height: 1.2; font-family: inherit; letter-spacing: 0; text-transform: none; text-decoration: none; box-shadow: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pastilla.con-icono, .pastilla { display: inline-flex; }
+.pastilla .icono, .burbuja .pastilla .icono { width: 17px; height: 17px; color: currentColor; }
+.pastilla:hover { background: color-mix(in srgb, var(--azul) 8%, var(--tarjeta)); }
+.pastilla:active { transform: scale(0.97); }
+.pastilla:focus-visible, .chip:focus-visible, .chat-enviar:focus-visible, .ver-mas:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+.pastilla.principal { background: var(--azul); border-color: var(--azul); color: #fff; }
+.pastilla.principal:hover { background: color-mix(in srgb, var(--azul) 88%, #000); }
+.pastilla.mas { border-style: dashed; color: var(--suave); border-color: var(--linea); }
+.pastilla:disabled { opacity: 0.55; cursor: default; }
+.pastillas-mas { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.pastillas-mas[hidden] { display: none; }
+.ver-mas { display: inline-block; margin: 2px 0 0; padding: 2px 0; border: 0; background: none; color: var(--azul); font: inherit; font-size: 14.5px; font-weight: 700; cursor: pointer; }
+.burbuja-mas { margin-top: 4px; }
+.burbuja-mas[hidden] { display: none; }
+.video-recomendado { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: var(--tarjeta); color: var(--texto);
+  text-decoration: none; font-size: 14.5px; min-width: 0; }
+.video-recomendado .suave { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* «Comprueba» y las preguntas rápidas: una burbuja de quiz. */
+.mensajero .burbuja.burbuja-quiz { background: color-mix(in srgb, var(--oro) 14%, var(--tarjeta)); border: 1.5px solid color-mix(in srgb, var(--oro) 45%, var(--linea)); }
+.quiz-etiqueta { font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: color-mix(in srgb, var(--oro) 55%, var(--texto)); gap: 4px; }
+.quiz-respuesta { display: flex; gap: 6px; margin-top: 8px; }
+.quiz-respuesta input { flex: 1; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1.5px solid var(--linea); border-radius: 999px; background: var(--tarjeta); color: var(--texto); font: inherit; font-size: 15px; }
+.quiz-enviar, .chat-enviar { flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: var(--azul); color: #fff; cursor: pointer; }
+.quiz-enviar:disabled, .chat-enviar:disabled { opacity: 0.5; }
+.mensajero .tuinstr-opciones { gap: 6px; margin: 8px 0 4px; }
+.mensajero .tuinstr-opcion { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 9px 12px; border: 1.5px solid var(--linea); border-radius: 14px;
+  background: var(--tarjeta); color: var(--texto); font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.mensajero .tuinstr-opcion:hover:not(:disabled) { border-color: var(--azul); }
+.mensajero .tuinstr-opcion:disabled { cursor: default; opacity: 0.8; }
+.tuinstr-letra { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--fondo); font-size: 13px; }
+.mensajero .tuinstr-salida .pastillas { margin-top: 6px; }
+.mensajero .instructor-explica { flex-basis: 100%; }
+/* Lo de antes, plegado arriba. */
+.chat-anteriores { justify-self: center; width: 100%; }
+.chat-anteriores > summary { width: max-content; margin: 0 auto 4px; padding: 4px 12px; border-radius: 999px; background: var(--fondo); color: var(--suave); font-size: 13px; font-weight: 700; cursor: pointer; list-style: none; }
+.chat-anteriores > summary::-webkit-details-marker { display: none; }
+.chat-lista-anteriores { display: grid; gap: 10px; padding: 6px 0; }
+/* Abajo, fijo: sugerencias rápidas, la caja para escribir y la nota del costo (pequeña). */
+.chat-abajo { position: sticky; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 3; display: grid; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--linea);
+  background: color-mix(in srgb, var(--tarjeta) 94%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-radius: 0 0 20px 20px; }
+.chat-chips { flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin: 0; padding-bottom: 2px; scrollbar-width: none; }
+.chat-chips::-webkit-scrollbar { display: none; }
+.chat-chips .chip { flex: none; padding: 6px 12px; border-width: 1.5px; font-size: 14px; font-weight: 600; color: var(--azul); white-space: nowrap; }
+.mensajero .chat-escribir { align-items: flex-end; gap: 8px; }
+.mensajero .chat-escribir textarea { min-height: 42px; max-height: 120px; padding: 10px 16px; border: 1.5px solid var(--linea); border-radius: 22px; background: var(--fondo); color: var(--texto); font-size: 16px; line-height: 1.35; resize: none; }
+.mensajero .chat-escribir textarea:focus { outline: none; border-color: var(--azul); }
+.mensajero .chat-enviar { width: 42px; height: 42px; }
+.chat-enviar .icono { width: 20px; height: 20px; }
+.chat-nota { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; font-size: 12px; color: var(--suave); }
+.chat-nota p { margin: 0; }
+.chat-nota .medidor-tiempo { padding: 0; margin: 0; border: 0; background: none; font-size: 12px; display: flex; gap: 8px; align-items: center; }
+.chat-nota .medidor-tiempo p, .chat-nota .medidor-tiempo strong { font-size: 12px; margin: 0; }
+.chat-nota .medidor-tiempo .icono { width: 14px; height: 14px; }
+.chat-nota .chat-tiempo:empty { display: none; }
+.sin-chat .chat-nota { font-size: 13px; align-items: flex-start; flex-wrap: nowrap; }
+.sin-chat .chat-nota .icono { flex: none; margin-top: 1px; }
+@media (min-width: 760px) {
+  .mensajero { min-height: calc(100dvh - 210px); }
+  .chat-abajo { bottom: 0; }
+  .mensajero .chat-lista { padding: 20px 20px 14px; }
+  .chat-abajo { padding: 10px 20px 12px; }
+  .mensajero-cabeza { padding: 12px 20px; }
+  .chat-volver { display: none; }
+}
+.tuinstr-detalle summary { cursor: pointer; font-weight: 700; color: var(--azul); }
+.tuinstr-detalle[open] { display: grid; gap: 8px; }
+.tuinstr-tarjeta .tuinstr-primero { max-width: 100%; }
+.mensajero > * { min-width: 0; }
+.mensajero .chat-lista { grid-template-columns: minmax(0, 1fr); }
+.chat-abajo > * { margin: 0; }
+.chat-nota p, .chat-nota .suave { font-size: 12px; line-height: 1.35; }
+.mensajero .ver-mas { display: block; width: auto; min-height: 0; margin: 4px 0 0; padding: 2px 0; text-align: left; box-shadow: none; }
+.video-recomendado .fuerte { white-space: nowrap; }
+.mensajero button.chip, .mensajero button.chat-enviar, .mensajero button.quiz-enviar, .mensajero button.tuinstr-opcion, .mensajero button.ver-mas { margin-top: 0; }
+.mensajero button.chip { min-height: 34px; border-radius: 999px; background: var(--tarjeta); }
+.mensajero button.chat-enviar, .mensajero button.quiz-enviar { min-height: 0; border-radius: 50%; }
+.mensajero button.ver-mas { background: none; border-radius: 6px; }
+.sin-chat .chat-abajo { position: static; }
+@media (max-width: 420px) { .pastilla:not(.principal) .icono { display: none; } .mensajero .burbuja { padding: 10px 12px; } }
+/* Lo nuevo se ve entero: nunca detrás de la cabeza ni de la caja para escribir (fijas). */
+.mensajero .burbuja { scroll-margin-top: 76px; scroll-margin-bottom: calc(230px + env(safe-area-inset-bottom)); }
+@media (min-width: 760px) { .mensajero .burbuja { scroll-margin-top: 84px; scroll-margin-bottom: 170px; } }

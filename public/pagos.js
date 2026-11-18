@@ -332,13 +332,80 @@ export function crearPagos(h) {
   }
   // 0.12.4: lo que respondió el instructor básico (sin IA en ese momento): una respuesta más, nunca «no pudo».
   const textoBasica = b => (b ? `${tx('profesor.basico')} ${tx(`instr.c.${b.clave}`, b.vars ?? {})}` : tx('profesor.basico_sin'));
-  function burbujas(m) {
+  // 0.14.39 («Tu instructor», compacto): un solo video por respuesta (el que eligió el administrador; si no, una búsqueda).
+  function unVideo(m) {
+    const v = m.videos?.[0] ? { url: m.videos[0].url, titulo: m.videos[0].titulo } : m.buscar?.[0] ? { url: m.buscar[0].url, titulo: m.buscar[0].texto } : null;
+    return v ? el('a', { class: 'video-recomendado', href: v.url, target: '_blank', rel: 'noopener noreferrer' },
+      el('span', { 'aria-hidden': 'true', texto: '🎬' }), el('span', { class: 'fuerte', texto: tx('tuinstr.chat.video') }), el('span', { class: 'suave', texto: ` · ${v.titulo ?? ''}` })) : null;
+  }
+  // Un texto largo: lo primero (hasta una frase cerca de `corte`) y el resto. → [primero, resto] (resto '' si es corto).
+  function partirLargo(texto, corte = 260) {
+    const s = String(texto ?? '');
+    if (s.length <= corte + 80) return [s, ''];
+    const trozo = s.slice(0, corte);
+    const fin = Math.max(trozo.lastIndexOf('. '), trozo.lastIndexOf('\n'), trozo.lastIndexOf('? '), trozo.lastIndexOf('! '));
+    const i = fin >= 100 ? fin + 1 : corte;
+    return [s.slice(0, i).trim(), s.slice(i).trim()];
+  }
+  // «Ver más»: lo de más va plegado dentro de la misma burbuja.
+  function conVerMas(visible, extra) {
+    const resto = extra.filter(Boolean);
+    if (!resto.length) return visible;
+    const caja = el('div', { class: 'burbuja-mas', hidden: true }, resto);
+    const boton = el('button', { type: 'button', class: 'ver-mas', 'aria-expanded': 'false', onclick: e => {
+      caja.hidden = !caja.hidden;
+      e.currentTarget.setAttribute('aria-expanded', String(!caja.hidden));
+      cambiarHijos(e.currentTarget, el('span', { texto: tx(caja.hidden ? 'tuinstr.chat.ver_mas' : 'tuinstr.chat.ver_menos') }));
+    } }, el('span', { texto: tx('tuinstr.chat.ver_mas') }));
+    return [visible, caja, boton];
+  }
+  // «Comprueba»: la pregunta de control como una burbuja de quiz, con su respuesta ahí mismo (va al chat como un mensaje).
+  function burbujaQuiz(pregunta, responder) {
+    const entrada = el('input', { type: 'text', maxlength: 300, 'aria-label': tx('tuinstr.chat.tu_respuesta'), placeholder: tx('tuinstr.chat.tu_respuesta') });
+    const enviar = async evento => {
+      evento?.preventDefault?.();
+      const r = String(entrada.value ?? '').trim();
+      if (r.length < 1 || !responder) return entrada.focus();
+      entrada.disabled = true;
+      boton.disabled = true;
+      const ok = await responder(tx('tuinstr.chat.mi_respuesta', { pregunta: String(pregunta).slice(0, 160), respuesta: r }));
+      // Si no se pudo mandar, se puede intentar otra vez.
+      if (ok === false) { entrada.disabled = false; boton.disabled = false; }
+    };
+    const boton = el('button', { type: 'submit', class: 'quiz-enviar', 'aria-label': tx('tuinstr.chat.responder') }, icono('enviar', 'icono chico'));
+    return el('div', { class: 'burbuja profesor burbuja-quiz' },
+      el('p', { class: 'quiz-etiqueta con-icono' }, icono('bombilla', 'icono chico'), el('span', { texto: tx('tuinstr.chat.comprueba') })),
+      talCual('p', pregunta, 'fuerte'),
+      responder ? el('form', { class: 'quiz-respuesta', onsubmit: enviar }, entrada, boton) : null);
+  }
+  // compacto (0.14.39, «Tu instructor»): burbujas cortas («Ver más» para lo largo), «Comprueba» como quiz, hasta 3
+  // pastillas y un solo video. responder(texto): para contestar el quiz desde la burbuja.
+  // sinQuiz: la respuesta de «Repasar ahora» (guía): después vienen las preguntas rápidas, sin «Comprueba».
+  function burbujas(m, { compacto = false, responder = null, sinQuiz = false } = {}) {
     // 0.14.22: sin IA, la respuesta es lo que lee el profesor de su historia (si lo hay); y sus botones, siempre.
     const sinIa = !m.respuesta && m.estado === 'basico';
     const respuesta = m.respuesta ?? (sinIa ? { respuesta: m.profe?.lineas?.length ? instructorUi().textoProfe(m.profe) : textoBasica(m.basica) } : null);
-    const botonesProfe = m.profe && (respuesta || m.estado === 'no') ? instructorUi().pintarProfe({ botones: m.profe.botones }) : null;
+    const conBotones = m.profe && (respuesta || m.estado === 'no');
+    const botonesProfe = conBotones ? (compacto ? instructorUi().pastillasProfe(m.profe.botones) : instructorUi().pintarProfe({ botones: m.profe.botones })) : null;
+    const alumno = el('div', { class: 'burbuja alumno' }, talCual('p', m.pregunta));
+    if (compacto) {
+      if (!respuesta) {
+        return [alumno, el('div', { class: `burbuja profesor${m.estado === 'no' ? '' : ' escribiendo'}` },
+          m.estado === 'no' && m.profe?.lineas?.length ? talCual('p', instructorUi().textoProfe(m.profe)) : el('p', { class: 'suave', texto: m.estado === 'no' ? tx('profesor.no') : tx('instr.ia.escribiendo') }),
+          m.estado === 'no' ? botonesProfe : null)];
+      }
+      const [primero, resto] = partirLargo(respuesta.respuesta);
+      const extra = [
+        resto ? talCual('p', resto) : null,
+        ...(respuesta.citas ?? []).map(c => talCual('p', tx('instr.ia.cita', { n: c.numero, respuesta: c.respuesta }), 'cita-test-guide chica')),
+        respuesta.estudiar ? el('p', { class: 'suave chica' }, el('strong', { texto: `${tx('profesor.estudia')} ` }), talCual('span', respuesta.estudiar)) : null,
+      ];
+      return [alumno,
+        el('div', { class: 'burbuja profesor' }, conVerMas(talCual('p', primero), extra), unVideo(m), botonesProfe),
+        respuesta.control && !sinQuiz ? burbujaQuiz(respuesta.control, responder) : null].filter(Boolean);
+    }
     return [
-      el('div', { class: 'burbuja alumno' }, talCual('p', m.pregunta)),
+      alumno,
       el('div', { class: 'burbuja profesor' },
         respuesta ? [
           // Lo que escribió la IA va como texto (una dirección que escriba se ve como texto, nunca como enlace).
@@ -358,7 +425,10 @@ export function crearPagos(h) {
   }
   // 0.14.34: «Tu instructor» (#instructor) usa este mismo chat: arriba = su tarjeta (lo de arriba del chat), seccion = la
   // pestaña marcada, alListo({ mandar, lista }) = para poner la guía y las preguntas rápidas DENTRO de la conversación.
-  async function pantallaProfesor(cargado = null, { arriba = [], seccion = 'inicio', alListo = null } = {}) {
+  // 0.14.39: mensajero = { cabeza, primero, chips } → el chat estilo mensajería de «Tu instructor»: su cabeza (avatar y
+  // nombre), lo de antes plegado, el primer mensaje (su revisión), las respuestas compactas, las sugerencias rápidas y la
+  // caja para escribir abajo (fija). Sin el resumen ni la apertura del tutor (la revisión ya es el primer mensaje).
+  async function pantallaProfesor(cargado = null, { arriba = [], seccion = 'inicio', alListo = null, mensajero = null } = {}) {
     const r = cargado ?? await api('GET', '/api/academia/profesor');
     if (!r.ok) return mostrar(marco('inicio', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
     const d = r.datos;
@@ -367,40 +437,62 @@ export function crearPagos(h) {
       // 0.12.3: «Comprar» solo si el instructor IA le sirve a esta cuenta (si no, no se vende).
       return mostrar(marco('inicio', volver, el('section', { class: 'panel' }, el('h1', { class: 'titulo-grande', texto: tx('profesor.titulo') }), el('p', { texto: tx('profesor.sin_permiso') })), comparacion(null, { irA: d.tiempo?.activo ? undefined : null })));
     }
+    const compacto = Boolean(mensajero);
+    // El quiz «Comprueba» responde por el mismo chat (mandar se define abajo).
+    const opcionesBurbuja = { compacto, responder: compacto ? texto => mandar(texto) : null };
+    const ver = (m, extra = {}) => burbujas(m, { ...opcionesBurbuja, ...extra });
     // 0.14.22: arriba, lo que el profesor ya leyó de su historia (sin IA, gratis) con sus botones.
-    const resumen = d.profe ? instructorUi().pintarProfe(d.profe, { lineas: true }) : null;
+    const resumen = d.profe && !compacto ? instructorUi().pintarProfe(d.profe, { lineas: true }) : null;
+    const anteriores = compacto && d.historial.length ? el('details', { class: 'chat-anteriores' },
+      el('summary', { texto: tx('profesor.anteriores', { n: numero(d.historial.length) }) }),
+      el('div', { class: 'chat-lista-anteriores' }, d.historial.flatMap(m => ver(m, { responder: null })))) : null;
     const lista = el('div', { class: 'chat-lista', 'aria-live': 'polite' },
       resumen ? el('div', { class: 'burbuja profesor profe-resumen' }, el('p', { class: 'fuerte chica', texto: tx('profe.titulo') }), resumen) : null,
-      d.historial.flatMap(burbujas));
-    const entradaTexto = el('textarea', { rows: 2, maxlength: 500, 'aria-label': tx('profesor.escribe'), placeholder: tx('profesor.escribe') });
+      compacto ? [anteriores, mensajero.primero] : d.historial.flatMap(ver));
+    const entradaTexto = el('textarea', { rows: compacto ? 1 : 2, maxlength: 500, 'aria-label': tx(compacto ? 'tuinstr.chat.escribe' : 'profesor.escribe'), placeholder: tx(compacto ? 'tuinstr.chat.escribe' : 'profesor.escribe'),
+      // Enter manda (Mayúsculas + Enter, una línea más); la caja crece hasta 4 líneas.
+      oninput: compacto ? () => { entradaTexto.rows = Math.min(4, Math.max(1, String(entradaTexto.value).split('\n').length)); } : null,
+      onkeydown: compacto ? e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); mandar(); } } : null });
     const medidor = el('div', { class: 'chat-tiempo' }, instructorUi().medidorTiempo(d.tiempo));
     // 0.12.9 (G): donde = { materia, tema } cuando el mensaje sale de «Explícame la clase de…».
     const mandar = async (texto, donde = null) => {
       const mensaje = String(texto ?? entradaTexto.value).trim();
-      if (mensaje.length < 2) return entradaTexto.focus();
+      if (mensaje.length < 2) { entradaTexto.focus(); return false; }
       boton.disabled = true;
       const x = await api('POST', '/api/academia/profesor', { mensaje, ...(donde ?? {}) });
       boton.disabled = false;
-      if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
-      entradaTexto.value = '';
+      if (!x.ok) { avisar(textoError(x.datos.error), 'mal'); return false; }
+      if (texto == null || String(texto).trim() === String(entradaTexto.value).trim()) entradaTexto.value = '';
+      if (compacto) entradaTexto.rows = 1;
       // 0.12.4: ia = null cuando no hay IA para él por algo que no se pasa solo: la respuesta básica, sin «no pudo».
       const ia = x.datos.ia ?? { estado: 'basico' };
       const m = { pregunta: mensaje, respuesta: null, estado: ia.estado, basica: x.datos.basica ?? null, profe: x.datos.profe ?? null, videos: x.datos.videos, buscar: x.datos.buscar };
-      const nodos = burbujas(m);
+      const extra = { sinQuiz: Boolean(donde?.guia) };
+      const nodos = ver(m, extra);
       lista.append(...nodos);
       const caja = nodos[1];
       if (x.datos.tiempo) cambiarHijos(medidor, instructorUi().medidorTiempo(x.datos.tiempo));
       if (ia.estado === 'no') {
+        const videos = compacto ? [unVideo(x.datos)] : [...(x.datos.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')), ...(x.datos.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))];
+        const botonesNo = compacto ? instructorUi().pastillasProfe(x.datos.profe?.botones) : null;
         cambiarHijos(caja, ia.motivo === 'sin_minutos' ? instructorUi().sinMinutos() : el('p', { class: 'suave', texto: tx(ia.espera ? 'instr.ia.espera' : 'profesor.no') }),
-          x.datos.profe?.lineas?.length ? instructorUi().pintarProfe(x.datos.profe, { lineas: true })
+          x.datos.profe?.lineas?.length ? (compacto ? talCual('p', instructorUi().textoProfe(x.datos.profe)) : instructorUi().pintarProfe(x.datos.profe, { lineas: true }))
             : x.datos.basica ? el('p', {}, el('strong', { texto: `${tx('profesor.basico')} ` }), el('span', { texto: tx(`instr.c.${x.datos.basica.clave}`, x.datos.basica.vars ?? {}) })) : null,
-          ...[...(x.datos.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')), ...(x.datos.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))]);
+          botonesNo, ...videos);
+        caja.classList?.remove('escribiendo');
       } else if (ia.estado === 'pendiente') {
         const vuelta = async (n = 0) => {
           if (!caja.isConnected) return;
           const y = await api('GET', '/api/academia/profesor');
           const ultimo = y.ok ? y.datos.historial.at(-1) : null;
-          if (ultimo?.respuesta || ultimo?.estado === 'no' || ultimo?.estado === 'basico') { caja.replaceWith(...burbujas(ultimo).slice(1)); cambiarHijos(medidor, instructorUi().medidorTiempo(y.datos.tiempo)); return; }
+          if (ultimo?.respuesta || ultimo?.estado === 'no' || ultimo?.estado === 'basico') {
+            const nuevos = ver(ultimo, extra).slice(1);
+            caja.replaceWith(...nuevos);
+            cambiarHijos(medidor, instructorUi().medidorTiempo(y.datos.tiempo));
+            // La respuesta, a la vista (su comienzo; nunca detrás de la caja para escribir).
+            if (compacto) nuevos[0]?.scrollIntoView?.({ block: 'nearest' });
+            return;
+          }
           if (n < 60) setTimeout(() => vuelta(n + 1), 2000);
           // 0.14.38: después de 2 minutos sin respuesta, lo básico (la IA puede llegar después: se ve al volver).
           else caja.replaceWith(...burbujas({ ...m, estado: 'no' }).slice(1));
@@ -408,11 +500,25 @@ export function crearPagos(h) {
         setTimeout(vuelta, 2000);
       }
       caja.scrollIntoView?.({ block: 'nearest' });
+      return true;
     };
-    const boton = el('button', { type: 'button', class: 'boton-3d', onclick: () => mandar() }, el('span', { texto: tx('profesor.enviar') }));
+    const boton = compacto
+      ? el('button', { type: 'button', class: 'chat-enviar', 'aria-label': tx('profesor.enviar'), title: tx('profesor.enviar'), onclick: () => mandar() }, icono('enviar'))
+      : el('button', { type: 'button', class: 'boton-3d', onclick: () => mandar() }, el('span', { texto: tx('profesor.enviar') }));
+    alListo?.({ mandar, lista });
+    if (compacto) {
+      const chips = (mensajero.chips ?? []).filter(Boolean);
+      return mostrar(marco(seccion, ...arriba,
+        el('section', { class: 'panel chat mensajero', 'aria-label': tx('tuinstr.titulo') },
+          mensajero.cabeza,
+          lista,
+          el('div', { class: 'chat-abajo' },
+            chips.length ? el('div', { class: 'chips chat-chips' }, chips.map(c => el('button', { type: 'button', class: 'chip', onclick: () => mandar(c) }, el('span', { texto: c })))) : null,
+            el('div', { class: 'chat-escribir' }, entradaTexto, boton),
+            el('div', { class: 'chat-nota' }, medidor, el('p', { class: 'suave', texto: tx('tuinstr.chat.costo') }))))));
+    }
     // 0.12.9 (G, M, Y): el primer mensaje del tutor (sin llamar a la IA), arriba de la conversación.
     h.tutorUi?.().ponerApertura(lista, mandar);
-    alListo?.({ mandar, lista });
     mostrar(marco(seccion, volver, ...arriba,
       el('section', { class: 'panel chat' },
         el('div', { class: 'chat-cabeza' }, el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('cerebro')),
