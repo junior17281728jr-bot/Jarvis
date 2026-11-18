@@ -180,3 +180,44 @@ test('0.14.17: el «extra» suelto en «fuentes» se baja junto a las partes (y 
     assert.equal((await sincronizarFuentes(db, config, { escribir: escribir(db) })).bajados, 0);
   });
 });
+
+// 0.14.43: el extra agrega libros de dominio público (los manuales de la FAA) y sus libro-<id>-capNN.txt se suben SUELTOS a
+// «fuentes»: se bajan (con las partes ya instaladas) solo los de esos libros; nunca pisan el texto de un libro del paquete.
+test('0.14.43: los capítulos sueltos de los libros del extra se bajan; los de un libro del paquete o no declarado, no', async () => {
+  const { partes, indice } = partir(bundle());
+  const extra = { libros: [{ id: 'faa-phak', titulo: "Pilot's Handbook (muestra)", licencia: 'dominio_publico' }, { id: 'pp-es', titulo: 'Relicenciar', licencia: 'dominio_publico' }] };
+  await conDrive([{ nombre: 'fuentes-v1.json', cuerpo: Buffer.from(JSON.stringify(indice)) }, ...partes.map(p => ({ nombre: p.archivo, cuerpo: p.b }))], async ({ db, config, agregar }) => {
+    assert.equal((await sincronizarFuentes(db, config, { escribir: escribir(db) })).ok, true);
+    const dir = carpetaFuentes(config);
+    const antes = readFileSync(join(dir, 'libro-pp-es-cap02.txt'), 'utf8');
+    agregar({ nombre: 'fuentes-manifiesto-extra.json', cuerpo: Buffer.from(JSON.stringify(extra)) });
+    agregar({ nombre: 'libro-faa-phak-cap01.txt', cuerpo: Buffer.from('=== p 1 ===\nChapter 1\nIntroduction to Flying\nSample text.\n') });
+    agregar({ nombre: 'libro-faa-phak-cap02.txt', cuerpo: Buffer.from('=== p 30 ===\nChapter 2\nAeronautical Decision-Making\nSample text.\n') });
+    agregar({ nombre: 'libro-pp-es-cap02.txt', cuerpo: Buffer.from('=== p 10 ===\nTEXTO PISADO\n') });
+    agregar({ nombre: 'libro-zzz-cap01.txt', cuerpo: Buffer.from('=== p 1 ===\nno declarado\n') });
+    const r = await sincronizarFuentes(db, config, { escribir: escribir(db) });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.bajados, 3, 'el extra y los dos capítulos del manual');
+    assert.ok(existsSync(join(dir, 'libro-faa-phak-cap01.txt')) && existsSync(join(dir, 'libro-faa-phak-cap02.txt')));
+    assert.equal(readFileSync(join(dir, 'libro-pp-es-cap02.txt'), 'utf8'), antes, 'el libro del paquete no se pisa');
+    assert.ok(!existsSync(join(dir, 'libro-zzz-cap01.txt')));
+    const e = estadoFuentes(db);
+    assert.deepEqual(e.librosExtra, ['faa-phak']);
+    assert.deepEqual(Object.keys(e.extraArchivos).sort(), ['libro-faa-phak-cap01.txt', 'libro-faa-phak-cap02.txt']);
+    // Otra vez: nada nuevo (por la fecha en Drive).
+    assert.equal((await sincronizarFuentes(db, config, { escribir: escribir(db) })).bajados, 0);
+    // Con poco tiempo en el paso, se deja para el siguiente (parcial) sin romper nada.
+    agregar({ nombre: 'libro-faa-phak-cap03.txt', cuerpo: Buffer.from('=== p 60 ===\nChapter 3\nSample.\n') });
+    const corto = await sincronizarFuentes(db, config, { escribir: escribir(db), quedaMs: () => 10_000 });
+    assert.equal(corto.parcial, true);
+    assert.ok(!existsSync(join(dir, 'libro-faa-phak-cap03.txt')));
+    assert.equal((await sincronizarFuentes(db, config, { escribir: escribir(db) })).bajados, 1);
+    assert.ok(existsSync(join(dir, 'libro-faa-phak-cap03.txt')));
+    // Un paquete nuevo que falla (sus partes no coinciden): el estado guardado no pierde lo ya bajado de los sueltos.
+    const { indice: i2 } = partir(bundle([{ nombre: 'libro-pp-es-cap03.txt', cuerpo: Buffer.from('=== p 20 ===\nx\n') }]));
+    agregar({ nombre: 'fuentes-v2.json', cuerpo: Buffer.from(JSON.stringify(i2)) });
+    const r2 = await sincronizarFuentes(db, config, { escribir: escribir(db) });
+    assert.equal(r2.ok, false);
+    assert.equal(Object.keys(estadoFuentes(db).extraArchivos).length, 3);
+  });
+});

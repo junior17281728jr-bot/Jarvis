@@ -7,7 +7,7 @@ import { Limitador } from '../nucleo/limites.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { vistaPregunta, modoDeFila } from '../academia/progreso.js';
 import { examenDe, finDe, GRACIA_MS } from '../academia/examen.js';
-import { listaBiblioteca, indiceDeLibro, paginaDeLibro, buscarEnLibro, imagenDeLibro, librosParaAdmin, cambiarLibro, preguntaDelTestGuide } from '../academia/biblioteca.js';
+import { listaBiblioteca, indiceDeLibro, paginaDeLibro, seccionDeLibro, buscarEnLibro, imagenDeLibro, librosParaAdmin, cambiarLibro, preguntaDelTestGuide } from '../academia/biblioteca.js';
 
 // ¿Puede ver la RESPUESTA oficial de esta pregunta? Igual que la página del libro (0.12.0): el administrador siempre; el
 // alumno solo si ya la respondió (academia_respuestas: un examen con reloj no escribe ahí hasta entregar) y no tiene
@@ -72,6 +72,11 @@ export function registrarRutasBiblioteca(rutas, { config = null, reloj = Date.no
   rutas.agregar('GET', '/api/academia/biblioteca/:libro/paginas/:pagina', ({ db, parametros }) => {
     necesitaConfig();
     return { codigo: 200, datos: paginaDeLibro(db, config, parametros.libro, parametros.pagina) };
+  });
+  // 0.14.43: leer por secciones (su texto organizado: ver src/academia/biblioteca-secciones.js).
+  rutas.agregar('GET', '/api/academia/biblioteca/:libro/secciones/:n', ({ db, parametros }) => {
+    necesitaConfig();
+    return { codigo: 200, datos: seccionDeLibro(db, config, parametros.libro, parametros.n) };
   });
   rutas.agregar('GET', '/api/academia/biblioteca/:libro/buscar', async ({ db, req, usuario, parametros }) => {
     necesitaConfig();

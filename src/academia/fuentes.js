@@ -248,20 +248,44 @@ export function leerManifiesto(dir) {
 // 0.14.17: «fuentes-manifiesto-extra.json» (un archivo suelto en la carpeta «fuentes» del Drive, junto a las partes): solo
 // AGREGA materias que el manifiesto no trae (por ejemplo, la Materia 1, cuyo libro ya está en las fuentes), con el mismo
 // formato de «materias» del manifiesto. Sus temas no traen preguntas nuevas del Test Guide (tg: []). Si algo no está bien,
-// se usa el manifiesto solo (y se dice en los errores de las fuentes). → { manifiesto, error, agregadas }
+// se usa el manifiesto solo (y se dice en los errores de las fuentes).
+// 0.14.43: también AGREGA libros de DOMINIO PÚBLICO («libros»: [{ id, titulo, licencia: 'dominio_publico' }], p. ej. los
+// manuales de la FAA) cuyos libro-<id>-capNN.txt se suben sueltos a «fuentes» (ver bajarLibrosExtra). Nunca cambia un
+// libro del manifiesto (mismo id → se ignora: así no se puede «relicenciar» uno comercial ni pisar su texto) y solo
+// acepta licencia «dominio_publico». Los libros agregados llevan la marca DEL_EXTRA (no se puede escribir en un JSON).
+// → { manifiesto, error, agregadas, libros }
+export const DEL_EXTRA = Symbol('libro del extra');
 export function unirExtra(dir, m) {
   const ruta = join(dir, ARCHIVO_EXTRA);
-  if (!esObjeto(m) || !Array.isArray(m.materias) || !existsSync(ruta)) return { manifiesto: m, error: null, agregadas: [] };
+  const nada = { manifiesto: m, error: null, agregadas: [], libros: [] };
+  if (!esObjeto(m) || !Array.isArray(m.materias) || !existsSync(ruta)) return nada;
   let x;
-  try { if (statSync(ruta).size > TOPES_FUENTES.jsonBytes) throw new Error('grande'); x = JSON.parse(readFileSync(ruta, 'utf8')); } catch { return { manifiesto: m, error: 'json_no_valido', agregadas: [] }; }
-  if (!esObjeto(x) || !Array.isArray(x.materias)) return { manifiesto: m, error: 'no_valido', agregadas: [] };
+  try { if (statSync(ruta).size > TOPES_FUENTES.jsonBytes) throw new Error('grande'); x = JSON.parse(readFileSync(ruta, 'utf8')); } catch { return { ...nada, error: 'json_no_valido' }; }
+  if (!esObjeto(x) || (!Array.isArray(x.materias) && !Array.isArray(x.libros))) return { ...nada, error: 'no_valido' };
+  // Los libros primero (una materia del extra puede leer de un libro del extra).
+  const yaLibros = new Set((Array.isArray(m.libros) ? m.libros : []).map(l => l?.id));
+  const librosNuevos = [];
+  let errorLibros = null;
+  for (const l of Array.isArray(x.libros) ? x.libros.slice(0, 40) : []) {
+    if (!esObjeto(l) || typeof l.id !== 'string' || !ID_VALIDO.test(l.id) || !LIBRO_TXT.test(`libro-${l.id}-cap01.txt`) || !textoOk(l.titulo)) { errorLibros ??= 'libro_no_valido'; continue; }
+    if (yaLibros.has(l.id) || librosNuevos.some(z => z.id === l.id)) { errorLibros ??= 'libro_repetido'; continue; }
+    if (l.licencia !== 'dominio_publico') { errorLibros ??= 'libro_no_publico'; continue; }
+    librosNuevos.push({ id: l.id, titulo: l.titulo, licencia: 'dominio_publico', [DEL_EXTRA]: true });
+  }
+  const base = librosNuevos.length ? { ...m, libros: [...(Array.isArray(m.libros) ? m.libros : []), ...librosNuevos] } : m;
+  const conLibros = { manifiesto: base, error: errorLibros, agregadas: [], libros: librosNuevos.map(l => l.id) };
   const ya = new Set(m.materias.map(z => z?.id));
-  const nuevas = x.materias.filter(z => esObjeto(z) && !ya.has(z.id));
-  if (!nuevas.length) return { manifiesto: m, error: null, agregadas: [] };
-  if (nuevas.some(z => !Array.isArray(z.temas) || z.temas.some(t => !esObjeto(t) || !Array.isArray(t.tg) || t.tg.length))) return { manifiesto: m, error: 'tg_no_vacio', agregadas: [] };
-  const unido = { ...m, materias: [...m.materias, ...nuevas] };
-  if (!revisarManifiesto(limpiarManifiesto(unido)).ok) return { manifiesto: m, error: 'no_valido', agregadas: [] };
-  return { manifiesto: unido, error: null, agregadas: nuevas.map(z => z.id) };
+  const nuevas = (Array.isArray(x.materias) ? x.materias : []).filter(z => esObjeto(z) && !ya.has(z.id));
+  if (!nuevas.length) return conLibros;
+  if (nuevas.some(z => !Array.isArray(z.temas) || z.temas.some(t => !esObjeto(t) || !Array.isArray(t.tg) || t.tg.length))) return { ...conLibros, error: 'tg_no_vacio' };
+  const unido = { ...base, materias: [...base.materias, ...nuevas] };
+  if (!revisarManifiesto(limpiarManifiesto(unido)).ok) return { ...conLibros, error: 'no_valido' };
+  return { manifiesto: unido, error: errorLibros, agregadas: nuevas.map(z => z.id), libros: conLibros.libros };
+}
+// Los ids de los libros que agrega el extra (los únicos cuyos capítulos se bajan sueltos). Sin el manifiesto instalado
+// todavía, ninguno (no se sabe si chocan con uno del paquete).
+export function librosDelExtra(dir) {
+  try { return unirExtra(dir, JSON.parse(readFileSync(join(dir, ARCHIVO_MANIFIESTO), 'utf8'))).libros; } catch { return []; }
 }
 
 // El estado de las fuentes (lo que vio la última sincronización): { ok, errores, materias, huella, en, faltan, archivos }.
@@ -314,6 +338,7 @@ export function revisarCarpetaFuentes(dir) {
   return {
     ok: true, errores: [...ri.errores, ...extraErr], materias: rm.materias, huella: huellaTexto(Buffer.concat([readFileSync(ruta), existsSync(join(dir, ARCHIVO_EXTRA)) ? readFileSync(join(dir, ARCHIVO_EXTRA)) : Buffer.alloc(0)])).slice(0, 32),
     ...(ux.agregadas.length ? { extra: ux.agregadas } : {}),
+    ...(ux.libros.length ? { librosExtra: ux.libros } : {}),
     faltan: [...faltan].slice(0, 50), oral: existsSync(join(dir, 'oral', 'oral.json')),
   };
 }
@@ -474,8 +499,10 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
   const ri = join(dir, 'partes', indices[0].nombre);
   let total = 0;
   let hechas = 0;
+  // 0.14.43: lo que ya se bajó de los capítulos sueltos del extra (se guarda en todo estado, también en un fallo).
+  let extraArchivos = esObjeto(anterior.extraArchivos) ? anterior.extraArchivos : null;
   const guardar = async (archivo, estado = anterior, descarga = null) => {
-    const nuevo = { ...estado, archivo: { indice: indices[0].nombre, ...archivo }, descarga: descarga ?? { estado: archivo.ok ? 'instalada' : 'fallo', motivo: archivo.motivo ?? null, hechas, total }, en: new Date().toISOString() };
+    const nuevo = { ...estado, ...(extraArchivos ? { extraArchivos } : {}), archivo: { indice: indices[0].nombre, ...archivo }, descarga: descarga ?? { estado: archivo.ok ? 'instalada' : 'fallo', motivo: archivo.motivo ?? null, hechas, total }, en: new Date().toISOString() };
     await escribir(() => guardarAjuste(db, AJUSTE_FUENTES, JSON.stringify(nuevo)));
     return nuevo;
   };
@@ -502,17 +529,26 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
     if (b.ok && b.huella !== anterior.extraHuella) { renameSync(`${destino}.drive.part`, destino); extraNuevo = true; extraHuella = b.huella; }
   }
   const extraDrive = ax ? (ax.modificado ?? null) : null;
+  // 0.14.43: los capítulos sueltos de los libros que agrega el extra (los manuales de la FAA), si cambiaron.
+  const sueltos = await bajarLibrosExtra(dir, archivos, { bases, senal, quedaMs, memoria: extraArchivos ?? {} });
+  extraArchivos = sueltos.memoria;
+  const deSueltos = r => (sueltos.parcial ? { ...r, parcial: true, errores: [...r.errores, { archivo: '', motivo: 'parcial' }] } : r);
   if (anterior.archivo?.instalado === indice.sha256_total) {
-    if (anterior.ok && !extraNuevo) return { ok: true, bajados: 0, errores: [], estado: anterior };
+    if (anterior.ok && !extraNuevo) {
+      if (!sueltos.cambio) return deSueltos({ ok: true, bajados: 0, errores: sueltos.errores, estado: anterior });
+      const estado = { ...anterior, extraArchivos, en: new Date().toISOString() };
+      await escribir(() => guardarAjuste(db, AJUSTE_FUENTES, JSON.stringify(estado)));
+      return deSueltos({ ok: true, bajados: sueltos.bajados, errores: sueltos.errores, estado });
+    }
     if (extraNuevo) {
       hechas = total;
-      const estado = await guardar({ ...anterior.archivo, ok: true }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive, extraHuella });
-      return { ok: true, bajados: 1, errores: [], estado };
+      const estado = await guardar({ ...anterior.archivo, ok: true }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive, extraHuella, extraArchivos });
+      return deSueltos({ ok: true, bajados: 1 + sueltos.bajados, errores: sueltos.errores, estado });
     }
     // Instalado pero la revisión no dio bien (o el estado se perdió): se revisa otra vez lo que ya está en la carpeta.
     hechas = total;
-    const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: anterior.archivo.archivos ?? null }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {} });
-    return { ok: true, bajados: 0, errores: [], estado };
+    const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: anterior.archivo.archivos ?? null }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraArchivos });
+    return deSueltos({ ok: true, bajados: sueltos.bajados, errores: sueltos.errores, estado });
   }
   let bajados = 0;
   const faltan = [];
@@ -540,8 +576,37 @@ async function sincronizarPartes(db, dir, archivos, { bases, senal, quedaMs, esc
   if (senal?.aborted || quedaMs() < RESERVA_INSTALAR_MS) return parcial(bajados, 'instalando');
   const inst = await instalarPartes(dir, indice);
   if (!inst.ok) return mal(inst.motivo);
-  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive, extraHuella });
+  const estado = await guardar({ ok: true, instalado: indice.sha256_total, archivos: inst.archivos }, { ...revisarCarpetaFuentes(dir), archivos: anterior.archivos ?? {}, extraDrive, extraHuella, extraArchivos });
   return { ok: true, bajados, errores: [], estado };
+}
+// 0.14.43: los libro-<id>-capNN.txt sueltos en «fuentes» de los libros que agrega el extra (y SOLO de esos: nunca pisan el
+// texto de un libro del paquete). Cada uno ≤ 1 MB, como mucho 400, y solo si cambió su fecha en Drive (memoria: nombre →
+// fecha). Con poco tiempo en el paso se deja para el siguiente (parcial). → { bajados, memoria, cambio, parcial, errores }
+const LIBRO_SUELTO = /^libro-([a-z0-9][a-z0-9-]{0,40})-cap\d{2,3}\.txt$/;
+export async function bajarLibrosExtra(dir, archivos, { bases, senal = null, quedaMs = () => Infinity, memoria = {} } = {}) {
+  const ids = new Set(librosDelExtra(dir));
+  const nueva = { ...memoria };
+  const r = { bajados: 0, memoria: nueva, cambio: false, parcial: false, errores: [] };
+  if (!ids.size) return r;
+  const sueltos = archivos.filter(a => !a.sub && LIBRO_SUELTO.test(a.nombre) && ids.has(LIBRO_SUELTO.exec(a.nombre)[1])).slice(0, 400);
+  for (const a of sueltos) {
+    const destino = join(dir, a.nombre);
+    if (Object.hasOwn(nueva, a.nombre) && nueva[a.nombre] === (a.modificado ?? null) && existsSync(destino)) continue;
+    if (senal?.aborted || quedaMs() < 30_000) { r.parcial = true; break; }
+    const libre = espacioLibre(dir);
+    if (libre != null && libre < 64 * 1024 * 1024) { r.errores.push({ archivo: a.nombre, motivo: 'sin_espacio' }); break; }
+    const b = await bajarArchivo(a.id, { bases, ruta: `${destino}.drive.part`, tope: TOPES_FUENTES.txtBytes, senal });
+    if (!b.ok) {
+      if (MOTIVOS_PASAJEROS.has(b.motivo)) { r.parcial = true; break; }
+      if (r.errores.length < 30) r.errores.push({ archivo: a.nombre, motivo: b.motivo });
+      continue;
+    }
+    renameSync(`${destino}.drive.part`, destino);
+    nueva[a.nombre] = a.modificado ?? null;
+    r.bajados += 1;
+    r.cambio = true;
+  }
+  return r;
 }
 export async function sincronizarFuentes(db, config, { escribir, senal = null, quedaMs = () => Infinity } = {}) {
   const raiz = carpetaDrive(db);

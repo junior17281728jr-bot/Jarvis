@@ -184,6 +184,15 @@ test('Biblioteca: solo con sesión; el alumno ve FAA y RAD; índice, páginas co
     assert.deepEqual((await pedir(c.base, 'GET', '/api/academia/biblioteca/faa-muestra/buscar?q=zzzz', { galleta: c.ana })).datos.resultados, []);
     assert.equal((await pedir(c.base, 'GET', '/api/academia/biblioteca/faa-muestra/buscar?q=al', { galleta: c.ana })).codigo, 400);
 
+    // 0.14.43: leer por secciones (la ruta, con sesión y sin caché; un libro comercial no).
+    assert.equal((await pedir(c.base, 'GET', '/api/academia/biblioteca/faa-muestra/secciones/1')).codigo, 401);
+    const s1 = await pedir(c.base, 'GET', '/api/academia/biblioteca/faa-muestra/secciones/1', { galleta: c.ana });
+    assert.equal(s1.codigo, 200);
+    assert.equal(s1.cache, 'no-store');
+    assert.equal(s1.datos.n, 1);
+    assert.ok(s1.datos.total >= 1 && typeof s1.datos.texto === 'string');
+    assert.equal((await pedir(c.base, 'GET', '/api/academia/biblioteca/faa-muestra/secciones/0', { galleta: c.ana })).codigo, 400);
+    assert.equal((await pedir(c.base, 'GET', '/api/academia/biblioteca/pp-en/secciones/1', { galleta: c.ana })).codigo, 404);
     // Imágenes: solo por su nombre en imagenes.json y de un libro legible.
     const img = await pedir(c.base, 'GET', '/api/academia/biblioteca/faa-muestra/imagenes/img-faa-muestra-p1-1.webp', { galleta: c.ana });
     assert.equal(img.codigo, 200);

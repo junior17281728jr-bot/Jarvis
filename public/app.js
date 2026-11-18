@@ -6491,8 +6491,8 @@ async function dibujar() {
   if (seccion === 'mi-repaso' || /^refuerzo\/[a-z0-9_-]+\/[a-z0-9_-]+$/.test(seccion)) return pantallaMiRepaso();
   const miniClase = seccion.match(/^mi-repaso\/clase\/([a-z0-9_-]+\/[a-z0-9_-]+\/[a-z0-9-]+)$/);
   if (miniClase) return pantallaMiniClase(`c:${miniClase[1]}`);
-  // 0.14.20: la Biblioteca (public/biblioteca-vista.js, solo se carga ahí): #biblioteca, #biblioteca/<libro>[/<página>].
-  const biblioteca = seccion.match(/^biblioteca(?:\/([a-z0-9][a-z0-9-]{0,40})(?:\/(\d{1,5}))?)?$/);
+  // 0.14.20: la Biblioteca (public/biblioteca-vista.js, solo se carga ahí): #biblioteca, #biblioteca/<libro>[/<página>|/s<sección>].
+  const biblioteca = seccion.match(/^biblioteca(?:\/([a-z0-9][a-z0-9-]{0,40})(?:\/(s?\d{1,5}))?)?$/);
   if (biblioteca) return pantallaBiblioteca(biblioteca[1] ?? null, biblioteca[2] ?? null);
   // 0.8.0: los proyectos de OPORTIA ya no existen; sus direcciones viejas (#proyectos, #proyecto/4…) llevan al camino.
   return pantallaInicio();

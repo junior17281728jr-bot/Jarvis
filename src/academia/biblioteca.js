@@ -22,11 +22,12 @@ import { openSync, readSync, closeSync, statSync, readFileSync, readdirSync, exi
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { ErrorHttp } from '../nucleo/http.js';
-import { carpetaFuentes, leerManifiesto, preguntasDeTema, ARCHIVO_MANIFIESTO, ARCHIVO_TG, ARCHIVO_IMAGENES, IMAGEN_LIBRO, TOPES_FUENTES, ID_TG } from './fuentes.js';
+import { carpetaFuentes, leerManifiesto, preguntasDeTema, ARCHIVO_MANIFIESTO, ARCHIVO_EXTRA, ARCHIVO_TG, ARCHIVO_IMAGENES, IMAGEN_LIBRO, TOPES_FUENTES, ID_TG, DEL_EXTRA } from './fuentes.js';
+import { seccionesDeCapitulo, seccionEn, TOPES_SECCIONES } from './biblioteca-secciones.js';
 import { leerAjuste, guardarAjuste } from './paquetes.js';
 
 export const AJUSTE_BIBLIOTECA = 'academia.biblioteca.libros';
-export const TOPES_BIBLIOTECA = Object.freeze({ consultaMin: 3, consultaMax: 80, resultados: 30, porPagina: 3, fragmento: 180, paginaBytes: 256 * 1024 });
+export const TOPES_BIBLIOTECA = Object.freeze({ consultaMin: 3, consultaMax: 80, resultados: 30, porPagina: 3, fragmento: 180, paginaBytes: 256 * 1024, seccionBytes: 64 * 1024, seccionesBuscadas: 20 });
 export const CLASES = Object.freeze(['publico', 'dudoso', 'comercial']);
 
 // ---------- Clasificar un libro (puro) ----------
@@ -35,10 +36,15 @@ const TEXTO_COMERCIAL = /jeppesen|gfdppm|guided flight discovery|all rights rese
 const NOMBRE_FAA = /\bfaa\b|faa-h-|handbook|\bphak\b|\bafh\b|aeronautical information manual/i;
 const NOMBRE_RAD = /reglamento aeron[aá]utico|\brad\b/i;
 // libro: { id, titulo, licencia? }; textoComercial: si su texto nombra a una editorial. → 'publico' | 'dudoso' | 'comercial'
+// 0.14.43: un libro que agrega el extra (marca DEL_EXTRA, solo de dominio público: los manuales de la FAA) no se cierra
+// porque su texto nombre a una editorial (un manual de la FAA puede citar «Jeppesen» o una carta con «all rights
+// reserved»); el id, el título, la Guía oral y la licencia «comercial» lo siguen cerrando igual. Los libros del paquete
+// (los Jeppesen) siguen cerrándose por su texto, como antes.
 export function clasificarLibro(libro, { textoComercial = false, oral = false } = {}) {
   const id = String(libro?.id ?? '');
   const titulo = String(libro?.titulo ?? '');
-  if (oral || libro?.licencia === 'comercial' || /^oral(?:-|$)/.test(id) || NOMBRE_COMERCIAL.test(id) || NOMBRE_COMERCIAL.test(titulo) || textoComercial) return 'comercial';
+  const extraPublico = libro?.[DEL_EXTRA] === true && libro?.licencia === 'dominio_publico';
+  if (oral || libro?.licencia === 'comercial' || /^oral(?:-|$)/.test(id) || NOMBRE_COMERCIAL.test(id) || NOMBRE_COMERCIAL.test(titulo) || (textoComercial && !extraPublico)) return 'comercial';
   if (libro?.licencia === 'dominio_publico' || /^(?:faa|rad)(?:-|$)/.test(id) || NOMBRE_FAA.test(titulo) || NOMBRE_RAD.test(titulo)) return 'publico';
   return 'dudoso';
 }
@@ -83,7 +89,7 @@ const firmaDe = (dir, nombres) => nombres.map(n => { try { const s = statSync(jo
 
 export function indiceBiblioteca(dir) {
   let nombres;
-  try { nombres = readdirSync(dir).filter(n => /^libro-.+\.txt$/.test(n) || n === ARCHIVO_MANIFIESTO || n === ARCHIVO_IMAGENES).sort(); } catch { return { libros: [] }; }
+  try { nombres = readdirSync(dir).filter(n => /^libro-.+\.txt$/.test(n) || n === ARCHIVO_MANIFIESTO || n === ARCHIVO_EXTRA || n === ARCHIVO_IMAGENES).sort(); } catch { return { libros: [] }; }
   const oralJson = join(dir, 'oral', 'oral.json');
   const firma = `${firmaDe(dir, nombres)}|oral:${existsSync(oralJson)}`;
   const guardado = cache.get(dir);
@@ -104,6 +110,7 @@ function armarIndice(dir, nombres) {
     const patron = new RegExp(`^libro-${escapar(l.id)}-cap(\\d{2,3})\\.txt$`);
     const capitulos = [];
     const paginas = new Map();
+    const secciones = [];
     let textoComercial = false;
     for (const n of nombres) {
       const m = patron.exec(n);
@@ -111,6 +118,8 @@ function armarIndice(dir, nombres) {
       let buffer;
       try { if (statSync(join(dir, n)).size > TOPES_FUENTES.txtBytes) continue; buffer = readFileSync(join(dir, n)); } catch { continue; }
       const ind = indiceDeCapitulo(buffer);
+      // 0.14.43: sus secciones (por bytes; ver src/academia/biblioteca-secciones.js).
+      if (ind.paginas.length) for (const x of seccionesDeCapitulo(buffer)) secciones.push({ ...x, archivo: n, capitulo: Number(m[1]) });
       buffer = null;
       if (ind.comercial) textoComercial = true;
       if (!ind.paginas.length) continue;
@@ -119,6 +128,17 @@ function armarIndice(dir, nombres) {
       capitulos.push({ archivo: n, n: Number(m[1]), titulo: ind.titulo, desde: Math.min(...nums), hasta: Math.max(...nums) });
     }
     capitulos.sort((a, b) => a.desde - b.desde);
+    const ordenCap = new Map(capitulos.map((c, i) => [c.archivo, i]));
+    secciones.sort((a, b) => (ordenCap.get(a.archivo) ?? 0) - (ordenCap.get(b.archivo) ?? 0) || a.inicio - b.inicio);
+    secciones.splice(TOPES_SECCIONES.porLibro);
+    // El camino de cada sección: el último título de nivel 1 y de nivel 2 por encima (también los que no tienen texto).
+    const camino = [null, null, null];
+    secciones.forEach((x, i) => {
+      x.n = i + 1;
+      for (const e of x.encabezados) { camino[e.nivel - 1] = e.titulo; for (let k = e.nivel; k < 3; k++) camino[k] = null; }
+      x.ruta = camino.slice(0, x.nivel - 1).filter(Boolean);
+      if (x.titulo) { camino[x.nivel - 1] = x.titulo; for (let k = x.nivel; k < 3; k++) camino[k] = null; }
+    });
     const orden = [...paginas.keys()].sort((a, b) => a - b);
     const fotos = new Map();
     for (const x of imagenes) {
@@ -135,7 +155,7 @@ function armarIndice(dir, nombres) {
     temas.sort((a, b) => a.pagina - b.pagina);
     libros.push({
       id: l.id, titulo: typeof l.titulo === 'string' ? l.titulo : l.id, licencia: l.licencia ?? null,
-      clase: clasificarLibro(l, { textoComercial }), capitulos, paginas, orden, fotos, temas,
+      clase: clasificarLibro(l, { textoComercial }), capitulos, paginas, orden, fotos, temas, secciones,
     });
   }
   // La Guía del examen oral (oral/oral.json) es comercial: sale en la lista del administrador, nunca se lee aquí.
@@ -144,7 +164,7 @@ function armarIndice(dir, nombres) {
     if (st.size <= TOPES_FUENTES.jsonBytes) {
       const o = JSON.parse(readFileSync(join(dir, 'oral', 'oral.json'), 'utf8'));
       const id = typeof o?.libro?.id === 'string' ? o.libro.id : 'oral';
-      if (!libros.some(x => x.id === id)) libros.push({ id, titulo: typeof o?.libro?.titulo === 'string' ? o.libro.titulo : id, licencia: 'comercial', clase: 'comercial', capitulos: [], paginas: new Map(), orden: [], fotos: new Map(), temas: [], oral: true });
+      if (!libros.some(x => x.id === id)) libros.push({ id, titulo: typeof o?.libro?.titulo === 'string' ? o.libro.titulo : id, licencia: 'comercial', clase: 'comercial', capitulos: [], paginas: new Map(), orden: [], fotos: new Map(), temas: [], secciones: [], oral: true });
     }
   } catch { /* sin oral */ }
   return { libros };
@@ -194,7 +214,32 @@ export const listaBiblioteca = (db, config) => ({ libros: librosLegibles(db, con
 // El índice de un libro: capítulos (con sus páginas) y los temas del curso que se leen en él.
 export function indiceDeLibro(db, config, id) {
   const l = libroLegible(db, config, id);
-  return { ...resumenLibro(l), capitulos: l.capitulos.map(c => ({ n: c.n, titulo: c.titulo, desde: c.desde, hasta: c.hasta })), temas: l.temas };
+  return { ...resumenLibro(l), capitulos: l.capitulos.map(c => ({ n: c.n, titulo: c.titulo, desde: c.desde, hasta: c.hasta })), temas: l.temas, secciones: l.secciones.map(vistaSeccion) };
+}
+// 0.14.43: lo que se muestra de una sección (sin bytes ni archivos). titulo null: el comienzo del capítulo.
+const vistaSeccion = x => ({ n: x.n, titulo: x.titulo, nivel: x.nivel, encabezados: x.encabezados.map(e => ({ ...e })), ruta: [...x.ruta], desde: x.desde, hasta: x.hasta, capitulo: x.capitulo, ...(x.parte ? { parte: x.parte } : {}) });
+const resumenSeccion = x => (x ? { n: x.n, titulo: x.titulo, parte: x.parte ?? null, desde: x.desde } : null);
+
+// 0.14.43: leer UNA sección (por sus bytes, con tope): su texto con las marcas de página adentro (la pantalla las muestra
+// como «pág. N»), su camino, y la anterior / siguiente. → { libro, titulo, n, total, seccion, texto, anterior, siguiente }
+export function seccionDeLibro(db, config, id, n) {
+  const l = libroLegible(db, config, id);
+  const pedida = Number(n);
+  if (!Number.isSafeInteger(pedida) || pedida < 1) throw new ErrorHttp(400, 'seccion_no_valida');
+  const x = l.secciones[pedida - 1];
+  if (!x) throw new ErrorHttp(404, 'no_existe');
+  const largo = Math.min(Math.max(0, x.fin - x.inicio), TOPES_BIBLIOTECA.seccionBytes);
+  const buffer = Buffer.alloc(largo);
+  if (largo) {
+    const fd = openSync(join(carpetaFuentes(config), x.archivo), 'r');
+    try { readSync(fd, buffer, 0, largo, x.inicio); } finally { closeSync(fd); }
+  }
+  // Un corte por el tope puede caer en medio de una letra: se quita lo que no se pudo leer entero.
+  const texto = buffer.toString('utf8').replace(/\uFFFD+$/, '').trim();
+  return {
+    libro: l.id, titulo: l.titulo, n: x.n, total: l.secciones.length, seccion: vistaSeccion(x), texto, cortada: x.fin - x.inicio > largo,
+    anterior: resumenSeccion(l.secciones[pedida - 2]), siguiente: resumenSeccion(l.secciones[pedida]),
+  };
 }
 
 // Una página (o la siguiente que exista, si esa no está). → { libro, titulo, pagina, texto, anterior, siguiente, capitulo, imagenes }
@@ -219,6 +264,7 @@ export function paginaDeLibro(db, config, id, n) {
     posicion: i + 1, total: l.orden.length,
     capitulo: cap ? { n: cap.n, titulo: cap.titulo, desde: cap.desde, hasta: cap.hasta } : null,
     imagenes: (l.fotos.get(pagina) ?? []).map(x => ({ ...x })),
+    seccion: resumenSeccion(seccionEn(l.secciones, donde.archivo, donde.inicio)), // 0.14.43: «Leer por secciones»
   };
 }
 
@@ -245,6 +291,8 @@ export async function buscarEnLibro(db, config, id, consulta) {
   if (q.length < TOPES_BIBLIOTECA.consultaMin || q.length > TOPES_BIBLIOTECA.consultaMax) throw new ErrorHttp(400, 'busqueda_no_valida');
   const resultados = [];
   const porPagina = new Map();
+  // 0.14.43: también por SECCIÓN (la primera coincidencia de cada una, con su fragmento, y cuántas hay en ella).
+  const porSeccion = new Map();
   let mas = false;
   const dir = carpetaFuentes(config);
   for (const c of l.capitulos) {
@@ -252,8 +300,11 @@ export async function buscarEnLibro(db, config, id, consulta) {
     const flujo = createReadStream(join(dir, c.archivo), { encoding: 'utf8', highWaterMark: 64 * 1024 });
     const lineas = createInterface({ input: flujo, crlfDelay: Infinity });
     let pagina = null;
+    let pos = 0; // el byte donde empieza el renglón (los archivos usan \n; con \r\n se corre un poco, sin importar)
     try {
       for await (const linea of lineas) {
+        const aqui = pos;
+        pos += Buffer.byteLength(linea, 'utf8') + 1;
         const m = MARCA.exec(linea);
         if (m) { pagina = Number(m[1]); continue; }
         if (pagina == null) continue;
@@ -264,11 +315,17 @@ export async function buscarEnLibro(db, config, id, consulta) {
         if (ya >= TOPES_BIBLIOTECA.porPagina) continue;
         if (resultados.length >= TOPES_BIBLIOTECA.resultados) { mas = true; break; }
         porPagina.set(pagina, ya + 1);
-        resultados.push({ pagina, fragmento: fragmento(linea.trim(), donde / Math.max(1, nl.length)) });
+        const sec = seccionEn(l.secciones, c.archivo, aqui);
+        const frag = fragmento(linea.trim(), donde / Math.max(1, nl.length));
+        resultados.push({ pagina, fragmento: frag, seccion: sec?.n ?? null });
+        if (!sec) continue;
+        const g = porSeccion.get(sec.n);
+        if (g) g.coincidencias += 1;
+        else if (porSeccion.size < TOPES_BIBLIOTECA.seccionesBuscadas) porSeccion.set(sec.n, { ...resumenSeccion(sec), ruta: [...sec.ruta], pagina, fragmento: frag, coincidencias: 1 });
       }
     } finally { lineas.close(); flujo.destroy(); }
   }
-  return { libro: l.id, consulta: String(consulta).trim(), resultados, mas };
+  return { libro: l.id, consulta: String(consulta).trim(), resultados, secciones: [...porSeccion.values()], mas };
 }
 function fragmento(linea, posicion) {
   const max = TOPES_BIBLIOTECA.fragmento;
