@@ -5894,7 +5894,7 @@ async function pantallaOpiniones() {
 }
 // 0.14.26: los certificados de recuerdo (public/certificado-vista.js): los míos, o los de un alumno (administrador).
 // ---- 0.14.38: la Competencia (public/competencia-vista.js, solo se carga ahí) ----
-const piezasCompe = vigente => ({ el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma, confirmar, sonar, celebrar, esAdmin: verComoAdmin(), vigente });
+const piezasCompe = vigente => ({ el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma, confirmar, sonar, celebrar, esAdmin: verComoAdmin(), vigente, motivoIa: textoMotivoIa });
 const errorCompe = r => mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
   el('a', { class: 'boton-3d blanco', href: '#competencia' }, el('span', { texto: t('compe.volver') })))));
 async function pantallaCompetencia() {

@@ -386,6 +386,9 @@ export function pantallaAdmin(datos, h, { recargar } = {}) {
       el('p', { class: 'suave chica', texto: t('compe.admin.estado', { jugadores: numero(r.jugadores), terminados: numero(r.terminados) }) }),
       r.jugada ? el('p', { class: 'chica', texto: t('compe.admin.congelada') }) : el('p', { class: 'chica', texto: t('compe.admin.libre') }),
       el('div', { class: 'botones' }, mejorar, el('a', { class: 'boton-3d blanco chico', href: `#competencia/${r.ronda}/certificados` }, el('span', { texto: t('compe.galeria.ver') }))),
+      // 0.14.38: el último pedido a la IA: «esperando» o por qué no llegó (la ronda sigue igual, sin IA).
+      r.pedido?.estado === 'pendiente' ? el('p', { class: 'suave chica', texto: t('compe.admin.ia_esperando') }) : null,
+      r.pedido?.estado === 'no' ? el('p', { class: 'aviso tono-atencion chica', texto: t('compe.admin.ia_no', { motivo: h.motivoIa ? h.motivoIa(r.pedido.motivo) : r.pedido.motivo }) }) : null,
       sug, m, tabla(r.tabla, h));
   };
   return [

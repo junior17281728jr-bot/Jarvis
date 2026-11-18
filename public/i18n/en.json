@@ -5118,6 +5118,8 @@
   "compe.admin.campo.mal": "Joke when wrong",
   "compe.admin.silenciar": "Pause their comments",
   "compe.admin.quitar_silencio": "Let them comment again",
+  "compe.admin.ia_esperando": "The AI is still working on this round…",
+  "compe.admin.ia_no": "The AI could not improve this round ({motivo}). The round stays the same and works without AI.",
   "error.ronda_sin_empezar": "You have not started that round yet.",
   "error.ronda_terminada": "You already finished that round: it is played only once.",
   "error.pregunta_no_es_la_actual": "That is no longer your current question. Taking you to yours.",

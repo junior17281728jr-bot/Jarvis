@@ -348,7 +348,9 @@ export function crearPagos(h) {
           respuesta.estudiar ? el('p', { class: 'suave' }, el('strong', { texto: `${tx('profesor.estudia')} ` }), talCual('span', respuesta.estudiar)) : null,
           respuesta.control ? el('p', { class: 'pregunta-control' }, el('strong', { texto: `${tx('profesor.comprueba')} ` }), talCual('span', respuesta.control)) : null,
           botonesProfe,
-        ] : [m.estado === 'no' && m.profe?.lineas?.length ? talCual('p', instructorUi().textoProfe(m.profe)) : el('p', { class: 'suave', texto: m.estado === 'no' ? tx('profesor.no') : tx('instr.ia.escribiendo') }), m.estado === 'no' ? botonesProfe : null],
+        ] : [m.estado === 'no' && m.profe?.lineas?.length ? talCual('p', instructorUi().textoProfe(m.profe)) : el('p', { class: 'suave', texto: m.estado === 'no' ? tx('profesor.no') : tx('instr.ia.escribiendo') }),
+          // 0.14.38: la IA no respondió: lo que dice el instructor automático (nunca una burbuja vacía).
+          m.estado === 'no' && !m.profe?.lineas?.length ? el('p', { texto: textoBasica(m.basica) }) : null, m.estado === 'no' ? botonesProfe : null],
         m.videos?.length || m.buscar?.length ? el('div', { class: 'videos' },
           ...(m.videos ?? []).map(v => enlaceVideo(v, 'video-elegido')),
           ...(m.buscar ?? []).map(v => enlaceVideo({ url: v.url, titulo: tx('profesor.buscar', { texto: v.texto }) }, 'video-buscar'))) : null),
@@ -400,6 +402,8 @@ export function crearPagos(h) {
           const ultimo = y.ok ? y.datos.historial.at(-1) : null;
           if (ultimo?.respuesta || ultimo?.estado === 'no' || ultimo?.estado === 'basico') { caja.replaceWith(...burbujas(ultimo).slice(1)); cambiarHijos(medidor, instructorUi().medidorTiempo(y.datos.tiempo)); return; }
           if (n < 60) setTimeout(() => vuelta(n + 1), 2000);
+          // 0.14.38: después de 2 minutos sin respuesta, lo básico (la IA puede llegar después: se ve al volver).
+          else caja.replaceWith(...burbujas({ ...m, estado: 'no' }).slice(1));
         };
         setTimeout(vuelta, 2000);
       }

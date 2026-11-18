@@ -5118,6 +5118,8 @@
   "compe.admin.campo.mal": "Chiste al fallar",
   "compe.admin.silenciar": "Pausar sus comentarios",
   "compe.admin.quitar_silencio": "Dejarle comentar otra vez",
+  "compe.admin.ia_esperando": "La IA todavía está trabajando en esta ronda…",
+  "compe.admin.ia_no": "La IA no pudo mejorar esta ronda ({motivo}). La ronda sigue igual y funciona sin IA.",
   "error.ronda_sin_empezar": "Esa ronda todavía no la has empezado.",
   "error.ronda_terminada": "Esa ronda ya la terminaste: solo se juega una vez.",
   "error.pregunta_no_es_la_actual": "Esa pregunta ya no es la que te toca. Te llevamos a la tuya.",

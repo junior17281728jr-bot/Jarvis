@@ -366,6 +366,21 @@ export function borrarComentario(db, id, { usuarioId, admin = false }, ahoraMs =
 }
 
 // ---------- Administrador ----------
+// El último «Mejorar preguntas con IA» de una ronda: si la IA no respondió (el proveedor falló, sin crédito…), la
+// pantalla lo dice con su motivo y la ronda sigue igual.
+const clavePedidoMejora = n => `academia.compe.mejora_pedida.${n}`;
+export function anotarPedidoMejora(db, n, tarea, ahoraMs = Date.now()) {
+  guardarAjuste(db, clavePedidoMejora(n), JSON.stringify({ tarea: Number(tarea), en: iso(ahoraMs) }));
+}
+function pedidoMejora(db, n, sugerencia) {
+  const p = json(leerAjuste(db, clavePedidoMejora(n)));
+  if (!p || !Number.isSafeInteger(p.tarea)) return null;
+  if (sugerencia?.en && sugerencia.en >= p.en) return null;
+  const t = db.prepare('SELECT estado, resultado FROM tareas WHERE id = ?').get(p.tarea);
+  if (!t || ['lista', 'en_curso'].includes(t.estado)) return { estado: 'pendiente', en: p.en };
+  const motivo = json(t.resultado)?.motivo;
+  return { estado: 'no', motivo: typeof motivo === 'string' && /^[a-z_]{1,40}$/.test(motivo) ? motivo : 'no_disponible', en: p.en };
+}
 export function resumenAdmin(db) {
   return {
     reloj: relojCompe(db),
@@ -376,6 +391,7 @@ export function resumenAdmin(db) {
         ronda: n, titulo: r.titulo, jugada: rondaJugada(db, n), jugadores: db.prepare('SELECT COUNT(*) AS n FROM academia_compe_intentos WHERE ronda = ?').get(n).n,
         terminados: db.prepare('SELECT COUNT(*) AS n FROM academia_compe_intentos WHERE ronda = ? AND terminado_en IS NOT NULL').get(n).n,
         cambios: Object.keys(json(leerAjuste(db, claveCambios(n))) ?? {}).length,
+        pedido: pedidoMejora(db, n, sugerencia),
         sugerencia: sugerencia && Array.isArray(sugerencia.cambios) ? { en: sugerencia.en ?? null, estado: sugerencia.estado ?? 'lista', cambios: sugerencia.cambios.map(c => ({ ...c, antes: Object.fromEntries(CAMPOS_IA.filter(k => c[k] != null).map(k => [k, r.preguntas.find(q => q.id === c.id)?.[k] ?? ''])) })) } : null,
         tabla: tablaRonda(db, n, { admin: true }),
       };

@@ -78,7 +78,8 @@ export function historialParaVer(db, usuarioId) {
     const estado = r ? 'lista' : !m.clave && !m.tarea ? 'basico' : t && !['lista', 'en_curso'].includes(t.estado) ? 'no' : 'pendiente';
     return {
       pregunta: m.pregunta, en: m.en, tarea: m.tarea ?? null, estado, tema: m.tema ?? null,
-      ...(estado === 'basico' ? { basica: m.basica && typeof m.basica.clave === 'string' ? { clave: m.basica.clave, vars: m.basica.vars ?? {} } : null } : {}),
+      // 0.14.38: también cuando la IA no respondió ('no'): lo básico que se guardó al pedirla.
+      ...(estado === 'basico' || estado === 'no' ? { basica: m.basica && typeof m.basica.clave === 'string' ? { clave: m.basica.clave, vars: m.basica.vars ?? {} } : null } : {}),
       respuesta: r ? { respuesta: r.respuesta, control: r.control, estudiar: r.estudiar, terminos: r.terminos, citas: Array.isArray(r.citas) ? r.citas : [] } : null,
       // 0.14.22: lo que leyó el profesor de su historia (líneas con clave de texto) y sus botones (la ruta los revisa otra vez).
       profe: m.profe && typeof m.profe === 'object' ? {

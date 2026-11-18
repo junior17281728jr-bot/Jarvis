@@ -11,7 +11,7 @@ import { auditar } from '../cuentas/usuarios.js';
 import {
   numeroRonda, resumenCompetencia, estadoRonda, empezarRonda, responderRonda, tablaRonda, galeria, misCertificadosCompe, reaccionar, comentar,
   borrarComentario, silenciar, resumenAdmin, aprobarSugerencia, descartarSugerencia, guardarRelojCompe, rondaJugada, rondaEfectiva, falladas,
-  anotarIaPedida, claveCertCompe, claveSugerencia, RONDAS, SEMILLA,
+  anotarIaPedida, anotarPedidoMejora, claveCertCompe, claveSugerencia, RONDAS, SEMILLA,
 } from '../academia/competencia.js';
 import { armarFrase, armarMejora } from '../academia/competencia-ia.js';
 
@@ -117,6 +117,7 @@ export function registrarRutasCompetencia(rutas, { reloj = Date.now, limites = {
     const pedido = armarMejora({ ronda: n, titulo: ronda.titulo, preguntas: ronda.preguntas });
     const r = ganchos?.iaCompe ? ganchos.iaCompe(db, usuario, { uso: 'compe_mejorar', ...pedido, clave: claveSugerencia(n), extra: { ids: ronda.preguntas.map(q => q.id) } }) : { estado: 'no', motivo: 'no_disponible' };
     if (r.estado !== 'pendiente') throw new ErrorHttp(409, 'ia_no_disponible');
+    anotarPedidoMejora(db, n, r.tarea, reloj());
     return { codigo: 202, datos: { tarea: { id: r.tarea } } };
   }, { admin: true });
   rutas.agregar('POST', '/api/admin/academia/competencia/:ronda/aprobar', async ({ db, req, usuario, parametros }) => {

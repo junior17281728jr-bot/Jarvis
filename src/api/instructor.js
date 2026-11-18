@@ -707,7 +707,12 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     }
     const clave = `academia.ia.chat.${usuario.id}.${ahora}`;
     const ia = pedirIa(db, usuario, { uso: 'instructor_chat', sistema: pedido.sistema, texto: pedido.texto, clave, extra: { pregunta: mensaje, citas: pedido.citas } });
-    if (ia.estado === 'pendiente') anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, tema: ctx.temaTitulo, videos, buscar, profe });
+    if (ia.estado === 'pendiente') {
+      // 0.14.38: también la respuesta básica: si la IA no llega (el proveedor falla o se acabó el crédito), el mensaje
+      // queda respondido por el instructor automático, nunca vacío.
+      const basica = consejoInstructor(db, usuario.id, p, ahora).consejo;
+      anotarMensaje(db, usuario.id, { pregunta: mensaje, en: new Date(ahora).toISOString(), clave, tarea: ia.tarea, basica: basica ? { clave: basica.clave, vars: basica.vars ?? {} } : null, tema: ctx.temaTitulo, videos, buscar, profe });
+    }
     else {
       // 0.12.4: no se pudo pedir (sin minutos, muy largo): lo básico, y también queda en su historial.
       const basica = consejoInstructor(db, usuario.id, p, ahora).consejo;
