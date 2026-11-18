@@ -1717,3 +1717,6 @@ h3.biblio-h { font-size: 1.05em; }
 :root[data-tema="oscuro"] .compe-dibujo-caja { background: linear-gradient(180deg, #1d2a44, #18233a); }
 :root[data-tema="oscuro"] .compe-dibujo .dib-c { fill: #8fb8ff; }
 :root[data-tema="oscuro"] .compe-dibujo .dib-l { stroke: #8fb8ff; }
+
+/* 0.14.40: lo que dijo el alumno en la práctica oral en vivo */
+.vivo-dijiste { margin: 0.4rem 0 0.2rem; overflow-wrap: anywhere; }

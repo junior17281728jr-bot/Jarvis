@@ -5445,5 +5445,11 @@
   "biblio.letra_menos": "Smaller text",
   "biblio.letra_mas": "Larger text",
   "vivo.estado.pidiendo_permiso": "Allow the microphone in the browser prompt…",
-  "vivo.estado.no_llega_audio": "Your voice isn't reaching me. On a computer: use Chrome and allow the microphone (on Mac: System Settings → Privacy & Security → Microphone → turn on your browser). Or type your answer."
+  "vivo.estado.no_llega_audio": "I can't hear you yet… Still listening. If nothing appears when you speak: use Chrome or Safari and check the microphone (on Mac: System Settings → Privacy & Security → Microphone). Or type your answer.",
+  "vivo.estado.vacio": "You haven't answered yet: speak or type your answer (or tap «I don't know»).",
+  "vivo.sin_linea.bien": "You covered the key ideas.",
+  "vivo.sin_linea.casi": "Good start, but a key point was missing. I will tell you which at the end.",
+  "vivo.sin_linea.mal": "That's not what the question asks. You will see the book answer at the end.",
+  "vivo.sin_linea.vacio": "You didn't answer this question. You will see the book answer at the end.",
+  "vivo.estado.brave": "Brave blocks voice dictation: use Chrome, Edge or Safari, or type your answer."
 }

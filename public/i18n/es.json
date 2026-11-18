@@ -5445,5 +5445,11 @@
   "biblio.letra_menos": "Letra más chica",
   "biblio.letra_mas": "Letra más grande",
   "vivo.estado.pidiendo_permiso": "Permite el micrófono en el aviso del navegador…",
-  "vivo.estado.no_llega_audio": "No me llega tu voz. En la computadora: usa Chrome y permite el micrófono (en Mac: Ajustes del Sistema → Privacidad y seguridad → Micrófono → activa tu navegador). O escribe tu respuesta."
+  "vivo.estado.no_llega_audio": "Todavía no te oigo… Sigo escuchando. Si no aparece nada al hablar: usa Chrome o Safari y revisa el micrófono (en Mac: Ajustes del Sistema → Privacidad y seguridad → Micrófono). O escribe tu respuesta.",
+  "vivo.estado.vacio": "Todavía no respondiste: habla o escribe tu respuesta (o toca «No sé»).",
+  "vivo.sin_linea.bien": "Dijiste las ideas clave.",
+  "vivo.sin_linea.casi": "Vas bien, pero te faltó un punto clave. Al final te digo cuál.",
+  "vivo.sin_linea.mal": "No es lo que pide la pregunta. Al final ves la respuesta del libro.",
+  "vivo.sin_linea.vacio": "No respondiste esta pregunta. Al final ves la respuesta del libro.",
+  "vivo.estado.brave": "Brave bloquea el dictado por voz: usa Chrome, Edge o Safari, o escribe tu respuesta."
 }

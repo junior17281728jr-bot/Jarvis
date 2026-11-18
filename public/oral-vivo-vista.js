@@ -234,10 +234,12 @@ function practica(s, prefs, h, desde = 0) {
           r.interimResults = true;
           r.maxAlternatives = 1;
           r.onaudiostart = () => { oyoAlgo = true; };
+          r.onspeechstart = () => { oyoAlgo = true; if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando'); };
           r.onsoundstart = () => { oyoAlgo = true; };
           r.onresult = ev => {
             oyoAlgo = true;
             clearTimeout(vigia);
+            if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando');
             reintentos = 0;
             let fijo = '';
             let provisional = '';
@@ -262,7 +264,7 @@ function practica(s, prefs, h, desde = 0) {
         };
         // Primero se pide el micrófono de verdad (así el navegador muestra su permiso y se sabe si el sistema lo bloquea);
         // después empieza el dictado.
-        const arrancar = () => { try { empezar(); ponerEstado('escuchando'); vigia = setTimeout(() => { if (escucha && !oyoAlgo) { parar(); ponerEstado('no_llega_audio'); } }, 6000); } catch { clearTimeout(vigia); escucha = null; ponerEstado('no_oyo'); } };
+        const arrancar = () => { try { empezar(); ponerEstado('escuchando'); vigia = setTimeout(() => { if (escucha && !oyoAlgo) ponerEstado(navigator.brave ? 'brave' : 'no_llega_audio'); }, 9000); } catch { clearTimeout(vigia); escucha = null; ponerEstado('no_oyo'); } };
         const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
         if (md?.getUserMedia) {
           ponerEstado('pidiendo_permiso');
@@ -277,7 +279,8 @@ function practica(s, prefs, h, desde = 0) {
         } else arrancar();
       });
     }
-    const listo = botonGrande(t('vivo.listo'), () => { parar(); alListo(caja.value.trim(), ponerEstado); }, { sonido: null });
+    // 0.14.40: nunca se manda vacío por error (antes salía «Mal» sin decir nada); para no saber está «No sé».
+    const listo = botonGrande(t('vivo.listo'), () => { parar(); if (!caja.value.trim()) { ponerEstado('vacio'); caja.focus(); return; } alListo(caja.value.trim(), ponerEstado); }, { sonido: null });
     // Un solo botón claro abajo («Enviar»); «No sé» es un enlace chico dentro de su burbuja.
     const noSe = el('button', { type: 'button', class: 'vivo-no-se', onclick: () => { parar(); alListo('', ponerEstado); } }, el('span', { texto: t('vivo.no_se') }));
     const nodo = el('div', { class: 'vivo-fila alumno' },
@@ -325,7 +328,10 @@ function practica(s, prefs, h, desde = 0) {
         if (!x) { r.caja.disabled = false; return; }
         if (x.estado === 'lista') {
           sonar(x.veredicto === 'bien' ? 'bien' : x.veredicto === 'mal' ? 'mal' : 'toque');
-          chat.append(chipVeredicto(x.veredicto, x.linea));
+          // 0.14.40: lo que dijo (corto) y el porqué en una línea, aunque la IA no haya mandado línea.
+          const dijo = r.caja.value.trim();
+          if (dijo) chat.append(el('p', { class: 'vivo-dijiste suave chica' }, el('strong', { texto: t('vivo.dijiste') }), el('span', { texto: ' «' + (dijo.length > 160 ? dijo.slice(0, 157) + '…' : dijo) + '»' })));
+          chat.append(chipVeredicto(x.veredicto, x.linea || t(dijo ? 'vivo.sin_linea.' + x.veredicto : 'vivo.sin_linea.vacio')));
           ex.poner(x.veredicto, 3200);
           if (x.repregunta && !seguimiento) {
             const decir = () => ({ texto: x.repregunta, lang: 'es-ES' });
