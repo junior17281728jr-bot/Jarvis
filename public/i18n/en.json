@@ -5256,5 +5256,7 @@
   "profe.cambio.flojo": "But you still hesitate on {tema}: want a quick review?",
   "profe.cambio.foco": "Today I suggest we tackle {tema}. Shall we do it together?",
   "biblio.letra_menos": "Smaller text",
-  "biblio.letra_mas": "Larger text"
+  "biblio.letra_mas": "Larger text",
+  "vivo.estado.pidiendo_permiso": "Allow the microphone in the browser prompt…",
+  "vivo.estado.no_llega_audio": "Your voice isn't reaching me. On a computer: use Chrome and allow the microphone (on Mac: System Settings → Privacy & Security → Microphone → turn on your browser). Or type your answer."
 }

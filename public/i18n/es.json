@@ -5256,5 +5256,7 @@
   "profe.cambio.flojo": "Pero en {tema} todavía dudas: ¿te doy un repaso rápido?",
   "profe.cambio.foco": "Hoy te propongo meterle mano a {tema}. ¿Lo hacemos juntos?",
   "biblio.letra_menos": "Letra más chica",
-  "biblio.letra_mas": "Letra más grande"
+  "biblio.letra_mas": "Letra más grande",
+  "vivo.estado.pidiendo_permiso": "Permite el micrófono en el aviso del navegador…",
+  "vivo.estado.no_llega_audio": "No me llega tu voz. En la computadora: usa Chrome y permite el micrófono (en Mac: Ajustes del Sistema → Privacidad y seguridad → Micrófono → activa tu navegador). O escribe tu respuesta."
 }

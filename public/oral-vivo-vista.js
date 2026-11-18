@@ -223,13 +223,21 @@ function practica(s, prefs, h, desde = 0) {
         base = caja.value ? `${caja.value.trim()} ` : '';
         let fijoTotal = '';
         let reintentos = 0;
+        // 0.14.36: si en ~6 s el navegador no recibió NADA de audio (sin permiso del sistema, micrófono equivocado), no se
+        // queda «Escuchando…» para siempre: lo dice y para.
+        let oyoAlgo = false;
+        let vigia = null;
         const empezar = () => {
           const r = new R();
           r.lang = idiomaOral(usuario) === 'en' ? 'en-US' : 'es-ES';
           r.continuous = !esSafari;
           r.interimResults = true;
           r.maxAlternatives = 1;
+          r.onaudiostart = () => { oyoAlgo = true; };
+          r.onsoundstart = () => { oyoAlgo = true; };
           r.onresult = ev => {
+            oyoAlgo = true;
+            clearTimeout(vigia);
             reintentos = 0;
             let fijo = '';
             let provisional = '';
@@ -252,7 +260,21 @@ function practica(s, prefs, h, desde = 0) {
           escucha = r;
           r.start();
         };
-        try { empezar(); ponerEstado('escuchando'); } catch { escucha = null; ponerEstado('no_oyo'); }
+        // Primero se pide el micrófono de verdad (así el navegador muestra su permiso y se sabe si el sistema lo bloquea);
+        // después empieza el dictado.
+        const arrancar = () => { try { empezar(); ponerEstado('escuchando'); vigia = setTimeout(() => { if (escucha && !oyoAlgo) { parar(); ponerEstado('no_llega_audio'); } }, 6000); } catch { clearTimeout(vigia); escucha = null; ponerEstado('no_oyo'); } };
+        const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
+        if (md?.getUserMedia) {
+          ponerEstado('pidiendo_permiso');
+          md.getUserMedia({ audio: true }).then(flujo => {
+            try { flujo.getTracks().forEach(p => p.stop()); } catch { /* nada */ }
+            arrancar();
+          }, err => {
+            clearTimeout(vigia);
+            const n = err?.name;
+            ponerEstado(n === 'NotAllowedError' || n === 'SecurityError' ? 'sin_permiso' : n === 'NotFoundError' || n === 'NotReadableError' ? 'sin_micro' : 'no_oyo');
+          });
+        } else arrancar();
       });
     }
     const listo = botonGrande(t('vivo.listo'), () => { parar(); alListo(caja.value.trim(), ponerEstado); }, { sonido: null });
