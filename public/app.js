@@ -5928,6 +5928,14 @@ async function pantallaGaleriaCompe(n) {
   const lista = raiz.querySelector('.compe-feed');
   if (lista) lista.scrollTop = enLista;
 }
+// 0.14.41: «Créditos de las fotos» de la Competencia.
+async function pantallaFotosCompe() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/academia/competencia/fotos'), import('./competencia-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorCompe(r);
+  mostrar(marco('competencia', vista.pantallaFotos(r.datos, piezasCompe(vigente))));
+}
 async function pantallaCompeAdmin() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/competencia'), import('./competencia-vista.js')]);
@@ -6457,6 +6465,7 @@ async function dibujar() {
   const galeriaCompe = seccion.match(/^competencia\/([1-6])\/certificados$/);
   if (galeriaCompe) return pantallaGaleriaCompe(galeriaCompe[1]);
   if (seccion === 'competencia/admin' && esAdmin) return pantallaCompeAdmin();
+  if (seccion === 'competencia/fotos') return pantallaFotosCompe();
   const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
   if (certificadosAlumno && esAdmin) return pantallaCertificadosAlumno(certificadosAlumno[1]);
   if (seccion === 'mis-documentos') return pantallaMisDocumentos();
@@ -6571,6 +6580,7 @@ function pedidosAlAbrir(seccion, admin) {
   const galeriaCompe = seccion.match(/^competencia\/([1-6])\/certificados$/);
   if (galeriaCompe) return [admin ? `/api/admin/academia/competencia/${galeriaCompe[1]}/certificados` : `/api/academia/competencia/${galeriaCompe[1]}/certificados`];
   if (seccion === 'competencia/admin') return admin ? ['/api/admin/academia/competencia'] : [];
+  if (seccion === 'competencia/fotos') return ['/api/academia/competencia/fotos'];
   const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
   if (certificadosAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(certificadosAlumno[1])}/certificados`] : [];
   if (seccion === 'mis-documentos') return ['/api/yo/documentos', '/api/yo/terminos'];

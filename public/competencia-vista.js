@@ -67,6 +67,30 @@ export function dibujo(clave, t) {
   return s('svg', { viewBox: '0 0 200 110', class: `compe-dibujo dib-${clave}`, role: 'img', 'aria-label': t(`compe.dibujo.${clave}`) }, DIBUJOS[clave]());
 }
 
+// ---------- 0.14.41: las fotos reales (Wikimedia Commons), con su crédito; si no cargan, el dibujo de siempre ----------
+// foto: { src, ancho, alto, autor, licencia } (+ titulo, fuente después de responder: ahí el crédito enlaza a Commons).
+// La caja guarda el alto de la foto desde el principio (ancho/alto y aspect-ratio en el CSS): nada salta bajo el dedo.
+export function figuraFoto(foto, clave, h, { chica = false } = {}) {
+  const { el, t } = h;
+  const caja = el('figure', { class: `compe-foto${chica ? ' chica' : ''}` });
+  const img = el('img', { class: 'compe-foto-img', src: foto.src, width: foto.ancho, height: foto.alto, decoding: 'async',
+    alt: foto.titulo ? t('compe.foto.alt', { titulo: foto.titulo }) : t('compe.foto.alt_pregunta') });
+  img.addEventListener('error', () => {
+    caja.classList.add('sin-foto');
+    poner(caja, clave ? dibujo(clave, t) : null);
+  }, { once: true });
+  const commons = foto.fuente
+    ? el('a', { href: foto.fuente, target: '_blank', rel: 'noopener noreferrer', texto: t('compe.foto.commons') })
+    : el('span', { texto: t('compe.foto.commons') });
+  const credito = el('figcaption', { class: 'compe-foto-credito' }, el('span', { texto: t('compe.foto.credito', { autor: foto.autor, licencia: foto.licencia }) }), el('span', { texto: ' · ' }), commons);
+  return poner(caja, img, credito);
+}
+// La imagen de una pregunta: la foto si hay; si no, el dibujo.
+function imagen(foto, clave, h, opciones) {
+  if (foto?.src) return figuraFoto(foto, clave, h, opciones);
+  return clave ? dibujo(clave, h.t) : null;
+}
+
 // ---------- Piezas ----------
 const MEDALLA = { oro: '🥇', plata: '🥈', bronce: '🥉' };
 function tabla(filas, h, { rondas = false } = {}) {
@@ -107,7 +131,27 @@ export function pantallaCompetencia(datos, certs, h) {
     el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('compe.general') })), el('p', { class: 'suave chica', texto: t('compe.general.linea') }), tabla(datos.general, h, { rondas: true })),
     certs?.length ? el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('medalla'), el('span', { texto: t('compe.mis_certificados') })),
       el('ul', { class: 'compe-mis-cert' }, certs.map(x => el('li', {}, el('a', { href: `#competencia/${x.ronda}`, texto: t('compe.cert.linea', { ronda: x.ronda, titulo: x.titulo, aciertos: numero(x.aciertos), total: numero(x.total) }) }))))) : null,
+    el('p', {}, el('a', { class: 'boton-texto con-icono', href: '#competencia/fotos' }, icono('ojo', 'icono chico'), el('span', { texto: t('compe.fotos.titulo') }))),
     h.esAdmin ? el('p', {}, el('a', { class: 'boton-3d blanco chico', href: '#competencia/admin' }, el('span', { texto: t('compe.admin.ir') }))) : null,
+  ];
+}
+
+// ---------- 0.14.41: #competencia/fotos: «Créditos de las fotos» (autor, licencia y la página de cada una en Commons) ----------
+export function pantallaFotos(datos, h) {
+  const { el, t, numero, icono } = h;
+  const fila = f => el('li', { class: 'compe-credito' },
+    el('img', { class: 'compe-credito-img', src: f.src, width: f.ancho, height: f.alto, alt: t('compe.foto.alt', { titulo: f.titulo }), loading: 'lazy', decoding: 'async' }),
+    el('div', {},
+      el('p', { class: 'fuerte', texto: f.titulo }),
+      el('p', { class: 'chica', texto: t('compe.fotos.autor', { autor: f.autor }) }),
+      el('p', { class: 'chica' }, f.licenciaUrl ? el('a', { href: f.licenciaUrl, target: '_blank', rel: 'noopener noreferrer', texto: f.licencia }) : el('span', { texto: f.licencia }),
+        el('span', { texto: ' · ' }), el('a', { href: f.fuente, target: '_blank', rel: 'noopener noreferrer', texto: t('compe.fotos.ver') }))));
+  return [
+    el('a', { class: 'volver con-icono', href: '#competencia' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('compe.titulo') })),
+    el('h1', { class: 'titulo-pantalla', texto: t('compe.fotos.titulo') }),
+    el('p', { class: 'entrada', texto: t('compe.fotos.linea', { n: numero(datos.fotos.length) }) }),
+    el('p', { class: 'suave chica', texto: t('compe.fotos.cambios') }),
+    el('section', { class: 'tarjeta' }, el('ul', { class: 'compe-creditos' }, datos.fotos.map(fila))),
   ];
 }
 
@@ -179,7 +223,7 @@ export function pantallaRonda(datos, h) {
       el('div', { class: 'compe-arriba' }, el('span', { class: 'antetitulo', texto: t('compe.pregunta_n', { n: numero(q.numero), total: numero(q.total) }) }),
         el('span', { class: 'insignia', texto: t('compe.aciertos', { n: numero(d.aciertos ?? 0) }) })),
       q.quedanMs != null ? el('div', { class: 'compe-reloj-caja' }, barra, quedan) : null,
-      q.dibujo ? el('div', { class: 'compe-dibujo-caja' }, dibujo(q.dibujo, t)) : null,
+      q.foto || q.dibujo ? el('div', { class: q.foto ? 'compe-dibujo-caja con-foto' : 'compe-dibujo-caja' }, imagen(q.foto, q.dibujo, h, { chica: true })) : null,
       el('h2', { class: 'compe-enunciado', texto: q.pregunta }),
       el('div', { class: 'compe-opciones' }, botones),
       el('div', { class: 'compe-respuesta' })));
@@ -197,6 +241,8 @@ export function pantallaRonda(datos, h) {
     poner(lugar, el('div', { class: `compe-veredicto ${r.correcta ? 'tono-bien' : 'tono-atencion'}` },
       el('p', { class: 'compe-titular', texto: r.correcta ? t('compe.bien') : r.aTiempo ? t('compe.mal', { buena: r.buena }) : t('compe.tarde', { buena: r.buena }) }),
       el('p', { class: 'compe-chiste', texto: r.humor }),
+      // 0.14.41: la foto grande con la explicación (también la que, antes de responder, habría delatado la respuesta).
+      r.foto ? el('div', { class: 'compe-foto-resultado' }, figuraFoto(r.foto, r.dibujo ?? q.dibujo, h)) : null,
       el('p', { class: 'compe-explica', texto: r.explicacion }),
       el('div', { class: 'botones' }, siguiente)));
     siguiente.focus?.();
@@ -211,11 +257,12 @@ export function pantallaRonda(datos, h) {
       el('section', { class: 'tarjeta compe-fin' },
         el('p', { class: 'antetitulo', texto: t('compe.ronda.n', { n }) }), el('h1', { class: 'titulo-pantalla', texto: d.titulo }),
         el('p', { class: 'compe-gran-nota', texto: t('compe.tabla.puntos', { aciertos: numero(res.aciertos), total: numero(res.total) }) }),
-        el('p', { class: 'entrada', texto: cert ? fraseCompe(cert, t) : '' }),
+        // 0.14.41: la frase del certificado, bien grande, y el certificado enseguida (con «Descargar»), antes de la tabla.
+        cert ? el('p', { class: 'compe-fin-frase', texto: fraseCompe(cert, t) }) : null,
         el('p', { class: 'suave chica', texto: t('compe.fin.una_vez') }),
         res.malas ? el('p', {}, el('a', { class: 'boton-texto con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('compe.fin.repaso', { n: numero(res.malas) }) }))) : null),
-      el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('compe.tabla.ronda') })), tabla(d.tabla ?? [], h)),
       cert ? tarjetaCertificado(cert, h) : null,
+      el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('compe.tabla.ronda') })), tabla(d.tabla ?? [], h)),
       el('p', {}, el('a', { class: 'boton-3d blanco', href: `#competencia/${n}/certificados` }, el('span', { texto: t('compe.galeria.ver') }))));
   }
 
@@ -344,7 +391,7 @@ export function seccionFalladas(lista, h) {
     el('h2', { id: 'compe-falladas-titulo', class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('compe.repaso.titulo') })),
     el('p', { class: 'suave', texto: t('compe.repaso.linea', { n: numero(lista.length) }) }),
     el('ul', { class: 'compe-falladas-lista' }, lista.map(x => el('li', {},
-      x.dibujo ? el('div', { class: 'compe-dibujo-mini' }, dibujo(x.dibujo, t)) : null,
+      x.foto || x.dibujo ? el('div', { class: 'compe-dibujo-mini' }, imagen(x.foto, x.dibujo, h, { chica: true })) : null,
       el('p', { class: 'antetitulo', texto: t('compe.ronda.n', { n: x.ronda }) }),
       el('p', { class: 'fuerte', texto: x.pregunta }),
       el('p', { class: 'chica tono-bien', texto: t('compe.repaso.buena', { letra: x.buena, texto: x.opciones[x.buena] }) }),

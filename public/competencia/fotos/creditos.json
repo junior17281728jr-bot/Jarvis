@@ -1,0 +1,479 @@
+{
+ "nota": "Fotos de Wikimedia Commons (dominio público, CC0, CC BY o CC BY-SA), reducidas a 800 px de ancho como máximo. Créditos: autor, licencia y página de cada una.",
+ "fotos": {
+  "14-bis.jpg": {
+   "titulo": "El 14-bis de Santos-Dumont (1906)",
+   "autor": "Jules Beau",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:14-bis_de_Alberto_Santos_Dumont.jpg",
+   "ancho": 800,
+   "alto": 552
+  },
+  "a380.jpg": {
+   "titulo": "Airbus A380",
+   "autor": "Julian Herzog",
+   "licencia": "CC BY 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Emirates_Airbus_A380-861_A6-EER_MUC_2015_04.jpg",
+   "ancho": 800,
+   "alto": 450
+  },
+  "ala-delta.jpg": {
+   "titulo": "Concorde visto desde abajo: su ala en delta",
+   "autor": "Arpingstone",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Concorde.planview.arp.jpg",
+   "ancho": 800,
+   "alto": 611
+  },
+  "altimetro.jpg": {
+   "titulo": "Altímetro de un avión",
+   "autor": "CambridgeBayWeather",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Aircraft_altimeter.JPG",
+   "ancho": 800,
+   "alto": 604
+  },
+  "an-225.jpg": {
+   "titulo": "Antonov An-225 Mriya",
+   "autor": "Dylan Agbagni",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Antonov_An-225_Mriya_front.jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "anemometro.jpg": {
+   "titulo": "Anemómetro (velocímetro) de una Cessna 172",
+   "autor": "Bin im Garten",
+   "licencia": "CC BY-SA 3.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Cockpitinstrumente_C172_PD_a_7.JPG",
+   "ancho": 800,
+   "alto": 533
+  },
+  "apolo-10.jpg": {
+   "titulo": "Módulo de mando del Apolo 10 (Museo de Ciencias, Londres)",
+   "autor": "HalleyStarbun",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Apollo_10_Command_Module_(Science_Museum_-_London).jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "autogiro.jpg": {
+   "titulo": "Autogiro Cierva C.30",
+   "autor": "Joost J. Bakker from IJmuiden",
+   "licencia": "CC BY 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:SE-AFI_cierva_C-30.jpg",
+   "ancho": 800,
+   "alto": 619
+  },
+  "bell-x1.jpg": {
+   "titulo": "Bell X-1 «Glamorous Glennis»",
+   "autor": "Gary Todd from Xinzheng, China",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Bell_X-1_%22Glamorous_Glennis%22_(10437170016).jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "beluga.jpg": {
+   "titulo": "Airbus Beluga",
+   "autor": "Hugo LUC",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:F-GSTF_Airbus_Beluga_at_LFBT_airport.jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "benoist.jpg": {
+   "titulo": "Benoist XIV: la primera línea aérea (Florida, 1914)",
+   "autor": "Autor desconocido",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Benoist_Type_XIV_first_airline_takeoff.jpg",
+   "ancho": 800,
+   "alto": 451
+  },
+  "bleriot-xi.jpg": {
+   "titulo": "Blériot XI (1909)",
+   "autor": "AlfvanBeem",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Bleriot_XI_1909.jpg",
+   "ancho": 800,
+   "alto": 601
+  },
+  "boeing-747.jpg": {
+   "titulo": "Boeing 747-400 despegando",
+   "autor": "4300streetcar",
+   "licencia": "CC BY 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Lufthansa_Boeing_747-400_D-ABVM_departing_Boston_June_2025_3.jpg",
+   "ancho": 800,
+   "alto": 450
+  },
+  "breitling-orbiter.jpg": {
+   "titulo": "Góndola del globo Breitling Orbiter 3",
+   "autor": "Alkivar",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Breitling_Orbiter_Side.jpg",
+   "ancho": 800,
+   "alto": 594
+  },
+  "brujula.jpg": {
+   "titulo": "Brújula magnética de una Cessna 172",
+   "autor": "Bin im Garten",
+   "licencia": "CC BY-SA 3.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Magnetkompass_in_einer_Cessna_C172_1262.JPG",
+   "ancho": 800,
+   "alto": 533
+  },
+  "caja-negra.jpg": {
+   "titulo": "Un registrador de vuelo («caja negra»)",
+   "autor": "Beko",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Flight_recorder_01.jpg",
+   "ancho": 800,
+   "alto": 583
+  },
+  "cessna-172.jpg": {
+   "titulo": "Cessna 172 Skyhawk",
+   "autor": "Oleg Yunakov",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Cessna_172_Skyhawk.jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "cessna-vuelo.jpg": {
+   "titulo": "Una Cessna 172 en final para aterrizar",
+   "autor": "Cory W. Watts from Madison, Wisconsin, United States of America",
+   "licencia": "CC BY-SA 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Cessna_172_on_final_(558933903).jpg",
+   "ancho": 800,
+   "alto": 484
+  },
+  "concorde.jpg": {
+   "titulo": "Concorde G-BOAF (Aerospace Bristol)",
+   "autor": "Adrian Pingstone",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Ex-British_Airways_Concorde_216_(G-BOAF)_on_display_at_Aerospace_Bristol_8August2019_arp.jpg",
+   "ancho": 800,
+   "alto": 488
+  },
+  "cumulonimbus.jpg": {
+   "titulo": "Un cumulonimbo",
+   "autor": "Arnold Paul",
+   "licencia": "CC BY-SA 2.5",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.5/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Cloud_cumulonimbus_at_baltic_sea(1).jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "dc-3.jpg": {
+   "titulo": "Douglas DC-3",
+   "autor": "Gordon Leggett",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:2017-08-27_Icelandair_Douglas_DC-3_(TF-NPK)_at_Reykjavik,_Iceland.jpg",
+   "ancho": 800,
+   "alto": 534
+  },
+  "estelas.jpg": {
+   "titulo": "Estelas de condensación que se cruzan",
+   "autor": "NASA Goddard Space Flight Center from Greenbelt, MD, USA",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Criss-Crossing_Contrails_(8495592530).jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "he-178.jpg": {
+   "titulo": "Heinkel He 178 (1939)",
+   "autor": "Heinkel",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Heinkel_He_178_050602-F-1234P-002.jpg",
+   "ancho": 800,
+   "alto": 436
+  },
+  "helicoptero.jpg": {
+   "titulo": "Helicóptero Robinson R44",
+   "autor": "Diego Delso",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Helic%C3%B3ptero_Robinson_R44,_Portage,_Alaska,_Estados_Unidos,_2017-08-22,_DD_43.jpg",
+   "ancho": 800,
+   "alto": 470
+  },
+  "hindenburg.jpg": {
+   "titulo": "El dirigible Hindenburg sobre Lakehurst (1936)",
+   "autor": "USCG",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:LZ_129_Hindenburg_with_RD-4_over_Lakehurst_May_1936.jpg",
+   "ancho": 800,
+   "alto": 519
+  },
+  "huella-luna.jpg": {
+   "titulo": "Huella de bota en la Luna (Apolo 11, 1969)",
+   "autor": "NASA / Buzz Aldrin",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Apollo_11_bootprint_(cropped).jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "huracan.jpg": {
+   "titulo": "El huracán Florence visto desde la Estación Espacial (2018)",
+   "autor": "Alexander Gerst",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Staring_Down_Hurricane_Florence.jpg",
+   "ancho": 800,
+   "alto": 535
+  },
+  "icaro.jpg": {
+   "titulo": "Paisaje con la caída de Ícaro (Pieter Bruegel el Viejo)",
+   "autor": "Pieter Bruegel the Elder",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Pieter_Bruegel_the_Elder_-_Landscape_with_the_Fall_of_Icarus_-_WGA03321.jpg",
+   "ancho": 800,
+   "alto": 513
+  },
+  "lockheed-vega.jpg": {
+   "titulo": "Lockheed Vega 5B de Amelia Earhart",
+   "autor": "Gary Todd from Xinzheng, China",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Lockheed_5B_Vega,_Bought_by_Amelia_Earhart,_1930_(10665610274).jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "luces-pista.jpg": {
+   "titulo": "Pista 16R del aeropuerto de Narita",
+   "autor": "Kentaro Iemoto from Tokyo, Japan",
+   "licencia": "CC BY-SA 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Runway_16R,_Narita_Airport_(4055519259).jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "luces-rodaje.jpg": {
+   "titulo": "Luz de borde de una calle de rodaje",
+   "autor": "El Grafo",
+   "licencia": "CC BY-SA 3.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Taxiway_Edge_Light_Siegerlandflughafen.jpg",
+   "ancho": 479,
+   "alto": 640
+  },
+  "luz-navegacion.jpg": {
+   "titulo": "Luz de navegación en la punta del ala",
+   "autor": "Adrian Pingstone",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Winglet_and_nav_light_arp.jpg",
+   "ancho": 800,
+   "alto": 599
+  },
+  "mi-26.jpg": {
+   "titulo": "Mil Mi-26",
+   "autor": "Doomych",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Mil_Mi-26_on_the_MAKS-2009_(01).jpg",
+   "ancho": 800,
+   "alto": 391
+  },
+  "microrrafaga.jpg": {
+   "titulo": "Una microrráfaga (Piracicaba, Brasil, 2024)",
+   "autor": "A.O Mapping",
+   "licencia": "CC BY 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Microburst_Piracicaba_2024-11-15.jpg",
+   "ancho": 800,
+   "alto": 380
+  },
+  "montgolfier.jpg": {
+   "titulo": "El globo de los hermanos Montgolfier (1783)",
+   "autor": "Claude Louis Desrais",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Montgolfiere_1783.jpg",
+   "ancho": 800,
+   "alto": 608
+  },
+  "niebla.jpg": {
+   "titulo": "Luces de pista entre la niebla",
+   "autor": "shankar s. from Dubai, united arab emirates",
+   "licencia": "CC BY 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:The_runway_lights_shining_through_the_fog_were_fascinating_(26985046884).jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "ornitoptero.jpg": {
+   "titulo": "Modelo de una máquina voladora de Leonardo da Vinci",
+   "autor": "Brandmeister (Togrul Safarov)",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Leonardo%27s_flying_machine.jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "piper-cub.jpg": {
+   "titulo": "Piper J-3 Cub (Museo Steven F. Udvar-Hazy)",
+   "autor": "Balon Greyjoy",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:20180328_Piper_J-3_Cub_Udvar-Hazy_2.jpg",
+   "ancho": 800,
+   "alto": 568
+  },
+  "planeador.jpg": {
+   "titulo": "Planeador Standard Cirrus",
+   "autor": "Alan Wilson from Stilton, Peterborough, Cambs, UK",
+   "licencia": "CC BY-SA 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Schempp-Hirth_HS.4_Standard_Cirrus_%E2%80%98DFY%E2%80%99_(BGA2091)_(19116549100).jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "rotor-cola.jpg": {
+   "titulo": "Rotor de cola de un helicóptero NH90",
+   "autor": "Julian Herzog",
+   "licencia": "CC BY 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:NHIndustries_NH90_TTH_French_Army_Air_Corps_EAD_PAS_2013_04_tail_rotor_detail.jpg",
+   "ancho": 800,
+   "alto": 532
+  },
+  "rutan-voyager.jpg": {
+   "titulo": "Rutan Voyager (Museo Nacional del Aire y el Espacio)",
+   "autor": "Jorfer",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Voyager_Aircraft.JPG",
+   "ancho": 800,
+   "alto": 600
+  },
+  "solar-impulse.jpg": {
+   "titulo": "Solar Impulse 2",
+   "autor": "Syced",
+   "licencia": "CC0",
+   "licenciaUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Solar_impulse_across_America_airplane.jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "spirit-st-louis.jpg": {
+   "titulo": "Spirit of St. Louis (Museo Nacional del Aire y el Espacio)",
+   "autor": "Mike Peel",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Spirit_of_St_Louis,_National_Air_and_Space_Museum,_Washington.jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "spruce-goose.jpg": {
+   "titulo": "Hughes H-4 Hercules «Spruce Goose»",
+   "autor": "Clemens Vasters from Viersen, Germany",
+   "licencia": "CC BY 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Hughes_H-4_Hercules_%22Spruce_Goose%22_(6586732533)_(3).jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "sr-71.jpg": {
+   "titulo": "Lockheed SR-71 Blackbird en vuelo",
+   "autor": "US Air Force",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:SR-71_Blackbird_soars_above_northern_California.jpg",
+   "ancho": 800,
+   "alto": 541
+  },
+  "termica.jpg": {
+   "titulo": "Una «calle» de cúmulos sobre las térmicas",
+   "autor": "M J Richardson",
+   "licencia": "CC BY-SA 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Cloud_street_above_Todholes_Hill_-_geograph.org.uk_-_1316534.jpg",
+   "ancho": 500,
+   "alto": 375
+  },
+  "transbordador.jpg": {
+   "titulo": "El transbordador Endeavour aterrizando con su paracaídas de frenado",
+   "autor": "NASA Armstrong Flight Research Center / NASA/Jim Ross",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:The_Space_Shuttle_Endeavour%27s_drag_chute_deploys_to_slow_the_orbiter_as_it_rolls_out_on_Runway_22_at_Edwards_Air_Force_Base_at_the_conclusion_of_its_14-day_STS-111_mission_to_the_International_Space_Station_(EC02-0131-3).jpg",
+   "ancho": 800,
+   "alto": 640
+  },
+  "tu-144.jpg": {
+   "titulo": "Tupolev Tu-144 (y un Concorde) en el museo de Sinsheim",
+   "autor": "Ank Kumar",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Sinsheim_Tupolev_Tu-144_and_Concorde_(Ank_Kumar)_10.jpg",
+   "ancho": 800,
+   "alto": 533
+  },
+  "u-2.jpg": {
+   "titulo": "Lockheed U-2S Dragon Lady",
+   "autor": "Julian Herzog",
+   "licencia": "CC BY 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:United_States_Air_Force_Lockheed_U-2S_Dragon_Lady_80-1094_Royal_International_Air_Tattoo_2025_01.jpg",
+   "ancho": 800,
+   "alto": 450
+  },
+  "vor.jpg": {
+   "titulo": "Radiofaro VOR de Detling Hill (Inglaterra)",
+   "autor": "Penny Mayes",
+   "licencia": "CC BY-SA 2.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:VOR_Beacon,_Detling_Hill_-_geograph.org.uk_-_18098.jpg",
+   "ancho": 500,
+   "alto": 259
+  },
+  "vortice.jpg": {
+   "titulo": "Vórtice de punta de ala hecho visible con humo (NASA)",
+   "autor": "NASA Langley Research Center (NASA-LaRC), Edited by Fir0002",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Airplane_vortex_edit.jpg",
+   "ancho": 787,
+   "alto": 640
+  },
+  "vostok.jpg": {
+   "titulo": "Cápsula de descenso de la Vostok 1",
+   "autor": "Errabee",
+   "licencia": "CC BY-SA 2.5",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/2.5/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Vostok1_descent_module.jpg",
+   "ancho": 427,
+   "alto": 640
+  },
+  "winglets.jpg": {
+   "titulo": "Winglet de un Boeing 737-800",
+   "autor": "МаратД",
+   "licencia": "CC BY-SA 4.0",
+   "licenciaUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Winglet_of_Boeing_737-800.jpg",
+   "ancho": 800,
+   "alto": 600
+  },
+  "wright-flyer.jpg": {
+   "titulo": "Wright Flyer: el primer vuelo (Kitty Hawk, 1903)",
+   "autor": "John T. Daniels",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:Firstflight_2_cropped.jpg",
+   "ancho": 800,
+   "alto": 499
+  },
+  "x-15.jpg": {
+   "titulo": "North American X-15 en vuelo",
+   "autor": "NASA",
+   "licencia": "Public domain",
+   "fuente": "https://commons.wikimedia.org/wiki/File:X-15_in_flight.jpg",
+   "ancho": 800,
+   "alto": 531
+  }
+ }
+}

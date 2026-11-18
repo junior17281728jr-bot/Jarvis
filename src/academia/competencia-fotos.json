@@ -1,0 +1,266 @@
+{
+ "r1-01": {
+  "foto": "wright-flyer.jpg",
+  "revela": false
+ },
+ "r1-02": {
+  "foto": "wright-flyer.jpg",
+  "revela": false
+ },
+ "r1-03": {
+  "foto": "spirit-st-louis.jpg",
+  "revela": true
+ },
+ "r1-04": {
+  "foto": "lockheed-vega.jpg",
+  "revela": true
+ },
+ "r1-05": {
+  "foto": "14-bis.jpg",
+  "revela": true
+ },
+ "r1-06": {
+  "foto": "bleriot-xi.jpg",
+  "revela": false
+ },
+ "r1-07": {
+  "foto": "montgolfier.jpg",
+  "revela": true
+ },
+ "r1-08": {
+  "foto": "cessna-vuelo.jpg",
+  "revela": false
+ },
+ "r1-10": {
+  "foto": "vostok.jpg",
+  "revela": true
+ },
+ "r1-11": {
+  "foto": "huella-luna.jpg",
+  "revela": true
+ },
+ "r1-12": {
+  "foto": "bell-x1.jpg",
+  "revela": true
+ },
+ "r1-14": {
+  "foto": "autogiro.jpg",
+  "revela": true
+ },
+ "r1-15": {
+  "foto": "he-178.jpg",
+  "revela": true
+ },
+ "r1-17": {
+  "foto": "anemometro.jpg",
+  "revela": true
+ },
+ "r1-19": {
+  "foto": "dc-3.jpg",
+  "revela": true
+ },
+ "r2-01": {
+  "foto": "an-225.jpg",
+  "revela": true
+ },
+ "r2-02": {
+  "foto": "an-225.jpg",
+  "revela": false
+ },
+ "r2-04": {
+  "foto": "spruce-goose.jpg",
+  "revela": false
+ },
+ "r2-05": {
+  "foto": "a380.jpg",
+  "revela": true
+ },
+ "r2-06": {
+  "foto": "boeing-747.jpg",
+  "revela": true
+ },
+ "r2-07": {
+  "foto": "cessna-172.jpg",
+  "revela": true
+ },
+ "r2-08": {
+  "foto": "piper-cub.jpg",
+  "revela": true
+ },
+ "r2-09": {
+  "foto": "rutan-voyager.jpg",
+  "revela": false
+ },
+ "r2-10": {
+  "foto": "wright-flyer.jpg",
+  "revela": false
+ },
+ "r2-11": {
+  "foto": "breitling-orbiter.jpg",
+  "revela": true
+ },
+ "r2-12": {
+  "foto": "solar-impulse.jpg",
+  "revela": false
+ },
+ "r2-13": {
+  "foto": "mi-26.jpg",
+  "revela": true
+ },
+ "r2-14": {
+  "foto": "beluga.jpg",
+  "revela": true
+ },
+ "r2-19": {
+  "foto": "hindenburg.jpg",
+  "revela": false
+ },
+ "r2-20": {
+  "foto": "an-225.jpg",
+  "revela": false
+ },
+ "r3-01": {
+  "foto": "sr-71.jpg",
+  "revela": true
+ },
+ "r3-02": {
+  "foto": "x-15.jpg",
+  "revela": true
+ },
+ "r3-03": {
+  "foto": "concorde.jpg",
+  "revela": false
+ },
+ "r3-04": {
+  "foto": "concorde.jpg",
+  "revela": false
+ },
+ "r3-05": {
+  "foto": "tu-144.jpg",
+  "revela": true
+ },
+ "r3-09": {
+  "foto": "u-2.jpg",
+  "revela": false
+ },
+ "r3-12": {
+  "foto": "anemometro.jpg",
+  "revela": false
+ },
+ "r3-13": {
+  "foto": "anemometro.jpg",
+  "revela": false
+ },
+ "r3-18": {
+  "foto": "transbordador.jpg",
+  "revela": true
+ },
+ "r3-19": {
+  "foto": "concorde.jpg",
+  "revela": false
+ },
+ "r3-20": {
+  "foto": "apolo-10.jpg",
+  "revela": true
+ },
+ "r4-11": {
+  "foto": "luz-navegacion.jpg",
+  "revela": true
+ },
+ "r4-12": {
+  "foto": "caja-negra.jpg",
+  "revela": true
+ },
+ "r4-13": {
+  "foto": "caja-negra.jpg",
+  "revela": true
+ },
+ "r4-16": {
+  "foto": "luces-pista.jpg",
+  "revela": true
+ },
+ "r4-17": {
+  "foto": "luces-rodaje.jpg",
+  "revela": true
+ },
+ "r5-01": {
+  "foto": "cumulonimbus.jpg",
+  "revela": true
+ },
+ "r5-04": {
+  "foto": "niebla.jpg",
+  "revela": false
+ },
+ "r5-06": {
+  "foto": "altimetro.jpg",
+  "revela": true
+ },
+ "r5-09": {
+  "foto": "huracan.jpg",
+  "revela": true
+ },
+ "r5-10": {
+  "foto": "huracan.jpg",
+  "revela": false
+ },
+ "r5-12": {
+  "foto": "microrrafaga.jpg",
+  "revela": true
+ },
+ "r5-18": {
+  "foto": "brujula.jpg",
+  "revela": false
+ },
+ "r5-20": {
+  "foto": "vor.jpg",
+  "revela": true
+ },
+ "r6-02": {
+  "foto": "ornitoptero.jpg",
+  "revela": true
+ },
+ "r6-03": {
+  "foto": "icaro.jpg",
+  "revela": false
+ },
+ "r6-04": {
+  "foto": "planeador.jpg",
+  "revela": true
+ },
+ "r6-05": {
+  "foto": "termica.jpg",
+  "revela": false
+ },
+ "r6-06": {
+  "foto": "estelas.jpg",
+  "revela": true
+ },
+ "r6-07": {
+  "foto": "winglets.jpg",
+  "revela": true
+ },
+ "r6-08": {
+  "foto": "vortice.jpg",
+  "revela": false
+ },
+ "r6-12": {
+  "foto": "ala-delta.jpg",
+  "revela": true
+ },
+ "r6-13": {
+  "foto": "spirit-st-louis.jpg",
+  "revela": true
+ },
+ "r6-14": {
+  "foto": "benoist.jpg",
+  "revela": true
+ },
+ "r6-15": {
+  "foto": "helicoptero.jpg",
+  "revela": false
+ },
+ "r6-16": {
+  "foto": "rotor-cola.jpg",
+  "revela": true
+ }
+}

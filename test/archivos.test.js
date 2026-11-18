@@ -495,7 +495,7 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.14.34: «Tu instructor».
     ['instructor', 'pantallaInstructor'],
     // 0.14.38: la Competencia.
-    ['competencia', 'pantallaCompetencia'], ['competencia/admin', 'pantallaCompeAdmin'],
+    ['competencia', 'pantallaCompetencia'], ['competencia/admin', 'pantallaCompeAdmin'], ['competencia/fotos', 'pantallaFotosCompe'],
     // 0.12.5: Administrador en 4 grupos: Contenido → Términos y Videos de YouTube; Sistema → Cambios importantes.
     ['contenido/terminos', 'pantallaTerminosAdmin'], ['contenido/videos', 'pantallaVideosAdmin'], ['admin/cambios', 'pantallaAdmin'],
     // 0.12.8: Dinero e IA → IA por alumno y Registro de la IA.

@@ -11,7 +11,7 @@ import { auditar } from '../cuentas/usuarios.js';
 import {
   numeroRonda, resumenCompetencia, estadoRonda, empezarRonda, responderRonda, tablaRonda, galeria, misCertificadosCompe, reaccionar, comentar,
   borrarComentario, silenciar, resumenAdmin, aprobarSugerencia, descartarSugerencia, guardarRelojCompe, rondaJugada, rondaEfectiva, falladas,
-  anotarIaPedida, anotarPedidoMejora, claveCertCompe, claveSugerencia, RONDAS, SEMILLA,
+  anotarIaPedida, anotarPedidoMejora, claveCertCompe, claveSugerencia, creditosFotos, RONDAS, SEMILLA,
 } from '../academia/competencia.js';
 import { armarFrase, armarMejora } from '../academia/competencia-ia.js';
 
@@ -53,6 +53,8 @@ export function registrarRutasCompetencia(rutas, { reloj = Date.now, limites = {
     try { pedirFrases(db, usuario, certificados); } catch { /* la frase fija sirve igual */ }
     return { codigo: 200, datos: { certificados } };
   });
+  // 0.14.41: «Créditos de las fotos» (autor, licencia y enlace de cada foto; antes de /:ronda para que no la tome).
+  rutas.agregar('GET', '/api/academia/competencia/fotos', () => ({ codigo: 200, datos: { fotos: creditosFotos() } }));
   // Mostrar la ronda (si está jugando, le SIRVE la pregunta que le toca: desde ahí corre su reloj).
   rutas.agregar('GET', '/api/academia/competencia/:ronda', ({ db, usuario, parametros }) => {
     const n = numeroRonda(parametros.ronda);

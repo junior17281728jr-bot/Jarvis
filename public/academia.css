@@ -1751,3 +1751,20 @@ a.biblio-a-seccion { display: inline-flex; align-items: center; min-height: 44px
 details.biblio-por-pagina { margin-top: 8px; }
 details.biblio-por-pagina summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
 @media (max-width: 420px) { .biblio-pasos-seccion { grid-template-columns: 1fr; } a.biblio-paso-seccion[rel="next"] { text-align: left; } }
+/* 0.14.41: las fotos reales de la Competencia (Wikimedia Commons), con su crédito; si no cargan, vuelve el dibujo.
+   ancho/alto van en la etiqueta y aquí height: auto: el navegador guarda el lugar antes de que llegue la foto. */
+.compe-foto { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.compe-foto-img { display: block; width: 100%; height: auto; border-radius: 12px; background: #dfe7f3; object-fit: cover; }
+.compe-foto.chica .compe-foto-img { max-height: 220px; }
+.compe-foto-credito { font-size: 11.5px; line-height: 1.3; color: var(--suave); overflow-wrap: anywhere; }
+.compe-foto-credito a { color: inherit; }
+.compe-foto.sin-foto .compe-dibujo { max-width: 260px; }
+.compe-dibujo-caja.con-foto { padding: 0; background: none; max-width: 360px; }
+.compe-foto-resultado { margin: 10px 0; }
+.compe-foto-resultado .compe-foto-img { max-height: 70vh; object-fit: contain; background: #0f172a; }
+.compe-dibujo-mini .compe-foto { max-width: 220px; }
+.compe-fin-frase { font-size: 1.25em; font-weight: 800; line-height: 1.35; margin: 10px 0; padding: 12px 14px; border-radius: 14px; background: rgba(255, 170, 0, 0.14); border-left: 5px solid var(--oro); }
+.compe-creditos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.compe-credito { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; overflow-wrap: anywhere; }
+.compe-credito p { margin: 0 0 2px; }
+.compe-credito-img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; background: #dfe7f3; }

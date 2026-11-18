@@ -13,7 +13,7 @@ import { hashClave } from '../src/cuentas/claves.js';
 import { crearLimitesCuentas } from '../src/api/cuentas.js';
 import { Limitador } from '../src/nucleo/limites.js';
 import { guardarAjuste } from '../src/academia/paquetes.js';
-import { SEMILLA, RONDAS, DIBUJOS, LETRAS, bandaDe, BANDAS, VARIANTES_FRASE, limpiarComentario, CAMPOS_IA } from '../src/academia/competencia.js';
+import { SEMILLA, RONDAS, DIBUJOS, LETRAS, FOTOS, bandaDe, BANDAS, VARIANTES_FRASE, limpiarComentario, CAMPOS_IA } from '../src/academia/competencia.js';
 import { guardarFrase, guardarSugerencia, limpiarFrase, armarFrase, armarMejora } from '../src/academia/competencia-ia.js';
 import { FORMATO_CODIGO } from '../src/academia/certificados.js';
 import { PROPOSITOS } from '../src/ia/propositos.js';
@@ -114,7 +114,7 @@ test('una sola vez por ronda: empezar otra vez, recargar o adivinar la siguiente
   const q1 = e.datos.actual;
   assert.equal(q1.numero, 1);
   // La pregunta llega SIN la respuesta, sin la explicación y sin los chistes.
-  assert.deepEqual(Object.keys(q1).sort(), ['dibujo', 'id', 'numero', 'opciones', 'pregunta', 'quedanMs', 'total']);
+  assert.deepEqual(Object.keys(q1).sort(), ['dibujo', 'foto', 'id', 'numero', 'opciones', 'pregunta', 'quedanMs', 'total']);
   assert.doesNotMatch(e.texto, /correcta|explicacion|"bien"|"mal"/);
   // Recargar 20 s después: la misma pregunta y el reloj sigue (no vuelve a 45 s).
   c.reloj.ahora += 20_000;
@@ -247,6 +247,43 @@ test('lo que falló va a «Mi repaso» (con la buena y la explicación)', () => 
   assert.notEqual(f[0].elegida, f[0].buena);
   assert.equal(f[0].explicacion, SEMILLA[5].preguntas[18].explicacion);
   assert.deepEqual((await pedir(c.base, 'GET', '/api/academia/mi-repaso', { galleta: c.g.ana })).datos.competencia, []);
+}));
+
+// 0.14.41: las fotos reales. La que delataría la respuesta NUNCA viaja con la pregunta; con el resultado, siempre.
+test('las fotos por la API: con la pregunta solo la que no revela (sin título ni enlace); con el resultado, la foto con su crédito', () => conCompetencia(async c => {
+  for (const n of [1, 2]) {
+    const e = await pedir(c.base, 'POST', `/api/academia/competencia/${n}/empezar`, { galleta: c.g.ana, datos: {} });
+    assert.equal(e.codigo, 200);
+    for (let i = 0; i < 20; i++) {
+      const v = await pedir(c.base, 'GET', `/api/academia/competencia/${n}`, { galleta: c.g.ana });
+      const q = v.datos.actual;
+      const m = FOTOS.mapa[q.id];
+      if (!m || m.revela) assert.equal(q.foto, null, `${q.id}: foto antes de responder`);
+      else assert.deepEqual(Object.keys(q.foto).sort(), ['alto', 'ancho', 'autor', 'licencia', 'src']);
+      assert.doesNotMatch(v.texto, /"fuente"/);
+      c.reloj.ahora += 3000;
+      const r = await pedir(c.base, 'POST', `/api/academia/competencia/${n}/responder`, { galleta: c.g.ana, datos: { pregunta: q.id, elegida: 'A' } });
+      assert.equal(r.codigo, 200);
+      if (m) {
+        assert.equal(r.datos.foto.src, `/competencia/fotos/${m.foto}`);
+        assert.ok(r.datos.foto.autor && r.datos.foto.licencia && r.datos.foto.titulo);
+        assert.match(r.datos.foto.fuente, /^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
+        // La foto se sirve (JPEG) desde public/.
+        const f = await fetch(`${c.base}${r.datos.foto.src}`);
+        assert.equal(f.status, 200);
+        assert.equal(f.headers.get('content-type'), 'image/jpeg');
+      } else assert.equal(r.datos.foto, null);
+      assert.ok(DIBUJOS.includes(r.datos.dibujo), 'el dibujo queda de respaldo');
+    }
+  }
+  // «Mi repaso» también la trae, y la página de créditos las lista todas.
+  const repaso = await pedir(c.base, 'GET', '/api/academia/mi-repaso', { galleta: c.g.ana });
+  if (repaso.codigo === 200 && repaso.datos.competencia) assert.ok(repaso.datos.competencia.some(x => x.foto?.src));
+  const fotos = await pedir(c.base, 'GET', '/api/academia/competencia/fotos', { galleta: c.g.ana });
+  assert.equal(fotos.codigo, 200);
+  assert.equal(fotos.datos.fotos.length, Object.keys(FOTOS.creditos).length);
+  for (const f of fotos.datos.fotos) assert.ok(f.src && f.autor && f.licencia && f.fuente && f.titulo);
+  assert.doesNotMatch(fotos.texto, /r[1-6]-\d\d|revela/);
 }));
 
 test('la galería: todos ven los certificados de todos (con alias), reaccionan, comentan sin enlaces, con tope; el administrador borra y silencia', () => conCompetencia(async c => {

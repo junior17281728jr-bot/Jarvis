@@ -689,7 +689,11 @@ test('el repositorio no tiene libros, paquetes de contenido, imágenes de libros
     // solo .webp y .jpg, directo en public/fondos/, y livianas (la del teléfono ≤ 90 KB, la de la computadora ≤ 220 KB).
     const fondo = /^public\/fondos\/[a-z0-9-]+\.(webp|jpg)$/.test(nombre);
     if (fondo) assert.ok(bytes <= (/-900\./.test(nombre) ? 90_000 : 220_000), `${nombre} pesa ${bytes} bytes: una foto de fondo debe ser liviana`);
-    if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|heic|avif)$/.test(base)) assert.ok(IMAGENES_PERMITIDAS.has(nombre) || fondo, `${nombre}: una imagen nueva (¿una figura de un libro?) no va en el repositorio`);
+    // 0.14.41: las fotos de la Competencia (Wikimedia Commons, con su crédito en public/competencia/fotos/creditos.json;
+    // test/competencia-fotos.test.js revisa licencia, medidas y peso de cada una).
+    const fotoCompe = /^public\/competencia\/fotos\/[a-z0-9-]+\.jpg$/.test(nombre);
+    if (fotoCompe) assert.ok(bytes <= 130 * 1024, `${nombre} pesa ${bytes} bytes`);
+    if (/\.(png|jpe?g|gif|webp|bmp|tiff?|svg|heic|avif)$/.test(base)) assert.ok(IMAGENES_PERMITIDAS.has(nombre) || fondo || fotoCompe, `${nombre}: una imagen nueva (¿una figura de un libro?) no va en el repositorio`);
     const tope = 600_000;
     assert.ok(bytes <= tope, `${nombre} pesa ${bytes} bytes: demasiado grande para el repositorio`);
   }

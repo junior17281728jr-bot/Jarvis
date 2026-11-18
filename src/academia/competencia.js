@@ -57,6 +57,33 @@ function leerSemilla(n) {
 }
 export const SEMILLA = Object.freeze(Object.fromEntries(RONDAS.map(n => [n, leerSemilla(n)])));
 
+// 0.14.41 (pedido del dueño): FOTOS REALES en vez de dibujos. Fotos de Wikimedia Commons (dominio público, CC0, CC BY o
+// CC BY-SA), reducidas a 800 px, en public/competencia/fotos/ con su crédito en creditos.json (indexado SOLO por archivo:
+// es público y no dice a qué pregunta va ni si revela la respuesta). Qué foto va con qué pregunta vive aquí, en el
+// servidor (src/academia/competencia-fotos.json): «revela: true» = la foto delataría la respuesta, así que llega SOLO
+// con el resultado (después de responder); si no, también va (más chica) con la pregunta. Si la foto no carga, la
+// pantalla vuelve al dibujo de siempre.
+export const CARPETA_FOTOS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'public', 'competencia', 'fotos');
+export const LICENCIAS_FOTOS = /^(Public domain|CC0|CC BY [1-4]\.[05]|CC BY-SA [1-4]\.[05])$/;
+function leerFotos() {
+  const mapa = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'competencia-fotos.json'), 'utf8'));
+  const creditos = JSON.parse(readFileSync(join(CARPETA_FOTOS, 'creditos.json'), 'utf8')).fotos;
+  return { mapa: Object.freeze(mapa), creditos: Object.freeze(creditos) };
+}
+export const FOTOS = Object.freeze(leerFotos());
+// La foto de una pregunta para la pantalla. despues = ya respondió (con el resultado: también la que revela, su título y
+// el enlace a su página de Commons). Antes de responder: solo la que no revela, y solo autor y licencia.
+export function fotoDe(id, { despues = false } = {}) {
+  const m = FOTOS.mapa[id];
+  const c = m ? FOTOS.creditos[m.foto] : null;
+  if (!c || (m.revela && !despues)) return null;
+  const base = { src: `/competencia/fotos/${m.foto}`, ancho: c.ancho, alto: c.alto, autor: c.autor, licencia: c.licencia };
+  return despues ? { ...base, titulo: c.titulo, fuente: c.fuente, licenciaUrl: c.licenciaUrl ?? null } : base;
+}
+// La página «Créditos de las fotos»: todas, una por archivo (sin decir de qué pregunta son).
+export const creditosFotos = () => Object.entries(FOTOS.creditos).map(([archivo, c]) => ({ src: `/competencia/fotos/${archivo}`, ...c }))
+  .sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'));
+
 export function numeroRonda(valor) {
   const n = Number(valor);
   if (!RONDAS.includes(n)) throw new ErrorHttp(404, 'no_existe');
@@ -84,7 +111,7 @@ export function rondaEfectiva(db, n) {
 export const rondaJugada = (db, n) => leerAjuste(db, claveCongelada(n)) != null
   || db.prepare('SELECT 1 FROM academia_compe_intentos WHERE ronda = ? LIMIT 1').get(n) != null;
 
-const preguntaPublica = (q, numero, total) => ({ id: q.id, numero, total, pregunta: q.pregunta, opciones: { ...q.opciones }, dibujo: DIBUJOS.includes(q.dibujo) ? q.dibujo : null });
+const preguntaPublica = (q, numero, total) => ({ id: q.id, numero, total, pregunta: q.pregunta, opciones: { ...q.opciones }, dibujo: DIBUJOS.includes(q.dibujo) ? q.dibujo : null, foto: fotoDe(q.id) });
 
 // ---------- El reloj ----------
 export function relojCompe(db) {
@@ -170,7 +197,7 @@ export function responderRonda(db, usuarioId, n, { pregunta, elegida }, ahoraMs 
     // La siguiente todavía no se sirve: su reloj empieza cuando la pida (después de leer la explicación).
     db.prepare('UPDATE academia_compe_intentos SET actual = ?, aciertos = ?, segundos = segundos + ?, servida_en = NULL, terminado_en = ? WHERE id = ?')
       .run(actual, aciertos, segundos, terminada ? iso(ahoraMs) : null, intento.id);
-    return { correcta, aTiempo, elegida: aTiempo ? elegida : null, buena: q.correcta, explicacion: q.explicacion, humor: correcta ? q.bien : q.mal, aciertos, numero: actual, total: intento.total, terminada };
+    return { correcta, aTiempo, elegida: aTiempo ? elegida : null, buena: q.correcta, explicacion: q.explicacion, humor: correcta ? q.bien : q.mal, dibujo: DIBUJOS.includes(q.dibujo) ? q.dibujo : null, foto: fotoDe(q.id, { despues: true }), aciertos, numero: actual, total: intento.total, terminada };
   });
   return r;
 }
@@ -226,7 +253,7 @@ export function falladas(db, usuarioId) {
     if (!cache.has(f.ronda)) cache.set(f.ronda, new Map(rondaEfectiva(db, f.ronda).preguntas.map(q => [q.id, q])));
     const q = cache.get(f.ronda).get(f.pregunta);
     if (!q) continue;
-    salida.push({ ronda: f.ronda, id: q.id, pregunta: q.pregunta, opciones: { ...q.opciones }, buena: q.correcta, elegida: f.elegida, aTiempo: f.aTiempo === 1, explicacion: q.explicacion, dibujo: q.dibujo ?? null });
+    salida.push({ ronda: f.ronda, id: q.id, pregunta: q.pregunta, opciones: { ...q.opciones }, buena: q.correcta, elegida: f.elegida, aTiempo: f.aTiempo === 1, explicacion: q.explicacion, dibujo: q.dibujo ?? null, foto: fotoDe(q.id, { despues: true }) });
   }
   return salida;
 }
