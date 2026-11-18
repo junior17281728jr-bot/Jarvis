@@ -41,6 +41,17 @@ export function armarFrase({ ronda, titulo, aciertos, total, falladas = [] }) {
     TONO,
     'Si le fue muy mal, búrlate con cariño de ti mismo también. Ejemplo del estilo del dueño: «No me monto con ese piloto ni porque me paguen 😂… y ojo, que soy una IA: imagínate si fuera humano.»',
     'Si le fue muy bien, celébralo en grande. Máximo 200 letras, sin comillas, sin enlaces, sin nombres de personas ni de empresas.',
+    'Usa lo que falló para el chiste (por ejemplo, si falló la de la brújula: «la brújula hoy apuntaba pa\'l colmado»), pero sin enseñar la respuesta ni corregirlo: es un recuerdo, no una clase.',
+    'Ejemplos del tono por puntuación (no los copies, inventa uno nuevo):',
+    '- 20 de 20: «Veinte de veinte: la torre te pide autógrafo y el Concorde quiere volver solo para verte volar.»',
+    '- 17 a 19: «Casi perfecto: con ese copiloto yo me monto hasta en una avioneta con una sola rueda.»',
+    '- 13 a 16: «El avión despegó, voló y aterrizó. Con un poquito de susto, pero aterrizó.»',
+    '- 9 a 12: «Llegaste… pero al aeropuerto de al lado. Nada que un buen repaso y un cafecito no arreglen.»',
+    '- 8 o menos: «No me monto con ese piloto ni porque me paguen 😂… y ojo, que soy una IA: imagínate si fuera humano.»',
+    'Si falló pocas, no exageres lo malo; si falló muchas, que el chiste lo anime a volver a intentarlo en la próxima ronda y a pasar por «Mi repaso».',
+    'Puedes usar palabras de la cabina (torre, pista, flaps, turbulencia, aterrizaje, despegue, combustible, copiloto) y expresiones dominicanas cariñosas (mi pana, diache, qué lo qué, tremendo), siempre de buena fe y entendibles para cualquiera.',
+    'Un solo emoji como mucho, y solo si suma al chiste.',
+    'Nunca digas que es un examen oficial ni que esto vale como licencia: es solo un certificado de recuerdo de una competencia entre amigos.',
     'Responde solo el JSON pedido: { "frase": "…" }.',
   ].join('\n');
   const texto = `<datos>\n${JSON.stringify({ ronda, titulo, aciertos, total, fallo_en: falladas.slice(0, 6).map(x => String(x).slice(0, 120)) })}\n</datos>`;

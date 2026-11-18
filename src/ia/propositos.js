@@ -171,7 +171,7 @@ export const PROPOSITOS = Object.freeze({
   // 0.14.38: la Competencia (src/academia/competencia-ia.js): la frase del certificado de una ronda (de la cuenta del
   // alumno, sin cobrarle un uso) y «Mejorar preguntas con IA» (de la cuenta del administrador). Siempre Claude Haiku 5.5:
   // lo peor de una vez ≈ 24 000 bytes (~6 000 tokens) × US$0.125/M + 4 096 × US$0.50/M, ×1,1 ×1,05 ≈ US$0.0033.
-  compe_frase: Object.freeze({ ...CLASE_IA, salidaMax: 1024, entradaMaxBytes: 6_000, entradaMinBytes: 800, maximoMicro: 4_000, tipicoMicro: 400, cachear: false, techoMicro: 20_000 }),
+  compe_frase: Object.freeze({ ...CLASE_IA, salidaMax: 2048, entradaMaxBytes: 6_000, entradaMinBytes: 2_200, maximoMicro: 4_000, tipicoMicro: 400, cachear: false, techoMicro: 20_000 }),
   compe_mejorar: Object.freeze({ ...CLASE_IA, entradaMaxBytes: 24_000, entradaMinBytes: 6_000, maximoMicro: 8_000, tipicoMicro: 3_000, cachear: false, techoMicro: 40_000 }),
   // 0.13.0: la fábrica de materias y su mejora continua (ver FABRICA).
   fabrica_escribir: FABRICA,
