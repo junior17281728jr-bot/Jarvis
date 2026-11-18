@@ -5453,5 +5453,11 @@
   "vivo.sin_linea.vacio": "No respondiste esta pregunta. Al final ves la respuesta del libro.",
   "vivo.estado.brave": "Brave bloquea el dictado por voz: usa Chrome, Edge o Safari, o escribe tu respuesta.",
   "vivo.anotado_porque": "(La IA no pudo calificar esta respuesta ahora: estaba ocupada o sin saldo. Al final te calificas tú con la respuesta del libro.)",
-  "vivo.califico_sistema": "(Calificó el sistema, con las ideas clave del libro.)"
+  "vivo.califico_sistema": "(Calificó el sistema, con las ideas clave del libro.)",
+  "vivo.porque": "¿Por qué? Ver la explicación",
+  "vivo.porque.bien": "Lo que dijiste bien:",
+  "vivo.porque.falto": "Lo que te faltó:",
+  "vivo.porque.libro": "Respuesta del libro:",
+  "vivo.porque.pagina": "Libro, página {n}",
+  "error.todavia_no": "Todavía no: primero responde la pregunta (y la repregunta, si te la hicieron)."
 }

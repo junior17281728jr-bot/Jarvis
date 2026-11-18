@@ -342,6 +342,26 @@ function practica(s, prefs, h, desde = 0) {
             return turno(true);
           }
         } else chat.append(el('div', { class: 'vivo-veredicto tono-anotado' }, icono('lapiz', 'icono'), el('span', { texto: t('vivo.anotado') + ' ' + t('vivo.anotado_porque') })));
+        // 0.14.43: «¿Por qué?»: lo que dijo bien, lo que faltó y la respuesta del libro (solo ya calificada).
+        if (x.estado === 'lista') {
+          const caja = el('div', { class: 'vivo-porque' });
+          const btn = el('button', { type: 'button', class: 'vivo-repetir con-icono-chico' }, icono('bombilla', 'icono chico'), el('span', { texto: t('vivo.porque') }));
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            const p = await api('GET', `/api/academia/oral/vivo/${encodeURIComponent(s.sesion)}/${i}/porque`);
+            if (!p.ok) { btn.disabled = false; return avisar(textoError(p.datos.error), 'mal'); }
+            const d = p.datos;
+            btn.remove();
+            const partes = [
+              d.bienDicho ? el('p', {}, el('strong', { texto: t('vivo.porque.bien') + ' ' }), talCual('span', d.bienDicho)) : null,
+              d.falto ? el('p', {}, el('strong', { texto: t('vivo.porque.falto') + ' ' }), talCual('span', d.falto)) : null,
+              (d.respuesta_es || d.respuesta_en) ? el('p', {}, el('strong', { texto: t('vivo.porque.libro') + ' ' }), talCual('span', d.respuesta_es || d.respuesta_en)) : null,
+              d.pagina ? el('p', { class: 'suave chica', texto: t('vivo.porque.pagina', { n: String(d.pagina) }) }) : null];
+            caja.append(...partes.filter(Boolean));
+          });
+          caja.append(btn);
+          chat.append(caja);
+        }
         pie.replaceChildren(siguiente());
       });
       chat.append(r.nodo);

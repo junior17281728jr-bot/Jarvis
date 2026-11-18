@@ -1720,3 +1720,7 @@ h3.biblio-h { font-size: 1.05em; }
 
 /* 0.14.40: lo que dijo el alumno en la práctica oral en vivo */
 .vivo-dijiste { margin: 0.4rem 0 0.2rem; overflow-wrap: anywhere; }
+
+/* 0.14.43: «¿Por qué?» en la práctica oral en vivo */
+.vivo-porque { margin: 0.4rem 0; display: grid; gap: 0.35rem; overflow-wrap: anywhere; }
+.vivo-porque p { margin: 0; }

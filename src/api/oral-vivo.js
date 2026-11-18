@@ -11,7 +11,7 @@ import { espacioDe } from '../cuentas/espacios.js';
 import { leerGuardado } from '../academia/instructor-ia.js';
 import { sistemaCalificar, textoCalificar, armarCierre, RESPUESTA_MAX_LETRAS } from '../academia/oral-vivo-ia.js';
 import {
-  VIVO, portadaVivo, crearVivo, vistaAbierta, abiertaDe, materialCalificar, anotarRespuesta, ponerCalificacion, cerrarVivo, ponerCierre, datosCierre, leerVivo, calificarSistema,
+  VIVO, portadaVivo, crearVivo, vistaAbierta, abiertaDe, materialCalificar, anotarRespuesta, ponerCalificacion, cerrarVivo, ponerCierre, datosCierre, leerVivo, calificarSistema, porqueDe,
 } from '../academia/oral-vivo.js';
 import { tiempoDe } from './pagos.js';
 import { createReadStream, statSync } from 'node:fs';
@@ -168,6 +168,17 @@ export function registrarRutasOralVivo(rutas, h) {
     if (estadoTarea(db, usuario, c.tarea) === 'pendiente') return { codigo: 200, datos: { estado: 'pendiente' } };
     ponerCierre(db, usuario.id, parametros.sesion, { estado: 'no' });
     return { codigo: 200, datos: { estado: 'no' } };
+  });
+
+  // 0.14.43: «¿Por qué?» de una pregunta YA calificada (y sin repregunta pendiente): lo que dijo bien, lo que faltó y la
+  // respuesta del libro. Antes calificada, nada (no se adelanta la respuesta).
+  rutas.agregar('GET', '/api/academia/oral/vivo/:sesion/:i/porque', ({ db, usuario, parametros }) => {
+    contar(topes.lecturas, usuario);
+    const yo = abiertaDe(db, usuario.id, parametros.sesion);
+    const i = Number(parametros.i);
+    const x = porqueDe(conPaquete(db), yo.abierta.items?.[i], yo.abierta.resp?.[i]);
+    if (!x) throw new ErrorHttp(409, 'todavia_no');
+    return { codigo: 200, datos: x };
   });
 
   // ¿Ya la calificó? Solo el veredicto, la línea corta y (si fue «casi») la repregunta: nada del libro.

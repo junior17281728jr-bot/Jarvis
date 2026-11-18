@@ -322,6 +322,16 @@ export function sugerencia(texto, x) {
   return { veredicto: parte >= 0.5 ? 'bien' : parte >= 0.25 ? 'casi' : 'mal', dijo: dijo.slice(0, 8), faltan: clave.filter(w => !esta(w)).slice(0, 8) };
 }
 
+// 0.14.43 (lo pidió el dueño: «¿y la explicación y el porqué?»): la explicación de UNA pregunta ya calificada (sin repregunta
+// pendiente): lo que dijo bien, lo que le faltó y la respuesta del libro. → { bienDicho, falto, respuesta_es, respuesta_en, pagina } o null.
+export function porqueDe(paquete, it, r) {
+  const g = r?.seguimiento?.veredicto ? r.seguimiento : r?.primera;
+  if (!g?.veredicto) return null;
+  if (!r.seguimiento && g.veredicto === 'casi' && g.repregunta) return null; // todavía le toca la repregunta
+  const d = paquete && it ? itemDe(paquete, it) : null;
+  return { veredicto: g.veredicto, bienDicho: g.bienDicho || '', falto: g.falto || '', respuesta_es: d?.x.respuesta_es ?? null, respuesta_en: d?.x.respuesta_en ?? null, pagina: d?.x.pagina ?? null };
+}
+
 // 0.14.42 (lo pidió el dueño): sin IA, la app CALIFICA sola con las ideas clave del libro (ya no «califícate tú»).
 // → { veredicto, linea, bienDicho, falto, repregunta: '', sistema: true } o null (si la pregunta ya no está).
 export function calificarSistema(paquete, it, texto) {

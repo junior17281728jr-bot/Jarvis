@@ -5453,5 +5453,11 @@
   "vivo.sin_linea.vacio": "You didn't answer this question. You will see the book answer at the end.",
   "vivo.estado.brave": "Brave blocks voice dictation: use Chrome, Edge or Safari, or type your answer.",
   "vivo.anotado_porque": "(The AI could not grade this answer right now: it was busy or out of credit. At the end you grade yourself with the book answer.)",
-  "vivo.califico_sistema": "(Graded by the system, with the book's key ideas.)"
+  "vivo.califico_sistema": "(Graded by the system, with the book's key ideas.)",
+  "vivo.porque": "Why? See the explanation",
+  "vivo.porque.bien": "What you got right:",
+  "vivo.porque.falto": "What was missing:",
+  "vivo.porque.libro": "Book answer:",
+  "vivo.porque.pagina": "Book, page {n}",
+  "error.todavia_no": "Not yet: answer the question first (and the follow-up, if you got one)."
 }
