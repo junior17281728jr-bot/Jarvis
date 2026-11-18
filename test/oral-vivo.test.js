@@ -3,7 +3,8 @@
 //  - Con IA: cada respuesta se califica en la fila (un uso), con la respuesta del libro como referencia en el sistema (con
 //    la marca de la caché) y sin nombres; durante la práctica solo viaja «bien / casi / mal» + una línea (+ la repregunta
 //    si fue «casi»): ni la respuesta del libro ni el detalle; el veredicto lo lee el servidor de lo guardado.
-//  - Sin IA (o si una calificación no llegó): se califica él en el repaso final, con la sugerencia de la app.
+//  - Sin IA (o si una calificación no llegó): 0.14.42: califica el sistema (las ideas clave del libro); solo si no puede
+//    (la pregunta ya no está), se califica él en el repaso final.
 //  - El final: nota con bien = 1 y casi = ½ contra la nota de aprobar, tema por tema, la comparación con las veces
 //    anteriores, «¿Listo para el examen real?», el mensaje del instructor (IA) y la ficha del administrador.
 import './ayuda.js';
@@ -12,7 +13,8 @@ import assert from 'node:assert/strict';
 import { conInstructor, pedir, pedidosIa, cuerpoDe, sistemaDe, datosDe, NOMBRES } from './instructor-ia-base.js';
 import { paqueteOralMuestra } from './oral-muestra.js';
 import { figuraMuestraPng } from './academia-muestra.js';
-import { compararTemas, listoExamenReal, porTema, sugerencia, veredictoDe, VIVO } from '../src/academia/oral-vivo.js';
+import { compararTemas, listoExamenReal, porTema, sugerencia, veredictoDe, VIVO, calificarSistema } from '../src/academia/oral-vivo.js';
+import { createHash } from 'node:crypto';
 import { revisarVivo, revisarCierre, sistemaCalificar, textoCalificar } from '../src/academia/oral-vivo-ia.js';
 import { revisarRespuesta, CLAVE_GUARDADO } from '../src/academia/instructor-ia.js';
 import { PROPOSITOS } from '../src/ia/propositos.js';
@@ -95,7 +97,7 @@ test('la revisión de lo que dice la IA: veredicto válido, repregunta solo con 
   assert.equal(PROPOSITOS.instructor_oral_vivo.cachear, true);
 });
 
-test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi → repregunta), «No sé» sin IA, una que no llegó se califica él; el final, el cierre y la comparación', async () => {
+test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi → repregunta), «No sé» sin IA, una que no llegó la califica el sistema; el final, el cierre y la comparación', async () => {
   await conInstructor(async c => {
     await subirOral(c);
     const portada = await pedir(c.base, 'GET', '/api/academia/oral/vivo', { galleta: c.z });
@@ -143,11 +145,14 @@ test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi �
     const n1 = pedidosIa(c).length;
     const r1 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 1, texto: '' } })).datos;
     assert.deepEqual(r1, { estado: 'lista', veredicto: 'mal', linea: null, repregunta: null });
-    // 2: la IA responde algo que no sirve → se califica él al final.
-    await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 2, texto: 'Tres aterrizajes en noventa días' } });
+    // 2: la IA responde algo que no sirve → 0.14.42: califica el sistema (sin ninguna idea clave del libro: «mal»).
+    await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 2, texto: 'Hmm, no me acuerdo' } });
     c.falso.siguiente({ tipo: 'ok', json: { veredicto: 'excelente', linea: '', bien_dicho: '', falto: '', repregunta: '' } });
     await c.hacer(tareaVivo(c).id);
-    assert.equal((await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/2`, { galleta: c.z })).datos.estado, 'sin_ia');
+    const v2 = (await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/2`, { galleta: c.z })).datos;
+    assert.deepEqual([v2.estado, v2.veredicto, v2.sistema, v2.repregunta], ['lista', 'mal', true, null], JSON.stringify(v2));
+    sinRespuestas(v2, 'lo que calificó el sistema');
+    assert.deepEqual((await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/2`, { galleta: c.z })).datos, v2, 'otra vez, lo mismo');
     // 3, 4: bien; 5: mal.
     for (const [i, v] of [[3, 'bien'], [4, 'bien'], [5, 'mal']]) {
       await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i, texto: 'Mi respuesta con mis palabras' } });
@@ -156,18 +161,17 @@ test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi �
     }
     assert.equal(pedidosIa(c).length - antesPedidos, 6, 'una llamada por respuesta calificada (y ninguna por «No sé»)');
     assert.ok(pedidosIa(c).length > n1);
-    // El final: falta calificarse la 2 (la de la IA que no sirvió): con la respuesta del libro y la sugerencia.
-    const f1 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion } })).datos;
-    assert.equal(f1.cerrada, false);
-    assert.deepEqual(f1.pendientes, [2]);
-    assert.ok(f1.revision[2].respuesta_en && f1.revision[2].sugerida, 'en el repaso final sí: la respuesta del libro y la sugerencia');
-    assert.equal(f1.revision[0].veredicto, 'bien');
+    // El final: nada que calificarse (la 2 la calificó el sistema); en el repaso, la respuesta del libro.
     const f2 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion, auto: { 2: 'bien', 0: 'mal' } } })).datos;
     assert.equal(f2.cerrada, true);
+    assert.deepEqual(f2.pendientes, []);
+    assert.ok(f2.revision[2].respuesta_en, 'en el repaso final sí: la respuesta del libro');
+    assert.deepEqual([f2.revision[2].veredicto, f2.revision[2].sistema, f2.revision[2].ia], ['mal', true, false]);
     assert.equal(f2.revision[0].veredicto, 'bien', 'lo que se pone él nunca cambia lo que calificó la IA');
+    assert.equal(f2.revision[2].veredicto, 'mal', '… ni lo que calificó el sistema');
     const r = f2.resumen;
-    // bien: 0, 2, 3, 4 = 4; mal: 1, 5 → 4/6 = 66 % < 90 % (la nota de aprobar de la academia).
-    assert.deepEqual([r.bien, r.casi, r.mal, r.pct, r.aprobado, r.umbral], [4, 0, 2, 66, false, 90]);
+    // bien: 0, 3, 4 = 3; mal: 1, 2, 5 → 3/6 = 50 % < 90 % (la nota de aprobar de la academia).
+    assert.deepEqual([r.bien, r.casi, r.mal, r.pct, r.aprobado, r.umbral], [3, 0, 3, 50, false, 90]);
     assert.equal(r.listo, false);
     assert.equal(r.listoRazon, 'no_aprobo');
     assert.ok(r.temas.every(x => x.comparacion === 'nuevo'));
@@ -176,7 +180,7 @@ test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi �
     // El cierre (IA): solo cifras, títulos y lo que faltó; temas con letras.
     const tc = tareaVivo(c, 'instructor_oral_vivo_cierre');
     const dc = datosDe(JSON.parse(tc.datos).texto);
-    assert.equal(dc.nota, 66);
+    assert.equal(dc.nota, 50);
     assert.ok(dc.temas.every(x => /^[A-Z]$/.test(x.id)));
     for (const n of NOMBRES) assert.ok(!tc.datos.toLowerCase().includes(n));
     c.falso.siguiente({ tipo: 'ok', json: { mensaje: 'Todavía no, pero vas bien: te sentí débil en la experiencia reciente.', listo_porque: 'Te falta la nota.', temas: [{ id: dc.temas[0].id, comentario: 'Repasa los números.' }] } });
@@ -200,13 +204,13 @@ test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi �
     const g = g0.resumen;
     // Al cierre van las veces anteriores (solo cifras) y la comparación de cada tema.
     const dc2 = datosDe(JSON.parse(tareaVivo(c, 'instructor_oral_vivo_cierre').datos).texto);
-    assert.deepEqual([dc2.veces_antes, dc2.nota_ultima_vez, dc2.listo], [1, 66, true]);
+    assert.deepEqual([dc2.veces_antes, dc2.nota_ultima_vez, dc2.listo], [1, 50, true]);
     assert.ok(dc2.temas.some(x => x.comparacion === 'mejoro' && x.nota_antes != null), JSON.stringify(dc2.temas));
     assert.equal(g.aprobado, true);
     assert.equal(g.listo, true, 'aprobó y nada sigue flojo');
     assert.ok(g.temas.some(x => x.comparacion === 'mejoro'), JSON.stringify(g.temas));
     assert.ok(g.temas.every(x => x.comparacion !== 'nuevo'));
-    assert.deepEqual(g.antes, { veces: 1, mejor: 66, ultima: 66 });
+    assert.deepEqual(g.antes, { veces: 1, mejor: 50, ultima: 50 });
     // Progreso y la ficha del administrador.
     const prog = (await pedir(c.base, 'GET', '/api/academia/progreso', { galleta: c.z })).datos;
     assert.deepEqual([prog.oralVivo.veces, prog.oralVivo.mejor, prog.oralVivo.listo], [2, 100, true]);
@@ -214,7 +218,7 @@ test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi �
     assert.ok((ficha.examenesOral ?? []).some(x => x.id === 'vivo' && x.mejor === 100 && x.veces === 2), JSON.stringify(ficha.examenesOral));
     const h = (await pedir(c.base, 'GET', `/api/admin/academia/alumnos/${idDe(c, 'zoelia')}/oral-vivo`, { galleta: c.admin })).datos;
     assert.equal(h.historial.length, 2);
-    assert.equal(h.historial[0].pct, 66);
+    assert.equal(h.historial[0].pct, 50);
     // Lo de los exámenes orales y «Listo para el oral» no cambia (aparte).
     const oral = (await pedir(c.base, 'GET', '/api/academia/oral', { galleta: c.z })).datos;
     assert.equal(oral.final.veces, 0);
@@ -222,7 +226,7 @@ test('con IA: una pregunta a la vez sin la respuesta, el veredicto corto (casi �
   });
 });
 
-test('sin IA (apagada o «IA en pausa» a mitad): igual funciona, nada va al proveedor; se califica él con la respuesta del libro', async () => {
+test('sin IA (apagada o «IA en pausa» a mitad): igual funciona, nada va al proveedor; califica el sistema con las ideas clave del libro', async () => {
   await conInstructor(async c => {
     await subirOral(c);
     const portada = (await pedir(c.base, 'GET', '/api/academia/oral/vivo', { galleta: c.z })).datos;
@@ -230,21 +234,30 @@ test('sin IA (apagada o «IA en pausa» a mitad): igual funciona, nada va al pro
     const s = (await pedir(c.base, 'POST', '/api/academia/oral/vivo', { galleta: c.z, datos: { n: 3, materia: 'oral_calificaciones' } })).datos;
     assert.equal(s.total, 3);
     assert.ok(s.preguntas.every(q => q.materia === 'oral_calificaciones'));
+    // Todo lo del capítulo (las ideas clave de las tres preguntas): «bien» con cualquiera de ellas.
+    const todo = 'Puedo llevar amigos pero no cobrar, for hire; cada 24 meses con instructor; 3 aterrizajes en 90 días';
+    const vs = [];
     for (let i = 0; i < 2; i++) {
-      const r = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i, texto: 'Puedo llevar amigos pero no cobrar' } })).datos;
-      assert.equal(r.estado, 'sin_ia');
+      const r = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i, texto: i === 0 ? todo : 'Hmm, no me acuerdo' } })).datos;
+      assert.equal(r.estado, 'lista', JSON.stringify(r));
+      assert.equal(r.sistema, true, '0.14.42: sin IA califica el sistema');
+      assert.equal(r.repregunta, null);
+      assert.ok(r.linea);
       sinRespuestas(r, 'sin IA');
+      vs.push(r.veredicto);
     }
+    assert.deepEqual(vs, ['bien', 'mal']);
     assert.equal(pedidosIa(c).length, 0);
-    const f = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion } })).datos;
-    assert.deepEqual(f.pendientes, [0, 1]);
-    assert.ok(f.revision.slice(0, 2).every(x => x.sugerida && ['bien', 'casi', 'mal'].includes(x.sugerida.veredicto)));
-    // Ya vio las respuestas del libro: no se puede responder la que faltaba (cuenta «mal»).
+    const f = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion, auto: { 1: 'bien', 2: 'bien' } } })).datos;
+    assert.deepEqual(f.pendientes, [], 'nada que calificarse él: lo calificó el sistema');
+    assert.equal(f.cerrada, true);
+    assert.deepEqual(f.revision.map(x => x.veredicto), ['bien', 'mal', null], 'lo que se pone él no cambia lo del sistema; la que no respondió no se califica sola');
+    assert.ok(f.revision.every(x => x.respuesta_en), 'al final: la respuesta del libro');
+    // Ya cerrada: no se puede responder la que faltaba (cuenta «mal»).
     assert.equal((await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 2, texto: 'la del libro' } })).codigo, 409);
-    const g = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion, auto: { 0: 'bien', 1: 'casi', 2: 'bien' } } })).datos;
-    assert.equal(g.revision[2].veredicto, null, 'la que no respondió no se califica sola');
-    assert.equal(g.resumen.pct, 50, 'bien 1 + casi ½ de 3 (casi = medio punto)');
-    assert.equal(g.resumen.aprobado, false, '50 % < 90 %');
+    const g = f;
+    assert.equal(g.resumen.pct, 33, 'bien 1 de 3');
+    assert.equal(g.resumen.aprobado, false, '33 % < 90 %');
     assert.equal(g.resumen.cierre, null, 'sin IA, sin mensaje de la IA (el de la app sí)');
     assert.equal(pedidosIa(c).length, 0);
   }, { encender: false });
@@ -258,12 +271,14 @@ test('sin IA (apagada o «IA en pausa» a mitad): igual funciona, nada va al pro
     c.falso.siguiente(calificacion('bien'));
     await c.hacer(tareaVivo(c).id);
     const r1 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 1, texto: 'otra cosa' } })).datos;
-    assert.equal(r1.estado, 'sin_ia', JSON.stringify(r1));
+    assert.deepEqual([r1.estado, r1.sistema], ['lista', true], JSON.stringify(r1));
+    sinRespuestas(r1, 'tope');
     // «IA en pausa» para él: tampoco.
     ponerConfig(c.db, { llamadasPorHora: 90 });
     c.db.prepare('INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)').run(clavePausa(idDe(c, 'zoelia')), JSON.stringify({ pausada: true }), new Date().toISOString());
     const r = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 2, texto: 'otra cosa' } })).datos;
-    assert.equal(r.estado, 'sin_ia', JSON.stringify(r));
+    assert.deepEqual([r.estado, r.sistema], ['lista', true], JSON.stringify(r));
+    sinRespuestas(r, 'en pausa');
     assert.equal(c.db.prepare("SELECT COUNT(*) AS n FROM tareas WHERE datos LIKE '%instructor_oral_vivo%'").get().n, 1);
     // Empezar otra no borra la que dejó a medias.
     await pedir(c.base, 'POST', '/api/academia/oral/vivo', { galleta: c.z, datos: { n: 3 } });
@@ -376,4 +391,21 @@ test('voz natural (solo ChatGPT): se pide una vez por pregunta, se guarda el mp3
     c.db.prepare('INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)').run(clavePausa(idDe(c, 'zoelia')), JSON.stringify({ pausada: true }), new Date().toISOString());
     assert.equal((await pedir(c.base, 'POST', '/api/academia/oral/vivo/voz', { galleta: c.z, datos: { sesion: s0.sesion, i: 1 } })).datos.estado, 'no');
   });
+});
+
+test('0.14.42: sin IA califica el sistema con las ideas clave del libro (bien / casi / mal); sin la pregunta, null', () => {
+  const huella = t => createHash('sha256').update(String(t)).digest('hex').slice(0, 16);
+  const x = { pregunta_en: 'What may a pilot carry?', respuesta_en: 'Friends, never for hire.', puntos_clave: ['Puede llevar amigos.', 'No puede cobrar (for hire).'] };
+  const paquete = { oral: { hay: true, materias: [{ id: 'oral_calificaciones', temas: [{ id: 't1', titulo: 'T', libro_qa: [x] }] }] } };
+  const it = { m: 'oral_calificaciones', t: 't1', i: 0, h: huella(x.pregunta_en) };
+  const bien = calificarSistema(paquete, it, 'Puedo llevar a mis amigos pero no cobrar');
+  assert.deepEqual([bien.veredicto, bien.sistema, bien.repregunta], ['bien', true, '']);
+  assert.ok(bien.linea && bien.linea.length <= 140 && !bien.linea.includes(x.respuesta_en));
+  const casi = calificarSistema(paquete, it, 'Llevo amigos');
+  assert.equal(casi.veredicto, 'casi');
+  assert.match(casi.linea, /faltó/);
+  assert.equal(calificarSistema(paquete, it, 'No sé').veredicto, 'mal');
+  assert.equal(calificarSistema(paquete, { ...it, h: 'otra' }, 'algo'), null, 'la pregunta cambió');
+  assert.equal(calificarSistema(paquete, { ...it, t: 'no_esta' }, 'algo'), null);
+  assert.equal(calificarSistema(null, it, 'algo'), null);
 });

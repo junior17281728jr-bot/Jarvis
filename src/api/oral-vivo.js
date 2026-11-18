@@ -11,7 +11,7 @@ import { espacioDe } from '../cuentas/espacios.js';
 import { leerGuardado } from '../academia/instructor-ia.js';
 import { sistemaCalificar, textoCalificar, armarCierre, RESPUESTA_MAX_LETRAS } from '../academia/oral-vivo-ia.js';
 import {
-  VIVO, portadaVivo, crearVivo, vistaAbierta, abiertaDe, materialCalificar, anotarRespuesta, ponerCalificacion, cerrarVivo, ponerCierre, datosCierre, leerVivo,
+  VIVO, portadaVivo, crearVivo, vistaAbierta, abiertaDe, materialCalificar, anotarRespuesta, ponerCalificacion, cerrarVivo, ponerCierre, datosCierre, leerVivo, calificarSistema,
 } from '../academia/oral-vivo.js';
 import { tiempoDe } from './pagos.js';
 import { createReadStream, statSync } from 'node:fs';
@@ -93,6 +93,9 @@ export function registrarRutasOralVivo(rutas, h) {
     if (!texto || instructor.modo !== 'ia') {
       anotarRespuesta(db, usuario.id, sesion, i, { texto, seguimiento }, ahora);
       if (!texto) ponerCalificacion(db, usuario.id, sesion, i, seguimiento, { veredicto: 'mal', linea: '', bienDicho: '', falto: '', repregunta: '' });
+      // 0.14.42: sin IA, califica el sistema (ideas clave del libro).
+      const gs = texto ? calificarSistema(p, it, texto) : null;
+      if (gs) { ponerCalificacion(db, usuario.id, sesion, i, seguimiento, gs); return { codigo: 200, datos: { estado: 'lista', veredicto: gs.veredicto, linea: gs.linea, repregunta: null, sistema: true } }; }
       return { codigo: 200, datos: { estado: texto ? 'sin_ia' : 'lista', ...(texto ? { ia: iaNoAhora(instructor) } : { veredicto: 'mal', linea: null, repregunta: null }) } };
     }
     const m = materialCalificar(p, it, sistemaCalificar);
@@ -102,7 +105,9 @@ export function registrarRutasOralVivo(rutas, h) {
     const ia = cabe ? pedirIa(db, usuario, pedido) : { estado: 'no', motivo: 'demasiado_largo' };
     anotarRespuesta(db, usuario.id, sesion, i, { texto, seguimiento, clave: ia.estado === 'pendiente' ? clave : null, tarea: ia.tarea ?? null }, ahora);
     if (ia.estado !== 'pendiente') {
-      ponerCalificacion(db, usuario.id, sesion, i, seguimiento, null);
+      const gs = calificarSistema(p, it, texto);
+      ponerCalificacion(db, usuario.id, sesion, i, seguimiento, gs);
+      if (gs) return { codigo: 200, datos: { estado: 'lista', veredicto: gs.veredicto, linea: gs.linea, repregunta: null, sistema: true } };
       return { codigo: 200, datos: { estado: 'sin_ia', ia } };
     }
     return { codigo: 200, datos: { estado: 'pendiente' } };
@@ -174,7 +179,7 @@ export function registrarRutasOralVivo(rutas, h) {
     if (!r?.primera) throw new ErrorHttp(404, 'no_existe');
     const parte = r.seguimiento ? 'seguimiento' : 'primera';
     const x = r[parte];
-    const vista = y => ({ estado: 'lista', seguimiento: parte === 'seguimiento', veredicto: y.veredicto, linea: y.linea || null, repregunta: parte === 'primera' && y.veredicto === 'casi' ? y.repregunta || null : null });
+    const vista = y => ({ estado: 'lista', seguimiento: parte === 'seguimiento', veredicto: y.veredicto, linea: y.linea || null, repregunta: parte === 'primera' && y.veredicto === 'casi' ? y.repregunta || null : null, ...(y.sistema === true ? { sistema: true } : {}) });
     if (x.veredicto) return { codigo: 200, datos: vista(x) };
     if (x.sinIa || !x.clave) return { codigo: 200, datos: { estado: 'sin_ia' } };
     const g = leerGuardado(db, x.clave);
@@ -185,8 +190,10 @@ export function registrarRutasOralVivo(rutas, h) {
       return { codigo: 200, datos: vista(nuevo[parte]) };
     }
     if (estadoTarea(db, usuario, x.tarea) === 'pendiente') return { codigo: 200, datos: { estado: 'pendiente' } };
-    // La IA no llegó (caducó, un tope, no sirvió): se califica él al final.
-    ponerCalificacion(db, usuario.id, parametros.sesion, i, parte === 'seguimiento', null);
+    // La IA no llegó (caducó, un tope, no sirvió): 0.14.42: califica el sistema; si no se puede, él al final.
+    const gs = calificarSistema(conPaquete(db), yo.abierta.items?.[i], x.texto ?? '');
+    const puesto = ponerCalificacion(db, usuario.id, parametros.sesion, i, parte === 'seguimiento', gs);
+    if (gs) return { codigo: 200, datos: vista(puesto[parte]) };
     return { codigo: 200, datos: { estado: 'sin_ia' } };
   });
 

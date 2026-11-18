@@ -158,7 +158,7 @@ export function ponerCalificacion(db, usuarioId, sesion, i, seguimiento, g) {
   const r = { ...(a.resp?.[i] ?? {}) };
   const parte = seguimiento ? 'seguimiento' : 'primera';
   if (!r[parte]) return r;
-  r[parte] = g ? { ...r[parte], veredicto: g.veredicto, linea: g.linea, bienDicho: g.bienDicho, falto: g.falto, ...(seguimiento ? {} : { repregunta: g.repregunta || '' }), ia: true }
+  r[parte] = g ? { ...r[parte], veredicto: g.veredicto, linea: g.linea, bienDicho: g.bienDicho, falto: g.falto, ...(seguimiento ? {} : { repregunta: g.repregunta || '' }), ...(g.sistema === true ? { ia: false, sistema: true } : { ia: true }) }
     : { ...r[parte], sinIa: true };
   guardarVivo(db, usuarioId, { ...yo, abierta: { ...a, resp: { ...a.resp, [i]: r } } });
   return r;
@@ -234,7 +234,7 @@ export function cerrarVivo(db, usuarioId, paquete, sesion, { auto = {} } = {}, {
       i, materia: it.m, tema: it.t, temaTitulo: d?.t.titulo ?? it.t, pregunta_es: d?.x.pregunta_es ?? null, pregunta_en: d?.x.pregunta_en ?? null,
       respuesta_es: d?.x.respuesta_es ?? null, respuesta_en: d?.x.respuesta_en ?? null, pagina: d?.x.pagina ?? null,
       dijo: r?.primera?.texto ?? null, repregunta: r?.primera?.repregunta || null, dijoSeguimiento: r?.seguimiento?.texto ?? null,
-      veredicto: veredictoDe(r), ia: r?.primera?.ia === true, linea: r?.primera?.linea ?? null, bienDicho: r?.primera?.bienDicho ?? null,
+      veredicto: veredictoDe(r), ia: r?.primera?.ia === true, sistema: r?.primera?.sistema === true, linea: r?.primera?.linea ?? null, bienDicho: r?.primera?.bienDicho ?? null,
       falto: (r?.seguimiento?.veredicto === 'bien' ? '' : r?.seguimiento?.falto || r?.primera?.falto) || null,
       autoPendiente: Boolean(r?.primera) && !VEREDICTOS.includes(r?.primera?.veredicto) && !VEREDICTOS.includes(r?.auto),
       auto: VEREDICTOS.includes(r?.auto) ? r.auto : null,
@@ -320,6 +320,21 @@ export function sugerencia(texto, x) {
   const dijo = clave.filter(esta);
   const parte = dijo.length / clave.length;
   return { veredicto: parte >= 0.5 ? 'bien' : parte >= 0.25 ? 'casi' : 'mal', dijo: dijo.slice(0, 8), faltan: clave.filter(w => !esta(w)).slice(0, 8) };
+}
+
+// 0.14.42 (lo pidió el dueño): sin IA, la app CALIFICA sola con las ideas clave del libro (ya no «califícate tú»).
+// → { veredicto, linea, bienDicho, falto, repregunta: '', sistema: true } o null (si la pregunta ya no está).
+export function calificarSistema(paquete, it, texto) {
+  const d = paquete && it ? itemDe(paquete, it) : null;
+  if (!d) return null;
+  const s = sugerencia(texto, d.x);
+  if (!s) return null;
+  const dijo = s.dijo.slice(0, 4).join(', ');
+  const faltan = s.faltan.slice(0, 4).join(', ');
+  const linea = s.veredicto === 'bien' ? `Mencionaste las ideas clave${dijo ? ` (${dijo})` : ''}.`
+    : s.veredicto === 'casi' ? `Vas bien${dijo ? ` (${dijo})` : ''}, pero te faltó: ${faltan || 'un punto clave'}.`
+      : `No mencionaste las ideas clave${faltan ? `: ${faltan}` : ''}.`;
+  return { veredicto: s.veredicto, linea: linea.slice(0, 140), bienDicho: dijo, falto: faltan, repregunta: '', sistema: true };
 }
 
 // 0.14.29: el texto que se lee en voz alta de una pregunta (el español si está; con «Inglés original», el inglés).

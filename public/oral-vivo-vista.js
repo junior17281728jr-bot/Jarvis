@@ -332,6 +332,8 @@ function practica(s, prefs, h, desde = 0) {
           const dijo = r.caja.value.trim();
           if (dijo) chat.append(el('p', { class: 'vivo-dijiste suave chica' }, el('strong', { texto: t('vivo.dijiste') }), el('span', { texto: ' «' + (dijo.length > 160 ? dijo.slice(0, 157) + '…' : dijo) + '»' })));
           chat.append(chipVeredicto(x.veredicto, x.linea || t(dijo ? 'vivo.sin_linea.' + x.veredicto : 'vivo.sin_linea.vacio')));
+          // 0.14.42: sin IA, lo calificó la app con las ideas clave del libro.
+          if (x.sistema) chat.append(el('p', { class: 'suave chica', texto: t('vivo.califico_sistema') }));
           ex.poner(x.veredicto, 3200);
           if (x.repregunta && !seguimiento) {
             const decir = () => ({ texto: x.repregunta, lang: 'es-ES' });

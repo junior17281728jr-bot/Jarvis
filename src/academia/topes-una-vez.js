@@ -6,6 +6,7 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { leerConfigFabrica, guardarConfigFabrica } from './fabrica.js';
 import { topeTodoMicro, AJUSTE_TODO_TOPE } from './fabrica-profunda.js';
 import { leerConfigIa, guardarConfigIa } from '../ia/config.js';
+import { guardarConfigApp } from './app-mejora.js';
 
 export const MARCA_TOPES = 'ajuste.una_vez.topes_300';
 export const TOPE_PROFUNDA_MICRO = 300_000_000;
@@ -37,4 +38,17 @@ export function topesUnaVez(db, { config, ahora = Date.now() } = {}) {
   }
   guardarAjuste(db, MARCA_TOPES, JSON.stringify({ en: new Date(ahora).toISOString(), cambios }));
   return { hecho: true, cambios };
+}
+
+// 0.14.42 (lo pidió el dueño: «quita eso de Mejorar todo; que la IA se enfoque en los alumnos y el oral»): UNA sola vez se
+// apaga «Mejorar todo con Claude» (la mejora profunda) y «Claude mejora la app». Nada se borra: lo ya publicado queda, y el
+// dueño puede volver a encenderlos en la pantalla si quiere (la marca hace que esto no se repita).
+export const MARCA_APAGAR = 'ajuste.una_vez.apagar_mejora';
+export function apagarMejoraUnaVez(db) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ajustes'").get()) return { hecho: false };
+  if (leerAjuste(db, MARCA_APAGAR)) return { hecho: false, motivo: 'ya' };
+  guardarConfigFabrica(db, { profunda: { activa: false } });
+  guardarConfigApp(db, { activa: false });
+  guardarAjuste(db, MARCA_APAGAR, '1');
+  return { hecho: true };
 }

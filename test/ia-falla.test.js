@@ -89,21 +89,24 @@ for (const [nombre, escena] of FALLAS) {
       assert.ok(['no', 'basico'].includes(hist.estado), hist.estado);
       if (hist.estado === 'no') assert.ok(hist.basica, '0.14.38: la respuesta básica también cuando la IA no llegó');
       assert.ok(hist.basica || hist.profe?.lineas?.length, 'el Profesor nunca queda en blanco: lo básico o lo que leyó de su historia');
-      // 5. La práctica en vivo del oral: la IA no califica → «califícate tú» con la respuesta del libro, al final.
+      // 5. La práctica en vivo del oral: la IA no califica → 0.14.42: califica el sistema (ideas clave del libro), sin adelantar el libro.
       await subirOral(c);
       const s = (await pedir(c.base, 'POST', '/api/academia/oral/vivo', { galleta: c.q, datos: { n: 2 } })).datos;
       assert.ok(s.sesion, JSON.stringify(s));
       const r0 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.q, datos: { sesion: s.sesion, i: 0, texto: 'Mi respuesta con mis palabras' } })).datos;
       if (r0.estado === 'pendiente') await hacerUltima(c, 'instructor_oral_vivo');
       const v0 = (await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/0`, { galleta: c.q })).datos;
-      assert.equal(v0.estado, 'sin_ia', 'sin IA: se califica él (nunca se queda esperando)');
+      assert.equal(v0.estado, 'lista', 'sin IA: califica el sistema (nunca se queda esperando)');
+      assert.equal(v0.sistema, true);
+      assert.ok(['bien', 'casi', 'mal'].includes(v0.veredicto), JSON.stringify(v0));
+      assert.ok(!/respuesta_(es|en)/.test(JSON.stringify([r0, v0])), 'la respuesta del libro no viaja antes del final');
       await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.q, datos: { sesion: s.sesion, i: 1, texto: '' } });
       const f = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.q, datos: { sesion: s.sesion } })).datos;
-      assert.deepEqual(f.pendientes, [0]);
-      assert.ok(f.revision[0].respuesta_en, 'para calificarse: la respuesta del libro');
-      const f2 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.q, datos: { sesion: s.sesion, auto: { 0: 'bien' } } })).datos;
-      assert.equal(f2.cerrada, true);
-      assert.ok(f2.resumen && Number.isFinite(f2.resumen.pct));
+      assert.deepEqual(f.pendientes, [], 'nada que calificarse: lo calificó el sistema');
+      assert.equal(f.cerrada, true);
+      assert.equal(f.revision[0].veredicto, v0.veredicto);
+      assert.ok(f.revision[0].respuesta_en, 'al final: la respuesta del libro');
+      assert.ok(f.resumen && Number.isFinite(f.resumen.pct));
       // 6. La Competencia: funciona igual; la frase del certificado queda la fija.
       for (let i = 0; i < 20; i++) {
         const v = (await pedir(c.base, 'GET', '/api/academia/competencia/1', { galleta: c.z })).datos;
@@ -242,7 +245,7 @@ test('Competencia con la IA fallando: «Mejorar preguntas» dice por qué no lle
   }, { modelo: 'claude-haiku-5-5' });
 });
 
-test('la práctica en vivo del oral con la calificación de la IA pedida y el proveedor fallando: «pendiente» y después «califícate tú»', async () => {
+test('la práctica en vivo del oral con la calificación de la IA pedida y el proveedor fallando: «pendiente» y después califica el sistema', async () => {
   for (const [, escena] of FALLAS) {
     await conInstructor(async c => {
       await subirOral(c);
@@ -252,9 +255,13 @@ test('la práctica en vivo del oral con la calificación de la IA pedida y el pr
       assert.equal(r0.estado, 'pendiente');
       assert.equal((await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/0`, { galleta: c.z })).datos.estado, 'pendiente');
       await hacerUltima(c, 'instructor_oral_vivo');
-      assert.equal((await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/0`, { galleta: c.z })).datos.estado, 'sin_ia');
+      const v0 = (await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/0`, { galleta: c.z })).datos;
+      assert.equal(v0.estado, 'lista', JSON.stringify(v0));
+      assert.equal(v0.sistema, true);
+      assert.ok(['bien', 'casi', 'mal'].includes(v0.veredicto));
+      assert.ok(!/respuesta_(es|en)/.test(JSON.stringify(v0)));
       const f = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion } })).datos;
-      assert.ok(f.pendientes.includes(0) && f.revision[0].respuesta_en);
+      assert.ok(!f.pendientes.includes(0) && f.revision[0].respuesta_en && f.revision[0].veredicto === v0.veredicto);
     }, { modelo: 'claude-haiku-5-5' });
   }
 });

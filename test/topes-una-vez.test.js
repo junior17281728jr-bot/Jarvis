@@ -3,7 +3,8 @@ import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { preparar, T0 } from './ia-base.js';
-import { topesUnaVez, TOPE_MES_MICRO, TOPE_PROFUNDA_MICRO, MARCA_TOPES } from '../src/academia/topes-una-vez.js';
+import { topesUnaVez, TOPE_MES_MICRO, TOPE_PROFUNDA_MICRO, MARCA_TOPES, apagarMejoraUnaVez, MARCA_APAGAR } from '../src/academia/topes-una-vez.js';
+import { leerConfigApp, guardarConfigApp } from '../src/academia/app-mejora.js';
 import { leerConfigIa } from '../src/ia/config.js';
 import { leerConfigFabrica, guardarConfigFabrica } from '../src/academia/fabrica.js';
 import { leerAjuste } from '../src/academia/paquetes.js';
@@ -27,4 +28,21 @@ test('0.14.33: sube el tope del mes a US$375 y el de la mejora a US$300 una sola
   topesUnaVez(b.db, { config: b.config, ahora: T0 });
   assert.equal(leerConfigIa(b.db).topeGeneralMicro, 450 * M);
   b.db.close();
+});
+
+test('0.14.42: apaga «Mejorar todo» y «Claude mejora la app» una sola vez; si el dueño los vuelve a encender, se respeta', () => {
+  const { db } = preparar({ ahora: T0 });
+  guardarConfigFabrica(db, { profunda: { activa: true } });
+  guardarConfigApp(db, { activa: true });
+  assert.deepEqual(apagarMejoraUnaVez(db), { hecho: true });
+  assert.equal(leerConfigFabrica(db).profunda.activa, false);
+  assert.equal(leerConfigApp(db).activa, false);
+  assert.ok(leerAjuste(db, MARCA_APAGAR));
+  // El dueño los enciende otra vez en la pantalla: no se vuelven a apagar.
+  guardarConfigFabrica(db, { profunda: { activa: true } });
+  guardarConfigApp(db, { activa: true });
+  assert.equal(apagarMejoraUnaVez(db).motivo, 'ya');
+  assert.equal(leerConfigFabrica(db).profunda.activa, true);
+  assert.equal(leerConfigApp(db).activa, true);
+  db.close();
 });
