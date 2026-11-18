@@ -5451,5 +5451,6 @@
   "vivo.sin_linea.casi": "Vas bien, pero te faltó un punto clave. Al final te digo cuál.",
   "vivo.sin_linea.mal": "No es lo que pide la pregunta. Al final ves la respuesta del libro.",
   "vivo.sin_linea.vacio": "No respondiste esta pregunta. Al final ves la respuesta del libro.",
-  "vivo.estado.brave": "Brave bloquea el dictado por voz: usa Chrome, Edge o Safari, o escribe tu respuesta."
+  "vivo.estado.brave": "Brave bloquea el dictado por voz: usa Chrome, Edge o Safari, o escribe tu respuesta.",
+  "vivo.anotado_porque": "(La IA no pudo calificar esta respuesta ahora: estaba ocupada o sin saldo. Al final te calificas tú con la respuesta del libro.)"
 }

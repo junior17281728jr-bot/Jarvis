@@ -108,15 +108,17 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
   const partes = partesPorHora(cfg.llamadasPorHora);
   const filas = db.prepare('SELECT espacio_id AS e, COUNT(*) AS n FROM ia_llamadas WHERE creada_en >= ? GROUP BY espacio_id').all(iso(ahora - HORA_MS));
   let todas = 0;
+  let dePersonas = 0;
   let deCuentas = 0;
   let deLaCuenta = 0;
   for (const f of filas) {
     todas += f.n;
+    if (f.e != null) dePersonas += f.n;
     if (f.e != null && !esEspacioAdmin(db, f.e)) deCuentas += f.n;
     if (espacioId != null && f.e === Number(espacioId)) deLaCuenta = f.n;
   }
   const cuenta = espacioId != null && !esEspacioAdmin(db, espacioId);
-  return { partes, todas, deCuentas, deLaCuenta, cuenta };
+  return { partes, todas, dePersonas, deCuentas, deLaCuenta, cuenta };
 }
 
 // El modelo propio de un propósito (0.9.0: el instructor de la academia usa cfg.instructorModelo con Claude), o null.
@@ -174,7 +176,10 @@ function evaluar(db, { config, cfg, def, espacioId, proyectoId, entradaMax, sali
   if (reserva > maximoDe(def, eleccion)) return no('llamada_muy_cara', 'general', base);
   if (maximoConfirmadoMicro != null && reserva > maximoConfirmadoMicro) return no('precio_cambio', 'general', base);
   const hora = llamadasEnLaHora(db, { cfg, espacioId, ahora });
-  if (hora.todas >= hora.partes.total) return no('demasiadas_llamadas', 'general', base);
+  // 0.14.41: lo que piden las PERSONAS (alumnos y admin, con su cuenta) ya no compite con el trabajo de fondo (la fábrica y
+  // «Mejorar todo», sin cuenta, que tienen su cuota y su tope propios): antes «Mejorar todo» se comía las llamadas de la
+  // hora y la práctica oral en vivo caía en «Anotado» sin calificar. El trabajo de fondo sigue contando todas.
+  if ((espacioId != null ? hora.dePersonas : hora.todas) >= hora.partes.total) return no('demasiadas_llamadas', 'general', base);
   if (hora.cuenta && hora.deLaCuenta >= hora.partes.porCuenta) return no('demasiadas_llamadas', `e${espacioId}`, base);
   if (hora.cuenta && hora.deCuentas >= hora.partes.cuentas) return no('demasiadas_llamadas', 'general', base);
   // Los topes. Un tope de 0 bloquea siempre.

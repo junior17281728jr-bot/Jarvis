@@ -5451,5 +5451,6 @@
   "vivo.sin_linea.casi": "Good start, but a key point was missing. I will tell you which at the end.",
   "vivo.sin_linea.mal": "That's not what the question asks. You will see the book answer at the end.",
   "vivo.sin_linea.vacio": "You didn't answer this question. You will see the book answer at the end.",
-  "vivo.estado.brave": "Brave blocks voice dictation: use Chrome, Edge or Safari, or type your answer."
+  "vivo.estado.brave": "Brave blocks voice dictation: use Chrome, Edge or Safari, or type your answer.",
+  "vivo.anotado_porque": "(The AI could not grade this answer right now: it was busy or out of credit. At the end you grade yourself with the book answer.)"
 }

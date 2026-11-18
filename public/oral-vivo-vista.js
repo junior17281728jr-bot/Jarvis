@@ -339,7 +339,7 @@ function practica(s, prefs, h, desde = 0) {
             if (prefs.voz) leer(x.repregunta, 'es-ES');
             return turno(true);
           }
-        } else chat.append(el('div', { class: 'vivo-veredicto tono-anotado' }, icono('lapiz', 'icono'), el('span', { texto: t('vivo.anotado') })));
+        } else chat.append(el('div', { class: 'vivo-veredicto tono-anotado' }, icono('lapiz', 'icono'), el('span', { texto: t('vivo.anotado') + ' ' + t('vivo.anotado_porque') })));
         pie.replaceChildren(siguiente());
       });
       chat.append(r.nodo);
