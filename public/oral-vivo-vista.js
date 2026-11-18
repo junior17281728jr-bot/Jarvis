@@ -269,7 +269,7 @@ function practica(s, prefs, h, desde = 0) {
 
   // Espera el veredicto (la IA). → { estado, veredicto, linea, repregunta } o { estado: 'sin_ia' }.
   const esperar = async i => {
-    for (let k = 0; k < 45; k++) {
+    for (let k = 0; k < 120; k++) { // 0.14.35: hasta ~4 min (el trabajador puede estar en un paso largo de la mejora con Claude)
       await new Promise(r => setTimeout(r, k < 3 ? 1200 : 2000));
       if (!zona.isConnected) return null;
       const r = await api('GET', `/api/academia/oral/vivo/${encodeURIComponent(s.sesion)}/${i}`);
