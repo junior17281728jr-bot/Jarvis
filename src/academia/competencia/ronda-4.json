@@ -1,0 +1,287 @@
+{
+ "ronda": 4,
+ "titulo": "En la cabina",
+ "lema": "La radio, las luces y las costumbres de los pilotos.",
+ "preguntas": [
+  {
+   "id": "r4-01",
+   "pregunta": "¿Cómo se dice la letra Q en el alfabeto aeronáutico?",
+   "opciones": {
+    "A": "Queen",
+    "B": "Quebec",
+    "C": "Quito"
+   },
+   "correcta": "B",
+   "explicacion": "Las de la OACI: …Papa, Quebec, Romeo, Sierra…",
+   "bien": "¡Quebec! Hablas con la torre como si nada.",
+   "mal": "Queen es la reina, pero en la radio se dice Quebec.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-02",
+   "pregunta": "En la radio, ¿qué significa «Roger»?",
+   "opciones": {
+    "A": "Sí, lo haré",
+    "B": "Repite, por favor",
+    "C": "Recibí tu último mensaje"
+   },
+   "correcta": "C",
+   "explicacion": "«Roger» solo dice que lo recibiste; «Wilco» dice que además vas a cumplir.",
+   "bien": "¡Roger, respuesta recibida y correcta!",
+   "mal": "Eso es «Wilco». Roger es solo «te copié».",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-03",
+   "pregunta": "En la radio, ¿qué significa «Wilco»?",
+   "opciones": {
+    "A": "Entendido y cumpliré (will comply)",
+    "B": "Espere un momento",
+    "C": "Negativo"
+   },
+   "correcta": "A",
+   "explicacion": "Viene de «will comply». No hace falta decir «Roger, Wilco»: Wilco ya incluye el Roger.",
+   "bien": "¡Wilco! Cumpliste con la respuesta.",
+   "mal": "No era esa. Wilco = will comply.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-04",
+   "pregunta": "¿Qué código de transpondedor indica falla de radio (comunicaciones)?",
+   "opciones": {
+    "A": "7700",
+    "B": "7600",
+    "C": "1200"
+   },
+   "correcta": "B",
+   "explicacion": "7500 = interferencia ilícita, 7600 = falla de radio, 7700 = emergencia.",
+   "bien": "¡Código correcto, piloto!",
+   "mal": "7700 es emergencia general; la falla de radio es 7600.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-05",
+   "pregunta": "En Estados Unidos, ¿qué código de transpondedor usa un vuelo VFR sin código asignado?",
+   "opciones": {
+    "A": "1200",
+    "B": "7000",
+    "C": "2000"
+   },
+   "correcta": "A",
+   "explicacion": "En EE. UU. es 1200; en muchos países de Europa se usa 7000.",
+   "bien": "¡Doce cero cero, de memoria!",
+   "mal": "El 7000 es más de Europa; en EE. UU. es 1200.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-06",
+   "pregunta": "Una pista con el número «27» apunta, más o menos, hacia…",
+   "opciones": {
+    "A": "El rumbo 27°",
+    "B": "El sur",
+    "C": "El rumbo 270° (el oeste)"
+   },
+   "correcta": "C",
+   "explicacion": "El número de pista es el rumbo magnético dividido entre 10 y redondeado.",
+   "bien": "¡Apuntaste derechito al oeste!",
+   "mal": "Es 270°, no 27°: se le quita el cero.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r4-07",
+   "pregunta": "Si un extremo de la pista es la 09, el otro extremo es la…",
+   "opciones": {
+    "A": "18",
+    "B": "90",
+    "C": "27"
+   },
+   "correcta": "C",
+   "explicacion": "Los dos extremos se diferencian en 180°: 090° y 270°.",
+   "bien": "¡De una punta a la otra sin perderte!",
+   "mal": "Hay que sumar 18: 09 + 18 = 27.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r4-08",
+   "pregunta": "En muchas aerolíneas, ¿por qué el piloto y el copiloto comen comidas distintas?",
+   "opciones": {
+    "A": "Porque el capitán come mejor",
+    "B": "Para que una intoxicación no afecte a los dos",
+    "C": "Para que no se distraigan hablando"
+   },
+   "correcta": "B",
+   "explicacion": "Si una comida cae mal, por lo menos uno de los dos queda bien para volar.",
+   "bien": "¡Bien pensado! Uno con pollo y el otro con pescado.",
+   "mal": "No es por jerarquía: es por seguridad.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r4-09",
+   "pregunta": "En aviación, la hora «Zulu» es…",
+   "opciones": {
+    "A": "La hora universal coordinada (UTC)",
+    "B": "La hora local del aeropuerto",
+    "C": "La hora de verano"
+   },
+   "correcta": "A",
+   "explicacion": "Todo el mundo usa la misma hora para no confundirse: UTC, «Zulu».",
+   "bien": "¡A tiempo y en Zulu!",
+   "mal": "No es la local: es la hora universal, igual pa' todo el planeta.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-10",
+   "pregunta": "¿Qué es un NOTAM?",
+   "opciones": {
+    "A": "Un aviso a los pilotos sobre cambios o peligros (pistas cerradas, luces apagadas…)",
+    "B": "Un tipo de nube",
+    "C": "El plan de vuelo"
+   },
+   "correcta": "A",
+   "explicacion": "NOTAM = Notice to Air Missions. Se revisan antes de cada vuelo.",
+   "bien": "¡Tú lees los avisos, como debe ser!",
+   "mal": "No es una nube: es el aviso de lo que cambió.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r4-11",
+   "pregunta": "De noche, la luz de navegación de la punta del ala IZQUIERDA es…",
+   "opciones": {
+    "A": "Verde",
+    "B": "Roja",
+    "C": "Blanca"
+   },
+   "correcta": "B",
+   "explicacion": "Izquierda roja, derecha verde y blanca atrás, igual que en los barcos.",
+   "bien": "¡Roja a la izquierda, como el semáforo de tu memoria!",
+   "mal": "La verde va a la derecha; a la izquierda, roja.",
+   "dibujo": "bimotor"
+  },
+  {
+   "id": "r4-12",
+   "pregunta": "¿De qué color es en realidad la «caja negra» de un avión?",
+   "opciones": {
+    "A": "Negra",
+    "B": "Gris",
+    "C": "Naranja"
+   },
+   "correcta": "C",
+   "explicacion": "Es naranja fuerte para encontrarla fácil después de un accidente.",
+   "bien": "¡Ni tan negra la cosa! Bien.",
+   "mal": "De negra no tiene nada: es naranja.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r4-13",
+   "pregunta": "¿Qué graba el CVR (Cockpit Voice Recorder)?",
+   "opciones": {
+    "A": "La velocidad y la altura",
+    "B": "Las voces y los sonidos de la cabina",
+    "C": "Las cámaras de la cabina"
+   },
+   "correcta": "B",
+   "explicacion": "El CVR graba el audio; el FDR (Flight Data Recorder) graba los datos del vuelo.",
+   "bien": "¡Grabado y aprobado!",
+   "mal": "Los datos los guarda el FDR; el CVR graba el sonido.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r4-14",
+   "pregunta": "Un piloto dice «Pan-Pan» en la radio cuando…",
+   "opciones": {
+    "A": "Tiene una urgencia, sin peligro inmediato",
+    "B": "Tiene un peligro grave e inminente",
+    "C": "Quiere saludar a la torre"
+   },
+   "correcta": "A",
+   "explicacion": "Pan-Pan es urgencia; Mayday es peligro grave e inminente.",
+   "bien": "¡Ni pan ni pan: correcto!",
+   "mal": "Lo grave es Mayday. Pan-Pan es un escalón menos.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-15",
+   "pregunta": "¿Qué significa VFR?",
+   "opciones": {
+    "A": "Vuelo rápido regional",
+    "B": "Velocidad final de referencia",
+    "C": "Reglas de vuelo visual (Visual Flight Rules)"
+   },
+   "correcta": "C",
+   "explicacion": "En VFR el piloto vuela viendo afuera; en IFR, por instrumentos.",
+   "bien": "¡Lo viste clarito, como en VFR!",
+   "mal": "Nada de «rápido»: es visual.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r4-16",
+   "pregunta": "Las luces del borde de una pista (runway edge lights) son…",
+   "opciones": {
+    "A": "Blancas",
+    "B": "Azules",
+    "C": "Verdes"
+   },
+   "correcta": "A",
+   "explicacion": "El borde de la pista es blanco (con amarillo al final en algunas); las calles de rodaje llevan azul.",
+   "bien": "¡Blanquita la pista y clara tu respuesta!",
+   "mal": "Azules son las de las calles de rodaje.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r4-17",
+   "pregunta": "Las luces del borde de una calle de rodaje (taxiway) son…",
+   "opciones": {
+    "A": "Blancas",
+    "B": "Azules",
+    "C": "Rojas"
+   },
+   "correcta": "B",
+   "explicacion": "Azul en los bordes de las calles de rodaje; blanco en los de la pista.",
+   "bien": "¡Azul como el mar Caribe!",
+   "mal": "Blancas son las de la pista; las de rodaje son azules.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r4-18",
+   "pregunta": "Una luz VERDE FIJA de la torre hacia un avión EN VUELO significa…",
+   "opciones": {
+    "A": "Regrese y aterrice más tarde",
+    "B": "No aterrice",
+    "C": "Autorizado a aterrizar"
+   },
+   "correcta": "C",
+   "explicacion": "Las señales de luz sirven cuando falla la radio. Verde fija en vuelo = autorizado a aterrizar.",
+   "bien": "¡Luz verde pa' ti!",
+   "mal": "Verde fija en el aire = puede aterrizar.",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-19",
+   "pregunta": "Una luz ROJA INTERMITENTE de la torre hacia un avión EN VUELO significa…",
+   "opciones": {
+    "A": "Aeropuerto inseguro: no aterrice",
+    "B": "Autorizado a aterrizar",
+    "C": "Ceda el paso y siga en el circuito"
+   },
+   "correcta": "A",
+   "explicacion": "Roja fija en vuelo = ceda el paso y siga circulando; roja intermitente = aeropuerto inseguro, no aterrice.",
+   "bien": "¡Parpadeo entendido!",
+   "mal": "Esa es la roja fija; la intermitente dice «aquí no se aterriza».",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r4-20",
+   "pregunta": "¿Cómo se llama la inspección que hace el piloto alrededor del avión antes de cada vuelo?",
+   "opciones": {
+    "A": "Motor y al aire (go-around)",
+    "B": "Inspección prevuelo (preflight)",
+    "C": "Remolque (pushback)"
+   },
+   "correcta": "B",
+   "explicacion": "En el prevuelo se revisa combustible, aceite, superficies de control, llantas y más, con la lista.",
+   "bien": "¡Revisaste bien, como en el prevuelo!",
+   "mal": "Go-around es frustrar el aterrizaje; antes de volar se hace el prevuelo.",
+   "dibujo": "avioneta"
+  }
+ ]
+}

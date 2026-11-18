@@ -1,0 +1,287 @@
+{
+ "ronda": 2,
+ "titulo": "Gigantes y récords",
+ "lema": "Los más grandes, los más pesados y los más raros.",
+ "preguntas": [
+  {
+   "id": "r2-01",
+   "pregunta": "¿Cuántos motores tenía el Antonov An-225 Mriya, el avión más pesado que se ha construido?",
+   "opciones": {
+    "A": "Cuatro",
+    "B": "Ocho",
+    "C": "Seis"
+   },
+   "correcta": "C",
+   "explicacion": "Tenía seis turbofanes y un peso máximo de despegue de unas 640 toneladas.",
+   "bien": "¡Seis motores y tú con cero dudas!",
+   "mal": "Con cuatro no levantaba ese mostro. Eran seis.",
+   "dibujo": "gigante"
+  },
+  {
+   "id": "r2-02",
+   "pregunta": "¿Qué le pasó al único An-225 Mriya que existió?",
+   "opciones": {
+    "A": "Fue destruido en 2022, en el aeropuerto de Hostómel (Ucrania)",
+    "B": "Está en un museo de París",
+    "C": "Se hundió en el mar en 1999"
+   },
+   "correcta": "A",
+   "explicacion": "Solo se terminó uno; fue destruido en su hangar durante la guerra en 2022.",
+   "bien": "Una respuesta triste, pero correcta. Bien ahí.",
+   "mal": "No está en ningún museo, lamentablemente: se perdió en 2022.",
+   "dibujo": "gigante"
+  },
+  {
+   "id": "r2-03",
+   "pregunta": "¿Qué avión tiene la mayor envergadura (de punta a punta del ala) que ha volado, unos 117 m?",
+   "opciones": {
+    "A": "El Antonov An-225",
+    "B": "El Stratolaunch",
+    "C": "El Airbus A380"
+   },
+   "correcta": "B",
+   "explicacion": "El Stratolaunch, de dos fuselajes, voló en 2019; su ala es más larga que una cancha de fútbol.",
+   "bien": "¡Tu respuesta también es de ala ancha!",
+   "mal": "El An-225 era el más pesado, pero el ala más larga es la del Stratolaunch.",
+   "dibujo": "gigante"
+  },
+  {
+   "id": "r2-04",
+   "pregunta": "¿Cuántas veces voló el gigantesco hidroavión H-4 Hercules («Spruce Goose») de Howard Hughes?",
+   "opciones": {
+    "A": "Más de cien veces",
+    "B": "Una sola vez, en 1947",
+    "C": "Nunca despegó"
+   },
+   "correcta": "B",
+   "explicacion": "Voló una vez, a poca altura y menos de 2 km. Por cierto, era casi todo de abedul, no de pino (spruce).",
+   "bien": "¡Un vuelo, un acierto! Eficiencia total.",
+   "mal": "Tantas veces no: ese ganso voló una sola vez.",
+   "dibujo": "hidroavion"
+  },
+  {
+   "id": "r2-05",
+   "pregunta": "¿Cuál es el avión de pasajeros más grande que se ha fabricado en serie, con dos pisos completos?",
+   "opciones": {
+    "A": "El Airbus A380",
+    "B": "El Boeing 747",
+    "C": "El Boeing 777"
+   },
+   "correcta": "A",
+   "explicacion": "El A380 tiene dos pisos a todo lo largo; el 747 solo tiene la famosa «joroba» de arriba.",
+   "bien": "¡Grande la pregunta, más grande tu respuesta!",
+   "mal": "El 747 tiene solo media planta arriba; el de dos pisos completos es el A380.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r2-06",
+   "pregunta": "¿Qué avión apodan «la Reina de los Cielos» (Queen of the Skies) y voló por primera vez en 1969?",
+   "opciones": {
+    "A": "El McDonnell Douglas DC-10",
+    "B": "El Airbus A340",
+    "C": "El Boeing 747"
+   },
+   "correcta": "C",
+   "explicacion": "El 747, el primer «jumbo», voló en febrero de 1969 y cambió los viajes largos para siempre.",
+   "bien": "¡Su Majestad aprueba tu respuesta!",
+   "mal": "La corona es del 747, no te equivoques de realeza.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r2-07",
+   "pregunta": "¿Cuál es el avión más fabricado de la historia (más de 40 000 unidades)?",
+   "opciones": {
+    "A": "El Cessna 172",
+    "B": "El Boeing 737",
+    "C": "El Piper J-3 Cub"
+   },
+   "correcta": "A",
+   "explicacion": "El Cessna 172 se fabrica desde 1956 y es el avión de entrenamiento más común del mundo.",
+   "bien": "¡El 172 te saluda con el ala alta!",
+   "mal": "El 737 es el jet de pasajeros más famoso, pero el más fabricado es la avioneta 172.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r2-08",
+   "pregunta": "¿De qué color es famoso el Piper J-3 Cub?",
+   "opciones": {
+    "A": "Rojo",
+    "B": "Amarillo",
+    "C": "Azul"
+   },
+   "correcta": "B",
+   "explicacion": "El «Cub Yellow» es tan famoso que mucha gente pinta de amarillo cualquier avioncito clásico.",
+   "bien": "¡Amarillito como un guineo maduro!",
+   "mal": "Ese color no es; el Cub es amarillo, como un guineo maduro.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r2-09",
+   "pregunta": "¿Qué hizo el avión Rutan Voyager en 1986?",
+   "opciones": {
+    "A": "Cruzó el Pacífico en globo",
+    "B": "Subió a la estratosfera con energía solar",
+    "C": "Dio la vuelta al mundo sin escalas y sin reabastecerse"
+   },
+   "correcta": "C",
+   "explicacion": "Dick Rutan y Jeana Yeager tardaron 9 días; casi todo el avión era tanque de combustible.",
+   "bien": "¡Vuelta al mundo y vuelta a acertar!",
+   "mal": "Nada de globos: el Voyager era un avión, y sin parar a echar gasolina.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r2-10",
+   "pregunta": "El primer vuelo de los Wright (unos 37 m) fue más corto que…",
+   "opciones": {
+    "A": "La envergadura de un Boeing 747",
+    "B": "La longitud de una Cessna 172",
+    "C": "Una cancha de baloncesto"
+   },
+   "correcta": "A",
+   "explicacion": "El ala de un 747 mide unos 60 m o más: el primer vuelo entero cabría encima de ella.",
+   "bien": "¡Tremenda comparación y tú la viste clarita!",
+   "mal": "Una cancha de baloncesto mide unos 28 m: el vuelo fue más largo que eso.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r2-11",
+   "pregunta": "¿Qué globo dio por primera vez la vuelta al mundo sin escalas (1999)?",
+   "opciones": {
+    "A": "El Hindenburg",
+    "B": "El Breitling Orbiter 3",
+    "C": "El Spirit of St. Louis"
+   },
+   "correcta": "B",
+   "explicacion": "Bertrand Piccard y Brian Jones dieron la vuelta en unos 20 días, en marzo de 1999.",
+   "bien": "¡Le diste la vuelta a esa pregunta!",
+   "mal": "El Hindenburg era un dirigible y el Spirit un avión. ¡Te desinflaste!",
+   "dibujo": "globo"
+  },
+  {
+   "id": "r2-12",
+   "pregunta": "¿Qué logró el Solar Impulse 2 en 2016?",
+   "opciones": {
+    "A": "Cruzar el Atlántico en 3 horas",
+    "B": "Llegar al espacio",
+    "C": "Dar la vuelta al mundo solo con energía solar"
+   },
+   "correcta": "C",
+   "explicacion": "Voló sin una gota de combustible, por etapas, con baterías que se cargaban con el Sol.",
+   "bien": "¡Respuesta brillante, como el sol de Bávaro!",
+   "mal": "Al espacio no, pero sí la vuelta al mundo con puro sol.",
+   "dibujo": "planeador"
+  },
+  {
+   "id": "r2-13",
+   "pregunta": "¿Cuál es el helicóptero más grande que se ha fabricado en serie?",
+   "opciones": {
+    "A": "El Mil Mi-26",
+    "B": "El Boeing CH-47 Chinook",
+    "C": "El Sikorsky UH-60 Black Hawk"
+   },
+   "correcta": "A",
+   "explicacion": "El Mi-26 puede cargar unas 20 toneladas; dentro cabe hasta un camión.",
+   "bien": "¡Tu cerebro levanta 20 toneladas!",
+   "mal": "El Chinook es grandote, pero el Mi-26 es el rey de los pesados.",
+   "dibujo": "helicoptero"
+  },
+  {
+   "id": "r2-14",
+   "pregunta": "¿Por qué el avión de carga Airbus Beluga se llama así?",
+   "opciones": {
+    "A": "Lo diseñó un ingeniero llamado Beluga",
+    "B": "Solo vuela en el Ártico",
+    "C": "Su forma se parece a una ballena beluga"
+   },
+   "correcta": "C",
+   "explicacion": "Su enorme «joroba» para llevar piezas de aviones recuerda la cabeza de esa ballena blanca.",
+   "bien": "¡Respuesta con cara de ballena feliz!",
+   "mal": "Ningún señor Beluga: es por la ballena.",
+   "dibujo": "gigante"
+  },
+  {
+   "id": "r2-15",
+   "pregunta": "¿Qué es la «carga alar» (wing loading)?",
+   "opciones": {
+    "A": "El hielo que se acumula en las alas",
+    "B": "El peso del avión dividido entre el área del ala",
+    "C": "El combustible que va en las alas"
+   },
+   "correcta": "B",
+   "explicacion": "Más carga alar = el avión necesita más velocidad para volar y aterriza más rápido.",
+   "bien": "¡Cargaste esa respuesta sin problema!",
+   "mal": "No es el hielo ni la gasolina: es peso entre área.",
+   "dibujo": "bimotor"
+  },
+  {
+   "id": "r2-16",
+   "pregunta": "Si el avión va más pesado, la distancia que necesita para despegar…",
+   "opciones": {
+    "A": "Aumenta",
+    "B": "Disminuye",
+    "C": "No cambia"
+   },
+   "correcta": "A",
+   "explicacion": "Con más peso hace falta más velocidad para volar y se tarda más en alcanzarla.",
+   "bien": "¡Eso! Más libras, más pista.",
+   "mal": "Ojalá… pero más peso siempre pide más pista.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r2-17",
+   "pregunta": "¿Qué es el centro de gravedad (CG) de un avión?",
+   "opciones": {
+    "A": "El punto donde nace la sustentación",
+    "B": "El punto donde se considera concentrado todo su peso",
+    "C": "El centro exacto del ala"
+   },
+   "correcta": "B",
+   "explicacion": "Donde nace la sustentación es el centro de presión; el CG es el «punto de equilibrio» del peso.",
+   "bien": "¡Equilibrada esa respuesta!",
+   "mal": "Ese que dijiste es el centro de presión; el CG es el del peso.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r2-18",
+   "pregunta": "Con el centro de gravedad muy atrás (aft CG), el avión queda…",
+   "opciones": {
+    "A": "Menos estable y más difícil de recuperar de una pérdida",
+    "B": "Más estable y tranquilo",
+    "C": "Más lento pero igual de seguro"
+   },
+   "correcta": "A",
+   "explicacion": "Un CG atrasado reduce la estabilidad; fuera de los límites puede ser imposible recuperar una pérdida o barrena.",
+   "bien": "¡Tú sí sabes dónde va la maleta!",
+   "mal": "Al revés: con el CG atrás el avión se pone nervioso.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r2-19",
+   "pregunta": "¿Con qué gas iba lleno el dirigible Hindenburg, que se incendió en 1937?",
+   "opciones": {
+    "A": "Helio",
+    "B": "Aire caliente",
+    "C": "Hidrógeno"
+   },
+   "correcta": "C",
+   "explicacion": "El hidrógeno es muy inflamable; después de aquel accidente los dirigibles de pasajeros prácticamente desaparecieron.",
+   "bien": "¡Química y aviación en una sola respuesta!",
+   "mal": "Con helio no se habría quemado; era hidrógeno.",
+   "dibujo": "dirigible"
+  },
+  {
+   "id": "r2-20",
+   "pregunta": "El nombre «Mriya» del An-225, en ucraniano, significa…",
+   "opciones": {
+    "A": "Águila",
+    "B": "Sueño",
+    "C": "Trueno"
+   },
+   "correcta": "B",
+   "explicacion": "«Mriya» quiere decir «sueño». Un sueño de 640 toneladas.",
+   "bien": "¡Respuesta de ensueño!",
+   "mal": "Ni águila ni trueno: era un sueño.",
+   "dibujo": "gigante"
+  }
+ ]
+}

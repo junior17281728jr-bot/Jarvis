@@ -34,9 +34,10 @@ export const REGLAS = Object.freeze({
   constanteDias: 60, constanteNocturnas: 30, constanteMinRespuestas: 40, // 60 días o más, o 30 % de respuestas de noche
 });
 const PREFIJO = 'AA';
-const DE_CURSO = { tg: 'TG', oral: 'OR' };
+// 0.14.38: también el de cada ronda de la Competencia (compe1…compe6 → C1…C6; src/academia/competencia.js).
+const DE_CURSO = { tg: 'TG', oral: 'OR', compe1: 'C1', compe2: 'C2', compe3: 'C3', compe4: 'C4', compe5: 'C5', compe6: 'C6' };
 const LETRAS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-export const FORMATO_CODIGO = /^AA-(TG|OR)-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/;
+export const FORMATO_CODIGO = /^AA-(TG|OR|C[1-6])-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$/;
 const claveCert = (curso, id) => `academia.certificado.${curso}.${Number(id)}`;
 const claveCodigo = codigo => `academia.certificado_codigo.${codigo}`;
 const json = t => { try { return JSON.parse(t ?? 'null'); } catch { return null; } };
@@ -190,6 +191,12 @@ export function verificarCodigo(db, codigo) {
   const c = limpiarCodigo(codigo);
   if (!FORMATO_CODIGO.test(c)) return { valido: false, codigo: c };
   const ref = json(leerAjuste(db, claveCodigo(c)));
+  // 0.14.38: el de una ronda de la Competencia (guardado en academia.certificado.compe<N>.<alumno>).
+  if (ref && /^compe[1-6]$/.test(String(ref.curso))) {
+    const v = json(leerAjuste(db, claveCert(ref.curso, ref.usuarioId)));
+    if (!v || v.codigo !== c) return { valido: false, codigo: c };
+    return { valido: true, codigo: c, curso: 'compe', ronda: v.ronda, aciertos: v.aciertos, total: v.total, nombre: nombreDe(db, v.usuarioId), fecha: v.fecha };
+  }
   const cert = ref && CURSOS.includes(ref.curso) ? guardado(db, ref.curso, ref.usuarioId) : null;
   if (!cert || cert.codigo !== c) return { valido: false, codigo: c };
   return { valido: true, codigo: c, curso: cert.curso, nombre: nombreDe(db, cert.usuarioId), fecha: cert.fecha };

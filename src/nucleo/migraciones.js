@@ -720,4 +720,69 @@ ALTER TABLE usuarios ADD COLUMN eliminado_por INTEGER;
 ALTER TABLE usuarios ADD COLUMN eliminado_activo INTEGER;
 `,
   },
+  {
+    id: 11,
+    nombre: 'academia_competencia',
+    // Academia 0.14.38: «Competencia» (src/academia/competencia.js). Solo agrega tablas academia_ (sin CHECK, sin UNIQUE:
+    // las reglas, como «un solo intento por ronda», se cuidan en el código, dentro de una transacción). Nada se borra nunca:
+    // una reacción quitada o un comentario borrado por el administrador quedan marcados (quitada_en, borrado_en).
+    //  - academia_compe_intentos: el ÚNICO intento de cada alumno en cada ronda (1–6). actual: la pregunta que le toca
+    //    (0–19); servida_en: cuándo se le mostró (el reloj de la pregunta lo lleva el servidor); huella: el contenido de la
+    //    ronda con que jugó (la ronda queda congelada desde el primer intento).
+    //  - academia_compe_respuestas: cada respuesta (elegida NULL = se le acabó el tiempo).
+    //  - academia_compe_reacciones / academia_compe_comentarios: lo que la gente le dice a un certificado de la galería.
+    sql: `
+CREATE TABLE IF NOT EXISTS academia_compe_intentos (
+  id INTEGER PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  ronda INTEGER NOT NULL,
+  huella TEXT NOT NULL,
+  total INTEGER NOT NULL DEFAULT 20,
+  actual INTEGER NOT NULL DEFAULT 0,
+  aciertos INTEGER NOT NULL DEFAULT 0,
+  segundos INTEGER NOT NULL DEFAULT 0,
+  servida_en TEXT,
+  empezado_en TEXT NOT NULL,
+  terminado_en TEXT
+);
+CREATE INDEX IF NOT EXISTS academia_compe_intentos_usuario ON academia_compe_intentos(usuario_id, ronda);
+CREATE INDEX IF NOT EXISTS academia_compe_intentos_ronda ON academia_compe_intentos(ronda, terminado_en);
+CREATE TABLE IF NOT EXISTS academia_compe_respuestas (
+  id INTEGER PRIMARY KEY,
+  intento_id INTEGER NOT NULL REFERENCES academia_compe_intentos(id),
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  ronda INTEGER NOT NULL,
+  orden INTEGER NOT NULL,
+  pregunta TEXT NOT NULL,
+  elegida TEXT,
+  correcta INTEGER NOT NULL DEFAULT 0,
+  a_tiempo INTEGER NOT NULL DEFAULT 1,
+  segundos INTEGER NOT NULL DEFAULT 0,
+  creada_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_compe_respuestas_intento ON academia_compe_respuestas(intento_id, orden);
+CREATE INDEX IF NOT EXISTS academia_compe_respuestas_usuario ON academia_compe_respuestas(usuario_id, correcta);
+CREATE TABLE IF NOT EXISTS academia_compe_reacciones (
+  id INTEGER PRIMARY KEY,
+  ronda INTEGER NOT NULL,
+  dueno_id INTEGER NOT NULL REFERENCES usuarios(id),
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  emoji TEXT NOT NULL,
+  creada_en TEXT NOT NULL,
+  quitada_en TEXT
+);
+CREATE INDEX IF NOT EXISTS academia_compe_reacciones_cert ON academia_compe_reacciones(ronda, dueno_id);
+CREATE TABLE IF NOT EXISTS academia_compe_comentarios (
+  id INTEGER PRIMARY KEY,
+  ronda INTEGER NOT NULL,
+  dueno_id INTEGER NOT NULL REFERENCES usuarios(id),
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  texto TEXT NOT NULL,
+  creado_en TEXT NOT NULL,
+  borrado_en TEXT,
+  borrado_por INTEGER REFERENCES usuarios(id)
+);
+CREATE INDEX IF NOT EXISTS academia_compe_comentarios_cert ON academia_compe_comentarios(ronda, dueno_id, id);
+`,
+  },
 ];

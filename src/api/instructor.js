@@ -43,6 +43,7 @@ import { guardarAjuste, leerAjuste } from '../academia/paquetes.js';
 import { contarReuso } from '../academia/registro-ia.js';
 import { registrarRutasTutor, personalParaVer, progresoPersonal } from './tutor.js';
 import { registrarRutasOralVivo } from './oral-vivo.js';
+import { falladas } from '../academia/competencia.js';
 import { memoriaParaIa, leerSenales, preferencias, preguntasDeMateria } from '../academia/tutor.js';
 import { datosPreparacion, leerPuntero, guardarPuntero, ultimaActividad, preparadoConIa, preparadoBasico, diaRd, PREPARAR } from '../academia/preparar-clase.js';
 
@@ -203,6 +204,26 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
         return { motivo: 'error' };
       }
     };
+    // 0.14.38: la IA opcional de la Competencia (src/api/competencia.js): solo si de verdad hay IA para esa cuenta (la
+    // misma regla que el instructor). No cobra un uso de su tiempo con IA: cuenta en el tope de su cuenta y en el general.
+    // Cualquier «no» (o un error) deja todo como está: la Competencia no necesita la IA.
+    ganchos.iaCompe = (db, usuario, { uso, sistema, texto, clave, extra = {} }) => {
+      try {
+        if (!config || !PROPOSITOS[uso]) return { estado: 'no', motivo: 'no_disponible' };
+        if (!iaPermitida(db, usuario.id, { estricto: config?.terminosObligatorios !== false })) return { estado: 'no', motivo: 'sin_consentimiento' };
+        const instructor = estadoInstructor(db, null, usuario);
+        if (instructor.modo !== 'ia') return { estado: 'no', motivo: instructor.motivo ?? 'no_disponible' };
+        if (Buffer.byteLength(sistema) + Buffer.byteLength(texto) > PROPOSITOS[uso].entradaMaxBytes) return { estado: 'no', motivo: 'demasiado_largo' };
+        const e = espacioDe(db, usuario);
+        const ahora = reloj();
+        const r = encolar(db, { tipo: 'academia.instructor', espacioId: e.id, creadaPor: usuario.id, datos: { uso, sistema, texto, clave, usuarioId: usuario.id, pedidaEn: ahora, ...extra } }, { ahora });
+        try { supervisor?.despertar?.(); } catch { /* la toma en su próxima vuelta */ }
+        return { estado: 'pendiente', tarea: r.id };
+      } catch (error) {
+        console.error('ia de la competencia:', error?.name ?? 'Error');
+        return { estado: 'no', motivo: 'no_disponible' };
+      }
+    };
   }
 
   // 0.12.9: el tutor del alumno (src/api/tutor.js), con el mismo estado de la IA, el mismo cobro y la misma fila.
@@ -358,7 +379,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     // 0.12.9 (O): las preguntas personalizadas cuentan en el progreso de «Mi repaso» (nunca en el % del Test Guide).
     // 0.13.1: lo del examen oral va aparte (sus errores, por tema), en su propia sección.
     const p = activo(db);
-    return { codigo: 200, datos: { ...miRepaso(db, usuario.id, p, reloj()), personal: progresoPersonal(db, usuario.id), oral: repasoOral(db, usuario.id, p) } };
+    // 0.14.38: y lo que falló en la Competencia («Lo que fallaste en la competencia»), aparte (no es del Test Guide).
+    return { codigo: 200, datos: { ...miRepaso(db, usuario.id, p, reloj()), personal: progresoPersonal(db, usuario.id), oral: repasoOral(db, usuario.id, p), competencia: falladas(db, usuario.id) } };
   });
   rutas.agregar('GET', '/api/academia/mi-repaso/clase', ({ db, req, usuario }) => {
     contar(topes.lecturas, usuario);

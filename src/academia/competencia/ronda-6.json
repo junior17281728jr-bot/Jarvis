@@ -1,0 +1,287 @@
+{
+ "ronda": 6,
+ "titulo": "Gran final",
+ "lema": "De todo un poco para los campeones.",
+ "preguntas": [
+  {
+   "id": "r6-01",
+   "pregunta": "La palabra «aviación» viene del latín «avis», que significa…",
+   "opciones": {
+    "A": "Ave (pájaro)",
+    "B": "Viento",
+    "C": "Viaje"
+   },
+   "correcta": "A",
+   "explicacion": "La palabra la usó por primera vez el francés Gabriel de La Landelle, en el siglo XIX.",
+   "bien": "¡Volaste como un pájaro con esa!",
+   "mal": "Ni viento ni viaje: avis es ave.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r6-02",
+   "pregunta": "Las máquinas voladoras que dibujó Leonardo da Vinci, como el ornitóptero, imitaban…",
+   "opciones": {
+    "A": "Un cohete",
+    "B": "Un globo de aire caliente",
+    "C": "El aleteo de las aves"
+   },
+   "correcta": "C",
+   "explicacion": "El ornitóptero movía las alas como un pájaro; nunca voló, pero la idea quedó.",
+   "bien": "¡Renacentista tu respuesta!",
+   "mal": "Cohetes en el 1500 no había, mi pana.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r6-03",
+   "pregunta": "Según el mito griego, ¿por qué cayó Ícaro?",
+   "opciones": {
+    "A": "Se le acabó el combustible",
+    "B": "Se acercó demasiado al Sol y se derritió la cera de sus alas",
+    "C": "Chocó con un pájaro"
+   },
+   "correcta": "B",
+   "explicacion": "Su padre Dédalo le advirtió que no volara ni muy alto ni muy bajo.",
+   "bien": "¡Tú no te acercas al Sol, tú te acercas al 100 %!",
+   "mal": "Combustible no llevaba: era cera y plumas.",
+   "dibujo": "planeador"
+  },
+  {
+   "id": "r6-04",
+   "pregunta": "¿Qué es un planeador?",
+   "opciones": {
+    "A": "Un helicóptero pequeño",
+    "B": "Una aeronave sin motor que vuela aprovechando el aire que sube",
+    "C": "Un globo con alas"
+   },
+   "correcta": "B",
+   "explicacion": "Un buen planeador puede recorrer kilómetros por cada metro que baja.",
+   "bien": "¡Planeaste suavecito hasta la respuesta!",
+   "mal": "No tiene rotor ni globo: es un ala sin motor.",
+   "dibujo": "planeador"
+  },
+  {
+   "id": "r6-05",
+   "pregunta": "Las «térmicas» que usan los planeadores y las aves para subir son…",
+   "opciones": {
+    "A": "Vientos que vienen del mar",
+    "B": "Remolinos que deja una hélice",
+    "C": "Columnas de aire caliente que suben"
+   },
+   "correcta": "C",
+   "explicacion": "El sol calienta el suelo, el aire de encima sube y el planeador da vueltas dentro para ganar altura.",
+   "bien": "¡Calentita y correcta!",
+   "mal": "No es la brisa del mar: es el aire caliente que sube.",
+   "dibujo": "planeador"
+  },
+  {
+   "id": "r6-06",
+   "pregunta": "¿Por qué los aviones dejan esas líneas blancas en el cielo (estelas, contrails)?",
+   "opciones": {
+    "A": "El vapor de agua del escape se condensa y se congela",
+    "B": "Es humo del combustible quemándose",
+    "C": "Sueltan pintura blanca"
+   },
+   "correcta": "A",
+   "explicacion": "El aire allá arriba es muy frío: el vapor caliente del motor se vuelve cristalitos de hielo.",
+   "bien": "¡Dejaste tu estela de sabiduría!",
+   "mal": "No es humo: son nubes de hielo hechas por el motor.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r6-07",
+   "pregunta": "¿Para qué sirven los winglets (las puntas dobladas de las alas)?",
+   "opciones": {
+    "A": "Solo de adorno",
+    "B": "Para reducir la resistencia de los vórtices y ahorrar combustible",
+    "C": "Para frenar al aterrizar"
+   },
+   "correcta": "B",
+   "explicacion": "Reducen los remolinos de la punta del ala, que gastan energía.",
+   "bien": "¡Ahorraste combustible y tiempo con esa!",
+   "mal": "No son de adorno: ahorran combustible.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r6-08",
+   "pregunta": "La turbulencia de estela (wake turbulence) es más fuerte detrás de un avión…",
+   "opciones": {
+    "A": "Ligero y rápido",
+    "B": "Estacionado con los motores apagados",
+    "C": "Pesado, limpio (sin flaps) y lento"
+   },
+   "correcta": "C",
+   "explicacion": "Pesado, limpio y lento: es cuando el ala trabaja más y deja los remolinos más fuertes.",
+   "bien": "¡Pesado, limpio y lento: te la sabes!",
+   "mal": "El ligero y rápido deja menos; el peor es el pesado y lento.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r6-09",
+   "pregunta": "Normalmente los aviones despegan y aterrizan…",
+   "opciones": {
+    "A": "Contra el viento",
+    "B": "Con el viento a favor",
+    "C": "Siempre con viento cruzado"
+   },
+   "correcta": "A",
+   "explicacion": "Con viento de frente se necesita menos pista y menos velocidad respecto al suelo.",
+   "bien": "¡De frente y sin miedo!",
+   "mal": "Con el viento a favor necesitarías mucha más pista.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r6-10",
+   "pregunta": "Al aterrizar de noche, ¿por qué bajan las luces de la cabina de pasajeros?",
+   "opciones": {
+    "A": "Para ahorrar electricidad",
+    "B": "Para que los ojos se acostumbren a la oscuridad si hay que evacuar",
+    "C": "Para que la gente duerma"
+   },
+   "correcta": "B",
+   "explicacion": "Si hay que salir rápido, los ojos ya estarán adaptados a la oscuridad de afuera.",
+   "bien": "¡Iluminado con esa respuesta!",
+   "mal": "No es pa' dormir: es por seguridad.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r6-11",
+   "pregunta": "¿Por qué piden subir la cortina de la ventanilla al despegar y aterrizar?",
+   "opciones": {
+    "A": "Para ver afuera si hay una emergencia y que la vista se adapte",
+    "B": "Para que entre fresco",
+    "C": "Para que la gente tome fotos"
+   },
+   "correcta": "A",
+   "explicacion": "La tripulación y los pasajeros pueden ver fuego, humo o agua, y saber por dónde salir.",
+   "bien": "¡Viste clarito la respuesta!",
+   "mal": "Las fotos son un bono; la razón es la seguridad.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r6-12",
+   "pregunta": "¿Qué es un ala en delta?",
+   "opciones": {
+    "A": "Dos alas, una encima de otra",
+    "B": "Un avión sin alas",
+    "C": "Un ala en forma de triángulo"
+   },
+   "correcta": "C",
+   "explicacion": "Como la del Concorde: buena para volar muy rápido.",
+   "bien": "¡Delta, como un triángulo perfecto!",
+   "mal": "Dos alas una encima de otra es un biplano.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r6-13",
+   "pregunta": "¿Cómo se llamaba el avión de Charles Lindbergh?",
+   "opciones": {
+    "A": "Spirit of St. Louis",
+    "B": "Flyer",
+    "C": "Voyager"
+   },
+   "correcta": "A",
+   "explicacion": "Le pusieron el nombre de la ciudad de los empresarios que pagaron su vuelo.",
+   "bien": "¡Con espíritu de campeón!",
+   "mal": "El Flyer era de los Wright y el Voyager de los Rutan.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r6-14",
+   "pregunta": "¿Dónde funcionó la primera línea aérea regular de pasajeros con aviones (1914)?",
+   "opciones": {
+    "A": "Entre Londres y París",
+    "B": "En Florida, entre San Petersburgo y Tampa",
+    "C": "Entre Madrid y Sevilla"
+   },
+   "correcta": "B",
+   "explicacion": "Un hidroavión cruzaba la bahía de Tampa con un pasajero a la vez, desde el 1 de enero de 1914.",
+   "bien": "¡Primera clase pa' tu respuesta!",
+   "mal": "Londres–París vino después; la primera fue en Florida.",
+   "dibujo": "hidroavion"
+  },
+  {
+   "id": "r6-15",
+   "pregunta": "¿Puede un helicóptero volar hacia atrás?",
+   "opciones": {
+    "A": "No, nunca",
+    "B": "Solo si hay viento de cola",
+    "C": "Sí"
+   },
+   "correcta": "C",
+   "explicacion": "Inclinando el rotor hacia atrás se mueve hacia atrás, y también de lado.",
+   "bien": "¡Pa'lante y pa'trás, como merengue!",
+   "mal": "Sí puede, y también de lado.",
+   "dibujo": "helicoptero"
+  },
+  {
+   "id": "r6-16",
+   "pregunta": "¿Para qué sirve el rotor de cola de un helicóptero?",
+   "opciones": {
+    "A": "Para darle sustentación",
+    "B": "Para contrarrestar el giro (torque) del rotor principal",
+    "C": "Para frenar"
+   },
+   "correcta": "B",
+   "explicacion": "Sin él, el cuerpo del helicóptero giraría al revés del rotor principal.",
+   "bien": "¡Sin dar vueltas: correcto!",
+   "mal": "La sustentación la da el rotor grande; el de cola evita que gire el cuerpo.",
+   "dibujo": "helicoptero"
+  },
+  {
+   "id": "r6-17",
+   "pregunta": "¿Qué quiere decir PPL?",
+   "opciones": {
+    "A": "Private Pilot License (licencia de piloto privado)",
+    "B": "Professional Pilot Level",
+    "C": "Plane Passenger License"
+   },
+   "correcta": "A",
+   "explicacion": "Es la licencia para la que te prepara esta academia.",
+   "bien": "¡Esa es la tuya, futuro piloto!",
+   "mal": "¡Ay, mi madre! Esa es la licencia que estás estudiando.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r6-18",
+   "pregunta": "En una pérdida (stall), el ala deja de sustentar bien porque…",
+   "opciones": {
+    "A": "Se apagó el motor",
+    "B": "Va demasiado rápido",
+    "C": "Se pasó el ángulo de ataque crítico"
+   },
+   "correcta": "C",
+   "explicacion": "Puede pasar a cualquier velocidad y con el motor encendido: lo que manda es el ángulo de ataque.",
+   "bien": "¡Ángulo perfecto en esa respuesta!",
+   "mal": "Con el motor andando también hay pérdida: es el ángulo de ataque.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r6-19",
+   "pregunta": "¿Qué es el ángulo de ataque?",
+   "opciones": {
+    "A": "El ángulo entre el avión y el suelo",
+    "B": "El ángulo entre la cuerda del ala y el viento relativo",
+    "C": "El ángulo entre las dos alas"
+   },
+   "correcta": "B",
+   "explicacion": "No es lo mismo que la actitud (hacia dónde apunta la nariz).",
+   "bien": "¡Atacaste esa pregunta con el ángulo correcto!",
+   "mal": "Ese es la actitud; el de ataque es con el viento relativo.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r6-20",
+   "pregunta": "En un mapa plano, muchas rutas largas se ven curvas porque…",
+   "opciones": {
+    "A": "La ruta más corta sobre la Tierra es un círculo máximo",
+    "B": "Los aviones esquivan pájaros",
+    "C": "El GPS se equivoca"
+   },
+   "correcta": "A",
+   "explicacion": "La Tierra es redonda: lo más corto entre dos puntos sobre una esfera es un arco de círculo máximo.",
+   "bien": "¡Redondita la respuesta, como la Tierra!",
+   "mal": "El GPS está bien; es que la Tierra es redonda.",
+   "dibujo": "jumbo"
+  }
+ ]
+}

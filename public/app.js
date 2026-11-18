@@ -4114,12 +4114,23 @@ function entradaMiRepaso() {
     el('span', {}, el('strong', { texto: t('mirepaso.titulo') }), el('span', { class: 'suave chica', texto: ` · ${t('mirepaso.entrada')}` })),
     el('span', { class: 'mi-repaso-cuenta insignia tono-atencion', hidden: true }));
 }
+// 0.14.38: la entrada a la Competencia en Inicio.
+function entradaCompetencia() {
+  return el('a', { class: 'entrada-mi-repaso entrada-competencia con-icono', href: '#competencia' }, icono('trofeo', 'icono chico'),
+    el('span', {}, el('strong', { texto: t('compe.titulo') }), el('span', { class: 'suave chica', texto: ` · ${t('compe.entrada')}` })));
+}
 async function pantallaMiRepaso() {
   const vigente = nuevoTurno();
   const r = await api('GET', '/api/academia/mi-repaso');
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   vistaMiRepaso(r.datos, { el, t, tn, numero, icono, talCual, mostrar, marco, volverAlCamino, nombreMateria, empezarIntento, sonar, vacio, insignia });
+  // 0.14.38: «Lo que fallaste en la competencia» (public/competencia-vista.js, solo si falló algo).
+  if (r.datos.competencia?.length) {
+    const m = await import('./competencia-vista.js');
+    const main = vigente() ? raiz.querySelector('main.contenido') : null;
+    if (main) main.insertBefore(m.seccionFalladas(r.datos.competencia, { el, t, numero, icono }), main.lastElementChild);
+  }
 }
 async function pantallaMiniClase(clave) {
   const vigente = nuevoTurno();
@@ -4168,6 +4179,8 @@ async function pantallaInicio() {
     c.repaso ? botonRepaso(c.repaso, 'chico') : null,
     // 0.12.2: «Mi repaso» (todo lo que falló), siempre visible; el número de puntos para repasar llega con el instructor.
     entradaMiRepaso(),
+    // 0.14.38: la Competencia (6 rondas de trivia de aviación).
+    entradaCompetencia(),
     // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
     lineaHumorVista(c.humor));
   tutorUi().olvidar();
@@ -5880,6 +5893,42 @@ async function pantallaOpiniones() {
   mostrar(marco('admin', cabecera, vista.vistaOpiniones(r.datos, { el, t, numero, icono, insignia, talCual, vacio, nombreMateria })));
 }
 // 0.14.26: los certificados de recuerdo (public/certificado-vista.js): los míos, o los de un alumno (administrador).
+// ---- 0.14.38: la Competencia (public/competencia-vista.js, solo se carga ahí) ----
+const piezasCompe = vigente => ({ el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma, confirmar, sonar, celebrar, esAdmin: verComoAdmin(), vigente });
+const errorCompe = r => mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
+  el('a', { class: 'boton-3d blanco', href: '#competencia' }, el('span', { texto: t('compe.volver') })))));
+async function pantallaCompetencia() {
+  const vigente = nuevoTurno();
+  const [r, c, vista] = await Promise.all([api('GET', '/api/academia/competencia'), api('GET', '/api/academia/competencia/certificados'), import('./competencia-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorCompe(r);
+  mostrar(marco('progreso', vista.pantallaCompetencia(r.datos, c.ok ? c.datos.certificados : [], piezasCompe(vigente))));
+}
+async function pantallaRondaCompe(n) {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', `/api/academia/competencia/${encodeURIComponent(n)}`), import('./competencia-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorCompe(r);
+  mostrar(marco('progreso', vista.pantallaRonda(r.datos, piezasCompe(vigente))));
+  window.scrollTo(0, 0);
+}
+async function pantallaGaleriaCompe(n) {
+  const vigente = nuevoTurno();
+  const admin = verComoAdmin();
+  const [r, vista] = await Promise.all([api('GET', admin ? `/api/admin/academia/competencia/${encodeURIComponent(n)}/certificados` : `/api/academia/competencia/${encodeURIComponent(n)}/certificados`), import('./competencia-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorCompe(r);
+  const arriba = window.scrollY;
+  mostrar(marco('progreso', vista.pantallaGaleria(r.datos, piezasCompe(vigente), { admin, recargar: () => { if (vigente()) pantallaGaleriaCompe(n); } })));
+  window.scrollTo(0, arriba);
+}
+async function pantallaCompeAdmin() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/competencia'), import('./competencia-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return errorCompe(r);
+  mostrar(marco('admin', vista.pantallaAdmin(r.datos, piezasCompe(vigente), { recargar: () => { if (vigente()) pantallaCompeAdmin(); } })));
+}
 async function pantallaCertificados() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/academia/certificados'), import('./certificado-vista.js')]);
@@ -6395,6 +6444,13 @@ async function dibujar() {
   const reporteAdmin = seccion.match(/^reportes\/(\d+)$/);
   if (reporteAdmin && esAdmin) return pantallaReporteError(reporteAdmin[1]);
   if (seccion === 'certificados') return pantallaCertificados();
+  // 0.14.38: la Competencia: #competencia, #competencia/<ronda>, #competencia/<ronda>/certificados y #competencia/admin.
+  if (seccion === 'competencia') return pantallaCompetencia();
+  const rondaCompe = seccion.match(/^competencia\/([1-6])$/);
+  if (rondaCompe) return pantallaRondaCompe(rondaCompe[1]);
+  const galeriaCompe = seccion.match(/^competencia\/([1-6])\/certificados$/);
+  if (galeriaCompe) return pantallaGaleriaCompe(galeriaCompe[1]);
+  if (seccion === 'competencia/admin' && esAdmin) return pantallaCompeAdmin();
   const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
   if (certificadosAlumno && esAdmin) return pantallaCertificadosAlumno(certificadosAlumno[1]);
   if (seccion === 'mis-documentos') return pantallaMisDocumentos();
@@ -6503,6 +6559,12 @@ function pedidosAlAbrir(seccion, admin) {
   const reporteAdmin = seccion.match(/^reportes\/(\d+)$/);
   if (reporteAdmin) return admin ? [`/api/admin/reportes/${encodeURIComponent(reporteAdmin[1])}`, '/api/admin/sistema'] : [];
   if (seccion === 'certificados') return ['/api/academia/certificados'];
+  // 0.14.38: la Competencia (la ronda NO se adelanta: al pedirla se le sirve la pregunta y empieza su reloj).
+  if (seccion === 'competencia') return ['/api/academia/competencia', '/api/academia/competencia/certificados'];
+  if (/^competencia\/[1-6]$/.test(seccion)) return [];
+  const galeriaCompe = seccion.match(/^competencia\/([1-6])\/certificados$/);
+  if (galeriaCompe) return [admin ? `/api/admin/academia/competencia/${galeriaCompe[1]}/certificados` : `/api/academia/competencia/${galeriaCompe[1]}/certificados`];
+  if (seccion === 'competencia/admin') return admin ? ['/api/admin/academia/competencia'] : [];
   const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
   if (certificadosAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(certificadosAlumno[1])}/certificados`] : [];
   if (seccion === 'mis-documentos') return ['/api/yo/documentos', '/api/yo/terminos'];

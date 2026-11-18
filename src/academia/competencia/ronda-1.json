@@ -1,0 +1,287 @@
+{
+ "ronda": 1,
+ "titulo": "Despegue",
+ "lema": "Los pioneros y lo básico del vuelo.",
+ "preguntas": [
+  {
+   "id": "r1-01",
+   "pregunta": "¿En qué año hicieron los hermanos Wright su primer vuelo con motor, controlado y sostenido?",
+   "opciones": {
+    "A": "1910",
+    "B": "1903",
+    "C": "1896"
+   },
+   "correcta": "B",
+   "explicacion": "El 17 de diciembre de 1903, en Kill Devil Hills (Kitty Hawk), Carolina del Norte, con el Wright Flyer.",
+   "bien": "¡Eso e' así! Tú te sabes la historia desde el primer brinco.",
+   "mal": "Ay, no… los Wright ya estaban volando y tú todavía calentando motor.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r1-02",
+   "pregunta": "¿Cuánto duró el primer vuelo de Orville Wright aquel día de 1903?",
+   "opciones": {
+    "A": "Unos 12 segundos",
+    "B": "Unos 2 minutos",
+    "C": "Unos 59 segundos"
+   },
+   "correcta": "A",
+   "explicacion": "El primero duró unos 12 s y recorrió unos 37 m; el de 59 s fue el cuarto vuelo del día, con Wilbur.",
+   "bien": "¡Doce segunditos y tú lo clavaste en menos!",
+   "mal": "Esos 59 segundos fueron de Wilbur: casi, pero el hermano equivocado.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r1-03",
+   "pregunta": "¿Quién cruzó solo y sin escalas el Atlántico, de Nueva York a París, en 1927?",
+   "opciones": {
+    "A": "Louis Blériot",
+    "B": "Howard Hughes",
+    "C": "Charles Lindbergh"
+   },
+   "correcta": "C",
+   "explicacion": "Lindbergh voló 33 horas y media en el Spirit of St. Louis, sin copiloto y sin dormir.",
+   "bien": "¡Directo y sin escala, como tú con esa respuesta!",
+   "mal": "Diache, se te fue el avión pa' otro lado del charco.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r1-04",
+   "pregunta": "¿Quién fue la primera mujer en cruzar sola el Atlántico en avión (1932)?",
+   "opciones": {
+    "A": "Amelia Earhart",
+    "B": "Bessie Coleman",
+    "C": "Valentina Tereshkova"
+   },
+   "correcta": "A",
+   "explicacion": "Amelia Earhart voló de Terranova a Irlanda del Norte en 1932, cinco años después de Lindbergh.",
+   "bien": "¡Amelia estaría orgullosa de ti, mi pana!",
+   "mal": "Tereshkova fue al espacio, no al Atlántico. ¡Te fuiste muy alto!",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r1-05",
+   "pregunta": "¿Qué pionero brasileño voló el 14-bis en París en 1906?",
+   "opciones": {
+    "A": "Glenn Curtiss",
+    "B": "Alberto Santos-Dumont",
+    "C": "Louis Blériot"
+   },
+   "correcta": "B",
+   "explicacion": "Santos-Dumont voló el 14-bis en París en 1906; en Brasil lo consideran el padre de la aviación.",
+   "bien": "¡Tú sabes más que un brasileño en día de fútbol!",
+   "mal": "Casi… pero ese vuelo fue con acento portugués.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r1-06",
+   "pregunta": "¿Qué cruzó Louis Blériot en avión en 1909?",
+   "opciones": {
+    "A": "El océano Atlántico",
+    "B": "La cordillera de los Andes",
+    "C": "El canal de la Mancha"
+   },
+   "correcta": "C",
+   "explicacion": "En julio de 1909 voló de Francia a Inglaterra en unos 37 minutos, en su Blériot XI.",
+   "bien": "¡De Francia a Inglaterra en lo que uno se toma un cafecito!",
+   "mal": "El Atlántico era mucho charco pa' ese avioncito de 1909.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r1-07",
+   "pregunta": "¿Quiénes hicieron volar el primer globo de aire caliente con personas a bordo (1783)?",
+   "opciones": {
+    "A": "Los hermanos Wright",
+    "B": "Los hermanos Lumière",
+    "C": "Los hermanos Montgolfier"
+   },
+   "correcta": "C",
+   "explicacion": "El globo de los Montgolfier llevó a dos personas sobre París en noviembre de 1783: 120 años antes que los Wright.",
+   "bien": "¡Subiste como globo en verano!",
+   "mal": "Los Lumière hacían películas, no globos. ¡Corte y queda!",
+   "dibujo": "globo"
+  },
+  {
+   "id": "r1-08",
+   "pregunta": "¿Qué fuerza se opone al empuje (thrust) en un avión?",
+   "opciones": {
+    "A": "La resistencia (drag)",
+    "B": "El peso (weight)",
+    "C": "La sustentación (lift)"
+   },
+   "correcta": "A",
+   "explicacion": "Las cuatro fuerzas van en pares: sustentación contra peso, empuje contra resistencia.",
+   "bien": "¡Física pura! Ni el profesor lo dice tan claro.",
+   "mal": "El peso pelea con la sustentación; el empuje pelea con la resistencia.",
+   "dibujo": "bimotor"
+  },
+  {
+   "id": "r1-09",
+   "pregunta": "¿Qué superficie de control hace girar el avión sobre su eje longitudinal (alabeo, roll)?",
+   "opciones": {
+    "A": "El timón de profundidad",
+    "B": "Los alerones",
+    "C": "El timón de dirección"
+   },
+   "correcta": "B",
+   "explicacion": "Los alerones, en las puntas de las alas, se mueven en sentidos opuestos y hacen alabear el avión.",
+   "bien": "¡Eso! Ladeaste esa pregunta como un profesional.",
+   "mal": "El timón de profundidad sube y baja la nariz; el roll es cosa de alerones.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r1-10",
+   "pregunta": "¿Quién fue el primer ser humano en viajar al espacio (1961)?",
+   "opciones": {
+    "A": "Yuri Gagarin",
+    "B": "Neil Armstrong",
+    "C": "John Glenn"
+   },
+   "correcta": "A",
+   "explicacion": "Gagarin dio una vuelta a la Tierra en la Vostok 1 el 12 de abril de 1961.",
+   "bien": "¡Pa'l espacio y de vuelta, sin despeinarte!",
+   "mal": "Armstrong fue a la Luna en 1969; el primero en el espacio fue Gagarin.",
+   "dibujo": "cohete"
+  },
+  {
+   "id": "r1-11",
+   "pregunta": "¿Quién fue el primer ser humano en pisar la Luna?",
+   "opciones": {
+    "A": "Buzz Aldrin",
+    "B": "Michael Collins",
+    "C": "Neil Armstrong"
+   },
+   "correcta": "C",
+   "explicacion": "Armstrong bajó primero en el Apolo 11 (1969); Aldrin lo siguió y Collins se quedó en órbita.",
+   "bien": "¡Un pequeño paso pa' ti, un gran acierto pa' la academia!",
+   "mal": "Aldrin bajó segundo… y Collins ni bajó, pobrecito.",
+   "dibujo": "cohete"
+  },
+  {
+   "id": "r1-12",
+   "pregunta": "¿Quién rompió por primera vez la barrera del sonido en vuelo nivelado (1947)?",
+   "opciones": {
+    "A": "Charles Lindbergh",
+    "B": "Chuck Yeager",
+    "C": "Yuri Gagarin"
+   },
+   "correcta": "B",
+   "explicacion": "Yeager voló el Bell X-1 a más de Mach 1 el 14 de octubre de 1947.",
+   "bien": "¡Respondiste más rápido que el sonido!",
+   "mal": "Se oyó el estampido… pero de la respuesta cayéndose.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r1-13",
+   "pregunta": "¿Qué pionero es famoso por el primer helicóptero práctico de un solo rotor principal (VS-300, 1939)?",
+   "opciones": {
+    "A": "Juan de la Cierva",
+    "B": "Igor Sikorsky",
+    "C": "William Boeing"
+   },
+   "correcta": "B",
+   "explicacion": "Sikorsky voló el VS-300 en 1939; su diseño, con rotor de cola, es el que usan casi todos los helicópteros.",
+   "bien": "¡Te quedaste flotando en el lugar correcto!",
+   "mal": "De la Cierva hizo el autogiro, primo del helicóptero, pero no el VS-300.",
+   "dibujo": "helicoptero"
+  },
+  {
+   "id": "r1-14",
+   "pregunta": "¿Qué inventó el ingeniero español Juan de la Cierva (1923)?",
+   "opciones": {
+    "A": "El autogiro",
+    "B": "El motor a reacción",
+    "C": "El paracaídas"
+   },
+   "correcta": "A",
+   "explicacion": "El autogiro tiene un rotor que gira libre con el viento y una hélice que lo empuja hacia adelante.",
+   "bien": "¡Olé! Esa respuesta gira sola.",
+   "mal": "El paracaídas es mucho más viejo; De la Cierva hizo el autogiro.",
+   "dibujo": "helicoptero"
+  },
+  {
+   "id": "r1-15",
+   "pregunta": "¿Cuál fue el primer avión en volar con un motor a reacción (1939)?",
+   "opciones": {
+    "A": "Douglas DC-3",
+    "B": "Supermarine Spitfire",
+    "C": "Heinkel He 178"
+   },
+   "correcta": "C",
+   "explicacion": "El He 178 voló en agosto de 1939 con el motor de Hans von Ohain.",
+   "bien": "¡Arrancaste con turbina, mi hermano!",
+   "mal": "El DC-3 y el Spitfire eran de hélice. ¡Esa respuesta iba a pistón!",
+   "dibujo": "bimotor"
+  },
+  {
+   "id": "r1-16",
+   "pregunta": "En el alfabeto aeronáutico, ¿cómo se dice la letra D?",
+   "opciones": {
+    "A": "Dog",
+    "B": "Diana",
+    "C": "Delta"
+   },
+   "correcta": "C",
+   "explicacion": "El alfabeto de la OACI: Alfa, Bravo, Charlie, Delta, Echo…",
+   "bien": "¡Delta, perfecto! Ya hablas como en la torre.",
+   "mal": "Dog era del alfabeto viejo de la radio. ¡Guau, casi!",
+   "dibujo": "torre"
+  },
+  {
+   "id": "r1-17",
+   "pregunta": "¿Qué instrumento usa a la vez la presión del tubo pitot y la presión estática?",
+   "opciones": {
+    "A": "El anemómetro (velocímetro)",
+    "B": "El altímetro",
+    "C": "La brújula magnética"
+   },
+   "correcta": "A",
+   "explicacion": "El anemómetro compara la presión de impacto (pitot) con la estática; el altímetro solo usa la estática.",
+   "bien": "¡Pitot y estática, combo completo! Eso e' de piloto.",
+   "mal": "El altímetro solo usa la estática; la brújula no usa ninguna.",
+   "dibujo": "instrumento"
+  },
+  {
+   "id": "r1-18",
+   "pregunta": "¿Dónde obtuvo Bessie Coleman su licencia de piloto en 1921?",
+   "opciones": {
+    "A": "En Estados Unidos",
+    "B": "En Francia",
+    "C": "En Canadá"
+   },
+   "correcta": "B",
+   "explicacion": "En su país no la aceptaban en las escuelas; aprendió francés y sacó su licencia en Francia.",
+   "bien": "¡Tú sí estudias la historia completa!",
+   "mal": "En su país le cerraron la puerta; por eso se fue a Francia.",
+   "dibujo": "biplano"
+  },
+  {
+   "id": "r1-19",
+   "pregunta": "¿Qué avión de hélice de los años 30 hizo rentable el transporte de pasajeros y todavía se ve volar en algunos lugares?",
+   "opciones": {
+    "A": "Douglas DC-3",
+    "B": "Boeing 747",
+    "C": "Concorde"
+   },
+   "correcta": "A",
+   "explicacion": "El DC-3 voló por primera vez en 1935; se fabricaron miles y algunos siguen volando.",
+   "bien": "¡Un clásico pa' un clásico como tú!",
+   "mal": "El 747 llegó en 1969 y el Concorde ni hélice tenía.",
+   "dibujo": "bimotor"
+  },
+  {
+   "id": "r1-20",
+   "pregunta": "En la radio, ¿qué significa decir «Mayday»?",
+   "opciones": {
+    "A": "Urgencia sin peligro inmediato",
+    "B": "Emergencia: peligro grave e inminente",
+    "C": "Fin de la transmisión"
+   },
+   "correcta": "B",
+   "explicacion": "Viene del francés «m'aidez» (ayúdenme). Para una urgencia menor se dice «Pan-Pan».",
+   "bien": "¡Respuesta de emergencia… y correcta!",
+   "mal": "Eso que dijiste es «Pan-Pan». Mayday es lo más grave.",
+   "dibujo": "torre"
+  }
+ ]
+}

@@ -1,0 +1,287 @@
+{
+ "ronda": 5,
+ "titulo": "Tiempo y navegación",
+ "lema": "Nubes, presión, millas y brújulas.",
+ "preguntas": [
+  {
+   "id": "r5-01",
+   "pregunta": "¿Qué nube produce las tormentas eléctricas?",
+   "opciones": {
+    "A": "El cirro",
+    "B": "El estrato",
+    "C": "El cumulonimbo"
+   },
+   "correcta": "C",
+   "explicacion": "El cumulonimbo puede subir más de 40 000 pies: rayos, granizo y turbulencia fuerte.",
+   "bien": "¡Te la sabías! Lejos de ese monstruo.",
+   "mal": "El cirro es finito y alto; el de las tormentas es el cumulonimbo.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-02",
+   "pregunta": "¿Qué es un METAR?",
+   "opciones": {
+    "A": "El pronóstico de una región",
+    "B": "El informe del tiempo observado en un aeropuerto",
+    "C": "Un mapa de rutas"
+   },
+   "correcta": "B",
+   "explicacion": "El METAR dice lo que hay AHORA; el TAF dice lo que se espera.",
+   "bien": "¡Leíste el METAR sin enredarte!",
+   "mal": "El pronóstico es el TAF; el METAR es lo que hay ahora.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-03",
+   "pregunta": "¿Qué es un TAF?",
+   "opciones": {
+    "A": "El pronóstico del tiempo de un aeropuerto",
+    "B": "El informe del tiempo de ahora",
+    "C": "Un aviso de tránsito"
+   },
+   "correcta": "A",
+   "explicacion": "TAF = Terminal Aerodrome Forecast, normalmente para las próximas 24 o 30 horas.",
+   "bien": "¡Pronóstico acertado, como el tuyo!",
+   "mal": "Eso es el METAR. El TAF es el pronóstico.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-04",
+   "pregunta": "La niebla se forma con más facilidad cuando la temperatura y el punto de rocío…",
+   "opciones": {
+    "A": "Se acercan mucho",
+    "B": "Se separan mucho",
+    "C": "No tienen que ver"
+   },
+   "correcta": "A",
+   "explicacion": "Cuando el aire se enfría hasta su punto de rocío, el vapor se vuelve gotitas: nube o niebla.",
+   "bien": "¡Clarito, sin niebla!",
+   "mal": "Separados no: cuanto más cerca, más niebla.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-05",
+   "pregunta": "En la atmósfera estándar, ¿qué temperatura hay al nivel del mar?",
+   "opciones": {
+    "A": "0 °C",
+    "B": "25 °C",
+    "C": "15 °C"
+   },
+   "correcta": "C",
+   "explicacion": "La atmósfera estándar (ISA): 15 °C y 1013,25 hPa (29,92 inHg) al nivel del mar.",
+   "bien": "¡Fresquito y correcto!",
+   "mal": "En el Caribe hace más, pero la estándar es 15 °C.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-06",
+   "pregunta": "En la atmósfera estándar, ¿qué presión hay al nivel del mar?",
+   "opciones": {
+    "A": "30,92 inHg",
+    "B": "29,92 inHg (1013 hPa)",
+    "C": "27,92 inHg"
+   },
+   "correcta": "B",
+   "explicacion": "29,92 pulgadas de mercurio = 1013,25 hectopascales.",
+   "bien": "¡Presión exacta, sin estrés!",
+   "mal": "Te pasaste por una pulgada: es 29,92.",
+   "dibujo": "instrumento"
+  },
+  {
+   "id": "r5-07",
+   "pregunta": "En la atmósfera estándar, ¿cuánto baja la temperatura más o menos por cada 1 000 pies que se sube?",
+   "opciones": {
+    "A": "Unos 10 °C",
+    "B": "Unos 2 °C",
+    "C": "No baja"
+   },
+   "correcta": "B",
+   "explicacion": "Es el gradiente estándar: cerca de 2 °C (1,98) por cada 1 000 pies.",
+   "bien": "¡Subiste y no te enfriaste!",
+   "mal": "Diez grados sería un congelador volador: son unos 2.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-08",
+   "pregunta": "Si vuelas de una zona de alta presión a una de baja sin ajustar el altímetro, el avión estará…",
+   "opciones": {
+    "A": "Más bajo de lo que marca",
+    "B": "Más alto de lo que marca",
+    "C": "Exactamente donde marca"
+   },
+   "correcta": "A",
+   "explicacion": "«De alta a baja, cuidado abajo»: el altímetro marca de más y estás más cerca del suelo.",
+   "bien": "¡De alta a baja, cuidado abajo! Te la sabes.",
+   "mal": "Al revés: estarías más bajo, y eso es peligroso.",
+   "dibujo": "instrumento"
+  },
+  {
+   "id": "r5-09",
+   "pregunta": "En el hemisferio norte, alrededor de una baja presión (como un huracán), el viento gira…",
+   "opciones": {
+    "A": "A favor de las agujas del reloj",
+    "B": "No gira, va en línea recta",
+    "C": "En contra de las agujas del reloj"
+   },
+   "correcta": "C",
+   "explicacion": "Por el efecto de la rotación de la Tierra, en el norte las bajas giran al revés del reloj.",
+   "bien": "¡Giraste pa'l lado correcto!",
+   "mal": "En el hemisferio norte las bajas giran contra el reloj.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-10",
+   "pregunta": "¿Cuándo es la temporada oficial de huracanes del Atlántico?",
+   "opciones": {
+    "A": "Del 1 de junio al 30 de noviembre",
+    "B": "De enero a marzo",
+    "C": "Todo el año por igual"
+   },
+   "correcta": "A",
+   "explicacion": "Es la que se usa en el Caribe; la mayor actividad suele ser de agosto a octubre.",
+   "bien": "¡Eso lo sabe todo dominicano que se respete!",
+   "mal": "En enero hay frío, no huracanes: es de junio a noviembre.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-11",
+   "pregunta": "¿Qué es la cizalladura del viento (wind shear)?",
+   "opciones": {
+    "A": "Un viento suave y constante",
+    "B": "Un cambio brusco del viento en poca distancia",
+    "C": "Un viento cruzado ligero"
+   },
+   "correcta": "B",
+   "explicacion": "Puede cambiar de golpe la velocidad del avión, sobre todo peligrosa cerca del suelo.",
+   "bien": "¡Cortaste esa duda de raíz!",
+   "mal": "Suave no: es un cambio brusco.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-12",
+   "pregunta": "¿Por qué una microrráfaga (microburst) es tan peligrosa al despegar o aterrizar?",
+   "opciones": {
+    "A": "Tapa el sol y no se ve",
+    "B": "Una corriente descendente fuerte puede empujar el avión hacia el suelo",
+    "C": "Enfría demasiado los motores"
+   },
+   "correcta": "B",
+   "explicacion": "Primero da viento de frente, luego una bajada fuerte y viento de cola: se pierde velocidad y altura.",
+   "bien": "¡Respuesta firme como un avión bien trimado!",
+   "mal": "No es la sombra: es el aire que empuja pa' abajo.",
+   "dibujo": "nube"
+  },
+  {
+   "id": "r5-13",
+   "pregunta": "La línea de latitud 0° se llama…",
+   "opciones": {
+    "A": "El meridiano de Greenwich",
+    "B": "El trópico de Cáncer",
+    "C": "El ecuador"
+   },
+   "correcta": "C",
+   "explicacion": "Greenwich es la longitud 0°; el ecuador es la latitud 0°.",
+   "bien": "¡Centradito en el ecuador!",
+   "mal": "Greenwich es la longitud 0°; la latitud 0° es el ecuador.",
+   "dibujo": "brujula"
+  },
+  {
+   "id": "r5-14",
+   "pregunta": "Un grado de latitud equivale más o menos a…",
+   "opciones": {
+    "A": "60 millas náuticas",
+    "B": "1 milla náutica",
+    "C": "100 millas náuticas"
+   },
+   "correcta": "A",
+   "explicacion": "Cada minuto de latitud es una milla náutica, y un grado tiene 60 minutos.",
+   "bien": "¡Sesenta de sesenta!",
+   "mal": "Una milla náutica es UN minuto; un grado son 60.",
+   "dibujo": "brujula"
+  },
+  {
+   "id": "r5-15",
+   "pregunta": "¿Cuánto mide una milla náutica?",
+   "opciones": {
+    "A": "1 609 metros",
+    "B": "1 000 metros",
+    "C": "1 852 metros"
+   },
+   "correcta": "C",
+   "explicacion": "La milla terrestre (statute) mide unos 1 609 m; la náutica, 1 852 m.",
+   "bien": "¡Medido al milímetro!",
+   "mal": "Esa es la milla terrestre; la náutica es 1 852 m.",
+   "dibujo": "brujula"
+  },
+  {
+   "id": "r5-16",
+   "pregunta": "¿Qué es un nudo (knot)?",
+   "opciones": {
+    "A": "Una milla náutica por hora",
+    "B": "Un kilómetro por hora",
+    "C": "Un pie por segundo"
+   },
+   "correcta": "A",
+   "explicacion": "Por eso la velocidad de los aviones y los barcos se da en nudos.",
+   "bien": "¡Nudo desatado!",
+   "mal": "Es una milla NÁUTICA por hora.",
+   "dibujo": "brujula"
+  },
+  {
+   "id": "r5-17",
+   "pregunta": "La diferencia entre el norte verdadero y el norte magnético se llama…",
+   "opciones": {
+    "A": "Desvío de la brújula",
+    "B": "Variación (declinación) magnética",
+    "C": "Deriva"
+   },
+   "correcta": "B",
+   "explicacion": "Cambia según dónde estés en el mapa; el desvío es otra cosa: el error que causa el propio avión.",
+   "bien": "¡Tu brújula interna funciona!",
+   "mal": "El desvío lo causa el avión; la diferencia entre nortes es la variación.",
+   "dibujo": "brujula"
+  },
+  {
+   "id": "r5-18",
+   "pregunta": "El error de la brújula que causan los metales y aparatos eléctricos del propio avión se llama…",
+   "opciones": {
+    "A": "Desvío (deviation)",
+    "B": "Variación",
+    "C": "Deriva"
+   },
+   "correcta": "A",
+   "explicacion": "Se anota en una tarjeta junto a la brújula con las correcciones para cada rumbo.",
+   "bien": "¡Sin desviarte de la respuesta!",
+   "mal": "La variación es de la Tierra; la del avión es el desvío.",
+   "dibujo": "brujula"
+  },
+  {
+   "id": "r5-19",
+   "pregunta": "El hielo en el carburador se puede formar…",
+   "opciones": {
+    "A": "Solo con temperaturas bajo cero",
+    "B": "Solo dentro de una tormenta",
+    "C": "Hasta con unos 20 °C o más si hay mucha humedad"
+   },
+   "correcta": "C",
+   "explicacion": "Al pasar por el carburador el aire se enfría mucho: con humedad alta puede haber hielo en un día templado.",
+   "bien": "¡Respuesta fría y precisa!",
+   "mal": "No hace falta que haga frío afuera: el carburador enfría el aire.",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r5-20",
+   "pregunta": "¿Qué significa VOR?",
+   "opciones": {
+    "A": "Velocidad óptima de rodaje",
+    "B": "Radiofaro omnidireccional de VHF",
+    "C": "Radar de observación visual"
+   },
+   "correcta": "B",
+   "explicacion": "VOR = VHF Omnidirectional Range: emite radiales en todas las direcciones para orientarse.",
+   "bien": "¡Navegaste directo al radial correcto!",
+   "mal": "Nada de rodaje: es una radioayuda de navegación.",
+   "dibujo": "brujula"
+  }
+ ]
+}

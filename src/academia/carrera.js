@@ -42,7 +42,7 @@ const corto = s => (s.length > LARGO_ALIAS ? `${s.slice(0, LARGO_ALIAS - 1)}…`
 
 // El primer nombre de cada uno: el legal (lo confirmó al firmar), si no el nombre en la app; nunca algo con «@».
 // → Map id → { nombre, inicial } (inicial: la del apellido, para desempatar dos «Ana»).
-function primerosNombres(db, cuentas) {
+export function primerosNombres(db, cuentas) {
   const legales = new Map();
   for (const f of db.prepare("SELECT clave, valor FROM ajustes WHERE clave LIKE 'cuenta.nombre\\_legal.%' ESCAPE '\\'").all()) {
     const n = json(f.valor);
@@ -59,7 +59,7 @@ function primerosNombres(db, cuentas) {
   }));
 }
 
-function ocultos(db) {
+export function ocultos(db) {
   return new Set(db.prepare("SELECT clave FROM ajustes WHERE clave LIKE 'academia.grupo\\_oculto.%' ESCAPE '\\' AND valor = '1'").all()
     .map(f => Number(f.clave.slice('academia.grupo_oculto.'.length))));
 }

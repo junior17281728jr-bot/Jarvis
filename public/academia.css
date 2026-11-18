@@ -1627,3 +1627,93 @@ h3.biblio-h { font-size: 1.05em; }
 .biblio-mini-paso.vacio { visibility: hidden; }
 .biblio-mini-letra { display: inline-flex; gap: 4px; }
 .biblio-letra { min-width: 44px; min-height: 40px; padding: 0 8px; font-weight: 800; }
+
+/* ---------- 0.14.38: la Competencia (public/competencia-vista.js) ---------- */
+.compe-dibujo { display: block; width: 100%; max-width: 260px; height: auto; margin: 0 auto; color: var(--azul); }
+.compe-dibujo .dib-c { fill: var(--azul); }
+.compe-dibujo .dib-d { fill: var(--naranja); }
+.compe-dibujo .dib-l { stroke: var(--azul); stroke-width: 2.5; stroke-linecap: round; }
+.compe-dibujo .dib-ventana { fill: #bfe3ff; }
+.compe-dibujo .dib-sol { fill: var(--oro); }
+.compe-dibujo .dib-nube-chica { fill: #dfe7f3; }
+.compe-dibujo .dib-agua { stroke: #4aa3df; }
+.compe-dibujo .dib-fuego { fill: #ff8a1f; }
+.compe-dibujo .dib-luz { fill: #34c759; }
+.compe-dibujo .dib-esfera { fill: #1b2338; }
+.compe-dibujo .dib-arco-blanco { stroke: #ffffff; stroke-width: 5; }
+.compe-dibujo .dib-arco-verde { stroke: #34c759; stroke-width: 5; }
+.compe-dibujo .dib-arco-amarillo { stroke: #ffcc00; stroke-width: 5; }
+.compe-dibujo .dib-arco-rojo { stroke: #ff3b30; stroke-width: 5; }
+.compe-dibujo .dib-raya { fill: #ffffff; }
+.compe-dibujo .dib-numero { fill: #ffffff; font-family: var(--letra-redonda); }
+.compe-dibujo .dib-rayo { fill: var(--oro); }
+.compe-dibujo .dib-norte { fill: #ff3b30; }
+.compe-dibujo.dib-nube .dib-c { fill: #7d8aa5; }
+.compe-dibujo.dib-pista .dib-c { fill: #3b4252; }
+.compe-dibujo.dib-brujula .dib-numero, .compe-dibujo.dib-instrumento .dib-numero { fill: var(--texto); }
+.compe-dibujo-caja { margin: 6px auto 10px; padding: 10px; border-radius: 14px; background: linear-gradient(180deg, #e8f3ff, #f8fbff); max-width: 320px; }
+.compe-dibujo-mini .compe-dibujo { max-width: 120px; }
+.compe-cabeza .compe-dibujo { max-width: 200px; }
+.compe-reglas { margin: 8px 0 0; padding-left: 20px; }
+.compe-reglas li { margin: 4px 0; }
+.compe-rondas { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+@media (min-width: 720px) { .compe-rondas { grid-template-columns: 1fr 1fr; } }
+.compe-ronda { border: 1px solid var(--linea); border-radius: 14px; padding: 10px 12px; background: var(--tarjeta); }
+.compe-ronda.estado-terminada { border-color: var(--verde-borde); }
+.compe-ronda.estado-jugando { border-color: var(--naranja-borde); }
+.compe-ronda-enlace { display: flex; gap: 12px; align-items: flex-start; color: inherit; text-decoration: none; }
+.compe-ronda-numero { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff; background: var(--azul); font-family: var(--letra-redonda); }
+.compe-ronda-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.compe-estado { margin: 2px 0 0; }
+.compe-tabla { list-style: none; margin: 8px 0 0; padding: 0; }
+.compe-fila { display: grid; grid-template-columns: 38px 1fr auto; gap: 8px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--linea); }
+.compe-fila.es-yo { background: rgba(255, 170, 0, 0.12); border-radius: 8px; }
+.compe-puesto { font-size: 1.15em; text-align: center; }
+.compe-nombre { overflow-wrap: anywhere; }
+.compe-puntos { font-weight: 700; white-space: nowrap; }
+.compe-arriba { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.compe-reloj-caja { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.compe-reloj { flex: 1; height: 10px; appearance: none; border: none; border-radius: 6px; background: var(--linea); overflow: hidden; }
+.compe-reloj::-webkit-progress-bar { background: var(--linea); border-radius: 6px; }
+.compe-reloj::-webkit-progress-value { background: var(--verde); border-radius: 6px; }
+.compe-reloj::-moz-progress-bar { background: var(--verde); }
+.compe-reloj.poco::-webkit-progress-value { background: var(--rojo); }
+.compe-reloj.poco::-moz-progress-bar { background: var(--rojo); }
+.compe-quedan { min-width: 3em; text-align: right; font-variant-numeric: tabular-nums; }
+.compe-enunciado { font-size: 1.2em; line-height: 1.35; margin: 6px 0 12px; }
+.compe-opciones { display: grid; gap: 10px; }
+.compe-opcion { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 14px; border-radius: 14px; border: 2px solid var(--linea); border-bottom-width: 4px; background: var(--tarjeta); color: var(--texto); font: inherit; cursor: pointer; }
+.compe-opcion:disabled { cursor: default; }
+.compe-opcion.buena { border-color: var(--verde); background: rgba(52, 199, 89, 0.14); }
+.compe-opcion.mala { border-color: var(--rojo); background: rgba(255, 59, 48, 0.12); }
+.compe-letra { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--azul); color: #fff; }
+.compe-veredicto { margin-top: 14px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--linea); }
+.compe-titular { font-weight: 800; font-size: 1.15em; margin: 0 0 4px; }
+.compe-chiste { font-style: italic; margin: 0 0 6px; }
+.compe-explica { margin: 0 0 8px; }
+.compe-gran-nota { font-size: 2.6em; font-weight: 800; margin: 4px 0; font-family: var(--letra-redonda); color: var(--azul); }
+.compe-feed { max-height: 78vh; overflow-y: auto; scroll-behavior: auto; display: grid; gap: 18px; padding: 4px 2px 40px; border-radius: 14px; }
+.compe-feed:focus-visible { outline: 3px solid var(--acento); }
+.compe-post { border: 1px solid var(--linea); border-radius: 16px; padding: 12px; background: var(--tarjeta); }
+.compe-post-quien { margin: 0 0 6px; }
+.cert-tarjeta.compacto { margin: 0; padding: 0; border: none; box-shadow: none; background: none; }
+.compe-reacciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.compe-reaccion { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--linea); background: var(--fondo); color: var(--texto); font: inherit; cursor: pointer; }
+.compe-reaccion.puesta { border-color: var(--naranja); background: rgba(255, 150, 0, 0.16); }
+.compe-comentarios { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 6px; }
+.compe-comentarios li { padding: 6px 10px; border-radius: 10px; background: var(--fondo); }
+.compe-comentarios p { margin: 2px 0; overflow-wrap: anywhere; }
+.compe-form { display: flex; gap: 8px; }
+.compe-form input { flex: 1; min-width: 0; }
+.compe-falladas-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.compe-falladas-lista li { border: 1px solid var(--linea); border-radius: 12px; padding: 10px 12px; }
+.compe-sugerencia { margin: 10px 0; padding: 10px; border-radius: 12px; border: 1px dashed var(--naranja-borde); }
+.compe-sugerencia ul { margin: 6px 0; padding-left: 18px; }
+@media (prefers-color-scheme: dark) {
+  :root[data-tema="auto"] .compe-dibujo-caja { background: linear-gradient(180deg, #1d2a44, #18233a); }
+  :root[data-tema="auto"] .compe-dibujo .dib-c { fill: #8fb8ff; }
+  :root[data-tema="auto"] .compe-dibujo .dib-l { stroke: #8fb8ff; }
+}
+:root[data-tema="oscuro"] .compe-dibujo-caja { background: linear-gradient(180deg, #1d2a44, #18233a); }
+:root[data-tema="oscuro"] .compe-dibujo .dib-c { fill: #8fb8ff; }
+:root[data-tema="oscuro"] .compe-dibujo .dib-l { stroke: #8fb8ff; }

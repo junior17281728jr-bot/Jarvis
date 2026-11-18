@@ -1,0 +1,287 @@
+{
+ "ronda": 3,
+ "titulo": "Velocidad y altura",
+ "lema": "Más rápido que el sonido y más alto que las nubes.",
+ "preguntas": [
+  {
+   "id": "r3-01",
+   "pregunta": "¿Qué avión tiene el récord de velocidad de un avión tripulado con motores que respiran aire (1976)?",
+   "opciones": {
+    "A": "El Lockheed SR-71 Blackbird",
+    "B": "El Concorde",
+    "C": "El F-16"
+   },
+   "correcta": "A",
+   "explicacion": "En 1976 un SR-71 voló a unos 3 530 km/h; ese récord duró décadas sin que nadie lo superara.",
+   "bien": "¡Respondiste a Mach 3, mi pana!",
+   "mal": "El Concorde era rapidito, pero el Blackbird le sacaba ventaja.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-02",
+   "pregunta": "¿Qué avión cohete llegó a Mach 6,7 en 1967?",
+   "opciones": {
+    "A": "El Bell X-1",
+    "B": "El North American X-15",
+    "C": "El SR-71 Blackbird"
+   },
+   "correcta": "B",
+   "explicacion": "El X-15 lo soltaba un bombardero en el aire y encendía su cohete; algunos vuelos llegaron al borde del espacio.",
+   "bien": "¡Cohete de respuesta!",
+   "mal": "El X-1 rompió el sonido; el que llegó a Mach 6,7 fue el X-15.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-03",
+   "pregunta": "¿A qué velocidad de crucero volaba el Concorde, más o menos?",
+   "opciones": {
+    "A": "Mach 0,85",
+    "B": "Mach 4",
+    "C": "Mach 2 (el doble del sonido)"
+   },
+   "correcta": "C",
+   "explicacion": "Cruzaba a unos Mach 2,0: de Nueva York a Londres en unas 3 horas y media.",
+   "bien": "¡Volaste a Mach 2 con esa!",
+   "mal": "Mach 0,85 es un jet normal; el Concorde iba al doble del sonido.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-04",
+   "pregunta": "¿En qué año dejó de volar el Concorde con pasajeros?",
+   "opciones": {
+    "A": "1989",
+    "B": "2015",
+    "C": "2003"
+   },
+   "correcta": "C",
+   "explicacion": "Sus últimos vuelos comerciales fueron en octubre de 2003, después de 27 años de servicio.",
+   "bien": "¡Memoria supersónica!",
+   "mal": "Se despidió en 2003. ¡Llegaste tarde al aeropuerto!",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-05",
+   "pregunta": "¿Cuál fue el primer avión de pasajeros supersónico en volar (31 de diciembre de 1968)?",
+   "opciones": {
+    "A": "El Concorde",
+    "B": "El Tupolev Tu-144",
+    "C": "El Boeing 2707"
+   },
+   "correcta": "B",
+   "explicacion": "El Tu-144 voló unos dos meses antes que el Concorde; el Boeing 2707 nunca se construyó.",
+   "bien": "¡Le ganaste al Concorde, como el Tu-144!",
+   "mal": "El Concorde voló en marzo de 1969: llegó segundo.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-06",
+   "pregunta": "¿Qué significa volar a «Mach 1»?",
+   "opciones": {
+    "A": "Volar a la velocidad del sonido",
+    "B": "Volar a 1 000 km/h exactos",
+    "C": "Volar al doble de la velocidad del sonido"
+   },
+   "correcta": "A",
+   "explicacion": "El número Mach es tu velocidad dividida entre la del sonido en ese aire.",
+   "bien": "¡Mach 1 de inteligencia!",
+   "mal": "No es un número fijo en km/h: depende del aire.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-07",
+   "pregunta": "La velocidad del sonido en el aire depende principalmente de…",
+   "opciones": {
+    "A": "El peso del avión",
+    "B": "La temperatura del aire",
+    "C": "La hora del día"
+   },
+   "correcta": "B",
+   "explicacion": "Con el aire más frío, el sonido va más lento; por eso Mach 1 arriba es menos km/h que al nivel del mar.",
+   "bien": "¡Caliente esa respuesta!",
+   "mal": "El peso del avión no le importa al sonido; la temperatura, sí.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-08",
+   "pregunta": "¿Qué es el «estampido sónico» (sonic boom)?",
+   "opciones": {
+    "A": "El ruido de las ondas de choque de algo que va más rápido que el sonido",
+    "B": "El ruido de los motores al arrancar",
+    "C": "Un trueno de tormenta"
+   },
+   "correcta": "A",
+   "explicacion": "Las ondas de choque viajan con el avión y se oyen en el suelo como un ¡pum! doble.",
+   "bien": "¡Pum! Respuesta que retumba.",
+   "mal": "No es el arranque: es la onda de choque del supersónico.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-09",
+   "pregunta": "Los pilotos del avión espía U-2, que vuela por encima de 70 000 pies, usan…",
+   "opciones": {
+    "A": "Dos paracaídas",
+    "B": "Una máscara de buceo",
+    "C": "Un traje presurizado, parecido al de un astronauta"
+   },
+   "correcta": "C",
+   "explicacion": "A esa altura la presión es tan baja que sin traje la sangre literalmente podría hervir.",
+   "bien": "¡Vestido pa' la estratosfera!",
+   "mal": "La máscara de buceo pa' Sosúa; arriba hace falta traje presurizado.",
+   "dibujo": "planeador"
+  },
+  {
+   "id": "r3-10",
+   "pregunta": "¿Qué logró Felix Baumgartner en 2012 al saltar desde unos 39 km de altura?",
+   "opciones": {
+    "A": "Volar un planeador al espacio",
+    "B": "Pasar la velocidad del sonido en caída libre",
+    "C": "Cruzar el Atlántico en paracaídas"
+   },
+   "correcta": "B",
+   "explicacion": "Saltó desde un globo en la estratosfera y pasó Mach 1 sin avión.",
+   "bien": "¡Cayó perfecto, igual que tu respuesta!",
+   "mal": "Eso del Atlántico en paracaídas está difícil hasta pa' él.",
+   "dibujo": "globo"
+  },
+  {
+   "id": "r3-11",
+   "pregunta": "¿Qué es la velocidad Vne?",
+   "opciones": {
+    "A": "La velocidad que nunca se debe pasar (never exceed)",
+    "B": "La velocidad de despegue",
+    "C": "La velocidad de crucero normal"
+   },
+   "correcta": "A",
+   "explicacion": "Es la línea roja del anemómetro: pasarla puede dañar la estructura.",
+   "bien": "¡Respetaste la línea roja!",
+   "mal": "Vne no es pa' despegar: es la que nunca, nunca se pasa.",
+   "dibujo": "instrumento"
+  },
+  {
+   "id": "r3-12",
+   "pregunta": "En el anemómetro, ¿qué indica el arco blanco?",
+   "opciones": {
+    "A": "El rango de precaución",
+    "B": "La velocidad máxima",
+    "C": "El rango para operar con flaps"
+   },
+   "correcta": "C",
+   "explicacion": "Blanco = flaps; verde = operación normal; amarillo = precaución; línea roja = Vne.",
+   "bien": "¡Blanco como la camisa del domingo, y correcto!",
+   "mal": "El de precaución es el amarillo; el blanco es de los flaps.",
+   "dibujo": "instrumento"
+  },
+  {
+   "id": "r3-13",
+   "pregunta": "En el anemómetro, ¿qué indica el arco amarillo?",
+   "opciones": {
+    "A": "Rango de operación con flaps",
+    "B": "Rango normal de operación",
+    "C": "Rango de precaución: solo en aire tranquilo"
+   },
+   "correcta": "C",
+   "explicacion": "En el arco amarillo una ráfaga fuerte podría pasarse de los límites de la estructura.",
+   "bien": "¡Precavido y acertado!",
+   "mal": "El normal es el verde; el amarillo es de cuidado.",
+   "dibujo": "instrumento"
+  },
+  {
+   "id": "r3-14",
+   "pregunta": "La velocidad de pérdida (stall) de un avión aumenta cuando…",
+   "opciones": {
+    "A": "Va más pesado",
+    "B": "Va más liviano",
+    "C": "Baja los flaps"
+   },
+   "correcta": "A",
+   "explicacion": "Más peso pide más sustentación; los flaps, en cambio, bajan la velocidad de pérdida.",
+   "bien": "¡Eso! Más peso, más velocidad pa' sostenerse.",
+   "mal": "Los flaps la bajan; lo que la sube es el peso (y los virajes).",
+   "dibujo": "avioneta"
+  },
+  {
+   "id": "r3-15",
+   "pregunta": "Cuando sube la altitud de densidad (density altitude), el rendimiento del avión…",
+   "opciones": {
+    "A": "Mejora",
+    "B": "Empeora",
+    "C": "No cambia"
+   },
+   "correcta": "B",
+   "explicacion": "Aire menos denso: el ala sustenta menos, la hélice empuja menos y el motor da menos potencia.",
+   "bien": "¡Densa la pregunta, liviana la respuesta pa' ti!",
+   "mal": "Ojalá mejorara… pero con aire flojo todo rinde menos.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r3-16",
+   "pregunta": "Un día caluroso, a gran altura y con mucha humedad es malo para despegar porque…",
+   "opciones": {
+    "A": "Hay más oxígeno",
+    "B": "El aire es menos denso",
+    "C": "Siempre hay más viento"
+   },
+   "correcta": "B",
+   "explicacion": "Calor, altura y humedad hacen el aire menos denso: más pista y peor ascenso.",
+   "bien": "¡Tú conoces el calor de agosto!",
+   "mal": "Al contrario: hay menos «aire» trabajando pa' ti.",
+   "dibujo": "pista"
+  },
+  {
+   "id": "r3-17",
+   "pregunta": "En el hemisferio norte la corriente en chorro (jet stream) suele ayudar a los vuelos que van hacia…",
+   "opciones": {
+    "A": "El este",
+    "B": "El oeste",
+    "C": "El sur"
+   },
+   "correcta": "A",
+   "explicacion": "Sopla en general de oeste a este: por eso el viaje de vuelta de Europa a América suele tardar más.",
+   "bien": "¡Con viento de cola y todo!",
+   "mal": "Hacia el oeste vas con el viento en contra, mi pana.",
+   "dibujo": "jumbo"
+  },
+  {
+   "id": "r3-18",
+   "pregunta": "¿Cómo aterrizaba el transbordador espacial (Space Shuttle)?",
+   "opciones": {
+    "A": "Con sus motores encendidos",
+    "B": "Con paracaídas sobre el mar",
+    "C": "Planeando, sin motores"
+   },
+   "correcta": "C",
+   "explicacion": "Volvía como un planeador muy pesado: un solo intento, sin poder dar la vuelta.",
+   "bien": "¡Aterrizaste suavecito esa respuesta!",
+   "mal": "Sin motores, sin segunda oportunidad: planeando.",
+   "dibujo": "cohete"
+  },
+  {
+   "id": "r3-19",
+   "pregunta": "¿Cuántos Concorde se construyeron en total, contando prototipos?",
+   "opciones": {
+    "A": "20",
+    "B": "200",
+    "C": "6"
+   },
+   "correcta": "A",
+   "explicacion": "Se hicieron 20: 6 de prototipo y desarrollo y 14 de producción.",
+   "bien": "¡Veinte de veinte en esa!",
+   "mal": "Doscientos ni soñando: fueron solo 20.",
+   "dibujo": "supersonico"
+  },
+  {
+   "id": "r3-20",
+   "pregunta": "¿Qué nave tiene el récord de la mayor velocidad a la que han viajado seres humanos (1969)?",
+   "opciones": {
+    "A": "El Apolo 11",
+    "B": "El Apolo 10",
+    "C": "El transbordador espacial"
+   },
+   "correcta": "B",
+   "explicacion": "Al volver de la Luna en mayo de 1969, el Apolo 10 llegó a unos 39 900 km/h.",
+   "bien": "¡Respuesta a velocidad lunar!",
+   "mal": "El 11 fue el famoso, pero el más rápido fue el 10.",
+   "dibujo": "cohete"
+  }
+ ]
+}

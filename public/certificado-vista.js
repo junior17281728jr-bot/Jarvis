@@ -36,6 +36,10 @@ export function partirLineas(texto, maximo) {
 
 // Las claves de texto de un certificado (las prueba test/certificados.test.js: que existan y quepan).
 export const clavesTexto = (curso, variante) => ({ titular: `cert.${curso}.${variante}.titular`, cuerpo: `cert.${curso}.${variante}.texto` });
+// 0.14.38: el certificado de una ronda de la Competencia: su titular por banda y la frase (la de la IA si llegó; si no,
+// una de las fijas de su banda).
+export const fraseCompe = (c, t) => (typeof c.frase === 'string' && c.frase ? c.frase : t(`compe.frase.${c.banda}.${c.variante}`));
+export const textosCompe = (c, t) => ({ titular: t(`compe.cert.titular.${c.banda}`), cuerpo: `${t('compe.cert.puntos', { aciertos: c.aciertos, total: c.total })} ${fraseCompe(c, t)}` });
 
 export function fechaLarga(iso, idioma = 'es') {
   try { return new Intl.DateTimeFormat(idioma === 'en' ? 'en-US' : 'es-DO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Santo_Domingo' }).format(new Date(iso)); } catch { return String(iso ?? '').slice(0, 10); }
@@ -122,11 +126,13 @@ export function dibujoCertificado(c, nombre, h, { papel = 'a4' } = {}) {
   const tamNombre = largo > 50 ? 26 : largo > 34 ? 32 : largo > 24 ? 38 : 46;
   s.append(texto(282, nombre, { 'font-size': tamNombre, 'font-style': 'italic', 'font-weight': 700, ...(largo * tamNombre * 0.5 > W - 240 ? { textLength: W - 240, lengthAdjust: 'spacingAndGlyphs' } : {}) }));
   s.append(svg('line', { x1: centro - 260, y1: 298, x2: centro + 260, y2: 298, stroke: COLOR.tinta, 'stroke-width': 0.8 }));
-  s.append(texto(326, t('cert.por', { curso: t(`cert.curso.${c.curso}`) }), { 'font-size': 17 }));
+  const compe = c.curso === 'compe';
+  s.append(texto(326, compe ? t('compe.cert.por', { ronda: c.ronda, titulo: c.titulo }) : t('cert.por', { curso: t(`cert.curso.${c.curso}`) }), { 'font-size': 17 }));
   // El titular y el texto de su variante.
   const k = clavesTexto(c.curso, c.variante);
-  s.append(texto(366, t(k.titular), { 'font-size': 21, 'font-weight': 700, fill: COLOR.oro, 'letter-spacing': 1 }));
-  const cuerpo = `${t(k.cuerpo)} ${t('cert.cierre')}`;
+  const tc = compe ? textosCompe(c, t) : null;
+  s.append(texto(366, compe ? tc.titular : t(k.titular), { 'font-size': 21, 'font-weight': 700, fill: COLOR.oro, 'letter-spacing': 1 }));
+  const cuerpo = compe ? `${tc.cuerpo} ${t('compe.cert.cierre')}` : `${t(k.cuerpo)} ${t('cert.cierre')}`;
   const lineas = partirLineas(cuerpo, Math.floor((W - 260) / 7.6));
   const tam = lineas.length > 9 ? 13.5 : 14.5;
   const bloque = texto(394, null, { 'font-size': tam });
@@ -149,7 +155,7 @@ export function dibujoCertificado(c, nombre, h, { papel = 'a4' } = {}) {
   return s;
 }
 
-const nombreArchivo = c => `certificado-${c.curso === 'tg' ? 'test-guide' : 'oral'}-${c.codigo}.png`;
+const nombreArchivo = c => (c.curso === 'compe' ? `certificado-competencia-ronda-${c.ronda}-${c.codigo}.png` : `certificado-${c.curso === 'tg' ? 'test-guide' : 'oral'}-${c.codigo}.png`);
 
 // SVG → PNG (el doble de grande, para que se vea nítido). Por «data:» (la página no deja cargar imágenes «blob:»).
 export async function descargarPng(nodo, c) {
@@ -246,7 +252,7 @@ function verificador(h) {
     if (!r.ok) throw new Error(h.textoError(r.datos.error));
     const d = r.datos;
     resultado.replaceChildren(d.valido
-      ? el('p', { class: 'aviso tono-bien', texto: t('cert.verificar.bien', { nombre: d.nombre, curso: t(`cert.curso.${d.curso}`), fecha: fechaLarga(d.fecha, h.idioma) }) })
+      ? el('p', { class: 'aviso tono-bien', texto: d.curso === 'compe' ? t('compe.cert.verificado', { nombre: d.nombre, ronda: d.ronda, aciertos: d.aciertos, total: d.total, fecha: fechaLarga(d.fecha, h.idioma) }) : t('cert.verificar.bien', { nombre: d.nombre, curso: t(`cert.curso.${d.curso}`), fecha: fechaLarga(d.fecha, h.idioma) }) })
       : el('p', { class: 'aviso tono-atencion', texto: t('cert.verificar.mal') }));
   }, 'lupa');
   return el('section', { class: 'tarjeta' },

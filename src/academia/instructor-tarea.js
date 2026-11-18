@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import { USOS_INSTRUCTOR, esquemaDe, guardarRespuesta, leerGuardado, anotarRechazo } from './instructor-ia.js';
 import { VOZ, ARCHIVO_VOZ, INSTRUCCIONES_VOZ, archivoVoz, hayVoz, guardarVoz } from './oral-voz.js';
+import { USOS_COMPE, esquemaCompe, guardarFrase, guardarSugerencia } from './competencia-ia.js';
 
 // Nadie espera una respuesta pedida hace más de esto (el trabajador estaba ocupado, apagado o en modo seguro): se termina
 // sin llamar, sin pagar.
@@ -39,7 +40,7 @@ async function paso(ctx) {
   const fin = (motivo, extra = {}) => ({ listo: true, resultado: { usada: false, motivo, costoMicro: 0, ...extra } });
   const ahora = Date.now();
   const pedidaEn = Number(d.pedidaEn);
-  const caduca = d.uso === 'instructor_preparar' ? CADUCA_PREPARAR_MS : CADUCA_MS;
+  const caduca = d.uso === 'instructor_preparar' || d.uso === 'compe_mejorar' || d.uso === 'compe_frase' ? CADUCA_PREPARAR_MS : CADUCA_MS;
   if (!Number.isSafeInteger(pedidaEn) || ahora - pedidaEn > caduca || pedidaEn > ahora + 60_000) return fin('caducada');
   // 0.11.0: si la persona retiró el permiso de IA después de pedir, no se llama (un «no» guardado en sus ajustes).
   if (Number.isSafeInteger(d.usuarioId) && ctx.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`cuenta.consentimiento_ia.${d.usuarioId}`)?.valor === '0') return fin('sin_consentimiento');
@@ -51,6 +52,19 @@ async function paso(ctx) {
     const r = await ctx.ia.pedir({
       proposito: 'oral_voz', paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: Number.isSafeInteger(d.usuarioId) ? d.usuarioId : null, sistema: INSTRUCCIONES_VOZ, texto: d.texto,
       guardar: (_db, json) => guardarVoz(ctx.config, d.archivo, json?.audio),
+    });
+    if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
+    if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
+    return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
+  }
+  // 0.14.38: la Competencia (src/academia/competencia-ia.js): la frase del certificado y «Mejorar preguntas con IA». Si la
+  // IA no responde, no pasa nada: el certificado lleva su frase fija y la ronda sigue igual.
+  if (USOS_COMPE.includes(d.uso)) {
+    if (typeof d.sistema !== 'string' || typeof d.texto !== 'string' || !Number.isSafeInteger(ctx.tarea.espacioId)) return fin('pedido_no_valido');
+    const r = await ctx.ia.pedir({
+      proposito: d.uso, paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: Number.isSafeInteger(d.usuarioId) ? d.usuarioId : null,
+      sistema: d.sistema, texto: d.texto, esquema: esquemaCompe(d.uso),
+      guardar: (db, json) => (d.uso === 'compe_frase' ? guardarFrase(db, d, json) : guardarSugerencia(db, d, json)),
     });
     if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
     if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
