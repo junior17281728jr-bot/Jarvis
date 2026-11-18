@@ -77,7 +77,10 @@ function tabla(filas, h, { rondas = false } = {}) {
     el('span', { class: 'compe-nombre', texto: f.esYo ? t('compe.tabla.tu', { nombre: f.nombre ?? '' }) : f.nombre }),
     el('span', { class: 'compe-puntos', texto: rondas ? t('compe.tabla.puntos_rondas', { aciertos: numero(f.aciertos), total: numero(f.total), rondas: numero(f.rondas) }) : t('compe.tabla.puntos', { aciertos: numero(f.aciertos), total: numero(f.total) }) }))));
 }
-const tituloRonda = (r, t) => t('compe.ronda.titulo', { n: r.ronda, titulo: r.titulo });
+// La fecha y la hora de un comentario (hora de República Dominicana).
+function fechaHora(isoTexto, idioma = 'es') {
+  try { return new Intl.DateTimeFormat(idioma === 'en' ? 'en-US' : 'es-DO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/Santo_Domingo' }).format(new Date(isoTexto)); } catch { return fechaLarga(isoTexto, idioma); }
+}
 
 // ---------- #competencia: la portada ----------
 export function pantallaCompetencia(datos, certs, h) {
@@ -121,8 +124,9 @@ export function pantallaRonda(datos, h) {
 
   function intro(d) {
     const empezar = el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: async e => {
+      const boton = e.currentTarget;
       if (confirmar && !(await confirmar(t('compe.empezar.seguro')))) return;
-      e.currentTarget.disabled = true;
+      boton.disabled = true;
       const r = await api('POST', `/api/academia/competencia/${n}/empezar`, {});
       if (!r.ok) return error(r);
       seguir(r.datos);
@@ -258,7 +262,7 @@ export function pantallaGaleria(datos, h, { admin = false, recargar } = {}) {
   const tarjeta = cert => {
     const lista = el('ul', { class: 'compe-comentarios' }, cert.comentarios.map(x => el('li', {},
       el('span', { class: 'fuerte', texto: x.esYo ? t('compe.tabla.tu', { nombre: x.nombre ?? '' }) : x.nombre }),
-      el('span', { class: 'suave chica', texto: ` · ${fechaLarga(x.en, h.idioma)}` }),
+      el('span', { class: 'suave chica', texto: ` · ${fechaHora(x.en, h.idioma)}` }),
       el('p', { texto: x.texto }),
       admin || x.esYo ? el('button', { type: 'button', class: 'boton-texto chica', onclick: async () => {
         const r = await api('POST', `/api/academia/competencia/comentarios/${x.id}/borrar`, {});

@@ -5895,21 +5895,21 @@ async function pantallaOpiniones() {
 // 0.14.26: los certificados de recuerdo (public/certificado-vista.js): los míos, o los de un alumno (administrador).
 // ---- 0.14.38: la Competencia (public/competencia-vista.js, solo se carga ahí) ----
 const piezasCompe = vigente => ({ el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma, confirmar, sonar, celebrar, esAdmin: verComoAdmin(), vigente, motivoIa: textoMotivoIa });
-const errorCompe = r => mostrar(marco('progreso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
+const errorCompe = r => mostrar(marco('competencia', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
   el('a', { class: 'boton-3d blanco', href: '#competencia' }, el('span', { texto: t('compe.volver') })))));
 async function pantallaCompetencia() {
   const vigente = nuevoTurno();
   const [r, c, vista] = await Promise.all([api('GET', '/api/academia/competencia'), api('GET', '/api/academia/competencia/certificados'), import('./competencia-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
-  mostrar(marco('progreso', vista.pantallaCompetencia(r.datos, c.ok ? c.datos.certificados : [], piezasCompe(vigente))));
+  mostrar(marco('competencia', vista.pantallaCompetencia(r.datos, c.ok ? c.datos.certificados : [], piezasCompe(vigente))));
 }
 async function pantallaRondaCompe(n) {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', `/api/academia/competencia/${encodeURIComponent(n)}`), import('./competencia-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
-  mostrar(marco('progreso', vista.pantallaRonda(r.datos, piezasCompe(vigente))));
+  mostrar(marco('competencia', vista.pantallaRonda(r.datos, piezasCompe(vigente))));
   window.scrollTo(0, 0);
 }
 async function pantallaGaleriaCompe(n) {
@@ -5919,7 +5919,7 @@ async function pantallaGaleriaCompe(n) {
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
   const arriba = window.scrollY;
-  mostrar(marco('progreso', vista.pantallaGaleria(r.datos, piezasCompe(vigente), { admin, recargar: () => { if (vigente()) pantallaGaleriaCompe(n); } })));
+  mostrar(marco('competencia', vista.pantallaGaleria(r.datos, piezasCompe(vigente), { admin, recargar: () => { if (vigente()) pantallaGaleriaCompe(n); } })));
   window.scrollTo(0, arriba);
 }
 async function pantallaCompeAdmin() {
