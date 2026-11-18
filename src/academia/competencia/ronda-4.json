@@ -138,7 +138,7 @@
     "C": "El plan de vuelo"
    },
    "correcta": "A",
-   "explicacion": "NOTAM = Notice to Air Missions. Se revisan antes de cada vuelo.",
+   "explicacion": "Los NOTAM se revisan antes de cada vuelo: dicen qué cambió (una pista cerrada, una luz apagada, una grúa cerca).",
    "bien": "¡Tú lees los avisos, como debe ser!",
    "mal": "No es una nube: es el aviso de lo que cambió.",
    "dibujo": "pista"

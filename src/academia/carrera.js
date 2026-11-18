@@ -135,3 +135,21 @@ export function carreraDe(db, paquete, yoId, ahoraMs = Date.now()) {
   const mio = corre ? avance.get(yoId) : null;
   return { nombres, oral: hayOral, pilotos, yo: corre ? { avance: mio, datos: misDatos(db, yoId, mio, ahoraMs) } : null };
 }
+
+// ---------- 0.14.38: los nombres de la Competencia (tablas, galería, comentarios y verificar un código) ----------
+// Todas las cuentas activas, por orden de cuenta: los alias («Piloto N») salen de esta lista, igual en la tabla, la
+// galería y los comentarios.
+function cuentasActivas(db) {
+  return db.prepare('SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE eliminado_en IS NULL AND activo = 1 ORDER BY id').all();
+}
+// → { nombreDe(id) } para quien mira. admin: el nombre de verdad (el de la app).
+export function nombrador(db, { yoId = null, admin = false } = {}) {
+  const cuentas = cuentasActivas(db);
+  if (admin) {
+    const m = new Map(cuentas.map(u => [u.id, String(u.nombre_visible || u.nombre)]));
+    return id => m.get(id) ?? null;
+  }
+  const alias = aliasDe(cuentas, { nombres: nombresEnCarrera(db), primeros: primerosNombres(db, cuentas), privados: ocultos(db), yoId });
+  return id => alias.get(id) ?? null;
+}
+

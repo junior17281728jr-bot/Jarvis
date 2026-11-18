@@ -173,3 +173,105 @@ test('la mejora profunda de la fábrica con el proveedor fallando: no publica na
     assert.notEqual(estadoProfunda(db, 'sistemas').estado, 'publicada', 'sin IA no se publica una clase nueva');
   });
 });
+
+// ---------- La IA de la Competencia, de punta a punta (con el proveedor falso respondiendo bien) ----------
+async function jugarRonda(c, galleta, n, buenas) {
+  await pedir(c.base, 'POST', `/api/academia/competencia/${n}/empezar`, { galleta, datos: {} });
+  for (let i = 0; i < 20; i++) {
+    const q = (await pedir(c.base, 'GET', `/api/academia/competencia/${n}`, { galleta })).datos.actual;
+    const buena = SEMILLA[n].preguntas.find(p => p.id === q.id).correcta;
+    assert.equal((await pedir(c.base, 'POST', `/api/academia/competencia/${n}/responder`, { galleta, datos: { pregunta: q.id, elegida: i < buenas ? buena : LETRAS.find(l => l !== buena) } })).codigo, 200);
+  }
+}
+
+test('Competencia con IA: la frase personal del certificado llega por el trabajador; «Mejorar preguntas» deja una sugerencia que se aprueba', async () => {
+  await conInstructor(async c => {
+    // La frase: al mirar sus certificados se pide una vez (sin su nombre) y queda guardada en el certificado.
+    await jugarRonda(c, c.z, 3, 6);
+    const antes = (await pedir(c.base, 'GET', '/api/academia/competencia/certificados', { galleta: c.z })).datos.certificados[0];
+    assert.equal(antes.frase, null);
+    const t = c.db.prepare(`SELECT id, datos FROM tareas WHERE datos LIKE '%"uso":"compe_frase"%'`).get();
+    assert.ok(t, 'la frase se pidió a la IA');
+    for (const n of NOMBRES) assert.ok(!t.datos.toLowerCase().includes(n), 'sin el nombre del alumno');
+    c.falso.siguiente({ tipo: 'ok', json: { frase: 'Con 6 de 20, la torre te manda un cafecito y un repaso 😂' } });
+    const h = await c.hacer(t.id);
+    assert.deepEqual([h.estado, h.resultado.usada], ['hecha', true]);
+    const despues = (await pedir(c.base, 'GET', '/api/academia/competencia/certificados', { galleta: c.z })).datos.certificados[0];
+    assert.equal(despues.frase, 'Con 6 de 20, la torre te manda un cafecito y un repaso 😂');
+    assert.equal(despues.codigo, antes.codigo);
+    // Mirarlos otra vez no la pide de nuevo.
+    await pedir(c.base, 'GET', '/api/academia/competencia/certificados', { galleta: c.z });
+    assert.equal(c.db.prepare(`SELECT COUNT(*) AS n FROM tareas WHERE datos LIKE '%"uso":"compe_frase"%'`).get().n, 1);
+    // «Mejorar preguntas con IA» (el administrador): la sugerencia llega, se ve con el «antes» y se aprueba.
+    const m = await pedir(c.base, 'POST', '/api/admin/academia/competencia/5/mejorar', { galleta: c.admin, datos: {} });
+    assert.equal(m.codigo, 202, JSON.stringify(m.datos));
+    assert.equal((await pedir(c.base, 'GET', '/api/admin/academia/competencia', { galleta: c.admin })).datos.rondas[4].pedido.estado, 'pendiente');
+    c.falso.siguiente({ tipo: 'ok', json: { cambios: [{ id: 'r5-01', pregunta: '¿Qué nube trae las tormentas eléctricas?', explicacion: 'El cumulonimbo: rayos, granizo y turbulencia fuerte.', bien: '¡Esa la clavaste!', mal: 'Esa nube no era, mi pana.' }] } });
+    const hm = await c.hacer(m.datos.tarea.id);
+    assert.deepEqual([hm.estado, hm.resultado.usada], ['hecha', true], JSON.stringify(hm.resultado));
+    const adm = (await pedir(c.base, 'GET', '/api/admin/academia/competencia', { galleta: c.admin })).datos.rondas[4];
+    assert.equal(adm.pedido, null);
+    assert.equal(adm.sugerencia.cambios[0].pregunta, '¿Qué nube trae las tormentas eléctricas?');
+    assert.equal((await pedir(c.base, 'POST', '/api/admin/academia/competencia/5/aprobar', { galleta: c.admin, datos: {} })).datos.aplicados, 1);
+    const e = (await pedir(c.base, 'POST', '/api/academia/competencia/5/empezar', { galleta: c.q, datos: {} })).datos;
+    assert.equal(e.actual.pregunta, '¿Qué nube trae las tormentas eléctricas?');
+  }, { modelo: 'claude-haiku-5-5' });
+});
+
+test('Competencia con la IA fallando: «Mejorar preguntas» dice por qué no llegó y la frase queda la fija', async () => {
+  await conInstructor(async c => {
+    const m = await pedir(c.base, 'POST', '/api/admin/academia/competencia/6/mejorar', { galleta: c.admin, datos: {} });
+    assert.equal(m.codigo, 202);
+    c.falso.siguiente('sin_credito_400');
+    await c.hacer(m.datos.tarea.id);
+    const adm = (await pedir(c.base, 'GET', '/api/admin/academia/competencia', { galleta: c.admin })).datos.rondas[5];
+    assert.equal(adm.pedido.estado, 'no');
+    assert.ok(sePuedeDecir(adm.pedido.motivo), adm.pedido.motivo);
+    assert.equal(adm.sugerencia, null);
+  }, { modelo: 'claude-haiku-5-5' });
+  await conInstructor(async c => {
+    await jugarRonda(c, c.z, 4, 2);
+    await pedir(c.base, 'GET', '/api/academia/competencia/certificados', { galleta: c.z });
+    const t = c.db.prepare(`SELECT id FROM tareas WHERE datos LIKE '%"uso":"compe_frase"%'`).get();
+    assert.ok(t);
+    c.falso.siguiente({ tipo: 'status', status: 500 });
+    assert.equal((await c.hacer(t.id)).resultado.usada, false);
+    const cert = (await pedir(c.base, 'GET', '/api/academia/competencia/certificados', { galleta: c.z })).datos.certificados[0];
+    assert.equal(cert.frase, null);
+    assert.ok(ES[`compe.frase.${cert.banda}.${cert.variante}`]);
+  }, { modelo: 'claude-haiku-5-5' });
+});
+
+test('la práctica en vivo del oral con la calificación de la IA pedida y el proveedor fallando: «pendiente» y después «califícate tú»', async () => {
+  for (const [, escena] of FALLAS) {
+    await conInstructor(async c => {
+      await subirOral(c);
+      const s = (await pedir(c.base, 'POST', '/api/academia/oral/vivo', { galleta: c.z, datos: { n: 2 } })).datos;
+      c.falso.siguiente(escena);
+      const r0 = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 0, texto: 'Mi respuesta con mis palabras' } })).datos;
+      assert.equal(r0.estado, 'pendiente');
+      assert.equal((await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/0`, { galleta: c.z })).datos.estado, 'pendiente');
+      await hacerUltima(c, 'instructor_oral_vivo');
+      assert.equal((await pedir(c.base, 'GET', `/api/academia/oral/vivo/${s.sesion}/0`, { galleta: c.z })).datos.estado, 'sin_ia');
+      const f = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion } })).datos;
+      assert.ok(f.pendientes.includes(0) && f.revision[0].respuesta_en);
+    }, { modelo: 'claude-haiku-5-5' });
+  }
+});
+
+test('verificar el código de un certificado de la galería no descubre el nombre de quien tiene «Perfil privado»', async () => {
+  await conInstructor(async c => {
+    const zid = idDe(c, 'zoelia');
+    c.db.prepare("INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, '1', ?)").run(`academia.grupo_oculto.${zid}`, new Date().toISOString());
+    await jugarRonda(c, c.z, 2, 10);
+    const g = (await pedir(c.base, 'GET', '/api/academia/competencia/2/certificados', { galleta: c.q })).datos.certificados[0];
+    assert.match(g.nombre, /^Piloto \d+$/);
+    const v = (await pedir(c.base, 'GET', `/api/certificados/verificar/${g.codigo}`, { galleta: c.q })).datos;
+    assert.equal(v.valido, true);
+    assert.equal(v.nombre, g.nombre, 'el mismo alias que en la galería');
+    assert.doesNotMatch(JSON.stringify(v), /zoelia/i);
+    // Su dueña y el administrador sí ven el nombre.
+    assert.match((await pedir(c.base, 'GET', `/api/certificados/verificar/${g.codigo}`, { galleta: c.z })).datos.nombre, /zoelia/i);
+    assert.match((await pedir(c.base, 'GET', `/api/certificados/verificar/${g.codigo}`, { galleta: c.admin })).datos.nombre, /zoelia/i);
+  });
+});

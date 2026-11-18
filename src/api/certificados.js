@@ -20,7 +20,7 @@ export function registrarRutasCertificados(rutas, { config = null, reloj = Date.
   }, { admin: true });
   rutas.agregar('GET', '/api/certificados/verificar/:codigo', ({ db, usuario, parametros }) => {
     if (!topes.verificar.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
-    return { codigo: 200, datos: verificarCodigo(db, parametros.codigo) };
+    return { codigo: 200, datos: verificarCodigo(db, parametros.codigo, { yoId: usuario.id, admin: usuario.rol === 'admin' }) };
   });
 }
 

@@ -5918,9 +5918,13 @@ async function pantallaGaleriaCompe(n) {
   const [r, vista] = await Promise.all([api('GET', admin ? `/api/admin/academia/competencia/${encodeURIComponent(n)}/certificados` : `/api/academia/competencia/${encodeURIComponent(n)}/certificados`), import('./competencia-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
+  // Al recargar (después de comentar o borrar), la página y la lista quedan donde estaban.
   const arriba = window.scrollY;
+  const enLista = raiz.querySelector('.compe-feed')?.scrollTop ?? 0;
   mostrar(marco('competencia', vista.pantallaGaleria(r.datos, piezasCompe(vigente), { admin, recargar: () => { if (vigente()) pantallaGaleriaCompe(n); } })));
   window.scrollTo(0, arriba);
+  const lista = raiz.querySelector('.compe-feed');
+  if (lista) lista.scrollTop = enLista;
 }
 async function pantallaCompeAdmin() {
   const vigente = nuevoTurno();

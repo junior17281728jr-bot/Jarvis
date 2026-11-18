@@ -219,7 +219,9 @@ test('certificado de recuerdo por ronda terminada (una vez, código verificable,
   const b = (await pedir(c.base, 'GET', '/api/academia/competencia/certificados', { galleta: c.g.ana })).datos.certificados;
   assert.equal(b[0].codigo, a[0].codigo);
   const v = await pedir(c.base, 'GET', `/api/certificados/verificar/${a[0].codigo}`, { galleta: c.g.beto });
-  assert.deepEqual([v.datos.valido, v.datos.curso, v.datos.ronda, v.datos.aciertos, v.datos.nombre], [true, 'compe', 4, 17, 'Ana Pérez']);
+  // Otro alumno ve el mismo alias que en la galería; ella misma, su nombre.
+  assert.deepEqual([v.datos.valido, v.datos.curso, v.datos.ronda, v.datos.aciertos, v.datos.nombre], [true, 'compe', 4, 17, 'Ana']);
+  assert.equal((await pedir(c.base, 'GET', `/api/certificados/verificar/${a[0].codigo}`, { galleta: c.g.ana })).datos.nombre, 'Ana Pérez');
   // Las bandas (sobre 20) y sus frases fijas en los dos idiomas (cortas, sin empresas).
   assert.deepEqual([20, 19, 17, 16, 13, 12, 9, 8, 0].map(x => bandaDe(x, 20)), ['perfecto', 'alto', 'alto', 'medio', 'medio', 'bajo', 'bajo', 'muy_bajo', 'muy_bajo']);
   for (const [banda] of BANDAS) {

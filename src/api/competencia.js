@@ -17,7 +17,7 @@ import { armarFrase, armarMejora } from '../academia/competencia-ia.js';
 
 export function crearLimitesCompetencia() {
   return {
-    responder: new Limitador({ maximo: 120, ventanaMs: 10 * 60_000 }),
+    responder: new Limitador({ maximo: 400, ventanaMs: 10 * 60_000 }), // 6 rondas × 20 = 120: nunca un 429 en medio de una ronda
     reaccionar: new Limitador({ maximo: 60, ventanaMs: 10 * 60_000 }),
     comentar: new Limitador({ maximo: 8, ventanaMs: 10 * 60_000 }),
     ia: new Limitador({ maximo: 6, ventanaMs: 3600_000 }),

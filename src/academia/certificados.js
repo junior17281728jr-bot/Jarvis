@@ -19,6 +19,7 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { camino } from './progreso.js';
 import { convalidadasDe } from './saltos.js';
 import { nombresLegales } from '../cuentas/terminos.js';
+import { nombrador } from './carrera.js';
 
 export const CURSOS = Object.freeze(['tg', 'oral']);
 // Las 7 variantes del texto (el número es el que pidió el dueño).
@@ -187,7 +188,9 @@ export function certificadosDe(db, usuarioId, paquete, { ahoraMs = Date.now(), a
 }
 
 // Verificar un código (cualquier persona con cuenta): solo lo justo para saber que es de verdad.
-export function verificarCodigo(db, codigo) {
+// yoId/admin (0.14.38): el código de una ronda de la Competencia se ve en la galería; al verificarlo, el nombre sale como
+// en la galería (alias; «Piloto N» con «Perfil privado») salvo para su dueño o el administrador.
+export function verificarCodigo(db, codigo, { yoId = null, admin = false } = {}) {
   const c = limpiarCodigo(codigo);
   if (!FORMATO_CODIGO.test(c)) return { valido: false, codigo: c };
   const ref = json(leerAjuste(db, claveCodigo(c)));
@@ -195,7 +198,8 @@ export function verificarCodigo(db, codigo) {
   if (ref && /^compe[1-6]$/.test(String(ref.curso))) {
     const v = json(leerAjuste(db, claveCert(ref.curso, ref.usuarioId)));
     if (!v || v.codigo !== c) return { valido: false, codigo: c };
-    return { valido: true, codigo: c, curso: 'compe', ronda: v.ronda, aciertos: v.aciertos, total: v.total, nombre: nombreDe(db, v.usuarioId), fecha: v.fecha };
+    const nombre = admin || Number(v.usuarioId) === yoId ? nombreDe(db, v.usuarioId) : nombrador(db, { yoId })(Number(v.usuarioId)) ?? '—';
+    return { valido: true, codigo: c, curso: 'compe', ronda: v.ronda, aciertos: v.aciertos, total: v.total, nombre, fecha: v.fecha };
   }
   const cert = ref && CURSOS.includes(ref.curso) ? guardado(db, ref.curso, ref.usuarioId) : null;
   if (!cert || cert.codigo !== c) return { valido: false, codigo: c };

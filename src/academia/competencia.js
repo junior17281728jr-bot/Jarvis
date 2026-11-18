@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste } from './paquetes.js';
-import { aliasDe, primerosNombres, ocultos, nombresEnCarrera } from './carrera.js';
+import { nombrador } from './carrera.js';
 import { nuevoCodigo, nombreDe } from './certificados.js';
 
 const CARPETA = join(dirname(fileURLToPath(import.meta.url)), 'competencia');
@@ -176,21 +176,6 @@ export function responderRonda(db, usuarioId, n, { pregunta, elegida }, ahoraMs 
 }
 
 // ---------- Las tablas (con los alias de la carrera) ----------
-// Todas las cuentas activas, por orden de cuenta: los alias («Piloto N») salen de esta lista, igual en la tabla, la
-// galería y los comentarios.
-function cuentasActivas(db) {
-  return db.prepare('SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE eliminado_en IS NULL AND activo = 1 ORDER BY id').all();
-}
-// → { nombreDe(id) } para quien mira. admin: el nombre de verdad (el de la app).
-export function nombrador(db, { yoId = null, admin = false } = {}) {
-  const cuentas = cuentasActivas(db);
-  if (admin) {
-    const m = new Map(cuentas.map(u => [u.id, String(u.nombre_visible || u.nombre)]));
-    return id => m.get(id) ?? null;
-  }
-  const alias = aliasDe(cuentas, { nombres: nombresEnCarrera(db), primeros: primerosNombres(db, cuentas), privados: ocultos(db), yoId });
-  return id => alias.get(id) ?? null;
-}
 const MEDALLAS = ['oro', 'plata', 'bronce'];
 function conPuestos(filas, clave) {
   let puesto = 0;
