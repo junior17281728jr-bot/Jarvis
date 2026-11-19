@@ -1501,7 +1501,9 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .vivo-repetir { margin-top: 8px; min-height: 40px; padding: 4px 12px; border-radius: 999px; border: 2px solid var(--linea); background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .vivo-texto { width: 100%; box-sizing: border-box; min-height: 96px; font: inherit; font-size: 1.05rem; border: 0; background: transparent; color: inherit; resize: vertical; }
 .vivo-texto:focus { outline: 2px solid var(--azul); outline-offset: 2px; border-radius: 8px; }
-.vivo-controles { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.vivo-controles { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 6px; }
+.vivo-controles .vivo-no-se { margin-left: auto; }
+.vivo-controles .vivo-estado { order: 9; flex: 1 1 100%; font-weight: 600; }
 .vivo-mic { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; border: 0; background: var(--rojo); color: #fff; box-shadow: 0 4px 0 var(--rojo-borde); cursor: pointer; flex: 0 0 auto; }
 .vivo-mic .icono { width: 34px; height: 34px; }
 .vivo-mic[aria-pressed="true"] { animation: vivo-latir 1.2s ease-in-out infinite; }
