@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { USOS_INSTRUCTOR, esquemaDe, guardarRespuesta, leerGuardado, anotarRechazo } from './instructor-ia.js';
 import { VOZ, ARCHIVO_VOZ, INSTRUCCIONES_VOZ, archivoVoz, hayVoz, guardarVoz } from './oral-voz.js';
 import { USOS_COMPE, esquemaCompe, guardarFrase, guardarSugerencia } from './competencia-ia.js';
+import { DICTADO, ID_DICTADO, tomarAudio, tipoDeAudio, guardarTexto } from './oral-dictado.js';
 
 // Nadie espera una respuesta pedida hace más de esto (el trabajador estaba ocupado, apagado o en modo seguro): se termina
 // sin llamar, sin pagar.
@@ -40,12 +41,30 @@ async function paso(ctx) {
   const fin = (motivo, extra = {}) => ({ listo: true, resultado: { usada: false, motivo, costoMicro: 0, ...extra } });
   const ahora = Date.now();
   const pedidaEn = Number(d.pedidaEn);
-  const caduca = d.uso === 'instructor_preparar' || d.uso === 'compe_mejorar' || d.uso === 'compe_frase' ? CADUCA_PREPARAR_MS : CADUCA_MS;
+  // 0.14.50: un dictado lo espera el alumno con el micrófono en la mano: vale 45 s.
+  const caduca = d.uso === 'instructor_preparar' || d.uso === 'compe_mejorar' || d.uso === 'compe_frase' ? CADUCA_PREPARAR_MS : d.uso === 'oral_dictado' ? DICTADO.caducaMs : CADUCA_MS;
+  // La grabación se saca de la memoria SIEMPRE (también si caducó o no hay permiso): nunca queda esperando.
+  const grabacion = d.uso === 'oral_dictado' && ID_DICTADO.test(String(d.audio)) ? tomarAudio(d.audio) : null;
   if (!Number.isSafeInteger(pedidaEn) || ahora - pedidaEn > caduca || pedidaEn > ahora + 60_000) return fin('caducada');
   // 0.11.0: si la persona retiró el permiso de IA después de pedir, no se llama (un «no» guardado en sus ajustes).
   if (Number.isSafeInteger(d.usuarioId) && ctx.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`cuenta.consentimiento_ia.${d.usuarioId}`)?.valor === '0') return fin('sin_consentimiento');
   // 0.14.29: la voz natural de una pregunta del oral (solo ChatGPT; en el tope de su cuenta, sin cobrarle un uso): un mp3
   // por texto, una sola vez para todos.
+  // 0.14.50: el dictado de la Práctica en vivo (solo ChatGPT; en el tope de su cuenta, sin cobrarle un uso): la grabación
+  // (que vino en memoria, nunca de la base) a texto. El texto queda para su pantalla; el audio se olvida aquí.
+  if (d.uso === 'oral_dictado') {
+    if (!Number.isSafeInteger(d.usuarioId) || !ID_DICTADO.test(String(d.audio)) || !Number.isSafeInteger(ctx.tarea.espacioId)) return fin('pedido_no_valido');
+    if (!grabacion) return fin('sin_pendiente');
+    const pista = typeof d.pista === 'string' ? d.pista.slice(0, DICTADO.pistaMax) : '';
+    const r = await ctx.ia.pedir({
+      proposito: 'oral_dictado', paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: d.usuarioId, sistema: '', texto: pista,
+      audio: { bytes: grabacion, tipo: tipoDeAudio(grabacion), idioma: d.idioma === 'en' ? 'en' : 'es' },
+      guardar: (db, json) => guardarTexto(db, { usuarioId: d.usuarioId, id: d.audio, texto: json?.texto, ahora: Date.now() }),
+    });
+    if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
+    if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
+    return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
+  }
   if (d.uso === 'oral_voz') {
     if (typeof d.texto !== 'string' || !d.texto.trim() || d.texto.length > VOZ.textoMax || !ARCHIVO_VOZ.test(String(d.archivo)) || archivoVoz(d.texto) !== d.archivo) return fin('pedido_no_valido');
     if (hayVoz(ctx.config, d.archivo)) return { listo: true, resultado: { usada: false, motivo: 'ok', guardada: true, costoMicro: 0 } };

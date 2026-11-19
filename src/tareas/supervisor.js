@@ -576,6 +576,12 @@ export function crearSupervisor({
     return paradaEnMarcha;
   }
 
+  // 0.14.50: la grabación de un dictado de la Práctica en vivo, en memoria (nunca en la base ni en el disco), al trabajador
+  // por su canal. → true si se mandó (si no está listo, false: la pantalla usa el dictado del teclado).
+  function entregarAudio({ id, base64 }) {
+    if (!hijo?.listo || hijo.terminado) return false;
+    return enviarA(hijo, { tipo: 'audio_dictado', id, base64 });
+  }
   function despertar() {
     if (hijo?.listo && !hijo.terminado) enviarA(hijo, { tipo: 'despertar' });
   }
@@ -613,6 +619,6 @@ export function crearSupervisor({
   }
 
   return {
-    iniciar, parar, despertar, estado, estadoArranque, ponerModoSeguro: ponerModoSeguroAdmin, medirAhora, pantallasP99Ms,
+    iniciar, parar, despertar, entregarAudio, estado, estadoArranque, ponerModoSeguro: ponerModoSeguroAdmin, medirAhora, pantallasP99Ms,
   };
 }

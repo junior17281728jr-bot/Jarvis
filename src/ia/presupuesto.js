@@ -125,6 +125,8 @@ export function llamadasEnLaHora(db, { cfg, espacioId = null, ahora = Date.now()
 // 0.14.2: también el de ChatGPT y el de la API propia, según el ROL del propósito: 'escribir' (el fuerte), 'verificar' y
 // 'barato' (el barato), 'imagen' (el de dibujos). Sin rol: el de Claude dice cuál (Haiku = barato, si no = escribir).
 export const MODELO_VOZ = 'gpt-4o-mini-tts';
+// 0.14.50: el modelo del dictado (pasar a texto lo que dijo el alumno), fijo.
+export const MODELO_DICTADO = 'gpt-4o-mini-transcribe';
 export function rolDe(def, cfg) {
   if (def?.tipo === 'imagen') return 'imagen';
   if (typeof def?.rol === 'string') return def.rol;
@@ -145,6 +147,8 @@ export function modelosDe(def, cfg) {
     else if (rol === 'imagen') out[id] = p.modeloImagen ?? null;
     // 0.14.29: la voz natural (solo ChatGPT): su modelo de voz, fijo.
     else if (rol === 'voz') out[id] = id === 'openai' ? MODELO_VOZ : null;
+    // 0.14.50: el dictado (solo ChatGPT): su modelo, fijo.
+    else if (rol === 'dictado') out[id] = id === 'openai' ? MODELO_DICTADO : null;
   }
   return Object.keys(out).length ? out : null;
 }
@@ -295,7 +299,7 @@ export const RESPUESTAS_INSERVIBLES = Object.freeze(['respuesta_no_valida', 'res
 // 0.12.4: un error pasajero del proveedor o de la red (429, 5xx, 529, sin red, tiempo agotado) NO es una falla para esta
 // cuenta: solo da una pausa corta que crece (src/ia/politica.js). Los demás errores claros (fallida) siguen contando.
 const esPasajero = resultado => PASAJEROS.includes(resultado);
-const esFalla = ({ estado, resultado }) => (((estado === 'fallida' || estado === 'desconocida') && resultado !== 'interrumpida' && !esPasajero(resultado))
+const esFalla = ({ estado, resultado }) => (((estado === 'fallida' || estado === 'desconocida') && resultado !== 'interrumpida' && resultado !== 'audio_no_valido' && !esPasajero(resultado))
   || RESPUESTAS_INSERVIBLES.includes(resultado));
 
 // ¿Es la tercera falla seguida de esa clave en una hora (sin un uso bueno entre ellas)? 0.12.4: los errores pasajeros
@@ -305,7 +309,8 @@ const esFalla = ({ estado, resultado }) => (((estado === 'fallida' || estado ===
 function tresFallasSeguidas(db, secretoId, ahora, proposito) {
   const instructor = typeof proposito === 'string' && proposito.startsWith('instructor_');
   const veces = instructor ? FALLAS_SEGUIDAS_INSTRUCTOR : FALLAS_SEGUIDAS.veces;
-  const salta = f => esPasajero(f.resultado) || f.resultado === 'interrumpida' || (instructor && f.resultado === 'respuesta_incompleta');
+  // 0.14.50: una grabación que el proveedor no pudo leer (audio_no_valido) es del alumno: ni cuenta ni corta la cuenta.
+  const salta = f => esPasajero(f.resultado) || f.resultado === 'interrumpida' || f.resultado === 'audio_no_valido' || (instructor && f.resultado === 'respuesta_incompleta');
   const ultimas = db.prepare(`SELECT estado, resultado FROM ia_llamadas WHERE secreto_id = ? AND proposito IS ? AND creada_en >= ? AND estado <> 'reservada'
     ORDER BY id DESC LIMIT ?`).all(secretoId, proposito ?? null, iso(ahora - FALLAS_SEGUIDAS.ventanaMs), veces * 4).filter(f => !salta(f)).slice(0, veces);
   return ultimas.length === veces && ultimas.every(esFalla);

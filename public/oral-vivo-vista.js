@@ -4,8 +4,9 @@
 // final, el repaso como en el examen final: «Aprobado / No aprobado», tema por tema con la comparación con las veces
 // anteriores, qué reforzar, «¿Listo para el examen real?», el mensaje del instructor y cada pregunta con la respuesta del
 // libro.
-//  - Privacidad: el audio nunca sale del navegador (solo lo que haga el servicio de voz del propio navegador); al
-//    servidor va solo el TEXTO.
+//  - Privacidad: con el dictado del navegador, el audio nunca sale del navegador; al servidor va solo el TEXTO.
+//    0.14.50: con ChatGPT (si el dueño lo tiene), el micrófono GRABA la respuesta (MediaRecorder) y la manda a la app, que
+//    la pasa a texto con ChatGPT y no la guarda nunca; el texto se agrega al cuadro (se puede corregir antes de «Enviar»).
 //  - Las dos voces son opcionales y se recuerdan por alumno en este navegador: «Leer las preguntas en voz alta» y
 //    «Responder con la voz». Sin dictado en el navegador: se escribe.
 //  - Todo con h.el / h.talCual (nunca texto como código) y clases (nunca estilos escritos); los textos, de public/i18n.
@@ -53,6 +54,97 @@ export function crearDictado(base = '', maximo = 1200) {
     fin() { fijo = juntar(fijo, provisional); provisional = ''; return texto(); },
   };
 }
+// ---------- 0.14.50: el dictado con grabación (ChatGPT pasa a texto lo que dijo) ----------
+// El dictado del navegador (Web Speech) no escribía nada en el Mac ni en el iPhone del dueño. Ahora, si la app tiene
+// ChatGPT, el micrófono graba (MediaRecorder) y la app lo pasa a texto. Todo lo de aquí se prueba sin navegador.
+export const GRABAR = Object.freeze({ maxMs: 90_000, minMs: 700 });
+export const puedeGrabar = () => typeof window !== 'undefined' && typeof window.MediaRecorder === 'function' && typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function';
+// En el iPhone TODO es Safari por dentro (también Chrome y la app de la pantalla de inicio).
+export const esIosNavegador = (nav = typeof navigator !== 'undefined' ? navigator : null) => Boolean(nav) && (/iPad|iPhone|iPod/.test(nav.userAgent ?? '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1));
+// 0.14.50: sin ChatGPT (lo normal), lo que de verdad funciona es el dictado del TECLADO (el 🎤 del teclado del iPhone o de
+// Android; en el Mac, dos veces Fn; en Windows, Windows+H). ¿Teléfono o tableta? → la pista de ese teclado.
+export const esMovilNavegador = (nav = typeof navigator !== 'undefined' ? navigator : null) => esIosNavegador(nav) || (Boolean(nav) && /Android|Mobi/i.test(nav.userAgent ?? ''));
+export const pistaTecladoDe = nav => (esMovilNavegador(nav) ? 'vivo.pista.movil' : 'vivo.pista.pc');
+// Qué hace el micrófono de la app: 'grabar' (con ChatGPT), 'teclado' (en el iPhone nunca el dictado del navegador: solo abre
+// el teclado y muestra la pista; igual sin dictado en el navegador) o 'navegador' (lo intenta; si en 6 s no llega texto,
+// lo para y muestra la pista del teclado).
+export function modoDictado({ grabar = false, hayReconocimiento = false, nav = typeof navigator !== 'undefined' ? navigator : null } = {}) {
+  if (grabar) return 'grabar';
+  if (esIosNavegador(nav) || !hayReconocimiento) return 'teclado';
+  return 'navegador';
+}
+export const ESPERA_TEXTO_MS = 6000;
+// ¿Un «onresult» del navegador trae texto de verdad?
+export const hayTexto = ev => { const l = ev?.results ?? []; for (let k = 0; k < (l.length ?? 0); k++) if (String(l[k]?.[0]?.transcript ?? '').trim()) return true; return false; };
+// El formato de la grabación: Chrome graba WebM (Opus); Safari (iPhone y Mac), MP4 (AAC). '' = el que elija el navegador.
+export const TIPOS_GRABACION = Object.freeze(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']);
+export function tipoGrabacion(admite) {
+  for (const tipo of TIPOS_GRABACION) { try { if (admite(tipo)) return tipo; } catch { /* sigue */ } }
+  return '';
+}
+// Lo que se manda como Content-Type (sin «;codecs=…»): audio/webm, audio/mp4…
+export const tipoParaEnviar = tipo => (String(tipo ?? '').split(';')[0].trim().toLowerCase() || 'audio/webm');
+// El reloj de la grabación: «0:07», «1:30».
+export const relojGrabacion = ms => { const s = Math.max(0, Math.floor((Number(ms) || 0) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+// Lo que dijo se AGREGA a lo que ya está en el cuadro (con un espacio), sin pasar del máximo.
+export const agregarTexto = (actual, nuevo, maximo = 1200) => juntar(actual, nuevo).slice(0, maximo);
+// Cuánto suena (para las barritas): 0 a 4, de las muestras del micrófono (bytes 0–255, 128 = silencio).
+export function nivelDe(muestras) {
+  if (!muestras?.length) return 0;
+  let suma = 0;
+  for (let k = 0; k < muestras.length; k++) { const v = (muestras[k] - 128) / 128; suma += v * v; }
+  const rms = Math.sqrt(suma / muestras.length);
+  return rms < 0.02 ? 0 : rms < 0.06 ? 1 : rms < 0.12 ? 2 : rms < 0.22 ? 3 : 4;
+}
+// Por qué no se pudo usar el micrófono → la clave del estado (vivo.estado.*).
+export const errorMicrofono = err => { const n = err?.name; return n === 'NotAllowedError' || n === 'SecurityError' ? 'sin_permiso' : n === 'NotFoundError' || n === 'NotReadableError' || n === 'OverconstrainedError' ? 'sin_micro' : 'no_oyo'; };
+// Una grabación. empezar() pide el micrófono (llamarla DENTRO del toque: el iPhone lo exige) y graba; parar() →
+// { blob, tipo, ms }; cancelar() la tira. Siempre apaga el micrófono al terminar. alTope: a los 90 s para sola.
+export function crearGrabacion({ medios, Grabadora, maxMs = GRABAR.maxMs, reloj = () => Date.now(), alTope = null, temporizador = setTimeout, quitarTemporizador = clearTimeout } = {}) {
+  let flujo = null;
+  let rec = null;
+  let partes = [];
+  let desde = 0;
+  let tope = null;
+  let alParar = null;
+  let tipo = '';
+  const soltar = () => { quitarTemporizador(tope); tope = null; try { flujo?.getTracks().forEach(p => p.stop()); } catch { /* ya apagado */ } };
+  return {
+    get flujo() { return flujo; },
+    get desde() { return desde; },
+    empezar() {
+      // getUserMedia se llama aquí mismo (sin esperar nada antes): así cuenta como parte del toque.
+      return medios.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).then(f => {
+        flujo = f;
+        tipo = tipoGrabacion(x => typeof Grabadora.isTypeSupported === 'function' && Grabadora.isTypeSupported(x));
+        try { rec = tipo ? new Grabadora(f, { mimeType: tipo }) : new Grabadora(f); } catch (e) { soltar(); throw e; }
+        partes = [];
+        rec.ondataavailable = e => { if (e?.data?.size) partes.push(e.data); };
+        alParar = new Promise(ok => { rec.onstop = () => ok(); });
+        try { rec.start(); } catch (e) { soltar(); throw e; }
+        desde = reloj();
+        tope = temporizador(() => { try { alTope?.(); } catch { /* nada */ } }, maxMs);
+      });
+    },
+    async parar() {
+      if (!rec) { soltar(); return null; }
+      const ms = reloj() - desde;
+      try { if (rec.state !== 'inactive') rec.stop(); } catch { /* ya parada */ }
+      await Promise.race([alParar, new Promise(ok => temporizador(ok, 3000))]);
+      soltar();
+      const t = rec.mimeType || tipo || 'audio/webm';
+      rec = null;
+      return { blob: new Blob(partes, { type: tipoParaEnviar(t) }), tipo: tipoParaEnviar(t), ms };
+    },
+    cancelar() {
+      try { if (rec && rec.state !== 'inactive') { rec.ondataavailable = null; rec.stop(); } } catch { /* nada */ }
+      rec = null;
+      partes = [];
+      soltar();
+    },
+  };
+}
+
 // 0.14.29: la voz natural (ChatGPT): un solo <audio> para toda la práctica. alHablar(true/false): el examinador mueve la
 // boca mientras suena una voz (la del teléfono o la natural).
 let reproductor = null;
@@ -98,7 +190,11 @@ export function portadaVivo(d, materiaPre, h) {
   const volver = el('a', { class: 'volver con-icono', href: '#oral' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('oral.volver') }));
   if (!d.hay) return mostrar(marco('oral', volver, el('section', { class: 'tarjeta' }, el('p', { texto: t('vivo.vacio') }))));
   let voz = leerAjuste(usuario, 'voz', true) && puedeLeer();
-  let dictar = leerAjuste(usuario, 'dictar', true) && puedeDictar();
+  // 0.14.50: con ChatGPT, el micrófono graba (y la app lo pasa a texto); si no, el dictado del navegador.
+  const hayGrabar = d.ia?.dictado === true && puedeGrabar();
+  const puedeVoz = true; // el teclado siempre puede dictar
+  const modoPortada = modoDictado({ grabar: hayGrabar, hayReconocimiento: puedeDictar() });
+  let dictar = leerAjuste(usuario, 'dictar', true) && puedeVoz;
   // 0.14.29: la voz natural (ChatGPT, si el dueño lo tiene) o la del teléfono. Claude no tiene voz.
   const hayNatural = d.ia?.vozNatural === true;
   let natural = leerAjuste(usuario, 'natural', true) && hayNatural;
@@ -123,7 +219,7 @@ export function portadaVivo(d, materiaPre, h) {
     b.disabled = true;
     const r = await api('POST', '/api/academia/oral/vivo', { materia: capitulo.value || null, n });
     if (!r.ok) { b.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
-    practica(r.datos, { voz, dictar, natural, umbral: d.umbral, guardarVoz: v => guardarAjuste(usuario, 'voz', v) }, h, 0);
+    practica(r.datos, { voz, dictar, natural, grabar: hayGrabar, umbral: d.umbral, guardarVoz: v => guardarAjuste(usuario, 'voz', v) }, h, 0);
   };
   const seguir = d.abierta ? el('button', { type: 'button', class: 'boton-3d blanco', onclick: async e => {
     despertarVoz();
@@ -134,7 +230,7 @@ export function portadaVivo(d, materiaPre, h) {
     const hechas = new Set(r.datos.respondidas);
     // Terminada (falta calificarse): directo al repaso del final.
     const desde = r.datos.terminada ? -1 : r.datos.preguntas.findIndex(q => !hechas.has(q.i));
-    practica(r.datos, { voz, dictar, natural, umbral: d.umbral, guardarVoz: v => guardarAjuste(usuario, 'voz', v) }, h, desde < 0 ? r.datos.preguntas.length : desde);
+    practica(r.datos, { voz, dictar, natural, grabar: hayGrabar, umbral: d.umbral, guardarVoz: v => guardarAjuste(usuario, 'voz', v) }, h, desde < 0 ? r.datos.preguntas.length : desde);
   } }, el('span', { texto: t('vivo.seguir', { n: numero(d.abierta.respondidas), total: numero(d.abierta.total) }) })) : null;
   mostrar(marco('oral', volver,
     el('section', { class: 'examen-portada vivo-portada' },
@@ -156,10 +252,10 @@ export function portadaVivo(d, materiaPre, h) {
             return el('label', { class: 'vivo-interruptor' }, r, el('span', { class: 'vivo-interruptor-texto' }, el('strong', { texto })));
           }),
           el('span', { class: 'suave chica', texto: hayNatural ? t('vivo.voz.natural_nota') : t('vivo.voz.natural_no') })),
-        interruptor(t('vivo.dictar'), dictar, puedeDictar(), v => { dictar = v; guardarAjuste(usuario, 'dictar', v); }, puedeDictar() ? t('vivo.dictar.nota') : t('vivo.dictar.no_hay')),
+        interruptor(t('vivo.dictar'), dictar, puedeVoz, v => { dictar = v; guardarAjuste(usuario, 'dictar', v); }, modoPortada === 'grabar' ? t('vivo.dictar.nota_grabar') : modoPortada === 'navegador' ? t('vivo.dictar.nota') : t('vivo.dictar.nota_teclado')),
         el('label', { class: 'vivo-campo' }, el('strong', { texto: t('vivo.capitulo') }), capitulo),
         el('div', { class: 'vivo-campo' }, el('strong', { texto: t('vivo.cuantas') }), el('div', { class: 'vivo-chips', role: 'group', 'aria-label': t('vivo.cuantas') }, chips))),
-      el('p', { class: 'suave chica vivo-privacidad con-icono-chico' }, icono('escudo', 'icono chico'), el('span', { texto: t('vivo.privacidad') })),
+      el('p', { class: 'suave chica vivo-privacidad con-icono-chico' }, icono('escudo', 'icono chico'), el('span', { texto: t(hayGrabar ? 'vivo.privacidad_grabar' : 'vivo.privacidad') })),
       el('div', { class: 'vivo-portada-botones' },
         el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: empezar }, el('span', { texto: t('vivo.empezar') })),
         seguir))));
@@ -175,11 +271,13 @@ function practica(s, prefs, h, desde = 0) {
   const raiz = marcoEstudio({ clase: 'practica-tg vivo-practica', barra: barra.nodo, cuenta, cuerpo: zona, pie, salir: ruta() });
   let escucha = null;
   let actualI = -1;
+  // 0.14.50: la grabación en curso (una a la vez); al irse o pasar de pregunta, se tira y se apaga el micrófono.
+  let grabacion = null;
   // El examinador (uno para toda la práctica): habla, escucha y reacciona.
   const ex = crearExaminador({ etiqueta: t('vivo.examinador') });
   const escenario = el('div', { class: 'vivo-escenario' }, ex.nodo);
   alHablar = si => ex.poner(si ? 'hablando' : 'quieto');
-  const parar = () => { try { escucha?.stop(); } catch { /* nada */ } escucha = null; callar(); };
+  const parar = () => { try { escucha?.stop(); } catch { /* nada */ } escucha = null; try { grabacion?.cancelar(); } catch { /* nada */ } grabacion = null; callar(); };
   // Al irse de la pantalla: nada sigue hablando ni escuchando.
   const alCambio = () => setTimeout(() => { if (!zona.isConnected) { parar(); window.removeEventListener('hashchange', alCambio); } }, 0);
   window.addEventListener('hashchange', alCambio);
@@ -231,17 +329,130 @@ function practica(s, prefs, h, desde = 0) {
         repetir && puedeLeer() ? el('div', { class: 'botones' }, repetir, botonVoz(repetir, decir, alRepetir)) : null));
   };
 
+  // 0.14.50: el micrófono que GRABA (con ChatGPT). Toca → «Grabando… 0:05» (con las barritas) → toca otra vez (o a los
+  // 90 s) → «Escribiendo lo que dijiste…» → el texto se agrega al cuadro, que se puede corregir antes de «Enviar». Si algo
+  // falla, lo dice claro y el cuadro sigue para escribir. Si la app dice que ahora no hay dictado, el resto de la
+  // práctica usa el del navegador (y el del teclado).
+  const crearGrabador = ({ caja, mic, nivel, estado, ponerEstado, i }) => {
+    let enviando = false;
+    let reloj = null;
+    let medidor = null;
+    const ponerNivel = n => { if (nivel) nivel.dataset.nivel = String(n); };
+    const apagarVista = () => { clearInterval(reloj); reloj = null; try { medidor?.close(); } catch { /* nada */ } medidor = null; ponerNivel(0); mic.setAttribute('aria-pressed', 'false'); mic.classList.remove('grabando'); };
+    const escribirEstado = que => { estado.textContent = que; };
+    const mostrarReloj = g => escribirEstado(t('vivo.estado.grabando', { tiempo: relojGrabacion(Date.now() - g.desde) }));
+    // Las barritas: lo que suena en el micrófono (si el navegador no deja, solo late el botón).
+    const medir = flujo => {
+      try {
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (!C || !nivel) return;
+        medidor = new C();
+        medidor.resume?.().catch?.(() => {});
+        const a = medidor.createAnalyser();
+        a.fftSize = 512;
+        medidor.createMediaStreamSource(flujo).connect(a);
+        const muestras = new Uint8Array(a.fftSize);
+        const leerNivel = () => { if (!medidor) return; a.getByteTimeDomainData(muestras); ponerNivel(nivelDe(muestras)); };
+        const k = setInterval(() => { if (!medidor) { clearInterval(k); return; } leerNivel(); }, 120);
+      } catch { medidor = null; }
+    };
+    // Manda la grabación y espera el texto. → { texto } | { no: true } | { fallo } | null (se fue de la pantalla).
+    const pasarATexto = async x => {
+      const idioma = idiomaOral(usuario) === 'en' ? 'en' : 'es';
+      let d;
+      try {
+        const r = await fetch(`/api/academia/oral/vivo/${encodeURIComponent(s.sesion)}/dictar?i=${encodeURIComponent(String(i))}&idioma=${idioma}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Oportia': '1', 'Content-Type': x.tipo }, body: x.blob });
+        d = await r.json().catch(() => ({}));
+        if (!r.ok) return { fallo: d?.error || 'desconocido', http: true };
+      } catch { return { fallo: 'sin_red' }; }
+      if (d.estado === 'no') return { no: true };
+      if (d.estado !== 'pendiente' || typeof d.id !== 'string') return { fallo: 'desconocido' };
+      for (let k = 0; k < 60; k++) { // ~50 s
+        await new Promise(z => setTimeout(z, k < 4 ? 600 : 900));
+        if (!caja.isConnected) return null;
+        const g = await api('GET', `/api/academia/oral/vivo/${encodeURIComponent(s.sesion)}/dictar/${encodeURIComponent(d.id)}`);
+        if (!g.ok) return { fallo: g.datos?.error || 'desconocido' };
+        if (g.datos.estado === 'lista') return { texto: String(g.datos.texto ?? '') };
+        if (g.datos.estado === 'no') return { fallo: g.datos.motivo || 'no' };
+      }
+      return { fallo: 'tiempo' };
+    };
+    const terminar = async () => {
+      const g = grabacion;
+      if (!g) return;
+      grabacion = null;
+      apagarVista();
+      let x = null;
+      try { x = await g.parar(); } catch { x = null; }
+      if (!caja.isConnected) return;
+      if (!x || x.ms < GRABAR.minMs || !x.blob.size) return ponerEstado('muy_corto');
+      enviando = true;
+      mic.disabled = true;
+      ponerEstado('escribiendo');
+      ex.poner('quieto');
+      const r = await pasarATexto(x);
+      enviando = false;
+      if (!caja.isConnected || r == null) return;
+      mic.disabled = caja.disabled;
+      if (r.no) { prefs.grabar = false; return ponerEstado('grabar_no'); }
+      if (r.fallo) {
+        if (r.http && r.fallo === 'demasiados_intentos') { ponerEstado(null); return avisar(textoError(r.fallo), 'mal'); }
+        return ponerEstado(r.fallo === 'sin_red' ? 'sin_red_grabar' : 'grabar_fallo');
+      }
+      if (!r.texto.trim()) return ponerEstado('grabar_vacio');
+      caja.value = agregarTexto(caja.value, r.texto, 1200);
+      ponerEstado('escrito');
+      try { caja.focus({ preventScroll: true }); } catch { /* nada */ }
+    };
+    mic.addEventListener('click', () => {
+      if (enviando) return;
+      if (grabacion) { terminar(); return; }
+      callar(); // nunca la voz del examinador y el micrófono a la vez
+      let nueva = null;
+      try {
+        nueva = crearGrabacion({ medios: navigator.mediaDevices, Grabadora: window.MediaRecorder, alTope: () => { if (grabacion === nueva) terminar(); } });
+      } catch { return ponerEstado('grabar_fallo'); }
+      ponerEstado('pidiendo_permiso');
+      // Dentro del toque: el iPhone solo da el micrófono así.
+      nueva.empezar().then(() => {
+        if (!caja.isConnected || caja.disabled || grabacion) { nueva.cancelar(); return; }
+        grabacion = nueva;
+        ponerEstado(null);
+        mic.setAttribute('aria-pressed', 'true');
+        mic.classList.add('grabando');
+        estado.dataset.estado = 'grabando';
+        ex.poner('escuchando');
+        mostrarReloj(nueva);
+        reloj = setInterval(() => { if (grabacion === nueva) mostrarReloj(nueva); }, 250);
+        medir(nueva.flujo);
+      }, err => { try { nueva.cancelar(); } catch { /* nada */ } ponerEstado(errorMicrofono(err)); });
+    });
+    return { ocupado: () => Boolean(grabacion) && !enviando, enviando: () => enviando, terminar };
+  };
   // El cuadro de su respuesta: el dictado en vivo (que puede corregir) o lo que escribe.
-  const respuesta = alListo => {
-    const caja = el('textarea', { class: 'vivo-texto', rows: 4, maxlength: 1200, 'aria-label': t('vivo.tu_respuesta'), placeholder: prefs.dictar ? t('vivo.placeholder.voz') : t('vivo.placeholder') });
+  const respuesta = (alListo, i) => {
+    const modo = modoDictado({ grabar: prefs.grabar, hayReconocimiento: puedeDictar() });
+    const conVoz = prefs.dictar;
+    const caja = el('textarea', { class: 'vivo-texto', rows: 4, maxlength: 1200, 'aria-label': t('vivo.tu_respuesta'), placeholder: conVoz ? t(prefs.grabar ? 'vivo.placeholder.grabar' : 'vivo.placeholder.voz') : t('vivo.placeholder') });
     const estado = el('p', { class: 'vivo-estado', role: 'status', 'aria-live': 'polite' });
-    const mic = prefs.dictar ? el('button', { type: 'button', class: 'vivo-mic', 'aria-pressed': 'false', 'aria-label': t('vivo.mic') }, icono('microfono', 'icono')) : null;
+    const mic = conVoz ? el('button', { type: 'button', class: 'vivo-mic', 'aria-pressed': 'false', 'aria-label': t(prefs.grabar ? 'vivo.mic.grabar' : 'vivo.mic') }, icono('microfono', 'icono')) : null;
+    // 0.14.50: las barritas de cuánto suena mientras graba (con data-nivel 0–4; el dibujo es del CSS).
+    const nivel = prefs.grabar && mic ? el('span', { class: 'vivo-nivel', 'aria-hidden': 'true', 'data-nivel': '0' }, el('i'), el('i'), el('i'), el('i')) : null;
+    // 0.14.50: sin ChatGPT, desde el principio y debajo del cuadro: cómo dictar con el teclado (lo que sí funciona).
+    const pistaTeclado = modo !== 'grabar' ? el('p', { class: 'vivo-pista-teclado con-icono-chico' }, icono('microfono', 'icono chico'), el('span', { texto: t(pistaTecladoDe()) })) : null;
+    // Abre el teclado (el cuadro) y resalta la pista: nunca «Escuchando…» sin texto.
+    const usarTeclado = () => { try { caja.focus(); } catch { /* nada */ } pistaTeclado?.classList.add('resaltada'); ponerEstado('teclado'); };
     caja.addEventListener('input', () => { if (!escucha) ex.poner('escuchando', 2500); });
     const ponerEstado = que => { if (que === 'escuchando') ex.poner('escuchando'); else if (que === 'pensando' || (!que && ex.estado() === 'escuchando')) ex.poner('quieto');
       estado.textContent = que ? t(`vivo.estado.${que}`) : ''; estado.dataset.estado = que || ''; mic?.setAttribute('aria-pressed', String(que === 'escuchando')); };
-    if (mic) {
+    // 0.14.50: con ChatGPT: grabar → parar → la app lo pasa a texto y se AGREGA al cuadro.
+    const grabador = mic && prefs.grabar ? crearGrabador({ caja, mic, nivel, estado, ponerEstado, i }) : null;
+    // 0.14.50: en el iPhone (y sin dictado en el navegador), el micrófono solo abre el teclado y muestra su 🎤.
+    if (mic && modo === 'teclado') mic.addEventListener('click', () => { callar(); usarTeclado(); });
+    if (mic && modo === 'navegador') {
       mic.addEventListener('click', () => {
-        if (escucha) { parar(); ponerEstado(null); return; }
+        // 0.14.50: si lo paró sin que se escribiera nada, se le dice que use el micrófono del teclado.
+        if (escucha) { const nada = !caja.value.trim(); parar(); if (nada) usarTeclado(); else ponerEstado(null); return; }
         callar(); // nunca la voz del examinador y el micrófono a la vez
         const R = Reconocimiento();
         // 0.14.34: el dictado no escribía en algunos navegadores. Safari (iPhone y Mac) se porta mejor con «continuous»
@@ -257,6 +468,7 @@ function practica(s, prefs, h, desde = 0) {
         // 0.14.36: si en ~6 s el navegador no recibió NADA de audio (sin permiso del sistema, micrófono equivocado), no se
         // queda «Escuchando…» para siempre: lo dice y para.
         let oyoAlgo = false;
+        let huboTexto = false;
         let vigia = null;
         const empezar = () => {
           const r = new R();
@@ -265,17 +477,17 @@ function practica(s, prefs, h, desde = 0) {
           r.interimResults = true;
           r.maxAlternatives = 1;
           r.onaudiostart = () => { oyoAlgo = true; };
-          r.onspeechstart = () => { oyoAlgo = true; if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando'); };
+          r.onspeechstart = () => { oyoAlgo = true; };
           r.onsoundstart = () => { oyoAlgo = true; };
           r.onresult = ev => {
             // 0.14.48: al parar, el navegador todavía manda lo último que oyó: se escribe si el cuadro sigue abierto (no si
             // ya se mandó o si otro dictado empezó); sin cambiar el estado.
             if (escucha !== r) { if (!escucha && !caja.disabled && caja.isConnected) caja.value = dictado.resultado(ev); return; }
             oyoAlgo = true;
-            clearTimeout(vigia);
-            if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando');
             reintentos = 0;
             caja.value = dictado.resultado(ev);
+            // 0.14.50: «Escuchando…» solo cuando de verdad llega texto.
+            if (hayTexto(ev)) { huboTexto = true; clearTimeout(vigia); if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando'); }
           };
           r.onerror = ev => {
             const e = ev?.error;
@@ -287,14 +499,15 @@ function practica(s, prefs, h, desde = 0) {
             // 0.14.48: si el navegador no deja volver a empezar solo (fuera del toque), no es «sin permiso»: ya dictó;
             // se queda lo dicho y se toca el micrófono otra vez para seguir.
             if (tramos > 1 && (e === 'not-allowed' || e === 'service-not-allowed')) return ponerEstado(null);
-            ponerEstado(e === 'not-allowed' || e === 'service-not-allowed' ? 'sin_permiso'
-              : e === 'audio-capture' ? 'sin_micro' : e === 'network' ? 'sin_red' : e === 'language-not-supported' ? 'sin_idioma' : 'no_oyo');
+            // 0.14.50: cualquier otro error: el dictado del teclado (lo que sí funciona).
+            usarTeclado();
           };
           r.onend = () => {
             if (escucha !== r) return;
             dictado.fin(); // lo provisional queda (el texto a la vista no cambia)
             if (reintentos++ < 20) { try { empezar(); return; } catch { /* abajo */ } }
-            escucha = null; ponerEstado(null);
+            escucha = null;
+            if (!caja.value.trim()) usarTeclado(); else ponerEstado(null);
           };
           escucha = r;
           tramos++;
@@ -302,7 +515,9 @@ function practica(s, prefs, h, desde = 0) {
         };
         // Primero se pide el micrófono de verdad (así el navegador muestra su permiso y se sabe si el sistema lo bloquea);
         // después empieza el dictado.
-        const arrancar = () => { try { empezar(); ponerEstado('escuchando'); vigia = setTimeout(() => { if (escucha && !oyoAlgo) ponerEstado(navigator.brave ? 'brave' : 'no_llega_audio'); }, 9000); } catch { clearTimeout(vigia); escucha = null; ponerEstado('no_oyo'); } };
+        // 0.14.50: «Habla ahora» (no «Escuchando…»: eso solo cuando llega texto). Si en 6 s no llegó NADA de texto, se para
+        // y se pasa al dictado del teclado (antes se quedaba «Escuchando…» sin escribir nada en el Mac).
+        const arrancar = () => { try { empezar(); ponerEstado('habla'); vigia = setTimeout(() => { if (escucha && !huboTexto) { const r0 = escucha; escucha = null; try { r0.stop(); } catch { /* nada */ } dictado.fin(); usarTeclado(); } }, ESPERA_TEXTO_MS); } catch { clearTimeout(vigia); escucha = null; usarTeclado(); } };
         // 0.14.47: en el iPhone (Safari) el dictado SOLO arranca si empieza en el mismo toque (no después de pedir el
         // micrófono aparte): ahí se arranca directo y el propio dictado pide el permiso. En los demás, igual que antes.
         const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
@@ -312,24 +527,23 @@ function practica(s, prefs, h, desde = 0) {
           md.getUserMedia({ audio: true }).then(flujo => {
             try { flujo.getTracks().forEach(p => p.stop()); } catch { /* nada */ }
             arrancar();
-          }, err => {
+          }, () => {
             clearTimeout(vigia);
-            const n = err?.name;
-            ponerEstado(n === 'NotAllowedError' || n === 'SecurityError' ? 'sin_permiso' : n === 'NotFoundError' || n === 'NotReadableError' ? 'sin_micro' : 'no_oyo');
+            usarTeclado(); // 0.14.50: sin micrófono para el navegador: el del teclado
           });
         } else arrancar();
       });
     }
     // 0.14.40: nunca se manda vacío por error (antes salía «Mal» sin decir nada); para no saber está «No sé».
-    const listo = botonGrande(t('vivo.listo'), () => { parar(); if (!caja.value.trim()) { ponerEstado('vacio'); caja.focus(); return; } alListo(caja.value.trim(), ponerEstado); }, { sonido: null });
+    const listo = botonGrande(t('vivo.listo'), () => { if (grabador?.ocupado()) { grabador.terminar(); return; } parar(); if (!caja.value.trim()) { ponerEstado('vacio'); caja.focus(); return; } alListo(caja.value.trim(), ponerEstado); }, { sonido: null });
     // Un solo botón claro abajo («Enviar»); «No sé» es un enlace chico dentro de su burbuja.
-    const noSe = el('button', { type: 'button', class: 'vivo-no-se', onclick: () => { parar(); alListo('', ponerEstado); } }, el('span', { texto: t('vivo.no_se') }));
+    const noSe = el('button', { type: 'button', class: 'vivo-no-se', onclick: () => { if (grabador?.enviando()) return; parar(); alListo('', ponerEstado); } }, el('span', { texto: t('vivo.no_se') }));
     const nodo = el('div', { class: 'vivo-fila alumno' },
-      el('div', { class: 'vivo-burbuja tuya' }, el('p', { class: 'vivo-quien', texto: t('vivo.tu') }), caja,
-        el('div', { class: 'vivo-controles' }, mic, estado, noSe)));
+      el('div', { class: 'vivo-burbuja tuya' }, el('p', { class: 'vivo-quien', texto: t('vivo.tu') }), caja, pistaTeclado,
+        el('div', { class: 'vivo-controles' }, mic, nivel, estado, noSe)));
     // 0.14.48: si el envío falla (sin red en el teléfono, «Demasiados intentos»…), todo vuelve a funcionar: antes solo el
     // cuadro, y «Enviar», «No sé» y el micrófono quedaban apagados (no se podía seguir a la otra pregunta).
-    const habilitar = si => { caja.disabled = !si; if (mic) mic.disabled = !si; listo.disabled = !si; noSe.disabled = !si; };
+    const habilitar = si => { caja.disabled = !si; if (mic) mic.disabled = !si || Boolean(grabador?.enviando()); listo.disabled = !si; noSe.disabled = !si; };
     return { nodo, botones: [listo], caja, desactivar: () => habilitar(false), activar: () => habilitar(true) };
   };
   const chipVeredicto = (v, linea) => el('div', { class: `vivo-veredicto tono-${v}` },
@@ -407,7 +621,7 @@ function practica(s, prefs, h, desde = 0) {
           chat.append(caja);
         }
         pie.replaceChildren(siguiente());
-      });
+      }, i);
       chat.append(r.nodo);
       pie.replaceChildren(...r.botones);
       r.caja.focus({ preventScroll: true });

@@ -17,6 +17,7 @@ import { MANEJADORES } from '../src/tareas/manejadores.js';
 import { crearProveedorFalso } from './proveedor-falso.js';
 import { claveAnthropic, permitirIa } from './ia-base.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
+import { recibirAudio } from '../src/academia/oral-dictado.js';
 
 export const DUENO = { 'Tailscale-User-Login': 'junior@example.com' };
 export const FUNNEL = { 'Tailscale-Funnel-Request': '?1' };
@@ -52,7 +53,9 @@ export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-so
   const config = { ...configDePrueba(), iaBases: { anthropic: falso.base, openai: falso.base } };
   const db = abrirBase(config);
   const despertares = [];
-  const servidor = crearServidor({ db, config, supervisor: { despertar: () => despertares.push(1) } });
+  // 0.14.50: la grabación de un dictado llega «al trabajador» (aquí, el mismo proceso) como por su canal.
+  const audiosEntregados = [];
+  const servidor = crearServidor({ db, config, supervisor: { despertar: () => despertares.push(1), entregarAudio: m => { audiosEntregados.push(m.id); return recibirAudio(m); } } });
   const corrida = nuevaCorrida(db, { version: 'prueba', codigo: 'prueba' });
   const escritor = crearEscritor(db, { registro: SILENCIO, dormir: async () => {} });
   const ejecutor = crearEjecutor({
@@ -91,7 +94,7 @@ export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-so
         assert.equal(r.datos.instructorIa, true);
         assert.equal(r.datos.instructorModelo, modelo);
       }
-      await fn({ base, db, config, falso, admin, adminId, secretoId, hacer, fila, despertares, z: alumnos.zoelia, q: alumnos.quirino });
+      await fn({ base, db, config, falso, admin, adminId, secretoId, hacer, fila, despertares, audiosEntregados, z: alumnos.zoelia, q: alumnos.quirino });
     });
   } finally {
     db.close();

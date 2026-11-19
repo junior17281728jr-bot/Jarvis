@@ -53,6 +53,8 @@ export const POLITICA = Object.freeze({
   // Un pedido que el proveedor rechaza (400) no se arregla solo: el pedido de OPORTIA está fijo y probado.
   pedido_no_valido: P('fallida', 'admin', 'atencion'),
   demasiado_largo: P('fallida'),
+  // 0.14.50: una grabación del dictado que el proveedor no pudo leer (400): lo grabó el alumno, no es la clave. Sin pausa.
+  audio_no_valido: P('fallida'),
   sin_red: P('fallida', 'corta'), // si se cortó a mitad, el adaptador la deja 'desconocida'
   tiempo_agotado: P('desconocida', 'corta'),
   interrumpida: P('desconocida'),

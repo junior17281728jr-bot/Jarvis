@@ -65,6 +65,8 @@ export function crearLimitesInstructor() {
     duda: new Limitador({ maximo: 10, ventanaMs: DIEZ_MINUTOS }),
     consejo: new Limitador({ maximo: 6, ventanaMs: HORA }),
     chat: new Limitador({ maximo: 20, ventanaMs: DIEZ_MINUTOS }),
+    // 0.14.50: el dictado de la Práctica en vivo (una práctica de 15 preguntas, con repreguntas y repeticiones).
+    dictar: new Limitador({ maximo: 30, ventanaMs: DIEZ_MINUTOS }),
   };
 }
 

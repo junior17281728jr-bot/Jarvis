@@ -212,6 +212,9 @@ const POR_DEFECTO = Object.freeze([
   [/image|dall-e/i, '10.00', '2.50', '40.00'],
   // 0.14.29: la voz (gpt-4o-mini-tts: el texto a US$0,60/M y el audio a US$12/M tokens).
   [/tts/i, '0.60', '0.06', '12.00'],
+  // 0.14.50: el dictado (gpt-4o-mini-transcribe: el audio a US$3/M y el texto que escribe a US$5/M ≈ US$0,003 el minuto).
+  // Antes de /mini/ (si no, tomaría el precio de un modelo «mini» de texto).
+  [/transcribe/i, '3.00', '0.30', '5.00'],
   [/nano/i, '0.20', '0.02', '1.60'],
   [/mini/i, '0.50', '0.05', '4.00'],
   [/(?:^|-)pro(?:-|$)/i, '20.00', '2.00', '160.00'],

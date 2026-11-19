@@ -1510,6 +1510,24 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .vivo-estado { margin: 0; font-weight: 700; min-height: 1.4em; }
 .vivo-estado[data-estado="escuchando"] { color: var(--rojo-texto); }
 .vivo-estado[data-estado="pensando"] { color: var(--oral-texto); }
+/* 0.14.50: el micrófono que graba (con ChatGPT): el botón se vuelve «parar» (un cuadrado), las barritas de cuánto suena
+   (data-nivel 0–4) y la pista del micrófono del teclado (iPhone). */
+.vivo-estado[data-estado="grabando"] { color: var(--rojo-texto); }
+.vivo-estado[data-estado="escribiendo"] { color: var(--oral-texto); }
+.vivo-estado[data-estado="escribiendo"]::after { content: ' …'; }
+.vivo-estado[data-estado="escrito"] { color: var(--verde-texto, var(--oral-texto)); }
+.vivo-mic.grabando .icono { display: none; }
+.vivo-mic.grabando::before { content: ''; width: 24px; height: 24px; border-radius: 5px; background: #fff; }
+.vivo-nivel { display: inline-flex; align-items: flex-end; gap: 3px; height: 26px; flex: 0 0 auto; }
+.vivo-nivel i { display: block; width: 5px; height: 5px; border-radius: 3px; background: var(--rojo-suave); transition: height .1s linear, background .1s linear; }
+.vivo-nivel[data-nivel="0"] i { opacity: .5; }
+.vivo-nivel[data-nivel="1"] i:nth-child(-n+1), .vivo-nivel[data-nivel="2"] i:nth-child(-n+2), .vivo-nivel[data-nivel="3"] i:nth-child(-n+3), .vivo-nivel[data-nivel="4"] i { background: var(--rojo); }
+.vivo-nivel i:nth-child(1) { height: 8px; }
+.vivo-nivel[data-nivel="2"] i:nth-child(2), .vivo-nivel[data-nivel="3"] i:nth-child(2), .vivo-nivel[data-nivel="4"] i:nth-child(2) { height: 14px; }
+.vivo-nivel[data-nivel="3"] i:nth-child(3), .vivo-nivel[data-nivel="4"] i:nth-child(3) { height: 20px; }
+.vivo-nivel[data-nivel="4"] i:nth-child(4) { height: 26px; }
+.vivo-pista-teclado { margin: 6px 0 0; color: var(--oral-texto); font-size: .92em; }
+.vivo-pista-teclado.resaltada { font-weight: 700; }
 .vivo-estado[data-estado="pensando"]::after { content: ' …'; }
 .vivo-veredicto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 14px; font-size: 1.1rem; }
 .vivo-veredicto.tono-bien { background: var(--verde-suave); color: var(--verde-texto); }

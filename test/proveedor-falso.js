@@ -19,7 +19,7 @@
 // 'error_500' (lo mismo con un 500).
 // Rutas: POST /v1/messages, POST /v1/messages/count_tokens (Anthropic), POST /v1/responses, GET /v1/models/:id (OpenAI).
 // 0.14.2: GET /v1/models (la LISTA: { modelos }), POST /v1/images/generations (un WebP falso pequeño), 0.14.29: POST
-// /v1/audio/speech (la voz, como eventos), y la «API propia»:
+// /v1/audio/speech (la voz, como eventos), 0.14.50: POST /v1/audio/transcriptions (el dictado), y la «API propia»:
 // POST /chat/completions y GET /models (su lista: { modelosPropia }).
 import { createServer } from 'node:http';
 
@@ -128,7 +128,7 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true }, mod
   }
 
   async function responder(escena, req, res, ruta, cuerpoPedido) {
-    const esOpenai = ruta.startsWith('/v1/responses') || ruta.startsWith('/v1/models') || ruta.startsWith('/v1/images') || ruta === '/chat/completions' || ruta === '/models';
+    const esOpenai = ruta.startsWith('/v1/responses') || ruta.startsWith('/v1/models') || ruta.startsWith('/v1/images') || ruta.startsWith('/v1/audio') || ruta === '/chat/completions' || ruta === '/models';
     const esPrueba = ruta === '/v1/messages/count_tokens' || ruta.startsWith('/v1/models') || ruta === '/models';
     const id = { 'request-id': `req_falso_${numero}`, 'x-request-id': `req_falso_${numero}` };
     switch (escena.tipo) {
@@ -218,6 +218,10 @@ export async function crearProveedorFalso({ respuestaJson = { listo: true }, mod
       res.writeHead(200, { 'content-type': 'text/event-stream', ...id });
       return res.end(ev({ type: 'speech.audio.delta', audio: mp3.subarray(0, 90).toString('base64') }) + ev({ type: 'speech.audio.delta', audio: mp3.subarray(90).toString('base64') })
         + ev({ type: 'speech.audio.done', usage: { input_tokens: 20, output_tokens: 150, total_tokens: 170 } }));
+    }
+    // 0.14.50: el dictado (multipart): devuelve escena.texto (o un texto fijo) y lo que gastó, como gpt-4o-mini-transcribe.
+    if (ruta === '/v1/audio/transcriptions') {
+      return enviar(res, 200, { text: escena.texto ?? 'Un piloto privado puede llevar pasajeros pero no cobrar.', usage: { type: 'tokens', input_tokens: 180, input_token_details: { text_tokens: 20, audio_tokens: 160 }, output_tokens: 14, total_tokens: 194 } }, id);
     }
     if (ruta === '/v1/images/generations') {
       return enviar(res, 200, { created: 1, data: [{ b64_json: imagen.toString('base64') }], usage: { input_tokens: 60, output_tokens: 272, total_tokens: 332, input_tokens_details: { text_tokens: 60, image_tokens: 0 } } }, id);

@@ -18,6 +18,7 @@
 //  - Un paso que se repite (un reinicio a mitad) nunca paga dos veces: (tarea, propósito, paso) identifica la llamada.
 //  - La clave descifrada vive solo dentro de un pedir: nunca se guarda, se muestra ni se escribe en un registro.
 import { enTransaccion } from '../nucleo/db.js';
+import { randomBytes } from 'node:crypto';
 import { FASE_ACTUAL } from '../tareas/tipos.js';
 import { asegurarQueEsMia } from '../tareas/cola.js';
 import { abrirAviso } from '../avisos/avisos.js';
@@ -177,7 +178,13 @@ export function crearClienteIA({
     // 0.14.2: cada imagen que se manda para mirar cuenta como 1 600 «bytes» (lo que Claude cobra por una de 1024×1024).
     const imagenesBytes = Array.isArray(pedido.imagenes) ? pedido.imagenes.length * IMAGEN_BYTES : 0;
     const bytes = Buffer.byteLength(sistema) + Buffer.byteLength(texto) + (esquema ? Buffer.byteLength(JSON.stringify(esquema)) : 0) + imagenesBytes;
-    if (bytes > def.entradaMaxBytes) {
+    // 0.14.50: un dictado (tipo 'transcripcion') lleva la grabación en pedido.audio = { bytes: Buffer, tipo, idioma }.
+    const esDictado = def.tipo === 'transcripcion';
+    if (esDictado && !(Buffer.isBuffer(pedido.audio?.bytes) && pedido.audio.bytes.length > 0)) throw new Error('el dictado necesita su grabación');
+    // Lo que se aparta por la grabación (def.audioTokens: 90 s, siempre; el audio no se cuenta por sus bytes: un archivo
+    // comprimido no dice cuántos tokens son). No entra en lo «enviado» (usoImposible).
+    const audioTokens = esDictado ? def.audioTokens : 0;
+    if (bytes + audioTokens > def.entradaMaxBytes) {
       try {
         await escribirConCerca(() => anotarBloqueo(db, { mes: mesCobro(reloj()), ambito: 'general', motivo: 'demasiado_largo', proposito, ahora: reloj() }));
       } catch (error) {
@@ -213,7 +220,7 @@ export function crearClienteIA({
     try {
       r = await escribirConCerca(() => reservar(db, {
         config, proposito, espacioId, proyectoId, versionNumero: pedido.versionNumero ?? null, tareaId: tarea?.id ?? null,
-        usuarioId: pedido.usuarioId ?? null, paso, entradaMax: bytes + MARCO_BYTES, maximoConfirmadoMicro: pedido.maximoConfirmadoMicro ?? null,
+        usuarioId: pedido.usuarioId ?? null, paso, entradaMax: bytes + MARCO_BYTES + audioTokens, maximoConfirmadoMicro: pedido.maximoConfirmadoMicro ?? null,
         ahora: reloj(), propositos,
       }));
     } catch (error) {
@@ -243,7 +250,9 @@ export function crearClienteIA({
     const esAudio = def.tipo === 'audio';
     if (esImagen && typeof adaptador.pedidoImagen !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');
     if (esAudio && typeof adaptador.pedidoAudio !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');
-    const p = esAudio ? adaptador.pedidoAudio({ modelo: llamada.modelo, texto, instrucciones: sistema })
+    if (esDictado && typeof adaptador.pedidoTranscripcion !== 'function') return cerrarSinLlamar(llamada, 'proveedor_no_usado');
+    const p = esDictado ? adaptador.pedidoTranscripcion({ modelo: llamada.modelo, audio: pedido.audio.bytes, tipo: pedido.audio.tipo, idioma: pedido.audio.idioma ?? null, pista: texto, frontera: `oportia${randomBytes(12).toString('hex')}` })
+      : esAudio ? adaptador.pedidoAudio({ modelo: llamada.modelo, texto, instrucciones: sistema })
       : esImagen
       ? adaptador.pedidoImagen({ modelo: llamada.modelo, texto })
       : adaptador.pedido({ modelo: llamada.modelo, sistema, texto, esquema, salidaMax: llamada.salidaMax, esfuerzo: def.esfuerzo, cachear: def.cachear === true, imagenes: pedido.imagenes ?? null });
@@ -252,7 +261,8 @@ export function crearClienteIA({
     let eco = false;
     try {
       respuesta = await llamarProveedor({
-        url: urlDe(adaptador, config, p.ruta, cfgIa), metodo: p.metodo, cabeceras: adaptador.cabeceras(clave), cuerpo: p.cuerpo,
+        url: urlDe(adaptador, config, p.ruta, cfgIa), metodo: p.metodo, cabeceras: p.tipoCuerpo ? { ...adaptador.cabeceras(clave), 'content-type': p.tipoCuerpo } : adaptador.cabeceras(clave),
+        cuerpo: p.cuerpo ?? null, cuerpoCrudo: p.cuerpoCrudo ?? null,
         senal, timeoutMs: def.timeoutMs, permitido: hostDe(adaptador, cfgIa), topeBytes: def.respuestaMaxBytes ?? RESPUESTA_MAX_BYTES, crudo: esAudio,
       });
       // La voz llega como eventos: se juntan en un JSON ({ audio, usage }) antes de mirar nada más.
@@ -266,7 +276,7 @@ export function crearClienteIA({
     // 5. Qué respondió (solo en memoria; nunca se guarda un mensaje del proveedor). Lo que no cumple el esquema pedido
     // no se usa: cuenta como 'respuesta_no_valida' (con su costo real) y no se guarda nada. Una respuesta que traía la
     // clave no se usa ni se guarda nada de ella (ronda 3 de revisión).
-    let leido = esAudio ? adaptador.leerAudio(respuesta) : esImagen ? adaptador.leerImagen(respuesta) : adaptador.leer(respuesta, { json: Boolean(esquema) });
+    let leido = esDictado ? adaptador.leerTranscripcion(respuesta) : esAudio ? adaptador.leerAudio(respuesta) : esImagen ? adaptador.leerImagen(respuesta) : adaptador.leer(respuesta, { json: Boolean(esquema) });
     if (eco) {
       leido = resultadoConEco(leido, respuesta);
       respuesta.json = null;

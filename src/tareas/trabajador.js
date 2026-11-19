@@ -30,6 +30,7 @@ import { empezarCorrida, marcarListo, latir, terminarCorrida } from './corridas.
 import { leerModoSeguro } from './modo-seguro.js';
 import { MANEJADORES } from './manejadores.js';
 import { crearEjecutor, TIEMPOS_TRABAJADOR } from './ejecutor.js';
+import { recibirAudio } from '../academia/oral-dictado.js';
 
 export { TIEMPOS_TRABAJADOR };
 
@@ -125,6 +126,8 @@ export async function principal({ registro = TIPOS, manejadores = MANEJADORES, e
     if (!mensaje || typeof mensaje !== 'object') return;
     if (mensaje.tipo === 'despertar') ejecutor?.ciclo();
     else if (mensaje.tipo === 'parar') pedirParada(mensaje.motivo === 'modo_seguro' ? 'modo_seguro' : 'normal');
+    // 0.14.50: la grabación de un dictado (solo en memoria; la tarea que la usa llega por la fila con su id).
+    else if (mensaje.tipo === 'audio_dictado') { try { recibirAudio(mensaje); } catch { /* no se pudo: la tarea termina sin audio */ } ejecutor?.ciclo(); }
   });
 
   // Solo lo enciende el servidor web, con su canal. Si el canal ya se cerró mientras cargaba (el servidor web

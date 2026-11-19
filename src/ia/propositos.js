@@ -76,6 +76,16 @@ const ORAL_VOZ = Object.freeze({
   entradaMaxBytes: 1_200, entradaMinBytes: 20, respuestaMaxBytes: 524_288, maximoMicro: 30_000, tipicoMicro: 2_500, esfuerzo: 'low',
   timeoutMs: 40_000, alFaltar: 'motor_propio', ajuste: 'instructorIa', tarea: 'academia.instructor', cachear: false, techoMicro: 40_000,
 });
+// 0.14.50: el «dictado» de la Práctica en vivo: el navegador graba lo que dice el alumno (hasta 90 s) y ChatGPT
+// (gpt-4o-mini-transcribe) lo pasa a texto. Solo ChatGPT. El audio nunca se guarda (viaja en memoria del servidor web al
+// trabajador y de ahí a OpenAI); el texto vuelve al cuadro de su respuesta. Cuenta en el tope de su cuenta (y en el
+// general y las llamadas por hora), sin cobrarle un uso. El precio (US$3/M el audio, US$5/M el texto que escribe) da
+// ≈ US$0,003 por minuto. La reserva cuenta el audio como 3 000 tokens fijos (90 s, con margen) + la pista (≤ 800 bytes):
+// 4 000 × US$3/M + 1 024 × US$5/M, ×1,05 ≈ US$0,018 (máximo 20 000 µUSD); lo normal (una respuesta de ~20 s) ≈ US$0,001.
+const ORAL_DICTADO = Object.freeze({
+  ...ORAL_VOZ, tipo: 'transcripcion', rol: 'dictado', salidaMax: 1024, entradaMaxBytes: 4_000, entradaMinBytes: 1, respuestaMaxBytes: 65_536,
+  maximoMicro: 20_000, tipicoMicro: 1_500, timeoutMs: 30_000, techoMicro: 30_000, audioTokens: 3_000,
+});
 // 0.13.0: la «Fábrica de materias» (src/academia/fabrica.js) y su «Mejora continua». Los paga el dueño (ámbito
 // 'general': ninguna cuenta), dentro de su TOPE PROPIO (por defecto US$20 la fábrica y US$2 al mes la mejora, editables)
 // y del tope general del mes. Nunca los pide un alumno. Escribir: siempre Claude Sonnet 5.5 con el sistema (reglas + la
@@ -168,6 +178,8 @@ export const PROPOSITOS = Object.freeze({
   instructor_oral_vivo: ORAL_VIVO,
   instructor_oral_vivo_cierre: Object.freeze({ ...ORAL_VIVO, cachear: false }),
   oral_voz: ORAL_VOZ,
+  // 0.14.50: el dictado (ver ORAL_DICTADO).
+  oral_dictado: ORAL_DICTADO,
   // 0.14.38: la Competencia (src/academia/competencia-ia.js): la frase del certificado de una ronda (de la cuenta del
   // alumno, sin cobrarle un uso) y «Mejorar preguntas con IA» (de la cuenta del administrador). Siempre Claude Haiku 5.5:
   // lo peor de una vez ≈ 24 000 bytes (~6 000 tokens) × US$0.125/M + 4 096 × US$0.50/M, ×1,1 ×1,05 ≈ US$0.0033.
@@ -224,6 +236,8 @@ export const MOTIVOS = Object.freeze([
   'respuesta_no_valida', 'respuesta_incompleta', 'rechazada',
   // Ronda 3 de revisión: la respuesta traía la clave (o un pedazo): no se guarda nada de ella y esa clave queda en pausa.
   'eco_de_clave',
+  // 0.14.50: el proveedor no pudo leer la grabación del dictado (un 400): no es culpa de la clave ni pausa nada.
+  'audio_no_valido',
   // Lo que pasó alrededor de la llamada.
   'interrumpida', 'ya_cobrada', 'base_ocupada', 'costo_mayor', 'fallas_seguidas',
   // La ayuda de la fase 1 y las rutas.

@@ -2,6 +2,8 @@
 // src/api/instructor.js (comparten su estado de la IA, su cobro de usos y su fila): este archivo NUNCA llama a la IA; pone
 // en la fila la tarea 'academia.instructor' (usos instructor_oral_vivo y instructor_oral_vivo_cierre) como los demás.
 //  - Solo viaja TEXTO (lo que dijo, ya pasado a texto por el navegador): nunca audio, nunca su nombre.
+//    0.14.50: salvo el «dictado» (POST …/:sesion/dictar): la grabación de su respuesta va en memoria al trabajador y de ahí
+//    a ChatGPT para pasarla a texto; nunca se guarda (src/academia/oral-dictado.js).
 //  - La respuesta del libro y lo que dijo la IA en detalle NUNCA viajan antes del final: durante la práctica, solo el
 //    veredicto («bien / casi / mal») con una línea corta y, si fue «casi», la repregunta del examinador.
 //  - Sin IA para él (apagada, en pausa, sin usos, un tope): igual funciona; se califica él mismo en el repaso del final,
@@ -18,10 +20,11 @@ import { createReadStream, statSync } from 'node:fs';
 import { CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { encolar } from '../tareas/cola.js';
 import { leerConfigIa } from '../ia/config.js';
-import { elegirProveedor, modelosDe } from '../ia/presupuesto.js';
+import { elegirProveedor, modelosDe, disponibilidad } from '../ia/presupuesto.js';
 import { PROPOSITOS } from '../ia/propositos.js';
 import { VOZ, archivoVoz, hayVoz, rutaVoz } from '../academia/oral-voz.js';
 import { textoPreguntaVivo } from '../academia/oral-vivo.js';
+import { DICTADO, ID_DICTADO, nuevoIdDictado, tipoDeAudio, tomarTexto, barrerTextos } from '../academia/oral-dictado.js';
 
 const CABE_DATOS = 15_000; // los datos de una tarea son ≤ 16 000 letras (src/tareas/cola.js)
 
@@ -38,11 +41,23 @@ export function registrarRutasOralVivo(rutas, h) {
       return elegirProveedor(db, config, cfg, ahora, modelosDe(def, cfg), def).ok === true;
     } catch { return false; }
   };
+  // 0.14.50: ¿hay dictado con ChatGPT para él ahora? Con su IA lista (nada en pausa), el trabajador que lo recibe, y ChatGPT
+  // con lugar en sus topes y en las llamadas de la hora (lo mismo que miraría al gastar). Si no: el dictado del teclado.
+  const dictadoListo = (db, usuario, i, ahora) => {
+    if (i.modo !== 'ia' || !config || typeof supervisor?.entregarAudio !== 'function') return false;
+    try {
+      const e = espacioDe(db, usuario);
+      if (!e) return false;
+      const def = PROPOSITOS.oral_dictado;
+      return disponibilidad(db, { config, espacioId: e.id, proposito: 'oral_dictado', entradaMax: DICTADO.pistaMax + 200 + def.audioTokens, ahora }).disponible === true;
+    } catch { return false; }
+  };
   const iaVista = (db, req, usuario, ahora) => {
     const i = estadoInstructor(db, req, usuario, ahora);
     const tiempo = tiempoDe(db, usuario, ahora, { estricto });
-    return { modo: i.modo, motivo: i.modo === 'ia' ? null : (iaNoAhora(i)?.motivo ?? null), ilimitado: tiempo.ilimitado === true, vozNatural: vozNatural(db, i, ahora) };
+    return { modo: i.modo, motivo: i.modo === 'ia' ? null : (iaNoAhora(i)?.motivo ?? null), ilimitado: tiempo.ilimitado === true, vozNatural: vozNatural(db, i, ahora), dictado: dictadoListo(db, usuario, i, ahora) };
   };
+
   // El estado de la tarea de la IA (solo una suya). → 'pendiente' | 'hecha' | 'fallida'
   const estadoTarea = (db, usuario, tarea) => {
     const e = espacioDe(db, usuario);
@@ -152,6 +167,58 @@ export function registrarRutasOralVivo(rutas, h) {
     };
   });
 
+  // 0.14.50: el dictado. El cuerpo es la grabación tal cual (Content-Type audio/webm, audio/mp4…; hasta 4 MB). Solo el
+  // dueño de la práctica, con la práctica abierta. La grabación nunca se guarda: va en memoria al trabajador (la fila lleva
+  // solo su id) y la pantalla pregunta por el texto (GET …/dictar/:id). Sin ChatGPT para él: { estado: 'no' } (el teclado).
+  rutas.agregar('POST', '/api/academia/oral/vivo/:sesion/dictar', async ({ db, req, usuario, parametros }) => {
+    let p;
+    let yo;
+    // Lo que se revisa antes de leer la grabación (si algo no va, lo que mandó no se lee).
+    try {
+      contar(topes.dictar, usuario);
+      const tipo = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      if (!tipo.startsWith('audio/') && tipo !== 'application/octet-stream') throw new ErrorHttp(415, 'formato_no_valido');
+      const largo = Number(req.headers['content-length']);
+      if (Number.isFinite(largo) && largo > DICTADO.bytesMax) throw new ErrorHttp(413, 'demasiado_grande');
+      p = conPaquete(db);
+      yo = abiertaDe(db, usuario.id, parametros.sesion);
+      if (yo.abierta.cerrada || yo.abierta.terminada) throw new ErrorHttp(409, 'ya_cerrada');
+    } catch (error) { req.resume(); throw error; }
+    const audio = await leerAudio(req, DICTADO.bytesMax);
+    if (audio.length < DICTADO.bytesMin) throw new ErrorHttp(400, 'muy_corto');
+    if (!tipoDeAudio(audio)) throw new ErrorHttp(415, 'grabacion_no_valida');
+    const ahora = reloj();
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    if (!dictadoListo(db, usuario, instructor, ahora)) return { codigo: 200, datos: { estado: 'no' } };
+    const consulta = new URL(req.url, 'http://x').searchParams;
+    const idioma = consulta.get('idioma') === 'en' ? 'en' : 'es';
+    const it = yo.abierta.items[Number(consulta.get('i'))];
+    // La pista para ChatGPT: solo el texto de la pregunta del libro (las palabras de aviación); nada del alumno.
+    const pista = it ? String(textoPreguntaVivo(p, it, idioma) ?? '').slice(0, DICTADO.pistaMax) : '';
+    const e = espacioDe(db, usuario);
+    const id = nuevoIdDictado();
+    if (!supervisor.entregarAudio({ id, base64: audio.toString('base64') })) return { codigo: 200, datos: { estado: 'no' } };
+    barrerTextos(db, ahora);
+    encolar(db, { tipo: 'academia.instructor', espacioId: e.id, creadaPor: usuario.id, claveUnica: `dictado:${id}`,
+      datos: { uso: 'oral_dictado', audio: id, usuarioId: usuario.id, pedidaEn: ahora, idioma, pista } }, { ahora });
+    try { supervisor?.despertar?.(); } catch { /* la toma en su próxima vuelta */ }
+    return { codigo: 200, datos: { estado: 'pendiente', id } };
+  });
+  // El texto de un dictado: { estado: 'lista', texto } (una vez: después se borra), 'pendiente', o 'no' (con el motivo).
+  rutas.agregar('GET', '/api/academia/oral/vivo/:sesion/dictar/:id', ({ db, usuario, parametros }) => {
+    contar(topes.lecturas, usuario);
+    abiertaDe(db, usuario.id, parametros.sesion);
+    if (!ID_DICTADO.test(parametros.id)) throw new ErrorHttp(404, 'no_existe');
+    const listo = tomarTexto(db, { usuarioId: usuario.id, id: parametros.id });
+    if (listo) return { codigo: 200, datos: { estado: 'lista', texto: listo.texto } };
+    const t = db.prepare("SELECT estado, resultado FROM tareas WHERE clave_unica = ? AND tipo = 'academia.instructor' AND creada_por = ?").get(`dictado:${parametros.id}`, usuario.id);
+    if (!t) throw new ErrorHttp(404, 'no_existe');
+    if (t.estado === 'lista' || t.estado === 'en_curso') return { codigo: 200, datos: { estado: 'pendiente' } };
+    let motivo = null;
+    try { motivo = JSON.parse(t.resultado ?? 'null')?.motivo ?? null; } catch { motivo = null; }
+    return { codigo: 200, datos: { estado: 'no', motivo: typeof motivo === 'string' && /^[a-z_]{1,40}$/.test(motivo) ? motivo : null } };
+  });
+
   // El mensaje del instructor al final (con IA), cuando llega.
   rutas.agregar('GET', '/api/academia/oral/vivo/:sesion/cierre', ({ db, usuario, parametros }) => {
     contar(topes.lecturas, usuario);
@@ -250,5 +317,21 @@ export function registrarRutasOralVivo(rutas, h) {
     const v = leerVivo(db, id);
     return { codigo: 200, datos: { veces: v.veces, mejor: v.mejor, aprobado: v.aprobado, historial: v.historial } };
   }, { admin: true });
+}
+// 0.14.50: la grabación de un dictado, con su tope (más que eso: 413, sin leer el resto). Solo en memoria.
+function leerAudio(req, tope) {
+  return new Promise((ok, mal) => {
+    const partes = [];
+    let total = 0;
+    let cortado = false;
+    req.on('data', parte => {
+      if (cortado) return;
+      total += parte.length;
+      if (total > tope) { cortado = true; partes.length = 0; mal(new ErrorHttp(413, 'demasiado_grande')); req.resume(); return; }
+      partes.push(parte);
+    });
+    req.on('end', () => { if (!cortado) ok(Buffer.concat(partes)); });
+    req.on('error', () => { if (!cortado) mal(new ErrorHttp(400, 'datos_no_validos')); });
+  });
 }
 const vistaCierre = c => (!c ? null : c.estado === 'pendiente' ? { estado: 'pendiente' } : c);

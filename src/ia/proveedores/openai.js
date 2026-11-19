@@ -90,6 +90,41 @@ function leerUsoImagen(u) {
   return { entrada, salida, cacheLectura: 0, cacheEscritura: 0, geo: null, raro: nota.raro, desconocidos: nota.desconocidos };
 }
 
+// 0.14.50: lo que gastó un dictado (gpt-4o-mini-transcribe): { type: 'tokens', input_tokens, input_token_details:
+// { audio_tokens, text_tokens }, output_tokens, total_tokens }. Otro tipo (por ejemplo «duration» de whisper-1) no se
+// sabe cobrar: null (se cuenta lo apartado).
+const USO_DICTADO = new Set(['type', 'input_tokens', 'output_tokens', 'total_tokens', 'input_token_details', 'output_token_details']);
+function leerUsoDictado(u) {
+  if (!u || typeof u !== 'object' || Array.isArray(u) || u.input_tokens == null || u.output_tokens == null) return null;
+  if (u.type != null && u.type !== 'tokens') return null;
+  const entrada = tokens(u.input_tokens);
+  const salida = tokens(u.output_tokens);
+  if ([entrada, salida].some(Number.isNaN)) return null;
+  const nota = { raro: [entrada, salida].some(n => n > TOKENS_MAX), desconocidos: 0 };
+  for (const campo of ['input_token_details', 'output_token_details']) {
+    const d = u[campo];
+    if (d == null) continue;
+    if (typeof d !== 'object' || Array.isArray(d)) { nota.raro = true; continue; }
+    for (const [clave, v] of Object.entries(d)) if (!['text_tokens', 'audio_tokens', 'cached_tokens'].includes(clave)) revisarUsoDesconocido(v, nota, 1);
+  }
+  for (const [clave, v] of Object.entries(u)) if (!USO_DICTADO.has(clave)) revisarUsoDesconocido(v, nota);
+  return { entrada, salida, cacheLectura: 0, cacheEscritura: 0, geo: null, raro: nota.raro, desconocidos: nota.desconocidos };
+}
+// 0.14.50: el nombre del archivo según lo que grabó el navegador (OpenAI mira la extensión).
+const EXTENSION_AUDIO = Object.freeze({ 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/mpeg': 'mp3' });
+// El cuerpo multipart/form-data, armado a mano (sin dependencias): los campos de texto y el archivo tal cual.
+export function multipartDictado({ modelo, audio, tipo, idioma = null, pista = null, frontera }) {
+  const base = String(tipo ?? '').split(';')[0].trim().toLowerCase();
+  const ext = EXTENSION_AUDIO[base] ?? 'webm';
+  const campo = (nombre, valor) => Buffer.from(`--${frontera}\r\nContent-Disposition: form-data; name="${nombre}"\r\n\r\n${valor}\r\n`, 'utf8');
+  const partes = [campo('model', modelo), campo('response_format', 'json')];
+  if (idioma === 'es' || idioma === 'en') partes.push(campo('language', idioma));
+  if (typeof pista === 'string' && pista.trim()) partes.push(campo('prompt', pista.replace(/[\r\n]+/g, ' ').trim()));
+  partes.push(Buffer.from(`--${frontera}\r\nContent-Disposition: form-data; name="file"; filename="dictado.${ext}"\r\nContent-Type: ${base in EXTENSION_AUDIO ? base : 'audio/webm'}\r\n\r\n`, 'utf8'));
+  partes.push(Buffer.isBuffer(audio) ? audio : Buffer.alloc(0), Buffer.from(`\r\n--${frontera}--\r\n`, 'utf8'));
+  return Buffer.concat(partes);
+}
+
 // 0.14.2: los modelos de la lista (GET /v1/models → data[].id), solo los que tienen un nombre que se entiende.
 export function modelosDeLista(json) {
   const lista = Array.isArray(json?.data) ? json.data : [];
@@ -179,6 +214,29 @@ export const openai = Object.freeze({
       return resultado({ motivo: 'ok', estado, uso, json: { audio }, idPeticion, http: status });
     }
     return resultado({ motivo: motivoDeError(status, json), estado: 'fallida', idPeticion, http: status, detalle: { tipo: json?.error?.type, codigo: json?.error?.code } });
+  },
+
+  // 0.14.50: el dictado de la «Práctica en vivo» (solo ChatGPT): la grabación del alumno pasada a texto. Multipart (el
+  // archivo tal cual, nunca en JSON); la respuesta es JSON { text, usage }. tipoCuerpo: el Content-Type con su frontera.
+  pedidoTranscripcion({ modelo, audio, tipo, idioma, pista, frontera }) {
+    return { ruta: '/v1/audio/transcriptions', metodo: 'POST', cuerpoCrudo: multipartDictado({ modelo, audio, tipo, idioma, pista, frontera }), tipoCuerpo: `multipart/form-data; boundary=${frontera}` };
+  },
+  leerTranscripcion(resp) {
+    const antes = resultadoSinRespuesta(resp);
+    if (antes) return antes;
+    const { status, json } = resp;
+    const idPeticion = idPeticionDe(resp.cabeceras?.['x-request-id']);
+    if (status >= 200 && status <= 299) {
+      const uso = resp.demasiado ? null : leerUsoDictado(json?.usage);
+      const estado = uso ? 'hecha' : 'desconocida';
+      const texto = json?.text;
+      if (resp.demasiado || !uso || typeof texto !== 'string') return resultado({ motivo: 'respuesta_no_valida', estado, uso, idPeticion, http: status });
+      return resultado({ motivo: 'ok', estado, uso, texto, json: { texto }, idPeticion, http: status });
+    }
+    // Un 400 que no es «sin saldo» casi siempre es la grabación (vacía, cortada, un formato raro): no pausa la clave.
+    let motivo = motivoDeError(status, json);
+    if (motivo === 'pedido_no_valido' && status === 400) motivo = 'audio_no_valido';
+    return resultado({ motivo, estado: 'fallida', idPeticion, http: status, reintentarMs: motivo === 'limite_proveedor' ? esperaPedida(resp.cabeceras?.['retry-after']) : null, detalle: { tipo: json?.error?.type, codigo: json?.error?.code } });
   },
 
   cabeceras(clave) {
