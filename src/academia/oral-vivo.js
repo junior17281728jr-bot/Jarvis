@@ -365,10 +365,10 @@ export function calificarSistema(paquete, it, texto, { db = null, seguimiento = 
   const d = paquete && it ? itemDe(paquete, it) : null;
   if (!d) return null;
   const ejemplos = db ? ejemplosDe(db, it) : [];
-  if (ejemplos.length) {
-    const aprendido = calificarAprendido(d.x, texto, ejemplos, { seguimiento, previo });
-    if (aprendido) return aprendido;
-  }
+  // 0.14.52 (lo pidió el dueño: «enséñale al sistema»): los números del libro se revisan en TODAS las preguntas, aunque
+  // la IA todavía no haya calificado ninguna («3 aterrizajes en 60 días» cuando el libro dice 90 ya no sale «bien»).
+  const aprendido = calificarAprendido(d.x, texto, ejemplos, { seguimiento, previo });
+  if (aprendido) return aprendido;
   const s = sugerencia(texto, d.x);
   if (!s) return null;
   const dijo = s.dijo.slice(0, 4).join(', ');

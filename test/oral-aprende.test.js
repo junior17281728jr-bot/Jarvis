@@ -39,7 +39,7 @@ test('normalizar: sin acentos ni signos, raíces cortas, números (también con 
 });
 
 test('sin nada aprendido: exactamente lo de antes (con o sin la base)', () => conBase(db => {
-  for (const [it, texto] of [[LLEVAR, 'Puedo llevar a mis amigos pero no cobrar'], [LLEVAR, 'Llevo amigos'], [LLEVAR, 'No sé'], [ATERRIZAJES, '3 aterrizajes en 60 días'], [DATUM, 'Es una referencia cero donde se mide']]) {
+  for (const [it, texto] of [[LLEVAR, 'Puedo llevar a mis amigos pero no cobrar'], [LLEVAR, 'Llevo amigos'], [LLEVAR, 'No sé'], [ATERRIZAJES, '3 aterrizajes en 90 días'], [DATUM, 'Es una referencia cero donde se mide']]) {
     assert.deepEqual(calificarSistema(ORAL, it, texto, { db }), calificarSistema(ORAL, it, texto), texto);
     assert.equal(calificarSistema(ORAL, it, texto, { db }).aprendido, undefined);
   }
@@ -107,8 +107,13 @@ test('sin IA: una respuesta casi igual a una que ya calificó la IA lleva su ver
 }));
 
 test('sin IA, con algo aprendido: los números que el libro no dice bajan la nota (en aviación, los números cuentan)', () => conBase(db => {
-  // Lo de antes (sin aprender): «bien» aunque dijo 60 días (el libro: 3 aterrizajes en 90 días).
-  assert.equal(calificarSistema(ORAL, ATERRIZAJES, '3 aterrizajes en 60 días').veredicto, 'bien');
+  // 0.14.52: sin aprender nada, los números del libro ya cuentan: 60 días (el libro: 3 aterrizajes en 90) no es «bien».
+  const sinAprender = calificarSistema(ORAL, ATERRIZAJES, '3 aterrizajes en 60 días');
+  assert.equal(sinAprender.veredicto, 'casi');
+  assert.match(sinAprender.falto, /60/);
+  assert.equal(sinAprender.aprendido, undefined, 'no usó nada aprendido de la IA');
+  assert.equal(calificarSistema(ORAL, ATERRIZAJES, '5 aterrizajes en 60 días').veredicto, 'mal');
+  assert.equal(calificarSistema(ORAL, ATERRIZAJES, '3 aterrizajes en 90 días').veredicto, 'bien');
   aprenderDeIa(db, { it: ATERRIZAJES, texto: 'Tres aterrizajes en noventa días', g: ia('bien') });
   // La misma (con números en letras): «bien» aprendido.
   const ok = calificarSistema(ORAL, ATERRIZAJES, '3 aterrizajes en 90 días', { db });

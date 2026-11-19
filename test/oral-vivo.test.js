@@ -246,17 +246,21 @@ test('sin IA (apagada o «IA en pausa» a mitad): igual funciona, nada va al pro
       sinRespuestas(r, 'sin IA');
       vs.push(r.veredicto);
     }
-    assert.deepEqual(vs, ['bien', 'mal']);
+    // 0.14.52: los números del libro cuentan siempre: la respuesta de «todo el capítulo» trae números de OTRAS preguntas
+    // (24 meses, 90 días…): en una pregunta con números en el libro sale «casi»; en la que no tiene números, «bien».
+    // Nunca «mal» (las ideas clave sí están); la de «no me acuerdo», siempre «mal».
+    assert.ok(['bien', 'casi'].includes(vs[0]), vs[0]);
+    assert.equal(vs[1], 'mal');
     assert.equal(pedidosIa(c).length, 0);
     const f = (await pedir(c.base, 'POST', '/api/academia/oral/vivo/terminar', { galleta: c.z, datos: { sesion: s.sesion, auto: { 1: 'bien', 2: 'bien' } } })).datos;
     assert.deepEqual(f.pendientes, [], 'nada que calificarse él: lo calificó el sistema');
     assert.equal(f.cerrada, true);
-    assert.deepEqual(f.revision.map(x => x.veredicto), ['bien', 'mal', null], 'lo que se pone él no cambia lo del sistema; la que no respondió no se califica sola');
+    assert.deepEqual(f.revision.map(x => x.veredicto), [vs[0], 'mal', null], 'lo que se pone él no cambia lo del sistema; la que no respondió no se califica sola');
     assert.ok(f.revision.every(x => x.respuesta_en), 'al final: la respuesta del libro');
     // Ya cerrada: no se puede responder la que faltaba (cuenta «mal»).
     assert.equal((await pedir(c.base, 'POST', '/api/academia/oral/vivo/responder', { galleta: c.z, datos: { sesion: s.sesion, i: 2, texto: 'la del libro' } })).codigo, 409);
     const g = f;
-    assert.equal(g.resumen.pct, 33, 'bien 1 de 3');
+    assert.equal(g.resumen.pct, vs[0] === 'bien' ? 33 : 16, 'bien 1 de 3 (casi cuenta media)');
     assert.equal(g.resumen.aprobado, false, '33 % < 90 %');
     assert.equal(g.resumen.cierre, null, 'sin IA, sin mensaje de la IA (el de la app sí)');
     assert.equal(pedidosIa(c).length, 0);
