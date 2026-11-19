@@ -15,22 +15,24 @@ export const APRENDE = Object.freeze({
   // Parecida = Jaccard de las palabras ≥ umbral, con los MISMOS números y la misma negación. Con menos de minPalabras
   // palabras, tiene que ser exactamente igual.
   umbral: 0.8, minPalabras: 3,
-  // Una palabra aprendida: en ≥ 60 % de las «bien» (con al menos 3 «bien») y en ≤ 20 % de las «mal». Como mucho 10.
+  // Una palabra aprendida: en ≥ 60 % de las «bien» (con al menos 3 «bien») y en ≤ 20 % de las otras (casi / mal; al menos
+  // una). Como mucho 10.
   minBien: 3, enBien: 0.6, enMal: 0.2, maxClaves: 10,
 });
 const ORDEN = { mal: 0, casi: 1, bien: 2 };
 
 // ---------- Normalizar ----------
 const plano = t => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-// Los números dichos con letras (el dictado da «tres» o «three»). «un/una/one» no: casi siempre son artículos.
+// Los números dichos con letras (el dictado da «tres» o «three»). «un/una/one» no: casi siempre son artículos; «once»
+// tampoco (en inglés es «una vez»).
 const NUMEROS = Object.freeze({
-  dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15,
+  dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, doce: 12, quince: 15,
   veinte: 20, veinticuatro: 24, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, noventa: 90, cien: 100, ciento: 100,
   two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15,
   twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, ninety: 90, hundred: 100,
 });
-// La negación cambia todo («puede cobrar» ≠ «no puede cobrar»): siempre es un token, «~no».
-const NEGACION = new Set(['no', 'not', 'nunca', 'never', 'jamas', 'ni', 'nor', 'ningun', 'ninguno', 'ninguna', 'nadie', 'nada', 'none', 'nothing', 'cannot']);
+// La negación cambia todo («puede cobrar» ≠ «no puede cobrar»; «con instructor» ≠ «sin instructor»): siempre es un token, «~no».
+const NEGACION = new Set(['no', 'not', 'sin', 'without', 'nunca', 'never', 'jamas', 'ni', 'nor', 'ningun', 'ninguno', 'ninguna', 'nadie', 'nada', 'none', 'nothing', 'cannot']);
 const RELLENO = new Set(('para pero como cuando donde desde hasta sobre entre este esta estos estas that this with from have when what which your will must they them their there then than into been were also only more most such each very the and for are can may you una unos unas los las del con por que sin muy mas tiene tienen debe deben puede pueden hace hacer cada todo toda todos todas otro otra antes despues siempre solo '
   + 'mis sus tus nos les son hay fue era ser estar esto eso ese esa aqui alli asi creo pues bueno entonces tambien porque yo tu el ella ellos usted '
   + 'its our his her has had was but all any out about would could should shall does did just like well think').split(' '));
@@ -121,21 +123,25 @@ export function ejemplosDe(db, it) {
   } catch { return []; }
 }
 
-// La respuesta más parecida ya calificada por la IA (de la misma parte: primera o repregunta). Si varias pasan el umbral y
-// no dicen lo mismo, gana la más estricta. → { veredicto, ejemplo, parecido } o null.
+// La respuesta más parecida ya calificada por la IA (de la misma parte: primera o repregunta). Si ya calificó una IGUAL,
+// esa manda; si no, entre las que pasan el umbral y no dicen lo mismo, gana la más estricta. → { veredicto, ejemplo, parecido } o null.
 export function buscarParecida(ejemplos, tokens, seguimiento = false) {
-  const pasan = ejemplos.filter(e => e.seguimiento === seguimiento).map(e => ({ e, s: parecido(tokens, e.tokens) })).filter(x => x.s >= APRENDE.umbral);
+  let pasan = ejemplos.filter(e => e.seguimiento === seguimiento).map(e => ({ e, s: parecido(tokens, e.tokens) })).filter(x => x.s >= APRENDE.umbral);
   if (!pasan.length) return null;
+  const iguales = pasan.filter(x => x.s === 1 && mismos(x.e.tokens, tokens));
+  if (iguales.length) pasan = iguales;
   const veredicto = pasan.reduce((v, x) => (ORDEN[x.e.veredicto] < ORDEN[v] ? x.e.veredicto : v), 'bien');
   const mejor = pasan.filter(x => x.e.veredicto === veredicto).sort((a, b) => b.s - a.s)[0];
   return { veredicto, ejemplo: mejor.e, parecido: mejor.s };
 }
 
-// Las palabras (raíces) que la IA premió seguido en esa pregunta y casi nunca en las «mal».
-export function clavesAprendidas(ejemplos) {
+// Las palabras (raíces) que la IA premió seguido en esa pregunta y casi nunca en las que no fueron «bien» (hace falta al
+// menos una de esas para comparar: si no, saldrían palabras de todas, como «piloto»). Nunca las de la pregunta misma.
+export function clavesAprendidas(ejemplos, pregunta = '') {
   const bien = ejemplos.filter(e => e.veredicto === 'bien');
-  const mal = ejemplos.filter(e => e.veredicto === 'mal');
-  if (bien.length < APRENDE.minBien) return [];
+  const mal = ejemplos.filter(e => e.veredicto !== 'bien');
+  if (bien.length < APRENDE.minBien || !mal.length) return [];
+  const dePregunta = new Set(normalizar(pregunta));
   const cuenta = lista => {
     const m = new Map();
     for (const e of lista) for (const k of new Set(e.tokens)) if (k !== '~no') m.set(k, (m.get(k) ?? 0) + 1);
@@ -144,7 +150,7 @@ export function clavesAprendidas(ejemplos) {
   const enBien = cuenta(bien);
   const enMal = cuenta(mal);
   return [...enBien.entries()]
-    .filter(([k, n]) => n / bien.length >= APRENDE.enBien && (!mal.length || (enMal.get(k) ?? 0) / mal.length <= APRENDE.enMal))
+    .filter(([k, n]) => !dePregunta.has(k) && n / bien.length >= APRENDE.enBien && (enMal.get(k) ?? 0) / mal.length <= APRENDE.enMal)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, APRENDE.maxClaves).map(([k]) => k);
 }

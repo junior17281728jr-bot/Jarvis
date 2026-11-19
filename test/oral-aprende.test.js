@@ -92,12 +92,18 @@ test('sin IA: una respuesta casi igual a una que ya calificó la IA lleva su ver
   const seg = calificarSistema(ORAL, LLEVAR, 'No, nunca por dinero', { db, seguimiento: true, previo: 'Puedo llevar gente, creo' });
   assert.deepEqual([seg.veredicto, seg.aprendido, seg.linea], ['bien', true, 'Eso, nunca por dinero.']);
   assert.notEqual(calificarSistema(ORAL, LLEVAR, 'Puedo llevar gente creo. No, nunca por dinero', { db }).linea, 'Eso, nunca por dinero.', 'una primera respuesta no usa las de repregunta');
-  // Si la IA no se pone de acuerdo con la misma respuesta, gana la más estricta.
+  // Dos parecidas que no dicen lo mismo: gana la más estricta; pero si ya calificó una IGUAL, esa manda.
   conBase(db2 => {
-    aprenderDeIa(db2, { it: LLEVAR, texto: 'Llevo amigos y familia sin cobrar nada nunca', g: ia('bien') });
-    aprenderDeIa(db2, { it: LLEVAR, texto: 'Llevo amigos y familia sin cobrar nada nunca, de verdad', g: ia('casi') });
-    assert.equal(calificarSistema(ORAL, LLEVAR, 'Llevo a amigos y familia, sin cobrar nada nunca', { db: db2 }).veredicto, 'casi');
+    const base = 'Llevo amigos familia vecinos compañeros primos tíos sin cobrar dinero';
+    aprenderDeIa(db2, { it: LLEVAR, texto: base, g: ia('bien') });
+    aprenderDeIa(db2, { it: LLEVAR, texto: `${base} verdad`, g: ia('casi') });
+    const cerca = calificarSistema(ORAL, LLEVAR, `${base} gratis`, { db: db2 });
+    assert.deepEqual([cerca.veredicto, cerca.aprendido], ['casi', true]);
+    assert.equal(calificarSistema(ORAL, LLEVAR, base, { db: db2 }).veredicto, 'bien', 'la igual manda');
+    assert.equal(calificarSistema(ORAL, LLEVAR, `${base} verdad`, { db: db2 }).veredicto, 'casi');
   });
+  // «con» ≠ «sin».
+  assert.equal(parecido(normalizar('Vuelo con instructor cada mes'), normalizar('Vuelo sin instructor cada mes')), 0);
 }));
 
 test('sin IA, con algo aprendido: los números que el libro no dice bajan la nota (en aviación, los números cuentan)', () => conBase(db => {
@@ -113,6 +119,12 @@ test('sin IA, con algo aprendido: los números que el libro no dice bajan la not
   assert.match(casi.linea, /60/);
   assert.equal(calificarSistema(ORAL, ATERRIZAJES, '5 aterrizajes en 60 días', { db }).veredicto, 'mal');
   assert.equal(calificarSistema(ORAL, ATERRIZAJES, 'Five landings in sixty days', { db }).veredicto, 'mal');
+  // Si la IA ya calificó «bien» una respuesta parecida con ese mismo número (la parte 61, que el libro no dice), no se baja.
+  aprenderDeIa(db, { it: ATERRIZAJES, texto: 'Tres aterrizajes completos en noventa días según la parte 61', g: ia('bien') });
+  const p61 = calificarSistema(ORAL, ATERRIZAJES, 'Tres aterrizajes completos en los noventa días, según la parte 61', { db });
+  assert.deepEqual([p61.veredicto, p61.aprendido], ['bien', true]);
+  // «once» no es un número (en inglés es «una vez»).
+  assert.ok(!normalizar('once a year').some(k => k.startsWith('#')));
 }));
 
 test('sin IA: las palabras que la IA premió seguido (y casi nunca en las «mal») se suman a las del libro', () => conBase(db => {
@@ -124,6 +136,13 @@ test('sin IA: las palabras que la IA premió seguido (y casi nunca en las «mal�
   const g = calificarSistema(ORAL, DATUM, texto, { db });
   assert.deepEqual([g.veredicto, g.sistema, g.aprendido], ['bien', true, true]);
   assert.match(g.bienDicho, /referencia/, 'lo que dijo él, como lo dijo');
+  // Lo aprendido nunca baja una nota: lo que antes era «bien» sigue «bien».
+  for (const t of ['Una línea imaginaria desde donde se mide', 'Línea imaginaria, el brazo', 'Es una línea imaginaria de referencia']) {
+    assert.equal(calificarSistema(ORAL, DATUM, t).veredicto, 'bien', t);
+    assert.equal(calificarSistema(ORAL, DATUM, t, { db }).veredicto, 'bien', t);
+  }
+  // Sin ninguna «casi» o «mal» para comparar, ninguna palabra aprendida (si no, saldrían palabras de todas).
+  assert.deepEqual(clavesAprendidas(ejemplosDe(db, DATUM).filter(e => e.veredicto === 'bien')), []);
   // Con menos de 3 «bien», nada aprendido como palabra clave.
   assert.deepEqual(clavesAprendidas(ejemplosDe(db, DATUM).filter(e => e.veredicto !== 'bien').concat(ejemplosDe(db, DATUM).filter(e => e.veredicto === 'bien').slice(0, 2))), []);
 }));
