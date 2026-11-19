@@ -9,7 +9,9 @@ export const CABECERAS_SEGURIDAD = {
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
   // Solo se cargan archivos de OPORTIA; nada de código incrustado ni de otros sitios.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
+  // 0.14.53: 'wasm-unsafe-eval' deja compilar WebAssembly (el dictado Whisper en el navegador, servido desde /voz/); sigue
+  // sin dejar eval ni código incrustado.
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
 };
 
 export class ErrorHttp extends Error {

@@ -22,7 +22,7 @@ import { precioPara, costoMicro } from '../src/ia/precios.js';
 import { PROPOSITOS } from '../src/ia/propositos.js';
 import { elegirProveedor, modelosDe } from '../src/ia/presupuesto.js';
 import { leerConfigIa } from '../src/ia/config.js';
-import { tipoGrabacion, tipoParaEnviar, relojGrabacion, agregarTexto, nivelDe, crearGrabacion, errorMicrofono, esIosNavegador, modoDictado, pistaTecladoDe, hayTexto, ESPERA_TEXTO_MS } from '../public/oral-vivo-vista.js';
+import { tipoGrabacion, tipoParaEnviar, relojGrabacion, agregarTexto, nivelDe, crearGrabacion, errorMicrofono, esIosNavegador, modoDictado, hayTexto, ESPERA_TEXTO_MS } from '../public/oral-vivo-vista.js';
 
 const ORAL = paqueteOralMuestra();
 const MARCA = 'MARCA-DE-LA-GRABACION-0150';
@@ -283,41 +283,44 @@ test('la pantalla (sin navegador): el formato, el reloj, agregar el texto, las b
   assert.ok(!/innerHTML|style=|\.style\./.test(vista));
   for (const n of ['es', 'en']) {
     const i18n = JSON.parse(readFileSync(new URL(`../public/i18n/${n}.json`, import.meta.url), 'utf8'));
-    for (const k of ['grabando', 'escribiendo', 'escrito', 'muy_corto', 'grabar_no', 'grabar_fallo', 'grabar_vacio', 'sin_red_grabar', 'teclado', 'teclado_movil']) assert.ok(i18n[`vivo.estado.${k}`], `${n}: vivo.estado.${k}`);
+    for (const k of ['grabando', 'escribiendo', 'escrito', 'muy_corto', 'grabar_no', 'grabar_fallo', 'grabar_vacio', 'sin_red_grabar', 'preparando', 'dictado_no']) assert.ok(i18n[`vivo.estado.${k}`], `${n}: vivo.estado.${k}`);
     assert.match(i18n['vivo.estado.grabando'], /\{tiempo\}/);
-    for (const k of ['vivo.pista.movil', 'vivo.pista.pc', 'vivo.dictar.nota_teclado', 'vivo.estado.habla', 'vivo.privacidad_grabar', 'vivo.dictar.nota_grabar', 'error.muy_corto', 'error.grabacion_no_valida']) assert.ok(i18n[k], `${n}: ${k}`);
+    for (const k of ['vivo.privacidad_equipo', 'vivo.estado.habla', 'vivo.privacidad_grabar', 'vivo.dictar.nota_grabar', 'error.muy_corto', 'error.grabacion_no_valida']) assert.ok(i18n[k], `${n}: ${k}`);
   }
 });
 
-// 0.14.50 (lo normal: sin ChatGPT): el dictado del TECLADO es lo que funciona; el del navegador solo donde puede, y nunca
-// «Escuchando…» sin texto.
+// 0.14.50 (lo normal: sin ChatGPT): nunca «Escuchando…» sin texto. 0.14.53: el micrófono de la app escribe con Whisper en
+// el equipo; el dictado del navegador solo donde Whisper no puede (y nunca en el iPhone); ya no se manda a usar el teclado.
 const IPHONE = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1', platform: 'iPhone', maxTouchPoints: 5 };
 const IPHONE_CHROME = { ...IPHONE, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 CriOS/120.0 Mobile/15E148 Safari/604.1' };
 const IPAD = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5 };
 const ANDROID = { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36', platform: 'Linux armv8l', maxTouchPoints: 5 };
 const MAC = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0 Safari/537.36', platform: 'MacIntel', maxTouchPoints: 0 };
-test('sin ChatGPT: en el iPhone el micrófono abre el teclado (nunca el dictado del navegador); en la compu o Android lo intenta, con la pista del teclado', () => {
+test('sin ChatGPT: Whisper en el equipo; el dictado del navegador solo sin Whisper (nunca en el iPhone); si nada, «ninguno»', () => {
   for (const nav of [IPHONE, IPHONE_CHROME, IPAD]) {
-    assert.equal(modoDictado({ hayReconocimiento: true, nav }), 'teclado', nav.userAgent);
-    assert.equal(pistaTecladoDe(nav), 'vivo.pista.movil');
+    assert.equal(modoDictado({ whisper: true, hayReconocimiento: true, nav }), 'whisper', nav.userAgent);
+    assert.equal(modoDictado({ hayReconocimiento: true, nav }), 'ninguno', `${nav.userAgent}: nunca el dictado del navegador`);
   }
   assert.equal(modoDictado({ hayReconocimiento: true, nav: ANDROID }), 'navegador');
-  assert.equal(pistaTecladoDe(ANDROID), 'vivo.pista.movil');
+  assert.equal(modoDictado({ whisper: true, hayReconocimiento: true, nav: MAC }), 'whisper', 'Whisper antes que el del navegador');
   assert.equal(modoDictado({ hayReconocimiento: true, nav: MAC }), 'navegador');
-  assert.equal(modoDictado({ hayReconocimiento: false, nav: MAC }), 'teclado', 'sin dictado en el navegador (Firefox): el teclado');
-  assert.equal(pistaTecladoDe(MAC), 'vivo.pista.pc');
-  assert.equal(modoDictado({ grabar: true, hayReconocimiento: false, nav: IPHONE }), 'grabar', 'con ChatGPT: graba (también en el iPhone)');
+  assert.equal(modoDictado({ hayReconocimiento: false, nav: MAC }), 'ninguno', 'sin dictado en el navegador (Firefox viejo) ni Whisper');
+  assert.equal(modoDictado({ grabar: true, whisper: true, hayReconocimiento: false, nav: IPHONE }), 'grabar', 'con ChatGPT: graba (también en el iPhone)');
   assert.equal(ESPERA_TEXTO_MS, 6000);
   const ev = lista => ({ results: lista.map(x => [{ transcript: x }]) });
   assert.equal(hayTexto(ev(['', '  '])), false);
   assert.equal(hayTexto(ev(['', 'hola'])), true);
   assert.equal(hayTexto({}), false);
   const es = JSON.parse(readFileSync(new URL('../public/i18n/es.json', import.meta.url), 'utf8'));
-  assert.match(es['vivo.pista.movil'], /🎤/);
-  assert.match(es['vivo.pista.pc'], /Fn.*Windows\+H/);
-  for (const k of ['vivo.estado.no_llega_audio', 'vivo.estado.brave']) assert.equal(es[k], undefined, `${k}: el mensaje largo ya no está`);
+  // 0.14.53: nada de «presiona dos veces Fn», «Windows+H» ni «Ajustes → Teclado → Dictado» (lo pidió el dueño).
+  for (const k of ['vivo.estado.no_llega_audio', 'vivo.estado.brave', 'vivo.pista.movil', 'vivo.pista.pc', 'vivo.estado.teclado', 'vivo.estado.teclado_movil', 'vivo.dictar.nota_teclado', 'vivo.placeholder.teclado']) assert.equal(es[k], undefined, `${k}: el mensaje ya no está`);
+  for (const n of ['es', 'en']) {
+    const i18n = JSON.parse(readFileSync(new URL(`../public/i18n/${n}.json`, import.meta.url), 'utf8'));
+    for (const [k, v] of Object.entries(i18n)) if (k.startsWith('vivo.')) assert.doesNotMatch(v, /\bFn\b|Windows\+H|Ajustes|Settings/, `${n}: ${k}`);
+    assert.match(i18n['vivo.estado.preparando'], /\{mb\}.*\{pct\}/);
+  }
   const vista = readFileSync(new URL('../public/oral-vivo-vista.js', import.meta.url), 'utf8');
-  assert.ok(!/no_llega_audio|Ajustes del Sistema/.test(vista));
+  assert.ok(!/no_llega_audio|Ajustes del Sistema|vivo-pista-teclado|vivo\.pista\./.test(vista));
   // «Escuchando…» solo al llegar texto (antes, al empezar y al oír algo).
   assert.match(vista, /r\.onspeechstart = \(\) => \{ oyoAlgo = true; \};/);
   assert.match(vista, /if \(hayTexto\(ev\)\) \{ huboTexto = true; clearTimeout\(vigia\); if \(estado\.dataset\.estado !== 'escuchando'\) ponerEstado\('escuchando'\); \}/);

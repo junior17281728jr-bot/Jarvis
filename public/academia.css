@@ -1528,8 +1528,6 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .vivo-nivel[data-nivel="2"] i:nth-child(2), .vivo-nivel[data-nivel="3"] i:nth-child(2), .vivo-nivel[data-nivel="4"] i:nth-child(2) { height: 14px; }
 .vivo-nivel[data-nivel="3"] i:nth-child(3), .vivo-nivel[data-nivel="4"] i:nth-child(3) { height: 20px; }
 .vivo-nivel[data-nivel="4"] i:nth-child(4) { height: 26px; }
-.vivo-pista-teclado { margin: 6px 0 0; color: var(--oral-texto); font-size: .92em; }
-.vivo-pista-teclado.resaltada { font-weight: 700; }
 .vivo-estado[data-estado="pensando"]::after { content: ' …'; }
 .vivo-veredicto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 14px; font-size: 1.1rem; }
 .vivo-veredicto.tono-bien { background: var(--verde-suave); color: var(--verde-texto); }

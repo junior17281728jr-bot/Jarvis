@@ -33,6 +33,7 @@ import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
 import { estadoTerminos } from './cuentas/terminos.js';
+import { crearVoz } from './academia/voz.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUB = join(RAIZ, 'public');
@@ -121,8 +122,13 @@ function texto(res, codigo, mensaje) {
 // opciones.copias: límites de las rutas de las copias y del Telegram (solo para pruebas).
 // opciones.academia: límites, azar y reloj de las rutas de la Academia (solo para pruebas).
 // opciones.confirmar: límites de la contraseña que se pide otra vez para lo delicado (solo para pruebas).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {} } = {}) {
+// 0.14.53: opciones.voz: los archivos del dictado en el equipo del alumno (src/academia/voz.js); sin él, uno con la lista
+// del repositorio (que no baja nada hasta que la pantalla lo pide).
+export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {}, voz = null } = {}) {
   const rutas = crearRuteador();
+  const dictadoVoz = voz ?? (config ? crearVoz({ config }) : null);
+  // 0.14.53: el estado de los archivos del dictado (y, si faltan, el servidor empieza a bajarlos).
+  rutas.agregar('GET', '/api/academia/voz/estado', async () => (dictadoVoz ? { codigo: 200, datos: await dictadoVoz.estado() } : { codigo: 200, datos: { estado: 'no', motivo: 'sin_config' } }));
   const limitesConfirmar = { ...crearLimitesConfirmar(), ...confirmar };
   // 0.12.7: «terminó una sesión de estudio» (terminar un intento, una lección leída, cerrar la app): el instructor lo
   // usa para preparar la PRÓXIMA clase (src/api/instructor.js). Nunca hace fallar el pedido del alumno.
@@ -225,17 +231,25 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
       res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', ...CABECERAS_SEGURIDAD });
       return res.end(sw);
     }
+    // 0.14.53: los archivos del dictado (la librería, el wasm y el modelo): solo para quien entró.
+    if (ruta.startsWith('/voz/')) {
+      if (!db || !dictadoVoz || !leerSesion(db, leerGalleta(req))) return texto(res, 404, 'No existe');
+      return void (await dictadoVoz.servir(req, res, ruta));
+    }
     if (servirArchivo(res, PUB, ruta)) return;
     // Rutas sin extensión (por ejemplo /inicio) muestran la app; lo demás no existe.
     if (!extname(ruta)) return servirArchivo(res, PUB, '/');
     return texto(res, 404, 'No existe');
   }
 
-  return createServer((req, res) => {
+  const servidor = createServer((req, res) => {
     atender(req, res).catch(error => {
       console.error('Error atendiendo', req.method, req.url, error);
       if (!res.headersSent) enviarJson(res, 500, { error: 'error_interno' });
       else res.end();
     });
   });
+  // 0.14.53: src/server.js empieza a bajar los archivos del dictado en segundo plano (nunca en las pruebas).
+  servidor.voz = dictadoVoz;
+  return servidor;
 }

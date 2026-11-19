@@ -3,6 +3,7 @@
 // No borra ni modifica ningún archivo que no sea de OPORTIA.
 import { crearServidor, VERSION, HUELLA } from './app.js';
 import { leerConfig } from './nucleo/config.js';
+import { crearVoz } from './academia/voz.js';
 import { abrirBase } from './nucleo/db.js';
 import { crearSupervisor, quitarArchivosCore } from './tareas/supervisor.js';
 import { registrarArranque, registrarCierre } from './tareas/modo-seguro.js';
@@ -28,7 +29,8 @@ try {
 }
 
 const supervisor = db ? crearSupervisor({ db, config, version: VERSION, codigo: HUELLA }) : null;
-const servidor = crearServidor({ db, config, supervisor });
+// 0.14.53: los archivos del dictado en el equipo del alumno (src/academia/voz.js), con sus avisos en la consola.
+const servidor = crearServidor({ db, config, supervisor, voz: crearVoz({ config, registro: console }) });
 // Fase 1, parte e: el que manda los avisos graves al Telegram del dueño. Vive en ESTE proceso (no en el trabajador): así
 // llegan también en modo seguro o con el trabajador caído. Empieza después de abrir el puerto y nunca lo traba.
 const avisador = db ? crearAvisador({ db, config, registro: console, pagoServidor: true }) : null;
@@ -60,6 +62,9 @@ servidor.listen(config.puerto, config.host, () => {
     console.error('No se pudo anotar el arranque:', error);
   }
   supervisor.iniciar();
+  // 0.14.53: a los 2 minutos de arrancar, si faltan, se bajan los archivos del dictado (una vez; después quedan en el
+  // disco). Nunca en modo de prueba.
+  if (!config.modoPrueba) setTimeout(() => { servidor.voz?.preparar().catch(() => {}); }, 120_000).unref();
   // 0.14.7 (lo pidió el dueño): con la clave de Claude ya probada, «Mejorar todo con Claude» empieza solo, UNA vez.
   try {
     if (autoEmpezarTodo(db, config, { guardarConfig: guardarConfigFabrica })) supervisor.despertar?.();

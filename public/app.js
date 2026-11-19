@@ -39,7 +39,9 @@ import { olvidar, crearEspera, conTope } from './navegacion.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
-if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+// 0.14.53: menos la caja del dictado en el equipo («oportia-voz», public/voz-trabajador.js): si no, el modelo (~100 MB) se
+// bajaba otra vez en cada visita.
+if (window.caches) caches.keys().then(ks => ks.filter(k => k !== 'oportia-voz').forEach(k => caches.delete(k))).catch(() => {});
 
 const raiz = document.getElementById('app');
 const catalogos = {};
