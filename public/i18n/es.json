@@ -2245,6 +2245,7 @@
   "acad.grupo.admin.linea": "Cada alumno ve en qué materia va cada compañero (avance general, racha y medallas; nunca notas, errores ni conexión). Cada alumno se puede ocultar.",
   "acad.grupo.admin.encendido": "Encendido",
   "acad.grupo.admin.apagado": "Apagado",
+  "acad.inicio.mas": "Más para ti",
   "acad.saludo.linea": "Tu meta de hoy: {n} pasos del camino.",
   "acad.avance": "Avance",
   "acad.oir": "Oír «{palabra}»",

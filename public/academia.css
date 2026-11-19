@@ -804,7 +804,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .panel-salto p { font-size: 17px; font-weight: 700; margin: 0 0 12px; }
 /* 0.14.19: «Convalidada por examen ✓» y «¿Ya lo sabes? Toma el examen y pásala» */
 .banner-convalidada { display: inline-block; margin: 8px 0 0; padding: 4px 10px; border-radius: 99px; font-size: 13px; font-weight: 800; background: #ffffff; color: var(--verde-borde); }
-.convalidar-caja { display: grid; gap: 6px; justify-items: center; text-align: center; margin: 12px 0 4px; }
+.convalidar-caja { display: grid; gap: 6px; justify-items: center; text-align: center; margin: 8px 0 2px; }
 .convalidar-caja .convalidar-boton { width: 100%; max-width: 420px; }
 .convalidar-aviso { margin: 0; max-width: 420px; }
 .saltar-regla { font-weight: 700; margin: 6px 0; }
@@ -1768,3 +1768,8 @@ details.biblio-por-pagina summary { min-height: 44px; display: flex; align-items
 .compe-credito { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: start; overflow-wrap: anywhere; }
 .compe-credito p { margin: 0 0 2px; }
 .compe-credito-img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; background: #dfe7f3; }
+
+/* 0.14.49: lo que no es el camino va al final del inicio, separado. */
+.inicio-mas { margin: 28px 0 8px; display: grid; gap: 12px; }
+.inicio-mas-titulo { font-size: 1.1rem; margin: 0 0 2px; color: var(--texto-suave, inherit); }
+@media (min-width: 900px) { .inicio-mas { max-width: 640px; margin-left: auto; margin-right: auto; width: 100%; } }

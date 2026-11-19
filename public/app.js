@@ -4173,24 +4173,30 @@ async function pantallaInicio() {
       vacia || m.estado === 'bloqueada' ? null : extrasMateria(m),
       vacia ? null : senderoMateria(m, n, siguiente));
   });
+  // 0.14.49 (lo pidió el dueño: «en el inicio hay mucha cosa; debe ser fácil, y lo demás de último»): arriba solo el
+  // saludo, «Continuar» y el camino; el repaso, Mi repaso, la Competencia, el tutor, el instructor y el grupo van al final.
   const hola = el('div', { class: 'saludo' },
     el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
     el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
     // 0.12.2: «Continuar» = donde quedó (la última clase que abrió, en su tarjeta); tocar un nodo abre ESE nodo.
     botonContinuar(c, siguiente),
+    // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
+    lineaHumorVista(c.humor));
+  tutorUi().olvidar();
+  const masAbajo = el('section', { class: 'inicio-mas', 'aria-labelledby': 'inicio-mas-titulo' },
+    el('h2', { class: 'inicio-mas-titulo', id: 'inicio-mas-titulo', texto: t('acad.inicio.mas') }),
     c.repaso ? botonRepaso(c.repaso, 'chico') : null,
     // 0.12.2: «Mi repaso» (todo lo que falló), siempre visible; el número de puntos para repasar llega con el instructor.
     entradaMiRepaso(),
     // 0.14.38: la Competencia (6 rondas de trivia de aviación).
     entradaCompetencia(),
-    // 0.12.0: la racha perdida o el regreso, con humor (si está encendido).
-    lineaHumorVista(c.humor));
-  tutorUi().olvidar();
-  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, tutorUi().tarjetaTutor(), instructorUi().enInicio(), avisoMuestra(c.paquete), panelGrupo(c.grupo, { compacto: true }),
-    // 0.12.2: qué quiere decir el color de cada nodo (una vez, arriba del Camino).
-    leyendaCamino(),
+    tutorUi().tarjetaTutor(), instructorUi().enInicio(), panelGrupo(c.grupo, { compacto: true }),
+    // 0.12.2: qué quiere decir el color de cada nodo (0.14.49: al final, con lo demás).
+    leyendaCamino());
+  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete),
     // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
-    plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente })));
+    plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente }),
+    masAbajo));
   // 0.8.0: el próximo tema y el progreso se piden ya (sin esperar): al tocarlos se abren enseguida.
   if (siguiente?.tipo === 'tema') adelantar(`/api/academia/temas/${encodeURIComponent(siguiente.materia)}/${encodeURIComponent(siguiente.tema)}`);
   adelantar('/api/academia/progreso');
@@ -5170,9 +5176,9 @@ function saltarAlExamen(m) {
 let umbralCamino = null;
 function ofrecerConvalidar(m) {
   if (!m.examen?.saltable || m.convalidada || m.examen.aprobado || m.temas.some(x => x.estado === 'aprobado')) return null;
+  // 0.14.49: el inicio más limpio: un botón chico; la regla (90 %…) ya la explica la hoja que se abre al tocarlo.
   return el('div', { class: 'convalidar-caja materia-fuera' },
-    el('button', { type: 'button', class: 'boton-3d blanco con-icono convalidar-boton', onclick: e => hojaSaltar(m, e) }, icono('rayo', 'icono chico'), el('span', { texto: t('acad.convalidar.boton') })),
-    el('p', { class: 'suave chica convalidar-aviso', texto: t('acad.convalidar.aviso', { n: numero(umbralCamino ?? 90) }) }));
+    el('button', { type: 'button', class: 'boton-texto con-icono convalidar-boton', onclick: e => hojaSaltar(m, e) }, icono('rayo', 'icono chico'), el('span', { texto: t('acad.convalidar.boton') })));
 }
 
 // ---- Las preguntas: una por pantalla, como un ejercicio de Duolingo ----

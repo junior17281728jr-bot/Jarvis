@@ -2245,6 +2245,7 @@
   "acad.grupo.admin.linea": "Each student sees which subject each classmate is on (overall progress, streak and medals; never grades, mistakes or connection). Each student can hide.",
   "acad.grupo.admin.encendido": "On",
   "acad.grupo.admin.apagado": "Off",
+  "acad.inicio.mas": "More for you",
   "acad.saludo.linea": "Today's goal: {n} path steps.",
   "acad.avance": "Progress",
   "acad.oir": "Hear «{palabra}»",
