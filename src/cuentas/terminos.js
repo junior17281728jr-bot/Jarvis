@@ -328,10 +328,12 @@ export function contratos(db) {
   for (const f of db.prepare("SELECT clave FROM ajustes WHERE clave LIKE 'cuenta.terminos.%'").all()) {
     const usuarioId = Number(f.clave.slice('cuenta.terminos.'.length));
     if (!Number.isSafeInteger(usuarioId)) continue;
-    const u = db.prepare('SELECT nombre, activo FROM usuarios WHERE id = ?').get(usuarioId);
+    const u = db.prepare('SELECT nombre, activo, rol FROM usuarios WHERE id = ?').get(usuarioId);
     for (const x of firmasDe(db, usuarioId)) {
       lista.push({ usuarioId, n: x.n, version: x.version, versionPrivacidad: x.versionPrivacidad ?? null, firmado: x.firmado, usuario: u?.nombre ?? x.usuario ?? null,
-        bloqueado: u ? u.activo !== 1 : null, en: x.en, conFirma: Boolean(x.firmaSha256), menor: x.menor === true });
+        bloqueado: u ? u.activo !== 1 : null, en: x.en, conFirma: Boolean(x.firmaSha256), menor: x.menor === true,
+        // 0.14.54: el del administrador va aparte en la pantalla (no cuenta como alumno en «Descargar todos»).
+        admin: u?.rol === 'admin' });
     }
   }
   return lista.sort((a, b) => b.en.localeCompare(a.en));

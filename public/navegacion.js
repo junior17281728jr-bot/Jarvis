@@ -66,3 +66,11 @@ export function conTope(ms, { programar = setTimeout, cancelar = clearTimeout } 
   const reloj = programar(() => control.abort(), ms);
   return { senal: control.signal, soltar: () => cancelar(reloj) };
 }
+
+// 0.14.54: ¿esta dirección lleva el botón flotante «Tu instructor»? Solo las 4 pestañas tal cual (#inicio, #oral,
+// #progreso, #repaso; también la portada sin nada): nunca una subpantalla (#oral/vivo, #profesor, #mi-repaso…), una clase
+// ni un examen. Antes se miraba la pestaña marcada en el menú, y muchas subpantallas marcan «Camino».
+const RUTAS_INSTRUCTOR = new Set(['', 'inicio', 'oral', 'progreso', 'repaso']);
+export function rutaConInstructor(hash) {
+  return RUTAS_INSTRUCTOR.has(String(hash ?? '').replace(/^#/, '').replace(/\/+$/, ''));
+}

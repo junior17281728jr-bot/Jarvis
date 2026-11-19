@@ -37,7 +37,7 @@ export function pantallaMiRepaso(d, h) {
     el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')),
     q.superada ? insignia('bien', t('mirepaso.ya_bien')) : null,
     talCual('span', q.enunciado, 'debil-enunciado'),
-    el('span', { class: 'suave chica', texto: tn('acad.fallos_de', { n: q.fallos, veces: q.veces }) }));
+    el('span', { class: 'suave chica', texto: (Number(q.veces) === 1 ? t('acad.fallos_unica') : tn('acad.fallos_de', { n: q.fallos, veces: q.veces })) }));
   const errores = el('section', { class: 'panel repaso-errores', 'aria-labelledby': 'repaso-errores-titulo' },
     el('h2', { id: 'repaso-errores-titulo', class: 'con-icono' }, icono('atencion'), el('span', { texto: t('mirepaso.tus_errores') })),
     d.errores.length ? [

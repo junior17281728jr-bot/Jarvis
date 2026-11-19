@@ -26,7 +26,7 @@ import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tuto
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { carreraDe, nombresEnCarrera, mostrarNombresEnCarrera } from '../academia/carrera.js';
-import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe } from '../academia/examen.js';
+import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe, examenAbiertoDe } from '../academia/examen.js';
 import { tgTerminado } from '../academia/certificados.js';
 import { resumenRepasoFinal, crearRondaFinal, vistaRondaFinal, responderRondaFinal, terminarRondaFinal, oralRepasoFinal, marcarOralRepasoFinal, reiniciarOralRepasoFinal, examenAbierto } from '../academia/repaso-final.js';
 
@@ -94,7 +94,10 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     let humor = null;
     try { humor = p ? humorDelDia(db, usuario.id, reloj()) : null; } catch { humor = null; }
     const c = camino(db, usuario.id, p, reloj());
-    return { codigo: 200, datos: { ...c, ...extrasAlumno(db, usuario.id, p, reloj()), humor, oral: oralCorto(db, usuario.id, p, c) } };
+    // 0.14.54: el examen con reloj que dejó abierto (Inicio lo muestra arriba, con «Volver al examen»).
+    let examenAbierto = null;
+    try { examenAbierto = examenAbiertoDe(db, usuario.id, reloj()); } catch { examenAbierto = null; }
+    return { codigo: 200, datos: { ...c, ...extrasAlumno(db, usuario.id, p, reloj()), humor, oral: oralCorto(db, usuario.id, p, c), examenAbierto } };
   });
 
   // ---------- 0.13.1: «Preparándote para el examen oral» (src/academia/oral.js; aparte de todo lo del Test Guide) ----------

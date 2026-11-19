@@ -315,7 +315,7 @@ export function vistaAdminReportes(datos, h) {
   const cerrados = datos.reportes.filter(r => !['nuevo', 'visto'].includes(r.reporte.estado));
   return [
     el('section', { class: 'tarjeta' },
-      el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: t('reportar.admin.titulo', { n: h.numero(datos.nuevos) }) })),
+      el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: h.tn('reportar.admin.titulo', { n: h.numero(datos.nuevos) }) })),
       abiertos.length ? el('ul', { class: 'ficha-intentos' }, abiertos.map(fila)) : h.vacio('bien', t('reportar.admin.vacio'))),
     cerrados.length ? el('section', { class: 'tarjeta' }, el('h2', { texto: t('reportar.admin.cerrados') }), el('ul', { class: 'ficha-intentos' }, cerrados.map(fila))) : null,
   ];

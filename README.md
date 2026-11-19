@@ -2125,7 +2125,8 @@ restaura una copia de la 0.7.0 igual, y que al volver la 0.7.0 todo sigue. (`tes
     muestran y bloquean «Aprobar» hasta responderlas; «Volver a entender» avisa si reemplaza cambios hechos a mano y
     cualquier versión que no quedó en uso se puede volver a usar (`modo: 'version'`); si algo cambió en otro equipo, el
     proyecto se vuelve a cargar solo; si la sesión termina, al entrar otra vez vuelve al mismo lugar con lo escrito.
-  - Tema claro (por defecto), oscuro o automático en Configuración, guardado en el navegador (`public/tema.js`).
+  - Tema claro, oscuro o automático (por defecto desde la 0.14.54: sigue al equipo) en Configuración, guardado en el
+    navegador (`public/tema.js`).
   - Contraseñas: al menos 6 caracteres y nada obvio (123456, qwerty, contraseña, el nombre de la persona…).
   - Crear usuario: el administrador escribe el nombre completo y la pantalla propone el usuario (Juan Pérez → juan.perez,
     juan.perez2 si ya existe); el nombre completo queda como nombre visible.

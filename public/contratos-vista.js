@@ -5,7 +5,17 @@
 
 export function vistaListaContratos(datos, h) {
   const { el, t, numero } = h;
-  const lista = datos.contratos;
+  // 0.14.54: los de los alumnos (el del administrador va aparte, abajo: no cuenta como alumno en «Descargar todos»).
+  const lista = datos.contratos.filter(c => !c.admin);
+  const deAdmin = datos.contratos.filter(c => c.admin);
+  const fila = c => el('li', {},
+    el('a', { class: 'ficha-intento', href: `#contrato/${c.usuarioId}/${c.n}` },
+      el('span', { class: 'ficha-nota', texto: `v${c.version}` }),
+      el('span', { class: 'ficha-intento-texto' },
+        el('strong', { texto: c.firmado }),
+        el('span', { class: 'suave chica', texto: [`@${c.usuario ?? '—'}`, h.fecha(c.en), c.bloqueado ? t('admin.inactivo') : null, c.menor ? t('contratos.menor') : null, c.conFirma ? null : t('contratos.sin_dibujo')].filter(Boolean).join(' · ') })),
+      h.icono('flecha', 'icono chico')),
+    h.telegram ? h.telegram({ ruta: `/api/admin/telegram/contratos/${c.usuarioId}/${c.n}` }) : null);
   return [
     el('a', { class: 'volver con-icono', href: '#alumnos' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') })),
     el('section', { class: 'tarjeta' },
@@ -13,16 +23,12 @@ export function vistaListaContratos(datos, h) {
       el('p', { class: 'suave', texto: t('contratos.linea') }),
       lista.length ? el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos/todos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.todos', { n: numero(lista.length) }) })) : null,
       // 0.12.8: «Enviar todos a mi Telegram» (la última firma de cada alumno) y, en cada uno, «Enviar a mi Telegram».
-      lista.length && h.telegram ? el('div', { class: 'botones' }, h.telegram({ ruta: '/api/admin/telegram/contratos', texto: t('ia3.telegram.todos'), chico: false })) : null,
-      lista.length ? el('ul', { class: 'contratos-lista' }, lista.map(c => el('li', {},
-        el('a', { class: 'ficha-intento', href: `#contrato/${c.usuarioId}/${c.n}` },
-          el('span', { class: 'ficha-nota', texto: `v${c.version}` }),
-          el('span', { class: 'ficha-intento-texto' },
-            el('strong', { texto: c.firmado }),
-            el('span', { class: 'suave chica', texto: [`@${c.usuario ?? '—'}`, h.fecha(c.en), c.bloqueado ? t('admin.inactivo') : null, c.menor ? t('contratos.menor') : null, c.conFirma ? null : t('contratos.sin_dibujo')].filter(Boolean).join(' · ') })),
-          h.icono('flecha', 'icono chico')),
-        h.telegram ? h.telegram({ ruta: `/api/admin/telegram/contratos/${c.usuarioId}/${c.n}` }) : null))) : h.vacio('manual', t('contratos.vacio'))),
-  ];
+      lista.length && h.telegram ? el('div', { class: 'botones' }, h.telegram({ ruta: '/api/admin/telegram/contratos', texto: t('ia3.telegram.todos'), chico: false, confirmar: t('contratos.telegram.confirmar') })) : null,
+      lista.length ? el('ul', { class: 'contratos-lista' }, lista.map(fila)) : h.vacio('manual', t('contratos.vacio'))),
+    deAdmin.length ? el('section', { class: 'tarjeta' },
+      el('h2', { texto: t('contratos.de_admin') }),
+      el('ul', { class: 'contratos-lista' }, deAdmin.map(fila))) : null,
+  ].filter(Boolean);
 }
 
 // Un contrato como documento (para ver e imprimir). firma(c, tutor) → la dirección de la imagen de la firma.
@@ -108,7 +114,7 @@ export function vistaTodos(datos, h) {
   const hoja = el('div', { class: 'reporte-hoja contratos-todos' }, el('p', { class: 'cargando', texto: t('reporte.preparando') }));
   (async () => {
     const docs = [];
-    for (const c of datos.contratos) {
+    for (const c of datos.contratos.filter(x => !x.admin)) {
       const r = await h.api('GET', `/api/admin/contratos/${c.usuarioId}/${c.n}`);
       if (r.ok) docs.push(documentoContrato(r.datos.contrato, h));
     }

@@ -20,7 +20,7 @@ import { espacioDe } from '../cuentas/espacios.js';
 import { resumenCopias } from '../copias/estado.js';
 import { ultimaVersionMala } from '../copias/vigilar.js';
 import { estadoTelegram } from '../canales/canales.js';
-import { pendientesSoporte } from '../cuentas/soporte.js';
+import { pendientesSoporte, reportesAdmin } from '../cuentas/soporte.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const DIA_MS = 86_400_000;
@@ -89,7 +89,8 @@ export function estadoDelSistema(db, { supervisor = null, usuario = null, versio
     telegram: telegramResumido(db, config, ahora),
     actualizaciones: { versionMala: ultimaVersionMala(db) },
     // 0.9.2: los mensajes de ayuda que esperan respuesta (el número en la pestaña «Ayuda» de Administrador).
-    soporte: { pendientes: pendientesSoporte(db) },
+    // 0.14.54: y los reportes de problemas nuevos (su número en la pestaña «Reportes»; ya no cuentan en «Ayuda»).
+    soporte: { pendientes: pendientesSoporte(db), reportes: (() => { try { return reportesAdmin(db).nuevos; } catch { return 0; } })() },
   };
 }
 

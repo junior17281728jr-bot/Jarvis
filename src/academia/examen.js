@@ -38,6 +38,20 @@ export function examenDe(db, fila) {
   return fila?.tipo === 'examen' ? leerExamen(db, fila.id) : null;
 }
 
+// 0.14.54: el examen con reloj que el alumno dejó abierto (salió con la X; el reloj sigue): para Inicio, con «Volver al
+// examen». → { intento, materia, quedanSeg } del que vence primero, o null (sin examen abierto, o ya sin tiempo).
+export function examenAbiertoDe(db, usuarioId, ahoraMs = Date.now()) {
+  let mejor = null;
+  for (const f of db.prepare("SELECT * FROM academia_intentos WHERE usuario_id = ? AND tipo = 'examen' AND terminado_en IS NULL ORDER BY id").all(usuarioId)) {
+    const e = examenDe(db, f);
+    if (!e) continue;
+    const fin = finDe(f, e);
+    if (!(ahoraMs < fin)) continue;
+    if (!mejor || fin < mejor.fin) mejor = { fin, intento: f.id, materia: f.materia ?? null };
+  }
+  return mejor ? { intento: mejor.intento, materia: mejor.materia, quedanSeg: Math.max(1, Math.ceil((mejor.fin - ahoraMs) / 1000)) } : null;
+}
+
 // «Empezar examen»: si ya hay uno abierto de esa materia con tiempo, sigue ese (no se empieza otro reloj).
 export function crearExamen(db, usuarioId, paquete, materia, { azar, ahoraMs = Date.now(), saltar = false } = {}) {
   cerrarVencidos(db, usuarioId, paquete, ahoraMs);

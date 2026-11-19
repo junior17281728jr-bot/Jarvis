@@ -546,13 +546,16 @@ export function crearInstructor(h) {
   }
   // Pone la tarjeta en su lugar cuando llega (Inicio ya se dibujó: no lo hace esperar). Arriba de todo, su plan de
   // refuerzo (si tiene fallas vivas); después el aviso de un pago y «Tu instructor dice…».
-  function enInicio() {
+  // 0.14.54: soloAvisos: solo el aviso de un pago (Inicio ya no repite «Tu instructor dice…»: tiene su botón propio).
+  function enInicio({ soloAvisos = false } = {}) {
     const lugar = el('div', { class: 'instructor-lugar' });
     api('GET', '/api/academia/instructor').then(r => {
       if (!lugar.isConnected || !r.ok) return;
       anotarModo(r.datos.instructor);
       // 0.12.2: el plan de refuerzo ya no va en Inicio ni marca el Camino: es «Mi repaso» (con su número en la entrada).
-      lugar.replaceChildren(...[avisoPagos(r.datos.pagos), tarjetaInicio(r.datos)].filter(Boolean));
+      lugar.replaceChildren(...[avisoPagos(r.datos.pagos),
+        // Con soloAvisos queda también «se acabaron tus minutos» (con su botón para pedir más): es algo que hacer.
+        soloAvisos ? (r.datos.instructor?.motivo === 'sin_minutos' ? sinMinutos() : null) : tarjetaInicio(r.datos)].filter(Boolean));
       const cuenta = document.querySelector('.entrada-mi-repaso .mi-repaso-cuenta');
       const n = (r.datos.plan ?? []).length;
       if (cuenta && n) { cuenta.textContent = numero(n); cuenta.setAttribute('aria-label', tx('mirepaso.cuenta', { n: numero(n) })); cuenta.hidden = false; }

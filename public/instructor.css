@@ -358,7 +358,10 @@ button.plan-hoy-fila { cursor: pointer; }
 .boton-instructor:not(.con-algo) .boton-instructor-algo { display: none; }
 .boton-instructor:focus-visible { outline: 3px solid var(--acento); outline-offset: 3px; }
 @media (max-width: 759px) { a.ayuda-enlace.instructor-enlace { display: none; } }
-@media (min-width: 760px) { .boton-instructor { bottom: calc(24px + env(safe-area-inset-bottom)); } }
+/* 0.14.54: en la PC ya está «Tu instructor» en el menú: el botón flotante no sale (eran dos, y tapaba el pie). En el
+   teléfono, la pantalla deja al final un espacio del alto del botón: así no tapa «Términos y aviso» ni el último botón. */
+@media (min-width: 760px) { .boton-instructor { display: none; } }
+@media (max-width: 759px) { .marco.con-instructor main.contenido { padding-bottom: 64px; } }
 @media print { .boton-instructor { display: none; } }
 .tuinstr-titulo { margin: 0 0 10px; }
 .tuinstr-tarjeta { display: grid; gap: 10px; margin-bottom: 14px; }

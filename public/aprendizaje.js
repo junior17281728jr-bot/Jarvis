@@ -14,6 +14,7 @@ const titulo = x => String(x ?? '').split(/\s+\(/)[0];
 
 export function vistaAprendizaje(d, h) {
   const { el, t, numero } = h;
+  const tn = h.tn ?? t;
   const nombreMateria = id => (typeof h.nombreMateria === 'function' ? h.nombreMateria(id) : id);
   const cifra = (m, etiqueta) => el('div', { class: `cifra-aprendizaje${m.pocos ? ' pocos' : ''}` },
     el('strong', { texto: m.pct == null ? '—' : `${numero(m.pct)} %` }), el('span', { texto: etiqueta }),
@@ -75,8 +76,14 @@ export function vistaAprendizaje(d, h) {
     detalle: q ? 'dificiles' : null }));
   if (r.ayuda) {
     const lista = r.ayuda.lista;
-    tarjetas.push(clave({ tono: lista.length ? 'atencion' : 'bien', icono: lista.length ? '🙋' : '👍', tituloClave: t('aprendizaje.i.ayuda.titulo'),
-      texto: lista.length ? null : t('aprendizaje.i.ayuda.nadie'),
+    // 0.14.54: lo que es verdad: sin alumnos, «todavía no hay alumnos»; con alumnos de muy pocas respuestas, «faltan datos»
+    // (antes, «Nadie por ahora: todos van bien» en los dos casos).
+    const sinAlumnos = r.ayuda.alumnos === 0;
+    const faltan = !lista.length && !sinAlumnos && r.ayuda.sinDatos > 0;
+    const textoVacio = sinAlumnos ? t('aprendizaje.i.ayuda.sin_alumnos')
+      : faltan ? tn('aprendizaje.i.ayuda.faltan', { n: numero(r.ayuda.sinDatos), minimo: numero(d.minimo ?? 10) }) : t('aprendizaje.i.ayuda.nadie');
+    tarjetas.push(clave({ tono: lista.length ? 'atencion' : sinAlumnos || faltan ? 'neutro' : 'bien', icono: lista.length ? '🙋' : sinAlumnos || faltan ? '⏳' : '👍', tituloClave: t('aprendizaje.i.ayuda.titulo'),
+      texto: lista.length ? null : textoVacio,
       extra: lista.length ? el('ul', { class: 'ap-ayuda' },
         lista.map(x => el('li', {},
           el('a', { href: `#alumno/${encodeURIComponent(x.id)}`, texto: x.nombre }),

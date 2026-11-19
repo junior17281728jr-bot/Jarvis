@@ -56,13 +56,19 @@ export function panelTodo(h, { d = null, compacto = false } = {}) {
       pedir().then(seguir, seguir);
     }, CADA_MS);
   };
-  const accion = (texto, clase, fn) => el('button', { type: 'button', class: `boton-3d ${clase}`, onclick: async e => { e.currentTarget.disabled = true; await fn(); } }, el('span', { texto }));
+  // 0.14.54: el botón vuelve a estar listo SIEMPRE al terminar (antes, si el estimado o la prueba fallaban, quedaba gris
+  // hasta recargar la página).
+  const accion = (texto, clase, fn) => el('button', { type: 'button', class: `boton-3d ${clase}`, onclick: async e => {
+    const boton = e.currentTarget;
+    boton.disabled = true;
+    try { await fn(); } finally { boton.disabled = false; }
+  } }, el('span', { texto }));
   const empezar = async () => {
     const listo = await h.api('GET', '/api/admin/academia/profunda/estimado');
-    if (!listo.ok) return h.avisar(h.textoError(listo.datos.error), 'mal');
+    if (!listo.ok) { pedir(); return h.avisar(h.textoError(listo.datos.error), 'mal'); }
     if (!listo.datos.listo.listo) { pedir(); return h.avisar(t(queHacer(listo.datos.listo.motivo)), 'mal'); }
     const prueba = await h.api('POST', '/api/admin/academia/profunda/probar', {});
-    if (!prueba.ok || prueba.datos.motivo !== 'ok') return h.avisar(t('todo.prueba_mal', { motivo: h.tSi(`ia.motivo.${prueba.datos?.motivo}`, prueba.datos?.motivo ?? '') }), 'mal');
+    if (!prueba.ok || prueba.datos.motivo !== 'ok') { pedir(); return h.avisar(t('todo.prueba_mal', { motivo: h.tSi(`ia.motivo.${prueba.datos?.motivo}`, prueba.datos?.motivo ?? '') }), 'mal'); }
     const tope = await h.confirmar(lineasEstimado(listo.datos, t).join('\n'), { titulo: t('todo.boton'), si: t('todo.empezar'), campo: { etiqueta: t('todo.tope'), valor: (listo.datos.topeMicro / 1_000_000).toFixed(2) } });
     if (tope === false || tope == null) return pedir();
     const r = await h.api('POST', '/api/admin/academia/profunda/empezar', { modelo: 'opus', topeUsd: typeof tope === 'string' ? tope : (listo.datos.topeMicro / 1_000_000).toFixed(2) });

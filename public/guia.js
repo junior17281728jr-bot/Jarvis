@@ -12,6 +12,10 @@ export const TEMAS_AYUDA = Object.freeze([
   // Academia (0.7.0).
   'paquete', 'racha', 'repaso',
 ]);
+// 0.14.54: las que sirven a un ALUMNO (la Ayuda de quien no es administrador no explica copias, servidor, Telegram,
+// Tailscale, tokens…: eso es del administrador).
+export const TEMAS_ALUMNO = Object.freeze(['racha', 'repaso']);
+export const temasAyudaPara = esAdmin => (esAdmin ? TEMAS_AYUDA : TEMAS_AYUDA.filter(id => TEMAS_ALUMNO.includes(id)));
 // Las que traen ejemplo.
 export const TEMAS_CON_EJEMPLO = Object.freeze(['proyecto', 'modo_seguro', 'copia_comprobada', 'clave_recuperacion', 'token', 'tope', 'clave_temporal']);
 

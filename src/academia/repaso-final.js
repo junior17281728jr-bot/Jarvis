@@ -16,7 +16,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { MATERIAS_ORAL } from './formato.js';
 import { leerAjuste, guardarAjuste, librosDe } from './paquetes.js';
 import { crearIntento, verIntento, responder, terminar, diaDe, idsTestGuide, falladasTestGuide } from './progreso.js';
-import { examenDe, finDe, GRACIA_MS } from './examen.js';
+import { examenDe, finDe, GRACIA_MS, examenAbiertoDe } from './examen.js';
 import { hayOral, visualQa } from './oral.js';
 
 const claveAlumno = id => `academia.repaso_final.${Number(id)}`;
@@ -80,7 +80,7 @@ export function resumenRepasoFinal(db, usuarioId, paquete, ahoraMs = Date.now())
   const sabidas = oral.filter(x => yo.oral[x.id] === 1).length;
   const marcadas = oral.filter(x => Object.hasOwn(yo.oral, x.id)).length;
   return {
-    tg: { total: materias.reduce((n, m) => n + m.total, 0), falladas: materias.reduce((n, m) => n + m.falladas, 0), materias, abierta, enExamen: examenAbierto(db, usuarioId, ahoraMs) },
+    tg: { total: materias.reduce((n, m) => n + m.total, 0), falladas: materias.reduce((n, m) => n + m.falladas, 0), materias, abierta, enExamen: examenAbierto(db, usuarioId, ahoraMs), examen: examenAbiertoDe(db, usuarioId, ahoraMs) },
     oral: {
       hay: oral.length > 0, total: oral.length, marcadas, sabidas,
       capitulos: MATERIAS_ORAL.map(id => ({ id, numero: MATERIAS_ORAL.indexOf(id) + 1, total: oral.filter(x => x.materia === id).length })).filter(c => c.total),

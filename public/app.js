@@ -15,7 +15,7 @@ import {
   codigoLegible, cuentaAtras, enlaceSeguro, fraseMotivoTareaCopia,
 } from './copias-vista.js';
 import { leerClave, verificadorDe, sobraNombreCorto } from './clave-recuperacion.js';
-import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas } from './guia.js';
+import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas, temasAyudaPara } from './guia.js';
 import { partirLeccion, resaltar, tituloSinIngles } from './tarjetas.js';
 import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capituloEn, reloj as relojVideo, VELOCIDADES, velocidadValida } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
@@ -35,7 +35,7 @@ import { vistaHero, vistaTop3, botonVerTodos, vistaNumeros, vistaMaterias, vista
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
-import { olvidar, crearEspera, conTope } from './navegacion.js';
+import { olvidar, crearEspera, conTope, rutaConInstructor } from './navegacion.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -66,12 +66,18 @@ function nuevoTurno() {
 
 // ---------- Tema (claro, oscuro o automático) ----------
 // tema.js ya lo puso antes de dibujar la página; aquí se cambia desde Configuración. Se guarda solo en este navegador.
+// 0.14.54: sin nada guardado, «Automático» (sigue al equipo); claro u oscuro elegidos en Configuración mandan.
 const TEMAS = ['claro', 'oscuro', 'auto'];
 function temaGuardado() {
   try {
     const valor = localStorage.getItem('op_tema');
-    return TEMAS.includes(valor) ? valor : 'claro';
-  } catch { return 'claro'; }
+    return TEMAS.includes(valor) ? valor : 'auto';
+  } catch { return 'auto'; }
+}
+// «Automático» va en <html> ya resuelto (oscuro o claro, como tema.js): valen todas las reglas del modo oscuro.
+function temaResuelto(tema) {
+  if (tema !== 'auto') return tema;
+  try { return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro'; } catch { return 'claro'; }
 }
 function colorDeLaBarra() {
   // El color de la barra de arriba del iPhone sigue al fondo de la página.
@@ -80,8 +86,8 @@ function colorDeLaBarra() {
   if (meta && fondo) meta.setAttribute('content', fondo);
 }
 function ponerTema(valor) {
-  const tema = TEMAS.includes(valor) ? valor : 'claro';
-  document.documentElement.setAttribute('data-tema', tema);
+  const tema = TEMAS.includes(valor) ? valor : 'auto';
+  document.documentElement.setAttribute('data-tema', temaResuelto(tema));
   try { localStorage.setItem('op_tema', tema); } catch { /* el navegador no deja guardar: vale solo por ahora */ }
   colorDeLaBarra();
 }
@@ -805,7 +811,8 @@ function marco(seccion, ...contenido) {
   if (estado.oral?.hay) enlaces.splice(2, 0, ['oral', 'menu.oral', 'microfono']);
   if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo', 'menu.corto.admin']);
   if (estado.usuario && estado.oral === undefined) conocerOral();
-  return el('div', { class: 'marco' },
+  const flotante = botonInstructor();
+  return el('div', { class: flotante ? 'marco con-instructor' : 'marco' },
     el('div', { class: 'lateral' },
       el('header', { class: 'encabezado' },
         el('a', { href: '#inicio', class: 'marca-enlace', 'aria-label': t('menu.inicio') }, marcaConLogo()),
@@ -825,19 +832,22 @@ function marco(seccion, ...contenido) {
       avisosDeCuenta(),
       ...contenido,
       pie()),
-    botonInstructor(seccion));
+    flotante);
 }
 
 // 0.14.34: el botón flotante «Tu instructor» (solo en Camino, Oral, Progreso y Repaso; nunca en una clase ni un examen).
 // El puntito «Tu instructor tiene algo para ti» sale de su resumen (se pregunta a lo más cada 2 minutos; nunca un aviso).
-const SECCIONES_INSTRUCTOR = new Set(['inicio', 'oral', 'progreso', 'repaso']);
+// 0.14.54: se mira la dirección de verdad (#inicio, #oral, #progreso, #repaso, sin nada detrás), no la pestaña marcada
+// en el menú: muchas subpantallas (Profesor, Mi repaso, «¿Tomo el examen?», el oral en vivo…) marcan «Camino».
+// En la PC no sale (allí está el enlace «Tu instructor» del menú de la izquierda; estilos en instructor.css).
+
 let algoInstructor = { si: false, en: 0 };
 function anotarAlgo(si) {
   algoInstructor = { si: Boolean(si), en: Date.now() };
   for (const b of document.querySelectorAll('.boton-instructor')) b.classList.toggle('con-algo', algoInstructor.si);
 }
-function botonInstructor(seccion) {
-  if (!estado.usuario || !SECCIONES_INSTRUCTOR.has(seccion)) return null;
+function botonInstructor() {
+  if (!estado.usuario || !rutaConInstructor(location.hash)) return null;
   if (Date.now() - algoInstructor.en > 120_000) {
     algoInstructor.en = Date.now();
     api('GET', '/api/academia/instructor/resumen', undefined, { fresco: true }).then(r => { if (r.ok) anotarAlgo(r.datos.algo === true); }).catch(() => {});
@@ -1005,7 +1015,7 @@ async function pantallaConfiguracion() {
 // No pide nada al servidor: los textos ya están cargados. Se filtra mientras se escribe (sin tildes ni mayúsculas).
 function pantallaAyuda() {
   nuevoTurno();
-  const temas = TEMAS_AYUDA.filter(id => !TEMAS_DE_PROYECTOS.includes(id)).map(id => ({ id, titulo: t(`ayuda.${id}.titulo`), texto: t(`ayuda.${id}.texto`), ejemplo: TEMAS_CON_EJEMPLO.includes(id) ? t(`ayuda.${id}.ejemplo`) : '' }))
+  const temas = temasAyudaPara(estado.usuario?.rol === 'admin').filter(id => !TEMAS_DE_PROYECTOS.includes(id)).map(id => ({ id, titulo: t(`ayuda.${id}.titulo`), texto: t(`ayuda.${id}.texto`), ejemplo: TEMAS_CON_EJEMPLO.includes(id) ? t(`ayuda.${id}.ejemplo`) : '' }))
     .sort((a, b) => a.titulo.localeCompare(b.titulo, idioma));
   const lista = el('div', { class: 'glosario' });
   const cuenta = el('p', { class: 'suave glosario-cuenta', role: 'status' });
@@ -1267,6 +1277,18 @@ const PROBLEMA_DE_FALLA = Object.freeze({
   bot_cambiado: 'telegram.problema.bot_cambiado', limite: 'telegram.problema.limite',
 });
 
+// 0.14.54: adónde lleva un aviso (su botón «Ver»), para no decir «míralo en X» sin enlace. → '#ruta' o null.
+function destinoAviso(a) {
+  const clave = String(a.clave ?? '');
+  const d = a.detalle ?? {};
+  const reporte = /^reporte_error:(\d+)$/.exec(clave);
+  if (reporte) return `#reportes/${encodeURIComponent(d.ticket ?? reporte[1])}`;
+  if (clave.startsWith('pago_recibido:')) return '#pagos';
+  if (clave.startsWith('cambio_admin:')) return '#admin/cambios';
+  if (clave.startsWith('ia_tope:') || clave.startsWith('ia_resumen:') || clave.startsWith('ia_proveedor:')) return '#claves';
+  if (clave.startsWith('telegram')) return '#claves';
+  return null;
+}
 function textoAviso(a) {
   const d = a.detalle ?? {};
   const v = x => (x == null ? '?' : x);
@@ -1433,8 +1455,10 @@ function dibujarZonaSistema(s, { parte = 'resumen', acciones, bloqueFila, mensaj
         el('div', { class: 'aviso-cabeza' }, insignia(tonoAviso(a.nivel), t(`aviso.nivel.${a.nivel}`)), a.veces > 1 ? el('span', { class: 'suave', texto: t('aviso.veces', { n: a.veces }) }) : null),
         el('p', { class: 'aviso-texto', texto: textoAviso(a) }),
         el('p', { class: 'suave', texto: a.veces > 1 ? t('aviso.desde_ultima', { desde: fecha(a.creadoEn), ultima: hace(a.ultimaVez) }) : t('aviso.desde', { desde: fecha(a.creadoEn) }) }),
-        a.vistoEn ? el('p', { class: 'suave', texto: t('aviso.visto', { fecha: fecha(a.vistoEn) }) })
-          : el('button', { type: 'button', class: 'secundario', texto: t('aviso.entendido'), onclick: evento => acciones.visto(a, evento.currentTarget) }))), 3, estadoVista.avisos),
+        el('div', { class: 'botones aviso-botones' },
+          destinoAviso(a) ? el('a', { class: 'boton-enlace con-icono', href: destinoAviso(a) }, icono('flecha', 'icono chico'), el('span', { texto: t('aviso.ver') })) : null,
+          a.vistoEn ? el('p', { class: 'suave', texto: t('aviso.visto', { fecha: fecha(a.vistoEn) }) })
+            : el('button', { type: 'button', class: 'secundario', texto: t('aviso.entendido'), onclick: evento => acciones.visto(a, evento.currentTarget) })))), 3, estadoVista.avisos),
       el('p', { class: 'ayuda', texto: s.telegram?.listo ? t('sistema.avisos.telegram_si') : t('sistema.avisos.telegram') }))
       // Sin avisos: se dice (con su dibujo) en vez de no mostrar nada.
       : el('section', { class: 'tarjeta ancha tarjeta-avisos', 'data-ancla': 'avisos' }, anclaAvisos,
@@ -1610,7 +1634,7 @@ function tonosDePestanas(s, sinConexion = false) {
   const copias = vistaAzulejoCopias(s.copias, { modoSeguro: s.modoSeguro?.activo }).tono;
   return { trabajo: tonoTrabajo(s), servidor: TONO_SEMAFORO[s.salud?.semaforo] ?? 'atencion', copias: ['mal', 'atencion'].includes(copias) ? copias : undefined,
     // 0.9.2: los mensajes de ayuda que esperan respuesta.
-    soporte: s.soporte?.pendientes ? 'atencion' : undefined, soportePendientes: s.soporte?.pendientes ?? 0 };
+    soporte: s.soporte?.pendientes ? 'atencion' : undefined, soportePendientes: s.soporte?.pendientes ?? 0, reportesNuevos: s.soporte?.reportes ?? 0 };
 }
 
 // La zona de sistema de Administrador: se dibuja, se actualiza cada 30 s y maneja sus botones.
@@ -1693,15 +1717,15 @@ function crearZonaSistema(vigente, parte = 'resumen') {
     }),
     modoSeguro: (activar, m, boton) => {
       const pregunta = activar ? t('modo_seguro.confirmar_activar') : m.motivo === 'base_danada' ? t('modo_seguro.confirmar_quitar_base') : t('modo_seguro.confirmar_quitar');
-      if (!confirm(pregunta)) return;
-      return conBoton(boton, async () => {
+      // 0.14.54: con el diálogo de la app (el del navegador, en el iPhone, enseñaba la dirección del sitio).
+      return confirmar(pregunta, { si: t(activar ? 'modo_seguro.si_activar' : 'modo_seguro.si_quitar'), peligro: activar }).then(si => (si ? conBoton(boton, async () => {
         const r = await api('POST', '/api/admin/modo-seguro', { activo: activar });
         if (!r.ok) throw new Error(textoError(r.datos.error));
         return { datos: r.datos, texto: t(activar ? 'modo_seguro.activado_listo' : 'modo_seguro.quitado_listo') };
-      });
+      }) : undefined));
     },
-    tarea: (id, accion, boton) => {
-      if (accion === 'cancelar' && !confirm(t('tareas.confirmar_cancelar'))) return;
+    tarea: async (id, accion, boton) => {
+      if (accion === 'cancelar' && !(await confirmar(t('tareas.confirmar_cancelar'), { peligro: true }))) return;
       return conBoton(boton, async () => {
         const r = await api('POST', `/api/admin/tareas/${id}/${accion}`, {});
         if (!r.ok) throw new Error(errorDeTarea(r.datos.error));
@@ -1807,7 +1831,7 @@ const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia',
 // de ayuda sin responder (Alumnos), o un aviso del trabajo, del servidor o de las copias (Sistema).
 function pendientesDeGrupos(tonos = {}, pagos = 0) {
   const alerta = x => ['mal', 'atencion'].includes(x);
-  return { alumnos: (tonos.soportePendientes ?? 0) > 0, dinero: pagos > 0, sistema: alerta(tonos.trabajo) || alerta(tonos.servidor) || alerta(tonos.copias), contenido: false };
+  return { alumnos: (tonos.soportePendientes ?? 0) > 0 || (tonos.reportesNuevos ?? 0) > 0, dinero: pagos > 0, sistema: alerta(tonos.trabajo) || alerta(tonos.servidor) || alerta(tonos.copias), contenido: false };
 }
 function pintarPendientes(pendientes) {
   for (const [id, si] of Object.entries(pendientes)) {
@@ -1849,7 +1873,8 @@ function cabeceraAdmin(actual, tonos = {}) {
   });
   const fila = grupo.pestanas.map(x => ({
     id: x.id, href: x.href, nombreIcono: x.icono,
-    texto: x.id === 'soporte' && tonosVistos.soportePendientes ? `${t(x.clave)} (${numero(tonosVistos.soportePendientes)})` : t(x.clave),
+    texto: x.id === 'soporte' && tonosVistos.soportePendientes ? `${t(x.clave)} (${numero(tonosVistos.soportePendientes)})`
+      : x.id === 'reportes' && tonosVistos.reportesNuevos ? `${t(x.clave)} (${numero(tonosVistos.reportesNuevos)})` : t(x.clave),
     tono: ['trabajo', 'servidor', 'copias', 'soporte'].includes(x.id) ? tonosVistos[x.id] : undefined,
   }));
   return [
@@ -1882,7 +1907,7 @@ async function pantallaAprendizaje(alumno = null) {
   mostrar(marco('admin', cabeceraAdmin('aprendizaje'),
     alumno ? el('a', { class: 'volver con-icono', href: `#alumno/${encodeURIComponent(alumno)}` }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('aprendizaje.volver') })) : null,
     el('h2', { class: 'titulo-pantalla', texto: alumno ? t('aprendizaje.de_alumno') : t('aprendizaje.titulo') }),
-    r.ok ? vista.vistaAprendizaje(r.datos, { el, t, numero, nombreMateria }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+    r.ok ? vista.vistaAprendizaje(r.datos, { el, t, tn, numero, nombreMateria }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
 async function pantallaIaDemo() {
   const vigente = nuevoTurno();
@@ -1893,7 +1918,7 @@ async function pantallaIaDemo() {
   vista.pantallaIaDemo(r.datos, { el, t, tn, icono, talCual, numero, mostrar, marco: (seccion, ...resto) => marco(seccion, cabeceraAdmin('ia-demo'), ...resto), instructorUi, tutorUi, vistaPlanes });
 }
 // 0.12.8: «IA por alumno» y «Registro de la IA» (public/admin-ia.js, solo se carga aquí).
-const piezasIa = (recargar = () => dibujar()) => ({ el, t, tSi, icono, api, avisar, numero, fecha, talCual, textoError, confirmar, insignia, vacio, recargar });
+const piezasIa = (recargar = () => dibujar()) => ({ el, t, tn, tSi, icono, api, avisar, numero, fecha, talCual, textoError, confirmar, insignia, vacio, recargar });
 // 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js, solo se carga aquí).
 async function pantallaFabrica() {
   const vigente = nuevoTurno();
@@ -2063,15 +2088,17 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   legalApellido.addEventListener('input', proponer);
   usuario.addEventListener('input', () => { usuarioAMano = usuario.value.trim() !== ''; });
   const completo = usuario;
+  // 0.14.54: por defecto, una contraseña TEMPORAL (se ve una vez y el alumno la cambia al entrar). «La crea el alumno»
+  // sigue, pero no por defecto: el sitio es público y quien entrara primero con ese usuario la tomaría.
   const modoClave = el('select', { id: 'campo-clave-modo', name: 'modoClave' },
+    el('option', { value: 'temporal', texto: t('admin.nuevo.clave.temporal'), selected: true }),
     el('option', { value: 'alumno', texto: t('admin.nuevo.clave.alumno') }),
-    el('option', { value: 'temporal', texto: t('admin.nuevo.clave.temporal') }),
     el('option', { value: 'admin', texto: t('admin.nuevo.clave.admin') }));
   const claveAdmin = el('div', { hidden: true },
     el('label', { for: 'campo-clave-nueva-admin', texto: t('admin.nuevo.clave.escribe') }),
     el('input', { id: 'campo-clave-nueva-admin', name: 'claveAdmin', type: 'text', minlength: 4, maxlength: 200, autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false' }));
   // 0.11.0: el aviso de Funnel bien a la vista (es lo que sale por defecto).
-  const ayudaModo = el('p', { class: 'aviso aviso-funnel con-icono-arriba', role: 'note' }, icono('atencion'), el('span', {}, el('strong', { texto: t('admin.nuevo.clave.alumno.titulo') }), ' ', el('span', { texto: t('admin.nuevo.clave.alumno.ayuda') })));
+  const ayudaModo = el('p', { class: 'aviso aviso-funnel con-icono-arriba', role: 'note', hidden: true }, icono('atencion'), el('span', {}, el('strong', { texto: t('admin.nuevo.clave.alumno.titulo') }), ' ', el('span', { texto: t('admin.nuevo.clave.alumno.ayuda') })));
   const pintarModo = () => {
     claveAdmin.hidden = modoClave.value !== 'admin';
     ayudaModo.hidden = modoClave.value !== 'alumno';
@@ -2106,7 +2133,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       el('select', { id: 'campo-idioma-nuevo', name: 'idioma' },
         el('option', { value: 'es', texto: t('idioma.es') }),
         el('option', { value: 'en', texto: t('idioma.en') })),
-      // 0.9.2: la contraseña: que la cree el alumno al entrar (lo de siempre), temporal, o la pone el administrador.
+      // 0.9.2: la contraseña: temporal (0.14.54: lo de siempre), que la cree el alumno al entrar, o la pone el administrador.
       el('label', { for: 'campo-clave-modo', texto: t('admin.nuevo.clave') }),
       modoClave,
       claveAdmin),
@@ -4164,19 +4191,31 @@ async function pantallaInicio() {
   }
   // La primera vez: elegir el plan de estudio (1 mes recomendado, 2 meses o repaso de 15 días).
   if (!c.plan?.elegido) {
-    return mostrar(marco('inicio', elegirPlanVista(c.plan, { alListo: () => pantallaInicio() })));
+    // 0.14.54: sin el botón flotante «Tu instructor» (tapaba «A tu ritmo terminarías…»): primero, el plan.
+    const vista = marco('inicio', elegirPlanVista(c.plan, { alListo: () => pantallaInicio() }));
+    vista.querySelector('.boton-instructor')?.remove();
+    vista.classList.remove('con-instructor');
+    return mostrar(vista);
   }
   const siguiente = pasoQueToca(c);
+  // 0.14.54: «¿Ya lo sabes? Toma el examen» UNA vez: en la materia de ahora (antes, debajo de cada materia, también de las
+  // bloqueadas: 6 a 11 veces). Las demás se convalidan al llegar a ellas.
+  const materiaActual = siguiente?.materia ?? c.materias.find(m => m.temas.length && m.estado !== 'aprobada')?.id ?? null;
   const materias = c.materias.map((m, n) => {
     const vacia = !m.temas.length;
     return el('section', { class: `materia-bloque ${claseMateria(m.id)} ${vacia ? 'vacia' : m.estado}`, 'aria-labelledby': `materia-${m.id}` },
       bannerMateria(m, n, { vacia }),
-      vacia ? null : ofrecerConvalidar(m),
+      vacia || m.id !== materiaActual ? null : ofrecerConvalidar(m),
       vacia || m.estado === 'bloqueada' ? null : extrasMateria(m),
       vacia ? null : senderoMateria(m, n, siguiente));
   });
   // 0.14.49 (lo pidió el dueño: «en el inicio hay mucha cosa; debe ser fácil, y lo demás de último»): arriba solo el
   // saludo, «Continuar» y el camino; el repaso, Mi repaso, la Competencia, el tutor, el instructor y el grupo van al final.
+  // 0.14.54: el examen con reloj que dejó abierto, arriba de todo (antes no se veía en ningún lado y se entregaba solo).
+  const franjaExamen = c.examenAbierto ? el('section', { class: 'franja-examen', role: 'status' },
+    el('p', { class: 'con-icono' }, icono('reloj', 'icono chico'),
+      el('span', { texto: t('acad.examen_abierto', { materia: nombreMateria(c.examenAbierto.materia), min: numero(Math.max(1, Math.ceil(c.examenAbierto.quedanSeg / 60))) }) })),
+    el('a', { class: 'boton-3d rojo con-icono', href: `#practica/${c.examenAbierto.intento}` }, icono('flecha', 'icono chico'), el('span', { texto: t('acad.examen_abierto.volver') }))) : null;
   const hola = el('div', { class: 'saludo' },
     el('h1', { class: 'titulo-grande', texto: t('acad.hola', { nombre: estado.usuario.nombreVisible || estado.usuario.nombre }) }),
     el('p', { class: 'bajada', texto: c.plan.ritmo === 'terminado' ? t('acad.plan.ritmo.terminado') : t('acad.saludo.linea', { n: numero(c.plan.metaHoy) }) }),
@@ -4192,10 +4231,13 @@ async function pantallaInicio() {
     entradaMiRepaso(),
     // 0.14.38: la Competencia (6 rondas de trivia de aviación).
     entradaCompetencia(),
-    tutorUi().tarjetaTutor(), instructorUi().enInicio(), panelGrupo(c.grupo, { compacto: true }),
+    // 0.14.54: sin la tarjeta del instructor (repetía «Repasar», «Continuar» y «Modo reto», y el instructor ya tiene su
+    // botón): de ella solo quedan los avisos (un pago, los minutos). La del tutor IA sigue (solo con IA): es la puerta a
+    // «Lo que tu tutor recuerda» y al Profesor virtual.
+    tutorUi().tarjetaTutor(), instructorUi().enInicio({ soloAvisos: true }), panelGrupo(c.grupo, { compacto: true }),
     // 0.12.2: qué quiere decir el color de cada nodo (0.14.49: al final, con lo demás).
     leyendaCamino());
-  const enFondo = mostrar(marco('inicio', barraCabina(c), hola, avisoMuestra(c.paquete),
+  mostrar(marco('inicio', barraCabina(c), franjaExamen, hola, avisoMuestra(c.paquete),
     // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
     plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente }),
     masAbajo));
@@ -4204,9 +4246,7 @@ async function pantallaInicio() {
   adelantar('/api/academia/progreso');
   // 0.12.9 (U): «¿Tomo el examen?» junto al nodo del examen de cada materia (sin IA; se llena cuando llega).
   rellenarTomoExamen();
-  // Baja hasta el paso que toca (si está más abajo).
-  const actual = enFondo ? null : raiz.querySelector('.materia-bloque:not(.plegada) .nodo.actual');
-  if (actual && actual.getBoundingClientRect().top > window.innerHeight * 0.75) actual.scrollIntoView({ block: 'center' });
+  // 0.14.54: Inicio ya NO baja solo hasta el paso que toca: escondía el saludo y «Continuar» (que ya lleva a ese paso).
 }
 
 // ---- Pantallas de estudio (lección, video, preguntas): arriba la X y la barra de combustible; abajo un botón grande ----
@@ -5014,6 +5054,12 @@ async function pantallaOralDe(que, a, b) {
     const pedido = a === 'errores' ? { errores: true } : { materia: a, ...(b ? { tema: b } : {}) };
     const r = await api('POST', '/api/academia/oral/ronda', pedido);
     if (!vigente()) return;
+    // 0.14.54: sin errores que practicar no es un error: un mensaje propio y el camino de vuelta al oral.
+    if (!r.ok && a === 'errores' && r.datos?.error === 'sin_preguntas') {
+      return mostrar(marco('oral', el('section', { class: 'tarjeta centrada' },
+        el('p', { class: 'mensaje', texto: t('oral.errores.ninguno') }),
+        el('a', { class: 'boton-3d azul', href: '#oral' }, el('span', { texto: t('oral.errores.volver') })))));
+    }
     return r.ok ? vista.rondaOral(r.datos, pedido, h) : error(r);
   }
   const r = await api('GET', '/api/academia/oral');
@@ -5574,7 +5620,9 @@ async function pantallaProgreso() {
   // Los temas que se pueden abrir (un enlace del tablero nunca lleva a una clase cerrada).
   const abiertos = new Set((p.curso?.materias ?? []).flatMap(m => (m.temas ?? []).filter(x => x.estado !== 'bloqueado').map(x => `${m.id}/${x.id}`)));
   const ayudas = { el, t, tn, numero, icono, medidor, nombreMateria, barraLlena, talCual, pctTexto, insignia, partirTitulo, svgEl, abrirHoja, dibujarAvatar,
-    iconoMateria: id => ICONO_MATERIA[id] ?? 'avion', claseMateria, abierto: (materia, tema) => abiertos.has(`${materia}/${tema}`) };
+    iconoMateria: id => ICONO_MATERIA[id] ?? 'avion', claseMateria, abierto: (materia, tema) => abiertos.has(`${materia}/${tema}`),
+    // 0.14.54: tu avatar de verdad en la carrera y el podio (antes una «T», de «Tú»).
+    yo: { avatar: estado.usuario?.avatar ?? null, foto: estado.usuario?.foto ?? null, nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' } };
   // 0.14.23 (pedido del dueño: «muchas cosas juntas, mucho texto»): un tablero corto y visual, siempre en este orden:
   // el resumen (dos anillos, «Ahora en», puesto y racha) → la carrera con su top 3 → mis números → las materias →
   // «¿Tomo el examen final?» en una tarjeta → «Ver detalles» (todo lo de antes, igual). Detalle: public/progreso-tablero.js.
@@ -5699,7 +5747,7 @@ function panelPuntosDebiles(pd, { conBoton = false, titulo = t('debil.panel') } 
         el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')),
         q.superada ? insignia('bien', t('debil.superada')) : el('span', { class: 'insignia tono-apagado', texto: nombreMateria(q.materia) }),
         talCual('span', q.enunciado, 'debil-enunciado'),
-        el('span', { class: 'suave', texto: tn('acad.fallos_de', { n: q.fallos, veces: q.veces }) }))), 4)),
+        el('span', { class: 'suave', texto: (Number(q.veces) === 1 ? t('acad.fallos_unica') : tn('acad.fallos_de', { n: q.fallos, veces: q.veces })) }))), 4)),
     // 0.12.2: todo lo de los errores, en un solo lugar: «Mi repaso».
     conBoton ? el('a', { class: 'boton-3d naranja con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('debil.practicar_todo') })) : null);
 }
@@ -5838,7 +5886,7 @@ async function pantallaContratosTodos() {
 }
 // 0.9.2: «Ayuda / Soporte» (public/soporte-vista.js, solo se carga aquí).
 let pantallaAnterior = null;
-const piezasSoporte = () => ({ el, t, numero, icono, insignia, talCual, vacio, fecha, api, avisar, caja, botonAccion, textoError, recargar: () => dibujar(),
+const piezasSoporte = () => ({ el, t, tn, numero, icono, insignia, talCual, vacio, fecha, api, avisar, caja, botonAccion, textoError, recargar: () => dibujar(),
   pantallaAnterior, version: estado.setup?.version ?? null, idioma });
 async function pantallaMiAyuda(pregunta = null) {
   const vigente = nuevoTurno();
@@ -6222,6 +6270,8 @@ async function pantallaContenido() {
       p.faltanClips?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_clips', { n: p.faltanClips.length }) }) : null,
       p.faltanFotos?.length ? el('p', { class: 'suave', texto: tn('acad.subir.faltan_fotos', { n: p.faltanFotos.length }) }) : null,
       p.estado === 'listo' && !p.activo ? el('div', { class: 'botones' }, botonAccion(t('acad.paquete.usar'), 'secundario', mensaje, async () => {
+        // 0.14.54: cambia el contenido de TODOS los alumnos: primero se pregunta.
+        if (!(await confirmar(t('acad.paquete.usar.confirmar'), { si: t('acad.paquete.usar') }))) return;
         const x = await api('POST', `/api/admin/academia/paquetes/${p.id}/activar`, {});
         if (!x.ok) throw new Error(textoError(x.datos.error));
         avisar(t('acad.paquete.listo_uso'));

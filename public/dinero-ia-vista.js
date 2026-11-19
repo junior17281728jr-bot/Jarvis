@@ -34,17 +34,29 @@ export function tarjetaDinero(d, h, { corto = false } = {}) {
   const { el, t } = h;
   const p = lineaPronostico(d.pronostico, t);
   const pr = d.profunda;
-  const lineaProfunda = pr.quedanMicro > 0 && pr.temas != null
+  // 0.14.54: sin tope del mes (US$0) la IA no gasta: UNA línea clara con el botón al tope, sin «se parará en US$0.00» ni
+  // «ya se usó» (no se gastó nada). «Ya se usó» solo si de verdad se gastó algo.
+  const sinTope = d.pronostico?.estado === 'sin_tope';
+  const lineaProfunda = sinTope ? null : pr.quedanMicro > 0 && pr.temas != null
     ? t('dinero.profunda.temas', { quedan: usdRedondo(pr.quedanMicro), temas: pr.temas, dias: pr.dias })
-    : pr.quedanMicro > 0 ? t('dinero.profunda.quedan', { quedan: usdRedondo(pr.quedanMicro) }) : t('dinero.profunda.nada');
-  const c = d.conflicto;
+    : pr.quedanMicro > 0 ? t('dinero.profunda.quedan', { quedan: usdRedondo(pr.quedanMicro) })
+      : pr.algoGastado ? t('dinero.profunda.nada') : t('dinero.profunda.sin_dinero');
+  const c = sinTope ? null : d.conflicto;
+  const irAlTope = () => {
+    const campo = document.getElementById('dinero-tope');
+    if (campo) { campo.scrollIntoView({ block: 'center' }); campo.focus({ preventScroll: true }); campo.select?.(); }
+  };
   return el('section', { class: `tarjeta dinero-ia${corto ? ' corta' : ''}`, id: 'dinero-ia' },
     el('h2', { class: 'con-icono' }, h.icono('dinero'), el('span', { texto: t('dinero.titulo') })),
-    el('p', { class: `dinero-pronostico tono-${p.tono}`, texto: p.texto }),
+    sinTope ? el('div', { class: 'dinero-sin-tope' },
+      el('p', { class: 'dinero-pronostico tono-atencion', texto: t('dinero.pron.apagada') }),
+      corto ? el('a', { class: 'boton-3d azul chico', href: '#claves' }, el('span', { texto: t('dinero.poner_tope') }))
+        : el('button', { type: 'button', class: 'boton-3d azul chico', onclick: irAlTope }, el('span', { texto: t('dinero.poner_tope') })))
+      : el('p', { class: `dinero-pronostico tono-${p.tono}`, texto: p.texto }),
     c ? el('p', { class: 'aviso con-icono-arriba', role: 'note' }, h.icono('atencion', 'icono chico'),
       el('span', { texto: t('dinero.conflicto', { mejora: usdRedondo(c.profundaMicro), general: usdRedondo(c.generalMicro), para: usdRedondo(c.paraEnMicro), margen: c.margenPct }) })) : null,
     el('ul', { class: 'dinero-topes' }, d.topes.filter(x => TOPES.includes(x.id)).map(x => barra(x, h))),
-    el('p', { class: 'dinero-profunda', texto: lineaProfunda }),
+    lineaProfunda ? el('p', { class: 'dinero-profunda', texto: lineaProfunda }) : null,
     corto ? el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, h.icono('dinero', 'icono chico'), el('span', { texto: t('dinero.ver_todo') }))
       : [editarTope(d, h), alumnos(d, h)]);
 }

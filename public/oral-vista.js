@@ -110,9 +110,10 @@ export function pantallaOral(d, h) {
     nodoFinal,
     // «¿Listo para el oral?», debajo del Camino (arriba, lo primero es el mapa).
     panelListo(d.listo, h),
-    el('section', { class: 'panel oral-errores' },
+    // 0.14.54: solo si tiene errores, y con cuántos (antes salía siempre y, sin errores, llevaba a un error).
+    d.errores > 0 ? el('section', { class: 'panel oral-errores' },
       el('p', { class: 'suave chica', texto: t('oral.errores.linea') }),
-      el('a', { class: 'boton-3d blanco chico', href: ruta('practica', 'errores') }, el('span', { texto: t('oral.errores.boton') }))),
+      el('a', { class: 'boton-3d blanco chico', href: ruta('practica', 'errores') }, el('span', { texto: tn('oral.errores.boton_n', { n: d.errores }) }))) : null,
     el('p', { class: 'suave chica oral-nota', texto: t('oral.nota') })));
 }
 

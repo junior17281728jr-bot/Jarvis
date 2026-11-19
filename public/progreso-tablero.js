@@ -11,7 +11,7 @@
 // fichas se pintan con el avance y se completan cuando llega). Todo con h.el / h.svgEl (solo textContent y atributos).
 // Lo puro (estadoMateria, estadoCapitulo, faltanCortos, tiempoCorto) no toca el DOM: test/progreso-tablero.test.js.
 
-import { puestoDe, ordenTabla, vistaTabla } from './carrera-vista.js';
+import { puestoDe, ordenTabla, vistaTabla, puestoEnLista, medallaDe, avatarPiloto } from './carrera-vista.js';
 
 const META_ACIERTO = 90;
 const META_VISTO = 95;
@@ -94,14 +94,10 @@ export function vistaTop3(h, pilotos) {
   const { el, t } = h;
   const lista = ordenTabla(pilotos);
   if (lista.length < 2) return null;
-  const MEDALLAS = ['🥇', '🥈', '🥉'];
-  return el('ol', { class: 'tb-top', 'aria-label': t('carrera.podio') }, lista.slice(0, 3).map((p, k) => el('li', { class: `tb-top-uno${p.esYo ? ' yo' : ''}` },
+  // 0.14.54: los empatados llevan la misma medalla (antes «Vas 1.º» y la de plata), y tú, tu avatar (antes una «T»).
+  return el('ol', { class: 'tb-top', 'aria-label': t('carrera.podio') }, lista.slice(0, 3).map(p => el('li', { class: `tb-top-uno${p.esYo ? ' yo' : ''}` },
     // 0.14.24: con foto de perfil (solo viaja si se puede ver: src/academia/carrera.js), la foto en vez de la inicial.
-    h.dibujarAvatar && p.foto
-      ? el('span', { class: 'tb-top-avatar con-foto', 'aria-hidden': 'true' }, h.dibujarAvatar(null, { foto: p.foto, nombre: nombreVisto(h, p), tamano: 'chico' }),
-        el('span', { class: 'tb-top-medalla', texto: MEDALLAS[k] }))
-      : el('span', { class: 'tb-top-avatar', 'aria-hidden': 'true', texto: (nombreVisto(h, p).match(/\p{L}|\d/u)?.[0] ?? '?').toUpperCase() },
-        el('span', { class: 'tb-top-medalla', texto: MEDALLAS[k] })),
+    (a => { a.append(el('span', { class: 'tb-top-medalla', texto: medallaDe(puestoEnLista(lista, p)) })); return a; })(avatarPiloto(h, p, 'tb-top-avatar')),
     el('span', { class: 'tb-top-nombre', texto: nombreVisto(h, p) }),
     el('strong', { class: 'tb-top-pct', texto: h.pctTexto(acotar(p.tg)) }))));
 }

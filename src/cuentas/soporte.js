@@ -189,9 +189,12 @@ export function responderAlumno(db, usuarioId, id, texto, { ahoraMs = Date.now()
 }
 
 // ---------- El administrador ----------
-export const pendientesSoporte = db => todos(db).filter(t => t.estado !== 'resuelto' && t.mensajes.at(-1)?.de === 'alumno').length;
+// 0.14.54: los «Reportar un problema» (categoría 'error') viven en «Reportes»: ni en la lista de Ayuda ni en su número
+// (antes un reporte contaba dos veces: en Reportes y en «Ayuda (n)»).
+const esReporte = t => t.categoria === 'error';
+export const pendientesSoporte = db => todos(db).filter(t => !esReporte(t) && t.estado !== 'resuelto' && t.mensajes.at(-1)?.de === 'alumno').length;
 export function ticketsAdmin(db) {
-  return todos(db).sort((a, b) => b.actualizado.localeCompare(a.actualizado)).map(t => vistaTicket(db, t, { conHilo: false }));
+  return todos(db).filter(t => !esReporte(t)).sort((a, b) => b.actualizado.localeCompare(a.actualizado)).map(t => vistaTicket(db, t, { conHilo: false }));
 }
 export function verTicketAdmin(db, id, { ahoraMs = Date.now() } = {}) {
   const t = ticketDe(db, id);

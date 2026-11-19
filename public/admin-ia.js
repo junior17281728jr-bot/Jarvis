@@ -12,10 +12,12 @@ const MOTIVOS_TELEGRAM = Object.freeze(['sin_chat', 'perdido', 'sin_token', 'cla
 // ---------- «Enviar a mi Telegram» ----------
 // Un botón que manda (POST ruta datos) y dice al lado «Enviado ✔» o un error claro con el enlace a Claves y Telegram.
 // Se puede tocar las veces que quiera (el servidor pide 3 s entre uno y otro: «Espera N s»).
-export function botonTelegram(h, { ruta, datos = {}, texto, chico = true }) {
+// 0.14.54: confirmar (opcional): la pregunta antes de mandar (p. ej. «Enviar todos»: datos personales a un chat).
+export function botonTelegram(h, { ruta, datos = {}, texto, chico = true, confirmar = null }) {
   const { el, t } = h;
   const estado = el('span', { class: 'telegram-estado chica', role: 'status' });
   const boton = el('button', { type: 'button', class: `boton-3d blanco${chico ? ' chico' : ''} con-icono`, onclick: async () => {
+    if (confirmar && h.confirmar && !(await h.confirmar(confirmar, { si: t('ia3.telegram.si') }))) return;
     boton.disabled = true;
     cambiar(estado, el('span', { class: 'suave', texto: t('ia3.telegram.enviando') }));
     const r = await h.api('POST', ruta, datos);
@@ -115,9 +117,17 @@ export function pantallaIaAlumnos(d, h) {
         el('label', { for: `ia-tope-${f.id}`, class: 'chica', texto: t('ia3.tope.etiqueta') }), tope,
         el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => accion(`/api/admin/academia/alumnos/${f.id}/tope`, { usd: tope.value.trim() || null }, t('ia3.tope.listo', { alumno: f.nombre })) }, el('span', { texto: t('ia3.guardar') }))),
       el('div', { class: 'botones ia-alumno-acciones' },
-        d.modo === 'planes' ? el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => accion(`/api/admin/academia/alumnos/${f.id}/prueba`, {}, t('plan.admin.prueba_lista', { alumno: f.nombre })) }, el('span', { texto: t('plan.admin.dar_prueba') })) : null,
+        // 0.14.54: dar la prueba y regalar usos gastan dinero de IA: primero se pregunta, con lo que pasa.
+        d.modo === 'planes' ? el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async () => {
+          if (!(await h.confirmar(t('ia3.prueba.confirmar', { alumno: f.nombre }), { si: t('plan.admin.dar_prueba') }))) return;
+          accion(`/api/admin/academia/alumnos/${f.id}/prueba`, {}, t('plan.admin.prueba_lista', { alumno: f.nombre }));
+        } }, el('span', { texto: t('plan.admin.dar_prueba') })) : null,
         el('span', { class: 'ia-alumno-regalo' }, usos,
-          el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => accion(`/api/admin/academia/alumnos/${f.id}/regalo`, { usos: Number(usos.value) }, t('ia3.regalo.listo', { n: h.numero(Number(usos.value)), alumno: f.nombre })) }, el('span', { texto: t('ia3.regalo.boton') }))),
+          el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async () => {
+            const n = Number(usos.value);
+            if (!(await h.confirmar(h.tn('ia3.regalo.confirmar', { n: h.numero(n), alumno: f.nombre }), { si: t('ia3.regalo.boton') }))) return;
+            accion(`/api/admin/academia/alumnos/${f.id}/regalo`, { usos: n }, t('ia3.regalo.listo', { n: h.numero(n), alumno: f.nombre }));
+          } }, el('span', { texto: t('ia3.regalo.boton') }))),
         el('button', { type: 'button', class: `boton-3d chico ${f.pausada ? '' : 'rojo'}`, onclick: async () => {
           if (!f.pausada && !(await h.confirmar(t('ia3.pausa.pregunta', { alumno: f.nombre }), { si: t('ia3.pausa.boton'), peligro: true }))) return;
           accion(`/api/admin/academia/alumnos/${f.id}/pausa`, { pausada: !f.pausada }, t(f.pausada ? 'ia3.pausa.reanudada' : 'ia3.pausa.lista', { alumno: f.nombre }));

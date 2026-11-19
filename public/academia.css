@@ -1402,7 +1402,14 @@ button.tb-punto.actual { box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento) 
 @media (max-width: 359px) {
   .menu { gap: 2px; padding-left: 4px; padding-right: 4px; }
   .menu a { min-width: 0; font-size: 11px; }
-  .encabezado .salir { padding: 6px 10px; }
+}
+/* 0.14.54: en TODO teléfono (320 a 430 px) la cabecera cabe en una línea: solo el logo (el nombre en tres renglones
+   empujaba la página 15 px de más y cortaba «Salir» y el menú de abajo), y «Salir» solo con su ícono. */
+@media (max-width: 759px) {
+  .encabezado { gap: 4px; min-width: 0; }
+  .encabezado .marca-enlace { flex: 0 1 auto; min-width: 0; }
+  .encabezado .marca.con-logo > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .encabezado .salir { padding: 6px 10px; min-width: 44px; justify-content: center; }
   .encabezado .salir > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 /* ---------- 0.14.20: «Ver en el Test Guide» y la Biblioteca ---------- */
@@ -1791,3 +1798,13 @@ details.biblio-por-pagina summary { min-height: 44px; display: flex; align-items
 .inicio-mas { margin: 28px 0 8px; display: grid; gap: 12px; }
 .inicio-mas-titulo { font-size: 1.1rem; margin: 0 0 2px; color: var(--texto-suave, inherit); }
 @media (min-width: 900px) { .inicio-mas { max-width: 640px; margin-left: auto; margin-right: auto; width: 100%; } }
+/* 0.14.54: el examen con reloj abierto, arriba de Inicio (y en Repaso final), con «Volver al examen». */
+.franja-examen { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 14px; padding: 12px 14px; border-radius: 16px; background: var(--rojo-suave); color: var(--rojo-texto); border: 2px solid color-mix(in srgb, var(--rojo-texto) 35%, transparent); }
+.franja-examen p { flex: 1 1 220px; margin: 0; font-weight: 700; }
+.franja-examen .boton-3d { flex: 0 0 auto; }
+.rf-en-examen { display: grid; gap: 8px; justify-items: start; }
+.rf-en-examen p { margin: 0; }
+/* 0.14.54: el % de la materia sobre su tarjeta de color, con el MISMO color de la letra del título (antes un gris
+   pensado para fondo blanco: 1.6 a 2.4:1 de contraste sobre morado, naranja o azul). */
+.banner-materia .materia-pct { color: inherit; }
+@media (min-width: 760px) { .franja-examen { max-width: 640px; margin-left: auto; margin-right: auto; } }

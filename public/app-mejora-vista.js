@@ -17,14 +17,23 @@ function descargar(nombre, texto) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// Los motivos de «Claude no está listo» (src/academia/fabrica-profunda.js: claudeListo) con su frase «todo.listo.*».
+const MOTIVOS_CLAUDE = new Set(['ia_apagada', 'sin_clave', 'verificacion_identidad', 'clave_no_pasa', 'sin_probar', 'claude_no_usado', 'fabrica_pausada', 'precio_sin_confirmar']);
+
 export function pantallaAppMejora(d, h, { alCambiar } = {}) {
   const { el, t } = h;
   const cfg = d.config;
   const mensaje = el('p', { class: 'mensaje', role: 'status', hidden: true });
   const decir = (texto, clase) => { mensaje.className = `mensaje ${clase}`; mensaje.textContent = texto; mensaje.hidden = false; };
-  const mandar = async (metodo, ruta, cuerpo, okTexto) => {
+  const mandar = async (metodo, ruta, cuerpo, okTexto, boton = null) => {
     const r = await h.api(metodo, ruta, cuerpo);
-    if (!r.ok) return decir(h.textoError(r.datos.error), 'error');
+    // 0.14.54: por qué Claude no puede trabajar (sin clave, la IA apagada, en pausa…), con las palabras de «Mejorar todo».
+    if (!r.ok) {
+      if (boton) boton.disabled = false;
+      const texto = MOTIVOS_CLAUDE.has(r.datos?.error) ? t(`todo.listo.${r.datos.error}`) : h.textoError(r.datos?.error);
+      h.avisar(texto, 'mal');
+      return decir(texto, 'error');
+    }
     if (okTexto) h.avisar(okTexto, 'bien');
     if (r.datos?.propuestas && alCambiar) alCambiar(r.datos); else h.recargar();
   };
@@ -33,7 +42,13 @@ export function pantallaAppMejora(d, h, { alCambiar } = {}) {
   const botones = [
     el('button', { type: 'button', class: `boton-3d ${cfg.pausada ? 'verde' : 'blanco'} con-icono`, onclick: ev => { ev.currentTarget.disabled = true; mandar('POST', '/api/admin/academia/app/config', { pausada: !cfg.pausada }, t(cfg.pausada ? 'appm.reanudada' : 'appm.pausada')); } },
       h.icono(cfg.pausada ? 'play' : 'pausa'), el('span', { texto: t(cfg.pausada ? 'appm.reanudar' : 'appm.pausar') })),
-    el('button', { type: 'button', class: 'boton-3d blanco con-icono', onclick: ev => { ev.currentTarget.disabled = true; mandar('POST', '/api/admin/academia/app/revisar', {}, t('appm.revisar_listo')); } },
+    // 0.14.54: gasta IA: primero se pregunta (con el diálogo de la app).
+    el('button', { type: 'button', class: 'boton-3d blanco con-icono', onclick: async ev => {
+      const boton = ev.currentTarget;
+      if (!(await h.confirmar(t('appm.revisar.confirmar'), { si: t('appm.revisar.si') }))) return;
+      boton.disabled = true;
+      mandar('POST', '/api/admin/academia/app/revisar', {}, t('appm.revisar_listo'), boton);
+    } },
       h.icono('chispa'), el('span', { texto: t('appm.revisar') })),
   ];
   if (d.puedeDeshacer) {

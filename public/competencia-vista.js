@@ -312,6 +312,7 @@ export function pantallaGaleria(datos, h, { admin = false, recargar } = {}) {
       el('span', { class: 'suave chica', texto: ` · ${fechaHora(x.en, h.idioma)}` }),
       el('p', { texto: x.texto }),
       admin || x.esYo ? el('button', { type: 'button', class: 'boton-texto chica', onclick: async () => {
+        if (h.confirmar && !(await h.confirmar(t('compe.comentario.borrar.confirmar'), { si: t('compe.comentario.borrar'), peligro: true }))) return;
         const r = await api('POST', `/api/academia/competencia/comentarios/${x.id}/borrar`, {});
         if (!r.ok) return h.avisar?.(textoError(r.datos?.error), 'mal');
         recargar?.();
@@ -412,6 +413,8 @@ export function pantallaAdmin(datos, h, { recargar } = {}) {
   const ronda = r => {
     const m = h.caja();
     const mejorar = r.jugada ? null : h.botonAccion(t('compe.admin.mejorar'), 'secundario', m, async () => {
+      // 0.14.54: gasta IA: primero se pregunta (el diálogo de la app).
+      if (h.confirmar && !(await h.confirmar(t('compe.admin.mejorar.confirmar'), { si: t('compe.admin.mejorar') }))) return;
       const x = await api('POST', `/api/admin/academia/competencia/${r.ronda}/mejorar`, {});
       if (!x.ok) throw new Error(textoError(x.datos?.error));
       h.avisar?.(t('compe.admin.mejorar.pedido'));
@@ -428,6 +431,7 @@ export function pantallaAdmin(datos, h, { recargar } = {}) {
           recargar?.();
         }),
         h.botonAccion(t('compe.admin.descartar'), 'secundario', m, async () => {
+          if (h.confirmar && !(await h.confirmar(t('compe.admin.descartar.confirmar'), { si: t('compe.admin.descartar'), peligro: true }))) return;
           const x = await api('POST', `/api/admin/academia/competencia/${r.ronda}/descartar`, {});
           if (!x.ok) throw new Error(textoError(x.datos?.error));
           recargar?.();

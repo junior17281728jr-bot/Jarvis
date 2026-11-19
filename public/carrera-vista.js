@@ -20,6 +20,29 @@ export function puestoDe(pilotos, campo = 'tg') {
   return { puesto: 1 + lista.filter(p => pctDe(p, campo) > pct).length, de: lista.length, pct };
 }
 
+// 0.14.54: el puesto de CADA piloto de una lista (1 + cuántos van estrictamente delante): los empatados comparten puesto y
+// medalla (antes «Vas 1.º» y, en el mismo cuadro, la medalla de plata). → número (1, 2, 3…).
+export function puestoEnLista(lista, p, campo = 'tg') {
+  return 1 + (lista ?? []).filter(x => x[campo] != null && pctDe(x, campo) > pctDe(p, campo)).length;
+}
+// La medalla de un puesto (🥇 🥈 🥉; desde el 4.º, ninguna).
+export const MEDALLAS = ['🥇', '🥈', '🥉'];
+export const medallaDe = puesto => MEDALLAS[puesto - 1] ?? '';
+
+// 0.14.54: el círculo de un piloto: tu avatar de verdad si eres tú (antes salía «T», de «Tú»), su foto si viajó, o la
+// inicial de su nombre. h.yo: { avatar, foto, nombre } de la cuenta (lo pone Progreso).
+export function avatarPiloto(h, p, clase) {
+  const { el } = h;
+  if (p.esYo && h.yo && h.dibujarAvatar) {
+    return el('span', { class: `${clase} con-foto yo`, 'aria-hidden': 'true' }, h.dibujarAvatar(h.yo.avatar ?? null, { foto: h.yo.foto ?? null, nombre: h.yo.nombre ?? '', tamano: 'chico' }));
+  }
+  if (h.dibujarAvatar && p.foto) {
+    return el('span', { class: `${clase} con-foto${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true' }, h.dibujarAvatar(null, { foto: p.foto, nombre: nombreVisto(h, p), tamano: 'chico' }));
+  }
+  const nombre = p.esYo && h.yo?.nombre ? h.yo.nombre : nombreVisto(h, p);
+  return el('span', { class: `${clase}${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true', texto: (String(nombre).match(/\p{L}|\d/u)?.[0] ?? '?').toUpperCase() });
+}
+
 export function promedioDe(pilotos, campo = 'tg') {
   const lista = (pilotos ?? []).filter(p => p[campo] != null);
   return lista.length ? Math.round(lista.reduce((n, p) => n + pctDe(p, campo), 0) / lista.length) : 0;
@@ -183,22 +206,19 @@ export function vistaCarrera(h, datos, { admin = false, compacta = false, extra 
 export function vistaTabla(h, pilotos, { oral = true } = {}) {
   const { el, t, numero } = h;
   const lista = ordenTabla(pilotos);
-  const puesto = p => 1 + lista.filter(x => pctDe(x, 'tg') > pctDe(p, 'tg')).length;
-  // 0.14.24: con foto de perfil (si viajó: se puede ver), la foto en vez de la inicial.
-  const inicial = p => (h.dibujarAvatar && p.foto
-    ? el('span', { class: `tabla-inicial con-foto${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true' }, h.dibujarAvatar(null, { foto: p.foto, nombre: nombreVisto(h, p), tamano: 'chico' }))
-    : el('span', { class: `tabla-inicial${p.esYo ? ' yo' : ''}`, 'aria-hidden': 'true', texto: (nombreVisto(h, p).match(/\p{L}|\d/u)?.[0] ?? '?').toUpperCase() }));
-  const MEDALLAS = ['🥇', '🥈', '🥉'];
+  const puesto = p => puestoEnLista(lista, p);
+  // 0.14.24: con foto de perfil (si viajó: se puede ver), la foto en vez de la inicial (0.14.54: y tú, con tu avatar).
+  const inicial = p => avatarPiloto(h, p, 'tabla-inicial');
   const top = lista.slice(0, 3);
   // El podio: el 2.º, el 1.º (más alto) y el 3.º.
   const podio = top.length >= 2 ? el('ol', { class: 'podio', 'aria-label': t('carrera.podio') }, [1, 0, 2].filter(k => top[k]).map(k => {
     const p = top[k];
-    return el('li', { class: `podio-lugar lugar-${k + 1}${p.esYo ? ' yo' : ''}` },
-      el('span', { class: 'podio-medalla', 'aria-hidden': 'true', texto: MEDALLAS[k] }),
+    return el('li', { class: `podio-lugar lugar-${Math.min(3, puesto(p))}${p.esYo ? ' yo' : ''}` },
+      el('span', { class: 'podio-medalla', 'aria-hidden': 'true', texto: medallaDe(puesto(p)) }),
       inicial(p),
       el('span', { class: 'podio-nombre', texto: nombreVisto(h, p) }),
       el('strong', { class: 'podio-pct', texto: h.pctTexto(pctDe(p, 'tg')) }),
-      el('span', { class: 'podio-escalon', 'aria-hidden': 'true', texto: numero(k + 1) }));
+      el('span', { class: 'podio-escalon', 'aria-hidden': 'true', texto: numero(puesto(p)) }));
   })) : null;
   let filas = lista.slice(0, 10);
   const yo = lista.find(p => p.esYo);

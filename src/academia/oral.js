@@ -138,6 +138,9 @@ export function caminoOral(db, usuarioId, paquete, { tgTerminado = false } = {})
     siguientePaso: tgTerminado === true,
   };
   vista.siguiente = siguienteOral(vista);
+  // 0.14.54: cuántas preguntas respondió mal la última vez (las de «Practicar mis errores»): sin ninguna, la pantalla no
+  // ofrece el botón (antes salía siempre y llevaba a un error).
+  vista.errores = materiasConTemas(paquete).reduce((n, m) => n + m.temas.reduce((k, t) => k + t.preguntas.filter(id => ultima.get(`${m.id}/${id}`)?.correcta === 0).length, 0), 0);
   return vista;
 }
 

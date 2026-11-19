@@ -4,6 +4,7 @@
 //  - POST /api/admin/academia/app/config           { pausada?, autoSubir?, activa?, topeUsd? }
 //  - POST /api/admin/academia/app/pedir            { texto } un cambio que pide el dueño (409 ia_en_pausa)
 //  - POST /api/admin/academia/app/revisar          «Que Claude busque mejoras»: otra vuelta por todas las pantallas
+//                                                  (409 ia_apagada, sin_clave, clave_no_pasa, ia_en_pausa…)
 //  - POST /api/admin/academia/app/deshacer         «Deshacer el último cambio» (un commit nuevo hacia adelante)
 //  - POST /api/admin/academia/app/:id/aprobar      «Aprobar» (solo cuando «subir solo» está apagado)
 //  - POST /api/admin/academia/app/:id/descartar    no subirlo
@@ -14,6 +15,7 @@ import { auditar } from '../cuentas/usuarios.js';
 import { encolar } from '../tareas/cola.js';
 import { usdAMicro } from '../ia/config.js';
 import { leerConfigFabrica } from '../academia/fabrica.js';
+import { claudeListo } from '../academia/fabrica-profunda.js';
 import { vistaApp, guardarConfigApp, leerConfigApp, pedirMejora, aprobarPropuesta, descartarPropuesta, pedirDeshacer, otraRonda, parcheParaDescargar, LIMITES_APP } from '../academia/app-mejora.js';
 
 const conPunto = v => (typeof v === 'string' ? v.trim().replace(',', '.') : v);
@@ -60,6 +62,11 @@ export function registrarRutasAppMejora(rutas, { config = null, supervisor = nul
   }, { admin: true, soloDueno: true });
   rutas.agregar('POST', '/api/admin/academia/app/revisar', ({ db, usuario }) => {
     necesitaConfig();
+    // 0.14.54: antes decía «Listo» aunque Claude no pudiera trabajar (sin clave, la IA apagada o en pausa): ahora dice por
+    // qué no (409 con el motivo, como «Mejorar todo»). Sin probar la clave todavía se deja: el trabajador la prueba.
+    const listo = claudeListo(db, config, reloj());
+    if (!listo.listo && listo.motivo !== 'sin_probar') throw new ErrorHttp(409, listo.motivo);
+    if (leerConfigFabrica(db).pausada || leerConfigApp(db).pausada) throw new ErrorHttp(409, 'ia_en_pausa');
     enTransaccion(db, () => otraRonda(db, { ahora: reloj() }));
     despertar(db, usuario);
     return { codigo: 200, datos: vista(db) };

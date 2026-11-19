@@ -6,8 +6,8 @@
 //    materia ni un promedio de materias). Una materia sin clases todavía sale «pronto» y no entra en la cuenta.
 //  - Oral: igual, por capítulo (los 9); un tema está hecho si leyó su lección o practicó todas sus preguntas. El examen
 //    final (de todos los capítulos) no mueve «Ahora en» ni empieza temas.
-//  - «Ahora en»: el tema de lo ÚLTIMO que hizo (tarjetas, respuestas, prácticas, exámenes); si ese tema ya está hecho, el
-//    siguiente sin hacer. Sin nada con fecha (solo lecturas), el primero sin hacer.
+//  - «Ahora en»: el tema de lo ÚLTIMO que hizo (tarjetas, respuestas, prácticas, exámenes APROBADOS); si ese tema ya está
+//    hecho, el siguiente sin hacer. Sin nada con fecha (solo lecturas), el primero sin hacer.
 // Pocas consultas para TODOS los alumnos a la vez (una por tabla, sin una por alumno ni por tema): 1 CPU y 512 MB.
 //  - 0.14.19: una materia «Convalidada por examen» (aprobó su examen directo: src/academia/saltos.js) cuenta con TODOS
 //    sus temas hechos y sale con convalidada: { pct }; lo mismo un capítulo del oral cuyo examen aprobó antes de sus temas.
@@ -126,7 +126,9 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
     const tg = MATERIAS.map((mid, n) => {
       const m = (paquete?.materias ?? []).find(x => x.id === mid);
       const ex = misEx.get(mid);
-      if (ex) verFecha(ex.en, mid, null);
+      // 0.14.54: un examen solo mueve «Ahora en» si lo APROBÓ. Uno abierto o no aprobado con «Ir directo» (de una materia
+      // todavía cerrada) ponía «Ahora en: M3» en una clase bloqueada, distinta del «Continuar» de Inicio.
+      if (ex && ex.aprobado === 1) verFecha(ex.en, mid, null);
       const conv = m?.temas.length ? aj.convalidadas[mid] ?? null : null;
       const lista = (m?.temas ?? []).map(t => {
         const k = `${mid}/${t.id}`;

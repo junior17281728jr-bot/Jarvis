@@ -425,8 +425,10 @@ test('el chat estilo mensajería (pagos.js): caja para escribir abajo, respuesta
 test('la ruta #instructor, el botón flotante (con su puntito) solo en Camino, Oral, Progreso y Repaso, y la recomendación arriba de Repaso', () => {
   const app = readFileSync(join(RAIZ, 'public/app.js'), 'utf8');
   assert.match(app, /if \(seccion === 'instructor'\) return pantallaInstructor\(\);/);
-  assert.match(app, /const SECCIONES_INSTRUCTOR = new Set\(\['inicio', 'oral', 'progreso', 'repaso'\]\);/);
-  assert.match(app, /botonInstructor\(seccion\)\);\n\}/, 'en marco() (nunca en marcoEstudio: ni en una clase ni en un examen)');
+  // 0.14.54: se mira la dirección de verdad (public/navegacion.js: rutaConInstructor), no la pestaña marcada en el menú.
+  assert.match(readFileSync(join(RAIZ, 'public/navegacion.js'), 'utf8'), /const RUTAS_INSTRUCTOR = new Set\(\['', 'inicio', 'oral', 'progreso', 'repaso'\]\);/);
+  assert.match(app, /const flotante = botonInstructor\(\);/, 'en marco() (nunca en marcoEstudio: ni en una clase ni en un examen)');
+  assert.match(app, /pie\(\)\),\n    flotante\);\n\}/);
   assert.doesNotMatch(/function marcoEstudio[\s\S]*?\n\}/.exec(app)[0], /botonInstructor/);
   assert.match(readFileSync(join(RAIZ, 'public/repaso-final-vista.js'), 'utf8'), /h\.recoInstructor\?\.\(\)/);
   const vista = readFileSync(join(RAIZ, 'public/instructor-vista.js'), 'utf8');

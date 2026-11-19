@@ -193,7 +193,9 @@ function cuentaAlumno(h, a) {
 export function vistaListaAlumnos(datos, h) {
   const { el, t, tn, numero } = h;
   // 0.14.18: en línea primero, después el que entró más reciente; al final los que nunca han entrado.
-  const lista = ordenarPorActividad(datos.alumnos);
+  // 0.14.54: solo los alumnos (el administrador no es un alumno: antes salía «junior · Administrador» con 0 de 6 temas y
+  // contaba en «4 cuentas»; «Cómo van todos» ya lo dejaba fuera).
+  const lista = ordenarPorActividad((datos.alumnos ?? []).filter(a => a.rol !== 'admin'));
   const marcados = new Set();
   const enLinea = lista.filter(a => a.enLinea).length;
   const boton = el('a', { class: 'boton-enlace con-icono ficha-comparar-boton', href: '#alumnos', 'aria-disabled': 'true' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('ficha.comparar.boton', { n: numero(0) }) }));
@@ -218,9 +220,10 @@ export function vistaListaAlumnos(datos, h) {
           el('div', { class: 'alumno-cabeza' },
             el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }),
             el('span', { class: 'nombre', texto: nombreDe(a) }),
-            a.rol === 'admin' ? el('span', { class: 'etiqueta', texto: t('admin.rol.admin') }) : null,
-            el('span', { class: 'alumno-pct', texto: a.respuestas ? h.pctTexto(a.pct) : '—' })),
-          a.nombreLegal ? el('p', { class: 'suave chica', texto: a.nombreLegal }) : null,
+            // 0.14.54: el número grande dice qué es («acierta 20 %»: las respuestas bien de todas las que dio).
+            el('span', { class: 'alumno-pct', title: t('ficha.acierta.ayuda'), texto: a.respuestas ? t('ficha.acierta', { pct: h.pctTexto(a.pct) }) : '—' })),
+          // Su nombre de verdad solo si es distinto del que se ve (antes salía dos veces).
+          a.nombreLegal && a.nombreLegal.trim() !== nombreDe(a).trim() ? el('p', { class: 'suave chica', texto: a.nombreLegal }) : null,
           el('p', { class: 'suave chica', texto: `@${a.nombre} · ${a.enLinea ? t('acad.en_linea') : a.ultimaActividad ? t('acad.ultima', { cuando: h.hace(a.ultimaActividad) }) : t('admin.nunca')}` }),
           el('div', { class: 'etiquetas' },
             h.insignia('bien', t('acad.bien', { n: numero(a.aciertos) })),
@@ -398,7 +401,7 @@ export function vistaExamenesTG(datos, h, { conAlumno = true } = {}) {
           el('span', { class: 'banner-icono chico', 'aria-hidden': 'true' }, h.icono(h.ICONO_MATERIA?.[m.id] ?? 'avion')),
           el('h3', { texto: h.nombreMateria(m.id) }),
           el('a', { class: 'cv-comparar-enlace', href: `#comparar-examen/${encodeURIComponent(m.id)}`, texto: t('cv.comparar_alumnos') })),
-        el('p', { class: 'suave chica', texto: r.intentos ? t('examenes.materia.linea', { n: numero(r.intentos), mejor: h.pctTexto(r.mejor), ultima: h.pctTexto(r.ultima), aprobados: numero(r.aprobados), tasa: h.pctTexto(r.tasa) }) : t('examenes.sin_intentos') }),
+        el('p', { class: 'suave chica', texto: r.intentos ? h.tn('examenes.materia.linea', { n: numero(r.intentos), mejor: h.pctTexto(r.mejor), ultima: h.pctTexto(r.ultima), aprobados: numero(r.aprobados), tasa: h.pctTexto(r.tasa) }) : t('examenes.sin_intentos') }),
         filas.length ? h.verMas(el('ul', { class: 'ficha-intentos' }), filas.map(fila), 5) : null);
     });
     zona.replaceChildren(...grupos, ...(sinIntentos.length ? [el('p', { class: 'suave chica', texto: t('examenes.sin_intentos_lista', { lista: sinIntentos.join(' · ') }) })] : []));

@@ -49,6 +49,9 @@ export function pronosticoMes({ gastadoMicro, topeMicro, gasto7dMicro, ahora, fi
 // ¿El tope de la mejora es más alto de lo que el tope del mes la deja gastar? (la fábrica siempre deja libre el margen
 // para los alumnos). → null, o { profundaMicro, generalMicro, paraEnMicro, margenPct }
 export function conflictoTopes({ profundaMicro, generalMicro, margen = T_FABRICA.margenGeneral }) {
+  // 0.14.54: sin tope del mes (US$0, lo de una instalación nueva) la IA no gasta nada: no hay «conflicto» que avisar
+  // (antes decía «se parará cuando el gasto llegue a ≈ US$0.00» junto a «no hay tope del mes»).
+  if (!(generalMicro > 0)) return null;
   const paraEn = Math.max(0, Math.floor(generalMicro * (1 - margen)));
   if (!(profundaMicro > generalMicro)) return null;
   return { profundaMicro, generalMicro, paraEnMicro: paraEn, margenPct: Math.round(margen * 100) };
@@ -147,7 +150,7 @@ export function vistaDinero(db, config, { ahora = Date.now(), corto = false } = 
   const conflicto = conflictoTopes({ profundaMicro: pro.topeMicro, generalMicro: cfgIa.topeGeneralMicro });
   const est = pro.activa || pro.empezo ? estimadoCorto(db, config, ahora) : null;
   const profunda = pronosticoProfunda({ topeMicro: pro.topeMicro, gastadoMicro: pro.gastoMicro, libreGeneralMicro: Math.max(0, Math.floor(cfgIa.topeGeneralMicro * (1 - T_FABRICA.margenGeneral)) - general), faltaMicro: est?.faltaMicro ?? 0, faltaTemas: est?.faltaTemas ?? 0, faltaEtaMs: est?.faltaEtaMs ?? 0 });
-  const salida = { mes, finMes: iso(finMes), topes, pronostico, profunda: { ...profunda, activa: pro.activa }, conflicto, maxGeneralMicro: LIMITES_IA.topeGeneralMaxMicro };
+  const salida = { mes, finMes: iso(finMes), topes, pronostico, profunda: { ...profunda, activa: pro.activa, algoGastado: (pro.gastoMicro ?? 0) + general > 0 }, conflicto, maxGeneralMicro: LIMITES_IA.topeGeneralMaxMicro };
   if (corto) return salida;
   // Los alumnos: lo que les queda y hasta cuándo, y las opciones para darles (o quitarles) IA.
   const t = filasIaAlumnos(db, ahora);

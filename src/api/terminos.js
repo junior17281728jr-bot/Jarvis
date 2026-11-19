@@ -69,7 +69,8 @@ export function registrarRutasTerminos(rutas, { config = null, reloj = Date.now 
 
   // ---------- El administrador ----------
   rutas.agregar('GET', '/api/admin/terminos', ({ db }) => {
-    const cuentas = db.prepare('SELECT id FROM usuarios WHERE activo = 1').all();
+    // 0.14.54: «Firmaron X de Y» cuenta los ALUMNOS activos (el administrador no es un alumno).
+    const cuentas = db.prepare("SELECT id FROM usuarios WHERE activo = 1 AND rol <> 'admin'").all();
     const vt = versionDoc(db, 'terminos');
     const vp = versionDoc(db, 'privacidad');
     const aceptaron = cuentas.filter(u => firmasDe(db, u.id).some(f => f.version === vt && (f.versionPrivacidad ?? 1) === vp)).length;

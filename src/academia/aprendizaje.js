@@ -198,15 +198,19 @@ export function resumenClaro({ filas, clases, dificiles, aprendizaje, titulo, cu
       reciente.set(f.u, x);
     }
     const lista = [];
+    // 0.14.54: los que quedan fuera por tener muy pocas respuestas (menos de MINIMO en 2 semanas): con ellos no se puede
+    // decir «todos van bien» (antes, con 1 bien y 4 mal, o con 0 alumnos, decía eso).
+    let sinDatos = 0;
     for (const u of cuentas) {
       const r = reciente.get(u.id);
       const acierto = r && r.n >= MINIMO ? pct(r.bien, r.n) : null;
       const bajo = acierto != null && acierto < AYUDA_DEBAJO;
       const atrasado = atrasados.has(u.id);
       if (bajo || atrasado) lista.push({ id: u.id, nombre: u.nombre_visible || u.nombre, acierto, n: r?.n ?? 0, bajo, atrasado });
+      else if (acierto == null) sinDatos += 1;
     }
     lista.sort((a, b) => Number(b.bajo) - Number(a.bajo) || (a.acierto ?? 101) - (b.acierto ?? 101) || a.id - b.id);
-    ayuda = { lista: lista.slice(0, 3), total: lista.length };
+    ayuda = { lista: lista.slice(0, 3), total: lista.length, alumnos: cuentas.length, sinDatos };
   }
   const { primera, despues } = aprendizaje;
   const mejoran = primera.pocos || despues.pocos ? null : { primera: primera.pct, despues: despues.pct, si: despues.pct - primera.pct >= 5 };

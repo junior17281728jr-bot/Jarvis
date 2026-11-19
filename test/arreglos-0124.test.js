@@ -366,8 +366,8 @@ test('bloquear un alumno y publicar términos usan la hoja propia de la app, no 
   }
   const app = readFileSync(join(RAIZ, 'public', 'app.js'), 'utf8');
   assert.match(app, /^function confirmar\(texto, \{/m);
-  // Quedan solo los dos del modo seguro y cancelar una tarea (devuelven su resultado a quien los llama).
-  assert.equal([...app.matchAll(/(?<![.\w])confirm\(/g)].length, 2);
+  // 0.14.54: tampoco el modo seguro ni cancelar una tarea (eran los dos últimos): ningún confirm() del navegador.
+  assert.equal([...app.matchAll(/(?<![.\w])confirm\(/g)].length, 0);
   // El Profesor virtual (pagos.js) entiende «básico» y las citas, y nunca lee ia.estado de un ia = null.
   const pagos = readFileSync(join(RAIZ, 'public', 'pagos.js'), 'utf8');
   assert.match(pagos, /m\.estado === 'basico'/);

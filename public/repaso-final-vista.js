@@ -33,7 +33,10 @@ export function pantallaRepasoFinal(d, h) {
     el('h2', { id: 'rf-tg-titulo', class: 'con-icono' }, icono('libro'), el('span', { texto: t('rf.tg.titulo') })),
     tg.total ? [
       el('p', { class: 'suave', texto: tn('rf.tg.linea', { n: tg.total }) }),
-      tg.enExamen ? el('p', { class: 'aviso con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('rf.tg.en_examen') })) : null,
+      tg.enExamen ? el('div', { class: 'aviso rf-en-examen' },
+        el('p', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('rf.tg.en_examen') })),
+        // 0.14.54: con su botón para volver al examen (antes el aviso no llevaba a ningún lado).
+        tg.examen?.intento ? el('a', { class: 'boton-3d rojo chico', href: `#practica/${tg.examen.intento}` }, el('span', { texto: t('acad.examen_abierto.volver') })) : null) : null,
       tg.abierta ? opcion(t('rf.seguir'), t('rf.seguir.detalle', { n: numero(tg.abierta.respondidas), total: numero(tg.abierta.total) }),
         () => { sonar?.('toque'); location.hash = `${RUTA}/test-guide/${tg.abierta.id}`; }, { clase: 'naranja', deshabilitado: tg.enExamen }) : null,
       el('div', { class: 'rf-opciones' },

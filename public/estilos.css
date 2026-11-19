@@ -1258,6 +1258,8 @@ a.ayuda-enlace:focus-visible { outline: 2px solid var(--acento); outline-offset:
 @media (min-width: 1024px) {
   .entrada { font-size: 17px; margin-bottom: 14px; }
   .lateral a.ayuda-enlace { order: 2; margin: auto 0 0; justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; font-size: 16px; color: var(--texto); }
+  /* 0.14.54: Ayuda, Biblioteca y Tu instructor juntos al pie (antes cada «auto» repartía el sobrante: ~140 px entre uno y otro). */
+  .lateral a.ayuda-enlace ~ a.ayuda-enlace { margin-top: 0; }
   .lateral a.ayuda-enlace .menu-icono { width: 22px; height: 22px; color: var(--suave); }
   .lateral a.ayuda-enlace:hover { background: var(--fondo); }
   .lateral a.ayuda-enlace[aria-current="page"] { background: var(--acento-suave); color: var(--acento); }

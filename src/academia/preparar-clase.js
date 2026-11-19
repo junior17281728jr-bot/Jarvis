@@ -152,6 +152,7 @@ export function preparadoBasico(db, usuarioId, p, materia, tema, ahora = Date.no
   return {
     tarjetas: (t.secciones ?? []).length, falladas: ins.falladas.length, nuevas: ins.sinResponder.length, preguntas: (t.preguntas ?? []).length,
     conceptos: ins.alumno.conceptos_del_tema_que_le_costaron.slice(0, 3), estilo: ins.alumno.estilo,
-    plan: ['leer', (t.preguntas ?? []).length ? 'practicar' : null, ins.conceptos.length ? 'repaso' : 'siguiente'].filter(Boolean),
+    // 0.14.54: «leer» habla de «lo que te costó»: a quien no le ha costado nada todavía (un alumno nuevo), «leer_nuevo».
+    plan: [ins.conceptos.length ? 'leer' : 'leer_nuevo', (t.preguntas ?? []).length ? 'practicar' : null, ins.conceptos.length ? 'repaso' : 'siguiente'].filter(Boolean),
   };
 }
