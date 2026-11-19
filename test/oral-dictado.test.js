@@ -283,7 +283,7 @@ test('la pantalla (sin navegador): el formato, el reloj, agregar el texto, las b
   assert.ok(!/innerHTML|style=|\.style\./.test(vista));
   for (const n of ['es', 'en']) {
     const i18n = JSON.parse(readFileSync(new URL(`../public/i18n/${n}.json`, import.meta.url), 'utf8'));
-    for (const k of ['grabando', 'escribiendo', 'escrito', 'muy_corto', 'grabar_no', 'grabar_fallo', 'grabar_vacio', 'sin_red_grabar', 'teclado']) assert.ok(i18n[`vivo.estado.${k}`], `${n}: vivo.estado.${k}`);
+    for (const k of ['grabando', 'escribiendo', 'escrito', 'muy_corto', 'grabar_no', 'grabar_fallo', 'grabar_vacio', 'sin_red_grabar', 'teclado', 'teclado_movil']) assert.ok(i18n[`vivo.estado.${k}`], `${n}: vivo.estado.${k}`);
     assert.match(i18n['vivo.estado.grabando'], /\{tiempo\}/);
     for (const k of ['vivo.pista.movil', 'vivo.pista.pc', 'vivo.dictar.nota_teclado', 'vivo.estado.habla', 'vivo.privacidad_grabar', 'vivo.dictar.nota_grabar', 'error.muy_corto', 'error.grabacion_no_valida']) assert.ok(i18n[k], `${n}: ${k}`);
   }

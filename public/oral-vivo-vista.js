@@ -433,7 +433,7 @@ function practica(s, prefs, h, desde = 0) {
   const respuesta = (alListo, i) => {
     const modo = modoDictado({ grabar: prefs.grabar, hayReconocimiento: puedeDictar() });
     const conVoz = prefs.dictar;
-    const caja = el('textarea', { class: 'vivo-texto', rows: 4, maxlength: 1200, 'aria-label': t('vivo.tu_respuesta'), placeholder: conVoz ? t(prefs.grabar ? 'vivo.placeholder.grabar' : 'vivo.placeholder.voz') : t('vivo.placeholder') });
+    const caja = el('textarea', { class: 'vivo-texto', rows: 4, maxlength: 1200, 'aria-label': t('vivo.tu_respuesta'), placeholder: conVoz ? t(modo === 'grabar' ? 'vivo.placeholder.grabar' : modo === 'teclado' ? 'vivo.placeholder.teclado' : 'vivo.placeholder.voz') : t('vivo.placeholder') });
     const estado = el('p', { class: 'vivo-estado', role: 'status', 'aria-live': 'polite' });
     const mic = conVoz ? el('button', { type: 'button', class: 'vivo-mic', 'aria-pressed': 'false', 'aria-label': t(prefs.grabar ? 'vivo.mic.grabar' : 'vivo.mic') }, icono('microfono', 'icono')) : null;
     // 0.14.50: las barritas de cuánto suena mientras graba (con data-nivel 0–4; el dibujo es del CSS).
@@ -441,7 +441,7 @@ function practica(s, prefs, h, desde = 0) {
     // 0.14.50: sin ChatGPT, desde el principio y debajo del cuadro: cómo dictar con el teclado (lo que sí funciona).
     const pistaTeclado = modo !== 'grabar' ? el('p', { class: 'vivo-pista-teclado con-icono-chico' }, icono('microfono', 'icono chico'), el('span', { texto: t(pistaTecladoDe()) })) : null;
     // Abre el teclado (el cuadro) y resalta la pista: nunca «Escuchando…» sin texto.
-    const usarTeclado = () => { try { caja.focus(); } catch { /* nada */ } pistaTeclado?.classList.add('resaltada'); ponerEstado('teclado'); };
+    const usarTeclado = () => { try { caja.focus(); } catch { /* nada */ } pistaTeclado?.classList.add('resaltada'); ponerEstado(esMovilNavegador() ? 'teclado_movil' : 'teclado'); };
     caja.addEventListener('input', () => { if (!escucha) ex.poner('escuchando', 2500); });
     const ponerEstado = que => { if (que === 'escuchando') ex.poner('escuchando'); else if (que === 'pensando' || (!que && ex.estado() === 'escuchando')) ex.poner('quieto');
       estado.textContent = que ? t(`vivo.estado.${que}`) : ''; estado.dataset.estado = que || ''; mic?.setAttribute('aria-pressed', String(que === 'escuchando')); };
