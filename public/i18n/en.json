@@ -5502,7 +5502,7 @@
   "vivo.estado.grabar_fallo": "I couldn't write what you said. Tap the microphone to try again, or use the keyboard microphone.",
   "vivo.estado.grabar_vacio": "Nothing was understood. Speak closer to the microphone and tap again, or type.",
   "vivo.estado.sin_red_grabar": "Without internet I can't write your voice: check the connection and tap the microphone again, or type.",
-  "vivo.estado.teclado": "To dictate with the keyboard: press Fn twice (Mac) or Windows+H (PC) and speak. Or type.",
+  "vivo.estado.teclado": "To dictate with the keyboard: press Fn twice (Mac) or Windows+H (PC) and speak. Or type. Nothing on a Mac? System Settings → Keyboard → Dictation.",
   "error.muy_corto": "The recording was too short: speak a little longer.",
   "error.grabacion_no_valida": "The recording couldn't be read: tap the microphone again.",
   "ia.motivo.audio_no_valido": "the provider couldn't read the recording",
@@ -5511,6 +5511,6 @@
   "vivo.pista.pc": "To dictate: press the Fn key twice (Mac) or Windows+H (PC), with the box selected.",
   "vivo.dictar.nota_teclado": "Tap the microphone: the keyboard opens and you dictate with its 🎤. You can fix the text before «Send».",
   "vivo.estado.habla": "Speak now…",
-  "vivo.estado.teclado_movil": "Now tap the 🎤 on your keyboard and speak. Or type.",
+  "vivo.estado.teclado_movil": "Now tap the 🎤 on your keyboard and speak. Or type. No 🎤? iPhone: Settings → General → Keyboard → Enable Dictation.",
   "vivo.placeholder.teclado": "Type here, or dictate with the 🎤 on your keyboard…"
 }

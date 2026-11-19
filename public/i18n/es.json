@@ -5502,7 +5502,7 @@
   "vivo.estado.grabar_fallo": "No pude escribir lo que dijiste. Toca el micrófono para intentar otra vez, o usa el micrófono del teclado.",
   "vivo.estado.grabar_vacio": "No se entendió nada. Habla más cerca del micrófono y toca otra vez, o escribe.",
   "vivo.estado.sin_red_grabar": "Sin internet no puedo escribir tu voz: revisa la conexión y toca el micrófono otra vez, o escribe.",
-  "vivo.estado.teclado": "Para dictar con el teclado: presiona dos veces Fn (Mac) o Windows+H (PC) y habla. O escribe.",
+  "vivo.estado.teclado": "Para dictar con el teclado: presiona dos veces Fn (Mac) o Windows+H (PC) y habla. O escribe. Si no pasa nada en la Mac: Ajustes del Sistema → Teclado → Dictado.",
   "error.muy_corto": "La grabación fue muy corta: habla un poco más.",
   "error.grabacion_no_valida": "No se pudo leer la grabación: toca el micrófono otra vez.",
   "ia.motivo.audio_no_valido": "el proveedor no pudo leer la grabación",
@@ -5511,6 +5511,6 @@
   "vivo.pista.pc": "Para dictar: presiona dos veces la tecla Fn (Mac) o Windows+H (PC), con la caja seleccionada.",
   "vivo.dictar.nota_teclado": "Toca el micrófono: se abre el teclado y dictas con su 🎤. Puedes corregir el texto antes de «Enviar».",
   "vivo.estado.habla": "Habla ahora…",
-  "vivo.estado.teclado_movil": "Ahora toca el 🎤 de tu teclado y habla. O escribe.",
+  "vivo.estado.teclado_movil": "Ahora toca el 🎤 de tu teclado y habla. O escribe. ¿No ves el 🎤? iPhone: Ajustes → General → Teclado → Activar dictado.",
   "vivo.placeholder.teclado": "Escribe aquí, o dicta con el 🎤 de tu teclado…"
 }
