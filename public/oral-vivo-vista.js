@@ -265,8 +265,12 @@ function practica(s, prefs, h, desde = 0) {
         // Primero se pide el micrófono de verdad (así el navegador muestra su permiso y se sabe si el sistema lo bloquea);
         // después empieza el dictado.
         const arrancar = () => { try { empezar(); ponerEstado('escuchando'); vigia = setTimeout(() => { if (escucha && !oyoAlgo) ponerEstado(navigator.brave ? 'brave' : 'no_llega_audio'); }, 9000); } catch { clearTimeout(vigia); escucha = null; ponerEstado('no_oyo'); } };
+        // 0.14.47: en el iPhone (Safari) el dictado SOLO arranca si empieza en el mismo toque (no después de pedir el
+        // micrófono aparte): ahí se arranca directo y el propio dictado pide el permiso. En los demás, igual que antes.
         const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
-        if (md?.getUserMedia) {
+        const esIos = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+        if (esSafari || esIos) arrancar();
+        else if (md?.getUserMedia) {
           ponerEstado('pidiendo_permiso');
           md.getUserMedia({ audio: true }).then(flujo => {
             try { flujo.getTracks().forEach(p => p.stop()); } catch { /* nada */ }
