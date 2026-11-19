@@ -25,6 +25,34 @@ function guardarAjuste(usuario, que, valor) { try { localStorage.setItem(claveAj
 const Reconocimiento = () => (typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition || null : null);
 export const puedeLeer = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
 export const puedeDictar = () => Boolean(Reconocimiento());
+// 0.14.48: lo dictado, en limpio (sin navegador: se prueba solo). El iPhone a veces termina una frase SIN resultado
+// «final» (solo el provisional) y el dictado vuelve a empezar: antes ese pedazo se perdía al llegar la frase siguiente.
+// Ahora, al terminar cada tramo, lo provisional queda fijo. Las partes se juntan con un espacio (nunca al principio).
+const juntar = (...partes) => partes.map(x => String(x ?? '').trim()).filter(Boolean).join(' ');
+export function crearDictado(base = '', maximo = 1200) {
+  let fijo = '';
+  let provisional = '';
+  const texto = () => juntar(base, fijo, provisional).slice(0, maximo);
+  return {
+    texto,
+    // Un «onresult» del navegador: los finales se suman; el provisional reemplaza al anterior.
+    resultado(ev) {
+      let nuevoFijo = '';
+      let nuevoProvisional = '';
+      const lista = ev?.results ?? [];
+      for (let k = ev?.resultIndex ?? 0; k < lista.length; k++) {
+        const x = lista[k];
+        const dicho = x?.[0]?.transcript ?? '';
+        if (x?.isFinal) nuevoFijo = juntar(nuevoFijo, dicho); else nuevoProvisional = juntar(nuevoProvisional, dicho);
+      }
+      fijo = juntar(fijo, nuevoFijo);
+      provisional = nuevoProvisional;
+      return texto();
+    },
+    // Terminó un tramo (onend): lo provisional que quedó se guarda.
+    fin() { fijo = juntar(fijo, provisional); provisional = ''; return texto(); },
+  };
+}
 // 0.14.29: la voz natural (ChatGPT): un solo <audio> para toda la práctica. alHablar(true/false): el examinador mueve la
 // boca mientras suena una voz (la del teléfono o la natural).
 let reproductor = null;
@@ -99,9 +127,10 @@ export function portadaVivo(d, materiaPre, h) {
   };
   const seguir = d.abierta ? el('button', { type: 'button', class: 'boton-3d blanco', onclick: async e => {
     despertarVoz();
-    e.currentTarget.disabled = true;
+    const b = e.currentTarget;
+    b.disabled = true;
     const r = await api('GET', `/api/academia/oral/vivo/${encodeURIComponent(d.abierta.sesion)}`);
-    if (!r.ok) return avisar(textoError(r.datos.error), 'mal');
+    if (!r.ok) { b.disabled = false; return avisar(textoError(r.datos.error), 'mal'); }
     const hechas = new Set(r.datos.respondidas);
     // Terminada (falta calificarse): directo al repaso del final.
     const desde = r.datos.terminada ? -1 : r.datos.preguntas.findIndex(q => !hechas.has(q.i));
@@ -207,7 +236,6 @@ function practica(s, prefs, h, desde = 0) {
     const caja = el('textarea', { class: 'vivo-texto', rows: 4, maxlength: 1200, 'aria-label': t('vivo.tu_respuesta'), placeholder: prefs.dictar ? t('vivo.placeholder.voz') : t('vivo.placeholder') });
     const estado = el('p', { class: 'vivo-estado', role: 'status', 'aria-live': 'polite' });
     const mic = prefs.dictar ? el('button', { type: 'button', class: 'vivo-mic', 'aria-pressed': 'false', 'aria-label': t('vivo.mic') }, icono('microfono', 'icono')) : null;
-    let base = '';
     caja.addEventListener('input', () => { if (!escucha) ex.poner('escuchando', 2500); });
     const ponerEstado = que => { if (que === 'escuchando') ex.poner('escuchando'); else if (que === 'pensando' || (!que && ex.estado() === 'escuchando')) ex.poner('quieto');
       estado.textContent = que ? t(`vivo.estado.${que}`) : ''; estado.dataset.estado = que || ''; mic?.setAttribute('aria-pressed', String(que === 'escuchando')); };
@@ -220,9 +248,9 @@ function practica(s, prefs, h, desde = 0) {
         // apagado y volviendo a empezar solo; Chrome corta tras un silencio: también se vuelve a empezar mientras el
         // botón siga encendido. Cada error dice su causa y qué hacer.
         const esSafari = typeof navigator !== 'undefined' && /safari/i.test(navigator.userAgent) && !/chrome|crios|android/i.test(navigator.userAgent);
-        base = caja.value ? `${caja.value.trim()} ` : '';
-        let fijoTotal = '';
+        const dictado = crearDictado(caja.value, 1200);
         let reintentos = 0;
+        let tramos = 0;
         // 0.14.36: si en ~6 s el navegador no recibió NADA de audio (sin permiso del sistema, micrófono equivocado), no se
         // queda «Escuchando…» para siempre: lo dice y para.
         let oyoAlgo = false;
@@ -237,29 +265,34 @@ function practica(s, prefs, h, desde = 0) {
           r.onspeechstart = () => { oyoAlgo = true; if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando'); };
           r.onsoundstart = () => { oyoAlgo = true; };
           r.onresult = ev => {
+            if (escucha !== r) return; // 0.14.48: llegó tarde (ya se paró o se mandó): no cambia nada
             oyoAlgo = true;
             clearTimeout(vigia);
             if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando');
             reintentos = 0;
-            let fijo = '';
-            let provisional = '';
-            for (let k = ev.resultIndex ?? 0; k < ev.results.length; k++) { const x = ev.results[k]; if (x.isFinal) fijo += x[0].transcript; else provisional += x[0].transcript; }
-            if (fijo) fijoTotal = `${fijoTotal}${fijoTotal && !/\s$/.test(fijoTotal) ? ' ' : ''}${fijo.trim()}`;
-            caja.value = `${base}${fijoTotal}${provisional ? ` ${provisional}` : ''}`.slice(0, 1200);
+            caja.value = dictado.resultado(ev);
           };
           r.onerror = ev => {
             const e = ev?.error;
             if (e === 'no-speech' || e === 'aborted') return; // sigue escuchando (onend lo vuelve a empezar)
+            if (escucha !== r) return;
             escucha = null;
+            clearTimeout(vigia);
+            dictado.fin();
+            // 0.14.48: si el navegador no deja volver a empezar solo (fuera del toque), no es «sin permiso»: ya dictó;
+            // se queda lo dicho y se toca el micrófono otra vez para seguir.
+            if (tramos > 1 && (e === 'not-allowed' || e === 'service-not-allowed')) return ponerEstado(null);
             ponerEstado(e === 'not-allowed' || e === 'service-not-allowed' ? 'sin_permiso'
               : e === 'audio-capture' ? 'sin_micro' : e === 'network' ? 'sin_red' : e === 'language-not-supported' ? 'sin_idioma' : 'no_oyo');
           };
           r.onend = () => {
             if (escucha !== r) return;
+            dictado.fin(); // lo provisional queda (el texto a la vista no cambia)
             if (reintentos++ < 20) { try { empezar(); return; } catch { /* abajo */ } }
             escucha = null; ponerEstado(null);
           };
           escucha = r;
+          tramos++;
           r.start();
         };
         // Primero se pide el micrófono de verdad (así el navegador muestra su permiso y se sabe si el sistema lo bloquea);
@@ -290,7 +323,10 @@ function practica(s, prefs, h, desde = 0) {
     const nodo = el('div', { class: 'vivo-fila alumno' },
       el('div', { class: 'vivo-burbuja tuya' }, el('p', { class: 'vivo-quien', texto: t('vivo.tu') }), caja,
         el('div', { class: 'vivo-controles' }, mic, estado, noSe)));
-    return { nodo, botones: [listo], caja, desactivar: () => { caja.disabled = true; if (mic) mic.disabled = true; listo.disabled = true; noSe.disabled = true; } };
+    // 0.14.48: si el envío falla (sin red en el teléfono, «Demasiados intentos»…), todo vuelve a funcionar: antes solo el
+    // cuadro, y «Enviar», «No sé» y el micrófono quedaban apagados (no se podía seguir a la otra pregunta).
+    const habilitar = si => { caja.disabled = !si; if (mic) mic.disabled = !si; listo.disabled = !si; noSe.disabled = !si; };
+    return { nodo, botones: [listo], caja, desactivar: () => habilitar(false), activar: () => habilitar(true) };
   };
   const chipVeredicto = (v, linea) => el('div', { class: `vivo-veredicto tono-${v}` },
     el('span', { class: 'vivo-veredicto-icono', 'aria-hidden': 'true' }, icono(v === 'bien' ? 'bien' : v === 'casi' ? 'atencion' : 'mal', 'icono')),
@@ -329,7 +365,7 @@ function practica(s, prefs, h, desde = 0) {
       const r = respuesta(async (texto, ponerEstado) => {
         r.desactivar();
         const x = await mandar(i, texto, seguimiento, ponerEstado);
-        if (!x) { r.caja.disabled = false; return; }
+        if (!x) { r.activar(); return; }
         if (x.estado === 'lista') {
           sonar(x.veredicto === 'bien' ? 'bien' : x.veredicto === 'mal' ? 'mal' : 'toque');
           // 0.14.40: lo que dijo (corto) y el porqué en una línea, aunque la IA no haya mandado línea.
@@ -391,7 +427,12 @@ function practica(s, prefs, h, desde = 0) {
     zona.replaceChildren(el('p', { class: 'vivo-estado', 'data-estado': 'pensando', texto: t('vivo.estado.calculando') }));
     pie.replaceChildren();
     const r = await api('POST', '/api/academia/oral/vivo/terminar', { sesion: s.sesion, ...(auto ? { auto } : {}) });
-    if (!r.ok) return avisar(textoError(r.datos.error), 'mal');
+    // 0.14.48: si falla (sin red en el teléfono…), no se queda en «Calculando…» sin botones: se puede volver a intentar.
+    if (!r.ok) {
+      avisar(textoError(r.datos.error), 'mal');
+      zona.replaceChildren(el('p', { class: 'vivo-estado', role: 'status', texto: textoError(r.datos.error) }));
+      return pie.replaceChildren(botonGrande(t('vivo.reintentar'), () => terminar(auto), { tono: 'azul' }));
+    }
     if (!r.datos.cerrada) return calificarse(r.datos);
     repaso(r.datos, prefs, h, { zona, pie, sesion: s.sesion, materia: s.materia });
   };
@@ -495,9 +536,11 @@ export function repaso(x, prefs, h, { zona, pie, sesion, materia }) {
   pie.replaceChildren(
     el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: async e => {
       despertarVoz();
-      e.currentTarget.disabled = true;
+      // 0.14.48: el botón se guarda ANTES de esperar (después del await, e.currentTarget ya es null y fallaba).
+      const b = e.currentTarget;
+      b.disabled = true;
       const n = await api('POST', '/api/academia/oral/vivo', { materia: materia ?? null, n: r.total });
-      if (!n.ok) { e.currentTarget.disabled = false; return avisar(textoError(n.datos.error), 'mal'); }
+      if (!n.ok) { b.disabled = false; return avisar(textoError(n.datos.error), 'mal'); }
       pie.classList.remove('apilados');
       practica(n.datos, { ...prefs }, h, 0);
     } }, el('span', { texto: t('vivo.repetir_practica') })),
