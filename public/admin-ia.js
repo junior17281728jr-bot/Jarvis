@@ -60,8 +60,8 @@ export function fichaIa(id, h) {
     el('h2', { class: 'con-icono' }, h.icono('manual'), el('span', { texto: t('ia3.ficha.titulo') })),
     lista,
     el('div', { class: 'botones' },
-      el('a', { class: 'boton-enlace secundario con-icono', href: '#ia-alumnos' }, h.icono('dinero', 'icono chico'), el('span', { texto: t('admin.pestana.ia_alumnos') })),
-      el('a', { class: 'boton-enlace secundario con-icono', href: `#ia-registro/${encodeURIComponent(id)}` }, h.icono('chispa', 'icono chico'), el('span', { texto: t('admin.pestana.ia_registro') }))));
+      // 0.14.56: su IA tiene su pestaña en la ficha («IA»).
+      el('a', { class: 'boton-enlace secundario con-icono', href: `#alumno/${encodeURIComponent(id)}/ia` }, h.icono('chispa', 'icono chico'), el('span', { texto: t('ficha.pestana.ia') }))));
   h.api('GET', '/api/admin/contratos').then(r => {
     if (!r.ok) return cambiar(lista, el('p', { class: 'mensaje error', texto: h.textoError(r.datos.error) }));
     const suyos = r.datos.contratos.filter(c => String(c.usuarioId) === String(id));
@@ -89,17 +89,16 @@ const ORDENES = Object.freeze({
   vence: (a, b) => String(a.vence ?? '9999').localeCompare(String(b.vence ?? '9999')),
 });
 
-export function pantallaIaAlumnos(d, h) {
+// 0.14.56: la IA de UN alumno, con todo lo que se le puede hacer (tope, prueba, regalar, pausa). Vive en su ficha
+// (pestaña «IA»): antes, lo mismo estaba en 3 pantallas (Usuarios, Claves e IA, IA por alumno).
+export function filaIaAlumno(f, d, h) {
   const { el, t } = h;
-  let orden = 'gasto';
-  const lista = el('div', { class: 'ia-alumnos-lista' });
   const accion = async (ruta, datos, bien) => {
     const r = await h.api('POST', ruta, datos);
     if (!r.ok) return h.avisar(h.textoError(r.datos.error), 'mal');
     h.avisar(bien, 'bien');
     await h.recargar();
   };
-  const fila = f => {
     const tope = el('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'campo-corto', id: `ia-tope-${f.id}`,
       value: f.topePersonalMicro != null ? (f.topePersonalMicro / 1_000_000).toFixed(2) : '', placeholder: t('ia3.tope.del_plan'), 'aria-label': t('ia3.tope.de', { alumno: f.nombre }) });
     const usos = el('input', { type: 'number', min: 1, max: 1000, value: 10, class: 'campo-corto', 'aria-label': t('ia3.regalo.de', { alumno: f.nombre }) });
@@ -133,7 +132,19 @@ export function pantallaIaAlumnos(d, h) {
           accion(`/api/admin/academia/alumnos/${f.id}/pausa`, { pausada: !f.pausada }, t(f.pausada ? 'ia3.pausa.reanudada' : 'ia3.pausa.lista', { alumno: f.nombre }));
         } }, el('span', { texto: t(f.pausada ? 'ia3.pausa.reanudar' : 'ia3.pausa.boton') }))),
       el('a', { class: 'enlace-fuerte chica', href: `#ia-registro/${f.id}`, texto: t('ia3.ver_registro') }));
-  };
+}
+
+export function pantallaIaAlumnos(d, h) {
+  const { el, t } = h;
+  let orden = 'gasto';
+  const lista = el('div', { class: 'ia-alumnos-lista' });
+  // 0.14.56: aquí solo se mira (cuánto usó cada uno este mes); lo que se le hace a un alumno, en su ficha → «IA».
+  const fila = f => el('article', { class: `ia-alumno${f.pausada ? ' pausada' : ''}` },
+    el('header', { class: 'ia-alumno-cabeza' },
+      el('div', {}, el('strong', { texto: f.nombre }), el('span', { class: 'suave chica', texto: ` @${f.usuario}` })), estadoIa(f, t, h)),
+    el('p', { class: 'ia-alumno-mes' }, el('span', { texto: t('ia3.mes', { usos: h.numero(f.usosMes), usado: usd(f.usdMesMicro), tope: usd(f.topeMicro) }) })),
+    el('progress', { class: 'ia-alumno-barra', max: Math.max(1, f.topeMicro), value: Math.min(f.usdMesMicro, Math.max(1, f.topeMicro)), 'aria-label': t('ia3.mes_barra') }),
+    el('a', { class: 'boton-3d blanco chico', href: `#alumno/${f.id}/ia` }, el('span', { texto: t('ia3.manejar') })));
   const pintar = () => cambiar(lista, ...(d.filas.length ? [...d.filas].sort(ORDENES[orden]).map(fila) : [h.vacio('personas', t('ia3.sin_alumnos'))]));
   const ordenar = el('select', { id: 'ia-alumnos-orden', onchange: e => { orden = e.currentTarget.value; pintar(); } },
     Object.keys(ORDENES).map(k => el('option', { value: k, texto: t(`ia3.orden.${k}`) })));

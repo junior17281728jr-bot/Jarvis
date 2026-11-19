@@ -29,7 +29,7 @@ function textoEstado(v, h) {
 }
 
 // La tarjeta del Resumen. claves: la respuesta de GET /api/admin/claves (o null); ia: la de GET /api/admin/ia.
-export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
+export function tarjetaClaude({ claves = null, ia = null } = {}, h, { conTodo = true } = {}) {
   const { el, t } = h;
   const v = estadoClaude({ claves: claves?.ok ? claves.datos : null, ia: ia?.ok ? ia.datos : null });
   const mensaje = el('p', { class: 'mensaje', role: 'status', hidden: true });
@@ -85,5 +85,5 @@ export function tarjetaClaude({ claves = null, ia = null } = {}, h) {
     el('div', { class: 'botones claude-botones' }, botones),
     mensaje,
     // 0.14.7: «Mejorar todo con Claude (lo mejor)» y «Qué está haciendo Claude ahora» (se actualiza solo).
-    v.estado === 'sin_acceso' || !h.confirmar ? null : panelTodo(h, { compacto: true }));
+    v.estado === 'sin_acceso' || !h.confirmar || !conTodo ? null : panelTodo(h, { compacto: true }));
 }

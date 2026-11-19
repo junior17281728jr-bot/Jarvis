@@ -1808,3 +1808,20 @@ details.biblio-por-pagina summary { min-height: 44px; display: flex; align-items
    pensado para fondo blanco: 1.6 a 2.4:1 de contraste sobre morado, naranja o azul). */
 .banner-materia .materia-pct { color: inherit; }
 @media (min-width: 760px) { .franja-examen { max-width: 640px; margin-left: auto; margin-right: auto; } }
+/* 0.14.56: debajo del medidor de la cabina, qué es ese número. */
+.cabina-medidor { text-align: center; }
+.cabina-medidor-texto { display: block; font-size: 10px; font-weight: 700; line-height: 1; margin-top: 1px; opacity: .85; text-transform: lowercase; }
+a.biblioteca-enlace[hidden] { display: none !important; }
+/* 0.14.56: la hoja de la respuesta, en la PC, del ancho de la pregunta (antes, de pared a pared). */
+@media (min-width: 760px) { .hoja-respuesta { left: max(16px, calc(50% - 380px)); right: max(16px, calc(50% - 380px)); } }
+/* 0.14.56: botones chicos: al menos 44 px para el dedo (el README lo promete). */
+.chip-tomo { min-height: 44px; display: inline-flex; align-items: center; }
+button.carrera-que { position: relative; }
+button.carrera-que::after { content: ''; position: absolute; inset: -10px; }
+a.pie-terminos { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
+/* 0.14.56: el resultado: un botón grande, uno secundario y una fila de enlaces de texto. */
+.pie-enlaces { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; }
+/* 0.14.56: las materias «Pronto», juntas en una línea. */
+.materias-pronto { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0; padding: 12px 14px; border-radius: 16px; border: 1px dashed var(--borde); background: var(--tarjeta); }
+.materias-pronto p { margin: 0; }
+.materias-pronto .banner-pronto { position: static; flex: none; }

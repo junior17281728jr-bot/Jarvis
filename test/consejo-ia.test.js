@@ -232,7 +232,7 @@ test('«¿Tomo el examen final?»: una fila por materia con sus barritas, qué f
     { materia: 'nav', si: false, pct: 0, cobertura: 0, estado: 'sin_empezar', flojos: [], empezar: 'cartas', porques: [] },
     { materia: 'met', si: true, pct: 95, cobertura: 97, estado: 'listo', flojos: [], empezar: 'nubes', porques: [] }] });
   const texto = n.textContent;
-  for (const x of ['TODAVÍA NO', 'Acierto 40 % (meta 90)', 'Visto 60 % (meta 95)', 'Te falla: Hipoxia, Visión nocturna', 'Reforzar', 'Sin empezar', 'Empezar', 'LISTO']) assert.ok(texto.includes(x), x);
+  for (const x of ['TODAVÍA NO', 'Aciertas 40 % · meta 90 %', 'Has visto 60 % · meta 95 %', 'Te falla: Hipoxia, Visión nocturna', 'Reforzar', 'Sin empezar', 'Empezar', 'LISTO']) assert.ok(texto.includes(x), x);
   assert.doesNotMatch(texto, /\bnull\b|undefined|\{[a-z_]+\}|Has visto el/);
   assert.deepEqual(n.todos(x => x.etiqueta === 'a').map(x => x.atributos.href), ['#tema/fh/hipoxia', '#tema/nav/cartas']);
   assert.equal(n.todos(x => x.etiqueta === 'progress').length, 4);
@@ -240,7 +240,7 @@ test('«¿Tomo el examen final?»: una fila por materia con sus barritas, qué f
   const o = tu.pintarExamen({ oficial: { si: false, pct: 1, acierto: 3, cobertura: 8, porques: [{ clave: 'acierto.no', vars: { valor: 3, meta: 90 } }, { clave: 'constancia.no', vars: { valor: 0, meta: 3 } }] }, materias: [],
     examenIa: { porque: 'Todavía no.', pasos: [], tarjetas: [{ materia: 'fh', tema: 'hipoxia', numero: 2, titulo: 'Síntomas (symptoms)' }] } });
   assert.doesNotMatch(o.textContent, /la meta es/);
-  assert.match(o.textContent, /Acierto 3 % \(meta 90\).*Te faltan exámenes/);
+  assert.match(o.textContent, /Aciertas 3 % · meta 90 %.*Te faltan exámenes/);
   assert.deepEqual(o.todos(x => x.etiqueta === 'a').map(x => [x.atributos.href, x.textContent.trim()]), [['#tema/fh/hipoxia/2', 'Síntomas']]);
 });
 

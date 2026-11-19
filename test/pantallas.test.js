@@ -225,7 +225,9 @@ test('las frases que las pantallas arman por partes (estados, capacidades, histo
     // 0.12.2.
     'camino.nivel.',
     // 0.12.3.
-    'admin.cambio.']));
+    'admin.cambio.',
+    // 0.14.56: los botones de «Para hoy» y las líneas de Avanzado (test/admin-mapa-0156.test.js revisa cada una).
+    'hoy.ir.', 'avanzado.linea.', 'avanzado.grupo.', 'hoy.servidor.']));
   // tSi(…) es t(…) con un respaldo (para valores de una versión más nueva): también se revisa.
   for (const m of appJs.matchAll(/\b(?:t|tSi)\(`([a-z0-9_.]+)\$\{/g)) assert.ok(prefijos.has(m[1]), `frase armada sin revisar: ${m[1]}…`);
 });
@@ -348,7 +350,8 @@ test('27e. Administrador: el permiso de IA de cada cuenta (dar solo el dueño de
   assert.match(appJs, /const boton = permitida \? botonAccion\(t\('admin\.ia\.quitar'\)[^\n]*\n\s*: u\.activo && permisos\.admins \? botonAccion\(t\('admin\.ia\.permitir'\)/);
   assert.match(appJs, /if \(permitir && !\(await confirmar\(t\('admin\.ia\.confirmar', \{ nombre: u\.nombreVisible \|\| u\.nombre, origen \}\)/);
   assert.match(appJs, /api\('POST', `\/api\/admin\/usuarios\/\$\{u\.id\}\/ia`, \{ permitida: permitir \}\)/);
-  assert.match(appJs, /\n\s*controlIa\(u\),/);
+  // 0.14.56: en la ficha del alumno → «IA» (Usuarios solo lleva ahí).
+  assert.match(appJs, /cuenta \? controlIaCuenta\(cuenta, permisos, recargar\) : null/);
   assert.match(appJs, /t\('ia\.planes\.cuentas', \{ si: numero\(s\.cuentas\.permitidas \?\? 0\), no: numero\(s\.cuentas\.sinPermiso \?\? 0\) \}\)/);
   for (const clave of ['admin.ia.permitida', 'admin.ia.sin_permiso', 'admin.ia.solo_dueno', 'admin.ia.sin_historia', 'admin.ia.cambio_sin_anotar', 'ia.planes.ir_permisos', 'error.cuenta_inactiva', 'ia.motivo.cuenta_sin_permiso']) {
     assert.ok(es[clave] && en[clave], clave);

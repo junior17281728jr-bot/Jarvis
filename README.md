@@ -712,6 +712,30 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.56: Administrador en 6 entradas y el alumno más sencillo — sin cambio de base
+
+- **Administrador en 6 entradas** (antes 28 pestañas en 4 grupos y 6 pantallas sin pestaña; el mapa está en
+  `public/navegacion.js`: `AREAS_ADMIN`, `AVANZADO_ADMIN`, `REDIRECCIONES_ADMIN`):
+  - **Inicio** (`#admin`): «Para hoy» (solo lo que pide algo, cada cosa con su botón: mensajes, reportes, comprobantes,
+    copias, servidor, pago del servidor, tope de la IA, alumnos sin estudiar o a los que les cuesta, y los avisos con
+    «Ver» y «Entendido»), «Primeros pasos» y 4 líneas de cómo va todo. El Resumen de antes es Avanzado → «Estado del
+    sistema» (`#admin/estado`).
+  - **Alumnos**: Todos · Cómo van todos · Notas, con «Crear alumno» y un estado vacío. La ficha suma «Cuenta» (bloquear,
+    contraseña, nombre, contratos, certificados) e «IA» (el permiso, lo que le queda, darle o quitarle, su tope, prueba,
+    regalar, pausa y el Profesor virtual): la IA de un alumno se maneja SOLO ahí.
+  - **Mensajes** (`#mensajes`): una bandeja «Por responder» (ayuda y reportes juntos), Ayuda, Reportes y Opiniones.
+  - **Dinero** (`#dinero`): el ÚNICO lugar donde se cambia el tope del mes; los otros topes, plegados en «Detalles».
+    Pagos de alumnos y Pago del servidor.
+  - **Contenido**: Paquetes, Ajustes del curso (`#contenido/ajustes`), Términos, Videos, Competencia, Respuestas.
+  - **Avanzado** (`#avanzado`): una lista de lo técnico (Claves e IA, IA y gastos, Fábrica, Lo que hizo la IA, Pídele a la
+    IA, Mejorar la app, Registro, Vista de prueba, Estado del sistema, Copias, Trabajo, Servidor, Cambios, Usuarios,
+    Aprendizaje, Gasto de cada alumno).
+  - Todas las direcciones de antes siguen abriendo su pantalla; las de los grupos viejos (`#admin/dinero`,
+    `#admin/sistema`…) llevan a su lugar nuevo.
+- **Alumno**: un solo nombre, «Tu instructor» (sin «tutor IA» ni «Profesor virtual»), y una sola puerta; Progreso dice qué
+  es cada % («preparado», «Clases hechas»); Configuración en 3 partes; la Biblioteca solo si hay libros; el resultado con un
+  botón principal; las materias «Pronto» en una línea; «Ver todas» ya no queda debajo del botón flotante.
+
 ### Lo nuevo de la 0.14.24: la foto de perfil (de la galería o la cámara) — sin cambio de base
 
 Pedido del dueño: que cada uno pueda poner su propia foto, además de los avatares de aviación.

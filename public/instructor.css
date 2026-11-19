@@ -502,3 +502,15 @@ button.plan-hoy-fila { cursor: pointer; }
 /* Lo nuevo se ve entero: nunca detrás de la cabeza ni de la caja para escribir (fijas). */
 .mensajero .burbuja { scroll-margin-top: 76px; scroll-margin-bottom: calc(230px + env(safe-area-inset-bottom)); }
 @media (min-width: 760px) { .mensajero .burbuja { scroll-margin-top: 84px; scroll-margin-bottom: 170px; } }
+/* 0.14.56: en el teléfono, «Ver todas las materias» a la izquierda: el botón flotante «Tu instructor» va a la derecha y lo tapaba. */
+@media (max-width: 759px) { .marco.con-instructor .camino-controles { justify-content: flex-start; } }
+@media (max-width: 759px) {
+  .boton-instructor { gap: 6px; min-height: 44px; padding: 5px 12px 5px 6px; font-size: 14px; }
+  .boton-instructor-icono { width: 30px; height: 30px; }
+  .boton-instructor-punto { left: 26px; }
+}
+.camino-todas .texto-corto { display: none; }
+@media (max-width: 759px) {
+  .marco.con-instructor .camino-todas .texto-largo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .marco.con-instructor .camino-todas .texto-corto { display: inline; }
+}

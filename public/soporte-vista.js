@@ -358,3 +358,39 @@ export function vistaAdminReporte(datos, h) {
       copia, el('div', { class: 'botones' }, copiar)),
   ];
 }
+
+// ---------- 0.14.56: Mensajes → «Por responder»: una sola bandeja ----------
+// «Por responder» (el mismo número que el de la entrada Mensajes): los mensajes de ayuda cuyo último mensaje es del alumno
+// y los reportes nuevos, juntos y del más nuevo al más viejo. Debajo, lo abierto que ya respondiste o ya viste. Lo
+// resuelto sigue en «Ayuda» y en «Reportes»; las opiniones, en «Opiniones».
+export function filasBandeja(soporte, reportes) {
+  const orden = (a, b) => String(b.cuando).localeCompare(String(a.cuando)) || b.id - a.id;
+  const tickets = (soporte?.tickets ?? []).filter(x => x.estado !== 'resuelto').map(x => ({ tipo: 'ayuda', id: x.id, cuando: x.actualizado ?? x.creado ?? '', x, pendiente: x.pendiente === true }));
+  const reps = (reportes?.reportes ?? []).filter(r => ['nuevo', 'visto'].includes(r.reporte?.estado)).map(r => ({ tipo: 'reporte', id: r.id, cuando: r.creado ?? '', x: r, pendiente: r.reporte.estado === 'nuevo' }));
+  const todas = [...tickets, ...reps];
+  return { porResponder: todas.filter(f => f.pendiente).sort(orden), abiertos: todas.filter(f => !f.pendiente).sort(orden) };
+}
+export function vistaBandeja(soporte, reportes, h) {
+  const { el, t } = h;
+  const { porResponder, abiertos } = filasBandeja(soporte, reportes);
+  const fila = f => (f.tipo === 'ayuda' ? filaTicket(h, f.x, `#soporte/${f.x.id}`)
+    : el('li', {}, el('a', { class: 'ficha-intento', href: `#reportes/${f.x.id}` },
+      el('span', { class: 'ficha-nota', texto: `#${f.x.id}` }),
+      el('span', { class: 'ficha-intento-texto' },
+        el('strong', { texto: t('bandeja.reporte') }),
+        el('span', { class: 'ficha-intento-lugar', texto: f.x.resumen }),
+        el('span', { class: 'suave chica', texto: [`@${f.x.usuario ?? '—'}`, h.fecha(f.x.creado)].filter(Boolean).join(' · ') })),
+      el('span', { class: 'ficha-intento-estado' }, insigniaReporte(h, f.x.reporte.estado), h.icono('flecha', 'icono chico')))));
+  return [
+    el('section', { class: 'tarjeta bandeja' },
+      el('h2', { class: 'con-icono' }, h.icono('campana'), el('span', { texto: h.tn('bandeja.titulo', { n: porResponder.length }) })),
+      porResponder.length ? el('ul', { class: 'ficha-intentos' }, porResponder.map(fila)) : h.vacio('bien', t('bandeja.vacia')),
+      el('div', { class: 'botones' },
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#soporte' }, h.icono('chispa', 'icono chico'), el('span', { texto: t('bandeja.todas_ayuda') })),
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#reportes' }, h.icono('atencion', 'icono chico'), el('span', { texto: t('bandeja.todos_reportes') })),
+        el('a', { class: 'boton-enlace secundario con-icono', href: '#opiniones' }, h.icono('chispa', 'icono chico'), el('span', { texto: t('bandeja.opiniones') })))),
+    abiertos.length ? el('section', { class: 'tarjeta' },
+      el('h2', { texto: t('bandeja.abiertos') }),
+      el('ul', { class: 'ficha-intentos' }, abiertos.map(fila))) : null,
+  ].filter(Boolean);
+}

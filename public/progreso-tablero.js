@@ -81,8 +81,9 @@ export function vistaHero(h, carrera) {
     racha ? `🔥 ${tn('tablero.dias', { n: racha })}` : null].filter(Boolean);
   return el('section', { class: 'panel tb-hero', 'aria-label': t('tablero.resumen') },
     el('div', { class: 'tb-hero-anillos' },
-      grande(av.tg?.pct ?? 0, t('carrera.tg'), 'tg'),
-      av.oral ? grande(av.oral.pct ?? 0, t('carrera.oral'), 'oral') : null),
+      // 0.14.56: cada % con su nombre (antes «TEST GUIDE 0 %» junto al «5 %» de la cabina, sin decir qué era cada uno).
+      grande(av.tg?.pct ?? 0, t('tablero.anillo.tg'), 'tg'),
+      av.oral ? grande(av.oral.pct ?? 0, t('tablero.anillo.oral'), 'oral') : null),
     el('a', { class: `tb-ahora${av.tg?.ahora ? '' : ' apagado'}`, href: av.tg?.ahora && abierto(h, av.tg.ahora.id, av.tg.ahora.tema) ? `#tema/${encodeURIComponent(av.tg.ahora.id)}/${encodeURIComponent(av.tg.ahora.tema)}` : '#inicio' },
       h.icono('avion', 'icono chico'), el('span', { class: 'tb-ahora-texto', texto: ahora })),
     partes.length ? el('p', { class: 'tb-hero-linea', texto: partes.join(' · ') }) : null);

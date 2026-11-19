@@ -35,7 +35,7 @@ import { vistaHero, vistaTop3, botonVerTodos, vistaNumeros, vistaMaterias, vista
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
-import { olvidar, crearEspera, conTope, rutaConInstructor } from './navegacion.js';
+import { olvidar, crearEspera, conTope, rutaConInstructor, AREAS_ADMIN, AVANZADO_ADMIN, areaAdmin, itemAvanzado, REDIRECCIONES_ADMIN, paraHoy } from './navegacion.js';
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -802,6 +802,16 @@ function bandaEstudiante() {
 
 // En el teléfono: arriba la marca y «Salir»; abajo (como las apps del iPhone) el menú con íconos, siempre a mano.
 // En la PC (pantalla ancha) el mismo menú va a la izquierda, con sus nombres, y el contenido al lado (estilos.css).
+// 0.14.56: ¿hay libros en la Biblioteca? (null: todavía no se sabe). Se pregunta una vez al entrar (lo mismo que usa
+// «Ver en el libro»); al saberlo, el enlace de la cabecera aparece o sigue escondido.
+let hayLibros = null;
+function conocerLibros() {
+  hayLibros = false;
+  legibles().then(ids => {
+    hayLibros = ids.size > 0;
+    for (const a of document.querySelectorAll('a.biblioteca-enlace')) if (!a.getAttribute('aria-current')) a.hidden = !hayLibros;
+  });
+}
 function marco(seccion, ...contenido) {
   // Academia (0.7.0): «Proyectos» queda escondido (su código sigue, para más adelante).
   // 0.13.2: «Oral» (el examen oral, con su Camino) tiene su pestaña cuando hay contenido oral; con un punto cuando es «Tu
@@ -811,6 +821,7 @@ function marco(seccion, ...contenido) {
   if (estado.oral?.hay) enlaces.splice(2, 0, ['oral', 'menu.oral', 'microfono']);
   if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo', 'menu.corto.admin']);
   if (estado.usuario && estado.oral === undefined) conocerOral();
+  if (estado.usuario && hayLibros === null) conocerLibros();
   const flotante = botonInstructor();
   return el('div', { class: flotante ? 'marco con-instructor' : 'marco' },
     el('div', { class: 'lateral' },
@@ -818,7 +829,8 @@ function marco(seccion, ...contenido) {
         el('a', { href: '#inicio', class: 'marca-enlace', 'aria-label': t('menu.inicio') }, marcaConLogo()),
         el('a', { href: '#ayuda', class: 'ayuda-enlace', 'aria-current': seccion === 'ayuda' ? 'page' : null }, icono('info', 'icono menu-icono'), el('span', { texto: t('menu.ayuda') })),
         // 0.14.20: la Biblioteca (los libros de dominio público, para leerlos aquí), al lado de la Ayuda.
-        el('a', { href: '#biblioteca', class: 'ayuda-enlace biblioteca-enlace', 'aria-current': seccion === 'biblioteca' ? 'page' : null }, icono('libro', 'icono menu-icono'), el('span', { texto: t('menu.biblioteca') })),
+        // 0.14.56: solo si hay libros publicados (antes salía siempre, para decir «Todavía no hay libros»).
+        el('a', { href: '#biblioteca', class: 'ayuda-enlace biblioteca-enlace', hidden: !(hayLibros === true || seccion === 'biblioteca'), 'aria-current': seccion === 'biblioteca' ? 'page' : null }, icono('libro', 'icono menu-icono'), el('span', { texto: t('menu.biblioteca') })),
         // 0.14.34: «Tu instructor» (en la PC, aquí arriba; en el teléfono, el botón flotante de Camino, Oral, Progreso y Repaso).
         estado.usuario ? el('a', { href: '#instructor', class: 'ayuda-enlace instructor-enlace', 'aria-current': seccion === 'instructor' ? 'page' : null }, icono('cerebro', 'icono menu-icono'), el('span', { texto: t('tuinstr.titulo') })) : null,
         // 0.9.0: el avatar que eligió (Configuración → Mi perfil); lleva a Configuración.
@@ -961,54 +973,46 @@ async function pantallaConfiguracion() {
     el('div', { class: 'rejilla dos' },
       perfil.ok ? vistaPerfil.tarjetasPerfil(perfil.datos.perfil, { el, t, numero, icono, caja, botonAccion, api, avisar, textoError, dibujarAvatar, subirFoto: subirFotoPerfil }, { alGuardar: alGuardarPerfil })
         : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(perfil.datos.error) })),
-      el('section', { class: 'tarjeta' },
-        el('h2', { texto: t('config.cuenta') }),
-        estado.usuario.nombreVisible && estado.usuario.nombreVisible !== estado.usuario.nombre
-          ? el('p', { texto: t('config.nombre', { nombre: estado.usuario.nombreVisible }) }) : null,
-        el('p', { texto: t('config.usuario', { nombre: estado.usuario.nombre }) }),
-        el('p', { class: 'suave', texto: t(estado.usuario.rol === 'admin' ? 'config.rol.admin' : 'config.rol.usuario') })),
-      el('section', { class: 'tarjeta' },
-        el('h2', { texto: t('idioma.titulo') }), botonesIdioma, mensajeIdioma,
-        el('h2', { class: 'separado', texto: t('tema.titulo') }), botonesTema, el('p', { class: 'ayuda', texto: t('tema.ayuda') }),
-        el('h2', { class: 'separado con-icono', id: 'titulo-sonidos' }, icono('altavoz', 'icono chico'), el('span', { texto: t('sonidos.titulo') })),
+      // 0.14.56: 3 partes (antes 11 tarjetas, con «Mis certificados» y «Ayuda» repetidos): Apariencia, Tu cuenta (lo de
+      // la contraseña, plegado) y Escribir al administrador. Los certificados están en Progreso; la Ayuda, arriba.
+      el('section', { class: 'tarjeta config-apariencia' },
+        el('h2', { class: 'con-icono' }, icono('ajustes', 'icono chico'), el('span', { texto: t('config.apariencia') })),
+        el('h3', { texto: t('idioma.titulo') }), botonesIdioma, mensajeIdioma,
+        el('h3', { class: 'separado', texto: t('tema.titulo') }), botonesTema, el('p', { class: 'ayuda', texto: t('tema.ayuda') }),
+        el('h3', { class: 'separado con-icono', id: 'titulo-sonidos' }, icono('altavoz', 'icono chico'), el('span', { texto: t('sonidos.titulo') })),
         el('div', { class: 'ajuste-sonidos', role: 'group', 'aria-labelledby': 'titulo-sonidos' }, botonesSonidos),
         el('p', { class: 'ayuda', texto: t('sonidos.ayuda') }),
         botonesHumor ? [
-          el('h2', { class: 'separado con-icono', id: 'titulo-humor' }, icono('chispa', 'icono chico'), el('span', { texto: t('humor.config.titulo') })),
+          el('h3', { class: 'separado con-icono', id: 'titulo-humor' }, icono('chispa', 'icono chico'), el('span', { texto: t('humor.config.titulo') })),
           el('div', { class: 'ajuste-humor', role: 'group', 'aria-labelledby': 'titulo-humor' }, botonesHumor),
           el('p', { class: 'ayuda', texto: humor.permitido ? t('humor.config.ayuda') : t('humor.admin_apagado') })] : null),
-      el('section', { class: 'tarjeta' }, el('h2', { texto: t('clave.titulo') }), formularioClave({})),
+      el('section', { class: 'tarjeta config-cuenta' },
+        el('h2', { class: 'con-icono' }, icono('candado', 'icono chico'), el('span', { texto: t('config.cuenta') })),
+        estado.usuario.nombreVisible && estado.usuario.nombreVisible !== estado.usuario.nombre
+          ? el('p', { texto: t('config.nombre', { nombre: estado.usuario.nombreVisible }) }) : null,
+        el('p', { texto: t('config.usuario', { nombre: estado.usuario.nombre }) }),
+        el('details', { class: 'plegable-chico' }, el('summary', { texto: t('clave.titulo') }), formularioClave({})),
+        el('details', { class: 'plegable-chico' }, el('summary', { texto: t('config.reinicios') }),
+          !lista ? el('p', { class: 'mensaje error', texto: textoError(reinicios.datos.error) })
+            : lista.length ? [
+              el('p', { class: 'suave', texto: t('config.reinicios.texto') }),
+              verMas(el('ul', {}), lista.map(x => el('li', { texto: t('config.reinicios.linea', { fecha: fecha(x.fecha) }) })), 5),
+            ] : vacio('candado', t('config.reinicios.vacio'), null, 'en-linea')),
+        // 0.9.2: mis documentos firmados y mis datos personales.
+        el('details', { class: 'plegable-chico' }, el('summary', { texto: t('documentos.titulo') }),
+          el('p', { class: 'suave', texto: t('documentos.linea') }),
+          el('div', { class: 'botones' },
+            el('a', { class: 'boton-enlace secundario con-icono', href: '#mis-documentos' }, icono('manual'), el('span', { texto: t('documentos.ver') })),
+            el('a', { class: 'boton-enlace secundario con-icono', href: '#mis-datos' }, icono('candado'), el('span', { texto: t('datos.titulo') }))))),
       estado.usuario.rol === 'admin' ? tarjetaCodigoRespaldo({ el, t, api, caja, decir, textoError, fecha }) : null,
+      // 0.9.2: escribirle al administrador (y 0.14.26: «Reportar un problema»).
       el('section', { class: 'tarjeta' },
-        el('h2', { texto: t('config.reinicios') }),
-        !lista ? el('p', { class: 'mensaje error', texto: textoError(reinicios.datos.error) })
-          : lista.length ? [
-            el('p', { class: 'suave', texto: t('config.reinicios.texto') }),
-            verMas(el('ul', {}), lista.map(x => el('li', { texto: t('config.reinicios.linea', { fecha: fecha(x.fecha) }) })), 5),
-          ] : vacio('candado', t('config.reinicios.vacio'), null, 'en-linea')),
-      // 0.9.2: mis documentos firmados y mis datos personales.
-      el('section', { class: 'tarjeta' },
-        titulo('manual', t('documentos.titulo')),
-        el('p', { class: 'suave', texto: t('documentos.linea') }),
-        el('a', { class: 'boton-enlace secundario con-icono', href: '#mis-documentos' }, icono('manual'), el('span', { texto: t('documentos.ver') })),
-        el('a', { class: 'boton-enlace secundario con-icono', href: '#mis-datos' }, icono('candado'), el('span', { texto: t('datos.titulo') }))),
-      // 0.9.2: escribirle al administrador.
-      el('section', { class: 'tarjeta' },
-        titulo('chispa', t('soporte.titulo')),
+        titulo('chispa', t('soporte.config.boton')),
         el('p', { class: 'suave', texto: t('soporte.config.linea') }),
-        el('a', { class: 'boton-enlace con-icono', href: '#ayuda-mia' }, icono('chispa'), el('span', { texto: t('soporte.config.boton') })),
-        // 0.14.26: «Reportar un problema» (texto, captura y el contexto que se agrega solo).
-        el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda-mia/reportar' }, icono('atencion'), el('span', { texto: t('reportar.boton') }))),
-      // 0.14.26: los certificados de recuerdo.
-      el('section', { class: 'tarjeta' },
-        titulo('medalla', t('cert.mis')),
-        el('p', { class: 'suave', texto: t('cert.config.linea') }),
-        el('a', { class: 'boton-enlace secundario con-icono', href: '#certificados' }, icono('medalla'), el('span', { texto: t('cert.ver') }))),
-      el('section', { class: 'tarjeta' },
-        titulo('info', t('ayuda.titulo')),
-        el('p', { class: 'suave', texto: t('config.ayuda.texto') }),
-        el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda' }, icono('info'), el('span', { texto: t('config.ayuda.abrir') })),
-        el('p', { class: 'credito-fotos', texto: t('config.fotos_fondo') })))));
+        el('div', { class: 'botones' },
+          el('a', { class: 'boton-enlace con-icono', href: '#ayuda-mia' }, icono('chispa'), el('span', { texto: t('soporte.config.boton') })),
+          el('a', { class: 'boton-enlace secundario con-icono', href: '#ayuda-mia/reportar' }, icono('atencion'), el('span', { texto: t('reportar.boton') }))))),
+    el('p', { class: 'credito-fotos', texto: t('config.fotos_fondo') })));
 }
 
 // ---------- Ayuda (0.5.1): todas las explicaciones de «¿Qué es esto?», con un buscador ----------
@@ -1285,7 +1289,8 @@ function destinoAviso(a) {
   if (reporte) return `#reportes/${encodeURIComponent(d.ticket ?? reporte[1])}`;
   if (clave.startsWith('pago_recibido:')) return '#pagos';
   if (clave.startsWith('cambio_admin:')) return '#admin/cambios';
-  if (clave.startsWith('ia_tope:') || clave.startsWith('ia_resumen:') || clave.startsWith('ia_proveedor:')) return '#claves';
+  if (clave.startsWith('ia_tope:') || clave.startsWith('ia_resumen:')) return '#dinero'; // 0.14.56: el dinero, en Dinero
+  if (clave.startsWith('ia_proveedor:')) return '#claves';
   if (clave.startsWith('telegram')) return '#claves';
   return null;
 }
@@ -1669,7 +1674,7 @@ function crearZonaSistema(vigente, parte = 'resumen') {
     zona.dataset.dibujada = '1';
     zona.replaceChildren(...dibujarZonaSistema(datos, { parte, acciones, bloqueFila, mensajeZona, estadoVista, datosDe: ultimosEn ?? Date.now(), sinConexion }).filter(Boolean));
     for (const [id, tono] of Object.entries(tonosDePestanas(datos, sinConexion))) {
-      const punto = document.querySelector(`.pestanas [data-pestana="${id}"] .punto`);
+      const punto = document.querySelector(`.pestanas [data-pestana="${id}"] .punto, .admin-avanzado-nombre[data-punto="${id}"] .punto`);
       if (punto && tono) punto.setAttribute('class', `punto tono-${tono}`);
     }
     // 0.12.5: y el «Pendiente» de los grupos (sin conexión no se sabe: queda lo de antes).
@@ -1746,111 +1751,55 @@ function crearZonaSistema(vigente, parte = 'resumen') {
   return { zona, empezar };
 }
 
-// Administrador va por pestañas, cada una con su dirección: Resumen (#admin), Usuarios (#admin/usuarios),
-// Trabajo (#admin/trabajo), Servidor (#admin/servidor), Cambios importantes (#admin/cambios, 0.12.5), y las pantallas de
-// la IA (#ia) y de las Claves (#claves).
-// Arriba de todas, el título, los 4 grupos y la fila corta de su grupo (siempre a la vista); debajo, la contraseña
-// temporal recién creada (sigue a la vista en todas las pestañas hasta «Ya se la di» o hasta salir de Administrador).
-const PESTANAS_ADMIN = ['resumen', 'usuarios', 'trabajo', 'servidor', 'cambios'];
-// 0.12.5: «hay demasiadas cosas para el admin»: 4 grupos, cada uno con su fila corta. Las direcciones de siempre siguen
-// iguales (cada pestaña es la misma pantalla); solo cambia dónde está el botón. El grupo abre en su primera pestaña.
-const GRUPOS_ADMIN = [
-  { id: 'alumnos', clave: 'admin.grupo.alumnos', icono: 'personas', pestanas: [
-    { id: 'alumnos', href: '#alumnos', clave: 'admin.pestana.alumnos', icono: 'grafica' },
-    // 0.13.5: «Cómo van todos»: cada alumno con sus notas de examen, sus clases, su avance y si está en línea.
-    { id: 'como-van', href: '#como-van', clave: 'admin.pestana.como_van', icono: 'medalla' },
-    // 0.14.6: «Notas»: solo las notas de cada alumno, materia por materia y tema por tema (public/admin-notas.js).
-    { id: 'notas', href: '#notas', clave: 'admin.pestana.notas', icono: 'marca' },
-    { id: 'usuarios', href: '#admin/usuarios', clave: 'admin.pestana.usuarios', icono: 'personas' },
-    // 0.8.0: los Exámenes del Test Guide de cada materia y la clave completa.
-    { id: 'respuestas', href: '#respuestas', clave: 'admin.pestana.respuestas', icono: 'marca' },
-    // 0.10.0: ¿aprenden de verdad? ¿funciona la adaptación?
-    { id: 'aprendizaje', href: '#aprendizaje', clave: 'admin.pestana.aprendizaje', icono: 'grafica' },
-    // 0.9.2: «Ayuda»: los mensajes de los alumnos (con cuántos esperan respuesta).
-    { id: 'soporte', href: '#soporte', clave: 'admin.pestana.soporte', icono: 'chispa' },
-    // 0.14.26: «Reportes»: los problemas que reportan los alumnos (estado, notas y «Copiar para el programador»).
-    { id: 'reportes', href: '#reportes', clave: 'admin.pestana.reportes', icono: 'atencion' },
-    // 0.14.26: «Opiniones de los alumnos» (al terminar cada tema y cada examen).
-    { id: 'opiniones', href: '#opiniones', clave: 'admin.pestana.opiniones', icono: 'chispa' },
-  ] },
-  { id: 'contenido', clave: 'admin.grupo.contenido', icono: 'libro', pestanas: [
-    { id: 'contenido', href: '#contenido', clave: 'admin.pestana.paquetes', icono: 'carpeta' },
-    { id: 'terminos', href: '#contenido/terminos', clave: 'admin.pestana.terminos', icono: 'manual' },
-    { id: 'videos', href: '#contenido/videos', clave: 'admin.pestana.videos', icono: 'video' },
-    // 0.13.0: la «Fábrica de materias» (public/fabrica-vista.js).
-    { id: 'fabrica', href: '#contenido/fabrica', clave: 'admin.pestana.fabrica', icono: 'chispa' },
-    // 0.14.2: «Lo que hizo la IA» y «Pídele a la IA» (public/ia-trabajo-vista.js).
-    { id: 'ia-hizo', href: '#contenido/ia-hizo', clave: 'admin.pestana.ia_hizo', icono: 'manual' },
-    { id: 'pidele', href: '#contenido/pidele', clave: 'admin.pestana.pidele', icono: 'chispa' },
-    // 0.14.8: «Mejorar la app con Claude» (public/app-mejora-vista.js).
-    { id: 'app-mejora', href: '#contenido/app', clave: 'admin.pestana.app_mejora', icono: 'chispa' },
-  ] },
-  { id: 'dinero', clave: 'admin.grupo.dinero', icono: 'dinero', pestanas: [
-    // 0.13.9: «Claude (API)» primero (la misma pantalla de las claves: Claude arriba, Telegram abajo). 0.14.2: «IA (Claude o
-    // ChatGPT)»: quién trabaja, Claude, ChatGPT y la API propia.
-    { id: 'claves', href: '#claves', clave: 'admin.pestana.claude_api', icono: 'llave' },
-    // 0.10.0: los comprobantes de pago del tiempo con IA (con cuántos esperan revisión).
-    { id: 'pagos', href: '#pagos', clave: 'admin.pestana.pagos', icono: 'recibo' },
-    { id: 'ia', href: '#ia', clave: 'admin.pestana.ia', icono: 'chispa' },
-    { id: 'ia-demo', href: '#ia-demo', clave: 'admin.pestana.ia_demo', icono: 'ojo' },
-    // 0.12.8: la IA de cada alumno (dinero y topes) y lo que la IA hizo (public/admin-ia.js).
-    { id: 'ia-alumnos', href: '#ia-alumnos', clave: 'admin.pestana.ia_alumnos', icono: 'personas' },
-    { id: 'ia-registro', href: '#ia-registro', clave: 'admin.pestana.ia_registro', icono: 'manual' },
-  ] },
-  { id: 'sistema', clave: 'admin.grupo.sistema', icono: 'servidor', pestanas: [
-    { id: 'resumen', href: '#admin', clave: 'admin.pestana.resumen', icono: 'escudo' },
-    { id: 'trabajo', href: '#admin/trabajo', clave: 'admin.pestana.trabajo', icono: 'latido' },
-    { id: 'servidor', href: '#admin/servidor', clave: 'admin.pestana.servidor', icono: 'servidor' },
-    // 0.14.1: cuánto y cuándo se paga el servidor en DigitalOcean (public/pago-servidor-vista.js).
-    { id: 'pago-servidor', href: '#pago-servidor', clave: 'admin.pestana.pago_servidor', icono: 'dinero' },
-    { id: 'copias', href: '#copias', clave: 'admin.pestana.copias', icono: 'copia' },
-    { id: 'cambios', href: '#admin/cambios', clave: 'admin.pestana.cambios', icono: 'escudo' },
-  ] },
-];
-const grupoDePestana = actual => GRUPOS_ADMIN.find(g => g.pestanas.some(x => x.id === actual)) ?? GRUPOS_ADMIN[3];
-// 0.12.5: las direcciones que se dicen con el nombre del grupo (o de una pestaña bajo #admin/…) llevan a su pantalla.
-const REDIRECCIONES_ADMIN = Object.freeze({
-  'admin/alumnos': '#alumnos', 'admin/como-van': '#como-van', 'admin/contenido': '#contenido', 'admin/dinero': '#claves', 'claude': '#claves', 'admin/claude': '#claves', 'api': '#claves', 'admin/sistema': '#admin',
-  'admin/respuestas': '#respuestas', 'admin/aprendizaje': '#aprendizaje', 'admin/soporte': '#soporte', 'admin/ayuda': '#soporte',
-  'admin/paquetes': '#contenido', 'admin/terminos': '#contenido/terminos', 'admin/videos': '#contenido/videos', 'contenido/paquetes': '#contenido',
-  'admin/pagos': '#pagos', 'admin/ia': '#ia', 'admin/claves': '#claves', 'admin/telegram': '#claves', 'admin/copias': '#copias', 'admin/resumen': '#admin',
-  'terminos-admin': '#contenido/terminos', 'videos': '#contenido/videos', 'cambios': '#admin/cambios',
-  'admin/pago-servidor': '#pago-servidor', 'admin/pago': '#pago-servidor', 'pago': '#pago-servidor', // 0.14.1
-});
+// Administrador: las pestañas de #admin/… (Estado del sistema, Usuarios, Trabajo, Servidor, Cambios importantes). #admin
+// solo (sin nada) es el Inicio del administrador («Para hoy», 0.14.56).
+const PESTANAS_ADMIN = ['resumen', 'estado', 'usuarios', 'trabajo', 'servidor', 'cambios'];
+// 0.14.56: el mapa del administrador (6 entradas; las direcciones viejas que llevan a su lugar) está en
+// public/navegacion.js (AREAS_ADMIN, AVANZADO_ADMIN, REDIRECCIONES_ADMIN: se prueban sin navegador).
 // Debajo de las pestañas: para qué sirve cada una, en una línea, y las palabras que conviene conocer ahí.
 const LINEA_ADMIN = {
-  resumen: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
+  inicio: () => t('admin.linea.inicio'), estado: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
   alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), notas: () => t('admin.linea.notas'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
   soporte: () => t('admin.linea.soporte'), reportes: () => t('admin.linea.reportes'), opiniones: () => t('admin.linea.opiniones'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
   pagos: () => t('admin.linea.pagos'), // 0.12.12
   'pago-servidor': () => t('admin.linea.pago_servidor'), // 0.14.1
+  mensajes: () => t('admin.linea.mensajes'), dinero: () => t('admin.linea.dinero'), ajustes: () => t('admin.linea.ajustes'), competencia: () => t('admin.linea.competencia'), // 0.14.56
 };
+// 0.14.56: «Token» y «Tailscale» solo en Avanzado (Claves e IA); los alumnos y las copias, con palabras de todos los días.
 const PALABRAS_ADMIN = { usuarios: ['plan', 'clave_temporal'], copias: ['copia', 'copia_comprobada', 'clave_recuperacion'], claves: ['token', 'tailscale'] };
-// 0.12.5: «Pendiente» sobre un grupo cuando algo espera al administrador: comprobantes por revisar (Dinero e IA), mensajes
-// de ayuda sin responder (Alumnos), o un aviso del trabajo, del servidor o de las copias (Sistema).
+// «Pendiente» sobre una entrada cuando algo espera al administrador: mensajes sin responder o reportes nuevos (Mensajes),
+// comprobantes por revisar (Dinero), o un aviso del trabajo, del servidor o de las copias (Avanzado). Inicio: cualquiera.
 function pendientesDeGrupos(tonos = {}, pagos = 0) {
   const alerta = x => ['mal', 'atencion'].includes(x);
-  return { alumnos: (tonos.soportePendientes ?? 0) > 0 || (tonos.reportesNuevos ?? 0) > 0, dinero: pagos > 0, sistema: alerta(tonos.trabajo) || alerta(tonos.servidor) || alerta(tonos.copias), contenido: false };
+  const mensajes = (tonos.soportePendientes ?? 0) + (tonos.reportesNuevos ?? 0);
+  const avanzado = alerta(tonos.trabajo) || alerta(tonos.servidor) || alerta(tonos.copias);
+  return { inicio: mensajes > 0 || pagos > 0 || avanzado, alumnos: false, mensajes: mensajes > 0 ? mensajes : false, dinero: pagos > 0 ? pagos : false, contenido: false, avanzado };
 }
 function pintarPendientes(pendientes) {
   for (const [id, si] of Object.entries(pendientes)) {
     const marca = document.querySelector(`.grupos-admin [data-grupo="${id}"] .grupo-pendiente`);
-    if (marca) marca.hidden = !si;
+    if (!marca) continue;
+    marca.hidden = !si;
+    // Un número (Mensajes, Dinero) o un punto (lo demás): en una sola cifra, no «Pendiente» dos veces.
+    marca.textContent = typeof si === 'number' ? numero(si) : '';
   }
 }
 const ultimosPendientes = { tonos: null, pagos: 0 };
+// 0.14.56: una fila de pestañas que, si no cabe, baja a otra línea (no se desliza de lado ni corta pestañas).
+const envolver = fila => { fila.classList.add('pestanas-envuelve'); return fila; };
 function cabeceraAdmin(actual, tonos = {}) {
-  const grupo = grupoDePestana(actual);
+  const area = areaAdmin(actual);
   const conTonos = tonos && Object.keys(tonos).length > 0;
   if (conTonos) ultimosPendientes.tonos = tonos;
   const tonosVistos = conTonos ? tonos : ultimosPendientes.tonos ?? {};
   const inicial = pendientesDeGrupos(tonosVistos, ultimosPendientes.pagos);
+  // 0.14.56: 6 entradas (en el teléfono, 3 por fila: nada se corta ni se desliza de lado).
   const grupos = el('nav', { class: 'grupos-admin', 'aria-label': t('admin.grupos') },
-    GRUPOS_ADMIN.map(g => el('a', { href: g.pestanas[0].href, class: 'grupo-admin', 'data-grupo': g.id, 'aria-current': g === grupo ? 'page' : null },
+    AREAS_ADMIN.map(g => el('a', { href: g.href, class: 'grupo-admin', 'data-grupo': g.id, 'aria-current': g === area ? 'page' : null },
       icono(g.icono, 'icono'),
       el('span', { class: 'grupo-admin-texto', texto: t(g.clave) }),
-      el('span', { class: 'grupo-pendiente', hidden: !inicial[g.id], texto: t('admin.grupo.pendiente') }))));
+      el('span', { class: 'grupo-pendiente', hidden: !inicial[g.id], 'aria-label': t('admin.grupo.pendiente'), texto: typeof inicial[g.id] === 'number' ? numero(inicial[g.id]) : '' }))));
   // Lo que falta saber llega después (sin esperar): los comprobantes en revisión y, si esta pantalla no lo pidió, el estado
   // del sistema. El número de comprobantes va también sobre la pestaña «Pagos» (si se ve).
   requestAnimationFrame(() => {
@@ -1871,12 +1820,15 @@ function cabeceraAdmin(actual, tonos = {}) {
       });
     }
   });
-  const fila = grupo.pestanas.map(x => ({
+  const fila = area.sub.map(x => ({
     id: x.id, href: x.href, nombreIcono: x.icono,
     texto: x.id === 'soporte' && tonosVistos.soportePendientes ? `${t(x.clave)} (${numero(tonosVistos.soportePendientes)})`
       : x.id === 'reportes' && tonosVistos.reportesNuevos ? `${t(x.clave)} (${numero(tonosVistos.reportesNuevos)})` : t(x.clave),
-    tono: ['trabajo', 'servidor', 'copias', 'soporte'].includes(x.id) ? tonosVistos[x.id] : undefined,
+    tono: ['soporte'].includes(x.id) ? tonosVistos[x.id] : undefined,
   }));
+  // En Avanzado no hay fila: «← Avanzado» y el nombre de la pantalla (con su punto de color, si algo no va bien).
+  const deAvanzado = area.id === 'avanzado' && actual !== 'avanzado' ? itemAvanzado(actual) : null;
+  const tonoAvanzado = deAvanzado && ['trabajo', 'servidor', 'copias'].includes(actual) ? tonosVistos[actual] : undefined;
   return [
     el('div', { class: 'admin-arriba' },
       el('h1', { class: 'titulo-pantalla', texto: t('admin.titulo') }),
@@ -1884,12 +1836,16 @@ function cabeceraAdmin(actual, tonos = {}) {
       el('button', { type: 'button', class: 'boton-3d blanco chico con-icono boton-estudiante', onclick: () => { ponerModoEstudiante(true); location.hash = '#inicio'; } },
         icono('avion', 'icono chico'), el('span', { texto: t('estudiante.entrar') }))),
     grupos,
-    pestanas(fila, actual, t('admin.pestanas_de', { grupo: t(grupo.clave) })),
+    fila.length > 1 ? envolver(pestanas(fila, actual, t('admin.pestanas_de', { grupo: t(area.clave) }))) : null,
+    deAvanzado ? el('div', { class: 'admin-avanzado-donde' },
+      el('a', { class: 'volver con-icono', href: '#avanzado' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('admin.area.avanzado') })),
+      el('h2', { class: 'con-icono admin-avanzado-nombre', 'data-punto': actual }, icono(deAvanzado.icono, 'icono chico'), el('span', { texto: t(deAvanzado.clave) }),
+        tonoAvanzado ? el('span', { class: `punto tono-${tonoAvanzado}`, 'aria-hidden': 'true' }) : null)) : null,
     LINEA_ADMIN[actual] ? entrada(LINEA_ADMIN[actual]()) : null,
     // Academia (0.7.0): «plan» es de los proyectos (escondidos).
     PALABRAS_ADMIN[actual] ? palabras(PALABRAS_ADMIN[actual].filter(x => !TEMAS_DE_PROYECTOS.includes(x))) : null,
     seccionClaveTemporal(),
-  ];
+  ].filter(Boolean);
 }
 // 0.10.0: Pagos (administrador) y el Profesor virtual: el pedido sale de aquí (así se adelanta al abrir) y lo dibuja
 // public/pagos.js.
@@ -2012,6 +1968,73 @@ async function pantallaProfesor() {
 // «Crear un usuario» desde el Resumen: la pestaña Usuarios abre el formulario y pone el cursor en el nombre.
 let abrirCrearUsuario = false;
 
+// ---------- 0.14.56: Inicio del administrador (#admin) ----------
+// «¿Hay algo que tenga que hacer hoy?»: la lista «Para hoy» (solo lo que pide algo, cada cosa con su botón que lleva
+// ahí; los avisos con «Ver» y «Entendido»), 4 líneas de cómo va todo y «Primeros pasos» mientras falte alguno. Antes era
+// el Resumen (4 900 px en el teléfono, con dos tarjetas de la IA arriba de lo importante); ese sigue en Avanzado →
+// «Estado del sistema» (#admin/estado).
+async function pantallaInicioAdmin() {
+  const vigente = nuevoTurno();
+  const [s, ia, contenido, usuarios, pagoServidor, dineroR, pendientes, alumnosR] = await Promise.all([api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'),
+    api('GET', '/api/admin/academia'), api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/servidor-pago'), api('GET', '/api/admin/ia/dinero?corto=1'),
+    api('GET', '/api/admin/academia/pagos/pendientes'), api('GET', '/api/admin/academia/alumnos')]);
+  if (!vigente()) return;
+  const sis = s.ok ? s.datos : null;
+  if (pendientes.ok) ultimosPendientes.pagos = pendientes.datos.pendientes ?? 0;
+  // Sin copias fuera del servidor: lo primero de la lista, en rojo, con el botón de la franja de siempre (crear la
+  // contraseña de copias, o lo que falte).
+  const sinCopias = avisoSinCopias(sis?.copias ?? null);
+  const copiasTono = sis && !sinCopias ? vistaAzulejoCopias(sis.copias, { modoSeguro: sis.modoSeguro?.activo }).tono : null;
+  const items = [sinCopias ? { id: 'copias', tono: 'mal', texto: `${t(sinCopias.titulo)}. ${t(sinCopias.linea)}`, boton: t(sinCopias.boton), href: sinCopias.href } : null, ...paraHoy({ sistema: sis, copiasTono, pagosPendientes: ultimosPendientes.pagos, pagoServidor: pagoServidor.ok ? pagoServidor.datos : null,
+    dinero: dineroR.ok ? dineroR.datos : null, alumnos: alumnosR.ok ? alumnosR.datos.alumnos : null })].filter(Boolean);
+  const mensaje = caja();
+  const filaHoy = x => {
+    if (x.aviso) {
+      const a = x.aviso;
+      const destino = destinoAviso(a);
+      return el('li', { class: `hoy-item tono-${x.tono}`, 'data-hoy': x.id },
+        el('span', { class: 'tono-color hoy-icono' }, icono(x.tono === 'info' ? 'info' : x.tono)),
+        el('span', { class: 'hoy-texto', texto: textoAviso(a) }),
+        el('span', { class: 'hoy-botones' },
+          destino ? el('a', { class: 'boton-3d azul chico', href: destino }, el('span', { texto: t('aviso.ver') })) : null,
+          el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async evento => {
+            const boton = evento.currentTarget;
+            boton.disabled = true;
+            const r = await api('POST', `/api/admin/avisos/${a.id}/visto`, {});
+            if (!r.ok) { boton.disabled = false; return decir(mensaje, textoError(r.datos.error), 'error'); }
+            avisar(t('aviso.entendido.listo'));
+            if (vigente()) pantallaInicioAdmin();
+          } }, el('span', { texto: t('aviso.entendido') }))));
+    }
+    const texto = x.texto ?? (x.n != null ? tn(x.clave, { n: x.n, ...(x.vars ?? {}) }) : t(x.clave, x.vars ?? {}));
+    return el('li', { class: `hoy-item tono-${x.tono}`, 'data-hoy': x.id },
+      el('span', { class: 'tono-color hoy-icono' }, icono(x.tono === 'info' ? 'info' : x.tono)),
+      el('span', { class: 'hoy-texto', texto }),
+      el('span', { class: 'hoy-botones' }, el('a', { class: 'boton-3d azul chico', href: x.href }, el('span', { texto: x.boton ?? t(`hoy.ir.${x.id.replace(/-/g, '_')}`) }))));
+  };
+  const tarjetaHoy = el('section', { class: 'tarjeta para-hoy' },
+    el('h2', { class: 'con-icono' }, icono('calendario'), el('span', { texto: t('hoy.titulo') })),
+    !s.ok ? el('p', { class: 'mensaje error', texto: textoError(s.datos.error) }) : null,
+    items.length ? el('ul', { class: 'hoy-lista' }, items.map(filaHoy)) : vacio('bien', t('hoy.nada'), null, 'en-linea'),
+    mensaje);
+  // Las 4 líneas: alumnos de hoy, copias, la IA (encendida y lo gastado) y el servidor. Cada una lleva a su lugar.
+  const lista = (alumnosR.ok ? alumnosR.datos.alumnos : []).filter(a => a.rol !== 'admin');
+  const hoyRd = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' }).format(new Date());
+  const deHoy = lista.filter(a => a.enLinea || (a.ultimaActividad && new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' }).format(new Date(a.ultimaActividad)) === hoyRd)).length;
+  const semaforo = sis?.salud?.semaforo;
+  const tonoServidor = TONO_SEMAFORO[semaforo] ?? 'apagado';
+  const estadoHoy = el('section', { class: 'tarjeta estado-hoy' },
+    el('h2', { class: 'con-icono' }, icono('latido'), el('span', { texto: t('hoy.como_va') })),
+    el('div', { class: 'resumen-rejilla rejilla-2' },
+      tarjetaResumen({ nombreIcono: 'personas', titulo: t('hoy.alumnos'), valor: tn('hoy.alumnos.valor', { n: deHoy }), detalle: tn('acad.alumnos.n', { n: lista.length }), tono: deHoy ? 'bien' : 'info', destino: '#alumnos' }),
+      azulejoCopias(s),
+      azulejoIa(ia, '#dinero'),
+      tarjetaResumen({ nombreIcono: 'servidor', titulo: t('sistema.servidor'), valor: semaforo ? t(`hoy.servidor.${semaforo}`) : '—', tono: tonoServidor, destino: '#admin/servidor' })));
+  const guia = s.ok && contenido.ok
+    ? guiaCompacta(pasosAcademia(pasosAdmin({ sistema: sis, ia: ia.ok ? ia.datos : null, proyectos: [] }), { contenido: contenido.datos, usuarios: usuarios.ok ? usuarios.datos.usuarios : [] })) : null;
+  mostrar(marco('admin', cabeceraAdmin('inicio', tonosDePestanas(sis)), tarjetaHoy, guia, estadoHoy));
+}
+
 // pestana: 'resumen', 'usuarios', 'trabajo' o 'servidor'. avisoArriba: un mensaje (por ejemplo, «plan cambiado»).
 // Todas piden lo mismo al empezar (así cada pestaña muestra el color del trabajo y del servidor en la fila de arriba).
 async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
@@ -2020,13 +2043,14 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   const sistema = crearZonaSistema(vigente, pestana);
   // El contenido de la academia, solo para «Primeros pasos».
   const [r, datosSistema, ia, contenido, pagoServidor, dineroR] = await Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/sistema'), api('GET', '/api/admin/ia'), api('GET', '/api/admin/academia'),
-    api('GET', '/api/admin/servidor-pago'), pestana === 'resumen' ? api('GET', '/api/admin/ia/dinero?corto=1') : null]);
+    api('GET', '/api/admin/servidor-pago'), null]);
   // Las claves solo se piden desde la cuenta de Tailscale del dueño (por el enlace público ni se preguntan).
   const claves = ia.ok && ia.datos.esDueno ? await api('GET', '/api/admin/claves') : null;
   if (!vigente()) return;
   // La zona se actualiza sola cada 30 s en Resumen, Trabajo y Servidor (en Usuarios no hay nada que actualizar).
   if (conZona) sistema.empezar(datosSistema);
-  const cabecera = cabeceraAdmin(pestana, tonosDePestanas(datosSistema.ok ? datosSistema.datos : null));
+  // 0.14.56: el Resumen de antes es Avanzado → «Estado del sistema» (#admin/estado); #admin es el Inicio («Para hoy»).
+  const cabecera = cabeceraAdmin(pestana === 'resumen' ? 'estado' : pestana, tonosDePestanas(datosSistema.ok ? datosSistema.datos : null));
   const aviso = avisoArriba ? el('section', { class: 'tarjeta' }, avisoArriba) : null;
   if (pestana === 'trabajo' || pestana === 'servidor') {
     mostrar(marco('admin', cabecera, aviso, el('div', { class: `rejilla dos zona-${pestana}` }, sistema.zona)));
@@ -2055,13 +2079,11 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     const guia = datosSistema.ok && contenido.ok
       ? guiaCompacta(pasosAcademia(pasosAdmin({ sistema: datosSistema.datos, ia: ia.ok ? ia.datos : null, proyectos: [] }), { contenido: contenido.datos, usuarios })) : null;
     // 0.13.9: «Claude (IA)» arriba de todo: el estado en palabras simples, conectar la clave y probarla gratis.
-    const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, avisar, confirmar, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude });
+    // 0.14.56: sin el panel «Mejorar todo» (ese vive en Fábrica de materias: antes salía dos veces).
+    const claude = tarjetaClaude({ claves, ia }, { el, t, tSi, icono, api, usd, textoError, textoMotivoIa, avisar, confirmar, recargar: () => pantallaAdmin('resumen'), irAlFormulario: irAClaveClaude }, { conTodo: false });
     const lineaPago = pagoServidor?.ok ? lineaResumenPago(pagoServidor.datos, { el, t, icono }, idioma) : null; // 0.14.1
-    // 0.14.31: «Dinero de la IA» (corta) en el Resumen.
-    const vistaDinero = dineroR?.ok ? await import('./dinero-ia-vista.js') : null;
-    if (!vigente()) return;
-    const dinero = vistaDinero ? vistaDinero.tarjetaDinero(dineroR.datos, piezasIa(() => pantallaAdmin('resumen')), { corto: true }) : null;
-    mostrar(marco('admin', cabecera, aviso, avisoCopiasSinGuardar(datosSistema), lineaPago, dinero, claude, guia,
+    // 0.14.56: «Dinero de la IA» ya no sale aquí (está en Dinero: antes salía tres veces).
+    mostrar(marco('admin', cabecera, aviso, avisoCopiasSinGuardar(datosSistema), lineaPago, claude, guia,
       el('div', { class: 'rejilla dos admin-resumen' }, sistema.zona, atajos, tarjetaServicios(ia, claves, datosSistema))));
     bajarAlAncla();
     return;
@@ -2167,37 +2189,6 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
 
 
 
-  // Ronda 5 de revisión: el permiso de IA de cada cuenta común. Una cuenta creada o tocada (plan, contraseña, activar)
-  // desde el enlace público no gasta IA hasta que el dueño, desde su cuenta de Tailscale, se lo da aquí. Antes de darlo
-  // se ve cuándo y desde dónde se tocó la cuenta por última vez. Quitarlo se puede desde cualquier entrada.
-  const controlIa = u => {
-    if (u.rol === 'admin' || !u.ia) return null;
-    const permitida = u.ia.permitida === true;
-    const ultimo = u.ia.ultimo;
-    const mensajeIa = caja();
-    const origen = !ultimo ? t('admin.ia.sin_historia')
-      : ultimo.vigente === false ? t('admin.ia.cambio_sin_anotar')
-        : t('admin.ia.ultimo', { accion: tSi(`admin.ia.accion.${ultimo.accion}`, ultimo.accion), desde: tSi(`admin.ia.desde.${ultimo.desde}`, ultimo.desde), fecha: fecha(ultimo.fecha) });
-    const cambiarPermiso = permitir => async () => {
-      if (permitir && !(await confirmar(t('admin.ia.confirmar', { nombre: u.nombreVisible || u.nombre, origen }), { si: t('dialogo.si') }))) return;
-      const x = await api('POST', `/api/admin/usuarios/${u.id}/ia`, { permitida: permitir });
-      if (!x.ok) throw new Error(textoError(x.datos.error));
-      await pantallaAdmin('usuarios', el('p', { class: 'mensaje bien', 'data-foco': true, texto: t(permitir ? 'admin.ia.listo_permitida' : 'admin.ia.listo_retirada', { nombre: u.nombreVisible || u.nombre }) }));
-    };
-    const boton = permitida ? botonAccion(t('admin.ia.quitar'), 'secundario', mensajeIa, cambiarPermiso(false), 'prohibido')
-      : u.activo && permisos.admins ? botonAccion(t('admin.ia.permitir'), 'secundario', mensajeIa, cambiarPermiso(true), 'chispa')
-        : null;
-    return el('div', { class: 'ia-cuenta' },
-      el('p', { class: 'etiquetas' }, insignia(permitida ? 'bien' : 'apagado', t(permitida ? 'admin.ia.permitida' : 'admin.ia.sin_permiso'))),
-      el('details', {},
-        el('summary', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('admin.ia.detalle') })),
-        el('p', { class: 'ayuda', texto: t('admin.ia.explica') }),
-        el('p', { class: 'suave', texto: origen }),
-        !permitida && u.activo && !permisos.admins ? el('p', { class: 'suave con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.ia.solo_dueno') })) : null),
-      boton ? el('div', { class: 'botones' }, boton) : null,
-      mensajeIa);
-  };
-
   const filas = r.datos.usuarios.map(u => {
     // A otro administrador solo lo toca el dueño; a una cuenta común, reiniciar y activar necesitan «cuentas».
     const esOtroAdmin = u.rol === 'admin' && u.id !== estado.usuario.id;
@@ -2245,7 +2236,8 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       el('p', { class: 'suave', texto: u.ultimoAcceso ? t('admin.ultimo', { fecha: fecha(u.ultimoAcceso) }) : t('admin.nunca') }),
       el('a', { class: 'enlace-fuerte con-icono-chico ficha-enlace', href: `#alumno/${u.id}` }, icono('grafica', 'icono chico'), el('span', { texto: t('ficha.ver') })),
       u.debeCambiarClave ? el('p', { class: 'suave', texto: t('admin.cambiar_pendiente') }) : null,
-      controlIa(u),
+      // 0.14.56: su IA (el permiso, lo que le queda, regalar, pausar) está en su ficha → «IA».
+      u.rol !== 'admin' ? el('a', { class: 'enlace-fuerte chica', href: `#alumno/${u.id}/ia`, texto: t('admin.ia.en_ficha') }) : null,
       acciones);
   });
 
@@ -2269,12 +2261,43 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
   plegable.append(permisos.cuentas ? formulario : el('p', { class: 'aviso con-icono-arriba' }, icono('candado'), el('span', { texto: t('admin.cuentas_solo_tailnet') })));
   mostrar(marco('admin', cabecera, aviso,
     el('div', { class: 'rejilla admin-usuarios' }, tarjetaNuevo, tarjetaUsuarios)));
-  // 0.12.8: «Un solo dispositivo a la vez para alumnos» (public/admin-ia.js).
-  import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.admin-usuarios'); if (rejilla) rejilla.append(m.tarjetaUnDispositivo(piezasIa())); });
+  // 0.14.56: «Un solo dispositivo a la vez para alumnos» está en Contenido → Ajustes del curso.
   if (abrir && permisos.cuentas) {
     tarjetaNuevo.scrollIntoView({ block: 'start' });
     completo.focus({ preventScroll: true });
   }
+}
+
+// Ronda 5 de revisión: el permiso de IA de cada cuenta común. 0.14.56: en la ficha del alumno → «IA». Una cuenta creada o tocada (plan, contraseña, activar)
+// desde el enlace público no gasta IA hasta que el dueño, desde su cuenta de Tailscale, se lo da aquí. Antes de darlo
+// se ve cuándo y desde dónde se tocó la cuenta por última vez. Quitarlo se puede desde cualquier entrada.
+function controlIaCuenta(u, permisos, recargar) {
+  if (u.rol === 'admin' || !u.ia) return null;
+  const permitida = u.ia.permitida === true;
+  const ultimo = u.ia.ultimo;
+  const mensajeIa = caja();
+  const origen = !ultimo ? t('admin.ia.sin_historia')
+    : ultimo.vigente === false ? t('admin.ia.cambio_sin_anotar')
+      : t('admin.ia.ultimo', { accion: tSi(`admin.ia.accion.${ultimo.accion}`, ultimo.accion), desde: tSi(`admin.ia.desde.${ultimo.desde}`, ultimo.desde), fecha: fecha(ultimo.fecha) });
+  const cambiarPermiso = permitir => async () => {
+    if (permitir && !(await confirmar(t('admin.ia.confirmar', { nombre: u.nombreVisible || u.nombre, origen }), { si: t('dialogo.si') }))) return;
+    const x = await api('POST', `/api/admin/usuarios/${u.id}/ia`, { permitida: permitir });
+    if (!x.ok) throw new Error(textoError(x.datos.error));
+    avisar(t(permitir ? 'admin.ia.listo_permitida' : 'admin.ia.listo_retirada', { nombre: u.nombreVisible || u.nombre }));
+    await recargar();
+  };
+  const boton = permitida ? botonAccion(t('admin.ia.quitar'), 'secundario', mensajeIa, cambiarPermiso(false), 'prohibido')
+    : u.activo && permisos.admins ? botonAccion(t('admin.ia.permitir'), 'secundario', mensajeIa, cambiarPermiso(true), 'chispa')
+      : null;
+  return el('div', { class: 'ia-cuenta' },
+    el('p', { class: 'etiquetas' }, insignia(permitida ? 'bien' : 'apagado', t(permitida ? 'admin.ia.permitida' : 'admin.ia.sin_permiso'))),
+    el('details', {},
+      el('summary', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('admin.ia.detalle') })),
+      el('p', { class: 'ayuda', texto: t('admin.ia.explica') }),
+      el('p', { class: 'suave', texto: origen }),
+      !permitida && u.activo && !permisos.admins ? el('p', { class: 'suave con-icono-arriba' }, icono('candado', 'icono chico'), el('span', { texto: t('admin.ia.solo_dueno') })) : null),
+    boton ? el('div', { class: 'botones' }, boton) : null,
+    mensajeIa);
 }
 
 // 0.12.3: los cambios delicados (datos de pago, claves, contraseñas de otros, administradores), con la hora.
@@ -2398,7 +2421,7 @@ function dibujarCopias(datos, aviso, vigente) {
     anterior = d;
     zona.replaceChildren(...partesDeCopias(d, { abierto, mensaje, actualizar }).filter(Boolean));
     const v = vistaCopias(d);
-    const punto = document.querySelector('.pestanas [data-pestana="copias"]');
+    const punto = document.querySelector('.pestanas [data-pestana="copias"], .admin-avanzado-nombre[data-punto="copias"]');
     if (punto) {
       punto.querySelector('.punto')?.remove();
       if (['mal', 'atencion'].includes(v.tono)) punto.append(el('span', { class: `punto tono-${v.tono}`, 'aria-hidden': 'true' }));
@@ -2805,8 +2828,8 @@ function cifraGrande(texto, etiqueta, tono = 'neutro') {
 
 
 // ---- Administrador → «Servicios»: dos tarjetas que llevan a la IA y a las Claves ----
-function azulejoIa(r) {
-  const base = { nombreIcono: 'chispa', titulo: t('servicios.ia'), destino: '#ia' };
+function azulejoIa(r, destino = '#ia') {
+  const base = { nombreIcono: 'chispa', titulo: t('servicios.ia'), destino };
   if (!r?.ok) return tarjetaResumen({ ...base, valor: '—', detalle: textoError(r?.datos?.error), tono: 'apagado' });
   const s = r.datos;
   if (!s.encendida) return tarjetaResumen({ ...base, valor: t('servicios.ia.apagada'), detalle: t('servicios.ia.apagada.detalle'), tono: 'apagado' });
@@ -2983,22 +3006,13 @@ function dibujarIa(s, aviso, vigente) {
 
   // ---- 3. El tope del mes (y los de las otras cuentas) ----
   const mensajeTope = caja();
-  const campoTope = el('input', { id: 'ia-tope', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: dolaresParaEscribir(s.topeGeneralMicro), 'aria-describedby': 'ia-tope-ayuda' });
   const planes = Object.keys(s.topesPlanMicro ?? {});
   const camposPlan = planes.map(plan => el('input', { id: `ia-tope-${plan}`, type: 'text', inputmode: 'decimal', autocomplete: 'off', value: dolaresParaEscribir(s.topesPlanMicro[plan]) }));
   const tarjetaTope = el('section', { class: 'tarjeta' },
     titulo('dinero', t('ia.tope.titulo'), undefined, 'tope'),
-    el('label', { for: 'ia-tope', texto: t('ia.tope.etiqueta') }),
-    el('div', { class: 'campo-dinero' }, el('span', { class: 'campo-dinero-signo', 'aria-hidden': 'true', texto: 'US$' }), campoTope),
-    el('p', { class: 'ayuda', id: 'ia-tope-ayuda', texto: t('ia.tope.ayuda') }),
-    el('button', {
-      type: 'button', class: 'con-icono',
-      onclick: evento => {
-        const valor = leerDolares(campoTope.value);
-        if (valor == null) return decir(mensajeTope, textoError('tope_no_valido'), 'error');
-        cambiar(evento.currentTarget, mensajeTope, '/api/admin/ia/ajustes', { topeGeneralUsd: valor }, t('ia.tope.listo'));
-      },
-    }, icono('marca'), el('span', { texto: t('ia.tope.guardar') })),
+    // 0.14.56: el tope del mes se cambia en un solo lugar: Dinero (antes, también aquí). Aquí se ve y se va allá.
+    el('p', { class: 'fuerte', texto: t('ia.tope.ahora', { tope: usd(s.topeGeneralMicro) }) }),
+    el('a', { class: 'boton-enlace con-icono', href: '#dinero' }, icono('dinero', 'icono chico'), el('span', { texto: t('ia.tope.cambiar_en_dinero') })),
     mensajeTope,
     planes.length ? el('details', {},
       el('summary', { class: 'con-icono' }, icono('personas'), el('span', { texto: t('ia.planes.titulo') })),
@@ -3006,7 +3020,7 @@ function dibujarIa(s, aviso, vigente) {
       // Ronda 5 de revisión: un tope de plan solo lo usan las cuentas con el permiso de IA del dueño (Administrador → Usuarios).
       s.cuentas ? el('p', { class: 'suave con-icono' }, icono('personas', 'icono chico'),
         el('span', { texto: t('ia.planes.cuentas', { si: numero(s.cuentas.permitidas ?? 0), no: numero(s.cuentas.sinPermiso ?? 0) }) })) : null,
-      s.cuentas?.sinPermiso > 0 ? el('p', {}, el('a', { href: '#admin/usuarios', texto: t('ia.planes.ir_permisos') })) : null,
+      s.cuentas?.sinPermiso > 0 ? el('p', {}, el('a', { href: '#alumnos', texto: t('ia.planes.ir_permisos') })) : null, // 0.14.56: el permiso, en la ficha → «IA»
       planes.map((plan, i) => [el('label', { for: `ia-tope-${plan}`, texto: t(`ia.plan.${plan}`) }),
         el('div', { class: 'campo-dinero' }, el('span', { class: 'campo-dinero-signo', 'aria-hidden': 'true', texto: 'US$' }), camposPlan[i])]),
       el('button', {
@@ -3143,11 +3157,11 @@ async function pantallaClaves(aviso = null) {
   abrirClaveClaude = false;
   const abrirGithub = abrirClaveGithub;
   abrirClaveGithub = false;
-  const [r, prov, vistaIa, dineroR, vistaDinero] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js'),
-    api('GET', '/api/admin/ia/dinero'), import('./dinero-ia-vista.js')]);
+  const [r, prov, vistaIa] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js')]);
   if (!vigente()) return;
-  // 0.14.31: «Dinero de la IA» arriba de todo (también por el enlace público: no muestra claves).
-  const dinero = dineroR.ok ? vistaDinero.tarjetaDinero(dineroR.datos, piezasIa(() => pantallaClaves())) : null;
+  // 0.14.56: «Dinero de la IA» (y el tope del mes) vive en Dinero: aquí, solo el camino.
+  const dinero = el('p', { class: 'aviso con-icono-arriba' }, icono('dinero', 'icono chico'), el('span', { texto: t('claves.dinero_en') }), ' ',
+    el('a', { class: 'enlace-fuerte', href: '#dinero', texto: t('admin.area.dinero') }));
   const cabeza = (...hijos) => el('section', { class: 'tarjeta' },
     avisoDeArriba(aviso),
     el('h2', { class: 'con-icono titulo-tarjeta' }, icono('llave', 'icono grande'), el('span', { texto: t('claves.titulo') }), queEs('clave_api')),
@@ -3181,7 +3195,11 @@ async function pantallaClaves(aviso = null) {
       }, { abrirClaude })
         : el('section', { class: 'tarjeta', id: `claves-${g.grupo}` },
           titulo(ICONO_GRUPO_CLAVES[g.grupo] ?? 'llave', tSi(`claves.grupo.${g.grupo}`, g.grupo)),
-          (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa }))))))));
+          (g.usos ?? []).map((u, i) => cajaDeClave(u, { listo, recargar, abrirPegar: i === 0 && !u.activa })))))
+      // 0.14.56: lo que casi no se toca (GitHub y Telegram) va plegado, con su nombre a la vista (Telegram abierto mientras
+      // no esté unido: los avisos mandan aquí a terminarlo).
+      .map((nodo, i, todos) => { const g = [...(d.grupos ?? [])].sort((a, b) => ordenGrupoClaves(a.grupo) - ordenGrupoClaves(b.grupo))[i];
+        return g && g.grupo !== 'ia' ? plegarSeccion(nodo, tSi(`claves.grupo.${g.grupo}`, g.grupo), { abierto: (g.grupo === 'codigo' && abrirGithub) || (g.grupo === 'avisos' && d.telegram?.listo !== true) || todos.length === 1 }) : nodo; }))));
   if (abrirGithub) {
     const seccion = document.getElementById('claves-codigo');
     const campo = document.getElementById('clave-github_token');
@@ -3196,7 +3214,11 @@ async function pantallaClaves(aviso = null) {
     campo?.focus({ preventScroll: true });
   }
   // 0.12.8: «Probar el bot» y los comandos para @BotFather (public/admin-ia.js).
-  import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.dos'); if (vigente() && rejilla) rejilla.append(m.tarjetaBot(piezasIa())); });
+  import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.dos'); if (vigente() && rejilla) rejilla.append(plegarSeccion(m.tarjetaBot(piezasIa()), t('ia3.bot.plegado'))); });
+}
+// 0.14.56: una tarjeta que casi no se usa, plegada: se ve su nombre y se abre al tocarlo.
+function plegarSeccion(nodo, titulo, { abierto = false } = {}) {
+  return el('details', { class: 'tarjeta plegable-seccion', open: abierto }, el('summary', { class: 'con-icono' }, icono('mas', 'icono chico'), el('span', { texto: titulo })), nodo);
 }
 
 // ayuda: lo que se muestra al pegar en vez de «dónde se crea» (el Telegram lleva los pasos de @BotFather);
@@ -3751,7 +3773,9 @@ function barraCabina(c) {
     el('div', { class: 'cabina-der' },
       chipCifra(`fuego${c.racha ? '' : ' cero'}`, 'fuego', numero(c.racha ?? 0), t('acad.racha')),
       chipCifra('estrella', 'estrella', numero(c.puntos ?? 0), t('acad.puntos')),
-      el('a', { class: 'cabina-medidor', href: '#progreso', 'aria-label': t('acad.preparacion') }, medidor(c.preparacion?.pct ?? 0, { chico: true }))));
+      // 0.14.56: el número dice qué es («preparado»): en Progreso había tres % sin nombre.
+      el('a', { class: 'cabina-medidor', href: '#progreso', 'aria-label': t('acad.preparacion') }, medidor(c.preparacion?.pct ?? 0, { chico: true }),
+        el('span', { class: 'cabina-medidor-texto', 'aria-hidden': 'true', texto: t('acad.preparado_corto') }))));
 }
 
 // ---- Elegir el plan de estudio (la primera vez) ----
@@ -4201,7 +4225,15 @@ async function pantallaInicio() {
   // 0.14.54: «¿Ya lo sabes? Toma el examen» UNA vez: en la materia de ahora (antes, debajo de cada materia, también de las
   // bloqueadas: 6 a 11 veces). Las demás se convalidan al llegar a ellas.
   const materiaActual = siguiente?.materia ?? c.materias.find(m => m.temas.length && m.estado !== 'aprobada')?.id ?? null;
-  const materias = c.materias.map((m, n) => {
+  // 0.14.56: las materias que todavía no tienen clases («Pronto») van juntas en una línea al final del camino (antes,
+  // una tarjeta entera de 150 px cada una).
+  const conClases = c.materias.filter(m => m.temas.length);
+  const sinClases = c.materias.filter(m => !m.temas.length);
+  const lineaPronto = sinClases.length ? el('section', { class: 'materias-pronto', 'aria-label': t('acad.pronto') },
+    el('span', { class: 'banner-pronto', texto: t('acad.pronto') }),
+    el('p', {}, el('strong', { texto: tn('acad.pronto.juntas', { n: sinClases.length }) }), el('span', { class: 'suave', texto: ` ${sinClases.map(m => nombreMateria(m.id)).join(' · ')}` }))) : null;
+  const materias = conClases.map(m => {
+    const n = c.materias.indexOf(m);
     const vacia = !m.temas.length;
     return el('section', { class: `materia-bloque ${claseMateria(m.id)} ${vacia ? 'vacia' : m.estado}`, 'aria-labelledby': `materia-${m.id}` },
       bannerMateria(m, n, { vacia }),
@@ -4232,14 +4264,16 @@ async function pantallaInicio() {
     // 0.14.38: la Competencia (6 rondas de trivia de aviación).
     entradaCompetencia(),
     // 0.14.54: sin la tarjeta del instructor (repetía «Repasar», «Continuar» y «Modo reto», y el instructor ya tiene su
-    // botón): de ella solo quedan los avisos (un pago, los minutos). La del tutor IA sigue (solo con IA): es la puerta a
-    // «Lo que tu tutor recuerda» y al Profesor virtual.
-    tutorUi().tarjetaTutor(), instructorUi().enInicio({ soloAvisos: true }), panelGrupo(c.grupo, { compacto: true }),
+    // botón): de ella solo quedan los avisos (un pago, los minutos). 0.14.56: tampoco la del «tutor IA»: un solo nombre
+    // («Tu instructor») y una sola puerta (el botón flotante en el teléfono, el enlace del menú en la PC); lo que el
+    // instructor recuerda de ti se abre desde su pantalla.
+    instructorUi().enInicio({ soloAvisos: true }), panelGrupo(c.grupo, { compacto: true }),
     // 0.12.2: qué quiere decir el color de cada nodo (0.14.49: al final, con lo demás).
     leyendaCamino());
   mostrar(marco('inicio', barraCabina(c), franjaExamen, hola, avisoMuestra(c.paquete),
     // 0.9.1: cada materia se abre y se cierra; al entrar, solo la actual (public/camino-plegable.js).
-    plegarCamino(el('div', { class: 'camino' }, materias), c.materias, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente }),
+    plegarCamino(el('div', { class: 'camino' }, materias), conClases, { t, tn, icono, numero, el, usuario: estado.usuario.id, siguiente }),
+    lineaPronto,
     masAbajo));
   // 0.8.0: el próximo tema y el progreso se piden ya (sin esperar): al tocarlos se abren enseguida.
   if (siguiente?.tipo === 'tema') adelantar(`/api/academia/temas/${encodeURIComponent(siguiente.materia)}/${encodeURIComponent(siguiente.tema)}`);
@@ -5038,7 +5072,7 @@ async function pantallaExtra(materia, tema = null) {
 const ayudasOral = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, volverAlCamino, nombreMateria, claseMateria, sonar, celebrar, sacudir,
   combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, partirLeccion, vistaTarjeta, nodoCamino, barraLlena, medidor, tutorUi, alDeslizar, anilloAvance,
   vistaVisual, usuario: estado.usuario?.id ?? 0, // 0.14.3: el dibujo de una pregunta del libro y el idioma elegido (por alumno)
-  plegarCamino: (camino, materias, siguiente) => plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario: estado.usuario?.id, siguiente }) });
+  plegarCamino: (camino, materias, siguiente) => plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario: estado.usuario?.id, siguiente, claveTodas: 'oral.ver_todos', claveCerrar: 'oral.cerrar_todos', claveTodasCorta: 'oral.ver_todos_corto' }) });
 async function pantallaOralDe(que, a, b) {
   const vigente = nuevoTurno();
   const error = r => mostrar(marco('oral', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }))));
@@ -5502,8 +5536,10 @@ async function pantallaPractica(id) {
     tutorUi().olvidar();
     barraAvance.poner(1, 1);
     cuenta.textContent = '';
-    const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: `boton-3d ${res.aprobado ? 'blanco' : 'grande naranja'}`,
-      onclick: evento => empezarIntento({ tipo: res.tipo, materia: res.materia, tema: res.tema }, evento.currentTarget) }, el('span', { texto: t('acad.otra_vez') }));
+    // 0.14.56: UN botón principal; lo demás, secundario. «Otra vez (otro orden)» es el principal solo si no aprobó; si
+    // aprobó, un enlace de texto.
+    const otraVez = res.tipo === 'repaso' ? null : el('button', { type: 'button', class: res.aprobado === false ? 'boton-3d grande naranja' : 'boton-texto con-icono',
+      onclick: evento => empezarIntento({ tipo: res.tipo, materia: res.materia, tema: res.tema }, evento.currentTarget) }, res.aprobado === false ? null : icono('actualizar', 'icono chico'), el('span', { texto: t('acad.otra_vez') }));
     // 0.12.4: una práctica sin nota (errores, reto, instructor, repaso) solo se celebra si llegó a la nota para aprobar;
     // si no, un título que anima («Practicaste tus errores: 2 de 6 — vamos otra vez»), sin confeti.
     const llego = res.aprobado ?? (res.total > 0 && res.aciertos * 100 >= (res.umbral ?? 90) * res.total);
@@ -5514,7 +5550,8 @@ async function pantallaPractica(id) {
         el('h1', { class: 'titulo-grande', texto: titulo }),
         el('p', { class: 'bajada', texto: t('acad.resultado.de', { n: numero(res.aciertos), total: numero(res.total) }) }),
         res.aprobado === false ? el('p', { class: 'resultado-necesitas', texto: t('acad.necesitas', { n: numero(res.umbral) }) })
-          : el('p', { class: 'resultado-puntos con-icono' }, icono('estrella'), el('span', { texto: t('acad.ganaste', { n: numero(res.puntos) }) }))),
+          // 0.14.56: «Ganaste 0 puntos» con su estrella no se muestra.
+          : Number(res.puntos) > 0 ? el('p', { class: 'resultado-puntos con-icono' }, icono('estrella'), el('span', { texto: t('acad.ganaste', { n: numero(res.puntos) }) })) : null),
       res.reexplicacion?.length ? el('section', { class: 'panel caja-sencilla reexplicacion' },
         el('h2', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('acad.mas_facil') })),
         res.reexplicacion.map(s => el('div', { class: 'reexplicacion-parte' }, el('h3', { texto: s.titulo }), talCual('p', s.texto ?? (s.puntos ?? []).join('\n')), s.fuentes.map(lineaFuente)))) : null,
@@ -5528,16 +5565,17 @@ async function pantallaPractica(id) {
       instructorUi().resultadoRefuerzo(res),
       revisionCompleta(res)].filter(Boolean));
     // 0.8.0: «Practicar mis errores»: las que falló en este intento, otra vez (Original).
-    const errores = res.falladas.length ? el('button', { type: 'button', class: 'boton-3d naranja con-icono',
+    const errores = res.falladas.length ? el('button', { type: 'button', class: 'boton-3d blanco con-icono',
       onclick: evento => { sonar('toque'); empezarIntento({ tipo: 'errores', intento: res.id }, evento.currentTarget); } }, icono('actualizar', 'icono chico'), el('span', { texto: tn('errores.practicar', { n: res.falladas.length }) })) : null;
     pie.classList.add('apilados');
     // 0.12.2: el repaso de un punto de «Mi repaso»: si falló, la mini-clase antes de intentarlo otra vez.
     const deRepaso = botonesRepaso(res, { el, t, empezarIntento });
     // «Mi repaso» siempre a mano (todo lo fallado, para practicarlo).
     const aMiRepaso = el('a', { class: 'boton-texto con-icono', href: '#mi-repaso' }, icono('actualizar', 'icono chico'), el('span', { texto: t('mirepaso.titulo') }));
+    // Abajo, en una fila: los enlaces de texto (volver u otra vez, y Mi repaso), para que el pie no tape la revisión.
+    const enlaces = el('div', { class: 'pie-enlaces' }, ...[res.aprobado === false ? el('a', { class: 'boton-texto', href: '#inicio', texto: t('acad.volver') }) : otraVez, aMiRepaso].filter(Boolean));
     pie.replaceChildren(...(deRepaso ? [...deRepaso] : [res.aprobado === false ? otraVez : el('a', { class: 'boton-3d grande', href: '#inicio' }, el('span', { texto: t('acad.seguir') })),
-      errores,
-      res.aprobado === false ? el('a', { class: 'boton-3d blanco', href: '#inicio', texto: t('acad.volver') }) : otraVez, aMiRepaso]).filter(Boolean));
+      errores, enlaces]).filter(Boolean));
     if (res.aprobado !== false && llego) celebrar(zona);
     // 0.12.12: «Profundizar en este tema», si el tema trae tarjetas extra (la lección suele estar en memoria).
     if (res.tipo === 'tema' && res.materia && res.tema) ofrecerProfundizar(zona, res.materia, res.tema, sigue);
@@ -5757,17 +5795,56 @@ function panelPuntosDebiles(pd, { conBoton = false, titulo = t('debil.panel') } 
 // por pregunta (#alumno/N/intento/M) y la comparación lado a lado (#comparar/2,5).
 const piezasAlumnos = () => ({
   el, t, tn, icono, insignia, numero, pctTexto, fecha, hace, cuando, fechaCortaDia, nombreMateria, claseMateria, talCual, tarjetaPregunta,
-  panelPuntosDebiles, panelExtra, pestanas, vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
+  panelPuntosDebiles, panelExtra, pestanas: (...x) => envolver(pestanas(...x)), vacio, verMas, barraLlena, partirTitulo, dibujarAvatar, medidor, ICONO_MATERIA,
   // 0.9.2: la cuenta del alumno desde su ficha (bloquear, nombre, contraseña) y los tiempos del examen.
   api, avisar, caja, botonAccion, textoError, yoId: estado.usuario?.id, recargar: () => dibujar(), confirmar,
   // 0.10.0: las fallas registradas del alumno y su Profesor virtual (dar o quitar).
   fallasAlumno: id => instructorUi().loQueHicimos({ titulo: t('ficha.fallas'), url: `/api/admin/academia/alumnos/${encodeURIComponent(id)}/fallas` }),
-  profesorAlumno: id => [instructorUi().profesorAdmin(id), lugarInstructor(v => v.resumenAdmin(id))], // 0.14.34: lo que le recomienda su instructor
+  // 0.14.34: lo que le recomienda su instructor. 0.14.56: «darle o quitarle el Profesor virtual» va en su pestaña «IA».
+  profesorAlumno: id => [lugarInstructor(v => v.resumenAdmin(id))],
+  // 0.14.56: la pestaña «Cuenta» (además de bloquear, contraseña y nombre): sus contratos y sus certificados.
+  cuentaExtra: id => [import('./admin-ia.js').then(m => m.fichaIa(id, piezasIa())), el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('medalla'), el('span', { texto: t('cert.admin.ficha') })),
+    el('a', { class: 'boton-enlace secundario con-icono', href: `#certificados/alumno/${encodeURIComponent(id)}` }, icono('medalla'), el('span', { texto: t('cert.ver') })))].map(x => (x instanceof Promise ? lugarPerezoso(x) : x)),
+  // 0.14.56: la pestaña «IA»: TODO lo de su IA en un solo lugar (antes en Usuarios, en Claves e IA y en IA por alumno).
+  iaAlumno: id => tarjetaIaDeAlumno(id),
+  alCrear: () => { abrirCrearUsuario = true; },
   preparadoAlumno: id => [instructorUi().preparado(`/api/admin/academia/alumnos/${encodeURIComponent(id)}/preparado`, { alumno: true }),
     // 0.12.9 (T, U): lo que su tutor recuerda de él y «¿Tomo el examen?».
     tutorUi().adminAlumno(id),
     el('a', { class: 'boton-enlace secundario', href: `#aprendizaje/${encodeURIComponent(id)}`, texto: t('aprendizaje.de_alumno') })],
 });
+// Un lugar que se llena cuando la promesa trae su nodo (o queda vacío si falla).
+function lugarPerezoso(promesa) {
+  const lugar = el('div', { class: 'lugar-perezoso' });
+  promesa.then(nodo => { if (nodo) lugar.replaceChildren(...[nodo].flat().filter(Boolean)); }).catch(() => {});
+  return lugar;
+}
+// 0.14.56: la IA de un alumno, junta: el permiso del dueño, lo que le queda («Darle más IA» / «Quitarle IA»), su tope,
+// la prueba, regalar usos, pausar, el Profesor virtual y lo que la IA hizo con él. Cada parte se pide a su ruta de
+// siempre y se filtra por este alumno (no hay ruta nueva).
+function tarjetaIaDeAlumno(id) {
+  const recargar = () => dibujar();
+  const h = piezasIa(recargar);
+  const zona = el('div', { class: 'ficha-ia-todo' }, el('p', { class: 'suave', texto: t('reporte.preparando') }));
+  Promise.all([api('GET', '/api/admin/usuarios'), api('GET', '/api/admin/ia/dinero'), api('GET', '/api/admin/academia/ia-alumnos'), import('./admin-ia.js'), import('./dinero-ia-vista.js')])
+    .then(([u, dinero, iaAl, adminIa, vistaDinero]) => {
+      const cuenta = u.ok ? u.datos.usuarios.find(x => String(x.id) === String(id)) : null;
+      const permisos = { cuentas: u.ok && u.datos.permisos?.cuentas !== false, admins: u.ok && u.datos.permisos?.admins === true };
+      const fila = iaAl.ok ? iaAl.datos.filas.find(f => String(f.id) === String(id)) : null;
+      const error = [u, dinero, iaAl].find(x => !x.ok);
+      zona.replaceChildren(...[
+        error ? el('p', { class: 'mensaje error', texto: textoError(error.datos.error) }) : null,
+        el('section', { class: 'tarjeta ficha-ia-permiso' },
+          el('h2', { class: 'con-icono' }, icono('chispa'), el('span', { texto: t('ficha.ia.titulo') })),
+          cuenta ? controlIaCuenta(cuenta, permisos, recargar) : null,
+          fila ? adminIa.filaIaAlumno(fila, iaAl.datos, h) : el('p', { class: 'suave', texto: t('ia3.sin_alumnos') })),
+        dinero.ok ? el('section', { class: 'tarjeta' }, vistaDinero.alumnos(dinero.datos, h, { soloId: id })) : null,
+        instructorUi().profesorAdmin(id),
+        el('a', { class: 'boton-enlace secundario con-icono', href: `#ia-registro/${encodeURIComponent(id)}` }, icono('manual', 'icono chico'), el('span', { texto: t('admin.pestana.ia_registro') })),
+      ].filter(Boolean));
+    }).catch(() => zona.replaceChildren(el('p', { class: 'mensaje error', texto: t('error.desconocido') })));
+  return zona;
+}
 // Lo común: la cabecera de Administrador y, si el pedido falló, el error con «Todos los alumnos».
 function dibujarDeAlumnos(r, s, dibujarCon, pestana = 'alumnos') {
   const cabecera = cabeceraAdmin(pestana, tonosDePestanas(s.ok ? s.datos : null));
@@ -5835,10 +5912,7 @@ async function pantallaAlumno(id, pestana = 'resumen') {
   if (!vigente()) return;
   dibujarDeAlumnos(r, s, (d, h) => vista.vistaFicha(d, pestana, h));
   if (r.ok) vigilarAvanceFicha(id, vigente, vista);
-  // 0.14.26: sus certificados de recuerdo (verlos y descargarlos).
-  if (r.ok) { const main = raiz.querySelector('main.contenido'); if (main) main.append(el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('medalla'), el('span', { texto: t('cert.admin.ficha') })), el('a', { class: 'boton-enlace secundario con-icono', href: `#certificados/alumno/${encodeURIComponent(id)}` }, icono('medalla'), el('span', { texto: t('cert.ver') })))); }
-  // 0.12.8: sus contratos («Enviar a mi Telegram») y su IA, al final de la ficha.
-  if (r.ok) import('./admin-ia.js').then(m => { const main = raiz.querySelector('main.contenido'); if (vigente() && main) main.insertBefore(m.fichaIa(id, piezasIa()), main.lastElementChild); });
+  // 0.14.56: sus certificados, sus contratos y su IA están en sus pestañas «Cuenta» e «IA».
 }
 // 0.14.11: el avance de la ficha (dónde está y los %) se pide de nuevo cada 30 s y al volver a la app (sin memoria del
 // navegador): lo que el alumno hace se ve sin recargar. Va después de dibujar (no se adelanta al abrir).
@@ -5950,6 +6024,46 @@ async function pantallaOpiniones() {
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   mostrar(marco('admin', cabecera, vista.vistaOpiniones(r.datos, { el, t, numero, icono, insignia, talCual, vacio, nombreMateria })));
 }
+// ---- 0.14.56: Mensajes (una bandeja), Dinero (un solo tope del mes) y Avanzado (lo técnico, en una lista) ----
+async function pantallaMensajes() {
+  const vigente = nuevoTurno();
+  const [r, rep, s, vista] = await Promise.all([api('GET', '/api/admin/soporte'), api('GET', '/api/admin/reportes'), api('GET', '/api/admin/sistema'), import('./soporte-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('mensajes', tonosDePestanas(s.ok ? s.datos : null));
+  const malo = !r.ok ? r : !rep.ok ? rep : null;
+  if (malo) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(malo.datos.error) }))));
+  mostrar(marco('admin', cabecera, vista.vistaBandeja(r.datos, rep.datos, { ...piezasSoporte(), tn })));
+}
+// Dinero: arriba, lo de la IA con EL tope del mes (el único lugar donde se cambia) y una barra; los demás topes
+// («Mejorar todo», chat, mejora continua…) plegados en «Detalles», con su lugar en Avanzado. Debajo, a dónde ir para los
+// pagos de los alumnos, lo de cada alumno y la cuenta del servidor.
+async function pantallaDinero() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/ia/dinero'), import('./dinero-ia-vista.js')]);
+  if (!vigente()) return;
+  const cabecera = cabeceraAdmin('dinero');
+  if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  const ir = (href, nombreIcono, clave) => el('a', { class: 'boton-enlace secundario con-icono', href }, icono(nombreIcono, 'icono chico'), el('span', { texto: t(clave) }));
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' },
+    vista.tarjetaDinero(r.datos, piezasIa(() => pantallaDinero())),
+    el('section', { class: 'tarjeta dinero-mas' },
+      el('h2', { class: 'con-icono' }, icono('recibo'), el('span', { texto: t('dinero.mas.titulo') })),
+      el('p', { class: 'ayuda', texto: t('dinero.mas.linea') }),
+      el('div', { class: 'botones' }, ir('#pagos', 'recibo', 'dinero.mas.pagos'), ir('#ia-alumnos', 'personas', 'dinero.mas.alumnos'), ir('#pago-servidor', 'servidor', 'dinero.mas.servidor'), ir('#ia', 'chispa', 'dinero.mas.detalle'))))));
+}
+function pantallaAvanzado() {
+  nuevoTurno();
+  const grupo = g => el('section', { class: 'tarjeta avanzado-grupo' },
+    el('h2', { texto: t(`avanzado.grupo.${g.grupo}`) }),
+    el('ul', { class: 'avanzado-lista' }, g.items.map(x => el('li', {},
+      el('a', { class: 'avanzado-item', href: x.href },
+        icono(x.icono, 'icono'),
+        el('span', { class: 'avanzado-texto' }, el('strong', { texto: t(x.clave) }), el('span', { class: 'suave chica', texto: t(`avanzado.linea.${x.id.replace(/-/g, '_')}`) })),
+        icono('flecha', 'icono chico'))))));
+  mostrar(marco('admin', cabeceraAdmin('avanzado'),
+    el('p', { class: 'aviso con-icono-arriba avanzado-aviso' }, icono('info', 'icono chico'), el('span', { texto: t('avanzado.aviso') })),
+    el('div', { class: 'rejilla dos' }, AVANZADO_ADMIN.map(grupo))));
+}
 // 0.14.26: los certificados de recuerdo (public/certificado-vista.js): los míos, o los de un alumno (administrador).
 // ---- 0.14.38: la Competencia (public/competencia-vista.js, solo se carga ahí) ----
 const piezasCompe = vigente => ({ el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma, confirmar, sonar, celebrar, esAdmin: verComoAdmin(), vigente, motivoIa: textoMotivoIa });
@@ -5997,7 +6111,8 @@ async function pantallaCompeAdmin() {
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/competencia'), import('./competencia-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
-  mostrar(marco('admin', vista.pantallaAdmin(r.datos, piezasCompe(vigente), { recargar: () => { if (vigente()) pantallaCompeAdmin(); } })));
+  // 0.14.56: con la cabecera de Administrador (Contenido → Competencia): antes no tenía pestaña.
+  mostrar(marco('admin', cabeceraAdmin('competencia'), vista.pantallaAdmin(r.datos, piezasCompe(vigente), { recargar: () => { if (vigente()) pantallaCompeAdmin(); } })));
 }
 async function pantallaCertificados() {
   const vigente = nuevoTurno();
@@ -6106,12 +6221,14 @@ async function pantallaRespuestas() {
 }
 
 // ---- Administrador: el contenido (subir un paquete, ponerlo en uso, el nombre de la app y el % para aprobar) ----
-async function pantallaContenido() {
+// 0.14.56: parte 'paquetes' (#contenido: Drive, subir, versiones) o 'ajustes' (#contenido/ajustes: «Ajustes del curso»:
+// aprobar, reloj del examen, Grupo, Carrera, Humor, la Competencia y un solo dispositivo). Antes, todo junto.
+async function pantallaContenido(parte = 'paquetes') {
   const vigente = nuevoTurno();
   // 0.12.5: los «Términos de uso y aviso» van en su pestaña (Contenido → Términos, #contenido/terminos).
   const [r, s] = await Promise.all([api('GET', '/api/admin/academia'), api('GET', '/api/admin/sistema')]);
   if (!vigente()) return;
-  const cabecera = cabeceraAdmin('contenido', tonosDePestanas(s.ok ? s.datos : null));
+  const cabecera = cabeceraAdmin(parte === 'ajustes' ? 'ajustes' : 'contenido', tonosDePestanas(s.ok ? s.datos : null));
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const { ajustes, paquetes, limites } = r.datos;
   // Ajustes.
@@ -6291,7 +6408,20 @@ async function pantallaContenido() {
       el('span', { texto: `${nombreMateria(m.materia)}: ${t('contenido.cobertura', { cubiertas: numero(m.cubiertas), preguntas: numero(m.preguntas) })}` }),
       m.faltan.length ? el('span', { class: 'suave', texto: ` · ${t('contenido.cobertura.faltan', { numeros: m.faltan.join(', ') })}` }) : null))),
     el('p', { class: 'ayuda', texto: t('contenido.cobertura.ayuda') })) : null;
-  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaAjustes, tarjetaCobertura)));
+  if (parte === 'ajustes') {
+    const compe = el('section', { class: 'tarjeta' },
+      el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('admin.sub.competencia') })),
+      el('p', { class: 'ayuda', texto: t('admin.linea.competencia') }),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#competencia/admin' }, icono('trofeo', 'icono chico'), el('span', { texto: t('ajustes.ir_competencia') })));
+    mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos ajustes-curso' }, tarjetaAjustes, compe)));
+    // 0.12.8: «Un solo dispositivo a la vez para alumnos» (public/admin-ia.js): es un ajuste del curso.
+    import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.ajustes-curso'); if (vigente() && rejilla) rejilla.append(m.tarjetaUnDispositivo(piezasIa())); });
+    return;
+  }
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaCobertura,
+    // Los ajustes del curso tienen su pestaña: aquí, el camino.
+    el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('ajustes'), el('span', { texto: t('admin.sub.ajustes') })), el('p', { class: 'ayuda', texto: t('admin.linea.ajustes') }),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#contenido/ajustes' }, icono('ajustes', 'icono chico'), el('span', { texto: t('ajustes.ir') }))))));
 }
 // 0.12.5: Contenido → Términos (0.9.2: los «Términos de uso y aviso», public/terminos-vista.js).
 async function pantallaTerminosAdmin() {
@@ -6438,7 +6568,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6447,7 +6577,16 @@ async function dibujar() {
   if (seccion !== 'claves') vinculoEnPantalla = null;
   if (seccion === 'configuracion') return pantallaConfiguracion();
   if (seccion === 'ayuda') return pantallaAyuda();
-  if (pestanaAdmin && esAdmin) return pantallaAdmin(PESTANAS_ADMIN.includes(pestanaAdmin[1]) ? pestanaAdmin[1] : 'resumen');
+  // 0.14.56: #admin es el Inicio del administrador («Para hoy»); el Resumen de antes es #admin/estado (Avanzado).
+  if (pestanaAdmin && esAdmin) {
+    const p = pestanaAdmin[1] ?? '';
+    if (p === '' || p === 'inicio' || !PESTANAS_ADMIN.includes(p)) return pantallaInicioAdmin();
+    return pantallaAdmin(p === 'estado' ? 'resumen' : p);
+  }
+  if (seccion === 'mensajes' && esAdmin) return pantallaMensajes();
+  if (seccion === 'dinero' && esAdmin) return pantallaDinero();
+  if (seccion === 'avanzado' && esAdmin) return pantallaAvanzado();
+  if (seccion === 'contenido/ajustes' && esAdmin) return pantallaContenido('ajustes');
   if (seccion === 'copias' && esAdmin) return pantallaCopias();
   if (seccion === 'ia' && esAdmin) return pantallaIa();
   if (seccion === 'claves' && esAdmin) return pantallaClaves();
@@ -6490,7 +6629,7 @@ async function dibujar() {
   if (RUTA_NOTAS.test(seccion) && esAdmin) return pantallaNotas(seccion);
   const compararExamen = seccion.match(/^comparar-examen\/([a-z0-9_-]+)$/);
   if (compararExamen && esAdmin) return pantallaCompararExamen(compararExamen[1]);
-  const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad))?$/);
+  const alumno = seccion.match(/^alumno\/(\d+)(?:\/(examenes|materias|debiles|actividad|cuenta|ia))?$/);
   if (alumno && esAdmin) return pantallaAlumno(alumno[1], alumno[2] ?? 'resumen');
   const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);
   if (intentoAlumno && esAdmin) return pantallaIntentoAlumno(intentoAlumno[1], intentoAlumno[2]);
@@ -6575,11 +6714,18 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'ayuda') return [];
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
   // Las pestañas de Administrador (#admin/usuarios, #admin/trabajo, #admin/servidor) piden lo mismo que #admin.
-  if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/admin/academia', '/api/admin/servidor-pago'] : [];
+  // 0.14.56: las de #admin/… (Estado del sistema, Usuarios, Trabajo, Servidor, Cambios) piden lo mismo; #admin (y una
+  // pestaña que no existe) es el Inicio del administrador («Para hoy»).
+  if (/^admin\/(?:estado|resumen|usuarios|trabajo|servidor|cambios)$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/admin/academia', '/api/admin/servidor-pago'] : [];
+  if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/sistema', '/api/admin/ia', '/api/admin/academia', '/api/admin/usuarios', '/api/admin/servidor-pago', '/api/admin/ia/dinero?corto=1', '/api/admin/academia/pagos/pendientes', '/api/admin/academia/alumnos'] : [];
+  if (seccion === 'mensajes') return admin ? ['/api/admin/soporte', '/api/admin/reportes', '/api/admin/sistema'] : [];
+  if (seccion === 'dinero') return admin ? ['/api/admin/ia/dinero'] : [];
+  if (seccion === 'avanzado') return [];
+  if (seccion === 'contenido/ajustes') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
   if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
-  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores', '/api/admin/ia/dinero'] : []; // 0.14.31: «Dinero de la IA»
+  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores'] : []; // 0.14.56: «Dinero de la IA» está en Dinero
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso', '/api/academia/carrera', '/api/academia/tutor/examen'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);
@@ -6605,7 +6751,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'como-van') return admin ? ['/api/admin/academia/como-van', '/api/admin/sistema'] : [];
   // 0.14.6: «Notas» (la misma dirección que RUTA_NOTAS; aquí escrita entera porque esta función se prueba sola).
   if (/^notas(?:\/(?:alumno\/\d{1,9}|comparar\/\d{1,9}(?:,\d{1,9}){1,9}|[a-z0-9_-]+))?$/.test(seccion)) return admin ? ['/api/admin/academia/notas', '/api/admin/sistema'] : [];
-  const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad))?$/);
+  const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad|cuenta|ia))?$/);
   if (alumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(alumno[1])}/ficha`, '/api/admin/sistema'] : [];
   const intentoAlumno = seccion.match(/^alumno\/(\d+)\/intento\/(\d+)$/);
   if (intentoAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(intentoAlumno[1])}/intentos/${encodeURIComponent(intentoAlumno[2])}`, '/api/admin/sistema'] : [];

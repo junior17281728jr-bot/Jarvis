@@ -97,7 +97,7 @@ test('el resumen de arriba sale de los datos: dos anillos con su %, «Ahora en: 
   const n = vistaHero(h, carrera());
   const anillos = n.clase('tb-anillo');
   assert.deepEqual(anillos.map(x => x.atributos['data-pct']), ['42', '17']);
-  assert.deepEqual(n.clase('tb-hero-anillo').map(x => x.atributos['aria-label']), ['Test Guide: 42 %', 'Oral: 17 %']);
+  assert.deepEqual(n.clase('tb-hero-anillo').map(x => x.atributos['aria-label']), ['Clases hechas · Test Guide: 42 %', 'Clases hechas · Oral: 17 %']);
   // El trazo del anillo, por atributo (nada de style en línea): 42 de 100.
   assert.equal(n.clase('tb-anillo-lleno')[0].atributos['stroke-dasharray'], '42 200');
   assert.equal(n.clase('tb-ahora')[0].textContent.trim(), 'Ahora en: M2 · La hélice');
@@ -178,7 +178,7 @@ test('«¿Tomo el examen final?» en UNA tarjeta: veredicto, dos barras contra l
   let abierta = 0;
   const n = vistaExamenResumen(h, examen(), { alVerMaterias: () => { abierta += 1; } });
   assert.equal(n.clase('tb-veredicto')[0].textContent, 'Todavía no');
-  assert.deepEqual(n.todos(x => x.etiqueta === 'progress').map(x => [x.atributos.value, x.atributos['aria-label']]), [['60', 'Acierto 60 % (meta 90)'], ['40', 'Visto 40 % (meta 95)']]);
+  assert.deepEqual(n.todos(x => x.etiqueta === 'progress').map(x => [x.atributos.value, x.atributos['aria-label']]), [['60', 'Aciertas 60 % · meta 90 %'], ['40', 'Has visto 40 % · meta 95 %']]);
   assert.equal(n.clase('tb-falta')[0].textContent.replace(/\s+/g, ' ').trim(), 'Te falta: exámenes con 90 % (faltan 2) · 4 errores por repasar');
   assert.equal(n.clase('tb-materia').length, 0, 'sin la lista larga por materia');
   n.clase('tb-por-materia')[0].eventos.click();

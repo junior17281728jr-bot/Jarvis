@@ -234,7 +234,9 @@ export function crearVistaInstructor(h) {
       el('span', { class: 'instructor-avatar', 'aria-hidden': 'true' }, icono('cerebro'), el('span', { class: 'avatar-punto' })),
       el('div', { class: 'chat-quien' },
         el('h1', { texto: t('tuinstr.titulo') }),
-        el('p', { class: 'suave chica', texto: t(conIa ? 'tuinstr.chat.estado' : 'tuinstr.chat.estado_sin') })));
+        el('p', { class: 'suave chica', texto: t(conIa ? 'tuinstr.chat.estado' : 'tuinstr.chat.estado_sin') }),
+        // 0.14.56: «Lo que tu instructor recuerda de ti» (antes solo desde la tarjeta del «tutor IA» en Inicio).
+        conIa ? el('a', { class: 'enlace-fuerte chica', href: '#tutor/memoria', texto: t('tutor.memoria.abrir') }) : null));
   }
 
   // ---- La vista del administrador: lo que le diría a un alumno (solo leer; el detalle, plegado) ----

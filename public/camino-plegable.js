@@ -35,7 +35,8 @@ export function abiertasAlEntrar(materias, siguiente, guardadas = {}) {
   return abiertas;
 }
 
-export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario, siguiente }) {
+// 0.14.56: claveTodas: el texto de «Ver todas…» (en el oral son capítulos, no materias).
+export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario, siguiente, claveTodas = 'camino.ver_todas', claveCerrar = 'camino.cerrar_todas', claveTodasCorta = 'camino.ver_todas_corto' }) {
   const guardadas = leerAbiertas(usuario);
   const abiertas = abiertasAlEntrar(materias, siguiente, guardadas);
   const secciones = [...camino.querySelectorAll(':scope > .materia-bloque')];
@@ -91,7 +92,9 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
   const todas = el('button', { type: 'button', class: 'camino-todas boton-texto con-icono' });
   const pintarTodas = () => {
     const todasAbiertas = plegables.every(x => x.abierta);
-    todas.replaceChildren(icono(todasAbiertas ? 'cerrar' : 'tarjetas', 'icono chico'), el('span', { texto: t(todasAbiertas ? 'camino.cerrar_todas' : 'camino.ver_todas') }));
+    todas.replaceChildren(icono(todasAbiertas ? 'cerrar' : 'tarjetas', 'icono chico'), ...(todasAbiertas ? [el('span', { texto: t(claveCerrar) })]
+      // 0.14.56: en el teléfono, corto («Ver todas»): el botón flotante «Tu instructor» va a la misma altura.
+      : [el('span', { class: 'texto-largo', texto: t(claveTodas) }), el('span', { class: 'texto-corto', 'aria-hidden': 'true', texto: t(claveTodasCorta) })]));
     todas.dataset.accion = todasAbiertas ? 'cerrar' : 'abrir';
   };
   todas.addEventListener('click', () => {

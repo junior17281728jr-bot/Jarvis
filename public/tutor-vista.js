@@ -61,7 +61,7 @@ export function crearTutor(h) {
       ex ? el('a', { class: `tutor-examen-linea tono-${ex.si ? 'bien' : 'atencion'}`, href: '#tutor/examen' },
         el('strong', { texto: t('tutor.examen.linea', { materia: nombreMateria(ex.materia), decision: decision(ex.si), pct: numero(ex.pct ?? 0) }) })) : null,
       el('div', { class: 'tutor-enlaces' },
-        el('a', { class: 'boton-3d azul chico con-icono', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: t('tutor.hablar') })),
+        el('a', { class: 'boton-3d azul chico con-icono', href: '#instructor' }, icono('cerebro', 'icono chico'), el('span', { texto: t('tutor.hablar') })),
         compacta ? null : el('a', { class: 'enlace-fuerte chica', href: '#tutor/memoria', texto: t('tutor.memoria.abrir') })));
   }
   function tarjetaTutor({ compacta = false } = {}) {

@@ -1536,3 +1536,40 @@ ul.lista-drive li:first-child { border-top: 0; }
 .appm-pantallas { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .appm-pantallas li { display: flex; align-items: center; gap: 8px; }
 .appm-pantallas li.hecha { opacity: 0.75; }
+
+/* 0.14.56: Administrador en 6 entradas (Inicio, Alumnos, Mensajes, Dinero, Contenido, Avanzado): 3 por fila en el teléfono,
+   las 6 en una fila en la PC. Las sub-pestañas bajan a otra línea si no caben (nada se corta ni se desliza de lado). */
+.grupos-admin { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grupo-pendiente:empty { width: 12px; height: 12px; padding: 0; top: -4px; right: -2px; border-radius: 50%; }
+.pestanas.pestanas-envuelve { position: static; flex-wrap: wrap; overflow-x: visible; margin: 0 0 14px; padding: 8px 0; gap: 6px; }
+.pestanas.pestanas-envuelve a.pestana { min-height: 40px; padding: 6px 12px; font-size: 14px; }
+.admin-avanzado-donde { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 8px 0 6px; }
+.admin-avanzado-donde .volver { margin: 0; }
+.admin-avanzado-nombre { margin: 0; font-size: 18px; }
+.avanzado-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+a.avanzado-item {
+  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--borde);
+  background: var(--tarjeta); color: var(--texto); text-decoration: none;
+}
+a.avanzado-item:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.avanzado-texto { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.hoy-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.hoy-item {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 10px 12px; border-radius: 14px;
+  border: 1px solid var(--borde); border-left: 5px solid var(--tono); background: var(--tarjeta);
+}
+.hoy-texto { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.hoy-botones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.alumnos-arriba { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.alumnos-arriba h2 { margin: 0; }
+@media (min-width: 760px) {
+  .grupos-admin { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .grupo-pendiente:empty { position: absolute; }
+  .hoy-item { grid-template-columns: auto 1fr auto; }
+  .hoy-botones { grid-column: auto; }
+}
+/* 0.14.56: lo que casi no se usa, plegado («Ver más»): Claves e IA, la Vista de prueba de la IA. */
+details.plegable-seccion > summary { cursor: pointer; font-weight: 700; min-height: 44px; display: flex; align-items: center; gap: 8px; }
+details.plegable-seccion > .tarjeta { border: 0; box-shadow: none; background: none; padding: 0; margin: 10px 0 0; }
+details.demo-seccion > summary { cursor: pointer; list-style: revert; }
+details.demo-seccion > summary h2 { display: inline; margin: 0; }

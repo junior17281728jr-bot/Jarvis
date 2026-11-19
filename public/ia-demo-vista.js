@@ -12,7 +12,13 @@ export function pantallaIaDemo(d, h) {
   const banner = el('aside', { class: 'banner-demo', role: 'note' },
     el('p', { class: 'con-icono fuerte' }, icono('ojo', 'icono chico'), el('span', { texto: t('demo.banner') })),
     el('p', { class: 'chica', texto: t('demo.banner_linea') }), salir());
-  const seccion = (titulo, ...partes) => el('section', { class: 'panel demo-seccion' }, el('h2', { texto: titulo }), ...partes);
+  // 0.14.56: cada parte plegada (la primera abierta): en el teléfono la pantalla medía 13 200 px.
+  let primera = true;
+  const seccion = (titulo, ...partes) => {
+    const abierta = primera;
+    primera = false;
+    return el('details', { class: 'panel demo-seccion', open: abierta }, el('summary', { class: 'demo-seccion-titulo' }, el('h2', { texto: titulo })), ...partes);
+  };
 
   const pregunta = el('article', { class: 'demo-pregunta' }, talCual('p', `${q.numero ? `${q.numero} · ` : ''}${q.enunciado}`, 'fuerte'),
     el('ul', {}, q.opciones.map(o => talCual('li', `${o.letra}. ${o.texto}${o.letra === q.correcta ? ' ✓' : ''}`))));

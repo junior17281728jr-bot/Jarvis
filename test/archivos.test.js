@@ -467,12 +467,14 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // Lo que una pantalla pide solo después de otra respuesta (o al tocar algo) no se puede adelantar.
   // Administrador pide /api/admin/claves solo si /api/admin/ia dice que quien mira es el dueño (parte 1d).
   // 0.12.3: «Cambios importantes» (solo en la pestaña Usuarios, después de dibujarla).
-  // 0.14.31: «Dinero de la IA» (corta) solo en la pestaña Resumen (las otras pestañas de #admin no la piden).
-  const NO_SE_ADELANTA = { admin: new Set(['/api/admin/claves', '/api/admin/cambios', '/api/admin/ia/dinero?corto=1']) };
-  // Las pestañas de Administrador (0.4.1) piden lo mismo que #admin, y las de un proyecto lo mismo que el proyecto.
-  for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor', 'admin/cambios']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA.admin;
+  // 0.14.56: #admin es el Inicio del administrador («Para hoy»: pide su dinero corto, los comprobantes y los alumnos); las
+  // pestañas de #admin/… (Estado del sistema, Usuarios, Trabajo, Servidor, Cambios) piden lo mismo entre ellas.
+  const NO_SE_ADELANTA = { 'admin/estado': new Set(['/api/admin/claves', '/api/admin/cambios']) };
+  for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor', 'admin/cambios']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA['admin/estado'];
   // 0.8.0: los proyectos de OPORTIA se quitaron (sus direcciones viejas muestran el camino: ver más abajo).
-  const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaAdmin'],
+  const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaInicioAdmin'], ['admin/estado', 'pantallaAdmin'],
+    // 0.14.56: el mapa nuevo del administrador: Mensajes, Dinero, Avanzado y Contenido → Ajustes del curso.
+    ['mensajes', 'pantallaMensajes'], ['dinero', 'pantallaDinero'], ['avanzado', 'pantallaAvanzado'], ['contenido/ajustes', 'pantallaContenido'], ['alumno/7/cuenta', 'pantallaAlumno'], ['alumno/7/ia', 'pantallaAlumno'],
     ['ia', 'pantallaIa'], ['claves', 'pantallaClaves'], ['copias', 'pantallaCopias'],
     ['admin/usuarios', 'pantallaAdmin'], ['admin/trabajo', 'pantallaAdmin'], ['admin/servidor', 'pantallaAdmin'],
     // Claridad (0.5.1): la Ayuda no pide nada (sus textos llegan con el idioma).

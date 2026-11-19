@@ -30,6 +30,7 @@ function barra(x, h) {
 }
 
 // La tarjeta. corto: solo topes y pronósticos, con el enlace a Dinero e IA.
+// 0.14.56: la tarjeta entera vive solo en Dinero (#dinero): el único lugar donde se cambia el tope del mes.
 export function tarjetaDinero(d, h, { corto = false } = {}) {
   const { el, t } = h;
   const p = lineaPronostico(d.pronostico, t);
@@ -50,15 +51,21 @@ export function tarjetaDinero(d, h, { corto = false } = {}) {
     el('h2', { class: 'con-icono' }, h.icono('dinero'), el('span', { texto: t('dinero.titulo') })),
     sinTope ? el('div', { class: 'dinero-sin-tope' },
       el('p', { class: 'dinero-pronostico tono-atencion', texto: t('dinero.pron.apagada') }),
-      corto ? el('a', { class: 'boton-3d azul chico', href: '#claves' }, el('span', { texto: t('dinero.poner_tope') }))
+      corto ? el('a', { class: 'boton-3d azul chico', href: '#dinero' }, el('span', { texto: t('dinero.poner_tope') }))
         : el('button', { type: 'button', class: 'boton-3d azul chico', onclick: irAlTope }, el('span', { texto: t('dinero.poner_tope') })))
       : el('p', { class: `dinero-pronostico tono-${p.tono}`, texto: p.texto }),
     c ? el('p', { class: 'aviso con-icono-arriba', role: 'note' }, h.icono('atencion', 'icono chico'),
       el('span', { texto: t('dinero.conflicto', { mejora: usdRedondo(c.profundaMicro), general: usdRedondo(c.generalMicro), para: usdRedondo(c.paraEnMicro), margen: c.margenPct }) })) : null,
-    el('ul', { class: 'dinero-topes' }, d.topes.filter(x => TOPES.includes(x.id)).map(x => barra(x, h))),
-    lineaProfunda ? el('p', { class: 'dinero-profunda', texto: lineaProfunda }) : null,
-    corto ? el('a', { class: 'boton-enlace secundario con-icono', href: '#claves' }, h.icono('dinero', 'icono chico'), el('span', { texto: t('dinero.ver_todo') }))
-      : [editarTope(d, h), alumnos(d, h)]);
+    // 0.14.56: UN resumen claro (el tope del mes y su barra); los otros topes («Mejorar todo», chat, mejora continua, los
+    // alumnos) y la mejora profunda, plegados en «Detalles» (se cambian en Avanzado → IA y gastos).
+    el('ul', { class: 'dinero-topes' }, d.topes.filter(x => x.id === 'general').map(x => barra(x, h))),
+    el('details', { class: 'plegable-chico dinero-detalles' },
+      el('summary', { texto: t('dinero.detalles') }),
+      el('ul', { class: 'dinero-topes' }, d.topes.filter(x => TOPES.includes(x.id) && x.id !== 'general').map(x => barra(x, h))),
+      lineaProfunda ? el('p', { class: 'dinero-profunda', texto: lineaProfunda }) : null,
+      el('a', { class: 'enlace-fuerte chica', href: '#ia', texto: t('dinero.detalles_ir') })),
+    corto ? el('a', { class: 'boton-enlace secundario con-icono', href: '#dinero' }, h.icono('dinero', 'icono chico'), el('span', { texto: t('dinero.ver_todo') }))
+      : [editarTope(d, h), el('p', { class: 'ayuda', texto: t('dinero.al.en_ficha') })]);
 }
 
 function editarTope(d, h) {
@@ -89,9 +96,12 @@ function lineaQueda(a, t) {
   return partes.join(' · ');
 }
 
-function alumnos(d, h) {
+// 0.14.56: lo que le queda a los alumnos y «Darle más IA» / «Quitarle IA». soloId: solo ese alumno (su ficha → «IA»: el
+// único lugar donde se maneja la IA de un alumno; antes también aquí, en Dinero e IA).
+export function alumnos(d, h, { soloId = null } = {}) {
   const { el, t } = h;
-  if (!d.alumnos?.length) return el('p', { class: 'suave', texto: t('dinero.al.ninguno') });
+  const lista = soloId == null ? d.alumnos ?? [] : (d.alumnos ?? []).filter(a => String(a.id) === String(soloId));
+  if (!lista.length) return el('p', { class: 'suave', texto: t(soloId == null ? 'dinero.al.ninguno' : 'dinero.al.no_suyo') });
   const enviar = async (a, datos, bien) => {
     const r = await h.api('POST', `/api/admin/academia/alumnos/${a.id}/ia-opcion`, datos);
     if (!r.ok) return h.avisar(h.textoError(r.datos.error), 'mal');
@@ -142,5 +152,5 @@ function alumnos(d, h) {
   return el('div', { class: 'dinero-alumnos' },
     el('h3', { texto: t('dinero.al.titulo') }),
     el('p', { class: 'ayuda', texto: t('dinero.al.costo', { costo: usd(d.costoUsoMicro) }) }),
-    el('ul', { class: 'dinero-alumnos-lista' }, d.alumnos.map(fila)));
+    el('ul', { class: 'dinero-alumnos-lista' }, lista.map(fila)));
 }

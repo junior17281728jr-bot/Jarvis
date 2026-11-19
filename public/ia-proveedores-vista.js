@@ -150,14 +150,18 @@ export function seccionesIa(g, prov, h, { abrirClaude = false } = {}) {
   const p = id => prov?.proveedores?.find(x => x.id === id) ?? null;
   const trabaja = prov?.preferido ?? 'auto';
   const marca = id => (trabaja === id ? el('span', { class: 'insignia tono-bien', texto: t('iaprov.elegido') }) : null);
+  // 0.14.56: con la clave de Claude ya puesta, sus 3 pasos van plegados (la pantalla medía 7 400 px en el teléfono).
+  const claudeListo = Boolean(uso('anthropic').activa) && !abrirClaude;
   const claude = el('section', { class: 'tarjeta', id: 'claves-ia' },
     el('h2', { class: 'con-icono' }, h.icono('chispa'), el('span', { texto: 'Claude (Anthropic)' }), marca('anthropic')),
-    h.pasosClaude(),
+    claudeListo ? el('details', { class: 'plegable-chico' }, el('summary', { texto: t('iaprov.pasos_ver') }), h.pasosClaude()) : h.pasosClaude(),
     h.cajaDeClave(uso('anthropic'), { abrirPegar: abrirClaude || !uso('anthropic').activa }));
+  // 0.14.56: ChatGPT es opcional: sin su clave (y sin elegirlo), plegado.
+  const conChatgpt = Boolean(uso('openai').activa) || trabaja === 'openai';
+  const partesChatgpt = [pasos(h, 'openai'), h.cajaDeClave(uso('openai'), { abrirPegar: !uso('openai').activa })];
   const chatgpt = el('section', { class: 'tarjeta', id: 'claves-ia-openai' },
     el('h2', { class: 'con-icono' }, h.icono('chispa'), el('span', { texto: 'ChatGPT (OpenAI)' }), marca('openai')),
-    pasos(h, 'openai'),
-    h.cajaDeClave(uso('openai'), { abrirPegar: !uso('openai').activa }),
+    conChatgpt ? partesChatgpt : el('details', { class: 'plegable-chico' }, el('summary', { texto: t('iaprov.openai.opcional') }), ...partesChatgpt),
     p('openai') && uso('openai').activa ? modelosYPrecios(p('openai'), h) : null,
     prov && uso('openai').activa ? dibujos(prov, h) : null);
   const propia = el('section', { class: 'tarjeta', id: 'claves-ia-propia' },

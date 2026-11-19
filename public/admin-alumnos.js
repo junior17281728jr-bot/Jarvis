@@ -22,10 +22,11 @@ import { vistaAvanceAlumno, repintarAvance, pctTg } from './admin-avance.js';
 import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 export { repintarAvance };
 
-export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 'debiles', 'actividad']);
+// 0.14.56: y «Cuenta» (bloquear, contraseña, nombre, contratos, certificados) e «IA» (todo lo de su IA, en un solo lugar).
+export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 'debiles', 'actividad', 'cuenta', 'ia']);
 export const MAXIMO_COMPARAR = 6;
-const TEXTO_PESTANA = { resumen: 'ficha.pestana.resumen', examenes: 'ficha.pestana.examenes', materias: 'ficha.pestana.materias', debiles: 'ficha.pestana.debiles', actividad: 'ficha.pestana.actividad' };
-const ICONO_PESTANA = { resumen: 'grafica', examenes: 'libro', materias: 'bandera', debiles: 'atencion', actividad: 'reloj' };
+const TEXTO_PESTANA = { resumen: 'ficha.pestana.resumen', examenes: 'ficha.pestana.examenes', materias: 'ficha.pestana.materias', debiles: 'ficha.pestana.debiles', actividad: 'ficha.pestana.actividad', cuenta: 'ficha.pestana.cuenta', ia: 'ficha.pestana.ia' };
+const ICONO_PESTANA = { resumen: 'grafica', examenes: 'libro', materias: 'bandera', debiles: 'atencion', actividad: 'reloj', cuenta: 'ajustes', ia: 'chispa' };
 const TEXTO_TIPO = { tema: 'ficha.tipo.tema', examen: 'ficha.tipo.examen', reto: 'ficha.tipo.reto', repaso: 'ficha.tipo.repaso', errores: 'ficha.tipo.errores', final: 'ficha.tipo.final' };
 const TEXTO_ESTADO = { en_linea: 'ficha.sesion.en_linea', abierta: 'ficha.sesion.abierta', vencida: 'ficha.sesion.vencida', cerrada: 'ficha.sesion.cerrada' };
 const TEXTO_MOTIVO = { salir: 'ficha.motivo.salir', cerrada: 'ficha.motivo.cerrada', bloqueo: 'ficha.motivo.bloqueo', otro_equipo: 'ficha.motivo.otro_equipo' };
@@ -230,8 +231,18 @@ export function vistaListaAlumnos(datos, h) {
             h.insignia('mal', t('acad.mal', { n: numero(a.errores) })),
             h.insignia('info', t('acad.temas_de', { n: numero(a.temasAprobados), total: numero(a.temas) }))))));
   };
+  // 0.14.56: «Crear alumno» arriba, siempre; sin alumnos, la lista dice qué hacer (antes solo salían botones sin sentido).
+  const crear = el('a', { class: 'boton-3d azul chico con-icono alumnos-crear', href: '#admin/usuarios', onclick: () => h.alCrear?.() }, h.icono('mas', 'icono chico'), el('span', { texto: t('alumnos.crear') }));
+  if (!lista.length) {
+    return el('section', { class: 'tarjeta alumnos-vacio' },
+      el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: t('alumnos.vacio.titulo') })),
+      h.vacio('personas', t('alumnos.vacio.linea'), crear),
+      listaEliminados(h));
+  }
   return el('section', { class: 'tarjeta' },
-    el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: tn('acad.alumnos.n', { n: lista.length }) }), el('span', { class: 'insignia tono-bien', texto: tn('acad.alumnos.en_linea', { n: enLinea }) })),
+    el('div', { class: 'alumnos-arriba' },
+      el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: tn('acad.alumnos.n', { n: lista.length }) }), el('span', { class: 'insignia tono-bien', texto: tn('acad.alumnos.en_linea', { n: enLinea }) })),
+      crear),
     lista.length > 1 ? el('div', { class: 'ficha-comparar-barra' }, boton, ayuda) : null,
     // 0.9.2: el Reporte (ranking, por alumno, grupo, comparar; PDF y CSV).
     el('div', { class: 'botones ficha-reporte' },
@@ -240,7 +251,7 @@ export function vistaListaAlumnos(datos, h) {
       el('a', { class: 'boton-enlace secundario con-icono', href: '#reporte' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('reporte.boton') })),
       // 0.9.2: los contratos firmados (términos aceptados con la firma dibujada).
       el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.titulo') }))),
-    lista.length ? h.verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 12) : h.vacio('personas', t('admin.usuarios.solo_tu')),
+    h.verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 12),
     // 0.13.8: los eliminados (plegado), para recuperarlos.
     listaEliminados(h));
 }
@@ -252,12 +263,14 @@ export function vistaFicha(d, pestana, h) {
   const actual = PESTANAS_FICHA.includes(pestana) ? pestana : 'resumen';
   const fila = h.pestanas(PESTANAS_FICHA.map(id => ({ id, href: id === 'resumen' ? `#alumno/${a.id}` : `#alumno/${a.id}/${id}`, texto: t(TEXTO_PESTANA[id]), nombreIcono: ICONO_PESTANA[id] })), actual, t('ficha.pestanas'));
   const cuerpo = actual === 'examenes' ? pestanaExamenes(d, h) : actual === 'materias' ? pestanaMaterias(d, h)
-    : actual === 'debiles' ? pestanaDebiles(d, h) : actual === 'actividad' ? pestanaActividad(d, h) : pestanaResumen(d, h);
+    : actual === 'debiles' ? pestanaDebiles(d, h) : actual === 'actividad' ? pestanaActividad(d, h)
+      : actual === 'cuenta' ? [cuentaAlumno(h, a), h.cuentaExtra?.(a.id) ?? null].filter(Boolean)
+        : actual === 'ia' ? (h.iaAlumno?.(a.id) ?? null) : pestanaResumen(d, h);
   return [
     el('div', { class: 'ficha-arriba' },
       el('a', { class: 'volver con-icono', href: '#alumnos' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') }))),
     cabezaAlumno(h, a, d.actividad),
-    cuentaAlumno(h, a),
+    // 0.14.56: la cuenta (bloquear, contraseña…) tiene su pestaña: arriba ya no ocupa media pantalla en el teléfono.
     fila,
     el('div', { class: 'ficha-cuerpo', 'data-pestana': actual }, cuerpo),
   ];

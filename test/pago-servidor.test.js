@@ -320,8 +320,8 @@ test('pantalla: las frases existen en los dos idiomas (sin claves repetidas), si
   assert.equal(textoProximo({ fecha: '2026-12-01', dias: 1 }, tEs), 'Próximo pago: mañana, 1 dic');
   assert.equal(textoProximo({ fecha: '2026-12-01', dias: 0 }, tEs), 'Próximo pago: hoy, 1 dic');
   assert.equal(textoProximo({ fecha: '2026-12-01', dias: -1 }, tEs), 'El pago venció el 1 dic (hace 1 día)');
-  // La pestaña está en el grupo Sistema y la pantalla se abre en #pago-servidor.
+  // La pestaña (0.14.56: en Dinero, public/navegacion.js) y la pantalla se abre en #pago-servidor.
   const app = readFileSync(join(RAIZ, 'public/app.js'), 'utf8');
-  assert.match(app, /\{ id: 'pago-servidor', href: '#pago-servidor', clave: 'admin\.pestana\.pago_servidor'/);
+  assert.match(readFileSync(join(RAIZ, 'public/navegacion.js'), 'utf8'), /\{ id: 'pago-servidor', href: '#pago-servidor', clave: 'admin\.pestana\.pago_servidor'/);
   assert.match(app, /seccion === 'pago-servidor' && esAdmin\) return pantallaPagoServidor\(\)/);
 });

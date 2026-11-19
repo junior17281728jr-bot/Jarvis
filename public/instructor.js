@@ -462,7 +462,7 @@ export function crearInstructor(h) {
       planDeHoy({ sinAccion: consejo?.accion ?? null }),
       // 0.12.4: el administrador (también «como estudiante») puede ver cómo se vería todo con IA, sin clave.
       d.demoIa ? el('a', { class: 'enlace-fuerte chica con-icono', href: '#ia-demo' }, icono('ojo', 'icono chico'), el('span', { texto: tx('demo.vista.abrir') })) : null,
-      ia && d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#profesor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
+      ia && d.tiempo?.activo ? el('a', { class: 'boton-3d azul chico con-icono boton-profesor', href: '#instructor' }, icono('cerebro', 'icono chico'), el('span', { texto: tx('profesor.abrir') })) : null,
       zonaIa);
   }
   // 0.12.4: «Tu plan de hoy»: sin IA, las primeras cosas que puede hacer hoy (cada una con su botón de verdad); con IA,
