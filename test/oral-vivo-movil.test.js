@@ -3,6 +3,7 @@
 //    dictado vuelve a empezar: ese pedazo ya no se pierde con la frase siguiente; sin espacios de más.
 //  - Si un envío falla (sin red, «Demasiados intentos»), «Enviar», «No sé» y el micrófono vuelven a funcionar; si falla
 //    «Terminar», hay «Volver a intentar»; los botones no usan e.currentTarget después de esperar al servidor.
+//  - Lo que el navegador manda al parar el micrófono se escribe (si el cuadro sigue abierto); el iPhone dicta como Safari.
 import './ayuda.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,8 +49,10 @@ test('la pantalla: tras un envío fallido todo vuelve a funcionar; «Terminar» 
   assert.equal(usos.length, 3);
   for (const l of usos) assert.equal(l.trim(), 'const b = e.currentTarget;', 'e.currentTarget se guarda al principio (antes de esperar)');
   assert.ok(!/e\.currentTarget\.disabled = false/.test(vista));
-  // Un resultado del dictado que llega tarde (ya enviado) no cambia nada.
-  assert.match(vista, /r\.onresult = ev => \{\n\s+if \(escucha !== r\) return;/);
+  // Lo que llega al parar se escribe solo si el cuadro sigue abierto y no empezó otro dictado; el iPhone (aunque no diga
+  // «Safari»: app de la pantalla de inicio, Chrome) dicta como Safari.
+  assert.match(vista, /if \(escucha !== r\) \{ if \(!escucha && !caja\.disabled && caja\.isConnected\) caja\.value = dictado\.resultado\(ev\); return; \}/);
+  assert.match(vista, /r\.continuous = !\(esSafari \|\| esIos\);/);
   for (const n of ['es', 'en']) assert.ok(JSON.parse(readFileSync(new URL(`../public/i18n/${n}.json`, import.meta.url), 'utf8'))['vivo.reintentar'], n);
   assert.ok(!/innerHTML|style=|\.style\./.test(vista));
 });

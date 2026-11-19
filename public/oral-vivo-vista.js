@@ -248,6 +248,9 @@ function practica(s, prefs, h, desde = 0) {
         // apagado y volviendo a empezar solo; Chrome corta tras un silencio: también se vuelve a empezar mientras el
         // botón siga encendido. Cada error dice su causa y qué hacer.
         const esSafari = typeof navigator !== 'undefined' && /safari/i.test(navigator.userAgent) && !/chrome|crios|android/i.test(navigator.userAgent);
+        // 0.14.48: en el iPhone TODO es Safari por dentro (también Chrome y la app de la pantalla de inicio, que no dicen
+        // «Safari»): igual que Safari.
+        const esIos = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
         const dictado = crearDictado(caja.value, 1200);
         let reintentos = 0;
         let tramos = 0;
@@ -258,14 +261,16 @@ function practica(s, prefs, h, desde = 0) {
         const empezar = () => {
           const r = new R();
           r.lang = idiomaOral(usuario) === 'en' ? 'en-US' : 'es-ES';
-          r.continuous = !esSafari;
+          r.continuous = !(esSafari || esIos);
           r.interimResults = true;
           r.maxAlternatives = 1;
           r.onaudiostart = () => { oyoAlgo = true; };
           r.onspeechstart = () => { oyoAlgo = true; if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando'); };
           r.onsoundstart = () => { oyoAlgo = true; };
           r.onresult = ev => {
-            if (escucha !== r) return; // 0.14.48: llegó tarde (ya se paró o se mandó): no cambia nada
+            // 0.14.48: al parar, el navegador todavía manda lo último que oyó: se escribe si el cuadro sigue abierto (no si
+            // ya se mandó o si otro dictado empezó); sin cambiar el estado.
+            if (escucha !== r) { if (!escucha && !caja.disabled && caja.isConnected) caja.value = dictado.resultado(ev); return; }
             oyoAlgo = true;
             clearTimeout(vigia);
             if (estado.dataset.estado !== 'escuchando') ponerEstado('escuchando');
@@ -301,7 +306,6 @@ function practica(s, prefs, h, desde = 0) {
         // 0.14.47: en el iPhone (Safari) el dictado SOLO arranca si empieza en el mismo toque (no después de pedir el
         // micrófono aparte): ahí se arranca directo y el propio dictado pide el permiso. En los demás, igual que antes.
         const md = typeof navigator !== 'undefined' ? navigator.mediaDevices : null;
-        const esIos = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
         if (esSafari || esIos) arrancar();
         else if (md?.getUserMedia) {
           ponerEstado('pidiendo_permiso');
