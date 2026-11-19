@@ -5502,7 +5502,7 @@
   "vivo.estado.grabar_fallo": "No pude escribir lo que dijiste. Toca el micrófono para intentar otra vez, o usa el micrófono del teclado.",
   "vivo.estado.grabar_vacio": "No se entendió nada. Habla más cerca del micrófono y toca otra vez, o escribe.",
   "vivo.estado.sin_red_grabar": "Sin internet no puedo escribir tu voz: revisa la conexión y toca el micrófono otra vez, o escribe.",
-  "vivo.estado.teclado": "No llegó tu voz. Para dictar: presiona dos veces Fn (Mac) o Windows+H (PC) y habla. O escribe.",
+  "vivo.estado.teclado": "Para dictar con el teclado: presiona dos veces Fn (Mac) o Windows+H (PC) y habla. O escribe.",
   "error.muy_corto": "La grabación fue muy corta: habla un poco más.",
   "error.grabacion_no_valida": "No se pudo leer la grabación: toca el micrófono otra vez.",
   "ia.motivo.audio_no_valido": "el proveedor no pudo leer la grabación",

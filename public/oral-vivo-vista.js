@@ -277,7 +277,7 @@ function practica(s, prefs, h, desde = 0) {
   const ex = crearExaminador({ etiqueta: t('vivo.examinador') });
   const escenario = el('div', { class: 'vivo-escenario' }, ex.nodo);
   alHablar = si => ex.poner(si ? 'hablando' : 'quieto');
-  const parar = () => { try { escucha?.stop(); } catch { /* nada */ } escucha = null; try { grabacion?.cancelar(); } catch { /* nada */ } grabacion = null; callar(); };
+  const parar = () => { try { escucha?.stop(); } catch { /* nada */ } escucha = null; try { grabacion?.alSoltar?.(); grabacion?.cancelar(); } catch { /* nada */ } grabacion = null; callar(); };
   // Al irse de la pantalla: nada sigue hablando ni escuchando.
   const alCambio = () => setTimeout(() => { if (!zona.isConnected) { parar(); window.removeEventListener('hashchange', alCambio); } }, 0);
   window.addEventListener('hashchange', alCambio);
@@ -417,6 +417,7 @@ function practica(s, prefs, h, desde = 0) {
       nueva.empezar().then(() => {
         if (!caja.isConnected || caja.disabled || grabacion) { nueva.cancelar(); return; }
         grabacion = nueva;
+        nueva.alSoltar = apagarVista; // al irse, pasar de pregunta o «No sé»: el reloj y las barritas también se apagan
         ponerEstado(null);
         mic.setAttribute('aria-pressed', 'true');
         mic.classList.add('grabando');

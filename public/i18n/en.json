@@ -5502,7 +5502,7 @@
   "vivo.estado.grabar_fallo": "I couldn't write what you said. Tap the microphone to try again, or use the keyboard microphone.",
   "vivo.estado.grabar_vacio": "Nothing was understood. Speak closer to the microphone and tap again, or type.",
   "vivo.estado.sin_red_grabar": "Without internet I can't write your voice: check the connection and tap the microphone again, or type.",
-  "vivo.estado.teclado": "Your voice didn't come through. To dictate: press Fn twice (Mac) or Windows+H (PC) and speak. Or type.",
+  "vivo.estado.teclado": "To dictate with the keyboard: press Fn twice (Mac) or Windows+H (PC) and speak. Or type.",
   "error.muy_corto": "The recording was too short: speak a little longer.",
   "error.grabacion_no_valida": "The recording couldn't be read: tap the microphone again.",
   "ia.motivo.audio_no_valido": "the provider couldn't read the recording",
