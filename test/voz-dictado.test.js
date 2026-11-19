@@ -179,20 +179,39 @@ test('si el teléfono no aguanta el modelo grande (la página se cae o no carga)
   assert.equal(modeloPara({ modelo: 'X/base', modeloChico: 'X/tiny' }), 'X/base');
   assert.equal(modeloPara({ modelo: 'X/base', modeloChico: 'X/tiny' }, new Set(['X/base'])), 'X/tiny');
   assert.equal(modeloPara({ modelo: 'X/base', modeloChico: 'X/tiny' }, new Set(['X/base', 'X/tiny'])), null);
-  // La página se cayó cargando el grande: queda anotado y al abrir otra vez se sabe.
+  // La página se cayó cargando el grande: queda anotado y al abrir otra vez ESTA pestaña se sabe.
+  let ahora = 1_000_000;
+  const reloj = () => ahora;
   const almacen = almacenFalso();
+  const sesion = almacenFalso();
   let alCerrar = null;
-  const g1 = crearGuardia(almacen, f => { alCerrar = f; });
+  let alVisibilidad = null;
+  const g1 = crearGuardia(almacen, { sesion, reloj, alCerrar: f => { alCerrar = f; }, alVisibilidad: f => { alVisibilidad = f; } });
   g1.marcar('X/base');
-  const g2 = crearGuardia(almacen);
+  // Otra pestaña abierta mientras tanto: no es una caída (y no le borra la anotación a la primera).
+  const otra = crearGuardia(almacen, { sesion: almacenFalso(), reloj });
+  assert.equal(otra.malos().size, 0);
+  assert.ok(almacen.getItem('op_voz_en_uso'));
+  // El teléfono la manda al fondo (cambia de app): se borra; al volver, se anota otra vez.
+  alVisibilidad(true);
+  assert.equal(almacen.getItem('op_voz_en_uso'), null);
+  alVisibilidad(false);
+  assert.ok(almacen.getItem('op_voz_en_uso'));
+  // Se cae (sin pagehide) y la misma pestaña se abre otra vez: ese modelo no le sirve.
+  const g2 = crearGuardia(almacen, { sesion, reloj });
   assert.deepEqual([...g2.malos()], ['X/base']);
   assert.equal(almacen.getItem('op_voz_en_uso'), null);
   // Cerrar la página normalmente (pagehide) no cuenta como caída.
   g2.marcar('X/tiny');
   alCerrar();
-  assert.deepEqual([...crearGuardia(almacen).malos()], ['X/base']);
+  assert.equal(almacen.getItem('op_voz_en_uso'), null);
+  assert.deepEqual([...crearGuardia(almacen, { sesion, reloj }).malos()], ['X/base']);
+  // A los pocos días se prueba otra vez el grande.
+  ahora += 4 * 86_400_000;
+  assert.equal(crearGuardia(almacen, { sesion, reloj }).malos().size, 0);
   // Sin localStorage (navegación privada): nunca falla.
-  const rota = crearGuardia({ getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } });
+  const fallan = { getItem() { throw new Error('x'); }, setItem() { throw new Error('x'); }, removeItem() { throw new Error('x'); } };
+  const rota = crearGuardia(fallan, { sesion: fallan });
   rota.marcar('X/base');
   assert.equal(rota.malos().size, 0);
   rota.agregarMalo('X/base');

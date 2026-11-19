@@ -131,23 +131,45 @@ export function modeloPara(e, malos = new Set()) {
 }
 
 // La guardia contra una página que se cae cargando el modelo (el iPhone cierra la pestaña si no le alcanza la memoria):
-// antes de cargar o transcribir anota el modelo; al terminar (o al cerrar la página normalmente) lo borra. Si al abrir
-// todavía está anotado, ese modelo no le sirve a este equipo. almacen: localStorage (si falla, no recuerda nada).
-export function crearGuardia(almacen, alCerrar = null) {
-  const leer = k => { try { return almacen?.getItem(k) ?? null; } catch { return null; } };
-  const poner = (k, v) => { try { if (v == null) almacen?.removeItem(k); else almacen?.setItem(k, v); } catch { /* sin memoria del navegador */ } };
+// mientras carga o transcribe, anota el modelo con el nombre de ESTA pestaña; al terminar lo borra. Si al abrir otra vez
+// esta misma pestaña (sessionStorage sobrevive a la recarga) todavía está anotado, ese modelo no le sirve a este equipo
+// por unos días. No cuenta como caída: otra pestaña (su anotación es suya), cerrar la página (pagehide) ni que el
+// teléfono la mande al fondo (al ocultarse se borra la anotación; al volver se pone otra vez).
+// almacen: localStorage; sesion: sessionStorage (si fallan, no recuerda nada y nunca se rompe).
+export const DIAS_MODELO_MALO = 3;
+export function crearGuardia(almacen, { sesion = null, alCerrar = null, alVisibilidad = null, reloj = () => Date.now() } = {}) {
+  const leer = (a, k) => { try { return a?.getItem(k) ?? null; } catch { return null; } };
+  const poner = (a, k, v) => { try { if (v == null) a?.removeItem(k); else a?.setItem(k, v); } catch { /* sin memoria del navegador */ } };
+  const json = texto => { try { return JSON.parse(texto); } catch { return null; } };
+  let pestana = leer(sesion, 'op_voz_pestana');
+  if (!pestana) { pestana = Math.random().toString(36).slice(2, 12); poner(sesion, 'op_voz_pestana', pestana); }
   // También en memoria: sin localStorage, al menos en esta visita no se prueba otra vez el que no cargó.
   const enEstaVisita = new Set();
   const malos = () => {
     const x = new Set(enEstaVisita);
-    try { const guardados = JSON.parse(leer('op_voz_no') || '[]'); if (Array.isArray(guardados)) for (const m of guardados) x.add(String(m)); } catch { /* nada */ }
+    const guardados = json(leer(almacen, 'op_voz_no'));
+    if (Array.isArray(guardados)) for (const g of guardados) if (g && typeof g.modelo === 'string' && reloj() - Number(g.cuando) < DIAS_MODELO_MALO * 86_400_000) x.add(g.modelo);
     return x;
   };
-  const agregarMalo = m => { enEstaVisita.add(m); const x = malos(); poner('op_voz_no', JSON.stringify([...x].slice(0, 4))); };
-  const quedo = leer('op_voz_en_uso');
-  if (quedo) { agregarMalo(quedo); poner('op_voz_en_uso', null); }
-  try { alCerrar?.(() => poner('op_voz_en_uso', null)); } catch { /* nada */ }
-  return { malos, agregarMalo, marcar: m => poner('op_voz_en_uso', m), quitar: () => poner('op_voz_en_uso', null) };
+  const agregarMalo = modelo => {
+    enEstaVisita.add(modelo);
+    const viejos = json(leer(almacen, 'op_voz_no'));
+    const lista = (Array.isArray(viejos) ? viejos : []).filter(g => g && g.modelo !== modelo && reloj() - Number(g.cuando) < DIAS_MODELO_MALO * 86_400_000);
+    poner(almacen, 'op_voz_no', JSON.stringify([...lista, { modelo, cuando: reloj() }].slice(-4)));
+  };
+  const marca = () => json(leer(almacen, 'op_voz_en_uso'));
+  const quedo = marca();
+  if (quedo && quedo.pestana === pestana && typeof quedo.modelo === 'string') { agregarMalo(quedo.modelo); poner(almacen, 'op_voz_en_uso', null); } else if (quedo && reloj() - Number(quedo.cuando) > 15 * 60_000) poner(almacen, 'op_voz_en_uso', null);
+  let activo = null;
+  const escribir = () => poner(almacen, 'op_voz_en_uso', JSON.stringify({ pestana, modelo: activo, cuando: reloj() }));
+  const borrarSiEsMia = () => { if (marca()?.pestana === pestana) poner(almacen, 'op_voz_en_uso', null); };
+  try { alCerrar?.(borrarSiEsMia); } catch { /* nada */ }
+  try { alVisibilidad?.(oculta => { if (oculta) borrarSiEsMia(); else if (activo) escribir(); }); } catch { /* nada */ }
+  return {
+    malos, agregarMalo,
+    marcar: modelo => { activo = modelo; escribir(); },
+    quitar: () => { activo = null; borrarSiEsMia(); },
+  };
 }
 
 // El dictado Whisper de esta página (uno para toda la app: el modelo se carga una sola vez).
@@ -272,7 +294,11 @@ let compartido = null;
 export function whisperDeLaPagina(pedirEstado) {
   compartido ??= crearWhisper({
     pedirEstado,
-    guardia: crearGuardia(typeof localStorage !== 'undefined' ? localStorage : null, f => window.addEventListener('pagehide', f)),
+    guardia: crearGuardia(typeof localStorage !== 'undefined' ? localStorage : null, {
+      sesion: typeof sessionStorage !== 'undefined' ? sessionStorage : null,
+      alCerrar: f => window.addEventListener('pagehide', f),
+      alVisibilidad: f => document.addEventListener('visibilitychange', () => f(document.visibilityState === 'hidden')),
+    }),
     crearTrabajador: () => new Worker(new URL('./voz-trabajador.js', import.meta.url), { type: 'module' }),
   });
   return compartido;

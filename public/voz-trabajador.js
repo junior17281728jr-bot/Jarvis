@@ -35,9 +35,30 @@ function cargar(base, modelo) {
     try {
       const url = `${base}ort/ort-wasm-simd-threaded.jsep.wasm`;
       const caja = cajaSegura();
-      let r = await caja.match(url);
-      if (!r) { r = await self.fetch(url); if (r.ok) await caja.put(url, r.clone()); }
-      if (r?.ok) env.backends.onnx.wasm.wasmBinary = await r.arrayBuffer();
+      const avisar = (cargado, total) => self.postMessage({ tipo: 'progreso', archivo: 'ort-wasm', cargado, total });
+      const guardado = await caja.match(url);
+      let binario = null;
+      if (guardado?.ok) { binario = await guardado.arrayBuffer(); avisar(binario.byteLength, binario.byteLength); } else {
+        // Por pedazos, para que «Preparando el dictado… N %» avance también con este archivo.
+        const r = await self.fetch(url);
+        if (r.ok && r.body) {
+          const total = Number(r.headers.get('content-length')) || 0;
+          const lector = r.body.getReader();
+          const partes = [];
+          let cargado = 0;
+          for (;;) {
+            const { done, value } = await lector.read();
+            if (done) break;
+            partes.push(value);
+            cargado += value.byteLength;
+            avisar(cargado, total || cargado);
+          }
+          const blob = new Blob(partes, { type: 'application/wasm' });
+          await caja.put(url, new Response(blob, { headers: { 'Content-Type': 'application/wasm' } }));
+          binario = await blob.arrayBuffer();
+        }
+      }
+      if (binario) env.backends.onnx.wasm.wasmBinary = binario;
     } catch { /* que onnxruntime lo pida solo */ }
     env.backends.onnx.wasm.numThreads = 1;
     env.backends.onnx.wasm.proxy = false;

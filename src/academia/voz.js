@@ -364,6 +364,8 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
     if (req.method === 'HEAD') { res.end(); return true; }
     const flujo = createReadStream(archivo);
     flujo.on('error', () => res.destroy());
+    // Si el teléfono corta a la mitad (53 MB por la red del celular), el archivo se cierra enseguida.
+    res.on?.('close', () => flujo.destroy());
     flujo.pipe(res);
     return true;
   };
