@@ -138,7 +138,9 @@ export function pantallaIaAlumnos(d, h) {
       el('div', { class: 'ia-alumnos-totales', role: 'status' },
         el('strong', { texto: t('ia3.totales') }),
         el('span', { texto: t('ia3.totales.linea', { n: h.numero(tt.alumnos), usos: h.numero(tt.usosMes), usado: usd(tt.usdMesMicro), pagaron: h.numero(tt.pagaronMes), plan: h.numero(tt.conPlan) }) }),
-        el('span', { class: 'suave chica', texto: t('ia3.totales.general', { usado: usd(tt.generalMicro), tope: usd(tt.topeGeneralMicro) }) }))),
+        el('span', { class: 'suave chica', texto: t('ia3.totales.general', { usado: usd(tt.generalMicro), tope: usd(tt.topeGeneralMicro) }) }),
+        // 0.14.51: lo que el sistema aprendió de la IA en la Práctica en vivo del oral (para calificar cuando no hay IA).
+        ...[d.aprendioOral?.respuestas > 0 ? el('span', { class: 'suave chica', texto: t('ia3.aprendio_oral', { n: h.numero(d.aprendioOral.respuestas), m: h.numero(d.aprendioOral.preguntas) }) }) : null].filter(Boolean))),
   ];
 }
 

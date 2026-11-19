@@ -1,0 +1,174 @@
+// 0.14.51 (pedido del dueño: «recuerda cada respuesta y así debe mejorar: por si la API se queda sin crédito, el sistema
+// sepa responder o poner si está bien o mal»): lo que el sistema aprende de la IA en la «Práctica en vivo» del oral.
+//  - Cada vez que la IA califica una respuesta (la primera o la de la repregunta), se guarda un EJEMPLO en
+//    academia_oral_aprendido (migración 12): la pregunta (materia/tema#huella: la misma clave aunque cambie la edición),
+//    la respuesta ya normalizada, el veredicto, lo que dijo bien, lo que faltó y la línea corta. SIN usuario.
+//  - Como mucho APRENDE.porPregunta ejemplos por pregunta (los más nuevos); una respuesta igual a una ya guardada no ocupa
+//    otro lugar (se actualiza y suma «veces»).
+//  - Sin IA, calificarSistema (src/academia/oral-vivo.js) mira primero estos ejemplos: si la respuesta es casi igual a una
+//    que ya calificó la IA, usa ese veredicto; si no, las palabras que la IA premió seguido se suman a las del libro.
+//  - Poco trabajo: como mucho 200 filas cortas por pregunta, ya normalizadas (no se vuelve a procesar nada).
+import { VEREDICTOS } from './oral-vivo-ia.js';
+
+export const APRENDE = Object.freeze({
+  porPregunta: 200, tokensMax: 80, textoMax: 300,
+  // Parecida = Jaccard de las palabras ≥ umbral, con los MISMOS números y la misma negación. Con menos de minPalabras
+  // palabras, tiene que ser exactamente igual.
+  umbral: 0.8, minPalabras: 3,
+  // Una palabra aprendida: en ≥ 60 % de las «bien» (con al menos 3 «bien») y en ≤ 20 % de las «mal». Como mucho 10.
+  minBien: 3, enBien: 0.6, enMal: 0.2, maxClaves: 10,
+});
+const ORDEN = { mal: 0, casi: 1, bien: 2 };
+
+// ---------- Normalizar ----------
+const plano = t => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// Los números dichos con letras (el dictado da «tres» o «three»). «un/una/one» no: casi siempre son artículos.
+const NUMEROS = Object.freeze({
+  dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15,
+  veinte: 20, veinticuatro: 24, treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, noventa: 90, cien: 100, ciento: 100,
+  two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, ninety: 90, hundred: 100,
+});
+// La negación cambia todo («puede cobrar» ≠ «no puede cobrar»): siempre es un token, «~no».
+const NEGACION = new Set(['no', 'not', 'nunca', 'never', 'jamas', 'ni', 'nor', 'ningun', 'ninguno', 'ninguna', 'nadie', 'nada', 'none', 'nothing', 'cannot']);
+const RELLENO = new Set(('para pero como cuando donde desde hasta sobre entre este esta estos estas that this with from have when what which your will must they them their there then than into been were also only more most such each very the and for are can may you una unos unas los las del con por que sin muy mas tiene tienen debe deben puede pueden hace hacer cada todo toda todos todas otro otra antes despues siempre solo '
+  + 'mis sus tus nos les son hay fue era ser estar esto eso ese esa aqui alli asi creo pues bueno entonces tambien porque yo tu el ella ellos usted '
+  + 'its our his her has had was but all any out about would could should shall does did just like well think').split(' '));
+// Raíz corta («llevar / llevo / lleva» → «llev»; «landings / landed» → «land»; «aterrizajes» → «aterr»).
+export function raiz(w) {
+  let r = w;
+  if (r.length > 4 && r.endsWith('es')) r = r.slice(0, -2);
+  else if (r.length > 3 && r.endsWith('s')) r = r.slice(0, -1);
+  const fin = r.match(/(iendo|ando|ado|ido|ing|ar|er|ir|ed|[aeiou])$/);
+  if (fin && r.length - fin[0].length >= 4) r = r.slice(0, -fin[0].length);
+  return r.slice(0, 5);
+}
+const numero = n => {
+  let s = n;
+  if (/^\d{1,3}(?:[.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, ''); // 1.500 / 1,500 → 1500
+  s = s.replace(',', '.');
+  return `#${String(Number(s))}`;
+};
+// → los tokens (sin repetir, en orden): palabras como raíz, números como «#90», la negación como «~no».
+export function normalizar(texto) {
+  const t = plano(texto).replace(/n['’]t\b/g, ' not');
+  const out = new Set();
+  for (const w of t.match(/\d+(?:[.,]\d+)*|[a-zñ]+/g) ?? []) {
+    if (out.size >= APRENDE.tokensMax) break;
+    if (/^\d/.test(w)) out.add(numero(w));
+    else if (NUMEROS[w] != null) out.add(`#${NUMEROS[w]}`);
+    else if (NEGACION.has(w)) out.add('~no');
+    else if (w.length >= 3 && !RELLENO.has(w)) out.add(raiz(w));
+  }
+  return [...out];
+}
+const esNumero = k => k.startsWith('#');
+const palabrasDe = ts => ts.filter(k => !esNumero(k) && k !== '~no');
+const numerosDe = ts => ts.filter(esNumero);
+const mismos = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+
+// ¿Qué tan parecidas? 0 si los números o la negación no son los mismos (en aviación, «90 días» ≠ «60 días»); con pocas
+// palabras, 1 solo si son iguales. Si no, Jaccard de las palabras.
+export function parecido(a, b) {
+  if (!mismos(numerosDe(a), numerosDe(b)) || a.includes('~no') !== b.includes('~no')) return 0;
+  const pa = palabrasDe(a);
+  const pb = new Set(palabrasDe(b));
+  if (!pa.length && !pb.size) return 1; // solo números (ya iguales)
+  const comun = pa.filter(x => pb.has(x)).length;
+  const s = comun / (pa.length + pb.size - comun);
+  if ((pa.length < APRENDE.minPalabras || pb.size < APRENDE.minPalabras) && s < 1) return 0;
+  return s;
+}
+
+// ---------- Guardar lo que calificó la IA ----------
+export const claveDe = it => (it && it.m && it.t && it.h ? `${it.m}/${it.t}#${it.h}` : null);
+const corto = t => String(t ?? '').trim().slice(0, APRENDE.textoMax);
+
+// it: el ítem de la práctica ({ m, t, h }); texto: lo que dijo (con la repregunta: lo de la primera + lo de la repregunta);
+// g: lo que calificó la IA. Nunca falla la calificación por esto (si algo sale mal, no aprende y ya).
+export function aprenderDeIa(db, { it, edicion = null, texto, seguimiento = false, g }, ahoraMs = Date.now()) {
+  try {
+    const pregunta = claveDe(it);
+    if (!pregunta || !g || g.sistema === true || !VEREDICTOS.includes(g.veredicto)) return false;
+    const tokens = normalizar(texto);
+    if (!tokens.length) return false;
+    const ts = tokens.join(' ');
+    const seg = seguimiento ? 1 : 0;
+    const en = new Date(ahoraMs).toISOString();
+    const fila = [String(edicion ?? '').slice(0, 200) || null, g.veredicto, corto(g.bienDicho), corto(g.falto), corto(g.linea), en];
+    const ya = db.prepare('SELECT id FROM academia_oral_aprendido WHERE pregunta = ? AND seguimiento = ? AND tokens = ?').get(pregunta, seg, ts);
+    if (ya) {
+      db.prepare('UPDATE academia_oral_aprendido SET edicion = ?, veredicto = ?, bien_dicho = ?, falto = ?, linea = ?, creado_en = ?, veces = veces + 1 WHERE id = ?').run(...fila, ya.id);
+      return true;
+    }
+    db.prepare('INSERT INTO academia_oral_aprendido (pregunta, seguimiento, tokens, edicion, veredicto, bien_dicho, falto, linea, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(pregunta, seg, ts, ...fila);
+    // Solo los más nuevos de cada pregunta (así la base sigue chica).
+    db.prepare(`DELETE FROM academia_oral_aprendido WHERE pregunta = ? AND id NOT IN
+      (SELECT id FROM academia_oral_aprendido WHERE pregunta = ? ORDER BY creado_en DESC, id DESC LIMIT ?)`).run(pregunta, pregunta, APRENDE.porPregunta);
+    return true;
+  } catch { return false; }
+}
+
+// Los ejemplos de una pregunta (como mucho porPregunta). [] si no hay (o si la tabla no está).
+export function ejemplosDe(db, it) {
+  const pregunta = claveDe(it);
+  if (!db || !pregunta) return [];
+  try {
+    return db.prepare('SELECT seguimiento, tokens, veredicto, bien_dicho, falto, linea FROM academia_oral_aprendido WHERE pregunta = ? ORDER BY id DESC LIMIT ?')
+      .all(pregunta, APRENDE.porPregunta)
+      .filter(f => VEREDICTOS.includes(f.veredicto))
+      .map(f => ({ seguimiento: f.seguimiento === 1, tokens: f.tokens.split(' ').filter(Boolean), veredicto: f.veredicto, bienDicho: f.bien_dicho, falto: f.falto, linea: f.linea }));
+  } catch { return []; }
+}
+
+// La respuesta más parecida ya calificada por la IA (de la misma parte: primera o repregunta). Si varias pasan el umbral y
+// no dicen lo mismo, gana la más estricta. → { veredicto, ejemplo, parecido } o null.
+export function buscarParecida(ejemplos, tokens, seguimiento = false) {
+  const pasan = ejemplos.filter(e => e.seguimiento === seguimiento).map(e => ({ e, s: parecido(tokens, e.tokens) })).filter(x => x.s >= APRENDE.umbral);
+  if (!pasan.length) return null;
+  const veredicto = pasan.reduce((v, x) => (ORDEN[x.e.veredicto] < ORDEN[v] ? x.e.veredicto : v), 'bien');
+  const mejor = pasan.filter(x => x.e.veredicto === veredicto).sort((a, b) => b.s - a.s)[0];
+  return { veredicto, ejemplo: mejor.e, parecido: mejor.s };
+}
+
+// Las palabras (raíces) que la IA premió seguido en esa pregunta y casi nunca en las «mal».
+export function clavesAprendidas(ejemplos) {
+  const bien = ejemplos.filter(e => e.veredicto === 'bien');
+  const mal = ejemplos.filter(e => e.veredicto === 'mal');
+  if (bien.length < APRENDE.minBien) return [];
+  const cuenta = lista => {
+    const m = new Map();
+    for (const e of lista) for (const k of new Set(e.tokens)) if (k !== '~no') m.set(k, (m.get(k) ?? 0) + 1);
+    return m;
+  };
+  const enBien = cuenta(bien);
+  const enMal = cuenta(mal);
+  return [...enBien.entries()]
+    .filter(([k, n]) => n / bien.length >= APRENDE.enBien && (!mal.length || (enMal.get(k) ?? 0) / mal.length <= APRENDE.enMal))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, APRENDE.maxClaves).map(([k]) => k);
+}
+
+// Los números que dijo y que el libro no dice (ni en la pregunta). → { otros: [números dichos que no están], alguno: dijo
+// alguno del libro } o null si no hay nada que comparar.
+export function numerosContra(tokens, textosLibro) {
+  const libro = new Set(textosLibro.flatMap(normalizar).filter(esNumero));
+  const dichos = numerosDe(tokens);
+  if (!libro.size || !dichos.length) return null;
+  const otros = dichos.filter(n => !libro.has(n));
+  if (!otros.length) return null;
+  return { otros: otros.map(n => n.slice(1)), alguno: dichos.some(n => libro.has(n)) };
+}
+
+// ¿Se puede repetir el texto de la IA tal cual? Solo si dijo lo MISMO (las mismas palabras) y el texto no cita nada entre
+// comillas (así nunca sale lo que dijo otro alumno).
+export const repetible = (ejemplo, tokens, s) => s === 1 && mismos(ejemplo.tokens, tokens)
+  && ![ejemplo.linea, ejemplo.bienDicho, ejemplo.falto].some(x => /[«»"“”‘’']/.test(x ?? ''));
+
+// Para el administrador: de cuántas respuestas calificadas por la IA aprendió (las que siguen guardadas) y de cuántas preguntas.
+export function resumenAprendido(db) {
+  try {
+    const f = db.prepare('SELECT COALESCE(SUM(veces), 0) AS n, COUNT(DISTINCT pregunta) AS m FROM academia_oral_aprendido').get();
+    return { respuestas: Number(f.n) || 0, preguntas: Number(f.m) || 0 };
+  } catch { return { respuestas: 0, preguntas: 0 }; }
+}

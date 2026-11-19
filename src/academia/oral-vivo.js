@@ -21,6 +21,7 @@ import { leerAjuste, guardarAjuste } from './paquetes.js';
 import { ajustesAcademia } from './progreso.js';
 import { hayOral } from './oral.js';
 import { VEREDICTOS } from './oral-vivo-ia.js';
+import { ejemplosDe, normalizar, buscarParecida, clavesAprendidas, numerosContra, repetible } from './oral-aprende.js';
 
 // porDefecto 7: con las llamadas por hora de siempre (30 → 10 por cuenta), 7 preguntas + hasta 2 repreguntas + el cierre
 // caben en una hora; más preguntas también se pueden (las que no quepan, se califica él al final).
@@ -158,7 +159,7 @@ export function ponerCalificacion(db, usuarioId, sesion, i, seguimiento, g) {
   const r = { ...(a.resp?.[i] ?? {}) };
   const parte = seguimiento ? 'seguimiento' : 'primera';
   if (!r[parte]) return r;
-  r[parte] = g ? { ...r[parte], veredicto: g.veredicto, linea: g.linea, bienDicho: g.bienDicho, falto: g.falto, ...(seguimiento ? {} : { repregunta: g.repregunta || '' }), ...(g.sistema === true ? { ia: false, sistema: true } : { ia: true }) }
+  r[parte] = g ? { ...r[parte], veredicto: g.veredicto, linea: g.linea, bienDicho: g.bienDicho, falto: g.falto, ...(seguimiento ? {} : { repregunta: g.repregunta || '' }), ...(g.sistema === true ? { ia: false, sistema: true, ...(g.aprendido === true ? { aprendido: true } : {}) } : { ia: true }) }
     : { ...r[parte], sinIa: true };
   guardarVivo(db, usuarioId, { ...yo, abierta: { ...a, resp: { ...a.resp, [i]: r } } });
   return r;
@@ -234,7 +235,7 @@ export function cerrarVivo(db, usuarioId, paquete, sesion, { auto = {} } = {}, {
       i, materia: it.m, tema: it.t, temaTitulo: d?.t.titulo ?? it.t, pregunta_es: d?.x.pregunta_es ?? null, pregunta_en: d?.x.pregunta_en ?? null,
       respuesta_es: d?.x.respuesta_es ?? null, respuesta_en: d?.x.respuesta_en ?? null, pagina: d?.x.pagina ?? null,
       dijo: r?.primera?.texto ?? null, repregunta: r?.primera?.repregunta || null, dijoSeguimiento: r?.seguimiento?.texto ?? null,
-      veredicto: veredictoDe(r), ia: r?.primera?.ia === true, sistema: r?.primera?.sistema === true, linea: r?.primera?.linea ?? null, bienDicho: r?.primera?.bienDicho ?? null,
+      veredicto: veredictoDe(r), ia: r?.primera?.ia === true, sistema: r?.primera?.sistema === true, ...(r?.primera?.aprendido === true ? { aprendido: true } : {}), linea: r?.primera?.linea ?? null, bienDicho: r?.primera?.bienDicho ?? null,
       falto: (r?.seguimiento?.veredicto === 'bien' ? '' : r?.seguimiento?.falto || r?.primera?.falto) || null,
       autoPendiente: Boolean(r?.primera) && !VEREDICTOS.includes(r?.primera?.veredicto) && !VEREDICTOS.includes(r?.auto),
       auto: VEREDICTOS.includes(r?.auto) ? r.auto : null,
@@ -310,7 +311,10 @@ export function vivoDe(db, usuarioId) {
 const RELLENO = new Set(('para pero como cuando donde desde hasta sobre entre este esta estos estas that this with from have when what which your will must they them their there then than into been were also only more most such each very the and for are can may not you una unos unas los las del con por que sin muy mas tiene tienen debe deben puede pueden hace hacer cada todo toda todos todas otro otra antes despues siempre nunca solo').split(' '));
 const plano = t => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const palabras = t => plano(t).split(/[^a-z0-9ñ]+/).filter(w => w && (/^\d+$/.test(w) || (w.length >= 4 && !RELLENO.has(w))));
-export function sugerencia(texto, x) {
+// 0.14.51: extra = las palabras (raíces) que el sistema aprendió de la IA para esa pregunta (src/academia/oral-aprende.js):
+// se suman a las del libro (las que no son ya del libro); en «dijo» va la palabra como la dijo él, y nunca van en «faltan».
+// Sin extra, exactamente lo de antes.
+export function sugerencia(texto, x, extra = []) {
   const fuente = Array.isArray(x?.puntos_clave) && x.puntos_clave.length ? x.puntos_clave.join(' ') : [x?.respuesta_es, x?.respuesta_en].filter(Boolean).join(' ');
   const clave = [...new Set(palabras(fuente))].slice(0, 30);
   if (!clave.length) return null;
@@ -318,7 +322,20 @@ export function sugerencia(texto, x) {
   // Una palabra cuenta si dijo la misma o una que empieza igual (5 letras: «oxígeno» / «oxigenación»).
   const esta = w => dichas.has(w) || (w.length >= 6 && [...dichas].some(d => d.length >= 5 && (d.startsWith(w.slice(0, 5)) || w.startsWith(d.slice(0, 5)))));
   const dijo = clave.filter(esta);
-  const parte = dijo.length / clave.length;
+  let total = clave.length;
+  if (extra.length) {
+    const delLibro = new Set(normalizar(clave.join(' ')));
+    const nuevas = extra.filter(k => !delLibro.has(k));
+    total += nuevas.length;
+    // Lo que dijo él, como lo dijo (la primera palabra suya con esa raíz).
+    const suyas = new Map();
+    for (const w of plano(texto).match(/\d+(?:[.,]\d+)*|[a-zñ]+/g) ?? []) {
+      const k = normalizar(w)[0];
+      if (k && !suyas.has(k)) suyas.set(k, w);
+    }
+    for (const k of nuevas) if (suyas.has(k)) dijo.push(suyas.get(k));
+  }
+  const parte = dijo.length / total;
   return { veredicto: parte >= 0.5 ? 'bien' : parte >= 0.25 ? 'casi' : 'mal', dijo: dijo.slice(0, 8), faltan: clave.filter(w => !esta(w)).slice(0, 8) };
 }
 
@@ -334,17 +351,51 @@ export function porqueDe(paquete, it, r) {
 
 // 0.14.42 (lo pidió el dueño): sin IA, la app CALIFICA sola con las ideas clave del libro (ya no «califícate tú»).
 // → { veredicto, linea, bienDicho, falto, repregunta: '', sistema: true } o null (si la pregunta ya no está).
-export function calificarSistema(paquete, it, texto) {
+// 0.14.51: con { db }, primero lo que aprendió de la IA en esa pregunta (src/academia/oral-aprende.js):
+//  1. si la respuesta es casi igual a una que ya calificó la IA (misma parte: la primera o la de la repregunta, con
+//     previo = lo que dijo en la primera), ese veredicto; el texto de la IA solo si dijo lo mismo (nunca lo de otro alumno);
+//  2. si no, las palabras clave del libro MÁS las que la IA premió seguido;
+//  3. y si dijo números que el libro no dice: «bien» baja a «casi», y sin ningún número del libro, «mal».
+// Sin nada aprendido en esa pregunta (o sin db), exactamente lo de antes. → además aprendido: true si usó lo aprendido.
+const lineaDe = (veredicto, dijo, faltan) => (veredicto === 'bien' ? `Mencionaste las ideas clave${dijo ? ` (${dijo})` : ''}.`
+  : veredicto === 'casi' ? `Vas bien${dijo ? ` (${dijo})` : ''}, pero te faltó: ${faltan || 'un punto clave'}.`
+    : `No mencionaste las ideas clave${faltan ? `: ${faltan}` : ''}.`);
+export function calificarSistema(paquete, it, texto, { db = null, seguimiento = false, previo = '' } = {}) {
   const d = paquete && it ? itemDe(paquete, it) : null;
   if (!d) return null;
+  const ejemplos = db ? ejemplosDe(db, it) : [];
+  if (ejemplos.length) {
+    const aprendido = calificarAprendido(d.x, texto, ejemplos, { seguimiento, previo });
+    if (aprendido) return aprendido;
+  }
   const s = sugerencia(texto, d.x);
   if (!s) return null;
   const dijo = s.dijo.slice(0, 4).join(', ');
   const faltan = s.faltan.slice(0, 4).join(', ');
-  const linea = s.veredicto === 'bien' ? `Mencionaste las ideas clave${dijo ? ` (${dijo})` : ''}.`
-    : s.veredicto === 'casi' ? `Vas bien${dijo ? ` (${dijo})` : ''}, pero te faltó: ${faltan || 'un punto clave'}.`
-      : `No mencionaste las ideas clave${faltan ? `: ${faltan}` : ''}.`;
+  const linea = lineaDe(s.veredicto, dijo, faltan);
   return { veredicto: s.veredicto, linea: linea.slice(0, 140), bienDicho: dijo, falto: faltan, repregunta: '', sistema: true };
+}
+function calificarAprendido(x, texto, ejemplos, { seguimiento, previo }) {
+  const tokens = normalizar(texto);
+  const parecida = buscarParecida(ejemplos, seguimiento ? normalizar([previo, texto].filter(Boolean).join(' ')) : tokens, seguimiento);
+  const extra = clavesAprendidas(ejemplos);
+  const s = sugerencia(texto, x, extra);
+  if (!s && !parecida) return null;
+  let veredicto = parecida?.veredicto ?? s.veredicto;
+  const contra = numerosContra(tokens, [x.pregunta_en, x.pregunta_es, x.respuesta_en, x.respuesta_es, ...(Array.isArray(x.puntos_clave) ? x.puntos_clave : [])].filter(Boolean));
+  if (contra && veredicto !== 'mal') veredicto = contra.alguno ? (veredicto === 'bien' ? 'casi' : veredicto) : 'mal';
+  const usoAprendido = Boolean(parecida) || extra.length > 0;
+  if (!usoAprendido && !contra) return null; // nada aprendido que sirva aquí: lo de antes
+  const dijo = (s?.dijo ?? []).slice(0, 4).join(', ');
+  const faltan = (s?.faltan ?? []).slice(0, 4).join(', ');
+  // El texto de la IA tal cual, solo si dijo lo mismo y el veredicto no cambió por los números.
+  if (parecida && veredicto === parecida.veredicto && repetible(parecida.ejemplo, seguimiento ? normalizar([previo, texto].filter(Boolean).join(' ')) : tokens, parecida.parecido)) {
+    const e = parecida.ejemplo;
+    return { veredicto, linea: (e.linea || lineaDe(veredicto, dijo, faltan)).slice(0, 140), bienDicho: e.bienDicho || dijo, falto: veredicto === 'bien' ? e.falto || '' : e.falto || faltan, repregunta: '', sistema: true, aprendido: true };
+  }
+  const numeros = contra ? `Revisa los números: ${contra.otros.slice(0, 3).join(', ')} no es lo que dice el libro.` : '';
+  const linea = contra && veredicto !== (parecida?.veredicto ?? s?.veredicto) ? numeros : lineaDe(veredicto, dijo, faltan);
+  return { veredicto, linea: linea.slice(0, 140), bienDicho: dijo, falto: [numeros, veredicto === 'bien' ? '' : faltan].filter(Boolean).join(' ').slice(0, 300), repregunta: '', sistema: true, ...(usoAprendido ? { aprendido: true } : {}) };
 }
 
 // 0.14.29: el texto que se lee en voz alta de una pregunta (el español si está; con «Inglés original», el inglés).

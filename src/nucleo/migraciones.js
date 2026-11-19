@@ -785,4 +785,32 @@ CREATE TABLE IF NOT EXISTS academia_compe_comentarios (
 CREATE INDEX IF NOT EXISTS academia_compe_comentarios_cert ON academia_compe_comentarios(ronda, dueno_id, id);
 `,
   },
+  {
+    id: 12,
+    nombre: 'academia_oral_aprendido',
+    // 0.14.51 (pedido del dueño: «recuerda cada respuesta y así debe mejorar»): cada vez que la IA califica una respuesta de
+    // la «Práctica en vivo» del oral, se guarda un ejemplo para que el sistema califique igual cuando no hay IA
+    // (src/academia/oral-aprende.js). Solo agrega una tabla academia_ (sin CHECK, sin UNIQUE). SIN usuario: nada que diga
+    // de quién fue la respuesta (borrar o eliminar un alumno no toca esto). Se guardan como mucho las 200 más nuevas de cada
+    // pregunta (las viejas se quitan en el código; son ejemplos sin dueño, no datos de un alumno).
+    //  - pregunta: «materia/tema#huella de la pregunta en inglés» (la misma clave aunque cambie la edición del paquete).
+    //  - seguimiento: 0 = la primera respuesta; 1 = la respuesta a la repregunta (junto con la primera).
+    //  - tokens: la respuesta ya normalizada (minúsculas, sin acentos ni signos, raíces cortas, números como «#90»).
+    sql: `
+CREATE TABLE IF NOT EXISTS academia_oral_aprendido (
+  id INTEGER PRIMARY KEY,
+  pregunta TEXT NOT NULL,
+  seguimiento INTEGER NOT NULL DEFAULT 0,
+  edicion TEXT,
+  tokens TEXT NOT NULL,
+  veredicto TEXT NOT NULL,
+  bien_dicho TEXT NOT NULL DEFAULT '',
+  falto TEXT NOT NULL DEFAULT '',
+  linea TEXT NOT NULL DEFAULT '',
+  veces INTEGER NOT NULL DEFAULT 1,
+  creado_en TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS academia_oral_aprendido_pregunta ON academia_oral_aprendido(pregunta, seguimiento, id);
+`,
+  },
 ];
