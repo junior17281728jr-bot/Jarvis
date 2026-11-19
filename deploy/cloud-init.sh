@@ -88,7 +88,20 @@ NEW=$(curl -fsS -m 20 -H 'Accept: application/vnd.github.sha' "https://api.githu
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 curl -fsSL -m 120 "https://codeload.github.com/$REPO/tar.gz/$NEW" -o "$TMP/j.tgz" || exit 0
 mkdir "$TMP/src" && tar xzf "$TMP/j.tgz" -C "$TMP/src" --strip-components=1 || exit 0
-if ! (cd "$TMP/src" && timeout 900 node --no-warnings --test test/*.test.js > "$TMP/test.log" 2>&1); then
+# 0.14.55: las pruebas con prioridad baja (la app sigue atendiendo primero). Si NO terminaron (se pasaron de los 15 minutos:
+# código 124; o el sistema mató algo por falta de memoria: código 137, o un archivo de pruebas con signal: 'SIGKILL'),
+# no es culpa de la versión: se vuelve a probar en la próxima vuelta, hasta 3 veces. Solo una prueba que FALLA (o 3
+# veces sin terminar) marca la versión como mala (version.bad) para siempre.
+(cd "$TMP/src" && nice -n 10 timeout 900 node --no-warnings --test test/*.test.js > "$TMP/test.log" 2>&1); CODIGO=$?
+if [ "$CODIGO" -ne 0 ]; then
+  REINTENTO=/var/lib/jarvis/version.retry; VECES=1
+  if [ "$CODIGO" -eq 124 ] || [ "$CODIGO" -eq 137 ] || grep -q "signal: 'SIGKILL'" "$TMP/test.log"; then
+    [[ "$(cat "$REINTENTO" 2>/dev/null)" =~ ^$NEW\ ([0-9]+)$ ]] && VECES=$(( BASH_REMATCH[1] + 1 ))
+    if [ "$VECES" -lt 3 ]; then
+      echo "$NEW $VECES" > "$REINTENTO"
+      echo "$(date -Is) versión ${NEW:0:7}: las pruebas no terminaron (código $CODIGO), se vuelven a probar ($VECES de 3)" >> "$LOG"; exit 0
+    fi
+  fi
   echo "$(date -Is) versión ${NEW:0:7}: alguna prueba falló, NO se instaló" >> "$LOG"; echo "$NEW" > /var/lib/jarvis/version.bad; exit 0
 fi
 rm -rf /opt/jarvis.anterior && cp -a /opt/jarvis /opt/jarvis.anterior

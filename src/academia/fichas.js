@@ -25,8 +25,8 @@ import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinE
 export const MAXIMO_COMPARAR = 6;
 export const MAXIMO_INTENTOS_EN_PANTALLA = 500;
 // Para el tiempo de estudio: dos respuestas seguidas con menos de esto entre sí son el mismo rato de estudio.
-const PAUSA_MAXIMA_MS = 10 * 60 * 1000;
-const POR_RESPUESTA_SUELTA_MS = 60 * 1000;
+export const PAUSA_MAXIMA_MS = 10 * 60 * 1000;
+export const POR_RESPUESTA_SUELTA_MS = 60 * 1000;
 const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
 const CALIFICADOS = ['tema', 'examen'];
 

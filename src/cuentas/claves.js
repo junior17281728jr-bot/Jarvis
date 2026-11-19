@@ -7,6 +7,18 @@ const MAX_A_LA_VEZ = 2; // en un servidor de 512 MB, como máximo 2 cálculos a 
 let enCurso = 0;
 const enEspera = [];
 
+// 0.14.55 (auditoría): la fila de espera de los cálculos SÍ tiene tope, pero solo para quien lo pide (la entrada sin
+// sesión, src/api/cuentas.js): con la fila llena, verificarClave lanza un error «ocupado» al instante (la pantalla dice
+// «el servidor está ocupado, prueba en unos segundos»; no es un bloqueo). Antes, mil pedidos con nombres inventados
+// hacían esperar 28 s a una entrada de verdad. Crear o cambiar una contraseña, y confirmarla con la sesión abierta,
+// nunca reciben «ocupado» (no pasan maxEspera).
+export class ClaveOcupada extends Error {
+  constructor() { super('ocupado'); this.code = 'ocupado'; }
+}
+export const enFilaDeClaves = () => enEspera.length;
+// ¿Ya hay `maxEspera` cálculos esperando turno (con los de a la vez ocupados)?
+export const filaDeClavesLlena = maxEspera => enCurso >= MAX_A_LA_VEZ && enEspera.length >= maxEspera;
+
 async function porTurno(trabajo) {
   while (enCurso >= MAX_A_LA_VEZ) await new Promise(ok => enEspera.push(ok));
   enCurso++;
@@ -88,10 +100,12 @@ export async function hashClave(clave) {
 // Hash de relleno: se usa cuando el usuario no existe, para que tarde lo mismo y no se pueda averiguar quién existe.
 const RELLENO = `scrypt$${N}$${R}$${P}$${Buffer.alloc(16).toString('base64url')}$${Buffer.alloc(LARGO).toString('base64url')}`;
 
-export async function verificarClave(clave, guardado = RELLENO) {
+// maxEspera (0.14.55): si ya hay esa cantidad de cálculos esperando turno, lanza ClaveOcupada sin calcular nada.
+export async function verificarClave(clave, guardado = RELLENO, { maxEspera = Infinity } = {}) {
   if (typeof clave !== 'string' || clave.length > 200) return false;
   const partes = String(guardado).split('$');
   if (partes.length !== 6 || partes[0] !== 'scrypt' || partes[1] !== String(N) || partes[2] !== String(R) || partes[3] !== String(P)) return false;
+  if (filaDeClavesLlena(maxEspera)) throw new ClaveOcupada();
   try {
     const sal = Buffer.from(partes[4], 'base64url');
     const esperado = Buffer.from(partes[5], 'base64url');

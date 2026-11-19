@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { revisarPaquete, audiosDe } from '../src/academia/formato.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 import { partirLeccion, resaltar, pareceIngles, dividirEnFrases, leerPreguntasClave, leerEscenarios, leerPalabras, textoDePantallas } from '../public/tarjetas.js';

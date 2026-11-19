@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 
 const CLAVE = 'una clave bien larga';

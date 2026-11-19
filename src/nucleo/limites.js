@@ -88,3 +88,31 @@ export class Freno {
     while (this.registro.size >= this.maximoClaves) this.registro.delete(this.registro.keys().next().value);
   }
 }
+
+// 0.14.55 (auditoría): cuántos pedidos de un mismo lugar están en marcha a la vez (por ejemplo, entradas esperando su
+// turno o su cálculo). Por encima de `maximo`, tomar() dice que no (el pedido recibe «ocupado» al instante, no un
+// bloqueo: el siguiente, cuando terminen los de antes, entra). Siempre soltar() lo que se tomó. Memoria acotada: solo
+// están los lugares con algo en marcha.
+export class EnCurso {
+  constructor({ maximo = 20, maximoClaves = 10_000 } = {}) {
+    Object.assign(this, { maximo, maximoClaves });
+    this.registro = new Map();
+  }
+
+  tomar(clave) {
+    const n = this.registro.get(clave) ?? 0;
+    if (n >= this.maximo || (n === 0 && this.registro.size >= this.maximoClaves)) return false;
+    this.registro.set(clave, n + 1);
+    return true;
+  }
+
+  soltar(clave) {
+    const n = this.registro.get(clave) ?? 0;
+    if (n <= 1) this.registro.delete(clave);
+    else this.registro.set(clave, n - 1);
+  }
+
+  enMarcha(clave) {
+    return this.registro.get(clave) ?? 0;
+  }
+}

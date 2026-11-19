@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { crearServidor } from '../src/app.js';
 import { abrirBase, enTransaccion } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { revisarPaquete, clipsDe } from '../src/academia/formato.js';
 import { datosMp4 } from '../src/academia/mp4.js';
 import { crearSincronizador } from '../src/academia/sincronizar.js';

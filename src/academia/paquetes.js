@@ -525,6 +525,14 @@ export function activarPaquete(db, { paqueteId, usuarioId = null, config = null,
 // una sola versión (src/academia/progreso.js no cambia). Solo se lee el JSON de las versiones que dan alguna materia,
 // de a una, y se guarda lo que se usa. Los archivos de una versión nunca cambian: se arma una sola vez.
 let enMemoria = { clave: null, valor: null };
+// 0.14.55 (auditoría): una versión en uso cuyo paquete.json no se puede leer (dañado, cortado) se sigue saltando (los
+// alumnos ven el resto, como antes), pero ya no en silencio: sus números quedan aquí y, en el servidor web, se abre el
+// aviso «paquete_danado» para el administrador (pantalla y Telegram; se resuelve solo cuando ya no hay ninguna). El
+// trabajador también arma el contenido, pero nunca escribe el aviso: el gancho lo pone solo src/app.js.
+let danados = [];
+let alComponer = null;
+export const paquetesDanados = () => danados.slice();
+export function ponerAvisoDeDanados(fn) { alComponer = typeof fn === 'function' ? fn : null; }
 export function paqueteActivo(db, config) {
   const lista = leerEnUso(db);
   if (!lista.length) return null;
@@ -537,12 +545,15 @@ export function paqueteActivo(db, config) {
   if (!vivas.length) return null;
   const clave = `${carpetaAcademia(config)}|` + vivas.map(e => `${e.id}:${filas.get(e.id).huella}:${(e.materias ?? ['*']).join(',')}`).join('|');
   if (enMemoria.clave === clave) return enMemoria.valor;
-  const valor = componer(config, vivas, filas);
+  const rotos = [];
+  const valor = componer(config, vivas, filas, rotos);
   enMemoria = { clave, valor };
+  danados = rotos;
+  try { alComponer?.(db, rotos.slice()); } catch { /* el aviso nunca molesta a quien estudia */ }
   return valor;
 }
 
-function componer(config, vivas, filas) {
+function componer(config, vivas, filas, rotos = []) {
   const deMateria = new Map(); // materia → { pid, materia indexada }
   const porPaquete = new Map(); // pid → { carpeta, figuras, libros, audios }
   const datosDe = new Map(); // pid → { nombre, edicion, muestra }
@@ -552,7 +563,7 @@ function componer(config, vivas, filas) {
     if (e.materias && e.materias.every(m => deMateria.has(m))) continue;
     const fila = filas.get(e.id);
     let indice;
-    try { indice = indexarPaquete(leerJsonDe(config, fila)); } catch { continue; }
+    try { indice = indexarPaquete(leerJsonDe(config, fila)); } catch { rotos.push(e.id); continue; }
     let usada = false;
     if (indice.pista === 'oral') {
       for (const m of indice.materias) for (const t of m.temas) {

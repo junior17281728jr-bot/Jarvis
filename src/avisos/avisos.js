@@ -28,6 +28,9 @@ export const CLAVES_AVISO = Object.freeze([
   'copias_clave_ilegible',
   // Academia (0.7.1): la carpeta de Google Drive del contenido no se puede leer (solo en la pantalla).
   'drive_sin_acceso',
+  // 0.14.55: una versión del contenido en uso no se puede leer (su paquete.json está dañado): los alumnos no ven esas
+  // materias. Detalle: { paquetes: [ids] }. Se resuelve solo cuando el contenido en uso ya se lee entero.
+  'paquete_danado',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;

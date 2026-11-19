@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { ponerNombreLegal } from '../src/cuentas/terminos.js';
 import { aliasDe } from '../src/academia/carrera.js';
 import { agruparAviones, puestoDe, promedioDe, ordenTabla } from '../public/carrera-vista.js';

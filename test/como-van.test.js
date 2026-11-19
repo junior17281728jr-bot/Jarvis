@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { anotarActividad, anotarFin } from '../src/cuentas/visitas.js';
 import { comoVanTodos, enLineaTodos, examenesPorMateria, ordenarAlumnos } from '../src/academia/como-van.js';
 import { examenesOralDe } from '../src/academia/oral.js';

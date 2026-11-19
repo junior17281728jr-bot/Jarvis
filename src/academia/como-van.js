@@ -13,9 +13,9 @@ import { resumenesVisitas, EN_LINEA_MS } from '../cuentas/visitas.js';
 import { avataresDe } from '../cuentas/perfil.js';
 import { fotosDe } from '../cuentas/foto.js';
 import { planDe, pasosDelCamino } from './plan.js';
-import { tiempoDeEstudio } from './fichas.js';
+import { PAUSA_MAXIMA_MS, POR_RESPUESTA_SUELTA_MS } from './fichas.js';
 import { examenesOralDe, hayOral } from './oral.js';
-import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar, diasActivosSemana } from './por-materia.js';
+import { avancePorMateria, avanceOral, materiaMasDebil, ultimoExamenDe, diasSinEntrar } from './por-materia.js';
 import { avanceDe } from './avance-alumno.js';
 
 const pct = (bien, total) => (total > 0 ? Math.floor((bien * 100) / total) : 0);
@@ -27,10 +27,48 @@ export function cuentasDeAlumnos(db) {
   return db.prepare("SELECT id, nombre, nombre_visible, activo FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL ORDER BY COALESCE(nombre_visible, nombre), id").all();
 }
 
+// 0.14.55: la última respuesta de cada cuenta, una consulta corta por cuenta (índice usuario_id, creada_en de la migración
+// 13). Antes se leía la tabla entera de respuestas cada 5 s. → Map id → la fecha (sin respuestas, no está).
+export function ultimasRespuestas(db, ids) {
+  const una = db.prepare('SELECT MAX(creada_en) AS f FROM academia_respuestas WHERE usuario_id = ?');
+  const m = new Map();
+  for (const id of ids) { const f = una.get(id)?.f; if (f != null) m.set(id, f); }
+  return m;
+}
+
+// 0.14.55: lo que «Cómo van todos» saca de las FECHAS de las respuestas, sumado en la base (antes se cargaba en memoria una
+// fila por cada respuesta de la historia: con 500 000 respuestas, 3 s y 180 MB más). Da lo mismo que tiempoDeEstudio
+// (src/academia/fichas.js) y diasActivosSemana (src/academia/por-materia.js) sobre la lista de sus fechas, en orden:
+//  - minutos: cada respuesta suma el rato desde la anterior si fue hace 0–10 min; si no (o es la primera), 1 min.
+//  - semana: lo mismo con SOLO las respuestas de los últimos 7 días (la cadena empieza dentro de la semana).
+//  - dias: días distintos con alguna respuesta (todas); diasSemana: los de los últimos 7 días.
+// Los ms salen exactos de la fecha guardada (texto ISO, con milisegundos). → Map id → { minutos, semana, dias, diasSemana }
+export function fechasDeRespuestas(db, ahoraMs) {
+  // Solo (usuario_id, creada_en): la lee entera del índice de la migración 13, ya en orden (sin ordenar ni ir a la tabla).
+  const tiempo = filtro => `SELECT usuario_id AS id, SUM(CASE WHEN prev IS NOT NULL AND t - prev BETWEEN 0 AND :pausa THEN t - prev ELSE :suelta END) AS ms
+    FROM (SELECT usuario_id, t, LAG(t) OVER (PARTITION BY usuario_id ORDER BY creada_en) AS prev
+      FROM (SELECT usuario_id, creada_en, CAST(ROUND(unixepoch(creada_en, 'subsec') * 1000) AS INTEGER) AS t FROM academia_respuestas ${filtro.donde})
+      WHERE t IS NOT NULL ${filtro.y})
+    GROUP BY usuario_id`;
+  const pasos = { pausa: PAUSA_MAXIMA_MS, suelta: POR_RESPUESTA_SUELTA_MS };
+  const m = new Map();
+  const de = id => { if (!m.has(id)) m.set(id, { minutos: 0, semana: 0, dias: 0, diasSemana: 0 }); return m.get(id); };
+  for (const f of db.prepare(tiempo({ donde: '', y: '' })).all(pasos)) de(f.id).minutos = Math.round(f.ms / 60000);
+  // Días distintos: de TODAS las respuestas (también las de fecha rara, como antes).
+  for (const f of db.prepare('SELECT usuario_id AS id, COUNT(DISTINCT dia) AS n FROM academia_respuestas GROUP BY usuario_id').all()) de(f.id).dias = f.n;
+  // La semana: un día de margen en el texto (usa el índice) y el corte exacto en ms.
+  const semana = { desdeTexto: new Date(ahoraMs - SEMANA_MS - 24 * 3600 * 1000).toISOString(), ahora: ahoraMs, semanaMs: SEMANA_MS };
+  const enSemana = { donde: 'WHERE creada_en >= :desdeTexto', y: 'AND t <= :ahora AND :ahora - t < :semanaMs' };
+  for (const f of db.prepare(tiempo(enSemana)).all({ ...pasos, ...semana })) de(f.id).semana = Math.round(f.ms / 60000);
+  for (const f of db.prepare(`SELECT usuario_id AS id, COUNT(DISTINCT dia) AS n FROM (SELECT usuario_id, dia, CAST(ROUND(unixepoch(creada_en, 'subsec') * 1000) AS INTEGER) AS t
+    FROM academia_respuestas WHERE creada_en >= :desdeTexto) WHERE t IS NOT NULL AND t <= :ahora AND :ahora - t < :semanaMs GROUP BY usuario_id`).all(semana)) de(f.id).diasSemana = f.n;
+  return m;
+}
+
 // En línea (y la última actividad) de cada alumno. respuestas: Map id → la fecha de su última respuesta.
 export function enLineaDe(db, cuentas, ahoraMs, ultimas = null) {
   const actividad = ultimaActividad(db);
-  const respuestas = ultimas ?? new Map(db.prepare('SELECT usuario_id AS id, MAX(creada_en) AS f FROM academia_respuestas GROUP BY usuario_id').all().map(f => [f.id, f.f]));
+  const respuestas = ultimas ?? ultimasRespuestas(db, cuentas.map(u => u.id));
   const visitas = resumenesVisitas(db, ahoraMs); // 0.14.11: una consulta para todos (se pide cada 5 s)
   return new Map(cuentas.map(u => {
     const v = visitas.get(u.id) ?? null;
@@ -114,9 +152,8 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
   const respuestas = porAlumno(db.prepare(`SELECT r.usuario_id, r.materia, COUNT(*) AS n, COALESCE(SUM(r.correcta), 0) AS bien
     FROM academia_respuestas r LEFT JOIN academia_intentos i ON i.id = r.intento_id
     WHERE i.tipo IS NULL OR i.tipo <> 'examen' GROUP BY r.usuario_id, r.materia`).all());
-  const fechas = porAlumno(db.prepare('SELECT usuario_id, creada_en, dia FROM academia_respuestas ORDER BY usuario_id, creada_en').all());
-  const ultimas = new Map([...fechas].map(([id, l]) => [id, l.at(-1).creada_en]));
-  const linea = enLineaDe(db, cuentas, ahoraMs, ultimas);
+  const fechas = fechasDeRespuestas(db, ahoraMs);
+  const linea = enLineaDe(db, cuentas, ahoraMs);
   const conOral = hayOral(paquete);
   const avanceAlumno = avanceDe(db, paquete, cuentas.map(u => u.id));
 
@@ -139,7 +176,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
     });
     const nResp = [...resp.values()].reduce((s, f) => s + f.n, 0);
     const nBien = [...resp.values()].reduce((s, f) => s + f.bien, 0);
-    const misFechas = (fechas.get(u.id) ?? []);
+    const misFechas = fechas.get(u.id) ?? { minutos: 0, semana: 0, dias: 0, diasSemana: 0 };
     const plan = planDe(db, u.id, paquete, ahoraMs);
     const pasos = plan.elegido ? { total: plan.total, hechos: plan.hechos } : pasosDelCamino(db, u.id, paquete);
     const total = Math.round(pasos.total);
@@ -153,11 +190,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
       avanceAlumno: avanceAlumno.get(u.id),
       plan: plan.elegido ? { elegido: plan.elegido, pct: plan.pct, fin: plan.fin, finPlan: plan.finPlan, ritmo: plan.ritmo, desde: plan.desde, deberia: plan.deberia ?? null } : null,
       avance: { pct: pasos.total ? Math.min(100, Math.floor((pasos.hechos * 100) / pasos.total)) : 0, hechos: pasos.hechos, total },
-      tiempo: {
-        minutos: tiempoDeEstudio(misFechas.map(f => f.creada_en)),
-        semana: tiempoDeEstudio(misFechas.filter(f => { const t = Date.parse(f.creada_en); return t <= ahoraMs && ahoraMs - t < SEMANA_MS; }).map(f => f.creada_en)),
-        dias: new Set(misFechas.map(f => f.dia)).size,
-      },
+      tiempo: { minutos: misFechas.minutos, semana: misFechas.semana, dias: misFechas.dias },
       examenes: {
         materias: tg, oral,
         hechos: todas.length, aprobados: todas.filter(x => x.aprobado).length,
@@ -172,7 +205,7 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
       cadaMateria: cada.materias, cadaOral: conOral ? avanceOral(db, u.id, paquete) : null,
       detalles: {
         dondeVa: cada.dondeVa, masDebil: materiaMasDebil(cada.materias), ultimoExamen: ultimoExamenDe(db, u.id, paquete),
-        diasSemana: diasActivosSemana(misFechas, ahoraMs), racha: puntosYRacha(db, u.id, ahoraMs).racha,
+        diasSemana: misFechas.diasSemana, racha: puntosYRacha(db, u.id, ahoraMs).racha,
         diasSinEntrar: diasSinEntrar(estado?.ultimaActividad, ahoraMs),
       },
     };

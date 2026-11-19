@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario, marcarEliminada } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { notasDeTodos, tonoNota, promedioDe, temaMasDebil, UMBRALES_NOTA } from '../src/academia/notas.js';
 import { MATERIAS, MATERIAS_ORAL } from '../src/academia/formato.js';
 import { tonoNota as tonoPantalla, UMBRALES_NOTA as UMBRALES_PANTALLA, rutaNotas, ordenarNotas, MAXIMO_COMPARAR_NOTAS } from '../public/admin-notas.js';

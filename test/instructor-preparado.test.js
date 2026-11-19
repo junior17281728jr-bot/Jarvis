@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { saldoIa, cobrarUso, ajustarSaldo, guardarConfigPagos } from '../src/academia/tiempo-ia.js';
 import { busquedaYoutube, ENLACE_YOUTUBE } from '../src/academia/profesor.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';

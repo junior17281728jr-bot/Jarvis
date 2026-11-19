@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { MATERIAS, MATERIAS_ORAL } from '../src/academia/formato.js';
 import { posicionActual } from '../src/academia/avance-alumno.js';
 import { textoAhora, pctTg } from '../public/admin-avance.js';

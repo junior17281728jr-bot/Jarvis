@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { revisarPaquete } from '../src/academia/formato.js';
 import { revisarReto, retosFaciles, normalizar } from '../src/academia/reto-calidad.js';
 import { intercalar } from '../src/academia/practica.js';

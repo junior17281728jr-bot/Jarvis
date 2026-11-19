@@ -15,7 +15,7 @@ import { join, dirname } from 'node:path';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { medirImagen, revisarFoto, FOTO_MAX_BYTES } from '../src/cuentas/foto.js';
 import { mostrarNombresEnCarrera } from '../src/academia/carrera.js';
 import { grupoDe } from '../src/academia/plan.js';

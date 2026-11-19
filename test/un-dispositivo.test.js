@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { sesionesDe } from '../src/cuentas/historial.js';
 import { cerrarOtrosEquipos, cerradaPorOtroEquipo, unDispositivoActivo, ponerUnDispositivo } from '../src/cuentas/un-dispositivo.js';
 import { claveDeAvisoValida } from '../src/avisos/avisos.js';

@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
+import { hashClave as hashClaveReal } from '../src/cuentas/claves.js';
 
 process.env.OPORTIA_TEST = '1';
 
@@ -28,6 +29,17 @@ export function baseDePruebas(raiz = join(dirname(fileURLToPath(import.meta.url)
 }
 
 const BASE_PRUEBAS = baseDePruebas();
+
+// 0.14.55: el hash de la contraseña de las pruebas, UNA vez por contraseña y por proceso (antes, uno por cada cuenta de
+// cada prueba: unos 1 500 cálculos scrypt, la quinta parte del tiempo de todas las pruebas). Es un hash de verdad (el
+// mismo scrypt de src/cuentas/claves.js, con su sal), solo que se reutiliza: entrar con esa contraseña sigue calculando
+// scrypt de verdad. El programa NO cambia: esto vive solo aquí. Las pruebas de las contraseñas mismas (cuentas.test.js,
+// claves.test.js…) siguen usando el de src/ directamente.
+const hashesDePrueba = new Map();
+export function hashClave(clave) {
+  if (!hashesDePrueba.has(clave)) hashesDePrueba.set(clave, hashClaveReal(clave));
+  return hashesDePrueba.get(clave);
+}
 
 export function carpetaTemporal(nombre = 'oportia') {
   mkdirSync(BASE_PRUEBAS, { recursive: true });

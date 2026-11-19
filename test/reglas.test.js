@@ -30,6 +30,20 @@ test('el programa nunca borra archivos ni carpetas de datos', () => {
   assert.ok(!existsSync(join(SRC, 'academia', 'recibos.js')), 'ya no existe el borrado de comprobantes');
   for (const f of codigo) {
     const texto = readFileSync(f, 'utf8');
+    // 0.14.55 (auditoría: unos 600 MB por cada prueba de «Claude mejora la app», hasta llenar el disco): la ÚNICA excepción
+    // son las carpetas temporales del probador. Solo src/academia/app-temporales.js, con UN rm (de node:fs/promises), solo
+    // para carpetas tmp-* (y oportia-pruebas) dentro de la carpeta de «Claude mejora la app» y esta dentro de la carpeta temporal del sistema (nunca los
+    // datos), y solo lo usa src/academia/app-probador.js. test/app-temporales.test.js prueba cada «no».
+    if (relative(SRC, f) === join('academia', 'app-temporales.js')) {
+      assert.doesNotMatch(texto, /\b(rmSync|rmdirSync|unlinkSync|limpiar)\b|\bunlink\(/);
+      assert.match(texto, /^import \{ rm \} from 'node:fs\/promises';$/m);
+      assert.equal((texto.match(/\brm\(/g) ?? []).length, 1, 'UN solo rm');
+      assert.match(texto, /export const NOMBRE_TEMPORAL = \/\^\(\?:tmp-\[A-Za-z0-9_-\]\{1,64\}\|oportia-pruebas\)\$\/;/);
+      assert.match(texto, /if \(motivoParaNoQuitar\(config, carpeta, opciones\) != null\) return false;\n  try \{\n    await rm\(/, 'rm solo después de revisar');
+      assert.match(texto, /if \(!app\.startsWith\(sistema \+ sep\)\) return 'fuera_de_temporal';/);
+      continue;
+    }
+    if (/app-temporales\.js/.test(texto)) assert.equal(relative(SRC, f), join('academia', 'app-probador.js'), `${relative(RAIZ, f)} usa el borrado de temporales`);
     assert.doesNotMatch(texto, /\b(rmSync|rmdirSync|unlinkSync|limpiar)\b|\brm\(|\bunlink\(/, `${relative(RAIZ, f)} contiene una orden de borrado`);
   }
 });
@@ -102,6 +116,7 @@ const MIGRACIONES_PUBLICADAS = {
   10: '769d48e158757031c7e78f17a155b50711f65c3dbbbb1d44a618687512884b92',
   11: '52d48cce285606f833df40e7e3e585084850c5cc8df924bb2c85a3d79c31e219',
   12: 'ef7548dfdbebeac6d131c033d5eb6571da59e9c51e403b3b4ce073dbf323ab38',
+  13: 'f9a8fc2139eebde160100929b3bc1abbbf92af5eeb385d08ca6cbc9719dc4d6b',
 };
 
 // Versión de package.json con la que se publicó cada cambio de base (los de antes de esta regla no están).
@@ -117,6 +132,7 @@ const VERSION_DE_CADA_MIGRACION = {
   10: '0.13.8',
   11: '0.14.38',
   12: '0.14.51',
+  13: '0.14.55',
 };
 
 test('los cambios de base ya publicados no se editan, y cada uno tiene su huella', async () => {
@@ -748,8 +764,8 @@ test('la revisión de Drive es una tarea del trabajador (el servidor web nunca l
   const trabajador = new Set(grafoDeImports(join(SRC, 'tareas', 'trabajador.js')).archivos.map(a => relative(SRC, a)));
   assert.ok(trabajador.has(join('academia', 'sincronizar.js')));
   const { MIGRACIONES } = await import('../src/nucleo/migraciones.js');
-  // La 0.7.1 no cambió la base (todo fue a ajustes); después vinieron la 8 (0.10.0, el Instructor), la 9 (0.12.0, lo extra), la 10 (0.13.8, cuentas eliminadas), la 11 (0.14.38, la Competencia) y la 12 (0.14.51, lo que el oral aprende de la IA).
-  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 12, 'después de la 7 solo están la 8 (el Instructor), la 9 (lo extra), la 10 (cuentas eliminadas), la 11 (la Competencia) y la 12 (lo aprendido del oral)');
+  // La 0.7.1 no cambió la base (todo fue a ajustes); después vinieron la 8 (0.10.0, el Instructor), la 9 (0.12.0, lo extra), la 10 (0.13.8, cuentas eliminadas), la 11 (0.14.38, la Competencia), la 12 (0.14.51, lo que el oral aprende de la IA) y la 13 (0.14.55, solo índices).
+  assert.equal(Math.max(...MIGRACIONES.map(m => m.id)), 13, 'después de la 7 solo están la 8 (el Instructor), la 9 (lo extra), la 10 (cuentas eliminadas), la 11 (la Competencia), la 12 (lo aprendido del oral) y la 13 (índices)');
 });
 
 test('el trabajador nunca lee un paquete entero (src/academia/sincronizar.js): lo revisa el servidor web, que lo enciende y lo apaga como a los avisos', () => {

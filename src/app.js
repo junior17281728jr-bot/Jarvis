@@ -34,8 +34,16 @@ import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
 import { estadoTerminos } from './cuentas/terminos.js';
 import { crearVoz } from './academia/voz.js';
+import { espacioLibre } from './academia/espacio.js';
+import { ponerAvisoDeDanados } from './academia/paquetes.js';
+import { abrirAviso, resolverAviso } from './avisos/avisos.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// 0.14.55: SQLITE_FULL (13: «database or disk is full») de node:sqlite, o ENOSPC de un archivo.
+export function esDiscoLleno(error) {
+  return Boolean(error) && (error.code === 'ENOSPC' || (error.code === 'ERR_SQLITE_ERROR' && error.errcode === 13) || /database or disk is full/i.test(String(error.message ?? '')));
+}
 const PUB = join(RAIZ, 'public');
 
 export const VERSION = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')).version;
@@ -124,7 +132,9 @@ function texto(res, codigo, mensaje) {
 // opciones.confirmar: límites de la contraseña que se pide otra vez para lo delicado (solo para pruebas).
 // 0.14.53: opciones.voz: los archivos del dictado en el equipo del alumno (src/academia/voz.js); sin él, uno con la lista
 // del repositorio (que no baja nada hasta que la pantalla lo pide).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {}, voz = null } = {}) {
+// 0.14.55: opciones.discoLibre: cuántos bytes quedan en el disco de la base (solo para pruebas; por defecto se mide con
+// statfs en la carpeta de la base). /api/setup lo dice como disco: 'ok' | 'bajo' | 'lleno' (siempre con 200).
+export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {}, voz = null, discoLibre = null } = {}) {
   const rutas = crearRuteador();
   const dictadoVoz = voz ?? (config ? crearVoz({ config }) : null);
   // 0.14.53: el estado de los archivos del dictado (y, si faltan, el servidor empieza a bajarlos).
@@ -134,7 +144,13 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   // usa para preparar la PRÓXIMA clase (src/api/instructor.js). Nunca hace fallar el pedido del alumno.
   const ganchos = { finDeSesion: null };
   const finDeSesion = (db, usuario, como) => { try { ganchos.finDeSesion?.(db, usuario, como); } catch { /* nunca molesta al alumno */ } };
-  registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor, alertaAdmin: limitesConfirmar.alerta });
+  // 0.14.55: un contenido en uso dañado abre el aviso del administrador (solo aquí, en el servidor web; nunca el trabajador).
+  ponerAvisoDeDanados((base, rotos) => {
+    if (rotos.length) abrirAviso(base, { clave: 'paquete_danado', nivel: 'grave', detalle: { paquetes: rotos.slice(0, 20) } });
+    else resolverAviso(base, 'paquete_danado');
+  });
+  const medirDisco = discoLibre ?? (config?.archivoBase ? () => espacioLibre(dirname(config.archivoBase)) : null);
+  registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor, alertaAdmin: limitesConfirmar.alerta, discoLibre: medirDisco });
   registrarRutasVisitas(rutas, { Limitador, finDeSesion });
   registrarRutasTareas(rutas, { supervisor, version: VERSION, codigo: HUELLA, config, ...tareas });
   registrarRutasIa(rutas, { config, supervisor, limites: ia.limites });
@@ -210,6 +226,11 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     } catch (error) {
       // detalle: solo datos simples que la pantalla necesita (por ejemplo, qué falta para encender la IA).
       if (error instanceof ErrorHttp) return enviarJson(res, error.codigo, { ...detalleSeguro(error.detalle), error: error.clave });
+      // 0.14.55: el disco lleno (la base no puede escribir, o un archivo no cabe) no es «algo falló»: 507 con su frase.
+      if (esDiscoLleno(error)) {
+        console.error('Sin espacio en el disco:', req.method, ruta);
+        return enviarJson(res, 507, { error: 'disco_sin_espacio' });
+      }
       throw error;
     }
   }

@@ -346,7 +346,20 @@ export function preguntaDelTestGuide(config, idTg, lugar = null) {
     if (q) return q;
   }
   try {
-    if (statSync(join(dir, ARCHIVO_TG)).size > TOPES_FUENTES.jsonBytes) return null;
-    return (JSON.parse(readFileSync(join(dir, ARCHIVO_TG), 'utf8')).preguntas ?? []).find(x => x?.id === idTg) ?? null;
+    const q = preguntasDelTg(join(dir, ARCHIVO_TG)).get(idTg);
+    return q ? structuredClone(q) : null;
   } catch { return null; }
+}
+// 0.14.55 (auditoría): tg.json (hasta 4 MB) se leía y se armaba entero en CADA consulta. Ahora una vez por versión del
+// archivo (ruta, tamaño y fecha de cambio: si las fuentes se vuelven a bajar, se lee otra vez). → Map id → pregunta.
+let tgEnMemoria = { firma: null, porId: new Map() };
+function preguntasDelTg(ruta) {
+  const s = statSync(ruta);
+  if (s.size > TOPES_FUENTES.jsonBytes) return new Map();
+  const firma = `${ruta}|${s.size}|${s.mtimeMs}|${s.ino}`;
+  if (tgEnMemoria.firma === firma) return tgEnMemoria.porId;
+  const porId = new Map();
+  for (const q of JSON.parse(readFileSync(ruta, 'utf8')).preguntas ?? []) if (q && typeof q.id === 'string' && !porId.has(q.id)) porId.set(q.id, q);
+  tgEnMemoria = { firma, porId };
+  return porId;
 }

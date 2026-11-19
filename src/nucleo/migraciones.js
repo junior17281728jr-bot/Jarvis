@@ -813,4 +813,21 @@ CREATE TABLE IF NOT EXISTS academia_oral_aprendido (
 CREATE INDEX IF NOT EXISTS academia_oral_aprendido_pregunta ON academia_oral_aprendido(pregunta, seguimiento, id);
 `,
   },
+  {
+    id: 13,
+    nombre: 'indices_rapidos',
+    // 0.14.55 (auditoría del servidor): SOLO índices nuevos (nada se borra ni se cambia; ningún dato se toca). Con muchas
+    // respuestas guardadas, estas consultas leían la tabla entera cada vez:
+    //  - «Cómo van todos» y su «en línea» cada 5 s: la última respuesta y las fechas de cada alumno (usuario_id, creada_en).
+    //  - La mejora de cada semana (src/academia/fabrica-mejora.js): las respuestas de UNA pregunta (pregunta, correcta, elegida).
+    //  - El reporte y las fichas: las entradas y salidas de cada alumno en la auditoría (usuario_id, accion, id).
+    //  - La fila de tareas por programa (programa, id) y el gasto de IA por propósito (proposito, estado).
+    sql: `
+CREATE INDEX IF NOT EXISTS academia_respuestas_usuario_fecha ON academia_respuestas(usuario_id, creada_en);
+CREATE INDEX IF NOT EXISTS academia_respuestas_pregunta ON academia_respuestas(pregunta, correcta, elegida);
+CREATE INDEX IF NOT EXISTS auditoria_usuario_accion ON auditoria(usuario_id, accion, id);
+CREATE INDEX IF NOT EXISTS tareas_por_programa ON tareas(programa, id);
+CREATE INDEX IF NOT EXISTS ia_llamadas_proposito ON ia_llamadas(proposito, estado);
+`,
+  },
 ];

@@ -12,7 +12,7 @@ import { pipeline } from 'node:stream/promises';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { LIMITES } from '../academia/formato.js';
-import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, rutaFigura, rutaAudio, rutaVideo, rutaClip, rutaFoto, paginaDe } from '../academia/paquetes.js';
+import { leerCuerpo, subirJson, subirFigura, subirRecurso, activarPaquete, listarPaquetes, paqueteActivo, paquetesDanados, rutaFigura, rutaAudio, rutaVideo, rutaClip, rutaFoto, paginaDe } from '../academia/paquetes.js';
 import { extraDeMateria, rondaExtra, responderExtra } from '../academia/extra.js';
 import { vivoDe } from '../academia/oral-vivo.js';
 import { caminoOral, leccionOral, marcarLeidoOral, rondaOral, responderOral, crearExamenOral, entregarExamenOral, resumenOral, hayOral } from '../academia/oral.js';
@@ -392,6 +392,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
         ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), carreraNombres: nombresEnCarrera(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
         // 0.12.9 (R): cuántas preguntas del Test Guide del paquete activo explica alguna tarjeta, y cuáles faltan.
         cobertura: (() => { try { const p = activo(db); return p ? coberturaTestGuide(p) : null; } catch { return null; } })(),
+        // 0.14.55: las versiones en uso que no se pueden leer (paquete.json dañado); también salen como aviso.
+        danados: paquetesDanados(),
         limites: { jsonBytes: LIMITES.jsonBytes, figuraBytes: LIMITES.figuraBytes, audioBytes: LIMITES.audioBytes, videoBytes: LIMITES.videoBytes, clipBytes: LIMITES.clipBytes, paginaBytes: LIMITES.paginaBytes, fotoBytes: LIMITES.fotoBytes },
       },
     };

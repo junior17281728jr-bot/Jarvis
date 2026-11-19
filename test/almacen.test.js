@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path';
 import { crearServidor } from '../src/app.js';
 import { abrirBase, enTransaccion } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { crearSincronizador } from '../src/academia/sincronizar.js';
 import { importarEntrante } from '../src/academia/importador.js';
 import { guardarCarpetaDrive, leerRevisiones } from '../src/academia/drive-estado.js';

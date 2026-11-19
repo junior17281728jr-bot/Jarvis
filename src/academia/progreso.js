@@ -837,9 +837,12 @@ export function ultimaActividad(db) {
   const poner = (id, fecha) => { if (fecha && (!m.get(id) || fecha > m.get(id))) m.set(id, fecha); };
   for (const f of db.prepare('SELECT id, ultimo_acceso AS f FROM usuarios').all()) poner(f.id, f.f);
   for (const f of db.prepare('SELECT usuario_id AS id, MAX(ultimo_uso) AS f FROM sesiones GROUP BY usuario_id').all()) poner(f.id, f.f);
-  for (const f of db.prepare('SELECT usuario_id AS id, MAX(creada_en) AS f FROM academia_respuestas GROUP BY usuario_id').all()) poner(f.id, f.f);
-  // 0.9.0: al tocar «Salir» la sesión se borra; su última actividad queda en la fila «salida» de la auditoría.
-  for (const f of db.prepare("SELECT usuario_id AS id, MAX(json_extract(detalle, '$.ultimoUso')) AS f FROM auditoria WHERE accion = 'salida' AND json_valid(detalle) GROUP BY usuario_id").all()) poner(f.id, f.f);
+  // 0.14.55: la última respuesta y la última «salida» de CADA cuenta, cada una por su índice (migración 13): antes se leía
+  // la tabla entera de respuestas y de la auditoría en cada pedido (el «en línea» de «Cómo van todos» lo pide cada 5 s).
+  for (const f of db.prepare(`SELECT id, (SELECT MAX(creada_en) FROM academia_respuestas r WHERE r.usuario_id = u.id) AS f,
+    (SELECT MAX(json_extract(detalle, '$.ultimoUso')) FROM auditoria a WHERE a.usuario_id = u.id AND a.accion = 'salida' AND json_valid(a.detalle)) AS s
+    FROM usuarios u`).all()) { poner(f.id, f.f); poner(f.id, f.s); }
+  // (0.9.0: al tocar «Salir» la sesión se borra; su última actividad queda en la fila «salida» de la auditoría.)
   return m;
 }
 

@@ -11,7 +11,7 @@ import { EN_LINEA_MS, LATIDO_MS, anotarActividad, anotarFin, resumenVisitas } fr
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 
 // Deja correr lo que quedó pendiente (promesas ya resueltas), sin esperar tiempo de verdad.
 const vaciar = () => new Promise(r => setImmediate(r));

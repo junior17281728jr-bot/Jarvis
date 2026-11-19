@@ -6,7 +6,7 @@ import { configDePrueba, conServidor } from './ayuda.js';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { guardarAjuste } from '../src/academia/paquetes.js';
 import { carpetaFuentes, revisarCarpetaFuentes, AJUSTE_FUENTES } from '../src/academia/fuentes.js';
 import { leerConfigFabrica, estadoMateria } from '../src/academia/fabrica.js';

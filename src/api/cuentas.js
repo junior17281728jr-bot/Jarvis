@@ -5,10 +5,10 @@ import { cerrarOtrosEquipos } from '../cuentas/un-dispositivo.js';
 import { ajustesAcademia } from '../academia/progreso.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
-import { Freno, Limitador } from '../nucleo/limites.js';
+import { Freno, Limitador, EnCurso } from '../nucleo/limites.js';
 import { createHash } from 'node:crypto';
 import { vieneDeTailscale } from '../nucleo/red.js';
-import { hashClave, verificarClave, problemaDeClave, claveTemporal, clavePendiente, esPendiente } from '../cuentas/claves.js';
+import { hashClave, verificarClave, problemaDeClave, claveTemporal, clavePendiente, esPendiente, ClaveOcupada, filaDeClavesLlena } from '../cuentas/claves.js';
 import { crearSesion, cerrarSesion, cerrarTodas, textoGalleta } from '../cuentas/sesiones.js';
 import {
   NOMBRE_VALIDO, auditar, hayAdmin, crearPrimerAdmin, crearUsuario, buscarPorNombre, buscarPorId,
@@ -30,12 +30,25 @@ const IDIOMAS = new Set(['es', 'en']);
 // NUNCA bloquean ni dicen «te quedan N intentos». Una contraseña mala recibe siempre «contraseña incorrecta», solo que
 // el servidor tarda un poco más cada vez (Freno, src/nucleo/limites.js: 5 sin espera, después 1, 2, 4… hasta 8 s, por
 // cuenta y lugar; al acertar se olvida). dormir/reloj: solo para las pruebas.
+//
+// 0.14.55 (auditoría: mil entradas con nombres inventados desde un mismo lugar hacían esperar 28 s a una de verdad, porque
+// cada nombre nuevo traía sus 5 intentos sin espera y la fila de cálculos no tenía tope). Además del freno de cada cuenta:
+//  - porLugar: el mismo Freno, pero por lugar SOLO (cualquier nombre): 30 intentos sin espera, después 1, 2, 4… hasta 8 s.
+//    Al entrar bien se olvida. Una persona (o una clase entera detrás del mismo internet) nunca lo nota.
+//  - aLaVez: como mucho 20 entradas de un mismo lugar en marcha a la vez; la que sobra recibe 503 «servidor_ocupado» al instante.
+//  - filaMaxima: con 32 cálculos de contraseña ya esperando turno, la entrada recibe 503 «servidor_ocupado» (Retry-After: 2).
+// Nada de esto bloquea: «ocupado» se va solo en segundos. Y NUNCA vale para el dueño desde su red (Tailscale): él no pasa
+// por porLugar, ni por aLaVez, ni por el tope de la fila (solo por el freno de su cuenta, como siempre).
 export function crearLimitesCuentas({ dormir, reloj } = {}) {
   return {
     freno: new Freno({ dormir, reloj }),
+    porLugar: new Freno({ libres: 30, dormir, reloj }),
+    aLaVez: new EnCurso({ maximo: 20 }),
+    filaMaxima: 32,
     primerAdmin: new Limitador({ maximo: 5, ventanaMs: 60 * 60 * 1000 }),
   };
 }
+const OCUPADO = Object.freeze({ codigo: 503, datos: { error: 'servidor_ocupado' }, cabeceras: { 'Retry-After': '2' } });
 
 // La cuenta se identifica por su nombre y una huella de su contraseña guardada. Si el administrador o la
 // herramienta de rescate ponen una contraseña nueva, la huella cambia y la espera anterior deja de valer.
@@ -120,7 +133,15 @@ function cambiarActivo(db, req, { destino, activo, usuario, confirmado = null, a
   if (destino.rol === 'admin') anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'admin_activo', detalle: { cuenta: destino.nombre, activo: activo ? 1 : 0 }, como: confirmado?.como });
 }
 
-export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null, alertaAdmin = null } = {}) {
+// 0.14.55: el disco de la base, para /api/setup: 'lleno' con menos de 64 MB libres, 'bajo' con menos de 300 MB, si no 'ok'
+// (null si no se puede medir). Siempre con 200: un disco lleno no se arregla volviendo a la versión anterior del código.
+export const DISCO_SETUP = Object.freeze({ llenoBytes: 64 * 1024 * 1024, bajoBytes: 300 * 1024 * 1024 });
+export function estadoDisco(libre) {
+  if (libre == null || !Number.isFinite(libre)) return null;
+  return libre < DISCO_SETUP.llenoBytes ? 'lleno' : libre < DISCO_SETUP.bajoBytes ? 'bajo' : 'ok';
+}
+
+export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCuentas(), supervisor = null, alertaAdmin = null, discoLibre = null } = {}) {
   rutas.agregar('GET', '/api/setup', ({ db, req }) => {
     if (arrancando(supervisor)) {
       return { codigo: 503, datos: { app: 'oportia', estado: 'arrancando', version, error: 'arrancando' }, cabeceras: { 'Retry-After': '1' } };
@@ -133,6 +154,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
         estado: 'en construcción',
         version,
         base: { estado: 'ok', version: db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v ?? 0 },
+        disco: (() => { try { return estadoDisco(discoLibre?.()); } catch { return null; } })(),
         necesitaAdmin,
         puedeCrearAdmin: necesitaAdmin && vieneDeTailscale(req).si,
         // Academia (0.7.0): el nombre de la app (lo cambia el administrador), también para la pantalla de entrar.
@@ -168,9 +190,26 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     // El turno se aparta ANTES de calcular la contraseña (muchos pedidos a la vez se escalonan; ninguno espera más de 8 s). También
     // para un usuario que no existe: la espera no dice qué cuentas hay.
     const lugar = `${llaveDeCuenta(nombre, usuario)}|${cliente}`;
-    await limites.freno.esperarTurno(lugar);
-    // 0.12.6: la casilla de la contraseña acepta también el código de respaldo de un administrador (src/cuentas/respaldo.js).
-    const porClave = await verificarClave(clave, usuario?.clave_hash);
+    // 0.14.55: el dueño desde su red (Tailscale) nunca pasa por los topes por lugar ni por el de la fila.
+    const desdeSuRed = vieneDeTailscale(req).si;
+    const porLugar = limites.porLugar && !desdeSuRed ? limites.porLugar : null;
+    const aLaVez = limites.aLaVez && !desdeSuRed ? limites.aLaVez : null;
+    const maxEspera = desdeSuRed ? Infinity : limites.filaMaxima ?? Infinity;
+    // «Ocupado» ANTES de apartar turnos: así no cuenta como una contraseña mala (y no hace esperar más al volver a probar).
+    if (filaDeClavesLlena(maxEspera)) return OCUPADO;
+    if (aLaVez && !aLaVez.tomar(cliente)) return OCUPADO;
+    let porClave;
+    try {
+      // Los dos turnos (el del lugar y el de la cuenta) se apartan juntos y se esperan a la vez: nunca más de 8 s en total.
+      await Promise.all([porLugar?.esperarTurno(cliente), limites.freno.esperarTurno(lugar)]);
+      // 0.12.6: la casilla de la contraseña acepta también el código de respaldo de un administrador (src/cuentas/respaldo.js).
+      porClave = await verificarClave(clave, usuario?.clave_hash, { maxEspera });
+    } catch (error) {
+      if (error instanceof ClaveOcupada) return OCUPADO;
+      throw error;
+    } finally {
+      aLaVez?.soltar(cliente);
+    }
     const conCodigo = !porClave && await codigoCorrecto(db, usuario, clave);
     const correcta = porClave || conCodigo;
     // 0.9.2: con la contraseña correcta, una cuenta bloqueada (desactivada) lo dice: «habla con el administrador».
@@ -187,6 +226,7 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
       throw new ErrorHttp(401, 'credenciales');
     }
     limites.freno.olvidar(lugar);
+    porLugar?.olvidar(cliente);
     if (conCodigo) {
       // Cada uso del código: un aviso para el administrador (pantalla y Telegram), la auditoría y, en su pantalla, la
       // sugerencia de poner una contraseña nueva.

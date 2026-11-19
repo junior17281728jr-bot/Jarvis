@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { revisarPaquete, MATERIAS_ORAL } from '../src/academia/formato.js';
 import { paqueteActivo, leerEnUso, guardarAjuste, AJUSTE_EN_USO } from '../src/academia/paquetes.js';
 import { listoParaOral } from '../src/academia/oral.js';

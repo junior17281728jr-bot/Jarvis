@@ -12,7 +12,7 @@ import { runInNewContext } from 'node:vm';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');

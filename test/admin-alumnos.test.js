@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { FORMAS_AVATAR, COLORES_AVATAR } from '../src/cuentas/perfil.js';
 import { tiempoDeEstudio } from '../src/academia/fichas.js';
 import { equipoDe } from '../src/cuentas/historial.js';

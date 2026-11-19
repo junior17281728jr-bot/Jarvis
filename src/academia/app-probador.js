@@ -8,17 +8,46 @@
 //      (con cuántas pasaron y los nombres de las que fallaron). Despierta a la fábrica para que siga.
 // Si el servidor se reinicia a mitad, la propuesta «probando» vuelve a «probar» (la copia vive en la carpeta temporal del
 // servicio, que se vacía al reiniciar: el trabajador la vuelve a bajar).
-import { readdirSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+// 0.14.55 (auditoría):
+//  - La carpeta temporal de cada prueba (tmp-<propuesta>, unos 600 MB que dejan las pruebas) se quita al terminar: pase,
+//    falle, se acabe el tiempo o haya un error (src/academia/app-temporales.js). También las que quedaron de antes, al
+//    arrancar y antes de cada prueba.
+//  - Nunca corre a la vez que las pruebas del actualizador del servidor (el cron de deploy/cloud-init.sh, que toma el
+//    candado /run/jarvis-actualizar.lock con flock): las dos juntas en 1 procesador tardaban el doble y el actualizador
+//    podía pasarse de sus 15 minutos. Se mira en /proc/locks (solo se LEE: ningún proceso, ningún archivo nuevo); con el
+//    candado tomado, la propuesta sigue en «probar» y se prueba en una vuelta siguiente.
+import { readdirSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { enTransaccion } from '../nucleo/db.js';
 import { encolar } from '../tareas/cola.js';
 import { lanzarPruebas, revisarSintaxis } from '../tareas/supervisor.js';
 import { aplicarParche, huellaTexto } from './app-parche.js';
 import { carpetaApp, carpetaArbol, lectorDeArbol } from './app-fuente.js';
+import { quitarTemporal, quitarTemporalesViejos } from './app-temporales.js';
 import { leerPropuestas, leerDetalle, cambiarPropuesta, leerFuente, guardarFuente, escribirEstado, terminar } from './app-mejora.js';
 
 export const TIEMPOS_PROBADOR = Object.freeze({ cadaMs: 20_000, pruebasMs: 900_000, sintaxisMs: 30_000, colaBytes: 16_384 });
 const iso = ms => new Date(ms).toISOString();
+
+export const CANDADO_ACTUALIZADOR = '/run/jarvis-actualizar.lock';
+
+// ¿Alguien tiene tomado (flock) ese archivo ahora? Se busca su número de archivo (y su disco) en /proc/locks, entre los
+// candados TOMADOS (no los que esperan, «->»). Sin el archivo, sin /proc/locks o con algo raro: false (se prueba igual).
+export function candadoTomado(ruta = CANDADO_ACTUALIZADOR, { leerCandados = () => readFileSync('/proc/locks', 'utf8'), estado = statSync } = {}) {
+  let s;
+  try { s = estado(ruta); } catch { return false; }
+  let texto;
+  try { texto = String(leerCandados()); } catch { return false; }
+  const dev = Number(s.dev);
+  // dev_t de glibc: mayor = bits 8–19 y 32–43; menor = bits 0–7 y 20–31.
+  const mayor = (Math.floor(dev / 256) & 0xfff) | (Math.floor(dev / 2 ** 32) & ~0xfff);
+  const menor = (dev & 0xff) | (Math.floor(dev / 4096) & ~0xff);
+  for (const linea of texto.split('\n')) {
+    const m = /^\d+:\s+FLOCK\s+\S+\s+\S+\s+\d+\s+([0-9a-f]+):([0-9a-f]+):(\d+)\s/i.exec(linea);
+    if (m && Number(m[3]) === Number(s.ino) && parseInt(m[1], 16) === mayor && parseInt(m[2], 16) === menor) return true;
+  }
+  return false;
+}
 
 // Corre un proceso y espera: → { codigo, cola (el final de lo que escribió), tiempoAgotado }
 export function esperarProceso(hijo, { timeoutMs, colaBytes = TIEMPOS_PROBADOR.colaBytes, reloj = setTimeout }) {
@@ -41,7 +70,10 @@ export function leerResultado(cola) {
   return { pasaron: n(/^# pass (\d+)$/gm), fallaron: n(/^# fail (\d+)$/gm), fallidas };
 }
 
-export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = revisarSintaxis, reloj = Date.now, tiempos = TIEMPOS_PROBADOR, supervisor = null, registro = null } = {}) {
+// actualizadorOcupado: ¿está corriendo el actualizador del servidor? En modo de prueba (OPORTIA_TEST, como en
+// src/nucleo/config.js) nunca: las pruebas del probador corren DENTRO de las del actualizador, que tiene el candado tomado.
+export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = revisarSintaxis, reloj = Date.now, tiempos = TIEMPOS_PROBADOR, supervisor = null, registro = null,
+  actualizadorOcupado = config?.modoPrueba || process.env.OPORTIA_TEST === '1' ? () => false : () => candadoTomado() } = {}) {
   let vuelta = null;
   let ocupado = false;
   let hijo = null;
@@ -51,6 +83,7 @@ export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = r
     if (ocupado || parado) return null;
     const p = leerPropuestas(db).find(x => x.estado === 'probar');
     if (!p) return null;
+    try { if (actualizadorOcupado()) return 'actualizador'; } catch { /* se prueba igual */ }
     ocupado = true;
     const ahora = reloj();
     // «no_paso» termina la propuesta (con su anotación en «Lo que hizo la IA» y el avance del recorrido); lo demás solo cambia.
@@ -62,6 +95,7 @@ export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = r
     });
     const arbol = carpetaArbol(config, p.base);
     const escritos = [];
+    let tmp = null;
     try {
       const empezo = enTransaccion(db, () => cambiarPropuesta(db, p.id, { estado: 'probando', probandoDesde: iso(ahora) }, { si: 'probar' }));
       if (!empezo) return null;
@@ -79,7 +113,8 @@ export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = r
         return 'copia_sucia';
       }
       for (const x of a.archivos) { writeFileSync(join(arbol, x.archivo), x.despues); escritos.push(x); }
-      const tmp = join(carpetaApp(config), `tmp-${p.id}`);
+      await quitarTemporalesViejos(config);
+      tmp = join(carpetaApp(config), `tmp-${p.id}`);
       mkdirSync(tmp, { recursive: true });
       for (const x of a.archivos.filter(y => y.archivo.endsWith('.js'))) {
         hijo = sintaxis({ carpeta: arbol, archivo: x.archivo, tmp });
@@ -109,6 +144,12 @@ export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = r
       if (escritos.length && escritos.some(x => huellaTexto(lectorDeArbol(arbol)(x.archivo) ?? '') !== x.huellaAntes)) {
         try { enTransaccion(db, () => guardarFuente(db, { listo: false, sucia: true })); } catch { /* el trabajador la revisa */ }
       }
+      // 0.14.55: SIEMPRE: la carpeta temporal de esta prueba se quita (si algo quedó escribiendo, la siguiente la quita).
+      if (tmp) {
+        for (const carpeta of [tmp, join(carpetaApp(config), 'oportia-pruebas')]) {
+          if (!(await quitarTemporal(config, carpeta)) && existsSync(carpeta)) registro?.error?.('No se pudo quitar una carpeta temporal del probador (se vuelve a intentar antes de la próxima prueba)');
+        }
+      }
       ocupado = false;
       despertar();
     }
@@ -123,6 +164,8 @@ export function crearProbador({ db, config, lanzar = lanzarPruebas, sintaxis = r
   return {
     probarUna,
     iniciar() {
+      // 0.14.55: lo que quedó en la carpeta temporal de antes (un reinicio a mitad de una prueba).
+      quitarTemporalesViejos(config).catch(() => { /* nunca impide arrancar */ });
       // Lo que quedó «probando» de antes de un reinicio vuelve a la fila.
       try { enTransaccion(db, () => { for (const p of leerPropuestas(db).filter(x => x.estado === 'probando')) cambiarPropuesta(db, p.id, { estado: 'probar' }, { si: 'probando' }); }); } catch { /* sin base */ }
       vuelta = setInterval(() => { probarUna().catch(() => registro?.error?.('No se pudo probar un cambio de Claude')); }, tiempos.cadaMs);

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { crearServidor } from '../src/app.js';
 import { abrirBase } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { guardarAjuste } from '../src/academia/paquetes.js';
 import { carpetaFuentes } from '../src/academia/fuentes.js';
 import { clasificarLibro, indiceDeCapitulo, AJUSTE_BIBLIOTECA, normalizar } from '../src/academia/biblioteca.js';

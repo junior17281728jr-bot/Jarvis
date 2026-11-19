@@ -14,7 +14,7 @@ import { Readable } from 'node:stream';
 import { crearServidor } from '../src/app.js';
 import { abrirBase, enTransaccion } from '../src/nucleo/db.js';
 import { crearUsuario } from '../src/cuentas/usuarios.js';
-import { hashClave } from '../src/cuentas/claves.js';
+import { hashClave } from './ayuda.js';
 import { revisarPaquete, videosDe, LIMITES } from '../src/academia/formato.js';
 import { esMp4, revisarEspacio } from '../src/academia/paquetes.js';
 import { crearSincronizador } from '../src/academia/sincronizar.js';

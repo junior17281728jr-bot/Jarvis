@@ -53,18 +53,19 @@ const BUENA = Object.freeze({
 });
 
 // Un proceso falso (lo que devolvería spawn): escribe «salida» y termina con «codigo», sin esperar.
-function procesoFalso({ salida = '', codigo = 0 } = {}) {
+// 0.14.55: colgado = nunca termina solo (como unas pruebas que se pasan del tiempo): termina cuando lo matan.
+function procesoFalso({ salida = '', codigo = 0, colgado = false } = {}) {
   const h = new EventEmitter();
   h.stdout = new PassThrough();
   h.stderr = new PassThrough();
-  h.kill = () => {};
-  setImmediate(() => { h.stdout.end(salida); h.stderr.end(); setImmediate(() => h.emit('close', codigo)); });
+  h.kill = () => { if (colgado) setImmediate(() => h.emit('close', null)); };
+  if (!colgado) setImmediate(() => { h.stdout.end(salida); h.stderr.end(); setImmediate(() => h.emit('close', codigo)); });
   return h;
 }
 const TAP_OK = 'ok 1 - una\n# tests 5\n# pass 5\n# fail 0\n';
 const TAP_MAL = 'not ok 3 - las pantallas nunca usan innerHTML\n# tests 5\n# pass 3\n# fail 2\n';
 
-async function conApp(fn, { token = true, respuesta = () => BUENA, pruebas = () => ({ salida: TAP_OK, codigo: 0 }), tope = 50_000_000 } = {}) {
+async function conApp(fn, { token = true, respuesta = () => BUENA, pruebas = () => ({ salida: TAP_OK, codigo: 0 }), tope = 50_000_000, probador: masProbador = {} } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
   const opciones = { respuesta, pruebas, elegir: () => ({ pantalla: 'inicio', posible: true, idea: null }) };
@@ -89,7 +90,7 @@ async function conApp(fn, { token = true, respuesta = () => BUENA, pruebas = () 
   const lanzadas = [];
   const probador = crearProbador({ db, config, reloj,
     lanzar: args => { lanzadas.push(args); return procesoFalso(opciones.pruebas(args)); },
-    sintaxis: () => procesoFalso({ codigo: 0 }) });
+    sintaxis: () => procesoFalso({ codigo: 0 }), ...masProbador });
   const ctx = () => ({ db, config, escribir, senal: new AbortController().signal, ia: crearClienteIA({ db, config, escritor: { escribir }, reloj, registro: { error() {} } }) });
   // Corre pasos (del trabajador y del probador) hasta que no quede nada que hacer ahora.
   const correr = async ({ max = 30, soloPedidos = false } = {}) => {
@@ -271,6 +272,43 @@ test('si alguna prueba falla: se descarta, se anota, nunca se sube, y la copia v
     assert.deepEqual([leerRecorrido(db).pantallas.inicio.intentos, leerRecorrido(db).pantallas.inicio.hecha], [2, true]);
   }, { pruebas: () => ({ salida: TAP_MAL, codigo: 1 }) });
   assert.deepEqual(leerResultado(TAP_MAL), { pasaron: 3, fallaron: 2, fallidas: ['las pantallas nunca usan innerHTML'] });
+});
+
+// 0.14.55 (auditoría): la carpeta temporal de cada prueba (unos 600 MB en el servidor) se quita SIEMPRE: pase, falle o
+// se pase del tiempo. Las pruebas falsas escriben ahí una «base» como las de verdad.
+for (const [como, pruebas, estado, extra] of [
+  ['pasa', () => ({ salida: TAP_OK, codigo: 0 }), 'subido', {}],
+  ['falla', () => ({ salida: TAP_MAL, codigo: 1 }), 'no_paso', {}],
+  ['se pasa del tiempo', () => ({ colgado: true }), 'no_paso', { tiempos: { cadaMs: 20_000, pruebasMs: 30, sintaxisMs: 30_000, colaBytes: 16_384 } }],
+]) {
+  test(`0.14.55: la carpeta temporal de la prueba se quita cuando ${como}`, async () => {
+    const vistas = [];
+    await conApp(async ({ db, correr, config }) => {
+      await correr();
+      const p = leerPropuestas(db).find(x => x.estado === estado);
+      assert.ok(p, JSON.stringify(leerPropuestas(db)));
+      if (como === 'se pasa del tiempo') assert.equal(p.motivo, 'pruebas_tardaron');
+      assert.ok(vistas.length >= 1);
+      for (const tmp of vistas) assert.equal(existsSync(tmp), false, `${tmp} quedó`);
+      assert.ok(existsSync(join(carpetaArbol(config, p.base), 'package.json')), 'la copia del código queda');
+    }, { pruebas: args => { mkdirSync(join(args.tmp, 'oportia-x'), { recursive: true }); writeFileSync(join(args.tmp, 'oportia-x', 'a.db'), Buffer.alloc(4096)); vistas.push(args.tmp); return pruebas(); },
+      probador: extra });
+  });
+}
+
+test('0.14.55: con el actualizador del servidor corriendo (su candado tomado), el probador espera: la propuesta sigue en «probar»', async () => {
+  let ocupadoAhora = true;
+  await conApp(async ({ db, probador, lanzadas, correr }) => {
+    await correr();
+    const p = leerPropuestas(db)[0];
+    assert.equal(p.estado, 'probar', JSON.stringify(p));
+    assert.equal(await probador.probarUna(), 'actualizador');
+    assert.equal(lanzadas.length, 0, 'no corrió las pruebas');
+    assert.equal(leerPropuestas(db)[0].estado, 'probar');
+    ocupadoAhora = false;
+    assert.equal(await probador.probarUna(), 'paso');
+    assert.equal(lanzadas.length, 1);
+  }, { probador: { actualizadorOcupado: () => ocupadoAhora } });
 });
 
 test('un cambio con innerHTML o fuera de public/ se rechaza en código: ni se prueba ni se sube', async () => {
