@@ -8,6 +8,9 @@
 //  4. La explicación original del Test Guide, TAL CUAL, en un bloque que se abre (segundo plano).
 //  5. La figura (miniatura, se amplía al tocarla) y las palabras en inglés.
 // Recibe lo que necesita de app.js (el, t, icono, talCual, …), como perfil-vista.js.
+// 0.14.84: en la hoja, arriba, TODAS las opciones (la correcta en verde con ✓ «Correcta», la suya si es mala en rojo con
+//  ✗ «Tu respuesta», las demás sin color; en Modo reto, las que vio), en vez de «La correcta» y «Tu respuesta» aparte.
+import { opcionesRevisadas } from './opciones-revision.js';
 
 // Los rótulos que se reconocen al principio de una línea: [patrón, tipo, ícono].
 const ROTULOS = [
@@ -36,16 +39,15 @@ export function filasSencilla(texto) {
 
 export function partesClaras(q, resp, { enHoja = false } = {}, h) {
   const { el, t, icono, talCual, fichaIngles, figuraPregunta } = h;
-  const opcion = letra => q.opciones.find(o => o.letra === letra)?.texto ?? '';
   const correcta = resp.correcta;
   const fallo = !resp.acierto && resp.elegida && resp.elegida !== correcta;
   // En Modo reto: por qué la opción que eligió no es la buena.
   const suReto = resp.modo === 'reto' ? (resp.reto ?? []).find(o => o.letra === resp.elegida) : null;
   const filas = filasSencilla(resp.sencilla);
   return [
-    enHoja ? el('div', { class: `resp-correcta ${resp.acierto ? 'bien' : 'mal'}` },
-      el('span', { class: 'resp-correcta-rotulo', texto: t('resp.la_correcta') }),
-      el('div', { class: 'resp-correcta-opcion' }, el('span', { class: 'opcion-letra', texto: correcta }), talCual('span', opcion(correcta), 'resp-correcta-texto'))) : null,
+    enHoja ? el('section', { class: `resp-opciones ${resp.acierto ? 'bien' : 'mal'}` },
+      el('span', { class: 'resp-correcta-rotulo', texto: t('resp.op.titulo') }),
+      opcionesRevisadas(q.opciones, resp, h)) : null,
     resp.modo === 'reto' && resp.letraOriginal && resp.letraOriginal !== correcta
       ? el('p', { class: 'nota-letras con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('reto.letras', { aqui: correcta, original: resp.letraOriginal }) })) : null,
     filas.length ? el('section', { class: 'caja-hoja caja-sencilla principal' },
@@ -59,7 +61,7 @@ export function partesClaras(q, resp, { enHoja = false } = {}, h) {
       !resp.acierto && typeof h.entendi === 'function' ? h.entendi({ tipo: 'pregunta', pregunta: q.id }) : null) : null,
     fallo && (resp.idea || suReto) ? el('section', { class: 'caja-hoja caja-tuya' },
       el('h3', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('resp.tu_opcion_no') })),
-      el('p', { class: 'tuya-opcion' }, el('span', { class: 'opcion-letra', texto: resp.elegida }), talCual('span', suReto?.texto ?? opcion(resp.elegida))),
+      // 0.14.84: su opción ya se ve arriba, en rojo, entre todas las opciones (en la hoja y en la revisión): aquí, el porqué.
       resp.idea ? talCual('p', resp.idea) : null,
       suReto?.porque ? talCual('p', suReto.porque) : null,
       (resp.trampa || suReto?.trampa) ? el('p', { class: 'tuya-trampa' }, el('strong', { texto: `${t('reto.trampa')}: ` }), talCual('span', resp.trampa || suReto.trampa)) : null) : null,

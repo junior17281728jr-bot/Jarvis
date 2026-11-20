@@ -6,6 +6,8 @@
 //  - Nada se arma como código: todo con el() y textContent.
 // Las piezas llegan de app.js en «h».
 import { dibujoCertificado, descargarPng, imprimir, fraseCompe, textosCompe, fechaLarga } from './certificado-vista.js';
+// 0.14.84: «Lo que fallaste en la competencia» con todas las opciones (public/opciones-revision.js).
+import { opcionesRevisadas } from './opciones-revision.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 export const EMOJIS = Object.freeze(['👏', '😂', '🔥', '✈️']);
@@ -398,8 +400,10 @@ export function seccionFalladas(lista, h) {
       x.foto || x.dibujo ? el('div', { class: 'compe-dibujo-mini' }, imagen(x.foto, x.dibujo, h, { chica: true })) : null,
       el('p', { class: 'antetitulo', texto: t('compe.ronda.n', { n: x.ronda }) }),
       el('p', { class: 'fuerte', texto: x.pregunta }),
-      el('p', { class: 'chica tono-bien', texto: t('compe.repaso.buena', { letra: x.buena, texto: x.opciones[x.buena] }) }),
-      el('p', { class: 'chica suave', texto: x.elegida ? t('compe.repaso.tuya', { letra: x.elegida, texto: x.opciones[x.elegida] }) : t('compe.repaso.sin_tiempo') }),
+      // 0.14.84: todas las opciones (la buena en verde, la suya en rojo, las demás sin color); sin tiempo, solo la buena.
+      opcionesRevisadas(Object.keys(x.opciones ?? {}).sort().map(letra => ({ letra, texto: x.opciones[letra] })), { correcta: x.buena, elegida: x.elegida ?? null },
+        { el, t }, { texto: o => el('span', { class: 'opcion-texto', texto: o.texto }) }),
+      x.elegida ? null : el('p', { class: 'chica suave', texto: t('compe.repaso.sin_tiempo') }),
       el('p', { class: 'chica', texto: x.explicacion })))));
 }
 

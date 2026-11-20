@@ -754,6 +754,24 @@ flechas y se acerca pellizcando, con la rueda o con + y −. Se pausa fuera de l
 - Textos en `clase.e3d.*` (es y en). Galería: `/clase/demo-3d.html` (`?escena=frentes&paso=4&vista=1p&pausa=1`).
   Pruebas: `test/escenas-3d.test.js`.
 
+### Lo nuevo de la 0.14.84: al revisar, todas las opciones (la correcta, la suya y la de más) — sin cambio de base
+
+- **Pedido de Junior:** «ver la respuesta correcta, la que seleccionó, y la que estaba de más sin color». Una sola pieza,
+  `public/opciones-revision.js`: todas las opciones de la pregunta ya respondida, en su orden y con su texto tal cual; la
+  correcta en verde con ✓ «Correcta», la que eligió si es mala en rojo con ✗ «Tu respuesta» («Su respuesta» en lo del
+  administrador), las demás sin color; si acertó, «Tu respuesta · Correcta». Nunca solo el color (marca y rótulo).
+- **Dónde:** la hoja después de responder (en vez de «La correcta» y «Tu respuesta» aparte) y la tarjeta de arriba; la
+  revisión al terminar un tema, un examen de materia (con reloj), el reto o «mis errores»; la nueva revisión al terminar
+  una vuelta del Repaso final; «Mi repaso» («Ver las opciones» en cada pregunta fallada, con la explicación sencilla y 👍👎)
+  y su mini-clase; «Lo que fallaste en la competencia»; el oral (práctica y revisión del examen, español e inglés); en
+  Administrador, la revisión de un intento del alumno y «Comparar un examen» (las malas que eligieron, con cuántos).
+- **Modo reto:** las opciones que se vieron (el servidor ya las manda así). **Mi repaso** ahora trae, de cada pregunta
+  fallada, sus opciones y la letra que eligió la última vez que la falló (`src/academia/fallas.js`); solo de lo ya
+  respondido: la respuesta sigue sin viajar antes de responder.
+- **«Solo las que falló / Todas»** en las revisiones: al alumno, «Solo las que falló» primero (sin falladas, «Todas»); al
+  administrador, «Todas».
+- Pruebas: `test/opciones-revision.test.js`.
+
 ### Lo nuevo de la 0.14.79: los cursos («Grupo Piloto 1», «Grupo Piloto 2»…) — cambio de base 14
 
 - **Cada alumno es de un curso.** La migración 14 (solo agrega: la tabla `academia_cursos` y `usuarios.curso_id` con

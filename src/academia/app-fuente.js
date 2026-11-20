@@ -89,7 +89,7 @@ export function lectorDeArbol(arbol) {
 export const PANTALLAS = Object.freeze([
   { id: 'inicio', nombre: 'la pantalla de inicio (el Camino)', archivos: ['public/camino-plegable.js'], funciones: ['pantallaInicio'] },
   { id: 'tema', nombre: 'una clase (las tarjetas)', archivos: ['public/tarjetas.js'], funciones: ['pantallaTema'] },
-  { id: 'practica', nombre: 'la práctica de preguntas', archivos: ['public/respuesta-vista.js'], funciones: ['pantallaPractica'] },
+  { id: 'practica', nombre: 'la práctica de preguntas', archivos: ['public/respuesta-vista.js', 'public/opciones-revision.js'], funciones: ['pantallaPractica'] },
   { id: 'examen', nombre: 'el examen', archivos: ['public/examen-vista.js'], funciones: ['pantallaExamen'] },
   { id: 'repaso', nombre: '«Mi repaso»', archivos: ['public/mi-repaso-vista.js'], funciones: ['pantallaMiRepaso'] },
   { id: 'repaso_final', nombre: 'el repaso final', archivos: ['public/repaso-final-vista.js'], funciones: [] },

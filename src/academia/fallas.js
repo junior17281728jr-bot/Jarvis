@@ -20,7 +20,7 @@ import { ideaDe } from './reto.js';
 import { tarjetaPara } from './instructor.js';
 import { conceptosDe, conceptoDePregunta, concepto as conceptoPorClave, nombreConcepto, esClaveConcepto } from './conceptos.js';
 import { puntosDebiles } from './memoria.js';
-import { vistaSecciones, camino } from './progreso.js';
+import { vistaSecciones, camino, vistaPregunta, retroalimentacion, modoDeFila } from './progreso.js';
 
 // examen: la regla vieja (2 de un tema en un intento): se sigue leyendo y guardando (una 0.12.1 que vuelva atrás la usa), pero
 // la 0.12.2 ya no crea fallas con ella. umbral: cuántos errores de un mismo concepto lo ponen en «Mi repaso».
@@ -209,6 +209,7 @@ export function miRepaso(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const enRepaso = new Set(paraRepasar.map(x => x.clave).filter(Boolean));
   // «Tus errores»: la memoria de errores (cada pregunta que falló alguna vez), por tema → concepto.
   const memoria = puntosDebiles(db, usuarioId, paquete);
+  const ultimas = ultimasMalas(db, usuarioId);
   const temas = new Map();
   for (const p of memoria.preguntas) {
     const c = conceptoDePregunta(paquete, p.pregunta);
@@ -217,7 +218,8 @@ export function miRepaso(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const kt = `${c.materia}/${c.tema}`;
     const t = temas.get(kt) ?? { materia: c.materia, tema: c.tema, temaTitulo: c.temaTitulo, temaNumero: c.temaNumero, ultima: '', conceptos: new Map() };
     const x = t.conceptos.get(c.clave) ?? { clave: c.clave, concepto: nombreConcepto(c), enRepaso: enRepaso.has(c.clave), ultima: '', preguntas: [] };
-    x.preguntas.push({ id: p.pregunta, numero: q?.original.numero ?? null, enunciado: q?.original.enunciado ?? '', fallos: p.fallos, veces: p.veces, ultima: p.ultima, superada: p.superada });
+    x.preguntas.push({ id: p.pregunta, numero: q?.original.numero ?? null, enunciado: q?.original.enunciado ?? '', fallos: p.fallos, veces: p.veces, ultima: p.ultima, superada: p.superada,
+      ...opcionesDeLaMala(paquete, p.pregunta, ultimas.get(p.pregunta)) });
     if (String(p.ultima) > x.ultima) x.ultima = String(p.ultima);
     if (x.ultima > t.ultima) t.ultima = x.ultima;
     t.conceptos.set(c.clave, x);
@@ -231,6 +233,24 @@ export function miRepaso(db, usuarioId, paquete, ahoraMs = Date.now()) {
     paraRepasar, errores, umbral: cfg.umbral, meta: { aciertos: cfg.aciertos, dias: cfg.diasConcepto },
     pendientes: memoria.preguntas.filter(p => !p.superada).length, superadas: filas.filter(f => f.estado === 'superada').length,
   };
+}
+
+// 0.14.84: la última vez que falló cada pregunta (con su intento y su modo): para mostrar las opciones que VIO.
+function ultimasMalas(db, usuarioId) {
+  const m = new Map();
+  for (const f of db.prepare(`SELECT r.pregunta, r.elegida, r.intento_id, i.tipo, i.modo FROM academia_respuestas r
+    JOIN academia_intentos i ON i.id = r.intento_id WHERE r.usuario_id = ? AND r.correcta = 0 ORDER BY r.id`).all(usuarioId)) m.set(f.pregunta, f);
+  return m;
+}
+// 0.14.84: las opciones de una pregunta que ya falló (tal cual; en Modo reto, las de ese intento) con la que eligió esa
+// última vez y la correcta, con las letras que se vieron, y su explicación sencilla. Solo de lo ya respondido.
+function opcionesDeLaMala(paquete, id, mala) {
+  if (!mala || !paquete.preguntas.has(id)) return {};
+  const como = { intentoId: mala.intento_id, modo: modoDeFila(mala) };
+  const v = vistaPregunta(paquete, id, como);
+  const r = retroalimentacion(paquete, id, mala.elegida, como);
+  if (v.falta || !r) return {};
+  return { modo: como.modo, opciones: v.opciones, respuesta: { elegida: r.elegida, correcta: r.correcta, acierto: r.acierto, modo: como.modo }, sencilla: r.sencilla ?? null };
 }
 
 // Las preguntas para repasar un concepto: las que falló (sin superar primero), después las demás del concepto, hasta 10.
@@ -299,8 +319,13 @@ export function miniClase(db, usuarioId, paquete, clave, ahoraMs = Date.now()) {
   const ultimaMala = db.prepare(`SELECT intento_id, pregunta, elegida FROM academia_respuestas WHERE usuario_id = ? AND correcta = 0 AND pregunta IN (${marcas}) ORDER BY id DESC LIMIT 1`).get(usuarioId, ...c.preguntas);
   const mala = r.miniclase?.pregunta ? { intento_id: r.miniclase.intento, pregunta: r.miniclase.pregunta, elegida: r.miniclase.opcion } : ultimaMala;
   const q = mala ? paquete.preguntas.get(mala.pregunta) : null;
-  const correcta = q?.original.opciones.find(o => o.letra === q.original.correcta) ?? null;
-  const elegida = q?.original.opciones.find(o => o.letra === mala.elegida) ?? null;
+  // 0.14.84: con las opciones que VIO (en Modo reto, las de ese intento) y las letras de ahí: así una opción nueva del reto
+  // (R1/R2) también se ve, y todas las opciones van en la mini-clase (la correcta en verde, la suya en rojo).
+  const fila = q && mala.intento_id ? db.prepare('SELECT id, tipo, modo FROM academia_intentos WHERE id = ? AND usuario_id = ?').get(mala.intento_id, usuarioId) : null;
+  const vistas = q ? opcionesDeLaMala(paquete, mala.pregunta, { ...mala, tipo: fila?.tipo, modo: fila?.modo }) : {};
+  const ops = vistas.opciones ?? q?.original.opciones ?? [];
+  const correcta = q ? ops.find(o => o.letra === (vistas.respuesta?.correcta ?? q.original.correcta)) ?? null : null;
+  const elegida = q ? ops.find(o => o.letra === (vistas.respuesta?.elegida ?? mala.elegida)) ?? null : null;
   return {
     clave, concepto: nombreConcepto(c), materia: c.materia, tema: c.tema, temaTitulo: c.temaTitulo, temaNumero: c.temaNumero, ronda,
     enRepaso: Boolean(viva), fallos: viva?.fallos ?? 0, aciertos: viva?.aciertos ?? 0, meta: CONFIG_FALLAS.aciertos,
@@ -310,7 +335,9 @@ export function miniClase(db, usuarioId, paquete, clave, ahoraMs = Date.now()) {
       id: mala.pregunta, intento: mala.intento_id, numero: q.original.numero ?? null, enunciado: q.original.enunciado,
       correcta: correcta ? { letra: correcta.letra, texto: correcta.texto } : null, elegida: elegida ? { letra: elegida.letra, texto: elegida.texto } : null,
       sencilla: q.sencilla ?? null, explicacion: q.original.explicacion ?? null,
-      idea: ronda >= 2 && elegida && elegida.letra !== q.original.correcta ? ideaDe(q, elegida.letra) : null,
+      idea: ronda >= 2 && elegida && mala.elegida !== q.original.correcta ? ideaDe(q, mala.elegida) : null,
+      opciones: ops.map(o => ({ letra: o.letra, texto: o.texto })),
+      respuesta: correcta ? { elegida: elegida?.letra ?? null, correcta: correcta.letra } : null,
     } : null,
   };
 }

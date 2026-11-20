@@ -9,6 +9,8 @@ import { caminoConMapa, TOTAL_TEMAS_MAPA } from './oral-mapa.js';
 import { selectorIdioma, bilingue, rotulo, enunciadoOral, textoOpcion, notaOpciones } from './oral-idioma.js';
 // 0.14.77: «¿Lo entendiste? 👍 / 👎» debajo de cada respuesta del libro.
 import { votoEntendi } from './entendi-vista.js';
+// 0.14.84: todas las opciones de la pregunta ya respondida (correcta en verde, la suya en rojo, las demás sin color).
+import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
 
 // 0.13.3: un dibujito por capítulo (como cada materia del Camino).
 const ICONO_CAPITULO = {
@@ -281,6 +283,7 @@ export function rondaOral(r, pedido, h) {
         acierto: res.acierto,
         titulo: res.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: res.correcta }),
         partes: [
+          opcionesRevisadas(q.opciones, res, h, { texto: o => textoOpcion(h, q, o) }),
           res.porque ? el('div', { class: 'retro-mia' }, el('strong', { texto: t('extra.porque') }), talCual('p', res.porque)) : null,
           el('div', { class: 'retro-sencilla' }, el('strong', { texto: t('extra.explicacion') }), talCual('p', res.explicacion)),
           deDondeSalio(res.origen, h),
@@ -320,6 +323,25 @@ export function rondaOral(r, pedido, h) {
   };
   mostrar(raiz);
   pintar(0);
+}
+
+// 0.14.84: la revisión del examen oral: cada pregunta con TODAS sus opciones (la correcta en verde, la suya en rojo, las
+// demás sin color; las sin responder, solo la correcta) y lo de siempre debajo (partes); «Solo las que fallé» primero.
+export function revisionOral(revision, h, partes = []) {
+  const { el, t } = h;
+  const lista = revision ?? [];
+  const malas = lista.filter(q => !q.acierto).length;
+  const filas = lista.map(q => el('li', { class: q.acierto ? 'bien' : 'mal', 'data-bien': q.acierto ? '1' : '0' },
+    enunciadoOral(h, q, 'fuerte'),
+    opcionesRevisadas(q.opciones, q, h, { texto: o => textoOpcion(h, q, o) }),
+    partes.map(f => f(q))));
+  const filtro = filtroFallas(h, { malas, total: lista.length, alCambiar: solo => aplicarFiltro(filas, solo) });
+  aplicarFiltro(filas, filtro.solo());
+  return el('section', { class: 'panel oral-revision' },
+    el('h2', { texto: t('oral.revision') }),
+    selectorIdioma(h),
+    lista.length > 1 ? filtro.nodo : null,
+    el('ol', { class: 'oral-revision-lista' }, filas));
 }
 
 // La portada de un examen (de un capítulo, o el final: «Examen oral (práctica final)»).
@@ -392,15 +414,11 @@ function examenOral(e, h) {
     zona.replaceChildren(el('section', { class: `resultado-vuelo ${x.aprobado ? 'bien' : 'mal'}` },
       el('h1', { class: 'titulo-grande', texto: x.aprobado ? t('oral.examen.aprobado') : t('oral.examen.no') }),
       el('p', { class: 'bajada', texto: t('oral.examen.nota', { pct: numero(x.pct), bien: numero(x.bien), total: numero(x.total), n: numero(x.umbral) }) })),
-    el('section', { class: 'panel oral-revision' },
-      el('h2', { texto: t('oral.revision') }),
-      selectorIdioma(h),
-      el('ol', { class: 'oral-revision-lista' }, x.revision.map(q => el('li', { class: q.acierto ? 'bien' : 'mal' },
-        enunciadoOral(h, q, 'fuerte'),
-        el('p', { class: 'chica', texto: q.acierto ? t('acad.correcto') : q.elegida ? t('oral.elegiste', { tuya: q.elegida, letra: q.correcta }) : t('oral.sin_responder', { letra: q.correcta }) }),
-        q.porque ? talCual('p', q.porque, 'chica') : null,
-        talCual('p', q.explicacion, 'chica suave'),
-        deDondeSalio(q.origen, h))))));
+    revisionOral(x.revision, h, [
+      q => el('p', { class: 'chica', texto: q.acierto ? t('acad.correcto') : q.elegida ? t('oral.elegiste', { tuya: q.elegida, letra: q.correcta }) : t('oral.sin_responder', { letra: q.correcta }) }),
+      q => (q.porque ? talCual('p', q.porque, 'chica') : null),
+      q => talCual('p', q.explicacion, 'chica suave'),
+      q => deDondeSalio(q.origen, h)]));
     for (const d of zona.querySelectorAll('.oral-origen')) d.open = false;
     pie.replaceChildren(el('a', { class: 'boton-3d grande naranja', href: ruta() }, el('span', { texto: t('oral.volver') })));
     if (x.aprobado) celebrar(zona);

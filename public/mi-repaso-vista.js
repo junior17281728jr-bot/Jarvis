@@ -8,6 +8,8 @@
 // Todo con h.el (nunca texto como código); los textos, de public/i18n.
 
 import { lineaRepasa, enlaceMiniClase as enlaceClase } from './progreso-vista.js';
+// 0.14.84: cada pregunta fallada con TODAS sus opciones (la correcta en verde, la que eligió en rojo, las demás sin color).
+import { opcionesRevisadas } from './opciones-revision.js';
 // (la clave es c:<materia>/<tema>/<punto>, solo letras, números, _ y -: la dirección lleva lo de después de «c:»)
 
 export function pantallaMiRepaso(d, h) {
@@ -33,11 +35,20 @@ export function pantallaMiRepaso(d, h) {
       ? [el('p', { class: 'suave', texto: t('mirepaso.para_repasar.linea', { n: numero(mas) }) }), el('ul', { class: 'lista-repaso' }, d.paraRepasar.map(fila))]
       : el('p', { class: 'suave', texto: t('mirepaso.para_repasar.vacio', { n: numero(mas) }) }),
     d.superadas ? el('p', { class: 'suave chica', texto: t('mirepaso.historial', { n: numero(d.superadas) }) }) : null);
+  // 0.14.84: al tocar una pregunta, sus opciones (las que vio la última vez que la falló), la explicación sencilla y
+  // «¿Lo entendiste? 👍 / 👎».
   const pregunta = q => el('li', { class: q.superada ? 'superada' : null },
     el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : t('acad.origen.poh_corto')),
     q.superada ? insignia('bien', t('mirepaso.ya_bien')) : null,
     talCual('span', q.enunciado, 'debil-enunciado'),
-    el('span', { class: 'suave chica', texto: (Number(q.veces) === 1 ? t('acad.fallos_unica') : tn('acad.fallos_de', { n: q.fallos, veces: q.veces })) }));
+    el('span', { class: 'suave chica', texto: (Number(q.veces) === 1 ? t('acad.fallos_unica') : tn('acad.fallos_de', { n: q.fallos, veces: q.veces })) }),
+    q.opciones?.length && q.respuesta ? el('details', { class: 'repaso-opciones' },
+      el('summary', { class: 'con-icono' }, icono('lupa', 'icono chico'), el('span', { texto: t('mirepaso.ver_opciones') })),
+      opcionesRevisadas(q.opciones, q.respuesta, h),
+      q.sencilla ? el('section', { class: 'caja-hoja caja-sencilla' },
+        el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('acad.explicacion_sencilla') })),
+        talCual('p', q.sencilla),
+        typeof h.entendi === 'function' ? h.entendi({ tipo: 'pregunta', pregunta: q.id }) : null) : null) : null);
   const errores = el('section', { class: 'panel repaso-errores', 'aria-labelledby': 'repaso-errores-titulo' },
     el('h2', { id: 'repaso-errores-titulo', class: 'con-icono' }, icono('atencion'), el('span', { texto: t('mirepaso.tus_errores') })),
     d.errores.length ? [
@@ -92,8 +103,10 @@ export function pantallaMiniClase(d, h) {
   const caja = q ? el('section', { class: 'panel mini-pregunta', 'aria-labelledby': 'mini-pregunta-titulo' },
     el('h2', { id: 'mini-pregunta-titulo', texto: t('mini.la_que_fallaste') }),
     talCual('p', `${q.numero ? `${q.numero} · ` : ''}${q.enunciado}`, 'fuerte'),
-    q.elegida && q.correcta && q.elegida.letra !== q.correcta.letra ? linea(t('mini.elegiste'), `${q.elegida.letra}. ${q.elegida.texto}`) : null,
-    q.correcta ? linea(t('mini.correcta'), `${q.correcta.letra}. ${q.correcta.texto}`) : null,
+    // 0.14.84: todas las opciones (la correcta en verde, la que eligió en rojo, las demás sin color); sin ellas, como antes.
+    q.opciones?.length && q.respuesta ? opcionesRevisadas(q.opciones, q.respuesta, h) : null,
+    !(q.opciones?.length && q.respuesta) && q.elegida && q.correcta && q.elegida.letra !== q.correcta.letra ? linea(t('mini.elegiste'), `${q.elegida.letra}. ${q.elegida.texto}`) : null,
+    !(q.opciones?.length && q.respuesta) && q.correcta ? linea(t('mini.correcta'), `${q.correcta.letra}. ${q.correcta.texto}`) : null,
     linea(t('mini.por_que_no'), q.idea),
     linea(t('mini.sencilla'), q.sencilla),
     linea(t('mini.original'), q.explicacion),

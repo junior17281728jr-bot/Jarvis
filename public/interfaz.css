@@ -467,3 +467,35 @@ ol.sendero.con-linea::before { display: none; }
 .voz-barra { width: 100%; height: 14px; }
 .voz-alcances { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0; }
 .voz-alcance { align-items: flex-start; }
+
+/* 0.14.84: las opciones de una pregunta ya respondida (public/opciones-revision.js), en toda revisión: la correcta en
+   verde (✓ «Correcta»), la suya si es mala en rojo (✗ «Tu respuesta»), las demás SIN color. Nunca solo el color: el
+   sello lleva su marca y su rótulo. Texto oscuro/claro sobre el fondo suave de cada tema (4,5:1 o más en claro y oscuro). */
+.opciones-revisadas { list-style: none; margin: 0 0 var(--e3); padding: 0; display: grid; gap: var(--e2); }
+.op-rev { display: flex; align-items: flex-start; gap: var(--e3); min-width: 0; padding: 10px 12px; border-radius: 14px;
+  border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); }
+.op-rev .opcion-letra { flex: none; color: var(--texto); background: transparent; }
+.op-rev-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.op-rev .opcion-texto { line-height: 1.4; }
+.op-rev-sello { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 8px; border-radius: 999px;
+  font-size: 13px; font-weight: 800; border: 1.5px solid currentColor; }
+.op-rev-marca { font-size: 15px; line-height: 1; }
+.op-rev.op-correcta, .op-rev.op-bien { border-color: var(--verde); background: var(--verde-suave); }
+.op-rev.op-correcta .opcion-letra, .op-rev.op-bien .opcion-letra { border-color: var(--verde); background: var(--verde); color: #0f1720; }
+.op-rev.op-correcta .op-rev-sello, .op-rev.op-bien .op-rev-sello { color: var(--verde-texto); }
+.op-rev.op-mala { border-color: var(--rojo); background: var(--rojo-suave); }
+.op-rev.op-mala .opcion-letra { border-color: var(--rojo); background: var(--rojo); color: #0f1720; }
+.op-rev.op-mala .op-rev-sello { color: var(--rojo-texto); }
+.op-rev.op-correcta .opcion-texto, .op-rev.op-bien .opcion-texto, .op-rev.op-mala .opcion-texto { font-weight: 700; }
+.op-rev.op-neutra { border-style: dashed; }
+.resp-opciones { margin: 0 0 var(--e3); }
+.repaso-opciones { margin-top: 6px; flex-basis: 100%; }
+.repaso-opciones > summary { cursor: pointer; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.repaso-opciones[open] > summary { margin-bottom: var(--e2); }
+.rf-revision-lista, .oral-revision-lista { display: grid; gap: var(--e4); }
+.rf-revision-lista { list-style: none; margin: 0; padding: 0; }
+.rf-revision-fila { padding: var(--e3); border-radius: 16px; border: 2px solid var(--borde); }
+.rf-revision-fila.mal { border-color: var(--rojo); }
+.rf-revision-cabeza { display: flex; align-items: center; gap: var(--e2); margin: 0 0 6px; }
+.rf-revision-enunciado { margin: 0 0 var(--e3); }
+.ficha-opciones-revisadas { margin: 10px 0; }

@@ -11,6 +11,8 @@
 
 // 0.14.3: el oral en español (si ya está traducido), con «Español | Inglés original» (public/oral-idioma.js).
 import { selectorIdioma, bilingue, rotulo } from './oral-idioma.js';
+// 0.14.84: después de responder y al terminar la vuelta, todas las opciones (correcta en verde, la suya en rojo, las demás sin color).
+import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
 
 const RUTA = '#repaso';
 
@@ -130,6 +132,7 @@ export function rondaTestGuide(intento, h) {
         acierto: resp.acierto,
         titulo: resp.acierto ? t('rf.bien') : t('rf.mal', { letra: resp.correcta }),
         partes: [
+          opcionesRevisadas(q.opciones, resp, h, { clase: 'rf-hoja-opciones' }),
           resp.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', resp.breve)) : null,
           !resp.acierto ? el('p', { class: 'suave chica', texto: t('rf.vuelve') }) : null,
         ],
@@ -151,12 +154,13 @@ export function rondaTestGuide(intento, h) {
     if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
     intento.terminado = true;
     const r = x.datos;
-    zona.replaceChildren(el('section', { class: `resultado-vuelo ${r.aciertos === r.total ? 'bien' : 'sigue'}`, 'data-foco': true },
+    zona.replaceChildren(...[el('section', { class: `resultado-vuelo ${r.aciertos === r.total ? 'bien' : 'sigue'}`, 'data-foco': true },
       medidor(r.pct, { etiqueta: t('rf.nota') }),
       el('h1', { class: 'titulo-grande', texto: r.aciertos === r.total ? t('rf.fin.todo_bien') : t('rf.fin.titulo') }),
       el('p', { class: 'bajada', texto: t('rf.fin.primera', { n: numero(r.aciertos), total: numero(r.total) }) }),
       repetidas.size ? el('p', { class: 'chica con-icono' }, icono('actualizar', 'icono chico'), el('span', { texto: t('rf.fin.repetidas', { n: numero(repetidas.size) }) })) : null,
-      el('p', { class: 'suave chica', texto: t('rf.no_cuenta') })));
+      el('p', { class: 'suave chica', texto: t('rf.no_cuenta') })),
+    revisionVuelta(intento.preguntas, h)].filter(Boolean));
     pie.classList.add('apilados');
     pie.replaceChildren(...[
       r.falladas.length ? el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: async e => {
@@ -172,6 +176,29 @@ export function rondaTestGuide(intento, h) {
   };
   mostrar(raiz);
   siguiente();
+}
+
+// 0.14.84: la revisión de la vuelta (la primera respuesta de cada pregunta, la que cuenta): cada una con TODAS sus
+// opciones (la correcta en verde, la suya en rojo, las demás sin color) y su línea corta; «Solo las que fallé» primero.
+export function revisionVuelta(preguntas, h) {
+  const { el, t, numero, icono, talCual } = h;
+  const lista = (preguntas ?? []).filter(q => q.respuesta);
+  if (!lista.length) return null;
+  const malas = lista.filter(q => !q.respuesta.acierto).length;
+  const filas = lista.map((q, k) => el('li', { class: `rf-revision-fila ${q.respuesta.acierto ? 'bien' : 'mal'}`, 'data-bien': q.respuesta.acierto ? '1' : '0' },
+    el('p', { class: 'rf-revision-cabeza' },
+      el('span', { class: `revision-marca ${q.respuesta.acierto ? 'tono-bien' : 'tono-mal'}`, 'aria-label': t(q.respuesta.acierto ? 'acad.correcto' : 'revision.fallada') }, icono(q.respuesta.acierto ? 'marca' : 'cerrar', 'icono chico')),
+      el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : numero(k + 1))),
+    talCual('p', q.enunciado, 'q-enunciado rf-revision-enunciado'),
+    opcionesRevisadas(q.opciones, q.respuesta, h),
+    q.respuesta.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', q.respuesta.breve)) : null));
+  const filtro = filtroFallas(h, { malas, total: lista.length, alCambiar: solo => aplicarFiltro(filas, solo) });
+  aplicarFiltro(filas, filtro.solo());
+  return el('section', { class: 'panel revision rf-revision', 'aria-labelledby': 'rf-revision-titulo' },
+    el('h2', { id: 'rf-revision-titulo', class: 'con-icono' }, icono('lupa'), el('span', { texto: t('revision.titulo') })),
+    el('p', { class: 'suave', texto: t('rf.revision.linea', { bien: numero(lista.length - malas), mal: numero(malas) }) }),
+    filtro.nodo,
+    el('ol', { class: 'rf-revision-lista' }, filas));
 }
 
 // ---------- B) El oral: tarjetas ----------

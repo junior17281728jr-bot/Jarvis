@@ -29,6 +29,8 @@ import { dibujarAvatar } from './avatares.js';
 import { realzarTarjeta, visorFigura } from './clase/realce.js';
 import { plegarCamino } from './camino-plegable.js';
 import { partesClaras } from './respuesta-vista.js';
+// 0.14.84: todas las opciones de una pregunta ya respondida (correcta en verde, la suya en rojo, las demás sin color).
+import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
 import { botonOrigen, botonTestGuide } from './origen-vista.js';
 import { panelCurso, panelRepasoResumen, panelOral, panelVivo } from './progreso-vista.js';
 import { vistaCarrera, vistaTabla } from './carrera-vista.js';
@@ -4287,7 +4289,7 @@ async function pantallaMiRepaso() {
   const r = await api('GET', '/api/academia/mi-repaso');
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vistaMiRepaso(r.datos, { el, t, tn, numero, icono, talCual, mostrar, marco, volverAlCamino, nombreMateria, empezarIntento, sonar, vacio, insignia });
+  vistaMiRepaso(r.datos, { el, t, tn, numero, icono, talCual, mostrar, marco, volverAlCamino, nombreMateria, empezarIntento, sonar, vacio, insignia, entendi: item => votoEntendi({ el, t, api }, item) });
   // 0.14.38: «Lo que fallaste en la competencia» (public/competencia-vista.js, solo si falló algo).
   if (r.datos.competencia?.length) {
     const m = await import('./competencia-vista.js');
@@ -5524,10 +5526,10 @@ function bloqueRespuesta(q, resp) {
       icono(resp.acierto ? 'bien' : 'mal'), el('span', { texto: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }) })),
     partesRespuesta(q, resp));
 }
+// 0.14.84: las opciones de una pregunta ya respondida, todas, en su orden: la correcta en verde (✓ «Correcta»), la suya
+// si es mala en rojo (✗ «Tu respuesta»), las demás sin color (public/opciones-revision.js).
 function opcionesFijas(q, resp) {
-  return el('div', { class: 'opciones-cartas' }, q.opciones.map(o => el('div', { class: `opcion-carta fija${o.letra === resp.correcta ? ' es-correcta' : ''}${o.letra === resp.elegida && !resp.acierto ? ' es-mala' : ''}` },
-    el('span', { class: 'opcion-letra', texto: o.letra }), talCual('span', o.texto, 'opcion-texto'),
-    o.letra === resp.correcta ? icono('marca', 'icono opcion-marca') : o.letra === resp.elegida ? icono('cerrar', 'icono opcion-marca') : null)));
+  return opcionesRevisadas(q.opciones, resp, { el, t, talCual });
 }
 
 // 0.9.2: «Reportar un error» en una pregunta: abre «Ayuda» con el número de la pregunta.
@@ -5540,7 +5542,7 @@ function revisionCompleta(res) {
   const lista = res.revision ?? res.falladas ?? [];
   if (!lista.length) return null;
   const malas = lista.filter(q => !q.respuesta?.acierto).length;
-  let soloMalas = malas > 0 && lista.length > 6;
+  // 0.14.84: al alumno, «Solo las que falló» primero (si falló alguna); sin falladas, «Todas».
   const filas = lista.map((q, k) => {
     const bien = q.respuesta?.acierto;
     const d = el('details', { class: `revision-fila ${bien ? 'bien' : 'mal'}`, 'data-bien': bien ? '1' : '0' },
@@ -5554,18 +5556,12 @@ function revisionCompleta(res) {
     return d;
   });
   const cajaLista = el('div', { class: 'revision-lista' }, filas);
-  const pintarFiltro = () => {
-    for (const f of filas) f.hidden = soloMalas && f.dataset.bien === '1';
-    todas.setAttribute('aria-pressed', String(!soloMalas));
-    fallas.setAttribute('aria-pressed', String(soloMalas));
-  };
-  const todas = el('button', { type: 'button', class: 'filtro', onclick: () => { soloMalas = false; pintarFiltro(); } }, el('span', { texto: t('revision.todas', { n: numero(lista.length) }) }));
-  const fallas = el('button', { type: 'button', class: 'filtro', disabled: !malas, onclick: () => { soloMalas = true; pintarFiltro(); } }, el('span', { texto: t('revision.solo_falle', { n: numero(malas) }) }));
-  pintarFiltro();
+  const filtro = filtroFallas({ el, t, numero }, { malas, total: lista.length, alCambiar: solo => aplicarFiltro(filas, solo) });
+  aplicarFiltro(filas, filtro.solo());
   return el('section', { class: 'panel revision', 'aria-labelledby': 'revision-titulo' },
     el('h2', { id: 'revision-titulo', class: 'con-icono' }, icono('lupa'), el('span', { texto: t('revision.titulo') })),
     el('p', { class: 'suave', texto: t('revision.linea', { bien: numero(lista.length - malas), mal: numero(malas) }) }),
-    el('div', { class: 'filtros', role: 'group', 'aria-label': t('revision.filtro') }, todas, fallas),
+    filtro.nodo,
     cajaLista);
 }
 
@@ -5719,7 +5715,7 @@ async function pantallaPractica(id) {
     }));
     if (recien) {
       if (resp.acierto) celebrar(zona);
-      else sacudir(zona.querySelector('.es-mala'));
+      else sacudir(zona.querySelector('.op-mala'));
     }
     const hoja = raizEstudio.querySelector('.hoja-respuesta');
     if (hoja) { hoja.setAttribute('tabindex', '-1'); try { hoja.focus({ preventScroll: true }); } catch { hoja.focus(); } }

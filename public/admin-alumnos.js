@@ -23,6 +23,8 @@ import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 export { repintarAvance };
 // 0.14.79: el filtro de curso (el mismo en todas las listas del administrador) y «Cambiar de curso» en la ficha.
 import { selectorCurso, chipCurso, leerFiltro, filtroValido, filtrarPorCurso, moverDeCurso, TODOS } from './admin-cursos.js';
+// 0.14.84: las opciones revisadas (correcta en verde, la suya en rojo, las demás sin color) y «Solo las que falló / Todas».
+import { opcionesRevisadas, filtroFallas } from './opciones-revision.js';
 
 // 0.14.56: y «Cuenta» (bloquear, contraseña, nombre, contratos, certificados) e «IA» (todo lo de su IA, en un solo lugar).
 export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 'debiles', 'actividad', 'cuenta', 'ia']);
@@ -562,9 +564,9 @@ export function vistaIntento(v, h) {
   const { tipo, lugar } = nombreIntento(h, { ...v, temaTitulo: v.temaTitulo });
   const respondidas = v.preguntas.filter(q => q.respuesta);
   const malas = respondidas.filter(q => !q.respuesta.acierto).length;
-  let soloMalas = false;
   const lista = el('ol', { class: 'ficha-preguntas' });
-  const filtro = el('button', { type: 'button', class: 'ficha-filtro', 'aria-pressed': 'false', texto: t('ficha.solo_malas', { n: numero(malas) }), onclick: () => { soloMalas = !soloMalas; filtro.setAttribute('aria-pressed', String(soloMalas)); pintar(); } });
+  // 0.14.84: «Solo las que falló / Todas» (al administrador, «Todas» primero).
+  const filtro = filtroFallas(h, { malas, total: v.preguntas.length, quien: 'su', inicial: false, alCambiar: () => pintar() });
   const pregunta = (q, k) => {
     const r = q.respuesta;
     const estado = !r ? 'sin' : r.acierto ? 'bien' : 'mal';
@@ -573,15 +575,9 @@ export function vistaIntento(v, h) {
         el('span', { class: 'ficha-pregunta-n', texto: numero(k + 1) }),
         h.insignia(estado === 'bien' ? 'bien' : estado === 'mal' ? 'mal' : 'apagado', t(estado === 'bien' ? 'ficha.p.bien' : estado === 'mal' ? 'ficha.p.mal' : 'ficha.p.sin'))),
       q.falta ? el('p', { class: 'aviso', texto: t('ficha.p.falta', { id: q.id }) }) : h.tarjetaPregunta(q),
-      q.falta ? null : el('ul', { class: 'ficha-opciones' }, q.opciones.map(o => {
-        const elegida = r && r.elegida === o.letra;
-        const correcta = r ? r.correcta === o.letra : false;
-        return el('li', { class: [correcta ? 'es-correcta' : null, elegida ? 'es-elegida' : null, elegida && !correcta ? 'es-mala' : null].filter(Boolean).join(' ') || null },
-          el('span', { class: 'opcion-letra', texto: o.letra }), h.talCual('span', o.texto, 'opcion-texto'),
-          el('span', { class: 'ficha-opcion-sellos' },
-            elegida ? el('span', { class: 'ficha-sello elegida', texto: t('ficha.p.eligio') }) : null,
-            correcta ? el('span', { class: 'ficha-sello correcta', texto: t('ficha.p.correcta') }) : null));
-      })),
+      // 0.14.84: todas las opciones: la correcta en verde (✓ «Correcta»), la suya si es mala en rojo (✗ «Su respuesta»), las
+      // demás sin color. Sin responder (un intento a medias), ninguna con color: la respuesta no se adelanta.
+      q.falta ? null : opcionesRevisadas(q.opciones, r ?? {}, h, { quien: 'su', clase: 'ficha-opciones-revisadas' }),
       r && r.sinContenido ? el('p', { class: 'suave', texto: t('ficha.p.eligio_letra', { letra: r.elegida }) }) : null,
       r && !r.acierto && r.idea ? el('p', { class: 'ficha-idea con-icono-chico' }, h.icono('atencion', 'icono chico'), h.talCual('span', r.idea)) : null,
       r && (r.explicacion || r.sencilla) ? el('details', { class: 'ficha-explicacion' },
@@ -604,7 +600,7 @@ export function vistaIntento(v, h) {
   const pintar = () => {
     const nodos = [];
     for (const g of grupos) {
-      const visibles = g.lista.filter(({ q }) => !soloMalas || (q.respuesta && !q.respuesta.acierto));
+      const visibles = g.lista.filter(({ q }) => !filtro.solo() || (q.respuesta && !q.respuesta.acierto));
       if (!visibles.length) continue;
       if (grupos.length > 1) {
         const respondidasTema = g.lista.filter(({ q }) => q.respuesta);
@@ -637,7 +633,7 @@ export function vistaIntento(v, h) {
         v.aprobado === true ? h.insignia('bien', t('ficha.aprobado')) : v.aprobado === false ? h.insignia('mal', t('ficha.no_aprobado', { umbral: numero(v.umbral ?? 90) })) : h.insignia('info', t('ficha.practica')))),
     el('section', { class: 'tarjeta' },
       resumenFallas,
-      el('div', { class: 'ficha-filtros' }, filtro, el('span', { class: 'suave chica', texto: t('ficha.p.resumen', { n: numero(respondidas.length), total: numero(v.total), mal: numero(malas) }) })),
+      el('div', { class: 'ficha-filtros' }, filtro.nodo, el('span', { class: 'suave chica', texto: t('ficha.p.resumen', { n: numero(respondidas.length), total: numero(v.total), mal: numero(malas) }) })),
       lista),
   ];
 }
@@ -1067,8 +1063,8 @@ export function vistaCompararExamen(d, h, { filtro = leerFiltro() } = {}) {
     el('span', { class: 'cv-clase-nombre', texto: h.partirTitulo(x.titulo).es }),
     el('strong', { texto: tn('cv.fallas', { n: x.fallos }) }),
     el('span', { class: 'suave chica', texto: t('cv.fallas.alumnos', { n: numero(x.alumnos), total: numero(total) }) })))) : null;
+  const eligieron = (q, letra) => q.fallaron.filter(f => f.elegida === letra).length;
   const pregunta = q => {
-    const letra = op => el('span', { class: 'opcion-letra', texto: op.letra });
     return el('li', { class: `cv-pregunta cv-${tonoFallas(q.fallaron.length, q.respondieron)}` },
       el('details', {},
         el('summary', {},
@@ -1077,9 +1073,11 @@ export function vistaCompararExamen(d, h, { filtro = leerFiltro() } = {}) {
           q.temaTitulo ? el('span', { class: 'suave chica cv-pregunta-tema', texto: h.partirTitulo(q.temaTitulo).es }) : null),
         q.falta ? el('p', { class: 'aviso', texto: t('ficha.p.falta', { id: q.id }) }) : [
           h.talCual('p', q.enunciado, 'cv-enunciado'),
-          el('ul', { class: 'ficha-opciones' }, q.opciones.map(op => el('li', { class: op.letra === q.correcta ? 'es-correcta' : null },
-            letra(op), h.talCual('span', op.texto, 'opcion-texto'),
-            op.letra === q.correcta ? el('span', { class: 'ficha-opcion-sellos' }, el('span', { class: 'ficha-sello correcta', texto: t('ficha.p.correcta') })) : null))),
+          // 0.14.84: todas las opciones: la correcta en verde (✓ «Correcta»), las malas que alguien eligió en rojo (✗ «La
+          // eligieron 2»), las demás sin color.
+          opcionesRevisadas(q.opciones, { correcta: q.correcta }, h, { quien: 'su', clase: 'ficha-opciones-revisadas',
+            estado: op => (op.letra === q.correcta ? 'correcta' : eligieron(q, op.letra) ? 'mala' : 'neutra'),
+            rotulo: (op, e) => (e === 'mala' ? h.tn('resp.op.eligieron', { n: eligieron(q, op.letra) }) : null) }),
         ],
         q.fallaron.length ? el('div', { class: 'cv-quienes' },
           el('h4', { texto: t('cv.quienes') }),
