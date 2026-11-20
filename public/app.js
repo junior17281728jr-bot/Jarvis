@@ -519,8 +519,9 @@ function selectorIdioma(alCambiar) {
 
 function pie() {
   // 0.9.2: «Términos y aviso» siempre a mano (también antes de entrar).
+  // 0.14.86: con sesión, la versión va pegada al menú; aquí solo sale antes de entrar (no hay menú).
   return el('p', { class: 'pie' },
-    el('span', { texto: estado.setup?.version ? t('app.version', { version: estado.setup.version }) : '' }),
+    el('span', { texto: !estado.usuario && estado.setup?.version ? t('app.version', { version: estado.setup.version }) : '' }),
     el('a', { class: 'pie-terminos', href: '#terminos', texto: t('terminos.pie') }));
 }
 // 0.9.2: los términos (public/terminos-vista.js, solo se carga aquí).
@@ -840,7 +841,9 @@ function marco(seccion, ...contenido) {
           dibujarAvatar(estado.usuario?.avatar ?? null, { foto: estado.usuario?.foto ?? null, nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '', tamano: 'chico', etiqueta: t('perfil.ir', { nombre: estado.usuario?.nombreVisible || estado.usuario?.nombre || '' }) })),
         el('button', { type: 'button', class: 'secundario chico con-icono salir', onclick: salir }, icono('salir'), el('span', { texto: t('menu.salir') }))),
       el('nav', { class: 'menu', 'aria-label': t('menu.titulo') },
-        enlaces.map(([id, clave, nombreIcono, corto]) => enlaceMenu(id, clave, nombreIcono, corto, seccion)))),
+        enlaces.map(([id, clave, nombreIcono, corto]) => enlaceMenu(id, clave, nombreIcono, corto, seccion)),
+        // 0.14.86 (pedido del dueño): la versión pegadita al menú, sin tener que bajar hasta el final.
+        estado.setup?.version ? el('span', { class: 'menu-version', texto: t('app.version', { version: estado.setup.version }) }) : null)),
     el('main', { class: 'contenido' },
       bandaEstudiante(),
       avisosDeCuenta(),
