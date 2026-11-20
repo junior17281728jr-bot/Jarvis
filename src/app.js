@@ -188,11 +188,14 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   async function atenderApi(req, res, ruta) {
     // Si la base no abrió, responde 503: el actualizador del servidor lo ve y vuelve a la versión anterior.
     if (!db) return enviarJson(res, 503, { app: 'oportia', estado: 'error', version: VERSION, base: 'no disponible' });
-    const encontrada = rutas.buscar(req.method, ruta);
+    // 0.14.61: HEAD (las cabeceras, sin cuerpo) en lo que se manda por partes (audio, video, clips, fotos): algunos
+    // reproductores preguntan así cuánto pesa. Las demás rutas siguen sin HEAD.
+    const cabeza = req.method === 'HEAD';
+    const encontrada = rutas.buscar(cabeza ? 'GET' : req.method, ruta);
     if (!encontrada) return enviarJson(res, 404, { error: 'no_existe' });
-    if (encontrada.metodoNoPermitido) return enviarJson(res, 405, { error: 'metodo_no_permitido' });
+    if (encontrada.metodoNoPermitido || (cabeza && !encontrada.direccionNoValida && !encontrada.opciones?.cabeza)) return enviarJson(res, 405, { error: 'metodo_no_permitido' });
     if (encontrada.direccionNoValida) return enviarJson(res, 400, { error: 'direccion_no_valida' });
-    if (req.method !== 'GET' && !origenValido(req)) return enviarJson(res, 403, { error: 'origen_no_valido' });
+    if (req.method !== 'GET' && !cabeza && !origenValido(req)) return enviarJson(res, 403, { error: 'origen_no_valido' });
 
     const token = leerGalleta(req);
     const usuario = leerSesion(db, token);

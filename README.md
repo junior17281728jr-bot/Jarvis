@@ -712,6 +712,20 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.61: los videos y la primera visita, más rápidos — sin cambio de base
+
+- **Clips de las tarjetas**: ya no llevan `autoplay` (con él el navegador baja TODOS los clips de la pantalla a la vez,
+  también los de «Profundizar» y la mini-clase que no se ven). Ahora `preload="none"` y el poster; al verse (la mitad o
+  más) baja y suena mudo; uno solo se mueve a la vez; al cambiar de pantalla los que quedaron fuera se sueltan.
+- **Faststart sin ffmpeg** (`src/academia/mp4-rapido.js`): al instalar un mp4 (video resumen o clip, desde la pantalla o
+  Drive) con la caja `moov` al final, se escribe al lado `<archivo>.mp4.rapido` con `moov` antes de `mdat` y los lugares
+  de `stco`/`co64` corridos; se sirve esa copia. El original no se toca (su sha256 sigue siendo el del paquete). Lo raro
+  (fragmentado, `cmov`, más de 32 bits, sin el doble de disco) se deja como está.
+- **Por partes**: HEAD en audio, video, clips y fotos (las cabeceras, sin cuerpo; antes 405); `bytes=0-1,5-6` (varias
+  partes) va entero (200) en vez de 416.
+- **Primera visita**: `index.html` avisa (`modulepreload`) solo de los módulos que se importan siempre (32, ≈ 220 KB en
+  brotli); los de un `import()` (administrador, oral, Biblioteca…) llegan al abrir su pantalla. Antes eran 86 (≈ 460 KB).
+
 ### Lo nuevo de la 0.14.57: lo que la IA ya escribió sirve cuando no hay IA — sin cambio de base
 
 - **Sin IA, lo guardado** (`src/academia/saber-sin-ia.js`): cuando no hay IA para el alumno (sin clave, la IA apagada, en

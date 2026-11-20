@@ -4421,17 +4421,31 @@ const ETIQUETA_ESTILO = { normal: 'acad.tarjeta.concepto', analogia: 'acad.tarje
 // Se pausa fuera de la pantalla; con «reducir movimiento» no arranca solo (el poster con ▶). Tocar «Ampliar» lo agranda.
 const claveSonidoClip = () => `op_clip_sonido.${estado.usuario?.id ?? 0}`;
 function sonidoClipElegido() { try { return localStorage.getItem(claveSonidoClip()) === '1'; } catch { return false; } }
+// 0.14.61: un clip solo baja cuando se ve. Antes cada clip llevaba «autoplay», y con eso el navegador los baja TODOS
+// enseguida aunque estén fuera de la pantalla (en «Profundizar» y en la mini-clase hay muchos juntos): se peleaban la
+// red y ninguno arrancaba. Ahora: preload 'none' y el poster; al verse (la mitad o más) se pide y suena mudo; solo uno
+// a la vez se mueve; y al cambiar de pantalla, los que quedaron fuera se sueltan (no siguen bajando por detrás).
+let clipEnMarcha = null;
+const clipsVivos = new Set();
+function soltarClip(x) {
+  clipsVivos.delete(x);
+  x.observador?.disconnect();
+  try { x.video.pause(); x.video.removeAttribute('src'); x.video.load(); } catch { /* ya no está */ }
+  if (clipEnMarcha === x.video) clipEnMarcha = null;
+}
+window.addEventListener('hashchange', () => setTimeout(() => { for (const x of [...clipsVivos]) if (!x.video.isConnected) soltarClip(x); }));
 function vistaClip(c) {
   const reducir = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const video = el('video', {
-    class: 'clip-video', muted: true, loop: true, autoplay: !reducir, playsinline: true, 'webkit-playsinline': true, preload: reducir ? 'none' : 'metadata',
+    class: 'clip-video', muted: true, loop: true, playsinline: true, 'webkit-playsinline': true, preload: 'none',
     poster: c.poster || null, src: c.url, 'aria-label': c.alt || null, disablepictureinpicture: true, controlslist: 'nodownload',
   });
   video.muted = true;
   video.defaultMuted = true;
   let pausadoAMano = reducir;
   const conSonido = c.sonido === true && sonidosEncendidos();
-  const jugar = () => video.play().catch(() => {});
+  // (preload pasa a 'auto' recién al jugar: así baja solo el que se ve)
+  const jugar = () => { if (video.preload !== 'auto') video.preload = 'auto'; return video.play().catch(() => {}); };
   const pintar = () => {
     marco.classList.toggle('pausado', video.paused);
     reproducir.setAttribute('aria-label', t(video.paused ? 'clip.reproducir' : 'clip.pausar'));
@@ -4454,6 +4468,11 @@ function vistaClip(c) {
     el('div', { class: 'clip-lienzo' }, video, reproducir, el('div', { class: 'clip-botones' }, parlante, ampliar)),
     c.alt ? el('figcaption', { class: 'solo-lectores', texto: c.alt }) : null);
   for (const ev of ['play', 'pause', 'volumechange']) video.addEventListener(ev, pintar);
+  // Uno solo a la vez: el que empieza para al otro.
+  video.addEventListener('play', () => {
+    if (clipEnMarcha && clipEnMarcha !== video && !clipEnMarcha.paused) clipEnMarcha.pause();
+    clipEnMarcha = video;
+  });
   // Si la persona eligió oírlo, se le pone el sonido al arrancar (si el navegador no lo deja, sigue mudo).
   video.addEventListener('playing', () => {
     if (!conSonido || !video.muted || !sonidoClipElegido()) return;
@@ -4469,7 +4488,9 @@ function vistaClip(c) {
     observador.observe(marco);
   } else if (!reducir) jugar();
   pintar();
-  return { nodo: marco, destruir: () => { observador?.disconnect(); video.pause(); video.removeAttribute('src'); video.load(); } };
+  const vivo = { video, observador };
+  clipsVivos.add(vivo);
+  return { nodo: marco, destruir: () => soltarClip(vivo) };
 }
 // El clip en grande (con los controles del teléfono), sobre la pantalla; se cierra con ✕, Escape o al cambiar de pantalla.
 function abrirClipGrande(c, chico) {

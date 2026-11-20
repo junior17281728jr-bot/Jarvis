@@ -18,6 +18,7 @@ import { auditar } from '../cuentas/usuarios.js';
 import { revisarPaquete, indexarPaquete, audiosDe, paginasDe, videosDe, clipsDe, fotosDe, LIMITES, ARCHIVO_FIGURA, ARCHIVO_AUDIO, ARCHIVO_MP4, ARCHIVO_VIDEO, MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { espacioLibre } from './espacio.js';
 import { datosMp4 } from './mp4.js';
+import { hacerRapido, versionParaServir, SUFIJO_RAPIDO } from './mp4-rapido.js';
 import { enAlmacen, enlazarDesdeAlmacen, guardarEnAlmacen, indexarVersiones } from './almacen.js';
 
 const ahora = () => new Date().toISOString();
@@ -392,6 +393,8 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
   }
   renameSync(parcial, destino);
   guardarEnAlmacen(academia, destino, huella);
+  // 0.14.61: un mp4 con «moov» al final: al lado, una copia que empieza enseguida (el original no se toca).
+  if ((clase === 'video' || clase === 'clip') && ARCHIVO_MP4.test(archivo)) await prepararMp4Rapido(config, destino);
   const faltan = figurasQueFaltan(config, fila);
   if (!faltan.length && fila.estado !== 'listo') {
     await escribir(() => {
@@ -400,6 +403,14 @@ export async function aceptarRecurso(db, config, { fila, clase, archivo, parcial
     });
   }
   return { faltan, faltanAudio: audiosQueFaltan(config, fila), faltanPaginas: paginasQueFaltan(config, fila), faltanVideo: videosQueFaltan(config, fila), faltanClips: clipsQueFaltan(config, fila), faltanFotos: fotosQueFaltan(config, fila) };
+}
+
+// 0.14.61: la copia «rápida» de un mp4 (moov antes de mdat, src/academia/mp4-rapido.js), solo si hace falta y si el
+// disco tiene el doble libre. Si algo sale mal, se sirve el original como siempre: nunca frena la subida.
+export async function prepararMp4Rapido(config, ruta) {
+  const libre = config?.espacioLibre ?? espacioLibre;
+  const espacio = bytes => { const hay = libre(dirname(ruta)); return hay != null && hay < 2 * bytes ? 'sin_espacio_disco' : null; };
+  try { return await hacerRapido(ruta, ruta + SUFIJO_RAPIDO, { espacio }); } catch { return { hecho: false, motivo: 'error' }; }
 }
 
 // Sube UNA figura o UN audio del paquete (cuerpo = el archivo tal cual). Solo los que el paquete nombra y faltan.
@@ -675,7 +686,7 @@ export function mp4De(paquete, pid, mp4) {
   const p = paquete.porPaquete?.get(pid);
   if (!p) return null;
   let st;
-  try { st = statSync(join(p.carpeta, 'video', mp4.archivo)); if (!st.isFile() || !st.size) return null; } catch { return null; }
+  try { st = statSync(join(p.carpeta, 'video', mp4.archivo)); if (!st.isFile() || !st.size) return null; st = versionParaServir(join(p.carpeta, 'video', mp4.archivo), st).st; } catch { return null; }
   const ref = `${pid}~${mp4.archivo}`;
   let portada = null;
   if (typeof mp4.portada === 'string' && ARCHIVO_FIGURA.test(mp4.portada)) {
@@ -696,8 +707,8 @@ export function rutaVideo(paquete, ref) {
   if (!p) return null;
   const nombrado = paquete.materias.some(x => x.paquete === pid && (x.video?.mp4?.archivo === m[2] || x.video?.mp4?.portada === m[2]));
   if (!nombrado) return null;
-  const ruta = join(p.carpeta, 'video', m[2]);
-  try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${pid}-${huellaCorta(st)}"` } : null; } catch { return null; }
+  const original = join(p.carpeta, 'video', m[2]);
+  try { const o = statSync(original); if (!o.isFile()) return null; const { ruta, st } = versionParaServir(original, o); return { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${pid}-${huellaCorta(st)}"` }; } catch { return null; }
 }
 
 // 0.12.1: el clip de una tarjeta, si ya llegó: { url, poster, alt } (con la huella en la dirección, como el video).
@@ -706,7 +717,7 @@ export function clipDe(paquete, pid, c) {
   const p = paquete.porPaquete?.get(pid);
   if (!p) return null;
   const url = archivo => {
-    try { const st = statSync(join(p.carpeta, 'clips', archivo)); return st.isFile() && st.size ? `/api/academia/clips/${encodeURIComponent(`${pid}~${archivo}`)}?v=${huellaCorta(st)}` : null; } catch { return null; }
+    try { const o = statSync(join(p.carpeta, 'clips', archivo)); if (!o.isFile() || !o.size) return null; const { st } = versionParaServir(join(p.carpeta, 'clips', archivo), o); return `/api/academia/clips/${encodeURIComponent(`${pid}~${archivo}`)}?v=${huellaCorta(st)}`; } catch { return null; }
   };
   const video = url(c.archivo);
   if (!video) return null;
@@ -742,8 +753,8 @@ export function rutaClip(paquete, ref) {
     clipsEnUso.set(paquete, nombres);
   }
   if (!clipsEnUso.get(paquete).has(`${m[1]}~${m[2]}`)) return null;
-  const ruta = join(p.carpeta, 'clips', m[2]);
-  try { const st = statSync(ruta); return st.isFile() ? { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${m[1]}-${huellaCorta(st)}"` } : null; } catch { return null; }
+  const original = join(p.carpeta, 'clips', m[2]);
+  try { const o = statSync(original); if (!o.isFile()) return null; const { ruta, st } = versionParaServir(original, o); return { ruta, bytes: st.size, tipo: tipoDeVideo(m[2]), etiqueta: `"${m[1]}-${huellaCorta(st)}"` }; } catch { return null; }
 }
 
 // 0.12.5: la foto del libro de una tarjeta, si ya llegó: { url, alt, pie, libro, pagina } (o null: la tarjeta se ve sin

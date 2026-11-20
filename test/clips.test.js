@@ -186,6 +186,11 @@ test('clip 0.12.1: en la pantalla el clip manda sobre el dibujo, suena solo si s
   assert.match(app, /const visual = p\.visual && !clip \?/, 'con clip, sin dibujo');
   for (const x of ['muted: true', 'loop: true', 'playsinline: true', 'IntersectionObserver', "prefers-reduced-motion: reduce", 'sonidosEncendidos()', 'c.sonido === true', 'sonidoClipElegido()']) assert.ok(vista.includes(x), x);
   assert.ok(app.includes('op_clip_sonido.'), 'la elección se recuerda por cuenta');
-  assert.match(vista, /preload: reducir \? 'none' : 'metadata'/);
+  // 0.14.61: ningún clip lleva «autoplay» (con él se bajan todos a la vez): preload 'none' y arranca al verse, uno a la vez.
+  assert.match(vista, /preload: 'none'/);
+  assert.doesNotMatch(vista.slice(0, vista.indexOf('function abrirClipGrande(')), /autoplay/);
+  assert.match(vista, /video\.preload = 'auto'/, 'baja recién al jugar');
+  assert.match(vista, /clipEnMarcha\.pause\(\)/, 'uno solo a la vez');
+  assert.match(app, /if \(!x\.video\.isConnected\) soltarClip\(x\)/, 'al cambiar de pantalla se sueltan los que quedaron fuera');
   assert.match(vista, /let pausadoAMano = reducir;/, 'con reducir movimiento no arranca solo');
 });

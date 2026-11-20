@@ -41,8 +41,11 @@ export function crearLimitesAcademia() {
 }
 
 // Un pedido «Range: bytes=…» (uno solo) → { inicio, fin } dentro del archivo; null si no hay; 'no' si no se puede dar.
+// 0.14.61: varias partes a la vez («bytes=0-1,5-6») no se dan por separado: se ignora el pedido y va el archivo entero
+// (200), como deja HTTP; antes era un 416 y el reproductor se quedaba sin nada.
 export function rangoPedido(cabecera, tamano) {
   if (cabecera == null || cabecera === '') return null;
+  if (/^\s*bytes=[^,]*,/.test(String(cabecera))) return null;
   const m = /^bytes=(\d{0,15})-(\d{0,15})$/.exec(String(cabecera).trim());
   if (!m || (m[1] === '' && m[2] === '') || tamano <= 0) return 'no';
   let inicio;
@@ -376,7 +379,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const a = rutaAudio(activo(db), parametros.ref);
     if (!a) throw new ErrorHttp(404, 'no_existe');
     return { codigo: 200, enviar: res => enviarPorPartes(res, req, a) };
-  });
+  }, { cabeza: true });
 
   // 0.12.1: el video resumen editado (mp4) de una materia en uso, y su portada. Por partes (Range), como el audio. Un
   // archivo de una versión nunca cambia y la dirección lleva su huella (?v=): se guarda un año en el aparato.
@@ -384,14 +387,14 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const v = rutaVideo(activo(db), parametros.ref);
     if (!v) throw new ErrorHttp(404, 'no_existe');
     return { codigo: 200, enviar: res => enviarPorPartes(res, req, { ...v, cache: 'private, max-age=31536000, immutable' }) };
-  });
+  }, { cabeza: true });
 
   // 0.12.1: el clip de una tarjeta (mp4 corto, mudo, en bucle) y su poster: como el video, por partes y guardado un año.
   rutas.agregar('GET', '/api/academia/clips/:ref', ({ db, req, parametros }) => {
     const c = rutaClip(activo(db), parametros.ref);
     if (!c) throw new ErrorHttp(404, 'no_existe');
     return { codigo: 200, enviar: res => enviarPorPartes(res, req, { ...c, cache: 'private, max-age=31536000, immutable' }) };
-  });
+  }, { cabeza: true });
 
   // 0.12.5: la foto del libro de una tarjeta (una imagen de «fotos/»): solo con la sesión, solo las que nombran las
   // tarjetas en uso, guardada un año (la dirección lleva su huella).
@@ -399,7 +402,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     const f = rutaFoto(activo(db), parametros.ref);
     if (!f) throw new ErrorHttp(404, 'no_existe');
     return { codigo: 200, enviar: res => enviarPorPartes(res, req, { ...f, cache: 'private, max-age=31536000, immutable' }) };
-  });
+  }, { cabeza: true });
 
   // ---------- El administrador ----------
   rutas.agregar('GET', '/api/admin/academia', ({ db }) => {

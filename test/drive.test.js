@@ -526,7 +526,9 @@ test('drive: el rango pedido (Range) se lee bien', () => {
   assert.deepEqual(rangoPedido('bytes=50-500', 100), { inicio: 50, fin: 99 });
   assert.deepEqual(rangoPedido('bytes=-30', 100), { inicio: 70, fin: 99 });
   assert.deepEqual(rangoPedido('bytes=-300', 100), { inicio: 0, fin: 99 });
-  for (const malo of ['bytes=100-', 'bytes=5-2', 'bytes=-', 'bytes=-0', 'bytes=0-1,4-5', 'items=0-1', 'bytes=abc']) assert.equal(rangoPedido(malo, 100), 'no', malo);
+  for (const malo of ['bytes=100-', 'bytes=5-2', 'bytes=-', 'bytes=-0', 'items=0-1', 'bytes=abc']) assert.equal(rangoPedido(malo, 100), 'no', malo);
+  // 0.14.61: varias partes juntas no se dan por separado: se ignora el pedido (va entero, 200), no un 416.
+  for (const varias of ['bytes=0-1,4-5', 'bytes=0-1, 50-']) assert.equal(rangoPedido(varias, 100), null, varias);
 });
 
 test('drive: el JSON lo revisa el servidor web (nunca el trabajador): una sola vez, aunque se caiga; si nunca contesta, se anota', async () => {

@@ -87,7 +87,7 @@ export function indexarVersiones(academia, huella) {
       let nombres = [];
       try { nombres = readdirSync(join(academia, 'paquetes', version, clase)); } catch { continue; }
       for (const nombre of nombres) {
-        if (nombre.endsWith('.part') || nombre.endsWith('.tmp')) continue;
+        if (nombre.endsWith('.part') || nombre.endsWith('.tmp') || nombre.endsWith('.rapido')) continue; // 0.14.61: la copia rápida de un mp4 no es del paquete
         const archivo = join(academia, 'paquetes', version, clase, nombre);
         let st;
         try { st = statSync(archivo); if (!st.isFile() || !st.size || st.nlink > 1) continue; } catch { continue; } // nlink > 1: ya enlazado

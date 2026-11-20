@@ -163,6 +163,7 @@ const TIPOS = {
 //  - ETag (la huella): el navegador pregunta «¿cambió?» y, si no cambió, recibe un 304 sin cuerpo.
 //  - index.html pide cada archivo con su huella en la dirección (/app.js?v=…), igual que app.js a los módulos
 //    que importa, y avisa de esos módulos desde el principio (modulepreload), así no se esperan uno tras otro.
+//    (0.14.61: solo los que se importan siempre; los que se piden al abrir una pantalla llegan entonces.)
 //  - Una dirección con la huella vigente se guarda un año (immutable): nunca cambia, porque si el archivo cambia
 //    cambia la huella y con ella la dirección. Todo lo demás (index.html, los idiomas, una huella vieja) va con
 //    «no-cache»: se revisa cada vez, así que después de una actualización se ven los archivos nuevos al instante.
@@ -189,7 +190,10 @@ function versionarImportaciones(texto, completa, carpeta, enCamino, usa) {
     const entrada = leerEntrada(carpeta, destino, enCamino);
     if (!entrada) return todo;
     usa.push([destino, entrada.huella]);
-    modulos.push(destino);
+    // 0.14.61: solo lo que se importa SIEMPRE (from / import '…') se avisa en index.html. Lo que se importa al abrir una pantalla (las
+    // pantallas del administrador, el oral, la Biblioteca…) se pide recién cuando se abre esa pantalla: antes se avisaba
+    // todo y la primera visita bajaba 86 archivos (≈ 460 KB en brotli) en vez de 32 (≈ 220 KB).
+    if (!antes.includes('(')) modulos.push(destino);
     return `${antes}${comilla}${especificador}?v=${entrada.huella}${comilla}`;
   });
   return { nuevo, modulos };

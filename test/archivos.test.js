@@ -225,6 +225,21 @@ test('un archivo que cambia tiene otro ETag, y también los que lo nombran (app.
   });
 });
 
+// 0.14.61: index.html avisa (modulepreload) solo de lo que se importa siempre; lo de un import() lleva su huella igual,
+// pero se pide recién al abrir su pantalla (la primera visita bajaba 86 archivos en vez de 32).
+test('lo de un import() lleva su huella pero no se avisa en index.html; lo que importa con from, sí', async () => {
+  const pagina = '<!doctype html><html><head><script type="module" src="/a.js"></script></head><body></body></html>';
+  await conCarpeta({ 'index.html': pagina, 'a.js': "import { b } from './b.js';\nconst c = () => import('./c.js');\nconsole.log(b, c);\n", 'b.js': "export const b = 1;\n", 'c.js': "import { d } from './d.js';\nexport const c = d;\n", 'd.js': "export const d = 2;\n" }, async base => {
+    const html = (await pedir(base, '/')).cuerpo.toString();
+    const a = (await pedir(base, '/a.js')).cuerpo.toString();
+    const huella = ruta => pedir(base, ruta).then(r => /^"([A-Za-z0-9_-]{22})"$/.exec(r.cabeceras.etag)[1]);
+    assert.ok(a.includes(`import('./c.js?v=${await huella('/c.js')}')`), 'el import() lleva su huella');
+    assert.ok(html.includes(`<link rel="modulepreload" href="/b.js?v=${await huella('/b.js')}">`), 'b.js (from) se avisa');
+    assert.doesNotMatch(html, /modulepreload" href="\/c\.js/, 'c.js (import()) no se avisa');
+    assert.doesNotMatch(html, /modulepreload" href="\/d\.js/, 'ni lo que solo importa c.js');
+  });
+});
+
 // 0.9.1: las fotos de fondo se nombran desde un .css con url(/…): llevan su huella y se guardan un año.
 test('una foto nombrada con url(/…) en un .css lleva su huella; la foto se guarda un año y no se comprime', async () => {
   const foto = Buffer.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 5, 6, 7, 8]);
