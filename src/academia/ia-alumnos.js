@@ -11,6 +11,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { espacioDe } from '../cuentas/espacios.js';
+import { espacioConfirmado } from '../cuentas/confianza.js';
 import { mesCobro } from '../tareas/tiempo.js';
 import { gastoMicro } from '../ia/gasto.js';
 import { leerConfigIa } from '../ia/config.js';
@@ -70,6 +71,25 @@ export function filasIaAlumnos(db, ahora = Date.now()) {
     generalMicro: gastoMicro(db, { mes }), topeGeneralMicro: cfgIa.topeGeneralMicro,
   };
   return { mes, filas, totales, modo: leerConfigPagos(db).modo };
+}
+
+// 0.14.66: la IA de cada alumno en corto, para la etiqueta de la lista de Alumnos: { activa, por: 'plan'|'prueba'|'minutos'|null,
+// quedan (usos del plan, o usos de antes), dias (de la prueba), pausada, permiso (el dueño confirmó su cuenta) }.
+export function iaDeCadaAlumno(db, ahora = Date.now()) {
+  const mapa = new Map();
+  const porUso = Math.max(1, leerConfigPagos(db).minutosPorUso ?? 1);
+  for (const f of filasIaAlumnos(db, ahora).filas) {
+    const e = espacioDe(db, { id: f.id });
+    const permiso = e ? espacioConfirmado(db, e.id) : false;
+    const activa = Boolean(f.fuente) && !f.pausada && permiso;
+    mapa.set(f.id, {
+      activa, por: f.fuente ?? null, pausada: Boolean(f.pausada), permiso,
+      quedan: f.fuente === 'plan' ? f.plan?.quedan ?? 0 : f.fuente === 'minutos' && f.minutos != null ? Math.floor(f.minutos / porUso) : null,
+      usos: f.fuente === 'plan' ? f.plan?.usos ?? null : null,
+      dias: f.fuente === 'prueba' ? f.prueba?.quedanDias ?? null : null,
+    });
+  }
+  return mapa;
 }
 
 // Regalar N usos: van como minutos (N × lo que cuesta un uso), que se gastan después del plan y de la prueba.

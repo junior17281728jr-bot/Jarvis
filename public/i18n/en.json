@@ -5862,5 +5862,11 @@
   "cuesta.promovida": "It is already in the lesson as “Another way to see it”: those who read it get {con} % right, the rest {sin} %.",
   "cuesta.promovida_oculta": "“Another way to see it” is hidden: students do not see it.",
   "cuesta.ocultar": "Hide",
-  "cuesta.mostrar": "Show again"
+  "cuesta.mostrar": "Show again",
+  "alumnos.ia.no": "🤖 No AI",
+  "alumnos.ia.pausada": "🤖 AI paused",
+  "alumnos.ia.sin_permiso": "🤖 AI not allowed by you",
+  "alumnos.ia.plan": "🤖 AI · {n} of {de} left",
+  "alumnos.ia.prueba": "🤖 AI trial · {dias} days",
+  "alumnos.ia.usos": "🤖 AI · {n} uses left"
 }

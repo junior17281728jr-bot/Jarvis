@@ -191,6 +191,19 @@ function cuentaAlumno(h, a) {
 }
 
 // ---------- La lista de alumnos (con «Comparar») ----------
+// 0.14.66: una etiqueta corta en cada alumno: ¿tiene la IA? ¿cuánto le queda? (lo demás está en su ficha → IA).
+export function chipIa(ia, h) {
+  if (!ia) return null;
+  const { t, numero } = h;
+  const [tono, texto] = ia.pausada ? ['mal', t('alumnos.ia.pausada')]
+    : !ia.permiso ? ['apagado', t('alumnos.ia.sin_permiso')]
+    : !ia.activa ? ['apagado', t('alumnos.ia.no')]
+    : ia.por === 'plan' ? ['bien', t('alumnos.ia.plan', { n: numero(ia.quedan ?? 0), de: numero(ia.usos ?? 0) })]
+    : ia.por === 'prueba' ? ['bien', t('alumnos.ia.prueba', { dias: numero(ia.dias ?? 0) })]
+    : ['bien', t('alumnos.ia.usos', { n: numero(ia.quedan ?? 0) })];
+  return h.insignia(tono, texto);
+}
+
 export function vistaListaAlumnos(datos, h) {
   const { el, t, tn, numero } = h;
   // 0.14.18: en línea primero, después el que entró más reciente; al final los que nunca han entrado.
@@ -229,7 +242,8 @@ export function vistaListaAlumnos(datos, h) {
           el('div', { class: 'etiquetas' },
             h.insignia('bien', t('acad.bien', { n: numero(a.aciertos) })),
             h.insignia('mal', t('acad.mal', { n: numero(a.errores) })),
-            h.insignia('info', t('acad.temas_de', { n: numero(a.temasAprobados), total: numero(a.temas) }))))));
+            h.insignia('info', t('acad.temas_de', { n: numero(a.temasAprobados), total: numero(a.temas) })),
+            chipIa(a.ia, h)))));
   };
   // 0.14.56: «Crear alumno» arriba, siempre; sin alumnos, la lista dice qué hacer (antes solo salían botones sin sentido).
   const crear = el('a', { class: 'boton-3d azul chico con-icono alumnos-crear', href: '#admin/usuarios', onclick: () => h.alCrear?.() }, h.icono('mas', 'icono chico'), el('span', { texto: t('alumnos.crear') }));

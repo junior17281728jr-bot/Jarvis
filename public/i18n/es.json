@@ -5862,5 +5862,11 @@
   "cuesta.promovida": "Ya está en la clase como «Otra forma de verlo»: los que la leyeron aciertan {con} %, los demás {sin} %.",
   "cuesta.promovida_oculta": "La «Otra forma de verlo» está oculta: los alumnos no la ven.",
   "cuesta.ocultar": "Ocultar",
-  "cuesta.mostrar": "Mostrar otra vez"
+  "cuesta.mostrar": "Mostrar otra vez",
+  "alumnos.ia.no": "🤖 Sin IA",
+  "alumnos.ia.pausada": "🤖 IA en pausa",
+  "alumnos.ia.sin_permiso": "🤖 IA sin tu permiso",
+  "alumnos.ia.plan": "🤖 IA · quedan {n} de {de}",
+  "alumnos.ia.prueba": "🤖 IA de prueba · {dias} días",
+  "alumnos.ia.usos": "🤖 IA · quedan {n} usos"
 }

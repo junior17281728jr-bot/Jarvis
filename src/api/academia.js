@@ -22,6 +22,7 @@ import { estadoDrive, carpetaDrive, guardarCarpetaDrive, PROGRAMA_DRIVE } from '
 import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
+import { iaDeCadaAlumno } from '../academia/ia-alumnos.js';
 import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tutor.js';
 // 0.14.59: «Otra forma de verlo» en la clase y «Dónde más les cuesta» para el administrador.
 import { conOtraForma, fotoVigente, calcularTodo, guardarTodo, listaAdmin } from '../academia/donde-cuesta.js';
@@ -571,7 +572,12 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return { codigo: 200, datos: { paquete: activarPaquete(db, { paqueteId: parametros.id, usuarioId: usuario.id, config }) } };
   }, { admin: true });
 
-  rutas.agregar('GET', '/api/admin/academia/alumnos', ({ db }) => ({ codigo: 200, datos: { alumnos: alumnos(db, activo(db), reloj()), ajustes: ajustesAcademia(db) } }), { admin: true });
+  // 0.14.66: cada alumno trae su IA en corto (¿la tiene? ¿cuánto le queda?) para la etiqueta de la lista.
+  rutas.agregar('GET', '/api/admin/academia/alumnos', ({ db }) => {
+    const ahora = reloj();
+    const ia = iaDeCadaAlumno(db, ahora);
+    return { codigo: 200, datos: { alumnos: alumnos(db, activo(db), ahora).map(a => ({ ...a, ia: ia.get(a.id) ?? null })), ajustes: ajustesAcademia(db) } };
+  }, { admin: true });
 
   // 0.8.0: «Respuestas»: la clave completa de lo que está en uso (solo el administrador: 403 para los alumnos).
   rutas.agregar('GET', '/api/admin/academia/respuestas', ({ db }) => ({ codigo: 200, datos: claveDeRespuestas(activo(db)) }), { admin: true });
