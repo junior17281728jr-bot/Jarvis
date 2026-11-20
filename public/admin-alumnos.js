@@ -21,6 +21,8 @@ import { vistaAvanceAlumno, repintarAvance, pctTg } from './admin-avance.js';
 // 0.14.14: «La carrera» y la tabla arriba de «Cómo van todos» (los mismos aviones que ve el alumno, con los nombres enteros).
 import { vistaCarrera, vistaTabla } from './carrera-vista.js';
 export { repintarAvance };
+// 0.14.79: el filtro de curso (el mismo en todas las listas del administrador) y «Cambiar de curso» en la ficha.
+import { selectorCurso, chipCurso, leerFiltro, filtroValido, filtrarPorCurso, moverDeCurso, TODOS } from './admin-cursos.js';
 
 // 0.14.56: y «Cuenta» (bloquear, contraseña, nombre, contratos, certificados) e «IA» (todo lo de su IA, en un solo lugar).
 export const PESTANAS_FICHA = Object.freeze(['resumen', 'examenes', 'materias', 'debiles', 'actividad', 'cuenta', 'ia']);
@@ -204,12 +206,18 @@ export function chipIa(ia, h) {
   return h.insignia(tono, texto);
 }
 
-export function vistaListaAlumnos(datos, h) {
+export function vistaListaAlumnos(datos, h, { filtro = leerFiltro() } = {}) {
   const { el, t, tn, numero } = h;
   // 0.14.18: en línea primero, después el que entró más reciente; al final los que nunca han entrado.
   // 0.14.54: solo los alumnos (el administrador no es un alumno: antes salía «junior · Administrador» con 0 de 6 temas y
   // contaba en «4 cuentas»; «Cómo van todos» ya lo dejaba fuera).
-  const lista = ordenarPorActividad((datos.alumnos ?? []).filter(a => a.rol !== 'admin'));
+  // 0.14.79: solo los del curso elegido (o todos), cada uno con el nombre de su curso cuando se ven todos.
+  const cursos = datos.cursos ?? [];
+  const elegido = filtroValido(filtro, cursos);
+  const lista = ordenarPorActividad(filtrarPorCurso((datos.alumnos ?? []).filter(a => a.rol !== 'admin'), elegido));
+  const chip = a => (elegido === TODOS ? chipCurso(h, a, cursos) : null);
+  const filtroNodo = cursos.length ? el('div', { class: 'alumnos-cursos' }, selectorCurso(h, cursos, elegido, { id: 'filtro-curso-alumnos' }),
+    el('a', { class: 'enlace-fuerte chica con-icono-chico', href: '#cursos' }, h.icono('ajustes', 'icono chico'), el('span', { texto: t('cursos.ir') }))) : null;
   const marcados = new Set();
   const enLinea = lista.filter(a => a.enLinea).length;
   const boton = el('a', { class: 'boton-enlace con-icono ficha-comparar-boton', href: '#alumnos', 'aria-disabled': 'true' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('ficha.comparar.boton', { n: numero(0) }) }));
@@ -234,6 +242,7 @@ export function vistaListaAlumnos(datos, h) {
           el('div', { class: 'alumno-cabeza' },
             el('span', { class: `punto-linea${a.enLinea ? ' en-linea' : ''}`, 'aria-hidden': 'true' }),
             el('span', { class: 'nombre', texto: nombreDe(a) }),
+            chip(a),
             // 0.14.54: el número grande dice qué es («acierta 20 %»: las respuestas bien de todas las que dio).
             el('span', { class: 'alumno-pct', title: t('ficha.acierta.ayuda'), texto: a.respuestas ? t('ficha.acierta', { pct: h.pctTexto(a.pct) }) : '—' })),
           // Su nombre de verdad solo si es distinto del que se ve (antes salía dos veces).
@@ -249,11 +258,13 @@ export function vistaListaAlumnos(datos, h) {
   const crear = el('a', { class: 'boton-3d azul chico con-icono alumnos-crear', href: '#admin/usuarios', onclick: () => h.alCrear?.() }, h.icono('mas', 'icono chico'), el('span', { texto: t('alumnos.crear') }));
   if (!lista.length) {
     return el('section', { class: 'tarjeta alumnos-vacio' },
-      el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: t('alumnos.vacio.titulo') })),
+      filtroNodo,
+      el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: t(elegido === TODOS ? 'alumnos.vacio.titulo' : 'cursos.vacio') })),
       h.vacio('personas', t('alumnos.vacio.linea'), crear),
       listaEliminados(h));
   }
   return el('section', { class: 'tarjeta' },
+    filtroNodo,
     el('div', { class: 'alumnos-arriba' },
       el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: tn('acad.alumnos.n', { n: lista.length }) }), el('span', { class: 'insignia tono-bien', texto: tn('acad.alumnos.en_linea', { n: enLinea }) })),
       crear),
@@ -280,7 +291,7 @@ export function vistaFicha(d, pestana, h) {
   const fila = h.pestanas(PESTANAS_FICHA.map(id => ({ id, href: id === 'resumen' ? `#alumno/${a.id}` : `#alumno/${a.id}/${id}`, texto: t(TEXTO_PESTANA[id]), nombreIcono: ICONO_PESTANA[id] })), actual, t('ficha.pestanas'));
   const cuerpo = actual === 'examenes' ? pestanaExamenes(d, h) : actual === 'materias' ? pestanaMaterias(d, h)
     : actual === 'debiles' ? pestanaDebiles(d, h) : actual === 'actividad' ? pestanaActividad(d, h)
-      : actual === 'cuenta' ? [cuentaAlumno(h, a), h.cuentaExtra?.(a.id) ?? null].filter(Boolean)
+      : actual === 'cuenta' ? [cuentaAlumno(h, a), a.rol !== 'admin' && d.cursos ? moverDeCurso(h, a.id, d.curso ?? null, d.cursos) : null, h.cuentaExtra?.(a.id) ?? null].filter(Boolean)
         : actual === 'ia' ? (h.iaAlumno?.(a.id) ?? null) : pestanaResumen(d, h);
   return [
     el('div', { class: 'ficha-arriba' },
@@ -918,10 +929,13 @@ export function ordenarComoVan(lista, orden = 'en_linea') {
 }
 
 // → { nodo, actualizar(enLinea) }: actualizar pinta solo quién está en línea (lo que se pide cada 30 s), sin redibujar.
-export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrdenar = null } = {}) {
+export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrdenar = null, filtro = leerFiltro() } = {}) {
   const { el, t, tn, numero } = h;
   let orden = ORDENES_COMO_VAN.includes(ordenInicial) ? ordenInicial : 'en_linea';
-  const lista = datos.alumnos.map(a => ({ ...a }));
+  // 0.14.79: solo los del curso elegido (la carrera y la tabla de arriba también: los cursos no se mezclan).
+  const cursos = datos.cursos ?? [];
+  const elegido = filtroValido(filtro, cursos);
+  const lista = filtrarPorCurso(datos.alumnos, elegido).map(a => ({ ...a }));
   const tarjetas = new Map();
   const estados = new Map();
   const cajas = new Map();
@@ -941,6 +955,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
         h.dibujarAvatar(a.avatar, { foto: a.foto, nombre: nombreDe(a), tamano: 'medio' }),
         el('div', { class: 'cv-quien-texto' },
           el('strong', { class: 'cv-nombre', texto: nombreDe(a) }),
+          elegido === TODOS ? chipCurso(h, a, cursos) : null,
           el('span', { class: 'cv-estado' }, punto, estado),
           el('span', { class: 'cv-ver-ficha con-icono-chico' }, el('span', { texto: t('cv.ver_ficha') }), h.icono('flecha', 'icono chico')),
           a.activo ? null : h.insignia('mal', t('admin.inactivo')))),
@@ -994,6 +1009,7 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
   const conExamen = datos.materias.filter(id => lista.some(a => a.examenes.materias.some(x => x.id === id)));
   const nodo = el('section', { class: 'tarjeta como-van' },
     el('h2', { class: 'con-icono' }, h.icono('grafica'), el('span', { texto: t('cv.titulo') })),
+    cursos.length ? selectorCurso(h, cursos, elegido, { id: 'filtro-curso-cv' }) : null,
     cuenta,
     carrera?.nodo ?? null,
     tabla,
@@ -1034,9 +1050,11 @@ export function vistaComoVan(datos, h, { orden: ordenInicial = 'en_linea', alOrd
 }
 
 // ---------- 0.13.5: «Comparar un examen» (el de una materia) ----------
-export function vistaCompararExamen(d, h) {
+export function vistaCompararExamen(d, h, { filtro = leerFiltro() } = {}) {
   const { el, t, tn, numero } = h;
   const nombre = h.nombreMateria(d.materia);
+  // 0.14.79: el servidor ya mandó solo los del curso elegido (?curso=N): aquí, el selector.
+  const selector = d.cursos?.length ? selectorCurso(h, d.cursos, filtroValido(filtro, d.cursos), { id: 'filtro-curso-ce' }) : null;
   const total = d.alumnos.length;
   const alumnos = d.alumnos.length ? el('ul', { class: 'cv-notas' }, d.alumnos.map(a => el('li', {},
     el('a', { class: `cv-nota-fila cv-${tonoExamen(a)}`, href: `#alumno/${a.id}/intento/${a.ultimoIntento}` },
@@ -1073,6 +1091,7 @@ export function vistaCompararExamen(d, h) {
   return [
     el('a', { class: 'volver con-icono', href: '#como-van' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('cv.volver') })),
     el('h1', { class: 'titulo-pantalla', texto: t('cv.examen.titulo', { materia: nombre }) }),
+    selector,
     el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, h.icono('trofeo'), el('span', { texto: t('cv.examen.notas') })),
       el('p', { class: 'suave chica', texto: t('cv.examen.notas.linea') }),

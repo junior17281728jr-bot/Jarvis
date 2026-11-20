@@ -20,6 +20,7 @@ import { avanceDe } from '../academia/avance-alumno.js';
 import { notasDeTodos } from '../academia/notas.js';
 import { resumenPorMateria } from '../academia/resumen-materias.js';
 import { reporteAcademia, opcionesReporte, guardarOpcionesReporte } from '../academia/reporte.js';
+import { cursoDeCadaUno, conCurso, cursosParaFiltro, cursoDe, filtroCurso } from '../academia/cursos.js';
 
 export function crearLimitesPerfil() {
   return {
@@ -136,8 +137,11 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   }, { admin: true });
 
   // ---------- El administrador: la ficha de cada alumno y comparar ----------
-  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/ficha', ({ db, parametros }) =>
-    ({ codigo: 200, datos: fichaAlumno(db, activo(db), parametros.id, reloj()) }), { admin: true });
+  // 0.14.79: con su curso y los cursos (para «Cambiar de curso» en su pestaña Cuenta).
+  rutas.agregar('GET', '/api/admin/academia/alumnos/:id/ficha', ({ db, parametros }) => {
+    const ficha = fichaAlumno(db, activo(db), parametros.id, reloj());
+    return { codigo: 200, datos: { ...ficha, curso: cursoDe(db, parametros.id), cursos: cursosParaFiltro(db) } };
+  }, { admin: true });
 
   // 0.12.3: los Exámenes del Test Guide de cada materia, de todos (o de un alumno: ?alumno=<n.º>), agrupados por materia.
   rutas.agregar('GET', '/api/admin/academia/examenes', ({ db, req }) => {
@@ -147,7 +151,9 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
 
   // 0.13.5: «Cómo van todos»: cada alumno con sus notas de examen, sus clases, su plan, su avance y si está en línea.
   // …/en-linea es lo liviano que la pantalla pide cada 30 s (solo quién está en línea). Solo leen.
-  rutas.agregar('GET', '/api/admin/academia/como-van', ({ db }) => ({ codigo: 200, datos: comoVanTodos(db, activo(db), reloj()) }), { admin: true });
+  // 0.14.79: las listas del administrador llevan el curso de cada fila (enCurso) y los cursos: la pantalla filtra.
+  const conCursos = (db, d, lista = 'alumnos', campo = 'id') => ({ ...d, [lista]: conCurso(d[lista], cursoDeCadaUno(db), campo), cursos: cursosParaFiltro(db) });
+  rutas.agregar('GET', '/api/admin/academia/como-van', ({ db }) => ({ codigo: 200, datos: conCursos(db, comoVanTodos(db, activo(db), reloj())) }), { admin: true });
   rutas.agregar('GET', '/api/admin/academia/como-van/en-linea', ({ db }) => ({ codigo: 200, datos: enLineaTodos(db, reloj()) }), { admin: true });
   // 0.14.11: el avance de cada alumno (dónde está, el % del Test Guide y del oral, tema por tema): lo que «Cómo van todos»
   // pide cada 30 s, y el de uno solo para su ficha. Solo leen; nunca se guardan en el navegador (no-store).
@@ -162,12 +168,12 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
   // #notas, #notas/<materia>, #notas/alumno/<n.º> y #notas/comparar/<n.º,n.º>. Solo lee.
   rutas.agregar('GET', '/api/admin/academia/notas', ({ db }) => ({ codigo: 200, datos: notasDeTodos(db, activo(db), reloj()) }), { admin: true });
   // 0.14.71: «Notas por materia»: de cada alumno, el total de cada materia (nota y si la completó), el oral y cuánto completó. Solo lee.
-  rutas.agregar('GET', '/api/admin/academia/notas-materia', ({ db }) => ({ codigo: 200, datos: resumenPorMateria(db, activo(db), reloj()) }), { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/notas-materia', ({ db }) => ({ codigo: 200, datos: conCursos(db, resumenPorMateria(db, activo(db), reloj())) }), { admin: true });
   // 0.13.5: «Comparar un examen» (el de una materia): la nota de cada alumno y qué pregunta falló cada uno.
-  rutas.agregar('GET', '/api/admin/academia/examenes/:materia/comparar', ({ db, parametros }) => {
-    const datos = compararExamen(db, activo(db), String(parametros.materia ?? ''));
+  rutas.agregar('GET', '/api/admin/academia/examenes/:materia/comparar', ({ db, req, parametros }) => {
+    const datos = compararExamen(db, activo(db), String(parametros.materia ?? ''), { curso: filtroCurso(db, req) });
     if (!datos) throw new ErrorHttp(404, 'no_existe');
-    return { codigo: 200, datos };
+    return { codigo: 200, datos: conCursos(db, datos) };
   }, { admin: true });
 
   rutas.agregar('GET', '/api/admin/academia/alumnos/:id/intentos/:intento', ({ db, parametros }) =>
@@ -182,11 +188,13 @@ export function registrarRutasPerfil(rutas, { config = null, limites = {}, reloj
       secciones: q.has('secciones') ? lista('secciones') : undefined,
       desde: q.get('desde') || null, hasta: q.get('hasta') || null, bloqueados: q.get('bloqueados') === '1',
       comparar: comparar && comparar !== 'todos' ? lista('comparar').map(n => (/^\d{1,9}$/.test(n) ? Number(n) : -1)) : 'todos',
+      // 0.14.79: ?curso=N: solo los alumnos de ese curso (sin él, todos).
+      ...(q.get('curso') && q.get('curso') !== 'todos' ? { curso: /^\d{1,9}$/.test(q.get('curso')) ? Number(q.get('curso')) : -1 } : {}),
     };
     return { codigo: 200, datos: reporteAcademia(db, activo(db), opciones, reloj()) };
   }, { admin: true });
   // La última elección de cada administrador (qué partes, fechas, bloqueados, a quiénes comparar).
-  rutas.agregar('GET', '/api/admin/academia/reporte/opciones', ({ db, usuario }) => ({ codigo: 200, datos: { opciones: opcionesReporte(db, usuario.id) } }), { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/reporte/opciones', ({ db, usuario }) => ({ codigo: 200, datos: { cursos: cursosParaFiltro(db), opciones: opcionesReporte(db, usuario.id) } }), { admin: true });
   rutas.agregar('POST', '/api/admin/academia/reporte/opciones', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { opciones: guardarOpcionesReporte(db, usuario.id, datos) } };

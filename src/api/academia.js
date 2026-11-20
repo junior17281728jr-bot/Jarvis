@@ -29,6 +29,7 @@ import { conOtraForma, fotoVigente, calcularTodo, guardarTodo, listaAdmin } from
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { carreraDe, nombresEnCarrera, mostrarNombresEnCarrera } from '../academia/carrera.js';
+import { cursoDeCadaUno, conCurso, cursosParaFiltro, cursoDe } from '../academia/cursos.js';
 import { crearExamen, vistaExamen, guardarEnExamen, entregarExamen, examenDe, cerrarVencidos, GRACIA_MS, finDe, examenAbiertoDe } from '../academia/examen.js';
 import { tgTerminado } from '../academia/certificados.js';
 import { resumenRepasoFinal, crearRondaFinal, vistaRondaFinal, responderRondaFinal, terminarRondaFinal, oralRepasoFinal, marcarOralRepasoFinal, reiniciarOralRepasoFinal, examenAbierto } from '../academia/repaso-final.js';
@@ -354,7 +355,8 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('GET', '/api/academia/progreso', ({ db, usuario }) => {
     const p = activo(db);
     // 0.13.1: la pista oral va en su propia sección (null si no hay contenido oral).
-    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), oral: resumenOral(db, usuario.id, p), oralVivo: vivoDe(db, usuario.id) } };
+    // 0.14.79: el nombre de su curso (sale chico en Progreso).
+    return { codigo: 200, datos: { ...progreso(db, usuario.id, p, reloj()), ...extrasAlumno(db, usuario.id, p, reloj()), oral: resumenOral(db, usuario.id, p), oralVivo: vivoDe(db, usuario.id), miCurso: cursoDe(db, usuario.id) } };
   });
 
   // 0.14.14: «La carrera» (arriba de Progreso): de los demás, solo su alias y su % (src/academia/carrera.js). Solo lee.
@@ -576,7 +578,9 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('GET', '/api/admin/academia/alumnos', ({ db }) => {
     const ahora = reloj();
     const ia = iaDeCadaAlumno(db, ahora);
-    return { codigo: 200, datos: { alumnos: alumnos(db, activo(db), ahora).map(a => ({ ...a, ia: ia.get(a.id) ?? null })), ajustes: ajustesAcademia(db) } };
+    // 0.14.79: cada fila con su curso (enCurso) y los cursos para el filtro de la pantalla.
+    const cursos = cursoDeCadaUno(db);
+    return { codigo: 200, datos: { alumnos: conCurso(alumnos(db, activo(db), ahora), cursos).map(a => ({ ...a, ia: ia.get(a.id) ?? null })), ajustes: ajustesAcademia(db), cursos: cursosParaFiltro(db) } };
   }, { admin: true });
 
   // 0.8.0: «Respuestas»: la clave completa de lo que está en uso (solo el administrador: 403 para los alumnos).

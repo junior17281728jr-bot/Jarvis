@@ -14,6 +14,7 @@ import {
   anotarIaPedida, anotarPedidoMejora, claveCertCompe, claveSugerencia, creditosFotos, RONDAS, SEMILLA,
 } from '../academia/competencia.js';
 import { armarFrase, armarMejora } from '../academia/competencia-ia.js';
+import { filtroCurso } from '../academia/cursos.js';
 
 export function crearLimitesCompetencia() {
   return {
@@ -96,9 +97,10 @@ export function registrarRutasCompetencia(rutas, { reloj = Date.now, limites = {
   });
 
   // ---------- Administrador ----------
-  rutas.agregar('GET', '/api/admin/academia/competencia', ({ db }) => ({ codigo: 200, datos: resumenAdmin(db) }), { admin: true });
-  rutas.agregar('GET', '/api/admin/academia/competencia/:ronda/certificados', ({ db, usuario, parametros }) =>
-    ({ codigo: 200, datos: galeria(db, numeroRonda(parametros.ronda), { yoId: usuario.id, admin: true, ahoraMs: reloj() }) }), { admin: true });
+  // 0.14.79: ?curso=N: las tablas y la galería de ese curso (sin él, todos los cursos, cada fila con el suyo).
+  rutas.agregar('GET', '/api/admin/academia/competencia', ({ db, req }) => ({ codigo: 200, datos: resumenAdmin(db, { curso: filtroCurso(db, req) }) }), { admin: true });
+  rutas.agregar('GET', '/api/admin/academia/competencia/:ronda/certificados', ({ db, req, usuario, parametros }) =>
+    ({ codigo: 200, datos: galeria(db, numeroRonda(parametros.ronda), { yoId: usuario.id, admin: true, curso: filtroCurso(db, req), ahoraMs: reloj() }) }), { admin: true });
   rutas.agregar('POST', '/api/admin/academia/competencia/ajustes', async ({ db, req }) => {
     const d = await leerJson(req);
     return { codigo: 200, datos: { reloj: guardarRelojCompe(db, d?.reloj) } };

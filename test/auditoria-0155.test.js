@@ -447,7 +447,7 @@ test('7. /api/setup dice el disco (siempre con 200), y el disco lleno da 507 «d
     assert.deepEqual([r.codigo, r.datos.disco], [200, 'lleno']);
     libre = 5 * 2 ** 30;
     r = await pedir(base, 'GET', '/api/setup');
-    assert.deepEqual([r.codigo, r.datos.disco, r.datos.base.version], [200, 'ok', 13]);
+    assert.deepEqual([r.codigo, r.datos.disco, r.datos.base.version], [200, 'ok', 14]);
     assert.equal((await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE })).codigo, 201);
     // La base ya no puede crecer (como un disco lleno): entrar no puede guardar la sesión.
     const paginas = db.prepare('PRAGMA page_count').get().page_count;

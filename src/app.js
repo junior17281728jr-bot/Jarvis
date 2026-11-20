@@ -30,6 +30,7 @@ import { registrarRutasPagoServidor } from './api/pago-servidor.js';
 import { registrarRutasBiblioteca } from './api/biblioteca.js';
 import { registrarRutasCompetencia } from './api/competencia.js';
 import { registrarRutasEntendi } from './api/entendi.js';
+import { registrarRutasCursos } from './api/cursos.js';
 import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
@@ -186,6 +187,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasBiblioteca(rutas, { config, reloj: academia.reloj });
   // 0.14.38: la Competencia (6 rondas, un intento cada una, tablas, certificados y su galería). La IA es opcional.
   registrarRutasCompetencia(rutas, { reloj: academia.reloj, limites: academia.limitesCompetencia, ganchos });
+  // 0.14.79: los cursos (crear, renombrar, archivar y mover alumnos; solo el administrador).
+  registrarRutasCursos(rutas, { reloj: academia.reloj });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {

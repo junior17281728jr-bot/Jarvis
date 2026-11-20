@@ -3,13 +3,16 @@
 // y a quiénes comparar; se recuerda la última elección (en el servidor, por administrador). Abajo, la hoja: se ve bien
 // en el teléfono y en papel A4 («Descargar PDF» = imprimir → Guardar como PDF). «Descargar CSV» baja los números de las
 // mismas partes. Los gráficos son SVG hechos aquí (sin librerías); todo texto va con textContent.
-// Las piezas de dibujo llegan de app.js en «h» (este módulo no importa nada).
+// Las piezas de dibujo llegan de app.js en «h» (0.14.79: solo importa el selector de curso, public/admin-cursos.js).
 
 const SVG = 'http://www.w3.org/2000/svg';
 const SECCIONES = ['ranking', 'alumnos', 'grupo', 'comparar'];
 const TEXTO_SECCION = { ranking: 'reporte.seccion.ranking', alumnos: 'reporte.seccion.alumnos', grupo: 'reporte.seccion.grupo', comparar: 'reporte.seccion.comparar' };
 const COLORES = ['#1c8fe0', '#ff8a1f', '#8b5cf6', '#0e9f7e', '#e5484d', '#d39e00'];
 const MEDALLA = ['#d4a017', '#9aa4b2', '#b8733d'];
+
+// 0.14.79: el curso del reporte.
+import { selectorCurso, leerFiltro, filtroValido, TODOS } from './admin-cursos.js';
 
 function svg(etiqueta, atributos = {}, texto = null) {
   const n = document.createElementNS(SVG, etiqueta);
@@ -51,9 +54,11 @@ export function barrasSvg(items, { titulo = '', ancho = 640, etiqueta = 190 } = 
 }
 
 // ---------- El formulario de arriba ----------
-export function pantallaReporte({ opciones, alumnos }, h) {
+export function pantallaReporte({ opciones, alumnos, cursos = [] }, h) {
   const { el, t } = h;
   let o = { ...opciones };
+  // 0.14.79: el curso del reporte (se guarda con las demás opciones; la primera vez, el del filtro de las listas).
+  let curso = filtroValido(o.curso ?? leerFiltro(), cursos);
   const hoja = el('div', { class: 'reporte-hoja', 'aria-live': 'polite' });
   const casillas = SECCIONES.map(id => {
     const c = el('input', { type: 'checkbox', id: `rep-${id}`, checked: o.secciones.includes(id) || null });
@@ -68,6 +73,10 @@ export function pantallaReporte({ opciones, alumnos }, h) {
     const c = el('input', { type: 'checkbox', id: `rep-c-${a.id}`, value: String(a.id), checked: (o.comparar !== 'todos' && o.comparar.includes(a.id)) || null });
     return { a, c, nodo: el('label', { class: 'reporte-casilla chica', for: `rep-c-${a.id}` }, c, el('span', { texto: a.nombreVisible || a.nombre })) };
   });
+  // Con un curso elegido, para comparar solo salen sus alumnos.
+  const pintarCurso = () => { for (const x of elegir) x.nodo.hidden = curso !== TODOS && x.a.enCurso?.id !== curso; };
+  pintarCurso();
+  const selector = cursos.length ? selectorCurso(h, cursos, curso, { id: 'rep-curso', alCambiar: v => { curso = v; pintarCurso(); } }) : null;
   const listaComparar = el('div', { class: 'reporte-comparar-lista', hidden: o.comparar === 'todos' || null }, elegir.map(x => x.nodo));
   todos.addEventListener('change', () => { listaComparar.hidden = todos.checked; });
   const mensaje = h.caja();
@@ -75,7 +84,8 @@ export function pantallaReporte({ opciones, alumnos }, h) {
   const leerForm = () => ({
     secciones: casillas.filter(x => x.c.checked).map(x => x.id),
     desde: desde.value || null, hasta: hasta.value || null, bloqueados: bloqueados.checked,
-    comparar: todos.checked ? 'todos' : elegir.filter(x => x.c.checked).map(x => x.a.id),
+    comparar: todos.checked ? 'todos' : elegir.filter(x => x.c.checked && !x.nodo.hidden).map(x => x.a.id),
+    ...(curso !== TODOS ? { curso } : {}),
   });
   const generar = async ({ guardar }) => {
     const pedido = leerForm();
@@ -88,11 +98,12 @@ export function pantallaReporte({ opciones, alumnos }, h) {
     const q = new URLSearchParams({ secciones: pedido.secciones.join(','), bloqueados: pedido.bloqueados ? '1' : '0', comparar: pedido.comparar === 'todos' ? 'todos' : pedido.comparar.join(',') || '0' });
     if (pedido.desde) q.set('desde', pedido.desde);
     if (pedido.hasta) q.set('hasta', pedido.hasta);
+    if (pedido.curso) q.set('curso', String(pedido.curso));
     hoja.replaceChildren(el('p', { class: 'cargando', texto: t('reporte.preparando') }));
     const r = await h.api('GET', `/api/admin/academia/reporte?${q}`);
     if (!r.ok) { hoja.replaceChildren(); throw new Error(h.textoError(r.datos.error)); }
-    ultimo = r.datos;
-    hoja.replaceChildren(...dibujarReporte(r.datos, h));
+    ultimo = { ...r.datos, cursoNombre: pedido.curso ? cursos.find(c => c.id === pedido.curso)?.nombre ?? '' : '' };
+    hoja.replaceChildren(...dibujarReporte(ultimo, h));
   };
   const ver = h.botonAccion(t('reporte.ver'), '', mensaje, () => generar({ guardar: true }), 'grafica');
   const pdf = el('button', { type: 'button', class: 'secundario con-icono', onclick: () => window.print() }, h.icono('manual'), el('span', { texto: t('reporte.pdf') }));
@@ -106,6 +117,7 @@ export function pantallaReporte({ opciones, alumnos }, h) {
       el('label', { for: 'rep-desde' }, el('span', { texto: t('reporte.desde') }), desde),
       el('label', { for: 'rep-hasta' }, el('span', { texto: t('reporte.hasta') }), hasta)),
     el('label', { class: 'reporte-casilla', for: 'rep-bloqueados' }, bloqueados, el('span', { texto: t('reporte.bloqueados') })),
+    selector,
     el('fieldset', { class: 'reporte-grupo' }, el('legend', { texto: t('reporte.a_quienes') }),
       el('label', { class: 'reporte-casilla', for: 'rep-comparar-todos' }, todos, el('span', { texto: t('reporte.todos') })), listaComparar),
     el('div', { class: 'botones reporte-acciones' }, ver, pdf, csv),
@@ -127,7 +139,8 @@ export function dibujarReporte(d, h) {
       el('div', { class: 'reporte-cabeza-datos' },
         el('p', { texto: t('reporte.generado', { fecha: h.fecha(d.generado) }) }),
         el('p', { texto: periodo }),
-        el('p', { texto: d.opciones.bloqueados ? t('reporte.con_bloqueados') : t('reporte.sin_bloqueados') }))),
+        el('p', { texto: d.opciones.bloqueados ? t('reporte.con_bloqueados') : t('reporte.sin_bloqueados') }),
+        el('p', { texto: d.cursoNombre ? t('reporte.curso', { curso: d.cursoNombre }) : t('cursos.filtro.todos') }))),
   ];
   if (!(d.alumnos ?? []).length && !d.grupo) partes.push(el('p', { class: 'suave', texto: t('reporte.vacio') }));
   if (d.ranking) {

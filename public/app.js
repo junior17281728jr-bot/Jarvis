@@ -1060,7 +1060,7 @@ function pantallaAyuda() {
     lista));
 }
 
-function bloqueClaveTemporal(textoClave, nombre, temporal, usuario = nombre) {
+function bloqueClaveTemporal(textoClave, nombre, temporal, usuario = nombre, curso = null) {
   const clave = el('div', { class: 'clave-temporal', texto: temporal });
   const ayuda = el('p', { class: 'ayuda', hidden: true, texto: t('admin.copiar_a_mano') });
   const boton = el('button', {
@@ -1087,14 +1087,16 @@ function bloqueClaveTemporal(textoClave, nombre, temporal, usuario = nombre) {
     el('p', { texto: t(textoClave, { nombre }) }),
     el('p', { texto: t('admin.entra_con', { usuario }) }),
     clave, boton, ayuda,
-    plantillaBienvenida({ nombre, usuario, temporal, reinicio: textoClave === 'admin.reiniciada' }));
+    plantillaBienvenida({ nombre, usuario, temporal, reinicio: textoClave === 'admin.reiniciada', curso }));
 }
 
 // 0.14.69 (pedido del dueño): el mensaje listo para mandarle a la persona (WhatsApp, correo…): su usuario, su contraseña
 // temporal, el enlace, y abajo, en chico, que al entrar la app le pide una contraseña nueva. Copiar o «Enviar» (teléfono).
-function textoBienvenida(t, { nombre, usuario, temporal, enlace, reinicio = false }) {
+// 0.14.79: con su curso («Estás en Grupo Piloto 2»), si se sabe.
+function textoBienvenida(t, { nombre, usuario, temporal, enlace, reinicio = false, curso = null }) {
   return [
     t(reinicio ? 'admin.plantilla.hola_reinicio' : 'admin.plantilla.hola', { nombre }),
+    ...(curso ? [t('admin.plantilla.curso', { curso })] : []),
     '',
     t('admin.plantilla.enlace', { enlace }),
     t('admin.plantilla.usuario', { usuario }),
@@ -1103,8 +1105,8 @@ function textoBienvenida(t, { nombre, usuario, temporal, enlace, reinicio = fals
     t('admin.plantilla.nota'),
   ].join('\n');
 }
-function plantillaBienvenida({ nombre, usuario, temporal, reinicio }) {
-  const texto = textoBienvenida(t, { nombre, usuario, temporal, reinicio, enlace: location.origin });
+function plantillaBienvenida({ nombre, usuario, temporal, reinicio, curso = null }) {
+  const texto = textoBienvenida(t, { nombre, usuario, temporal, reinicio, curso, enlace: location.origin });
   const caja = el('div', { class: 'plantilla-mensaje', texto });
   const ayuda = el('p', { class: 'ayuda', hidden: true, texto: t('admin.copiar_a_mano') });
   const copiar = el('button', {
@@ -1163,9 +1165,9 @@ let claveTemporalVisible = null;
 
 function seccionClaveTemporal() {
   if (!claveTemporalVisible) return null;
-  const { textoClave, nombre, temporal, usuario, pendiente } = claveTemporalVisible;
+  const { textoClave, nombre, temporal, usuario, pendiente, curso = null } = claveTemporalVisible;
   // 0.9.2: sin contraseña (la crea la persona al entrar) o con la que puso el administrador: no hay nada que copiar.
-  const seccion = el('section', { class: 'tarjeta' }, temporal ? bloqueClaveTemporal(textoClave, nombre, temporal, usuario)
+  const seccion = el('section', { class: 'tarjeta' }, temporal ? bloqueClaveTemporal(textoClave, nombre, temporal, usuario, curso)
     : el('div', { class: 'aviso con-icono-arriba', role: 'status', 'data-foco': true }, icono(pendiente ? 'atencion' : 'bien'),
       el('span', { texto: pendiente ? t('admin.creado_sin_clave', { nombre, usuario }) : t('admin.creado_con_clave', { nombre, usuario }) })));
   seccion.append(el('button', {
@@ -1818,7 +1820,7 @@ const PESTANAS_ADMIN = ['resumen', 'estado', 'usuarios', 'trabajo', 'servidor', 
 const LINEA_ADMIN = {
   inicio: () => t('admin.linea.inicio'), estado: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
-  alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), notas: () => t('admin.linea.notas'), 'notas-materia': () => t('admin.linea.notas_materia'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
+  alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), notas: () => t('admin.linea.notas'), 'notas-materia': () => t('admin.linea.notas_materia'), cursos: () => t('admin.linea.cursos'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
   soporte: () => t('admin.linea.soporte'), reportes: () => t('admin.linea.reportes'), opiniones: () => t('admin.linea.opiniones'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
   pagos: () => t('admin.linea.pagos'), // 0.12.12
   'pago-servidor': () => t('admin.linea.pago_servidor'), // 0.14.1
@@ -2074,7 +2076,7 @@ async function pantallaInicioAdmin() {
     const texto = x.texto ?? (x.n != null ? tn(x.clave, { n: x.n, ...(x.vars ?? {}) }) : t(x.clave, x.vars ?? {}));
     return el('li', { class: `hoy-item tono-${x.tono}`, 'data-hoy': x.id },
       el('span', { class: 'tono-color hoy-icono' }, icono(x.tono === 'info' ? 'info' : x.tono)),
-      el('span', { class: 'hoy-texto', texto }),
+      el('span', { class: 'hoy-texto' }, el('span', { texto }), x.curso ? el('span', { class: 'chip-curso', texto: x.curso }) : null),
       el('span', { class: 'hoy-botones' }, el('a', { class: 'boton-3d azul chico', href: x.href }, el('span', { texto: x.boton ?? t(`hoy.ir.${x.id.replace(/-/g, '_')}`) }))));
   };
   const tarjetaHoy = el('section', { class: 'tarjeta para-hoy' },
@@ -2199,6 +2201,11 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     pintarModo();
   };
   const ayudaRol = el('p', { class: 'ayuda con-icono-arriba', hidden: true }, icono('candado', 'icono chico'), el('span', { texto: t('admin.nuevo.rol.admin_clave') }));
+  // 0.14.79: el curso del alumno (por defecto, el activo más nuevo). Los archivados no se ofrecen.
+  const cursosR = await api('GET', '/api/admin/academia/cursos');
+  if (!vigente()) return;
+  const cursosActivos = cursosR.ok ? cursosR.datos.cursos.filter(c => !c.archivado) : [];
+  const campoCurso = cursosActivos.length ? el('select', { id: 'campo-curso', name: 'curso' }, cursosActivos.map(c => el('option', { value: String(c.id), texto: c.nombre, selected: c.id === cursosR.datos.porDefecto }))) : null;
   const formulario = el('form', { novalidate: true },
     el('label', { for: 'campo-nombre', texto: t('admin.nuevo.nombre') }),
     usuario,
@@ -2208,6 +2215,9 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       el('option', { value: 'usuario', texto: t('admin.rol.usuario') }),
       permisos.admins ? el('option', { value: 'admin', texto: t('admin.rol.admin') }) : null),
     ayudaRol,
+    campoCurso ? el('label', { for: 'campo-curso', texto: t('admin.nuevo.curso') }) : null,
+    campoCurso,
+    campoCurso ? el('p', { class: 'ayuda', texto: t('admin.nuevo.curso.ayuda') }) : null,
     el('details', { class: 'plegable-chico mas-opciones' },
       el('summary', { texto: t('admin.nuevo.mas') }),
       // 0.9.2: su Nombre y Apellido de verdad (opcional: si no, lo escribe la persona la primera vez que entra).
@@ -2235,6 +2245,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
     if (modo === 'admin' && clave.length < 4) throw new Error(t('error.clave_corta'));
     const legalCompleto = `${String(datos.get('legalNombre') ?? '').trim()} ${String(datos.get('legalApellido') ?? '').trim()}`.trim();
     const creado = await api('POST', '/api/admin/usuarios', { nombre, ...(legalCompleto ? { nombreVisible: legalCompleto } : {}), rol: datos.get('rol'), idioma: datos.get('idioma'),
+      ...(datos.get('curso') ? { curso: Number(datos.get('curso')) } : {}),
       ...(modo === 'alumno' ? { sinClave: true } : modo === 'admin' ? { clave } : {}),
       ...(String(datos.get('legalNombre') ?? '').trim() && String(datos.get('legalApellido') ?? '').trim() ? { nombreLegal: { nombre: String(datos.get('legalNombre')), apellido: String(datos.get('legalApellido')) } } : {}) });
     if (creado.datos.error === 'nombre_ocupado') {
@@ -2247,7 +2258,7 @@ async function pantallaAdmin(pestana = 'resumen', avisoArriba = null) {
       throw new Error(t('admin.nombre_ocupado_propuesta', { nombre: otro }));
     }
     if (!creado.ok) throw new Error(textoError(creado.datos.error));
-    claveTemporalVisible = { textoClave: 'admin.creado', nombre: creado.datos.nombreVisible || creado.datos.nombre, temporal: creado.datos.claveTemporal, usuario: creado.datos.nombre, pendiente: creado.datos.pendiente === true };
+    claveTemporalVisible = { textoClave: 'admin.creado', nombre: creado.datos.nombreVisible || creado.datos.nombre, temporal: creado.datos.claveTemporal, usuario: creado.datos.nombre, pendiente: creado.datos.pendiente === true, curso: creado.datos.curso?.nombre ?? null };
     await pantallaAdmin('usuarios');
     return MANTENER;
   });
@@ -5829,6 +5840,8 @@ async function pantallaProgreso() {
   detalles.addEventListener('toggle', () => { detallesProgresoAbiertos = detalles.open; });
   mostrar(marco('progreso', barraCabina(p),
     el('h1', { class: 'titulo-grande', texto: t('acad.progreso') }),
+    // 0.14.79: su curso, en chico (sus compañeros del grupo, la carrera y la Competencia son de ese curso).
+    p.miCurso?.nombre ? el('p', { class: 'mi-curso suave chica con-icono-chico' }, icono('personas', 'icono chico'), el('span', { texto: t('cursos.mio', { curso: p.miCurso.nombre }) })) : null,
     el('div', { class: 'tablero' }, hero, carrera?.nodo ?? null, numeros, materias?.nodo ?? null, lugarExamen),
     // 0.14.26: los certificados de recuerdo (cuando termina un curso).
     el('section', { class: 'panel' }, el('h2', { class: 'con-icono' }, icono('medalla'), el('span', { texto: t('cert.mis') })),
@@ -6034,7 +6047,10 @@ function refrescarMientras(nodo, vigente, pedir, cadaMs = AVANCE_ADMIN_MS) {
 // 0.13.5: «Comparar un examen»: la nota de cada alumno y qué pregunta falló cada uno (y qué eligió).
 async function pantallaCompararExamen(materia) {
   const vigente = nuevoTurno();
-  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/examenes/${encodeURIComponent(materia)}/comparar`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
+  // 0.14.79: solo los del curso elegido (las notas y las preguntas falladas los cuenta el servidor).
+  const cursosVista = await import('./admin-cursos.js');
+  const filtro = cursosVista.consultaCurso(cursosVista.leerFiltro());
+  const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/examenes/${encodeURIComponent(materia)}/comparar${filtro}`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaCompararExamen(d, h), 'como-van');
 }
 // 0.14.6: «Notas» (public/admin-notas.js): #notas, #notas/<materia>, #notas/alumno/N y #notas/comparar/N,M. Un solo pedido.
@@ -6045,6 +6061,12 @@ async function pantallaNotas(seccion) {
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaNotas(d, h, vista.rutaNotas(seccion), { orden: ordenNotas, alOrdenar: o => { ordenNotas = o; } }), 'notas');
 }
 // 0.14.71: «Notas por materia» (public/admin-resumen.js): el total de cada materia por alumno, el oral y cuánto completó.
+// 0.14.79: Alumnos → «Cursos» (public/admin-cursos.js): crear, cambiar el nombre y archivar.
+async function pantallaCursos() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/cursos'), api('GET', '/api/admin/sistema'), import('./admin-cursos.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaCursos(d, h), 'cursos');
+}
 async function pantallaNotasMateria() {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/notas-materia'), api('GET', '/api/admin/sistema'), import('./admin-resumen.js')]);
@@ -6079,7 +6101,7 @@ async function pantallaReporte() {
   const vigente = nuevoTurno();
   const [o, r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/reporte/opciones'), api('GET', '/api/admin/academia/alumnos'), api('GET', '/api/admin/sistema'), import('./reporte-vista.js')]);
   if (!vigente()) return;
-  const datos = o.ok && r.ok ? { ok: true, datos: { opciones: o.datos.opciones, alumnos: r.datos.alumnos } } : (o.ok ? r : o);
+  const datos = o.ok && r.ok ? { ok: true, datos: { opciones: o.datos.opciones, alumnos: r.datos.alumnos, cursos: o.datos.cursos ?? [] } } : (o.ok ? r : o);
   dibujarDeAlumnos(datos, s, (d, h) => vista.pantallaReporte(d, { ...h, decir, fechaDia }));
 }
 // 0.9.2: los contratos firmados (public/contratos-vista.js, solo se carga aquí).
@@ -6236,10 +6258,18 @@ async function pantallaGaleriaCompe(n) {
   const [r, vista] = await Promise.all([api('GET', admin ? `/api/admin/academia/competencia/${encodeURIComponent(n)}/certificados` : `/api/academia/competencia/${encodeURIComponent(n)}/certificados`), import('./competencia-vista.js')]);
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
+  // 0.14.79: el administrador ve la galería del curso del filtro (un alumno, siempre la de su curso: lo decide el servidor).
+  // Un objeto nuevo (nunca se cambia la respuesta guardada en memoria).
+  let datosGaleria = r.datos;
+  if (admin) {
+    const cursosVista = await import('./admin-cursos.js');
+    if (!vigente()) return;
+    datosGaleria = { ...r.datos, certificados: cursosVista.filtrarPorCurso(r.datos.certificados, cursosVista.filtroValido(cursosVista.leerFiltro(), r.datos.cursos ?? [])) };
+  }
   // Al recargar (después de comentar o borrar), la página y la lista quedan donde estaban.
   const arriba = window.scrollY;
   const enLista = raiz.querySelector('.compe-feed')?.scrollTop ?? 0;
-  mostrar(marco('competencia', vista.pantallaGaleria(r.datos, piezasCompe(vigente), { admin, recargar: () => { if (vigente()) pantallaGaleriaCompe(n); } })));
+  mostrar(marco('competencia', vista.pantallaGaleria(datosGaleria, piezasCompe(vigente), { admin, recargar: () => { if (vigente()) pantallaGaleriaCompe(n); } })));
   window.scrollTo(0, arriba);
   const lista = raiz.querySelector('.compe-feed');
   if (lista) lista.scrollTop = enLista;
@@ -6254,11 +6284,19 @@ async function pantallaFotosCompe() {
 }
 async function pantallaCompeAdmin() {
   const vigente = nuevoTurno();
-  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/competencia'), import('./competencia-vista.js')]);
+  // 0.14.79: las tablas del curso elegido (con «Todos los cursos», cada fila dice su curso). Los puestos ya vienen
+  // contados dentro de cada curso: aquí solo se dejan las filas del curso del filtro.
+  const [r, vista, cursosVista] = await Promise.all([api('GET', '/api/admin/academia/competencia'), import('./competencia-vista.js'), import('./admin-cursos.js')]);
   if (!vigente()) return;
   if (!r.ok) return errorCompe(r);
+  // Un objeto nuevo (nunca se cambia la respuesta guardada en memoria: volver a «Todos» la necesita entera).
+  const elegido = cursosVista.filtroValido(cursosVista.leerFiltro(), r.datos.cursos ?? []);
+  const datos = elegido === cursosVista.TODOS ? { ...r.datos, curso: null }
+    : { ...r.datos, curso: elegido, general: cursosVista.filtrarPorCurso(r.datos.general, elegido), rondas: r.datos.rondas.map(x => ({ ...x, tabla: cursosVista.filtrarPorCurso(x.tabla, elegido) })) };
   // 0.14.56: con la cabecera de Administrador (Contenido → Competencia): antes no tenía pestaña.
-  mostrar(marco('admin', cabeceraAdmin('competencia'), vista.pantallaAdmin(r.datos, piezasCompe(vigente), { recargar: () => { if (vigente()) pantallaCompeAdmin(); } })));
+  const recargar = () => { if (vigente()) pantallaCompeAdmin(); };
+  const filtroCursoNodo = datos.cursos?.length ? cursosVista.selectorCurso({ el, t, icono, recargar }, datos.cursos, elegido, { id: 'filtro-curso-compe' }) : null;
+  mostrar(marco('admin', cabeceraAdmin('competencia'), vista.pantallaAdmin(datos, { ...piezasCompe(vigente), filtroCursoNodo }, { recargar })));
 }
 async function pantallaCertificados() {
   const vigente = nuevoTurno();
@@ -6276,8 +6314,13 @@ async function pantallaCertificadosAlumno(id) {
 // 0.14.72: Alumnos → «Certificados»: todos los ya hechos (solo el administrador), con la cabecera de Alumnos.
 async function pantallaCertificadosTodos() {
   const vigente = nuevoTurno();
-  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/certificados'), api('GET', '/api/admin/sistema'), import('./certificado-vista.js')]);
-  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaTodos(d, { ...h, idioma }));
+  const [r, s, vista, cursosVista] = await Promise.all([api('GET', '/api/admin/academia/certificados'), api('GET', '/api/admin/sistema'), import('./certificado-vista.js'), import('./admin-cursos.js')]);
+  // 0.14.79: el filtro de curso (certificado-vista.js también lo usan los alumnos: el filtro llega en «h»).
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => {
+    const elegido = cursosVista.filtroValido(cursosVista.leerFiltro(), d.cursos ?? []);
+    const filtroCurso = d.cursos?.length ? { nodo: cursosVista.selectorCurso(h, d.cursos, elegido, { id: 'filtro-curso-cert' }), todos: elegido === cursosVista.TODOS } : null;
+    return vista.vistaTodos(cursosVista.datosDelCurso(d, elegido, 'certificados'), { ...h, idioma, filtroCurso });
+  });
 }
 function dibujarCertificados(r, vista, seccion) {
   if (!r.ok) return mostrar(marco(seccion, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
@@ -6732,7 +6775,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/para-claude', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'cursos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/para-claude', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6791,6 +6834,7 @@ async function dibujar() {
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   if (seccion === 'como-van' && esAdmin) return pantallaComoVan();
   if (seccion === 'notas-materia' && esAdmin) return pantallaNotasMateria();
+  if (seccion === 'cursos' && esAdmin) return pantallaCursos();
   if (RUTA_NOTAS.test(seccion) && esAdmin) return pantallaNotas(seccion);
   const compararExamen = seccion.match(/^comparar-examen\/([a-z0-9_-]+)$/);
   if (compararExamen && esAdmin) return pantallaCompararExamen(compararExamen[1]);
@@ -6917,6 +6961,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'como-van') return admin ? ['/api/admin/academia/como-van', '/api/admin/sistema'] : [];
   if (seccion === 'notas-materia') return admin ? ['/api/admin/academia/notas-materia', '/api/admin/sistema'] : [];
+  if (seccion === 'cursos') return admin ? ['/api/admin/academia/cursos', '/api/admin/sistema'] : [];
   // 0.14.6: «Notas» (la misma dirección que RUTA_NOTAS; aquí escrita entera porque esta función se prueba sola).
   if (/^notas(?:\/(?:alumno\/\d{1,9}|comparar\/\d{1,9}(?:,\d{1,9}){1,9}|[a-z0-9_-]+))?$/.test(seccion)) return admin ? ['/api/admin/academia/notas', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad|cuenta|ia))?$/);

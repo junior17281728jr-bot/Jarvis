@@ -93,12 +93,14 @@ function imagen(foto, clave, h, opciones) {
 
 // ---------- Piezas ----------
 const MEDALLA = { oro: '🥇', plata: '🥈', bronce: '🥉' };
-function tabla(filas, h, { rondas = false } = {}) {
+// 0.14.79: conCurso (solo el administrador con «Todos los cursos»): cada fila dice su curso (los puestos van por curso).
+function tabla(filas, h, { rondas = false, conCurso = false } = {}) {
   const { el, t, numero } = h;
   if (!filas.length) return el('p', { class: 'suave', texto: t('compe.tabla.vacia') });
   return el('ol', { class: 'compe-tabla' }, filas.map(f => el('li', { class: `compe-fila${f.esYo ? ' es-yo' : ''}${f.medalla ? ` medalla-${f.medalla}` : ''}` },
     el('span', { class: 'compe-puesto', texto: f.medalla ? MEDALLA[f.medalla] : `${numero(f.puesto)}.` }),
     el('span', { class: 'compe-nombre', texto: f.esYo ? t('compe.tabla.tu', { nombre: f.nombre ?? '' }) : f.nombre }),
+    conCurso && f.enCurso?.nombre ? el('span', { class: 'chip-curso', texto: f.enCurso.nombre }) : null,
     el('span', { class: 'compe-puntos', texto: rondas ? t('compe.tabla.puntos_rondas', { aciertos: numero(f.aciertos), total: numero(f.total), rondas: numero(f.rondas) }) : t('compe.tabla.puntos', { aciertos: numero(f.aciertos), total: numero(f.total) }) }))));
 }
 // La fecha y la hora de un comentario (hora de República Dominicana).
@@ -445,14 +447,15 @@ export function pantallaAdmin(datos, h, { recargar } = {}) {
       // 0.14.38: el último pedido a la IA: «esperando» o por qué no llegó (la ronda sigue igual, sin IA).
       r.pedido?.estado === 'pendiente' ? el('p', { class: 'suave chica', texto: t('compe.admin.ia_esperando') }) : null,
       r.pedido?.estado === 'no' ? el('p', { class: 'aviso tono-atencion chica', texto: t('compe.admin.ia_no', { motivo: h.motivoIa ? h.motivoIa(r.pedido.motivo) : r.pedido.motivo }) }) : null,
-      sug, m, tabla(r.tabla, h));
+      sug, m, tabla(r.tabla, h, { conCurso: datos.curso == null }));
   };
   return [
     el('a', { class: 'volver con-icono', href: '#competencia' }, icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('compe.titulo') })),
     el('h1', { class: 'titulo-pantalla', texto: t('compe.admin.titulo') }),
     el('p', { class: 'entrada', texto: t('compe.admin.linea') }),
+    h.filtroCursoNodo ?? null,
     el('section', { class: 'tarjeta' }, el('label', { for: 'compe-reloj', texto: t('compe.admin.reloj') }), reloj, el('div', { class: 'botones' }, guardar), mensaje),
-    el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('compe.general') })), tabla(datos.general, h, { rondas: true })),
+    el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('trofeo'), el('span', { texto: t('compe.general') })), tabla(datos.general, h, { rondas: true, conCurso: datos.curso == null })),
     datos.rondas.map(ronda),
   ];
 }

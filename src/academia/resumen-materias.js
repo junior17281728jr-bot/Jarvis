@@ -14,6 +14,11 @@
 //  - salto «quemado»: fue directo al examen, lo entregó, NO lo aprobó y todavía le faltan temas.
 //  - salto «directo»: fue directo al examen y todavía no lo aprueba ni lo entregó (o lo aprobó antes de la 0.14.19, sin
 //    convalidar) y le faltan temas.
+// 0.14.79 (pedido del dueño: «la tabla no solo es del Test Guide, también el oral; no cuentes solo 1»): el oral ya no es
+// UNA columna: una por cada capítulo que el paquete oral en uso tiene con temas (los mismos de «Notas»: O1 Requisitos del
+// piloto… O9 Preguntas de escenario), cada una igual que una materia (su examen de capítulo o el % de práctica con «P», y
+// «✓ completa» o «N de M temas»). Después, «Oral total»: los temas del oral hechos de cuántos y la nota del oral (el examen
+// final si lo dio; si no, el % de toda la práctica oral). El total cuenta cada capítulo como una materia más.
 // El total de cada alumno: los temas hechos de TODO el curso (Test Guide y oral juntos, tema por tema), cuántas materias
 // completó y la nota general del curso (notaGeneralDelCurso: las 11 materias, solo exámenes).
 // El color lo pone la pantalla con la nota de aprobar de «Ajustes del curso» (umbral, va en la respuesta).
@@ -80,6 +85,7 @@ export function resumenPorMateria(db, paquete, ahoraMs = Date.now()) {
   const hayOral = notas.oral.hay;
   const materias = notas.materias.map(m => ({ id: m.id, numero: MATERIAS.indexOf(m.id) + 1, pronto: m.pronto, temas: m.temas.length }));
   const temasOral = notas.oral.capitulos.reduce((n, c) => n + c.temas.length, 0);
+  const capitulos = notas.oral.capitulos.map(c => ({ id: c.id, numero: c.numero, temas: c.temas.length }));
   const alumnos = notas.alumnos.map(a => {
     const av = avance.get(a.id);
     const bloques = new Map((av?.tg?.bloques ?? []).map(b => [b.id, b]));
@@ -89,16 +95,27 @@ export function resumenPorMateria(db, paquete, ahoraMs = Date.now()) {
       celdas[m.id] = celdaMateria({ pronto: m.pronto, nota: a.materias[m.id] ?? null, examen: a.examenes?.[m.id] ?? null, bloque: bloques.get(m.id), salto: susSaltos.has(m.id) });
     }
     let oral = null;
+    const deCapitulo = {};
     if (hayOral) {
-      const capitulos = (av?.oral?.bloques ?? []).filter(b => b.temas.length);
-      const convalidados = capitulos.filter(b => b.convalidada).length;
-      const base = celdaMateria({ nota: a.oral, examen: a.examenes?.oral ?? null, bloque: { temas: { length: av?.oral?.total ?? 0 }, hechos: av?.oral?.hechos ?? 0 } });
-      oral = { ...base, capitulos: capitulos.length, ...(convalidados ? { salto: { tipo: 'convalidada', capitulos: convalidados } } : {}) };
+      const bloquesOral = new Map((av?.oral?.bloques ?? []).map(b => [b.id, b]));
+      for (const c of capitulos) {
+        const b = bloquesOral.get(c.id);
+        deCapitulo[c.id] = celdaMateria({ nota: a.capitulos?.[c.id] ?? null, examen: a.examenes?.[c.id] ?? null, bloque: b ?? { temas: { length: c.temas }, hechos: 0 } });
+      }
+      const conTemas = (av?.oral?.bloques ?? []).filter(b => b.temas.length);
+      const convalidados = conTemas.filter(b => b.convalidada).length;
+      const hechos = av?.oral?.hechos ?? 0;
+      const temas = av?.oral?.total ?? 0;
+      const base = celdaMateria({ nota: a.oral, examen: a.examenes?.oral ?? null, bloque: { temas: { length: temas }, hechos } });
+      oral = {
+        ...base, capitulos: conTemas.length, pct: pct(hechos, temas), completos: Object.values(deCapitulo).filter(x => x.completa).length,
+        ...(convalidados ? { salto: { tipo: 'convalidada', capitulos: convalidados } } : {}),
+      };
     }
     return {
       id: a.id, nombre: a.nombre, nombreVisible: a.nombreVisible, activo: a.activo,
-      materias: celdas, oral, total: totalAlumno([...Object.values(celdas), oral], a.general),
+      materias: celdas, capitulos: deCapitulo, oral, total: totalAlumno([...Object.values(celdas), ...Object.values(deCapitulo)], a.general),
     };
   });
-  return { ahora: notas.ahora, umbral, materias, oral: { hay: hayOral, temas: temasOral }, alumnos };
+  return { ahora: notas.ahora, umbral, materias, oral: { hay: hayOral, temas: temasOral, capitulos }, alumnos };
 }

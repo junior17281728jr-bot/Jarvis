@@ -10,6 +10,7 @@ import { paqueteActivo } from '../academia/paquetes.js';
 import { certificadosDe, verificarCodigo } from '../academia/certificados.js';
 import { todosLosCertificados } from '../academia/certificados-todos.js';
 import { misCertificadosCompe } from '../academia/competencia.js';
+import { cursoDeCadaUno, conCurso, cursosParaFiltro } from '../academia/cursos.js';
 
 export function registrarRutasCertificados(rutas, { config = null, reloj = Date.now, limites = {}, azar } = {}) {
   const topes = { verificar: new Limitador({ maximo: 60, ventanaMs: 3600 * 1000 }), ...limites };
@@ -23,7 +24,11 @@ export function registrarRutasCertificados(rutas, { config = null, reloj = Date.
     const opc = opciones();
     return { codigo: 200, datos: { ...certificadosDe(db, id, paquete(db), opc), compe: misCertificadosCompe(db, id, opc), alumnoId: id } };
   }, { admin: true });
-  rutas.agregar('GET', '/api/admin/academia/certificados', ({ db }) => ({ codigo: 200, datos: { ...todosLosCertificados(db, paquete(db), opciones()), generado: new Date(reloj()).toISOString() } }), { admin: true });
+  // 0.14.79: cada certificado con el curso del alumno (enCurso) y los cursos, para el filtro de la pantalla.
+  rutas.agregar('GET', '/api/admin/academia/certificados', ({ db }) => {
+    const todos = todosLosCertificados(db, paquete(db), opciones());
+    return { codigo: 200, datos: { ...todos, certificados: conCurso(todos.certificados, cursoDeCadaUno(db), 'usuarioId'), cursos: cursosParaFiltro(db), generado: new Date(reloj()).toISOString() } };
+  }, { admin: true });
   rutas.agregar('GET', '/api/certificados/verificar/:codigo', ({ db, usuario, parametros }) => {
     if (!topes.verificar.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
     return { codigo: 200, datos: verificarCodigo(db, parametros.codigo, { yoId: usuario.id, admin: usuario.rol === 'admin' }) };

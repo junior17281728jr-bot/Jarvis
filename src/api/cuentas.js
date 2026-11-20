@@ -18,6 +18,7 @@ import {
 } from '../cuentas/usuarios.js';
 import { cambiarPlan, planesPublicos } from '../cuentas/planes.js';
 import { anotarCambioAdmin, anotarFalloAdmin, historialAdmin } from '../cuentas/confirmar.js';
+import { cursoParaCuentaNueva, cursoDe } from '../academia/cursos.js';
 import { leerPerfil, avataresDe } from '../cuentas/perfil.js';
 import { fotoDe, fotosDe } from '../cuentas/foto.js';
 import { codigoCorrecto, estadoCodigo, ponerCodigo, problemaDeCodigo, quitarCodigo } from '../cuentas/respaldo.js';
@@ -401,17 +402,19 @@ export function registrarRutasCuentas(rutas, { version, limites = crearLimitesCu
     }
     // 0.9.2: su Nombre y Apellido de verdad (opcional; la persona lo confirma al aceptar los términos).
     const legal = datos.nombreLegal && (datos.nombreLegal.nombre || datos.nombreLegal.apellido) ? { nombre: datos.nombreLegal.nombre, apellido: datos.nombreLegal.apellido } : null;
+    // 0.14.79: su curso (el del formulario; sin elegir, el activo más nuevo). Un curso que no existe o archivado: error.
+    const cursoId = cursoParaCuentaNueva(db, datos.curso ?? null);
     const temporal = sinClave || propia ? null : claveTemporal();
     const claveHash = sinClave ? clavePendiente() : await hashClave(propia ? datos.clave : temporal);
     const id = enTransaccion(db, () => {
-      const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), debeCambiarClave: Boolean(temporal), creadoPor: usuario.id });
+      const nuevo = crearUsuario(db, { nombre, nombreVisible, claveHash, rol, idioma: idiomaDe(datos), debeCambiarClave: Boolean(temporal), creadoPor: usuario.id, cursoId });
       if (nuevo && rol === 'usuario') anotarOrigen(db, req, { usuarioId: nuevo, accion: 'creada', hechoPor: usuario.id });
       if (nuevo && legal) ponerNombreLegal(db, nuevo, legal, { por: 'admin', hechoPor: usuario.id });
       if (nuevo && rol === 'admin') anotarCambioAdmin(db, { usuarioId: usuario.id, accion: 'admin_creado', detalle: { cuenta: nombre }, como: confirmado?.como });
       return nuevo;
     });
     if (!id) throw new ErrorHttp(409, 'nombre_ocupado');
-    return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal, pendiente: sinClave } };
+    return { codigo: 201, datos: { id, nombre, nombreVisible: nombreVisible ?? nombre, rol, claveTemporal: temporal, pendiente: sinClave, curso: cursoDe(db, id) } };
   }, { admin: true });
 
   rutas.agregar('POST', '/api/admin/usuarios/:id/reiniciar-clave', async ({ db, req, parametros, usuario, confirmar }) => {

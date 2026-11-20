@@ -91,6 +91,8 @@ export const AREAS_ADMIN = Object.freeze([
     // 0.14.71: «Notas por materia» (el total de cada materia y si la completó) ocupa el lugar de «Notas»: las notas por tema
     // y cada intento (#notas…) siguen en su dirección, con un botón desde aquí (y desde la lista y «Cómo van todos»).
     { id: 'notas-materia', href: '#notas-materia', clave: 'admin.sub.notas_materia', icono: 'marca' },
+    // 0.14.79: los cursos (grupos de alumnos): crear, cambiar el nombre y archivar.
+    { id: 'cursos', href: '#cursos', clave: 'admin.sub.cursos', icono: 'ajustes' },
   ] },
   { id: 'mensajes', href: '#mensajes', clave: 'admin.area.mensajes', icono: 'chispa', sub: [
     { id: 'mensajes', href: '#mensajes', clave: 'admin.sub.por_responder', icono: 'campana' },
@@ -174,6 +176,12 @@ export const REDIRECCIONES_ADMIN = Object.freeze({
 // (GET /api/admin/ia/dinero?corto=1) }; cualquiera puede faltar. → [{ id, tono, clave, n?, vars?, href, aviso? }]
 // en el orden en que conviene atenderlo (lo rojo primero).
 const ORDEN_TONO = { mal: 0, atencion: 1, info: 2 };
+// 0.14.79: los nombres de los cursos de esos alumnos (sin repetir, en el orden en que salen): { curso: 'Grupo Piloto 1, …' }
+// o nada (las filas sin curso, de una versión vieja).
+export function cursosDeHoy(alumnos) {
+  const nombres = [...new Set(alumnos.map(a => a.enCurso?.nombre).filter(Boolean))];
+  return nombres.length ? { curso: nombres.join(', ') } : {};
+}
 const SEMANA_MS = 7 * 24 * 3_600_000;
 export const MINIMO_RESPUESTAS_HOY = 10;
 export function paraHoy({ sistema = null, copiasTono = null, pagosPendientes = 0, pagoServidor = null, dinero = null, alumnos = null, ahora = Date.now() } = {}) {
@@ -206,10 +214,11 @@ export function paraHoy({ sistema = null, copiasTono = null, pagosPendientes = 0
   // Los alumnos que necesitan una mano: más de una semana sin estudiar (habiendo empezado), o que fallan más de la mitad
   // (con al menos 10 respuestas, para no juzgar por 2). Uno solo: el botón abre su ficha.
   const suyos = (alumnos ?? []).filter(a => a.rol !== 'admin' && a.activo !== false);
+  // 0.14.79: «Para hoy» sigue siendo de TODOS los cursos; cada cosa dice de qué curso son sus alumnos (si se sabe).
   const quietos = suyos.filter(a => !a.enLinea && a.ultimaActividad && ahora - Date.parse(a.ultimaActividad) > SEMANA_MS);
-  if (quietos.length) lista.push({ id: 'sin-estudiar', tono: 'info', clave: 'hoy.sin_estudiar', n: quietos.length, vars: { nombre: quietos[0].nombreVisible || quietos[0].nombre }, href: quietos.length === 1 ? `#alumno/${quietos[0].id}` : '#como-van' });
+  if (quietos.length) lista.push({ id: 'sin-estudiar', tono: 'info', clave: 'hoy.sin_estudiar', n: quietos.length, vars: { nombre: quietos[0].nombreVisible || quietos[0].nombre }, href: quietos.length === 1 ? `#alumno/${quietos[0].id}` : '#como-van', ...cursosDeHoy(quietos) });
   const cuesta = suyos.filter(a => (a.respuestas ?? 0) >= MINIMO_RESPUESTAS_HOY && a.pct != null && a.pct < 50);
-  if (cuesta.length) lista.push({ id: 'les-cuesta', tono: 'info', clave: 'hoy.les_cuesta', n: cuesta.length, vars: { nombre: cuesta[0].nombreVisible || cuesta[0].nombre }, href: cuesta.length === 1 ? `#alumno/${cuesta[0].id}` : '#alumnos' });
+  if (cuesta.length) lista.push({ id: 'les-cuesta', tono: 'info', clave: 'hoy.les_cuesta', n: cuesta.length, vars: { nombre: cuesta[0].nombreVisible || cuesta[0].nombre }, href: cuesta.length === 1 ? `#alumno/${cuesta[0].id}` : '#alumnos', ...cursosDeHoy(cuesta) });
   // Los avisos sin «Entendido» que piden algo (grave o atención), cada uno con su botón; los que ya salen arriba no se
   // repiten. Los que solo informan (el resumen del día…) van en UNA línea «N avisos más» → Estado del sistema.
   let soloInforman = 0;

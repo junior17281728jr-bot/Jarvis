@@ -13,6 +13,12 @@
 //  - La tabla de cada ronda y la general las ve todo el mundo, con los mismos alias que la carrera de Progreso
 //    (src/academia/carrera.js): sin «Mostrar nombres» o con «Perfil privado», «Piloto N». Nunca el id ni el usuario. El
 //    administrador ve los nombres.
+//  - 0.14.79 (los cursos, src/academia/cursos.js): las 6 rondas, sus preguntas, el reloj, la ronda congelada y «un solo
+//    intento» siguen siendo LOS MISMOS para todos los cursos (es contenido: de todos). Lo que es de cada curso: las tablas
+//    (de cada ronda y la general), los puestos y medallas, «cuántos jugaron», la galería de certificados, las reacciones
+//    y los comentarios. Un alumno solo ve y solo reacciona o comenta a los de su curso (un código de otro curso: 404).
+//    Quien cambia de curso lleva sus intentos con él (se leen por su cuenta). El administrador ve todos los cursos: con
+//    el filtro, uno; con «Todos», cada fila dice su curso y los puestos se cuentan dentro de cada curso.
 //  - Lo que falló va a «Mi repaso» («Lo que fallaste en la competencia»). Nada de esto toca el Test Guide: ni el % de
 //    avance, ni la racha, ni las fallas, ni los certificados del curso leen estas tablas.
 import { createHash, randomBytes } from 'node:crypto';
@@ -214,29 +220,58 @@ function conPuestos(filas, clave) {
   });
 }
 const activos = 'u.eliminado_en IS NULL AND u.activo = 1';
-export function tablaRonda(db, n, { yoId = null, admin = false } = {}) {
-  const nombre = nombrador(db, { yoId, admin });
-  const filas = db.prepare(`SELECT i.usuario_id AS id, i.aciertos, i.total, i.segundos, i.terminado_en AS en FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id
-    WHERE i.ronda = ? AND i.terminado_en IS NOT NULL AND ${activos} ORDER BY i.aciertos DESC, i.segundos ASC, i.terminado_en ASC, i.id ASC`).all(n);
-  return conPuestos(filas, f => `${f.aciertos}/${f.segundos}`).map(f => ({
-    puesto: f.puesto, medalla: f.medalla, nombre: nombre(f.id), aciertos: f.aciertos, total: f.total, segundos: f.segundos, esYo: f.id === yoId, ...(admin ? { usuarioId: f.id } : {}),
+// 0.14.79: de qué curso es la tabla. Un alumno (o un administrador que juega): el suyo. El administrador: el del filtro
+// (curso) o, sin filtro, todos (cada fila con su curso; los puestos, dentro de cada curso).
+const cursoDeId = (db, id) => (id == null ? null : db.prepare('SELECT curso_id AS c FROM usuarios WHERE id = ?').get(Number(id))?.c ?? 0);
+function cursoDeLaTabla(db, { yoId, admin, curso }) {
+  if (admin) return curso ?? null;
+  return cursoDeId(db, yoId) ?? 0;
+}
+const filtroDe = c => (c == null ? '' : ' AND u.curso_id = ?');
+const valoresDe = c => (c == null ? [] : [c]);
+// Los puestos dentro de cada curso (las filas ya vienen ordenadas por curso y después por puntaje).
+function puestosPorCurso(filas, clave) {
+  const salida = [];
+  const grupos = new Map();
+  for (const f of filas) { if (!grupos.has(f.curso_id)) grupos.set(f.curso_id, []); grupos.get(f.curso_id).push(f); }
+  for (const g of grupos.values()) salida.push(...conPuestos(g, clave));
+  return salida;
+}
+function nombresCursos(db) {
+  return new Map(db.prepare('SELECT id, nombre FROM academia_cursos').all().map(f => [f.id, f.nombre]));
+}
+export function tablaRonda(db, n, { yoId = null, admin = false, curso = null } = {}) {
+  const c = cursoDeLaTabla(db, { yoId, admin, curso });
+  const nombre = nombrador(db, { yoId, admin, curso: c });
+  const filas = db.prepare(`SELECT i.usuario_id AS id, u.curso_id, i.aciertos, i.total, i.segundos, i.terminado_en AS en FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id
+    WHERE i.ronda = ? AND i.terminado_en IS NOT NULL AND ${activos}${filtroDe(c)} ORDER BY u.curso_id, i.aciertos DESC, i.segundos ASC, i.terminado_en ASC, i.id ASC`).all(n, ...valoresDe(c));
+  const cursos = admin ? nombresCursos(db) : null;
+  return puestosPorCurso(filas, f => `${f.aciertos}/${f.segundos}`).map(f => ({
+    puesto: f.puesto, medalla: f.medalla, nombre: nombre(f.id), aciertos: f.aciertos, total: f.total, segundos: f.segundos, esYo: f.id === yoId,
+    ...(admin ? { usuarioId: f.id, enCurso: { id: f.curso_id, nombre: cursos.get(f.curso_id) ?? '' } } : {}),
   }));
 }
-export function tablaGeneral(db, { yoId = null, admin = false } = {}) {
-  const nombre = nombrador(db, { yoId, admin });
-  const filas = db.prepare(`SELECT i.usuario_id AS id, SUM(i.aciertos) AS aciertos, SUM(i.total) AS total, COUNT(*) AS rondas, SUM(i.segundos) AS segundos
-    FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id WHERE i.terminado_en IS NOT NULL AND ${activos}
-    GROUP BY i.usuario_id ORDER BY aciertos DESC, segundos ASC, i.usuario_id ASC`).all();
-  return conPuestos(filas, f => `${f.aciertos}/${f.segundos}`).map(f => ({
-    puesto: f.puesto, medalla: f.medalla, nombre: nombre(f.id), aciertos: f.aciertos, total: f.total, rondas: f.rondas, segundos: f.segundos, esYo: f.id === yoId, ...(admin ? { usuarioId: f.id } : {}),
+export function tablaGeneral(db, { yoId = null, admin = false, curso = null } = {}) {
+  const c = cursoDeLaTabla(db, { yoId, admin, curso });
+  const nombre = nombrador(db, { yoId, admin, curso: c });
+  const filas = db.prepare(`SELECT i.usuario_id AS id, u.curso_id, SUM(i.aciertos) AS aciertos, SUM(i.total) AS total, COUNT(*) AS rondas, SUM(i.segundos) AS segundos
+    FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id WHERE i.terminado_en IS NOT NULL AND ${activos}${filtroDe(c)}
+    GROUP BY i.usuario_id ORDER BY u.curso_id, aciertos DESC, segundos ASC, i.usuario_id ASC`).all(...valoresDe(c));
+  const cursos = admin ? nombresCursos(db) : null;
+  return puestosPorCurso(filas, f => `${f.aciertos}/${f.segundos}`).map(f => ({
+    puesto: f.puesto, medalla: f.medalla, nombre: nombre(f.id), aciertos: f.aciertos, total: f.total, rondas: f.rondas, segundos: f.segundos, esYo: f.id === yoId,
+    ...(admin ? { usuarioId: f.id, enCurso: { id: f.curso_id, nombre: cursos.get(f.curso_id) ?? '' } } : {}),
   }));
 }
 
 // La portada: las 6 rondas con lo suyo y la tabla general.
 export function resumenCompetencia(db, usuarioId, ahoraMs = Date.now(), { admin = false } = {}) {
+  const miCurso = cursoDeId(db, usuarioId) ?? 0;
   const rondas = RONDAS.map(n => {
     const e = estadoRonda(db, usuarioId, n, ahoraMs);
-    const jugadores = db.prepare('SELECT COUNT(*) AS n FROM academia_compe_intentos WHERE ronda = ? AND terminado_en IS NOT NULL').get(n).n;
+    // 0.14.79: cuántos jugaron DE SU CURSO.
+    const jugadores = db.prepare(`SELECT COUNT(*) AS n FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id
+      WHERE i.ronda = ? AND i.terminado_en IS NOT NULL AND u.curso_id = ?`).get(n, miCurso).n;
     const puesto = e.estado === 'terminada' ? tablaRonda(db, n, { yoId: usuarioId }).find(f => f.esYo)?.puesto ?? null : null;
     return { ronda: n, titulo: e.titulo, lema: e.lema, total: e.total, estado: e.estado, resultado: e.resultado ?? null, numero: e.actual?.numero ?? null, jugadores, puesto };
   });
@@ -308,31 +343,36 @@ export function certificadoParaVerificar(db, ref) {
 }
 
 // ---------- La galería de certificados de una ronda (todos ven los de todos), con reacciones y comentarios ----------
-export function galeria(db, n, { yoId = null, admin = false, ahoraMs = Date.now() } = {}) {
-  const nombre = nombrador(db, { yoId, admin });
-  const filas = db.prepare(`SELECT i.usuario_id AS id FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id
-    WHERE i.ronda = ? AND i.terminado_en IS NOT NULL AND ${activos} ORDER BY i.terminado_en DESC, i.id DESC`).all(n);
+// 0.14.79: un alumno ve solo los certificados (y los comentarios) de su curso; el administrador, los del filtro o todos.
+export function galeria(db, n, { yoId = null, admin = false, curso = null, ahoraMs = Date.now() } = {}) {
+  const c = cursoDeLaTabla(db, { yoId, admin, curso });
+  const nombre = nombrador(db, { yoId, admin, curso: c });
+  const cursos = admin ? nombresCursos(db) : null;
+  const filas = db.prepare(`SELECT i.usuario_id AS id, u.curso_id FROM academia_compe_intentos i JOIN usuarios u ON u.id = i.usuario_id
+    WHERE i.ronda = ? AND i.terminado_en IS NOT NULL AND ${activos}${filtroDe(c)} ORDER BY i.terminado_en DESC, i.id DESC`).all(n, ...valoresDe(c));
   const reacciones = db.prepare('SELECT dueno_id AS dueno, usuario_id AS usuario, emoji FROM academia_compe_reacciones WHERE ronda = ? AND quitada_en IS NULL').all(n);
   const comentarios = db.prepare(`SELECT c.id, c.dueno_id AS dueno, c.usuario_id AS usuario, c.texto, c.creado_en AS en FROM academia_compe_comentarios c JOIN usuarios u ON u.id = c.usuario_id
-    WHERE c.ronda = ? AND c.borrado_en IS NULL AND ${activos} ORDER BY c.id`).all(n);
+    WHERE c.ronda = ? AND c.borrado_en IS NULL AND ${activos}${filtroDe(c)} ORDER BY c.id`).all(n, ...valoresDe(c));
   const certificados = filas.map(f => {
     const c = certificadoRonda(db, f.id, n, { ahoraMs });
     if (!c) return null;
     const mias = reacciones.filter(r => r.dueno === f.id);
     const cuenta = Object.fromEntries(EMOJIS.map(e => [e, mias.filter(r => r.emoji === e).length]));
     return {
-      ...paraVer(c, nombre(f.id)), esYo: f.id === yoId, ...(admin ? { usuarioId: f.id } : {}),
+      ...paraVer(c, nombre(f.id)), esYo: f.id === yoId, ...(admin ? { usuarioId: f.id, enCurso: { id: f.curso_id, nombre: cursos.get(f.curso_id) ?? '' } } : {}),
       // La clave de la tarjeta (no es el id de la cuenta): el código del certificado.
       reacciones: cuenta, mias: mias.filter(r => r.usuario === yoId).map(r => r.emoji),
       comentarios: comentarios.filter(x => x.dueno === f.id).map(x => ({ id: x.id, nombre: nombre(x.usuario), texto: x.texto, en: x.en, esYo: x.usuario === yoId, ...(admin ? { usuarioId: x.usuario, silenciado: silenciado(db, x.usuario) } : {}) })),
     };
   }).filter(Boolean);
-  return { ronda: n, titulo: SEMILLA[n].titulo, certificados, silenciado: yoId != null && silenciado(db, yoId) };
+  return { ronda: n, titulo: SEMILLA[n].titulo, certificados, silenciado: yoId != null && silenciado(db, yoId), ...(admin ? { cursos: [...cursos].map(([id, nombre]) => ({ id, nombre })) } : {}) };
 }
-function duenoDeCodigo(db, n, codigo) {
+// 0.14.79: quien reacciona o comenta debe ser del MISMO curso que el dueño del certificado (si no, como si no existiera).
+function duenoDeCodigo(db, n, codigo, quienId = null) {
   const ref = json(leerAjuste(db, claveCodigo(String(codigo ?? '').toUpperCase().slice(0, 20))));
   const c = ref && ref.curso === `compe${n}` ? certGuardado(db, n, ref.usuarioId) : null;
   if (!c || c.codigo !== String(codigo).toUpperCase()) throw new ErrorHttp(404, 'no_existe');
+  if (quienId != null && cursoDeId(db, quienId) !== cursoDeId(db, ref.usuarioId)) throw new ErrorHttp(404, 'no_existe');
   return Number(ref.usuarioId);
 }
 export const silenciado = (db, usuarioId) => leerAjuste(db, claveSilencio(usuarioId)) === '1';
@@ -345,7 +385,7 @@ export function silenciar(db, usuarioId, si) {
 // Reaccionar (o quitar la reacción, si ya la tenía).
 export function reaccionar(db, usuarioId, n, codigo, emoji, ahoraMs = Date.now()) {
   if (!EMOJIS.includes(emoji)) throw new ErrorHttp(400, 'datos_no_validos');
-  const dueno = duenoDeCodigo(db, n, codigo);
+  const dueno = duenoDeCodigo(db, n, codigo, usuarioId);
   return enTransaccion(db, () => {
     const ya = db.prepare('SELECT id FROM academia_compe_reacciones WHERE ronda = ? AND dueno_id = ? AND usuario_id = ? AND emoji = ? AND quitada_en IS NULL').get(n, dueno, usuarioId, emoji);
     if (ya) db.prepare('UPDATE academia_compe_reacciones SET quitada_en = ? WHERE id = ?').run(iso(ahoraMs), ya.id);
@@ -364,7 +404,7 @@ export function limpiarComentario(texto) {
 export function comentar(db, usuarioId, n, codigo, texto, ahoraMs = Date.now()) {
   if (silenciado(db, usuarioId)) throw new ErrorHttp(403, 'silenciado');
   const limpio = limpiarComentario(texto);
-  const dueno = duenoDeCodigo(db, n, codigo);
+  const dueno = duenoDeCodigo(db, n, codigo, usuarioId);
   const r = db.prepare('INSERT INTO academia_compe_comentarios (ronda, dueno_id, usuario_id, texto, creado_en) VALUES (?, ?, ?, ?, ?)').run(n, dueno, usuarioId, limpio, iso(ahoraMs));
   return { id: Number(r.lastInsertRowid) };
 }
@@ -393,7 +433,7 @@ function pedidoMejora(db, n, sugerencia) {
   const motivo = json(t.resultado)?.motivo;
   return { estado: 'no', motivo: typeof motivo === 'string' && /^[a-z_]{1,40}$/.test(motivo) ? motivo : 'no_disponible', en: p.en };
 }
-export function resumenAdmin(db) {
+export function resumenAdmin(db, { curso = null } = {}) {
   return {
     reloj: relojCompe(db),
     rondas: RONDAS.map(n => {
@@ -405,10 +445,12 @@ export function resumenAdmin(db) {
         cambios: Object.keys(json(leerAjuste(db, claveCambios(n))) ?? {}).length,
         pedido: pedidoMejora(db, n, sugerencia),
         sugerencia: sugerencia && Array.isArray(sugerencia.cambios) ? { en: sugerencia.en ?? null, estado: sugerencia.estado ?? 'lista', cambios: sugerencia.cambios.map(c => ({ ...c, antes: Object.fromEntries(CAMPOS_IA.filter(k => c[k] != null).map(k => [k, r.preguntas.find(q => q.id === c.id)?.[k] ?? ''])) })) } : null,
-        tabla: tablaRonda(db, n, { admin: true }),
+        tabla: tablaRonda(db, n, { admin: true, curso }),
       };
     }),
-    general: tablaGeneral(db, { admin: true }),
+    curso,
+    cursos: db.prepare('SELECT id, nombre, archivado_en IS NOT NULL AS archivado FROM academia_cursos ORDER BY id DESC').all().map(f => ({ id: f.id, nombre: f.nombre, archivado: f.archivado === 1 })),
+    general: tablaGeneral(db, { admin: true, curso }),
   };
 }
 // Aprobar lo que sugirió la IA (todo o algunas preguntas). Nunca en una ronda que alguien ya empezó.

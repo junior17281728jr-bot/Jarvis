@@ -17,6 +17,7 @@ import { resumenPorMateria, celdaMateria, totalAlumno } from '../src/academia/re
 import { MATERIAS, MATERIAS_ORAL } from '../src/academia/formato.js';
 import { tonoAprobar, textosCelda, csvResumen, textoCopiar, celdaCsv, columnasResumen } from '../public/admin-resumen.js';
 import { AREAS_ADMIN, areaAdmin } from '../public/navegacion.js';
+import { datosDelCurso, TODOS } from '../public/admin-cursos.js';
 
 const AHORA = Date.parse('2026-11-20T15:00:00Z');
 const MIN = 60 * 1000;
@@ -133,21 +134,43 @@ test('el color va con la nota de aprobar del curso (80 %): no con 70/50 ni con e
   assert.equal(tonoAprobar(null, 80), 'nada');
 });
 
-test('la columna del oral: el examen final (o la práctica) y sus temas', () => {
+// 0.14.79 (pedido del dueño: «la tabla no solo es del Test Guide, también el oral; no cuentes solo 1»): una columna por
+// cada capítulo oral del paquete (como una materia) y después «Oral total».
+test('el oral: una columna por capítulo (su examen o la práctica, y sus temas) y después «Oral total»', () => {
   const { db, ana, beto, carla } = grupo();
-  const d = resumenPorMateria(db, PAQUETE, AHORA);
-  assert.deepEqual(d.oral, { hay: true, temas: 2 });
-  assert.equal(columnasResumen(d).at(-1).id, 'oral');
-  const oral = id => d.alumnos.find(a => a.id === id).oral;
-  assert.deepEqual(oral(ana), { pronto: false, nota: { pct: 88, fuente: 'examen', aprobado: true }, examen: 'hecho', hechos: 2, temas: 2, completa: true, salto: null, capitulos: 1 });
-  assert.deepEqual(oral(beto), { pronto: false, nota: { pct: 75, fuente: 'practica', aprobado: false }, examen: null, hechos: 1, temas: 2, completa: false, salto: null, capitulos: 1 });
-  assert.equal(oral(carla).nota, null);
-  assert.deepEqual(textosCelda(oral(ana), t), { nota: '88 %', estado: '✓ completa', salto: '' });
-  assert.deepEqual(textosCelda(oral(beto), t), { nota: 'P 75 %', estado: '1 de 2 temas', salto: '' }, 'practicó todas las preguntas del tema a');
-  // Sin oral en el paquete: sin columna.
+  let d = resumenPorMateria(db, PAQUETE, AHORA);
+  assert.deepEqual(d.oral, { hay: true, temas: 2, capitulos: [{ id: 'oral_calificaciones', numero: 1, temas: 2 }] });
+  assert.deepEqual(columnasResumen(d).slice(-2).map(c => [c.id, c.codigo, c.banda, c.tipo]), [['oral_calificaciones', 'O1', 'oral', 'capitulo'], ['oral', 'Oral', 'oral', 'oral']]);
+  assert.ok(columnasResumen(d).slice(0, 11).every(c => c.banda === 'tg' && c.tipo === 'materia'));
+  const de = (id, x = d) => x.alumnos.find(a => a.id === id);
+  // El capítulo: Ana leyó sus 2 temas pero no dio el examen del capítulo (solo el final): «temas listos, falta el examen».
+  assert.deepEqual(de(ana).capitulos.oral_calificaciones, { pronto: false, nota: null, examen: null, hechos: 2, temas: 2, completa: false, salto: null });
+  assert.deepEqual(textosCelda(de(ana).capitulos.oral_calificaciones, t), { nota: '—', estado: 'temas listos, falta el examen', salto: '' });
+  assert.deepEqual(de(beto).capitulos.oral_calificaciones, { pronto: false, nota: { pct: 75, fuente: 'practica', aprobado: false }, examen: null, hechos: 1, temas: 2, completa: false, salto: null });
+  assert.deepEqual(textosCelda(de(beto).capitulos.oral_calificaciones, t), { nota: 'P 75 %', estado: '1 de 2 temas', salto: '' });
+  // «Oral total»: el % del oral hecho y la nota del oral (el examen final; sin final, toda la práctica oral).
+  assert.deepEqual(de(ana).oral, { pronto: false, nota: { pct: 88, fuente: 'examen', aprobado: true }, examen: 'hecho', hechos: 2, temas: 2, completa: true, salto: null, capitulos: 1, pct: 100, completos: 0 });
+  assert.deepEqual(de(beto).oral, { pronto: false, nota: { pct: 75, fuente: 'practica', aprobado: false }, examen: null, hechos: 1, temas: 2, completa: false, salto: null, capitulos: 1, pct: 50, completos: 0 });
+  assert.equal(de(carla).oral.nota, null);
+  assert.deepEqual(textosCelda(de(ana).oral, t, { oralTotal: true }), { nota: '88 %', estado: '✓ completa', salto: '' });
+  assert.deepEqual(textosCelda(de(beto).oral, t, { oralTotal: true }), { nota: 'P 75 %', estado: '50 % del oral · 1 de 2 temas', salto: '' });
+  // Con el examen del capítulo aprobado, el capítulo queda completo y cuenta en el total como una materia más.
+  ajuste(db, `academia.oral.${ana}`, { leidos: ['oral_calificaciones/a', 'oral_calificaciones/b'], examenes: { final: { mejor: 88, ultimo: 88, aprobado: true, veces: 1 }, oral_calificaciones: { mejor: 90, ultimo: 90, aprobado: true, veces: 1 } } });
+  d = resumenPorMateria(db, PAQUETE, AHORA);
+  assert.deepEqual(de(ana).capitulos.oral_calificaciones, { pronto: false, nota: { pct: 90, fuente: 'examen', aprobado: true }, examen: 'hecho', hechos: 2, temas: 2, completa: true, salto: null });
+  assert.equal(de(ana).oral.completos, 1);
+  assert.equal(de(ana).total.completas, 2);
+  // Dos capítulos con temas: dos columnas (O1 y O3); los capítulos sin temas no salen.
+  const dos = { ...PAQUETE, oral: { hay: true, materias: PAQUETE.oral.materias.map(m => (m.id === 'oral_meteorologia' ? { id: m.id, temas: [{ id: 'c', titulo: 'Tema c', preguntas: ['o9'] }] } : m)) } };
+  const d2 = resumenPorMateria(db, dos, AHORA);
+  assert.deepEqual(columnasResumen(d2).filter(c => c.banda === 'oral').map(c => c.codigo), ['O1', 'O3', 'Oral']);
+  assert.deepEqual(Object.keys(de(beto, d2).capitulos), ['oral_calificaciones', 'oral_meteorologia']);
+  assert.equal(de(beto, d2).total.temas, 5, '2 del Test Guide + 3 del oral');
+  // Sin oral en el paquete: sin columnas del oral.
   const sin = resumenPorMateria(db, { ...PAQUETE, oral: { hay: false, materias: [] } }, AHORA);
   assert.equal(sin.alumnos[0].oral, null);
-  assert.ok(!columnasResumen(sin).some(c => c.id === 'oral'));
+  assert.deepEqual(sin.alumnos[0].capitulos, {});
+  assert.ok(!columnasResumen(sin).some(c => c.banda === 'oral'));
   db.close();
 });
 
@@ -155,8 +178,8 @@ test('el total: los temas de todo el curso (Test Guide y oral), las materias com
   const { db, ana, beto, dani, eva } = grupo();
   const d = resumenPorMateria(db, PAQUETE, AHORA);
   const total = id => d.alumnos.find(a => a.id === id).total;
-  // Ana: 2 + 2 de 4 temas; Factores humanos y el oral completos; general = 95 / 11.
-  assert.deepEqual(total(ana), { hechos: 4, temas: 4, pct: 100, completas: 2, conClases: 2, general: { pct: 8, aprobados: 1, total: 11, conExamen: true } });
+  // Ana: 2 + 2 de 4 temas; Factores humanos completa (el capítulo oral no: le falta su examen); general = 95 / 11.
+  assert.deepEqual(total(ana), { hechos: 4, temas: 4, pct: 100, completas: 1, conClases: 2, general: { pct: 8, aprobados: 1, total: 11, conExamen: true } });
   assert.deepEqual(total(beto), { hechos: 2, temas: 4, pct: 50, completas: 0, conClases: 2, general: { pct: 0, aprobados: 0, total: 11, conExamen: false } });
   assert.deepEqual(total(dani), { hechos: 2, temas: 4, pct: 50, completas: 1, conClases: 2, general: { pct: 8, aprobados: 1, total: 11, conExamen: true } });
   assert.equal(total(eva).pct, 0);
@@ -166,32 +189,36 @@ test('el total: los temas de todo el curso (Test Guide y oral), las materias com
   db.close();
 });
 
-test('el CSV (para Excel) y el texto de «Copiar» (para WhatsApp)', () => {
+test('el CSV (para Excel) y el texto de «Copiar» (para WhatsApp), con el oral por capítulo y el filtro de curso', () => {
+  const GP1 = { id: 1, nombre: 'Grupo Piloto 1' };
+  const GP2 = { id: 2, nombre: 'Grupo Piloto 2' };
   const d = {
     ahora: iso(AHORA), umbral: 80,
     materias: MATERIAS.map((id, i) => ({ id, numero: i + 1, pronto: id !== 'factores_humanos', temas: id === 'factores_humanos' ? 2 : 0 })).slice(0, 2),
-    oral: { hay: true, temas: 2 },
+    oral: { hay: true, temas: 2, capitulos: [{ id: 'oral_calificaciones', numero: 1, temas: 2 }] },
+    cursos: [GP2, GP1],
     alumnos: [
-      { id: 1, nombre: 'ana', nombreVisible: 'Ana; "la piloto"', materias: {
+      { id: 1, nombre: 'ana', nombreVisible: 'Ana; "la piloto"', enCurso: GP1, materias: {
         factores_humanos: { pronto: false, nota: { pct: 95, fuente: 'examen', aprobado: true }, examen: 'hecho', hechos: 2, temas: 2, completa: true, salto: { tipo: 'convalidada', pct: 92 } },
         sistemas: { pronto: true, nota: null, examen: null, hechos: 0, temas: 0, completa: false, salto: null } },
-      oral: { pronto: false, nota: { pct: 40, fuente: 'practica', aprobado: false }, examen: null, hechos: 1, temas: 2, completa: false, salto: null },
+      capitulos: { oral_calificaciones: { pronto: false, nota: { pct: 40, fuente: 'practica', aprobado: false }, examen: null, hechos: 1, temas: 2, completa: false, salto: null } },
+      oral: { pronto: false, nota: { pct: 40, fuente: 'practica', aprobado: false }, examen: null, hechos: 1, temas: 2, completa: false, salto: null, capitulos: 1, pct: 50, completos: 0 },
       total: { hechos: 3, temas: 4, pct: 75, completas: 1, conClases: 2, general: { pct: 8, aprobados: 1, total: 11, conExamen: true } } },
-      { id: 2, nombre: 'x', nombreVisible: '=HIPERVINCULO("x")', materias: {
+      { id: 2, nombre: 'x', nombreVisible: '=HIPERVINCULO("x")', enCurso: GP2, materias: {
         factores_humanos: { pronto: false, nota: { pct: 50, fuente: 'examen', aprobado: false }, examen: 'hecho', hechos: 0, temas: 2, completa: false, salto: { tipo: 'quemado', pct: 50 } },
         sistemas: { pronto: true, nota: null, examen: null, hechos: 0, temas: 0, completa: false, salto: null } },
+      capitulos: {},
       oral: null,
       total: { hechos: 0, temas: 4, pct: 0, completas: 0, conClases: 2, general: { pct: 4, aprobados: 0, total: 11, conExamen: true } } },
     ],
   };
   const fh = 'M1 Factores humanos y toma de decisiones';
   const sis = `M2 ${nombreMateria('sistemas')}`;
-  const esperado = '﻿' + [
-    `Alumno;${fh} (nota);${fh} (avance);${sis} (nota);${sis} (avance);Oral (nota);Oral (avance);Total completado;Temas hechos;Materias completas;Nota general`,
-    '"Ana; ""la piloto""";95 %;✓ completa · Convalidada (examen 92 %);—;pronto;P 40 %;1 de 2 temas;75 %;3 de 4 temas;1 de 2 materias completas;8 %',
-    `"'=HIPERVINCULO(""x"")";50 %;0 de 2 temas · Se quemó (50 %);—;pronto;—;pronto;0 %;0 de 4 temas;0 de 2 materias completas;4 %`,
-  ].join('\r\n') + '\r\n';
-  assert.equal(csvResumen(d, t, nombreMateria), esperado);
+  const o1 = `O1 ${nombreMateria('oral_calificaciones')}`;
+  const cabecera = `Alumno;Curso;${fh} (nota);${fh} (avance);${sis} (nota);${sis} (avance);${o1} (nota);${o1} (avance);Oral total (nota);Oral total (avance);Total completado;Temas hechos;Materias completas;Nota general`;
+  const filaAna = '"Ana; ""la piloto""";Grupo Piloto 1;95 %;✓ completa · Convalidada (examen 92 %);—;pronto;P 40 %;1 de 2 temas;P 40 %;50 % del oral · 1 de 2 temas;75 %;3 de 4 temas;1 de 2 materias completas;8 %';
+  const filaX = `"'=HIPERVINCULO(""x"")";Grupo Piloto 2;50 %;0 de 2 temas · Se quemó (50 %);—;pronto;—;pronto;—;pronto;0 %;0 de 4 temas;0 de 2 materias completas;4 %`;
+  assert.equal(csvResumen(d, t, nombreMateria), `﻿${[cabecera, filaAna, filaX].join('\r\n')}\r\n`);
   assert.equal(celdaCsv('-3'), "'-3");
   assert.equal(celdaCsv('@a'), "'@a");
   assert.equal(celdaCsv('+1'), "'+1");
@@ -199,10 +226,19 @@ test('el CSV (para Excel) y el texto de «Copiar» (para WhatsApp)', () => {
 
   assert.equal(textoCopiar(d, t, nombreMateria), [
     'Notas por materia (se aprueba con 80 %)',
-    `*Ana; "la piloto"*: 75 % completado · nota general 8 %\n${fh}: 95 % · ✓ completa · Convalidada (examen 92 %)\nOral: P 40 % · 1 de 2 temas`,
-    `*=HIPERVINCULO("x")*: 0 % completado · nota general 4 %\n${fh}: 50 % · 0 de 2 temas · Se quemó (50 %)\nOral: — · pronto`,
+    `*Ana; "la piloto"*: 75 % completado · nota general 8 %\n${fh}: 95 % · ✓ completa · Convalidada (examen 92 %)\n${o1}: P 40 % · 1 de 2 temas\nOral total: P 40 % · 50 % del oral · 1 de 2 temas`,
+    `*=HIPERVINCULO("x")*: 0 % completado · nota general 4 %\n${fh}: 50 % · 0 de 2 temas · Se quemó (50 %)\n${o1}: — · pronto\nOral total: — · pronto`,
     'Todavía sin clases: M2',
   ].join('\n\n'));
+
+  // 0.14.79: el filtro de curso: la tabla, el CSV y «Copiar» llevan solo los de ese curso.
+  const soloGp2 = { ...datosDelCurso(d, 2), cursoNombre: 'Grupo Piloto 2' };
+  assert.deepEqual(soloGp2.alumnos.map(a => a.id), [2]);
+  assert.equal(csvResumen(soloGp2, t, nombreMateria), `﻿${[cabecera, filaX].join('\r\n')}\r\n`);
+  assert.match(textoCopiar(soloGp2, t, nombreMateria), /^Notas por materia de Grupo Piloto 2 \(se aprueba con 80 %\)/);
+  assert.doesNotMatch(textoCopiar(soloGp2, t, nombreMateria), /Ana/);
+  assert.equal(csvResumen(datosDelCurso(d, 1), t, nombreMateria), `﻿${[cabecera, filaAna].join('\r\n')}\r\n`);
+  assert.equal(csvResumen(datosDelCurso(d, TODOS), t, nombreMateria), csvResumen(d, t, nombreMateria), '«Todos los cursos»: todos');
 });
 
 test('pocas consultas: las mismas con 2 alumnos que con 8 (nada de una por alumno ni por tema)', () => {
@@ -225,7 +261,7 @@ test('pocas consultas: las mismas con 2 alumnos que con 8 (nada de una por alumn
 
 test('la pantalla: en Alumnos como «Notas por materia», textos en los dos idiomas, sin HTML pegado ni estilos en línea', () => {
   const alumnos = AREAS_ADMIN.find(a => a.id === 'alumnos');
-  assert.deepEqual(alumnos.sub.map(x => x.id), ['alumnos', 'como-van', 'notas-materia']);
+  assert.deepEqual(alumnos.sub.map(x => x.id), ['alumnos', 'como-van', 'notas-materia', 'cursos']); // 0.14.79: y «Cursos»
   assert.equal(areaAdmin('notas-materia').id, 'alumnos');
   assert.equal(areaAdmin('notas').id, 'alumnos', 'las notas por tema siguen marcando Alumnos');
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');

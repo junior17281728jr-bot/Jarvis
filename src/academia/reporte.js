@@ -49,7 +49,13 @@ export function limpiarOpciones(d, { estricto }) {
   const desde = fecha(d?.desde);
   const hasta = fecha(d?.hasta);
   if (desde && hasta && desde > hasta) mal();
-  return { secciones: secciones ?? ['ranking', 'alumnos', 'grupo'], bloqueados: d?.bloqueados === true, comparar, desde, hasta };
+  // 0.14.79: el curso (solo si se eligió uno; sin él, todos los cursos).
+  let curso = null;
+  if (d?.curso != null && d.curso !== 'todos') {
+    if (Number.isSafeInteger(d.curso) && d.curso > 0) curso = d.curso;
+    else mal();
+  }
+  return { secciones: secciones ?? ['ranking', 'alumnos', 'grupo'], bloqueados: d?.bloqueados === true, comparar, desde, hasta, ...(curso ? { curso } : {}) };
 }
 
 export function reporteAcademia(db, paquete, opciones, ahoraMs = Date.now()) {
@@ -59,7 +65,7 @@ export function reporteAcademia(db, paquete, opciones, ahoraMs = Date.now()) {
   const avatares = avataresDe(db);
   const fotos = fotosDe(db);
   const legales = nombresLegales(db);
-  const cuentas = db.prepare(`SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE rol = 'usuario' AND eliminado_en IS NULL ${o.bloqueados ? '' : 'AND activo = 1'} ORDER BY id`).all();
+  const cuentas = db.prepare(`SELECT id, nombre, nombre_visible, rol, activo FROM usuarios WHERE rol = 'usuario' AND eliminado_en IS NULL ${o.bloqueados ? '' : 'AND activo = 1'}${o.curso ? ' AND curso_id = ?' : ''} ORDER BY id`).all(...(o.curso ? [o.curso] : []));
   const materiasIds = (paquete?.materias ?? []).filter(m => m.temas.length).map(m => m.id);
   const titulos = new Map((paquete?.materias ?? []).flatMap(m => m.temas.map(t => [`${m.id}/${t.id}`, t.titulo])));
   const alumnos = cuentas.map(u => {

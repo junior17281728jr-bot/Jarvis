@@ -7,6 +7,11 @@
 // La tabla se desliza de lado DENTRO de su caja (la página nunca), con la primera columna fija. Todo texto va con textContent.
 // «Descargar» baja un CSV (para Excel) y «Copiar» copia un texto corto por alumno (para WhatsApp o Excel).
 // Los datos salen de GET /api/admin/academia/notas-materia (src/academia/resumen-materias.js).
+// 0.14.79: el oral ya no es una sola columna: una por cada capítulo del paquete oral (O1…O9, los que tienen temas), igual
+// que las materias, y después «Oral total» (cuánto del oral hizo y la nota del oral: el examen final si lo dio). La
+// cabecera va en dos franjas: «Test Guide» y «Examen oral». Y el filtro de curso (public/admin-cursos.js): la tabla, el
+// CSV y «Copiar» llevan solo los alumnos del curso elegido; con «Todos los cursos», cada fila dice su curso.
+import { selectorCurso, leerFiltro, filtroValido, datosDelCurso, TODOS } from './admin-cursos.js';
 
 // El color de una nota con la nota de aprobar del curso. → 'bien' | 'mal' | 'nada'
 export function tonoAprobar(pct, umbral) {
@@ -14,23 +19,36 @@ export function tonoAprobar(pct, umbral) {
   return Number(pct) >= Number(umbral) ? 'bien' : 'mal';
 }
 const nombreDe = a => a.nombreVisible || a.nombre;
+
 const pctDe = n => `${Math.floor(Number(n) || 0)} %`;
 
-// Las columnas: las materias en el orden de la escuela y el oral (si hay). → [{ id, codigo, pronto }]
+// Las columnas: las materias en el orden de la escuela, cada capítulo del oral y «Oral total» (si hay oral).
+// → [{ id, codigo, pronto, banda: 'tg' | 'oral', tipo: 'materia' | 'capitulo' | 'oral' }]
 export function columnasResumen(d) {
-  return [...d.materias.map(m => ({ id: m.id, codigo: `M${m.numero}`, pronto: m.pronto })), ...(d.oral?.hay ? [{ id: 'oral', codigo: 'Oral', pronto: false }] : [])];
+  const oral = d.oral?.hay ? [
+    ...(d.oral.capitulos ?? []).map(c => ({ id: c.id, codigo: `O${c.numero}`, pronto: false, banda: 'oral', tipo: 'capitulo' })),
+    { id: 'oral', codigo: 'Oral', pronto: false, banda: 'oral', tipo: 'oral' },
+  ] : [];
+  return [...d.materias.map(m => ({ id: m.id, codigo: `M${m.numero}`, pronto: m.pronto, banda: 'tg', tipo: 'materia' })), ...oral];
 }
-const celdaDe = (a, id) => (id === 'oral' ? a.oral : a.materias[id]) ?? null;
+const celdaDe = (a, col) => (col.tipo === 'oral' ? a.oral : col.tipo === 'capitulo' ? a.capitulos?.[col.id] : a.materias[col.id]) ?? null;
+// El nombre largo de una columna («M1 Factores humanos…», «O1 Requisitos del piloto», «Oral total»).
+export function nombreColumna(c, t, nombreMateria) {
+  return c.tipo === 'oral' ? t('nm.col.oral_total') : `${c.codigo} ${nombreMateria(c.id)}`;
+}
+const cursoDe = a => a.enCurso?.nombre ?? '';
 
 // Lo que dice una casilla, en palabras (sin DOM: la pantalla, el CSV y «Copiar» dicen lo mismo).
 // → { nota: '85 %' | 'P 40 %' | '—', estado: '✓ completa' | '3 de 5 temas' | …, salto: '' | 'Convalidada (examen 92 %)' | … }
-export function textosCelda(c, t) {
+export function textosCelda(c, t, { oralTotal = false } = {}) {
   if (!c || c.pronto) return { nota: '—', estado: t('nm.pronto'), salto: '' };
   const nota = !c.nota ? '—' : c.nota.fuente === 'practica' ? t('nm.nota.practica', { pct: pctDe(c.nota.pct) }) : pctDe(c.nota.pct);
   let estado;
   if (c.completa) estado = t('nm.completa');
   else if (c.temas > 0 && c.hechos >= c.temas) estado = c.examen === 'a_medias' ? t('nm.falta_examen_medias') : c.examen === 'hecho' ? t('nm.falta_aprobar') : t('nm.falta_examen');
   else estado = t('nm.temas', { n: c.hechos, total: c.temas });
+  // «Oral total»: también el % del oral que ya hizo.
+  if (oralTotal && !c.completa) estado = t('nm.oral.avance', { pct: pctDe(c.pct ?? (c.temas ? Math.floor((c.hechos * 100) / c.temas) : 0)), estado });
   let salto = '';
   if (c.salto?.tipo === 'convalidada') salto = c.salto.capitulos ? t('nm.salto.convalidados', { n: c.salto.capitulos }) : t('nm.salto.convalidada', { pct: pctDe(c.salto.pct) });
   else if (c.salto?.tipo === 'quemado') salto = t('nm.salto.quemado', { pct: pctDe(c.salto.pct) });
@@ -54,17 +72,18 @@ export function celdaCsv(v) {
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+// 0.14.79: con la columna «Curso» y solo los alumnos que se le pasen (la pantalla ya filtró por curso).
 export function csvResumen(d, t, nombreMateria) {
   const cols = columnasResumen(d);
-  const nombreCol = c => (c.id === 'oral' ? t('nm.col.oral') : `${c.codigo} ${nombreMateria(c.id)}`);
+  const nombreCol = c => nombreColumna(c, t, nombreMateria);
   const lineas = [];
   const fila = valores => lineas.push(valores.map(celdaCsv).join(';'));
-  fila([t('nm.col.alumno'), ...cols.flatMap(c => [t('nm.csv.nota', { col: nombreCol(c) }), t('nm.csv.avance', { col: nombreCol(c) })]),
+  fila([t('nm.col.alumno'), t('nm.col.curso'), ...cols.flatMap(c => [t('nm.csv.nota', { col: nombreCol(c) }), t('nm.csv.avance', { col: nombreCol(c) })]),
     t('nm.col.total'), t('nm.csv.temas'), t('nm.csv.completas'), t('nm.csv.general')]);
   for (const a of d.alumnos) {
     const tt = textosTotal(a.total, t);
-    fila([nombreDe(a), ...cols.flatMap(c => {
-      const x = textosCelda(celdaDe(a, c.id), t);
+    fila([nombreDe(a), cursoDe(a), ...cols.flatMap(c => {
+      const x = textosCelda(celdaDe(a, c), t, { oralTotal: c.tipo === 'oral' });
       return [x.nota, [x.estado, x.salto].filter(Boolean).join(' · ')];
     }), tt.pct, tt.temas, tt.completas, tt.general]);
   }
@@ -74,13 +93,13 @@ export function csvResumen(d, t, nombreMateria) {
 // ---------- «Copiar» (para WhatsApp: un bloque corto por alumno; en Excel cada línea queda en su fila) ----------
 export function textoCopiar(d, t, nombreMateria) {
   const cols = columnasResumen(d).filter(c => !c.pronto);
-  const bloques = [t('nm.copiar.titulo', { umbral: d.umbral })];
+  const bloques = [d.cursoNombre ? t('nm.copiar.titulo_curso', { umbral: d.umbral, curso: d.cursoNombre }) : t('nm.copiar.titulo', { umbral: d.umbral })];
   for (const a of d.alumnos) {
     const tt = textosTotal(a.total, t);
     const lineas = [t('nm.copiar.alumno', { nombre: nombreDe(a), pct: tt.pct, general: tt.general })];
     for (const c of cols) {
-      const x = textosCelda(celdaDe(a, c.id), t);
-      const nombre = c.id === 'oral' ? t('nm.col.oral') : `${c.codigo} ${nombreMateria(c.id)}`;
+      const x = textosCelda(celdaDe(a, c), t, { oralTotal: c.tipo === 'oral' });
+      const nombre = nombreColumna(c, t, nombreMateria);
       lineas.push(`${nombre}: ${[x.nota, x.estado, x.salto].filter(Boolean).join(' · ')}`);
     }
     bloques.push(lineas.join('\n'));
@@ -91,14 +110,14 @@ export function textoCopiar(d, t, nombreMateria) {
 }
 
 // ---------- La pantalla ----------
-function casilla(h, c, umbral, nombre) {
+function casilla(h, c, umbral, nombre, oralTotal = false) {
   const { el, t } = h;
-  const x = textosCelda(c, t);
+  const x = textosCelda(c, t, { oralTotal });
   if (!c || c.pronto) return el('td', { class: 'nm-td nm-pronto', title: `${nombre}: ${t('nm.pronto')}` }, el('span', { class: 'nm-nota nt nt-nada', texto: '—' }));
   const tono = tonoAprobar(c.nota?.pct, umbral);
   const practica = c.nota?.fuente === 'practica';
   const texto = [x.nota, x.estado, x.salto].filter(Boolean).join(' · ');
-  return el('td', { class: `nm-td${c.completa ? ' nm-completa' : ''}`, title: `${nombre}: ${texto}` },
+  return el('td', { class: `nm-td${c.completa ? ' nm-completa' : ''}${oralTotal ? ' nm-oral-total' : ''}`, title: `${nombre}: ${texto}` },
     el('span', { class: 'solo-lectores', texto: `${nombre}: ${practica ? t('nm.leyenda.practica') : ''} ${texto}` }),
     el('span', { class: 'nm-celda', 'aria-hidden': 'true' },
       el('strong', { class: `nm-nota nt nt-${tono}${practica ? ' nm-practica' : ''}`, texto: x.nota }),
@@ -131,17 +150,20 @@ function leyenda(h, umbral) {
 function descargar(h, d) {
   const blob = new Blob([csvResumen(d, h.t, h.nombreMateria)], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = h.el('a', { href: url, download: `notas-por-materia-${String(d.ahora).slice(0, 10)}.csv` });
+  const a = h.el('a', { href: url, download: `notas-por-materia-${String(d.ahora).slice(0, 10)}${d.cursoNombre ? `-${d.cursoNombre.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}` : ''}.csv` });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-export function vistaResumen(d, h) {
+export function vistaResumen(todo, h, { filtro = leerFiltro() } = {}) {
   const { el, t } = h;
+  const cursos = todo.cursos ?? [];
+  const elegido = filtroValido(filtro, cursos);
+  const d = { ...datosDelCurso(todo, elegido), ...(elegido !== TODOS ? { cursoNombre: cursos.find(c => c.id === elegido)?.nombre ?? '' } : {}) };
   const cols = columnasResumen(d);
-  const nombreCol = c => (c.id === 'oral' ? t('nm.col.oral') : h.nombreMateria(c.id));
+  const nombreCol = c => (c.tipo === 'oral' ? t('nm.col.oral_total') : h.nombreMateria(c.id));
   const estado = el('p', { class: 'suave chica nm-aviso', role: 'status' });
   const copiar = async () => {
     const texto = textoCopiar(d, t, h.nombreMateria);
@@ -157,23 +179,33 @@ export function vistaResumen(d, h) {
       caja.select();
     }
   };
+  // Dos filas de cabecera: arriba las franjas («Test Guide», «Examen oral»); abajo cada columna. El nombre y el total
+  // ocupan las dos filas.
+  const deTg = cols.filter(c => c.banda === 'tg').length;
+  const deOral = cols.filter(c => c.banda === 'oral').length;
+  const franjas = el('tr', { class: 'nm-franjas' },
+    el('th', { scope: 'col', rowspan: '2', class: 'notas-th notas-quien', texto: t('nm.col.alumno') }),
+    el('th', { scope: 'colgroup', colspan: String(deTg), class: 'notas-th nm-franja nm-franja-tg', texto: t('nm.banda.tg') }),
+    deOral ? el('th', { scope: 'colgroup', colspan: String(deOral), class: 'notas-th nm-franja nm-franja-oral', texto: t('nm.banda.oral') }) : null,
+    el('th', { scope: 'col', rowspan: '2', class: 'notas-th nm-th nm-th-total', texto: t('nm.col.total') }));
   const cabeza = el('tr', {},
-    el('th', { scope: 'col', class: 'notas-th notas-quien', texto: t('nm.col.alumno') }),
-    cols.map(c => el('th', { scope: 'col', class: `notas-th nm-th${c.pronto ? ' nm-th-pronto' : ''}`, title: nombreCol(c) },
-      el('span', { class: 'nm-cod', texto: c.codigo }),
-      c.id === 'oral' ? null : el('span', { class: 'nm-th-nombre', texto: nombreCol(c) }),
-      c.pronto ? el('span', { class: 'nm-th-nombre suave', texto: t('nm.pronto') }) : null)),
-    el('th', { scope: 'col', class: 'notas-th nm-th nm-th-total', texto: t('nm.col.total') }));
+    cols.map(c => el('th', { scope: 'col', class: `notas-th nm-th nm-th-${c.banda}${c.tipo === 'oral' ? ' nm-th-oral-total' : ''}${c.pronto ? ' nm-th-pronto' : ''}`, title: nombreCol(c) },
+      el('span', { class: 'nm-cod', texto: c.tipo === 'oral' ? t('nm.col.oral_total') : c.codigo }),
+      c.tipo === 'oral' ? null : el('span', { class: 'nm-th-nombre', texto: nombreCol(c) }),
+      c.pronto ? el('span', { class: 'nm-th-nombre suave', texto: t('nm.pronto') }) : null)));
+  const conVarios = cursos.length > 1 && elegido === TODOS;
   const filas = d.alumnos.map(a => el('tr', { 'data-alumno': String(a.id) },
     el('th', { scope: 'row', class: 'notas-quien' },
       el('a', { class: 'notas-quien-enlace', href: `#alumno/${a.id}`, title: t('nm.ver_ficha', { nombre: nombreDe(a) }) },
-        el('span', { class: 'notas-nombre', texto: nombreDe(a) }))),
-    cols.map(c => casilla(h, celdaDe(a, c.id), d.umbral, nombreCol(c))),
+        el('span', { class: 'notas-nombre', texto: nombreDe(a) })),
+      conVarios && cursoDe(a) ? el('span', { class: 'chip-curso', texto: cursoDe(a) }) : null),
+    cols.map(c => casilla(h, celdaDe(a, c), d.umbral, nombreCol(c), c.tipo === 'oral')),
     casillaTotal(h, a.total, d.umbral)));
   const hay = d.alumnos.length > 0;
   return el('section', { class: 'tarjeta notas nm' },
     el('h1', { class: 'titulo-pantalla con-icono' }, h.icono('marca'), el('span', { texto: t('nm.titulo') })),
     el('p', { class: 'suave', texto: t('nm.linea', { umbral: d.umbral }) }),
+    cursos.length ? selectorCurso(h, cursos, elegido, { id: 'filtro-curso-nm' }) : null,
     el('div', { class: 'botones nm-botones' },
       hay ? el('button', { type: 'button', class: 'secundario con-icono nm-descargar', onclick: () => descargar(h, d) }, h.icono('manual', 'icono chico'), el('span', { texto: t('nm.descargar') })) : null,
       hay ? el('button', { type: 'button', class: 'secundario con-icono nm-copiar', onclick: copiar }, h.icono('copia', 'icono chico'), el('span', { texto: t('nm.copiar') })) : null,
@@ -183,7 +215,7 @@ export function vistaResumen(d, h) {
       leyenda(h, d.umbral),
       el('p', { class: 'suave chica notas-deslizar', texto: t('nm.deslizar') }),
       el('div', { class: 'notas-caja nm-caja', role: 'region', 'aria-label': t('nm.titulo'), tabindex: '0' },
-        el('table', { class: 'notas-tabla nm-tabla' }, el('thead', {}, cabeza), el('tbody', {}, filas))),
+        el('table', { class: 'notas-tabla nm-tabla' }, el('thead', {}, franjas, cabeza), el('tbody', {}, filas))),
       el('p', { class: 'suave chica', texto: t('nm.general.nota') }),
     ] : h.vacio('personas', t('nm.vacio')));
 }

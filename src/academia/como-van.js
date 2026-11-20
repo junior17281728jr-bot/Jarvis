@@ -23,8 +23,9 @@ const SEMANA_MS = 7 * 24 * 3600 * 1000;
 export const ORDENES = Object.freeze(['en_linea', 'nota', 'avance']);
 
 // 0.14.6: también «Notas» (src/academia/notas.js): los alumnos (sin administradores ni cuentas eliminadas).
-export function cuentasDeAlumnos(db) {
-  return db.prepare("SELECT id, nombre, nombre_visible, activo FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL ORDER BY COALESCE(nombre_visible, nombre), id").all();
+// 0.14.79: curso: solo los de ese curso (sin él, todos).
+export function cuentasDeAlumnos(db, curso = null) {
+  return db.prepare(`SELECT id, nombre, nombre_visible, activo FROM usuarios WHERE rol <> 'admin' AND eliminado_en IS NULL${curso == null ? '' : ' AND curso_id = ?'} ORDER BY COALESCE(nombre_visible, nombre), id`).all(...(curso == null ? [] : [curso]));
 }
 
 // 0.14.55: la última respuesta de cada cuenta, una consulta corta por cuenta (índice usuario_id, creada_en de la migración
@@ -222,11 +223,12 @@ export function comoVanTodos(db, paquete, ahoraMs = Date.now()) {
 // Cada alumno: cuántas veces, la mejor y la última nota. Cada pregunta: su ÚLTIMA respuesta en ese examen (de cada
 // alumno), quiénes la fallaron y qué eligieron; ordenadas por cuántos la fallaron. Y por tema: cuántas fallas.
 // El enunciado y las opciones van TAL CUAL (solo el administrador lo ve: ruta { admin: true }).
-export function compararExamen(db, paquete, materia) {
+// 0.14.79: { curso }: solo los alumnos de ese curso (las notas Y las preguntas falladas).
+export function compararExamen(db, paquete, materia, { curso = null } = {}) {
   const m = (paquete?.materias ?? []).find(x => x.id === materia && x.temas.length);
   if (!m) return null;
   const titulos = new Map(m.temas.map(t => [t.id, t.titulo]));
-  const cuentas = new Map(cuentasDeAlumnos(db).map(u => [u.id, u]));
+  const cuentas = new Map(cuentasDeAlumnos(db, curso).map(u => [u.id, u]));
   const nombre = id => { const u = cuentas.get(id); return u.nombre_visible || u.nombre; };
   const intentos = db.prepare(`SELECT id, usuario_id, total, aciertos, aprobado, terminado_en FROM academia_intentos
     WHERE tipo = 'examen' AND materia = ? AND terminado_en IS NOT NULL ORDER BY terminado_en DESC, id DESC`).all(materia).filter(f => cuentas.has(f.usuario_id));

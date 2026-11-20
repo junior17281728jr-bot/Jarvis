@@ -38,11 +38,22 @@ export function crearPrimerAdmin(db, { nombre, claveHash, idioma = 'es', tailsca
 }
 
 // «nombreVisible»: el nombre completo de la persona («Juan Pérez»); si no se da, se usa el de usuario.
-export function crearUsuario(db, { nombre, nombreVisible = null, claveHash, rol = 'usuario', idioma = 'es', debeCambiarClave = true, creadoPor = null }) {
+// 0.14.79: cursoId: el curso de la cuenta (src/academia/cursos.js lo revisa antes). Sin él, el curso activo más nuevo.
+// Una base sin la migración 14 (una versión vieja, en las pruebas) no tiene cursos: la cuenta se crea igual, sin curso.
+function cursoNuevo(db, cursoId) {
+  if (cursoId != null) return Number(cursoId);
+  try {
+    return db.prepare('SELECT id FROM academia_cursos ORDER BY (archivado_en IS NOT NULL), id DESC LIMIT 1').get()?.id ?? 1;
+  } catch { return null; }
+}
+
+export function crearUsuario(db, { nombre, nombreVisible = null, claveHash, rol = 'usuario', idioma = 'es', debeCambiarClave = true, creadoPor = null, cursoId = null }) {
   return enTransaccion(db, () => {
     if (db.prepare('SELECT 1 FROM usuarios WHERE nombre = ?').get(nombre)) return null;
-    const r = db.prepare(`INSERT INTO usuarios (nombre, nombre_visible, clave_hash, rol, idioma, debe_cambiar_clave, creado_en)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(nombre, nombreVisible || nombre, claveHash, rol, idioma, debeCambiarClave ? 1 : 0, ahora());
+    const curso = cursoNuevo(db, cursoId);
+    const conCurso = curso == null ? '' : ', curso_id';
+    const r = db.prepare(`INSERT INTO usuarios (nombre, nombre_visible, clave_hash, rol, idioma, debe_cambiar_clave, creado_en${conCurso})
+      VALUES (?, ?, ?, ?, ?, ?, ?${curso == null ? '' : ', ?'})`).run(nombre, nombreVisible || nombre, claveHash, rol, idioma, debeCambiarClave ? 1 : 0, ahora(), ...(curso == null ? [] : [curso]));
     const id = Number(r.lastInsertRowid);
     crearEspacio(db, id, nombre);
     auditar(db, { usuarioId: creadoPor, accion: 'usuario_creado', detalle: `${nombre} (${rol})` });

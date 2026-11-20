@@ -30,11 +30,14 @@ export function mostrarNombresEnCarrera(db, encendido) {
 
 // Quién corre: los alumnos activos (sin eliminados ni bloqueados), por orden de cuenta. 0.14.18: un administrador que
 // también estudia (tiene algún intento o respuesta) corre como uno más; uno que solo administra, no.
-export function corredores(db) {
-  return db.prepare(`SELECT id, nombre, nombre_visible FROM usuarios u WHERE eliminado_en IS NULL AND activo = 1
+// 0.14.79: curso: solo los de ese curso (null: todos, para lo del administrador). Cada fila lleva su curso_id.
+export function corredores(db, { curso = null } = {}) {
+  return db.prepare(`SELECT id, nombre, nombre_visible, curso_id FROM usuarios u WHERE eliminado_en IS NULL AND activo = 1
     AND (rol <> 'admin' OR EXISTS (SELECT 1 FROM academia_intentos i WHERE i.usuario_id = u.id)
-      OR EXISTS (SELECT 1 FROM academia_respuestas r WHERE r.usuario_id = u.id)) ORDER BY id`).all();
+      OR EXISTS (SELECT 1 FROM academia_respuestas r WHERE r.usuario_id = u.id))${curso == null ? '' : ' AND curso_id = ?'} ORDER BY id`).all(...(curso == null ? [] : [curso]));
 }
+// El curso de quien mira (los cursos no se mezclan: la carrera y los alias son de su curso).
+const cursoDeId = (db, id) => (id == null ? null : db.prepare('SELECT curso_id AS c FROM usuarios WHERE id = ?').get(Number(id))?.c ?? null);
 
 const json = t => { try { return JSON.parse(t); } catch { return null; } };
 const palabras = s => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().split(/\s+/).filter(Boolean);
@@ -115,8 +118,9 @@ function misDatos(db, id, av, ahoraMs) {
 
 // GET /api/academia/carrera. → { nombres, oral, pilotos: [{ alias, tg, oral, esYo, tgEn, oralEn }], yo }
 // yo: { avance, datos } del que pregunta si corre (un administrador que mira no corre: yo = null).
+// 0.14.79: solo los de SU curso (también para un administrador que mira o estudia: el suyo).
 export function carreraDe(db, paquete, yoId, ahoraMs = Date.now()) {
-  const cuentas = corredores(db);
+  const cuentas = corredores(db, { curso: cursoDeId(db, yoId) ?? 0 });
   const nombres = nombresEnCarrera(db);
   const corre = cuentas.some(u => u.id === yoId);
   const avance = avanceDe(db, paquete, cuentas.map(u => u.id));
@@ -139,12 +143,15 @@ export function carreraDe(db, paquete, yoId, ahoraMs = Date.now()) {
 // ---------- 0.14.38: los nombres de la Competencia (tablas, galería, comentarios y verificar un código) ----------
 // Todas las cuentas activas, por orden de cuenta: los alias («Piloto N») salen de esta lista, igual en la tabla, la
 // galería y los comentarios.
-function cuentasActivas(db) {
-  return db.prepare('SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE eliminado_en IS NULL AND activo = 1 ORDER BY id').all();
+// 0.14.79: con curso, solo las de ese curso (los alias «Piloto N» se cuentan dentro de cada curso).
+function cuentasActivas(db, curso = null) {
+  return db.prepare(`SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE eliminado_en IS NULL AND activo = 1${curso == null ? '' : ' AND curso_id = ?'} ORDER BY id`)
+    .all(...(curso == null ? [] : [curso]));
 }
-// → { nombreDe(id) } para quien mira. admin: el nombre de verdad (el de la app).
-export function nombrador(db, { yoId = null, admin = false } = {}) {
-  const cuentas = cuentasActivas(db);
+// → { nombreDe(id) } para quien mira. admin: el nombre de verdad (el de la app). curso: el curso de la lista (sin él, el
+// de quien mira; un alumno solo ve nombres de su curso: de otro curso, null).
+export function nombrador(db, { yoId = null, admin = false, curso = null } = {}) {
+  const cuentas = cuentasActivas(db, admin ? null : curso ?? cursoDeId(db, yoId));
   if (admin) {
     const m = new Map(cuentas.map(u => [u.id, String(u.nombre_visible || u.nombre)]));
     return id => m.get(id) ?? null;

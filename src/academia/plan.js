@@ -155,7 +155,8 @@ export function grupoDe(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const grupo = grupoEncendido(db);
   const yoOculto = ocultoEnGrupo(db, usuarioId);
   if (!grupo) return { activo: false, oculto: yoOculto, materias: MATERIAS.length, companeros: [] };
-  const filas = db.prepare("SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE activo = 1 ORDER BY id").all();
+  // 0.14.79: solo los compañeros de SU curso (los cursos no se mezclan).
+  const filas = db.prepare("SELECT id, nombre, nombre_visible, rol FROM usuarios WHERE activo = 1 AND eliminado_en IS NULL AND curso_id = (SELECT curso_id FROM usuarios WHERE id = ?) ORDER BY id").all(usuarioId);
   const companeros = [];
   const avatares = avataresDe(db);
   const fotos = fotosDe(db);

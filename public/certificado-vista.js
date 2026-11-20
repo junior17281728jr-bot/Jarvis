@@ -295,6 +295,8 @@ export function vistaTodos(datos, h) {
       el('span', { class: 'ficha-nota', texto: c.curso === 'compe' ? `C${c.ronda}` : CORTO[c.curso] }),
       el('span', { class: 'ficha-intento-texto' },
         el('strong', { texto: c.nombre }),
+        // 0.14.79: con «Todos los cursos», el curso del alumno.
+        h.filtroCurso?.todos && c.enCurso?.nombre ? el('span', { class: 'chip-curso', texto: c.enCurso.nombre }) : null,
         el('span', { class: 'suave chica', texto: [c.curso === 'compe' ? t('cert.todos.ronda', { n: numero(c.ronda) }) : null, fechaLarga(c.fecha, h.idioma)].filter(Boolean).join(' · ') }),
         el('span', { class: 'suave chica cert-fila-codigo', texto: c.codigo })),
       h.icono('flecha', 'icono chico')));
@@ -310,6 +312,7 @@ export function vistaTodos(datos, h) {
     el('section', { class: 'tarjeta' },
       el('h1', { class: 'titulo-pantalla', texto: t('cert.todos.titulo') }),
       el('p', { class: 'suave', texto: t('cert.todos.linea') }),
+      h.filtroCurso?.nodo ?? null,
       lista.length ? el('p', { class: 'fuerte', texto: t('cert.todos.total', { n: numero(lista.length) }) }) : h.vacio('medalla', t('cert.todos.vacio'))),
     ...(lista.length ? GRUPOS_TODOS.map(grupo) : []),
   ].filter(Boolean);

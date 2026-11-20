@@ -55,7 +55,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   assert.equal(Buffer.byteLength(m.sql), 3760);
   const config = configDePrueba();
   const db = abrirBase(config);
-  assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 13); // 0.14.55: la 13 (solo índices); 0.14.51: la 12 (lo que el oral aprende); 0.14.38: la 11 (competencia); 0.7.0: la 7 (academia) también; 0.10.0: la 8 (el Instructor); 0.12.0: la 9 (lo extra); 0.13.8: la 10 (cuentas eliminadas)
+  assert.equal(db.prepare('SELECT MAX(id) AS v FROM oportia_migraciones').get().v, 14); // 0.14.79: la 14 (los cursos); 0.14.55: la 13 (solo índices); 0.14.51: la 12 (lo que el oral aprende); 0.14.38: la 11 (competencia); 0.7.0: la 7 (academia) también; 0.10.0: la 8 (el Instructor); 0.12.0: la 9 (lo extra); 0.13.8: la 10 (cuentas eliminadas)
   for (const t of ['copias_llaves', 'canales', 'copias', 'copia_partes', 'canal_envios']) {
     assert.ok(db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?").get(t), t);
   }
@@ -66,7 +66,7 @@ test('1.1 la migración 6 solo agrega: sin CHECK, sin UNIQUE, sin ADD COLUMN, id
   db.close();
   // La 0.4.1 (migraciones 1–5) abre esta base sin aplicar nada, y su trabajador (versión mínima 5) se conecta.
   const db41 = abrirBase(config, MIGRACIONES.filter(x => x.id <= 5));
-  assert.equal(db41.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, 13); // 0.14.55: con la 13; 0.14.51: con la 12; 0.14.38: con la 11; 0.7.0: con la 7 (academia); 0.10.0: con la 8; 0.12.0: con la 9; 0.13.8: con la 10
+  assert.equal(db41.prepare('SELECT COUNT(*) AS n FROM oportia_migraciones').get().n, 14); // 0.14.79: con la 14; 0.14.55: con la 13; 0.14.51: con la 12; 0.14.38: con la 11; 0.7.0: con la 7 (academia); 0.10.0: con la 8; 0.12.0: con la 9; 0.13.8: con la 10
   db41.close();
   conectarBase(config, { versionMinima: 5 }).close();
 });
@@ -450,7 +450,7 @@ test('1.11 el resumen sellado solo se abre con la clave, y sus cuentas son las d
   assert.equal(resumen.copia, c.copia);
   assert.deepEqual(resumen.porTabla, c.porTabla);
   assert.equal(resumen.filas, c.filas);
-  assert.equal(resumen.migracion, 13); // 0.14.55: la 13 (solo índices); 0.13.8: la 10 (cuentas eliminadas); 0.14.38: la 11 (competencia); 0.14.51: la 12 (lo que el oral aprende)
+  assert.equal(resumen.migracion, 14); // 0.14.79: la 14 (los cursos); 0.14.55: la 13 (solo índices); 0.13.8: la 10 (cuentas eliminadas); 0.14.38: la 11 (competencia); 0.14.51: la 12 (lo que el oral aprende)
   await assert.rejects(abrirSellado(c.sellado, derivar(crearClave().semilla).privada), codigoDe('clave_no_es_de_esta_copia'));
   const s = sellar('x'.repeat(TROZO), c.llaves.publica, { copia: c.copia, creada: c.creada });
   assert.equal((await abrirSellado(s, c.llaves.privada)).texto.length, TROZO, 'un resumen de 64 KiB justos');

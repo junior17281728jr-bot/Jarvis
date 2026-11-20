@@ -750,6 +750,34 @@ flechas y se acerca pellizcando, con la rueda o con + y −. Se pausa fuera de l
 - Textos en `clase.e3d.*` (es y en). Galería: `/clase/demo-3d.html` (`?escena=frentes&paso=4&vista=1p&pausa=1`).
   Pruebas: `test/escenas-3d.test.js`.
 
+### Lo nuevo de la 0.14.79: los cursos («Grupo Piloto 1», «Grupo Piloto 2»…) — cambio de base 14
+
+- **Cada alumno es de un curso.** La migración 14 (solo agrega: la tabla `academia_cursos` y `usuarios.curso_id` con
+  `DEFAULT 1`) deja TODAS las cuentas que ya existían en «Grupo Piloto 1», que se crea solo. No se borra ni se cambia
+  ningún dato ni progreso.
+- **Alumnos → Cursos** (`#cursos`, `public/admin-cursos.js`, `src/academia/cursos.js`, rutas en `src/api/cursos.js`, solo el
+  administrador: 403 a un alumno): crear (vacío = «Grupo Piloto N», el que sigue), cambiar el nombre y archivar o volver a
+  abrir. Nunca se borra un curso; el último abierto no se archiva.
+- **Crear un usuario** tiene «Curso» (por defecto, el abierto más nuevo) y el mensaje de bienvenida dice su curso. En su
+  ficha → Cuenta, «Cambiar de curso»: su progreso, sus notas y sus certificados no cambian.
+- **El filtro** «Todos los cursos» / cada curso, el mismo y recordado en este navegador, en: la lista de Alumnos, Cómo van
+  todos, Notas por materia (y su CSV y «Copiar»), Certificados, el Reporte (se guarda con sus opciones), Comparar un examen y
+  la Competencia del administrador. Con «Todos», cada fila dice su curso. «Para hoy» sigue siendo de todos, y cada cosa dice
+  de qué curso son sus alumnos.
+- **Separado por curso**: el grupo de Progreso, la carrera y la Competencia. El alumno ve su curso en chico en Progreso.
+- **La Competencia por curso (decisión):** las 6 rondas, sus preguntas, el reloj, la ronda congelada y «un solo intento»
+  son las mismas para todos (es contenido). Lo de cada curso: las tablas (de cada ronda y la general), los puestos y
+  medallas, «cuántos jugaron», la galería de certificados, las reacciones y los comentarios. Un código de otro curso no se
+  puede ver, ni reaccionar ni comentar (404). El administrador ve un curso con el filtro, o todos con el curso de cada fila
+  y los puestos contados dentro de cada curso. Quien cambia de curso lleva sus intentos con él.
+- **De todos, como siempre** (no llevan curso): los paquetes y las clases, las explicaciones guardadas de la IA, las voces
+  guardadas, «Dónde más cuesta», los votos 👍👎, «Para Claude», las explicaciones promovidas y todo lo que el sistema aprende.
+- **Notas por materia, también el oral:** una columna por cada capítulo oral del paquete en uso (O1 Requisitos del piloto…
+  O9 Preguntas de escenario; los que tienen temas), igual que una materia (su examen de capítulo o la práctica con «P», y
+  «✓ completa» o «N de M temas»), después «Oral total» (el % del oral hecho y la nota del oral: el examen final si lo dio) y
+  «Total completado». La cabecera va en dos franjas, «Test Guide» y «Examen oral»; el nombre sigue fijo a la izquierda.
+- Pruebas: `test/cursos.test.js` y `test/notas-materia.test.js`.
+
 ### Lo nuevo de la 0.14.71: «Notas por materia», el total de cada materia por alumno — sin cambio de base
 
 - **Administrador → Alumnos → Notas por materia** (`#notas-materia`, `public/admin-resumen.js`; ocupa el lugar de la

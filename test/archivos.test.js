@@ -484,7 +484,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
   // 0.12.3: «Cambios importantes» (solo en la pestaña Usuarios, después de dibujarla).
   // 0.14.56: #admin es el Inicio del administrador («Para hoy»: pide su dinero corto, los comprobantes y los alumnos); las
   // pestañas de #admin/… (Estado del sistema, Usuarios, Trabajo, Servidor, Cambios) piden lo mismo entre ellas.
-  const NO_SE_ADELANTA = { 'admin/estado': new Set(['/api/admin/claves', '/api/admin/cambios']) };
+  // 0.14.79: el formulario de crear un usuario pide los cursos después de dibujar lo de Usuarios (la misma función).
+  const NO_SE_ADELANTA = { 'admin/estado': new Set(['/api/admin/claves', '/api/admin/cambios', '/api/admin/academia/cursos']) };
   for (const pestana of ['admin/usuarios', 'admin/trabajo', 'admin/servidor', 'admin/cambios']) NO_SE_ADELANTA[pestana] = NO_SE_ADELANTA['admin/estado'];
   // 0.8.0: los proyectos de OPORTIA se quitaron (sus direcciones viejas muestran el camino: ver más abajo).
   const PANTALLAS = [['inicio', 'pantallaInicio'], ['configuracion', 'pantallaConfiguracion'], ['admin', 'pantallaInicioAdmin'], ['admin/estado', 'pantallaAdmin'],
@@ -518,6 +519,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.12.8: Dinero e IA → IA por alumno y Registro de la IA.
     ['ia-alumnos', 'pantallaIaAlumnos'], ['ia-registro', 'pantallaRegistroIa'], ['ia-registro/7', 'pantallaRegistroIa'],
     // 0.13.7: el Repaso final y una de sus vueltas del Test Guide.
+    // 0.14.79: Alumnos → Cursos.
+    ['cursos', 'pantallaCursos'],
     ['repaso', 'pantallaRepasoFinal'], ['repaso/test-guide/7', 'pantallaRondaFinal'], ['repaso/oral', 'pantallaOralFinal']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');

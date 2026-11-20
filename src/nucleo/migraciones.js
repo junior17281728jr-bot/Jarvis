@@ -830,4 +830,30 @@ CREATE INDEX IF NOT EXISTS tareas_por_programa ON tareas(programa, id);
 CREATE INDEX IF NOT EXISTS ia_llamadas_proposito ON ia_llamadas(proposito, estado);
 `,
   },
+  {
+    id: 14,
+    nombre: 'academia_cursos',
+    // 0.14.79 (pedido del dueño): los «cursos» (grupos de alumnos: «Grupo Piloto 1», «Grupo Piloto 2»…). Solo agrega
+    // (sin CHECK, sin UNIQUE: el nombre se cuida en el código, src/academia/cursos.js). Nada se borra nunca: un curso se
+    // «archiva» (archivado_en), no se borra.
+    //  - academia_cursos: id, nombre, creado_en, archivado_en (NULL = activo).
+    //  - usuarios.curso_id: el curso de cada cuenta. Con DEFAULT 1, TODAS las cuentas que ya existen quedan en el curso 1
+    //    sin tocar ninguna fila (SQLite pone el valor por defecto al agregar la columna); el curso 1 se crea aquí mismo
+    //    («Grupo Piloto 1»). Sin REFERENCES (SQLite no deja agregar una llave foránea con valor por defecto). Cambiar de
+    //    curso solo cambia este número: el progreso, las notas y todo lo demás del alumno siguen igual.
+    //  - Lo que es de todos (paquetes, explicaciones guardadas, voces, «dónde más cuesta», votos, lo que aprende el sistema)
+    //    NO lleva curso: sigue siendo uno solo para todos los cursos.
+    sql: `
+CREATE TABLE IF NOT EXISTS academia_cursos (
+  id INTEGER PRIMARY KEY,
+  nombre TEXT NOT NULL,
+  creado_en TEXT NOT NULL,
+  archivado_en TEXT
+);
+INSERT INTO academia_cursos (id, nombre, creado_en)
+  SELECT 1, 'Grupo Piloto 1', strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE NOT EXISTS (SELECT 1 FROM academia_cursos WHERE id = 1);
+ALTER TABLE usuarios ADD COLUMN curso_id INTEGER NOT NULL DEFAULT 1;
+CREATE INDEX IF NOT EXISTS usuarios_curso ON usuarios(curso_id);
+`,
+  },
 ];

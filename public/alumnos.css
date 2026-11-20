@@ -913,3 +913,29 @@ dialog.notas-hoja .hoja-ayuda-botones a.boton-enlace { display: flex; align-item
 .nm-general { display: flex; align-items: center; gap: 6px; }
 .nm-general .nt { display: inline-flex; padding: 1px 8px; border-radius: 99px; }
 .nm-tabla td.nm-completa { background: color-mix(in srgb, var(--bien) 7%, var(--tarjeta)); }
+
+/* ---------- 0.14.79: los cursos (public/admin-cursos.js) ---------- */
+.filtro-curso { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 10px; }
+.filtro-curso-etiqueta { margin: 0; font-weight: 700; }
+.filtro-curso-select { flex: 1 1 180px; min-width: 0; max-width: 320px; min-height: 44px; }
+.alumnos-cursos { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.chip-curso { display: inline-block; max-width: 100%; font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 99px; color: var(--suave);
+  border: 1px solid var(--borde); background: color-mix(in srgb, var(--acento) 6%, var(--tarjeta)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.notas-quien .chip-curso { display: block; width: fit-content; margin-top: 2px; }
+.hoy-texto .chip-curso { margin-left: 6px; }
+.cv-quien-texto .chip-curso { width: fit-content; }
+.cursos-lista { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
+.curso-fila { border: 1px solid var(--borde); border-radius: 14px; padding: 12px; min-width: 0; }
+.curso-fila.curso-archivado { opacity: 0.75; }
+.curso-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.curso-nombre { font-size: 17px; overflow-wrap: anywhere; }
+.curso-cabeza .etiqueta { margin-left: 0; }
+.curso-editar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }
+.curso-editar input { flex: 1 1 200px; min-width: 0; }
+.curso-nuevo { margin: 10px 0; }
+.mi-curso { margin: -4px 0 10px; }
+/* «Notas por materia»: las dos franjas de la cabecera («Test Guide» y «Examen oral»). */
+.nm-tabla th.nm-franja { text-align: center; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--texto); padding: 6px 4px; border-bottom: 2px solid var(--borde); min-width: 0; max-width: none; }
+.nm-tabla th.nm-franja-oral, .nm-tabla th.nm-th-oral { background: color-mix(in srgb, var(--acento) 5%, var(--tarjeta)); }
+.nm-tabla th.nm-th-oral-total, .nm-tabla td.nm-oral-total { background: color-mix(in srgb, var(--acento) 9%, var(--tarjeta)); }
+.compe-fila .chip-curso { margin-left: 6px; }
