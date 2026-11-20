@@ -685,3 +685,171 @@ html, body { margin: 0; }
 .clase-diagrama-rotulo { font-size: 14px; opacity: .8; }
 .clase-diagrama-capa rect { fill: #a5d8ff; stroke: #1c7ed6; stroke-width: 2; }
 .clase-diagrama-capa-1 rect { fill: #b2f2bb; } .clase-diagrama-capa-2 rect { fill: #ffec99; } .clase-diagrama-capa-3 rect { fill: #ffc9c9; }
+
+/* 0.14.62: dibujos de aviación (circuito, marcas de pista, letreros, VOR, triángulo de viento y carta seccional).
+   Los colores de las convenciones (letreros, pintura de la pista, carta, instrumento) son FIJOS en claro y oscuro: van
+   sobre su propio fondo (asfalto, «papel», la cara del instrumento). Solo los rótulos siguen el tema (currentColor). */
+.clase-visual {
+  --cl-dib-terreno: #e4efdb; --cl-dib-terreno-borde: #c3d6b3; --cl-dib-azul: #1f5fbf; --cl-dib-naranja: #d9480f;
+  --cl-dib-verde: #2b8a3e; --cl-dib-violeta: #7048e8; --cl-dib-fondo: var(--fondo-suave, #eef5ff);
+}
+:root[data-tema="oscuro"] .clase-visual { --cl-dib-terreno: #1d2b20; --cl-dib-terreno-borde: #2f4434; --cl-dib-azul: #8db8ff; --cl-dib-naranja: #ffa94d; --cl-dib-verde: #69db7c; --cl-dib-violeta: #b197fc; --cl-dib-fondo: var(--fondo-suave, #121a2c); }
+@media (prefers-color-scheme: dark) {
+  :root:is([data-tema="auto"], :not([data-tema])) .clase-visual { --cl-dib-terreno: #1d2b20; --cl-dib-terreno-borde: #2f4434; --cl-dib-azul: #8db8ff; --cl-dib-naranja: #ffa94d; --cl-dib-verde: #69db7c; --cl-dib-violeta: #b197fc; --cl-dib-fondo: var(--fondo-suave, #121a2c); }
+}
+.clase-dib { box-sizing: border-box; margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--cl-dib-fondo); color: var(--cl-texto); display: grid; gap: 10px; min-width: 0; }
+.clase-dib-titulo { font-weight: 700; font-size: 1.05rem; }
+@media (max-width: 420px) { .clase-dib { padding: 12px 10px; } }
+.clase-dib-lienzo-circuito .clase-dib-texto { font-size: 16px; }
+.clase-dib-lienzo-circuito .clase-dib-texto-chico { font-size: 15px; }
+.clase-dib-lienzo { display: block; width: 100%; height: auto; max-width: 560px; margin: 0 auto; }
+.clase-dib-texto { fill: currentColor; font-size: 15px; }
+.clase-dib-texto-chico { font-size: 13px; }
+.clase-dib-negrita { font-weight: 700; }
+.clase-dib-nota { margin: 0; font-size: .9rem; color: var(--cl-suave); }
+.clase-dib-detalle { display: block; font-size: .9rem; opacity: .9; }
+.clase-dib-lista, .clase-dib-leyenda { margin: 0; padding-left: 1.3em; display: grid; gap: 4px; font-size: .95rem; }
+.clase-dib-leyenda-resaltada { font-weight: 700; color: var(--cl-dib-naranja); }
+.clase-dib-leyenda-resaltada .clase-dib-detalle { color: var(--cl-texto); font-weight: 400; }
+.clase-dib-flecha-linea { stroke-width: 4; stroke-linecap: round; }
+.clase-dib-norte-fondo { fill: var(--cl-tarjeta); stroke: var(--cl-borde); stroke-width: 1.5; }
+.clase-dib-norte-punta { fill: var(--cl-mal); }
+.clase-dib-norte-n { fill: currentColor; font-size: 13px; font-weight: 700; }
+/* Circuito */
+.clase-dib-terreno { fill: var(--cl-dib-terreno); stroke: var(--cl-dib-terreno-borde); stroke-width: 1.5; }
+.clase-dib-asfalto { fill: #3d4148; }
+.clase-dib-asfalto-previa { fill: #50555e; }
+.clase-dib-eje { stroke: #ffffff; stroke-width: 2; stroke-dasharray: 9 7; }
+.clase-dib-numero-pista { fill: #ffffff; font-size: 15px; font-weight: 700; }
+.clase-dib-tramo { fill: none; stroke: var(--cl-dib-azul); stroke-width: 4; stroke-linecap: round; }
+.clase-dib-tramo-punta { fill: var(--cl-dib-azul); }
+.clase-dib-tramo.clase-dib-resaltado { stroke: var(--cl-dib-naranja); stroke-width: 7; }
+.clase-dib-resaltado-punta { fill: var(--cl-dib-naranja); }
+.clase-dib-entrada .clase-dib-flecha-linea { stroke: var(--cl-dib-verde); stroke-dasharray: 7 5; }
+.clase-dib-entrada .clase-dib-flecha-punta { fill: var(--cl-dib-verde); }
+.clase-dib-entrada.clase-dib-resaltado .clase-dib-flecha-linea { stroke: var(--cl-dib-naranja); stroke-width: 6; }
+.clase-dib-entrada.clase-dib-resaltado .clase-dib-flecha-punta { fill: var(--cl-dib-naranja); }
+.clase-dib-salida { fill: none; stroke: var(--cl-dib-violeta); stroke-width: 3.5; stroke-dasharray: 7 5; stroke-linecap: round; }
+.clase-dib-salida.clase-dib-resaltado { stroke: var(--cl-dib-naranja); stroke-width: 6; }
+.clase-dib-salida-punta { fill: var(--cl-dib-violeta); }
+.clase-dib-viento-flecha .clase-dib-flecha-linea { stroke: var(--cl-texto); }
+.clase-dib-viento-flecha .clase-dib-flecha-punta { fill: var(--cl-texto); }
+.clase-dib-manga-poste { fill: var(--cl-texto); }
+.clase-dib-manga-naranja { fill: #f76707; stroke: #7a2e00; stroke-width: .8; }
+.clase-dib-manga-blanca { fill: #ffffff; stroke: #7a2e00; stroke-width: .8; }
+/* Marcas de pista */
+.clase-dib-pista-fila { display: grid; gap: 12px; align-items: start; }
+@media (min-width: 700px) { .clase-dib-pista-fila { grid-template-columns: minmax(220px, 300px) 1fr; } }
+.clase-dib-lienzo-pista { max-width: 300px; }
+.clase-dib-pista-texto { display: grid; gap: 8px; min-width: 0; }
+.clase-dib-leyenda-marcas { gap: 8px; }
+.clase-dib-pintura { fill: #ffffff; }
+.clase-dib-pintura-texto { fill: #ffffff; font-size: 30px; font-weight: 700; font-family: "Arial Narrow", Arial, Helvetica, sans-serif; }
+.clase-dib-pintura-letra { font-size: 22px; }
+.clase-dib-amarilla { fill: #fcc419; }
+.clase-dib-amarilla-trazo { fill: none; stroke: #fcc419; stroke-width: 5; stroke-linejoin: miter; }
+.clase-dib-amarilla-x { fill: none; stroke: #fcc419; stroke-width: 12; }
+.clase-dib-marca-resaltada > * { stroke: #ff6b00; stroke-width: 2.5; paint-order: stroke; }
+.clase-dib-marca-resaltada > .clase-dib-amarilla-trazo, .clase-dib-marca-resaltada > .clase-dib-amarilla-x { stroke: #ff6b00; }
+.clase-dib-regla { stroke: currentColor; stroke-width: 1.5; }
+.clase-dib-llamada-linea { fill: none; stroke: currentColor; stroke-width: 1.2; opacity: .7; }
+.clase-dib-llamada-circulo { fill: var(--cl-tarjeta); stroke: var(--cl-dib-azul); stroke-width: 2.5; }
+.clase-dib-llamada-numero { fill: currentColor; font-size: 14px; font-weight: 700; }
+.clase-dib-llamada-resaltada .clase-dib-llamada-circulo { fill: var(--cl-dib-naranja); stroke: var(--cl-dib-naranja); }
+.clase-dib-llamada-resaltada .clase-dib-llamada-numero { fill: #1c1003; }
+/* Letreros (colores del aeropuerto) */
+.clase-dib-letreros-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 14px; }
+.clase-dib-letrero-item { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.clase-dib-letrero-svg { display: block; max-width: 100%; height: auto; border-radius: 3px; }
+.clase-dib-letrero-pie { display: grid; gap: 2px; font-size: .92rem; }
+.clase-dib-letrero-pie p { margin: 0; }
+.clase-dib-color-rojo { fill: #c8102e; } .clase-dib-color-negro { fill: #111111; } .clase-dib-color-amarillo { fill: #ffcc00; } .clase-dib-color-blanco { fill: #ffffff; }
+.clase-dib-marco-amarillo { fill: none; stroke: #ffcc00; stroke-width: 2.5; }
+.clase-dib-trazo-blanco { fill: none; stroke: #ffffff; stroke-width: 4; }
+.clase-dib-letrero-texto { font-size: 28px; font-weight: 700; font-family: Arial, Helvetica, sans-serif; }
+.clase-dib-letras-blanco { fill: #ffffff; stroke: #111111; stroke-width: 1.2; paint-order: stroke; }
+.clase-dib-letras-amarillo { fill: #ffcc00; } .clase-dib-letras-negro { fill: #111111; }
+.clase-dib-raya-negra { stroke: #111111; stroke-width: 3; }
+.clase-dib-raya-fina { stroke-width: 2; }
+.clase-dib-raya-discontinua { stroke-dasharray: 7 5; }
+.clase-dib-raya-amarilla { stroke: #fcc419; stroke-width: 3; }
+.clase-dib-suelo { max-width: 260px; margin: 0; }
+.clase-dib-suelo-texto { fill: #ffffff; font-size: 13px; font-weight: 700; letter-spacing: .08em; }
+.clase-dib-suelo-texto-chico { fill: currentColor; font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.clase-dib-avion-suelo { fill: #ffffff; stroke: #111111; stroke-width: 1; }
+.clase-dib-papel { fill: #fbfaf5; stroke: #cfcab8; stroke-width: 1; }
+.clase-dib-diagrama-pista { fill: #222222; }
+.clase-dib-diagrama-rodaje { fill: #d0d0d0; stroke: #8a8a8a; stroke-width: 1; }
+.clase-dib-punto-caliente { fill: none; stroke: #e03131; stroke-width: 3; }
+.clase-dib-punto-caliente-texto { fill: #c92a2a; font-size: 17px; font-weight: 700; }
+/* VOR */
+.clase-dib-vor-fila { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.clase-dib-vor-fila .clase-dib-lienzo { flex: 1 1 220px; max-width: 280px; margin: 0; }
+.clase-dib-vor-bisel { fill: #2a2f37; } .clase-dib-vor-cara { fill: #0b0d10; }
+.clase-dib-vor-marca { stroke: #f1f3f5; stroke-width: 1.6; }
+.clase-dib-vor-numero { fill: #f1f3f5; font-size: 15px; font-weight: 700; }
+.clase-dib-vor-indice { fill: #fab005; } .clase-dib-vor-indice-2 { fill: #f1f3f5; }
+.clase-dib-vor-centro { fill: none; stroke: #f1f3f5; stroke-width: 2; }
+.clase-dib-vor-punto { fill: #f1f3f5; }
+.clase-dib-vor-ventana { fill: #1c1f24; stroke: #495057; stroke-width: 1.5; }
+.clase-dib-vor-flecha { fill: #ffffff; }
+.clase-dib-vor-bandera-texto { fill: #ffffff; font-size: 12px; font-weight: 700; }
+.clase-dib-vor-bandera-off .clase-dib-vor-ventana { fill: #c92a2a; }
+.clase-dib-vor-aguja { stroke: #ffffff; stroke-width: 4; stroke-linecap: round; }
+.clase-dib-vor-obs { fill: #fab005; font-size: 15px; font-weight: 700; }
+.clase-dib-vor-papel { fill: var(--cl-tarjeta); stroke: var(--cl-borde); stroke-width: 1.5; }
+.clase-dib-vor-limite { stroke: var(--cl-suave); stroke-width: 1.5; stroke-dasharray: 3 5; }
+.clase-dib-vor-zona { fill: var(--cl-suave); font-size: 15px; font-weight: 700; }
+.clase-dib-vor-rosa { fill: none; stroke: var(--cl-dib-azul); stroke-width: 1.2; }
+.clase-dib-vor-rosa-marca { stroke: var(--cl-dib-azul); stroke-width: 1.5; }
+.clase-dib-vor-rosa-n { fill: var(--cl-dib-azul); font-size: 13px; font-weight: 700; }
+.clase-dib-vor-curso { stroke: var(--cl-dib-verde); stroke-width: 3.5; }
+.clase-dib-vor-curso-punta { fill: var(--cl-dib-verde); }
+.clase-dib-vor-radial { stroke: var(--cl-dib-naranja); stroke-width: 2.5; stroke-dasharray: 6 4; }
+.clase-dib-vor-radial-texto { fill: var(--cl-dib-naranja); font-size: 15px; font-weight: 700; }
+.clase-dib-vor-avion-forma { fill: var(--cl-texto); }
+.clase-dib-vor-estacion { fill: var(--cl-tarjeta); stroke: var(--cl-dib-azul); stroke-width: 2; }
+.clase-dib-vor-estacion-punto { fill: var(--cl-dib-azul); }
+/* Triángulo de viento */
+.clase-dib-lienzo-viento { max-width: 460px; }
+.clase-dib-viento-norte { stroke: var(--cl-suave); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.clase-dib-viento-curso-linea { stroke: var(--cl-dib-verde); stroke-width: 1.5; stroke-dasharray: 2 4; }
+.clase-dib-viento-gs .clase-dib-flecha-linea { stroke: var(--cl-dib-verde); } .clase-dib-viento-gs .clase-dib-flecha-punta { fill: var(--cl-dib-verde); }
+.clase-dib-viento-w .clase-dib-flecha-linea { stroke: var(--cl-dib-naranja); } .clase-dib-viento-w .clase-dib-flecha-punta { fill: var(--cl-dib-naranja); }
+.clase-dib-viento-tas .clase-dib-flecha-linea { stroke: var(--cl-dib-azul); } .clase-dib-viento-tas .clase-dib-flecha-punta { fill: var(--cl-dib-azul); }
+.clase-dib-viento-arco { fill: none; stroke: currentColor; stroke-width: 1.8; }
+.clase-dib-viento-punto { fill: currentColor; }
+.clase-dib-viento-t-gs { fill: var(--cl-dib-verde); font-weight: 700; }
+.clase-dib-viento-t-w { fill: var(--cl-dib-naranja); font-weight: 700; }
+.clase-dib-viento-t-tas { fill: var(--cl-dib-azul); font-weight: 700; }
+.clase-dib-datos { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 6px 14px; }
+.clase-dib-dato { display: grid; gap: 1px; padding: 6px 10px; border-radius: 10px; background: var(--cl-tarjeta); border-left: 4px solid var(--cl-borde); }
+.clase-dib-dato dt { font-size: .85rem; color: var(--cl-suave); }
+.clase-dib-dato dd { margin: 0; font-weight: 700; }
+.clase-dib-dato-gs { border-left-color: var(--cl-dib-verde); } .clase-dib-dato-w { border-left-color: var(--cl-dib-naranja); } .clase-dib-dato-tas { border-left-color: var(--cl-dib-azul); }
+/* Carta seccional (colores de la carta de la FAA, sobre papel) */
+.clase-dib-carta-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 12px; }
+.clase-dib-carta-item { display: grid; gap: 3px; align-content: start; padding: 6px; border-radius: 12px; border: 2px solid transparent; }
+.clase-dib-carta-resaltado { border-color: var(--cl-dib-naranja); background: var(--cl-tarjeta); }
+.clase-dib-carta-lienzo { display: block; width: 100%; max-width: 180px; height: auto; }
+.clase-dib-carta-papel { fill: #f7f4e8; stroke: #d6d0b8; stroke-width: 1; }
+.clase-dib-carta-trazo-azul { fill: none; stroke: #1b5aa6; stroke-width: 3.5; }
+.clase-dib-carta-trazo-magenta { fill: none; stroke: #a8237e; stroke-width: 3.5; }
+.clase-dib-carta-trazo-negro { fill: none; stroke: #111111; stroke-width: 3; }
+.clase-dib-carta-relleno-azul { fill: #1b5aa6; } .clase-dib-carta-relleno-magenta { fill: #a8237e; } .clase-dib-carta-relleno-negro { fill: #111111; }
+.clase-dib-carta-fino { stroke-width: 2; }
+.clase-dib-carta-grueso { stroke-width: 6; }
+.clase-dib-carta-discontinua { stroke-dasharray: 9 6; }
+.clase-dib-carta-discontinua-fina { stroke-dasharray: 4 3; }
+.clase-dib-carta-texto { font-size: 18px; font-weight: 700; font-family: Arial, Helvetica, sans-serif; }
+.clase-dib-carta-texto-chico { font-size: 13px; }
+.clase-dib-carta-texto-fino { font-size: 12px; font-family: Arial, Helvetica, sans-serif; }
+.clase-dib-carta-color-azul { fill: #1b5aa6; } .clase-dib-carta-color-magenta { fill: #a8237e; } .clase-dib-carta-color-negro { fill: #111111; }
+.clase-dib-carta-parada-azul { stop-color: #1b5aa6; stop-opacity: .75; } .clase-dib-carta-parada-magenta { stop-color: #a8237e; stop-opacity: .75; }
+.clase-dib-carta-parada-fin { stop-opacity: 0; }
+.clase-dib-carta-mef { fill: #1b5aa6; font-size: 40px; font-weight: 700; font-family: Arial, Helvetica, sans-serif; }
+.clase-dib-carta-mef-chico { fill: #1b5aa6; font-size: 24px; font-weight: 700; font-family: Arial, Helvetica, sans-serif; }
+.demo-json { margin: 4px 0 18px; padding: 8px 10px; border-radius: 10px; background: var(--cl-tarjeta); border: 1px solid var(--cl-borde); font-size: .78rem; white-space: pre-wrap; word-break: break-word; }
+.demo-hueco + .demo-json { margin-top: 6px; }
+.clase-dib-lienzo-circuito .clase-dib-norte-n { font-size: 16px; }
+.clase-dib-lienzo-viento .clase-dib-norte-n { font-size: 15px; }

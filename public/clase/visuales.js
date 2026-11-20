@@ -10,6 +10,8 @@ import { montarCartel } from './cartel.js';
 import { VISUALES_FH } from './visuales-fh.js';
 // 0.13.0: los dibujos con datos de la fábrica de materias.
 import { VISUALES_DIAGRAMA } from './diagramas.js';
+// 0.14.62: los dibujos de aviación (circuito, marcas de pista, letreros, VOR, triángulo de viento y carta).
+import { VISUALES_AVIACION } from './aviacion.js';
 
 export const VISUALES = {
   titulo: (c, p, o) => montarTitulo(c, { ...p, ...o }),
@@ -23,4 +25,5 @@ export const VISUALES = {
   escenario: (c, p, o) => montarEscenario(c, p, o),
   ...VISUALES_FH,
   ...VISUALES_DIAGRAMA,
+  ...VISUALES_AVIACION,
 };

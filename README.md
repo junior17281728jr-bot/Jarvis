@@ -712,6 +712,31 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.62: seis dibujos de aviación con parámetros — sin cambio de base
+
+Lo que ningún dibujo podía mostrar (la auditoría visual): `circuito`, `pista-marcas`, `letreros`, `vor`, `triangulo-viento`
+y `carta-simbolos`. Los dibuja `public/clase/aviacion.js` (un archivo por dibujo, SVG con `createElementNS`, sin estilos
+incrustados) y los revisa `src/academia/diagramas.js` (`TIPOS_DIBUJO`): un paquete con uno mal llenado no pasa
+(`diagrama_no_valido`). Los escribe el autor del paquete; la fábrica todavía no los pide (su esquema no los tiene) y el video
+resumen los ve como «cartel». Los textos van en `clase.dib.*` (es y en): `public/app.js` pasa su `t()` al dibujo. Los colores
+de las convenciones (letreros, pintura, carta, instrumento) son los mismos en claro y oscuro. Galería con el JSON de cada
+ejemplo: `/clase/demo-dibujos.html` (`?tema=oscuro&idioma=en&tipo=vor`). Pruebas: `test/dibujos-aviacion.test.js`.
+
+- `circuito`: `{ pista: "27", lado: "izquierda"|"derecha", altitud: 1000, referencia: "AGL"|"MSL", resaltar?: "upwind"|"crosswind"|"downwind"|"base"|"final"|"entrada"|"salida", entrada?: true, salida?: false, viento?: { direccion, velocidad (≤ 60) }, manga?: true }`.
+- `pista-marcas`: `{ clase: "visual"|"no_precision"|"precision", numero: "27L", ancho: 60|75|100|150|200, mostrar?: [...], resaltar?: [...] }`
+  con las marcas `designador`, `eje`, `umbral`, `punto_mira`, `zona_contacto`, `bordes`, `umbral_desplazado`, `zona_previa` y
+  `cerrada` (sin `mostrar`, las de la clase según el AIM: visual 2, no precisión 4, precisión 6).
+- `letreros`: `{ letreros: [{ tipo, texto?, flecha?, pegado?, nota? }] }` (1 a 8). Tipos: `obligatorio`, `no_entrar`,
+  `ubicacion`, `direccion`, `destino`, `informacion`, `distancia` (texto «1» a «99»), `limite_pista`, `limite_ils`,
+  `espera_pista`, `espera_ils` y `punto_caliente`. `flecha` (solo obligatorio, dirección y destino): `izquierda`, `derecha`,
+  `arriba`, `abajo`, `arriba_izquierda`, `arriba_derecha`, `abajo_izquierda`, `abajo_derecha`. `pegado: true` lo une al anterior.
+- `vor`: `{ curso (OBS), radial, rumbo?, mapa?: true }` (0 a 360). La aguja y la bandera salen solo del OBS y del radial.
+- `triangulo-viento`: `{ curso, tas (30 a 500), viento: { direccion, velocidad (menor que la TAS) } }`.
+- `carta-simbolos`: `{ simbolos?: [...], resaltar?: [...] }` (sin lista, todos).
+- Topes: `altitud` de 100 a 5000; el texto de un letrero hasta 24 letras (opcional solo en `no_entrar`, los límites, las
+  marcas de espera y `punto_caliente`); `pegado` no va en el primero; lo que va en `resaltar` también se muestra. El dibujo
+  solo llega a la app en una sección `tipo: "tarjeta"` (con `puntos`), como los demás dibujos de las tarjetas.
+
 ### Lo nuevo de la 0.14.61: los videos y la primera visita, más rápidos — sin cambio de base
 
 - **Clips de las tarjetas**: ya no llevan `autoplay` (con él el navegador baja TODOS los clips de la pantalla a la vez,

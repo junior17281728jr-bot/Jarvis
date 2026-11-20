@@ -4545,7 +4545,7 @@ function vistaVisual(v) {
   cargarVisuales().then(V => {
     if (fuera || !nodo.isConnected) return;
     const montar = V[v.tipo] ?? V.cartel;
-    try { montado = montar?.(nodo, v.parametros ?? {}, { modo: 'interactivo' }); } catch { nodo.remove(); }
+    try { montado = montar?.(nodo, v.parametros ?? {}, { modo: 'interactivo', t }); } catch { nodo.remove(); }
   });
   return { nodo, destruir: () => { fuera = true; montado?.destruir?.(); } };
 }
@@ -4562,7 +4562,7 @@ function vistaTarjeta(p, { materia }) {
     cargarVisuales().then(V => {
       if (!visual.isConnected) return;
       const montar = V[p.visual.tipo] ?? V.cartel;
-      try { montado = montar?.(visual, p.visual.parametros ?? {}, { modo: 'interactivo' }); } catch { visual.remove(); }
+      try { montado = montar?.(visual, p.visual.parametros ?? {}, { modo: 'interactivo', t }); } catch { visual.remove(); }
     });
   }
   const nodo = el('article', { class: `tarjeta-leccion estilo-${p.estilo ?? 'normal'} ${claseMateria(materia)}${foto && !clip ? ' con-foto' : ''}` },
