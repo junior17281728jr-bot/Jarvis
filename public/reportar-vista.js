@@ -33,6 +33,8 @@ export function queInicial(tipo) {
   if (tipo === 'pregunta') return 'respuesta';
   return null;
 }
+// 0.14.93: el punto de la calificación de una respuesta de la práctica en vivo (después de calificada).
+export const puntoVivo = (sesion, i, titulo = null) => ({ tipo: 'oral', vivo: { sesion: String(sesion ?? ''), i: Number(i) }, ...(titulo ? { titulo } : {}) });
 
 // Los últimos errores de la página: una lista nueva con el error agregado (los 5 más nuevos). Solo el mensaje (una
 // línea, 200 letras) y dónde (el archivo, sin lo que va después de ? o #); nunca la pila entera.
@@ -81,6 +83,9 @@ export function puntoParaMandar(item) {
     if (Array.isArray(x.opciones)) out.opciones = x.opciones.slice(0, 6);
     if (typeof x.elegida === 'string') out.elegida = x.elegida.slice(0, 2);
   }
+  // 0.14.93: la calificación de una respuesta de la «Práctica en vivo» del oral: solo cuál (la práctica y el número); el
+  // servidor saca de SU práctica guardada de qué pregunta es, lo que dijo y lo que le dijo el calificador.
+  if (tipo === 'oral' && x.vivo && typeof x.vivo.sesion === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(x.vivo.sesion) && Number.isSafeInteger(x.vivo.i) && x.vivo.i >= 0) out.vivo = { sesion: x.vivo.sesion, i: x.vivo.i };
   if (typeof x.id === 'string' && /^[A-Za-z0-9_./:#-]{1,120}$/.test(x.id)) out.id = x.id;
   if (typeof x.visual === 'string' && /^[a-z0-9_-]{1,40}$/.test(x.visual)) out.visual = x.visual;
   if (typeof x.titulo === 'string' && x.titulo.trim()) out.titulo = x.titulo.replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -130,7 +135,7 @@ export function abrirReportar(item, desde = null) {
   const { el, t } = h;
   const punto = puntoParaMandar(item);
   const contexto = contextoDeAhora();
-  let que = queInicial(punto.tipo);
+  let que = punto.vivo ? 'respuesta' : queInicial(punto.tipo);
   const hoja = el('dialog', { class: 'hoja-ayuda hoja-reportar', 'aria-labelledby': 'reportar-hoja-titulo' });
   const chips = QUE.map(q => el('button', { type: 'button', class: 'reportar-chip', 'data-que': q, 'aria-pressed': String(q === que), onclick: () => { que = q; pintarChips(); revisar(); } }, el('span', { texto: t(`reportar.que.${q}`) })));
   const pintarChips = () => { for (const b of chips) b.setAttribute('aria-pressed', String(b.dataset.que === que)); };
@@ -145,7 +150,7 @@ export function abrirReportar(item, desde = null) {
     enviar.disabled = Boolean(problemaReporte({ que, porque: porque.value }));
   };
   porque.addEventListener('input', revisar);
-  const sobre = t(`reportar.sobre.${punto.tipo}`);
+  const sobre = t(punto.vivo ? 'reportar.sobre.oral_nota' : `reportar.sobre.${punto.tipo}`);
   const lista = [[t('soporte.c.pantalla'), contexto.pantalla ?? '—'], [t('soporte.c.version'), contexto.version ?? '—'], [t('reportar.c.tamano'), contexto.tamano ?? '—'],
     [t('reportar.c.tema'), t(`reportar.c.tema.${contexto.tema}`)], [t('reportar.c.errores'), contexto.errores.length ? String(contexto.errores.length) : '0']];
   const dentro = el('div', { class: 'hoja-ayuda-dentro' },

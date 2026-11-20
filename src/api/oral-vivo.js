@@ -31,6 +31,8 @@ import { textoPreguntaVivo } from '../academia/oral-vivo.js';
 import { DICTADO, ID_DICTADO, nuevoIdDictado, tipoDeAudio, tomarTexto, barrerTextos } from '../academia/oral-dictado.js';
 
 const CABE_DATOS = 15_000; // los datos de una tarea son ≤ 16 000 letras (src/tareas/cola.js)
+// 0.14.93: la repregunta se califica solo contra lo que ella pide (su texto y los puntos que dio la IA al hacerla).
+const focoDe = (seguimiento, r) => (seguimiento ? { repregunta: r?.primera?.repregunta ?? '', puntos: Array.isArray(r?.primera?.repreguntaPuntos) ? r.primera.repreguntaPuntos : [] } : {});
 
 export function registrarRutasOralVivo(rutas, h) {
   const { estadoInstructor, pedirIa, iaNoAhora, contar, topes, activo, reloj, config, supervisor = null } = h;
@@ -135,18 +137,18 @@ export function registrarRutasOralVivo(rutas, h) {
       if (!texto) ponerCalificacion(db, usuario.id, sesion, i, seguimiento, { veredicto: 'mal', linea: '', bienDicho: '', falto: '', repregunta: '' });
       // 0.14.42: sin IA, califica el sistema (ideas clave del libro).
       // 0.14.51: con lo que aprendió de la IA en esa pregunta (src/academia/oral-aprende.js), si hay.
-      const gs = texto ? calificarSistema(p, it, texto, { db, seguimiento, previo: antes?.primera?.texto ?? '' }) : null;
+      const gs = texto ? calificarSistema(p, it, texto, { db, seguimiento, previo: antes?.primera?.texto ?? '', ...focoDe(seguimiento, antes) }) : null;
       if (gs) { ponerCalificacion(db, usuario.id, sesion, i, seguimiento, gs); return { codigo: 200, datos: { estado: 'lista', veredicto: gs.veredicto, linea: gs.linea, repregunta: null, sistema: true, ...(gs.aprendido ? { aprendido: true } : {}) } }; }
       return { codigo: 200, datos: { estado: texto ? 'sin_ia' : 'lista', ...(texto ? { ia: iaNoAhora(instructor) } : { veredicto: 'mal', linea: null, repregunta: null }) } };
     }
     const m = materialCalificar(p, it, sistemaCalificar);
     const clave = claveNueva('vivo', usuario, ahora, i * 2 + (seguimiento ? 1 : 0));
-    const pedido = { uso: 'instructor_oral_vivo', sistema: m.sistema, texto: textoCalificar({ n: m.n, respuesta: texto, repregunta: seguimiento ? antes.primera.repregunta : null }), clave, extra: { sesion, seguimiento } };
+    const pedido = { uso: 'instructor_oral_vivo', sistema: m.sistema, texto: textoCalificar({ n: m.n, respuesta: texto, repregunta: seguimiento ? antes.primera.repregunta : null, puntos: seguimiento ? antes.primera.repreguntaPuntos : [] }), clave, extra: { sesion, seguimiento } };
     const cabe = JSON.stringify([pedido.sistema, pedido.texto, clave, sesion]).length <= CABE_DATOS;
     const ia = cabe ? pedirIa(db, usuario, pedido) : { estado: 'no', motivo: 'demasiado_largo' };
     anotarRespuesta(db, usuario.id, sesion, i, { texto, seguimiento, clave: ia.estado === 'pendiente' ? clave : null, tarea: ia.tarea ?? null }, ahora);
     if (ia.estado !== 'pendiente') {
-      const gs = calificarSistema(p, it, texto, { db, seguimiento, previo: antes?.primera?.texto ?? '' });
+      const gs = calificarSistema(p, it, texto, { db, seguimiento, previo: antes?.primera?.texto ?? '', ...focoDe(seguimiento, antes) });
       ponerCalificacion(db, usuario.id, sesion, i, seguimiento, gs);
       if (gs) return { codigo: 200, datos: { estado: 'lista', veredicto: gs.veredicto, linea: gs.linea, repregunta: null, sistema: true, ...(gs.aprendido ? { aprendido: true } : {}) } };
       return { codigo: 200, datos: { estado: 'sin_ia', ia } };
@@ -295,14 +297,14 @@ export function registrarRutasOralVivo(rutas, h) {
     if (g?.veredicto) {
       // Como mucho VIVO.repreguntas repreguntas por práctica (cada una es una llamada más a la IA).
       const dadas = Object.entries(yo.abierta.resp ?? {}).filter(([k, y]) => Number(k) !== i && y?.primera?.repregunta).length;
-      const nuevo = ponerCalificacion(db, usuario.id, parametros.sesion, i, parte === 'seguimiento', dadas >= VIVO.repreguntas ? { ...g, repregunta: '' } : g);
+      const nuevo = ponerCalificacion(db, usuario.id, parametros.sesion, i, parte === 'seguimiento', dadas >= VIVO.repreguntas ? { ...g, repregunta: '', repreguntaPuntos: [] } : g);
       // 0.14.51: el sistema aprende de lo que calificó la IA (sin el usuario; src/academia/oral-aprende.js).
       aprender(db, yo.abierta, i, r, parte, g);
       return { codigo: 200, datos: vista(nuevo[parte]) };
     }
     if (estadoTarea(db, usuario, x.tarea) === 'pendiente') return { codigo: 200, datos: { estado: 'pendiente' } };
     // La IA no llegó (caducó, un tope, no sirvió): 0.14.42: califica el sistema; si no se puede, él al final.
-    const gs = calificarSistema(conPaquete(db), yo.abierta.items?.[i], x.texto ?? '', { db, seguimiento: parte === 'seguimiento', previo: r.primera?.texto ?? '' });
+    const gs = calificarSistema(conPaquete(db), yo.abierta.items?.[i], x.texto ?? '', { db, seguimiento: parte === 'seguimiento', previo: r.primera?.texto ?? '', ...focoDe(parte === 'seguimiento', r) });
     const puesto = ponerCalificacion(db, usuario.id, parametros.sesion, i, parte === 'seguimiento', gs);
     if (gs) return { codigo: 200, datos: vista(puesto[parte]) };
     return { codigo: 200, datos: { estado: 'sin_ia' } };

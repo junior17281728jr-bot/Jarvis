@@ -16,7 +16,7 @@ import { selectorIdioma, bilingue, idiomaOral } from './oral-idioma.js';
 import { crearExaminador } from './oral-examinador.js';
 import { puedeWhisper, elegirMotor, equipoCapaz, audioDeGrabacion, whisperDeLaPagina } from './voz-dictado.js';
 // 0.14.85: «⚑ Reportar un error» del dictado (public/reportar-vista.js): qué motor de voz usaba, nada de lo que dijo.
-import { enlaceReportar } from './reportar-vista.js';
+import { enlaceReportar, puntoVivo } from './reportar-vista.js';
 
 // Pone los hijos sin los que faltan (un null nunca se ve como texto).
 const poner = (nodo, ...hijos) => nodo.replaceChildren(...hijos.flat(Infinity).filter(x => x != null && x !== false));
@@ -670,6 +670,9 @@ function practica(s, prefs, h, desde = 0) {
           });
           caja.append(btn);
           chat.append(caja);
+          // 0.14.93: «⚑ Reportar» la calificación (lo que le dijo y lo que le faltó), ya sin repregunta pendiente.
+          const reportar = enlaceReportar(puntoVivo(s.sesion, i, t('reportar.vivo.titulo')), { clase: 'vivo-reportar' });
+          if (reportar) chat.append(reportar);
         }
         pie.replaceChildren(siguiente());
       }, i);
@@ -787,6 +790,8 @@ export function repaso(x, prefs, h, { zona, pie, sesion, materia }) {
         q.dijoSeguimiento ? talCual('p', q.dijoSeguimiento, 'vivo-dijo') : null,
         q.bienDicho ? el('p', { class: 'chica' }, el('strong', { texto: `${t('vivo.bien_dicho')} ` }), talCual('span', q.bienDicho)) : null,
         q.falto ? el('p', { class: 'chica' }, el('strong', { texto: `${t('vivo.falto')} ` }), talCual('span', q.falto)) : null,
+        // 0.14.93: «⚑ Reportar» la calificación de esta respuesta (si la calificó la IA o el sistema).
+        q.dijo && (q.ia || q.sistema) ? enlaceReportar(puntoVivo(sesion, q.i, t('reportar.vivo.titulo')), { clase: 'vivo-reportar' }) : null,
         el('details', { class: 'oral-origen' },
           el('summary', { class: 'con-icono' }, icono('libro', 'icono chico'), el('span', { texto: t('vivo.respuesta_libro') })),
           bilingue(h, 'p', q.respuesta_es, q.respuesta_en, 'oral-qa-respuesta')))))));

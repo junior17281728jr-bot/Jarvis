@@ -716,6 +716,40 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.93: el oral en vivo califica justo — sin cambio de base
+
+Lo reportó el dueño: a la repregunta «¿Qué nubes se forman en un frente frío y qué le pasa a la temperatura y la presión
+durante su paso?» respondió bien (cumulonimbos; la temperatura baja; la presión baja antes del frente y sube después) y
+le dijeron «Casi: la presión baja rápido, no sube después; también faltaron la mala visibilidad y los vientos». Las dos
+cosas estaban mal: el PHAK (cap. 12) dice que la presión baja, toca fondo en el paso y después sube; y la repregunta no
+preguntaba por la visibilidad ni el viento. Lo dijo la IA (el texto de «Lo que te faltó» es suyo) y el sistema lo
+aprendió para calificar sin IA.
+
+1. **La repregunta se califica solo contra lo que pide.** La IA, al hacerla, da también sus puntos
+   (`repregunta_puntos`, nunca viajan a la pantalla); al calificar la respuesta a la repregunta, el pedido lleva esos
+   puntos y la regla «lo demás del libro no va en “te faltó” ni baja el veredicto» (`textoCalificar`; el sistema del
+   capítulo no cambia por alumno, por la caché). Sin IA, `calificarSistema` usa esos puntos o, si no hay, los pedacitos
+   del libro que nombran lo que pregunta la repregunta (y solo del tema que nombra: «frente frío», no «caliente»), por
+   ideas (`focoRepregunta`, `sugerenciaIdeas`; repetir las palabras de la pregunta no cuenta como responderla). El
+   margen para el texto en el pedido de calificar sube a 3 000 bytes (la respuesta, la repregunta y sus puntos).
+2. **Nunca se marca mal un dato correcto de la FAA.** En las reglas de la IA: la respuesta del libro es un resumen; algo
+   más completo que coincide con la FAA se acepta; solo es error lo que claramente contradice; con duda, «casi» con una
+   nota suave, nunca «mal» y nunca un dato contrario que el libro no dice. El sistema cuenta «baja / bajan / disminuye /
+   drop» como la misma dirección, y decir además el antes y el después nunca resta.
+3. **Lo aprendido no esparce un veredicto malo.** «⚑ Reportar un error» ahora también en la calificación (después del
+   veredicto, junto a «¿Por qué?», y en el repaso del final): la app manda solo la práctica y el número; el servidor saca
+   de SU práctica la pregunta, lo que dijo y lo que le dijeron (punto aparte del de la respuesta del libro, `….nota`). En
+   Mensajes → Reportes se ve todo; «Pedir opinión a la IA» lo juzga como calificación. Con «¿Tiene razón?» → «Sí, es un
+   error», los ejemplos aprendidos de esa pregunta se RETIRAN (ajuste `academia.oral.aprendido.retiro.<huella>`, nunca
+   se borra nada); un retirado ya no cuenta, y una respuesta igual que la IA califique después entra como ejemplo nuevo.
+   En Dinero e IA → IA por alumno, «Revisar lo que el sistema aprendió»: por pregunta, sus ejemplos con «Retirar»,
+   «Volver a usar» y «Retirar todos los de esta pregunta». En una repregunta, el sistema nunca repite un «te faltó» viejo.
+4. **«Casi» se lee bien**: tokens `--casi-suave / --casi-texto / --casi-borde` (≥ 7:1 en claro y oscuro; antes usaba un
+   token que fuera de una materia no existía y quedaba café oscuro sobre el fondo oscuro), con borde e icono en los tres.
+
+Lo que ya estaba aprendido de repreguntas lo calificó la IA con las reglas de antes: se puede revisar o retirar desde el
+administrador. Pruebas: `test/oral-justo.test.js`.
+
 ### Lo nuevo de la 0.14.92: situaciones 3D con una decisión — sin cambio de base
 
 Pedido del dueño: «que sea divertido ver qué pasaría en la situación… por dentro (cabina) y fuera, con el avión, por su

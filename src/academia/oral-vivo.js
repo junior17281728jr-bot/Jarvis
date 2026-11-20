@@ -25,7 +25,9 @@ import { ejemplosDe, normalizar, buscarParecida, clavesAprendidas, numerosContra
 
 // porDefecto 7: con las llamadas por hora de siempre (30 → 10 por cuenta), 7 preguntas + hasta 2 repreguntas + el cierre
 // caben en una hora; más preguntas también se pueden (las que no quepan, se califica él al final).
-export const VIVO = Object.freeze({ porDefecto: 7, repreguntas: 2, minimo: 3, maximo: 15, historial: 100, sinTerminar: 20, entradaMax: 14_000 });
+export const VIVO = Object.freeze({ porDefecto: 7, repreguntas: 2, minimo: 3, maximo: 15, historial: 100, sinTerminar: 20, entradaMax: 14_000,
+  // 0.14.93: lo que se deja para el texto (la respuesta de hasta 1200 letras y, en una repregunta, ella, sus puntos y el alcance).
+  margenTexto: 3_000 });
 export const PUNTOS = Object.freeze({ bien: 1, casi: 0.5, mal: 0 });
 const clave = id => `academia.oral.vivo.${Number(id)}`;
 const esObjeto = v => v != null && typeof v === 'object' && !Array.isArray(v);
@@ -130,7 +132,7 @@ export function materialCalificar(paquete, it, armar) {
   ];
   for (const qa of opciones) {
     const sistema = armar({ capitulo: d.m.id, qa });
-    if (Buffer.byteLength(sistema) <= VIVO.entradaMax - 1500) return { sistema, n, d };
+    if (Buffer.byteLength(sistema) <= VIVO.entradaMax - VIVO.margenTexto) return { sistema, n, d };
   }
   return { sistema: armar({ capitulo: d.m.id, qa: opciones[2] }), n, d };
 }
@@ -159,7 +161,7 @@ export function ponerCalificacion(db, usuarioId, sesion, i, seguimiento, g) {
   const r = { ...(a.resp?.[i] ?? {}) };
   const parte = seguimiento ? 'seguimiento' : 'primera';
   if (!r[parte]) return r;
-  r[parte] = g ? { ...r[parte], veredicto: g.veredicto, linea: g.linea, bienDicho: g.bienDicho, falto: g.falto, ...(seguimiento ? {} : { repregunta: g.repregunta || '' }), ...(g.sistema === true ? { ia: false, sistema: true, ...(g.aprendido === true ? { aprendido: true } : {}) } : { ia: true }) }
+  r[parte] = g ? { ...r[parte], veredicto: g.veredicto, linea: g.linea, bienDicho: g.bienDicho, falto: g.falto, ...(seguimiento ? {} : { repregunta: g.repregunta || '', repreguntaPuntos: g.repregunta && Array.isArray(g.repreguntaPuntos) ? g.repreguntaPuntos.slice(0, 4) : [] }), ...(g.sistema === true ? { ia: false, sistema: true, ...(g.aprendido === true ? { aprendido: true } : {}) } : { ia: true }) }
     : { ...r[parte], sinIa: true };
   guardarVivo(db, usuarioId, { ...yo, abierta: { ...a, resp: { ...a.resp, [i]: r } } });
   return r;
@@ -314,13 +316,46 @@ const palabras = t => plano(t).split(/[^a-z0-9ñ]+/).filter(w => w && (/^\d+$/.t
 // 0.14.51: extra = las palabras (raíces) que el sistema aprendió de la IA para esa pregunta (src/academia/oral-aprende.js):
 // si dijo alguna (que no sea ya del libro), cuenta como UNA palabra clave más dicha (nunca baja la nota: no se suman al
 // total); en «dijo» va la palabra como la dijo él, y nunca van en «faltan». Sin extra, exactamente lo de antes.
+// 0.14.93: las palabras de dirección (sube / baja), en español y en inglés (4+ letras: las que cuentan como palabras).
+const DIRECCION = Object.freeze(Object.fromEntries([
+  ...'sube suben subir subiendo subio aumenta aumentan aumentar asciende ascienden ascender incrementa incrementan rise rises rising rose increase increases increasing'.split(' ').map(w => [w, 'sube']),
+  ...'baja bajan bajar bajando disminuye disminuyen disminuir desciende descienden descender caen caer cayendo drop drops dropping dropped fall falls falling fell decrease decreases decreasing'.split(' ').map(w => [w, 'baja']),
+]));
+// Una palabra cuenta si dijo la misma o una que empieza igual (5 letras: «oxígeno» / «oxigenación»).
+// 0.14.93: una palabra de dirección («bajan», «sube», «drop», «rise») cuenta con cualquiera de la MISMA dirección
+// («baja», «bajar», «disminuye»…). Decir además la otra dirección (el antes y el después, «baja antes del frente y sube
+// después») nunca resta: solo se cuentan las palabras del libro que dijo.
+function dijoPalabra(texto) {
+  const dichas = new Set(palabras(texto));
+  const dirDichas = new Set([...dichas].map(d => DIRECCION[d]).filter(Boolean));
+  return w => dichas.has(w) || (DIRECCION[w] != null && dirDichas.has(DIRECCION[w])) || (w.length >= 6 && [...dichas].some(d => d.length >= 5 && (d.startsWith(w.slice(0, 5)) || w.startsWith(d.slice(0, 5)))));
+}
+// 0.14.93: la de una REPREGUNTA, por IDEAS (cada punto de lo que pide): una idea cuenta si dijo alguna de sus palabras
+// clave; «faltan» son las ideas que no dijo, tal cual (nunca algo de fuera de la repregunta). Las palabras de la
+// repregunta y de la pregunta misma («temperatura», «presión») no cuentan: repetir la pregunta no es responderla (si a
+// una idea no le queda ninguna, se queda con las suyas). → como sugerencia.
+export function sugerenciaIdeas(texto, ideas, deLaPregunta = '') {
+  const repite = dijoPalabra(deLaPregunta);
+  const lista = ideas.map(t => {
+    const todas = [...new Set(palabras(t))];
+    const propias = todas.filter(w => !(repite(w) && DIRECCION[w] == null));
+    return { t: String(t).trim(), clave: propias.length ? propias : todas };
+  }).filter(x => x.clave.length);
+  if (!lista.length) return null;
+  const esta = dijoPalabra(texto);
+  const dichas = lista.filter(x => x.clave.some(esta));
+  const parte = dichas.length / lista.length;
+  return {
+    veredicto: parte >= 0.5 ? 'bien' : parte >= 0.25 ? 'casi' : 'mal',
+    dijo: [...new Set(dichas.flatMap(x => x.clave.filter(esta)))].slice(0, 8),
+    faltan: lista.filter(x => !dichas.includes(x)).map(x => x.t.slice(0, 120)).slice(0, 4),
+  };
+}
 export function sugerencia(texto, x, extra = []) {
   const fuente = Array.isArray(x?.puntos_clave) && x.puntos_clave.length ? x.puntos_clave.join(' ') : [x?.respuesta_es, x?.respuesta_en].filter(Boolean).join(' ');
   const clave = [...new Set(palabras(fuente))].slice(0, 30);
   if (!clave.length) return null;
-  const dichas = new Set(palabras(texto));
-  // Una palabra cuenta si dijo la misma o una que empieza igual (5 letras: «oxígeno» / «oxigenación»).
-  const esta = w => dichas.has(w) || (w.length >= 6 && [...dichas].some(d => d.length >= 5 && (d.startsWith(w.slice(0, 5)) || w.startsWith(d.slice(0, 5)))));
+  const esta = dijoPalabra(texto);
   const dijo = clave.filter(esta);
   let dichas2 = dijo.length;
   if (extra.length) {
@@ -361,18 +396,56 @@ export function porqueDe(paquete, it, r) {
 const lineaDe = (veredicto, dijo, faltan) => (veredicto === 'bien' ? `Mencionaste las ideas clave${dijo ? ` (${dijo})` : ''}.`
   : veredicto === 'casi' ? `Vas bien${dijo ? ` (${dijo})` : ''}, pero te faltó: ${faltan || 'un punto clave'}.`
     : `No mencionaste las ideas clave${faltan ? `: ${faltan}` : ''}.`);
-export function calificarSistema(paquete, it, texto, { db = null, seguimiento = false, previo = '' } = {}) {
-  const d = paquete && it ? itemDe(paquete, it) : null;
-  if (!d) return null;
+// 0.14.93 (lo pidió el dueño: en la repregunta «¿Qué nubes… y qué le pasa a la temperatura y la presión?» le pidieron
+// también la visibilidad y los vientos): una REPREGUNTA se califica solo contra lo que ella pide. Las ideas clave son:
+//  - los puntos que dio la IA al hacerla (repregunta_puntos), si los hay;
+//  - si no (una de antes, o la IA no los dio), los pedacitos del libro (puntos clave y respuesta, cortados en comas y
+//    puntos) que nombran algo que la repregunta pregunta y la pregunta original no (las palabras de la pregunta misma,
+//    como «tipo», «durante» o «paso», no cuentan);
+//  - si no se encuentra ninguno, el libro entero (lo de antes).
+// → la pregunta del libro con esas ideas clave como puntos_clave (lo demás igual).
+const RELLENO_PREGUNTA = new Set(normalizar('tipo tipos clase forma forman formar pasa pasan pasar ocurre ocurren sucede suceden durante paso pasada cual cuales cuanto cuanta explica describe dime menciona what which type kind form forms happen happens during passage tell explain describe'));
+export function focoRepregunta(x, { repregunta = '', puntos = [] } = {}) {
+  const dados = (Array.isArray(puntos) ? puntos : []).filter(p => typeof p === 'string' && p.trim()).slice(0, 4);
+  if (dados.length) return { ...x, puntos_clave: dados };
+  if (!repregunta) return x;
+  const original = new Set(normalizar([x.pregunta_es, x.pregunta_en].filter(Boolean).join(' ')));
+  const dichaRep = normalizar(repregunta).filter(k => !RELLENO_PREGUNTA.has(k) && !k.startsWith('#') && k !== '~no');
+  const pide = new Set(dichaRep.filter(k => !original.has(k)));
+  if (!pide.size) return x;
+  // De qué habla (las palabras que la repregunta toma de la pregunta original: «frente frío»): solo las líneas del libro
+  // que más las nombran («Frente frío: …», no «Frente caliente: …»).
+  const tema = new Set(dichaRep.filter(k => original.has(k)));
+  const fuente = [...(Array.isArray(x.puntos_clave) ? x.puntos_clave : []), x.respuesta_es, x.respuesta_en].filter(t => typeof t === 'string');
+  let lineas = [...new Set(fuente.flatMap(t => t.split(/\n+/)).map(t => t.trim()).filter(Boolean))];
+  if (tema.size) {
+    const cuantas = l => new Set(normalizar(l).filter(k => tema.has(k))).size;
+    const mas = Math.max(...lineas.map(cuantas));
+    if (mas > 0) lineas = lineas.filter(l => cuantas(l) === mas);
+  }
+  const nombra = t => { const ks = normalizar(t); return ks.some(k => pide.has(k)) || (pide.has(NUBE) && ks.some(k => NUBES.has(k))); };
+  const elegidos = [...new Set(lineas.flatMap(l => l.split(/[,;.:()]+/)).map(t => t.trim()).filter(t => t.length >= 3))].filter(nombra);
+  return elegidos.length ? { ...x, puntos_clave: elegidos.slice(0, 12) } : x;
+}
+// Los nombres de las nubes («¿qué nubes…?» → «cumulonimbos», «estratiformes»…).
+const NUBE = normalizar('nubes')[0];
+const NUBES = new Set(normalizar('cumulonimbos cumulonimbus cumulos cumulus estratos estratiformes stratus stratiform nimbostratus altostratus cirros cirrus towering'));
+export function calificarSistema(paquete, it, texto, { db = null, seguimiento = false, previo = '', repregunta = '', puntos = [] } = {}) {
+  const d0 = paquete && it ? itemDe(paquete, it) : null;
+  if (!d0) return null;
+  const enfocada = seguimiento ? focoRepregunta(d0.x, { repregunta, puntos }) : d0.x;
+  const ideas = enfocada !== d0.x ? enfocada.puntos_clave : null;
+  const d = { ...d0, x: enfocada };
   const ejemplos = db ? ejemplosDe(db, it) : [];
   // 0.14.52 (lo pidió el dueño: «enséñale al sistema»): los números del libro se revisan en TODAS las preguntas, aunque
   // la IA todavía no haya calificado ninguna («3 aterrizajes en 60 días» cuando el libro dice 90 ya no sale «bien»).
-  const aprendido = calificarAprendido(d.x, texto, ejemplos, { seguimiento, previo });
+  // 0.14.93: los números se comparan con el libro entero (d0), las ideas clave con lo que pide la repregunta (d).
+  const aprendido = calificarAprendido(d.x, texto, ejemplos, { seguimiento, previo, todo: d0.x, ideas, deLaPregunta: preguntaDe(d0.x, repregunta) });
   if (aprendido) return aprendido;
-  const s = sugerencia(texto, d.x);
+  const s = ideas ? sugerenciaIdeas(texto, ideas, preguntaDe(d0.x, repregunta)) : sugerencia(texto, d.x);
   if (!s) return null;
   const dijo = s.dijo.slice(0, 4).join(', ');
-  const faltan = s.faltan.slice(0, 4).join(', ');
+  const faltan = s.faltan.slice(0, 4).join(ideas ? '; ' : ', ');
   const linea = lineaDe(s.veredicto, dijo, faltan);
   return { veredicto: s.veredicto, linea: linea.slice(0, 140), bienDicho: dijo, falto: faltan, repregunta: '', sistema: true };
 }
@@ -381,24 +454,29 @@ const LINEA_APRENDIDA = Object.freeze({
   casi: 'Vas bien, pero falta algo: una respuesta así la IA la calificó como casi.',
   mal: 'No es lo que pide la pregunta: una respuesta así la IA la calificó mal.',
 });
-function calificarAprendido(x, texto, ejemplos, { seguimiento, previo }) {
+const preguntaDe = (x, repregunta) => [repregunta, x.pregunta_es, x.pregunta_en].filter(Boolean).join(' ');
+function calificarAprendido(x, texto, ejemplos, { seguimiento, previo, todo = x, ideas = null, deLaPregunta = '' }) {
   const tokens = normalizar(texto);
   const parecida = buscarParecida(ejemplos, seguimiento ? normalizar([previo, texto].filter(Boolean).join(' ')) : tokens, seguimiento);
   const extra = clavesAprendidas(ejemplos, [x.pregunta_en, x.pregunta_es].filter(Boolean).join(' '));
-  const s = sugerencia(texto, x, extra);
+  const s = ideas ? sugerenciaIdeas(texto, ideas, deLaPregunta) : sugerencia(texto, x, extra);
   if (!s && !parecida) return null;
   let veredicto = parecida?.veredicto ?? s.veredicto;
-  const contra = numerosContra(tokens, [x.pregunta_en, x.pregunta_es, x.respuesta_en, x.respuesta_es, ...(Array.isArray(x.puntos_clave) ? x.puntos_clave : [])].filter(Boolean));
+  const contra = numerosContra(tokens, [todo.pregunta_en, todo.pregunta_es, todo.respuesta_en, todo.respuesta_es, ...(Array.isArray(todo.puntos_clave) ? todo.puntos_clave : []), ...(x !== todo && Array.isArray(x.puntos_clave) ? x.puntos_clave : [])].filter(Boolean));
   // Con una parecida no: ya tiene los mismos números que vio la IA.
   if (contra && !parecida && veredicto !== 'mal') veredicto = contra.alguno ? (veredicto === 'bien' ? 'casi' : veredicto) : 'mal';
   const usoAprendido = Boolean(parecida) || extra.length > 0;
   if (!usoAprendido && !contra) return null; // nada aprendido que sirva aquí: lo de antes
   const dijo = (s?.dijo ?? []).slice(0, 4).join(', ');
-  const faltan = (s?.faltan ?? []).slice(0, 4).join(', ');
+  const faltan = (s?.faltan ?? []).slice(0, 4).join(ideas ? '; ' : ', ');
   // El texto de la IA tal cual, solo si dijo lo mismo y el veredicto no cambió por los números.
   if (parecida && veredicto === parecida.veredicto && repetible(parecida.ejemplo, seguimiento ? normalizar([previo, texto].filter(Boolean).join(' ')) : tokens, parecida.parecido)) {
     const e = parecida.ejemplo;
-    return { veredicto, linea: (e.linea || lineaDe(veredicto, dijo, faltan)).slice(0, 140), bienDicho: e.bienDicho || dijo, falto: veredicto === 'bien' ? e.falto || '' : e.falto || faltan, repregunta: '', sistema: true, aprendido: true };
+    // En una repregunta que no fue «bien», nada del texto viejo de la IA (pudo pedir lo de fuera de ella): las palabras de ahora.
+    const nuevo = seguimiento && veredicto !== 'bien';
+    return { veredicto, linea: (nuevo ? lineaDe(veredicto, dijo, faltan) : e.linea || lineaDe(veredicto, dijo, faltan)).slice(0, 140), bienDicho: nuevo ? dijo : e.bienDicho || dijo,
+      // 0.14.93: en una repregunta, lo que falta sale de lo que ELLA pide (nunca un «te faltó» viejo de fuera de ella).
+      falto: seguimiento ? (veredicto === 'bien' ? '' : faltan) : veredicto === 'bien' ? e.falto || '' : e.falto || faltan, repregunta: '', sistema: true, aprendido: true };
   }
   // Si el veredicto aprendido no es el de las palabras clave, una línea neutra (las palabras clave no son el porqué).
   if (parecida && veredicto !== s?.veredicto) {

@@ -47,7 +47,7 @@ async function subirOral(c) {
   assert.equal((await pedir(c.base, 'POST', `/api/admin/academia/paquetes/${s.datos.paquete.id}/activar`, { galleta: c.admin, datos: {} })).codigo, 200);
 }
 const tareaVivo = (c, uso = 'instructor_oral_vivo') => c.db.prepare(`SELECT id, datos FROM tareas WHERE datos LIKE '%"uso":"${uso}"%' ORDER BY id DESC`).get();
-const calificacion = (veredicto, extra = {}) => ({ tipo: 'ok', json: { veredicto, linea: veredicto === 'bien' ? 'Bien, eso es.' : 'Te faltó un detalle.', bien_dicho: 'Dijiste lo principal.', falto: veredicto === 'bien' ? '' : 'El número exacto del libro.', repregunta: '', ...extra } });
+const calificacion = (veredicto, extra = {}) => ({ tipo: 'ok', json: { veredicto, linea: veredicto === 'bien' ? 'Bien, eso es.' : 'Te faltó un detalle.', bien_dicho: 'Dijiste lo principal.', falto: veredicto === 'bien' ? '' : 'El número exacto del libro.', repregunta: '', repregunta_puntos: [], ...extra } });
 const idDe = (c, nombre) => c.db.prepare('SELECT id FROM usuarios WHERE nombre = ?').get(nombre).id;
 
 test('la lógica: comparar con las veces anteriores, ¿listo para el examen real?, por tema, el veredicto y la sugerencia sin IA', () => {

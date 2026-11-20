@@ -162,10 +162,58 @@ export function pantallaIaAlumnos(d, h) {
         el('span', { class: 'suave chica', texto: t('ia3.totales.general', { usado: usd(tt.generalMicro), tope: usd(tt.topeGeneralMicro) }) }),
         // 0.14.51: lo que el sistema aprendió de la IA en la Práctica en vivo del oral (para calificar cuando no hay IA).
         ...[d.aprendioOral?.respuestas > 0 ? el('span', { class: 'suave chica', texto: t('ia3.aprendio_oral', { n: h.numero(d.aprendioOral.respuestas), m: h.numero(d.aprendioOral.preguntas) }) }) : null,
+          // 0.14.93: revisar o retirar lo que aprendió, por pregunta.
+          d.aprendioOral?.respuestas > 0 ? revisarAprendidoOral(h) : null,
           // 0.14.57: lo que el sistema ya sabe sin IA (lo compartido que escribió la IA) y cuántas veces sirvió este mes.
           d.sabeSinIa ? el('span', { class: 'chica ia-sabe-sin-ia', texto: t('ia3.sabe_sin_ia', { e: h.numero(d.sabeSinIa.explicaciones), t: h.numero(d.sabeSinIa.tarjetas), c: h.numero(d.sabeSinIa.miniclases), o: h.numero(d.sabeSinIa.oral) }) }) : null,
           d.sabeSinIa ? el('span', { class: 'suave chica', texto: t('ia3.sabe_sin_ia_mes', { n: h.numero(d.sabeSinIa.servidasMes) }) }) : null].filter(Boolean))),
   ];
+}
+
+// 0.14.93: «Lo que el sistema aprendió» del oral: por pregunta, los ejemplos (veredicto, lo que dijo la IA, lo que faltó)
+// con «Retirar» (deja de usarse para calificar; nunca se borra), «Volver a usar» y «Retirar todos los de esta pregunta».
+export function revisarAprendidoOral(h) {
+  const { el, t } = h;
+  const cuerpo = el('div', { class: 'aprendido-oral' });
+  const caja = el('details', { class: 'aprendido-oral-caja' }, el('summary', { texto: t('ia3.aprendido.revisar') }), cuerpo);
+  const textoPregunta = x => x.texto ? (x.texto.pregunta_es || x.texto.pregunta_en) : x.pregunta;
+  const retirar = async (pregunta, datos, lugar) => {
+    const r = await h.api('POST', '/api/admin/academia/oral-aprendido/retirar', { pregunta, ...datos });
+    if (!r.ok) { h.avisar?.(h.textoError ? h.textoError(r.datos.error) : r.datos.error, 'mal'); return; }
+    h.avisar?.(t('ia3.aprendido.listo', { n: h.numero(r.datos.activos), r: h.numero(r.datos.retirados) }));
+    pintarEjemplos(pregunta, r.datos.ejemplos, lugar);
+  };
+  const pintarEjemplos = (pregunta, ejemplos, lugar) => {
+    lugar.replaceChildren(
+      el('button', { type: 'button', class: 'boton-3d rojo chico', onclick: () => retirar(pregunta, {}, lugar) }, el('span', { texto: t('ia3.aprendido.retirar_todos') })),
+      el('ul', { class: 'lista-simple aprendido-oral-ejemplos' }, ejemplos.map(e => el('li', { class: e.retirado ? 'retirado' : '' },
+        el('p', {}, el('span', { class: `insignia chica tono-${e.veredicto}`, texto: t(`vivo.v.${e.veredicto}`) }),
+          el('span', { class: 'suave chica', texto: ` ${t(e.seguimiento ? 'ia3.aprendido.repregunta' : 'ia3.aprendido.primera')} · ${t('ia3.aprendido.veces', { n: h.numero(e.veces) })}` }),
+          e.retirado ? el('span', { class: 'insignia chica tono-atencion', texto: ` ${t('ia3.aprendido.retirado')}` }) : null),
+        e.linea ? h.talCual('p', e.linea, 'chica') : null,
+        e.falto ? el('p', { class: 'chica' }, el('strong', { texto: `${t('vivo.falto')} ` }), h.talCual('span', e.falto)) : null,
+        el('button', { type: 'button', class: `boton-3d ${e.retirado ? 'blanco' : 'rojo'} chico`, onclick: () => retirar(pregunta, { id: e.id, valor: !e.retirado }, lugar) },
+          el('span', { texto: t(e.retirado ? 'ia3.aprendido.volver' : 'ia3.aprendido.retirar') }))))));
+  };
+  let cargado = false;
+  caja.addEventListener('toggle', async () => {
+    if (!caja.open || cargado) return;
+    cargado = true;
+    const r = await h.api('GET', '/api/admin/academia/oral-aprendido');
+    if (!r.ok) { cargado = false; return; }
+    cuerpo.replaceChildren(el('ul', { class: 'lista-simple' }, r.datos.preguntas.map(x => {
+      const lugar = el('div', { class: 'aprendido-oral-lugar' });
+      return el('li', {},
+        h.talCual('p', textoPregunta(x), 'fuerte'),
+        el('p', { class: 'suave chica', texto: t('ia3.aprendido.cuenta', { a: h.numero(x.activos), r: h.numero(x.retirados) }) }),
+        el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: async () => {
+          const e = await h.api('GET', `/api/admin/academia/oral-aprendido?pregunta=${encodeURIComponent(x.pregunta)}`);
+          if (e.ok) pintarEjemplos(x.pregunta, e.datos.ejemplos, lugar);
+        } }, el('span', { texto: t('ia3.aprendido.ver') })),
+        lugar);
+    })));
+  });
+  return caja;
 }
 
 // ---------- Registro de la IA ----------

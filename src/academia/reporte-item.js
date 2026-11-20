@@ -17,6 +17,7 @@ import { resolverItem, temaCualquiera, idPregunta, MUESTRA_VOTOS } from './enten
 import { leerGuardado } from './instructor-ia.js';
 import { huellaTarjeta } from './tarjeta-id.js';
 import { paginaDe } from './paquetes.js';
+import { leerVivo, veredictoDe } from './oral-vivo.js';
 
 import { QUE_REPORTE, QUE_CONTENIDO, PORQUE, sinDatosPersonales } from './reporte-que.js';
 export { QUE_REPORTE, QUE_CONTENIDO, TEXTO_QUE, PORQUE, sinDatosPersonales } from './reporte-que.js';
@@ -121,9 +122,13 @@ export function resolverReporte(db, p, usuario, item, { pantalla = null, ahora =
       paquete,
     };
   }
+  // 0.14.93: la CALIFICACIÓN de una respuesta de la «Práctica en vivo» del oral (vivo: { sesion, i }): de qué pregunta es
+  // y lo que le dijo el calificador salen de SU práctica guardada (nunca de la app). Otro punto que el de la respuesta del
+  // libro (la clave termina en «.nota»), con la clave de lo aprendido de esa pregunta (src/academia/oral-aprende.js).
+  const nota = tipo === 'oral' && d.vivo != null ? notaVivo(db, usuario, d.vivo) : null;
   if (TIPOS_PAQUETE.includes(tipo)) {
-    const r = resolverItem(db, p, { tipo, materia: d.materia, tema: d.tema, n: d.n, clave: d.clave });
-    const clave = `${r.tipo}.${r.id}.${r.h}`;
+    const r = resolverItem(db, p, nota ? { tipo, materia: nota.it.m, tema: nota.it.t, n: nota.it.i + 1 } : { tipo, materia: d.materia, tema: d.tema, n: d.n, clave: d.clave });
+    const clave = `${r.tipo}.${r.id}.${r.h}${nota ? '.nota' : ''}`;
     if (tipo === 'tarjeta') {
       const t = temaCualquiera(p, r.donde.materia, r.donde.tema);
       const s = t.secciones[Number(d.n) - 1];
@@ -136,10 +141,12 @@ export function resolverReporte(db, p, usuario, item, { pantalla = null, ahora =
     }
     if (tipo === 'oral') {
       const t = p.oral.materias.find(m => m.id === r.donde.materia).temas.find(x => x.id === r.donde.tema);
-      const x = t.libro_qa[Number(d.n) - 1];
+      const n = nota ? nota.it.i + 1 : Number(d.n);
+      const x = t.libro_qa[n - 1];
+      if (nota && sha(x.pregunta_en ?? '').slice(0, 16) !== nota.it.h) throw new ErrorHttp(404, 'no_existe'); // la pregunta cambió
       return {
-        tipo, clave, ref: { materia: r.donde.materia, tema: r.donde.tema, n: Number(d.n), id: r.id, h: r.h },
-        vista: { temaTitulo: linea(t.titulo, 200), pregunta: largo(x.pregunta_en, 600), respuesta: largo(x.respuesta_en, 2000), respuestaEs: x.respuesta_es ? largo(x.respuesta_es, 2000) : null, explicacion: x.explicacion_es ? largo(x.explicacion_es, 2000) : null },
+        tipo, clave, ref: { materia: r.donde.materia, tema: r.donde.tema, n, id: r.id, h: r.h, ...(nota ? { nota: true, aprendido: `${nota.it.m}/${nota.it.t}#${nota.it.h}` } : {}) },
+        vista: { temaTitulo: linea(t.titulo, 200), pregunta: largo(x.pregunta_en, 600), preguntaEs: x.pregunta_es ? largo(x.pregunta_es, 600) : null, respuesta: largo(x.respuesta_en, 2000), respuestaEs: x.respuesta_es ? largo(x.respuesta_es, 2000) : null, explicacion: x.explicacion_es ? largo(x.explicacion_es, 2000) : null, ...(nota ? { calificacion: nota.vista } : {}) },
         fuentes: x.pagina ? [{ libro: linea(t.libro ?? 'Libro', 80), capitulo: null, seccion: null, pagina: linea(x.pagina, 20) }] : [], paquete,
       };
     }
@@ -162,6 +169,22 @@ export function resolverReporte(db, p, usuario, item, { pantalla = null, ahora =
   return {
     tipo, clave: `${tipo}.${sha(`${tipo}|${id}|${materia ?? ''}|${tema ?? ''}|${n ?? ''}`).slice(0, 24)}`,
     ref: { id, materia, tema, n, visual, titulo }, vista: { titulo, visual }, fuentes: [], paquete,
+  };
+}
+
+// 0.14.93: la calificación de UNA respuesta de su práctica en vivo (la abierta o la última cerrada). 404 si no es suya o
+// ya no está; 409 si todavía no está calificada. → { it, vista: lo que dijo y lo que le dijo el calificador }.
+const parteVista = g => (g ? { texto: largo(g.texto, 1200) || null, veredicto: g.veredicto ?? null, linea: linea(g.linea, 200) || null, bienDicho: largo(g.bienDicho, 400) || null, falto: largo(g.falto, 400) || null, ia: g.ia === true, sistema: g.sistema === true, ...(g.aprendido === true ? { aprendido: true } : {}) } : null);
+function notaVivo(db, usuario, vivo) {
+  const sesion = String(vivo?.sesion ?? '');
+  const i = Number(vivo?.i);
+  const a = usuario ? leerVivo(db, usuario.id).abierta : null;
+  if (!a || !/^[A-Za-z0-9_-]{1,40}$/.test(sesion) || a.id !== sesion || !Number.isSafeInteger(i) || !a.items?.[i]) throw new ErrorHttp(404, 'no_existe');
+  const r = a.resp?.[i];
+  if (!r?.primera?.veredicto) throw new ErrorHttp(409, 'todavia_no');
+  return {
+    it: a.items[i],
+    vista: { veredicto: veredictoDe(r), primera: parteVista(r.primera), repregunta: r.primera.repregunta ? largo(r.primera.repregunta, 300) : null, seguimiento: parteVista(r.seguimiento?.veredicto ? r.seguimiento : null) },
   };
 }
 

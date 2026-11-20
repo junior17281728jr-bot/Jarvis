@@ -19,6 +19,10 @@
   --rojo-borde: #b91c1c;
   --rojo-suave: #fde2e2;
   --rojo-texto: #a11414;
+  /* 0.14.93: «Casi» (ámbar), con buen contraste en claro y en oscuro (texto sobre su fondo ≥ 7:1). */
+  --casi-suave: #ffefd9;
+  --casi-texto: #7a3d00;
+  --casi-borde: #e08a2c;
   --azul: #1c8fe0;
   --azul-borde: #1366a6;
   --oro: #ffc800;
@@ -37,6 +41,9 @@
   --verde-texto: #9be15d;
   --rojo-suave: #3d1515;
   --rojo-texto: #ff9c9c;
+  --casi-suave: #3a2608;
+  --casi-texto: #ffc27a;
+  --casi-borde: #c77a1e;
   --gris-nodo: #2a3446;
   --gris-nodo-borde: #1a2232;
   --gris-nodo-texto: #8794aa;
@@ -51,6 +58,9 @@
     --verde-texto: #9be15d;
     --rojo-suave: #3d1515;
     --rojo-texto: #ff9c9c;
+    --casi-suave: #3a2608;
+    --casi-texto: #ffc27a;
+    --casi-borde: #c77a1e;
     --gris-nodo: #2a3446;
     --gris-nodo-borde: #1a2232;
     --gris-nodo-texto: #8794aa;
@@ -1537,9 +1547,13 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .vivo-nivel[data-nivel="4"] i:nth-child(4) { height: 26px; }
 .vivo-estado[data-estado="pensando"]::after { content: ' …'; }
 .vivo-veredicto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 14px; font-size: 1.1rem; }
-.vivo-veredicto.tono-bien { background: var(--verde-suave); color: var(--verde-texto); }
-.vivo-veredicto.tono-casi { background: var(--mc-suave); color: var(--naranja-texto); }
-.vivo-veredicto.tono-mal { background: var(--rojo-suave); color: var(--rojo-texto); }
+/* 0.14.93: «Casi» se leía muy poco en oscuro (café oscuro sobre transparente): cada veredicto con su fondo, su texto y su
+   borde (el icono, del color del texto); nunca solo el color: el icono y la palabra dicen cuál es. */
+.vivo-veredicto.tono-bien { background: var(--verde-suave); color: var(--verde-texto); border: 1.5px solid var(--verde-borde); }
+.vivo-veredicto.tono-casi { background: var(--casi-suave); color: var(--casi-texto); border: 1.5px solid var(--casi-borde); }
+.vivo-veredicto.tono-mal { background: var(--rojo-suave); color: var(--rojo-texto); border: 1.5px solid var(--rojo-borde); }
+.vivo-veredicto .icono, .vivo-veredicto .vivo-linea { color: inherit; }
+.vivo-reportar { justify-self: start; }
 .vivo-veredicto.tono-anotado { border: 2px dashed var(--linea); font-size: 1rem; }
 .vivo-veredicto-icono .icono { width: 26px; height: 26px; }
 .vivo-linea { font-size: .98rem; font-weight: 500; }
@@ -1557,7 +1571,7 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .vivo-item p { margin: 0; }
 .vivo-item-cabeza { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .vivo-dijo { font-style: italic; }
-.insignia.tono-casi { --tono: var(--naranja); }
+.insignia.tono-casi { --tono: var(--casi-texto); }
 @media (min-width: 640px) { .vivo-entrada { grid-template-columns: auto 1fr auto; } .vivo-entrada .boton-3d { grid-column: auto; } .vivo-portada-botones { width: auto; justify-items: center; } }
 @media (prefers-reduced-motion: reduce) { .vivo-mic[aria-pressed="true"] { animation: none; outline: 4px solid var(--rojo-suave); } }
 .vivo-campo[role="radiogroup"] .vivo-interruptor { align-items: center; min-height: 44px; }

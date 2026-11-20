@@ -375,8 +375,22 @@ export function vistaPunto(item, h) {
     ].filter(Boolean));
   }
   if (item?.tipo === 'oral') {
+    // 0.14.93: de una calificación de la práctica en vivo, lo que dijo y lo que le dijo el calificador (y la repregunta).
+    const c = v.calificacion;
+    const parte = (titulo, g) => (g ? el('div', { class: 'reporte-nota-parte' }, ...[
+      el('h3', { texto: titulo }),
+      g.texto ? h.talCual('p', g.texto, 'vivo-dijo') : el('p', { class: 'suave', texto: t('vivo.en_blanco') }),
+      g.veredicto ? el('p', {}, el('span', { class: `insignia chica tono-${g.veredicto}`, texto: t(`vivo.v.${g.veredicto}`) }), el('span', { class: 'suave chica', texto: ` ${t(g.ia ? 'reportar.admin.nota.ia' : g.aprendido ? 'reportar.admin.nota.aprendido' : 'reportar.admin.nota.sistema')}` })) : null,
+      g.linea ? h.talCual('p', g.linea, 'chica') : null,
+      g.falto ? el('p', { class: 'chica' }, el('strong', { texto: `${t('vivo.falto')} ` }), h.talCual('span', g.falto)) : null].filter(Boolean)) : null);
     return el('div', { class: 'reporte-punto' }, ...[
-      el('p', { class: 'suave chica', texto: v.temaTitulo ?? '' }), h.talCual('p', v.pregunta ?? '', 'q-enunciado'), h.talCual('p', v.respuesta ?? ''),
+      c ? el('p', { class: 'aviso chica', texto: t('reportar.admin.nota.linea') }) : null,
+      el('p', { class: 'suave chica', texto: v.temaTitulo ?? '' }), h.talCual('p', v.pregunta ?? '', 'q-enunciado'), v.preguntaEs ? h.talCual('p', v.preguntaEs, 'suave') : null,
+      c ? parte(t('reportar.admin.nota.primera'), c.primera) : null,
+      c?.repregunta ? el('p', {}, el('strong', { texto: `${t('vivo.repregunta')} ` }), h.talCual('span', c.repregunta)) : null,
+      c ? parte(t('reportar.admin.nota.seguimiento'), c.seguimiento) : null,
+      c ? el('h3', { texto: t('vivo.respuesta_libro') }) : null,
+      h.talCual('p', v.respuesta ?? ''),
       v.respuestaEs ? h.talCual('p', v.respuestaEs, 'suave') : null, v.explicacion ? h.talCual('p', v.explicacion) : null,
     ].filter(Boolean));
   }
@@ -405,7 +419,8 @@ function panelPunto(r, h) {
     e.currentTarget.disabled = true;
     const x = await h.api('POST', `/api/admin/reportes/${r.id}/veredicto`, { valor: v, todos: todos.checked });
     if (!x.ok) { e.currentTarget.disabled = false; h.decir(mensaje, h.textoError(x.datos.error), 'error'); return; }
-    h.avisar(t('reportar.admin.veredicto_listo'));
+    // 0.14.93: «Sí» en una calificación del oral: lo aprendido de esa pregunta se retiró.
+    h.avisar(x.datos.aprendido ? t('reportar.admin.nota.retirados', { n: String(x.datos.aprendido.retirados) }) : t('reportar.admin.veredicto_listo'));
     await h.recargar();
   } }, el('span', { texto: t(`reportar.veredicto.${v}`) }));
   // La IA: solo si hay (y dentro de los topes); su opinión es una sugerencia.

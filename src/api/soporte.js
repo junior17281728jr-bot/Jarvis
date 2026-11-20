@@ -9,6 +9,14 @@ import { paqueteActivo } from '../academia/paquetes.js';
 import { resolverReporte, TIPOS_PAQUETE } from '../academia/reporte-item.js';
 import { armarRevision } from '../academia/reporte-ia.js';
 import { PROPOSITOS } from '../ia/propositos.js';
+import { retirarAprendido } from '../academia/oral-aprende.js';
+
+// 0.14.93: el reporte (ya con su veredicto) es de una calificación del oral → retira lo aprendido de esa pregunta.
+function retirarDeReporte(db, adminId, r, ahoraMs = Date.now()) {
+  const item = r?.reporte?.item;
+  if (item?.tipo !== 'oral' || item.ref?.nota !== true || typeof item.ref?.aprendido !== 'string') return null;
+  return retirarAprendido(db, item.ref.aprendido, { por: Number(adminId), motivo: 'reporte', reporte: r.id ?? null }, ahoraMs);
+}
 
 export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, limites = {}, ganchos = null } = {}) {
   const topes = { imagenes: new Limitador({ maximo: 40, ventanaMs: 24 * 3600 * 1000 }), mensajes: new Limitador({ maximo: 60, ventanaMs: 3600 * 1000 }), ia: new Limitador({ maximo: 20, ventanaMs: 3600 * 1000 }), ...limites };
@@ -88,7 +96,12 @@ export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, 
   // «¿Tiene razón?»: si | no | dudoso (todos: true → a todos los de ese punto que todavía no tienen veredicto).
   rutas.agregar('POST', '/api/admin/reportes/:id/veredicto', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
-    return { codigo: 200, datos: { reporte: conIa(db, usuario, ponerVeredicto(db, usuario.id, parametros.id, textoDe(datos, 'valor'), { todos: datos?.todos === true, ahoraMs: reloj() })) } };
+    const valor = textoDe(datos, 'valor');
+    const r = ponerVeredicto(db, usuario.id, parametros.id, valor, { todos: datos?.todos === true, ahoraMs: reloj() });
+    // 0.14.93: «Sí, es un error» en una calificación del oral: lo que el sistema aprendió de esa pregunta deja de usarse
+    // (se retira, nunca se borra), así un veredicto malo de la IA no se copia a otros alumnos.
+    const aprendido = valor === 'si' ? retirarDeReporte(db, usuario.id, r, reloj()) : null;
+    return { codigo: 200, datos: { reporte: conIa(db, usuario, r), ...(aprendido ? { aprendido } : {}) } };
   }, { admin: true });
   // «Pedir opinión a la IA»: SOLO el punto y los porqués (sin nombres ni datos); la respuesta llega a la fila y se lee al
   // volver a abrir el reporte. Sin IA (o fuera de los topes): 409 ia_no_disponible.

@@ -17,7 +17,8 @@ import { ErrorHttp, leerJson } from '../nucleo/http.js';
 import { paqueteActivo } from '../academia/paquetes.js';
 import { filasIaAlumnos, regalarUsos, pausarIa, ponerTopePersonal, registroAlumno, biblioteca, ocultarGuardado } from '../academia/ia-alumnos.js';
 import { vistaDinero, aplicarOpcion } from '../academia/dinero-ia.js';
-import { resumenAprendido } from '../academia/oral-aprende.js';
+import { resumenAprendido, preguntasAprendidas, ejemplosAdmin, retirarAprendido, preguntaDeClave, esClavePregunta } from '../academia/oral-aprende.js';
+import { auditar } from '../cuentas/usuarios.js';
 import { resumenSaber } from '../academia/saber-sin-ia.js';
 import { contratos } from '../cuentas/terminos.js';
 import { mandarContratos, mandarTextoAlDueno, TOPES_BOT } from '../canales/bot.js';
@@ -41,6 +42,28 @@ export function registrarRutasIaAlumnos(rutas, { config = null, reloj = Date.now
   // 0.14.51: + de cuántas respuestas calificadas por la IA aprendió el sistema (src/academia/oral-aprende.js).
   // 0.14.57: + lo que el sistema ya sabe sin IA (explicaciones, tarjetas, mini-clases, oral) y cuántas veces sirvió este mes.
   rutas.agregar('GET', '/api/admin/academia/ia-alumnos', ({ db }) => ({ codigo: 200, datos: { ...filasIaAlumnos(db, reloj()), aprendioOral: resumenAprendido(db), sabeSinIa: resumenSaber(db, reloj()) } }), { admin: true });
+  // 0.14.93: «Lo que el sistema aprendió» del oral: las preguntas (con su texto, cuántos ejemplos usa y cuántos retiró),
+  // los ejemplos de una (?pregunta=materia/tema#huella) y retirar todos, retirar uno o volver a usar uno (nunca se borra).
+  const activoDe = db => { try { return config ? paqueteActivo(db, config) : null; } catch { return null; } };
+  rutas.agregar('GET', '/api/admin/academia/oral-aprendido', ({ db, req }) => {
+    const p = activoDe(db);
+    const pregunta = new URL(req.url, 'http://x').searchParams.get('pregunta');
+    if (pregunta != null) {
+      if (!esClavePregunta(pregunta)) throw new ErrorHttp(400, 'datos_no_validos');
+      return { codigo: 200, datos: { pregunta, texto: preguntaDeClave(p, pregunta), ejemplos: ejemplosAdmin(db, pregunta) } };
+    }
+    return { codigo: 200, datos: { preguntas: preguntasAprendidas(db).map(x => ({ ...x, texto: preguntaDeClave(p, x.pregunta) })) } };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/oral-aprendido/retirar', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    const pregunta = typeof datos?.pregunta === 'string' ? datos.pregunta : '';
+    const id = datos?.id == null ? null : Number(datos.id);
+    if (id != null && !Number.isSafeInteger(id)) throw new ErrorHttp(400, 'datos_no_validos');
+    const r = retirarAprendido(db, pregunta, { id, valor: datos?.valor !== false, por: usuario.id, motivo: 'admin' }, reloj());
+    if (!r) throw new ErrorHttp(404, 'no_existe');
+    auditar(db, { usuarioId: usuario.id, accion: 'oral_aprendido_retirar', detalle: `${pregunta}${id != null ? ` #${id}` : ''} → ${datos?.valor === false ? 'usar' : 'retirar'}` });
+    return { codigo: 200, datos: { ...r, ejemplos: ejemplosAdmin(db, pregunta) } };
+  }, { admin: true });
   rutas.agregar('POST', '/api/admin/academia/alumnos/:id/regalo', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { derecho: regalarUsos(db, parametros.id, datos?.usos, usuario.id, reloj()) } };

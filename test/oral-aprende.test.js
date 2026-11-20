@@ -160,7 +160,7 @@ async function subirOral(c) {
   assert.equal((await pedir(c.base, 'POST', `/api/admin/academia/paquetes/${s.datos.paquete.id}/activar`, { galleta: c.admin, datos: {} })).codigo, 200);
 }
 const tareaVivo = c => c.db.prepare(`SELECT id FROM tareas WHERE datos LIKE '%"uso":"instructor_oral_vivo"%' ORDER BY id DESC`).get();
-const calificacion = (veredicto, extra = {}) => ({ tipo: 'ok', json: { veredicto, linea: veredicto === 'bien' ? 'Bien, eso es.' : 'No, eso no.', bien_dicho: 'Lo de los amigos.', falto: veredicto === 'bien' ? '' : 'Que nunca se cobra.', repregunta: '', ...extra } });
+const calificacion = (veredicto, extra = {}) => ({ tipo: 'ok', json: { veredicto, linea: veredicto === 'bien' ? 'Bien, eso es.' : 'No, eso no.', bien_dicho: 'Lo de los amigos.', falto: veredicto === 'bien' ? '' : 'Que nunca se cobra.', repregunta: '', repregunta_puntos: [], ...extra } });
 const idDe = (c, nombre) => c.db.prepare('SELECT id FROM usuarios WHERE nombre = ?').get(nombre).id;
 const indiceDe = (s, pregunta) => s.preguntas.findIndex(q => q.pregunta_en === pregunta);
 

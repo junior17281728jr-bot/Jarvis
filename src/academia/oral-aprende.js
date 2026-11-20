@@ -8,6 +8,13 @@
 //  - Sin IA, calificarSistema (src/academia/oral-vivo.js) mira primero estos ejemplos: si la respuesta es casi igual a una
 //    que ya calificó la IA, usa ese veredicto; si no, las palabras que la IA premió seguido se suman a las del libro.
 //  - Poco trabajo: como mucho 200 filas cortas por pregunta, ya normalizadas (no se vuelve a procesar nada).
+//  - 0.14.93 (lo pidió el dueño: la IA le dijo «no sube después» a una respuesta correcta y el sistema lo iba a copiar):
+//    un ejemplo se puede RETIRAR (nunca se borra): al confirmar el administrador un reporte de una calificación del oral
+//    («¿Tiene razón?» → «Sí, es un error»), todos los ejemplos de esa pregunta hasta ese momento; o uno por uno desde
+//    «Lo que el sistema aprendió». Un ejemplo retirado ya no cuenta al calificar (ni su veredicto ni sus palabras), y
+//    una respuesta igual que la IA califique después entra como ejemplo NUEVO. Se guarda en ajustes (sin migración):
+//    «academia.oral.aprendido.retiro.<huella de la pregunta>» = { pregunta, hastaId, ids: { id: true|false }, historial }.
+import { createHash } from 'node:crypto';
 import { VEREDICTOS } from './oral-vivo-ia.js';
 
 export const APRENDE = Object.freeze({
@@ -98,7 +105,9 @@ export function aprenderDeIa(db, { it, edicion = null, texto, seguimiento = fals
     const seg = seguimiento ? 1 : 0;
     const en = new Date(ahoraMs).toISOString();
     const fila = [String(edicion ?? '').slice(0, 200) || null, g.veredicto, corto(g.bienDicho), corto(g.falto), corto(g.linea), en];
-    const ya = db.prepare('SELECT id FROM academia_oral_aprendido WHERE pregunta = ? AND seguimiento = ? AND tokens = ?').get(pregunta, seg, ts);
+    // Uno retirado no se vuelve a usar: la respuesta igual entra como ejemplo nuevo.
+    const retiro = retiroDe(db, pregunta);
+    const ya = db.prepare('SELECT id FROM academia_oral_aprendido WHERE pregunta = ? AND seguimiento = ? AND tokens = ? ORDER BY id DESC').all(pregunta, seg, ts).find(f => !retirado(retiro, f.id));
     if (ya) {
       db.prepare('UPDATE academia_oral_aprendido SET edicion = ?, veredicto = ?, bien_dicho = ?, falto = ?, linea = ?, creado_en = ?, veces = veces + 1 WHERE id = ?').run(...fila, ya.id);
       return true;
@@ -116,9 +125,10 @@ export function ejemplosDe(db, it) {
   const pregunta = claveDe(it);
   if (!db || !pregunta) return [];
   try {
-    return db.prepare('SELECT seguimiento, tokens, veredicto, bien_dicho, falto, linea FROM academia_oral_aprendido WHERE pregunta = ? ORDER BY id DESC LIMIT ?')
+    const retiro = retiroDe(db, pregunta);
+    return db.prepare('SELECT id, seguimiento, tokens, veredicto, bien_dicho, falto, linea FROM academia_oral_aprendido WHERE pregunta = ? ORDER BY id DESC LIMIT ?')
       .all(pregunta, APRENDE.porPregunta)
-      .filter(f => VEREDICTOS.includes(f.veredicto))
+      .filter(f => VEREDICTOS.includes(f.veredicto) && !retirado(retiro, f.id))
       .map(f => ({ seguimiento: f.seguimiento === 1, tokens: f.tokens.split(' ').filter(Boolean), veredicto: f.veredicto, bienDicho: f.bien_dicho, falto: f.falto, linea: f.linea }));
   } catch { return []; }
 }
@@ -177,4 +187,71 @@ export function resumenAprendido(db) {
     const f = db.prepare('SELECT COALESCE(SUM(veces), 0) AS n, COUNT(DISTINCT pregunta) AS m FROM academia_oral_aprendido').get();
     return { respuestas: Number(f.n) || 0, preguntas: Number(f.m) || 0 };
   } catch { return { respuestas: 0, preguntas: 0 }; }
+}
+
+// ---------- 0.14.93: retirar lo aprendido (nunca se borra) ----------
+const claveRetiro = pregunta => `academia.oral.aprendido.retiro.${createHash('sha256').update(String(pregunta)).digest('hex').slice(0, 32)}`;
+const CLAVE_PREGUNTA = /^[a-z0-9_-]{1,60}\/[a-z0-9_-]{1,60}#[a-f0-9]{16}$/;
+export const esClavePregunta = p => CLAVE_PREGUNTA.test(String(p ?? ''));
+export function retiroDe(db, pregunta) {
+  try {
+    const v = JSON.parse(db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(claveRetiro(pregunta))?.valor ?? 'null');
+    if (!v || typeof v !== 'object' || v.pregunta !== pregunta) return null;
+    return { pregunta, hastaId: Number.isSafeInteger(v.hastaId) ? v.hastaId : 0, ids: v.ids && typeof v.ids === 'object' ? v.ids : {}, historial: Array.isArray(v.historial) ? v.historial : [] };
+  } catch { return null; }
+}
+// ¿Retirado? Lo que se marcó uno por uno manda; si no, todos los de esa pregunta hasta hastaId.
+export const retirado = (retiro, id) => (!retiro ? false : Object.hasOwn(retiro.ids, String(id)) ? retiro.ids[String(id)] === true : id <= retiro.hastaId);
+const guardarRetiro = (db, r, en) => db.prepare(`INSERT INTO ajustes (clave, valor, actualizado_en) VALUES (?, ?, ?)
+  ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`).run(claveRetiro(r.pregunta), JSON.stringify(r), en);
+// Retira los ejemplos de una pregunta: todos los que hay ahora (id = null) o uno (id). Lo de antes queda en «historial».
+// valor false: lo vuelve a usar (solo uno). → { pregunta, activos, retirados } o null (la pregunta no es válida).
+export function retirarAprendido(db, pregunta, { id = null, valor = true, por = null, motivo = 'admin', reporte = null } = {}, ahoraMs = Date.now()) {
+  if (!esClavePregunta(pregunta)) return null;
+  const en = new Date(ahoraMs).toISOString();
+  const r = retiroDe(db, pregunta) ?? { pregunta, hastaId: 0, ids: {}, historial: [] };
+  if (id == null) {
+    const max = db.prepare('SELECT MAX(id) AS m FROM academia_oral_aprendido WHERE pregunta = ?').get(pregunta)?.m ?? 0;
+    r.hastaId = Math.max(r.hastaId, Number(max) || 0);
+    // Los que se habían vuelto a usar uno por uno también quedan retirados.
+    for (const k of Object.keys(r.ids)) if (Number(k) <= r.hastaId) r.ids[k] = true;
+  } else {
+    if (!Number.isSafeInteger(id) || !db.prepare('SELECT 1 FROM academia_oral_aprendido WHERE id = ? AND pregunta = ?').get(id, pregunta)) return null;
+    r.ids[String(id)] = valor !== false;
+  }
+  r.historial = [...r.historial, { en, por: Number.isSafeInteger(por) ? por : null, motivo: String(motivo).slice(0, 40), reporte: reporte == null ? null : String(reporte).slice(0, 40), ...(id == null ? { todos: true, hastaId: r.hastaId } : { id, valor: valor !== false }) }].slice(-50);
+  guardarRetiro(db, r, en);
+  return { pregunta, ...cuentaDe(db, pregunta) };
+}
+function cuentaDe(db, pregunta) {
+  const retiro = retiroDe(db, pregunta);
+  const ids = db.prepare('SELECT id FROM academia_oral_aprendido WHERE pregunta = ?').all(pregunta).map(f => f.id);
+  const retirados = ids.filter(id => retirado(retiro, id)).length;
+  return { activos: ids.length - retirados, retirados };
+}
+// Para el administrador: las preguntas con algo aprendido (las más nuevas primero) con cuántos ejemplos usa y cuántos retiró.
+export function preguntasAprendidas(db, limite = 200) {
+  try {
+    return db.prepare('SELECT pregunta, COUNT(*) AS n, MAX(creado_en) AS ultimo FROM academia_oral_aprendido GROUP BY pregunta ORDER BY ultimo DESC LIMIT ?').all(limite)
+      .map(f => ({ pregunta: f.pregunta, ultimo: f.ultimo, ...cuentaDe(db, f.pregunta) }));
+  } catch { return []; }
+}
+// Los ejemplos de una pregunta para revisarlos (también los retirados). Nunca lo que dijo el alumno tal cual (solo lo
+// normalizado) ni de quién fue.
+export function ejemplosAdmin(db, pregunta) {
+  if (!esClavePregunta(pregunta)) return [];
+  const retiro = retiroDe(db, pregunta);
+  try {
+    return db.prepare('SELECT id, seguimiento, tokens, veredicto, bien_dicho, falto, linea, veces, creado_en FROM academia_oral_aprendido WHERE pregunta = ? ORDER BY id DESC LIMIT ?')
+      .all(pregunta, APRENDE.porPregunta)
+      .map(f => ({ id: f.id, seguimiento: f.seguimiento === 1, palabras: f.tokens.split(' ').filter(Boolean).slice(0, 30), veredicto: f.veredicto, bienDicho: f.bien_dicho, falto: f.falto, linea: f.linea, veces: f.veces, en: f.creado_en, retirado: retirado(retiro, f.id) }));
+  } catch { return []; }
+}
+// El texto de la pregunta de una clave («materia/tema#huella»), del paquete activo. → { materia, tema, temaTitulo, pregunta_es, pregunta_en } o null.
+export function preguntaDeClave(paquete, pregunta) {
+  const m = /^([^/]+)\/([^#]+)#([a-f0-9]{16})$/.exec(String(pregunta ?? ''));
+  if (!m) return null;
+  const t = paquete?.oral?.materias?.find(x => x.id === m[1])?.temas?.find(x => x.id === m[2]);
+  const x = (t?.libro_qa ?? []).find(q => createHash('sha256').update(String(q?.pregunta_en ?? '')).digest('hex').slice(0, 16) === m[3]);
+  return x ? { materia: m[1], tema: m[2], temaTitulo: t.titulo ?? m[2], pregunta_es: x.pregunta_es ?? null, pregunta_en: x.pregunta_en } : null;
 }
