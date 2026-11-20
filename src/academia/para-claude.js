@@ -8,6 +8,10 @@
 //  5. las explicaciones con más 👎 en «¿Lo entendiste?»;
 //  6. lo que funciona (lo que pasó a la clase como «Otra forma de verlo» y lo de más 👍);
 //  7. lo que todavía tiene pocos datos (para no decidir con 1 o 2 alumnos).
+// 0.14.85: ANTES de todo, la sección 0: los errores CONFIRMADOS por el administrador en «⚑ Reportar un error» (con sus
+// ids y lo que escribieron los alumnos, sin nombres, correos ni teléfonos: src/academia/reporte-item.js) y lo que muchos
+// alumnos reportaron pero era «cosa del alumno» (la explicación confunde; con la muestra mínima de alumnos distintos).
+// Es lo ÚNICO escrito por alumnos que entra aquí. Un punto cuyo texto cambió (huella nueva) ya no sale.
 // Siempre proporción Y muestra («8 de 10 alumnos fallaron (80 %)», «2 de 3 votaron 👎: pocos datos») y el orden por la
 // cota baja de Wilson (wilsonBajo): 7 de 10 va arriba de 2 de 2.
 // Solo agregados de todos los alumnos juntos, sin el administrador: ningún nombre, usuario, id de alumno, correo ni texto
@@ -19,6 +23,7 @@ import { idTarjeta, huellaTarjeta } from './tarjeta-id.js';
 import { todosLosVotos, MUESTRA_VOTOS, temaCualquiera } from './entendi.js';
 import { resumenOpiniones } from './opiniones.js';
 import { MATERIAS_ORAL } from './formato.js';
+import { paraClaudeReportes, MUESTRA_CONFUSO } from './reporte-item.js';
 
 export const FORMATO_PARA_CLAUDE = 'para-claude/1';
 export const PRE_SEMANA = 'academia.claude.semana.';
@@ -121,6 +126,8 @@ function partesDe(pt = {}) {
     no: v ? { ok: Boolean(v.ok), pct: v.pct, n: v.n, no: v.no } : null,
     pide: pd ? { ok: Boolean(pd.ok), pct: pd.pct, n: pd.n, pidieron: pd.pidieron ?? null } : null,
     despues: d ? { ok: Boolean(d.ok), pct: d.pct, n: d.n } : null,
+    ...(pt.error ? { error: { ok: true, n: pt.error.n } } : {}),
+    ...(pt.confuso ? { confuso: { ok: Boolean(pt.confuso.ok), n: pt.confuso.n } } : {}),
   };
 }
 
@@ -235,10 +242,13 @@ export function armarReporte(db, p, { ahora = Date.now(), foto = null } = {}) {
     const huellaAhora = s ? huellaTarjeta(s) : null;
     return { tipo: x.tipo, id: x.id, ref: `${x.materia}/${x.tema}${x.indice != null ? `#${x.indice + 1}` : ''}`, antes: x.puntaje ?? null, ahora: y?.puntaje ?? null, textoNuevo: Boolean(x.huella && huellaAhora && x.huella !== huellaAhora) };
   });
+  let reportes = { confirmados: [], confusos: [] };
+  try { reportes = paraClaudeReportes(db, p, { tope: TOPE.mejorar }); } catch (error) { console.error('reportes en «Para Claude»:', error?.name ?? 'Error'); }
   return {
     formato: FORMATO_PARA_CLAUDE, en: iso(ahora), semana, comparadaCon: anterior?.semana ?? null, salieron,
+    errores: reportes.confirmados, confusos: reportes.confusos,
     paquete: p ? { id: p.id ?? null, ids: Array.isArray(p.ids) ? [...p.ids] : [], edicion: p.edicion ?? null } : null,
-    muestra: { respuestas: MUESTRA.respuestas, alumnos: MUESTRA.alumnos, votos: MUESTRA_VOTOS, opiniones: MUESTRA_OPINION },
+    muestra: { respuestas: MUESTRA.respuestas, alumnos: MUESTRA.alumnos, votos: MUESTRA_VOTOS, opiniones: MUESTRA_OPINION, confuso: MUESTRA_CONFUSO },
     alumnos: db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE rol <> 'admin'").get().n,
     materias: p ? resumenMaterias(db, p) : [], oral: resumenOral(db),
     mejorar, pocosTarjetas: (f?.pocos ?? []).slice(0, TOPE.pocos).map(x => ({ ref: `${x.materia}/${x.tema}#${(x.indice ?? 0) + 1}`, id: x.id, titulo: corto(x.titulo, 160), partes: partesDe(x.partes) })),
@@ -263,6 +273,8 @@ function lineasPartes(pt) {
     pt.no ? `no se entendió: ${deN(pt.no.no, pt.no.n)} votaron 👎 (${pt.no.pct} %)${pt.no.ok ? '' : ' — pocos datos'}` : null,
     pt.pide ? `«Explícamelo mejor» / «Profundizar»: ${pt.pide.pidieron != null ? deN(pt.pide.pidieron, pt.pide.n) : `${pt.pide.pct} % de ${pt.pide.n}`} alumnos pidieron ayuda (${pt.pide.pct} %)${pt.pide.ok ? '' : ' — pocos datos'}` : null,
     pt.despues ? `acertó después: falló la siguiente vez ${pt.despues.pct} % de ${pt.despues.n} veces${pt.despues.ok ? '' : ' — pocos datos'}` : null,
+    pt.error ? `error confirmado: ${pt.error.n} alumnos lo reportaron y el administrador les dio la razón` : null,
+    pt.confuso ? `confunde: ${pt.confuso.n} alumnos lo reportaron y era «cosa del alumno»${pt.confuso.ok ? '' : ' — pocos datos'}` : null,
   ].filter(Boolean);
 }
 const nota = x => (x ? `${x.pct} % (de ${x.n} respuestas, ${x.alumnos} alumnos)` : '—');
@@ -277,13 +289,25 @@ export function markdownParaClaude(r) {
     `alumnos: ${r.alumnos}`,
     `muestra mínima: ${r.muestra.respuestas} respuestas de ${r.muestra.alumnos} alumnos; ${r.muestra.votos} votos; ${r.muestra.opiniones} opiniones`, '',
     '> Solo números de todos los alumnos juntos (sin el administrador). Sin nombres ni datos personales.',
+    '> La sección 0 es lo único escrito por alumnos (sus porqués, sin nombres, correos ni teléfonos).',
     '> «x de n» = alumnos distintos (o votos). «pocos datos» = menos de la muestra mínima: no decidir con eso.',
     '> El orden va por la cota baja de Wilson (95 %): la proporción junto con su muestra.',
     '> Ids: tarjeta = materia/tema#n (n desde 1, en la lista «secciones» del tema) con id = sha256(materia|tema|título)[0:24];',
     '> pregunta = id del paquete; oral = materia/tema#libroN (libro_qa); ia = clave de lo guardado. huella = versión del texto medido.',
     '> Al cambiar un texto (huella nueva) empiezan de cero los votos y los pedidos de ayuda; el fallo junta TODAS las respuestas',
     '> (también de antes del cambio): para ver si una reescritura sirvió, mira los votos y «antes / ahora», no solo el fallo.', '');
-  p('## 1. Resumen por materia', '', '| materia | práctica | examen (el último de cada alumno) |', '|---|---|---|');
+  p('## 0. Errores confirmados por el administrador (arreglar primero)', '');
+  if (!(r.errores ?? []).length) p('(ninguno)');
+  (r.errores ?? []).forEach((x, i) => {
+    p(`${i + 1}. [${x.tipo}] ${x.ref}${x.titulo ? ` «${celda(x.titulo)}»` : ''}`, `   - id=${x.id ?? '-'} paquete=${x.paquete ?? '-'} huella=${x.huella ?? '-'}`,
+      `   - ${deN(x.confirmaron, x.alumnos)} alumnos que lo reportaron tienen razón (confirmado por el administrador)`);
+    for (const z of x.razones ?? []) p(`   - ${z.que}: «${celda(z.texto)}»`);
+  });
+  if ((r.confusos ?? []).length) {
+    p('', `### Confunde: ${r.muestra?.confuso ?? MUESTRA_CONFUSO} alumnos o más lo reportaron y era «cosa del alumno»`, '');
+    r.confusos.forEach((x, i) => p(`${i + 1}. [${x.tipo}] ${x.ref}${x.titulo ? ` «${celda(x.titulo)}»` : ''}: ${x.confuso} alumnos — la explicación confunde (id=${x.id ?? '-'} huella=${x.huella ?? '-'})`));
+  }
+  p('', '## 1. Resumen por materia', '', '| materia | práctica | examen (el último de cada alumno) |', '|---|---|---|');
   for (const m of r.materias) p(`| ${celda(m.materia)} | ${nota(m.practica)} | ${examen(m.examen)} |`);
   if (!r.materias.length) p('| — | — | — |');
   p('', '### Oral', '', '| capítulo | práctica | examen (el último de cada alumno) |', '|---|---|---|');
@@ -329,7 +353,8 @@ export function markdownParaClaude(r) {
   if (!pocos.length) p('(nada)');
   for (const l of pocos) p(`- ${l}`);
   p('', '## Cómo aplicar las mejoras', '',
-    '- Reescribe primero lo de arriba de la sección 2; usa las secciones 3 a 5 para saber qué parte confunde.',
+    '- Arregla primero los errores confirmados de la sección 0 (lo que el administrador ya revisó); después, lo de arriba de la sección 2.',
+    '- Usa las secciones 3 a 5 para saber qué parte confunde.',
     '- Mira la sección 6 para copiar lo que ya funciona (el estilo de lo que tiene más 👍).',
     '- Cambia el texto en el paquete (misma materia, tema y título si es la misma tarjeta). La huella nueva hace que sus votos empiecen de cero.',
     '- No uses lo de «pocos datos» para decidir. La semana siguiente, compara «antes / ahora» en la sección 2.', '');

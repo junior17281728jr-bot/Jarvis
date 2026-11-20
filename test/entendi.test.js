@@ -162,7 +162,7 @@ test('«Para Claude»: solo el administrador (403); sin nombres ni ids de alumno
     const md = r.datos.markdown;
     assert.match(md, new RegExp(`^formato: ${FORMATO_PARA_CLAUDE}$`, 'm'));
     // Las secciones, siempre las mismas y en el mismo orden.
-    assert.deepEqual([...md.matchAll(/^## (.+)$/gm)].map(m => m[1].replace(/ .*/, '')), ['1.', '2.', '3.', '4.', '5.', '6.', '7.', 'Cómo']);
+    assert.deepEqual([...md.matchAll(/^## (.+)$/gm)].map(m => m[1].replace(/ .*/, '')), ['0.', '1.', '2.', '3.', '4.', '5.', '6.', '7.', 'Cómo']);
     // Los ids que mapean al paquete y «x de n».
     const id = idTarjeta(MATERIA, TEMA, p.materias.find(m => m.id === MATERIA).temas.find(t => t.id === TEMA).secciones[n - 1].titulo);
     assert.ok(md.includes(`id=${id}`), md);

@@ -11,6 +11,8 @@ import { selectorIdioma, bilingue, rotulo, enunciadoOral, textoOpcion, notaOpcio
 import { votoEntendi } from './entendi-vista.js';
 // 0.14.84: todas las opciones de la pregunta ya respondida (correcta en verde, la suya en rojo, las demás sin color).
 import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
+// 0.14.85: «⚑ Reportar un error» de una pregunta del oral, solo después de responderla (public/reportar-vista.js).
+import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
 
 // 0.13.3: un dibujito por capítulo (como cada materia del Camino).
 const ICONO_CAPITULO = {
@@ -287,7 +289,8 @@ export function rondaOral(r, pedido, h) {
           res.porque ? el('div', { class: 'retro-mia' }, el('strong', { texto: t('extra.porque') }), talCual('p', res.porque)) : null,
           el('div', { class: 'retro-sencilla' }, el('strong', { texto: t('extra.explicacion') }), talCual('p', res.explicacion)),
           deDondeSalio(res.origen, h),
-        ],
+          enlaceReportar(puntoPregunta(q, { respondida: true, elegida: res.elegida })),
+        ].filter(Boolean),
         boton,
       }));
       if (res.acierto) celebrar(zona); else sacudir(zona.querySelector('.es-mala'));
@@ -418,7 +421,9 @@ function examenOral(e, h) {
       q => el('p', { class: 'chica', texto: q.acierto ? t('acad.correcto') : q.elegida ? t('oral.elegiste', { tuya: q.elegida, letra: q.correcta }) : t('oral.sin_responder', { letra: q.correcta }) }),
       q => (q.porque ? talCual('p', q.porque, 'chica') : null),
       q => talCual('p', q.explicacion, 'chica suave'),
-      q => deDondeSalio(q.origen, h)]));
+      q => deDondeSalio(q.origen, h),
+      // 0.14.85: «⚑ Reportar un error» de cada pregunta ya entregada.
+      q => enlaceReportar(puntoPregunta(q, { respondida: Boolean(q.elegida), elegida: q.elegida }))]));
     for (const d of zona.querySelectorAll('.oral-origen')) d.open = false;
     pie.replaceChildren(el('a', { class: 'boton-3d grande naranja', href: ruta() }, el('span', { texto: t('oral.volver') })));
     if (x.aprobado) celebrar(zona);

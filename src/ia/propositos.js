@@ -185,6 +185,9 @@ export const PROPOSITOS = Object.freeze({
   // lo peor de una vez ≈ 24 000 bytes (~6 000 tokens) × US$0.125/M + 4 096 × US$0.50/M, ×1,1 ×1,05 ≈ US$0.0033.
   compe_frase: Object.freeze({ ...CLASE_IA, salidaMax: 2048, entradaMaxBytes: 6_000, entradaMinBytes: 2_200, maximoMicro: 4_000, tipicoMicro: 400, cachear: false, techoMicro: 20_000 }),
   compe_mejorar: Object.freeze({ ...CLASE_IA, entradaMaxBytes: 24_000, entradaMinBytes: 6_000, maximoMicro: 8_000, tipicoMicro: 3_000, cachear: false, techoMicro: 40_000 }),
+  // 0.14.85: «Pedir opinión a la IA» de un reporte (src/academia/reporte-ia.js; solo el administrador, de su cuenta). Siempre
+  // Claude Haiku 5.5: lo peor de una vez ≈ 12 000 bytes (~3 000 tokens) × US$0.125/M + 2 048 × US$0.50/M, ×1,1 ×1,05 ≈ US$0.0015.
+  reporte_revisar: Object.freeze({ ...CLASE_IA, salidaMax: 2048, entradaMaxBytes: 12_000, entradaMinBytes: 2_200, maximoMicro: 3_000, tipicoMicro: 600, cachear: false, techoMicro: 20_000 }),
   // 0.13.0: la fábrica de materias y su mejora continua (ver FABRICA).
   fabrica_escribir: FABRICA,
   fabrica_verificar: FABRICA_HAIKU,

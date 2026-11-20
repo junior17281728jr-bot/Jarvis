@@ -16,6 +16,9 @@ export function razones(x, { t, numero }) {
       : x.pide ? t('cuesta.pide', { pct: numero(x.pide.pct), n: numero(x.pide.n) }) : null,
     x.despues ? t('cuesta.despues', { pct: numero(x.despues.pct), n: numero(x.despues.n) }) : null,
     x.no ? t('cuesta.no', { no: numero(x.no.no), n: numero(x.no.n), pct: numero(x.no.pct) }) : null,
+    // 0.14.85: los reportes revisados («⚑ Reportar un error»).
+    x.error ? t('pc.error', { n: numero(x.error.n) }) : null,
+    x.confuso ? t('pc.confuso', { n: numero(x.confuso.n) }) : null,
   ].filter(Boolean);
 }
 

@@ -172,7 +172,7 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   // 0.9.2: «Términos de uso y aviso» y el nombre legal.
   registrarRutasTerminos(rutas, { config, reloj: academia.reloj });
   // 0.9.2: «Ayuda / Soporte» (escribirle al administrador).
-  registrarRutasSoporte(rutas, { config, reloj: academia.reloj, limites: academia.limitesSoporte });
+  registrarRutasSoporte(rutas, { config, reloj: academia.reloj, limites: academia.limitesSoporte, ganchos });
   // 0.14.26: los certificados de recuerdo.
   registrarRutasCertificados(rutas, { config, reloj: academia.reloj, limites: academia.limitesCertificados });
   registrarRutasOpiniones(rutas, { config, reloj: academia.reloj });

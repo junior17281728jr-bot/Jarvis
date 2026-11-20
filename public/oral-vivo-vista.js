@@ -15,6 +15,8 @@
 import { selectorIdioma, bilingue, idiomaOral } from './oral-idioma.js';
 import { crearExaminador } from './oral-examinador.js';
 import { puedeWhisper, elegirMotor, equipoCapaz, audioDeGrabacion, whisperDeLaPagina } from './voz-dictado.js';
+// 0.14.85: «⚑ Reportar un error» del dictado (public/reportar-vista.js): qué motor de voz usaba, nada de lo que dijo.
+import { enlaceReportar } from './reportar-vista.js';
 
 // Pone los hijos sin los que faltan (un null nunca se ve como texto).
 const poner = (nodo, ...hijos) => nodo.replaceChildren(...hijos.flat(Infinity).filter(x => x != null && x !== false));
@@ -587,7 +589,8 @@ function practica(s, prefs, h, desde = 0) {
     const noSe = el('button', { type: 'button', class: 'vivo-no-se', onclick: () => { if (grabador?.enviando()) return; parar(); alListo('', ponerEstado); } }, el('span', { texto: t('vivo.no_se') }));
     const nodo = el('div', { class: 'vivo-fila alumno' },
       el('div', { class: 'vivo-burbuja tuya' }, el('p', { class: 'vivo-quien', texto: t('vivo.tu') }), caja,
-        el('div', { class: 'vivo-controles' }, mic, nivel, estado, noSe)));
+        el('div', { class: 'vivo-controles' }, mic, nivel, estado, noSe),
+        conVoz ? enlaceReportar({ tipo: 'voz', id: `dictado-${modo}`, titulo: t('reportar.voz.dictado') }) : null));
     // 0.14.48: si el envío falla (sin red en el teléfono, «Demasiados intentos»…), todo vuelve a funcionar: antes solo el
     // cuadro, y «Enviar», «No sé» y el micrófono quedaban apagados (no se podía seguir a la otra pregunta).
     const habilitar = si => { caja.disabled = !si; if (mic) mic.disabled = !si || Boolean(grabador?.enviando()); listo.disabled = !si; noSe.disabled = !si; };

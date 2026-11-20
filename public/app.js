@@ -40,6 +40,9 @@ import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase,
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
 import { olvidar, crearEspera, conTope, rutaConInstructor, AREAS_ADMIN, AVANZADO_ADMIN, areaAdmin, itemAvanzado, REDIRECCIONES_ADMIN, paraHoy } from './navegacion.js';
+// 0.14.85: «⚑ Reportar un error» en todo (public/reportar-vista.js) y los últimos errores de la página (solo en memoria).
+import { configurarReportar, vigilarErrores, enlaceReportar as reportarPunto, puntoPregunta } from './reportar-vista.js';
+vigilarErrores();
 
 // Quita la app vieja de JARVIS que algunos navegadores tenían guardada.
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
@@ -48,6 +51,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().the
 if (window.caches) caches.keys().then(ks => ks.filter(k => k !== 'oportia-voz').forEach(k => caches.delete(k))).catch(() => {});
 
 const raiz = document.getElementById('app');
+configurarReportar({ el: (...x) => el(...x), t: (...x) => t(...x), api: (...x) => api(...x), textoError: x => textoError(x), version: () => estado.setup?.version ?? null, idioma: () => idioma, hayUsuario: () => Boolean(estado.usuario) });
 const catalogos = {};
 let idioma = 'es';
 let estado = { setup: null, usuario: null };
@@ -525,7 +529,9 @@ function pie() {
   // 0.14.86: con sesión, la versión va pegada al menú; aquí solo sale antes de entrar (no hay menú).
   return el('p', { class: 'pie' },
     el('span', { texto: !estado.usuario && estado.setup?.version ? t('app.version', { version: estado.setup.version }) : '' }),
-    el('a', { class: 'pie-terminos', href: '#terminos', texto: t('terminos.pie') }));
+    el('a', { class: 'pie-terminos', href: '#terminos', texto: t('terminos.pie') }),
+    // 0.14.85: y «⚑ Algo no funciona en esta pantalla» (con sesión): manda solo la pantalla, la versión y el equipo.
+    reportarPunto({ tipo: 'app' }, { general: true }));
 }
 // 0.9.2: los términos (public/terminos-vista.js, solo se carga aquí).
 const piezasTerminos = () => ({ el, t, numero, icono, talCual, api, caja, decir, avisar, textoError, botonAccion, marcaConLogo, confirmar, anexar });
@@ -2102,7 +2108,7 @@ async function pantallaInicioAdmin() {
     return el('li', { class: `hoy-item tono-${x.tono}`, 'data-hoy': x.id },
       el('span', { class: 'tono-color hoy-icono' }, icono(x.tono === 'info' ? 'info' : x.tono)),
       el('span', { class: 'hoy-texto' }, el('span', { texto }), x.curso ? el('span', { class: 'chip-curso', texto: x.curso }) : null),
-      el('span', { class: 'hoy-botones' }, el('a', { class: 'boton-3d azul chico', href: x.href }, el('span', { texto: x.boton ?? t(`hoy.ir.${x.id.replace(/-/g, '_')}`) }))));
+      el('span', { class: 'hoy-botones' }, el('a', { class: 'boton-3d azul chico', href: x.href }, el('span', { texto: x.boton ?? t(x.ir ?? `hoy.ir.${x.id.replace(/-/g, '_')}`) }))));
   };
   const tarjetaHoy = el('section', { class: 'tarjeta para-hoy' },
     el('h2', { class: 'con-icono' }, icono('calendario'), el('span', { texto: t('hoy.titulo') })),
@@ -4416,7 +4422,8 @@ function marcoEstudio({ clase = '', barra = null, cuenta = null, cuerpo, pie, sa
       // vuelve a pedir en vez de no hacer nada.
       el('a', { class: 'estudio-salir', href: salir, 'aria-label': t('acad.salir_practica'), onclick: evento => { if (location.hash === salir) { evento.preventDefault(); espera.empezar(); dibujar(); } } }, icono('cerrar')),
       barra, cuenta),
-    el('main', { class: 'estudio-cuerpo' }, cuerpo),
+    // 0.14.85: también aquí (clase, práctica, examen) el «⚑ Algo no funciona en esta pantalla»: solo la pantalla, nunca la pregunta.
+    el('main', { class: 'estudio-cuerpo' }, cuerpo, el('p', { class: 'pie pie-estudio' }, reportarPunto({ tipo: 'app' }, { general: true }))),
     el('footer', { class: 'estudio-pie' }, pie));
 }
 // El botón grande de abajo (CONTINUAR / COMPROBAR / GIRAR), con su color.
@@ -4694,7 +4701,7 @@ function interruptorVoz(alCambiar = null) {
   return b;
 }
 
-function vistaTarjeta(p, { materia }) {
+function vistaTarjeta(p, { materia, tema = null }) {
   const { es, en } = partirTitulo(p.titulo);
   // 0.12.1: si la tarjeta trae clip (y ya llegó), el clip manda sobre el dibujo.
   const clip = p.clip?.url ? vistaClip(p.clip) : null;
@@ -4702,6 +4709,10 @@ function vistaTarjeta(p, { materia }) {
   // 0.12.5: la foto del libro; con un clip que ya llegó, solo una miniatura.
   const foto = p.imagen?.url ? vistaFoto(p.imagen, { mini: Boolean(clip) }) : null;
   let montado = null;
+  // 0.14.85: «⚑ Reportar un error» debajo de la escena 3D, el dibujo animado, el clip o la foto de la tarjeta (en la clase).
+  const tipoVisual = p.visual?.tipo === 'escena-3d' ? 'escena' : clip ? 'clip' : (visual || foto) ? 'figura' : null;
+  const reportarVisual = tipoVisual && tema && Number.isInteger(p.seccion)
+    ? reportarPunto({ tipo: tipoVisual, id: `${materia}/${tema}#${p.seccion + 1}`, materia, tema, n: p.seccion + 1, visual: p.visual?.tipo ?? (clip ? 'clip' : 'foto'), titulo: es }, { clase: 'reportar-visual' }) : null;
   if (visual) {
     cargarVisuales().then(V => {
       if (!visual.isConnected) return;
@@ -4718,6 +4729,7 @@ function vistaTarjeta(p, { materia }) {
     clip?.nodo ?? null,
     foto,
     visual,
+    reportarVisual,
     p.texto ? textoRico('p', p.texto, 'tarjeta-texto') : null,
     p.puntos?.length ? el('ul', { class: 'tarjeta-puntos' }, p.puntos.map(x => textoRico('li', x))) : null,
     p.recuerda ? el('aside', { class: 'recuerda' }, el('p', { class: 'recuerda-titulo con-icono' }, icono('bombilla', 'icono'), el('span', { texto: t('acad.recuerda') })), textoRico('p', p.recuerda)) : null,
@@ -4936,12 +4948,14 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
       }, { deshabilitado: true, sonido: null });
       const v = vistaSituacion(p, { alElegir: () => { comprobar.disabled = false; } });
       nodo = v.nodo;
+      // 0.14.85: «⚑ Reportar un error» de la situación (práctica: no cuenta para la nota).
+      anexar(nodo, reportarPunto({ tipo: 'situacion', id: `${materia}/${tema}#s${p.numero ?? p.indice ?? 1}`, materia, tema, titulo: p.titulo ?? '' }));
       botones = [atras(), comprobar];
     } else if (p.tipo === 'vocabulario') {
       nodo = vistaVocabulario(p);
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
     } else {
-      const v = vistaTarjeta(p, { materia });
+      const v = vistaTarjeta(p, { materia, tema });
       nodo = v.nodo;
       actual = v;
       // 0.12.9 (J): «¿Lo entendiste?» 👍/🤔 en cada tarjeta (con IA: «Explícamelo mejor» / «Profundizar»; sin IA, lo gratis).
@@ -5144,7 +5158,9 @@ function pantallaVideoMp4(materia, v, { volver = '#inicio', saltar = null, tema 
       pantallaCompleta),
     capitulos.length ? el('section', { class: 'video-capitulos', 'aria-labelledby': 'titulo-capitulos' },
       el('h2', { id: 'titulo-capitulos', texto: t('acad.video.capitulos_titulo') }),
-      el('ol', {}, filasCapitulos)) : null].filter(Boolean));
+      el('ol', {}, filasCapitulos)) : null,
+    // 0.14.85: «⚑ Reportar un error» del video (en qué minuto iba, para encontrarlo).
+    reportarPunto(() => ({ tipo: 'video', id: `${materia}/video`, materia, titulo: `${titulo} · ${relojVideo(video.currentTime || 0)}` }))].filter(Boolean));
   barraAvance.poner(desde, duracion || 1);
   marcarCapitulo();
   if (saltar) pie.replaceChildren(saltar);
@@ -5463,6 +5479,8 @@ function abrirImagenGrande({ src, nombre, titulo }) {
   const cerrar = () => { capa.remove(); try { antes?.focus({ preventScroll: true }); } catch { /* ya no está */ } };
   const capa = el('div', { class: 'figura-grande', role: 'dialog', 'aria-modal': 'true', 'aria-label': nombre },
     el('div', { class: 'figura-grande-barra' }, el('span', { texto: titulo || nombre }),
+      // 0.14.85: «⚑ Reportar un error» de la figura (solo cuál es: nunca una respuesta).
+      reportarPunto({ tipo: 'figura', id: String(src ?? '').replace(/^\/api\/academia\//, '').replace(/[^A-Za-z0-9_./:#-]/g, '').slice(0, 120) || 'figura', titulo: titulo || nombre }),
       el('button', { type: 'button', class: 'boton-3d blanco cuadrado', 'aria-label': t('acad.cerrar'), onclick: cerrar }, icono('cerrar'))),
     el('div', { class: 'figura-grande-lienzo' }, el('img', { src, alt: nombre })));
   capa.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); } });
@@ -5470,7 +5488,7 @@ function abrirImagenGrande({ src, nombre, titulo }) {
   document.body.append(capa);
   // 0.9.1: abre ajustada a la pantalla, con − / + y «Ajustar» (public/clase/realce.js).
   visorFigura(capa, { t });
-  capa.querySelector('button').focus();
+  (capa.querySelector('.figura-grande-barra .cuadrado') ?? capa.querySelector('button')).focus();
 }
 // 0.12.0: el botón «¿De dónde salió?» de una pregunta (public/origen-vista.js).
 const origenDe = q => botonOrigen(q, { el, t, icono, talCual, abrirImagenGrande });
@@ -5532,9 +5550,11 @@ function opcionesFijas(q, resp) {
   return opcionesRevisadas(q.opciones, resp, { el, t, talCual });
 }
 
-// 0.9.2: «Reportar un error» en una pregunta: abre «Ayuda» con el número de la pregunta.
-function enlaceReportar(id) {
-  return el('a', { class: 'reportar-error con-icono-chico', href: `#ayuda-mia/pregunta/${encodeURIComponent(id)}` }, icono('atencion', 'icono chico'), el('span', { texto: t('soporte.reportar') }));
+// 0.9.2: «Reportar un error» en una pregunta. 0.14.85: «⚑ Reportar un error» (public/reportar-vista.js), SOLO después de
+// responderla (con sus opciones y la letra que eligió) y nunca durante el examen con reloj (en su revisión, sí).
+function enlaceReportar(q, { intento = null } = {}) {
+  const punto = puntoPregunta(q, { respondida: Boolean(q?.respuesta && !q.respuesta.sinResponder), elegida: q?.respuesta?.elegida ?? null, intento });
+  return punto ? reportarPunto(punto) : null;
 }
 // 0.8.0: la revisión completa al terminar (examen, tema, reto, repaso): cada pregunta con lo que eligió, la correcta, la
 // explicación original y la sencilla; arriba el filtro «Solo las que fallé».
@@ -5552,7 +5572,7 @@ function revisionCompleta(res) {
         talCual('span', q.enunciado, 'revision-enunciado'),
         el('span', { class: 'revision-letras suave chica', texto: bien ? t('revision.tu_respuesta', { letra: q.respuesta.elegida }) : t('revision.tu_y_correcta', { letra: q.respuesta?.elegida ?? '—', correcta: q.respuesta?.correcta ?? '—' }) })),
       el('div', { class: 'revision-dentro' }, el('div', { class: 'revision-origen' }, origenDe(q)), tarjetaPregunta(q).slice(3), opcionesFijas(q, q.respuesta), bloqueRespuesta(q, q.respuesta),
-        q.respuesta && res.id ? instructorUi().explicar(res.id, q) : null));
+        q.respuesta && res.id ? instructorUi().explicar(res.id, q) : null, enlaceReportar(q, { intento: res.id })));
     return d;
   });
   const cajaLista = el('div', { class: 'revision-lista' }, filas);
@@ -5688,8 +5708,7 @@ async function pantallaPractica(id) {
     }, { deshabilitado: true, sonido: null });
     zona.replaceChildren(el('article', { class: 'tarjeta-pregunta' },
       el('p', { class: 'pregunta-de', texto: tituloIntento }),
-      tarjetaPregunta(q), el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones),
-      enlaceReportar(q.id)));
+      tarjetaPregunta(q), el('div', { class: 'opciones-cartas', role: 'group', 'aria-label': t('acad.elige') }, botones)));
     pie.replaceChildren(comprobar);
   };
   const pintarRespondida = (i, recien = false) => {
@@ -5710,7 +5729,7 @@ async function pantallaPractica(id) {
       titulo: resp.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: resp.correcta }),
       // 0.9.0: «Explícamelo de otra forma» (la pregunta y sus opciones quedan tal cual arriba); 0.9.2: «Reportar un error».
       // 0.12.0: «¿De dónde salió?» también aquí (arriba puede quedar tapado por la hoja): ya respondió, se ve la página.
-      partes: [...partesRespuesta(q, resp, { enHoja: true }), resp.acierto ? null : tutorUi().pista(intento.id, q.id), el('div', { class: 'hoja-origen' }, origenDe(q)), instructorUi().explicar(intento.id, q), enlaceReportar(q.id)].filter(Boolean),
+      partes: [...partesRespuesta(q, resp, { enHoja: true }), resp.acierto ? null : tutorUi().pista(intento.id, q.id), el('div', { class: 'hoja-origen' }, origenDe(q)), instructorUi().explicar(intento.id, q), enlaceReportar(q, { intento: intento.id })].filter(Boolean),
       boton,
     }));
     if (recien) {
@@ -6174,7 +6193,7 @@ async function pantallaContratosTodos() {
 }
 // 0.9.2: «Ayuda / Soporte» (public/soporte-vista.js, solo se carga aquí).
 let pantallaAnterior = null;
-const piezasSoporte = () => ({ el, t, tn, numero, icono, insignia, talCual, vacio, fecha, api, avisar, caja, botonAccion, textoError, recargar: () => dibujar(),
+const piezasSoporte = () => ({ el, t, tn, numero, icono, insignia, talCual, vacio, fecha, api, avisar, caja, decir, botonAccion, textoError, recargar: () => dibujar(),
   pantallaAnterior, version: estado.setup?.version ?? null, idioma });
 async function pantallaMiAyuda(pregunta = null) {
   const vigente = nuevoTurno();

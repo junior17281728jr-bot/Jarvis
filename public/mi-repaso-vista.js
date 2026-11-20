@@ -10,6 +10,8 @@
 import { lineaRepasa, enlaceMiniClase as enlaceClase } from './progreso-vista.js';
 // 0.14.84: cada pregunta fallada con TODAS sus opciones (la correcta en verde, la que eligió en rojo, las demás sin color).
 import { opcionesRevisadas } from './opciones-revision.js';
+// 0.14.85: «⚑ Reportar un error» de cada pregunta que falló (ya respondida).
+import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
 // (la clave es c:<materia>/<tema>/<punto>, solo letras, números, _ y -: la dirección lleva lo de después de «c:»)
 
 export function pantallaMiRepaso(d, h) {
@@ -48,7 +50,8 @@ export function pantallaMiRepaso(d, h) {
       q.sencilla ? el('section', { class: 'caja-hoja caja-sencilla' },
         el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('acad.explicacion_sencilla') })),
         talCual('p', q.sencilla),
-        typeof h.entendi === 'function' ? h.entendi({ tipo: 'pregunta', pregunta: q.id }) : null) : null) : null);
+        typeof h.entendi === 'function' ? h.entendi({ tipo: 'pregunta', pregunta: q.id }) : null) : null,
+      enlaceReportar(puntoPregunta(q, { respondida: true, elegida: q.respuesta.elegida ?? null }))) : null);
   const errores = el('section', { class: 'panel repaso-errores', 'aria-labelledby': 'repaso-errores-titulo' },
     el('h2', { id: 'repaso-errores-titulo', class: 'con-icono' }, icono('atencion'), el('span', { texto: t('mirepaso.tus_errores') })),
     d.errores.length ? [

@@ -15,6 +15,9 @@ export function razonesParaClaude(pt, t) {
     pt.no ? t('pc.no', { de: deN(t, pt.no.no, pt.no.n), pct: String(pt.no.pct) }) + pocos(t, pt.no.ok) : null,
     pt.pide ? t('pc.pide', { de: deN(t, pt.pide.pidieron ?? 0, pt.pide.n), pct: String(pt.pide.pct) }) + pocos(t, pt.pide.ok) : null,
     pt.despues ? t('cuesta.despues', { pct: String(pt.despues.pct), n: String(pt.despues.n) }) + pocos(t, pt.despues.ok) : null,
+    // 0.14.85: los reportes revisados por el administrador.
+    pt.error ? t('pc.error', { n: String(pt.error.n) }) : null,
+    pt.confuso ? t('pc.confuso', { n: String(pt.confuso.n) }) + pocos(t, pt.confuso.ok) : null,
   ].filter(Boolean);
 }
 
@@ -57,6 +60,16 @@ export function pantallaParaClaude(datos, h) {
     x.antes ? el('p', { class: 'suave chica', texto: t(x.antes.textoNuevo ? 'pc.antes_nuevo' : 'pc.antes', { semana: x.antes.semana, n: String(x.antes.puntaje ?? '—') }) }) : null,
     el('p', { class: 'suave chica pc-id', texto: `${x.materia}/${x.tema}${x.indice != null ? `#${x.indice + 1}` : ''} · id ${x.id}` }),
   ].filter(Boolean)));
+  // 0.14.85: lo primero: los errores confirmados por el administrador (con sus ids y lo que dijeron los alumnos, sin nombres).
+  const errores = (r.errores ?? []).map(x => el('li', { class: 'pc-fila' }, ...[
+    el('strong', { texto: x.titulo ? `«${x.titulo}»` : x.ref }),
+    el('span', { class: 'chica', texto: ` · ${t('pc.errores.de', { de: deN(t, x.confirmaron, x.alumnos) })}` }),
+    ...(x.razones ?? []).map(z => el('p', { class: 'chica pc-razon', texto: `«${z.texto}»` })),
+    el('p', { class: 'suave chica pc-id', texto: `${x.ref} · id ${x.id ?? '—'}` }),
+  ].filter(Boolean)));
+  const confusos = (r.confusos ?? []).map(x => el('li', { class: 'pc-fila' },
+    el('strong', { texto: x.titulo ? `«${x.titulo}»` : x.ref }),
+    el('span', { class: 'chica', texto: ` · ${t('pc.confuso', { n: String(x.confuso) })}` })));
   const preguntas = (r.preguntas ?? []).map(q => el('li', { class: 'pc-fila' }, ...[
     el('strong', { texto: `${q.numero != null ? `n.º ${q.numero}` : q.id}` }),
     el('span', { class: 'chica', texto: ` · ${t('pc.fallo', { de: deN(t, q.alumnosMal, q.alumnos), pct: String(q.alumnos ? Math.round((q.alumnosMal * 100) / q.alumnos) : 0), n: String(q.n) })}` }),
@@ -79,6 +92,7 @@ export function pantallaParaClaude(datos, h) {
       el('div', { class: 'botones' },
         el('button', { type: 'button', class: 'boton-3d azul con-icono pc-descargar', onclick: descargar }, icono('carpeta'), el('span', { texto: t('pc.descargar') })),
         el('button', { type: 'button', class: 'boton-3d blanco con-icono pc-copiar', onclick: copiar }, icono('tarjetas'), el('span', { texto: t('pc.copiar') })))),
+    seccion(t('pc.s0'), t('pc.s0_linea'), [...(errores.length ? [lista(errores)] : []), ...(confusos.length ? [el('h3', { texto: t('pc.confusos') }), lista(confusos)] : [])]),
     seccion(t('pc.s1'), null, [tabla(t('pc.test_guide'), r.materias ?? []), tabla(t('pc.oral'), r.oral ?? [])]),
     seccion(t('pc.s2'), t('pc.s2_linea'), mejorar.length ? [lista(mejorar)] : []),
     seccion(t('pc.s3'), null, preguntas.length ? [lista(preguntas)] : []),

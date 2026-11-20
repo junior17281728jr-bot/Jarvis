@@ -39,6 +39,9 @@ function contextoDe(h, c) {
     c.tamano ? [el('dt', { texto: t('reportar.c.tamano') }), el('dd', { texto: c.tamano })] : null,
     el('dt', { texto: t('soporte.c.hora') }), el('dd', { texto: c.hora ? h.fecha(c.hora) : '—' }));
 }
+// 0.14.85: el veredicto de su reporte, con palabras para el alumno (nunca «cosa del alumno»).
+const TONO_TU_VEREDICTO = { si: 'bien', no: 'info', dudoso: 'info' };
+const insigniaTuVeredicto = (h, v) => h.insignia(TONO_TU_VEREDICTO[v] ?? 'info', h.t(`reportar.tu_veredicto.${['si', 'no', 'dudoso'].includes(v) ? v : 'dudoso'}`));
 const insigniaEstado = (h, e) => h.insignia(TONO_ESTADO[e] ?? 'info', h.t(TEXTO_ESTADO[e] ?? 'soporte.estado.nuevo'));
 function filaTicket(h, x, href) {
   const { el, t } = h;
@@ -48,7 +51,7 @@ function filaTicket(h, x, href) {
       el('strong', { texto: t(TEXTO_CATEGORIA[x.categoria] ?? 'soporte.cat.otro') }),
       el('span', { class: 'ficha-intento-lugar', texto: x.resumen }),
       el('span', { class: 'suave chica', texto: [x.usuario && href.startsWith('#soporte') ? `@${x.usuario}` : null, h.fecha(x.actualizado)].filter(Boolean).join(' · ') })),
-    el('span', { class: 'ficha-intento-estado' }, insigniaEstado(h, x.estado), x.vence && x.estado !== 'resuelto' ? h.insignia('atencion', t('soporte.vence', { fecha: x.vence })) : null, x.sinLeerAlumno && !href.startsWith('#soporte') ? h.insignia('bien', t('soporte.nueva_respuesta')) : null, h.icono('flecha', 'icono chico'))));
+    el('span', { class: 'ficha-intento-estado' }, insigniaEstado(h, x.estado), x.reporte?.veredicto && !href.startsWith('#soporte') ? insigniaTuVeredicto(h, x.reporte.veredicto) : null, x.vence && x.estado !== 'resuelto' ? h.insignia('atencion', t('soporte.vence', { fecha: x.vence })) : null, x.sinLeerAlumno && !href.startsWith('#soporte') ? h.insignia('bien', t('soporte.nueva_respuesta')) : null, h.icono('flecha', 'icono chico'))));
 }
 
 // ---------- La persona: escribir y ver los suyos ----------
@@ -114,6 +117,8 @@ export function vistaMiTicket(datos, h) {
     el('a', { class: 'volver con-icono', href: '#mi-ayuda' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('soporte.titulo') })),
     el('section', { class: 'tarjeta' },
       el('div', { class: 'ficha-cuenta-cabeza' }, el('h1', { class: 'ficha-nombre', texto: `#${x.id} · ${t(TEXTO_CATEGORIA[x.categoria] ?? 'soporte.cat.otro')}` }), insigniaEstado(h, x.estado)),
+      // 0.14.85: lo que decidió el administrador de su reporte («¿Tiene razón?»), dicho para el alumno.
+      x.reporte?.veredicto ? el('p', { class: 'aviso reporte-tu-veredicto' }, insigniaTuVeredicto(h, x.reporte.veredicto), el('span', { texto: ` ${t(`reportar.tu_veredicto.${x.reporte.veredicto}.linea`)}` })) : null,
       hilo(h, x, '/api/soporte'),
       el('label', { for: 'soporte-respuesta', texto: t('soporte.agregar') }), texto,
       el('div', { class: 'botones' }, responder), mensaje),
@@ -311,13 +316,149 @@ export function vistaAdminReportes(datos, h) {
       el('span', { class: 'ficha-intento-lugar', texto: r.contexto?.pantalla ?? '—' }),
       el('span', { class: 'suave chica', texto: [`@${r.usuario ?? '—'}`, h.fecha(r.creado), r.reporte.captura ? t('reportar.con_captura') : null].filter(Boolean).join(' · ') })),
     el('span', { class: 'ficha-intento-estado' }, insigniaReporte(h, r.reporte.estado), h.icono('flecha', 'icono chico'))));
+  // 0.14.85: arriba, por PUNTO (la misma tarjeta o pregunta de varios alumnos es UNA fila, con cuántos alumnos y qué
+  // eligieron); debajo, cada reporte como antes.
+  const grupos = Array.isArray(datos.grupos) ? datos.grupos : [];
+  const filaGrupo = g => el('li', {}, el('a', { class: 'ficha-intento', href: `#reportes/${g.ultimo}` },
+    el('span', { class: 'ficha-nota', texto: h.numero(g.alumnos || 1) }),
+    el('span', { class: 'ficha-intento-texto' },
+      el('strong', { texto: g.titulo || g.pantalla || t(`reportar.sobre.${g.tipo}`) }),
+      el('span', { class: 'ficha-intento-lugar', texto: [t(`reportar.tipo.${g.tipo}`), h.tn('reportar.admin.alumnos', { n: g.alumnos || 1 })].join(' · ') }),
+      el('span', { class: 'suave chica', texto: Object.entries(g.porQue ?? {}).map(([q, n]) => `${t(`reportar.que.${q}`)} (${h.numero(n)})`).join(' · ') })),
+    el('span', { class: 'ficha-intento-estado' }, ...[g.nuevos ? h.insignia('atencion', h.tn('reportar.admin.nuevos', { n: g.nuevos })) : null, h.icono('flecha', 'icono chico')].filter(Boolean))));
   const abiertos = datos.reportes.filter(r => ['nuevo', 'visto'].includes(r.reporte.estado));
   const cerrados = datos.reportes.filter(r => !['nuevo', 'visto'].includes(r.reporte.estado));
   return [
+    grupos.length ? el('section', { class: 'tarjeta reportes-puntos' },
+      el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: h.tn('reportar.admin.puntos', { n: datos.nuevosPuntos ?? 0 }) })),
+      el('p', { class: 'suave', texto: t('reportar.admin.puntos_linea') }),
+      el('ul', { class: 'ficha-intentos' }, grupos.map(filaGrupo))) : null,
     el('section', { class: 'tarjeta' },
       el('h2', { class: 'con-icono' }, h.icono('atencion'), el('span', { texto: h.tn('reportar.admin.titulo', { n: h.numero(datos.nuevos) }) })),
       abiertos.length ? el('ul', { class: 'ficha-intentos' }, abiertos.map(fila)) : h.vacio('bien', t('reportar.admin.vacio'))),
     cerrados.length ? el('section', { class: 'tarjeta' }, el('h2', { texto: t('reportar.admin.cerrados') }), el('ul', { class: 'ficha-intentos' }, cerrados.map(fila))) : null,
+  ].filter(Boolean);
+}
+
+// ---------- 0.14.85: lo que vio el alumno, los reportes del mismo punto, «¿Tiene razón?» y la IA ----------
+export const VEREDICTOS = Object.freeze(['si', 'no', 'dudoso']);
+const TONO_VEREDICTO = { si: 'mal', no: 'bien', dudoso: 'info' };
+export const insigniaVeredicto = (h, v) => h.insignia(TONO_VEREDICTO[v] ?? 'info', h.t(`reportar.veredicto.${VEREDICTOS.includes(v) ? v : 'dudoso'}`));
+// El punto tal cual lo vio el alumno: la pregunta con TODAS sus opciones (la correcta en verde, la que eligió en rojo si
+// no acertó) y su explicación; o la tarjeta (título, texto, puntos, «Recuerda», ejemplo); o lo de la IA.
+export function vistaPunto(item, h) {
+  const { el, t } = h;
+  const v = item?.vista ?? {};
+  if (item?.tipo === 'pregunta') {
+    return el('div', { class: 'reporte-punto' }, ...[
+      el('p', { class: 'suave chica', texto: [v.numero ? t('acad.pregunta_n', { n: v.numero }) : null, v.seccion].filter(Boolean).join(' · ') }),
+      h.talCual('p', v.enunciado ?? '', 'q-enunciado'),
+      el('div', { class: 'opciones-cartas' }, (v.opciones ?? []).map(o => el('div', { class: `opcion-carta fija${o.letra === v.correcta ? ' es-correcta' : ''}${o.letra === v.elegida && o.letra !== v.correcta ? ' es-mala' : ''}`, 'data-letra': o.letra },
+        ...[el('span', { class: 'opcion-letra', texto: o.letra }), h.talCual('span', o.texto, 'opcion-texto'),
+          o.letra === v.correcta ? el('span', { class: 'suave chica', texto: ` ${t('reportar.admin.correcta')}` }) : null,
+          o.letra === v.elegida ? el('span', { class: 'chica', texto: ` ${t('reportar.admin.eligio')}` }) : null].filter(Boolean)))),
+      v.respondida === false ? el('p', { class: 'suave chica', texto: t('reportar.admin.sin_responder') }) : null,
+      v.reto ? el('p', { class: 'suave chica', texto: t('reportar.admin.reto') }) : null,
+      v.explicacion ? el('div', {}, el('h3', { texto: t('reportar.admin.explicacion') }), h.talCual('p', v.explicacion)) : null,
+      v.sencilla ? el('div', {}, el('h3', { texto: t('reportar.admin.sencilla') }), h.talCual('p', v.sencilla)) : null,
+    ].filter(Boolean));
+  }
+  if (item?.tipo === 'tarjeta') {
+    return el('div', { class: 'reporte-punto tarjeta-leccion' }, ...[
+      v.temaTitulo ? el('p', { class: 'suave chica', texto: v.temaTitulo }) : null,
+      el('h3', { texto: v.titulo ?? '' }),
+      v.visual ? el('p', { class: 'suave chica', texto: t('reportar.admin.visual', { tipo: v.visual }) }) : null,
+      v.texto ? h.talCual('p', v.texto) : null,
+      (v.puntos ?? []).length ? el('ul', {}, v.puntos.map(x => h.talCual('li', x))) : null,
+      v.recuerda ? el('p', {}, el('strong', { texto: `${t('acad.recuerda')}: ` }), h.talCual('span', v.recuerda)) : null,
+      v.ejemplo ? el('p', {}, el('strong', { texto: `${t('acad.ejemplo')}: ` }), h.talCual('span', v.ejemplo)) : null,
+    ].filter(Boolean));
+  }
+  if (item?.tipo === 'oral') {
+    return el('div', { class: 'reporte-punto' }, ...[
+      el('p', { class: 'suave chica', texto: v.temaTitulo ?? '' }), h.talCual('p', v.pregunta ?? '', 'q-enunciado'), h.talCual('p', v.respuesta ?? ''),
+      v.respuestaEs ? h.talCual('p', v.respuestaEs, 'suave') : null, v.explicacion ? h.talCual('p', v.explicacion) : null,
+    ].filter(Boolean));
+  }
+  if (item?.tipo === 'ia' || item?.tipo === 'otra') {
+    return el('div', { class: 'reporte-punto' }, ...[v.titulo ? el('h3', { texto: v.titulo }) : null,
+      ...Object.entries(v.textos ?? {}).map(([k, x]) => el('p', {}, el('strong', { texto: `${k}: ` }), h.talCual('span', Array.isArray(x) ? x.join(' · ') : String(x))))].filter(Boolean));
+  }
+  return el('div', { class: 'reporte-punto' }, el('p', { texto: [t(`reportar.tipo.${item?.tipo ?? 'app'}`), v.titulo, v.visual].filter(Boolean).join(' · ') }));
+}
+function fuentesPunto(item, h) {
+  const { el, t } = h;
+  const f = item?.fuentes ?? [];
+  return el('div', { class: 'reporte-fuentes' }, el('h3', { texto: t('reportar.admin.fuentes') }),
+    f.length ? el('ul', { class: 'lista-simple' }, f.map(x => el('li', { texto: [x.libro, x.capitulo, x.seccion, x.pagina ? t('reportar.admin.pagina', { n: x.pagina }) : null].filter(Boolean).join(' · ') })))
+      : el('p', { class: 'suave chica', texto: t('reportar.admin.sin_fuentes') }),
+    item?.paquete ? el('p', { class: 'suave chica', texto: t('reportar.admin.paquete', { id: String(item.paquete.id ?? '—'), edicion: item.paquete.edicion ?? '—' }) }) : null);
+}
+function panelPunto(r, h) {
+  const { el, t } = h;
+  const item = r.reporte.item;
+  const g = r.grupo ?? { alumnos: 1, reportes: [] };
+  const todos = el('input', { type: 'checkbox', id: 'reporte-veredicto-todos', checked: g.reportes.filter(x => !x.veredicto).length > 1 || null });
+  const mensaje = h.caja();
+  const veredicto = r.reporte.veredicto;
+  const botonV = v => el('button', { type: 'button', class: `boton-3d ${v === 'si' ? 'rojo' : v === 'no' ? 'verde' : 'blanco'} chico reporte-veredicto`, 'data-veredicto': v, 'aria-pressed': String(veredicto?.valor === v), onclick: async e => {
+    e.currentTarget.disabled = true;
+    const x = await h.api('POST', `/api/admin/reportes/${r.id}/veredicto`, { valor: v, todos: todos.checked });
+    if (!x.ok) { e.currentTarget.disabled = false; h.decir(mensaje, h.textoError(x.datos.error), 'error'); return; }
+    h.avisar(t('reportar.admin.veredicto_listo'));
+    await h.recargar();
+  } }, el('span', { texto: t(`reportar.veredicto.${v}`) }));
+  // La IA: solo si hay (y dentro de los topes); su opinión es una sugerencia.
+  const op = r.ia?.opinion;
+  const pedirIa = r.ia?.disponible ? el('button', { type: 'button', class: 'boton-3d blanco chico con-icono reporte-pedir-ia', onclick: async e => {
+    e.currentTarget.disabled = true;
+    const x = await h.api('POST', `/api/admin/reportes/${r.id}/ia`, {});
+    if (!x.ok) { e.currentTarget.disabled = false; h.decir(mensajeIa, h.textoError(x.datos.error), 'error'); return; }
+    h.decir(mensajeIa, t('reportar.ia.pedida'), 'info');
+  } }, h.icono('chispa', 'icono chico'), el('span', { texto: t('reportar.ia.pedir') })) : null;
+  const mensajeIa = h.caja();
+  // Responder al alumno (el mensaje de ayuda de siempre: lo ve en su Ayuda).
+  const respuesta = el('textarea', { id: 'reporte-respuesta', rows: 3, maxlength: 4000, placeholder: t('reportar.admin.respuesta_muestra') });
+  const mensajeR = h.caja();
+  const responder = h.botonAccion(t('reportar.admin.responder'), 'secundario', mensajeR, async () => {
+    const x = await h.api('POST', `/api/admin/soporte/${r.id}`, { texto: respuesta.value });
+    if (!x.ok) throw new Error(h.textoError(x.datos.error));
+    h.avisar(t('soporte.admin.listo'));
+    await h.recargar();
+  }, 'flecha');
+  return [
+    el('section', { class: 'tarjeta reporte-visto' }, ...[
+      el('h2', { class: 'con-icono' }, h.icono('lupa'), el('span', { texto: t('reportar.admin.lo_que_vio') })),
+      el('p', { class: 'suave chica', texto: t(`reportar.tipo.${item.tipo}`) }),
+      vistaPunto(item, h),
+      fuentesPunto(item, h),
+    ]),
+    el('section', { class: 'tarjeta reporte-grupo' },
+      el('h2', { class: 'con-icono' }, h.icono('personas'), el('span', { texto: h.tn('reportar.admin.grupo', { n: g.alumnos || 1 }) })),
+      el('p', { class: 'suave chica', texto: Object.entries(g.porQue ?? {}).map(([q, n]) => `${t(`reportar.que.${q}`)}: ${h.numero(n)}`).join(' · ') }),
+      el('ol', { class: 'reporte-grupo-lista' }, g.reportes.map(x => el('li', { class: x.id === r.id ? 'este' : null }, ...[
+        el('p', { class: 'chica' }, ...[el('a', { href: `#reportes/${x.id}`, texto: `#${x.id}` }), el('span', { texto: ` · ${x.nombreVisible ?? '—'} (@${x.usuario ?? '—'}) · ${h.fecha(x.en)}` })]),
+        x.que ? el('p', {}, el('strong', { texto: t(`reportar.que.${x.que}`) })) : null,
+        x.porque ? h.talCual('p', x.porque, 'soporte-texto') : null,
+        x.veredicto ? insigniaVeredicto(h, x.veredicto.valor) : null,
+      ].filter(Boolean))))),
+    el('section', { class: 'tarjeta reporte-razon' }, ...[
+      el('h2', { class: 'con-icono' }, h.icono('escudo'), el('span', { texto: t('reportar.admin.tiene_razon') })),
+      veredicto ? el('p', { class: 'reporte-veredicto-actual' }, insigniaVeredicto(h, veredicto.valor), el('span', { class: 'suave chica', texto: ` ${t('reportar.admin.decidio', { quien: veredicto.porNombre ?? '—', fecha: h.fecha(veredicto.en) })}` })) : el('p', { class: 'suave', texto: t('reportar.admin.sin_veredicto') }),
+      el('div', { class: 'botones reporte-veredictos' }, VEREDICTOS.map(botonV)),
+      g.reportes.length > 1 ? el('label', { class: 'casilla', for: 'reporte-veredicto-todos' }, todos, el('span', { texto: t('reportar.admin.a_todos', { n: String(g.reportes.length) }) })) : null,
+      mensaje,
+      el('h3', { class: 'con-icono' }, h.icono('chispa', 'icono chico'), el('span', { texto: t('reportar.ia.titulo') })),
+      op?.estado === 'lista' ? el('div', { class: 'reporte-ia' }, el('p', {}, el('strong', { texto: `${t('reportar.ia.sugiere')} ` }), insigniaVeredicto(h, op.veredicto)), h.talCual('p', op.razon ?? ''), el('p', { class: 'suave chica', texto: t('reportar.ia.solo_sugerencia') })) : null,
+      pedirIa ?? el('p', { class: 'suave chica reporte-ia-no', texto: t('reportar.ia.no_disponible') }),
+      pedirIa ? el('p', { class: 'suave chica', texto: t('reportar.ia.que_manda') }) : null,
+      mensajeIa,
+    ].filter(Boolean)),
+    el('section', { class: 'tarjeta reporte-responder' },
+      el('h2', { class: 'con-icono' }, h.icono('chispa'), el('span', { texto: t('reportar.admin.responder_titulo') })),
+      el('p', { class: 'suave chica', texto: t('reportar.admin.responder_linea') }),
+      el('label', { for: 'reporte-respuesta', texto: t('soporte.admin.tu_respuesta') }), respuesta,
+      el('div', { class: 'botones' }, responder), mensajeR),
   ];
 }
 
@@ -343,6 +484,8 @@ export function vistaAdminReporte(datos, h) {
   const src = `/api/admin/reportes/${r.id}/captura`;
   return [
     el('a', { class: 'volver con-icono', href: '#reportes' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('admin.pestana.reportes') })),
+    // 0.14.85: con punto, primero lo que vio el alumno, los reportes del mismo punto, «¿Tiene razón?», la IA y responder.
+    ...(r.reporte.item ? panelPunto(r, h) : []),
     el('section', { class: 'tarjeta' },
       el('div', { class: 'ficha-cuenta-cabeza' }, el('h1', { class: 'ficha-nombre', texto: t('reportar.admin.uno', { n: r.id }) }), insigniaReporte(h, r.reporte.estado)),
       el('p', { class: 'suave' }, el('a', { href: `#alumno/${r.usuarioId}`, texto: `${r.nombreVisible ?? ''} (@${r.usuario ?? '—'})` }), ' · ', el('a', { href: `#soporte/${r.id}`, texto: t('reportar.admin.hilo') })),

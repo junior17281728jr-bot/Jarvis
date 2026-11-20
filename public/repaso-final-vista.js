@@ -13,6 +13,8 @@
 import { selectorIdioma, bilingue, rotulo } from './oral-idioma.js';
 // 0.14.84: después de responder y al terminar la vuelta, todas las opciones (correcta en verde, la suya en rojo, las demás sin color).
 import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
+// 0.14.85: «⚑ Reportar un error» de cada pregunta ya respondida (public/reportar-vista.js).
+import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
 
 const RUTA = '#repaso';
 
@@ -135,7 +137,8 @@ export function rondaTestGuide(intento, h) {
           opcionesRevisadas(q.opciones, resp, h, { clase: 'rf-hoja-opciones' }),
           resp.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', resp.breve)) : null,
           !resp.acierto ? el('p', { class: 'suave chica', texto: t('rf.vuelve') }) : null,
-        ],
+          enlaceReportar(puntoPregunta(q, { respondida: true, elegida })),
+        ].filter(Boolean),
         boton: botonGrande(t('acad.continuar'), siguiente, { tono: resp.acierto ? 'verde' : 'rojo' }),
       }));
       if (resp.acierto) celebrar(zona); else sacudir(zona.querySelector('.es-mala'));
@@ -191,7 +194,8 @@ export function revisionVuelta(preguntas, h) {
       el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : numero(k + 1))),
     talCual('p', q.enunciado, 'q-enunciado rf-revision-enunciado'),
     opcionesRevisadas(q.opciones, q.respuesta, h),
-    q.respuesta.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', q.respuesta.breve)) : null));
+    q.respuesta.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', q.respuesta.breve)) : null,
+    enlaceReportar(puntoPregunta(q, { respondida: true, elegida: q.respuesta.elegida ?? null }))));
   const filtro = filtroFallas(h, { malas, total: lista.length, alCambiar: solo => aplicarFiltro(filas, solo) });
   aplicarFiltro(filas, filtro.solo());
   return el('section', { class: 'panel revision rf-revision', 'aria-labelledby': 'rf-revision-titulo' },

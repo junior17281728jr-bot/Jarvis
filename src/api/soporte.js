@@ -4,10 +4,20 @@ import { createReadStream } from 'node:fs';
 import { ErrorHttp, leerJson, textoDe, CABECERAS_SEGURIDAD } from '../nucleo/http.js';
 import { Limitador } from '../nucleo/limites.js';
 import { crearTicket, subirImagen, imagenDe, ticketsDe, verTicket, responderAlumno, ticketsAdmin, verTicketAdmin, responderAdmin, pendientesSoporte,
-  crearReporte, subirCaptura, capturaDe, reportesAdmin, verReporteAdmin, actualizarReporte } from '../cuentas/soporte.js';
+  crearReporte, subirCaptura, capturaDe, reportesAdmin, verReporteAdmin, actualizarReporte, ponerVeredicto, claveOpinionIa, opinionIaDe } from '../cuentas/soporte.js';
+import { paqueteActivo } from '../academia/paquetes.js';
+import { resolverReporte, TIPOS_PAQUETE } from '../academia/reporte-item.js';
+import { armarRevision } from '../academia/reporte-ia.js';
+import { PROPOSITOS } from '../ia/propositos.js';
 
-export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, limites = {} } = {}) {
-  const topes = { imagenes: new Limitador({ maximo: 40, ventanaMs: 24 * 3600 * 1000 }), mensajes: new Limitador({ maximo: 60, ventanaMs: 3600 * 1000 }), ...limites };
+export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, limites = {}, ganchos = null } = {}) {
+  const topes = { imagenes: new Limitador({ maximo: 40, ventanaMs: 24 * 3600 * 1000 }), mensajes: new Limitador({ maximo: 60, ventanaMs: 3600 * 1000 }), ia: new Limitador({ maximo: 20, ventanaMs: 3600 * 1000 }), ...limites };
+  const activo = db => { try { return config ? paqueteActivo(db, config) : null; } catch { return null; } };
+  const iaHay = (db, usuario) => Boolean(ganchos?.iaHay?.(db, usuario)) && typeof ganchos?.iaCompe === 'function';
+  // Lo del reporte que puede ver el administrador, con la IA (si hay) y su opinión guardada (si ya la pidió).
+  // Solo para lo del paquete (una tarjeta, una pregunta, el oral, lo de la IA): de la app o un dibujo no hay texto que juzgar.
+  const delPaquete = r => TIPOS_PAQUETE.includes(r.reporte.item?.tipo);
+  const conIa = (db, usuario, r) => ({ ...r, ia: { disponible: delPaquete(r) && iaHay(db, usuario), opinion: delPaquete(r) ? opinionIaDe(db, r.reporte.clave) : null } });
   const servirCaptura = c => ({
     codigo: 200,
     enviar: res => {
@@ -58,9 +68,15 @@ export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, 
   // ---------- 0.14.26: «Reportar un problema» (un mensaje de ayuda 'error' con su captura en la base) ----------
   // El contexto lo pone la app (pantalla, versión, equipo, tamaño, idioma); el servidor solo guarda esos campos (nunca
   // otro, así una contraseña nunca puede colarse) y pone la hora.
+  // 0.14.85: «⚑ Reportar un error»: con «que» (lo que eligió), «porque» y el punto («item»: solo dónde está; el servidor
+  // saca del paquete lo que vio y, de una pregunta, la letra que eligió de SUS respuestas guardadas).
   rutas.agregar('POST', '/api/soporte/reporte', async ({ db, req, usuario }) => {
     const datos = await leerJson(req);
-    return { codigo: 201, datos: { ticket: crearReporte(db, usuario.id, { texto: textoDe(datos, 'texto'), contexto: datos?.contexto }, { ahoraMs: reloj() }) } };
+    const que = Object.hasOwn(datos ?? {}, 'que') ? textoDe(datos, 'que') : null;
+    if (que === null) return { codigo: 201, datos: { ticket: crearReporte(db, usuario.id, { texto: textoDe(datos, 'texto'), contexto: datos?.contexto }, { ahoraMs: reloj() }) } };
+    const pantalla = typeof datos?.contexto?.pantalla === 'string' ? datos.contexto.pantalla : null;
+    const item = resolverReporte(db, activo(db), usuario, datos?.item, { pantalla, ahora: reloj() });
+    return { codigo: 201, datos: { ticket: crearReporte(db, usuario.id, { que, porque: textoDe(datos, 'porque'), contexto: datos?.contexto, item }, { ahoraMs: reloj() }) } };
   });
   rutas.agregar('POST', '/api/soporte/:id/captura', async ({ db, req, usuario, parametros }) => {
     if (!topes.imagenes.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
@@ -68,7 +84,27 @@ export function registrarRutasSoporte(rutas, { config = null, reloj = Date.now, 
   });
   rutas.agregar('GET', '/api/soporte/:id/captura', ({ db, usuario, parametros }) => servirCaptura(capturaDe(db, parametros.id, { usuarioId: usuario.id })));
   rutas.agregar('GET', '/api/admin/reportes', ({ db }) => ({ codigo: 200, datos: reportesAdmin(db) }), { admin: true });
-  rutas.agregar('GET', '/api/admin/reportes/:id', ({ db, parametros }) => ({ codigo: 200, datos: { reporte: verReporteAdmin(db, parametros.id) } }), { admin: true });
+  rutas.agregar('GET', '/api/admin/reportes/:id', ({ db, usuario, parametros }) => ({ codigo: 200, datos: { reporte: conIa(db, usuario, verReporteAdmin(db, parametros.id)) } }), { admin: true });
+  // «¿Tiene razón?»: si | no | dudoso (todos: true → a todos los de ese punto que todavía no tienen veredicto).
+  rutas.agregar('POST', '/api/admin/reportes/:id/veredicto', async ({ db, req, usuario, parametros }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { reporte: conIa(db, usuario, ponerVeredicto(db, usuario.id, parametros.id, textoDe(datos, 'valor'), { todos: datos?.todos === true, ahoraMs: reloj() })) } };
+  }, { admin: true });
+  // «Pedir opinión a la IA»: SOLO el punto y los porqués (sin nombres ni datos); la respuesta llega a la fila y se lee al
+  // volver a abrir el reporte. Sin IA (o fuera de los topes): 409 ia_no_disponible.
+  rutas.agregar('POST', '/api/admin/reportes/:id/ia', async ({ db, req, usuario, parametros }) => {
+    await leerJson(req);
+    const r = verReporteAdmin(db, parametros.id);
+    if (!delPaquete(r)) throw new ErrorHttp(409, 'reporte_sin_punto');
+    if (!iaHay(db, usuario)) throw new ErrorHttp(409, 'ia_no_disponible');
+    if (!topes.ia.permitir(String(usuario.id))) throw new ErrorHttp(429, 'demasiados_intentos');
+    const porques = r.grupo.reportes.map(x => ({ que: x.que ?? '', texto: x.porque ?? '' }));
+    const pedido = armarRevision(r.reporte.item, porques);
+    if (Buffer.byteLength(pedido.sistema) + Buffer.byteLength(pedido.texto) > PROPOSITOS.reporte_revisar.entradaMaxBytes) throw new ErrorHttp(409, 'ia_no_disponible');
+    const x = ganchos.iaCompe(db, usuario, { uso: 'reporte_revisar', ...pedido, clave: claveOpinionIa(r.reporte.clave), extra: { huella: r.reporte.item.ref?.h ?? null } });
+    if (x.estado !== 'pendiente') throw new ErrorHttp(409, 'ia_no_disponible');
+    return { codigo: 202, datos: { tarea: { id: x.tarea } } };
+  }, { admin: true });
   rutas.agregar('POST', '/api/admin/reportes/:id', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
     const pedido = {};

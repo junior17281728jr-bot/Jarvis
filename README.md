@@ -771,6 +771,36 @@ flechas y se acerca pellizcando, con la rueda o con + y −. Se pausa fuera de l
 - **«Solo las que falló / Todas»** en las revisiones: al alumno, «Solo las que falló» primero (sin falladas, «Todas»); al
   administrador, «Todas».
 - Pruebas: `test/opciones-revision.test.js`.
+### Lo nuevo de la 0.14.85: «⚑ Reportar un error» en todo — sin cambio de base
+
+- **Un enlace chiquito y siempre igual** (`public/reportar-vista.js`) debajo de todo lo que el alumno lee o responde: cada
+  tarjeta de la clase (junto a «¿Lo entendiste?»), «Otra forma de verlo», lo de la IA, las respuestas del libro del oral,
+  la escena 3D / el dibujo / el clip / la foto de una tarjeta, las situaciones, la figura en grande, el video de la materia,
+  la Biblioteca y el dictado. En una pregunta, SOLO después de responderla (en la práctica, en la hoja de la respuesta y en
+  la revisión); durante el examen con reloj no, y en su revisión sí. Y al pie de cada pantalla (también en la clase y el
+  examen) «⚑ Algo no funciona en esta pantalla».
+- **Se abre una hoja** (no se sale de la pantalla): «¿Qué está mal?» (La respuesta está mal · La explicación está mal o
+  confusa · Error de traducción · Imagen o animación mal · No carga / error de la app · Otro) y «¿Por qué?» (de 10 a 1000
+  letras si es de contenido). Al final: «¡Gracias! El administrador lo va a revisar.».
+- **Lo que se manda solo:** la pantalla, la versión, el equipo y su tamaño, claro u oscuro, el idioma y los últimos 5
+  errores de la página (se guardan solo en memoria: nada sale hasta que se manda un reporte), y dónde está (materia, tema
+  y tarjeta; la pregunta). El servidor (`src/academia/reporte-item.js`) saca del paquete el texto tal cual, su huella, sus
+  fuentes y la versión del paquete; de una pregunta, la letra que eligió sale de SUS respuestas guardadas (nunca de la app)
+  y con un examen con reloj abierto que la tiene, no se puede (409).
+- **Topes:** 6 reportes por hora y 30 por día por alumno (aparte de los de Ayuda) y el mismo punto una sola vez por alumno.
+- **Mensajes → Reportes**, por punto: lo que vio el alumno (la pregunta con TODAS sus opciones, la correcta en verde y la
+  que eligió en rojo, con su explicación; o la tarjeta), sus fuentes, cuántos alumnos distintos lo reportaron y qué dijo cada
+  uno, **«¿Tiene razón?»** (Sí, es un error · No, es cosa del alumno · Dudoso; queda quién y cuándo; se puede poner a todos
+  los del punto), **«Pedir opinión a la IA»** (solo con IA y dentro de los topes; manda SOLO el punto y los porqués, sin
+  nombres; es una sugerencia) y «Responder al alumno» (su Ayuda de siempre; ahí ve también el veredicto). Sigue siendo un
+  mensaje de ayuda `error` en «ajustes»: sin migración.
+- **El alumno ve el veredicto** en su Ayuda, con palabras para él («Tenías razón» · «Revisado: está bien» · «En revisión»).
+- Solo aprende lo de CONTENIDO del paquete (tarjeta, pregunta, oral, lo de la IA; no «No carga» ni «Otro»); la IA, igual.
+- **Aprende:** los errores confirmados van primero en «Para Claude» (sección 0, con sus ids y lo que escribieron los
+  alumnos, sin nombres) y suben en «Dónde más cuesta» (parte «error»). Lo que 5 alumnos distintos o más reportaron y era
+  «cosa del alumno» cuenta como «confunde». **«Para hoy»**: una fila por punto con reportes nuevos (no por reporte), y un
+  solo aviso para el dueño por punto.
+- Pruebas: `test/reportar-todo.test.js`.
 
 ### Lo nuevo de la 0.14.79: los cursos («Grupo Piloto 1», «Grupo Piloto 2»…) — cambio de base 14
 

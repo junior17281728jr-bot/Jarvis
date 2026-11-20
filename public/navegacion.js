@@ -192,7 +192,16 @@ export function paraHoy({ sistema = null, copiasTono = null, pagosPendientes = 0
   const ayuda = Number(s.soporte?.pendientes ?? 0);
   const reportes = Number(s.soporte?.reportes ?? 0);
   if (ayuda > 0) lista.push({ id: 'ayuda', tono: 'atencion', clave: 'hoy.ayuda', n: ayuda, href: '#mensajes' });
-  if (reportes > 0) lista.push({ id: 'reportes', tono: 'atencion', clave: 'hoy.reportes', n: reportes, href: '#reportes' });
+  // 0.14.85: una fila por PUNTO reportado (la misma tarjeta o pregunta de 3 alumnos es UNA fila: «3 alumnos reportaron…»),
+  // los de más alumnos primero; hasta 4 y, si hay más, «N puntos más» → Reportes. Sin la lista (una versión vieja): la
+  // fila de siempre.
+  const puntos = Array.isArray(s.reportesHoy) ? s.reportesHoy.filter(x => x && Number.isSafeInteger(x.id)) : null;
+  if (puntos && puntos.length) {
+    for (const x of puntos.slice(0, 4)) {
+      lista.push({ id: `reporte-${x.id}`, tono: 'atencion', clave: 'hoy.reporte_punto', n: Math.max(1, Number(x.alumnos) || 1), vars: { que: x.titulo || x.pantalla || '—', tipo: x.tipo || 'app' }, href: `#reportes/${x.id}`, ir: 'hoy.ir.reportes' });
+    }
+    if (puntos.length > 4) lista.push({ id: 'reportes-mas', tono: 'atencion', clave: 'hoy.reportes_mas', n: Math.max(puntos.length, reportes) - 4, href: '#reportes', ir: 'hoy.ir.reportes' });
+  } else if (reportes > 0) lista.push({ id: 'reportes', tono: 'atencion', clave: 'hoy.reportes', n: reportes, href: '#reportes' });
   if (Number(pagosPendientes) > 0) lista.push({ id: 'pagos', tono: 'atencion', clave: 'hoy.pagos', n: Number(pagosPendientes), href: '#pagos' });
   // Las copias (el mismo color del azulejo de Copias: rojo = sin copias fuera o fallando; amarillo = solo en el servidor).
   if (copiasTono === 'mal') lista.push({ id: 'copias', tono: 'mal', clave: 'hoy.copias', href: '#copias' });

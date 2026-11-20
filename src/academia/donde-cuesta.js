@@ -51,9 +51,15 @@ import { leerGuardado } from './instructor-ia.js';
 import { leerCambios } from './cambios-ia.js';
 import { idTarjeta, huellaTarjeta } from './tarjeta-id.js';
 import { votosVigentes, votosDeClave, MUESTRA_VOTOS, vetoVotos, pctSi } from './entendi.js';
+import { senalesReportes, MUESTRA_CONFUSO } from './reporte-item.js';
 
 export const MUESTRA = Object.freeze({ respuestas: 10, alumnos: 3, pide: 5, despues: 5, votos: MUESTRA_VOTOS });
-export const PESOS = Object.freeze({ fallo: 0.4, pide: 0.24, despues: 0.16, no: 0.2 });
+export const PESOS = Object.freeze({ fallo: 0.4, pide: 0.24, despues: 0.16, no: 0.2, error: 0.3, confuso: 0.15 });
+// 0.14.85: «⚑ Reportar un error» (src/academia/reporte-item.js), solo del texto de ahora:
+//   error   = el administrador dijo «Sí, es un error» (1 alumno basta: lo confirmó él)   100 %, seguro 100   peso 0,3
+//   confuso = varios alumnos DISTINTOS reportaron y era «cosa del alumno» (la explicación confunde): con la muestra
+//             mínima de alumnos (MUESTRA_CONFUSO), 100 % con su cota de Wilson (5 de 5 → 57)             peso 0,15
+//   Sin reportes revisados estas partes no existen: el puntaje es EXACTAMENTE el de antes.
 // La cota baja de Wilson (95 %) de k de n, en 0–100 (null sin datos): lo «seguro» de una proporción con su muestra.
 export function wilsonBajo(k, n, z = 1.96) {
   if (!(n > 0)) return null;
@@ -128,13 +134,15 @@ export function puntaje(partes = {}) {
   const pide = pd ? { pct: pct(pd.pidieron, base), n: base, pidieron: pd.pidieron, ok: base >= MUESTRA.pide, seguro: wilsonBajo(pd.pidieron, base) } : null;
   const despues = d ? { pct: d.n ? pct(d.n - d.bien, d.n) : null, n: d.n, ok: d.n >= MUESTRA.despues, seguro: wilsonBajo(d.n - d.bien, d.n) } : null;
   const no = v && v.n > 0 ? { pct: pct(v.no, v.n), n: v.n, no: v.no, ok: v.n >= MUESTRA.votos, seguro: wilsonBajo(v.no, v.n) } : null;
+  const er = partes.error?.n > 0 ? { pct: 100, n: partes.error.n, ok: true, seguro: 100 } : null;
+  const cf = partes.confuso?.n > 0 ? { pct: 100, n: partes.confuso.n, ok: partes.confuso.n >= MUESTRA_CONFUSO, seguro: wilsonBajo(partes.confuso.n, partes.confuso.n) } : null;
   let suma = 0;
   let seguro = 0;
   let pesos = 0;
-  for (const [k, x] of [['fallo', fallo], ['pide', pide], ['despues', despues], ['no', no]]) if (x?.ok && x.pct != null) { suma += PESOS[k] * x.pct; seguro += PESOS[k] * (x.seguro ?? 0); pesos += PESOS[k]; }
-  return { puntaje: pesos ? Math.round(suma / pesos) : null, seguro: pesos ? Math.round(seguro / pesos) : null, partes: { fallo, pide, despues, no } };
+  for (const [k, x] of [['fallo', fallo], ['pide', pide], ['despues', despues], ['no', no], ['error', er], ['confuso', cf]]) if (x?.ok && x.pct != null) { suma += PESOS[k] * x.pct; seguro += PESOS[k] * (x.seguro ?? 0); pesos += PESOS[k]; }
+  return { puntaje: pesos ? Math.round(suma / pesos) : null, seguro: pesos ? Math.round(seguro / pesos) : null, partes: { fallo, pide, despues, no, ...(er ? { error: er } : {}), ...(cf ? { confuso: cf } : {}) } };
 }
-const muestraDe = x => (x.partes?.fallo?.n ?? 0) + (x.partes?.pide?.n ?? 0) + (x.partes?.despues?.n ?? 0) + (x.partes?.no?.n ?? 0);
+const muestraDe = x => (x.partes?.fallo?.n ?? 0) + (x.partes?.pide?.n ?? 0) + (x.partes?.despues?.n ?? 0) + (x.partes?.no?.n ?? 0) + (x.partes?.error?.n ?? 0) + (x.partes?.confuso?.n ?? 0);
 // El orden: primero lo que más cuesta CON SEGURIDAD (la cota de Wilson: la proporción con su muestra); empate: el
 // puntaje; después más datos y su nombre (siempre el mismo orden). Una foto de antes (sin «seguro») va por el puntaje.
 const seguroDe = x => x.seguro ?? x.puntaje ?? -1;
@@ -192,6 +200,10 @@ export function calcularCuesta(db, p, { ahora = Date.now() } = {}) {
       else if (x.tipo === 'pregunta' && x.donde.materia) sumarVoto(`${x.donde.materia}/${x.donde.tema}`, x);
     }
   } catch (error) { console.error('votos de «¿Lo entendiste?»:', error?.name ?? 'Error'); }
+  // 0.14.85: los reportes revisados por el administrador («Sí, es un error» / «cosa del alumno»).
+  let reportes = new Map();
+  try { reportes = senalesReportes(db, p, dePregunta); } catch (error) { console.error('reportes en «Dónde más cuesta»:', error?.name ?? 'Error'); }
+  const deReportes = k => { const x = reportes.get(k); return x ? { error: x.error ? { n: x.error } : null, confuso: x.confuso ? { n: x.confuso } : null } : {}; };
   // 2. Quién pidió ayuda en cada tarjeta y si acertó la siguiente vez.
   const usos = usosVigentes(db, p);
   // 0.14.77: por alumno DISTINTO (antes cada respuesta era un caso: 1 alumno con 5 preguntas pesaba como 5). Cada alumno
@@ -246,11 +258,11 @@ export function calcularCuesta(db, p, { ahora = Date.now() } = {}) {
     const pidieron = pidieronTema.get(kt)?.size ?? 0;
     const ft = fallo(at.preguntas.map(q => q.id));
     if (ft) { const am = alumnosMalDe(at.preguntas.map(q => q.id)); ft.alumnos = am.alumnos || alumnos || ft.alumnos; ft.alumnosMal = am.alumnosMal; }
-    const rt = puntaje({ fallo: ft, pide: pidieron ? { pidieron, alumnos } : null, despues: despues.get(kt) ?? null, no: votos.get(kt) ?? null });
+    const rt = puntaje({ fallo: ft, pide: pidieron ? { pidieron, alumnos } : null, despues: despues.get(kt) ?? null, no: votos.get(kt) ?? null, ...deReportes(kt) });
     if (rt.puntaje != null) temas.push({ materia: at.materia, tema: at.tema, titulo: at.titulo, numero: at.numero, ...rt });
     const indices = new Set([...at.porTarjeta.keys(), ...[...usos.values()].filter(x => x.v.materia === at.materia && x.v.tema === at.tema).map(x => x.indice)]);
       // 0.14.77: también las tarjetas que solo tienen votos.
-    for (const k of votos.keys()) { const [m, tm, i] = k.split('/'); if (m === at.materia && tm === at.tema && i != null) indices.add(Number(i)); }
+    for (const k of [...votos.keys(), ...reportes.keys()]) { const [m, tm, i] = k.split('/'); if (m === at.materia && tm === at.tema && i != null) indices.add(Number(i)); }
     for (const i of indices) {
       const s = t?.secciones?.[i];
       if (!s) continue;
@@ -258,7 +270,7 @@ export function calcularCuesta(db, p, { ahora = Date.now() } = {}) {
       const pid = uso ? Object.values(uso.v.u).filter(x => x.m || x.f).length : 0;
       const fi = fallo(at.porTarjeta.get(i) ?? []);
       if (fi) fi.alumnos = alumnosMalDe(at.porTarjeta.get(i) ?? []).alumnos || fi.alumnos;
-      const r = puntaje({ fallo: fi, pide: pid ? { pidieron: pid, alumnos } : null, despues: despues.get(`${kt}/${i}`) ?? null, no: votos.get(`${kt}/${i}`) ?? null });
+      const r = puntaje({ fallo: fi, pide: pid ? { pidieron: pid, alumnos } : null, despues: despues.get(`${kt}/${i}`) ?? null, no: votos.get(`${kt}/${i}`) ?? null, ...deReportes(`${kt}/${i}`) });
       if (r.puntaje == null) {
         if (muestraDe(r) > 0) pocos.push({ materia: at.materia, tema: at.tema, temaTitulo: at.titulo, indice: i, titulo: String(s.titulo ?? ''), id: idTarjeta(at.materia, at.tema, s.titulo ?? ''), ...r });
         continue;
@@ -410,6 +422,9 @@ export function listaAdmin(db, p, foto, { limite = 10 } = {}) {
       despues: x.partes.despues?.ok ? { pct: x.partes.despues.pct, n: x.partes.despues.n } : null,
       // 0.14.77: «no se entendió» (👎 de «¿Lo entendiste?»); una foto de antes no lo trae.
       no: x.partes.no?.ok ? { pct: x.partes.no.pct, n: x.partes.no.n, no: x.partes.no.no } : null,
+      // 0.14.85: los reportes revisados (solo si hay: una foto de antes no los trae).
+      ...(x.partes.error?.ok ? { error: { n: x.partes.error.n } } : {}),
+      ...(x.partes.confuso?.ok ? { confuso: { n: x.partes.confuso.n } } : {}),
       hizo: hizo(x.materia, x.tema, x.tipo === 'tarjeta' ? x.titulo : null),
       promovida: vigente ? { clave: promo.clave, oculta: !leerGuardado(db, promo.clave), en: promo.en, vieron: promo.medida?.vieron?.pct ?? null, sin: promo.medida?.sin?.pct ?? null } : null,
     };

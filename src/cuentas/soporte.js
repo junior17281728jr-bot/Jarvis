@@ -12,6 +12,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { avisarCuenta, auditar } from './usuarios.js';
 import { abrirAviso, resolverAviso } from '../avisos/avisos.js';
+import { QUE_REPORTE, QUE_CONTENIDO, TEXTO_QUE, PORQUE } from '../academia/reporte-que.js';
 
 // 0.14.26: 'error' = «Reportar un problema» (con su estado de reporte, notas del administrador y una captura en la base).
 export const CATEGORIAS_SOPORTE = Object.freeze(['app', 'pregunta', 'cuenta', 'pagos', 'datos', 'otro', 'error']);
@@ -30,6 +31,9 @@ export const ESTADOS_SOPORTE = Object.freeze(['nuevo', 'revision', 'resuelto']);
 export const IMAGENES_MAXIMAS = 3;
 export const IMAGEN_MAXIMA = 5 * 1024 * 1024;
 export const TICKETS_POR_DIA = 10;
+// 0.14.85: los reportes («⚑ Reportar un error») tienen su propio tope (no gastan el de Ayuda): por hora y por día.
+export const REPORTES_POR_HORA = 6;
+export const REPORTES_POR_DIA = 30;
 const TEXTO_MAXIMO = 4000;
 const MENSAJES_MAXIMOS = 200;
 const MINUTOS_PARA_CAPTURAS = 30;
@@ -71,7 +75,9 @@ export function vistaTicket(db, t, { conHilo = true } = {}) {
     sinLeerAlumno: Boolean(ultimo && ultimo.de === 'admin' && (Number(t.vistosAlumno) || 0) < t.mensajes.length),
     pendiente: t.estado !== 'resuelto' && ultimo?.de === 'alumno',
     // 0.14.26: un reporte de problema: su estado y si trae captura (las notas del administrador NUNCA van aquí).
-    reporte: t.reporte ? { estado: t.reporte.estado, captura: Boolean(t.reporte.captura) } : null,
+    // 0.14.85: y, si el administrador ya lo revisó, SOLO su veredicto («Sí, es un error» / «No…» / «Dudoso»): nunca quién
+    // lo decidió, la opinión de la IA, ni lo que reportaron otros alumnos.
+    reporte: t.reporte ? { estado: t.reporte.estado, captura: Boolean(t.reporte.captura), ...(t.reporte.veredicto?.valor ? { veredicto: t.reporte.veredicto.valor } : {}) } : null,
   };
 }
 
@@ -84,15 +90,19 @@ export function crearTicket(db, usuarioId, { categoria, texto, contexto, pedido 
   const c = contexto && typeof contexto === 'object' ? contexto : {};
   return enTransaccion(db, () => {
     const desde = ahora(ahoraMs - 24 * 3600 * 1000);
-    const hoy = todos(db).filter(t => t.usuarioId === Number(usuarioId) && t.creado >= desde).length;
-    if (hoy >= TICKETS_POR_DIA) throw new ErrorHttp(429, 'soporte_muchos');
+    const esError = categoria === 'error';
+    const hoy = todos(db).filter(t => t.usuarioId === Number(usuarioId) && t.creado >= desde && (t.categoria === 'error') === esError).length;
+    if (hoy >= (esError ? REPORTES_POR_DIA : TICKETS_POR_DIA)) throw new ErrorHttp(429, 'soporte_muchos');
     const id = (Number(leer(db, 'soporte.siguiente')) || 0) + 1;
     escribir(db, 'soporte.siguiente', String(id));
     const en = ahora(ahoraMs);
     const t = {
       id, usuarioId: Number(usuarioId), categoria, estado: 'nuevo', creado: en, actualizado: en,
       contexto: { pantalla: unaLinea(String(c.pantalla ?? '').split(/[?&]/)[0], 120) || null, version: unaLinea(c.version, 20) || null, navegador: unaLinea(c.navegador, 300) || null, pregunta: unaLinea(c.pregunta, 60) || null,
-        tamano: /^\d{2,5}x\d{2,5}$/.test(String(c.tamano ?? '')) ? c.tamano : null, idioma: ['es', 'en'].includes(c.idioma) ? c.idioma : null, hora: en },
+        tamano: /^\d{2,5}x\d{2,5}$/.test(String(c.tamano ?? '')) ? c.tamano : null, idioma: ['es', 'en'].includes(c.idioma) ? c.idioma : null, hora: en,
+        // 0.14.85: claro u oscuro, y los últimos errores de la página (hasta 5, solo su mensaje y dónde: nunca datos).
+        ...(['claro', 'oscuro'].includes(c.tema) ? { tema: c.tema } : {}),
+        ...(Array.isArray(c.errores) && c.errores.length ? { errores: c.errores.slice(-5).map(e => ({ mensaje: unaLinea(e?.mensaje, 200), donde: unaLinea(String(e?.donde ?? '').split(/[?#]/)[0], 160) || null, en: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(e?.en ?? '')) ? e.en : null })).filter(e => e.mensaje) } : {}) },
       mensajes: [{ de: 'alumno', autorId: Number(usuarioId), texto: limpio, en, imagenes: [] }],
       ...(categoria === 'datos' ? { pedido, vence: diasHabiles(ahoraMs, 10) } : {}),
       vistoAlumno: en, vistosAlumno: 1, vistoAdmin: null,
@@ -243,14 +253,40 @@ const ESTADO_TICKET_DE_REPORTE = { nuevo: 'nuevo', visto: 'revision', arreglado:
 const claveCaptura = id => `soporte.captura.${Number(id)}`;
 const esJpeg = b => b.length >= 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
 
-export function crearReporte(db, usuarioId, { texto, contexto }, { ahoraMs = Date.now() } = {}) {
+// 0.14.85: «⚑ Reportar un error» en todo lo que el alumno lee o responde. Además del texto de antes:
+//  - que: lo que eligió («La respuesta está mal»…, src/academia/reporte-item.js) y porque (10–1000 letras si es de
+//    contenido). El primer mensaje es «<lo que eligió>: <su porqué>».
+//  - item: el PUNTO ya resuelto por el servidor (src/academia/reporte-item.js: el texto tal cual lo vio, su huella, sus
+//    fuentes y la versión del paquete). Sin item es un reporte de la app (como antes).
+// Topes: REPORTES_POR_HORA por alumno (contados aquí, con la hora del servidor) y el mismo punto una sola vez por alumno
+// (de la app: mientras el de esa pantalla siga abierto). Un aviso para el dueño por PUNTO (no por reporte): si el punto
+// ya tiene uno nuevo abierto, el reporte se suma a ese.
+const reportesDe = db => todos(db).filter(t => t.categoria === 'error' && t.reporte);
+const abierto = t => ['nuevo', 'visto'].includes(t.reporte?.estado) && !t.reporte?.veredicto;
+export function crearReporte(db, usuarioId, { texto, contexto, que, porque, item = null }, { ahoraMs = Date.now() } = {}) {
+  const nuevo = que !== undefined && que !== null;
+  if (nuevo) {
+    if (!QUE_REPORTE.includes(que)) throw new ErrorHttp(400, 'reporte_que');
+    const p = textoLargo(porque);
+    if (p.length > PORQUE.maximo || (QUE_CONTENIDO.includes(que) && p.length < PORQUE.minimo)) throw new ErrorHttp(400, 'reporte_porque');
+  }
   return enTransaccion(db, () => {
-    const vista = crearTicket(db, usuarioId, { categoria: 'error', texto, contexto }, { ahoraMs });
+    const u = Number(usuarioId);
+    const mios = reportesDe(db).filter(t => t.usuarioId === u);
+    const haceUnaHora = ahora(ahoraMs - 3600 * 1000);
+    if (mios.filter(t => t.creado >= haceUnaHora).length >= REPORTES_POR_HORA) throw new ErrorHttp(429, 'reporte_muchos');
+    if (item?.clave && mios.some(t => t.reporte.item?.clave === item.clave && (item.tipo !== 'app' || abierto(t)))) throw new ErrorHttp(409, 'reporte_repetido');
+    const limpio = nuevo ? textoLargo(porque) : '';
+    const primero = nuevo ? (limpio ? `${TEXTO_QUE[que]}: ${limpio}` : TEXTO_QUE[que]) : texto;
+    const vista = crearTicket(db, usuarioId, { categoria: 'error', texto: primero, contexto }, { ahoraMs });
     const t = ticketDe(db, vista.id);
-    t.reporte = { estado: 'nuevo', notas: '', captura: null };
+    t.reporte = { estado: 'nuevo', notas: '', captura: null, ...(nuevo ? { que, porque: limpio } : {}), ...(item?.clave ? { item: { tipo: item.tipo, clave: item.clave, ref: item.ref, vista: item.vista, fuentes: item.fuentes ?? [], paquete: item.paquete ?? null } } : {}) };
     guardar(db, t);
-    const u = db.prepare('SELECT nombre, nombre_visible FROM usuarios WHERE id = ?').get(Number(usuarioId));
-    abrirAviso(db, { clave: `reporte_error:${t.id}`, nivel: 'atencion', detalle: { ticket: t.id, alumno: u?.nombre_visible || u?.nombre || '?', resumen: unaLinea(t.mensajes[0].texto, 120), pantalla: t.contexto.pantalla ?? '' }, ahora: ahoraMs });
+    const yaAvisado = item?.clave && reportesDe(db).some(x => x.id !== t.id && x.reporte.item?.clave === item.clave && x.reporte.estado === 'nuevo' && !x.reporte.veredicto);
+    if (!yaAvisado) {
+      const quien = db.prepare('SELECT nombre, nombre_visible FROM usuarios WHERE id = ?').get(u);
+      abrirAviso(db, { clave: `reporte_error:${t.id}`, nivel: 'atencion', detalle: { ticket: t.id, alumno: quien?.nombre_visible || quien?.nombre || '?', resumen: unaLinea(t.mensajes[0].texto, 120), pantalla: t.contexto.pantalla ?? '' }, ahora: ahoraMs });
+    }
     return vistaTicket(db, t);
   });
 }
@@ -298,16 +334,84 @@ export function capturaDe(db, id, { usuarioId = null } = {}) {
   return { tipo: 'image/jpeg', datos };
 }
 
-const vistaReporte = (db, t, conHilo) => ({ ...vistaTicket(db, t, { conHilo }), reporte: { estado: t.reporte.estado, notas: t.reporte.notas ?? '', captura: Boolean(t.reporte.captura), bytes: t.reporte.captura?.bytes ?? null } });
+// 0.14.85: con lo que eligió, su porqué, el punto (tal cual lo vio) y el veredicto (quién y cuándo). Solo el administrador.
+const vistaReporte = (db, t, conHilo) => ({ ...vistaTicket(db, t, { conHilo }), reporte: { estado: t.reporte.estado, notas: t.reporte.notas ?? '', captura: Boolean(t.reporte.captura), bytes: t.reporte.captura?.bytes ?? null,
+  que: t.reporte.que ?? null, porque: t.reporte.porque ?? null, item: t.reporte.item ?? null, veredicto: t.reporte.veredicto ?? null, clave: claveDe(t) } });
+// Un reporte sin punto (de antes, o de la app sin pantalla) es su propio punto.
+const claveDe = t => t.reporte?.item?.clave ?? `reporte.${t.id}`;
+const adminsDe = db => new Set(db.prepare("SELECT id FROM usuarios WHERE rol = 'admin'").all().map(f => f.id));
+const nombreDe = (db, id) => { const u = db.prepare('SELECT nombre, nombre_visible FROM usuarios WHERE id = ?').get(Number(id)); return u ? { usuario: u.nombre, nombreVisible: u.nombre_visible || u.nombre } : { usuario: null, nombreVisible: null }; };
+const esNuevo = t => t.reporte.estado === 'nuevo' && !t.reporte.veredicto;
+// Los reportes juntos por punto: cuántos alumnos DISTINTOS (sin el administrador), cuántos nuevos y qué eligieron.
+export function gruposReportes(db) {
+  const admins = adminsDe(db);
+  const grupos = new Map();
+  for (const t of reportesDe(db).sort((a, b) => b.creado.localeCompare(a.creado) || b.id - a.id)) {
+    const k = claveDe(t);
+    const g = grupos.get(k) ?? { clave: k, tipo: t.reporte.item?.tipo ?? 'app', titulo: t.reporte.item?.vista?.titulo ?? t.reporte.item?.vista?.enunciado?.slice(0, 160) ?? null, pantalla: t.contexto?.pantalla ?? null,
+      ultimo: t.id, en: t.creado, reportes: 0, nuevos: 0, alumnos: new Set(), porQue: {} };
+    g.reportes += 1;
+    if (esNuevo(t)) g.nuevos += 1;
+    if (!admins.has(t.usuarioId)) g.alumnos.add(t.usuarioId);
+    if (t.reporte.que) g.porQue[t.reporte.que] = (g.porQue[t.reporte.que] ?? 0) + 1;
+    grupos.set(k, g);
+  }
+  return [...grupos.values()].map(g => ({ ...g, alumnos: g.alumnos.size }));
+}
+// «Para hoy»: una fila por PUNTO con reportes nuevos (los de más alumnos primero).
+export function puntosNuevos(db) {
+  return gruposReportes(db).filter(g => g.nuevos > 0).sort((a, b) => b.alumnos - a.alumnos || b.nuevos - a.nuevos || String(b.en).localeCompare(String(a.en)))
+    .map(g => ({ id: g.ultimo, tipo: g.tipo, titulo: g.titulo, pantalla: g.pantalla, alumnos: g.alumnos, nuevos: g.nuevos }));
+}
 export function reportesAdmin(db) {
-  const lista = todos(db).filter(t => t.categoria === 'error' && t.reporte).sort((a, b) => b.creado.localeCompare(a.creado)).map(t => vistaReporte(db, t, false));
-  return { reportes: lista, nuevos: lista.filter(r => r.reporte.estado === 'nuevo').length };
+  const lista = reportesDe(db).sort((a, b) => b.creado.localeCompare(a.creado)).map(t => vistaReporte(db, t, false));
+  const grupos = gruposReportes(db);
+  return { reportes: lista, nuevos: lista.filter(r => r.reporte.estado === 'nuevo').length, grupos, nuevosPuntos: grupos.filter(g => g.nuevos > 0).length };
 }
 export function verReporteAdmin(db, id) {
   const t = ticketDe(db, id);
   if (!t?.reporte) throw new ErrorHttp(404, 'no_existe');
-  return vistaReporte(db, t, true);
+  // Todos los reportes del mismo punto, con quién (el administrador sí lo ve) y lo que dijo cada uno.
+  const k = claveDe(t);
+  const admins = adminsDe(db);
+  const mismos = reportesDe(db).filter(x => claveDe(x) === k).sort((a, b) => a.creado.localeCompare(b.creado) || a.id - b.id);
+  const grupo = {
+    clave: k, alumnos: new Set(mismos.filter(x => !admins.has(x.usuarioId)).map(x => x.usuarioId)).size,
+    reportes: mismos.map(x => ({ id: x.id, usuarioId: x.usuarioId, ...nombreDe(db, x.usuarioId), que: x.reporte.que ?? null, porque: x.reporte.porque ?? x.mensajes[0]?.texto ?? '', en: x.creado, estado: x.reporte.estado, veredicto: x.reporte.veredicto ?? null })),
+    porQue: mismos.reduce((a, x) => (x.reporte.que ? { ...a, [x.reporte.que]: (a[x.reporte.que] ?? 0) + 1 } : a), {}),
+  };
+  return { ...vistaReporte(db, t, true), grupo };
 }
+
+// «¿Tiene razón?»: si (es un error) | no (es cosa del alumno) | dudoso. Queda quién y cuándo. todos: true lo pone a
+// TODOS los reportes de ese punto que todavía no tienen veredicto. «No» cierra el reporte (no_error); los demás lo dejan
+// «visto». El aviso del dueño se cierra.
+export const VEREDICTOS = Object.freeze(['si', 'no', 'dudoso']);
+export function ponerVeredicto(db, adminId, id, valor, { todos: aTodos = false, ahoraMs = Date.now() } = {}) {
+  if (!VEREDICTOS.includes(valor)) throw new ErrorHttp(400, 'datos_no_validos');
+  return enTransaccion(db, () => {
+    const t = ticketDe(db, id);
+    if (!t?.reporte) throw new ErrorHttp(404, 'no_existe');
+    const k = claveDe(t);
+    const lista = aTodos ? reportesDe(db).filter(x => claveDe(x) === k && (x.id === t.id || !x.reporte.veredicto)) : [t];
+    const en = ahora(ahoraMs);
+    const quien = nombreDe(db, adminId);
+    for (const x of lista) {
+      x.reporte.veredicto = { valor, por: Number(adminId), porNombre: quien.nombreVisible, en };
+      if (valor === 'no') { x.reporte.estado = 'no_error'; x.estado = 'resuelto'; }
+      else if (x.reporte.estado === 'nuevo') { x.reporte.estado = 'visto'; x.estado = 'revision'; }
+      x.actualizado = en;
+      x.vistoAdmin = en;
+      guardar(db, x);
+      resolverAviso(db, `reporte_error:${x.id}`, ahoraMs);
+    }
+    auditar(db, { usuarioId: Number(adminId), accion: 'reporte_veredicto', detalle: `${lista.map(x => x.id).join(',')} → ${valor}` });
+    return verReporteAdmin(db, t.id);
+  });
+}
+// 0.14.85: la opinión de la IA («Pedir opinión a la IA»), guardada por punto: es una SUGERENCIA, el administrador decide.
+export const claveOpinionIa = clave => `academia.reporte.ia.${createHash('sha256').update(String(clave)).digest('hex').slice(0, 32)}`;
+export function opinionIaDe(db, clave) { return json(leer(db, claveOpinionIa(clave))); }
 export function actualizarReporte(db, adminId, id, { estado, notas }, { ahoraMs = Date.now() } = {}) {
   return enTransaccion(db, () => {
     const t = ticketDe(db, id);

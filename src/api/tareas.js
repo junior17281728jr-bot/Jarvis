@@ -20,7 +20,7 @@ import { espacioDe } from '../cuentas/espacios.js';
 import { resumenCopias } from '../copias/estado.js';
 import { ultimaVersionMala } from '../copias/vigilar.js';
 import { estadoTelegram } from '../canales/canales.js';
-import { pendientesSoporte, reportesAdmin } from '../cuentas/soporte.js';
+import { pendientesSoporte, puntosNuevos } from '../cuentas/soporte.js';
 
 const DIEZ_MINUTOS = 10 * 60 * 1000;
 const DIA_MS = 86_400_000;
@@ -68,6 +68,7 @@ export function estadoDelSistema(db, { supervisor = null, usuario = null, versio
   if (trabajador.reinicios24h == null) trabajador = { ...trabajador, reinicios24h: reiniciosDesde(db, ahora - DIA_MS) };
   const medidas = medir(db, supervisor);
   const problemas = evaluarSalud(medidas, { reinicios24h: trabajador.reinicios24h ?? 0 }).filter(p => p.activo);
+  const puntosHoy = (() => { try { return puntosNuevos(db); } catch { return []; } })();
   return {
     fase: FASE_ACTUAL,
     version,
@@ -90,7 +91,10 @@ export function estadoDelSistema(db, { supervisor = null, usuario = null, versio
     actualizaciones: { versionMala: ultimaVersionMala(db) },
     // 0.9.2: los mensajes de ayuda que esperan respuesta (el número en la pestaña «Ayuda» de Administrador).
     // 0.14.54: y los reportes de problemas nuevos (su número en la pestaña «Reportes»; ya no cuentan en «Ayuda»).
-    soporte: { pendientes: pendientesSoporte(db), reportes: (() => { try { return reportesAdmin(db).nuevos; } catch { return 0; } })() },
+    // 0.14.85: por PUNTO (la misma tarjeta o pregunta reportada por 3 alumnos cuenta 1) y la lista para «Para hoy» (una
+    // fila por punto, los de más alumnos primero).
+    soporte: { pendientes: pendientesSoporte(db), reportes: puntosHoy.length },
+    reportesHoy: puntosHoy.slice(0, 8),
   };
 }
 

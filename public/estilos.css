@@ -1598,3 +1598,30 @@ details.demo-seccion > summary h2 { display: inline; margin: 0; }
 @media (min-width: 1024px) {
   .lateral .menu-version { align-self: flex-start; text-align: left; padding: 8px 14px 0; font-size: 12px; }
 }
+/* 0.14.85: «⚑ Reportar un error» (public/reportar-vista.js): chiquito, siempre igual, en todo lo que el alumno lee o
+   responde y al pie de cada pantalla; la hoja con «¿Qué está mal?» y «¿Por qué?». */
+button.reportar-punto { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: 4px 0 0; padding: 0 6px; background: none; border: 0; box-shadow: none; color: var(--suave); font-size: 14px; font-weight: 600; cursor: pointer; width: auto; }
+button.reportar-punto > span:last-child { text-decoration: underline dotted; text-underline-offset: 3px; }
+button.reportar-punto:hover, button.reportar-punto:focus-visible { color: var(--texto); }
+button.reportar-punto.general { font-size: 13px; margin: 0; }
+.reportar-bandera { color: var(--mal); }
+.pie-estudio { margin-top: 18px; }
+.reportar-visual { display: flex; }
+.biblio-reportar { margin: 6px 0; }
+.hoja-reportar .reportar-sobre { margin: 0 0 8px; }
+.hoja-reportar .reportar-pregunta { margin: 4px 0 6px; font-weight: 700; }
+.reportar-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+button.reportar-chip { margin: 0; min-height: 44px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--borde); background: var(--fondo); color: var(--texto); font-size: 15px; font-weight: 600; box-shadow: none; }
+button.reportar-chip[aria-pressed="true"] { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); }
+.hoja-reportar textarea { width: 100%; box-sizing: border-box; }
+.hoja-reportar .reportar-cuenta { margin: 4px 0 8px; }
+/* La revisión del administrador (Mensajes → Reportes): lo que vio el alumno, los reportes del mismo punto y el veredicto. */
+.reporte-punto { border: 1px solid var(--borde); border-radius: 14px; padding: 12px; margin: 8px 0 12px; overflow-wrap: anywhere; }
+.reporte-punto .opciones-cartas { margin: 8px 0; }
+.reporte-fuentes h3, .reporte-punto h3 { font-size: 16px; margin: 10px 0 4px; }
+.reporte-grupo-lista { padding-left: 20px; }
+.reporte-grupo-lista li { margin: 0 0 12px; overflow-wrap: anywhere; }
+.reporte-grupo-lista li.este { border-left: 3px solid var(--acento); padding-left: 8px; }
+.reporte-veredictos { display: flex; flex-wrap: wrap; gap: 8px; }
+.reporte-veredicto[aria-pressed="true"] { outline: 3px solid var(--acento); outline-offset: 2px; }
+.reporte-ia { background: var(--fondo); border-radius: 12px; padding: 10px 12px; margin: 6px 0; }

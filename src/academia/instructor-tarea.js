@@ -9,6 +9,7 @@ import { VOZ, ARCHIVO_VOZ, INSTRUCCIONES_VOZ, archivoVoz, hayVoz, guardarVoz } f
 import { buscarGuardada, leerConfigVoz, varianteDe, archivoEleven } from './voz-natural.js';
 import { grabarEleven } from './voz-eleven.js';
 import { USOS_COMPE, esquemaCompe, guardarFrase, guardarSugerencia } from './competencia-ia.js';
+import { USOS_REPORTE, ESQUEMA_REVISION, guardarRevision } from './reporte-ia.js';
 import { DICTADO, ID_DICTADO, tomarAudio, tipoDeAudio, guardarTexto } from './oral-dictado.js';
 
 // Nadie espera una respuesta pedida hace más de esto (el trabajador estaba ocupado, apagado o en modo seguro): se termina
@@ -44,7 +45,7 @@ async function paso(ctx) {
   const ahora = Date.now();
   const pedidaEn = Number(d.pedidaEn);
   // 0.14.50: un dictado lo espera el alumno con el micrófono en la mano: vale 45 s.
-  const caduca = d.uso === 'instructor_preparar' || d.uso === 'compe_mejorar' || d.uso === 'compe_frase' ? CADUCA_PREPARAR_MS : d.uso === 'oral_dictado' ? DICTADO.caducaMs : CADUCA_MS;
+  const caduca = d.uso === 'instructor_preparar' || d.uso === 'compe_mejorar' || d.uso === 'compe_frase' || d.uso === 'reporte_revisar' ? CADUCA_PREPARAR_MS : d.uso === 'oral_dictado' ? DICTADO.caducaMs : CADUCA_MS;
   // La grabación se saca de la memoria SIEMPRE (también si caducó o no hay permiso): nunca queda esperando.
   const grabacion = d.uso === 'oral_dictado' && ID_DICTADO.test(String(d.audio)) ? tomarAudio(d.audio) : null;
   if (!Number.isSafeInteger(pedidaEn) || ahora - pedidaEn > caduca || pedidaEn > ahora + 60_000) return fin('caducada');
@@ -103,6 +104,18 @@ async function paso(ctx) {
   }
   // 0.14.38: la Competencia (src/academia/competencia-ia.js): la frase del certificado y «Mejorar preguntas con IA». Si la
   // IA no responde, no pasa nada: el certificado lleva su frase fija y la ronda sigue igual.
+  // 0.14.85: la opinión de la IA sobre un reporte (src/academia/reporte-ia.js). Si no responde, el administrador decide igual.
+  if (USOS_REPORTE.includes(d.uso)) {
+    if (typeof d.sistema !== 'string' || typeof d.texto !== 'string' || !Number.isSafeInteger(ctx.tarea.espacioId)) return fin('pedido_no_valido');
+    const r = await ctx.ia.pedir({
+      proposito: d.uso, paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: Number.isSafeInteger(d.usuarioId) ? d.usuarioId : null,
+      sistema: d.sistema, texto: d.texto, esquema: ESQUEMA_REVISION,
+      guardar: (db, json) => guardarRevision(db, d, json),
+    });
+    if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
+    if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
+    return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
+  }
   if (USOS_COMPE.includes(d.uso)) {
     if (typeof d.sistema !== 'string' || typeof d.texto !== 'string' || !Number.isSafeInteger(ctx.tarea.espacioId)) return fin('pedido_no_valido');
     const r = await ctx.ia.pedir({

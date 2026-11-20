@@ -165,7 +165,7 @@ export function visorFigura(capa, { t }) {
     ajustar.setAttribute('aria-label', etiquetaModo());
     ajustar.replaceChildren(iconoVisor(['M4 9V4h5', 'M20 9V4h-5', 'M4 15v5h5', 'M20 15v5h-5']), el('span', {}, null, etiquetaModo()));
   };
-  const enfocar = () => capa.querySelector('.figura-grande-barra button')?.focus({ preventScroll: true });
+  const enfocar = () => (capa.querySelector('.figura-grande-barra button.cuadrado') ?? capa.querySelector('.figura-grande-barra button'))?.focus({ preventScroll: true });
   menos.addEventListener('click', () => { paso = Math.max(0, paso - 1); pintar(); });
   mas.addEventListener('click', () => { paso = Math.min(ZOOMS.length - 1, paso + 1); pintar(); });
   // «Ajustar»: vuelve al tamaño de la pantalla; si ya está ajustada, prueba al alto y luego al ancho.

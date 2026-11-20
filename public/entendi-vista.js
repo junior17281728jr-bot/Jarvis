@@ -7,6 +7,10 @@
 //  - otraForma(): con 👎 sale el botón «Explícamelo de otra forma» que la llama (solo si se pasa y, si se pasa hayOtra(),
 //    solo si dice que sí).
 
+// 0.14.85: al lado, «⚑ Reportar un error» de ESE mismo punto (public/reportar-vista.js): la tarjeta, «Otra forma de verlo»,
+// lo de la IA y la respuesta del libro del oral. En una pregunta no (la pregunta ya lleva el suyo, con sus opciones).
+import { enlaceReportar } from './reportar-vista.js';
+
 // Solo lo compartido de la IA (nunca algo de un alumno): lo mismo que acepta el servidor.
 export const CLAVE_IA_VOTO = /^academia\.ia\.(?:explica|miniclase|tarjeta|profundiza)\.[a-f0-9]{32}$/;
 
@@ -28,6 +32,7 @@ export function votoEntendi(h, item, { alVotar = null, otraForma = null, hayOtra
     botones.push(el('button', { type: 'button', class: 'entendi-boton', 'data-voto': voto, 'aria-pressed': 'false', 'aria-label': t(clave), title: t(clave), onclick: () => votar(voto) },
       el('span', { 'aria-hidden': 'true', texto: emoji })));
   }
+  const reportar = item?.tipo !== 'pregunta' ? enlaceReportar(item) : null;
   return el('div', { class: 'entendi', role: 'group', 'aria-label': t('entendi.pregunta') },
-    el('span', { class: 'entendi-pregunta chica', texto: t('entendi.pregunta') }), ...botones, gracias, extra);
+    ...[el('span', { class: 'entendi-pregunta chica', texto: t('entendi.pregunta') }), ...botones, gracias, extra, reportar].filter(Boolean));
 }

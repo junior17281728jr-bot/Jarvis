@@ -7,6 +7,9 @@
 // Todo se arma con h.el (nunca texto como código, nunca estilos sueltos). El texto llega del servidor por página.
 // h: { el, t, tn, icono, talCual, api, mostrar, marco, textoError, avisar, abrirImagenGrande, esAdmin, vigente }.
 
+// 0.14.85: «⚑ Reportar un error» de la página o la sección que lee (public/reportar-vista.js): el libro y dónde.
+import { enlaceReportar } from './reportar-vista.js';
+
 // El texto de una página del PDF viene cortado en renglones: se juntan en párrafos (una línea en blanco separa) y una
 // palabra partida con guion al final del renglón se vuelve a unir. Puro (se prueba sin navegador).
 export function parrafos(texto) {
@@ -366,6 +369,7 @@ async function leer(libro, pagina, h) {
     d.seccion ? el('a', { class: 'biblio-a-seccion', href: enlaceSeccion(libro, d.seccion.n) }, el('span', { texto: t('biblio.leer_seccion', { titulo: nombreSeccion(d.seccion, t) }) })) : null,
     hoja,
     pasos(),
+    el('p', { class: 'biblio-reportar' }, enlaceReportar({ tipo: 'biblioteca', id: `${libro}/p${d.pagina}`, titulo: `${d.titulo} · ${t('biblio.pagina_corta', { n: d.pagina })}` })),
     el('details', { class: 'tarjeta biblio-mas' }, el('summary', {}, icono('lupa', 'icono chico'), el('span', { texto: t('biblio.buscar_o_ir') })),
       buscador(libro, h), ir))));
 }
@@ -425,6 +429,7 @@ async function leerSeccion(libro, n, h) {
     hoja,
     el('nav', { class: 'biblio-pasos-seccion', 'aria-label': t('biblio.seccion.pasos') },
       paso(d.anterior, 'blanco', 'biblio.seccion.anterior', 'prev'), paso(d.siguiente, 'azul', 'biblio.seccion.siguiente', 'next')),
+    el('p', { class: 'biblio-reportar' }, enlaceReportar({ tipo: 'biblioteca', id: `${libro}/s${d.n}`, titulo: `${d.titulo} · ${nombreSeccion(x, t)}` })),
     el('details', { class: 'tarjeta biblio-mas' }, el('summary', {}, icono('lupa', 'icono chico'), el('span', { texto: t('biblio.buscar') })), buscador(libro, h)))));
   if (q) { try { hoja.querySelector('mark')?.scrollIntoView({ block: 'center' }); } catch { /* sin desplazamiento */ } }
   return vista;

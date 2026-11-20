@@ -231,6 +231,14 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     // 0.14.38: la IA opcional de la Competencia (src/api/competencia.js): solo si de verdad hay IA para esa cuenta (la
     // misma regla que el instructor). No cobra un uso de su tiempo con IA: cuenta en el tope de su cuenta y en el general.
     // Cualquier «no» (o un error) deja todo como está: la Competencia no necesita la IA.
+    // 0.14.85: ¿hay IA para esta cuenta ahora? (la misma regla que iaCompe): «Pedir opinión a la IA» de un reporte se esconde si no.
+    ganchos.iaHay = (db, usuario) => {
+      try {
+        if (!config) return false;
+        if (!iaPermitida(db, usuario.id, { estricto: config?.terminosObligatorios !== false })) return false;
+        return estadoInstructor(db, null, usuario).modo === 'ia';
+      } catch { return false; }
+    };
     ganchos.iaCompe = (db, usuario, { uso, sistema, texto, clave, extra = {} }) => {
       try {
         if (!config || !PROPOSITOS[uso]) return { estado: 'no', motivo: 'no_disponible' };
