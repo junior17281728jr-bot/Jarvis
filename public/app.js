@@ -17,6 +17,7 @@ import {
 import { leerClave, verificadorDe, sobraNombreCorto } from './clave-recuperacion.js';
 import { TEMAS_AYUDA, TEMAS_CON_EJEMPLO, pasosAdmin, pasosAcademia, resumenGuia, buscarTemas, temasAyudaPara } from './guia.js';
 import { partirLeccion, resaltar, tituloSinIngles } from './tarjetas.js';
+import { crearLector, vozEncendida, ponerVoz, vozGuardada } from './voz-lectura.js';
 import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capituloEn, reloj as relojVideo, VELOCIDADES, velocidadValida } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
@@ -933,8 +934,8 @@ function grupoDeBotones(opciones, elegido, alElegir) {
 async function pantallaConfiguracion() {
   const vigente = nuevoTurno();
   // 0.9.0: «Mi perfil» (public/perfil-vista.js solo se carga aquí).
-  const [reinicios, perfil, vistaPerfil, humorEstado] = await Promise.all([api('GET', '/api/yo/reinicios'), api('GET', '/api/yo/perfil'), import('./perfil-vista.js'),
-    api('GET', '/api/academia/humor')]);
+  const [reinicios, perfil, vistaPerfil, humorEstado, lectura] = await Promise.all([api('GET', '/api/yo/reinicios'), api('GET', '/api/yo/perfil'), import('./perfil-vista.js'),
+    api('GET', '/api/academia/humor'), vozEncendida(api)]);
   if (!vigente()) return;
   const mensajeIdioma = caja();
   const botonesIdioma = grupoDeBotones(['es', 'en'].map(v => [v, t(`idioma.${v}`)]), idioma, async valor => {
@@ -962,6 +963,13 @@ async function pantallaConfiguracion() {
     if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
     marcar();
   }) : null;
+  // 0.14.70: «Leer en voz alta» (Con voz / Sin voz), guardado en su cuenta.
+  const botonesLectura = grupoDeBotones([['si', t('lectura.con_voz')], ['no', t('lectura.sin_voz')]], lectura?.voz ? 'si' : 'no', async (valor, marcar) => {
+    const x = await ponerVoz(api, valor === 'si');
+    if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+    marcar();
+    if (valor !== 'si') lector().callar();
+  });
   const lista = reinicios.ok ? reinicios.datos.reinicios : null;
   const alGuardarPerfil = p => {
     Object.assign(estado.usuario, { nombre: p.nombre, nombreVisible: p.nombreVisible, avatar: p.avatar, foto: p.foto ?? null });
@@ -982,6 +990,9 @@ async function pantallaConfiguracion() {
         el('h3', { class: 'separado con-icono', id: 'titulo-sonidos' }, icono('altavoz', 'icono chico'), el('span', { texto: t('sonidos.titulo') })),
         el('div', { class: 'ajuste-sonidos', role: 'group', 'aria-labelledby': 'titulo-sonidos' }, botonesSonidos),
         el('p', { class: 'ayuda', texto: t('sonidos.ayuda') }),
+        el('h3', { class: 'separado con-icono', id: 'titulo-lectura' }, icono('altavoz', 'icono chico'), el('span', { texto: t('lectura.titulo') })),
+        el('div', { class: 'ajuste-lectura', role: 'group', 'aria-labelledby': 'titulo-lectura' }, botonesLectura),
+        el('p', { class: 'ayuda', texto: t(lectura?.natural ? 'lectura.ayuda_natural' : 'lectura.ayuda') }),
         botonesHumor ? [
           el('h3', { class: 'separado con-icono', id: 'titulo-humor' }, icono('chispa', 'icono chico'), el('span', { texto: t('humor.config.titulo') })),
           el('div', { class: 'ajuste-humor', role: 'group', 'aria-labelledby': 'titulo-humor' }, botonesHumor),
@@ -3179,7 +3190,8 @@ function detalleDelGasto(mes) {
 const ICONO_GRUPO_CLAVES = { ia: 'chispa', avisos: 'avion_papel' };
 // El orden de las secciones de #claves: la IA, «Mejorar la app (GitHub)» y el Telegram (lo demás, después).
 const ORDEN_GRUPOS_CLAVES = ['ia', 'codigo', 'avisos'];
-const ordenGrupoClaves = g => (ORDEN_GRUPOS_CLAVES.includes(g) ? ORDEN_GRUPOS_CLAVES.indexOf(g) : ORDEN_GRUPOS_CLAVES.length);
+// 0.14.70: la voz (ElevenLabs) va justo después de la IA.
+const ordenGrupoClaves = g => (g === 'voz' ? 0.5 : ORDEN_GRUPOS_CLAVES.includes(g) ? ORDEN_GRUPOS_CLAVES.indexOf(g) : ORDEN_GRUPOS_CLAVES.length);
 const ICONO_ESTADO_CLAVE = { activa: 'bien', pausada: 'pausa', no_pasa: 'mal', ilegible: 'mal', ninguna: 'apagado' };
 function textoEstadoClave(estadoClave) {
   if (estadoClave === 'activa') return t('claves.estado.activa');
@@ -3203,7 +3215,7 @@ async function pantallaClaves(aviso = null) {
   abrirClaveClaude = false;
   const abrirGithub = abrirClaveGithub;
   abrirClaveGithub = false;
-  const [r, prov, vistaIa] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js')]);
+  const [r, prov, vistaIa, voz, vistaVoz] = await Promise.all([api('GET', '/api/admin/claves'), api('GET', '/api/admin/ia/proveedores'), import('./ia-proveedores-vista.js'), api('GET', '/api/admin/voz'), import('./admin-voz.js')]);
   if (!vigente()) return;
   // 0.14.56: «Dinero de la IA» (y el tope del mes) vive en Dinero: aquí, solo el camino.
   const dinero = el('p', { class: 'aviso con-icono-arriba' }, icono('dinero', 'icono chico'), el('span', { texto: t('claves.dinero_en') }), ' ',
@@ -3234,6 +3246,8 @@ async function pantallaClaves(aviso = null) {
     // ChatGPT y la API propia (public/ia-proveedores-vista.js).
     // 0.14.14: «Mejorar la app (GitHub)» justo después de la IA (antes quedaba al final, debajo del Telegram).
     [...(d.grupos ?? [])].sort((a, b) => ordenGrupoClaves(a.grupo) - ordenGrupoClaves(b.grupo)).map(g => (g.grupo === 'avisos' ? grupoTelegram(g, d, { listo, recargar, vigente })
+      // 0.14.70: ElevenLabs (la voz natural): su clave, la voz, el tope de letras y «Preparar todas las voces» (public/admin-voz.js).
+      : g.grupo === 'voz' ? vistaVoz.tarjetaVoz(g, voz.ok ? voz.datos : null, { ...piezasIa(recargar), cajaDeClave: (u, extra) => cajaDeClave(u, { listo, recargar, ...extra }) })
       : g.grupo === 'ia' ? vistaIa.seccionesIa(g, prov.ok ? prov.datos : null, {
         el, t, tSi, icono, api, numero, insignia, textoError, recargar,
         pasosClaude: () => pasosClaude({ el, t, icono }, { verificacion: estadoClaude({ claves: d }).estado === 'esperando_verificacion' }),
@@ -3245,7 +3259,7 @@ async function pantallaClaves(aviso = null) {
       // 0.14.56: lo que casi no se toca (GitHub y Telegram) va plegado, con su nombre a la vista (Telegram abierto mientras
       // no esté unido: los avisos mandan aquí a terminarlo).
       .map((nodo, i, todos) => { const g = [...(d.grupos ?? [])].sort((a, b) => ordenGrupoClaves(a.grupo) - ordenGrupoClaves(b.grupo))[i];
-        return g && g.grupo !== 'ia' ? plegarSeccion(nodo, tSi(`claves.grupo.${g.grupo}`, g.grupo), { abierto: (g.grupo === 'codigo' && abrirGithub) || (g.grupo === 'avisos' && d.telegram?.listo !== true) || todos.length === 1 }) : nodo; }))));
+        return g && g.grupo !== 'ia' && g.grupo !== 'voz' ? plegarSeccion(nodo, tSi(`claves.grupo.${g.grupo}`, g.grupo), { abierto: (g.grupo === 'codigo' && abrirGithub) || (g.grupo === 'avisos' && d.telegram?.listo !== true) || todos.length === 1 }) : nodo; }))));
   if (abrirGithub) {
     const seccion = document.getElementById('claves-codigo');
     const campo = document.getElementById('clave-github_token');
@@ -4596,6 +4610,40 @@ function vistaVisual(v) {
   return { nodo, destruir: () => { fuera = true; montado?.destruir?.(); } };
 }
 
+// 0.14.70: leer en voz alta (public/voz-lectura.js): «Escuchar» en cada tarjeta y pregunta; con «Con voz», cada tarjeta
+// se lee sola al aparecer. Lo que suena sale del servidor (un audio guardado, ElevenLabs o ChatGPT) o del teléfono.
+let lectorApp = null;
+const lector = () => (lectorApp ??= crearLector(api));
+window.addEventListener('hashchange', () => lectorApp?.callar());
+const piezasVoz = (lista, lang = 'es') => lista.filter(x => typeof x === 'string' && x.trim()).map(texto => ({ texto, lang }));
+function textosDePantalla(p) {
+  if (!p || p.tipo === 'fin') return [];
+  const titulo = p.titulo ? partirTitulo(p.titulo).es : null;
+  return piezasVoz([titulo, p.texto, ...(Array.isArray(p.puntos) ? p.puntos : []), p.recuerda, p.ejemplo, p.pregunta, ...(Array.isArray(p.opciones) ? p.opciones.map(o => o?.texto) : [])]);
+}
+function botonEscuchar(piezas, clase = '') {
+  return el('button', { type: 'button', class: `secundario chico con-icono boton-escuchar ${clase}`.trim(), onclick: () => lector().leer(typeof piezas === 'function' ? piezas() : piezas) },
+    icono('altavoz', 'icono chico'), el('span', { texto: t('lectura.escuchar') }));
+}
+// El interruptor rápido «Con voz / Sin voz» (se guarda en su cuenta, el mismo de Configuración).
+function interruptorVoz(alCambiar = null) {
+  const b = el('button', { type: 'button', class: 'secundario chico con-icono interruptor-voz' });
+  const pintarB = () => {
+    const si = vozGuardada();
+    b.setAttribute('aria-pressed', si ? 'true' : 'false');
+    b.replaceChildren(icono(si ? 'altavoz' : 'silencio', 'icono chico'), el('span', { texto: si ? t('lectura.con_voz') : t('lectura.sin_voz') }));
+  };
+  b.addEventListener('click', async () => {
+    const r = await ponerVoz(api, !vozGuardada());
+    if (!r.ok) return avisar(textoError(r.datos.error), 'mal');
+    pintarB();
+    if (!vozGuardada()) lector().callar();
+    alCambiar?.(vozGuardada());
+  });
+  pintarB();
+  return b;
+}
+
 function vistaTarjeta(p, { materia }) {
   const { es, en } = partirTitulo(p.titulo);
   // 0.12.1: si la tarjeta trae clip (y ya llegó), el clip manda sobre el dibujo.
@@ -4682,7 +4730,7 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
   const vigente = nuevoTurno();
   // 0.12.2: la clase es siempre la normal: ninguna tarjeta de refuerzo delante ni consejo de errores en la portada (eso
   // vive en «Mi repaso»), así que solo se pide la lección.
-  const r = await api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`);
+  const [r] = await Promise.all([api('GET', `/api/academia/temas/${encodeURIComponent(materia)}/${encodeURIComponent(tema)}`), vozEncendida(api)]);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const l = r.datos;
@@ -4713,7 +4761,10 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
   const audioTema = l.audio?.ref ? el('div', { class: 'audio-tema' },
     el('p', { class: 'con-icono' }, icono('altavoz', 'icono chico'), el('span', { texto: l.audio.titulo || t('acad.audio.escuchar') })),
     el('audio', { controls: true, preload: 'none', src: `/api/academia/audio/${encodeURIComponent(l.audio.ref)}`, 'aria-label': l.audio.titulo || t('acad.audio.escuchar') })) : null;
-  const raizEstudio = marcoEstudio({ clase: `leccion-tarjetas ${claseMateria(materia)}`, barra: barraAvance.nodo, cuenta, cuerpo: [audioTema, cuerpo], pie });
+  // 0.14.70: «Escuchar» esta tarjeta y «Con voz / Sin voz» (con voz, cada tarjeta se lee sola al aparecer).
+  const barraVoz = el('div', { class: 'lectura-barra' }, botonEscuchar(() => textosDePantalla(pantallas[paso])),
+    interruptorVoz(si => { if (si) lector().leer(textosDePantalla(pantallas[paso])); }));
+  const raizEstudio = marcoEstudio({ clase: `leccion-tarjetas ${claseMateria(materia)}`, barra: barraAvance.nodo, cuenta, cuerpo: [audioTema, barraVoz, cuerpo], pie });
   const sigue = () => vigente() && cuerpo.isConnected;
   const ir = n => {
     if (n < 0 || n >= pantallas.length) return;
@@ -4833,6 +4884,7 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
     }
     cuerpo.replaceChildren(nodo);
     pie.replaceChildren(...botones.filter(Boolean));
+    if (vozGuardada()) lector().leer(textosDePantalla(p)); else lector().callar();
   };
   alDeslizar(cuerpo, {
     izquierda: () => { if (['tarjeta', 'vocabulario', 'portada'].includes(pantallas[paso].tipo) || (pantallas[paso].tipo === 'girar' && cuerpo.querySelector('.carta.girada'))) ir(paso + 1); },
@@ -5377,12 +5429,16 @@ function tarjetaPregunta(q, { origen = true, testGuide = true } = {}) {
     q.origen === 'poh' && q.fuente ? lineaFuente(q.fuente) : null,
     talCual('p', q.enunciado, 'q-enunciado'),
     figuraPregunta(q),
+    // 0.14.70: leer la pregunta y sus opciones en voz alta.
+    q.enunciado ? el('div', { class: 'q-escuchar' }, botonEscuchar(() => piezasVoz([q.enunciado, ...(Array.isArray(q.opciones) ? q.opciones.map(o => o?.texto) : [])]))) : null,
   ];
 }
 // Lo que se ve después de responder (en la hoja de abajo y en la lista de falladas).
 // 0.9.1: primero el resultado y la explicación sencilla; lo tuyo resaltado; el Test Guide tal cual, plegado (public/respuesta-vista.js).
 function partesRespuesta(q, resp, opciones = {}) {
-  return partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta });
+  // 0.14.70: «Escuchar» la explicación sencilla.
+  const escuchar = typeof resp?.sencilla === 'string' && resp.sencilla.trim() ? el('div', { class: 'q-escuchar' }, botonEscuchar(() => piezasVoz([resp.sencilla]))) : null;
+  return [escuchar, partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta })].filter(Boolean);
 }
 function bloqueRespuesta(q, resp) {
   return el('div', { class: 'retro' },
@@ -6106,13 +6162,15 @@ async function pantallaMensajes() {
 // pagos de los alumnos, lo de cada alumno y la cuenta del servidor.
 async function pantallaDinero() {
   const vigente = nuevoTurno();
-  const [r, vista] = await Promise.all([api('GET', '/api/admin/ia/dinero'), import('./dinero-ia-vista.js')]);
+  const [r, vista, voz, vistaVoz] = await Promise.all([api('GET', '/api/admin/ia/dinero'), import('./dinero-ia-vista.js'), api('GET', '/api/admin/voz?corto=1'), import('./admin-voz.js')]);
   if (!vigente()) return;
   const cabecera = cabeceraAdmin('dinero');
   if (!r.ok) return mostrar(marco('admin', cabecera, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
   const ir = (href, nombreIcono, clave) => el('a', { class: 'boton-enlace secundario con-icono', href }, icono(nombreIcono, 'icono chico'), el('span', { texto: t(clave) }));
   mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' },
     vista.tarjetaDinero(r.datos, piezasIa(() => pantallaDinero())),
+    // 0.14.70: las letras de ElevenLabs del mes, junto al tope de la IA.
+    voz.ok ? vistaVoz.tarjetaVozDinero(voz.datos, piezasIa(() => pantallaDinero())) : null,
     el('section', { class: 'tarjeta dinero-mas' },
       el('h2', { class: 'con-icono' }, icono('recibo'), el('span', { texto: t('dinero.mas.titulo') })),
       el('p', { class: 'ayuda', texto: t('dinero.mas.linea') }),
@@ -6795,13 +6853,13 @@ function pedidosAlAbrir(seccion, admin) {
   if (/^admin\/(?:estado|resumen|usuarios|trabajo|servidor|cambios)$/.test(seccion)) return admin ? ['/api/admin/usuarios', '/api/admin/sistema', '/api/admin/ia', '/api/admin/academia', '/api/admin/servidor-pago'] : [];
   if (/^admin(\/[a-z]*)?$/.test(seccion)) return admin ? ['/api/admin/sistema', '/api/admin/ia', '/api/admin/academia', '/api/admin/usuarios', '/api/admin/servidor-pago', '/api/admin/ia/dinero?corto=1', '/api/admin/academia/pagos/pendientes', '/api/admin/academia/alumnos'] : [];
   if (seccion === 'mensajes') return admin ? ['/api/admin/soporte', '/api/admin/reportes', '/api/admin/sistema'] : [];
-  if (seccion === 'dinero') return admin ? ['/api/admin/ia/dinero'] : [];
+  if (seccion === 'dinero') return admin ? ['/api/admin/ia/dinero', '/api/admin/voz?corto=1'] : [];
   if (seccion === 'avanzado') return [];
   if (seccion === 'contenido/ajustes') return admin ? ['/api/admin/academia', '/api/admin/sistema'] : [];
   // Copias de seguridad (parte 1e), Inteligencia artificial y Claves (parte 1d): solo el administrador las ve.
   if (seccion === 'copias') return admin ? ['/api/admin/copias'] : [];
   if (seccion === 'ia') return admin ? ['/api/admin/ia'] : [];
-  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores'] : []; // 0.14.56: «Dinero de la IA» está en Dinero
+  if (seccion === 'claves') return admin ? ['/api/admin/claves', '/api/admin/ia/proveedores', '/api/admin/voz'] : []; // 0.14.56: «Dinero de la IA» está en Dinero
   // Academia (0.7.0).
   if (seccion === 'progreso') return ['/api/academia/progreso', '/api/academia/carrera', '/api/academia/tutor/examen'];
   const tema = seccion.match(/^tema\/([a-z0-9_-]+)\/([a-z0-9_-]+)(?:\/\d{1,3})?$/);

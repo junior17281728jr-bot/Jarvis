@@ -38,6 +38,16 @@ export const USOS = Object.freeze({
       Object.freeze(['sk-admin-', 'clave_admin']),
     ]),
   }),
+  // 0.14.70: la clave de ElevenLabs (la voz natural de la academia, src/academia/voz-natural.js). Su forma exacta no se
+  // adivina (como la de la API propia): la prueba gratis dice si sirve. Nunca una de Claude, de ChatGPT ni un token de GitHub.
+  voz_elevenlabs: Object.freeze({
+    grupo: 'voz', proveedor: 'elevenlabs',
+    rechazar: Object.freeze([
+      Object.freeze(['sk-ant-', 'clave_otro_proveedor']),
+      Object.freeze(['sk-', 'clave_otro_proveedor']),
+      Object.freeze(['github_pat_', 'clave_otro_proveedor']),
+    ]),
+  }),
   // Fase 1, parte e: el token del bot de Telegram del dueño (avisos graves y copias de cada noche). Lo da @BotFather:
   // números, dos puntos y letras. Lo usa SOLO src/canales/credencial.js (la puerta de los canales a esta clave).
   telegram_bot: Object.freeze({ grupo: 'avisos', formato: /^\d{6,15}:[A-Za-z0-9_-]{30,80}$/, rechazar: Object.freeze([]) }),
@@ -49,7 +59,7 @@ export const USOS = Object.freeze({
   }),
 });
 
-export const GRUPOS = Object.freeze(['ia', 'avisos', 'codigo']);
+export const GRUPOS = Object.freeze(['ia', 'avisos', 'codigo', 'voz']);
 export const LARGO = Object.freeze({ min: 20, max: 500 });
 
 // secretos.estado. «No se puede leer» no se guarda: se calcula (la llave cambió o falta).

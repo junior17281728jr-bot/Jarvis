@@ -30,6 +30,8 @@ import { MANEJADOR_COPIAS } from '../copias/hacer.js';
 import { MANEJADOR_DRIVE } from '../academia/sincronizar.js';
 import { MANEJADOR_INSTRUCTOR } from '../academia/instructor-tarea.js';
 import { MANEJADOR_FABRICA } from '../academia/fabrica.js';
+import { crearManejadorPreparar } from '../academia/voz-preparar.js';
+import { grabarEleven } from '../academia/voz-eleven.js';
 import { topesUnaVez, apagarMejoraUnaVez } from '../academia/topes-una-vez.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
@@ -153,4 +155,6 @@ export const MANEJADORES = Object.freeze({
   'academia.drive': MANEJADOR_DRIVE,
   'academia.instructor': MANEJADOR_INSTRUCTOR,
   'academia.fabrica': MANEJADOR_FABRICA,
+  // 0.14.70: «Preparar todas las voces» con ElevenLabs (src/academia/voz-preparar.js).
+  'academia.voces': crearManejadorPreparar({ grabar: grabarEleven }),
 });

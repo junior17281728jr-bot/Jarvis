@@ -56,6 +56,10 @@ export const TIPOS = Object.freeze({
   // ocupa el de los alumnos) y prioridad baja (las copias y la revisión de la base de la madrugada pasan antes).
   // «repetible»: la llamada se anota por tarea y paso y lo hecho se guarda por tema y paso: repetir nunca paga dos veces.
   'academia.fabrica': Object.freeze({ cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 180_000, repetible: true, prioridad: 1, reintentos: Object.freeze({ baseMs: 5 * 60_000 }) }),
+  // 0.14.70: «Preparar todas las voces» (src/academia/voz-preparar.js): unos pocos audios de ElevenLabs por paso (cada uno
+  // aparta sus letras en el tope del mes) y lo hecho anotado después de cada uno. Cupo «grande» (nunca ocupa el de los
+  // alumnos) y prioridad baja. «repetible»: un audio que ya existe nunca se pide otra vez.
+  'academia.voces': Object.freeze({ cupo: 'grande', maxFallos: 3, tiempoPorPasoMs: 120_000, repetible: true, prioridad: 0, reintentos: Object.freeze({ baseMs: 5 * 60_000 }) }),
 });
 
 // La definición completa de un tipo (con lo que vale por defecto), o null si este código no lo conoce.

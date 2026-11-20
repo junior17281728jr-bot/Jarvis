@@ -459,3 +459,11 @@ details.plegable-hoja > ul.lista-reto { padding: 0 14px 12px 32px; }
 ol.sendero.con-linea::before { display: none; }
 .sendero-linea { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; overflow: visible; }
 .sendero-linea path { fill: none; stroke: color-mix(in srgb, var(--suave) 30%, transparent); stroke-width: 4; stroke-dasharray: 9 9; stroke-linecap: round; }
+
+/* 0.14.70: ElevenLabs (la voz natural) en Claves e IA y en Dinero. */
+.voz-tarjeta .voz-estado { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.voz-campo { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.6rem 0; }
+.voz-campo select, .voz-campo input { max-width: 100%; min-height: 40px; }
+.voz-barra { width: 100%; height: 14px; }
+.voz-alcances { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0; }
+.voz-alcance { align-items: flex-start; }

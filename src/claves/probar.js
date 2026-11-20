@@ -24,6 +24,8 @@ import { estadoLlave } from './cifrado.js';
 import { TELEGRAM } from '../canales/telegram.js';
 import { crearCredencial } from '../canales/credencial.js';
 import { trasProbarToken } from '../canales/canales.js';
+import { elevenlabs } from '../ia/proveedores/elevenlabs.js';
+import { guardarCredito } from '../academia/voz-natural.js';
 
 export const PRUEBA_MS = 10_000;
 // Lo más que se lee de la respuesta de una prueba gratis (count_tokens o GET models: unos pocos bytes).
@@ -70,6 +72,16 @@ async function probadorTelegram(token, { db, config, senal = null, secretoId = n
   return motivo;
 }
 
+// 0.14.70: la clave de ElevenLabs: leer la suscripción (GET /v1/user/subscription, gratis). Si pasa, queda la foto del
+// crédito (cuántas letras le quedan). Una clave sin permiso de leer la cuenta pasa igual (crédito desconocido).
+async function probadorElevenlabs(clave, { db, config, senal = null }) {
+  const p = elevenlabs.suscripcion();
+  const respuesta = await llamarProveedor({ url: urlDe(elevenlabs, config, p.ruta), metodo: p.metodo, cabeceras: elevenlabs.cabecerasCuenta(clave), senal, timeoutMs: PRUEBA_MS, permitido: hostDe(elevenlabs), topeBytes: PRUEBA_MAX_BYTES });
+  const r = elevenlabs.leerSuscripcion(respuesta);
+  if (r.motivo === 'ok') guardarCredito(db, r.credito);
+  return r.motivo;
+}
+
 export const PROBADORES = Object.freeze({
   ia_anthropic: probadorIa('anthropic'),
   ia_openai: probadorIa('openai'),
@@ -77,6 +89,7 @@ export const PROBADORES = Object.freeze({
   telegram_bot: probadorTelegram,
   // 0.14.8: el token de GitHub de «Claude mejora la app» (lee el repositorio: gratis).
   github_token: (valor, ctx) => probarTokenGithub(valor, ctx),
+  voz_elevenlabs: probadorElevenlabs,
 });
 
 const numero = id => {

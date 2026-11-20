@@ -336,7 +336,8 @@ test('las direcciones oficiales de los proveedores solo están en src/ia/proveed
   for (const f of deTodo) {
     const texto = leer(f);
     const nombre = relative(RAIZ, f);
-    if (!f.startsWith(de('ia', 'proveedores') + sep)) assert.doesNotMatch(texto, /api\.anthropic\.com|api\.openai\.com/, `${nombre} nombra un servidor de IA`);
+    // 0.14.70: también ElevenLabs (la voz natural): su servidor solo en src/ia/proveedores/elevenlabs.js.
+    if (!f.startsWith(de('ia', 'proveedores') + sep)) assert.doesNotMatch(texto, /api\.anthropic\.com|api\.openai\.com|api\.elevenlabs\.io/, `${nombre} nombra un servidor de IA o de voz`);
     if (f.startsWith(SRC + sep)) assert.ok(!texto.includes('secrets.env'), `${nombre} menciona secrets.env`);
     assert.doesNotMatch(texto, /\b(?:ANTHROPIC|OPENAI|CLAUDE)_(?:API_)?KEY\b/, `${nombre}: las claves nunca vienen del entorno`);
   }

@@ -23,7 +23,10 @@ import { encolar } from '../tareas/cola.js';
 import { leerConfigIa } from '../ia/config.js';
 import { elegirProveedor, modelosDe, disponibilidad } from '../ia/presupuesto.js';
 import { PROPOSITOS } from '../ia/propositos.js';
-import { VOZ, archivoVoz, hayVoz, rutaVoz } from '../academia/oral-voz.js';
+import { VOZ, hayVoz, rutaVoz } from '../academia/oral-voz.js';
+import { normalizarHabla } from '../academia/voz-textos.js';
+import { buscarGuardada, elevenPuede, estadoEleven, vocesGuardadas } from '../academia/voz-natural.js';
+import { registrarRutasVoz, pedirVoz } from './voz-natural.js';
 import { textoPreguntaVivo } from '../academia/oral-vivo.js';
 import { DICTADO, ID_DICTADO, nuevoIdDictado, tipoDeAudio, tomarTexto, barrerTextos } from '../academia/oral-dictado.js';
 
@@ -56,8 +59,13 @@ export function registrarRutasOralVivo(rutas, h) {
   const iaVista = (db, req, usuario, ahora) => {
     const i = estadoInstructor(db, req, usuario, ahora);
     const tiempo = tiempoDe(db, usuario, ahora, { estricto });
-    return { modo: i.modo, motivo: i.modo === 'ia' ? null : (iaNoAhora(i)?.motivo ?? null), ilimitado: tiempo.ilimitado === true, vozNatural: vozNatural(db, i, ahora), dictado: dictadoListo(db, usuario, i, ahora) };
+    // 0.14.70: hay voz natural también con ElevenLabs (sin IA para él) o con lo que ya está guardado.
+    const natural = vozNatural(db, i, ahora) || (config ? estadoEleven(db, config, { ahora }).estado === 'lista' || vocesGuardadas(config, { ahora }).n > 0 : false);
+    return { modo: i.modo, motivo: i.modo === 'ia' ? null : (iaNoAhora(i)?.motivo ?? null), ilimitado: tiempo.ilimitado === true, vozNatural: natural, dictado: dictadoListo(db, usuario, i, ahora) };
   };
+
+  // 0.14.70: la voz natural de las clases y lo del dueño (src/api/voz-natural.js).
+  registrarRutasVoz(rutas, { estadoInstructor, contar, topes, activo, reloj, config, supervisor, vozNatural });
 
   // El estado de la tarea de la IA (solo una suya). → 'pendiente' | 'hecha' | 'fallida'
   const estadoTarea = (db, usuario, tarea) => {
@@ -157,15 +165,20 @@ export function registrarRutasOralVivo(rutas, h) {
     const yo = abiertaDe(db, usuario.id, textoDe(datos, 'sesion'));
     const it = yo.abierta.items[Number(datos?.i)];
     if (!it) throw new ErrorHttp(404, 'no_existe');
-    const texto = textoPreguntaVivo(p, it, textoDe(datos, 'idioma') === 'en' ? 'en' : 'es');
+    const idioma = textoDe(datos, 'idioma') === 'en' ? 'en' : 'es';
+    const crudo = textoPreguntaVivo(p, it, idioma);
+    // 0.14.70: uno ya guardado (ElevenLabs o ChatGPT) sirve gratis; si no, ElevenLabs (con su clave, crédito y tope) o
+    // ChatGPT (si él tiene IA); si no, la voz del teléfono.
+    const texto = normalizarHabla(crudo);
     if (!texto || texto.length > VOZ.textoMax) return { codigo: 200, datos: { estado: 'no' } };
-    const archivo = archivoVoz(texto);
-    if (hayVoz(config, archivo)) return { codigo: 200, datos: { estado: 'lista', archivo } };
-    if (!vozNatural(db, estadoInstructor(db, req, usuario, ahora), ahora)) return { codigo: 200, datos: { estado: 'no' } };
+    const ya = buscarGuardada(db, config, { texto, crudo });
+    if (ya) return { codigo: 200, datos: { estado: 'lista', archivo: ya.archivo } };
+    const chatgpt = vozNatural(db, estadoInstructor(db, req, usuario, ahora), ahora);
+    if (!chatgpt && !elevenPuede(db, config, { letras: texto.length, ahora })) return { codigo: 200, datos: { estado: 'no' } };
     const e = espacioDe(db, usuario);
     // Una por texto y por hora (si una no se pudo, se puede otra vez la hora siguiente).
-    encolar(db, { tipo: 'academia.instructor', espacioId: e.id, creadaPor: usuario.id, claveUnica: `voz:${archivo}:${Math.floor(ahora / 3_600_000)}`,
-      datos: { uso: 'oral_voz', texto, archivo, usuarioId: usuario.id, pedidaEn: ahora } }, { ahora });
+    const { archivo, pendiente } = pedirVoz(db, { texto, crudo, idioma, uso: 'oral_voz', espacioId: e.id, usuarioId: usuario.id, chatgpt, ahora });
+    if (!pendiente) return { codigo: 200, datos: { estado: 'no' } };
     try { supervisor?.despertar?.(); } catch { /* la toma en su próxima vuelta */ }
     return { codigo: 200, datos: { estado: 'pendiente', archivo } };
   });

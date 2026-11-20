@@ -712,6 +712,27 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.70: la voz natural de ElevenLabs, guardada para siempre, y leer las clases en voz alta — sin cambio de base
+
+- **ElevenLabs** (`src/ia/proveedores/elevenlabs.js`, `src/academia/voz-natural.js`, `voz-eleven.js`): lee en voz alta las
+  preguntas del examinador del oral y, ahora, las clases y las preguntas de práctica. Queda **dormido** hasta que el dueño
+  pega su clave en **Claves e IA → Voz natural (ElevenLabs)**: sin clave no hay ni una tarea ni un pedido a la red.
+- **Cada audio se guarda para siempre** (carpeta `academia/voz-oral`, por la huella de proveedor + modelo + voz + ajustes +
+  texto): se paga UNA vez y lo oyen gratis todos los alumnos, aunque se acabe el crédito, se quite la clave o se cambie la voz.
+  El orden, en todas partes: uno ya guardado (de ElevenLabs o de ChatGPT) → uno nuevo con ElevenLabs → uno nuevo con ChatGPT →
+  la voz del teléfono (siempre funciona). El dueño puede poner «ChatGPT primero».
+- **Solo lo compartido** (`src/academia/voz-textos.js`): el servidor solo manda a un proveedor un texto que está en el
+  contenido en uso; lo del alumno (sus dudas, el chat, lo que dijo en el oral, la repregunta de la IA) va con la voz del teléfono.
+- **Un tope de letras al mes** (ElevenLabs cobra por letra; 10 000 por defecto): cada audio aparta sus letras antes de llamar,
+  nunca lo pasa. En **Dinero**, junto al tope de la IA, las letras del mes y el crédito que le queda (`GET /v1/user/subscription`,
+  como mucho una vez por hora, y al «Probar»).
+- **Sin crédito, clave mala o sin permiso**: ElevenLabs queda en pausa hasta «Probar y reanudar», con el aviso
+  `ia_proveedor:elevenlabs` (grave: también por Telegram). Un 429: pausa corta. Mientras tanto sigue ChatGPT o el teléfono.
+- **«Preparar todas las voces»** (`src/academia/voz-preparar.js`, tarea `academia.voces`): solo el oral, o el oral y todas las
+  clases; dice antes cuántas letras son, pide confirmar, va despacio, se detiene en el tope y sigue donde iba.
+- **El alumno**: «Leer en voz alta: Con voz / Sin voz» en Configuración (guardado en su cuenta) y el mismo botón en la clase;
+  «Escuchar» en cada tarjeta, pregunta y explicación (`public/voz-lectura.js`).
+
 ### Lo nuevo de la 0.14.62: seis dibujos de aviación con parámetros — sin cambio de base
 
 Lo que ningún dibujo podía mostrar (la auditoría visual): `circuito`, `pista-marcas`, `letreros`, `vor`, `triangulo-viento`

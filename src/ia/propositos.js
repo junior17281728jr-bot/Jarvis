@@ -252,6 +252,9 @@ export const MOTIVOS = Object.freeze([
   'bot_ocupado', 'bloqueado', 'chat_no_existe',
   // 0.13.9: Anthropic todavía pide la verificación de identidad de la cuenta («Identity verification is required»).
   'verificacion_identidad',
+  // 0.14.70: la voz de ElevenLabs (src/academia/voz-natural.js): la voz elegida ya no existe en la cuenta, y el tope de
+  // letras del mes ya está lleno.
+  'voz_no_existe', 'tope_voz',
 ]);
 
 // Estados de una fila de ia_llamadas (un intento PAGADO, que pasó la reserva):

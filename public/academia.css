@@ -1825,3 +1825,9 @@ a.pie-terminos { display: inline-flex; align-items: center; min-height: 44px; pa
 .materias-pronto { display: flex; align-items: flex-start; gap: 10px; margin: 14px 0; padding: 12px 14px; border-radius: 16px; border: 1px dashed var(--borde); background: var(--tarjeta); }
 .materias-pronto p { margin: 0; }
 .materias-pronto .banner-pronto { position: static; flex: none; }
+
+/* 0.14.70: leer en voz alta («Escuchar» y «Con voz / Sin voz») en las clases y las preguntas. */
+.lectura-barra { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; align-items: center; margin: 0 0 0.6rem; }
+.lectura-barra .boton-escuchar, .lectura-barra .interruptor-voz, .q-escuchar .boton-escuchar { min-height: 40px; }
+.interruptor-voz[aria-pressed="true"] { border-color: var(--acento, currentColor); }
+.q-escuchar { display: flex; justify-content: flex-start; margin: 0.4rem 0 0.2rem; }

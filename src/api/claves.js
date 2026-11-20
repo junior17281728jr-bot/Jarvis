@@ -50,6 +50,8 @@ export function registrarRutasClaves(rutas, { config = null, limites = {}, proba
   const trasCambio = usuario => (d, { uso } = {}) => {
     if (definicionUso(uso)?.grupo === 'avisos') return { iaApagada: false, telegram: trasCambiarToken(d, { usuarioId: usuario.id }) };
     if (definicionUso(uso)?.grupo === 'codigo') return { iaApagada: false };
+    // 0.14.70: la clave de ElevenLabs (la voz) no toca la IA.
+    if (definicionUso(uso)?.grupo === 'voz') return { iaApagada: false };
     return { iaApagada: apagarSiNoQuedaProveedor(d, config, { usuarioId: usuario.id }) };
   };
 

@@ -6,6 +6,8 @@
 import { createHash } from 'node:crypto';
 import { USOS_INSTRUCTOR, esquemaDe, guardarRespuesta, leerGuardado, anotarRechazo } from './instructor-ia.js';
 import { VOZ, ARCHIVO_VOZ, INSTRUCCIONES_VOZ, archivoVoz, hayVoz, guardarVoz } from './oral-voz.js';
+import { buscarGuardada, leerConfigVoz, varianteDe, archivoEleven } from './voz-natural.js';
+import { grabarEleven } from './voz-eleven.js';
 import { USOS_COMPE, esquemaCompe, guardarFrase, guardarSugerencia } from './competencia-ia.js';
 import { DICTADO, ID_DICTADO, tomarAudio, tipoDeAudio, guardarTexto } from './oral-dictado.js';
 
@@ -47,7 +49,11 @@ async function paso(ctx) {
   const grabacion = d.uso === 'oral_dictado' && ID_DICTADO.test(String(d.audio)) ? tomarAudio(d.audio) : null;
   if (!Number.isSafeInteger(pedidaEn) || ahora - pedidaEn > caduca || pedidaEn > ahora + 60_000) return fin('caducada');
   // 0.11.0: si la persona retiró el permiso de IA después de pedir, no se llama (un «no» guardado en sus ajustes).
-  if (Number.isSafeInteger(d.usuarioId) && ctx.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`cuenta.consentimiento_ia.${d.usuarioId}`)?.valor === '0') return fin('sin_consentimiento');
+  // 0.14.70: la voz de un texto compartido no lleva nada del alumno: sin su permiso de IA no se usa ChatGPT (d.chatgpt lo
+  // dice el servidor web), pero la voz de ElevenLabs y la ya guardada sí.
+  const esVoz = d.uso === 'oral_voz' || d.uso === 'lectura_voz';
+  const sinPermisoIa = Number.isSafeInteger(d.usuarioId) && ctx.db.prepare('SELECT valor FROM ajustes WHERE clave = ?').get(`cuenta.consentimiento_ia.${d.usuarioId}`)?.valor === '0';
+  if (!esVoz && sinPermisoIa) return fin('sin_consentimiento');
   // 0.14.29: la voz natural de una pregunta del oral (solo ChatGPT; en el tope de su cuenta, sin cobrarle un uso): un mp3
   // por texto, una sola vez para todos.
   // 0.14.50: el dictado de la Práctica en vivo (solo ChatGPT; en el tope de su cuenta, sin cobrarle un uso): la grabación
@@ -65,16 +71,35 @@ async function paso(ctx) {
     if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
     return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
   }
-  if (d.uso === 'oral_voz') {
+  // 0.14.70: la voz natural de un texto COMPARTIDO (la pregunta del oral, 'oral_voz'; una tarjeta de una clase o una
+  // pregunta de práctica, 'lectura_voz'): uno ya guardado (de cualquier proveedor) no se paga otra vez; si no, ElevenLabs
+  // y después ChatGPT (o al revés, si el dueño lo pidió). ChatGPT solo si el servidor web vio que el alumno tiene IA
+  // (d.chatgpt; las tareas de antes no lo traen: sí). Nada de esto lleva datos del alumno: solo el texto.
+  if (d.uso === 'oral_voz' || d.uso === 'lectura_voz') {
     if (typeof d.texto !== 'string' || !d.texto.trim() || d.texto.length > VOZ.textoMax || !ARCHIVO_VOZ.test(String(d.archivo)) || archivoVoz(d.texto) !== d.archivo) return fin('pedido_no_valido');
-    if (hayVoz(ctx.config, d.archivo)) return { listo: true, resultado: { usada: false, motivo: 'ok', guardada: true, costoMicro: 0 } };
-    const r = await ctx.ia.pedir({
-      proposito: 'oral_voz', paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: Number.isSafeInteger(d.usuarioId) ? d.usuarioId : null, sistema: INSTRUCCIONES_VOZ, texto: d.texto,
-      guardar: (_db, json) => guardarVoz(ctx.config, d.archivo, json?.audio),
-    });
-    if (!r.usada) return fin(r.motivo, { costoMicro: r.costoMicro ?? 0 });
-    if (!r.guardado?.ok) return fin(r.guardado?.error ?? 'no_se_pudo_guardar', { costoMicro: r.costoMicro ?? 0 });
-    return { listo: true, resultado: { usada: true, motivo: 'ok', costoMicro: r.costoMicro ?? 0 } };
+    const crudo = typeof d.crudo === 'string' && d.crudo.length <= VOZ.textoMax ? d.crudo : null;
+    // La muestra de una voz (Claves e IA) solo vale con ESA voz de ElevenLabs.
+    const ya = d.muestra === true ? hayVoz(ctx.config, archivoEleven(varianteDe(leerConfigVoz(ctx.db)), d.texto)) : hayVoz(ctx.config, d.archivo) || buscarGuardada(ctx.db, ctx.config, { texto: d.texto, crudo });
+    if (ya) return { listo: true, resultado: { usada: false, motivo: 'ok', guardada: true, costoMicro: 0 } };
+    const orden = leerConfigVoz(ctx.db).primero === 'chatgpt' ? ['openai', 'elevenlabs'] : ['elevenlabs', 'openai'];
+    let motivo = 'sin_clave';
+    let costoMicro = 0;
+    for (const proveedor of orden) {
+      if (proveedor === 'elevenlabs') {
+        const r = await grabarEleven(ctx, { texto: d.texto, idioma: d.idioma === 'en' ? 'en' : d.idioma === 'es' ? 'es' : null });
+        if (r.motivo === 'ok') return { listo: true, resultado: { usada: true, motivo: 'ok', proveedor: 'elevenlabs', letras: r.letras, costoMicro } };
+        motivo = r.motivo;
+      } else if (d.chatgpt !== false && !sinPermisoIa) {
+        const r = await ctx.ia.pedir({
+          proposito: 'oral_voz', paso: 'p1', espacioId: ctx.tarea.espacioId, usuarioId: Number.isSafeInteger(d.usuarioId) ? d.usuarioId : null, sistema: INSTRUCCIONES_VOZ, texto: d.texto,
+          guardar: (_db, json) => guardarVoz(ctx.config, d.archivo, json?.audio),
+        });
+        costoMicro += r.costoMicro ?? 0;
+        if (r.usada && r.guardado?.ok) return { listo: true, resultado: { usada: true, motivo: 'ok', proveedor: 'openai', costoMicro } };
+        motivo = r.usada ? (r.guardado?.error ?? 'no_se_pudo_guardar') : r.motivo;
+      }
+    }
+    return fin(motivo, { costoMicro });
   }
   // 0.14.38: la Competencia (src/academia/competencia-ia.js): la frase del certificado y «Mejorar preguntas con IA». Si la
   // IA no responde, no pasa nada: el certificado lleva su frase fija y la ronda sigue igual.

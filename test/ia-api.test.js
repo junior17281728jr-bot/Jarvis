@@ -122,7 +122,7 @@ test('20. claves y ajustes (0.12.3): también por el enlace público con la sesi
     assert.equal(lista.codigo, 200);
     assert.equal(lista.datos.duenoTailscale, 'junior@example.com');
     assert.deepEqual(lista.datos.almacen, { listo: true, motivo: null }, 'la llave ya existe: se guardó una clave');
-    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai', 'ia_propia']], ['avisos', ['telegram_bot']], ['codigo', ['github_token']]]);
+    assert.deepEqual(lista.datos.grupos.map(g => [g.grupo, g.usos.map(u => u.uso)]), [['ia', ['ia_anthropic', 'ia_openai', 'ia_propia']], ['avisos', ['telegram_bot']], ['codigo', ['github_token']], ['voz', ['voz_elevenlabs']]]);
     // Sin ser administrador, ni el dueño de Tailscale entra; sin la cabecera de OPORTIA, nada.
     const maria = await nuevaCuenta('maria');
     assert.equal((await pedir('GET', '/api/admin/claves', { galleta: maria.galleta, cabeceras: DUENO })).datos.error, 'solo_admin');

@@ -48,9 +48,10 @@ export const explicacionFalsa = (correcta, extra = {}) => ({
   json: { opcion_correcta: correcta, explicacion: 'Arriba hay menos presión y por eso entra menos oxígeno (oxygen).', por_que_no: 'Esa opción confunde la idea.', recuerda: 'Menos presión, menos oxígeno.', terminos: [{ ingles: 'hypoxia', espanol: 'hipoxia', abreviatura: '' }], ...extra },
 });
 
-export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-sonnet-5-5', topePlan = 1_000_000, permitir = true, encender = true } = {}) {
+// 0.14.70: bases: otras direcciones falsas (por ejemplo, la de ElevenLabs) además de la del proveedor falso.
+export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-sonnet-5-5', topePlan = 1_000_000, permitir = true, encender = true, bases = {} } = {}) {
   const falso = await crearProveedorFalso();
-  const config = { ...configDePrueba(), iaBases: { anthropic: falso.base, openai: falso.base } };
+  const config = { ...configDePrueba(), iaBases: { anthropic: falso.base, openai: falso.base, ...bases } };
   const db = abrirBase(config);
   const despertares = [];
   // 0.14.50: la grabación de un dictado llega «al trabajador» (aquí, el mismo proceso) como por su canal.
