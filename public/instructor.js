@@ -76,13 +76,17 @@ export function crearInstructor(h) {
   // Lo que escribió la IA (consejo, explicación o duda): en su propia caja, con quién lo escribió.
   function cajaIa(r, partes) {
     // 0.12.4: en la «Vista de prueba de la IA» (administrador) todo dice que es una demostración.
-    return el('section', { class: `caja-hoja caja-ia${r.demo ? ' demo' : ''}` },
-      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx(r.demo ? 'demo.ia.titulo' : 'instr.ia.titulo') })),
+    // 0.14.57: lo que la IA ya escribió antes y sale sin IA (gratis): «Explicación guardada del instructor», sin ningún
+    // «la IA no está». Si está en otro idioma (solo español para quien estudia en inglés), se dice.
+    const guardada = r.guardada === true && !r.demo;
+    return el('section', { class: `caja-hoja caja-ia${r.demo ? ' demo' : ''}${guardada ? ' guardada' : ''}` },
+      el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: tx(r.demo ? 'demo.ia.titulo' : guardada ? 'instr.guardada.titulo' : 'instr.ia.titulo') })),
+      ...[guardada && r.idioma === 'es' ? el('p', { class: 'suave chica', lang: 'es', texto: tx('instr.guardada.en_espanol') }) : null].filter(Boolean),
       partes,
       Array.isArray(r.terminos) && r.terminos.length ? el('ul', { class: 'lista-terminos' }, r.terminos.map(x => el('li', {},
         el('strong', { lang: 'en', texto: x.ingles }), x.abreviatura ? el('span', { class: 'termino-abrev', texto: ` (${x.abreviatura})` }) : null,
         x.espanol ? el('span', { texto: ` · ${x.espanol}` }) : null))) : null,
-      el('p', { class: 'suave chica', texto: tx(r.demo ? 'demo.ia.firma' : 'instr.ia.firma') }));
+      el('p', { class: 'suave chica', texto: tx(r.demo ? 'demo.ia.firma' : guardada ? 'instr.guardada.firma' : 'instr.ia.firma') }));
   }
 
   // ---------- 0.12.7: «Preparado para ti» en la portada de una clase ----------
@@ -517,7 +521,8 @@ export function crearInstructor(h) {
     return lugar;
   }
   // 0.12.4: «Mini-clase con IA» de un concepto de «Mi repaso» (solo si de verdad hay IA para él: si no, no hay botón).
-  function miniClaseIa(clave) {
+  // 0.14.57: { guardada: true } = sin IA ahora, pero ya hay una guardada para lo mismo (gratis): otro nombre en el botón.
+  function miniClaseIa(clave, { guardada = false } = {}) {
     const lugar = el('div', { class: 'mini-clase-ia' });
     const boton = el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: async () => {
       boton.disabled = true;
@@ -525,7 +530,7 @@ export function crearInstructor(h) {
       if (!r.ok) { boton.disabled = false; return h.avisar?.(textoError(r.datos.error), 'mal'); }
       boton.remove();
       lugar.replaceChildren(lugarIa(r.datos.ia, pintarMiniClase));
-    } }, icono('chispa', 'icono chico'), el('span', { texto: tx('mini.ia_clase') }));
+    } }, icono('chispa', 'icono chico'), el('span', { texto: tx(guardada ? 'mini.guardada_clase' : 'mini.ia_clase') }));
     lugar.append(boton);
     return lugar;
   }

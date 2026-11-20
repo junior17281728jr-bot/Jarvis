@@ -37,6 +37,34 @@ const estiloDe = e => ESTILOS[e] ?? ESTILOS.claro;
 const bloque = datos => `<datos>\n${JSON.stringify(datos).replace(/</g, '\\u003c')}\n</datos>`;
 const huella = texto => createHash('sha256').update(texto).digest('hex').slice(0, 32);
 
+
+// 0.14.57: la clave de lo COMPARTIDO (explicación, mini-clase, «Explícamelo mejor», «Profundizar») en dos partes: la
+// huella del contenido (si el paquete cambia el texto, la clave cambia) se calcula una vez, y después cada variante
+// (estilo, idioma, modelo). Así, sin IA, se puede buscar lo guardado para la misma pregunta y opción con CUALQUIER
+// modelo (src/academia/saber-sin-ia.js) con unas pocas lecturas por la clave primaria. Las claves son las de siempre.
+export const ESTILOS_CLAVE = Object.freeze(Object.keys(ESTILOS));
+export const TIPOS_SIN_IA = Object.freeze(['explica', 'miniclase', 'tarjeta', 'profundiza']);
+const idiomaClave = i => (i === 'en' ? 'en' : 'es');
+export function armadorClave(tipo, d) {
+  if (tipo === 'explica') {
+    const opciones = opcionesParaIa(d.q, d.modo ?? 'original');
+    const contenido = huella(JSON.stringify([d.q.id, d.q.original.enunciado, opciones, d.q.original.correcta, d.q.original.explicacion ?? null, d.q.sencilla ?? null]));
+    return ({ estilo, idioma, modelo }) => `academia.ia.explica.${huella([contenido, d.elegida, d.acierto ? 1 : 0, d.modo ?? 'original', ESTILOS[estilo] ? estilo : 'claro', idiomaClave(idioma), modelo ?? ''].join('|'))}`;
+  }
+  if (tipo === 'miniclase') {
+    const opciones = opcionesParaIa(d.q, 'original');
+    const contenido = huella(JSON.stringify([d.concepto, d.tarjeta?.titulo ?? '', d.tarjeta?.texto ?? '', d.q.id, d.q.original.enunciado, opciones, d.q.original.correcta, d.q.original.explicacion ?? null, d.q.sencilla ?? null]));
+    return ({ estilo, idioma, modelo }) => `academia.ia.miniclase.${huella([contenido, d.elegida ?? '', d.idea ?? '', ESTILOS[estilo] ? estilo : 'claro', idiomaClave(idioma), modelo ?? ''].join('|'))}`;
+  }
+  if (tipo === 'tarjeta' || tipo === 'profundiza') {
+    const contenido = huella(JSON.stringify([d.tema, d.tarjeta.titulo, d.tarjeta.texto, d.preguntas ?? [], d.trampas ?? []]));
+    return tipo === 'profundiza'
+      ? ({ idioma, modelo }) => `academia.ia.profundiza.${huella([contenido, idiomaClave(idioma), modelo ?? ''].join('|'))}`
+      : ({ estilo, idioma, modelo }) => `academia.ia.tarjeta.${huella([contenido, ESTILOS[estilo] ? estilo : 'claro', idiomaClave(idioma), modelo ?? ''].join('|'))}`;
+  }
+  throw new Error('tipo_no_valido');
+}
+
 const COMUN = (idioma) => [
   `Eres el instructor de tierra de una academia de piloto privado que prepara el examen escrito de la FAA con las preguntas del Test Guide.`,
   // 0.12.7 (pedido del dueño): la meta, en cada uso de la IA.
@@ -117,9 +145,7 @@ export function armarExplicacion({ q, elegida, acierto, modo = 'original', idea 
     // Solo el estilo: esta explicación se guarda y la ven todos los que eligieron lo mismo con ese estilo.
     alumno: { estilo },
   });
-  // La huella de lo que dice la pregunta (si el paquete cambia el texto, la explicación guardada ya no vale).
-  const contenido = huella(JSON.stringify([q.id, q.original.enunciado, opciones, q.original.correcta, q.original.explicacion ?? null, q.sencilla ?? null]));
-  const clave = `academia.ia.explica.${huella([contenido, elegida, acierto ? 1 : 0, modo, estilo, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`;
+  const clave = armadorClave('explica', { q, elegida, acierto, modo })({ estilo, idioma, modelo });
   return { sistema, texto, correcta, opciones: opciones.length, clave, esquema: esquemaExplicar(opciones.length), estilo };
 }
 
@@ -250,8 +276,7 @@ export function armarMiniClase({ concepto, tarjeta = null, q, elegida = null, id
     correcta, eligio: elegida ? String(opciones.findIndex(x => x.clave === elegida) + 1) : null,
     explicacion_original: q.original.explicacion ?? null, explicacion_sencilla: q.sencilla ?? null, idea_equivocada: idea, alumno: { estilo },
   });
-  const contenido = huella(JSON.stringify([concepto, tarjeta?.titulo ?? '', tarjeta?.texto ?? '', q.id, q.original.enunciado, opciones, q.original.correcta, q.original.explicacion ?? null, q.sencilla ?? null]));
-  const clave = `academia.ia.miniclase.${huella([contenido, elegida ?? '', idea ?? '', estilo, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`;
+  const clave = armadorClave('miniclase', { concepto, tarjeta, q, elegida, idea })({ estilo, idioma, modelo });
   return { sistema, texto, correcta, opciones: opciones.length, clave, esquema: esquemaMiniClase(opciones.length) };
 }
 
@@ -351,10 +376,7 @@ export function armarTarjeta({ tipo = 'mejor', tarjeta, tema, preguntas = [], tr
     'MATERIAL (el mismo para todos los alumnos):',
     bloque({ tema, tarjeta: { titulo: tarjeta.titulo, texto: String(tarjeta.texto ?? '').slice(0, 4000) }, ideas_equivocadas_tipicas: trampas.slice(0, 6), preguntas_del_test_guide_de_esta_tarjeta: preguntas }),
   ].join('\n');
-  const contenido = huella(JSON.stringify([tema, tarjeta.titulo, tarjeta.texto, preguntas, trampas]));
-  const clave = profundo
-    ? `academia.ia.profundiza.${huella([contenido, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`
-    : `academia.ia.tarjeta.${huella([contenido, e, idioma === 'en' ? 'en' : 'es', modelo].join('|'))}`;
+  const clave = armadorClave(profundo ? 'profundiza' : 'tarjeta', { tema, tarjeta, preguntas, trampas })({ estilo: e, idioma, modelo });
   // Lo que se revisa: las preguntas como «sin responder» (sus opciones), para que nunca diga una respuesta.
   const sinResponder = preguntas.map(q => ({ numero: q.numero, opciones: q.opciones }));
   return { sistema, texto: bloque({ pedido: profundo ? 'profundizar' : 'explicar_mejor', estilo: profundo ? null : e }), clave, esquema: profundo ? ESQUEMA_PROFUNDIZAR : ESQUEMA_TARJETA, sinResponder, estilo: e };

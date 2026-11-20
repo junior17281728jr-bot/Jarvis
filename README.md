@@ -712,6 +712,21 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.57: lo que la IA ya escribió sirve cuando no hay IA — sin cambio de base
+
+- **Sin IA, lo guardado** (`src/academia/saber-sin-ia.js`): cuando no hay IA para el alumno (sin clave, la IA apagada, en
+  pausa, sin saldo, el tope del mes lleno o sin tiempo con IA), lo COMPARTIDO que la IA ya escribió sale gratis, como
+  «Explicación guardada del instructor»: «Explícamelo de otra forma» (y la pista de una línea), la mini-clase de «Mi repaso»,
+  «Explícamelo mejor» y «Profundizar» de una tarjeta. No llama a la IA, no pone nada en la fila, no cobra minutos ni usa un
+  tope. Nunca a quien activó la academia sin IA.
+- **Cómo se encuentra**: la misma pregunta, la misma opción y el mismo texto (la huella del contenido va en la clave), con
+  cualquier modelo; si no, otro estilo en su idioma; a quien estudia en inglés, la de español. Se calculan las claves
+  candidatas y se lee cada una por la clave primaria (nunca se recorre «ajustes»). Las claves de siempre: nada se migra.
+- **Lo de cada alumno nunca se comparte**: consejo, plan de hoy, preparado, dudas, Profesor, práctica oral y preguntas
+  personalizadas siguen siendo solo suyos.
+- **Administrador** (Avanzado → IA por alumno): «Lo que el sistema ya sabe sin IA: N explicaciones, N tarjetas, N
+  mini-clases y N calificaciones del oral», y cuántas veces se mostró este mes (`academia.ia_saber.servidas.AAAA-MM`).
+
 ### Lo nuevo de la 0.14.56: Administrador en 6 entradas y el alumno más sencillo — sin cambio de base
 
 - **Administrador en 6 entradas** (antes 28 pestañas en 4 grupos y 6 pantallas sin pestaña; el mapa está en

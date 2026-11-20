@@ -389,8 +389,11 @@ test('tiempo con IA: cada uso nuevo cuesta un minuto, lo guardado se cobra una v
     ajustarSaldo(c.db, q, 0, c.adminId);
     assert.deepEqual((await pedir(c.base, 'GET', '/api/academia/instructor', { galleta: c.q })).datos.instructor, { modo: 'basico', motivo: 'sin_minutos' });
     const antes = c.db.prepare("SELECT COUNT(*) AS n FROM tareas WHERE tipo = 'academia.instructor'").get().n;
-    const w = await unaMala(c, c.q);
+    // 0.14.57: de una pregunta SIN nada guardado, «sin_minutos»; de la que ya explicó la IA, la guardada, gratis.
+    const w = await unaMala(c, c.q, x.intento.preguntas.find(p => p.id !== x.pregunta.id).id);
     assert.deepEqual((await explicar(c, c.q, w)).datos.ia, { estado: 'no', motivo: 'sin_minutos' });
+    const v = (await explicar(c, c.q, await unaMala(c, c.q, x.pregunta.id))).datos.ia;
+    assert.deepEqual([v.estado, v.guardada], ['lista', true]);
     assert.equal(c.db.prepare("SELECT COUNT(*) AS n FROM tareas WHERE tipo = 'academia.instructor'").get().n, antes);
     assert.equal(saldoIa(c.db, q).minutos, 0, 'nunca menos de 0');
   });

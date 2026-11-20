@@ -7,7 +7,7 @@ import { anotarEvidenciaTarjeta } from '../academia/fabrica-mejora.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { camino } from '../academia/progreso.js';
 import { modeloAlumno, respuestaDelAlumno, reexplicarSinIa } from '../academia/instructor.js';
-import { armarTarjeta, armarPersonal, armarExplicacion, leerGuardado, preguntaSinIa, cortarPalabras } from '../academia/instructor-ia.js';
+import { armarTarjeta, armarPersonal, armarExplicacion, leerGuardado, preguntaSinIa, cortarPalabras, armadorClave } from '../academia/instructor-ia.js';
 import { leerConfigIa } from '../ia/config.js';
 import { ideaDe } from '../academia/reto.js';
 import { vistaSecciones } from '../academia/progreso.js';
@@ -52,7 +52,28 @@ export function progresoPersonal(db, usuarioId) {
 }
 
 export function registrarRutasTutor(rutas, h) {
-  const { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj } = h;
+  const { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj, guardadaSinIa, llego } = h;
+  // 0.14.57: «Explícamelo mejor» / «Profundizar» de una tarjeta, con IA o sin IA (lo que ya escribió, gratis). entrada: lo
+  // que entra en la clave y en el pedido (lo mismo en los dos caminos). → { ia, hayProfundizar? }.
+  function tarjetaConOSinIa(db, usuario, instructor, { tipo, quiereIa, entrada, estilo, alPedir = null }) {
+    const tipoClave = tipo === 'profundizar' ? 'profundiza' : 'tarjeta';
+    const armar = armadorClave(tipoClave, entrada);
+    let ia = null;
+    if (quiereIa && instructor.modo === 'ia') {
+      const pedido = armarTarjeta({ tipo, ...entrada, estilo, idioma: usuario.idioma, modelo: 'claude-haiku-5-5' });
+      const uso = tipo === 'profundizar' ? 'instructor_profundizar' : 'instructor_tarjeta';
+      const ya = leerGuardado(db, pedido.clave);
+      ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
+        : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: entrada.tarjeta.titulo } });
+      if (llego(ia)) alPedir?.();
+    } else if (quiereIa) ia = iaNoAhora(instructor);
+    if (llego(ia)) return { ia };
+    const g = guardadaSinIa(db, usuario, instructor, tipoClave, armar, { estilo, conEstilo: tipoClave === 'tarjeta' });
+    if (!g) return { ia };
+    // Con «Explícamelo mejor» guardado, ¿también hay un «Profundizar» guardado? (la pantalla pone su botón).
+    const hayProfundizar = tipoClave === 'tarjeta' && instructor.modo !== 'ia' && Boolean(guardadaSinIa(db, usuario, instructor, 'profundiza', armadorClave('profundiza', entrada), { conEstilo: false, contar: false }));
+    return { ia: { ...g, tipo }, ...(hayProfundizar ? { hayProfundizar: true } : {}) };
+  }
   const conIa = (db, req, usuario, ahora) => estadoInstructor(db, req, usuario, ahora);
   const temaAbierto = (db, usuario, p, materia, tema, ahora) => {
     const estado = camino(db, usuario.id, p, ahora).materias.find(m => m.id === materia)?.temas.find(t => t.id === tema)?.estado;
@@ -150,20 +171,16 @@ export function registrarRutasTutor(rutas, h) {
     // 0.13.0: la evidencia de la «Mejora continua» (cuántos alumnos distintos no entendieron ESTA tarjeta; solo números).
     if (tipo === 'mejor' && typeof s.titulo === 'string') anotarEvidenciaTarjeta(db, { materia, tema, titulo: s.titulo, usuarioId: usuario.id });
     const instructor = conIa(db, req, usuario, ahora);
-    let ia = null;
-    if (datos?.ia === true && instructor.modo === 'ia') {
-      const estilo = estiloConSenales(modeloAlumno(db, usuario.id, p, ahora).estilo, leerSenales(db, usuario.id));
-      const preguntas = ids.map(id => p.preguntas.get(id)).filter(Boolean).map(q => ({ numero: String(q.original.numero ?? q.id), enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => o.texto) }));
-      const trampas = [...new Set((a?.preguntas ?? []).filter(x => x.tarjeta === n - 1).flatMap(x => x.trampas))];
-      const pedido = armarTarjeta({ tipo, tarjeta: { titulo: String(s.titulo ?? ''), texto: textoTarjeta(s) }, tema: t.titulo, preguntas, trampas, estilo, idioma: usuario.idioma, modelo: 'claude-haiku-5-5' });
-      const uso = tipo === 'profundizar' ? 'instructor_profundizar' : 'instructor_tarjeta';
-      const ya = leerGuardado(db, pedido.clave);
-      ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
-        : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: String(s.titulo ?? '') } });
-      if (ia?.estado === 'lista' || ia?.estado === 'pendiente') anotarEvento(db, usuario.id, { tipo: tipo === 'profundizar' ? 'profundizar' : 'mejor', materia, tema, tarjeta: n, titulo: String(s.titulo ?? '') }, ahora);
-    } else if (datos?.ia === true) ia = iaNoAhora(instructor);
+    const estilo = estiloConSenales(modeloAlumno(db, usuario.id, p, ahora).estilo, leerSenales(db, usuario.id));
+    const preguntas = ids.map(id => p.preguntas.get(id)).filter(Boolean).map(q => ({ numero: String(q.original.numero ?? q.id), enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => o.texto) }));
+    const trampas = [...new Set((a?.preguntas ?? []).filter(x => x.tarjeta === n - 1).flatMap(x => x.trampas))];
+    const entrada = { tarjeta: { titulo: String(s.titulo ?? ''), texto: textoTarjeta(s) }, tema: t.titulo, preguntas, trampas };
+    const r = tarjetaConOSinIa(db, usuario, instructor, {
+      tipo, quiereIa: datos?.ia === true, entrada, estilo,
+      alPedir: () => anotarEvento(db, usuario.id, { tipo: tipo === 'profundizar' ? 'profundizar' : 'mejor', materia, tema, tarjeta: n, titulo: String(s.titulo ?? '') }, ahora),
+    });
     // K: «Para el examen» (lo pone la app): citadas solo las que ya respondió; de las otras, el número.
-    return { codigo: 200, datos: { instructor: { modo: instructor.modo }, basica, ia, examen: paraElExamen(db, usuario.id, p, materia, tema, n - 1) } };
+    return { codigo: 200, datos: { instructor: { modo: instructor.modo }, basica, ...r, examen: paraElExamen(db, usuario.id, p, materia, tema, n - 1) } };
   });
 
   function tarjetaOral(db, req, usuario, p, { materia, tema, tipo, n, ia: quiereIa }, ahora) {
@@ -177,17 +194,10 @@ export function registrarRutasTutor(rutas, h) {
     };
     anotarSenal(db, usuario.id, tipo === 'profundizar' ? 'profundizar' : 'mejor');
     const instructor = conIa(db, req, usuario, ahora);
-    let ia = null;
-    if (quiereIa && instructor.modo === 'ia') {
-      const estilo = estiloConSenales(modeloAlumno(db, usuario.id, p, ahora).estilo, leerSenales(db, usuario.id));
-      // Solo el material de la tarjeta (no hay preguntas del Test Guide en la pista oral).
-      const pedido = armarTarjeta({ tipo, tarjeta: { titulo: String(s.titulo ?? ''), texto: textoTarjeta(s) }, tema: t.titulo, preguntas: [], trampas: [], estilo, idioma: usuario.idioma, modelo: 'claude-haiku-5-5' });
-      const uso = tipo === 'profundizar' ? 'instructor_profundizar' : 'instructor_tarjeta';
-      const ya = leerGuardado(db, pedido.clave);
-      ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
-        : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: String(s.titulo ?? '') } });
-    } else if (quiereIa) ia = iaNoAhora(instructor);
-    return { instructor: { modo: instructor.modo }, basica, ia, examen: null };
+    const estilo = estiloConSenales(modeloAlumno(db, usuario.id, p, ahora).estilo, leerSenales(db, usuario.id));
+    // Solo el material de la tarjeta (no hay preguntas del Test Guide en la pista oral).
+    const entrada = { tarjeta: { titulo: String(s.titulo ?? ''), texto: textoTarjeta(s) }, tema: t.titulo, preguntas: [], trampas: [] };
+    return { instructor: { modo: instructor.modo }, basica, ...tarjetaConOSinIa(db, usuario, instructor, { tipo, quiereIa, entrada, estilo }), examen: null };
   }
 
   // O: «Preguntas personalizadas» (solo con IA) de un tema que ya practicó: hechas a lo que confundió.
@@ -254,13 +264,19 @@ export function registrarRutasTutor(rutas, h) {
     const tarjeta = c && c.indice >= 0 && t ? { materia: c.materia, tema: c.tema, n: c.indice + 1, titulo: String(t.secciones?.[c.indice]?.titulo ?? '') } : c ? { materia: c.materia, tema: c.tema, n: 1, titulo: c.temaTitulo } : null;
     let pista = null;
     const instructor = conIa(db, req, usuario, ahora);
-    if (!r.acierto && instructor.modo === 'ia' && !preguntaSinIa(db, r.q.id, ahora)) {
+    if (!r.acierto && !preguntaSinIa(db, r.q.id, ahora)) {
       // La explicación compartida que ya existe para ESA opción y SU estilo (si alguien la pidió): sin llamar a la IA.
       const m = modeloAlumno(db, usuario.id, p, ahora);
-      const basica = reexplicarSinIa(db, usuario.id, p, r, m.estilo);
-      const pedido = armarExplicacion({ q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo, idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: m.estilo }, idioma: usuario.idioma, modelo: leerConfigIa(db).instructorModelo });
-      const g = leerGuardado(db, pedido.clave);
-      if (g?.recuerda) pista = { texto: g.recuerda, ia: true };
+      if (instructor.modo === 'ia') {
+        const basica = reexplicarSinIa(db, usuario.id, p, r, m.estilo);
+        const pedido = armarExplicacion({ q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo, idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: m.estilo }, idioma: usuario.idioma, modelo: leerConfigIa(db).instructorModelo });
+        const g = leerGuardado(db, pedido.clave);
+        if (g?.recuerda) pista = { texto: g.recuerda, ia: true };
+      } else {
+        // 0.14.57: sin IA, la de cualquier modelo (o estilo): su «Recuerda», gratis (una línea: no suma en la cuenta del mes).
+        const g = guardadaSinIa(db, usuario, instructor, 'explica', armadorClave('explica', { q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo }), { estilo: m.estilo, contar: false });
+        if (g?.recuerda) pista = { texto: g.recuerda, ia: true, guardada: true };
+      }
     }
     if (!pista && !r.acierto) {
       const idea = ideaDe(r.q, r.elegida);

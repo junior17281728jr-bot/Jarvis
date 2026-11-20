@@ -18,6 +18,7 @@ import { paqueteActivo } from '../academia/paquetes.js';
 import { filasIaAlumnos, regalarUsos, pausarIa, ponerTopePersonal, registroAlumno, biblioteca, ocultarGuardado } from '../academia/ia-alumnos.js';
 import { vistaDinero, aplicarOpcion } from '../academia/dinero-ia.js';
 import { resumenAprendido } from '../academia/oral-aprende.js';
+import { resumenSaber } from '../academia/saber-sin-ia.js';
 import { contratos } from '../cuentas/terminos.js';
 import { mandarContratos, mandarTextoAlDueno, TOPES_BOT } from '../canales/bot.js';
 import { contratosParaMandar, textoAyuda, COMANDOS } from '../canales/comandos.js';
@@ -38,7 +39,8 @@ export function registrarRutasIaAlumnos(rutas, { config = null, reloj = Date.now
   const necesitaConfig = () => { if (!config) throw new ErrorHttp(503, 'academia_no_disponible'); };
 
   // 0.14.51: + de cuántas respuestas calificadas por la IA aprendió el sistema (src/academia/oral-aprende.js).
-  rutas.agregar('GET', '/api/admin/academia/ia-alumnos', ({ db }) => ({ codigo: 200, datos: { ...filasIaAlumnos(db, reloj()), aprendioOral: resumenAprendido(db) } }), { admin: true });
+  // 0.14.57: + lo que el sistema ya sabe sin IA (explicaciones, tarjetas, mini-clases, oral) y cuántas veces sirvió este mes.
+  rutas.agregar('GET', '/api/admin/academia/ia-alumnos', ({ db }) => ({ codigo: 200, datos: { ...filasIaAlumnos(db, reloj()), aprendioOral: resumenAprendido(db), sabeSinIa: resumenSaber(db, reloj()) } }), { admin: true });
   rutas.agregar('POST', '/api/admin/academia/alumnos/:id/regalo', async ({ db, req, usuario, parametros }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { derecho: regalarUsos(db, parametros.id, datos?.usos, usuario.id, reloj()) } };

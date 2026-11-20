@@ -22,7 +22,8 @@ import { camino } from '../academia/progreso.js';
 import { repasoOral } from '../academia/oral.js';
 import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, reexplicarSinIa, dudaSinIa, tarjetasParaDuda } from '../academia/instructor.js';
 import { cortarBytes } from '../academia/instructor.js';
-import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS, preguntaSinIa, armarMiniClase, armarPlanDia } from '../academia/instructor-ia.js';
+import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS, preguntaSinIa, armarMiniClase, armarPlanDia, armadorClave } from '../academia/instructor-ia.js';
+import { buscarGuardada, paraVer, anotarServida, recordarModelo } from '../academia/saber-sin-ia.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { cobrarUso, yaPagado, ponerTareaAlUso, novedadesPagos } from '../academia/tiempo-ia.js';
 import { sincronizarFallas, fallasDe, planParaPasar, miRepaso, miniClase } from '../academia/fallas.js';
@@ -162,6 +163,22 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   // («en espera») o sin minutos (con «Pedir más», porque la IA sí está lista para él).
   const iaNoAhora = instructor => (instructor.modo === 'espera' ? { estado: 'no', motivo: instructor.motivo, espera: true }
     : instructor.motivo === 'sin_minutos' ? { estado: 'no', motivo: 'sin_minutos' } : null);
+  // 0.14.57: sin IA para él ahora (o si el pedido a la IA no se pudo hacer), lo COMPARTIDO que la IA ya escribió para lo
+  // mismo, gratis: sin cobrar un uso, sin fila y sin tope (src/academia/saber-sin-ia.js). Nunca a quien activó la
+  // academia sin IA (sin_consentimiento): eligió no usarla. → lo que ve (estado 'lista', guardada: true) o null.
+  const llego = ia => ia?.estado === 'lista' || ia?.estado === 'pendiente';
+  function guardadaSinIa(db, usuario, instructor, tipo, armar, { estilo = 'claro', conEstilo = true, contar: anotar = true } = {}) {
+    if (instructor?.motivo === 'sin_consentimiento') return null;
+    try {
+      const h = buscarGuardada(db, armar, { estilo, idioma: usuario.idioma, modelo: leerConfigIa(db).instructorModelo, conEstilo });
+      if (!h) return null;
+      if (anotar) anotarServida(db, tipo, reloj());
+      return paraVer(h, usuario.idioma);
+    } catch (error) {
+      console.error('lo guardado sin IA:', error?.name ?? 'Error');
+      return null;
+    }
+  }
 
   // ---------- 0.12.7: «Preparar tu próxima clase» (el ÚNICO trabajo de la IA que no espera una pantalla) ----------
   // Lo llama src/app.js cuando el alumno termina una sesión (finDeSesion). Las revisiones van de lo más barato a lo más
@@ -229,7 +246,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   }
 
   // 0.12.9: el tutor del alumno (src/api/tutor.js), con el mismo estado de la IA, el mismo cobro y la misma fila.
-  registrarRutasTutor(rutas, { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj, config });
+  registrarRutasTutor(rutas, { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj, config, guardadaSinIa, llego });
   // 0.14.29: la «Práctica en vivo» del examen oral (src/api/oral-vivo.js), con el mismo estado de la IA, cobro y fila.
   registrarRutasOralVivo(rutas, { estadoInstructor, pedirIa, iaNoAhora, contar, topes, activo, reloj, config, supervisor });
 
@@ -300,10 +317,14 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     if (datos.ia === true && instructor.modo === 'ia' && !sinIaAqui) {
       const cfg = leerConfigIa(db);
       const pedido = armarExplicacion({ q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo, idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: modelo.estilo }, idioma: usuario.idioma, modelo: cfg.instructorModelo });
+      recordarModelo(db, cfg.instructorModelo, ahora);
       const ya = leerGuardado(db, pedido.clave);
       ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: r.q.id } });
     } else if (sinIaAqui) ia = null;
     else if (datos.ia === true) ia = iaNoAhora(instructor);
+    // 0.14.57: sin IA (o si no se pudo pedir), la explicación que la IA ya escribió para ESA pregunta y ESA opción (con
+    // cualquier modelo; si no, otro estilo), gratis. Nunca en una pregunta que quedó sin IA por contradecir al Test Guide.
+    if (!sinIaAqui && !llego(ia)) ia = guardadaSinIa(db, usuario, instructor, 'explica', armadorClave('explica', { q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo }), { estilo: modelo.estilo }) ?? ia;
     // 0.10.0: para «Aprendizaje»: ¿acertó la siguiente vez después de que se lo explicaron (con IA o sin IA)?
     anotarExplicado(db, usuario.id, { pregunta: r.q.id, ia: ia?.estado === 'pendiente' || ia?.estado === 'lista', ahora });
     return { codigo: 200, datos: { instructor, basica, ia } };
@@ -387,10 +408,26 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   rutas.agregar('GET', '/api/academia/mi-repaso/clase', ({ db, req, usuario }) => {
     contar(topes.lecturas, usuario);
     const ahora = reloj();
-    const datos = miniClase(db, usuario.id, activo(db), new URL(req.url, 'http://x').searchParams.get('concepto') ?? '', ahora);
+    const p = activo(db);
+    const datos = miniClase(db, usuario.id, p, new URL(req.url, 'http://x').searchParams.get('concepto') ?? '', ahora);
     // «Explícamelo de otra forma (IA)» solo si de verdad hay instructor con IA para él (minutos, permiso y clave).
-    return { codigo: 200, datos: { ...datos, ia: estadoInstructor(db, req, usuario, ahora).modo === 'ia' } };
+    const instructor = estadoInstructor(db, req, usuario, ahora);
+    // 0.14.57: sin IA, ¿ya hay una mini-clase guardada para lo mismo? (entonces sale el botón «Ver la mini-clase guardada»).
+    const e = instructor.modo !== 'ia' ? entradaMiniClase(db, usuario, p, datos, ahora) : null;
+    const guardada = Boolean(e && guardadaSinIa(db, usuario, instructor, 'miniclase', armadorClave('miniclase', e), { estilo: e.estilo, contar: false }));
+    return { codigo: 200, datos: { ...datos, ia: instructor.modo === 'ia', ...(guardada ? { guardada: true } : {}) } };
   });
+  // Lo que entra en la clave (y en el pedido) de la mini-clase: lo mismo con IA y sin IA. null si no hay pregunta o
+  // si esa pregunta quedó sin IA.
+  function entradaMiniClase(db, usuario, p, clase, ahora) {
+    const q = clase.pregunta ? p?.preguntas.get(clase.pregunta.id) : null;
+    if (!q || preguntaSinIa(db, q.id, ahora)) return null;
+    const c = conceptoPorClave(p, clase.clave);
+    const t = p.materias.find(m => m.id === c.materia)?.temas.find(x => x.id === c.tema);
+    const tarjeta = c.indice >= 0 ? t?.secciones?.[c.indice] ?? null : null;
+    const elegida = clase.pregunta.elegida?.letra ?? null;
+    return { concepto: nombreConcepto(c), tarjeta, q, elegida, idea: elegida && elegida !== q.original.correcta ? ideaDe(q, elegida) : null, estilo: modeloAlumno(db, usuario.id, p, ahora).estilo };
+  }
 
   // ---------- 0.12.4: la «Mini-clase IA» de un concepto de «Mi repaso» (se guarda compartida; se cobra como explicar) ----------
   rutas.agregar('POST', '/api/academia/mi-repaso/clase/ia', async ({ db, req, usuario }) => {
@@ -402,18 +439,18 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const instructor = estadoInstructor(db, req, usuario, ahora);
     const q = clase.pregunta ? p.preguntas.get(clase.pregunta.id) : null;
     if (!q) throw new ErrorHttp(409, 'sin_pregunta');
-    if (instructor.modo !== 'ia' || preguntaSinIa(db, q.id, ahora)) return { codigo: 200, datos: { instructor, ia: preguntaSinIa(db, q.id, ahora) ? null : iaNoAhora(instructor) } };
-    const c = conceptoPorClave(p, clase.clave);
-    const t = p.materias.find(m => m.id === c.materia)?.temas.find(x => x.id === c.tema);
-    const tarjeta = c.indice >= 0 ? t?.secciones?.[c.indice] ?? null : null;
-    const elegida = clase.pregunta.elegida?.letra ?? null;
-    const pedido = armarMiniClase({
-      concepto: nombreConcepto(c), tarjeta, q, elegida, idea: elegida && elegida !== q.original.correcta ? ideaDe(q, elegida) : null,
-      alumno: { estilo: modeloAlumno(db, usuario.id, p, ahora).estilo }, idioma: usuario.idioma, modelo: leerConfigIa(db).instructorModelo,
-    });
+    if (preguntaSinIa(db, q.id, ahora)) return { codigo: 200, datos: { instructor, ia: null } };
+    const e = entradaMiniClase(db, usuario, p, clase, ahora);
+    // 0.14.57: sin IA, la mini-clase que la IA ya escribió para lo mismo (gratis); si no hay, lo de antes.
+    const sinIa = () => guardadaSinIa(db, usuario, instructor, 'miniclase', armadorClave('miniclase', e), { estilo: e.estilo });
+    if (instructor.modo !== 'ia') return { codigo: 200, datos: { instructor, ia: sinIa() ?? iaNoAhora(instructor) } };
+    const modeloIa = leerConfigIa(db).instructorModelo;
+    recordarModelo(db, modeloIa, ahora);
+    const pedido = armarMiniClase({ ...e, alumno: { estilo: e.estilo }, idioma: usuario.idioma, modelo: modeloIa });
     const ya = leerGuardado(db, pedido.clave);
-    const ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
+    let ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
       : pedirIa(db, usuario, { uso: 'instructor_miniclase', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: q.id } });
+    if (!llego(ia)) ia = sinIa() ?? ia;
     return { codigo: 200, datos: { instructor, ia, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
   });
 

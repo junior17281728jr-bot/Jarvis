@@ -143,8 +143,20 @@ export function crearTutor(h) {
       const ia = (await datosTutor())?.ia === true;
       if (!ia) {
         // Sin IA: lo gratis, enseguida (la «sencilla», la reexplicación), marcado «Modo básico».
+        // 0.14.57: o, si la IA ya lo explicó antes para esta tarjeta, eso (guardado, gratis), y «Profundizar» si también hay.
         const r = await api('POST', '/api/academia/tutor/tarjeta', { materia, tema, tarjeta: n, tipo: 'mejor', ia: false });
-        if (r.ok) salida.replaceChildren(...[pintarBasica(r.datos.basica), paraElExamen(r.datos.examen)].filter(Boolean));
+        if (!r.ok) return;
+        const guardada = r.datos.ia?.estado === 'lista';
+        const hondo = el('div', { class: 'entendiste-botones' });
+        if (r.datos.hayProfundizar) {
+          hondo.append(el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: async e => {
+            e.currentTarget.disabled = true;
+            const x = await api('POST', '/api/academia/tutor/tarjeta', { materia, tema, tarjeta: n, tipo: 'profundizar', ia: false });
+            if (x.ok && x.datos.ia?.estado === 'lista') hondo.replaceChildren(pintarTarjetaIa(x.datos.ia));
+            else hondo.replaceChildren();
+          } }, icono('chispa', 'icono chico'), el('span', { texto: t('tutor.j.profundizar') })));
+        }
+        salida.replaceChildren(...[guardada ? pintarTarjetaIa(r.datos.ia) : pintarBasica(r.datos.basica), r.datos.hayProfundizar ? hondo : null, paraElExamen(r.datos.examen)].filter(Boolean));
         return;
       }
       salida.replaceChildren(el('div', { class: 'entendiste-botones' },
