@@ -177,7 +177,7 @@ export function crearGuardia(almacen, { sesion = null, alCerrar = null, alVisibi
 //  - crearTrabajador(): el Worker (en las pruebas, uno falso).
 //  - preparar(alProgreso({ pct, mb })): espera al servidor y carga el modelo. Rechaza con un motivo si no se puede.
 //  - transcribir(audio, idioma) → el texto (limpio).
-export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new Promise(ok => setTimeout(ok, ms)), maxEsperaServidorMs = 15 * 60_000, reloj = () => Date.now(), guardia = crearGuardia(null) } = {}) {
+export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new Promise(ok => setTimeout(ok, ms)), maxEsperaServidorMs = 15 * 60_000, maxSinAvanceMs = 90_000, reloj = () => Date.now(), guardia = crearGuardia(null) } = {}) {
   let trabajador = null;
   let preparando = null;
   let listo = false;
@@ -201,6 +201,10 @@ export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new
   const esperarServidor = async () => {
     const desde = reloj();
     let vioBajar = false;
+    // 0.14.91: si el servidor dice «bajando» y no avanza en 90 s (el sitio de los archivos no responde), no se espera más:
+    // se usa el otro dictado (antes: hasta 15 minutos con «Preparando 0 %»).
+    let pctAntes = -1;
+    let avanzo = desde;
     for (;;) {
       let e = null;
       try { e = await pedirEstado(); } catch { e = null; }
@@ -209,6 +213,7 @@ export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new
       if (e.estado === 'lista') return { e, vioBajar };
       if (e.estado === 'no') throw new Error('no_disponible');
       vioBajar = true;
+      if (Number(e.pct) > pctAntes) { pctAntes = Number(e.pct) || 0; avanzo = reloj(); } else if (reloj() - avanzo > maxSinAvanceMs) throw new Error('no_disponible');
       avisar({ pct: porcentajePreparando({ servidorPct: Number(e.pct) || 0 }), mb });
       if (reloj() - desde > maxEsperaServidorMs) throw new Error('tiempo');
       await esperar(2000);

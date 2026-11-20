@@ -315,6 +315,7 @@ function tresFallasSeguidas(db, secretoId, ahora, proposito) {
     ORDER BY id DESC LIMIT ?`).all(secretoId, proposito ?? null, iso(ahora - FALLAS_SEGUIDAS.ventanaMs), veces * 4).filter(f => !salta(f)).slice(0, veces);
   return ultimas.length === veces && ultimas.every(esFalla);
 }
+const SIN_RESPUESTA = Object.freeze(['sin_red', 'tiempo_agotado']);
 // Cuántos errores pasajeros seguidos lleva esa clave en la última hora (para que la pausa corta crezca: 2, 5, 15 min).
 function pasajerosSeguidos(db, secretoId, ahora) {
   const ultimas = db.prepare(`SELECT resultado FROM ia_llamadas WHERE secreto_id = ? AND creada_en >= ? AND estado <> 'reservada'
@@ -402,9 +403,14 @@ export function liquidar(db, { llamadaId, resultado, duracionMs = null, ahora = 
         pausarSecreto(db, { id: secretoId, motivo, hastaMs: null, ahora });
         if (pol.aviso) avisoProveedor(db, { proveedor, motivo, pausa: 'admin', hasta: null, nivel: pol.aviso, ahora });
       } else if (pol.pausa === 'corta') {
-        const hasta = finDePausa(pol, { reintentarMs: resultado?.reintentarMs ?? null, ahora, seguidos: pasajerosSeguidos(db, secretoId, ahora) });
+        const seguidos = pasajerosSeguidos(db, secretoId, ahora);
+        const hasta = finDePausa(pol, { reintentarMs: resultado?.reintentarMs ?? null, ahora, seguidos });
         pausarSecreto(db, { id: secretoId, motivo, hastaMs: hasta, ahora });
-        if (pol.aviso) avisoProveedor(db, { proveedor, motivo, pausa: 'corta', hasta, nivel: pol.aviso, ahora });
+        // 0.14.91: sin red o sin respuesta (el proveedor caído, el DNS, un servidor que no contesta) DOS veces seguidas en la
+        // hora: también se le dice al dueño (antes, en silencio: la IA dejaba de funcionar y nadie sabía por qué). Una sola
+        // vez es un tropiezo y no se avisa. Es UN aviso por proveedor (las siguientes suman «veces») y se cierra al volver.
+        const nivel = pol.aviso ?? (SIN_RESPUESTA.includes(motivo) && seguidos >= 2 ? 'info' : null);
+        if (nivel) avisoProveedor(db, { proveedor, motivo, pausa: 'corta', hasta, nivel, ahora });
       }
       if (pol.resuelve) {
         quitarPausaCorta(db, { id: secretoId });

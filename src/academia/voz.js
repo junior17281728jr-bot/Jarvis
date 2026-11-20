@@ -32,6 +32,10 @@ const SALTOS = 4;
 const BASE_DE_PRUEBA = /^http:\/\/127\.0\.0\.1:\d{2,5}$/;
 // Después de un fallo se espera un rato antes de probar otra vez (cada pedido del estado lo intentaría).
 export const ESPERA_TRAS_FALLO_MS = 10 * 60_000;
+// 0.14.91: una bajada que no recibe nada en este rato (el servidor acepta y no responde, o se queda a mitad) se corta;
+// antes esperaba hasta 15 minutos por archivo (17 archivos: horas diciendo «bajando 0 %»). Y un servidor que no responde
+// no se vuelve a probar en la misma vuelta: se pasa a la fuente siguiente (o se termina con «no» y el dictado del teléfono).
+export const SIN_AVANCE_MS = 45_000;
 // Lo que hace falta libre en el disco además de los archivos (el paquete de npm más grande, por si se usa, y un margen).
 const MARGEN_DISCO = 64 * 1024 * 1024;
 
@@ -160,7 +164,7 @@ async function espacioLibreDe(carpeta) {
 
 // El que baja, guarda y sirve los archivos de voz. config: la del servidor (carpetaDatos, o la carpeta de la base en
 // las pruebas). Para las pruebas: manifiesto (otra lista), llamar (la puerta a la red), espacioLibre, reloj.
-export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = llamarProveedor, espacioLibre = espacioLibreDe, reloj = () => Date.now(), registro = null } = {}) {
+export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = llamarProveedor, espacioLibre = espacioLibreDe, reloj = () => Date.now(), registro = null, sinAvanceMs = SIN_AVANCE_MS } = {}) {
   // La lista tiene que valer con los servidores de verdad (en las pruebas, también una con el servidor falso en 127.0.0.1).
   const problemas = (() => { const real = revisarManifiesto(manifiesto, { prueba: false }); return real.length && process.env.OPORTIA_TEST === '1' ? revisarManifiesto(manifiesto, { prueba: true }) : real; })();
   const raiz = config.carpetaVoz ?? join(config.carpetaDatos ?? dirname(config.archivoBase ?? join(process.cwd(), 'x')), 'oportia-voz');
@@ -225,13 +229,27 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
   };
 
   // GET siguiendo redirecciones solo a servidores permitidos. → { ok, motivo }
+  // caidos: los servidores que ya no respondieron en esta vuelta (no se vuelven a esperar).
+  let caidos = new Set();
   const pedir = async (url, { alTrozo, alEmpezar, topeBytes }) => {
     let actual = url;
     const origen = new URL(url).hostname;
+    if (caidos.has(origen)) return { ok: false, motivo: 'sin_red' };
     for (let salto = 0; salto <= SALTOS; salto++) {
       if (!hostVozPermitido(actual, origen)) return { ok: false, motivo: salto ? 'redireccion_no_permitida' : 'destino_no_permitido' };
       const u = new URL(actual);
-      const r = await llamar({ url: u.href, metodo: 'GET', cabeceras: { Accept: '*/*', 'Accept-Encoding': 'identity', 'User-Agent': 'oportia-voz' }, alTrozo, alEmpezar, topeBytes, timeoutMs: 900_000, permitido: u.hostname });
+      const corte = new AbortController();
+      let vigia = null;
+      const vigilar = () => { clearTimeout(vigia); vigia = setTimeout(() => corte.abort(), sinAvanceMs); };
+      vigilar();
+      let r;
+      try {
+        r = await llamar({ url: u.href, metodo: 'GET', cabeceras: { Accept: '*/*', 'Accept-Encoding': 'identity', 'User-Agent': 'oportia-voz' }, alTrozo: async trozo => { vigilar(); await alTrozo(trozo); }, alEmpezar, topeBytes, timeoutMs: 900_000, permitido: u.hostname, senal: corte.signal });
+      } finally { clearTimeout(vigia); }
+      if (r.abortado || r.tiempoAgotado || (r.red && !r.rechazado && r.red !== 'redireccion' && !r.falloAlRecibir && r.status == null)) {
+        caidos.add(origen);
+        return { ok: false, motivo: r.abortado ? 'sin_avance' : r.tiempoAgotado ? 'tiempo' : 'sin_red' };
+      }
       if (r.red === 'redireccion') {
         if (!r.ubicacion) return { ok: false, motivo: 'redireccion_no_permitida' };
         try { actual = new URL(r.ubicacion, u).href; } catch { return { ok: false, motivo: 'redireccion_no_permitida' }; }
@@ -299,6 +317,7 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
   };
 
   const bajarTodo = async () => {
+    caidos = new Set();
     await mkdir(carpeta, { recursive: true });
     const faltan = () => archivos.filter(a => !listos.has(a.ruta));
     const libre = await espacioLibre(carpeta);

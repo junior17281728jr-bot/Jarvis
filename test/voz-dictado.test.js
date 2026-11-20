@@ -143,8 +143,16 @@ test('Whisper: si el servidor no tiene los archivos o el modelo no carga en este
   assert.equal(sinRed.listo, true);
   // El servidor tarda demasiado: se rinde (no se queda «Preparando…» para siempre).
   let ahora = 0;
-  const lento = crearWhisper({ pedirEstado: async () => ({ estado: 'bajando', pct: 1 }), crearTrabajador: () => trabajadorFalso(), esperar: async () => { ahora += 60_000; }, reloj: () => ahora, maxEsperaServidorMs: 120_000 });
+  let pct = 0;
+  const lento = crearWhisper({ pedirEstado: async () => ({ estado: 'bajando', pct: ++pct }), crearTrabajador: () => trabajadorFalso(), esperar: async () => { ahora += 60_000; }, reloj: () => ahora, maxEsperaServidorMs: 120_000 });
   await assert.rejects(lento.preparar(), /tiempo/);
+  // 0.14.91: el servidor dice «bajando» y NO avanza (el sitio de los archivos no responde): a los 90 s se rinde y se usa
+  // el otro dictado (antes: hasta 15 minutos con «Preparando 0 %»).
+  ahora = 0;
+  const quieto = crearWhisper({ pedirEstado: async () => ({ estado: 'bajando', pct: 0 }), crearTrabajador: () => assert.fail('no se crea'), esperar: async () => { ahora += 2000; }, reloj: () => ahora });
+  await assert.rejects(quieto.preparar(), /no_disponible/);
+  assert.ok(ahora > 90_000 && ahora <= 94_000, `se rinde a los 90 s sin avance (${ahora})`);
+  assert.equal(quieto.roto, 'no_disponible', 'y no vuelve a esperar: el próximo toque usa el otro dictado');
 });
 
 test('las pantallas: nada de pistas del teclado; el trabajador solo usa archivos de aquí, en un hilo', () => {

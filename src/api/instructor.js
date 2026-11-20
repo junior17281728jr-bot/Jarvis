@@ -185,6 +185,37 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     }
   }
 
+  // 0.14.91: la IA se pidió (la clave todavía no estaba en pausa) y NO llegó (se acabó el crédito a mitad, el proveedor se
+  // cayó o no respondió): lo que la IA ya escribió para lo mismo, como si la IA hubiera estado apagada desde el principio.
+  // Antes el alumno veía solo «no se pudo» aunque hubiera una explicación guardada. → lo que ve (guardada: true) o null.
+  function respaldoDeTarea(db, usuario, d) {
+    const r = d?.respaldo;
+    if (!r || typeof r !== 'object') return null;
+    try {
+      if (!iaPermitida(db, usuario.id, { estricto: config?.terminosObligatorios !== false })) return null;
+      const p = activo(db);
+      const ahora = reloj();
+      if (r.tipo === 'explica') {
+        const q = p?.preguntas?.get(String(r.preguntaId ?? ''));
+        if (!q || preguntaSinIa(db, q.id, ahora)) return null;
+        return guardadaSinIa(db, usuario, null, 'explica', armadorClave('explica', { q, elegida: r.elegida, acierto: r.acierto === true, modo: r.modo }), { estilo: typeof r.estilo === 'string' ? r.estilo : 'claro' });
+      }
+      if (r.tipo === 'miniclase') {
+        const clase = miniClase(db, usuario.id, p, String(r.concepto ?? ''), ahora);
+        const q = clase?.pregunta ? p.preguntas.get(clase.pregunta.id) : null;
+        if (!q || preguntaSinIa(db, q.id, ahora)) return null;
+        const e = entradaMiniClase(db, usuario, p, clase, ahora);
+        return guardadaSinIa(db, usuario, null, 'miniclase', armadorClave('miniclase', e), { estilo: e.estilo });
+      }
+      // «Explícamelo mejor» / «Profundizar» de una tarjeta (src/api/tutor.js): lo mismo que entró en la clave.
+      if ((r.tipo === 'tarjeta' || r.tipo === 'profundiza') && r.entrada?.tarjeta) {
+        const g = guardadaSinIa(db, usuario, null, r.tipo, armadorClave(r.tipo, r.entrada), { estilo: typeof r.estilo === 'string' ? r.estilo : 'claro', conEstilo: r.tipo === 'tarjeta' });
+        return g ? { ...g, tipo: r.vista === 'profundizar' ? 'profundizar' : 'mejor' } : null;
+      }
+    } catch { /* lo de antes: «no» */ }
+    return null;
+  }
+
   // ---------- 0.12.7: «Preparar tu próxima clase» (el ÚNICO trabajo de la IA que no espera una pantalla) ----------
   // Lo llama src/app.js cuando el alumno termina una sesión (finDeSesion). Las revisiones van de lo más barato a lo más
   // caro (ver src/academia/preparar-clase.js); cualquier «no» termina sin escribir nada. → { motivo, tarea? }.
@@ -332,7 +363,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
       const pedido = armarExplicacion({ q: r.q, elegida: r.elegida, acierto: r.acierto, modo: r.modo, idea: basica.idea, tarjeta: basica.tarjeta, alumno: { estilo: modelo.estilo }, idioma: usuario.idioma, modelo: cfg.instructorModelo });
       recordarModelo(db, cfg.instructorModelo, ahora);
       const ya = leerGuardado(db, pedido.clave);
-      ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: r.q.id } });
+      ia = ya ? deGuardado(db, usuario, pedido.clave, ya) : pedirIa(db, usuario, { uso: 'instructor_explicar', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: r.q.id, respaldo: { tipo: 'explica', preguntaId: r.q.id, elegida: r.elegida, acierto: r.acierto, modo: r.modo, estilo: modelo.estilo } } });
     } else if (sinIaAqui) ia = null;
     else if (datos.ia === true) ia = iaNoAhora(instructor);
     // 0.14.57: sin IA (o si no se pudo pedir), la explicación que la IA ya escribió para ESA pregunta y ESA opción (con
@@ -462,7 +493,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     const pedido = armarMiniClase({ ...e, alumno: { estilo: e.estilo }, idioma: usuario.idioma, modelo: modeloIa });
     const ya = leerGuardado(db, pedido.clave);
     let ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
-      : pedirIa(db, usuario, { uso: 'instructor_miniclase', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: q.id } });
+      : pedirIa(db, usuario, { uso: 'instructor_miniclase', sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { correcta: pedido.correcta, opciones: pedido.opciones, preguntaId: q.id, respaldo: { tipo: 'miniclase', concepto: textoDe(datos, 'concepto') } } });
     if (!llego(ia)) ia = sinIa() ?? ia;
     return { codigo: 200, datos: { instructor, ia, tiempo: tiempoDe(db, usuario, ahora, { estricto: config?.terminosObligatorios !== false }) } };
   });
@@ -550,7 +581,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     if (f.estado === 'lista' || f.estado === 'en_curso') return { codigo: 200, datos: { estado: 'pendiente' } };
     let clave = null;
     let resultado = null;
-    try { clave = JSON.parse(f.datos)?.clave ?? null; } catch { clave = null; }
+    let datosTarea = null;
+    try { datosTarea = JSON.parse(f.datos); clave = datosTarea?.clave ?? null; } catch { clave = null; }
     try { resultado = f.resultado ? JSON.parse(f.resultado) : null; } catch { resultado = null; }
     const guardado = f.estado === 'hecha' ? leerGuardado(db, clave) : null;
     // 0.12.9: las preguntas personalizadas viajan SIN la correcta (se revisa al responder).
@@ -561,6 +593,8 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     if (guardado && /^academia\.ia\.consejo\./.test(clave) && guardado.forma === 2) return { codigo: 200, datos: lista(consejoParaVer(guardado, diagnostico(db, usuario.id, activo(db), reloj()))) };
     if (guardado) return { codigo: 200, datos: lista(guardado, compartida(clave)) };
     const motivo = typeof resultado?.motivo === 'string' ? resultado.motivo : 'no_disponible';
+    const respaldo = respaldoDeTarea(db, usuario, datosTarea);
+    if (respaldo) return { codigo: 200, datos: respaldo };
     const admin = esEspacioAdmin(db, e.id);
     return { codigo: 200, datos: { estado: 'no', motivo: admin || RESULTADO_ALUMNO.has(motivo) ? motivo : 'no_disponible' } };
   });

@@ -66,7 +66,7 @@ export function registrarRutasTutor(rutas, h) {
       const uso = tipo === 'profundizar' ? 'instructor_profundizar' : 'instructor_tarjeta';
       const ya = leerGuardado(db, pedido.clave);
       ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
-        : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: entrada.tarjeta.titulo } });
+        : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: entrada.tarjeta.titulo, respaldo: { tipo: tipoClave, vista: tipo, entrada, estilo } } });
       if (llego(ia)) { alPedir?.(); alVer?.(pedido.clave, usuario.idioma); }
     } else if (quiereIa) ia = iaNoAhora(instructor);
     if (llego(ia)) return { ia };

@@ -49,9 +49,10 @@ export const explicacionFalsa = (correcta, extra = {}) => ({
 });
 
 // 0.14.70: bases: otras direcciones falsas (por ejemplo, la de ElevenLabs) además de la del proveedor falso.
-export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-sonnet-5-5', topePlan = 1_000_000, permitir = true, encender = true, bases = {} } = {}) {
+// 0.14.91: extra: más configuración (por ejemplo, adónde va Drive o Telegram en test/sin-api.test.js).
+export async function conInstructor(fn, { pagos = 'minutos', modelo = 'claude-sonnet-5-5', topePlan = 1_000_000, permitir = true, encender = true, bases = {}, extra = {} } = {}) {
   const falso = await crearProveedorFalso();
-  const config = { ...configDePrueba(), iaBases: { anthropic: falso.base, openai: falso.base, ...bases } };
+  const config = { ...configDePrueba(), iaBases: { anthropic: falso.base, openai: falso.base, ...bases }, ...extra };
   const db = abrirBase(config);
   const despertares = [];
   // 0.14.50: la grabación de un dictado llega «al trabajador» (aquí, el mismo proceso) como por su canal.

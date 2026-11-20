@@ -830,6 +830,28 @@ flechas y se acerca pellizcando, con la rueda o con + y −. Se pausa fuera de l
   «Total completado». La cabecera va en dos franjas, «Test Guide» y «Examen oral»; el nombre sigue fijo a la izquierda.
 - Pruebas: `test/cursos.test.js` y `test/notas-materia.test.js`.
 
+### Lo nuevo de la 0.14.91: el chequeo «sin API» (si se cae todo) — sin cambio de base
+
+Pedido del dueño: «dale último chequeo que funcione sin API si se llegara a caer todo». Se corrió la app de verdad
+(`src/server.js` con su trabajador) sin ninguna clave, y con todas las claves y TODO caído a la vez (Claude, ChatGPT,
+ElevenLabs, Telegram, Google Drive, GitHub y los archivos del dictado): puerto cerrado, conexión cortada, sin respuesta
+(colgado), 500, 401/«sin crédito» y 429, y el crédito que se acaba a mitad de un pedido; también reiniciando con todo caído.
+Lo del alumno y lo del administrador siguió funcionando (sin errores del servidor ni de la página, la memoria quieta y sin
+martillar a nadie). Se arreglaron tres cosas:
+- **El dictado en el equipo (Whisper) ya no se queda «Preparando 0 %».** Si el sitio de los archivos acepta y no responde,
+  antes se esperaba hasta 15 minutos por archivo (17 archivos: horas). Ahora una bajada sin avance en 45 s se corta, ese
+  servidor no se vuelve a esperar en la misma vuelta y queda «no» (se prueba otra vez a los 10 minutos). La pantalla, si
+  el servidor dice «bajando» y no avanza en 90 s, usa el otro dictado (`src/academia/voz.js`, `public/voz-dictado.js`).
+- **Sin red con la IA, el dueño se entera.** Antes, «sin red» o «sin respuesta» solo pausaba la clave unos minutos, en
+  silencio: la IA dejaba de funcionar y nadie sabía por qué. Ahora, dos veces seguidas en la hora, UN aviso por proveedor
+  («IA: Claude no se pudo usar (no se pudo conectar con el proveedor)…»), que se cierra solo cuando vuelve a responder (`src/ia/presupuesto.js`).
+- **Si el crédito se acaba justo después de pedir**, el alumno recibe lo que la IA ya había escrito para lo mismo (la
+  explicación de un error, «Explícamelo mejor» de una tarjeta y la mini-clase de «Mi repaso»), como si la IA hubiera
+  estado apagada; antes veía solo «no se pudo» (`src/api/instructor.js`, `src/api/tutor.js`).
+- Pruebas: `test/sin-api.test.js` (todo caído a la vez: cada pantalla del alumno y del administrador, lo básico siempre, un
+  aviso por servicio, la pausa que crece; y el crédito que se acaba a mitad), y casos nuevos en `test/voz.test.js` y
+  `test/voz-dictado.test.js`.
+
 ### Lo nuevo de la 0.14.71: «Notas por materia», el total de cada materia por alumno — sin cambio de base
 
 - **Administrador → Alumnos → Notas por materia** (`#notas-materia`, `public/admin-resumen.js`; ocupa el lugar de la

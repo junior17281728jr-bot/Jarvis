@@ -56,6 +56,8 @@ async function conFalso(fn) {
     const r = rutas.get(req.url);
     if (!r) { res.writeHead(404); return res.end('no'); }
     if (r.redirige) { res.writeHead(302, { Location: r.redirige }); return res.end(); }
+    if (r.cuelga) return; // acepta y nunca responde
+    if (r.quieto) { res.writeHead(200, { 'Content-Length': r.cuerpo.length }); res.write(r.cuerpo.subarray(0, 1000)); return; }
     if (r.corta) { res.writeHead(200, { 'Content-Length': r.cuerpo.length }); res.write(r.cuerpo.subarray(0, 1000)); return setTimeout(() => res.destroy(), 20); }
     const mandar = () => { res.writeHead(r.estado ?? 200, { 'Content-Length': r.cuerpo.length }); res.end(r.cuerpo); };
     if (r.lento) setTimeout(mandar, r.lento); else mandar();
@@ -276,6 +278,31 @@ test('una bajada cortada a la mitad, un paquete con otra integridad o un servido
   const real = crearVoz({ config: { carpetaVoz: carpetaTemporal('voz') } });
   assert.equal(await real.preparar(), false);
   assert.equal((await real.estado({ empezar: false })).estado, 'no');
+});
+
+test('0.14.91: un servidor que acepta y nunca responde: se corta sin avance, no se espera otra vez en la misma vuelta y queda «no» enseguida', async () => {
+  await conFalso(async ({ base, rutas, pedidos }) => {
+    for (const r of ['/jsd/transformers.min.js', '/jsd/ort.wasm', '/hf/config.json', '/hf/encoder.onnx']) rutas.set(r, { cuelga: true });
+    const voz = crearVoz({ config: { carpetaVoz: carpetaTemporal('voz') }, manifiesto: manifiestoDe(base), sinAvanceMs: 300 });
+    const t0 = Date.now();
+    assert.equal(await voz.preparar(), false);
+    assert.ok(Date.now() - t0 < 5000, `termina enseguida (${Date.now() - t0} ms), no a los 15 minutos por archivo`);
+    assert.equal(pedidos.length, 1, 'el mismo servidor (127.0.0.1) no se vuelve a esperar en esta vuelta');
+    const e = await voz.estado({ empezar: false });
+    assert.equal(e.estado, 'no');
+    assert.equal((await voz.estado()).estado, 'no', 'y no vuelve a probar enseguida (espera ESPERA_TRAS_FALLO_MS)');
+    assert.equal(pedidos.length, 1);
+  });
+  // Uno que manda la cabecera y unos bytes y después se queda quieto: también se corta.
+  await conFalso(async ({ base, rutas }) => {
+    ponerDirectas(rutas);
+    rutas.set('/cdn/encoder.onnx', { cuerpo: MODELO, quieto: true });
+    const voz = crearVoz({ config: { carpetaVoz: carpetaTemporal('voz') }, manifiesto: manifiestoDe(base), sinAvanceMs: 300 });
+    const t0 = Date.now();
+    assert.equal(await voz.preparar(), false);
+    assert.ok(Date.now() - t0 < 5000);
+    assert.ok(existsSync(join(voz.carpeta, 'lib', 'transformers.min.js')), 'los que sí llegaron quedan');
+  });
 });
 
 test('el .tar por pedazos: nombres largos (pax), entradas que no interesan, y una cabecera rota se rechaza', async () => {
