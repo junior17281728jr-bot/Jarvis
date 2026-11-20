@@ -1074,7 +1074,53 @@ function bloqueClaveTemporal(textoClave, nombre, temporal, usuario = nombre) {
   return el('div', { class: 'mensaje bien', 'data-foco': true },
     el('p', { texto: t(textoClave, { nombre }) }),
     el('p', { texto: t('admin.entra_con', { usuario }) }),
-    clave, boton, ayuda);
+    clave, boton, ayuda,
+    plantillaBienvenida({ nombre, usuario, temporal, reinicio: textoClave === 'admin.reiniciada' }));
+}
+
+// 0.14.69 (pedido del dueño): el mensaje listo para mandarle a la persona (WhatsApp, correo…): su usuario, su contraseña
+// temporal, el enlace, y abajo, en chico, que al entrar la app le pide una contraseña nueva. Copiar o «Enviar» (teléfono).
+function textoBienvenida(t, { nombre, usuario, temporal, enlace, reinicio = false }) {
+  return [
+    t(reinicio ? 'admin.plantilla.hola_reinicio' : 'admin.plantilla.hola', { nombre }),
+    '',
+    t('admin.plantilla.enlace', { enlace }),
+    t('admin.plantilla.usuario', { usuario }),
+    t('admin.plantilla.clave', { clave: temporal }),
+    '',
+    t('admin.plantilla.nota'),
+  ].join('\n');
+}
+function plantillaBienvenida({ nombre, usuario, temporal, reinicio }) {
+  const texto = textoBienvenida(t, { nombre, usuario, temporal, reinicio, enlace: location.origin });
+  const caja = el('div', { class: 'plantilla-mensaje', texto });
+  const ayuda = el('p', { class: 'ayuda', hidden: true, texto: t('admin.copiar_a_mano') });
+  const copiar = el('button', {
+    type: 'button', class: 'boton-3d azul chico', texto: t('admin.plantilla.copiar'),
+    onclick: async () => {
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('sin portapapeles');
+        await navigator.clipboard.writeText(texto);
+        copiar.textContent = t('admin.copiado');
+      } catch {
+        const rango = document.createRange();
+        rango.selectNodeContents(caja);
+        const seleccion = window.getSelection();
+        seleccion.removeAllRanges();
+        seleccion.addRange(rango);
+        ayuda.hidden = false;
+      }
+    },
+  });
+  const enviar = typeof navigator.share === 'function' ? el('button', {
+    type: 'button', class: 'secundario', texto: t('admin.plantilla.enviar'),
+    onclick: () => navigator.share({ text: texto }).catch(() => {}),
+  }) : null;
+  return el('div', { class: 'plantilla-bienvenida' },
+    el('p', { class: 'plantilla-titulo', texto: t('admin.plantilla.titulo') }),
+    caja,
+    el('div', { class: 'botones' }, [copiar, enviar].filter(Boolean)),
+    ayuda);
 }
 
 // El nombre de usuario que se propone a partir del nombre completo: «Juan Pérez» → «juan.perez».

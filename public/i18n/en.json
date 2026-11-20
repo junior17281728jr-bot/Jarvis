@@ -5868,5 +5868,14 @@
   "alumnos.ia.sin_permiso": "🤖 AI not allowed by you",
   "alumnos.ia.plan": "🤖 AI · {n} of {de} left",
   "alumnos.ia.prueba": "🤖 AI trial · {dias} days",
-  "alumnos.ia.usos": "🤖 AI · {n} uses left"
+  "alumnos.ia.usos": "🤖 AI · {n} uses left",
+  "admin.plantilla.titulo": "Message to send them (copy it and send it by WhatsApp or email):",
+  "admin.plantilla.hola": "Hi {nombre} 👋 Welcome to the Aviation Academy.",
+  "admin.plantilla.hola_reinicio": "Hi {nombre} 👋 I set a new password for you to sign in to the Aviation Academy.",
+  "admin.plantilla.enlace": "Sign in here: {enlace}",
+  "admin.plantilla.usuario": "Your username is: {usuario}",
+  "admin.plantilla.clave": "Your temporary password is: {clave}",
+  "admin.plantilla.nota": "(When you sign in, the app will ask you to create your own new password, because this one is temporary.)",
+  "admin.plantilla.copiar": "Copy message",
+  "admin.plantilla.enviar": "Send…"
 }

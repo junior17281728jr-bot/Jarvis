@@ -1582,3 +1582,9 @@ details.demo-seccion > summary h2 { display: inline; margin: 0; }
 .cuesta-promo { flex-wrap: wrap; gap: 6px; }
 .cuesta-promo > .icono { flex: none; }
 .cuesta-promo > span { flex: 1 1 220px; }
+
+/* 0.14.69: el mensaje de bienvenida listo para copiar (usuario + contraseña temporal + nota). */
+.plantilla-bienvenida { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--borde); }
+.plantilla-titulo { font-weight: 600; margin: 0 0 0.5rem; }
+.plantilla-mensaje { white-space: pre-line; user-select: all; -webkit-user-select: all; padding: 0.75rem 0.9rem; border-radius: 12px; background: var(--fondo); color: var(--texto); border: 1px solid var(--borde); line-height: 1.5; overflow-wrap: anywhere; }
+.plantilla-bienvenida .botones { margin-top: 0.6rem; }

@@ -5868,5 +5868,14 @@
   "alumnos.ia.sin_permiso": "🤖 IA sin tu permiso",
   "alumnos.ia.plan": "🤖 IA · quedan {n} de {de}",
   "alumnos.ia.prueba": "🤖 IA de prueba · {dias} días",
-  "alumnos.ia.usos": "🤖 IA · quedan {n} usos"
+  "alumnos.ia.usos": "🤖 IA · quedan {n} usos",
+  "admin.plantilla.titulo": "Mensaje para mandarle (cópialo y envíalo por WhatsApp o correo):",
+  "admin.plantilla.hola": "Hola {nombre} 👋 Bienvenido a la Academia de Aviación.",
+  "admin.plantilla.hola_reinicio": "Hola {nombre} 👋 Te puse una contraseña nueva para entrar a la Academia de Aviación.",
+  "admin.plantilla.enlace": "Entra aquí: {enlace}",
+  "admin.plantilla.usuario": "Tu usuario es: {usuario}",
+  "admin.plantilla.clave": "Tu contraseña temporal es: {clave}",
+  "admin.plantilla.nota": "(Al entrar, la app te va a pedir que crees tu propia contraseña nueva, porque esta es temporal.)",
+  "admin.plantilla.copiar": "Copiar mensaje",
+  "admin.plantilla.enviar": "Enviar…"
 }
