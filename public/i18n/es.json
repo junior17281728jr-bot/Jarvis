@@ -6331,5 +6331,17 @@
   "nm.oral.avance": "{pct} del oral · {estado}",
   "nm.banda.tg": "Test Guide",
   "nm.banda.oral": "Examen oral",
-  "nm.copiar.titulo_curso": "Notas por materia de {curso} (se aprueba con {umbral} %)"
+  "nm.copiar.titulo_curso": "Notas por materia de {curso} (se aprueba con {umbral} %)",
+  "acad.recomendado": "Recomendado",
+  "acad.tema_recomendado": "{tema}: lo recomendado ahora",
+  "acad.tema_adelantado": "{tema}: más adelante. Puedes abrirlo.",
+  "camino.estado.adelantada": "Más adelante",
+  "orden.aviso.texto": "Te recomendamos ir en orden desde Factores Humanos: cada tema usa lo del anterior. Puedes seguir aquí si quieres.",
+  "orden.aviso.seguir": "Seguir aquí",
+  "orden.aviso.ir": "Ir a lo recomendado",
+  "orden.aviso.examen": "Ya sé lo anterior: tomar el examen",
+  "orden.admin": "Orden del camino",
+  "orden.admin.libre": "Libre, con orden recomendado",
+  "orden.admin.estricto": "Estricto: un tema abre el siguiente",
+  "orden.admin.linea": "Libre: el alumno puede abrir cualquier tema, y la app le recomienda ir en orden desde Factores Humanos. Estricto: cada tema se abre al aprobar el anterior. Cambiarlo no borra nada de lo hecho."
 }

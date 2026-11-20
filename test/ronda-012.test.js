@@ -16,6 +16,7 @@ import { revisarPaquete } from '../src/academia/formato.js';
 import { TIPOS_HUMOR, TOTAL_HUMOR, lineaHumor } from '../src/academia/humor.js';
 import { armarConsejo } from '../src/academia/instructor-ia.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DUENO = { 'Tailscale-User-Login': 'junior@example.com' };
@@ -65,6 +66,8 @@ function azarFijo(semilla = 7) {
 async function conAcademia(fn, { paquete = MUESTRA, conPagina = true } = {}) {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+  guardarOrdenCamino(db, 'estricto');
   let ahora = T0;
   const reloj = () => ahora;
   reloj.avanzar = ms => { ahora += ms; };

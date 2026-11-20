@@ -11,8 +11,12 @@
 // Pocas consultas para TODOS los alumnos a la vez (una por tabla, sin una por alumno ni por tema): 1 CPU y 512 MB.
 //  - 0.14.19: una materia «Convalidada por examen» (aprobó su examen directo: src/academia/saltos.js) cuenta con TODOS
 //    sus temas hechos y sale con convalidada: { pct }; lo mismo un capítulo del oral cuyo examen aprobó antes de sus temas.
+//  - 0.14.81: con el «Orden del camino» libre (src/academia/orden-camino.js, lo de siempre), «Ahora en» es lo RECOMENDADO:
+//    el primer tema sin hacer en el orden oficial (como «Continuar» de Inicio), aunque lo último que hizo fuera más
+//    adelante; sin nada hecho ni empezado, sigue «sin empezar». Con «Estricto», lo de antes (el tema de lo último).
 import { MATERIAS, MATERIAS_ORAL } from './formato.js';
 import { leerConvalidadas } from './saltos.js';
+import { caminoLibre } from './orden-camino.js';
 
 const pct = (a, b) => (b > 0 ? Math.floor((a * 100) / b) : 0);
 const mayor = (a, b) => (!a ? b ?? null : !b ? a : a > b ? a : b);
@@ -52,7 +56,7 @@ function agrupar(filas, clave) {
 
 // Dónde está: el tema del evento más nuevo (o, si ya lo hizo, el siguiente sin hacer). bloques: [{ id, temas: [{ id, estado }] }].
 // ultimo: { bloque, tema|null (null = su examen), en } | null. → { bloque: índice, tema: índice } | null
-export function posicionActual(bloques, ultimo) {
+export function posicionActual(bloques, ultimo, { libre = false } = {}) {
   const sinHacer = (desdeB, desdeT) => {
     for (let b = desdeB; b < bloques.length; b++) {
       const temas = bloques[b].temas;
@@ -60,7 +64,7 @@ export function posicionActual(bloques, ultimo) {
     }
     return null;
   };
-  if (ultimo) {
+  if (ultimo && !libre) {
     const b = bloques.findIndex(x => x.id === ultimo.bloque);
     if (b >= 0) {
       const k = ultimo.tema == null ? 0 : Math.max(0, bloques[b].temas.findIndex(t => t.id === ultimo.tema));
@@ -71,12 +75,12 @@ export function posicionActual(bloques, ultimo) {
   return sinHacer(0, 0);
 }
 
-function armar(bloques, ultimo) {
+function armar(bloques, ultimo, libre = false) {
   const conClases = bloques.filter(b => b.temas.length);
   const total = conClases.reduce((n, b) => n + b.temas.length, 0);
   const hechos = conClases.reduce((n, b) => n + b.hechos, 0);
   const empezados = conClases.reduce((n, b) => n + b.temas.filter(t => t.estado === 'empezado').length, 0);
-  const pos = posicionActual(conClases, ultimo);
+  const pos = posicionActual(conClases, ultimo, { libre });
   const algo = hechos > 0 || empezados > 0 || Boolean(ultimo);
   let ahora = null;
   if (pos && algo) {
@@ -94,10 +98,11 @@ function armar(bloques, ultimo) {
 }
 
 // → Map usuarioId → { tg, oral, ultima }. ids: Set de alumnos (null: todos).
-export function avanceDeAlumnos(db, paquete, ids = null) {
+export function avanceDeAlumnos(db, paquete, ids = null, { libre: libreDado = null } = {}) {
   const filtro = ids && ids.size === 1 ? ` AND usuario_id = ${Number([...ids][0])}` : '';
   const filtroR = filtro.replace('usuario_id', 'r.usuario_id');
   const ajustes = ajustesDe(db, ids);
+  const libre = libreDado ?? caminoLibre(db);
   // Los temas: aprobado (de un intento terminado), y la fecha de lo último (intento empezado o terminado).
   const temas = agrupar(db.prepare(`SELECT usuario_id, materia, tema, MAX(CASE WHEN tipo = 'tema' AND terminado_en IS NOT NULL THEN aprobado ELSE 0 END) AS aprobado,
     MAX(COALESCE(terminado_en, empezado_en)) AS en FROM academia_intentos WHERE tipo IN ('tema', 'reto') AND tema IS NOT NULL${filtro} GROUP BY usuario_id, materia, tema`).all(), f => `${f.materia}/${f.tema}`);
@@ -170,9 +175,9 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
           examen: esObjeto(e) && Number(e.veces) > 0 ? { aprobado: e.aprobado === true, mejor: Number(e.mejor) || 0 } : null,
           ...(convOral ? { convalidada: { pct: Math.max(0, Math.min(100, Number(convOral.pct) || 0)) } } : {}) };
       });
-      oral = armar(capitulos, ultimoOral);
+      oral = armar(capitulos, ultimoOral, libre);
     }
-    const t = armar(tg, ultimoTg);
+    const t = armar(tg, ultimoTg, libre);
     salida.set(id, { tg: t, oral, ultima: mayor(t.ultima, oral?.ultima ?? null) });
   }
   return salida;
@@ -180,7 +185,7 @@ export function avanceDeAlumnos(db, paquete, ids = null) {
 
 // Lo de un alumno sin nada (para quien no aparece en ninguna tabla).
 export function avanceVacio(paquete) {
-  return avanceDeAlumnos(db0(), paquete, new Set([0])).get(0);
+  return avanceDeAlumnos(db0(), paquete, new Set([0]), { libre: true }).get(0); // sin nada: «Ahora en» es null igual
 }
 // Una base vacía en memoria sería pesada: se arma «a mano» con las mismas reglas (sin filas).
 function db0() {

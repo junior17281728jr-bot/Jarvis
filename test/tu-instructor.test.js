@@ -18,6 +18,7 @@ import { crearInstructor } from '../public/instructor.js';
 import { conInstructor, pedir, pedidosIa, cuerpoDe, sistemaDe, datosDe, DE, NOMBRES } from './instructor-ia-base.js';
 import { paqueteOralMuestra } from './oral-muestra.js';
 import { figuraMuestraPng } from './academia-muestra.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ID_INTERNO = /factores_humanos|muestra-|oral_calificaciones|oral_rendimiento|t01-a|\bm\d{2}\b|\btg-\d/;
@@ -88,6 +89,8 @@ test('la foto de cada día: se compara con el último día ANTERIOR, el mismo d�
 // ---------- La pantalla #instructor por la API ----------
 test('«Tu instructor»: su tarjeta (débiles, cambios desde ayer, «Guíame»), sin ids ni nombres; el chat solo con su permiso y con IA', async () => {
   await conInstructor(async c => {
+    // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+    guardarOrdenCamino(c.db, 'estricto');
     const z = idDe(c, 'zoelia');
     // Ayer le iba mal en Hipoxia (0/4): la foto de ayer, como la habría guardado la tarjeta.
     const ayer = diaDe(Date.now() - DIA);

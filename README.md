@@ -446,8 +446,12 @@ Para probar la muestra a mano: `node --input-type=module -e "import('./test/acad
 deja `muestra-academia.json` y `figura-m1.png`; se eligen los dos juntos en Contenido → Subir, y después «Poner en uso».
 
 ### Qué hay
-- **Camino**: las 11 materias de ENALAS en su orden fijo; cada tema es un círculo que se abre al aprobar el anterior (las
-  materias sin contenido se saltan y dicen «Pronto»). Racha (días seguidos, hora de Santo Domingo) y puntos (10 por acierto).
+- **Camino**: las 11 materias de ENALAS en su orden fijo (las materias sin contenido se saltan y dicen «Pronto»). Desde la
+  0.14.81, «Orden del camino» (Contenido → Ajustes): **libre, con orden recomendado** (por defecto: todos los temas se
+  abren; «Continuar», «Ahora en» y el tema resaltado van al primero sin aprobar desde Factores Humanos; lo de más adelante
+  se ve «adelantado» y, al abrirlo, un aviso corto con «Seguir aquí» (lo esconde en ese tema), «Ir a lo recomendado» y
+  «Ya sé lo anterior: tomar el examen»: el examen directo de la materia recomendada; aprobado, la convalida y lo
+  recomendado pasa adelante) o **estricto** (cada tema se abre al aprobar el anterior). Racha (días seguidos, hora de Santo Domingo) y puntos (10 por acierto).
 - **Tema**: la lección por partes (cada parte dice libro, capítulo, sección y página) → las preguntas del tema. Cada pregunta
   se ve TAL CUAL (número, sección, enunciado, opciones en su orden, figura). Al responder: correcta/incorrecta, la
   **explicación original** (con su etiqueta) y debajo, aparte, la **explicación sencilla**; si eligió mal, la idea equivocada

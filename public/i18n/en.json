@@ -6331,5 +6331,17 @@
   "nm.oral.avance": "{pct} of the oral · {estado}",
   "nm.banda.tg": "Test Guide",
   "nm.banda.oral": "Oral exam",
-  "nm.copiar.titulo_curso": "Grades by subject for {curso} (passing is {umbral} %)"
+  "nm.copiar.titulo_curso": "Grades by subject for {curso} (passing is {umbral} %)",
+  "acad.recomendado": "Recommended",
+  "acad.tema_recomendado": "{tema}: recommended now",
+  "acad.tema_adelantado": "{tema}: further ahead. You can open it.",
+  "camino.estado.adelantada": "Further ahead",
+  "orden.aviso.texto": "We recommend going in order from Human Factors: each topic builds on the one before. You can stay here if you want.",
+  "orden.aviso.seguir": "Stay here",
+  "orden.aviso.ir": "Go to the recommended one",
+  "orden.aviso.examen": "I know the earlier ones: take the exam",
+  "orden.admin": "Path order",
+  "orden.admin.libre": "Free, with a recommended order",
+  "orden.admin.estricto": "Strict: each topic opens the next",
+  "orden.admin.linea": "Free: students can open any topic, and the app recommends going in order from Human Factors. Strict: each topic opens when the previous one is passed. Changing it never erases anything already done."
 }

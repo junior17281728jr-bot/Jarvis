@@ -17,6 +17,7 @@ import { ErrorHttp } from '../nucleo/http.js';
 import { MATERIAS_ORAL } from './formato.js';
 import { leerAjuste, guardarAjuste, librosDe } from './paquetes.js';
 import { vistaSecciones, ajustesAcademia } from './progreso.js';
+import { caminoLibre } from './orden-camino.js';
 
 export const NIVELES_ORAL = Object.freeze({ practica: 'oral_practica', examen: 'oral_examen', final: 'oral_final' });
 export const ORAL = Object.freeze({ porRonda: 10, examenCapitulo: 20, examenFinal: 40, escenariosFinal: 6 });
@@ -138,6 +139,9 @@ export function caminoOral(db, usuarioId, paquete, { tgTerminado = false } = {})
     siguientePaso: tgTerminado === true,
   };
   vista.siguiente = siguienteOral(vista);
+  // 0.14.81: el oral nunca tuvo candados (sigue así con cualquier «Orden del camino»). Con el camino libre, lo que va más
+  // adelante de lo recomendado (vista.siguiente) sale «adelantado», como en el Camino del Test Guide.
+  if (caminoLibre(db)) marcarAdelantadosOral(vista);
   // 0.14.54: cuántas preguntas respondió mal la última vez (las de «Practicar mis errores»): sin ninguna, la pantalla no
   // ofrece el botón (antes salía siempre y llevaba a un error).
   vista.errores = materiasConTemas(paquete).reduce((n, m) => n + m.temas.reduce((k, t) => k + t.preguntas.filter(id => ultima.get(`${m.id}/${id}`)?.correcta === 0).length, 0), 0);
@@ -157,6 +161,13 @@ export function listoParaOral(materias, final, umbral) {
   for (const m of con) if (!m.examen.aprobado) faltan.push({ tipo: 'examen', materia: m.id });
   if (final?.aprobado !== true) faltan.push({ tipo: 'final' });
   return { listo: con.length > 0 && faltan.length === 0, pct: con.length ? Math.floor((dominio + capitulos + nota) / 3) : 0, dominio, capitulos, final: nota, umbral, faltan: faltan.slice(0, 12) };
+}
+function marcarAdelantadosOral(v) {
+  const s = v.siguiente;
+  if (!s || s.tipo === 'final') return;
+  const mi = v.materias.findIndex(m => m.id === s.materia);
+  const ti = s.tipo === 'examen' ? Infinity : v.materias[mi]?.temas.findIndex(t => t.id === s.tema) ?? -1;
+  v.materias.forEach((m, i) => m.temas.forEach((t, k) => { if (!t.leido && (i > mi || (i === mi && k > ti))) t.adelantado = true; }));
 }
 function siguienteOral(v) {
   for (const m of v.materias) {

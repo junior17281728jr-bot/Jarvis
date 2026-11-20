@@ -17,6 +17,7 @@ import { posicionActual } from '../src/academia/avance-alumno.js';
 import { textoAhora, pctTg } from '../public/admin-avance.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 import { paqueteOralMuestra } from './oral-muestra.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const CLAVE = 'una clave bien larga';
 const AHORA = Date.parse('2026-11-13T15:00:00Z');
@@ -51,6 +52,8 @@ async function pedir(base, metodo, ruta, { datos, galleta, cabeceras = {}, cuerp
 async function conAcademia(fn) {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+  guardarOrdenCamino(db, 'estricto');
   const servidor = crearServidor({ db, config, academia: { reloj: () => AHORA } });
   await conServidor(servidor, async base => {
     const admin = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: { 'Tailscale-User-Login': 'junior@example.com' } });

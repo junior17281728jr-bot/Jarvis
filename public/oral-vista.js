@@ -55,7 +55,7 @@ export function pantallaOral(d, h) {
       const actual = sig?.materia === c.id && sig?.tema === x.id;
       const nivel = x.preguntas && x.bien >= x.preguntas ? 'dominado' : x.leido && x.vistas >= x.preguntas ? 'terminado' : x.leido || x.vistas ? 'empezado' : 'nuevo';
       return nodoCamino({
-        clase: x.leido ? 'hecho' : 'abierto', href: ruta('tema', c.id, x.id), i: i++, nombreIcono: x.leido ? 'marca' : 'libro',
+        clase: x.leido ? 'hecho' : x.adelantado ? 'abierto adelantado' : 'abierto', href: ruta('tema', c.id, x.id), i: i++, nombreIcono: x.leido ? 'marca' : 'libro',
         titulo, en: ingles, detalle: tn('oral.n_preguntas_libro', { n: x.qa }), etiqueta: t('oral.tema.etiqueta', { tema: titulo }),
         actual, burbuja: actual ? t(sig.tipo === 'practica' ? 'oral.practicar' : 'acad.empezar') : null, avance: { nivel, pct: x.pct },
       });

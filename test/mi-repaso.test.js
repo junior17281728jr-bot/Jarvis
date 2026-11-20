@@ -20,6 +20,7 @@ import { crearInstructor } from '../public/instructor.js';
 import { panelCurso, panelRepasoResumen } from '../public/progreso-vista.js';
 import { pantallaMiRepaso, pantallaMiniClase, panelesRepaso } from '../public/mi-repaso-vista.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DUENO = { 'Tailscale-User-Login': 'junior@example.com' };
@@ -45,6 +46,8 @@ function azarFijo(semilla = 7) {
 async function conAcademia(fn) {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+  guardarOrdenCamino(db, 'estricto');
   let ahora = T0;
   const reloj = () => ahora;
   reloj.avanzar = ms => { ahora += ms; };

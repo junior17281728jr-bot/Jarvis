@@ -4004,10 +4004,13 @@ function senderoMateria(m, n, siguiente) {
       const hecho = tema.estado === 'aprobado';
       // 0.14.19: un tema de una materia convalidada por examen (sin su práctica): hecho, sin estrellas ni «0 %».
       const convalidado = hecho && tema.convalidado === true;
+      // 0.14.81 (camino libre): el tema recomendado, resaltado; lo que va más adelante, «adelantado» (abierto, sin candado).
+      const marca = tema.recomendado ? ' recomendado' : tema.adelantado ? ' adelantado' : '';
       nodos.push(nodoCamino({
-        clase: hecho ? 'hecho' : 'abierto', href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}`, i: i++,
-        nombreIcono: hecho ? 'marca' : 'estrella', titulo: es, detalle: convalidado ? t('acad.convalidar.tema') : null,
-        etiqueta: convalidado ? t('acad.convalidar.tema_etiqueta', { tema: es }) : hecho ? t('acad.tema_hecho', { tema: es, n: numero(tema.mejor ?? 0) }) : t('acad.tema_abierto', { tema: es }),
+        clase: `${hecho ? 'hecho' : 'abierto'}${marca}`, href: `#tema/${encodeURIComponent(m.id)}/${encodeURIComponent(tema.id)}`, i: i++,
+        nombreIcono: hecho ? 'marca' : 'estrella', titulo: es, detalle: convalidado ? t('acad.convalidar.tema') : tema.recomendado ? t('acad.recomendado') : null,
+        etiqueta: convalidado ? t('acad.convalidar.tema_etiqueta', { tema: es }) : hecho ? t('acad.tema_hecho', { tema: es, n: numero(tema.mejor ?? 0) })
+          : tema.recomendado ? t('acad.tema_recomendado', { tema: es }) : tema.adelantado ? t('acad.tema_adelantado', { tema: es }) : t('acad.tema_abierto', { tema: es }),
         actual, estrellas: hecho && !convalidado ? estrellasDe(tema.mejor ?? 0) : 0, burbuja: actual ? t(tema.paso?.paso ? 'acad.seguir_aqui' : 'acad.empezar') : null, avance: tema.avance ?? null,
       }));
     }
@@ -4067,7 +4070,10 @@ function barraLlena(pct) {
 }
 
 // Lo que toca ahora: el primer tema abierto o el examen disponible (el video es opcional).
+// 0.14.81: con el camino libre, lo recomendado por el servidor (el primer tema sin aprobar desde Factores Humanos); sin
+// temas por aprobar, el primer examen de materia que falta.
 function pasoQueToca(c) {
+  if (c.ordenCamino === 'libre' && c.recomendado) return { tipo: 'tema', materia: c.recomendado.materia, tema: c.recomendado.tema };
   for (const m of c.materias) {
     if (!m.temas.length) continue;
     if (m.estado === 'bloqueada') return null;
@@ -4320,7 +4326,7 @@ async function pantallaInicio() {
     return el('section', { class: `materia-bloque ${claseMateria(m.id)} ${vacia ? 'vacia' : m.estado}`, 'aria-labelledby': `materia-${m.id}` },
       bannerMateria(m, n, { vacia }),
       vacia || m.id !== materiaActual ? null : ofrecerConvalidar(m),
-      vacia || m.estado === 'bloqueada' ? null : extrasMateria(m),
+      vacia || m.estado === 'bloqueada' || m.adelantada ? null : extrasMateria(m),
       vacia ? null : senderoMateria(m, n, siguiente));
   });
   // 0.14.49 (lo pidió el dueño: «en el inicio hay mucha cosa; debe ser fácil, y lo demás de último»): arriba solo el
@@ -4774,6 +4780,27 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
   let guardado = -1;
   let actual = null; // { destruir }
   let inicioTarjeta = 0;
+  // 0.14.81: «Te recomendamos ir en orden…» con «Seguir aquí» e «Ir a lo recomendado» (las dos lo esconden en ESTE tema;
+  // «Continuar» sigue yendo a lo recomendado) y «Ya sé lo anterior: tomar el examen» (el examen directo de la materia
+  // recomendada: aprobado, la convalida y lo recomendado pasa adelante; si no, todo sigue abierto).
+  let avisoOrden = l.avisoOrden === true && Boolean(l.recomendado);
+  const avisoDeOrden = () => {
+    const caja = el('aside', { class: 'aviso-orden', role: 'note', 'aria-labelledby': 'aviso-orden-texto' });
+    const visto = () => { avisoOrden = false; caja.remove(); return api('POST', '/api/academia/aviso-orden', { materia, tema }).catch(() => null); };
+    const rec = l.recomendado;
+    caja.append(
+      el('p', { class: 'con-icono', id: 'aviso-orden-texto' }, icono('brujula', 'icono chico'), el('span', { texto: t('orden.aviso.texto') })),
+      el('div', { class: 'aviso-orden-botones' }, [
+        el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => { visto(); }, texto: t('orden.aviso.seguir') }),
+        el('a', {
+          class: 'boton-3d chico', href: `#tema/${encodeURIComponent(rec.materia)}/${encodeURIComponent(rec.tema)}`,
+          onclick: () => { visto(); }, texto: t('orden.aviso.ir'),
+        }),
+        rec.examen ? el('a', { class: 'boton-3d naranja chico con-icono aviso-orden-examen', href: `#examen/${encodeURIComponent(rec.materia)}` },
+          icono('rayo', 'icono chico'), el('span', { texto: t('orden.aviso.examen') })) : null,
+      ].filter(Boolean)));
+    return caja;
+  };
   const tiempos = [];
   const barraAvance = combustible();
   const cuenta = el('span', { class: 'estudio-cuenta' });
@@ -4815,6 +4842,8 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
       // (el Test Guide va al final de la materia: «Examen del Test Guide» en el Camino), sin «Tu punto débil» ni el consejo
       // del instructor (lo de los errores vive en «Mi repaso»), y sin contar las preguntas del Test Guide.
       nodo = el('article', { class: 'portada-tema' },
+        // 0.14.81: más adelante de lo recomendado (camino libre): el aviso corto, una sola vez por alumno.
+        avisoOrden ? avisoDeOrden() : null,
         el('span', { class: 'portada-icono', 'aria-hidden': 'true' }, icono(ICONO_MATERIA[materia] ?? 'avion')),
         el('p', { class: 'antetitulo', texto: nombreMateria(materia) }),
         el('h1', { class: 'titulo-grande', texto: es }),
@@ -6458,6 +6487,16 @@ async function pantallaContenido(parte = 'paquetes') {
       await pantallaContenido();
     }, 'marca')),
     mensajeAjustes,
+    // 0.14.81: «Orden del camino»: libre con orden recomendado (lo de siempre) o estricto (un tema abre el siguiente).
+    el('div', { class: 'ajuste-grupo ajuste-orden-camino' },
+      el('p', { class: 'etiqueta-campo', texto: t('orden.admin') }),
+      grupoDeBotones([['libre', t('orden.admin.libre')], ['estricto', t('orden.admin.estricto')]], r.datos.ordenCamino === 'estricto' ? 'estricto' : 'libre', async (valor, marcar) => {
+        const x = await api('POST', '/api/admin/academia/orden-camino', { orden: valor });
+        if (!x.ok) return avisar(textoError(x.datos.error), 'mal');
+        marcar();
+        avisar(t(x.datos.ordenCamino === 'estricto' ? 'orden.admin.estricto' : 'orden.admin.libre'));
+      }),
+      el('p', { class: 'suave chica', texto: t('orden.admin.linea') })),
     // 0.7.2: el panel «Grupo» que ven los alumnos (se puede apagar).
     el('div', { class: 'ajuste-grupo' },
       el('p', { class: 'etiqueta-campo', texto: t('acad.grupo.admin') }),

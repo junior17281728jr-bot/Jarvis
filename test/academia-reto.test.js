@@ -12,6 +12,7 @@ import { hashClave } from './ayuda.js';
 import { revisarPaquete } from '../src/academia/formato.js';
 import { opcionesReto } from '../src/academia/reto.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
 const CLAVE = 'una clave bien larga';
@@ -38,6 +39,8 @@ function azarFijo(semilla = 7) {
 async function conAcademia(fn, { reloj = Date.now } = {}) {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+  guardarOrdenCamino(db, 'estricto');
   const servidor = crearServidor({ db, config, academia: { azar: azarFijo(), reloj } });
   await conServidor(servidor, async base => {
     const admin = await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: DESDE_TAILSCALE });

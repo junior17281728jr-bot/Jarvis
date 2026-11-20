@@ -13,6 +13,7 @@ import { paqueteActivo } from '../src/academia/paquetes.js';
 import { darProfesor } from '../src/academia/profesor.js';
 import { crearInstructor } from '../public/instructor.js';
 import { conInstructor, pedir, pedidosIa, textoDe, DE, NOMBRES, datosDe, cuerpoDe, sistemaDe } from './instructor-ia-base.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ID_INTERNO = /factores_humanos|muestra-|\bm\d{2}\b|\btg-\d/;
@@ -80,6 +81,8 @@ test('lo que va a la IA tiene tope de tamaño (11 materias y el oral) y nunca pi
 
 test('con la base: la historia por tema pesa el examen más que la práctica, y los botones se revisan (nada cerrado ni inventado)', async () => {
   await conInstructor(async c => {
+    // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+    guardarOrdenCamino(c.db, 'estricto');
     const z = idDe(c, 'zoelia');
     sembrarContradiccion(c, z);
     const p = paqueteActivo(c.db, c.config);
@@ -118,6 +121,8 @@ test('con la base: la historia por tema pesa el examen más que la práctica, y 
 
 test('con IA (proveedor falso): la historia va a la IA, los botones salen revisados con su respuesta y nada personal se manda', async () => {
   await conInstructor(async c => {
+    // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+    guardarOrdenCamino(c.db, 'estricto');
     const z = idDe(c, 'zoelia');
     darProfesor(c.db, z, true);
     sembrarContradiccion(c, z);

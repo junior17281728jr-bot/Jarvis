@@ -12,6 +12,7 @@ import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
 import { partirLeccion, resaltar, pareceIngles, dividirEnFrases, leerPreguntasClave, leerEscenarios, leerPalabras, textoDePantallas } from '../public/tarjetas.js';
 import { leccionDeVideo, visualDeEscena, iconoDe } from '../public/academia-video.js';
 import { Secuencia, duracionEscena } from '../public/clase/reproductor.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const CLAVE = 'una clave bien larga';
 const palabras = texto => String(texto).toLowerCase().normalize('NFC').match(/[\p{L}\p{N}]+/gu) ?? [];
@@ -170,6 +171,8 @@ const MP3 = Buffer.concat([Buffer.from('ID3'), Buffer.from([4, 0, 0, 0, 0, 0, 0]
 test('servidor: video resumen (con su mp3 por partes), plan de estudio, grupo sin datos privados y tema de solo lectura', async () => {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+  guardarOrdenCamino(db, 'estricto');
   await conServidor(crearServidor({ db, config }), async base => {
     const admin = (await pedir(base, 'POST', '/api/primer-admin', { datos: { nombre: 'junior', clave: CLAVE }, cabeceras: { 'Tailscale-User-Login': 'junior@example.com' } })).galleta;
     const g = {};

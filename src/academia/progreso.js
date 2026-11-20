@@ -9,6 +9,7 @@ import { enTransaccion } from '../nucleo/db.js';
 import { leerAjuste, guardarAjuste, refFigura, figuraDe, librosDe, audioDe, paginaDe, mp4De, clipDe, fotoDe } from './paquetes.js';
 import { registrarSalto, saltoDeIntento, anotarOrden, saltosDe, convalidadasDe, convalidar } from './saltos.js';
 import { lineaHumor, QUEMADO_SUAVE } from './humor.js';
+import { ordenCamino, avisoOrdenVisto } from './orden-camino.js';
 import { resumenVisitas } from '../cuentas/visitas.js';
 import { resumenExtra } from './extra.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
@@ -240,8 +241,11 @@ function repasoPendiente(db, usuarioId, paquete, ahoraMs) {
     .all(usuarioId, CAJA_DOMINADA, new Date(ahoraMs).toISOString()).map(f => f.pregunta).filter(id => paquete.preguntas.has(id));
 }
 
-// El camino: las 11 materias en su orden, cada tema con su estado. Un tema se abre cuando se aprobó el anterior
-// (las materias sin contenido en el paquete se saltan). El examen de una materia se abre con todos sus temas aprobados.
+// El camino: las 11 materias en su orden, cada tema con su estado. El examen de una materia se abre con todos sus temas
+// aprobados (o «Ir directo», con su aviso). 0.14.81: con el «Orden del camino» libre (src/academia/orden-camino.js, lo
+// de siempre) todos los temas están abiertos; el primero sin aprobar en el orden oficial es el «recomendado» (recomendado:
+// true) y los que no aprobó más adelante van «adelantado: true» (sin candado). Con «Estricto» (lo de antes), un tema se
+// abre cuando se aprobó el anterior (las materias sin contenido en el paquete se saltan); el resto, 'bloqueado'.
 export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const { nombre, umbral, examenSegundos, practicaModo } = ajustesAcademia(db);
   const base = { nombre, umbral, examenSegundos, practicaModo, ...puntosYRacha(db, usuarioId, ahoraMs) };
@@ -250,6 +254,9 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const deExamen = examenes(db, usuarioId);
   const convalidadas = convalidadasDe(db, usuarioId);
   let anteriorAprobado = true;
+  const orden = ordenCamino(db);
+  const libre = orden === 'libre';
+  let recomendado = null;
   const vistos = videosVistos(db, usuarioId);
   const leidos = temasLeidos(db, usuarioId);
   const memoria = puntosDebiles(db, usuarioId, paquete);
@@ -261,12 +268,16 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
       const a = aprobados.get(`${m.id}/${t.id}`);
       // 0.7.2: un tema SIN preguntas se aprueba al terminar de leer su lección (si no, el camino quedaba trancado ahí).
       const aprobado = a?.aprobado === true || (!t.preguntas.length && leidos.has(`${m.id}/${t.id}`));
-      const estadoTema = aprobado ? 'aprobado' : anteriorAprobado ? 'abierto' : 'bloqueado';
+      const estadoTema = aprobado ? 'aprobado' : libre || anteriorAprobado ? 'abierto' : 'bloqueado';
       anteriorAprobado = aprobado;
+      // 0.14.81: el recomendado (el primero sin aprobar en el orden oficial) y, en libre, lo que va más adelante.
+      let marca = null;
+      if (!aprobado && !recomendado) { recomendado = { materia: m.id, tema: t.id }; marca = libre ? { recomendado: true } : null; }
+      else if (!aprobado && libre) marca = { adelantado: true };
       // 0.12.2: el avance (anillo y color del nodo) y dónde quedó en su clase.
       const p = pasos[`${m.id}/${t.id}`] ?? null;
       return { id: t.id, titulo: t.titulo, estado: estadoTema, mejor: a?.mejor ?? null, preguntas: t.preguntas.length, ...(a?.convalidado ? { convalidado: true } : {}),
-        avance: avanceTema(p, a, aprobado, !t.preguntas.length), paso: p ? { paso: p.paso, total: p.total } : null };
+        avance: avanceTema(p, a, aprobado, !t.preguntas.length), paso: p ? { paso: p.paso, total: p.total } : null, ...marca };
     });
     const todos = temas.length > 0 && temas.every(t => t.estado === 'aprobado');
     const estadoMateria = !temas.length ? 'vacia' : todos ? 'aprobada' : temas.some(t => t.estado !== 'bloqueado') ? 'abierta' : 'bloqueada';
@@ -288,6 +299,8 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
     const partes = [...(video ? [video.pct] : []), ...temas.map(t => t.avance.pct), exAvance.pct];
     return {
       id: m.id, estado: estadoMateria, temas, pct: pct(aprobadosN, temas.length),
+      // 0.14.81: en libre, una materia que está toda más adelante de lo recomendado (abierta, sin candado).
+      ...(libre && temas.length && temas.every(t => t.adelantado) ? { adelantada: true } : {}),
       // 0.14.19: «Convalidada por examen ✓» (aprobó el examen directo): todos sus temas cuentan hechos.
       ...(convalidadas[m.id] && temas.length ? { convalidada: { pct: convalidadas[m.id].pct, en: convalidadas[m.id].en } } : {}), avance: partes.length ? Math.round(partes.reduce((a, b) => a + b, 0) / partes.length) : 0,
       ...(audio ? { audio } : {}), ...(video ? { video } : {}),
@@ -302,11 +315,19 @@ export function camino(db, usuarioId, paquete, ahoraMs = Date.now()) {
       ...(m.extra?.preguntas?.length || m.extra?.tarjetas?.length ? { extra: { preguntas: m.extra.preguntas.length, tarjetas: m.extra.tarjetas.length, recomendado: ex?.aprobado === true } } : {}),
     };
   });
-  // 0.12.2: «Continuar» = la última clase que abrió y todavía no aprobó (en la tarjeta donde quedó).
-  const abiertos = new Set(materias.flatMap(m => m.temas.filter(t => t.estado === 'abierto').map(t => `${m.id}/${t.id}`)));
-  const [ultimo] = Object.entries(pasos).filter(([k]) => abiertos.has(k)).sort((a, b) => String(b[1]?.en).localeCompare(String(a[1]?.en)));
-  const continuar = ultimo ? { materia: ultimo[0].split('/')[0], tema: ultimo[0].split('/')[1], paso: ultimo[1].paso, total: ultimo[1].total } : null;
-  return { ...base, paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra }, materias, continuar, repaso: repasoPendiente(db, usuarioId, paquete, ahoraMs).length };
+  let continuar = null;
+  if (libre) {
+    // 0.14.81: «Continuar» = siempre lo recomendado (el primer tema sin aprobar desde Factores Humanos), en la tarjeta
+    // donde quedó si ya la empezó. Un alumno nuevo empieza en Factores Humanos.
+    const p = recomendado ? pasos[`${recomendado.materia}/${recomendado.tema}`] : null;
+    continuar = recomendado ? { ...recomendado, ...(p ? { paso: p.paso, total: p.total } : {}) } : null;
+  } else {
+    // 0.12.2 (Estricto): «Continuar» = la última clase que abrió y todavía no aprobó (en la tarjeta donde quedó).
+    const abiertos = new Set(materias.flatMap(m => m.temas.filter(t => t.estado === 'abierto').map(t => `${m.id}/${t.id}`)));
+    const [ultimo] = Object.entries(pasos).filter(([k]) => abiertos.has(k)).sort((a, b) => String(b[1]?.en).localeCompare(String(a[1]?.en)));
+    continuar = ultimo ? { materia: ultimo[0].split('/')[0], tema: ultimo[0].split('/')[1], paso: ultimo[1].paso, total: ultimo[1].total } : null;
+  }
+  return { ...base, paquete: { id: paquete.id, nombre: paquete.nombre, muestra: paquete.muestra }, ordenCamino: orden, recomendado, materias, continuar, repaso: repasoPendiente(db, usuarioId, paquete, ahoraMs).length };
 }
 
 // ---------- 0.7.2: el «Video resumen» de cada materia ----------
@@ -456,22 +477,39 @@ function buscarTema(paquete, materia, tema) {
   if (!t) throw new ErrorHttp(404, 'no_existe');
   return { m, t };
 }
-function estadoDelTema(db, usuarioId, paquete, materia, tema) {
+function temaDelCamino(db, usuarioId, paquete, materia, tema) {
   const c = camino(db, usuarioId, paquete);
-  return c.materias.find(x => x.id === materia)?.temas.find(x => x.id === tema)?.estado ?? null;
+  const x = c.materias.find(y => y.id === materia)?.temas.find(y => y.id === tema) ?? null;
+  return { c, x: x ? { ...x, materia } : null };
+}
+function estadoDelTema(db, usuarioId, paquete, materia, tema) {
+  return temaDelCamino(db, usuarioId, paquete, materia, tema).x?.estado ?? null;
+}
+// 0.14.81: un tema más adelante de lo recomendado (camino libre): lo recomendado (para «Ir a lo recomendado» y «Ya sé lo
+// anterior: tomar el examen») y si toca el aviso «Te recomendamos ir en orden…» (se esconde por alumno y por tema).
+function adelantadoDe(db, usuarioId, c, x) {
+  if (!x?.adelantado || !c.recomendado) return {};
+  const m = c.materias.find(y => y.id === c.recomendado.materia);
+  const r = m?.temas.find(y => y.id === c.recomendado.tema);
+  // examen: se puede tomar el examen de esa materia («Ya sé lo anterior: tomar el examen»; aprobado, la convalida).
+  return {
+    adelantado: true, avisoOrden: !avisoOrdenVisto(db, usuarioId, x.materia, x.id),
+    recomendado: { materia: c.recomendado.materia, tema: c.recomendado.tema, titulo: r?.titulo ?? null, examen: Boolean(m?.examen?.saltable || (m?.examen?.disponible && !m.examen.aprobado)) },
+  };
 }
 
 // La lección de un tema: sus secciones con de dónde sale cada una (libro, capítulo, sección, página).
 export function leccion(db, usuarioId, paquete, materia, tema) {
   if (!paquete) throw new ErrorHttp(409, 'sin_paquete');
   const { t } = buscarTema(paquete, materia, tema);
-  const estadoTema = estadoDelTema(db, usuarioId, paquete, materia, tema);
+  const enCamino = temaDelCamino(db, usuarioId, paquete, materia, tema);
+  const estadoTema = enCamino.x?.estado ?? null;
   if (estadoTema === 'bloqueado') throw new ErrorHttp(403, 'tema_bloqueado');
   const audio = audioDe(paquete, t.paquete, t.audio);
   // 0.8.0: cuántas tienen Modo reto y el punto débil del alumno en este tema («Tu punto débil: …»).
   const debil = debilDe(puntosDebiles(db, usuarioId, paquete), paquete, { materia, tema: t.id });
   return {
-    materia, tema: t.id, titulo: t.titulo, estado: estadoTema, secciones: vistaSecciones(paquete, t.secciones, t.paquete), preguntas: t.preguntas.length,
+    materia, tema: t.id, titulo: t.titulo, estado: estadoTema, ...adelantadoDe(db, usuarioId, enCamino.c, enCamino.x), secciones: vistaSecciones(paquete, t.secciones, t.paquete), preguntas: t.preguntas.length,
     reto: t.preguntas.filter(id => tieneReto(paquete.preguntas.get(id))).length, ...(audio ? { audio } : {}), ...(debil ? { debil } : {}),
     // 0.12.2: el video de su materia (ofrecerlo la primera vez; el capítulo de este tema).
     ...((v => (v ? { video: v } : {}))(videoDeLeccion(db, usuarioId, paquete, paquete.materias.find(x => x.id === materia), t))),

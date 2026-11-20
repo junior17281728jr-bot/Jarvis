@@ -26,6 +26,7 @@ import { iaDeCadaAlumno } from '../academia/ia-alumnos.js';
 import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tutor.js';
 // 0.14.59: «Otra forma de verlo» en la clase y «Dónde más les cuesta» para el administrador.
 import { conOtraForma, fotoVigente, calcularTodo, guardarTodo, listaAdmin } from '../academia/donde-cuesta.js';
+import { ordenCamino, guardarOrdenCamino, marcarAvisoOrden } from '../academia/orden-camino.js';
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { carreraDe, nombresEnCarrera, mostrarNombresEnCarrera } from '../academia/carrera.js';
@@ -257,6 +258,12 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     try { datos = conOtraForma(db, p, l, usuario.idioma); } catch (error) { console.error('otra forma de verlo:', error?.name ?? 'Error'); }
     return { codigo: 200, datos };
   });
+  // 0.14.81: el aviso «Te recomendamos ir en orden…» ya se vio en ese tema («Seguir aquí» o «Ir a lo recomendado»): en
+  // ese tema no sale más. Siempre el alumno de la sesión (nunca un id que mande la pantalla).
+  rutas.agregar('POST', '/api/academia/aviso-orden', async ({ db, req, usuario }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: marcarAvisoOrden(db, usuario.id, activo(db), datos?.materia, datos?.tema) };
+  });
   // 0.14.59: Administrador → Contenido: «Dónde más les cuesta» (los 10 primeros). La cuenta la hace el trabajador cada
   // hora; si no hay una reciente, se hace aquí (solo lee y guarda una fila; nunca llama a la IA).
   rutas.agregar('GET', '/api/admin/academia/cuesta', ({ db }) => {
@@ -413,7 +420,7 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return {
       codigo: 200,
       datos: {
-        ajustes: ajustesAcademia(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), carreraNombres: nombresEnCarrera(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
+        ajustes: ajustesAcademia(db), ordenCamino: ordenCamino(db), grupo: grupoEncendido(db), humor: humorDelAdmin(db), carreraNombres: nombresEnCarrera(db), paquetes: listarPaquetes(db, config), drive: estadoDrive(db),
         // 0.12.9 (R): cuántas preguntas del Test Guide del paquete activo explica alguna tarjeta, y cuáles faltan.
         cobertura: (() => { try { const p = activo(db); return p ? coberturaTestGuide(p) : null; } catch { return null; } })(),
         // 0.14.55: las versiones en uso que no se pueden leer (paquete.json dañado); también salen como aviso.
@@ -487,6 +494,12 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
   rutas.agregar('POST', '/api/admin/academia/grupo', async ({ db, req }) => {
     const datos = await leerJson(req);
     return { codigo: 200, datos: { grupo: encenderGrupo(db, datos?.encendido) } };
+  }, { admin: true });
+
+  // 0.14.81: «Orden del camino»: 'libre' (con orden recomendado, lo de siempre) o 'estricto' (un tema abre el siguiente).
+  rutas.agregar('POST', '/api/admin/academia/orden-camino', async ({ db, req }) => {
+    const datos = await leerJson(req);
+    return { codigo: 200, datos: { ordenCamino: guardarOrdenCamino(db, datos?.orden) } };
   }, { admin: true });
 
   // 0.14.14: «Mostrar nombres en la carrera» (apagado: los demás son «Piloto 1, 2…»).

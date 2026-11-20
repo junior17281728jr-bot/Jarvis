@@ -6,6 +6,8 @@
 //  - «Ver todas / Cerrar todas» arriba.
 //  - Una materia bloqueada se puede abrir para VER sus temas (títulos y cuántas preguntas), pero siguen cerrados:
 //    el orden 1 → 11 es el de siempre (lo decide el servidor).
+//  - 0.14.81: con el camino libre no hay materias bloqueadas: la que está toda más adelante de lo recomendado dice
+//    «Más adelante» (sin candado).
 //  - Accesible: un botón con aria-expanded y aria-controls sobre cada tarjeta; lo cerrado no se lee ni se toca.
 //  - Sin saltos al abrir la pantalla: el estado se pone antes de dibujar y la animación solo corre al tocar.
 // Recibe lo que necesita (t, icono, …) como perfil-vista.js: no importa app.js.
@@ -49,6 +51,8 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
     // Lo de la cabeza: avance, estado y video (.materia-insignias deja lugar para otras insignias).
     const estado = m.estado === 'vacia' ? null : m.estado === 'aprobada' ? ['marca', t('camino.estado.aprobada')]
       : m.estado === 'bloqueada' ? ['candado', t('camino.estado.bloqueada')]
+      // 0.14.81 (camino libre): una materia toda más adelante de lo recomendado: abierta, sin candado.
+      : m.adelantada ? ['flecha', t('camino.estado.adelantada')]
       // 0.14.3: un capítulo del oral que todavía no se empezó (gris, «Sin empezar»).
       : m.estado === 'sin_empezar' ? ['reloj', t('camino.estado.sin_empezar')] : ['avion', t('camino.estado.abierta')];
     const insignias = el('div', { class: 'materia-insignias' },
@@ -56,7 +60,7 @@ export function plegarCamino(camino, materias, { t, tn, icono, numero, el, usuar
       m.video ? el('span', { class: `materia-insignia ${m.video.visto ? 'hecho' : 'pendiente'}` }, icono('video', 'icono chico'), el('span', { texto: t(m.video.visto ? 'camino.video_visto' : 'camino.video_pendiente') })) : null);
     if (estado) {
       banner.querySelector('.banner-texto')?.append(el('div', { class: 'materia-estado' },
-        el('span', { class: `materia-estado-chip estado-${m.estado}` }, icono(estado[0], 'icono chico'), el('span', { texto: estado[1] })),
+        el('span', { class: `materia-estado-chip estado-${m.adelantada ? 'adelantada' : m.estado}` }, icono(estado[0], 'icono chico'), el('span', { texto: estado[1] })),
         el('span', { class: 'materia-pct', texto: `${numero(m.pct ?? 0)} %` })),
       insignias);
     }

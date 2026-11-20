@@ -1834,3 +1834,22 @@ a.pie-terminos { display: inline-flex; align-items: center; min-height: 44px; pa
 /* 0.14.72: #certificados/todos (public/certificado-vista.js, vistaTodos). */
 .cert-fila-codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.5px; overflow-wrap: anywhere; }
 details.cert-verificar > summary { color: var(--acento); }
+/* 0.14.81: el camino libre con orden recomendado. El tema recomendado se resalta; los temas más adelante («adelantado»)
+   se ven más suaves, sin candado (se pueden abrir); el aviso corto de la portada de un tema adelantado, una vez. */
+.nodo.recomendado .nodo-detalle {
+  color: var(--texto); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--mc, var(--verde)) 75%, transparent);
+}
+.nodo.adelantado .nodo-aro { opacity: 0.55; }
+.nodo.adelantado .nodo-boton { outline: 2px dashed color-mix(in srgb, var(--suave) 70%, transparent); outline-offset: 5px; }
+.nodo.adelantado .nodo-nombre { color: var(--suave); font-weight: 700; }
+.materia-estado-chip.estado-adelantada { background: color-mix(in srgb, var(--azul, #1c7ed6) 12%, var(--tarjeta)); color: var(--texto); }
+.aviso-orden {
+  display: grid; gap: 10px; width: 100%; max-width: 520px; margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; text-align: left;
+  background: color-mix(in srgb, var(--azul, #1c7ed6) 10%, var(--tarjeta)); border-left: 5px solid var(--azul, var(--linea)); color: var(--texto);
+}
+.aviso-orden p { margin: 0; font-weight: 700; font-size: 15.5px; line-height: 1.35; }
+.aviso-orden .icono { flex: none; width: 18px; height: 18px; margin-top: 2px; }
+.aviso-orden-botones { display: flex; flex-wrap: wrap; gap: 8px; }
+.aviso-orden-botones > * { flex: 1 1 140px; text-align: center; justify-content: center; }
+.aviso-orden-botones > .aviso-orden-examen { flex-basis: 100%; }

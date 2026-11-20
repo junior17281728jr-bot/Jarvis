@@ -20,6 +20,7 @@ import { intercalar } from '../src/academia/practica.js';
 import { estiloDe, tarjetaPara } from '../src/academia/instructor.js';
 import { semanaDe } from '../src/api/instructor.js';
 import { paqueteMuestra, figuraMuestraPng } from './academia-muestra.js';
+import { guardarOrdenCamino } from '../src/academia/orden-camino.js';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DESDE_TAILSCALE = { 'Tailscale-User-Login': 'junior@example.com' };
@@ -55,6 +56,8 @@ function relojDePrueba(inicio = T0) {
 async function conAcademia(fn) {
   const config = configDePrueba();
   const db = abrirBase(config);
+  // 0.14.81: estas pruebas son del camino «Estricto» (un tema abre el siguiente), el de antes: el ajuste de verdad.
+  guardarOrdenCamino(db, 'estricto');
   const reloj = relojDePrueba();
   const servidor = crearServidor({ db, config, academia: { azar: azarFijo(), reloj } });
   await conServidor(servidor, async base => {
