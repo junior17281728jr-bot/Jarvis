@@ -4,6 +4,7 @@
 // Regla de siempre (N): sin IA para ese alumno, NADA de IA: las rutas devuelven ia: null / ia: false y la pantalla solo
 // muestra lo gratis («Modo básico»). Nunca va al proveedor el nombre del alumno.
 import { anotarEvidenciaTarjeta } from '../academia/fabrica-mejora.js';
+import { anotarUsoTarjeta } from '../academia/donde-cuesta.js';
 import { ErrorHttp, leerJson, textoDe } from '../nucleo/http.js';
 import { camino } from '../academia/progreso.js';
 import { modeloAlumno, respuestaDelAlumno, reexplicarSinIa } from '../academia/instructor.js';
@@ -55,7 +56,8 @@ export function registrarRutasTutor(rutas, h) {
   const { estadoInstructor, pedirIa, deGuardado, iaNoAhora, lista, contar, topes, activo, reloj, guardadaSinIa, llego } = h;
   // 0.14.57: «Explícamelo mejor» / «Profundizar» de una tarjeta, con IA o sin IA (lo que ya escribió, gratis). entrada: lo
   // que entra en la clave y en el pedido (lo mismo en los dos caminos). → { ia, hayProfundizar? }.
-  function tarjetaConOSinIa(db, usuario, instructor, { tipo, quiereIa, entrada, estilo, alPedir = null }) {
+  // 0.14.59: alVer(clave, idioma): cuál «Explícamelo mejor» se le mostró (o se le está escribiendo).
+  function tarjetaConOSinIa(db, usuario, instructor, { tipo, quiereIa, entrada, estilo, alPedir = null, alVer = null }) {
     const tipoClave = tipo === 'profundizar' ? 'profundiza' : 'tarjeta';
     const armar = armadorClave(tipoClave, entrada);
     let ia = null;
@@ -65,10 +67,10 @@ export function registrarRutasTutor(rutas, h) {
       const ya = leerGuardado(db, pedido.clave);
       ia = ya ? deGuardado(db, usuario, pedido.clave, ya)
         : pedirIa(db, usuario, { uso, sistema: pedido.sistema, texto: pedido.texto, clave: pedido.clave, extra: { sinResponder: pedido.sinResponder, tarjetaTitulo: entrada.tarjeta.titulo } });
-      if (llego(ia)) alPedir?.();
+      if (llego(ia)) { alPedir?.(); alVer?.(pedido.clave, usuario.idioma); }
     } else if (quiereIa) ia = iaNoAhora(instructor);
     if (llego(ia)) return { ia };
-    const g = guardadaSinIa(db, usuario, instructor, tipoClave, armar, { estilo, conEstilo: tipoClave === 'tarjeta' });
+    const g = guardadaSinIa(db, usuario, instructor, tipoClave, armar, { estilo, conEstilo: tipoClave === 'tarjeta', alHallar: alVer });
     if (!g) return { ia };
     // Con «Explícamelo mejor» guardado, ¿también hay un «Profundizar» guardado? (la pantalla pone su botón).
     const hayProfundizar = tipoClave === 'tarjeta' && instructor.modo !== 'ia' && Boolean(guardadaSinIa(db, usuario, instructor, 'profundiza', armadorClave('profundiza', entrada), { conEstilo: false, contar: false }));
@@ -175,10 +177,16 @@ export function registrarRutasTutor(rutas, h) {
     const preguntas = ids.map(id => p.preguntas.get(id)).filter(Boolean).map(q => ({ numero: String(q.original.numero ?? q.id), enunciado: q.original.enunciado, opciones: q.original.opciones.map(o => o.texto) }));
     const trampas = [...new Set((a?.preguntas ?? []).filter(x => x.tarjeta === n - 1).flatMap(x => x.trampas))];
     const entrada = { tarjeta: { titulo: String(s.titulo ?? ''), texto: textoTarjeta(s) }, tema: t.titulo, preguntas, trampas };
+    let vista = null;
     const r = tarjetaConOSinIa(db, usuario, instructor, {
       tipo, quiereIa: datos?.ia === true, entrada, estilo,
       alPedir: () => anotarEvento(db, usuario.id, { tipo: tipo === 'profundizar' ? 'profundizar' : 'mejor', materia, tema, tarjeta: n, titulo: String(s.titulo ?? '') }, ahora),
+      alVer: (clave, idioma) => { vista = { clave, idioma }; },
     });
+    // 0.14.59: «Dónde más cuesta» y «Otra forma de verlo»: que pidió ayuda en ESTA tarjeta y cuál explicación vio (solo
+    // su id interno, para contar distintos). Nunca hace fallar lo que se muestra.
+    // El administrador que estudia como estudiante no cuenta (tampoco cuenta en el fallo).
+    if (usuario.rol !== 'admin') try { anotarUsoTarjeta(db, { materia, tema, seccion: s, usuarioId: usuario.id, tipo, clave: vista?.clave ?? null, idioma: vista?.idioma ?? usuario.idioma, ahora }); } catch (error) { console.error('uso de la tarjeta:', error?.name ?? 'Error'); }
     // K: «Para el examen» (lo pone la app): citadas solo las que ya respondió; de las otras, el número.
     return { codigo: 200, datos: { instructor: { modo: instructor.modo }, basica, ...r, examen: paraElExamen(db, usuario.id, p, materia, tema, n - 1) } };
   });

@@ -4754,7 +4754,7 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
       nodo = v.nodo;
       actual = v;
       // 0.12.9 (J): «¿Lo entendiste?» 👍/🤔 en cada tarjeta (con IA: «Explícamelo mejor» / «Profundizar»; sin IA, lo gratis).
-      if (Number.isInteger(p.seccion) && (!p.parte || p.parte === p.partes)) nodo.append(tutorUi().entendiste(materia, tema, p.seccion + 1));
+      if (Number.isInteger(p.seccion) && (!p.parte || p.parte === p.partes)) nodo.append(...[tutorUi().otraForma(l.secciones?.[p.seccion]?.otraForma), tutorUi().entendiste(materia, tema, p.seccion + 1)].filter(Boolean)); // 0.14.59: «Otra forma de verlo»
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
     }
     // 0.12.9 (I): cuánto tarda en cada tarjeta (solo el promedio, al terminar la clase).
@@ -6418,10 +6418,19 @@ async function pantallaContenido(parte = 'paquetes') {
     import('./admin-ia.js').then(m => { const rejilla = raiz.querySelector('.rejilla.ajustes-curso'); if (vigente() && rejilla) rejilla.append(m.tarjetaUnDispositivo(piezasIa())); });
     return;
   }
-  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaCobertura,
+  ponerDondeCuesta(vigente); // 0.14.59
+  mostrar(marco('admin', cabecera, el('div', { class: 'rejilla dos contenido-admin' }, tarjetaDrive(r.datos.drive), tarjetaSubir, tarjetaVersiones, tarjetaCobertura,
     // Los ajustes del curso tienen su pestaña: aquí, el camino.
     el('section', { class: 'tarjeta' }, el('h2', { class: 'con-icono' }, icono('ajustes'), el('span', { texto: t('admin.sub.ajustes') })), el('p', { class: 'ayuda', texto: t('admin.linea.ajustes') }),
       el('a', { class: 'boton-enlace secundario con-icono', href: '#contenido/ajustes' }, icono('ajustes', 'icono chico'), el('span', { texto: t('ajustes.ir') }))))));
+}
+// 0.14.59: Contenido → «Dónde más les cuesta» arriba de todo (public/cuesta-vista.js). Se pide después de dibujar la
+// pantalla (no se adelanta al abrir: no la demora).
+function ponerDondeCuesta(vigente) {
+  Promise.all([api('GET', '/api/admin/academia/cuesta'), import('./cuesta-vista.js')]).then(([c, m]) => {
+    const rejilla = raiz.querySelector('.rejilla.contenido-admin');
+    if (vigente() && c.ok && rejilla) rejilla.prepend(m.tarjetaCuesta(c.datos, { el, t, numero, icono, insignia, nombreMateria, api, avisar, textoError }));
+  }).catch(() => {});
 }
 // 0.12.5: Contenido → Términos (0.9.2: los «Términos de uso y aviso», public/terminos-vista.js).
 async function pantallaTerminosAdmin() {

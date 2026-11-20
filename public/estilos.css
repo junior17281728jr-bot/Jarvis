@@ -1573,3 +1573,12 @@ details.plegable-seccion > summary { cursor: pointer; font-weight: 700; min-heig
 details.plegable-seccion > .tarjeta { border: 0; box-shadow: none; background: none; padding: 0; margin: 10px 0 0; }
 details.demo-seccion > summary { cursor: pointer; list-style: revert; }
 details.demo-seccion > summary h2 { display: inline; margin: 0; }
+
+/* 0.14.59: Contenido → «Dónde más les cuesta». */
+.cuesta-tarjeta { grid-column: 1 / -1; }
+.cuesta-lista { margin: 8px 0 0; padding-left: 22px; display: grid; gap: 10px; }
+.cuesta-fila p { margin: 4px 0 0; }
+.cuesta-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cuesta-promo { flex-wrap: wrap; gap: 6px; }
+.cuesta-promo > .icono { flex: none; }
+.cuesta-promo > span { flex: 1 1 220px; }

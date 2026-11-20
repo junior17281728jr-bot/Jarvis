@@ -514,3 +514,8 @@ button.plan-hoy-fila { cursor: pointer; }
   .marco.con-instructor .camino-todas .texto-largo { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .marco.con-instructor .camino-todas .texto-corto { display: inline; }
 }
+
+/* 0.14.59: «Otra forma de verlo» en una tarjeta de la clase (la explicación que más ayudó a otros alumnos). */
+.otra-forma { margin: 10px 0 4px; padding: 8px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--oro) 45%, transparent); background: color-mix(in srgb, var(--oro) 8%, transparent); }
+.otra-forma > summary { cursor: pointer; font-weight: 700; }
+.otra-forma > p { margin: 8px 0 0; }

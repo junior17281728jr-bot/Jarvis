@@ -167,12 +167,14 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
   // mismo, gratis: sin cobrar un uso, sin fila y sin tope (src/academia/saber-sin-ia.js). Nunca a quien activó la
   // academia sin IA (sin_consentimiento): eligió no usarla. → lo que ve (estado 'lista', guardada: true) o null.
   const llego = ia => ia?.estado === 'lista' || ia?.estado === 'pendiente';
-  function guardadaSinIa(db, usuario, instructor, tipo, armar, { estilo = 'claro', conEstilo = true, contar: anotar = true } = {}) {
+  // 0.14.59: alHallar(clave, idioma): cuál se le mostró (para medir si ayudó: src/academia/donde-cuesta.js).
+  function guardadaSinIa(db, usuario, instructor, tipo, armar, { estilo = 'claro', conEstilo = true, contar: anotar = true, alHallar = null } = {}) {
     if (instructor?.motivo === 'sin_consentimiento') return null;
     try {
       const h = buscarGuardada(db, armar, { estilo, idioma: usuario.idioma, modelo: leerConfigIa(db).instructorModelo, conEstilo });
       if (!h) return null;
       if (anotar) anotarServida(db, tipo, reloj());
+      alHallar?.(h.clave, h.idioma);
       return paraVer(h, usuario.idioma);
     } catch (error) {
       console.error('lo guardado sin IA:', error?.name ?? 'Error');

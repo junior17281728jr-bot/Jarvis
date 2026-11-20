@@ -171,6 +171,19 @@ export function crearTutor(h) {
       salida);
   }
 
+  // ---------- 0.14.59: «Otra forma de verlo» (la explicación que más ayudó a otros alumnos; gratis, para todos) ----------
+  function otraForma(o) {
+    if (!o?.explicacion) return null;
+    return el('details', { class: 'otra-forma' },
+      el('summary', { class: 'con-icono' }, icono('bombilla', 'icono chico'), el('span', { texto: t('clase.otra_forma.titulo') })),
+      ...[
+        el('p', { class: 'suave chica', texto: t('clase.otra_forma.linea') }),
+        talCual('p', o.explicacion),
+        o.ejemplo ? el('p', {}, el('strong', { texto: `${t('mini.ia.ejemplo')} ` }), talCual('span', o.ejemplo)) : null,
+        o.recuerda ? el('p', { class: 'recuerda-linea' }, el('strong', { texto: `${t('acad.recuerda')}: ` }), talCual('span', o.recuerda)) : null,
+      ].filter(Boolean));
+  }
+
   // ---------- H: la pista después de un error en la práctica ----------
   function pista(intento, pregunta) {
     const lugar = el('div', { class: 'tutor-pista' });
@@ -321,5 +334,5 @@ export function crearTutor(h) {
     return lugar;
   }
 
-  return Object.freeze({ adminAlumno, tarjetaTutor, ponerApertura, entendiste, pista, examen, pintarExamen, pantallaExamen, pantallaMemoria, pintarMemoria, pantallaPersonalizadas, botonPersonalizadas, olvidar, pintarTarjeta, pintarApertura, pintarPersonalizadas, paraElExamen, pintarTarjetaIa, pintarBasica, insigniaIa });
+  return Object.freeze({ adminAlumno, tarjetaTutor, ponerApertura, entendiste, otraForma, pista, examen, pintarExamen, pantallaExamen, pantallaMemoria, pintarMemoria, pantallaPersonalizadas, botonPersonalizadas, olvidar, pintarTarjeta, pintarApertura, pintarPersonalizadas, paraElExamen, pintarTarjetaIa, pintarBasica, insigniaIa });
 }

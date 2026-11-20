@@ -23,6 +23,8 @@ import { encolar } from '../tareas/cola.js';
 import { leerModoSeguro } from '../tareas/modo-seguro.js';
 import { auditar } from '../cuentas/usuarios.js';
 import { anotarIntento, anotarClase, coberturaTestGuide } from '../academia/tutor.js';
+// 0.14.59: «Otra forma de verlo» en la clase y «Dónde más les cuesta» para el administrador.
+import { conOtraForma, fotoVigente, calcularTodo, guardarTodo, listaAdmin } from '../academia/donde-cuesta.js';
 import { camino, leccion, crearIntento, verIntento, responder, terminar, progreso, alumnos, detalleAlumno, ajustesAcademia, guardarAjustesAcademia, grupoEncendido, encenderGrupo, videoMateria, marcarVideoVisto, guardarPosicionVideo, marcarTemaLeido, guardarPasoTema, marcarVideoOfrecido, claveDeRespuestas } from '../academia/progreso.js';
 import { extrasAlumno, elegirPlan, ocultarEnGrupo, grupoDe } from '../academia/plan.js';
 import { carreraDe, nombresEnCarrera, mostrarNombresEnCarrera } from '../academia/carrera.js';
@@ -242,8 +244,24 @@ export function registrarRutasAcademia(rutas, { config = null, supervisor = null
     return { codigo: 200, datos: guardarPosicionVideo(db, usuario.id, activo(db), parametros.materia, datos?.segundos, reloj()) };
   });
 
-  rutas.agregar('GET', '/api/academia/temas/:materia/:tema', ({ db, usuario, parametros }) =>
-    ({ codigo: 200, datos: leccion(db, usuario.id, activo(db), parametros.materia, parametros.tema) }));
+  // 0.14.59: con «Otra forma de verlo» en las tarjetas que la tienen (lo que la IA ya escribió y ayudó de verdad; gratis).
+  rutas.agregar('GET', '/api/academia/temas/:materia/:tema', ({ db, usuario, parametros }) => {
+    const p = activo(db);
+    const l = leccion(db, usuario.id, p, parametros.materia, parametros.tema);
+    let datos = l;
+    try { datos = conOtraForma(db, p, l, usuario.idioma); } catch (error) { console.error('otra forma de verlo:', error?.name ?? 'Error'); }
+    return { codigo: 200, datos };
+  });
+  // 0.14.59: Administrador → Contenido: «Dónde más les cuesta» (los 10 primeros). La cuenta la hace el trabajador cada
+  // hora; si no hay una reciente, se hace aquí (solo lee y guarda una fila; nunca llama a la IA).
+  rutas.agregar('GET', '/api/admin/academia/cuesta', ({ db }) => {
+    const p = activo(db);
+    if (!p) return { codigo: 200, datos: { lista: [], en: null } };
+    const ahora = reloj();
+    let foto = fotoVigente(db, ahora);
+    if (!foto) { const todo = calcularTodo(db, p, ahora); guardarTodo(db, todo, ahora); foto = todo.foto; }
+    return { codigo: 200, datos: { lista: listaAdmin(db, p, foto), en: foto.en } };
+  }, { admin: true });
 
   // 0.12.2: el video de la materia ya se ofreció (la primera vez que entró): nunca más se muestra solo.
   rutas.agregar('POST', '/api/academia/video/:materia/ofrecido', async ({ db, req, usuario, parametros }) => {

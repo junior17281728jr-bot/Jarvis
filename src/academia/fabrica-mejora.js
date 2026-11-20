@@ -8,6 +8,9 @@
 //  - una pregunta del Test Guide que responden mal la mitad o más de 5 alumnos o más (academia_respuestas), con la
 //    opción equivocada que más eligen.
 // Lo que se mejoró se marca: la misma evidencia no vuelve a trabajarse (solo si después llega evidencia nueva).
+// 0.14.59: el ORDEN sale de «Dónde más cuesta» (src/academia/donde-cuesta.js): primero la materia y las tarjetas que más
+// les cuestan a los alumnos (fallo, ayuda pedida, fallo después de la ayuda); después el peso de antes. No agrega ni
+// quita evidencia, ni toca los umbrales, la semana, los topes ni el candado del Test Guide.
 // Su tope propio (por defecto US$2 al mes, editable) además del general. El Test Guide nunca cambia (se compara con la
 // versión de antes, byte a byte).
 import { readFileSync, statSync } from 'node:fs';
@@ -22,6 +25,8 @@ import { puedeLlamar, gastoMejoraMesMicro, adjuntar, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 // 0.14.26: las opiniones de los alumnos al terminar un tema («¿Cómo te fue con esta clase?»).
 import { evidenciaOpiniones } from './opiniones.js';
+import { paqueteActivo } from './paquetes.js';
+import { fotoVigente, calcularCuesta, prioridades, ordenarPorCuesta } from './donde-cuesta.js';
 
 export const SEMANA_MS = 7 * 86_400_000;
 export const UMBRALES_MEJORA = Object.freeze({ usuariosTarjeta: 3, usuariosPregunta: 5, fallaPct: 50, items: 6, paqueteMaxBytes: 4 * 1024 * 1024 });
@@ -65,6 +70,16 @@ export function evidencia(db) {
   return out.filter(x => typeof x.materia === 'string' && typeof x.tema === 'string').sort((a, b) => b.peso - a.peso);
 }
 
+// 0.14.59: la cuenta de «Dónde más cuesta» (la de la última hora; si no hay, se hace aquí: solo lee). Sin paquete: nada.
+function fotoDeCuesta(db, config, ahora) {
+  try {
+    const f = fotoVigente(db, ahora);
+    if (f) return f;
+    const p = paqueteActivo(db, config);
+    return p ? calcularCuesta(db, p, { ahora }) : null;
+  } catch { return null; }
+}
+
 // La versión en uso que da esa materia (la última puesta en uso que la trae).
 function versionDe(db, materia) {
   for (const e of [...leerEnUso(db)].reverse()) {
@@ -88,7 +103,7 @@ export async function mejorar(ctx, { ahora, cfg }) {
   if (!trabajo?.items) {
     const ultima = leerJson(db, AJUSTE_ULTIMA);
     if (ultima?.en && ahora - Date.parse(ultima.en) < SEMANA_MS) return { seguir: false, motivo: 'semana' };
-    const ev = evidencia(db);
+    const ev = ordenarPorCuesta(evidencia(db), prioridades(fotoDeCuesta(db, config, ahora)));
     if (!ev.length) { await ctx.escribir(() => guardarAjuste(db, AJUSTE_ULTIMA, JSON.stringify({ en: iso(ahora), motivo: 'sin_evidencia', mejorados: [] }))); return { seguir: false, motivo: 'sin_evidencia' }; }
     const materia = ev[0].materia;
     const fila = versionDe(db, materia);
