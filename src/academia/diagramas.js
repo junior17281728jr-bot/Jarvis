@@ -31,6 +31,41 @@ export const FLECHAS_LETRERO = Object.freeze(['izquierda', 'derecha', 'arriba', 
 export const SIMBOLOS_CARTA = Object.freeze(['aeropuerto_torre', 'aeropuerto_sin_torre', 'aeropuerto_largo', 'aeropuerto_blando', 'aeropuerto_privado',
   'clase_b', 'clase_c', 'clase_d', 'clase_e_superficie', 'clase_e_700', 'clase_e_1200', 'moa', 'restringida', 'prohibida',
   'vor', 'vor_dme', 'vortac', 'ndb', 'obstaculo', 'obstaculo_alto', 'mef']);
+// 0.14.78: las ESCENAS 3D (tipo «escena-3d», public/clase/escena3d.js): una animación guiada por pasos. Parámetros:
+//   { escena, titulo?, pasos?: [{ id, texto?, mas? }] }. Sin «pasos», todos; con «pasos», esos (sin repetir) en ese orden, y
+//   con su texto propio si se da (texto con **negrita**, «mas» es el «Ver más»). La lista de pasos de cada escena es la
+//   de public/clase/escenas3d.js (una prueba revisa que coincidan).
+export const TIPO_ESCENA_3D = 'escena-3d';
+export const ESCENAS_3D = Object.freeze({
+  'espacio-aereo': Object.freeze(['vista', 'g', 'e', 'd', 'c', 'c1p', 'b', 'a']),
+  'minimos-vfr': Object.freeze(['burbuja', 'vis', 'alto', 'b', 'g']),
+  'circuito-3d': Object.freeze(['vista', 'salida', 'cruzado', 'cola', 'cola1p', 'base', 'final', 'entrada']),
+  frentes: Object.freeze(['vista', 'calido', 'calidoPaso', 'frio', 'frio1p', 'frioPaso']),
+  perdida: Object.freeze(['aoa', 'masAoa', 'critico', 'recuperar', 'g0', 'g45', 'g60']),
+  'vor-3d': Object.freeze(['radiales', 'hacia', 'desvio', 'desde', 'rumbo']),
+});
+export const LIMITES_ESCENA_3D = Object.freeze({ pasos: 10, texto: 220, mas: 420 });
+function revisarEscena3d(p) {
+  if (p == null || typeof p !== 'object' || Array.isArray(p)) return ['sin_parametros'];
+  const mal = [];
+  if (!(typeof p.escena === 'string' && Object.hasOwn(ESCENAS_3D, p.escena))) return ['escena'];
+  if (p.titulo != null && !corto(p.titulo)) mal.push('titulo');
+  if (p.pasos != null) {
+    const L = LIMITES_ESCENA_3D, ids = ESCENAS_3D[p.escena];
+    if (!Array.isArray(p.pasos) || !p.pasos.length || p.pasos.length > Math.min(L.pasos, ids.length)) return [...mal, 'pasos'];
+    const vistos = new Set();
+    p.pasos.forEach((x, i) => {
+      if (!x || typeof x !== 'object' || Array.isArray(x) || !ids.includes(x.id)) return mal.push(`pasos[${i}].id`);
+      if (vistos.has(x.id)) mal.push(`pasos[${i}].repetido`);
+      vistos.add(x.id);
+      if (x.texto != null && !corto(x.texto, L.texto)) mal.push(`pasos[${i}].texto`);
+      if (x.mas != null && !corto(x.mas, L.mas)) mal.push(`pasos[${i}].mas`);
+      for (const k of Object.keys(x)) if (!['id', 'texto', 'mas'].includes(k)) mal.push(`pasos[${i}].${k}`);
+    });
+  }
+  for (const k of Object.keys(p)) if (!['escena', 'titulo', 'pasos'].includes(k)) mal.push(k);
+  return mal;
+}
 // Los dibujos que ya existían y que la fábrica también puede pedir (sin datos propios).
 export const VISUALES_SIMPLES = Object.freeze(['titulo', 'cartel']);
 const MAX = Object.freeze({ elementos: 8, pasos: 7, columnas: 4, filas: 6, texto: 160, largo: 400 });
@@ -40,6 +75,7 @@ const numero = v => typeof v === 'number' && Number.isFinite(v);
 // → lista de motivos (vacía si está bien).
 export function revisarDiagrama(tipo, p) {
   if (TIPOS_DIBUJO.includes(tipo)) return revisarDibujo(tipo, p);
+  if (tipo === TIPO_ESCENA_3D) return revisarEscena3d(p);
   if (!TIPOS_DIAGRAMA.includes(tipo)) return [];
   const mal = [];
   if (p == null || typeof p !== 'object' || Array.isArray(p)) return ['sin_parametros'];
@@ -156,6 +192,6 @@ function revisarDibujo(tipo, p) {
 // ¿La tarjeta de la fábrica tiene algo que se VEA? (foto del libro, un dibujo bien llenado, o «solo texto» con motivo)
 export function tarjetaConVisual(s) {
   if (s?.imagen?.archivo || s?.clip?.archivo) return true;
-  if (s?.visual?.tipo && (VISUALES_SIMPLES.includes(s.visual.tipo) || ([...TIPOS_DIAGRAMA, ...TIPOS_DIBUJO].includes(s.visual.tipo) && !revisarDiagrama(s.visual.tipo, s.visual.parametros).length))) return true;
+  if (s?.visual?.tipo && (VISUALES_SIMPLES.includes(s.visual.tipo) || ([...TIPOS_DIAGRAMA, ...TIPOS_DIBUJO, TIPO_ESCENA_3D].includes(s.visual.tipo) && !revisarDiagrama(s.visual.tipo, s.visual.parametros).length))) return true;
   return typeof s?.solo_texto === 'string' && s.solo_texto.trim().length >= 10;
 }

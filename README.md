@@ -712,6 +712,44 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.78: escenas 3D guiadas para los temas difíciles — sin cambio de base
+
+Pedido del dueño: «si el tema es muy difícil, anímalo… 3D». Un tipo de dibujo nuevo, `escena-3d`: una animación 3D por
+pasos con subtítulos cortos (texto de verdad, `aria-live`), «Ver más» cerrado por paso y un «Recuerda» de una línea al
+final. Botones: Anterior, Reproducir/Pausa, «Vista 1ª/3ª persona», Repetir y Siguiente; se gira arrastrando o con las
+flechas y se acerca pellizcando, con la rueda o con + y −. Se pausa fuera de la pantalla y con la pestaña oculta; con
+«reducir movimiento» empieza quieta (pero dibujada).
+
+- **Motor propio** (`public/clase/motor3d.js`, sin dependencias): lienzo 2D, perspectiva, recorte contra el plano
+  cercano, orden del pintor (suelo, «calco» y mundo), sombreado plano con sol, niebla por distancia, volúmenes
+  semitransparentes con bordes nítidos, nubes de bolas, etiquetas que miran a la cámara y no se pisan, cielo con
+  horizonte, terreno, el avión (ala alta, hélice que gira, luces de navegación) y la cabina (parabrisas y cuatro
+  instrumentos). DPR hasta 2.
+- **Escenas** (`public/clase/e3d-*.js`, registro en `escenas3d.js`, montaje en `escena3d.js`):
+  `espacio-aereo` (A, B, C, D, E y G con medidas típicas y lo que pide cada clase, en vivo), `minimos-vfr` (la burbuja
+  500/1,000/2,000 y 1,000/1,000/1 SM, la visibilidad como niebla), `circuito-3d` (los cinco tramos, la entrada a 45° y
+  el viento en cola desde la cabina), `frentes` (frío y cálido en corte, nubes, lluvia, viento y presión),
+  `perdida` (ángulo de ataque con el aire que se despega; 50/60/70 kt a 0/45/60° del AFH) y `vor-3d` (radiales, TO/FROM
+  y el CDI de `vor.js`).
+- **WebGL2 cuando hay** (`public/clase/motor3d-gl.js`, propio, sin librerías): mallas con normales (el fuselaje
+  suavizado, brillo en el avión), sol más luz de cielo y suelo, niebla y bruma, cielo con el sol, MSAA, terreno con
+  textura hecha en el shader (campos y surcos), nubes con textura de ruido, luces de navegación, estroboscópicas y
+  baliza, alerones y timón de profundidad que se mueven. Las etiquetas, la cabina y los gráficos van en una capa 2D
+  encima. Sin WebGL2 (o `opciones.motor = '2d'`), la misma escena con el motor 2D. El lienzo baja a 75 % de píxeles si
+  dibujar tarda.
+- **Escenas con datos** (`public/clase/e3d-json.js`, `escenaDesdeJson`): entorno (terreno, aeropuertos, nubes,
+  volúmenes, etiquetas) y pasos (texto, cámara, ruta, estados del avión en el tiempo, etiqueta de arriba). Es la base de
+  las «consecuencias animadas»; `montarEscena3d(lugar, {}, { escena })`. Ejemplo: `/clase/demo-3d.html?json=1`.
+- **Carga cuando se usa**: `visuales.js` deja un hueco «Cargando la escena 3D…» y pide `escena3d.js` con `import()`.
+- **Parámetros** (revisados en `src/academia/diagramas.js`, `ESCENAS_3D`): `{ escena, titulo?, pasos?: [{ id, texto?,
+  mas? }] }`. Sin `pasos`, todos; con `pasos`, esos y en ese orden (hasta 10, sin repetir), con texto propio (hasta 220
+  letras, `**negrita**`) y «Ver más» propio (hasta 420). Pasos: `espacio-aereo` vista, g, e, d, c, c1p, b, a;
+  `minimos-vfr` burbuja, vis, alto, b, g; `circuito-3d` vista, salida, cruzado, cola, cola1p, base, final, entrada;
+  `frentes` vista, calido, calidoPaso, frio, frio1p, frioPaso; `perdida` aoa, masAoa, critico, recuperar, g0, g45, g60;
+  `vor-3d` radiales, hacia, desvio, desde, rumbo.
+- Textos en `clase.e3d.*` (es y en). Galería: `/clase/demo-3d.html` (`?escena=frentes&paso=4&vista=1p&pausa=1`).
+  Pruebas: `test/escenas-3d.test.js`.
+
 ### Lo nuevo de la 0.14.71: «Notas por materia», el total de cada materia por alumno — sin cambio de base
 
 - **Administrador → Alumnos → Notas por materia** (`#notas-materia`, `public/admin-resumen.js`; ocupa el lugar de la

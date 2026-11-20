@@ -853,3 +853,52 @@ html, body { margin: 0; }
 .demo-hueco + .demo-json { margin-top: 6px; }
 .clase-dib-lienzo-circuito .clase-dib-norte-n { font-size: 16px; }
 .clase-dib-lienzo-viento .clase-dib-norte-n { font-size: 15px; }
+
+/* 0.14.78: escenas 3D (escena3d.js). El lienzo lleva su tamaño por CSS (proporción) y sus píxeles por atributos. */
+.clase-e3d { --cl-e3d-modo: claro; box-sizing: border-box; margin: 0; padding: 12px; border-radius: 18px; background: var(--cl-tarjeta); border: 1px solid var(--cl-borde); color: var(--cl-texto); display: grid; gap: 10px; min-width: 0; }
+:root[data-tema="oscuro"] .clase-e3d { --cl-e3d-modo: oscuro; }
+@media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) .clase-e3d { --cl-e3d-modo: oscuro; } }
+.clase-e3d-titulo { font-weight: 750; font-size: 1.08rem; line-height: 1.25; }
+.clase-e3d-caja { position: relative; border-radius: 14px; overflow: hidden; background: #8cb8e6; }
+:root[data-tema="oscuro"] .clase-e3d-caja { background: #0c1a36; }
+@media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) .clase-e3d-caja { background: #0c1a36; } }
+.clase-e3d-lienzo { display: block; width: 100%; aspect-ratio: 16 / 10; touch-action: pan-y; cursor: grab; outline: none; }
+.clase-e3d-lienzo:active { cursor: grabbing; }
+.clase-e3d-lienzo:focus-visible { box-shadow: inset 0 0 0 3px var(--cl-naranja); }
+@media (max-width: 560px) { .clase-e3d-lienzo { aspect-ratio: 4 / 3.3; } .clase-e3d { padding: 10px 8px; } .clase-e3d-estado { font-size: .74rem; padding: 4px 8px 4px 21px; } .clase-e3d-estado::before { left: 8px; width: 8px; height: 8px; margin-top: -4px; } .clase-e3d-ayuda { font-size: .68rem; } }
+.clase-e3d-capa { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+.clase-e3d-estado { z-index: 2; position: absolute; left: 8px; top: 8px; margin: 0; max-width: calc(100% - 16px); padding: 5px 10px 5px 24px; border-radius: 999px; background: rgba(10, 16, 30, 0.82); color: #fff; font-size: .82rem; font-weight: 650; line-height: 1.25; pointer-events: none; }
+.clase-e3d-estado::before { content: ""; position: absolute; left: 9px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: #9aa4b5; }
+.clase-e3d-estado[data-clase="A"]::before { background: #a0acc0; } .clase-e3d-estado[data-clase="B"]::before { background: #3478f6; }
+.clase-e3d-estado[data-clase="C"]::before { background: #d633c4; } .clase-e3d-estado[data-clase="D"]::before { background: #28a8f0; }
+.clase-e3d-estado[data-clase="E"]::before { background: #b060d6; } .clase-e3d-estado[data-clase="G"]::before { background: #46b262; }
+.clase-e3d-estado[data-clase="ok"]::before { background: #46b262; } .clase-e3d-estado[data-clase="mal"]::before { background: #f04848; }
+.clase-e3d-estado[hidden] { display: none; }
+.clase-e3d-ayuda { z-index: 2; position: absolute; right: 8px; bottom: 8px; margin: 0; padding: 4px 9px; border-radius: 999px; background: rgba(10, 16, 30, 0.6); color: #fff; font-size: .74rem; pointer-events: none; }
+.clase-e3d-ayuda[hidden], .clase-e3d-caja[data-vista="1p"] .clase-e3d-ayuda, .clase-e3d-caja[data-panel="1"] .clase-e3d-ayuda { display: none; }
+.clase-e3d-sin { margin: 0; padding: 12px; }
+.clase-e3d-oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: -1px; }
+.clase-e3d-puntos { display: flex; gap: 4px; }
+.clase-e3d-punto { flex: 1; min-width: 0; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative; }
+.clase-e3d-punto::after { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 4px; border-radius: 4px; background: var(--cl-borde); }
+.clase-e3d-punto-hecho::after { background: var(--cl-azul); opacity: .55; }
+.clase-e3d-punto[aria-current="step"]::after { background: var(--cl-naranja); height: 6px; top: 8px; }
+.clase-e3d-punto:focus-visible { outline: 2px solid var(--cl-naranja); outline-offset: 2px; border-radius: 4px; }
+.clase-e3d-vivo { display: grid; gap: 2px; }
+.clase-e3d-contador { margin: 0; font-size: .8rem; color: var(--cl-suave); font-weight: 600; letter-spacing: .02em; }
+.clase-e3d-paso { margin: 0; font-size: 1.05rem; font-weight: 750; }
+.clase-e3d-texto { margin: 0; font-size: 1.02rem; line-height: 1.45; }
+.clase-e3d-texto strong { color: var(--cl-naranja-fuerte); font-weight: 750; }
+:root[data-tema="oscuro"] .clase-e3d-texto strong { color: var(--cl-naranja); }
+@media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) .clase-e3d-texto strong { color: var(--cl-naranja); } }
+.clase-e3d-mas { font-size: .95rem; color: var(--cl-texto); }
+.clase-e3d-mas summary { cursor: pointer; color: var(--cl-azul); font-weight: 650; min-height: 32px; display: flex; align-items: center; }
+.clase-e3d-mas p { margin: 4px 0 0; line-height: 1.45; color: var(--cl-suave); }
+.clase-e3d-recuerda { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: var(--cl-aviso-suave); color: var(--cl-texto); font-size: .97rem; line-height: 1.4; }
+.clase-e3d-recuerda[hidden] { display: none; }
+.clase-e3d-recuerda-titulo { color: var(--cl-aviso); }
+.clase-e3d-controles { display: flex; flex-wrap: wrap; gap: 6px; }
+.clase-e3d-controles .clase-boton { min-height: 44px; flex: 1 1 auto; }
+.clase-e3d-controles .clase-e3d-siguiente { flex: 2 1 140px; }
+.clase-e3d-controles .clase-boton:disabled { opacity: .45; cursor: default; }
+.clase-e3d-hueco { min-height: 220px; display: grid; place-items: center; border-radius: 18px; background: var(--cl-tarjeta); color: var(--cl-suave); }
