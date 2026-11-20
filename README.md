@@ -712,6 +712,22 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.71: «Notas por materia», el total de cada materia por alumno — sin cambio de base
+
+- **Administrador → Alumnos → Notas por materia** (`#notas-materia`, `public/admin-resumen.js`; ocupa el lugar de la
+  sub-pestaña «Notas»): una fila por alumno (el administrador no sale), una columna por cada una de las 11 materias (las que
+  todavía no tienen clases, «—»), el **Oral** y el **Total completado**. Tocar el nombre abre su ficha.
+- **Cada casilla**: la nota (el mejor examen; sin examen, el % de práctica con «P») y si la completó («✓ completa»: todos sus
+  temas y el examen aprobado) o cuánto hizo («3 de 5 temas», «temas listos, falta el examen»). Y, cuando toca, «Convalidada
+  (examen 92 %)», «Se quemó (57 %)» (fue directo al examen y no lo aprobó) o «Fue directo al examen».
+- **El color** va con la nota de aprobar de **Ajustes del curso**: verde si llega, rojo si no, gris sin nota.
+- **El total**: los temas hechos de todo el curso (Test Guide y oral), cuántas materias completó y la nota general.
+- **Descargar (CSV)** para Excel y **Copiar** (un bloque corto por alumno) para WhatsApp. En el iPhone la tabla se desliza
+  de lado dentro de su caja, con el nombre fijo; la página nunca.
+- Las notas por tema y cada intento siguen en `#notas…`, con un botón desde aquí. Los datos: `GET /api/admin/academia/notas-materia`
+  (`src/academia/resumen-materias.js`, solo el administrador), que junta lo que ya calculan «Notas» y el avance, con pocas
+  consultas para todos los alumnos.
+
 ### Lo nuevo de la 0.14.72: todos los certificados ya hechos, para el administrador — sin cambio de base
 
 - **Alumnos → «Certificados»** (`#certificados/todos`, `GET /api/admin/academia/certificados`, solo el administrador):

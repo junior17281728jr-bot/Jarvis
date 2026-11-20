@@ -882,3 +882,34 @@ dialog.notas-hoja .hoja-ayuda-botones a.boton-enlace { display: flex; align-item
   .ficha-fila-enlace { gap: 8px; }
   .ficha-fila-enlace > .avatar { width: 36px; height: 36px; }
 }
+
+/* ---------- 0.14.71: «Notas por materia» (public/admin-resumen.js) ----------
+   Una fila por alumno; la tabla se desliza de lado DENTRO de .notas-caja (la página nunca) con el nombre fijo a la izquierda.
+   Verde: llega a la nota de aprobar del curso; rojo: no; gris: sin nota. «P» (práctica) con borde punteado. */
+.nm-botones { margin: 6px 0 4px; flex-wrap: wrap; }
+/* Lo que solo leen los lectores de pantalla (position: absolute) queda DENTRO de la caja que se desliza: si no, estira la página. */
+.nm-caja { position: relative; }
+.nm-aviso { min-height: 1em; margin: 4px 0; }
+.nm-aviso:empty { display: none; }
+.nm-copia { display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin-top: 6px; font-size: 13px; }
+.nm-leyenda { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+.nm-leyenda-fila { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nm-tabla td.nm-td { vertical-align: top; min-width: 92px; padding: 8px 6px; }
+.nm-tabla th.nm-th { min-width: 96px; max-width: 130px; }
+.nm-tabla th.nm-th-total, .nm-tabla td.nm-total { min-width: 170px; max-width: 200px; background: color-mix(in srgb, var(--acento) 6%, var(--tarjeta)); }
+.nm-tabla th.nm-th-pronto, .nm-tabla td.nm-pronto { opacity: 0.7; }
+.nm-cod { display: block; font-size: 13px; font-weight: 800; color: var(--texto); }
+.nm-th-nombre { display: block; font-weight: 500; font-size: 11px; }
+.nm-celda { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.nm-nota { display: inline-flex; padding: 2px 9px; border-radius: 99px; font-weight: 800; white-space: nowrap; }
+.nm-nota.nm-practica { background: transparent; border: 1.5px dashed currentColor; font-weight: 700; }
+.nm-estado { font-size: 12px; color: var(--suave); white-space: normal; line-height: 1.2; }
+.nm-estado-completa { color: var(--bien); font-weight: 800; }
+.nm-salto { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 99px; white-space: normal; line-height: 1.25; }
+.nm-salto-convalidada { color: var(--bien); border: 1px solid var(--bien); }
+.nm-salto-quemado { color: var(--mal); background: color-mix(in srgb, var(--mal) 14%, var(--tarjeta)); }
+.nm-salto-directo { color: var(--atencion); border: 1px solid var(--atencion); }
+.nm-total-pct { font-size: 15px; }
+.nm-general { display: flex; align-items: center; gap: 6px; }
+.nm-general .nt { display: inline-flex; padding: 1px 8px; border-radius: 99px; }
+.nm-tabla td.nm-completa { background: color-mix(in srgb, var(--bien) 7%, var(--tarjeta)); }

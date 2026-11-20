@@ -327,6 +327,8 @@ function vistaTodas(d, h, { orden: ordenInicial = 'nombre', alOrdenar = null } =
     el('h1', { class: 'titulo-pantalla con-icono' }, h.icono('medalla'), el('span', { texto: t('notas.titulo') })),
     el('p', { class: 'suave', texto: t('notas.linea') }),
     el('div', { class: 'botones notas-enlaces' },
+      // 0.14.71: el total de cada materia (nota y si la completó) está en «Notas por materia».
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#notas-materia' }, h.icono('marca', 'icono chico'), el('span', { texto: t('notas.por_materia') })),
       el('a', { class: 'boton-enlace secundario con-icono', href: '#como-van' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('notas.como_van') })),
       el('a', { class: 'boton-enlace secundario con-icono', href: '#alumnos' }, h.icono('personas', 'icono chico'), el('span', { texto: t('notas.alumnos') }))),
     d.alumnos.length ? [

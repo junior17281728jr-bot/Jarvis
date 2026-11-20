@@ -87,7 +87,9 @@ export const AREAS_ADMIN = Object.freeze([
   { id: 'alumnos', href: '#alumnos', clave: 'admin.area.alumnos', icono: 'personas', sub: [
     { id: 'alumnos', href: '#alumnos', clave: 'admin.sub.lista', icono: 'personas' },
     { id: 'como-van', href: '#como-van', clave: 'admin.pestana.como_van', icono: 'medalla' },
-    { id: 'notas', href: '#notas', clave: 'admin.pestana.notas', icono: 'marca' },
+    // 0.14.71: «Notas por materia» (el total de cada materia y si la completó) ocupa el lugar de «Notas»: las notas por tema
+    // y cada intento (#notas…) siguen en su dirección, con un botón desde aquí (y desde la lista y «Cómo van todos»).
+    { id: 'notas-materia', href: '#notas-materia', clave: 'admin.sub.notas_materia', icono: 'marca' },
   ] },
   { id: 'mensajes', href: '#mensajes', clave: 'admin.area.mensajes', icono: 'chispa', sub: [
     { id: 'mensajes', href: '#mensajes', clave: 'admin.sub.por_responder', icono: 'campana' },
@@ -139,7 +141,7 @@ export const AVANZADO_ADMIN = Object.freeze([
 // sub-pestañas es de Avanzado.
 // «Usuarios» (crear un alumno, todas las cuentas) está también en la lista de Avanzado, pero se marca Alumnos: «Crear
 // alumno» es de todos los días.
-const AREA_DE = Object.freeze({ resumen: 'inicio', inicio: 'inicio', reporte: 'alumnos', contratos: 'alumnos', ficha: 'alumnos', comparar: 'alumnos', usuarios: 'alumnos' });
+const AREA_DE = Object.freeze({ resumen: 'inicio', inicio: 'inicio', reporte: 'alumnos', contratos: 'alumnos', ficha: 'alumnos', comparar: 'alumnos', usuarios: 'alumnos', notas: 'alumnos' });
 export function areaAdmin(actual) {
   if (Object.hasOwn(AREA_DE, actual)) return AREAS_ADMIN.find(a => a.id === AREA_DE[actual]);
   return AREAS_ADMIN.find(a => a.id === actual || a.sub.some(x => x.id === actual)) ?? AREAS_ADMIN.find(a => a.id === 'avanzado');

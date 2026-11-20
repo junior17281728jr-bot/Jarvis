@@ -1817,7 +1817,7 @@ const PESTANAS_ADMIN = ['resumen', 'estado', 'usuarios', 'trabajo', 'servidor', 
 const LINEA_ADMIN = {
   inicio: () => t('admin.linea.inicio'), estado: () => t('admin.linea.resumen'), usuarios: () => t('admin.linea.usuarios'), trabajo: () => t('admin.linea.trabajo'), servidor: () => t('admin.linea.servidor'),
   copias: () => t('admin.linea.copias'), ia: () => t('admin.linea.ia'), claves: () => t('admin.linea.claves'),
-  alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), notas: () => t('admin.linea.notas'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
+  alumnos: () => t('admin.linea.alumnos'), 'como-van': () => t('admin.linea.como_van'), notas: () => t('admin.linea.notas'), 'notas-materia': () => t('admin.linea.notas_materia'), contenido: () => t('admin.linea.contenido'), respuestas: () => t('admin.linea.respuestas'),
   soporte: () => t('admin.linea.soporte'), reportes: () => t('admin.linea.reportes'), opiniones: () => t('admin.linea.opiniones'), terminos: () => t('admin.linea.terminos'), videos: () => t('admin.linea.videos'),
   pagos: () => t('admin.linea.pagos'), // 0.12.12
   'pago-servidor': () => t('admin.linea.pago_servidor'), // 0.14.1
@@ -6029,6 +6029,12 @@ async function pantallaNotas(seccion) {
   const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/notas'), api('GET', '/api/admin/sistema'), import('./admin-notas.js')]);
   if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaNotas(d, h, vista.rutaNotas(seccion), { orden: ordenNotas, alOrdenar: o => { ordenNotas = o; } }), 'notas');
 }
+// 0.14.71: «Notas por materia» (public/admin-resumen.js): el total de cada materia por alumno, el oral y cuánto completó.
+async function pantallaNotasMateria() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/notas-materia'), api('GET', '/api/admin/sistema'), import('./admin-resumen.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaResumen(d, h), 'notas-materia');
+}
 async function pantallaAlumno(id, pestana = 'resumen') {
   const vigente = nuevoTurno();
   const [r, s, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/ficha`), api('GET', '/api/admin/sistema'), import('./admin-alumnos.js')]);
@@ -6711,7 +6717,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6769,6 +6775,7 @@ async function dibujar() {
   if (oralFinal) return pantallaOralFinal(oralFinal[1] ?? null);
   if (seccion === 'alumnos' && esAdmin) return pantallaAlumnos();
   if (seccion === 'como-van' && esAdmin) return pantallaComoVan();
+  if (seccion === 'notas-materia' && esAdmin) return pantallaNotasMateria();
   if (RUTA_NOTAS.test(seccion) && esAdmin) return pantallaNotas(seccion);
   const compararExamen = seccion.match(/^comparar-examen\/([a-z0-9_-]+)$/);
   if (compararExamen && esAdmin) return pantallaCompararExamen(compararExamen[1]);
@@ -6893,6 +6900,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (extra) return [`/api/academia/extra/${encodeURIComponent(extra[1])}`];
   if (seccion === 'alumnos') return admin ? ['/api/admin/academia/alumnos', '/api/admin/sistema'] : [];
   if (seccion === 'como-van') return admin ? ['/api/admin/academia/como-van', '/api/admin/sistema'] : [];
+  if (seccion === 'notas-materia') return admin ? ['/api/admin/academia/notas-materia', '/api/admin/sistema'] : [];
   // 0.14.6: «Notas» (la misma dirección que RUTA_NOTAS; aquí escrita entera porque esta función se prueba sola).
   if (/^notas(?:\/(?:alumno\/\d{1,9}|comparar\/\d{1,9}(?:,\d{1,9}){1,9}|[a-z0-9_-]+))?$/.test(seccion)) return admin ? ['/api/admin/academia/notas', '/api/admin/sistema'] : [];
   const alumno = seccion.match(/^alumno\/(\d+)(?:\/(?:examenes|materias|debiles|actividad|cuenta|ia))?$/);

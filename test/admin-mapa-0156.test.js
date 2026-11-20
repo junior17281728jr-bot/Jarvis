@@ -56,9 +56,11 @@ test('ninguna pantalla de antes se pierde: cada una está en una entrada (o en A
   const visibles = new Set([...AREAS_ADMIN.flatMap(a => [a.href, ...a.sub.map(x => x.href)]), ...AVANZADO_ADMIN.flatMap(g => g.items.map(x => x.href))]);
   for (const h of antes) {
     assert.ok(existe(h), `${h} ya no abre`);
-    // #reporte y #contratos son botones de la lista de Alumnos (como antes).
-    if (!['#reporte', '#contratos'].includes(h)) assert.ok(visibles.has(h), `${h} no está en ninguna entrada`);
+    // #reporte y #contratos son botones de la lista de Alumnos (como antes). 0.14.71: #notas (las notas por tema y cada
+    // intento) es un botón de «Notas por materia», de la lista de Alumnos y de «Cómo van todos».
+    if (!['#reporte', '#contratos', '#notas'].includes(h)) assert.ok(visibles.has(h), `${h} no está en ninguna entrada`);
   }
+  assert.ok(visibles.has('#notas-materia'), '«Notas por materia» está en Alumnos');
   // El Resumen de antes sigue, en Avanzado → «Estado del sistema».
   assert.equal(itemAvanzado('estado').href, '#admin/estado');
 });
