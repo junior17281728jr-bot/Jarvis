@@ -902,3 +902,37 @@ html, body { margin: 0; }
 .clase-e3d-controles .clase-e3d-siguiente { flex: 2 1 140px; }
 .clase-e3d-controles .clase-boton:disabled { opacity: .45; cursor: default; }
 .clase-e3d-hueco { min-height: 220px; display: grid; place-items: center; border-radius: 18px; background: var(--cl-tarjeta); color: var(--cl-suave); }
+/* 0.14.92: situaciones 3D (situacion3d.js): una escena con una decisión. El lienzo es el de escena3d.js, sin sus pasos. */
+.clase-e3d-sit { padding: 0; border: 0; background: transparent; gap: 8px; }
+.clase-e3d-sit > .clase-e3d-titulo, .clase-e3d-sit > .clase-e3d-puntos, .clase-e3d-sit > .clase-e3d-vivo, .clase-e3d-sit > .clase-e3d-mas,
+.clase-e3d-sit > .clase-e3d-recuerda, .clase-e3d-sit .clase-e3d-anterior, .clase-e3d-sit .clase-e3d-siguiente, .clase-e3d-sit .clase-e3d-ayuda { display: none; }
+.clase-sit { box-sizing: border-box; margin: 0; padding: 12px; border-radius: 18px; background: var(--cl-tarjeta); border: 1px solid var(--cl-borde); color: var(--cl-texto); display: grid; gap: 10px; min-width: 0; }
+.clase-sit-titulo { font-weight: 750; font-size: 1.08rem; line-height: 1.25; }
+.clase-sit-relato { margin: 0; font-size: 1.06rem; line-height: 1.45; }
+.clase-sit-relato strong, .clase-sit-porque strong { color: var(--cl-naranja-fuerte); font-weight: 750; }
+:root[data-tema="oscuro"] :is(.clase-sit-relato, .clase-sit-porque) strong { color: var(--cl-naranja); }
+@media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) :is(.clase-sit-relato, .clase-sit-porque) strong { color: var(--cl-naranja); } }
+.clase-sit-pregunta { margin: 0; font-size: 1.12rem; font-weight: 750; }
+.clase-sit-opciones { display: grid; gap: 8px; }
+@media (min-width: 640px) { .clase-sit-opciones { grid-template-columns: 1fr 1fr; } }
+.clase-sit-opcion { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px; border-radius: 14px; border: 2px solid var(--cl-borde); background: var(--cl-fondo); color: var(--cl-texto); font: inherit; font-weight: 700; font-size: 1.04rem; text-align: left; cursor: pointer; }
+.clase-sit-opcion:hover { border-color: var(--cl-azul); }
+.clase-sit-opcion:focus-visible { outline: 3px solid var(--cl-naranja); outline-offset: 2px; }
+.clase-sit-icono { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--cl-azul-suave); font-size: 1.4rem; line-height: 1; }
+.clase-sit-opcion[data-nivel="correcto"][data-vista="1"] { border-color: var(--cl-bien); background: var(--cl-bien-suave); }
+.clase-sit-opcion[data-nivel="aceptable"][data-vista="1"] { border-color: var(--cl-aviso); background: var(--cl-aviso-suave); }
+.clase-sit-opcion[data-nivel="mal"][data-vista="1"] { border-color: var(--cl-mal); background: var(--cl-mal-suave); }
+.clase-sit-radio { margin: 0; padding: 10px 12px 10px 40px; position: relative; border-radius: 12px; background: #0d1626; color: #e8f0ff; font-size: .95rem; line-height: 1.4; }
+.clase-sit-radio::before { content: "📻"; position: absolute; left: 12px; top: 9px; }
+.clase-sit-radio[hidden], .clase-sit-cierre[hidden], .clase-sit-opciones[hidden], .clase-sit-pregunta[hidden], .clase-sit-final[hidden] { display: none; }
+.clase-sit-cierre { display: grid; gap: 8px; padding: 12px; border-radius: 14px; border: 2px solid var(--cl-borde); }
+.clase-sit-cierre[data-nivel="correcto"] { border-color: var(--cl-bien); background: var(--cl-bien-suave); }
+.clase-sit-cierre[data-nivel="aceptable"] { border-color: var(--cl-aviso); background: var(--cl-aviso-suave); }
+.clase-sit-cierre[data-nivel="mal"] { border-color: var(--cl-mal); background: var(--cl-mal-suave); }
+.clase-sit-veredicto { margin: 0; font-weight: 800; font-size: 1.08rem; }
+.clase-sit-porque { margin: 0; line-height: 1.45; }
+.clase-sit-regla { margin: 0; font-size: 1.02rem; line-height: 1.4; }
+.clase-sit-fuente { margin: 0; font-size: .82rem; color: var(--cl-suave); }
+.clase-sit-botones { display: flex; flex-wrap: wrap; gap: 8px; }
+.clase-sit-botones .clase-boton { flex: 1 1 160px; min-height: 48px; }
+.clase-sit-final { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--cl-aviso-suave); line-height: 1.4; }

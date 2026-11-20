@@ -4710,7 +4710,8 @@ function vistaTarjeta(p, { materia, tema = null }) {
   const foto = p.imagen?.url ? vistaFoto(p.imagen, { mini: Boolean(clip) }) : null;
   let montado = null;
   // 0.14.85: «⚑ Reportar un error» debajo de la escena 3D, el dibujo animado, el clip o la foto de la tarjeta (en la clase).
-  const tipoVisual = p.visual?.tipo === 'escena-3d' ? 'escena' : clip ? 'clip' : (visual || foto) ? 'figura' : null;
+  // (0.14.92: la situación 3D también se reporta como «escena»)
+  const tipoVisual = ['escena-3d', 'situacion-3d'].includes(p.visual?.tipo) ? 'escena' : clip ? 'clip' : (visual || foto) ? 'figura' : null;
   const reportarVisual = tipoVisual && tema && Number.isInteger(p.seccion)
     ? reportarPunto({ tipo: tipoVisual, id: `${materia}/${tema}#${p.seccion + 1}`, materia, tema, n: p.seccion + 1, visual: p.visual?.tipo ?? (clip ? 'clip' : 'foto'), titulo: es }, { clase: 'reportar-visual' }) : null;
   if (visual) {
@@ -4958,6 +4959,12 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
       const v = vistaTarjeta(p, { materia, tema });
       nodo = v.nodo;
       actual = v;
+      // 0.14.92: una situación 3D (situacion-3d) avisa la PRIMERA opción que eligió el alumno: se guarda como el
+      // «¿Lo entendiste?» de esta tarjeta (la correcta = 👍; otra = 👎), así suma a «Dónde más cuesta».
+      if (Number.isInteger(p.seccion)) nodo.addEventListener('clase-decision', e => {
+        if (!e.detail?.primera) return;
+        Promise.resolve(api('POST', '/api/academia/entendi', { tipo: 'tarjeta', materia, tema, n: p.seccion + 1, voto: e.detail.correcta ? 'si' : 'no' })).catch(() => {});
+      });
       // 0.12.9 (J): «¿Lo entendiste?» 👍/🤔 en cada tarjeta (con IA: «Explícamelo mejor» / «Profundizar»; sin IA, lo gratis).
       if (Number.isInteger(p.seccion) && (!p.parte || p.parte === p.partes)) nodo.append(...[tutorUi().otraForma(l.secciones?.[p.seccion]?.otraForma, { materia, tema, n: p.seccion + 1 }), tutorUi().entendiste(materia, tema, p.seccion + 1)].filter(Boolean)); // 0.14.59: «Otra forma de verlo»
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];

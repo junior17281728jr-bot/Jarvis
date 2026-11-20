@@ -143,7 +143,7 @@ test('cada escena: sus pasos son los de la revisión y cada paso tiene título, 
     const vars = s => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort();
     assert.deepEqual(vars(en[`clase.e3d.${k}`] ?? ''), vars(v), `en: ${k}`);
   }
-  assert.equal(Object.keys(es).filter(k => k.startsWith('clase.e3d.')).length, Object.keys(TEXTOS_E3D).length, 'ninguna clave de sobra');
+  assert.equal(Object.keys(es).filter(k => k.startsWith('clase.e3d.') && !k.startsWith('clase.e3d.sit.')).length, Object.keys(TEXTOS_E3D).length, 'ninguna clave de sobra (las situaciones: situaciones-3d.test.js)');
   assert.ok(Object.keys(TEXTOS_CONTROLES).every(k => k.startsWith('ctl.')));
 });
 

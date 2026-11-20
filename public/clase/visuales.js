@@ -16,15 +16,16 @@ import { el } from './comun.js';
 
 // 0.14.78: las escenas 3D (escena3d.js, el motor 3D y las seis escenas) se piden recién cuando una tarjeta las usa: al
 // montar queda un hueco con «Cargando…» y, al llegar el módulo, la escena ocupa su lugar. destruir() sirve antes y después.
-export function montarEscena3dDiferida(c, p, o) {
+// 0.14.92: lo mismo para las situaciones 3D (situacion3d.js), con su propio import().
+export function montarEscena3dDiferida(c, p, o, cargar = () => import('./escena3d.js').then(m => m.montarEscena3d)) {
   const t = typeof o?.t === 'function' ? o.t : null;
   let texto = 'Cargando la escena 3D…';
   try { const r = t?.('clase.e3d.ctl.cargando'); if (typeof r === 'string' && r && r !== 'clase.e3d.ctl.cargando') texto = r; } catch { /* el texto de siempre */ }
   const hueco = el('div', { class: 'clase-e3d-hueco', role: 'status' }, c, texto);
   let montada = null, fuera = false;
-  import('./escena3d.js').then(m => {
+  cargar().then(montar => {
     if (fuera) return;
-    montada = m.montarEscena3d(c, p, o);
+    montada = montar(c, p, o);
     if (hueco.parentNode) hueco.parentNode.insertBefore(montada.raiz, hueco);
     hueco.remove();
   }).catch(() => { if (!fuera) hueco.textContent = '—'; });
@@ -50,4 +51,5 @@ export const VISUALES = {
   ...VISUALES_DIAGRAMA,
   ...VISUALES_AVIACION,
   'escena-3d': (c, p, o) => montarEscena3dDiferida(c, p, o),
+  'situacion-3d': (c, p, o) => montarEscena3dDiferida(c, p, o, () => import('./situacion3d.js').then(m => m.montarSituacion3d)),
 };

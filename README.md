@@ -716,6 +716,29 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.92: situaciones 3D con una decisión — sin cambio de base
+
+Pedido del dueño: «que sea divertido ver qué pasaría en la situación… por dentro (cabina) y fuera, con el avión, por su
+decisión; así lo recuerda y el porqué». Un tipo de dibujo nuevo, `situacion-3d` (`public/clase/situacion3d.js`, sobre el
+motor de las escenas 3D):
+
+1. **La situación**: el avión vuela y una línea cuenta qué pasa.
+2. **La decisión**: la escena se detiene y salen 2 a 4 opciones grandes (ícono y 3 a 6 palabras).
+3. **Lo que pasaría**: la animación de esa opción, afuera o en la cabina (botón «Vista»). En el momento clave la escena
+   se queda quieta un momento con un rótulo grande («Aquí entraste sin contacto»). Efectos: la nube que crece (cúmulo →
+   torre → madura con yunque → disipación), lluvia, rayos con destello, granizo, turbulencia que sacude la cabina, la
+   nube por dentro sin horizonte, la espiral, el hielo, la alarma de pérdida y lo que dice ATC por radio (texto).
+4. **El cierre**: veredicto, «Por qué» en 1–2 líneas, la regla en negrita con su fuente de la FAA, «Intentar otra
+   opción» y «Siguiente» (que muestra el «Recuerda»).
+5. **Queda guardado**: la PRIMERA opción elegida se avisa con el evento `clase-decision`; `public/app.js` la guarda como
+   el «¿Lo entendiste?» de la tarjeta (la correcta = 👍, otra = 👎), así suma a «Dónde más cuesta». Sin migración.
+
+Situaciones (`src/academia/diagramas.js`, `SITUACIONES_3D`; parámetros `{ situacion, titulo? }`): `clase-c`, `clase-b`,
+`clase-d`, `frente-frio`, `nubes`, `vfr-imc` y `densidad`. Cada una tiene una sola opción correcta; los datos de la norma
+(AIM 3-2-3/4/5, AIM 7-1-26/27, PHAK cap. 11, 12 y 17, AFH cap. 18) van en `HECHOS_SITUACIONES` y las pruebas los revisan.
+Textos en `clase.e3d.sit.*` (es y en). Galería: `/clase/demo-situaciones.html` (`?situacion=nubes&opcion=rodear&t=9&vista=1p`).
+Pruebas: `test/situaciones-3d.test.js`. Las escenas 3D ahora se pausan cuando el lienzo (no el texto) sale de la pantalla.
+
 ### Lo nuevo de la 0.14.78: escenas 3D guiadas para los temas difíciles — sin cambio de base
 
 Pedido del dueño: «si el tema es muy difícil, anímalo… 3D». Un tipo de dibujo nuevo, `escena-3d`: una animación 3D por

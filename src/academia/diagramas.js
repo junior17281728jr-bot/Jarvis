@@ -45,6 +45,27 @@ export const ESCENAS_3D = Object.freeze({
   'vor-3d': Object.freeze(['radiales', 'hacia', 'desvio', 'desde', 'rumbo']),
 });
 export const LIMITES_ESCENA_3D = Object.freeze({ pasos: 10, texto: 220, mas: 420 });
+// 0.14.92: las SITUACIONES 3D (tipo «situacion-3d», public/clase/situacion3d.js): una situación con una decisión y lo
+// que pasaría con cada opción. Parámetros: { situacion, titulo? }. Las opciones de cada una y la correcta (una prueba
+// revisa que coincidan con public/clase/e3d-situaciones.js).
+export const TIPO_SITUACION_3D = 'situacion-3d';
+export const SITUACIONES_3D = Object.freeze({
+  'clase-c': Object.freeze({ correcta: 'llamar', opciones: Object.freeze(['llamar', 'entrar', 'encima']) }),
+  'clase-b': Object.freeze({ correcta: 'autorizado', opciones: Object.freeze(['autorizado', 'contacto', 'debajo']) }),
+  'clase-d': Object.freeze({ correcta: 'torre', opciones: Object.freeze(['torre', 'sinHablar', 'llamaron']) }),
+  'frente-frio': Object.freeze({ correcta: 'desviar', opciones: Object.freeze(['encima', 'hueco', 'desviar', 'debajo']) }),
+  nubes: Object.freeze({ correcta: 'rodear', opciones: Object.freeze(['seguir', 'rodear', 'debajo']) }),
+  'vfr-imc': Object.freeze({ correcta: 'virar', opciones: Object.freeze(['seguir', 'virar', 'bajar']) }),
+  densidad: Object.freeze({ correcta: 'calcular', opciones: Object.freeze(['despegar', 'calcular']) }),
+});
+function revisarSituacion3d(p) {
+  if (p == null || typeof p !== 'object' || Array.isArray(p)) return ['sin_parametros'];
+  if (!(typeof p.situacion === 'string' && Object.hasOwn(SITUACIONES_3D, p.situacion))) return ['situacion'];
+  const mal = [];
+  if (p.titulo != null && !corto(p.titulo)) mal.push('titulo');
+  for (const k of Object.keys(p)) if (!['situacion', 'titulo'].includes(k)) mal.push(k);
+  return mal;
+}
 function revisarEscena3d(p) {
   if (p == null || typeof p !== 'object' || Array.isArray(p)) return ['sin_parametros'];
   const mal = [];
@@ -76,6 +97,7 @@ const numero = v => typeof v === 'number' && Number.isFinite(v);
 export function revisarDiagrama(tipo, p) {
   if (TIPOS_DIBUJO.includes(tipo)) return revisarDibujo(tipo, p);
   if (tipo === TIPO_ESCENA_3D) return revisarEscena3d(p);
+  if (tipo === TIPO_SITUACION_3D) return revisarSituacion3d(p);
   if (!TIPOS_DIAGRAMA.includes(tipo)) return [];
   const mal = [];
   if (p == null || typeof p !== 'object' || Array.isArray(p)) return ['sin_parametros'];
@@ -192,6 +214,6 @@ function revisarDibujo(tipo, p) {
 // ¿La tarjeta de la fábrica tiene algo que se VEA? (foto del libro, un dibujo bien llenado, o «solo texto» con motivo)
 export function tarjetaConVisual(s) {
   if (s?.imagen?.archivo || s?.clip?.archivo) return true;
-  if (s?.visual?.tipo && (VISUALES_SIMPLES.includes(s.visual.tipo) || ([...TIPOS_DIAGRAMA, ...TIPOS_DIBUJO, TIPO_ESCENA_3D].includes(s.visual.tipo) && !revisarDiagrama(s.visual.tipo, s.visual.parametros).length))) return true;
+  if (s?.visual?.tipo && (VISUALES_SIMPLES.includes(s.visual.tipo) || ([...TIPOS_DIAGRAMA, ...TIPOS_DIBUJO, TIPO_ESCENA_3D, TIPO_SITUACION_3D].includes(s.visual.tipo) && !revisarDiagrama(s.visual.tipo, s.visual.parametros).length))) return true;
   return typeof s?.solo_texto === 'string' && s.solo_texto.trim().length >= 10;
 }

@@ -8,7 +8,7 @@
 import { el, crearBucle, prefiereMenosMovimiento } from './comun.js';
 import {
   crearCamara, ojoOrbita, render, dibujarCabina, dibujarEtiquetas, crearTexturas, crearRuta, estadoEnRuta, primitivasAvion, baseAvion,
-  mezclar3, unitario, resta, suma, por, largo, limitar, suave3, mezclarAngulo, linea, proyectar, focal,
+  mezclar3, unitario, resta, suma, por, largo, limitar, suave3, mezclarAngulo, linea, proyectar, focal, mezclarColor,
 } from './motor3d.js';
 import { traductor3d, partesNegrita, sinMarcas, PALETAS } from './e3d-base.js';
 import { crearRenderGL } from './motor3d-gl.js';
@@ -54,7 +54,8 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
   const reducir = prefiereMenosMovimiento();
 
   // ---------- la página ----------
-  const raiz = el('figure', { class: `clase-visual clase-e3d clase-e3d-${escena.id}`, role: 'group', 'aria-label': titulo }, contenedor);
+  // opciones.ui = 'situacion': solo el lienzo y Reproducir / Vista / Repetir (situacion3d.js pone el resto).
+  const raiz = el('figure', { class: `clase-visual clase-e3d clase-e3d-${escena.id}${opciones.ui === 'situacion' ? ' clase-e3d-sit' : ''}`, role: 'group', 'aria-label': titulo }, contenedor);
   el('figcaption', { class: 'clase-e3d-titulo' }, raiz, titulo);
   const caja = el('div', { class: 'clase-e3d-caja' }, raiz);
   const lienzo = el('canvas', { class: 'clase-e3d-lienzo', width: 640, height: 400, tabindex: 0, role: 'img', 'aria-label': titulo }, caja);
@@ -134,7 +135,8 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     const ruta = rutaDe(p);
     const v = p.vuelo, seg = v.seg;
     // Un tramo de la ruta (desde/hasta, en fracciones): se recorre y vuelve a empezar, con una pausa corta al final.
-    const s = v.desde != null ? (v.desde + (Math.min(tiempo % (seg * (v.hasta - v.desde) + 1.5), seg * (v.hasta - v.desde)) / seg)) * ruta.largo
+    // unaVez: se recorre una sola vez y el avión queda al final (las consecuencias de una situación).
+    const s = v.unaVez ? (limitar(tiempo / seg, 0, 1)) * ruta.largo : v.desde != null ? (v.desde + (Math.min(tiempo % (seg * (v.hasta - v.desde) + 1.5), seg * (v.hasta - v.desde)) / seg)) * ruta.largo
       : v.cerrada ? (tiempo / seg) * ruta.largo : (Math.min(tiempo % (seg + 2), seg) / seg) * ruta.largo;
     // Al volver a empezar una ruta abierta, la cámara no salta: va despacio al nuevo lugar.
     if (!v.cerrada && s < sAnterior - ruta.largo * 0.2 && orbita && p.camara.seguir && jugando) { orbitaDesde = { ...orbita }; kOrbita = reducir ? 1 : 0; }
@@ -177,8 +179,8 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     const antes = orbita;
     i = n;
     t = jugando ? 0 : tQuieto(paso());
-    vistaElegida = null;
-    mezclaMeta = paso().vista === '1p' && !paso().sinAvion ? 1 : 0;
+    // En una situación se queda la vista que eligió el alumno (cabina o afuera) al pasar a la consecuencia.
+    if (!(opciones.ui === 'situacion' && vistaElegida != null)) { vistaElegida = null; mezclaMeta = paso().vista === '1p' && !paso().sinAvion ? 1 : 0; }
     orbitaDesde = antes ? { ...antes } : null;
     usuario.giro = 0; usuario.alto = 0; usuario.zoom = 1; usuario.mirar = 0;
     kOrbita = reducir || !orbitaDesde ? 1 : 0;
@@ -229,10 +231,12 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     if (!paletaLeida && raiz.isConnected !== false) { paletaLeida = true; paleta = leerPaleta(raiz); }
     medir();
     const p = paso();
-    const avion = escena.ajustarAvion ? escena.ajustarAvion(p, avionDe(p, t), t) : avionDe(p, t);
+    // escena.tiempo: el reloj de la escena (una situación se detiene un momento en lo importante).
+    const te = escena.tiempo ? escena.tiempo(p, t) : t;
+    const avion = escena.ajustarAvion ? escena.ajustarAvion(p, avionDe(p, te), te) : avionDe(p, te);
     const { cam3, cam } = camaras(p, avion);
     const enEscena = vy === 1 ? avion : { ...avion, pos: [avion.pos[0], avion.pos[1] / vy, avion.pos[2]] };
-    const extra0 = escena.cuadro({ paso: p, t, avion: enEscena, paleta, T, mezcla });
+    const extra0 = escena.cuadro({ paso: p, t: te, real: t, avion: enEscena, paleta, T, mezcla });
     const extra = { ...extra0, prims: estirar(extra0.prims ?? []), etiquetas: estirarE(extra0.etiquetas ?? []) };
     const prims = [...extra.prims]; // lo que cambia en cada cuadro (lo fijo va aparte: con WebGL se sube una sola vez)
     const ruta = rutaDe(p);
@@ -249,7 +253,7 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
       const dt = t - tAnterior, alerones = dt > 0 && dt < 0.5 ? limitar(((avion.alabeo - alabeoAnterior) / dt) * 0.6, -18, 18) : 0;
       tAnterior = t; alabeoAnterior = avion.alabeo;
       const profundidad = limitar(Math.abs(avion.alabeo) / 6 + avion.cabeceo * 0.4, -15, 15);
-      prims.push(...primitivasAvion({ ...avion, escala, helice: t * 140, t, alerones, profundidad, sombra: escena.sombra ? escena.sombra(avion.pos[0], avion.pos[2]) * vy : null }));
+      prims.push(...primitivasAvion({ ...avion, escala, helice: t * 140, t: te, alerones, profundidad, sombra: escena.sombra ? escena.sombra(avion.pos[0], avion.pos[2]) * vy : null }));
       // Las etiquetas no tapan el avión.
       const c = proyectar(cam, avion.pos, ancho, alto);
       if (c) { const r = (focal(cam, alto) * 5.5 * escala) / c.z; evitar.push({ x: c.x - r, y: c.y - r * 0.8, w: r * 2, h: r * 1.6 }); }
@@ -262,15 +266,18 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     const k = suave3(mezcla);
     const niebla = extra.niebla ? { ...extra.niebla, inicio: extra.niebla.inicio + d3 * (1 - k), fin: extra.niebla.fin + d3 * (1 - k) } : { color: paleta.niebla, inicio: n3.inicio + (n1.inicio - n3.inicio) * k, fin: n3.fin + (n1.fin - n3.fin) * k };
     if (!niebla.color) niebla.color = paleta.niebla;
+    // Dentro de una nube (en la cabina) el cielo también es gris: no hay horizonte.
+    const nub = (extra.nublado ?? 0) * k;
+    const palR = nub > 0 ? { ...paleta, ...Object.fromEntries(['cieloAlto', 'cieloBajo', 'bruma', 'sueloLejos'].map(c => [c, mezclarColor(paleta[c], niebla.color, nub)])) } : paleta;
     const antes = extra.dibujar ? c => extra.dibujar(c, ancho, alto, escalaPx) : null;
     let r;
     if (gl3 && glPerdido) { r = { lista: [], etiquetas: [] }; }
     else if (gl3) {
-      gl3.render({ paleta, fijas: [fijo().prims, delPaso(p).prims], prims, niebla, sol: escena.sol, lejos: escena.lejos, texturaEscala: escena.texturaEscala }, cam, ancho, alto, { escala: escalaPx });
+      gl3.render({ paleta: palR, fijas: [fijo().prims, delPaso(p).prims], prims, niebla, sol: escena.sol, lejos: escena.lejos, texturaEscala: escena.texturaEscala }, cam, ancho, alto, { escala: escalaPx });
       ctx.clearRect(0, 0, ancho, alto);
       const panel = antes ? antes(ctx) : null;
       r = { lista: [], etiquetas: dibujarEtiquetas(ctx, etiquetas, cam, ancho, alto, { escala: escalaPx, paleta, evitar: panel ? [...evitar, panel] : evitar, niebla }) };
-    } else r = render(ctx, { paleta, prims: [...fijo().prims, ...delPaso(p).prims, ...prims], etiquetas, niebla, ambiente: paleta.ambiente, sol: escena.sol }, cam, ancho, alto, { escala: escalaPx, texturas, evitar, antes });
+    } else r = render(ctx, { paleta: palR, prims: [...fijo().prims, ...delPaso(p).prims, ...prims], etiquetas, niebla, ambiente: paleta.ambiente, sol: escena.sol }, cam, ancho, alto, { escala: escalaPx, texturas, evitar, antes });
     const vistaAhora = mezcla > 0.5 ? '1p' : '3p', panelAhora = extra.dibujar ? '1' : '0';
     if (vistaAhora !== ultimaVista) { caja.setAttribute('data-vista', vistaAhora); ultimaVista = vistaAhora; }
     if (panelAhora !== ultimoPanel) { caja.setAttribute('data-panel', panelAhora); ultimoPanel = panelAhora; }
@@ -281,6 +288,8 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
       // El gráfico de la escena (el CDI) va encima de la cabina.
       if (extra.dibujar) extra.dibujar(ctx, ancho, alto, escalaPx);
     }
+    // Lo que cubre toda la imagen (el destello de un rayo, la alarma, el hielo): al final, encima de todo.
+    if (extra.encima) extra.encima(ctx, ancho, alto, escalaPx, mezcla);
     const chipTexto = extra.estado ?? '';
     if (chipTexto !== ultimoChip) { if (chipTexto.length !== ultimoChip.length) cajasDom = null; chip.textContent = chipTexto; chip.hidden = !chipTexto; ultimoChip = chipTexto; }
     const clase = extra.clase ?? '';
@@ -288,7 +297,8 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     return { ...r, avion, cam };
   }
 
-  const bucle = crearBucle(raiz, dt => {
+  // Se dibuja solo mientras el lienzo se ve (no basta con que se vea el texto de abajo).
+  const bucle = crearBucle(caja, dt => {
     if (jugando) t += dt;
     if (kOrbita < 1) kOrbita = Math.min(1, kOrbita + dt / 2.2);
     if (mezcla !== mezclaMeta) { const paso1 = dt / 1.3; mezcla = Math.abs(mezclaMeta - mezcla) <= paso1 ? mezclaMeta : mezcla + Math.sign(mezclaMeta - mezcla) * paso1; }
@@ -363,6 +373,7 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     raiz,
     tiempo() {}, modo() {}, poner() {},
     pausar() { jugando = false; ponerBotones(); },
+    reproducir() { jugando = true; ponerBotones(); pedir(); },
     ir, repetir,
     // Para las pruebas y la galería: ir a un paso y a un tiempo, en una vista, y dibujar ya (sin animación).
     // «mezcla» (0 a 1) deja la cámara a mitad de camino entre 3ª y 1ª persona; «transicion» (0 a 1), a mitad del viaje
