@@ -519,3 +519,24 @@ button.plan-hoy-fila { cursor: pointer; }
 .otra-forma { margin: 10px 0 4px; padding: 8px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--oro) 45%, transparent); background: color-mix(in srgb, var(--oro) 8%, transparent); }
 .otra-forma > summary { cursor: pointer; font-weight: 700; }
 .otra-forma > p { margin: 8px 0 0; }
+
+/* 0.14.77: «¿Lo entendiste? 👍 / 👎» debajo de cada explicación (public/entendi-vista.js): chiquito, un toque. */
+.entendi { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; color: var(--suave); }
+.entendi-pregunta { margin-right: 2px; }
+.entendi-boton { font-size: 18px; line-height: 1; min-width: 44px; min-height: 40px; padding: 0 8px; border-radius: 12px; border: 1px solid var(--borde); background: var(--tarjeta); cursor: pointer; opacity: 0.85; }
+.entendi-boton:active { transform: translateY(1px); }
+.entendi-boton[aria-pressed="true"] { opacity: 1; border-width: 2px; border-color: currentColor; background: var(--borde); }
+.entendi-gracias:empty { display: none; }
+.entendi-gracias { font-weight: 600; }
+.entendi-extra:empty { display: none; }
+.entendiste .entendi { margin-top: 0; }
+.otra-forma .entendi, .caja-ia .entendi { border-top: 1px dashed var(--borde); padding-top: 8px; }
+
+/* 0.14.77: Administrador → «Para Claude» (public/para-claude-vista.js). */
+.para-claude { display: grid; gap: 14px; }
+.pc-lista { margin: 0; padding-left: 22px; display: grid; gap: 10px; }
+.pc-fila p { margin: 2px 0 0; }
+.pc-id { word-break: break-all; }
+.pc-tabla h3 { margin: 6px 0; }
+.pc-materias li { padding: 4px 0; border-bottom: 1px solid var(--borde); }
+.pc-pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 420px; overflow: auto; margin: 8px 0 0; }

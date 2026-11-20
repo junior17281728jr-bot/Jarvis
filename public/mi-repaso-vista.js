@@ -97,6 +97,8 @@ export function pantallaMiniClase(d, h) {
     linea(t('mini.por_que_no'), q.idea),
     linea(t('mini.sencilla'), q.sencilla),
     linea(t('mini.original'), q.explicacion),
+    // 0.14.77: «¿Lo entendiste? 👍 / 👎» de esta explicación (la misma de después de un error).
+    q.id && typeof h.entendi === 'function' && (q.sencilla || q.explicacion) ? h.entendi({ tipo: 'pregunta', pregunta: q.id }) : null,
     // Solo con instructor IA de verdad (minutos, permiso y clave): si no, no hay botón.
     d.ia && q.intento ? instructorUi().explicar(q.intento, { id: q.id }, { etiqueta: t('mini.ia') }) : null,
     // 0.12.4: la mini-clase entera, de otra forma, con IA (guardada para todos los que se equivocan igual).

@@ -36,7 +36,8 @@ import { topesUnaVez, apagarMejoraUnaVez } from '../academia/topes-una-vez.js';
 import { vigilarCopias, leerArchivosDeActualizacion, aplicarActualizaciones } from '../copias/vigilar.js';
 import { discoLibreMb, discoDeCopias } from '../nucleo/salud.js';
 import { paqueteActivo } from '../academia/paquetes.js';
-import { calcularTodo, guardarTodo } from '../academia/donde-cuesta.js';
+import { calcularTodo, guardarTodo, leerFoto as leerFotoCuesta } from '../academia/donde-cuesta.js';
+import { armarReporte, fotoSemanal, guardarSemana, haySemana } from '../academia/para-claude.js';
 
 export const WAL_GRANDE_MB = 64; // con más que esto, vigilar pasa lo pendiente del -wal a la base
 export const PROBLEMAS_A_GUARDAR = 5;
@@ -92,6 +93,8 @@ async function vigilar(ctx) {
   // 0.14.59: «Dónde más cuesta» y «Otra forma de verlo» (src/academia/donde-cuesta.js): sin IA, aunque la IA esté apagada
   // o la fábrica en pausa. Se calcula leyendo (fuera de la escritura) y se guarda en una escritura corta.
   try { await cuestaDeLaHora(ctx, ahora); } catch { /* se intenta en la próxima vuelta */ }
+  // 0.14.77: la foto de la semana de «Para Claude» (una por semana: para comparar «antes / ahora»). Solo números.
+  try { await semanaParaClaude(ctx, ahora); } catch { /* se intenta en la próxima vuelta */ }
   let walMb = tamanoWalMb(ctx.config);
   let checkpoint = null;
   if (walMb > WAL_GRANDE_MB) {
@@ -99,6 +102,17 @@ async function vigilar(ctx) {
     walMb = tamanoWalMb(ctx.config);
   }
   return { listo: true, resultado: { fila, walMb, ia, copias, actualizaciones: actualizaciones ? { abiertos: actualizaciones.abiertos.length, resueltos: actualizaciones.resueltos.length } : null, ...(checkpoint ? { checkpoint } : {}) } };
+}
+
+// Se calcula leyendo (fuera de la escritura) y se guarda en una escritura corta, solo si esa semana no tiene foto.
+export async function semanaParaClaude(ctx, ahora) {
+  if (!(ctx.config?.carpetaAcademia || ctx.config?.archivoBase) || !ctx.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'academia_paquetes'").get()) return false;
+  if (haySemana(ctx.db, ahora)) return false;
+  const p = paqueteActivo(ctx.db, ctx.config);
+  if (!p) return false;
+  // La cuenta de «Dónde más cuesta» de esta hora (la acaba de guardar cuestaDeLaHora); si no hay, se calcula aquí (solo lee).
+  const foto = fotoSemanal(armarReporte(ctx.db, p, { ahora, foto: leerFotoCuesta(ctx.db) ?? calcularTodo(ctx.db, p, ahora).foto }));
+  return ctx.escribir(() => guardarSemana(ctx.db, foto, ahora));
 }
 
 async function cuestaDeLaHora(ctx, ahora) {

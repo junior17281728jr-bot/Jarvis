@@ -4,12 +4,13 @@
 //    empezar (S) y «¿Tomo el examen?» (U). SOLO si hay IA para él: si no, nada (N).
 //  - ponerApertura(lista, mandar): el primer mensaje del Profesor («¡Hola, piloto Juan! Vi que fallaste…») con sus 4
 //    botones (G). El nombre lo pone la pantalla: nunca va a la IA (Y).
-//  - entendiste(materia, tema, n): «¿Lo entendiste?» 👍/🤔 en cada tarjeta de la clase (J); 🤔 → «Explícamelo mejor» y
+//  - entendiste(materia, tema, n): «¿Lo entendiste?» 👍/👎 (0.14.77: antes 🤔; el voto se guarda) en cada tarjeta de la clase (J); 🤔 → «Explícamelo mejor» y
 //    «Profundizar» con IA, o lo gratis marcado «Modo básico».
 //  - pista(intento, pregunta): después de un error en la práctica, una pista de una línea y «Ver en la clase» (H).
 //  - examen(): «¿Tomo el examen final?» por materia y el oficial (U; sin IA; con IA, además el porqué a su estilo).
 //  - pantallaMemoria(), pantallaExamen(), pantallaPersonalizadas(materia, tema).
 import { tituloSinIngles } from './tarjetas.js';
+import { votoEntendi } from './entendi-vista.js';
 
 export function crearTutor(h) {
   const { el, t, icono, api, talCual, numero, nombreMateria, empezarIntento, avisar, textoError, mostrar, marco } = h;
@@ -163,16 +164,18 @@ export function crearTutor(h) {
         el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: e => pedir('mejor', e.currentTarget) }, icono('chispa', 'icono chico'), el('span', { texto: t('tutor.j.mejor') })),
         el('button', { type: 'button', class: 'boton-3d blanco chico con-icono', onclick: e => pedir('profundizar', e.currentTarget) }, icono('chispa', 'icono chico'), el('span', { texto: t('tutor.j.profundizar') }))));
     };
-    return el('div', { class: 'entendiste' },
-      el('div', { class: 'entendiste-fila' },
-        el('span', { class: 'chica', texto: t('tutor.j.pregunta') }),
-        el('button', { type: 'button', class: 'boton-emoji', 'aria-label': t('tutor.j.si'), onclick: () => { senal('entendi'); salida.replaceChildren(el('p', { class: 'suave chica', texto: t('tutor.j.bien') })); } }, el('span', { 'aria-hidden': 'true', texto: '👍' })),
-        el('button', { type: 'button', class: 'boton-emoji', 'aria-label': t('tutor.j.no'), onclick: duda }, el('span', { 'aria-hidden': 'true', texto: '🤔' }))),
-      salida);
+    // 0.14.77: 👍 / 👎 (antes 👍 / 🤔) y el voto se guarda (src/academia/entendi.js); 👎 abre lo de siempre
+    // («Explícamelo mejor» / «Profundizar», o lo gratis). Se puede cambiar: 👍 después de 👎 cierra la ayuda.
+    const fila = votoEntendi({ el, t, api }, { tipo: 'tarjeta', materia, tema, n }, {
+      alVotar: voto => { if (voto === 'si') { senal('entendi'); salida.replaceChildren(); } else duda(); },
+    });
+    fila.classList.add('entendiste-fila');
+    return el('div', { class: 'entendiste' }, fila, salida);
   }
 
   // ---------- 0.14.59: «Otra forma de verlo» (la explicación que más ayudó a otros alumnos; gratis, para todos) ----------
-  function otraForma(o) {
+  // 0.14.77: donde = { materia, tema, n } de la tarjeta: con su «¿Lo entendiste?» (cuenta para esa explicación).
+  function otraForma(o, donde = null) {
     if (!o?.explicacion) return null;
     return el('details', { class: 'otra-forma' },
       el('summary', { class: 'con-icono' }, icono('bombilla', 'icono chico'), el('span', { texto: t('clase.otra_forma.titulo') })),
@@ -181,6 +184,7 @@ export function crearTutor(h) {
         talCual('p', o.explicacion),
         o.ejemplo ? el('p', {}, el('strong', { texto: `${t('mini.ia.ejemplo')} ` }), talCual('span', o.ejemplo)) : null,
         o.recuerda ? el('p', { class: 'recuerda-linea' }, el('strong', { texto: `${t('acad.recuerda')}: ` }), talCual('span', o.recuerda)) : null,
+        donde ? votoEntendi({ el, t, api }, { tipo: 'otra', materia: donde.materia, tema: donde.tema, n: donde.n }) : null,
       ].filter(Boolean));
   }
 

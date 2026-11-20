@@ -1,4 +1,4 @@
-// Academia 0.14.59: Administrador → Contenido: «Dónde más les cuesta» (src/academia/donde-cuesta.js, listaAdmin). Una
+// Academia 0.14.59 (0.14.77: con «no se entendió» y cuántos de cuántos): Administrador → Contenido: «Dónde más les cuesta» (src/academia/donde-cuesta.js, listaAdmin). Una
 // lista corta: las 10 tarjetas (o temas) que más les cuestan a los alumnos, con su puntaje, lo que ya hizo la IA y la
 // «Otra forma de verlo» que pasó a la clase (con «Ocultar», el mismo de la biblioteca de la IA). Todo texto con textContent.
 // Las piezas de dibujo llegan de app.js en «h» (este módulo no importa nada).
@@ -9,9 +9,13 @@ const quitarIngles = x => String(x ?? '').replace(/\s*\([^)]*\)\s*$/, '').trim()
 // Las razones en palabras: «Fallan 62 % (de 40 respuestas)», «Piden ayuda 30 %», «Fallan después de la ayuda 50 %».
 export function razones(x, { t, numero }) {
   return [
-    x.fallo ? t('cuesta.fallo', { pct: numero(x.fallo.pct), n: numero(x.fallo.n) }) : null,
-    x.pide ? t('cuesta.pide', { pct: numero(x.pide.pct), n: numero(x.pide.n) }) : null,
+    // 0.14.77: siempre cuántos de cuántos (proporción y muestra juntas), no solo el %.
+    x.fallo && x.fallo.alumnosMal != null ? t('cuesta.fallo_alumnos', { mal: numero(x.fallo.alumnosMal), alumnos: numero(x.fallo.alumnos), pct: numero(x.fallo.pct), n: numero(x.fallo.n) })
+      : x.fallo ? t('cuesta.fallo', { pct: numero(x.fallo.pct), n: numero(x.fallo.n) }) : null,
+    x.pide && x.pide.pidieron != null ? t('cuesta.pide_alumnos', { pidieron: numero(x.pide.pidieron), n: numero(x.pide.n), pct: numero(x.pide.pct) })
+      : x.pide ? t('cuesta.pide', { pct: numero(x.pide.pct), n: numero(x.pide.n) }) : null,
     x.despues ? t('cuesta.despues', { pct: numero(x.despues.pct), n: numero(x.despues.n) }) : null,
+    x.no ? t('cuesta.no', { no: numero(x.no.no), n: numero(x.no.n), pct: numero(x.no.pct) }) : null,
   ].filter(Boolean);
 }
 

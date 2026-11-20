@@ -7,7 +7,8 @@
 //  - conTope(): un pedido de lectura que no contesta en un rato se corta (la pantalla dice «sin conexión», no se queda colgada).
 
 // Las señales que la clase y el tutor mandan mientras se estudia (no cambian nada de lo guardado, salvo lo indicado).
-const SENALES = /^\/api\/academia\/tutor\/(?:senal|tarjeta)$/;
+// 0.14.77: también el voto de «¿Lo entendiste? 👍 / 👎» (no cambia nada de lo que se muestra).
+const SENALES = /^\/api\/academia\/(?:tutor\/(?:senal|tarjeta)|entendi)$/;
 const PASO = /^\/api\/academia\/temas\/([^/]+)\/([^/]+)\/paso$/;
 
 // → 'todo' (se vacía la memoria, como siempre) o { quitar: [rutas que ya no valen], revisar: [rutas que siguen sirviendo
@@ -119,6 +120,8 @@ export const AVANZADO_ADMIN = Object.freeze([
     { id: 'ia', href: '#ia', clave: 'admin.pestana.ia', icono: 'chispa' },
     { id: 'fabrica', href: '#contenido/fabrica', clave: 'admin.pestana.fabrica', icono: 'chispa' },
     { id: 'ia-hizo', href: '#contenido/ia-hizo', clave: 'admin.pestana.ia_hizo', icono: 'manual' },
+    // 0.14.77: «Para Claude»: lo que más cuesta y lo que no se entendió, para mejorar el contenido.
+    { id: 'para-claude', href: '#contenido/para-claude', clave: 'admin.pestana.para_claude', icono: 'grafica' },
     { id: 'pidele', href: '#contenido/pidele', clave: 'admin.pestana.pidele', icono: 'chispa' },
     { id: 'app-mejora', href: '#contenido/app', clave: 'admin.pestana.app_mejora', icono: 'chispa' },
     { id: 'ia-registro', href: '#ia-registro', clave: 'admin.pestana.ia_registro', icono: 'manual' },

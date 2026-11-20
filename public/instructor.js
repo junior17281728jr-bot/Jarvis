@@ -9,6 +9,9 @@
 //  - tarjetaAdmin(s, cambiar): encender el instructor con IA y elegir su modelo (Administrador → Inteligencia artificial).
 // Lo que escribe la IA siempre va en su propia caja «Tu instructor IA», nunca mezclado con lo del Test Guide.
 
+// 0.14.77: «¿Lo entendiste? 👍 / 👎» (public/entendi-vista.js).
+import { votoEntendi, CLAVE_IA_VOTO } from './entendi-vista.js';
+
 const ESPERA_MS = 2000;
 // 0.12.12: por qué un alumno tiene el Profesor (src/academia/profesor.js); otro valor → «Lo tiene.» (nunca una clave a la vista).
 export const PERMISOS_PROFESOR = Object.freeze(['admin', 'regalo', 'pago', 'plan', 'prueba']);
@@ -86,7 +89,9 @@ export function crearInstructor(h) {
       Array.isArray(r.terminos) && r.terminos.length ? el('ul', { class: 'lista-terminos' }, r.terminos.map(x => el('li', {},
         el('strong', { lang: 'en', texto: x.ingles }), x.abreviatura ? el('span', { class: 'termino-abrev', texto: ` (${x.abreviatura})` }) : null,
         x.espanol ? el('span', { texto: ` · ${x.espanol}` }) : null))) : null,
-      el('p', { class: 'suave chica', texto: tx(r.demo ? 'demo.ia.firma' : guardada ? 'instr.guardada.firma' : 'instr.ia.firma') }));
+      el('p', { class: 'suave chica', texto: tx(r.demo ? 'demo.ia.firma' : guardada ? 'instr.guardada.firma' : 'instr.ia.firma') }),
+      // 0.14.77: «¿Lo entendiste? 👍 / 👎» en lo compartido que escribió la IA (nunca en la vista de prueba).
+      !r.demo && CLAVE_IA_VOTO.test(String(r.clave ?? '')) ? votoEntendi({ el, t, api }, { tipo: 'ia', clave: r.clave }) : null);
   }
 
   // ---------- 0.12.7: «Preparado para ti» en la portada de una clase ----------

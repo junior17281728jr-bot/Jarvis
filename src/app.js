@@ -29,6 +29,7 @@ import { registrarRutasAppMejora } from './api/app-mejora.js';
 import { registrarRutasPagoServidor } from './api/pago-servidor.js';
 import { registrarRutasBiblioteca } from './api/biblioteca.js';
 import { registrarRutasCompetencia } from './api/competencia.js';
+import { registrarRutasEntendi } from './api/entendi.js';
 import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
@@ -173,6 +174,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   // 0.14.26: los certificados de recuerdo.
   registrarRutasCertificados(rutas, { config, reloj: academia.reloj, limites: academia.limitesCertificados });
   registrarRutasOpiniones(rutas, { config, reloj: academia.reloj });
+  // 0.14.77: «¿Lo entendiste? 👍 / 👎» y «Para Claude».
+  registrarRutasEntendi(rutas, { config, reloj: academia.reloj });
   // 0.12.8: IA por alumno, Registro de la IA y «Enviar a mi Telegram» (Administrador → Dinero e IA).
   registrarRutasIaAlumnos(rutas, { config, reloj: academia.reloj, adaptador: copias.adaptador, topesBot: academia.topesBot });
   registrarRutasFabrica(rutas, { config, supervisor, reloj: academia.reloj });

@@ -21,6 +21,7 @@ import { crearLector, vozEncendida, ponerVoz, vozGuardada } from './voz-lectura.
 import { leccionDeVideo, posicionMasNueva, inicioDesde, cuentaComoVisto, capituloEn, reloj as relojVideo, VELOCIDADES, velocidadValida } from './academia-video.js';
 import { sonar, sonidosEncendidos, encenderSonidos, prepararSonidos, ponerUsuario as ponerUsuarioSonidos } from './sonidos.js';
 import { crearInstructor } from './instructor.js';
+import { votoEntendi } from './entendi-vista.js';
 import { crearPagos } from './pagos.js';
 import { pedirClaveAdmin, cabeceraDeClave, ERRORES_CONFIRMAR } from './confirmar-clave.js';
 import { tarjetaCodigoRespaldo } from './codigo-respaldo.js';
@@ -1954,6 +1955,13 @@ async function pantallaLoQueHizo() {
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/ia-hizo'), import('./ia-trabajo-vista.js')]);
   if (!vigente()) return;
   mostrar(marco('admin', cabeceraAdmin('ia-hizo'), r.ok ? vista.pantallaLoQueHizo(r.datos, piezasIa(() => pantallaLoQueHizo())) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
+// 0.14.77: «Para Claude» (public/para-claude-vista.js, solo se carga aquí): lo que más cuesta y lo que no se entendió.
+async function pantallaParaClaude() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/para-claude'), import('./para-claude-vista.js')]);
+  if (!vigente()) return;
+  mostrar(marco('admin', cabeceraAdmin('para-claude'), r.ok ? vista.pantallaParaClaude(r.datos, { el, t, icono, avisar, nombreMateria }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
 }
 async function pantallaPidele(datosYa = null) {
   const vigente = nuevoTurno();
@@ -4252,7 +4260,7 @@ async function pantallaMiniClase(clave) {
   const r = await api('GET', `/api/academia/mi-repaso/clase?concepto=${encodeURIComponent(clave)}`);
   if (!vigente()) return;
   if (!r.ok) return mostrar(marco('inicio', volverAlCamino(), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
-  vistaMiniClase(r.datos, { el, t, numero, icono, talCual, mostrar, marco, nombreMateria, empezarIntento, partirLeccion, vistaTarjeta, botonGrande, instructorUi });
+  vistaMiniClase(r.datos, { el, t, numero, icono, talCual, mostrar, marco, nombreMateria, empezarIntento, partirLeccion, vistaTarjeta, botonGrande, instructorUi, entendi: item => votoEntendi({ el, t, api }, item) });
   window.scrollTo(0, 0);
 }
 
@@ -4872,7 +4880,7 @@ async function pantallaTema(materia, tema, irATarjeta = null) {
       nodo = v.nodo;
       actual = v;
       // 0.12.9 (J): «¿Lo entendiste?» 👍/🤔 en cada tarjeta (con IA: «Explícamelo mejor» / «Profundizar»; sin IA, lo gratis).
-      if (Number.isInteger(p.seccion) && (!p.parte || p.parte === p.partes)) nodo.append(...[tutorUi().otraForma(l.secciones?.[p.seccion]?.otraForma), tutorUi().entendiste(materia, tema, p.seccion + 1)].filter(Boolean)); // 0.14.59: «Otra forma de verlo»
+      if (Number.isInteger(p.seccion) && (!p.parte || p.parte === p.partes)) nodo.append(...[tutorUi().otraForma(l.secciones?.[p.seccion]?.otraForma, { materia, tema, n: p.seccion + 1 }), tutorUi().entendiste(materia, tema, p.seccion + 1)].filter(Boolean)); // 0.14.59: «Otra forma de verlo»
       botones = [atras(), botonGrande(t('acad.continuar'), () => ir(paso + 1))];
     }
     // 0.12.9 (I): cuánto tarda en cada tarjeta (solo el promedio, al terminar la clase).
@@ -5438,7 +5446,14 @@ function tarjetaPregunta(q, { origen = true, testGuide = true } = {}) {
 function partesRespuesta(q, resp, opciones = {}) {
   // 0.14.70: «Escuchar» la explicación sencilla.
   const escuchar = typeof resp?.sencilla === 'string' && resp.sencilla.trim() ? el('div', { class: 'q-escuchar' }, botonEscuchar(() => piezasVoz([resp.sencilla]))) : null;
-  return [escuchar, partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta })].filter(Boolean);
+  // 0.14.77: «¿Lo entendiste? 👍 / 👎» debajo de la explicación después de un error; con 👎, «Explícamelo de otra
+  // forma» (el botón de siempre, si está en la hoja) se ofrece ahí mismo.
+  const botonOtra = () => document.querySelector('.hoja-respuesta .boton-explicar');
+  const entendi = item => votoEntendi({ el, t, api }, item, { hayOtra: () => Boolean(botonOtra()), otraForma: () => {
+    const b = botonOtra();
+    if (b) { b.scrollIntoView({ block: 'center', behavior: 'smooth' }); b.click(); }
+  } });
+  return [escuchar, partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta, entendi })].filter(Boolean);
 }
 function bloqueRespuesta(q, resp) {
   return el('div', { class: 'retro' },
@@ -6717,7 +6732,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/para-claude', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6790,6 +6805,7 @@ async function dibujar() {
   if (seccion === 'contenido/videos' && esAdmin) return pantallaVideosAdmin();
   if (seccion === 'contenido/fabrica' && esAdmin) return pantallaFabrica();
   if (seccion === 'contenido/ia-hizo' && esAdmin) return pantallaLoQueHizo();
+  if (seccion === 'contenido/para-claude' && esAdmin) return pantallaParaClaude();
   if (seccion === 'contenido/pidele' && esAdmin) return pantallaPidele();
   if (seccion === 'contenido/app' && esAdmin) return pantallaAppMejora();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
@@ -6915,6 +6931,7 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'contenido/videos') return admin ? ['/api/admin/academia/videos', '/api/admin/sistema'] : [];
   if (seccion === 'contenido/fabrica') return admin ? ['/api/admin/academia/fabrica'] : [];
   if (seccion === 'contenido/ia-hizo') return admin ? ['/api/admin/academia/ia-hizo'] : [];
+  if (seccion === 'contenido/para-claude') return admin ? ['/api/admin/academia/para-claude'] : [];
   if (seccion === 'contenido/pidele') return admin ? ['/api/admin/academia/chat'] : [];
   if (seccion === 'contenido/app') return admin ? ['/api/admin/academia/app'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];

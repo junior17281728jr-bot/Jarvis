@@ -82,7 +82,8 @@ export function buscarGuardada(db, armar, { estilo, idioma, modelo = null, conEs
 // Sin el costo ni el proveedor (no son de él).
 export function paraVer(hallada, idiomaAlumno = 'es') {
   const { costoMicro, proveedor, modelo, ...resto } = hallada.guardado;
-  return { estado: 'lista', ...resto, guardada: true, ...(hallada.idioma !== (idiomaAlumno === 'en' ? 'en' : 'es') ? { idioma: hallada.idioma } : {}) };
+  // 0.14.77: con su clave (lo compartido), para «¿Lo entendiste? 👍 / 👎».
+  return { estado: 'lista', ...resto, guardada: true, clave: hallada.clave, ...(hallada.idioma !== (idiomaAlumno === 'en' ? 'en' : 'es') ? { idioma: hallada.idioma } : {}) };
 }
 
 // +1 en la cuenta del mes (por tipo). Nunca falla lo que se muestra por esto.

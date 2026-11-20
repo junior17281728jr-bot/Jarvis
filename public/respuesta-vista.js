@@ -54,7 +54,9 @@ export function partesClaras(q, resp, { enHoja = false } = {}, h) {
         ? talCual('p', f.resto, 'sencilla-fila tipo-texto')
         : el('p', { class: `sencilla-fila tipo-${f.tipo}` },
           el('span', { class: 'sencilla-icono', 'aria-hidden': 'true' }, icono(f.icono, 'icono chico')),
-          el('span', { class: 'sencilla-texto' }, el('strong', { class: 'sencilla-rotulo', texto: f.rotulo }), f.resto ? ` ${f.resto}` : ''))))) : null,
+          el('span', { class: 'sencilla-texto' }, el('strong', { class: 'sencilla-rotulo', texto: f.rotulo }), f.resto ? ` ${f.resto}` : '')))),
+      // 0.14.77: después de un error, «¿Lo entendiste? 👍 / 👎» de esta explicación (h.entendi lo pone la app).
+      !resp.acierto && typeof h.entendi === 'function' ? h.entendi({ tipo: 'pregunta', pregunta: q.id }) : null) : null,
     fallo && (resp.idea || suReto) ? el('section', { class: 'caja-hoja caja-tuya' },
       el('h3', { class: 'con-icono' }, icono('atencion', 'icono chico'), el('span', { texto: t('resp.tu_opcion_no') })),
       el('p', { class: 'tuya-opcion' }, el('span', { class: 'opcion-letra', texto: resp.elegida }), talCual('span', suReto?.texto ?? opcion(resp.elegida))),

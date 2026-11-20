@@ -7,6 +7,8 @@
 import { caminoConMapa, TOTAL_TEMAS_MAPA } from './oral-mapa.js';
 // 0.14.3: en español (si ya está traducido) con «Español | Inglés original» en cada pregunta (public/oral-idioma.js).
 import { selectorIdioma, bilingue, rotulo, enunciadoOral, textoOpcion, notaOpciones } from './oral-idioma.js';
+// 0.14.77: «¿Lo entendiste? 👍 / 👎» debajo de cada respuesta del libro.
+import { votoEntendi } from './entendi-vista.js';
 
 // 0.13.3: un dibujito por capítulo (como cada materia del Camino).
 const ICONO_CAPITULO = {
@@ -167,7 +169,8 @@ export function pantallaLeccionOral(l, h) {
       dibujo?.nodo ?? null,
       x.explicacion_es ? el('aside', { class: 'caja-ejemplo oral-es' }, el('p', { class: 'caja-ejemplo-titulo', texto: t('oral.explicacion') }), talCual('p', x.explicacion_es)) : null,
       x.puntos_clave.length ? el('aside', { class: 'recuerda' }, el('p', { class: 'recuerda-titulo con-icono' }, icono('bombilla', 'icono'), el('span', { texto: t('oral.puntos_clave') })),
-        el('ul', { class: 'tarjeta-puntos' }, x.puntos_clave.map(p => talCual('li', p)))) : null);
+        el('ul', { class: 'tarjeta-puntos' }, x.puntos_clave.map(p => talCual('li', p)))) : null,
+      x.respuesta_en ? votoEntendi({ el, t, api }, { tipo: 'oral', materia: l.materia, tema: l.tema, n: i + 1 }) : null);
     return { nodo, destruir: () => dibujo?.destruir?.() };
   };
   const pintar = () => {

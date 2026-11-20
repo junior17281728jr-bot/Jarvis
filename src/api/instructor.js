@@ -24,6 +24,7 @@ import { consejoInstructor, modeloAlumno, resumenModelo, respuestaDelAlumno, ree
 import { cortarBytes } from '../academia/instructor.js';
 import { armarExplicacion, armarConsejo, armarDuda, leerGuardado, DUDA_MAX_LETRAS, preguntaSinIa, armarMiniClase, armarPlanDia, armadorClave } from '../academia/instructor-ia.js';
 import { buscarGuardada, paraVer, anotarServida, recordarModelo } from '../academia/saber-sin-ia.js';
+import { CLAVE_IA_VOTO } from '../academia/entendi.js';
 import { enTransaccion } from '../nucleo/db.js';
 import { cobrarUso, yaPagado, ponerTareaAlUso, novedadesPagos } from '../academia/tiempo-ia.js';
 import { sincronizarFallas, fallasDe, planParaPasar, miRepaso, miniClase } from '../academia/fallas.js';
@@ -155,9 +156,11 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
         throw error;
       }
     }
-    return lista(guardado);
+    return lista(guardado, compartida(clave));
   }
   const lista = (guardado, extra = {}) => ({ estado: 'lista', ...guardado, ...extra });
+  // 0.14.77: lo COMPARTIDO lleva su clave (para «¿Lo entendiste? 👍 / 👎»: src/academia/entendi.js); lo de un alumno, no.
+  const compartida = clave => (CLAVE_IA_VOTO.test(String(clave ?? '')) ? { clave } : {});
   // 0.12.4: sin IA para él por algo que no se pasa solo (sin clave, la IA apagada, sin su permiso, sin presupuesto…):
   // ia = null (la pantalla muestra solo lo básico, sin ningún «no pudo»). Solo lo pasajero dice algo: una pausa corta
   // («en espera») o sin minutos (con «Pedir más», porque la IA sí está lista para él).
@@ -548,7 +551,7 @@ export function registrarRutasInstructor(rutas, { config = null, supervisor = nu
     if (guardado && /^academia\.ia\.personal\./.test(clave)) return { codigo: 200, datos: { estado: 'lista', clave, ...personalParaVer(guardado) } };
     // 0.14.16: el consejo nuevo se arma con el diagnóstico de ahora (los botones de verdad).
     if (guardado && /^academia\.ia\.consejo\./.test(clave) && guardado.forma === 2) return { codigo: 200, datos: lista(consejoParaVer(guardado, diagnostico(db, usuario.id, activo(db), reloj()))) };
-    if (guardado) return { codigo: 200, datos: lista(guardado) };
+    if (guardado) return { codigo: 200, datos: lista(guardado, compartida(clave)) };
     const motivo = typeof resultado?.motivo === 'string' ? resultado.motivo : 'no_disponible';
     const admin = esEspacioAdmin(db, e.id);
     return { codigo: 200, datos: { estado: 'no', motivo: admin || RESULTADO_ALUMNO.has(motivo) ? motivo : 'no_disponible' } };

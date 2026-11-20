@@ -48,6 +48,7 @@ test('anotar la tarjeta de la clase ya no vacía la memoria: el camino queda par
     { quitar: ['/api/academia/temas/factores_humanos/t01-vision'], revisar: ['/api/academia/camino', '/api/academia/progreso'] });
   // Las señales del tutor (👍/🤔, el tiempo por tarjeta, «vio el video») no cambian nada de lo guardado.
   assert.deepEqual(queOlvida('/api/academia/tutor/senal'), { quitar: [], revisar: [] });
+  assert.deepEqual(queOlvida('/api/academia/entendi'), { quitar: [], revisar: [] }, '0.14.77: el voto 👍/👎 tampoco');
   assert.deepEqual(queOlvida('/api/academia/tutor/tarjeta'), { quitar: [], revisar: [] });
   // Todo lo demás (responder, terminar, leído, el plan, lo del administrador…) vacía la memoria como siempre.
   for (const ruta of ['/api/academia/intentos/4/terminar', '/api/academia/intentos/4/responder', '/api/academia/temas/m/t/leido',
