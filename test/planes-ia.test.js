@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conInstructor, pedir, unaMala, explicar, explicacionFalsa, DE } from './instructor-ia-base.js';
 import { figuraMuestraPng } from './academia-muestra.js';
-import { derechoIa, saldoIa, guardarConfigPagos, leerConfigPagos, cobrarUso, ajustarSaldo, CONFIG_PAGOS } from '../src/academia/tiempo-ia.js';
+import { derechoIa, saldoIa, guardarConfigPagos, leerConfigPagos, leerPrueba, cobrarUso, ajustarSaldo, CONFIG_PAGOS } from '../src/academia/tiempo-ia.js';
 import { permisoProfesor } from '../src/academia/profesor.js';
 
 const DIA = 86_400_000;
@@ -36,7 +36,10 @@ test('la prueba gratis: empieza con el primer uso, tiene su tope por día, dura 
     assert.equal(saldoIa(c.db, z).minutos, 0, 'con planes no hay minutos de regalo');
     let d = derechoIa(c.db, z);
     assert.deepEqual([d.fuente, d.prueba.empezada, d.prueba.quedanDias], ['prueba', false, 5], 'nadie la pierde sin verla: todavía no empezó');
-    const x = await unaMala(c, c.z);
+    // 0.14.63: preguntas fijas y DISTINTAS. Antes la primera era «la primera del intento» (en orden al azar): 1 de cada 5
+    // veces era muestra-h2, y entonces el tope de abajo pedía la misma pregunta y opción, y el alumno veía gratis su propia
+    // explicación ya guardada (0.14.57: bien hecho), sin llegar al «sin_minutos» que se quiere probar.
+    const x = await unaMala(c, c.z, 'muestra-h1');
     c.falso.siguiente(explicacionFalsa(correctaDe(x.pregunta.id)));
     const r = (await explicar(c, c.z, x)).datos;
     assert.equal(r.ia.estado, 'pendiente');
@@ -49,7 +52,8 @@ test('la prueba gratis: empieza con el primer uso, tiene su tope por día, dura 
     const y = await unaMala(c, c.z, 'muestra-h2');
     const r2 = (await explicar(c, c.z, y)).datos;
     assert.deepEqual([r2.instructor.modo, r2.ia?.motivo], ['basico', 'sin_minutos']);
-    const ahora = Date.now();
+    // Las cuentas desde el inicio guardado de la prueba (no desde la hora de verdad).
+    const ahora = Date.parse(leerPrueba(c.db, z).desde);
     assert.equal(derechoIa(c.db, z, ahora + DIA).fuente, 'prueba', 'mañana vuelve a tener sus usos');
     // Pasados los 5 días: sin plan, nada (y nunca se cobra).
     d = derechoIa(c.db, z, ahora + 6 * DIA);
