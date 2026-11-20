@@ -281,7 +281,8 @@ export function pantallaRonda(datos, h) {
 }
 
 // El certificado de una ronda (el mismo dibujo de los certificados de recuerdo), con «Descargar» y «PDF».
-export function tarjetaCertificado(cert, h, { compacto = false } = {}) {
+// 0.14.72: titulo (el administrador, en los de un alumno: «Competencia de aviación · Ronda N» en vez de «Tu certificado…»).
+export function tarjetaCertificado(cert, h, { compacto = false, titulo = null } = {}) {
   const { el, t } = h;
   const marco = el('div', { class: 'cert-marco' });
   marco.append(dibujoCertificado(cert, cert.nombre, h, { papel: 'a4' }));
@@ -292,7 +293,7 @@ export function tarjetaCertificado(cert, h, { compacto = false } = {}) {
   const pdf = el('button', { type: 'button', class: 'secundario con-icono', onclick: () => imprimir(marco.firstElementChild, 'a4') }, h.icono('manual'), el('span', { texto: t('cert.pdf') }));
   const tc = textosCompe(cert, t);
   return el('section', { class: `tarjeta cert-tarjeta${compacto ? ' compacto' : ''}` },
-    compacto ? null : el('h2', { class: 'con-icono' }, h.icono('medalla'), el('span', { texto: t('compe.cert.titulo') })),
+    compacto ? null : el('h2', { class: 'con-icono' }, h.icono('medalla'), el('span', { texto: titulo ?? t('compe.cert.titulo') })),
     marco,
     el('details', { class: 'cert-leer' }, el('summary', { texto: t('cert.leer') }), el('p', { class: 'cert-titular', texto: tc.titular }), el('p', { texto: tc.cuerpo }), el('p', { class: 'suave chica', texto: t('cert.aviso') })),
     compacto ? null : el('div', { class: 'botones' }, bajar, pdf),

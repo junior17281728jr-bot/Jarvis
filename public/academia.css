@@ -1831,3 +1831,6 @@ a.pie-terminos { display: inline-flex; align-items: center; min-height: 44px; pa
 .lectura-barra .boton-escuchar, .lectura-barra .interruptor-voz, .q-escuchar .boton-escuchar { min-height: 40px; }
 .interruptor-voz[aria-pressed="true"] { border-color: var(--acento, currentColor); }
 .q-escuchar { display: flex; justify-content: flex-start; margin: 0.4rem 0 0.2rem; }
+/* 0.14.72: #certificados/todos (public/certificado-vista.js, vistaTodos). */
+.cert-fila-codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.5px; overflow-wrap: anywhere; }
+details.cert-verificar > summary { color: var(--acento); }

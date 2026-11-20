@@ -6246,8 +6246,17 @@ async function pantallaCertificados() {
 }
 async function pantallaCertificadosAlumno(id) {
   const vigente = nuevoTurno();
-  const [r, vista] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/certificados`), import('./certificado-vista.js')]);
-  if (vigente()) dibujarCertificados(r, vista, 'alumnos');
+  // 0.14.72: también sus certificados de la Competencia (la tarjeta de public/competencia-vista.js).
+  // Con la cabecera de Administrador (Alumnos marcado), como la lista de todos.
+  const [r, s, vista, compe] = await Promise.all([api('GET', `/api/admin/academia/alumnos/${encodeURIComponent(id)}/certificados`), api('GET', '/api/admin/sistema'), import('./certificado-vista.js'), import('./competencia-vista.js')]);
+  const tarjetaCompe = c => compe.tarjetaCertificado(c, { el, t, numero, icono, caja, botonAccion, idioma }, { titulo: `${t('cert.curso.compe')} · ${t('cert.todos.ronda', { n: numero(c.ronda) })}` });
+  if (vigente()) dibujarDeAlumnos(r, s, d => vista.vistaCertificados(d, { el, t, numero, icono, api, avisar, caja, botonAccion, textoError, idioma, tarjetaCompe }));
+}
+// 0.14.72: Alumnos → «Certificados»: todos los ya hechos (solo el administrador), con la cabecera de Alumnos.
+async function pantallaCertificadosTodos() {
+  const vigente = nuevoTurno();
+  const [r, s, vista] = await Promise.all([api('GET', '/api/admin/academia/certificados'), api('GET', '/api/admin/sistema'), import('./certificado-vista.js')]);
+  if (vigente()) dibujarDeAlumnos(r, s, (d, h) => vista.vistaTodos(d, { ...h, idioma }));
 }
 function dibujarCertificados(r, vista, seccion) {
   if (!r.ok) return mostrar(marco(seccion, el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
@@ -6702,7 +6711,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6799,6 +6808,7 @@ async function dibujar() {
   if (seccion === 'competencia/fotos') return pantallaFotosCompe();
   const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
   if (certificadosAlumno && esAdmin) return pantallaCertificadosAlumno(certificadosAlumno[1]);
+  if (seccion === 'certificados/todos' && esAdmin) return pantallaCertificadosTodos();
   if (seccion === 'mis-documentos') return pantallaMisDocumentos();
   if (seccion === 'mis-datos') return pantallaMisDatos();
   const miDocumento = seccion.match(/^mi-documento\/(\d+)$/);
@@ -6920,7 +6930,8 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'competencia/admin') return admin ? ['/api/admin/academia/competencia'] : [];
   if (seccion === 'competencia/fotos') return ['/api/academia/competencia/fotos'];
   const certificadosAlumno = seccion.match(/^certificados\/alumno\/(\d+)$/);
-  if (certificadosAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(certificadosAlumno[1])}/certificados`] : [];
+  if (certificadosAlumno) return admin ? [`/api/admin/academia/alumnos/${encodeURIComponent(certificadosAlumno[1])}/certificados`, '/api/admin/sistema'] : [];
+  if (seccion === 'certificados/todos') return admin ? ['/api/admin/academia/certificados', '/api/admin/sistema'] : [];
   if (seccion === 'mis-documentos') return ['/api/yo/documentos', '/api/yo/terminos'];
   if (seccion === 'mis-datos') return ['/api/yo/terminos'];
   const miDocumento = seccion.match(/^mi-documento\/(\d+)$/);

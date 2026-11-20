@@ -1,4 +1,5 @@
 // Academia 0.14.26: «Mis certificados» (#certificados) y los de un alumno para el administrador (#certificados/alumno/<id>).
+// 0.14.72: y TODOS los ya hechos, para el administrador (#certificados/todos, vistaTodos).
 // Un certificado de RECUERDO (no oficial) por curso terminado: Test Guide y Preparación para el examen oral.
 //  - El dibujo es un SVG hecho aquí (createElementNS, nunca se arma código con texto; colores y letras como atributos, sin style=).
 //  - «Descargar imagen»: el SVG → data:image/svg+xml (la página solo deja cargar imágenes «data:») → canvas → PNG.
@@ -255,22 +256,62 @@ function verificador(h) {
       ? el('p', { class: 'aviso tono-bien', texto: d.curso === 'compe' ? t('compe.cert.verificado', { nombre: d.nombre, ronda: d.ronda, aciertos: d.aciertos, total: d.total, fecha: fechaLarga(d.fecha, h.idioma) }) : t('cert.verificar.bien', { nombre: d.nombre, curso: t(`cert.curso.${d.curso}`), fecha: fechaLarga(d.fecha, h.idioma) }) })
       : el('p', { class: 'aviso tono-atencion', texto: t('cert.verificar.mal') }));
   }, 'lupa');
-  return el('section', { class: 'tarjeta' },
-    el('h2', { class: 'con-icono' }, h.icono('escudo'), el('span', { texto: t('cert.verificar.titulo') })),
+  // 0.14.72: plegado al final (cerrado). Los suyos ya se ven arriba, sin código: esto es solo para el de otra persona.
+  return el('details', { class: 'tarjeta plegable-seccion cert-verificar' },
+    el('summary', { class: 'con-icono' }, h.icono('escudo', 'icono chico'), el('span', { texto: t('cert.verificar.otra') })),
     el('p', { class: 'suave', texto: t('cert.verificar.linea') }),
     el('label', { for: 'cert-verificar', texto: t('cert.codigo') }), entrada,
     el('div', { class: 'botones' }, boton), resultado, mensaje);
 }
 
 // datos: { nombre, cursos, alumnoId? } (GET /api/academia/certificados o el del administrador).
+// 0.14.72: el administrador NO ve el verificador (ve todos en #certificados/todos); sí los de la Competencia de ese alumno
+// (datos.compe, con h.tarjetaCompe de public/competencia-vista.js). El alumno: los suyos arriba y el verificador plegado.
 export function vistaCertificados(datos, h) {
   const { el, t } = h;
   const admin = datos.alumnoId != null;
+  const compe = admin && h.tarjetaCompe ? (datos.compe ?? []) : [];
   return [
     admin ? el('a', { class: 'volver con-icono', href: `#alumno/${datos.alumnoId}` }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: datos.nombre })) : null,
+    admin ? el('div', { class: 'botones' }, el('a', { class: 'boton-enlace secundario con-icono', href: '#certificados/todos' }, h.icono('medalla', 'icono chico'), el('span', { texto: t('cert.todos.ver') }))) : null,
     el('h1', { class: 'titulo-pantalla', texto: admin ? t('cert.titulo_admin', { nombre: datos.nombre }) : t('cert.mis') }),
     el('p', { class: 'entrada', texto: t('cert.linea') }),
-    datos.cursos.map(c => tarjetaCurso(c, datos.nombre, h, { admin })),
-    verificador(h),
-  ];
+    ...datos.cursos.map(c => tarjetaCurso(c, datos.nombre, h, { admin })),
+    ...compe.map(c => h.tarjetaCompe({ ...c, nombre: c.nombre ?? datos.nombre })),
+    admin ? null : verificador(h),
+  ].filter(Boolean);
 }
+
+// ---------- 0.14.72: #certificados/todos (solo el administrador) ----------
+// datos: GET /api/admin/academia/certificados → { certificados: [{ usuarioId, nombre, curso, ronda?, fecha, codigo, href }], cuantos }.
+// Por curso (Test Guide, Oral, Competencia), los más nuevos primero; cada fila abre los de ese alumno.
+const CORTO = { tg: 'TG', oral: 'OR' };
+export const GRUPOS_TODOS = Object.freeze(['tg', 'oral', 'compe']);
+export function vistaTodos(datos, h) {
+  const { el, t, numero } = h;
+  const lista = Array.isArray(datos?.certificados) ? datos.certificados : [];
+  const fila = c => el('li', {},
+    el('a', { class: 'ficha-intento cert-fila', href: c.href ?? `#certificados/alumno/${c.usuarioId}` },
+      el('span', { class: 'ficha-nota', texto: c.curso === 'compe' ? `C${c.ronda}` : CORTO[c.curso] }),
+      el('span', { class: 'ficha-intento-texto' },
+        el('strong', { texto: c.nombre }),
+        el('span', { class: 'suave chica', texto: [c.curso === 'compe' ? t('cert.todos.ronda', { n: numero(c.ronda) }) : null, fechaLarga(c.fecha, h.idioma)].filter(Boolean).join(' · ') }),
+        el('span', { class: 'suave chica cert-fila-codigo', texto: c.codigo })),
+      h.icono('flecha', 'icono chico')));
+  const grupo = curso => {
+    const deEste = lista.filter(c => c.curso === curso);
+    return el('section', { class: 'tarjeta', 'data-curso': curso },
+      el('h2', { class: 'con-icono' }, h.icono(curso === 'compe' ? 'trofeo' : 'medalla'), el('span', { texto: t(`cert.curso.${curso}`) }),
+        el('span', { class: 'insignia', texto: numero(deEste.length) })),
+      deEste.length ? el('ul', { class: 'contratos-lista' }, deEste.map(fila)) : el('p', { class: 'suave', texto: t('cert.todos.ninguno') }));
+  };
+  return [
+    el('a', { class: 'volver con-icono', href: '#alumnos' }, h.icono('flecha', 'icono chico volver-icono'), el('span', { texto: t('acad.alumnos.volver') })),
+    el('section', { class: 'tarjeta' },
+      el('h1', { class: 'titulo-pantalla', texto: t('cert.todos.titulo') }),
+      el('p', { class: 'suave', texto: t('cert.todos.linea') }),
+      lista.length ? el('p', { class: 'fuerte', texto: t('cert.todos.total', { n: numero(lista.length) }) }) : h.vacio('medalla', t('cert.todos.vacio'))),
+    ...(lista.length ? GRUPOS_TODOS.map(grupo) : []),
+  ].filter(Boolean);
+}
+

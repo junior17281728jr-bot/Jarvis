@@ -133,11 +133,14 @@ export function perfilOral(db, usuarioId, fecha) {
 // ---------- Nombre, código y emisión ----------
 export function nombreDe(db, usuarioId) {
   const u = db.prepare('SELECT nombre, nombre_visible FROM usuarios WHERE id = ?').get(Number(usuarioId));
-  if (!u) return null;
+  return u ? nombreCon({ ...u, id: Number(usuarioId) }, nombresLegales(db)) : null;
+}
+// 0.14.72: lo mismo con la fila ya leída y los nombres legales de todos (para la lista de todos los certificados).
+export function nombreCon(u, legales) {
   // Si nunca lo personalizó, nombre_visible es igual a su usuario (crearUsuario lo copia): entonces va su nombre legal.
   const visible = String(u.nombre_visible ?? '').trim();
   const personalizado = visible && visible.toLowerCase() !== String(u.nombre).toLowerCase() ? visible : '';
-  return personalizado || nombresLegales(db).get(Number(usuarioId)) || visible || u.nombre;
+  return personalizado || legales.get(Number(u.id)) || visible || u.nombre;
 }
 export function nuevoCodigo(curso, azar = randomBytes) {
   const b = azar(8);

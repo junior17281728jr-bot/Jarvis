@@ -264,7 +264,9 @@ export function vistaListaAlumnos(datos, h) {
       el('a', { class: 'boton-enlace con-icono', href: '#notas' }, h.icono('marca', 'icono chico'), el('span', { texto: t('notas.boton') })),
       el('a', { class: 'boton-enlace secundario con-icono', href: '#reporte' }, h.icono('grafica', 'icono chico'), el('span', { texto: t('reporte.boton') })),
       // 0.9.2: los contratos firmados (términos aceptados con la firma dibujada).
-      el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.titulo') }))),
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#contratos' }, h.icono('manual', 'icono chico'), el('span', { texto: t('contratos.titulo') })),
+      // 0.14.72: todos los certificados ya hechos (sin buscar por código).
+      el('a', { class: 'boton-enlace secundario con-icono', href: '#certificados/todos' }, h.icono('medalla', 'icono chico'), el('span', { texto: t('cert.todos.boton') }))),
     h.verMas(el('div', { class: 'lista-usuarios' }), lista.map(fila), 12),
     // 0.13.8: los eliminados (plegado), para recuperarlos.
     listaEliminados(h));

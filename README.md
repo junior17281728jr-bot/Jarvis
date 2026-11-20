@@ -712,6 +712,18 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.72: todos los certificados ya hechos, para el administrador — sin cambio de base
+
+- **Alumnos → «Certificados»** (`#certificados/todos`, `GET /api/admin/academia/certificados`, solo el administrador):
+  todos los certificados que ya se dieron (Test Guide, oral y cada ronda de la Competencia), por curso y del más nuevo al
+  más viejo, con nombre, fecha y código. Tocar uno abre los de ese alumno (`#certificados/alumno/<id>`, que ahora también
+  muestra los de la Competencia). Ya no hace falta buscar por código.
+- Antes de listar, emite los que faltaban (`src/academia/certificados-todos.js`): quien terminó pero nunca abrió «Mis
+  certificados». Es lo mismo de siempre, una sola vez; solo mira a quien le falta uno y tiene con qué. Cuentan los alumnos
+  activos y el administrador solo si también estudia. Los ya dados de alguien bloqueado siguen en la lista.
+- **El verificador por código**: ya no sale en lo del administrador; en «Mis certificados» va al final, plegado, como
+  «¿Verificar el certificado de otra persona?». Los suyos se ven siempre directo.
+
 ### Lo nuevo de la 0.14.70: la voz natural de ElevenLabs, guardada para siempre, y leer las clases en voz alta — sin cambio de base
 
 - **ElevenLabs** (`src/ia/proveedores/elevenlabs.js`, `src/academia/voz-natural.js`, `voz-eleven.js`): lee en voz alta las

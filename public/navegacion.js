@@ -159,6 +159,7 @@ export const REDIRECCIONES_ADMIN = Object.freeze({
   'admin/competencia': '#competencia/admin', 'admin/pagos': '#pagos', 'admin/ia': '#ia', 'admin/claves': '#claves', 'admin/telegram': '#claves', 'admin/copias': '#copias', 'admin/resumen': '#admin',
   'terminos-admin': '#contenido/terminos', 'videos': '#contenido/videos', 'cambios': '#admin/cambios', 'mensajes/ayuda': '#soporte', 'ayuda-admin': '#soporte',
   'admin/pago-servidor': '#pago-servidor', 'admin/pago': '#pago-servidor', 'pago': '#pago-servidor', // 0.14.1
+  'admin/certificados': '#certificados/todos', 'certificados/admin': '#certificados/todos', 'certificados/alumno': '#certificados/todos', // 0.14.72
   'admin/fabrica': '#contenido/fabrica', 'admin/ia-demo': '#ia-demo', 'admin/ia-alumnos': '#ia-alumnos', 'admin/ia-registro': '#ia-registro', 'admin/dinero-ia': '#dinero', 'dinero-ia': '#dinero',
 });
 
