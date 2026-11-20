@@ -284,6 +284,7 @@ function revisarSesion(respuesta, ruta) {
   if (estado.usuario && (error === 'no_has_entrado' || error === 'demasiados_intentos_clave') && ruta !== '/api/salir') {
     // Se recuerda de quién era: si entra la misma persona, vuelve a la misma pantalla (la dirección no cambia).
     sesionTerminada = estado.usuario.id;
+    cerrarTraspasoAbierto?.();
     estado.usuario = null;
     estado.oral = undefined;
     avisoEntrar = textoError(error);
@@ -711,6 +712,7 @@ async function salir() {
   const r = await api('POST', '/api/salir', {});
   // Si el servidor no pudo cerrar la sesión, no se finge que se cerró.
   if (!r.ok && r.codigo !== 401) return avisar(textoError(r.datos.error), 'mal');
+  cerrarTraspasoAbierto?.();
   estado.usuario = null;
   estado.oral = undefined;
   vaciarMemoria();
@@ -1967,6 +1969,24 @@ async function pantallaParaClaude() {
   const [r, vista] = await Promise.all([api('GET', '/api/admin/academia/para-claude'), import('./para-claude-vista.js')]);
   if (!vigente()) return;
   mostrar(marco('admin', cabeceraAdmin('para-claude'), r.ok ? vista.pantallaParaClaude(r.datos, { el, t, icono, avisar, nombreMateria }) : el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+}
+// Lo que olvida el Traspaso abierto (la contraseña y lo descifrado) cuando la sesión termina o se sale.
+let cerrarTraspasoAbierto = null;
+// 0.14.83: Avanzado → «Traspaso (para otro Claude)» (public/traspaso-vista.js, solo se carga aquí). Lo secreto se abre
+// solo con la contraseña; la pantalla la olvida a los 10 minutos o al salir.
+async function pantallaTraspaso() {
+  const vigente = nuevoTurno();
+  const [r, vista] = await Promise.all([api('GET', '/api/admin/traspaso'), import('./traspaso-vista.js')]);
+  if (!vigente()) return;
+  if (!r.ok) return mostrar(marco('admin', cabeceraAdmin('traspaso'), el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos.error) }))));
+  const datos = r.datos;
+  cerrarTraspasoAbierto = vista.cerrarTraspaso;
+  const dibujarla = () => {
+    // Solo el mismo administrador y en esta pantalla (si la sesión terminó, nada se pinta encima de «Entrar»).
+    if (location.hash.replace('#', '') !== 'traspaso' || estado.usuario?.rol !== 'admin') return vista.cerrarTraspaso();
+    mostrar(marco('admin', cabeceraAdmin('traspaso'), vista.pantallaTraspaso(datos, { el, t, icono, avisar, api, textoError, usuarioId: estado.usuario.id }, dibujarla)));
+  };
+  dibujarla();
 }
 async function pantallaPidele(datosYa = null) {
   const vigente = nuevoTurno();
@@ -6817,7 +6837,7 @@ async function dibujar() {
   if (esAdmin && seccion === 'claves/github') { abrirClaveGithub = true; location.replace('#claves'); return; }
   const pestanaAdmin = seccion.match(/^admin(?:\/([a-z]*))?$/);
   // 0.8.0: ir a una pantalla de Administrador termina el Modo estudiante.
-  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'cursos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/para-claude', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
+  if (esAdmin && (pestanaAdmin || ['copias', 'ia', 'claves', 'alumnos', 'como-van', 'notas', 'notas-materia', 'cursos', 'contenido', 'respuestas', 'reporte', 'contratos', 'contratos/todos', 'certificados/todos', 'soporte', 'reportes', 'opiniones', 'pagos', 'aprendizaje', 'ia-demo', 'ia-alumnos', 'ia-registro', 'contenido/terminos', 'contenido/videos', 'contenido/fabrica', 'pago-servidor', 'contenido/ia-hizo', 'contenido/para-claude', 'traspaso', 'contenido/pidele', 'contenido/app', 'mensajes', 'dinero', 'avanzado', 'contenido/ajustes', 'competencia/admin'].includes(seccion) || /^(?:alumno|comparar|comparar-examen|notas|contrato|soporte|reportes|ia-registro|certificados\/alumno)\//.test(seccion))) ponerModoEstudiante(false);
   if (!/^ayuda-mia/.test(seccion)) pantallaAnterior = seccion;
   // La contraseña temporal recién creada se deja de mostrar al salir de Administrador (no al cambiar de pestaña).
   if (!esAdmin || !(pestanaAdmin || ['copias', 'ia', 'claves'].includes(seccion))) claveTemporalVisible = null;
@@ -6892,6 +6912,7 @@ async function dibujar() {
   if (seccion === 'contenido/fabrica' && esAdmin) return pantallaFabrica();
   if (seccion === 'contenido/ia-hizo' && esAdmin) return pantallaLoQueHizo();
   if (seccion === 'contenido/para-claude' && esAdmin) return pantallaParaClaude();
+  if (seccion === 'traspaso' && esAdmin) return pantallaTraspaso();
   if (seccion === 'contenido/pidele' && esAdmin) return pantallaPidele();
   if (seccion === 'contenido/app' && esAdmin) return pantallaAppMejora();
   if (seccion === 'respuestas' && esAdmin) return pantallaRespuestas();
@@ -7019,6 +7040,8 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'contenido/fabrica') return admin ? ['/api/admin/academia/fabrica'] : [];
   if (seccion === 'contenido/ia-hizo') return admin ? ['/api/admin/academia/ia-hizo'] : [];
   if (seccion === 'contenido/para-claude') return admin ? ['/api/admin/academia/para-claude'] : [];
+  // 0.14.83: «Traspaso»: solo lo que no es secreto (lo secreto llega solo con la contraseña).
+  if (seccion === 'traspaso') return admin ? ['/api/admin/traspaso'] : [];
   if (seccion === 'contenido/pidele') return admin ? ['/api/admin/academia/chat'] : [];
   if (seccion === 'contenido/app') return admin ? ['/api/admin/academia/app'] : [];
   if (seccion === 'respuestas') return admin ? ['/api/admin/academia/respuestas', '/api/admin/sistema', '/api/admin/academia/examenes'] : [];

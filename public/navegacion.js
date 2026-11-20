@@ -135,6 +135,8 @@ export const AVANZADO_ADMIN = Object.freeze([
     { id: 'trabajo', href: '#admin/trabajo', clave: 'admin.pestana.trabajo', icono: 'latido' },
     { id: 'servidor', href: '#admin/servidor', clave: 'admin.pestana.servidor', icono: 'servidor' },
     { id: 'cambios', href: '#admin/cambios', clave: 'admin.pestana.cambios', icono: 'escudo' },
+    // 0.14.83: «Traspaso (para otro Claude)»: lo que otra sesión de Claude necesita, cerrado con la contraseña.
+    { id: 'traspaso', href: '#traspaso', clave: 'admin.pestana.traspaso', icono: 'llave' },
   ] },
   { grupo: 'alumnos', items: [
     { id: 'usuarios', href: '#admin/usuarios', clave: 'admin.pestana.usuarios', icono: 'personas' },

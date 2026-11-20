@@ -521,6 +521,8 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     // 0.13.7: el Repaso final y una de sus vueltas del Test Guide.
     // 0.14.79: Alumnos → Cursos.
     ['cursos', 'pantallaCursos'],
+    // 0.14.83: Avanzado → «Traspaso (para otro Claude)».
+    ['traspaso', 'pantallaTraspaso'],
     ['repaso', 'pantallaRepasoFinal'], ['repaso/test-guide/7', 'pantallaRondaFinal'], ['repaso/oral', 'pantallaOralFinal']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');

@@ -540,3 +540,29 @@ button.plan-hoy-fila { cursor: pointer; }
 .pc-tabla h3 { margin: 6px 0; }
 .pc-materias li { padding: 4px 0; border-bottom: 1px solid var(--borde); }
 .pc-pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 420px; overflow: auto; margin: 8px 0 0; }
+
+/* 0.14.83: Administrador → Avanzado → «Traspaso (para otro Claude)» (public/traspaso-vista.js). */
+.traspaso { display: grid; gap: 14px; }
+.tr-nota { font-size: 1.02rem; }
+.tr-datos { display: grid; gap: 6px; margin: 8px 0 0; }
+.tr-dato { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--borde); }
+.tr-dato dt { font-weight: 600; }
+.tr-dato dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.tr-enlace { overflow-wrap: anywhere; }
+.tr-repo-editar { display: flex; flex-wrap: wrap; gap: 8px; }
+.tr-repo-editar input { flex: 1 1 200px; min-width: 0; }
+.tr-form-clave, .tr-form { display: grid; gap: 8px; }
+.tr-form-clave input { max-width: 420px; }
+.tr-anterior, .tr-seguro { display: grid; gap: 8px; }
+.tr-campo { display: grid; gap: 4px; }
+.tr-campo input, .tr-campo textarea, .tr-propio input, .tr-propio textarea { width: 100%; box-sizing: border-box; }
+.tr-propios { display: grid; gap: 10px; }
+.tr-propio { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 8px; border: 1px solid var(--borde); border-radius: 12px; }
+.tr-propio textarea { grid-column: 1 / 2; }
+.tr-quitar { grid-column: 2; grid-row: 1 / span 2; align-self: start; }
+.tr-abierto { display: grid; gap: 14px; }
+.tr-cuenta { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.tr-estado:empty { display: none; }
+@media (max-width: 560px) {
+  .tr-dato { grid-template-columns: 1fr; gap: 2px; }
+}

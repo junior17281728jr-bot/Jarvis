@@ -31,6 +31,7 @@ import { registrarRutasBiblioteca } from './api/biblioteca.js';
 import { registrarRutasCompetencia } from './api/competencia.js';
 import { registrarRutasEntendi } from './api/entendi.js';
 import { registrarRutasCursos } from './api/cursos.js';
+import { registrarRutasTraspaso } from './api/traspaso.js';
 import { cerradaPorOtroEquipo } from './cuentas/un-dispositivo.js';
 import { duenoDeTailscale } from './cuentas/tailscale.js';
 import { confirmarClave, crearLimitesConfirmar } from './cuentas/confirmar.js';
@@ -136,7 +137,7 @@ function texto(res, codigo, mensaje) {
 // del repositorio (que no baja nada hasta que la pantalla lo pide).
 // 0.14.55: opciones.discoLibre: cuántos bytes quedan en el disco de la base (solo para pruebas; por defecto se mide con
 // statfs en la carpeta de la base). /api/setup lo dice como disco: 'ok' | 'bajo' | 'lleno' (siempre con 200).
-export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {}, voz = null, discoLibre = null } = {}) {
+export function crearServidor({ db = null, config = null, limites, supervisor = null, tareas = {}, ia = {}, copias = {}, academia = {}, confirmar = {}, voz = null, discoLibre = null, traspaso = {} } = {}) {
   const rutas = crearRuteador();
   const dictadoVoz = voz ?? (config ? crearVoz({ config }) : null);
   // 0.14.53: el estado de los archivos del dictado (y, si faltan, el servidor empieza a bajarlos).
@@ -189,6 +190,8 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
   registrarRutasCompetencia(rutas, { reloj: academia.reloj, limites: academia.limitesCompetencia, ganchos });
   // 0.14.79: los cursos (crear, renombrar, archivar y mover alumnos; solo el administrador).
   registrarRutasCursos(rutas, { reloj: academia.reloj });
+  // 0.14.83: Avanzado → «Traspaso (para otro Claude)»: cifrado con la contraseña del administrador (siempre la pide).
+  registrarRutasTraspaso(rutas, { config, version: VERSION, limites: limitesConfirmar, reloj: academia.reloj, ...traspaso });
   const sw = readFileSync(join(PUB, 'sw.js'));
 
   async function atenderApi(req, res, ruta) {
