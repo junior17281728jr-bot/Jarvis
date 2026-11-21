@@ -661,41 +661,48 @@ html, body { margin: 0; }
 .demo-pie { color: var(--cl-suave); font-size: 0.85rem; padding-top: 24px; }
 .demo-progreso { margin: 8px 2px 0; font-size: 0.85rem; color: var(--cl-suave); min-height: 1.3em; }
 
-/* 0.13.0: los dibujos con datos de la fábrica de materias (public/clase/diagramas.js). */
-.clase-diagrama { margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--fondo-suave, #eef5ff); color: var(--texto, #10233f); display: grid; gap: 10px; }
-.clase-diagrama-titulo { font-weight: 700; font-size: 1.05rem; }
+/* 0.13.0: los dibujos con datos de la fábrica de materias (public/clase/diagramas.js).
+   0.14.94: el panel SIGUE AL TEMA. Antes el fondo era var(--fondo-suave, #eef5ff), una variable que la app nunca define:
+   quedaba SIEMPRE el celeste claro, mientras el texto (--texto) sí pasaba a claro en oscuro → letras claras sobre fondo
+   claro. Ahora fondo, texto y bordes salen de las variables --cl-* (claro y oscuro arriba) y los colores fijos (la cabeza
+   de la tabla, el número, el resultado) llevan texto blanco con 4.5:1 o más. Las capas tienen rellenos pastel FIJOS, así
+   que su nombre (dentro del rectángulo) va en oscuro fijo; los rótulos de fuera siguen el tema. */
+.clase-diagrama { margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--cl-azul-suave); color: var(--cl-texto); border: 1px solid var(--cl-borde); display: grid; gap: 10px; }
+.clase-diagrama-titulo { font-weight: 700; font-size: 1.05rem; color: var(--cl-texto); }
 .clase-diagrama-partes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-.clase-diagrama-parte { display: grid; gap: 2px; padding: 10px; border-radius: 12px; background: var(--fondo, #fff); border: 2px solid var(--borde, #c9dcf5); }
-.clase-diagrama-numero { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #1c7ed6; color: #fff; font-weight: 700; font-size: .85rem; }
-.clase-diagrama-detalle { font-size: .9rem; opacity: .85; }
-.clase-diagrama-tabla { width: 100%; border-collapse: collapse; font-size: .95rem; }
-.clase-diagrama-tabla th, .clase-diagrama-tabla td { padding: 8px; border-bottom: 1px solid var(--borde, #c9dcf5); text-align: left; vertical-align: top; }
-.clase-diagrama-tabla thead th { background: #1c7ed6; color: #fff; }
-.clase-diagrama-pasos, .clase-diagrama-linea { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; }
+.clase-diagrama-parte { display: grid; gap: 2px; padding: 10px; border-radius: 12px; background: var(--cl-tarjeta); color: var(--cl-texto); border: 2px solid var(--cl-borde); }
+.clase-diagrama-numero { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #1864ab; color: #ffffff; font-weight: 700; font-size: .85rem; }
+.clase-diagrama-detalle { font-size: .9rem; color: var(--cl-suave); }
+.clase-diagrama-tabla { width: 100%; border-collapse: collapse; font-size: .95rem; color: var(--cl-texto); }
+.clase-diagrama-tabla th, .clase-diagrama-tabla td { padding: 8px; border-bottom: 1px solid var(--cl-borde); text-align: left; vertical-align: top; color: var(--cl-texto); }
+.clase-diagrama-tabla thead th { background: #1864ab; color: #ffffff; }
+.clase-diagrama-pasos, .clase-diagrama-linea { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; color: var(--cl-texto); }
 .clase-diagrama-pasos li, .clase-diagrama-linea li { display: grid; gap: 2px; }
-.clase-diagrama-linea { border-left: 3px solid #1c7ed6; padding-left: 1.2em; list-style: none; }
-.clase-diagrama-problema { margin: 0; font-weight: 600; }
-.clase-diagrama-formula { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--fondo, #fff); font-family: ui-monospace, Menlo, monospace; }
+.clase-diagrama-linea { border-left: 3px solid var(--cl-azul); padding-left: 1.2em; list-style: none; }
+.clase-diagrama-problema { margin: 0; font-weight: 600; color: var(--cl-texto); }
+.clase-diagrama-formula { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--cl-tarjeta); color: var(--cl-texto); font-family: ui-monospace, Menlo, monospace; }
 .clase-diagrama-numeros { font-family: ui-monospace, Menlo, monospace; }
-.clase-diagrama-resultado { margin: 0; padding: 8px 10px; border-radius: 10px; background: #2f9e44; color: #fff; font-weight: 700; }
+.clase-diagrama-resultado { margin: 0; padding: 8px 10px; border-radius: 10px; background: #237032; color: #ffffff; font-weight: 700; }
 .clase-diagrama-lienzo { width: 100%; height: auto; }
 .clase-diagrama-barra { fill: #a5d8ff; }
-.clase-diagrama-marca line { stroke: #1c7ed6; stroke-width: 3; }
+.clase-diagrama-marca line { stroke: var(--cl-azul); stroke-width: 3; }
 .clase-diagrama-marca text, .clase-diagrama-capa text { fill: currentColor; font-size: 16px; }
-.clase-diagrama-rotulo { font-size: 14px; opacity: .8; }
-.clase-diagrama-capa rect { fill: #a5d8ff; stroke: #1c7ed6; stroke-width: 2; }
+.clase-diagrama-rotulo { font-size: 14px; fill: var(--cl-suave); }
+.clase-diagrama-capa text:not(.clase-diagrama-rotulo) { fill: #10233f; paint-order: stroke; stroke: rgba(255, 255, 255, 0.9); stroke-width: 4px; stroke-linejoin: round; }
+.clase-diagrama-capa .clase-diagrama-rotulo { fill: var(--cl-suave); }
+.clase-diagrama-capa rect { fill: #a5d8ff; stroke: #1864ab; stroke-width: 2; }
 .clase-diagrama-capa-1 rect { fill: #b2f2bb; } .clase-diagrama-capa-2 rect { fill: #ffec99; } .clase-diagrama-capa-3 rect { fill: #ffc9c9; }
 
 /* 0.14.62: dibujos de aviación (circuito, marcas de pista, letreros, VOR, triángulo de viento y carta seccional).
    Los colores de las convenciones (letreros, pintura de la pista, carta, instrumento) son FIJOS en claro y oscuro: van
    sobre su propio fondo (asfalto, «papel», la cara del instrumento). Solo los rótulos siguen el tema (currentColor). */
 .clase-visual {
-  --cl-dib-terreno: #e4efdb; --cl-dib-terreno-borde: #c3d6b3; --cl-dib-azul: #1f5fbf; --cl-dib-naranja: #d9480f;
-  --cl-dib-verde: #2b8a3e; --cl-dib-violeta: #7048e8; --cl-dib-fondo: var(--fondo-suave, #eef5ff);
+  --cl-dib-terreno: #e4efdb; --cl-dib-terreno-borde: #c3d6b3; --cl-dib-azul: #1f5fbf; --cl-dib-naranja: #b33a0b;
+  --cl-dib-verde: #2b8a3e; --cl-dib-violeta: #7048e8; --cl-dib-fondo: var(--cl-azul-suave);
 }
-:root[data-tema="oscuro"] .clase-visual { --cl-dib-terreno: #1d2b20; --cl-dib-terreno-borde: #2f4434; --cl-dib-azul: #8db8ff; --cl-dib-naranja: #ffa94d; --cl-dib-verde: #69db7c; --cl-dib-violeta: #b197fc; --cl-dib-fondo: var(--fondo-suave, #121a2c); }
+:root[data-tema="oscuro"] .clase-visual { --cl-dib-terreno: #1d2b20; --cl-dib-terreno-borde: #2f4434; --cl-dib-azul: #8db8ff; --cl-dib-naranja: #ffa94d; --cl-dib-verde: #69db7c; --cl-dib-violeta: #b197fc; --cl-dib-fondo: var(--cl-azul-suave); }
 @media (prefers-color-scheme: dark) {
-  :root:is([data-tema="auto"], :not([data-tema])) .clase-visual { --cl-dib-terreno: #1d2b20; --cl-dib-terreno-borde: #2f4434; --cl-dib-azul: #8db8ff; --cl-dib-naranja: #ffa94d; --cl-dib-verde: #69db7c; --cl-dib-violeta: #b197fc; --cl-dib-fondo: var(--fondo-suave, #121a2c); }
+  :root:is([data-tema="auto"], :not([data-tema])) .clase-visual { --cl-dib-terreno: #1d2b20; --cl-dib-terreno-borde: #2f4434; --cl-dib-azul: #8db8ff; --cl-dib-naranja: #ffa94d; --cl-dib-verde: #69db7c; --cl-dib-violeta: #b197fc; --cl-dib-fondo: var(--cl-azul-suave); }
 }
 .clase-dib { box-sizing: border-box; margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--cl-dib-fondo); color: var(--cl-texto); display: grid; gap: 10px; min-width: 0; }
 .clase-dib-titulo { font-weight: 700; font-size: 1.05rem; }

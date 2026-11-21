@@ -7,8 +7,11 @@ import { el, svg } from './comun.js';
 const ANCHO = 640;
 const texto = v => (typeof v === 'string' ? v : v == null ? '' : String(v));
 const lista = v => (Array.isArray(v) ? v : []);
+// 0.14.94: la clase del tipo en el marco es «clase-diagrama-tipo-…»: antes era «clase-diagrama-${tipo}», el MISMO nombre
+// que la lista o la tabla de adentro (clase-diagrama-partes, -pasos, -linea, -tabla), así el marco tomaba sus reglas (sin
+// relleno, dos columnas en «partes», la raya de la izquierda en «línea»).
 function marco(contenedor, tipo, p) {
-  const raiz = el('figure', { class: `clase-visual clase-diagrama clase-diagrama-${tipo}`, role: 'group', 'aria-label': texto(p?.titulo) || null }, contenedor);
+  const raiz = el('figure', { class: `clase-visual clase-diagrama clase-diagrama-tipo-${tipo}`, role: 'group', 'aria-label': texto(p?.titulo) || null }, contenedor);
   if (p?.titulo) el('figcaption', { class: 'clase-diagrama-titulo' }, raiz, p.titulo);
   return raiz;
 }
