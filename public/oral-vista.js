@@ -11,6 +11,8 @@ import { selectorIdioma, bilingue, rotulo, enunciadoOral, textoOpcion, notaOpcio
 import { votoEntendi } from './entendi-vista.js';
 // 0.14.84: todas las opciones de la pregunta ya respondida (correcta en verde, la suya en rojo, las demás sin color).
 import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
+// 0.14.95: «▶ Ver qué pasaría» (la consecuencia 3D de la opción elegida; el 3D se carga al tocarlo).
+import { botonConsecuencia } from './consecuencia-vista.js';
 // 0.14.85: «⚑ Reportar un error» de una pregunta del oral, solo después de responderla (public/reportar-vista.js).
 import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
 
@@ -286,6 +288,7 @@ export function rondaOral(r, pedido, h) {
         titulo: res.acierto ? t('acad.correcto') : t('acad.respuesta_correcta', { letra: res.correcta }),
         partes: [
           opcionesRevisadas(q.opciones, res, h, { texto: o => textoOpcion(h, q, o) }),
+          botonConsecuencia(res, h),
           res.porque ? el('div', { class: 'retro-mia' }, el('strong', { texto: t('extra.porque') }), talCual('p', res.porque)) : null,
           el('div', { class: 'retro-sencilla' }, el('strong', { texto: t('extra.explicacion') }), talCual('p', res.explicacion)),
           deDondeSalio(res.origen, h),
@@ -337,6 +340,7 @@ export function revisionOral(revision, h, partes = []) {
   const filas = lista.map(q => el('li', { class: q.acierto ? 'bien' : 'mal', 'data-bien': q.acierto ? '1' : '0' },
     enunciadoOral(h, q, 'fuerte'),
     opcionesRevisadas(q.opciones, q, h, { texto: o => textoOpcion(h, q, o) }),
+    botonConsecuencia(q, h),
     partes.map(f => f(q))));
   const filtro = filtroFallas(h, { malas, total: lista.length, alCambiar: solo => aplicarFiltro(filas, solo) });
   aplicarFiltro(filas, filtro.solo());

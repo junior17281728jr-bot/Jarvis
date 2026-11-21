@@ -13,6 +13,8 @@
 import { selectorIdioma, bilingue, rotulo } from './oral-idioma.js';
 // 0.14.84: después de responder y al terminar la vuelta, todas las opciones (correcta en verde, la suya en rojo, las demás sin color).
 import { opcionesRevisadas, filtroFallas, aplicarFiltro } from './opciones-revision.js';
+// 0.14.95: «▶ Ver qué pasaría» (la consecuencia 3D de la opción elegida; el 3D se carga al tocarlo).
+import { botonConsecuencia } from './consecuencia-vista.js';
 // 0.14.85: «⚑ Reportar un error» de cada pregunta ya respondida (public/reportar-vista.js).
 import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
 
@@ -135,6 +137,7 @@ export function rondaTestGuide(intento, h) {
         titulo: resp.acierto ? t('rf.bien') : t('rf.mal', { letra: resp.correcta }),
         partes: [
           opcionesRevisadas(q.opciones, resp, h, { clase: 'rf-hoja-opciones' }),
+          botonConsecuencia(resp, h),
           resp.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', resp.breve)) : null,
           !resp.acierto ? el('p', { class: 'suave chica', texto: t('rf.vuelve') }) : null,
           enlaceReportar(puntoPregunta(q, { respondida: true, elegida })),
@@ -194,6 +197,7 @@ export function revisionVuelta(preguntas, h) {
       el('span', { class: 'q-numero' }, q.numero ? talCual('span', t('acad.pregunta_n', { n: q.numero })) : numero(k + 1))),
     talCual('p', q.enunciado, 'q-enunciado rf-revision-enunciado'),
     opcionesRevisadas(q.opciones, q.respuesta, h),
+    botonConsecuencia(q.respuesta, h),
     q.respuesta.breve ? el('p', { class: 'rf-breve con-icono' }, icono('bombilla', 'icono chico'), talCual('span', q.respuesta.breve)) : null,
     enlaceReportar(puntoPregunta(q, { respondida: true, elegida: q.respuesta.elegida ?? null }))));
   const filtro = filtroFallas(h, { malas, total: lista.length, alCambiar: solo => aplicarFiltro(filas, solo) });

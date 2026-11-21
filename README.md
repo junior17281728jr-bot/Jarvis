@@ -716,6 +716,30 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.95: «▶ Ver qué pasaría» en las preguntas — sin cambio de base
+
+Pedido del dueño: «en el sistema, en el oral, en los exámenes o la clase, lo de tú escoges la respuesta: si bien o mal,
+la situación pasará en acción ahí». Las situaciones 3D de la 0.14.92 ahora también salen de las PREGUNTAS:
+
+1. **Después de responder** una pregunta con consecuencia (práctica de la clase, Mi repaso, las vueltas del Repaso final
+   y la práctica del oral), la hoja trae «▶ Ver qué pasaría»: abre, casi a pantalla completa, la situación justo en la
+   consecuencia de la opción ELEGIDA (sin introducción ni decisión: una línea de contexto), con cabina/afuera, y al final
+   «Por qué», la regla, «Ver la correcta» y «Cerrar» (y Escape). Si su letra no tiene consecuencia, el botón es «▶ Ver la
+   correcta». Nunca durante el examen con reloj; en las revisiones (examen, tema, oral, repaso final), sí, por pregunta.
+2. **El mini-mapa** (`public/clase/e3d-minimapa.js`): arriba a la derecha de la escena, desde arriba y con el norte
+   arriba: la ruta de la opción, el avión que avanza con el 3D, las paredes del espacio aéreo, cada tormenta con su
+   anillo de 20 NM, la capa de nubes, la pista, el punto de la decisión y la escala. Se toca para agrandarlo; en la
+   cabina sigue a la vista. Usa el avión del mapa del VOR y la misma ruta que vuela la escena.
+3. **Los datos**: el paquete puede traer en la pregunta `consecuencia: { situacion, opciones: { A: "llamar", … } }`
+   (revisado: la situación y las consecuencias existen; la letra correcta va solo a la consecuencia correcta y una mala
+   nunca a ella). Mientras tanto, la tabla `CONSECUENCIAS_TG` (`src/academia/consecuencias.js`) mapea 20 preguntas del
+   Test Guide y del oral, solo con ids. La consecuencia viaja SOLO con la respuesta (nunca antes); el 3D se carga
+   recién al tocar el botón; sin WebGL2, el dibujo 2D de siempre.
+4. **Cuál se vio**: `POST /api/academia/consecuencia` suma uno por consecuencia en el ajuste
+   `academia.consecuencias_vistas` (sin nombres; algo que no se entiende ahí nunca se pisa).
+
+Pruebas: `test/consecuencias.test.js` y `test/consecuencia-3d.test.js`.
+
 ### Lo nuevo de la 0.14.93: el oral en vivo califica justo — sin cambio de base
 
 Lo reportó el dueño: a la repregunta «¿Qué nubes se forman en un frente frío y qué le pasa a la temperatura y la presión

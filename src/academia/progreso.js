@@ -13,6 +13,7 @@ import { ordenCamino, avisoOrdenVisto } from './orden-camino.js';
 import { resumenVisitas } from '../cuentas/visitas.js';
 import { resumenExtra } from './extra.js';
 import { MODO_ORIGINAL, MODO_RETO, tieneReto, opcionesReto, claveDeLetra, letraDeClave, opcionRetoDe } from './reto.js';
+import { consecuenciaVista } from './consecuencias.js';
 import { puntosDebiles, debilDe, preguntasParaPracticar } from './memoria.js';
 import { preguntasDelInstructor } from './practica.js';
 import { preguntasDeConcepto, empezarRepaso, repasoDelResultado, miRepaso } from './fallas.js';
@@ -150,8 +151,10 @@ export function retroalimentacion(paquete, id, elegida, { intentoId = null, modo
   const q = paquete?.preguntas.get(id);
   if (!q) return null;
   const correcta = q.original.correcta;
-  const base = { explicacion: q.original.explicacion ?? null, sencilla: q.sencilla, ingles: Array.isArray(q.ingles) ? q.ingles : [] };
   const vistas = modo === MODO_RETO ? opcionesReto(q, intentoId, id) : null;
+  // 0.14.95: «▶ Ver qué pasaría» (src/academia/consecuencias.js): solo aquí, después de responder.
+  const consecuencia = consecuenciaVista(id, q, { vistas });
+  const base = { explicacion: q.original.explicacion ?? null, sencilla: q.sencilla, ingles: Array.isArray(q.ingles) ? q.ingles : [], ...(consecuencia ? { consecuencia } : {}) };
   if (vistas) {
     const mala = opcionRetoDe(q, elegida);
     return {

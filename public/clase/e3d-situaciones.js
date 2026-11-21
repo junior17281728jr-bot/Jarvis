@@ -315,6 +315,20 @@ function densidad() {
   };
 }
 
+// 0.14.95: lo que se ve DESDE ARRIBA en el mini-mapa de las consecuencias (e3d-minimapa.js): las mismas medidas de la
+// escena (x, z; norte = +z). pared: el borde de un espacio aéreo (clase B, C o D); celda: una tormenta con su anillo de
+// 20 NM (AIM 7-1-27); capa: la zona de nubes; aeropuerto: la pista; antena y arboles: el obstáculo.
+const HC = HECHOS_SITUACIONES;
+export const MAPAS_SITUACIONES = Object.freeze({
+  'clase-c': [{ tipo: 'pared', c: [0, 0], r: HC.claseC.nucleoNM, clase: 'C' }, { tipo: 'pared', c: [0, 0], r: HC.claseC.anilloNM, clase: 'C' }, { tipo: 'aeropuerto', c: [0, 0], rumbo: 140, largo: 1.4 }],
+  'clase-b': [{ tipo: 'pared', c: [0, 0], r: HC.claseB.nucleoNM, clase: 'B' }, { tipo: 'pared', c: [0, 0], r: HC.claseB.pisoNM, clase: 'B' }, { tipo: 'aeropuerto', c: [0, 0], rumbo: 80, largo: 2.2 }],
+  'clase-d': [{ tipo: 'pared', c: [0, 0], r: HC.claseD.radioNM, clase: 'D', guion: true }, { tipo: 'aeropuerto', c: [0, 0], rumbo: 90, largo: 1 }],
+  'frente-frio': [...CELDAS.map(([x, z]) => ({ tipo: 'celda', c: [x, z], r: ANCHO_CB / 2, anillo: HC.tormentas.evitarNM })), { tipo: 'aeropuerto', c: [6, -19], rumbo: 0, largo: 1.2 }],
+  nubes: [{ tipo: 'capa', x0: -29, z0: -7, x1: -9, z1: 31, estratos: true }, { tipo: 'celda', c: CELDA_N, r: 4, anillo: HC.tormentas.evitarNM }],
+  'vfr-imc': [{ tipo: 'capa', x0: -12, z0: -6, x1: 12, z1: 34 }, { tipo: 'antena', c: TORRE }],
+  densidad: [{ tipo: 'aeropuerto', c: [0, 0], rumbo: 0, largo: 5 }, { tipo: 'arboles', x0: -1.6, x1: 1.6, z: ARBOLES_Z }],
+});
+
 export const SITUACIONES = Object.freeze(Object.fromEntries([claseC(), claseB(), claseD(), frenteFrio(), nubes(), vfrImc(), densidad()].map(s => [s.id, s])));
 
 // Los textos (es). Claves: «clase.e3d.sit.<situación>.<clave>».
@@ -322,6 +336,9 @@ export const TEXTOS_SITUACIONES = {
   'ctl.correcto': 'Lo correcto', 'ctl.aceptable': 'Se puede, pero no es lo mejor', 'ctl.mal': 'Esto pasaría',
   'ctl.porque': 'Por qué', 'ctl.otra': 'Intentar otra opción', 'ctl.siguiente': 'Siguiente', 'ctl.fuente': 'Fuente: {f}',
   'ctl.final': 'Recuerda', 'ctl.repetirIntro': 'Ver la situación otra vez', 'ctl.radio': 'Radio',
+  'ctl.verCorrecta': 'Ver la correcta', 'ctl.cerrar': 'Cerrar',
+  'ctl.mapa': 'Mapa desde arriba: la ruta, el avión y las zonas', 'ctl.mapa.agrandar': 'Agrandar el mapa', 'ctl.mapa.achicar': 'Achicar el mapa',
+  'ctl.mapa.decision': 'Decides aquí', 'ctl.mapa.nm': '{v} NM', 'ctl.mapa.ft': '{v} ft', 'ctl.mapa.norte': 'N',
   'clase-c.titulo': 'Situación: la Clase C delante',
   'clase-c.intro': 'Vas a **3,500 ft** hacia el aeropuerto. Delante está la pared magenta de la **Clase C**.',
   'clase-c.pregunta': '¿Qué haces?',

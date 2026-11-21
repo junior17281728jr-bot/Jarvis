@@ -10,6 +10,7 @@ import { traductor3d, partesNegrita, sinMarcas } from './e3d-base.js';
 import { SITUACIONES, TEXTOS_SITUACIONES } from './e3d-situaciones.js';
 import { sacudir, pintarDestello, pintarAlarma, pintarHielo } from './e3d-efectos.js';
 import { limitar, linea } from './motor3d.js';
+import { montarMinimapa } from './e3d-minimapa.js';
 
 export const PAUSA_CLAVE = 2.2; // segundos que la escena se queda quieta en el momento clave
 const COLOR_NIVEL = { correcto: [70, 200, 110], aceptable: [255, 190, 60], mal: [240, 80, 70] };
@@ -51,7 +52,7 @@ export function escenaDeSituacion(sit, Ts, ganchos = {}) {
       const h = (avion.rumbo * Math.PI) / 180, adelante = sit.unidades.ftH === 1000 ? 0.5 : 1.2, k1 = mezcla > 0.5 ? 1 : 0;
       const pc = [x + Math.sin(h) * adelante * k1, y + 0.02 + (k1 ? -0.05 : 0), z + Math.cos(h) * adelante * k1];
       if (paso.clave != null && t >= paso.clave) etiquetas.push({ p: pc, texto: Ts(`${paso.id}.clave`), prioridad: 40, tam: 1.35, resaltada: true, color: COLOR_NIVEL[paso.nivel], cabina: true });
-      ganchos.alCuadro?.(paso.id, real, t);
+      ganchos.alCuadro?.(paso.id, real, t, avion);
       // Dentro de una nube: todo gris (sin horizonte). En tercera persona, escena3d corre la niebla por la distancia.
       const niebla = ef.dentro ? { color: [196, 200, 208], inicio: 0, fin: sit.unidades.ftH === 1000 ? 0.35 : 0.25 } : ef.oscuro ? { color: [70, 76, 90], inicio: 0.5, fin: 6 } : null;
       const hielo = sit.id === 'frente-frio' && paso.id === 'encima' ? limitar((y - 9.5) / 3, 0, 1) : 0;
@@ -69,16 +70,22 @@ export function escenaDeSituacion(sit, Ts, ganchos = {}) {
   };
 }
 
+// 0.14.95: opciones.consecuencia = { opcion, alCerrar? }: la CONSECUENCIA de una pregunta (public/consecuencia-vista.js).
+// Sin introducción ni decisión: una línea de contexto, la consecuencia de esa opción (con «Vista» cabina/afuera y el
+// mini-mapa), y al final «Por qué», la regla, «Ver la correcta» (si no lo era) y «Cerrar». No avisa «clase-decision»
+// (la pregunta ya se respondió y se guardó).
 export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
   const sit = SITUACIONES[parametros.situacion] ?? SITUACIONES['clase-c'];
+  const directo = opciones.consecuencia && sit.opciones.some(o => o.id === opciones.consecuencia.opcion) ? opciones.consecuencia : null;
   const T0 = traductor3d(opciones, TEXTOS_SITUACIONES_PLANOS);
   const Ts = (k, v) => T0(`sit.${sit.id}.${k}`, v);
   const Tc = (k, v) => T0(`sit.ctl.${k}`, v);
   const reducir = prefiereMenosMovimiento();
   const titulo = typeof parametros.titulo === 'string' && parametros.titulo.trim() ? parametros.titulo : Ts('titulo');
 
-  const raiz = el('figure', { class: `clase-visual clase-sit clase-sit-${sit.id}`, role: 'group', 'aria-label': titulo }, contenedor);
+  const raiz = el('figure', { class: `clase-visual clase-sit clase-sit-${sit.id}${directo ? ' clase-sit-directa' : ''}`, role: 'group', 'aria-label': titulo }, contenedor);
   el('figcaption', { class: 'clase-sit-titulo' }, raiz, titulo);
+  const contexto = directo ? el('p', { class: 'clase-sit-contexto' }, raiz) : null;
   const lugar = el('div', { class: 'clase-sit-escena' }, raiz);
   const relato = el('p', { class: 'clase-sit-relato', 'aria-live': 'polite' }, raiz);
   const radio = el('p', { class: 'clase-sit-radio', hidden: true, lang: 'en' }, raiz);
@@ -99,8 +106,10 @@ export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
     return b;
   });
 
+  let mapa = null;
   const ganchos = {
-    alCuadro(id, real) {
+    alCuadro(id, real, _t, avion) {
+      if (mapa && avion?.pos) mapa.mover(avion.pos[0], avion.pos[2], avion.rumbo);
       if (fase === 'intro' && id === 'intro' && real >= sit.intro.vuelo.seg - 0.05) mostrarDecision();
       if (fase === 'resultado' && actual && id === actual.id) {
         if (!radioVisto && actual.radio && real >= (actual.clave ?? 0)) { radioVisto = true; radio.textContent = Ts(`${actual.id}.radio`); radio.hidden = false; }
@@ -110,7 +119,10 @@ export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
   };
   const escena = escenaDeSituacion(sit, Ts, ganchos);
   const visor = montarEscena3d(lugar, {}, { ...opciones, escena, ui: 'situacion' });
-  escribir(relato, Ts('intro'));
+  // El mini-mapa (e3d-minimapa.js), en una esquina de la escena: también en la cabina.
+  if (directo) mapa = montarMinimapa(lugar.querySelector?.('.clase-e3d-caja') ?? lugar, sit, { T: (k, v) => Tc(k, v), numero: opciones.numero });
+  if (contexto) escribir(contexto, Ts('intro'));
+  escribir(relato, directo ? '' : Ts('intro'));
 
   function mostrarDecision() {
     fase = 'decision';
@@ -120,7 +132,8 @@ export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
   function elegir(i) {
     const o = sit.opciones[i];
     actual = o; radioVisto = false; vistas.add(o.id);
-    if (primera == null) {
+    mapa?.poner(o.id);
+    if (primera == null && !directo) {
       primera = o.id;
       try {
         if (typeof CustomEvent === 'function' && raiz.dispatchEvent) raiz.dispatchEvent(new CustomEvent('clase-decision', { bubbles: true, detail: { situacion: sit.id, opcion: o.id, nivel: o.nivel, correcta: o.nivel === 'correcto', primera: true } }));
@@ -131,7 +144,7 @@ export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
     escribir(relato, Ts(`${o.id}.resultado`));
     visor.ir(i + 1);
     if (!reducir) visor.reproducir();
-    else ganchos.alCuadro(o.id, o.vuelo.seg + PAUSA_CLAVE + 1);
+    else { const f = o.vuelo.ruta.at(-1); mapa?.mover(f[0], f[2]); ganchos.alCuadro(o.id, o.vuelo.seg + PAUSA_CLAVE + 1); }
   }
   function mostrarCierre() {
     if (fase !== 'resultado' || !actual) return;
@@ -147,6 +160,13 @@ export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
     escribir(el('p', { class: 'clase-sit-regla' }, cierre), Ts(`${o.id}.regla`));
     el('p', { class: 'clase-sit-fuente' }, cierre, Tc('fuente', { f: o.fuente }));
     const fila = el('div', { class: 'clase-sit-botones' }, cierre);
+    if (directo) {
+      const ic = sit.opciones.findIndex(x => x.nivel === 'correcto');
+      if (o.nivel !== 'correcto') el('button', { type: 'button', class: 'clase-boton clase-boton-principal clase-sit-ver-correcta' }, fila, Tc('verCorrecta')).addEventListener('click', () => elegir(ic));
+      el('button', { type: 'button', class: `clase-boton${o.nivel === 'correcto' ? ' clase-boton-principal' : ''} clase-sit-cerrar` }, fila, Tc('cerrar')).addEventListener('click', () => directo.alCerrar?.());
+      cierre.hidden = false;
+      return;
+    }
     const otra = el('button', { type: 'button', class: 'clase-boton clase-sit-otra' }, fila, Tc('otra'));
     otra.addEventListener('click', () => { radio.hidden = true; escribir(relato, Ts('intro')); mostrarDecision(); });
     const sig = el('button', { type: 'button', class: 'clase-boton clase-boton-principal clase-sit-siguiente' }, fila, Tc('siguiente'));
@@ -158,8 +178,10 @@ export function montarSituacion3d(contenedor, parametros = {}, opciones = {}) {
     cierre.hidden = false;
   }
 
+  if (directo) elegir(sit.opciones.findIndex(o => o.id === directo.opcion));
+
   return {
-    raiz,
+    raiz, mapa,
     tiempo() {}, modo() {}, poner() {},
     pausar() { visor.pausar(); },
     elegir, mostrarDecision,

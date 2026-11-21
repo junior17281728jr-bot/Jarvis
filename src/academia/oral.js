@@ -12,6 +12,7 @@
 //  - 0.14.19 («test out»): el oral no tiene candados (todos los capítulos están abiertos), así que no hay nada que abrir;
 //    pero si aprueba el examen de un capítulo ANTES de terminar sus temas, el capítulo queda «Convalidado por examen»
 //    (examenes.<capítulo>.convalidada = { pct, en }, se agrega una vez y no cambia): su avance cuenta todos sus temas hechos.
+import { consecuenciaVista } from './consecuencias.js';
 import { randomBytes } from 'node:crypto';
 import { ErrorHttp } from '../nucleo/http.js';
 import { MATERIAS_ORAL } from './formato.js';
@@ -81,6 +82,8 @@ function vistaPreguntaOral(paquete, qid) {
     pregunta_libro_en: q.fuente_pregunta?.pregunta_en ?? null,
   };
 }
+// 0.14.95: la consecuencia en 3D de la opción elegida (src/academia/consecuencias.js), solo después de responder.
+const consecuenciaDeOral = (qid, q) => { const c = consecuenciaVista(qid, q); return c ? { consecuencia: c } : {}; };
 // Lo que se ve DESPUÉS de responder: la correcta, por qué su opción no, la explicación y «¿De dónde salió?».
 function retroOral(paquete, qid, elegida) {
   const q = paquete.oral.preguntas.get(qid);
@@ -93,6 +96,7 @@ function retroOral(paquete, qid, elegida) {
     pregunta: qid, elegida, correcta: q.original.correcta, acierto,
     porque: acierto ? null : q.errores?.[elegida] ?? null,
     explicacion: q.original.explicacion, sencilla: q.sencilla ?? null,
+    ...(consecuenciaDeOral(qid, q)),
     origen: { libro: libroDe(paquete, pid, f.libro), pagina: f.pagina, pregunta_en: f.pregunta_en, respuesta_en: f.respuesta_en, como: f.como,
       pregunta_es: qa?.pregunta_es ?? null, respuesta_es: qa?.respuesta_es ?? null },
   };

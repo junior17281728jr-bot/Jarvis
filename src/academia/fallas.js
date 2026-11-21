@@ -250,7 +250,7 @@ function opcionesDeLaMala(paquete, id, mala) {
   const v = vistaPregunta(paquete, id, como);
   const r = retroalimentacion(paquete, id, mala.elegida, como);
   if (v.falta || !r) return {};
-  return { modo: como.modo, opciones: v.opciones, respuesta: { elegida: r.elegida, correcta: r.correcta, acierto: r.acierto, modo: como.modo }, sencilla: r.sencilla ?? null };
+  return { modo: como.modo, opciones: v.opciones, respuesta: { elegida: r.elegida, correcta: r.correcta, acierto: r.acierto, modo: como.modo, ...(r.consecuencia ? { consecuencia: r.consecuencia } : {}) }, sencilla: r.sencilla ?? null };
 }
 
 // Las preguntas para repasar un concepto: las que falló (sin superar primero), después las demás del concepto, hasta 10.

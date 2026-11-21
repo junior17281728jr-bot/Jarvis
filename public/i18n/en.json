@@ -6557,6 +6557,15 @@
   "clase.e3d.sit.ctl.final": "Remember",
   "clase.e3d.sit.ctl.repetirIntro": "Watch the situation again",
   "clase.e3d.sit.ctl.radio": "Radio",
+  "clase.e3d.sit.ctl.verCorrecta": "See the right one",
+  "clase.e3d.sit.ctl.cerrar": "Close",
+  "clase.e3d.sit.ctl.mapa": "Map from above: the route, the airplane and the areas",
+  "clase.e3d.sit.ctl.mapa.agrandar": "Enlarge the map",
+  "clase.e3d.sit.ctl.mapa.achicar": "Shrink the map",
+  "clase.e3d.sit.ctl.mapa.decision": "You decide here",
+  "clase.e3d.sit.ctl.mapa.nm": "{v} NM",
+  "clase.e3d.sit.ctl.mapa.ft": "{v} ft",
+  "clase.e3d.sit.ctl.mapa.norte": "N",
   "clase.e3d.sit.clase-c.titulo": "Situation: Class C ahead",
   "clase.e3d.sit.clase-c.intro": "You are at **3,500 ft** heading to the airport. Ahead is the magenta wall of **Class C**.",
   "clase.e3d.sit.clase-c.pregunta": "What do you do?",
@@ -6752,5 +6761,11 @@
   "ia3.aprendido.primera": "First answer",
   "ia3.aprendido.repregunta": "Follow-up",
   "ia3.aprendido.veces": "{n} times",
-  "ia3.aprendido.listo": "Done: {n} in use, {r} retired (nothing is deleted)."
+  "ia3.aprendido.listo": "Done: {n} in use, {r} retired (nothing is deleted).",
+  "consec.ver": "See what would happen",
+  "consec.ver_correcta": "See the right one",
+  "consec.titulo": "What would happen in flight",
+  "consec.cerrar": "Close",
+  "consec.cargando": "Getting the scene ready…",
+  "consec.error": "The scene could not open. Try again."
 }

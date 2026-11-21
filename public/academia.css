@@ -1867,3 +1867,17 @@ details.cert-verificar > summary { color: var(--acento); }
 .aviso-orden-botones { display: flex; flex-wrap: wrap; gap: 8px; }
 .aviso-orden-botones > * { flex: 1 1 140px; text-align: center; justify-content: center; }
 .aviso-orden-botones > .aviso-orden-examen { flex-basis: 100%; }
+/* 0.14.95: «▶ Ver qué pasaría» (public/consecuencia-vista.js): el botón en la hoja y en las revisiones, y la capa casi a
+   pantalla completa con la consecuencia 3D (encima de la hoja de la respuesta). */
+.consecuencia-fila { display: flex; margin: 8px 0; }
+.boton-consecuencia { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 16px; font-weight: 800; }
+.consecuencia-play { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--azul, #1f6feb); color: #ffffff; font-size: .8rem; line-height: 1; padding-left: 2px; box-sizing: border-box; }
+.consecuencia-capa { position: fixed; inset: 0; z-index: 60; background: rgba(4, 10, 20, 0.86); display: flex; justify-content: center; align-items: stretch; overflow: hidden; }
+.consecuencia-marco { box-sizing: border-box; width: 100%; max-width: 880px; display: flex; flex-direction: column; background: var(--fondo); color: var(--texto); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+@media (min-width: 900px) { .consecuencia-capa { padding: 24px; } .consecuencia-marco { border-radius: 22px; overflow: hidden; } }
+.consecuencia-barra { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--borde, rgba(127, 127, 127, 0.25)); }
+.consecuencia-titulo { margin: 0; font-size: 1.05rem; font-weight: 800; }
+.consecuencia-cuerpo { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 12px 16px 24px; }
+.consecuencia-cuerpo .clase-sit { border: 0; padding: 2px; background: transparent; overflow: visible; }
+.consecuencia-cargando { margin: 40px 0; text-align: center; color: var(--suave, #5b6577); }
+.clase-sit-directa .clase-e3d-estado { max-width: calc(54% - 16px); }

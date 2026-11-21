@@ -10,6 +10,8 @@
 import { lineaRepasa, enlaceMiniClase as enlaceClase } from './progreso-vista.js';
 // 0.14.84: cada pregunta fallada con TODAS sus opciones (la correcta en verde, la que eligió en rojo, las demás sin color).
 import { opcionesRevisadas } from './opciones-revision.js';
+// 0.14.95: «▶ Ver qué pasaría» (la consecuencia 3D de la opción elegida; el 3D se carga al tocarlo).
+import { botonConsecuencia } from './consecuencia-vista.js';
 // 0.14.85: «⚑ Reportar un error» de cada pregunta que falló (ya respondida).
 import { enlaceReportar, puntoPregunta } from './reportar-vista.js';
 // (la clave es c:<materia>/<tema>/<punto>, solo letras, números, _ y -: la dirección lleva lo de después de «c:»)
@@ -47,6 +49,7 @@ export function pantallaMiRepaso(d, h) {
     q.opciones?.length && q.respuesta ? el('details', { class: 'repaso-opciones' },
       el('summary', { class: 'con-icono' }, icono('lupa', 'icono chico'), el('span', { texto: t('mirepaso.ver_opciones') })),
       opcionesRevisadas(q.opciones, q.respuesta, h),
+      botonConsecuencia(q.respuesta, h),
       q.sencilla ? el('section', { class: 'caja-hoja caja-sencilla' },
         el('h3', { class: 'con-icono' }, icono('chispa', 'icono chico'), el('span', { texto: t('acad.explicacion_sencilla') })),
         talCual('p', q.sencilla),
@@ -108,6 +111,7 @@ export function pantallaMiniClase(d, h) {
     talCual('p', `${q.numero ? `${q.numero} · ` : ''}${q.enunciado}`, 'fuerte'),
     // 0.14.84: todas las opciones (la correcta en verde, la que eligió en rojo, las demás sin color); sin ellas, como antes.
     q.opciones?.length && q.respuesta ? opcionesRevisadas(q.opciones, q.respuesta, h) : null,
+    q.respuesta ? botonConsecuencia(q.respuesta, h) : null,
     !(q.opciones?.length && q.respuesta) && q.elegida && q.correcta && q.elegida.letra !== q.correcta.letra ? linea(t('mini.elegiste'), `${q.elegida.letra}. ${q.elegida.texto}`) : null,
     !(q.opciones?.length && q.respuesta) && q.correcta ? linea(t('mini.correcta'), `${q.correcta.letra}. ${q.correcta.texto}`) : null,
     linea(t('mini.por_que_no'), q.idea),

@@ -73,6 +73,9 @@ function montarCdi(padre, curso, lec, T) {
   return s;
 }
 
+// El avión visto desde arriba (la nariz hacia arriba, 26 de ancho). 0.14.95: también el mini-mapa de las consecuencias.
+export const FORMA_AVION = 'M0 -13L2.5 -5L13 1L13 4L2.5 2L1.5 9L5 12L5 14L0 13L-5 14L-5 12L-1.5 9L-2.5 2L-13 4L-13 1L-2.5 -5Z';
+
 function montarMapa(padre, curso, radial, rumboAvion, lec, T) {
   const s = svg('svg', { viewBox: `0 0 ${TAM} ${TAM}`, class: 'clase-dib-lienzo clase-dib-vor-mapa', role: 'img', 'aria-label': T('mapa', { curso: tresCifras(curso), radial: tresCifras(radial) }) }, padre);
   svg('rect', { x: 2, y: 2, width: TAM - 4, height: TAM - 4, rx: 14, class: 'clase-dib-vor-papel' }, s);
@@ -102,7 +105,7 @@ function montarMapa(padre, curso, radial, rumboAvion, lec, T) {
   const [lx, ly] = vector(radial, 66), [nx, ny] = vector(radial + 90, 26);
   svg('text', { x: f1(C + lx + nx), y: f1(C + ly + ny + 5), 'text-anchor': 'middle', class: 'clase-dib-vor-radial-texto' }, s, T('radial', { v: tresCifras(radial) }));
   const avion = svg('g', { class: 'clase-dib-vor-avion', transform: `translate(${f1(C + rx)} ${f1(C + ry)}) rotate(${f1(rumboAvion)})` }, s);
-  svg('path', { d: 'M0 -13L2.5 -5L13 1L13 4L2.5 2L1.5 9L5 12L5 14L0 13L-5 14L-5 12L-1.5 9L-2.5 2L-13 4L-13 1L-2.5 -5Z', class: 'clase-dib-vor-avion-forma' }, avion);
+  svg('path', { d: FORMA_AVION, class: 'clase-dib-vor-avion-forma' }, avion);
   // La estación (el símbolo del VOR: hexágono con su punto).
   const hex = Array.from({ length: 6 }, (_, i) => vector(30 + i * 60, 10)).map(([x, y]) => `${f1(C + x)} ${f1(C + y)}`).join('L');
   svg('path', { d: `M${hex}Z`, class: 'clase-dib-vor-estacion' }, s);

@@ -6557,6 +6557,15 @@
   "clase.e3d.sit.ctl.final": "Recuerda",
   "clase.e3d.sit.ctl.repetirIntro": "Ver la situación otra vez",
   "clase.e3d.sit.ctl.radio": "Radio",
+  "clase.e3d.sit.ctl.verCorrecta": "Ver la correcta",
+  "clase.e3d.sit.ctl.cerrar": "Cerrar",
+  "clase.e3d.sit.ctl.mapa": "Mapa desde arriba: la ruta, el avión y las zonas",
+  "clase.e3d.sit.ctl.mapa.agrandar": "Agrandar el mapa",
+  "clase.e3d.sit.ctl.mapa.achicar": "Achicar el mapa",
+  "clase.e3d.sit.ctl.mapa.decision": "Decides aquí",
+  "clase.e3d.sit.ctl.mapa.nm": "{v} NM",
+  "clase.e3d.sit.ctl.mapa.ft": "{v} ft",
+  "clase.e3d.sit.ctl.mapa.norte": "N",
   "clase.e3d.sit.clase-c.titulo": "Situación: la Clase C delante",
   "clase.e3d.sit.clase-c.intro": "Vas a **3,500 ft** hacia el aeropuerto. Delante está la pared magenta de la **Clase C**.",
   "clase.e3d.sit.clase-c.pregunta": "¿Qué haces?",
@@ -6752,5 +6761,11 @@
   "ia3.aprendido.primera": "Primera respuesta",
   "ia3.aprendido.repregunta": "Repregunta",
   "ia3.aprendido.veces": "{n} veces",
-  "ia3.aprendido.listo": "Listo: {n} en uso, {r} retirados (nada se borra)."
+  "ia3.aprendido.listo": "Listo: {n} en uso, {r} retirados (nada se borra).",
+  "consec.ver": "Ver qué pasaría",
+  "consec.ver_correcta": "Ver la correcta",
+  "consec.titulo": "Qué pasaría en el vuelo",
+  "consec.cerrar": "Cerrar",
+  "consec.cargando": "Preparando la escena…",
+  "consec.error": "No se pudo abrir la escena. Intenta otra vez."
 }

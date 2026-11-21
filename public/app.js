@@ -5543,7 +5543,7 @@ function partesRespuesta(q, resp, opciones = {}) {
     const b = botonOtra();
     if (b) { b.scrollIntoView({ block: 'center', behavior: 'smooth' }); b.click(); }
   } });
-  return [escuchar, partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta, entendi })].filter(Boolean);
+  return [escuchar, partesClaras(q, resp, opciones, { el, t, icono, talCual, fichaIngles, figuraPregunta, entendi, api, numero })].filter(Boolean);
 }
 function bloqueRespuesta(q, resp) {
   return el('div', { class: 'retro' },

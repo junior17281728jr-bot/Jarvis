@@ -11,6 +11,8 @@
 // 0.14.84: en la hoja, arriba, TODAS las opciones (la correcta en verde con ✓ «Correcta», la suya si es mala en rojo con
 //  ✗ «Tu respuesta», las demás sin color; en Modo reto, las que vio), en vez de «La correcta» y «Tu respuesta» aparte.
 import { opcionesRevisadas } from './opciones-revision.js';
+// 0.14.95: «▶ Ver qué pasaría» (la consecuencia 3D de la opción elegida; el 3D se carga al tocarlo).
+import { botonConsecuencia } from './consecuencia-vista.js';
 
 // Los rótulos que se reconocen al principio de una línea: [patrón, tipo, ícono].
 const ROTULOS = [
@@ -48,6 +50,7 @@ export function partesClaras(q, resp, { enHoja = false } = {}, h) {
     enHoja ? el('section', { class: `resp-opciones ${resp.acierto ? 'bien' : 'mal'}` },
       el('span', { class: 'resp-correcta-rotulo', texto: t('resp.op.titulo') }),
       opcionesRevisadas(q.opciones, resp, h)) : null,
+    botonConsecuencia(resp, h),
     resp.modo === 'reto' && resp.letraOriginal && resp.letraOriginal !== correcta
       ? el('p', { class: 'nota-letras con-icono' }, icono('info', 'icono chico'), el('span', { texto: t('reto.letras', { aqui: correcta, original: resp.letraOriginal }) })) : null,
     filas.length ? el('section', { class: 'caja-hoja caja-sencilla principal' },

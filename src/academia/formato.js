@@ -3,6 +3,7 @@
 // repositorio (es público). Aquí solo se revisa que esté bien armado; nunca se cambia ni se recorta un texto: lo del
 // Test Guide se guarda y se muestra tal cual (sin trim, sin normalizar).
 
+import { revisarConsecuencia } from './consecuencias.js';
 import { normalizar, retosFaciles } from './reto-calidad.js';
 import { revisarDiagrama } from './diagramas.js';
 
@@ -338,6 +339,8 @@ export function revisarPaquete(p) {
       }
     }
     palabrasIngles(q.ingles, `${r}.ingles`, ['pronunciacion', 'significado', 'ejemplo']);
+    // 0.14.95: «consecuencia» (opcional): letra → consecuencia de una situación 3D (src/academia/consecuencias.js).
+    if (q.consecuencia != null) for (const m of revisarConsecuencia(q.consecuencia, { letras, correcta: letras.includes(o.correcta) ? o.correcta : null })) mal(`${r}.consecuencia`, m);
     // 0.8.0: «Modo reto» (opcional): EXACTAMENTE 2 opciones incorrectas nuevas, más engañosas, que se muestran junto al
     // enunciado y la respuesta correcta TAL CUAL. Cada una con por qué es incorrecta (y la trampa que tiende, opcional).
     // Nunca pueden ser iguales entre sí ni a una opción original.
