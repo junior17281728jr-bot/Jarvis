@@ -37,8 +37,55 @@ function antesDespues(h, c) {
   if (c.que === 'materia_publicada' || c.que === 'materia_en_revision') return t('iahizo.ad.materia', { antes: a.version ? t('iahizo.ad.version', { n: a.version }) : t('iahizo.ad.sin_publicar'), temas: d.temas ?? 0, preguntas: d.preguntas ?? 0, dudas: d.dudas ?? 0 });
   if (c.que === 'clase_reescrita' || c.que === 'pedido_hecho') return t('iahizo.ad.clase', { antes: a.version ? t('iahizo.ad.version', { n: a.version }) : '—', temas: d.temas ?? 0, dudas: d.dudas ?? 0 });
   if (c.que === 'correccion') return t('iahizo.ad.correccion', { que: a.que ?? '—', porque: d.porque ?? '—' });
+  if (c.que === 'reescritura_rechazada') return t('iahizo.ad.rechazada', { que: a.que ?? '—' });
+  if (c.que === 'tarjeta_revertida') return t('iahizo.ad.revertida', { que: a.que ?? '—', desde: d.desde ?? '—', n: c.version ?? '—' });
   if (c.que === 'revision_errores') return t('iahizo.ad.revision', { temas: d.temas ?? 0, dudas: d.dudas ?? 0, errores: d.errores ?? 0 });
   return '';
+}
+
+// 0.14.94: «Ver y deshacer» una tarjeta que reescribió la IA: cada tarjeta del tema con cómo estaba en las versiones de
+// antes, y «Volver a esta» (una versión NUEVA con esa tarjeta como estaba; nada se borra). La caja se llena al tocar.
+const QUE_DESHACER = new Set(['correccion', 'clase_reescrita', 'pedido_hecho', 'revision_arreglo', 'reescritura_rechazada', 'tarjeta_revertida']);
+function botonHistorial(h, c) {
+  const { el, t } = h;
+  const caja = el('div', { class: 'iahizo-historial', hidden: true });
+  const llenar = r => {
+    if (!r.ok) { caja.replaceChildren(el('p', { class: 'mensaje error', texto: h.textoError(r.datos.error) })); return; }
+    const d = r.datos;
+    if (!d.tarjetas.length) { caja.replaceChildren(el('p', { class: 'suave chica', texto: t('iahizo.historial.nada') })); return; }
+    caja.replaceChildren(el('p', { class: 'suave chica', texto: t('iahizo.historial.linea', { n: d.actual.version }) }),
+      ...d.tarjetas.map(x => el('div', { class: 'iahizo-historial-tarjeta' },
+        el('p', {}, el('strong', { texto: `${x.n}. ${x.titulo}` })),
+        el('p', { class: 'iahizo-historial-rotulo', texto: t('iahizo.historial.ahora') }),
+        el('p', { class: 'iahizo-historial-texto', texto: x.texto }),
+        ...x.antes.flatMap(v => [
+          el('p', { class: 'iahizo-historial-rotulo', texto: t('iahizo.historial.antes', { n: v.version, fecha: v.subidoEn ? h.fecha(v.subidoEn) : '—' }) }),
+          el('p', { class: 'iahizo-historial-texto', texto: v.texto }),
+          el('button', {
+            type: 'button', class: 'secundario',
+            onclick: async e => {
+              if (!(await h.confirmar(t('iahizo.historial.confirmar', { n: v.version })))) return;
+              e.currentTarget.disabled = true;
+              const r2 = await h.api('POST', '/api/admin/academia/tarjeta-revertir', { materia: d.materia, tema: d.tema, n: x.n, version: v.version });
+              h.avisar(r2.ok ? t(r2.datos.publicada ? 'iahizo.historial.hecho' : 'iahizo.historial.incompleta', { n: r2.datos.version }) : h.textoError(r2.datos.error), r2.ok ? 'bien' : 'mal');
+              if (r2.ok) h.recargar();
+            },
+          }, el('span', { texto: t('iahizo.historial.volver', { n: v.version }) })),
+        ]))));
+  };
+  const boton = el('button', {
+    type: 'button', class: 'secundario chica', 'aria-expanded': 'false',
+    onclick: async e => {
+      const b = e.currentTarget;
+      const abrir = caja.hidden;
+      caja.hidden = !abrir;
+      b.setAttribute('aria-expanded', abrir ? 'true' : 'false');
+      if (!abrir || caja.childNodes.length) return;
+      caja.replaceChildren(el('p', { class: 'suave chica', texto: t('iahizo.historial.cargando') }));
+      llenar(await h.api('GET', `/api/admin/academia/tarjeta-historial?materia=${encodeURIComponent(c.materia)}&tema=${encodeURIComponent(c.tema)}`));
+    },
+  }, el('span', { texto: t('iahizo.historial.ver') }));
+  return [boton, caja];
 }
 
 export function pantallaLoQueHizo(d, h) {
@@ -88,7 +135,8 @@ export function pantallaLoQueHizo(d, h) {
       el('span', { texto: t('iahizo.costo', { usd: usd(c.costoMicro ?? 0) }) }),
       c.proveedor ? el('span', { texto: ` · ${nombreProveedor(c.proveedor)}${c.modelo ? ` (${c.modelo})` : ''}` }) : null,
       c.revisadoPor === 'anthropic' && c.proveedor && c.proveedor !== 'anthropic' ? el('span', { class: 'insignia tono-bien iahizo-revisado', texto: t('iahizo.revisado_claude') }) : null),
-    c.materia ? el('a', { class: 'enlace-claude', href: c.tema ? `#tema/${encodeURIComponent(c.materia)}/${encodeURIComponent(c.tema)}` : '#contenido', texto: t('iahizo.ver_clase') }) : null);
+    c.materia ? el('a', { class: 'enlace-claude', href: c.tema ? `#tema/${encodeURIComponent(c.materia)}/${encodeURIComponent(c.tema)}` : '#contenido', texto: t('iahizo.ver_clase') }) : null,
+    ...(c.materia && c.tema && QUE_DESHACER.has(c.que) ? botonHistorial(h, c) : []));
   const registro = el('section', { class: 'tarjeta ancha' },
     el('h3', { texto: t('iahizo.registro') }),
     d.cambios.length ? el('ul', { class: 'iahizo-cambios' }, d.cambios.map(fila)) : h.vacio('manual', t('iahizo.registro.vacio')));

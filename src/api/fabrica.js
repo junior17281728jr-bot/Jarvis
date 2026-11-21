@@ -21,6 +21,7 @@ import { vistaFabrica, informeMateria, leerConfigFabrica, guardarConfigFabrica, 
 import { guardarAjuste } from '../academia/paquetes.js';
 import { probarModeloClaude } from '../claves/probar.js';
 import { vistaLoQueHizo } from '../academia/ia-hizo.js';
+import { historialTema, revertirTarjeta } from '../academia/tarjeta-historial.js';
 import { vistaChat, escribirMensaje, hazlo, cancelarTrabajo, publicarTrabajo } from '../academia/pidele.js';
 
 // «3,50» y «3.50» son lo mismo (el teléfono en español pone coma).
@@ -186,6 +187,21 @@ export function registrarRutasFabrica(rutas, { config = null, supervisor = null,
   // Pausar o reanudar TODO el trabajo de la IA (fábrica + chat): POST /api/admin/academia/fabrica/pausa.
   const idTrabajo = parametros => { if (!/^[0-9a-f]{12}$/.test(String(parametros.id))) throw new ErrorHttp(404, 'no_existe'); return parametros.id; };
   rutas.agregar('GET', '/api/admin/academia/ia-hizo', ({ db }) => { necesitaConfig(); return { codigo: 200, datos: vistaLoQueHizo(db, config, reloj()) }; }, { admin: true });
+  // 0.14.94: «Ver y deshacer» una tarjeta reescrita por la IA (src/academia/tarjeta-historial.js). Solo agrega versiones.
+  //  - GET  /api/admin/academia/tarjeta-historial?materia=&tema=   cada tarjeta del tema con cómo estaba antes
+  //  - POST /api/admin/academia/tarjeta-revertir { materia, tema, n, version }   versión nueva con esa tarjeta como estaba
+  rutas.agregar('GET', '/api/admin/academia/tarjeta-historial', ({ db, req }) => {
+    necesitaConfig();
+    const q = new URL(req.url, 'http://x').searchParams;
+    return { codigo: 200, datos: historialTema(db, config, { materia: q.get('materia'), tema: q.get('tema') }) };
+  }, { admin: true });
+  rutas.agregar('POST', '/api/admin/academia/tarjeta-revertir', async ({ db, req, usuario }) => {
+    necesitaConfig();
+    const datos = await leerJson(req);
+    const r = await revertirTarjeta(db, config, { materia: datos?.materia, tema: datos?.tema, n: datos?.n, version: datos?.version, usuarioId: usuario.id, ahora: reloj() });
+    auditar(db, { usuarioId: usuario.id, accion: 'academia_tarjeta_revertida', detalle: `${datos.materia}/${datos.tema}/${datos.n} ← v${datos.version} → v${r.version}` });
+    return { codigo: 200, datos: r };
+  }, { admin: true, soloDueno: true });
   rutas.agregar('GET', '/api/admin/academia/chat', ({ db }) => {
     necesitaConfig();
     return { codigo: 200, datos: vistaChat(db, config, { ahora: reloj(), pausada: leerConfigFabrica(db).pausada }) };

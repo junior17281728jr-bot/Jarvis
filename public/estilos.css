@@ -1625,3 +1625,8 @@ button.reportar-chip[aria-pressed="true"] { background: var(--acento); border-co
 .reporte-veredictos { display: flex; flex-wrap: wrap; gap: 8px; }
 .reporte-veredicto[aria-pressed="true"] { outline: 3px solid var(--acento); outline-offset: 2px; }
 .reporte-ia { background: var(--fondo); border-radius: 12px; padding: 10px 12px; margin: 6px 0; }
+/* 0.14.94: «Ver y deshacer» una tarjeta reescrita por la IA (public/ia-trabajo-vista.js). */
+.iahizo-historial { display: grid; gap: 6px; margin-top: 6px; }
+.iahizo-historial-tarjeta { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 10px; background: var(--fondo); }
+.iahizo-historial-rotulo { margin: 4px 0 0; font-size: 13px; font-weight: 700; color: var(--suave); }
+.iahizo-historial-texto { margin: 0; white-space: pre-wrap; font-size: 14px; color: var(--texto); }

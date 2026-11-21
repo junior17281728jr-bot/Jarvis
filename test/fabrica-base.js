@@ -90,7 +90,7 @@ export function textoDelPedido(cuerpo) {
 const datosDe = texto => { const m = [...texto.matchAll(/<datos>\n([\s\S]*?)\n<\/datos>/g)].at(-1); return m ? JSON.parse(m[1]) : {}; };
 // 0.14.2: chat(d): lo que «responde» la IA en «Pídele a la IA» (si no, un plan para reescribir el primer tema);
 // sinDibujo: tarjetas sin foto ni dibujo y sin números (para los «Dibujos con IA»); revision(d): lo que mira Claude.
-export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null, antes = null } = {}) {
+export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null, antes = null, mejoraTarjeta = null } = {}) {
   const opciones = { dudasProfunda, veredicto, dudasFinal };
   const texto = textoDelPedido(cuerpo);
   const d = datosDe(texto);
@@ -124,8 +124,10 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = 
     return { contexto: ['Qué es y para qué sirve.', 'Por qué te lo preguntan en el examen.'], tarjetas };
   }
   if (texto.startsWith(TAREAS_PROFUNDA.tarjetas)) {
+    // 0.14.94: como un buen modelo, la reescritura conserva los datos de antes (la guarda rechaza un tema que pierde uno).
+    const dato = /2400 rpm/.test(texto) ? 'En crucero gira a 2400 rpm.' : /hasta 4 pasajeros/.test(texto) ? 'Lleva hasta 4 pasajeros.' : 'Paso a paso, una idea.';
     return { tarjetas: d.tarjetas.map(x => ({
-      titulo: x.titulo, puntos: ['Primero lo simple: el motor (engine) empuja el avión.', 'Paso a paso, una idea.'], recuerda: 'Una idea por tarjeta.', ejemplo: 'En el circuito, antes de despegar.',
+      titulo: x.titulo, puntos: ['Primero lo simple: el motor (engine) empuja el avión.', dato], recuerda: 'Una idea por tarjeta.', ejemplo: 'En el circuito, antes de despegar.',
       ingles: [{ palabra: 'Engine', pronunciacion: 'ÉN-yin', significado: 'Motor' }], paginas: x.paginas, imagen: null, de: x.de, truco: 'Motor = músculo del avión.',
       visual: { tipo: 'diagrama-pasos', parametros: { titulo: null, unidad: null, problema: null, formula: null, resultado: null, columnas: null, filas: null, elementos: [{ nombre: 'Primero', detalle: null, valor: null, hasta: null }, { nombre: 'Después', detalle: null, valor: null, hasta: null }] } },
       solo_texto: null,
@@ -188,6 +190,8 @@ export function respuestaFalsa(cuerpo, { dudas = [], dudasProfunda = [], chat = 
   }
   if (texto.startsWith(TAREAS.verificar)) return { dudas };
   if (texto.startsWith(TAREAS.extracto)) return { pasajes: [{ libro: 'pp-es', pagina: 10, texto: 'El motor de muestra tiene cuatro cilindros' }] };
+  // 0.14.94: una reescritura a medida (para probar la guarda: «millas → millones», «mínima → mía»).
+  if (texto.includes('Varios alumnos no entendieron') && mejoraTarjeta) return { tarjeta: mejoraTarjeta(tarjeta(d.tarjeta.titulo, 1)), porque: 'más claro' };
   if (texto.includes('Varios alumnos no entendieron')) return { tarjeta: { ...tarjeta(d.tarjeta.titulo, 1), puntos: ['Mejor explicado: cuatro cilindros.'] }, porque: 'más claro' };
   if (texto.includes('Muchos alumnos fallan')) return { sencilla: '✔ Mejor explicada.', errores: Object.keys(d.pregunta.opciones.reduce((o, x) => ({ ...o, [x.letra]: 1 }), {})).filter(l => l !== d.pregunta.correcta).map(letra => ({ letra, idea: 'Nueva idea.' })), porque: 'trampa' };
   if (texto.startsWith('Revisa estas tarjetas')) return { dudas: [] };
@@ -208,10 +212,10 @@ export async function ponerChatGpt(base, { proveedor = 'openai', claudeBloqueada
   if (claudeBloqueada && secretoId) anotarPrueba(db, { id: secretoId, motivo: 'verificacion_identidad', ahora });
   return id;
 }
-export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null, antes = null } = {}) {
+export async function conFabrica(fn, { fuentes = true, oral = false, encendida = true, guardar = true, dudas = [], dudasProfunda = [], tope = 50_000_000, proveedor = 'anthropic', chat = null, sinDibujo = false, revision = null, veredicto = null, dudasFinal = null, antes = null, mejoraTarjeta = null } = {}) {
   let ahoraMs = T0;
   const reloj = () => ahoraMs;
-  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision, veredicto, dudasFinal, antes };
+  const opciones = { dudas, dudasProfunda, chat, sinDibujo, revision, veredicto, dudasFinal, antes, mejoraTarjeta };
   const falso = await crearProveedorFalso({ respuestaJson: cuerpo => respuestaFalsa(cuerpo, opciones) });
   const base = preparar({ encendida, tope, guardar, iaBases: { anthropic: falso.base, openai: falso.base, propia: falso.base }, ahora: T0 });
   const { db, config } = base;

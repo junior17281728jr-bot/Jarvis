@@ -51,6 +51,7 @@ import { gastoMicro, mesCobro, elegirProveedor, modelosDe } from '../ia/presupue
 import { puedeLlamar, adjuntar, estadoMateria, guardarGeneral, estadoGeneral, leerConfigFabrica, cuotaHora, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
 import { preguntaCubierta } from './cobertura-tg.js';
+import { revisarReescritura } from './guarda-reescritura.js';
 
 export const P = Object.freeze({
   tarjetasPorPaso: 3, intentos: 2, explicacionesTg: 4, explicacionesOral: 3,
@@ -367,6 +368,9 @@ export function explicacionTgValida(q, x, textoLibro = '') {
   if (antes.length ? JSON.stringify(Object.keys(errores).sort()) !== JSON.stringify(antes) : !Object.keys(errores).length) return { ok: false, motivo: 'errores' };
   const fuera = numerosFuera([sencilla, ...Object.values(errores)], textoLibro, JSON.stringify(o), q.sencilla, JSON.stringify(q.errores ?? {}));
   if (fuera.length) return { ok: false, motivo: `numero_no_esta:${fuera.slice(0, 3).join(',')}` };
+  // 0.14.94: lo que ya estaba (números con su unidad, «mínima»…) sigue igual; nada de «millones» ni «mía» nuevos.
+  const guarda = revisarReescritura({ sencilla: q.sencilla, errores: q.errores }, { sencilla, errores }, { base: [textoLibro, o], quitados: false });
+  if (!guarda.ok) return { ok: false, motivo: `reescritura_rechazada:${guarda.motivos.slice(0, 3).join(',')}` };
   return { ok: true, valor: { sencilla, errores } };
 }
 // Una pregunta del libro del oral: el inglés nunca se toca; el español nuevo trae los mismos números y la misma lista
@@ -567,6 +571,11 @@ export function temaProfundo(leer, c, t, viejas) {
   }
   const conMedios = (t.reexplicacion ?? []).filter(x => x.imagen || x.clip || (x.visual && x.visual.tipo !== 'titulo')).map(clon);
   const tema = { ...clon(t), secciones, reexplicacion: [{ titulo: 'Otra vez, más fácil', texto: String(cierre.otra_vez).slice(0, 4000), fuentes: fuenteTema }, ...conMedios] };
+  // 0.14.94: la guarda en código, por TEMA (la mejora profunda reparte las ideas en otras tarjetas): ningún número nuevo
+  // que no esté en el tema de antes ni en el libro, ninguno que se pierda, cada «número + unidad» y cada palabra clave
+  // («mínima»…) siguen, y nada de «millones» ni «mía» nuevos. Si no pasa, el tema queda como estaba (no se publica).
+  const guarda = revisarReescritura({ secciones: t.secciones, reexplicacion: t.reexplicacion }, { secciones: tema.secciones, reexplicacion: tema.reexplicacion }, { base: c.texto });
+  if (!guarda.ok) return sinCambios(`reescritura_rechazada:${guarda.motivos.slice(0, 4).join(',')}`);
   for (const d of leer('verificar')?.json?.dudas ?? []) dudas.push({ donde: String(d.donde).slice(0, 200), problema: String(d.problema).slice(0, 400), gravedad: d.gravedad });
   if (leer('verificar')?.fallido) dudas.push({ donde: t.titulo, problema: 'paso_fallido:verificar', gravedad: 'error' });
   return { tema, dudas, corregidos: [], cambiado: true };

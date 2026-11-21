@@ -23,6 +23,8 @@ import { tarjetaConVisual } from './diagramas.js';
 import { abrirAviso } from '../avisos/avisos.js';
 import { puedeLlamar, gastoMejoraMesMicro, adjuntar, T } from './fabrica.js';
 import { anotarCambio, costoDe } from './cambios-ia.js';
+// 0.14.94: una reescritura cambia las palabras, nunca los datos (números, unidades, «mínima»…): si no, no se aplica.
+import { revisarReescritura } from './guarda-reescritura.js';
 // 0.14.26: las opiniones de los alumnos al terminar un tema («¿Cómo te fue con esta clase?»).
 import { evidenciaOpiniones } from './opiniones.js';
 import { paqueteActivo } from './paquetes.js';
@@ -169,6 +171,7 @@ export async function mejorar(ctx, { ahora, cfg }) {
   }
   const dudas = [...(trabajo.verificado?.dudas ?? [])];
   const mejorados = [];
+  const rechazados = []; // 0.14.94: lo que la guarda no dejó pasar (no se publica; queda anotado)
   const nuevo = JSON.parse(JSON.stringify(viejo));
   const mn = nuevo.materias.find(x => x.id === trabajo.materia);
   const pregs = new Map(nuevo.preguntas.map(q => [q.id, q]));
@@ -180,12 +183,17 @@ export async function mejorar(ctx, { ahora, cfg }) {
       const s = { ...t.secciones[i], titulo: d.titulo, puntos: d.puntos.slice(0, 6), recuerda: d.recuerda, ejemplo: d.ejemplo };
       if (d.visual?.tipo) s.visual = { tipo: d.visual.tipo, parametros: Object.fromEntries(Object.entries(d.visual.parametros ?? {}).filter(([, v]) => v != null)) };
       if (!d.puntos.length || d.puntos.length > 4 || !tarjetaConVisual(s)) { dudas.push({ donde: it.titulo, problema: 'tarjeta_no_valida', gravedad: 'error' }); continue; }
+      // 0.14.94: la guarda en código (la tarjeta de antes contra la nueva, con su dibujo): si cambió un dato, queda la de antes.
+      const guarda = revisarReescritura(t.secciones[i], s);
+      if (!guarda.ok) { rechazados.push({ tema: it.tema, donde: it.titulo, problema: `reescritura_rechazada:${guarda.motivos.slice(0, 4).join(',')}` }); continue; }
       t.secciones[i] = JSON.parse(JSON.stringify(s));
-      mejorados.push({ tipo: it.tipo === 'opinion' ? 'opinion' : 'tarjeta', tema: it.tema, titulo: it.titulo, porque: h.porque });
+      mejorados.push({ tipo: it.tipo === 'opinion' ? 'opinion' : 'tarjeta', tema: it.tema, titulo: it.titulo, n: i + 1, porque: h.porque });
     } else {
       const q = pregs.get(it.pregunta);
       const malas = q.original.opciones.map(o => o.letra).filter(l => l !== q.original.correcta);
       if (!h.json.sencilla.trim() || h.json.errores.length !== malas.length || malas.some(l => !h.json.errores.some(e => e.letra === l))) { dudas.push({ donde: it.pregunta, problema: 'errores_no_validos', gravedad: 'error' }); continue; }
+      const guarda = revisarReescritura({ sencilla: q.sencilla, errores: q.errores }, { sencilla: h.json.sencilla, errores: h.json.errores.map(e => e.idea) }, { base: q.original, quitados: false });
+      if (!guarda.ok) { rechazados.push({ tema: it.tema, donde: it.pregunta, problema: `reescritura_rechazada:${guarda.motivos.slice(0, 4).join(',')}` }); continue; }
       q.sencilla = h.json.sencilla;
       q.errores = Object.fromEntries(h.json.errores.map(e => [e.letra, e.idea]));
       mejorados.push({ tipo: 'pregunta', tema: it.tema, pregunta: it.pregunta, porque: h.porque });
@@ -209,12 +217,14 @@ export async function mejorar(ctx, { ahora, cfg }) {
         else if (x.tipo === 'tarjeta') { const it = trabajo.items.find(i => i.tipo === 'tarjeta' && i.titulo === x.titulo); const v = leerJson(db, it.clave); if (v) guardarAjuste(db, it.clave, JSON.stringify({ ...v, consumida: v.usuarios.length })); }
         else { const it = trabajo.items.find(i => i.pregunta === x.pregunta); guardarAjuste(db, `fabrica.mejora.hecha.${x.pregunta}`, JSON.stringify({ n: it.n, en: iso(ahora) })); }
       }
-      guardarAjuste(db, AJUSTE_ULTIMA, JSON.stringify({ en: iso(ahora), motivo, materia: trabajo.materia, version, mejorados, dudas: dudas.slice(0, 50) }));
+      guardarAjuste(db, AJUSTE_ULTIMA, JSON.stringify({ en: iso(ahora), motivo, materia: trabajo.materia, version, mejorados, dudas: dudas.slice(0, 50), rechazados: rechazados.slice(0, 50) }));
       guardarAjuste(db, AJUSTE_TRABAJO, 'null');
+      // 0.14.94: lo que la guarda rechazó también se ve en «Lo que hizo la IA» (nunca se publicó).
+      for (const x of rechazados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'reescritura_rechazada', estado: 'rechazada', antes: { que: x.donde }, detalle: x.problema, ahora });
       // 0.14.2: «Lo que hizo la IA»: cada corrección que quedó en una versión (publicada o esperando revisión).
       if (version != null) {
         const c = costoDe(db, `m:${trabajo.version}:`);
-        for (const x of mejorados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'correccion', estado: motivo, version, antes: { que: x.tipo !== 'pregunta' ? x.titulo : x.pregunta }, despues: { porque: x.porque }, proveedor: c.proveedor, modelo: c.modelo, revisadoPor: c.revisadoPor, ahora });
+        for (const x of mejorados.slice(0, 20)) anotarCambio(db, { materia: trabajo.materia, tema: x.tema, que: 'correccion', estado: motivo, version, antes: { que: x.tipo !== 'pregunta' ? x.titulo : x.pregunta, ...(x.n ? { n: x.n } : {}) }, despues: { porque: x.porque }, proveedor: c.proveedor, modelo: c.modelo, revisadoPor: c.revisadoPor, ahora });
       }
     });
     return { seguir: false, motivo };
