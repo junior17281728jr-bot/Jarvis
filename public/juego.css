@@ -275,3 +275,109 @@ body.juego-activo { overflow: hidden; }
 }
 /* En las mini-clases para mirar no hace falta el mapa (tapaba al otro avión). */
 .juego-vuelo[data-congelar="1"] .juego-mapas { display: none; }
+
+/* ---------- 0.14.103 ---------- */
+/* El panel del motor: los interruptores (MASTER, combustible, mezcla y magnetos), lo que marca y la lista para arrancar o
+   apagar. Arriba a la izquierda, sobre la ventana (los mapas quedan a la derecha); se desplaza si no cabe. */
+.juego-motor { position: absolute; z-index: 5; left: max(8px, env(safe-area-inset-left)); top: calc(max(8px, env(safe-area-inset-top)) + 50px);
+  width: min(380px, calc(100% - 150px)); max-height: calc(56% - 58px); overflow: auto; box-sizing: border-box; padding: 8px 10px; border-radius: 14px;
+  background: rgba(8,14,26,0.97); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-left: 5px solid #ffb020; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  font: 500 13.5px/1.3 system-ui, -apple-system, sans-serif; }
+.juego-motor[hidden] { display: none; }
+.juego-motor button { margin: 0; }
+.juego-motor-cabeza { display: flex; align-items: center; gap: 8px; }
+.juego-motor-cabeza h2 { margin: 0; flex: 1; font-size: 15px; }
+.juego-motor .juego-boton { min-height: 34px; padding: 3px 8px; font-size: 13px; border-radius: 8px; }
+.juego-motor .juego-boton[aria-pressed="true"] { background: #1f4fd1; border-color: #6d95ff; color: #fff; }
+.juego-motor-cerrar { min-width: 34px; min-height: 30px !important; font-size: 18px !important; }
+.juego-motor-fila { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 6px; align-items: center; margin-top: 5px; }
+.juego-motor-nombre { color: #c9d3e3; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: 0.01em; }
+.juego-motor-mandos { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; min-width: 0; }
+.juego-motor-magneto { flex: 1 1 0; min-width: 0; padding: 4px 2px !important; font-variant-numeric: tabular-nums; }
+.juego-motor-magneto[data-pos="START"] { touch-action: none; user-select: none; -webkit-user-select: none; }
+.juego-motor-magneto[data-pos="START"][aria-pressed="true"] { background: #c62f26; border-color: #ff8278; }
+.juego-mezcla { flex: 1 1 auto; min-width: 0; accent-color: #e5483e; height: 30px; margin: 0; }
+.juego-mezcla-fin { font-size: 11px; font-weight: 800; color: #c9d3e3; }
+.juego-motor-datos { margin: 6px 0 0; font: 650 12.5px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8f0ff; }
+.juego-motor-pie { margin-top: 6px; }
+.juego-motor-lista-titulo { display: block; font-size: 13px; }
+.juego-motor-lista { margin: 4px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.juego-motor-lista li { font-size: 12.5px; color: #c9d3e3; line-height: 1.3; }
+.juego-motor-lista li[data-hecho="1"] { color: #4fd17a; }
+/* El arranque guiado: el primer paso que falta, resaltado. */
+.juego-motor[data-guia="1"] .juego-motor-lista li[data-siguiente="1"] { color: #fff; font-weight: 750; background: rgba(255,176,32,0.22); border-radius: 6px; padding: 2px 4px; }
+.juego-motor-cambiar { color: #9cc2ff; font-size: 13px; padding: 2px 0; }
+.juego-motor-fuente { margin: 4px 0 0; color: #9aa6b8; font-size: 12px; }
+.juego-motor-eleccion { display: grid; gap: 6px; margin: 6px 0; padding: 8px; border-radius: 10px; background: rgba(255,176,32,0.14); }
+.juego-motor-eleccion[hidden] { display: none; }
+.juego-motor-eleccion p { margin: 0; font-weight: 700; }
+.juego-motor-eleccion .boton-texto { color: #9cc2ff; }
+.juego-menu-titulo { margin: 4px 0 0; color: #c9d3e3; font: 800 12px/1.2 system-ui, -apple-system, sans-serif; text-transform: uppercase; letter-spacing: 0.04em; }
+.juego-tiempo-opcion[aria-pressed="true"], .juego-sonido-boton[aria-pressed="true"] { background: #1f4fd1; border-color: #6d95ff; color: #fff; }
+/* Lo que dice el motor (arrancó, se paró) con el panel abierto: dentro del panel. */
+.juego-motor-estado { margin: 6px 0 0; padding: 4px 8px; border-radius: 8px; background: rgba(47,191,91,0.18); font-weight: 700; }
+.juego-motor-estado[data-tono="mal"] { background: rgba(229,72,62,0.22); }
+.juego-motor-estado:empty { display: none; }
+.juego-escenario:has(.juego-motor:not([hidden])) .juego-aviso { z-index: 6; }
+/* Con el panel del motor abierto, el aviso va a la derecha (no lo tapa). */
+.juego-escenario:has(.juego-motor:not([hidden])) .juego-aviso { left: auto; width: min(420px, calc(100% - 400px)); min-width: 200px; }
+@media (max-width: 620px) { .juego-escenario:has(.juego-motor:not([hidden])) .juego-aviso { left: max(8px, env(safe-area-inset-left)); width: auto; top: auto; bottom: 10px; } }
+/* El teléfono de pie: el panel del motor ocupa la escena entera (en tierra, para arrancar, los relojes no hacen falta;
+   lo que importa, RPM y aceite, está en el panel). */
+@media (max-width: 620px) and (orientation: portrait) {
+  .juego-motor { right: max(8px, env(safe-area-inset-right)); width: auto; max-height: calc(100% - 60px); }
+}
+.juego-escenario:has(.juego-motor:not([hidden])) .juego-chip { display: none; }
+/* El teléfono de lado: el panel del motor ocupa la altura (los relojes del centro quedan libres). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-motor { width: min(300px, 44%); max-height: calc(100% - 58px); }
+  .juego-escenario:has(.juego-motor:not([hidden])) .juego-aviso { left: auto; width: min(360px, 50%); top: auto; bottom: 10px; }
+}
+/* En la mini-clase «La mezcla», la mezcla va en la tarjeta (con la EGT al lado). */
+.juego-clase-mezcla { display: flex; gap: 8px; align-items: center; }
+.juego-clase-mezcla .juego-mezcla-fin { color: var(--suave); }
+/* El teléfono de lado: el panel del motor más ancho (los magnetos caben) y la mini-clase en vuelo arriba, sobre el cielo
+   (nunca sobre el horizonte artificial): una línea de título y los botones en fila; el resto se desplaza. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-motor { width: min(370px, calc(100% - 150px)); }
+  .juego-motor-fila { grid-template-columns: 84px minmax(0, 1fr); }
+  .juego-motor-nombre { font-size: 10.5px; }
+  .juego-motor-magneto { font-size: 12px !important; }
+  .juego-vuelo:not([data-congelar="1"]) .juego-clase { max-width: min(420px, calc(100% - 160px)); max-height: calc(50% - 58px); padding: 6px 10px; }
+  .juego-vuelo:not([data-congelar="1"]) .juego-clase-cabeza h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; }
+  .juego-vuelo:not([data-congelar="1"]) .juego-clase-cuerpo { min-height: 2.6em; }
+  .juego-vuelo:not([data-congelar="1"]) .juego-clase-nav { flex-wrap: nowrap; padding-top: 4px; }
+  .juego-vuelo:not([data-congelar="1"]) .juego-clase-nav .boton-3d { min-height: 34px; padding-top: 4px; padding-bottom: 4px; margin: 0; font-size: 13px; }
+  .juego-vuelo:not([data-congelar="1"]) .juego-clase-ocultar { min-height: 30px; margin: 0; }
+}
+/* «Motor» en la barra; en el teléfono de pie, dentro de «⋯» (la barra no lo tapa al mapa). */
+.juego-motor-boton2 { display: none !important; }
+@media (max-width: 620px) and (orientation: portrait) {
+  .juego-barra .juego-motor-boton { display: none; }
+  .juego-motor-boton2 { display: inline-flex !important; }
+}
+/* En vuelo, el panel del motor se achica: la mezcla, lo que marca y lo que dice; arriba, sin tapar los relojes. */
+.juego-motor[data-vuelo="1"] .juego-motor-fila:not(.juego-motor-fila-mezcla), .juego-motor[data-vuelo="1"] .juego-motor-pie,
+.juego-motor[data-vuelo="1"] .juego-motor-eleccion, .juego-motor[data-vuelo="1"] .juego-motor-fuente { display: none; }
+.juego-motor[data-vuelo="1"] { max-height: calc(50% - 58px); }
+@media (max-width: 620px) and (orientation: portrait) { .juego-motor[data-vuelo="1"] { max-height: calc(54% - 58px); } }
+/* La mezcla en la tarjeta de la mini-clase: fija, fuera de lo que se desplaza. */
+.juego-clase-motor { flex: none; }
+.juego-clase-motor .juego-clase-vivo { margin: 4px 0 0; }
+/* La repetición de «qué pasó»: la cámara arriba a la izquierda (chica), la frase del momento clave abajo al centro (nunca
+   sobre el horizonte artificial: va sobre el tablero, abajo) y «Saltar» abajo a la derecha. Sin mapa ni consejo. */
+.juego-repe { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.juego-repe[hidden] { display: none; }
+.juego-repe-camara { position: absolute; left: max(8px, env(safe-area-inset-left)); top: calc(max(8px, env(safe-area-inset-top)) + 50px); margin: 0; padding: 4px 10px; border-radius: 10px;
+  background: rgba(8,14,26,0.82); color: #fff; font: 700 13px/1.3 system-ui, -apple-system, sans-serif; }
+.juego-repe-llamada { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(max(10px, env(safe-area-inset-bottom)) + 52px); margin: 0; width: min(520px, calc(100% - 24px));
+  box-sizing: border-box; padding: 10px 14px; border-radius: 14px; background: rgba(8,14,26,0.9); color: #fff; font: 750 clamp(15px, 2.2vh + 6px, 19px)/1.3 system-ui, -apple-system, sans-serif;
+  border-left: 6px solid #e5483e; text-align: left; }
+.juego-repe-llamada[data-tono="bien"] { border-left-color: #2fbf5b; }
+.juego-repe-llamada[hidden] { display: none; }
+.juego-repe[data-congelada="1"] .juego-repe-llamada { box-shadow: 0 0 0 3px rgba(255,214,90,0.7); }
+.juego-repe-saltar { position: absolute; right: max(8px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); pointer-events: auto; margin: 0; }
+.juego-vuelo[data-repe="1"] .juego-mapas, .juego-vuelo[data-repe="1"] .juego-chip, .juego-vuelo[data-repe="1"] .juego-clase-pildora { display: none; }
+.juego-exp-repe { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
+.juego-exp-repe .juego-boton { margin: 0; min-height: 40px; background: transparent; color: var(--texto); border-color: var(--borde); }
+.juego-vuelo[data-repe="1"] .juego-subtitulo { display: none; }

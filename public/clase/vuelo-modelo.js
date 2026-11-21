@@ -5,6 +5,7 @@
 // Mundo como las escenas 3D (motor3d.js): x = este, y = arriba, z = norte; 1 unidad = 1,000 ft (como el circuito).
 // Unidades del estado: kt (velocidad), ft (altitud), grados (rumbo, cabeceo, alabeo), ft/min (vs).
 import { tasaDeGiro, inclinacionCoordinador, agujaAnemometro, agujasAltimetro, agujaVariometro } from './instrumentos.js';
+import { pasoMotor } from './motor-piston.js';
 
 export const VUELO = Object.freeze({
   perdidaKt: 48, // velocidad de pérdida sin flaps (alas niveladas)
@@ -92,13 +93,23 @@ function subpaso(a, m, dt, amb, asistente) {
   n.flaps = flaps;
   n.potencia = lim(m.potencia ?? a.potencia, 0, 1);
   // ---- el motor ----
+  // 0.14.103: con a.pist (motor-piston.js), el arranque, los magnetos, el selector y la mezcla (EGT, potencia, aspereza
+  // y flujo de combustible); sin él, el motor de antes (siempre en marcha).
   const sinCombustible = n.combustible <= 0;
-  const efectiva = sinCombustible ? 0 : n.potencia * lim(n.motor, 0, 1);
-  const vibra = n.rugido > 0 ? n.rugido * 260 * Math.sin(n.t * 7.3) * Math.sin(n.t * 2.1 + 1) : 0;
-  const anda = !sinCombustible && n.motor > 0.05;
-  const rpmMeta = anda ? VUELO.rpmRalenti + (VUELO.rpmMax - 200 - VUELO.rpmRalenti) * efectiva + n.kt * 2 + vibra : (n.kt > 50 ? n.kt * 9 : 0);
+  let efectiva = sinCombustible ? 0 : n.potencia * lim(n.motor, 0, 1);
+  let anda = !sinCombustible && n.motor > 0.05;
+  if (a.pist) {
+    n.pist = pasoMotor(a.pist, { potencia: n.potencia, ft: a.ft, combustible: n.combustible, dt });
+    anda = anda && n.pist.enMarcha;
+    efectiva = anda ? efectiva * n.pist.factor : 0;
+  }
+  const aspero = Math.max(n.rugido, n.pist?.aspereza ?? 0);
+  const vibra = aspero > 0 ? aspero * 260 * Math.sin(n.t * 7.3) * Math.sin(n.t * 2.1 + 1) : 0;
+  const rpmMeta = anda ? VUELO.rpmRalenti + (VUELO.rpmMax - 200 - VUELO.rpmRalenti) * efectiva + n.kt * 2 + vibra : n.pist?.girando ? 260 : (n.kt > 50 ? n.kt * 9 : 0);
   n.rpm = lim(hacia(a.rpm, rpmMeta, 1600 * dt), 0, VUELO.rpmMax + 200);
-  n.combustible = Math.max(0, a.combustible - (VUELO.consumoGph * Math.max(0.15, efectiva) * dt) / 3600);
+  n.combustible = Math.max(0, a.combustible - ((n.pist ? n.pist.flujoGph : VUELO.consumoGph * Math.max(0.15, efectiva)) * dt) / 3600);
+  // La presión del aceite sube después del arranque (en verde en menos de 30 s) y baja al apagar.
+  if (n.pist) n.aceitePsi = a.aceitePsi + ((anda ? VUELO.aceitePsiNormal : 0) - a.aceitePsi) * Math.min(1, dt / 6);
   // ---- los mandos ----
   const pideAlabeo = lim(m.alabeo ?? 0, -1, 1), pideCabeceo = lim(m.cabeceo ?? 0, -1, 1);
   const maxAlabeo = asistente ? VUELO.maxAlabeoAsistente : VUELO.maxAlabeo;

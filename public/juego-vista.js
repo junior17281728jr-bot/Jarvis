@@ -29,6 +29,11 @@ import {
 } from './clase/juego-noche.js';
 import { MINICLASES, miniclase, preguntaDePaso } from './clase/juego-miniclases.js';
 import { traficoInicial, moverCualquiera, alertaTrafico, etiquetaAltura } from './clase/juego-trafico.js';
+import { crearMotor, listaArranque, listaApagado, MOTOR_FAA } from './clase/motor-piston.js';
+import { crearSonido } from './clase/juego-sonido.js';
+import { TIEMPOS, TIEMPO_FAA, condiciones, cambioAltimetro, nubesDe } from './clase/juego-tiempo.js';
+import { pintarDestello } from './clase/e3d-efectos.js';
+import { crearRepeticion, escenaDeRepeticion, estadoRepeticion, camaraRepeticion, primitivasRepeticion, tomaEn, fundido, congelada, ENCUENTROS, CAMARAS } from './clase/juego-repeticion.js';
 export { MINICLASES };
 import { bola } from './clase/motor3d.js';
 
@@ -77,14 +82,17 @@ export function mandosDeTeclas(apretadas, antes, dt) {
 }
 
 // Cómo empieza cada vuelo: 'libre' en la cabecera de la 36 (motor en ralentí) o 'final' a 3 NM, alineado, a 950 ft.
-export function inicioDe(modo) {
-  if (modo === 'preguntas') return crearAvion({ ...INICIO_GUIADO, enSuelo: false, potencia: 0.65 });
+// 0.14.103: { enFrio: true } empieza con el motor apagado y todo en OFF (para arrancarlo); si no, en marcha.
+export function inicioDe(modo, { enFrio = false } = {}) {
+  if (modo === 'preguntas') return { ...crearAvion({ ...INICIO_GUIADO, enSuelo: false, potencia: 0.65 }), pist: crearMotor() };
   if (modo === 'final') {
     const a = crearAvion({ x: 0, z: -PISTA.largoFt / 2000 - 3 * NM, ft: 950, kt: 68, potencia: 0.2, enSuelo: false, flaps: 1 });
-    return { ...a, gamma: -0.052, cabeceo: -1, rpm: 1700 };
+    return { ...a, gamma: -0.052, cabeceo: -1, rpm: 1700, pist: crearMotor() };
   }
-  return crearAvion({ x: 0, z: -PISTA.largoFt / 2000 + 0.15 });
+  const a = crearAvion({ x: 0, z: -PISTA.largoFt / 2000 + 0.15 });
+  return enFrio ? { ...a, rpm: 0, aceitePsi: 0, pist: crearMotor({ enMarcha: false }) } : { ...a, pist: crearMotor() };
 }
+const CLAVE_ARRANQUE = 'academia.juego.arranque';
 
 // ---------- la pantalla de entrada (#juego) ----------
 export function pantallaJuego(h) {
@@ -153,11 +161,20 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // 0.14.102: los botones de arriba, chicos y en grupo; lo que se usa menos va en «⋯» (la hora y el tráfico).
   const bMas = boton('juego-mas', '⋯', () => { menuMas.hidden = !menuMas.hidden; bMas.setAttribute('aria-expanded', String(!menuMas.hidden)); }, { 'aria-label': t('juego.mas'), 'aria-expanded': 'false' });
   const bTrafico = boton('juego-trafico-boton', '', () => { conTrafico = !conTrafico; pintarBotones(); }, { 'aria-pressed': 'true' });
-  const menuMas = el('div', { class: 'juego-menu-mas', hidden: true, role: 'group', 'aria-label': t('juego.mas') }, bHora, bTrafico);
+  // 0.14.103: el sonido (apagado al empezar: suena solo después de tocarlo) y el tiempo (despejado, nubes, frentes).
+  const bSonido = boton('juego-sonido-boton', '', () => cambiarSonido(), { 'aria-pressed': 'false' });
+  const botonesTiempo = TIEMPOS.map(id => boton('juego-tiempo-opcion', t(`juego.tiempo.${id}`), () => ponerTiempo(id), { 'data-tiempo': id, 'aria-pressed': 'false' }));
+  // (en el teléfono de pie, «Motor» va en «⋯»: en la barra no cabe)
+  const bMotor2 = boton('juego-motor-boton2', t('juego.motor'), () => { menuMas.hidden = true; bMas.setAttribute('aria-expanded', 'false'); abrirMotor(panelMotor.hidden); });
+  const menuMas = el('div', { class: 'juego-menu-mas', hidden: true, role: 'group', 'aria-label': t('juego.mas') }, bMotor2, bHora, bTrafico, bSonido,
+    el('p', { class: 'juego-menu-titulo', texto: t('juego.tiempo') }), botonesTiempo);
+  // 0.14.103: el motor: master, magnetos, selector de combustible, mezcla, sus relojes y la lista del arranque o el apagado.
+  const bMotor = boton('juego-motor-boton', t('juego.motor'), () => abrirMotor(panelMotor.hidden), { 'aria-expanded': 'false' });
+  const panelMotor = el('section', { class: 'juego-motor', hidden: true, 'aria-label': t('juego.motor') });
   // 0.14.102: vertical u horizontal (en el teléfono).
   const bOrientacion = boton('juego-orientacion', '', () => cambiarOrientacion());
   const barra = el('div', { class: 'juego-barra' }, el('div', { class: 'juego-barra-izq' }, salir, marcador),
-    el('div', { class: 'juego-barra-botones' }, tactil ? bOrientacion : null, bVista, bFlaps, bAsistente, bMas, bPausa, bAyuda, menuMas));
+    el('div', { class: 'juego-barra-botones' }, tactil ? bOrientacion : null, bMotor, bVista, bFlaps, bAsistente, bMas, bPausa, bAyuda, menuMas));
   // La oferta («¿la tomas?») y el aviso (la respuesta, la falla, la radio): abajo de la escena, sin tapar la cabina entera.
   const oferta = el('section', { class: 'juego-oferta', hidden: true, role: 'alertdialog', 'aria-labelledby': 'juego-oferta-titulo' });
   const aviso = el('section', { class: 'juego-aviso', hidden: true, role: 'status', 'aria-live': 'polite' });
@@ -166,7 +183,12 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // El subtítulo chico de la acción (nunca un panel grande; arriba a la izquierda, no sobre el horizonte artificial).
   const subtitulo = el('p', { class: 'juego-subtitulo', hidden: true, role: 'status', 'aria-live': 'polite' });
   const pildoraClase = el('button', { type: 'button', class: 'juego-boton juego-clase-pildora', hidden: true, onclick: () => { panelOculto = false; pintarClase(); } });
-  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, chip, subtitulo, hud, oferta, aviso, panelClase, pildoraClase);
+  // 0.14.103: la repetición («qué pasó», desde varias cámaras): la cámara, la frase del momento clave y «Saltar».
+  const repeCamara = el('p', { class: 'juego-repe-camara', 'aria-live': 'off' });
+  const repeLlamada = el('p', { class: 'juego-repe-llamada', role: 'status', 'aria-live': 'polite', hidden: true });
+  const bSaltar = el('button', { type: 'button', class: 'juego-boton juego-repe-saltar', onclick: () => saltarRepeticion() }, t('juego.rep.saltar'));
+  const capaRepe = el('div', { class: 'juego-repe', hidden: true }, repeCamara, repeLlamada, bSaltar);
+  const escenario = el('div', { class: 'juego-escenario' }, lienzo, capa, barra, chip, subtitulo, hud, oferta, aviso, panelClase, pildoraClase, panelMotor, capaRepe);
 
   // El yugo (arrastrar) y la palanca de potencia (en el teléfono; en la PC también se pueden usar con el ratón).
   const perilla = el('span', { class: 'juego-yugo-perilla', 'aria-hidden': 'true' });
@@ -238,6 +260,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   let trafico = mc ? [] : traficoInicial(), conTrafico = true, proximoTrafico = 45, nTrafico = 0, pasoClase = 0, respondidaClase = null, panelOculto = false;
   // 0.14.102: el flujo de una pregunta (pregunta → acción → explicación), la mini-clase en acción y lo que marcan los relojes (con su retraso).
   let flujo = null, vistaAntes = null, accionClase = false, faseClase = 'leer', indicado = null, cabeza = { y: 0, x: 0 };
+  // 0.14.103: el sonido, el tiempo y el arranque.
+  const sonido = crearSonido();
+  let dentroAvisado = false, ultimoDentro = -99, motorAndaba = true;
+  // La repetición en curso (y con qué se armó, para «Ver otra vez» y «Cambiar cámara»); «sostener»: el piloto automático
+  // que mantiene el rumbo y la altitud mientras se lee una pregunta o se mira la repetición (el mundo sigue, despacio).
+  let repe = null, repeDatos = null, repeNube = [], sostener = null;
+  let conSonido = false, tiempoMet = 'despejado', nubesTiempo = [], cond = condiciones('despejado', 0, 0, 0), ajuste = 29.92, ajusteDicho = null, relampago = 0, proximoRayo = 0, zonaAvisada = null, listaModo = 'arranque', guiaArranque = false;
 
   // ---- dibujo ----
   let gl3 = crearRenderGL(lienzo), ctx2d = null, ctx = null, texturas = {};
@@ -277,19 +306,65 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (ojo[1] < alturaSuelo(ojo[0], ojo[2]) + 0.003) ojo[1] = alturaSuelo(ojo[0], ojo[2]) + 0.003;
     return crearCamara({ ojo, mira: pos, fov: ancho < alto ? 62 : 50, cerca: 0.002 });
   }
+  // 0.14.103: el cielo gris (con nubes, frentes o dentro de la capa).
+  const mezclar = (a, b, k) => a.map((v, i) => Math.round(v + ((b[i] ?? v) - v) * Math.max(0, Math.min(1, k))));
+  let paletaGris = null, claveGris = '';
+  function paletaTiempo() {
+    const k = cond.dentro ? 1 : cond.gris;
+    if (!k) return paleta;
+    const clave = `${hora}|${k.toFixed(2)}|${paleta.oscuro}`;
+    if (clave !== claveGris) {
+      const g = paleta.oscuro ? [70, 76, 86] : [168, 174, 184];
+      paletaGris = { ...paleta, cieloAlto: mezclar(paleta.cieloAlto, g, k), cieloBajo: mezclar(paleta.cieloBajo, g, k), bruma: mezclar(paleta.bruma, g, k), sueloLejos: mezclar(paleta.sueloLejos, g, k) };
+      claveGris = clave;
+    }
+    return paletaGris;
+  }
+  const dentroSuelo = () => avion.enSuelo && avion.kt < 1 && cond.lluvia < 0.3;
+  // La lluvia en el parabrisas: rayas cortas que bajan en diagonal (más con más velocidad).
+  function pintarLluvia(k) {
+    const n = Math.round(40 * k * Math.min(1.6, 0.5 + avion.kt / 100)), largo = (8 + avion.kt * 0.12) * escalaPx;
+    ctx.save(); ctx.strokeStyle = 'rgba(210,220,235,0.45)'; ctx.lineWidth = 1.2 * escalaPx; ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const sx = ((i * 97.13 + tiempo * 310 * (1 + (i % 3))) % ancho + ancho) % ancho, sy = ((i * 53.7 + tiempo * 640) % (alto * 0.6) + alto * 0.6) % (alto * 0.6);
+      ctx.moveTo(sx, sy); ctx.lineTo(sx - largo * 0.3, sy + largo);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  // La repetición se dibuja con el mismo dibujo: el avión de la escena en lugar del de verdad y la cámara de la toma.
+  const tiempoRepe = () => (mc ? tAccion : flujo?.t ?? 0);
   function dibujar() {
+    if (!repe) return dibujarMundo(null);
+    const tr = Math.min(tiempoRepe(), repe.dur), { propio: p } = estadoRepeticion(repe, tr);
+    const real = avion, vistaReal = vista, indicadoReal = indicado;
+    avion = { ...real, x: p.x, z: p.z, ft: p.y * 1000, rumbo: p.rumbo, alabeo: p.alabeo, cabeceo: p.cabeceo, rpm: p.rpm, enSuelo: p.enSuelo, vs: 0, aviso: false, g: 1 };
+    const cr = camaraRepeticion(repe, tr, ancho / Math.max(1, alto));
+    vista = cr.toma === 'cabina' ? 'cabina' : 'afuera'; indicado = null;
+    try { dibujarMundo({ t: tr, ...cr }); } finally { avion = real; vista = vistaReal; indicado = indicadoReal; }
+    if (!ctx) return;
+    // El corte entre tomas: un fundido corto a negro.
+    const f = reducir ? 0 : fundido(repe, tr);
+    if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${(0.85 * f).toFixed(3)})`; ctx.fillRect(0, 0, ancho, alto); }
+  }
+  function dibujarMundo(r) {
     medir();
-    const cam = camara();
-    const prims = vista === 'afuera' ? avionPropio(avion, { t: tiempo, yugo: mandosAhora(), luces: !mc }) : [];
-    prims.push(...lucesDinamicas(cam.ojo));
+    const cam = r ? r.cam : camara();
+    const prims = r ? [...primitivasRepeticion(repe, r.t, { conPropio: r.toma !== 'cabina', conCaminos: r.toma !== 'cabina' }), ...repeNube]
+      : vista === 'afuera' ? avionPropio(avion, { t: tiempo, yugo: mandosAhora(), luces: !mc }) : [];
+    if (!r) prims.push(...lucesDinamicas(cam.ojo));
     // Dentro de la nube (la falla «nube»): todo gris.
-    const dentro = nubeFalla && Math.hypot(avion.x - nubeFalla.x, avion.ft / 1000 - nubeFalla.y, avion.z - nubeFalla.z) < nubeFalla.r;
-    const niebla = dentro ? { color: [200, 204, 212], inicio: 0, fin: 0.35 } : { color: paleta.niebla, inicio: 10, fin: 70 };
+    // 0.14.103: dentro de la capa del menú «Tiempo», también (sin horizonte).
+    const dentro = r ? Boolean(repe.nube && Math.hypot(avion.x - repe.nube.x, avion.ft / 1000 - repe.nube.y, avion.z - repe.nube.z) < repe.nube.r)
+      : (nubeFalla && Math.hypot(avion.x - nubeFalla.x, avion.ft / 1000 - nubeFalla.y, avion.z - nubeFalla.z) < nubeFalla.r) || cond.dentro;
+    const p = paletaTiempo();
+    const gris = mezclar(p.niebla, [150, 156, 166], cond.gris);
+    const niebla = dentro ? { color: [200, 204, 212], inicio: 0, fin: 0.35 } : { color: gris, inicio: Math.min(10, cond.visibilidad * 0.2), fin: Math.min(70, cond.visibilidad) };
     const sol = solDe(hora);
-    if (gl3) gl3.render({ paleta, fijas: [mundo, mundoLuces, extras], prims, niebla, sol, lejos: 300, texturaEscala: 0.35 }, cam, ancho, alto, { escala: escalaPx });
-    else if (ctx2d) render(ctx2d, { paleta, prims: [...mundo, ...mundoLuces, ...extras, ...prims], etiquetas: [], niebla, sol, ambiente: paleta.ambiente }, cam, ancho, alto, { escala: escalaPx, texturas });
+    if (gl3) gl3.render({ paleta: p, fijas: [mundo, mundoLuces, extras, nubesTiempo], prims, niebla, sol, lejos: 300, texturaEscala: 0.35 }, cam, ancho, alto, { escala: escalaPx });
+    else if (ctx2d) render(ctx2d, { paleta: p, prims: [...mundo, ...mundoLuces, ...extras, ...nubesTiempo, ...prims], etiquetas: [], niebla, sol, ambiente: p.ambiente }, cam, ancho, alto, { escala: escalaPx, texturas });
     if (!ctx) return;
     ctx.clearRect(0, 0, ancho, alto);
+    if (cond.lluvia > 0.05 && !dentroSuelo()) pintarLluvia(cond.lluvia);
     let techo = alto;
     if (vista === 'cabina') {
       // Los relojes con su retraso de verdad (el variómetro sigue la tendencia).
@@ -300,10 +375,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       if (vib) ctx.translate(Math.sin(tiempo * 83) * vib, Math.cos(tiempo * 71) * vib);
       efectosVentana(ctx);
       techo = alto - dibujarCabina(ctx, ancho, alto, L, { escala: escalaPx, completo: true, yugo: mandosAhora(), textos: TEXTOS_PANEL(t), noche: hora === 'noche',
-        extras: { trim: Math.max(-1, Math.min(1, ((avion.trim ?? 4) - 4) / 7)), flaps: avion.flapsPos ?? avion.flaps, potencia: mandos.potencia, g: avion.enSuelo ? null : avion.g } });
+        extras: { trim: Math.max(-1, Math.min(1, ((avion.trim ?? 4) - 4) / 7)), flaps: avion.flapsPos ?? avion.flaps, potencia: mandos.potencia, g: avion.enSuelo ? null : avion.g,
+          egt: avion.pist ? avion.pist.egt ?? 100 : null, ff: avion.pist?.flujoGph ?? 0, ajuste } });
       ctx.restore();
     }
-    marcasTrafico(cam, techo);
+    // El rayo: un destello que se apaga solo.
+    if (relampago > 0) { pintarDestello(ctx, ancho, alto, reducir ? Math.min(0.3, relampago) : relampago); relampago = Math.max(0, relampago - 0.08); }
+    if (!r) marcasTrafico(cam, techo);
     // La bocina de pérdida, vista: un borde rojo que late.
     if (avion.aviso && !avion.enSuelo) {
       const k = reducir ? 0.5 : 0.5 + 0.5 * Math.sin(tiempo * 12);
@@ -350,7 +428,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const otro = Math.hypot(avion.x - PISTA.x, avion.z - PISTA.z) < Math.hypot(avion.x - PISTA_B.x, avion.z - PISTA_B.z) ? PISTA_B : PISTA;
     const d = haciaAeropuerto(avion, otro);
     const s = t('juego.destino', { id: otro.id, nm: d.nm < 10 ? d.nm.toFixed(1) : Math.round(d.nm), rumbo: String(d.rumbo).padStart(3, '0') });
-    if (destino.textContent !== s) destino.textContent = s;
+    const s2 = tiempoMet === 'despejado' ? s : `${s} · ${t('juego.tiempo.oat', { c: Math.round(cond.temperatura) })}`;
+    if (destino.textContent !== s2) destino.textContent = s2;
   }
 
   // ---- cada cuadro ----
@@ -361,6 +440,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (apretadas.size && [...apretadas].some(x => TECLAS[x]?.[0] === 'potencia')) mandos.potencia = k.potencia;
     let m = { ...mandosAhora(), potencia: mandos.potencia, flaps: mandos.flaps };
     if (guiado) m = mandosGuiados();
+    if (sostener) m = { ...piloto(avion, sostener), flaps: mandos.flaps };
     // En una mini-clase «quieta» el avión propio no se mueve (para mirar); el reloj sigue (el faro, las luces) y, en la
     // acción, el otro avión sigue su camino (en el derecho de paso, el propio vira a la derecha).
     if (mc?.congelar) {
@@ -370,9 +450,22 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
     // La falla del aceite: la presión baja, la temperatura sube y el motor tose.
     if (fallaDesde != null) avion = { ...avion, ...fallaAceite(tiempo - fallaDesde) };
+    tiempoPaso();
+    // El motor: avisa cuando arranca y cuando se para (y por qué).
+    const anda = avion.pist?.enMarcha ?? true;
+    if (anda !== motorAndaba) {
+      motorAndaba = anda;
+      const tono = anda ? 'bien' : avion.enSuelo ? 'info' : 'mal';
+      const titulo = t(anda ? 'juego.motor.arranco' : 'juego.motor.se_paro');
+      const texto = anda ? t('juego.motor.arranco.aceite', { s: MOTOR_FAA.aceiteS }) : avion.pist?.motivo ? t(`juego.motor.paro.${avion.pist.motivo}`) : '';
+      // Con el panel abierto, lo dice el panel (el aviso lo taparía); si no, el aviso.
+      if (motorEstado && !panelMotor.hidden) { motorEstado.textContent = `${titulo} ${texto}`; motorEstado.setAttribute('data-tono', tono); estadoHasta = Date.now() + 9000; }
+      else if (anda || avion.pist?.motivo) mostrarAviso({ tono, titulo, partes: [texto], corto: anda || avion.enSuelo });
+    }
+    if (startSuelta && tiempo > startSuelta && avion.pist?.magnetos === 'START') { startSuelta = 0; ponerPist({ magnetos: 'BOTH' }); }
     const amb = { viento: ambiente.viento, rafaga: tiempo < rafagaHasta ? rafaga : null };
     const antes = avion;
-    avion = pasoVuelo(avion, m, dt, { asistente, ambiente: amb });
+    avion = pasoVuelo(avion, m, dt, { asistente: asistente || Boolean(sostener), ambiente: amb });
     indicado = indicar(indicado, avion, dt);
     if (nubeFalla && tiempo > nubeFalla.hasta) { nubeFalla = null; extras = []; }
     if (!guiado) eventos();
@@ -381,6 +474,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     // El relieve (lejos del aeropuerto): tocarlo es chocar.
     if (!avion.enSuelo && avion.ft / VUELO.ftPorUnidad < alturaSuelo(avion.x, avion.z)) avion = { ...avion, choque: true, kt: 0 };
     if (avion.choque && !antes.choque) return terminarVuelo({ nivel: 'choque', motivos: ['choque'], puntos: 0 }, avion.toque ?? null);
+    if (avion.toque) sonido.evento('toque');
     if (avion.toque && volo && tiempo - ultimoToque > 3) {
       ultimoToque = tiempo;
       const juicio = juzgarAterrizaje(avion.toque, { choque: avion.choque });
@@ -395,7 +489,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     let clave = consejo(avion, { vuelo: tiempo - ultimoToque < 60 && ultimoToque > 0 });
     if (fallaDesde != null && !avion.enSuelo && clave !== 'perdida') clave = avion.motor <= 0 ? 'motor_parado' : 'aceite';
     if (guiado && clave !== 'choque') clave = guiado.fin === 'sin_vidas' ? 'base' : enAproximacion ? 'auto_final' : 'auto';
-    if (clave !== ultimoConsejo) { chip.textContent = t(`juego.consejo.${clave}`); chip.setAttribute('data-tono', clave === 'perdida' || clave === 'choque' ? 'mal' : 'bien'); ultimoConsejo = clave; }
+    // Dentro de la nube, el consejo es salir (mientras se esté dentro).
+    if (cond.dentro && !avion.enSuelo) {
+      if (ultimoConsejo !== 'imc') { chip.textContent = t('juego.tiempo.imc.salir', { min: TIEMPO_FAA.nubes.viraje180Min, g: TIEMPO_FAA.nubes.tasaEstandar }); chip.setAttribute('data-tono', 'mal'); ultimoConsejo = 'imc'; }
+    } else if (clave !== ultimoConsejo) { chip.textContent = t(`juego.consejo.${clave}`); chip.setAttribute('data-tono', clave === 'perdida' || clave === 'choque' ? 'mal' : 'bien'); ultimoConsejo = clave; }
     const L = lecturas(avion);
     const linea = t('juego.hud', { kt: Math.round(L.kt), ft: Math.round(L.ft).toLocaleString('en-US'), rumbo: String(Math.round(L.rumbo) % 360 || 360).padStart(3, '0'), vs: Math.round(L.vs / 50) * 50 });
     if (linea !== ultimoHud) { hud.textContent = linea; ultimoHud = linea; }
@@ -405,15 +502,20 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const bucle = crearBucle(raiz, dt => {
     // En el vuelo con preguntas el piloto automático va 3 veces más rápido entre preguntas (no en la aproximación).
     const veces = guiado && !enAproximacion && !abierta && !flujo ? GUIADO.velocidadReloj : 1;
-    if (!pausado && !abierta) for (let k = 0; k < veces; k++) { tiempo += dt; paso(dt); }
+    if (!pausado && !abierta && !repe) for (let k = 0; k < veces; k++) { tiempo += dt; paso(dt); }
+    // Con una pregunta abierta o la repetición: el avión sigue con el piloto automático, despacio (no se congela de golpe).
+    else if (!pausado && sostener && !avion.enSuelo && !mc?.congelar) { tiempo += dt * 0.35; paso(dt * 0.35); }
+    pintarRepe();
     relojes(dt);
     // La acción de una respuesta: dura unos segundos y después sale la explicación.
     if (flujo?.fase === 'accion' && !pausado) { flujo = tickFlujo(flujo, dt); if (flujo.fase === 'explicacion') mostrarExplicacion(); }
     if (mc && accionClase && !pausado) relojClase(dt);
     const t0 = typeof performance === 'object' ? performance.now() : 0;
     dibujar();
+    if (conSonido) sonido.actualizar({ rpm: avion.rpm, enMarcha: avion.pist?.enMarcha ?? true, kt: avion.kt, aviso: avion.aviso && !avion.enSuelo,
+      aspereza: Math.max(avion.rugido ?? 0, avion.pist?.aspereza ?? 0), girando: avion.pist?.girando, turbulencia: cond.turbulencia + (tiempo < rafagaHasta ? 0.5 : 0), lluvia: cond.lluvia });
     relojHud += dt;
-    if (relojHud > 0.2) { relojHud = 0; pintarTextos(); dibujarMapa(); }
+    if (relojHud > 0.2) { relojHud = 0; pintarTextos(); dibujarMapa(); pintarMotor(); }
     if (t0) { cuadros++; if (dt > 1 / 24) lentos++; if (cuadros >= 60) { if (lentos > 35 && calidad > 0.7) calidad = Math.max(0.7, calidad - 0.15); cuadros = 0; lentos = 0; } }
   });
 
@@ -444,6 +546,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (tormenta && Math.hypot(avion.x - tormenta.x, avion.z - tormenta.z) < 3.5 && avion.ft < 22000) { rafaga = rafagaTurbulencia(1.6, 3); rafagaHasta = tiempo + 0.5; }
     if (!r.evento) return;
     const e = r.evento;
+    // Con mal tiempo, las preguntas son de meteorología.
+    if (tiempoMet !== 'despejado' && e.tipo === 'pregunta') e.tema = 'meteo';
     if (e.tipo === 'cruzado') {
       ambiente = { ...ambiente, viento: vientoCruzado(azar) };
       mostrarAviso({ tono: 'info', titulo: t('juego.ev.cruzado.titulo'), partes: [t('juego.ev.cruzado', { desde: tresDigitos(ambiente.viento.desde), kt: ambiente.viento.kt })] });
@@ -463,7 +567,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // «Pregunta del instructor / del control: ¿la tomas?»
   function ofrecer(e) {
     const item = elegirPregunta(pool, usadas, e.tema);
-    const contexto = e.tipo === 'tormenta' ? t('juego.ev.tormenta', { nm: HECHOS_SITUACIONES.tormentas.evitarNM, fuente: 'AIM 7-1-27' })
+    const contexto = e.contexto ? e.contexto : e.tipo === 'tormenta' ? t('juego.ev.tormenta', { nm: HECHOS_SITUACIONES.tormentas.evitarNM, fuente: 'AIM 7-1-27' })
       : e.tipo === 'viento' ? t('juego.ev.viento', { desde: tresDigitos(ambiente.viento.desde), kt: ambiente.viento.kt }) : null;
     if (!item) { if (contexto) mostrarAviso({ tono: 'info', titulo: t(`juego.oferta.${e.quien}`), partes: [contexto] }); return; }
     puntaje = { ...puntaje, ofrecidas: puntaje.ofrecidas + 1 };
@@ -484,6 +588,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // que pide la respuesta (la maniobra o la falla), con la cámara mirándolo y solo un subtítulo chico; 3) la explicación.
   function abrirPregunta(item, e = null) {
     flujo = crearFlujo(item, e);
+    sostener = avion.enSuelo ? null : { rumbo: avion.rumbo, ft: avion.ft };
     abierta = true; aviso.hidden = true; oferta.hidden = true; menuMas.hidden = true;
     while (pregunta.firstChild) pregunta.removeChild(pregunta.firstChild);
     const q = item.q;
@@ -511,14 +616,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     puntaje = puntuar(puntaje, res.acierto);
     const { consecuencia, subtitulo: texto } = aplicarConsecuencia(item, res);
     flujo = responderFlujo(flujo, res, consecuencia);
-    // La acción: la cámara la mira (los relojes en la cabina; la maniobra, desde afuera) y un subtítulo chico.
-    vistaAntes = vista;
-    const camara = camaraDeAccion(consecuencia);
-    if (camara !== vista) cambiarVista();
-    subtitulo.textContent = texto; subtitulo.hidden = false;
-    subtitulo.setAttribute('data-tono', res.acierto ? 'bien' : 'mal');
+    // La acción: la repetición de lo que pasa por la respuesta, desde varias cámaras (y la frase del momento clave).
+    empezarRepeticion({ escena: escenaDeRepeticion(consecuencia, item.categoria), encuentro: ENCUENTROS[puntaje.aceptadas % 4], acierto: res.acierto, inicio: { ...avion } });
+    subtitulo.textContent = texto; subtitulo.hidden = true;
     if (pool.filter(p => !usadas.has(p.q.id)).length < 3) cargarPreguntas();
-    if (reducir) { flujo = { ...flujo, t: flujo.dur }; }
+    if (reducir) saltarRepeticion();
   }
   function revisada(item, res) {
     return opcionesRevisadas(item.q.opciones, { correcta: res.correcta, elegida: res.elegida }, { el, t, talCual: h.talCual ?? ((tag, texto, clase) => el(tag, { class: clase, texto })) }, { clase: 'juego-revisadas' });
@@ -556,7 +658,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // fuente; «Seguir volando». El vuelo queda quieto mientras se lee.
   function mostrarExplicacion() {
     const f = flujo, item = f.item, res = f.res, cons = f.consecuencia;
-    subtitulo.hidden = true;
+    subtitulo.hidden = true; terminarRepeticion();
     if (vistaAntes && vistaAntes !== vista) cambiarVista();
     abierta = true;
     while (explicacion.firstChild) explicacion.removeChild(explicacion.firstChild);
@@ -572,16 +674,24 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       el('div', { class: 'juego-exp-porque' }, el('strong', { texto: t('juego.exp.porque') }), el('span', { texto: ` ${porque || t('juego.exp.sin_porque')}` })),
       guiado && !res.acierto ? el('p', { class: 'juego-exp-vida', texto: t(guiado.fin === 'sin_vidas' ? 'juego.q.sin_vidas' : 'juego.q.vida', { n: guiado.vidas }) }) : null,
       el('p', { class: 'juego-exp-fuente', texto: t(item.fuente === 'oral' ? 'juego.exp.fuente_oral' : 'juego.exp.fuente_tg') }),
-      el('div', { class: 'juego-exp-botones' }, botones.map(([clave, fn], k) => el('button', { type: 'button', class: `boton-3d ${k === 0 ? 'naranja' : 'blanco'}`, onclick: fn }, el('span', { texto: t(clave) }))))));
+      el('div', { class: 'juego-exp-botones' }, botones.map(([clave, fn], k) => el('button', { type: 'button', class: `boton-3d ${k === 0 ? 'naranja' : 'blanco'}`, onclick: fn }, el('span', { texto: t(clave) })))),
+      el('div', { class: 'juego-exp-repe' },
+        el('button', { type: 'button', class: 'juego-boton juego-otra-vez', onclick: () => verOtraVez(0) }, t('juego.clase.otra_vez')),
+        el('button', { type: 'button', class: 'juego-boton juego-cambiar-camara', onclick: () => verOtraVez(1) }, t('juego.rep.cambiar')))));
     explicacion.hidden = false;
     explicacion.querySelector('button')?.focus();
   }
   function seguirVolando() {
-    flujo = seguirFlujo(flujo); flujo = null;
+    flujo = seguirFlujo(flujo); flujo = null; sostener = null;
     explicacion.hidden = true; abierta = false; vistaAntes = null;
   }
   // El aviso (abajo de la escena): la respuesta, la falla o la radio. Con botones (una decisión) no se va solo.
   function mostrarAviso({ tono = 'info', titulo, partes = [], botones = null, radio = null, corto = false }) {
+    // Con el panel del motor abierto, lo corto (el tráfico, el altímetro) lo dice el panel: el aviso lo taparía.
+    if (corto && !botones && motorEstado && !panelMotor.hidden) {
+      motorEstado.textContent = [radio ? `«${radio}»` : '', titulo, ...partes.filter(x => typeof x === 'string')].filter(Boolean).join(' ');
+      motorEstado.setAttribute('data-tono', tono); estadoHasta = Date.now() + 9000; return;
+    }
     while (aviso.firstChild) aviso.removeChild(aviso.firstChild);
     aviso.setAttribute('data-tono', tono);
     aviso.append(...[
@@ -668,6 +778,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       const al = alertaTrafico(avion, tr), clave = tr.id ?? tr.tipo + tr.pista;
       if (al && tiempo - (avisados.get(clave) ?? -999) > 45 && !abierta) {
         avisados.set(clave, tiempo);
+        sonido.evento('pitido');
         mostrarAviso({ tono: 'info', titulo: t('juego.trafico.alerta', { horas: al.horas, nm: al.nm, altura: t(`juego.trafico.altura.${al.altura}`, { n: Math.abs(al.dif) }) }), partes: [], corto: true });
       }
     }
@@ -698,6 +809,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
   }
   function avisoTrafico(tr) {
+    sonido.evento('pitido');
     const v = queVes(tr, avion), d = derechoDePaso(avion, tr);
     const luces = v.colores.map(c => t(`juego.luz.${c}`)).join(t('juego.maniobra.y'));
     mostrarAviso({ tono: 'info', titulo: t(`juego.trafico.${d.encuentro}`), partes: [
@@ -715,9 +827,11 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   let preguntaClase = null, tAccion = 0, rumboTrafico0 = 0;
   function pasoActual() { return mc?.pasos[pasoClase] ?? null; }
   function ponerPaso(i, { repetir = false } = {}) {
+    terminarRepeticion(); repeDatos = null;
     pasoClase = Math.max(0, Math.min(mc.pasos.length - 1, i));
     const paso = pasoActual();
-    avion = { ...crearAvion(mc.inicio), ...(mc.inicio.flaps ? { gamma: -0.052, cabeceo: -1, rpm: 1700 } : {}), ...(paso.arriba != null ? { ft: mc.inicio.ft + paso.arriba } : {}) };
+    avion = { ...crearAvion(mc.inicio), ...(mc.inicio.flaps ? { gamma: -0.052, cabeceo: -1, rpm: 1700 } : {}), ...(paso.arriba != null ? { ft: mc.inicio.ft + paso.arriba } : {}), pist: crearMotor({ mezcla: paso.mezcla ?? 1 }) };
+    motorAndaba = avion.pist.enMarcha && (paso.mezcla ?? 1) > 0;
     preguntaClase = preguntaDePaso(paso, avion);
     trafico = preguntaClase ? [{ ...preguntaClase.trafico, fase: 0.3 }] : paso.trafico ? [crearTrafico(paso.trafico, avion, { distancia: 2 })] : [];
     rumboTrafico0 = trafico[0]?.rumbo ?? 0;
@@ -729,6 +843,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   function responderClase(o) {
     respondidaClase = { elegida: o, bien: o === preguntaClase.correcta, correcta: preguntaClase.correcta };
     faseClase = 'accion'; accionClase = true; tAccion = 0;
+    empezarRepeticion({ escena: 'trafico', encuentro: pasoActual().trafico, acierto: respondidaClase.bien, inicio: { ...avion } });
     pintarClase();
   }
   // La acción de la mini-clase: unos segundos para mirar; después, la explicación.
@@ -739,7 +854,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       // De frente: el otro también vira a la derecha (14 CFR 91.113).
       trafico = [{ ...trafico[0], rumbo: rumboTrafico0 + Math.min(35, tAccion * 8) }];
     }
-    if (tAccion >= FLUJO.accionS.leccion) { accionClase = false; faseClase = 'explicacion'; pintarClase(); }
+    if (tAccion >= (repe?.dur ?? FLUJO.accionS.leccion)) { accionClase = false; faseClase = 'explicacion'; terminarRepeticion(); pintarClase(); }
   }
   let vivoClase = null;
   function pintarClase() {
@@ -779,7 +894,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         respondidaClase ? el('p', { class: `juego-clase-resultado ${respondidaClase.bien ? 'bien' : 'mal'}`, texto: respondidaClase.bien ? t('juego.clase.bien') : t('juego.clase.mal', { era: etiqueta(respondidaClase.correcta) }) }) : negrita('p', t(`juego.mc.${id}.${paso.id}`), 'juego-clase-texto'),
         negrita('p', `**${t(`juego.mc.${id}.${paso.id}.clave`)}**`, 'juego-clase-clave'),
         respondidaClase ? el('p', { class: 'juego-clase-porque' }, el('strong', { texto: `${t('juego.exp.porque')} ` }), el('span', { texto: t(`juego.mc.${id}.${paso.id}.porque`) })) : null,
-        vivoClase,
+        mc.motor ? null : vivoClase,
         el('p', { class: 'juego-clase-fuente', texto: t('juego.fuente', { f: mc.fuente }) }),
         ajustes,
       ];
@@ -789,9 +904,12 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
         el('h2', { texto: t(`juego.mc.${id}.titulo`) }),
         el('span', { class: 'juego-clase-paso', texto: t('juego.clase.paso', { n: pasoClase + 1, total: mc.pasos.length }) }),
         el('button', { type: 'button', class: 'juego-boton juego-clase-ocultar', 'aria-expanded': 'true', onclick: () => { panelOculto = true; pintarClase(); } }, t('juego.clase.ocultar'))),
+      // (la mezcla: lo que marca el motor y la palanca, fijos arriba, fuera de lo que se desplaza)
+      mc.motor && faseClase !== 'pregunta' ? el('div', { class: 'juego-clase-motor' }, vivoClase, mezclaDeClase()) : null,
       el('div', { class: 'juego-clase-cuerpo' }, cuerpo),
       faseClase === 'pregunta' ? null : el('div', { class: 'juego-clase-nav' },
-        respondidaClase ? el('button', { type: 'button', class: 'boton-3d blanco chico juego-clase-otra', onclick: () => ponerPaso(pasoClase, { repetir: true }) }, el('span', { texto: t('juego.clase.otra_vez') })) : null,
+        respondidaClase ? el('button', { type: 'button', class: 'boton-3d blanco chico juego-clase-otra', onclick: () => verOtraVez(0) }, el('span', { texto: t('juego.clase.otra_vez') })) : null,
+        respondidaClase ? el('button', { type: 'button', class: 'boton-3d blanco chico juego-cambiar-camara', onclick: () => verOtraVez(1) }, el('span', { texto: t('juego.rep.cambiar') })) : null,
         el('button', { type: 'button', class: 'boton-3d blanco chico', disabled: pasoClase === 0, onclick: () => ponerPaso(pasoClase - 1) }, el('span', { texto: t('juego.clase.anterior') })),
         pasoClase < mc.pasos.length - 1
           ? el('button', { type: 'button', class: 'boton-3d naranja chico juego-clase-siguiente', onclick: () => ponerPaso(pasoClase + 1) }, el('span', { texto: t('juego.clase.siguiente') }))
@@ -801,6 +919,14 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     pintarClaseVivo();
   }
   // Lo que cambia mientras se mira: lo que dice el PAPI (en las clases de la aproximación) y las luces del otro avión.
+  // La mezcla, en la tarjeta de la mini-clase «La mezcla» (para moverla y ver la EGT al momento).
+  let mezclaClase = null;
+  function mezclaDeClase() {
+    mezclaClase = el('input', { type: 'range', min: 0, max: 100, step: 1, value: Math.round((avion.pist?.mezcla ?? 1) * 100), class: 'juego-mezcla', 'aria-label': t('juego.motor.mezcla') });
+    mezclaClase.addEventListener('input', () => ponerPist({ mezcla: Number(mezclaClase.value) / 100 }));
+    mezclaClase.addEventListener('keydown', e => e.stopPropagation());
+    return el('div', { class: 'juego-clase-mezcla' }, el('span', { class: 'juego-mezcla-fin', texto: t('juego.motor.corte') }), mezclaClase, el('span', { class: 'juego-mezcla-fin', texto: t('juego.motor.rica') }));
+  }
   function pintarClaseVivo() {
     if (!mc || !vivoClase) return;
     let s = '';
@@ -808,7 +934,187 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       const r = lucesSenda(avion.x, avion.z, avion.ft);
       s = t('juego.papi.lectura', { lectura: t(`juego.papi.${r.lectura}`), grados: r.angulo.toFixed(1) });
     }
+    if (mc.motor && avion.pist) {
+      const m = avion.pist;
+      if (mezclaClase && document.activeElement !== mezclaClase) mezclaClase.value = String(Math.round(m.mezcla * 100));
+      s = t('juego.mc.mezcla.vivo', { egt: Math.round(m.egt ?? 0).toLocaleString('en-US'), dif: Math.round((m.pico ?? 0) - (m.egt ?? 0)), ff: (m.flujoGph ?? 0).toFixed(1), rpm: Math.round(avion.rpm / 10) * 10 })
+        + (m.enMarcha ? '' : ` ${t('juego.motor.parado')}`);
+    }
     if (vivoClase.textContent !== s) vivoClase.textContent = s;
+  }
+
+  // ---- 0.14.103: la repetición de «qué pasó» (pedido del dueño) ----
+  function empezarRepeticion(datos) {
+    repeDatos = { ...datos, camara: datos.camara ?? 0 };
+    repe = crearRepeticion({ ...repeDatos, suelo: (x, z) => alturaSuelo(x, z) });
+    repeNube = repe.nube ? cumulo({ x: repe.nube.x, z: repe.nube.z, base: repe.nube.y - 0.12, ancho: 0.42, alto: 0.26, semilla: 7 }).prims : [];
+    if (!mc) flujo = { ...flujo, fase: 'accion', t: 0, dur: repe.dur };
+    else { tAccion = 0; accionClase = true; faseClase = 'accion'; }
+    if (!mc && !avion.enSuelo) sostener ??= { rumbo: avion.rumbo, ft: avion.ft };
+    capaRepe.hidden = false; raiz.setAttribute('data-repe', '1');
+    pintarRepe();
+  }
+  function terminarRepeticion() {
+    repe = null; repeNube = []; capaRepe.hidden = true; repeLlamada.hidden = true; raiz.removeAttribute('data-repe');
+  }
+  function saltarRepeticion() {
+    if (!repe) return;
+    if (mc) tAccion = repe.dur; else if (flujo?.fase === 'accion') flujo = { ...flujo, t: flujo.dur };
+  }
+  // «Ver otra vez» (la misma) o «Cambiar cámara» (empieza por otra cámara).
+  function verOtraVez(otraCamara) {
+    if (!repeDatos) return;
+    const camara = (repeDatos.camara + otraCamara) % CAMARAS.length;
+    if (mc) { faseClase = 'accion'; empezarRepeticion({ ...repeDatos, camara }); pintarClase(); return; }
+    explicacion.hidden = true; abierta = false;
+    empezarRepeticion({ ...repeDatos, camara });
+  }
+  // Lo de encima de la repetición: qué cámara es y, en el momento clave, la frase (que queda hasta el final).
+  let ultimaToma = '', ultimaLlamada = false;
+  function pintarRepe() {
+    if (!repe) return;
+    const tr = tiempoRepe(), toma = tomaEn(repe, tr).camara;
+    if (toma !== ultimaToma) { repeCamara.textContent = `🎥 ${t(`juego.rep.cam.${toma}`)}`; ultimaToma = toma; }
+    const llamada = tr >= repe.clave.t;
+    if (llamada !== ultimaLlamada || repeLlamada.hidden === llamada) {
+      repeLlamada.textContent = t(repe.clave.texto); repeLlamada.hidden = !llamada; ultimaLlamada = llamada;
+      repeLlamada.setAttribute('data-tono', repe.acierto ? 'bien' : 'mal');
+    }
+    capaRepe.setAttribute('data-congelada', congelada(repe, tr) ? '1' : '0');
+  }
+
+  // ---- 0.14.103: el motor (arranque, mezcla y apagado) ----
+  const pist = () => avion.pist ?? crearMotor();
+  const ponerPist = cambio => { avion = { ...avion, pist: { ...pist(), ...cambio } }; pintarMotor(); };
+  const mBotones = {};
+  let estadoHasta = 0, mezclaInput = null, motorEstado = null, motorDatos = null, motorLista = null, motorEleccion = null, startSuelta = 0;
+  function construirMotor() {
+    const fila = (nombre, ...hijos) => el('div', { class: `juego-motor-fila${nombre === t('juego.motor.mezcla') ? ' juego-motor-fila-mezcla' : ''}` }, el('span', { class: 'juego-motor-nombre', texto: nombre }), el('div', { class: 'juego-motor-mandos' }, hijos));
+    mBotones.master = boton('juego-motor-interruptor', 'MASTER', () => ponerPist({ master: !pist().master }), { 'aria-pressed': 'false' });
+    mBotones.selector = boton('juego-motor-interruptor', '', () => ponerPist({ selector: pist().selector === 'BOTH' ? 'OFF' : 'BOTH' }));
+    mBotones.magnetos = MOTOR_FAA.magnetos.map(pos => {
+      const b = boton('juego-motor-magneto', pos, e => { if (pos !== 'START') ponerPist({ magnetos: pos }); else if (e.detail === 0) { ponerPist({ magnetos: 'START' }); startSuelta = tiempo + 2.5; } }, { 'aria-pressed': 'false', 'data-pos': pos });
+      if (pos === 'START') {
+        // START se mantiene apretado (vuelve solo a BOTH al soltar, como la llave).
+        b.addEventListener('pointerdown', ev => { ev.preventDefault(); ponerPist({ magnetos: 'START' }); startSuelta = Infinity; });
+        for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { if (pist().magnetos === 'START') { ponerPist({ magnetos: 'BOTH' }); startSuelta = 0; } });
+      }
+      return b;
+    });
+    mezclaInput = el('input', { type: 'range', min: 0, max: 100, step: 1, value: 0, class: 'juego-mezcla', 'aria-label': t('juego.motor.mezcla') });
+    mezclaInput.addEventListener('input', () => ponerPist({ mezcla: Number(mezclaInput.value) / 100 }));
+    mezclaInput.addEventListener('keydown', e => e.stopPropagation());
+    motorDatos = el('p', { class: 'juego-motor-datos', 'aria-live': 'off' });
+    motorEstado = el('p', { class: 'juego-motor-estado', role: 'status' });
+    motorLista = el('ol', { class: 'juego-motor-lista' });
+    motorEleccion = el('div', { class: 'juego-motor-eleccion', hidden: true },
+      el('p', { texto: t('juego.motor.eleccion') }),
+      el('button', { type: 'button', class: 'boton-3d naranja chico', onclick: () => elegirArranque('guiado') }, el('span', { texto: t('juego.motor.guiado') })),
+      el('button', { type: 'button', class: 'boton-3d blanco chico', onclick: () => elegirArranque('manual') }, el('span', { texto: t('juego.motor.manual') })),
+      el('button', { type: 'button', class: 'boton-texto', onclick: () => elegirArranque('marcha') }, el('span', { texto: t('juego.motor.en_marcha') })));
+    panelMotor.append(
+      el('div', { class: 'juego-motor-cabeza' }, el('h2', { texto: t('juego.motor') }),
+        el('button', { type: 'button', class: 'juego-boton juego-motor-cerrar', 'aria-label': t('juego.aviso.cerrar'), onclick: () => abrirMotor(false) }, '×')),
+      motorEleccion,
+      fila(t('juego.motor.electrico'), mBotones.master),
+      fila(t('juego.motor.combustible'), mBotones.selector),
+      fila(t('juego.motor.mezcla'), el('span', { class: 'juego-mezcla-fin', texto: t('juego.motor.corte') }), mezclaInput, el('span', { class: 'juego-mezcla-fin', texto: t('juego.motor.rica') })),
+      fila(t('juego.motor.magnetos'), mBotones.magnetos),
+      motorEstado,
+      motorDatos,
+      el('div', { class: 'juego-motor-pie' }, el('strong', { class: 'juego-motor-lista-titulo' }), motorLista,
+        el('button', { type: 'button', class: 'boton-texto juego-motor-cambiar', onclick: () => { listaModo = listaModo === 'arranque' ? 'apagado' : 'arranque'; pintarMotor(); } })),
+      el('p', { class: 'juego-motor-fuente', texto: t('juego.fuente', { f: `${MOTOR_FAA.fuentes.mezcla} · ${MOTOR_FAA.fuentes.arranque}` }) }));
+  }
+  function abrirMotor(si) {
+    if (!mezclaInput) construirMotor();
+    panelMotor.hidden = !si; bMotor.setAttribute('aria-expanded', String(Boolean(si)));
+    if (si) { panelMotor.setAttribute('data-vuelo', avion.enSuelo ? '0' : '1'); pintarMotor(); }
+  }
+  function elegirArranque(como) {
+    try { localStorage.setItem(CLAVE_ARRANQUE, como); } catch { /* sin almacenamiento */ }
+    motorEleccion.hidden = true;
+    if (como === 'marcha') { avion = { ...avion, pist: crearMotor(), rpm: VUELO.rpmRalenti, aceitePsi: VUELO.aceitePsiNormal }; abrirMotor(false); }
+    guiaArranque = como === 'guiado';
+    pintarMotor();
+  }
+  function pintarMotor() {
+    if (!mezclaInput || panelMotor.hidden) return;
+    const m = pist();
+    mBotones.master.setAttribute('aria-pressed', String(m.master)); mBotones.master.textContent = `MASTER ${m.master ? 'ON' : 'OFF'}`;
+    mBotones.selector.textContent = `FUEL ${m.selector}`; mBotones.selector.setAttribute('aria-pressed', String(m.selector === 'BOTH'));
+    for (const b of mBotones.magnetos) b.setAttribute('aria-pressed', String(b.dataset.pos === m.magnetos));
+    if (document.activeElement !== mezclaInput) mezclaInput.value = String(Math.round(m.mezcla * 100));
+    mezclaInput.setAttribute('aria-valuetext', m.mezcla < 0.05 ? t('juego.motor.corte') : `${Math.round(m.mezcla * 100)} %`);
+    const datos = t('juego.motor.datos', { egt: Math.round(m.egt ?? 0).toLocaleString('en-US'), pico: Math.round(m.pico ?? 0).toLocaleString('en-US'), ff: (m.flujoGph ?? 0).toFixed(1),
+      gal: avion.combustible.toFixed(1), rpm: Math.round(avion.rpm / 10) * 10, psi: Math.round(avion.aceitePsi) });
+    if (motorDatos.textContent !== datos) motorDatos.textContent = datos;
+    const lista = listaModo === 'arranque' ? listaArranque(m, mandos.potencia) : listaApagado(m, mandos.potencia);
+    panelMotor.querySelector('.juego-motor-lista-titulo').textContent = t(listaModo === 'arranque' ? 'juego.motor.lista_arranque' : 'juego.motor.lista_apagado');
+    panelMotor.querySelector('.juego-motor-cambiar').textContent = t(listaModo === 'arranque' ? 'juego.motor.ver_apagado' : 'juego.motor.ver_arranque');
+    const textos = lista.map(x => `${x.hecho ? '✓' : '○'} ${t(`juego.motor.${listaModo}.${x.id}`)}`);
+    const siguiente = lista.findIndex(x => !x.hecho);
+    if (motorLista.childElementCount !== textos.length || [...motorLista.children].some((li, k) => li.textContent !== textos[k] || (li.dataset.siguiente === '1') !== (k === siguiente))) {
+      motorLista.replaceChildren(...lista.map((x, k) => el('li', { 'data-hecho': x.hecho ? '1' : '0', 'data-siguiente': k === siguiente ? '1' : '0', texto: textos[k] })));
+    }
+    // (lo que dijo el motor se borra solo a los 9 s)
+    if (motorEstado.textContent && Date.now() > estadoHasta) motorEstado.textContent = '';
+    panelMotor.setAttribute('data-guia', guiaArranque ? '1' : '0');
+    // En vuelo, el panel se achica: solo la mezcla y lo que marca (no tapa los relojes).
+    panelMotor.setAttribute('data-vuelo', avion.enSuelo ? '0' : '1');
+  }
+
+  // ---- 0.14.103: el sonido ----
+  async function cambiarSonido() {
+    conSonido = !conSonido;
+    if (conSonido) { const ok = await sonido.encender(); if (!ok) conSonido = false; } else sonido.apagar();
+    pintarBotones();
+  }
+  const alVisibilidad = () => { if (document.visibilityState === 'hidden') sonido.apagar(); else if (conSonido && !pausado) sonido.encender(); };
+  document.addEventListener('visibilitychange', alVisibilidad);
+
+  // ---- 0.14.103: el tiempo ----
+  function ponerTiempo(id, { callado = false } = {}) {
+    tiempoMet = id; nubesTiempo = nubesDe(id); mundo = construirMundo(paleta, { conNubes: id === 'despejado' });
+    zonaAvisada = null; ajusteDicho = null; dentroAvisado = false; oferta.hidden = true;
+    cond = condiciones(id, avion.x, avion.z, avion.ft);
+    if (id === 'despejado') { ambiente = { ...ambiente, viento: { desde: 360, kt: 0 } }; ajuste = 29.92; }
+    else ajuste = cond.altimetro;
+    raiz.setAttribute('data-tiempo', id);
+    for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === id));
+    bMas.setAttribute('aria-expanded', 'false'); menuMas.hidden = true;
+    if (callado) return;
+    if (id === 'despejado') { mostrarAviso({ tono: 'info', titulo: t('juego.tiempo.despejado'), partes: [], corto: true }); return; }
+    const f = id === 'nubes' ? TIEMPO_FAA.nubes : TIEMPO_FAA[id];
+    mostrarAviso({ tono: 'info', titulo: t(`juego.tiempo.${id}`), partes: [t(`juego.tiempo.${id}.texto`), t('juego.fuente', { f: f.fuente })] });
+  }
+  // Lo del tiempo en cada paso: el viento (con ráfagas), la turbulencia, el altímetro que da el control y los rayos.
+  function tiempoPaso() {
+    cond = condiciones(tiempoMet, avion.x, avion.z, avion.ft);
+    if (tiempoMet === 'despejado') return;
+    const v = cond.viento;
+    ambiente = { ...ambiente, viento: { desde: v.desde, kt: v.kt + (v.rafagas ? (v.rafagas - v.kt) * Math.max(0, Math.sin(tiempo * 0.7) * Math.sin(tiempo * 1.9)) : 0) } };
+    if (cond.turbulencia > 0.05) { rafaga = rafagaTurbulencia(Math.min(1.6, cond.turbulencia * 1.3), 4); rafagaHasta = tiempo + 0.5; }
+    if (cambioAltimetro(ajusteDicho, cond.altimetro)) {
+      const primera = ajusteDicho == null;
+      ajusteDicho = cond.altimetro; ajuste = cond.altimetro;
+      if (!primera) mostrarAviso({ tono: 'info', titulo: t('juego.falla.atc'), radio: t('juego.tiempo.altimetro.radio', { a: ajuste.toFixed(2) }), partes: [t(`juego.tiempo.altimetro.${cond.zona === 'despues' ? 'sube' : 'baja'}`, { a: ajuste.toFixed(2) })], corto: true });
+    }
+    // Dentro de la nube: sin horizonte. El aviso de la desorientación (AFH cap. 18) y cómo salir.
+    if (cond.dentro && !dentroAvisado && !abierta) {
+      dentroAvisado = true;
+      mostrarAviso({ tono: 'mal', titulo: t('juego.tiempo.imc'), partes: [el('strong', { texto: t('juego.tiempo.imc.salir', { min: TIEMPO_FAA.nubes.viraje180Min, g: TIEMPO_FAA.nubes.tasaEstandar }) }), t('juego.tiempo.imc.texto', { min: TIEMPO_FAA.nubes.pierdeControlMin }), t('juego.fuente', { f: TIEMPO_FAA.nubes.fuente })] });
+    } else if (!cond.dentro && dentroAvisado && tiempo > ultimoDentro + 20) dentroAvisado = false;
+    if (cond.dentro) ultimoDentro = tiempo;
+    if (cond.rayos && tiempo > proximoRayo) {
+      relampago = 1; proximoRayo = tiempo + 3 + ((tiempo * 7.31) % 4);
+      setTimeout(() => sonido.evento('trueno'), 1200);
+    }
+    // Al entrar en el frente: el control lo avisa y ofrece una pregunta de meteorología.
+    if (cond.zona && cond.zona !== zonaAvisada && cond.zona === 'paso' && !abierta && !flujo) {
+      zonaAvisada = cond.zona;
+      if (modoActual === 'libre') ofrecer({ tipo: 'frente', quien: 'control', tema: 'meteo', contexto: t(`juego.tiempo.${tiempoMet}.paso`) });
+    }
   }
 
   // ---- el resultado ----
@@ -839,10 +1145,12 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     volo = m === 'final' || m === 'preguntas'; ultimoToque = -10; tiempo = 0; girCam = avion.rumbo;
     puntaje = puntajeInicial(); agenda = crearAgenda(azar); ambiente = { viento: { desde: 360, kt: 0 } }; rafagaHasta = -1; fallaDesde = null; decision = null;
     extras = []; nubeFalla = null; desvioHasta = -1; oferta.hidden = true; aviso.hidden = true; pregunta.hidden = true; explicacion.hidden = true; subtitulo.hidden = true; abierta = false;
-    flujo = null; vistaAntes = null; indicado = null; trafico = traficoInicial(); avisados.clear();
+    flujo = null; vistaAntes = null; indicado = null; trafico = traficoInicial(); avisados.clear(); terminarRepeticion(); repeDatos = null; sostener = null;
     guiado = m === 'preguntas' ? crearGuiado() : null; objetivo = null; enAproximacion = false; esperando = Boolean(guiado);
     raiz.setAttribute('data-modo', m); modoActual = m; retener = null; tormenta = null;
     resultado.hidden = true; pintarBotones(); pintarPotencia(); pausar(false);
+    ajuste = 29.92; ajusteDicho = null; relampago = 0; proximoRayo = 0; zonaAvisada = null; dentroAvisado = false; listaModo = 'arranque'; motorAndaba = true;
+    if (m === 'libre') arranqueInicial(); else abrirMotor(false);
   }
 
   // ---- botones ----
@@ -858,11 +1166,15 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     bOrientacion.setAttribute('aria-label', t(horizontal() ? 'juego.orientacion.vertical' : 'juego.orientacion.horizontal'));
     bOrientacion.title = bOrientacion.getAttribute('aria-label');
     bHora.setAttribute('aria-label', t('juego.hora.cambiar', { momento: t(`juego.hora.${hora}`) }));
+    bSonido.textContent = t(conSonido ? 'juego.sonido.si' : 'juego.sonido.no'); bSonido.setAttribute('aria-pressed', String(conSonido));
     bPausa.setAttribute('aria-pressed', String(pausado));
     bPausa.replaceChildren(pausado ? el('span', { texto: '▶' }) : icono('pausa', 'icono'));
     bPausa.setAttribute('aria-label', t(pausado ? 'juego.seguir_vuelo' : 'juego.pausa'));
   }
-  function pausar(si) { pausado = Boolean(si); pintarBotones(); }
+  function pausar(si) {
+    pausado = Boolean(si); pintarBotones();
+    if (pausado) sonido.apagar(); else if (conSonido) sonido.encender();
+  }
   // ---- vertical u horizontal (0.14.102) ----
   const CLAVE_ORIENTACION = 'academia.juego.orientacion';
   function horizontal() { try { return matchMedia('(orientation: landscape)').matches; } catch { return false; } }
@@ -907,6 +1219,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (e.code === 'KeyF') { mandos.flaps = mandos.flaps ? 0 : 1; pintarBotones(); }
     else if (e.code === 'KeyC') cambiarVista();
     else if (e.code === 'KeyP') pausar(!pausado);
+    else if (e.code === 'KeyE') abrirMotor(panelMotor.hidden);
+    else if (e.code === 'BracketLeft' || e.code === 'BracketRight') ponerPist({ mezcla: Math.max(0, Math.min(1, Math.round((pist().mezcla + (e.code === 'BracketLeft' ? -0.02 : 0.02)) * 100) / 100)) });
     else if (e.key === '?' || e.code === 'KeyH') abrirAyuda();
   };
   const alSoltar = e => { apretadas.delete(e.code); if (TECLAS[e.code]?.[0] === 'potencia') pintarPotencia(); };
@@ -958,6 +1272,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   // ---- salir ----
   function destruir() {
     bucle.destruir(); gl3?.liberar?.(); temaObs?.disconnect(); clearInterval(relojPotencia);
+    sonido.destruir(); document.removeEventListener('visibilitychange', alVisibilidad);
     window.removeEventListener('keydown', alApretar); window.removeEventListener('keyup', alSoltar); window.removeEventListener('blur', alPerderFoco);
     window.removeEventListener('hashchange', alCambiarRuta);
     document.body.classList.remove('juego-activo');
@@ -967,16 +1282,30 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   window.addEventListener('hashchange', alCambiarRuta);
 
   pintarBotones(); pintarPotencia();
+  for (const b of botonesTiempo) b.setAttribute('aria-pressed', String(b.dataset.tiempo === tiempoMet));
   if (modo === 'libre' || modo === 'preguntas') cargarPreguntas();
   raiz.setAttribute('data-hora', hora);
   if (mc) {
     raiz.setAttribute('data-congelar', mc.congelar ? '1' : '0');
-    avion = { ...crearAvion(mc.inicio), ...(mc.inicio.flaps ? { gamma: -0.052, cabeceo: -1, rpm: 1700 } : {}) };
+    avion = { ...crearAvion(mc.inicio), ...(mc.inicio.flaps ? { gamma: -0.052, cabeceo: -1, rpm: 1700 } : {}), pist: crearMotor() };
     mandos.potencia = avion.potencia; mandos.flaps = avion.flaps; volo = !avion.enSuelo;
     asistente = mc.asistente ?? true;
     if (mc.viento) ambiente = { ...ambiente, viento: { ...mc.viento } };
     ponerPaso(0); pintarBotones(); pintarPotencia();
   }
+  // 0.14.103: el Vuelo libre empieza con el motor apagado (salvo que se eligió «en marcha»); la primera vez, se elige cómo.
+  function arranqueInicial() {
+    let pref = null;
+    try { pref = localStorage.getItem(CLAVE_ARRANQUE); } catch { pref = null; }
+    abrirMotor(false); listaModo = 'arranque'; motorEstado.textContent = '';
+    if (pref === 'marcha') return;
+    avion = inicioDe('libre', { enFrio: true }); mandos.potencia = avion.potencia; pintarPotencia();
+    motorAndaba = false;
+    guiaArranque = pref !== 'manual';
+    abrirMotor(true);
+    motorEleccion.hidden = pref != null;
+  }
+  if (modo === 'libre' && !mc) arranqueInicial();
   let vista1 = false;
   try { vista1 = localStorage.getItem(CLAVE_AYUDA) === '1'; } catch { vista1 = false; }
   if (!vista1) abrirAyuda();
@@ -986,13 +1315,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
 
   // Para las capturas y las pruebas: poner el avión en un estado y dibujar ya (también en raiz.juego, para las capturas).
   const control = {
-    raiz, destruir, reiniciar, abrirAyuda, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
+    raiz, destruir, reiniciar, abrirAyuda, abrirMotor, saltarRepeticion, verOtraVez, get repe() { return repe; }, irRepe(t) { if (!repe) return; if (mc) tAccion = t; else flujo = { ...flujo, t }; pintarRepe(); dibujar(); return { t: tiempoRepe(), toma: tomaEn(repe, tiempoRepe()).camara, cam: camaraRepeticion(repe, tiempoRepe(), 2).toma, fase: flujo?.fase }; }, ponerTiempo, cambiarSonido, ponerPist, elegirArranque, cerrarAyuda, cambiarVista, ofrecer, abrirPregunta, aplicarConsecuencia, cargarPreguntas, ponerTormenta, pausar, ponerHora, ponerPaso, avisoTrafico,
     ponerTrafico(tipo) { trafico = [{ ...crearTrafico(tipo, avion), fase: 0.3 }]; return trafico[0]; },
     get guiado() { return guiado; }, get puntaje() { return puntaje; }, get pool() { return pool; }, get flujo() { return flujo; }, get faseClase() { return faseClase; }, responderClase,
-    get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },
-    fijar(estado = {}) { avion = { ...avion, ...estado }; if (estado.vista && estado.vista !== vista) cambiarVista(); if (estado.potencia != null) { mandos.potencia = estado.potencia; pintarPotencia(); } pintarTextos(); dibujar(); dibujarMapa(); },
+    get trafico() { return trafico; }, ponerMandos(m) { Object.assign(mandos, m); pintarPotencia(); }, verMapa(lejos) { mapaLejos = Boolean(lejos); pintarMapas(); dibujarMapa(); },
+    fijar(estado = {}) { avion = { ...avion, ...estado }; cond = condiciones(tiempoMet, avion.x, avion.z, avion.ft); indicado = null; pintarMotor(); if (estado.vista && estado.vista !== vista) cambiarVista(); if (estado.potencia != null) { mandos.potencia = estado.potencia; pintarPotencia(); } pintarTextos(); dibujar(); dibujarMapa(); },
     terminarVuelo,
-    get avion() { return avion; },
+    get avion() { return avion; }, get tiempoMet() { return tiempoMet; }, get cond() { return cond; }, get sonido() { return sonido; }, get ajuste() { return ajuste; },
   };
   raiz.juego = control;
   return control;

@@ -55,7 +55,7 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
     const xs = [x0 - ancho1, x0, x0 + ancho1];
     anemometro(ctx, xs[0], fila1, r, D, C, escala, T);
     actitud(ctx, xs[1], fila1, r, D, C, escala);
-    altimetro(ctx, xs[2], fila1, r, D, C, escala, T);
+    altimetro(ctx, xs[2], fila1, r, { ...D, ajuste: extras?.ajuste }, C, escala, T);
     coordinador(ctx, xs[0], fila2, r, D, C, escala, T);
     rumboTarjeta(ctx, xs[1], fila2, r, D, C, escala);
     variometro(ctx, xs[2], fila2, r, D, C, escala, T);
@@ -64,8 +64,12 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
     const rc = r * 0.44;
     chico(ctx, xm - rc * 1.15, fila2 - rc * 0.55, rc, D.agujas.aceitePsi, T('psi'), C, escala, [[0.25, 0.85, '#2fbf5b'], [0, 0.08, '#e5483e']]);
     chico(ctx, xm + rc * 1.15, fila2 - rc * 0.55, rc, D.agujas.aceiteTemp, T('temp'), C, escala, [[0.4, 0.85, '#2fbf5b'], [0.94, 1, '#e5483e']]);
-    chico(ctx, xm, fila2 + rc * 0.95, rc, D.agujas.combustible, T('fuel'), C, escala, [[0, 0.12, '#e5c33e']], ['E', 'F']);
     const ex = extras ?? {};
+    // 0.14.103: el combustible y la EGT (temperatura de los gases de escape: 1,000 a 1,600 °F) con el flujo (gal/h).
+    if (ex.egt != null) {
+      chico(ctx, xm - rc * 1.15, fila2 + rc * 0.95, rc, D.agujas.combustible, T('fuel'), C, escala, [[0, 0.12, '#e5c33e']], ['E', 'F']);
+      chico(ctx, xm + rc * 1.15, fila2 + rc * 0.95, rc, anguloArco(ex.egt, 1000, 1600), T('egt'), C, escala, []);
+    } else chico(ctx, xm, fila2 + rc * 0.95, rc, D.agujas.combustible, T('fuel'), C, escala, [[0, 0.12, '#e5c33e']], ['E', 'F']);
     const tira = yp + panel * 0.85, alto1 = panel * 0.17;
     // Abajo a la izquierda: la compensación (rueda con su marca) y los flaps (UP · 10 · 20 · 30).
     indicadorTrim(ctx, xs[0] - r * 0.55, tira, alto1, num(ex.trim, 0), C, escala, T);
@@ -73,6 +77,8 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
     // Abajo a la derecha: la palanca de potencia (sale o entra) y el selector de combustible (BOTH).
     palancaPotencia(ctx, xs[2] + r * 0.15, tira, alto1, num(ex.potencia, 0), C, escala, T);
     selectorCombustible(ctx, xm, tira, alto1 * 0.42, C, escala, T);
+    // El flujo de combustible (gal/h), a la izquierda del selector (no tapa ningún rótulo).
+    if (ex.egt != null) texto(ctx, `${T('ff')} ${num(ex.ff, 0).toFixed(1)}`, xm - alto1 * 0.42 * 2.9, tira, Math.max(8, rc * 0.34), C.texto, 700);
     // El factor de carga (G), chiquito, arriba del tablero a la izquierda.
     if (ex.g != null) {
       const g = num(ex.g, 1);
@@ -101,7 +107,7 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
   return panel;
 }
 
-export const TEXTOS_CABINA = { trim: 'TRIM', flaps: 'FLAPS', gases: 'THROTTLE', combustible: 'FUEL SEL', kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN' };
+export const TEXTOS_CABINA = { egt: 'EGT', ff: 'FF', trim: 'TRIM', flaps: 'FLAPS', gases: 'THROTTLE', combustible: 'FUEL SEL', kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN' };
 
 // ---------- el marco, la visera y el tablero ----------
 function marco(ctx, ancho, alto, yp, e, C) {
@@ -235,7 +241,7 @@ function altimetro(ctx, x, y, r, D, C, e, T) {
   for (let k = 0; k < 10; k++) numeroEn(ctx, x, y, r * 0.66, k * 36, String(k), r * 0.2, C);
   // La ventanita de la presión (29.92).
   ctx.fillStyle = '#ffffff'; ctx.fillRect(x + r * 0.3, y - r * 0.08, r * 0.38, r * 0.17);
-  texto(ctx, '29.92', x + r * 0.49, y + 0.5, r * 0.12, '#111111', 700);
+  texto(ctx, (Number.isFinite(D.ajuste) ? D.ajuste : 29.92).toFixed(2), x + r * 0.49, y + 0.5, r * 0.12, '#111111', 700);
   texto(ctx, T('ft'), x, y - r * 0.3, r * 0.12, C.rotulo, 600);
   texto(ctx, Math.round(D.ft).toLocaleString('en-US'), x, y + r * 0.36, r * 0.15, C.texto, 700);
   aguja(ctx, x, y, r, D.agujas.diezmil, 0.95, r * 0.035, '#cfd6e2', 0);

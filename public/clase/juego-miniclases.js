@@ -35,6 +35,9 @@ export const MINICLASES = Object.freeze([
     pasos: [{ id: 'deriva' }, { id: 'corregir' }, { id: 'tocar' }] },
   { id: 'perdida', icono: 'atencion', hora: 'dia', inicio: { ...CRUCERO, ft: 3500, kt: 85, potencia: 0.2 }, congelar: false, asistente: false, fuente: 'AFH cap. 5',
     pasos: [{ id: 'lento' }, { id: 'aviso' }, { id: 'recuperar' }] },
+  // 0.14.103: la mezcla, a 7,500 ft (el aire menos denso): rica, empobrecer hasta la mejor potencia, demasiado pobre y corte.
+  { id: 'mezcla', icono: 'motor', hora: 'dia', inicio: { ...CRUCERO, ft: 7500, kt: 100, potencia: 0.7 }, congelar: false, motor: true, fuente: 'PHAK cap. 7 · cap. 11',
+    pasos: [{ id: 'rica', mezcla: 1 }, { id: 'empobrecer', mezcla: 0.76 }, { id: 'pobre', mezcla: 0.45 }, { id: 'corte', mezcla: 0 }] },
   // Las escenas 3D de las clases, tal cual.
   { id: 'espacio-aereo', icono: 'escudo', escena: 'espacio-aereo' },
   { id: 'minimos-vfr', icono: 'nube', escena: 'minimos-vfr' },
