@@ -179,11 +179,25 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
   const total = archivos.reduce((s, a) => s + a.bytes, 0);
   // Lo que baja el NAVEGADOR con cada modelo (la librería, el wasm y ese modelo): para el aviso «~102 MB».
   const bytesDe = {};
+  // 0.14.106: y la lista de esos archivos (las rutas dentro de /voz/<id>/): el navegador los baja callado en segundo plano
+  // al entrar el alumno (public/voz-dictado.js, crearPrecarga), así el dictado ya está listo al llegar al oral.
+  const archivosDe = {};
   for (const modelo of [manifiesto?.modelo, manifiesto?.modeloChico].filter(Boolean)) {
-    bytesDe[modelo] = archivos.filter(a => !a.ruta.startsWith('modelos/') || a.ruta.startsWith(`modelos/${modelo}/`)).reduce((s, a) => s + a.bytes, 0);
+    const suyos = archivos.filter(a => !a.ruta.startsWith('modelos/') || a.ruta.startsWith(`modelos/${modelo}/`));
+    bytesDe[modelo] = suyos.reduce((s, a) => s + a.bytes, 0);
+    archivosDe[modelo] = suyos.map(a => a.ruta);
   }
   const completa = ruta => join(carpeta, ...ruta.split('/'));
   const log = (...x) => { try { registro?.log?.(...x); } catch { /* nada */ } };
+  // 0.14.106: el aviso del administrador (src/app.js): «faltan los archivos de voz» cuando la bajada falla y «listo» cuando
+  // ya están. Solo al CAMBIAR (cada alumno que entra pide el estado: así no suma «veces» sin razón).
+  const oyentesAviso = new Set();
+  let ultimoAviso = null;
+  const avisarCambio = (falta, motivo = null) => {
+    if (ultimoAviso === falta) return;
+    ultimoAviso = falta;
+    for (const f of oyentesAviso) { try { f({ falta, motivo }); } catch { /* nunca tumba la bajada */ } }
+  };
 
   // Al empezar: cuáles ya están en el disco (con su tamaño exacto; el sha256 se revisó antes de renombrarlos).
   const revisar = () => (revisado ??= (async () => {
@@ -340,12 +354,12 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
 
   const preparar = async ({ forzar = false } = {}) => {
     await revisar();
-    if (listos.size === archivos.length && archivos.length) return true;
+    if (listos.size === archivos.length && archivos.length) { avisarCambio(false); return true; }
     if (bajando) return bajando;
     if (fallo && !forzar && reloj() - fallo.cuando < ESPERA_TRAS_FALLO_MS) return false;
     if (problemas.length) return false;
     fallo = null;
-    bajando = bajarTodo().then(() => true, e => { fallo = { motivo: e?.motivo ?? 'no_se_pudo', cuando: reloj() }; log('voz: falló la bajada', fallo.motivo); return false; })
+    bajando = bajarTodo().then(() => { avisarCambio(false); return true; }, e => { fallo = { motivo: e?.motivo ?? 'no_se_pudo', cuando: reloj() }; log('voz: falló la bajada', fallo.motivo); avisarCambio(true, fallo.motivo); return false; })
       .finally(() => { bajando = null; });
     return bajando;
   };
@@ -358,8 +372,8 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
     if (!listo && empezar) await Promise.race([preparar(), new Promise(ok => setImmediate(ok))]);
     let bytes = 0;
     for (const a of archivos) bytes += listos.has(a.ruta) ? a.bytes : (enCurso.get(a.ruta) ?? 0);
-    const base = { modelo: manifiesto?.modelo ?? null, modeloChico: manifiesto?.modeloChico ?? null, base: `/voz/${manifiesto?.id}/`, bytes: total, bytesDe };
-    if (listo) return { ...base, estado: 'lista', pct: 100 };
+    const base = { modelo: manifiesto?.modelo ?? null, modeloChico: manifiesto?.modeloChico ?? null, base: `/voz/${manifiesto?.id}/`, bytes: total, bytesDe, archivosDe };
+    if (listo) { avisarCambio(false); return { ...base, estado: 'lista', pct: 100 }; }
     if (bajando) return { ...base, estado: 'bajando', pct: total ? Math.min(99, Math.floor((bytes / total) * 100)) : 0 };
     if (fallo) return { ...base, estado: 'no', motivo: fallo.motivo };
     return { ...base, estado: 'falta', pct: 0 };
@@ -389,5 +403,7 @@ export function crearVoz({ config = {}, manifiesto = MANIFIESTO_VOZ, llamar = ll
     return true;
   };
 
-  return { estado, preparar, servir, carpeta, total, problemas, id: manifiesto?.id };
+  // alAviso(f): f({ falta, motivo }) cada vez que cambia (la primera, al saberse).
+  const alAviso = f => { oyentesAviso.add(f); if (ultimoAviso != null) { try { f({ falta: ultimoAviso, motivo: fallo?.motivo ?? null }); } catch { /* nada */ } } };
+  return { estado, preparar, servir, alAviso, carpeta, total, problemas, id: manifiesto?.id };
 }

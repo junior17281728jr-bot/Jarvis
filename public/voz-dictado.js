@@ -26,8 +26,9 @@ export function elegirMotor({ servidor = false, whisper = false, navegador = fal
   return 'ninguno';
 }
 
-// ¿Se adelanta la carga del modelo apenas se abre la práctica? Solo en una computadora con memoria (en el teléfono, al
-// tocar el micrófono por primera vez: así no gasta datos si no lo usa).
+// ¿Se calienta el modelo (cargado en el trabajador) apenas entra el alumno, en cualquier pantalla? Solo en una computadora
+// con memoria. En el teléfono los archivos se bajan igual al entrar (crearPrecarga), pero el modelo se carga al abrir el
+// oral: así no ocupa ~200 MB de memoria mientras estudia otra cosa.
 export function equipoCapaz(nav = typeof navigator !== 'undefined' ? navigator : null) {
   if (!nav) return false;
   const ua = String(nav.userAgent ?? '');
@@ -172,12 +173,185 @@ export function crearGuardia(almacen, { sesion = null, alCerrar = null, alVisibi
   };
 }
 
+// ---------- 0.14.106: el dictado listo al instante (lo pidió el dueño: «debe ya estar funcionando al instante») ----------
+// Antes, la primera vez que tocaba el micrófono, el alumno veía «Preparando el dictado (solo la primera vez, ~102 MB)… N %».
+// Ahora: (1) al entrar (con el oral en su curso) los archivos se bajan callados en segundo plano, con prioridad baja y
+// cuando el navegador está libre; al abrir cualquier pantalla del oral, enseguida; (2) el micrófono graba al instante
+// aunque el modelo no esté listo, y al parar solo dice «Escribiendo lo que dijiste…»; (3) donde hay dictado del navegador
+// (Chrome en la computadora o en Android), mientras el modelo no está listo ese dictado escribe en vivo al mismo tiempo.
+
+// ¿Cuándo se bajan los archivos? → 'no' (el alumno pidió ahorrar datos: nunca solos; se bajan al usar el micrófono),
+// 'esperar' (red de celular lenta: hasta que abra el oral), 'ya' (abrió el oral) o 'tranquilo' (al entrar, cuando el
+// navegador esté libre). Sin navigator.connection (el iPhone no lo tiene): como una red normal.
+export function planPrecarga(nav = typeof navigator !== 'undefined' ? navigator : null, motivo = 'entrar') {
+  const c = nav?.connection ?? null;
+  if (c?.saveData === true) return 'no';
+  if (motivo === 'oral') return 'ya';
+  const lenta = ['slow-2g', '2g', '3g'].includes(String(c?.effectiveType ?? '')) || (Number(c?.downlink) > 0 && Number(c?.downlink) < 1.5);
+  if (lenta && c?.type !== 'wifi' && c?.type !== 'ethernet') return 'esperar';
+  return 'tranquilo';
+}
+
+// ¿Se usa el dictado del navegador EN VIVO mientras se graba (solo si Whisper todavía no está listo)? Donde existe y
+// escribe bien: Chrome y Edge en la computadora y Chrome en Android. Nunca en el iPhone (no escribía nada) ni en Safari
+// del Mac (tampoco: 0.14.53).
+export function vivoEnParalelo(nav = typeof navigator !== 'undefined' ? navigator : null, hayReconocimiento = false) {
+  if (!hayReconocimiento || !nav) return false;
+  const ua = String(nav.userAgent ?? '');
+  if (/iPad|iPhone|iPod/.test(ua) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1)) return false;
+  if (/safari/i.test(ua) && !/chrome|chromium|crios|edg|android/i.test(ua)) return false;
+  return /chrome|chromium|edg/i.test(ua);
+}
+
+// Lo que se baja en segundo plano. Los archivos del modelo y el wasm van a la caja del Cache API ('oportia-voz') con la
+// MISMA dirección que pide el trabajador (public/voz-trabajador.js: `${base}modelos/…` y `${base}ort/…wasm`): así, al
+// cargar, no pide nada a la red. La librería (lib/…, ort/….mjs, se cargan con import()) queda en la caché normal del
+// navegador (van «immutable» por un año). Nunca se lee un archivo grande entero en memoria: va de la red a la caja.
+//  - pedirEstado(): GET /api/academia/voz/estado (si el servidor todavía los baja, se pregunta otra vez cada 20 s).
+//  - abrirCaja(): la caja (o null si el navegador no deja: modo privado). pedir(url, { priority }): fetch.
+//  - programar(f): cuando el navegador está libre (requestIdleCallback, o un rato después).
+//  - persistir(motivo): pide que el navegador no borre la caja (navigator.storage.persist(); el iPhone la borra si no).
+//  - whisper(): el de la página; se calienta (el modelo cargado en el trabajador) cuando los archivos ya están.
+//  - malos(): los modelos que no cargaron en este equipo (crearGuardia): un teléfono que no aguanta el grande baja el chico.
+export function crearPrecarga({ pedirEstado, abrirCaja = async () => null, pedir, nav = null, programar = f => setTimeout(f, 0), esperar = ms => new Promise(ok => setTimeout(ok, ms)), persistir = async () => false, whisper = null, malos = () => new Set(), resolver = x => x, calentarAlEntrar = () => false, esperaServidorMs = 20_000, maxVueltasServidor = 90, reloj = () => Date.now() } = {}) {
+  let bajando = null;
+  let enCaja = false;
+  let calentar = false;
+  let urgente = false;
+  let programado = false;
+  let pidioGuardar = false;
+  let despertar = null;
+  const info = { estado: 'nada', motivo: null, empezo: null, enCaja: null, listo: null, bajados: 0, fallo: null };
+  const dormir = ms => new Promise(ok => { despertar = ok; esperar(ms).then(ok, ok); });
+  // Un archivo que no va a la caja: se lee por pedazos y se tira (solo para dejarlo en la caché del navegador).
+  const vaciar = async r => {
+    try { const l = r.body?.getReader?.(); if (l) { for (;;) { const { done } = await l.read(); if (done) break; } } else await r.arrayBuffer?.(); } catch { /* nada */ }
+  };
+  const bajar = async () => {
+    let e = null;
+    for (let k = 0; ; k++) {
+      try { e = await pedirEstado(); } catch { e = null; }
+      if (!e) throw new Error('sin_red');
+      if (e.estado === 'lista') break;
+      if (e.estado === 'no') throw new Error('no_disponible');
+      if (k >= maxVueltasServidor) throw new Error('tiempo');
+      await dormir(urgente ? 1000 : esperaServidorMs);
+    }
+    const modelo = modeloPara(e, malos());
+    if (!modelo) throw new Error('memoria');
+    const rutas = e.archivosDe?.[modelo];
+    if (!Array.isArray(rutas) || !rutas.length) throw new Error('sin_lista');
+    let caja = null;
+    try { caja = await abrirCaja(); } catch { caja = null; }
+    for (const ruta of rutas) {
+      const url = resolver(`${e.base}${ruta}`);
+      const deLaCaja = ruta.startsWith('modelos/') || ruta.endsWith('.wasm');
+      // Sin caja (modo privado): el modelo no se baja dos veces; lo baja el trabajador al cargar.
+      if (deLaCaja && !caja) continue;
+      const aLaCaja = deLaCaja;
+      if (aLaCaja) {
+        let ya = null;
+        try { ya = await caja.match(url); } catch { ya = null; }
+        if (ya) continue;
+      }
+      const r = await pedir(url, { priority: urgente ? 'high' : 'low' });
+      if (!r?.ok) throw new Error('sin_red');
+      if (aLaCaja) await caja.put(url, r); else await vaciar(r);
+      info.bajados++;
+    }
+  };
+  const calentarSiToca = () => {
+    if (!enCaja || !calentar || !whisper) return Promise.resolve();
+    let w = null;
+    try { w = whisper(); } catch { return Promise.resolve(); }
+    if (!w || w.listo || w.roto) return Promise.resolve();
+    return w.preparar().then(() => { info.listo ??= reloj(); info.estado = 'listo'; }, () => {});
+  };
+  const correr = (motivo, { conCalor = false } = {}) => {
+    if (conCalor) calentar = true;
+    if (!pidioGuardar) { pidioGuardar = true; Promise.resolve().then(() => persistir(motivo)).catch(() => {}); }
+    if (!bajando) {
+      info.estado = 'bajando';
+      info.motivo = motivo;
+      info.empezo ??= reloj();
+      info.fallo = null;
+      bajando = bajar().then(() => { enCaja = true; info.enCaja ??= reloj(); info.estado = 'en_caja'; }, err => {
+        // Un fallo aquí nunca apaga el dictado: el micrófono lo intenta otra vez (y el oral también, al abrirse).
+        bajando = null;
+        info.estado = 'fallo';
+        info.fallo = err?.message ?? 'fallo';
+        throw err;
+      });
+    }
+    return bajando.then(calentarSiToca).catch(() => {});
+  };
+  return {
+    // Entró (y tiene el oral en su curso): cuando el navegador esté libre. → el plan ('tranquilo' | 'esperar' | 'no').
+    alEntrar() {
+      const plan = planPrecarga(nav, 'entrar');
+      if (plan !== 'tranquilo' || programado) return plan;
+      programado = true;
+      try { programar(() => { correr('entrar', { conCalor: Boolean(calentarAlEntrar()) }); }); } catch { /* nada */ }
+      return plan;
+    },
+    // Abrió una pantalla del oral: ya mismo, y con el modelo caliente. → el plan ('ya' | 'no').
+    alOral() {
+      const plan = planPrecarga(nav, 'oral');
+      if (plan === 'no') return plan;
+      correr('oral', { conCalor: true });
+      return plan;
+    },
+    // El alumno tocó el micrófono y el modelo no está listo: lo que falta va con prioridad y el trabajador espera a que
+    // termine (no baja lo mismo dos veces). → la bajada en curso (o null).
+    apurar() {
+      if (!bajando) return null;
+      urgente = true;
+      try { despertar?.(); } catch { /* nada */ }
+      return bajando.catch(() => {});
+    },
+    get enCaja() { return enCaja; },
+    get info() { return { ...info }; },
+  };
+}
+
+// Qué texto queda después de grabar. vivo: lo que escribió el dictado del navegador en vivo (una promesa del texto, o
+// null si no hubo). Si el modelo está listo enseguida (esperaMs, unos segundos), se usa Whisper (escribe mejor); si no,
+// se queda lo del navegador. Sin texto en vivo, se espera a Whisper (con un tope: nunca «Escribiendo…» para siempre).
+// → { texto, fuente: 'whisper' | 'navegador' } | { fallo: 'sin_red' | 'equipo' | 'tiempo' }
+export const ESPERA_WHISPER_MS = 4000;
+export const MAX_ESPERA_WHISPER_MS = 4 * 60_000;
+export async function textoDelTurno({ whisper, audio, idioma = 'es', vivo = null, esperar = null, esperaMs = ESPERA_WHISPER_MS, maxEsperaMs = MAX_ESPERA_WHISPER_MS, antes = null } = {}) {
+  let dichoVivo = '';
+  if (vivo) { try { dichoVivo = String((await vivo) ?? '').trim(); } catch { dichoVivo = ''; } }
+  let tarde = false;
+  const conWhisper = (async () => {
+    if (!whisper.listo) { try { await antes?.(); } catch { /* nada */ } }
+    await whisper.preparar();
+    if (tarde) return null;
+    const a = await audio();
+    if (tarde) return null;
+    if (!a?.length) return { texto: '' };
+    return whisper.transcribir(a, idioma);
+  })();
+  let reloj = null;
+  const plazo = esperar ? esperar(dichoVivo ? esperaMs : maxEsperaMs) : new Promise(ok => { reloj = setTimeout(ok, dichoVivo ? esperaMs : maxEsperaMs); });
+  const r = await Promise.race([conWhisper.then(x => ({ x }), e => ({ e })), plazo.then(() => ({ tarde: true }))]);
+  clearTimeout(reloj);
+  if (r.tarde) tarde = true;
+  if (r.x && (String(r.x.texto ?? '').trim() || !dichoVivo)) return { texto: String(r.x.texto ?? ''), fuente: 'whisper' };
+  if (dichoVivo) return { texto: dichoVivo, fuente: 'navegador' };
+  if (r.tarde) return { fallo: 'tiempo' };
+  return { fallo: r.e?.message === 'sin_red' ? 'sin_red' : 'equipo' };
+}
+
 // El dictado Whisper de esta página (uno para toda la app: el modelo se carga una sola vez).
 //  - pedirEstado(): GET /api/academia/voz/estado → { estado: 'lista'|'bajando'|'falta'|'no', pct, base, modelo, bytes }.
 //  - crearTrabajador(): el Worker (en las pruebas, uno falso).
 //  - preparar(alProgreso({ pct, mb })): espera al servidor y carga el modelo. Rechaza con un motivo si no se puede.
 //  - transcribir(audio, idioma) → el texto (limpio).
-export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new Promise(ok => setTimeout(ok, ms)), maxEsperaServidorMs = 15 * 60_000, maxSinAvanceMs = 90_000, reloj = () => Date.now(), guardia = crearGuardia(null) } = {}) {
+// 0.14.106: antesDeCargar(): antes de crear el trabajador, espera la bajada en segundo plano si va (crearPrecarga.apurar):
+// así no se baja lo mismo dos veces y el trabajador lo lee todo de la caja.
+export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new Promise(ok => setTimeout(ok, ms)), maxEsperaServidorMs = 15 * 60_000, maxSinAvanceMs = 90_000, reloj = () => Date.now(), guardia = crearGuardia(null), antesDeCargar = null } = {}) {
   let trabajador = null;
   let preparando = null;
   let listo = false;
@@ -265,7 +439,7 @@ export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new
     if (alProgreso && preparando && !listo) { try { alProgreso({ pct: ultimoPct, mb }); } catch { /* nada */ } }
     if (roto) return Promise.reject(new Error(roto));
     if (listo) return Promise.resolve();
-    preparando ??= esperarServidor().then(cargarModelo).catch(err => {
+    preparando ??= esperarServidor().then(async x => { try { await antesDeCargar?.(); } catch { /* sigue: el trabajador baja lo que falte */ } return x; }).then(cargarModelo).catch(err => {
       preparando = null;
       // Sin red o el servidor tardó: se puede probar otra vez; lo demás (no hay archivos, el modelo no carga): no.
       if (!['sin_red', 'tiempo'].includes(err?.message)) romper(err?.message || 'modelo');
@@ -295,16 +469,56 @@ export function crearWhisper({ pedirEstado, crearTrabajador, esperar = ms => new
 }
 
 // El de esta página (se crea al primer uso, con el trabajador de verdad).
+const estadoDeLaPagina = async () => {
+  const r = await fetch('/api/academia/voz/estado', { credentials: 'same-origin', headers: { 'X-Oportia': '1' } });
+  return r.ok ? r.json() : null;
+};
+let guardiaPagina = null;
+const guardiaDeLaPagina = () => (guardiaPagina ??= crearGuardia(typeof localStorage !== 'undefined' ? localStorage : null, {
+  sesion: typeof sessionStorage !== 'undefined' ? sessionStorage : null,
+  alCerrar: f => window.addEventListener('pagehide', f),
+  alVisibilidad: f => document.addEventListener('visibilitychange', () => f(document.visibilityState === 'hidden')),
+}));
 let compartido = null;
-export function whisperDeLaPagina(pedirEstado) {
+export function whisperDeLaPagina(pedirEstado = estadoDeLaPagina) {
   compartido ??= crearWhisper({
     pedirEstado,
-    guardia: crearGuardia(typeof localStorage !== 'undefined' ? localStorage : null, {
-      sesion: typeof sessionStorage !== 'undefined' ? sessionStorage : null,
-      alCerrar: f => window.addEventListener('pagehide', f),
-      alVisibilidad: f => document.addEventListener('visibilitychange', () => f(document.visibilityState === 'hidden')),
-    }),
+    guardia: guardiaDeLaPagina(),
+    antesDeCargar: () => precargaPagina?.apurar(),
     crearTrabajador: () => new Worker(new URL('./voz-trabajador.js', import.meta.url), { type: 'module' }),
   });
   return compartido;
+}
+
+// 0.14.106: la bajada en segundo plano de esta página (una sola). Si el navegador no puede con Whisper, no hace nada.
+let precargaPagina = null;
+const NADA = Object.freeze({ alEntrar: () => 'no', alOral: () => 'no', apurar: () => null, enCaja: false, info: { estado: 'nada' } });
+export function precargaDeLaPagina() {
+  if (precargaPagina) return precargaPagina;
+  if (typeof window === 'undefined' || !puedeWhisper()) return NADA;
+  const nav = window.navigator;
+  // Cuando el navegador está libre (requestIdleCallback; el iPhone no lo tiene: unos segundos después de entrar).
+  const programar = f => setTimeout(() => {
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => f(), { timeout: 8000 }); else f();
+  }, 2500);
+  // Que el navegador no borre la caja (el iPhone borra lo que no es «persistente» si le falta espacio). Firefox lo
+  // pregunta con un cartel: ahí solo al abrir el oral, nunca al entrar.
+  const persistir = async motivo => {
+    const s = nav.storage;
+    if (typeof s?.persist !== 'function') return false;
+    if (motivo !== 'oral' && /firefox/i.test(String(nav.userAgent ?? ''))) return false;
+    try { if (typeof s.persisted === 'function' && await s.persisted()) return true; } catch { /* sigue */ }
+    try { return await s.persist(); } catch { return false; }
+  };
+  precargaPagina = crearPrecarga({
+    pedirEstado: estadoDeLaPagina,
+    abrirCaja: () => (typeof caches === 'undefined' ? null : caches.open('oportia-voz')),
+    pedir: (url, { priority }) => fetch(url, { credentials: 'same-origin', priority }),
+    nav, programar, persistir,
+    whisper: () => whisperDeLaPagina(),
+    malos: () => guardiaDeLaPagina().malos(),
+    resolver: ruta => new URL(ruta, window.location.href).href,
+    calentarAlEntrar: () => equipoCapaz(nav),
+  });
+  return precargaPagina;
 }

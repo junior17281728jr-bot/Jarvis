@@ -152,6 +152,18 @@ export function crearServidor({ db = null, config = null, limites, supervisor = 
     if (rotos.length) abrirAviso(base, { clave: 'paquete_danado', nivel: 'grave', detalle: { paquetes: rotos.slice(0, 20) } });
     else resolverAviso(base, 'paquete_danado');
   });
+  // 0.14.106: si el servidor no pudo bajar los archivos del dictado (lo normal: se bajan solos al arrancar), un aviso para
+  // el administrador; se resuelve solo cuando ya están.
+  if (db) {
+    try {
+      dictadoVoz?.alAviso?.(({ falta, motivo }) => {
+        try {
+          if (falta) abrirAviso(db, { clave: 'voz_archivos', nivel: 'atencion', detalle: { motivo: String(motivo ?? 'no_se_pudo').slice(0, 40) } });
+          else resolverAviso(db, 'voz_archivos');
+        } catch { /* el aviso nunca tumba el dictado */ }
+      });
+    } catch { /* nada */ }
+  }
   const medirDisco = discoLibre ?? (config?.archivoBase ? () => espacioLibre(dirname(config.archivoBase)) : null);
   registrarRutasCuentas(rutas, { version: VERSION, limites, supervisor, alertaAdmin: limitesConfirmar.alerta, discoLibre: medirDisco });
   registrarRutasVisitas(rutas, { Limitador, finDeSesion });

@@ -31,6 +31,9 @@ export const CLAVES_AVISO = Object.freeze([
   // 0.14.55: una versión del contenido en uso no se puede leer (su paquete.json está dañado): los alumnos no ven esas
   // materias. Detalle: { paquetes: [ids] }. Se resuelve solo cuando el contenido en uso ya se lee entero.
   'paquete_danado',
+  // 0.14.106: el servidor no pudo bajar los archivos del dictado en el equipo del alumno (Whisper, src/academia/voz.js;
+  // se bajan solos al arrancar): los alumnos dictan con lo que tenga su navegador o escriben. Se resuelve solo al estar.
+  'voz_archivos',
 ]);
 // Además de las de arriba: 'freno:<tipo>' cuando un tipo de tarea se frenó solo por fallar mucho.
 const FRENO = /^freno:[a-z0-9._-]{1,60}$/;

@@ -283,7 +283,7 @@ test('la pantalla (sin navegador): el formato, el reloj, agregar el texto, las b
   assert.ok(!/innerHTML|style=|\.style\./.test(vista));
   for (const n of ['es', 'en']) {
     const i18n = JSON.parse(readFileSync(new URL(`../public/i18n/${n}.json`, import.meta.url), 'utf8'));
-    for (const k of ['grabando', 'escribiendo', 'escrito', 'muy_corto', 'grabar_no', 'grabar_fallo', 'grabar_vacio', 'sin_red_grabar', 'preparando', 'dictado_no']) assert.ok(i18n[`vivo.estado.${k}`], `${n}: vivo.estado.${k}`);
+    for (const k of ['grabando', 'escribiendo', 'escrito', 'muy_corto', 'grabar_no', 'grabar_fallo', 'grabar_vacio', 'sin_red_grabar', 'dictado_no']) assert.ok(i18n[`vivo.estado.${k}`], `${n}: vivo.estado.${k}`);
     assert.match(i18n['vivo.estado.grabando'], /\{tiempo\}/);
     for (const k of ['vivo.privacidad_equipo', 'vivo.estado.habla', 'vivo.privacidad_grabar', 'vivo.dictar.nota_grabar', 'error.muy_corto', 'error.grabacion_no_valida']) assert.ok(i18n[k], `${n}: ${k}`);
   }
@@ -317,7 +317,8 @@ test('sin ChatGPT: Whisper en el equipo; el dictado del navegador solo sin Whisp
   for (const n of ['es', 'en']) {
     const i18n = JSON.parse(readFileSync(new URL(`../public/i18n/${n}.json`, import.meta.url), 'utf8'));
     for (const [k, v] of Object.entries(i18n)) if (k.startsWith('vivo.')) assert.doesNotMatch(v, /\bFn\b|Windows\+H|Ajustes|Settings/, `${n}: ${k}`);
-    assert.match(i18n['vivo.estado.preparando'], /\{mb\}.*\{pct\}/);
+    // 0.14.106: ya no existe «Preparando el dictado (solo la primera vez, ~102 MB)… N %» (lo pidió el dueño).
+    assert.equal(i18n['vivo.estado.preparando'], undefined);
   }
   const vista = readFileSync(new URL('../public/oral-vivo-vista.js', import.meta.url), 'utf8');
   assert.ok(!/no_llega_audio|Ajustes del Sistema|vivo-pista-teclado|vivo\.pista\./.test(vista));

@@ -896,9 +896,18 @@ function enlaceMenu(id, clave, nombreIcono, corto, seccion) {
 // 0.13.2: ¿hay examen oral? Se sabe con el Camino, Progreso o el oral; si se entra por otra pantalla, se pregunta una vez
 // y la pestaña aparece sola.
 let preguntandoOral = false;
+// 0.14.106 (lo pidió el dueño: el dictado del oral «debe ya estar funcionando al instante cuando entra el usuario»): con el
+// oral en su curso, los archivos del dictado se bajan callados en segundo plano poco después de entrar (cuando el
+// navegador está libre, con prioridad baja; nunca con «Ahorro de datos», ni con un celular lento hasta abrir el oral), y
+// al abrir cualquier pantalla del oral, enseguida (public/voz-dictado.js, crearPrecarga).
+function precargarDictado(motivo) {
+  if (!estado.usuario) return;
+  import('./voz-dictado.js').then(m => { const p = m.precargaDeLaPagina(); if (motivo === 'oral') p.alOral(); else p.alEntrar(); }).catch(() => {});
+}
 function anotarOral(o) {
   const antes = estado.oral;
   estado.oral = { hay: o?.hay === true, siguientePaso: o?.siguientePaso === true || (o?.siguientePaso == null && antes?.siguientePaso === true) };
+  if (estado.oral.hay) precargarDictado('entrar');
   const menu = document.querySelector('.menu');
   if (!menu || (antes?.hay === estado.oral.hay && antes?.siguientePaso === estado.oral.siguientePaso)) return;
   const actual = menu.querySelector('[data-menu="oral"]');
@@ -5306,6 +5315,7 @@ const ayudasOral = () => ({ el, t, tn, numero, icono, talCual, api, avisar, text
   plegarCamino: (camino, materias, siguiente) => plegarCamino(camino, materias, { t, tn, icono, numero, el, usuario: estado.usuario?.id, siguiente, claveTodas: 'oral.ver_todos', claveCerrar: 'oral.cerrar_todos', claveTodasCorta: 'oral.ver_todos_corto' }) });
 async function pantallaOralDe(que, a, b) {
   const vigente = nuevoTurno();
+  precargarDictado('oral');
   const error = r => mostrar(marco('oral', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }))));
   const vista = await import('./oral-vista.js');
   if (!vigente()) return;

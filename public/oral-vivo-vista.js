@@ -14,7 +14,7 @@
 //  - Todo con h.el / h.talCual (nunca texto como código) y clases (nunca estilos escritos); los textos, de public/i18n.
 import { selectorIdioma, bilingue, idiomaOral } from './oral-idioma.js';
 import { crearExaminador } from './oral-examinador.js';
-import { puedeWhisper, elegirMotor, equipoCapaz, audioDeGrabacion, whisperDeLaPagina } from './voz-dictado.js';
+import { puedeWhisper, elegirMotor, audioDeGrabacion, whisperDeLaPagina, precargaDeLaPagina, vivoEnParalelo, textoDelTurno } from './voz-dictado.js';
 // 0.14.85: «⚑ Reportar un error» del dictado (public/reportar-vista.js): qué motor de voz usaba, nada de lo que dijo.
 import { enlaceReportar, puntoVivo } from './reportar-vista.js';
 
@@ -189,6 +189,50 @@ function leer(texto, lang) {
 // iOS: la voz se «despierta» dentro de un toque; después ya puede hablar sola.
 function despertarVoz() { try { if (puedeLeer()) window.speechSynthesis.speak(new window.SpeechSynthesisUtterance('')); } catch { /* nada */ } }
 
+// 0.14.106: el dictado del navegador EN VIVO, junto con la grabación (solo mientras Whisper no está listo, y solo donde
+// escribe: vivoEnParalelo). alTexto(texto) con cada pedazo; parar() → el texto final; cancelar() lo tira. Cualquier error
+// se calla: la grabación sigue y Whisper escribe al final.
+export function dictadoEnVivo(alTexto, { R = Reconocimiento(), lang = 'es-ES', esperarFinMs = 1500 } = {}) {
+  if (!R) return null;
+  const dictado = crearDictado('', 1200);
+  let activo = true;
+  let actual = null;
+  let reintentos = 0;
+  let alTerminar = null;
+  const empezar = () => {
+    const r = new R();
+    r.lang = lang;
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+    r.onresult = ev => { const texto = dictado.resultado(ev); if (activo) { try { alTexto(texto); } catch { /* nada */ } } };
+    r.onerror = () => { /* se calla: Whisper escribe al final */ };
+    r.onend = () => {
+      dictado.fin();
+      if (actual !== r) return;
+      if (activo && reintentos++ < 20) { try { empezar(); return; } catch { /* abajo */ } }
+      actual = null;
+      alTerminar?.();
+    };
+    actual = r;
+    r.start();
+  };
+  try { empezar(); } catch { return null; }
+  return {
+    parar() {
+      activo = false;
+      if (!actual) return Promise.resolve(dictado.fin());
+      return new Promise(ok => {
+        const fin = () => { clearTimeout(vigia); ok(dictado.fin()); };
+        const vigia = setTimeout(fin, esperarFinMs);
+        alTerminar = fin;
+        try { actual.stop(); } catch { fin(); }
+      });
+    },
+    cancelar() { activo = false; const r = actual; actual = null; try { r?.abort?.(); } catch { /* nada */ } },
+  };
+}
+
 // ---------- La portada ----------
 export function portadaVivo(d, materiaPre, h) {
   const { el, t, numero, icono, mostrar, marco, nombreMateria, api, avisar, textoError, usuario } = h;
@@ -262,7 +306,9 @@ export function portadaVivo(d, materiaPre, h) {
         interruptor(t('vivo.dictar'), dictar, puedeVoz, v => { dictar = v; guardarAjuste(usuario, 'dictar', v); }, t({ grabar: 'vivo.dictar.nota_grabar', whisper: 'vivo.dictar.nota_grabar', navegador: 'vivo.dictar.nota' }[modoPortada] ?? 'vivo.dictar.no_hay')),
         el('label', { class: 'vivo-campo' }, el('strong', { texto: t('vivo.capitulo') }), capitulo),
         el('div', { class: 'vivo-campo' }, el('strong', { texto: t('vivo.cuantas') }), el('div', { class: 'vivo-chips', role: 'group', 'aria-label': t('vivo.cuantas') }, chips))),
-      el('p', { class: 'suave chica vivo-privacidad con-icono-chico' }, icono('escudo', 'icono chico'), el('span', { texto: t({ grabar: 'vivo.privacidad_grabar', whisper: 'vivo.privacidad_equipo' }[modoPortada] ?? 'vivo.privacidad') })),
+      // 0.14.106: donde el dictado del navegador puede escribir en vivo mientras el modelo se prepara (Chrome), se dice
+      // que ese sí usa internet; si el modelo ya está listo, nunca se usa.
+      el('p', { class: 'suave chica vivo-privacidad con-icono-chico' }, icono('escudo', 'icono chico'), el('span', { texto: t({ grabar: 'vivo.privacidad_grabar', whisper: vivoEnParalelo(navigator, puedeDictar()) && !whisperDeLaPagina().listo ? 'vivo.privacidad_equipo_vivo' : 'vivo.privacidad_equipo' }[modoPortada] ?? 'vivo.privacidad') })),
       el('div', { class: 'vivo-portada-botones' },
         el('button', { type: 'button', class: 'boton-3d grande naranja', onclick: empezar }, el('span', { texto: t('vivo.empezar') })),
         seguir))));
@@ -289,14 +335,11 @@ function practica(s, prefs, h, desde = 0) {
   const alCambio = () => setTimeout(() => { if (!zona.isConnected) { parar(); window.removeEventListener('hashchange', alCambio); } }, 0);
   window.addEventListener('hashchange', alCambio);
   const textoPregunta = q => (idiomaOral(usuario) === 'en' || !q.pregunta_es ? { texto: q.pregunta_en, lang: 'en-US' } : { texto: q.pregunta_es, lang: 'es-ES' });
-  // 0.14.53: Whisper en su equipo (uno para toda la app). Al abrir la práctica se le avisa al servidor (si le faltan los
-  // archivos, empieza a bajarlos) y, en una computadora, el modelo se carga callado en segundo plano; en el teléfono, al
-  // tocar el micrófono por primera vez.
+  // 0.14.53: Whisper en su equipo (uno para toda la app). 0.14.106: los archivos ya se bajaron callados al entrar (o al
+  // abrir el oral: public/app.js); aquí, por si acaso, se termina de bajar lo que falte y el modelo se carga en el
+  // trabajador (también en el teléfono), para que el micrófono escriba al instante.
   const whisper = () => whisperDeLaPagina(async () => { const r = await api('GET', '/api/academia/voz/estado'); return r.ok ? r.datos : null; });
-  if (prefs.dictar && prefs.whisper && !prefs.grabar) {
-    if (equipoCapaz()) setTimeout(() => { if (zona.isConnected) whisper().preparar().catch(() => {}); }, 1500);
-    else api('GET', '/api/academia/voz/estado').catch(() => {});
-  }
+  if (prefs.dictar && prefs.whisper && !prefs.grabar) { whisper(); precargaDeLaPagina().alOral(); }
 
   // Leer una pregunta del libro: con la voz natural si está (la pide y espera unos segundos); si no, la del teléfono.
   const leerPregunta = async (i, decir) => {
@@ -347,9 +390,12 @@ function practica(s, prefs, h, desde = 0) {
   // 0.14.50: el micrófono que GRABA (con ChatGPT). Toca → «Grabando… 0:05» (con las barritas) → toca otra vez (o a los
   // 90 s) → «Escribiendo lo que dijiste…» → el texto se agrega al cuadro, que se puede corregir antes de «Enviar». Si algo
   // falla, lo dice claro y el cuadro sigue para escribir.
-  // 0.14.53: lo mismo con Whisper en su equipo (sin ChatGPT, lo normal): la grabación se pasa a texto en su navegador. La
-  // primera vez, «Preparando el dictado (solo la primera vez, ~102 MB)… 40 %». Si la app dice que ahora no hay ChatGPT,
-  // esa misma grabación se pasa con Whisper.
+  // 0.14.53: lo mismo con Whisper en su equipo (sin ChatGPT, lo normal): la grabación se pasa a texto en su navegador. Si la
+  // app dice que ahora no hay ChatGPT, esa misma grabación se pasa con Whisper.
+  // 0.14.106: nunca «Preparando el dictado… %»: si el modelo no está listo, el micrófono graba igual al instante; al parar,
+  // solo «Escribiendo lo que dijiste…» mientras termina de cargar (la grabación queda en memoria: no se pierde nada). Donde
+  // hay dictado del navegador (Chrome), ese escribe en vivo mientras tanto; si Whisper llega en unos segundos, se usa el
+  // suyo (escribe mejor).
   const crearGrabador = ({ caja, mic, nivel, estado, ponerEstado, i }) => {
     let enviando = false;
     let reloj = null;
@@ -373,32 +419,19 @@ function practica(s, prefs, h, desde = 0) {
         const k = setInterval(() => { if (!medidor) { clearInterval(k); return; } leerNivel(); }, 120);
       } catch { medidor = null; }
     };
-    // 0.14.53: Whisper en su equipo. → { texto } | { fallo: 'equipo' } | null (se fue de la pantalla).
-    const conWhisper = async x => {
+    // 0.14.53: Whisper en su equipo. → { texto, fuente } | { fallo } | null (se fue de la pantalla). g: la grabación (con
+    // su dictado en vivo, si hubo).
+    const conWhisper = async (x, g = null) => {
       const w = whisper();
-      try {
-        if (!w.listo) {
-          const mostrar = ({ pct, mb }) => { if (caja.isConnected && enviando) { estado.dataset.estado = 'preparando'; escribirEstado(t('vivo.estado.preparando', { mb: numero(mb), pct: numero(pct) })); } };
-          mostrar({ pct: 0, mb: w.megas });
-          await w.preparar(mostrar);
-        }
-        if (!caja.isConnected) return null;
-        ponerEstado('escribiendo');
-        const audio = await audioDeGrabacion(x.blob);
-        if (!caja.isConnected) return null;
-        if (!audio.length) return { texto: '' };
-        const r = await w.transcribir(audio, idiomaOral(usuario) === 'en' ? 'en' : 'es');
-        return { texto: r.texto };
-      } catch (e) {
-        // Sin red puede volver a probar; lo demás (no hay archivos, el modelo no carga en este equipo): se deja.
-        if (e?.message === 'sin_red') return { fallo: 'sin_red' };
-        prefs.whisper = false;
-        return { fallo: 'equipo' };
-      }
+      const r = await textoDelTurno({ whisper: w, audio: () => audioDeGrabacion(x.blob), idioma: idiomaOral(usuario) === 'en' ? 'en' : 'es', vivo: g?.textoVivo ?? null, antes: () => precargaDeLaPagina().apurar() });
+      if (!caja.isConnected) return null;
+      // Sin red puede volver a probar; lo demás (no hay archivos, el modelo no carga en este equipo): se deja.
+      if (r.fallo === 'equipo') prefs.whisper = false;
+      return r;
     };
     // Manda la grabación y espera el texto. → { texto } | { no: true } | { fallo } | null (se fue de la pantalla).
-    const pasarATexto = async x => {
-      if (!prefs.grabar) return conWhisper(x);
+    const pasarATexto = async (x, g) => {
+      if (!prefs.grabar) return conWhisper(x, g);
       const idioma = idiomaOral(usuario) === 'en' ? 'en' : 'es';
       let d;
       try {
@@ -423,6 +456,8 @@ function practica(s, prefs, h, desde = 0) {
       if (!g) return;
       grabacion = null;
       apagarVista();
+      // 0.14.106: el dictado en vivo (si hubo) para a la vez; su texto ya está en el cuadro.
+      g.textoVivo = g.vivo ? g.vivo.parar() : null;
       let x = null;
       try { x = await g.parar(); } catch { x = null; }
       if (!caja.isConnected) return;
@@ -431,14 +466,14 @@ function practica(s, prefs, h, desde = 0) {
       mic.disabled = true;
       ponerEstado('escribiendo');
       ex.poner('quieto');
-      const r = await pasarATexto(x);
+      const r = await pasarATexto(x, g);
       enviando = false;
       if (!caja.isConnected || r == null) return;
       mic.disabled = caja.disabled;
       if (r.no) {
         prefs.grabar = false;
         // 0.14.53: sin ChatGPT ahora: esa misma grabación, con Whisper en su equipo.
-        if (prefs.whisper) { enviando = true; mic.disabled = true; const otra = await conWhisper(x); enviando = false; if (!caja.isConnected || otra == null) return; mic.disabled = caja.disabled; Object.assign(r, otra, { no: false }); } else return ponerEstado('dictado_no');
+        if (prefs.whisper) { enviando = true; mic.disabled = true; const otra = await conWhisper(x, g); enviando = false; if (!caja.isConnected || otra == null) return; mic.disabled = caja.disabled; Object.assign(r, otra, { no: false }); } else return ponerEstado('dictado_no');
       }
       if (r.fallo) {
         if (r.http && r.fallo === 'demasiados_intentos') { ponerEstado(null); return avisar(textoError(r.fallo), 'mal'); }
@@ -446,7 +481,8 @@ function practica(s, prefs, h, desde = 0) {
         return ponerEstado(r.fallo === 'sin_red' ? 'sin_red_grabar' : 'grabar_fallo');
       }
       if (!r.texto.trim()) return ponerEstado('grabar_vacio');
-      caja.value = agregarTexto(caja.value, r.texto, 1200);
+      // Con dictado en vivo, su texto ya está en el cuadro: se reemplaza (no se repite) por el que quedó.
+      caja.value = agregarTexto(g.vivo ? g.antes : caja.value, r.texto, 1200);
       ponerEstado('escrito');
       try { caja.focus({ preventScroll: true }); } catch { /* nada */ }
     };
@@ -461,12 +497,24 @@ function practica(s, prefs, h, desde = 0) {
       ponerEstado('pidiendo_permiso');
       // Dentro del toque: el iPhone solo da el micrófono así.
       const pedido = nueva.empezar();
-      // 0.14.53: mientras habla, el modelo se va cargando (la primera vez se baja; después sale del navegador).
-      if (!prefs.grabar && prefs.whisper) whisper().preparar().catch(() => {});
+      // 0.14.53: mientras habla, el modelo se va cargando (si faltaba algo se baja ahora, con prioridad; después sale del
+      // navegador). 0.14.106: si no está listo y aquí hay dictado del navegador (Chrome), ese escribe en vivo al mismo
+      // tiempo (nunca molesta a la grabación: si falla, no dice nada).
+      nueva.antes = caja.value;
+      if (!prefs.grabar && prefs.whisper) {
+        const w = whisper();
+        if (!w.listo) {
+          precargaDeLaPagina().apurar();
+          w.preparar().catch(() => {});
+          const escribir = texto => { if (caja.isConnected && !caja.disabled && (grabacion === nueva || !grabacion)) caja.value = agregarTexto(nueva.antes, texto, 1200); };
+          nueva.vivo = vivoEnParalelo(navigator, puedeDictar()) ? dictadoEnVivo(escribir, { lang: idiomaOral(usuario) === 'en' ? 'en-US' : 'es-ES' }) : null;
+        }
+      }
       pedido.then(() => {
-        if (!caja.isConnected || caja.disabled || grabacion) { nueva.cancelar(); return; }
+        if (!caja.isConnected || caja.disabled || grabacion) { nueva.vivo?.cancelar(); nueva.cancelar(); return; }
         grabacion = nueva;
-        nueva.alSoltar = apagarVista; // al irse, pasar de pregunta o «No sé»: el reloj y las barritas también se apagan
+        // al irse, pasar de pregunta o «No sé»: el reloj, las barritas y el dictado en vivo también se apagan
+        nueva.alSoltar = () => { apagarVista(); nueva.vivo?.cancelar(); };
         ponerEstado(null);
         mic.setAttribute('aria-pressed', 'true');
         mic.classList.add('grabando');
@@ -475,7 +523,7 @@ function practica(s, prefs, h, desde = 0) {
         mostrarReloj(nueva);
         reloj = setInterval(() => { if (grabacion === nueva) mostrarReloj(nueva); }, 250);
         medir(nueva.flujo);
-      }, err => { try { nueva.cancelar(); } catch { /* nada */ } ponerEstado(errorMicrofono(err)); });
+      }, err => { try { nueva.vivo?.cancelar(); nueva.cancelar(); } catch { /* nada */ } ponerEstado(errorMicrofono(err)); });
     });
     return { ocupado: () => Boolean(grabacion) && !enviando, enviando: () => enviando, terminar };
   };
