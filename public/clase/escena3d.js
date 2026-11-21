@@ -283,7 +283,7 @@ export function montarEscena3d(contenedor, parametros = {}, opciones = {}) {
     if (panelAhora !== ultimoPanel) { caja.setAttribute('data-panel', panelAhora); ultimoPanel = panelAhora; }
     if (mezcla > 0.55) {
       ctx.globalAlpha = limitar((mezcla - 0.55) / 0.4, 0, 1);
-      dibujarCabina(ctx, ancho, alto, { kt: avion.kt, ft: extra.ft ?? (avion.pos[1] / vy) * escena.unidades.ftV, rumbo: avion.rumbo, alabeo: avion.alabeo, cabeceo: avion.cabeceo }, { escala: escalaPx, textos: { kt: T0('ctl.cabina.kt'), ft: T0('ctl.cabina.ft') } });
+      dibujarCabina(ctx, ancho, alto, { kt: avion.kt, ft: extra.ft ?? (avion.pos[1] / vy) * escena.unidades.ftV, rumbo: avion.rumbo, alabeo: avion.alabeo, cabeceo: avion.cabeceo, vs: avion.subida ?? 0, aviso: Boolean(extra.aviso) }, { escala: escalaPx, textos: { kt: T0('ctl.cabina.kt'), ft: T0('ctl.cabina.ft') } });
       ctx.globalAlpha = 1;
       // El gráfico de la escena (el CDI) va encima de la cabina.
       if (extra.dibujar) extra.dibujar(ctx, ancho, alto, escalaPx);

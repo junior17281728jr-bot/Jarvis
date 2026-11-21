@@ -243,3 +243,14 @@ export function paraHoy({ sistema = null, copiasTono = null, pagosPendientes = 0
   if (soloInforman) lista.push({ id: 'avisos-mas', tono: 'info', clave: 'hoy.avisos_mas', n: soloInforman, href: '#admin/estado' });
   return lista.map((x, i) => ({ x, i })).sort((a, b) => (ORDEN_TONO[a.x.tono] ?? 3) - (ORDEN_TONO[b.x.tono] ?? 3) || a.i - b.i).map(({ x }) => x);
 }
+
+// 0.14.98: las pestañas del menú (abajo en el teléfono, a la izquierda en la PC): [id, clave, ícono, clave corta].
+// «Juego» (el juego de vuelo) va antes de Ajustes. Con Admin son 7: en el teléfono no caben, así que ahí «Juego» se
+// esconde (estilos.css) y el administrador lo abre desde Inicio («Más para ti»); en la PC se ve siempre.
+export function enlacesMenu({ oral = false, admin = false } = {}) {
+  const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['repaso', 'menu.repaso', 'trofeo', 'menu.corto.repaso'],
+    ['juego', 'menu.juego', 'mando', 'menu.corto.juego'], ['configuracion', 'menu.configuracion', 'ajustes', 'menu.corto.configuracion']];
+  if (oral) enlaces.splice(2, 0, ['oral', 'menu.oral', 'microfono']);
+  if (admin) enlaces.push(['admin', 'menu.admin', 'escudo', 'menu.corto.admin']);
+  return enlaces;
+}

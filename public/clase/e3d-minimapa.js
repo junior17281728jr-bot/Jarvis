@@ -16,9 +16,10 @@ const ESCALAS_NM = [0.25, 0.5, 1, 2, 5, 10, 20, 50];
 const ESCALAS_FT = [250, 500, 1000, 2000];
 
 // Los puntos (x, z) que tiene que abarcar el mapa: las zonas, la introducción y todas las opciones.
-export function limitesMapa(sit) {
+// 0.14.98: zonas (opcional): las de otro mapa (el Juego de vuelo); si no, las de la situación.
+export function limitesMapa(sit, zonas = null) {
   const pts = [];
-  for (const z of MAPAS_SITUACIONES[sit.id] ?? []) {
+  for (const z of zonas ?? MAPAS_SITUACIONES[sit.id] ?? []) {
     if (z.tipo === 'pared' || z.tipo === 'celda') { const r = z.tipo === 'celda' ? z.anillo : z.r; pts.push([z.c[0] - r, z.c[1] - r], [z.c[0] + r, z.c[1] + r]); }
     else if (z.tipo === 'capa') pts.push([z.x0, z.z0], [z.x1, z.z1]);
     else if (z.tipo === 'aeropuerto') pts.push([z.c[0], z.c[1] - z.largo / 2], [z.c[0], z.c[1] + z.largo / 2]);
@@ -31,8 +32,8 @@ export function limitesMapa(sit) {
 }
 
 // De la escena al dibujo: un cuadrado de TAM con margen, la misma escala en x y z, el norte (+z) arriba.
-export function proyeccionMapa(sit) {
-  const L = limitesMapa(sit);
+export function proyeccionMapa(sit, zonas = null) {
+  const L = limitesMapa(sit, zonas);
   const ancho = Math.max(L.x1 - L.x0, L.z1 - L.z0, 1e-3);
   const k = (TAM - 2 * MARGEN) / ancho;
   const cx = (L.x0 + L.x1) / 2, cz = (L.z0 + L.z1) / 2;
@@ -57,20 +58,22 @@ const camino = (puntos, a) => puntos.map(([x, z], i) => { const [u, v] = a(x, z)
 const circulo = (padre, a, k, c, r, clase) => { const [u, v] = a(c[0], c[1]); return svg('circle', { cx: f1(u), cy: f1(v), r: f1(r * k), class: clase }, padre); };
 
 // T(clave, variables): los textos «clase.e3d.sit.ctl.mapa…». → { nodo, poner(opcionId), mover(x, z, rumbo), grande, destruir }.
-export function montarMinimapa(padre, sit, { T, numero = n => String(n) } = {}) {
-  const P = proyeccionMapa(sit), { a, k } = P;
+// 0.14.98: zonas (las de otro mapa) y decision: false (sin el «Decides aquí»): así lo usa también el Juego de vuelo.
+export function montarMinimapa(padre, sit, { T, numero = n => String(n), zonas = null, decision = true } = {}) {
+  const P = proyeccionMapa(sit, zonas), { a, k } = P;
+  const ZONAS = zonas ?? MAPAS_SITUACIONES[sit.id] ?? [];
   const caja = el('button', { type: 'button', class: 'clase-sit-mapa', 'aria-pressed': 'false', 'aria-label': T('mapa.agrandar') }, padre);
   const s = svg('svg', { viewBox: `0 0 ${TAM} ${TAM}`, class: 'clase-sit-mapa-lienzo', role: 'img', 'aria-label': T('mapa') }, caja);
   svg('rect', { x: 1, y: 1, width: TAM - 2, height: TAM - 2, rx: 12, class: 'clase-sit-mapa-papel' }, s);
   // Las zonas, de abajo hacia arriba: la capa de nubes, los anillos de 20 NM, las tormentas, las paredes, la pista.
-  for (const z of MAPAS_SITUACIONES[sit.id] ?? []) {
+  for (const z of ZONAS) {
     if (z.tipo === 'capa') {
       const [u0, v0] = a(z.x0, z.z1), [u1, v1] = a(z.x1, z.z0);
       svg('rect', { x: f1(u0), y: f1(v0), width: f1(u1 - u0), height: f1(v1 - v0), rx: 6, class: `clase-sit-mapa-capa${z.estratos ? ' clase-sit-mapa-estratos' : ''}` }, s);
     }
   }
-  for (const z of MAPAS_SITUACIONES[sit.id] ?? []) if (z.tipo === 'celda') circulo(s, a, k, z.c, z.anillo, 'clase-sit-mapa-anillo');
-  for (const z of MAPAS_SITUACIONES[sit.id] ?? []) {
+  for (const z of ZONAS) if (z.tipo === 'celda') circulo(s, a, k, z.c, z.anillo, 'clase-sit-mapa-anillo');
+  for (const z of ZONAS) {
     if (z.tipo === 'celda') circulo(s, a, k, z.c, z.r, 'clase-sit-mapa-celda');
     else if (z.tipo === 'pared') circulo(s, a, k, z.c, z.r, `clase-sit-mapa-pared clase-${z.clase}${z.guion ? ' clase-sit-mapa-guion' : ''}`);
     else if (z.tipo === 'aeropuerto') {
@@ -92,8 +95,8 @@ export function montarMinimapa(padre, sit, { T, numero = n => String(n) } = {}) 
   const linea = svg('path', { d: '', class: 'clase-sit-mapa-ruta' }, s);
   // La decisión: donde termina la introducción.
   const dec = sit.intro.vuelo.ruta.at(-1), [du, dv] = a(dec[0], dec[2]);
-  svg('path', { d: `M${f1(du)} ${f1(dv - 6)}L${f1(du + 6)} ${f1(dv)}L${f1(du)} ${f1(dv + 6)}L${f1(du - 6)} ${f1(dv)}Z`, class: 'clase-sit-mapa-decision' }, s);
-  svg('text', { x: f1(du + (du > TAM / 2 ? -9 : 9)), y: f1(dv + 4), 'text-anchor': du > TAM / 2 ? 'end' : 'start', class: 'clase-sit-mapa-texto clase-sit-mapa-decision-texto' }, s, T('mapa.decision'));
+  if (decision) svg('path', { d: `M${f1(du)} ${f1(dv - 6)}L${f1(du + 6)} ${f1(dv)}L${f1(du)} ${f1(dv + 6)}L${f1(du - 6)} ${f1(dv)}Z`, class: 'clase-sit-mapa-decision' }, s);
+  if (decision) svg('text', { x: f1(du + (du > TAM / 2 ? -9 : 9)), y: f1(dv + 4), 'text-anchor': du > TAM / 2 ? 'end' : 'start', class: 'clase-sit-mapa-texto clase-sit-mapa-decision-texto' }, s, T('mapa.decision'));
   // La escala (abajo a la izquierda) y el norte (arriba a la derecha).
   const e = escalaMapa(sit, P);
   const ex = 12, ey = TAM - 14;
@@ -123,7 +126,8 @@ export function montarMinimapa(padre, sit, { T, numero = n => String(n) } = {}) 
     // La posición del avión en la escena (x, z) y su rumbo (grados, 0 = +z): solo se escribe si cambió.
     mover(x, z, rumbo = 0) {
       if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-      const [u, v] = a(x, z);
+      // (fuera del mapa, el avión queda en el borde, apuntando a donde va)
+      const [u0, v0] = a(x, z), u = Math.min(TAM - 8, Math.max(8, u0)), v = Math.min(TAM - 8, Math.max(8, v0));
       const tr = `translate(${f1(u)} ${f1(v)}) rotate(${f1(Number.isFinite(rumbo) ? rumbo : 0)})`;
       if (tr !== ultimo) { avion.setAttribute('transform', tr); ultimo = tr; }
     },

@@ -523,7 +523,9 @@ test('al abrir se adelanta justo lo que pide la primera pantalla: ni de más ni 
     ['cursos', 'pantallaCursos'],
     // 0.14.83: Avanzado → «Traspaso (para otro Claude)».
     ['traspaso', 'pantallaTraspaso'],
-    ['repaso', 'pantallaRepasoFinal'], ['repaso/test-guide/7', 'pantallaRondaFinal'], ['repaso/oral', 'pantallaOralFinal']];
+    ['repaso', 'pantallaRepasoFinal'], ['repaso/test-guide/7', 'pantallaRondaFinal'], ['repaso/oral', 'pantallaOralFinal'],
+    // 0.14.98: el Juego de vuelo (no pide nada al servidor).
+    ['juego', 'pantallaJuego']];
   // Toda pantalla que dibujar conoce está en la lista de arriba.
   const dibujar = funcion('dibujar');
   for (const [, seccion] of dibujar.matchAll(/seccion === '([a-z]+)'/g)) {

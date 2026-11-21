@@ -1,0 +1,100 @@
+/* 0.14.98: el Juego de vuelo (public/juego-vista.js). La portada (#juego) usa los colores de la app (claro y oscuro); el
+   vuelo ocupa toda la pantalla, con la cabina dibujada en el lienzo, los botones arriba, el mini-mapa y, en el teléfono,
+   el yugo y la palanca de potencia abajo (fuera del tablero: nunca tapan los instrumentos). */
+.juego-portada { display: grid; gap: 12px; }
+.juego-opciones { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.juego-opcion { display: flex; align-items: center; gap: 14px; min-height: 76px; padding: 14px 16px; border-radius: 18px; border: 2px solid var(--borde);
+  background: var(--tarjeta); color: var(--texto); text-decoration: none; }
+.juego-opcion:hover, .juego-opcion:focus-visible { border-color: var(--acento); }
+.juego-opcion-icono { flex: none; display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: var(--acento); color: #fff; }
+.juego-opcion-icono .icono { width: 26px; height: 26px; }
+.juego-opcion-texto { display: grid; gap: 2px; min-width: 0; }
+.juego-opcion-texto strong { font-size: 18px; }
+.juego-opcion-texto span { color: var(--suave); font-size: 15px; }
+.entrada-juego-grande { margin: 4px 0 14px; border-color: var(--acento); }
+
+body.juego-activo { overflow: hidden; }
+.juego-vuelo { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: #070b12; color: #fff;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
+.juego-escenario { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; }
+.juego-lienzo, .juego-capa { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.juego-capa { pointer-events: none; }
+.juego-barra { position: absolute; z-index: 2; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right));
+  display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; pointer-events: none; }
+.juego-barra > * { pointer-events: auto; }
+.juego-barra-botones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.juego-boton { min-width: 44px; min-height: 44px; padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.28); background: rgba(8,14,26,0.74);
+  color: #fff; font: 650 15px/1.1 system-ui, -apple-system, sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; text-decoration: none; }
+.juego-boton:focus-visible { outline: 3px solid #ffb020; outline-offset: 2px; }
+.juego-boton[aria-pressed="true"] { background: #1f4fd1; border-color: #8fb0ff; }
+.juego-boton .icono { width: 22px; height: 22px; }
+.juego-ayuda-boton { font-size: 20px; font-weight: 800; }
+.juego-chip { position: absolute; z-index: 1; left: max(8px, env(safe-area-inset-left)); top: calc(max(8px, env(safe-area-inset-top)) + 54px); margin: 0; max-width: min(520px, calc(100% - 140px));
+  padding: 8px 12px; border-radius: 12px; background: rgba(8,14,26,0.78); border-left: 4px solid #2fbf5b; font: 600 15px/1.3 system-ui, -apple-system, sans-serif; }
+.juego-chip[data-tono="mal"] { border-left-color: #e5483e; background: rgba(120,20,16,0.85); }
+.juego-escenario .clase-sit-mapa { top: calc(max(8px, env(safe-area-inset-top)) + 54px); right: max(8px, env(safe-area-inset-right)); height: 118px; }
+.juego-escenario .clase-sit-mapa[aria-pressed="true"] { height: min(70%, 340px); }
+.juego-hud { position: absolute; z-index: 1; left: 50%; bottom: 10px; transform: translateX(-50%); margin: 0; padding: 6px 12px; border-radius: 10px; background: rgba(8,14,26,0.74);
+  font: 700 15px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+.juego-vuelo[data-vista="cabina"] .juego-hud { display: none; }
+
+/* Los mandos en pantalla (teléfono y tableta): la palanca a la izquierda, botones al medio y el yugo a la derecha. */
+.juego-mandos { flex: 0 0 auto; display: grid; grid-template-columns: 84px 1fr 150px; align-items: center; gap: 10px;
+  padding: 10px max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: #0b111c; border-top: 1px solid #1d2636; }
+.juego-vuelo[data-tactil="0"] .juego-mandos { display: none; }
+.juego-mando-nombre { display: block; text-align: center; font: 700 13px/1.2 system-ui, -apple-system, sans-serif; color: #b9c4d6; margin-bottom: 4px; }
+.juego-potencia-caja, .juego-yugo-caja { display: grid; justify-items: center; }
+.juego-potencia { width: 64px; height: 132px; display: grid; place-items: center; touch-action: none; border-radius: 14px; }
+.juego-potencia:focus-visible { outline: 3px solid #ffb020; }
+.juego-potencia-pista { position: relative; width: 26px; height: 120px; border-radius: 13px; background: #1c2433; overflow: visible; }
+.juego-potencia-relleno { position: absolute; left: 0; right: 0; bottom: 0; height: 0; border-radius: 13px; background: linear-gradient(#2fbf5b, #1b7f3b); }
+.juego-potencia-manija { position: absolute; left: 50%; bottom: 0; width: 60px; height: 26px; margin-left: -30px; margin-bottom: -13px; border-radius: 9px; background: #111; border: 3px solid #e5e9f0; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+.juego-potencia-valor { font: 700 14px/1 system-ui, sans-serif; margin-top: 4px; }
+.juego-mandos-medio { display: grid; gap: 8px; }
+.juego-mandos-medio .juego-boton { width: 100%; min-height: 48px; }
+.juego-yugo { position: relative; width: 140px; height: 140px; border-radius: 50%; touch-action: none; background: radial-gradient(circle, #1f2838 0 55%, #141b27 56%); border: 2px solid #3a465b; }
+.juego-yugo::before, .juego-yugo::after { content: ""; position: absolute; background: #3a465b; }
+.juego-yugo::before { left: 50%; top: 14px; bottom: 14px; width: 2px; margin-left: -1px; }
+.juego-yugo::after { top: 50%; left: 14px; right: 14px; height: 2px; margin-top: -1px; }
+.juego-yugo-perilla { position: absolute; z-index: 1; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #ffd27a, #e0901a); box-shadow: 0 3px 8px rgba(0,0,0,0.5); }
+.juego-yugo-rotulo { position: absolute; left: 0; right: 0; text-align: center; font: 600 11px/1 system-ui, sans-serif; color: #b9c4d6; z-index: 2; pointer-events: none; }
+.juego-arriba { top: 4px; } .juego-abajo { bottom: 4px; }
+
+/* Los diálogos (cómo se vuela y el resultado), con los colores de la app. */
+.juego-capa-dialogo { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: rgba(3,6,12,0.62); overflow: auto; }
+.juego-capa-dialogo[hidden] { display: none; }
+.juego-dialogo { width: min(540px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box; padding: 18px; border-radius: 20px; background: var(--tarjeta); color: var(--texto); border: 1px solid var(--borde); box-shadow: 0 18px 50px rgba(0,0,0,0.45); }
+.juego-dialogo h2 { margin: 0 0 6px; font-size: 22px; }
+.juego-meta { margin: 0 0 10px; font-weight: 650; }
+.juego-teclas { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.juego-teclas li { display: grid; grid-template-columns: minmax(84px, max-content) 1fr; gap: 10px; align-items: center; }
+.juego-teclas kbd { font: 700 14px/1.2 system-ui, -apple-system, sans-serif; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--borde); background: var(--fondo, transparent); text-align: center; }
+.juego-nota { margin: 6px 0; color: var(--suave); }
+.juego-a-volar { width: 100%; margin-top: 10px; }
+.juego-res-datos { margin: 6px 0; padding-left: 20px; display: grid; gap: 4px; font-size: 16px; }
+.juego-resultado[data-nivel="bueno"] h2 { color: #1b8a44; }
+.juego-resultado:is([data-nivel="duro"], [data-nivel="fuera"], [data-nivel="choque"]) h2 { color: #d4382e; }
+:root[data-tema="oscuro"] .juego-resultado[data-nivel="bueno"] h2 { color: #4fd17a; }
+:root[data-tema="oscuro"] .juego-resultado:is([data-nivel="duro"], [data-nivel="fuera"], [data-nivel="choque"]) h2 { color: #ff7a70; }
+.juego-res-botones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.juego-res-botones > * { flex: 1 1 180px; }
+
+@media (max-width: 420px) {
+  .juego-boton { padding: 6px 9px; font-size: 14px; }
+  .juego-chip { font-size: 14px; max-width: calc(100% - 128px); }
+  .juego-escenario .clase-sit-mapa { height: 104px; }
+  .juego-mandos { grid-template-columns: 76px 1fr 136px; gap: 8px; }
+  .juego-yugo { width: 128px; height: 128px; }
+}
+/* En el teléfono con 7 pestañas (el administrador) «Juego» no cabe: se abre desde Inicio (en la PC se ve siempre). */
+@media (max-width: 759.98px) { .menu:has(> a:nth-child(7)) > a[data-menu="juego"] { display: none; } }
+/* En el teléfono, Vista y Flaps están abajo (junto al yugo): arriba solo salir, Asistente, Pausa y «?». */
+.juego-vuelo[data-tactil="1"] .juego-barra :is(.juego-vista, .juego-flaps) { display: none; }
+.juego-potencia-caja { padding-top: 4px; }
+.juego-potencia-caja .juego-mando-nombre { margin-bottom: 14px; }
+.juego-ayuda-dibujo { display: flex; justify-content: center; gap: 28px; margin: 4px 0 10px; }
+.juego-mini { margin: 0; display: grid; justify-items: center; gap: 6px; font-size: 14px; font-weight: 650; text-align: center; max-width: 140px; }
+.juego-mini-potencia { position: relative; width: 18px; height: 70px; border-radius: 9px; background: linear-gradient(to top, #2fbf5b 60%, #1c2433 60%); }
+.juego-mini-manija { position: absolute; left: 50%; bottom: 60%; width: 38px; height: 16px; margin: 0 0 -8px -19px; border-radius: 6px; background: #111; border: 2px solid #e5e9f0; }
+.juego-mini-yugo { position: relative; width: 74px; height: 74px; border-radius: 50%; background: #1f2838; border: 2px solid #3a465b; }
+.juego-mini-perilla { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: #e0901a; }

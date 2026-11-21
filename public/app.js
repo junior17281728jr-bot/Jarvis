@@ -39,7 +39,7 @@ import { vistaHero, vistaTop3, botonVerTodos, vistaNumeros, vistaMaterias, vista
 import { pantallaMiRepaso as vistaMiRepaso, pantallaMiniClase as vistaMiniClase, panelesRepaso, botonesRepaso } from './mi-repaso-vista.js';
 import { crearTutor } from './tutor-vista.js';
 import { vistaPlanes } from './planes-vista.js';
-import { olvidar, crearEspera, conTope, rutaConInstructor, AREAS_ADMIN, AVANZADO_ADMIN, areaAdmin, itemAvanzado, REDIRECCIONES_ADMIN, paraHoy } from './navegacion.js';
+import { olvidar, crearEspera, conTope, rutaConInstructor, AREAS_ADMIN, AVANZADO_ADMIN, areaAdmin, itemAvanzado, REDIRECCIONES_ADMIN, paraHoy, enlacesMenu } from './navegacion.js';
 // 0.14.85: «⚑ Reportar un error» en todo (public/reportar-vista.js) y los últimos errores de la página (solo en memoria).
 import { configurarReportar, vigilarErrores, enlaceReportar as reportarPunto, puntoPregunta } from './reportar-vista.js';
 vigilarErrores();
@@ -830,9 +830,8 @@ function marco(seccion, ...contenido) {
   // 0.13.2: «Oral» (el examen oral, con su Camino) tiene su pestaña cuando hay contenido oral; con un punto cuando es «Tu
   // siguiente paso» (terminó los exámenes del Test Guide). En el teléfono caben 5: nombres cortos («Ajustes», «Admin»).
   // 0.13.7: «Repaso final» (todo el Test Guide y todo el oral, para el día antes del examen): siempre, antes de «Ajustes».
-  const enlaces = [['inicio', 'menu.camino', 'avion'], ['progreso', 'menu.progreso', 'grafica'], ['repaso', 'menu.repaso', 'trofeo', 'menu.corto.repaso'], ['configuracion', 'menu.configuracion', 'ajustes', 'menu.corto.configuracion']];
-  if (estado.oral?.hay) enlaces.splice(2, 0, ['oral', 'menu.oral', 'microfono']);
-  if (verComoAdmin()) enlaces.push(['admin', 'menu.admin', 'escudo', 'menu.corto.admin']);
+  // 0.14.98: la lista está en navegacion.js (enlacesMenu), con «Juego» antes de Ajustes.
+  const enlaces = enlacesMenu({ oral: Boolean(estado.oral?.hay), admin: verComoAdmin() });
   if (estado.usuario && estado.oral === undefined) conocerOral();
   if (estado.usuario && hayLibros === null) conocerLibros();
   const flotante = botonInstructor();
@@ -1239,6 +1238,8 @@ const ICONOS = {
   chispa: [['path', { d: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z' }], ['path', { d: 'M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z' }]],
   ojo: [['path', { d: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z' }], ['circle', { cx: 12, cy: 12, r: 2.8 }]],
   // Academia (0.7.0).
+  // 0.14.98: un mando de juego (el «Juego» de vuelo).
+  mando: [['path', { d: 'M7 8h10a5 5 0 0 1 4.8 6.4l-1 3.3a2.4 2.4 0 0 1-4.2.8L14.5 16h-5l-2.1 2.5a2.4 2.4 0 0 1-4.2-.8l-1-3.3A5 5 0 0 1 7 8z' }], ['line', { x1: 8, y1: 11, x2: 8, y2: 14 }], ['line', { x1: 6.5, y1: 12.5, x2: 9.5, y2: 12.5 }], ['line', { x1: 15.5, y1: 12, x2: 15.51, y2: 12 }], ['line', { x1: 17.5, y1: 13.5, x2: 17.51, y2: 13.5 }]],
   avion: [['path', { d: 'M21 15.5v-2l-8-5V4a1.5 1.5 0 0 0-3 0v4.5l-8 5v2l8-2.5V18l-2.5 1.8V21l4-1 4 1v-1.2L13 18v-5z' }]],
   fuego: [['path', { d: 'M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.4 1.2-3.8 2.3-5 .3 1.6 1 2.6 2 3 0-3 .2-5.6.7-8z' }]],
   trofeo: [['path', { d: 'M8 4h8v5a4 4 0 0 1-8 0z' }], ['path', { d: 'M8 6H5a3 3 0 0 0 3 4' }], ['path', { d: 'M16 6h3a3 3 0 0 1-3 4' }], ['line', { x1: 12, y1: 13, x2: 12, y2: 17 }], ['path', { d: 'M8 20h8l-1-3H9z' }]],
@@ -4285,6 +4286,11 @@ function entradaMiRepaso() {
     el('span', {}, el('strong', { texto: t('mirepaso.titulo') }), el('span', { class: 'suave chica', texto: ` · ${t('mirepaso.entrada')}` })),
     el('span', { class: 'mi-repaso-cuenta insignia tono-atencion', hidden: true }));
 }
+// 0.14.98: la entrada al Juego de vuelo (en Inicio, «Más para ti», y arriba del Repaso final).
+function entradaJuego(clase = '') {
+  return el('a', { class: `entrada-mi-repaso entrada-juego con-icono ${clase}`.trim(), href: '#juego' }, icono('mando', 'icono chico'),
+    el('span', {}, el('strong', { texto: t('juego.titulo') }), el('span', { class: 'suave chica', texto: ` · ${t('juego.entrada')}` })));
+}
 // 0.14.38: la entrada a la Competencia en Inicio.
 function entradaCompetencia() {
   return el('a', { class: 'entrada-mi-repaso entrada-competencia con-icono', href: '#competencia' }, icono('trofeo', 'icono chico'),
@@ -4379,6 +4385,8 @@ async function pantallaInicio() {
     entradaMiRepaso(),
     // 0.14.38: la Competencia (6 rondas de trivia de aviación).
     entradaCompetencia(),
+    // 0.14.98: el Juego de vuelo.
+    entradaJuego(),
     // 0.14.54: sin la tarjeta del instructor (repetía «Repasar», «Continuar» y «Modo reto», y el instructor ya tiene su
     // botón): de ella solo quedan los avisos (un pago, los minutos). 0.14.56: tampoco la del «tutor IA»: un solo nombre
     // («Tu instructor») y una sola puerta (el botón flotante en el teléfono, el enlace del menú en la PC); lo que el
@@ -5335,11 +5343,24 @@ async function pantallaBiblioteca(libro, pagina) {
 }
 
 // ---- 0.13.7: «Repaso final» (public/repaso-final-vista.js) ----
-const ayudasRepasoFinal = () => ({ el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
+const ayudasRepasoFinal = () => ({ entradaJuego: () => entradaJuego('entrada-juego-grande'), el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
   combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }),
   vistaVisual, usuario: estado.usuario?.id ?? 0, recoInstructor: () => lugarInstructor(v => v.recomendacionRepaso()) }); // 0.14.3; 0.14.34: la recomendación
 const errorRepasoFinal = r => mostrar(marco('repaso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
   el('a', { class: 'boton-3d blanco', href: '#repaso' }, el('span', { texto: t('rf.volver') })))));
+// 0.14.98: el Juego de vuelo (sin servidor: todo se dibuja aquí).
+async function pantallaJuego() {
+  const vigente = nuevoTurno();
+  const vista = await import('./juego-vista.js');
+  if (!vigente()) return;
+  vista.pantallaJuego({ el, t, icono, mostrar, marco });
+}
+async function pantallaVuelo(modo) {
+  const vigente = nuevoTurno();
+  const vista = await import('./juego-vista.js');
+  if (!vigente()) return;
+  vista.montarVuelo({ el, t, icono, mostrar }, { modo });
+}
 async function pantallaRepasoFinal() {
   const vigente = nuevoTurno();
   const [r, vista] = await Promise.all([api('GET', '/api/academia/repaso-final'), import('./repaso-final-vista.js')]);
@@ -6910,6 +6931,10 @@ async function dibujar() {
   if (oral) return pantallaOralDe(oral[1] ?? null, oral[2] ?? null, oral[3] ?? null);
   // 0.13.7: «Repaso final» (public/repaso-final-vista.js, solo se carga ahí): #repaso, #repaso/test-guide/<intento>,
   // #repaso/oral y #repaso/oral/<capítulo>.
+  // 0.14.98: el Juego de vuelo (public/juego-vista.js, solo se carga ahí): #juego, #juego/libre y #juego/final.
+  if (seccion === 'juego') return pantallaJuego();
+  const vuelo = seccion.match(/^juego\/(libre|final)$/);
+  if (vuelo) return pantallaVuelo(vuelo[1]);
   if (seccion === 'repaso') return pantallaRepasoFinal();
   const rondaFinal = seccion.match(/^repaso\/test-guide\/(\d+)$/);
   if (rondaFinal) return pantallaRondaFinal(rondaFinal[1]);
@@ -7008,6 +7033,8 @@ function pedidosAlAbrir(seccion, admin) {
   if (seccion === 'terminos') return ['/api/terminos'];
   // La Ayuda no pide nada: sus textos llegan con el idioma.
   if (seccion === 'ayuda') return [];
+  // 0.14.98: el Juego de vuelo no pide nada al servidor.
+  if (seccion === 'juego' || /^juego\//.test(seccion)) return [];
   // Quien no es administrador ve Inicio en #admin, pero casi nunca llega ahí: no se adelanta nada.
   // Las pestañas de Administrador (#admin/usuarios, #admin/trabajo, #admin/servidor) piden lo mismo que #admin.
   // 0.14.56: las de #admin/… (Estado del sistema, Usuarios, Trabajo, Servidor, Cambios) piden lo mismo; #admin (y una

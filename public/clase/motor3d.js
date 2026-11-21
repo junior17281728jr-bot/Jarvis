@@ -6,6 +6,8 @@
 // Mundo: x = este, y = arriba, z = norte. Rumbo de brújula h → adelante (sin h, 0, cos h). Nada toca document ni window:
 // el contexto del lienzo llega de afuera (las pruebas usan uno de mentira).
 
+import { dibujarCabina as dibujarCabinaCompleta } from './cabina.js';
+
 // ---------- vectores ----------
 export const suma = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const resta = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -642,78 +644,10 @@ function redondeado(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// La cabina vista desde adentro: el marco del parabrisas (montantes, el ala alta arriba), el tablero con su visera y
-// cuatro instrumentos simples: velocidad (kt), actitud, altímetro (ft) y rumbo. → el alto (px) que tapa el tablero.
-export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {} } = {}) {
-  const { kt = 0, ft = 0, rumbo = 0, alabeo = 0, cabeceo = 0 } = datos;
-  const panel = Math.max(alto * 0.26, 58 * escala), yp = alto - panel;
-  const marco = '#1c2029', marco2 = '#2b313d';
-  // Techo (el ala alta y el marco de arriba).
-  ctx.fillStyle = marco;
-  ctx.beginPath();
-  ctx.moveTo(0, 0); ctx.lineTo(ancho, 0); ctx.lineTo(ancho, alto * 0.09);
-  ctx.quadraticCurveTo(ancho / 2, alto * 0.02, 0, alto * 0.09);
-  ctx.closePath(); ctx.fill();
-  // Montantes a los lados (inclinados) y el poste del medio, finito.
-  for (const lado of [0, 1]) {
-    const X = v => (lado ? ancho - v : v);
-    ctx.beginPath();
-    ctx.moveTo(X(0), 0); ctx.lineTo(X(ancho * 0.085), 0); ctx.lineTo(X(ancho * 0.16), yp + 4); ctx.lineTo(X(0), yp + 4);
-    ctx.closePath(); ctx.fill();
-  }
-  ctx.fillStyle = marco2;
-  ctx.fillRect(ancho / 2 - 2 * escala, 0, 4 * escala, alto * 0.12);
-  // Visera y tablero (curvado arriba).
-  const g = ctx.createLinearGradient(0, yp - 10 * escala, 0, alto);
-  g.addColorStop(0, '#2a303b'); g.addColorStop(0.2, '#1a1e26'); g.addColorStop(1, '#11141a');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(0, yp + 6 * escala);
-  ctx.quadraticCurveTo(ancho / 2, yp - 14 * escala, ancho, yp + 6 * escala);
-  ctx.lineTo(ancho, alto); ctx.lineTo(0, alto); ctx.closePath(); ctx.fill();
-  // Los cuatro instrumentos.
-  const r = Math.min(panel * 0.34, ancho * 0.085), cy = yp + panel * 0.55;
-  const xs = [0.29, 0.43, 0.57, 0.71].map(k => ancho * k);
-  const esfera = (x) => { ctx.fillStyle = '#07090c'; ctx.beginPath(); ctx.arc(x, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#4a5160'; ctx.lineWidth = 1.5 * escala; ctx.stroke(); };
-  const aguja = (x, ang, largoK = 0.8, color = '#ffffff') => { ctx.strokeStyle = color; ctx.lineWidth = 2 * escala; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + Math.sin(ang) * r * largoK, cy - Math.cos(ang) * r * largoK); ctx.stroke(); };
-  const numero = (x, texto, dy = 0.42) => { ctx.fillStyle = '#ffffff'; ctx.font = `700 ${Math.max(9, r * 0.42)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(texto, x, cy + r * dy); };
-  const rotulo = (x, texto) => { ctx.fillStyle = '#9aa4b5'; ctx.font = `600 ${Math.max(8, r * 0.3)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(texto, x, cy - r * 0.45); };
-  // Velocidad: arco verde/blanco y aguja (0 a 160 kt en 300°).
-  esfera(xs[0]);
-  const angKt = v => rad(-150 + (limitar(v, 0, 160) / 160) * 300);
-  ctx.lineWidth = 3 * escala;
-  ctx.strokeStyle = '#2fbf5b'; ctx.beginPath(); ctx.arc(xs[0], cy, r * 0.86, angKt(48) - Math.PI / 2, angKt(129) - Math.PI / 2); ctx.stroke();
-  ctx.strokeStyle = '#f2f2f2'; ctx.beginPath(); ctx.arc(xs[0], cy, r * 0.74, angKt(40) - Math.PI / 2, angKt(85) - Math.PI / 2); ctx.stroke();
-  aguja(xs[0], angKt(kt));
-  rotulo(xs[0], textos.kt ?? 'KT');
-  numero(xs[0], String(Math.round(kt)));
-  // Actitud: cielo y tierra que se inclinan con el alabeo y suben o bajan con el cabeceo.
-  ctx.save();
-  ctx.beginPath(); ctx.arc(xs[1], cy, r, 0, Math.PI * 2); ctx.clip();
-  ctx.translate(xs[1], cy); ctx.rotate(rad(-alabeo));
-  const dy = limitar(cabeceo, -25, 25) * (r / 30);
-  ctx.fillStyle = '#2f7fd6'; ctx.fillRect(-r * 2, -r * 2 + dy, r * 4, r * 2);
-  ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-r * 2, dy, r * 4, r * 2);
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2 * escala; ctx.beginPath(); ctx.moveTo(-r, dy); ctx.lineTo(r, dy); ctx.stroke();
-  ctx.restore();
-  ctx.strokeStyle = '#ffb020'; ctx.lineWidth = 2.4 * escala;
-  ctx.beginPath(); ctx.moveTo(xs[1] - r * 0.55, cy); ctx.lineTo(xs[1] - r * 0.18, cy); ctx.lineTo(xs[1], cy + r * 0.12); ctx.lineTo(xs[1] + r * 0.18, cy); ctx.lineTo(xs[1] + r * 0.55, cy); ctx.stroke();
-  ctx.strokeStyle = '#4a5160'; ctx.lineWidth = 1.5 * escala; ctx.beginPath(); ctx.arc(xs[1], cy, r, 0, Math.PI * 2); ctx.stroke();
-  // Altímetro: aguja de los cientos y la de los miles, y el número.
-  esfera(xs[2]);
-  aguja(xs[2], ((ft % 1000) / 1000) * Math.PI * 2, 0.82);
-  aguja(xs[2], ((ft % 10000) / 10000) * Math.PI * 2, 0.5, '#cfd6e2');
-  rotulo(xs[2], textos.ft ?? 'FT');
-  numero(xs[2], Math.round(ft).toLocaleString('en-US'));
-  // Rumbo.
-  esfera(xs[3]);
-  ctx.save(); ctx.translate(xs[3], cy); ctx.rotate(rad(-rumbo));
-  ctx.fillStyle = '#ffffff'; ctx.font = `700 ${Math.max(8, r * 0.3)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (const [k, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']]) { ctx.save(); ctx.rotate(rad(k)); ctx.fillText(txt, 0, -r * 0.7); ctx.restore(); }
-  ctx.restore();
-  ctx.fillStyle = '#ffb020'; ctx.beginPath(); ctx.moveTo(xs[3], cy - r * 0.95); ctx.lineTo(xs[3] - r * 0.12, cy - r * 0.7); ctx.lineTo(xs[3] + r * 0.12, cy - r * 0.7); ctx.closePath(); ctx.fill();
-  numero(xs[3], String(Math.round(((rumbo % 360) + 360) % 360) || 360).padStart(3, '0'), 0.15);
-  return panel;
+// La cabina vista desde adentro. 0.14.98: el dibujo es el de cabina.js (marco, visera, tablero y los seis instrumentos
+// de verdad: con marcas, números y agujas vivas, también el variómetro y el coordinador). → el alto (px) que tapa el tablero.
+export function dibujarCabina(ctx, ancho, alto, datos, opciones = {}) {
+  return dibujarCabinaCompleta(ctx, ancho, alto, datos, opciones);
 }
 
 // Las texturas suaves (nube y brillo): un lienzo chico con un degradé radial. Se hacen una vez por lienzo.
