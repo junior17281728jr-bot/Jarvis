@@ -4746,6 +4746,14 @@ function vistaTarjeta(p, { materia, tema = null }) {
     p.ingles?.length ? el('div', { class: 'tarjeta-fichas', 'aria-label': t('acad.ingles') }, p.ingles.map(w => fichaIngles(w))) : null,
     p.nota ? el('p', { class: 'nota-tarjeta con-icono-arriba' }, icono('info', 'icono chico'), talCual('span', p.nota)) : null,
     fuentesDe(p.fuentes));
+  // 0.14.104: el clip, la foto y el dibujo (con su «⚑ Reportar»), juntos en una columna: debajo del título en el teléfono
+  // (como siempre) y al lado del texto en la pantalla ancha (interfaz.css). El texto queda donde estaba (realce.js lo busca ahí).
+  const medio = [clip?.nodo, foto, visual, reportarVisual].filter(Boolean);
+  if (medio.some(x => x !== reportarVisual)) {
+    const columna = el('div', { class: 'tarjeta-medio' });
+    medio[0].before(columna);
+    columna.append(...medio);
+  }
   // 0.9.1: un ícono por punto, los puntos entran uno tras otro y las fichas EN · ES (public/clase/realce.js).
   return { nodo: realzarTarjeta(nodo, p), destruir: () => { montado?.destruir?.(); clip?.destruir(); } };
 }

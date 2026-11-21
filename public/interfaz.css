@@ -499,3 +499,356 @@ ol.sendero.con-linea::before { display: none; }
 .rf-revision-cabeza { display: flex; align-items: center; gap: var(--e2); margin: 0 0 6px; }
 .rf-revision-enunciado { margin: 0 0 var(--e3); }
 .ficha-opciones-revisadas { margin: 10px 0; }
+
+/* ==================== 0.14.104: donde se estudia (pedido de Junior: «mejora más el sistema visual y donde se toman las clases») ====================
+   Una sola capa al final (no cambia ninguna clase): la clase, las preguntas, la hoja de la respuesta, el resultado y el
+   Camino, con el mismo sistema en claro y en oscuro:
+   - superficies opacas y tranquilas (la tarjeta se lee sobre un color liso, no sobre la foto), un borde fino, un radio
+     (20 · 14 · 10) y una sombra suave (en oscuro, el borde y un tono más claro hacen de sombra);
+   - ancho cómodo para leer en la computadora (unos 68 caracteres) y, si la tarjeta trae un dibujo, una escena 3D, un clip o
+     una foto, el dibujo AL LADO del texto en la pantalla ancha (se queda a la vista al bajar) y arriba en el teléfono;
+   - «Recuerda», «Ejemplo» y las fichas EN · ES con un acento a la izquierda (sin cinta de advertencia ni bordes 3D);
+   - una barra de avance fina, «Escuchar / Con voz» en un solo control, y 👍 👎 y ⚑ en el pie de la tarjeta;
+   - el botón principal lleno y el secundario con borde; todo lo que se toca mide 44 px o más;
+   - con «reducir movimiento», nada se mueve.
+   Los colores nuevos (--es-*) cumplen AA (4.5:1) en los dos temas: test/contraste-diagramas.test.js los mide. */
+:root {
+  --es-superficie: #ffffff;
+  --es-superficie-2: #f3f6fb;
+  --es-linea: #dfe5ee;
+  --es-texto-2: #4b5870;
+  --es-acento: #1559c2;
+  --es-acento-suave: #e8f0fd;
+  --es-recuerda-fondo: #fff8e1;
+  --es-recuerda-borde: #e3a800;
+  --es-recuerda-texto: #6e4a00;
+  --es-ejemplo-fondo: #eef5ff;
+  --es-ejemplo-borde: #3b82f6;
+  --es-ejemplo-texto: #0f4c8a;
+  --es-hoja-bien: #f1fae9;
+  --es-hoja-mal: #fff2f2;
+  --es-pista: #e3e8f0;
+  --es-avance-1: #ff8a1f;
+  --es-avance-2: #ffb547;
+  --es-sombra: 0 1px 2px rgba(15, 23, 42, 0.05), 0 6px 20px rgba(15, 23, 42, 0.07);
+  --es-sombra-chica: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --es-radio: 20px;
+  --es-radio-2: 14px;
+  --es-radio-3: 10px;
+}
+:root[data-tema="oscuro"] {
+  --es-superficie: #131c2e;
+  --es-superficie-2: #0f1727;
+  --es-linea: #27344d;
+  --es-texto-2: #aab6ca;
+  --es-acento: #8ab4ff;
+  --es-acento-suave: #1b2a48;
+  --es-recuerda-fondo: #2a2412;
+  --es-recuerda-borde: #c99a1a;
+  --es-recuerda-texto: #ffd66e;
+  --es-ejemplo-fondo: #13233d;
+  --es-ejemplo-borde: #4f8fe8;
+  --es-ejemplo-texto: #a6cdff;
+  --es-hoja-bien: #142410;
+  --es-hoja-mal: #2a1517;
+  --es-pista: #26324a;
+  --es-avance-1: #ff8a1f;
+  --es-avance-2: #ffb547;
+  --es-sombra: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(0, 0, 0, 0.32);
+  --es-sombra-chica: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-tema="auto"] {
+    --es-superficie: #131c2e;
+    --es-superficie-2: #0f1727;
+    --es-linea: #27344d;
+    --es-texto-2: #aab6ca;
+    --es-acento: #8ab4ff;
+    --es-acento-suave: #1b2a48;
+    --es-recuerda-fondo: #2a2412;
+    --es-recuerda-borde: #c99a1a;
+    --es-recuerda-texto: #ffd66e;
+    --es-ejemplo-fondo: #13233d;
+    --es-ejemplo-borde: #4f8fe8;
+    --es-ejemplo-texto: #a6cdff;
+    --es-hoja-bien: #142410;
+    --es-hoja-mal: #2a1517;
+    --es-pista: #26324a;
+    --es-sombra: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 28px rgba(0, 0, 0, 0.32);
+    --es-sombra-chica: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* ---------- La barra de arriba: la X, el avance fino con su avioneta y «5 / 14» ---------- */
+.estudio-arriba { gap: 14px; padding-top: calc(8px + env(safe-area-inset-top)); padding-bottom: 8px; min-height: 60px; border-bottom: 1px solid var(--es-linea); }
+.estudio-salir { color: var(--es-texto-2); border-radius: 12px; }
+.estudio-salir:hover { background: var(--es-superficie-2); color: var(--texto); }
+.estudio-salir .icono { width: 24px; height: 24px; stroke-width: 2.4; }
+.combustible { height: 10px; margin-right: 14px; }
+.combustible-pista { background: var(--es-pista); }
+.combustible-pista::after { display: none; }
+.combustible-relleno { background: linear-gradient(90deg, var(--es-avance-1), var(--es-avance-2)); box-shadow: none; }
+.combustible-avion { top: -11px; width: 30px; margin-left: -15px; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.25)); }
+.combustible-avion .avioneta { width: 30px; }
+.estudio-cuenta {
+  min-width: 0; padding: 4px 10px; border-radius: 999px; background: var(--es-superficie-2); border: 1px solid var(--es-linea);
+  color: var(--es-texto-2); font-size: 13.5px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.estudio-cuenta:empty { display: none; }
+
+/* ---------- El cuerpo: más ancho para el texto en el teléfono ---------- */
+.estudio-cuerpo { padding: 14px 12px 20px; }
+@media (min-width: 600px) { .estudio-cuerpo { padding: 20px 16px 24px; } }
+.pie-estudio { text-align: center; margin-top: 20px; }
+
+/* «Escuchar» y «Con voz / Sin voz»: un solo control, a la derecha, arriba de la tarjeta. */
+.lectura-barra { gap: 0; margin: 0 0 12px; }
+.lectura-barra .boton-escuchar, .lectura-barra .interruptor-voz, .q-escuchar .boton-escuchar {
+  min-height: 44px; margin: 0; padding: 0 14px; gap: 6px; border-radius: 999px; border: 1px solid var(--es-linea);
+  background: var(--es-superficie); color: var(--es-acento); font: 700 14.5px/1 var(--letra-redonda); box-shadow: var(--es-sombra-chica);
+}
+.lectura-barra > .boton-escuchar { border-radius: 999px 0 0 999px; }
+.lectura-barra > .interruptor-voz { border-radius: 0 999px 999px 0; margin-left: -1px; }
+.lectura-barra .interruptor-voz[aria-pressed="true"] { background: var(--es-acento-suave); }
+.lectura-barra button:hover, .q-escuchar .boton-escuchar:hover { background: var(--es-superficie-2); }
+.q-escuchar { margin: 0 0 14px; }
+
+/* ---------- La tarjeta ---------- */
+.tarjeta-leccion, .tarjeta-girar, .tarjeta-pregunta {
+  background: var(--es-superficie); border: 1px solid var(--es-linea); border-radius: var(--es-radio); padding: 20px 18px 18px; box-shadow: var(--es-sombra);
+}
+.tarjeta-leccion { --tl: var(--mc, var(--azul)); border-top: 1px solid var(--es-linea); box-shadow: inset 0 4px 0 var(--tl), var(--es-sombra); }
+.tarjeta-leccion.estilo-analogia { --tl: #9b5de5; border-top-color: var(--es-linea); }
+.tarjeta-leccion.estilo-resumen { --tl: var(--verde); border-top-color: var(--es-linea); }
+.tarjeta-leccion.estilo-ingles { --tl: var(--azul); border-top-color: var(--es-linea); }
+.tarjeta-sello { margin: 2px 0 10px; }
+.tarjeta-leccion .sello, .tarjeta-girar .sello { padding: 4px 10px; font-size: 11.5px; letter-spacing: 0.09em; }
+.tarjeta-titulo { font-size: clamp(23px, 5.8vw, 30px); line-height: 1.18; margin: 0 0 6px; text-wrap: balance; }
+.tarjeta-en { margin: 0 0 14px; font-size: 15px; }
+.tarjeta-texto { font-size: 18px; line-height: 1.6; margin: 0 0 12px; }
+.tarjeta-texto, .tarjeta-puntos li, .recuerda p, .caja-ejemplo p { text-wrap: pretty; }
+
+/* Los puntos: el ícono chico a la izquierda, sin caja ni borde 3D; una línea fina entre uno y otro. */
+.tarjeta-realzada ul.tarjeta-puntos { gap: 0; margin: 12px 0 8px; }
+.tarjeta-puntos li { font-size: 18px; line-height: 1.55; }
+.tarjeta-puntos li.punto-realzado { min-height: 48px; padding: 10px 2px 10px 46px; border-radius: 0; background: none; }
+.tarjeta-puntos li.punto-realzado + li.punto-realzado { border-top: 1px solid var(--es-linea); }
+.punto-marca { left: 0; top: 11px; width: 32px; height: 32px; border-radius: var(--es-radio-3); box-shadow: none; }
+.punto-marca.punto-alerta, .estilo-resumen .punto-marca { box-shadow: none; }
+.punto-dibujo { width: 19px; height: 19px; }
+
+/* «Recuerda» y «Ejemplo»: el mismo molde, con un acento a la izquierda. */
+.recuerda, .tarjeta-realzada .recuerda, .caja-ejemplo, .tarjeta-realzada .caja-ejemplo {
+  margin: 16px 0 8px; padding: 14px 16px 14px 16px; border-radius: var(--es-radio-2); box-shadow: none; overflow: visible;
+}
+.recuerda, .tarjeta-realzada .recuerda { background: var(--es-recuerda-fondo); border: 1px solid color-mix(in srgb, var(--es-recuerda-borde) 45%, transparent); border-left: 4px solid var(--es-recuerda-borde); }
+.tarjeta-realzada .recuerda::before { display: none; }
+.recuerda p { font-size: 17.5px; line-height: 1.5; font-weight: 650; color: var(--texto); }
+:root:root .recuerda .recuerda-titulo { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; color: var(--es-recuerda-texto); font-size: 12.5px; letter-spacing: 0.1em; }
+.tarjeta-realzada .recuerda .recuerda-titulo .icono { width: 24px; height: 24px; padding: 4px; }
+.caja-ejemplo, .tarjeta-realzada .caja-ejemplo { background: var(--es-ejemplo-fondo); border: 1px solid color-mix(in srgb, var(--es-ejemplo-borde) 35%, transparent); border-left: 4px solid var(--es-ejemplo-borde); }
+.caja-ejemplo-titulo { margin: 0 0 6px; color: var(--es-ejemplo-texto); font-size: 12.5px; }
+.caja-ejemplo p { font-size: 17px; line-height: 1.55; color: var(--texto); }
+
+/* Las fichas EN · ES: su propia fila, separada del texto. */
+.tarjeta-fichas, .tarjeta-realzada .tarjeta-fichas { gap: 8px; margin: 18px 0 6px; padding-top: 14px; border-top: 1px dashed var(--es-linea); }
+.ficha-ingles, .ficha-realzada { min-height: 44px; padding: 6px 6px 6px 10px; border: 1px solid var(--es-linea); border-radius: 12px; background: var(--es-superficie-2); box-shadow: none; }
+.ficha-oir { width: 34px; height: 34px; min-height: 34px; border-radius: 10px; }
+.ficha-oir::after { inset: -5px; }
+.nota-tarjeta { margin: 14px 0 0; }
+
+/* De dónde sale: chico y tranquilo; «y N fuentes más» se toca bien. */
+.tarjeta-fuentes { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--es-linea); }
+.tarjeta-fuentes .fuente { color: var(--es-texto-2); }
+.mas-fuentes summary { min-height: 44px; color: var(--es-acento); }
+
+/* El dibujo, la escena 3D, el clip y la foto: un marco fino (sin sombra pesada) y «⚑ Reportar» chico, a la derecha. */
+.tarjeta-medio { display: flex; flex-direction: column; margin: 14px 0 10px; }
+.tarjeta-medio > .tarjeta-visual, .tarjeta-medio > .tarjeta-clip, .tarjeta-medio > .tarjeta-foto { margin: 0; }
+.tarjeta-medio > * + .tarjeta-visual, .tarjeta-medio > * + .tarjeta-foto { margin-top: 10px; }
+.tarjeta-visual { border: 1px solid var(--es-linea); border-radius: 16px; box-shadow: none; }
+.tarjeta-medio > button.reportar-punto.reportar-visual, button.reportar-visual { align-self: flex-end; margin: 2px 0 0; font-size: 13.5px; color: var(--es-texto-2); }
+/* Una tabla ancha (Sensor · Qué siente · ¿Confiable…?) ya no se corta: se lee entera o se desliza dentro de su cuadro. */
+.tarjeta-visual .clase-diagrama { grid-template-columns: minmax(0, 1fr); min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tarjeta-visual .clase-diagrama-tabla { hyphens: auto; }
+@media (max-width: 480px) {
+  .tarjeta-visual .clase-diagrama { padding: 12px; }
+  .tarjeta-visual .clase-diagrama-tabla th, .tarjeta-visual .clase-diagrama-tabla td { padding: 7px 6px; font-size: 15px; }
+}
+
+/* «Otra forma de verlo» y la ayuda de «Explícamelo mejor»: cajas suaves del mismo molde. */
+.tarjeta-leccion .otra-forma { margin: 16px 0 4px; padding: 0 14px; border-radius: var(--es-radio-2); }
+.tarjeta-leccion .otra-forma > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; }
+.tarjeta-leccion .otra-forma[open] { padding-bottom: 12px; }
+.entendiste-salida:not(:empty) { margin-top: 12px; }
+.entendiste-botones { gap: 8px; }
+.entendiste-botones .boton-3d.chico { min-height: 44px; }
+
+/* El pie de la tarjeta: «¿Lo entendiste? 👍 👎» a la izquierda y «⚑ Reportar un error» a la derecha, en una franja. */
+.tarjeta-leccion > .entendiste {
+  margin: 18px -18px -18px; padding: 8px 18px 10px; border-top: 1px solid var(--es-linea);
+  background: var(--es-superficie-2); border-radius: 0 0 var(--es-radio) var(--es-radio);
+}
+.entendi { gap: 6px 8px; margin-top: 0; }
+.entendi-pregunta { margin-right: 4px; font-weight: 700; color: var(--es-texto-2); }
+.entendi-boton { min-width: 48px; min-height: 44px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--es-linea); background: var(--es-superficie); font-size: 20px; box-shadow: var(--es-sombra-chica); }
+.entendi-boton:hover { border-color: var(--es-acento); }
+.entendi-boton[aria-pressed="true"] { border: 2px solid var(--es-acento); background: var(--es-acento-suave); }
+.entendi > button.reportar-punto { margin: 0 0 0 auto; font-size: 13.5px; color: var(--es-texto-2); }
+.entendi-gracias { color: var(--bien); }
+
+/* ---------- Abajo: el principal lleno y el de volver con borde ---------- */
+.estudio-pie { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--es-linea); box-shadow: 0 -6px 20px rgba(15, 23, 42, 0.06); }
+.estudio-botones { max-width: 760px; gap: 10px; }
+.estudio-pie .boton-3d { border-radius: var(--es-radio-2); box-shadow: 0 3px 0 var(--b-borde); }
+.estudio-pie .boton-3d.grande { min-height: 52px; font-size: 16px; }
+.estudio-pie .boton-3d:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 0 0 var(--b-borde); }
+.estudio-pie .boton-3d.blanco { border: 1px solid var(--es-linea); background: var(--es-superficie); box-shadow: var(--es-sombra-chica); color: var(--es-acento); }
+.estudio-pie .boton-3d.cuadrado { width: 52px; min-width: 52px; }
+.estudio-pie .boton-3d:disabled { box-shadow: none; }
+.boton-3d.chico { min-height: 44px; }
+
+/* ---------- Portada del tema y fin de la clase ---------- */
+.portada-tema, .fin-leccion { background: var(--es-superficie); border: 1px solid var(--es-linea); border-radius: var(--es-radio); box-shadow: var(--es-sombra); padding: 28px 20px 24px; }
+.portada-icono { width: 80px; height: 80px; border-radius: 24px; margin: 4px 0 16px; box-shadow: 0 10px 24px color-mix(in srgb, var(--mc, var(--azul)) 35%, transparent); }
+.portada-icono .icono { width: 44px; height: 44px; }
+.portada-tema .antetitulo { font-size: 12.5px; letter-spacing: 0.1em; margin-bottom: 6px; }
+.portada-tema .titulo-grande, .fin-leccion .titulo-grande { font-size: clamp(26px, 6.2vw, 34px); line-height: 1.15; text-wrap: balance; letter-spacing: -0.015em; }
+.portada-tema .bajada, .fin-leccion .bajada { max-width: 36ch; margin-left: auto; margin-right: auto; color: var(--es-texto-2); font-size: 16.5px; line-height: 1.5; text-wrap: balance; }
+ul.portada-datos { margin: 16px 0 12px; }
+.portada-datos li, .tarjeta .portada-datos li { padding: 6px 14px; border: 1px solid var(--es-linea); background-color: var(--es-superficie-2); font-size: 14.5px; }
+.portada-tema > :is(.caja-ia, .tarjeta-tutor, .para-ti, section, aside):not(.aviso-orden) { width: 100%; text-align: left; }
+.fin-cielo { height: 132px; border-radius: 16px; margin-bottom: 20px; }
+.fin-reto { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--es-linea); width: 100%; }
+
+/* ---------- Las preguntas (práctica, examen, oral, repasos) ---------- */
+.tarjeta-pregunta { padding: 18px 18px 20px; }
+.tarjeta-pregunta .q-cabeza { gap: 8px; margin: 0 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--es-linea); }
+.insignia-pregunta { padding: 5px 10px; border-radius: 8px; font-size: 12px; }
+.pregunta-de { font-size: 12.5px; color: var(--es-texto-2); }
+.tarjeta-pregunta .q-enunciado { font-size: clamp(19px, 4.9vw, 22px); line-height: 1.45; margin: 4px 0 14px; text-wrap: pretty; }
+.situacion-texto { font-size: 19px; line-height: 1.5; }
+.pregunta-ayuda { color: var(--es-texto-2); }
+.opciones-cartas { gap: 10px; }
+.opcion-carta {
+  min-height: 56px; padding: 13px 14px; gap: 12px; border: 1.5px solid var(--es-linea); border-radius: var(--es-radio-2);
+  background: var(--es-superficie); box-shadow: var(--es-sombra-chica); font-size: 17.5px; line-height: 1.45;
+}
+.opcion-carta:active:not(:disabled):not(.fija) { transform: translateY(1px); box-shadow: none; }
+.opcion-carta:hover:not(:disabled):not(.fija) { border-color: var(--es-acento); }
+.opcion-carta .opcion-letra { width: 32px; height: 32px; border-radius: 9px; border: 1.5px solid var(--es-linea); background: var(--es-superficie-2); color: var(--es-texto-2); font-size: 16px; }
+.opcion-carta .opcion-texto { padding-top: 2px; }
+.opcion-carta[aria-pressed="true"] { border-color: var(--azul); background: color-mix(in srgb, var(--azul) 10%, var(--es-superficie)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--azul) 22%, transparent); }
+.opcion-carta.es-correcta { border-color: var(--verde); box-shadow: 0 0 0 3px color-mix(in srgb, var(--verde) 22%, transparent); }
+.opcion-carta.es-mala { border-color: var(--rojo); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rojo) 20%, transparent); }
+
+/* La hoja de la respuesta: una superficie con el color apenas, el borde de arriba del color y la cabeza clara. */
+.hoja-respuesta { border-radius: 22px 22px 0 0; border-top: 3px solid var(--h); box-shadow: 0 -14px 40px rgba(15, 23, 42, 0.24); }
+.hoja-respuesta.bien { background: var(--es-hoja-bien); }
+.hoja-respuesta.mal { background: var(--es-hoja-mal); }
+.hoja-cabeza { gap: 12px; padding: 6px 18px 10px; }
+.hoja-icono { width: 40px; height: 40px; background: var(--es-superficie); }
+.hoja-icono .icono { width: 24px; height: 24px; }
+.hoja-titulo { font-size: 22px; line-height: 1.2; }
+.hoja-cuerpo { padding: 2px 18px 8px; }
+.caja-hoja { border-radius: var(--es-radio-2); background: var(--es-superficie); border: 1px solid var(--es-linea); box-shadow: none; padding: 12px 14px; }
+.op-rev { border-width: 1.5px; border-radius: 12px; }
+.hoja-pie { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--h) 18%, transparent); }
+.hoja-pie .boton-3d { border-radius: var(--es-radio-2); box-shadow: 0 3px 0 var(--b-borde); min-height: 52px; }
+
+/* El resultado y las revisiones: la misma superficie. */
+.resultado-vuelo, .inmersivo .panel { background: var(--es-superficie); border: 1px solid var(--es-linea); border-radius: var(--es-radio); box-shadow: var(--es-sombra); }
+.inmersivo .panel { padding: 18px; }
+.estudio-botones.apilados { gap: 10px; }
+
+/* ---------- La computadora: un ancho cómodo para leer y el dibujo al lado del texto ---------- */
+@media (min-width: 1024px) {
+  body.modo-estudio #app { max-width: 800px; }
+  .tarjeta-leccion, .tarjeta-girar { padding: 28px 34px 24px; }
+  .tarjeta-pregunta { padding: 24px 28px 26px; }
+  .tarjeta-leccion > .entendiste { margin: 20px -34px -24px; padding: 10px 34px 12px; }
+  .tarjeta-texto, .tarjeta-puntos li { font-size: 19px; }
+  .tarjeta-leccion > :is(.tarjeta-texto, .tarjeta-puntos, .recuerda, .caja-ejemplo, .nota-tarjeta) { max-width: 68ch; }
+}
+@media (min-width: 900px) and (max-width: 1099px) {
+  /* Solo una foto del libro: a la derecha, como antes (academia.css, 0.12.5), ahora con su «⚑ Reportar» debajo. */
+  .tarjeta-leccion.con-foto:not(:has(.tarjeta-visual, .tarjeta-clip)) > .tarjeta-medio { float: right; width: 44%; margin: 4px 0 12px 20px; }
+}
+@media (min-width: 1100px) {
+  /* La clase entera usa el ancho grande (la barra de arriba no cambia de tamaño de una tarjeta a otra); la tarjeta de solo
+     texto se queda en 800 px, en el centro. */
+  body.modo-estudio #app:has(.leccion-tarjetas) { max-width: 1200px; }
+  .leccion-tarjetas .estudio-cuerpo > * { max-width: 800px; margin-left: auto; margin-right: auto; }
+  .leccion-tarjetas .estudio-cuerpo:has(.tarjeta-leccion > .tarjeta-medio > :is(.tarjeta-visual, .tarjeta-clip, .tarjeta-foto)) > * { max-width: none; }
+  .tarjeta-leccion:has(> .tarjeta-medio > :is(.tarjeta-visual, .tarjeta-clip, .tarjeta-foto)) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); column-gap: 36px; row-gap: 0;
+    /* Las filas del texto se miden por el texto; si el dibujo es más alto, lo que sobra va a la última fila (1fr). */
+    grid-template-rows: repeat(16, auto) 1fr; align-items: start;
+  }
+  .tarjeta-leccion:has(> .tarjeta-medio > :is(.tarjeta-visual, .tarjeta-clip, .tarjeta-foto)) > * { grid-column: 1; }
+  .tarjeta-leccion:has(> .tarjeta-medio > :is(.tarjeta-visual, .tarjeta-clip, .tarjeta-foto)) > .tarjeta-medio { grid-column: 2; grid-row: 1 / -1; margin: 0; }
+  .tarjeta-leccion:has(> .tarjeta-medio > :is(.tarjeta-visual, .tarjeta-clip, .tarjeta-foto)) > :is(.otra-forma, .entendiste) { grid-column: 1 / -1; }
+}
+/* Pegado arriba al bajar solo si la pantalla es alta: en una baja (1280 × 720) una escena 3D alta escondería sus botones
+   de abajo detrás de la barra. */
+@media (min-width: 1100px) and (min-height: 820px) {
+  .tarjeta-leccion:has(> .tarjeta-medio > :is(.tarjeta-visual, .tarjeta-clip, .tarjeta-foto)) > .tarjeta-medio { position: sticky; top: 84px; }
+}
+
+/* ---------- El Camino: las etiquetas legibles sobre la línea, «Recomendado» como sello, «Continuar» en letra normal ---------- */
+.sendero .nodo-nombre, .sendero .nodo-detalle { padding: 1px 8px; background: color-mix(in srgb, var(--fondo) 96%, transparent); }
+.nodo.recomendado .nodo-detalle {
+  margin-top: 4px; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; box-shadow: none;
+  background: color-mix(in srgb, var(--mc, var(--verde)) 16%, var(--fondo)); border: 1px solid color-mix(in srgb, var(--mc, var(--verde)) 55%, transparent);
+}
+.nodo-burbuja { padding: 6px 12px; border-radius: 12px; border-width: 1px; font-size: 13.5px; box-shadow: var(--es-sombra); }
+.nodo-burbuja::after { border-width: 0 1px 1px 0; bottom: -8px; width: 12px; height: 12px; margin-left: -6px; }
+.boton-continuar { text-transform: none; letter-spacing: 0; font-size: 17px; justify-content: flex-start; padding: 14px 18px; border-radius: var(--es-radio-2); }
+@media (max-width: 759px) {
+  /* «Tu instructor» flota sobre el menú: el final del Camino se puede bajar hasta verlo entero. */
+  body:has(.boton-instructor) #app { padding-bottom: 72px; }
+}
+
+/* ---------- Movimiento: suave al entrar; con «reducir movimiento», nada ---------- */
+.tarjeta-leccion, .tarjeta-girar, .tarjeta-pregunta { animation-duration: 0.28s; }
+.opcion-carta, .entendi-boton, .estudio-salir, .lectura-barra button { transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .opcion-carta, .entendi-boton, .estudio-salir, .lectura-barra button, .combustible-avion, .combustible-relleno { transition: none !important; }
+  .tarjeta-leccion, .tarjeta-girar, .tarjeta-pregunta, .hoja-respuesta, .punto-realzado, .tarjeta-realzada .recuerda { animation: none !important; }
+}
+
+/* ---------- Arreglos que se vieron en las fotos de antes ---------- */
+/* La tarjeta entra desde la derecha (36 px) y la avioneta del festejo pasa de largo: en el teléfono eso hacía la página más
+   ancha que la pantalla por un momento (390 → 410 px) y se podía mover de lado. Lo de afuera se recorta (sin barra). */
+.inmersivo { overflow-x: clip; }
+/* Los nombres de las materias («MATERIA 2», «Más adelante») en blanco sobre el color de la materia no llegaban a 4.5:1
+   (2.8 a 3.2): el color de fondo de la tarjeta de la materia, un poco más oscuro (el dorado lleva letra oscura: igual). */
+.materia-bloque:not(.vacia):not(.mc-8) .banner-materia { background: linear-gradient(160deg, color-mix(in srgb, var(--mc) 78%, #000000), color-mix(in srgb, var(--mc) 66%, #000000)); }
+.materia-bloque:not(.vacia) .banner-ante { opacity: 1; }
+/* Lo que se toca, 44 px o más (medido en las fotos): «Salir» arriba, «Revisar después» del examen y «Ver más» de una escena 3D. */
+.encabezado .salir, .examen-marcar { min-height: 44px; }
+.tarjeta-visual .clase-e3d-mas summary { min-height: 44px; }
+/* Blanco sobre el azul claro del tema oscuro daba 3.5:1: la letra elegida, las preguntas ya respondidas del examen y los
+   chips del oral en vivo, sobre el azul más hondo (6:1 o más en los dos temas). Las cifras azules del Repaso final, con el
+   acento que cumple AA. */
+.opcion-carta[aria-pressed="true"] .opcion-letra, .examen-celda.respondida, .vivo-chip[aria-pressed="true"] { background: var(--azul-borde); border-color: var(--azul-borde); }
+.rf-opcion-detalle { opacity: 1; }
+.boton-3d.blanco .rf-opcion-detalle { color: var(--es-acento); }
+.vivo-repetir { min-height: 44px; }
+/* El teléfono de lado (poca altura): como en la 0.14.101, las barras de arriba y de abajo bajitas, para que la tarjeta
+   tenga lugar (esta capa va después y las volvía a agrandar). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .estudio-arriba { min-height: 0; padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 4px; }
+  .estudio-cuerpo { padding-top: 8px; }
+  .lectura-barra { margin-bottom: 8px; }
+  .estudio-pie { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  .estudio-pie .boton-3d.grande { min-height: 44px; font-size: 15px; }
+  .estudio-pie .boton-3d.cuadrado { width: 48px; min-width: 48px; }
+}
+/* El Camino, medido: «Convalidada por examen» (verde más hondo sobre blanco), la materia dorada (fondo un poco más claro
+   para su letra oscura, y sus chips claros), el nombre de un paso cerrado (gris legible) y «Tu instructor» (azul hondo). */
+.banner-convalidada { color: #2f6b00; }
+.materia-bloque.mc-8:not(.vacia) .banner-materia { background: color-mix(in srgb, var(--mc) 78%, #ffffff); }
+.materia-bloque.mc-8:not(.vacia) :is(.materia-estado-chip, .materia-insignia:not(.debil):not(.refuerzo)) { background: rgba(255, 255, 255, 0.4); color: #2b1d00; }
+.sendero .nodo.bloqueado .nodo-nombre { color: var(--es-texto-2); }
+.boton-instructor { background: var(--azul-borde); }

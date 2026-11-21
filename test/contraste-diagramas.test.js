@@ -133,3 +133,31 @@ test('0.14.94: el traductor del navegador no toca las clases (translate="no" y n
   assert.match(html, /<html[^>]*\btranslate="no"/);
   assert.match(html, /<meta name="google" content="notranslate">/);
 });
+
+// 0.14.104 (la pasada visual de las clases): los colores nuevos del lugar donde se estudia (--es-*, al final de
+// interfaz.css) se leen con AA (4.5:1) en claro y en oscuro: el texto sobre la tarjeta, «Recuerda», «Ejemplo», la hoja
+// de la respuesta (bien y mal) y el acento de «Escuchar» y de 👍 👎.
+test('0.14.104: los colores del lugar donde se estudia (--es-*) cumplen AA en claro y en oscuro', () => {
+  const todas = HOJAS.map(leer).flatMap(reglas);
+  const { claro, oscuro, definidas } = variables(todas);
+  const pares = [
+    ['--texto', '--es-superficie'], ['--es-texto-2', '--es-superficie'], ['--es-texto-2', '--es-superficie-2'], ['--texto', '--es-superficie-2'],
+    ['--es-acento', '--es-superficie'], ['--es-acento', '--es-superficie-2'], ['--es-acento', '--es-acento-suave'],
+    ['--es-recuerda-texto', '--es-recuerda-fondo'], ['--texto', '--es-recuerda-fondo'],
+    ['--es-ejemplo-texto', '--es-ejemplo-fondo'], ['--texto', '--es-ejemplo-fondo'],
+    ['--verde-texto', '--es-hoja-bien'], ['--texto', '--es-hoja-bien'], ['--rojo-texto', '--es-hoja-mal'], ['--texto', '--es-hoja-mal'],
+  ];
+  const mal = [];
+  for (const [nombre, tema] of [['claro', claro], ['oscuro', oscuro]]) {
+    for (const [texto, fondo] of pares) {
+      const a = hex(resolver(`var(${texto})`, tema, definidas).valor);
+      const b = hex(resolver(`var(${fondo})`, tema, definidas).valor);
+      if (!a || !b) { mal.push(`${nombre}: ${texto} o ${fondo} sin color`); continue; }
+      if (contraste(a, b) < 4.5) mal.push(`${nombre}: ${texto} ${a} sobre ${fondo} ${b} (${contraste(a, b).toFixed(2)}:1)`);
+    }
+  }
+  assert.deepEqual(mal, []);
+  // Y los tres temas los definen todos (el automático en oscuro, igual que el oscuro).
+  const css = leer('interfaz.css');
+  for (const v of ['--es-superficie', '--es-texto-2', '--es-recuerda-fondo', '--es-hoja-mal']) assert.equal(css.split(`${v}:`).length - 1, 3, v);
+});
