@@ -107,6 +107,7 @@ test('0.14.94: «Ver y deshacer»: el historial de la tarjeta reescrita y volver
     const h = historialTema(db, config, { materia: 'sistemas', tema: 't01-motor' });
     assert.equal(h.actual.version, v2);
     const x = h.tarjetas.find(y => /hélice/.test(y.titulo));
+    assert.deepEqual(h.tarjetas.map(y => y.titulo), [x?.titulo], 'solo la que cambió (los títulos repetidos se comparan en su lugar)');
     assert.ok(x, JSON.stringify(h));
     assert.equal(x.antes[0].version, v1);
     assert.match(x.antes[0].texto, /2400 rpm/);

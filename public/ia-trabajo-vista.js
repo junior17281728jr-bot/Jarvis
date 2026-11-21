@@ -64,8 +64,9 @@ function botonHistorial(h, c) {
           el('button', {
             type: 'button', class: 'secundario',
             onclick: async e => {
+              const b = e.currentTarget; // después de un «await» ya no está en el evento
               if (!(await h.confirmar(t('iahizo.historial.confirmar', { n: v.version })))) return;
-              e.currentTarget.disabled = true;
+              b.disabled = true;
               const r2 = await h.api('POST', '/api/admin/academia/tarjeta-revertir', { materia: d.materia, tema: d.tema, n: x.n, version: v.version });
               h.avisar(r2.ok ? t(r2.datos.publicada ? 'iahizo.historial.hecho' : 'iahizo.historial.incompleta', { n: r2.datos.version }) : h.textoError(r2.datos.error), r2.ok ? 'bien' : 'mal');
               if (r2.ok) h.recargar();

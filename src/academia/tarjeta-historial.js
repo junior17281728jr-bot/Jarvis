@@ -53,11 +53,13 @@ const revisarIds = (materia, tema) => {
 const temaDe = (datos, materia, tema) => datos?.materias?.find(m => m.id === materia)?.temas?.find(t => t.id === tema) ?? null;
 const corto = s => String(s).slice(0, LIMITES_HISTORIAL.texto);
 const huella = s => createHash('sha256').update(JSON.stringify(s ?? null)).digest('hex').slice(0, 16);
-// La tarjeta de una versión vieja que corresponde a la n de ahora: la de la misma posición si tiene el mismo título o
-// si ninguna tiene ese título (la «Mejora continua» cambia el título en el mismo lugar); si no, la del mismo título.
+// La tarjeta de una versión vieja que corresponde a la n de ahora: la del mismo lugar si tiene el mismo título; si no, la
+// ÚNICA con ese título (otra versión la movió); si no, la del mismo lugar (la «Mejora continua» cambia el título en su
+// lugar). Los títulos repetidos («¿Te acuerdas?») solo cuentan en su mismo lugar.
 function pareja(viejas, n, titulo) {
-  const mismo = viejas.findIndex(s => s?.titulo === titulo);
-  if (mismo >= 0) return { i: mismo, s: viejas[mismo] };
+  if (viejas[n - 1] && viejas[n - 1].titulo === titulo) return { i: n - 1, s: viejas[n - 1] };
+  const iguales = viejas.map((s, i) => (s?.titulo === titulo ? i : -1)).filter(i => i >= 0);
+  if (iguales.length === 1) return { i: iguales[0], s: viejas[iguales[0]] };
   return viejas[n - 1] ? { i: n - 1, s: viejas[n - 1] } : null;
 }
 
