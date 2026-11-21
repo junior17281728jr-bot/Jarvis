@@ -6966,7 +6966,8 @@ async function dibujar() {
   // 0.14.98: el Juego de vuelo (public/juego-vista.js, solo se carga ahí): #juego, #juego/libre y #juego/final.
   // 0.14.99: y #juego/preguntas (el vuelo con preguntas).
   if (seccion === 'juego') return pantallaJuego();
-  const vuelo = seccion.match(/^juego\/(libre|final|preguntas)$/);
+  // 0.14.105: y #juego/motor (el panel del motor para practicar, con el avión estacionado).
+  const vuelo = seccion.match(/^juego\/(libre|final|preguntas|motor)$/);
   if (vuelo) return pantallaVuelo(vuelo[1]);
   // 0.14.100: las mini-clases del juego: la lista, una clase (un vuelo preparado) y las escenas 3D de las clases.
   if (seccion === 'juego/clases') return pantallaMiniclasesJuego();

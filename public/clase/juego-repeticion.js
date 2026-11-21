@@ -184,12 +184,16 @@ export function camaraRepeticion(rep, t, aspecto = 1) {
 
 // Lo que se dibuja: los aviones (más grandes que de verdad, para verlos), los caminos (desde arriba y de costado), la nube
 // y el límite del espacio aéreo. Colores: el propio en azul, el otro en naranja; mal, el tramo peligroso en rojo.
-export function primitivasRepeticion(rep, t, { conPropio = true, conCaminos = true } = {}) {
+// 0.14.105: los dos aviones con sus luces (posición, baliza y estroboscópicas) como en el vuelo, en todas las cámaras;
+// desde la cabina, del propio solo sus luces; desde arriba, las luces más grandes (para ver el rojo y el verde de cada uno).
+export function primitivasRepeticion(rep, t, { conPropio = true, conCaminos = true, toma = null } = {}) {
   const { te, propio: p, otro: o } = estadoRepeticion(rep, t), out = [], e = REPETICION.escalaAvion;
-  if (conPropio) out.push(...primitivasAvion({ pos: [p.x, p.y + 0.0027, p.z], rumbo: p.rumbo, cabeceo: p.cabeceo, alabeo: p.alabeo, escala: e, luces: false, helice: te * (p.rpm / 60) * 1.2 }));
+  const soloLuces = q => q.luzAvion;
+  const grandes = q => (toma === 'arriba' && q.luzAvion ? { ...q, min: (q.min ?? 2) * 2.4 } : q);
+  out.push(...primitivasAvion({ pos: [p.x, p.y + 0.0027, p.z], rumbo: p.rumbo, cabeceo: p.cabeceo, alabeo: p.alabeo, escala: e, luces: true, t: te, helice: te * (p.rpm / 60) * 1.2 }).filter(q => conPropio || soloLuces(q)).map(grandes));
   // (el otro, pintado de naranja para distinguirlo)
   const naranja = c => (Array.isArray(c) ? c.map((v, i) => Math.round(v + ([236, 132, 40][i] - v) * 0.5)) : c);
-  if (o) out.push(...primitivasAvion({ pos: [o.x, o.y + 0.0027, o.z], rumbo: o.rumbo, cabeceo: o.cabeceo, alabeo: o.alabeo, escala: e, luces: false, helice: te * 40 }).map(q => (q.t === 'p' ? { ...q, c: naranja(q.c) } : q)));
+  if (o) out.push(...primitivasAvion({ pos: [o.x, o.y + 0.0027, o.z], rumbo: o.rumbo, cabeceo: o.cabeceo, alabeo: o.alabeo, escala: e, luces: true, t: te + 0.37, helice: te * 40 }).map(q => (q.t === 'p' ? { ...q, c: naranja(q.c) } : grandes(q))));
   if (conCaminos) {
     const camino = (lista, color) => {
       const pts = lista.filter((m, i) => i % 6 === 0 && m.t <= te).map(m => [m.x, m.y + 0.002, m.z]);

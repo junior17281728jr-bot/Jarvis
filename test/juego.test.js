@@ -191,7 +191,7 @@ test('el menú: «Juego» está para el alumno (antes de Ajustes, con y sin oral
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /enlacesMenu\(\{ oral: Boolean\(estado\.oral\?\.hay\), admin: verComoAdmin\(\) \}\)/);
   assert.match(app, /if \(seccion === 'juego'\) return pantallaJuego\(\);/);
-  assert.match(app, /\^juego\\\/\(libre\|final\|preguntas\)\$/);
+  assert.match(app, /\^juego\\\/\(libre\|final\|preguntas\|motor\)\$/);
   assert.match(app, /mando: \[\['path'/, 'el ícono del mando');
   const css = readFileSync(new URL('../public/juego.css', import.meta.url), 'utf8');
   assert.match(css, /\.menu:has\(> a:nth-child\(7\)\) > a\[data-menu="juego"\] \{ display: none; \}/, 'con 7 (el administrador) se esconde en el teléfono');

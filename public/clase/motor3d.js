@@ -307,14 +307,16 @@ export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escal
   }
   const disco = Array.from({ length: 16 }, (_, i) => { const g = (i / 16) * Math.PI * 2; return L([n[0] + 0.02, n[1] + Math.cos(g) * 1.05, Math.sin(g) * 1.05]); });
   out.push({ t: 'p', p: disco, c: [210, 215, 225], a: 0.14, luz: 0, n: base.F, doble: true, grupo: 'avion' });
-  if (luces) {
-    out.push(bola(L(m.luces.izquierda), 0.38 * escala, [255, 40, 40], { tex: 'brillo', min: 2.5, a: 0.95 }));
-    out.push(bola(L(m.luces.derecha), 0.38 * escala, [40, 255, 110], { tex: 'brillo', min: 2.5, a: 0.95 }));
-    out.push(bola(L(m.luces.cola), 0.3 * escala, [255, 255, 255], { tex: 'brillo', min: 2, a: 0.9 }));
-    // Las estroboscópicas (un destello blanco en las puntas) y la baliza roja de la deriva.
-    if (t % 1.3 < 0.08) for (const q of [m.luces.izquierda, m.luces.derecha]) out.push(bola(L(q), 0.9 * escala, [255, 255, 255], { tex: 'brillo', min: 6, a: 1 }));
-    if ((t + 0.5) % 1 < 0.12) out.push(bola(L(m.luces.baliza), 0.5 * escala, [255, 60, 40], { tex: 'brillo', min: 3, a: 1 }));
+  // luces: true (todas) o { nav, baliza, estrobo } (0.14.105: las que tiene encendidas el avión).
+  const lz = luces === true ? { nav: true, baliza: true, estrobo: true } : luces || {};
+  if (lz.nav) {
+    out.push(bola(L(m.luces.izquierda), 0.38 * escala, [255, 40, 40], { tex: 'brillo', min: 2.5, a: 0.95, luzAvion: 'izquierda' }));
+    out.push(bola(L(m.luces.derecha), 0.38 * escala, [40, 255, 110], { tex: 'brillo', min: 2.5, a: 0.95, luzAvion: 'derecha' }));
+    out.push(bola(L(m.luces.cola), 0.3 * escala, [255, 255, 255], { tex: 'brillo', min: 2, a: 0.9, luzAvion: 'cola' }));
   }
+  // Las estroboscópicas (un destello blanco en las puntas) y la baliza roja de la deriva.
+  if (lz.estrobo && t % 1.3 < 0.08) for (const q of [m.luces.izquierda, m.luces.derecha]) out.push(bola(L(q), 0.9 * escala, [255, 255, 255], { tex: 'brillo', min: 6, a: 1, luzAvion: 'estrobo' }));
+  if (lz.baliza && (t + 0.5) % 1 < 0.12) out.push(bola(L(m.luces.baliza), 0.5 * escala, [255, 60, 40], { tex: 'brillo', min: 3, a: 1, luzAvion: 'baliza' }));
   // La sombra en el suelo (un óvalo oscuro): ayuda a ver a qué altura va.
   if (sombra != null) {
     const s = Array.from({ length: 12 }, (_, i) => { const g = (i / 12) * Math.PI * 2; const q = local([pos[0], 0, pos[2]], baseAvion(rumbo, 0, 0), escala, [Math.cos(g) * 4, 0, Math.sin(g) * 5]); return [q[0], sombra + 0.001, q[2]]; });

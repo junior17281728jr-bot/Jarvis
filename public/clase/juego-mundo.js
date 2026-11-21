@@ -38,3 +38,19 @@ export function avionPropio(a, { t = 0, yugo = { alabeo: 0, cabeceo: 0 }, luces 
   });
 }
 export const posicionAvion = a => [a.x, a.ft / VUELO.ftPorUnidad + ALTO_RUEDAS, a.z];
+
+// 0.14.105: la luz de aterrizaje (y la de rodaje, más corta): un brillo en la nariz y, cerca del suelo, el suelo iluminado
+// adelante (un abanico claro que no depende del sol: de noche se ve la pista).
+export function luzAterrizaje(a, { aterrizaje = false, rodaje = false, suelo = 0 } = {}) {
+  if (!aterrizaje && !rodaje) return [];
+  const out = [], h = (a.rumbo * Math.PI) / 180, F = [Math.sin(h), Math.cos(h)], R = [Math.cos(h), -Math.sin(h)];
+  const pos = posicionAvion(a);
+  out.push({ t: 's', p: [pos[0] + F[0] * 0.012, pos[1] - 0.001, pos[2] + F[1] * 0.012], r: 0.0016, c: [255, 246, 220], a: 1, tex: 'brillo', min: 3 });
+  const altura = pos[1] - suelo;
+  const largo = aterrizaje ? 0.9 : 0.12, k = Math.max(0, 1 - altura / 0.6);
+  if (k <= 0) return out;
+  const y = suelo + 0.0006, punto = (d, w) => [pos[0] + F[0] * d + R[0] * w, y, pos[2] + F[1] * d + R[1] * w];
+  const capas = [[0.02, largo, 0.14 * largo, 0.2], [0.02, largo * 0.65, 0.08 * largo, 0.26]];
+  for (const [d0, d1, w, al] of capas) out.push({ t: 'p', p: [punto(d0, -0.004), punto(d1, -w), punto(d1 * 1.05, 0), punto(d1, w), punto(d0, 0.004)], c: [255, 240, 200], a: al * k, luz: 0, n: [0, 1, 0], doble: true });
+  return out;
+}

@@ -30,7 +30,7 @@ export const MINICLASES = Object.freeze([
   { id: 'papi', icono: 'flecha', hora: 'atardecer', inicio: enFinalA(0.6), fov: 22, congelar: true, fuente: LUCES_FAA.papi.fuente,
     pasos: [{ id: 'senda', arriba: 0 }, { id: 'alto', arriba: 70 }, { id: 'bajo', arriba: -50 }, { id: 'vasi', arriba: 0 }] },
   { id: 'noche-aterrizar', icono: 'avion', hora: 'noche', inicio: enFinalA(3), congelar: false, fuente: 'AFH cap. 11',
-    pasos: [{ id: 'luces' }, { id: 'instrumentos' }, { id: 'tocar' }] },
+    pasos: [{ id: 'propias', lucesAterrizaje: true }, { id: 'luces' }, { id: 'instrumentos' }, { id: 'tocar' }] },
   { id: 'cruzado', icono: 'avion', hora: 'dia', inicio: enFinalA(2.5), congelar: false, viento: { desde: 90, kt: 10 }, fuente: 'AFH cap. 9',
     pasos: [{ id: 'deriva' }, { id: 'corregir' }, { id: 'tocar' }] },
   { id: 'perdida', icono: 'atencion', hora: 'dia', inicio: { ...CRUCERO, ft: 3500, kt: 85, potencia: 0.2 }, congelar: false, asistente: false, fuente: 'AFH cap. 5',

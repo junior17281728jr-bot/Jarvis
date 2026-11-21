@@ -99,7 +99,7 @@ function subpaso(a, m, dt, amb, asistente) {
   let efectiva = sinCombustible ? 0 : n.potencia * lim(n.motor, 0, 1);
   let anda = !sinCombustible && n.motor > 0.05;
   if (a.pist) {
-    n.pist = pasoMotor(a.pist, { potencia: n.potencia, ft: a.ft, combustible: n.combustible, dt });
+    n.pist = pasoMotor(a.pist, { potencia: n.potencia, ft: a.ft, combustible: n.combustible, dt, kt: a.kt });
     anda = anda && n.pist.enMarcha;
     efectiva = anda ? efectiva * n.pist.factor : 0;
   }
