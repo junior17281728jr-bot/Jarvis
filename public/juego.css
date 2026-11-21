@@ -46,7 +46,8 @@ body.juego-activo { overflow: hidden; }
 .juego-potencia-caja, .juego-yugo-caja { display: grid; justify-items: center; }
 .juego-potencia { width: 64px; height: 132px; display: grid; place-items: center; touch-action: none; border-radius: 14px; }
 .juego-potencia:focus-visible { outline: 3px solid #ffb020; }
-.juego-potencia-pista { position: relative; width: 26px; height: 120px; border-radius: 13px; background: #1c2433; overflow: visible; }
+/* 0.14.101: la pista deja 13 px arriba y abajo (media manija): en 0 % la manija ya no tapa el «0 %» de abajo. */
+.juego-potencia-pista { position: relative; width: 26px; height: 106px; border-radius: 13px; background: #1c2433; overflow: visible; }
 .juego-potencia-relleno { position: absolute; left: 0; right: 0; bottom: 0; height: 0; border-radius: 13px; background: linear-gradient(#2fbf5b, #1b7f3b); }
 .juego-potencia-manija { position: absolute; left: 50%; bottom: 0; width: 60px; height: 26px; margin-left: -30px; margin-bottom: -13px; border-radius: 9px; background: #111; border: 3px solid #e5e9f0; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 .juego-potencia-valor { font: 700 14px/1 system-ui, sans-serif; margin-top: 4px; }
@@ -177,3 +178,15 @@ body.juego-activo { overflow: hidden; }
 .juego-mandos-medio .juego-boton { min-height: 44px; }
 /* En una mini-clase para mirar (el avión quieto), el panel va abajo, sobre el tablero: la ventana queda libre. */
 .juego-vuelo[data-congelar="1"] .juego-clase { top: auto; bottom: 10px; max-height: 46%; }
+
+/* 0.14.101: el teléfono de lado (poca altura): los mandos van en una columna a la derecha, no abajo. Antes, abajo,
+   se comían más de la mitad de la pantalla y de la cabina solo quedaba una franja (los relojes cortados arriba). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-vuelo { flex-direction: row; }
+  .juego-mandos { width: 330px; box-sizing: border-box; grid-template-columns: 76px minmax(0, 1fr) 128px; align-content: center; gap: 8px;
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) 10px; border-top: 0; border-left: 1px solid #1d2636; }
+  .juego-mandos-medio { display: grid; gap: 8px; }
+  .juego-mandos .juego-boton { padding: 6px 8px; font-size: 14px; }
+  .juego-yugo { width: 128px; height: 128px; }
+  .juego-vuelo[data-modo="preguntas"] .juego-mandos { width: 170px; }
+}

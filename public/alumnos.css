@@ -120,6 +120,8 @@ label.foto-elegir:focus-visible { outline: 2px solid var(--acento); outline-offs
 .ficha-nota.grande { font-size: 30px; min-width: 96px; padding: 10px 8px; }
 .ficha-nota.tono-bien, td.tono-bien { background: var(--verde-suave); color: var(--verde-texto); }
 .ficha-nota.tono-info, td.tono-info { background: color-mix(in srgb, var(--azul) 16%, var(--tarjeta)); color: var(--azul-borde); }
+/* 0.14.101: en oscuro, el azul oscuro casi no se leía sobre la tarjeta oscura (2.9:1). */
+:root[data-tema="oscuro"] :is(.ficha-nota.tono-info, td.tono-info) { color: #9bd1ff; }
 .ficha-nota.tono-mal, td.tono-mal { background: var(--rojo-suave); color: var(--rojo-texto); }
 .ficha-filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
 .ficha-filtro { min-height: 40px; padding: 6px 14px; border-radius: 99px; border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); font-weight: 700; cursor: pointer; }
@@ -275,6 +277,17 @@ label.foto-elegir:focus-visible { outline: 2px solid var(--acento); outline-offs
 .reporte-fechas { display: flex; flex-wrap: wrap; gap: 10px 16px; }
 .reporte-fechas label { display: grid; gap: 4px; font-weight: 700; }
 .reporte-hoja { background: #ffffff; color: #0f172a; border-radius: 18px; padding: 20px 18px; margin-top: 14px; box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08); }
+/* 0.14.101: la hoja es de papel (blanca) también en el tema oscuro: adentro, los colores del tema claro (antes, en
+   oscuro, el texto suave, las fichas y los bordes salían con los del oscuro: gris claro sobre blanco). */
+.reporte-hoja {
+  color-scheme: light;
+  --fondo: #f3f5fa; --tarjeta: #ffffff; --campo: #ffffff; --texto: #0f172a; --suave: #475569; --borde: #d9dfea;
+  --acento: #1f4fd1; --acento-texto: #ffffff; --acento-suave: #e8eefc; --apagado-fondo: #e2e8f0; --apagado-texto: #475569;
+  --bien: #166534; --mal: #b91c1c; --atencion: #8a4b00; --info: #1d4ed8; --aviso-fondo: #fef3c7; --aviso-texto: #78350f;
+  --verde-suave: #dff5cc; --verde-texto: #2f6b00; --rojo-suave: #fde2e2; --rojo-texto: #a11414; --casi-suave: #ffefd9;
+  --casi-texto: #7a3d00; --casi-borde: #e08a2c; --gris-nodo: #e3e7ee; --gris-nodo-borde: #b8c0cc; --gris-nodo-texto: #7a8596;
+  --linea: #e1e6ef; --hoja-bien: #d7ffb8; --hoja-mal: #ffdfe0;
+}
 .reporte-cabeza { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; border-bottom: 3px solid #1c8fe0; padding-bottom: 10px; }
 .reporte-cabeza h1 { margin: 0; font: 800 26px var(--letra-redonda); }
 .reporte-app { margin: 0; font-weight: 800; color: #1c8fe0; text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; }

@@ -749,7 +749,9 @@ a.grupo-admin:focus-visible { outline: 2px solid var(--acento); outline-offset: 
 @media (min-width: 760px) {
   .grupos-admin { gap: 10px; margin-top: 14px; }
   a.grupo-admin { flex-direction: row; min-height: 52px; font-size: 15px; gap: 8px; padding: 8px 12px; }
-  .grupo-pendiente { position: static; font-size: 11px; }
+  /* 0.14.101: el número va arriba a la derecha, como en el teléfono: al lado del nombre partía «Mensajes» en «Mensaje/s»
+     (y el número salía cortado: «3.») en la PC de 1280 px. */
+  .grupo-pendiente { font-size: 11px; right: -4px; }
   .rejilla.admin-una { max-width: 760px; }
 }
 

@@ -375,6 +375,13 @@ body.modo-estudio #app { max-width: 760px; }
   background: var(--fondo); border-top: 2px solid var(--linea);
 }
 .estudio-botones { max-width: 728px; margin: 0 auto; display: flex; gap: 10px; }
+/* 0.14.101: el teléfono de lado (poca altura): la barra de arriba y la de abajo más bajitas, para que la pregunta
+   tenga lugar (antes, entre las dos, quedaban unos 130 px para leer). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .estudio-arriba { padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 4px; }
+  .estudio-pie { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  .estudio-pie .boton-3d.grande { min-height: 44px; font-size: 15px; }
+}
 .estudio-botones .boton-3d.grande { flex: 1 1 auto; width: auto; }
 .estudio-botones .volver-icono, .volver-icono { transform: rotate(180deg); }
 .estudio-botones.apilados { flex-direction: column; }
@@ -1198,7 +1205,7 @@ body.modo-estudio:has(.video-materia.reproduciendo) { padding-bottom: env(safe-a
 .carrera-icono .icono { width: 19px; height: 19px; transform: rotate(90deg); }
 .carrera-alias { max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; line-height: 1.2; }
 .carrera-avion.fila-b .carrera-alias { margin-top: 18px; }
-.carrera-mas { position: absolute; top: -7px; right: -12px; padding: 1px 5px; border-radius: 99px; background: var(--naranja); color: #fff; font-size: 11px; font-weight: 800; line-height: 1.3; }
+.carrera-mas { position: absolute; top: -7px; right: -12px; padding: 1px 5px; border-radius: 99px; background: var(--naranja); color: var(--naranja-texto, #2a1400); font-size: 11px; font-weight: 800; line-height: 1.3; }
 .carrera-mas[hidden] { display: none; }
 .carrera-avion.yo { top: 16px; z-index: 2; }
 .carrera-avion.yo .carrera-icono { width: 40px; height: 40px; background: var(--acento); color: #fff; border-color: #fff;
@@ -1631,7 +1638,7 @@ a.biblio-resultado mark { background: color-mix(in srgb, var(--naranja, #f59e0b)
 .opinion-barra { display: grid; gap: 10px; }
 .opinion-pregunta { margin: 0; font-weight: 800; }
 .opinion-votos { display: flex; flex-wrap: wrap; gap: 8px; }
-.opinion-voto { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 2px solid var(--borde); background: var(--superficie, #fff); color: inherit; font-weight: 700; cursor: pointer; }
+.opinion-voto { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 2px solid var(--borde); background: var(--tarjeta); color: inherit; font-weight: 700; cursor: pointer; }
 .opinion-voto[aria-pressed="true"] { border-color: var(--acento); background: var(--acento-suave, rgba(28, 143, 224, 0.12)); }
 .opinion-emoji { font-size: 1.15em; }
 .opinion-extra[hidden] { display: none; }
