@@ -5355,12 +5355,25 @@ async function pantallaJuego() {
   if (!vigente()) return;
   vista.pantallaJuego({ el, t, icono, mostrar, marco });
 }
-async function pantallaVuelo(modo) {
+async function pantallaVuelo(modo, clase = null) {
   const vigente = nuevoTurno();
   const vista = await import('./juego-vista.js');
   if (!vigente()) return;
+  if (clase && !vista.MINICLASES.some(m => m.id === clase && !m.escena)) { location.hash = '#juego/clases'; return; }
   // 0.14.99: con api (las preguntas por la práctica de siempre) y talCual (el texto de las preguntas tal cual).
-  vista.montarVuelo({ el, t, icono, mostrar, api, talCual, oral: estado.oral?.hay === true }, { modo });
+  vista.montarVuelo({ el, t, icono, mostrar, api, talCual, oral: estado.oral?.hay === true }, { modo, clase });
+}
+async function pantallaMiniclasesJuego() {
+  const vigente = nuevoTurno();
+  const vista = await import('./juego-vista.js');
+  if (!vigente()) return;
+  vista.pantallaMiniclases({ el, t, icono, mostrar, marco });
+}
+async function pantallaEscenaDelJuego(id) {
+  const vigente = nuevoTurno();
+  const vista = await import('./juego-vista.js');
+  if (!vigente()) return;
+  vista.pantallaEscenaJuego({ el, t, icono, mostrar, marco }, id);
 }
 async function pantallaRepasoFinal() {
   const vigente = nuevoTurno();
@@ -6937,6 +6950,12 @@ async function dibujar() {
   if (seccion === 'juego') return pantallaJuego();
   const vuelo = seccion.match(/^juego\/(libre|final|preguntas)$/);
   if (vuelo) return pantallaVuelo(vuelo[1]);
+  // 0.14.100: las mini-clases del juego: la lista, una clase (un vuelo preparado) y las escenas 3D de las clases.
+  if (seccion === 'juego/clases') return pantallaMiniclasesJuego();
+  const claseJuego = seccion.match(/^juego\/clase\/([a-z0-9-]+)$/);
+  if (claseJuego) return pantallaVuelo('clase', claseJuego[1]);
+  const escenaJuego = seccion.match(/^juego\/escena\/(espacio-aereo|minimos-vfr|frentes)$/);
+  if (escenaJuego) return pantallaEscenaDelJuego(escenaJuego[1]);
   if (seccion === 'repaso') return pantallaRepasoFinal();
   const rondaFinal = seccion.match(/^repaso\/test-guide\/(\d+)$/);
   if (rondaFinal) return pantallaRondaFinal(rondaFinal[1]);

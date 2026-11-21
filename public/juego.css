@@ -143,3 +143,37 @@ body.juego-activo { overflow: hidden; }
 .juego-aviso .opciones-revisadas { gap: 4px; }
 .juego-aviso .op-rev { padding: 6px 8px; font-size: 14.5px; }
 @media (min-width: 760px) { .juego-aviso { right: 140px; } }
+
+/* 0.14.100: la mini-clase (su panel arriba, sobre la ventana; se puede ocultar para volar) y el botón de la hora. */
+.juego-clase { position: absolute; z-index: 4; top: calc(max(8px, env(safe-area-inset-top)) + 54px); left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right));
+  margin: 0 auto; max-width: 560px; max-height: calc(58% - 62px); overflow: auto; box-sizing: border-box; padding: 10px 12px; border-radius: 16px;
+  background: var(--tarjeta); color: var(--texto); border: 1px solid var(--borde); border-left: 6px solid #ffb020; box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+.juego-vuelo[data-vista="afuera"] .juego-clase { max-height: calc(100% - 140px); }
+.juego-clase[hidden] { display: none; }
+.juego-clase-cabeza { display: flex; align-items: center; gap: 8px; }
+.juego-clase-cabeza h2 { margin: 0; font-size: 17px; flex: 1; min-width: 0; }
+.juego-clase-paso { color: var(--suave); font-size: 13px; white-space: nowrap; }
+.juego-clase-ocultar { min-height: 36px; min-width: 36px; padding: 4px 10px; font-size: 13px; background: transparent; color: var(--texto); border-color: var(--borde); }
+.juego-clase p { margin: 6px 0; line-height: 1.35; }
+.juego-clase-clave { padding: 6px 8px; border-radius: 10px; background: rgba(255,176,32,0.14); }
+.juego-clase-que { font-weight: 700; }
+.juego-clase-opciones { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.juego-clase-opciones .juego-opcion-respuesta { min-height: 44px; font-size: 15px; padding: 8px 10px; }
+.juego-clase-resultado { font-weight: 750; }
+.juego-clase-resultado.bien { color: #1b8a44; } .juego-clase-resultado.mal { color: #c62f26; }
+:root[data-tema="oscuro"] .juego-clase-resultado.bien { color: #4fd17a; } :root[data-tema="oscuro"] .juego-clase-resultado.mal { color: #ff8278; }
+.juego-clase-vivo { font: 650 14px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.juego-clase-vivo:empty { display: none; }
+.juego-clase-fuente { color: var(--suave); font-size: 13px; }
+.juego-clase-ajustes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.juego-clase-ajustes .juego-boton { min-height: 40px; font-size: 14px; background: transparent; color: var(--texto); border-color: var(--borde); }
+.juego-clase-ajustes .juego-boton[aria-pressed="true"] { background: #1f4fd1; color: #fff; border-color: #1f4fd1; }
+.juego-clase-nav { display: flex; gap: 8px; justify-content: space-between; margin-top: 8px; }
+.juego-clase-nav[hidden] { display: none; }
+.juego-vuelo[data-modo="clase"] .juego-chip { display: none; }
+.juego-escena { margin-top: 10px; }
+@media (max-width: 420px) { .juego-hora { font-size: 13px; padding: 6px 8px; } }
+.juego-vuelo[data-tactil="1"] .juego-barra .juego-hora { display: none; }
+.juego-mandos-medio .juego-boton { min-height: 44px; }
+/* En una mini-clase para mirar (el avión quieto), el panel va abajo, sobre el tablero: la ventana queda libre. */
+.juego-vuelo[data-congelar="1"] .juego-clase { top: auto; bottom: 10px; max-height: 46%; }
