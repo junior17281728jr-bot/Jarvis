@@ -98,3 +98,48 @@ body.juego-activo { overflow: hidden; }
 .juego-mini-manija { position: absolute; left: 50%; bottom: 60%; width: 38px; height: 16px; margin: 0 0 -8px -19px; border-radius: 6px; background: #111; border: 2px solid #e5e9f0; }
 .juego-mini-yugo { position: relative; width: 74px; height: 74px; border-radius: 50%; background: #1f2838; border: 2px solid #3a465b; }
 .juego-mini-perilla { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: #e0901a; }
+
+/* 0.14.99: las preguntas en el vuelo. El marcador (vidas y puntos) junto a «salir»; la oferta («¿la tomas?») y el aviso
+   (la respuesta, la falla, la radio) abajo de la escena; la pregunta en el centro (el vuelo se detiene mientras tanto). */
+.juego-barra-izq { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.juego-marcador { margin: 0; padding: 8px 10px; border-radius: 12px; background: rgba(8,14,26,0.78); font: 700 14px/1.2 system-ui, -apple-system, sans-serif; white-space: nowrap; }
+.juego-marcador:empty { display: none; }
+.juego-oferta, .juego-aviso { position: absolute; z-index: 4; left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); bottom: 10px;
+  margin: 0 auto; max-width: 560px; max-height: 58%; overflow: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px;
+  background: var(--tarjeta); color: var(--texto); border: 1px solid var(--borde); border-left: 6px solid var(--acento); box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+.juego-oferta[hidden], .juego-aviso[hidden] { display: none; }
+.juego-oferta-titulo, .juego-aviso-titulo { margin: 0 0 4px; font-size: 18px; }
+.juego-oferta p, .juego-aviso p { margin: 4px 0; line-height: 1.35; }
+.juego-oferta-pregunta { font-weight: 650; }
+.juego-oferta-botones, .juego-aviso-botones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.juego-oferta-botones > * { flex: 1 1 140px; min-height: 48px; }
+.juego-aviso[data-tono="bien"] { border-left-color: #2fbf5b; }
+.juego-aviso[data-tono="mal"] { border-left-color: #e5483e; }
+.juego-aviso[data-tono="bien"] .juego-aviso-titulo { color: #1b8a44; }
+.juego-aviso[data-tono="mal"] .juego-aviso-titulo { color: #c62f26; }
+:root[data-tema="oscuro"] .juego-aviso[data-tono="bien"] .juego-aviso-titulo { color: #4fd17a; }
+:root[data-tema="oscuro"] .juego-aviso[data-tono="mal"] .juego-aviso-titulo { color: #ff8278; }
+.juego-aviso-cerrar { margin-left: auto; background: transparent; color: var(--texto); border-color: var(--borde); }
+.juego-radio { font: 650 15px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 6px 8px; border-radius: 8px; background: rgba(31,79,209,0.12); }
+.juego-revisadas { margin: 6px 0; }
+.juego-pregunta { display: grid; gap: 10px; }
+.juego-q-quien { margin: 0; font-weight: 700; color: var(--suave); }
+.juego-q-enunciado { margin: 0; font-size: 18px; line-height: 1.4; font-weight: 600; }
+.juego-q-opciones { display: grid; gap: 8px; }
+.juego-opcion-respuesta { display: flex; align-items: flex-start; gap: 10px; min-height: 52px; padding: 10px 12px; text-align: left; border-radius: 14px;
+  border: 2px solid var(--borde); background: var(--tarjeta); color: var(--texto); font: 500 16px/1.35 system-ui, -apple-system, sans-serif; cursor: pointer; }
+.juego-opcion-respuesta:hover:not(:disabled), .juego-opcion-respuesta:focus-visible { border-color: var(--acento); }
+.juego-opcion-respuesta[aria-pressed="true"] { border-color: var(--acento); background: var(--acento-suave, rgba(31,79,209,0.1)); }
+.juego-opcion-respuesta .opcion-letra { flex: none; }
+/* En el vuelo con preguntas vuela el piloto automático: sin yugo, palanca, flaps ni Asistente. */
+.juego-vuelo[data-modo="preguntas"] :is(.juego-potencia-caja, .juego-yugo-caja, .juego-flaps, .juego-flaps2, .juego-asistente) { display: none; }
+.juego-vuelo[data-modo="preguntas"] .juego-mandos { grid-template-columns: 1fr; }
+@media (max-width: 420px) { .juego-marcador { font-size: 12.5px; padding: 6px 8px; } .juego-q-enunciado { font-size: 16.5px; } }
+/* El aviso va ARRIBA (sobre la ventana), no sobre el tablero: así se ven los relojes del motor y las agujas mientras se
+   lee. Mientras está, el consejo de arriba se esconde. Las opciones revisadas, más compactas. */
+.juego-aviso { top: calc(max(8px, env(safe-area-inset-top)) + 54px); bottom: auto; max-height: calc(58% - 62px); }
+.juego-vuelo[data-vista="afuera"] .juego-aviso { max-height: calc(100% - 140px); }
+.juego-escenario:has(.juego-aviso:not([hidden])) .juego-chip { display: none; }
+.juego-aviso .opciones-revisadas { gap: 4px; }
+.juego-aviso .op-rev { padding: 6px 8px; font-size: 14.5px; }
+@media (min-width: 760px) { .juego-aviso { right: 140px; } }

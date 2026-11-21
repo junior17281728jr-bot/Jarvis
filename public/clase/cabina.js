@@ -147,12 +147,15 @@ function texto(ctx, s, x, y, px, color, peso = 700) {
 function numeroEn(ctx, x, y, r, ang, s, px, C) {
   texto(ctx, s, x + Math.sin(rad(ang)) * r, y - Math.cos(rad(ang)) * r, px, C.texto);
 }
-function aguja(ctx, x, y, r, ang, largo, ancho, color, cola = 0.18) {
+// (la cola, cortita y oscura: que nunca se lea como la punta)
+function aguja(ctx, x, y, r, ang, largo, ancho, color, cola = 0.12) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(rad(ang));
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.beginPath(); ctx.moveTo(-ancho / 2 + 1, r * cola + 1); ctx.lineTo(1, -r * largo + 1); ctx.lineTo(ancho / 2 + 1, r * cola + 1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#3a3f48';
+  ctx.beginPath(); ctx.moveTo(-ancho / 2, r * cola); ctx.lineTo(ancho / 2, r * cola); ctx.lineTo(ancho / 2, 0); ctx.lineTo(-ancho / 2, 0); ctx.closePath(); ctx.fill();
   ctx.fillStyle = color;
-  ctx.beginPath(); ctx.moveTo(-ancho / 2, r * cola); ctx.lineTo(-ancho * 0.18, -r * largo * 0.92); ctx.lineTo(0, -r * largo); ctx.lineTo(ancho * 0.18, -r * largo * 0.92); ctx.lineTo(ancho / 2, r * cola); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-ancho / 2, 0); ctx.lineTo(-ancho * 0.18, -r * largo * 0.92); ctx.lineTo(0, -r * largo); ctx.lineTo(ancho * 0.18, -r * largo * 0.92); ctx.lineTo(ancho / 2, 0); ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 const eje = (ctx, x, y, r) => { ctx.fillStyle = '#3a3f48'; ctx.beginPath(); ctx.arc(x, y, r * 0.08, 0, Math.PI * 2); ctx.fill(); };

@@ -46,7 +46,7 @@ test('modelo: con toda la potencia sube y en ralentí baja; viraje por alabeo y 
   assert.ok(sube.ft > 3100 && sube.vs > 200, `sube (${Math.round(sube.ft)} ft, ${Math.round(sube.vs)} ft/min)`);
   const baja = volar(enCrucero({ kt: 75 }), { potencia: 0 }, 20, { asistente: true });
   assert.ok(baja.ft < 2900 && baja.vs < -200, `baja (${Math.round(baja.ft)} ft, ${Math.round(baja.vs)} ft/min)`);
-  assert.equal(vsAsistente(0.55), 0); cerca(vsAsistente(0), -652.5, 1e-9, 'sin potencia baja'); cerca(vsAsistente(1), 720, 1e-9, 'a toda potencia sube'); assert.ok(vsAsistente(0.35) < 0 && vsAsistente(0.35) > -700);
+  assert.equal(vsAsistente(0.55), 0); cerca(vsAsistente(0), -640, 1e-9, 'sin potencia baja'); cerca(vsAsistente(1), 740, 1e-9, 'a toda potencia sube'); assert.equal(vsAsistente(0.75), 0, 'crucero nivelado'); assert.ok(vsAsistente(0.35) < 0 && vsAsistente(0.35) > -700);
   // Alabeo a la derecha → el rumbo sube (vira a la derecha); a la izquierda, baja. Viraje estándar: 3°/s.
   const der = volar(enCrucero({ alabeo: 20 }), { potencia: 0.65 }, 5);
   const izq = volar(enCrucero({ rumbo: 90, alabeo: -20 }), { potencia: 0.65 }, 5);
@@ -151,14 +151,14 @@ test('los mandos del teclado: el yugo va y vuelve al centro; la potencia sube y 
 
 // Un lienzo de mentira: guarda los números y los textos (para ver que no haya NaN y que se escriba lo que se debe).
 function contexto() {
-  const llamadas = { numeros: [], texto: [] };
+  const llamadas = { numeros: [], texto: [], ops: [] };
   const ctx = {
     globalAlpha: 1, fillStyle: '', strokeStyle: '', lineWidth: 1, font: '', textAlign: '', textBaseline: '', lineCap: '',
     createLinearGradient: (...a) => { llamadas.numeros.push(...a); return { addColorStop() {} }; },
     createRadialGradient: (...a) => { llamadas.numeros.push(...a); return { addColorStop() {} }; },
-    fillText: (s, ...a) => { llamadas.texto.push(String(s)); llamadas.numeros.push(...a); },
+    fillText: (s, ...a) => { llamadas.texto.push(String(s)); llamadas.numeros.push(...a); llamadas.ops.push(['fillText', String(s), ...a]); },
   };
-  return { llamadas, ctx: new Proxy(ctx, { get(o, k) { if (k in o) return o[k]; return (...a) => { for (const x of a) if (typeof x === 'number') llamadas.numeros.push(x); }; }, set(o, k, v) { o[k] = v; return true; } }) };
+  return { llamadas, ctx: new Proxy(ctx, { get(o, k) { if (k in o) return o[k]; return (...a) => { llamadas.ops.push([k, ...a]); for (const x of a) if (typeof x === 'number') llamadas.numeros.push(x); }; }, set(o, k, v) { o[k] = v; return true; } }) };
 }
 
 test('la cabina: completa (Juego) y la de las clases, sin NaN, con sus números y la aguja en su lugar', () => {
@@ -191,7 +191,7 @@ test('el menú: «Juego» está para el alumno (antes de Ajustes, con y sin oral
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   assert.match(app, /enlacesMenu\(\{ oral: Boolean\(estado\.oral\?\.hay\), admin: verComoAdmin\(\) \}\)/);
   assert.match(app, /if \(seccion === 'juego'\) return pantallaJuego\(\);/);
-  assert.match(app, /\^juego\\\/\(libre\|final\)\$/);
+  assert.match(app, /\^juego\\\/\(libre\|final\|preguntas\)\$/);
   assert.match(app, /mando: \[\['path'/, 'el ícono del mando');
   const css = readFileSync(new URL('../public/juego.css', import.meta.url), 'utf8');
   assert.match(css, /\.menu:has\(> a:nth-child\(7\)\) > a\[data-menu="juego"\] \{ display: none; \}/, 'con 7 (el administrador) se esconde en el teléfono');
@@ -224,4 +224,46 @@ test('el mini-mapa del juego es el de las consecuencias 3D: abarca la pista y su
   assert.ok(vNorte < vSur, 'el norte queda arriba');
   // Sin zonas propias, las situaciones siguen igual (mismos límites que antes).
   assert.deepEqual(limitesMapa({ id: 'nada', intro: { vuelo: { ruta: [[0, 0, 0], [2, 0, 3]] } }, opciones: [] }), { x0: 0, x1: 2, z0: 0, z1: 3 });
+});
+
+test('el anemómetro: la aguja apunta a la velocidad del modelo, entre los números que tocan (nunca hacia 140–160 en una subida)', () => {
+  for (const kt of [55, 77, 92, 105, 120]) {
+    const { ctx, llamadas } = contexto();
+    dibujarCabina(ctx, 390, 470, lecturas({ ...enCrucero(), kt }), { escala: 2, completo: true });
+    // El primer «rotate» después de trasladarse al centro del anemómetro es su aguja: el mismo ángulo que la escala.
+    const giros = llamadas.ops.filter(o => o[0] === 'rotate').map(o => o[1]);
+    cerca(giros[0], (agujaAnemometro(kt) * Math.PI) / 180, 1e-9, `aguja a ${kt} kt`);
+    // Los números de la escala están en el ángulo de su velocidad (alrededor del mismo centro).
+    const numeros = llamadas.ops.filter(o => o[0] === 'fillText' && ['40', '60', '80', '100', '120', '140', '160', '180'].includes(o[1])).slice(0, 8);
+    const [cx, cy] = centro(...['60', '120', '180'].map(n => numeros.find(o => o[1] === n)));
+    const ang = o => (Math.atan2(o[2] - cx, -(o[3] - cy)) * 180) / Math.PI;
+    for (const o of numeros) cerca(((ang(o) % 360) + 360) % 360, agujaAnemometro(Number(o[1])) % 360, 1.5, `el ${o[1]} está en su ángulo`);
+  }
+  // 92 kt cae entre el 80 y el 100; 77 entre el 60 y el 80.
+  assert.ok(agujaAnemometro(92) > agujaAnemometro(80) && agujaAnemometro(92) < agujaAnemometro(100));
+  assert.ok(agujaAnemometro(77) > agujaAnemometro(60) && agujaAnemometro(77) < agujaAnemometro(80));
+});
+// El centro del círculo que pasa por tres números de la escala.
+function centro(p, q, r) {
+  const [ax, ay, bx, by, cx, cy] = [p[2], p[3], q[2], q[3], r[2], r[3]];
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  return [((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d,
+    ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d];
+}
+
+test('el modelo vuela como una avioneta de entrenamiento: sube cerca de Vy, crucero de unos 105 kt, y nunca pasa de Vne nivelado', () => {
+  // A toda potencia con el Asistente (yugo suelto): sube a unos 740 ft/min cerca de Vy (74–79 kt).
+  let a = crearAvion({ ft: 2000, kt: 90, enSuelo: false, potencia: 1 });
+  a = volar(a, { potencia: 1 }, 120, { asistente: true });
+  assert.ok(a.kt >= 74 && a.kt <= 81, `sube a ${a.kt.toFixed(1)} kt`);
+  assert.ok(a.vs > 600 && a.vs < 900, `a ${Math.round(a.vs)} ft/min`);
+  // Crucero con 75 %: nivelado a 100–115 kt.
+  let c = volar(crearAvion({ ft: 3000, kt: 100, enSuelo: false, potencia: 0.75 }), { potencia: 0.75 }, 240, { asistente: true });
+  assert.ok(c.kt >= 100 && c.kt <= 115 && Math.abs(c.vs) < 60, `crucero ${c.kt.toFixed(1)} kt, ${Math.round(c.vs)} ft/min`);
+  // Sin Asistente, compensado a 100 kt y con toda la potencia: sube (la velocidad se queda cerca de la compensada).
+  let d = volar(crearAvion({ ft: 3000, kt: 100, enSuelo: false, potencia: 1 }), { potencia: 1 }, 120);
+  assert.ok(d.ft > 3300 && d.kt < 115, `sin Asistente sube (${Math.round(d.ft)} ft, ${d.kt.toFixed(1)} kt)`);
+  // A toda potencia, nivelado, no llega a Vne (160 kt).
+  const L = lecturas(c);
+  assert.ok(L.agujas.kt < agujaAnemometro(160));
 });

@@ -5359,7 +5359,8 @@ async function pantallaVuelo(modo) {
   const vigente = nuevoTurno();
   const vista = await import('./juego-vista.js');
   if (!vigente()) return;
-  vista.montarVuelo({ el, t, icono, mostrar }, { modo });
+  // 0.14.99: con api (las preguntas por la práctica de siempre) y talCual (el texto de las preguntas tal cual).
+  vista.montarVuelo({ el, t, icono, mostrar, api, talCual, oral: estado.oral?.hay === true }, { modo });
 }
 async function pantallaRepasoFinal() {
   const vigente = nuevoTurno();
@@ -6932,8 +6933,9 @@ async function dibujar() {
   // 0.13.7: «Repaso final» (public/repaso-final-vista.js, solo se carga ahí): #repaso, #repaso/test-guide/<intento>,
   // #repaso/oral y #repaso/oral/<capítulo>.
   // 0.14.98: el Juego de vuelo (public/juego-vista.js, solo se carga ahí): #juego, #juego/libre y #juego/final.
+  // 0.14.99: y #juego/preguntas (el vuelo con preguntas).
   if (seccion === 'juego') return pantallaJuego();
-  const vuelo = seccion.match(/^juego\/(libre|final)$/);
+  const vuelo = seccion.match(/^juego\/(libre|final|preguntas)$/);
   if (vuelo) return pantallaVuelo(vuelo[1]);
   if (seccion === 'repaso') return pantallaRepasoFinal();
   const rondaFinal = seccion.match(/^repaso\/test-guide\/(\d+)$/);

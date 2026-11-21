@@ -44,6 +44,13 @@ export function sustentacion(alfa, flaps = 0) {
   return cmax * lim(1 - (alfa - VUELO.alfaPerdida) * 0.06, 0.55, 1);
 }
 
+// El ángulo de ataque que sostiene el vuelo nivelado a una velocidad (para la compensación).
+export function alfaNivel(kt, flaps = 0) {
+  const a0 = 2 + flaps * 3, cmax = flaps ? (VUELO.perdidaKt / VUELO.perdidaFlapsKt) ** 2 : 1;
+  const cl = Math.min(cmax * 0.95, (VUELO.perdidaKt / Math.max(kt, VUELO.perdidaKt)) ** 2);
+  return (cl / cmax) * (VUELO.alfaPerdida + a0) - a0;
+}
+
 // Un avión nuevo: en la cabecera de la 36 (en el suelo) o en el aire.
 export function crearAvion({ x = 0, z = -1.85, ft = 0, rumbo = 360, kt = 0, potencia = 0, enSuelo = true, flaps = 0 } = {}) {
   return {
@@ -95,6 +102,12 @@ function subpaso(a, m, dt, amb, asistente) {
     if (asistente && Math.abs(pideAlabeo) < 0.08) tasaAlabeo = lim(-a.alabeo * 1.2, -20, 20); // vuelve a nivelar
     n.alabeo = lim(a.alabeo + tasaAlabeo * dt, -maxAlabeo, maxAlabeo);
     let tasaCabeceo = pideCabeceo * 14;
+    // La estabilidad del avión (como uno compensado): con el yugo suelto vuelve al ángulo de ataque de la velocidad a la
+    // que se compensó (la nariz baja si va lento y sube si va rápido); con el yugo movido, la compensación lo sigue despacio.
+    const trim = a.trim ?? alfaNivel(a.kt, flaps);
+    n.trim = trim;
+    if (Math.abs(pideCabeceo) < 0.08) tasaCabeceo += lim((trim - alfa) * 1.5, -6, 6) - (a.dgamma ?? 0) * 0.6;
+    else n.trim = trim + lim(alfa - trim, -1, 1) * dt;
     if (asistente) {
       // Compensador automático: con el mando suelto, busca vuelo nivelado (vs → 0); y nunca deja pasar de 12° de ataque.
       // (un control suave: lleva la trayectoria a la que pide la potencia, frenando el cambio para no oscilar)
@@ -110,7 +123,7 @@ function subpaso(a, m, dt, amb, asistente) {
     alfa = n.cabeceo - a.gamma;
   }
   // ---- velocidad ----
-  const empuje = 5 * efectiva * (1 - a.kt / 190);
+  const empuje = 4.5 * efectiva * (1 - a.kt / 230);
   const resistencia = 0.000163 * a.kt * a.kt + flaps * 0.0002 * a.kt * a.kt + Math.max(0, alfa) ** 2 * 0.012 + (n.enSuelo ? 0.8 + (n.potencia < 0.05 && a.kt < 70 ? 4 : 0) : 0);
   let kt = a.kt + (empuje - resistencia - G_KTS * Math.sin(a.gamma)) * dt;
   kt = Math.max(0, kt);
@@ -160,9 +173,10 @@ function subpaso(a, m, dt, amb, asistente) {
   return n;
 }
 
-// El Asistente: con el mando suelto, la potencia manda la subida o la bajada (como compensar el avión): de 45 % a 60 %,
-// nivelado; con más, sube (unos 700 ft/min a toda potencia); con menos, baja despacio (unos 650 ft/min sin potencia).
-export const vsAsistente = p => (p >= 0.6 ? (Math.min(p, 1) - 0.6) * 1800 : p <= 0.45 ? (Math.max(p, 0) - 0.45) * 1450 : 0);
+// El Asistente: con el mando suelto, la potencia manda la subida o la bajada (como compensar el avión): de 40 % a 85 %,
+// nivelado (crucero: unos 105 kt con 75 %); a toda potencia sube a unos 740 ft/min (cerca de Vy: unos 77 kt); con menos
+// de 40 %, baja despacio (unos 320 ft/min con 20 %, una senda de 3° en final; 640 ft/min sin potencia).
+export const vsAsistente = p => (p >= 0.85 ? ((Math.min(p, 1) - 0.85) / 0.15) * 740 : p <= 0.4 ? (Math.max(p, 0) - 0.4) * 1600 : 0);
 
 // Lo que conviene hacer ahora (la clave del consejo que se muestra arriba). Solo lee el estado.
 export function consejo(a, { vuelo = false } = {}) {
