@@ -25,6 +25,8 @@ export function limitesMapa(sit, zonas = null) {
     else if (z.tipo === 'aeropuerto') pts.push([z.c[0], z.c[1] - z.largo / 2], [z.c[0], z.c[1] + z.largo / 2]);
     else if (z.tipo === 'antena') pts.push(z.c);
     else if (z.tipo === 'arboles') pts.push([z.x0, z.z], [z.x1, z.z]);
+    else if (z.tipo === 'linea') pts.push(...z.puntos);
+    else if (z.tipo === 'texto' || z.tipo === 'td') pts.push(z.c);
   }
   for (const v of [sit.intro.vuelo, ...sit.opciones.map(o => o.vuelo)]) for (const p of v.ruta) pts.push([p[0], p[2]]);
   const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
@@ -87,6 +89,18 @@ export function montarMinimapa(padre, sit, { T, numero = n => String(n), zonas =
     } else if (z.tipo === 'arboles') {
       const [u0, v] = a(z.x0, z.z), [u1] = a(z.x1, z.z);
       svg('line', { x1: f1(u0), y1: f1(v), x2: f1(u1), y2: f1(v), class: 'clase-sit-mapa-arboles' }, s);
+    } else if (z.tipo === 'linea') {
+      // 0.14.102: una línea (la de la aproximación: discontinua).
+      svg('path', { d: camino(z.puntos, a), class: `clase-sit-mapa-linea ${z.clase ?? ''}`.trim() }, s);
+    } else if (z.tipo === 'td') {
+      // 0.14.102: el punto donde tocar (TD): una raya cruzada sobre la pista y su rótulo.
+      const h = (z.rumbo * Math.PI) / 180, w = 0.35, [u, v] = a(z.c[0], z.c[1]);
+      const [u0, v0] = a(z.c[0] - Math.cos(h) * w, z.c[1] + Math.sin(h) * w), [u1, v1] = a(z.c[0] + Math.cos(h) * w, z.c[1] - Math.sin(h) * w);
+      svg('line', { x1: f1(u0), y1: f1(v0), x2: f1(u1), y2: f1(v1), class: 'clase-sit-mapa-td' }, s);
+      svg('text', { x: f1(u + 7), y: f1(v + 4), class: 'clase-sit-mapa-texto clase-sit-mapa-td-texto' }, s, 'TD');
+    } else if (z.tipo === 'texto') {
+      const [u, v] = a(z.c[0], z.c[1]);
+      svg('text', { x: f1(u), y: f1(v), 'text-anchor': 'middle', class: `clase-sit-mapa-texto ${z.clase ?? ''}`.trim() }, s, z.texto);
     }
   }
   // La ruta: la introducción (hasta la decisión) y la de la opción, que se cambia con poner().
@@ -104,6 +118,8 @@ export function montarMinimapa(padre, sit, { T, numero = n => String(n), zonas =
   svg('text', { x: ex, y: ey - 7, class: 'clase-sit-mapa-texto' }, s, T(e.unidad === 'nm' ? 'mapa.nm' : 'mapa.ft', { v: numero(e.valor) }));
   svg('path', { d: `M${TAM - 16} 12L${TAM - 11} 24L${TAM - 16} 21L${TAM - 21} 24Z`, class: 'clase-sit-mapa-norte' }, s);
   svg('text', { x: TAM - 16, y: 34, 'text-anchor': 'middle', class: 'clase-sit-mapa-texto' }, s, T('mapa.norte'));
+  // 0.14.102: las marcas que cambian (el tráfico: un avioncito con su altura, «+5» = 500 ft arriba).
+  const capaMarcas = svg('g', { class: 'clase-sit-mapa-marcas' }, s);
   // El avión.
   const avion = svg('g', { class: 'clase-sit-mapa-avion', transform: `translate(${f1(du)} ${f1(dv)})` }, s);
   svg('path', { d: FORMA_AVION, class: 'clase-sit-mapa-avion-forma', transform: 'scale(0.72)' }, avion);
@@ -132,6 +148,18 @@ export function montarMinimapa(padre, sit, { T, numero = n => String(n), zonas =
       if (tr !== ultimo) { avion.setAttribute('transform', tr); ultimo = tr; }
     },
     get posicion() { return ultimo; },
+    // lista: [{ x, z, rumbo, texto }] (se dibujan de nuevo cada vez; pocas).
+    marcas(lista = []) {
+      while (capaMarcas.firstChild) capaMarcas.removeChild(capaMarcas.firstChild);
+      for (const m of lista) {
+        if (!Number.isFinite(m.x) || !Number.isFinite(m.z)) continue;
+        const [u0, v0] = a(m.x, m.z);
+        if (u0 < 4 || v0 < 4 || u0 > TAM - 4 || v0 > TAM - 4) continue;
+        const g = svg('g', { transform: `translate(${f1(u0)} ${f1(v0)})` }, capaMarcas);
+        svg('path', { d: FORMA_AVION, class: 'clase-sit-mapa-trafico', transform: `rotate(${f1(m.rumbo ?? 0)}) scale(0.5)` }, g);
+        if (m.texto) svg('text', { x: 8, y: -6, class: 'clase-sit-mapa-texto clase-sit-mapa-trafico-texto' }, g, m.texto);
+      }
+    },
     destruir() { caja.remove(); },
   };
 }

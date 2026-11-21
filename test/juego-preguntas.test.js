@@ -192,3 +192,60 @@ test('con el servidor: las preguntas llegan sin la respuesta, primero las que fa
   });
   db.close();
 });
+
+test('0.14.102: el orden de una pregunta: pregunta (quieto) → respondida (la tarjeta se esconde) → acción → explicación → seguir', async () => {
+  const { crearFlujo, responderFlujo, tickFlujo, seguirFlujo, vistaFlujo, camaraDeAccion, FLUJO } = await import('../public/clase/juego-eventos.js');
+  let f = crearFlujo({ q: { id: 'x' } });
+  assert.deepEqual(vistaFlujo(f), { pregunta: true, explicacion: false, pausado: true, subtitulo: false });
+  f = responderFlujo(f, { acierto: false, correcta: 'A', elegida: 'B' }, 'aceite');
+  assert.equal(f.fase, 'accion');
+  assert.deepEqual(vistaFlujo(f), { pregunta: false, explicacion: false, pausado: false, subtitulo: true }, 'la tarjeta desaparece y se ve la acción');
+  f = tickFlujo(f, FLUJO.accionS.aceite / 2);
+  assert.equal(f.fase, 'accion', 'la acción dura');
+  f = tickFlujo(f, FLUJO.accionS.aceite);
+  assert.equal(f.fase, 'explicacion');
+  assert.deepEqual(vistaFlujo(f), { pregunta: false, explicacion: true, pausado: true, subtitulo: false });
+  assert.equal(seguirFlujo(f).fase, 'fin');
+  // Sin conexión: termina sin acción ni castigo.
+  assert.equal(responderFlujo(crearFlujo({}), null, 'aceite').fase, 'fin');
+  // Responder dos veces no cambia nada.
+  assert.equal(responderFlujo(f, { acierto: true }, 'bien'), f);
+  assert.equal(camaraDeAccion('aceite'), 'cabina'); assert.equal(camaraDeAccion('bien'), 'afuera'); assert.equal(camaraDeAccion('turbulencia'), 'afuera');
+});
+
+test('0.14.102: el tráfico en el circuito de cada aeropuerto y el aviso con las horas del reloj', async () => {
+  const T = await import('../public/clase/juego-trafico.js');
+  const { PISTA, PISTA_B } = await import('../public/clase/vuelo-modelo.js');
+  const ts = T.traficoInicial();
+  assert.deepEqual(ts.map(t => t.pista).sort(), ['A', 'B']);
+  for (const tr of ts) { const p = tr.pista === 'B' ? PISTA_B : PISTA; assert.ok(Math.hypot(tr.x - p.x, tr.z - p.z) < 9, 'cerca de su aeropuerto'); }
+  // Da vueltas por el circuito (vuelve a pasar cerca de donde empezó).
+  let tr = ts[0];
+  const largo = T.rutaCircuito(PISTA).largo;
+  tr = T.moverCualquiera(tr, (largo * 1000) / (tr.kt * 1.68781));
+  assert.ok(Math.hypot(tr.x - ts[0].x, tr.z - ts[0].z) < 0.2);
+  const yo = { x: 0, z: 0, ft: 2000, rumbo: 90 };
+  assert.equal(T.enHoras(yo, { x: 5, z: 0 }), 12); assert.equal(T.enHoras(yo, { x: 0, z: -5 }), 3); assert.equal(T.enHoras(yo, { x: -5, z: 0 }), 6); assert.equal(T.enHoras(yo, { x: 0, z: 5 }), 9);
+  assert.equal(T.enHoras(yo, { x: 5, z: -2.9 }), 1);
+  assert.deepEqual(T.alertaTrafico(yo, { x: 6, z: -6, ft: 2000 }), { horas: 2, nm: 1.5, altura: 'misma', dif: 0 });
+  assert.equal(T.alertaTrafico(yo, { x: 30, z: 0, ft: 2000 }), null, 'lejos, sin aviso');
+  assert.equal(T.alertaTrafico(yo, { x: 3, z: 0, ft: 3500 }), null, '1,500 ft arriba, sin aviso');
+  assert.equal(T.alertaTrafico(yo, { x: 3, z: 0, ft: 2500 }).altura, 'arriba');
+  assert.equal(T.etiquetaAltura(yo, { ft: 2500 }), '+5'); assert.equal(T.etiquetaAltura(yo, { ft: 1700 }), '−3'); assert.equal(T.etiquetaAltura(yo, { ft: 2020 }), '=');
+});
+
+test('0.14.102: el mapa (la aproximación, el TD y los dos aeropuertos), el destino y la orientación', async () => {
+  const V = await import('../public/juego-vista.js');
+  const { limitesMapa } = await import('../public/clase/e3d-minimapa.js');
+  const { PISTA, PISTA_B } = await import('../public/clase/vuelo-modelo.js');
+  assert.ok(V.ZONAS_JUEGO.some(z => z.tipo === 'td') && V.ZONAS_JUEGO.some(z => z.tipo === 'linea'));
+  const td = V.ZONAS_JUEGO.find(z => z.tipo === 'td');
+  assert.ok(Math.abs(td.c[1] - (PISTA.z - PISTA.largoFt / 2000 + 1)) < 1e-9, 'el TD a 1,000 ft del umbral de la 36');
+  const L = limitesMapa(V.MAPA_LEJOS, V.ZONAS_LEJOS);
+  for (const p of [PISTA, PISTA_B]) assert.ok(p.x >= L.x0 && p.x <= L.x1 && p.z >= L.z0 && p.z <= L.z1, 'de lejos se ven los dos');
+  const d = V.haciaAeropuerto({ x: 0, z: 0 }, PISTA_B);
+  assert.ok(d.nm > 8 && d.nm < 12 && d.rumbo > 20 && d.rumbo < 50, `${d.nm.toFixed(1)} NM · ${d.rumbo}°`);
+  assert.deepEqual(V.planOrientacion('horizontal', { puedeBloquear: true }), ['completa', 'bloquear']);
+  assert.deepEqual(V.planOrientacion('horizontal', { puedeBloquear: false }), ['consejo'], 'en el iPhone, el consejo de girar');
+  assert.deepEqual(V.planOrientacion('vertical'), ['desbloquear', 'salir_completa']);
+});

@@ -125,3 +125,28 @@ export function puntuar(estado, acierto) {
   };
 }
 export const puntajeInicial = () => ({ aceptadas: 0, bien: 0, racha: 0, mejor: 0, puntos: 0, ofrecidas: 0, decisiones: 0 });
+
+// ---------- 0.14.102: el orden de una pregunta en el vuelo (pedido del dueño) ----------
+// 1) «pregunta»: el vuelo se detiene y la pregunta se ve grande; 2) «accion»: la tarjeta desaparece del todo y el avión
+// hace lo que pide la respuesta (la maniobra o la falla), con la cámara mirándolo y solo un subtítulo chico; 3)
+// «explicacion»: la tarjeta del resultado (bien o mal, las opciones, «Por qué» y la fuente) con «Seguir volando»; 4) «fin».
+export const FLUJO = Object.freeze({ accionS: Object.freeze({ bien: 6, aceite: 8, turbulencia: 7, atc: 5, nube: 8, desvio: 8, leccion: 7 }) });
+export const crearFlujo = (item, contexto = null) => ({ fase: 'pregunta', item, contexto, res: null, consecuencia: null, t: 0, dur: 0 });
+export function responderFlujo(f, res, consecuencia) {
+  if (!f || f.fase !== 'pregunta') return f;
+  if (!res) return { ...f, fase: 'fin', res: null };
+  return { ...f, fase: 'accion', res, consecuencia, t: 0, dur: FLUJO.accionS[consecuencia] ?? 6 };
+}
+export function tickFlujo(f, dt) {
+  if (!f || f.fase !== 'accion') return f;
+  const t = f.t + dt;
+  return t >= f.dur ? { ...f, t: f.dur, fase: 'explicacion' } : { ...f, t };
+}
+export const seguirFlujo = f => (f && f.fase === 'explicacion' ? { ...f, fase: 'fin' } : f);
+// Qué se ve en cada fase: la tarjeta de la pregunta, la de la explicación, si el vuelo está quieto y el subtítulo.
+export function vistaFlujo(f) {
+  const fase = f?.fase ?? 'fin';
+  return { pregunta: fase === 'pregunta', explicacion: fase === 'explicacion', pausado: fase === 'pregunta' || fase === 'explicacion', subtitulo: fase === 'accion' };
+}
+// Desde dónde se mira la acción: las fallas del motor y del control, en la cabina (los relojes, la radio); el resto, afuera.
+export const camaraDeAccion = consecuencia => (['aceite', 'atc', 'nube'].includes(consecuencia) ? 'cabina' : 'afuera');

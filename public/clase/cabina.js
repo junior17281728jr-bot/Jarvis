@@ -42,15 +42,15 @@ export function datosPanel(d = {}) {
 // La cabina. datos: kt, ft, rumbo, alabeo, cabeceo, vs (o subida), tasaGiro, rpm, aceitePsi, aceiteTemp, combustible, aviso.
 // opciones: escala (px por px CSS), textos, completo (el Juego: dos filas, motor y yugo), yugo { alabeo, cabeceo } (-1..1),
 // noche (la luz de los instrumentos). → el alto (px) que tapa el tablero.
-export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}, completo = false, yugo = null, noche = false } = {}) {
+export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}, completo = false, yugo = null, noche = false, extras = null } = {}) {
   const D = datosPanel(datos), C = colores(noche), T = k => textos[k] ?? TEXTOS_CABINA[k];
-  const panel = completo ? Math.max(alto * 0.4, 150 * escala) : Math.max(alto * 0.27, 62 * escala), yp = alto - panel;
+  // 0.14.102: el tablero del Juego, más alto: dos filas de relojes, el motor a la derecha y, abajo, la compensación, los
+  // flaps, el selector de combustible, la palanca de potencia y el yugo (en el centro, debajo de los relojes: no los tapa).
+  const panel = completo ? Math.max(alto * (ancho > alto ? 0.5 : 0.46), 170 * escala) : Math.max(alto * 0.27, 62 * escala), yp = alto - panel;
   marco(ctx, ancho, alto, yp, escala, C);
   if (completo) {
-    // Dos filas de tres (los seis básicos) y a la derecha el motor (tacómetro y tres relojes chicos).
-    // El tamaño lo manda el alto del tablero (o el ancho, en un teléfono angosto); el grupo va centrado.
-    const r = Math.min(ancho / 4.25 * 0.42, panel * 0.2, 96 * escala), ancho1 = r * 2.42;
-    const fila1 = yp + panel * 0.29, fila2 = yp + panel * 0.74;
+    const r = Math.min(ancho / 4.6 * 0.42, panel * 0.165, 92 * escala), ancho1 = r * 2.42;
+    const fila1 = yp + panel * 0.22, fila2 = yp + panel * 0.57;
     const x0 = ancho * 0.5 - ancho1 * 0.55;
     const xs = [x0 - ancho1, x0, x0 + ancho1];
     anemometro(ctx, xs[0], fila1, r, D, C, escala, T);
@@ -65,7 +65,22 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
     chico(ctx, xm - rc * 1.15, fila2 - rc * 0.55, rc, D.agujas.aceitePsi, T('psi'), C, escala, [[0.25, 0.85, '#2fbf5b'], [0, 0.08, '#e5483e']]);
     chico(ctx, xm + rc * 1.15, fila2 - rc * 0.55, rc, D.agujas.aceiteTemp, T('temp'), C, escala, [[0.4, 0.85, '#2fbf5b'], [0.94, 1, '#e5483e']]);
     chico(ctx, xm, fila2 + rc * 0.95, rc, D.agujas.combustible, T('fuel'), C, escala, [[0, 0.12, '#e5c33e']], ['E', 'F']);
-    if (yugo) dibujarYugo(ctx, ancho, alto, yp, panel, yugo, escala, C);
+    const ex = extras ?? {};
+    const tira = yp + panel * 0.85, alto1 = panel * 0.17;
+    // Abajo a la izquierda: la compensación (rueda con su marca) y los flaps (UP · 10 · 20 · 30).
+    indicadorTrim(ctx, xs[0] - r * 0.55, tira, alto1, num(ex.trim, 0), C, escala, T);
+    indicadorFlaps(ctx, xs[0] + r * 0.45, tira, alto1, num(ex.flaps, 0), C, escala, T);
+    // Abajo a la derecha: la palanca de potencia (sale o entra) y el selector de combustible (BOTH).
+    palancaPotencia(ctx, xs[2] + r * 0.15, tira, alto1, num(ex.potencia, 0), C, escala, T);
+    selectorCombustible(ctx, xm, tira, alto1 * 0.42, C, escala, T);
+    // El factor de carga (G), chiquito, arriba del tablero a la izquierda.
+    if (ex.g != null) {
+      const g = num(ex.g, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; redondo(ctx, xs[0] - r, yp - 26 * escala, 62 * escala, 20 * escala, 5 * escala); ctx.fill();
+      texto(ctx, `G ${g.toFixed(1)}`, xs[0] - r + 31 * escala, yp - 16 * escala, 13 * escala, g > 2.5 || g < 0 ? '#ff8278' : '#ffffff', 800);
+    }
+    // (el yugo nunca tapa los relojes: se dibuja solo debajo de la segunda fila)
+    if (yugo) { ctx.save(); ctx.beginPath(); ctx.rect(0, fila2 + r * 1.12, ancho, alto); ctx.clip(); dibujarYugo(ctx, ancho, alto, yp, panel, yugo, escala, C, xs[1], tira, r); ctx.restore(); }
   } else {
     const r = Math.min(panel * 0.36, ancho * 0.053), cy = yp + panel * 0.56;
     const xs = [0.2, 0.32, 0.44, 0.56, 0.68, 0.8].map(k => ancho * k);
@@ -86,7 +101,7 @@ export function dibujarCabina(ctx, ancho, alto, datos, { escala = 1, textos = {}
   return panel;
 }
 
-export const TEXTOS_CABINA = { kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN' };
+export const TEXTOS_CABINA = { trim: 'TRIM', flaps: 'FLAPS', gases: 'THROTTLE', combustible: 'FUEL SEL', kt: 'KNOTS', ft: 'ALT', vsi: 'VERT SPEED', rpm: 'RPM ×100', psi: 'OIL P', temp: 'OIL T', fuel: 'FUEL', giro: 'TURN COORD', min: '2 MIN', stall: 'STALL', arriba: 'UP', abajo: 'DN' };
 
 // ---------- el marco, la visera y el tablero ----------
 function marco(ctx, ancho, alto, yp, e, C) {
@@ -309,21 +324,75 @@ function chico(ctx, x, y, r, ang, rotulo, C, e, zonas = [], puntas = null) {
   texto(ctx, rotulo, x, y + r * 0.62, r * 0.27, C.rotulo, 700);
   aguja(ctx, x, y + r * 0.35, r, ang, 0.95, r * 0.14, C.aguja, 0.05);
 }
-// El yugo: la columna y el volante, que gira con el alabeo y sube o baja con el cabeceo pedido.
-function dibujarYugo(ctx, ancho, alto, yp, panel, yugo, e, C) {
-  const cx = ancho * 0.5, base = alto + panel * 0.05 - num(yugo.cabeceo) * panel * 0.06;
-  const w = Math.min(ancho * 0.34, panel * 1.1), h = panel * 0.2;
-  ctx.save(); ctx.globalAlpha *= 0.94;
-  ctx.fillStyle = '#15171c'; ctx.fillRect(cx - w * 0.05, base - h * 0.35, w * 0.1, h * 1.5);
-  ctx.translate(cx, base - h * 0.35); ctx.rotate(rad(num(yugo.alabeo) * 35));
-  ctx.fillStyle = '#20232a'; ctx.strokeStyle = '#3c414c'; ctx.lineWidth = 2 * e;
+// El yugo (el «timón» o volante de una avioneta): la columna sale del tablero y el volante, con sus dos empuñaduras, gira con
+// el alabeo pedido y entra o sale con el cabeceo (tirar = sale hacia el piloto, se ve más grande y más abajo).
+function dibujarYugo(ctx, ancho, alto, yp, panel, yugo, e, C, cx, tira, rReloj = 60) {
+  const tirar = lim(num(yugo.cabeceo), -1, 1), giro = lim(num(yugo.alabeo), -1, 1);
+  const k = 1 + tirar * 0.12; // más cerca al tirar
+  const w = Math.min(ancho * 0.36, panel * 1.05, rReloj * 3.4) * k, h = Math.min(panel * 0.2, rReloj * 0.75) * k;
+  const yc = tira + panel * 0.04 + tirar * panel * 0.04;
+  ctx.save();
+  // La columna (sale del tablero; más larga al tirar).
+  const g = ctx.createLinearGradient(cx - w * 0.04, 0, cx + w * 0.04, 0);
+  g.addColorStop(0, '#2a2e36'); g.addColorStop(0.5, '#59606c'); g.addColorStop(1, '#1d2026');
+  ctx.fillStyle = g; ctx.fillRect(cx - w * 0.035, yc, w * 0.07, alto - yc);
+  ctx.translate(cx, yc); ctx.rotate(rad(giro * 40));
+  // El volante: un arco con dos cuernos (empuñaduras) y el centro con su placa.
+  const gy = ctx.createLinearGradient(0, -h * 0.6, 0, h * 0.5);
+  gy.addColorStop(0, '#4a505c'); gy.addColorStop(1, '#1e2128');
+  ctx.fillStyle = gy; ctx.strokeStyle = '#8a93a3'; ctx.lineWidth = 2.2 * e;
   ctx.beginPath();
-  ctx.moveTo(-w / 2, -h * 0.5); ctx.quadraticCurveTo(-w / 2 - h * 0.25, h * 0.4, -w / 2 + h * 0.2, h * 0.55);
-  ctx.lineTo(-w * 0.18, h * 0.25); ctx.lineTo(w * 0.18, h * 0.25); ctx.lineTo(w / 2 - h * 0.2, h * 0.55);
-  ctx.quadraticCurveTo(w / 2 + h * 0.25, h * 0.4, w / 2, -h * 0.5); ctx.lineTo(w * 0.36, -h * 0.5); ctx.lineTo(w * 0.3, -h * 0.05);
-  ctx.lineTo(-w * 0.3, -h * 0.05); ctx.lineTo(-w * 0.36, -h * 0.5); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#ffb020'; ctx.fillRect(-w * 0.04, -h * 0.02, w * 0.08, h * 0.08);
+  ctx.moveTo(-w * 0.5, -h * 0.55);
+  ctx.quadraticCurveTo(-w * 0.56, h * 0.25, -w * 0.4, h * 0.42);
+  ctx.lineTo(-w * 0.16, h * 0.2); ctx.quadraticCurveTo(0, h * 0.3, w * 0.16, h * 0.2);
+  ctx.lineTo(w * 0.4, h * 0.42); ctx.quadraticCurveTo(w * 0.56, h * 0.25, w * 0.5, -h * 0.55);
+  ctx.lineTo(w * 0.38, -h * 0.55); ctx.quadraticCurveTo(w * 0.4, h * 0.05, w * 0.3, h * 0.05);
+  ctx.lineTo(-w * 0.3, h * 0.05); ctx.quadraticCurveTo(-w * 0.4, h * 0.05, -w * 0.38, -h * 0.55);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // Las empuñaduras (más claras) y el botón del micrófono.
+  ctx.fillStyle = '#5a616e';
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.ellipse?.(s * w * 0.45, -h * 0.2, w * 0.05, h * 0.38, 0, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#e5483e'; ctx.beginPath(); ctx.arc(-w * 0.45, -h * 0.5, Math.max(2, w * 0.012), 0, Math.PI * 2); ctx.fill();
+  // El centro con la placa (y su marca naranja arriba: se ve cuánto gira).
+  ctx.fillStyle = '#3a3f48'; redondo(ctx, -w * 0.11, -h * 0.05, w * 0.22, h * 0.26, 4 * e); ctx.fill();
+  ctx.fillStyle = '#ffb020'; ctx.fillRect(-w * 0.012, -h * 0.05, w * 0.024, h * 0.1);
   ctx.restore();
+}
+// La compensación: una rueda vertical con la marca (NOSE DN arriba, NOSE UP abajo). v: -1 (nariz abajo) … 1 (nariz arriba).
+function indicadorTrim(ctx, x, y, h, v, C, e, T) {
+  const w = h * 0.28;
+  ctx.fillStyle = '#0d0f13'; redondo(ctx, x - w / 2, y - h / 2, w, h, 3 * e); ctx.fill();
+  ctx.strokeStyle = '#3a3f48'; ctx.lineWidth = 1 * e;
+  for (let k = -3; k <= 3; k++) { ctx.beginPath(); ctx.moveTo(x - w * 0.35, y + (k * h) / 8); ctx.lineTo(x + w * 0.35, y + (k * h) / 8); ctx.stroke(); }
+  const my = y + lim(v, -1, 1) * h * 0.4;
+  ctx.fillStyle = '#ffb020'; ctx.fillRect(x - w * 0.7, my - 2 * e, w * 1.4, 4 * e);
+  texto(ctx, T('trim'), x, y - h / 2 - 6 * e, Math.max(8, 9 * e), C.rotulo, 700);
+}
+// Los flaps: la escala UP · 10 · 20 · 30 y la marca donde están (0..1).
+function indicadorFlaps(ctx, x, y, h, v, C, e, T) {
+  const w = h * 0.28;
+  ctx.fillStyle = '#0d0f13'; redondo(ctx, x - w / 2, y - h / 2, w, h, 3 * e); ctx.fill();
+  const marcas = ['UP', '10', '20', '30'];
+  marcas.forEach((m, k) => texto(ctx, m, x + w * 1.1, y - h * 0.4 + (k * h * 0.8) / 3, Math.max(7, 8 * e), C.rotulo, 600));
+  const my = y - h * 0.4 + lim(v, 0, 1) * h * 0.8 * (2 / 3); // el Juego baja 20°
+  ctx.fillStyle = C.aguja; ctx.fillRect(x - w * 0.6, my - 2 * e, w * 1.2, 4 * e);
+  texto(ctx, T('flaps'), x, y - h / 2 - 6 * e, Math.max(8, 9 * e), C.rotulo, 700);
+}
+// La palanca de potencia (el botón negro): sale con poca potencia, entra con mucha.
+function palancaPotencia(ctx, x, y, h, v, C, e, T) {
+  const sale = (1 - lim(v, 0, 1)) * h * 0.35;
+  ctx.fillStyle = '#5a606b'; ctx.fillRect(x - 2 * e, y - h * 0.3, 4 * e, h * 0.3 + sale);
+  ctx.fillStyle = '#111317'; ctx.beginPath(); ctx.arc(x, y + sale, h * 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#59606c'; ctx.lineWidth = 1.5 * e; ctx.stroke();
+  texto(ctx, T('gases'), x, y - h / 2 - 6 * e, Math.max(8, 9 * e), C.rotulo, 700);
+}
+// El selector de combustible (en BOTH).
+function selectorCombustible(ctx, x, y, r, C, e, T) {
+  ctx.fillStyle = '#0d0f13'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#59606c'; ctx.lineWidth = 1.5 * e; ctx.stroke();
+  ctx.fillStyle = '#c9ced8'; ctx.fillRect(x - r * 0.12, y - r * 0.9, r * 0.24, r * 1.1);
+  texto(ctx, 'BOTH', x, y + r * 1.35, Math.max(7, 8 * e), C.rotulo, 700);
+  texto(ctx, T('combustible'), x, y - r * 1.4, Math.max(7, 8 * e), C.rotulo, 700);
 }
 function redondo(ctx, x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r);

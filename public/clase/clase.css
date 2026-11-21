@@ -979,3 +979,13 @@ html, body { margin: 0; }
 .clase-sit-mapa-texto.clase-sit-mapa-decision-texto { display: none; font-size: 13px; }
 .clase-sit-mapa[aria-pressed="true"] .clase-sit-mapa-texto { font-size: 12px; }
 .clase-sit-mapa[aria-pressed="true"] .clase-sit-mapa-texto.clase-sit-mapa-decision-texto { display: inline; }
+/* 0.14.102: lo que agrega el mapa del Juego: la línea de la aproximación, el punto de tocar (TD), los nombres y el tráfico. */
+.clase-sit-mapa-linea { fill: none; stroke: var(--mapa-ruta); stroke-width: 2; stroke-dasharray: 5 4; }
+.clase-sit-mapa-td { stroke: #ffb020; stroke-width: 3; }
+.clase-sit-mapa-td-texto { fill: #b26b00; font-weight: 800; }
+:root[data-tema="oscuro"] .clase-sit-mapa-td-texto { fill: #ffb020; }
+.clase-sit-mapa-nombre { font-weight: 800; }
+.clase-sit-mapa-trafico { fill: #e0457b; stroke: var(--mapa-papel); stroke-width: 2; }
+.clase-sit-mapa-trafico-texto { fill: #c2185b; font-weight: 800; }
+:root[data-tema="oscuro"] .clase-sit-mapa-trafico { fill: #ff7aa8; }
+:root[data-tema="oscuro"] .clase-sit-mapa-trafico-texto { fill: #ff9cbf; }

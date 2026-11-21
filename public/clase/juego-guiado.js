@@ -57,13 +57,15 @@ export function pilotoFinal(a) {
   const p = enPista(a.x, a.z);
   const alUmbral = Math.max(0, -p.largo - PISTA.largoFt / 2 + 300);
   const senda = alUmbral * Math.tan((3 * Math.PI) / 180);
-  const rumboMeta = PISTA.rumbo - lim(p.costado / 40, -25, 25);
+  const rumboMeta = PISTA.rumbo - lim(p.costado / 30, -25, 25);
   const err = norm180(rumboMeta - a.rumbo), alabeoMeta = lim(err * 1.2, -15, 15);
   const enTierra = a.enSuelo;
+  // La senda con el cabeceo (la subida o bajada que hace falta) y la velocidad con la potencia (unos 65 kt).
+  const vsMeta = a.ft < 25 ? -120 : lim(-340 + (senda - a.ft) * 3, -900, 300);
   return {
     alabeo: enTierra ? lim(-p.costado / 30, -1, 1) : lim((alabeoMeta - a.alabeo) / 10, -1, 1),
-    cabeceo: !enTierra && a.ft < 25 ? lim((-a.vs - 150) / 400, 0, 0.5) : 0,
-    potencia: enTierra ? 0 : lim(0.2 + (senda - a.ft) / 250, 0, 0.6), flaps: 1,
+    cabeceo: enTierra ? 0 : lim((vsMeta - a.vs) / 900, -0.5, 0.6),
+    potencia: enTierra || a.ft < 25 ? 0 : lim(0.3 + (65 - a.kt) * 0.06, 0, 0.9), flaps: 1,
   };
 }
 // ¿Ya está en final (cerca del eje, al sur, rumbo norte)? Desde aquí manda pilotoFinal.

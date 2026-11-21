@@ -3,7 +3,7 @@
 // noche. Sin documento ni ventana (las pruebas lo usan tal cual). Los datos, de los textos de la FAA (tabla LUCES_FAA).
 import { bola, primitivasAvion } from './motor3d.js';
 import { PALETAS } from './e3d-base.js';
-import { PISTA, VUELO } from './vuelo-modelo.js';
+import { PISTA, VUELO, enPista } from './vuelo-modelo.js';
 
 // ---------- los datos (con su fuente) ----------
 export const LUCES_FAA = Object.freeze({
@@ -40,7 +40,11 @@ export const conLuces = hora => hora !== 'dia';
 
 // ---------- el aeropuerto de noche ----------
 // Dónde está un punto de la pista: a lo largo (ft desde el centro, + hacia el norte de la 36) → al mundo.
-const enMundo = (largo, costado, ft = 3) => [PISTA.x + costado / FT, ft / FT, PISTA.z + largo / FT];
+// (0.14.102: para cualquier pista, con su rumbo: a lo largo hacia donde se aterriza, de costado a la derecha)
+const enMundo = (largo, costado, ft = 3, pista = PISTA) => {
+  const h = rad(pista.rumbo);
+  return [pista.x + (Math.sin(h) * largo + Math.cos(h) * costado) / FT, ft / FT, pista.z + (Math.cos(h) * largo - Math.sin(h) * costado) / FT];
+};
 // El color de una luz de borde a «largo» ft del centro, para quien aterriza en la 36 (la precaución: los últimos 2,000 ft
 // o la mitad de la pista, lo que sea menos; AIM 2-1-4).
 export function colorBorde(largo, pista = PISTA) {
@@ -49,24 +53,26 @@ export function colorBorde(largo, pista = PISTA) {
 }
 // Las luces de un extremo vistas desde un punto: verde hacia afuera (el umbral, para quien llega) y roja hacia la pista
 // (el final, para quien despega). extremo: -1 = el umbral de la 36 (sur), +1 = el otro extremo (norte).
-export function colorExtremo(extremo, zObservador, pista = PISTA) {
-  const zExtremo = pista.z + (extremo * pista.largoFt) / 2 / FT;
-  const afuera = extremo < 0 ? zObservador < zExtremo : zObservador > zExtremo;
+// obs: { x, z } de quien mira (o, como antes, solo su z para la 36).
+export function colorExtremo(extremo, obs, pista = PISTA) {
+  const o = typeof obs === 'number' ? { x: pista.x, z: obs } : obs;
+  const largo = enPista(o.x, o.z, pista).largo, borde = (extremo * pista.largoFt) / 2;
+  const afuera = extremo < 0 ? largo < borde : largo > borde;
   return afuera ? LUCES_FAA.extremos.haciaAfuera : LUCES_FAA.extremos.haciaLaPista;
 }
 // Las luces fijas (no dependen de quién mira): bordes de pista y de la calle de rodaje. → [{ p, color }]
 export function lucesFijas(pista = PISTA) {
   const out = [], L = pista.largoFt / 2, W = pista.anchoFt / 2 + 5;
-  for (let a = -L; a <= L + 1; a += 200) for (const s of [-1, 1]) out.push({ p: enMundo(a, s * W), color: colorBorde(a, pista), tipo: 'borde' });
+  for (let a = -L; a <= L + 1; a += 200) for (const s of [-1, 1]) out.push({ p: enMundo(a, s * W, 3, pista), color: colorBorde(a, pista), tipo: 'borde' });
   // La calle de rodaje paralela (al este, a la derecha de la 36, como la dibuja aeropuerto()): sus dos bordes, en azul.
   const t0 = pista.anchoFt / 2 * 3.4, t1 = pista.anchoFt / 2 * 4.2;
-  for (let a = -L * 0.9; a <= L * 0.9 + 1; a += 150) for (const c of [t0, t1]) out.push({ p: enMundo(a, c), color: LUCES_FAA.rodaje.borde, tipo: 'rodaje' });
+  for (let a = -L * 0.9; a <= L * 0.9 + 1; a += 150) for (const c of [t0, t1]) out.push({ p: enMundo(a, c, 3, pista), color: LUCES_FAA.rodaje.borde, tipo: 'rodaje' });
   return out;
 }
 // Las de los extremos, según dónde está quien mira.
-export function lucesExtremos(zObservador, pista = PISTA) {
+export function lucesExtremos(obs, pista = PISTA) {
   const out = [], W = pista.anchoFt / 2;
-  for (const e of [-1, 1]) for (let k = 0; k < 8; k++) out.push({ p: enMundo((e * pista.largoFt) / 2 + e * 3, -W + (k * pista.anchoFt) / 7), color: colorExtremo(e, zObservador, pista), tipo: 'extremo' });
+  for (const e of [-1, 1]) for (let k = 0; k < 8; k++) out.push({ p: enMundo((e * pista.largoFt) / 2 + e * 3, -W + (k * pista.anchoFt) / 7, 3, pista), color: colorExtremo(e, obs, pista), tipo: 'extremo' });
   return out;
 }
 // El faro del aeropuerto: blanco y verde alternados, 26 destellos por minuto (dentro de 24 a 30). → 'blanco' | 'verde' | null
@@ -135,11 +141,11 @@ export function crearTrafico(tipo, propio, { distancia = 6 } = {}) {
   const h = rad(propio.rumbo), F = [Math.sin(h), Math.cos(h)], R = [Math.cos(h), -Math.sin(h)];
   const en = (adelante, derecha) => ({ x: propio.x + F[0] * adelante + R[0] * derecha, z: propio.z + F[1] * adelante + R[1] * derecha });
   const base = { tipo, ft: propio.ft + 150, kt: 100 };
-  if (tipo === 'de_frente') return { ...base, ...en(distancia, 0.25), rumbo: (propio.rumbo + 180) % 360 };
+  if (tipo === 'de_frente') return { ...base, ...en(distancia, distancia * 0.04), rumbo: (propio.rumbo + 180) % 360 };
   if (tipo === 'cruza_der_izq') return { ...base, ...en(distancia * 0.85, distancia * 0.4), rumbo: (propio.rumbo + 270) % 360 };
   if (tipo === 'cruza_izq_der') return { ...base, ...en(distancia * 0.85, -distancia * 0.4), rumbo: (propio.rumbo + 90) % 360 };
-  if (tipo === 'alcanzas') return { ...base, ...en(distancia * 0.35, 0.05), rumbo: propio.rumbo, kt: 70, ft: propio.ft + 60 };
-  return { ...base, ...en(distancia * 0.45, 0.1), rumbo: propio.rumbo, kt: propio.kt ?? 100 };
+  if (tipo === 'alcanzas') return { ...base, ...en(distancia * 0.35, distancia * 0.008), rumbo: propio.rumbo, kt: 70, ft: propio.ft + 60 };
+  return { ...base, ...en(distancia * 0.45, distancia * 0.016), rumbo: propio.rumbo, kt: propio.kt ?? 100 };
 }
 export function moverTrafico(tr, dt) {
   const h = rad(tr.rumbo), v = (tr.kt * 1.68781 * dt) / FT;

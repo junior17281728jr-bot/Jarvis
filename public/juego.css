@@ -174,7 +174,6 @@ body.juego-activo { overflow: hidden; }
 .juego-vuelo[data-modo="clase"] .juego-chip { display: none; }
 .juego-escena { margin-top: 10px; }
 @media (max-width: 420px) { .juego-hora { font-size: 13px; padding: 6px 8px; } }
-.juego-vuelo[data-tactil="1"] .juego-barra .juego-hora { display: none; }
 .juego-mandos-medio .juego-boton { min-height: 44px; }
 /* En una mini-clase para mirar (el avión quieto), el panel va abajo, sobre el tablero: la ventana queda libre. */
 .juego-vuelo[data-congelar="1"] .juego-clase { top: auto; bottom: 10px; max-height: 46%; }
@@ -190,3 +189,89 @@ body.juego-activo { overflow: hidden; }
   .juego-yugo { width: 128px; height: 128px; }
   .juego-vuelo[data-modo="preguntas"] .juego-mandos { width: 170px; }
 }
+
+/* ---------- 0.14.102 ---------- */
+/* Los botones de arriba, más chicos y en grupo; «⋯» abre lo que se usa menos (la hora y el tráfico). */
+.juego-barra .juego-boton { min-height: 40px; min-width: 40px; padding: 6px 10px; font-size: 13.5px; border-radius: 10px; }
+.juego-barra-botones { position: relative; gap: 4px; }
+.juego-mas { font-size: 20px; line-height: 1; }
+.juego-menu-mas { position: absolute; top: calc(100% + 6px); right: 0; z-index: 6; display: grid; gap: 6px; padding: 8px; border-radius: 12px; background: rgba(8,14,26,0.92); border: 1px solid rgba(255,255,255,0.2); }
+.juego-menu-mas[hidden] { display: none; }
+.juego-menu-mas .juego-boton { width: 100%; justify-content: flex-start; }
+/* Los mapas (cerca y lejos) arriba a la derecha, con el botón de zoom y el aeropuerto de destino debajo. */
+.juego-mapas { position: absolute; z-index: 1; right: max(8px, env(safe-area-inset-right)); top: calc(max(8px, env(safe-area-inset-top)) + 50px); display: grid; justify-items: end; gap: 4px; }
+.juego-mapas .clase-sit-mapa { position: relative; right: auto; top: auto; height: 112px; }
+.juego-mapas .clase-sit-mapa[hidden] { display: none; }
+.juego-mapas .clase-sit-mapa[aria-pressed="true"] { height: min(62vh, 320px); }
+.juego-escenario .juego-mapas .clase-sit-mapa { top: auto; right: auto; }
+.juego-mapa-zoom { position: absolute; left: -46px; top: 0; min-width: 40px !important; min-height: 40px !important; padding: 0 !important; font-size: 18px !important; }
+.juego-destino { margin: 0; padding: 4px 8px; border-radius: 8px; background: rgba(8,14,26,0.8); color: #fff; font: 700 12.5px/1.2 system-ui, -apple-system, sans-serif; white-space: nowrap; }
+@media (max-width: 420px) { .juego-mapas .clase-sit-mapa { height: 96px; } }
+/* El subtítulo de la acción: chico, arriba a la izquierda (nunca sobre el horizonte artificial). */
+.juego-subtitulo { position: absolute; z-index: 3; left: max(8px, env(safe-area-inset-left)); top: calc(max(8px, env(safe-area-inset-top)) + 50px); margin: 0; max-width: min(360px, calc(100% - 180px));
+  padding: 6px 10px; border-radius: 10px; background: rgba(8,14,26,0.82); color: #fff; font: 700 14px/1.3 system-ui, -apple-system, sans-serif; border-left: 4px solid #7fd0ff; }
+.juego-subtitulo[hidden] { display: none; }
+.juego-subtitulo[data-tono="bien"] { border-left-color: #2fbf5b; } .juego-subtitulo[data-tono="mal"] { border-left-color: #e5483e; }
+.juego-escenario:has(.juego-subtitulo:not([hidden])) .juego-chip { display: none; }
+/* La pregunta (y la explicación): grande, todo a la vista sin desplazar, en vertical y en horizontal; nada detrás. */
+.juego-capa-pregunta { background: rgba(3,6,12,0.88); padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+.juego-pregunta, .juego-explicacion { width: min(760px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 10px; padding: 14px 16px; }
+.juego-q-enunciado { font-size: clamp(16px, 2.6vh + 6px, 21px); }
+.juego-q-opciones .juego-opcion-respuesta { font-size: clamp(14.5px, 1.8vh + 6px, 17px); min-height: 48px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-pregunta { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; width: min(900px, 100%); }
+  .juego-q-opciones { gap: 6px; }
+  .juego-q-opciones .juego-opcion-respuesta { min-height: 44px; padding: 6px 10px; }
+  .juego-explicacion { width: min(900px, 100%); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .juego-explicacion > h2, .juego-explicacion > .juego-exp-paso { grid-column: 1 / -1; }
+  .juego-explicacion .op-rev { padding: 5px 8px; font-size: 14px; }
+}
+.juego-explicacion h2 { margin: 0; font-size: 21px; }
+.juego-explicacion.bien h2 { color: #1b8a44; } .juego-explicacion.mal h2 { color: #c62f26; }
+:root[data-tema="oscuro"] .juego-explicacion.bien h2 { color: #4fd17a; } :root[data-tema="oscuro"] .juego-explicacion.mal h2 { color: #ff8278; }
+.juego-exp-paso, .juego-exp-porque, .juego-exp-vida, .juego-exp-fuente { margin: 0; line-height: 1.4; }
+.juego-exp-fuente { color: var(--suave); font-size: 13.5px; }
+.juego-exp-botones { display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; }
+.juego-exp-botones > * { flex: 1 1 160px; }
+/* El aviso corto (el tráfico, la orientación): una línea. */
+.juego-aviso.juego-aviso-corto { padding: 6px 10px; max-width: 420px; }
+.juego-aviso.juego-aviso-corto .juego-aviso-titulo { font-size: 15px; margin: 0; }
+.juego-aviso.juego-aviso-corto .juego-aviso-botones { margin-top: 2px; }
+/* La mini-clase: compacta; con el avión quieto, va abajo y los mandos de vuelo se esconden (no hacen falta). Siempre se ven
+   sus botones (Anterior / Siguiente); «Ocultar» la deja en una píldora. */
+.juego-vuelo[data-congelar="1"] .juego-mandos { display: none; }
+.juego-vuelo[data-congelar="1"] .juego-clase { top: auto; bottom: max(8px, env(safe-area-inset-bottom)); max-height: 62%; }
+.juego-clase { display: flex; flex-direction: column; padding: 8px 10px; max-height: 50%; }
+.juego-clase-cuerpo { overflow: auto; min-height: 0; }
+.juego-clase-nav { flex: none; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; padding-top: 6px; }
+.juego-clase-nav > * { flex: 1 1 auto; }
+.juego-clase-texto { font-weight: 600; }
+.juego-clase-porque { font-size: 14.5px; }
+.juego-clase-pildora { position: absolute; z-index: 4; left: 50%; transform: translateX(-50%); bottom: max(10px, env(safe-area-inset-bottom)); }
+.juego-vuelo:not([data-congelar="1"]) .juego-clase-pildora { top: calc(max(8px, env(safe-area-inset-top)) + 50px); bottom: auto; }
+.juego-clase-pildora[hidden] { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-clase { max-width: min(560px, calc(100% - 150px)); left: max(8px, env(safe-area-inset-left)); right: auto; margin: 0; }
+  .juego-vuelo[data-congelar="1"] .juego-clase { max-height: calc(100% - 64px); }
+  .juego-clase-opciones { grid-template-columns: 1fr 1fr; }
+}
+/* La explicación en horizontal: a la izquierda qué pasó y por qué; a la derecha las opciones (sin desplazar). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-explicacion { gap: 6px 12px; padding: 10px 14px; }
+  .juego-explicacion > * { grid-column: 1; }
+  .juego-explicacion > .opciones-revisadas { grid-column: 2; grid-row: 1 / span 5; margin: 0; }
+  .juego-explicacion h2 { font-size: 18px; }
+  .juego-explicacion .op-rev { padding: 4px 8px; font-size: 13.5px; }
+  .juego-explicacion .op-rev-sello { font-size: 12px; }
+  .juego-exp-botones { grid-column: 1 / -1; }
+  .juego-exp-botones .boton-3d { min-height: 42px; padding-top: 6px; padding-bottom: 6px; }
+  .juego-clase { max-width: min(400px, 46%); }
+}
+.juego-pausa, .juego-orientacion { font-size: 17px !important; }
+.juego-mapa-fila { display: flex; gap: 4px; align-items: center; }
+.juego-mapas .juego-mapa-zoom { position: static; min-width: 32px !important; min-height: 32px !important; font-size: 16px !important; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .juego-explicacion > h2, .juego-explicacion > .juego-exp-paso { grid-column: 1; }
+}
+/* En las mini-clases para mirar no hace falta el mapa (tapaba al otro avión). */
+.juego-vuelo[data-congelar="1"] .juego-mapas { display: none; }

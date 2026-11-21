@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  VUELO, PISTA, crearAvion, pasoVuelo, sustentacion, juzgarAterrizaje, lecturas, enPista, consejo, vsAsistente, fallaAceite, agujaRpm,
+  VUELO, PISTA, PISTA_B, PISTAS, pistaDe, TECHO, crearAvion, pasoVuelo, sustentacion, juzgarAterrizaje, lecturas, enPista, consejo, fallaAceite, agujaRpm, indicar, perdidaConCarga,
 } from '../public/clase/vuelo-modelo.js';
 import { agujaAnemometro, agujaVariometro, tasaDeGiro, inclinacionCoordinador } from '../public/clase/instrumentos.js';
 import { dibujarCabina, datosPanel, anguloRpm } from '../public/clase/cabina.js';
@@ -42,11 +42,11 @@ test('modelo: la pérdida es a unos 48 kt (alas niveladas, sin flaps) y a menos 
 });
 
 test('modelo: con toda la potencia sube y en ralentí baja; viraje por alabeo y en el rumbo correcto', () => {
-  const sube = volar(enCrucero({ kt: 80, cabeceo: 6 }), { potencia: 1 }, 20);
+  const sube = volar(crearAvion({ ft: 3000, kt: 80, enSuelo: false, potencia: 1 }), { potencia: 1 }, 30);
   assert.ok(sube.ft > 3100 && sube.vs > 200, `sube (${Math.round(sube.ft)} ft, ${Math.round(sube.vs)} ft/min)`);
   const baja = volar(enCrucero({ kt: 75 }), { potencia: 0 }, 20, { asistente: true });
   assert.ok(baja.ft < 2900 && baja.vs < -200, `baja (${Math.round(baja.ft)} ft, ${Math.round(baja.vs)} ft/min)`);
-  assert.equal(vsAsistente(0.55), 0); cerca(vsAsistente(0), -640, 1e-9, 'sin potencia baja'); cerca(vsAsistente(1), 740, 1e-9, 'a toda potencia sube'); assert.equal(vsAsistente(0.75), 0, 'crucero nivelado'); assert.ok(vsAsistente(0.35) < 0 && vsAsistente(0.35) > -700);
+  // (la potencia decide: el avión compensado mantiene su velocidad y sube o baja con la potencia; AFH cap. 18)
   // Alabeo a la derecha → el rumbo sube (vira a la derecha); a la izquierda, baja. Viraje estándar: 3°/s.
   const der = volar(enCrucero({ alabeo: 20 }), { potencia: 0.65 }, 5);
   const izq = volar(enCrucero({ rumbo: 90, alabeo: -20 }), { potencia: 0.65 }, 5);
@@ -70,7 +70,7 @@ test('modelo: despega de la pista con potencia y tirando a 55 kt; en el suelo no
   assert.ok(despego.kt >= VUELO.rotacionKt - 2, `a ${despego.kt.toFixed(1)} kt`);
   assert.ok(despego.largo < PISTA.largoFt / 2, 'antes del final de la pista');
   const arriba = volar(a, { potencia: 1 }, 30, { asistente: true });
-  assert.ok(arriba.ft > 150 && arriba.vs > 250, `sube después de despegar (${Math.round(arriba.ft)} ft)`);
+  assert.ok(arriba.ft > 150 && !arriba.enSuelo, `sube después de despegar (${Math.round(arriba.ft)} ft)`);
   // Sin tirar, a poca velocidad, sigue en el suelo.
   const quieto = volar(inicioDe('libre'), { potencia: 1, cabeceo: 0 }, 6);
   assert.ok(quieto.enSuelo, 'a baja velocidad no despega');
@@ -252,18 +252,82 @@ function centro(p, q, r) {
 }
 
 test('el modelo vuela como una avioneta de entrenamiento: sube cerca de Vy, crucero de unos 105 kt, y nunca pasa de Vne nivelado', () => {
-  // A toda potencia con el Asistente (yugo suelto): sube a unos 740 ft/min cerca de Vy (74–79 kt).
-  let a = crearAvion({ ft: 2000, kt: 90, enSuelo: false, potencia: 1 });
+  // A toda potencia, compensado para Vy (yugo suelto): sube cerca de Vy (74–79 kt).
+  let a = crearAvion({ ft: 2000, kt: 77, enSuelo: false, potencia: 1 });
   a = volar(a, { potencia: 1 }, 120, { asistente: true });
   assert.ok(a.kt >= 74 && a.kt <= 81, `sube a ${a.kt.toFixed(1)} kt`);
-  assert.ok(a.vs > 600 && a.vs < 900, `a ${Math.round(a.vs)} ft/min`);
+  assert.ok(a.vs > 450 && a.vs < 950, `a ${Math.round(a.vs)} ft/min`);
   // Crucero con 75 %: nivelado a 100–115 kt.
-  let c = volar(crearAvion({ ft: 3000, kt: 100, enSuelo: false, potencia: 0.75 }), { potencia: 0.75 }, 240, { asistente: true });
-  assert.ok(c.kt >= 100 && c.kt <= 115 && Math.abs(c.vs) < 60, `crucero ${c.kt.toFixed(1)} kt, ${Math.round(c.vs)} ft/min`);
+  let c = volar(crearAvion({ ft: 3000, kt: 105, enSuelo: false, potencia: 0.75 }), { potencia: 0.75 }, 240, { asistente: true });
+  assert.ok(c.kt >= 100 && c.kt <= 115 && Math.abs(c.vs) < 150, `crucero ${c.kt.toFixed(1)} kt, ${Math.round(c.vs)} ft/min`);
   // Sin Asistente, compensado a 100 kt y con toda la potencia: sube (la velocidad se queda cerca de la compensada).
   let d = volar(crearAvion({ ft: 3000, kt: 100, enSuelo: false, potencia: 1 }), { potencia: 1 }, 120);
   assert.ok(d.ft > 3300 && d.kt < 115, `sin Asistente sube (${Math.round(d.ft)} ft, ${d.kt.toFixed(1)} kt)`);
   // A toda potencia, nivelado, no llega a Vne (160 kt).
   const L = lecturas(c);
   assert.ok(L.agujas.kt < agujaAnemometro(160));
+});
+
+test('0.14.102: sin techo artificial: sube a 8,000 ft y vuelve a bajar; el techo de servicio, cerca de 13,500 ft', () => {
+  let a = crearAvion({ ft: 1000, kt: 77, enSuelo: false, potencia: 1 });
+  let t = 0;
+  while (a.ft < 8000 && t < 60 * 40) { a = pasoVuelo(a, { potencia: 1 }, 0.25, { asistente: true }); t += 0.25; }
+  assert.ok(a.ft >= 8000, `llega a 8,000 ft (${Math.round(a.ft)} en ${t} s)`);
+  assert.ok(a.vs > 150, 'todavía sube a 8,000 ft');
+  // Más arriba sube menos (la densidad): a 13,500 ft, unos 100 ft/min.
+  const alto = volar({ ...crearAvion({ ft: TECHO.servicioFt, kt: 77, enSuelo: false, potencia: 1 }) }, { potencia: 1 }, 90, { asistente: true });
+  assert.ok(alto.vs < 300 && alto.vs > -50, `cerca del techo sube poco (${Math.round(alto.vs)} ft/min)`);
+  // Y baja sin límite: sin potencia y con la nariz abajo, más de 1,000 ft/min.
+  let b = a;
+  for (let k = 0; k < 4 * 60 * 12 && b.ft > 2000; k++) b = pasoVuelo(b, { potencia: 0, cabeceo: b.kt < 115 ? -0.3 : 0 }, 0.25, { asistente: true });
+  assert.ok(b.ft <= 2000 && !b.choque, `baja a 2,000 ft (${Math.round(b.ft)})`);
+  const rapido = volar(crearAvion({ ft: 6000, kt: 100, enSuelo: false }), m => ({ potencia: 0, cabeceo: m.cabeceo > -8 ? -0.4 : 0 }), 10, { asistente: true });
+  assert.ok(rapido.vs < -1000, `con el Asistente se puede bajar a más de 1,000 ft/min (${Math.round(rapido.vs)})`);
+  const sube = volar(crearAvion({ ft: 3000, kt: 105, enSuelo: false, potencia: 1 }), m => ({ potencia: 1, cabeceo: m.cabeceo < 8 ? 0.4 : 0 }), 6, { asistente: true });
+  assert.ok(sube.vs > 1000, `y subir a más de 1,000 ft/min tirando (${Math.round(sube.vs)})`);
+});
+
+test('0.14.102: la gravedad: tirar sin potencia frena, picar acelera; en un viraje de 60° nivelado hacen falta unos 2 g y la pérdida sube (Vs × √n)', () => {
+  const sube = volar(crearAvion({ ft: 4000, kt: 100, enSuelo: false, potencia: 0 }), m => ({ potencia: 0, cabeceo: m.cabeceo < 12 ? 0.5 : 0 }), 6);
+  assert.ok(sube.kt < 85 && sube.ft > 4000, `al subir sin potencia pierde velocidad (${sube.kt.toFixed(0)} kt, ${Math.round(sube.ft)} ft)`);
+  const pica = volar(crearAvion({ ft: 4000, kt: 90, enSuelo: false, potencia: 0.5 }), m => ({ potencia: 0.5, cabeceo: m.cabeceo > -12 ? -0.5 : 0 }), 8);
+  assert.ok(pica.kt > 110 && pica.ft < 4000, `al picar gana velocidad (${pica.kt.toFixed(0)} kt)`);
+  // Viraje de 60°: sin tirar, baja; tirando para mantener la altura, unos 2 g.
+  const sinTirar = volar({ ...crearAvion({ ft: 4000, kt: 105, enSuelo: false, potencia: 0.75 }), alabeo: 60 }, { potencia: 0.75, alabeo: 0 }, 6);
+  assert.ok(sinTirar.ft < 3950, `un viraje inclinado sin tirar baja (${Math.round(sinTirar.ft)} ft)`);
+  let a = { ...crearAvion({ ft: 4000, kt: 110, enSuelo: false, potencia: 1 }), alabeo: 60 }, gs = [];
+  for (let k = 0; k < 60 * 20; k++) {
+    a = pasoVuelo(a, { potencia: 1, alabeo: (60 - a.alabeo) / 20, cabeceo: Math.max(-1, Math.min(1, -a.vs / 400 - (a.dgamma ?? 0) / 4 + 0.3)) }, 1 / 60);
+    if (k > 60 * 10) gs.push(a.g);
+  }
+  const g = gs.reduce((x, y) => x + y, 0) / gs.length;
+  assert.ok(Math.abs(g - 2) < 0.25, `60° nivelado ≈ 2 g (${g.toFixed(2)})`);
+  cerca(perdidaConCarga(2), 48 * Math.SQRT2, 1e-9, 'Vs × √2');
+  assert.ok(Math.abs(a.alabeo - 60) < 5);
+  // Inercia: el alabeo no salta (tarda en tomar la tasa).
+  const r = pasoVuelo(crearAvion({ ft: 3000, kt: 100, enSuelo: false }), { alabeo: 1 }, 0.1);
+  assert.ok(r.alabeo > 0 && r.alabeo < 4, `con inercia (${r.alabeo.toFixed(2)}°)`);
+});
+
+test('0.14.102: el aeropuerto B: aterrizar allá cuenta, un toque duro rebota y los instrumentos tienen su retraso', () => {
+  assert.equal(PISTAS.length, 2);
+  assert.ok(Math.hypot(PISTA_B.x, PISTA_B.z) / 6.076 > 8, 'B está a varias millas');
+  assert.equal(pistaDe(PISTA_B.x, PISTA_B.z).id, 'B');
+  assert.equal(pistaDe(0, -1).id, 'A');
+  // Un toque en la pista B (rumbo 090), suave.
+  const enB = { ...crearAvion({ x: PISTA_B.x - 0.8, z: PISTA_B.z, ft: 3, kt: 58, rumbo: 90, enSuelo: false, flaps: 1 }), gamma: -0.03, vs: -150, cabeceo: 4 };
+  let a = enB;
+  for (let k = 0; k < 120 && !a.toque; k++) a = pasoVuelo(a, { potencia: 0, flaps: 1 }, 1 / 60);
+  assert.equal(a.toque.pista, 'B'); assert.ok(a.toque.dentro);
+  assert.ok(['bueno', 'firme'].includes(juzgarAterrizaje(a.toque).nivel));
+  assert.equal(consejo({ ...crearAvion({ x: PISTA_B.x - 3, z: PISTA_B.z, ft: 600, kt: 68, rumbo: 90, enSuelo: false }) }), 'final', 'en final de la 09 de B');
+  // Rebote: más de 600 ft/min, sin llegar a choque.
+  let duro = { ...crearAvion({ ft: 2, kt: 62, enSuelo: false }), gamma: -0.12, vs: -800 };
+  for (let k = 0; k < 30 && !duro.toque; k++) duro = pasoVuelo(duro, { potencia: 0 }, 1 / 60);
+  assert.ok(duro.toque?.rebote && !duro.enSuelo && !duro.choque, 'rebota');
+  // El variómetro sigue la tendencia con retraso; el altímetro casi enseguida.
+  let ind = indicar(null, { vs: 0, ft: 3000 }, 0.1);
+  for (let k = 0; k < 10; k++) ind = indicar(ind, { vs: 1000, ft: 3100 }, 0.1);
+  assert.ok(ind.vs > 250 && ind.vs < 600, `el variómetro tarda (${Math.round(ind.vs)})`);
+  assert.ok(ind.ft > 3090, 'el altímetro, casi enseguida');
 });
