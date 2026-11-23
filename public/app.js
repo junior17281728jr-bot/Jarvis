@@ -5363,7 +5363,17 @@ async function pantallaBiblioteca(libro, pagina) {
 // ---- 0.13.7: «Repaso final» (public/repaso-final-vista.js) ----
 const ayudasRepasoFinal = () => ({ entradaJuego: () => entradaJuego('entrada-juego-grande'), el, t, tn, numero, icono, talCual, api, avisar, textoError, mostrar, marco, marcoEstudio, nombreMateria, claseMateria, sonar, celebrar, sacudir,
   combustible, botonGrande, ponerHoja, quitarHojaDe, hojaRespuesta, medidor, anotarRespuestaDelDia, tarjetaPregunta: q => tarjetaPregunta(q, { origen: false }),
-  vistaVisual, usuario: estado.usuario?.id ?? 0, recoInstructor: () => lugarInstructor(v => v.recomendacionRepaso()) }); // 0.14.3; 0.14.34: la recomendación
+  vistaVisual, usuario: estado.usuario?.id ?? 0, recoInstructor: () => lugarInstructor(v => v.recomendacionRepaso()), // 0.14.3; 0.14.34: la recomendación
+  // 0.14.108: la voz del oral (la misma de las clases: un audio guardado → uno nuevo → la voz del teléfono) y la misma
+  // preferencia «Con voz / Sin voz» de Configuración; «¿Cómo funciona?» abre su explicación (también en la Ayuda).
+  voz: { lector: lector(), encendida: vozGuardada, poner: si => ponerVoz(api, si) }, ayudaVozOral });
+function ayudaVozOral() {
+  const b = queEs('voz_oral');
+  b.classList.add('rf-voz-como', 'con-texto');
+  b.setAttribute('aria-label', t('rf.voz.como'));
+  b.append(el('span', { texto: t('rf.voz.como') }));
+  return b;
+}
 const errorRepasoFinal = r => mostrar(marco('repaso', el('section', { class: 'tarjeta' }, el('p', { class: 'mensaje error', texto: textoError(r.datos?.error || 'no_existe') }),
   el('a', { class: 'boton-3d blanco', href: '#repaso' }, el('span', { texto: t('rf.volver') })))));
 // 0.14.98: el Juego de vuelo (sin servidor: todo se dibuja aquí).
@@ -5409,7 +5419,8 @@ async function pantallaRondaFinal(id) {
 }
 async function pantallaOralFinal(materia) {
   const vigente = nuevoTurno();
-  const [r, vista] = await Promise.all([api('GET', '/api/academia/repaso-final/oral'), import('./repaso-final-vista.js')]);
+  // 0.14.108: con la preferencia de voz ya leída (si no, al entrar directo diría «Sin voz» a quien la tiene encendida).
+  const [r, vista] = await Promise.all([api('GET', '/api/academia/repaso-final/oral'), import('./repaso-final-vista.js'), vozEncendida(api)]);
   if (!vigente()) return;
   if (!r.ok) return errorRepasoFinal(r);
   vista.rondaOralFinal(r.datos, materia, ayudasRepasoFinal());

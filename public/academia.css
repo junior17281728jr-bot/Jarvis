@@ -1888,3 +1888,25 @@ details.cert-verificar > summary { color: var(--acento); }
 .consecuencia-cuerpo .clase-sit { border: 0; padding: 2px; background: transparent; overflow: visible; }
 .consecuencia-cargando { margin: 40px 0; text-align: center; color: var(--suave, #5b6577); }
 .clase-sit-directa .clase-e3d-estado { max-width: calc(54% - 16px); }
+
+/* 0.14.108: la voz del oral del Repaso final: «Con voz | Sin voz» y «Leer otra vez»; «Tú controlas | Manos libres» y
+   «¿Cómo funciona?»; la línea que explica el modo; «Toca para escuchar» y la cuenta de «Manos libres». Todo de 44 px,
+   chico para no empujar la tarjeta hacia abajo en el teléfono. */
+.rf-voz { max-width: 728px; margin: 0 auto 10px; display: flex; flex-direction: column; gap: 6px; }
+.rf-voz-fila { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.rf-voz-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; border: 1px solid var(--es-linea, #dfe5ee); background: var(--es-superficie-2, transparent); max-width: 100%; }
+.rf-voz-seg[hidden] { display: none; }
+.rf-voz-boton { min-height: 44px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; gap: 6px; white-space: nowrap; }
+.rf-voz-boton[aria-pressed="true"] { background: var(--es-acento, var(--acento, #1d5fd1)); color: #fff; }
+:root[data-tema="oscuro"] .rf-voz-boton[aria-pressed="true"] { color: #06233d; }
+@media (prefers-color-scheme: dark) { :root[data-tema="auto"] .rf-voz-boton[aria-pressed="true"] { color: #06233d; } }
+.rf-voz-boton:focus-visible { outline: 3px solid var(--es-acento, var(--acento, #1d5fd1)); outline-offset: 2px; }
+.rf-voz-linea { margin: 0; font-size: 14px; line-height: 1.4; }
+.rf-voz-linea[hidden], .rf-voz-otra[hidden] { display: none; }
+.rf-voz .boton-escuchar, .rf-voz .rf-voz-toca { min-height: 44px; font-size: 15px; }
+button.que-es.rf-voz-como { font-size: 14px; padding: 4px 12px 4px 8px; }
+.rf-voz-toca-fila:empty { display: none; }
+.rf-voz-toca { font-weight: 700; }
+.rf-voz-cuenta { margin: 0; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rf-voz-cuenta[hidden] { display: none; }
+@media (max-width: 400px) { .rf-voz-boton { padding: 0 10px; } }
