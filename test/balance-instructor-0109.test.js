@@ -1,6 +1,7 @@
 // 0.14.109: «¿Cómo voy?» — el balance sincero del instructor (con y sin IA).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import './ayuda.js';
 import { esPreguntaBalance, balanceAlumno, lineasBalance, balanceParaIa, MINIMO_BALANCE } from '../src/academia/profe-chat.js';
 import { armarChat } from '../src/academia/instructor-ia.js';
 
