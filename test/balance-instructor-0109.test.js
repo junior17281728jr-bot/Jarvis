@@ -48,7 +48,7 @@ test('sin nada hecho, una sola línea para empezar; y los textos existen en los 
   const { readFileSync } = await import('node:fs');
   for (const l of ['es', 'en']) {
     const cat = JSON.parse(readFileSync(new URL(`../public/i18n/${l}.json`, import.meta.url), 'utf8'));
-    for (const k of ['nada', 'completaste', 'ninguna', 'empezaste', 'empezaste_dos', 'aciertos', 'aciertos_fuerte', 'cuesta', 'cuesta_dos', 'examen', 'oral', 'haz_flojo', 'haz_examen', 'haz_seguir', 'haz_nueva', 'haz_repaso']) assert.ok(cat[`profe.bal.${k}`], `${l} profe.bal.${k}`);
+    for (const k of ['nada', 'completaste', 'ninguna', 'empezaste', 'empezaste_dos', 'va.muy_bien', 'va.bien_fuerte', 'va.medio', 'va.cuesta_fuerte', 'cuesta.ninguna', 'cuesta.mayoria', 'cuesta.algunas', 'cuesta_dos', 'examen.cerca', 'examen.lejos', 'oral', 'haz_flojo', 'haz_examen', 'haz_seguir', 'haz_nueva', 'haz_repaso']) assert.ok(cat[`profe.bal.${k}`], `${l} profe.bal.${k}`);
   }
 });
 
@@ -73,4 +73,17 @@ test('solo habla de lo que hizo: nada de lo que no ha empezado (pedido del dueñ
   const { readFileSync } = await import('node:fs');
   const es = JSON.parse(readFileSync(new URL('../public/i18n/es.json', import.meta.url), 'utf8'));
   assert.match(es['profe.bal.completaste'], /Estuve revisando/);
+});
+
+test('más humano: con palabras, sin porcentajes (pedido del dueño)', async () => {
+  const lineas = lineasBalance(balanceAlumno(historial()));
+  assert.ok(lineas.every(l => !('pct' in l.vars)));
+  assert.ok(lineas.some(l => l.clave.startsWith('profe.bal.va.')));
+  const { readFileSync } = await import('node:fs');
+  for (const l of ['es', 'en']) {
+    const cat = JSON.parse(readFileSync(new URL(`../public/i18n/${l}.json`, import.meta.url), 'utf8'));
+    for (const [k, v] of Object.entries(cat)) if (k.startsWith('profe.bal.')) assert.doesNotMatch(v, /%|\{pct\}/, `${l} ${k}`);
+  }
+  const h = historial(); h.materias[0].temas[1] = tema('b', 'abierto', 0, 6);
+  assert.ok(lineasBalance(balanceAlumno(h)).some(l => l.clave === 'profe.bal.cuesta_dos'));
 });

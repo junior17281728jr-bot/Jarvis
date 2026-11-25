@@ -510,10 +510,18 @@ export function lineasBalance(b) {
   else L.push({ clave: 'profe.bal.ninguna', vars: {} });
   if (curso.length) L.push({ clave: curso.length > 1 ? 'profe.bal.empezaste_dos' : 'profe.bal.empezaste', vars: { materias: nombres(curso.map(c => c.materia)), hechos: curso[0].hechos, temas: curso[0].temas } });
   // 2) Cómo te va.
-  if (tg.de) L.push({ clave: b.fuerte ? 'profe.bal.aciertos_fuerte' : 'profe.bal.aciertos', vars: { pct: pct(tg.bien, tg.de), bien: tg.bien, de: tg.de, ...(b.fuerte ? { tema: b.fuerte.titulo } : {}) } });
+  // 0.14.111 (pedido del dueño: «más humano, sin tanto porcentaje»): con palabras («vas bien», «se te complica»); como
+  // mucho un número sencillo («de cada 10 aciertas unas 7»). Los números exactos los tiene la pantalla de progreso.
+  if (tg.de) {
+    const p = pct(tg.bien, tg.de);
+    const nivel = p >= 85 ? 'muy_bien' : p >= 70 ? 'bien' : p >= 50 ? 'medio' : 'cuesta';
+    L.push({ clave: `profe.bal.va.${nivel}${b.fuerte ? '_fuerte' : ''}`, vars: { diez: Math.round(p / 10), ...(b.fuerte ? { tema: b.fuerte.titulo } : {}) } });
+  }
   // 3) Lo que cuesta (con suficientes respuestas) y el examen que no pasó (si no hay nada flojo, o hay lugar).
-  if (b.flojos.length) L.push({ clave: b.flojos.length > 1 ? 'profe.bal.cuesta_dos' : 'profe.bal.cuesta', vars: { tema: b.flojos[0].titulo, bien: b.flojos[0].bien, de: b.flojos[0].de, ...(b.flojos[1] ? { tema2: b.flojos[1].titulo, bien2: b.flojos[1].bien, de2: b.flojos[1].de } : {}) } });
-  if (b.examenCaido && L.length < 4) L.push({ clave: 'profe.bal.examen', vars: { materia: b.examenCaido.materia, pct: b.examenCaido.pct } });
+  const como = f => (f.bien === 0 ? 'ninguna' : f.bien * 2 < f.de ? 'mayoria' : 'algunas');
+  if (b.flojos.length > 1) L.push({ clave: 'profe.bal.cuesta_dos', vars: { tema: b.flojos[0].titulo, tema2: b.flojos[1].titulo } });
+  else if (b.flojos.length) L.push({ clave: `profe.bal.cuesta.${como(b.flojos[0])}`, vars: { tema: b.flojos[0].titulo } });
+  if (b.examenCaido && L.length < 4) L.push({ clave: `profe.bal.examen.${b.examenCaido.pct >= 60 ? 'cerca' : 'lejos'}`, vars: { materia: b.examenCaido.materia } });
   // (solo lo que ya hizo: nunca lo que no ha empezado)
   if (b.oral?.empezados && L.length < 5) L.push({ clave: 'profe.bal.oral', vars: { n: b.oral.empezados } });
   // 4) Qué hacer, y por qué (siempre; corto: 6 líneas como mucho).
