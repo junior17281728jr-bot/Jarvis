@@ -990,3 +990,4 @@ html, body { margin: 0; }
 .clase-sit-mapa-trafico-texto { fill: #c2185b; font-weight: 800; }
 :root[data-tema="oscuro"] .clase-sit-mapa-trafico { fill: #ff7aa8; }
 :root[data-tema="oscuro"] .clase-sit-mapa-trafico-texto { fill: #ff9cbf; }
+.demo-avion-lienzo { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 14px; touch-action: none; background: var(--cl-tarjeta); }

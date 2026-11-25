@@ -716,6 +716,22 @@ Pruebas: `test/instructor.test.js`, `test/instructor-fallas.test.js` y `test/ins
   doble toque, fondo opaco, Escape y el tabulador dentro de la ventana.
 - Al imprimir (reporte, contratos) no salen ni la foto ni el vidrio.
 
+### Lo nuevo de la 0.14.114: el avión 3D, más real — sin cambio de base
+
+- **Pedido del dueño:** «el avión debe verse más real». Se buscó un modelo 3D libre (CC0) de un entrenador de ala alta;
+  los sitios de modelos no se pudieron abrir desde aquí y ninguno tenía licencia clara, así que el avión se hizo aquí,
+  sin archivos ni librerías: `public/clase/avion-modelo.js` (puro, con pruebas en `test/avion-modelo.test.js`).
+- **Proporciones de un Cessna 172** (medidas en pies, como un plano: FS, BL, WL): 27 ft de largo, 36 ft de envergadura,
+  8.9 ft de alto, hélice de 6.25 ft y trocha de 8.3 ft. Fuselaje con superelipses (capó, parabrisas inclinado, ventanas
+  de las puertas con su parante, ventana trasera de arriba, franja naranja con filete azul y panza gris), ala con perfil
+  y diedro que se afina hacia la punta, montantes (struts) con perfil, tren fijo con carenados, estabilizador y deriva con
+  perfil y aleta dorsal, cono de la hélice y dos palas torcidas con las puntas pintadas. Unas 600 caras, todas convexas.
+- **Se mueve igual que antes:** alerones y timón de profundidad giran en su bisagra; la hélice gira; luces de navegación,
+  estroboscópicas y baliza en su lugar. La sombra es la silueta del avión (ala, nariz, cola y estabilizador). Las ruedas
+  quedan 0.86 unidades debajo del centro (el juego lo apoya con `ALTO_RUEDAS`); `modeloAvion().luces` tiene dónde va cada
+  luz. Con WebGL los vidrios y la pintura reflejan el cielo de la paleta (Fresnel; de noche no brillan).
+- Galería: `/clase/demo-avion.html` (`?giro=150&alto=8&dist=13`, `?alabeo=20&alerones=10`, `?motor=2d`, `?tema=oscuro`).
+
 ### Lo nuevo de la 0.14.95: «▶ Ver qué pasaría» en las preguntas — sin cambio de base
 
 Pedido del dueño: «en el sistema, en el oral, en los exámenes o la clase, lo de tú escoges la respuesta: si bien o mal,

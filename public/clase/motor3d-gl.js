@@ -14,7 +14,7 @@ void main() { vPos = aPos; vNor = aNor; vCol = aCol; vMat = aMat; gl_Position = 
 const FS_MALLA = `#version 300 es
 precision highp float;
 in vec3 vPos; in vec3 vNor; in vec4 vCol; in vec4 vMat;
-uniform vec3 uOjo, uSol, uCielo, uSuelo, uSolColor, uNiebla; uniform vec2 uNieblaD; uniform float uAmb, uTex;
+uniform vec3 uOjo, uSol, uCielo, uSuelo, uSolColor, uNiebla, uCenit, uHorizonte; uniform vec2 uNieblaD; uniform float uAmb, uTex;
 out vec4 color;
 // Un hash sin seno (el seno de números grandes da basura en algunas GPU: puntitos negros a lo lejos).
 float h(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -42,6 +42,15 @@ void main() {
   float dif = max(dot(N, uSol), 0.0);
   vec3 c = base * mix(vec3(1.0), hemi * uAmb + uSolColor * dif * (1.05 - uAmb * 0.5), luz);
   if (vMat.y > 0.0) { vec3 H = normalize(uSol + V); c += uSolColor * pow(max(dot(N, H), 0.0), 48.0) * vMat.y; }
+  // 0.14.114: el reflejo del cielo (vidrios y pintura del avión): de frente casi nada, de costado mucho (Fresnel).
+  // Arriba el cielo de la paleta; abajo, el suelo lejano (la niebla). De noche la paleta es oscura: no brilla.
+  if (vMat.w > 0.0) {
+    vec3 Rf = reflect(-V, N);
+    vec3 cielo = Rf.y > 0.0 ? mix(uHorizonte, uCenit, pow(Rf.y, 0.5)) : mix(uHorizonte, uNiebla * 0.7, clamp(-Rf.y * 4.0, 0.0, 1.0));
+    float fr = 0.12 + 0.88 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    c = mix(c, cielo, clamp(fr * vMat.w, 0.0, 0.92));
+    if (vMat.y > 0.6) { vec3 H = normalize(uSol + V); c += uSolColor * pow(max(dot(N, H), 0.0), 220.0) * 0.9 * vMat.w; }
+  }
   float d = length(vPos - uOjo);
   float f = smoothstep(uNieblaD.x, uNieblaD.y, d);
   c = mix(c, uNiebla, f);
@@ -196,20 +205,24 @@ export function crearRenderGL(lienzo) {
   // ---------- mallas (polígonos → triángulos) ----------
   // Cada vértice: posición (3), normal (3), color + opacidad (4), material (luz, brillo, terreno, 0) = 14 floats.
   const ANCHO = 14;
+  // 0.14.114: directo a un arreglo de números (sin copias ni «...» por vértice): el avión (unas 600 caras) se arma en
+  // cada cuadro y en el juego hay varios.
   function triangular(lista) {
     const opacos = [], calco = [], trans = [];
     for (const q of lista) {
       if (q.t !== 'p' || q.p.length < 3) continue;
       const n = q.n ?? (q.n = normalDe(q.p));
-      const mat = [q.luz ?? 1, q.brillo ?? 0, q.terreno ? 1 : 0, 0];
-      const c = color01(q.c), a = q.a ?? 1;
-      const verts = [];
-      for (let i = 1; i < q.p.length - 1; i++) for (const k of [0, i, i + 1]) {
-        const v = q.p[k], m = q.ns ? q.ns[k] : n;
-        verts.push(v[0], v[1], v[2], m[0], m[1], m[2], c[0], c[1], c[2], a, ...mat);
+      const m0 = q.luz ?? 1, m1 = q.brillo ?? 0, m2 = q.terreno ? 1 : 0, m3 = q.refleja ?? 0;
+      const r = q.c[0] / 255, g = q.c[1] / 255, b = q.c[2] / 255, a = q.a ?? 1;
+      const p = q.p, ns = q.ns, verts = new Array((p.length - 2) * 3 * ANCHO);
+      let o = 0;
+      for (let i = 1; i < p.length - 1; i++) for (let t = 0; t < 3; t++) {
+        const k = t === 0 ? 0 : t === 1 ? i : i + 1, v = p[k], nn = ns ? ns[k] : n;
+        verts[o++] = v[0]; verts[o++] = v[1]; verts[o++] = v[2]; verts[o++] = nn[0]; verts[o++] = nn[1]; verts[o++] = nn[2];
+        verts[o++] = r; verts[o++] = g; verts[o++] = b; verts[o++] = a; verts[o++] = m0; verts[o++] = m1; verts[o++] = m2; verts[o++] = m3;
       }
       const destino = q.capa === 'calco' ? calco : a < 1 ? trans : opacos;
-      destino.push({ verts, centro: centroDe(q.p) });
+      destino.push({ verts, centro: destino === trans ? centroDe(p) : null });
     }
     return { opacos, calco, trans };
   }
@@ -338,6 +351,7 @@ export function crearRenderGL(lienzo) {
       gl.uniform3fv(M.uCielo, pal.oscuro ? [0.72, 0.8, 1.0] : [0.95, 1.0, 1.08]); gl.uniform3fv(M.uSuelo, pal.oscuro ? [0.42, 0.44, 0.42] : [0.62, 0.6, 0.52]);
       gl.uniform3fv(M.uSolColor, pal.oscuro ? [0.95, 0.84, 0.74] : [1.0, 0.97, 0.9]); gl.uniform3fv(M.uNiebla, nColor);
       gl.uniform2f(M.uNieblaD, niebla.inicio, Math.max(niebla.inicio + 1e-3, niebla.fin)); gl.uniform1f(M.uAmb, pal.ambiente ?? 0.55); gl.uniform1f(M.uTex, escena.texturaEscala ?? 1);
+      gl.uniform3fv(M.uCenit, color01(pal.cieloAlto)); gl.uniform3fv(M.uHorizonte, color01(pal.cieloBajo));
       const fijas = (escena.fijas ?? []).map(l => mallasDe(l, true));
       const dinamica = mallasDe(escena.prims ?? [], false);
       const todas = [...fijas, dinamica];

@@ -7,6 +7,7 @@
 // el contexto del lienzo llega de afuera (las pruebas usan uno de mentira).
 
 import { dibujarCabina as dibujarCabinaCompleta } from './cabina.js';
+import { construirAvion } from './avion-modelo.js';
 
 // ---------- vectores ----------
 export const suma = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -201,68 +202,10 @@ export function terreno({ x0, z0, x1, z1, n = 24, altura = () => 0, color = () =
 }
 
 // ---------- el avión ----------
-// El modelo (ala alta, como un Cessna 172) en coordenadas propias: x adelante, y arriba, z a la derecha del piloto;
-// unas 8 unidades de largo. Devuelve las piezas con su color; la hélice y las luces van aparte (se mueven).
-const SECCIONES = [
-  // [x, ancho, alto, centro y]
-  [4.15, 0.18, 0.18, 0.05], [3.75, 0.5, 0.52, 0.05], [2.9, 0.62, 0.72, 0.12], [1.6, 0.66, 0.92, 0.24], [0.2, 0.62, 0.86, 0.22],
-  [-1.4, 0.42, 0.56, 0.18], [-3.1, 0.2, 0.3, 0.2], [-4.2, 0.08, 0.16, 0.26],
-];
-let modeloCache = null;
-export function modeloAvion() {
-  if (modeloCache) return modeloCache;
-  const BLANCO = [244, 246, 250], FRANJA = [234, 106, 32], GRIS = [150, 160, 175], VIDRIO = [60, 90, 130], NEGRO = [40, 44, 52], PANZA = [205, 212, 222];
-  const caras = [];
-  const lados = 8;
-  const aro = ([x, w, h, cy]) => Array.from({ length: lados }, (_, i) => { const g = (i / lados) * Math.PI * 2 + Math.PI / lados; return [x, cy + (Math.cos(g) * h) / 2, (Math.sin(g) * w) / 2]; });
-  const aros = SECCIONES.map(aro);
-  for (let s = 0; s < aros.length - 1; s++) for (let i = 0; i < lados; i++) {
-    const j = (i + 1) % lados;
-    const a = aros[s], b = aros[s + 1];
-    // Arriba de la cabina, el vidrio; una franja naranja a los lados; la panza gris clara.
-    const arribaCara = i === 0 || i === lados - 1;
-    const lado = i === 1 || i === 2 || i === 5 || i === 6;
-    let c = BLANCO;
-    if (s === 2 && (i === 1 || i === 6 || arribaCara)) c = VIDRIO;
-    else if (s === 3 && (i === 1 || i === 6)) c = VIDRIO;
-    else if ((s === 4 || s === 5) && lado) c = FRANJA;
-    else if (i === 3 || i === 4) c = PANZA;
-    // Normales por vértice (el fuselaje se ve redondo con WebGL): hacia afuera del aro, inclinadas por el afinamiento.
-    const nv = (sec, k) => { const [, w, h] = SECCIONES[sec], g = (k / lados) * Math.PI * 2 + Math.PI / lados; return unitario([0.08 * (sec < 3 ? 1 : -1), Math.cos(g) / Math.max(h, 0.05), Math.sin(g) / Math.max(w, 0.05)]); };
-    caras.push({ p: [a[i], b[i], b[j], a[j]], ns: [nv(s, i), nv(s + 1, i), nv(s + 1, j), nv(s, j)], c, brillo: c === VIDRIO ? 0.9 : 0.45 });
-  }
-  caras.push({ p: [...aros[0]].reverse(), c: GRIS });
-  caras.push({ p: aros[aros.length - 1], c: BLANCO });
-  // El ala alta (cuerda 1.4, envergadura 11, un poco de diedro) y su punta naranja.
-  const ala = (z0, z1, y0, y1, c) => {
-    const x0 = 2.15, x1 = 0.75, e = 0.07;
-    const v = [[x0, y0 + e, z0], [x1, y0 + e, z0], [x1, y1 + e, z1], [x0, y1 + e, z1], [x0, y0 - e, z0], [x1, y0 - e, z0], [x1, y1 - e, z1], [x0, y1 - e, z1]];
-    for (const f of [[0, 3, 2, 1], [4, 5, 6, 7], [0, 4, 7, 3], [1, 2, 6, 5], [2, 3, 7, 6], [0, 1, 5, 4]]) caras.push({ p: f.map(i => v[i]), c });
-  };
-  // Por dentro, la cuerda entera; por fuera, sin la parte del alerón (que se mueve: primitivasAvion).
-  const alaParcial = (z0, z1, y0, y1, c, x1) => {
-    const x0 = 2.15, e = 0.07;
-    const v = [[x0, y0 + e, z0], [x1, y0 + e, z0], [x1, y1 + e, z1], [x0, y1 + e, z1], [x0, y0 - e, z0], [x1, y0 - e, z0], [x1, y1 - e, z1], [x0, y1 - e, z1]];
-    for (const f of [[0, 3, 2, 1], [4, 5, 6, 7], [0, 4, 7, 3], [1, 2, 6, 5], [2, 3, 7, 6], [0, 1, 5, 4]]) caras.push({ p: f.map(i => v[i]), c, brillo: 0.35 });
-  };
-  const yAla = z => 0.72 + (Math.abs(z) / 4.9) * 0.12;
-  alaParcial(0, 2.7, 0.72, yAla(2.7), BLANCO, 0.75); alaParcial(2.7, 4.9, yAla(2.7), 0.84, BLANCO, 1.05); ala(4.9, 5.5, 0.84, 0.86, FRANJA);
-  alaParcial(-2.7, 0, yAla(2.7), 0.72, BLANCO, 0.75); alaParcial(-4.9, -2.7, 0.84, yAla(2.7), BLANCO, 1.05); ala(-5.5, -4.9, 0.86, 0.84, FRANJA);
-  // Estabilizador horizontal y deriva.
-  const placa = (pts, c) => caras.push({ p: pts, c, doble: true });
-  placa([[-3.3, 0.26, -1.85], [-3.9, 0.26, -1.85], [-3.9, 0.26, 1.85], [-3.3, 0.26, 1.85]], BLANCO); // el timón de profundidad se mueve aparte
-  placa([[-2.9, 0.3, 0], [-4.25, 0.32, 0], [-4.45, 1.75, 0], [-3.85, 1.75, 0]], BLANCO);
-  placa([[-4.0, 1.25, 0], [-4.38, 1.25, 0], [-4.45, 1.75, 0], [-3.85, 1.75, 0]], FRANJA);
-  // Montantes del ala y tren fijo.
-  const lineas = [
-    { p: [[0.95, -0.12, 0.33], [1.55, 0.74, 2.6]], c: GRIS }, { p: [[0.95, -0.12, -0.33], [1.55, 0.74, -2.6]], c: GRIS },
-    { p: [[0.7, -0.2, 0.3], [0.6, -0.75, 1.1]], c: NEGRO }, { p: [[0.7, -0.2, -0.3], [0.6, -0.75, -1.1]], c: NEGRO },
-    { p: [[3.3, -0.2, 0], [3.3, -0.72, 0]], c: NEGRO },
-  ];
-  const ruedas = [[0.6, -0.8, 1.1], [0.6, -0.8, -1.1], [3.3, -0.78, 0]];
-  modeloCache = Object.freeze({ caras: caras.map(f => ({ ...f, n: normalDe(f.p) })), lineas, ruedas, nariz: [4.2, 0.05, 0], luces: { izquierda: [1.4, 0.86, -5.55], derecha: [1.4, 0.86, 5.55], cola: [-4.45, 1.0, 0], baliza: [-4.2, 1.78, 0] }, yAla });
-  return modeloCache;
-}
+// 0.14.114: el modelo vive en avion-modelo.js (proporciones de un Cessna 172, perfiles, montantes, carenados, ventanas,
+// franja, hélice torcida). Aquí se pone en el mundo: x adelante, y arriba, z a la derecha del piloto; unas 8.4 unidades
+// de largo y las ruedas 0.86 por debajo del centro.
+export function modeloAvion() { return construirAvion(); }
 // La base del avión con rumbo, cabeceo y alabeo (grados; alabeo + = ala derecha abajo).
 export function baseAvion(rumbo, cabeceo = 0, alabeo = 0) {
   const h = rad(rumbo), t = rad(cabeceo), b = rad(alabeo);
@@ -278,49 +221,60 @@ export const local = (pos, base, escala, [x, y, z]) => [
   pos[1] + (base.F[1] * x + base.U[1] * y + base.R[1] * z) * escala,
   pos[2] + (base.F[2] * x + base.U[2] * y + base.R[2] * z) * escala,
 ];
+// Girar un punto (o una normal, con o = [0,0,0]) alrededor del eje o→o+u (unitario), «ang» radianes (Rodrigues).
+function girarEje(v, o, u, c, s) {
+  const x = v[0] - o[0], y = v[1] - o[1], z = v[2] - o[2], d = (u[0] * x + u[1] * y + u[2] * z) * (1 - c);
+  return [o[0] + x * c + (u[1] * z - u[2] * y) * s + u[0] * d, o[1] + y * c + (u[2] * x - u[0] * z) * s + u[1] * d, o[2] + z * c + (u[0] * y - u[1] * x) * s + u[2] * d];
+}
+const CERO = [0, 0, 0];
 // Las primitivas del avión en el mundo: pos, rumbo, cabeceo, alabeo, escala y el ángulo de la hélice (radianes).
-// alerones y profundidad: cuánto se mueven (grados); t: el reloj (para el destello de las luces estroboscópicas).
+// alerones y profundidad: cuánto se mueven (grados; alerones + = el derecho baja); t: el reloj (destello de las luces).
 export function primitivasAvion({ pos, rumbo = 0, cabeceo = 0, alabeo = 0, escala = 1, helice = 0, luces = true, sombra = null, alerones = 0, profundidad = 0, t = 0 }) {
-  const m = modeloAvion(), base = baseAvion(rumbo, cabeceo, alabeo), L = q => local(pos, base, escala, q);
+  const m = construirAvion(), base = baseAvion(rumbo, cabeceo, alabeo);
+  const { F, U, R } = base;
+  const L = q => [pos[0] + (F[0] * q[0] + U[0] * q[1] + R[0] * q[2]) * escala, pos[1] + (F[1] * q[0] + U[1] * q[1] + R[1] * q[2]) * escala, pos[2] + (F[2] * q[0] + U[2] * q[1] + R[2] * q[2]) * escala];
+  const N = n => [F[0] * n[0] + U[0] * n[1] + R[0] * n[2], F[1] * n[0] + U[1] * n[1] + R[1] * n[2], F[2] * n[0] + U[2] * n[1] + R[2] * n[2]];
   const out = [];
-  const nMundo = n => [base.F[0] * n[0] + base.U[0] * n[1] + base.R[0] * n[2], base.F[1] * n[0] + base.U[1] * n[1] + base.R[1] * n[2], base.F[2] * n[0] + base.U[2] * n[1] + base.R[2] * n[2]];
-  for (const f of m.caras) out.push({ t: 'p', p: f.p.map(L), ns: f.ns?.map(nMundo), c: f.c, a: 1, luz: 1, n: nMundo(f.n), doble: Boolean(f.doble), grupo: 'avion', brillo: f.brillo ?? 0.3 });
-  // Las superficies que se mueven: los alerones (uno sube, el otro baja) y el timón de profundidad.
-  const girarBisagra = (x0, y0, largo, d) => [x0 - Math.cos(rad(d)) * largo, y0 - Math.sin(rad(d)) * largo];
-  for (const lado of [1, -1]) {
-    const d = alerones * lado, z0 = 2.7 * lado, z1 = 4.9 * lado;
-    const [xa, ya] = girarBisagra(1.05, m.yAla(2.7), 0.33, d), [xb, yb] = girarBisagra(1.05, 0.84, 0.33, d);
-    const placaA = [[1.05, m.yAla(2.7), z0], [1.05, 0.84, z1], [xb, yb, z1], [xa, ya, z0]];
-    out.push({ t: 'p', p: placaA.map(L), c: [236, 238, 244], a: 1, luz: 1, n: nMundo(normalDe(placaA)), doble: true, grupo: 'avion', brillo: 0.3 });
+  // Los vértices y las normales se pasan al mundo una vez (las caras vecinas los comparten).
+  const caras = (lista, vertices, normales, gV = null, gN = null) => {
+    const W = vertices.map(gV ? v => L(gV(v)) : L), NW = normales.map(gN ? n => N(gN(n)) : N);
+    for (const f of lista) out.push({ t: 'p', p: f.vi.map(i => W[i]), ns: f.ni.map(i => NW[i]), c: f.c, a: 1, luz: 1, n: N(gN ? gN(f.n) : f.n), doble: Boolean(f.doble), grupo: 'avion', brillo: f.brillo ?? 0.3, refleja: f.refleja ?? 0 });
+  };
+  caras(m.caras, m.vertices, m.normales);
+  // Las superficies que se mueven, giradas en su bisagra: los alerones (uno sube, el otro baja) y el timón de profundidad.
+  for (const mv of m.moviles) {
+    const ang = rad(mv.tipo === 'aleron' ? alerones * mv.lado : -profundidad);
+    if (!ang) { caras(mv.caras, mv.vertices, mv.normales); continue; }
+    const [o, b] = mv.eje, u = unitario(resta(b, o)), c = Math.cos(ang), s = Math.sin(ang);
+    caras(mv.caras, mv.vertices, mv.normales, v => girarEje(v, o, u, c, s), n => girarEje(n, CERO, u, c, s));
   }
-  const [xe, ye] = girarBisagra(-3.9, 0.26, 0.4, -profundidad);
-  const placaE = [[-3.9, 0.26, -1.85], [-3.9, 0.26, 1.85], [xe, ye, 1.75], [xe, ye, -1.75]];
-  out.push({ t: 'p', p: placaE.map(L), c: [236, 238, 244], a: 1, luz: 1, n: nMundo(normalDe(placaE)), doble: true, grupo: 'avion', brillo: 0.3 });
-  for (const l of m.lineas) out.push(linea(l.p.map(L), l.c, { w: 1.4, grupo: 'avion' }));
-  for (const r of m.ruedas) out.push(bola(L(r), 0.2 * escala, [30, 32, 38], { min: 1.2, tex: 'disco' }));
-  // La hélice: dos palas que giran y un disco borroso.
-  const n = m.nariz;
-  for (const s of [0, Math.PI]) {
-    const g = helice + s, cg = Math.cos(g), sg = Math.sin(g), w = 0.09;
-    const pala = [[n[0], n[1] + cg * 0.1 - sg * w, sg * 0.1 + cg * w], [n[0], n[1] + cg * 1.05 - sg * w * 0.6, sg * 1.05 + cg * w * 0.6], [n[0], n[1] + cg * 1.05 + sg * w * 0.6, sg * 1.05 - cg * w * 0.6], [n[0], n[1] + cg * 0.1 + sg * w, sg * 0.1 - cg * w]];
-    out.push({ t: 'p', p: pala.map(L), c: [36, 38, 44], a: 1, luz: 0.5, n: base.F, doble: true, grupo: 'avion' });
+  // La hélice: dos palas que giran (en el eje de la nariz) y un disco borroso.
+  const nz = m.nariz;
+  for (const g0 of [0, Math.PI]) {
+    const c = Math.cos(helice + g0), s = Math.sin(helice + g0);
+    const gira = v => [v[0], nz[1] + (v[1] - nz[1]) * c - v[2] * s, (v[1] - nz[1]) * s + v[2] * c];
+    for (const f of m.pala) { const p = f.p.map(gira); out.push({ t: 'p', p: p.map(L), c: f.c, a: 1, luz: 0.8, n: N(normalDe(p)), doble: true, grupo: 'avion', brillo: f.brillo }); }
   }
-  const disco = Array.from({ length: 16 }, (_, i) => { const g = (i / 16) * Math.PI * 2; return L([n[0] + 0.02, n[1] + Math.cos(g) * 1.05, Math.sin(g) * 1.05]); });
-  out.push({ t: 'p', p: disco, c: [210, 215, 225], a: 0.14, luz: 0, n: base.F, doble: true, grupo: 'avion' });
+  const rh = m.radioHelice;
+  const disco = Array.from({ length: 18 }, (_, i) => { const g = (i / 18) * Math.PI * 2; return L([nz[0] + 0.03, nz[1] + Math.cos(g) * rh, Math.sin(g) * rh]); });
+  out.push({ t: 'p', p: disco, c: [200, 206, 218], a: 0.13, luz: 0, n: F, doble: true, grupo: 'avion' });
   // luces: true (todas) o { nav, baliza, estrobo } (0.14.105: las que tiene encendidas el avión).
   const lz = luces === true ? { nav: true, baliza: true, estrobo: true } : luces || {};
   if (lz.nav) {
-    out.push(bola(L(m.luces.izquierda), 0.38 * escala, [255, 40, 40], { tex: 'brillo', min: 2.5, a: 0.95, luzAvion: 'izquierda' }));
-    out.push(bola(L(m.luces.derecha), 0.38 * escala, [40, 255, 110], { tex: 'brillo', min: 2.5, a: 0.95, luzAvion: 'derecha' }));
-    out.push(bola(L(m.luces.cola), 0.3 * escala, [255, 255, 255], { tex: 'brillo', min: 2, a: 0.9, luzAvion: 'cola' }));
+    out.push(bola(L(m.luces.izquierda), 0.16 * escala, [255, 40, 40], { tex: 'brillo', min: 2.5, a: 0.95, luzAvion: 'izquierda' }));
+    out.push(bola(L(m.luces.derecha), 0.16 * escala, [40, 255, 110], { tex: 'brillo', min: 2.5, a: 0.95, luzAvion: 'derecha' }));
+    out.push(bola(L(m.luces.cola), 0.13 * escala, [255, 255, 255], { tex: 'brillo', min: 2, a: 0.9, luzAvion: 'cola' }));
   }
   // Las estroboscópicas (un destello blanco en las puntas) y la baliza roja de la deriva.
-  if (lz.estrobo && t % 1.3 < 0.08) for (const q of [m.luces.izquierda, m.luces.derecha]) out.push(bola(L(q), 0.9 * escala, [255, 255, 255], { tex: 'brillo', min: 6, a: 1, luzAvion: 'estrobo' }));
-  if (lz.baliza && (t + 0.5) % 1 < 0.12) out.push(bola(L(m.luces.baliza), 0.5 * escala, [255, 60, 40], { tex: 'brillo', min: 3, a: 1, luzAvion: 'baliza' }));
-  // La sombra en el suelo (un óvalo oscuro): ayuda a ver a qué altura va.
+  if (lz.estrobo && t % 1.3 < 0.08) for (const q of [m.luces.izquierda, m.luces.derecha]) out.push(bola(L(q), 0.5 * escala, [255, 255, 255], { tex: 'brillo', min: 6, a: 1, luzAvion: 'estrobo' }));
+  if (lz.baliza && (t + 0.5) % 1 < 0.12) out.push(bola(L(m.luces.baliza), 0.3 * escala, [255, 60, 40], { tex: 'brillo', min: 3, a: 1, luzAvion: 'baliza' }));
+  // La sombra en el suelo: la silueta del avión vista desde arriba (con su alabeo y su cabeceo), en piezas que no se
+  // pisan. Ayuda a ver a qué altura va y hacia dónde.
   if (sombra != null) {
-    const s = Array.from({ length: 12 }, (_, i) => { const g = (i / 12) * Math.PI * 2; const q = local([pos[0], 0, pos[2]], baseAvion(rumbo, 0, 0), escala, [Math.cos(g) * 4, 0, Math.sin(g) * 5]); return [q[0], sombra + 0.001, q[2]]; });
-    out.push({ t: 'p', p: s, c: [0, 0, 0], a: 0.22, luz: 0, n: [0, 1, 0], doble: true, capa: 'calco' });
+    for (const pieza of m.sombra) {
+      const s = pieza.map(q => { const w = L(q); return [w[0], sombra + 0.001, w[2]]; });
+      out.push({ t: 'p', p: s, c: [0, 0, 0], a: 0.26, luz: 0, n: [0, 1, 0], doble: true, capa: 'calco' });
+    }
   }
   return out;
 }
@@ -544,7 +498,7 @@ export function dibujarLista(ctx, lista, texturas = {}) {
       ctx.closePath();
       ctx.fill();
       if (x.borde) { ctx.strokeStyle = cssColor(x.borde, x.bordeA); ctx.lineWidth = 1; ctx.stroke(); }
-      else if (x.costura) { ctx.strokeStyle = cssColor(x.color, 1); ctx.lineWidth = 0.6; ctx.stroke(); } // el avión, sin rendijas entre caras
+      else if (x.costura && x.a >= 1) { ctx.strokeStyle = cssColor(x.color, 1); ctx.lineWidth = 0.6; ctx.stroke(); } // el avión, sin rendijas entre caras
     } else if (x.tipo === 'l') {
       ctx.globalAlpha = 1;
       ctx.strokeStyle = cssColor(x.color, x.a);
