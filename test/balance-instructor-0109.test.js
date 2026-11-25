@@ -48,7 +48,7 @@ test('sin nada hecho, una sola línea para empezar; y los textos existen en los 
   const { readFileSync } = await import('node:fs');
   for (const l of ['es', 'en']) {
     const cat = JSON.parse(readFileSync(new URL(`../public/i18n/${l}.json`, import.meta.url), 'utf8'));
-    for (const k of ['nada', 'completaste', 'ninguna', 'empezaste', 'empezaste_dos', 'aciertos', 'aciertos_fuerte', 'cuesta', 'cuesta_dos', 'examen', 'oral', 'oral_nada', 'haz_flojo', 'haz_examen', 'haz_seguir', 'haz_nueva', 'haz_repaso']) assert.ok(cat[`profe.bal.${k}`], `${l} profe.bal.${k}`);
+    for (const k of ['nada', 'completaste', 'ninguna', 'empezaste', 'empezaste_dos', 'aciertos', 'aciertos_fuerte', 'cuesta', 'cuesta_dos', 'examen', 'oral', 'haz_flojo', 'haz_examen', 'haz_seguir', 'haz_nueva', 'haz_repaso']) assert.ok(cat[`profe.bal.${k}`], `${l} profe.bal.${k}`);
   }
 });
 
@@ -59,4 +59,18 @@ test('a la IA: nombres (nunca ids) y la orden de responder como un instructor si
   assert.match(p.sistema, /CÓMO VA/);
   assert.match(p.sistema, /No empieces con «Tranquilo»/);
   assert.doesNotMatch(armarChat({ alumno: {}, material: null, mensaje: 'hola', estudio: { temas: [] } }).sistema, /CÓMO VA/);
+});
+
+test('solo habla de lo que hizo: nada de lo que no ha empezado (pedido del dueño)', async () => {
+  const b = balanceAlumno(historial());
+  const lineas = lineasBalance(b);
+  assert.ok(!JSON.stringify(lineas).includes('navegacion'));
+  assert.ok(lineas.every(l => !('faltan' in l.vars) && !('total' in l.vars)));
+  const h = historial(); h.oral.materias = h.oral.materias.map(m => ({ ...m, pct: 0, bien: 0 }));
+  assert.ok(!lineasBalance(balanceAlumno(h)).some(l => l.clave.startsWith('profe.bal.oral')));
+  const ia = balanceParaIa(b);
+  assert.ok(!('sin_empezar' in ia) && !('materias_del_test_guide' in ia));
+  const { readFileSync } = await import('node:fs');
+  const es = JSON.parse(readFileSync(new URL('../public/i18n/es.json', import.meta.url), 'utf8'));
+  assert.match(es['profe.bal.completaste'], /Estuve revisando/);
 });

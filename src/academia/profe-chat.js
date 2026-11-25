@@ -502,19 +502,20 @@ export function lineasBalance(b) {
   if (!b) return [{ clave: 'profe.sin_datos', vars: {} }];
   const L = [];
   const { tg } = b;
-  if (!tg.de && !tg.completadas.length && !tg.enCurso.length) return [{ clave: 'profe.bal.nada', vars: { total: tg.total } }];
+  if (!tg.de && !tg.completadas.length && !tg.enCurso.length) return [{ clave: 'profe.bal.nada', vars: {} }];
   // 1) Lo hecho.
   const curso = tg.enCurso.slice(0, 2);
   const nombres = ids => ids.join(' · ');
-  if (tg.completadas.length) L.push({ clave: 'profe.bal.completaste', vars: { n: tg.completadas.length, total: tg.total, materias: nombres(tg.completadas.slice(0, 3)) } });
-  else L.push({ clave: 'profe.bal.ninguna', vars: { total: tg.total } });
-  if (curso.length) L.push({ clave: curso.length > 1 ? 'profe.bal.empezaste_dos' : 'profe.bal.empezaste', vars: { materias: nombres(curso.map(c => c.materia)), hechos: curso[0].hechos, temas: curso[0].temas, faltan: tg.sinEmpezar } });
+  if (tg.completadas.length) L.push({ clave: 'profe.bal.completaste', vars: { n: tg.completadas.length, materias: nombres(tg.completadas.slice(0, 3)) } });
+  else L.push({ clave: 'profe.bal.ninguna', vars: {} });
+  if (curso.length) L.push({ clave: curso.length > 1 ? 'profe.bal.empezaste_dos' : 'profe.bal.empezaste', vars: { materias: nombres(curso.map(c => c.materia)), hechos: curso[0].hechos, temas: curso[0].temas } });
   // 2) Cómo te va.
   if (tg.de) L.push({ clave: b.fuerte ? 'profe.bal.aciertos_fuerte' : 'profe.bal.aciertos', vars: { pct: pct(tg.bien, tg.de), bien: tg.bien, de: tg.de, ...(b.fuerte ? { tema: b.fuerte.titulo } : {}) } });
   // 3) Lo que cuesta (con suficientes respuestas) y el examen que no pasó (si no hay nada flojo, o hay lugar).
   if (b.flojos.length) L.push({ clave: b.flojos.length > 1 ? 'profe.bal.cuesta_dos' : 'profe.bal.cuesta', vars: { tema: b.flojos[0].titulo, bien: b.flojos[0].bien, de: b.flojos[0].de, ...(b.flojos[1] ? { tema2: b.flojos[1].titulo, bien2: b.flojos[1].bien, de2: b.flojos[1].de } : {}) } });
   if (b.examenCaido && L.length < 4) L.push({ clave: 'profe.bal.examen', vars: { materia: b.examenCaido.materia, pct: b.examenCaido.pct } });
-  if (b.oral?.total && L.length < 5) L.push({ clave: b.oral.empezados ? 'profe.bal.oral' : 'profe.bal.oral_nada', vars: { n: b.oral.empezados, total: b.oral.total } });
+  // (solo lo que ya hizo: nunca lo que no ha empezado)
+  if (b.oral?.empezados && L.length < 5) L.push({ clave: 'profe.bal.oral', vars: { n: b.oral.empezados } });
   // 4) Qué hacer, y por qué (siempre; corto: 6 líneas como mucho).
   const haz = b.flojos.length ? { clave: 'profe.bal.haz_flojo', vars: { tema: b.flojos[0].titulo } }
     : b.examenCaido ? { clave: 'profe.bal.haz_examen', vars: { materia: b.examenCaido.materia } }
@@ -531,11 +532,12 @@ export function balanceParaIa(b, { idioma = 'es' } = {}) {
   if (!b) return null;
   const nm = id => nombreMateria(id, idioma) ?? 'una materia';
   return {
-    materias_del_test_guide: b.tg.total, completadas_examen_aprobado: b.tg.completadas.map(nm),
-    empezadas: b.tg.enCurso.map(c => ({ materia: nm(c.materia), temas_aprobados: c.hechos, de_temas: c.temas })), sin_empezar: b.tg.sinEmpezar,
+    // (solo lo que ya hizo o empezó: de lo que no ha tocado no se habla)
+    completadas_examen_aprobado: b.tg.completadas.map(nm),
+    empezadas: b.tg.enCurso.map(c => ({ materia: nm(c.materia), temas_aprobados: c.hechos, de_temas: c.temas })),
     preguntas: { bien: b.tg.bien, de: b.tg.de, pct: pct(b.tg.bien, b.tg.de) }, lo_mejor: b.fuerte, le_cuesta: b.flojos.map(f => ({ tema: f.titulo, bien: f.bien, de: f.de })),
     examen_no_pasado: b.examenCaido ? { materia: nm(b.examenCaido.materia), ultimo_pct: b.examenCaido.pct } : null,
-    oral: b.oral ? { capitulos: b.oral.total, empezados: b.oral.empezados, aprobados: b.oral.aprobados, por_corregir: b.oral.errores } : null,
+    oral: b.oral?.empezados ? { capitulos_empezados: b.oral.empezados, aprobados: b.oral.aprobados, por_corregir: b.oral.errores } : null,
     repasos_de_hoy: b.repasos, dias_sin_estudiar: b.haceDias,
   };
 }
