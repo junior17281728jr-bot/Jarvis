@@ -3,7 +3,7 @@
 // noche. Sin documento ni ventana (las pruebas lo usan tal cual). Los datos, de los textos de la FAA (tabla LUCES_FAA).
 import { bola, primitivasAvion } from './motor3d.js';
 import { PALETAS } from './e3d-base.js';
-import { PISTA, VUELO, enPista } from './vuelo-modelo.js';
+import { PISTA, VUELO, enPista, enAgua } from './vuelo-modelo.js';
 
 // ---------- los datos (con su fuente) ----------
 export const LUCES_FAA = Object.freeze({
@@ -129,7 +129,8 @@ export function lucesPueblos() {
   let s = 17;
   const azar = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
   for (const [cx, cz, n] of [[-14, 10, 70], [16, -12, 60], [8, 22, 50], [-20, -20, 40]]) {
-    for (let i = 0; i < n; i++) out.push(bola([cx + (azar() - 0.5) * 4, 0.003, cz + (azar() - 0.5) * 4], 0.004, [255, 205, 120], { tex: 'brillo', min: 0.8, a: 0.7 }));
+    // (0.14.113: ninguna luz en el lago)
+    for (let i = 0; i < n; i++) { const x = cx + (azar() - 0.5) * 4, z = cz + (azar() - 0.5) * 4; if (!enAgua(x, z)) out.push(bola([x, 0.003, z], 0.004, [255, 205, 120], { tex: 'brillo', min: 0.8, a: 0.7 })); }
   }
   return out;
 }

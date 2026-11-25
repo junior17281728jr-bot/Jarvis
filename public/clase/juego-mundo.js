@@ -2,8 +2,11 @@
 // tiempo. Se arma UNA vez por paleta (con WebGL se sube una sola vez: la misma lista en cada cuadro).
 // Unidades: 1 = 1,000 ft (como el circuito 3D). Reusa las piezas de las escenas 3D (e3d-base.js y motor3d.js).
 import { aeropuerto, campo, cumulo } from './e3d-base.js';
-import { ruido, aleatorio, primitivasAvion } from './motor3d.js';
-import { PISTA, PISTA_B, VUELO } from './vuelo-modelo.js';
+import { ruido, aleatorio, primitivasAvion, poligono } from './motor3d.js';
+import { PISTA, PISTA_B, VUELO, LAGO, enAgua, radioLago } from './vuelo-modelo.js';
+
+// 0.14.113: el lago (para el amarizaje): plano (altura 0) y con la orilla que sube despacio.
+export { LAGO, enAgua };
 
 export const ESCALA_AVION = 0.0032; // el modelo mide unas 8.4 unidades: 27 ft de largo, como un Cessna 172
 export const ALTO_RUEDAS = 0.0027; // del centro del avión a las ruedas (en unidades del mundo)
@@ -12,12 +15,36 @@ export const ALTO_RUEDAS = 0.0027; // del centro del avión a las ruedas (en uni
 export function alturaSuelo(x, z) {
   const d = Math.hypot(x, z);
   if (d < 6 || Math.abs(x) > 36 || Math.abs(z) > 36) return 0;
-  return Math.min(1, (d - 6) / 10) * 0.35 * ruido(x * 0.08, z * 0.08, 5);
+  // (en el lago y hasta unos 6,000 ft de la orilla, plano: más que un cuadro del terreno, así su malla no tapa el agua;
+  // después el relieve sube despacio. (r − 1) × el semieje chico no pasa de la distancia a la orilla.)
+  const orilla = Math.min(1, Math.max(0, ((radioLago(x, z) - 1) * LAGO.ax - 6) / 4));
+  if (orilla <= 0) return 0;
+  return orilla * Math.min(1, (d - 6) / 10) * 0.35 * ruido(x * 0.08, z * 0.08, 5);
+}
+
+// El agua del lago: franjas planas (de sur a norte, en trozos chicos: la niebla y el recorte se calculan por trozo; con
+// WebGL y con el dibujo de respaldo). Pegadas al suelo («calco»), con el color «agua» de la paleta (de día y de noche).
+export function aguaLago(paleta, { franjas = 18, trozos = 4 } = {}) {
+  const out = [], y = 0.0003, c = paleta.agua;
+  const ancho = z => LAGO.ax * Math.sqrt(Math.max(0, 1 - ((z - LAGO.z) / LAGO.az) ** 2));
+  for (let i = 0; i < franjas; i++) {
+    const za = LAGO.z - LAGO.az + (2 * LAGO.az * i) / franjas, zb = LAGO.z - LAGO.az + (2 * LAGO.az * (i + 1)) / franjas;
+    const wa = ancho(za), wb = ancho(zb);
+    for (let k = 0; k < trozos; k++) {
+      const f0 = -1 + (2 * k) / trozos, f1 = -1 + (2 * (k + 1)) / trozos;
+      const pts = [[LAGO.x + wa * f0, y, za], [LAGO.x + wb * f0, y, zb], [LAGO.x + wb * f1, y, zb], [LAGO.x + wa * f1, y, za]];
+      // (en las puntas una franja es un triángulo: no se repite el vértice)
+      const p = pts.filter((v, j) => j === 0 || Math.hypot(v[0] - pts[j - 1][0], v[2] - pts[j - 1][2]) > 1e-9);
+      if (p.length >= 3) out.push(poligono(p, c, { luz: 0.4, doble: true, capa: 'calco', n: [0, 1, 0] }));
+    }
+  }
+  return out;
 }
 
 export function construirMundo(paleta, { conNubes = true } = {}) {
   const prims = [];
-  prims.push(...campo({ x0: -36, z0: -36, x1: 36, z1: 36, n: 18, altura: alturaSuelo, paleta, semilla: 5, falda: 400 }));
+  prims.push(...campo({ x0: -36, z0: -36, x1: 36, z1: 36, n: 18, altura: alturaSuelo, paleta, semilla: 5, falda: 400, agua: enAgua }));
+  prims.push(...aguaLago(paleta));
   prims.push(...aeropuerto({ x: PISTA.x, z: PISTA.z, y: 0.0004, rumbo: PISTA.rumbo % 360, largo: PISTA.largoFt / VUELO.ftPorUnidad, ancho: PISTA.anchoFt / VUELO.ftPorUnidad, paleta, torre: true, detalle: true }));
   // 0.14.102: el aeropuerto B (pista 09), a unos 10 NM al noreste.
   prims.push(...aeropuerto({ x: PISTA_B.x, z: PISTA_B.z, y: 0.0004, rumbo: PISTA_B.rumbo % 360, largo: PISTA_B.largoFt / VUELO.ftPorUnidad, ancho: PISTA_B.anchoFt / VUELO.ftPorUnidad, paleta, torre: false, detalle: true }));

@@ -2,13 +2,15 @@
 // idea clave en negrita y su fuente de la FAA) y los ajustes que se cambian en vivo (día o noche, viento, tráfico). Las que
 // ya existen como escenas 3D de las clases (espacio aéreo, mínimos VFR y frentes) se abren tal cual. Sin documento.
 // Los textos: «juego.mc.<id>.titulo», «.linea» y «juego.mc.<id>.<paso>» (con **negrita**) en public/i18n.
-import { PISTA } from './vuelo-modelo.js';
+import { PISTA, LAGO } from './vuelo-modelo.js';
 import { LUCES_FAA, direccionDe, derechoDePaso, crearTrafico } from './juego-noche.js';
 
 const NM = 6.076;
 const UMBRAL_Z = PISTA.z - PISTA.largoFt / 2000;
 // En final, a «nm» millas del umbral, en la senda de 3° (+ «arriba» ft).
 export const enFinalA = (nm, arriba = 0) => ({ x: 0, z: UMBRAL_Z - nm * NM, ft: Math.round(nm * 6076 * Math.tan((3 * Math.PI) / 180) + 50 + arriba), rumbo: 360, kt: 68, potencia: 0.2, flaps: 1, enSuelo: false });
+// El comienzo del amarizaje: en el eje del lago, unos 2.6 NM al sur de la orilla, rumbo norte, con 0.1 gal.
+export const AMARIZAJE_INICIO = Object.freeze({ x: LAGO.x, z: LAGO.z - LAGO.az - 16, ft: 2600, rumbo: 360, kt: 85, potencia: 0.5, flaps: 0, enSuelo: false, combustible: 0.1 });
 const CRUCERO = Object.freeze({ x: -2, z: -10, ft: 2500, rumbo: 360, kt: 100, potencia: 0.65, flaps: 0, enSuelo: false });
 
 export const MINICLASES = Object.freeze([
@@ -38,6 +40,15 @@ export const MINICLASES = Object.freeze([
   // 0.14.103: la mezcla, a 7,500 ft (el aire menos denso): rica, empobrecer hasta la mejor potencia, demasiado pobre y corte.
   { id: 'mezcla', icono: 'motor', hora: 'dia', inicio: { ...CRUCERO, ft: 7500, kt: 100, potencia: 0.7 }, congelar: false, motor: true, fuente: 'PHAK cap. 7 · cap. 11',
     pasos: [{ id: 'rica', mezcla: 1 }, { id: 'empobrecer', mezcla: 0.76 }, { id: 'pobre', mezcla: 0.45 }, { id: 'corte', mezcla: 0 }] },
+  // 0.14.113: el amarizaje con poco combustible (pedido del dueño): al sur del lago, a 2,600 ft, con 0.1 gal (el motor se
+  // para en un minuto); el viento del norte (se amariza de frente al viento). Los pasos 2 y 3 empiezan ya sin combustible,
+  // más cerca del agua. El juez es juzgarAmarizaje (vuelo-modelo.js).
+  { id: 'amarizaje', icono: 'atencion', hora: 'dia', inicio: AMARIZAJE_INICIO, congelar: false, viento: { desde: 360, kt: 10 }, mapa: 'lago', fuente: 'AFH cap. 3 · cap. 18 · AIM 6-3-2 · 6-3-3',
+    pasos: [
+      { id: 'planear' },
+      { id: 'viento', inicio: { z: LAGO.z - LAGO.az - 6, ft: 2000, kt: 70, combustible: 0 } },
+      { id: 'tocar', inicio: { z: LAGO.z - LAGO.az + 8, ft: 1000, kt: 70, combustible: 0 } },
+    ] },
   // Las escenas 3D de las clases, tal cual.
   { id: 'espacio-aereo', icono: 'escudo', escena: 'espacio-aereo' },
   { id: 'minimos-vfr', icono: 'nube', escena: 'minimos-vfr' },

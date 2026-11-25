@@ -8,7 +8,7 @@ import { crearCamara, ojoOrbita, baseAvion, suma, por, render, crearTexturas, me
 import { crearRenderGL } from './clase/motor3d-gl.js';
 import { PALETAS } from './clase/e3d-base.js';
 import { dibujarCabina } from './clase/cabina.js';
-import { crearAvion, pasoVuelo, juzgarAterrizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO } from './clase/vuelo-modelo.js';
+import { crearAvion, pasoVuelo, juzgarToque, juzgarAmarizaje, lecturas, consejo, indicar, PISTA, PISTA_B, VUELO, LAGO, enAgua } from './clase/vuelo-modelo.js';
 import { construirMundo, avionPropio, posicionAvion, alturaSuelo, luzAterrizaje } from './clase/juego-mundo.js';
 import { montarMinimapa } from './clase/e3d-minimapa.js';
 import { cumulo } from './clase/e3d-base.js';
@@ -27,7 +27,7 @@ import {
   paletaDe, solDe, conLuces, HORAS, lucesFijas, lucesExtremos, lucesSenda, faro, prima, lucesPueblos, crearTrafico, moverTrafico, primitivasTrafico,
   queVes, derechoDePaso, colorLuz,
 } from './clase/juego-noche.js';
-import { MINICLASES, miniclase, preguntaDePaso } from './clase/juego-miniclases.js';
+import { MINICLASES, miniclase, preguntaDePaso, AMARIZAJE_INICIO } from './clase/juego-miniclases.js';
 import { traficoInicial, moverCualquiera, alertaTrafico, etiquetaAltura } from './clase/juego-trafico.js';
 import { crearMotor, listaArranque, listaApagado, MOTOR_FAA, encenderMotor, apagarMotor, encenderTodo, mezclaAuto, lucesActivas, medirRunup, listaRunup, PASOS_RUNUP } from './clase/motor-piston.js';
 import { crearPanelMotor, crearPalanca } from './clase/juego-panel-motor.js';
@@ -51,9 +51,13 @@ const zonasPista = (p, conTexto) => [
   { tipo: 'td', c: haciaAtras(p, -1), rumbo: p.rumbo % 360 },
   ...(conTexto ? [{ tipo: 'texto', c: [p.x + (p.rumbo % 360 ? 0 : 1.6), p.z + (p.rumbo % 360 ? 1.6 : 0)], texto: `${p.id} · ${p.nombre}`, clase: 'clase-sit-mapa-nombre' }] : []),
 ];
-export const ZONAS_JUEGO = Object.freeze(zonasPista(PISTA, true));
+// 0.14.113: el lago (para el amarizaje), en azul en los dos mapas (no cambia lo que abarca el mapa).
+const ZONA_LAGO = Object.freeze({ tipo: 'agua', c: [LAGO.x, LAGO.z], rx: LAGO.ax, rz: LAGO.az });
+export const ZONAS_JUEGO = Object.freeze([ZONA_LAGO, ...zonasPista(PISTA, true)]);
 export const MAPA_JUEGO = Object.freeze({ id: 'juego', unidades: { ftH: 1000 }, opciones: [], intro: { vuelo: { ruta: [[0, 0.3, -2 - 4 * NM], [0, 0.3, 2 + 2.5 * NM]] } } });
-export const ZONAS_LEJOS = Object.freeze([...zonasPista(PISTA, true), ...zonasPista(PISTA_B, true)]);
+export const ZONAS_LAGO = Object.freeze([ZONA_LAGO, ...zonasPista(PISTA, true)]);
+export const MAPA_LAGO = Object.freeze({ id: 'juego-lago', unidades: { ftH: 1000 }, opciones: [], intro: { vuelo: { ruta: [[LAGO.x, 1, AMARIZAJE_INICIO.z], [LAGO.x, 1, LAGO.z + LAGO.az]] } } });
+export const ZONAS_LEJOS = Object.freeze([ZONA_LAGO, ...zonasPista(PISTA, true), ...zonasPista(PISTA_B, true)]);
 export const MAPA_LEJOS = Object.freeze({ id: 'juego-lejos', unidades: { ftH: 1000 }, opciones: [], intro: { vuelo: { ruta: [[PISTA.x, 1, PISTA.z - 6], [PISTA.x, 1, PISTA.z], [PISTA_B.x, 1, PISTA_B.z], [PISTA_B.x + 6, 1, PISTA_B.z]] } } });
 // La distancia (NM) y el rumbo (°) de un punto a un aeropuerto: «Aeropuerto B · 12 NM · 045°».
 export function haciaAeropuerto(a, p) {
@@ -234,6 +238,8 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
       resTitulo, resDatos, resConsejo, errores,
       el('div', { class: 'juego-res-botones' },
         guiado0 ? el('button', { type: 'button', class: 'boton-3d naranja', onclick: () => reiniciar('preguntas') }, el('span', { texto: t('juego.otra_ruta') })) : null,
+        // 0.14.113: en una mini-clase, repetir el paso (el mismo vuelo, desde el principio).
+        mc ? el('button', { type: 'button', class: 'boton-3d naranja juego-clase-repetir', onclick: () => repetirPasoClase() }, el('span', { texto: t('juego.clase.repetir') })) : null,
         el('button', { type: 'button', class: `boton-3d ${guiado0 ? 'blanco' : 'naranja'}`, onclick: () => reiniciar('final') }, el('span', { texto: t('juego.otra_final') })),
         el('button', { type: 'button', class: 'boton-3d blanco', onclick: () => reiniciar('libre') }, el('span', { texto: t('juego.otra_despegue') })),
         el('button', { type: 'button', class: 'boton-texto juego-seguir', onclick: () => { resultado.hidden = true; pausar(false); } }, el('span', { texto: t('juego.seguir') })))));
@@ -433,7 +439,9 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
   const cajaMapa = el('div', { class: 'juego-mapas' });
   escenario.append(cajaMapa);
   const Tm = (k, v) => t(`clase.e3d.sit.ctl.${k}`, v);
-  const mapas = { cerca: montarMinimapa(cajaMapa, MAPA_JUEGO, { T: Tm, zonas: ZONAS_JUEGO, decision: false }), lejos: montarMinimapa(cajaMapa, MAPA_LEJOS, { T: Tm, zonas: ZONAS_LEJOS, decision: false }) };
+  // (0.14.113: en la mini-clase del amarizaje, el mapa de cerca abarca desde el comienzo hasta el lago)
+  const mapaCerca = mc?.mapa === 'lago' ? [MAPA_LAGO, ZONAS_LAGO] : [MAPA_JUEGO, ZONAS_JUEGO];
+  const mapas = { cerca: montarMinimapa(cajaMapa, mapaCerca[0], { T: Tm, zonas: mapaCerca[1], decision: false }), lejos: montarMinimapa(cajaMapa, MAPA_LEJOS, { T: Tm, zonas: ZONAS_LEJOS, decision: false }) };
   let mapaLejos = false;
   const bZoom = el('button', { type: 'button', class: 'juego-boton juego-mapa-zoom', 'aria-label': t('juego.mapa.zoom'), onclick: () => { mapaLejos = !mapaLejos; pintarMapas(); } }, '±');
   const destino = el('p', { class: 'juego-destino', 'aria-live': 'off' });
@@ -501,11 +509,13 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     if (!avion.enSuelo && avion.ft > 30) volo = true;
     // El relieve (lejos del aeropuerto): tocarlo es chocar.
     if (!avion.enSuelo && avion.ft / VUELO.ftPorUnidad < alturaSuelo(avion.x, avion.z)) avion = { ...avion, choque: true, kt: 0 };
-    if (avion.choque && !antes.choque) return terminarVuelo({ nivel: 'choque', motivos: ['choque'], puntos: 0 }, avion.toque ?? null);
+    // (en el agua, el choque tiene su consejo: el del amarizaje)
+    if (avion.choque && !antes.choque) return terminarVuelo(avion.toque?.agua ? juzgarAmarizaje(avion.toque, { choque: true }) : { nivel: 'choque', motivos: ['choque'], puntos: 0 }, avion.toque ?? null);
     if (avion.toque) sonido.evento('toque');
     if (avion.toque && volo && tiempo - ultimoToque > 3) {
       ultimoToque = tiempo;
-      const juicio = juzgarAterrizaje(avion.toque, { choque: avion.choque });
+      // 0.14.113: en el lago, el juez del amarizaje (nunca «fuera de la pista»).
+      const juicio = juzgarToque(avion.toque, { choque: avion.choque });
       // Con buen aterrizaje la potencia queda en ralentí (para frenar); el resultado sale al ir despacio.
       mandos.potencia = 0; pintarPotencia();
       const datosToque = avion.toque;
@@ -524,8 +534,18 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     const L = lecturas(avion);
     const linea = t('juego.hud', { kt: Math.round(L.kt), ft: Math.round(L.ft).toLocaleString('en-US'), rumbo: String(Math.round(L.rumbo) % 360 || 360).padStart(3, '0'), vs: Math.round(L.vs / 50) * 50 });
     if (linea !== ultimoHud) { hud.textContent = linea; ultimoHud = linea; }
+    pintarEstado(L);
     pintarMarcador();
     pintarClaseVivo();
+  }
+  // 0.14.113: el estado del vuelo, solo para leer (las pruebas en el navegador y la demostración): atributos
+  // data-vuelo-* de la raíz, al ritmo del HUD (5 veces por segundo). Nada global; no cambia nada del vuelo.
+  function pintarEstado(L) {
+    const r1 = v => String(Math.round(v * 10) / 10);
+    const d = { kt: r1(L.kt), ft: r1(L.ft), vs: String(Math.round(L.vs)), rumbo: r1(L.rumbo), cabeceo: r1(L.cabeceo), alabeo: r1(L.alabeo), x: String(Math.round(avion.x * 1000) / 1000), z: String(Math.round(avion.z * 1000) / 1000),
+      'en-agua': enAgua(avion.x, avion.z) ? '1' : '0', flotando: avion.agua ? '1' : '0', 'en-suelo': avion.enSuelo ? '1' : '0', motor: (avion.pist?.enMarcha ?? avion.combustible > 0) ? '1' : '0',
+      combustible: String(Math.round(avion.combustible * 1000) / 1000), potencia: r1(mandos.potencia * 100), flaps: String(mandos.flaps), asistente: asistente ? '1' : '0', choque: avion.choque ? '1' : '0', pausado: pausado ? '1' : '0' };
+    for (const [k, v] of Object.entries(d)) if (raiz.getAttribute(`data-vuelo-${k}`) !== v) raiz.setAttribute(`data-vuelo-${k}`, v);
   }
   const bucle = crearBucle(raiz, dt => {
     // En el vuelo con preguntas el piloto automático va 3 veces más rápido entre preguntas (no en la aproximación).
@@ -857,7 +877,10 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     terminarRepeticion(); repeDatos = null;
     pasoClase = Math.max(0, Math.min(mc.pasos.length - 1, i));
     const paso = pasoActual();
-    avion = { ...crearAvion(mc.inicio), ...(mc.inicio.flaps ? { gamma: -0.052, cabeceo: -1, rpm: 1700 } : {}), ...(paso.arriba != null ? { ft: mc.inicio.ft + paso.arriba } : {}), pist: conAterrizaje(crearMotor({ mezcla: paso.mezcla ?? 1 }), mc.hora === 'noche' && mc.inicio.flaps) };
+    // 0.14.113: un paso puede empezar en otro lugar (paso.inicio: lo que cambia; también el combustible).
+    const ini = { ...mc.inicio, ...(paso.inicio ?? {}) };
+    avion = { ...crearAvion(ini), ...(ini.flaps ? { gamma: -0.052, cabeceo: -1, rpm: 1700 } : {}), ...(paso.arriba != null ? { ft: ini.ft + paso.arriba } : {}), pist: conAterrizaje(crearMotor({ mezcla: paso.mezcla ?? 1 }), mc.hora === 'noche' && ini.flaps) };
+    if (ini.combustible != null) ponerMandosDe(avion);
     motorAndaba = avion.pist.enMarcha && (paso.mezcla ?? 1) > 0;
     preguntaClase = preguntaDePaso(paso, avion);
     trafico = preguntaClase ? [{ ...preguntaClase.trafico, fase: 0.3 }] : paso.trafico ? [crearTrafico(paso.trafico, avion, { distancia: 2 })] : [];
@@ -867,6 +890,12 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     else { faseClase = 'accion'; accionClase = true; }
     pintarClase();
   }
+  // Después del resultado (el amarizaje o el choque): otra vez el mismo paso.
+  function repetirPasoClase() {
+    resultado.hidden = true; ultimoToque = -10; volo = true;
+    ponerPaso(pasoClase); ponerMandosDe(avion); pausar(false);
+  }
+  function ponerMandosDe(a) { mandos.potencia = a.potencia; mandos.flaps = a.flaps; mandos.cabeceo = 0; mandos.alabeo = 0; pintarPotencia(); pintarBotones(); }
   function responderClase(o) {
     respondidaClase = { elegida: o, bien: o === preguntaClase.correcta, correcta: preguntaClase.correcta };
     faseClase = 'accion'; accionClase = true; tAccion = 0;
@@ -906,7 +935,7 @@ export function montarVuelo(h, { modo = 'libre', clase = null } = {}) {
     }
     pildoraClase.hidden = true;
     const ajustes = el('div', { class: 'juego-clase-ajustes', role: 'group', 'aria-label': t('juego.clase.ajustes') },
-      el('button', { type: 'button', class: 'juego-boton', 'aria-pressed': String(ambiente.viento.kt > 0), onclick: () => { ambiente = { ...ambiente, viento: ambiente.viento.kt > 0 ? { desde: 360, kt: 0 } : { desde: 90, kt: 10 } }; pintarClase(); } },
+      el('button', { type: 'button', class: 'juego-boton', 'aria-pressed': String(ambiente.viento.kt > 0), onclick: () => { ambiente = { ...ambiente, viento: ambiente.viento.kt > 0 ? { desde: 360, kt: 0 } : { ...(mc.viento ?? { desde: 90, kt: 10 }) } }; pintarClase(); } },
         ambiente.viento.kt > 0 ? t('juego.clase.viento', { desde: String(ambiente.viento.desde).padStart(3, '0'), kt: ambiente.viento.kt }) : t('juego.clase.sin_viento')),
       mc.pasos.some(x => x.trafico) ? el('button', { type: 'button', class: 'juego-boton', 'aria-pressed': String(conTrafico), onclick: () => { conTrafico = !conTrafico; pintarClase(); } }, t(conTrafico ? 'juego.clase.trafico_si' : 'juego.clase.trafico_no')) : null);
     let cuerpo;

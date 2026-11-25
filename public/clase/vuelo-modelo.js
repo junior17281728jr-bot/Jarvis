@@ -38,6 +38,12 @@ export function pistaDe(x, z) {
   for (const p of PISTAS) { const e = enPista(x, z, p); if (e.dentro) return p; const dd = Math.hypot(x - p.x, z - p.z); if (dd < d) { d = dd; mejor = p; } }
   return mejor;
 }
+// 0.14.113: el lago del Juego (para practicar el amarizaje, pedido del dueño): una elipse grande y plana al suroeste del
+// aeropuerto A (lejos de las dos pistas), de unos 2.3 × 5.9 NM. Unidades del mundo (1 = 1,000 ft): centro, semiejes.
+export const LAGO = Object.freeze({ x: -13, z: -12, ax: 7, az: 18 });
+// Qué tan adentro del lago está un punto: < 1 adentro, 1 en la orilla, > 1 afuera (la distancia «elíptica»).
+export const radioLago = (x, z) => Math.hypot((x - LAGO.x) / LAGO.ax, (z - LAGO.z) / LAGO.az);
+export const enAgua = (x, z) => radioLago(x, z) <= 1;
 // El techo de servicio: el motor da menos con la altura (densidad); cerca de 13,500 ft sube unos 100 ft/min.
 export const TECHO = Object.freeze({ servicioFt: 13500, factor: ft => Math.max(0.05, 1 - ft / 27500) });
 
@@ -64,15 +70,15 @@ export function alfaNivel(kt, flaps = 0) {
 }
 
 // Un avión nuevo: en la cabecera de la 36 (en el suelo) o en el aire.
-export function crearAvion({ x = 0, z = -1.85, ft = 0, rumbo = 360, kt = 0, potencia = 0, enSuelo = true, flaps = 0 } = {}) {
+export function crearAvion({ x = 0, z = -1.85, ft = 0, rumbo = 360, kt = 0, potencia = 0, enSuelo = true, flaps = 0, combustible = VUELO.combustibleGal } = {}) {
   return {
     x, z, ft, rumbo, kt, cabeceo: 0, alabeo: 0, gamma: 0, vs: 0, potencia, flaps, enSuelo, t: 0,
     // La compensación (el ángulo de ataque que el avión busca solo): en tierra, la del despegue (sube a unos 60 kt).
     trim: alfaNivel(enSuelo ? 60 : Math.max(kt, 55), flaps), p: 0, q: 0, g: 1, flapsPos: flaps,
-    rpm: VUELO.rpmRalenti, aceitePsi: VUELO.aceitePsiNormal, aceiteTemp: VUELO.aceiteTempNormal, combustible: VUELO.combustibleGal,
+    rpm: VUELO.rpmRalenti, aceitePsi: VUELO.aceitePsiNormal, aceiteTemp: VUELO.aceiteTempNormal, combustible,
     motor: 1, // 1 = sano; menos = pierde potencia (una falla)
     rugido: 0, // 0..1: el motor «falla» (las RPM suben y bajan)
-    perdida: false, aviso: false, toque: null, choque: false, velSuelo: kt,
+    perdida: false, aviso: false, toque: null, choque: false, velSuelo: kt, agua: false,
   };
 }
 
@@ -81,9 +87,11 @@ export function crearAvion({ x = 0, z = -1.85, ft = 0, rumbo = 360, kt = 0, pote
 // Pasos fijos de 1/60 s (estable con cualquier dt); dt se corta a 0.25 s (una pestaña dormida no hace saltar al avión).
 export function pasoVuelo(avion, mandos = {}, dt = 1 / 60, { ambiente = {}, asistente = false } = {}) {
   let a = { ...avion };
-  let resto = lim(dt, 0, 0.25);
-  while (resto > 1e-9) { const h = Math.min(resto, 1 / 60); a = subpaso(a, mandos, h, ambiente, asistente); resto -= h; }
-  return a;
+  let resto = lim(dt, 0, 0.25), toque = null;
+  // (0.14.113: el toque de un sub-paso que no es el último no se pierde: con cuadros lentos el juez y el resultado salían
+  // solo si el avión tocaba justo en el último sub-paso)
+  while (resto > 1e-9) { const h = Math.min(resto, 1 / 60); a = subpaso(a, mandos, h, ambiente, asistente); toque ??= a.toque; resto -= h; }
+  return toque && !a.toque ? { ...a, toque } : a;
 }
 
 function subpaso(a, m, dt, amb, asistente) {
@@ -167,7 +175,8 @@ function subpaso(a, m, dt, amb, asistente) {
   let gamma = a.gamma;
   if (n.enSuelo) {
     gamma = 0;
-    if (sobreW > 1.02 && kt > VUELO.rotacionKt - 4) { n.enSuelo = false; gamma = rad(1); }
+    // (en el agua no se despega: el avión flota y se frena)
+    if (sobreW > 1.02 && kt > VUELO.rotacionKt - 4 && !a.agua) { n.enSuelo = false; gamma = rad(1); }
   } else {
     const dg = (G_KTS / vMin) * (sobreW * Math.cos(rad(n.alabeo)) - Math.cos(a.gamma));
     gamma = lim(a.gamma + dg * dt * 0.9, rad(-60), rad(40));
@@ -192,17 +201,22 @@ function subpaso(a, m, dt, amb, asistente) {
   // ---- tocar el suelo ----
   if (!n.enSuelo && n.ft <= 0) {
     const pista = pistaDe(n.x, n.z), p = enPista(n.x, n.z, pista);
-    n.toque = { kt: a.kt, vs: a.vs, alabeo: a.alabeo, cabeceo: a.cabeceo, costado: p.costado, largo: p.largo, dentro: p.dentro, rumbo: n.rumbo, pista: pista.id };
-    n.ft = 0; n.enSuelo = true; n.gamma = 0; n.vs = 0; n.alabeo = 0; n.cabeceo = Math.max(0, Math.min(n.cabeceo, 8)); n.p = 0; n.q = 0;
+    // 0.14.113: en el lago, el toque es un amarizaje (agua: true): no rebota y el agua frena muy rápido.
+    const agua = enAgua(n.x, n.z);
+    n.toque = { kt: a.kt, vs: a.vs, alabeo: a.alabeo, cabeceo: a.cabeceo, costado: p.costado, largo: p.largo, dentro: p.dentro && !agua, rumbo: n.rumbo, pista: pista.id, ...(agua ? { agua: true } : {}) };
+    n.ft = 0; n.enSuelo = true; n.gamma = 0; n.vs = 0; n.alabeo = 0; n.cabeceo = Math.max(0, Math.min(n.cabeceo, 8)); n.p = 0; n.q = 0; n.agua = agua;
     if (a.vs < -1000 || Math.abs(a.alabeo) > 25 || a.cabeceo < -8) { n.choque = true; n.kt = 0; }
-    // Un toque duro rebota: las ruedas devuelven parte del golpe (un salto chico).
-    else if (a.vs < -ATERRIZAJE.vsDuroFpm) { n.enSuelo = false; n.ft = 0.5; n.gamma = rad(Math.min(4, (-a.vs * 0.3) / (Math.max(a.kt, 30) * KT_FTS * 60) * 57.3)); n.vs = -a.vs * 0.3; n.toque.rebote = true; }
+    // Un toque duro rebota: las ruedas devuelven parte del golpe (un salto chico). En el agua, no.
+    else if (a.vs < -ATERRIZAJE.vsDuroFpm && !agua) { n.enSuelo = false; n.ft = 0.5; n.gamma = rad(Math.min(4, (-a.vs * 0.3) / (Math.max(a.kt, 30) * KT_FTS * 60) * 57.3)); n.vs = -a.vs * 0.3; n.toque.rebote = true; }
   }
   if (n.enSuelo) {
     n.ft = 0;
-    // Fuera de la pista, el pasto frena más.
-    if (!enPista(n.x, n.z, pistaDe(n.x, n.z)).dentro) n.kt = Math.max(0, n.kt - 3 * dt);
-  }
+    n.agua = enAgua(n.x, n.z);
+    // En el agua, la resistencia del agua frena en pocos segundos y el avión queda flotando; fuera de la pista, el pasto
+    // frena más.
+    if (n.agua) n.kt = Math.max(0, n.kt - (AMARIZAJE.frenoKtS + AMARIZAJE.frenoPorKt * n.kt) * dt);
+    else if (!enPista(n.x, n.z, pistaDe(n.x, n.z)).dentro) n.kt = Math.max(0, n.kt - 3 * dt);
+  } else n.agua = false;
   // Los flaps bajan y suben despacio (para el indicador: unos 4 s).
   n.flapsPos = hacia(a.flapsPos ?? flaps, flaps, dt / 4);
   return n;
@@ -213,6 +227,7 @@ export function consejo(a, { vuelo = false } = {}) {
   if (a.choque) return 'choque';
   if (a.perdida || a.aviso) return 'perdida';
   if (a.enSuelo) {
+    if (a.agua) return 'flotando';
     if (vuelo) return a.kt < 3 ? 'detenido' : 'rodando';
     if (a.potencia < 0.9 && a.kt < VUELO.rotacionKt) return 'potencia';
     return a.kt < VUELO.rotacionKt ? 'acelera' : 'rotar';
@@ -244,6 +259,27 @@ export function juzgarAterrizaje(toque, { choque = false } = {}) {
   if (firme) return { nivel: 'firme', motivos: [vs > ATERRIZAJE.vsBuenoFpm ? 'descenso_firme' : 'eje'], puntos: 150 };
   return { nivel: 'bueno', motivos: [], puntos: 300 };
 }
+
+// 0.14.113: el juez del AMARIZAJE (en el lago). La FAA: un avión amarizado a la velocidad mínima y en la actitud normal de
+// aterrizaje no se hunde enseguida (AFH cap. 18). Se usan los mismos números del juez de la pista (ATERRIZAJE) y la
+// misma regla del choque (más de 1,000 ft/min, más de 25° de alabeo o la nariz más de 8° abajo).
+// Con vida («amarizaje_vivos»): sin choque, a lo sumo 600 ft/min, alas casi niveladas (8°), la nariz arriba (≥ 0°) y
+// despacio (a lo sumo 75 kt). Si falla algo de eso, «amarizaje_duro». → { nivel, motivos, puntos }
+export const AMARIZAJE = Object.freeze({ vsMaxFpm: ATERRIZAJE.vsDuroFpm, alabeoMax: ATERRIZAJE.alabeoMax, ktMax: ATERRIZAJE.ktMax, cabeceoMin: 0, frenoKtS: 8, frenoPorKt: 0.3, fuente: 'AFH cap. 18 · AIM 6-3-3' });
+export function juzgarAmarizaje(toque, { choque = false } = {}) {
+  if (!toque) return null;
+  if (choque) return { nivel: 'choque', motivos: ['choque_agua'], puntos: 0 };
+  const motivos = [];
+  const vs = -Math.min(0, toque.vs);
+  if (vs > AMARIZAJE.vsMaxFpm) motivos.push('descenso_agua');
+  if (Math.abs(toque.alabeo) > AMARIZAJE.alabeoMax) motivos.push('alas_agua');
+  if (toque.cabeceo < AMARIZAJE.cabeceoMin) motivos.push('nariz');
+  if (toque.kt > AMARIZAJE.ktMax) motivos.push('rapido_agua');
+  if (motivos.length) return { nivel: 'amarizaje_duro', motivos, puntos: 50 };
+  return { nivel: 'amarizaje_vivos', motivos: ['amarizaje_vivos'], puntos: 300 };
+}
+// El juez que toca: en el agua, el del amarizaje; si no, el de la pista.
+export const juzgarToque = (toque, opciones = {}) => (toque?.agua ? juzgarAmarizaje(toque, opciones) : juzgarAterrizaje(toque, opciones));
 
 // Lo que marcan los instrumentos (los valores y el ángulo de cada aguja, con la misma matemática que el panel de las clases).
 export function lecturas(a) {

@@ -67,7 +67,11 @@ export function montarMinimapa(padre, sit, { T, numero = n => String(n), zonas =
   const caja = el('button', { type: 'button', class: 'clase-sit-mapa', 'aria-pressed': 'false', 'aria-label': T('mapa.agrandar') }, padre);
   const s = svg('svg', { viewBox: `0 0 ${TAM} ${TAM}`, class: 'clase-sit-mapa-lienzo', role: 'img', 'aria-label': T('mapa') }, caja);
   svg('rect', { x: 1, y: 1, width: TAM - 2, height: TAM - 2, rx: 12, class: 'clase-sit-mapa-papel' }, s);
-  // Las zonas, de abajo hacia arriba: la capa de nubes, los anillos de 20 NM, las tormentas, las paredes, la pista.
+  // Las zonas, de abajo hacia arriba: el agua (0.14.113: el lago del Juego), la capa de nubes, los anillos de 20 NM, las
+  // tormentas, las paredes, la pista. (El agua no cambia lo que abarca el mapa.)
+  for (const z of ZONAS) {
+    if (z.tipo === 'agua') { const [u, v] = a(z.c[0], z.c[1]); svg('ellipse', { cx: f1(u), cy: f1(v), rx: f1(z.rx * k), ry: f1(z.rz * k), class: 'clase-sit-mapa-agua' }, s); }
+  }
   for (const z of ZONAS) {
     if (z.tipo === 'capa') {
       const [u0, v0] = a(z.x0, z.z1), [u1, v1] = a(z.x1, z.z0);

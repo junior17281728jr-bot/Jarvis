@@ -947,17 +947,18 @@ html, body { margin: 0; }
    derecha de la escena, sobre el lienzo (también en la cabina); se toca para agrandarlo. Claro y oscuro. */
 .clase-sit-contexto { margin: 0; font-size: .95rem; line-height: 1.4; color: var(--cl-suave); }
 .clase-sit-contexto strong { color: var(--cl-texto); font-weight: 750; }
-.clase-sit-mapa { --mapa-papel: rgba(250, 252, 255, 0.93); --mapa-tinta: #142033; --mapa-suave: #56627a; --mapa-capa: rgba(120, 132, 150, 0.32); --mapa-anillo: #d97a00; --mapa-celda: #c62828; --mapa-ruta: #1565c0; --mapa-pista: #2b3445;
+.clase-sit-mapa { --mapa-agua: rgba(84, 146, 198, 0.55); --mapa-papel: rgba(250, 252, 255, 0.93); --mapa-tinta: #142033; --mapa-suave: #56627a; --mapa-capa: rgba(120, 132, 150, 0.32); --mapa-anillo: #d97a00; --mapa-celda: #c62828; --mapa-ruta: #1565c0; --mapa-pista: #2b3445;
   z-index: 3; position: absolute; right: 8px; top: 8px; height: min(44%, 180px); width: auto; aspect-ratio: 1; padding: 0; border: 0; border-radius: 12px; background: transparent; cursor: zoom-in;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); transition: height .2s ease; }
 .clase-sit-mapa[aria-pressed="true"] { height: calc(100% - 16px); cursor: zoom-out; }
 .clase-sit-mapa:focus-visible { outline: 3px solid var(--cl-naranja); outline-offset: 2px; }
-:root[data-tema="oscuro"] .clase-sit-mapa { --mapa-papel: rgba(12, 20, 38, 0.92); --mapa-tinta: #eef3ff; --mapa-suave: #a9b6cf; --mapa-capa: rgba(170, 182, 205, 0.26); --mapa-anillo: #ffb340; --mapa-celda: #ff6b6b; --mapa-ruta: #6fb3ff; --mapa-pista: #e3e9f5; }
-@media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) .clase-sit-mapa { --mapa-papel: rgba(12, 20, 38, 0.92); --mapa-tinta: #eef3ff; --mapa-suave: #a9b6cf; --mapa-capa: rgba(170, 182, 205, 0.26); --mapa-anillo: #ffb340; --mapa-celda: #ff6b6b; --mapa-ruta: #6fb3ff; --mapa-pista: #e3e9f5; } }
+:root[data-tema="oscuro"] .clase-sit-mapa { --mapa-agua: rgba(70, 130, 190, 0.5); --mapa-papel: rgba(12, 20, 38, 0.92); --mapa-tinta: #eef3ff; --mapa-suave: #a9b6cf; --mapa-capa: rgba(170, 182, 205, 0.26); --mapa-anillo: #ffb340; --mapa-celda: #ff6b6b; --mapa-ruta: #6fb3ff; --mapa-pista: #e3e9f5; }
+@media (prefers-color-scheme: dark) { :root:is([data-tema="auto"], :not([data-tema])) .clase-sit-mapa { --mapa-agua: rgba(70, 130, 190, 0.5); --mapa-papel: rgba(12, 20, 38, 0.92); --mapa-tinta: #eef3ff; --mapa-suave: #a9b6cf; --mapa-capa: rgba(170, 182, 205, 0.26); --mapa-anillo: #ffb340; --mapa-celda: #ff6b6b; --mapa-ruta: #6fb3ff; --mapa-pista: #e3e9f5; } }
 @media (max-width: 560px) { .clase-sit-mapa { height: 46%; } }
 @media (prefers-reduced-motion: reduce) { .clase-sit-mapa { transition: none; } }
 .clase-sit-mapa-lienzo { display: block; width: 100%; height: 100%; }
 .clase-sit-mapa-papel { fill: var(--mapa-papel); stroke: var(--mapa-suave); stroke-width: 1.5; }
+.clase-sit-mapa-agua { fill: var(--mapa-agua); stroke: none; }
 .clase-sit-mapa-capa { fill: var(--mapa-capa); stroke: var(--mapa-suave); stroke-width: 1; stroke-dasharray: 4 3; }
 .clase-sit-mapa-anillo { fill: none; stroke: var(--mapa-anillo); stroke-width: 2; stroke-dasharray: 6 4; }
 .clase-sit-mapa-celda { fill: var(--mapa-celda); fill-opacity: .55; stroke: var(--mapa-celda); stroke-width: 2; }
