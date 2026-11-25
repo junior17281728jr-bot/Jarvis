@@ -87,3 +87,22 @@ test('más humano: con palabras, sin porcentajes (pedido del dueño)', async () 
   const h = historial(); h.materias[0].temas[1] = tema('b', 'abierto', 0, 6);
   assert.ok(lineasBalance(balanceAlumno(h)).some(l => l.clave === 'profe.bal.cuesta_dos'));
 });
+
+test('un tema cuya clase no abrió: no «le cuesta», no la ha estudiado, y se dice dónde le salieron (pedido del dueño)', () => {
+  const h = historial();
+  // «c» (0 de 4) sin abrir la clase: lo respondió en el Repaso final.
+  h.materias[1].temas[0] = { ...tema('c', 'abierto', 0, 4), clase: false, donde: 'final' };
+  const b = balanceAlumno(h);
+  const L = lineasBalance(b);
+  assert.ok(L.some(l => l.clave === 'profe.bal.sin_clase.final' && l.vars.tema === 'Tema c'));
+  assert.ok(!L.some(l => l.clave.startsWith('profe.bal.cuesta') && JSON.stringify(l.vars).includes('Tema c')));
+  // primero lo que sí estudió
+  assert.equal(b.flojos[0].titulo, 'Tema b');
+  assert.equal(L.find(l => l.clave.startsWith('profe.bal.haz_')).clave, 'profe.bal.haz_flojo');
+  const ia = balanceParaIa(b);
+  assert.deepEqual(ia.sin_estudiar_todavia, [{ tema: 'Tema c', fallo_en: 'el Repaso final' }]);
+  assert.ok(!ia.le_cuesta.some(x => x.tema === 'Tema c'));
+  const p = armarChat({ alumno: {}, material: null, mensaje: '¿En qué fallo más?', estudio: { temas: [] } });
+  assert.match(p.sistema, /«clase_leida» = false NO lo ha estudiado/);
+  assert.match(p.sistema, /Nunca uses la palabra «dominio»/);
+});

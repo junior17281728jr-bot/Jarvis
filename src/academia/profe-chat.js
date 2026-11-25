@@ -45,6 +45,16 @@ function nombreMateria(id, idioma = 'es') {
   return typeof x === 'string' ? x : null;
 }
 
+// 0.14.112: de dónde salieron las respuestas de un tema (la mayoría): 'tema' (la práctica y el test del tema, dentro de la
+// clase), 'final' (Repaso final), 'instructor' (Práctica del instructor y el Juego), 'examen' (el examen de la materia),
+// 'repaso' (repasos y «mis errores»). → la clave o null.
+const DONDE = { tema: 'tema', practica: 'tema', final: 'final', instructor: 'instructor', examen: 'examen', repaso: 'repaso', errores: 'repaso' };
+function dondeDe(tipos) {
+  const n = {};
+  for (const x of tipos) { const k = DONDE[x] ?? 'tema'; n[k] = (n[k] ?? 0) + 1; }
+  return Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
 // ---------- La historia (por materia y tema) ----------
 export function historialEstudio(db, usuarioId, paquete, ahoraMs = Date.now()) {
   if (!paquete) return null;
@@ -52,10 +62,13 @@ export function historialEstudio(db, usuarioId, paquete, ahoraMs = Date.now()) {
   const leidos = temasLeidos(db, usuarioId);
   // La ÚLTIMA respuesta a cada pregunta en cada lugar (práctica, test del tema, examen): repetir no infla nada.
   const ultima = { practica: new Map(), test: new Map(), examen: new Map() };
+  const dondeUltima = new Map();
   const filas = db.prepare('SELECT r.pregunta, r.correcta, i.tipo FROM academia_respuestas r JOIN academia_intentos i ON i.id = r.intento_id WHERE r.usuario_id = ? ORDER BY r.id').all(usuarioId);
   for (const f of filas) {
     if (!paquete.preguntas.has(f.pregunta)) continue;
     ultima[f.tipo === 'examen' ? 'examen' : f.tipo === 'tema' ? 'test' : 'practica'].set(f.pregunta, f.correcta === 1);
+    // 0.14.112: DÓNDE la respondió por última vez (para decir «esas te salieron en el Repaso final», no «te cuesta»).
+    dondeUltima.set(f.pregunta, f.tipo);
   }
   const cuenta = (mapa, ids) => {
     const vistas = ids.filter(id => mapa.has(id));
@@ -80,6 +93,7 @@ export function historialEstudio(db, usuarioId, paquete, ahoraMs = Date.now()) {
         materia: m.id, tema: t.id, titulo: t.titulo, estado, clase: leidos.has(`${m.id}/${t.id}`) || estado === 'aprobado',
         practica, test: { ...test, ...(resumen(intentos.filter(i => i.tipo === 'tema' && i.materia === m.id && i.tema === t.id)) ?? { veces: 0 }) }, examen, estudio,
         dominio: dePeso ? pct(PESO_EXAMEN * examen.bien + estudio.bien, dePeso) : null,
+        donde: dondeDe(t.preguntas.map(id => dondeUltima.get(id)).filter(Boolean)),
       };
     });
     return { materia: m.id, examen: resumen(intentos.filter(i => i.tipo === 'examen' && i.materia === m.id)), disponible: Boolean(cm?.examen?.disponible || cm?.examen?.saltable), temas };
@@ -320,7 +334,9 @@ export function respuestaSinIa(h, contras) {
   if (c) lineas.push({ clave: `profe.contra.${c.tipo}`, vars: { tema: c.titulo, sbien: c.estudio.bien, sde: c.estudio.de, ebien: c.examen.bien, ede: c.examen.de } });
   const d = h.diagnostico;
   const t0 = d?.temas?.[0];
-  if (d?.alcance === 'tema' && t0 && !(c && c.tema === t0.tema)) lineas.push({ clave: 'profe.diag.tema', vars: { tema: t0.titulo, bien: t0.bien, de: t0.de } });
+  // 0.14.112: si esa clase todavía no la abrió, no «le cuesta»: no la ha estudiado (y se le dice que es normal).
+  const leida = t0 ? h.materias.find(m => m.materia === t0.materia)?.temas.find(t => t.tema === t0.tema)?.clase !== false : true;
+  if (d?.alcance === 'tema' && t0 && !(c && c.tema === t0.tema)) lineas.push({ clave: leida ? 'profe.diag.tema' : 'profe.diag.sin_clase', vars: { tema: t0.titulo, bien: t0.bien, de: t0.de } });
   else if (d?.alcance === 'materia') lineas.push({ clave: 'profe.diag.materia', vars: { materia: d.evidencia?.materia ?? '', n: d.temas.length } });
   else if (d?.alcance === 'varias') lineas.push({ clave: 'profe.diag.varias', vars: { temas: d.temas.map(t => t.titulo).join(' · ') } });
   // Un examen de materia que no pasó (pesa más que todo lo demás).
@@ -408,6 +424,7 @@ export function recomendacion(db, usuarioId, paquete, ahoraMs = Date.now()) {
 export const cambiosVista = cambios => cambios.map(({ clave, ...c }) => c);
 
 // ---------- Lo que va a la IA (sin nombres ni ids) ----------
+const QUE_DONDE = Object.freeze({ tema: 'la práctica de la clase', final: 'el Repaso final', instructor: 'la Práctica del instructor o el Juego', examen: 'el examen de la materia', repaso: 'sus repasos' });
 const QUE_BOTON = Object.freeze({ clase: 'abrir la clase', practicar: 'practicar las que falló', test: 'el test del tema', examen: 'el examen de la materia', oral: 'practicar el oral', repaso: 'el repaso de hoy' });
 // Con un tope de tamaño (TOPE_CIFRAS bytes): con 11 materias y el oral, igual deja lugar a la clase y al historial.
 export const TOPE_CIFRAS = 2000;
@@ -427,7 +444,7 @@ function cifrasCompletas(x, { idioma, maxTemas }) {
   if (!h) return null;
   const nm = id => nombreMateria(id, idioma) ?? `materia ${h.materias.findIndex(m => m.materia === id) + 1}`;
   const temas = h.materias.flatMap(m => m.temas.filter(t => t.estudio.de || t.examen.de || t.clase).map(t => ({
-    materia: nm(m.materia), tema: t.titulo, clase_leida: t.clase, practica: t.practica, test_tema: { bien: t.test.bien, de: t.test.de, veces: t.test.veces ?? 0, aprobado: t.test.aprobado ?? false },
+    materia: nm(m.materia), tema: t.titulo, clase_leida: t.clase, respondidas_sobre_todo_en: QUE_DONDE[t.donde] ?? null, practica: t.practica, test_tema: { bien: t.test.bien, de: t.test.de, veces: t.test.veces ?? 0, aprobado: t.test.aprobado ?? false },
     examen_materia: t.examen, dominio_pct: t.dominio,
   }))).sort((a, b) => (a.dominio_pct ?? 101) - (b.dominio_pct ?? 101)).slice(0, maxTemas);
   const nombreOral = id => nombreMateria(id, idioma) ?? 'oral';
@@ -471,14 +488,15 @@ export function balanceAlumno(h) {
     for (const t of m.temas) {
       const b = t.estudio.bien + t.examen.bien, d = t.estudio.de + t.examen.de;
       bien += b; de += d;
-      if (d >= MINIMO_BALANCE) vistos.push({ materia: m.materia, tema: t.tema, titulo: t.titulo, bien: b, de: d, dominio: t.dominio ?? pct(b, d) });
+      if (d >= MINIMO_BALANCE) vistos.push({ materia: m.materia, tema: t.tema, titulo: t.titulo, bien: b, de: d, dominio: t.dominio ?? pct(b, d), clase: Boolean(t.clase), donde: t.donde ?? null });
     }
     if (m.examen?.aprobado) completadas.push(m.materia);
     else if (tocados || m.examen) enCurso.push({ materia: m.materia, temas: m.temas.length, hechos });
     else sinEmpezar++;
   }
-  const flojos = vistos.filter(t => t.dominio < FLOJO).sort((a, b) => a.dominio - b.dominio || b.de - a.de).slice(0, 2);
-  const fuerte = vistos.filter(t => t.dominio >= 85).sort((a, b) => b.dominio - a.dominio || b.de - a.de)[0] ?? null;
+  // (primero lo que SÍ estudió: de una clase que no abrió no se dice «te cuesta», se dice que todavía no la estudia)
+  const flojos = vistos.filter(t => t.dominio < FLOJO).sort((a, b) => Number(b.clase) - Number(a.clase) || a.dominio - b.dominio || b.de - a.de).slice(0, 2);
+  const fuerte = vistos.filter(t => t.dominio >= 85 && t.clase).sort((a, b) => b.dominio - a.dominio || b.de - a.de)[0] ?? null;
   const caido = h.materias.find(m => m.examen && !m.examen.aprobado);
   let oral = null;
   if (h.oral) {
@@ -519,13 +537,16 @@ export function lineasBalance(b) {
   }
   // 3) Lo que cuesta (con suficientes respuestas) y el examen que no pasó (si no hay nada flojo, o hay lugar).
   const como = f => (f.bien === 0 ? 'ninguna' : f.bien * 2 < f.de ? 'mayoria' : 'algunas');
-  if (b.flojos.length > 1) L.push({ clave: 'profe.bal.cuesta_dos', vars: { tema: b.flojos[0].titulo, tema2: b.flojos[1].titulo } });
-  else if (b.flojos.length) L.push({ clave: `profe.bal.cuesta.${como(b.flojos[0])}`, vars: { tema: b.flojos[0].titulo } });
+  const estudiados = b.flojos.filter(f => f.clase), sinClase = b.flojos.filter(f => !f.clase);
+  if (estudiados.length > 1) L.push({ clave: 'profe.bal.cuesta_dos', vars: { tema: estudiados[0].titulo, tema2: estudiados[1].titulo } });
+  else if (estudiados.length) L.push({ clave: `profe.bal.cuesta.${como(estudiados[0])}`, vars: { tema: estudiados[0].titulo } });
+  // Una clase que no abrió: no es que «le cueste», es que no la ha estudiado (y se dice dónde le salieron esas preguntas).
+  if (sinClase.length) L.push({ clave: `profe.bal.sin_clase.${sinClase[0].donde && sinClase[0].donde !== 'tema' ? sinClase[0].donde : 'otro'}`, vars: { tema: sinClase[0].titulo } });
   if (b.examenCaido && L.length < 4) L.push({ clave: `profe.bal.examen.${b.examenCaido.pct >= 60 ? 'cerca' : 'lejos'}`, vars: { materia: b.examenCaido.materia } });
   // (solo lo que ya hizo: nunca lo que no ha empezado)
   if (b.oral?.empezados && L.length < 5) L.push({ clave: 'profe.bal.oral', vars: { n: b.oral.empezados } });
   // 4) Qué hacer, y por qué (siempre; corto: 6 líneas como mucho).
-  const haz = b.flojos.length ? { clave: 'profe.bal.haz_flojo', vars: { tema: b.flojos[0].titulo } }
+  const haz = b.flojos.length ? { clave: b.flojos[0].clase ? 'profe.bal.haz_flojo' : 'profe.bal.haz_leer', vars: { tema: b.flojos[0].titulo } }
     : b.examenCaido ? { clave: 'profe.bal.haz_examen', vars: { materia: b.examenCaido.materia } }
       : tg.enCurso.length ? { clave: 'profe.bal.haz_seguir', vars: { materia: tg.enCurso[0].materia } }
         : { clave: 'profe.bal.haz_nueva', vars: {} };
@@ -543,7 +564,8 @@ export function balanceParaIa(b, { idioma = 'es' } = {}) {
     // (solo lo que ya hizo o empezó: de lo que no ha tocado no se habla)
     completadas_examen_aprobado: b.tg.completadas.map(nm),
     empezadas: b.tg.enCurso.map(c => ({ materia: nm(c.materia), temas_aprobados: c.hechos, de_temas: c.temas })),
-    preguntas: { bien: b.tg.bien, de: b.tg.de, pct: pct(b.tg.bien, b.tg.de) }, lo_mejor: b.fuerte, le_cuesta: b.flojos.map(f => ({ tema: f.titulo, bien: f.bien, de: f.de })),
+    preguntas: { bien: b.tg.bien, de: b.tg.de, pct: pct(b.tg.bien, b.tg.de) }, lo_mejor: b.fuerte, le_cuesta: b.flojos.filter(f => f.clase).map(f => ({ tema: f.titulo, bien: f.bien, de: f.de })),
+    sin_estudiar_todavia: b.flojos.filter(f => !f.clase).map(f => ({ tema: f.titulo, fallo_en: QUE_DONDE[f.donde] ?? 'otras prácticas' })),
     examen_no_pasado: b.examenCaido ? { materia: nm(b.examenCaido.materia), ultimo_pct: b.examenCaido.pct } : null,
     oral: b.oral?.empezados ? { capitulos_empezados: b.oral.empezados, aprobados: b.oral.aprobados, por_corregir: b.oral.errores } : null,
     repasos_de_hoy: b.repasos, dias_sin_estudiar: b.haceDias,
